@@ -11,7 +11,7 @@ import type { Context, Next } from 'hono';
 import { type AccessRuntime, bindAccess, RouteAccess } from './access.js';
 import type { AdminNode, AnyImplementations, DataOperation, InputParser, T1Check } from './impl-registry.js';
 import { type Declaration, RoutePolicyError } from './registry.js';
-import type { ButtonPolicy, ButtonRef, ObjectPolicy, RoutePolicy, ScopePolicy } from './types.js';
+import type { ButtonPolicy, ButtonRef, FieldsPolicy, ObjectPolicy, RoutePolicy, ScopePolicy } from './types.js';
 
 type S2Step =
   | { readonly kind: 'object'; readonly object: string; readonly operation: DataOperation }
@@ -49,6 +49,8 @@ function nodesOf(key: string, policy: RoutePolicy): readonly RoutePolicy[] {
     if (!['object', 'admin', 'own', 'member'].includes(node.kind)) unsupported(key, ` ${node.kind} 声明`);
     if (node.optional && Object.keys(node.optional).length > 0) unsupported(key, '可选分支 optional');
     if (node !== policy && (node.input || node.write)) unsupported(key, '组合子节点上的 input / write');
+    // 管理员能力级范围（审计三条）推广阶段才接管；现在不能静默忽略范围（#166 第 1 轮 P2-2）
+    if (node.kind === 'admin' && node.scope && node.scope.mode !== 'none') unsupported(key, '管理员范围 admin.scope');
   }
   if (policy.optional && Object.keys(policy.optional).length > 0) unsupported(key, '可选分支 optional');
   return nodes;
@@ -73,63 +75,89 @@ function objectStep(key: string, node: ObjectPolicy): S2Step {
   return { kind: 'object', object: node.object, operation: node.operation };
 }
 
-/** 一条声明里需要归类的名称（§2.6）与按位置不可能归 T1 的名称。 */
-interface Names {
-  /** 必须归 T1 或登记为延后；值为 'scope' 表示可以由引擎执行的范围名称。 */
-  readonly ambiguous: Map<string, 'scope' | 'deferred-only'>;
-  readonly positional: Set<string>;
+/**
+ * 一条声明里出现的名称，按**出现位置**（义务）记录（§2.6 义务 × 阶段）。同一个名称可以在不同位置归不同阶段：
+ * 如合同详情的定位器与出口形状同名（T1 + T4），IDP 新建的范围守卫与写足迹同名（T1 + T3），复制任务来源校验
+ * 命令前一次、事务内一次（T1 + T3）。归类按位置做，不按名称全局禁止（#166 第 1 轮 P2-3）。
+ * - scope：点定位器 / 看全部创建人定位器 / 范围守卫——登记了 T1 实现就由引擎执行，否则须登记延后阶段；
+ * - deferred：守卫列表 / 列表谓词 / 本人谓词——引擎本期不执行这些位置，须登记延后阶段；
+ * - positional：写足迹 / 返回后复核 / 命令内前提 / 出口形状与投影器——按位置不归 T1，无须登记。
+ */
+type Occurrence = { readonly name: string; readonly role: 'scope' | 'deferred' | 'positional' };
+
+/** 用到的登记键：未用的键启动报 ROUTE_POLICY_IMPL_UNUSED。 */
+export interface UsedNames {
+  readonly t1: Set<string>;
+  readonly deferred: Set<string>;
+  readonly inputs: Set<string>;
 }
 
-function scopeNames(key: string, scope: ScopePolicy, names: Names): void {
-  if (scope.mode === 'list') names.ambiguous.set(scope.predicate, 'deferred-only');
-  if (scope.mode === 'point') names.ambiguous.set(scope.locator, 'scope');
-  if (scope.mode === 'guard') names.ambiguous.set(scope.guard, 'scope');
+function scopeOccurrences(key: string, scope: ScopePolicy): Occurrence[] {
+  if (scope.mode === 'list') return [{ name: scope.predicate, role: 'deferred' }];
+  if (scope.mode === 'point') return [{ name: scope.locator, role: 'scope' }];
+  if (scope.mode === 'guard') return [{ name: scope.guard, role: 'scope' }];
   if (scope.mode === 'see-all') {
     if (!scope.creatorLocator) unsupported(key, '不带创建人定位器的看全部');
-    names.ambiguous.set(scope.creatorLocator, 'scope');
+    return [{ name: scope.creatorLocator, role: 'scope' }];
   }
+  return [];
 }
 
-function collectNames(key: string, policy: RoutePolicy, nodes: readonly RoutePolicy[]): Names {
-  const names: Names = { ambiguous: new Map(), positional: new Set() };
-  for (const node of nodes) {
-    for (const guard of node.guards ?? []) names.ambiguous.set(guard, 'deferred-only');
-    if (node.kind === 'object' && !('byObject' in node.scope)) scopeNames(key, node.scope, names);
-    if (node.kind === 'own') {
-      if (node.locator || node.target) unsupported(key, '本人单条定位 own.locator');
-      names.ambiguous.set(node.predicate, 'deferred-only');
-    }
-    if ('fields' in node) {
-      const fields = node.fields;
-      if (fields.mode === 'shape') names.positional.add(fields.shape);
-      if (fields.mode === 'projector') names.positional.add(fields.projector).add(fields.shape);
-    }
+function fieldOccurrences(fields: FieldsPolicy): Occurrence[] {
+  if (fields.mode === 'shape') return [{ name: fields.shape, role: 'positional' }];
+  if (fields.mode === 'projector') {
+    return [
+      { name: fields.projector, role: 'positional' },
+      { name: fields.shape, role: 'positional' },
+    ];
   }
-  for (const guard of policy.guards ?? []) names.ambiguous.set(guard, 'deferred-only');
+  return [];
+}
+
+function guardOccurrences(policy: RoutePolicy): Occurrence[] {
+  return (policy.guards ?? []).map((name) => ({ name, role: 'deferred' }));
+}
+
+function nodeOccurrences(key: string, node: RoutePolicy): Occurrence[] {
+  const found = guardOccurrences(node);
+  if (node.kind === 'object' && !('byObject' in node.scope)) found.push(...scopeOccurrences(key, node.scope));
+  if (node.kind === 'own') {
+    if (node.locator || node.target) unsupported(key, '本人单条定位 own.locator');
+    found.push({ name: node.predicate, role: 'deferred' });
+  }
+  if ('fields' in node) found.push(...fieldOccurrences(node.fields));
+  return found;
+}
+
+function collectNames(key: string, policy: RoutePolicy, nodes: readonly RoutePolicy[]): Occurrence[] {
+  const found = nodes.flatMap((node) => nodeOccurrences(key, node));
+  if (policy.kind === 'all') found.push(...guardOccurrences(policy), ...fieldOccurrences(policy.fields));
   const write = policy.write;
-  if (write) {
-    if (typeof write.footprint === 'string') names.positional.add(write.footprint);
-    if (typeof write.result === 'string') names.positional.add(write.result);
-    for (const name of write.preconditions ?? []) names.positional.add(name);
-  }
-  return names;
+  const positional = [
+    typeof write?.footprint === 'string' ? write.footprint : undefined,
+    typeof write?.result === 'string' ? write.result : undefined,
+    ...(write?.preconditions ?? []),
+  ];
+  for (const name of positional) if (name) found.push({ name, role: 'positional' });
+  return found;
 }
 
-/** 名称归类与实现查找；返回由引擎执行的范围名称（若有）。 */
-function classify(key: string, names: Names, impls: AnyImplementations, used: Set<string>): string | undefined {
+/** 按出现位置归类并查找实现；返回由引擎执行的范围名称（若有）。 */
+function classify(key: string, found: readonly Occurrence[], impls: AnyImplementations, used: UsedNames) {
   let executed: string | undefined;
-  for (const [name, role] of names.ambiguous) {
-    used.add(name);
+  for (const { name, role } of found) {
     const isT1 = impls.t1?.[name] !== undefined;
     const deferred = impls.deferred?.[name];
-    if (isT1 && deferred) missing(key, `${name} 同时登记了实现与延后阶段 ${deferred}`);
-    if (!isT1 && !deferred) missing(key, `${name} 未归类：须登记 t1 实现或延后阶段（§2.6）`);
-    if (isT1 && role === 'deferred-only') unsupported(key, `由引擎执行 ${name}（守卫 / 列表谓词 / 本人谓词）`);
-    if (isT1) executed = name;
-  }
-  for (const name of names.positional) {
-    if (impls.t1?.[name] !== undefined) missing(key, `${name} 按位置不归 T1（写足迹 / 前提 / 出口），不得登记实现`);
-    if (impls.deferred?.[name]) used.add(name);
+    if (role === 'scope' && isT1) {
+      used.t1.add(name);
+      executed = name;
+    } else if (deferred) {
+      used.deferred.add(name);
+    } else if (role === 'scope') {
+      missing(key, `${name} 未归类：须登记 t1 实现或延后阶段（§2.6）`);
+    } else if (role === 'deferred') {
+      missing(key, `${name} 在守卫 / 列表谓词 / 本人谓词位置，须登记延后阶段（引擎本期不执行这些位置）`);
+    }
   }
   return executed;
 }
@@ -176,9 +204,9 @@ function requirePrimitives(plan: EnforcePlan): void {
   for (const [required, fn, name] of need) if (required && !fn) missing(plan.key, `缺原语 ${name}`);
 }
 
-function parseSteps(key: string, policy: RoutePolicy, impls: AnyImplementations, used: Set<string>) {
+function parseSteps(key: string, policy: RoutePolicy, impls: AnyImplementations, used: UsedNames) {
   return (policy.input?.parse ?? []).map(({ key: inputKey, using }) => {
-    used.add(using);
+    used.inputs.add(using);
     const parser = impls.inputs?.[using];
     if (!parser) missing(key, `输入解析器 ${using} 缺实现`);
     return { key: inputKey, parser };
@@ -186,7 +214,7 @@ function parseSteps(key: string, policy: RoutePolicy, impls: AnyImplementations,
 }
 
 /** 编译一条已接管声明；used 收集用到的实现键，供未用检查。 */
-export function compilePlan(declaration: Declaration, impls: AnyImplementations, used: Set<string>): EnforcePlan {
+export function compilePlan(declaration: Declaration, impls: AnyImplementations, used: UsedNames): EnforcePlan {
   const { key, policy } = declaration;
   const nodes = nodesOf(key, policy);
   const objects = nodes.filter((n): n is ObjectPolicy => n.kind === 'object');
@@ -220,11 +248,24 @@ export function compilePlan(declaration: Declaration, impls: AnyImplementations,
   return plan;
 }
 
-/** S8 失败：丢弃处理函数的响应（含它设置的响应头），只返回错误体（DEC-363④：不放出任何数据）。 */
-function uncheckedResponse(key: string): Response {
+/**
+ * S8：shared 点校验的响应隔离（#166 第 1 轮 P2-1，DEC-363④）。处理函数可能已经设置了下载头、甚至把响应写进
+ * `c.res`（Hono 已 finalized 时不采用返回值，已有 `c.res` 时还会把旧头合并进新响应）。所以不能只返回一个新的
+ * Response：先把 Context 里的响应清掉，再放入只带处理函数之前已有响应头（如中间件的 X-Trace-Id）的新响应。
+ */
+function resetResponse(c: Context, baseline: Headers, replacement?: Response): Response {
+  c.res = undefined;
+  const response = replacement ?? new Response(null, { headers: baseline });
+  c.res = response;
+  return response;
+}
+
+function uncheckedResponse(key: string, baseline: Headers): Response {
   console.error(JSON.stringify({ type: 'route_policy.unchecked', route: key }));
+  const headers = new Headers(baseline);
+  headers.set('content-type', 'application/json');
   const body = { error: { code: 'ROUTE_POLICY_UNCHECKED', message: '点校验未完成，响应已丢弃' } };
-  return new Response(JSON.stringify(body), { status: 500, headers: { 'content-type': 'application/json' } });
+  return new Response(JSON.stringify(body), { status: 500, headers });
 }
 
 /**
@@ -269,12 +310,27 @@ function runtimeFor(plan: EnforcePlan, c: Context): AccessRuntime<unknown, unkno
   };
 }
 
+type Handler = (c: Context, next: Next) => unknown;
+
+/** shared 路由：处理函数抛错（含点校验拒绝）保留原错误码但丢弃它设置的响应头；未完成点检则 500。 */
+async function runShared(plan: EnforcePlan, c: Context, next: Next, handler: Handler, access: RouteAccess) {
+  const baseline = new Headers(c.res.headers);
+  let response: unknown;
+  try {
+    response = await handler(c, next);
+  } catch (error) {
+    resetResponse(c, baseline);
+    throw error;
+  }
+  if (!access.sharedChecked) return resetResponse(c, baseline, uncheckedResponse(plan.key, baseline));
+  return response;
+}
+
 /** 已接管路由的一次请求：准入 → 处理函数 → shared 核对。 */
-export async function runPlan(plan: EnforcePlan, c: Context, next: Next, handler: (c: Context, next: Next) => unknown) {
+export async function runPlan(plan: EnforcePlan, c: Context, next: Next, handler: Handler) {
   const access = new RouteAccess(runtimeFor(plan, c));
   bindAccess(c, access);
   await admit(plan, c, access);
-  const response = await handler(c, next);
-  if (plan.check?.shared && !access.sharedChecked) return uncheckedResponse(plan.key);
-  return response;
+  if (plan.check?.shared) return runShared(plan, c, next, handler, access);
+  return handler(c, next);
 }

@@ -5,7 +5,7 @@
  */
 import type { Env, Hono } from 'hono';
 import { rawRouter, unwrapComposed } from './declare.js';
-import { compilePlan } from './enforce.js';
+import { compilePlan, type UsedNames } from './enforce.js';
 import { type Declaration, registryOf, type RouteRegistry, RoutePolicyError } from './registry.js';
 import { TAKEN_OVER_MODULES } from './takeover.js';
 import type { RoutePolicy } from './types.js';
@@ -87,14 +87,13 @@ function compileTakeover(registry: RouteRegistry, takenOver: readonly string[]):
     if (declarations.length === 0) fail('ROUTE_POLICY_IMPL_MISSING', `接管列表里的模块 ${module} 没有任何声明`);
     const impls = registry.implementations.get(module);
     if (!impls) fail('ROUTE_POLICY_IMPL_MISSING', `已接管模块 ${module} 没有登记实现（implement）`);
-    const used = new Set<string>();
+    const used: UsedNames = { t1: new Set(), deferred: new Set(), inputs: new Set() };
     const plans = declarations.map((d) => [d, compilePlan(d, impls, used)] as const);
-    const registered = [
-      ...Object.keys(impls.t1 ?? {}),
-      ...Object.keys(impls.deferred ?? {}),
-      ...Object.keys(impls.inputs ?? {}),
+    const unused = [
+      ...Object.keys(impls.t1 ?? {}).filter((name) => !used.t1.has(name)),
+      ...Object.keys(impls.deferred ?? {}).filter((name) => !used.deferred.has(name)),
+      ...Object.keys(impls.inputs ?? {}).filter((name) => !used.inputs.has(name)),
     ];
-    const unused = registered.filter((name) => !used.has(name));
     if (unused.length > 0)
       fail('ROUTE_POLICY_IMPL_UNUSED', `模块 ${module} 登记了声明没有用到的名称：${unused.join('、')}`);
     for (const [declaration, plan] of plans) declaration.plan = plan;
