@@ -128,3 +128,5 @@ export {
   type OptionValue,
   type PlainValue,
 } from './values.js';
+/** R3-T05 结构化条件行（DEC-261）：风险 / 健康度 / 人员范围与 R3-T06 入池规则共用。 */
+export * from './rules/index.js';
