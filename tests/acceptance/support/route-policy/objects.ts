@@ -208,7 +208,10 @@ const SHAPES: readonly { fn: string; modules?: readonly string[]; extract: Extra
   },
 ];
 
-/** `const ok = await deps.authorize({ …, action: 'object.<op>', resource: X }); if (!ok) throw …`：等同 requirePermission。 */
+/**
+ * `const ok = await deps.authorize({ …, action: 'object.<op>', resource: X }); if (!ok) throw …`：
+ * 等同 requirePermission。
+ */
 const AUTHORIZE_THEN_THROW = /const (\w+) = await deps\.authorize\(\{([^{}]*)\}\);\s*if \(!\1\) throw\b/g;
 
 /** 近闭包文本 → `编码(|编码…):操作` 事实（排序去重）。 */
