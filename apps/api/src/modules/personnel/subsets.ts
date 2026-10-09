@@ -16,6 +16,7 @@ import {
 } from './store.js';
 import { validateDates } from './validation.js';
 import { validateAttachments } from './attachments.js';
+import { runSubsetSavePolicy, type SubsetSource } from './subset-policy.js';
 
 export async function loadSubset(
   tx: Tx,
@@ -41,10 +42,7 @@ export async function saveSubset(
   patch: Row,
   id?: string,
   deleted = false,
-  source: { type: 'hr_direct' | 'self_service' | 'info_collection'; id: string | null } = {
-    type: 'hr_direct',
-    id: null,
-  },
+  source: SubsetSource = { type: 'hr_direct', id: null },
 ) {
   await lockPerson(tx, ctx, employeeId);
   await validateAttachments(tx, ctx, employeeId, patch);
@@ -87,6 +85,8 @@ export async function saveSubset(
     commandId: ctx.commandId,
   };
   validateDates(row);
+  // P0 契约：按子集登记的落地前复核（HR / 自助落地 / 信息采集同一处），锁人后、写入前
+  await runSubsetSavePolicy(tx, ctx, kind, { before, row, deleted, source });
   await clearFlags(tx, ctx, kind, row);
   await persistSubset(tx, ctx, kind, before, row);
   await reflectFlags(tx, ctx, employeeId, kind);

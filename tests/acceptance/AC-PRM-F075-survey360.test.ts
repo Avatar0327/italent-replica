@@ -2,8 +2,8 @@
  * AC-PRM-F075（DEC-369，用户已同意去掉冗余授权调用）360 管理端 24 项：套卷（questionnaires）、设置 / 评价角色
  * （settings / roles）、新建活动（POST /activities）逐个入口的 loadAdmin 预取（Activity 的 object.view 与 viewAll 按钮）
  * 不影响返回。本文件在改动前的代码上全绿，改动后原样保持全绿：
- *   - 原生授权（真实 360 权限）下 3 类操作人跑固定场景，转录与改动前生成的黄金文件逐字节相等；
- *   - 全允许替身下，冗余的 2 个请求键答案不同（允许 / 撤掉），转录相同（独立性）。
+ *   - 原生授权（真实 360 权限）下 3 类操作人跑固定场景，规范化转录与改动前生成的黄金文件逐字节相等；
+ *   - 全允许替身下，冗余的 2 个请求键分别撤 / 一起撤 / 都不撤（四种组合），转录相同（独立性）。
  * 套卷模板入口（#125 新增，18 项）等用户答复，不在本次范围，保持现状。
  */
 import type { Db } from '@italent/db';
@@ -169,7 +169,7 @@ describe('AC-PRM-F075 360 管理端：去掉 loadAdmin 预取前后返回完全�
     expectGolden('survey360-native', steps);
   }, 240_000);
 
-  it('全允许替身：冗余的 Activity 查看 / viewAll 请求键允许与撤掉，转录相同，也等于黄金文件', async () => {
+  it('全允许替身：Activity 查看 / viewAll 两个冗余请求键的四种答案组合，转录都相同，也等于黄金文件', async () => {
     const run = async (label: string, revoke: readonly string[]) => {
       const w = await world360(testDb().db as Db, label);
       const double = createAuthorizerDouble();
@@ -186,8 +186,16 @@ describe('AC-PRM-F075 360 管理端：去掉 loadAdmin 预取前后返回完全�
       );
     };
     const allowed = await run('f075allow', []);
-    const denied = await run('f075deny', REDUNDANT_KEYS);
-    expectSameTranscript(denied, allowed, '撤掉冗余请求键后返回应与允许时完全一致');
+    // 四种组合（#177 审查 P3-1）：两个键各自单独撤、两个一起撤、都不撤——任何一个的答案都不影响返回
+    const [view, viewAll] = REDUNDANT_KEYS;
+    const combinations: readonly (readonly [string, readonly string[]])[] = [
+      ['只撤 Activity:view', [view]],
+      ['只撤 viewAll 按钮', [viewAll]],
+      ['两个一起撤', [view, viewAll]],
+    ];
+    for (const [label, keys] of combinations) {
+      expectSameTranscript(await run(`f075${keys.length}${keys[0] === viewAll ? 'b' : 'a'}`, keys), allowed, label);
+    }
     expectGolden('survey360-all-allow', allowed);
   }, 240_000);
 });

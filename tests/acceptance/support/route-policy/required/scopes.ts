@@ -98,6 +98,26 @@ export const SCOPE_AT = {
       'const scope = await qualificationScope(c, deps, ctx, object);',
     ),
   ],
+  'ql.openRead(ql_categories)': [
+    scope(
+      `${M}/qualification/config-service.ts#replaceJobLinks`,
+      "throw conflict(taken.readable && fieldVisible(ctx.fields[object], 'name') ? `【${taken.name}】` : '');",
+    ),
+    scope(
+      `${M}/qualification/access.ts#accessSql`,
+      "readable: kind === 'open' ? sql`true` : qlReadable(ctx, scope, alias),",
+    ),
+  ],
+  'ql.openRead(ql_levels)': [
+    scope(
+      `${M}/qualification/config-service.ts#replaceJobLinks`,
+      "throw conflict(taken.readable && fieldVisible(ctx.fields[object], 'name') ? `【${taken.name}】` : '');",
+    ),
+    scope(
+      `${M}/qualification/access.ts#accessSql`,
+      "readable: kind === 'open' ? sql`true` : qlReadable(ctx, scope, alias),",
+    ),
+  ],
   'employment.scopeSql': [
     scope(
       `${M}/job/sequence-receipts.ts#visibleSequenceReceipts`,

@@ -1,7 +1,8 @@
 /**
  * F-075（DEC-369）“去掉前后返回完全一致”的对照支撑：每个入口跑一串固定场景，把状态码、ETag 和完整响应正文记成
- * 转录（transcript），随机标识与时间戳按出现顺序规范化；转录与改动前生成并提交的黄金文件逐字节相等，同时在“冗余请求
- * 的答案不同”的两种授权下也相等（独立性）。黄金文件只在改动前的代码上生成（F075_UPDATE_GOLDEN=1），改动后不得变化。
+ * 转录（transcript）；只规范化生成标识（UUID 按出现顺序编号）与技术时间字段（createdAt / updatedAt），其余——状态码、
+ * 文案、字段、数值、业务时间——原值参与比较。**规范化后的转录**与改动前生成并提交的黄金文件逐字节相等，同时在“冗余请求
+ * 的答案不同”的授权下也相等（独立性）。黄金文件只在改动前的代码上生成（F075_UPDATE_GOLDEN=1），改动后不得变化。
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -16,23 +17,28 @@ export interface Step {
 }
 
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g;
-const TIMESTAMP = /\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}(?::?\d{2})?)?/g;
+const TIMESTAMP = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}(?::?\d{2})?)?$/;
+/** 只有这些技术时间字段（数据库默认值生成，随运行变化）才占位；业务时间（生效日期、截止时间…）原值参与比较。 */
+export const TECHNICAL_TIME_KEYS: ReadonlySet<string> = new Set(['createdAt', 'updatedAt']);
 
-/** 一份转录内：标识按首次出现顺序编号，时间戳统一占位；状态码、文案、字段与数值原样保留。 */
+/** 一份转录内：生成标识按首次出现顺序编号，技术时间字段（createdAt / updatedAt）占位；状态码、文案、字段、数值与业务时间原样保留。 */
 export function transcriptOf(steps: readonly Step[], scrub: (text: string) => string = (t) => t): unknown {
   const ids = new Map<string, number>();
   const text = (value: string) =>
-    scrub(value)
-      .replace(UUID, (id) => {
-        if (!ids.has(id)) ids.set(id, ids.size + 1);
-        return `<id:${ids.get(id)}>`;
-      })
-      .replace(TIMESTAMP, '<ts>');
+    scrub(value).replace(UUID, (id) => {
+      if (!ids.has(id)) ids.set(id, ids.size + 1);
+      return `<id:${ids.get(id)}>`;
+    });
   const walk = (value: unknown): unknown => {
     if (typeof value === 'string') return text(value);
     if (Array.isArray(value)) return value.map(walk);
     if (value && typeof value === 'object') {
-      return Object.fromEntries(Object.entries(value).map(([k, v]) => [text(k), walk(v)]));
+      return Object.fromEntries(
+        Object.entries(value).map(([k, v]) => [
+          text(k),
+          TECHNICAL_TIME_KEYS.has(k) && typeof v === 'string' && TIMESTAMP.test(v) ? '<ts>' : walk(v),
+        ]),
+      );
     }
     return value;
   };
