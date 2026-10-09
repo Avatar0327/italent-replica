@@ -136,9 +136,10 @@ async function lockFields(tx: Tx, tenantId: string, ids: readonly string[]) {
 }
 
 /**
- * 保存前分析整组计算项目，并让引用校验与写入之间不被字段变更插队：分析出目标字段与公式引用的全部字段 id，按排序先取
- * 共享行锁（字段改名 / 停用 / 删除的入口持行排他锁，会排在后面或先完成），锁内重新分析——字段已被删 / 改名 / 停用时得到受控的
- * 404 / 400，不会落到外键错误（500）。锁内分析引出新的引用字段时补锁并再分析，最多几轮。
+ * 保存前分析整组计算项目，并让引用校验与写入之间不被字段变更插队：分析出目标字段与公式引用的全部字段 id，**一次性**按排序
+ * 取共享行锁（字段改名 / 停用 / 删除的入口持行排他锁，会排在后面或先完成；本事务不分批、不补锁），锁内重新分析——字段已被
+ * 删 / 改名 / 停用时得到受控的 404 / 400，不会落到外键错误（500）。锁内分析引用了锁集合以外的字段（改名让公式指向别的字段）
+ * 时返回 409 CALC_FIELD_CHANGED，由客户端显式重提。
  */
 async function prepareItems(
   tx: Tx,
@@ -146,14 +147,14 @@ async function prepareItems(
   items: readonly CalcItemBody[],
   held: ReadonlyMap<string, string>,
 ) {
-  let locked: string[] = [];
-  for (let attempt = 0; attempt < 4; attempt += 1) {
-    const analysis = await analyzeOnce(tx, ctx, items, held);
-    if (analysis.fieldIds.every((id) => locked.includes(id))) return analysis;
-    locked = [...new Set([...locked, ...analysis.fieldIds])].sort();
-    await lockFields(tx, ctx.tenantId, locked);
+  const first = await analyzeOnce(tx, ctx, items, held);
+  const locked = [...new Set(first.fieldIds)].sort();
+  await lockFields(tx, ctx.tenantId, locked);
+  const analysis = await analyzeOnce(tx, ctx, items, held);
+  if (!analysis.fieldIds.every((id) => locked.includes(id))) {
+    throw new AppError('CONFLICT', '引用的字段正在变化，请刷新后重试', { reason: 'CALC_FIELD_CHANGED' });
   }
-  throw new AppError('CONFLICT', '引用的字段正在变化，请刷新后重试', { reason: 'CALC_FIELD_CHANGED' });
+  return analysis;
 }
 
 /** 已存项目的保存提示（启用时给出，DEC-274：不阻断）；字段已不可引用时不给提示。 */

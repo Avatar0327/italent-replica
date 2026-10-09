@@ -3,15 +3,28 @@
  * 停用字段 → 外键错误 500。保存先按排序后的字段 id 取被引用字段行的共享锁，锁内重新分析，只得到受控的 404 / 400 / 409。
  * 用测试事务持有字段行锁做屏障（真 PG；PGlite 单连接无法并发）。
  */
-import { eq, sql, talentReviewFields, withTenant } from '@italent/db';
+import { type Db, eq, sql, talentReviewFields, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { CALC_RULES, calcBody, calcItem, calcWorld, pathOf } from './AC-TR-calc-rule-support.js';
+import { rowsOf } from './support/f048.js';
 import { waitForBlocked } from './support/pg-interleave.js';
 
 const testDb = useTestDb();
 const reasonOf = async (response: Response) =>
   ((await response.json()) as { error: { details?: { reason?: string } } }).error.details?.reason;
+
+async function waitingQueries(db: Db) {
+  const rows = rowsOf<{ query: string; wait_event: string }>(
+    await db.execute(sql`SELECT query, wait_event FROM pg_stat_activity
+      WHERE datname = current_database() AND wait_event_type = 'Lock'`),
+  );
+  return rows.map((row) => ({ query: row.query, waitEvent: row.wait_event }));
+}
+async function ruleCount(db: Db) {
+  const [row] = rowsOf<{ n: number }>(await db.execute(sql`SELECT count(*)::int AS n FROM talent_review_calc_rules`));
+  return Number(row?.n);
+}
 
 describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('计算规则保存与字段变更 · PostgreSQL 16 锁序', () => {
   /** 测试事务先锁住字段行并改动，保存请求在共享锁处阻塞，事务提交后继续。 */
@@ -25,6 +38,13 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('计算规则保存与字
       await tx.execute(sql`SELECT id FROM talent_review_fields WHERE id = ${fieldId}::uuid FOR UPDATE`);
       const pending = request();
       await waitForBlocked(testDb().db, 1);
+      // 确实停在“校验之后、写入之前”：等的是被引用字段行上的共享锁（FOR SHARE），此时还没有任何规则落库
+      const waiting = await waitingQueries(testDb().db);
+      expect(waiting).toHaveLength(1);
+      expect(waiting[0]!.query.toLowerCase()).toContain('talent_review_fields');
+      expect(waiting[0]!.query.toLowerCase()).toContain('for share');
+      expect(waiting[0]!.waitEvent).toMatch(/transactionid|tuple/);
+      expect(await ruleCount(testDb().db)).toBe(0);
       await mutate(tx);
       return { pending };
     });

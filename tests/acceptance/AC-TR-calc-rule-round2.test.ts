@@ -12,7 +12,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Authorizer } from '@italent/api';
 import { TALENT_REVIEW_OBJECTS } from '@italent/domain';
-import { talentReviewFields, withTenant } from '@italent/db';
+import { sql, talentReviewFields, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { registerScopeProvider } from '../../apps/api/src/modules/permission/module-access.js';
@@ -29,6 +29,7 @@ import {
   withoutHints,
 } from './AC-TR-calc-rule-support.js';
 import { configBody, TR_BASE, TR_NOW } from './AC-TR-config-support.js';
+import { rowsOf } from './support/f048.js';
 import { errorCode, tenantApi } from './support/tenant-api.js';
 
 const testDb = useTestDb();
@@ -96,6 +97,8 @@ describe('P2-01 隐藏的默认排序字段不影响列表顺序与分页', () =
 describe('权限与重放（真实授权器）', () => {
   let world: PermissionWorld;
   let setup: ReturnType<typeof tenantApi>;
+  const adminRead = async (id: string) =>
+    (await (await setup.request('GET', `${TR_BASE}${CALC_RULES}/${id}`, world.asAdmin)).json()) as CalcRuleView;
   const adminField = async (extra: Record<string, unknown> = {}) => {
     const response = await setup.request('POST', `${TR_BASE}/fields`, {
       ...world.asAdmin,
@@ -142,6 +145,33 @@ describe('权限与重放（真实授权器）', () => {
       body: calcBody([calcItem(await adminField(), '1')]),
     });
     expect(fresh.status).toBe(404);
+  });
+
+  it('P2-02 首次执行被拒绝（引用的字段不在其范围内）：业务、revision、命令台账、审计都没有新写入', async () => {
+    const full = await calcRuleOperator(world, { seeAll: true, fields: 'seeAll' });
+    const [a, b] = [await adminField(), await adminField()];
+    const created = await full.request('POST', CALC_RULES, { ifMatch: 0, body: calcBody([calcItem(a, '1')]) });
+    const mine = (await created.json()) as CalcRuleView;
+    const narrow = await calcRuleOperator(world, { seeAll: true, fields: 'creator' });
+    const counts = async () => {
+      const rows = (id: string) => `SELECT count(*)::int AS n FROM ${id}`;
+      const run = async (query: string) =>
+        Number((rowsOf<{ n: number }>(await testDb().db.execute(sql.raw(query)))[0] ?? { n: 0 }).n);
+      return [
+        await run(rows('command_ledger')),
+        await run(rows("audit_events WHERE object_type = 'TalentReview.CalcRule'")),
+      ];
+    };
+    const before = { counts: await counts(), view: await adminRead(mine.id) };
+    for (const key of ['a', 'b']) {
+      const response = await narrow.request('PATCH', `${CALC_RULES}/${mine.id}`, {
+        ifMatch: 1,
+        idempotencyKey: `trk-r2-nowrite-${key}-${randomUUID()}`,
+        body: { items: [calcItem(a, '1'), calcItem(b, '2')] },
+      });
+      expect([response.status, await errorCode(response)]).toEqual([404, 'NOT_FOUND']);
+    }
+    expect({ counts: await counts(), view: await adminRead(mine.id) }).toEqual(before);
   });
 
   it.each([

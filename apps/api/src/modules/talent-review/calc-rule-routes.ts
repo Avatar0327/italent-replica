@@ -80,6 +80,13 @@ async function runWrite(
   referenced: readonly CalcItemBody[] = [],
 ) {
   const scope = await reviewScope(c, deps, ctx, 'calcRule');
+  // 引用范围的授权复核放在命令之前（只读、不写任何东西）：幂等重放不再执行命令，撤范围后重放按新命令同样拒绝；
+  // 首次执行在命令事务内还会再判一次（prepareItems），拒绝时整个事务回滚，不留业务、revision、台账与审计
+  if (fieldAccess && referenced.length > 0) {
+    await withTenant(deps.db, ctx.tenantId, (tx) =>
+      rules.requireItemsReferenceable(tx, ctx.tenantId, referenced, fieldAccess),
+    );
+  }
   const result = await runCommand(deps.db, ctx, {
     id: c.req.header('idempotency-key'),
     fingerprint: { method: c.req.method, path: c.req.path, expectedRevision: ctx.expectedRevision, input: body },
@@ -90,12 +97,6 @@ async function runWrite(
   });
   const view = result.body as rules.CalcWriteView;
   requireConfigVisible(scope, 'calcRule', view.createdBy as string | null);
-  // 幂等重放不再执行命令：请求里的目标字段与公式引用按当前字段目录范围与列权限重新复核（授权复核，与业务校验分开）
-  if (fieldAccess && referenced.length > 0) {
-    await withTenant(deps.db, ctx.tenantId, (tx) =>
-      rules.requireItemsReferenceable(tx, ctx.tenantId, referenced, fieldAccess),
-    );
-  }
   if (c.req.method !== 'DELETE') c.header('ETag', `"${view.revision}"`);
   return c.json((await trimReview(deps, ctx, 'calcRule', [view]))[0], result.status);
 }
