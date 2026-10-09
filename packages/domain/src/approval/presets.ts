@@ -261,8 +261,8 @@ export const PRESET_PROCESSES: readonly PresetProcess[] = [
   })),
   {
     // R3-T04 设计 §3.3（D-34，DEC-332①）：盘点结果涉及绩效、潜力等人才评价，影响晋升与继任，敏感且有重大影响，
-    // 审批节点显式 avoidSelf = true。avoidSubjects 在 F-048 PR-2 放开开关前定义校验一律拒绝开启（F-048 R3-01），
-    // 先写 false，由 T04 PR-D（F-048 PR-2 之后）改为 true。节点结构未取证（TODO(需取证 #38) 同口径），由租户调整后发布。
+    // 审批节点显式 avoidSelf = true。avoidSubjects（D-34 应为 true）要等 PR-D 接入 subjects() 主体适配器才有意义，
+    // 由 PR-D 一并改 true 并在 AC-APV-F048-defaults 登记例外；节点结构未取证（TODO(需取证 #38) 同口径），由租户调整后发布。
     presetKey: 'standard_talent_review_result',
     code: 'StandardTalentReviewResult',
     approvalType: 'talent_review_result',
