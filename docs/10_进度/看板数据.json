@@ -2291,7 +2291,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-09 06:29",
+"liveUpdated": "10-09 06:40",
 "chains": [
 {
 "g": "base",
@@ -2492,8 +2492,8 @@
 "k": "run",
 "n": "人才盘点",
 "u": "已核对：#108 合并后派（C 档、Fable、先设计）",
-"seg": "ev:d ds:d8 dev:a2 rev:d1 mg:w",
-"now": "#144 PR-A 首轮：9 P2 + 3 类 P3（多为同步替身 / 契约套件不符协议，T05 将依赖），第 2 轮修改（Opus）",
+"seg": "ev:d ds:d8 dev:a3 rev:d2 mg:w",
+"now": "#144 第 2 轮：9 P2 → 关 7，剩 2 残项 + 1 新增，第 3 轮修改（Opus）",
 "pr": 113,
 "pd": "设计 #113 ✓ · PR-A #144"
 },
