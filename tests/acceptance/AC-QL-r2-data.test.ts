@@ -33,7 +33,7 @@ async function gridWorld(label: string) {
 const reason = async (response: Response) =>
   ((await response.clone().json()) as { error?: { details?: { reason?: string } } }).error?.details?.reason;
 
-describe('P2-06 旧状态不得覆盖新状态', () => {
+describe('P2-06 旧状态不得覆盖新状态（DEC-067）', () => {
   it('标准导入逐标准带预期 revision：旧 revision 409 整体不导入；缺少某标准的 revision 400', async () => {
     const { w, klass, type, level } = await gridWorld('ql-r2-import-rev');
     const category = await w.category(klass.id);
@@ -86,7 +86,7 @@ describe('P2-06 旧状态不得覆盖新状态', () => {
   });
 });
 
-describe('P2-08 编码规则前缀与编码约束一致（QL-R3）', () => {
+describe('P2-08 编码规则前缀与编码约束一致（QL-R3，DEC-347③）', () => {
   it('以 _ 或 - 开头的前缀 400；库里已有不可用前缀时四类对象的自动编码 400（不是 500）', async () => {
     const { w, klass, type } = await gridWorld('ql-r2-prefix');
     for (const prefix of ['_', '-A', '_X']) {
@@ -117,7 +117,7 @@ describe('P2-08 编码规则前缀与编码约束一致（QL-R3）', () => {
   });
 });
 
-describe('P2-09 横向发展通道不能通往本类别（QL-R13）', () => {
+describe('P2-09 横向发展通道不能通往本类别（QL-R13，DEC-347②）', () => {
   it('目标类别等于本标准的类别：同级与本类别其他级别都 400', async () => {
     const { w, klass, level } = await gridWorld('ql-r2-self-loop');
     const other = await w.level(20);
@@ -134,7 +134,7 @@ describe('P2-09 横向发展通道不能通往本类别（QL-R13）', () => {
   });
 });
 
-describe('P2-10 停用既有关联层级后原样保存级别（只拦新引用）', () => {
+describe('P2-10 停用既有关联层级后原样保存级别（只拦新引用，DEC-281⑧）', () => {
   it('级别已关联层级 A，A 停用后带回原 layerId 修改名称 200；改关联到另一个停用层级 400', async () => {
     const w = await qualificationWorld(testDb().db, 'ql-r2-layer');
     const layer = await w.created<{ id: string; revision: number }>('/layers', { name: '层级甲' });

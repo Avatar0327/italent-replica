@@ -379,7 +379,7 @@ describe('任职资格配置第 2 轮：权限与裁剪', () => {
     });
   });
 
-  describe('P2-04 改关联类型派生的清空关联要 jobLinks 编辑权', () => {
+  describe('P2-04 改关联类型派生的清空关联要 jobLinks 编辑权（DEC-080 字段编辑权）', () => {
     it('类别与级别：只有 jobLinkType 编辑权时改类型 / 清类型 403，关联不变', async () => {
       const sequence = await job('sequences');
       const jobLevel = await job('levels');
@@ -414,7 +414,7 @@ describe('任职资格配置第 2 轮：权限与裁剪', () => {
     });
   });
 
-  describe('P2-05 / P2-11 审计按当前源字段权裁剪，且对正常审计员可见', () => {
+  describe('P2-05 / P2-11 审计按当前源字段权裁剪，且对正常审计员可见（DEC-197）', () => {
     const audit = () => auditApi(testDb().db, QL_NOW.toISOString(), { authorize: undefined });
     const standardCode = QUALIFICATION_OBJECTS.standard.code;
 
@@ -529,7 +529,7 @@ describe('任职资格配置第 2 轮：权限与裁剪', () => {
     });
   });
 
-  describe('P2-08 引入进入自动编码的分支（看不到岗职务编码且未填编码）', () => {
+  describe('P2-08 引入进入自动编码的分支（看不到岗职务编码且未填编码，QL-R3）', () => {
     it('库里遗留不可用前缀时，类别 / 级别引入给出 400 CODE_INVALID（不是 500）', async () => {
       for (const item of ['category', 'level']) {
         await withTenant(testDb().db, world.tenant.id, (tx) =>

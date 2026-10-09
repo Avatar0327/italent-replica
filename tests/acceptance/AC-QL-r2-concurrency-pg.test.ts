@@ -84,7 +84,7 @@ async function gradeWorld(label: string) {
   return { w, klass, type, level, scheme, gradeTarget };
 }
 
-describe.runIf(realPostgres)('P2-07 引用状态检查与写入之间加锁（真 PG 交错）', () => {
+describe.runIf(realPostgres)('P2-07 引用状态检查与写入之间加锁（DEC-334① 锁序，真 PG 交错）', () => {
   it('标准明细导入：指标在导入等锁期间被改为通用 → 整批拒绝 TARGET_COMMON', async () => {
     const { w, klass, type, level } = await gradeWorld('ql-pg-import-common');
     const category = await w.category(klass.id);
@@ -237,7 +237,7 @@ describe.runIf(realPostgres)('P2-07 引用状态检查与写入之间加锁（�
   });
 });
 
-describe.runIf(realPostgres)('P3 并发唯一冲突一律 409（真 PG 交错）', () => {
+describe.runIf(realPostgres)('P3 并发唯一冲突一律 409（DEC-067，真 PG 交错）', () => {
   it('同一类别并发建标准：后到的 409 STANDARD_EXISTS / DUPLICATE，不是 500', async () => {
     const { w, klass, level } = await gradeWorld('ql-pg-standard-unique');
     const category = await w.category(klass.id);
