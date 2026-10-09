@@ -382,3 +382,126 @@ describe('AC-QL-indicator-port listTargetTypes / listTargets：调用方范围�
     expect(await evaluate(sql`true`)).toBe(true);
   });
 });
+
+describe('AC-QL-indicator-port 第 1 轮 P2-1：两类筛选都在 500 上限检查之前生效（超限仍报错，不静默截断）', () => {
+  /** 一个有 501 个指标的级别列：类型 A 500 个、类型 B 1 个（SQL 夹具，避免 501 次接口调用）。 */
+  async function bigColumn(label: string) {
+    const f = await portWorld(label);
+    const category = await f.w.category(f.klass.id);
+    await f.w.standard({ categoryId: category.id, levelIds: [f.p1.id], details: [] });
+    const tenant = f.w.tenant.id;
+    const owner = f.w.user.id;
+    const insertTargets = (prefix: string, typeId: string, count: number) =>
+      f.tx((t) =>
+        t.execute(sql`INSERT INTO ql_targets
+          (id, tenant_id, code, name, type_id, eval_mode, owner_id, owner_org_id, created_by)
+          SELECT gen_random_uuid(), ${tenant}::uuid, ${prefix} || g, ${prefix} || g, ${typeId}::uuid, 'score',
+            ${owner}::uuid, ${f.w.orgId}::uuid, ${owner}::uuid FROM generate_series(1, ${count}::int) g`),
+      );
+    await insertTargets('BA', f.rootType.id, 500);
+    await insertTargets('BB', f.otherType.id, 1);
+    await f.tx((t) =>
+      t.execute(sql`INSERT INTO ql_standard_details (tenant_id, standard_id, level_id, target_id)
+        SELECT ${tenant}::uuid, s.id, ${f.p1.id}::uuid, g.id
+        FROM ql_standards s, ql_targets g
+        WHERE s.tenant_id = ${tenant}::uuid AND s.category_id = ${category.id}::uuid
+          AND g.tenant_id = ${tenant}::uuid AND g.code ~ '^B[AB][0-9]+$'`),
+    );
+    const id = await f.employee();
+    await f.record(id, { categoryId: category.id });
+    const run = (filter?: { targetTypeIds?: string[]; targetIds?: string[] }) =>
+      f.tx((t) => port().indicators(t, tenant, id, '2026-06-01', filter));
+    const idOf = async (code: string) =>
+      f.tx(async (t) => {
+        const result = await t.execute(
+          sql`SELECT id FROM ql_targets WHERE tenant_id = ${tenant}::uuid AND code = ${code}`,
+        );
+        return (Array.isArray(result) ? result : (result as { rows: { id: string }[] }).rows)[0]!.id;
+      });
+    return { ...f, run, idOf };
+  }
+
+  it('同级别 501 个指标：筛选后不超 500 的合法小结果集照常返回（含小类型、空数组、不匹配类型、交集）', async () => {
+    const f = await bigColumn('qi-bound-filter');
+    const codes = async (filter: { targetTypeIds?: string[]; targetIds?: string[] }) => {
+      const outcome = await f.run(filter);
+      return outcome.ok ? outcome.data.map((item) => item.code) : outcome;
+    };
+    expect(await codes({ targetTypeIds: [f.otherType.id] })).toEqual(['BB1']);
+    expect(await codes({ targetTypeIds: [] })).toEqual([]);
+    expect(await codes({ targetIds: [] })).toEqual([]);
+    expect(await codes({ targetTypeIds: [randomUUID()] })).toEqual([]);
+    const a1 = await f.idOf('BA1');
+    expect(await codes({ targetTypeIds: [f.rootType.id], targetIds: [a1] })).toEqual(['BA1']);
+    expect(await codes({ targetTypeIds: [f.otherType.id], targetIds: [a1] })).toEqual([]);
+    const outcome = await f.run({ targetTypeIds: [f.rootType.id] });
+    expect(outcome.ok && outcome.data).toHaveLength(500);
+  });
+
+  it('筛选后仍超 500（或不筛选）→ 显式 RangeError，不静默截断', async () => {
+    const f = await bigColumn('qi-bound-over');
+    await expect(f.run()).rejects.toThrow(RangeError);
+    await expect(f.run({ targetTypeIds: [f.rootType.id, f.otherType.id] })).rejects.toThrow(RangeError);
+  });
+});
+
+describe('AC-QL-indicator-port 第 1 轮 P3-1：指标类型树不静默截断', () => {
+  async function chainWorld(label: string, depth: number) {
+    const f = await portWorld(label);
+    const tenant = f.w.tenant.id;
+    const owner = f.w.user.id;
+    const ids: string[] = [];
+    const names: string[] = [];
+    for (let level = 0; level < depth; level++) {
+      const id = randomUUID();
+      ids.push(id);
+      names.push(`层${level}`);
+      await f.tx((t) =>
+        t.execute(sql`INSERT INTO ql_target_types
+          (id, tenant_id, code, name, parent_id, display_order, enabled, owner_id, owner_org_id, created_by)
+          VALUES (${id}::uuid, ${tenant}::uuid, ${`DP${level}`}, ${names[level]}, ${ids[level - 1] ?? null}::uuid, ${level},
+            true, ${owner}::uuid, ${f.w.orgId}::uuid, ${owner}::uuid)`),
+      );
+    }
+    const deepTarget = await f.w.target(ids[depth - 1]!, { code: 'ZDEEP', name: '深层指标' });
+    const category = await f.w.category(f.klass.id);
+    await f.w.standard({
+      categoryId: category.id,
+      levelIds: [f.p1.id],
+      details: [{ levelId: f.p1.id, targetId: deepTarget.id }],
+    });
+    const employee = await f.employee();
+    await f.record(employee, { categoryId: category.id });
+    const run = (filter?: { targetTypeIds?: string[] }) =>
+      f.tx((t) => port().indicators(t, tenant, employee, '2026-06-01', filter));
+    return { ...f, ids, names, run };
+  }
+
+  it('22 层类型树：路径含全部 22 层，按根类型筛选能找到最深的指标', async () => {
+    const f = await chainWorld('qi-depth-22', 22);
+    const outcome = await f.run({ targetTypeIds: [f.ids[0]!] });
+    expect(outcome.ok && outcome.data.map((item) => item.code)).toEqual(['ZDEEP']);
+    expect(outcome.ok && outcome.data[0]!.targetTypePath).toEqual(f.names);
+  });
+
+  it('类型树深度超过上限（100 层）→ 显式 RangeError，不返回缺层的路径', async () => {
+    const f = await chainWorld('qi-depth-101', 101);
+    await expect(f.run()).rejects.toThrow(RangeError);
+  });
+});
+
+describe('AC-QL-indicator-port 第 1 轮 P3-2：失败结果同样冻结', () => {
+  it('三种失败原因的返回对象都是冻结的', async () => {
+    const f = await portWorld('qi-frozen-fail');
+    const none = await f.employee();
+    const noStandard = await f.employee();
+    await f.record(noStandard, { categoryId: f.otherCategory.id });
+    const outOfRange = await f.employee();
+    await f.record(outOfRange, { levelId: f.p3.id });
+    for (const id of [none, noStandard, outOfRange]) {
+      const outcome = await f.tx((t) => port().indicators(t, f.w.tenant.id, id, '2026-06-01'));
+      expect(outcome.ok).toBe(false);
+      expect(Object.isFrozen(outcome)).toBe(true);
+    }
+  });
+});

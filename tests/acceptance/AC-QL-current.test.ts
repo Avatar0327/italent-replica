@@ -115,6 +115,37 @@ describe('AC-QL-current 当前资格：单一时间轴（DEC-335①）', () => {
   });
 });
 
+describe('AC-QL-current 第 1 轮 P3-2：返回对象冻结（readonly）', () => {
+  it('currentQualification 与 priorQualificationForApply（子集 / 评定回退）的返回值都是冻结的', async () => {
+    const { w, tx, employee, record, category, p3 } = await currentWorld(database, 'qc-frozen');
+    const id = await employee();
+    await record(id);
+    const current = await tx((t) => currentQualification(t, w.tenant.id, id, '2026-06-01'));
+    expect(current && Object.isFrozen(current)).toBe(true);
+    const prior = await tx((t) => priorQualificationForApply(t, w.tenant.id, id, randomUUID(), '2026-06-01'));
+    expect(prior && Object.isFrozen(prior)).toBe(true);
+
+    const none = await employee();
+    const provided = {
+      categoryId: category.id,
+      levelId: p3.id,
+      lastResult: '未通过',
+      obtainedDate: '2024-05-01',
+      source: 'evaluation' as const,
+    };
+    const dispose = registerEvaluationPriorProvider(async () => provided);
+    try {
+      const fallback = await tx((t) => priorQualificationForApply(t, w.tenant.id, none, randomUUID(), '2026-06-01'));
+      expect(fallback).toEqual(provided);
+      expect(fallback && Object.isFrozen(fallback)).toBe(true);
+      // 冻结的是返回的副本，不动提供者自己的对象
+      expect(Object.isFrozen(provided)).toBe(false);
+    } finally {
+      dispose();
+    }
+  });
+});
+
 describe('AC-QL-current 申报专用的上一条资格（设计 §6.2 (4)，选项 c 🟡）', () => {
   it('子集分支：取申报时点的当前资格，不分来源、不分活动类型；手工行 lastResult 为空，评定写入的行带结果', async () => {
     const { w, tx, employee, record, systemRecord, category, p1, p2 } = await currentWorld(database, 'qp-subset');
