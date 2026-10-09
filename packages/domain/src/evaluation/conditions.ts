@@ -101,13 +101,28 @@ export type ActivityConditionExpressionResult =
 const CONDITION_KIND = 'boolean' as const;
 const registry = createDefaultRegistry();
 
-/** 取数函数（有记录作用域对象的）：表达式只组合条件，不另行取数（EV-R11 的取数在明细里做）。 */
-const isDataFunction = (name: string): boolean => (registry.resolve(name)?.recordObjects?.length ?? 0) > 0;
+/**
+ * 组合式允许的函数白名单（设计 §6.1：明细负责取数，组合式只组合已计算的条件）。只放只读入参、不访问端口与运行环境的
+ * 纯函数：逻辑（AND / OR / IF / IN / NOTIN）、类型转换（ToNumber / ToText）、取余（Mod）。比较、算术、and / or / not
+ * 是运算符，不经函数。按规范名比较（引擎收集的是解析别名后的规范名，中文别名同样覆盖）；Def 绑定里的调用一并收集。
+ * 不用 recordObjects 判定：它只表示参数里的记录字段作用域，不是“访问外部数据”的标记（第 3 轮 P2-R2-01）。
+ */
+const COMBINATION_FUNCTIONS: ReadonlySet<string> = new Set([
+  'AND',
+  'OR',
+  'IF',
+  'IN',
+  'NOTIN',
+  'ToNumber',
+  'ToText',
+  'Mod',
+]);
+const notAllowed = (name: string): boolean => !COMBINATION_FUNCTIONS.has(registry.resolve(name)?.name ?? name);
 
 /**
  * 空白表达式不通过：是否允许不设表达式由调用方决定（不设则不调用）。
  * 引擎对取数函数参数里的记录字段（考核结果.年度 等）不查字段目录，所以 validateFormula 通过后还要复核：
- * 引用到的每个字段都必须是已有的条件序号，且不得调用取数函数；条件序号按布尔字段参与类型检查。
+ * 引用到的每个字段都必须是已有的条件序号，且只能调用白名单内的纯组合函数；条件序号按布尔字段参与类型检查。
  */
 export function validateActivityConditionExpression(
   expression: string,
@@ -132,7 +147,7 @@ export function validateActivityConditionExpression(
   }
   const errors: ActivityConditionExpressionError[] = [
     ...result.fields.filter((field) => !known.has(field)).map(() => ({ code: 'CONDITION_SEQ_UNKNOWN' as const })),
-    ...result.functions.filter(isDataFunction).map(() => ({ code: 'EXPRESSION_FUNCTION_NOT_ALLOWED' as const })),
+    ...result.functions.filter(notAllowed).map(() => ({ code: 'EXPRESSION_FUNCTION_NOT_ALLOWED' as const })),
   ];
   if (errors.length > 0) return { ok: false, errors };
   return { ok: true, referencedSeqs: result.fields.map((field) => known.get(field)!) };
