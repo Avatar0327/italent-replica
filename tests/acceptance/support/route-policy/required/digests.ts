@@ -111,7 +111,7 @@ export const DIGESTS: Digests = {
     routeContext: '897cf761c712',
   },
   'apps/api/src/modules/contracts/todos.ts': {
-    registerMergedTodos: 'e0adf02e9fdf',
+    registerMergedTodos: '247f568f9db7',
   },
   'apps/api/src/modules/employee-self-service/access.ts': {
     boundEmployee: 'cde7cba2052a',
