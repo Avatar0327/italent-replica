@@ -283,7 +283,7 @@ describe('AC-QL-subset 引用校验：类别 / 级别须对操作人可见且启
       now: w.clock(),
       commandId: randomUUID(),
       expectedRevision: 0,
-      ...(authorize ? { authorize: authorize as typeof allowAll } : {}),
+      ...(authorize ? { authorizer: authorize as typeof allowAll } : {}),
     });
     const collect = (context: ReturnType<typeof ctx>, extra: Record<string, unknown> = {}) =>
       tx((t) =>

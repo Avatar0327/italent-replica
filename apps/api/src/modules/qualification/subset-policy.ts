@@ -9,7 +9,7 @@
  *   选的，这里只靠外键保证引用存在。
  * 取锁限制（P0 subset-policy.ts）：钩子在员工锁之后调用，只做读取与判断，不取新的员工锁，拒绝时抛错、不写数据。
  *
- * 钩子的签名里没有授权器，所以取自命令上下文里的 ctx.authorize（personnel access() 填入处理本次请求的应用的授权器；
+ * 钩子的签名里没有授权器，所以取自命令上下文里的 ctx.authorizer（personnel access() 填入处理本次请求的应用的授权器；
  * 信息采集等可信入口由调用方带上），不用进程全局：同进程装配多个应用时各用各的。只在有新引用时才需要授权器；
  * 没带授权器 fail-closed（503）。
  */
@@ -17,7 +17,7 @@ import type { Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
 import { authorizeInTransaction, resolveModuleScopeInTransaction } from '../permission/module-access.js';
 import type { PersonnelContext, Row } from '../personnel/store.js';
-import { registerSubsetPolicy, type SubsetSaveCheck } from '../personnel/subset-policy.js';
+import { registerSubsetPolicy, type SubsetPolicy, type SubsetSaveCheck } from '../personnel/subset-policy.js';
 import { readEffectiveSetting } from '../tenant-settings/service.js';
 import {
   assertQualificationRefs,
@@ -66,8 +66,8 @@ function newRefs(before: Row | null, row: Row): QualificationRefs {
 
 async function assertRefs(tx: Tx, ctx: PersonnelContext, refs: QualificationRefs): Promise<void> {
   if (!refs.categoryIds?.length && !refs.levelIds?.length) return;
-  if (!ctx.authorize) throw new AppError('SERVICE_UNAVAILABLE', '任职资格子集策略缺少授权器');
-  const deps = { authorize: ctx.authorize, clock: () => ctx.now };
+  if (!ctx.authorizer) throw new AppError('SERVICE_UNAVAILABLE', '任职资格子集策略缺少授权器');
+  const deps = { authorize: ctx.authorizer, clock: () => ctx.now };
   const authorize = authorizeInTransaction(deps.authorize, tx);
   const scopes: Partial<
     Record<QualificationRefObject, Awaited<ReturnType<typeof resolveModuleScopeInTransaction>> | null>
@@ -92,21 +92,35 @@ async function assertRefs(tx: Tx, ctx: PersonnelContext, refs: QualificationRefs
   await assertQualificationRefs(tx, access, refs);
 }
 
-registerSubsetPolicy('qualification', {
-  beforeRequest: async () => {
-    throw SELF_SERVICE_CLOSED();
-  },
-  beforeSave: async (tx, ctx, { before, row, deleted, source }) => {
-    if (source.type === 'self_service') throw SELF_SERVICE_CLOSED();
-    const human = isHuman(source);
-    if (human && before?.isAutoSync === true) await assertAutoSyncEditable(tx, ctx);
-    if (deleted) return;
-    requireText(row, 'categoryId');
-    requireText(row, 'levelId');
-    requireText(row, 'startDate');
-    canonicalRefs(row);
-    // 未显式给出时的缺省：任职同步生成的行是自动同步数据，其余（手工 / 初始化 / 评定）不是（规格 23 §10 IfAutoSync）
-    row.isAutoSync ??= source.type === 'employment_sync';
-    if (human) await assertRefs(tx, ctx, newRefs(before, row));
-  },
-});
+/** 自助申请准入（首次提交与同单重提，写申请行之前）：一律拒绝。 */
+export async function qualificationBeforeRequest(): Promise<void> {
+  throw SELF_SERVICE_CLOSED();
+}
+
+/** 落地前复核（HR 直写、信息采集、自助落地、系统来源同一处）。 */
+export async function qualificationBeforeSave(tx: Tx, ctx: PersonnelContext, input: SubsetSaveCheck): Promise<void> {
+  const { before, row, deleted, source } = input;
+  if (source.type === 'self_service') throw SELF_SERVICE_CLOSED();
+  const human = isHuman(source);
+  if (human && before?.isAutoSync === true) await assertAutoSyncEditable(tx, ctx);
+  if (deleted) return;
+  requireText(row, 'categoryId');
+  requireText(row, 'levelId');
+  requireText(row, 'startDate');
+  canonicalRefs(row);
+  // 未显式给出时的缺省：任职同步生成的行是自动同步数据，其余（手工 / 初始化 / 评定）不是（规格 23 §10 IfAutoSync）
+  row.isAutoSync ??= source.type === 'employment_sync';
+  if (human) await assertRefs(tx, ctx, newRefs(before, row));
+}
+
+const QUALIFICATION_POLICY: SubsetPolicy = {
+  beforeRequest: qualificationBeforeRequest,
+  beforeSave: qualificationBeforeSave,
+};
+
+/** 登记 qualification 子集的策略（模块加载时调用一次；同一子集只能登记一份）。 */
+export function installQualificationSubsetPolicy(): void {
+  registerSubsetPolicy('qualification', QUALIFICATION_POLICY);
+}
+
+installQualificationSubsetPolicy();

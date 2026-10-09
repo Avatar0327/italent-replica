@@ -17,7 +17,7 @@ export interface PersonnelContext extends TenantContext {
    * （R3-T02 C1-1），钩子签名里没有授权器，所以放在上下文里而不是进程全局：同进程里装配了多个应用时，各用各的。
    * 可信入口（信息采集）由调用方显式带上；系统后台写入不带。
    */
-  readonly authorize?: Authorizer;
+  readonly authorizer?: Authorizer;
 }
 export function rows<T = Row>(value: unknown): T[] {
   return (Array.isArray(value) ? value : (value as { rows: T[] }).rows) as T[];

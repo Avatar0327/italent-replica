@@ -112,6 +112,12 @@ export const INNER_CONDITIONS: Readonly<Record<string, string>> = {
   'jobLinkType=grade': jobLinkType('grade', '职等'),
   'details.targetReference':
     '标准 details 非空：每个单元格的指标引用都判指标查看权；details 为空数组（创建 / 更新）不判；PATCH 不带 details 也不判',
+  'qualification.newCategoryRef':
+    '任职资格子集（kind=qualification）的人工来源写入（HR 直写、信息采集）带来新引用才判类别查看权：新增，或 categoryId ' +
+    '按小写 UUID 规范化后与现值不同；只改日期、原样带回同一 UUID（含大小写不同）、删除、系统 / 自助来源都不判（R3-T02 C1-1）',
+  'qualification.newLevelRef':
+    '任职资格子集（kind=qualification）的人工来源写入（HR 直写、信息采集）带来新引用才判级别查看权：新增，或 levelId ' +
+    '按小写 UUID 规范化后与现值不同；只改日期、原样带回同一 UUID（含大小写不同）、删除、系统 / 自助来源都不判（R3-T02 C1-1）',
   'instance.personnelChange':
     '审批实例业务类型为人员子集变更（personnel_change）时，同单重提经适配器调 resubmitChangeInTransaction，按子集登记的' +
     '自助申请准入复核（R3-T02 P0）；其他业务类型不判；未登记策略的子集钩子不调用',
