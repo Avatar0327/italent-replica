@@ -78,7 +78,7 @@ async function batch(w: World, user: string, items: { id: string; revision: numb
   return ((await response.json()) as { items: Receipt[] }).items;
 }
 
-describe('F-063 合同批量回执：确定失败保留具体机器码', () => {
+describe('AC-CT-F063 合同批量回执：确定失败保留具体机器码（DEC-329、F-048 设计 §4.2）', () => {
   it('同一批里混有自审回避 / 多主体回避 / 普通冲突 / 成功：回执逐条正确', async () => {
     const w = await approvalContractWorld(testDb().db, 'f063mixed');
     const [self, ok, conflict, subjects] = await applications(w, 4);
@@ -133,7 +133,7 @@ describe('F-063 合同批量回执：确定失败保留具体机器码', () => {
   });
 });
 
-describe('F-063 receiptError 口径', () => {
+describe('AC-CT-F063 receiptError 口径（DEC-067、F-048 设计 §4.2）', () => {
   it('结果未知 / 存储不可写仍只带 reason，不带 recusal 与命令细节', () => {
     const unknown = new CommandFailureError({ outcome: 'unknown', errorCode: 'UNKNOWN', reason: null }, 'cmd-1');
     expect(receiptError(unknown, true)).toEqual({
