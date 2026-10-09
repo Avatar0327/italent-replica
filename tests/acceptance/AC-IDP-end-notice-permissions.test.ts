@@ -146,6 +146,54 @@ describe('AC-IDP（补）F-047：结束通知模板配置权限', () => {
     expect(await auditLogs(env)).toEqual(logs);
   });
 
+  it('父流程隐藏整段子流程：即使子流程字段有查看权，猜中、猜错和清空模板仍同样 403', async () => {
+    const env = await world();
+    const op = await idpOperator(env.w, {
+      orgId: env.data.insideOrg,
+      hidden: { process: ['subProcesses'] },
+    });
+    const detail = await op.request('GET', `/processes/${env.process.id}`);
+    expect(detail.status).toBe(200);
+    expect(await detail.json()).not.toHaveProperty('subProcesses');
+    const before = await adminRead(env);
+    const logs = await auditLogs(env);
+    let rejection: unknown;
+    for (const value of [TEMPLATE, 'IDP_WRONG_END_NOTICE', null]) {
+      const response = await op.request('PATCH', `/processes/${before.id}`, {
+        ifMatch: before.revision,
+        body: noticeBody(before, value),
+      });
+      const result = { status: response.status, body: await response.json() };
+      expect(result).toMatchObject({ status: 403, body: { error: { code: 'FORBIDDEN' } } });
+      rejection ??= result;
+      expect(result).toEqual(rejection);
+      expect(await adminRead(env)).toEqual(before);
+      expect(await auditLogs(env)).toEqual(logs);
+    }
+  });
+
+  it('父流程隐藏整段子流程后，无变化成功命令的原键重放同样拒绝', async () => {
+    const env = await world();
+    const op = await idpOperator(env.w, { orgId: env.data.insideOrg });
+    const options = {
+      ifMatch: env.process.revision,
+      body: noticeBody(env.process, TEMPLATE),
+      idempotencyKey: `idp-hidden-container-${randomUUID()}`,
+    };
+    const first = await op.request('PATCH', `/processes/${env.process.id}`, options);
+    expect(first.status, await first.clone().text()).toBe(200);
+    const before = await adminRead(env);
+    const logs = await auditLogs(env);
+    await op.hideFields('process', ['subProcesses']);
+    const replay = await op.request('PATCH', `/processes/${before.id}`, options);
+    expect({ status: replay.status, body: await replay.json() }).toMatchObject({
+      status: 403,
+      body: { error: { code: 'FORBIDDEN' } },
+    });
+    expect(await adminRead(env)).toEqual(before);
+    expect(await auditLogs(env)).toEqual(logs);
+  });
+
   it('隐藏结束通知模板时省略该字段，仍能修改其他可见字段并保留原值', async () => {
     const env = await world();
     const op = await idpOperator(env.w, {
