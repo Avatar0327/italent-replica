@@ -2,9 +2,9 @@
 "updated": "2026-10-08",
 "stats": {
 "merged": 67,
-"open": 9,
-"dec": 323,
-"ev": "35/136"
+"open": 12,
+"dec": 328,
+"ev": "33/136"
 },
 "tasks": {
 "M0": {
@@ -368,7 +368,8 @@
 ],
 "note": "设计 #121 合并（9bc124d），6 轮；实现拆 5 个 PR，PR-0 等 Q-M0-132",
 "pr": [
-121
+121,
+129
 ]
 },
 "R3-T03": {
@@ -397,7 +398,7 @@
 "F-048",
 "F-049"
 ],
-"note": "暂缓：Fable 额度（DEC-314）；Q-M0-128 已拆，门禁无 ⛔",
+"note": "DEC-330：Opus High 接手第 5 轮设计 + A'",
 "pr": [
 113
 ]
@@ -410,7 +411,7 @@
 "R3-T00",
 "F-032"
 ],
-"note": "暂缓：Fable 额度（DEC-314）",
+"note": "DEC-330：Opus High 接手第 5 轮设计 + A'",
 "ev": "⛔ Q-M0-82 未取证",
 "pr": [
 112
@@ -917,7 +918,10 @@
 "R3-T01"
 ],
 "dev": "Claude Opus 5.5 High",
-"rev": "Astra Ultra"
+"rev": "Astra Ultra",
+"pr": [
+128
+]
 },
 "F-049": {
 "n": "表达式引擎钩子（C-07）",
@@ -972,6 +976,10 @@
 }
 },
 "log": [
+[
+"10-08",
+"DEC-330：T04 / T05 恢复，第 5 轮设计改 Opus High（同步协议单独抽出 + 止损）"
+],
 [
 "10-08",
 "DEC-324 / 325：Opus 用到额度见底；CI 超时调 40 分钟 + F-056 分片；范围外上级照原站显示姓名（F-057）；派 F-046 / F-034+053 / F-047 / F-057（Codex）、F-048（Opus）"
@@ -2185,7 +2193,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-08 20:33",
+"liveUpdated": "10-08 21:24",
 "chains": [
 {
 "g": "base",
@@ -2375,8 +2383,7 @@
 "k": "run",
 "n": "继任管理",
 "seg": "ev:d ds:a5 dev:w rev:d4 mg:w",
-"now": "暂缓：Fable 额度（DEC-314）；第二部分与 T04 第 5 轮同发同审",
-"fable": "1",
+"now": "第 5 轮设计改由 Opus High 接手（DEC-330），与 T04 同步协议同审",
 "pr": 112
 },
 {
@@ -2386,9 +2393,8 @@
 "k": "run",
 "n": "人才盘点",
 "u": "已核对：#108 合并后派（C 档、Fable、先设计）",
-"seg": "ev:d ds:d4 dev:w rev:d4 mg:w",
-"now": "暂缓：Fable 额度（DEC-314）；恢复时再定第 5 轮 A'",
-"fable": "1",
+"seg": "ev:d ds:a5 dev:w rev:d4 mg:w",
+"now": "第 5 轮设计改由 Opus High 接手（DEC-330）：同步协议单独抽出 + 止损",
 "pr": 113,
 "wait": "恢复后：第 5 轮设计；写代码前置 F-046、F-048（F-045 ✓ F-049 ✓）"
 },
@@ -2421,10 +2427,10 @@
 "o": 2,
 "k": "run",
 "n": "任职资格 + 人才评定",
-"seg": "ev:a ds:d6 dev:w rev:d6 mg:w",
-"now": "设计第 6 轮通过并合并（9bc124d）；5 个 PR（PR-0、A、B、C1、C2）全 C 档 Opus",
+"seg": "ev:a ds:d6 dev:a1 rev:w mg:w",
+"now": "PR-0 契约开发中（#129 Draft，Opus）；PR-A / C1 等 SW73 / SW74 实测",
 "wait": "PR-0 开工等取证 Q-M0-132",
-"pr": 121
+"pr": 129
 },
 {
 "id": "F-024",
@@ -2623,8 +2629,9 @@
 "k": "run",
 "n": "审批多主体回避",
 "nx": "R3-T04 写代码",
-"seg": "ev:n ds:a1 dev:w rev:w mg:w",
-"now": "派发（Opus High，C 档先设计；自检由 Codex）"
+"seg": "ev:n ds:d3 dev:w rev:w3 mg:w",
+"now": "设计 v3（DEC-329 定稿）已交，待第 3 轮设计审",
+"pr": 128
 },
 {
 "id": "Q-M0-113",
@@ -2753,7 +2760,8 @@
 "cx": "1",
 "n": "范围外上级照原站显示姓名",
 "seg": "ev:n ds:n dev:a1 rev:w mg:w",
-"now": "派发（Codex Sol，DEC-325）"
+"now": "开发中（#127 Draft，Codex）；头像来源待决",
+"pr": 127
 },
 {
 "id": "CI40",
