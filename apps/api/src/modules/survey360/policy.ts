@@ -463,6 +463,8 @@ export const SURVEY360_POLICIES = defineTable('survey360', {
   'PUT /report-template': route({ key: 'settings', operation: 'update', write: { fields: 'body' } }),
   'GET /activities/:id/reports': route({ key: 'result', scope: ACTIVITY, byId: true }),
   'GET /activities/:id/reports/:reportId': route({ key: 'result', scope: ACTIVITY, byId: true }),
+  // F-060：下载 = 同一份（已按查看人裁剪的）报告 / 报表数据生成的 PDF / PNG，权限、范围、字段裁剪与上面的 GET 一致
+  'GET /activities/:id/reports/:reportId/download': route({ key: 'result', scope: ACTIVITY, byId: true }),
   'POST /activities/:id/reports/generate': route({
     key: 'result',
     operation: 'update',
@@ -492,6 +494,7 @@ export const SURVEY360_POLICIES = defineTable('survey360', {
   }),
   // tables.ts
   'GET /activities/:id/score-tables': route({ key: 'result', scope: ACTIVITY, byId: true }),
+  'GET /activities/:id/score-tables/download': route({ key: 'result', scope: ACTIVITY, byId: true }),
   // questionnaires.ts：套卷模板与套卷同表同结构，模板入口只取模板（改 / 删他人模板同样要 editOthers）
   'GET /questionnaire-templates': route({ key: 'questionnaire' }),
   'GET /questionnaire-templates/:id': route({ key: 'questionnaire', byId: true }),
@@ -528,6 +531,13 @@ export const SURVEY360_REPORT_LINK_POLICIES = defineTable('survey360-report-link
   'GET /reports/:reportId': publicRoute(
     '收件人查看报告：报告须在本链接的清单里',
     'DEC-280 同口径（R3-T03 PR-B）',
+    [REPORT_LINK_TOKEN],
+    byId,
+  ),
+  // F-060：同一份报告内容的 PDF（邮件发链接，不发附件）
+  'GET /reports/:reportId/download': publicRoute(
+    '收件人下载报告 PDF：报告须在本链接的清单里',
+    'DEC-280 同口径（F-060）',
     [REPORT_LINK_TOKEN],
     byId,
   ),

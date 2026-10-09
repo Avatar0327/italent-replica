@@ -183,6 +183,7 @@ const REQUIRE_ACTIVITY: Evidence = {
   unit: `${S}/access.ts#requireActivity`,
   anchor: "if (!row) fail('NOT_FOUND', '活动不存在')",
 };
+
 const VISIBLE_OBJECT: Evidence = {
   role: 'impl',
   unit: `${S}/access.ts#requireVisibleObject`,
@@ -404,7 +405,29 @@ function activityScope(entry: Evidence, call: Evidence, load: 'read' | 'write'):
   ];
 }
 /** 路由处理函数里调 requireActivity 的位置：命令入口（写）/ 读取回调（读）；报告生成与转发经 reports.ts 的共用 command。 */
+/**
+ * F-060：报告详情 / 报告 PDF 下载共用 registerReportViewRoutes 的 detail，报表 / 报表 PNG 下载共用 scoreTables，
+ * requireActivity 在这两个函数里调用（不在路由处理函数里）。
+ */
+const REPORT_DETAIL: Evidence = {
+  role: 'call',
+  unit: `${S}/reports.ts#registerReportViewRoutes>detail`,
+  anchor: 'const activity = await requireActivity(tx, admin, uuidParam(c));',
+};
+const SCORE_TABLES: Evidence = {
+  role: 'call',
+  unit: `${S}/tables.ts#scoreTables`,
+  anchor: 'const activity = await requireActivity(tx, admin, id);',
+};
+const VIA: Readonly<Record<string, Evidence>> = {
+  '/activities/:id/reports/:reportId': REPORT_DETAIL,
+  '/activities/:id/reports/:reportId/download': REPORT_DETAIL,
+  '/activities/:id/score-tables': SCORE_TABLES,
+  '/activities/:id/score-tables/download': SCORE_TABLES,
+};
 function activityCall(r: Route): Evidence {
+  const via = VIA[r.path];
+  if (via) return via;
   if (r.path.endsWith('/reports/generate') || r.path.endsWith('/reports/forward')) {
     return {
       role: 'call',
@@ -1247,7 +1270,16 @@ const PR_B_ROUTES: readonly Route[] = [
     method: 'GET',
     path: '/activities/:id/reports/:reportId',
     key: 'result',
-    need: 'read( c, deps, VIEW',
+    need: 'read(c, deps, VIEW',
+    needConst: VIEW('reports.ts', 'result'),
+  },
+  // F-060：下载 PDF 与详情共用 detail，权限 / 范围 / 字段裁剪相同
+  {
+    file: 'reports.ts',
+    method: 'GET',
+    path: '/activities/:id/reports/:reportId/download',
+    key: 'result',
+    need: 'read(c, deps, VIEW',
     needConst: VIEW('reports.ts', 'result'),
   },
   {
@@ -1298,6 +1330,15 @@ const PR_B_ROUTES: readonly Route[] = [
     file: 'tables.ts',
     method: 'GET',
     path: '/activities/:id/score-tables',
+    key: 'result',
+    need: "read( c, deps, { object: 'result' }",
+    opFact: false,
+  },
+  // F-060：下载 PNG 与清单共用 scoreTables，权限 / 范围 / 字段裁剪相同
+  {
+    file: 'tables.ts',
+    method: 'GET',
+    path: '/activities/:id/score-tables/download',
     key: 'result',
     need: "read( c, deps, { object: 'result' }",
     opFact: false,
@@ -1406,6 +1447,20 @@ const reportLinkToken = (path: string, extra: readonly string[]): Obligation[] =
     ],
   },
 ];
+// F-060：收件人查看报告与下载 PDF 共用 linked（令牌解析 + 报告须在链接清单里），两个入口各调用一次
+const LINKED = `${REPORT_LINK}#registerReportLinkRoutes>linked`;
+const reportLinkReport = (path: string): Obligation[] => [
+  {
+    perm: 'guard:survey360.reportLinkToken',
+    note: '收件人凭链接令牌访问，不经成员中间件；报告须在本链接的清单里（linked，查看与下载同一处）',
+    at: [
+      call(`${REPORT_LINK}#route:GET ${path}`, 'await linked(c)'),
+      { role: 'impl', unit: LINKED, anchor: 'const { tenantId, hash } = await resolve(c)' },
+      { role: 'impl', unit: LINKED, anchor: "if (!link.reportIds.includes(reportId)) fail('NOT_FOUND', '报告不存在')" },
+      ...REPORT_LINK_TOKEN,
+    ],
+  },
+];
 
 export const SURVEY360: RequiredTable = {
   ...Object.fromEntries([...ROUTES, ...PR_B_ROUTES].map((r) => [`${r.method} ${BASE}${r.path}`, obligations(r)])),
@@ -1434,7 +1489,6 @@ export const SURVEY360: RequiredTable = {
     ]),
   ),
   'GET /api/survey360/report-link': reportLinkToken('/', []),
-  'GET /api/survey360/report-link/reports/:reportId': reportLinkToken('/reports/:reportId', [
-    "if (!link.reportIds.includes(reportId)) fail('NOT_FOUND', '报告不存在')",
-  ]),
+  'GET /api/survey360/report-link/reports/:reportId': reportLinkReport('/reports/:reportId'),
+  'GET /api/survey360/report-link/reports/:reportId/download': reportLinkReport('/reports/:reportId/download'),
 };

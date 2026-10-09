@@ -1906,6 +1906,24 @@
       "module": "survey360-report-link",
       "primitives": {}
     },
+    "GET /api/survey360/report-link/reports/:reportId/download": {
+      "edge": {
+        "anonymous": {
+          "code": "NOT_FOUND",
+          "status": 404
+        },
+        "member": {
+          "code": "NOT_FOUND",
+          "status": 404
+        },
+        "nonMember": {
+          "code": "NOT_FOUND",
+          "status": 404
+        }
+      },
+      "module": "survey360-report-link",
+      "primitives": {}
+    },
     "GET /api/tenant/account/avatar": {
       "edge": {
         "anonymous": {
@@ -6247,7 +6265,68 @@
         ]
       }
     },
+    "GET /api/tenant/survey360/activities/:id/reports/:reportId/download": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "survey360",
+      "primitives": {
+        "object": [
+          "survey360 read/write(need)"
+        ],
+        "objectOp": [
+          "Survey360.Result:view"
+        ],
+        "scope": [
+          "scopeSql",
+          "survey360 visibility"
+        ],
+        "scopePoint": [
+          "survey360 point"
+        ]
+      }
+    },
     "GET /api/tenant/survey360/activities/:id/score-tables": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "survey360",
+      "primitives": {
+        "object": [
+          "survey360 read/write(need)"
+        ],
+        "scope": [
+          "scopeSql",
+          "survey360 visibility"
+        ],
+        "scopePoint": [
+          "survey360 point"
+        ]
+      }
+    },
+    "GET /api/tenant/survey360/activities/:id/score-tables/download": {
       "edge": {
         "anonymous": {
           "code": "UNAUTHENTICATED",
