@@ -196,6 +196,20 @@ export async function loadQuestionnaire(tx: Tx, id: string, lock = false): Promi
   return { row, model, roles, scales, options, dimensions, questions };
 }
 
+/**
+ * F-053：取套卷行锁的统一顺序——按 id 升序逐个 FOR UPDATE。活动启用、新增评价对象、替换套卷都经此取锁：
+ * 后两者按请求数组顺序插入关联时，外键 KEY SHARE 锁的顺序由调用方决定，会与启用的升序行锁反向等待成死锁。
+ * 调用方须已持有活动行锁（锁顺序 活动 → 套卷）；套卷编辑 / 删除只锁套卷，不会反向等活动。
+ */
+export async function lockQuestionnaires(tx: Tx, ids: readonly string[]): Promise<void> {
+  for (const id of [...ids].sort())
+    await tx
+      .select({ id: survey360Questionnaires.id })
+      .from(survey360Questionnaires)
+      .where(eq(survey360Questionnaires.id, id))
+      .for('update');
+}
+
 export function questionnaireView(q: LoadedQuestionnaire) {
   const line = q.row.excellentLinePercent;
   const rate = q.row.excellentMaxRate;

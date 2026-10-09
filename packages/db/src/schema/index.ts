@@ -14,4 +14,5 @@ export * from './audit.js';
 export * from './survey360.js';
 export * from './talent.js';
 export * from './idp.js';
+export * from './avatar.js';
 export * from './talent-review.js';

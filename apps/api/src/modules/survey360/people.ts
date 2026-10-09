@@ -10,6 +10,7 @@ import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import { scopeAllowsInTransaction, scopeSql } from '../permission/module-access.js';
 import { pageQuery, uuidParam } from '../job/context.js';
+import { personAvatars, type AvatarReference } from '../avatar/references.js';
 import {
   actor,
   type Admin,
@@ -30,7 +31,7 @@ import {
   uuid,
   write,
 } from './context.js';
-import { superiorNames, superiorSummary } from './superior.js';
+import { superiorNames, superiorSummary, type SuperiorReference } from './superior.js';
 
 export type PersonRow = typeof survey360People.$inferSelect;
 
@@ -235,17 +236,26 @@ type PersonView = ReturnType<typeof personView>;
 const presentPeople: Present = async (viewer, body: PersonView | { items: PersonView[] }) => {
   const fields = await viewer.fields('person');
   const showSuperior = !fields || fields.has('superiorPersonId');
+  const showName = !fields || fields.has('name');
   const items = 'items' in body ? body.items : [body];
+  const avatars = showName
+    ? await personAvatars(
+        viewer.tx,
+        viewer.tenant.tenantId,
+        items.map((person) => person.id),
+      )
+    : new Map<string, AvatarReference | null>();
   const names =
-    showSuperior && (!fields || fields.has('name'))
+    showSuperior && showName
       ? await superiorNames(
           viewer.tx,
           viewer.tenant.tenantId,
           items.map((person) => person.superiorPersonId),
         )
-      : new Map<string, string>();
+      : new Map<string, SuperiorReference>();
   const project = (person: PersonView) => ({
     ...pick(person, fields),
+    ...(showName ? { avatar: avatars.get(person.id) ?? null } : {}),
     ...(showSuperior ? { superior: superiorSummary(person.superiorPersonId, names, fields) } : {}),
   });
   return 'items' in body ? { ...body, items: items.map(project) } : project(body);

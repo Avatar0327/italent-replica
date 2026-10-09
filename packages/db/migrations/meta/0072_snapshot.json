@@ -1,5 +1,5 @@
 {
-  "id": "b887d7c5-7dd5-4e74-87c0-550a2d7dabb7",
+  "id": "93c034d5-aee4-4917-8348-40b624d67306",
   "prevId": "68b11a64-0ad3-47c8-a827-dea27286b546",
   "version": "7",
   "dialect": "postgresql",
@@ -22731,7 +22731,7 @@
         },
         "approval_instances_business_type": {
           "name": "approval_instances_business_type",
-          "value": "\"approval_instances\".\"business_type\" IN ('employment','personnel_change','contract','idp','talent_review')"
+          "value": "\"approval_instances\".\"business_type\" IN ('employment','personnel_change','contract','idp')"
         },
         "approval_instances_revision": {
           "name": "approval_instances_revision",
@@ -36482,8 +36482,8 @@
       },
       "isRLSEnabled": false
     },
-    "public.talent_readiness_levels": {
-      "name": "talent_readiness_levels",
+    "public.account_avatar_attachments": {
+      "name": "account_avatar_attachments",
       "schema": "",
       "columns": {
         "id": {
@@ -36499,56 +36499,48 @@
           "primaryKey": false,
           "notNull": true
         },
-        "code": {
-          "name": "code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "description": {
-          "name": "description",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "color": {
-          "name": "color",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "sort_no": {
-          "name": "sort_no",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "enabled": {
-          "name": "enabled",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
-        },
-        "revision": {
-          "name": "revision",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 1
-        },
-        "created_by": {
-          "name": "created_by",
+        "user_id": {
+          "name": "user_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
+        },
+        "filename": {
+          "name": "filename",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "content_type": {
+          "name": "content_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "byte_size": {
+          "name": "byte_size",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sha256": {
+          "name": "sha256",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'registered'"
+        },
+        "content_base64": {
+          "name": "content_base64",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "created_at": {
           "name": "created_at",
@@ -36557,11 +36549,259 @@
           "notNull": true,
           "default": "now()"
         },
-        "updated_by": {
-          "name": "updated_by",
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "account_avatar_current": {
+          "name": "account_avatar_current",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"account_avatar_attachments\".\"status\"='uploaded'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "account_avatar_cleanup": {
+          "name": "account_avatar_cleanup",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "account_avatar_attachment_owner_fk": {
+          "name": "account_avatar_attachment_owner_fk",
+          "tableFrom": "account_avatar_attachments",
+          "tableTo": "account_avatar_settings",
+          "columnsFrom": [
+            "tenant_id",
+            "user_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "user_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "account_avatar_status": {
+          "name": "account_avatar_status",
+          "value": "\"account_avatar_attachments\".\"status\" IN ('registered','uploaded','pending_cleanup')"
+        },
+        "account_avatar_size": {
+          "name": "account_avatar_size",
+          "value": "\"account_avatar_attachments\".\"byte_size\">0 AND \"account_avatar_attachments\".\"byte_size\"<=5242880"
+        },
+        "account_avatar_hash": {
+          "name": "account_avatar_hash",
+          "value": "\"account_avatar_attachments\".\"sha256\" ~ '^[a-f0-9]{64}$'"
+        },
+        "account_avatar_mime": {
+          "name": "account_avatar_mime",
+          "value": "\"account_avatar_attachments\".\"content_type\" IN ('image/jpeg','image/png','image/gif','image/bmp')"
+        },
+        "account_avatar_uploaded": {
+          "name": "account_avatar_uploaded",
+          "value": "\"account_avatar_attachments\".\"status\"<>'uploaded' OR \"account_avatar_attachments\".\"content_base64\" IS NOT NULL"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.account_avatar_outbox": {
+      "name": "account_avatar_outbox",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "command_id": {
+          "name": "command_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "event_type": {
+          "name": "event_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payload": {
+          "name": "payload",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "account_avatar_outbox_command": {
+          "name": "account_avatar_outbox_command",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "command_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "account_avatar_outbox_cursor": {
+          "name": "account_avatar_outbox_cursor",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "account_avatar_outbox_owner_fk": {
+          "name": "account_avatar_outbox_owner_fk",
+          "tableFrom": "account_avatar_outbox",
+          "tableTo": "account_avatar_settings",
+          "columnsFrom": [
+            "tenant_id",
+            "user_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "user_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "account_avatar_outbox_state": {
+          "name": "account_avatar_outbox_state",
+          "value": "\"account_avatar_outbox\".\"state\" IN ('pending','sent','failed','unknown')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.account_avatar_settings": {
+      "name": "account_avatar_settings",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
         },
         "updated_at": {
           "name": "updated_at",
@@ -36573,56 +36813,37 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "talent_readiness_levels_tenant_id_tenants_id_fk": {
-          "name": "talent_readiness_levels_tenant_id_tenants_id_fk",
-          "tableFrom": "talent_readiness_levels",
-          "tableTo": "tenants",
+        "account_avatar_member_fk": {
+          "name": "account_avatar_member_fk",
+          "tableFrom": "account_avatar_settings",
+          "tableTo": "tenant_memberships",
           "columnsFrom": [
-            "tenant_id"
+            "tenant_id",
+            "user_id"
           ],
           "columnsTo": [
-            "id"
+            "tenant_id",
+            "user_id"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
       },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "talent_readiness_levels_tenant_id": {
-          "name": "talent_readiness_levels_tenant_id",
-          "nullsNotDistinct": false,
+      "compositePrimaryKeys": {
+        "account_avatar_settings_tenant_id_user_id_pk": {
+          "name": "account_avatar_settings_tenant_id_user_id_pk",
           "columns": [
             "tenant_id",
-            "id"
-          ]
-        },
-        "talent_readiness_levels_code": {
-          "name": "talent_readiness_levels_code",
-          "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "code"
-          ]
-        },
-        "talent_readiness_levels_name": {
-          "name": "talent_readiness_levels_name",
-          "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "name"
+            "user_id"
           ]
         }
       },
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
-        "talent_readiness_levels_color": {
-          "name": "talent_readiness_levels_color",
-          "value": "\"talent_readiness_levels\".\"color\" ~ '^#[0-9a-fA-F]{6}$'"
-        },
-        "talent_readiness_levels_revision": {
-          "name": "talent_readiness_levels_revision",
-          "value": "\"talent_readiness_levels\".\"revision\" > 0"
+        "account_avatar_revision_positive": {
+          "name": "account_avatar_revision_positive",
+          "value": "\"account_avatar_settings\".\"revision\">0"
         }
       },
       "isRLSEnabled": false

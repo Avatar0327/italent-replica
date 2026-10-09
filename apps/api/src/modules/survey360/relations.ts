@@ -27,6 +27,7 @@ import type { Hono } from 'hono';
 import { z } from 'zod';
 import type { TenantRouteDeps } from '../../routes.js';
 import { tenantOf, type TenantEnv } from '../../tenant-context.js';
+import { personAvatars, type AvatarReference } from '../avatar/references.js';
 import { findCurrentRecord } from '../employment/read-model.js';
 import { uuidParam } from '../job/context.js';
 import type { SQL } from 'drizzle-orm';
@@ -79,7 +80,7 @@ import {
   syncAccess,
 } from './sync.js';
 import type { ModuleScope } from '../permission/module-access.js';
-import { loadQuestionnaire, markUsed } from './questionnaires.js';
+import { loadQuestionnaire, lockQuestionnaires, markUsed } from './questionnaires.js';
 import { clearObjectAnswers, objectSheets } from './object-answers.js';
 
 const LIMITS = survey360.SURVEY360_LIMITS;
@@ -149,6 +150,8 @@ async function requireQuestionnaires(tx: Tx, ids: readonly string[]): Promise<vo
   if (ids.length < 1 || ids.length > LIMITS.questionnairesPerObject)
     fail('VALIDATION_FAILED', '一个评价对象须选 1～3 个套卷', 'TOO_MANY_QUESTIONNAIRES');
   if (new Set(ids).size !== ids.length) fail('VALIDATION_FAILED', '套卷重复', 'DUPLICATE_QUESTIONNAIRE');
+  // F-053：插入关联前按 id 升序先取套卷行锁，与活动启用同一顺序（调用方已持有活动行锁）
+  await lockQuestionnaires(tx, ids);
   for (const id of ids) {
     const q = await loadQuestionnaire(tx, id);
     // E3-R3：只能选“已启用”的套卷（已使用的同样可用）
@@ -322,11 +325,22 @@ const NESTED_PERSON = { internal: 'employeeId' };
 async function withNested(viewer: Viewer, rows: readonly Record<string, unknown>[], key: 'person' | 'appraiser') {
   const relation = await viewer.fields('relation');
   const person = await viewer.fields('person');
+  const personKey = key === 'person' ? 'personId' : 'appraiserPersonId';
+  // 只为已允许出现姓名的嵌套人员补头像；人员详情范围与匿名作答页授权不在这里放宽。
+  const showAvatar = (!relation || relation.has(key)) && (!person || person.has('name'));
+  const avatars = showAvatar
+    ? await personAvatars(
+        viewer.tx,
+        viewer.tenant.tenantId,
+        rows.flatMap((row) => (typeof row[personKey] === 'string' ? [row[personKey] as string] : [])),
+      )
+    : new Map<string, AvatarReference | null>();
   return rows.map((row) => {
     const trimmed = pick(row, relation);
     const inner = trimmed[key] ? pick(trimmed[key] as object, person, NESTED_PERSON) : {};
     const { [key]: _nested, ...rest } = trimmed;
-    return Object.keys(inner).length ? { ...rest, [key]: inner } : rest;
+    const shown = 'name' in inner ? { ...inner, avatar: avatars.get(row[personKey] as string) ?? null } : inner;
+    return Object.keys(shown).length ? { ...rest, [key]: shown } : rest;
   });
 }
 
