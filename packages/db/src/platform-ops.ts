@@ -138,15 +138,27 @@ export async function setUserStatus(db: Db, change: UserStatusChange, meta: Plat
     // 若要走成员停用挂接点，先在各租户按全局锁序取齐接管要用的业务锁，再锁账号行，避免持账号行锁时反向等组织锁。
     const [seen] = await ctx.tx.select({ status: users.status }).from(users).where(eq(users.id, change.userId));
     const deactivating = seen?.status === 'active' && change.status === 'disabled';
+    const prelocked = new Set<string>();
     if (deactivating && membershipRevokeHook && membershipPrelockHook) {
-      await forEachActiveMembership(ctx, change.userId, meta, membershipPrelockHook);
+      for (const tenant of await activeMembershipTenants(ctx, change.userId)) {
+        await runInTenant(ctx, tenant, change.userId, meta, 'user_disabled', membershipPrelockHook);
+        prelocked.add(tenant.id);
+      }
     }
     const [before] = await ctx.tx.select().from(users).where(eq(users.id, change.userId)).for('no key update');
     if (before && before.revision !== change.expectedRevision) {
       throw new RevisionConflictError('user', change.expectedRevision);
     }
     if (before?.status === 'active' && change.status === 'disabled' && membershipRevokeHook) {
-      await forEachActiveMembership(ctx, change.userId, meta, membershipRevokeHook);
+      const tenantsNow = await activeMembershipTenants(ctx, change.userId);
+      // 预取与锁账号行之间，该账号在预取没覆盖的租户新成为有效成员（重新激活等）：此时已持账号行锁，不能再补取业务锁
+      // （入职首次绑定持组织锁等账号行，会成环）。回滚并要求显式重提；重提时那个租户已在预取范围内。
+      if (membershipPrelockHook && tenantsNow.some((tenant) => !prelocked.has(tenant.id))) {
+        throw new RevisionConflictError('用户的成员关系（停用期间在预取之外的租户发生变化）', change.expectedRevision);
+      }
+      for (const tenant of tenantsNow) {
+        await runInTenant(ctx, tenant, change.userId, meta, 'user_disabled', membershipRevokeHook);
+      }
     }
     const [row] = await ctx.tx
       .update(users)
@@ -205,7 +217,8 @@ export function registerMembershipRevokeHook(hook: MembershipRevokeHook): void {
  * 全局停用账号专用的预取挂接点（F-069）：在锁 users 行（NO KEY UPDATE）之前、各租户内、同一事务里调用，
  * 业务模块在此按自己的全局锁序取齐接管会用到的锁（审批中心：派单闸 → 员工 → 业务 → 组织，与手动交接同序）。
  * 入职首次绑定的顺序是“组织锁 → users 行 FOR SHARE”，停用若先持 users 行锁再取组织锁就与之成环（40P01）。
- * 预取之后的 MembershipRevokeHook 在锁住 users 行后重入这些已持有的锁；此时 users 行已锁，不得再新增需等待的业务锁。
+ * 预取之后的 MembershipRevokeHook 在锁住 users 行后重入这些已持有的锁；此时 users 行已锁，不得再新增需等待的业务锁，
+ * 所以 setUserStatus 取得账号锁后会核对当前有效成员的租户都已预取，有遗漏（预取后新激活）即回滚并报并发冲突，要求显式重提。
  */
 export type MembershipPrelockHook = MembershipRevokeHook;
 let membershipPrelockHook: MembershipPrelockHook | null = null;
@@ -303,15 +316,14 @@ async function tenantEvent(
 const TENANT_BATCH = 500;
 
 /**
- * 平台角色不能跨租户读成员关系（RLS），按租户逐个切入，该用户在其中是有效成员的就调用挂接点（预取与接管两轮都按租户编号升序）。
+ * 平台角色不能跨租户读成员关系（RLS），按租户逐个切入，列出该用户当前是有效成员的租户（按租户编号升序，预取与接管两轮同序）。
  * 停用是低频的平台操作；租户按编号分批读取，不一次读入全部租户。
  */
-async function forEachActiveMembership(
+async function activeMembershipTenants(
   ctx: PlatformCommandContext,
   userId: string,
-  meta: PlatformCommandMeta,
-  hook: MembershipRevokeHook,
-) {
+): Promise<{ id: string; timezone: string }[]> {
+  const found: { id: string; timezone: string }[] = [];
   let after: string | null = null;
   for (;;) {
     const page: { id: string; timezone: string }[] = await ctx.tx
@@ -321,18 +333,30 @@ async function forEachActiveMembership(
       .orderBy(tenants.id)
       .limit(TENANT_BATCH);
     for (const tenant of page) {
-      await ctx.inTenant(tenant.id, async (tx) => {
-        const [member] = await tx
+      const member = await ctx.inTenant(tenant.id, (tx) =>
+        tx
           .select({ id: tenantMemberships.id })
           .from(tenantMemberships)
-          .where(and(eq(tenantMemberships.userId, userId), eq(tenantMemberships.status, 'active')));
-        if (member)
-          await hook(tx, { tenantId: tenant.id, userId, reason: 'user_disabled', timezone: tenant.timezone, ...meta });
-      });
+          .where(and(eq(tenantMemberships.userId, userId), eq(tenantMemberships.status, 'active'))),
+      );
+      if (member.length) found.push(tenant);
     }
-    if (page.length < TENANT_BATCH) return;
+    if (page.length < TENANT_BATCH) return found;
     after = page.at(-1)!.id;
   }
+}
+
+function runInTenant(
+  ctx: PlatformCommandContext,
+  tenant: { id: string; timezone: string },
+  userId: string,
+  meta: PlatformCommandMeta,
+  reason: MembershipRevocation['reason'],
+  hook: MembershipRevokeHook,
+) {
+  return ctx.inTenant(tenant.id, (tx) =>
+    hook(tx, { tenantId: tenant.id, userId, reason, timezone: tenant.timezone, ...meta }),
+  );
 }
 
 /** 租户表只对平台角色开放：在切入租户上下文之前读取。 */
