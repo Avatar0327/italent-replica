@@ -9,6 +9,12 @@ import {
   TALENT_REVIEW_OBJECTS,
   type TalentReviewObject,
 } from '../talent-review/catalog.js';
+import {
+  SUCCESSION_APP_LABEL,
+  SUCCESSION_OBJECT_LABELS,
+  SUCCESSION_OBJECTS,
+  type SuccessionObject,
+} from '../succession/catalog.js';
 
 export interface AuditObjectMeta {
   readonly label: string;
@@ -32,8 +38,17 @@ const TALENT_REVIEW_META = Object.fromEntries(
   ]),
 );
 
+/** R3-T05 继任管理：同上，对象中文名随领域目录登记。 */
+const SUCCESSION_META = Object.fromEntries(
+  (Object.keys(SUCCESSION_OBJECTS) as SuccessionObject[]).map((key) => [
+    SUCCESSION_OBJECTS[key].code,
+    { label: SUCCESSION_OBJECT_LABELS[key], app: SUCCESSION_APP_LABEL },
+  ]),
+);
+
 const OBJECTS: Readonly<Record<string, AuditObjectMeta>> = {
   ...TALENT_REVIEW_META,
+  ...SUCCESSION_META,
   'job-sequence-sync': { label: '任职序列同步任务', app: ORG_PEOPLE },
   'employment-record': { label: '任职记录', app: ORG_PEOPLE },
   'employment-business': { label: '任职业务', app: ORG_PEOPLE },

@@ -526,6 +526,13 @@
       "when": 1791537603883,
       "tag": "0074_talent_review_readiness",
       "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1791549316542,
+      "tag": "0075_succession_settings_seed",
+      "breakpoints": true
     }
   ]
 }
