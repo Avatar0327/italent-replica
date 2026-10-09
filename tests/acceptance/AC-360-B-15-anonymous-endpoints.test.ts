@@ -217,14 +217,32 @@ async function callAs(s: SceneB, user: string, route: string, t: Target, auditId
   return s.w.api.request(method, path, opts);
 }
 
-/** 无资格身份逐个调用清单里的端点：响应里不得有逐题选项、答卷编号与（报告正文以外的）备注 / 建议原文。 */
+/** 逐份卡片与按编号屏蔽：无资格身份只能得到 403 / 404（汇总类端点可以 200，但响应不得带逐份内容）。 */
+const CARD_DENIED = new Set<string>([
+  `GET ${ACT}/sheets`,
+  `POST ${ACT}/sheets/:sheetId/block`,
+  `POST ${ACT}/sheets/:sheetId/unblock`,
+]);
+const isBinary = (res: Response) => /^(image\/|application\/pdf)/.test(res.headers.get('content-type') ?? '');
+
+/**
+ * 无资格身份逐个调用清单里的端点：响应里不得有逐题选项、答卷编号与（报告正文以外的）备注 / 建议原文，并断言预期状态：
+ * 卡片类 403 / 404，其余不得 5xx。二进制下载（PNG / PDF）不能用 .text() 查标记——图内 / PDF 内的内容由数据层断言：
+ * 对应 JSON 端点（score-tables / 报告详情）在本循环里逐个检查，文件内容与 JSON 一致由 AC-360-F060 的版面模型测试保证。
+ */
 async function expectNoAnswers(s: SceneB, user: string, t: Target, who: string) {
   for (const route of ANSWER_ENDPOINTS) {
     const ids = route.endsWith('/data-changes/:id') ? t.auditIds : [undefined];
     for (const auditId of ids) {
       const res = await callAs(s, user, route, t, auditId);
-      const text = await res.text();
       const where = `${who} ${route} → ${res.status}`;
+      if (CARD_DENIED.has(route)) expect([403, 404], where).toContain(res.status);
+      else expect(res.status, where).toBeLessThan(500);
+      if (isBinary(res)) {
+        expect(route.endsWith('/download'), `${where} 只有下载端点返回二进制`).toBe(true);
+        continue;
+      }
+      const text = await res.text();
       for (const marker of ['"optionId"', '"optionLabel"', ...t.sheetIds]) expect(text, where).not.toContain(marker);
       if (!REPORT_CONTENT.has(route)) for (const marker of t.texts) expect(text, where).not.toContain(marker);
     }
@@ -456,15 +474,19 @@ describe('AC-360-B-15 / F-060 有效资源、成功状态与本人 / 他人边�
     // 待办入口：P2 本人保存（在自己的草稿上）并提交成功；P1 / 管理员用 P2 的待办 404
     const p2Todos = (await w.ok<{ items: { id: string }[] }>(my(w, s.user.P2)('GET', '/todos'))).items;
     const todoPath = `/todos/${p2Todos[0]!.id}${path(s.rel.p2.id)}`;
-    for (const intruder of [
-      my(w, s.user.P1),
-      (m: string, p: string, o?: object) =>
-        w.api.request(m, `${SURVEY}/my${p}`, { ...(o ?? {}), user: w.admin, tenant: w.tenantId }),
-    ] as const) {
+    const adminTodo = (m: string, p: string, o?: object) =>
+      w.api.request(m, `${SURVEY}/my${p}`, { ...(o ?? {}), user: w.admin, tenant: w.tenantId });
+    for (const intruder of [my(w, s.user.P1), adminTodo] as const) {
       const res = await intruder('PUT', todoPath, {
         ifMatch: otherSheet.revision,
         body: answersOf(s, ['v1', 'v1', 'v1'], '本人建议二'),
       });
+      expect(res.status).toBe(404);
+      forbidden(await res.text());
+    }
+    // 他人提交 P2 待办里的答卷：同样 404 且无内容（先于本人提交）
+    for (const intruder of [my(w, s.user.P1), adminTodo]) {
+      const res = await intruder('POST', `${todoPath}/submit`, { ifMatch: otherSheet.revision });
       expect(res.status).toBe(404);
       forbidden(await res.text());
     }

@@ -287,6 +287,19 @@ describe('AC-360-F060 受限管理员只得到范围内的文件', () => {
       expect(bytes.equals(await renderPng(scoreTableDocument(json, { activityName: s.activity.name })))).toBe(true);
     }
     expect((await as('GET', `${s.path}/reports/${reportId}/download`)).status).toBe(fonts ? 200 : 503);
-    expect((await as('GET', `${s.path}/reports/${randomUUID()}/download`)).status).toBe(404);
+    // 范围外：真实存在、但属于另一个未授权给该管理员的活动的报告（不是随机 ID）
+    const other = await w.activity({ name: '另一个活动' });
+    const otherObject = await w.object(other.id, s.person.T.id, [s.q.id]);
+    await w.appraiser(other.id, otherObject.id, s.person.T.id, 'self');
+    await w.transition(other.id, 'enable');
+    await w.transition(other.id, 'disable');
+    await w.ok(w.request('POST', `/activities/${other.id}/reports/generate`, { idempotencyKey: key(), body: {} }));
+    const otherReport = (
+      await w.ok<{ items: { id: string | null }[] }>(w.request('GET', `/activities/${other.id}/reports`))
+    ).items[0]!.id!;
+    expect(otherReport).toBeTruthy();
+    expect((await w.request('GET', `/activities/${other.id}/reports/${otherReport}/download`)).status).toBe(200);
+    expect((await as('GET', `/activities/${other.id}/reports/${otherReport}/download`)).status).toBe(404);
+    expect((await as('GET', `${s.path}/reports/${otherReport}/download`)).status).toBe(404);
   });
 });
