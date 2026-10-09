@@ -186,7 +186,7 @@ function displayCell(row: Row, key: string, tenantId: string) {
   if (value == null) return '—';
   if (key === 'name')
     return (
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+      <span className="person-avatar-name">
         <PersonAvatar tenantId={tenantId} name={String(value)} avatar={avatarReference(row.avatar)} size={32} />
         {String(value)}
       </span>

@@ -254,7 +254,7 @@ function WorkspaceContent({ tenantId, state }: { tenantId: string; state: Return
     <>
       {profile && tab === 'profile' && (
         <>
-          <h2 style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <h2 className="person-avatar-heading">
             <PersonAvatar tenantId={tenantId} name={profile.employee.name} avatar={profile.employee.avatar} />
             {profile.employee.name}
           </h2>

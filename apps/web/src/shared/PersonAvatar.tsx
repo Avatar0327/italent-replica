@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { AvatarReference } from '../account/avatar-api.js';
 import { accountText as text } from '../account/messages.js';
+import './person-avatar.css';
 
 interface Props {
   readonly tenantId: string;

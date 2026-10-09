@@ -1,0 +1,10 @@
+.person-avatar-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.person-avatar-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}

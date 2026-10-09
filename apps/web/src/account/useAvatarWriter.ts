@@ -42,10 +42,12 @@ export function useAvatarWriter(tenantId: string, reader: AvatarReader, saved: (
     } catch (cause) {
       if (!live.current) return;
       const rejected = cause instanceof AvatarApiError;
+      let error = text.uncertain;
+      if (rejected) error = cause.status === 409 ? text.conflict : cause.message;
       setState({
         ...INITIAL,
         blocked: !rejected || cause.status === 409,
-        error: rejected ? (cause.status === 409 ? text.conflict : cause.message) : text.uncertain,
+        error,
       });
       // 删除明确拒绝没有改变头像；授权失败才清旧图，上传则需回查登记后的 revision。
       if (rejected && ([401, 403, 404].includes(cause.status) || (!deleted && cause.status !== 409)))
