@@ -5,23 +5,14 @@
 import { and, eq, talentReviewFieldOptions as O, talentReviewFields as F, type Tx } from '@italent/db';
 import { TALENT_REVIEW_PRESET_FIELDS } from '@italent/domain';
 import { recordAudit } from '../../audit/record.js';
+import { registerSeed, type SeedWriteContext } from '../../seeds/registry.js';
 import { codeOf, TALENT_REVIEW_AUDIT_ACTIONS } from './access.js';
 import { loadFieldView } from './field-service.js';
 
-export interface TalentReviewPresetContext {
-  readonly tenantId: string;
-  readonly actorUserId: string | null;
-  readonly now: Date;
-  readonly commandId: string;
-}
-
-async function installFields(tx: Tx, write: TalentReviewPresetContext): Promise<void> {
-  const existing = new Set(
-    (await tx.select({ code: F.code }).from(F).where(eq(F.tenantId, write.tenantId))).map((row) => row.code),
-  );
+async function installFields(tx: Tx, write: SeedWriteContext, missing: readonly string[]): Promise<void> {
   const created = new Map<string, string>();
   for (const [index, preset] of TALENT_REVIEW_PRESET_FIELDS.entries()) {
-    if (existing.has(preset.code)) continue;
+    if (!missing.includes(preset.code)) continue;
     const [row] = await tx
       .insert(F)
       .values({
@@ -76,6 +67,12 @@ async function installFields(tx: Tx, write: TalentReviewPresetContext): Promise<
   }
 }
 
-export async function installTalentReviewPresets(tx: Tx, write: TalentReviewPresetContext): Promise<void> {
-  await installFields(tx, write);
-}
+registerSeed({
+  module: 'talent-review',
+  key: 'preset-fields',
+  version: 1,
+  codes: TALENT_REVIEW_PRESET_FIELDS.map((preset) => preset.code),
+  existing: async (tx, tenantId) =>
+    new Set((await tx.select({ code: F.code }).from(F).where(eq(F.tenantId, tenantId))).map((row) => row.code)),
+  install: installFields,
+});

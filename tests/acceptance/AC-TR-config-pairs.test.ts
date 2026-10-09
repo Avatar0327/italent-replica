@@ -7,7 +7,7 @@
  * - 存量租户（B1 上线前开通）通过平台命令补装预置字段：幂等、不覆盖租户定制、只认平台运营身份（沿用 DEC-289③ 的回补形态）。
  * 负向用例断言具体响应码，并前后各读一次比对。
  */
-import { eq, sql, talentReviewFields, withTenant } from '@italent/db';
+import { and, auditEvents, eq, sql, talentReviewFieldOptions, talentReviewFields, withTenant } from '@italent/db';
 import { TALENT_REVIEW_PRESET_FIELDS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { randomUUID } from 'node:crypto';
@@ -90,7 +90,7 @@ describe('字段成对对另一端的授权（审查 P2-1；DEC-121 / 082）', (
     const denied = await operator.request('POST', '/fields', { ifMatch: 0, body });
     expect(denied.status).toBe(403);
     expect(await adminRead(before.id)).toEqual(before);
-    await operator.setButtons(true);
+    await operator.setButtons(true, []);
     const created = await operator.request('POST', '/fields', { ifMatch: 0, body });
     expect(created.status, await created.clone().text()).toBe(201);
     expect(await adminRead(before.id)).toMatchObject({
@@ -160,13 +160,28 @@ describe('已停用字段不能被新配对引用（审查 P2-3；设计 §7 启
   });
 });
 
-describe('存量租户补装预置字段（审查 P2-4；沿用 DEC-289③ 回补形态）', () => {
+describe('存量租户补装 T04 预置字段（审查 P2-4；DEC-361 统一机制）', () => {
   const rows = (tenant: string) =>
     withTenant(testDb().db, tenant, (tx) =>
       tx
-        .select({ code: talentReviewFields.code, name: talentReviewFields.name, enabled: talentReviewFields.enabled })
+        .select({
+          code: talentReviewFields.code,
+          name: talentReviewFields.name,
+          enabled: talentReviewFields.enabled,
+          sortNo: talentReviewFields.sortNo,
+          pairFieldId: talentReviewFields.pairFieldId,
+        })
         .from(talentReviewFields)
         .where(eq(talentReviewFields.preset, true)),
+    );
+  const createAudits = (tenant: string) =>
+    withTenant(testDb().db, tenant, (tx) =>
+      tx
+        .select({ objectId: auditEvents.objectId })
+        .from(auditEvents)
+        .where(
+          and(eq(auditEvents.action, 'talent-review.field.create'), eq(auditEvents.objectType, 'TalentReview.Field')),
+        ),
     );
   /** 模拟 B1 上线前开通的租户：删掉指定预置字段（只删不成对的），再做租户定制。 */
   async function legacyTenant(label: string) {
@@ -183,47 +198,67 @@ describe('存量租户补装预置字段（审查 P2-4；沿用 DEC-289③ 回�
     const tenant = result.tenant.id;
     await withTenant(db, tenant, async (tx) => {
       await tx.execute(sql`DELETE FROM talent_review_fields WHERE code IN ('tags', 'strengths', 'development_areas')`);
-      await tx.execute(sql`UPDATE talent_review_fields SET name = '自定义备注', enabled = false WHERE code = 'remark'`);
+      await tx.execute(
+        sql`UPDATE talent_review_fields SET name = '自定义备注', enabled = false, sort_no = 99 WHERE code = 'remark'`,
+      );
     });
     return { api, operator, admin, tenant };
   }
-  const backfill = (api: ReturnType<typeof tenantApi>, user: string, tenant: string, extra = {}) =>
-    api.request('POST', `${PLATFORM}/tenants/${tenant}/talent-review-presets/backfill`, { user, body: {}, ...extra });
+  const backfill = (api: ReturnType<typeof tenantApi>, user: string, tenant: string, body = {}, extra = {}) =>
+    api.request('POST', `${PLATFORM}/tenants/${tenant}/seeds/backfill`, { user, body, ...extra });
+  type Report = { items: { module: string; key: string; installed: string[]; existing: number }[] };
 
-  it('补齐缺失的预置字段、保留租户定制；重复执行不新增；只认平台运营身份', async () => {
+  it('25 个预置字段齐全（含选项与配对）；已定制 / 改名 / 停用的不被覆盖；重复回补无变化；写审计；无平台权限拒绝', async () => {
     const t = await legacyTenant('trc-backfill');
     const other = await legacyTenant('trc-backfill-other');
-    expect(await rows(t.tenant)).toHaveLength(TALENT_REVIEW_PRESET_FIELDS.length - 3);
+    const total = TALENT_REVIEW_PRESET_FIELDS.length;
+    expect(await rows(t.tenant)).toHaveLength(total - 3);
     const denied = await backfill(t.api, t.admin.id, t.tenant);
     expect(denied.status).toBe(403);
-    expect((await backfill(t.api, t.operator.id, randomUUID())).status).toBe(404);
-    expect(await rows(t.tenant)).toHaveLength(TALENT_REVIEW_PRESET_FIELDS.length - 3);
+    expect(await rows(t.tenant)).toHaveLength(total - 3);
 
-    const first = await backfill(t.api, t.operator.id, t.tenant);
+    const auditedBefore = (await createAudits(t.tenant)).length;
+    const first = await backfill(t.api, t.operator.id, t.tenant, { modules: ['talent-review'] });
     expect(first.status, await first.clone().text()).toBe(200);
-    const result = (await first.json()) as { installed: string[]; existing: number };
-    expect(result.installed.sort()).toEqual(['development_areas', 'strengths', 'tags']);
-    expect(result.existing).toBe(TALENT_REVIEW_PRESET_FIELDS.length - 3);
+    const report = ((await first.json()) as Report).items.find((item) => item.key === 'preset-fields')!;
+    expect(report).toMatchObject({ module: 'talent-review', existing: total - 3 });
+    expect([...report.installed].sort()).toEqual(['development_areas', 'strengths', 'tags']);
     const after = await rows(t.tenant);
-    expect(after).toHaveLength(TALENT_REVIEW_PRESET_FIELDS.length);
-    expect(after.find((row) => row.code === 'remark')).toMatchObject({ name: '自定义备注', enabled: false });
+    expect(after).toHaveLength(total);
+    expect(after.find((row) => row.code === 'remark')).toMatchObject({
+      name: '自定义备注',
+      enabled: false,
+      sortNo: 99,
+    });
+    expect(after.filter((row) => row.pairFieldId !== null)).toHaveLength(
+      TALENT_REVIEW_PRESET_FIELDS.filter((preset) => preset.pairCode).length,
+    );
+    expect(await createAudits(t.tenant)).toHaveLength(auditedBefore + 3);
 
-    const again = await backfill(t.api, t.operator.id, t.tenant);
-    expect(await again.json()).toEqual({ installed: [], existing: TALENT_REVIEW_PRESET_FIELDS.length });
+    const again = (await (
+      await backfill(t.api, t.operator.id, t.tenant, { modules: ['talent-review'] })
+    ).json()) as Report;
+    expect(again.items.find((item) => item.key === 'preset-fields')).toMatchObject({ installed: [], existing: total });
     expect(await rows(t.tenant)).toEqual(after);
-    expect(await rows(other.tenant)).toHaveLength(TALENT_REVIEW_PRESET_FIELDS.length - 3);
+    expect(await createAudits(t.tenant)).toHaveLength(auditedBefore + 3);
+    expect(await rows(other.tenant)).toHaveLength(total - 3);
   });
 
-  it('同一命令 ID 重放返回原结果，不再写入', async () => {
-    const t = await legacyTenant('trc-backfill-replay');
-    const key = randomUUID();
-    const first = await backfill(t.api, t.operator.id, t.tenant, { idempotencyKey: key });
-    const original = await first.json();
-    await withTenant(testDb().db, t.tenant, (tx) =>
-      tx.execute(sql`DELETE FROM talent_review_fields WHERE code = 'tags'`),
-    );
-    const replay = await backfill(t.api, t.operator.id, t.tenant, { idempotencyKey: key });
-    expect([replay.status, await replay.json()]).toEqual([200, original]);
-    expect((await rows(t.tenant)).map((row) => row.code)).not.toContain('tags');
+  it('补装全空租户：25 个字段连同选项、配对关系一次装齐（与开通同一安装逻辑）', async () => {
+    const t = await legacyTenant('trc-backfill-empty');
+    await withTenant(testDb().db, t.tenant, async (tx) => {
+      await tx.execute(sql`UPDATE talent_review_fields SET pair_field_id = NULL`);
+      await tx.execute(sql`DELETE FROM talent_review_fields`);
+    });
+    expect(await rows(t.tenant)).toHaveLength(0);
+    const response = await backfill(t.api, t.operator.id, t.tenant, { modules: ['talent-review'] });
+    expect(response.status, await response.clone().text()).toBe(200);
+    const filled = await rows(t.tenant);
+    expect(filled).toHaveLength(TALENT_REVIEW_PRESET_FIELDS.length);
+    const paired = TALENT_REVIEW_PRESET_FIELDS.filter((preset) => preset.pairCode).length;
+    expect(filled.filter((row) => row.pairFieldId !== null)).toHaveLength(paired);
+    const options = await withTenant(testDb().db, t.tenant, (tx) => tx.select().from(talentReviewFieldOptions));
+    const expected = TALENT_REVIEW_PRESET_FIELDS.reduce((sum, preset) => sum + (preset.options?.length ?? 0), 0);
+    expect(options).toHaveLength(expected);
   });
 });

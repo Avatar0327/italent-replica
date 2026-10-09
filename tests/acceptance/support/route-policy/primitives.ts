@@ -317,6 +317,8 @@ export const PRIMITIVES: readonly Primitive[] = [
     ['talentReview.renameRequiresSeeAll', /\bREADINESS_NAME_REQUIRES_SEE_ALL\b/, { modules: ['talent-review'] }],
     // 人才盘点配置对象（分类 / 角色 / 字段目录）：改名要求看全部，判定在查重之前（config-kit.ts requireSeeAllToRename）
     ['talentReview.configRenameRequiresSeeAll', /\bNAME_REQUIRES_SEE_ALL\b/, { modules: ['talent-review'] }],
+    // 新建字段时指定成对字段：另需字段更新权 + update 按钮 + pairFieldId 编辑权（config-routes.ts requirePairUpdate）
+    ['talentReview.pairRequiresUpdate', call('requirePairUpdate'), { modules: ['talent-review'] }],
     ['selfService.transferInput', call('ownTransferInput'), { modules: ['self-service'] }],
     ['selfService.referenceChoices', call('referenceChoices'), { modules: ['self-service'] }],
     ['selfService.ownApplication', call('ownApplication'), { modules: ['self-service'] }],

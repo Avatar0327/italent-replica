@@ -7,6 +7,7 @@
 import { and, asc, eq, inArray, talentReviewFieldOptions as O, talentReviewFields as F, type Tx } from '@italent/db';
 import { FIELD_DEFAULT_PRECISION } from '@italent/domain';
 import { AppError } from '../../errors.js';
+import { notFoundMessage, requireConfigCreatable, requireConfigVisible } from './access.js';
 import {
   auditConfig,
   type ConfigSpec,
@@ -123,16 +124,30 @@ async function insertOptions(tx: Tx, ctx: WriteContext, fieldId: string, options
   );
 }
 
-/** 成对字段：锁住另一端，校验类型相同 / 角色相反 / 尚未成对（先于新建，否则会先撞一对一唯一约束）。 */
+/**
+ * 成对字段：先于新建锁住另一端（否则会先撞一对一唯一约束）。成对是对另一端的修改：另一端不存在与范围外同一个 404
+ * （不暴露存在性），再校验类型相同 / 角色相反 / 已启用（停用后不可新引用，设计 §7 启停行）/ 尚未成对。
+ * 另一端的修改授权（数据操作权、update 按钮、pairFieldId 编辑权）在路由里先于本函数校验。
+ */
 async function lockPartner(tx: Tx, ctx: WriteContext, input: FieldCreate): Promise<string> {
   const [partner] = await tx
-    .select({ id: F.id, kind: F.kind, pairRole: F.pairRole, pairFieldId: F.pairFieldId })
+    .select({
+      id: F.id,
+      kind: F.kind,
+      enabled: F.enabled,
+      pairRole: F.pairRole,
+      pairFieldId: F.pairFieldId,
+      createdBy: F.createdBy,
+    })
     .from(F)
     .where(and(eq(F.tenantId, ctx.tenantId), eq(F.id, input.pairFieldId!)))
     .for('update');
-  if (!partner || partner.kind !== input.kind || partner.pairRole === null || partner.pairRole === input.pairRole) {
+  if (!partner) throw new AppError('NOT_FOUND', notFoundMessage('field'));
+  requireConfigVisible(ctx.scope, 'field', partner.createdBy);
+  if (partner.kind !== input.kind || partner.pairRole === null || partner.pairRole === input.pairRole) {
     throw invalid('PAIR_INVALID', '成对字段必须是另一个角色相反、类型相同的字段');
   }
+  if (!partner.enabled) throw invalid('PAIR_TARGET_DISABLED', '该字段已停用，不能新建与它成对的字段');
   if (partner.pairFieldId !== null) {
     throw new AppError('CONFLICT', '该字段已有成对字段', { reason: 'PAIR_ALREADY_USED' });
   }
@@ -151,6 +166,8 @@ async function linkPartner(tx: Tx, ctx: WriteContext, id: string, partnerId: str
 
 export async function createField(tx: Tx, ctx: WriteContext, input: FieldCreate): Promise<FieldView> {
   const { options, precision, ...columns } = input;
+  // 新建范围先于一切读取：范围为空的人对任何 pairFieldId 都得到同一个结果
+  requireConfigCreatable(ctx.scope, 'field');
   if (input.pairFieldId !== undefined && input.pairRole === undefined) {
     throw invalid('PAIR_ROLE_REQUIRED', '指定成对字段时必须给出本字段的角色');
   }
@@ -159,13 +176,17 @@ export async function createField(tx: Tx, ctx: WriteContext, input: FieldCreate)
   }
   checkOptions(input.kind, options, true);
   const partnerId = input.pairFieldId === undefined ? undefined : await lockPartner(tx, ctx, input);
-  const created = await createConfig(tx, FIELD, ctx, {
-    ...columns,
-    precision: input.kind === 'number' ? (precision ?? FIELD_DEFAULT_PRECISION) : null,
-  });
-  await insertOptions(tx, ctx, created.id, options ?? []);
-  if (partnerId) await linkPartner(tx, ctx, created.id, partnerId);
-  return (await loadFieldView(tx, ctx.tenantId, created.id))!;
+  const created = await createConfig(
+    tx,
+    FIELD,
+    ctx,
+    { ...columns, precision: input.kind === 'number' ? (precision ?? FIELD_DEFAULT_PRECISION) : null },
+    async (id) => {
+      await insertOptions(tx, ctx, id, options ?? []);
+      if (partnerId) await linkPartner(tx, ctx, id, partnerId);
+    },
+  );
+  return created;
 }
 
 async function syncOptions(tx: Tx, ctx: WriteContext, fieldId: string, options: readonly FieldOptionInput[]) {

@@ -33,7 +33,12 @@ const rdyWrite = (fields: 'body' | 'none') =>
  * 新建只有看全部可建（DEC-082）；改名要求看全部（NAME_REQUIRES_SEE_ALL，判定在查重之前）。路由声明文档见
  * docs/08_设计/R3-T04_PR-B1_路由声明.md。
  */
-function configRoutes(key: 'category' | 'role' | 'field', path: string, table: string) {
+function configRoutes(
+  key: 'category' | 'role' | 'field',
+  path: string,
+  table: string,
+  createGuards: readonly string[] = [],
+) {
   const code = TALENT_REVIEW_OBJECTS[key].code;
   const fields = projector(`talentReview.${key}`, `talentReview.${key}`);
   const point = seeAll(NOT_FOUND, { creatorLocator: `talentReview.${key}.createdBy` });
@@ -63,6 +68,7 @@ function configRoutes(key: 'category' | 'role' | 'field', path: string, table: s
       button: button('create', 'list'),
       scope: seeAll(NOT_FOUND),
       fields,
+      guards: createGuards,
       write: changed('body'),
     }),
     [`PATCH ${path}/:id`]: object({
@@ -94,7 +100,10 @@ const SETTINGS_FIELDS = projector('talentReview.settings', 'talentReview.setting
 export const TALENT_REVIEW_POLICIES = defineTable('talent-review', {
   ...configRoutes('category', '/api/tenant/talent-review/categories', 'talent_review_categories'),
   ...configRoutes('role', '/api/tenant/talent-review/roles', 'talent_review_roles'),
-  ...configRoutes('field', '/api/tenant/talent-review/fields', 'talent_review_fields'),
+  // 新建时指定成对字段 = 同时修改另一端：另需更新权、update 按钮与 pairFieldId 编辑权（requirePairUpdate）
+  ...configRoutes('field', '/api/tenant/talent-review/fields', 'talent_review_fields', [
+    'talentReview.pairRequiresUpdate',
+  ]),
   // 租户设置是单例：读写都只有看全部（requireConfigCreatable，否则 404）；没有记录时返回默认值与 revision 0
   [`GET ${SETTINGS}`]: object({
     object: SETTINGS_CODE,

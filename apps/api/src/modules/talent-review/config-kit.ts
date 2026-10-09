@@ -167,6 +167,8 @@ export async function createConfig<V extends { id: string; name: string }>(
   spec: ConfigSpec<V>,
   ctx: WriteContext,
   values: Record<string, unknown>,
+  /** 聚合的子数据（如字段选项）在创建审计之前写入，创建快照才是完整聚合（DEC-216）。 */
+  writeChildren?: (id: string) => Promise<void>,
 ): Promise<V> {
   requireConfigCreatable(ctx.scope, spec.object);
   const [row] = await uniqueOr(spec.duplicate, spec.label, () =>
@@ -182,6 +184,7 @@ export async function createConfig<V extends { id: string; name: string }>(
       })
       .returning({ id: spec.table.id }),
   );
+  await writeChildren?.(row!.id as string);
   const after = (await loadConfig(tx, spec, ctx.tenantId, row!.id as string))!;
   await auditConfig(tx, ctx, spec.object, 'create', after.id, null, after);
   return after;

@@ -91,7 +91,7 @@ export async function configOperator(world: PermissionWorld, object: ConfigObjec
   const profile = await createProfile(world, `trc-${randomUUID().slice(0, 8)}`, { apps: [TALENT_REVIEW_APP] });
   const hidden = new Set(options.hidden ?? []);
   const locked = new Set(options.readonly ?? []);
-  const setButtons = async (buttons: boolean) => {
+  const setButtons = async (buttons: boolean, omit: readonly string[] | undefined = options.omitButtons) => {
     const response = await setObjectPermission(
       world,
       profile,
@@ -104,7 +104,7 @@ export async function configOperator(world: PermissionWorld, object: ConfigObjec
         })),
         buttons: buttons
           ? definition.buttons
-              .filter((button) => !options.omitButtons?.includes(button.code))
+              .filter((button) => !omit?.includes(button.code))
               .map((button) => ({ buttonCode: button.code, level: button.level }))
           : [],
       },

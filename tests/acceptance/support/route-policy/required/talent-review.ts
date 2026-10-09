@@ -142,6 +142,46 @@ const RENAME_GUARD: Obligation = {
   ],
 };
 
+/** 新建字段时指定成对字段 = 同时修改另一端：条件守卫 + 条件准入（更新权、update 按钮；pairFieldId 编辑权随字段元数据）。 */
+const PAIR_UPDATE = 'talentReview.pairRequiresUpdate';
+const pairEntry: Evidence = {
+  role: 'call',
+  unit: `${CFG}#registerFields`,
+  anchor: 'if (body.pairFieldId !== undefined) await requirePairUpdate(c, deps, body.pairFieldId)',
+};
+const pairCall: Evidence = {
+  role: 'call',
+  unit: `${CFG}#requirePairUpdate`,
+  anchor: "const ctx = await reviewWriteContext(c, deps, 'field', 'update', 0)",
+};
+const FIELD_OBJECT_CONST: Evidence = {
+  role: 'const',
+  unit: `${CATALOG}>field`,
+  anchor: "object('Field'",
+};
+const PAIR_OBLIGATIONS: Obligation[] = [
+  {
+    perm: `guard:${PAIR_UPDATE}`,
+    facts: [`guard:${PAIR_UPDATE}`],
+    note: '条件守卫：请求体带 pairFieldId 时，另需字段更新权与 update 按钮（先于读取另一端）',
+    at: [pairEntry],
+  },
+  {
+    perm: 'obj:TalentReview.Field:update',
+    purpose: `when:${PAIR_UPDATE}`,
+    at: [pairCall, ...CONTEXT, FIELD_OBJECT_CONST],
+  },
+  {
+    perm: 'btn:TalentReview.Field#update@detail',
+    purpose: `when:${PAIR_UPDATE}`,
+    at: [
+      pairCall,
+      ...BUTTON,
+      { role: 'const', unit: `${ACCESS}#WRITE_BUTTONS`, anchor: "update: ['update', 'detail']" },
+    ],
+  },
+];
+
 /** 分类 / 角色 / 字段目录五条路由；settings 另列（单例，只有读与改）。 */
 function cfgObject(key: string, label: string, register: string, base: string, constName: string): RequiredTable {
   const object = `TalentReview.${label}`;
@@ -150,7 +190,10 @@ function cfgObject(key: string, label: string, register: string, base: string, c
   return {
     [`GET ${BASE_ROOT}/${base}`]: [get(`router.get(${constName}, async (c) => { ${ctx}`), FILTER_GUARD],
     [`GET ${BASE_ROOT}/${base}/:id`]: [get(`router.get(\`\${${constName}}/:id\`, async (c) => { ${ctx}`)],
-    [`POST ${BASE_ROOT}/${base}`]: cfgChange(object, key, label, register, 'create'),
+    [`POST ${BASE_ROOT}/${base}`]: [
+      ...cfgChange(object, key, label, register, 'create'),
+      ...(key === 'field' ? PAIR_OBLIGATIONS : []),
+    ],
     [`PATCH ${BASE_ROOT}/${base}/:id`]: [...cfgChange(object, key, label, register, 'update'), RENAME_GUARD],
     [`DELETE ${BASE_ROOT}/${base}/:id`]: cfgChange(object, key, label, register, 'delete'),
   };

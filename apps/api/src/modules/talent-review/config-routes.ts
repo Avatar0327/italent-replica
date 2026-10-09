@@ -229,6 +229,15 @@ function registerRoles(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   });
 }
 
+/**
+ * 新建时指定成对字段 = 同时修改另一端字段（回填 pairFieldId）：另需字段的数据操作更新权、update 按钮与 pairFieldId 编辑权，
+ * 在读取另一端之前校验；另一端的范围与存在性在命令里一并判定（不存在与范围外同一个 404）。
+ */
+async function requirePairUpdate(c: Context<TenantEnv>, deps: TenantRouteDeps, pairFieldId: string) {
+  const ctx = await reviewWriteContext(c, deps, 'field', 'update', 0);
+  await checkWriteFields(deps, ctx, 'field', 'update', { pairFieldId });
+}
+
 function registerFields(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.get(FIELDS, async (c) => {
     const ctx = await reviewContext(c, deps, 'field');
@@ -245,6 +254,7 @@ function registerFields(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     requireNew(ctx.expectedRevision);
     const body = await parseBody(c, fieldCreate);
     await checkWriteFields(deps, ctx, 'field', 'create', body);
+    if (body.pairFieldId !== undefined) await requirePairUpdate(c, deps, body.pairFieldId);
     return runWrite(c, deps, ctx, 'field', body, 201, visibleTo('field'), (tx, w) => fields.createField(tx, w, body));
   });
   router.patch(`${FIELDS}/:id`, async (c) => {
