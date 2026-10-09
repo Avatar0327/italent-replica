@@ -93,8 +93,15 @@ export interface BusinessAdapter {
   /**
    * 批量操作（异常管理员交接 / 停用接管）在逐单锁实例之前，按业务自己的规范顺序一次锁齐本批业务行（R3-T07 P3-2：
    * 发展计划按计划 ID 升序，与 IDP 批量干预一致）。没有批量锁序要求的业务不实现。
+   * @param options.organization 是否提前取组织锁（F-065）：手动交接在登记替代人（成员行 KEY SHARE）之前需要；停用接管
+   *   已持有账号行 / 成员行的锁，不得再等组织锁（入职绑定是“组织锁 → 账号行”，反过来成环），传 false。
    */
-  lockMany?(tx: Tx, ctx: ApprovalContext, businessIds: readonly string[]): Promise<void>;
+  lockMany?(
+    tx: Tx,
+    ctx: ApprovalContext,
+    businessIds: readonly string[],
+    options: { readonly organization: boolean },
+  ): Promise<void>;
   /** 同意前的业务前提（R3-T07 无目标校验 IDP-R10）；不满足时抛错，任务不动。 */
   beforeApprove?(tx: Tx, ctx: ApprovalContext, businessId: string, nodeKey: string): Promise<void>;
   /**
@@ -258,7 +265,8 @@ const employmentAdapter: BusinessAdapter = {
    * 入职绑定账号是“组织锁 → 成员行 FOR UPDATE”；交接若先持成员行再等组织锁就与它成环。会签合席结算可能推进任一种任职
    * 业务（落地时校验部门要取组织锁），所以只要批里有任职业务就取组织锁，调动另取编制锁。
    */
-  async lockMany(tx, ctx, businessIds) {
+  async lockMany(tx, ctx, businessIds, options) {
+    if (!options.organization) return;
     const kinds = rowsOf<{ kind: string | null }>(
       await tx.execute(sql`SELECT (SELECT kind FROM employment_payload_versions p
         WHERE p.tenant_id=b.tenant_id AND p.business_id=b.id ORDER BY version_no DESC LIMIT 1) AS kind

@@ -12,7 +12,7 @@ import { randomUUID } from 'node:crypto';
 import { createUser, getUser, grantMembership, setUserStatus, sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { approvalWorld, transferScene, type ApprovalWorld, type InstanceView } from './AC-APV-support.js';
+import { approvalWorld, transferScene, type InstanceView } from './AC-APV-support.js';
 import { cmd } from './support/tenant-api.js';
 import { NODES, pendingOf, rowsOf } from './support/f048.js';
 import { settledOrBlocked, waitForBlocked } from './support/pg-interleave.js';
@@ -160,7 +160,8 @@ async function leaveScene(label: string) {
   // 指定替代人（可信夹具直写，不经交接入口：交接会把待办一并转走）：停用接管把待办转给替代人
   const successor = await w.member('替代人');
   await withTenant(w.db, w.tenant.id, (tx) =>
-    tx.execute(sql`INSERT INTO approval_exception_admin_successors (tenant_id,user_id,successor_user_id,designated_by,command_id)
+    tx.execute(sql`INSERT INTO approval_exception_admin_successors
+      (tenant_id,user_id,successor_user_id,designated_by,command_id)
       VALUES (${w.tenant.id},${source.id}::uuid,${successor}::uuid,${w.hr.id}::uuid,${randomUUID()})`),
   );
   const target = await w.employee('待绑定员工');
