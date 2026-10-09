@@ -10,12 +10,24 @@
  * - 发展通道（QL-R13）：纵向由级别顺序生成，横向逐条维护（整组替换）。
  */
 import { sql, type Tx } from '@italent/db';
+import { recordImportLog } from '../../audit/record.js';
 import { AppError } from '../../errors.js';
-import { accessSql, fieldVisible, qlReadable, requireEditable } from './access.js';
+import { auditActor } from '../../system-actor.js';
+import { accessSql, codeOf, fieldVisible, qlReadable, requireEditable } from './access.js';
 import { MAX_ABILITIES, type Cell } from './input.js';
 import type * as input from './input.js';
 import { loadRow, withStandardParts, type DetailRow, type StandardView } from './read-model.js';
-import { audit, bumped, lockEditable, referenced, rowAccess, rowsOf, type WriteContext } from './store.js';
+import {
+  audit,
+  bumped,
+  deleteChildren,
+  guardUnique,
+  lockEditable,
+  referenced,
+  rowAccess,
+  rowsOf,
+  type WriteContext,
+} from './store.js';
 
 async function reloadStandard(tx: Tx, ctx: WriteContext, id: string): Promise<StandardView> {
   return (await withStandardParts(tx, ctx.tenantId, [(await loadRow(tx, ctx.tenantId, 'standard', id))!]))[0]!;
@@ -45,12 +57,12 @@ async function checkGrades(tx: Tx, ctx: WriteContext, target: TargetRow, abiliti
     if (target.eval_mode !== 'grade') {
       throw new AppError('VALIDATION_FAILED', '只有评级指标才能设置目标等级', { reason: 'TARGET_GRADE_NOT_ALLOWED' });
     }
-    const ok = rowsOf(
-      await tx.execute(sql`SELECT 1 FROM ql_grade_details WHERE tenant_id = ${ctx.tenantId}
-        AND id = ${ability.targetGradeId}::uuid AND scheme_id = ${target.grade_scheme_id}::uuid
-          AND deleted_at IS NULL`),
+    // 锁住等级明细再判断（锁序 标准 → 指标 → 等级明细，P2-07）：明细正被软删时等其提交，按提交后的状态判断
+    const ok = rowsOf<{ deleted_at: unknown }>(
+      await tx.execute(sql`SELECT deleted_at FROM ql_grade_details WHERE tenant_id = ${ctx.tenantId}
+        AND id = ${ability.targetGradeId}::uuid AND scheme_id = ${target.grade_scheme_id}::uuid FOR SHARE`),
     );
-    if (!ok.length)
+    if (!ok.length || ok[0]!.deleted_at !== null)
       throw new AppError('VALIDATION_FAILED', '目标等级不属于该指标的等级方案', { reason: 'TARGET_GRADE_INVALID' });
   }
 }
@@ -187,6 +199,9 @@ async function writeLevelDescriptions(
   }
 }
 
+const standardExists = () =>
+  new AppError('CONFLICT', '该任职类别已有任职资格标准，一个类别只能对应一条标准', { reason: 'STANDARD_EXISTS' });
+
 export async function createStandard(tx: Tx, ctx: WriteContext, body: input.StandardCreate) {
   // 类别须在操作人写范围内（§5.2 #5）：标准的资源集合随类别；仅向下公开可见的类别 403
   const { access, row: category } = await rowAccess(tx, ctx, ctx.scope, 'category', body.categoryId, 'SHARE');
@@ -199,21 +214,20 @@ export async function createStandard(tx: Tx, ctx: WriteContext, body: input.Stan
       sql`SELECT 1 FROM ql_standards WHERE tenant_id = ${ctx.tenantId} AND category_id = ${body.categoryId}::uuid`,
     ),
   );
-  if (taken.length) {
-    throw new AppError('CONFLICT', '该任职类别已有任职资格标准，一个类别只能对应一条标准', {
-      reason: 'STANDARD_EXISTS',
-    });
-  }
+  if (taken.length) throw standardExists();
   const levelIds = [...new Set(body.levelIds)];
   for (const levelId of levelIds) await referenced(tx, ctx, 'level', levelId);
-  const id = rowsOf<{ id: string }>(
-    await tx.execute(sql`INSERT INTO ql_standards (tenant_id, category_id, name, enabled, level_ids, owner_id,
-      owner_org_id,
-        created_by, created_at, updated_at)
-      VALUES (${ctx.tenantId}, ${body.categoryId}, ${body.name}, ${body.enabled ?? true},
-        ${`{${levelIds.join(',')}}`}::uuid[], ${category!.owner_id as string}, ${category!.owner_org_id as string},
-        ${ctx.userId}, ${ctx.now.toISOString()}, ${ctx.now.toISOString()}) RETURNING id`),
-  )[0]!.id;
+  // 同一类别并发建标准：唯一约束兜底，同样 409（P3）
+  const inserted = await guardUnique(
+    () =>
+      tx.execute(sql`INSERT INTO ql_standards (tenant_id, category_id, name, enabled, level_ids, owner_id,
+        owner_org_id, created_by, created_at, updated_at)
+        VALUES (${ctx.tenantId}, ${body.categoryId}, ${body.name}, ${body.enabled ?? true},
+          ${`{${levelIds.join(',')}}`}::uuid[], ${category!.owner_id as string}, ${category!.owner_org_id as string},
+          ${ctx.userId}, ${ctx.now.toISOString()}, ${ctx.now.toISOString()}) RETURNING id`),
+    standardExists,
+  );
+  const id = rowsOf<{ id: string }>(inserted)[0]!.id;
   await writeCells(tx, ctx, id, levelIds, body.details, []);
   await writeLevelDescriptions(tx, ctx, id, levelIds, body.levelDescriptions);
   const after = await reloadStandard(tx, ctx, id);
@@ -238,6 +252,18 @@ export async function updateStandard(tx: Tx, ctx: WriteContext, id: string, body
 export async function deleteStandard(tx: Tx, ctx: WriteContext, id: string) {
   await lockEditable(tx, ctx, 'standard', id);
   const before = await reloadStandard(tx, ctx, id);
+  // 发展通道随标准级联删除：另需发展通道的删除权，逐条写删除快照（DEC-019 / DEC-338 自检）
+  const channels = await loadChannels(tx, ctx.tenantId, id);
+  await deleteChildren(
+    tx,
+    ctx,
+    'developmentChannel',
+    channels.horizontal.map((channel) => ({
+      objectId: id,
+      orgId: before.ownerOrgId,
+      snapshot: { standardId: id, ...channel },
+    })),
+  );
   await tx.execute(sql`DELETE FROM ql_standards WHERE tenant_id = ${ctx.tenantId} AND id = ${id}::uuid`);
   await audit(tx, ctx, 'standard', 'delete', id, { before, after: null, orgId: before.ownerOrgId });
   return before;
@@ -252,8 +278,9 @@ export interface ImportReceipt {
 
 interface Resolved {
   readonly standardId: string;
+  readonly categoryCode: string;
   readonly levelId: string;
-  readonly target: TargetRow & { readonly enabled: boolean };
+  readonly targetId: string;
 }
 
 /** 按编码解析（只在导入人的读取范围内）：类别 → 标准（须可写）、级别（须在标准的级别范围内）、指标（非通用）。 */
@@ -306,61 +333,134 @@ async function resolveRows(tx: Tx, ctx: WriteContext, rows: input.StandardImport
       fail('LEVEL_NOT_IN_STANDARD');
       continue;
     }
-    const target = rowsOf<TargetRow & { enabled: boolean }>(
-      await tx.execute(sql`SELECT t.id, t.is_common, t.description, t.eval_mode, t.grade_scheme_id, t.enabled
-        FROM ql_targets t WHERE t.tenant_id = ${ctx.tenantId} AND t.code = ${row.targetCode}
-          AND ${readableIn('t', 'target')}`),
+    const target = rowsOf<{ id: string }>(
+      await tx.execute(sql`SELECT t.id FROM ql_targets t WHERE t.tenant_id = ${ctx.tenantId}
+        AND t.code = ${row.targetCode} AND ${readableIn('t', 'target')}`),
     )[0];
     if (!target) {
       fail('TARGET_NOT_FOUND');
       continue;
     }
-    if (target.is_common) {
-      fail('TARGET_COMMON');
-      continue;
-    }
-    resolved.push({ standardId: category.standard_id, levelId: level.id, target });
+    resolved.push({
+      standardId: category.standard_id,
+      categoryCode: row.categoryCode,
+      levelId: level.id,
+      targetId: target.id,
+    });
   }
   return { resolved, receipts };
 }
 
-export async function importStandardDetails(tx: Tx, ctx: WriteContext, body: input.StandardImport) {
-  const { resolved, receipts } = await resolveRows(tx, ctx, body.rows);
-  const cells = new Map<string, { standardId: string; levelId: string; target: Resolved['target']; rows: number[] }>();
+interface ImportCell {
+  readonly standardId: string;
+  readonly levelId: string;
+  readonly targetId: string;
+  readonly rows: number[];
+}
+
+/** 导入失败：整批回滚，逐行回执（receipts）；errors 供失败的任务日志生成逐行错误报告（DEC-199）。 */
+function importRejected(receipts: ImportReceipt[]) {
+  receipts.sort((a, b) => a.row - b.row);
+  return new AppError('VALIDATION_FAILED', '导入数据有误，整批未导入', {
+    reason: 'IMPORT_REJECTED',
+    receipts,
+    errors: receipts.map((receipt) => ({ row: receipt.row, details: { reason: receipt.reason } })),
+  });
+}
+
+/**
+ * 逐标准核对预期 revision（DEC-067，P2-06）：涉及的标准都要带，缺了 400；锁住后不符 409，整批不导入。
+ * 锁序：标准（id 升序，FOR UPDATE）→ 指标（id 升序，FOR SHARE），与覆盖写入、冻结一致（P2-07）。
+ */
+async function lockImportTargets(
+  tx: Tx,
+  ctx: WriteContext,
+  body: input.StandardImport,
+  resolved: readonly (Resolved | undefined)[],
+) {
+  const expected = new Map(body.standards.map((item) => [item.categoryCode, item.revision]));
+  const standards = new Map<string, number>();
+  for (const item of resolved) {
+    if (!item) continue;
+    const revision = expected.get(item.categoryCode);
+    if (revision === undefined) {
+      throw new AppError('VALIDATION_FAILED', `请提供任职类别【${item.categoryCode}】的标准版本号`, {
+        reason: 'STANDARD_REVISION_REQUIRED',
+        categoryCode: item.categoryCode,
+      });
+    }
+    standards.set(item.standardId, revision);
+  }
+  for (const standardId of [...standards.keys()].sort()) {
+    const locked = rowsOf<{ revision: number }>(
+      await tx.execute(sql`SELECT revision FROM ql_standards WHERE tenant_id = ${ctx.tenantId}
+        AND id = ${standardId}::uuid FOR UPDATE`),
+    )[0]!;
+    if (locked.revision !== standards.get(standardId)) {
+      throw new AppError('REVISION_CONFLICT', '任职资格标准已变更，请刷新后显式重提', {
+        standardId,
+        expected: standards.get(standardId),
+        actual: locked.revision,
+      });
+    }
+  }
+  const targets = new Map<string, TargetRow & { enabled: boolean }>();
+  for (const targetId of [...new Set(resolved.flatMap((item) => (item ? [item.targetId] : [])))].sort()) {
+    const target = rowsOf<TargetRow & { enabled: boolean }>(
+      await tx.execute(sql`SELECT id, is_common, description, eval_mode, grade_scheme_id, enabled FROM ql_targets
+        WHERE tenant_id = ${ctx.tenantId} AND id = ${targetId}::uuid FOR SHARE`),
+    )[0]!;
+    targets.set(targetId, target);
+  }
+  return { standards: [...standards.keys()].sort(), targets };
+}
+
+/** 锁后按指标的当前状态复核（通用指标不能导入；新引用的指标须启用），把行归到格。 */
+async function groupCells(
+  tx: Tx,
+  ctx: WriteContext,
+  resolved: readonly (Resolved | undefined)[],
+  targets: ReadonlyMap<string, TargetRow & { enabled: boolean }>,
+  receipts: ImportReceipt[],
+) {
+  const cells = new Map<string, ImportCell>();
+  const existing = new Map<string, string>();
   for (const [index, item] of resolved.entries()) {
     if (!item) continue;
-    const cellKey = `${item.standardId}|${key(item.levelId, item.target.id)}`;
+    const target = targets.get(item.targetId)!;
+    if (target.is_common) {
+      receipts.push({ row: index + 1, reason: 'TARGET_COMMON' });
+      continue;
+    }
+    const cellKey = `${item.standardId}|${key(item.levelId, item.targetId)}`;
     const cell = cells.get(cellKey) ?? {
       standardId: item.standardId,
       levelId: item.levelId,
-      target: item.target,
+      targetId: item.targetId,
       rows: [],
     };
     cell.rows.push(index);
     if (cell.rows.length > MAX_ABILITIES) receipts.push({ row: index + 1, reason: 'TOO_MANY_ABILITIES' });
     cells.set(cellKey, cell);
   }
-  const standards = [...new Set([...cells.values()].map((cell) => cell.standardId))].sort();
-  // 先锁标准（id 升序，与覆盖写入、冻结同一锁序），再按格校验新引用的指标是否启用
-  for (const standardId of standards) {
-    await tx.execute(
-      sql`SELECT id FROM ql_standards WHERE tenant_id = ${ctx.tenantId} AND id = ${standardId}::uuid FOR UPDATE`,
-    );
-  }
-  const existing = new Map<string, string>();
-  for (const cell of cells.values()) {
+  for (const [cellKey, cell] of cells) {
     const detail = rowsOf<{ id: string }>(
       await tx.execute(sql`SELECT id FROM ql_standard_details WHERE tenant_id = ${ctx.tenantId}
         AND standard_id = ${cell.standardId}::uuid AND level_id = ${cell.levelId}::uuid
-          AND target_id = ${cell.target.id}::uuid`),
+          AND target_id = ${cell.targetId}::uuid`),
     )[0];
-    if (detail) existing.set(`${cell.standardId}|${key(cell.levelId, cell.target.id)}`, detail.id);
-    else if (!cell.target.enabled) receipts.push({ row: cell.rows[0]! + 1, reason: 'TARGET_DISABLED' });
+    if (detail) existing.set(cellKey, detail.id);
+    else if (!targets.get(cell.targetId)!.enabled) receipts.push({ row: cell.rows[0]! + 1, reason: 'TARGET_DISABLED' });
   }
-  if (receipts.length) {
-    receipts.sort((a, b) => a.row - b.row);
-    throw new AppError('VALIDATION_FAILED', '导入数据有误，整批未导入', { reason: 'IMPORT_REJECTED', receipts });
-  }
+  return { cells, existing };
+}
+
+export async function importStandardDetails(tx: Tx, ctx: WriteContext, body: input.StandardImport) {
+  const { resolved, receipts } = await resolveRows(tx, ctx, body.rows);
+  if (receipts.length) throw importRejected(receipts);
+  const { standards, targets } = await lockImportTargets(tx, ctx, body, resolved);
+  const { cells, existing } = await groupCells(tx, ctx, resolved, targets, receipts);
+  if (receipts.length) throw importRejected(receipts);
   const before = new Map<string, StandardView>();
   for (const standardId of standards) before.set(standardId, await reloadStandard(tx, ctx, standardId));
   let abilities = 0;
@@ -369,7 +469,7 @@ export async function importStandardDetails(tx: Tx, ctx: WriteContext, body: inp
     if (!detailId) {
       detailId = rowsOf<{ id: string }>(
         await tx.execute(sql`INSERT INTO ql_standard_details (tenant_id, standard_id, level_id, target_id)
-          VALUES (${ctx.tenantId}, ${cell.standardId}, ${cell.levelId}, ${cell.target.id}) RETURNING id`),
+          VALUES (${ctx.tenantId}, ${cell.standardId}, ${cell.levelId}, ${cell.targetId}) RETURNING id`),
       )[0]!.id;
     }
     await tx.execute(
@@ -390,17 +490,27 @@ export async function importStandardDetails(tx: Tx, ctx: WriteContext, body: inp
     );
     abilities += rows.length;
   }
+  const orgs = new Map<string, string>();
   for (const standardId of standards) {
     await tx.execute(sql`UPDATE ql_standards SET revision = revision + 1, updated_at = ${ctx.now.toISOString()}
       WHERE tenant_id = ${ctx.tenantId} AND id = ${standardId}::uuid`);
     const after = await reloadStandard(tx, ctx, standardId);
+    orgs.set(standardId, after.ownerOrgId);
     await audit(tx, ctx, 'standard', 'import', standardId, {
       before: before.get(standardId),
       after,
       orgId: after.ownerOrgId,
     });
   }
-  return { standards: standards.length, cells: cells.size, abilities };
+  // 任务级日志（DEC-199，P2-12）：逐行成功，归属到所在标准的所属组织
+  await recordImportLog(
+    tx,
+    { ...ctx, actorUserId: auditActor(ctx.userId) },
+    codeOf('standard'),
+    body.rows.map((row) => ({ status: 'updated', code: row.categoryCode })),
+    resolved.map((item) => ({ objectId: item!.standardId, orgId: orgs.get(item!.standardId) ?? null })),
+  );
+  return { standards: standards.length, cells: cells.size, abilities, standardIds: standards };
 }
 
 // ── 发展通道（QL-R13） ───────────────────────────────────────
@@ -440,7 +550,21 @@ export async function loadChannels(tx: Tx, tenantId: string, standardId: string)
   };
 }
 
-/** 横向通道整组替换（随标准授权，If-Match 为标准的 revision）；目标类别 / 级别须可引用（新引用须启用）。 */
+/** 横向通道的保存提示（DEC-347② 🟡：只提示、不拦截）。 */
+export interface ChannelWarning {
+  readonly index: number;
+  readonly reason: 'TARGET_STANDARD_MISSING' | 'TARGET_LEVEL_NOT_IN_STANDARD';
+}
+
+const channelKey = (c: { levelId: string; targetCategoryId: string; targetLevelId: string }) =>
+  `${c.levelId}|${c.targetCategoryId}|${c.targetLevelId}`;
+
+/**
+ * 横向通道整组替换（随标准授权，If-Match 为标准的 revision）；目标类别 / 级别须可引用（新引用须启用）。
+ * - 横向通往其他类别（QL-R13）：目标类别等于本标准的类别（同级或本类别其他级别）400 CHANNEL_SELF_LOOP（P2-09）；
+ * - 目的地没有标准、或目标级别不在该标准的级别范围内：照常保存，返回里逐条提示（DEC-347② 🟡）；
+ * - 审计逐条路径写新增 / 删除（键即发展通道的字段，审计员按字段目录可见，P2-11）。
+ */
 export async function putChannels(tx: Tx, ctx: WriteContext, standardId: string, body: input.ChannelsPut) {
   const row = await lockEditable(tx, ctx, 'standard', standardId);
   const before = await loadChannels(tx, ctx.tenantId, standardId);
@@ -449,13 +573,25 @@ export async function putChannels(tx: Tx, ctx: WriteContext, standardId: string,
     sql`DELETE FROM ql_development_channels WHERE tenant_id = ${ctx.tenantId} AND standard_id = ${standardId}::uuid`,
   );
   const levels = row.level_ids as string[];
-  for (const channel of body.channels) {
+  const warnings: ChannelWarning[] = [];
+  for (const [index, channel] of body.channels.entries()) {
     if (!levels.includes(channel.levelId)) {
       throw new AppError('VALIDATION_FAILED', '级别不在该标准的级别范围内', { reason: 'LEVEL_NOT_IN_STANDARD' });
+    }
+    if (channel.targetCategoryId === row.category_id) {
+      throw new AppError('VALIDATION_FAILED', '横向发展通道须通往其他任职类别', { reason: 'CHANNEL_SELF_LOOP' });
     }
     const isNew = !known.has(`${channel.targetCategoryId}|${channel.targetLevelId}`);
     await referenced(tx, ctx, 'category', channel.targetCategoryId, isNew);
     await referenced(tx, ctx, 'level', channel.targetLevelId, isNew);
+    const destination = rowsOf<{ level_ids: string[] }>(
+      await tx.execute(sql`SELECT level_ids FROM ql_standards WHERE tenant_id = ${ctx.tenantId}
+        AND category_id = ${channel.targetCategoryId}::uuid`),
+    )[0];
+    if (!destination) warnings.push({ index, reason: 'TARGET_STANDARD_MISSING' });
+    else if (!destination.level_ids.includes(channel.targetLevelId)) {
+      warnings.push({ index, reason: 'TARGET_LEVEL_NOT_IN_STANDARD' });
+    }
     await tx.execute(sql`INSERT INTO ql_development_channels (tenant_id, standard_id, level_id,
       target_category_id, target_level_id)
       VALUES (${ctx.tenantId}, ${standardId}, ${channel.levelId}, ${channel.targetCategoryId}, ${channel.targetLevelId})
@@ -465,10 +601,22 @@ export async function putChannels(tx: Tx, ctx: WriteContext, standardId: string,
     updated_at = ${ctx.now.toISOString()}
     WHERE tenant_id = ${ctx.tenantId} AND id = ${standardId}::uuid`);
   const after = await loadChannels(tx, ctx.tenantId, standardId);
-  await audit(tx, ctx, 'developmentChannel', 'update', standardId, {
-    before,
-    after,
-    orgId: row.owner_org_id as string,
-  });
-  return after;
+  const orgId = row.owner_org_id as string;
+  const was = new Set(before.horizontal.map(channelKey));
+  const now = new Set(after.horizontal.map(channelKey));
+  for (const channel of before.horizontal.filter((c) => !now.has(channelKey(c)))) {
+    await audit(tx, ctx, 'developmentChannel', 'delete', standardId, {
+      before: { standardId, ...channel },
+      after: null,
+      orgId,
+    });
+  }
+  for (const channel of after.horizontal.filter((c) => !was.has(channelKey(c)))) {
+    await audit(tx, ctx, 'developmentChannel', 'create', standardId, {
+      before: null,
+      after: { standardId, ...channel },
+      orgId,
+    });
+  }
+  return { ...after, warnings };
 }

@@ -31,6 +31,8 @@ export interface WriteContext extends QualificationContext {
   readonly scope: ModuleScope;
   readonly scopes: Readonly<Partial<Record<QualificationObject, ModuleScope | null>>>;
   readonly fields: Readonly<Partial<Record<QualificationObject, ReadonlySet<string> | undefined>>>;
+  /** 删除父对象时连带删除的子对象：操作人当前对该子对象有无删除数据操作权（在路由层按当前授权解析）。 */
+  readonly childDeletes?: Readonly<Partial<Record<QualificationObject, boolean>>>;
 }
 
 export const TABLES: Readonly<Partial<Record<QualificationObject, string>>> = {
@@ -125,7 +127,14 @@ export async function ownerOf(tx: Tx, ctx: WriteContext, object: QualificationOb
   return { ownerId: ctx.userId, ownerOrgId: orgId };
 }
 
-/** 编码规则自动编码（QL-R3）：编码留空且规则启用时取“前缀 + 序号”并递增；规则未启用时编码必填。 */
+/** 对象编码的格式（与库里的编码 CHECK 一致）；编码规则的前缀须能拼出合法编码（第 2 轮 P2-08）。 */
+export const CODE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,49}$/;
+
+/**
+ * 编码规则自动编码（QL-R3）：编码留空且规则启用时取“前缀 + 序号”并递增；规则未启用时编码必填。
+ * 推进序号同时 revision + 1：编码规则的编辑按 revision 判断旧状态，拿旧 revision 的保存不能把序号退回（P2-06）。
+ * 拼出的编码不合法（库里遗留的不可用前缀）时给出明确的 400，不让编码约束变成 500（P2-08）。
+ */
 export async function autoCode(
   tx: Tx,
   ctx: WriteContext,
@@ -140,9 +149,15 @@ export async function autoCode(
       WHERE tenant_id = ${ctx.tenantId} AND item = ${item} FOR UPDATE`),
   )[0]!;
   if (!rule.enabled) throw new AppError('VALIDATION_FAILED', '请填写编码', { reason: 'CODE_REQUIRED' });
-  await tx.execute(sql`UPDATE ql_coding_rules SET next_seq = next_seq + 1
-    WHERE tenant_id = ${ctx.tenantId} AND item = ${item}`);
-  return `${rule.prefix}${rule.next_seq}`;
+  const generated = `${rule.prefix}${rule.next_seq}`;
+  if (!CODE_PATTERN.test(generated)) {
+    throw new AppError('VALIDATION_FAILED', '编码规则生成的编码不合法，请检查编码规则的前缀或手工填写编码', {
+      reason: 'CODE_INVALID',
+    });
+  }
+  await tx.execute(sql`UPDATE ql_coding_rules SET next_seq = next_seq + 1, revision = revision + 1,
+    updated_at = ${ctx.now.toISOString()} WHERE tenant_id = ${ctx.tenantId} AND item = ${item}`);
+  return generated;
 }
 
 /** 编码在租户内唯一（同表）；先查给出明确的 409，唯一约束兜底并发。 */
@@ -162,12 +177,12 @@ export async function requireCodeAvailable(
 
 export const duplicate = (what: string) => new AppError('CONFLICT', `${what}重复，请重新输入`, { reason: 'DUPLICATE' });
 
-/** 唯一约束冲突（并发兜底）转成 409。 */
-export async function guardUnique<T>(work: () => Promise<T>, what = '编码'): Promise<T> {
+/** 唯一约束冲突（并发兜底）转成 409；`conflict` 给出该约束对应的明确错误（缺省“编码重复”）。 */
+export async function guardUnique<T>(work: () => Promise<T>, conflict: string | (() => AppError) = '编码'): Promise<T> {
   try {
     return await work();
   } catch (error) {
-    if (pgErrorCode(error) === '23505') throw duplicate(what);
+    if (pgErrorCode(error) === '23505') throw typeof conflict === 'string' ? duplicate(conflict) : conflict();
     throw error;
   }
 }
@@ -177,6 +192,26 @@ export async function rejectInUse(tx: Tx, usage: { sql: SQL; message: string; re
   const result = await tx.execute(sql`SELECT EXISTS (${usage.sql}) AS used`);
   if (rowsOf<{ used: boolean }>(result)[0]?.used) {
     throw new AppError('CONFLICT', usage.message, { reason: usage.reason });
+  }
+}
+
+/**
+ * 删除父对象会连带删除子对象时（数据库外键 CASCADE），子对象另需删除权，并各写一条删除审计留快照
+ * （DEC-019；开发自检 DEC-338 服务端规则）。没有这类子对象时不要求子对象的删除权。
+ */
+export async function deleteChildren(
+  tx: Tx,
+  ctx: WriteContext,
+  child: QualificationObject,
+  rows: readonly { readonly objectId: string; readonly orgId: string | null; readonly snapshot: unknown }[],
+) {
+  if (!rows.length) return;
+  if (!ctx.childDeletes?.[child]) {
+    throw new AppError('FORBIDDEN', `无权删除${QUALIFICATION_LABELS[child]}`, { reason: 'CHILD_DELETE_FORBIDDEN' });
+  }
+  // 一行一条：快照的键就是子对象的字段（对得上字段目录，审计员才查得到，第 2 轮 P2-11）
+  for (const row of rows) {
+    await audit(tx, ctx, child, 'delete', row.objectId, { before: row.snapshot, after: null, orgId: row.orgId });
   }
 }
 

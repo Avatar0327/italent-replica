@@ -11,11 +11,20 @@ import { AppError } from '../../errors.js';
 import { visible } from '../permission/module-route-access.js';
 import { QUALIFICATION_LABELS } from './access.js';
 import type * as input from './input.js';
-import { gradeDetails, loadRow, view, withGradeDetails, type GradeSchemeView, type OwnedView } from './read-model.js';
+import {
+  gradeDetails,
+  loadRow,
+  view,
+  withGradeDetails,
+  withStandardParts,
+  type GradeSchemeView,
+  type OwnedView,
+} from './read-model.js';
 import {
   audit,
   autoCode,
   bumped,
+  deleteChildren,
   guardUnique,
   lockEditable,
   ownerOf,
@@ -76,9 +85,16 @@ async function referencingStandards(tx: Tx, tenantId: string, targetId: string, 
   return rowsOf<{ id: string }>(result).map((row) => row.id);
 }
 
+/** 某标准里引用该指标的格（格定位、指标值、权重与各条能力标准的全部值），作覆盖审计的前后快照（P2-13）。 */
+async function cellsOf(tx: Tx, tenantId: string, standardId: string, targetId: string) {
+  const [standard] = await withStandardParts(tx, tenantId, [(await loadRow(tx, tenantId, 'standard', standardId))!]);
+  return standard!.details.filter((detail) => detail.targetId === targetId);
+}
+
 /**
  * 覆盖写入（DEC-334①）：引用该指标的每一格只留一条能力标准 = 指标说明（来源 common_overwrite）。
- * 调用方已按 id 升序锁住这些标准；每个标准 revision + 1，并写一条审计（同事务）。
+ * 调用方已按 id 升序锁住这些标准；每个标准 revision + 1，并写一条审计（同事务）。审计的键用标准的字段 `details`
+ * （对得上字段目录，审计员才查得到，P2-11），前后值是受影响的格的完整快照（P2-13）。
  */
 async function overwriteStandards(
   tx: Tx,
@@ -88,12 +104,7 @@ async function overwriteStandards(
   ids: string[],
 ) {
   for (const standardId of ids) {
-    const before = rowsOf<{ content: string }>(
-      await tx.execute(sql`SELECT a.content FROM ql_ability_details a JOIN ql_standard_details d
-        ON d.tenant_id = a.tenant_id AND d.id = a.detail_id
-        WHERE a.tenant_id = ${ctx.tenantId} AND d.standard_id = ${standardId}::uuid AND d.target_id = ${targetId}::uuid
-        ORDER BY a.display_order`),
-    ).map((row) => row.content);
+    const before = await cellsOf(tx, ctx.tenantId, standardId, targetId);
     await tx.execute(sql`DELETE FROM ql_ability_details a USING ql_standard_details d
       WHERE a.tenant_id = ${ctx.tenantId} AND d.tenant_id = a.tenant_id AND d.id = a.detail_id
         AND d.standard_id = ${standardId}::uuid AND d.target_id = ${targetId}::uuid`);
@@ -107,8 +118,8 @@ async function overwriteStandards(
         WHERE tenant_id = ${ctx.tenantId} AND id = ${standardId}::uuid RETURNING owner_org_id`),
     )[0]!;
     await audit(tx, ctx, 'standard', 'common-overwrite', standardId, {
-      before: { targetId, abilities: before },
-      after: { targetId, abilities: [description ?? ''] },
+      before: { details: before },
+      after: { details: await cellsOf(tx, ctx.tenantId, standardId, targetId) },
       orgId: standard.owner_org_id,
     });
   }
@@ -171,9 +182,31 @@ export async function deleteTarget(tx: Tx, ctx: WriteContext, id: string) {
     reason: 'TARGET_IN_USE',
   });
   const before = await reloadTarget(tx, ctx, id);
+  // 手改过的指标等级描述随指标级联删除：另需删除权，逐条写删除快照（DEC-019 / DEC-338 自检）
+  const manual = await manualDescriptions(tx, ctx.tenantId, sql`g.target_id = ${id}::uuid`);
+  await deleteChildren(
+    tx,
+    ctx,
+    'targetGradeDescription',
+    manual.map(({ orgId, ...item }) => ({ objectId: id, orgId, snapshot: item })),
+  );
   await tx.execute(sql`DELETE FROM ql_targets WHERE tenant_id = ${ctx.tenantId} AND id = ${id}::uuid`);
   await audit(tx, ctx, 'target', 'delete', id, { before, after: null, orgId: row.owner_org_id as string });
   return before;
+}
+
+/** 手改的指标等级描述（快照的键即 TargetGradeDescription 的字段）。 */
+async function manualDescriptions(tx: Tx, tenantId: string, where: ReturnType<typeof sql>) {
+  return rowsOf<{ target_id: string; grade_detail_id: string; description: string; owner_org_id: string }>(
+    await tx.execute(sql`SELECT g.target_id, g.grade_detail_id, g.description, t.owner_org_id
+      FROM ql_target_grade_descriptions g JOIN ql_targets t ON t.tenant_id = g.tenant_id AND t.id = g.target_id
+      WHERE g.tenant_id = ${tenantId}::uuid AND ${where} ORDER BY g.target_id, g.grade_detail_id FOR UPDATE OF g`),
+  ).map((row) => ({
+    targetId: row.target_id,
+    gradeDetailId: row.grade_detail_id,
+    description: row.description,
+    orgId: row.owner_org_id,
+  }));
 }
 
 // ── 等级方案（字典） ─────────────────────────────────────────
@@ -225,10 +258,15 @@ export async function updateGradeScheme(tx: Tx, ctx: WriteContext, id: string, b
   if (body.name !== undefined) await requireSchemeNameFree(tx, ctx, body.name, id);
   const before = await reloadScheme(tx, ctx, id);
   const bump = bumped(ctx);
-  await tx.execute(sql`UPDATE ql_grade_schemes SET name = ${body.name ?? (row.name as string)},
-    description = ${body.description !== undefined ? body.description : (row.description as string | null)},
-    enabled = ${body.enabled ?? (row.enabled as boolean)}, revision = ${bump.revision}, updated_at = ${bump.updatedAt}
-    WHERE tenant_id = ${ctx.tenantId} AND id = ${id}::uuid`);
+  await guardUnique(
+    () =>
+      tx.execute(sql`UPDATE ql_grade_schemes SET name = ${body.name ?? (row.name as string)},
+        description = ${body.description !== undefined ? body.description : (row.description as string | null)},
+        enabled = ${body.enabled ?? (row.enabled as boolean)}, revision = ${bump.revision},
+        updated_at = ${bump.updatedAt}
+        WHERE tenant_id = ${ctx.tenantId} AND id = ${id}::uuid`),
+    '等级方案名称',
+  );
   if (body.details) {
     const existing = new Set(before.details.map((detail) => detail.id));
     const kept = new Set<string>();
@@ -246,6 +284,9 @@ export async function updateGradeScheme(tx: Tx, ctx: WriteContext, id: string, b
     }
     for (const detailId of existing) {
       if (kept.has(detailId)) continue;
+      // 先锁明细再查引用（P2-07）：正在引用它的写入持 FOR SHARE，等其提交后再判断是否已被引用
+      await tx.execute(sql`SELECT 1 FROM ql_grade_details WHERE tenant_id = ${ctx.tenantId} AND id = ${detailId}::uuid
+        FOR UPDATE`);
       await rejectInUse(tx, {
         sql: sql`SELECT 1 FROM ql_ability_details WHERE tenant_id = ${ctx.tenantId}
           AND target_grade_id = ${detailId}::uuid`,
@@ -261,6 +302,10 @@ export async function updateGradeScheme(tx: Tx, ctx: WriteContext, id: string, b
   return after;
 }
 
+/**
+ * 删除等级方案：快照含全部明细（含软删的，随方案物理删除，P2-13）；改过方案的指标在旧方案明细上遗留的手改描述随之
+ * 级联删除，另需指标等级描述的删除权并逐条写删除快照。
+ */
 export async function deleteGradeScheme(tx: Tx, ctx: WriteContext, id: string) {
   await lockEditable(tx, ctx, 'gradeScheme', id);
   await rejectInUse(tx, {
@@ -268,7 +313,25 @@ export async function deleteGradeScheme(tx: Tx, ctx: WriteContext, id: string) {
     message: '等级方案已被指标引用，不能删除',
     reason: 'GRADE_SCHEME_IN_USE',
   });
-  const before = await reloadScheme(tx, ctx, id);
+  const before = {
+    ...(await reloadScheme(tx, ctx, id)),
+    details: rowsOf<Record<string, unknown>>(
+      await tx.execute(sql`SELECT id, name, grade, score, description, deleted_at FROM ql_grade_details
+        WHERE tenant_id = ${ctx.tenantId} AND scheme_id = ${id}::uuid ORDER BY grade, ctid`),
+    ).map((detail) => view<Record<string, unknown>>(detail)),
+  };
+  const leftovers = await manualDescriptions(
+    tx,
+    ctx.tenantId,
+    sql`g.grade_detail_id IN (SELECT d.id FROM ql_grade_details d WHERE d.tenant_id = g.tenant_id
+      AND d.scheme_id = ${id}::uuid)`,
+  );
+  await deleteChildren(
+    tx,
+    ctx,
+    'targetGradeDescription',
+    leftovers.map(({ orgId, ...item }) => ({ objectId: item.targetId, orgId, snapshot: item })),
+  );
   await tx.execute(sql`DELETE FROM ql_grade_schemes WHERE tenant_id = ${ctx.tenantId} AND id = ${id}::uuid`);
   await audit(tx, ctx, 'gradeScheme', 'delete', id, { before, after: null });
   return before;
@@ -317,11 +380,13 @@ export async function putGradeDescription(
   description: string,
 ) {
   const row = await lockEditable(tx, ctx, 'target', targetId);
-  const belongs = rowsOf(
-    await tx.execute(sql`SELECT 1 FROM ql_grade_details WHERE tenant_id = ${ctx.tenantId} AND id = ${detailId}::uuid
-      AND scheme_id = ${(row.grade_scheme_id as string | null) ?? null}::uuid AND deleted_at IS NULL`),
+  // 锁住明细再判断（锁序 指标 → 等级明细，P2-07）：明细正被软删时等其提交，按提交后的状态判断
+  const belongs = rowsOf<{ deleted_at: unknown }>(
+    await tx.execute(sql`SELECT deleted_at FROM ql_grade_details WHERE tenant_id = ${ctx.tenantId}
+      AND id = ${detailId}::uuid AND scheme_id = ${(row.grade_scheme_id as string | null) ?? null}::uuid
+      FOR SHARE`),
   );
-  if (!belongs.length) throw new AppError('NOT_FOUND', '等级明细不存在');
+  if (!belongs.length || belongs[0]!.deleted_at !== null) throw new AppError('NOT_FOUND', '等级明细不存在');
   const before = await gradeDescriptions(tx, ctx.tenantId, targetId);
   await tx.execute(sql`INSERT INTO ql_target_grade_descriptions (tenant_id, target_id, grade_detail_id, description,
       updated_by, updated_at)
@@ -333,12 +398,24 @@ export async function putGradeDescription(
     updated_at = ${ctx.now.toISOString()}
     WHERE tenant_id = ${ctx.tenantId} AND id = ${targetId}::uuid`);
   const after = await gradeDescriptions(tx, ctx.tenantId, targetId);
+  const old = before.find((item) => item.gradeDetailId === detailId)!;
+  // 首次手改时 before 是等级明细描述的投影：标出来源方案，审计查询按查看人对该方案的读取范围与明细字段权裁剪（P2-05）
   await audit(tx, ctx, 'targetGradeDescription', 'update', targetId, {
-    before: before.find((item) => item.gradeDetailId === detailId) ?? null,
-    after: after.find((item) => item.gradeDetailId === detailId) ?? null,
+    before: {
+      targetId,
+      gradeDetailId: detailId,
+      description: old.description,
+      ...(old.modified ? {} : { projected: true, gradeSchemeId: row.grade_scheme_id as string }),
+    },
+    after: { targetId, gradeDetailId: detailId, description },
     orgId: row.owner_org_id as string,
   });
-  return { revision: ctx.expectedRevision + 1, items: after };
+  return {
+    id: targetId,
+    revision: ctx.expectedRevision + 1,
+    gradeSchemeId: row.grade_scheme_id as string,
+    items: after,
+  };
 }
 
 export { requireReadable };

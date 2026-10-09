@@ -559,4 +559,98 @@ describe('任职资格配置第 2 轮：权限与裁剪', () => {
       }
     });
   });
+
+  describe('DEC-347 已定口径', () => {
+    it('① 建标准不要求类别查看权，只要类别在写范围内（🟡）', async () => {
+      const create = await data.adminIn(data.child);
+      const klass = await create<{ id: string }>('/category-classes', { code: code(), name: '无权分类' });
+      const category = await create<CategoryView>('/categories', { code: code(), name: '无权类别', classId: klass.id });
+      const level = await create<{ id: string }>('/levels', { code: code(), name: '无权级别' });
+      const op = await childOp({ noObject: ['category'] });
+      expect((await op.request('GET', `/categories/${category.id}`)).status).toBe(403);
+      const standard = await op.request('POST', '/standards', {
+        ifMatch: 0,
+        body: { categoryId: category.id, name: '无类别查看权的标准', levelIds: [level.id], details: [] },
+      });
+      expect(standard.status, await standard.clone().text()).toBe(201);
+    });
+
+    it('② 横向通道目的地没有标准、或目标级别不在该标准里：照常保存，逐条提示（🟡）；本类别自环仍拒绝', async () => {
+      const set = await childSet();
+      const withStandard = await set.create<CategoryView>('/categories', {
+        code: code(),
+        name: '有标准的目的地',
+        classId: set.klass.id,
+      });
+      const destLevel = await set.create<{ id: string }>('/levels', { code: code(), name: '目的地级别' });
+      await set.create('/standards', {
+        categoryId: withStandard.id,
+        name: '目的地标准',
+        levelIds: [destLevel.id],
+        details: [],
+      });
+      const op = await childOp();
+      const saved = await ok<{ horizontal: unknown[]; warnings: { index: number; reason: string }[] }>(
+        await op.request('PUT', `/standards/${set.standard.id}/channels`, {
+          ifMatch: set.standard.revision,
+          body: {
+            channels: [
+              { levelId: set.level.id, targetCategoryId: set.other.id, targetLevelId: set.level.id },
+              { levelId: set.level.id, targetCategoryId: withStandard.id, targetLevelId: set.level.id },
+              { levelId: set.level.id, targetCategoryId: withStandard.id, targetLevelId: destLevel.id },
+            ],
+          },
+        }),
+      );
+      expect(saved.horizontal).toHaveLength(3);
+      expect(saved.warnings).toEqual([
+        { index: 0, reason: 'TARGET_STANDARD_MISSING' },
+        { index: 1, reason: 'TARGET_LEVEL_NOT_IN_STANDARD' },
+      ]);
+      const loop = await op.request('PUT', `/standards/${set.standard.id}/channels`, {
+        ifMatch: set.standard.revision + 1,
+        body: { channels: [{ levelId: set.level.id, targetCategoryId: set.category.id, targetLevelId: set.level.id }] },
+      });
+      expect(loop.status).toBe(400);
+      expect(await reasonOf(loop)).toBe('CHANNEL_SELF_LOOP');
+    });
+
+    it('③ 编码规则可见范围 = 看全部 ∪ 创建人：只有创建人维度时看得到自己建的、看不到别人的', async () => {
+      // 别人（管理员）先建好“类别”这一项
+      const rules = await ok<{ items: { item: string; revision: number }[] }>(await data.admin('GET', '/coding-rules'));
+      const category = rules.items.find((item) => item.item === 'category')!;
+      await ok(
+        await data.admin('PATCH', '/coding-rules/category', {
+          ifMatch: category.revision,
+          body: { enabled: true, prefix: 'ADMIN' },
+        }),
+      );
+      const codingRule = QUALIFICATION_OBJECTS.codingRule.code;
+      const policy = await world.api.request(
+        'PUT',
+        `/api/tenant/permission/scope-policies/${'Qualification'}/${codingRule}/entity/${codingRule}`,
+        { ...world.asAdmin, ifMatch: 0, body: { rules: [{ dimension: 'using_user' }] } },
+      );
+      expect(policy.status, await policy.clone().text()).toBe(200);
+      const first = await operator(world, {});
+      const second = await operator(world, {});
+      const listed = async (op: Operator) =>
+        (
+          await ok<{ items: { item: string; prefix?: string; revision: number }[] }>(
+            await op.request('GET', '/coding-rules'),
+          )
+        ).items;
+      expect((await listed(first)).map((item) => item.item)).not.toContain('category');
+      const blank = (await listed(first)).find((item) => item.item === 'target')!;
+      await ok(
+        await first.request('PATCH', '/coding-rules/target', { ifMatch: blank.revision, body: { prefix: 'MINE' } }),
+      );
+      expect((await listed(first)).find((item) => item.item === 'target')).toMatchObject({ prefix: 'MINE' });
+      expect((await listed(second)).map((item) => item.item)).not.toContain('target');
+      const foreign = await second.request('PATCH', '/coding-rules/target', { ifMatch: 1, body: { prefix: 'THEIRS' } });
+      expect(foreign.status).toBe(404);
+      const admin = await ok<{ items: { item: string; prefix: string }[] }>(await data.admin('GET', '/coding-rules'));
+      expect(admin.items.find((item) => item.item === 'target')).toMatchObject({ prefix: 'MINE' });
+    });
+  });
 });

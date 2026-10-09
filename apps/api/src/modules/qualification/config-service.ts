@@ -8,10 +8,19 @@
  */
 import { sql, type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
+import { recordImportLog } from '../../audit/record.js';
 import { AppError } from '../../errors.js';
-import { visibleJob, type ModuleScope } from '../permission/module-route-access.js';
+import { auditActor } from '../../system-actor.js';
+import { hasCreatorScope, visibleJob, type ModuleScope } from '../permission/module-route-access.js';
 import type { ScopedJobKind } from '../permission/module-contracts.js';
-import { fieldVisible, QUALIFICATION_LABELS, type QualificationObject } from './access.js';
+import {
+  accessSql,
+  codeOf,
+  fieldVisible,
+  QUALIFICATION_LABELS,
+  type QualificationContext,
+  type QualificationObject,
+} from './access.js';
 import type * as input from './input.js';
 import { loadRow, view, withJobLinks, type JobLinked, type OwnedView } from './read-model.js';
 import {
@@ -46,6 +55,8 @@ export type JobAccess = Readonly<
 
 export interface ConfigWriteContext extends WriteContext {
   readonly jobs?: JobAccess;
+  /** 修改时操作人当前对 jobLinks 有无编辑权：改关联类型派生出的清空关联同样要这项权限（第 2 轮 P2-04）。 */
+  readonly jobLinksEditable?: boolean;
 }
 
 const asOf = (ctx: WriteContext) => tenantLocalDate(ctx.now, ctx.timezone);
@@ -69,7 +80,11 @@ async function jobObject(tx: Tx, ctx: ConfigWriteContext, linkType: string, id: 
   return { item, fields: access.fields, label: meta.label };
 }
 
-/** 关联岗职务（整组替换）：每个岗职务须可见，同一类型下已被其他对象关联则 409（DEC-331④）。 */
+/**
+ * 关联岗职务（整组替换）：每个岗职务须可见，同一类型下已被其他对象关联则 409（DEC-331④）。唯一性按全租户判断，
+ * 提示文案另行验权（第 2 轮 P2-03）：岗职务编码只在操作人看得到该字段时带出，已关联对象的名称只在它在操作人读取
+ * 范围内且名称字段可见时带出，否则用固定提示；并发关联由唯一约束兜底，同样 409（P3）。
+ */
 async function replaceJobLinks(
   tx: Tx,
   ctx: ConfigWriteContext,
@@ -85,26 +100,28 @@ async function replaceJobLinks(
   if (ids.length && !linkType) throw new AppError('VALIDATION_FAILED', '请先选择关联岗职务类型');
   await tx.execute(sql`DELETE FROM ${sql.identifier(table)}
     WHERE tenant_id = ${ctx.tenantId}::uuid AND ${sql.identifier(key)} = ${ownerId}::uuid`);
+  const kind = object === 'category' ? '任职类别' : '任职级别';
   for (const jobId of new Set(ids)) {
-    const { item, label } = await jobObject(tx, ctx, linkType!, jobId);
-    const taken = rowsOf<{ name: string }>(
-      await tx.execute(sql`SELECT o.name FROM ${sql.identifier(table)} l
+    const { item, fields, label } = await jobObject(tx, ctx, linkType!, jobId);
+    const jobCode = fieldVisible(fields, 'code') && item.code ? `【${item.code}】` : '';
+    const taken = rowsOf<{ name: string; readable: boolean }>(
+      await tx.execute(sql`SELECT o.name, (${accessSql(ctx, ctx.scope, 'owned', 'o').readable}) AS readable
+        FROM ${sql.identifier(table)} l
         JOIN ${sql.identifier(otherTable)} o ON o.tenant_id = l.tenant_id AND o.id = l.${sql.identifier(key)}
         WHERE l.tenant_id = ${ctx.tenantId}::uuid AND l.job_link_type = ${linkType}
           AND l.job_object_id = ${jobId}::uuid`),
     )[0];
+    const conflict = (name: string) =>
+      new AppError('CONFLICT', `此${label}${jobCode}已有关联的${kind}${name}`, { reason: 'JOB_ALREADY_LINKED' });
     if (taken) {
-      const kind = object === 'category' ? '任职类别' : '任职级别';
-      throw new AppError(
-        'CONFLICT',
-        `此${label}【${String(item.code ?? item.name)}】已有关联的${kind}【${taken.name}】`,
-        {
-          reason: 'JOB_ALREADY_LINKED',
-        },
-      );
+      throw conflict(taken.readable && fieldVisible(ctx.fields[object], 'name') ? `【${taken.name}】` : '');
     }
-    await tx.execute(sql`INSERT INTO ${sql.identifier(table)} (tenant_id, ${sql.identifier(key)}, job_link_type,
-      job_object_id) VALUES (${ctx.tenantId}, ${ownerId}, ${linkType}, ${jobId})`);
+    await guardUnique(
+      () =>
+        tx.execute(sql`INSERT INTO ${sql.identifier(table)} (tenant_id, ${sql.identifier(key)}, job_link_type,
+          job_object_id) VALUES (${ctx.tenantId}, ${ownerId}, ${linkType}, ${jobId})`),
+      () => conflict(''),
+    );
   }
 }
 
@@ -258,7 +275,25 @@ export async function importCategories(tx: Tx, ctx: ConfigWriteContext, body: in
     await audit(tx, ctx, 'category', 'create', id, { before: null, after, orgId });
     items.push(after);
   }
+  await importLog(tx, ctx, 'category', items, ownerOrgId);
   return { items };
+}
+
+/** 引入成功的任务级日志（DEC-199，第 2 轮 P2-12）：逐行回执与归属；失败的由路由在独立事务里登记。 */
+async function importLog(
+  tx: Tx,
+  ctx: WriteContext,
+  object: 'category' | 'level',
+  items: readonly JobLinked[],
+  orgId: string,
+) {
+  await recordImportLog(
+    tx,
+    { ...ctx, actorUserId: auditActor(ctx.userId) },
+    codeOf(object),
+    items.map((item) => ({ status: 'created', code: (item as unknown as { code: string }).code })),
+    items.map((item) => ({ objectId: item.id, orgId })),
+  );
 }
 
 const CATEGORY_COLUMNS = {
@@ -269,14 +304,35 @@ const CATEGORY_COLUMNS = {
   publicDown: 'public_down',
 };
 
+/**
+ * 关联的修改：显式给了 jobLinks 按给的；只改类型时，类型不变保留原关联，类型变了原关联清空——这种派生出的清空
+ * 同样要 jobLinks 编辑权（第 2 轮 P2-04，路由只能按请求键校验，看不到派生值）。
+ */
+async function patchJobLinks(
+  tx: Tx,
+  ctx: ConfigWriteContext,
+  object: 'category' | 'level',
+  id: string,
+  row: Readonly<Record<string, unknown>>,
+  before: JobLinked,
+  body: { jobLinks?: string[]; jobLinkType?: string | null },
+) {
+  if (body.jobLinks === undefined && body.jobLinkType === undefined) return;
+  const type = body.jobLinkType !== undefined ? body.jobLinkType : (row.job_link_type as string | null);
+  const kept = before.jobLinks.map((link) => link.jobObjectId);
+  const links = body.jobLinks ?? (type === row.job_link_type ? kept : []);
+  if (body.jobLinks === undefined && links.length !== kept.length && ctx.jobLinksEditable !== true) {
+    throw new AppError('FORBIDDEN', '无权修改关联岗职务（改关联类型会清空已有关联）', {
+      reason: 'FIELD_EDIT_FORBIDDEN',
+      field: 'jobLinks',
+    });
+  }
+  await replaceJobLinks(tx, ctx, object, id, type, links);
+}
+
 export async function updateCategory(tx: Tx, ctx: ConfigWriteContext, id: string, body: input.CategoryPatch) {
   const { row, before } = await patchSimple(tx, ctx, 'category', id, body, CATEGORY_COLUMNS);
-  if (body.jobLinks !== undefined || body.jobLinkType !== undefined) {
-    const type = body.jobLinkType !== undefined ? body.jobLinkType : (row.job_link_type as string | null);
-    const links =
-      body.jobLinks ?? (type === row.job_link_type ? (before as JobLinked).jobLinks.map((l) => l.jobObjectId) : []);
-    await replaceJobLinks(tx, ctx, 'category', id, type, links);
-  }
+  await patchJobLinks(tx, ctx, 'category', id, row, before as JobLinked, body);
   const after = await reload<JobLinked>(tx, ctx, 'category', id);
   await audit(tx, ctx, 'category', 'update', id, { before, after, orgId: orgOf(row) });
   return after;
@@ -412,6 +468,7 @@ export async function importLevels(tx: Tx, ctx: ConfigWriteContext, body: input.
     await audit(tx, ctx, 'level', 'create', id, { before: null, after, orgId });
     items.push(after);
   }
+  await importLog(tx, ctx, 'level', items, ownerOrgId);
   return { items };
 }
 
@@ -426,15 +483,12 @@ const LEVEL_COLUMNS = {
 };
 
 export async function updateLevel(tx: Tx, ctx: ConfigWriteContext, id: string, body: input.LevelPatch) {
+  const current = await lockEditable(tx, ctx, 'level', id);
   if (body.displayOrder !== undefined) await levelOrder(tx, ctx, body.displayOrder, id);
-  if (body.layerId) await referenced(tx, ctx, 'layer', body.layerId);
+  // 只拦新引用（DEC-281⑧）：原样带回已关联的层级不再检查启用（第 2 轮 P2-10）
+  if (body.layerId && body.layerId !== current.layer_id) await referenced(tx, ctx, 'layer', body.layerId);
   const { row, before } = await patchSimple(tx, ctx, 'level', id, body, LEVEL_COLUMNS);
-  if (body.jobLinks !== undefined || body.jobLinkType !== undefined) {
-    const type = body.jobLinkType !== undefined ? body.jobLinkType : (row.job_link_type as string | null);
-    const links =
-      body.jobLinks ?? (type === row.job_link_type ? (before as JobLinked).jobLinks.map((l) => l.jobObjectId) : []);
-    await replaceJobLinks(tx, ctx, 'level', id, type, links);
-  }
+  await patchJobLinks(tx, ctx, 'level', id, row, before as JobLinked, body);
   const after = await reload<JobLinked>(tx, ctx, 'level', id);
   await audit(tx, ctx, 'level', 'update', id, { before, after, orgId: orgOf(row) });
   return after;
@@ -510,39 +564,55 @@ export interface CodingRuleView {
   readonly revision: number;
 }
 
-/** 未改过的项按缺省值呈现（未启用、无前缀、从 1 起，🟡 原站缺省值未取证）。 */
-export async function listCodingRules(tx: Tx, tenantId: string): Promise<CodingRuleView[]> {
+const notFound = () => new AppError('NOT_FOUND', `${QUALIFICATION_LABELS.codingRule}不存在`);
+
+/**
+ * 编码规则的可见范围 = 看全部 ∪ 创建人（DEC-347③，字典口径同 DEC-121）：看全部的看四项；只有“使用用户”维度的
+ * 只看自己建的规则行，还没有人建的项按缺省值呈现（缺省值不是任何人的数据，供其第一次保存）；都没有的看不到。
+ * 未改过的项按缺省值呈现（未启用、无前缀、从 1 起，🟡 原站缺省值未取证）。
+ */
+export async function listCodingRules(
+  tx: Tx,
+  ctx: QualificationContext,
+  scope: ModuleScope,
+): Promise<CodingRuleView[]> {
+  if (!scope.all && !hasCreatorScope(scope)) return [];
   const rows = rowsOf<Record<string, unknown>>(
-    await tx.execute(sql`SELECT id, item, enabled, prefix, next_seq, revision FROM ql_coding_rules
-      WHERE tenant_id = ${tenantId}::uuid`),
+    await tx.execute(sql`SELECT t.id, t.item, t.enabled, t.prefix, t.next_seq, t.revision,
+        (${accessSql(ctx, scope, 'dictionary').readable}) AS readable
+      FROM ql_coding_rules t WHERE t.tenant_id = ${ctx.tenantId}::uuid`),
   );
-  return CODING_ITEMS.map((item) => {
+  return CODING_ITEMS.flatMap((item): CodingRuleView[] => {
     const row = rows.find((r) => r.item === item);
-    return row ? view<CodingRuleView>(row) : { id: null, item, enabled: false, prefix: '', nextSeq: 1, revision: 0 };
+    if (!row) return [{ id: null, item, enabled: false, prefix: '', nextSeq: 1, revision: 0 }];
+    const { readable, ...rest } = row;
+    return readable === true ? [view<CodingRuleView>(rest)] : [];
   });
 }
 
 export async function updateCodingRule(tx: Tx, ctx: WriteContext, item: CodingItem, body: input.CodingRulePatch) {
-  if (!ctx.scope.all) throw new AppError('NOT_FOUND', `${QUALIFICATION_LABELS.codingRule}不存在`);
+  if (!ctx.scope.all && !hasCreatorScope(ctx.scope)) throw notFound();
+  // 还没有人建的项由本次保存的人建（成为创建人）；已有的须在看全部 ∪ 创建人范围内，否则与不存在同一个 404
   await tx.execute(sql`INSERT INTO ql_coding_rules (tenant_id, item, created_by, revision)
     VALUES (${ctx.tenantId}, ${item}, ${ctx.userId}, 0) ON CONFLICT (tenant_id, item) DO NOTHING`);
   const current = rowsOf<Record<string, unknown>>(
-    await tx.execute(
-      sql`SELECT * FROM ql_coding_rules WHERE tenant_id = ${ctx.tenantId} AND item = ${item} FOR UPDATE`,
-    ),
+    await tx.execute(sql`SELECT t.*, (${accessSql(ctx, ctx.scope, 'dictionary').readable}) AS readable
+      FROM ql_coding_rules t WHERE t.tenant_id = ${ctx.tenantId} AND t.item = ${item} FOR UPDATE OF t`),
   )[0]!;
+  if (current.readable !== true) throw notFound();
   if (current.revision !== ctx.expectedRevision) {
     throw new AppError('REVISION_CONFLICT', '编码规则已变更，请刷新后显式重提', {
       expected: ctx.expectedRevision,
       actual: current.revision,
     });
   }
-  const before = view<CodingRuleView>(current);
+  const { readable: _readable, ...stored } = current;
+  const before = view<CodingRuleView>(stored);
   await tx.execute(sql`UPDATE ql_coding_rules SET enabled = ${body.enabled ?? current.enabled},
     prefix = ${body.prefix ?? current.prefix}, next_seq = ${body.nextSeq ?? current.next_seq},
     revision = ${ctx.expectedRevision + 1}, updated_at = ${ctx.now.toISOString()}
     WHERE tenant_id = ${ctx.tenantId} AND item = ${item}`);
-  const after = (await listCodingRules(tx, ctx.tenantId)).find((rule) => rule.item === item)!;
+  const after = (await listCodingRules(tx, ctx, ctx.scope)).find((rule) => rule.item === item)!;
   await audit(tx, ctx, 'codingRule', 'update', after.id!, { before, after });
   return after;
 }

@@ -178,6 +178,8 @@ export interface OperatorOptions {
   readonly readonly?: Partial<Record<ObjectKey, string[]>>;
   /** 没有删除数据操作权的对象。 */
   readonly noDelete?: readonly ObjectKey[];
+  /** 完全不授权的对象（没有查看权）。 */
+  readonly noObject?: readonly ObjectKey[];
   /** 岗职务对象（序列、职级、职等、职位、职务、职级类别）看全部，并隐藏这些字段；不给则不授岗职务权限。 */
   readonly sequenceHidden?: string[];
   /** Qualification 看全部（身份级）。 */
@@ -200,6 +202,7 @@ export async function operator(world: PermissionWorld, options: OperatorOptions)
   const apps = jobs ? [QL_APP, 'TenantBase'] : [QL_APP];
   const profile = await createProfile(world, `ql-${randomUUID().slice(0, 8)}`, { apps });
   for (const key of Object.keys(QUALIFICATION_OBJECTS) as ObjectKey[]) {
+    if (options.noObject?.includes(key)) continue;
     const definition = QUALIFICATION_OBJECTS[key];
     const hidden = new Set(options.hidden?.[key] ?? []);
     const readonly = new Set(options.readonly?.[key] ?? []);

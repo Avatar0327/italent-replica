@@ -128,11 +128,14 @@ export const gradeDescriptionPut = z.strictObject({ description: z.string().trim
 
 export const codingRulePatch = z.strictObject({
   enabled: z.boolean().optional(),
+  // 前缀 + 序号要能拼出合法编码（字母或数字开头，第 2 轮 P2-08）：空前缀或以字母 / 数字开头
   prefix: z
     .string()
     .trim()
-    .max(20)
-    .regex(/^[A-Za-z0-9_-]*$/)
+    .regex(
+      /^(?:[A-Za-z0-9][A-Za-z0-9_-]{0,19})?$/,
+      '前缀须以字母或数字开头，只能包含字母、数字、下划线与连字符，最长 20 位',
+    )
     .optional(),
   nextSeq: z.int().min(1).max(999_999_999).optional(),
 });
@@ -173,7 +176,15 @@ const importRow = z.strictObject({
   targetValue: z.string().trim().max(200).nullable().optional(),
   weight: percent.optional(),
 });
-export const standardImport = z.strictObject({ rows: z.array(importRow).min(1).max(MAX_IMPORT_ROWS) });
+/**
+ * 导入涉及的每条标准都带预期 revision（按类别编码对应，DEC-067）：锁住后逐条核对，任一不符整体 409，
+ * 不让导入拿旧内容覆盖别人刚做的修改（第 2 轮 P2-06）。
+ */
+const expectedStandard = z.strictObject({ categoryCode: z.string().trim().min(1).max(50), revision: z.int().min(0) });
+export const standardImport = z.strictObject({
+  standards: z.array(expectedStandard).max(MAX_IMPORT_ROWS),
+  rows: z.array(importRow).min(1).max(MAX_IMPORT_ROWS),
+});
 
 const channel = z.strictObject({ levelId: uuid, targetCategoryId: uuid, targetLevelId: uuid });
 export const channelsPut = z.strictObject({ channels: z.array(channel).max(500) });

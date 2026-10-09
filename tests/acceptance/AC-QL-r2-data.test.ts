@@ -161,7 +161,8 @@ describe('P2-12 引入 / 导入登记任务级操作日志（DEC-199）', () => 
       db,
       tenantId,
       sql`SELECT behavior, success_count, failure_count FROM audit_operation_logs
-        WHERE tenant_id = ${tenantId}::uuid AND object_type = ${objectType} ORDER BY occurred_at, id`,
+        WHERE tenant_id = ${tenantId}::uuid AND object_type = ${objectType}
+        ORDER BY success_count DESC, failure_count`,
     );
 
   it('类别引入、级别引入、标准明细导入：成功与失败各留一条任务日志（条数与结果）', async () => {
