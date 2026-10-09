@@ -59,7 +59,7 @@ function multisetAdded<T extends number | string>(before: readonly T[], after: r
     if (remaining > 0) left.set(item, remaining - 1);
     else added.push(item);
   }
-  return added.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  return added.sort((a, b) => String(a).localeCompare(String(b), 'en', { numeric: true }));
 }
 
 export async function observe(res: Response, snapshot: Snapshot = {}): Promise<Observation> {
@@ -68,7 +68,7 @@ export async function observe(res: Response, snapshot: Snapshot = {}): Promise<O
   try {
     body = text ? JSON.parse(text) : undefined;
   } catch {
-    body = undefined;
+    body = undefined; // 非 JSON 响应（CSV 等）只记状态码
   }
   const error = (body as { error?: { code?: string; details?: { reason?: string } } } | undefined)?.error;
   const keys =
@@ -80,7 +80,7 @@ export async function observe(res: Response, snapshot: Snapshot = {}): Promise<O
     ...(snapshot.ledger ? { ledgerAdded: multisetAdded(snapshot.ledger.before, snapshot.ledger.after) } : {}),
     ...(snapshot.audit ? { auditAdded: multisetAdded(snapshot.audit.before, snapshot.audit.after) } : {}),
     ...(keys ? { keys } : {}),
-  } as unknown as Observation;
+  } as unknown as Observation; // 品牌符号只存在于类型层，运行时登记在 made 里
   made.add(observed);
   return observed;
 }

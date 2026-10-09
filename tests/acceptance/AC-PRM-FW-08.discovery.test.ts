@@ -174,7 +174,8 @@ describe('AC-PRM-FW-08 P0 / P3：真实声明 + 显式表零发现', () => {
     for (const [k, d] of Object.entries(fresh)) {
       if (!d.gap) continue;
       expect(d.trace, k).toEqual([]);
-      const reason = d.all.status === 400 ? 'validation' : d.all.status === 404 ? 'not-found' : 'not-asked';
+      const reasons: Record<number, string> = { 400: 'validation', 404: 'not-found' };
+      const reason = reasons[d.all.status] ?? 'not-asked';
       expect(d.gap.reason, k).toBe(reason);
     }
   });

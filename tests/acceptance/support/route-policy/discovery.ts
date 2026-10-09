@@ -14,8 +14,7 @@ import { ORG_EMPLOYEE_APP } from '@italent/domain';
 import type { Db } from '@italent/db';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { seedTenantWithMember } from '../tenant-api.js';
-import { tenantApi } from '../tenant-api.js';
+import { seedTenantWithMember, tenantApi } from '../tenant-api.js';
 import { canonicalJson } from './baseline.js';
 import type { Finding } from './compare.js';
 import { type AuthorizerDouble, createAuthorizerDouble } from './double.js';
@@ -186,6 +185,7 @@ export async function discoverAll(
   table: RequiredTable = REQUIRED,
 ): Promise<Record<string, EndpointDiscovery>> {
   const out: Record<string, EndpointDiscovery> = {};
+  // 串行：所有请求共用一个替身，并行会让轨迹互相串线
   for (const route of routes) out[`${route.method} ${route.path}`] = await discoverRoute(rig, route, table);
   return out;
 }

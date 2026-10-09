@@ -83,7 +83,8 @@ export function permClaims(tablePerm: string, requestKey: string): boolean {
   const [requestDim = '', requestRest = ''] = splitTop(requestKey, ':') ?? [];
   if (dim !== requestDim) return false;
   if (dim === 'admin') return rest === requestRest;
-  const separator = dim === 'obj' ? ':' : dim === 'btn' ? '#' : undefined;
+  const separators: Readonly<Record<string, string>> = { obj: ':', btn: '#' };
+  const separator = separators[dim];
   if (!separator) return false;
   const table = splitTop(rest, separator);
   const request = splitTop(requestRest, separator);
