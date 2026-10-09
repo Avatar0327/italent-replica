@@ -632,7 +632,8 @@ describe('任职资格配置第 2 轮：权限与裁剪', () => {
         { ...world.asAdmin, ifMatch: 0, body: { rules: [{ dimension: 'using_user' }] } },
       );
       expect(policy.status, await policy.clone().text()).toBe(200);
-      const first = await operator(world, {});
+      // 首次建行同其他字典只认看全部（第 4 轮 R3-01）：first 先在看全部下建，再撤销只剩创建人维度
+      const first = await operator(world, { seeAll: true });
       const second = await operator(world, {});
       const listed = async (op: Operator) =>
         (
@@ -641,11 +642,15 @@ describe('任职资格配置第 2 轮：权限与裁剪', () => {
           )
         ).items;
       // 别人建过的项对其照样是缺省占位（第 3 轮 R2-02：不透露是否已被别人建过）
-      expect((await listed(first)).find((item) => item.item === 'category')).toMatchObject({ prefix: '', revision: 0 });
+      expect((await listed(second)).find((item) => item.item === 'category')).toMatchObject({
+        prefix: '',
+        revision: 0,
+      });
       const blank = (await listed(first)).find((item) => item.item === 'target')!;
       await ok(
         await first.request('PATCH', '/coding-rules/target', { ifMatch: blank.revision, body: { prefix: 'MINE' } }),
       );
+      await first.revokeSeeAll();
       expect((await listed(first)).find((item) => item.item === 'target')).toMatchObject({ prefix: 'MINE' });
       expect((await listed(second)).find((item) => item.item === 'target')).toMatchObject({ prefix: '', revision: 0 });
       const foreign = await second.request('PATCH', '/coding-rules/target', { ifMatch: 1, body: { prefix: 'THEIRS' } });

@@ -132,11 +132,13 @@ describe('任职资格配置第 3 轮：创建人范围', () => {
 
   describe('R2-05 新增审计带创建人归属（DEC-198）', () => {
     it('编码规则：首次保存记为新增，创建人范围的审计员查得到自己规则的全部日志', async () => {
-      const op = await operator(world, { auditor: true });
+      // 首次建行只认看全部（第 4 轮 R3-01）；建好后撤销，只剩创建人维度
+      const op = await operator(world, { auditor: true, seeAll: true });
       const blank = (await rules(op)).find((rule) => rule.item === 'target')!;
       const saved = await ok<Rule>(
         await op.request('PATCH', '/coding-rules/target', { ifMatch: blank.revision, body: { prefix: 'MINE' } }),
       );
+      await op.revokeSeeAll();
       await ok(await data.admin('PATCH', '/coding-rules/target', { ifMatch: saved.revision, body: { nextSeq: 5 } }));
       const actions = await audited(op, 'codingRule', saved.id!);
       expect(actions.sort()).toEqual(['qualification.coding-rule.create', 'qualification.coding-rule.update']);
