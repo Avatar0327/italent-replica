@@ -55,10 +55,10 @@ describe('AC-PRM-FW-02 现状必测基准（独立于声明）', () => {
     expect(canonicalJson(fresh)).not.toMatch(/"kind"/);
   });
 
-  it('基准覆盖全部已声明端点（490），键是 METHOD 最终路径', () => {
+  it('基准覆盖全部已声明端点（495），键是 METHOD 最终路径', () => {
     const declared = manifest.declared.map((r) => `${r.method} ${r.path}`).sort();
     expect(Object.keys(fresh.routes).sort()).toEqual(declared);
-    expect(declared).toHaveLength(490);
+    expect(declared).toHaveLength(495);
   });
 
   it('边界探测：租户接口匿名 401、非成员 403；平台非运营 403；360 链接无令牌 404；/healthz 200', () => {

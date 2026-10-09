@@ -55,6 +55,9 @@ const nextNo = () => {
 /** 公式里的字段写法。 */
 export const pathOf = (field: FieldRef) => `盘点对象.${field.name}`;
 
+/** 读回的聚合不带保存提示。 */
+export const withoutHints = ({ hints: _hints, ...rest }: CalcRuleView) => rest;
+
 export const calcItem = (target: FieldRef, formula: string, extra: Record<string, unknown> = {}) => ({
   targetFieldId: target.id,
   priority: 1,
@@ -102,7 +105,7 @@ export async function calcWorld(db: Db, label: string) {
   };
   const list = async (query = '') =>
     (await (await world.request('GET', `${CALC_RULES}${query}`)).json()) as { items: CalcRuleView[] };
-  return { ...world, numberField, textField, optionField, multiField, post, create, read, list };
+  return { ...world, field, numberField, textField, optionField, multiField, post, create, read, list };
 }
 
 export interface CalcOperatorOptions {

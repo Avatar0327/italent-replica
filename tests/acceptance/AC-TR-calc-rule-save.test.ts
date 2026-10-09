@@ -17,7 +17,15 @@ import { registerConfigReferenceGuard } from '../../apps/api/src/modules/talent-
 import { installMissingSeeds } from '../../apps/api/src/seeds/index.js';
 import { auditApi } from './AC-AUD-support.js';
 import { TR_NOW } from './AC-TR-config-support.js';
-import { CALC_RULES, calcBody, calcItem, calcWorld, type CalcRuleView, pathOf } from './AC-TR-calc-rule-support.js';
+import {
+  CALC_RULES,
+  calcBody,
+  calcItem,
+  calcWorld,
+  type CalcRuleView,
+  pathOf,
+  withoutHints,
+} from './AC-TR-calc-rule-support.js';
 import { errorCode } from './support/tenant-api.js';
 
 const testDb = useTestDb();
@@ -55,8 +63,7 @@ describe('计算规则新建与读取（设计 §2.2）', () => {
     expect(created.hints?.cycles).toEqual([]);
     const detail = await w.request('GET', `${CALC_RULES}/${created.id.toUpperCase()}`);
     expect(detail.headers.get('etag')).toBe('"1"');
-    const { hints: _hints, ...stored } = created;
-    expect(await detail.json()).toEqual(stored);
+    expect(await detail.json()).toEqual(withoutHints(created));
     expect((await w.list()).items.map((item) => item.id)).toEqual([created.id]);
     expect((await other.read(created.id)).status).toBe(404);
     expect((await other.list()).items).toEqual([]);
@@ -189,7 +196,7 @@ describe('目标字段类型允许性与多选字段（§4.5(d)；DEC-314②）'
       body: { items: [calcItem(target, bad)] },
     });
     expect([edit.status, (await failure(edit)).details.reason]).toEqual([400, 'MULTI_OPTION_IN_FORMULA']);
-    expect((await w.read(created.id)).body).toEqual(created);
+    expect((await w.read(created.id)).body).toEqual(withoutHints(created));
   });
 });
 
@@ -227,7 +234,7 @@ describe('修改：计算项目按目标字段对应；revision 递增；幂等'
     expect(await errorCode(await w.request('PATCH', `${CALC_RULES}/${created.id}`, { body: { enabled: false } }))).toBe(
       'REVISION_REQUIRED',
     );
-    expect((await w.read(created.id)).body).toEqual(created);
+    expect((await w.read(created.id)).body).toEqual(withoutHints(created));
     const options = { ifMatch: 1, idempotencyKey: 'trk-patch-1', body: { items: [calcItem(a, '2')] } };
     const first = await w.request('PATCH', `${CALC_RULES}/${created.id}`, options);
     const updated = (await first.json()) as CalcRuleView;
@@ -257,7 +264,7 @@ describe('删除与审计', () => {
     expect(await blocked.json()).toMatchObject({
       error: { details: { reason: 'CALC_RULE_IN_USE', referrer: 'TEST_PROJECT' } },
     });
-    expect((await w.read(created.id)).body).toEqual(created);
+    expect((await w.read(created.id)).body).toEqual(withoutHints(created));
     referenced.delete(created.id);
     const removed = await w.request('DELETE', `${CALC_RULES}/${created.id}`, { ifMatch: 1 });
     expect(removed.status).toBe(200);

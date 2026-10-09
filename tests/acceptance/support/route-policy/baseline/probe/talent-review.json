@@ -1,4 +1,24 @@
 {
+  "DELETE /api/tenant/talent-review/calc-rules/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "73fd3d876e71",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TalentReview/TalentReview.CalcRule/-"
+    ],
+    "trace": [
+      "btn:TalentReview.CalcRule#delete@detail",
+      "obj:TalentReview.CalcRule:delete"
+    ]
+  },
   "DELETE /api/tenant/talent-review/categories/:id": {
     "all": {
       "code": "NOT_FOUND",
@@ -77,6 +97,39 @@
     "trace": [
       "btn:TalentReview.Role#delete@detail",
       "obj:TalentReview.Role:delete"
+    ]
+  },
+  "GET /api/tenant/talent-review/calc-rules": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TalentReview.CalcRule"
+    ],
+    "scopeQueries": [
+      "scope:TalentReview/TalentReview.CalcRule/TalentReview.CalcRule.list"
+    ],
+    "trace": [
+      "obj:TalentReview.CalcRule:view"
+    ]
+  },
+  "GET /api/tenant/talent-review/calc-rules/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "73fd3d876e71",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TalentReview/TalentReview.CalcRule/TalentReview.CalcRule.detail"
+    ],
+    "trace": [
+      "obj:TalentReview.CalcRule:view"
     ]
   },
   "GET /api/tenant/talent-review/categories": {
@@ -225,6 +278,26 @@
       "obj:TalentReview.Settings:view"
     ]
   },
+  "PATCH /api/tenant/talent-review/calc-rules/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "73fd3d876e71",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TalentReview/TalentReview.CalcRule/-"
+    ],
+    "trace": [
+      "btn:TalentReview.CalcRule#update@detail",
+      "obj:TalentReview.CalcRule:update"
+    ]
+  },
   "PATCH /api/tenant/talent-review/categories/:id": {
     "all": {
       "code": "NOT_FOUND",
@@ -318,6 +391,19 @@
     "trace": [
       "btn:TalentReview.Settings#update@detail",
       "obj:TalentReview.Settings:update"
+    ]
+  },
+  "POST /api/tenant/talent-review/calc-rules": {
+    "all": {
+      "code": "REVISION_CONFLICT",
+      "error": "f12e1e2b793f",
+      "status": 409
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:TalentReview.CalcRule#create@list",
+      "obj:TalentReview.CalcRule:create"
     ]
   },
   "POST /api/tenant/talent-review/categories": {

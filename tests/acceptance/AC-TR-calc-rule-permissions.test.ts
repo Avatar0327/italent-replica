@@ -23,6 +23,7 @@ import {
   calcWorld,
   type CalcRuleView,
   pathOf,
+  withoutHints,
 } from './AC-TR-calc-rule-support.js';
 import { configBody, TR_BASE, TR_NOW } from './AC-TR-config-support.js';
 import { cmd, errorCode, tenantApi } from './support/tenant-api.js';
@@ -49,7 +50,7 @@ describe('计算规则权限（DEC-121 / 082 / 043 / 080）', () => {
     world = { ...world, api: tenantApi(world.db, { authorize: undefined, clock }) };
     setup = tenantApi(world.db, { clock });
     target = await numberField();
-    existing = await adminCreate(CALC_RULES, calcBody([calcItem(target, '1')], { name: '管理员建的' }));
+    existing = withoutHints(await adminCreate(CALC_RULES, calcBody([calcItem(target, '1')], { name: '管理员建的' })));
   });
 
   it('没有对象查看权：列表与详情 403', async () => {
@@ -209,7 +210,7 @@ describe('计算规则旁路泄露（DEC-121 / DEC-082）', () => {
     }
     expect(responses[0]).toEqual(responses[1]);
     expect(responses[0]![0]).toBe(403);
-    expect((await w.read(mine.id)).body).toEqual(mine);
+    expect((await w.read(mine.id)).body).toEqual(withoutHints(mine));
     const ok = await patch({ name: mine.name, sortNo: 7 });
     expect(ok.status, await ok.clone().text()).toBe(200);
   });
@@ -233,16 +234,13 @@ describe('计算规则旁路泄露（DEC-121 / DEC-082）', () => {
       api.request('PATCH', `${TR_BASE}${CALC_RULES}/${mine.id}`, { ...w.as, ifMatch: 1, body: { items } });
     const hidden = await patch([calcItem(own, `${pathOf(foreign)} + 1`)]);
     const unknown = await patch([calcItem(own, `${pathOf({ id: '', name: '根本没有这个字段' })} + 1`)]);
-    const [h, u] = [await hidden.json(), await unknown.json()] as {
-      error: { details: { issues: { code: string }[] } };
-    }[];
-    expect([hidden.status, h.error.details.issues.map((i) => i.code)]).toEqual([
-      unknown.status,
-      u.error.details.issues.map((i) => i.code),
-    ]);
+    type Body = { error: { details: { issues: { code: string }[] } } };
+    const codes = async (response: Response) =>
+      ((await response.json()) as Body).error.details.issues.map((issue) => issue.code);
+    expect([hidden.status, await codes(hidden)]).toEqual([unknown.status, await codes(unknown)]);
     expect(hidden.status).toBe(400);
     const target = await patch([calcItem(foreign, '1')]);
     expect([target.status, await errorCode(target)]).toEqual([404, 'NOT_FOUND']);
-    expect((await w.read(mine.id)).body).toEqual(mine);
+    expect((await w.read(mine.id)).body).toEqual(withoutHints(mine));
   });
 });

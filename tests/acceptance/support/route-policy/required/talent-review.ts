@@ -201,7 +201,85 @@ function cfgObject(key: string, label: string, register: string, base: string, c
 const BASE_ROOT = '/api/tenant/talent-review';
 const SETTINGS_OBJECT = 'TalentReview.Settings';
 
+// ---- R3-T04 PR-B5：计算规则（modules/talent-review/calc-rule-routes.ts） ------------------------------------------------
+const CRR = `${T}/calc-rule-routes.ts`;
+const CALC_OBJECT = 'TalentReview.CalcRule';
+const calcConst: Evidence = { role: 'const', unit: `${CATALOG}>calcRule`, anchor: "object( 'CalcRule'" };
+const calcCall = (anchor: string): Evidence => ({ role: 'call', unit: `${CRR}#registerCalcRuleRoutes`, anchor });
+const calcView = (anchor: string): Obligation => ({
+  perm: `obj:${CALC_OBJECT}:view`,
+  facts: ['object:objectContext'],
+  at: [calcCall(anchor), ...CONTEXT, calcConst],
+});
+function calcChange(operation: Exclude<Operation, 'view'>): Obligation[] {
+  const entry = calcCall(`const ctx = await reviewWriteContext(c, deps, 'calcRule', '${operation}', revision(c))`);
+  const level = operation === 'create' ? 'list' : 'detail';
+  return [
+    { perm: `obj:${CALC_OBJECT}:${operation}`, facts: ['object:objectContext'], at: [entry, ...CONTEXT, calcConst] },
+    {
+      perm: `btn:${CALC_OBJECT}#${operation}@${level}`,
+      facts: ['button:button()'],
+      at: [
+        entry,
+        ...BUTTON,
+        { role: 'const', unit: `${ACCESS}#WRITE_BUTTONS`, anchor: `${operation}: ['${operation}', '${level}']` },
+      ],
+    },
+  ];
+}
+const CALC_CATALOG = 'talentReview.calcRuleFieldCatalog';
+/** 提交计算项目 = 读取字段目录：公式与目标字段只在字段目录范围内可见的字段里解析（requireCatalogAccess）。 */
+const calcCatalog = (anchor: string): Obligation[] => [
+  {
+    perm: `guard:${CALC_CATALOG}`,
+    facts: [`guard:${CALC_CATALOG}`],
+    note: '条件守卫：提交计算项目（POST；PATCH 带 items）时，另需字段目录的对象查看权，公式与目标字段只在其范围内可见的字段里解析',
+    at: [calcCall(anchor)],
+  },
+  {
+    perm: 'obj:TalentReview.Field:view',
+    purpose: `when:${CALC_CATALOG}`,
+    at: [
+      {
+        role: 'call',
+        unit: `${CRR}#requireCatalogAccess`,
+        anchor: "const ctx = await reviewContext(c, deps, 'field')",
+      },
+      ...CONTEXT,
+      FIELD_OBJECT_CONST,
+    ],
+  },
+];
+const CALC_FILTER_GUARD: Obligation = {
+  ...FILTER_GUARD,
+  at: [
+    calcCall("if (enabled !== undefined) await requireFilterVisible(deps, ctx, 'calcRule', 'enabled')"),
+    ...FILTER_GUARD.at.slice(1),
+  ],
+};
+const CALC_BASE = `${BASE_ROOT}/calc-rules`;
+const CALC_REQUIRED: RequiredTable = {
+  [`GET ${CALC_BASE}`]: [
+    calcView("router.get(CALC_RULES, async (c) => { const ctx = await reviewContext(c, deps, 'calcRule')"),
+    CALC_FILTER_GUARD,
+  ],
+  [`GET ${CALC_BASE}/:id`]: [
+    calcView("router.get(`${CALC_RULES}/:id`, async (c) => { const ctx = await reviewContext(c, deps, 'calcRule')"),
+  ],
+  [`POST ${CALC_BASE}`]: [
+    ...calcChange('create'),
+    ...calcCatalog('const fieldScope = await requireCatalogAccess(c, deps)'),
+  ],
+  [`PATCH ${CALC_BASE}/:id`]: [
+    ...calcChange('update'),
+    RENAME_GUARD,
+    ...calcCatalog('const fieldScope = body.items !== undefined ? await requireCatalogAccess(c, deps) : undefined'),
+  ],
+  [`DELETE ${CALC_BASE}/:id`]: calcChange('delete'),
+};
+
 export const TALENT_REVIEW: RequiredTable = {
+  ...CALC_REQUIRED,
   ...cfgObject('category', 'Category', 'registerCategories', 'categories', 'CATEGORIES'),
   ...cfgObject('role', 'Role', 'registerRoles', 'roles', 'ROLES'),
   ...cfgObject('field', 'Field', 'registerFields', 'fields', 'FIELDS'),
