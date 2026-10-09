@@ -134,12 +134,19 @@ export interface UserStatusChange {
  */
 export async function setUserStatus(db: Db, change: UserStatusChange, meta: PlatformCommandMeta): Promise<User> {
   return runPlatformCommand(db, meta, 'user.set_status', change, async (ctx) => {
+    // F-069：账号行锁排在组织锁之后（入职首次绑定是 员工 → 组织 → 账号行 FOR SHARE）。停用先不加锁地看一眼状态，
+    // 若要走成员停用挂接点，先在各租户按全局锁序取齐接管要用的业务锁，再锁账号行，避免持账号行锁时反向等组织锁。
+    const [seen] = await ctx.tx.select({ status: users.status }).from(users).where(eq(users.id, change.userId));
+    const deactivating = seen?.status === 'active' && change.status === 'disabled';
+    if (deactivating && membershipRevokeHook && membershipPrelockHook) {
+      await forEachActiveMembership(ctx, change.userId, meta, membershipPrelockHook);
+    }
     const [before] = await ctx.tx.select().from(users).where(eq(users.id, change.userId)).for('no key update');
     if (before && before.revision !== change.expectedRevision) {
       throw new RevisionConflictError('user', change.expectedRevision);
     }
     if (before?.status === 'active' && change.status === 'disabled' && membershipRevokeHook) {
-      await deactivateInTenants(ctx, change.userId, meta, membershipRevokeHook);
+      await forEachActiveMembership(ctx, change.userId, meta, membershipRevokeHook);
     }
     const [row] = await ctx.tx
       .update(users)
@@ -192,6 +199,19 @@ let membershipRevokeHook: MembershipRevokeHook | null = null;
 
 export function registerMembershipRevokeHook(hook: MembershipRevokeHook): void {
   membershipRevokeHook = hook;
+}
+
+/**
+ * 全局停用账号专用的预取挂接点（F-069）：在锁 users 行（NO KEY UPDATE）之前、各租户内、同一事务里调用，
+ * 业务模块在此按自己的全局锁序取齐接管会用到的锁（审批中心：派单闸 → 员工 → 业务 → 组织，与手动交接同序）。
+ * 入职首次绑定的顺序是“组织锁 → users 行 FOR SHARE”，停用若先持 users 行锁再取组织锁就与之成环（40P01）。
+ * 预取之后的 MembershipRevokeHook 在锁住 users 行后重入这些已持有的锁；此时 users 行已锁，不得再新增需等待的业务锁。
+ */
+export type MembershipPrelockHook = MembershipRevokeHook;
+let membershipPrelockHook: MembershipPrelockHook | null = null;
+
+export function registerMembershipPrelockHook(hook: MembershipPrelockHook): void {
+  membershipPrelockHook = hook;
 }
 
 async function changeMembership(
@@ -283,10 +303,10 @@ async function tenantEvent(
 const TENANT_BATCH = 500;
 
 /**
- * 平台角色不能跨租户读成员关系（RLS），按租户逐个切入，该用户在其中是有效成员的就调用挂接点。
+ * 平台角色不能跨租户读成员关系（RLS），按租户逐个切入，该用户在其中是有效成员的就调用挂接点（预取与接管两轮都按租户编号升序）。
  * 停用是低频的平台操作；租户按编号分批读取，不一次读入全部租户。
  */
-async function deactivateInTenants(
+async function forEachActiveMembership(
   ctx: PlatformCommandContext,
   userId: string,
   meta: PlatformCommandMeta,

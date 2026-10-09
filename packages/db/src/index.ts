@@ -51,6 +51,7 @@ export {
   type MembershipRevokeHook,
   type NewTenant,
   type PlatformOperatorChange,
+  registerMembershipPrelockHook,
   registerMembershipRevokeHook,
   revokeMembership,
   revokePlatformOperator,
