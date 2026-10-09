@@ -5,7 +5,8 @@
  *   命令不存在（镜像里没装 fontconfig）按缺字体处理。镜像需要安装 `fontconfig` 与 `fonts-noto-cjk`（或 `fonts-wqy-zenhei`），
  *   启动时 exportStartupCheck 记一条警告；
  * - 应用层并发准入：全局与同租户各一个上限，满了立即 503 EXPORT_BUSY（不排队，避免请求堆积占内存）；渲染超过超时 503
- *   EXPORT_TIMEOUT；名额一直占到底层渲染真正结束，超时不会让并发数悄悄超限；
+ *   EXPORT_TIMEOUT，同时经 AbortSignal 取消渲染（PDF 逐页检查，F-060 第 3 轮 P3）；名额一直占到底层渲染真正停下，
+ *   超时不会让并发数悄悄超限，也不会让后台把整份文件继续生成完；
  * - 像素预算：PNG 长图渲染前按排版高度检查（export-files.ts 的 Layout 使用 pixelBudget）。
  * 上限值是开发方定的工程保护（规格没有），可用 configureExport 调整（测试与部署参数）。
  */
@@ -105,10 +106,10 @@ const unavailable = (reason: 'EXPORT_BUSY' | 'EXPORT_TIMEOUT', message: string) 
   new AppError('SERVICE_UNAVAILABLE', message, { reason });
 
 /**
- * 并发准入 + 超时：名额满立即 EXPORT_BUSY；run 超时 EXPORT_TIMEOUT（名额仍保留到 run 真正结束）。
- * tenantKey 是租户标识，仅用于计数，不进入任何响应。
+ * 并发准入 + 超时：名额满立即 EXPORT_BUSY；run 超时 EXPORT_TIMEOUT 并中止 signal（渲染在下一页前停下），名额保留到
+ * run 真正结束。tenantKey 是租户标识，仅用于计数，不进入任何响应。
  */
-export async function admitted<T>(tenantKey: string, run: () => Promise<T>): Promise<T> {
+export async function admitted<T>(tenantKey: string, run: (signal: AbortSignal) => Promise<T>): Promise<T> {
   const mine = perTenant.get(tenantKey) ?? 0;
   if (active >= config.globalLimit || mine >= config.tenantLimit)
     throw unavailable('EXPORT_BUSY', '文件生成任务过多，请稍后重试');
@@ -120,14 +121,19 @@ export async function admitted<T>(tenantKey: string, run: () => Promise<T>): Pro
     if (left <= 0) perTenant.delete(tenantKey);
     else perTenant.set(tenantKey, left);
   };
-  const task = new Promise<T>((resolve) => resolve(run()));
+  const controller = new AbortController();
+  const task = new Promise<T>((resolve) => resolve(run(controller.signal)));
   void task.then(release, release);
   let timer: NodeJS.Timeout | undefined;
   try {
     return await Promise.race([
       task,
       new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(unavailable('EXPORT_TIMEOUT', '文件生成超时，请稍后重试')), config.timeoutMs);
+        timer = setTimeout(() => {
+          const timeout = unavailable('EXPORT_TIMEOUT', '文件生成超时，请稍后重试');
+          controller.abort(timeout);
+          reject(timeout);
+        }, config.timeoutMs);
       }),
     ]);
   } finally {

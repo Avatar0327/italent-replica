@@ -171,7 +171,9 @@ export function registerTableRoutes(module: Hono<TenantEnv>, deps: TenantRouteDe
       (tx, admin) => scoreTables(tx, admin, uuidParam(c), c.req.query()),
       downloadPresent,
       async (c, { activityName, body }: Loaded) => {
-        const png = await admitted(tenantOf(c).tenantId, () => renderPng(scoreTableDocument(body, { activityName })));
+        const png = await admitted(tenantOf(c).tenantId, (signal) =>
+          renderPng(scoreTableDocument(body, { activityName }), signal),
+        );
         const stem = ['360度评估结果', activityName, levelName(body.level)].filter(Boolean).join('-');
         return fileResponse(png, 'image/png', attachmentName(stem, 'png'));
       },

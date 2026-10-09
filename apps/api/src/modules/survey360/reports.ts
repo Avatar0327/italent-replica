@@ -452,7 +452,7 @@ const reportPresent: Present = async (viewer, body: unknown) => {
  * 计数）。
  */
 async function reportPdf(tenantKey: string, report: ReportBody): Promise<Response> {
-  const pdf = await admitted(tenantKey, () => renderPdf(reportDocument(report)));
+  const pdf = await admitted(tenantKey, (signal) => renderPdf(reportDocument(report), signal));
   const subject = report.cover?.objectName;
   return fileResponse(pdf, 'application/pdf', attachmentName(`${subject ? `${subject}-` : ''}个人报告`, 'pdf'));
 }

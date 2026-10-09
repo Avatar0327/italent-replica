@@ -559,10 +559,11 @@ const rasterize = (page: Page) =>
     .timeout({ seconds: Math.max(1, Math.ceil(exportConfig().timeoutMs / 1000)) })
     .flatten({ background: '#ffffff' });
 
-/** 报表下载：整块报表视图的 PNG 长图。 */
-export async function renderPng(doc: Doc): Promise<Buffer> {
+/** 报表下载：整块报表视图的 PNG 长图。signal 中止（超时）时不再进入栅格化。 */
+export async function renderPng(doc: Doc, signal?: AbortSignal): Promise<Buffer> {
   await requireFont();
   const [page] = paginate(doc, 'long');
+  signal?.throwIfAborted();
   return rasterize(page!).png().toBuffer();
 }
 
@@ -570,8 +571,11 @@ export async function renderPng(doc: Doc): Promise<Buffer> {
 
 const utf16Hex = (value: string) => `<FEFF${Buffer.from(value, 'utf16le').swap16().toString('hex').toUpperCase()}>`;
 
-/** 最小 PDF：每页一张全幅位图（DeviceRGB + Flate）；不写时间戳，同一输入字节相同。 */
-export async function renderPdf(doc: Doc): Promise<Buffer> {
+/**
+ * 最小 PDF：每页一张全幅位图（DeviceRGB + Flate）；不写时间戳，同一输入字节相同。signal 中止（超时）时在下一页
+ * 栅格化之前停下，不把整份文件生成完（F-060 第 3 轮 P3）。
+ */
+export async function renderPdf(doc: Doc, signal?: AbortSignal): Promise<Buffer> {
   await requireFont();
   const pages = paginate(doc, 'a4');
   const objects: Buffer[] = [];
@@ -580,6 +584,7 @@ export async function renderPdf(doc: Doc): Promise<Buffer> {
   add('<< /Type /Catalog /Pages 2 0 R >>');
   add(`<< /Type /Pages /Kids [${pageIds.map((id) => `${id} 0 R`).join(' ')}] /Count ${pages.length} >>`);
   for (const [index, page] of pages.entries()) {
+    signal?.throwIfAborted();
     const { data, info } = await rasterize(page).removeAlpha().raw().toBuffer({ resolveWithObject: true });
     const flate = deflateSync(data, { level: 9 });
     const id = 3 + index * 3;
