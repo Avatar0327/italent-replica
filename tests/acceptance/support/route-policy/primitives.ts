@@ -342,6 +342,7 @@ export const PRIMITIVES: readonly Primitive[] = [
     ['talent.object', /\bforms\[object/, { modules: ['talent'] }],
     ['talent.formOperation', /operation !== 'create' && operation !== 'update'/, { modules: ['talent'] }],
     ['talent.ownerUnitObject', call('ownerObject'), { modules: ['talent'] }],
+    ['qualification.ownerUnitObject', call('ownerObject'), { modules: ['qualification'] }],
   ]),
 ];
 

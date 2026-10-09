@@ -537,8 +537,15 @@
     {
       "idx": 76,
       "version": "7",
-      "when": 1791554652672,
-      "tag": "0076_talent_review_config",
+      "when": 1791554628637,
+      "tag": "0076_qualification_config",
+      "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1791561396544,
+      "tag": "0077_talent_review_config",
       "breakpoints": true
     }
   ]
