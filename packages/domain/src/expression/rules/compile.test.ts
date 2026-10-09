@@ -4,6 +4,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { evaluateBatch, evaluateFormula } from '../engine.js';
+import { tokenize } from '../lexer.js';
 import type { FieldLookup } from '../ports.js';
 import type { ExpressionFieldKind, PlainValue } from '../values.js';
 import { compileRuleSet, RULE_COMPILER_VERSION, RULE_LIMITS, type RuleFieldCatalog } from './compile.js';
@@ -539,5 +540,124 @@ describe('规模上限（§3.3 第 3 条）', () => {
     const rows = Array.from({ length: 50 }, (_, i) => aggRow(i + 1, 'not_empty'));
     const expression = Array.from({ length: 50 }, (_, i) => String(i + 1)).join(' or ');
     expect(compiled({ rows, expression }).compiled.referencedRows).toHaveLength(50);
+  });
+});
+
+describe('数值字面量精确展开（第 2 轮 P2：科学计数法分支不得舍入）', () => {
+  const VALUES = [
+    0.0000001234567890123456,
+    1e-21,
+    -1e-21,
+    1.5e-7,
+    Number.MIN_VALUE,
+    1e21,
+    123456789012345680000,
+    -1.2345e25,
+    1e300,
+    Number.MAX_VALUE,
+    0.1,
+    -0.000001,
+    42,
+  ];
+  const literalIn = (formula: string, path: string): string => {
+    const hit = new RegExp(`${path} (?:=|!=|<=|>=|<|>) (-?[0-9.]+)\\)`).exec(formula);
+    if (!hit) throw new Error(`公式里找不到比较字面量：${formula}`);
+    return hit[1]!;
+  };
+
+  it.each(VALUES)('%s 发码后文本与原数值逐位相等（Number(文本) === 原值，无科学计数法）', (value) => {
+    const formula = formulaOf(aggRow(1, 'eq', [value]));
+    const literal = literalIn(formula, '行1.值');
+    expect(literal).not.toMatch(/e/i);
+    expect(Number(literal)).toBe(value);
+  });
+
+  it('审查反例一：阈值 0.0000001234567890123456 不再被舍入到 20 位小数', () => {
+    const formula = formulaOf(aggRow(1, 'eq', [0.0000001234567890123456]));
+    expect(formula).toContain('行1.值 = 0.0000001234567890123456)');
+    expect(matches(formula, { '行1.值': 0.0000001234567890123456 })).toBe(true);
+  });
+
+  it('审查反例二：ge [1e-21] 对度量 0 不命中（不能被编译成 >= 0）', () => {
+    const formula = formulaOf(aggRow(1, 'ge', [1e-21]));
+    expect(formula).toContain('行1.值 >= 0.000000000000000000001)');
+    expect(matches(formula, { '行1.值': 0 })).toBe(false);
+    expect(matches(formula, { '行1.值': 1e-21 })).toBe(true);
+  });
+
+  describe.each(VALUES)('值 %s：aggregate 行与 number 字段行的匹配结果与数值比较一致', (value) => {
+    const other = value === 42 ? 7 : 42;
+    const cases: readonly [string, RuleConditionRow['values'], RuleOperator, boolean][] = [
+      ['eq 单值', [value], 'eq', true],
+      ['eq 多候选 IN', [other, value], 'eq', true],
+      ['ne 单值', [value], 'ne', false],
+      ['ne 多候选 NOTIN', [other, value], 'ne', false],
+      ['gt', [value], 'gt', false],
+      ['lt', [value], 'lt', false],
+      ['ge', [value], 'ge', true],
+      ['le', [value], 'le', true],
+      ['between', [value, value], 'between', true],
+    ];
+    it.each(cases)('%s：注入同值', (_label, values, operator, expected) => {
+      const aggregate = compiled(one(aggRow(1, operator, values))).compiled.formula;
+      expect(matches(aggregate, { '行1.值': value })).toBe(expected);
+      const field = compiled(one(fieldRow(1, NUMBER, operator, values))).compiled.formula;
+      expect(matches(field, { [NUMBER.path]: value })).toBe(expected);
+    });
+  });
+});
+
+describe('每行候选值上限对所有运算符统一生效（第 2 轮 P3）', () => {
+  const tooMany = Array.from({ length: 21 }, (_, i) => i);
+  it.each(['is_empty', 'not_empty'] as const)('%s 带 21 个值 → RULE_TOO_LARGE 定位到行', (operator) => {
+    expect(errorsOf(one(aggRow(3, operator, tooMany)))).toEqual([{ code: 'RULE_TOO_LARGE', rowNo: 3 }]);
+  });
+
+  it('20 个值的 is_empty 仍可编译（多余的值被忽略）', () => {
+    expect(formulaOf(aggRow(1, 'is_empty', tooMany.slice(0, 20)))).toBe('IF((IsEmpty(行1.值)), 1, 0)');
+  });
+});
+
+describe('option 值的引号 / 换行同样拒绝（第 2 轮 P3）', () => {
+  it.each(['P5"', 'P5\nP6', 'P5\r'])('option 值 %j → RULE_LITERAL_INVALID', (bad) => {
+    expect(errorsOf(one(fieldRow(4, OPTION, 'eq', [bad])))).toEqual([{ code: 'RULE_LITERAL_INVALID', rowNo: 4 }]);
+    expect(errorsOf(one(fieldRow(4, OPTION, 'ne', ['P5', bad])))).toEqual([{ code: 'RULE_LITERAL_INVALID', rowNo: 4 }]);
+  });
+});
+
+describe('引擎规模边界精确值（第 2 轮 P3）：4000 / 4001 字符，800 / 801 词', () => {
+  const textRule = (padding: number) => one(fieldRow(1, TEXT, 'eq', ['字'.repeat(padding)]));
+  const baseLength = compiled(textRule(0)).compiled.formula.length;
+
+  it('公式恰 4000 字符通过，4001 字符 → RULE_TOO_LARGE', () => {
+    const ok = compiled(textRule(4000 - baseLength)).compiled.formula;
+    expect(ok).toHaveLength(4000);
+    expect(errorsOf(textRule(4001 - baseLength))).toEqual([{ code: 'RULE_TOO_LARGE' }]);
+  });
+
+  // 引用行 1（not_empty）a 次、行 2（is_empty）b 次：词数 = 7 + 10a + 9b（含 eof，与引擎同口径）
+  const tokenRule = (a: number, b: number): RuleSet => ({
+    rows: [aggRow(1, 'not_empty'), aggRow(2, 'is_empty')],
+    expression: [...Array.from({ length: a }, () => '1'), ...Array.from({ length: b }, () => '2')].join(' and '),
+  });
+
+  it('公式恰 800 词通过，801 词 → RULE_TOO_LARGE', () => {
+    expect(tokenize(compiled(tokenRule(1, 87)).compiled.formula)).toHaveLength(800);
+    expect(errorsOf(tokenRule(2, 86))).toEqual([{ code: 'RULE_TOO_LARGE' }]);
+  });
+});
+
+describe('超长平铺表达式不抛未捕获异常（第 2 轮 P3）', () => {
+  const rows = [aggRow(1, 'not_empty')];
+  it.each(['or', 'and'] as const)('15 万个 1 用 %s 连接 → 规范错误码，不是 RangeError', (op) => {
+    const expression = Array.from({ length: 150_000 }, () => '1').join(` ${op} `);
+    const result = compileRuleSet({ rows, expression }, catalog);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.map((e) => e.code)).toEqual(['RULE_TOO_LARGE']);
+  });
+
+  it('括号内的超长平铺同样安全', () => {
+    const expression = `(${Array.from({ length: 150_000 }, () => '1').join(' or ')})`;
+    expect(compileRuleSet({ rows, expression }, catalog).ok).toBe(false);
   });
 });

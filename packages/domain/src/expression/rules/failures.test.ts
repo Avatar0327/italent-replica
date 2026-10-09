@@ -8,7 +8,7 @@ import type { ComputationFailure, FailureCode } from '../failures.js';
 import type { FieldLookup } from '../ports.js';
 import type { PlainValue } from '../values.js';
 import { compileRuleSet, type RuleFieldCatalog } from './compile.js';
-import { describeRuleFailure, locateRuleRow } from './failures.js';
+import { describeRuleFailure, locateRuleRow, renderRuleFailureText } from './failures.js';
 import type { RuleConditionRow, RuleFieldRef } from './types.js';
 
 const SPANS = [
@@ -116,5 +116,34 @@ describe('与引擎联调：真实求值失败定位到行，且文案不含字�
     const report = describeRuleFailure(outcome.failure, rowSpans);
     expect(report).toEqual({ code: 'TYPE_CONVERSION', rowNo: 2, text: '第 2 行条件出错：比较或转换时类型不符' });
     expect(JSON.stringify(report)).not.toContain('机密文本');
+  });
+});
+
+describe('第 2 轮 P3：line / column 兜底与纯文案函数', () => {
+  it('只有 line / column 没有 offset 时（单行公式）按 column - 1 定位', () => {
+    const failure: ComputationFailure = { code: 'DIVISION_BY_ZERO', message: 'x', line: 1, column: 17 };
+    expect(describeRuleFailure(failure, SPANS)).toEqual({
+      code: 'DIVISION_BY_ZERO',
+      rowNo: 2,
+      text: '第 2 行条件出错：除以 0',
+    });
+    expect(describeRuleFailure({ ...failure, column: 1 }, SPANS)).toEqual({
+      code: 'DIVISION_BY_ZERO',
+      text: '条件表达式出错',
+    });
+  });
+
+  it('offset 与 line / column 同时存在时以 offset 为准；多行位置不猜', () => {
+    const both: ComputationFailure = { code: 'TYPE_CONVERSION', message: 'x', offset: 4, line: 1, column: 17 };
+    expect(describeRuleFailure(both, SPANS).rowNo).toBe(1);
+    const multiLine: ComputationFailure = { code: 'TYPE_CONVERSION', message: 'x', line: 2, column: 17 };
+    expect(describeRuleFailure(multiLine, SPANS).rowNo).toBeUndefined();
+  });
+
+  it('renderRuleFailureText(code, rowNo?)：列表 / 通知 / 审计只存码和行号，按此重新渲染', () => {
+    expect(renderRuleFailureText('TYPE_CONVERSION', 3)).toBe('第 3 行条件出错：比较或转换时类型不符');
+    expect(renderRuleFailureText('FIELD_FORBIDDEN', 1)).toBe('第 1 行条件出错：计算主体无权读取字段');
+    expect(renderRuleFailureText('TYPE_CONVERSION')).toBe('条件表达式出错');
+    expect(renderRuleFailureText('INTERNAL_ERROR', 3)).toBe('条件表达式出错');
   });
 });
