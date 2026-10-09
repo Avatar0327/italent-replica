@@ -20,6 +20,7 @@
       "TenantBase.ProfessionalTechnicalPostInfo",
       "TenantBase.ProjectExperience",
       "TenantBase.Punish",
+      "TenantBase.Qualification",
       "TenantBase.Skill",
       "TenantBase.Training",
       "TenantBase.VocationalQualificationInfo",
@@ -91,6 +92,7 @@
       "professional-technical-post",
       "project-experience",
       "punish",
+      "qualification",
       "skill",
       "training",
       "vocational-qualification"
@@ -773,7 +775,7 @@
           "personnel access"
         ],
         "objectOp": [
-          "TenantBase.Awards|TenantBase.Certificate|TenantBase.Education|TenantBase.EstimationResult|TenantBase.Family|TenantBase.Languageability|TenantBase.ProfessionalTechnicalPostInfo|TenantBase.ProjectExperience|TenantBase.Punish|TenantBase.Skill|TenantBase.Training|TenantBase.VocationalQualificationInfo|TenantBase.jobhistory:delete"
+          "TenantBase.Awards|TenantBase.Certificate|TenantBase.Education|TenantBase.EstimationResult|TenantBase.Family|TenantBase.Languageability|TenantBase.ProfessionalTechnicalPostInfo|TenantBase.ProjectExperience|TenantBase.Punish|TenantBase.Qualification|TenantBase.Skill|TenantBase.Training|TenantBase.VocationalQualificationInfo|TenantBase.jobhistory:delete"
         ],
         "scope": [
           "personnel access"
@@ -4827,7 +4829,7 @@
           "personnel access"
         ],
         "objectOp": [
-          "TenantBase.Awards|TenantBase.Certificate|TenantBase.Education|TenantBase.EstimationResult|TenantBase.Family|TenantBase.Languageability|TenantBase.ProfessionalTechnicalPostInfo|TenantBase.ProjectExperience|TenantBase.Punish|TenantBase.Skill|TenantBase.Training|TenantBase.VocationalQualificationInfo|TenantBase.jobhistory:view"
+          "TenantBase.Awards|TenantBase.Certificate|TenantBase.Education|TenantBase.EstimationResult|TenantBase.Family|TenantBase.Languageability|TenantBase.ProfessionalTechnicalPostInfo|TenantBase.ProjectExperience|TenantBase.Punish|TenantBase.Qualification|TenantBase.Skill|TenantBase.Training|TenantBase.VocationalQualificationInfo|TenantBase.jobhistory:view"
         ],
         "scope": [
           "personScope",
@@ -4866,7 +4868,7 @@
           "personnel access"
         ],
         "objectOp": [
-          "TenantBase.Awards|TenantBase.Certificate|TenantBase.Education|TenantBase.EstimationResult|TenantBase.Family|TenantBase.Languageability|TenantBase.ProfessionalTechnicalPostInfo|TenantBase.ProjectExperience|TenantBase.Punish|TenantBase.Skill|TenantBase.Training|TenantBase.VocationalQualificationInfo|TenantBase.jobhistory:view"
+          "TenantBase.Awards|TenantBase.Certificate|TenantBase.Education|TenantBase.EstimationResult|TenantBase.Family|TenantBase.Languageability|TenantBase.ProfessionalTechnicalPostInfo|TenantBase.ProjectExperience|TenantBase.Punish|TenantBase.Qualification|TenantBase.Skill|TenantBase.Training|TenantBase.VocationalQualificationInfo|TenantBase.jobhistory:view"
         ],
         "scope": [
           "personnel access",
@@ -4907,7 +4909,7 @@
           "personnel access"
         ],
         "objectOp": [
-          "TenantBase.Awards|TenantBase.Certificate|TenantBase.Education|TenantBase.EstimationResult|TenantBase.Family|TenantBase.Languageability|TenantBase.ProfessionalTechnicalPostInfo|TenantBase.ProjectExperience|TenantBase.Punish|TenantBase.Skill|TenantBase.Training|TenantBase.VocationalQualificationInfo|TenantBase.jobhistory:view"
+          "TenantBase.Awards|TenantBase.Certificate|TenantBase.Education|TenantBase.EstimationResult|TenantBase.Family|TenantBase.Languageability|TenantBase.ProfessionalTechnicalPostInfo|TenantBase.ProjectExperience|TenantBase.Punish|TenantBase.Qualification|TenantBase.Skill|TenantBase.Training|TenantBase.VocationalQualificationInfo|TenantBase.jobhistory:view"
         ],
         "scope": [
           "personnel access",
@@ -5085,7 +5087,7 @@
           "personnel access"
         ],
         "objectOp": [
-          "TenantBase.Awards|TenantBase.Certificate|TenantBase.Education|TenantBase.EstimationResult|TenantBase.Family|TenantBase.Languageability|TenantBase.ProfessionalTechnicalPostInfo|TenantBase.ProjectExperience|TenantBase.Punish|TenantBase.Skill|TenantBase.Training|TenantBase.VocationalQualificationInfo|TenantBase.jobhistory:view"
+          "TenantBase.Awards|TenantBase.Certificate|TenantBase.Education|TenantBase.EstimationResult|TenantBase.Family|TenantBase.Languageability|TenantBase.ProfessionalTechnicalPostInfo|TenantBase.ProjectExperience|TenantBase.Punish|TenantBase.Qualification|TenantBase.Skill|TenantBase.Training|TenantBase.VocationalQualificationInfo|TenantBase.jobhistory:view"
         ],
         "scope": [
           "personScope",
@@ -8214,7 +8216,7 @@
           "personnel access"
         ],
         "objectOp": [
-          "TenantBase.Awards|TenantBase.Certificate|TenantBase.Education|TenantBase.EstimationResult|TenantBase.Family|TenantBase.Languageability|TenantBase.ProfessionalTechnicalPostInfo|TenantBase.ProjectExperience|TenantBase.Punish|TenantBase.Skill|TenantBase.Training|TenantBase.VocationalQualificationInfo|TenantBase.jobhistory:update"
+          "TenantBase.Awards|TenantBase.Certificate|TenantBase.Education|TenantBase.EstimationResult|TenantBase.Family|TenantBase.Languageability|TenantBase.ProfessionalTechnicalPostInfo|TenantBase.ProjectExperience|TenantBase.Punish|TenantBase.Qualification|TenantBase.Skill|TenantBase.Training|TenantBase.VocationalQualificationInfo|TenantBase.jobhistory:update"
         ],
         "scope": [
           "personnel access"
@@ -13123,7 +13125,7 @@
           "personnel access"
         ],
         "objectOp": [
-          "TenantBase.Awards|TenantBase.Certificate|TenantBase.Education|TenantBase.EstimationResult|TenantBase.Family|TenantBase.Languageability|TenantBase.ProfessionalTechnicalPostInfo|TenantBase.ProjectExperience|TenantBase.Punish|TenantBase.Skill|TenantBase.Training|TenantBase.VocationalQualificationInfo|TenantBase.jobhistory:create"
+          "TenantBase.Awards|TenantBase.Certificate|TenantBase.Education|TenantBase.EstimationResult|TenantBase.Family|TenantBase.Languageability|TenantBase.ProfessionalTechnicalPostInfo|TenantBase.ProjectExperience|TenantBase.Punish|TenantBase.Qualification|TenantBase.Skill|TenantBase.Training|TenantBase.VocationalQualificationInfo|TenantBase.jobhistory:create"
         ],
         "scope": [
           "personnel access"

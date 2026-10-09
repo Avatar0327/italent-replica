@@ -16,7 +16,7 @@ const PERSON = 'TenantBase.EmployeeInformation';
 const SUBSET =
   '{TenantBase.Awards,TenantBase.Certificate,TenantBase.Education,TenantBase.EstimationResult,TenantBase.Family,' +
   'TenantBase.Languageability,TenantBase.ProfessionalTechnicalPostInfo,TenantBase.ProjectExperience,' +
-  'TenantBase.Punish,TenantBase.Skill,TenantBase.Training,' +
+  'TenantBase.Punish,TenantBase.Qualification,TenantBase.Skill,TenantBase.Training,' +
   'TenantBase.VocationalQualificationInfo,TenantBase.jobhistory}';
 const ACCESS_IMPL: Evidence = {
   role: 'impl',
