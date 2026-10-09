@@ -7,6 +7,7 @@
  * 供 required.ts 把 `need` 绑定到提供权限的节点（B-03）。
  */
 import type { RoutePolicy } from '@italent/api';
+import { SUBSETS } from '@italent/domain';
 import type { Need } from './required/types.js';
 
 /** 可选分支名（D3）：驼峰字母数字。节点路径按点号切分，名字里带点会找错分支（required-mutate.ts locate）。 */
@@ -46,12 +47,22 @@ export interface LayoutViolation {
   readonly path: string;
 }
 
+/** 对象型 mapper 没有登记实际输出对象，或域里有未登记的输入键（#162 第 2 轮 P2-1 残项）。 */
+export interface MapperViolation {
+  readonly mapper: string;
+  readonly path: string;
+  /** 未登记的输入键；整个 mapper 未登记时为空。 */
+  readonly keys: readonly string[];
+}
+
 export interface DeclaredPerms {
   readonly alternatives: PermMap[];
   /** 挂在声明根节点上的可选分支：名字 → 自身析取范式。 */
   readonly optional: Map<string, OptionalBranch>;
   /** D1～D3 的结构违规（整棵声明树扫描，含不在根上的分支）。 */
   readonly layout: LayoutViolation[];
+  /** 对象型 mapper 的输出对象未登记（整棵声明树扫描）。 */
+  readonly mappers: MapperViolation[];
 }
 
 type Node = Record<string, unknown>;
@@ -112,12 +123,34 @@ function sigOf(scope: unknown): ScopeSig {
   }
 }
 
-/** 对象选择器能取到的全部对象编码：静态值；param / body / query 映射的取值；mapper / record 登记的域。 */
+/**
+ * 对象型 mapper 的**实际输出对象**：mapper 名 → 输入键 → 对象编码。来自源码常量，不来自声明（#162 第 2 轮 P2-1 残项）：
+ * mapper 的 `domain` 是输入键（如子集名 education / family），处理函数按映射后的对象编码判权与解析范围，
+ * 范围必须按输出对象选择。新增对象型 mapper 必须在这里登记，否则报 OBJECT_MAPPER_UNMAPPED。
+ */
+export const OBJECT_MAPPERS: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  // apps/api/src/modules/personnel/routes.ts nestedSubsets：for kind of Object.keys(SUBSETS) → SUBSETS[kind].objectCode
+  'personnel.nestedSubsets': Object.fromEntries(Object.entries(SUBSETS).map(([kind, s]) => [kind, s.objectCode])),
+};
+
+/** 未登记的输入键映射成占位编码：不会与任何真实对象或 byObject 键相同，按 `*` 或缺失处理，并由 mappers 报出。 */
+const unmapped = (mapper: string, key: string) => `?unmapped:${mapper}:${key}`;
+
+/**
+ * 对象选择器能取到的全部**实际对象编码**：静态值；param / body / query 映射的取值；record 登记的域（即对象编码）；
+ * mapper 的域是输入键，按 OBJECT_MAPPERS 换成输出对象。
+ */
 export function objectsOf(selector: unknown): string[] | undefined {
   if (typeof selector === 'string') return [selector];
   if (!selector || typeof selector !== 'object' || !('from' in selector)) return undefined;
   const s = selector as Node;
-  if (s['from'] === 'mapper' || s['from'] === 'record') return [...((s['domain'] as string[] | undefined) ?? [])];
+  const domain = [...((s['domain'] as string[] | undefined) ?? [])];
+  if (s['from'] === 'record') return domain;
+  if (s['from'] === 'mapper') {
+    const mapper = String(s['mapper']);
+    const outputs = OBJECT_MAPPERS[mapper];
+    return [...new Set(domain.map((key) => outputs?.[key] ?? unmapped(mapper, key)))];
+  }
   const values = Object.values((s['map'] as Node | undefined) ?? {}).filter((v): v is string => typeof v === 'string');
   return [...new Set(values)];
 }
@@ -228,6 +261,25 @@ function alternatives(node: Node, path: string): PermMap[] {
   return [self];
 }
 
+/** 扫描整棵声明树（含 of / optional）里对象型 mapper 的登记情况。 */
+function mappersOf(node: Node, path: string, out: MapperViolation[]): void {
+  const object = node['object'] as Node | undefined;
+  if (object && typeof object === 'object' && object['from'] === 'mapper') {
+    const mapper = String(object['mapper']);
+    const outputs = OBJECT_MAPPERS[mapper];
+    const domain = (object['domain'] as string[] | undefined) ?? [];
+    if (!outputs) out.push({ mapper, path, keys: [] });
+    else {
+      const keys = domain.filter((key) => !Object.hasOwn(outputs, key));
+      if (keys.length) out.push({ mapper, path, keys });
+    }
+  }
+  ((node['of'] as Node[] | undefined) ?? []).forEach((b, i) => mappersOf(b, `${path}of[${i}].`, out));
+  for (const [name, branch] of Object.entries((node['optional'] as Record<string, Node> | undefined) ?? {})) {
+    mappersOf(branch, `${path}optional.${name}.`, out);
+  }
+}
+
 /** 扫描整棵声明树的可选分支：D1 只挂根、D2 不嵌套、D3 名字字符集。 */
 function layoutOf(node: Node, path: string, inBranch: boolean, out: LayoutViolation[]): void {
   for (const [name, branch] of Object.entries((node['optional'] as Record<string, Node> | undefined) ?? {})) {
@@ -249,7 +301,9 @@ export function declaredPerms(policy: RoutePolicy): DeclaredPerms {
   }
   const layout: LayoutViolation[] = [];
   layoutOf(root, '', false, layout);
-  return { alternatives: alternatives(root, ''), optional, layout };
+  const mappers: MapperViolation[] = [];
+  mappersOf(root, '', mappers);
+  return { alternatives: alternatives(root, ''), optional, layout, mappers };
 }
 
 /** 可选分支各备选授予的权限键并集。 */

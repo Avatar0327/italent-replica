@@ -123,6 +123,11 @@ export function checkRoute(
 
   // D1～D3：可选分支的位置 / 嵌套 / 名字（先于 R3）
   for (const v of decl.layout) report(v.code, `optional.${v.name}（${v.path}）`);
+  // 对象型 mapper 的范围按实际输出对象选择（perms.ts OBJECT_MAPPERS），输出对象必须登记
+  for (const m of decl.mappers) {
+    const what = m.keys.length ? `输入键 ${m.keys.join('、')} 没有登记输出对象` : '没有登记实际输出对象';
+    report('OBJECT_MAPPER_UNMAPPED', `mapper ${m.mapper}（${m.path || 'root'}）${what}`);
+  }
   // R1：每个准入备选都要满足全部准入义务（权限 + need）与每个“或”组
   decl.alternatives.forEach((alt, i) => {
     for (const o of plain) if (!holds(alt, o)) report('REQUIRED_MISSING', `${label(i)}${whyNot(alt, o)}`);
