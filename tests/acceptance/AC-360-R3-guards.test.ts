@@ -17,7 +17,7 @@ import {
   scoreTableDocument,
 } from '../../apps/api/src/modules/survey360/export-files.js';
 import { loginEmailOf } from './AC-EMP-support.js';
-import { confirmationToken } from './AC-360-B-support.js';
+import { confirmationToken, outbox } from './AC-360-B-support.js';
 import type { RequestOptions } from './support/tenant-api.js';
 import {
   BASE,
@@ -1875,12 +1875,8 @@ function prb(env: Env): Promise<PrB> {
         body: { mode: 'others', others: [{ name: 'HRBP', email: 'guard-hrbp@example.com' }] },
       }),
     );
-    const [mail] = rowsOf<{ token: string }>(
-      await withTenant(w.db, w.tenantId, (tx) =>
-        tx.execute(sql`SELECT payload->>'token' AS token FROM survey360_outbox
-          WHERE event_type = 'survey360.report_forward' ORDER BY created_at DESC LIMIT 1`),
-      ),
-    );
+    // 转发邮件的令牌在 payload.sealed 里（DEC-377②），夹具解封后给出 token；取最后一封
+    const mail = { token: (await outbox(w, 'survey360.report_forward')).at(-1)!.payload.token };
     const people = (await w.ok<{ items: PersonView[] }>(w.request('GET', '/people?pageSize=200'))).items;
     const manager = people.find((p) => p.name === '经理M')!;
     const activity = await w.activity({ name: '待办活动', showAppraiserName: false, roleDisplay: 'hidden' });
