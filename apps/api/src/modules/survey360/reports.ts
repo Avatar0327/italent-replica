@@ -574,9 +574,15 @@ export function registerReportRoutes(module: Hono<TenantEnv>, deps: TenantRouteD
 }
 
 function registerTemplateRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
+  // 报告模板读写只用租户，不用活动 / 人员可见范围，不预取 Activity 的查看权与“全部活动”按钮（F-075b，DEC-373①）
   module.get('/report-template', (c) =>
-    read(c, deps, { object: 'settings' }, async (tx, _admin, tenant) =>
-      templateView(await standardTemplate(tx, tenant.tenantId)),
+    read(
+      c,
+      deps,
+      { object: 'settings' },
+      async (tx, _admin, tenant) => templateView(await standardTemplate(tx, tenant.tenantId)),
+      undefined,
+      'identity',
     ),
   );
   module.put('/report-template', (c) =>
@@ -608,7 +614,7 @@ function registerTemplateRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps):
         });
         return templateView(saved);
       },
-      { need: { object: 'settings', operation: 'update' }, fields: 'body' },
+      { need: { object: 'settings', operation: 'update' }, fields: 'body', admin: 'identity' },
     ),
   );
 }
