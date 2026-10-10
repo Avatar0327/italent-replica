@@ -25,7 +25,7 @@ const withWrite = (write: Record<string, unknown>): RoutePolicy =>
     write: { ...baseWrite, ...write },
   }) as RoutePolicy;
 
-describe('F-076 PR-0 错误码：REQUEST_RATE_LIMITED / AUTH_LOCKED', () => {
+describe('AC-360-F076-00 F-076 PR-0 错误码：REQUEST_RATE_LIMITED / AUTH_LOCKED', () => {
   it('两类都是 429，且与 401 / 409 / 503 分开', () => {
     expect(ERROR_STATUS.REQUEST_RATE_LIMITED).toBe(429);
     expect(ERROR_STATUS.AUTH_LOCKED).toBe(429);
@@ -56,7 +56,7 @@ describe('F-076 PR-0 错误码：REQUEST_RATE_LIMITED / AUTH_LOCKED', () => {
   });
 });
 
-describe("F-076 PR-0 F-039：write.ledger = 'none' 必须写理由", () => {
+describe("AC-360-F076-00 F-076 PR-0 F-039：write.ledger = 'none' 必须写理由", () => {
   it('带理由登记成功', () => {
     const table = defineTable('survey360-portal', {
       'POST /login': withWrite({ ledger: 'none', ledgerReason: '认证入口不走命令台账（DEC-377③，设计 §4.8）' }),
@@ -101,7 +101,7 @@ describe("F-076 PR-0 F-039：write.ledger = 'none' 必须写理由", () => {
   });
 });
 
-describe('F-076 PR-0 .env.example：只加键名，不带值', () => {
+describe('AC-360-F076-00 F-076 PR-0 .env.example：只加键名，不带值', () => {
   const text = readFileSync(new URL('../../.env.example', import.meta.url), 'utf8');
   const assignments = text
     .split('\n')

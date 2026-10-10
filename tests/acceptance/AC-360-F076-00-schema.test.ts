@@ -47,7 +47,7 @@ async function sqlState(tenantId: string, statement: ReturnType<typeof sql>): Pr
   }
 }
 
-describe('F-076 作答链接凭据列（§6）', () => {
+describe('AC-360-F076-00 F-076 作答链接凭据列（§6）', () => {
   it('存量链接行默认 credential_state = none、摘要为空、版本集合为空（DEC-377① 不自动补发）', async () => {
     const w = await world();
     const [row] = rows<Record<string, unknown>>(
@@ -118,7 +118,8 @@ describe('F-076 作答链接凭据列（§6）', () => {
     const secondLink = randomUUID();
     await withTenant(testDb().db, a.tenantId, async (tx) => {
       await tx.execute(sql`INSERT INTO survey360_people (id, tenant_id, name, email, source, created_by)
-        VALUES (${secondPerson}, ${a.tenantId}, '评价者二', ${`p2-${secondPerson}@example.com`}, 'manual', ${randomUUID()})`);
+        VALUES (${secondPerson}, ${a.tenantId}, '评价者二', ${`p2-${secondPerson}@example.com`}, 'manual',
+          ${randomUUID()})`);
       await tx.execute(sql`INSERT INTO survey360_links (id, tenant_id, activity_id, kind, person_id, token_hash)
         VALUES (${secondLink}, ${a.tenantId}, ${a.activityId}, 'answer', ${secondPerson}, ${`hash-${secondLink}`})`);
     });
@@ -137,7 +138,7 @@ describe('F-076 作答链接凭据列（§6）', () => {
   });
 });
 
-describe('F-076 作答会话（survey360_answer_sessions）', () => {
+describe('AC-360-F076-00 F-076 作答会话（survey360_answer_sessions）', () => {
   const insertSession = (w: World, over: { linkId?: string; tokenHash?: string; tenantId?: string } = {}) =>
     sqlState(
       w.tenantId,
@@ -184,11 +185,12 @@ describe('F-076 作答会话（survey360_answer_sessions）', () => {
   });
 });
 
-describe('F-076 登录限频（survey360_login_throttle，方案 C）', () => {
+describe('AC-360-F076-00 F-076 登录限频（survey360_login_throttle，方案 C）', () => {
   const insertRow = (tenantId: string, scope: string, key: string, over: ReturnType<typeof sql> = sql``) =>
     sqlState(
       tenantId,
-      sql`INSERT INTO survey360_login_throttle (tenant_id, scope, key_hash, window_started_at, updated_at, requests, failures)
+      sql`INSERT INTO survey360_login_throttle (tenant_id, scope, key_hash, window_started_at, updated_at,
+          requests, failures)
         VALUES (${tenantId}, ${scope}, ${key}, now(), now(), 0, 0) ${over}`,
     );
 
@@ -213,7 +215,7 @@ describe('F-076 登录限频（survey360_login_throttle，方案 C）', () => {
   });
 });
 
-describe('F-076 安全事件（survey360_security_events，DEC-377④ 只增不改）', () => {
+describe('AC-360-F076-00 F-076 安全事件（survey360_security_events，DEC-377④ 只增不改）', () => {
   const insertEvent = (tenantId: string, kind: string) =>
     sqlState(
       tenantId,
@@ -237,13 +239,26 @@ describe('F-076 安全事件（survey360_security_events，DEC-377④ 只增不�
     expect(await insertEvent(w.tenantId, 'login_failure')).toBe('23514');
   });
 
-  it('UPDATE / DELETE / TRUNCATE 被触发器拒绝，行不变', async () => {
+  it('应用角色没有 UPDATE / DELETE / TRUNCATE 权限；表属主执行也被触发器拒绝，行不变', async () => {
     const w = await world();
     expect(await insertEvent(w.tenantId, 'lock')).toBeUndefined();
-    const reject = (statement: ReturnType<typeof sql>) => sqlState(w.tenantId, statement);
-    expect(await reject(sql`UPDATE survey360_security_events SET kind = 'unlock'`)).toBe('55000');
-    expect(await reject(sql`DELETE FROM survey360_security_events`)).toBe('55000');
-    expect(await reject(sql`TRUNCATE survey360_security_events`)).toBe('55000');
+    const statements = [
+      sql`UPDATE survey360_security_events SET kind = 'unlock'`,
+      sql`DELETE FROM survey360_security_events`,
+      sql`TRUNCATE survey360_security_events`,
+    ];
+    for (const statement of statements) {
+      // 应用角色：权限层先拒绝（42501）
+      expect(await sqlState(w.tenantId, statement)).toBe('42501');
+      // 表属主 / 超级用户：触发器兜底（55000 object_not_in_prerequisite_state）
+      const owner = await testDb()
+        .db.execute(statement)
+        .then(
+          () => undefined,
+          (error: unknown) => pgErrorCode(error),
+        );
+      expect(owner).toBe('55000');
+    }
     const left = await withTenant(testDb().db, w.tenantId, (tx) =>
       tx.execute(sql`SELECT kind FROM survey360_security_events`),
     );
@@ -251,14 +266,15 @@ describe('F-076 安全事件（survey360_security_events，DEC-377④ 只增不�
   });
 });
 
-describe('F-076 退役进度（survey360_key_retire_runs，§2.4.1）', () => {
+describe('AC-360-F076-00 F-076 退役进度（survey360_key_retire_runs，§2.4.1）', () => {
   it('每租户每次运行一行，状态只有 running / done / failed', async () => {
     const w = await world();
     const runId = randomUUID();
     const insert = (status: string, run = runId) =>
       sqlState(
         w.tenantId,
-        sql`INSERT INTO survey360_key_retire_runs (run_id, tenant_id, credential_key_version, compromised, status, started_at)
+        sql`INSERT INTO survey360_key_retire_runs (run_id, tenant_id, credential_key_version, compromised, status,
+            started_at)
           VALUES (${run}, ${w.tenantId}, 2, false, ${status}, now())`,
       );
     expect(await insert('running')).toBeUndefined();

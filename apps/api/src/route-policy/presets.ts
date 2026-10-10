@@ -10,12 +10,14 @@ import type {
   Denial,
   FieldsFrom,
   FieldsPolicy,
+  LedgerPolicy,
   ObjectPolicy,
   PolicyBase,
   RoutePolicy,
   ScopePolicy,
   Target,
   WritePolicy,
+  WritePolicyBase,
 } from './types.js';
 
 // ---- 拒绝码 ---------------------------------------------------------------------------------------------------
@@ -78,7 +80,7 @@ export function button(code: string, level: ButtonLevel): ButtonRef {
 }
 
 // ---- 写策略 ---------------------------------------------------------------------------------------------------
-type WriteExtra = Partial<Pick<WritePolicy, 'controls' | 'commandOnly' | 'preconditions' | 'ledger'>>;
+export type WriteExtra = Partial<Pick<WritePolicyBase, 'controls' | 'commandOnly' | 'preconditions'>> & LedgerPolicy;
 export function write(
   fields: FieldsFrom,
   footprint: WritePolicy['footprint'],
