@@ -161,7 +161,7 @@ function checkStructure(shape: Shape) {
   }
 }
 
-/** 引用字段的属性与分段 / 格子（读库后）：轴字段单选或数值，位置字段是“位置”分组的数值字段，新引用的字段须已启用。 */
+/** 引用字段的属性与分段 / 格子（读库后）：轴字段只能是等级维度（单选）字段（DEC-389① / DEC-403），位置字段是“位置”分组的数值字段，新引用的字段须已启用。 */
 function checkAgainstFields(shape: Shape, facts: Map<string, FieldFacts>, added: readonly string[]) {
   const axisFields = { x: facts.get(shape.xFieldId)!, y: facts.get(shape.yFieldId)! };
   for (const field of Object.values(axisFields)) {

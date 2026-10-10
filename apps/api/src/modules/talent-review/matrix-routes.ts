@@ -12,7 +12,11 @@ import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import { booleanQuery, pageQuery, parseBody, requireNew, revision, uuidParam } from '../talent/http.js';
-import { getModuleViewableFields } from '../permission/module-access.js';
+import {
+  authorizeInTransaction,
+  getModuleViewableFields,
+  resolveModuleScopeInTransaction,
+} from '../permission/module-access.js';
 import {
   checkWriteFields,
   codeOf,
@@ -51,10 +55,47 @@ const referencedFields = (body: Partial<MatrixPatch>): string[] =>
     (id): id is string => typeof id === 'string',
   );
 
+/** 命令事务内要重新复核的内容：操作种类、载荷字段（逐字段编辑权）、请求里引用的盘点字段。 */
+interface WriteRecheck {
+  /** 规则组写入的权限是九宫格的 update。 */
+  readonly operation: 'create' | 'update' | 'delete';
+  /** 载荷逐字段校验编辑权（含显式清空）；删除九宫格没有字段输入。 */
+  readonly fields?: Readonly<Record<string, unknown>>;
+  readonly references: readonly string[];
+}
+interface Rechecked {
+  readonly ctx: TalentReviewContext;
+  readonly scope: ModuleScope;
+  readonly fieldScope?: ModuleScope;
+}
+
 /**
- * 命令执行：范围在事务外按当前权限解析，首次执行在事务内行锁后复核（请求里的字段引用也在事务内、写入之前复核，
- * 拒绝时整个命令回滚）；幂等重放不再执行命令，按当前范围复核结果对象与请求里的字段引用（撤范围后重放 404，AGENTS §10），
- * 响应按当前字段权限裁剪。
+ * 命令事务内的当前权限复核（首次执行、直接重放、失败后回查三条路径都经过 commands.ts 的 ledgerExit → guard.before；
+ * AGENTS §10 权限、DEC-067、DEC-388①）：对象数据操作权、按钮、载荷字段编辑权、九宫格范围、引用字段的字段目录权限与范围
+ * 都在**事务内**按当前授权重新解析，不沿用事务外保存的快照。拒绝即整体回滚：业务写、revision、审计、命令台账都不提交。
+ */
+async function recheck(
+  c: Context<TenantEnv>,
+  deps: TenantRouteDeps,
+  tx: Tx,
+  expectedRevision: number,
+  spec: WriteRecheck,
+): Promise<Rechecked> {
+  const txDeps: TenantRouteDeps = { ...deps, authorize: authorizeInTransaction(deps.authorize, tx) };
+  const ctx = await reviewWriteContext(c, txDeps, 'matrix', spec.operation, expectedRevision);
+  if (spec.fields)
+    await checkWriteFields(txDeps, ctx, 'matrix', spec.operation === 'create' ? 'create' : 'update', spec.fields);
+  const scope = await resolveModuleScopeInTransaction(txDeps, ctx, tx, codeOf('matrix'));
+  if (spec.references.length === 0) return { ctx, scope };
+  // 引用盘点字段 = 读取字段目录：另需字段目录的对象查看权，并按其范围判定字段可见性（看不到的字段与不存在同为 404）
+  await reviewContext(c, txDeps, 'field');
+  const fieldScope = await resolveModuleScopeInTransaction(txDeps, ctx, tx, codeOf('field'));
+  return { ctx, scope, fieldScope };
+}
+
+/**
+ * 命令执行：权限与范围在命令事务内按当前授权复核（`guard.before`，写入之前）；返回台账结果时（直接重放、失败后回查）结果
+ * 对象与请求里的字段引用按当前范围仍须可见（`guard.replayed`，撤权后 404），响应按当前字段权限裁剪。
  */
 async function runWrite(
   c: Context<TenantEnv>,
@@ -62,30 +103,39 @@ async function runWrite(
   ctx: TalentReviewContext,
   body: object,
   status: 200 | 201,
+  spec: WriteRecheck,
   execute: (tx: Tx, ctx: matrices.MatrixWriteContext) => Promise<MatrixView>,
-  fieldScope?: ModuleScope,
-  references: readonly string[] = [],
 ) {
-  const scope = await reviewScope(c, deps, ctx, 'matrix');
-  let executed = false;
+  let current: Rechecked | undefined;
   const result = await runCommand(deps.db, ctx, {
     id: c.req.header('idempotency-key'),
     fingerprint: { method: c.req.method, path: c.req.path, expectedRevision: ctx.expectedRevision, input: body },
+    guard: {
+      before: async (tx) => {
+        current = await recheck(c, deps, tx, ctx.expectedRevision, spec);
+      },
+      replayed: async (tx, replay) => {
+        const { scope, fieldScope } = current!;
+        requireConfigVisible(scope, 'matrix', (replay.body as MatrixView).createdBy as string | null);
+        if (fieldScope && spec.references.length > 0) {
+          await matrices.requireReferencesVisible(tx, ctx.tenantId, spec.references, fieldScope);
+        }
+      },
+    },
     execute: async (tx, commandId) => {
-      const view = await execute(tx, { ...ctx, commandId, scope, references, ...(fieldScope ? { fieldScope } : {}) });
-      executed = true;
+      const { ctx: fresh, scope, fieldScope } = current!;
+      const view = await execute(tx, {
+        ...fresh,
+        commandId,
+        scope,
+        references: spec.references,
+        ...(fieldScope ? { fieldScope } : {}),
+      });
       return { status, body: view };
     },
   });
   const view = result.body as MatrixView;
-  requireConfigVisible(scope, 'matrix', view.createdBy as string | null);
-  // 幂等重放不再执行命令：请求里引用的字段按当前字段目录范围重新复核（授权复核，与业务校验分开）。
-  // 本请求里命令已执行过时，引用已在业务事务内、写入之前按同一范围复核过，不在提交之后再判
-  if (!executed && fieldScope && references.length > 0) {
-    await withTenant(deps.db, ctx.tenantId, (tx) =>
-      matrices.requireReferencesVisible(tx, ctx.tenantId, references, fieldScope),
-    );
-  }
+  requireConfigVisible(current!.scope, 'matrix', view.createdBy as string | null);
   if (c.req.method !== 'DELETE') c.header('ETag', `"${view.revision}"`);
   return c.json((await trimReview(deps, ctx, 'matrix', [view]))[0], result.status);
 }
@@ -126,17 +176,10 @@ export function registerMatrixRoutes(router: Hono<TenantEnv>, deps: TenantRouteD
     requireNew(ctx.expectedRevision);
     const body = await parseBody(c, matrixCreate);
     await checkWriteFields(deps, ctx, 'matrix', 'create', body);
-    const fieldScope = await requireFieldReference(c, deps);
-    return runWrite(
-      c,
-      deps,
-      ctx,
-      body,
-      201,
-      (tx, w) => matrices.createMatrix(tx, w, body),
-      fieldScope,
-      referencedFields(body),
-    );
+    // 路由层的前置检查只管早失败；以命令事务内的复核（runWrite）为准
+    await requireFieldReference(c, deps);
+    const spec = { operation: 'create', fields: body, references: referencedFields(body) } as const;
+    return runWrite(c, deps, ctx, body, 201, spec, (tx, w) => matrices.createMatrix(tx, w, body));
   });
   router.patch(`${MATRICES}/:id`, async (c) => {
     const ctx = await reviewWriteContext(c, deps, 'matrix', 'update', revision(c));
@@ -144,13 +187,15 @@ export function registerMatrixRoutes(router: Hono<TenantEnv>, deps: TenantRouteD
     const body = await parseBody(c, matrixPatch);
     await checkWriteFields(deps, ctx, 'matrix', 'update', body);
     const references = referencedFields(body);
-    const fieldScope = references.length > 0 ? await requireFieldReference(c, deps) : undefined;
-    return runWrite(c, deps, ctx, body, 200, (tx, w) => matrices.updateMatrix(tx, w, id, body), fieldScope, references);
+    if (references.length > 0) await requireFieldReference(c, deps);
+    const spec = { operation: 'update', fields: body, references } as const;
+    return runWrite(c, deps, ctx, body, 200, spec, (tx, w) => matrices.updateMatrix(tx, w, id, body));
   });
   router.delete(`${MATRICES}/:id`, async (c) => {
     const ctx = await reviewWriteContext(c, deps, 'matrix', 'delete', revision(c));
     const id = uuidParam(c);
-    return runWrite(c, deps, ctx, { id }, 200, (tx, w) => matrices.deleteMatrix(tx, w, id));
+    const spec = { operation: 'delete', references: [] } as const;
+    return runWrite(c, deps, ctx, { id }, 200, spec, (tx, w) => matrices.deleteMatrix(tx, w, id));
   });
   registerRatioGroupRoutes(router, deps);
 }
@@ -162,7 +207,8 @@ function registerRatioGroupRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps
     const id = uuidParam(c);
     const body = await parseBody(c, ratioGroupCreate);
     await checkWriteFields(deps, ctx, 'matrix', 'update', { ratioGroups: body });
-    return runWrite(c, deps, ctx, body, 201, (tx, w) => matrices.createRatioGroup(tx, w, id, body));
+    const spec = { operation: 'update', fields: { ratioGroups: body }, references: [] } as const;
+    return runWrite(c, deps, ctx, body, 201, spec, (tx, w) => matrices.createRatioGroup(tx, w, id, body));
   });
   router.patch(`${GROUPS}/:groupId`, async (c) => {
     const ctx = await reviewWriteContext(c, deps, 'matrix', 'update', revision(c));
@@ -170,13 +216,15 @@ function registerRatioGroupRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps
     const groupId = uuidParam(c, 'groupId');
     const body = await parseBody(c, ratioGroupPatch);
     await checkWriteFields(deps, ctx, 'matrix', 'update', { ratioGroups: body });
-    return runWrite(c, deps, ctx, body, 200, (tx, w) => matrices.updateRatioGroup(tx, w, id, groupId, body));
+    const spec = { operation: 'update', fields: { ratioGroups: body }, references: [] } as const;
+    return runWrite(c, deps, ctx, body, 200, spec, (tx, w) => matrices.updateRatioGroup(tx, w, id, groupId, body));
   });
   router.delete(`${GROUPS}/:groupId`, async (c) => {
     const ctx = await reviewWriteContext(c, deps, 'matrix', 'update', revision(c));
     const id = uuidParam(c);
     const groupId = uuidParam(c, 'groupId');
     await checkWriteFields(deps, ctx, 'matrix', 'update', { ratioGroups: [] });
-    return runWrite(c, deps, ctx, { id, groupId }, 200, (tx, w) => matrices.deleteRatioGroup(tx, w, id, groupId));
+    const spec = { operation: 'update', fields: { ratioGroups: [] }, references: [] } as const;
+    return runWrite(c, deps, ctx, { id, groupId }, 200, spec, (tx, w) => matrices.deleteRatioGroup(tx, w, id, groupId));
   });
 }

@@ -10,8 +10,15 @@ import { talentReviewFields, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { installMissingSeeds } from '../../apps/api/src/seeds/index.js';
-import { TR_NOW } from './AC-TR-config-support.js';
-import { MATRICES, matrixBody, matrixWorld, ratioGroupBody, type MatrixView } from './AC-TR-matrix-support.js';
+import { configBody, TR_NOW } from './AC-TR-config-support.js';
+import {
+  LEVEL_OPTIONS,
+  MATRICES,
+  matrixBody,
+  matrixWorld,
+  ratioGroupBody,
+  type MatrixView,
+} from './AC-TR-matrix-support.js';
 import { errorCode } from './support/tenant-api.js';
 
 const testDb = useTestDb();
@@ -50,17 +57,29 @@ const EXPORT_ORDER = [9, 7, 8, 5, 4, 6, 2, 3, 1];
 
 describe('F-085 轴只能是等级维度字段（Q-M0-156）', () => {
   it.each(['x', 'y'] as const)(
-    '%s 轴选数值 / 文本 / 多选字段 400 MATRIX_AXIS_FIELD_KIND；单选字段通过',
+    '%s 轴选数值 / 文本 / 多选字段，新建与修改都 400 MATRIX_AXIS_FIELD_KIND；单选字段通过',
     async (axis) => {
       const w = await matrixWorld(testDb().db, `trm-f085-axis-${axis}`);
       const refs = await w.refs();
       const key = `${axis}FieldId`;
-      for (const bad of [await w.numberField(), await w.textField()]) {
+      const multiResponse = await w.request('POST', '/fields', {
+        ifMatch: 0,
+        body: configBody('field', { kind: 'multi_option', group: 'result', options: LEVEL_OPTIONS }),
+      });
+      expect(multiResponse.status, await multiResponse.clone().text()).toBe(201);
+      const multi = (await multiResponse.json()) as { id: string };
+      const bads = [await w.numberField(), await w.textField(), multi];
+      for (const bad of bads) {
         const response = await w.post(matrixBody(refs, { [key]: bad.id }));
-        expect([response.status, await reasonOf(response)]).toEqual([400, 'MATRIX_AXIS_FIELD_KIND']);
+        expect([response.status, await reasonOf(response)], bad.id).toEqual([400, 'MATRIX_AXIS_FIELD_KIND']);
       }
       expect((await w.list()).items).toEqual([]);
-      expect((await w.post(matrixBody(refs))).status).toBe(201);
+      const created = await w.create({}, refs);
+      for (const bad of bads) {
+        const patch = await w.request('PATCH', `${MATRICES}/${created.id}`, { ifMatch: 1, body: { [key]: bad.id } });
+        expect([patch.status, await reasonOf(patch)], bad.id).toEqual([400, 'MATRIX_AXIS_FIELD_KIND']);
+      }
+      expect((await w.read(created.id)).body).toEqual(created);
     },
   );
 
