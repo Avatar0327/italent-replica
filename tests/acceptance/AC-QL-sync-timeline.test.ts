@@ -28,8 +28,8 @@ async function scene(label: string) {
   await w.settleBaseline();
   await w.enableSync(true);
   const fields = (n: 0 | 1) => ({ sequenceId: sequences[n]!, levelId: jobLevelId });
-  const current = () =>
-    withTenant(w.db, w.tenantId, (tx) => currentQualification(tx, w.tenantId, w.subject.employee.id, '2026-10-10'));
+  const current = (employeeId = w.subject.employee.id) =>
+    withTenant(w.db, w.tenantId, (tx) => currentQualification(tx, w.tenantId, employeeId, '2026-10-10'));
   /** 登记先后用应用时钟区分：事件创建时间不同。 */
   const at = (iso: string) => w.session.setNow(iso);
   return { w, levelId, categories, fields, current, at };
@@ -171,5 +171,55 @@ describe('AC-QL-sync HR 删除 / 编辑后不补回（口径 6 = A，P3-01）', 
     await w.run('2026-10-10T06:00:00Z');
     expect(await w.subsets()).toEqual([]);
     expect((await w.queue(record)).map((r) => r.state).sort()).toEqual(['done', 'done']);
+  });
+});
+
+describe('AC-QL-sync 同时间戳的同日事件按持久登记序（R2-P2-01）', () => {
+  /** 同一导入批次里逐行登记的事件共用同一个时钟：创建时间完全相同，只能靠持久的登记序。5 名员工，每人先 A 后 B。 */
+  async function sameClockScene(label: string) {
+    const ctx = await scene(label);
+    const people = [];
+    for (let i = 0; i < 5; i += 1) people.push(await ctx.w.hired(`同批员工${i}`));
+    await ctx.w.run(AT); // 入职事件先处理掉
+    ctx.at('2026-10-10T02:00:00Z');
+    const pairs = [];
+    for (const person of people) {
+      const a = await ctx.w.transferWith('2026-10-05', ctx.fields(0), person.employee.id);
+      const b = await ctx.w.transferWith('2026-10-05', ctx.fields(1), person.employee.id);
+      pairs.push({ employeeId: person.employee.id, a, b });
+    }
+    return { ...ctx, pairs };
+  }
+
+  it('消费正序：后登记的 B 在每名员工身上都胜出，不看随机 UUID（AC-QL-sync）', async () => {
+    const { w, categories, current, pairs } = await sameClockScene('qlsync-tl-same-clock-forward');
+    await w.run('2026-10-10T05:00:00Z');
+    for (const { employeeId, a, b } of pairs) {
+      expect((await current(employeeId))?.categoryId).toBe(categories[1]);
+      expect(await w.queue(b)).toMatchObject([{ state: 'done' }]);
+      expect((await w.subsets(employeeId)).map((row) => row.employmentRecordId)).toEqual([b]);
+      expect(a).not.toBe(b);
+    }
+  });
+
+  it('A 先失败、B 先成功、A 重试：每名员工的当前资格仍是后登记的 B，A 记 SUPERSEDED_SAME_DAY（AC-QL-sync）', async () => {
+    const { w, categories, current, pairs } = await sameClockScene('qlsync-tl-same-clock-reverse');
+    let calls = 0;
+    qualificationSyncProbe.beforeWrite = async () => {
+      calls += 1;
+      if (calls % 2 === 1) throw new Error('模拟 A 暂时失败');
+    };
+    try {
+      await w.run('2026-10-10T05:00:00Z');
+      await w.run('2026-10-10T07:00:00Z');
+    } finally {
+      qualificationSyncProbe.beforeWrite = undefined;
+    }
+    for (const { employeeId, a, b } of pairs) {
+      expect((await current(employeeId))?.categoryId).toBe(categories[1]);
+      expect(await w.queue(a)).toMatchObject([{ state: 'skipped', reason: 'SUPERSEDED_SAME_DAY' }]);
+      expect(await w.queue(b)).toMatchObject([{ state: 'done' }]);
+      expect(await w.subsets(employeeId)).toHaveLength(1);
+    }
   });
 });

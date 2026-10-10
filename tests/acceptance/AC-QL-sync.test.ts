@@ -11,6 +11,7 @@ import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import {
   qualificationSyncProbe,
+  maybeStartQualificationSyncScheduler,
   qualificationSyncSchedulerEnabled,
   startQualificationSyncScheduler,
 } from '../../apps/api/src/modules/qualification/sync-worker.js';
@@ -184,6 +185,60 @@ describe('AC-QL-sync 租户隔离与调度开关', () => {
     }
     expect(await w.queue(recordId)).toMatchObject([{ state: 'done' }]);
     expect(await w.subsets()).toHaveLength(1);
+  });
+
+  it('调度器 stop() 之后不再消费：停止后新入队的到期行保持 pending（AC-QL-sync）', async () => {
+    const { w, fields } = await configured('qlsync-scheduler-stop');
+    const scheduler = startQualificationSyncScheduler(w.db, 20);
+    await scheduler.stop();
+    const recordId = await w.transferWith('2026-10-05', fields);
+    await new Promise((done) => setTimeout(done, 300));
+    expect(await w.queue(recordId)).toMatchObject([{ state: 'pending', attempts: 0 }]);
+  });
+
+  it('QUALIFICATION_SYNC_SCHEDULER=off 时进程启动入口不起消费者，到期行保持 pending；未设置时起并消费（AC-QL-sync）', async () => {
+    const { w, fields } = await configured('qlsync-scheduler-off');
+    const recordId = await w.transferWith('2026-10-05', fields);
+    expect(maybeStartQualificationSyncScheduler(w.db, { QUALIFICATION_SYNC_SCHEDULER: 'off' })).toBeNull();
+    await new Promise((done) => setTimeout(done, 300));
+    expect(await w.queue(recordId)).toMatchObject([{ state: 'pending' }]);
+
+    const started = maybeStartQualificationSyncScheduler(w.db, { QUALIFICATION_SYNC_INTERVAL_MS: '20' });
+    expect(started).not.toBeNull();
+    try {
+      for (let i = 0; i < 250; i += 1) {
+        if ((await w.queue(recordId))[0]?.state === 'done') break;
+        await new Promise((done) => setTimeout(done, 20));
+      }
+    } finally {
+      await started!.stop();
+    }
+    expect(await w.queue(recordId)).toMatchObject([{ state: 'done' }]);
+  });
+
+  it('失败已提交但提交回执丢失：恢复回查确认已落地，仍补记原来的业务失败审计，不重复记次数（P3-01，AC-QL-sync）', async () => {
+    const { w, fields } = await configured('qlsync-receipt-lost');
+    const recordId = await w.transferWith('2026-10-05', fields);
+    qualificationSyncProbe.beforeWrite = async () => {
+      throw new Error('模拟业务失败');
+    };
+    qualificationSyncProbe.afterCommit = async () => {
+      throw Object.assign(new Error('connection terminated'), { code: 'ECONNRESET' });
+    };
+    try {
+      expect(await w.run('2026-10-10T05:00:00Z')).toMatchObject({ failed: 1 });
+    } finally {
+      qualificationSyncProbe.beforeWrite = undefined;
+      qualificationSyncProbe.afterCommit = undefined;
+    }
+    expect(await w.queue(recordId)).toMatchObject([{ state: 'failed', attempts: 1 }]);
+    const audits = await withTenant(w.db, w.tenantId, async (tx) =>
+      rowsOf<{ outcome: string }>(
+        await tx.execute(sql`SELECT outcome FROM audit_command_failures
+        WHERE tenant_id=${w.tenantId}`),
+      ),
+    );
+    expect(audits).toMatchObject([{ outcome: 'business_failed' }]);
   });
 
   it('环境变量可关：QUALIFICATION_SYNC_SCHEDULER=off 时进程不启动消费者（AC-QL-sync）', () => {
