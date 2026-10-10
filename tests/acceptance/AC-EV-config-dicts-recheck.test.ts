@@ -11,7 +11,7 @@
  * 败者随即回查台账。9 个入口各测一次撤权（必须拒绝）与一次对照（不撤权时重放胜者结果，证明走的正是回查出口）。
  */
 import { randomUUID } from 'node:crypto';
-import { commandLedger, type Db, eq, sql, withTenant } from '@italent/db';
+import { commandLedger, type Db, eq, sql, type Tx, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { auditApi } from './AC-AUD-support.js';
@@ -50,6 +50,14 @@ vi.mock('../../apps/api/src/commands.js', async (importOriginal) => {
   };
 });
 
+/** 测试库属主连接带租户上下文执行：绕过租户角色的表权限，仍满足强制 RLS 的租户条件。 */
+function asOwner<T>(db: Db, tenantId: string, fn: (tx: Tx) => Promise<T>): Promise<T> {
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT set_config('app.tenant_id', ${tenantId}, true)`);
+    return fn(tx);
+  });
+}
+
 /** 第一个事务（败者主事务）开始前移走胜者的台账行，结束后放回并执行 afterLoserTx；之后的事务（回查）原样。 */
 function loserDb(db: Db, tenantId: string, commandId: string, loser: Loser): Db {
   let first = true;
@@ -57,15 +65,15 @@ function loserDb(db: Db, tenantId: string, commandId: string, loser: Loser): Db 
   wrapper.transaction = (async (fn: Parameters<Db['transaction']>[0]) => {
     if (!first) return db.transaction(fn);
     first = false;
-    // 测试库属主连接：租户角色对命令台账没有 DELETE 权限
-    const [row] = await db.transaction((tx) =>
+    // 测试库属主连接（租户角色对命令台账没有 DELETE 权限），带租户上下文以通过强制 RLS
+    const [row] = await asOwner(db, tenantId, (tx) =>
       tx.delete(commandLedger).where(eq(commandLedger.commandId, commandId)).returning(),
     );
     if (!row) throw new Error('胜者没有写台账，模拟前提不成立');
     try {
       return await db.transaction(fn);
     } finally {
-      await db.transaction((tx) => tx.insert(commandLedger).values(row));
+      await asOwner(db, tenantId, (tx) => tx.insert(commandLedger).values(row));
       await loser.afterLoserTx();
     }
   }) as Db['transaction'];

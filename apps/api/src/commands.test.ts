@@ -10,6 +10,14 @@ import { AppError } from './errors.js';
 import { SYSTEM_USER_ID } from './system-actor.js';
 
 const testDb = useTestDb();
+
+/** 测试库属主连接带租户上下文执行：绕过租户角色的表权限，仍满足强制 RLS 的租户条件。 */
+function asOwner<T>(db: Db, tenantId: string, fn: (tx: Tx) => Promise<T>): Promise<T> {
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT set_config('app.tenant_id', ${tenantId}, true)`);
+    return fn(tx);
+  });
+}
 const userId = '00000000-0000-4000-8000-0000000000a1';
 const fingerprint = { op: 'override', key: 'audit.retention', expectedRevision: 0, value: 1 };
 
@@ -255,14 +263,15 @@ describe('台账出口统一守卫（CommandGuard）', () => {
     wrapper.transaction = (async (fn: Parameters<Db['transaction']>[0]) => {
       if (!first) return db.transaction(fn);
       first = false;
-      // 测试库属主连接：租户角色对命令台账没有 DELETE 权限
-      const [row] = await db.transaction((tx) =>
+      // 测试库属主连接（租户角色对命令台账没有 DELETE 权限），带租户上下文以通过强制 RLS
+      const [row] = await asOwner(db, tenantId, (tx) =>
         tx.delete(commandLedger).where(eq(commandLedger.commandId, commandId)).returning(),
       );
+      if (!row) throw new Error('先提交者没有台账，模拟前提不成立');
       try {
         return await db.transaction(fn);
       } finally {
-        if (row) await db.transaction((tx) => tx.insert(commandLedger).values(row));
+        await asOwner(db, tenantId, (tx) => tx.insert(commandLedger).values(row));
       }
     }) as Db['transaction'];
     return wrapper;
