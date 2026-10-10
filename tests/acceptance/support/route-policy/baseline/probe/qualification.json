@@ -836,6 +836,21 @@
       "obj:Qualification.QualificationStandard:update"
     ]
   },
+  "POST /api/tenant/qualification/subsets/initialize": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "3a0494ee6cca",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.Qualification/-"
+    ],
+    "trace": [
+      "btn:TenantBase.Qualification#create@list",
+      "obj:TenantBase.Qualification:create"
+    ]
+  },
   "POST /api/tenant/qualification/target-types": {
     "all": {
       "code": "REVISION_CONFLICT",

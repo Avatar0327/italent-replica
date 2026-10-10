@@ -100,6 +100,29 @@ export async function syncWorld(db: Db, label: string, options: { timezone?: str
     return ((await created.json()) as { id: string }).id;
   }
 
+  /** 组织员工侧的职等（先建职层）；任职记录的 gradeId 要能通过存在性校验。 */
+  async function jobGrade(): Promise<string> {
+    const layer = await api.request('POST', '/api/tenant/job/layers', {
+      ...as,
+      ifMatch: 0,
+      body: { name: '同步职层', code: `LY${randomUUID().slice(0, 6)}`, layerLevel: 1, startDate: '2020-01-01' },
+    });
+    expect(layer.status, await layer.clone().text()).toBe(201);
+    const created = await api.request('POST', '/api/tenant/job/grades', {
+      ...as,
+      ifMatch: 0,
+      body: {
+        name: '同步职等',
+        code: `JG${randomUUID().slice(0, 6)}`,
+        grade: 1,
+        layerId: ((await layer.json()) as { id: string }).id,
+        startDate: '2020-01-01',
+      },
+    });
+    expect(created.status, await created.clone().text()).toBe(201);
+    return ((await created.json()) as { id: string }).id;
+  }
+
   /** 保存一条调动（HR 直写），可带岗职务字段；返回业务单（= 任职记录）标识。 */
   async function transferWith(
     effectiveDate: string,
@@ -271,6 +294,7 @@ export async function syncWorld(db: Db, label: string, options: { timezone?: str
     enableSync,
     sequence,
     jobLevel,
+    jobGrade,
     transferWith,
     category,
     level,
