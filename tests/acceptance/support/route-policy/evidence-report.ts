@@ -219,12 +219,10 @@ const PATH_ONLY = '仅绑定 / 路径变化';
 const ONE_SIDE = '该节点只在一侧快照可达，闭包变化见对应的边变化组';
 
 /** 组内所有 impact 的 closureChanged 都是 false 时，按种类写明原因（§3.2 规则 7）。 */
-const reasonOf = (kinds: readonly StaleKind[]) =>
-  kinds.length === 1 && kinds[0] === 'root'
-    ? ROOT_ONLY
-    : kinds.some((k) => k === 'edge' || k === 'binding')
-      ? PATH_ONLY
-      : ONE_SIDE;
+function reasonOf(kinds: readonly StaleKind[]): string {
+  if (kinds.length === 1 && kinds[0] === 'root') return ROOT_ONLY;
+  return kinds.some((k) => k === 'edge' || k === 'binding') ? PATH_ONLY : ONE_SIDE;
+}
 
 /** 一个变更节点一条文本：变化说明 + 受影响计数 + 逐条（义务 + 链），全部列出，不截断。 */
 export function formatGroup(group: StaleGroup, bindingText?: (node: string) => string): string {
