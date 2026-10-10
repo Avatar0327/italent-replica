@@ -9,11 +9,13 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { Finding } from './support/route-policy/compare.js';
+import { EVIDENCE_BOUNDARY, inBoundary } from './support/route-policy/evidence-boundary.js';
 import { MAX_DEPTH } from './support/route-policy/evidence-closure.js';
 import type { Graph, Registry } from './support/route-policy/evidence-graph.js';
 import { impactCounts, type StaleGroup, staleGroups, type Use } from './support/route-policy/evidence-report.js';
 import {
   checkEvidence,
+  closureReports,
   currentRegistry,
   REGISTRY,
   repoSource,
@@ -65,15 +67,16 @@ function closure(registry: Registry, root: string, registered = true): Set<strin
   nodes.delete(root);
   return nodes;
 }
-const digestOf = (r: Registry, id: string) => r.nodes[id]?.[0] ?? r.units[fileOf(id)]?.[nameOf(id)];
-const bindingOf = (r: Registry, id: string) => r.nodes[id]?.[1] ?? r.unitBindings[id];
-const present = (r: Registry, id: string) => id in r.nodes || id in r.unitBindings;
+/** 旧逐根算法的 D[y]：只看依赖节点记录（nodes），不回退到证据单元摘要——节点记录缺失就是“没有登记”。 */
+const digestOf = (r: Registry, id: string) => r.nodes[id]?.[0];
 
 interface Oracle {
   readonly dd: Set<string>;
   readonly de: Set<string>;
   readonly db: Set<string>;
   readonly dr: Set<string>;
+  /** 只有证据单元层面的变化（单元摘要 / 单元绑定 / 未登记），节点层面没变：影响只有它自己。 */
+  readonly unitLevel: Set<string>;
   readonly rReg: Map<string, Set<string>>;
   readonly rCur: Map<string, Set<string>>;
   readonly added: Map<string, Set<string>>;
@@ -90,18 +93,28 @@ function oracleOf(reg: Registry, cur: Registry, roots: Roots): Oracle {
     ...Object.keys(reg.unitBindings),
     ...Object.keys(cur.unitBindings),
   ]);
+  // Δd：节点摘要变；登记图仍引用、但 nodes 记录缺失的节点也算（登记副本不一致，旧版报为“新增依赖”）
+  const regRefs = new Set([...Object.keys(reg.graph), ...Object.values(reg.graph).flat()]);
   const dd = new Set(
-    [...ids].filter((id) => id in reg.nodes && id in cur.nodes && reg.nodes[id]![0] !== cur.nodes[id]![0]),
+    Object.keys(cur.nodes).filter(
+      (id) => digestOf(reg, id) !== digestOf(cur, id) && (id in reg.nodes || regRefs.has(id)),
+    ),
   );
   const graphIds = new Set([...Object.keys(reg.graph), ...Object.keys(cur.graph), ...ids]);
   const de = new Set([...graphIds].filter((id) => !sameSet(reg.graph[id] ?? [], cur.graph[id] ?? [])));
-  const db = new Set(
-    [...ids].filter((id) => present(reg, id) && present(cur, id) && bindingOf(reg, id) !== bindingOf(cur, id)),
+  // Δb：节点层面（nodes 记录）与证据单元层面（unitBindings）各自比较，两边都有才算
+  const bn = new Set(Object.keys(cur.nodes).filter((id) => id in reg.nodes && reg.nodes[id]![1] !== cur.nodes[id]![1]));
+  const bu = new Set(
+    Object.keys(cur.unitBindings).filter(
+      (id) => id in reg.unitBindings && reg.unitBindings[id] !== cur.unitBindings[id],
+    ),
   );
+  const db = new Set([...bn, ...bu]);
   const unitDigest = (x: Registry, r: string) => x.units[fileOf(r)]?.[nameOf(r)];
   const dr = new Set(
     [...roots.keys()].filter((r) => unitDigest(reg, r) !== unitDigest(cur, r) || !(r in reg.unitBindings)),
   );
+  const unitLevel = new Set([...dr, ...bu].filter((x) => !dd.has(x) && !de.has(x) && !bn.has(x)));
   const maps = {
     rReg: new Map<string, Set<string>>(),
     rCur: new Map<string, Set<string>>(),
@@ -123,7 +136,7 @@ function oracleOf(reg: Registry, cur: Registry, roots: Roots): Oracle {
     maps.removed.set(r, new Set([...a].filter((y) => !b.has(y))));
     maps.changed.set(r, new Set([...a].filter((y) => b.has(y) && digestOf(reg, y) !== digestOf(cur, y))));
   }
-  return { dd, de, db, dr, ...maps };
+  return { dd, de, db, dr, unitLevel, ...maps };
 }
 
 /** 方案 §3.4 的归因：(x, r) 对上有三元组归因到 x。返回 `${x}|${r}` 与已被覆盖的三元组。 */
@@ -168,6 +181,7 @@ function attribution(o: Oracle, reg: Registry, cur: Registry) {
 function assertOracle(reg: Registry, cur: Registry, roots: Roots, groups: readonly StaleGroup[]) {
   const o = oracleOf(reg, cur, roots);
   const { pairs, covered } = attribution(o, reg, cur);
+  const second = new Map(staleGroups({ reg, cur, roots }).map((g) => [g.node, g]));
   const byNode = new Map(groups.map((g) => [g.node, g]));
   expect(byNode.size, '同一节点出了多条').toBe(groups.length);
   // A1 完整：每个三元组都归因到某个 group，且该 group 的这条 impact 标了 closureChanged
@@ -195,10 +209,22 @@ function assertOracle(reg: Registry, cur: Registry, roots: Roots, groups: readon
         (o.rReg.get(g.node)?.has(i.root) ?? false) || (o.rCur.get(g.node)?.has(i.root) ?? false) || i.root === g.node;
       expect(ok, `A2：${g.node} 的影响 ${i.root} 不可达`).toBe(true);
     }
-    // 影响集合完整：除纯根变化外恰为 R_reg ∪ R_cur（不多不少）
-    if (!(g.kinds.length === 1 && g.kinds[0] === 'root')) {
-      const expected = new Set([...(o.rReg.get(g.node) ?? []), ...(o.rCur.get(g.node) ?? [])]);
-      expect(new Set(g.impacts.map((i) => i.root)), `影响集合：${g.node}`).toEqual(expected);
+    // 影响集合完整：证据单元层面的变化只列它自己，其余恰为 R_reg ∪ R_cur（不多不少）
+    const roots2 = o.unitLevel.has(g.node)
+      ? new Set([g.node])
+      : new Set([...(o.rReg.get(g.node) ?? []), ...(o.rCur.get(g.node) ?? [])]);
+    expect(new Set(g.impacts.map((i) => i.root)), `影响集合：${g.node}`).toEqual(roots2);
+    // 链：起于根、止于变更节点，相邻两跳确是所取快照上的直接边，长度最短，且稳定
+    for (const i of g.impacts) {
+      const graph = i.snapshot === 'cur' ? cur.graph : reg.graph;
+      expect(i.chain[0], `链起点：${g.node} × ${i.root}`).toBe(i.root);
+      expect(i.chain.at(-1), `链终点：${g.node} × ${i.root}`).toBe(g.node);
+      for (let k = 1; k < i.chain.length; k++) {
+        expect(graph[i.chain[k - 1]!] ?? [], `链上的边：${i.chain.join(' → ')}`).toContain(i.chain[k]);
+      }
+      if (i.root !== g.node)
+        expect(i.chain.length - 1, `最短链：${i.chain.join(' → ')}`).toBe(dist(graph, i.root).get(g.node));
+      expect(second.get(g.node)?.impacts.find((x) => x.root === i.root)?.chain, '链输出不稳定').toEqual(i.chain);
     }
     // A3 标注正确
     for (const i of g.impacts) {
@@ -215,6 +241,12 @@ function assertOracle(reg: Registry, cur: Registry, roots: Roots, groups: readon
     expect([...g.kinds].sort(), `A4：${g.node} 的 kinds`).toEqual(expected.sort());
   }
   const changed = new Set([...o.dd, ...o.de, ...o.db, ...o.dr]);
+  const grouped = new Set(groups.map((g) => g.node));
+  const absent = [...changed].filter((x) => {
+    const affected = o.unitLevel.has(x) ? [x] : [...(o.rReg.get(x) ?? []), ...(o.rCur.get(x) ?? [])];
+    return affected.length > 0 && !grouped.has(x);
+  });
+  expect(absent.slice(0, 5), '变更节点没有出组').toEqual([]);
   for (const g of groups) expect(changed.has(g.node), `A4：${g.node} 不在变更节点集合里`).toBe(true);
   return o;
 }
@@ -270,7 +302,25 @@ function fixtureRun(files: Record<string, string>, patch: Record<string, string>
     registry: reg,
     digests: reg.units,
   });
+  const read = readerOf({ ...files, ...patch });
+  expect(unresolvedKeys(found), 'A5：未解析项集合').toEqual(expectedUnresolved(table, read, false));
   return { table, reg, cur, roots, groups: staleGroups({ reg, cur, roots }), found };
+}
+
+/** A5：除 depth-limit 口径外，未解析项的完整集合与旧算法（逐根源码解析的 closureReports）逐项相等。 */
+function unresolvedKeys(found: readonly Finding[]) {
+  return found
+    .filter((f) => f.code === 'EVIDENCE_CLOSURE_UNRESOLVED')
+    .map((f) => f.detail)
+    .sort();
+}
+function expectedUnresolved(table: RequiredTable, read: SourceReader, branch: false | undefined = undefined) {
+  const reports = closureReports(table, read, branch === undefined ? undefined : false);
+  return reports
+    .flatMap((r) => r.unresolved.map((u) => ({ unit: r.unit, u })))
+    .filter(({ u }) => u.file.startsWith('apps/api/src/modules/') && !inBoundary(u.file, EVIDENCE_BOUNDARY))
+    .map(({ unit, u }) => `${unit} 的依赖闭包有解析不了的项：${u.reason} ${u.detail}（${u.file}）`)
+    .sort();
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -641,5 +691,138 @@ describe('AC-PRM-FW-02 集中报告：输出形态（F-072 §3.2 规则 1、3、
     expect(stale).toHaveLength(7);
     expect(stale.every((f) => f.group!.impacts.length === 1 && !/共 \d+ 处/.test(f.detail))).toBe(true);
     assertOracle(many.reg, many.cur, many.roots, many.groups);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// 第 1 轮审查 P2-1：登记副本不一致时，集中报告不得少于旧版
+// ---------------------------------------------------------------------------------------------------------------
+
+describe('AC-PRM-FW-02 集中报告：登记缺项 / 副本不一致不丢失（#212 第 1 轮 P2-1）', () => {
+  const roots = () => usesOf(REQUIRED);
+  const rootIds = () => new Set(roots().keys());
+  /** 每个节点被多少个根（含自身为根）到达：对所有根各做一次朴素 BFS 累加，只算一次。 */
+  let counts: Map<string, number> | undefined;
+  const reachCount = (id: string) => {
+    if (!counts) {
+      counts = new Map();
+      for (const root of roots().keys()) {
+        for (const node of dist(REGISTRY.graph, root).keys()) counts.set(node, (counts.get(node) ?? 0) + 1);
+      }
+    }
+    return counts.get(id) ?? 0;
+  };
+  const without = <T>(record: Readonly<Record<string, T>>, key: string) =>
+    Object.fromEntries(Object.entries(record).filter(([k]) => k !== key));
+  const stale = (reg: Registry) =>
+    checkEvidence(REQUIRED, { registry: reg }).filter((f) => f.code === 'EVIDENCE_STALE');
+
+  /** 登记里删掉某个节点的 nodes 记录，图仍引用它：旧版对每个引用它的根报“新增依赖”。 */
+  const dropped = (id: string): Registry => ({ ...REGISTRY, nodes: without(REGISTRY.nodes, id) });
+
+  const candidates = () =>
+    Object.keys(REGISTRY.nodes)
+      .filter((id) => reachCount(id) > 20)
+      .sort((a, b) => reachCount(b) - reachCount(a));
+
+  it('图仍引用节点但 nodes.ts 缺记录（叶子 / 非叶子 / 兼作根的依赖）：每个引用它的根都在报告里', () => {
+    const all = candidates();
+    const leaf = all.find((id) => !(id in REGISTRY.graph) && !rootIds().has(id));
+    const inner = all.find((id) => id in REGISTRY.graph && !rootIds().has(id));
+    const dual = all.find((id) => rootIds().has(id));
+    expect([leaf, inner, dual].every(Boolean), '真实登记里找不到三类样本').toBe(true);
+    for (const id of [leaf!, inner!, dual!]) {
+      const reg = dropped(id);
+      const found = stale(reg);
+      expect(found, `${id}\n${show(found)}`).toHaveLength(1);
+      const group = found[0]!.group!;
+      expect(group.node).toBe(id);
+      expect(group.kinds).toContain('digest');
+      expect(group.impacts).toHaveLength(reachCount(id));
+      expect(
+        group.impacts.every((i) => i.closureChanged),
+        `${id} 每条影响都有闭包级变化`,
+      ).toBe(true);
+      assertOracle(reg, REGISTRY, roots(), staleGroups({ reg, cur: REGISTRY, roots: roots() }));
+    }
+  });
+
+  it('terms 的节点行被删（审查复现）：旧版 405 条 → 新版 1 条，405 个根都在', () => {
+    const id = 'apps/api/src/modules/permission/module-access.ts#terms';
+    const found = stale(dropped(id));
+    expect(found).toHaveLength(1);
+    expect(found[0]!.group!.impacts).toHaveLength(reachCount(id));
+    expect(reachCount(id)).toBeGreaterThan(300);
+  });
+
+  it('某单元既是证据根又是依赖，只有 unitBindings 指纹过期：只出该根自己（旧版 1 条）', () => {
+    const unit = 'apps/api/src/audit/routes.ts#auditContext';
+    expect(rootIds().has(unit) && unit in REGISTRY.nodes, '样本应兼作根与依赖').toBe(true);
+    const reg = { ...REGISTRY, unitBindings: { ...REGISTRY.unitBindings, [unit]: 'stale0000000' } };
+    const found = stale(reg);
+    expect(found, show(found)).toHaveLength(1);
+    const group = found[0]!.group!;
+    expect(group.node).toBe(unit);
+    expect(group.kinds).toEqual(['binding']);
+    expect(group.impacts.map((i) => [i.root, i.closureChanged])).toEqual([[unit, false]]);
+    assertOracle(reg, REGISTRY, roots(), staleGroups({ reg, cur: REGISTRY, roots: roots() }));
+  });
+
+  it('两个 PR 分别解决 units.ts / nodes.ts 冲突后留下的第二种不一致：节点记录与单元指纹各自过期都能报', () => {
+    const unit = 'apps/api/src/audit/routes.ts#auditContext';
+    const reg: Registry = {
+      ...REGISTRY,
+      nodes: { ...REGISTRY.nodes, [unit]: [REGISTRY.nodes[unit]![0], 'stale1111111'] },
+      unitBindings: { ...REGISTRY.unitBindings, [unit]: 'stale2222222' },
+    };
+    const groups = staleGroups({ reg, cur: REGISTRY, roots: roots() });
+    assertOracle(reg, REGISTRY, roots(), groups);
+    const group = groups.find((g) => g.node === unit)!;
+    expect(group.kinds).toEqual(['binding']);
+    expect(group.impacts.length).toBe(reachCount(unit));
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// 第 1 轮审查 P3-1：区分力（纯绑定变化组、长链中间跳、unresolved 集合）
+// ---------------------------------------------------------------------------------------------------------------
+
+describe('AC-PRM-FW-02 集中报告：区分力（#212 第 1 轮 P3-1）', () => {
+  const HELPER = 'export function a() {\n  return 1;\n}\nexport function b() {\n  return 2;\n}\n';
+  const GATE = "import { r } from './mid.js';\nexport function gate() {\n  return r();\n}\n";
+  const mid = (a: string, b: string) =>
+    `import { ${a} as fmt, ${b} as tz } from './h.js';\nexport function r() {\n  return fmt() + tz();\n}\n`;
+  const files = { [`${FX}/gate.ts`]: GATE, [`${FX}/mid.ts`]: mid('a', 'b'), [`${FX}/h.ts`]: HELPER };
+
+  it('纯绑定变化（别名交换，摘要与邻接都不变）必须出一个 kinds = [binding] 的组，列全引用它的根', () => {
+    const run = fixtureRun(files, { [`${FX}/mid.ts`]: mid('b', 'a') }, `${FX}/gate.ts#gate`);
+    assertOracle(run.reg, run.cur, run.roots, run.groups);
+    const group = run.groups.find((g) => g.node === `${FX}/mid.ts#r`);
+    expect(group?.kinds).toEqual(['binding']);
+    expect(group?.impacts.map((i) => [i.root, i.snapshot, i.closureChanged])).toEqual([
+      [`${FX}/gate.ts#gate`, 'cur', false],
+    ]);
+    const stale = run.found.filter((f) => f.code === 'EVIDENCE_STALE');
+    expect(stale).toHaveLength(1);
+    expect(stale[0]!.detail).toContain('绑定变化');
+    expect(stale[0]!.detail).toContain('仅绑定 / 路径变化');
+  });
+
+  it('长度大于 5 的链：每一跳都是真实直接边、长度最短、逐跳输出（中间跳不能丢）', () => {
+    const adjacency = chainAdj(12, { n12: [] });
+    const run = fixtureRun(
+      { [`${FX}/deep.ts`]: sourceOf(adjacency) },
+      { [`${FX}/deep.ts`]: sourceOf(adjacency, { n12: 'x + 5' }) },
+      `${FX}/deep.ts#gate`,
+    );
+    assertOracle(run.reg, run.cur, run.roots, run.groups);
+    const impact = run.groups.find((g) => g.node.endsWith('#n12'))!.impacts[0]!;
+    expect(impact.chain).toHaveLength(13);
+    expect(impact.chain.map((id) => id.split('#')[1])).toEqual([
+      'gate',
+      ...Array.from({ length: 12 }, (_, i) => `n${pad(i + 1)}`),
+    ]);
+    const text = run.found.find((f) => f.group?.node.endsWith('#n12'))!.detail;
+    for (const node of impact.chain) expect(text).toContain(node);
   });
 });
