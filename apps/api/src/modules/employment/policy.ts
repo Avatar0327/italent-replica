@@ -85,6 +85,7 @@ import {
   seeAll,
   shape,
   write,
+  type WriteExtra,
 } from '../../route-policy/presets.js';
 import type { TransferInitiator } from '../transfer/access.js';
 
@@ -134,7 +135,7 @@ const INITIATOR_BUTTON: ButtonPolicy = {
 
 // ---- 写策略 ----------------------------------------------------------------------------------------------------
 /** 任职对象的写入口：字段经 requireEmploymentWrite 提取，事务内 / 返回后各一次 authorizeEmploymentResult。 */
-function employmentWrite(fields: FieldsFrom, preconditions: readonly string[], extra: Partial<WritePolicy> = {}) {
+function employmentWrite(fields: FieldsFrom, preconditions: readonly string[], extra: WriteExtra = {}) {
   return write(fields, EMPLOYMENT_RESULT, EMPLOYMENT_RESULT, { preconditions, ...extra });
 }
 /**
