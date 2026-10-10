@@ -137,12 +137,13 @@ export async function setObjectPermission(
   const { profileId, permission } = change;
   const definition = (await tenantObjectCatalog(tx, catalog, permission.objectCode)).get(permission.objectCode);
   if (!definition) throw new AppError('NOT_FOUND', '对象不存在');
-  const violations = validateObjectPermission(definition, permission);
-  if (violations.length > 0) throw new AppError('VALIDATION_FAILED', '对象权限配置不合法', violations);
-  // D2 = A：面板展示的目录（含租户扩展字段）与服务端当前不一致，说明租户没看到全部现有项，不写任何行，刷新后重提
+  // D2 = A：面板展示的目录（含租户扩展字段）与服务端当前不一致，说明租户没看到全部现有项，不写任何行，刷新后重提。
+  // 先于权限语义校验：目录变化时旧页面提交的字段 / 按钮可能已不存在，要得到 409 CATALOG_CHANGED 而不是 400
   if (change.catalogDigest !== undefined && change.catalogDigest !== objectCatalogDigest(definition)) {
     throw new AppError('CATALOG_CHANGED', '对象目录已变化，请刷新后重新提交', { objectCode: definition.code });
   }
+  const violations = validateObjectPermission(definition, permission);
+  if (violations.length > 0) throw new AppError('VALIDATION_FAILED', '对象权限配置不合法', violations);
 
   const profile = await loadProfile(tx, profileId, true);
   if (profile.revision !== change.expectedRevision) throw revisionConflict(change.expectedRevision, profile.revision);

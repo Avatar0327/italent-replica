@@ -50,7 +50,14 @@ async function lock(tx: Tx, write: WriteContext, key: string) {
  * 身份看全部的范围锁（回补补看全部与租户保存共用同一个键）。租户 ID 按 (tenantId::uuid)::text 规范化：平台入口可能传
  * 大小写不同的同一 UUID，按字符串哈希会得到不同的锁（#160 同类问题）。键内容与原 identity-scope 锁一致（小写 UUID 时哈希相同）。
  */
+/**
+ * 测试探针：取范围锁**之前**调用（此时调用方应已持有身份行锁）。T-20 在这里暂停一方，用 FOR UPDATE NOWAIT 验证身份行
+ * 已被锁住——旧锁序（先范围锁、不锁身份行）会在此处没持身份行锁而被检出。生产路径为空。
+ */
+export const scopeLockProbe: { beforeScopeLock?: (key: IdentityScopeKey) => Promise<void> } = {};
+
 export async function lockIdentityScope(tx: Tx, tenantId: string, key: IdentityScopeKey): Promise<void> {
+  await scopeLockProbe.beforeScopeLock?.(key);
   const lockKey = `identity-scope:${key.profileId}:${key.appCode}:${key.targetKind}:${key.targetCode}`;
   await tx.execute(
     sql`SELECT pg_advisory_xact_lock(hashtextextended((${tenantId}::uuid)::text || ':' || ${lockKey}, 0))`,

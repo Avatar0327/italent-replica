@@ -8,10 +8,14 @@
  * 覆盖 T-05（看全部部分）、T-15、T-20、T-21，以及批准清单 / 编码 / 指纹守卫。
  */
 import {
+  auditEvents,
   employmentCustomFieldObjects,
   eq,
   permissionIdentityScopes,
+  permissionProfileFields,
   permissionScopeVersions,
+  pgErrorCode,
+  sql,
   withTenant,
 } from '@italent/db';
 import {
@@ -32,9 +36,9 @@ import {
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { objectCatalog } from '../../apps/api/src/modules/permission/catalog.js';
-import { setIdentityScope } from '../../apps/api/src/modules/permission/scope-policy-service.js';
+import { scopeLockProbe, setIdentityScope } from '../../apps/api/src/modules/permission/scope-policy-service.js';
 import { installMissingSeeds } from '../../apps/api/src/seeds/registry.js';
-import { recordLedger } from '../../apps/api/src/seeds/grant-ledger.js';
+import { recordLedger, registerManagedGrants } from '../../apps/api/src/seeds/grant-ledger.js';
 import {
   BUTTON,
   expectWaitingOnLock,
@@ -231,6 +235,16 @@ describe('AC-PLAT-F061 T-05 看全部补装（D3 = A′，DEC-374②、DEC-384�
       expect(versions[0]).toMatchObject({ revision: 1 });
     }
     expect((await ledger(w)).get(seeAllCode(MATRIX))).toBe('install');
+    // 范围审计：每个补上的目标一条 permission_identity_scope.change（空 → see_all = true、revision 1）
+    const audits = await withTenant(w.db, w.tenantId, (tx) =>
+      tx.select().from(auditEvents).where(eq(auditEvents.action, 'permission_identity_scope.change')),
+    );
+    for (const target of wanted) {
+      const mine = audits.filter((a) => a.objectId === `${profileId}:${TR_APP}:entity:${target}`);
+      expect(mine, target).toHaveLength(1);
+      expect(mine[0]!.before).toMatchObject({ seeAll: false, revision: 0 });
+      expect(mine[0]!.after).toMatchObject({ seeAll: true, revision: 1, targetCode: target });
+    }
 
     // 租户关掉 Settings 的看全部 → 再回补不恢复
     const closed = await closeScope(w, profileId, APPROVED[0]!, 1);
@@ -292,14 +306,26 @@ describe('AC-PLAT-F061 T-15 / T-21 D2 = A：对象目录指纹', () => {
       revision: number;
       objects: { objectCode: string; catalogDigest: string }[];
     };
-  const save = async (w: World, digest: string | undefined) => {
+  const save = async (
+    w: World,
+    digest: string | undefined,
+    options: { extraFields?: { fieldCode: string; view: boolean; edit: boolean }[]; catalogFieldsOnly?: boolean } = {},
+  ) => {
     const profileId = w.profileIds.get(HR.code)!;
     const current = (await detail(w, profileId)).objects.find((o) => o.objectCode === OBJECT)!;
     const { objectCode: _o, catalogDigest: _d, ...rest } = current as typeof current & Record<string, unknown>;
+    const known = new Set(objectCatalog.get(OBJECT)!.fields.map((f) => f.code));
+    const fields = (rest.fields as { fieldCode: string; view: boolean; edit: boolean }[]).filter(
+      (f) => !options.catalogFieldsOnly || known.has(f.fieldCode),
+    );
     return w.api.request('PUT', `/api/tenant/permission/profiles/${profileId}/objects/${OBJECT}`, {
       ...w.asAdmin,
       ifMatch: (await detail(w, profileId)).revision,
-      body: { ...rest, ...(digest ? { catalogDigest: digest } : {}) },
+      body: {
+        ...rest,
+        fields: [...fields, ...(options.extraFields ?? [])],
+        ...(digest ? { catalogDigest: digest } : {}),
+      },
     });
   };
 
@@ -326,6 +352,46 @@ describe('AC-PLAT-F061 T-15 / T-21 D2 = A：对象目录指纹', () => {
     );
   });
 
+  it('T-15 同一对象保存之后目录新增的项：保存时不在面板上，不记为拒绝，之后仍算缺失', async () => {
+    const w = await takenOver('f061t15c');
+    const profileId = w.profileIds.get(HR.code)!;
+    const future = `${HR.code}/${OBJECT}/button:futureButton@detail`;
+    // 本登记项管的编码随发版增长：保存时只有 BUTTON，保存之后目录才新增 futureButton
+    let managed = [hrButton];
+    registerManagedGrants({
+      entry: 'test/growing',
+      profileCode: HR.code,
+      profileSource: 'standard',
+      codesFor: (objectCode) => (objectCode === OBJECT ? managed : []),
+    });
+    const digest = (await detail(w, profileId)).objects.find((o) => o.objectCode === OBJECT)!.catalogDigest;
+    const res = await save(w, digest);
+    expect(res.status, await res.clone().text()).toBe(200);
+    managed = [hrButton, future];
+    const mine = await ledger(w, 'test/growing');
+    expect(mine.get(hrButton)).toBe('tenant_saved');
+    expect(mine.has(future)).toBe(false);
+    // 真实登记项：同一次保存只拒绝了当时可见的 BUTTON，没保存过的对象缺项仍补
+    const installed = grantsInstalled(await runBackfill(w));
+    expect(installed).not.toContain(hrButton);
+    expect(installed).toContain(buttonCode(HR.code, OBJ_B.objectCode, OBJ_B.buttons[0]!));
+  });
+
+  it('T-21 目录失配优先于权限语义校验：旧指纹 + 目录里已不存在的字段 → 409 CATALOG_CHANGED；指纹一致的同一请求 → 400', async () => {
+    const w = await takenOver('f061t21d');
+    const profileId = w.profileIds.get(HR.code)!;
+    const digest = (await detail(w, profileId)).objects.find((o) => o.objectCode === OBJECT)!.catalogDigest;
+    const gone = [{ fieldCode: 'removed_in_new_release', view: true, edit: false }];
+    const before = [await revisionOf(w, HR.code), await permissionOf(w, HR.code, OBJECT), await ledger(w)];
+    const stale = await save(w, '0123456789abcdef', { extraFields: gone });
+    expect(stale.status).toBe(409);
+    expect(((await stale.json()) as { error: { code: string } }).error.code).toBe('CATALOG_CHANGED');
+    const invalid = await save(w, digest, { extraFields: gone });
+    expect(invalid.status).toBe(400);
+    expect(((await invalid.json()) as { error: { code: string } }).error.code).toBe('VALIDATION_FAILED');
+    expect([await revisionOf(w, HR.code), await permissionOf(w, HR.code, OBJECT), await ledger(w)]).toEqual(before);
+  });
+
   it('T-21 不带指纹的旧客户端：只做保存前后授予的登记，未展示的新项随后仍被补', async () => {
     const w = await takenOver('f061t21a');
     const res = await save(w, undefined);
@@ -343,7 +409,7 @@ describe('AC-PLAT-F061 T-15 / T-21 D2 = A：对象目录指纹', () => {
     expect([await revisionOf(w, HR.code), await permissionOf(w, HR.code, OBJECT), await ledger(w)]).toEqual(before);
   });
 
-  it('T-21 租户增删扩展字段后指纹变化：旧指纹 409，刷新取新指纹后可保存；扩展字段超限时 GET 与 PUT 指纹一致、可保存', async () => {
+  it('T-21 租户追加扩展字段后指纹变化：旧指纹 409，刷新取新指纹后可保存；扩展字段超限（含既存扩展字段授权）时 GET 与 PUT 指纹一致、可保存', async () => {
     const w = await takenOver('f061t21c');
     const profileId = w.profileIds.get(HR.code)!;
     const digestOf = async () =>
@@ -351,17 +417,31 @@ describe('AC-PLAT-F061 T-15 / T-21 D2 = A：对象目录指纹', () => {
     const old = await digestOf();
     const addFields = (count: number, from: number) =>
       withTenant(w.db, w.tenantId, (tx) =>
-        tx.insert(employmentCustomFieldObjects).values(
-          Array.from({ length: count }, (_, i) => ({
-            tenantId: w.tenantId,
-            objectType: 'contract' as const,
-            code: `ext_${from + i}`,
-            name: `扩展${from + i}`,
-            valueType: 'text' as const,
-          })),
-        ),
+        tx
+          .insert(employmentCustomFieldObjects)
+          .values(
+            Array.from({ length: count }, (_, i) => ({
+              tenantId: w.tenantId,
+              objectType: 'contract' as const,
+              code: `ext_${from + i}`,
+              name: `扩展${from + i}`,
+              valueType: 'text' as const,
+            })),
+          )
+          .returning({ id: employmentCustomFieldObjects.id }),
       );
-    await addFields(1, 0);
+    const [extension] = await addFields(1, 0);
+    // 既存的扩展字段授权（custom:<id>）：超限后它不在扩展目录里，客户端只提交目录字段
+    await withTenant(w.db, w.tenantId, (tx) =>
+      tx.insert(permissionProfileFields).values({
+        tenantId: w.tenantId,
+        profileId,
+        objectCode: OBJECT,
+        fieldCode: `custom:${extension!.id}`,
+        canView: true,
+        canEdit: true,
+      }),
+    );
     const fresh = await digestOf();
     expect(fresh).not.toBe(old);
     expect((await save(w, old)).status).toBe(409);
@@ -371,7 +451,8 @@ describe('AC-PLAT-F061 T-15 / T-21 D2 = A：对象目录指纹', () => {
     await addFields(1001, 1);
     const capped = await digestOf();
     expect(capped).toBe(objectCatalogDigest(objectCatalog.get(OBJECT)!));
-    expect((await save(w, capped)).status).toBe(200);
+    const res = await save(w, capped, { catalogFieldsOnly: true });
+    expect(res.status, await res.clone().text()).toBe(200);
   });
 });
 
@@ -417,6 +498,71 @@ describe.skipIf(!realPostgres)('AC-PLAT-F061 T-20 回补补看全部 × setIdent
       seeAll: false,
       revision: 1,
     });
+  });
+
+  /** 另开一个连接试着锁同一条身份行（NOWAIT）：55P03 说明该行已被别的事务持锁。 */
+  const identityRowLocked = (w: World, profileId: string) =>
+    w.db
+      .transaction(async (tx) => {
+        await tx.execute(sql`SELECT set_config('app.tenant_id', ${w.tenantId}, true)`);
+        await tx.execute(sql`SELECT id FROM permission_profiles WHERE id = ${profileId}::uuid FOR UPDATE NOWAIT`);
+      })
+      .then(
+        () => false,
+        (error: unknown) => pgErrorCode(error) === '55P03',
+      );
+  /** 让第一个走到“取范围锁之前”的事务停在探针处，直到 release.open()。 */
+  const pauseBeforeScopeLock = () => {
+    const reached = gate();
+    const release = gate();
+    scopeLockProbe.beforeScopeLock = async () => {
+      scopeLockProbe.beforeScopeLock = undefined;
+      reached.open();
+      await release.opened;
+    };
+    return { reached: reached.opened, release };
+  };
+
+  it('交错点在“已持身份行锁、尚未取范围锁”之间（租户一侧）：身份行已被锁住，回补在身份行上等待；旧锁序在此处没持身份行锁，会被检出', async () => {
+    const w = await legacyWorld(testDb().db, 'f061t20c', missing);
+    const profileId = w.profileIds.get(TR)!;
+    const pause = pauseBeforeScopeLock();
+    try {
+      const saving = closeScope(w, profileId, APPROVED[0]!, 0);
+      await pause.reached;
+      expect(await identityRowLocked(w, profileId)).toBe(true);
+      const filling = runBackfill(w);
+      await expectWaitingOnLock(w.db, filling);
+      pause.release.open();
+      expect((await saving).status).toBe(200);
+      const installed = grantsInstalled(await filling);
+      expect(installed).not.toContain(seeAllCode(APPROVED[0]!));
+      expect(installed).toContain(seeAllCode(APPROVED[1]!));
+    } finally {
+      scopeLockProbe.beforeScopeLock = undefined;
+      pause.release.open();
+    }
+  });
+
+  it('交错点在“已持身份行锁、尚未取范围锁”之间（回补一侧）：身份行已被锁住，租户保存看全部在身份行上等待，之后按范围 revision 409', async () => {
+    const w = await legacyWorld(testDb().db, 'f061t20d', missing);
+    const profileId = w.profileIds.get(TR)!;
+    const pause = pauseBeforeScopeLock();
+    try {
+      const filling = runBackfill(w);
+      await pause.reached;
+      expect(await identityRowLocked(w, profileId)).toBe(true);
+      const saving = closeScope(w, profileId, APPROVED[0]!, 0);
+      await expectWaitingOnLock(w.db, saving);
+      pause.release.open();
+      expect(grantsInstalled(await filling)).toContain(seeAllCode(APPROVED[0]!));
+      const res = await saving;
+      expect(res.status).toBe(409);
+      expect(((await res.json()) as { error: { code: string } }).error.code).toBe('REVISION_CONFLICT');
+    } finally {
+      scopeLockProbe.beforeScopeLock = undefined;
+      pause.release.open();
+    }
   });
 
   it('回补先提交：租户按范围 revision 0 保存返回 409，刷新后（revision 1）可关闭', async () => {
