@@ -10,13 +10,14 @@
  * 完成调动 / 改范围，再放行并核对结果前后的值。
  */
 import { randomUUID } from 'node:crypto';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { afterEach, describe, expect, it } from 'vitest';
 import { commandProbe } from '../../apps/api/src/modules/survey360/context.js';
 import { syncProbe } from '../../apps/api/src/modules/survey360/sync.js';
 import { hire, scene, type SyncPage } from './AC-360-F043-support.js';
-import { EMP_TODAY } from './AC-EMP-support.js';
+import { EMP_TODAY, loginEmailOf } from './AC-EMP-support.js';
 import { expectWaitingOnLock } from './support/f061.js';
 
 const realPostgres = Boolean(process.env.TEST_DATABASE_URL);
@@ -266,5 +267,94 @@ describe.skipIf(!realPostgres)('F-043 第 3 轮 P2-2 同步与调动的员工锁
     expect(moved.status, await moved.clone().text()).toBe(201);
     expect(page.created.map((e) => e.employeeId)).toContain(yi.id);
     expect(page.updated.map((e) => e.employeeId)).toContain(jia.id);
+  });
+});
+
+/**
+ * F-043 第 4 轮（#210 第 3 轮审查 P2-1 / P3，真 PG）：
+ * P2-1 冲突处理（挂接 / 新建 / 忽略）命令开始后、任何写入之前撤销操作人的 360 身份，三个分支都必须按当前权限
+ *   拒绝（403、整条回滚）。挂接用“组织字段本来一致”的目标：刷新没有字段变化，不能靠刷新顺带验权。
+ * P3  自动添加数量为 0 的角色不进锁计划：另一连接持有该角色候选员工的写锁时，自动添加不等待。
+ */
+async function conflictScene(label: string, identical: boolean) {
+  const s = await scene(testDb().db, label, false);
+  const employee = await hire(s.w, '冲突员工', s.orgA);
+  // 挂接目标：与组织值一致（姓名、邮箱、工号、部门），挂接后刷新没有字段变化
+  const external = await s.w.ok<{ id: string; revision: number }>(
+    s.w.request('POST', '/people', {
+      ifMatch: 0,
+      body: identical
+        ? { name: '冲突员工', email: loginEmailOf(employee.id), staffCode: employee.code, department: '甲部门' }
+        : { name: '同工号外部', email: `x-${label}@example.com`, staffCode: employee.code },
+    }),
+    201,
+  );
+  await s.w.ok(s.w.request('POST', '/people/sync', { body: {} }));
+  const listed = await s.w.ok<{ items: { id: string; employeeId: string; revision: number }[] }>(
+    s.w.request('GET', '/people/sync-conflicts'),
+  );
+  const conflict = listed.items.find((item) => item.employeeId === employee.id)!;
+  const operator = await s.w.member('冲突处理人');
+  const grant = await s.w.appoint(operator, 'advanced');
+  return { ...s, employee, external, conflict, operator, grant };
+}
+
+describe.skipIf(!realPostgres)('F-043 第 4 轮 P2-1 冲突处理执行中撤销身份（真 PG）', () => {
+  for (const action of ['link', 'create', 'ignore'] as const) {
+    it(`冲突处理“${action}”：取锁后、写入前撤销操作人的 360 身份 → 403，冲突仍待处理，人员未变化`, async () => {
+      const s = await conflictScene(`f043c${action}`, action === 'link');
+      const before = await s.current(s.external.id);
+      // 命令已开始（开始时的权限检查已通过）、取锁之前撤销身份：之后的写入必须按当前权限判定
+      beforeLockOnce(async () => void (await s.w.revokeGrant(s.grant)));
+      const res = await s.w.as(s.operator)('POST', `/people/sync-conflicts/${s.conflict.id}/resolve`, {
+        ifMatch: s.conflict.revision,
+        body: action === 'link' ? { action, personId: s.external.id } : { action },
+      });
+      expect(res.status, await res.clone().text()).toBe(403);
+      expect(syncProbe.beforeLock, '探针没有触发').toBeUndefined();
+      const after = await s.w.ok<{ items: { id: string; revision: number }[] }>(
+        s.w.request('GET', '/people/sync-conflicts'),
+      );
+      expect(after.items.find((item) => item.id === s.conflict.id)).toMatchObject({ revision: s.conflict.revision });
+      const external = await s.current(s.external.id);
+      expect(external.employeeId ?? null).toBeNull();
+      expect(external.revision).toBe(before.revision);
+      expect((await s.people()).filter((p) => p.employeeId === s.employee.id)).toEqual([]);
+    });
+  }
+});
+
+describe.skipIf(!realPostgres)('F-043 第 4 轮 P3 自动添加只锁实际要处理的候选（真 PG）', () => {
+  it('“下级”数量为 0：另一连接持有下级员工的写锁时，自动添加不等待，直接返回空结果', async () => {
+    const s = await scene(testDb().db, 'f043a0', false);
+    const q = await s.w.enableQuestionnaire(await s.w.keyBehavior());
+    const activity = await s.w.activity({ name: 'F-043 自动添加' });
+    const object = await s.w.ok<{ id: string }>(
+      s.w.request('POST', `/activities/${activity.id}/objects`, {
+        ifMatch: 0,
+        body: { personId: s.managerPerson.id, questionnaireIds: [q.id] },
+      }),
+      201,
+    );
+    let release!: () => void;
+    const hold = new Promise<void>((resolve) => (release = resolve));
+    let locked!: () => void;
+    const lockedPromise = new Promise<void>((resolve) => (locked = resolve));
+    const holder = withTenant(testDb().db, s.w.tenantId, async (tx) => {
+      await tx.execute(sql`SELECT id FROM employment_employees WHERE id = ${s.inside.id}::uuid FOR UPDATE`);
+      locked();
+      await hold;
+    });
+    await lockedPromise;
+    const adding = s.w.request('POST', `/activities/${activity.id}/objects/${object.id}/appraisers/auto`, {
+      ifMatch: 0,
+      body: { roles: ['subordinate'], limits: { subordinate: 0 } },
+    });
+    const outcome = await Promise.race([adding, sleep(5_000).then(() => 'timeout' as const)]);
+    release();
+    await holder;
+    expect(outcome, '自动添加在数量为 0 的候选员工锁上等待').not.toBe('timeout');
+    const body = (await (outcome as Response).json()) as { added: unknown[] };
+    expect(body.added).toEqual([]);
   });
 });
