@@ -543,3 +543,114 @@ describe('AC-QL-subset-init 第 1 轮 P2：时间轴与 C1-4 同步一致、人�
     expect(await w.subsets()).toMatchObject([{ categoryId: categories[1], sourceType: 'hr_direct' }]);
   });
 });
+
+describe('AC-QL-subset-init 第 2 轮 R2-P2-01：已跳过记录的原任职日期不作边界，按已有资格的真实开始日（DEC-335①）', () => {
+  const currentOf = (w: SyncWorld, employeeId: string) =>
+    withTenant(w.db, w.tenantId, (tx) => currentQualification(tx, w.tenantId, employeeId, '2026-10-10'));
+  const lineOf = (rows: Awaited<ReturnType<SyncWorld['subsets']>>, recordId: string) =>
+    rows.filter((row) => row.employmentRecordId === recordId).map((row) => [row.startDate, row.endDate]);
+
+  /**
+   * 6 个反例 = 原行来源（任职同步 / 初始化）× HR 把 B 的开始日改到 10-01 / 10-15 / 9-05：
+   * 员工 9-20 的任职 B 已生成资格 B → HR 改 B 的开始日 → HR 补登记 9-10 的历史任职 A → 10-10 初始化。
+   * B 回执 ALREADY_EXISTS（不恢复旧值）；A 的结束日取 B 的**真实**开始日前一天（B 在 A 之前则开放），不是 B 的原任职日期
+   * 9-20 前一天。对拍：同样的数据交给 C1-4 同步（对拍员工的 B 是同步行，同样改期），A 的区间与 10-10 当前资格一致。
+   */
+  const cases = [
+    { moved: '2026-10-01', end: '2026-09-30', current: 'B' },
+    { moved: '2026-10-15', end: '2026-10-14', current: 'A' },
+    { moved: '2026-09-05', end: null, current: 'A' },
+  ] as const;
+  for (const origin of ['employment_sync', 'initialization'] as const) {
+    const source = origin === 'employment_sync' ? '任职同步' : '初始化';
+    for (const { moved, end, current } of cases) {
+      const title = `R2-P2-01 原行来自${source}、HR 改期到 ${moved}：A 止于 ${end ?? '开放'}，当前资格 ${current}`;
+      it(`${title}，与 C1-4 对拍（AC-QL-subset-init）`, async () => {
+        const { w, categories, fields, initOk, processed } = await scene(`qlinit-r2-${origin}-${moved}`);
+        const twin = await w.session.employee('对拍员工');
+        await w.session.business(
+          twin.id,
+          { kind: 'hire', mode: 'direct', effectiveDate: '2026-09-01', fields: { departmentId: w.from.id } },
+          twin.revision,
+        );
+        const subject = w.subject.employee.id;
+        const recordB = await w.transferWith('2026-09-20', fields(1));
+        await w.transferWith('2026-09-20', fields(1), twin.id);
+        await w.setSetting('qualification.auto_sync_editable', true);
+        // 原行 B：本人按来源生成（同步或初始化），对拍员工一律由 C1-4 同步生成
+        if (origin === 'initialization') await initOk([subject]);
+        await w.enableSync(true);
+        await w.run(TODAY);
+        for (const id of [subject, twin.id]) {
+          const [rowB] = await w.subsets(id);
+          expect(rowB).toMatchObject({ categoryId: categories[1], startDate: '2026-09-20' });
+          if (id === subject) expect(rowB!.sourceType).toBe(origin);
+          const patched = await w.api.request(
+            'PATCH',
+            `/api/tenant/personnel/employees/${id}/subsets/qualification/${rowB!.id}`,
+            { ...w.as, ifMatch: 1, body: { startDate: moved } },
+          );
+          expect(patched.status, await patched.clone().text()).toBe(200);
+        }
+        // HR 补登记 9-10 的历史任职 A；本人走初始化，对拍员工走 C1-4 同步
+        const recordA = await w.transferWith('2026-09-10', fields(0));
+        const twinA = await w.transferWith('2026-09-10', fields(0), twin.id);
+        const receipt = processed(await initOk([subject]));
+        expect(receipt.records.find((item) => item.recordId === recordB)).toMatchObject({
+          outcome: 'skipped',
+          reason: 'ALREADY_EXISTS',
+        });
+        expect(receipt.records.find((item) => item.recordId === recordA)).toMatchObject({ outcome: 'created' });
+        await w.run(TODAY);
+
+        const init = await w.subsets();
+        const sync = await w.subsets(twin.id);
+        expect(lineOf(init, recordA)).toEqual([['2026-09-10', end]]);
+        expect(lineOf(sync, twinA)).toEqual(lineOf(init, recordA));
+        expect(lineOf(init, recordB)).toEqual([[moved, null]]);
+        const expected = current === 'A' ? categories[0] : categories[1];
+        expect((await currentOf(w, subject))?.categoryId).toBe(expected);
+        expect((await currentOf(w, twin.id))?.categoryId).toBe(expected);
+      });
+    }
+  }
+
+  it('R2-P2-01 混合：A 9-10、C 10-01 待新增，B 改到 10-15 被跳过：A 止 9-30、C 止 10-14，与 C1-4 一致（AC-QL-subset-init）', async () => {
+    const { w, categories, levelId, fields, initOk, processed } = await scene('qlinit-r2-mixed');
+    const twin = await w.session.employee('对拍员工');
+    await w.session.business(
+      twin.id,
+      { kind: 'hire', mode: 'direct', effectiveDate: '2026-09-01', fields: { departmentId: w.from.id } },
+      twin.revision,
+    );
+    const subject = w.subject.employee.id;
+    const recordB = await w.transferWith('2026-09-20', fields(1));
+    await w.transferWith('2026-09-20', fields(1), twin.id);
+    await w.setSetting('qualification.auto_sync_editable', true);
+    await w.enableSync(true);
+    await w.run(TODAY);
+    for (const id of [subject, twin.id]) {
+      const [rowB] = await w.subsets(id);
+      const patched = await w.api.request(
+        'PATCH',
+        `/api/tenant/personnel/employees/${id}/subsets/qualification/${rowB!.id}`,
+        { ...w.as, ifMatch: 1, body: { startDate: '2026-10-15' } },
+      );
+      expect(patched.status, await patched.clone().text()).toBe(200);
+      await w.transferWith('2026-09-10', fields(0), id);
+      await w.transferWith('2026-10-01', fields(0), id);
+    }
+    const receipt = processed(await initOk([subject]));
+    expect(receipt.created).toBe(2);
+    expect(receipt.records.find((item) => item.recordId === recordB)).toMatchObject({ reason: 'ALREADY_EXISTS' });
+    await w.run(TODAY);
+    const lines = async (id: string) =>
+      (await w.subsets(id)).map((row) => [row.startDate, row.endDate, row.categoryId, row.levelId]);
+    expect(await lines(subject)).toEqual([
+      ['2026-09-10', '2026-09-30', categories[0], levelId],
+      ['2026-10-01', '2026-10-14', categories[0], levelId],
+      ['2026-10-15', null, categories[1], levelId],
+    ]);
+    expect(await lines(twin.id)).toEqual(await lines(subject));
+  });
+});
