@@ -135,7 +135,7 @@ export const visibleTo = (object: ConfigObject) => (scope: ModuleScope, view: Vi
   requireConfigVisible(scope, object, view.createdBy);
 
 export function registerConfigRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
-  registerScoringRoutes(router, deps); // PR-B2：评价规则、模块等级、字段映射
+  registerScoringRoutes(router, deps); // PR-B2a：评价规则、模块等级
   registerSettings(router, deps);
   registerCategories(router, deps);
   registerRoles(router, deps);

@@ -43,7 +43,6 @@ export const TALENT_REVIEW_AUDIT_ACTIONS: Readonly<Record<TalentReviewObject, st
   field: 'talent-review.field',
   scoreRule: 'talent-review.score-rule',
   moduleGrade: 'talent-review.module-grade',
-  mapping: 'talent-review.field-mapping',
   matrix: 'talent-review.matrix',
   calcRule: 'talent-review.calc-rule',
   resultApproval: 'talent-review.result-approval',
