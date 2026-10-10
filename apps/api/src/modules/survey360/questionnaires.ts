@@ -569,10 +569,10 @@ export function registerQuestionnaireRoutes(module: Hono<TenantEnv>, deps: Tenan
 const VIEW = { object: 'questionnaire' } as const;
 
 /**
- * 套卷入口的处理函数只用 userId（本人判定），不用活动 / 人员可见范围，所以不预取 Activity 的查看权与“全部活动”按钮
- * （F-075，DEC-369）。套卷模板入口（#125 R3-T03 PR-B 新增，18 项）等用户答复，保持现状（'full'）。
+ * 套卷与套卷模板入口的处理函数只用 userId（本人判定），不用活动 / 人员可见范围，所以不预取 Activity 的查看权与“全部活动”
+ * 按钮：套卷入口见 F-075（DEC-369），套卷模板入口（#125 R3-T03 PR-B 新增）与模板复制入口见 F-075b（DEC-373①）。
  */
-const adminMode = (template: boolean) => (template ? 'full' : 'identity');
+const ADMIN = 'identity';
 
 function registerQuestionnaireReads(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   // 套卷与套卷模板同一套处理函数；路径写成字面量数组，F-039 静态扫描按注册处求值
@@ -601,7 +601,7 @@ function registerQuestionnaireReads(module: Hono<TenantEnv>, deps: TenantRouteDe
           })),
         }),
         undefined,
-        adminMode(template),
+        ADMIN,
       ),
     );
     module.get(`${base}/:id`, (c) =>
@@ -611,7 +611,7 @@ function registerQuestionnaireReads(module: Hono<TenantEnv>, deps: TenantRouteDe
         VIEW,
         async (tx) => questionnaireView(await loadQuestionnaire(tx, uuidParam(c), false, template)),
         undefined,
-        adminMode(template),
+        ADMIN,
       ),
     );
     module.post(base, (c) =>
@@ -643,7 +643,7 @@ function registerQuestionnaireReads(module: Hono<TenantEnv>, deps: TenantRouteDe
           need: { object: 'questionnaire', operation: 'create' },
           fields: 'body',
           status: 201,
-          admin: adminMode(template),
+          admin: ADMIN,
         },
       ),
     );
@@ -658,7 +658,7 @@ function registerQuestionnaireUpdate(module: Hono<TenantEnv>, deps: TenantRouteD
       const options = {
         need: { object: 'questionnaire', operation: 'update' },
         guard: editableBy(deps, tenantOf(c), id, false, template),
-        admin: adminMode(template),
+        admin: ADMIN,
         // 整卷保存的 content 写的是角色、量表、指标、题目四个字段
         fields: ({ content, ...header }: z.infer<typeof updateSchema>) => [
           ...Object.keys(header),
@@ -733,7 +733,7 @@ function registerQuestionnaireEnable(module: Hono<TenantEnv>, deps: TenantRouteD
         need: { object: 'questionnaire', operation: 'update', button: 'enable' },
         fields: 'none', // 状态流转，不写套卷字段
         guard: editableBy(deps, tenantOf(c), id),
-        admin: 'identity',
+        admin: ADMIN,
       },
     );
   });
@@ -776,7 +776,7 @@ function registerQuestionnaireDelete(module: Hono<TenantEnv>, deps: TenantRouteD
           need: { object: 'questionnaire', operation: 'delete' },
           fields: 'none',
           guard: editableBy(deps, tenantOf(c), id, true, template),
-          admin: adminMode(template),
+          admin: ADMIN,
         },
       );
     });
@@ -880,6 +880,7 @@ function registerTemplateCopies(module: Hono<TenantEnv>, deps: TenantRouteDeps):
             'questions',
           ],
           status: 201,
+          admin: ADMIN,
           guard: async (tx) => void (await loadQuestionnaire(tx, id, false, fromTemplate)),
         },
       );
