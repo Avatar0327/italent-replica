@@ -13,9 +13,9 @@ import { selectReadiness } from '../talent-review/readiness-port.js';
 import { codeOf } from './access.js';
 import type { RecordCreate, RecordEnd, RecordPatch } from './input.js';
 import { listRecordRows, type RecordRow, type RecordVisibility } from './record-read.js';
-import { rowsOf, selfTargetSql, SUCCESSOR_INACTIVE_STATUSES } from './read-sql.js';
+import { rowsOf, selfTargetSql, successorStatusSql } from './read-sql.js';
 import { assertNoSyncBarrier } from './sync-barrier.js';
-import type { StoredResult, WriteContext } from './write-support.js';
+import type { CommandResult, WriteContext } from './write-support.js';
 
 const RECORD = codeOf('record');
 const notFound = () => new AppError('NOT_FOUND', '继任记录不存在');
@@ -45,26 +45,35 @@ async function lockTargets(tx: Tx, tenantId: string, targets: readonly Target[])
   }
 }
 
-/** 目标当日有效且在操作人范围内（否则 404）；职位继任须是关键职位（400 TARGET_NOT_KEY_POSITION）。返回范围锚点组织。 */
+/**
+ * 目标当日有效且在操作人范围内（否则 404）；职位继任须是关键职位（400 TARGET_NOT_KEY_POSITION）。返回范围锚点组织。
+ * 先选请求日对应的**最新版本**，再判断失效日期、启用状态与关键职位标记：不能先按失效日期过滤再选最新，
+ * 否则已到期的新版本被排除、会回退到更早的长期有效版本（目标被“复活”）。
+ */
 async function requireTarget(tx: Tx, ctx: WriteContext, target: Target): Promise<string> {
   if (target.kind === 'org') {
-    const [row] = rowsOf<{ org_id: string; enabled: boolean }>(
-      await tx.execute(sql`SELECT v.org_id, v.enabled FROM org_versions v
+    const [row] = rowsOf<{ enabled: boolean; current: boolean }>(
+      await tx.execute(sql`SELECT v.enabled, (v.stop_date >= ${ctx.today}::date) AS current FROM org_versions v
         WHERE v.tenant_id = ${ctx.tenantId}::uuid AND v.org_id = ${target.id}::uuid
-          AND v.start_date <= ${ctx.today}::date AND v.stop_date >= ${ctx.today}::date
+          AND v.start_date <= ${ctx.today}::date
         ORDER BY v.start_date DESC, v.version_no DESC LIMIT 1`),
     );
-    if (!row?.enabled || !scopeAllows(ctx.scope, { orgId: target.id })) throw new AppError('NOT_FOUND', '组织不存在');
+    if (!row?.enabled || !row.current || !scopeAllows(ctx.scope, { orgId: target.id })) {
+      throw new AppError('NOT_FOUND', '组织不存在');
+    }
     return target.id;
   }
-  const [row] = rowsOf<{ org_id: string; enabled: boolean; is_key: boolean }>(
-    await tx.execute(sql`SELECT v.org_id, v.enabled, v.is_key FROM job_position_versions v
+  const [row] = rowsOf<{ org_id: string; enabled: boolean; is_key: boolean; current: boolean }>(
+    await tx.execute(sql`SELECT v.org_id, v.enabled, v.is_key, (v.stop_date >= ${ctx.today}::date) AS current
+      FROM job_position_versions v
       WHERE v.tenant_id = ${ctx.tenantId}::uuid AND v.object_id = ${target.id}::uuid
-        AND v.start_date <= ${ctx.today}::date AND v.stop_date >= ${ctx.today}::date
+        AND v.start_date <= ${ctx.today}::date
       ORDER BY v.start_date DESC, v.version_no DESC LIMIT 1`),
   );
   // 资源归属只按今天的管理范围判断（DEC-368①）：职位按今天所属的组织
-  if (!row?.enabled || !scopeAllows(ctx.scope, { orgId: row.org_id })) throw new AppError('NOT_FOUND', '职位不存在');
+  if (!row?.enabled || !row.current || !scopeAllows(ctx.scope, { orgId: row.org_id })) {
+    throw new AppError('NOT_FOUND', '职位不存在');
+  }
   if (!row.is_key) throw invalid('TARGET_NOT_KEY_POSITION', '继任职位必须是关键职位');
   return row.org_id;
 }
@@ -88,22 +97,20 @@ async function rejectSelfTarget(tx: Tx, ctx: WriteContext, type: SuccessionType,
 }
 
 /**
- * 继任者须在职（含待入职；不是调出 4 / 退休 6 / 离职 8，§4.1），**不校验是否在操作人员工范围内**（DEC-308）。
- * 同时对员工行加 FOR SHARE：与任职写入的 FOR NO KEY UPDATE 互斥，离职与新增不会交错（§7）。
+ * 继任者须具资格：在职（含待入职），不是调出 4 / 退休 6 / 离职 8，也不是墓碑（§4.1）；**不校验是否在操作人员工范围内**（DEC-308）。
+ * 先单独取员工行 FOR SHARE（与任职写入的 FOR NO KEY UPDATE 互斥，离职与新增不会交错，§7），**取到锁之后**再用独立查询读
+ * 状态：READ COMMITTED 下每条语句重取快照，等锁期间提交的离职在这里一定可见（同一条联表 SQL 里的状态是等锁前读的）。
  */
 async function lockActiveSuccessor(tx: Tx, ctx: WriteContext, employeeId: string): Promise<void> {
-  const [row] = rowsOf<{ status: number | null }>(
-    await tx.execute(sql`SELECT s.employee_status::int AS status
-      FROM employment_employees e
-      LEFT JOIN employment_timeline t ON t.tenant_id = e.tenant_id AND t.employee_id = e.id
-        AND t.valid_during @> ${ctx.today}::date
-      LEFT JOIN employment_records r ON r.tenant_id = t.tenant_id AND r.id = t.record_id
-      LEFT JOIN LATERAL employment_record_status(e.tenant_id, r.id) s ON true
-      WHERE e.tenant_id = ${ctx.tenantId}::uuid AND e.id = ${employeeId}::uuid
-      LIMIT 1 FOR SHARE OF e`),
+  const locked = rowsOf<{ id: string }>(
+    await tx.execute(sql`SELECT e.id FROM employment_employees e
+      WHERE e.tenant_id = ${ctx.tenantId}::uuid AND e.id = ${employeeId}::uuid FOR SHARE`),
   );
-  if (!row) throw new AppError('NOT_FOUND', '继任者不存在');
-  if (row.status !== null && SUCCESSOR_INACTIVE_STATUSES.includes(row.status)) {
+  if (!locked.length) throw new AppError('NOT_FOUND', '继任者不存在');
+  const [row] = rowsOf<{ status: number | null }>(
+    await tx.execute(sql`SELECT ${successorStatusSql(ctx.tenantId, sql`${employeeId}::uuid`, ctx.today)} AS status`),
+  );
+  if (row?.status == null) {
     throw invalid('SUCCESSOR_NOT_ACTIVE', '继任者已离职、调出或退休，不能作为继任者');
   }
 }
@@ -288,7 +295,7 @@ function checkRevision(rows: readonly LockedRow[], expected: ReadonlyMap<string,
 
 // ── 新增 ────────────────────────────────────────────────────────────────────────────────────
 
-export async function createRecord(tx: Tx, ctx: WriteContext, body: RecordCreate): Promise<StoredResult> {
+export async function createRecord(tx: Tx, ctx: WriteContext, body: RecordCreate): Promise<CommandResult> {
   const target: Target =
     body.successionType === 'org'
       ? { kind: 'org', id: body.targetOrgId! }
@@ -332,7 +339,7 @@ export async function createRecord(tx: Tx, ctx: WriteContext, body: RecordCreate
 
 // ── 编辑 ────────────────────────────────────────────────────────────────────────────────────
 
-export async function updateRecord(tx: Tx, ctx: WriteContext, id: string, body: RecordPatch): Promise<StoredResult> {
+export async function updateRecord(tx: Tx, ctx: WriteContext, id: string, body: RecordPatch): Promise<CommandResult> {
   const [peek] = await peekRows(tx, ctx, [id]);
   if (!peek) throw notFound();
   const restoring = body.endDate === null;
@@ -387,7 +394,7 @@ export async function updateRecord(tx: Tx, ctx: WriteContext, id: string, body: 
 
 // ── 批量结束 ────────────────────────────────────────────────────────────────────────────────
 
-export async function endRecords(tx: Tx, ctx: WriteContext, body: RecordEnd): Promise<StoredResult> {
+export async function endRecords(tx: Tx, ctx: WriteContext, body: RecordEnd): Promise<CommandResult> {
   if (body.endDate > ctx.today) throw invalid('END_DATE_IN_FUTURE', '结束时间不可以大于今天');
   const ids = body.items.map((item) => item.id).sort();
   // R4-02：先无锁读出目标 → 目标锁行升序 → 记录行升序 FOR UPDATE 重读，用重读后的状态做校验
@@ -426,7 +433,7 @@ export async function endRecords(tx: Tx, ctx: WriteContext, body: RecordEnd): Pr
 
 // ── 软删除 ──────────────────────────────────────────────────────────────────────────────────
 
-export async function deleteRecord(tx: Tx, ctx: WriteContext, id: string): Promise<StoredResult> {
+export async function deleteRecord(tx: Tx, ctx: WriteContext, id: string): Promise<CommandResult> {
   const [peek] = await peekRows(tx, ctx, [id]);
   if (!peek) throw notFound();
   const target = targetOf(peek);

@@ -6,6 +6,8 @@
  * 错误码沿用统一集合（AGENTS §10）：业务码放 details.reason，如 CONFLICT + reason = SUCCESSION_DUPLICATE。
  */
 import { sql } from '@italent/db';
+import { rowsOf } from './support/f048.js';
+import { tenantApi } from './support/tenant-api.js';
 import { useTestDb } from '@italent/testkit';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { setSyncBarrier } from '../../apps/api/src/modules/succession/sync-barrier.js';
@@ -204,6 +206,9 @@ describe('AC-SC-01 继任记录写侧（设计 §2.2 #3～#6）', () => {
       expect(Object.keys(body.items[0]!).sort()).toEqual(['email', 'employeeId', 'name', 'status']);
       expect((await w.request('GET', '/successor-candidates?q=')).status).toBe(400);
       expect((await w.request('GET', '/successor-candidates?q=a&limit=31')).status).toBe(400);
+      // 关键词 1～50 字符（设计 §2.2 #3a）
+      expect((await w.request('GET', `/successor-candidates?q=${'a'.repeat(51)}`)).status).toBe(400);
+      expect((await w.request('GET', `/successor-candidates?q=${'a'.repeat(50)}`)).status).toBe(200);
       const limited = await w.request('GET', '/successor-candidates?q=继任&limit=2');
       expect(((await limited.json()) as { items: unknown[] }).items.length).toBeLessThanOrEqual(2);
     });
@@ -405,6 +410,69 @@ describe('AC-SC-01 继任记录写侧（设计 §2.2 #3～#6）', () => {
       expect((await w.request('DELETE', `/records/${view.id}`)).status).toBe(400);
       expect((await w.request('DELETE', `/records/${view.id}`, { ifMatch: 5 })).status).toBe(409);
       expect((await w.request('DELETE', `/records/${view.id}`, { ifMatch: 1 })).status).toBe(200);
+    });
+  });
+
+  describe('目标与继任者资格（审查第 1 轮 P2-2 / P2-3）', () => {
+    it('P2-2 已到期的新版本不会被更早的长期有效版本“复活”：目标组织当日已失效 → 404，不写记录', async () => {
+      // 组织 8 月 1 日创建（长期有效），随后追加 9 月 15 日起、9 月 30 日失效的版本；今天是 10 月 1 日
+      const early = tenantApi(w.db, { clock: () => new Date('2026-08-01T01:00:00.000Z') });
+      const as = { user: w.user.id, tenant: w.tenant.id };
+      const made = await early.request('POST', '/api/tenant/org/organizations', {
+        ...as,
+        ifMatch: 0,
+        body: { name: '已到期目标部', parents: { admin: { parentId: w.tenant.id } } },
+      });
+      expect(made.status, await made.clone().text()).toBe(201);
+      const expired = (await made.json()) as { id: string; revision: number };
+      const patched = await early.request('PATCH', `/api/tenant/org/organizations/${expired.id}`, {
+        ...as,
+        ifMatch: expired.revision,
+        body: { stopDate: '2026-09-30', effectiveDate: '2026-09-15' },
+      });
+      expect(patched.status, await patched.clone().text()).toBe(200);
+      // 组织详情已经是 404（当日无生效版本），继任新增必须同口径
+      const s = await successor();
+      const response = await post({
+        successionType: 'org',
+        targetOrgId: expired.id,
+        successorEmployeeId: s.id,
+        startDate: '2026-09-01',
+      });
+      expect(response.status, await response.clone().text()).toBe(404);
+      expect(
+        await w.asTenant(
+          async (tx) =>
+            rowsOf<{ n: number }>(
+              await tx.execute(sql`SELECT count(*)::int AS n
+        FROM succession_records WHERE target_org_id = ${expired.id}::uuid`),
+            )[0]!.n,
+        ),
+      ).toBe(0);
+    });
+
+    it('P2-3 删除唯一入职记录后（时间轴为空的墓碑），不是候选，也不能作为继任者', async () => {
+      const ghost = await w.hire('墓碑继任者', { departmentId: std.orgB.id });
+      expect(
+        ((await (await w.request('GET', '/successor-candidates?q=墓碑继任者')).json()) as { items: unknown[] }).items,
+      ).toHaveLength(1);
+      const business = (await (await w.call('GET', `employment/businesses/${ghost.recordId}`)).json()) as {
+        revision: number;
+      };
+      const removed = await w.call('DELETE', `employment/businesses/${ghost.recordId}`, { ifMatch: business.revision });
+      expect(removed.status, await removed.clone().text()).toBeLessThan(300);
+      const found = await w.request('GET', '/successor-candidates?q=墓碑继任者');
+      expect(((await found.json()) as { items: unknown[] }).items).toHaveLength(0);
+      const response = await post(orgBody(ghost.id));
+      expect([response.status, (await errorOf(response)).details?.reason]).toEqual([400, 'SUCCESSOR_NOT_ACTIVE']);
+    });
+
+    it('未来入职（待入职）仍是候选，状态 1，可以作为继任者', async () => {
+      const future = await w.hire('未来入职者', { departmentId: std.orgB.id }, '2026-10-20');
+      const found = await w.request('GET', '/successor-candidates?q=未来入职者');
+      const items = ((await found.json()) as { items: { employeeId: string; status: number }[] }).items;
+      expect(items.map((item) => [item.employeeId, item.status])).toEqual([[future.id, 1]]);
+      expect((await post(orgBody(future.id))).status).toBe(201);
     });
   });
 

@@ -6,19 +6,22 @@
  * 3. 返回前：首次响应、直接重放、失败回查重放三条路径**同一个函数** `authorizeSuccessionResult`——按台账里的结果记录 ID 逐个
  *    按请求人当时的范围复核（不可见 → 404），再做 §8.4 投影。台账只存结果记录 ID，不存响应对象：响应每次返回前重新取、重新投影。
  */
-import { type Tx, withTenant } from '@italent/db';
-import { tenantLocalDate } from '@italent/domain';
+import { sql, type Tx, withTenant } from '@italent/db';
+import { type SuccessionObject, tenantLocalDate } from '@italent/domain';
 import type { Context } from 'hono';
+import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { runCommand } from '../../commands.js';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
-import { authorizeInTransaction, resolveModuleScopeInTransaction } from '../permission/module-access.js';
+import {
+  authorizeInTransaction,
+  type ModuleScope,
+  resolveModuleScopeInTransaction,
+} from '../permission/module-access.js';
 import { button, writeFields } from '../permission/module-route-access.js';
 import { codeOf, successionContext, type SuccessionContext } from './access.js';
-import { projectSuccession, buildRecordViews, type RecordView } from './projection.js';
-import { listRecordRows, type RecordVisibility } from './record-read.js';
-import type { ModuleScope } from '../permission/module-access.js';
+import { rowsOf } from './read-sql.js';
 
 export type WriteOperation = 'create' | 'update' | 'delete';
 
@@ -29,13 +32,43 @@ export interface WriteContext extends SuccessionContext {
   readonly today: string;
 }
 
-/** 台账里存的结果：只有记录 ID（响应在返回前重新取），`receipt` = 软删除回执（按删除前的行判范围）。 */
+/**
+ * 台账里存的结果：只有结果对象 ID 和命令 ID（响应在返回前重新取）。`receipt` = 软删除回执（按删除前的行判范围）。
+ * `kind` 只区分响应形状（单个 / 多个 / 回执），不同对象（人员范围、规则设置、计算 run …）用各自的适配器解释 ID。
+ */
 export interface StoredResult {
   readonly kind: 'record' | 'records' | 'receipt';
   readonly ids: readonly string[];
+  readonly commandId: string;
 }
 
-export interface WriteSpec {
+/** 写命令的返回（命令 ID 由协议统一补进台账）。 */
+export type CommandResult = Omit<StoredResult, 'commandId'>;
+
+/** 适配器读出的结果对象（至少有 ID 与 revision，供响应 ETag 与按序返回）。 */
+export interface ResultView {
+  readonly id: string;
+}
+
+/**
+ * 结果对象适配器（B2a 人员范围 / 规则设置、B3 计算 run 等写入口各自实现，统一出口 `authorizeSuccessionResult` 不变）：
+ * `load` 在事务内按请求人**当时**的对象权限与范围读出结果对象，任何一个不可见或不存在 → 404；
+ * `project` 做该对象的 §8.4 投影（字段裁剪、嵌套人员等）。
+ */
+export interface ResultAdapter<V extends ResultView = ResultView> {
+  /** 结果对象的权限对象与审计对象类型（审计足迹按它过滤）。 */
+  readonly object: SuccessionObject;
+  load(
+    tx: Tx,
+    deps: TenantRouteDeps,
+    ctx: SuccessionContext,
+    ids: readonly string[],
+    options: { readonly includeDeleted: boolean },
+  ): Promise<{ readonly views: readonly V[]; readonly revisions: ReadonlyMap<string, number> }>;
+  project(deps: TenantRouteDeps, ctx: SuccessionContext, views: readonly V[]): Promise<Partial<V>[]>;
+}
+
+export interface WriteSpec<V extends ResultView = ResultView> {
   readonly operation: WriteOperation;
   /** 对象按钮编码与级别（设计 §8.1）：end 属于 update 操作的列表级按钮。 */
   readonly button: { readonly code: string; readonly level: 'list' | 'detail' };
@@ -44,20 +77,24 @@ export interface WriteSpec {
   readonly payload?: Readonly<Record<string, unknown>>;
   /** 请求指纹里的输入（决定“同内容”）。 */
   readonly input: unknown;
-  readonly status: 200 | 201;
-  readonly execute: (tx: Tx, ctx: WriteContext) => Promise<StoredResult>;
+  readonly status: ContentfulStatusCode;
+  /** 结果对象适配器：同时决定命令前 / 命令内权限判定所用的权限对象。 */
+  readonly results: ResultAdapter<V>;
+  readonly execute: (tx: Tx, ctx: WriteContext) => Promise<CommandResult>;
 }
 
 /** 命令前：对象数据操作权 + 按钮 + 载荷字段编辑权（含置空）。路由层调用一次，命令事务内再按当前授权重复一次。 */
 export async function checkWriteAccess(
   c: Context<TenantEnv>,
   deps: TenantRouteDeps,
-  spec: Pick<WriteSpec, 'operation' | 'button' | 'expectedRevision' | 'payload'>,
+  spec: Pick<WriteSpec, 'operation' | 'button' | 'expectedRevision' | 'payload'> & {
+    readonly object: SuccessionObject;
+  },
 ): Promise<SuccessionContext> {
-  const ctx = await successionContext(c, deps, 'record', spec.operation, spec.expectedRevision);
-  await button(deps, ctx, codeOf('record'), spec.button.code, spec.button.level);
+  const ctx = await successionContext(c, deps, spec.object, spec.operation, spec.expectedRevision);
+  await button(deps, ctx, codeOf(spec.object), spec.button.code, spec.button.level);
   if (spec.payload && spec.operation !== 'delete') {
-    await writeFields(deps, ctx, codeOf('record'), spec.operation, spec.payload);
+    await writeFields(deps, ctx, codeOf(spec.object), spec.operation, spec.payload);
   }
   return ctx;
 }
@@ -67,58 +104,68 @@ const todayOf = (ctx: SuccessionContext) => tenantLocalDate(ctx.now, ctx.timezon
 /** 命令事务内的当前权限复核：对象 / 按钮 / 字段 / 范围都按**事务内**当前授权重新解析，拒绝即整体回滚。 */
 async function recheck(c: Context<TenantEnv>, deps: TenantRouteDeps, tx: Tx, spec: WriteSpec): Promise<WriteContext> {
   const txDeps: TenantRouteDeps = { ...deps, authorize: authorizeInTransaction(deps.authorize, tx) };
-  const ctx = await checkWriteAccess(c, txDeps, spec);
-  const scope = await resolveModuleScopeInTransaction(txDeps, ctx, tx, codeOf('record'));
+  const object = spec.results.object;
+  const ctx = await checkWriteAccess(c, txDeps, { ...spec, object });
+  const scope = await resolveModuleScopeInTransaction(txDeps, ctx, tx, codeOf(object));
   return { ...ctx, scope, today: todayOf(ctx) };
 }
 
-/** 事务内按请求人当前范围读结果记录；数量不符（范围外 / 已不存在）一律 404。 */
-async function visibleViews(
+/** 本命令写下的审计足迹（按命令 ID）：命令实际动过的对象 ID，与台账结果 ID 合并后一并复核，不能只信台账。 */
+async function footprintIds(tx: Tx, ctx: SuccessionContext, commandId: string, object: SuccessionObject) {
+  return rowsOf<{ object_id: string }>(
+    await tx.execute(sql`SELECT DISTINCT object_id FROM audit_events
+      WHERE tenant_id = ${ctx.tenantId}::uuid AND command_id = ${commandId} AND object_type = ${codeOf(object)}
+        AND object_id IS NOT NULL`),
+  ).map((row) => row.object_id);
+}
+
+/** 事务内按请求人当前权限与范围读结果对象（含审计足迹里的对象）；任何一个不可见 / 不存在 → 404，数量不符同样 404。 */
+async function visibleViews<V extends ResultView>(
   tx: Tx,
   deps: TenantRouteDeps,
   ctx: SuccessionContext,
   result: StoredResult,
-): Promise<{ readonly views: RecordView[]; readonly revisions: ReadonlyMap<string, number> }> {
-  const txDeps: TenantRouteDeps = { ...deps, authorize: authorizeInTransaction(deps.authorize, tx) };
-  const scope = await resolveModuleScopeInTransaction(txDeps, ctx, tx, codeOf('record'));
-  const today = todayOf(ctx);
-  const visibility: RecordVisibility = { tenantId: ctx.tenantId, userId: ctx.userId, today, asOf: today, scope };
-  const { rows } = await listRecordRows(
-    tx,
-    visibility,
-    { status: 'all', ids: result.ids, includeDeleted: result.kind === 'receipt' },
-    { limit: result.ids.length || 1, offset: 0 },
-  );
-  if (rows.length !== result.ids.length) throw new AppError('NOT_FOUND', '继任记录不存在');
-  const views = await buildRecordViews(tx, ctx.tenantId, rows, today);
-  const order = new Map(result.ids.map((id, index) => [id, index]));
-  views.sort((a, b) => order.get(a.id)! - order.get(b.id)!);
-  return { views, revisions: new Map(rows.map((row) => [row.id, row.revision])) };
+  results: ResultAdapter<V>,
+) {
+  const footprint = await footprintIds(tx, ctx, result.commandId, results.object);
+  const wanted = [...new Set(result.ids)];
+  const all = [...new Set([...wanted, ...footprint])];
+  const loaded = await results.load(tx, deps, ctx, all, { includeDeleted: result.kind === 'receipt' });
+  const byId = new Map(loaded.views.map((view) => [view.id, view]));
+  const views = wanted.map((id) => byId.get(id));
+  if (loaded.views.length !== all.length || views.some((view) => view === undefined)) {
+    throw new AppError('NOT_FOUND', '对象不存在');
+  }
+  return { views: views as V[], revisions: loaded.revisions };
 }
 
 /**
- * 返回前复核（设计 §2.1 第 3 步）：首次响应、直接重放、失败回查重放同一函数。按台账里的结果记录 ID 逐个按请求人**当时**的
- * 范围复核（不可见 → 404），再做 §8.4 投影。软删除回执按删除前的行（行仍在，带 deleted_at）判范围。
+ * 返回前复核（设计 §2.1 第 3 步）：首次响应、直接重放、失败回查重放同一函数，**所有写入口共用**（B2a、B3 及之后的写入口
+ * 只需提供各自的结果对象适配器）。按台账里的结果 ID 与命令 ID 的审计足迹逐个按请求人**当时**的权限与范围复核（不可见 → 404），
+ * 再做 §8.4 投影。软删除回执按删除前的行（行仍在，带 deleted_at）判范围。
  */
-export async function authorizeSuccessionResult(
+export async function authorizeSuccessionResult<V extends ResultView>(
   deps: TenantRouteDeps,
   ctx: SuccessionContext,
   result: StoredResult,
-): Promise<{ readonly items: Partial<RecordView>[]; readonly revisions: ReadonlyMap<string, number> }> {
-  const { views, revisions } = await withTenant(deps.db, ctx.tenantId, (tx) => visibleViews(tx, deps, ctx, result));
-  return { items: await projectSuccession(deps, ctx, 'record', views), revisions };
+  results: ResultAdapter<V>,
+): Promise<{ readonly items: Partial<V>[]; readonly revisions: ReadonlyMap<string, number> }> {
+  const { views, revisions } = await withTenant(deps.db, ctx.tenantId, (tx) =>
+    visibleViews(tx, deps, ctx, result, results),
+  );
+  return { items: await results.project(deps, ctx, views), revisions };
 }
 
 /**
  * 执行一个写命令：命令事务内先按当前授权复核（CommandGuard.before，首次与各重放路径共用），再执行；命中台账的路径经
- * `ledgerExit` 的 `replayed` 钩子再按当前范围复核结果记录。返回台账里的结果（调用方再走 authorizeSuccessionResult）。
+ * `ledgerExit` 的 `replayed` 钩子再按当前权限与范围复核结果对象。返回台账里的结果（调用方再走 authorizeSuccessionResult）。
  */
 export async function runSuccessionCommand(
   c: Context<TenantEnv>,
   deps: TenantRouteDeps,
   ctx: SuccessionContext,
   spec: WriteSpec,
-): Promise<{ readonly status: 200 | 201; readonly result: StoredResult }> {
+): Promise<{ readonly status: ContentfulStatusCode; readonly result: StoredResult }> {
   let current: WriteContext | undefined;
   const response = await runCommand(deps.db, ctx, {
     id: c.req.header('idempotency-key'),
@@ -128,21 +175,23 @@ export async function runSuccessionCommand(
         current = await recheck(c, deps, tx, spec);
       },
       replayed: async (tx, replay) => {
-        await visibleViews(tx, deps, ctx, replay.body as StoredResult);
+        await visibleViews(tx, deps, ctx, replay.body as StoredResult, spec.results);
       },
     },
     execute: async (tx, commandId) => ({
       status: spec.status,
-      body: await spec.execute(tx, { ...current!, commandId }),
+      body: { ...(await spec.execute(tx, { ...current!, commandId })), commandId } satisfies StoredResult,
     }),
   });
-  return { status: response.status as 200 | 201, result: response.body as StoredResult };
+  return { status: response.status, result: response.body as StoredResult };
 }
 
 /** 候选下拉的入口权限：持新增或编辑（对象数据操作权 + 按钮）任一即可，不看数据范围（DEC-308）；都没有时按新增的拒绝返回 403。 */
 export async function checkCandidateAccess(c: Context<TenantEnv>, deps: TenantRouteDeps): Promise<SuccessionContext> {
+  const object = 'record';
   try {
     return await checkWriteAccess(c, deps, {
+      object,
       operation: 'create',
       button: { code: 'create', level: 'list' },
       expectedRevision: 0,
@@ -151,6 +200,7 @@ export async function checkCandidateAccess(c: Context<TenantEnv>, deps: TenantRo
     if (!(error instanceof AppError) || error.code !== 'FORBIDDEN') throw error;
     try {
       return await checkWriteAccess(c, deps, {
+        object,
         operation: 'update',
         button: { code: 'update', level: 'detail' },
         expectedRevision: 0,

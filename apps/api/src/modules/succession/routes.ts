@@ -21,9 +21,9 @@ import {
   successionScope,
 } from './access.js';
 import './access.js';
-import { CANDIDATE_DEFAULT, CANDIDATE_MAX, searchCandidates } from './candidates.js';
+import { CANDIDATE_DEFAULT, CANDIDATE_KEYWORD_MAX, CANDIDATE_MAX, searchCandidates } from './candidates.js';
 import { recordCreate, recordEnd, recordPatch, rejectImmutable } from './input.js';
-import { projectSuccession, buildRecordViews } from './projection.js';
+import { projectSuccession, buildRecordViews, type RecordView } from './projection.js';
 import './readiness-guard.js';
 import {
   listRecordRows,
@@ -36,12 +36,12 @@ import {
 import './settings.js';
 import { installSuccessionPorts } from './ports.js';
 import { createRecord, deleteRecord, endRecords, updateRecord } from './record-write.js';
+import { recordResults } from './record-results.js';
 import {
   authorizeSuccessionResult,
   checkCandidateAccess,
   checkWriteAccess,
   runSuccessionCommand,
-  type StoredResult,
   type WriteSpec,
 } from './write-support.js';
 
@@ -120,7 +120,9 @@ function registerRecordWrites(router: Hono<TenantEnv>, deps: TenantRouteDeps): v
   router.get(`${SUCCESSION_BASE}/successor-candidates`, async (c) => {
     const ctx = await checkCandidateAccess(c, deps);
     const keyword = c.req.query('q')?.trim() ?? '';
-    if (!keyword || keyword.length > 100) throw new AppError('VALIDATION_FAILED', 'q 必填，且不超过 100 个字符');
+    if (!keyword || keyword.length > CANDIDATE_KEYWORD_MAX) {
+      throw new AppError('VALIDATION_FAILED', `q 必填，且不超过 ${CANDIDATE_KEYWORD_MAX} 个字符`);
+    }
     const limit = candidateLimit(c.req.query('limit'));
     const today = tenantLocalDate(deps.clock(), ctx.timezone);
     const items = await withTenant(deps.db, ctx.tenantId, (tx) =>
@@ -176,22 +178,17 @@ function registerRecordWrites(router: Hono<TenantEnv>, deps: TenantRouteDeps): v
 
 /**
  * 写入口共用出口（设计 §2.1）：命令前权限 → 命令协议（含事务内复核）→ authorizeSuccessionResult 返回前复核与投影。
- * 首次响应、直接重放、失败回查重放三条路径都走同一个 authorizeSuccessionResult。
+ * 首次响应、直接重放、失败回查重放三条路径都走同一个 authorizeSuccessionResult（记录的结果适配器：record-results.ts）。
  */
-async function writeRecord(c: Context<TenantEnv>, deps: TenantRouteDeps, spec: WriteSpec): Promise<Response> {
-  const ctx = await checkWriteAccess(c, deps, spec);
-  const { status, result } = await runSuccessionCommand(c, deps, ctx, spec);
-  return respond(c, deps, ctx, status, result);
-}
-
-async function respond(
+async function writeRecord(
   c: Context<TenantEnv>,
   deps: TenantRouteDeps,
-  ctx: SuccessionContext,
-  status: 200 | 201,
-  result: StoredResult,
+  input: Omit<WriteSpec<RecordView>, 'results'>,
 ): Promise<Response> {
-  const { items, revisions } = await authorizeSuccessionResult(deps, ctx, result);
+  const spec: WriteSpec<RecordView> = { ...input, results: recordResults };
+  const ctx = await checkWriteAccess(c, deps, { ...spec, object: spec.results.object });
+  const { status, result } = await runSuccessionCommand(c, deps, ctx, spec);
+  const { items, revisions } = await authorizeSuccessionResult(deps, ctx, result, recordResults);
   if (result.kind === 'receipt') return c.json({ id: result.ids[0], deleted: true }, status);
   if (result.kind === 'records') return c.json({ items }, status);
   c.header('ETag', `"${revisions.get(result.ids[0]!)}"`);

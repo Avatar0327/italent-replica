@@ -70,7 +70,7 @@ function change(operation: 'create' | 'update' | 'delete', button: keyof typeof 
   const entry: Evidence = {
     role: 'call',
     unit: SUCCESSION_CONTEXT,
-    anchor: "const ctx = await successionContext(c, deps, 'record', spec.operation, spec.expectedRevision)",
+    anchor: 'const ctx = await successionContext(c, deps, spec.object, spec.operation, spec.expectedRevision)',
   };
   return [
     { perm: `obj:${RECORD}:${operation}`, facts: ['object:objectContext'], at: [entry, ...CONTEXT, OBJECT_CONST] },
@@ -81,7 +81,7 @@ function change(operation: 'create' | 'update' | 'delete', button: keyof typeof 
         {
           role: 'call',
           unit: SUCCESSION_CONTEXT,
-          anchor: "await button(deps, ctx, codeOf('record'), spec.button.code, spec.button.level)",
+          anchor: 'await button(deps, ctx, codeOf(spec.object), spec.button.code, spec.button.level)',
         },
         {
           role: 'impl',
@@ -103,8 +103,7 @@ const TARGET_IN_SCOPE: Obligation = {
     {
       role: 'call',
       unit: `${S}/record-write.ts#requireTarget`,
-      anchor:
-        "if (!row?.enabled || !scopeAllows(ctx.scope, { orgId: target.id })) throw new AppError('NOT_FOUND', '组织不存在')",
+      anchor: 'if (!row?.enabled || !row.current || !scopeAllows(ctx.scope, { orgId: target.id }))',
     },
   ],
 };
