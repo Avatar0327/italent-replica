@@ -11,7 +11,11 @@ export const GRAPH: Graph = {
     'apps/api/src/tenant-context.ts#tenantOf',
   ],
   'apps/api/src/modules/permission/admin-http.ts#platformCommandId': ['#COMMAND_ID'],
-  'apps/api/src/modules/permission/admins.ts#assertCanDelegate': ['#assertProfilesExist', '#grantableSetsOf'],
+  'apps/api/src/modules/permission/admins.ts#assertCanDelegate': [
+    '#assertProfilesExist',
+    '#grantableSetsOf',
+    'apps/api/src/modules/permission/auto-held.ts#assertNotAutoHeld',
+  ],
   'apps/api/src/modules/permission/admins.ts#assertContractConfigurationGrant': ['#grantableSetsOf'],
   'apps/api/src/modules/permission/admins.ts#createAdmin': [
     '#assertCanDelegate',
@@ -38,12 +42,18 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/permission/admins.ts#viewOf': ['packages/domain/src/permission/admin-roles.ts#isAdminRole'],
   'apps/api/src/modules/permission/audit.ts#audit': ['#auditAs'],
   'apps/api/src/modules/permission/audit.ts#auditAs': ['apps/api/src/audit/record.ts#recordAudit', '#revisionOf'],
+  'apps/api/src/modules/permission/auto-held.ts#AUTO_HELD_CODES': [
+    'packages/domain/src/platform/standard-presets.ts#STANDARD_PROFILES',
+  ],
+  'apps/api/src/modules/permission/auto-held.ts#assertNotAutoHeld': ['#isAutoHeld'],
+  'apps/api/src/modules/permission/auto-held.ts#isAutoHeld': ['#AUTO_HELD_CODES'],
   'apps/api/src/modules/permission/catalog.ts#objectCatalog': [
     'packages/domain/src/evaluation/catalog.ts#EVALUATION_OBJECTS',
     'packages/domain/src/evaluation/flow-catalog.ts#EVALUATION_FLOW_OBJECTS',
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
     'packages/domain/src/permission/object-permission.ts#ObjectCatalog',
     'packages/domain/src/qualification/catalog.ts#QUALIFICATION_OBJECTS',
+    'packages/domain/src/qualification/catalog.ts#QUALIFICATION_PAGES',
     'packages/domain/src/survey360/catalog.ts#SURVEY360_OBJECTS',
   ],
   'apps/api/src/modules/permission/data-scope-admin.ts#applyGrantScopes': ['#assignUserAppScope'],
@@ -231,6 +241,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/permission/grants.ts#createGrant': [
     'apps/api/src/modules/permission/audit.ts#audit',
+    'apps/api/src/modules/permission/auto-held.ts#assertNotAutoHeld',
     'apps/api/src/modules/permission/data-scope-admin.ts#applyGrantScopes',
     '#assertGrantable',
     '#view',
@@ -409,6 +420,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/permission/object-permission.ts#validateObjectPermission',
     'packages/domain/src/platform/standard-grants.ts#objectCatalogDigest',
   ],
+  'apps/api/src/modules/permission/profiles.ts#view': ['apps/api/src/modules/permission/auto-held.ts#isAutoHeld'],
   'apps/api/src/modules/permission/public-down.ts#publicDownSql': [
     '#scopeOrgIds',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
@@ -545,6 +557,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/permission/object-permission.ts#BUTTON_LEVELS',
   ],
   'apps/api/src/modules/permission/schemas.ts#profileBody': ['#APP_CODE', '#LICENSE_TYPE', '#PROFILE_CODE', '#code'],
+  'apps/api/src/modules/permission/scope-hierarchy.ts#expandScopeOrgSet': ['#MAX_SCOPE_IDS', '#scopeRows'],
   'apps/api/src/modules/permission/scope-hierarchy.ts#expandScopeRoots': ['#scopeHierarchyReader'],
   'apps/api/src/modules/permission/scope-hierarchy.ts#scopeHierarchyReader': ['#MAX_SCOPE_IDS', '#scopeRows'],
   'apps/api/src/modules/permission/scope-persons.ts#managedPersonsSql': ['#currentPersons'],

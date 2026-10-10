@@ -142,7 +142,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/evaluation/activity-scope.ts#assertScopeUnique': ['#findScopeConflict', '#lockActivityScope'],
   'apps/api/src/modules/evaluation/activity-scope.ts#expand': [
-    'apps/api/src/modules/permission/scope-hierarchy.ts#expandScopeRoots',
+    'apps/api/src/modules/permission/scope-hierarchy.ts#expandScopeOrgSet',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/evaluation/activity-scope.ts#findScopeConflict': [

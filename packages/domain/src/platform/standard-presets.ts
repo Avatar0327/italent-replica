@@ -6,12 +6,20 @@
  * 人才标准管理员（DEC-281⑩）同一口径：只对无组织字段的发展建议类型字典预置看全部，其余按管理单元。
  */
 import { APPROVAL_OBJECTS, APPROVAL_PROCESS_OBJECT } from '../approval/catalog.js';
+import {
+  EMPLOYEE_DEFAULT_CREATE,
+  EMPLOYEE_DEFAULT_EDIT_FIELDS,
+  EMPLOYEE_PAGES,
+  EMPLOYEE_READONLY_FIELDS,
+  EMPLOYEE_SELF_SERVICE_BUTTONS,
+  EMPLOYEE_SELF_SERVICE_CODE,
+} from './employee-self-service.js';
 import { MODULE_OBJECTS, ORG_EMPLOYEE_APP } from '../permission/module-actions.js';
-import type { ObjectDefinition, ObjectPermission } from '../permission/object-permission.js';
+import type { ButtonGrant, ObjectDefinition, ObjectPermission } from '../permission/object-permission.js';
 import { EVALUATION_APP, EVALUATION_OBJECTS } from '../evaluation/catalog.js';
 import { EVALUATION_FLOW_OBJECTS } from '../evaluation/flow-catalog.js';
 import { PERSONNEL_OBJECTS } from '../personnel/catalog.js';
-import { QUALIFICATION_APP, QUALIFICATION_OBJECTS } from '../qualification/catalog.js';
+import { QUALIFICATION_APP, QUALIFICATION_OBJECTS, QUALIFICATION_PAGES } from '../qualification/catalog.js';
 import { SURVEY360_APP, SURVEY360_PROFILES } from '../survey360/catalog.js';
 import { TALENT_APP, TALENT_OBJECTS } from '../talent/catalog.js';
 import {
@@ -66,6 +74,11 @@ export interface StandardProfile {
   readonly hr: boolean;
   /** 其他应用的身份按同一口径预置看全部的无组织字段对象（如人才标准的发展建议类型字典）。 */
   readonly seeAll?: readonly PresetSeeAllTarget[];
+  /**
+   * 自动持有（DEC-399 / DEC-402③）：全体员工经本人入口的叠加授权器按关系自动适用，不发授权行；不可手工授予、不进
+   * 租户管理员的可授权业务身份，管理端只显示“自动适用于全体员工”。目前只有员工身份。
+   */
+  readonly autoHeld?: boolean;
 }
 
 /** 系统配置类对象由“其他设置”管理员能力控制，不进业务身份（permission/authorizer.ts 的 CONFIG_OBJECTS）。 */
@@ -118,6 +131,33 @@ function partial(
     buttons: definition.buttons
       .filter((b) => buttons.includes(b.code))
       .map((b) => ({ buttonCode: b.code, level: b.level })),
+  };
+}
+
+/**
+ * 字段子集（`full` / `readOnly` / `partial` 都是“全部字段可见”，不适用）：只列出 view 的字段，其中 edit 的字段可编辑。
+ * 字段不在对象目录里、或系统字段给了 edit，立即抛错（模块加载即失败，不会下发半套身份；开通时 insertObject 还会按目录再校验一次）。
+ */
+function fieldSubset(
+  definition: ObjectDefinition,
+  view: readonly string[],
+  edit: readonly string[],
+  dataOperations: ObjectPermission['dataOperations'],
+  buttons: readonly ButtonGrant[] = [],
+): ObjectPermission {
+  const known = new Map(definition.fields.map((f) => [f.code, f]));
+  for (const code of [...view, ...edit]) {
+    if (!known.has(code)) throw new Error(`${definition.code} 没有字段 ${code}`);
+  }
+  for (const code of edit) {
+    if (known.get(code)!.system) throw new Error(`${definition.code} 的系统字段 ${code} 不可编辑`);
+    if (!view.includes(code)) throw new Error(`${definition.code} 的字段 ${code} 可编辑但不可见`);
+  }
+  return {
+    objectCode: definition.code,
+    dataOperations,
+    fields: view.map((fieldCode) => ({ fieldCode, view: true, edit: edit.includes(fieldCode) })),
+    buttons,
   };
 }
 
@@ -179,8 +219,7 @@ const SUCCESSION_PROFILES: readonly StandardProfile[] = [
  * 与继任 / 盘点不同，这里**不**对没有组织字段的字典（层级、等级方案、编码规则；活动类型、周期、通用评分项）预置看全部，
  * 由租户管理员按（用户 × 应用）授予；原站说明评定管理员授权时人才评定、任职资格两个应用各设管理单元。
  * 各身份的功能明细原站未逐项展开（🟡）。许可归属未取证，与人才标准管理员同口径不占名额。
- * TODO(需取证 #202，C1-2b)：预置员工身份的发展通道查看授权（Q-T02-20 ①，登记项 qualification/employee-profile-grants）——
- * employee_self_service 目前没有预置行，装到哪一行身份待定；确定前不装，也不往租户自定义身份里写授权。
+ * 员工身份的发展通道页面权限见 EMPLOYEE_PROFILE（C1-2b，DEC-399）。
  */
 const QUALIFICATION_PROFILES: readonly StandardProfile[] = [
   {
@@ -226,6 +265,38 @@ const MANAGER_OBJECTS = new Set<string>([
 ]);
 
 const CORE_HR = 'core_hr';
+
+/**
+ * 预置“员工”自助身份（R3-T02 C1-2b，DEC-399 / DEC-402；契约 §2.1）：原站名称“员工”、描述“自助身份-员工”，授权范围企业员工。
+ * 任职对象的字段 / 数据操作 / 三个本人调动按钮是 DEC-205 的出厂默认值（employee-self-service.ts 为唯一来源），租户之后可在
+ * 身份管理里调整；任职资格应用只带“员工发展通道”页面权限（页面载体对象 + app_page 按钮），不授予发展通道 / 任职资格标准等业务对象。
+ * 不占许可名额；数据范围不预置（硬规则）——员工的范围是叠加授权器给的“本人”，所以 autoHeld、不发授权行。
+ */
+const EMPLOYEE_PROFILE: StandardProfile = {
+  code: EMPLOYEE_SELF_SERVICE_CODE,
+  name: '员工',
+  description: '自助身份-员工',
+  licenseType: null,
+  apps: [ORG_EMPLOYEE_APP, QUALIFICATION_APP],
+  objects: [
+    fieldSubset(
+      MODULE_OBJECTS.employmentRecord,
+      [...EMPLOYEE_DEFAULT_EDIT_FIELDS, ...EMPLOYEE_READONLY_FIELDS],
+      EMPLOYEE_DEFAULT_EDIT_FIELDS,
+      { create: EMPLOYEE_DEFAULT_CREATE, update: false, delete: false },
+      EMPLOYEE_SELF_SERVICE_BUTTONS,
+    ),
+    fieldSubset(
+      QUALIFICATION_PAGES,
+      [],
+      [],
+      { create: false, update: false, delete: false },
+      EMPLOYEE_PAGES.map((buttonCode) => ({ buttonCode, level: 'app_page' as const })),
+    ),
+  ],
+  hr: false,
+  autoHeld: true,
+};
 
 export const STANDARD_PROFILES: readonly StandardProfile[] = [
   {
@@ -303,6 +374,7 @@ export const STANDARD_PROFILES: readonly StandardProfile[] = [
   },
   // DEC-280①②：三类内置 360 身份，由企业管理员在“用户授权”里授予；不消耗许可，数据范围不预置
   ...SURVEY360_PROFILES.map((p) => ({ ...p, licenseType: null, apps: [SURVEY360_APP], hr: false })),
+  EMPLOYEE_PROFILE,
 ];
 
 /** 开通时授予首位租户管理员的业务身份，使其能查看与配置出厂流程等业务对象（占一个核心人力名额）。 */

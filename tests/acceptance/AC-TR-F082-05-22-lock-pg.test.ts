@@ -15,6 +15,8 @@ import {
   catalogVersion,
   errorOf,
   fieldRevision,
+  itemIdOf,
+  refsOf,
   renameField,
   type F082World,
 } from './AC-TR-F082-support.js';
@@ -190,6 +192,70 @@ pg('AC-22 并发保存（真 PG）', () => {
       ]);
       expect([200, 400, 409], `save ${save.status}`).toContain(save.status);
       expect([200, 409]).toContain(rename.status);
+      await expectConsistent(db, w);
+    }
+  });
+});
+
+/** #224 第 2 轮 P3-2：候选固化 → 保存转 bound 的固定顺序（PGlite 也跑，确定性）。 */
+describe('AC-22 候选固化后保存转 bound：候选清除', () => {
+  it('legacy 项目引用 X：改名固化出候选（先确认存在），随后保存成功转 bound，候选被清除、只剩 bound 引用', async () => {
+    const db = testDb().db;
+    const w = await boundWorld(db, 'f082-cand-seq');
+    const [target, source] = [await w.numberField(), await w.field('number', { name: '固化源' })];
+    // B5 写入的 legacy 规则（开关关闭的应用实例，同一个库同一个租户）
+    const off = tenantApi(db, { clock: () => TR_NOW });
+    const made = await off.request('POST', `${TR_BASE}${CALC_RULES}`, {
+      ...w.as,
+      ifMatch: 0,
+      body: calcBody([calcItem(target, '盘点对象.固化源 + 1')]),
+    });
+    expect(made.status, await made.clone().text()).toBe(201);
+    const rule = (await made.json()) as { id: string; revision: number };
+    const itemId = await itemIdOf(db, w, rule.id, target.id);
+
+    expect((await renameField(w, source, '固化后的新名')).status).toBe(200);
+    const candidates = await refsOf(db, w, itemId);
+    expect(candidates).toEqual([{ item_id: itemId, field_id: source.id, kind: 'candidate' }]);
+
+    const save = await w.request('PATCH', `${CALC_RULES}/${rule.id}`, {
+      ifMatch: rule.revision,
+      body: {
+        items: [calcItem(target, '盘点对象.固化后的新名 + 1')],
+        fieldCatalogVersion: await catalogVersion(db, w),
+      },
+    });
+    expect(save.status, await save.clone().text()).toBe(200);
+    expect(await refsOf(db, w, itemId)).toEqual([{ item_id: itemId, field_id: source.id, kind: 'bound' }]);
+    await expectConsistent(db, w);
+  });
+});
+
+pg('AC-22 两个保存共享来源 × 同时删除来源（真 PG，#224 P3-2）', () => {
+  it('有保存成功时删除必须 409 FIELD_IN_USE；删除成功时两个保存都不成功；无悬挂引用', async () => {
+    const db = testDb().db;
+    for (let round = 0; round < 3; round += 1) {
+      const w = await boundWorld(db, `f082-pg22e-${round}`);
+      const [t1, t2, source] = [
+        await w.numberField(),
+        await w.numberField(),
+        await w.field('number', { name: '共删源' }),
+      ];
+      const version = await catalogVersion(db, w);
+      const revision = await fieldRevision(w, source.id);
+      const [one, two, removal] = await Promise.all([
+        w.post(calcBody([calcItem(t1, '盘点对象.共删源 + 1')], { fieldCatalogVersion: version })),
+        w.post(calcBody([calcItem(t2, '盘点对象.共删源 + 2')], { fieldCatalogVersion: version })),
+        w.request('DELETE', `/fields/${source.id}`, { ifMatch: revision }),
+      ]);
+      const saved = [one, two].filter((response) => response.status === 201);
+      if (saved.length > 0) {
+        expect(removal.status).toBe(409);
+        expect((await errorOf(removal)).details['reason']).toBe('FIELD_IN_USE');
+      } else {
+        expect([200, 409]).toContain(removal.status);
+        for (const response of [one, two]) expect([400, 404, 409]).toContain(response.status);
+      }
       await expectConsistent(db, w);
     }
   });
