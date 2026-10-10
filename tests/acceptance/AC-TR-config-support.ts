@@ -55,9 +55,9 @@ export interface Identity {
 }
 
 /** 一个租户 + 一名成员（全部允许），带配置对象快捷方法。 */
-export async function configWorld(db: Db, label: string) {
+export async function configWorld(db: Db, label: string, deps: Parameters<typeof tenantApi>[1] = {}) {
   const member = await seedTenantWithMember(db, label);
-  const api = tenantApi(db, { clock: () => TR_NOW });
+  const api = tenantApi(db, { clock: () => TR_NOW, ...deps });
   const as: Identity = { user: member.user.id, tenant: member.tenant.id };
   const request = (method: string, path: string, options: RequestOptions = {}, who: Identity = as) =>
     api.request(method, `${TR_BASE}${path}`, { ...options, ...who });
