@@ -15,6 +15,7 @@ INTERVAL = 180
 STALL = 90  # 分钟（审查发起时编排会在 PR 贴一行评论，据此区分在审与停摆）
 READY = 10  # 分钟：提交后这么久、CI 绿（或无 CI）且无送审评论 → 提醒审查合并窗口
 READY_DRAFT = 20  # Draft 停 20 分钟无新提交 → 可能已完成但没转 Ready（用户 10-09：#144 漏报）
+DRAFT_IDLE = 60  # 分钟：Draft 无提交无评论 → 问是否卡在待决
 HANDOFF = 15  # 分钟：开发完成后仍未发起审查 → 衔接超时，进度窗口直接催
 OPUS_REMIND = 60  # 分钟：claude.ai/code 的 Opus 审查会话本机看不到，发起后这么久 PR 上仍无“审查原文 / 结论”就提醒去看会话，之后每 60 分钟再提醒
 
@@ -269,6 +270,14 @@ def main():
             if p["ci"] in ("green", "none") and mins_since(p["commit"]) >= (READY_DRAFT if p["draft"] else READY) and not p.get("handled") and k2 not in stalled:
                 ev.append(f"待送审 #{n} {p['t']}：最新提交 {p['head']} 已 {int(mins_since(p['commit']))} 分钟、CI {'绿' if p['ci'] == 'green' else '无'}，提交后 PR 上没有审查发起 / 排队 / 修改清单评论——开发方可能已完成，请确认并发起审查")
                 stalled.add(k2)
+            # Draft 闲置（10-10 #180 停 11 小时、#203 停 3 小时未被发现）：Draft 无新提交且无新评论超过 DRAFT_IDLE 分钟，每小时报一次，
+            # 进度窗口须去问开发方是否在等决定（DEC-385④：等口径超 1 小时直接提醒用户）
+            if p["draft"]:
+                idle = int(min(mins_since(p["commit"]), mins_since(p["comment"]) if p["comment"] else 10**6))
+                k3 = f"{n}@draftidle@{p['head']}@{idle // 60}"
+                if idle >= DRAFT_IDLE and k3 not in stalled:
+                    ev.append(f"⚠ Draft 闲置 #{n} {p['t']}：{idle} 分钟无新提交 / 评论——问开发方是否卡在待决口径，超 1 小时直接提醒用户")
+                    stalled.add(k3)
             if p.get("opus"):
                 m = int(mins_since(p["opus"]))
                 k = f"{n}@opus@{p['opus']}@{m // OPUS_REMIND}"

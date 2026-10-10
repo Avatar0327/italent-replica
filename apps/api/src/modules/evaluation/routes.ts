@@ -1,9 +1,9 @@
 /**
  * R3-T02 PR-B 人才评定配置接口（docs/02_业务建模/24；设计 §3.2、§5；路由声明见
  * docs/08_设计/R3-T02-B1a_评定底座与活动类型_路由声明.md）。挂在 /api/tenant/evaluation/ 之下。
- * 通用 CRUD 注册器 `registerObject`（B1a 建立，B1b 的周期 / 通用评分项复用，B3～B5 的带所属组织对象扩展）：
+ * 通用 CRUD 注册器 `registerObject`（B1a 建立，B1b 的周期 / 通用评分项复用）：
  * 写入走命令台账（幂等、revision 409），首次执行与幂等重放都按当前功能权限、按钮与范围复核。
- * B1a：活动类型 activity-types。
+ * B1a：活动类型 activity-types。B3 评审组 review-groups（嵌套成员 + 人员引用出口）与成员候选单独成文件，不进通用注册器。
  */
 import { sql, withTenant, type Tx } from '@italent/db';
 import type { Hono } from 'hono';
@@ -28,6 +28,8 @@ import {
 import * as input from './input.js';
 import * as read from './read-model.js';
 import { EV_BASE, presenter, runDelete, runWrite, type View, writeContext } from './route-support.js';
+import { registerCandidates } from './candidates.js';
+import { registerReviewGroupRoutes } from './review-group-routes.js';
 import { rowAccess, type WriteContext } from './store.js';
 
 export { EV_BASE };
@@ -74,6 +76,8 @@ const SPECS = {
 } as const;
 
 export function registerEvaluationRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
+  registerReviewGroupRoutes(router, deps);
+  registerCandidates(router, deps);
   for (const spec of Object.values(SPECS)) registerObject(router, deps, spec as ObjectRoutes<object, object>);
 }
 
@@ -108,7 +112,7 @@ function registerObject<Create extends object, Patch extends object>(
       ),
     );
     return c.json({
-      ...listEnvelope(page, scope),
+      ...listEnvelope(page, scope, spec.object),
       items: await present(
         ctx,
         rows.map((row) => read.view<View>(row)),
