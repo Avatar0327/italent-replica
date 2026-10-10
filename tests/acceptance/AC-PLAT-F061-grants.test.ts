@@ -50,7 +50,7 @@ import { cmd, seedTenantWithMember, tenantApi } from './support/tenant-api.js';
 const testDb = useTestDb();
 const NOW = new Date('2026-10-10T08:00:00Z');
 
-describe('T-16 授权项编码与指纹守卫', () => {
+describe('AC-PLAT-F061 T-16 授权项编码与指纹守卫', () => {
   const items = standardGrantItems();
 
   it('编码唯一、可解析、往返不变；任何编码段里都不含分隔符', () => {
@@ -125,9 +125,10 @@ describe('T-16 授权项编码与指纹守卫', () => {
   });
 
   it('依赖关系：应用 → 对象查看 → 数据操作 / 字段查看 / 按钮；字段查看 → 字段编辑；应用没有父项', () => {
+    const appOf = (objectCode: string) => objectCatalog.get(objectCode)?.application;
     const chain = (code: string) => {
       const out: string[] = [];
-      for (let c: string | null = code; c; c = grantParentCode(c)) out.push(c);
+      for (let c: string | null = code; c; c = grantParentCode(c, appOf)) out.push(c);
       return out;
     };
     const p = STANDARD_PROFILES.find((x) => x.code === 'standard_hr_admin')!;
@@ -140,7 +141,7 @@ describe('T-16 授权项编码与指纹守卫', () => {
     expect(chain(button.code).map((c) => parseGrantCode(c)!.kind)).toEqual(['button', 'object', 'app']);
     // 每个授权项的父项都是编码本身的一员；应用项的父项为空
     for (const item of items) {
-      const parent = grantParentCode(item.code);
+      const parent = grantParentCode(item.code, appOf);
       if (item.kind === 'app') expect(parent).toBeNull();
       else expect(STANDARD_GRANT_CODES, item.code).toContain(parent);
     }
@@ -164,6 +165,7 @@ describe('T-16 授权项编码与指纹守卫', () => {
       'x'.repeat(55),
       'x'.repeat(56),
       'y'.repeat(1000),
+      '😀 emoji 𠮷',
     ])
       expect(sha256Hex(text)).toBe(createHash('sha256').update(text).digest('hex'));
   });
@@ -217,7 +219,7 @@ const ledgerOf = (tenantId: string, entry = STANDARD_GRANT_ENTRY) =>
 const expectedLedgerCodes = (profiles: readonly StandardProfile[] = STANDARD_PROFILES) =>
   [...standardGrantItems(profiles).map((i) => i.code), ...profiles.map((p) => profileLedgerMarker(p.code))].sort();
 
-describe('T-01 装入即记账：开通', () => {
+describe('AC-PLAT-F061 T-01 装入即记账：开通', () => {
   it('新租户开通：台账含全部标准授权项编码与每个身份的 @ledger（来源 install、同一命令 ID）；权限表与身份定义一致', async () => {
     const { db } = testDb();
     const api = tenantApi(db, { authorize: undefined });
@@ -251,7 +253,7 @@ describe('T-01 装入即记账：开通', () => {
   });
 });
 
-describe('T-07 旧路由补整个身份：装入即记账', () => {
+describe('AC-PLAT-F061 T-07 旧路由补整个身份：装入即记账', () => {
   it('新装身份记 install；已装身份再补不新增台账行；租户手工同编码身份（CODE_TAKEN）不记账', async () => {
     const { db } = testDb();
     const api = tenantApi(db, { authorize: undefined });
@@ -301,7 +303,7 @@ describe('T-07 旧路由补整个身份：装入即记账', () => {
   });
 });
 
-describe('T-14 台账租户隔离与只追加', () => {
+describe('AC-PLAT-F061 T-14 台账租户隔离与只追加', () => {
   const record = (
     tenantId: string,
     codes: string[],
