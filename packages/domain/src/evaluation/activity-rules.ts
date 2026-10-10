@@ -30,11 +30,20 @@ export interface ChainDraft {
   readonly noticeTemplateCode: string | null;
 }
 
+/**
+ * `message` 是不带环节名称的通用提示；涉及某个环节时另给 `named`（带名称的提示）。环节名称只能披露给对 `chains` 字段有查看权的人，
+ * 所以由调用方按当前字段权决定用哪一个——修改活动日期时校验的是库里已有的环节，操作人可能根本看不到它们（#226 第 1 轮 P2-1）。
+ */
 export interface ChainViolation {
   readonly reason: string;
   readonly message: string;
+  readonly named?: string;
 }
-const violation = (reason: string, message: string): ChainViolation => ({ reason, message });
+const violation = (reason: string, message: string, named?: string): ChainViolation => ({
+  reason,
+  message,
+  ...(named ? { named } : {}),
+});
 
 /** 活动起止日期：开始不晚于结束。 */
 export function checkActivityDates(startDate: string, endDate: string): ChainViolation | null {
@@ -70,15 +79,25 @@ export function checkActivityChains(
   }
   for (const [index, chain] of chains.entries()) {
     const field = inapplicable(chain);
-    if (field) return violation('ACTIVITY_CHAIN_FIELD_NOT_ALLOWED', `${chain.name}环节不能设置${field}`);
+    if (field) {
+      return violation('ACTIVITY_CHAIN_FIELD_NOT_ALLOWED', `环节不能设置${field}`, `${chain.name}环节不能设置${field}`);
+    }
     if (chain.type === 'apply' && !chain.approvalProcessCode) {
       return violation('APPROVAL_PROCESS_REQUIRED', '资格申报环节须选择资格审批流程');
     }
     if (chain.startDate > chain.endDate) {
-      return violation('ACTIVITY_CHAIN_DATE_INVALID', `${chain.name}环节开始日期不能晚于结束日期`);
+      return violation(
+        'ACTIVITY_CHAIN_DATE_INVALID',
+        '环节开始日期不能晚于结束日期',
+        `${chain.name}环节开始日期不能晚于结束日期`,
+      );
     }
     if (chain.startDate < activity.startDate || chain.endDate > activity.endDate) {
-      return violation('ACTIVITY_CHAIN_DATE_OUT_OF_RANGE', `${chain.name}环节日期须在活动起止日期之内`);
+      return violation(
+        'ACTIVITY_CHAIN_DATE_OUT_OF_RANGE',
+        '环节日期须在活动起止日期之内',
+        `${chain.name}环节日期须在活动起止日期之内`,
+      );
     }
     // EV-R13：答辩评审 → 结果发布只能手动转入
     if (chain.type === 'defense' && chains[index + 1]?.type === 'result' && chain.transferMode !== 'manual') {

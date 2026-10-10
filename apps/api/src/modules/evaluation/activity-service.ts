@@ -127,12 +127,19 @@ const toDraft = (chain: input.ChainInput): ChainDraft => ({
   noticeTemplateCode: chain.noticeTemplateCode ?? null,
 });
 
-/** 整份规则校验（对合并后的完整值判）：日期、环节。 */
-function checkRules(activity: { startDate: string; endDate: string }, chains: readonly ChainDraft[]): void {
+/**
+ * 整份规则校验（对合并后的完整值判）：日期、环节。提示里的环节名称按操作人对 `chains` 字段的查看权披露：修改活动日期时校验的是
+ * 库里已有的环节，看不到环节的人拿到不含名称的通用提示（机器错误码不变）。
+ */
+function checkRules(
+  activity: { startDate: string; endDate: string },
+  chains: readonly ChainDraft[],
+  chainsVisible: boolean,
+): void {
   const dates = checkActivityDates(activity.startDate, activity.endDate);
   if (dates) throw invalid(dates.message, dates.reason);
   const broken = checkActivityChains(activity, chains);
-  if (broken) throw invalid(broken.message, broken.reason);
+  if (broken) throw invalid(chainsVisible && broken.named ? broken.named : broken.message, broken.reason);
 }
 
 const codeExists = () => new AppError('CONFLICT', '活动编码已存在，请重新输入', { reason: 'ACTIVITY_CODE_EXISTS' });
@@ -223,7 +230,7 @@ async function writeChains(
 
 export async function createActivity(tx: Tx, ctx: WriteContext, body: input.ActivityCreate): Promise<ActivityRecord> {
   const chains = body.chains.map(toDraft);
-  checkRules(body, chains);
+  checkRules(body, chains, activityAccess(ctx).refs.chainsVisible);
   const next = {
     code: body.code,
     name: body.name,
@@ -322,7 +329,7 @@ export async function updateActivity(
     applyCount: before.applyCount,
     chains,
   };
-  checkRules(merged, chains);
+  checkRules(merged, chains, activityAccess(ctx).refs.chainsVisible);
   // EV-R14 / AC-EV-05：已有报名后只许改规定的字段（apply_count 取行锁后的当前值）
   if (Number(row.apply_count) > 0 && activityLockedChange(lockInput(before), lockInput(merged))) {
     throw new AppError(

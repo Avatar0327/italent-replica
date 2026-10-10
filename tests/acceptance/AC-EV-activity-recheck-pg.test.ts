@@ -198,19 +198,131 @@ describe.skipIf(!process.env['TEST_DATABASE_URL'])('AC-EV-activity-recheck-pg �
         locked();
         await gate;
       });
-      await holding;
-      const pending = op.request('POST', ACTIVITIES, { ifMatch: 0, body: body({ categoryIds: [category.id] }) });
-      const outcome = await Promise.race([
-        pending.then(() => 'done'),
-        new Promise<string>((resolve) => setTimeout(() => resolve('waiting'), 600)),
-      ]);
-      expect(outcome).toBe('waiting');
-      release();
-      await publisher;
-      const response = await pending;
-      expect(response.status, await response.clone().text()).toBe(409);
+      let pending: Promise<Response> | undefined;
+      try {
+        await holding;
+        pending = op.request('POST', ACTIVITIES, { ifMatch: 0, body: body({ categoryIds: [category.id] }) });
+        const outcome = await Promise.race([
+          pending.then(() => 'done'),
+          new Promise<string>((resolve) => setTimeout(() => resolve('waiting'), 600)),
+        ]);
+        expect(outcome).toBe('waiting');
+        release();
+        await publisher;
+        const response = await pending;
+        expect(response.status, await response.clone().text()).toBe(409);
+      } finally {
+        // 断言失败时也要放开持锁事务并等它结束，不留悬挂的等待（#226 第 1 轮 P3）
+        release();
+        await publisher.catch(() => undefined);
+        await pending?.catch(() => undefined);
+      }
       const inScope = (await adminList()).filter((item) => item.categoryIds.includes(category.id));
       expect(inScope.map((item) => item.id)).toEqual([first.id]);
+    });
+
+    it('多类别按相反顺序提交的两个新建请求并发：按类别 ID 排序取锁，不死锁，两个都成功（互为草稿不冲突）', async () => {
+      const [c1, c2] = [await w.qlCategory(), await w.qlCategory()];
+      const op = await manager();
+      const send = (categoryIds: string[]) =>
+        op.request('POST', ACTIVITIES, { ifMatch: 0, body: body({ categoryIds }) });
+      const responses = await Promise.all([send([c1.id, c2.id]), send([c2.id, c1.id])]);
+      expect(responses.map((r) => r.status)).toEqual([201, 201]);
+    });
+  });
+
+  describe('新增活动引用 × 删除任职类别 / 级别的并发（#226 第 1 轮 P2-2）', () => {
+    const remove = (kind: 'categories' | 'levels', item: { id: string; revision: number }) =>
+      w.setup.request('DELETE', `/api/tenant/qualification/${kind}/${item.id}`, {
+        ...w.asAdmin,
+        ifMatch: item.revision,
+      });
+
+    it('先删除后保存：删除事务持类别行锁未提交，新建活动引用它的请求等待；删除提交后新建 → 404，没有活动引用已删类别', async () => {
+      const category = await w.qlCategory();
+      const op = await manager();
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let locked!: () => void;
+      const holding = new Promise<void>((resolve) => {
+        locked = resolve;
+      });
+      const deleter = testDb().db.transaction(async (tx) => {
+        await tx.execute(sql`SELECT set_config('app.tenant_id', ${w.tenant.id}, true)`);
+        await tx.execute(sql`SELECT 1 FROM ql_categories WHERE id = ${category.id}::uuid FOR UPDATE`);
+        await tx.execute(sql`DELETE FROM ql_categories WHERE id = ${category.id}::uuid`);
+        locked();
+        await gate;
+      });
+      let pending: Promise<Response> | undefined;
+      try {
+        await holding;
+        pending = op.request('POST', ACTIVITIES, { ifMatch: 0, body: body({ categoryIds: [category.id] }) });
+        const outcome = await Promise.race([
+          pending.then(() => 'done'),
+          new Promise<string>((resolve) => setTimeout(() => resolve('waiting'), 600)),
+        ]);
+        expect(outcome).toBe('waiting');
+        release();
+        await deleter;
+        const response = await pending;
+        expect(response.status, await response.clone().text()).toBe(404);
+      } finally {
+        release();
+        await deleter.catch(() => undefined);
+        await pending?.catch(() => undefined);
+      }
+      expect((await adminList()).filter((item) => item.categoryIds.includes(category.id))).toEqual([]);
+    });
+
+    it('先保存后删除：保存事务持类别行的共享锁并已写入活动未提交，删除请求等待；保存提交后删除 → 409，类别与活动都在', async () => {
+      const category = await w.qlCategory();
+      const level = await w.qlLevel(8);
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let locked!: () => void;
+      const holding = new Promise<void>((resolve) => {
+        locked = resolve;
+      });
+      const saver = testDb().db.transaction(async (tx) => {
+        await tx.execute(sql`SELECT set_config('app.tenant_id', ${w.tenant.id}, true)`);
+        await tx.execute(sql`SELECT 1 FROM ql_categories WHERE id = ${category.id}::uuid FOR SHARE`);
+        await tx.execute(sql`SELECT 1 FROM ql_levels WHERE id = ${level.id}::uuid FOR SHARE`);
+        await tx.execute(sql`INSERT INTO ev_activities
+          (tenant_id, code, name, type_id, cycle_id, year, start_date, end_date, owner_id, owner_org_id,
+           applicant_mode, category_ids, level_ids, created_by)
+          VALUES (${w.tenant.id}, ${`LOCK${suffix()}`}, '并发活动', ${f.type1.id}, ${f.cycle1.id}, 2026,
+            '2026-01-01', '2026-12-31', ${w.asAdmin.user}, ${w.orgA}, 'self',
+            ARRAY[${category.id}::uuid], ARRAY[${level.id}::uuid], ${w.asAdmin.user})`);
+        locked();
+        await gate;
+      });
+      let categoryDelete: Promise<Response> | undefined;
+      let levelDelete: Promise<Response> | undefined;
+      try {
+        await holding;
+        categoryDelete = remove('categories', category);
+        levelDelete = remove('levels', level);
+        const outcome = await Promise.race([
+          Promise.all([categoryDelete, levelDelete]).then(() => 'done'),
+          new Promise<string>((resolve) => setTimeout(() => resolve('waiting'), 600)),
+        ]);
+        expect(outcome).toBe('waiting');
+        release();
+        await saver;
+        const [byCategory, byLevel] = await Promise.all([categoryDelete, levelDelete]);
+        expect(byCategory.status, await byCategory.clone().text()).toBe(409);
+        expect(byLevel.status, await byLevel.clone().text()).toBe(409);
+      } finally {
+        release();
+        await saver.catch(() => undefined);
+        await Promise.allSettled([categoryDelete, levelDelete]);
+      }
+      expect((await adminList()).filter((item) => item.categoryIds.includes(category.id))).toHaveLength(1);
     });
   });
 });

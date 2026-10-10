@@ -42,6 +42,8 @@ export interface ActivityRefAccess {
   readonly level: ModuleScope | null;
   /** 活动“名称”字段对操作人可见（不可见时重复提示不带名称）。 */
   readonly nameVisible: boolean;
+  /** 活动“环节”字段对操作人可见（不可见时校验提示不带环节名称）。 */
+  readonly chainsVisible: boolean;
 }
 
 export async function resolveActivityRefs(
@@ -70,6 +72,7 @@ export async function resolveActivityRefs(
     category: await scopeOnly(CATEGORY),
     level: await scopeOnly(LEVEL),
     nameVisible: activityFields === undefined || activityFields.has('name'),
+    chainsVisible: activityFields === undefined || activityFields.has('chains'),
   };
 }
 
