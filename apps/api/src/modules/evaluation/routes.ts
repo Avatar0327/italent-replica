@@ -12,6 +12,7 @@ import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import { booleanQuery, pageQuery, parseBody, requireNew, revision, uuidParam } from '../talent/http.js';
 import * as activityTypes from './activity-type-service.js';
+import { activityCycles, generalScoreItems } from './dictionary-service.js';
 import {
   checkWriteFields,
   type EvaluationObject,
@@ -26,7 +27,7 @@ import {
 } from './access.js';
 import * as input from './input.js';
 import * as read from './read-model.js';
-import { EV_BASE, presenter, runWrite, type View, writeContext } from './route-support.js';
+import { EV_BASE, presenter, runDelete, runWrite, type View, writeContext } from './route-support.js';
 import { registerCandidates } from './candidates.js';
 import { registerReviewGroupRoutes } from './review-group-routes.js';
 import { rowAccess, type WriteContext } from './store.js';
@@ -56,6 +57,22 @@ const SPECS = {
     update: activityTypes.updateActivityType,
     remove: activityTypes.deleteActivityType,
   } satisfies ObjectRoutes<input.ActivityTypeCreate, input.ActivityTypePatch>,
+  activityCycle: {
+    object: 'activityCycle',
+    path: 'activity-cycles',
+    createSchema: input.activityCycleCreate,
+    patchSchema: input.activityCyclePatch,
+    filters: [{ param: 'enabled', field: 'enabled', column: 'enabled' }],
+    ...activityCycles,
+  } satisfies ObjectRoutes<input.ActivityCycleCreate, input.ActivityCyclePatch>,
+  generalScoreItem: {
+    object: 'generalScoreItem',
+    path: 'general-score-items',
+    createSchema: input.generalScoreItemCreate,
+    patchSchema: input.generalScoreItemPatch,
+    filters: [{ param: 'enabled', field: 'enabled', column: 'enabled' }],
+    ...generalScoreItems,
+  } satisfies ObjectRoutes<input.GeneralScoreItemCreate, input.GeneralScoreItemPatch>,
 } as const;
 
 export function registerEvaluationRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
@@ -133,6 +150,6 @@ function registerObject<Create extends object, Patch extends object>(
     const ctx = await evaluationWriteContext(c, deps, spec.object, 'delete', revision(c));
     const id = uuidParam(c);
     const w = writeContext(ctx, await evaluationScope(c, deps, ctx, spec.object));
-    return runWrite(c, deps, w, spec.object, { id }, 200, (tx, x) => spec.remove(tx, x, id) as Promise<View>);
+    return runDelete(c, deps, w, spec.object, id, (tx, x) => spec.remove(tx, x, id) as Promise<View>);
   });
 }

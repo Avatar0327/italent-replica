@@ -136,12 +136,18 @@ export interface ReviewOperatorOptions {
 }
 
 export async function reviewOperator(world: ReviewWorld, options: ReviewOperatorOptions = {}) {
-  const profile = await createProfile(world, `evr-${randomUUID().slice(0, 8)}`, { apps: [EV_APP, 'TenantBase'] });
+  const profile = await createProfile(world, `evr-${randomUUID().slice(0, 8)}`, { apps: [EV_APP] });
+  // 员工信息单独一个身份：撤销它的授权就是“撤销员工信息对象查看权”（字段全隐藏仍然有对象查看权）
+  const employeeProfile = await createProfile(world, `evr-emp-${randomUUID().slice(0, 8)}`, { apps: ['TenantBase'] });
   const group = EVALUATION_OBJECTS.reviewGroup;
   const hidden = new Set(options.hidden ?? []);
   const readonly = new Set(options.readonly ?? []);
-  const grantObject = async (code: string, body: Parameters<typeof setObjectPermission>[2]) => {
-    const response = await setObjectPermission(world, profile, body, code);
+  const grantObject = async (
+    code: string,
+    body: Parameters<typeof setObjectPermission>[2],
+    target: typeof profile = profile,
+  ) => {
+    const response = await setObjectPermission(world, target, body, code);
     expect(response.status, await response.clone().text()).toBe(200);
   };
   await grantObject(group.code, {
@@ -153,22 +159,29 @@ export async function reviewOperator(world: ReviewWorld, options: ReviewOperator
     })),
     buttons: options.noButtons ? [] : group.buttons.map((button) => ({ buttonCode: button.code, level: button.level })),
   });
-  if (!options.noEmployeeObject) {
-    const personnel = PERSONNEL_OBJECTS.find((object) => object.code === PERSONNEL_OBJECT)!;
-    const hiddenEmployee = new Set(options.hiddenEmployeeFields ?? []);
-    await grantObject(PERSONNEL_OBJECT, {
-      dataOperations: { create: false, update: false, delete: false },
-      fields: personnel.fields.map((field) => ({
-        fieldCode: field.code,
-        view: !hiddenEmployee.has(field.code),
-        edit: false,
-      })),
-      buttons: [],
-    });
-  }
-  await makeGrantable(world, [profile.id]);
+  const personnel = PERSONNEL_OBJECTS.find((object) => object.code === PERSONNEL_OBJECT)!;
+  /** 员工信息对象的授权：只改查看的字段（其余授权不变）；`all` 为 false 时一个字段都不可见（相当于撤销查看）。 */
+  const grantEmployees = (hiddenFields: readonly string[], all = true) =>
+    grantObject(
+      PERSONNEL_OBJECT,
+      {
+        dataOperations: { create: false, update: false, delete: false },
+        fields: personnel.fields.map((field) => ({
+          fieldCode: field.code,
+          view: all && !hiddenFields.includes(field.code),
+          edit: false,
+        })),
+        buttons: [],
+      },
+      employeeProfile,
+    );
+  if (!options.noEmployeeObject) await grantEmployees(options.hiddenEmployeeFields ?? []);
+  await makeGrantable(world, [profile.id, employeeProfile.id]);
   const user = await addMember(world, `evr-op-${randomUUID().slice(0, 4)}`);
   expect((await grant(world, user.id, profile.id)).status).toBe(201);
+  const employeeGrant = await grant(world, user.id, employeeProfile.id);
+  expect(employeeGrant.status).toBe(201);
+  const employeeGrantView = (await employeeGrant.json()) as { id: string; revision: number };
   if (options.auditor) {
     const response = await world.api.request('POST', `${BASE}/admins`, {
       ...world.asAdmin,
@@ -203,6 +216,37 @@ export async function reviewOperator(world: ReviewWorld, options: ReviewOperator
     userId: user.id,
     /** 改评审组的数据范围（所属组织）。 */
     setEvOrgs: (orgs: readonly string[] | undefined) => setRange(EV_APP, orgs),
+    /** 撤销（检查之后）：员工信息的字段查看权 / 整个对象的查看。 */
+    hideEmployeeFields: (fields: readonly string[]) => grantEmployees(fields),
+    revokeEmployeeView: async () => {
+      const response = await world.api.request('POST', `${BASE}/grants/${employeeGrantView.id}/revoke`, {
+        ...world.asAdmin,
+        ifMatch: employeeGrantView.revision,
+      });
+      expect(response.status, await response.clone().text()).toBe(200);
+    },
+    /** 撤销（检查之后）：评审组对象的全部数据操作与字段（相当于撤销对象权限）。 */
+    revokeEvaluationObject: () =>
+      grantObject(group.code, {
+        dataOperations: { create: false, update: false, delete: false },
+        fields: group.fields.map((field) => ({ fieldCode: field.code, view: false, edit: false })),
+        buttons: [],
+      }),
+    /** 撤销（检查之后）：评审组对象的某个字段编辑权（含显式清空）。 */
+    hideGroupFields: async (fields: readonly string[]) => {
+      const hide = new Set(fields);
+      await grantObject(group.code, {
+        dataOperations: { create: !options.noCreate, update: !options.noUpdate, delete: !options.noDelete },
+        fields: group.fields.map((field) => ({
+          fieldCode: field.code,
+          view: !hidden.has(field.code),
+          edit: !field.system && !hidden.has(field.code) && !readonly.has(field.code) && !hide.has(field.code),
+        })),
+        buttons: options.noButtons
+          ? []
+          : group.buttons.map((button) => ({ buttonCode: button.code, level: button.level })),
+      });
+    },
     /** 改员工信息的人员范围。 */
     setPersonOrgs: (orgs: readonly string[] | undefined) => setRange('TenantBase', orgs),
   };

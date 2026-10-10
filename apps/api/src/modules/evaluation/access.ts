@@ -45,6 +45,8 @@ export type AnchorKind = 'dictionary' | 'owned';
 
 export const ANCHOR: Readonly<Partial<Record<EvaluationObject, AnchorKind>>> = {
   activityType: 'dictionary',
+  activityCycle: 'dictionary',
+  generalScoreItem: 'dictionary',
   reviewGroup: 'owned',
 };
 

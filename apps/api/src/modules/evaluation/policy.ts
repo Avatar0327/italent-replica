@@ -29,7 +29,7 @@ const NF = NOT_FOUND;
 /** `talent/http.uuidParam`：对象标识非 UUID → 400 VALIDATION_FAILED。 */
 const byId = { invalidId: BAD_REQUEST };
 
-type Key = 'activityType' | 'reviewGroup';
+type Key = 'activityType' | 'activityCycle' | 'generalScoreItem' | 'reviewGroup';
 
 interface Spec {
   readonly path: string;
@@ -40,6 +40,8 @@ interface Spec {
 
 const SPECS: Readonly<Record<Key, Spec>> = {
   activityType: { path: 'activity-types', out: shape('ev.activityType') },
+  activityCycle: { path: 'activity-cycles', out: shape('ev.activityCycle') },
+  generalScoreItem: { path: 'general-score-items', out: shape('ev.generalScoreItem') },
   reviewGroup: { path: 'review-groups', out: projector('ev.reviewGroupMembers', 'ev.reviewGroup'), owned: true },
 };
 
@@ -126,5 +128,7 @@ export const EVALUATION_POLICIES = defineTable('evaluation', {
     guards: ['ev.filterFieldVisible'],
   }),
   ...crud('activityType'),
+  ...crud('activityCycle'),
+  ...crud('generalScoreItem'),
   ...crud('reviewGroup'),
 });

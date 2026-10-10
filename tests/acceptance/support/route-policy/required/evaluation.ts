@@ -1,9 +1,9 @@
 /**
- * 必需项表：人才评定配置（modules/evaluation/routes.ts；R3-T02 PR-B B1a 活动类型）。
+ * 必需项表：人才评定配置（modules/evaluation/routes.ts；R3-T02 PR-B B1a 活动类型、B1b 活动周期与通用评分项）。
  * 对象操作经 access.evaluationContext → module-route-access.objectContext（对象编码 EVALUATION_OBJECTS[对象].code）；
  * 写入口另经 evaluationWriteContext 叠加按钮（BUTTON_LEVEL）。对象的增删改查由 registerObject 按 SPECS 注册
- * （路径由 spec.path 拼出，证据绑注册函数 + SPECS 常量）。写入口的写字段权（checkWriteFields）随数据操作义务承接。活动类型是字典，没有被引用对象、所属管理单元与连带删除的子对象；被引用拒删的钩子位
- * （usage.ts）由 B4 / B5 登记引用方，登记时在各自的表项里补守卫。后续子 PR（B1b、B3～B6）在本文件追加各自对象的表项。
+ * （路径由 spec.path 拼出，证据绑注册函数 + SPECS 常量）。写入口的写字段权（checkWriteFields）随数据操作义务承接。三类对象都是字典，没有被引用对象、所属管理单元与连带删除的子对象；被引用拒删的钩子位
+ * （usage.ts）由 B4 / B5 登记引用方，登记时在各自的表项里补守卫。后续子 PR（B3～B6）在本文件追加各自对象的表项。
  */
 import type { Evidence, Obligation, RequiredTable } from './types.js';
 
@@ -14,10 +14,12 @@ const ACCESS = `${EV}/access.ts`;
 const MRA = 'apps/api/src/modules/permission/module-route-access.ts';
 const CATALOG = 'packages/domain/src/evaluation/catalog.ts#EVALUATION_OBJECTS';
 
-type Key = 'activityType' | 'reviewGroup';
+type Key = 'activityType' | 'activityCycle' | 'generalScoreItem' | 'reviewGroup';
 /** 对象 → [编码后缀, 路径, 目录里的定义片段]。 */
 const OBJECTS: Readonly<Record<Key, readonly [string, string, string]>> = {
   activityType: ['ActivityType', 'activity-types', "activityType: object('ActivityType'"],
+  activityCycle: ['ActivityCycle', 'activity-cycles', "activityCycle: object('ActivityCycle'"],
+  generalScoreItem: ['GeneralScoreItem', 'general-score-items', "generalScoreItem: object('GeneralScoreItem'"],
   reviewGroup: ['ReviewGroup', 'review-groups', "reviewGroup: object('ReviewGroup'"],
 };
 const code = (key: Key) => `TEvaluation.${OBJECTS[key][0]}`;
@@ -265,6 +267,8 @@ function crud(key: Key): RequiredTable {
 
 export const EVALUATION: RequiredTable = {
   ...crud('activityType'),
+  ...crud('activityCycle'),
+  ...crud('generalScoreItem'),
   ...reviewGroupCrud(),
   ...candidates,
 };

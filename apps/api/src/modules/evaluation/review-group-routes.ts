@@ -22,30 +22,29 @@ import {
   viewableFields,
 } from './access.js';
 import * as input from './input.js';
-import { type PersonRefAccess, personRefAccess } from './person-refs.js';
+import { type PersonRefAccess, personRefAccess, personRefAccessInTransaction } from './person-refs.js';
 import * as read from './read-model.js';
 import * as groups from './review-group-service.js';
-import { EV_BASE, presenter, runWrite, type View, writeContext } from './route-support.js';
-import { rowAccess, type WriteContext } from './store.js';
+import { EV_BASE, presenter, type PersonRefs, runDelete, runWrite, writeContext } from './route-support.js';
+import { rowAccess } from './store.js';
 
 const OBJECT = 'reviewGroup';
 const PATH = `${EV_BASE}/review-groups`;
+
+/** 成员的人员引用：写命令在事务内重新解析员工信息的访问；响应按解析结果整形（person-refs.ts）。 */
+const REFS: PersonRefs = {
+  resolve: personRefAccessInTransaction,
+  shape: (tx, tenantId, persons, views) => groups.presentGroups(tx, tenantId, persons, views),
+};
 
 export function registerReviewGroupRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   const present = presenter(deps, OBJECT);
   /** 读出行 → 挂成员 → 成员的人员引用整形（字段权限裁剪之前）。 */
   const shapeRows = async (tx: Tx, tenantId: string, persons: PersonRefAccess, rows: Record<string, unknown>[]) =>
     groups.presentGroups(tx, tenantId, persons, await groups.withMembers(tx, tenantId, rows));
-  /** 写命令的上下文：员工信息的访问每次请求（含重放）重新解析。 */
-  const writing = async (c: Context<TenantEnv>, ctx: EvaluationContext) => {
-    const persons = await personRefAccess(c, deps, ctx);
-    const w: WriteContext = { ...writeContext(ctx, await evaluationScope(c, deps, ctx, OBJECT)), persons };
-    return {
-      w,
-      shape: (tx: Tx, views: View[]) =>
-        groups.presentGroups(tx, ctx.tenantId, persons, views as groups.ReviewGroupView[]),
-    };
-  };
+  /** 写命令的上下文：员工信息的访问由 route-support 在命令事务内（含重放与失败后回查）按当前授权解析，这里不预先解析。 */
+  const writing = async (c: Context<TenantEnv>, ctx: EvaluationContext) =>
+    writeContext(ctx, await evaluationScope(c, deps, ctx, OBJECT));
 
   router.get(PATH, async (c) => {
     const ctx = await evaluationContext(c, deps, OBJECT);
@@ -90,8 +89,8 @@ export function registerReviewGroupRoutes(router: Hono<TenantEnv>, deps: TenantR
     requireNew(ctx.expectedRevision);
     const body = await parseBody(c, input.reviewGroupCreate);
     await checkWriteFields(deps, ctx, OBJECT, 'create', body);
-    const { w, shape } = await writing(c, ctx);
-    return runWrite(c, deps, w, OBJECT, body, 201, (tx, x) => groups.createReviewGroup(tx, x, body), shape);
+    const w = await writing(c, ctx);
+    return runWrite(c, deps, w, OBJECT, body, 201, (tx, x) => groups.createReviewGroup(tx, x, body), REFS);
   });
 
   router.patch(`${PATH}/:id`, async (c) => {
@@ -99,14 +98,14 @@ export function registerReviewGroupRoutes(router: Hono<TenantEnv>, deps: TenantR
     const id = uuidParam(c);
     const body = await parseBody(c, input.reviewGroupPatch);
     await checkWriteFields(deps, ctx, OBJECT, 'update', body);
-    const { w, shape } = await writing(c, ctx);
-    return runWrite(c, deps, w, OBJECT, body, 200, (tx, x) => groups.updateReviewGroup(tx, x, id, body), shape);
+    const w = await writing(c, ctx);
+    return runWrite(c, deps, w, OBJECT, body, 200, (tx, x) => groups.updateReviewGroup(tx, x, id, body), REFS);
   });
 
   router.delete(`${PATH}/:id`, async (c) => {
     const ctx = await evaluationWriteContext(c, deps, OBJECT, 'delete', revision(c));
     const id = uuidParam(c);
-    const { w, shape } = await writing(c, ctx);
-    return runWrite(c, deps, w, OBJECT, { id }, 200, (tx, x) => groups.deleteReviewGroup(tx, x, id), shape);
+    const w = await writing(c, ctx);
+    return runDelete(c, deps, w, OBJECT, id, (tx, x) => groups.deleteReviewGroup(tx, x, id), REFS);
   });
 }

@@ -1,4 +1,24 @@
 {
+  "DELETE /api/tenant/evaluation/activity-cycles/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "d70ce98075e9",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TEvaluation/TEvaluation.ActivityCycle/-"
+    ],
+    "trace": [
+      "btn:TEvaluation.ActivityCycle#delete@detail",
+      "obj:TEvaluation.ActivityCycle:delete"
+    ]
+  },
   "DELETE /api/tenant/evaluation/activity-types/:id": {
     "all": {
       "code": "NOT_FOUND",
@@ -19,28 +39,57 @@
       "obj:TEvaluation.ActivityType:delete"
     ]
   },
-  "DELETE /api/tenant/evaluation/review-groups/:id": {
+  "DELETE /api/tenant/evaluation/general-score-items/:id": {
     "all": {
       "code": "NOT_FOUND",
-      "error": "d53b02ea53ce",
+      "error": "465f12e6c565",
       "status": 404
     },
-    "fieldQueries": [
-      "fields:TenantBase.EmployeeInformation"
-    ],
+    "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
       "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
-      "scope:TEvaluation/TEvaluation.ReviewGroup/-",
-      "scope:TenantBase/TenantBase.EmployeeInformation/-"
+      "scope:TEvaluation/TEvaluation.GeneralScoreItem/-"
     ],
     "trace": [
-      "btn:TEvaluation.ReviewGroup#delete@detail",
-      "obj:TEvaluation.ReviewGroup:delete",
-      "obj:TenantBase.EmployeeInformation:view"
+      "btn:TEvaluation.GeneralScoreItem#delete@detail",
+      "obj:TEvaluation.GeneralScoreItem:delete"
+    ]
+  },
+  "GET /api/tenant/evaluation/activity-cycles": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TEvaluation.ActivityCycle"
+    ],
+    "scopeQueries": [
+      "scope:TEvaluation/TEvaluation.ActivityCycle/TEvaluation.ActivityCycle.list"
+    ],
+    "trace": [
+      "obj:TEvaluation.ActivityCycle:view"
+    ]
+  },
+  "GET /api/tenant/evaluation/activity-cycles/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "d70ce98075e9",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TEvaluation/TEvaluation.ActivityCycle/TEvaluation.ActivityCycle.detail"
+    ],
+    "trace": [
+      "obj:TEvaluation.ActivityCycle:view"
     ]
   },
   "GET /api/tenant/evaluation/activity-types": {
@@ -76,58 +125,57 @@
       "obj:TEvaluation.ActivityType:view"
     ]
   },
-  "GET /api/tenant/evaluation/candidates/review-members": {
+  "GET /api/tenant/evaluation/general-score-items": {
     "all": {
       "status": 200
     },
     "fieldQueries": [
-      "fields:TenantBase.EmployeeInformation"
+      "fields:TEvaluation.GeneralScoreItem"
     ],
     "scopeQueries": [
-      "scope:TenantBase/TenantBase.EmployeeInformation/TenantBase.EmployeeInformation.list"
+      "scope:TEvaluation/TEvaluation.GeneralScoreItem/TEvaluation.GeneralScoreItem.list"
     ],
     "trace": [
-      "obj:TenantBase.EmployeeInformation:view"
+      "obj:TEvaluation.GeneralScoreItem:view"
     ]
   },
-  "GET /api/tenant/evaluation/review-groups": {
-    "all": {
-      "status": 200
-    },
-    "fieldQueries": [
-      "fields:TEvaluation.ReviewGroup",
-      "fields:TenantBase.EmployeeInformation"
-    ],
-    "scopeQueries": [
-      "scope:TEvaluation/TEvaluation.ReviewGroup/TEvaluation.ReviewGroup.list",
-      "scope:TenantBase/TenantBase.EmployeeInformation/TenantBase.EmployeeInformation.list"
-    ],
-    "trace": [
-      "obj:TEvaluation.ReviewGroup:view",
-      "obj:TenantBase.EmployeeInformation:view"
-    ]
-  },
-  "GET /api/tenant/evaluation/review-groups/:id": {
+  "GET /api/tenant/evaluation/general-score-items/:id": {
     "all": {
       "code": "NOT_FOUND",
-      "error": "d53b02ea53ce",
+      "error": "465f12e6c565",
       "status": 404
     },
-    "fieldQueries": [
-      "fields:TenantBase.EmployeeInformation"
-    ],
+    "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
       "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
-      "scope:TEvaluation/TEvaluation.ReviewGroup/TEvaluation.ReviewGroup.detail",
-      "scope:TenantBase/TenantBase.EmployeeInformation/TenantBase.EmployeeInformation.detail"
+      "scope:TEvaluation/TEvaluation.GeneralScoreItem/TEvaluation.GeneralScoreItem.detail"
     ],
     "trace": [
-      "obj:TEvaluation.ReviewGroup:view",
-      "obj:TenantBase.EmployeeInformation:view"
+      "obj:TEvaluation.GeneralScoreItem:view"
+    ]
+  },
+  "PATCH /api/tenant/evaluation/activity-cycles/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "d70ce98075e9",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TEvaluation/TEvaluation.ActivityCycle/-"
+    ],
+    "trace": [
+      "btn:TEvaluation.ActivityCycle#update@detail",
+      "obj:TEvaluation.ActivityCycle:update"
     ]
   },
   "PATCH /api/tenant/evaluation/activity-types/:id": {
@@ -150,28 +198,37 @@
       "obj:TEvaluation.ActivityType:update"
     ]
   },
-  "PATCH /api/tenant/evaluation/review-groups/:id": {
+  "PATCH /api/tenant/evaluation/general-score-items/:id": {
     "all": {
       "code": "NOT_FOUND",
-      "error": "d53b02ea53ce",
+      "error": "465f12e6c565",
       "status": 404
     },
-    "fieldQueries": [
-      "fields:TenantBase.EmployeeInformation"
-    ],
+    "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
       "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
-      "scope:TEvaluation/TEvaluation.ReviewGroup/-",
-      "scope:TenantBase/TenantBase.EmployeeInformation/-"
+      "scope:TEvaluation/TEvaluation.GeneralScoreItem/-"
     ],
     "trace": [
-      "btn:TEvaluation.ReviewGroup#update@detail",
-      "obj:TEvaluation.ReviewGroup:update",
-      "obj:TenantBase.EmployeeInformation:view"
+      "btn:TEvaluation.GeneralScoreItem#update@detail",
+      "obj:TEvaluation.GeneralScoreItem:update"
+    ]
+  },
+  "POST /api/tenant/evaluation/activity-cycles": {
+    "all": {
+      "code": "REVISION_CONFLICT",
+      "error": "f12e1e2b793f",
+      "status": 409
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:TEvaluation.ActivityCycle#create@list",
+      "obj:TEvaluation.ActivityCycle:create"
     ]
   },
   "POST /api/tenant/evaluation/activity-types": {
@@ -187,7 +244,7 @@
       "obj:TEvaluation.ActivityType:create"
     ]
   },
-  "POST /api/tenant/evaluation/review-groups": {
+  "POST /api/tenant/evaluation/general-score-items": {
     "all": {
       "code": "REVISION_CONFLICT",
       "error": "f12e1e2b793f",
@@ -196,8 +253,8 @@
     "fieldQueries": [],
     "scopeQueries": [],
     "trace": [
-      "btn:TEvaluation.ReviewGroup#create@list",
-      "obj:TEvaluation.ReviewGroup:create"
+      "btn:TEvaluation.GeneralScoreItem#create@list",
+      "obj:TEvaluation.GeneralScoreItem:create"
     ]
   }
 }

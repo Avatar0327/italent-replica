@@ -47,6 +47,8 @@ const ORDER: Readonly<Partial<Record<EvaluationObject, readonly (readonly [strin
     ['displayOrder', 'display_order'],
     ['name', 'name'],
   ],
+  activityCycle: [['name', 'name']],
+  generalScoreItem: [['name', 'name']],
   reviewGroup: [
     ['code', 'code'],
     ['name', 'name'],

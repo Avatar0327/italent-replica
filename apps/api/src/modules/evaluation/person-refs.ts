@@ -15,7 +15,13 @@ import type { Context } from 'hono';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
-import { getModuleViewableFields, scopeSql } from '../permission/module-access.js';
+import {
+  authorizeInTransaction,
+  getModuleViewableFieldsInTransaction,
+  getModuleViewableFields,
+  resolveModuleScopeInTransaction,
+  scopeSql,
+} from '../permission/module-access.js';
 import type { ScopeBusinessContext } from '../permission/module-contracts.js';
 import { requestScope, type ModuleScope } from '../permission/module-route-access.js';
 import { rowsOf } from './access.js';
@@ -49,6 +55,24 @@ export async function personRefAccess(
   return {
     scope: await requestScope(c, deps, ctx, PERSONNEL_OBJECT),
     fields: await getModuleViewableFields(deps, ctx, PERSONNEL_OBJECT),
+  };
+}
+
+/**
+ * 命令事务内的解析（写命令的复核点调用，首次执行、直接重放、失败后回查都经过）：查看权、人员范围、可见字段全部在事务内按当前
+ * 授权重新解析；不用 requestScope（它按请求缓存，撤权后同一请求内仍是旧值）。同样是披露分支：无权不抛错，只给 ID。
+ */
+export async function personRefAccessInTransaction(
+  deps: TenantRouteDeps,
+  ctx: ScopeBusinessContext,
+  tx: Tx,
+): Promise<PersonRefAccess> {
+  const bound: TenantRouteDeps = { ...deps, authorize: authorizeInTransaction(deps.authorize, tx) };
+  const canView = await bound.authorize({ ...ctx, action: 'object.view', resource: PERSONNEL_OBJECT, fields: [] });
+  if (!canView) return { scope: null, fields: new Set<string>() };
+  return {
+    scope: await resolveModuleScopeInTransaction(bound, ctx, tx, PERSONNEL_OBJECT),
+    fields: await getModuleViewableFieldsInTransaction(bound, ctx, PERSONNEL_OBJECT, tx),
   };
 }
 
