@@ -104,6 +104,8 @@ export async function scene(db: Db, label: string, fine: boolean) {
     w.ok(w.enterprise('PUT', `/scopes/${admin}/${APP}`, { ifMatch: 1, body: { kind: 'mou', mouId: mouC } }));
   return {
     w,
+    orgA: orgA.id,
+    orgB: orgB.id,
     admin,
     as,
     sync,

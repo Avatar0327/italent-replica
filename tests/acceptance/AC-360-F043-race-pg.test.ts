@@ -13,7 +13,8 @@ import { useTestDb } from '@italent/testkit';
 import { afterEach, describe, expect, it } from 'vitest';
 import { commandProbe } from '../../apps/api/src/modules/survey360/context.js';
 import { syncProbe } from '../../apps/api/src/modules/survey360/sync.js';
-import { scene, type SyncPage } from './AC-360-F043-support.js';
+import { hire, scene, type SyncPage } from './AC-360-F043-support.js';
+import { EMP_TODAY } from './AC-EMP-support.js';
 import { expectWaitingOnLock } from './support/f061.js';
 
 const realPostgres = Boolean(process.env.TEST_DATABASE_URL);
@@ -150,5 +151,108 @@ describe.skipIf(!realPostgres)('F-043 P2-2 管理范围在请求中途收窄 / �
     const replay = await s.w.ok<SyncPage>(s.sync(key));
     expect(replay.updated).toEqual([]);
     expect(JSON.stringify(replay)).not.toContain(s.inside.id);
+  });
+});
+
+/**
+ * F-043 第 3 轮（#210 第 2 轮审查 P2-1 / P2-2，真 PG）：
+ * P2-1 命令已开始执行后撤空操作人的 360 管理范围，后续目标仍按命令开始时的范围写入——三个入口各一条。
+ * P2-2 同步与调动的员工锁顺序相反：同步先新建乙（锁乙）再回头刷新甲（锁甲），调动先锁甲再等乙 → 死锁、调动 500。
+ */
+describe.skipIf(!realPostgres)('F-043 第 3 轮 P2-1 命令执行中撤空管理范围（真 PG）', () => {
+  it('普通同步：写入某人员之前范围被撤空 → 不写（名称、revision 不变），回执看不到，记 sync_skipped 审计', async () => {
+    const s = await world('f043t1');
+    onceFor(s.inside.id, async () => void (await s.emptyScope()));
+    const page = await s.w.ok<SyncPage>(s.sync());
+    const inside = await s.current(s.insidePerson.id);
+    expect(inside.name).toBe(s.insidePerson.name);
+    expect(inside.revision).toBe(s.insidePerson.revision);
+    expect(JSON.stringify(page)).not.toContain(s.inside.id);
+    expect((await s.skippedLogs(s.w.admin)).map((log) => log.objectId)).toContain(s.insidePerson.id);
+  });
+
+  it('上级回补：回补写入之前范围被撤空 → 不写（上级仍为空、名称与 revision 不变），记 sync_skipped 审计', async () => {
+    const s = await world('f043t2');
+    const seen = await s.current(s.insidePerson.id);
+    await s.w.ok(
+      s.w.request('PUT', `/people/${seen.id}`, {
+        ifMatch: seen.revision,
+        body: { name: seen.name, superiorPersonId: null },
+      }),
+    );
+    const before = await s.current(s.insidePerson.id);
+    onceFor(s.inside.id, async () => void (await s.emptyScope()));
+    await s.w.ok<SyncPage>(s.sync(randomUUID(), { after: 'backfill:' }));
+    const after = await s.current(s.insidePerson.id);
+    expect(after.superiorPersonId ?? null).toBeNull();
+    expect(after.name).toBe(before.name);
+    expect(after.revision).toBe(before.revision);
+    expect((await s.skippedLogs(s.w.admin)).map((log) => log.objectId)).toContain(s.insidePerson.id);
+  });
+
+  it('评价者导入选择“同步”：刷新之前范围被撤空 → 提交前整批拒绝 400，人员与评价关系都没有变化', async () => {
+    const s = await world('f043t3');
+    const q = await s.w.enableQuestionnaire(await s.w.keyBehavior());
+    const activity = await s.w.activity({ name: 'F-043 导入撤范围' }, s.admin);
+    const object = await s.w.ok<{ id: string }>(
+      s.as('POST', `/activities/${activity.id}/objects`, {
+        ifMatch: 0,
+        body: { personId: s.managerPerson.id, questionnaireIds: [q.id] },
+      }),
+      201,
+    );
+    onceFor(s.inside.id, async () => void (await s.emptyScope()));
+    const imported = await s.as('POST', `/activities/${activity.id}/appraisers/import`, {
+      ifMatch: 0,
+      body: {
+        sync: true,
+        rows: [
+          { objectEmail: s.managerPerson.email, roleId: s.w.role('peer'), name: '导入名', email: s.insidePerson.email },
+        ],
+      },
+    });
+    expect(imported.status, await imported.clone().text()).toBe(400);
+    expect(await imported.json()).toMatchObject({ error: { details: { reason: 'IMPORT_INVALID' } } });
+    const inside = await s.current(s.insidePerson.id);
+    expect(inside.name).toBe(s.insidePerson.name);
+    expect(inside.revision).toBe(s.insidePerson.revision);
+    const relations = await withTenant(testDb().db, s.w.tenantId, (tx) =>
+      tx.execute(sql`SELECT count(*)::int AS n FROM survey360_relations WHERE object_id = ${object.id}::uuid`),
+    );
+    expect((Array.isArray(relations) ? relations : (relations as { rows: { n: number }[] }).rows)[0]).toEqual({
+      n: 0,
+    });
+  });
+});
+
+describe.skipIf(!realPostgres)('F-043 第 3 轮 P2-2 同步与调动的员工锁顺序一致（真 PG）', () => {
+  it('同步新建乙、刷新甲之间，调动甲并把乙列为新增下属 → 不死锁：调动等同步提交后成功，同步照常完成', async () => {
+    const s = await scene(testDb().db, 'f043t4', false);
+    // 甲 = 已挂接且有待同步变化的员工；乙 = 尚未同步的新员工，员工 ID 排在甲之后
+    const jia = s.inside;
+    let yi = await hire(s.w, '新员工乙', s.orgA, s.manager.id);
+    while (yi.id < jia.id) yi = await hire(s.w, '新员工乙', s.orgA, s.manager.id);
+    let transfer: Promise<Response> | undefined;
+    onceFor(jia.id, async () => {
+      const employee = await s.w.session.getEmployee(jia.id);
+      transfer = s.w.session.request('POST', `/employees/${jia.id}/businesses`, {
+        ifMatch: employee.revision,
+        idempotencyKey: randomUUID(),
+        body: {
+          kind: 'transfer',
+          mode: 'direct',
+          effectiveDate: EMP_TODAY,
+          fields: { departmentId: s.orgB, addedSubordinateIds: [yi.id] },
+        },
+      });
+      await expectWaitingOnLock(testDb().db, transfer);
+    });
+    const syncing = s.w.request('POST', '/people/sync', { idempotencyKey: randomUUID(), body: {} });
+    const page = await s.w.ok<SyncPage>(syncing);
+    expect(transfer, '探针没有触发').toBeDefined();
+    const moved = await transfer!;
+    expect(moved.status, await moved.clone().text()).toBe(201);
+    expect(page.created.map((e) => e.employeeId)).toContain(yi.id);
+    expect(page.updated.map((e) => e.employeeId)).toContain(jia.id);
   });
 });
