@@ -209,61 +209,61 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-QL-sync 真 PG：迟提交�
     return { held: held.promise, release: release.resolve, done };
   }
 
-  it.each([
-    ['ql_categories' as const, '类别'],
-    ['ql_levels' as const, '级别'],
-  ])('%s 停用先于同步取数：同步在配置行上等待，放行后复核已停用 → 不生成子集（P2-02，AC-QL-sync）', async (table) => {
-    const { w, fields, categoryId, levelId } = await configured(`qlsync-pg-disable-first-${table}`);
-    const recordId = await w.transferWith('2026-10-05', fields);
-    const disabling = await disableInTx(w, table, table === 'ql_categories' ? categoryId : levelId);
-    await disabling.held;
-    let finished = false;
-    const worker = w.run('2026-10-10T05:00:00Z').then((result) => {
-      finished = true;
-      return result;
-    });
-    await waitForLock(w.db, () => finished);
-    disabling.release();
-    await disabling.done;
-    await worker;
-    expect(await w.subsets()).toEqual([]);
-    expect(await w.queue(recordId)).toMatchObject([{ state: 'skipped', reason: 'NO_MAPPING' }]);
-  });
-
-  it.each([
-    ['ql_categories' as const, '类别'],
-    ['ql_levels' as const, '级别'],
-  ])('%s 同步先取得配置行：停用在锁上等待，同步写入后停用才完成（P2-02，AC-QL-sync）', async (table) => {
-    const { w, fields, categoryId, levelId } = await configured(`qlsync-pg-sync-first-${table}`);
-    const recordId = await w.transferWith('2026-10-05', fields);
-    const paused = signal();
-    const release = signal();
-    qualificationSyncProbe.beforeWrite = async () => {
-      paused.resolve();
-      await release.promise;
-    };
-    try {
-      const worker = w.run('2026-10-10T05:00:00Z');
-      await paused.promise;
-      let disabled = false;
-      const id = table === 'ql_categories' ? categoryId : levelId;
-      const disabling = withTenant(w.db, w.tenantId, (tx) =>
-        tx.execute(
-          sql`UPDATE ${sql.identifier(table)} SET enabled=false WHERE tenant_id=${w.tenantId} AND id=${id}::uuid`,
-        ),
-      ).then(() => {
-        disabled = true;
+  it.each(['ql_categories', 'ql_levels'] as const)(
+    '%s 停用先于同步取数：同步在配置行上等待，放行后复核已停用 → 不生成子集（P2-02，AC-QL-sync）',
+    async (table) => {
+      const { w, fields, categoryId, levelId } = await configured(`qlsync-pg-disable-first-${table}`);
+      const recordId = await w.transferWith('2026-10-05', fields);
+      const disabling = await disableInTx(w, table, table === 'ql_categories' ? categoryId : levelId);
+      await disabling.held;
+      let finished = false;
+      const worker = w.run('2026-10-10T05:00:00Z').then((result) => {
+        finished = true;
+        return result;
       });
-      await waitForLock(w.db, () => disabled);
-      release.resolve();
-      expect(await worker).toMatchObject({ done: 1 });
-      await disabling;
-      expect(await w.queue(recordId)).toMatchObject([{ state: 'done' }]);
-      expect(await w.subsets()).toHaveLength(1);
-    } finally {
-      qualificationSyncProbe.beforeWrite = undefined;
-    }
-  });
+      await waitForLock(w.db, () => finished);
+      disabling.release();
+      await disabling.done;
+      await worker;
+      expect(await w.subsets()).toEqual([]);
+      expect(await w.queue(recordId)).toMatchObject([{ state: 'skipped', reason: 'NO_MAPPING' }]);
+    },
+  );
+
+  it.each(['ql_categories', 'ql_levels'] as const)(
+    '%s 同步先取得配置行：停用在锁上等待，同步写入后停用才完成（P2-02，AC-QL-sync）',
+    async (table) => {
+      const { w, fields, categoryId, levelId } = await configured(`qlsync-pg-sync-first-${table}`);
+      const recordId = await w.transferWith('2026-10-05', fields);
+      const paused = signal();
+      const release = signal();
+      qualificationSyncProbe.beforeWrite = async () => {
+        paused.resolve();
+        await release.promise;
+      };
+      try {
+        const worker = w.run('2026-10-10T05:00:00Z');
+        await paused.promise;
+        let disabled = false;
+        const id = table === 'ql_categories' ? categoryId : levelId;
+        const disabling = withTenant(w.db, w.tenantId, (tx) =>
+          tx.execute(
+            sql`UPDATE ${sql.identifier(table)} SET enabled=false WHERE tenant_id=${w.tenantId} AND id=${id}::uuid`,
+          ),
+        ).then(() => {
+          disabled = true;
+        });
+        await waitForLock(w.db, () => disabled);
+        release.resolve();
+        expect(await worker).toMatchObject({ done: 1 });
+        await disabling;
+        expect(await w.queue(recordId)).toMatchObject([{ state: 'done' }]);
+        expect(await w.subsets()).toHaveLength(1);
+      } finally {
+        qualificationSyncProbe.beforeWrite = undefined;
+      }
+    },
+  );
 
   // ---- 第 1 轮审查 P2-03：连接故障要分类审计、记次数与原因 -------------------------------------------------------------
   async function killOwnBackend(db: Db, tx: Tx) {
