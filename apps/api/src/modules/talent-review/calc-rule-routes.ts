@@ -31,14 +31,7 @@ import {
 import { type CalcItemBody, calcRuleCreate, type CalcRulePatch, calcRulePatch } from './calc-rule-input.js';
 import * as rules from './calc-rule-service.js';
 import type { CatalogAccess } from './calc-rule-service.js';
-import {
-  CALC_RULE,
-  type CalcRuleRow,
-  type CalcRuleView,
-  loadCalcRuleView,
-  visibleOrder,
-  withItems,
-} from './calc-rule-view.js';
+import { CALC_RULE, type CalcRuleRow, type CalcRuleView, loadCalcRuleView, withItems } from './calc-rule-view.js';
 import { listConfig } from './config-kit.js';
 
 const CALC_RULES = `${TALENT_REVIEW_BASE}/calc-rules`;
@@ -129,11 +122,11 @@ export function registerCalcRuleRoutes(router: Hono<TenantEnv>, deps: TenantRout
     // 筛选字段同样受字段查看权约束：看不到 enabled 的人不能用筛选还原启用状态
     if (enabled !== undefined) await requireFilterVisible(deps, ctx, 'calcRule', 'enabled');
     const scope = await reviewScope(c, deps, ctx, 'calcRule');
-    const orderBy = visibleOrder(await getModuleViewableFields(deps, ctx, codeOf('calcRule')));
+    const viewable = await getModuleViewableFields(deps, ctx, codeOf('calcRule'));
     const items = await withTenant(deps.db, ctx.tenantId, async (tx) => {
       const found = await listConfig(tx, CALC_RULE, ctx.tenantId, {
         ...page,
-        orderBy,
+        viewable,
         enabled,
         visible: configScopeSql(scope, 'talent_review_calc_rules'),
       });

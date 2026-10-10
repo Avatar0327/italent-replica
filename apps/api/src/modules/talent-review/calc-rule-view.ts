@@ -45,7 +45,11 @@ export const CALC_RULE: ConfigSpec<CalcRuleView> = {
   label: '计算规则',
   table: K as unknown as ConfigTable,
   view: row,
-  orderBy: [K.sortNo, K.name],
+  // 列表只按查看人看得到的排序键排（config-kit visibleOrder），以 id 收尾
+  orderBy: [
+    ['sortNo', K.sortNo],
+    ['name', K.name],
+  ],
   duplicate: 'CALC_RULE_DUPLICATE',
   inUse: 'CALC_RULE_IN_USE',
   load: async (tx, tenantId, id) => (await withItems(tx, tenantId, await selectRows(tx, tenantId, [id])))[0],
@@ -80,19 +84,5 @@ export async function withItems(tx: Tx, tenantId: string, rows: CalcRuleRow[]): 
       })),
   }));
 }
-
-/**
- * 列表排序键：规格的默认排序是 sortNo、name，但看不到的字段不能影响顺序与分页（管理员改隐藏值就会改变第一页），
- * 所以只取查看人可见的那些；两者都不可见时只剩稳定标识 id（config-kit 的 listConfig 总是追加）。
- */
-export const visibleOrder = (viewable: ReadonlySet<string> | undefined) =>
-  (
-    [
-      ['sortNo', K.sortNo],
-      ['name', K.name],
-    ] as const
-  )
-    .filter(([field]) => viewable === undefined || viewable.has(field))
-    .map(([, column]) => column);
 
 export const loadCalcRuleView = (tx: Tx, tenantId: string, id: string) => CALC_RULE.load!(tx, tenantId, id);
