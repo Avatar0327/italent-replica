@@ -19,10 +19,9 @@ import {
   type Tx,
 } from '@italent/db';
 import {
-  NO_ORG_FIELD_SEE_ALL,
-  ORG_EMPLOYEE_APP,
   type ObjectPermission,
   type PresetSeeAllTarget,
+  presetSeeAllTargets,
   profileLedgerMarker,
   STANDARD_GRANT_ENTRY,
   STANDARD_PROFILES,
@@ -166,7 +165,7 @@ export async function installProfileRows(tx: Tx, write: PlatformWriteContext, pr
   const profileId = row!.id;
   await tx.insert(permissionProfileApps).values(profile.apps.map((appCode) => ({ tenantId, profileId, appCode })));
   for (const permission of profile.objects) await insertObject(tx, tenantId, profileId, permission);
-  const seeAll = await presetSeeAll(tx, write, profileId, seeAllTargets(profile));
+  const seeAll = await presetSeeAll(tx, write, profileId, presetSeeAllTargets(profile));
   await auditAs(tx, write, {
     action: 'permission_profile.provision',
     objectType: 'permission_profile',
@@ -208,30 +207,11 @@ async function insertObject(tx: Tx, tenantId: string, profileId: string, permiss
   }
 }
 
-/** 标准 HR 身份按 DEC-121 的无组织字段对象；其他标准身份按各自登记的目标（人才标准管理员的类型字典，DEC-281⑩）。 */
-function seeAllTargets(profile: StandardProfile): PresetSeeAllTarget[] {
-  const hr: PresetSeeAllTarget[] = profile.hr
-    ? [
-        ...NO_ORG_FIELD_SEE_ALL.entities.map((code) => ({
-          appCode: ORG_EMPLOYEE_APP,
-          targetKind: 'entity' as const,
-          targetCode: code,
-        })),
-        ...NO_ORG_FIELD_SEE_ALL.dataSources.map((code) => ({
-          appCode: ORG_EMPLOYEE_APP,
-          targetKind: 'datasource' as const,
-          targetCode: code,
-        })),
-      ]
-    : [];
-  return [...hr, ...(profile.seeAll ?? [])];
-}
-
 /**
  * DEC-121：标准身份对无组织字段对象预置“看全部”（与租户管理员在数据权限里手工配置的结果完全相同：同表、
  * revision 1、留范围版本与审计），租户管理员可在数据权限中查看与关闭。新建的自定义身份不受影响（默认空）。
  */
-async function presetSeeAll(
+export async function presetSeeAll(
   tx: Tx,
   write: PlatformWriteContext,
   profileId: string,

@@ -94,8 +94,8 @@ export interface TenantSaveWrite {
 /**
  * 租户保存了某身份某对象的权限：每个命中的登记项以 tenant_saved 登记 ① <身份>/<对象>/@modified 标记；
  * ② 该登记项管的编码中保存前或保存后为已授予的项（保证“租户授过、后来撤销”的项无论回补是否跑过都不会被补回）。
- * verifiedCatalogDigest：请求携带且已与服务端当前一致的对象目录指纹；D2 = A（PR-3）起据此再登记面板上可见但未勾的项，
- * 没带指纹的旧客户端只做 ①②。
+ * ③ verifiedCatalogDigest：请求携带且调用方已核对与服务端当前一致的对象目录指纹时（D2 = A，DEC-374），再登记该登记项管的、
+ * 面板上可见但保存后没勾的项；没带指纹的旧客户端只做 ①②。
  */
 export async function recordTenantSave(
   tx: Tx,
@@ -104,7 +104,7 @@ export async function recordTenantSave(
   objectCode: string,
   before: ObjectPermission | null | undefined,
   after: ObjectPermission,
-  _verifiedCatalogDigest?: string,
+  verifiedCatalogDigest?: string,
 ): Promise<void> {
   const hits = managed.filter((m) => m.profileCode === profile.code && m.profileSource === profile.source);
   if (hits.length === 0) return;
@@ -113,11 +113,14 @@ export async function recordTenantSave(
       (item) => item.code,
     ),
   );
+  const grantedAfter = new Set(objectGrantItems(profile.code, after).map((item) => item.code));
   for (const hit of hits) {
-    const own = new Set(hit.codesFor(objectCode));
+    const own = [...new Set(hit.codesFor(objectCode))];
+    // D2 = A：指纹已核对一致，面板上可见（本登记项管的）但保存后没勾的项算“已决定不授予”；没带指纹的旧客户端不作负向登记
+    const declined = verifiedCatalogDigest === undefined ? [] : own.filter((code) => !grantedAfter.has(code));
     await recordLedger(tx, {
       entry: hit.entry,
-      codes: [objectModifiedMarker(profile.code, objectCode), ...[...granted].filter((code) => own.has(code))],
+      codes: [objectModifiedMarker(profile.code, objectCode), ...own.filter((code) => granted.has(code)), ...declined],
       source: 'tenant_saved',
       commandId: write.commandId,
       now: write.now,
