@@ -124,11 +124,26 @@ export const permissionOf = async (
   w: Pick<World, 'db' | 'tenantId' | 'profileIds'>,
   profileCode: string,
   objectCode: string,
+  /** 测试用：在读之前先改本事务的会话参数（如强制查询计划），复现“读取顺序随计划变化”。 */
+  beforeRead?: (tx: Parameters<Parameters<typeof withTenant>[2]>[0]) => Promise<unknown>,
 ): Promise<ObjectPermission | undefined> =>
   withTenant(w.db, w.tenantId, async (tx) => {
+    await beforeRead?.(tx);
     const [permission] = await loadObjectPermissions(tx, [w.profileIds.get(profileCode)!], objectCode);
-    return permission;
+    return permission && canonical(permission);
   });
+
+/**
+ * 字段 / 按钮按编码排序：loadObjectPermissions 不保证数组顺序（行顺序随查询计划变，F-086），断言只比集合。
+ * 与权限对象比较的期望值也要过一遍。
+ */
+export const canonical = (permission: ObjectPermission): ObjectPermission => ({
+  ...permission,
+  fields: [...permission.fields].sort((a, b) => a.fieldCode.localeCompare(b.fieldCode, 'en')),
+  buttons: [...permission.buttons].sort(
+    (a, b) => a.buttonCode.localeCompare(b.buttonCode, 'en') || a.level.localeCompare(b.level, 'en'),
+  ),
+});
 
 export const revisionOf = async (w: Pick<World, 'db' | 'tenantId' | 'profileIds'>, profileCode: string) =>
   withTenant(w.db, w.tenantId, async (tx) => {

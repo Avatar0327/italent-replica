@@ -31,6 +31,11 @@ export interface SeedEntry {
   /** 当前租户里已经存在的预置项编码（含被定制 / 停用的）。 */
   readonly existing: (tx: Tx, tenantId: string) => Promise<ReadonlySet<string>>;
   /**
+   * 可选：计入 existing 的编码里需要向运维说明原因的那些（如租户手工建过同编码身份：CODE_TAKEN，DEC-402⑤）。只加报告明细，
+   * 不改 existing 的计数，也不改 install 的行为；没实现的登记项报告形状不变。
+   */
+  readonly existingDetails?: (tx: Tx, tenantId: string) => Promise<readonly SeedSkip[]>;
+  /**
    * 只构造并写入 missing 里的编码（含它们的子数据与审计）。依赖的租户数据不可用（如被停用 / 改了属性的字段）时，
    * 不装该编码并在返回值的 skipped 里给出受控原因，不报错、不覆盖租户定制；其余编码照常安装。
    */
@@ -59,6 +64,8 @@ export interface SeedReportItem {
   readonly existing: number;
   /** 依赖不可用而没有安装的编码与原因（没有时不出现）。 */
   readonly skipped?: readonly SeedSkip[];
+  /** 计入 existing 但需要说明原因的编码（登记项实现 existingDetails 且非空时才出现）。 */
+  readonly existingDetails?: readonly SeedSkip[];
 }
 
 const entries: SeedEntry[] = [];
@@ -86,6 +93,7 @@ export async function installMissingSeeds(
   for (const entry of entries) {
     if (filter.modules && !filter.modules.includes(entry.module)) continue;
     const have = await entry.existing(tx, write.tenantId);
+    const details = (await entry.existingDetails?.(tx, write.tenantId)) ?? [];
     const missing = entry.codes.filter((code) => !have.has(code));
     const result = missing.length > 0 ? await entry.install(tx, write, missing) : undefined;
     if (result?.catalogChanged) catalogChanged = true;
@@ -98,6 +106,7 @@ export async function installMissingSeeds(
       installed: missing.filter((code) => !skippedCodes.has(code)),
       existing: entry.codes.length - missing.length,
       ...(skipped.length > 0 ? { skipped } : {}),
+      ...(details.length > 0 ? { existingDetails: details } : {}),
     });
   }
   // 字段目录版本：所有登记项（含预置九宫格的位置字段锁与字段行 KEY SHARE）都已取完锁，最后统一推进一次

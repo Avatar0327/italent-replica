@@ -7,8 +7,10 @@ import { randomUUID } from 'node:crypto';
 import { sql } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
+import { saveInformationCollection } from '../../apps/api/src/modules/personnel/integrations.js';
 import { saveSubset } from '../../apps/api/src/modules/personnel/subsets.js';
-import { subsetScene } from './AC-QL-subset-support.js';
+import { rowsOf, subsetScene } from './AC-QL-subset-support.js';
+import { allowAll } from './support/tenant-api.js';
 
 const database = useTestDb();
 
@@ -89,6 +91,61 @@ describe('AC-QL-subset-score finalScore 最多两位小数（DEC-374⑤ 🟡）'
     const changed = await patch({ finalScore: 88.556 }, 2);
     expect(changed.status).toBe(400);
     expect((await bodyOf(changed)).error?.details?.reason).toBe('FIELD_PRECISION');
+  });
+
+  it('存量 88.555：省略 finalScore、只改其他字段照常保存，历史得分带进新版本（DEC-374⑤ 🟡 存量策略）', async () => {
+    const { w, path, addOk, tx, rows, count } = await subsetScene(database, 'qs-score-legacy-omit');
+    const created = await addOk({ finalScore: 88.55 });
+    await tx((t) =>
+      t.execute(sql`UPDATE personnel_qualification SET final_score = 88.555 WHERE id = ${created.id}::uuid`),
+    );
+    const response = await w.request(w.hr.id, 'PATCH', `${path}/${created.id}`, {
+      ifMatch: 1,
+      body: { endDate: '2027-03-31' },
+    });
+    expect(response.status, await response.clone().text()).toBe(200);
+    const saved = (await rows())[0]!;
+    expect(Number(saved.final_score)).toBe(88.555);
+    expect(String(saved.end_date).slice(0, 10)).toBe('2027-03-31');
+    const latest = await tx(async (t) => {
+      const result = await t.execute(
+        sql`SELECT final_score FROM personnel_qualification_versions ORDER BY revision DESC LIMIT 1`,
+      );
+      return Number(rowsOf<{ final_score: string }>(result)[0]!.final_score);
+    });
+    expect(latest).toBe(88.555);
+    expect(await count(sql`SELECT count(*)::int AS n FROM personnel_qualification_versions`)).toBe(2);
+  });
+
+  it('信息采集入口：88.555 被拒且不留当前行和版本，88.55 成功（DEC-374⑤、DEC-087）', async () => {
+    const { w, s, tx, base, rows, count } = await subsetScene(database, 'qs-score-collect');
+    const collect = (finalScore: number) =>
+      tx((t) =>
+        saveInformationCollection(
+          t,
+          {
+            tenantId: w.tenant.id,
+            userId: w.hr.id,
+            timezone: 'Asia/Shanghai',
+            now: w.clock(),
+            commandId: randomUUID(),
+            expectedRevision: 0,
+            authorizer: allowAll,
+          },
+          s.subject.employeeId,
+          'qualification',
+          randomUUID(),
+          base({ finalScore }),
+        ),
+      );
+    await expect(collect(88.555)).rejects.toMatchObject({
+      code: 'VALIDATION_FAILED',
+      details: { reason: 'FIELD_PRECISION' },
+    });
+    expect(await rows()).toEqual([]);
+    expect(await count(sql`SELECT count(*)::int AS n FROM personnel_qualification_versions`)).toBe(0);
+    expect(await collect(88.55)).toMatchObject({ finalScore: 88.55, sourceType: 'info_collection' });
+    expect(await count(sql`SELECT count(*)::int AS n FROM personnel_qualification_versions`)).toBe(1);
   });
 
   it('系统来源（评定发布等）超过两位小数同样拒绝，不能绕过 HTTP 限制（DEC-374⑤）', async () => {

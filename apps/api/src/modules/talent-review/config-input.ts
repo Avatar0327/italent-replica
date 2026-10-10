@@ -4,6 +4,7 @@
  */
 import {
   FIELD_MAX_PRECISION,
+  MAPPING_SCENES,
   SCORE_DISPLAYS,
   SCORE_RULE_KINDS,
   TALENT_REVIEW_FIELD_GROUPS,
@@ -108,7 +109,16 @@ export const moduleGradeCreate = z.strictObject({
 });
 export const moduleGradePatch = moduleGradeCreate.partial();
 
+export const mappingCreate = z.strictObject({
+  scene: z.enum(MAPPING_SCENES),
+  sourceFieldId: uuid,
+  targetFieldId: uuid,
+});
+export const mappingPatch = mappingCreate.omit({ scene: true }).partial();
+
 export type ScoreRuleCreate = z.output<typeof scoreRuleCreate>;
 export type ScoreRulePatch = z.output<typeof scoreRulePatch>;
 export type ModuleGradeCreate = z.output<typeof moduleGradeCreate>;
 export type ModuleGradePatch = z.output<typeof moduleGradePatch>;
+export type MappingCreate = z.output<typeof mappingCreate>;
+export type MappingPatch = z.output<typeof mappingPatch>;

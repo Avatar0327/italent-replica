@@ -8,7 +8,7 @@ import { authorizeInTransaction } from '../permission/module-access.js';
 import { normalizeTransferInput, requireTransferWrite } from '../transfer/service.js';
 import { previewTransfer } from '../transfer/preview.js';
 import { readTransferCatalog } from '../transfer/configuration.js';
-import { transferFieldAccess } from './access.js';
+import { requireSelfServiceButtons, transferFieldAccess } from './access.js';
 import { referenceLabels } from './references.js';
 import { visibleFields } from './field-disclosure.js';
 
@@ -54,6 +54,8 @@ export async function ownTransferPreview(
   raw: unknown,
   originalDeps: TenantRouteDeps,
 ) {
+  // 预览不是命令，没有台账出口：事务第一步查三个本人调动按钮，先于输入解析（契约 §2.3.1）
+  await requireSelfServiceButtons(tx, ctx);
   const input = await ownTransferInput(tx, ctx, raw, originalDeps);
   const preview = await previewTransfer(tx, ctx, employeeId, input);
   const visible = await transferFieldAccess(tx, originalDeps, ctx);

@@ -10,6 +10,7 @@ import {
   ObjectCatalog,
   type ObjectDefinition,
   QUALIFICATION_OBJECTS,
+  QUALIFICATION_PAGES,
   survey360,
 } from '@italent/domain';
 
@@ -17,13 +18,15 @@ import {
  * 预先登记已上线模块的真实对象定义（DEC-080）。360 对象随三类内置 360 身份一起登记（DEC-280，R3-T03 基础契约）：
  * 开通与存量回补都按对象目录校验标准身份（standard-profiles.ts），不依赖 360 业务模块是否已加载。
  * 任职资格 / 人才评定的配置对象同样预先登记（R3-T02 PR-0 契约）：数据范围与审计查看规则按对象所属应用解析
- * （module-access.ts scopeAppOf），不依赖业务模块加载顺序。人才评定的流程对象由 P0 契约冻结、同样预先登记，C1-2 装
- * 评定专员身份时按目录校验得到。
+ * （module-access.ts scopeAppOf），不依赖业务模块加载顺序。
+ * 人才评定的流程对象由 P0 契约冻结、同样预先登记，C1-2 装评定专员身份时按目录校验得到。
+ * 页面载体 QUALIFICATION_PAGES（C1-2b）只在这里登记，不进 QUALIFICATION_OBJECTS。
  */
 export const objectCatalog = new ObjectCatalog([
   ...Object.values(MODULE_OBJECTS),
   ...Object.values(survey360.SURVEY360_OBJECTS),
   ...Object.values(QUALIFICATION_OBJECTS),
+  QUALIFICATION_PAGES,
   ...Object.values(EVALUATION_OBJECTS),
   ...Object.values(EVALUATION_FLOW_OBJECTS),
 ]);

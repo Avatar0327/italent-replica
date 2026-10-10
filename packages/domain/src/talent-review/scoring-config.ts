@@ -1,6 +1,6 @@
 /**
- * 评价规则 / 模块等级的领域规则（R3-T04 设计 §2.2、§4.2、TR-R15 / R20）。纯函数，无 IO：
- * 接口层的保存校验与 PR-C 的算分共用同一份，保证配置时拦的规则与运行时匹配的规则一致。
+ * 评价规则 / 模块等级 / 字段映射的领域规则（R3-T04 设计 §2.2、§4.2、TR-R9 / R15 / R20）。纯函数，无 IO：
+ * 接口层的保存校验与 PR-C 的算分、带入共用同一份，保证配置时拦的规则与运行时匹配的规则一致。
  */
 import { roundDecimal } from '../expression/index.js';
 
@@ -8,6 +8,8 @@ export const SCORE_RULE_KINDS = ['numeric', 'grade'] as const;
 export type ScoreRuleKind = (typeof SCORE_RULE_KINDS)[number];
 /** 等级类评价规则的录入方式：下拉或平铺（TR-R20）。 */
 export const SCORE_DISPLAYS = ['dropdown', 'tile'] as const;
+export const MAPPING_SCENES = ['carry_last', 'talent_pool'] as const;
+export type MappingScene = (typeof MAPPING_SCENES)[number];
 
 /** 模块得分的比较精度：与存储一致，4 位小数（设计 §4.2，DEC-299 十进制舍入）。 */
 const SCORE_DIGITS = 4;
@@ -79,6 +81,24 @@ export function gradeItemsProblem(items: readonly GradeItemInput[]): GradeItemsP
   const sorted = [...intervals].sort((a, b) => a.min - b.min);
   for (const [index, current] of sorted.entries()) {
     if (index > 0 && current.min < sorted[index - 1]!.max) return 'GRADE_INTERVAL_OVERLAP';
+  }
+  return null;
+}
+
+export interface MappingFieldShape {
+  readonly kind: string;
+  /** 单选 / 多选的选项 value 集合；其他类型为空。 */
+  readonly optionValues: readonly string[];
+}
+export type MappingProblem = 'MAPPING_KIND_MISMATCH' | 'MAPPING_OPTIONS_MISMATCH';
+
+/** 字段映射的兼容性（TR-R9）：来源与目标类型相同；选项类要求选项 value 集合相同（与顺序无关）。 */
+export function mappingCompatibility(source: MappingFieldShape, target: MappingFieldShape): MappingProblem | null {
+  if (source.kind !== target.kind) return 'MAPPING_KIND_MISMATCH';
+  if (source.kind === 'option' || source.kind === 'multi_option') {
+    const left = new Set(source.optionValues);
+    const same = left.size === target.optionValues.length && target.optionValues.every((value) => left.has(value));
+    if (!same) return 'MAPPING_OPTIONS_MISMATCH';
   }
   return null;
 }

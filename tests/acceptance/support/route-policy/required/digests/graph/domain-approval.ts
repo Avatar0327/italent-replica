@@ -5,6 +5,12 @@
 import type { Graph } from '../../../evidence-graph.js';
 
 export const GRAPH: Graph = {
+  'packages/domain/src/approval/catalog.ts#APPROVAL_OBJECTS': [
+    '#APPROVAL_INSTANCE_OBJECT',
+    '#APPROVAL_PROCESS_OBJECT',
+    '#button',
+    '#field',
+  ],
   'packages/domain/src/approval/conditions.ts#conditionViolations': [
     '#MAX_CONDITION_ITEMS',
     '#defaultExpression',

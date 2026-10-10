@@ -22,6 +22,8 @@ export const OPEN_END = '9999-12-31';
 export const SC_NOW = new Date(`${TODAY}T01:00:00.000Z`);
 
 export interface RecordSeed {
+  /** 指定记录 ID（并发测试需要控制无锁读出目标的顺序）；缺省随机。 */
+  readonly id?: string;
   readonly type: 'org' | 'position';
   readonly targetId: string;
   readonly successorId: string;
@@ -103,7 +105,7 @@ export async function successionWorld(db: Db, label: string) {
   }
 
   async function insertRecord(seed: RecordSeed): Promise<string> {
-    const id = randomUUID();
+    const id = seed.id ?? randomUUID();
     const { type } = seed;
     await asTenant(async (tx) => {
       await tx.execute(sql`

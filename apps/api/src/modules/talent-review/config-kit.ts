@@ -19,7 +19,8 @@ import {
   type TalentReviewContext,
 } from './access.js';
 
-export type ConfigObject = 'category' | 'role' | 'field' | 'matrix' | 'calcRule' | 'scoreRule' | 'moduleGrade';
+export type ConfigObject =
+  'category' | 'role' | 'field' | 'matrix' | 'calcRule' | 'scoreRule' | 'moduleGrade' | 'mapping';
 
 export interface WriteContext extends TalentReviewContext {
   readonly scope: ModuleScope;
@@ -28,7 +29,6 @@ export interface WriteContext extends TalentReviewContext {
 export type ConfigTable = PgTable & {
   readonly id: AnyPgColumn;
   readonly tenantId: AnyPgColumn;
-  readonly name: AnyPgColumn;
   readonly enabled: AnyPgColumn;
   readonly revision: AnyPgColumn;
   readonly createdBy: AnyPgColumn;
@@ -36,7 +36,7 @@ export type ConfigTable = PgTable & {
   readonly updatedAt: AnyPgColumn;
 };
 
-export interface ConfigSpec<V extends { id: string; name: string }> {
+export interface ConfigSpec<V extends { id: string }> {
   readonly object: ConfigObject;
   readonly label: string;
   readonly table: ConfigTable;
@@ -59,6 +59,7 @@ const guards: Record<ConfigObject, ConfigReferenceGuard[]> = {
   field: [],
   scoreRule: [],
   moduleGrade: [],
+  mapping: [],
   matrix: [],
   calcRule: [],
 };
@@ -76,7 +77,7 @@ export async function configReferrer(tx: Tx, tenantId: string, object: ConfigObj
   return null;
 }
 
-export async function loadConfig<V extends { id: string; name: string }>(
+export async function loadConfig<V extends { id: string }>(
   tx: Tx,
   spec: ConfigSpec<V>,
   tenantId: string,
@@ -196,13 +197,13 @@ export async function auditConfig(
  * 名称租户唯一，改成他人隐藏记录的名称会撞唯一约束，409 与成功的差异会暴露隐藏记录的存在（准备度第 2 轮 P2-01）。
  * 所以改名要求看全部，判定在任何查重之前，目标名称是否被占用都同一个 403。
  */
-export function requireSeeAllToRename(ctx: WriteContext, before: { name: string }, name: string | undefined) {
+export function requireSeeAllToRename(ctx: WriteContext, before: { name?: string }, name: string | undefined) {
   if (name !== undefined && name !== before.name && !ctx.scope.all) {
     throw new AppError('FORBIDDEN', '只有能查看全部的人可以修改名称', { reason: 'NAME_REQUIRES_SEE_ALL' });
   }
 }
 
-export async function createConfig<V extends { id: string; name: string }>(
+export async function createConfig<V extends { id: string }>(
   tx: Tx,
   spec: ConfigSpec<V>,
   ctx: WriteContext,
@@ -230,7 +231,7 @@ export async function createConfig<V extends { id: string; name: string }>(
   return after;
 }
 
-export async function updateConfig<V extends { id: string; name: string }>(
+export async function updateConfig<V extends { id: string }>(
   tx: Tx,
   spec: ConfigSpec<V>,
   ctx: WriteContext,
@@ -239,7 +240,7 @@ export async function updateConfig<V extends { id: string; name: string }>(
 ): Promise<V> {
   await lockConfigRow(tx, spec, ctx, id);
   const before = (await loadConfig(tx, spec, ctx.tenantId, id))!;
-  requireSeeAllToRename(ctx, before, patch.name as string | undefined);
+  requireSeeAllToRename(ctx, before as { name?: string }, patch.name as string | undefined);
   await uniqueOr(spec.duplicate, spec.label, () =>
     tx
       .update(spec.table)
@@ -251,7 +252,7 @@ export async function updateConfig<V extends { id: string; name: string }>(
   return after;
 }
 
-export async function deleteConfig<V extends { id: string; name: string }>(
+export async function deleteConfig<V extends { id: string }>(
   tx: Tx,
   spec: ConfigSpec<V>,
   ctx: WriteContext,

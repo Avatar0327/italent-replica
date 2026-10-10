@@ -4,6 +4,7 @@
  * 纯函数；前后值、快照、差异（from / to）共用，由 API 层的 calcRuleSources 在 visibleValue / visibleChanges 之前调用。
  */
 import { HIDDEN_FIELD_PLACEHOLDER } from '../expression/index.js';
+import { projectHints } from './calc-hints.js';
 import { renderFormula, FORMULA_REPAIR_NOTICE } from './formula-binding.js';
 
 export interface AuditFieldDirectory {
@@ -11,6 +12,8 @@ export interface AuditFieldDirectory {
   readonly visible: ReadonlyMap<string, string>;
   /** 查看人能看到租户的全部字段（无法解析的历史公式只对这样的人显示原文）。 */
   readonly allVisible: boolean;
+  /** 查看人对计算规则 items 列的查看权（hints 的投影随它，契约 §5.2）；缺省按有处理。 */
+  readonly itemsViewable?: boolean;
 }
 
 type Json = Record<string, unknown>;
@@ -37,6 +40,11 @@ export function redactCalcRuleAuditValue(value: unknown, directory: AuditFieldDi
   const refs = filterRefs(changed ? inner : value, directory);
   const hinted = filterHints(refs.value, directory);
   const item = isItem(hinted.value) ? redactItem(hinted.value, directory) : hinted.value;
+  // 差异里 hints 字段自己的前后值（field = hints）：与对象里的 hints 同一套投影，派生文本丢弃后由出口重新生成
+  if (isChange(item) && item['field'] === 'hints') {
+    const project = (hints: unknown) => (isObject(hints) ? filterHints({ hints }, directory).value['hints'] : hints);
+    return withoutDerivedText({ ...item, from: project(item['from']), to: project(item['to']) });
+  }
   const touched = changed || refs.changed || hinted.changed || item !== hinted.value;
   if (!touched) return value;
   // 差异里前后值被裁剪过：写入时保存的派生文本（fromText / toText）可能带着旧内容，丢掉让出口按裁剪后的值重新生成
@@ -66,32 +74,37 @@ function filterRefs(value: Json, directory: AuditFieldDirectory): { value: Json;
   return { value: changed ? out : value, changed };
 }
 
-const ids = (list: unknown, directory: AuditFieldDirectory): string[] =>
-  Array.isArray(list)
-    ? list.filter((id): id is string => typeof id === 'string' && directory.visible.has(id.toLowerCase()))
-    : [];
+const idsOf = (list: unknown): string[] =>
+  Array.isArray(list) ? list.filter((id): id is string => typeof id === 'string') : [];
 
 /**
- * hints（契约 §5.3 第 3 步，只作防御：B5 起审计就不含 hints）。审计里没有结构化诊断，无法判断 warnings 文案提到的字段是否可见，
- * 所以 order / blocked / cycles 只留可见的目标字段 ID（环要全部成员可见），warnings 一律汇总为不含名称的计数提示。
+ * hints（契约 §5.2、§5.3 第 3 步，只作防御：B5 起审计就不含 hints）：与响应共用 projectHints。审计里没有结构化诊断，
+ * 无法判断 warnings 文案提到的字段是否可见，所以每条 warning 都当作涉及不可见字段（不原样输出，汇总成计数提示）。
  */
 function filterHints(value: Json, directory: AuditFieldDirectory): { value: Json; changed: boolean } {
   const hints = value['hints'];
   if (!isObject(hints)) return { value, changed: false };
-  const cycles = Array.isArray(hints['cycles'])
-    ? (hints['cycles'] as unknown[]).filter(
-        (cycle) => Array.isArray(cycle) && ids(cycle, directory).length === cycle.length,
-      )
-    : [];
-  const warnings = Array.isArray(hints['warnings']) ? hints['warnings'].length : 0;
-  const out: Json = {
-    ...hints,
-    order: ids(hints['order'], directory),
-    blocked: ids(hints['blocked'], directory),
-    cycles,
-    warnings: warnings > 0 ? [`另有 ${warnings} 条提示涉及不可见的字段，未显示`] : [],
-  };
-  return { value: { ...value, hints: out }, changed: true };
+  const { others: _previous, order: _o, blocked: _b, cycles: _c, warnings: _w, ...rest } = hints;
+  const warnings = Array.isArray(hints['warnings']) ? hints['warnings'] : [];
+  const cycles = Array.isArray(hints['cycles']) ? (hints['cycles'] as unknown[]) : [];
+  const seen = (id: string) => directory.visible.has(id.toLowerCase());
+  const projected = projectHints(
+    {
+      order: idsOf(hints['order']),
+      blocked: idsOf(hints['blocked']),
+      // 成员不全是 ID 字符串的环（B5 的路径写法等）无法按 ID 判断，视为不可见
+      cycles: cycles.map((cycle) =>
+        Array.isArray(cycle) && idsOf(cycle).length === cycle.length ? idsOf(cycle) : [''],
+      ),
+      diagnostics: warnings.map((message) => ({
+        kind: 'typeUncertain' as const,
+        fields: ['-'],
+        message: String(message),
+      })),
+    },
+    { itemsViewable: directory.itemsViewable !== false, shown: () => false, target: seen },
+  );
+  return { value: { ...value, hints: { ...rest, ...projected } }, changed: true };
 }
 
 /** 一个计算项目的公式：新格式（formulaBinding = bound）用写入时刻的名称渲染，旧格式按 legacy 规则。 */

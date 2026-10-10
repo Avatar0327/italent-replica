@@ -39,3 +39,19 @@ export async function bumpFieldCatalog(tx: Tx, tenantId: string): Promise<number
   BUMPED.set(tx, done);
   return row!.version;
 }
+
+/**
+ * 保存计算规则时对版本行取共享锁（锁序里的 V，契约 §2 第 4 步、§3.4）：与改名 / 新建 / 删除的 FOR UPDATE 互斥，
+ * 之后读到的版本和名称映射在本事务内不会再变。返回当前版本。
+ */
+export async function shareLockFieldCatalog(tx: Tx, tenantId: string): Promise<number> {
+  await ensureRow(tx, tenantId);
+  const [row] = await tx.select({ version: V.version }).from(V).where(eq(V.tenantId, tenantId)).for('share');
+  return row!.version;
+}
+
+/** 读取当前版本（不加锁）；版本行还不存在时是 0。 */
+export async function readFieldCatalogVersion(tx: Tx, tenantId: string): Promise<number> {
+  const [row] = await tx.select({ version: V.version }).from(V).where(eq(V.tenantId, tenantId));
+  return row?.version ?? 0;
+}
