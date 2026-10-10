@@ -115,3 +115,29 @@ describe('递归：items 数组、变更差异（from / to）、改绑审计的 
     expect(redactCalcRuleAuditValue(null, directory({}))).toBeNull();
   });
 });
+
+describe('R1-P3-2：审计里意外出现的 hints 按查看人可见集合防御裁剪（契约 §5.3 第 3 步）', () => {
+  const hints = {
+    warnings: ['字段“秘密”与“甲”循环', '另一条'],
+    cycles: [
+      [T, A],
+      [B, A],
+    ],
+    order: [T, A, B],
+    blocked: [T, B],
+  };
+
+  it('order / blocked / cycles 只留可见的目标字段 ID；warnings 含名称一律不原样输出，汇总为不含名称的计数提示', () => {
+    const out = redactCalcRuleAuditValue({ hints }, directory({ [T]: '目标', [A]: '甲' })) as { hints: typeof hints };
+    expect(out.hints.order).toEqual([T, A]);
+    expect(out.hints.blocked).toEqual([T]);
+    expect(out.hints.cycles).toEqual([[T, A]]);
+    expect(JSON.stringify(out)).not.toContain('秘密');
+    expect(out.hints.warnings).toEqual(['另有 2 条提示涉及不可见的字段，未显示']);
+  });
+
+  it('没有 hints 时原样返回（不产生新对象）', () => {
+    const value = { name: '规则' };
+    expect(redactCalcRuleAuditValue(value, directory({}))).toBe(value);
+  });
+});

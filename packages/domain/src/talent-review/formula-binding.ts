@@ -348,8 +348,8 @@ function renderLegacy(stored: string, options: RenderFormulaOptions): RenderResu
     text += stored.slice(cursor, node.pos.offset);
     cursor = node.end;
     // 契约 §1.4：只有查看人可见字段里存在同名字段才原样显示（“盘点方案”也一样，没有固定路径例外）；
-    // 三段及更深的路径不是合法引用，一律按看不到处理。证明一律为 null，由用户显式选择
-    const shown = isObjectReference(node) && visibleNames.has(node.path[1]!);
+    // 字段名可以含“.”（B5 允许），所以按“盘点对象.”之后的整段名称判断，不按段数；只有前缀可见不算。证明一律为 null，由用户显式选择
+    const shown = node.path.length > 1 && visibleNames.has(node.path.slice(1).join('.'));
     text += shown ? stored.slice(node.pos.offset, node.end) : `${FORMULA_OBJECT}.${HIDDEN_FIELD_PLACEHOLDER}`;
     bindings.push(null);
   }

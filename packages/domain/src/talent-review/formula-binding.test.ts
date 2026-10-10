@@ -417,6 +417,26 @@ describe('renderFormula：F082-2 收口（#205 第 2 轮 P3）', () => {
     }
   });
 
+  it('R1-P2-2：legacy 含点号的完整字段名（二、三段字段名）：按完整名称对可见目录判断，空白写法也认', () => {
+    const dotted = [
+      { id: 'd1', name: '甲.乙' },
+      { id: 'd2', name: '甲.乙.丙' },
+      { id: 'd3', name: '盘点方案.秘密' },
+    ];
+    for (const text of ['盘点对象.甲.乙 + 1', '盘点对象 . 甲 . 乙 + 1', '盘点对象 .\n甲\t.乙 + 1']) {
+      expect(legacy(text, dotted), text).toEqual({ ok: true, text, bindings: [null] });
+      expect(legacy(text, []), text).toEqual({
+        ok: true,
+        text: `盘点对象.${HIDDEN_FIELD_PLACEHOLDER} + 1`,
+        bindings: [null],
+      });
+    }
+    expect(legacy('盘点对象.甲.乙.丙 + 1', dotted)).toMatchObject({ text: '盘点对象.甲.乙.丙 + 1' });
+    expect(legacy('盘点对象.盘点方案.秘密 + 1', dotted)).toMatchObject({ text: '盘点对象.盘点方案.秘密 + 1' });
+    // 只有前缀可见不够：整段名称必须是可见字段
+    expect(legacy('盘点对象.甲.乙.丁', dotted)).toMatchObject({ text: `盘点对象.${HIDDEN_FIELD_PLACEHOLDER}` });
+  });
+
   it('P3-1：legacy / unresolved 里同类路径一律按看不到处理（占位符），不泄露名称', () => {
     for (const text of ['盘点对象.秘密.子项', '盘点对象.绩效.子项', '盘点对象.盘点方案.秘密']) {
       const rendered = legacy(text, custom);

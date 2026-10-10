@@ -65,6 +65,26 @@ describe('AC-06 删除守卫：文本兜底（非 bound 公式，B5 数据）', 
     expect([blocked.status, (await errorOf(blocked)).details['reason']]).toEqual([409, 'FIELD_IN_USE']);
   });
 
+  // R1-P2-1：B5 允许字段名含“.”，公式里写成 `盘点对象 . 甲 . 乙`，整名不连续出现，粗筛不能因此漏掉
+  for (const [name, formula] of [
+    ['甲.乙', '盘点对象 . 甲 . 乙 + 1'],
+    ['甲.乙.丙', '盘点对象 .\n 甲 \t.乙 .\r\n丙 + 1'],
+  ] as const) {
+    it(`含点号的字段名“${name}”用空白写法引用：删除 → 409 FIELD_IN_USE；移除引用后可删`, async () => {
+      const w = await f082World(testDb().db, `f082-dot-${name.length}`);
+      const [target, source] = [await w.numberField(), await w.field('number', { name })];
+      const rule = await w.create(calcBody([calcItem(target, formula)]));
+      const blocked = await deleteField(w, source);
+      expect([blocked.status, (await errorOf(blocked)).details['reason']]).toEqual([409, 'FIELD_IN_USE']);
+      const edit = await w.request('PATCH', `/calc-rules/${rule.id}`, {
+        ifMatch: 1,
+        body: { items: [calcItem(target, '1')] },
+      });
+      expect(edit.status).toBe(200);
+      expect((await deleteField(w, source)).status).toBe(200);
+    });
+  }
+
   it('作为计算项目的目标字段仍不能删', async () => {
     const w = await f082World(testDb().db, 'f082-g4');
     const target = await w.numberField();

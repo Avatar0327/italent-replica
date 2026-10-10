@@ -7,11 +7,12 @@
  * 锁序（§3.4）：调用方已持字段行 FOR UPDATE（F）→ 版本行 FOR UPDATE（V）→ 读取 → 计算项目行 KEY SHARE（I）。
  */
 import { eq, sql, talentReviewFields as F, type Tx } from '@italent/db';
-import { checkRenameRoundTrip, textMentionsField, type RenameBreakReason } from '@italent/domain';
+import { checkRenameRoundTrip, type RenameBreakReason } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { requireConfigVisible, type ModuleScope } from './access.js';
 import type { WriteContext } from './config-kit.js';
 import { lockFieldCatalog } from './field-catalog.js';
+import { textFallbackItems } from './text-fallback.js';
 
 /** 改名操作人对计算规则的披露权限（契约 §3.1“错误载荷不披露看不到的项目”）：CalcRule 查看权 + 范围 + items 列查看权。 */
 export interface CalcDisclosure {
@@ -21,6 +22,11 @@ export interface CalcDisclosure {
 export interface FieldWriteContext extends WriteContext {
   /** 没有 CalcRule 查看权时为空——所有受影响的项目都只计入匿名计数。 */
   readonly calcDisclosure?: CalcDisclosure | undefined;
+  /**
+   * 改名操作人对字段目录 name / kind / enabled / systemWritten 四列的查看权（引用盘点字段所需，与计算规则接口、审计裁剪同一口径）。
+   * 缺省按没有处理（fail-closed）：目标字段只计入匿名计数。
+   */
+  readonly fieldColumnsViewable?: boolean | undefined;
 }
 
 export interface BrokenItem {
@@ -46,13 +52,14 @@ const visibleTo = (scope: ModuleScope, object: 'calcRule' | 'field', createdBy: 
 };
 
 /**
- * 受影响项目的披露分区：同时满足（有 CalcRule 查看权且规则在其范围内）、（有 items 列查看权）、（目标字段在其字段目录中可见）
- * 才列入 affected（带原因类别），否则只计入匿名的 others，不给规则 ID、目标字段 ID 与原因（DEC-376①）。
+ * 受影响项目的披露分区：同时满足（有 CalcRule 查看权且规则在其范围内）、（有 items 列查看权）、（目标字段在其字段目录中可见：
+ * 范围 + 四列查看权，R1-P2-3）才列入 affected（带原因类别），否则只计入匿名的 others，不给规则 ID、目标字段 ID 与原因（DEC-376①）。
  */
 export function partitionBroken(
   broken: readonly BrokenItem[],
   disclosure: CalcDisclosure | undefined,
   fieldScope: ModuleScope,
+  fieldColumnsViewable: boolean | undefined,
 ): BreaksPayload {
   const affected: BreaksPayload['affected'][number][] = [];
   let others = 0;
@@ -60,6 +67,7 @@ export function partitionBroken(
     const shown =
       disclosure !== undefined &&
       disclosure.itemsViewable &&
+      fieldColumnsViewable === true &&
       visibleTo(disclosure.scope, 'calcRule', item.ruleCreatedBy) &&
       visibleTo(fieldScope, 'field', item.targetCreatedBy);
     if (shown) affected.push({ ruleId: item.ruleId, targetFieldId: item.targetFieldId, reason: item.reason });
@@ -96,17 +104,6 @@ async function boundItemsReferencing(tx: Tx, tenantId: string, fieldId: string):
          AND r.kind = 'bound' AND i.formula_binding = 'bound'
        ORDER BY i.id`),
   );
-}
-
-/** 文本兜底按旧名称命中的非 bound 项目：先 SQL 粗筛，再用与删除守卫同一个判定（解析失败宁可多保护）。 */
-async function textFallbackItems(tx: Tx, tenantId: string, oldName: string): Promise<string[]> {
-  const rows = rowsOf<{ id: string; formula: string }>(
-    await tx.execute(sql`
-      SELECT id, formula FROM talent_review_calc_rule_items
-       WHERE tenant_id = ${tenantId}::uuid AND formula_binding <> 'bound' AND strpos(formula, ${oldName}) > 0
-       ORDER BY id`),
-  );
-  return rows.filter((row) => textMentionsField(row.formula, oldName)).map((row) => row.id);
 }
 
 /**
@@ -163,7 +160,7 @@ export async function guardFieldRename(
       });
     }
     if (broken.length > 0) {
-      const payload = partitionBroken(broken, ctx.calcDisclosure, ctx.scope);
+      const payload = partitionBroken(broken, ctx.calcDisclosure, ctx.scope, ctx.fieldColumnsViewable);
       throw new AppError('CONFLICT', breaksMessage(payload), { reason: 'FIELD_NAME_BREAKS_FORMULA', ...payload });
     }
   }

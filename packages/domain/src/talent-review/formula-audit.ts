@@ -35,8 +35,9 @@ export function redactCalcRuleAuditValue(value: unknown, directory: AuditFieldDi
     if (next !== entry) changed = true;
   }
   const refs = filterRefs(changed ? inner : value, directory);
-  const item = isItem(refs.value) ? redactItem(refs.value, directory) : refs.value;
-  const touched = changed || refs.changed || item !== refs.value;
+  const hinted = filterHints(refs.value, directory);
+  const item = isItem(hinted.value) ? redactItem(hinted.value, directory) : hinted.value;
+  const touched = changed || refs.changed || hinted.changed || item !== hinted.value;
   if (!touched) return value;
   // 差异里前后值被裁剪过：写入时保存的派生文本（fromText / toText）可能带着旧内容，丢掉让出口按裁剪后的值重新生成
   return isChange(item) ? withoutDerivedText(item) : item;
@@ -63,6 +64,34 @@ function filterRefs(value: Json, directory: AuditFieldDirectory): { value: Json;
     out['fieldNames'] = kept;
   }
   return { value: changed ? out : value, changed };
+}
+
+const ids = (list: unknown, directory: AuditFieldDirectory): string[] =>
+  Array.isArray(list)
+    ? list.filter((id): id is string => typeof id === 'string' && directory.visible.has(id.toLowerCase()))
+    : [];
+
+/**
+ * hints（契约 §5.3 第 3 步，只作防御：B5 起审计就不含 hints）。审计里没有结构化诊断，无法判断 warnings 文案提到的字段是否可见，
+ * 所以 order / blocked / cycles 只留可见的目标字段 ID（环要全部成员可见），warnings 一律汇总为不含名称的计数提示。
+ */
+function filterHints(value: Json, directory: AuditFieldDirectory): { value: Json; changed: boolean } {
+  const hints = value['hints'];
+  if (!isObject(hints)) return { value, changed: false };
+  const cycles = Array.isArray(hints['cycles'])
+    ? (hints['cycles'] as unknown[]).filter(
+        (cycle) => Array.isArray(cycle) && ids(cycle, directory).length === cycle.length,
+      )
+    : [];
+  const warnings = Array.isArray(hints['warnings']) ? hints['warnings'].length : 0;
+  const out: Json = {
+    ...hints,
+    order: ids(hints['order'], directory),
+    blocked: ids(hints['blocked'], directory),
+    cycles,
+    warnings: warnings > 0 ? [`另有 ${warnings} 条提示涉及不可见的字段，未显示`] : [],
+  };
+  return { value: { ...value, hints: out }, changed: true };
 }
 
 /** 一个计算项目的公式：新格式（formulaBinding = bound）用写入时刻的名称渲染，旧格式按 legacy 规则。 */

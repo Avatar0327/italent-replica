@@ -52,7 +52,7 @@ import {
 import * as simple from './config-service.js';
 import * as fields from './field-service.js';
 import * as settings from './settings-service.js';
-import { resolveCalcDisclosure } from './rename-disclosure.js';
+import { resolveCalcDisclosure, resolveFieldColumnsViewable } from './rename-disclosure.js';
 
 const CATEGORIES = `${TALENT_REVIEW_BASE}/categories`;
 const ROLES = `${TALENT_REVIEW_BASE}/roles`;
@@ -122,13 +122,15 @@ async function runWrite<V extends Viewed>(
   execute: (tx: Tx, ctx: WriteContext) => Promise<V>,
 ) {
   const scope = await reviewScope(c, deps, ctx, object);
-  const result = await concurrentOr(() =>
+  const command = () =>
     runCommand(deps.db, ctx, {
       id: c.req.header('idempotency-key'),
       fingerprint: { method: c.req.method, path: c.req.path, expectedRevision: ctx.expectedRevision, input: body },
       execute: async (tx, commandId) => ({ status, body: await execute(tx, { ...ctx, commandId, scope }) }),
-    }),
-  );
+    });
+  // 只有字段目录的写入会在版本行上与计算规则写入互相等待（契约 §3.4），死锁中止才映射为受控的 CONCURRENT_WRITE；
+  // 分类、角色、租户设置的写入不涉及，保持原行为
+  const result = await (object === 'field' ? concurrentOr(command) : command());
   const view = result.body as V;
   recheck(scope, view);
   if (c.req.method !== 'DELETE') c.header('ETag', `"${view.revision}"`);
@@ -276,9 +278,11 @@ function registerFields(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const body = await parseBody(c, fieldPatch);
     await checkWriteFields(deps, ctx, 'field', 'update', body);
     // 改名失败的错误载荷只对能看计算规则的人披露定位信息（F-082 §3.1）：仅在提交了名称时解析
-    const calcDisclosure = body.name === undefined ? undefined : await resolveCalcDisclosure(c, deps);
+    const renaming = body.name !== undefined;
+    const calcDisclosure = renaming ? await resolveCalcDisclosure(c, deps) : undefined;
+    const fieldColumnsViewable = renaming ? await resolveFieldColumnsViewable(c, deps) : undefined;
     return runWrite(c, deps, ctx, 'field', body, 200, visibleTo('field'), (tx, w) =>
-      fields.updateField(tx, { ...w, calcDisclosure }, id, body),
+      fields.updateField(tx, { ...w, calcDisclosure, fieldColumnsViewable }, id, body),
     );
   });
   router.delete(`${FIELDS}/:id`, async (c) => {

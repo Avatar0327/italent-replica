@@ -127,6 +127,17 @@ describe('AC-19a 改名固化文本兜底（候选引用，只增不减）', () 
     expect(await refsOf(testDb().db, w, itemId)).toHaveLength(1);
   });
 
+  it('R1-P2-1：含点号的字段名 + 空白写法引用：改名固化为候选引用，随后删除仍 409', async () => {
+    const w = await f082World(testDb().db, 'f082-c-dot');
+    const [target, a] = [await w.numberField(), await w.field('number', { name: '甲.乙.丙' })];
+    const rule = await w.create(calcBody([calcItem(target, '盘点对象 . 甲 .\n乙\t. 丙 + 1')]));
+    const itemId = await itemIdOf(testDb().db, w, rule.id, target.id);
+    expect((await renameField(w, a, '新名字')).status).toBe(200);
+    expect(await refsOf(testDb().db, w, itemId)).toEqual([{ item_id: itemId, field_id: a.id, kind: 'candidate' }]);
+    const blocked = await deleteField(w, a);
+    expect([blocked.status, (await errorOf(blocked)).details['reason']]).toEqual([409, 'FIELD_IN_USE']);
+  });
+
   it('解析失败的存量公式 `盘点对象.A +`：A 由粗筛认定，改名后同样固化，删除 409', async () => {
     const w = await f082World(testDb().db, 'f082-c2');
     const [target, a] = [await w.numberField(), await w.field('number', { name: '甲A' })];

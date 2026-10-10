@@ -25,6 +25,7 @@ import {
   makeBound,
   renameField,
 } from './AC-TR-F082-support.js';
+import { rowsOf } from './support/f048.js';
 import { waitForBlocked } from './support/pg-interleave.js';
 
 const testDb = useTestDb();
@@ -113,6 +114,70 @@ pg('AC-27 锁序（真 PG）', () => {
     });
     const report = await pending!;
     expect(report.length).toBeGreaterThan(0);
+  });
+
+  // R1-P3-1：确定性屏障。卡住关键中间阶段，核对“等待者在等什么资源、已经持有哪些锁”，锁序被颠倒时这里必然失败，
+  // 不依赖碰运气的并发交错，也不接受任意 409
+  const waitingLocktypes = async (db: Db) =>
+    rowsOf<{ locktype: string }>(
+      await db.execute(sql`SELECT l.locktype FROM pg_locks l JOIN pg_stat_activity a ON a.pid = l.pid
+        WHERE NOT l.granted AND a.datname = current_database() ORDER BY 1`),
+    ).map((row) => row.locktype);
+  /** 探针：另开事务对版本行 / 字段行 NOWAIT 加锁；加得上返回 true（没人持有），加不上（55P03）返回 false（有人持有）。 */
+  const lockable = async (db: Db, tenantId: string, statement: ReturnType<typeof sql>) => {
+    try {
+      await withTenant(db, tenantId, (tx) => tx.execute(statement));
+      return true;
+    } catch (error) {
+      if (pgErrorCode(error) === '55P03') return false;
+      throw error;
+    }
+  };
+  const versionRow = sql`SELECT tenant_id FROM talent_review_field_catalog_versions FOR UPDATE NOWAIT`;
+
+  it('回补卡在位置 advisory 锁（A）上时尚未持有版本行（V）：推进版本是回补事务里最后取的锁', async () => {
+    const { db, w, x } = await world('f082-pg27-barrier-a');
+    // 版本行先建好：否则回补事务里未提交的 INSERT 对探针不可见，探针看不出谁持有它
+    await withTenant(db, w.as.tenant, (tx) =>
+      tx.execute(sql`INSERT INTO talent_review_field_catalog_versions (tenant_id) VALUES (${w.as.tenant})
+        ON CONFLICT DO NOTHING`),
+    );
+    let pending: ReturnType<typeof backfill> | undefined;
+    await withTenant(db, w.as.tenant, async (tx) => {
+      await lockPositionFields(tx, w.as.tenant, [x.id]); // 持有 A
+      pending = backfill(db, w.as.tenant);
+      await waitForBlocked(db, 1);
+      // 等的是 advisory 锁（A），不是别的资源
+      expect(await waitingLocktypes(db)).toEqual(['advisory']);
+      // 此时回补还没取到 V：探针能锁住版本行。锁序反转（V 先于 A）时这里会失败
+      expect(await lockable(db, w.as.tenant, versionRow)).toBe(true);
+    });
+    expect((await pending!).length).toBeGreaterThan(0);
+    expect(await catalogVersion(db, w)).toBeGreaterThan(0);
+  });
+
+  it('改名卡在版本行（V）上时已持有字段行（F）：F 先于 V；改名失败回滚后不留版本推进', async () => {
+    const { db, w, x } = await world('f082-pg27-barrier-f');
+    const before = await catalogVersion(db, w);
+    let rename: Promise<Response> | undefined;
+    await withTenant(db, w.as.tenant, async (tx) => {
+      await tx.execute(sql`INSERT INTO talent_review_field_catalog_versions (tenant_id) VALUES (${w.as.tenant})
+        ON CONFLICT DO NOTHING`);
+      await tx.execute(sql`SELECT tenant_id FROM talent_review_field_catalog_versions FOR UPDATE`); // 持有 V
+      rename = renameField(w, x, '屏障之后的名字');
+      await waitForBlocked(db, 1);
+      // 等的是行锁（版本行），而此刻改名已经持有字段行：F 先于 V
+      expect(await waitingLocktypes(db)).toEqual(['transactionid']);
+      expect(
+        await lockable(
+          db,
+          w.as.tenant,
+          sql`SELECT id FROM talent_review_fields WHERE id = ${x.id}::uuid FOR UPDATE NOWAIT`,
+        ),
+      ).toBe(false);
+    });
+    expect((await rename!).status).toBe(200);
+    expect(await catalogVersion(db, w)).toBeGreaterThan(before);
   });
 
   it('三方交错（回补 / 改名 X / 写九宫格取位置 advisory 锁）反复并发：无 40P01，各自成功或得到受控错误', async () => {

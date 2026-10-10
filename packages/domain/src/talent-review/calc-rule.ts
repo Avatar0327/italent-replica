@@ -98,12 +98,21 @@ export function formulaReferences(formula: string): string[] {
 }
 
 /**
+ * 文本粗筛词：字段名按“.”拆成各段（去空段）。公式里的路径在点号两侧可以有空白、换行、制表符（`盘点对象 . 甲 . 乙`），
+ * 含点号的字段名在原文里不一定连续出现，所以粗筛要求**每一段**都出现，而不是整个名称（R1-P2-1）。名称只由点构成时退回整名。
+ */
+export function fieldNameTerms(fieldName: string): string[] {
+  const terms = fieldName.split('.').filter((term) => term !== '');
+  return terms.length > 0 ? terms : [fieldName];
+}
+
+/**
  * 非 bound 公式的文本兜底（F-082 契约 §3.2 第 3 条，长期保留）：公式按名称引用了该字段的**当前**名称。
- * 先文本粗筛、再解析精确判定（`盘点对象 . 来源` 等空白写法算，字符串里的、其他字段名的前缀 / 子串不算）；
- * 解析失败的公式只要粗筛命中名称就算引用（不能解析时宁可多保护）。
+ * 先文本粗筛（每段名称都出现）、再解析精确判定（`盘点对象 . 来源` 等空白写法算，字符串里的、其他字段名的前缀 / 子串不算）；
+ * 解析失败的公式只要粗筛命中就算引用（不能解析时宁可多保护）。
  */
 export function textMentionsField(formula: string, fieldName: string): boolean {
-  if (!formula.includes(fieldName)) return false;
+  if (!fieldNameTerms(fieldName).every((term) => formula.includes(term))) return false;
   const parsed = validateFormula(formula, { isKnownField: () => true });
   return !parsed.ok || parsed.fields.includes(formulaPath(fieldName));
 }

@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { fieldHandle } from '../expression/index.js';
-import { textMentionsField } from './calc-rule.js';
+import { fieldNameTerms, textMentionsField } from './calc-rule.js';
 import { checkRenameRoundTrip } from './formula-rename.js';
 
 const A = '11111111-1111-4111-8111-111111111111';
@@ -65,5 +65,29 @@ describe('textMentionsField（文本兜底，契约 §3.2 第 3 条）', () => {
     expect(textMentionsField('盘点对象.绩效 +', '绩效')).toBe(true);
     expect(textMentionsField('盘点对象.绩效得分 +', '绩效')).toBe(true);
     expect(textMentionsField('盘点对象.其他 +', '绩效')).toBe(false);
+  });
+});
+
+describe('R1-P2-1：含点号的字段名（任意深度），空白 / 换行 / 制表符写法也算引用', () => {
+  it('textMentionsField：按路径判定，点号两侧的空白不影响', () => {
+    for (const formula of ['盘点对象.甲.乙 + 1', '盘点对象 . 甲 . 乙 + 1', '盘点对象 .\n甲\t.\r\n乙 + 1']) {
+      expect(textMentionsField(formula, '甲.乙'), formula).toBe(true);
+    }
+    expect(textMentionsField('盘点对象 . 甲 . 乙 . 丙 + 1', '甲.乙.丙')).toBe(true);
+    expect(textMentionsField('盘点对象 . 甲 . 乙 . 丙 + 1', '甲.乙')).toBe(false);
+    expect(textMentionsField('Len("盘点对象 . 甲 . 乙")', '甲.乙')).toBe(false);
+  });
+
+  it('粗筛词 fieldNameTerms：按“.”拆成各段（去空段），SQL 粗筛要求每段都出现，不漏空白写法', () => {
+    expect(fieldNameTerms('绩效')).toEqual(['绩效']);
+    expect(fieldNameTerms('甲.乙.丙')).toEqual(['甲', '乙', '丙']);
+    expect(fieldNameTerms('甲..乙')).toEqual(['甲', '乙']);
+    // 整个名称只由点构成时退回整名（不产生空粗筛词）
+    expect(fieldNameTerms('..')).toEqual(['..']);
+  });
+
+  it('解析失败时：各段都命中才算（宁可多保护）', () => {
+    expect(textMentionsField('盘点对象 . 甲 . 乙 +', '甲.乙')).toBe(true);
+    expect(textMentionsField('盘点对象 . 甲 +', '甲.乙')).toBe(false);
   });
 });

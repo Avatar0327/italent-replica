@@ -11,8 +11,6 @@ import {
   asc,
   eq,
   inArray,
-  ne,
-  sql,
   talentReviewCalcItemRefs as R,
   talentReviewCalcRuleItems as I,
   talentReviewCalcRules as K,
@@ -28,13 +26,13 @@ import {
   type FormulaField,
   type OrderingDiagnosticKind,
   targetNotAllowed,
-  textMentionsField,
   unreferenceableItem,
 } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { notFoundMessage, requireConfigCreatable, requireConfigVisible, type ModuleScope } from './access.js';
 import type { CalcItemBody, CalcRuleCreate, CalcRulePatch } from './calc-rule-input.js';
 import { CALC_RULE, type CalcRuleView, loadCalcRuleView } from './calc-rule-view.js';
+import { textFallbackItems } from './text-fallback.js';
 import {
   auditConfig,
   createConfig,
@@ -337,9 +335,5 @@ registerConfigReferenceGuard('field', async (tx, tenantId, fieldId) => {
     .from(F)
     .where(and(eq(F.tenantId, tenantId), eq(F.id, fieldId)));
   if (!field) return null;
-  const candidates = await tx
-    .select({ formula: I.formula })
-    .from(I)
-    .where(and(eq(I.tenantId, tenantId), ne(I.formulaBinding, 'bound'), sql`strpos(${I.formula}, ${field.name}) > 0`));
-  return candidates.some((row) => textMentionsField(row.formula, field.name)) ? 'CALC_RULE' : null;
+  return (await textFallbackItems(tx, tenantId, field.name)).length > 0 ? 'CALC_RULE' : null;
 });

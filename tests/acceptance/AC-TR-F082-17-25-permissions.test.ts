@@ -159,6 +159,47 @@ describe('AC-17 计算规则审计按查看人当前的字段目录权限裁剪'
   });
 });
 
+describe('R1-P2-2 审计：B5 旧公式引用含点号的完整字段名（二、三段、盘点方案之下）', () => {
+  let ruleId: string;
+  const FORMULA = '盘点对象 . 甲 . 乙 + 盘点对象.甲.乙.丙 + 盘点对象.盘点方案.秘密';
+
+  beforeAll(async () => {
+    const target = await numberField('点号目标');
+    for (const name of ['甲.乙', '甲.乙.丙', '盘点方案.秘密']) await numberField(name);
+    const rule = await create<CalcRuleView>(
+      CALC_RULES,
+      calcBody([calcItem(target, FORMULA)], { name: '点号审计规则' }),
+    );
+    ruleId = rule.id;
+  });
+
+  async function auditText(as: { user: string; tenant: string }) {
+    const audit = auditApi(testDb().db, TR_NOW.toISOString(), { authorize: undefined });
+    const list = await audit.dataChanges(as, { objectType: RULE.code, limit: '100' });
+    const mine = list.items.filter((item) => item.objectId === ruleId);
+    const details = [];
+    for (const item of mine) details.push(await audit.dataChange(as, item.id));
+    return { count: mine.length, text: JSON.stringify([mine, details]) };
+  }
+
+  it('有字段目录全部范围与四列查看权：按完整名称对可见目录判断，原样显示，不是占位符', async () => {
+    const viewer = await calcRuleOperator(world, { seeAll: true, fields: 'seeAll' });
+    await makeAuditor(viewer.user.id);
+    const seen = await auditText(viewer.as);
+    expect(seen.count).toBeGreaterThan(0);
+    expect(seen.text).toContain('盘点对象 . 甲 . 乙 + 盘点对象.甲.乙.丙 + 盘点对象.盘点方案.秘密');
+    expect(seen.text).not.toContain(PLACEHOLDER);
+  });
+
+  it('没有字段目录访问：三处都是占位符，不泄露含点号的字段名', async () => {
+    const viewer = await calcRuleOperator(world, { seeAll: true, fields: 'none' });
+    await makeAuditor(viewer.user.id);
+    const seen = await auditText(viewer.as);
+    for (const secret of ['甲 . 乙', '甲.乙.丙', '盘点方案.秘密']) expect(seen.text, secret).not.toContain(secret);
+    expect(seen.text).toContain(PLACEHOLDER);
+  });
+});
+
 describe('AC-25 改名错误不披露（FIELD_NAME_BREAKS_FORMULA）', () => {
   let source: { id: string; name: string };
   let target: { id: string; name: string };
@@ -172,8 +213,8 @@ describe('AC-25 改名错误不披露（FIELD_NAME_BREAKS_FORMULA）', () => {
   });
 
   /** 能改名（字段对象更新权 + 看全部）的操作人，另可叠加计算规则对象的查看权 / 范围 / items 列权限。 */
-  async function renamer(rules?: { seeAll: boolean; itemsHidden?: boolean }) {
-    const op = await configOperator(world, 'field', { seeAll: true });
+  async function renamer(rules?: { seeAll: boolean; itemsHidden?: boolean }, fieldHidden: readonly string[] = []) {
+    const op = await configOperator(world, 'field', { seeAll: true, hidden: fieldHidden });
     if (rules) {
       const profile = op.profile;
       const response = await setObjectPermission(
@@ -220,6 +261,22 @@ describe('AC-25 改名错误不披露（FIELD_NAME_BREAKS_FORMULA）', () => {
     expect(error.details['affected']).toEqual([{ ruleId: rule.id, targetFieldId: target.id, reason: 'TOO_LONG' }]);
     expect(error.details['others']).toBe(0);
   });
+
+  // R1-P2-3：目标字段是否可见 = 字段目录范围 + name / kind / enabled / systemWritten 四列查看权（与审计裁剪、计算规则接口同口径）
+  for (const column of ['kind', 'enabled', 'systemWritten']) {
+    it(`有规则全部范围 + items 列 + 字段全部范围，但缺字段目录 ${column} 列查看权：目标字段不披露，只有匿名计数`, async () => {
+      const response = await rename(await renamer({ seeAll: true }, [column]));
+      const body = await response.clone().text();
+      const error = await errorOf(response);
+      expect([response.status, error.details['reason'], error.details['affected'], error.details['others']]).toEqual([
+        409,
+        'FIELD_NAME_BREAKS_FORMULA',
+        [],
+        1,
+      ]);
+      for (const secret of [rule.id, target.id, 'TOO_LONG']) expect(body).not.toContain(secret);
+    });
+  }
 
   for (const [label, rules] of [
     ['没有计算规则查看权', undefined],
