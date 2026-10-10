@@ -219,7 +219,8 @@ async function progressView(tx: Tx, activityId: string, admin: Admin) {
       status: appraiserStatus(item),
       lastSentAt: iso(p.last_sent_at),
       progress: { done: item.done, total: item.total },
-      emailState: p.email_state,
+      // 凭据待发放（awaiting_credential）对管理员就是“待发送”（F-076 设计 §2.5）
+      emailState: p.email_state === 'awaiting_credential' ? 'pending' : p.email_state,
       todo: todoView(admin, { status: p.todo, reason: p.todo_reason }, item),
     };
   });

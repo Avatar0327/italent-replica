@@ -8,6 +8,8 @@ import { sql, withTenant } from '@italent/db';
 import { expect } from 'vitest';
 import { type PersonView, type QuestionnaireView, world360, type World360 } from './AC-360-support.js';
 import type { RequestOptions } from './support/tenant-api.js';
+import { credentialConfig } from '../../apps/api/src/modules/survey360/credential-config.js';
+import { openSealed, type Sealed } from '../../apps/api/src/modules/survey360/secret-box.js';
 
 export const MY = '/api/tenant/survey360/my';
 export const REPORT_LINK = '/api/survey360/report-link';
@@ -110,12 +112,44 @@ export async function userOf(w: World360, employeeId: string): Promise<string> {
 
 export async function outbox(w: World360, eventType: string) {
   const result = await withTenant(w.db, w.tenantId, (tx) =>
-    tx.execute(sql`SELECT payload, created_at FROM survey360_outbox WHERE event_type = ${eventType}
+    tx.execute(sql`SELECT id, event_type, payload, created_at FROM survey360_outbox WHERE event_type = ${eventType}
       ORDER BY created_at, id`),
   );
-  return (Array.isArray(result) ? result : (result as { rows: unknown[] }).rows) as {
-    payload: Record<string, unknown> & { token: string; personId?: string; to: string };
+  const list = (Array.isArray(result) ? result : (result as { rows: unknown[] }).rows) as {
+    id: string;
+    event_type: string;
+    payload: Record<string, unknown> & { token: string; personId?: string; to: string; sealed?: Sealed };
   }[];
+  // 邀请与报告转发的令牌（F-076）都在 payload.sealed 里：解封后合并成 payload.token，调用方照旧读 payload.token
+  return list.map((row) => {
+    if (!row.payload.sealed) return { payload: row.payload };
+    const opened = openSealed(credentialConfig(), row.payload.sealed, {
+      tenantId: w.tenantId,
+      outboxId: row.id,
+      eventType: row.event_type,
+    });
+    return { payload: { ...row.payload, token: opened.token! } };
+  });
+}
+
+/** 确认链接令牌：取自该确认单的邀请邮件（outbox，令牌在 sealed 里，F-076）。 */
+export async function confirmationToken(w: World360, confirmationId: string): Promise<string> {
+  const result = await withTenant(w.db, w.tenantId, (tx) =>
+    tx.execute(sql`SELECT id, event_type, payload FROM survey360_outbox
+      WHERE event_type = 'survey360.confirm_invitation' AND payload->>'confirmationId' = ${confirmationId}`),
+  );
+  const list = (Array.isArray(result) ? result : (result as { rows: unknown[] }).rows) as {
+    id: string;
+    event_type: string;
+    payload: { sealed: Sealed };
+  }[];
+  expect(list).toHaveLength(1);
+  const [mail] = list;
+  return openSealed(credentialConfig(), mail!.payload.sealed, {
+    tenantId: w.tenantId,
+    outboxId: mail!.id,
+    eventType: mail!.event_type,
+  }).token!;
 }
 
 /** 登录账号本人的待办入口（只要租户成员身份，不要 360 身份）。 */

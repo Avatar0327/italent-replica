@@ -1262,6 +1262,12 @@ export function visibleValue(value: unknown, fields: ReadonlySet<string> | undef
   const kept: Record<string, unknown> = {};
   for (const [key, inner] of Object.entries(value)) {
     const path = prefix ? `${prefix}.${key}` : key;
+    // 计算规则的 hints 是结构固定的协议值（order / blocked / cycles / warnings / others），已在来源裁剪里按查看人投影过
+    // （calcRuleSources，契约 §5.2）；它随 hints 列的查看权整体保留或去掉，不能当普通嵌套对象逐键按字段裁剪
+    if (!prefix && key === 'hints' && inner !== null && typeof inner === 'object' && !Array.isArray(inner)) {
+      if (fieldVisible(fields, path)) kept[key] = inner;
+      continue;
+    }
     if (
       inner !== null &&
       typeof inner === 'object' &&

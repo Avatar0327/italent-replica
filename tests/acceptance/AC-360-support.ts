@@ -10,6 +10,8 @@ import { expect } from 'vitest';
 import { employmentSession } from './AC-EMP-support.js';
 import { cmd, tenantApi, type RequestOptions } from './support/tenant-api.js';
 import { PERSONNEL_OBJECT, survey360 } from '@italent/domain';
+import { credentialConfig } from '../../apps/api/src/modules/survey360/credential-config.js';
+import { openSealed, type Sealed } from '../../apps/api/src/modules/survey360/secret-box.js';
 import {
   authorizeInTransaction,
   getModuleViewableFieldsInTransaction,
@@ -346,16 +348,25 @@ export async function world360(db: Db, label: string, options: { access?: Employ
     return ok<ActivityView>(request('POST', `/activities/${id}/${action}`, { ifMatch: current.revision }));
   }
 
-  /** 作答链接令牌：取自邀请邮件 outbox（邮件不接真实发送）。 */
+  /** 作答链接令牌：取自邀请邮件 outbox（邮件不接真实发送）；令牌在 payload.sealed 里，用测试进程的密钥解封（F-076）。 */
   async function token(activityId: string, personId: string, kind = 'survey360.answer_invitation') {
     const rows = await withTenant(db, tenantId, (tx) =>
-      tx.execute(sql`SELECT payload FROM survey360_outbox WHERE event_type = ${kind}
+      tx.execute(sql`SELECT id, event_type, payload FROM survey360_outbox WHERE event_type = ${kind}
         AND payload->>'activityId' = ${activityId} AND payload->>'personId' = ${personId}
-        ORDER BY created_at DESC LIMIT 1`),
+        ORDER BY created_at DESC, id DESC LIMIT 1`),
     );
-    const list = (Array.isArray(rows) ? rows : (rows as { rows: unknown[] }).rows) as { payload: { token: string } }[];
+    const list = (Array.isArray(rows) ? rows : (rows as { rows: unknown[] }).rows) as {
+      id: string;
+      event_type: string;
+      payload: { sealed: Sealed };
+    }[];
     expect(list.length, `outbox 中没有 ${personId} 的邀请`).toBe(1);
-    return list[0]!.payload.token;
+    const [mail] = list;
+    return openSealed(credentialConfig(), mail!.payload.sealed, {
+      tenantId,
+      outboxId: mail!.id,
+      eventType: mail!.event_type,
+    }).token!;
   }
 
   function link(tokenValue: string) {

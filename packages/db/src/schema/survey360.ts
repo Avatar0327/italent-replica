@@ -604,10 +604,16 @@ export const survey360Links = pgTable(
     }),
     check('survey360_links_kind', sql`${t.kind} IN ('answer', 'confirm')`),
     check('survey360_links_credential_state', sql`${t.credentialState} IN ('none', 'pending', 'issued', 'retired')`),
-    // issued 当且仅当两项摘要齐全
+    // issued 时两项摘要都齐全；非 issued 时两项都必须为空（不能只留一项，#220 审查 P3-2）
     check(
       'survey360_links_credential_digest',
-      sql`(${t.credentialState} = 'issued') = (${t.serialLookup} IS NOT NULL AND ${t.passwordHash} IS NOT NULL)`,
+      sql`(${t.credentialState} = 'issued' AND ${t.serialLookup} IS NOT NULL AND ${t.passwordHash} IS NOT NULL)
+        OR (${t.credentialState} <> 'issued' AND ${t.serialLookup} IS NULL AND ${t.passwordHash} IS NULL)`,
+    ),
+    // 版本集合不得含 NULL 元素：ANY 遇到 NULL 得 NULL，CHECK 会放过
+    check(
+      'survey360_links_credential_versions_nonnull',
+      sql`array_position(${t.credentialKeyVersions}, NULL::smallint) IS NULL`,
     ),
     // issued / retired 都带当前版本，且该版本在已用版本集合内（退役清空摘要，版本与集合保留）
     check(
@@ -709,6 +715,13 @@ export const survey360SecurityEvents = pgTable(
     occurredAt: at('occurred_at').notNull(),
   },
   (t) => [
+    // 完成类事件各只有一条：同一租户同一版本的 key_rotated、同一次运行的 key_retired（并发命令不得重复记，P2-2）
+    uniqueIndex('survey360_security_events_rotated')
+      .on(t.tenantId, t.credentialKeyVersion)
+      .where(sql`${t.kind} = 'key_rotated'`),
+    uniqueIndex('survey360_security_events_retired')
+      .on(t.tenantId, t.runId)
+      .where(sql`${t.kind} = 'key_retired'`),
     check(
       'survey360_security_events_kind',
       sql`${t.kind} IN ('login_success', 'logout', 'lock', 'unlock', 'credential_issued', 'credential_reissued',
@@ -737,6 +750,26 @@ export const survey360KeyRetireRuns = pgTable(
   (t) => [
     primaryKey({ columns: [t.tenantId, t.runId] }),
     check('survey360_key_retire_runs_status', sql`${t.status} IN ('running', 'done', 'failed')`),
+  ],
+);
+
+/**
+ * 凭据密钥版本的全局登记（F-076 设计 §2.4“版本只增不减”）：每次轮换登记一行，最大 version 就是“已登记的最高版本”。
+ * 平台表、不带租户维度：凭据密钥与 CURRENT 是部署级配置（环境变量 / Secret），对所有租户同一份，防回退只能按全局判定；
+ * 不随租户恢复 / 重建变化。只放版本号与时间，不含任何密钥或租户数据，所以租户角色可读（发放写回在租户事务里复核）。
+ * 只追加：迁移里语句级触发器禁止 UPDATE / DELETE / TRUNCATE。
+ */
+export const survey360CredentialKeyVersions = pgTable(
+  'survey360_credential_key_versions',
+  {
+    version: smallint('version').primaryKey(),
+    /** 登记时的上一个已登记版本；首次登记为空。 */
+    previous: smallint('previous'),
+    registeredAt: at('registered_at').notNull().defaultNow(),
+  },
+  (t) => [
+    check('survey360_credential_key_versions_positive', sql`${t.version} > 0`),
+    check('survey360_credential_key_versions_increasing', sql`${t.previous} IS NULL OR ${t.previous} < ${t.version}`),
   ],
 );
 

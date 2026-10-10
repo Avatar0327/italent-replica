@@ -18,6 +18,33 @@ export async function f082World(db: Db, label: string): Promise<F082World> {
   return calcWorld(db, label);
 }
 
+/** 开关打开的世界（F082-3 起的新写入路径与新响应；依赖注入覆盖只允许作用于 useTestDb() 建的库）。 */
+export async function boundWorld(db: Db, label: string): Promise<F082World> {
+  return calcWorld(db, label, { formulaIdBinding: true });
+}
+
+/** 计算项目在库里的原始行（formula 是规范文本还是名称文本、绑定状态）。 */
+export async function rawItem(db: Db, w: F082World, itemId: string) {
+  const found = await withTenant(db, tenantOf(w), (tx) =>
+    tx.execute(sql`SELECT formula, formula_binding, binding_issue, uses_ranking FROM talent_review_calc_rule_items
+      WHERE id = ${itemId}`),
+  );
+  return rows<{ formula: string; formula_binding: string; binding_issue: string | null; uses_ranking: boolean }>(
+    found,
+  )[0]!;
+}
+
+/** 规则的版本与项目写入状态快照：用来断言“什么都没写”。 */
+export async function ruleFootprint(db: Db, w: F082World, ruleId: string) {
+  const found = await withTenant(db, tenantOf(w), (tx) =>
+    tx.execute(sql`SELECT k.revision, i.id AS item_id, i.formula, i.formula_binding,
+        (SELECT count(*)::int FROM talent_review_calc_item_refs r WHERE r.item_id = i.id) AS refs
+      FROM talent_review_calc_rules k LEFT JOIN talent_review_calc_rule_items i ON i.rule_id = k.id
+      WHERE k.id = ${ruleId} ORDER BY i.id`),
+  );
+  return rows<Record<string, unknown>>(found);
+}
+
 const tenantOf = (w: F082World) => w.as.tenant;
 
 /** 规则里某个目标字段的计算项目 ID。 */

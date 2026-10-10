@@ -9,7 +9,7 @@
  *   收件人凭链接只看邮件里的报告。精细化下只转发范围内评价对象的报告，系统内收件人也须在范围内（不暴露范围外人员的
  *   邮箱）。
  */
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import {
   getTenant,
   isUuid,
@@ -56,7 +56,9 @@ import {
   uuid,
   write,
 } from './context.js';
+import { credentialConfig } from './credential-config.js';
 import { hashToken } from './links.js';
+import { sealJson } from './secret-box.js';
 import { personFilter, visiblePersonIds } from './people.js';
 import { buildReport } from './report-content.js';
 import { scoringChanged } from './changes.js';
@@ -363,9 +365,13 @@ async function sendForward(tx: Tx, ctx: Survey360Context, activity: ActivityRow,
       commandId: ctx.commandId,
       createdBy: ctx.userId,
     });
+    // 收件人令牌能直接读报告：和邀请一样只以 AES-GCM 密文进 outbox（DEC-377②，AGENTS §5）；发送与模板归 F-077
+    const outboxId = randomUUID();
+    const eventType = 'survey360.report_forward';
     await tx.insert(survey360Outbox).values({
+      id: outboxId,
       tenantId: ctx.tenantId,
-      eventType: 'survey360.report_forward',
+      eventType,
       objectId: activity.id,
       commandId: ctx.commandId,
       payload: {
@@ -375,7 +381,7 @@ async function sendForward(tx: Tx, ctx: Survey360Context, activity: ActivityRow,
         name: entry.name,
         subject: '请下载报告',
         reportIds,
-        token,
+        sealed: sealJson(credentialConfig(), { token }, { tenantId: ctx.tenantId, outboxId, eventType }),
       },
     });
   }

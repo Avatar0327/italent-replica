@@ -102,13 +102,24 @@ export function relationView(row: RelationRow) {
   };
 }
 
-async function auditRelation(tx: Tx, ctx: Writer, action: string, before: RelationRow | null, after: RelationRow) {
+async function auditRelation(
+  tx: Tx,
+  ctx: Writer,
+  action: string,
+  before: RelationRow | null,
+  after: RelationRow,
+  credentialPending = 0,
+) {
   await audit360(tx, actor(ctx), {
     action,
     objectType: 'survey360-relation',
     objectId: after.id,
     before: before ? relationView(before) : null,
-    after: { ...relationView(after), removed: after.removed },
+    after: {
+      ...relationView(after),
+      removed: after.removed,
+      ...(credentialPending ? { credentialPending } : {}),
+    },
   });
 }
 
@@ -229,9 +240,9 @@ export async function addRelation(
     })
     .returning();
   // 启用中的活动新加评价者：发放（或沿用）作答链接
-  if (activity.status === 'enabled') await ensureAnswerLink(tx, ctx, activity.id, appraiser);
+  const issued = activity.status === 'enabled' ? await ensureAnswerLink(tx, ctx, activity.id, appraiser) : undefined;
   await markDataChanged(tx, activity.id, ctx.now, [objectId]);
-  await auditRelation(tx, ctx, 'survey360.relation.create', null, row!);
+  await auditRelation(tx, ctx, 'survey360.relation.create', null, row!, issued?.credentialPending ? 1 : 0);
   return row!;
 }
 

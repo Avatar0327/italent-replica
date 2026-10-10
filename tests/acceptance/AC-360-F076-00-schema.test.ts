@@ -102,6 +102,31 @@ describe('AC-360-F076-00 F-076 作答链接凭据列（§6）', () => {
     expect(await set(sql`credential_state = 'sent'`)).toBe('23514');
   });
 
+  it('PR-1 收紧（#220 审查 P3-2）：非 issued 时两项摘要都必须为空；版本集合不得含 NULL 元素', async () => {
+    const w = await world();
+    const set = (clause: ReturnType<typeof sql>) =>
+      sqlState(w.tenantId, sql`UPDATE survey360_links SET ${clause} WHERE id = ${w.linkId}`);
+    // pending / retired 状态只留一项摘要
+    expect(await set(sql`credential_state = 'pending', serial_lookup = 's'`)).toBe('23514');
+    expect(await set(sql`credential_state = 'pending', password_hash = 'p'`)).toBe('23514');
+    expect(
+      await set(sql`credential_state = 'retired', serial_lookup = 's', credential_key_version = 1,
+        credential_key_versions = '{1}'`),
+    ).toBe('23514');
+    // 版本集合含 NULL：ANY 得到 NULL，旧约束放过
+    expect(
+      await set(sql`credential_state = 'issued', serial_lookup = 's', password_hash = 'p',
+        credential_key_version = 2, credential_key_versions = ARRAY[1, NULL, 2]::smallint[]`),
+    ).toBe('23514');
+    expect(await set(sql`credential_key_versions = ARRAY[NULL]::smallint[]`)).toBe('23514');
+    // 合法组合仍通过：issued 双摘要；retired 摘要全空
+    expect(
+      await set(sql`credential_state = 'issued', serial_lookup = 's', password_hash = 'p',
+        credential_key_version = 2, credential_key_versions = '{1,2}'`),
+    ).toBeUndefined();
+    expect(await set(sql`credential_state = 'retired', serial_lookup = NULL, password_hash = NULL`)).toBeUndefined();
+  });
+
   it('确认链接不得有凭据：kind = confirm 时 credential_state 只能是 none', async () => {
     const w = await world();
     const state = await sqlState(

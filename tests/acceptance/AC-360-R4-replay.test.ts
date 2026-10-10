@@ -11,6 +11,7 @@ import { survey360 } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loginEmailOf } from './AC-EMP-support.js';
+import { confirmationToken } from './AC-360-B-support.js';
 import type { RequestOptions } from './support/tenant-api.js';
 import {
   BASE,
@@ -192,15 +193,7 @@ async function replayAfter(
 }
 
 /** 链接令牌：取自 outbox 里该确认单的邀请邮件。 */
-async function confirmToken(w: World360, confirmationId: string) {
-  const result = await withTenant(w.db, w.tenantId, (tx) =>
-    tx.execute(sql`SELECT payload->>'token' AS token FROM survey360_outbox
-      WHERE event_type = 'survey360.confirm_invitation' AND payload->>'confirmationId' = ${confirmationId}`),
-  );
-  const list = (Array.isArray(result) ? result : (result as { rows: unknown[] }).rows) as { token: string }[];
-  expect(list).toHaveLength(1);
-  return list[0]!.token;
-}
+const confirmToken = confirmationToken;
 
 /** 系统管理员建的活动：外部人员作评价对象 + 一名同事评价者，可选启用。 */
 async function linkScene(env: Env, enable: boolean) {
