@@ -437,6 +437,17 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/talent-review/matrix-routes.ts#MATRICES': [
     'apps/api/src/modules/talent-review/access.ts#TALENT_REVIEW_BASE',
   ],
+  'apps/api/src/modules/talent-review/matrix-routes.ts#recheck': [
+    'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
+    'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
+    'apps/api/src/modules/talent-review/access.ts#codeOf',
+    'apps/api/src/modules/talent-review/access.ts#reviewContext',
+    'apps/api/src/modules/talent-review/access.ts#reviewWriteContext',
+  ],
+  'apps/api/src/modules/talent-review/matrix-routes.ts#recheckFields': [
+    'apps/api/src/modules/talent-review/access.ts#checkWriteFields',
+    '#recheck',
+  ],
   'apps/api/src/modules/talent-review/matrix-routes.ts#registerMatrixRoutes': [
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
     'apps/api/src/modules/talent-review/access.ts#checkWriteFields',
@@ -457,6 +468,7 @@ export const GRAPH: Graph = {
     '#referencedFields',
     '#registerRatioGroupRoutes',
     '#requireFieldReference',
+    '#runDelete',
     '#runWrite',
     'apps/api/src/modules/talent-review/matrix-service.ts#createMatrix',
     'apps/api/src/modules/talent-review/matrix-service.ts#deleteMatrix',
@@ -489,12 +501,13 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/talent-review/access.ts#reviewContext',
     'apps/api/src/modules/talent-review/access.ts#reviewScope',
   ],
-  'apps/api/src/modules/talent-review/matrix-routes.ts#runWrite': [
+  'apps/api/src/modules/talent-review/matrix-routes.ts#runDelete': ['#recheck', '#runGuarded'],
+  'apps/api/src/modules/talent-review/matrix-routes.ts#runGuarded': [
     'apps/api/src/modules/talent-review/access.ts#requireConfigVisible',
-    'apps/api/src/modules/talent-review/access.ts#reviewScope',
     'apps/api/src/modules/talent-review/access.ts#trimReview',
     'apps/api/src/modules/talent-review/matrix-service.ts#requireReferencesVisible',
   ],
+  'apps/api/src/modules/talent-review/matrix-routes.ts#runWrite': ['#recheckFields', '#runGuarded'],
   'apps/api/src/modules/talent-review/matrix-service.ts#checkAgainstFields': [
     '#invalid',
     '#reject',

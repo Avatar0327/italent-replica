@@ -301,13 +301,13 @@ const MATRIX_REQUIRED: RequiredTable = {
   ],
   [`POST ${MTX_BASE}`]: [
     ...matrixChange('registerMatrixRoutes', 'create'),
-    ...matrixReference('const fieldScope = await requireFieldReference(c, deps)'),
+    ...matrixReference('await requireFieldReference(c, deps)'),
   ],
   [`PATCH ${MTX_BASE}/:id`]: [
     ...matrixChange('registerMatrixRoutes', 'update'),
     RENAME_GUARD,
     MATRIX_POSITION_GUARD,
-    ...matrixReference('const fieldScope = references.length > 0 ? await requireFieldReference(c, deps) : undefined'),
+    ...matrixReference('if (references.length > 0) await requireFieldReference(c, deps)'),
   ],
   [`DELETE ${MTX_BASE}/:id`]: matrixChange('registerMatrixRoutes', 'delete'),
   [`POST ${MTX_BASE}/:id/ratio-groups`]: matrixChange('registerRatioGroupRoutes', 'update'),
