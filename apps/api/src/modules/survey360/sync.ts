@@ -491,13 +491,31 @@ export async function syncPeople(
   return result;
 }
 
-/** 一页员工：先建 / 认领人员，再一次写入组织值与上级（上级可能是本页新建的人员）。 */
+/**
+ * 一页员工：先建 / 认领人员，再一次写入组织值与上级（上级可能是本页新建的人员）。
+ * 已挂接的人员在写入前按目标人员范围复核（F-043）：精细化下员工信息范围内的员工，其 360 人员仍可能在操作人的 360 人员
+ * 范围外（与人员列表同一谓词，含创建人维度），范围外的跳过、不写——回执 skipped 记一条（受限查看人看不到，见 syncView），
+ * 并写审计 survey360.person.sync_skipped（对象 = 该 360 人员，只有能查看该人员日志的人看得到）。
+ */
 async function syncPage(tx: Tx, ctx: Survey360Context, items: readonly EmployeeSnapshot[], result: SyncResult) {
-  const linked: { snapshot: EmployeeSnapshot; personId: string; existed: boolean }[] = [];
+  const existingOf = new Map<string, PersonRow>();
   for (const snapshot of items) {
     const existing = await linkedPerson(tx, snapshot.employeeId);
-    if (existing) linked.push({ snapshot, personId: existing.id, existed: true });
-    else {
+    if (existing) existingOf.set(snapshot.employeeId, existing);
+  }
+  const visible = await visiblePersonIds(
+    tx,
+    ctx.admin,
+    [...existingOf.values()].map((person) => person.id),
+  );
+  const linked: { snapshot: EmployeeSnapshot; personId: string; existed: boolean }[] = [];
+  for (const snapshot of items) {
+    const existing = existingOf.get(snapshot.employeeId);
+    if (existing && !visible.has(existing.id)) {
+      await skipOutOfPersonScope(tx, ctx, existing, result);
+    } else if (existing) {
+      linked.push({ snapshot, personId: existing.id, existed: true });
+    } else {
       const created = await syncUnlinked(tx, ctx, snapshot, result);
       if (created) linked.push({ snapshot, personId: created.id, existed: false });
     }
@@ -508,6 +526,18 @@ async function syncPage(tx: Tx, ctx: Survey360Context, items: readonly EmployeeS
     if (saved === 'EMAIL_TAKEN') result.skipped.push({ employeeId: snapshot.employeeId, reason: 'EMAIL_TAKEN' });
     else if (saved && existed) result.updated.push({ personId, employeeId: snapshot.employeeId });
   }
+}
+
+/** 目标人员在操作人的 360 人员范围外：不写，记回执 skipped 与审计（原因统一 PERSON_NOT_AVAILABLE，不泄露存在性）。 */
+async function skipOutOfPersonScope(tx: Tx, ctx: Survey360Context, person: PersonRow, result: SyncResult) {
+  result.skipped.push({ employeeId: person.employeeId!, reason: NOT_AVAILABLE });
+  await audit360(tx, actor(ctx), {
+    action: 'survey360.person.sync_skipped',
+    objectType: 'survey360-person',
+    objectId: person.id,
+    before: null,
+    after: { id: person.id, employeeId: person.employeeId },
+  });
 }
 
 /**
