@@ -19,6 +19,7 @@ export type ActivityTypeCreate = z.infer<typeof activityTypeCreate>;
 export type ActivityTypePatch = z.infer<typeof activityTypePatch>;
 
 // ── 评审组（B3）──────────────────────────────────────────────
+// TODO(需取证 #206)：评审组编码格式、名称是否唯一、成员数上限都没有取证，以下为暂行保守默认
 export const MAX_REVIEW_MEMBERS = 200;
 const groupCode = z
   .string()

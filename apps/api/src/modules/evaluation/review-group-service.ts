@@ -28,6 +28,7 @@ export type ReviewGroupView = Tracked & {
   readonly members: MemberInput[];
 };
 
+// TODO(需取证 #206)：编码重复的原站提示原文未取证，暂用通用文案
 const codeExists = () => new AppError('CONFLICT', '编码重复，请重新输入', { reason: 'DUPLICATE' });
 
 /** 组长恰好 1 个、成员不重复（对完整集合校验；与成员是否在范围内无关）。 */
@@ -199,7 +200,7 @@ export async function updateReviewGroup(tx: Tx, ctx: WriteContext, id: string, b
 
 export async function deleteReviewGroup(tx: Tx, ctx: WriteContext, id: string) {
   await lockEditable(tx, ctx, 'reviewGroup', id);
-  // B5 登记“被评定活动 / 场次引用”（usage.ts 钩子位）
+  // B5 登记“被评定活动 / 场次引用”（usage.ts 钩子位）；TODO(需取证 #206)：被引用后能否停用 / 删除的原站表现
   await rejectInUse(tx, ctx, 'reviewGroup', id);
   const before = await loadGroup(tx, ctx.tenantId, id);
   // 成员随评审组删除（外键 CASCADE），删除快照连同成员写进审计
