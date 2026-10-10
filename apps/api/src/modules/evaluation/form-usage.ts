@@ -27,15 +27,16 @@ export function registerFormUsage(): void {
       subject: '此评分项',
       referrerKind: '评价表',
       references: (ctx, id) => {
-        const visible =
-          ctx.formVisibility?.canView === true
-            ? scopePredicate(ctx.formVisibility.scope, 'evaluationForm', 'f')
-            : sql`false`;
-        return sql`SELECT f.id, f.name, (${visible}) AS visible FROM ev_forms f
+        // 能列出名称的评价表：评价表查看权 + 范围 + “名称”字段权；名称字段看不到时不带名称、不按名称排序，全部计入“其他 N 个”
+        const access = ctx.formVisibility;
+        const listed =
+          access?.canView && access.nameVisible ? scopePredicate(access.scope, 'evaluationForm', 'f') : sql`false`;
+        const order = access?.nameVisible ? sql`f.name, f.id` : sql`f.id`;
+        return sql`SELECT f.id, f.name, (${listed}) AS visible FROM ev_forms f
           WHERE f.tenant_id = ${ctx.tenantId}::uuid
             AND f.id IN (SELECT i.form_id FROM ev_form_items i
               WHERE i.tenant_id = f.tenant_id AND i.general_item_id = ${id}::uuid)
-          ORDER BY f.name, f.id`;
+          ORDER BY ${order}`;
       },
     },
     'disable',

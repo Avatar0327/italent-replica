@@ -240,6 +240,11 @@ export async function updateForm(tx: Tx, ctx: WriteContext, id: string, body: in
     items: body.items ? body.items.map(toStored) : before.items,
   };
   checkSettings(merged);
+  // 切换评分方式会隐含清空总分计算规则：载荷里没写也是一次实际变更，按字段编辑权校验（只读 / 隐藏 → 403）
+  if (body.totalRule === undefined && merged.totalRule !== before.totalRule) {
+    if (!ctx.checkFields) throw new Error('评价表写命令缺少字段授权校验（checkFields）');
+    await ctx.checkFields({ totalRule: merged.totalRule });
+  }
   if (body.items) checkItems(merged.items);
   if (lockedContent(merged) !== lockedContent(before) && (await formLockedByActivities(tx, ctx.tenantId, id))) {
     throw new AppError('CONFLICT', '评价表已被进行中且已有提名人员的活动引用，评分相关内容不能修改', {

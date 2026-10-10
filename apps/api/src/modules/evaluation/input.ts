@@ -59,7 +59,9 @@ export type ReviewGroupPatch = z.infer<typeof reviewGroupPatch>;
 export const FORM_SCORE_MODES = ['by_indicator', 'by_total'] as const;
 export const MAX_FORM_ITEMS = 50;
 const twoDecimals = (value: number) => Math.abs(value * 100 - Math.round(value * 100)) < 1e-6;
-const score = z.number().refine(twoDecimals, '最多 2 位小数');
+// 满分 / 通过分数的存储是 numeric(8,2)：上限 999999.99，超出 400 而不是溢出成 500
+const MAX_SCORE = 999_999.99;
+const score = z.number().max(MAX_SCORE, '分数过大').refine(twoDecimals, '最多 2 位小数');
 const weight = z.number().refine(twoDecimals, '最多 2 位小数').nullable().optional();
 const standardItem = z.strictObject({
   kind: z.literal('standard'),

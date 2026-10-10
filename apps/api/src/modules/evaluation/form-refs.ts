@@ -43,6 +43,8 @@ export interface FormRefAccess {
 export interface FormVisibility {
   readonly canView: boolean;
   readonly scope: ModuleScope;
+  /** 评价表的“名称”字段对操作人可见（不可见时提示、明细、排序都不带名称，全部计入“其他 N 个”）。 */
+  readonly nameVisible: boolean;
 }
 
 const shows = (access: RefObjectAccess | null, field: string): access is RefObjectAccess =>
@@ -88,9 +90,12 @@ export async function resolveFormVisibility(
   tx: Tx,
 ): Promise<FormVisibility> {
   const bound: TenantRouteDeps = { ...deps, authorize: authorizeInTransaction(deps.authorize, tx) };
+  const canView = await hasObjectView(bound.authorize, ctx, FORM);
+  const fields = canView ? await getModuleViewableFieldsInTransaction(bound, ctx, FORM, tx) : new Set<string>();
   return {
-    canView: await hasObjectView(bound.authorize, ctx, FORM),
+    canView,
     scope: await resolveModuleScopeInTransaction(bound, ctx, tx, FORM),
+    nameVisible: canView && (fields === undefined || fields.has('name')),
   };
 }
 

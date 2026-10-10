@@ -1,6 +1,7 @@
 /**
  * 人才评定配置写入的公共部分（设计 §3.2、§5.1、§8）：每个写入在命令台账的同一租户事务里完成“业务写 + 审计”
- * （DEC-019 / 216）。取锁顺序：被引用方 FOR SHARE → 本对象行 FOR UPDATE（B1a 只有本对象，无被引用方）。
+ * （DEC-019 / 216）。取锁顺序：新建 = 先对新增引用 FOR SHARE 再插入；修改 = 先 FOR UPDATE 本对象行（定位、revision），再对新增引用
+ * FOR SHARE（评价表，B4）；B1a 字典只有本对象，无被引用方。被引用方的停用 / 删除自己 FOR UPDATE 其行，与新增引用的 FOR SHARE 串行。
  */
 import { pgErrorCode, sql, type Tx } from '@italent/db';
 import { EVALUATION_AUDIT_ACTIONS } from '@italent/domain';
@@ -30,6 +31,8 @@ export interface WriteContext extends EvaluationContext {
   readonly forms?: FormRefAccess;
   /** 通用评分项写命令：引用方（评价表）的可见范围，停用被引用时只列看得到的（命令事务内解析）。 */
   readonly formVisibility?: FormVisibility;
+  /** 事务内按当前授权校验本对象的字段编辑权（载荷之外的隐含变更用，如评价表切换评分方式清空总分规则）。 */
+  readonly checkFields?: (payload: Readonly<Record<string, unknown>>) => Promise<void>;
 }
 
 export const TABLES: Readonly<Partial<Record<EvaluationObject, string>>> = {

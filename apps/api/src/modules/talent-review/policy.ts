@@ -8,6 +8,7 @@ import { defineTable } from '../../route-policy/index.js';
 import {
   BAD_REQUEST,
   button,
+  fixed,
   listScope,
   noButton,
   none,
@@ -19,6 +20,18 @@ import {
 } from '../../route-policy/presets.js';
 import { MATRIX_POLICIES } from './matrix-policy.js';
 import { CALC_RULE_POLICIES } from './calc-rule-policy.js';
+
+/**
+ * 字段改名失败（FIELD_NAME_BREAKS_FORMULA，F-082 契约 §3.1）时错误载荷里的定位信息：可选分支，只决定披露什么、不参与准入、
+ * 不拒绝请求——没有计算规则查看权（范围内）或 items 列查看权的人只得到匿名计数（DEC-376①）。
+ */
+const RENAME_BREAKS_DISCLOSURE = object({
+  object: TALENT_REVIEW_OBJECTS.calcRule.code,
+  operation: 'view',
+  button: noButton('只取对象查看权与字段查看权'),
+  scope: listScope('talentReview.configScope(talent_review_calc_rules)'),
+  fields: fixed(['items'], 'DEC-376', TALENT_REVIEW_OBJECTS.calcRule.code),
+});
 
 const PATH = '/api/tenant/talent-review/readiness-levels';
 const RDY = TALENT_REVIEW_OBJECTS.readiness.code;
@@ -82,6 +95,7 @@ function configRoutes(
       fields,
       guards: ['talentReview.configRenameRequiresSeeAll'],
       write: changed('body'),
+      ...(key === 'field' ? { optional: { renameBreaksDisclosure: RENAME_BREAKS_DISCLOSURE } } : {}),
     }),
     [`DELETE ${path}/:id`]: object({
       ...byId,

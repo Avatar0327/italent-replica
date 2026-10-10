@@ -43,7 +43,8 @@ ALTER TABLE "ev_forms" ADD CONSTRAINT "ev_forms_tenant_id_tenants_id_fk" FOREIGN
 ALTER TABLE "ev_forms" ADD CONSTRAINT "ev_forms_owner_org_fk" FOREIGN KEY ("tenant_id","owner_org_id") REFERENCES "public"."org_objects"("tenant_id","id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 CREATE UNIQUE INDEX "ev_form_items_standard" ON "ev_form_items" USING btree ("tenant_id","form_id") WHERE "ev_form_items"."kind" = 'standard';--> statement-breakpoint
 CREATE INDEX "ev_form_items_general" ON "ev_form_items" USING btree ("tenant_id","general_item_id");--> statement-breakpoint
-CREATE INDEX "ev_forms_owner_org" ON "ev_forms" USING btree ("tenant_id","owner_org_id");--> statement-breakpoint
+CREATE INDEX "ev_forms_owner_org" ON "ev_forms" USING btree ("tenant_id","owner_org_id");
+--> statement-breakpoint
 -- R3-T02 PR-B B4：统一租户隔离（AGENTS §2；guard-rls）。评分项随评价表整组替换，应用角色需要 DELETE。
 SELECT enable_tenant_isolation('ev_forms');
 --> statement-breakpoint

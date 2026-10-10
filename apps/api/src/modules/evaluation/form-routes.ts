@@ -34,7 +34,11 @@ const PATH = `${EV_BASE}/evaluation-forms`;
 
 /** 评分项的引用：写命令在事务内重新解析通用评分项 / 指标的访问；响应按解析结果整形（form-service.presentForms）。 */
 const REFS: WriteRefs = {
-  resolve: async (deps, ctx, tx) => ({ forms: await resolveFormRefs(deps, ctx, tx) }),
+  resolve: async (deps, ctx, tx) => ({
+    forms: await resolveFormRefs(deps, ctx, tx),
+    // deps 此时已绑定事务内的授权器：隐含的变更（切换评分方式清空总分规则）按当前字段编辑权校验
+    checkFields: (payload) => checkWriteFields(deps, ctx, OBJECT, 'update', payload),
+  }),
   shape: (tx, write, views) => forms.presentForms(tx, write.tenantId, write.forms!, views),
 };
 

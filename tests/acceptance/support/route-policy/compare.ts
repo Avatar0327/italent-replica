@@ -16,6 +16,7 @@ import type { ManifestRoute } from '@italent/api';
 import type { ObservedContract, ObservedRoute } from './contract.js';
 import { BRANCH_BINDINGS, type BranchBindings } from './domains.js';
 import { type Alternative, declared, type Declared, type Identity, preconditionName } from './features.js';
+import type { StaleGroup } from './evidence-report.js';
 import { DISJUNCTIONS, KNOWN_GUARDS, type Obligation } from './primitives.js';
 import { admissionPrimitives, checkRequired } from './required.js';
 import { REQUIRED } from './required/index.js';
@@ -26,6 +27,8 @@ export interface Finding {
   readonly route: string;
   readonly code: string;
   readonly detail: string;
+  /** 集中报告的结构化形态（EVIDENCE_STALE，F-072 PR-2）。 */
+  readonly group?: StaleGroup;
 }
 
 /** 双向比较的维度。 */
