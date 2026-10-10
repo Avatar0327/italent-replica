@@ -90,27 +90,6 @@ describe('AC-360-F076-13 P2-1 UUID 表示统一', () => {
 });
 
 describe('AC-360-F076-13 P2-2 运维命令并发幂等', () => {
-  it('rotate 同一版本并发：每租户只有一条 key_rotated；库里也不允许重复', async () => {
-    const s = await sceneB(testDb().db, 'f076-13b');
-    const { w } = s;
-    const cfg = configure([1, 2], 2);
-    const results = await Promise.all([
-      rotateKeys(w.db, { to: 2, config: cfg }),
-      rotateKeys(w.db, { to: 2, config: cfg }),
-    ]);
-    // rotate 对全部租户各写一条（同文件前面的用例也建了租户）：两个并发命令合计恰好每租户一条
-    expect(results.reduce((n, r) => n + r.written, 0)).toBe(results[0]!.tenants);
-    expect(await securityEvents(w, 'key_rotated')).toHaveLength(1);
-    const duplicate = await withTenant(w.db, w.tenantId, (tx) =>
-      tx.execute(sql`INSERT INTO survey360_security_events (tenant_id, kind, credential_key_version, occurred_at)
-        VALUES (${w.tenantId}::uuid, 'key_rotated', 2, now())`),
-    ).then(
-      () => undefined,
-      (error: unknown) => pgErrorCode(error),
-    );
-    expect(duplicate).toBe('23505');
-  });
-
   it('计划退役：同一运行 ID 两个进程同时跑，处理 5 条、只有一条 key_retired 且数量与持久进度一致', async () => {
     configure([1], 1);
     const s = await sceneB(testDb().db, 'f076-13c');
@@ -172,6 +151,28 @@ describe('AC-360-F076-13 P2-2 运维命令并发幂等', () => {
       )[0]!.n,
     ).toBe(0);
   });
+
+  // 已登记版本是全局的、只增不减（设计 §2.4）：登记 k2 的用例放在用 k1 发放的用例之后
+  it('rotate 同一版本并发：每租户只有一条 key_rotated；库里也不允许重复', async () => {
+    const s = await sceneB(testDb().db, 'f076-13b');
+    const { w } = s;
+    const cfg = configure([1, 2], 2);
+    const results = await Promise.all([
+      rotateKeys(w.db, { to: 2, config: cfg }),
+      rotateKeys(w.db, { to: 2, config: cfg }),
+    ]);
+    // rotate 对全部租户各写一条（同文件前面的用例也建了租户）：两个并发命令合计恰好每租户一条
+    expect(results.reduce((n, r) => n + r.written, 0)).toBe(results[0]!.tenants);
+    expect(await securityEvents(w, 'key_rotated')).toHaveLength(1);
+    const duplicate = await withTenant(w.db, w.tenantId, (tx) =>
+      tx.execute(sql`INSERT INTO survey360_security_events (tenant_id, kind, credential_key_version, occurred_at)
+        VALUES (${w.tenantId}::uuid, 'key_rotated', 2, now())`),
+    ).then(
+      () => undefined,
+      (error: unknown) => pgErrorCode(error),
+    );
+    expect(duplicate).toBe('23505');
+  });
 });
 
 describe('AC-360-F076-13 P2-3 密钥版本防回退', () => {
@@ -218,7 +219,8 @@ describe('AC-360-F076-13 P3', () => {
   });
 
   it('维护清理的 DELETE 有批量上限：一轮最多删 cleanupLimit 条，多轮删完', async () => {
-    portalCredentials(true, { kdf: FAST });
+    // 前面的用例已登记到 k3（全局只增不减）：本例用 k3 发放，只看清理
+    configure([1, 3], 3);
     const s = await sceneB(testDb().db, 'f076-13g');
     const { w } = s;
     const [link] = await linkRows(w, s.activity.id);

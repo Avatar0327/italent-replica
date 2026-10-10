@@ -120,7 +120,7 @@ export async function outbox(w: World360, eventType: string) {
     event_type: string;
     payload: Record<string, unknown> & { token: string; personId?: string; to: string; sealed?: Sealed };
   }[];
-  // 邀请的令牌（F-076）在 payload.sealed 里：解封后合并成 payload.token，调用方照旧读 payload.token；转发报告仍是明文
+  // 邀请与报告转发的令牌（F-076）都在 payload.sealed 里：解封后合并成 payload.token，调用方照旧读 payload.token
   return list.map((row) => {
     if (!row.payload.sealed) return { payload: row.payload };
     const opened = openSealed(credentialConfig(), row.payload.sealed, {

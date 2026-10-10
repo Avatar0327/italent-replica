@@ -753,6 +753,26 @@ export const survey360KeyRetireRuns = pgTable(
   ],
 );
 
+/**
+ * 凭据密钥版本的全局登记（F-076 设计 §2.4“版本只增不减”）：每次轮换登记一行，最大 version 就是“已登记的最高版本”。
+ * 平台表、不带租户维度：凭据密钥与 CURRENT 是部署级配置（环境变量 / Secret），对所有租户同一份，防回退只能按全局判定；
+ * 不随租户恢复 / 重建变化。只放版本号与时间，不含任何密钥或租户数据，所以租户角色可读（发放写回在租户事务里复核）。
+ * 只追加：迁移里语句级触发器禁止 UPDATE / DELETE / TRUNCATE。
+ */
+export const survey360CredentialKeyVersions = pgTable(
+  'survey360_credential_key_versions',
+  {
+    version: smallint('version').primaryKey(),
+    /** 登记时的上一个已登记版本；首次登记为空。 */
+    previous: smallint('previous'),
+    registeredAt: at('registered_at').notNull().defaultNow(),
+  },
+  (t) => [
+    check('survey360_credential_key_versions_positive', sql`${t.version} > 0`),
+    check('survey360_credential_key_versions_increasing', sql`${t.previous} IS NULL OR ${t.previous} < ${t.version}`),
+  ],
+);
+
 /** 领域事件 outbox（AGENTS.md §10「事件」）：邀请邮件等，消费者按游标拉取；不接真实发送。 */
 export const survey360Outbox = pgTable('survey360_outbox', {
   id: id(),

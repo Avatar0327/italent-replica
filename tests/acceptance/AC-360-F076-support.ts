@@ -52,7 +52,7 @@ export interface Mail {
   state: string;
   event_type: string;
   payload: Record<string, unknown>;
-  /** 解封后的秘密字段；没有 sealed（如 report_forward）时为空对象。 */
+  /** 解封后的秘密字段（邀请与报告转发都有 sealed）；没有 sealed 的行为空对象。 */
   secrets: { token?: string; serial?: string; password?: string };
 }
 

@@ -1,6 +1,7 @@
 /**
  * 凭据密钥运维命令的业务函数（F-076 设计 §2.4、§2.4.1）；命令行入口在 ops/survey360-credentials.ts。
- * - rotateKeys：登记一次密钥轮换，为每个租户写一条 key_rotated 安全事件（版本只增不减，同版本重跑不重复写）；
+ * - rotateKeys：在全局登记表登记一次密钥轮换（版本只增不减，与发放写回协调，见 credential-key-registry.ts），
+ *   再为每个租户写一条 key_rotated 安全事件作审计（同版本重跑不重复写）；
  * - retireKeys：计划退役 / 泄露处置的持久落库清理，逐租户按链接行 ID 升序分批、每批一个事务、可续跑；
  *   泄露处置是否已生效不取决于它（配置部署即拒绝，PR-2a / 2b 读配置），它只负责把库里的摘要与会话清干净；
  * - credentialStats：按租户 / 活动统计仍以某版本存摘要的有效凭据数。
@@ -9,6 +10,7 @@
 import { randomUUID } from 'node:crypto';
 import { type Db, pgErrorCode, sql, type Tx, withTenant } from '@italent/db';
 import { credentialConfig, type CredentialConfig } from './credential-config.js';
+import { registerKeyVersion } from './credential-key-registry.js';
 import { tenantIds } from './credential-tenants.js';
 import { recordSecurityEvent } from './security-events.js';
 import { hasValidTask } from './tasks.js';
@@ -36,26 +38,14 @@ export async function rotateKeys(
       `rotate：目标版本 ${to} 必须在 SURVEY360_CREDENTIAL_KEYS 里，且等于 SURVEY360_CREDENTIAL_KEY_CURRENT`,
     );
   }
+  const now = (input.clock ?? (() => new Date()))();
+  // 权威一步：全局登记（排他协调锁内只增不减），提交后旧版本的发放写回一律回滚（credential-key-registry.ts）
+  const fallbackPrevious = Math.max(0, ...[...config.credentialKeys.keys()].filter((v) => v < to)) || null;
+  const { previous } = await registerKeyVersion(db, { to, fallbackPrevious, now });
+
+  // 审计：每个租户一条 key_rotated（不参与防回退判定）；重跑补齐缺的，已有的跳过
   const tenants = [];
   for await (const id of tenantIds(db)) tenants.push(id);
-
-  // 版本只增不减：已登记过的最大版本（不含本次目标）必须小于目标；同时它就是“已登记的上一版本”
-  let recorded = 0;
-  for (const tenantId of tenants) {
-    const [row] = await withTenant(db, tenantId, async (tx) =>
-      rowsOf<{ v: number | null }>(
-        await tx.execute(sql`SELECT max(credential_key_version)::int AS v FROM survey360_security_events
-          WHERE kind = 'key_rotated' AND credential_key_version <> ${to}`),
-      ),
-    );
-    recorded = Math.max(recorded, row?.v ?? 0);
-  }
-  if (recorded >= to)
-    throw new Error(`rotate：目标版本 ${to} 必须大于已登记的上一个当前版本 ${recorded}（版本只增不减）`);
-  // 首次登记时还没有“已登记的上一版本”，退回取配置里小于目标的最大版本
-  const previous = recorded || Math.max(0, ...[...config.credentialKeys.keys()].filter((v) => v < to));
-
-  const now = (input.clock ?? (() => new Date()))();
   let written = 0;
   for (const tenantId of tenants) {
     written += await withTenant(db, tenantId, async (tx) => {
@@ -71,7 +61,7 @@ export async function rotateKeys(
         kind: 'key_rotated',
         occurredAt: now,
         credentialKeyVersion: to,
-        detail: { previous: previous || null },
+        detail: { previous },
       });
       return 1;
     });

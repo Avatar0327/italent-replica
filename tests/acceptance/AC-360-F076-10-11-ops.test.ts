@@ -41,100 +41,6 @@ function configure(versions: number[], current: number, extra: { retired?: numbe
   return credentialConfig();
 }
 
-describe('AC-360-F076-10 三代密钥与计划退役', () => {
-  it('新发放依次用 1、2、3；rotate 每租户一条 key_rotated；retire 只处理 k1，k2 / k3 不变；k1 仍在 KEYS 时拒绝执行', async () => {
-    configure([1], 1);
-    const s = await sceneB(testDb().db, 'f076-10');
-    const { w } = s;
-    const db = w.db;
-    await runCredentialMaintenance(db, { tenantId: w.tenantId, clock: at('2026-10-01T02:00:00Z') });
-    const batch1 = (await linkRows(w, s.activity.id)).map((l) => l.id);
-    expect((await linkRows(w, s.activity.id)).every((l) => l.credential_key_version === 1)).toBe(true);
-
-    // 第二代：先拒绝不合规的 rotate
-    let cfg = configure([1, 2], 2);
-    await expect(rotateKeys(db, { to: 3, config: cfg })).rejects.toThrow(/KEYS|CURRENT/);
-    const rotated2 = await rotateKeys(db, { to: 2, config: cfg });
-    expect(rotated2.written).toBe(1);
-    // 同版本再跑一次不重复写（每租户一条）
-    expect((await rotateKeys(db, { to: 2, config: cfg })).written).toBe(0);
-    // 重发邮件邀请产生第二批（新行 pending）
-    w.setNow('2026-10-01T05:00:00Z');
-    await w.ok(
-      w.request('POST', `${s.path}/invitations`, {
-        idempotencyKey: randomUUID(),
-        body: { personIds: [s.person.X.id, s.person.P1.id, s.person.P2.id] },
-      }),
-    );
-    await runCredentialMaintenance(db, { tenantId: w.tenantId, clock: at('2026-10-01T06:00:00Z') });
-
-    // 第三代
-    cfg = configure([1, 2, 3], 3);
-    // 版本只增不减：已登记到 2 之后不能再 rotate 回 1
-    await expect(rotateKeys(db, { to: 1, config: configure([1, 2, 3], 1) })).rejects.toThrow(/大于|不小于|previous/);
-    configure([1, 2, 3], 3);
-    await rotateKeys(db, { to: 3, config: cfg });
-    w.setNow('2026-10-01T07:00:00Z');
-    await w.ok(
-      w.request('POST', `${s.path}/invitations`, {
-        idempotencyKey: randomUUID(),
-        body: { personIds: [s.person.X.id] },
-      }),
-    );
-    await runCredentialMaintenance(db, { tenantId: w.tenantId, clock: at('2026-10-01T08:00:00Z') });
-
-    const issuedBy = async () => {
-      const all = await linkRows(w, s.activity.id);
-      const by = new Map<number, string[]>();
-      for (const l of all.filter((x) => !x.revoked && x.credential_state === 'issued')) {
-        by.set(l.credential_key_version!, [...(by.get(l.credential_key_version!) ?? []), l.id]);
-      }
-      return by;
-    };
-    const by = await issuedBy();
-    expect([...by.keys()].sort()).toEqual([1, 2, 3]);
-    expect(by.get(1)).toHaveLength(2); // T、M 仍是第一代
-    expect(by.get(2)).toHaveLength(2); // P1、P2 在第二代重发
-    expect(by.get(3)).toHaveLength(1); // X 在第三代重发
-    expect(batch1).toHaveLength(5);
-
-    const rotated = await securityEvents(w, 'key_rotated');
-    expect(rotated.map((e) => [e.credential_key_version, e.detail['previous']])).toEqual([
-      [2, 1],
-      [3, 2],
-    ]);
-
-    // stats：仍以 k1 存摘要的数量
-    expect(await credentialStats(db, { version: 1 })).toEqual([
-      { tenantId: w.tenantId, activityId: s.activity.id, count: 2 },
-    ]);
-
-    // 版本仍在 KEYS：拒绝
-    await expect(retireKeys(db, { tenantId: w.tenantId, version: 1, compromised: false, config: cfg })).rejects.toThrow(
-      /KEYS|RETIRED/,
-    );
-    // 1 移入 RETIRED（2、3 保留）后执行
-    cfg = configure([2, 3], 3, { retired: [1] });
-    const run = await retireKeys(db, { tenantId: w.tenantId, version: 1, compromised: false, config: cfg });
-    expect(run.tenants[0]).toMatchObject({ status: 'done', credentials: 5, sessions: 0 });
-
-    const after = await linkRows(w, s.activity.id);
-    for (const link of after.filter((l) => !l.revoked)) {
-      if (link.credential_key_version === 1) {
-        expect(link).toMatchObject({ credential_state: 'retired', serial_lookup: null, password_hash: null });
-        expect(link.credential_key_versions).toEqual([1]);
-      } else {
-        expect(link.credential_state).toBe('issued');
-      }
-    }
-    expect((await issuedBy()).get(2)).toHaveLength(2);
-    expect((await issuedBy()).get(3)).toHaveLength(1);
-    // 需要手动重发的评价者清单（计划退役同样输出），不含凭据
-    expect(run.tenants[0]!.resend).toEqual([{ activityId: s.activity.id, linkIds: expect.any(Array), count: 2 }]);
-    expect(JSON.stringify(run)).not.toMatch(/scrypt|lookup/);
-  });
-});
-
 describe('AC-360-F076-11 retire 中断与续跑', () => {
   it('计划退役：第一批后注入失败，进度行 failed 且已持久；续跑后总数与一次跑完相同，最后一条 key_retired', async () => {
     configure([1], 1);
@@ -282,6 +188,104 @@ describe('AC-360-F076-11 retire 中断与续跑', () => {
     expect(await sessionStates(w, first!.id)).toEqual([true]);
     expect(run.tenants[0]!.sessions).toBe(1);
     expect(run.tenants[0]!.resend[0]!.linkIds).toContain(first!.id);
+  });
+});
+
+// 已登记的密钥版本是全局的、只增不减（设计 §2.4，credential-key-registry.ts），同一测试库里登记过 k3 之后不能再发 k1 凭据：
+// 所以只用 k1 发放的 F076-11 放在前面，含 rotate 的 F076-10 放在最后。
+describe('AC-360-F076-10 三代密钥与计划退役', () => {
+  it('新发放依次用 1、2、3；rotate 每租户一条 key_rotated；retire 只处理 k1，k2 / k3 不变；k1 仍在 KEYS 时拒绝执行', async () => {
+    configure([1], 1);
+    const s = await sceneB(testDb().db, 'f076-10');
+    const { w } = s;
+    const db = w.db;
+    await runCredentialMaintenance(db, { tenantId: w.tenantId, clock: at('2026-10-01T02:00:00Z') });
+    const batch1 = (await linkRows(w, s.activity.id)).map((l) => l.id);
+    expect((await linkRows(w, s.activity.id)).every((l) => l.credential_key_version === 1)).toBe(true);
+
+    // 第二代：先拒绝不合规的 rotate
+    let cfg = configure([1, 2], 2);
+    await expect(rotateKeys(db, { to: 3, config: cfg })).rejects.toThrow(/KEYS|CURRENT/);
+    const rotated2 = await rotateKeys(db, { to: 2, config: cfg });
+    // 每个启用 / 停用租户各一条（库里还有前面用例的租户）
+    expect(rotated2.written).toBe(rotated2.tenants);
+    expect((await securityEvents(w, 'key_rotated')).length).toBe(1);
+    // 同版本再跑一次不重复写（每租户一条）
+    expect((await rotateKeys(db, { to: 2, config: cfg })).written).toBe(0);
+    // 重发邮件邀请产生第二批（新行 pending）
+    w.setNow('2026-10-01T05:00:00Z');
+    await w.ok(
+      w.request('POST', `${s.path}/invitations`, {
+        idempotencyKey: randomUUID(),
+        body: { personIds: [s.person.X.id, s.person.P1.id, s.person.P2.id] },
+      }),
+    );
+    await runCredentialMaintenance(db, { tenantId: w.tenantId, clock: at('2026-10-01T06:00:00Z') });
+
+    // 第三代
+    cfg = configure([1, 2, 3], 3);
+    // 版本只增不减：已登记到 2 之后不能再 rotate 回 1
+    await expect(rotateKeys(db, { to: 1, config: configure([1, 2, 3], 1) })).rejects.toThrow(/大于|不小于|previous/);
+    configure([1, 2, 3], 3);
+    await rotateKeys(db, { to: 3, config: cfg });
+    w.setNow('2026-10-01T07:00:00Z');
+    await w.ok(
+      w.request('POST', `${s.path}/invitations`, {
+        idempotencyKey: randomUUID(),
+        body: { personIds: [s.person.X.id] },
+      }),
+    );
+    await runCredentialMaintenance(db, { tenantId: w.tenantId, clock: at('2026-10-01T08:00:00Z') });
+
+    const issuedBy = async () => {
+      const all = await linkRows(w, s.activity.id);
+      const by = new Map<number, string[]>();
+      for (const l of all.filter((x) => !x.revoked && x.credential_state === 'issued')) {
+        by.set(l.credential_key_version!, [...(by.get(l.credential_key_version!) ?? []), l.id]);
+      }
+      return by;
+    };
+    const by = await issuedBy();
+    expect([...by.keys()].sort()).toEqual([1, 2, 3]);
+    expect(by.get(1)).toHaveLength(2); // T、M 仍是第一代
+    expect(by.get(2)).toHaveLength(2); // P1、P2 在第二代重发
+    expect(by.get(3)).toHaveLength(1); // X 在第三代重发
+    expect(batch1).toHaveLength(5);
+
+    const rotated = await securityEvents(w, 'key_rotated');
+    expect(rotated.map((e) => [e.credential_key_version, e.detail['previous']])).toEqual([
+      [2, 1],
+      [3, 2],
+    ]);
+
+    // stats：仍以 k1 存摘要的数量
+    expect(await credentialStats(db, { version: 1 })).toEqual([
+      { tenantId: w.tenantId, activityId: s.activity.id, count: 2 },
+    ]);
+
+    // 版本仍在 KEYS：拒绝
+    await expect(retireKeys(db, { tenantId: w.tenantId, version: 1, compromised: false, config: cfg })).rejects.toThrow(
+      /KEYS|RETIRED/,
+    );
+    // 1 移入 RETIRED（2、3 保留）后执行
+    cfg = configure([2, 3], 3, { retired: [1] });
+    const run = await retireKeys(db, { tenantId: w.tenantId, version: 1, compromised: false, config: cfg });
+    expect(run.tenants[0]).toMatchObject({ status: 'done', credentials: 5, sessions: 0 });
+
+    const after = await linkRows(w, s.activity.id);
+    for (const link of after.filter((l) => !l.revoked)) {
+      if (link.credential_key_version === 1) {
+        expect(link).toMatchObject({ credential_state: 'retired', serial_lookup: null, password_hash: null });
+        expect(link.credential_key_versions).toEqual([1]);
+      } else {
+        expect(link.credential_state).toBe('issued');
+      }
+    }
+    expect((await issuedBy()).get(2)).toHaveLength(2);
+    expect((await issuedBy()).get(3)).toHaveLength(1);
+    // 需要手动重发的评价者清单（计划退役同样输出），不含凭据
+    expect(run.tenants[0]!.resend).toEqual([{ activityId: s.activity.id, linkIds: expect.any(Array), count: 2 }]);
+    expect(JSON.stringify(run)).not.toMatch(/scrypt|lookup/);
   });
 });
 

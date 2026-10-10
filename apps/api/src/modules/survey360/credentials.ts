@@ -67,19 +67,35 @@ interface ParsedDigest {
   readonly hash: Buffer;
 }
 
+/**
+ * 摘要里能接受的 scrypt 参数：N 为 2 的幂且不超过 2^20（单次约 128MB，防止损坏或被篡改的行拖垮登录线程池），
+ * r ≤ 32、p ≤ 16；不合法的一律当作损坏摘要（走哑摘要路径），不交给 scrypt 抛错。
+ */
+const MAX_N = 2 ** 20;
+const validParams = ({ N, r, p }: ScryptParams) =>
+  [N, r, p].every((n) => Number.isSafeInteger(n) && n > 0) &&
+  N >= 2 &&
+  N <= MAX_N &&
+  (N & (N - 1)) === 0 &&
+  r <= 32 &&
+  p <= 16;
+
 function parseDigest(digest: string): ParsedDigest | undefined {
   const parts = digest.split('$');
   if (parts.length !== 6 || parts[0] !== 'scrypt') return undefined;
-  const [N, r, p] = [Number(parts[1]), Number(parts[2]), Number(parts[3])];
-  if (![N, r, p].every((n) => Number.isInteger(n) && n > 0)) return undefined;
-  return { params: { N, r, p }, salt: Buffer.from(parts[4]!, 'base64url'), hash: Buffer.from(parts[5]!, 'base64url') };
+  const params = { N: Number(parts[1]), r: Number(parts[2]), p: Number(parts[3]) };
+  if (!validParams(params)) return undefined;
+  const salt = Buffer.from(parts[4]!, 'base64url');
+  const hash = Buffer.from(parts[5]!, 'base64url');
+  if (salt.length !== SALT_BYTES || hash.length !== HASH_BYTES) return undefined;
+  return { params, salt, hash };
 }
 
 /** 校验恰好做一次 KDF；摘要串损坏时返回 false（不抛错，调用方按失败处理）。 */
 export async function verifyPassword(digest: string, key: Buffer, normalizedPassword: string): Promise<boolean> {
   const parsed = parseDigest(digest);
   if (!parsed) {
-    // 摘要串损坏也做一次同参数 KDF 再返回假，各失败分支的工作量一致（设计 §3.8）
+    // 摘要串损坏（段数、参数、盐 / 哈希长度不合法）也做一次缺省参数的 KDF 再返回假，各失败分支的工作量一致（设计 §3.8）
     await derive(passwordPrehash(key, normalizedPassword), randomBytes(SALT_BYTES), DEFAULT_SCRYPT);
     return false;
   }

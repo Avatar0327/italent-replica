@@ -2,7 +2,9 @@
  * 凭据维护任务 survey360-credential-maintenance（F-076 设计 §2.5；DEC-052、DEC-379① 异步发放）。
  * 1. 认领（短事务）：pending 且未被认领（或认领已超 5 分钟）的链接行，每批 ≤ 100，FOR UPDATE SKIP LOCKED；
  * 2. 生成与 KDF（事务外）：并发 ≤ 2，命令事务里永远没有 KDF；
- * 3. 写回（每行一个短事务）：按认领时间 CAS 写摘要并改 issued，同事务把序列号与密码加进邀请 outbox 的 sealed（换新 IV）、
+ * 3. 写回（每行一个短事务）：先取密钥版本协调锁（共享）并复核本条凭据的版本不低于全局已登记最高版本（设计 §2.4，
+ *    credential-key-registry.ts；低于即整笔回滚并中止本轮），再按认领时间 CAS 写摘要并改 issued，
+ *    同事务把序列号与密码加进邀请 outbox 的 sealed（换新 IV）、
  *    邀请转 pending、写 credential_issued；CAS 失败（期间被重发作废或被别的进程重领）丢弃本次明文；
  *    序列号唯一冲突 → attempts + 1，释放认领，下一轮换新值；连续 5 次写运行日志，不自动放弃；
  * 4. 同一任务还清理过期会话与空闲限频行，并把到期未清的锁定记为 unlock 事件。
@@ -12,6 +14,7 @@
 import { type Db, pgErrorCode, sql, survey360Links, survey360Outbox, type Tx, withTenant } from '@italent/db';
 import { and, eq } from '@italent/db';
 import { credentialConfig, type CredentialConfig } from './credential-config.js';
+import { assertIssuableVersion, assertNoKeyRollback, KeyRollbackError } from './credential-key-registry.js';
 import { tenantIds } from './credential-tenants.js';
 import { makeCredential } from './credentials.js';
 import { openSealed, sealJson, type Sealed } from './secret-box.js';
@@ -30,6 +33,8 @@ const CLEANUP_LIMIT = 5000;
 export interface MaintenanceHooks {
   /** 生成并做完 KDF、写回之前（测试用来模拟崩溃）。 */
   readonly beforeWriteBack?: (linkId: string) => void | Promise<void>;
+  /** 写回事务内、已通过密钥版本复核（持有协调锁）之后（测试用来制造与轮换登记的交错）。 */
+  readonly duringWriteBack?: (linkId: string) => void | Promise<void>;
   /** 结构化运行日志（缺省 console.warn 一行 JSON）；数据里只放计数与 ID，不放明文。 */
   readonly warn?: (message: string, data: Record<string, unknown>) => void;
 }
@@ -109,7 +114,11 @@ async function writeBack(
   credential: Awaited<ReturnType<typeof makeCredential>>,
   config: CredentialConfig,
   now: Date,
+  hooks: MaintenanceHooks,
 ): Promise<WriteBack> {
+  // 协调边界：与轮换登记互斥（共享 / 排他），登记提交后旧版本凭据在这里回滚，一条也提交不了
+  await assertIssuableVersion(tx, credential.version);
+  await hooks.duringWriteBack?.(row.id);
   const [updated] = await tx
     .update(survey360Links)
     .set({
@@ -169,40 +178,36 @@ async function recordFailure(db: Db, tenantId: string, row: Claimed, code: strin
   });
 }
 
+/** 有界并发；任一项抛错后其余 worker 不再领新项（回退时不再继续生成、写回），错误原样抛出。 */
 async function pool<T>(items: readonly T[], concurrency: number, run: (item: T) => Promise<void>): Promise<void> {
   let next = 0;
+  let failed = false;
   const worker = async () => {
-    while (next < items.length) await run(items[next++]!);
+    while (!failed && next < items.length) {
+      try {
+        await run(items[next++]!);
+      } catch (error) {
+        failed = true;
+        throw error;
+      }
+    }
   };
-  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, worker));
+  // 等所有 worker 收尾再抛：不让失败后仍在进行的写回在函数返回之后才结束
+  const results = await Promise.allSettled(Array.from({ length: Math.min(concurrency, items.length) }, worker));
+  const rejected = results.find((r): r is PromiseRejectedResult => r.status === 'rejected');
+  if (rejected) throw rejected.reason;
 }
 
-/** 该租户已登记的最高密钥版本（rotate 命令写的 key_rotated 事件）；没登记过为 0。 */
-async function registeredVersion(db: Db, tenantId: string): Promise<number> {
-  const [row] = await withTenant(db, tenantId, async (tx) =>
-    rowsOf<{ v: number | null }>(
-      await tx.execute(sql`SELECT max(credential_key_version)::int AS v FROM survey360_security_events
-        WHERE kind = 'key_rotated'`),
-    ),
+/** 启动时调用（server.ts）：只读全局登记，不遍历租户，也不跳过恢复中的租户。 */
+export { assertNoKeyRollback };
+
+/** 回退时放回认领、不记失败次数（不是这一行的错；配置纠正后下一轮正常重领）。 */
+async function releaseClaim(db: Db, tenantId: string, row: Claimed): Promise<void> {
+  await withTenant(db, tenantId, (tx) =>
+    tx.execute(sql`UPDATE survey360_links SET credential_claimed_at = NULL
+      WHERE id = ${row.id}::uuid AND credential_state = 'pending'
+        AND credential_claimed_at = ${row.claimedAt.toISOString()}::timestamptz`),
   );
-  return row?.v ?? 0;
-}
-
-function rollbackError(tenantId: string, registered: number, current: number): Error {
-  return new Error(
-    `凭据密钥版本回退：租户 ${tenantId} 已登记轮换到版本 ${registered}，当前配置的 CURRENT 是 ${current}（版本只增不减，设计 §2.4）`,
-  );
-}
-
-/**
- * 防回退（设计 §2.4“版本只增不减”）：实际用密钥的进程在启动和每次发放前，对照库里已登记的最高版本，
- * CURRENT 低于它就拒绝（部署回滚把旧配置带回来时，不能再用旧版本发新凭据）。
- */
-export async function assertNoKeyRollback(db: Db, config: CredentialConfig = credentialConfig()): Promise<void> {
-  for await (const tenantId of tenantIds(db)) {
-    const registered = await registeredVersion(db, tenantId);
-    if (registered > config.currentVersion) throw rollbackError(tenantId, registered, config.currentVersion);
-  }
 }
 
 async function warnStale(db: Db, tenantId: string, now: Date, warn: NonNullable<MaintenanceHooks['warn']>) {
@@ -216,37 +221,58 @@ async function warnStale(db: Db, tenantId: string, now: Date, warn: NonNullable<
   if (row && row.count > 0) warn('survey360.credential.pending_stale', { tenantId, count: row.count });
 }
 
+interface IssueContext {
+  readonly options: MaintenanceOptions;
+  readonly config: CredentialConfig;
+  readonly now: Date;
+  readonly hooks: MaintenanceHooks;
+  readonly warn: NonNullable<MaintenanceHooks['warn']>;
+  /** 本轮失败的行（冲突 / 写回出错）已释放认领，但留到下一轮再试，否则同一轮会反复重领。 */
+  readonly failed: Set<string>;
+  readonly report: MaintenanceReport;
+}
+
 async function issueTenant(db: Db, tenantId: string, options: MaintenanceOptions, report: MaintenanceReport) {
   const config = options.config ?? credentialConfig();
   const now = (options.clock ?? (() => new Date()))();
   const hooks = options.hooks ?? {};
   const warn = hooks.warn ?? defaultWarn;
-  const registered = await registeredVersion(db, tenantId);
-  if (registered > config.currentVersion) throw rollbackError(tenantId, registered, config.currentVersion);
   await warnStale(db, tenantId, now, warn);
-  // 本轮失败的行（冲突 / 写回出错）已释放认领，但留到下一轮再试，否则同一轮会反复重领
-  const failed = new Set<string>();
+  const context: IssueContext = { options, config, now, hooks, warn, failed: new Set<string>(), report };
   for (let round = 0; round < MAX_BATCHES; round += 1) {
-    const claimed = await claim(tenantId, db, now, options.batchSize ?? BATCH_SIZE, failed);
+    const claimed = await claim(tenantId, db, now, options.batchSize ?? BATCH_SIZE, context.failed);
     if (!claimed.length) return;
     report.batches.push(claimed.length);
-    await pool(claimed, options.kdfConcurrency ?? KDF_CONCURRENCY, async (row) => {
-      const credential = await makeCredential(config, options.random);
-      await hooks.beforeWriteBack?.(row.id);
-      try {
-        const outcome = await withTenant(db, tenantId, (tx) => writeBack(tx, tenantId, row, credential, config, now));
-        if (outcome === 'issued') report.issued += 1;
-        else report.lost += 1;
-      } catch (error) {
-        const code = pgErrorCode(error) === '23505' ? 'SERIAL_CONFLICT' : 'WRITE_FAILED';
-        failed.add(row.id);
-        const attempts = await recordFailure(db, tenantId, row, code);
-        report.conflicts += 1;
-        if (attempts !== undefined && attempts >= FAILING_ATTEMPTS) {
-          warn('survey360.credential.issue_failing', { tenantId, linkId: row.id, attempts, code });
-        }
-      }
-    });
+    try {
+      await pool(claimed, options.kdfConcurrency ?? KDF_CONCURRENCY, (row) => issueRow(db, tenantId, row, context));
+    } catch (error) {
+      // 回退：本批认领一律放回（已写回的行不再是 pending，CAS 不会动它们），配置纠正后下一轮立即可领，不必等认领过期
+      if (error instanceof KeyRollbackError) for (const row of claimed) await releaseClaim(db, tenantId, row);
+      throw error;
+    }
+  }
+}
+
+/** 一行：事务外生成与 KDF → 写回事务。写回失败记 attempts；回退除外，原样抛出，由上层放回认领并中止本轮。 */
+async function issueRow(db: Db, tenantId: string, row: Claimed, context: IssueContext): Promise<void> {
+  const { config, now, hooks, warn, failed, report } = context;
+  const credential = await makeCredential(config, context.options.random);
+  await hooks.beforeWriteBack?.(row.id);
+  try {
+    const outcome = await withTenant(db, tenantId, (tx) =>
+      writeBack(tx, tenantId, row, credential, config, now, hooks),
+    );
+    if (outcome === 'issued') report.issued += 1;
+    else report.lost += 1;
+  } catch (error) {
+    if (error instanceof KeyRollbackError) throw error;
+    const code = pgErrorCode(error) === '23505' ? 'SERIAL_CONFLICT' : 'WRITE_FAILED';
+    failed.add(row.id);
+    const attempts = await recordFailure(db, tenantId, row, code);
+    report.conflicts += 1;
+    if (attempts !== undefined && attempts >= FAILING_ATTEMPTS) {
+      warn('survey360.credential.issue_failing', { tenantId, linkId: row.id, attempts, code });
+    }
   }
 }
 
@@ -299,6 +325,8 @@ export async function runCredentialMaintenance(db: Db, options: MaintenanceOptio
     unlocked: 0,
   };
   const now = (options.clock ?? (() => new Date()))();
+  // 尽早失败：CURRENT 低于全局已登记最高版本就不认领、不做 KDF；协调边界仍是每次写回里的复核
+  await assertNoKeyRollback(db, options.config ?? credentialConfig());
   for await (const tenantId of tenantIds(db, options.tenantId)) {
     await issueTenant(db, tenantId, options, report);
     await cleanupTenant(db, tenantId, now, report, options.cleanupLimit ?? CLEANUP_LIMIT);
