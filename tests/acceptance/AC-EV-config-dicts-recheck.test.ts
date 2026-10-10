@@ -14,10 +14,12 @@ import { auditApi } from './AC-AUD-support.js';
 import { EV_NOW, type EvaluationKey, ok, operator, type Operator } from './AC-EV-support.js';
 import { seedPermissionWorld, type PermissionWorld } from './AC-PRM-support.js';
 import { tenantApi } from './support/tenant-api.js';
+import type * as RunCommands from '../../apps/api/src/commands.js';
 
+type RunCommandModule = typeof RunCommands;
 const hooks = vi.hoisted(() => ({ beforeCommand: undefined as undefined | (() => Promise<void>) }));
 vi.mock('../../apps/api/src/commands.js', async (importOriginal) => {
-  const original = await importOriginal<typeof import('../../apps/api/src/commands.js')>();
+  const original = await importOriginal<RunCommandModule>();
   return {
     ...original,
     runCommand: async (...args: Parameters<typeof original.runCommand>) => {

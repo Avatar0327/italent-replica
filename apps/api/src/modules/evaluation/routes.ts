@@ -27,7 +27,7 @@ import {
 } from './access.js';
 import * as input from './input.js';
 import * as read from './read-model.js';
-import { EV_BASE, presenter, runWrite, type View, writeContext } from './route-support.js';
+import { EV_BASE, presenter, runDelete, runWrite, type View, writeContext } from './route-support.js';
 import { rowAccess, type WriteContext } from './store.js';
 
 export { EV_BASE };
@@ -146,6 +146,6 @@ function registerObject<Create extends object, Patch extends object>(
     const ctx = await evaluationWriteContext(c, deps, spec.object, 'delete', revision(c));
     const id = uuidParam(c);
     const w = writeContext(ctx, await evaluationScope(c, deps, ctx, spec.object));
-    return runWrite(c, deps, w, spec.object, { id }, 200, (tx, x) => spec.remove(tx, x, id) as Promise<View>);
+    return runDelete(c, deps, w, spec.object, id, (tx, x) => spec.remove(tx, x, id) as Promise<View>);
   });
 }

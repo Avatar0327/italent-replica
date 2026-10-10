@@ -19,12 +19,26 @@ export interface CommandResult {
   readonly body: unknown;
 }
 
+/**
+ * 命令事务内的当前权限复核（可选，B1a 评定配置起用）：
+ * - `before`：事务内、查台账之前调用，首次执行与幂等重放都经过，按**当前**权限复核（对象 / 按钮 / 字段编辑权 / 数据范围），
+ *   拒绝即整体回滚：业务写、审计、台账都不提交；
+ * - `replayed`：重放时拿到台账里的结果后、返回之前调用，复核结果对象按当前范围仍可见。
+ * 守卫的拒绝不再走“失败后回查台账重放”——否则撤权后同键重放会绕过复核。
+ */
+export interface CommandGuard {
+  before(tx: Tx): Promise<void>;
+  replayed?(tx: Tx, result: CommandResult): Promise<void>;
+}
+
 export interface Command {
   /** 客户端命令 ID（Idempotency-Key 请求头）；必填。 */
   readonly id: string | undefined;
   /** 决定“同内容”的请求指纹（方法、路径、前置 revision、请求体等）。 */
   readonly fingerprint: unknown;
   readonly execute: (tx: Tx, commandId: string) => Promise<CommandResult>;
+  /** 事务内的当前权限复核；缺省不复核（权限只在事务外检查）。 */
+  readonly guard?: CommandGuard;
 }
 
 const COMMAND_ID = /^[A-Za-z0-9:_-]{1,100}$/;
@@ -36,10 +50,29 @@ export async function runCommand(db: Db, ctx: TenantContext, command: Command): 
   const requestHash = commandHash(ctx.userId, command.fingerprint);
 
   let phase: CommandPhase = 'execute';
+  let denied = false;
   try {
     return await withTenant(db, ctx.tenantId, async (tx) => {
+      if (command.guard) {
+        try {
+          await command.guard.before(tx);
+        } catch (error) {
+          denied = true;
+          throw error;
+        }
+      }
       const replay = await findReplay(tx, commandId, requestHash);
-      if (replay) return replay;
+      if (replay) {
+        if (command.guard?.replayed) {
+          try {
+            await command.guard.replayed(tx, replay);
+          } catch (error) {
+            denied = true;
+            throw error;
+          }
+        }
+        return replay;
+      }
       const result = await command.execute(tx, commandId);
       await tx.insert(commandLedger).values({
         tenantId: ctx.tenantId,
@@ -56,6 +89,8 @@ export async function runCommand(db: Db, ctx: TenantContext, command: Command): 
     let final: unknown = error;
     let recheckFailed = false;
     try {
+      // 当前权限复核被拒不回查台账重放：撤权后同键重放必须被拒，不能返回首次的结果
+      if (denied) throw error;
       return await replayAfterFailure(db, ctx.tenantId, { commandId, requestHash }, error);
     } catch (thrown) {
       recheckFailed =
