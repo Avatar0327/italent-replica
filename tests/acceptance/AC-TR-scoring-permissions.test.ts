@@ -25,7 +25,7 @@ describe.each([
   {
     object: 'scoreRule',
     path: '/score-rules',
-    body: () => gradeRuleBody({ name: `权限规则${Math.random()}` }),
+    body: (name = `权限规则${Math.random()}`) => gradeRuleBody({ name }),
     secret: 'allowUnable',
     nested: 'levels',
     attempt: { allowUnable: true },
@@ -35,7 +35,7 @@ describe.each([
   {
     object: 'moduleGrade',
     path: '/module-grades',
-    body: () => moduleGradeBody({ name: `权限等级${Math.random()}` }),
+    body: (name = `权限等级${Math.random()}`) => moduleGradeBody({ name }),
     secret: 'items',
     nested: 'items',
     attempt: { items: scoreItems(0, 1) },
@@ -98,6 +98,31 @@ describe.each([
       const filtered = await hiddenFilter.request('GET', `${path}?${filter}=true`);
       expect([filtered.status, await errorCode(filtered)]).toEqual([403, 'FORBIDDEN']);
       expect((await hiddenFilter.request('GET', path)).status).toBe(200);
+    });
+
+    it('列表排序只用查看人看得到的字段（PR #182 口径）：看不到名称时不按名称排，只按 id 收尾', async () => {
+      const w = await seedPermissionWorld(testDb().db);
+      const api = tenantApi(w.db, { clock });
+      for (const label of ['戊', '丁', '丙', '乙', '甲', '癸']) {
+        const response = await api.request('POST', `${TR_BASE}${path}`, {
+          ...w.asAdmin,
+          ifMatch: 0,
+          body: body(`排序${label}`),
+        });
+        expect(response.status, await response.clone().text()).toBe(201);
+      }
+      const names = async (hidden: string[]) => {
+        const operator = await configOperator({ ...w, api: tenantApi(w.db, { authorize: undefined, clock }) }, object, {
+          seeAll: true,
+          hidden,
+        });
+        const { items } = (await (await operator.request('GET', `${path}?pageSize=100`)).json()) as {
+          items: { id: string; name?: string }[];
+        };
+        return items;
+      };
+      const hidden = await names(['name']);
+      expect(hidden.map((item) => item.id)).toEqual([...hidden.map((item) => item.id)].sort());
     });
 
     it('撤按钮后新请求与原命令重放都 403；撤看全部后重放 404', async () => {
