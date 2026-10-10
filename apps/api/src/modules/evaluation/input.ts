@@ -33,3 +33,23 @@ export const generalScoreItemCreate = z.strictObject({
 export const generalScoreItemPatch = generalScoreItemCreate.partial();
 export type GeneralScoreItemCreate = z.infer<typeof generalScoreItemCreate>;
 export type GeneralScoreItemPatch = z.infer<typeof generalScoreItemPatch>;
+// ── 评审组（B3，照原站 DEC-393）──────────────────────────────────────────
+// 没有编码字段；名称必填（多语言字段首版只做简体中文，DEC-045）、不要求唯一；允许零成员；成员上限 200 是系统保护（🟡，差异 D-071，
+// 原站未标示，待取证可推翻），超出提示分批。
+export const MAX_REVIEW_MEMBERS = 200;
+const uuid = z.uuid().transform((value) => value.toLowerCase());
+/** 成员整组提交；有成员时组长恰好 1 个、成员不重复由写入服务校验（带 reason）。 */
+const memberList = z.array(z.strictObject({ employeeId: uuid, isLeader: z.boolean() })).max(MAX_REVIEW_MEMBERS, {
+  error: `一个评审组最多 ${MAX_REVIEW_MEMBERS} 人，请分批添加`,
+});
+
+// 所属人由系统填创建人，所属组织必填手选（DEC-324②）
+export const reviewGroupCreate = z.strictObject({
+  name,
+  ownerOrgId: uuid,
+  enabled: z.boolean().optional(),
+  members: memberList,
+});
+export const reviewGroupPatch = reviewGroupCreate.partial();
+export type ReviewGroupCreate = z.infer<typeof reviewGroupCreate>;
+export type ReviewGroupPatch = z.infer<typeof reviewGroupPatch>;
