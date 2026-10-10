@@ -11,7 +11,8 @@
  * ⑥ 页面不显示秒数：任何响应里都没有耗时，只回“是否提醒 / 是否疑似”的布尔（DEC-371⑤）；
  * ⑦ 计时记录跟着它所属的评价关系 / 评价对象走：重新作答清掉该评价关系的全部计时，替换套卷清掉该评价对象全部评价关系的
  *    计时——无论答卷是否已保存（第 1 轮审查 P2-1）；
- * ⑧ 计时写入要写审计（DEC-405①，DEC-019）：首次建立、翻页更新、清除（保留快照）；审计查看不披露计时（对象类型不登记）。
+ * ⑧ 计时写入要写审计（DEC-405①，DEC-019）：首次建立、翻页更新、清除（保留快照）；审计查看披露事件存在、裁掉耗时与时间元数据
+ *    （AC-360-F060-pace-audit）。
  */
 import { useTestDb } from '@italent/testkit';
 import { sql, withTenant } from '@italent/db';
@@ -526,7 +527,7 @@ describe('AC-360-F060 校验、不泄露耗时、审计不披露', () => {
     );
   });
 
-  it('任何响应里都没有耗时（先断言状态码与响应形状）；审计查看里没有计时对象，对象类型不登记', async () => {
+  it('任何响应里都没有耗时（先断言状态码与响应形状）；审计查看只披露事件、不含耗时与时间元数据', async () => {
     const s = await sceneB(testDb().db, 'f060pace-k');
     const call = await linkOf(s, s.person.P1.id);
     const base = taskPath(s, s.rel.p1.id);
@@ -560,16 +561,14 @@ describe('AC-360-F060 校验、不泄露耗时、审计不披露', () => {
     texts.push(JSON.stringify(cards));
     for (const text of texts) expect(text).not.toMatch(TIMING_KEY);
 
-    // 审计已落库，但审计查看不披露：没有计时对象，整份返回里也没有计时 / 时间元数据字段
+    // 审计已落库；审计查看只披露事件存在，不披露耗时与时间元数据（细节见 AC-360-F060-pace-audit）
     expect((await timingAudit(s.w)).length).toBeGreaterThan(0);
-    expect(auditObjectRegistered(TIMING_TYPE)).toBe(false);
+    expect(auditObjectRegistered(TIMING_TYPE)).toBe(true);
     const audit = auditApi(testDb().db, at(2000), { authorize: s.w.authorize });
     const as = { user: s.w.admin, tenant: s.w.tenantId };
     const listed = await audit.dataChanges(as, { limit: '100' });
     expect(listed.items.length).toBeGreaterThan(0);
-    expect(listed.items.some((i) => i.objectType === TIMING_TYPE)).toBe(false);
+    expect(listed.items.some((i) => i.objectType === TIMING_TYPE)).toBe(true);
     expect(JSON.stringify(listed)).not.toMatch(TIMING_KEY);
-    const typed = await audit.dataChanges(as, { objectType: TIMING_TYPE });
-    expect(typed.items).toEqual([]);
   });
 });

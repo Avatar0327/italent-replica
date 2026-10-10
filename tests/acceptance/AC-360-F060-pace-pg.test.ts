@@ -16,6 +16,21 @@ const T0 = Date.parse('2026-10-01T02:00:00.000Z');
 const at = (ms: number) => new Date(T0 + ms).toISOString();
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/** 等到至少 n 个连接在等锁（关系行锁 / 咨询锁），确认请求确实被阻塞；超时则失败，不靠固定等待。 */
+async function blockedRequests(n: number): Promise<void> {
+  const deadline = Date.now() + 15_000;
+  for (;;) {
+    const result = (await testDb().db.execute(
+      sql`SELECT count(*)::int AS n FROM pg_stat_activity
+        WHERE datname = current_database() AND wait_event_type = 'Lock' AND pid <> pg_backend_pid()`,
+    )) as unknown;
+    const list = (Array.isArray(result) ? result : (result as { rows: unknown[] }).rows) as { n: number }[];
+    if (list[0]!.n >= n) return;
+    if (Date.now() > deadline) throw new Error(`等锁的连接不足 ${n} 个`);
+    await sleep(50);
+  }
+}
+
 async function scene(label: string) {
   const s = await sceneB(testDb().db, label);
   const call = s.w.link(await s.w.token(s.activity.id, s.person.P1.id));
@@ -89,8 +104,8 @@ describe.runIf(realPostgres)('AC-360-F060 真 PG：取页 / page-check 并发', 
     expect(done.reminder).toBe(false); // 若打开时刻被翻页起点覆盖，0.5 秒会判过快
   });
 
-  it('受控交错：关系行被占着时两个 page-check 排队，放行后全部 200、打开时刻不动', async () => {
-    const { s, call, base, items, timing } = await scene('f060pace-pg4');
+  it('受控交错：关系行被占着时两个 page-check 先后排队，放行后按先后串行——翻页起点、提醒结果与审计条数都确定', async () => {
+    const { s, call, base, items, timing, audits } = await scene('f060pace-pg4');
     s.w.setNow(at(0));
     await s.w.ok(call('GET', base));
     let release: () => void = () => {};
@@ -103,18 +118,24 @@ describe.runIf(realPostgres)('AC-360-F060 真 PG：取页 / page-check 并发', 
       await gate;
     });
     await holding;
+    // 第 1 个请求在 100 秒取时钟，卡在关系行锁上（已确认确实被阻塞，不靠固定等待）
     s.w.setNow(at(100_000));
     const first = call('POST', `${base}/page-check`, { body: { items } });
-    await sleep(300);
+    await blockedRequests(1);
+    // 第 2 个请求在 100.4 秒取时钟，排在第 1 个后面（同评价者串行化的咨询锁）
     s.w.setNow(at(100_400));
     const second = call('POST', `${base}/page-check`, { body: { items } });
-    await sleep(300);
+    await blockedRequests(2);
     release();
     await holder;
-    const results = await Promise.all([first, second]);
-    expect(results.map((r) => r.status)).toEqual([200, 200]);
+    const [one, two] = await Promise.all([first, second]);
+    expect([one.status, two.status]).toEqual([200, 200]);
+    // 先到先得：第 1 个距打开 100 秒 → 不提醒；第 2 个距第 1 个翻页 0.4 秒 → 提醒
+    expect(((await one.json()) as { reminder: boolean }).reminder).toBe(false);
+    expect(((await two.json()) as { reminder: boolean }).reminder).toBe(true);
     const [row] = await timing();
     expect(new Date(row!.opened_at).toISOString()).toBe(at(0));
-    expect([at(100_000), at(100_400)]).toContain(new Date(row!.page_started_at).toISOString());
+    expect(new Date(row!.page_started_at).toISOString()).toBe(at(100_400));
+    expect(await audits('survey360.sheet-timing.page')).toBe(2);
   });
 });
