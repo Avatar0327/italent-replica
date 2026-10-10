@@ -148,7 +148,7 @@ describe('AC-SC-01 继任记录写侧（设计 §2.2 #3～#6）', () => {
       const off = await post(orgBody(s.id, { readinessId: disabled.id }));
       expect([off.status, (await errorOf(off)).details?.reason]).toEqual([400, 'READINESS_DISABLED']);
       // 已离职：直接离职业务（最后工作日 2026-09-01，今天 2026-10-01 已是离职状态）
-      const gone = await successor();
+      const gone = await w.hire('离职继任者', {}, '2026-08-01');
       const detail = (await (await w.call('GET', `employment/employees/${gone.id}`)).json()) as { revision: number };
       const leave = await w.call('POST', `employment/employees/${gone.id}/businesses`, {
         ifMatch: detail.revision,
@@ -209,7 +209,7 @@ describe('AC-SC-01 继任记录写侧（设计 §2.2 #3～#6）', () => {
     });
 
     it('排除已离职人员；邮箱关键词也能搜到', async () => {
-      const gone = await w.hire('候选离职者', { departmentId: std.orgB.id });
+      const gone = await w.hire('候选离职者', {}, '2026-08-01');
       const detail = (await (await w.call('GET', `employment/employees/${gone.id}`)).json()) as { revision: number };
       await w.call('POST', `employment/employees/${gone.id}/businesses`, {
         ifMatch: detail.revision,
