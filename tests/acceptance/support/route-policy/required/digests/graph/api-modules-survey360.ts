@@ -293,11 +293,12 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/survey360/answering.ts#answerPage': [
     '#answerPersonIds',
     '#appraiserLabel',
+    '#notFound',
     '#roleLabel',
     '#sheetsOf',
-    '#taskQuery',
     'apps/api/src/modules/survey360/avatar-links.ts#linkAvatars',
     'apps/api/src/modules/survey360/context.ts#rows',
+    'apps/api/src/modules/survey360/tasks.ts#taskQuery',
   ],
   'apps/api/src/modules/survey360/answering.ts#answerRead': [
     'apps/api/src/modules/job/context.ts#uuidParam',
@@ -347,9 +348,10 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/survey360/access.ts#requireObject',
     '#answerPersonIds',
     '#loadConfirmation',
-    '#taskQuery',
+    '#notFound',
     'apps/api/src/modules/survey360/context.ts#rows',
     'apps/api/src/modules/survey360/relations.ts#appraiserList',
+    'apps/api/src/modules/survey360/tasks.ts#taskQuery',
   ],
   'apps/api/src/modules/survey360/answering.ts#avatarRoute': [
     '#avatarPersonIds',
@@ -400,6 +402,10 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/survey360/answering.ts#lockAppraiser': [
     'apps/api/src/advisory-lock.ts#advisoryLock',
     'apps/api/src/advisory-lock.ts#asUuid',
+  ],
+  'apps/api/src/modules/survey360/answering.ts#lockLiveRelation': [
+    '#notFound',
+    'apps/api/src/modules/survey360/context.ts#rows',
   ],
   'apps/api/src/modules/survey360/answering.ts#notFound': ['apps/api/src/modules/survey360/context.ts#fail'],
   'apps/api/src/modules/survey360/answering.ts#openConfirmation': [
@@ -469,15 +475,17 @@ export const GRAPH: Graph = {
     '#task',
   ],
   'apps/api/src/modules/survey360/answering.ts#requireTask': [
+    '#lockLiveRelation',
     '#notFound',
     '#sheetsOf',
-    '#taskQuery',
     'apps/api/src/modules/survey360/context.ts#rows',
     'apps/api/src/modules/survey360/questionnaires.ts#loadQuestionnaire',
+    'apps/api/src/modules/survey360/tasks.ts#taskQuery',
   ],
   'apps/api/src/modules/survey360/answering.ts#resolve': [
     '#notFound',
     'apps/api/src/modules/survey360/context.ts#rows',
+    'apps/api/src/modules/survey360/tasks.ts#hasTask',
   ],
   'apps/api/src/modules/survey360/answering.ts#roleLabel': [
     'packages/domain/src/survey360/rules.ts#DEFAULT_ROLE_FIXED_TEXT',
@@ -2583,6 +2591,12 @@ export const GRAPH: Graph = {
     '#query',
     '#round4',
   ],
+  'apps/api/src/modules/survey360/tasks.ts#hasTask': [
+    'apps/api/src/modules/survey360/context.ts#rows',
+    '#hasValidTask',
+  ],
+  'apps/api/src/modules/survey360/tasks.ts#hasValidTask': ['#taskFrom', '#taskWhere'],
+  'apps/api/src/modules/survey360/tasks.ts#taskQuery': ['#taskFrom', '#taskWhere'],
   'apps/api/src/modules/survey360/todos.ts#accountsOf': ['apps/api/src/modules/survey360/context.ts#rows'],
   'apps/api/src/modules/survey360/todos.ts#auditTodo': [
     'apps/api/src/modules/survey360/context.ts#actor',
@@ -2609,6 +2623,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/survey360/context.ts#asIs',
     'apps/api/src/modules/survey360/context.ts#rows',
     'apps/api/src/modules/survey360/context.ts#write',
+    'apps/api/src/modules/survey360/tasks.ts#hasValidTask',
     '#TODO_TITLE',
     '#cancelTodos',
     '#requireOpen',
@@ -2621,6 +2636,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/survey360/todos.ts#route:GET /my/todos': [
     'apps/api/src/modules/survey360/access.ts#iso',
     'apps/api/src/modules/survey360/context.ts#rows',
+    'apps/api/src/modules/survey360/tasks.ts#hasValidTask',
     '#TODO_TITLE',
     'apps/api/src/tenant-context.ts#tenantOf',
   ],
