@@ -14,8 +14,9 @@ const rows = <T>(result: unknown) => (Array.isArray(result) ? result : (result a
 
 export type F082World = Awaited<ReturnType<typeof calcWorld>>;
 
+/** 开关关闭的世界（B5 写入路径，产生 legacy 数据）；总开关默认已打开（F082-5），所以显式关闭。 */
 export async function f082World(db: Db, label: string): Promise<F082World> {
-  return calcWorld(db, label);
+  return calcWorld(db, label, { formulaIdBinding: false });
 }
 
 /** 开关打开的世界（F082-3 起的新写入路径与新响应；依赖注入覆盖只允许作用于 useTestDb() 建的库）。 */

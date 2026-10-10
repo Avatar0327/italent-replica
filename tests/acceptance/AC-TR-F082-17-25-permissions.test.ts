@@ -38,7 +38,8 @@ const numberField = (name: string) =>
 beforeAll(async () => {
   world = await seedPermissionWorld(testDb().db);
   world = { ...world, api: tenantApi(world.db, { authorize: undefined, clock }) };
-  setup = tenantApi(world.db, { clock });
+  // 开关关闭的应用实例：产生 B5 写入的 legacy 数据（总开关默认已打开，F082-5）
+  setup = tenantApi(world.db, { clock, formulaIdBinding: false });
 });
 
 async function makeAuditor(userId: string) {

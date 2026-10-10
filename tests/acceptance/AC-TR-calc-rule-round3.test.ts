@@ -26,6 +26,7 @@ import {
 } from './AC-TR-calc-rule-support.js';
 import { configBody, TR_BASE, TR_NOW } from './AC-TR-config-support.js';
 import { errorCode, tenantApi } from './support/tenant-api.js';
+import './support/b5-path.js';
 
 const testDb = useTestDb();
 const clock = () => TR_NOW;

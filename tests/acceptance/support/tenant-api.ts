@@ -39,10 +39,20 @@ export interface RequestOptions {
 
 const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
+/**
+ * F-082（F082-5）：总开关默认已打开。B5 时代的计算规则套件断言的是开关关闭路径（名称存储、B5 响应形状），
+ * 在文件顶部 import './support/b5-path.js' 把本文件内未显式指定开关的应用固定为关闭路径；显式传 formulaIdBinding 的不受影响。
+ */
+let pinnedFormulaIdBinding: boolean | undefined;
+export function pinFormulaIdBinding(value: boolean): void {
+  pinnedFormulaIdBinding = value;
+}
+
 export function tenantApi(db: Db, deps: Omit<AppDeps, 'db' | 'identity'> = {}) {
   const secret = randomBytes(32).toString('hex');
   const app = createApp({
     authorize: allowAll,
+    ...(pinnedFormulaIdBinding === undefined ? {} : { formulaIdBinding: pinnedFormulaIdBinding }),
     ...deps,
     db,
     identity: createDevIdentityResolver({ secret, nodeEnv: 'test' }),

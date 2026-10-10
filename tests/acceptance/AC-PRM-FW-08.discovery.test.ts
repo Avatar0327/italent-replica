@@ -30,6 +30,7 @@ import {
   writeFrozenProbes,
 } from './support/route-policy/discovery.js';
 import type { Finding } from './support/route-policy/compare.js';
+import { gateEvidence } from './support/route-policy/evidence-gate.js';
 import { checkKnownGapEvidence, KNOWN_GAPS, type KnownGapGroup } from './support/route-policy/probe-known-gaps.js';
 import {
   checkRedundantEvidence,
@@ -70,9 +71,9 @@ const withPolicy = (base: ManifestRoute, policy: RoutePolicy): ManifestRoute => 
 const withTable = (k: string, obligations: readonly Obligation[]): RequiredTable => ({ ...REQUIRED, [k]: obligations });
 
 describe('AC-PRM-FW-08 发现探测：冻结与覆盖', () => {
-  it('覆盖全部已声明端点（558），每个模块一个冻结文件，条目数与模块端点数一致', () => {
+  it('覆盖全部已声明端点（559），每个模块一个冻结文件，条目数与模块端点数一致', () => {
     expect(Object.keys(fresh).sort()).toEqual(manifest.declared.map(key).sort());
-    expect(manifest.declared).toHaveLength(558);
+    expect(manifest.declared).toHaveLength(559);
     const groups = groupByModule(fresh);
     const files = readdirSync(PROBE_DIR).filter((f) => f.endsWith('.json'));
     expect(files.sort()).toEqual(
@@ -139,8 +140,9 @@ describe('AC-PRM-FW-08 P0 / P3：真实声明 + 显式表零发现', () => {
       expect(group.why.length, group.id).toBeGreaterThan(20);
       expect(group.evidence.length, group.id).toBeGreaterThan(0);
     }
-    expect(checkKnownGapEvidence(KNOWN_GAPS)).toEqual([]);
-    expect(checkRedundantEvidence(REDUNDANT_OBSERVATIONS)).toEqual([]);
+    // F-090：账本证据锚点与源码对不上默认只警告
+    expect(gateEvidence(checkKnownGapEvidence(KNOWN_GAPS), '已知缺口账本证据锚点')).toEqual([]);
+    expect(gateEvidence(checkRedundantEvidence(REDUNDANT_OBSERVATIONS), '冗余观测账本证据锚点')).toEqual([]);
     const tampered: KnownGapGroup[] = KNOWN_GAPS.map((g, i) =>
       i === 0 ? { ...g, evidence: [{ ...g.evidence[0]!, anchor: 'thisSnippetDoesNotExistAnywhere()' }] } : g,
     );

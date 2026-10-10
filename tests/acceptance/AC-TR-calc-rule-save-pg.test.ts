@@ -6,6 +6,7 @@
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { CALC_RULES, calcBody, calcItem, calcWorld } from './AC-TR-calc-rule-support.js';
+import './support/b5-path.js';
 
 const testDb = useTestDb();
 

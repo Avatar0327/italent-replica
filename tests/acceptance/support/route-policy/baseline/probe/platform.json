@@ -106,6 +106,23 @@
     "scopeQueries": [],
     "trace": []
   },
+  "POST /api/platform/tenants/:tenantId/talent-review/calc-formulas/rebind": {
+    "all": {
+      "code": "FORBIDDEN",
+      "error": "3631e071c213",
+      "reason": "PLATFORM_OPERATOR_REQUIRED",
+      "status": 403
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "FORBIDDEN",
+      "error": "3631e071c213",
+      "reason": "PLATFORM_OPERATOR_REQUIRED",
+      "status": 403
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
   "POST /api/platform/users": {
     "all": {
       "code": "FORBIDDEN",

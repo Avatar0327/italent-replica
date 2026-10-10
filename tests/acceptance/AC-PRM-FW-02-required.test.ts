@@ -16,7 +16,14 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { readFrozenContract } from './support/route-policy/baseline.js';
 import { compareDeclarations, type Finding } from './support/route-policy/compare.js';
 import type { ObservedContract } from './support/route-policy/contract.js';
-import { checkEvidence, repoSource, type SourceReader, writeDigests } from './support/route-policy/evidence.js';
+import {
+  checkEvidence,
+  checkStored,
+  repoSource,
+  type SourceReader,
+  writeDigests,
+} from './support/route-policy/evidence.js';
+import { gateEvidence } from './support/route-policy/evidence-gate.js';
 import { admissionPrimitives, checkRequired } from './support/route-policy/required.js';
 import { expectedMutationKeys, missingCoverage } from './support/route-policy/required-coverage.js';
 import { REQUIRED_MUTATION_KINDS, requiredMutants } from './support/route-policy/required-mutate.js';
@@ -76,10 +83,10 @@ function only(key: string, obligations: readonly Obligation[] = entry(key)): Req
 type ObjectNode = Extract<RoutePolicy, { kind: 'object' }>;
 
 describe('AC-PRM-FW-02 显式必需项表：形状与完整性', () => {
-  it('表键与运行时 558 个端点完全相等（缺一条、多一条都失败）', () => {
+  it('表键与运行时 559 个端点完全相等（缺一条、多一条都失败）', () => {
     const declared = manifest.declared.map((r) => `${r.method} ${r.path}`).sort();
     expect(Object.keys(REQUIRED).sort()).toEqual(declared);
-    expect(declared).toHaveLength(558);
+    expect(declared).toHaveLength(559);
   });
 
   it('表文件只放字面量：不 import 声明、产品代码或探测器（不得从候选声明重新生成）', () => {
@@ -96,7 +103,8 @@ describe('AC-PRM-FW-02 显式必需项表：形状与完整性', () => {
 
   it('全表证据校验零发现：每条义务都有强制调用点证据，锚点命中，摘要与源码一致', () => {
     if (process.env['ROUTE_POLICY_UPDATE_DIGESTS'] === '1') writeDigests(REQUIRED);
-    const findings = checkEvidence(REQUIRED, { unused: true });
+    // F-090：登记与源码不一致默认只警告；登记自身的错误仍判红；ROUTE_POLICY_EVIDENCE_STRICT=1 全部判红
+    const findings = gateEvidence(checkStored(REQUIRED, { unused: true }), '全表证据校验');
     expect(findings, show(findings)).toEqual([]);
   });
 

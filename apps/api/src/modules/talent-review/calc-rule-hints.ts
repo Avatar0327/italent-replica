@@ -21,6 +21,10 @@ import {
   type RawHints,
 } from '@italent/domain';
 import type { CalcItemView } from './calc-rule-view.js';
+import { registerFormulaCapability } from './formula-binding-capabilities.js';
+
+// 总开关打开时 createApp 核对本能力已登记（契约 §10）
+registerFormulaCapability('items-projection');
 
 const UNVERIFIABLE = '部分公式当前无法完整校验（引用的字段可能已改名或删除），请检查后重新保存';
 const NOT_REBOUND = '部分计算项目尚未改绑为按字段 ID 绑定（旧公式或改绑失败），无法完整校验，请重新保存这些公式';
