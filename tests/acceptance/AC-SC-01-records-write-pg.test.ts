@@ -4,7 +4,9 @@
  * - 同一目标同一继任者同一区间并发新增：恰好一个 201，另一个 409 SUCCESSION_DUPLICATE；
  * - 批量结束的记录顺序相反（[A,B] 与 [B,A]）并发：不死锁，一个 200，另一个 409（ALREADY_ENDED / REVISION_CONFLICT）；
  * - 批量结束 [A,B] 与删除 B 并发：不死锁、不 500，库里没有半结束的状态（A、B 要么都结束，要么 B 被删而整批 404）；
- * - 跨目标锁序：记录分属两个目标（组织 / 职位），批量结束 [A,B] 与 [B,A] 并发不死锁（目标锁行升序）；
+ * - 跨目标锁序：两个请求结束不同的记录集合、共同覆盖组织与职位两个目标，并控制双方先占不同目标的交错——
+ *   去掉目标锁行升序后会交叉取锁而死锁；
+ * - 确定性的失败回查重放：同键同 revision 两个编辑排队，先到者提交，后到者因 revision 变化失败后回查台账，返回相同结果，审计一次；
  * - 同一条记录同一 revision 并发编辑：一个 200，另一个 409 REVISION_CONFLICT；
  * - 任职交错（审查第 1 轮 P2-1）：办理离职与新增继任者排队等同一员工行锁，离职先提交；新增拿到锁后必须重读资格——
  *   400 SUCCESSOR_NOT_ACTIVE，不落生效记录（状态与 FOR SHARE 分开两条语句）。
@@ -88,14 +90,74 @@ pg('AC-SC-01 写入口并发（真 PG）', () => {
     expect(bothEnded || (bDeleted && rows.get(a)!.end_date !== '2026-09-30')).toBe(true);
   });
 
-  it('跨目标锁序：记录分属组织与职位两个目标，批量结束 [A,B] 与 [B,A] 并发不死锁', async () => {
-    const hired = await w.hire(`跨目标${++seq}`, { departmentId: std.orgB.id });
-    const other = await w.hire(`跨目标${++seq}`, { departmentId: std.orgB.id });
-    const a = await w.insertRecord({ type: 'org', targetId: std.orgA.id, successorId: hired.id });
-    const b = await w.insertRecord({ type: 'position', targetId: std.keyPosition.id, successorId: other.id });
-    const results = await Promise.all([end([a, b]), end([b, a])]);
-    expect(results.map((response) => response.status).sort()).toEqual([200, 409]);
-    for (const row of await endDates([a, b])) expect(row.end_date).toBe('2026-09-30');
+  /** 持有目标锁行（与写入口同一把锁）的事务：释放前其他请求在该目标上排队。 */
+  const holdTargetLock = async (kind: 'org' | 'position', targetId: string) => {
+    let locked!: () => void;
+    let release!: () => void;
+    const lockedSignal = new Promise<void>((resolve) => (locked = resolve));
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const done = withTenant(w.db, w.tenant.id, async (tx) => {
+      await tx.execute(sql`INSERT INTO succession_target_locks (tenant_id, target_kind, target_id)
+        VALUES (${w.tenant.id}::uuid, ${kind}, ${targetId}::uuid) ON CONFLICT DO NOTHING`);
+      await tx.execute(sql`SELECT 1 FROM succession_target_locks
+        WHERE tenant_id = ${w.tenant.id}::uuid AND target_kind = ${kind} AND target_id = ${targetId}::uuid FOR UPDATE`);
+      locked();
+      await gate;
+    });
+    await lockedSignal;
+    return async () => {
+      release();
+      await done;
+    };
+  };
+
+  it('跨目标锁序（审查 P3）：两个请求结束不同记录集合、共同覆盖组织与职位两个目标，双方先占不同目标也不死锁', async () => {
+    // 记录 ID 的大小决定无锁读出目标的顺序（按主键索引）：请求 1 先见组织目标，请求 2 先见职位目标——
+    // 去掉目标排序就会交叉取锁
+    const ids = ['00000001', '00000002', '00000003', '00000004'].map((head) => `${head}-0000-4000-8000-00000000cafe`);
+    const hire = async () => (await w.hire(`跨目标${++seq}`, { departmentId: std.orgB.id })).id;
+    const orgTarget = { type: 'org', targetId: std.orgA.id } as const;
+    const posTarget = { type: 'position', targetId: std.keyPosition.id } as const;
+    const a1 = await w.insertRecord({ ...orgTarget, id: ids[0], successorId: await hire() });
+    const b1 = await w.insertRecord({ ...posTarget, id: ids[1], successorId: await hire() });
+    const b2 = await w.insertRecord({ ...posTarget, id: ids[2], successorId: await hire() });
+    const a2 = await w.insertRecord({ ...orgTarget, id: ids[3], successorId: await hire() });
+    const releaseOrg = await holdTargetLock('org', std.orgA.id);
+    const releasePosition = await holdTargetLock('position', std.keyPosition.id);
+    const first = end([a1, b1]);
+    await waitForBlocked(w.db, 1);
+    const second = end([b2, a2]);
+    await waitForBlocked(w.db, 2);
+    // 先放开职位目标：若实现按“先见到的目标”取锁，请求 2 此时拿到职位锁并等组织锁；按升序取锁则两者仍都卡在第一把锁上
+    await releasePosition();
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    await releaseOrg();
+    const results = await Promise.all([first, second]);
+    expect(results.map((response) => response.status)).toEqual([200, 200]);
+    for (const row of await endDates([a1, b1, a2, b2])) expect(row.end_date).toBe('2026-09-30');
+  });
+
+  it('确定性的失败回查重放（审查 P3）：同键同 revision 两个编辑排队，后到者因 revision 变化失败后回查台账，返回相同结果、审计一次', async () => {
+    const id = await seed();
+    const release = await holdTargetLock('org', std.orgA.id);
+    const key = crypto.randomUUID();
+    const edit = () =>
+      w.request('PUT', `/records/${id}`, { ifMatch: 1, idempotencyKey: key, body: { backupType: 'deputy' } });
+    const results = [edit(), edit()];
+    await waitForBlocked(w.db, 2);
+    await release();
+    const [one, two] = await Promise.all(results);
+    expect([one!.status, two!.status]).toEqual([200, 200]);
+    const bodies = [(await one!.json()) as { revision: number }, (await two!.json()) as { revision: number }];
+    expect(bodies[0]).toEqual(bodies[1]);
+    expect(bodies[0]!.revision).toBe(2);
+    const audits = rowsOf<{ n: number }>(
+      await w.asTenant((tx) =>
+        tx.execute(sql`SELECT count(*)::int AS n FROM audit_events
+          WHERE object_id = ${id} AND action = 'succession.record.update'`),
+      ),
+    );
+    expect(audits[0]!.n).toBe(1);
   });
 
   it('同一 revision 并发编辑：一个 200，另一个 409 REVISION_CONFLICT', async () => {
