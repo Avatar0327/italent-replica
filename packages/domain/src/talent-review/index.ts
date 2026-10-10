@@ -10,3 +10,4 @@ export * from './formula-rename.js';
 export * from './matrix.js';
 export * from './sync-protocol.js';
 export * from './sync-outcomes.js';
+export * from './formula-rebind.js';

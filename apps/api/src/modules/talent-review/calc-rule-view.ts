@@ -41,6 +41,8 @@ export interface CalcItemView {
   readonly formulaBinding?: FormulaBindingState;
   readonly fieldNames?: Record<string, string>;
   readonly refFieldIds?: string[];
+  /** unresolved 的原因码（改绑失败，契约 §6.3）：同样只在原始视图里出现。 */
+  readonly bindingIssue?: string;
   /** 渲染后对外的逐处绑定（presentCalcRules 产出，契约 §1.4）。 */
   readonly formulaBindings?: (string | null)[];
 }
@@ -115,20 +117,26 @@ export async function withItems(tx: Tx, tenantId: string, rows: CalcRuleRow[], b
     ...r,
     items: items
       .filter((item) => item.ruleId === r.id)
-      .map(({ id, targetFieldId, priority, formula, description, sortNo, usesRanking, formulaBinding }) => ({
-        targetFieldId,
-        priority,
-        formula,
-        description,
-        sortNo,
-        usesRanking,
-        ...(bound ? boundExtras(formulaBinding as FormulaBindingState, refs.get(id)) : {}),
-      })),
+      .map(
+        ({ id, targetFieldId, priority, formula, description, sortNo, usesRanking, formulaBinding, bindingIssue }) => ({
+          targetFieldId,
+          priority,
+          formula,
+          description,
+          sortNo,
+          usesRanking,
+          ...(bound ? boundExtras(formulaBinding as FormulaBindingState, refs.get(id), bindingIssue) : {}),
+        }),
+      ),
   }));
 }
 
-function boundExtras(binding: FormulaBindingState, refs: { id: string; name: string }[] | undefined) {
-  if (binding !== 'bound') return { formulaBinding: binding };
+function boundExtras(
+  binding: FormulaBindingState,
+  refs: { id: string; name: string }[] | undefined,
+  issue: string | null,
+) {
+  if (binding !== 'bound') return { formulaBinding: binding, ...(issue ? { bindingIssue: issue } : {}) };
   const list = refs ?? [];
   return {
     formulaBinding: binding,
