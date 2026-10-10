@@ -88,7 +88,7 @@ function chainTo(parents: ReadonlyMap<string, string>, root: string, node: strin
 }
 
 /**
- * 变更节点集合。Δd 除“两边都有、摘要不同”外，还含登记图仍引用、但 nodes 记录缺失的节点（登记副本不一致，旧版把它报为
+ * 变更节点集合。Δd 除“两边都有、摘要不同”外，还含登记图里已作为依赖被引用、但 nodes 记录缺失的节点（登记副本不一致，旧版把它报为
  * “新增依赖”）；绑定指纹在节点层面（nodes 记录）与证据单元层面（unitBindings）各自比较，不让节点记录遮住根自己的指纹。
  * `unitLevel` = 只有证据单元层面的变化（单元摘要 / 单元绑定 / 未登记），节点层面没变：影响只列它自己。
  */
@@ -101,7 +101,8 @@ function changedNodes(reg: Registry, cur: Registry, roots: Iterable<string>) {
     ...Object.keys(reg.graph),
     ...Object.keys(cur.graph),
   ]);
-  const regRefs = new Set([...Object.keys(reg.graph), ...Object.values(reg.graph).flat()]);
+  // 只看被依赖的一侧：有出边的纯证据根本来就有 graph 键、没有 nodes 记录，第一次成为依赖时不能算“缺记录”
+  const regRefs = new Set(Object.values(reg.graph).flat());
   const digest = new Set(
     Object.keys(cur.nodes).filter(
       (id) => digestOf(reg, id) !== digestOf(cur, id) && (id in reg.nodes || regRefs.has(id)),

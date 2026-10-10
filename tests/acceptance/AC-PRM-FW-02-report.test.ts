@@ -861,4 +861,29 @@ describe('AC-PRM-FW-02 集中报告：纯证据根第一次成为依赖不算摘
     assertOracle(run.reg, run.cur, run.roots, run.groups);
     expect(run.groups.map((g) => g.node)).toEqual([`${FX}/t.ts#T`]);
   });
+
+  it('纯根与依赖之间的其余转换：叶子根首次成为依赖、根不再是依赖（仍是根）、根改为被另一个根依赖——都只出真正变化的那一组', () => {
+    const leafRoot = { ...files, [`${FX}/r.ts`]: 'export function R() {\n  return 3;\n}\n' };
+    const callR = "import { R } from './r.js';\nexport function S() {\n  return R();\n}\n";
+    const first = fixtureRun(leafRoot, { [`${FX}/s.ts`]: callR }, R, S);
+    assertOracle(first.reg, first.cur, first.roots, first.groups);
+    expect(first.groups.map((g) => g.node)).toEqual([S]);
+
+    const dependent = { ...files, [`${FX}/s.ts`]: callR };
+    const stops = fixtureRun(dependent, { [`${FX}/s.ts`]: files[`${FX}/s.ts`] }, R, S);
+    assertOracle(stops.reg, stops.cur, stops.roots, stops.groups);
+    expect(stops.groups.map((g) => g.node)).toEqual([S]);
+
+    // 已经是依赖的根，自己的实现改了：节点摘要变化，引用它的根（S）和它自己都在影响里
+    const edited = fixtureRun(
+      dependent,
+      { [`${FX}/r.ts`]: files[`${FX}/r.ts`].replace('return a()', 'return a() + 1') },
+      R,
+      S,
+    );
+    assertOracle(edited.reg, edited.cur, edited.roots, edited.groups);
+    const group = edited.groups.find((g) => g.node === R)!;
+    expect([...group.kinds].sort()).toEqual(['digest', 'root']);
+    expect(group.impacts.map((i) => i.root).sort()).toEqual([R, S].sort());
+  });
 });
