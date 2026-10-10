@@ -7,30 +7,33 @@
 import { tenantLocalDate } from '@italent/domain';
 import { TIMING_BLURRED_ACTIONS, TIMING_AUDIT_TYPE } from '../modules/survey360/timing-audit.js';
 
-/** 时区在 instant 时刻相对 UTC 的偏移（毫秒）。 */
-function zoneOffsetMs(instant: number, timeZone: string): number {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    hourCycle: 'h23',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  }).formatToParts(new Date(instant));
-  const part = (type: string) => Number(parts.find((p) => p.type === type)!.value);
-  const local = Date.UTC(part('year'), part('month') - 1, part('day'), part('hour'), part('minute'), part('second'));
-  return local - Math.floor(instant / 1000) * 1000;
-}
+const HOUR_MS = 3_600_000;
 
-/** instant 所在租户当地日的 00:00 对应的时刻。 */
+/**
+ * instant 所在租户当地日的第一个有效时刻。不用“当地 00:00 减偏移”的算术：当地零点可能不存在（圣地亚哥夏令时从 00:00
+ * 跳到 01:00）或出现两次（哈瓦那夏令时结束），那样会落到前一天。改为：先按小时向前扫到当日第一个整点，再在前一小时内
+ * 二分到当日最早的毫秒。
+ */
 export function tenantDayStart(instant: Date, timeZone: string): Date {
-  const [year, month, day] = tenantLocalDate(instant, timeZone).split('-').map(Number) as [number, number, number];
-  const naive = Date.UTC(year, month - 1, day);
-  // 先按 naive 时刻的偏移估计，再按估计结果的偏移修正一次（跨夏令时切换日）
-  const guess = naive - zoneOffsetMs(naive, timeZone);
-  return new Date(naive - zoneOffsetMs(guess, timeZone));
+  const day = tenantLocalDate(instant, timeZone);
+  const isDay = (t: number) => tenantLocalDate(new Date(t), timeZone) === day;
+  const end = instant.getTime();
+  let first = end;
+  // 一天最长 25 小时，向前最多回溯 48 小时
+  for (let t = end - 48 * HOUR_MS; t <= end; t += HOUR_MS) {
+    if (isDay(t)) {
+      first = t;
+      break;
+    }
+  }
+  let before = first - HOUR_MS;
+  if (isDay(before)) return new Date(before); // 不会发生（回溯范围已足够），兜底
+  while (first - before > 1) {
+    const mid = Math.floor((before + first) / 2);
+    if (isDay(mid)) first = mid;
+    else before = mid;
+  }
+  return new Date(first);
 }
 
 /** 审计查看显示的发生时间：计时的建立 / 翻页事件模糊到当地日，其他事件原样。 */
