@@ -7,7 +7,9 @@
  * - 字典范围（DEC-121：看全部 ∪ 创建人，新建只认看全部，分页前过滤）与租户隔离；
  * - 数据操作、按钮、字段查看与编辑权（含显式清空）；筛选 / 排序不泄露无查看权的字段；
  * - 重放按当前范围与字段权复核；审计；被引用拒删的钩子位（B4 / B5 登记引用方）。
- * 名称是否唯一、重名提示、被引用后能否停用，规格与取证都没有（需取证 #196），B1b 不拦重名、不挡停用。
+ * DEC-380（取证 Q-M0-170 / 171，#196，照原站）：名称唯一并给原站提示（周期「活动周期名称已存在，请重新输入」、通用评分项
+ * 「名称已存在，请重新输入」）；周期没有描述字段；通用评分项的描述（评价标准）≤500 字；被引用时周期拒绝停用（原站置灰）、通用评分项
+ * 拒绝停用并列出引用它的评价表（只列操作人看得到的，其余计为“其他 N 个”，DEC-374⑥）。
  */
 import { randomUUID } from 'node:crypto';
 import { sql, withTenant } from '@italent/db';
@@ -50,6 +52,8 @@ interface Subject {
   readonly table: string;
   readonly objectType: string;
   readonly auditPrefix: string;
+  /** 重名提示（DEC-380 照原站）。 */
+  readonly nameExists: { readonly reason: string; readonly message: string };
   /** 该对象除 name / enabled 外的可写字段。 */
   readonly extra: Record<string, unknown>;
   /** 可单独隐藏 / 设为只读的非名称字段。 */
@@ -66,6 +70,7 @@ const SUBJECTS: readonly Subject[] = [
     table: 'ev_cycles',
     objectType: 'TEvaluation.ActivityCycle',
     auditPrefix: 'evaluation.activity-cycle',
+    nameExists: { reason: 'ACTIVITY_CYCLE_NAME_EXISTS', message: '活动周期名称已存在，请重新输入' },
     extra: {},
     side: 'enabled',
     sideValue: false,
@@ -78,6 +83,7 @@ const SUBJECTS: readonly Subject[] = [
     table: 'ev_general_items',
     objectType: 'TEvaluation.GeneralScoreItem',
     auditPrefix: 'evaluation.general-score-item',
+    nameExists: { reason: 'GENERAL_SCORE_ITEM_NAME_EXISTS', message: '名称已存在，请重新输入' },
     extra: { description: '现场表现' },
     side: 'description',
     sideValue: '业绩',
@@ -151,13 +157,24 @@ describe.each(SUBJECTS)('AC-EV-config-dicts B1b $label', (s) => {
         { name: name(), displayOrder: 1 },
         { name: name(), enabled: 'yes' },
       ];
-      if (s.key === 'generalScoreItem') bad.push({ name: name(), description: 'y'.repeat(4001) });
+      if (s.key === 'generalScoreItem') bad.push({ name: name(), description: 'y'.repeat(501) });
       for (const body of bad) {
         const response = await op.request('POST', PATH, { ifMatch: 0, body });
         expect(response.status, JSON.stringify(body)).toBe(400);
       }
       expect((await patch(op, made, { id: randomUUID() })).status).toBe(400);
       expect(await ok<Row>(await op.request('GET', `${PATH}/${made.id}`))).toEqual(made);
+    });
+
+    it('通用评分项的评价标准最多 500 字：500 字可以保存，501 字 400 并提示“最多输入500个字”，数据不变', async () => {
+      if (s.key === 'activityCycle') return;
+      const op = await admin();
+      const row = await created(op, { description: 'y'.repeat(500) });
+      expect(row.description).toHaveLength(500);
+      const tooLong = await patch(op, row, { description: 'y'.repeat(501) });
+      expect(tooLong.status).toBe(400);
+      expect(JSON.stringify(await tooLong.json())).toContain('最多输入500个字');
+      expect(await ok<Row>(await op.request('GET', `${PATH}/${row.id}`))).toEqual(row);
     });
 
     it('通用评分项的描述可空、可显式清空；活动周期没有描述字段', async () => {
@@ -403,8 +420,63 @@ describe.each(SUBJECTS)('AC-EV-config-dicts B1b $label', (s) => {
     });
   });
 
-  describe('被引用拒删的钩子位（B4 / B5 登记引用方）', () => {
-    it('登记的引用方命中时删除 409（reason 由引用方给出），数据不变；未命中照常删除；不挡停用（口径待取证 #196）', async () => {
+  describe('名称唯一（DEC-380，照原站提示）', () => {
+    const duplicate = async (op: Operator, response: Response) => {
+      expect(response.status).toBe(409);
+      const body = (await response.clone().json()) as { error: { code: string; message: string } };
+      expect(body.error).toMatchObject({ code: 'CONFLICT', message: s.nameExists.message });
+      expect((await errorOf(response)).reason).toBe(s.nameExists.reason);
+    };
+
+    it('新建撞名 409：专用 reason + 原站提示原文，首尾空白按 trim 后比较；大小写区分；不同租户可重名；数据不变', async () => {
+      const op = await admin();
+      const label = name('撞名');
+      const first = await created(op, { name: label, ...s.extra });
+      await duplicate(op, await create(op, { name: label }));
+      await duplicate(op, await create(op, { name: `  ${label}  ` }));
+      await created(op, { name: label.toUpperCase() === label ? `${label}x` : label.toUpperCase() });
+      const other = await operator(creatorWorld, { seeAll: true });
+      await created(other, { name: label });
+      expect((await list(op, 'pageSize=100')).items.filter((item) => item.name === label)).toHaveLength(1);
+      expect(await ok<Row>(await op.request('GET', `${PATH}/${first.id}`))).toEqual(first);
+    });
+
+    it('改名撞名 409 且数据不变；原名保存不算撞名；创建人范围改名撞上范围外的名称也是同一提示（DEC-373③）', async () => {
+      const op = await admin();
+      const a = await created(op, s.extra);
+      const b = await created(op, s.extra);
+      await duplicate(op, await patch(op, b, { name: a.name }));
+      expect(await ok<Row>(await op.request('GET', `${PATH}/${b.id}`))).toEqual(b);
+      await ok(await patch(op, b, { name: b.name, enabled: false }));
+
+      const seeAll = await operator(creatorWorld, { seeAll: true });
+      const mine = await operator(creatorWorld, { seeAll: true });
+      const own = await created(mine, s.extra);
+      const hidden = await created(seeAll, s.extra);
+      await mine.revokeSeeAll();
+      expect(await detailStatus(mine, hidden.id)).toBe(404);
+      await duplicate(mine, await patch(mine, own, { name: hidden.name }));
+    });
+
+    it('并发创建同名 / 并发改名到同名：库内唯一约束兜底，只成功一条，另一条同样 409 专用 reason', async () => {
+      const op = await admin();
+      const label = name('并发');
+      const creates = await Promise.all([create(op, { name: label }), create(op, { name: label })]);
+      expect(creates.map((r) => r.status).sort()).toEqual([201, 409]);
+      await duplicate(
+        op,
+        creates.find((r) => r.status === 409)!,
+      );
+      const x = await created(op, s.extra);
+      const y = await created(op, s.extra);
+      const target = name('并发改名');
+      const renames = await Promise.all([patch(op, x, { name: target }), patch(op, y, { name: target })]);
+      expect(renames.map((r) => r.status).sort()).toEqual([200, 409]);
+    });
+  });
+
+  describe('被引用拒停用 / 拒删的钩子位（B4 / B5 登记引用方；DEC-380）', () => {
+    it('删除：登记的引用方命中时 409（reason 由引用方给出），数据不变；未命中照常删除', async () => {
       const op = await admin();
       const used = await created(op, s.extra);
       const free = await created(op, s.extra);
@@ -422,9 +494,67 @@ describe.each(SUBJECTS)('AC-EV-config-dicts B1b $label', (s) => {
       );
       const rows = (Array.isArray(count) ? count : (count as { rows: { n: number }[] }).rows) as { n: number }[];
       expect(Number(rows[0]?.n)).toBe(1);
-      const off = await ok<Row>(await patch(op, used, { enabled: false }));
-      expect(off.enabled).toBe(false);
       await ok(await op.request('DELETE', `${PATH}/${free.id}`, { ifMatch: free.revision }));
+    });
+
+    it('停用：只拦 启用 → 停用；命中引用方 409，其他字段修改 / 启用 / 未命中的停用照常；停用规则不拦删除', async () => {
+      const op = await admin();
+      const used = await created(op, s.extra);
+      const free = await created(op, s.extra);
+      const { registerInUse } = await import('../../apps/api/src/modules/evaluation/usage.js');
+      registerInUse(
+        s.key,
+        {
+          sql: (ctx, id) => sql`SELECT 1 WHERE ${id}::uuid = ${used.id}::uuid AND ${ctx.tenantId}::uuid IS NOT NULL`,
+          message: `该${s.label}已被引用，不能停用`,
+          reason: 'DICTIONARY_IN_USE_DISABLE',
+        },
+        'disable',
+      );
+      const blocked = await patch(op, used, { enabled: false });
+      expect(blocked.status).toBe(409);
+      expect(await errorOf(blocked)).toMatchObject({ code: 'CONFLICT', reason: 'DICTIONARY_IN_USE_DISABLE' });
+      expect(await ok<Row>(await op.request('GET', `${PATH}/${used.id}`))).toEqual(used);
+      const renamed = await ok<Row>(await patch(op, used, { name: name('可改名'), enabled: true }));
+      expect(renamed.enabled).toBe(true);
+      expect((await ok<Row>(await patch(op, free, { enabled: false }))).enabled).toBe(false);
+      await ok(await op.request('DELETE', `${PATH}/${renamed.id}`, { ifMatch: renamed.revision }));
+    });
+
+    it('通用评分项被评价表引用时拒绝停用并列出引用方：只列操作人看得到的，看不到的计为“其他 N 个”（DEC-374⑥）', async () => {
+      if (s.key !== 'generalScoreItem') return;
+      const op = await admin();
+      const row = await created(op, s.extra);
+      const { registerInUse } = await import('../../apps/api/src/modules/evaluation/usage.js');
+      registerInUse(
+        s.key,
+        {
+          sql: (ctx, id) => sql`SELECT 1 WHERE ${id}::uuid = ${row.id}::uuid AND ${ctx.tenantId}::uuid IS NOT NULL`,
+          message: '此评分项被评价表引用，无法停用',
+          reason: 'GENERAL_SCORE_ITEM_IN_USE',
+          references: (ctx, id) => sql`SELECT f.id, f.name, f.visible FROM (VALUES
+              (${randomUUID()}::uuid, '评价表甲', true), (${randomUUID()}::uuid, '评价表乙', true),
+              (${randomUUID()}::uuid, '隐藏表一', false), (${randomUUID()}::uuid, '隐藏表二', false),
+              (${randomUUID()}::uuid, '隐藏表三', false)) AS f(id, name, visible)
+            WHERE ${id}::uuid = ${row.id}::uuid AND ${ctx.tenantId}::uuid IS NOT NULL`,
+        },
+        'disable',
+      );
+      const blocked = await patch(op, row, { enabled: false });
+      expect(blocked.status).toBe(409);
+      const body = (await blocked.json()) as {
+        error: {
+          code: string;
+          message: string;
+          details: { reason: string; forms: { name: string }[]; otherCount: number };
+        };
+      };
+      expect(body.error.code).toBe('CONFLICT');
+      expect(body.error.message).toBe('此评分项被评价表【评价表甲、评价表乙】及其他 3 个引用，无法停用');
+      expect(body.error.details.reason).toBe('GENERAL_SCORE_ITEM_IN_USE');
+      expect(body.error.details.forms.map((form) => form.name)).toEqual(['评价表甲', '评价表乙']);
+      expect(body.error.details.otherCount).toBe(3);
+      expect(JSON.stringify(body)).not.toContain('隐藏表');
     });
   });
 });
