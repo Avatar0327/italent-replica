@@ -11,7 +11,7 @@ import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import { validIsoDate } from '../org/read-model.js';
-import { pageQuery, uuidParam, uuidQuery } from '../talent/http.js';
+import { pageQuery, parseBody, revision, uuidParam, uuidQuery } from '../talent/http.js';
 import { readinessPort } from '../talent-review/readiness-port.js';
 import {
   requireFilterVisible,
@@ -21,7 +21,9 @@ import {
   successionScope,
 } from './access.js';
 import './access.js';
-import { projectSuccession, buildRecordViews } from './projection.js';
+import { CANDIDATE_DEFAULT, CANDIDATE_KEYWORD_MAX, CANDIDATE_MAX, searchCandidates } from './candidates.js';
+import { recordCreate, recordEnd, recordPatch, rejectImmutable } from './input.js';
+import { projectSuccession, buildRecordViews, type RecordView } from './projection.js';
 import './readiness-guard.js';
 import {
   listRecordRows,
@@ -33,6 +35,15 @@ import {
 } from './record-read.js';
 import './settings.js';
 import { installSuccessionPorts } from './ports.js';
+import { createRecord, deleteRecord, endRecords, updateRecord } from './record-write.js';
+import { recordResults } from './record-results.js';
+import {
+  authorizeSuccessionResult,
+  checkCandidateAccess,
+  checkWriteAccess,
+  runSuccessionCommand,
+  type WriteSpec,
+} from './write-support.js';
 
 const RECORDS = `${SUCCESSION_BASE}/records`;
 
@@ -85,6 +96,112 @@ export function registerSuccessionRoutes(router: Hono<TenantEnv>, deps: TenantRo
     c.header('ETag', `"${found.revision}"`);
     return c.json((await projectSuccession(deps, ctx, 'record', [found.view]))[0]);
   });
+
+  registerRecordWrites(router, deps);
+}
+
+/** 记录写侧（A2）：#3 新增、#3a 候选、#4 编辑、#5 批量结束、#6 软删除；共用命令执行协议（write-support.ts）。 */
+function registerRecordWrites(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
+  // #3 新增（含历史补录：给出结束时间即保存为已结束）；无 If-Match（新建），Idempotency-Key 必填
+  router.post(RECORDS, async (c) => {
+    const body = await parseBody(c, recordCreate);
+    return writeRecord(c, deps, {
+      operation: 'create',
+      button: { code: 'create', level: 'list' },
+      expectedRevision: 0,
+      payload: body,
+      input: body,
+      status: 201,
+      execute: (tx, ctx) => createRecord(tx, ctx, body),
+    });
+  });
+
+  // #3a 继任者候选：全租户关键词搜索（DEC-308，不按员工范围裁剪）；持新增或编辑按钮之一即可
+  router.get(`${SUCCESSION_BASE}/successor-candidates`, async (c) => {
+    const ctx = await checkCandidateAccess(c, deps);
+    const keyword = c.req.query('q')?.trim() ?? '';
+    if (!keyword || keyword.length > CANDIDATE_KEYWORD_MAX) {
+      throw new AppError('VALIDATION_FAILED', `q 必填，且不超过 ${CANDIDATE_KEYWORD_MAX} 个字符`);
+    }
+    const limit = candidateLimit(c.req.query('limit'));
+    const today = tenantLocalDate(deps.clock(), ctx.timezone);
+    const items = await withTenant(deps.db, ctx.tenantId, (tx) =>
+      searchCandidates(tx, ctx.tenantId, today, keyword, limit),
+    );
+    return c.json({ items });
+  });
+
+  // #4 编辑：白名单字段；endDate 置空 = 恢复生效；目标与继任者不可改（FIELD_IMMUTABLE，先于结构校验）
+  router.put(`${RECORDS}/:id`, async (c) => {
+    const id = uuidParam(c);
+    const expectedRevision = revision(c);
+    const raw: unknown = await c.req.json().catch(() => undefined);
+    rejectImmutable(raw);
+    const body = await parseBody(c, recordPatch);
+    return writeRecord(c, deps, {
+      operation: 'update',
+      button: { code: 'update', level: 'detail' },
+      expectedRevision,
+      payload: body,
+      input: { id, body },
+      status: 200,
+      execute: (tx, ctx) => updateRecord(tx, ctx, id, body),
+    });
+  });
+
+  // #5 批量结束：整体成功或整体失败（≤ 200 条），逐条 expectedRevision
+  router.post(`${RECORDS}/end`, async (c) => {
+    const body = await parseBody(c, recordEnd);
+    return writeRecord(c, deps, {
+      operation: 'update',
+      button: { code: 'end', level: 'list' },
+      expectedRevision: 0,
+      input: body,
+      status: 200,
+      execute: (tx, ctx) => endRecords(tx, ctx, body),
+    });
+  });
+
+  // #6 软删除：回执 { id, deleted: true }；已删除的记录不再出现在任何读口
+  router.delete(`${RECORDS}/:id`, async (c) => {
+    const id = uuidParam(c);
+    return writeRecord(c, deps, {
+      operation: 'delete',
+      button: { code: 'delete', level: 'detail' },
+      expectedRevision: revision(c),
+      input: { id },
+      status: 200,
+      execute: (tx, ctx) => deleteRecord(tx, ctx, id),
+    });
+  });
+}
+
+/**
+ * 写入口共用出口（设计 §2.1）：命令前权限 → 命令协议（含事务内复核）→ authorizeSuccessionResult 返回前复核与投影。
+ * 首次响应、直接重放、失败回查重放三条路径都走同一个 authorizeSuccessionResult（记录的结果适配器：record-results.ts）。
+ */
+async function writeRecord(
+  c: Context<TenantEnv>,
+  deps: TenantRouteDeps,
+  input: Omit<WriteSpec<RecordView>, 'results'>,
+): Promise<Response> {
+  const spec: WriteSpec<RecordView> = { ...input, results: recordResults };
+  const ctx = await checkWriteAccess(c, deps, { ...spec, object: spec.results.object });
+  const { status, result } = await runSuccessionCommand(c, deps, ctx, spec);
+  const { items, revisions } = await authorizeSuccessionResult(deps, ctx, result, recordResults);
+  if (result.kind === 'receipt') return c.json({ id: result.ids[0], deleted: true }, status);
+  if (result.kind === 'records') return c.json({ items }, status);
+  c.header('ETag', `"${revisions.get(result.ids[0]!)}"`);
+  return c.json(items[0], status);
+}
+
+function candidateLimit(raw: string | undefined): number {
+  if (raw === undefined || raw === '') return CANDIDATE_DEFAULT;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 1 || value > CANDIDATE_MAX) {
+    throw new AppError('VALIDATION_FAILED', `limit 必须是 1～${CANDIDATE_MAX} 的整数`);
+  }
+  return value;
 }
 
 /** 列表筛选：值先校验再用；筛选字段须有查看权，否则不能借结果还原被裁掉的字段（403 FILTER_FIELD_HIDDEN）。 */

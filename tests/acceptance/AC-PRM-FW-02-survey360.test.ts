@@ -20,7 +20,8 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { readFrozenContract } from './support/route-policy/baseline.js';
 import type { Finding } from './support/route-policy/compare.js';
 import type { ObservedContract } from './support/route-policy/contract.js';
-import { checkEvidence } from './support/route-policy/evidence.js';
+import { checkStored } from './support/route-policy/evidence.js';
+import { gateEvidence } from './support/route-policy/evidence-gate.js';
 import { declaredPerms } from './support/route-policy/perms.js';
 import { KNOWN_GAPS } from './support/route-policy/probe-known-gaps.js';
 import { REDUNDANT_OBSERVATIONS } from './support/route-policy/probe-redundant.js';
@@ -111,7 +112,8 @@ describe('AC-PRM-FW-02 F-073 活动资源守卫：38 个 /activities/:id… 端�
         [{ perm: `guard:${carrier}`, at: one.at }],
       ]),
     );
-    expect(checkEvidence(synthetic), show(checkEvidence(synthetic))).toEqual([]);
+    const found = gateEvidence(checkStored(synthetic), '360 守卫内部备选证据');
+    expect(found, show(found)).toEqual([]);
   });
 
   it('反例：删声明里的承载者守卫 → REQUIRED_MISSING；把 inner 的备选改成数据态 ownerOrGranted → GUARD_INNER_ALT_UNREGISTERED', () => {

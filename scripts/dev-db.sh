@@ -31,6 +31,9 @@ done
 # 所有进程；碰上 autovacuum worker 时，非超级用户须有 pg_signal_backend，否则报“permission denied to
 # terminate process”，测试文件失败并残留库。只授这一个内建角色，不把 app_owner 提升为超级用户。
 "${PSQL[@]}" -c "GRANT pg_signal_backend TO app_owner"
+# F-082 部署检查脚本（scripts/check-deploy-target.mjs）要求检查账号能看全其他会话（超级用户或 pg_read_all_stats），
+# 看不全就判失败。CI 的测试账号是超级用户；本地测试账号同样授予这一个内建只读角色，让真 PG 用例与 CI 等价。
+"${PSQL[@]}" -c "GRANT pg_read_all_stats TO app_owner"
 "${PSQL[@]}" -c "SELECT 1 FROM pg_database WHERE datname='italent_test'" | grep -q 1 \
   || "${AS_PG[@]}" createdb -O app_owner italent_test
 # 在模板库装好扩展，测试时新建的库自动带上（btree_gist 是可信扩展，库属主也可自行创建）

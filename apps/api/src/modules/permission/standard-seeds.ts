@@ -81,11 +81,15 @@ registerSeed({
   },
   install: async (tx, write, missing) => {
     const wanted = new Set(missing);
-    await installProfilesForTenantAdmins(
+    const installed = await installProfilesForTenantAdmins(
       tx,
       write,
       STANDARD_PROFILES.filter((profile) => wanted.has(profile.code)),
     );
+    // F-052：读已有编码之后到插入之前，租户刚提交了同编码自定义身份（创建身份不取补装锁）：没装上的按 CODE_TAKEN 报告
+    const done = new Set(installed.map((profile) => profile.code));
+    const skipped = missing.filter((code) => !done.has(code)).map((code) => ({ code, reason: 'CODE_TAKEN' }));
+    return skipped.length > 0 ? { skipped } : undefined;
   },
 });
 

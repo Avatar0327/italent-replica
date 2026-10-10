@@ -10,6 +10,7 @@
  */
 import { parseArgs } from 'node:util';
 import { createPgDb, sql } from '@italent/db';
+import { applicationNameFromEnv } from '../database.js';
 import { credentialConfig } from '../modules/survey360/credential-config.js';
 import { credentialStats, retireKeys, rotateKeys } from '../modules/survey360/credential-ops.js';
 
@@ -34,7 +35,8 @@ async function main(argv: string[]) {
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error('缺少 DATABASE_URL');
   const config = credentialConfig();
-  const handle = createPgDb(url, { max: 2 });
+  // 带 italent-api: 前缀：F-082 的部署检查脚本按它数应用连接（运维命令没跑完就不能首次启用）
+  const handle = createPgDb(url, { max: 2, applicationName: applicationNameFromEnv() });
   try {
     // 超级用户或 BYPASSRLS 会绕过租户隔离的数据库兜底，一律拒绝（同 platform-cli）
     const result = await handle.db.execute(

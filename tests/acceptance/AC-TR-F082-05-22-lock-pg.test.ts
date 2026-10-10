@@ -28,6 +28,13 @@ import { tenantApi } from './support/tenant-api.js';
 
 const testDb = useTestDb();
 const pg = describe.runIf(Boolean(process.env.TEST_DATABASE_URL));
+/** 保存输掉与删除的竞争后的受控失败（来源已不存在 / 目录版本已变）。 */
+const SAVE_LOST_TO_DELETE = [
+  '400:FORMULA_INVALID',
+  '409:FIELD_CATALOG_CHANGED',
+  '409:CALC_FIELD_CHANGED',
+  '409:CALC_BINDING_STALE',
+];
 const CONTROLLED = ['CALC_BINDING_STALE', 'FIELD_CATALOG_CHANGED', 'CALC_FIELD_CHANGED'];
 
 async function ruleCount(db: Db, w: F082World) {
@@ -174,7 +181,7 @@ pg('AC-22 并发保存（真 PG）', () => {
       const w = await boundWorld(db, `f082-pg22d-${round}`);
       const [target, source] = [await w.numberField(), await w.field('number', { name: '旧公式源' })];
       // B5 写入的 legacy 规则（开关关闭的应用实例，同一个库同一个租户）
-      const off = tenantApi(db, { clock: () => TR_NOW });
+      const off = tenantApi(db, { clock: () => TR_NOW, formulaIdBinding: false });
       const made = await off.request('POST', `${TR_BASE}${CALC_RULES}`, {
         ...w.as,
         ifMatch: 0,
@@ -204,7 +211,7 @@ describe('AC-22 候选固化后保存转 bound：候选清除', () => {
     const w = await boundWorld(db, 'f082-cand-seq');
     const [target, source] = [await w.numberField(), await w.field('number', { name: '固化源' })];
     // B5 写入的 legacy 规则（开关关闭的应用实例，同一个库同一个租户）
-    const off = tenantApi(db, { clock: () => TR_NOW });
+    const off = tenantApi(db, { clock: () => TR_NOW, formulaIdBinding: false });
     const made = await off.request('POST', `${TR_BASE}${CALC_RULES}`, {
       ...w.as,
       ifMatch: 0,
@@ -248,13 +255,18 @@ pg('AC-22 两个保存共享来源 × 同时删除来源（真 PG，#224 P3-2）
         w.post(calcBody([calcItem(t2, '盘点对象.共删源 + 2')], { fieldCatalogVersion: version })),
         w.request('DELETE', `/fields/${source.id}`, { ifMatch: revision }),
       ]);
-      const saved = [one, two].filter((response) => response.status === 201);
-      if (saved.length > 0) {
-        expect(removal.status).toBe(409);
-        expect((await errorOf(removal)).details['reason']).toBe('FIELD_IN_USE');
+      // #233 P3-1：两个保存各自断言允许的结果（不能放过 201 / 500 / 409 FIELD_IN_USE 这类组合），再断言保存与删除互斥
+      const outcome = async (response: Response, ok: number) =>
+        response.status === ok ? 'ok' : `${response.status}:${String((await errorOf(response)).details['reason'])}`;
+      const saves = [await outcome(one, 201), await outcome(two, 201)];
+      for (const result of saves) expect(['ok', ...SAVE_LOST_TO_DELETE], result).toContain(result);
+      const removed = await outcome(removal, 200);
+      if (saves.includes('ok')) {
+        expect(removed).toBe('409:FIELD_IN_USE');
       } else {
-        expect([200, 409]).toContain(removal.status);
-        for (const response of [one, two]) expect([400, 404, 409]).toContain(response.status);
+        // 没有保存成功：来源没有被引用，删除必须成功；两个保存都因来源已被删除而受控失败
+        expect(removed).toBe('ok');
+        for (const result of saves) expect(SAVE_LOST_TO_DELETE, result).toContain(result);
       }
       await expectConsistent(db, w);
     }

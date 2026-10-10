@@ -47,7 +47,14 @@ export const moduleGradeBody = (extra: Record<string, unknown> = {}) => ({
   items: scoreItems(0, 2, 4, 5),
   ...extra,
 });
-/** configWorld + 评分配置对象快捷方法。 */
+export const mappingBody = (sourceFieldId: string, targetFieldId: string, extra: Record<string, unknown> = {}) => ({
+  scene: 'carry_last',
+  sourceFieldId,
+  targetFieldId,
+  ...extra,
+});
+
+/** configWorld + 评分配置对象 / 字段 / 映射快捷方法。 */
 export async function scoringWorld(db: Parameters<typeof configWorld>[0], label: string) {
   const w = await configWorld(db, label);
   const post = async (path: string, body: Record<string, unknown>) => {
@@ -55,5 +62,11 @@ export async function scoringWorld(db: Parameters<typeof configWorld>[0], label:
     expect(response.status, await response.clone().text()).toBe(201);
     return (await response.json()) as ConfigView;
   };
-  return { ...w, post, base: TR_BASE, now: TR_NOW };
+  const field = (extra: Record<string, unknown> = {}) => {
+    const n = uniq();
+    return post('/fields', { code: `map_${n}`, name: `映射字段${n}`, kind: 'text', group: 'evaluation', ...extra });
+  };
+  const optionField = (values: string[], kind = 'option') =>
+    field({ kind, options: values.map((v) => ({ value: v, label: `选项${v}` })) });
+  return { ...w, post, field, optionField, base: TR_BASE, now: TR_NOW };
 }

@@ -15,7 +15,7 @@ interface Failure {
 
 describe('AC-23 开关关闭：占位符词法不改变 B5 校验', () => {
   it('字段恰好叫〔不可见字段〕：引用它的公式仍是 400 语法错误，规则没有创建', async () => {
-    const w = await calcWorld(testDb().db, 'f082-compat');
+    const w = await calcWorld(testDb().db, 'f082-compat', { formulaIdBinding: false });
     const [target, odd] = [await w.numberField(), await w.field('number', { name: PLACEHOLDER })];
     expect(odd.name).toBe(PLACEHOLDER);
     const response = await w.post(calcBody([calcItem(target, `盘点对象.${PLACEHOLDER} + 1`)]));
@@ -29,7 +29,7 @@ describe('AC-23 开关关闭：占位符词法不改变 B5 校验', () => {
   });
 
   it('没有同名字段时 issue 仍是 SYNTAX_ERROR（不是 UNKNOWN_FIELD）', async () => {
-    const w = await calcWorld(testDb().db, 'f082-compat-2');
+    const w = await calcWorld(testDb().db, 'f082-compat-2', { formulaIdBinding: false });
     const target = await w.numberField();
     const response = await w.post(calcBody([calcItem(target, `盘点对象.${PLACEHOLDER} + 1`)]));
     const error = ((await response.json()) as Failure).error;

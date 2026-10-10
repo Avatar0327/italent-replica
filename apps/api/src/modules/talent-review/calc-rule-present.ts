@@ -13,6 +13,10 @@ import { type CatalogAccess, loadFullCatalog, visibleOf } from './calc-rule-cata
 import { projectRuleHints } from './calc-rule-hints.js';
 import type { CalcItemView, CalcRuleView } from './calc-rule-view.js';
 import { readFieldCatalogVersion } from './field-catalog.js';
+import { registerFormulaCapability } from './formula-binding-capabilities.js';
+
+// 总开关打开时 createApp 核对本能力已登记（契约 §10）
+registerFormulaCapability('response-projection');
 
 export type PresentedCalcRule<T extends CalcRuleView = CalcRuleView> = T & {
   fieldCatalogVersion: number;
@@ -38,7 +42,7 @@ export async function presentCalcRules<T extends CalcRuleView>(
   const allFieldsVisible = visibleFields.length === full.length;
   const fieldCatalogVersion = await readFieldCatalogVersion(tx, tenantId);
   const renderItem = (item: CalcItemView): CalcItemView => {
-    const { formulaBinding, fieldNames: _names, refFieldIds: _refs, ...visible } = item;
+    const { formulaBinding, fieldNames: _names, refFieldIds: _refs, bindingIssue: _issue, ...visible } = item;
     const rendered = renderFormula(item.formula, {
       binding: formulaBinding ?? 'legacy',
       visibleFields,

@@ -1,5 +1,5 @@
 {
-  "id": "7418c5c2-b123-46db-aae7-cbffe38d1d65",
+  "id": "41c6a458-fcfc-4d1d-9379-490cbbb9b607",
   "prevId": "903dd3c0-897d-471d-bd00-d9c752ea4a23",
   "version": "7",
   "dialect": "postgresql",
@@ -38142,443 +38142,6 @@
       },
       "isRLSEnabled": false
     },
-    "public.ev_activities": {
-      "name": "ev_activities",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "type_id": {
-          "name": "type_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "cycle_id": {
-          "name": "cycle_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "year": {
-          "name": "year",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "start_date": {
-          "name": "start_date",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "end_date": {
-          "name": "end_date",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "owner_id": {
-          "name": "owner_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "owner_org_id": {
-          "name": "owner_org_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "manager_employee_id": {
-          "name": "manager_employee_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "applicants": {
-          "name": "applicants",
-          "type": "text[]",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "category_ids": {
-          "name": "category_ids",
-          "type": "uuid[]",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "level_ids": {
-          "name": "level_ids",
-          "type": "uuid[]",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "max_level_jump": {
-          "name": "max_level_jump",
-          "type": "smallint",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 1
-        },
-        "effective_date": {
-          "name": "effective_date",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "notice_org_range": {
-          "name": "notice_org_range",
-          "type": "uuid[]",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'{}'::uuid[]"
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'draft'"
-        },
-        "apply_count": {
-          "name": "apply_count",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "revision": {
-          "name": "revision",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 1
-        },
-        "created_by": {
-          "name": "created_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "ev_activities_owner_org": {
-          "name": "ev_activities_owner_org",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "owner_org_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "ev_activities_status": {
-          "name": "ev_activities_status",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "status",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "ev_activities_tenant_id_tenants_id_fk": {
-          "name": "ev_activities_tenant_id_tenants_id_fk",
-          "tableFrom": "ev_activities",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "ev_activities_owner_org_fk": {
-          "name": "ev_activities_owner_org_fk",
-          "tableFrom": "ev_activities",
-          "tableTo": "org_objects",
-          "columnsFrom": [
-            "tenant_id",
-            "owner_org_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        },
-        "ev_activities_type_fk": {
-          "name": "ev_activities_type_fk",
-          "tableFrom": "ev_activities",
-          "tableTo": "ev_activity_types",
-          "columnsFrom": [
-            "tenant_id",
-            "type_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        },
-        "ev_activities_cycle_fk": {
-          "name": "ev_activities_cycle_fk",
-          "tableFrom": "ev_activities",
-          "tableTo": "ev_cycles",
-          "columnsFrom": [
-            "tenant_id",
-            "cycle_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        },
-        "ev_activities_manager_fk": {
-          "name": "ev_activities_manager_fk",
-          "tableFrom": "ev_activities",
-          "tableTo": "employment_employees",
-          "columnsFrom": [
-            "tenant_id",
-            "manager_employee_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "ev_activities_tenant_id": {
-          "name": "ev_activities_tenant_id",
-          "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "id"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "ev_activities_dates": {
-          "name": "ev_activities_dates",
-          "value": "\"ev_activities\".\"start_date\" <= \"ev_activities\".\"end_date\""
-        },
-        "ev_activities_max_level_jump": {
-          "name": "ev_activities_max_level_jump",
-          "value": "\"ev_activities\".\"max_level_jump\" BETWEEN 1 AND 5"
-        },
-        "ev_activities_applicants": {
-          "name": "ev_activities_applicants",
-          "value": "cardinality(\"ev_activities\".\"applicants\") >= 1 AND \"ev_activities\".\"applicants\" <@ ARRAY['self', 'others']::text[]"
-        },
-        "ev_activities_ranges": {
-          "name": "ev_activities_ranges",
-          "value": "cardinality(\"ev_activities\".\"category_ids\") >= 1 AND cardinality(\"ev_activities\".\"level_ids\") >= 1"
-        },
-        "ev_activities_status": {
-          "name": "ev_activities_status",
-          "value": "\"ev_activities\".\"status\" IN ('draft', 'published', 'completed')"
-        },
-        "ev_activities_apply_count": {
-          "name": "ev_activities_apply_count",
-          "value": "\"ev_activities\".\"apply_count\" >= 0"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.ev_activity_orgs": {
-      "name": "ev_activity_orgs",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "activity_id": {
-          "name": "activity_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "org_id": {
-          "name": "org_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "include_descendants": {
-          "name": "include_descendants",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
-        },
-        "seq": {
-          "name": "seq",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {
-        "ev_activity_orgs_org_idx": {
-          "name": "ev_activity_orgs_org_idx",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "org_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "ev_activity_orgs_tenant_id_tenants_id_fk": {
-          "name": "ev_activity_orgs_tenant_id_tenants_id_fk",
-          "tableFrom": "ev_activity_orgs",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "ev_activity_orgs_activity_fk": {
-          "name": "ev_activity_orgs_activity_fk",
-          "tableFrom": "ev_activity_orgs",
-          "tableTo": "ev_activities",
-          "columnsFrom": [
-            "tenant_id",
-            "activity_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "ev_activity_orgs_org_fk": {
-          "name": "ev_activity_orgs_org_fk",
-          "tableFrom": "ev_activity_orgs",
-          "tableTo": "org_objects",
-          "columnsFrom": [
-            "tenant_id",
-            "org_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "ev_activity_orgs_org": {
-          "name": "ev_activity_orgs_org",
-          "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "activity_id",
-            "org_id"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.ev_activity_types": {
       "name": "ev_activity_types",
       "schema": "",
@@ -38710,231 +38273,6 @@
       },
       "policies": {},
       "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.ev_chains": {
-      "name": "ev_chains",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "activity_id": {
-          "name": "activity_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "type": {
-          "name": "type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "seq": {
-          "name": "seq",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "start_date": {
-          "name": "start_date",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "end_date": {
-          "name": "end_date",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "form_id": {
-          "name": "form_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "approval_process_code": {
-          "name": "approval_process_code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "material_template": {
-          "name": "material_template",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "hard_deadline": {
-          "name": "hard_deadline",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "allow_exception": {
-          "name": "allow_exception",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "exception_roles": {
-          "name": "exception_roles",
-          "type": "text[]",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'{}'::text[]"
-        },
-        "transfer_mode": {
-          "name": "transfer_mode",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'manual'"
-        },
-        "notice_template_code": {
-          "name": "notice_template_code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "ev_chains_fixed_type": {
-          "name": "ev_chains_fixed_type",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "activity_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "type",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"ev_chains\".\"type\" IN ('apply', 'result')",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "ev_chains_form": {
-          "name": "ev_chains_form",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "form_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "ev_chains_tenant_id_tenants_id_fk": {
-          "name": "ev_chains_tenant_id_tenants_id_fk",
-          "tableFrom": "ev_chains",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "ev_chains_activity_fk": {
-          "name": "ev_chains_activity_fk",
-          "tableFrom": "ev_chains",
-          "tableTo": "ev_activities",
-          "columnsFrom": [
-            "tenant_id",
-            "activity_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "ev_chains_form_fk": {
-          "name": "ev_chains_form_fk",
-          "tableFrom": "ev_chains",
-          "tableTo": "ev_forms",
-          "columnsFrom": [
-            "tenant_id",
-            "form_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "ev_chains_type_check": {
-          "name": "ev_chains_type_check",
-          "value": "\"ev_chains\".\"type\" IN ('apply', 'material', 'defense', 'result')"
-        },
-        "ev_chains_dates": {
-          "name": "ev_chains_dates",
-          "value": "\"ev_chains\".\"start_date\" <= \"ev_chains\".\"end_date\""
-        },
-        "ev_chains_transfer_mode": {
-          "name": "ev_chains_transfer_mode",
-          "value": "\"ev_chains\".\"transfer_mode\" IN ('auto', 'manual')"
-        },
-        "ev_chains_defense_form": {
-          "name": "ev_chains_defense_form",
-          "value": "(\"ev_chains\".\"type\" = 'defense') = (\"ev_chains\".\"form_id\" IS NOT NULL)"
-        }
-      },
       "isRLSEnabled": false
     },
     "public.ev_cycles": {
@@ -43953,6 +43291,154 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.talent_review_field_mappings": {
+      "name": "talent_review_field_mappings",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scene": {
+          "name": "scene",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source_field_id": {
+          "name": "source_field_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "target_field_id": {
+          "name": "target_field_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "preset": {
+          "name": "preset",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "talent_review_field_mappings_tenant_id_tenants_id_fk": {
+          "name": "talent_review_field_mappings_tenant_id_tenants_id_fk",
+          "tableFrom": "talent_review_field_mappings",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "talent_review_field_mappings_source_fk": {
+          "name": "talent_review_field_mappings_source_fk",
+          "tableFrom": "talent_review_field_mappings",
+          "tableTo": "talent_review_fields",
+          "columnsFrom": [
+            "tenant_id",
+            "source_field_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "talent_review_field_mappings_target_fk": {
+          "name": "talent_review_field_mappings_target_fk",
+          "tableFrom": "talent_review_field_mappings",
+          "tableTo": "talent_review_fields",
+          "columnsFrom": [
+            "tenant_id",
+            "target_field_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "talent_review_field_mappings_pair": {
+          "name": "talent_review_field_mappings_pair",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "scene",
+            "source_field_id",
+            "target_field_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "talent_review_field_mappings_scene": {
+          "name": "talent_review_field_mappings_scene",
+          "value": "\"talent_review_field_mappings\".\"scene\" IN ('carry_last','talent_pool')"
+        },
+        "talent_review_field_mappings_rev": {
+          "name": "talent_review_field_mappings_rev",
+          "value": "\"talent_review_field_mappings\".\"revision\" > 0"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.talent_review_field_options": {

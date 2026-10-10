@@ -23,7 +23,7 @@ import { FORMULA_CONTEXT_FIELDS, FORMULA_OBJECT } from './calc-rule.js';
 export const CONTEXT_BINDING = 'context';
 export type ReferenceBinding = string;
 /** `盘点对象.盘点方案` 同时是项目上下文路径和可能被租户建出的自定义字段名。 */
-const RESERVED_NAME = '盘点方案';
+export const RESERVED_NAME = '盘点方案';
 const RESERVED_PATH = `${FORMULA_OBJECT}.${RESERVED_NAME}`;
 
 export interface BindFormulaField {
@@ -97,11 +97,11 @@ const at = (node: { readonly pos: { readonly line: number; readonly column: numb
 });
 
 /** 盘点字段引用：`盘点对象.<一段名字>`（含占位符）；更深的路径、其他对象前缀不属于它。 */
-const isObjectReference = (node: FieldNode) => node.path.length === 2 && node.path[0] === FORMULA_OBJECT;
+export const isObjectReference = (node: FieldNode) => node.path.length === 2 && node.path[0] === FORMULA_OBJECT;
 /** 以“盘点对象”开头的任何路径（含三段及更深的非规范写法）。 */
-const startsWithObject = (node: FieldNode) => node.fieldId === undefined && node.path[0] === FORMULA_OBJECT;
+export const startsWithObject = (node: FieldNode) => node.fieldId === undefined && node.path[0] === FORMULA_OBJECT;
 
-function fieldNodes(program: { definitions: readonly { value: ExprNode }[]; body: ExprNode }): FieldNode[] {
+export function fieldNodes(program: { definitions: readonly { value: ExprNode }[]; body: ExprNode }): FieldNode[] {
   const found: FieldNode[] = [];
   const visit = (node: ExprNode) => {
     if (node.type === 'field') found.push(node);
