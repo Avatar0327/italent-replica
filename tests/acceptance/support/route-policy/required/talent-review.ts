@@ -247,6 +247,64 @@ function cfgObject(
   };
 }
 
+/**
+ * 字段映射（B2）：无名称（无改名守卫）；列表自己写 scene 筛选守卫；新建 / 改来源或目标字段 = 读取字段对象，
+ * 另需字段对象的查看权（条件准入，随守卫 talentReview.mappingFieldVisible）。
+ */
+const MAPPING_GUARD = 'talentReview.mappingFieldVisible';
+const mappingFieldsCall: Evidence = {
+  role: 'call',
+  unit: `${SCORING}#requireMappingFields`,
+  anchor: "const ctx = await reviewContext(c, txDeps, 'field')",
+};
+const MAPPING_FIELD_OBLIGATIONS = (entry: string): Obligation[] => [
+  {
+    perm: `guard:${MAPPING_GUARD}`,
+    facts: [`guard:${MAPPING_GUARD}`],
+    note: '引用来源 / 目标字段 = 读取字段对象：另需字段对象查看权与范围（先于读取字段；不存在与范围外同一个 404）',
+    at: [{ role: 'call', unit: `${SCORING}#registerMappings`, anchor: entry }],
+  },
+  {
+    perm: 'obj:TalentReview.Field:view',
+    purpose: `when:${MAPPING_GUARD}`,
+    at: [mappingFieldsCall, ...CONTEXT, FIELD_OBJECT_CONST],
+  },
+];
+function mappingTable(): RequiredTable {
+  const object = 'TalentReview.FieldMapping';
+  const reg = 'registerMappings';
+  const reads = 'registerMappingReads';
+  const list = "router.get(MAPPINGS, async (c) => { const ctx = await reviewContext(c, deps, 'mapping')";
+  const detail = "router.get(`${MAPPINGS}/:id`, async (c) => { const ctx = await reviewContext(c, deps, 'mapping')";
+  return {
+    [`GET ${BASE_ROOT}/field-mappings`]: [
+      cfgView(object, 'mapping', 'FieldMapping', reads, list, SCORING),
+      {
+        perm: 'guard:talentReview.filterFieldVisible',
+        facts: ['guard:talentReview.filterFieldVisible'],
+        note: '带 scene 筛选而无 scene 字段查看权 → 403 FILTER_FIELD_HIDDEN（字段级，只在带筛选时判定）',
+        at: [
+          {
+            role: 'call',
+            unit: `${SCORING}#${reads}`,
+            anchor: "if (scene !== undefined) await requireFilterVisible(deps, ctx, 'mapping', 'scene')",
+          },
+          FILTER_GUARD.at[1]!,
+        ],
+      },
+    ],
+    [`GET ${BASE_ROOT}/field-mappings/:id`]: [cfgView(object, 'mapping', 'FieldMapping', reads, detail, SCORING)],
+    [`POST ${BASE_ROOT}/field-mappings`]: [
+      ...cfgChange(object, 'mapping', 'FieldMapping', reg, 'create', SCORING),
+      ...MAPPING_FIELD_OBLIGATIONS('await requireMappingFields(c, deps);'),
+    ],
+    [`PATCH ${BASE_ROOT}/field-mappings/:id`]: [
+      ...cfgChange(object, 'mapping', 'FieldMapping', reg, 'update', SCORING),
+      ...MAPPING_FIELD_OBLIGATIONS('if (touched) await requireMappingFields(c, deps);'),
+    ],
+    [`DELETE ${BASE_ROOT}/field-mappings/:id`]: cfgChange(object, 'mapping', 'FieldMapping', reg, 'delete', SCORING),
+  };
+}
 const BASE_ROOT = '/api/tenant/talent-review';
 const SETTINGS_OBJECT = 'TalentReview.Settings';
 
@@ -488,6 +546,7 @@ export const TALENT_REVIEW: RequiredTable = {
   ...cfgObject('field', 'Field', 'registerFields', 'fields', 'FIELDS'),
   ...cfgObject('scoreRule', 'ScoreRule', 'registerScoreRules', 'score-rules', 'SCORE_RULES', SCORING),
   ...cfgObject('moduleGrade', 'ModuleGrade', 'registerModuleGrades', 'module-grades', 'MODULE_GRADES', SCORING),
+  ...mappingTable(),
   [`GET ${BASE_ROOT}/settings`]: [
     cfgView(
       SETTINGS_OBJECT,

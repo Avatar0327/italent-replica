@@ -649,15 +649,25 @@ export const DIGESTS: Digests = {
     requireFilterVisible: '41fc2093cc0b',
     successionContext: '293e20c468e5',
   },
+  'apps/api/src/modules/succession/input.ts': {
+    rejectImmutable: '512c60b05ed6',
+  },
   'apps/api/src/modules/succession/read-sql.ts': {
     selfRecordHiddenSql: '89628ea4a06a',
   },
   'apps/api/src/modules/succession/record-read.ts': {
-    conditions: '679d225bd6b9',
+    conditions: '026062f83713',
+  },
+  'apps/api/src/modules/succession/record-write.ts': {
+    requireTarget: '10cb226379f1',
   },
   'apps/api/src/modules/succession/routes.ts': {
     recordFilter: '858f731477d8',
-    registerSuccessionRoutes: '47b740013e16',
+    registerSuccessionRoutes: '197c41be62cc',
+  },
+  'apps/api/src/modules/succession/write-support.ts': {
+    checkCandidateAccess: '7843395303d7',
+    checkWriteAccess: '368ab13ad1dd',
   },
   'apps/api/src/modules/survey360/access.ts': {
     activityVisibleSql: '71b32773d62e',
@@ -861,7 +871,7 @@ export const DIGESTS: Digests = {
     requireCatalogAccess: '270072bb9bf2',
   },
   'apps/api/src/modules/talent-review/config-kit.ts': {
-    requireSeeAllToRename: 'a8243eb93805',
+    requireSeeAllToRename: '78c3ddcc654c',
   },
   'apps/api/src/modules/talent-review/config-routes.ts': {
     listResponse: 'd95eb9c1fd2b',
@@ -895,8 +905,11 @@ export const DIGESTS: Digests = {
     registerTalentReviewRoutes: '73957fe282f8',
   },
   'apps/api/src/modules/talent-review/scoring-routes.ts': {
+    registerMappingReads: 'f69ca622c38d',
+    registerMappings: '928e157efba3',
     registerModuleGrades: '2d1d2b293fdc',
     registerScoreRules: '0d187497c994',
+    requireMappingFields: 'f5d42a50f304',
   },
   'apps/api/src/modules/talent/access.ts': {
     DATA_OPERATION: 'bb93cac2ac78',
@@ -1085,6 +1098,7 @@ export const DIGESTS: Digests = {
     'TALENT_REVIEW_OBJECTS>calcRule': '69168d968ff2',
     'TALENT_REVIEW_OBJECTS>category': '4e80ece39877',
     'TALENT_REVIEW_OBJECTS>field': '0d3439dea979',
+    'TALENT_REVIEW_OBJECTS>mapping': '7a31e79e9855',
     'TALENT_REVIEW_OBJECTS>matrix': '90a030f413fe',
     'TALENT_REVIEW_OBJECTS>moduleGrade': 'b5002e260751',
     'TALENT_REVIEW_OBJECTS>readiness': 'a1857e585c0c',
@@ -1590,10 +1604,14 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/qualification/target-service.ts#updateTarget': '275eba198c0c',
   'apps/api/src/modules/succession/access.ts#requireFilterVisible': 'f0b3a93a6191',
   'apps/api/src/modules/succession/access.ts#successionContext': '573bb32e1617',
+  'apps/api/src/modules/succession/input.ts#rejectImmutable': '99ce3a8d9998',
   'apps/api/src/modules/succession/read-sql.ts#selfRecordHiddenSql': 'eab3bde19b0f',
-  'apps/api/src/modules/succession/record-read.ts#conditions': 'fd39905362d6',
+  'apps/api/src/modules/succession/record-read.ts#conditions': '326371d4de4d',
+  'apps/api/src/modules/succession/record-write.ts#requireTarget': '8ff43faa6c04',
   'apps/api/src/modules/succession/routes.ts#recordFilter': '8c3cfb5b80b7',
-  'apps/api/src/modules/succession/routes.ts#registerSuccessionRoutes': '0f84c72697a4',
+  'apps/api/src/modules/succession/routes.ts#registerSuccessionRoutes': 'c76666b6e94c',
+  'apps/api/src/modules/succession/write-support.ts#checkCandidateAccess': 'ea8155f2a727',
+  'apps/api/src/modules/succession/write-support.ts#checkWriteAccess': 'eac8ef9cc70b',
   'apps/api/src/modules/survey360/access.ts#activityVisibleSql': '11f326016f03',
   'apps/api/src/modules/survey360/access.ts#requireActivity': '1a11c315a971',
   'apps/api/src/modules/survey360/access.ts#requireVisibleObject': 'b5856eb5fdd3',
@@ -1788,8 +1806,11 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/talent-review/readiness-service.ts#updateReadiness': '28fc17e2384b',
   'apps/api/src/modules/talent-review/rename-disclosure.ts#resolveCalcDisclosure': 'e45d018245fc',
   'apps/api/src/modules/talent-review/routes.ts#registerTalentReviewRoutes': '14dafc4fe0f2',
+  'apps/api/src/modules/talent-review/scoring-routes.ts#registerMappingReads': '0a363e4b4f7f',
+  'apps/api/src/modules/talent-review/scoring-routes.ts#registerMappings': '2ec92dbf0be3',
   'apps/api/src/modules/talent-review/scoring-routes.ts#registerModuleGrades': 'fd4a133c711e',
   'apps/api/src/modules/talent-review/scoring-routes.ts#registerScoreRules': 'bf6d3f5c40c3',
+  'apps/api/src/modules/talent-review/scoring-routes.ts#requireMappingFields': '940a2bde2b00',
   'apps/api/src/modules/talent/access.ts#DATA_OPERATION': 'e3b0c44298fc',
   'apps/api/src/modules/talent/access.ts#WRITE_BUTTONS': 'e3b0c44298fc',
   'apps/api/src/modules/talent/access.ts#checkWriteFields': 'd973e4973fe3',
@@ -1918,6 +1939,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>calcRule': '279002582763',
   'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>category': '279002582763',
   'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>field': '279002582763',
+  'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>mapping': '279002582763',
   'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>matrix': '279002582763',
   'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>moduleGrade': '279002582763',
   'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>readiness': '279002582763',
