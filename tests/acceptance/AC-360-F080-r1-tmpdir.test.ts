@@ -49,18 +49,20 @@ const FONTS_URL = pathToFileURL(FONTS_TS).href;
 async function start(args: string[], env: NodeJS.ProcessEnv, cwd?: string): Promise<Running> {
   const child = spawn(process.execPath, args, {
     env: { ...process.env, ...env },
-    stdio: ['ignore', 'pipe', 'inherit'],
+    stdio: ['ignore', 'pipe', 'pipe'],
     cwd,
   });
   children.push(child);
   const closed = new Promise<Closed>((resolve) => child.once('close', (code, signal) => resolve({ code, signal })));
   let out = '';
+  let err = '';
+  child.stderr!.on('data', (chunk: Buffer) => (err += chunk.toString()));
   await new Promise<void>((resolve, reject) => {
     child.stdout!.on('data', (chunk: Buffer) => {
       out += chunk.toString();
       if (out.includes('READY')) resolve();
     });
-    child.once('close', () => reject(new Error(`子进程提前退出：${out}`)));
+    child.once('close', () => reject(new Error(`子进程提前退出：${out}${err}`)));
   });
   return { child, output: () => out, closed: closed.then((result) => ({ ...result })) };
 }
@@ -146,7 +148,8 @@ describe('AC-360-F080 R3 P2-3 字体环境不抢占落盘 PGlite 的异步关库
   const demo = join(ROOT, '.demo');
   const name = `f080-pglite-${process.pid}-${Date.now()}`;
   const pgliteDir = join(demo, name);
-  const loader = ['--import', 'tsx', '--disable-warning=ExperimentalWarning'];
+  // 工作区包要按源码解析（自定义导出条件 @italent/source，与 vitest 一致）：CI 里没有构建产物 dist，不能靠默认的 dist 入口
+  const loader = ['--conditions=@italent/source', '--import', 'tsx', '--disable-warning=ExperimentalWarning'];
 
   const pgliteScript = (withFonts: boolean) =>
     scriptFile(
