@@ -377,9 +377,9 @@ describe('AC-PLAT-F061 T-23 受管授权登记', () => {
     expect([...(await ledger(w)).keys()].includes(hrButton)).toBe(true);
 
     // 直接调用：自定义来源的身份、没有登记的身份编码都不写行
+    const perm = (await permissionOf(w, HR.code, OBJECT))!;
     await withTenant(db, w.tenantId, async (tx) => {
       const write = { tenantId: w.tenantId, now: new Date(), commandId: 'direct' };
-      const perm = (await permissionOf(w, HR.code, OBJECT))!;
       await recordTenantSave(tx, write, { code: HR.code, source: 'custom' }, OBJECT, perm, perm);
       await recordTenantSave(tx, write, { code: 'nobody', source: 'standard' }, OBJECT, perm, perm);
     });

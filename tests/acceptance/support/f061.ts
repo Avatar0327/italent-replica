@@ -200,7 +200,8 @@ export async function legacySave(w: World, profileCode: string, objectCode: stri
       before: current ?? null,
       after: { ...next, revision: bumped!.revision },
       commandId: `legacy-save-${randomUUID()}`,
-      occurredAt: new Date(),
+      // 上线前的旧审计：早于保留期（默认 6 个月），T-22 用审计保留清理把它删掉
+      occurredAt: new Date('2025-01-01T00:00:00Z'),
     });
   });
 }

@@ -81,9 +81,8 @@ const writeCtx = (w: World) => ({
   now: new Date(),
   commandId: `hold-${w.tenantId}`,
 });
-const dayAfterTomorrow = () => new Date(Date.now() + 400 * 24 * 3600 * 1000);
-const purgeAudits = (w: World) =>
-  runAuditRetention(testDb().db, cmd(), { tenantId: w.tenantId }, { clock: dayAfterTomorrow });
+/** 审计保留清理（DEC-198）：legacySave 写的旧审计早于保留期，会被整条清掉。 */
+const purgeAudits = (w: World) => runAuditRetention(testDb().db, cmd(), { tenantId: w.tenantId });
 const setObjectAudits = (w: World) =>
   withTenant(w.db, w.tenantId, (tx) =>
     tx.select().from(auditEvents).where(eq(auditEvents.action, 'permission_profile.set_object')),
