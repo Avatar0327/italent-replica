@@ -36,7 +36,15 @@ def snapshot():
     prs = [p for p in prs if str(p["number"]) not in paused]
     out = {}
     for p in prs:
-        checks = [c.get("conclusion") or c.get("status") for c in p["statusCheckRollup"] if c.get("conclusion") != "SKIPPED"]
+        best = {}  # 同名检查可能有多条（取消后重跑），按名取最好结果：任一 SUCCESS 即算 SUCCESS
+        for c in p["statusCheckRollup"]:
+            if c.get("conclusion") == "SKIPPED":
+                continue
+            v = c.get("conclusion") or c.get("status")
+            k = c.get("name") or c.get("context") or str(len(best))
+            if best.get(k) != "SUCCESS":
+                best[k] = v
+        checks = list(best.values())
         ci = "none" if not checks else "green" if checks and all(c == "SUCCESS" for c in checks) else ("red" if any(c in ("FAILURE", "CANCELLED", "TIMED_OUT") for c in checks) else "running")
         last_commit = p["commits"][-1]["committedDate"] if p["commits"] else ""
         last_comment = p["comments"][-1]["createdAt"] if p["comments"] else ""

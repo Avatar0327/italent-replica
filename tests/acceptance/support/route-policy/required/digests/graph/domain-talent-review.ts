@@ -16,6 +16,12 @@ export const GRAPH: Graph = {
     'packages/domain/src/talent-review/calc-rule.ts#formulaFieldKind',
     'packages/domain/src/talent-review/calc-rule.ts#formulaPath',
   ],
+  'packages/domain/src/talent-review/calc-hints.ts#projectHints': [
+    '#CYCLE_KINDS',
+    '#HINT_CYCLE_HIDDEN',
+    '#hintItemsHidden',
+    '#hintOtherHidden',
+  ],
   'packages/domain/src/talent-review/calc-rule.ts#analyzeCalcItems': [
     'packages/domain/src/expression/engine.ts#orderComputationItems',
     'packages/domain/src/expression/engine.ts#validateFormula',
@@ -54,9 +60,7 @@ export const GRAPH: Graph = {
   'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>settings': ['#object'],
   'packages/domain/src/talent-review/catalog.ts#object': ['#SYSTEM_FIELDS', '#TALENT_REVIEW_APP', '#crud'],
   'packages/domain/src/talent-review/formula-audit.ts#filterHints': [
-    '#HINT_CYCLE_HIDDEN',
-    '#hintItemsHidden',
-    '#hintOtherHidden',
+    'packages/domain/src/talent-review/calc-hints.ts#projectHints',
     '#idsOf',
     '#isObject',
   ],
