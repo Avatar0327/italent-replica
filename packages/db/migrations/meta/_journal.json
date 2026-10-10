@@ -596,6 +596,13 @@
       "when": 1791588219402,
       "tag": "0084_talent_review_matrices",
       "breakpoints": true
+    },
+    {
+      "idx": 85,
+      "version": "7",
+      "when": 1791592566985,
+      "tag": "0085_talent_review_calc_rules",
+      "breakpoints": true
     }
   ]
 }

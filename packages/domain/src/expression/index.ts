@@ -33,6 +33,8 @@ export {
   type EvaluationResult,
   type FieldBindings,
   type OrderedItem,
+  type OrderingDiagnostic,
+  type OrderingDiagnosticKind,
   type OrderingFailure,
   type OrderingResult,
   type ValidationOptions,

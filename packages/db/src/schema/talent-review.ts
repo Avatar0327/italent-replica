@@ -1,7 +1,7 @@
 /**
  * R3-T04 人才盘点（docs/08_设计/R3-T04_人才盘点_设计.md §2；REQ-TR-001）。各 PR 在本文件追加表：
  * PR-A 建准备度共享字典（DEC-301①）；PR-B1 建租户设置、分类、角色、字段目录与选项（设计 §2.2）；
- * PR-B4 建九宫格、轴分段、格子、位置字段占用与比例规则。
+ * PR-B4 建九宫格、轴分段、格子、位置字段占用与比例规则；PR-B5 建计算规则与计算项目。
  * 表前缀 talent_review_，准备度字典例外：它是 T04 / T05 / T06 共用的字典。
  */
 import { sql } from 'drizzle-orm';
@@ -412,5 +412,66 @@ export const talentReviewRatioRuleCells = pgTable(
       ],
       name: 'talent_review_ratio_rule_cells_cell_fk',
     }).onDelete('no action'),
+  ],
+);
+
+/**
+ * 盘点计算规则（设计 §2.2 calc_rules；TR-R27～R30）：一组按优先级与引用依赖执行的计算项目。revision 随规则或其项目的任何
+ * 保存递增——calc run 冻结时记录它，发布前核对“规则已改”（设计 §4.5(e)）。名称租户唯一。
+ * 没有组织字段：数据范围只认看全部或创建人（DEC-121）。
+ */
+export const talentReviewCalcRules = pgTable(
+  'talent_review_calc_rules',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: tenantId(),
+    name: text('name').notNull(),
+    enabled: boolean('enabled').notNull().default(true),
+    assessmentLatestWindow: text('assessment_latest_window').notNull().default('before_project_end'),
+    description: text('description'),
+    sortNo: integer('sort_no').notNull().default(0),
+    ...audit(),
+  },
+  (t) => [
+    unique('talent_review_calc_rules_tenant_id').on(t.tenantId, t.id),
+    unique('talent_review_calc_rules_name').on(t.tenantId, t.name),
+    check(
+      'talent_review_calc_rules_window',
+      sql`${t.assessmentLatestWindow} IN ('before_project_end','before_project_start')`,
+    ),
+    revisionCheck('talent_review_calc_rules_rev', t.revision),
+  ],
+);
+
+/**
+ * 计算项目：一个目标盘点字段 + 公式 + 优先级。目标字段在规则内唯一，保存后只读（改目标 = 删除再新增）；
+ * uses_ranking 由公式派生（含排名函数，待办触发时不计算，DEC-260）。
+ */
+export const talentReviewCalcRuleItems = pgTable(
+  'talent_review_calc_rule_items',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: tenantId(),
+    ruleId: uuid('rule_id').notNull(),
+    targetFieldId: uuid('target_field_id').notNull(),
+    priority: integer('priority').notNull().default(0),
+    description: text('description'),
+    formula: text('formula').notNull(),
+    sortNo: integer('sort_no').notNull().default(0),
+    usesRanking: boolean('uses_ranking').notNull().default(false),
+  },
+  (t) => [
+    unique('talent_review_calc_rule_items_target').on(t.tenantId, t.ruleId, t.targetFieldId),
+    foreignKey({
+      columns: [t.tenantId, t.ruleId],
+      foreignColumns: [talentReviewCalcRules.tenantId, talentReviewCalcRules.id],
+      name: 'talent_review_calc_rule_items_rule_fk',
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [t.tenantId, t.targetFieldId],
+      foreignColumns: [talentReviewFields.tenantId, talentReviewFields.id],
+      name: 'talent_review_calc_rule_items_field_fk',
+    }).onDelete('restrict'),
+    check('talent_review_calc_rule_items_priority', sql`${t.priority} >= 0`),
   ],
 );

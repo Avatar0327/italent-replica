@@ -333,6 +333,8 @@ export const PRIMITIVES: readonly Primitive[] = [
       { modules: ['talent-review'] },
     ],
     ['talentReview.matrixFieldReference', call('requireFieldReference'), { modules: ['talent-review'] }],
+    // 人才盘点计算规则：提交计算项目（公式 / 目标字段引用盘点字段目录）另需字段目录的对象查看权（calc-rule-routes.ts）
+    ['talentReview.calcRuleFieldCatalog', call('requireCatalogAccess'), { modules: ['talent-review'] }],
     ['selfService.transferInput', call('ownTransferInput'), { modules: ['self-service'] }],
     ['selfService.referenceChoices', call('referenceChoices'), { modules: ['self-service'] }],
     ['selfService.ownApplication', call('ownApplication'), { modules: ['self-service'] }],
