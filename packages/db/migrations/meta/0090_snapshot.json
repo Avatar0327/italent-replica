@@ -1,5 +1,5 @@
 {
-  "id": "3bb10cbe-3eef-4ce9-a6b7-e16ac931a940",
+  "id": "39c3e593-8109-47ff-91da-5dc7e55aae01",
   "prevId": "167ae2fa-aab2-44bc-9447-baa2760b2d13",
   "version": "7",
   "dialect": "postgresql",
@@ -32404,117 +32404,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.survey360_sheet_timings": {
-      "name": "survey360_sheet_timings",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "relation_id": {
-          "name": "relation_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "questionnaire_id": {
-          "name": "questionnaire_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "opened_at": {
-          "name": "opened_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "page_started_at": {
-          "name": "page_started_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "survey360_sheet_timings_tenant_id_tenants_id_fk": {
-          "name": "survey360_sheet_timings_tenant_id_tenants_id_fk",
-          "tableFrom": "survey360_sheet_timings",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "survey360_sheet_timings_relation_fk": {
-          "name": "survey360_sheet_timings_relation_fk",
-          "tableFrom": "survey360_sheet_timings",
-          "tableTo": "survey360_relations",
-          "columnsFrom": [
-            "tenant_id",
-            "relation_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "survey360_sheet_timings_questionnaire_fk": {
-          "name": "survey360_sheet_timings_questionnaire_fk",
-          "tableFrom": "survey360_sheet_timings",
-          "tableTo": "survey360_questionnaires",
-          "columnsFrom": [
-            "tenant_id",
-            "questionnaire_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "survey360_sheet_timings_tenant_id": {
-          "name": "survey360_sheet_timings_tenant_id",
-          "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "id"
-          ]
-        },
-        "survey360_sheet_timings_pair": {
-          "name": "survey360_sheet_timings_pair",
-          "nullsNotDistinct": false,
-          "columns": [
-            "relation_id",
-            "questionnaire_id"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.survey360_sheets": {
       "name": "survey360_sheets",
       "schema": "",
@@ -41262,6 +41151,123 @@
       },
       "isRLSEnabled": false
     },
+    "public.talent_review_calc_item_refs": {
+      "name": "talent_review_calc_item_refs",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "item_id": {
+          "name": "item_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "field_id": {
+          "name": "field_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "talent_review_calc_item_refs_field": {
+          "name": "talent_review_calc_item_refs_field",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "field_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "talent_review_calc_item_refs_tenant_id_tenants_id_fk": {
+          "name": "talent_review_calc_item_refs_tenant_id_tenants_id_fk",
+          "tableFrom": "talent_review_calc_item_refs",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "talent_review_calc_item_refs_item_fk": {
+          "name": "talent_review_calc_item_refs_item_fk",
+          "tableFrom": "talent_review_calc_item_refs",
+          "tableTo": "talent_review_calc_rule_items",
+          "columnsFrom": [
+            "tenant_id",
+            "item_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "talent_review_calc_item_refs_field_fk": {
+          "name": "talent_review_calc_item_refs_field_fk",
+          "tableFrom": "talent_review_calc_item_refs",
+          "tableTo": "talent_review_fields",
+          "columnsFrom": [
+            "tenant_id",
+            "field_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "talent_review_calc_item_refs_tenant_id_item_id_field_id_pk": {
+          "name": "talent_review_calc_item_refs_tenant_id_item_id_field_id_pk",
+          "columns": [
+            "tenant_id",
+            "item_id",
+            "field_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "talent_review_calc_item_refs_kind": {
+          "name": "talent_review_calc_item_refs_kind",
+          "value": "\"talent_review_calc_item_refs\".\"kind\" IN ('bound','candidate')"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.talent_review_calc_rule_items": {
       "name": "talent_review_calc_rule_items",
       "schema": "",
@@ -41323,6 +41329,19 @@
           "primaryKey": false,
           "notNull": true,
           "default": false
+        },
+        "formula_binding": {
+          "name": "formula_binding",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'legacy'"
+        },
+        "binding_issue": {
+          "name": "binding_issue",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {},
@@ -41373,6 +41392,14 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
+        "talent_review_calc_rule_items_tenant_id": {
+          "name": "talent_review_calc_rule_items_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        },
         "talent_review_calc_rule_items_target": {
           "name": "talent_review_calc_rule_items_target",
           "nullsNotDistinct": false,
@@ -41387,7 +41414,11 @@
       "checkConstraints": {
         "talent_review_calc_rule_items_priority": {
           "name": "talent_review_calc_rule_items_priority",
-          "value": "\"talent_review_calc_rule_items\".\"priority\" >= 0"
+          "value": "\"talent_review_calc_rule_items\".\"priority\" BETWEEN 0 AND 1000000"
+        },
+        "talent_review_calc_rule_items_binding": {
+          "name": "talent_review_calc_rule_items_binding",
+          "value": "\"talent_review_calc_rule_items\".\"formula_binding\" IN ('bound','legacy','unresolved')"
         }
       },
       "isRLSEnabled": false
@@ -41637,6 +41668,46 @@
           "value": "\"talent_review_categories\".\"revision\" > 0"
         }
       },
+      "isRLSEnabled": false
+    },
+    "public.talent_review_field_catalog_versions": {
+      "name": "talent_review_field_catalog_versions",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "version": {
+          "name": "version",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "talent_review_field_catalog_versions_tenant_id_tenants_id_fk": {
+          "name": "talent_review_field_catalog_versions_tenant_id_tenants_id_fk",
+          "tableFrom": "talent_review_field_catalog_versions",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.talent_review_field_options": {
