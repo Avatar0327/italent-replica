@@ -5,9 +5,10 @@
  * 范围谓词（qualificationReadableSql 生成，引用别名 t）。返回值各层冻结（readonly）：同一份数据交给多个调用方。
  *
  * 口径（设计未写、按最小影响取，PR 描述列出 🟡）：
- * - 标准停用不影响读取（已引用后停用照常显示，DEC-281⑧）；指标停用照样返回并带 enabled=false，由调用方判断；
- * - targetTypePath = 指标所属类型从根到本级的名称；filter.targetTypeIds 含下级类型（选一个类型即取其下全部指标），
- *   与 targetIds 同时给取交集，给了空数组表示什么都不要；
+ * - 指标停用照样返回并带 enabled=false，由调用方判断；
+ * - targetTypePath = 指标所属类型从根到本级的 ID 路径并附名称（每级 { id, name }，DEC-374④ 🟡）；filter.targetTypeIds 含下级类型
+ *   （选一个类型即取其下全部指标），与 targetIds 同时给取交集，给了空数组表示什么都不要；
+ * - 标准停用后其指标仍可读（历史与在途引用需要，DEC-374④ 🟡 待取证）；
  * - 列表方法只列启用的类型 / 指标（候选用于新引用），按顺序号、编码；
  * - 一列指标超过 500 个抛错而不是静默截断。
  */
@@ -84,11 +85,11 @@ interface ChainRow {
 const TYPE_DEPTH_LIMIT = 100;
 
 /**
- * 指标类型从本级到根的链（含本级），按 start_id 归并为自根到本级的名称。链走到深度上限仍有上级时抛 RangeError，
+ * 指标类型从本级到根的链（含本级），按 start_id 归并为自根到本级的 { id, name }。链走到深度上限仍有上级时抛 RangeError，
  * 不返回缺层的路径。
  */
 async function typeChains(tx: Tx, tenantId: string, typeIds: readonly string[]) {
-  const chains = new Map<string, string[]>();
+  const chains = new Map<string, { id: string; name: string }[]>();
   if (!typeIds.length) return chains;
   const result = rowsOf<ChainRow>(
     await tx.execute(sql`WITH RECURSIVE chain(start_id, id, parent_id, name, depth) AS (
@@ -104,7 +105,7 @@ async function typeChains(tx: Tx, tenantId: string, typeIds: readonly string[]) 
     if (row.depth >= TYPE_DEPTH_LIMIT - 1 && row.parent_id !== null) {
       throw new RangeError(`指标类型树超过 ${TYPE_DEPTH_LIMIT} 层，超出端口上限`);
     }
-    chains.set(row.start_id, [...(chains.get(row.start_id) ?? []), row.name]);
+    chains.set(row.start_id, [...(chains.get(row.start_id) ?? []), { id: row.id, name: row.name }]);
   }
   return chains;
 }
