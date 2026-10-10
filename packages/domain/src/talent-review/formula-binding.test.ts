@@ -388,3 +388,39 @@ describe('renderFormula：legacy / unresolved（契约 §1.4，DEC-376③；审�
     });
   });
 });
+
+describe('renderFormula：F082-2 收口（#205 第 2 轮 P3）', () => {
+  const custom = [...FIELDS, { id: F3, name: '盘点方案' }];
+  const legacy = (text: string, visibleFields: readonly { id: string; name: string }[]) =>
+    renderFormula(text, { binding: 'legacy', visibleFields, allFieldsVisible: false });
+  const bound = (text: string, visibleFields: readonly { id: string; name: string }[] = FIELDS) =>
+    renderFormula(text, { binding: 'bound', visibleFields });
+
+  it('P3-2：legacy 的“盘点方案”也按契约 §1.4——可见字段里没有同名字段就换成占位符，不再有固定路径例外', () => {
+    expect(legacy('盘点对象.盘点方案', [])).toEqual({
+      ok: true,
+      text: `盘点对象.${HIDDEN_FIELD_PLACEHOLDER}`,
+      bindings: [null],
+    });
+    // 可见目录里有同名自定义字段时原样显示，证明仍为 null（由用户显式选择）
+    expect(legacy('盘点对象.盘点方案', custom)).toEqual({ ok: true, text: '盘点对象.盘点方案', bindings: [null] });
+  });
+
+  it('P3-1：bound 规范文本里以“盘点对象”开头的非规范路径（三段、四段、盘点方案之下）都是损坏，不原样输出', () => {
+    for (const text of [
+      '盘点对象.秘密.子项',
+      '盘点对象.盘点方案.秘密',
+      '盘点对象.a.b.c',
+      `${H1} + 盘点对象.秘密.子项`,
+    ]) {
+      expect(bound(text), text).toEqual({ ok: false });
+    }
+  });
+
+  it('P3-1：legacy / unresolved 里同类路径一律按看不到处理（占位符），不泄露名称', () => {
+    for (const text of ['盘点对象.秘密.子项', '盘点对象.绩效.子项', '盘点对象.盘点方案.秘密']) {
+      const rendered = legacy(text, custom);
+      expect(rendered, text).toEqual({ ok: true, text: `盘点对象.${HIDDEN_FIELD_PLACEHOLDER}`, bindings: [null] });
+    }
+  });
+});
