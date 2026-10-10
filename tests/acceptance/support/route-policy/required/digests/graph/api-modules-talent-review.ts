@@ -310,7 +310,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/talent-review/calc-rule-view.ts#calcRuleSpecOf': ['#CALC_RULE', '#CALC_RULE_BOUND'],
   'apps/api/src/modules/talent-review/calc-rule-view.ts#loadCalcRuleView': ['#calcRuleSpecOf'],
   'apps/api/src/modules/talent-review/calc-rule-view.ts#selectRows': ['#row'],
-  'apps/api/src/modules/talent-review/calc-rule-view.ts#withItems': ['#boundExtras', '#boundRefs'],
+  'apps/api/src/modules/talent-review/calc-rule-view.ts#withItems': ['#boundExtras', '#itemRefs'],
   'apps/api/src/modules/talent-review/config-input.ts#categoryCreate': ['#name', '#sortNo'],
   'apps/api/src/modules/talent-review/config-input.ts#categoryPatch': ['#categoryCreate'],
   'apps/api/src/modules/talent-review/config-input.ts#fieldCreate': [

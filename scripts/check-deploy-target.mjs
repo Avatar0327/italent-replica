@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // F-082 部署目标检查（契约 §6.5，DEC-386；只读，不改库、不做运行时互斥）。
-// 用法：node scripts/check-deploy-target.mjs --phase=pre-enable|deploy|post-restore --app-role=<应用运行时数据库角色> [--code-root=<目录>]
+// 用法：node scripts/check-deploy-target.mjs --phase=pre-enable|deploy|post-restore
+//       --app-role=<应用运行时数据库角色> [--code-root=<目录>]
 //       pre-enable / post-restore 必须给应用数据库角色（--app-role 或环境变量 APP_DB_ROLE）：该角色名下的连接不论 application_name
 //       是什么（含启用前版本的旧默认名 postgres.js）都算应用连接，与带 italent-api: 前缀的一起计数。
 //       数据库连接串取环境变量 DATABASE_URL。账号要求：pre-enable / post-restore 要看到其他会话的 application_name，
@@ -87,6 +88,39 @@ async function appliedMigrations(query) {
 
 const count = async (query, text) => Number((await one(query, text)).n);
 
+/** post-restore 的数据检查：库里不能有启用后才会产生的数据（bound 行、新格式审计、含句柄的台账结果）。 */
+async function restoreDataChecks(check, query) {
+  const emptyOf = (name, text, hint) =>
+    check(name, async () => {
+      const n = await count(query, text);
+      if (n !== 0) return `${n} ${hint}`;
+    });
+  await check('检查账号能绕过行级安全（读全部租户数据）', async () => {
+    const { ok } = await one(
+      query,
+      `SELECT (rolsuper OR rolbypassrls) AS ok FROM pg_roles WHERE rolname = current_user`,
+    );
+    if (ok !== true) return '检查账号受行级安全约束，读不全各租户数据；请换超级用户或 BYPASSRLS 的只读账号';
+  });
+  await emptyOf(
+    '库里没有 bound 行',
+    `SELECT count(*)::int AS n FROM talent_review_calc_rule_items WHERE formula_binding = 'bound'`,
+    '个计算项目是 bound',
+  );
+  await emptyOf(
+    '没有计算规则的新格式审计',
+    `SELECT count(*)::int AS n FROM audit_events WHERE object_type = '${CALC_RULE_AUDIT_TYPE}'
+       AND (before::text LIKE '%"formulaBinding"%' OR after::text LIKE '%"formulaBinding"%'
+            OR changes::text LIKE '%"formulaBinding"%')`,
+    '条计算规则审计含新格式（formulaBinding）',
+  );
+  await emptyOf(
+    '没有含句柄的命令台账结果',
+    `SELECT count(*)::int AS n FROM command_ledger WHERE response_body::text LIKE '%${HANDLE}%'`,
+    '条命令台账结果含字段句柄',
+  );
+}
+
 /**
  * 跑某个阶段的检查，返回 `{ ok, results: [{ name, ok, detail }] }`。
  * query：(sql 文本) => 行数组（同一个会话）；sessions：可替换的连接数探针（测试用，缺省查 pg_stat_activity）。
@@ -137,12 +171,6 @@ export async function checkDeployTarget({
       if (bad)
         return `库里已应用 ${applied.count} 条（最后 ${applied.last}），代码 ${code.count} 条（最后 ${code.last}）`;
     });
-  const emptyOf = (name, text, hint) =>
-    check(name, async () => {
-      const n = await count(query, text);
-      if (n !== 0) return `${n} ${hint}`;
-    });
-
   if (phase === 'pre-enable') {
     await noConnections();
     await migrations('equal');
@@ -153,30 +181,7 @@ export async function checkDeployTarget({
   } else {
     await noConnections();
     await migrations('equal');
-    await check('检查账号能绕过行级安全（读全部租户数据）', async () => {
-      const { ok } = await one(
-        query,
-        `SELECT (rolsuper OR rolbypassrls) AS ok FROM pg_roles WHERE rolname = current_user`,
-      );
-      if (ok !== true) return '检查账号受行级安全约束，读不全各租户数据；请换超级用户或 BYPASSRLS 的只读账号';
-    });
-    await emptyOf(
-      '库里没有 bound 行',
-      `SELECT count(*)::int AS n FROM talent_review_calc_rule_items WHERE formula_binding = 'bound'`,
-      '个计算项目是 bound',
-    );
-    await emptyOf(
-      '没有计算规则的新格式审计',
-      `SELECT count(*)::int AS n FROM audit_events WHERE object_type = '${CALC_RULE_AUDIT_TYPE}'
-         AND (before::text LIKE '%"formulaBinding"%' OR after::text LIKE '%"formulaBinding"%'
-              OR changes::text LIKE '%"formulaBinding"%')`,
-      '条计算规则审计含新格式（formulaBinding）',
-    );
-    await emptyOf(
-      '没有含句柄的命令台账结果',
-      `SELECT count(*)::int AS n FROM command_ledger WHERE response_body::text LIKE '%${HANDLE}%'`,
-      '条命令台账结果含字段句柄',
-    );
+    await restoreDataChecks(check, query);
   }
   return { ok: results.every((entry) => entry.ok), results };
 }
