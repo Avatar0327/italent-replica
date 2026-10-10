@@ -3706,7 +3706,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'packages/domain/src/audit/labels.ts#AUDIT_CONFIG_OBJECT_TYPES': ['f1cc5f430c8a', '82583603a31b'],
   'packages/domain/src/audit/labels.ts#ENTERPRISE': ['dbd90c88e0d6', 'e3b0c44298fc'],
   'packages/domain/src/audit/labels.ts#EVALUATION': ['51363b71fbb9', 'e3b0c44298fc'],
-  'packages/domain/src/audit/labels.ts#FIELD_LABELS': ['246b7e33fa14', 'e3b0c44298fc'],
+  'packages/domain/src/audit/labels.ts#FIELD_LABELS': ['6ab4ed392e2a', 'e3b0c44298fc'],
   'packages/domain/src/audit/labels.ts#IDP': ['b272214768dd', 'e3b0c44298fc'],
   'packages/domain/src/audit/labels.ts#OBJECTS': ['51bb06276bb9', '70bd58ac169e'],
   'packages/domain/src/audit/labels.ts#ORG_PEOPLE': ['13a221dc6757', 'e3b0c44298fc'],
