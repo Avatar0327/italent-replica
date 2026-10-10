@@ -19,8 +19,8 @@ import { MAX_DEPTH } from './support/route-policy/evidence-closure.js';
 import {
   checkEvidence,
   closureReports,
-  currentDependencies,
   currentDigestTable,
+  currentRegistry,
   repoSource,
   type SourceReader,
   unitText,
@@ -91,7 +91,7 @@ function baseline(files: Record<string, string> = FIXTURE_FILES, table: Required
       read,
       branch: false as const,
       digests: currentDigestTable(table, read, false),
-      dependencies: currentDependencies(table, read, false),
+      registry: currentRegistry(table, read, false),
     },
   };
 }
@@ -136,11 +136,19 @@ describe('AC-PRM-FW-02 证据闭包（B-02）：夹具', () => {
   it('依赖集合减少 / 登记里有多余依赖，同样 EVIDENCE_STALE', () => {
     const { table, base } = baseline();
     const unit = `${FIX}/gate.ts#gate`;
-    const missing = { [unit]: { [`${FIX}/level.ts#levelOf`]: base.dependencies[unit]![`${FIX}/level.ts#levelOf`]! } };
-    expect(codes(checkEvidence(table, { ...base, dependencies: missing }))).toContain('EVIDENCE_STALE');
-    const extra = { [unit]: { ...base.dependencies[unit]!, [`${FIX}/gone.ts#removed`]: 'abcdef123456' } };
-    expect(codes(checkEvidence(table, { ...base, dependencies: extra }))).toContain('EVIDENCE_STALE');
-    expect(codes(checkEvidence(table, { ...base, dependencies: {} }))).toContain('EVIDENCE_STALE');
+    const level = `${FIX}/level.ts#levelOf`;
+    const graph = base.registry.graph;
+    const missing = { ...base.registry, graph: { ...graph, [unit]: graph[unit]!.filter((dep) => dep !== level) } };
+    expect(codes(checkEvidence(table, { ...base, registry: missing }))).toContain('EVIDENCE_STALE');
+    const gone = `${FIX}/gone.ts#removed`;
+    const extra = {
+      ...base.registry,
+      graph: { ...graph, [unit]: [...graph[unit]!, gone] },
+      nodes: { ...base.registry.nodes, [gone]: ['abcdef123456', '123456abcdef'] as const },
+    };
+    expect(codes(checkEvidence(table, { ...base, registry: extra }))).toContain('EVIDENCE_STALE');
+    const unregistered = { ...base.registry, unitBindings: {} };
+    expect(codes(checkEvidence(table, { ...base, registry: unregistered }))).toContain('EVIDENCE_STALE');
   });
 
   it('modules/ 下的计算属性访问（命名空间 import 按变量取成员）→ EVIDENCE_CLOSURE_UNRESOLVED', () => {
