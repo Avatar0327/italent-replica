@@ -5,6 +5,24 @@
 import type { Graph } from '../../../evidence-graph.js';
 
 export const GRAPH: Graph = {
+  'apps/api/src/audit/calc-rule-sources.ts#CALC_RULE_AUDIT_TYPE': [
+    'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS',
+  ],
+  'apps/api/src/audit/calc-rule-sources.ts#FIELD': [
+    'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS',
+  ],
+  'apps/api/src/audit/calc-rule-sources.ts#calcRuleSources': [
+    '#CALC_RULE_AUDIT_TYPE',
+    '#FIELD',
+    '#REFERENCE_COLUMNS',
+    '#visible',
+    'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
+    'apps/api/src/modules/permission/module-access.ts#resolveModuleScope',
+    'packages/domain/src/talent-review/formula-audit.ts#redactCalcRuleAuditValue',
+  ],
+  'apps/api/src/audit/calc-rule-sources.ts#visible': [
+    'apps/api/src/modules/talent-review/access.ts#requireConfigVisible',
+  ],
   'apps/api/src/audit/establishment-capacity.ts#capacityAuditChanges': ['#PART_FIELDS'],
   'apps/api/src/audit/establishment-capacity.ts#visibleCapacityParts': ['#PART_FIELDS'],
   'apps/api/src/audit/failures.ts#isDefiniteFailure': ['#CommandFailureError'],
@@ -187,6 +205,13 @@ export const GRAPH: Graph = {
     'apps/api/src/audit/visibility.ts#auditViewer',
   ],
   'apps/api/src/audit/routes.ts#visibleTask': ['packages/domain/src/audit/operations.ts#auditTaskSummary'],
+  'apps/api/src/audit/source-registry.ts#AUDIT_SOURCES': [
+    'apps/api/src/audit/calc-rule-sources.ts#CALC_RULE_AUDIT_TYPE',
+    'apps/api/src/audit/calc-rule-sources.ts#calcRuleSources',
+    'apps/api/src/audit/qualification-sources.ts#qualificationSources',
+    'packages/domain/src/qualification/catalog.ts#QUALIFICATION_OBJECTS',
+  ],
+  'apps/api/src/audit/source-registry.ts#auditRedactors': ['#AUDIT_SOURCES'],
   'apps/api/src/audit/survey360-person.ts#survey360PersonAuditFields': [
     'apps/api/src/audit/transfer-linkage.ts#ExactAuditFields',
     'packages/domain/src/survey360/catalog.ts#SURVEY360_OBJECTS',
@@ -314,9 +339,6 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/audit/visibility.ts#RULE_BY_TYPE': ['#RULES'],
   'apps/api/src/audit/visibility.ts#S360': ['packages/domain/src/survey360/catalog.ts#SURVEY360_OBJECTS'],
-  'apps/api/src/audit/visibility.ts#SOURCE_TYPES': [
-    'packages/domain/src/qualification/catalog.ts#QUALIFICATION_OBJECTS',
-  ],
   'apps/api/src/audit/visibility.ts#SURVEY360_SHEET_DESENSITIZE': [
     'apps/api/src/modules/survey360/access.ts#survey360AuditScope',
   ],
@@ -330,12 +352,11 @@ export const GRAPH: Graph = {
   'apps/api/src/audit/visibility.ts#auditViewer': [
     'apps/api/src/audit/establishment-capacity.ts#CapacityAuditFields',
     'apps/api/src/audit/establishment-capacity.ts#capacityAuditChanges',
-    'apps/api/src/audit/qualification-sources.ts#qualificationSources',
+    'apps/api/src/audit/source-registry.ts#auditRedactors',
     'apps/api/src/audit/transfer-linkage.ts#ExactAuditFields',
     'apps/api/src/audit/transfer-linkage.ts#TRANSFER_LINKAGE',
     '#EVENT',
     '#RULE_BY_TYPE',
-    '#SOURCE_TYPES',
     '#TASK',
     '#configKey',
     '#configPredicate',

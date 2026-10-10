@@ -30,6 +30,10 @@ export const ERROR_STATUS = {
   PAYLOAD_TOO_LARGE: 413,
   UNSUPPORTED_MEDIA_TYPE: 415,
   SERVICE_UNAVAILABLE: 503,
+  // 429（AGENTS.md §10，DEC-377②）只用于请求频率限制与认证失败锁定，响应带 Retry-After；
+  // 业务冷却（360 生成报告等）仍是 409 CONFLICT + details.reason = RATE_LIMITED，不在此列
+  REQUEST_RATE_LIMITED: 429,
+  AUTH_LOCKED: 429,
   LINKED_RECORD_OUT_OF_SCOPE: 404,
   NOT_FOUND: 404,
   // F-039：路由声明的运行时自检失败（注册实例与声明的 method / 路径不一致），fail-closed

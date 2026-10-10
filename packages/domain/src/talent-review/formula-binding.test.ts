@@ -388,3 +388,59 @@ describe('renderFormula：legacy / unresolved（契约 §1.4，DEC-376③；审�
     });
   });
 });
+
+describe('renderFormula：F082-2 收口（#205 第 2 轮 P3）', () => {
+  const custom = [...FIELDS, { id: F3, name: '盘点方案' }];
+  const legacy = (text: string, visibleFields: readonly { id: string; name: string }[]) =>
+    renderFormula(text, { binding: 'legacy', visibleFields, allFieldsVisible: false });
+  const bound = (text: string, visibleFields: readonly { id: string; name: string }[] = FIELDS) =>
+    renderFormula(text, { binding: 'bound', visibleFields });
+
+  it('P3-2：legacy 的“盘点方案”也按契约 §1.4——可见字段里没有同名字段就换成占位符，不再有固定路径例外', () => {
+    expect(legacy('盘点对象.盘点方案', [])).toEqual({
+      ok: true,
+      text: `盘点对象.${HIDDEN_FIELD_PLACEHOLDER}`,
+      bindings: [null],
+    });
+    // 可见目录里有同名自定义字段时原样显示，证明仍为 null（由用户显式选择）
+    expect(legacy('盘点对象.盘点方案', custom)).toEqual({ ok: true, text: '盘点对象.盘点方案', bindings: [null] });
+  });
+
+  it('P3-1：bound 规范文本里以“盘点对象”开头的非规范路径（三段、四段、盘点方案之下）都是损坏，不原样输出', () => {
+    for (const text of [
+      '盘点对象.秘密.子项',
+      '盘点对象.盘点方案.秘密',
+      '盘点对象.a.b.c',
+      `${H1} + 盘点对象.秘密.子项`,
+    ]) {
+      expect(bound(text), text).toEqual({ ok: false });
+    }
+  });
+
+  it('R1-P2-2：legacy 含点号的完整字段名（二、三段字段名）：按完整名称对可见目录判断，空白写法也认', () => {
+    const dotted = [
+      { id: 'd1', name: '甲.乙' },
+      { id: 'd2', name: '甲.乙.丙' },
+      { id: 'd3', name: '盘点方案.秘密' },
+    ];
+    for (const text of ['盘点对象.甲.乙 + 1', '盘点对象 . 甲 . 乙 + 1', '盘点对象 .\n甲\t.乙 + 1']) {
+      expect(legacy(text, dotted), text).toEqual({ ok: true, text, bindings: [null] });
+      expect(legacy(text, []), text).toEqual({
+        ok: true,
+        text: `盘点对象.${HIDDEN_FIELD_PLACEHOLDER} + 1`,
+        bindings: [null],
+      });
+    }
+    expect(legacy('盘点对象.甲.乙.丙 + 1', dotted)).toMatchObject({ text: '盘点对象.甲.乙.丙 + 1' });
+    expect(legacy('盘点对象.盘点方案.秘密 + 1', dotted)).toMatchObject({ text: '盘点对象.盘点方案.秘密 + 1' });
+    // 只有前缀可见不够：整段名称必须是可见字段
+    expect(legacy('盘点对象.甲.乙.丁', dotted)).toMatchObject({ text: `盘点对象.${HIDDEN_FIELD_PLACEHOLDER}` });
+  });
+
+  it('P3-1：legacy / unresolved 里同类路径一律按看不到处理（占位符），不泄露名称', () => {
+    for (const text of ['盘点对象.秘密.子项', '盘点对象.绩效.子项', '盘点对象.盘点方案.秘密']) {
+      const rendered = legacy(text, custom);
+      expect(rendered, text).toEqual({ ok: true, text: `盘点对象.${HIDDEN_FIELD_PLACEHOLDER}`, bindings: [null] });
+    }
+  });
+});
