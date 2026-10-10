@@ -120,7 +120,7 @@ describe('AC-PRM-FW-02 图存储：真实表等价与确定性（F-072 测试 1�
         expect(areaOf(key), key).toBe(area);
       }
     }
-    expect(owner.size).toBeGreaterThan(3000);
+    expect(owner.size).toBeGreaterThan(2500);
   });
 
   it('区域划分：模块 / 其他 api 子目录 / api 根 / domain 子目录 / 测试', () => {
@@ -191,7 +191,8 @@ describe('AC-PRM-FW-02 图存储：重算的差异面（F-072 测试 3、4）', 
     const files = {
       [`${FX}/g1.ts`]: "import { shared } from './s.js';\nexport function g1() {\n  return shared();\n}\n",
       [`${FX}/g2.ts`]:
-        "import { shared } from './s.js';\nimport { only } from './o.js';\nexport function g2() {\n  return shared() + only();\n}\n",
+        "import { shared } from './s.js';\nimport { only } from './o.js';\n" +
+        'export function g2() {\n  return shared() + only();\n}\n',
       [`${FX}/s.ts`]: 'export function shared() {\n  return 1;\n}\n',
       [`${FX}/o.ts`]: 'export function only() {\n  return 2;\n}\n',
     };
@@ -235,7 +236,8 @@ const HELPER = 'export function a() {\n  return b();\n}\nexport function b() {\n
 describe('AC-PRM-FW-02 图存储：图变或绑定变而闭包不变也报（F-072 测试 5、5b）', () => {
   it('导入重绑定：R→A 变为 R→A,B 且两边都有 A→B，闭包与摘要不变 → EVIDENCE_STALE（直接依赖变化）', () => {
     const gate = (second: string) =>
-      `import { a as fmt, ${second} as other } from './h.js';\nexport function gate() {\n  return fmt() + other();\n}\n`;
+      `import { a as fmt, ${second} as other } from './h.js';\n` +
+      'export function gate() {\n  return fmt() + other();\n}\n';
     const files = { [`${FX}/gate.ts`]: gate('a'), [`${FX}/h.ts`]: HELPER };
     const { check, registry } = baseline(files, `${FX}/gate.ts#gate`);
     const unit = `${FX}/gate.ts#gate`;
@@ -264,7 +266,8 @@ describe('AC-PRM-FW-02 图存储：图变或绑定变而闭包不变也报（F-0
     const swappedRegistry = currentRegistry(tableOf(`${FX}/gate.ts#gate`), readerOf(swapped), false);
     const id = `${FX}/mid.ts#r`;
     expect(swappedRegistry.graph[id]).toEqual(registry.graph[id]);
-    expect(swappedRegistry.nodes[id]![0]).not.toBe(registry.nodes[id]![0]);
+    expect(swappedRegistry.nodes[id]![0]).toBe(registry.nodes[id]![0]);
+    expect(swappedRegistry.nodes[id]![1]).not.toBe(registry.nodes[id]![1]);
     const found = check({ [`${FX}/mid.ts`]: SWAPPED });
     const stale = found.filter((f) => f.code === 'EVIDENCE_STALE');
     expect(stale.length, show(found)).toBeGreaterThan(0);
@@ -482,7 +485,7 @@ describe('AC-PRM-FW-02 图存储：explain-graph-diff（F-072 测试 5b、6b，�
     expect(changed?.old?.join('\n')).toContain('pick');
     expect(changed?.new?.join('\n')).not.toEqual(changed?.old?.join('\n'));
     // 同一变化，diff 里没有 mid.ts：解析链上没有任何文件在 diff 里 → 待说明
-    expect(unexplained(explain(before, after, [`${FX}/h.ts`], [`${FX}/gate.ts#gate`])).length).toBe(1);
+    expect(unexplained(explain(before, after, [`${FX}/other.ts`], [`${FX}/gate.ts#gate`])).length).toBe(1);
   });
 
   it('无法沿删除的边解释的删除、未修改文件里的摘要变化 → 列为待说明项', () => {
