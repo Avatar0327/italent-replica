@@ -231,7 +231,7 @@ export const DIGESTS: Digests = {
     requireFilterVisible: 'ee40ce95ec01',
   },
   'apps/api/src/modules/evaluation/candidates.ts': {
-    registerCandidates: 'f14bfd606236',
+    registerCandidates: '6c1d1aa23853',
   },
   'apps/api/src/modules/evaluation/person-refs.ts': {
     assertNewPersonRefs: 'c89a9b19f7af',
@@ -241,7 +241,7 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/evaluation/review-group-routes.ts': {
     PATH: '08e090048749',
-    registerReviewGroupRoutes: '5094656d57d2',
+    registerReviewGroupRoutes: '04b37430536d',
   },
   'apps/api/src/modules/evaluation/review-group-service.ts': {
     createReviewGroup: '7460d19d139d',
@@ -252,7 +252,7 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/evaluation/routes.ts': {
     SPECS: '304a0790ab1b',
     registerEvaluationRoutes: 'fc7171c1fe9c',
-    registerObject: '239bd49bcb4b',
+    registerObject: 'c6a3c6477bcd',
   },
   'apps/api/src/modules/idp/access.ts': {
     idpContext: 'a649410c2da0',
@@ -1221,13 +1221,13 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/evaluation/access.ts#evaluationContext': 'b5cc01649da7',
   'apps/api/src/modules/evaluation/access.ts#evaluationWriteContext': '0cc528c12276',
   'apps/api/src/modules/evaluation/access.ts#requireFilterVisible': '41903ba0cf58',
-  'apps/api/src/modules/evaluation/candidates.ts#registerCandidates': '84ca1a6c0104',
+  'apps/api/src/modules/evaluation/candidates.ts#registerCandidates': '326f2c6dfee0',
   'apps/api/src/modules/evaluation/person-refs.ts#assertNewPersonRefs': 'fdb5067bfe61',
   'apps/api/src/modules/evaluation/person-refs.ts#employeesInScope': '8a3057d5fca7',
   'apps/api/src/modules/evaluation/person-refs.ts#personRefAccess': '448b12740218',
   'apps/api/src/modules/evaluation/person-refs.ts#presentPersonRefs': '4a3d2dec21cf',
   'apps/api/src/modules/evaluation/review-group-routes.ts#PATH': '072f6ed3a951',
-  'apps/api/src/modules/evaluation/review-group-routes.ts#registerReviewGroupRoutes': '6c1f34fc1328',
+  'apps/api/src/modules/evaluation/review-group-routes.ts#registerReviewGroupRoutes': '6ed839a912b6',
   'apps/api/src/modules/evaluation/review-group-service.ts#createReviewGroup': '55ed1283d4fc',
   'apps/api/src/modules/evaluation/review-group-service.ts#presentGroups': '4b436823458b',
   'apps/api/src/modules/evaluation/review-group-service.ts#requireOwnerOrg': '47d10739befa',

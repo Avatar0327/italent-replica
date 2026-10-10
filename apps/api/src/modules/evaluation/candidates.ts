@@ -34,6 +34,8 @@ export function registerCandidates(router: Hono<TenantEnv>, deps: TenantRouteDep
     // 姓名、工号都没有查看权时 matches 为空，'name' 必然不可见 → 403 FILTER_FIELD_HIDDEN（统一筛选守卫）
     if (keyword && !matches.length) requireFilterVisible(fields, 'name');
     const search = keyword ? sql`(${sql.join(matches, sql` OR `)})` : sql`true`;
+    // 排序只用查看人看得到的字段（否则顺序与 pageSize=1 的首条会暴露隐藏工号 / 姓名的相对大小），都看不到时退回员工 ID
+    const order = sql.raw(['code', 'name'].filter(shows).slice(0, 1).concat('id').join(', '));
     const items = await withTenant(deps.db, ctx.tenantId, async (tx) =>
       rowsOf<{ id: string; name: string; code: string }>(
         await tx.execute(sql`SELECT id, name, code FROM (
@@ -43,7 +45,7 @@ export function registerCandidates(router: Hono<TenantEnv>, deps: TenantRouteDep
               WHERE pv.tenant_id = e.tenant_id AND pv.employee_id = e.id ORDER BY pv.revision DESC LIMIT 1) v ON true
             WHERE e.tenant_id = ${ctx.tenantId}::uuid AND ${scopeSql(scope, { person: sql`e.id` })}
           ) people WHERE ${search}
-          ORDER BY code, id LIMIT ${page.limit} OFFSET ${page.offset}`),
+          ORDER BY ${order} LIMIT ${page.limit} OFFSET ${page.offset}`),
       ),
     );
     return c.json({

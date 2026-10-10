@@ -321,7 +321,7 @@ describe('AC-PRM-FW-01 createApp 真实装配', () => {
    * DEC-361 种子回补命令 + 1 = 473；R3-T04 PR-B1（设置 2 + 分类 / 角色 / 字段目录各 5）+ 17 = 490；R3-T05 A1（继任记录读侧）+ 3 = 493；
    * F-060 报表 PNG / 报告 PDF（管理端 + 2、收件人链接 + 1）后 = 496；
    * R3-T04 PR-B4（九宫格 5 + 规则组 3）+ 8 = 504；
-   * R3-T04 PR-B5（计算规则 5）+ 5 = 509；R3-T02 PR-B B1a 活动类型 + 5 = 520（PR 描述以此为准）。
+   * R3-T04 PR-B5（计算规则 5）+ 5 = 509；R3-T02 PR-B B1a 活动类型 + 5 = 514；B3 评审组 + 5、成员候选 + 1 = 520（PR 描述以此为准）。
    */
   const EXPECTED_BY_MODULE: Readonly<Record<string, number>> = {
     root: 1,

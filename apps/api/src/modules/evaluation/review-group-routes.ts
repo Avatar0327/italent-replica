@@ -68,7 +68,7 @@ export function registerReviewGroupRoutes(router: Hono<TenantEnv>, deps: TenantR
       );
       return shapeRows(tx, ctx.tenantId, persons, rows);
     });
-    return c.json({ ...listEnvelope(page, scope), items: await present(ctx, items) });
+    return c.json({ ...listEnvelope(page, scope, OBJECT), items: await present(ctx, items) });
   });
 
   router.get(`${PATH}/:id`, async (c) => {

@@ -95,7 +95,7 @@ function registerObject<Create extends object, Patch extends object>(
       ),
     );
     return c.json({
-      ...listEnvelope(page, scope),
+      ...listEnvelope(page, scope, spec.object),
       items: await present(
         ctx,
         rows.map((row) => read.view<View>(row)),

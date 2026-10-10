@@ -127,9 +127,11 @@ export function requireFilterVisible(fields: ReadonlySet<string> | undefined, fi
   }
 }
 
-/** 列表信封：查看人在该对象上有没有任何数据范围（字典看看全部或创建人）。 */
-export function listEnvelope(page: { page: number; pageSize: number }, scope: ModuleScope) {
-  return { page: page.page, pageSize: page.pageSize, hasDataPermission: scope.all || hasCreatorScope(scope) };
+/** 列表信封：查看人在该对象上有没有任何数据范围（字典看看全部或创建人；所属组织对象看有没有任何范围，同 talent）。 */
+export function listEnvelope(page: { page: number; pageSize: number }, scope: ModuleScope, object: EvaluationObject) {
+  const hasDataPermission =
+    scope.all || (ANCHOR[object] === 'owned' ? scope.hasDataPermission : hasCreatorScope(scope));
+  return { page: page.page, pageSize: page.pageSize, hasDataPermission };
 }
 
 export function rowsOf<T>(result: unknown): T[] {

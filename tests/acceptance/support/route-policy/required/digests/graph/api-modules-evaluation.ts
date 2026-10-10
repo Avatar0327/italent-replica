@@ -25,6 +25,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-route-access.ts#button',
   ],
   'apps/api/src/modules/evaluation/access.ts#listEnvelope': [
+    '#ANCHOR',
     'apps/api/src/modules/permission/scope-audit.ts#hasCreatorScope',
   ],
   'apps/api/src/modules/evaluation/access.ts#requireVisible': ['#EVALUATION_LABELS'],

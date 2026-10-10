@@ -100,8 +100,8 @@ export async function presentGroups(
 
 /**
  * 审计快照：成员只含员工 ID、当时姓名与组长标记（范围外成员同口径：ID 与姓名，不带其他字段，DEC-331① / DEC-339②）。
- * 姓名在业务事务内冻结，改名后历史日志仍是当时的值；读取时不再按查看人的员工信息姓名字段权二次裁剪
- * （TODO(审计成员姓名投影)：需 audit/visibility.ts 的联合路径裁剪，属共享登记，已在 PR 描述报总编排）。
+ * 姓名在业务事务内冻结，改名后历史日志仍是当时的值；读取时按查看人当前的员工信息对象查看权与姓名字段权裁剪
+ * （audit/visibility.ts 的 reviewGroupFields，DEC-197）。
  */
 async function auditSnapshot(tx: Tx, tenantId: string, group: ReviewGroupView) {
   const names = new Map(
