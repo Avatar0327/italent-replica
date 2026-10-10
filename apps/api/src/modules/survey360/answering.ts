@@ -210,6 +210,8 @@ export async function answerPage(tx: Tx, link: LinkRow, activity: ActivityRow, a
   const tasks = rows<TaskRow>(
     await tx.execute(sql`${taskQuery(activity.id, link.personId)} ORDER BY o.sort, o.created_at, r.id`),
   );
+  // 授权与返回数据同源：resolve 的检查通过后关系可能已被撤销，空任务不能带着活动信息返回（F-084 第 1 轮 P2-1）
+  if (!tasks.length) notFound();
   const avatars = await linkAvatars(tx, activity.tenant_id, answerPersonIds(link, activity, tasks), avatarBase);
   const items = [];
   for (const task of tasks)
@@ -253,6 +255,9 @@ async function requireTask(
   questionnaireId: string,
   lockObject = false,
 ) {
+  // 保护写入的锁序：关系行 → 对象行。确认链接删除评价关系不锁活动（relations.ts removeRelation 也是先关系后对象），
+  // 作答只锁对象行会漏掉它；取得锁后再读任务，等锁期间已撤销的关系 / 对象一律 404（F-084 第 1 轮 P2-1）
+  if (lockObject) await lockLiveRelation(tx, activity.id, link.personId, relationId);
   const [task] = rows<TaskRow>(
     await tx.execute(sql`${taskQuery(activity.id, link.personId)} AND r.id = ${relationId}::uuid
       ${lockObject ? sql`FOR UPDATE OF o` : sql``}`),
@@ -260,6 +265,14 @@ async function requireTask(
   if (!task) notFound();
   if (!(await sheetsOf(tx, task!)).some((q) => q.id === questionnaireId)) notFound();
   return { task: task!, questionnaire: await loadQuestionnaire(tx, questionnaireId) };
+}
+
+async function lockLiveRelation(tx: Tx, activityId: string, personId: string, relationId: string) {
+  const [live] = rows<{ id: string }>(
+    await tx.execute(sql`SELECT id FROM survey360_relations WHERE id = ${relationId}::uuid
+      AND activity_id = ${activityId}::uuid AND appraiser_person_id = ${personId}::uuid AND NOT removed FOR UPDATE`),
+  );
+  if (!live) notFound();
 }
 
 type SheetRow = typeof survey360Sheets.$inferSelect;
@@ -737,6 +750,8 @@ function avatarRoute(deps: TenantRouteDeps, entryOf: EntryOf, kind: LinkRow['kin
 export async function avatarPersonIds(tx: Tx, link: LinkRow, activity: ActivityRow) {
   if (link.kind === 'answer') {
     const tasks = rows<TaskRow>(await tx.execute(taskQuery(activity.id, link.personId)));
+    // 同作答页：名单由本次读到的任务生成，没有任务时本人也不在名单里（不单独放行本人头像）
+    if (!tasks.length) notFound();
     return answerPersonIds(link, activity, tasks);
   }
   const confirmation = await loadConfirmation(tx, link);

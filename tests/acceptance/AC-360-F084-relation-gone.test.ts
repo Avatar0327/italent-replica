@@ -120,10 +120,11 @@ describe.each(ENTRIES)('F-084 $name：最后一条关系消失后一律拒绝', 
     expect(page.activity.name).toBe(sc.s.activity.name);
     expect(page.tasks.map((t) => t.relationId)).toEqual([second.relation.id]);
     expect((await entry.call(sc, 'GET', avatarPath(sc, sc.avatar.id))).status).toBe(200);
-    // 已移除的关系 / 对象仍是 404，剩余关系可读写
+    // 已移除的关系 / 对象仍是 404；剩余关系可读、可保存草稿
     await expectGone(await entry.call(sc, 'GET', task(sc)), '已移除任务');
     const own = `/tasks/${second.relation.id}/questionnaires/${sc.s.q.id}`;
     await sc.s.w.ok(entry.call(sc, 'GET', own));
+    await sc.s.w.ok(entry.call(sc, 'PUT', own, { answers: [] }));
 
     // 其余评价者（同事二）不受影响
     const p2 = await sc.s.w.token(sc.s.activity.id, sc.s.person.P2.id);
@@ -199,15 +200,22 @@ describe('F-084 不受影响的口径', () => {
     const [row] = await reports(s);
     expect((await call('GET', `/reports/${row!.id}`)).status).toBe(200);
     await removeRelation(s, s.object.id, s.rel.p1);
-    // 评价者 P1 的作答入口拒绝；收件人链接读到的报告与删除前一致（报告已生成，按原有口径）
+    // 评价者 P1 的作答入口拒绝；收件人链接本身仍可访问（报告列表 200）。评价关系变化使旧报告失效，详情 / 下载
+    // 按既有规则 409（reports.ts，与本次改动无关），这里只固定“本次改动没有改变收件人链接的口径”
     expect((await s.w.link(sc.token)('GET', '')).status).toBe(404);
     expect((await call('GET', '')).status).toBe(200);
+    expect((await call('GET', `/reports/${row!.id}`)).status).toBe(409);
   });
 
   it('已删除任务的详情保持原有拒绝；确认链接口径不变', async () => {
     const sc = await scene('f84-keep');
     const { s } = sc;
+    await s.w.ok(s.w.request('POST', `${s.path}/objects/${s.object.id}/confirmation`, { ifMatch: 0, body: {} }), 201);
+    const confirm = s.w.link(await s.w.token(s.activity.id, s.person.M.id, 'survey360.confirm_invitation'));
+    await s.w.ok(confirm('GET', ''));
     await removeRelation(s, s.object.id, s.rel.superior);
+    // 确认链接（kind=confirm）不走作答链接的有效任务检查：确认人本人的作答关系被删后仍可打开确认页
+    expect((await confirm('GET', '')).status).toBe(200);
     // 其他评价者（同事二）不受影响，且不能读他人已删除的任务
     const p2 = await s.w.token(s.activity.id, s.person.P2.id);
     expect((await s.w.link(p2)('GET', '')).status).toBe(200);
