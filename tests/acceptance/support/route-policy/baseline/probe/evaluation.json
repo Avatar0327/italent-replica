@@ -39,23 +39,54 @@
       "obj:TEvaluation.ActivityType:delete"
     ]
   },
-  "DELETE /api/tenant/evaluation/general-score-items/:id": {
+  "DELETE /api/tenant/evaluation/evaluation-forms/:id": {
     "all": {
       "code": "NOT_FOUND",
-      "error": "465f12e6c565",
+      "error": "ec790dc17a03",
       "status": 404
     },
-    "fieldQueries": [],
+    "fieldQueries": [
+      "fields:Qualification.Target",
+      "fields:TEvaluation.GeneralScoreItem"
+    ],
     "invalidId": {
       "code": "VALIDATION_FAILED",
       "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
+      "scope:Qualification/Qualification.Target/-",
+      "scope:TEvaluation/TEvaluation.EvaluationForm/-",
+      "scope:TEvaluation/TEvaluation.GeneralScoreItem/-"
+    ],
+    "trace": [
+      "btn:TEvaluation.EvaluationForm#delete@detail",
+      "obj:Qualification.Target:view",
+      "obj:TEvaluation.EvaluationForm:delete",
+      "obj:TEvaluation.GeneralScoreItem:view"
+    ]
+  },
+  "DELETE /api/tenant/evaluation/general-score-items/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "465f12e6c565",
+      "status": 404
+    },
+    "fieldQueries": [
+      "fields:TEvaluation.EvaluationForm"
+    ],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TEvaluation/TEvaluation.EvaluationForm/-",
       "scope:TEvaluation/TEvaluation.GeneralScoreItem/-"
     ],
     "trace": [
       "btn:TEvaluation.GeneralScoreItem#delete@detail",
+      "obj:TEvaluation.EvaluationForm:view",
       "obj:TEvaluation.GeneralScoreItem:delete"
     ]
   },
@@ -137,6 +168,52 @@
     ],
     "trace": [
       "obj:TenantBase.EmployeeInformation:view"
+    ]
+  },
+  "GET /api/tenant/evaluation/evaluation-forms": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:Qualification.Target",
+      "fields:TEvaluation.EvaluationForm",
+      "fields:TEvaluation.GeneralScoreItem"
+    ],
+    "scopeQueries": [
+      "scope:Qualification/Qualification.Target/Qualification.Target.list",
+      "scope:TEvaluation/TEvaluation.EvaluationForm/TEvaluation.EvaluationForm.list",
+      "scope:TEvaluation/TEvaluation.GeneralScoreItem/TEvaluation.GeneralScoreItem.list"
+    ],
+    "trace": [
+      "obj:Qualification.Target:view",
+      "obj:TEvaluation.EvaluationForm:view",
+      "obj:TEvaluation.GeneralScoreItem:view"
+    ]
+  },
+  "GET /api/tenant/evaluation/evaluation-forms/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "ec790dc17a03",
+      "status": 404
+    },
+    "fieldQueries": [
+      "fields:Qualification.Target",
+      "fields:TEvaluation.GeneralScoreItem"
+    ],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Qualification/Qualification.Target/Qualification.Target.detail",
+      "scope:TEvaluation/TEvaluation.EvaluationForm/TEvaluation.EvaluationForm.detail",
+      "scope:TEvaluation/TEvaluation.GeneralScoreItem/TEvaluation.GeneralScoreItem.detail"
+    ],
+    "trace": [
+      "obj:Qualification.Target:view",
+      "obj:TEvaluation.EvaluationForm:view",
+      "obj:TEvaluation.GeneralScoreItem:view"
     ]
   },
   "GET /api/tenant/evaluation/general-score-items": {
@@ -252,23 +329,54 @@
       "obj:TEvaluation.ActivityType:update"
     ]
   },
-  "PATCH /api/tenant/evaluation/general-score-items/:id": {
+  "PATCH /api/tenant/evaluation/evaluation-forms/:id": {
     "all": {
       "code": "NOT_FOUND",
-      "error": "465f12e6c565",
+      "error": "ec790dc17a03",
       "status": 404
     },
-    "fieldQueries": [],
+    "fieldQueries": [
+      "fields:Qualification.Target",
+      "fields:TEvaluation.GeneralScoreItem"
+    ],
     "invalidId": {
       "code": "VALIDATION_FAILED",
       "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
+      "scope:Qualification/Qualification.Target/-",
+      "scope:TEvaluation/TEvaluation.EvaluationForm/-",
+      "scope:TEvaluation/TEvaluation.GeneralScoreItem/-"
+    ],
+    "trace": [
+      "btn:TEvaluation.EvaluationForm#update@detail",
+      "obj:Qualification.Target:view",
+      "obj:TEvaluation.EvaluationForm:update",
+      "obj:TEvaluation.GeneralScoreItem:view"
+    ]
+  },
+  "PATCH /api/tenant/evaluation/general-score-items/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "465f12e6c565",
+      "status": 404
+    },
+    "fieldQueries": [
+      "fields:TEvaluation.EvaluationForm"
+    ],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TEvaluation/TEvaluation.EvaluationForm/-",
       "scope:TEvaluation/TEvaluation.GeneralScoreItem/-"
     ],
     "trace": [
       "btn:TEvaluation.GeneralScoreItem#update@detail",
+      "obj:TEvaluation.EvaluationForm:view",
       "obj:TEvaluation.GeneralScoreItem:update"
     ]
   },
@@ -320,6 +428,19 @@
     "trace": [
       "btn:TEvaluation.ActivityType#create@list",
       "obj:TEvaluation.ActivityType:create"
+    ]
+  },
+  "POST /api/tenant/evaluation/evaluation-forms": {
+    "all": {
+      "code": "REVISION_CONFLICT",
+      "error": "f12e1e2b793f",
+      "status": 409
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:TEvaluation.EvaluationForm#create@list",
+      "obj:TEvaluation.EvaluationForm:create"
     ]
   },
   "POST /api/tenant/evaluation/general-score-items": {

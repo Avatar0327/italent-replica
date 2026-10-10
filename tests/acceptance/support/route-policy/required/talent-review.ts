@@ -76,12 +76,20 @@ function change(operation: Exclude<Operation, 'view'>): Obligation[] {
 
 // ---- R3-T04 PR-B1：设置 / 分类 / 角色 / 字段目录（modules/talent-review/config-routes.ts） ----------------------------
 const CFG = `${T}/config-routes.ts`;
+const SCORING = `${T}/scoring-routes.ts`;
 const CATALOG = 'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS';
-const cfgView = (object: string, constKey: string, label: string, register: string, anchor: string): Obligation => ({
+const cfgView = (
+  object: string,
+  constKey: string,
+  label: string,
+  register: string,
+  anchor: string,
+  file = CFG,
+): Obligation => ({
   perm: `obj:${object}:view`,
   facts: ['object:objectContext'],
   at: [
-    { role: 'call', unit: `${CFG}#${register}`, anchor },
+    { role: 'call', unit: `${file}#${register}`, anchor },
     ...CONTEXT,
     { role: 'const', unit: `${CATALOG}>${constKey}`, anchor: `object('${label}'` },
   ],
@@ -92,10 +100,11 @@ function cfgChange(
   label: string,
   register: string,
   operation: Exclude<Operation, 'view'>,
+  file = CFG,
 ): Obligation[] {
   const entry: Evidence = {
     role: 'call',
-    unit: `${CFG}#${register}`,
+    unit: `${file}#${register}`,
     anchor: `const ctx = await reviewWriteContext(c, deps, '${constKey}', '${operation}', revision(c))`,
   };
   const objectConst: Evidence = { role: 'const', unit: `${CATALOG}>${constKey}`, anchor: `object('${label}'` };
@@ -209,26 +218,34 @@ const RENAME_DISCLOSURE: Obligation = {
   ],
 };
 
-/** 分类 / 角色 / 字段目录五条路由；settings 另列（单例，只有读与改）。 */
-function cfgObject(key: string, label: string, register: string, base: string, constName: string): RequiredTable {
+/** 分类 / 角色 / 字段目录（B1）与评价规则 / 模块等级（B2a，scoring-routes.ts）五条路由；settings 另列（单例，只有读与改）。 */
+function cfgObject(
+  key: string,
+  label: string,
+  register: string,
+  base: string,
+  constName: string,
+  file = CFG,
+): RequiredTable {
   const object = `TalentReview.${label}`;
-  const get = (anchor: string) => cfgView(object, key, label, register, anchor);
+  const get = (anchor: string) => cfgView(object, key, label, register, anchor, file);
   const ctx = `const ctx = await reviewContext(c, deps, '${key}')`;
   return {
     [`GET ${BASE_ROOT}/${base}`]: [get(`router.get(${constName}, async (c) => { ${ctx}`), FILTER_GUARD],
     [`GET ${BASE_ROOT}/${base}/:id`]: [get(`router.get(\`\${${constName}}/:id\`, async (c) => { ${ctx}`)],
     [`POST ${BASE_ROOT}/${base}`]: [
-      ...cfgChange(object, key, label, register, 'create'),
+      ...cfgChange(object, key, label, register, 'create', file),
       ...(key === 'field' ? PAIR_OBLIGATIONS : []),
     ],
     [`PATCH ${BASE_ROOT}/${base}/:id`]: [
-      ...cfgChange(object, key, label, register, 'update'),
+      ...cfgChange(object, key, label, register, 'update', file),
       RENAME_GUARD,
       ...(key === 'field' ? [RENAME_DISCLOSURE] : []),
     ],
-    [`DELETE ${BASE_ROOT}/${base}/:id`]: cfgChange(object, key, label, register, 'delete'),
+    [`DELETE ${BASE_ROOT}/${base}/:id`]: cfgChange(object, key, label, register, 'delete', file),
   };
 }
+
 const BASE_ROOT = '/api/tenant/talent-review';
 const SETTINGS_OBJECT = 'TalentReview.Settings';
 
@@ -332,13 +349,13 @@ const MATRIX_REQUIRED: RequiredTable = {
   ],
   [`POST ${MTX_BASE}`]: [
     ...matrixChange('registerMatrixRoutes', 'create'),
-    ...matrixReference('const fieldScope = await requireFieldReference(c, deps)'),
+    ...matrixReference('await requireFieldReference(c, deps)'),
   ],
   [`PATCH ${MTX_BASE}/:id`]: [
     ...matrixChange('registerMatrixRoutes', 'update'),
     RENAME_GUARD,
     MATRIX_POSITION_GUARD,
-    ...matrixReference('const fieldScope = references.length > 0 ? await requireFieldReference(c, deps) : undefined'),
+    ...matrixReference('if (references.length > 0) await requireFieldReference(c, deps)'),
   ],
   [`DELETE ${MTX_BASE}/:id`]: matrixChange('registerMatrixRoutes', 'delete'),
   [`POST ${MTX_BASE}/:id/ratio-groups`]: matrixChange('registerRatioGroupRoutes', 'update'),
@@ -431,6 +448,8 @@ export const TALENT_REVIEW: RequiredTable = {
   ...cfgObject('category', 'Category', 'registerCategories', 'categories', 'CATEGORIES'),
   ...cfgObject('role', 'Role', 'registerRoles', 'roles', 'ROLES'),
   ...cfgObject('field', 'Field', 'registerFields', 'fields', 'FIELDS'),
+  ...cfgObject('scoreRule', 'ScoreRule', 'registerScoreRules', 'score-rules', 'SCORE_RULES', SCORING),
+  ...cfgObject('moduleGrade', 'ModuleGrade', 'registerModuleGrades', 'module-grades', 'MODULE_GRADES', SCORING),
   [`GET ${BASE_ROOT}/settings`]: [
     cfgView(
       SETTINGS_OBJECT,

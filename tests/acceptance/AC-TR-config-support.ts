@@ -86,7 +86,11 @@ export interface OperatorOptions {
 }
 
 /** 真实授权器下的操作人：身份只带 TalentReview 应用与指定对象，按需配置看全部、隐藏字段、按钮。 */
-export async function configOperator(world: PermissionWorld, object: ConfigObject, options: OperatorOptions = {}) {
+export async function configOperator(
+  world: PermissionWorld,
+  object: ConfigObject | keyof typeof TALENT_REVIEW_OBJECTS,
+  options: OperatorOptions = {},
+) {
   const definition = TALENT_REVIEW_OBJECTS[object];
   const profile = await createProfile(world, `trc-${randomUUID().slice(0, 8)}`, { apps: [TALENT_REVIEW_APP] });
   const hidden = new Set(options.hidden ?? []);
@@ -130,5 +134,10 @@ export async function configOperator(world: PermissionWorld, object: ConfigObjec
   if (options.seeAll) await setSeeAll(true);
   const request = (method: string, path: string, extra: RequestOptions = {}) =>
     world.api.request(method, `${TR_BASE}${path}`, { ...as, ...extra });
-  return { profile, user, as, request, setSeeAll, setButtons };
+  /** 撤销一批字段的编辑权（保留查看权）。 */
+  const lockFields = async (fields: readonly string[]) => {
+    for (const field of fields) locked.add(field);
+    await setButtons(true);
+  };
+  return { profile, user, as, request, setSeeAll, setButtons, lockFields };
 }

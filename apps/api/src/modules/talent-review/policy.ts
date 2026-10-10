@@ -49,7 +49,7 @@ const rdyWrite = (fields: 'body' | 'none') =>
  * docs/08_设计/R3-T04_PR-B1_路由声明.md。
  */
 function configRoutes(
-  key: 'category' | 'role' | 'field',
+  key: 'category' | 'role' | 'field' | 'scoreRule' | 'moduleGrade',
   path: string,
   table: string,
   createGuards: readonly string[] = [],
@@ -122,6 +122,9 @@ export const TALENT_REVIEW_POLICIES = defineTable('talent-review', {
   ...configRoutes('field', '/api/tenant/talent-review/fields', 'talent_review_fields', [
     'talentReview.pairRequiresUpdate',
   ]),
+  // PR-B2a：评价规则、模块等级（有名称，改名要求看全部）
+  ...configRoutes('scoreRule', '/api/tenant/talent-review/score-rules', 'talent_review_score_rules'),
+  ...configRoutes('moduleGrade', '/api/tenant/talent-review/module-grades', 'talent_review_module_grades'),
   // 租户设置是单例：读写都只有看全部（requireConfigCreatable，否则 404）；没有记录时返回默认值与 revision 0
   [`GET ${SETTINGS}`]: object({
     object: SETTINGS_CODE,

@@ -1,7 +1,7 @@
 /**
  * AC-PRM-FW-01（F-039 PR-A，docs/08_设计/F-039_权限框架强制_设计.md §2.3；DEC-300 / DEC-303）：
  * 路由声明的注册校验——缺失即失败。反例按 DEC-300 的三类致命项分组：身份不匹配、缺失声明、初始化不可信；
- * 校验按**注册实例**（包装函数身份）绑定，不只看 method / path。正例核对全部 529 个端点都已登记、
+ * 校验按**注册实例**（包装函数身份）绑定，不只看 method / path。正例核对全部 544 个端点都已登记、
  * 中间件按最终路径登记、HEAD 走 GET 声明。前四组用内存 Hono + 框架；最后一组用 createApp 真实装配。
  */
 import {
@@ -322,7 +322,8 @@ describe('AC-PRM-FW-01 createApp 真实装配', () => {
    * F-060 报表 PNG / 报告 PDF（管理端 + 2、收件人链接 + 1）后 = 496；
    * R3-T04 PR-B4（九宫格 5 + 规则组 3）+ 8 = 504；
    * R3-T04 PR-B5（计算规则 5）+ 5 = 509；R3-T02 PR-B B1a 活动类型 + 5 = 514；B1b 活动周期 + 5、通用评分项 + 5 = 524；
-   * B3 评审组 + 4（无删除，DEC-393⑤）、成员候选 + 1 = 529（PR 描述以此为准）。
+   * B3 评审组 + 4（无删除，DEC-393⑤）、成员候选 + 1 = 529；B4 评价表 + 5 = 534；
+   * R3-T04 PR-B2a（评价规则 / 模块等级各 5）+ 10 = 544（PR 描述以此为准）。
    */
   const EXPECTED_BY_MODULE: Readonly<Record<string, number>> = {
     root: 1,
@@ -344,9 +345,9 @@ describe('AC-PRM-FW-01 createApp 真实装配', () => {
     'survey360-report-link': 3,
     idp: 57,
     avatar: 5,
-    'talent-review': 35,
+    'talent-review': 45,
     qualification: 51,
-    evaluation: 20,
+    evaluation: 25,
     succession: 3,
   };
 
@@ -363,12 +364,12 @@ describe('AC-PRM-FW-01 createApp 真实装配', () => {
     expect(keys).toContain('DELETE /api/tenant/probes/:id');
   });
 
-  it('全部 529 个端点已声明，按模块统计一致', () => {
+  it('全部 544 个端点已声明，按模块统计一致', () => {
     const manifest = routeManifest(createApp({ db: testDb().db }));
     const byModule: Record<string, number> = {};
     for (const route of manifest.declared) byModule[route.module] = (byModule[route.module] ?? 0) + 1;
     expect(byModule).toEqual(EXPECTED_BY_MODULE);
-    expect(manifest.declared).toHaveLength(529);
+    expect(manifest.declared).toHaveLength(544);
     expect(manifest.declared.map((r) => `${r.method} ${r.path}`)).toContain(
       'POST /api/tenant/org/organizations/:id/employment-preview',
     );
