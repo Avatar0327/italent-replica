@@ -10,6 +10,7 @@ import { GRAPH as api_modules_contracts } from './api-modules-contracts.js';
 import { GRAPH as api_modules_employee_self_service } from './api-modules-employee-self-service.js';
 import { GRAPH as api_modules_employment } from './api-modules-employment.js';
 import { GRAPH as api_modules_establishment } from './api-modules-establishment.js';
+import { GRAPH as api_modules_evaluation } from './api-modules-evaluation.js';
 import { GRAPH as api_modules_idp } from './api-modules-idp.js';
 import { GRAPH as api_modules_job } from './api-modules-job.js';
 import { GRAPH as api_modules_org } from './api-modules-org.js';
@@ -50,6 +51,7 @@ export const GRAPH: Graph = {
   ...api_modules_employee_self_service,
   ...api_modules_employment,
   ...api_modules_establishment,
+  ...api_modules_evaluation,
   ...api_modules_idp,
   ...api_modules_job,
   ...api_modules_org,
