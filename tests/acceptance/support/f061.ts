@@ -124,8 +124,11 @@ export const permissionOf = async (
   w: Pick<World, 'db' | 'tenantId' | 'profileIds'>,
   profileCode: string,
   objectCode: string,
+  /** 测试用：在读之前先改本事务的会话参数（如强制查询计划），复现“读取顺序随计划变化”。 */
+  beforeRead?: (tx: Parameters<Parameters<typeof withTenant>[2]>[0]) => Promise<unknown>,
 ): Promise<ObjectPermission | undefined> =>
   withTenant(w.db, w.tenantId, async (tx) => {
+    await beforeRead?.(tx);
     const [permission] = await loadObjectPermissions(tx, [w.profileIds.get(profileCode)!], objectCode);
     return permission;
   });
