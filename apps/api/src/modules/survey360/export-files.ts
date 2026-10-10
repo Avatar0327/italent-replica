@@ -6,22 +6,27 @@
  *   答案，DEC-355② / DEC-358②）。版面只打印名称、分数与文本，从不打印任何 ID 键；
  * - 流程：JSON → 版面模型 Doc（纯函数，字体无关，测试直接断言） → 分页排版 → SVG → sharp 栅格化成 PNG；PDF 是把各页
  *   位图作为图像页写入的最小 PDF（无外部依赖，不带时间戳，同一输入字节相同）。因此 PDF 页内文字不可选择 / 搜索，
- *   文本层需要嵌入中文字体，另行决策（见 PR 描述）；
- * - 栅格化依赖系统里有中文字体（fontconfig）：没有时返回 503 EXPORT_FONT_UNAVAILABLE，而不是输出一堆方框（字体检查、
- *   并发准入、超时见 export-runtime.ts，这里再导出）；
- * - 上限：报表 300 行、PNG 像素预算、报告 80 页，超过拒绝（413 EXPORT_TOO_LARGE）而不是静默截断（整份文件必须与数据
- *   一致，AGENTS §10 批量设上限）；80 页与像素预算在排版过程中检查，不等整份排完。表格里超过一页的长行拆分续接，
- *   不会被裁掉。
+ *   文本层需要嵌入中文字体，另行决策（DEC-375③，F-083）；
+ * - 栅格化用项目内置的中文字体（F-080，DEC-375①，见 export-fonts.ts），在可终止的子进程里执行，超时即终止
+ *   （export-raster.ts）；并发准入、超时见 export-runtime.ts，这里再导出；
+ * - 上限：报表 300 行、PNG 像素预算、报告 80 页，超过拒绝（413 EXPORT_TOO_LARGE，提示“数据过多，请分批导出”，
+ *   DEC-375②）而不是静默截断（整份文件必须与数据一致，AGENTS §10 批量设上限）；80 页与像素预算在排版过程中检查，
+ *   不等整份排完。表格里超过一页的长行拆分续接，不会被裁掉。
  */
 import { deflateSync } from 'node:zlib';
-import sharp from 'sharp';
 import { AppError } from '../../errors.js';
-import { exportConfig, requireFont } from './export-runtime.js';
+import { EXPORT_FONT_FAMILY } from './export-fonts.js';
+import { openRaster, type RasterRequest, type RasterSession } from './export-raster.js';
+import { exportConfig } from './export-runtime.js';
 
+export * from './export-fonts.js';
+export { activeRasterProcesses } from './export-raster.js';
 export * from './export-runtime.js';
 
 export const EXPORT_ROW_LIMIT = 300;
 export const EXPORT_PAGE_LIMIT = 80;
+/** 所有超限（行数 / 页数 / 像素预算）统一的提示文案（DEC-375②）；错误码与 details.reason 不变。 */
+const TOO_LARGE_MESSAGE = '数据过多，请分批导出';
 
 // ---- 版面模型 ----------------------------------------------------------------------------------------------------
 
@@ -96,11 +101,7 @@ export const HIDDEN_ACTIVITY_NAME = '360度评估';
 
 export function scoreTableDocument(body: ScoreTablesBody, meta: { activityName?: string }): Doc {
   const items = body.items ?? [];
-  if (items.length > EXPORT_ROW_LIMIT)
-    throw new AppError('PAYLOAD_TOO_LARGE', `报表超过 ${EXPORT_ROW_LIMIT} 行，不能生成完整截图`, {
-      reason: 'EXPORT_TOO_LARGE',
-      limit: EXPORT_ROW_LIMIT,
-    });
+  if (items.length > EXPORT_ROW_LIMIT) throw tooLarge(EXPORT_ROW_LIMIT);
   const columns = body.columns ?? [];
   const showDepartment = items.some((i) => 'department' in i);
   const showPosition = items.some((i) => 'position' in i);
@@ -371,8 +372,9 @@ function columnWidths(header: readonly string[], rows: readonly (readonly string
   return natural.map((w) => (w / sum) * total);
 }
 
-const tooLarge = (message: string, limit: number) =>
-  new AppError('PAYLOAD_TOO_LARGE', message, { reason: 'EXPORT_TOO_LARGE', limit });
+function tooLarge(limit: number) {
+  return new AppError('PAYLOAD_TOO_LARGE', TOO_LARGE_MESSAGE, { reason: 'EXPORT_TOO_LARGE', limit });
+}
 /** 96 dpi 的版面像素按 1.5 倍栅格化（≈144 dpi）。 */
 const DENSITY = 108;
 const SCALE = DENSITY / 72;
@@ -394,8 +396,7 @@ class Layout {
 
   private next() {
     // 80 页限制在排版过程中检查：超限立即停止，不等整份文档排完
-    if (this.pages.length >= EXPORT_PAGE_LIMIT)
-      throw tooLarge(`文件超过 ${EXPORT_PAGE_LIMIT} 页，不能生成完整文件`, EXPORT_PAGE_LIMIT);
+    if (this.pages.length >= EXPORT_PAGE_LIMIT) throw tooLarge(EXPORT_PAGE_LIMIT);
     this.page = { width: this.width, height: this.limit ?? 0, draws: [] };
     this.pages.push(this.page);
     this.y = MARGIN;
@@ -405,8 +406,7 @@ class Layout {
   private grew() {
     if (this.limit !== undefined) return;
     const pixels = (this.y + MARGIN) * SCALE * (this.width * SCALE);
-    if (pixels > exportConfig().pixelBudget)
-      throw tooLarge('报表内容过长，超过图片渲染的像素预算，不能生成完整文件', exportConfig().pixelBudget);
+    if (pixels > exportConfig().pixelBudget) throw tooLarge(exportConfig().pixelBudget);
   }
 
   private needsBreak(height: number): boolean {
@@ -523,19 +523,6 @@ export function paginate(doc: Doc, mode: 'long' | 'a4'): Page[] {
 
 // ---- 栅格化 ------------------------------------------------------------------------------------------------------
 
-export const FONT_FAMILY = [
-  'Noto Sans CJK SC',
-  'Noto Sans SC',
-  'Source Han Sans SC',
-  'WenQuanYi Zen Hei',
-  'WenQuanYi Micro Hei',
-  'Microsoft YaHei',
-  'PingFang SC',
-  'Droid Sans Fallback',
-]
-  .map((family) => `'${family}'`)
-  .concat('sans-serif')
-  .join(',');
 const escapeXml = (value: string) =>
   value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' })[c]!);
 
@@ -549,22 +536,28 @@ function svgOf(page: Page): string {
       return `<text ${attrs}>${escapeXml(d.value)}</text>`;
     })
     .join('');
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${page.width}" height="${page.height}" font-family="${FONT_FAMILY}">
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${page.width}" height="${page.height}" font-family="'${EXPORT_FONT_FAMILY}'">
 <rect width="100%" height="100%" fill="#ffffff"/>${body}</svg>`;
 }
 
-/** 栅格化：像素上限与超时都在 sharp 层再设一道（排版已按预算拒绝，这里防止预算被调大后失控）。 */
-const rasterize = (page: Page) =>
-  sharp(Buffer.from(svgOf(page)), { density: DENSITY, limitInputPixels: exportConfig().pixelBudget * 2 })
-    .timeout({ seconds: Math.max(1, Math.ceil(exportConfig().timeoutMs / 1000)) })
-    .flatten({ background: '#ffffff' });
+/** 栅格化请求：像素上限与 libvips 整秒超时作兜底（排版已按预算拒绝；真正的取消靠终止子进程，见 export-raster.ts）。 */
+const rasterRequest = (page: Page, format: RasterRequest['format']): RasterRequest => ({
+  svg: svgOf(page),
+  density: DENSITY,
+  limitInputPixels: exportConfig().pixelBudget * 2,
+  timeoutSeconds: Math.max(1, Math.ceil(exportConfig().timeoutMs / 1000)),
+  format,
+});
 
-/** 报表下载：整块报表视图的 PNG 长图。signal 中止（超时）时不再进入栅格化。 */
+/** 报表下载：整块报表视图的 PNG 长图。signal 中止（超时）时立即终止栅格化进程。 */
 export async function renderPng(doc: Doc, signal?: AbortSignal): Promise<Buffer> {
-  await requireFont();
   const [page] = paginate(doc, 'long');
-  signal?.throwIfAborted();
-  return rasterize(page!).png().toBuffer();
+  const raster = await openRaster(signal);
+  try {
+    return (await raster.render(rasterRequest(page!, 'png'))).data;
+  } finally {
+    await raster.close();
+  }
 }
 
 // ---- PDF ---------------------------------------------------------------------------------------------------------
@@ -572,12 +565,20 @@ export async function renderPng(doc: Doc, signal?: AbortSignal): Promise<Buffer>
 const utf16Hex = (value: string) => `<FEFF${Buffer.from(value, 'utf16le').swap16().toString('hex').toUpperCase()}>`;
 
 /**
- * 最小 PDF：每页一张全幅位图（DeviceRGB + Flate）；不写时间戳，同一输入字节相同。signal 中止（超时）时在下一页
- * 栅格化之前停下，不把整份文件生成完（F-060 第 3 轮 P3）。
+ * 最小 PDF：每页一张全幅位图（DeviceRGB + Flate）；不写时间戳，同一输入字节相同。signal 中止（超时）时立即终止
+ * 栅格化进程，不把整份文件生成完（F-060 第 3 轮 P3；F-080 起不必等当前页渲染结束）。
  */
 export async function renderPdf(doc: Doc, signal?: AbortSignal): Promise<Buffer> {
-  await requireFont();
   const pages = paginate(doc, 'a4');
+  const raster = await openRaster(signal);
+  try {
+    return await pdfOf(doc, pages, raster, signal);
+  } finally {
+    await raster.close();
+  }
+}
+
+async function pdfOf(doc: Doc, pages: readonly Page[], raster: RasterSession, signal?: AbortSignal): Promise<Buffer> {
   const objects: Buffer[] = [];
   const add = (body: string | Buffer) => objects.push(Buffer.isBuffer(body) ? body : Buffer.from(body, 'latin1'));
   const pageIds = pages.map((_, i) => 3 + i * 3);
@@ -585,7 +586,7 @@ export async function renderPdf(doc: Doc, signal?: AbortSignal): Promise<Buffer>
   add(`<< /Type /Pages /Kids [${pageIds.map((id) => `${id} 0 R`).join(' ')}] /Count ${pages.length} >>`);
   for (const [index, page] of pages.entries()) {
     signal?.throwIfAborted();
-    const { data, info } = await rasterize(page).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+    const { data, width, height } = await raster.render(rasterRequest(page, 'raw'));
     const flate = deflateSync(data, { level: 9 });
     const id = 3 + index * 3;
     add(
@@ -597,7 +598,7 @@ export async function renderPdf(doc: Doc, signal?: AbortSignal): Promise<Buffer>
     add(
       Buffer.concat([
         Buffer.from(
-          `<< /Type /XObject /Subtype /Image /Width ${info.width} /Height ${info.height} /ColorSpace /DeviceRGB ` +
+          `<< /Type /XObject /Subtype /Image /Width ${width} /Height ${height} /ColorSpace /DeviceRGB ` +
             `/BitsPerComponent 8 /Filter /FlateDecode /Length ${flate.length} >>\nstream\n`,
           'latin1',
         ),
