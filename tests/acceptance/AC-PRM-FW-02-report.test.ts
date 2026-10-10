@@ -97,7 +97,7 @@ function oracleOf(reg: Registry, cur: Registry, roots: Roots): Oracle {
     ...Object.keys(cur.unitBindings),
   ]);
   // Δd：节点摘要变；登记图仍引用、但 nodes 记录缺失的节点也算（登记副本不一致，旧版报为“新增依赖”）
-  const regRefs = new Set([...Object.keys(reg.graph), ...Object.values(reg.graph).flat()]);
+  const regRefs = new Set(Object.values(reg.graph).flat());
   const dd = new Set(
     Object.keys(cur.nodes).filter(
       (id) => digestOf(reg, id) !== digestOf(cur, id) && (id in reg.nodes || regRefs.has(id)),
@@ -827,5 +827,38 @@ describe('AC-PRM-FW-02 集中报告：区分力（#212 第 1 轮 P3-1）', () =>
     ]);
     const text = run.found.find((f) => f.group?.node.endsWith('#n12'))!.detail;
     for (const node of impact.chain) expect(text).toContain(node);
+  });
+});
+
+describe('AC-PRM-FW-02 集中报告：纯证据根第一次成为依赖不算摘要变化（#212 第 2 轮 P2-R2-1）', () => {
+  const files = {
+    [`${FX}/r.ts`]: "import { a } from './h.js';\nexport function R() {\n  return a();\n}\n",
+    [`${FX}/h.ts`]: 'export function a() {\n  return 1;\n}\n',
+    [`${FX}/s.ts`]: 'export function S() {\n  return 1;\n}\n',
+  };
+  const S = `${FX}/s.ts#S`;
+  const R = `${FX}/r.ts#R`;
+
+  it('R、S 都是证据根，R 调用 a()、S 返回 1；只把 S 改成调用 R → 只出 S 一组（旧逐根实现同），不出 R 的 digest 组', () => {
+    const patch = {
+      [`${FX}/s.ts`]: "import { R } from './r.js';\nexport function S() {\n  return R();\n}\n",
+    };
+    const run = fixtureRun(files, patch, R, S);
+    // 登记里 R 是有出边的纯根：有 graph 键、没有 nodes 记录，这是正常生成结果
+    expect(R in run.reg.graph && !(R in run.reg.nodes)).toBe(true);
+    assertOracle(run.reg, run.cur, run.roots, run.groups);
+    expect(run.groups.map((g) => g.node)).toEqual([S]);
+    expect(run.groups[0]!.impacts.map((i) => i.root)).toEqual([S]);
+    const stale = run.found.filter((f) => f.code === 'EVIDENCE_STALE');
+    expect(stale, show(stale)).toHaveLength(1);
+    expect(stale.some((f) => f.detail.includes('R 已变化') || f.detail.includes(`依赖 ${R} 已变化`))).toBe(false);
+  });
+
+  it('新增证据根引用一个原本只作根的辅助函数：同样不报该辅助函数的 digest 组', () => {
+    const two = { ...files, [`${FX}/t.ts`]: 'export function T() {\n  return 2;\n}\n' };
+    const patch = { [`${FX}/t.ts`]: "import { R } from './r.js';\nexport function T() {\n  return R();\n}\n" };
+    const run = fixtureRun(two, patch, R, `${FX}/t.ts#T`);
+    assertOracle(run.reg, run.cur, run.roots, run.groups);
+    expect(run.groups.map((g) => g.node)).toEqual([`${FX}/t.ts#T`]);
   });
 });
