@@ -20,6 +20,7 @@ CREATE TABLE "ev_sync_queue" (
 ALTER TABLE "ev_sync_queue" ADD CONSTRAINT "ev_sync_queue_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "ev_sync_queue_pickup" ON "ev_sync_queue" USING btree ("tenant_id","handler","state","next_attempt_at");--> statement-breakpoint
 CREATE INDEX "ev_sync_queue_record" ON "ev_sync_queue" USING btree ("tenant_id","record_id");
+
 --> statement-breakpoint
 -- R3-T02 C1-4：统一租户隔离（AGENTS §2；guard-rls）。队列行不删，只推进状态；应用角色需要 SELECT / INSERT / UPDATE。
 SELECT enable_tenant_isolation('ev_sync_queue');
