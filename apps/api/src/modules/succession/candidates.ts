@@ -3,7 +3,7 @@
  * （继任者可以是范围外的人）；含待入职，排除调出 4 / 退休 6 / 离职 8；最多 30 条，按姓名稳定排序。
  */
 import { sql, type Tx } from '@italent/db';
-import { rowsOf } from './read-sql.js';
+import { rowsOf, SUCCESSOR_INACTIVE_STATUSES } from './read-sql.js';
 
 export const CANDIDATE_MAX = 30;
 export const CANDIDATE_DEFAULT = 10;
@@ -42,7 +42,7 @@ export async function searchCandidates(
         LEFT JOIN LATERAL employment_record_status(e.tenant_id, r.id) s ON true
         WHERE e.tenant_id = ${tenantId}::uuid
       ) p
-      WHERE (p.status IS NULL OR p.status NOT IN (4, 6, 8))
+      WHERE (p.status IS NULL OR NOT (p.status = ANY(${`{${SUCCESSOR_INACTIVE_STATUSES.join(',')}}`}::int[])))
         AND (p.name ILIKE ${pattern} ESCAPE '\\' OR p.email ILIKE ${pattern} ESCAPE '\\')
       ORDER BY p.name, p.id LIMIT ${limit}`),
   );

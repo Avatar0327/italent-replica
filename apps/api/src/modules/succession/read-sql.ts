@@ -14,6 +14,9 @@ const uuidArray = (ids: readonly string[]) => sql`${`{${ids.join(',')}}`}::uuid[
 /** 在职且算现任：不是待入职 1 / 调出 4 / 退休 6 / 离职 8（§4.1）。 */
 export const INCUMBENT_EXCLUDED_STATUSES = sql`1, 4, 6, 8`;
 
+/** 不能作为继任者的人员状态：调出 4 / 退休 6 / 离职 8（§4.1；待入职 1 可以，DEC-308）。 */
+export const SUCCESSOR_INACTIVE_STATUSES: readonly number[] = [4, 6, 8];
+
 /** 嵌套人员展示（DEC-311③，照原站“姓名(邮箱)”；展示字段取证待补，Q02 🟡）。 */
 export interface PersonView {
   readonly employeeId: string;

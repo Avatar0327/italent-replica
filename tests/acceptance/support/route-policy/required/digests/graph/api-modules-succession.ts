@@ -24,6 +24,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/succession/candidates.ts#searchCandidates': [
     '#escapeLike',
+    'apps/api/src/modules/succession/read-sql.ts#SUCCESSOR_INACTIVE_STATUSES',
     'apps/api/src/modules/succession/read-sql.ts#rowsOf',
   ],
   'apps/api/src/modules/succession/input.ts#date': ['apps/api/src/modules/org/read-model.ts#validIsoDate'],
@@ -79,7 +80,10 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/succession/record-read.ts#toRow': ['#toIso'],
   'apps/api/src/modules/succession/record-write.ts#RECORD': ['apps/api/src/modules/succession/access.ts#codeOf'],
-  'apps/api/src/modules/succession/record-write.ts#anchorOrg': ['apps/api/src/modules/succession/read-sql.ts#rowsOf'],
+  'apps/api/src/modules/succession/record-write.ts#anchorOrg': [
+    'apps/api/src/modules/succession/read-sql.ts#rowsOf',
+    '#notFound',
+  ],
   'apps/api/src/modules/succession/record-write.ts#audit': [
     'apps/api/src/audit/record.ts#recordAudit',
     '#RECORD',
@@ -94,7 +98,6 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/succession/read-sql.ts#rowsOf',
     '#COLUMNS',
     '#audit',
-    '#barrierTarget',
     '#checkDates',
     '#checkOverlap',
     '#guardExclusion',
@@ -109,7 +112,6 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/succession/record-write.ts#deleteRecord': [
     '#anchorOrg',
     '#audit',
-    '#barrierTarget',
     '#checkRevision',
     '#lockRows',
     '#lockTargets',
@@ -125,7 +127,6 @@ export const GRAPH: Graph = {
     '#COLUMNS',
     '#anchorOrg',
     '#audit',
-    '#barrierTarget',
     '#checkRevision',
     '#conflict',
     '#invalid',
@@ -140,6 +141,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/succession/record-write.ts#guardExclusion': ['#conflict'],
   'apps/api/src/modules/succession/record-write.ts#lockActiveSuccessor': [
+    'apps/api/src/modules/succession/read-sql.ts#SUCCESSOR_INACTIVE_STATUSES',
     'apps/api/src/modules/succession/read-sql.ts#rowsOf',
     '#invalid',
   ],
@@ -176,7 +178,6 @@ export const GRAPH: Graph = {
     '#COLUMNS',
     '#anchorOrg',
     '#audit',
-    '#barrierTarget',
     '#checkDates',
     '#checkOverlap',
     '#checkRevision',

@@ -13,8 +13,8 @@ import { selectReadiness } from '../talent-review/readiness-port.js';
 import { codeOf } from './access.js';
 import type { RecordCreate, RecordEnd, RecordPatch } from './input.js';
 import { listRecordRows, type RecordRow, type RecordVisibility } from './record-read.js';
-import { rowsOf, selfTargetSql } from './read-sql.js';
-import { assertNoSyncBarrier, type BarrierTarget } from './sync-barrier.js';
+import { rowsOf, selfTargetSql, SUCCESSOR_INACTIVE_STATUSES } from './read-sql.js';
+import { assertNoSyncBarrier } from './sync-barrier.js';
 import type { StoredResult, WriteContext } from './write-support.js';
 
 const RECORD = codeOf('record');
@@ -103,7 +103,7 @@ async function lockActiveSuccessor(tx: Tx, ctx: WriteContext, employeeId: string
       LIMIT 1 FOR SHARE OF e`),
   );
   if (!row) throw new AppError('NOT_FOUND', '继任者不存在');
-  if (row.status !== null && [4, 6, 8].includes(row.status)) {
+  if (row.status !== null && SUCCESSOR_INACTIVE_STATUSES.includes(row.status)) {
     throw invalid('SUCCESSOR_NOT_ACTIVE', '继任者已离职、调出或退休，不能作为继任者');
   }
 }
@@ -223,7 +223,6 @@ const toLocked = (row: Record<string, unknown>): LockedRow => ({
 });
 const targetOf = (row: LockedRow): Target =>
   row.type === 'org' ? { kind: 'org', id: row.targetOrgId! } : { kind: 'position', id: row.targetPositionId! };
-const barrierTarget = (target: Target): BarrierTarget => target;
 
 const COLUMNS = sql`id, succession_type, target_org_id, target_position_id, successor_employee_id, readiness_id,
   backup_type, start_date::text AS start_date, end_date::text AS end_date, end_reason, end_source, revision,
@@ -276,7 +275,8 @@ async function anchorOrg(tx: Tx, ctx: WriteContext, row: LockedRow): Promise<str
       WHERE v.tenant_id = ${ctx.tenantId}::uuid AND v.object_id = ${row.targetPositionId}::uuid
         AND v.start_date <= ${ctx.today}::date ORDER BY v.start_date DESC, v.version_no DESC LIMIT 1`),
   );
-  return position!.org_id;
+  if (!position) throw notFound();
+  return position.org_id;
 }
 
 function checkRevision(rows: readonly LockedRow[], expected: ReadonlyMap<string, number>): void {
@@ -298,7 +298,7 @@ export async function createRecord(tx: Tx, ctx: WriteContext, body: RecordCreate
   // 锁序：继任者员工行 FOR SHARE → 目标锁行 → （新记录没有已存在的行）
   await lockActiveSuccessor(tx, ctx, body.successorEmployeeId);
   await lockTargets(tx, ctx.tenantId, [target]);
-  await assertNoSyncBarrier(tx, ctx.tenantId, [barrierTarget(target)]);
+  await assertNoSyncBarrier(tx, ctx.tenantId, [target]);
   const orgId = await requireTarget(tx, ctx, target);
   await rejectSelfTarget(tx, ctx, target.kind, target.id);
   if (body.readinessId) await selectReadiness(tx, ctx.tenantId, body.readinessId);
@@ -343,7 +343,7 @@ export async function updateRecord(tx: Tx, ctx: WriteContext, id: string, body: 
   const [row] = await lockRows(tx, ctx, [id]);
   await requireWritable(tx, ctx, [row!]);
   checkRevision([row!], new Map([[id, ctx.expectedRevision]]));
-  await assertNoSyncBarrier(tx, ctx.tenantId, [barrierTarget(target)]);
+  await assertNoSyncBarrier(tx, ctx.tenantId, [target]);
 
   const start = body.startDate ?? row!.startDate;
   const wasOpen = row!.endDate === SUCCESSION_OPEN_END;
@@ -405,7 +405,7 @@ export async function endRecords(tx: Tx, ctx: WriteContext, body: RecordEnd): Pr
   const ended = rows.filter((row) => row.endDate <= ctx.today);
   if (ended.length) throw conflict('ALREADY_ENDED', '记录已结束', { ids: ended.map((row) => row.id) });
   checkRevision(rows, new Map(body.items.map((item) => [item.id, item.expectedRevision])));
-  await assertNoSyncBarrier(tx, ctx.tenantId, targets.map(barrierTarget));
+  await assertNoSyncBarrier(tx, ctx.tenantId, targets);
 
   const now = ctx.now.toISOString();
   for (const row of rows) {
@@ -434,7 +434,7 @@ export async function deleteRecord(tx: Tx, ctx: WriteContext, id: string): Promi
   const [row] = await lockRows(tx, ctx, [id]);
   await requireWritable(tx, ctx, [row!]);
   checkRevision([row!], new Map([[id, ctx.expectedRevision]]));
-  await assertNoSyncBarrier(tx, ctx.tenantId, [barrierTarget(target)]);
+  await assertNoSyncBarrier(tx, ctx.tenantId, [target]);
   const now = ctx.now.toISOString();
   await tx.execute(sql`UPDATE succession_records SET deleted_at = ${now}::timestamptz,
       deleted_by = ${ctx.userId}::uuid, revision = revision + 1, updated_by = ${ctx.userId}::uuid,
