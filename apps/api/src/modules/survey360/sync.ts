@@ -820,20 +820,6 @@ async function personOutcome(tx: Tx, admin: Admin, snapshot: EmployeeSnapshot): 
 }
 
 /**
- * 自动添加取锁之前的预判（只读，命令开始时的权限与员工范围）：调用方据此确定本次实际要处理的有界候选集合，锁计划只含
- * 这些员工（F-043 第 4 轮 P3）。取锁后由 personForEmployee 按当前权限重新判定。
- */
-export async function previewPerson(
-  tx: Tx,
-  ctx: Survey360Context,
-  access: SyncAccess,
-  employeeId: string,
-): Promise<PersonRow | string | null> {
-  const snapshot = await snapshotIn(tx, ctx, access, employeeId);
-  return snapshot ? personOutcome(tx, ctx.admin, snapshot) : 'OUT_OF_SCOPE';
-}
-
-/**
  * 按组织架构自动添加时取员工对应的 360 人员：先取写入许可（员工须在调用方的锁计划内，按操作人的当前权限与员工范围，
  * F-043 第 3、4 轮），再按 personOutcome 判定；可新建的按许可新建。员工已不在当前范围内返回 OUT_OF_SCOPE。
  */

@@ -61,3 +61,46 @@ describe('F-043 精细化下同步循环写入前按目标人员范围复核', (
     expect(await s.skippedLogs(s.w.admin)).toEqual([]);
   });
 });
+
+/**
+ * F-043 第 5 轮（#210 第 4 轮审查 P2-1，DEC-408①）：自动添加的候选查询不截断，按顺序逐个判定直到凑够数量或候选耗尽。
+ * 排在前面的下属都在受限管理员的 360 范围外，后面才有范围内的合法下属时，“自动添加 1 名下级”必须加上后者，
+ * 不能返回成功却一个都没加。
+ */
+describe('F-043 自动添加：排在前面的候选都不可添加时继续往后找', () => {
+  it('前 3 名下属在范围外（工号排在前面），自动添加 1 名下级 → 加上排在后面的范围内下属', async () => {
+    const s = await scene('f043auto', true);
+    // 经理名下再招 3 名乙部门（范围外）下属，工号排在范围内下属之前（按工号、ID 排序）
+    for (const index of [1, 2, 3]) {
+      const employee = await s.w.session.employee(`范围外下属${index}`, `A00${index}`);
+      await s.w.session.business(
+        employee.id,
+        {
+          kind: 'hire',
+          mode: 'direct',
+          effectiveDate: '2025-01-01',
+          fields: { departmentId: s.orgB, directManagerId: s.manager.id },
+        },
+        employee.revision,
+      );
+    }
+    await s.w.ok(s.w.request('POST', '/people/sync', { body: {} }));
+    const q = await s.w.enableQuestionnaire(await s.w.keyBehavior());
+    const activity = await s.w.activity({ name: 'F-043 自动添加往后找' }, s.admin);
+    const object = await s.w.ok<{ id: string }>(
+      s.as('POST', `/activities/${activity.id}/objects`, {
+        ifMatch: 0,
+        body: { personId: s.managerPerson.id, questionnaireIds: [q.id] },
+      }),
+      201,
+    );
+    const result = await s.w.ok<{ added: { appraiserPersonId: string }[]; skipped: unknown[] }>(
+      s.as('POST', `/activities/${activity.id}/objects/${object.id}/appraisers/auto`, {
+        ifMatch: 0,
+        body: { roles: ['subordinate'], limits: { subordinate: 1 } },
+      }),
+    );
+    expect(result.added.map((r) => r.appraiserPersonId)).toEqual([s.insidePerson.id]);
+    expect(result.skipped).toEqual([]);
+  });
+});

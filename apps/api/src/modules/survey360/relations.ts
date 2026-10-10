@@ -76,9 +76,6 @@ import {
   fineEmployees,
   lockPlan,
   personForEmployee,
-  previewPerson,
-  SYNC_LIMIT,
-  type SyncAccess,
   refreshFromOrg,
   restrictedSkips,
   routeEmployeeScope,
@@ -716,49 +713,6 @@ function objectView(
   };
 }
 
-/**
- * 自动添加实际要处理的候选（F-043 第 4 轮 P3，取锁之前、只读、按命令开始时的权限预判）：按角色顺序逐个预判，数量为 0
- * 的角色直接排除，每个角色凑够数量即停；全部角色合计不超过评价对象剩余的评价者名额 + 1（多出的一个照旧由 addRelation
- * 报 TOO_MANY_APPRAISERS），所以锁计划有上界（≤ 501 人）。范围外、看不到、已在评价关系中的不列入；预判的跳过原因
- * 记入 skipped。取锁后由 personForEmployee 按当前权限重新判定，状态在两者之间变了的按取锁后的结果。
- */
-async function autoAddPlan(
-  tx: Tx,
-  ctx: Survey360Context,
-  access: SyncAccess,
-  objectId: string,
-  input: { roles: ('superior' | 'peer' | 'subordinate')[]; limits?: Partial<Record<string, number>> | undefined },
-  candidates: Record<string, string[]>,
-  skipped: { employeeId: string; reason: string }[],
-) {
-  const current = await count(
-    tx,
-    sql`SELECT count(*)::int AS n FROM survey360_relations WHERE object_id = ${objectId}::uuid AND NOT removed`,
-  );
-  const room = LIMITS.appraisersPerObject - current + 1;
-  const planned: { roleId: string; employeeId: string }[] = [];
-  for (const code of input.roles) {
-    const limit = input.limits?.[code];
-    if (limit === 0) continue;
-    const roleId = await roleIdOf(tx, code);
-    let taken = 0;
-    for (const employeeId of candidates[code]!) {
-      if ((limit !== undefined && taken >= limit) || planned.length >= room) break;
-      // 精细化权限下候选员工另须在 360 范围内：范围外不建人员、不加关系、不出现在结果里（DEC-289①）
-      if (!(await candidateVisible(tx, ctx.admin, employeeId))) continue;
-      const outcome = await previewPerson(tx, ctx, access, employeeId);
-      if (typeof outcome === 'string') {
-        if (outcome !== 'OUT_OF_SCOPE') skipped.push({ employeeId, reason: outcome });
-        continue;
-      }
-      if (outcome && (await relationExists(tx, objectId, outcome.id))) continue;
-      planned.push({ roleId, employeeId });
-      taken += 1;
-    }
-  }
-  return planned;
-}
-
 async function relationExists(tx: Tx, objectId: string, personId: string): Promise<boolean> {
   const [existing] = await tx
     .select({ id: survey360Relations.id })
@@ -773,7 +727,7 @@ async function relationExists(tx: Tx, objectId: string, personId: string): Promi
   return !!existing;
 }
 
-/** 任职记录上当前直线经理为 managerId 的员工（同事 / 下级），有界（与同步一页同上限）。 */
+/** 任职记录上当前直线经理为 managerId 的员工（同事 / 下级）。 */
 async function reportsOf(tx: Tx, tenantId: string, managerId: string, asOf: string): Promise<string[]> {
   return rows<{ employee_id: string }>(
     await tx.execute(sql`SELECT t.employee_id FROM employment_timeline t
@@ -786,7 +740,7 @@ async function reportsOf(tx: Tx, tenantId: string, managerId: string, asOf: stri
         AND r.kind NOT IN ('leave', 'retirement') AND r.service_type = 'primary'
         AND (CASE WHEN latest.id IS NULL THEN r.direct_manager_id ELSE latest.direct_manager_id END)
           = ${managerId}::uuid
-      ORDER BY e.code, e.id LIMIT ${SYNC_LIMIT}`),
+      ORDER BY e.code, e.id`),
   ).map((r) => r.employee_id);
 }
 
@@ -874,24 +828,35 @@ async function autoAdd(
     peer: manager ? (await reportsOf(tx, ctx.tenantId, manager, asOf)).filter((e) => e !== target.employeeId) : [],
     subordinate: await reportsOf(tx, ctx.tenantId, target.employeeId, asOf),
   };
-  const skipped: { employeeId: string; reason: string }[] = [];
-  const planned = await autoAddPlan(tx, ctx, access, object.id, input, candidates, skipped);
-  // 锁计划（F-043 第 3、4 轮）：只锁实际要处理的候选员工，按全局顺序一次锁齐，再逐个按写入许可添加
+  // 数量为 0 的角色不处理、不取锁（F-043 第 4 轮 P3）
+  const roles = input.roles.filter((code) => input.limits?.[code] !== 0);
+  // 锁计划（F-043 第 3 轮，DEC-408①）：所选角色的候选员工先按全局顺序一次锁齐，再逐个按写入许可添加（不按角色分组
+  // 中途取锁）；锁计划按实际要处理的人数收窄留待 F-088
   await lockPlan(
     tx,
     ctx.tenantId,
-    planned.map((p) => p.employeeId),
+    roles.flatMap((code) => candidates[code]!),
   );
   const added: ReturnType<typeof relationView>[] = [];
-  for (const { roleId, employeeId } of planned) {
-    const person = await personForEmployee(tx, ctx, access, employeeId);
-    if (typeof person === 'string') {
-      // 范围外的员工不同步，也不在结果里出现
-      if (person !== 'OUT_OF_SCOPE') skipped.push({ employeeId, reason: person });
-      continue;
+  const skipped: { employeeId: string; reason: string }[] = [];
+  for (const code of roles) {
+    const roleId = await roleIdOf(tx, code);
+    let taken = 0;
+    const limit = input.limits?.[code];
+    for (const employeeId of candidates[code]!) {
+      if (limit !== undefined && taken >= limit) break;
+      // 精细化权限下候选员工另须在 360 范围内：范围外不建人员、不加关系、不出现在结果里（DEC-289①）
+      if (!(await candidateVisible(tx, ctx.admin, employeeId))) continue;
+      const person = await personForEmployee(tx, ctx, access, employeeId);
+      if (typeof person === 'string') {
+        // 范围外的员工不同步，也不在结果里出现
+        if (person !== 'OUT_OF_SCOPE') skipped.push({ employeeId, reason: person });
+        continue;
+      }
+      if (await relationExists(tx, object.id, person.id)) continue;
+      added.push(relationView(await addRelation(tx, ctx, activity, object.id, person, roleId, 'org')));
+      taken += 1;
     }
-    if (await relationExists(tx, object.id, person.id)) continue;
-    added.push(relationView(await addRelation(tx, ctx, activity, object.id, person, roleId, 'org')));
   }
   return { added, skipped };
 }
