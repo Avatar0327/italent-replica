@@ -37,6 +37,12 @@ const notFound = (object: TalentReviewObject) => `${TALENT_REVIEW_OBJECT_LABELS[
 /** 审计动作前缀（`<前缀>.create|update|delete`）；审计查询的查看规则按它登记（audit/visibility.ts）。 */
 export const TALENT_REVIEW_AUDIT_ACTIONS: Readonly<Record<TalentReviewObject, string>> = {
   readiness: 'talent-review.readiness',
+  settings: 'talent-review.settings',
+  category: 'talent-review.category',
+  role: 'talent-review.role',
+  field: 'talent-review.field',
+  matrix: 'talent-review.matrix',
+  calcRule: 'talent-review.calc-rule',
   resultApproval: 'talent-review.result-approval',
 };
 

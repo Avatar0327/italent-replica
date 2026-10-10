@@ -41,9 +41,10 @@ import {
   currentStageShown,
   loadPlanDetail,
   type PlanDetail,
+  type ListProjections,
+  planListProjections,
   planProjections,
   presentPlan,
-  type Projections,
   stageSourcesOf,
   stagesShown,
   stageViews,
@@ -118,7 +119,7 @@ async function transferScope(c: Context<TenantEnv>, deps: TenantRouteDeps, ctx: 
   return { hr, sources };
 }
 
-async function summaries(tx: Tx, tenantId: string, rows: PlanRow[], asOf: string, projections: Projections | null) {
+async function summaries(tx: Tx, tenantId: string, rows: PlanRow[], asOf: string, projections: ListProjections | null) {
   const stages = await loadStages(
     tx,
     tenantId,
@@ -161,7 +162,7 @@ function registerPlanReads(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const scope = await idpScope(c, deps, ctx, 'plan');
     const page = pageQuery(c);
     const status = statusQuery(c);
-    const projections = await planProjections(deps, ctx);
+    const projections = await planListProjections(deps, ctx);
     const top = projections.plan;
     const items = await withTenant(deps.db, ctx.tenantId, async (tx) => {
       const rows = await tx

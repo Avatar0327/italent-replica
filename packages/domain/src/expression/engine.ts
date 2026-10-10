@@ -332,6 +332,11 @@ export type OrderingResult =
       readonly bindings: FieldBindings;
       readonly warnings: readonly string[];
       /**
+       * 与 warnings 一一对应的结构化诊断（同序、message 即该条 warning）：类别与这条提示提到的全部字段路径。
+       * 调用方按类别汇总、按路径判定可见性，不必从含字段名的文案里推断（PR #184 第 3 轮）。
+       */
+      readonly diagnostics: readonly OrderingDiagnostic[];
+      /**
        * 循环依赖的代表环（如 [A, B, A]）：每组（强连通分量）一条，最多 20 组（DEC-274 / DEC-287②）。
        * 保存时只提示、不拦截；计算时整次失败。
        */
@@ -344,6 +349,23 @@ export type OrderingResult =
       readonly blocked: readonly string[];
     }
   | { readonly ok: false; readonly failure: OrderingFailure };
+
+/**
+ * 排序提示的结构化形式：kind 是类别（类型不确定 / 优先级与依赖矛盾 / 循环依赖组 / 循环组被截断的汇总 / 依赖成环项目），
+ * fields 是这条提示文案里出现的全部字段路径（完整路径或计算项目的目标字段），message 是对外的提示文案。
+ */
+export type OrderingDiagnosticKind =
+  'typeUncertain' | 'priorityConflict' | 'cycle' | 'cyclesTruncated' | 'blockedByCycle';
+export interface OrderingDiagnostic {
+  readonly kind: OrderingDiagnosticKind;
+  readonly fields: readonly string[];
+  readonly message: string;
+}
+const diagnostic = (kind: OrderingDiagnosticKind, fields: readonly string[], message: string): OrderingDiagnostic => ({
+  kind,
+  fields: [...new Set(fields)],
+  message,
+});
 
 const lastSegment = (path: string) => path.slice(path.lastIndexOf('.') + 1);
 
@@ -363,7 +385,7 @@ interface ParsedItems {
   readonly entries: OrderedItem[];
   readonly bindings: FieldBindings;
   /** 各项目公式的保存提示（类型不确定等），带项目字段。 */
-  readonly warnings: readonly string[];
+  readonly warnings: readonly OrderingDiagnostic[];
 }
 
 interface ItemValidation {
@@ -390,7 +412,7 @@ function parseItems(items: readonly ComputationItem[], options: ItemValidation):
     ? (path: string) => resolveComputedField(path, targets) !== undefined || catalog(path)
     : undefined;
   const parsed: { item: ComputationItem; program: Program; refs: readonly string[] }[] = [];
-  const warnings: string[] = [];
+  const warnings: OrderingDiagnostic[] = [];
   for (const item of items) {
     const validated = validateFormula(item.formula, {
       registry: options.registry,
@@ -404,7 +426,9 @@ function parseItems(items: readonly ComputationItem[], options: ItemValidation):
     }
     parsed.push({ item, program: validated.program, refs: validated.fields });
     for (const warning of validated.warnings) {
-      warnings.push(`${item.field}：${warning.message}（第 ${warning.line} 行第 ${warning.column} 列）`);
+      const message = `${item.field}：${warning.message}（第 ${warning.line} 行第 ${warning.column} 列）`;
+      // 文案可能提到这条公式引用的任何字段：fields 取项目字段 + 公式的全部引用
+      warnings.push(diagnostic('typeUncertain', [item.field, ...validated.fields], message));
     }
   }
   const bindings: Record<string, string> = {};
@@ -510,7 +534,7 @@ function describeGroup(group: CycleGroup): string {
 
 interface Topology {
   readonly order: OrderedItem[];
-  readonly warnings: string[];
+  readonly warnings: OrderingDiagnostic[];
   /** 成环或依赖成环项目、排不出顺序的项目（按原顺序）。 */
   readonly blocked: OrderedItem[];
 }
@@ -521,7 +545,7 @@ function topologicalOrder(entries: readonly OrderedItem[]): Topology {
   const index = new Map(entries.map((entry, i) => [entry.item.field, i]));
   const remaining = new Set(entries.map((entry) => entry.item.field));
   const order: OrderedItem[] = [];
-  const warnings: string[] = [];
+  const warnings: OrderingDiagnostic[] = [];
   while (remaining.size) {
     const ready = [...remaining]
       .map((field) => byField.get(field)!)
@@ -533,7 +557,8 @@ function topologicalOrder(entries: readonly OrderedItem[]): Topology {
       const upstream = byField.get(dependency)!.item;
       if (upstream.priority > next.item.priority) {
         const detail = `引用了 ${dependency}（优先级 ${upstream.priority}），按依赖先算 ${dependency}`;
-        warnings.push(`${next.item.field}（优先级 ${next.item.priority}）${detail}`);
+        const message = `${next.item.field}（优先级 ${next.item.priority}）${detail}`;
+        warnings.push(diagnostic('priorityConflict', [next.item.field, dependency], message));
       }
     }
     remaining.delete(next.item.field);
@@ -559,23 +584,37 @@ function orderItems(items: readonly ComputationItem[], options: ValidationOption
   const cycleMembers = blocked.filter((field) => inCycle.has(field));
   const reported = groups.slice(0, MAX_REPORTED_CYCLES);
   const truncated = groups.length > reported.length;
-  const cycleWarnings = [
-    ...reported.map((group) => `检测到循环依赖：${describeGroup(group)}（允许保存，计算时将整次失败、不写入任何值）`),
+  const cycleWarnings: OrderingDiagnostic[] = [
+    ...reported.map((group) =>
+      diagnostic(
+        'cycle',
+        [...group.path, ...group.members],
+        `检测到循环依赖：${describeGroup(group)}（允许保存，计算时将整次失败、不写入任何值）`,
+      ),
+    ),
     ...(truncated
       ? [
-          `循环依赖共 ${groups.length} 组，以上只列出前 ${reported.length} 组（已截断）；` +
-            `全部成环项目：${cycleMembers.join('、')}`,
+          diagnostic(
+            'cyclesTruncated',
+            cycleMembers,
+            `循环依赖共 ${groups.length} 组，以上只列出前 ${reported.length} 组（已截断）；` +
+              `全部成环项目：${cycleMembers.join('、')}`,
+          ),
         ]
       : []),
-    ...blocked.filter((field) => !inCycle.has(field)).map((field) => `${field} 依赖成环的项目，计算时同样无法计算`),
+    ...blocked
+      .filter((field) => !inCycle.has(field))
+      .map((field) => diagnostic('blockedByCycle', [field], `${field} 依赖成环的项目，计算时同样无法计算`)),
   ];
+  const diagnostics = [...parsed.warnings, ...sorted.warnings, ...cycleWarnings];
   const entries = [...sorted.order, ...sorted.blocked];
   const result: OrderingResult = {
     ok: true,
     order: entries.map((entry) => entry.item),
     entries,
     bindings: parsed.bindings,
-    warnings: [...parsed.warnings, ...sorted.warnings, ...cycleWarnings],
+    warnings: diagnostics.map((item) => item.message),
+    diagnostics,
     cycles: reported.map((group) => group.path),
     cycleMembers,
     cyclesTruncated: truncated,

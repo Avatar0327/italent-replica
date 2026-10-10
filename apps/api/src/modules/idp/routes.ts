@@ -82,6 +82,15 @@ async function processPresenter(deps: TenantRouteDeps, ctx: IdpContext) {
   };
 }
 
+/**
+ * 模板列表（F-075，DEC-369）：列表项是 TemplateSummary，没有 modules / commonGoals，只按 IDPTemplate 裁剪顶层；
+ * 不预取模板模块与通用目标的查看权（它们只在带嵌套内容的模板详情 / 写入响应里用）。
+ */
+async function templateSummaryPresenter(deps: TenantRouteDeps, ctx: IdpContext) {
+  const top = await projectionOf(deps, ctx, 'template');
+  return (view: read.TemplateSummary) => project(view, top);
+}
+
 /** 模板：顶层按 IDPTemplate，模块（含节点按钮配置）按 IDPTemplateModule，通用目标按 IDPTemplateCommonGoal。 */
 async function templatePresenter(deps: TenantRouteDeps, ctx: IdpContext) {
   const top = await projectionOf(deps, ctx, 'template');
@@ -378,7 +387,7 @@ function registerTemplateRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
     const items = await withTenant(deps.db, ctx.tenantId, (tx) =>
       read.listTemplates(tx, ctx.tenantId, { ...page, status, processId, visible }),
     );
-    const present = await templatePresenter(deps, ctx);
+    const present = await templateSummaryPresenter(deps, ctx);
     return c.json({ ...listEnvelope(page, scope), items: items.map(present) });
   });
 

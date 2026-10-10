@@ -66,9 +66,9 @@ const withPolicy = (base: ManifestRoute, policy: RoutePolicy): ManifestRoute => 
 const withTable = (k: string, obligations: readonly Obligation[]): RequiredTable => ({ ...REQUIRED, [k]: obligations });
 
 describe('AC-PRM-FW-08 发现探测：冻结与覆盖', () => {
-  it('覆盖全部已声明端点（478），每个模块一个冻结文件，条目数与模块端点数一致', () => {
+  it('覆盖全部已声明端点（514），每个模块一个冻结文件，条目数与模块端点数一致', () => {
     expect(Object.keys(fresh).sort()).toEqual(manifest.declared.map(key).sort());
-    expect(manifest.declared).toHaveLength(478);
+    expect(manifest.declared).toHaveLength(514);
     const groups = groupByModule(fresh);
     const files = readdirSync(PROBE_DIR).filter((f) => f.endsWith('.json'));
     expect(files.sort()).toEqual(
@@ -113,13 +113,13 @@ describe('AC-PRM-FW-08 P0 / P3：真实声明 + 显式表零发现', () => {
     expect(findings, show(findings)).toEqual([]);
   });
 
-  it('不带登记检查：未认领的"端点 × 请求键"恰好等于两本账的登记对之并集：125 项有实际用途 + 59 项冗余观测（含 #125 新增 34 + 18），互斥', () => {
+  it('不带登记检查：未认领的"端点 × 请求键"恰好等于两本账的登记对之并集：29 项有实际用途 + 18 项冗余观测（#125 套卷模板入口；原审定的 41 项已由 F-075 去掉），互斥', () => {
     const open = check(manifest.declared);
     expect(codes(open).every((c) => c === 'PROBE_ADMISSION_UNCLAIMED')).toBe(true);
     const gaps = KNOWN_GAPS.flatMap((g) => g.pairs);
     const redundant = REDUNDANT_OBSERVATIONS.flatMap((g) => g.pairs);
-    expect(gaps).toHaveLength(125);
-    expect(redundant).toHaveLength(59);
+    expect(gaps).toHaveLength(29);
+    expect(redundant).toHaveLength(18);
     const all = [...gaps, ...redundant].map(([r, k]) => `${r}\t${k}`);
     expect(new Set(all).size, '登记对不重复，两本账互斥').toBe(all.length);
     expect(all).toHaveLength(open.length);
@@ -150,7 +150,7 @@ describe('AC-PRM-FW-08 P0 / P3：真实声明 + 显式表零发现', () => {
       knownGaps: KNOWN_GAPS,
       redundant: [],
     });
-    expect(withoutRedundant.filter((f) => f.code === 'PROBE_ADMISSION_UNCLAIMED')).toHaveLength(59);
+    expect(withoutRedundant.filter((f) => f.code === 'PROBE_ADMISSION_UNCLAIMED')).toHaveLength(18);
     expect(withoutRedundant.some((f) => f.route === route0 && f.detail.includes(key0))).toBe(true);
     const overlap = checkDiscovery(fresh, REQUIRED, manifest.declared, {
       knownGaps: [...KNOWN_GAPS, { id: 'x', purpose: 'x', owner: 'xxxxxx', evidence: [], pairs: [[route0, key0]] }],
@@ -167,18 +167,8 @@ describe('AC-PRM-FW-08 P0 / P3：真实声明 + 显式表零发现', () => {
     expect(findings[0]!.route).toBe(k);
   });
 
-  /** 审查原文三组替换反例：补上一个旧缺口，同时误删同类另一端点的合法登记（总数不变）。 */
+  /** 审查原文替换反例（F-073 / F-074 后 survey360 与任职资格组已无缺口，剩 idp 组；org 组只有 1 对）：补上一个旧缺口，同时误删同类另一端点的合法登记（总数不变）。 */
   const REPLACEMENTS = [
-    {
-      name: 'survey360',
-      fixed: ['DELETE /api/tenant/survey360/activities/:id', 'btn:Survey360.Activity#viewAll@list'],
-      broken: ['GET /api/tenant/survey360/activities', 'obj:Survey360.Activity:view'],
-    },
-    {
-      name: 'qualification',
-      fixed: ['DELETE /api/tenant/qualification/grade-schemes/:id', 'obj:Qualification.Target:view'],
-      broken: ['GET /api/tenant/qualification/categories', 'obj:Qualification.EmploymentCategory:view'],
-    },
     {
       name: 'idp',
       fixed: ['DELETE /api/tenant/idp/plans/:id', 'obj:IDP.Analysis:view'],
@@ -404,9 +394,10 @@ describe('AC-PRM-FW-08 P3 非法标识：观测码与根节点 invalidId 相等'
     'PATCH /api/tenant/personnel/employees/:employeeId/subsets/:kind/:id',
   ];
 
-  it('第 3 轮：状态码相同、错误体不同的 48 个端点由实际行为证明适用（不依赖证据表）', () => {
+  it('第 3 轮：状态码相同、错误体不同的 49 个端点由实际行为证明适用（不依赖证据表；含 R3-T04 PR-B4 新建规则组 1 个）', () => {
     const k48 = sameStatusOnly();
-    expect(k48).toHaveLength(48);
+    expect(k48).toHaveLength(49);
+    expect(k48).toContain('POST /api/tenant/talent-review/matrices/:id/ratio-groups');
     expect(k48).toContain('GET /api/tenant/permission/profiles/:id');
     expect(k48).toContain('POST /api/tenant/idp/plans/:id/goals');
     for (const k of k48) {
@@ -415,7 +406,7 @@ describe('AC-PRM-FW-08 P3 非法标识：观测码与根节点 invalidId 相等'
     }
   });
 
-  it('48 个端点把 invalidId 改成另一个状态码、或删掉声明 → MISMATCH:invalidId', () => {
+  it('49 个端点把 invalidId 改成另一个状态码、或删掉声明 → MISMATCH:invalidId', () => {
     for (const k of sameStatusOnly()) {
       const r = route(k);
       const declared = r.policy.invalidId!;

@@ -372,17 +372,15 @@ async function auditSheet(
   before: unknown,
   sheet: SheetRow,
 ) {
+  // 活动 / 套卷元数据 before 与 after 对称：只在 after 里有的话，同一草稿再次保存会凭空多出“元数据新增”的差异，
+  // 无资格查看人（答案 / 建议 / 评价关系已裁剪）还会被它撑出一条看似有变化的日志（F-060，#125 第 5 轮 P3-2）
+  const meta = { activityId: activity.id, relationId: sheet.relationId, questionnaireId: sheet.questionnaireId };
   await audit360(tx, actor(ctx), {
     action,
     objectType: 'survey360-sheet',
     objectId: sheet.id,
-    before,
-    after: {
-      activityId: activity.id,
-      relationId: sheet.relationId,
-      questionnaireId: sheet.questionnaireId,
-      ...(await ownSheet(tx, sheet)),
-    },
+    before: before === null ? null : { ...meta, ...(before as object) },
+    after: { ...meta, ...(await ownSheet(tx, sheet)) },
   });
 }
 
