@@ -1,7 +1,7 @@
 /**
  * R3-T02 PR-B B3：评审组（`TEvaluation.ReviewGroup`）+ 人员引用出口（设计 §3.2、§5.1、§8、§9；拆分方案第 4 节 B3 行）。真实授权器：
  * - 评审组：所属组织必填手选且须在操作人范围内（DEC-082 / DEC-324②），列表 / 详情按所属组织裁剪（分页前）；成员整组编辑，
- *   有成员时恰好 1 个组长、允许零成员；没有编码字段、名称不要求唯一、没有删除入口（DEC-393，照原站 Q-M0-172）；并发与幂等（DEC-067）；
+ *   组长 0 或 1 个（DEC-400② 改定）、允许零成员；没有编码字段、名称不要求唯一、没有删除入口（DEC-393，照原站 Q-M0-172）；并发与幂等（DEC-067）；
  * - 设计 §9 “DEC-331① / DEC-339②”整行：管理员人员范围只含 E1，成员 E1、E2、E3：详情三人都有 ID 与姓名、E2 / E3 没有
  *   工号等其他字段、成员数 3；E2 的 ID 查人员详情 404（与不存在的 ID 同一响应）；原样提交完整集合 200、成员不变；
  *   新增范围外员工 404、成员不变；删除范围外成员允许；所属组织在范围外的评审组不出现、详情 404；
@@ -73,7 +73,7 @@ describe('AC-EV-review-group 评审组', () => {
     ok<GroupView>(await w.setup.request('GET', `${EV_BASE}${GROUPS}/${id}`, w.asAdmin));
 
   describe('CRUD 与成员整组编辑', () => {
-    it('新建 / 详情 / 修改名称与成员；成员按提交顺序，有成员时组长恰好 1 个；没有 code 字段', async () => {
+    it('新建 / 详情 / 修改名称与成员；成员按提交顺序，组长 0 或 1 个；没有 code 字段', async () => {
       const op = await manager();
       const group = await created(op, body({ members: members([e1, true]) }));
       expect(group).toMatchObject({ revision: 1, enabled: true, ownerOrgId: w.orgA, createdBy: op.userId });
@@ -91,11 +91,10 @@ describe('AC-EV-review-group 评审组', () => {
       expect(swapped.revision).toBe(3);
     });
 
-    it('组长个数：没有组长、两个组长、成员重复、名称 / 成员数结构非法都是 400，数据不变', async () => {
+    it('组长个数：两个组长、成员重复、名称 / 成员数结构非法都是 400，数据不变', async () => {
       const op = await manager({ personOrgs: [w.orgA, w.orgB, w.orgC] });
       const group = await created(op, body({ members: members([e1, true], [e2, false]) }));
       const cases: [string, Record<string, unknown>][] = [
-        ['无组长', { members: members([e1, false], [e2, false]) }],
         ['两个组长', { members: members([e1, true], [e2, true]) }],
         ['成员重复', { members: members([e1, true], [e1, false]) }],
         ['非法键', { members: [{ employeeId: e1.id, isLeader: true, name: '多余' }] }],
@@ -106,8 +105,8 @@ describe('AC-EV-review-group 评审组', () => {
         const update = await patch(op, group, data);
         expect(update.status, label).toBe(400);
       }
-      const leaderError = await post(op, body({ members: members([e1, false]) }));
-      expect((await errorOf(leaderError)).reason).toBe('REVIEW_GROUP_LEADER_REQUIRED');
+      const twoLeaders = await post(op, body({ members: members([e1, true], [e2, true]) }));
+      expect((await errorOf(twoLeaders)).reason).toBe('REVIEW_GROUP_LEADER_TOO_MANY');
       const duplicate = await post(op, body({ members: members([e1, true], [e1, false]) }));
       expect((await errorOf(duplicate)).reason).toBe('REVIEW_GROUP_MEMBER_DUPLICATE');
       for (const bad of [{ code: 'RG1' }, { name: '' }, { name: 'x'.repeat(101) }, { ownerId: op.userId }]) {
@@ -117,6 +116,24 @@ describe('AC-EV-review-group 评审组', () => {
       const overflow = await post(op, body({ members: tooMany }));
       expect(overflow.status).toBe(400); // 系统保护上限 200（D-071 🟡）
       expect(await ok<GroupView>(await read(op, group.id))).toEqual(group);
+    });
+
+    it('组长 0 或 1 个（DEC-400② 改定）：有成员、没有组长可以保存（新建与整组编辑各一条）；两个组长 400', async () => {
+      const op = await manager({ personOrgs: [w.orgA, w.orgB, w.orgC] });
+      const noLeader = await created(op, body({ members: members([e1, false], [e2, false]) }));
+      expect(noLeader.members.map((member) => member.isLeader)).toEqual([false, false]);
+      const withLeader = await created(op, body({ members: members([e1, true]) }));
+      const cleared = await ok<GroupView>(await patch(op, withLeader, { members: members([e1, false]) }));
+      expect(cleared.members.map((member) => member.isLeader)).toEqual([false]);
+      const replaced = await ok<GroupView>(await patch(op, cleared, { members: members([e1, false], [e2, true]) }));
+      expect(replaced.members.map((member) => [member.employeeId, member.isLeader])).toEqual([
+        [e1.id, false],
+        [e2.id, true],
+      ]);
+      const two = await patch(op, replaced, { members: members([e1, true], [e2, true]) });
+      expect(two.status).toBe(400);
+      expect((await errorOf(two)).reason).toBe('REVIEW_GROUP_LEADER_TOO_MANY');
+      expect(await ok<GroupView>(await read(op, replaced.id))).toEqual(replaced);
     });
 
     it('名称不要求唯一（DEC-393②）：同名可保存、改名成已有名称也可以，并发创建同名都成功', async () => {
@@ -131,7 +148,7 @@ describe('AC-EV-review-group 评审组', () => {
       expect(results.map((r) => r.status)).toEqual([201, 201]);
     });
 
-    it('允许零成员（DEC-393③）：新建零成员、把成员改空都成功，组长校验只在有成员时判', async () => {
+    it('允许零成员（DEC-393③）：新建零成员、把成员改空都成功，零成员没有组长', async () => {
       const op = await manager();
       const empty = await created(op, body({ members: [] }));
       expect(empty.members).toEqual([]);
