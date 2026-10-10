@@ -16,6 +16,13 @@ export interface SessionCounts {
   unmarked: number;
 }
 export type SessionProbe = (query: Query, appRole: string) => Promise<SessionCounts>;
+export interface Visibility {
+  /** 能看全其他会话（超级用户或拥有 pg_read_all_stats 的权限）。 */
+  sessions: boolean;
+  /** 能看全各租户数据（超级用户或 BYPASSRLS）。 */
+  rows: boolean;
+}
+export declare function visibility(query: Query): Promise<Visibility>;
 export declare function applicationSessions(query: Query, appRole: string): Promise<SessionCounts>;
 export declare function checkDeployTarget(options: {
   phase: DeployPhase;

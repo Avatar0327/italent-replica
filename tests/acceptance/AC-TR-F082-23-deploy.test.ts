@@ -130,17 +130,38 @@ describe('AC-23 pre-enable', () => {
     ]);
   });
 
-  it('检查账号看不到其他会话（既不是超级用户也不是 pg_read_all_stats 成员）→ 失败，不把“看不到”当成“没有”', async () => {
-    // 他人会话的 application_name 是 NULL（真实客户端会话至少是空串）
-    const blind: Query = async (text) => (text.includes('IS NULL') ? [{ hidden: 1 }] : []);
-    await expect(applicationSessions(blind, APP_ROLE)).rejects.toThrow(/pg_read_all_stats/);
+  it('检查账号没有统计读取权限（既不是超级用户也没有 pg_read_all_stats）→ 连接检查失败，且不调用计数探针', async () => {
+    let probed = false;
+    const counting: SessionProbe = async () => {
+      probed = true;
+      return { marked: 0, unmarked: 0 };
+    };
+    const noStats: Query = async (text) =>
+      text.includes('pg_read_all_stats') ? [{ super: false, bypass: true, stats: false }] : query(text);
     const result = await checkDeployTarget({
       phase: 'pre-enable',
-      query: async (text) => (text.includes('IS NULL') ? [{ hidden: 1 }] : query(text)),
+      query: noStats,
       codeRoot: REPO,
+      sessions: counting,
       appRole: APP_ROLE,
     });
     expect(failed(result)).toEqual(['目标库上没有应用连接']);
+    expect(result.results.find((entry) => !entry.ok)!.detail).toContain('pg_read_all_stats');
+    expect(probed).toBe(false);
+  });
+
+  it('有权限判定之外的兜底：任何一个会话的 backend_type / application_name 不可见（NULL）→ 计数失败，不按“没有”处理', async () => {
+    const partly: Query = async () => [
+      { application_name: 'psql', usename: 'someone', backend_type: 'client backend' },
+      { application_name: 'italent-api:x', usename: 'italent_app', backend_type: null },
+    ];
+    await expect(applicationSessions(partly, APP_ROLE)).rejects.toThrow(/看不全/);
+    const visible: Query = async () => [
+      { application_name: 'italent-api:x', usename: 'other', backend_type: 'client backend' },
+      { application_name: 'postgres.js', usename: APP_ROLE, backend_type: 'client backend' },
+      { application_name: '', usename: null, backend_type: 'autovacuum worker' },
+    ];
+    expect(await applicationSessions(visible, APP_ROLE)).toEqual({ marked: 1, unmarked: 1 });
   });
 });
 
@@ -170,6 +191,31 @@ describe.skipIf(Boolean(process.env.TEST_DATABASE_URL))('AC-23 post-restore', ()
     const result = await run('post-restore');
     expect(failed(result)).toEqual([]);
     expect(result.ok).toBe(true);
+  });
+
+  it('检查账号受行级安全约束（不是超级用户、没有 BYPASSRLS）→ 三项数据检查都判失败，不执行计数', async () => {
+    const counted: string[] = [];
+    const rlsBound: Query = async (text) => {
+      if (text.includes('pg_read_all_stats')) return [{ super: false, bypass: false, stats: true }];
+      if (text.includes('count(*)')) counted.push(text);
+      return query(text);
+    };
+    const result = await checkDeployTarget({
+      phase: 'post-restore',
+      query: rlsBound,
+      codeRoot: REPO,
+      sessions: none,
+      appRole: APP_ROLE,
+    });
+    expect(failed(result)).toEqual([
+      '检查账号能绕过行级安全（读全部租户数据）',
+      '库里没有 bound 行',
+      '没有计算规则的新格式审计',
+      '没有含句柄的命令台账结果',
+    ]);
+    expect(counted.filter((text) => /talent_review_calc_rule_items|audit_events|command_ledger/.test(text))).toEqual(
+      [],
+    );
   });
 
   it('仍有应用连接 / 迁移不一致 → 失败，服务不启动', async () => {
