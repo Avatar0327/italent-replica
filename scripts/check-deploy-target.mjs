@@ -70,7 +70,8 @@ export async function applicationSessions(query, appRole) {
     `SELECT application_name, usename, backend_type FROM pg_stat_activity
       WHERE datname = current_database() AND pid <> pg_backend_pid()`,
   );
-  const hidden = rows.filter((row) => row.backend_type == null || row.application_name == null).length;
+  const missing = (value) => value === null || value === undefined;
+  const hidden = rows.filter((row) => missing(row.backend_type) || missing(row.application_name)).length;
   if (hidden > 0) throw new Error(`有 ${hidden} 个会话的信息不可见：检查账号看不全其他会话，不能判定“没有应用连接”`);
   const app = rows.filter((row) => row.application_name.startsWith(APP_NAME_PREFIX) || row.usename === appRole);
   const marked = app.filter((row) => row.application_name.startsWith(APP_NAME_PREFIX)).length;
@@ -95,15 +96,20 @@ const count = async (query, text) => Number((await one(query, text)).n);
  * 约束时只看得到部分租户，看到的“0 行”不可信——三项都判失败、不执行计数。
  */
 async function restoreDataChecks(check, query) {
-  const { rows: seesAll } = await visibility(query);
-  const BLIND = '未执行：检查账号受行级安全约束，看到 0 行不等于没有；请换超级用户或 BYPASSRLS 的只读账号';
+  // 判定本身出错（如读不了 pg_roles）同样按“看不全”处理
+  const seesAll = await visibility(query).then(
+    (seen) => seen.rows,
+    () => false,
+  );
+  const ACCOUNT = '检查账号受行级安全约束，读不全各租户数据；请换超级用户或 BYPASSRLS 的只读账号';
+  const BLIND = '未执行：检查账号受行级安全约束，看到 0 行不等于没有';
   const emptyOf = (name, text, hint) =>
     check(name, async () => {
       if (!seesAll) return BLIND;
       const n = await count(query, text);
       if (n !== 0) return `${n} ${hint}`;
     });
-  await check('检查账号能绕过行级安全（读全部租户数据）', async () => (seesAll ? undefined : BLIND));
+  await check('检查账号能绕过行级安全（读全部租户数据）', async () => (seesAll ? undefined : ACCOUNT));
   await emptyOf(
     '库里没有 bound 行',
     `SELECT count(*)::int AS n FROM talent_review_calc_rule_items WHERE formula_binding = 'bound'`,
