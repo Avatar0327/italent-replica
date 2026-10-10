@@ -9,6 +9,7 @@ import { auditSequenceResult, sequenceResults } from './sequence-result.js';
 /** DEC-052：持久 outbox 消费，追加尝试日志；整批在保存点中成功或回滚，失败下次调度可重试。 */
 import { randomUUID } from 'node:crypto';
 import { isUuid, sql, type Db, type Tx, withPlatform, withTenant } from '@italent/db';
+import { advisoryLock, tryAdvisoryLock, asUuid } from '../../advisory-lock.js';
 import { MODULE_OBJECTS, tenantLocalDate } from '@italent/domain';
 import { type Authorizer, requirePermission } from '../../authorization.js';
 import { AppError } from '../../errors.js';
@@ -41,6 +42,14 @@ interface Options {
   readonly cursor?: string;
 }
 const EMPLOYMENT = MODULE_OBJECTS.employmentRecord.code;
+
+/** 职务序列任务的租户级闸：同一租户同时只处理一个序列同步任务。 */
+export async function tryLockJobSequence(tx: Tx, tenantId: string): Promise<boolean> {
+  return tryAdvisoryLock(tx, 'job-sequence:', asUuid(tenantId));
+}
+export async function lockJobSequence(tx: Tx, tenantId: string): Promise<void> {
+  await advisoryLock(tx, 'job-sequence:', asUuid(tenantId));
+}
 
 export async function runSequenceSyncJobs(db: Db, tenantId: string, options: Options = {}) {
   const limit = options.limit ?? 100;
@@ -104,11 +113,7 @@ async function consumeJob(
   let failure: CommandFailure | undefined;
   try {
     const outcome = await withTenant(db, tenantId, async (tx) => {
-      const [gate] = rowsOf<{ entered: boolean }>(
-        await tx.execute(sql`
-      SELECT pg_try_advisory_xact_lock(hashtextextended(${`job-sequence:${tenantId}`},0)) AS entered`),
-      );
-      if (!gate?.entered) return null;
+      if (!(await tryLockJobSequence(tx, tenantId))) return null;
       const [job] = rowsOf<QueuedJob>(
         await tx.execute(sql`
       SELECT o.id,o.command_id AS "commandId",o.payload FROM employment_outbox o
@@ -170,7 +175,7 @@ async function recoverSequenceFailure(db: Db, ctx: EmploymentContext, id: string
   const failure = classifyCommandFailure(error, phase);
   await recordCommandFailure(db, { ...ctx, userId: SYSTEM_USER_ID }, ctx.commandId, failure);
   await withTenant(db, tenantId, async (tx) => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`job-sequence:${tenantId}`},0))`);
+    await lockJobSequence(tx, tenantId);
     const latest = rowsOf<{ state: string }>(
       await tx.execute(sql`SELECT state FROM employment_outbox_attempts
         WHERE tenant_id=${tenantId} AND outbox_id=${id}::uuid ORDER BY attempt_no DESC LIMIT 1`),
