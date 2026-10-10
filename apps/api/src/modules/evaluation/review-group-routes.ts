@@ -25,7 +25,7 @@ import * as input from './input.js';
 import { type PersonRefAccess, personRefAccess, personRefAccessInTransaction } from './person-refs.js';
 import * as read from './read-model.js';
 import * as groups from './review-group-service.js';
-import { EV_BASE, presenter, type PersonRefs, runDelete, runWrite, writeContext } from './route-support.js';
+import { EV_BASE, presenter, type PersonRefs, runWrite, writeContext } from './route-support.js';
 import { rowAccess } from './store.js';
 
 const OBJECT = 'reviewGroup';
@@ -100,12 +100,5 @@ export function registerReviewGroupRoutes(router: Hono<TenantEnv>, deps: TenantR
     await checkWriteFields(deps, ctx, OBJECT, 'update', body);
     const w = await writing(c, ctx);
     return runWrite(c, deps, w, OBJECT, body, 200, (tx, x) => groups.updateReviewGroup(tx, x, id, body), REFS);
-  });
-
-  router.delete(`${PATH}/:id`, async (c) => {
-    const ctx = await evaluationWriteContext(c, deps, OBJECT, 'delete', revision(c));
-    const id = uuidParam(c);
-    const w = await writing(c, ctx);
-    return runDelete(c, deps, w, OBJECT, id, (tx, x) => groups.deleteReviewGroup(tx, x, id), REFS);
   });
 }

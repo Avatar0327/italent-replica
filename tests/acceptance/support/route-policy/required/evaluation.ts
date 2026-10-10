@@ -20,7 +20,7 @@ const OBJECTS: Readonly<Record<Key, readonly [string, string, string]>> = {
   activityType: ['ActivityType', 'activity-types', "activityType: object('ActivityType'"],
   activityCycle: ['ActivityCycle', 'activity-cycles', "activityCycle: object('ActivityCycle'"],
   generalScoreItem: ['GeneralScoreItem', 'general-score-items', "generalScoreItem: object('GeneralScoreItem'"],
-  reviewGroup: ['ReviewGroup', 'review-groups', "reviewGroup: object('ReviewGroup'"],
+  reviewGroup: ['ReviewGroup', 'review-groups', "reviewGroup: withoutDelete(object('ReviewGroup'"],
 };
 const code = (key: Key) => `TEvaluation.${OBJECTS[key][0]}`;
 const objectConst = (key: Key): Evidence => ({ role: 'const', unit: CATALOG, anchor: OBJECTS[key][2] });
@@ -168,6 +168,9 @@ const memberRefs: Obligation = {
     },
   ],
 };
+/** 写入口的成员呈现：员工信息的访问在命令事务内解析（personRefAccessInTransaction），探测器不再观测到读路径的授权调用。 */
+const { facts: _readFacts, ...memberRefsBase } = memberRefs;
+const memberRefsWrite: Obligation = memberRefsBase;
 
 /** 新增的成员须存在且在人员范围内（范围外与不存在同一 404）；没有员工信息查看权 403。 */
 function newPersonRefs(entry: Evidence): Obligation[] {
@@ -212,15 +215,14 @@ function reviewGroupCrud(): RequiredTable {
     [`POST ${path}`]: [
       ...op('create'),
       ...newPersonRefs(call(`${GROUP_SERVICE}#createReviewGroup`, 'await assertNewPersonRefs(')),
-      memberRefs,
+      memberRefsWrite,
     ],
     [`PATCH ${path}/:id`]: [
       ...op('update'),
       ...newPersonRefs(call(`${GROUP_SERVICE}#updateReviewGroup`, 'await assertNewPersonRefs(')),
       ownerOrgInScope,
-      memberRefs,
+      memberRefsWrite,
     ],
-    [`DELETE ${path}/:id`]: [...op('delete'), memberRefs],
   };
 }
 

@@ -7,7 +7,6 @@
 import { sql } from 'drizzle-orm';
 import {
   boolean,
-  check,
   foreignKey,
   index,
   integer,
@@ -93,14 +92,14 @@ export const evGeneralItems = pgTable(
 
 /**
  * 评审组 ReviewGroup（B3）：评委分组。所属组织 `owner_org_id` 必填、由创建人手选（Q-M0-132 🟢，DEC-324②），范围外与不存在同一
- * 404；所属人 `owner_id` 系统填创建人。编码租户内唯一（AGENTS §10 标识，格式同其他配置对象）。原站没有资源集合和向下公开。
+ * 404；所属人 `owner_id` 系统填创建人。照原站（DEC-393，Q-M0-172）没有编码字段，名称不要求唯一（不同所属组织同名可保存），
+ * 没有删除入口。原站没有资源集合和向下公开。
  */
 export const evReviewGroups = pgTable(
   'ev_review_groups',
   {
     id: id(),
     tenantId: tenantId(),
-    code: text('code').notNull(),
     name: text('name').notNull(),
     ownerId: uuid('owner_id').notNull(),
     ownerOrgId: uuid('owner_org_id').notNull(),
@@ -109,8 +108,6 @@ export const evReviewGroups = pgTable(
   },
   (t) => [
     unique('ev_review_groups_tenant_id').on(t.tenantId, t.id),
-    unique('ev_review_groups_code').on(t.tenantId, t.code),
-    check('ev_review_groups_code_format', sql`${t.code} ~ '^[A-Za-z0-9][A-Za-z0-9_-]{0,49}$'`),
     index('ev_review_groups_owner_org').on(t.tenantId, t.ownerOrgId),
     foreignKey({
       columns: [t.tenantId, t.ownerOrgId],
@@ -120,7 +117,7 @@ export const evReviewGroups = pgTable(
   ],
 );
 
-/** 评审组成员：整组编辑，组长恰好 1 个（库内至多 1 个，恰好 1 个由写入口保证）；`seq` 记提交顺序。 */
+/** 评审组成员：整组编辑；有成员时组长恰好 1 个（库内至多 1 个，恰好 1 个由写入口保证），允许零成员；`seq` 记提交顺序。 */
 export const evReviewMembers = pgTable(
   'ev_review_members',
   {

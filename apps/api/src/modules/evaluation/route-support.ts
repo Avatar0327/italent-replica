@@ -9,7 +9,6 @@ import type { TenantEnv } from '../../tenant-context.js';
 import { authorizeInTransaction, resolveModuleScopeInTransaction, scopeAllows } from '../permission/module-access.js';
 import type { PersonRefAccess } from './person-refs.js';
 import {
-  ANCHOR,
   checkWriteFields,
   codeOf,
   type EvaluationContext,
@@ -156,17 +155,10 @@ async function runGuarded<T extends View>(
   return c.json((await presenter(deps, object)(w, shaped))[0] as object, result.status);
 }
 
-/**
- * 返回台账结果时按当前范围复核结果对象（事务内）：现存对象按读取谓词；已删除对象按快照的范围锚点——字典按创建人，
- * 所属组织对象按所属组织 ∪ 所属人（快照里的 ownerOrgId / ownerId）。
- */
+/** 返回台账结果时按当前范围复核结果对象（事务内）：现存对象按读取谓词，已删除对象按快照的创建人（字典的范围锚点）。 */
 async function requireStillVisible(tx: Tx, w: WriteContext, object: EvaluationObject, value: View, method: string) {
   if (method === 'DELETE') {
-    const target =
-      ANCHOR[object] === 'owned'
-        ? { orgId: value.ownerOrgId as string, creatorId: value.ownerId as string }
-        : { creatorId: value.createdBy };
-    requireVisible(scopeAllows(w.scope, target), object);
+    requireVisible(scopeAllows(w.scope, { creatorId: value.createdBy }), object);
     return;
   }
   requireVisible((await rowAccess(tx, w, w.scope, object, value.id)).visible, object);

@@ -36,13 +36,20 @@ interface Spec {
   readonly out: ReturnType<typeof shape>;
   /** 所属组织对象：按所属组织 ∪ 创建人，新建的所属组织须在范围内；成员引用人员（人员引用出口，DEC-331① / DEC-339②）。 */
   readonly owned?: true;
+  /** 照原站没有删除入口（评审组，DEC-393⑤）：不注册 DELETE 路由。 */
+  readonly noDelete?: true;
 }
 
 const SPECS: Readonly<Record<Key, Spec>> = {
   activityType: { path: 'activity-types', out: shape('ev.activityType') },
   activityCycle: { path: 'activity-cycles', out: shape('ev.activityCycle') },
   generalScoreItem: { path: 'general-score-items', out: shape('ev.generalScoreItem') },
-  reviewGroup: { path: 'review-groups', out: projector('ev.reviewGroupMembers', 'ev.reviewGroup'), owned: true },
+  reviewGroup: {
+    path: 'review-groups',
+    out: projector('ev.reviewGroupMembers', 'ev.reviewGroup'),
+    owned: true,
+    noDelete: true,
+  },
 };
 
 /** 评审组成员的人员引用：范围内 姓名 + 工号，范围外只有姓名（不是准入，只决定响应里的附加披露）。 */
@@ -106,14 +113,18 @@ function crud(key: Key): Record<string, RoutePolicy> {
       ...guards(owned ? ['ev.newPersonRefs', 'ev.ownerOrgInScope'] : []),
       write: evWrite(key, 'body'),
     }),
-    [`DELETE ${path}/:id`]: object({
-      ...base,
-      ...byId,
-      operation: 'delete',
-      button: button('delete', 'detail'),
-      scope: point('editable'),
-      write: evWrite(key, 'none'),
-    }),
+    ...(spec.noDelete
+      ? {}
+      : {
+          [`DELETE ${path}/:id`]: object({
+            ...base,
+            ...byId,
+            operation: 'delete',
+            button: button('delete', 'detail'),
+            scope: point('editable'),
+            write: evWrite(key, 'none'),
+          }),
+        }),
   };
 }
 

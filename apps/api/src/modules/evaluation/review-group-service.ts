@@ -1,8 +1,9 @@
 /**
  * 评审组（`TEvaluation.ReviewGroup`）的读写服务（设计 §3.2、§5.1、§8）：
  * - 所属组织必填手选，须存在且在操作人 TEvaluation 范围内（DEC-082 / DEC-324②，范围外与不存在同一 404），读写同一谓词；
- * - 成员整组编辑，组长恰好 1 个、不重复；新增的成员须在人员范围内，集合里原有的范围外成员原样保留（person-refs.ts）；
- * - 编码租户内唯一；被引用拒删的钩子位见 usage.ts（B5 登记）。
+ * - 成员整组编辑，允许零成员，有成员时组长恰好 1 个、不重复；新增的成员须在人员范围内，集合里原有的范围外成员原样保留
+ *   （person-refs.ts）；
+ * - 照原站（DEC-393）没有编码、名称不要求唯一、被引用也能停用、没有删除入口；成员上限 200 是系统保护（D-071 🟡）；
  * 每个写入口在命令台账的同一事务里写业务与审计（DEC-019 / 216）。
  */
 import { sql, type Tx } from '@italent/db';
@@ -12,15 +13,13 @@ import type * as input from './input.js';
 import { assertNewPersonRefs, loadEmployees, presentPersonRefs, type PersonRefAccess } from './person-refs.js';
 import { type Tracked, view } from './read-model.js';
 import type { View } from './route-support.js';
-import { audit, bumped, guardUnique, lockEditable, rowsOf, type WriteContext } from './store.js';
-import { rejectInUse } from './usage.js';
+import { audit, bumped, lockEditable, rowsOf, type WriteContext } from './store.js';
 
 export interface MemberInput {
   readonly employeeId: string;
   readonly isLeader: boolean;
 }
 export type ReviewGroupView = Tracked & {
-  readonly code: string;
   readonly name: string;
   readonly ownerId: string;
   readonly ownerOrgId: string;
@@ -28,15 +27,12 @@ export type ReviewGroupView = Tracked & {
   readonly members: MemberInput[];
 };
 
-// TODO(需取证 #206)：编码重复的原站提示原文未取证，暂用通用文案
-const codeExists = () => new AppError('CONFLICT', '编码重复，请重新输入', { reason: 'DUPLICATE' });
-
-/** 组长恰好 1 个、成员不重复（对完整集合校验；与成员是否在范围内无关）。 */
+/** 允许零成员；有成员时组长恰好 1 个、成员不重复（对完整集合校验；与成员是否在范围内无关）。 */
 export function checkMembers(members: readonly MemberInput[]): void {
   if (new Set(members.map((m) => m.employeeId)).size !== members.length) {
     throw new AppError('VALIDATION_FAILED', '成员不能重复', { reason: 'REVIEW_GROUP_MEMBER_DUPLICATE' });
   }
-  if (members.filter((m) => m.isLeader).length !== 1) {
+  if (members.length && members.filter((m) => m.isLeader).length !== 1) {
     throw new AppError('VALIDATION_FAILED', '评审组须恰好有 1 个组长', { reason: 'REVIEW_GROUP_LEADER_REQUIRED' });
   }
 }
@@ -142,14 +138,10 @@ export async function createReviewGroup(tx: Tx, ctx: WriteContext, body: input.R
     body.members.map((member) => member.employeeId),
   );
   const now = ctx.now.toISOString();
-  const result = await guardUnique(
-    () =>
-      tx.execute(sql`INSERT INTO ev_review_groups
-          (tenant_id, code, name, owner_id, owner_org_id, enabled, created_by, created_at, updated_at)
-        VALUES (${ctx.tenantId}, ${body.code}, ${body.name}, ${ctx.userId}, ${body.ownerOrgId}, ${body.enabled ?? true},
-          ${ctx.userId}, ${now}, ${now}) RETURNING id`),
-    codeExists,
-  );
+  const result = await tx.execute(sql`INSERT INTO ev_review_groups
+      (tenant_id, name, owner_id, owner_org_id, enabled, created_by, created_at, updated_at)
+    VALUES (${ctx.tenantId}, ${body.name}, ${ctx.userId}, ${body.ownerOrgId}, ${body.enabled ?? true},
+      ${ctx.userId}, ${now}, ${now}) RETURNING id`);
   const id = rowsOf<{ id: string }>(result)[0]!.id;
   await replaceMembers(tx, ctx, id, body.members);
   const after = await loadGroup(tx, ctx.tenantId, id);
@@ -161,7 +153,7 @@ export async function createReviewGroup(tx: Tx, ctx: WriteContext, body: input.R
   return after;
 }
 
-const COLUMNS = { code: 'code', name: 'name', enabled: 'enabled', ownerOrgId: 'owner_org_id' } as const;
+const COLUMNS = { name: 'name', enabled: 'enabled', ownerOrgId: 'owner_org_id' } as const;
 
 export async function updateReviewGroup(tx: Tx, ctx: WriteContext, id: string, body: input.ReviewGroupPatch) {
   const row = await lockEditable(tx, ctx, 'reviewGroup', id);
@@ -182,12 +174,8 @@ export async function updateReviewGroup(tx: Tx, ctx: WriteContext, id: string, b
     .filter((field) => body[field] !== undefined)
     .map((field) => sql`${sql.identifier(COLUMNS[field])} = ${body[field] as never}`);
   sets.push(sql`revision = ${bump.revision}`, sql`updated_at = ${bump.updatedAt}`);
-  await guardUnique(
-    () =>
-      tx.execute(sql`UPDATE ev_review_groups SET ${sql.join(sets, sql`, `)}
-        WHERE tenant_id = ${ctx.tenantId}::uuid AND id = ${id}::uuid`),
-    codeExists,
-  );
+  await tx.execute(sql`UPDATE ev_review_groups SET ${sql.join(sets, sql`, `)}
+    WHERE tenant_id = ${ctx.tenantId}::uuid AND id = ${id}::uuid`);
   if (body.members) await replaceMembers(tx, ctx, id, body.members);
   const after = await loadGroup(tx, ctx.tenantId, id);
   await audit(tx, ctx, 'reviewGroup', 'update', id, {
@@ -196,19 +184,4 @@ export async function updateReviewGroup(tx: Tx, ctx: WriteContext, id: string, b
     orgId: after.ownerOrgId,
   });
   return after;
-}
-
-export async function deleteReviewGroup(tx: Tx, ctx: WriteContext, id: string) {
-  await lockEditable(tx, ctx, 'reviewGroup', id);
-  // B5 登记“被评定活动 / 场次引用”（usage.ts 钩子位）；TODO(需取证 #206)：被引用后能否停用 / 删除的原站表现
-  await rejectInUse(tx, ctx, 'reviewGroup', id);
-  const before = await loadGroup(tx, ctx.tenantId, id);
-  // 成员随评审组删除（外键 CASCADE），删除快照连同成员写进审计
-  await tx.execute(sql`DELETE FROM ev_review_groups WHERE tenant_id = ${ctx.tenantId}::uuid AND id = ${id}::uuid`);
-  await audit(tx, ctx, 'reviewGroup', 'delete', id, {
-    before: await auditSnapshot(tx, ctx.tenantId, before),
-    after: null,
-    orgId: before.ownerOrgId,
-  });
-  return before;
 }

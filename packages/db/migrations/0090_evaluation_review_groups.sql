@@ -1,7 +1,6 @@
 CREATE TABLE "ev_review_groups" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"tenant_id" uuid NOT NULL,
-	"code" text NOT NULL,
 	"name" text NOT NULL,
 	"owner_id" uuid NOT NULL,
 	"owner_org_id" uuid NOT NULL,
@@ -10,9 +9,7 @@ CREATE TABLE "ev_review_groups" (
 	"created_by" uuid NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
-	CONSTRAINT "ev_review_groups_tenant_id" UNIQUE("tenant_id","id"),
-	CONSTRAINT "ev_review_groups_code" UNIQUE("tenant_id","code"),
-	CONSTRAINT "ev_review_groups_code_format" CHECK ("ev_review_groups"."code" ~ '^[A-Za-z0-9][A-Za-z0-9_-]{0,49}$')
+	CONSTRAINT "ev_review_groups_tenant_id" UNIQUE("tenant_id","id")
 );
 --> statement-breakpoint
 CREATE TABLE "ev_review_members" (
@@ -33,10 +30,10 @@ ALTER TABLE "ev_review_members" ADD CONSTRAINT "ev_review_members_employee_fk" F
 CREATE INDEX "ev_review_groups_owner_org" ON "ev_review_groups" USING btree ("tenant_id","owner_org_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "ev_review_members_leader" ON "ev_review_members" USING btree ("tenant_id","group_id") WHERE "ev_review_members"."is_leader";--> statement-breakpoint
 CREATE INDEX "ev_review_members_employee_idx" ON "ev_review_members" USING btree ("tenant_id","employee_id");--> statement-breakpoint
--- R3-T02 PR-B B3：统一租户隔离（AGENTS §2；guard-rls）。成员随评审组整组替换，应用角色需要 DELETE。
+-- R3-T02 PR-B B3：统一租户隔离（AGENTS §2；guard-rls）。成员随评审组整组替换，应用角色需要 DELETE（评审组本身没有删除入口，DEC-393）。
 SELECT enable_tenant_isolation('ev_review_groups');
 --> statement-breakpoint
-GRANT SELECT, INSERT, UPDATE, DELETE ON ev_review_groups TO app_user;
+GRANT SELECT, INSERT, UPDATE ON ev_review_groups TO app_user;
 --> statement-breakpoint
 SELECT enable_tenant_isolation('ev_review_members');
 --> statement-breakpoint

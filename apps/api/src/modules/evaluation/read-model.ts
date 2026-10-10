@@ -49,10 +49,7 @@ const ORDER: Readonly<Partial<Record<EvaluationObject, readonly (readonly [strin
   ],
   activityCycle: [['name', 'name']],
   generalScoreItem: [['name', 'name']],
-  reviewGroup: [
-    ['code', 'code'],
-    ['name', 'name'],
-  ],
+  reviewGroup: [['name', 'name']],
 };
 
 export function orderBy(object: EvaluationObject, visible: ReadonlySet<string> | undefined): SQL {

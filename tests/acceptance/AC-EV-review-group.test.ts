@@ -1,7 +1,7 @@
 /**
  * R3-T02 PR-B B3：评审组（`TEvaluation.ReviewGroup`）+ 人员引用出口（设计 §3.2、§5.1、§8、§9；拆分方案第 4 节 B3 行）。真实授权器：
  * - 评审组：所属组织必填手选且须在操作人范围内（DEC-082 / DEC-324②），列表 / 详情按所属组织裁剪（分页前）；成员整组编辑，
- *   恰好 1 个组长；编码租户内唯一；并发与幂等（DEC-067）；
+ *   有成员时恰好 1 个组长、允许零成员；没有编码字段、名称不要求唯一、没有删除入口（DEC-393，照原站 Q-M0-172）；并发与幂等（DEC-067）；
  * - 设计 §9 “DEC-331① / DEC-339②”整行：管理员人员范围只含 E1，成员 E1、E2、E3：详情三人都有 ID 与姓名、E2 / E3 没有
  *   工号等其他字段、成员数 3；E2 的 ID 查人员详情 404（与不存在的 ID 同一响应）；原样提交完整集合 200、成员不变；
  *   新增范围外员工 404、成员不变；删除范围外成员允许；所属组织在范围外的评审组不出现、详情 404；
@@ -27,7 +27,6 @@ import {
 
 const testDb = useTestDb();
 const suffix = () => randomUUID().slice(0, 6);
-const code = () => `RG${suffix()}`;
 const ids = (members: readonly MemberView[]) => members.map((member) => member.employeeId);
 
 interface Page {
@@ -55,7 +54,6 @@ describe('AC-EV-review-group 评审组', () => {
   const members = (...list: [Employee, boolean?][]) =>
     list.map(([employee, leader], index) => ({ employeeId: employee.id, isLeader: leader ?? index === 0 }));
   const body = (extra: Record<string, unknown> = {}) => ({
-    code: code(),
     name: `评审组${suffix()}`,
     ownerOrgId: w.orgA,
     members: members([e1]),
@@ -75,12 +73,13 @@ describe('AC-EV-review-group 评审组', () => {
     ok<GroupView>(await w.setup.request('GET', `${EV_BASE}${GROUPS}/${id}`, w.asAdmin));
 
   describe('CRUD 与成员整组编辑', () => {
-    it('新建 / 详情 / 修改名称与成员 / 删除；成员按提交顺序，组长恰好 1 个', async () => {
+    it('新建 / 详情 / 修改名称与成员；成员按提交顺序，有成员时组长恰好 1 个；没有 code 字段', async () => {
       const op = await manager();
       const group = await created(op, body({ members: members([e1, true]) }));
       expect(group).toMatchObject({ revision: 1, enabled: true, ownerOrgId: w.orgA, createdBy: op.userId });
       expect(group.members).toEqual([expect.objectContaining({ employeeId: e1.id, isLeader: true, name: e1.name })]);
       expect(await ok<GroupView>(await read(op, group.id))).toEqual(group);
+      expect(Object.keys(group)).not.toContain('code');
 
       const renamed = await ok<GroupView>(await patch(op, group, { name: `改名${suffix()}` }));
       expect(renamed).toMatchObject({ revision: 2 });
@@ -92,13 +91,12 @@ describe('AC-EV-review-group 评审组', () => {
       expect(swapped.revision).toBe(3);
     });
 
-    it('组长个数：没有组长、两个组长、成员为空、成员重复、编码 / 名称 / 成员数结构非法都是 400，数据不变', async () => {
+    it('组长个数：没有组长、两个组长、成员重复、名称 / 成员数结构非法都是 400，数据不变', async () => {
       const op = await manager({ personOrgs: [w.orgA, w.orgB, w.orgC] });
       const group = await created(op, body({ members: members([e1, true], [e2, false]) }));
       const cases: [string, Record<string, unknown>][] = [
         ['无组长', { members: members([e1, false], [e2, false]) }],
         ['两个组长', { members: members([e1, true], [e2, true]) }],
-        ['成员为空', { members: [] }],
         ['成员重复', { members: members([e1, true], [e1, false]) }],
         ['非法键', { members: [{ employeeId: e1.id, isLeader: true, name: '多余' }] }],
       ];
@@ -112,33 +110,48 @@ describe('AC-EV-review-group 评审组', () => {
       expect((await errorOf(leaderError)).reason).toBe('REVIEW_GROUP_LEADER_REQUIRED');
       const duplicate = await post(op, body({ members: members([e1, true], [e1, false]) }));
       expect((await errorOf(duplicate)).reason).toBe('REVIEW_GROUP_MEMBER_DUPLICATE');
-      for (const bad of [
-        { code: '' },
-        { code: '含 空格' },
-        { name: '' },
-        { name: 'x'.repeat(101) },
-        { ownerId: op.userId },
-      ]) {
+      for (const bad of [{ code: 'RG1' }, { name: '' }, { name: 'x'.repeat(101) }, { ownerId: op.userId }]) {
         expect((await post(op, body(bad))).status, JSON.stringify(bad)).toBe(400);
       }
       const tooMany = Array.from({ length: 201 }, () => ({ employeeId: randomUUID(), isLeader: false }));
-      expect((await post(op, body({ members: tooMany }))).status).toBe(400);
+      const overflow = await post(op, body({ members: tooMany }));
+      expect(overflow.status).toBe(400); // 系统保护上限 200（D-071 🟡）
       expect(await ok<GroupView>(await read(op, group.id))).toEqual(group);
     });
 
-    it('编码租户内唯一：重复 409 DUPLICATE，并发创建同编码只成功一条', async () => {
+    it('名称不要求唯一（DEC-393②）：同名可保存、改名成已有名称也可以，并发创建同名都成功', async () => {
       const op = await manager();
       const first = await created(op);
-      const duplicate = await post(op, body({ code: first.code }));
-      expect(duplicate.status).toBe(409);
-      expect((await errorOf(duplicate)).reason).toBe('DUPLICATE');
+      const same = await created(op, body({ name: first.name }));
+      expect(same.name).toBe(first.name);
       const other = await created(op);
-      const clash = await patch(op, other, { code: first.code });
-      expect(clash.status).toBe(409);
-      expect(await ok<GroupView>(await read(op, other.id))).toEqual(other);
-      const sameCode = code();
-      const results = await Promise.all([post(op, body({ code: sameCode })), post(op, body({ code: sameCode }))]);
-      expect(results.map((r) => r.status).sort()).toEqual([201, 409]);
+      expect((await ok<GroupView>(await patch(op, other, { name: first.name }))).name).toBe(first.name);
+      const name = `并发同名${suffix()}`;
+      const results = await Promise.all([post(op, body({ name })), post(op, body({ name }))]);
+      expect(results.map((r) => r.status)).toEqual([201, 201]);
+    });
+
+    it('允许零成员（DEC-393③）：新建零成员、把成员改空都成功，组长校验只在有成员时判', async () => {
+      const op = await manager();
+      const empty = await created(op, body({ members: [] }));
+      expect(empty.members).toEqual([]);
+      const filled = await ok<GroupView>(await patch(op, empty, { members: members([e1, true]) }));
+      expect(filled.members).toHaveLength(1);
+      const cleared = await ok<GroupView>(await patch(op, filled, { members: [] }));
+      expect(cleared.members).toEqual([]);
+      expect((await read(op, empty.id)).status).toBe(200);
+    });
+
+    it('被引用也能停用、能重新启用（DEC-393④）：停用不检查引用；没有删除入口，DELETE 不存在', async () => {
+      const op = await manager();
+      const group = await created(op);
+      const off = await ok<GroupView>(await patch(op, group, { enabled: false }));
+      expect(off.enabled).toBe(false);
+      const on = await ok<GroupView>(await patch(op, off, { enabled: true }));
+      expect(on.enabled).toBe(true);
+      const removed = await op.request('DELETE', `${GROUPS}/${group.id}`, { ifMatch: on.revision });
+      expect([404, 405]).toContain(removed.status);
+      expect((await read(op, group.id)).status).toBe(200);
     });
 
     it('并发与幂等：缺 If-Match 400、过期 409 且数据不变、同键同内容重放不重复写、同键异内容 409', async () => {
@@ -176,7 +189,7 @@ describe('AC-EV-review-group 评审组', () => {
       expect((await adminReads(group.id)).ownerOrgId).toBe(w.orgA);
     });
 
-    it('所属组织在范围外的评审组：不出现在列表、详情 / 修改 / 删除 404；空范围列表为空且 hasDataPermission=false', async () => {
+    it('所属组织在范围外的评审组：不出现在列表、详情 / 修改 404；空范围列表为空且 hasDataPermission=false', async () => {
       const outsideGroup = await w.adminGroup(body({ ownerOrgId: w.orgB, members: members([e2]) }));
       const insideGroup = await w.adminGroup(body({ ownerOrgId: w.orgA }));
       const op = await manager();
@@ -186,9 +199,6 @@ describe('AC-EV-review-group 评审组', () => {
       expect(listed).not.toContain(outsideGroup.id);
       expect((await read(op, outsideGroup.id)).status).toBe(404);
       expect((await patch(op, outsideGroup, { name: 'x' })).status).toBe(404);
-      expect(
-        (await op.request('DELETE', `${GROUPS}/${outsideGroup.id}`, { ifMatch: outsideGroup.revision })).status,
-      ).toBe(404);
       expect(await adminReads(outsideGroup.id)).toMatchObject({ id: outsideGroup.id, revision: outsideGroup.revision });
 
       const empty = await reviewOperator(w, { personOrgs: [w.orgA] });
@@ -329,6 +339,22 @@ describe('AC-EV-review-group 评审组', () => {
       const plain = await ok<CandidatePage>(await neither.request('GET', CANDIDATES));
       for (const item of plain.items) expect(Object.keys(item)).toEqual(['id']);
     });
+    it('离职员工暂不进候选（DEC-393⑦，待补测）：在职的照常出现', async () => {
+      const tag = suffix();
+      const stays = await w.hire(`在职候选${tag}`, w.orgA);
+      const leaves = await w.hire(`离职候选${tag}`, w.orgA);
+      await w.leave(leaves);
+      const op = await manager();
+      const page = await ok<CandidatePage>(await op.request('GET', `${CANDIDATES}?pageSize=100`));
+      const found = page.items.map((item) => item.id);
+      expect(found).toContain(stays.id);
+      expect(found).not.toContain(leaves.id);
+      const byName = await ok<CandidatePage>(
+        await op.request('GET', `${CANDIDATES}?keyword=${encodeURIComponent(`离职候选${tag}`)}`),
+      );
+      expect(byName.items).toEqual([]);
+    });
+
     it('排序只用可见字段（第 1 轮 P2-2）：工号不可见时不按工号排序，姓名也不可见时退回员工 ID', async () => {
       const tag = suffix();
       // 建档顺序（工号递增）d、b、c、a，姓名顺序 a、b、c、d：工号序与姓名序、ID 序互不相同
@@ -353,12 +379,10 @@ describe('AC-EV-review-group 评审组', () => {
   });
 
   describe('权限：数据操作、按钮、字段（含显式清空）', () => {
-    it('没有新建 / 编辑 / 删除数据操作权各 403，没有按钮 403，查看照常，数据不变', async () => {
+    it('没有新建 / 编辑数据操作权各 403，没有按钮 403，查看照常，数据不变', async () => {
       const group = await w.adminGroup(body());
       expect((await post(await manager({ noCreate: true }), body())).status).toBe(403);
       expect((await patch(await manager({ noUpdate: true }), group, { name: 'x' })).status).toBe(403);
-      const noDelete = await manager({ noDelete: true });
-      expect((await noDelete.request('DELETE', `${GROUPS}/${group.id}`, { ifMatch: group.revision })).status).toBe(403);
       const noButtons = await manager({ noButtons: true });
       expect((await post(noButtons, body())).status).toBe(403);
       expect((await patch(noButtons, group, { name: 'x' })).status).toBe(403);
@@ -385,7 +409,7 @@ describe('AC-EV-review-group 评审组', () => {
       });
     });
 
-    it('筛选与排序不泄露：没有 enabled 查看权时 ?enabled= 是 403 FILTER_FIELD_HIDDEN；没有名称 / 编码查看权时只按主键排序', async () => {
+    it('筛选与排序不泄露：没有 enabled 查看权时 ?enabled= 是 403 FILTER_FIELD_HIDDEN；没有名称查看权时只按主键排序', async () => {
       await w.adminGroup(body());
       const blind = await manager({ hidden: ['enabled'] });
       for (const value of ['true', 'false']) {
@@ -393,7 +417,7 @@ describe('AC-EV-review-group 评审组', () => {
         expect(response.status, value).toBe(403);
         expect(await errorOf(response)).toEqual({ code: 'FORBIDDEN', reason: 'FILTER_FIELD_HIDDEN' });
       }
-      const keyed = await manager({ hidden: ['name', 'code'] });
+      const keyed = await manager({ hidden: ['name'] });
       const listed = (await ok<Page>(await keyed.request('GET', `${GROUPS}?pageSize=100`))).items.map(
         (item) => item.id,
       );
@@ -418,42 +442,23 @@ describe('AC-EV-review-group 评审组', () => {
       await op.setEvOrgs([w.orgA]);
       await op.setPersonOrgs([w.orgA]);
     });
-
-    it('删除重放：撤销范围后按快照的所属组织复核，范围内照常返回、范围外 404', async () => {
-      const op = await manager();
-      const group = await created(op);
-      const key = randomUUID();
-      await ok(await op.request('DELETE', `${GROUPS}/${group.id}`, { ifMatch: group.revision, idempotencyKey: key }));
-      const replay = await op.request('DELETE', `${GROUPS}/${group.id}`, {
-        ifMatch: group.revision,
-        idempotencyKey: key,
-      });
-      expect(replay.status).toBe(200);
-      await op.setEvOrgs([w.orgC]);
-      const denied = await op.request('DELETE', `${GROUPS}/${group.id}`, {
-        ifMatch: group.revision,
-        idempotencyKey: key,
-      });
-      expect(denied.status).toBe(404);
-      await op.setEvOrgs([w.orgA]);
-    });
   });
 
   describe('审计（DEC-019 / 216：业务写与审计同事务；前后值呈现成员）', () => {
-    it('新建 / 修改 / 删除各一条，动作 evaluation.review-group.*；成员前后值只含员工 ID、当时姓名与组长标记，范围外成员同口径', async () => {
+    it('新建 / 修改 / 停用各一条（没有删除），动作 evaluation.review-group.create|update；成员前后值只含员工 ID、当时姓名与组长标记，范围外成员同口径', async () => {
       const op = await manager({ auditor: true, personOrgs: [w.orgA, w.orgB, w.orgC] });
       const group = await created(op, body({ members: members([e1, true]) }));
       const widened = await ok<GroupView>(
         await patch(op, group, { members: members([e1, true], [e2, false]), name: `新名${suffix()}` }),
       );
-      await ok(await op.request('DELETE', `${GROUPS}/${widened.id}`, { ifMatch: widened.revision }));
+      await ok(await patch(op, widened, { enabled: false }));
       const audit = auditApi(testDb().db, EV_NOW.toISOString(), { authorize: undefined });
       const logs = (
         await audit.dataChanges(op.as, { objectType: 'TEvaluation.ReviewGroup', limit: '100' })
       ).items.filter((item) => item.objectId === group.id);
       expect(logs.map((item) => item.action).sort()).toEqual([
         'evaluation.review-group.create',
-        'evaluation.review-group.delete',
+        'evaluation.review-group.update',
         'evaluation.review-group.update',
       ]);
       const detail = (action: string) => audit.dataChange(op.as, logs.find((item) => item.action.endsWith(action))!.id);
@@ -461,7 +466,10 @@ describe('AC-EV-review-group 评审组', () => {
       expect(first.after).toMatchObject({
         members: [{ employeeId: e1.id, employeeName: e1.name, isLeader: true }],
       });
-      const update = await detail('.update');
+      const updates = await Promise.all(
+        logs.filter((item) => item.action.endsWith('.update')).map((item) => audit.dataChange(op.as, item.id)),
+      );
+      const update = updates.find((entry) => entry.changes.some((change) => change.field === 'members'))!;
       expect(update.after).toMatchObject({
         members: [
           { employeeId: e1.id, employeeName: e1.name, isLeader: true },
@@ -473,18 +481,17 @@ describe('AC-EV-review-group 评审组', () => {
       for (const member of (update.after as { members: object[] }).members) {
         expect(Object.keys(member).sort()).toEqual(['employeeId', 'employeeName', 'isLeader']);
       }
-      expect((await detail('.delete')).before).toMatchObject({ id: group.id });
     });
   });
   describe('审计读取期投影：成员姓名按查看人当前的员工信息对象权与姓名字段权裁剪（第 1 轮 P2-1，DEC-197）', () => {
-    /** 全权限的操作人建 / 改 / 删各一次（姓名在业务事务内冻结进日志），再由不同授权的审计管理员读取。 */
+    /** 全权限的操作人建 / 改 / 停用各一次（姓名在业务事务内冻结进日志），再由不同授权的审计管理员读取。 */
     const history = async () => {
       const writer = await manager({ personOrgs: [w.orgA, w.orgB, w.orgC] });
       const group = await created(writer, body({ members: members([e1, true]) }));
       const widened = await ok<GroupView>(
         await patch(writer, group, { members: members([e1, true], [e2, false]), name: `新名${suffix()}` }),
       );
-      await ok(await writer.request('DELETE', `${GROUPS}/${widened.id}`, { ifMatch: widened.revision }));
+      await ok(await patch(writer, widened, { enabled: false }));
       return group.id;
     };
     const readAll = async (options: ReviewOperatorOptions, id: string) => {

@@ -1,5 +1,5 @@
 {
-  "id": "5ef2d1b6-486a-4fc8-8dca-aa44004ffb32",
+  "id": "5c646fd4-65ed-4feb-a02b-fcb9a39ecc4b",
   "prevId": "167ae2fa-aab2-44bc-9447-baa2760b2d13",
   "version": "7",
   "dialect": "postgresql",
@@ -37777,12 +37777,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "code": {
-          "name": "code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
         "name": {
           "name": "name",
           "type": "text",
@@ -37898,23 +37892,10 @@
             "tenant_id",
             "id"
           ]
-        },
-        "ev_review_groups_code": {
-          "name": "ev_review_groups_code",
-          "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "code"
-          ]
         }
       },
       "policies": {},
-      "checkConstraints": {
-        "ev_review_groups_code_format": {
-          "name": "ev_review_groups_code_format",
-          "value": "\"ev_review_groups\".\"code\" ~ '^[A-Za-z0-9][A-Za-z0-9_-]{0,49}$'"
-        }
-      },
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.ev_review_members": {

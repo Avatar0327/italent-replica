@@ -35,7 +35,6 @@ export interface MemberView {
 export interface GroupView {
   readonly id: string;
   readonly revision: number;
-  readonly code: string;
   readonly name: string;
   readonly ownerId: string;
   readonly ownerOrgId: string;
@@ -99,6 +98,17 @@ export async function reviewWorld(db: Db) {
     );
   }
 
+  /** 离职（直接办理，最后工作日在今天之前）。 */
+  async function leave(employee: Employee) {
+    const current = await setup.request('GET', `/api/tenant/employment/employees/${employee.id}`, admin);
+    const revision = ((await current.json()) as { revision: number }).revision;
+    await create(
+      `employment/employees/${employee.id}/businesses`,
+      { kind: 'leave', mode: 'direct', effectiveDate: '2026-09-02', lastWorkDate: '2026-09-01', fields: {} },
+      revision,
+    );
+  }
+
   const orgA = await org('评审甲部');
   const orgB = await org('评审乙部');
   const orgC = await org('评审丙部');
@@ -110,7 +120,7 @@ export async function reviewWorld(db: Db) {
     return (await response.json()) as GroupView;
   }
 
-  return { ...world, setup, orgA, orgB, orgC, hire, transfer, adminGroup, org };
+  return { ...world, setup, orgA, orgB, orgC, hire, transfer, leave, adminGroup, org };
 }
 export type ReviewWorld = Awaited<ReturnType<typeof reviewWorld>>;
 

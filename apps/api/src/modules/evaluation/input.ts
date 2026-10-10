@@ -33,23 +33,18 @@ export const generalScoreItemCreate = z.strictObject({
 export const generalScoreItemPatch = generalScoreItemCreate.partial();
 export type GeneralScoreItemCreate = z.infer<typeof generalScoreItemCreate>;
 export type GeneralScoreItemPatch = z.infer<typeof generalScoreItemPatch>;
-// ── 评审组（B3）──────────────────────────────────────────────
-// TODO(需取证 #206)：评审组编码格式、名称是否唯一、成员数上限都没有取证，以下为暂行保守默认
+// ── 评审组（B3，照原站 DEC-393）──────────────────────────────────────────
+// 没有编码字段；名称必填（多语言字段首版只做简体中文，DEC-045）、不要求唯一；允许零成员；成员上限 200 是系统保护（🟡，差异 D-071，
+// 原站未标示，待取证可推翻），超出提示分批。
 export const MAX_REVIEW_MEMBERS = 200;
-const groupCode = z
-  .string()
-  .trim()
-  .regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,49}$/, '编码只能包含字母、数字、下划线与连字符，最长 50 位');
 const uuid = z.uuid().transform((value) => value.toLowerCase());
-/** 成员整组提交；组长恰好 1 个、成员不重复由写入服务校验（带 reason）。 */
-const memberList = z
-  .array(z.strictObject({ employeeId: uuid, isLeader: z.boolean() }))
-  .min(1)
-  .max(MAX_REVIEW_MEMBERS);
+/** 成员整组提交；有成员时组长恰好 1 个、成员不重复由写入服务校验（带 reason）。 */
+const memberList = z.array(z.strictObject({ employeeId: uuid, isLeader: z.boolean() })).max(MAX_REVIEW_MEMBERS, {
+  error: `一个评审组最多 ${MAX_REVIEW_MEMBERS} 人，请分批添加`,
+});
 
 // 所属人由系统填创建人，所属组织必填手选（DEC-324②）
 export const reviewGroupCreate = z.strictObject({
-  code: groupCode,
   name,
   ownerOrgId: uuid,
   enabled: z.boolean().optional(),

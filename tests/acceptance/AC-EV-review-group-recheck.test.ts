@@ -1,11 +1,11 @@
 /**
- * R3-T02 PR-B B3 评审组写命令的“事务内当前权限复核”（#207 第 1 轮，接入 #199 的 ledgerExit；DEC-338⑤ / DEC-385③ /
- * DEC-388②；AGENTS §10 权限、DEC-067）。评审组比字典多两处：成员是人员引用，员工信息的查看权 / 人员范围 / 字段在命令事务内
- * 重新解析（不沿用事务外的快照，也不用带请求缓存的 requestScope）；删除按快照的所属组织 ∪ 所属人复核。
- * 写入口 × 路径：POST / PATCH（编码名称启停、所属组织、成员整组编辑）/ DELETE × 首次执行、直接重放、失败后回查。
+ * R3-T02 PR-B B3 评审组写命令的“事务内当前权限复核”（#207 第 2 轮，接入 #199 的 ledgerExit；DEC-338⑤ / DEC-385③ /
+ * DEC-388②；AGENTS §10 权限、DEC-067）。评审组比字典多一处：成员是人员引用，员工信息的查看权 / 人员范围 / 字段在命令事务内
+ * 重新解析（不沿用事务外的快照，也不用带请求缓存的 requestScope）。
+ * 写入口 × 路径：POST / PATCH（名称启停、所属组织、成员整组编辑）× 首次执行、直接重放、失败后回查（评审组没有删除入口，DEC-393⑤）。
  * 确定性交错同 AC-EV-config-dicts-recheck：mock `runCommand`，在它开事务前执行测试注入的钩子；败者路径让胜者先完整提交、
- * 把胜者台账行暂时移走，败者主事务撞上真实冲突（编码唯一 / revision / 对象已删除）回滚，放回台账并撤权后回查。
- * 被拒必须不提交业务写、审计与台账。
+ * 把胜者台账行暂时移走，败者主事务撞上真实冲突（POST：台账主键，评审组名称不唯一所以没有别的自然冲突；PATCH：revision）
+ * 回滚，放回台账并撤权后回查。真 PG 的并发版见 AC-EV-review-group-recheck-pg。被拒必须不提交业务写、审计与台账。
  */
 import { randomUUID } from 'node:crypto';
 import { commandLedger, type Db, eq, sql, type Tx, withTenant } from '@italent/db';
@@ -29,6 +29,9 @@ type RunCommandModule = typeof RunCommands;
 interface Loser {
   readonly winner: () => Promise<Response>;
   readonly afterLoserTx: () => Promise<void>;
+  /** 败者执行完业务写后，在同一事务里补回胜者的台账行，让它自己的台账写入撞上主键（POST 没有别的自然冲突）。 */
+  readonly ledgerConflict?: boolean;
+  removedRow?: typeof commandLedger.$inferSelect;
   winnerResponse?: Response;
 }
 const hooks = vi.hoisted(() => ({
@@ -48,7 +51,15 @@ vi.mock('../../apps/api/src/commands.js', async (importOriginal) => {
       if (!loser) return original.runCommand(...args);
       const [db, ctx, command] = args;
       loser.winnerResponse = await loser.winner();
-      return original.runCommand(loserDb(db, ctx.tenantId, command.id!, loser), ctx, command);
+      const conflicting = {
+        ...command,
+        execute: async (tx: Tx, id: string) => {
+          const result = await command.execute(tx, id);
+          if (loser.ledgerConflict) await tx.insert(commandLedger).values(loser.removedRow!);
+          return result;
+        },
+      };
+      return original.runCommand(loserDb(db, ctx.tenantId, command.id!, loser), ctx, conflicting);
     },
   };
 });
@@ -71,6 +82,7 @@ function loserDb(db: Db, tenantId: string, commandId: string, loser: Loser): Db 
       tx.delete(commandLedger).where(eq(commandLedger.commandId, commandId)).returning(),
     );
     if (!row) throw new Error('胜者没有写台账，模拟前提不成立');
+    loser.removedRow = row;
     try {
       return await db.transaction(fn);
     } finally {
@@ -99,7 +111,6 @@ describe('AC-EV-review-group-recheck 评审组命令事务内权限复核', () =
   const members = (...list: [Employee, boolean][]) =>
     list.map(([employee, isLeader]) => ({ employeeId: employee.id, isLeader }));
   const body = (extra: Record<string, unknown> = {}) => ({
-    code: `RC${suffix()}`,
     name: `复核组${suffix()}`,
     ownerOrgId: w.orgA,
     members: members([e1, true]),
@@ -147,9 +158,9 @@ describe('AC-EV-review-group-recheck 评审组命令事务内权限复核', () =
       hooks.beforeCommand = () => op.setEvOrgs(undefined);
       const response = await create(op, data, key);
       expect(response.status, await response.clone().text()).toBe(404);
-      const listed = await w.setup.request('GET', `${EV_BASE}${GROUPS}?pageSize=200`, w.asAdmin);
+      const listed = await w.setup.request('GET', `${EV_BASE}${GROUPS}?pageSize=100`, w.asAdmin);
       const items = ((await listed.json()) as { items: GroupView[] }).items;
-      expect(items.some((item) => item.code === data.code)).toBe(false);
+      expect(items.some((item) => item.name === data.name)).toBe(false);
       expect(await auditCount()).toBe(before);
       expect(await ledger(key)).toBe(0);
     });
@@ -168,7 +179,7 @@ describe('AC-EV-review-group-recheck 评审组命令事务内权限复核', () =
       expect((await errorOf(denied)).reason).toBe('NO_EMPLOYEE_ACCESS');
     });
 
-    it('PATCH 编码名称启停：撤销范围 → 404；撤销字段编辑权 → 403；数据不变', async () => {
+    it('PATCH 名称启停：撤销范围 → 404；撤销字段编辑权 → 403；数据不变', async () => {
       const op = await manager();
       const group = await adminGroup();
       hooks.beforeCommand = () => op.setEvOrgs(undefined);
@@ -211,22 +222,6 @@ describe('AC-EV-review-group-recheck 评审组命令事务内权限复核', () =
         [e2.id, true],
       ]);
     });
-
-    it('DELETE：撤销范围 → 404，对象仍在、审计与台账不变', async () => {
-      const op = await manager();
-      const group = await adminGroup();
-      const before = await auditCount(group.id);
-      const key = randomUUID();
-      hooks.beforeCommand = () => op.setEvOrgs(undefined);
-      const response = await op.request('DELETE', `${GROUPS}/${group.id}`, {
-        ifMatch: group.revision,
-        idempotencyKey: key,
-      });
-      expect(response.status, await response.clone().text()).toBe(404);
-      await unchanged(group);
-      expect(await auditCount(group.id)).toBe(before);
-      expect(await ledger(key)).toBe(0);
-    });
   });
 
   describe('直接重放：同键重放按当前授权复核', () => {
@@ -259,7 +254,7 @@ describe('AC-EV-review-group-recheck 评审组命令事务内权限复核', () =
       expect(again.members.map((m) => Object.keys(m).sort())).toEqual([['employeeId', 'isLeader']]);
     });
 
-    it('PATCH 重放：撤销字段编辑权 → 403；DELETE 重放按快照所属组织 ∪ 所属人复核', async () => {
+    it('PATCH 重放：撤销字段编辑权 → 403', async () => {
       const writer = await manager();
       const group = await adminGroup();
       const key = randomUUID();
@@ -267,18 +262,6 @@ describe('AC-EV-review-group-recheck 评审组命令事务内权限复核', () =
       hooks.beforeCommand = () => writer.hideGroupFields(['name']);
       const denied = await patch(writer, group, { name: first.name }, key);
       expect(denied.status, await denied.clone().text()).toBe(403);
-
-      // 删除后重放：按快照的所属组织复核（对象已不在库里）——范围内照常返回，所属组织出范围 → 404
-      const op = await manager({ evOrgs: [w.orgA] });
-      const target = await adminGroup();
-      const delKey = randomUUID();
-      const del = () =>
-        op.request('DELETE', `${GROUPS}/${target.id}`, { ifMatch: target.revision, idempotencyKey: delKey });
-      await ok(await del());
-      expect((await del()).status).toBe(200);
-      await op.setEvOrgs([w.orgB]);
-      const gone = await del();
-      expect(gone.status, await gone.clone().text()).toBe(404);
     });
   });
 
@@ -287,11 +270,13 @@ describe('AC-EV-review-group-recheck 评审组命令事务内权限复核', () =
     const cases: readonly {
       readonly method: string;
       readonly error: string;
+      readonly ledgerConflict?: boolean;
       readonly send: (op: ReviewOperator) => Promise<Send>;
     }[] = [
       {
         method: 'POST',
-        error: '编码唯一冲突',
+        error: '台账主键冲突',
+        ledgerConflict: true,
         send: async () => {
           const key = randomUUID();
           const data = body();
@@ -308,21 +293,16 @@ describe('AC-EV-review-group-recheck 评审组命令事务内权限复核', () =
           return (o) => patch(o, group, data, key);
         },
       },
-      {
-        method: 'DELETE',
-        error: '对象已删除',
-        send: async (op) => {
-          const group = await created(op);
-          const key = randomUUID();
-          return (o) => o.request('DELETE', `${GROUPS}/${group.id}`, { ifMatch: group.revision, idempotencyKey: key });
-        },
-      },
     ];
 
     it.each(cases)('$method（$error）：回查前撤销评审组对象权限 → 不返回胜者结果', async (c) => {
       const op = await manager();
       const send = await c.send(op);
-      const loser: Loser = { winner: () => send(op), afterLoserTx: () => op.revokeEvaluationObject() };
+      const loser: Loser = {
+        winner: () => send(op),
+        afterLoserTx: () => op.revokeEvaluationObject(),
+        ...(c.ledgerConflict ? { ledgerConflict: true } : {}),
+      };
       hooks.loser = loser;
       const response = await send(op);
       const won = await loser.winnerResponse!.clone().json();
@@ -334,7 +314,11 @@ describe('AC-EV-review-group-recheck 评审组命令事务内权限复核', () =
     it.each(cases)('$method（$error）对照：不撤权时败者重放胜者结果（证明走的是回查出口）', async (c) => {
       const op = await manager();
       const send = await c.send(op);
-      const loser: Loser = { winner: () => send(op), afterLoserTx: async () => undefined };
+      const loser: Loser = {
+        winner: () => send(op),
+        afterLoserTx: async () => undefined,
+        ...(c.ledgerConflict ? { ledgerConflict: true } : {}),
+      };
       hooks.loser = loser;
       const response = await send(op);
       expect(response.status, await response.clone().text()).toBe(loser.winnerResponse!.status);
@@ -345,7 +329,11 @@ describe('AC-EV-review-group-recheck 评审组命令事务内权限复核', () =
       const op = await manager();
       const key = randomUUID();
       const data = body();
-      const loser: Loser = { winner: () => create(op, data, key), afterLoserTx: () => op.revokeEmployeeView() };
+      const loser: Loser = {
+        winner: () => create(op, data, key),
+        afterLoserTx: () => op.revokeEmployeeView(),
+        ledgerConflict: true,
+      };
       hooks.loser = loser;
       const response = await create(op, data, key);
       expect(response.status, await response.clone().text()).toBe(201);
