@@ -12,7 +12,7 @@
  * - 本人：ownSheet / ownAnswers / ownSheetTotal——作答页、待办作答与优秀率控制读评价者自己的答卷；
  * - 审计快照：sheetSnapshot / deletedSheetSnapshot 写进数据库的完整快照，出口按上面两个判断裁剪。
  */
-import { and, eq, sql, survey360Answers, survey360SheetTimings, type survey360Sheets, type Tx } from '@italent/db';
+import { eq, sql, survey360Answers, type survey360Sheets, type Tx } from '@italent/db';
 import { survey360 } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import { type Admin, fail, rows } from './context.js';
@@ -141,19 +141,6 @@ export async function isSuspected(tx: Tx, q: LoadedQuestionnaire, roleId: string
     q,
     answers.map((a) => a.optionId),
   );
-}
-
-/** 重新作答 / 移除评价对象清掉答卷时，一并清掉计时：再次作答要重新打开，旧起点不能沿用（DEC-392①）。 */
-export async function clearTimings(tx: Tx, sheets: readonly { relationId: string; questionnaireId: string }[]) {
-  for (const sheet of sheets)
-    await tx
-      .delete(survey360SheetTimings)
-      .where(
-        and(
-          eq(survey360SheetTimings.relationId, sheet.relationId),
-          eq(survey360SheetTimings.questionnaireId, sheet.questionnaireId),
-        ),
-      );
 }
 
 /** 计分（汇总投影）：活动内已提交、未屏蔽答卷的逐题选项，只交给计分引擎聚合，不出接口（scoring.ts）。 */

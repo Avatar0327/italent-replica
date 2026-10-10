@@ -140,7 +140,7 @@ const NO_ANSWER_DATA: Readonly<Record<string, string>> = {
   ),
   ...Object.fromEntries(
     [TODO, LINK].flatMap((base) =>
-      ['open', 'page-check'].map((action) => [
+      ['page-check'].map((action) => [
         `POST ${base}/tasks/:relationId/questionnaires/:questionnaireId/${action}`,
         '作答计时点（DEC-392）：回执只有布尔与 3 秒界面时长，没有答案、评价者标识或耗时',
       ]),

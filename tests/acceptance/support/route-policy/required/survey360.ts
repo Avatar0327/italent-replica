@@ -1388,7 +1388,6 @@ const TASK = '/tasks/:relationId/questionnaires/:questionnaireId';
 const ANSWER_READ = handler('answerRead', "linkRead(deps, entryOf, 'answer'");
 const ANSWER_SAVE = handler('answerSave', "return linkWrite( deps, entryOf, 'answer'");
 const ANSWER_SUBMIT = handler('answerSubmit', "return linkWrite( deps, entryOf, 'answer'");
-const ANSWER_OPEN = handler('answerOpen', "return linkWrite( deps, entryOf, 'answer'");
 const ANSWER_PAGE_CHECK = handler('answerPageCheck', "return linkWrite( deps, entryOf, 'answer'");
 const AVATAR = handler('avatarRoute', 'linkRead( deps, entryOf, kind');
 const LINKS: readonly [string, string, string, readonly Evidence[]][] = [
@@ -1397,7 +1396,6 @@ const LINKS: readonly [string, string, string, readonly Evidence[]][] = [
   ['GET', TASK, 'answerRead(deps, entryOf)', [LINK_ANSWERS, ANSWER_READ]],
   ['PUT', TASK, 'answerSave(deps, entryOf)', [LINK_ANSWERS, ANSWER_SAVE]],
   ['POST', `${TASK}/submit`, 'answerSubmit(deps, entryOf)', [LINK_ANSWERS, ANSWER_SUBMIT]],
-  ['POST', `${TASK}/open`, 'answerOpen(deps, entryOf)', [LINK_ANSWERS, ANSWER_OPEN]],
   ['POST', `${TASK}/page-check`, 'answerPageCheck(deps, entryOf)', [LINK_ANSWERS, ANSWER_PAGE_CHECK]],
   ['GET', '/confirmation/candidates', "linkRead(deps, entryOf, 'confirm'", [CONFIRM_ENTRY]],
   ['POST', '/confirmation/appraisers', "linkWrite( deps, entryOf, 'confirm'", [CONFIRM_ENTRY]],
@@ -1421,7 +1419,6 @@ const TODO_ANSWERS: readonly [string, string, string, readonly Evidence[]][] = [
   ['GET', `${TODO}${TASK}`, 'answerRead(deps, entryOf)', [ANSWER_READ, LINK_READ]],
   ['PUT', `${TODO}${TASK}`, 'answerSave(deps, entryOf)', [ANSWER_SAVE, LINK_WRITE]],
   ['POST', `${TODO}${TASK}/submit`, 'answerSubmit(deps, entryOf)', [ANSWER_SUBMIT, LINK_WRITE]],
-  ['POST', `${TODO}${TASK}/open`, 'answerOpen(deps, entryOf)', [ANSWER_OPEN, LINK_WRITE]],
   ['POST', `${TODO}${TASK}/page-check`, 'answerPageCheck(deps, entryOf)', [ANSWER_PAGE_CHECK, LINK_WRITE]],
 ];
 const todoRecipient = (at: readonly Evidence[]): Obligation[] => [

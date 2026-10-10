@@ -367,6 +367,20 @@ export async function world360(db: Db, label: string, options: { access?: Employ
       });
   }
 
+  /**
+   * 固定时钟下作答与提交在同一毫秒会被“评价过快”判为疑似无效（DEC-392、DEC-405②）：提交那一刻把时钟拨快 ms 毫秒
+   * （每题 2 秒，高于 1.5 秒阈值），提交完恢复，其余依赖固定时间的断言不受影响。
+   */
+  async function elapsed<T>(ms: number, run: () => Promise<T>): Promise<T> {
+    const before = now;
+    now = new Date(before.getTime() + ms);
+    try {
+      return await run();
+    } finally {
+      now = before;
+    }
+  }
+
   /** 用作答链接答完并提交一份答卷；answers 为 题目序号 → 选项键（v4、none…）。 */
   async function answer(
     tokenValue: string,
@@ -385,9 +399,9 @@ export async function world360(db: Db, label: string, options: { access?: Employ
       call('PUT', `/tasks/${relationId}/questionnaires/${q.id}`, { ifMatch: 0, body: { answers } }),
     );
     if (!submit) return saved;
-    // 固定时钟下作答与提交在同一毫秒会被“评价过快”判为疑似无效（DEC-392、DEC-405②）：每题留 2 秒，高于 1.5 秒阈值
-    now = new Date(now.getTime() + q.questions.length * 2000);
-    return call('POST', `/tasks/${relationId}/questionnaires/${q.id}/submit`, { ifMatch: saved.revision });
+    return elapsed(q.questions.length * 2000, () =>
+      call('POST', `/tasks/${relationId}/questionnaires/${q.id}/submit`, { ifMatch: saved.revision }),
+    );
   }
 
   async function scores(activityId: string, objectId: string, by = admin) {
@@ -431,11 +445,8 @@ export async function world360(db: Db, label: string, options: { access?: Employ
     setNow(iso: string) {
       now = new Date(iso);
     },
-    /** 当前夹具时钟（毫秒）；与 advance 配合，在固定时钟的用例里模拟“作答花了多久”。 */
-    nowMs: () => now.getTime(),
-    advance(ms: number) {
-      now = new Date(now.getTime() + ms);
-    },
+    /** 在固定时钟的用例里模拟“作答花了多久”：提交那一刻拨快时钟，执行完恢复。 */
+    elapsed,
   };
 }
 

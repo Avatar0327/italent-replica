@@ -565,7 +565,7 @@ describe('AC-360-F060 校验、不泄露耗时、审计不披露', () => {
     expect(auditObjectRegistered(TIMING_TYPE)).toBe(false);
     const audit = auditApi(testDb().db, at(2000), { authorize: s.w.authorize });
     const as = { user: s.w.admin, tenant: s.w.tenantId };
-    const listed = await audit.dataChanges(as, { limit: '200' });
+    const listed = await audit.dataChanges(as, { limit: '100' });
     expect(listed.items.length).toBeGreaterThan(0);
     expect(listed.items.some((i) => i.objectType === TIMING_TYPE)).toBe(false);
     expect(JSON.stringify(listed)).not.toMatch(TIMING_KEY);

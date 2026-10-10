@@ -16,10 +16,10 @@ import {
   survey360Answers,
   survey360Confirmations,
   survey360Sheets,
-  survey360SheetTimings,
   type Tx,
   withTenant,
 } from '@italent/db';
+import { randomUUID } from 'node:crypto';
 import { advisoryLock, asUuid } from '../../advisory-lock.js';
 import { survey360 } from '@italent/domain';
 import { Hono } from 'hono';
@@ -49,6 +49,7 @@ import {
 } from './context.js';
 import { findLink, type LinkRow } from './links.js';
 import { hasTask, type TaskRow, taskQuery } from './tasks.js';
+import { advancePage, ensureTiming, findTiming } from './timings.js';
 import { completeTodo } from './todos.js';
 import { createPerson, findPersonByEmail, loadPerson, personInput } from './people.js';
 import { type LoadedQuestionnaire, loadQuestionnaire } from './questionnaires.js';
@@ -367,17 +368,6 @@ function checkPage(q: LoadedQuestionnaire, roleId: string, items: z.infer<typeof
   }
 }
 
-async function findTiming(tx: Tx, relationId: string, questionnaireId: string, lock = false) {
-  const query = tx
-    .select()
-    .from(survey360SheetTimings)
-    .where(
-      and(eq(survey360SheetTimings.relationId, relationId), eq(survey360SheetTimings.questionnaireId, questionnaireId)),
-    );
-  const [row] = lock ? await query.for('update') : await query;
-  return row;
-}
-
 /** 同一评价者在同一活动的作答串行化（优秀率按该评价者已提交的答卷计数）。 */
 export async function lockAppraiser(tx: Tx, tenantId: string, activityId: string, personId: string) {
   await advisoryLock(tx, asUuid(tenantId), ':survey360-answer:', asUuid(activityId), ':', asUuid(personId));
@@ -460,7 +450,6 @@ async function excellenceCheck(
 
 const task = '/tasks/:relationId/questionnaires/:questionnaireId';
 const submitTask = `${task}/submit`;
-const openTask = `${task}/open`;
 const pageCheckTask = `${task}/page-check`;
 const TODO = '/my/todos/:todoId';
 
@@ -473,7 +462,6 @@ export function registerAnswerRoutes(module: Hono<TenantEnv>, deps: TenantRouteD
   module.get(task, answerRead(deps, entryOf));
   module.put(task, answerSave(deps, entryOf));
   module.post(submitTask, answerSubmit(deps, entryOf));
-  module.post(openTask, answerOpen(deps, entryOf));
   module.post(pageCheckTask, answerPageCheck(deps, entryOf));
 }
 
@@ -488,8 +476,32 @@ export function registerTodoAnswerRoutes(module: Hono<TenantEnv>, deps: TenantRo
   module.get(`${TODO}${task}`, answerRead(deps, entryOf));
   module.put(`${TODO}${task}`, answerSave(deps, entryOf));
   module.post(`${TODO}${submitTask}`, answerSubmit(deps, entryOf));
-  module.post(`${TODO}${openTask}`, answerOpen(deps, entryOf));
   module.post(`${TODO}${pageCheckTask}`, answerPageCheck(deps, entryOf));
+}
+
+/**
+ * 取作答页 = 首次打开（DEC-405②）：活动启用、答卷未提交时，没有计时就建（打开与翻页起点同为现在），已有不动。
+ * 先取与保存 / 提交同一套锁并重新校验任务归属，再写计时，与替换套卷 / 重新作答的清除串行；暂停或已提交的只读不建。
+ * 这是 GET 上的受控写：幂等（只建一次），审计操作人记“系统”，命令 ID 现生成（GET 没有幂等键）。
+ */
+async function startTiming(
+  tx: Tx,
+  deps: TenantRouteDeps,
+  activity: ActivityRow,
+  link: LinkRow,
+  relationId: string,
+  qid: string,
+) {
+  if (activity.status !== 'enabled') return;
+  if ((await findSheet(tx, relationId, qid))?.status === 'submitted') return;
+  const ctx: Writer = {
+    tenantId: activity.tenant_id,
+    userId: SYSTEM_USER_ID,
+    commandId: randomUUID(),
+    now: deps.clock(),
+  };
+  await openSheet(tx, ctx, activity, link, relationId, qid);
+  await ensureTiming(tx, ctx, activity.id, relationId, qid);
 }
 
 function answerRead(deps: TenantRouteDeps, entryOf: EntryOf) {
@@ -502,6 +514,7 @@ function answerRead(deps: TenantRouteDeps, entryOf: EntryOf) {
         uuidParam(c, 'relationId'),
         uuidParam(c, 'questionnaireId'),
       );
+      await startTiming(tx, deps, activity, link, t.id, questionnaire.row.id);
       const avatars = await linkAvatars(tx, activity.tenant_id, answerPersonIds(link, activity, [t]), entry.avatarBase);
       return {
         activity: { name: activity.name, form: activity.form, status: activity.status },
@@ -533,6 +546,8 @@ function answerSave(deps: TenantRouteDeps, entryOf: EntryOf) {
         const { task: t, questionnaire, sheet } = await openSheet(tx, ctx, activity, link, relationId, qid);
         requireRevision(sheet?.revision ?? 0, ctx.expectedRevision);
         checkAnswers(questionnaire, t.role_id, input.answers);
+        // 没取过作答页就直接保存的新答卷，从第一次保存起算（兜底，DEC-405②）
+        await ensureTiming(tx, ctx, activity.id, relationId, qid);
         const before = sheet ? await ownSheet(tx, sheet) : null;
         let saved: SheetRow;
         if (sheet) {
@@ -628,40 +643,8 @@ function answerSubmit(deps: TenantRouteDeps, entryOf: EntryOf) {
 }
 
 /**
- * 作答页打开（DEC-392①）：记下该评价对象答卷**首次**打开的时刻，之后的打开不挪动起点（离开与空闲都计入耗时）。
- * 与保存 / 提交共用 openSheet 的校验与取锁（活动启用、任务归属、答卷未提交）。耗时只存库，不进回执与审计（DEC-371⑤）。
- */
-function answerOpen(deps: TenantRouteDeps, entryOf: EntryOf) {
-  return (c: C) => {
-    const relationId = uuidParam(c, 'relationId');
-    const qid = uuidParam(c, 'questionnaireId');
-    return linkWrite(
-      deps,
-      entryOf,
-      'answer',
-      z.object({}).passthrough(),
-      async (tx, ctx, link, activity) => {
-        await openSheet(tx, ctx, activity, link, relationId, qid);
-        await tx
-          .insert(survey360SheetTimings)
-          .values({
-            tenantId: ctx.tenantId,
-            relationId,
-            questionnaireId: qid,
-            openedAt: ctx.now,
-            pageStartedAt: ctx.now,
-          })
-          .onConflictDoNothing();
-        return { opened: true };
-      },
-      { ...taskGuard(relationId, qid), revisionFree: true },
-    )(c);
-  };
-}
-
-/**
  * 点“下一页”时按本页判断（DEC-392④）：本页耗时 = 距上一次翻页（首页为打开）的时间，分母 = 本页题数；或本页连续选择同一
- * 选项。回布尔与 3 秒自动消失；不阻止翻页；没有打开记录（旧客户端 / 历史答卷）不判。响应不含耗时。
+ * 选项。回布尔与 3 秒自动消失；不阻止翻页。响应不含耗时；翻页起点的更新写审计（DEC-405①）。
  */
 function answerPageCheck(deps: TenantRouteDeps, entryOf: EntryOf) {
   return (c: C) => {
@@ -675,18 +658,21 @@ function answerPageCheck(deps: TenantRouteDeps, entryOf: EntryOf) {
       async (tx, ctx, link, activity, input) => {
         const { task: t, questionnaire } = await openSheet(tx, ctx, activity, link, relationId, qid);
         checkPage(questionnaire, t.role_id, input.items);
-        const timing = await findTiming(tx, relationId, qid, true);
-        let reminder = false;
-        if (timing) {
-          const elapsed = ctx.now.getTime() - new Date(timing.pageStartedAt).getTime();
-          const chosen = input.items.flatMap((i) => (i.optionId ? [i.optionId] : []));
-          reminder = survey360.isTooFast(elapsed, input.items.length) || sameChoice(questionnaire, chosen);
-          await tx
-            .update(survey360SheetTimings)
-            .set({ pageStartedAt: ctx.now })
-            .where(eq(survey360SheetTimings.id, timing.id));
+        // 连续选同一选项与有没有计时记录无关（第 1 轮审查 P2-2）；没有计时记录（被清除后继续作答）就补建，这一页不判耗时
+        const chosen = input.items.flatMap((i) => (i.optionId ? [i.optionId] : []));
+        const { timing, created } = await ensureTiming(tx, ctx, activity.id, relationId, qid);
+        let tooFast = false;
+        if (!created) {
+          tooFast = survey360.isTooFast(
+            ctx.now.getTime() - new Date(timing.pageStartedAt).getTime(),
+            input.items.length,
+          );
+          await advancePage(tx, ctx, activity.id, timing);
         }
-        return { reminder, autoDismissSeconds: PAGE_REMINDER_DISMISS_SECONDS };
+        return {
+          reminder: tooFast || sameChoice(questionnaire, chosen),
+          autoDismissSeconds: PAGE_REMINDER_DISMISS_SECONDS,
+        };
       },
       { ...taskGuard(relationId, qid), revisionFree: true },
     )(c);

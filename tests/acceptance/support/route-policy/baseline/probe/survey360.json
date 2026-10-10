@@ -1051,21 +1051,6 @@
       "obj:Survey360.Relation:update"
     ]
   },
-  "POST /api/tenant/survey360/my/todos/:todoId/tasks/:relationId/questionnaires/:questionnaireId/open": {
-    "all": {
-      "code": "NOT_FOUND",
-      "error": "4a5f9ae37b40",
-      "status": 404
-    },
-    "fieldQueries": [],
-    "invalidId": {
-      "code": "VALIDATION_FAILED",
-      "error": "17147722c2a8",
-      "status": 400
-    },
-    "scopeQueries": [],
-    "trace": []
-  },
   "POST /api/tenant/survey360/my/todos/:todoId/tasks/:relationId/questionnaires/:questionnaireId/page-check": {
     "all": {
       "code": "NOT_FOUND",
