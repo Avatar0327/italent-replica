@@ -402,14 +402,14 @@ export async function write<T>(
 ): Promise<Response> {
   const tenant = tenantOf(c);
   const route = await routeNeed(c, deps, options.need);
-  const people = await routePeople(c, deps, route, options.need.object);
-  const checked = async (tx: Tx, scope: ModuleScope | undefined) => {
+  const routeScope = await routePeople(c, deps, route, options.need.object);
+  const checked = async (tx: Tx, people: ModuleScope | undefined) => {
     await requireNeed(tx, deps, tenant, options.need);
-    const admin = await loadAdmin(tx, deps, tenant, scope, options.admin);
+    const admin = await loadAdmin(tx, deps, tenant, people, options.admin);
     await options.guard?.(tx, admin);
     return admin;
   };
-  const admin = await withTenant(deps.db, tenant.tenantId, (tx) => checked(tx, people));
+  const admin = await withTenant(deps.db, tenant.tenantId, (tx) => checked(tx, routeScope));
   await options.preflight?.(admin);
   const expectedRevision = options.revisionFree ? 0 : revision(c);
   const input = parse(schema, await jsonOrEmpty(c));

@@ -610,13 +610,13 @@ const ROUTES: readonly Route[] = [
     need: 'need: SYNC',
     needConst: SYNC_NEED,
     extra: (entry) => {
-      const anchor = 'preflight: async () => void (employees = await routeEmployeeScope(c, deps))';
+      const anchor = 'preflight: async () => void (await routeEmployeeScope(c, deps))';
       return [
         preflight(entry, anchor),
         employeeView([{ ...entry, anchor }], ROUTE_EMPLOYEE_FACTS),
         // 写范围与披露：受限（精细化生效）时只新建 / 更新范围内员工、不改邮箱、冲突与跳过项按范围裁剪，不拒绝请求
         ...allActivitiesDisclosure(entry, 'write', [
-          { ...entry, anchor: 'return syncView(viewer, employees!, body, after);' },
+          { ...entry, anchor: 'return syncView(viewer, employees, body, after);' },
           { role: 'impl', unit: `${S}/sync.ts#refreshLinked`, anchor: 'const keepEmail = !!ctx.admin.people;' },
           { role: 'impl', unit: `${S}/sync.ts#syncUnlinked`, anchor: 'if (ctx.admin.people) {' },
           {
