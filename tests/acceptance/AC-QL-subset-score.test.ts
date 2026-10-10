@@ -16,7 +16,7 @@ const bodyOf = async (response: Response) =>
   (await response.clone().json()) as { error?: { code?: string; message?: string; details?: { reason?: string } } };
 
 describe('AC-QL-subset-score finalScore 最多两位小数（DEC-374⑤ 🟡）', () => {
-  it('合法值原样保存：88.55 / 88.5 / 88 / 0；读取、回执与版本表一致', async () => {
+  it('合法值原样保存：88.55 / 88.5 / 88 / 0；读取、回执与版本表一致（DEC-374④）', async () => {
     const { w, path, add, rows, tx } = await subsetScene(database, 'qs-score-ok');
     for (const value of [88.55, 88.5, 88, 0]) {
       const response = await add({ finalScore: value });
@@ -37,7 +37,7 @@ describe('AC-QL-subset-score finalScore 最多两位小数（DEC-374⑤ 🟡）'
     expect(versions.sort()).toEqual([0, 88, 88.5, 88.55]);
   });
 
-  it('新增超过两位小数 → 400 FIELD_PRECISION，不留行不留版本', async () => {
+  it('新增超过两位小数 → 400 FIELD_PRECISION，不留行不留版本（DEC-374④）', async () => {
     const { add, rows, count } = await subsetScene(database, 'qs-score-create');
     for (const value of [88.555, 77.777, 0.001, 1e-7, 12.345678]) {
       const response = await add({ finalScore: value });
@@ -51,7 +51,7 @@ describe('AC-QL-subset-score finalScore 最多两位小数（DEC-374⑤ 🟡）'
     expect(await count(sql`SELECT count(*)::int AS n FROM personnel_qualification_versions`)).toBe(0);
   });
 
-  it('修改成超过两位小数 → 400，原值与版本不变；原样带回已有的合法值、改别的字段不受影响', async () => {
+  it('修改成超过两位小数 → 400，原值与版本不变；原样带回已有的合法值、改别的字段不受影响（DEC-374④）', async () => {
     const { w, path, add, rows, count } = await subsetScene(database, 'qs-score-patch');
     const created = (await (await add({ finalScore: 88.55 })).json()) as { id: string };
     const patch = (body: Record<string, unknown>, revision: number) =>
@@ -71,7 +71,7 @@ describe('AC-QL-subset-score finalScore 最多两位小数（DEC-374⑤ 🟡）'
     expect((await rows())[0]!.final_score).toBeNull();
   });
 
-  it('系统来源（评定发布等）超过两位小数同样拒绝，不能绕过 HTTP 限制', async () => {
+  it('系统来源（评定发布等）超过两位小数同样拒绝，不能绕过 HTTP 限制（DEC-374④）', async () => {
     const { w, s, tx, base, rows } = await subsetScene(database, 'qs-score-system');
     const save = (finalScore: number) =>
       tx((t) =>
