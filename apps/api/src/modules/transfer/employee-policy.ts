@@ -1,12 +1,13 @@
 import { sql, type Tx } from '@italent/db';
+import { EMPLOYEE_READONLY_FIELDS as DOMAIN_READONLY_FIELDS } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { findPredecessor } from '../employment/read-model.js';
 import { camelRow, rowsOf, snapshotFields } from '../employment/record-store.js';
 import type { EmploymentBusinessPatch, EmploymentContext, PresetFields } from '../employment/types.js';
 import { requireManagerCandidate } from './employee-managers.js';
 
-// DEC-209：员工发起业务的只读上限，不因入口或额外身份的编辑权放开。
-export const EMPLOYEE_READONLY_FIELDS = new Set(['postId', 'levelId', 'sequenceId']);
+// DEC-209：员工发起业务的只读上限，不因入口或额外身份的编辑权放开。单一来源在 domain（C1-2b，DEC-399）。
+export const EMPLOYEE_READONLY_FIELDS: ReadonlySet<string> = new Set(DOMAIN_READONLY_FIELDS);
 
 /** 只校验显式输入；原值与服务端自动带出值不能冒充客户端填写，也不按客户端新引用拒绝。 */
 export async function requireEmployeeTransferFields(

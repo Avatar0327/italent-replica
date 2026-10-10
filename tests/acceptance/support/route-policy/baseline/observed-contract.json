@@ -15396,7 +15396,8 @@
           "requireObjectWrite（对象写操作权）"
         ],
         "precondition": [
-          "ownTransferInput"
+          "ownTransferInput",
+          "requireSelfServiceButtons"
         ],
         "scope": [
           "checkScope",
@@ -15450,7 +15451,8 @@
           "object.* 动作"
         ],
         "precondition": [
-          "ownTransferInput"
+          "ownTransferInput",
+          "requireSelfServiceButtons"
         ],
         "scope": [
           "employment scope",

@@ -7,7 +7,8 @@ import type { TenantEnv } from '../../tenant-context.js';
 import { jsonBody, pageQuery, revision, runWrite, uuidParam } from '../employment/context.js';
 import { EmploymentError } from '../employment/errors.js';
 import { createTransfer } from '../transfer/service.js';
-import { selfAccess, transferFieldAccess } from './access.js';
+import type { CommandGuard } from '../../commands.js';
+import { requireSelfServiceButtons, type SelfAccess, selfAccess, transferFieldAccess } from './access.js';
 import { applicationStatus, currentRecord, ownApplication, ownApplications, ownRecords } from './queries.js';
 import { ownTransferInput, ownTransferPreview } from './transfer.js';
 import { readTransferCatalog } from '../transfer/configuration.js';
@@ -98,12 +99,28 @@ function registerTransferRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps) 
     // 首次与幂等重放都按当前字段权限检查，事务中再次检查本人绑定。
     await withTenant(deps.db, self.ctx.tenantId, (tx) => ownTransferInput(tx, self.ctx, raw, deps));
     const commandInput = { employeeId: self.employee.id, input: raw };
-    return runWrite(c, self.deps, self.ctx, commandInput, async (tx, ctx) => {
-      await self.check(tx);
-      const input = await ownTransferInput(tx, ctx, raw, deps);
-      return { status: 201, body: await createTransfer(tx, ctx, self.employee.id, input) };
-    });
+    return runWrite(
+      c,
+      self.deps,
+      self.ctx,
+      commandInput,
+      async (tx, ctx) => {
+        await self.check(tx);
+        const input = await ownTransferInput(tx, ctx, raw, deps);
+        return { status: 201, body: await createTransfer(tx, ctx, self.employee.id, input) };
+      },
+      { guard: selfTransferGuard(self) },
+    );
   });
+}
+
+/**
+ * 三个本人调动按钮的命令内复核（契约 §2.3.1）：接 CommandGuard.before，runCommand 的三个出口（首次执行、直接重放、失败后回查）
+ * 都经 ledgerExit 先过它，所以撤权后重放拿不到原 201。只设 before：结果可见性仍由 runWrite 返回后的 authorizeEmploymentResult 复核。
+ * 工厂放在这里而不是 access.ts：检查函数留在 access.ts，才能让 F-039 的 delete-precondition 变异体生成。
+ */
+function selfTransferGuard(self: SelfAccess): CommandGuard {
+  return { before: (tx) => requireSelfServiceButtons(tx, self.ctx) };
 }
 
 function registerApplicationRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
