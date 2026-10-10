@@ -135,6 +135,32 @@ describe('盘点流程定义 CRUD', () => {
     expect((await w.request('DELETE', `/roles/${live.id}`, { ifMatch: 1 })).status).toBe(200);
   });
 
+  it('停用角色按“原节点 × 角色”判定保留：原节点保留可改，新增节点 / 转配给其他节点 / 删除重建都 400 FLOW_ROLE_DISABLED（审查第 1 轮 P2-01）', async () => {
+    const w = await formFlowWorld(testDb().db, 'trl-disabled-per-node');
+    const [off, other] = [await w.role(), await w.role()];
+    const created = (await (
+      await w.post(FLOWS, flowBody([nodeBody([off.id], { nodeKey: 'a' }), nodeBody([other.id], { nodeKey: 'b' })]))
+    ).json()) as FlowView;
+    const [a, b] = created.nodes as [FlowView['nodes'][number], FlowView['nodes'][number]];
+    expect((await w.request('PATCH', `/roles/${off.id}`, { ifMatch: 1, body: { enabled: false } })).status).toBe(200);
+    const patch = (ifMatch: number, nodes: unknown[]) =>
+      w.request('PATCH', `${FLOWS}/${created.id}`, { ifMatch, body: { nodes } });
+    // 原节点保留停用角色、只改其他属性：允许
+    const kept = await patch(1, [{ ...a, name: '改名' }, b]);
+    expect(kept.status, await kept.clone().text()).toBe(200);
+    const before = (await w.read<FlowView>(FLOWS, created.id)).body;
+    // 新增节点选用停用角色
+    const added = await patch(2, [a, b, nodeBody([off.id], { nodeKey: 'c' })]);
+    expect([added.status, await reasonOf(added)]).toEqual([400, 'FLOW_ROLE_DISABLED']);
+    // 把停用角色转配给已有的另一个节点（countersign 同样）
+    const moved = await patch(2, [a, { ...b, kind: 'countersign', roleIds: [other.id, off.id] }]);
+    expect([moved.status, await reasonOf(moved)]).toEqual([400, 'FLOW_ROLE_DISABLED']);
+    // 删除旧节点后不带 id 重建（等于新增关系）
+    const rebuilt = await patch(2, [nodeBody([off.id], { nodeKey: 'a' }), b]);
+    expect([rebuilt.status, await reasonOf(rebuilt)]).toEqual([400, 'FLOW_ROLE_DISABLED']);
+    expect((await w.read<FlowView>(FLOWS, created.id)).body).toEqual(before);
+  });
+
   it('名称租户唯一 409 FLOW_DUPLICATE；revision 不一致 409；停用 / 删除', async () => {
     const w = await formFlowWorld(testDb().db, 'trl-misc');
     const flow = await w.createFlow({ name: '甲' });
