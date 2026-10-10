@@ -73,8 +73,8 @@ const MATRIX = `${TR_APP}.Matrix`;
 const PRESET_COUNT = STANDARD_PROFILES.flatMap(presetSeeAllTargets).length;
 
 describe('AC-PLAT-F061 D3 批准清单守卫（DEC-374②、DEC-384）', () => {
-  it('批准清单每行写身份、应用、种类、目标编码与 DEC 号：DEC-374② 的四个盘点设置对象 + DEC-384 的 32 个', () => {
-    expect(SEE_ALL_BACKFILL_APPROVED).toHaveLength(36);
+  it('批准清单每行写身份、应用、种类、目标编码与 DEC 号：DEC-374② 的四个盘点设置对象 + DEC-384 的 32 个 + DEC-408② 的 2 个', () => {
+    expect(SEE_ALL_BACKFILL_APPROVED).toHaveLength(38);
     const byDec = (dec: string) => SEE_ALL_BACKFILL_APPROVED.filter((a) => a.dec === dec);
     expect(byDec('DEC-374②')).toEqual(
       APPROVED.map((targetCode) => ({
@@ -86,7 +86,8 @@ describe('AC-PLAT-F061 D3 批准清单守卫（DEC-374②、DEC-384）', () => {
       })),
     );
     expect(byDec('DEC-384')).toHaveLength(32);
-    expect(new Set(SEE_ALL_BACKFILL_APPROVED.map((a) => a.dec))).toEqual(new Set(['DEC-374②', 'DEC-384']));
+    expect(byDec('DEC-408②').map((a) => a.targetCode)).toEqual([`${TR_APP}.ScoreRule`, `${TR_APP}.ModuleGrade`]);
+    expect(new Set(SEE_ALL_BACKFILL_APPROVED.map((a) => a.dec))).toEqual(new Set(['DEC-374②', 'DEC-384', 'DEC-408②']));
     for (const a of SEE_ALL_BACKFILL_APPROVED) {
       expect(a.profileCode && a.appCode && a.targetCode, JSON.stringify(a)).toBeTruthy();
       expect(['entity', 'datasource']).toContain(a.targetKind);
@@ -94,10 +95,10 @@ describe('AC-PLAT-F061 D3 批准清单守卫（DEC-374②、DEC-384）', () => {
     const unique = new Set(
       SEE_ALL_BACKFILL_APPROVED.map((a) => `${a.profileCode}|${a.appCode}|${a.targetKind}|${a.targetCode}`),
     );
-    expect(unique.size).toBe(36);
+    expect(unique.size).toBe(38);
   });
 
-  it('批准的目标就是身份定义里全部预置看全部的目标：unapprovedSeeAllTargets() 为空，看全部编码恰好 36 个', () => {
+  it('批准的目标就是身份定义里全部预置看全部的目标：unapprovedSeeAllTargets() 为空，看全部编码恰好 38 个', () => {
     expect(unapprovedSeeAllTargets()).toEqual([]);
     expect(PRESET_COUNT).toBe(SEE_ALL_BACKFILL_APPROVED.length);
     const seeAllCodes = STANDARD_GRANT_CODES.filter((code) => code.includes('/seeAll:'));

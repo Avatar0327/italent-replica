@@ -25,6 +25,9 @@ export async function calcRuleSources(deps: TenantRouteDeps, ctx: TenantContext)
   const scope = allowed ? await resolveModuleScope(deps, ctx, undefined, FIELD) : null;
   const viewable = allowed ? await getModuleViewableFields(deps, ctx, FIELD) : undefined;
   const columns = allowed && (viewable === undefined || REFERENCE_COLUMNS.every((column) => viewable.has(column)));
+  // hints 的投影随 items 列的查看权（契约 §5.2）；没有计算规则的对象查看权时 items 也看不到
+  const ruleViewable = await getModuleViewableFields(deps, ctx, CALC_RULE_AUDIT_TYPE);
+  const itemsViewable = ruleViewable === undefined || ruleViewable.has('items');
   return {
     async redact(tx: Tx, rows) {
       if (!rows.some((row) => row.objectType === CALC_RULE_AUDIT_TYPE)) return [...rows];
@@ -36,6 +39,7 @@ export async function calcRuleSources(deps: TenantRouteDeps, ctx: TenantContext)
       const directory = {
         visible: new Map(seen.map((field) => [field.id.toLowerCase(), field.name])),
         allVisible: seen.length === fields.length,
+        itemsViewable,
       };
       return rows.map((row) =>
         row.objectType === CALC_RULE_AUDIT_TYPE

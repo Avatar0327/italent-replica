@@ -5,6 +5,17 @@
 import type { Graph } from '../../../evidence-graph.js';
 
 export const GRAPH: Graph = {
+  'packages/domain/src/personnel/catalog.ts#PERSONNEL_OBJECTS': [
+    '#EMPLOYEE_ATTRIBUTE_FIELDS',
+    '#PERSONNEL_BUTTONS',
+    '#PERSONNEL_OBJECT',
+    '#PERSONNEL_REQUEST_OBJECT',
+    '#SUBSET_EMPLOYEE_ATTRIBUTES',
+    '#TENURE_FIELDS',
+    '#metadata',
+    'packages/domain/src/personnel/fields.ts#EMPLOYEE_FIELDS',
+    'packages/domain/src/personnel/fields.ts#SUBSETS',
+  ],
   'packages/domain/src/personnel/fields.ts#EMPLOYEE_FIELDS': [
     '#EMPLOYEE_EDITABLE_FIELDS',
     '#EMPLOYEE_REFLECTED_FIELDS',

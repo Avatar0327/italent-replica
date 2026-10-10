@@ -55,9 +55,9 @@ export interface Identity {
 }
 
 /** 一个租户 + 一名成员（全部允许），带配置对象快捷方法。 */
-export async function configWorld(db: Db, label: string) {
+export async function configWorld(db: Db, label: string, deps: Parameters<typeof tenantApi>[1] = {}) {
   const member = await seedTenantWithMember(db, label);
-  const api = tenantApi(db, { clock: () => TR_NOW });
+  const api = tenantApi(db, { clock: () => TR_NOW, ...deps });
   const as: Identity = { user: member.user.id, tenant: member.tenant.id };
   const request = (method: string, path: string, options: RequestOptions = {}, who: Identity = as) =>
     api.request(method, `${TR_BASE}${path}`, { ...options, ...who });
@@ -83,6 +83,8 @@ export interface OperatorOptions {
   readonly operations?: { create: boolean; update: boolean; delete: boolean };
   /** 即使 buttons 为真也不授予的按钮编码。 */
   readonly omitButtons?: readonly string[];
+  /** 把身份授予已有成员（同一用户同时持有多个对象的身份）；缺省新建成员。 */
+  readonly user?: { readonly id: string };
 }
 
 /** 真实授权器下的操作人：身份只带 TalentReview 应用与指定对象，按需配置看全部、隐藏字段、按钮。 */
@@ -118,7 +120,7 @@ export async function configOperator(
   };
   if (options.view !== false) await setButtons(options.buttons ?? true);
   await makeGrantable(world, [profile.id]);
-  const user = await addMember(world, `trc-operator-${randomUUID().slice(0, 4)}`);
+  const user = options.user ?? (await addMember(world, `trc-operator-${randomUUID().slice(0, 4)}`));
   expect((await grant(world, user.id, profile.id)).status).toBe(201);
   const as = { user: user.id, tenant: world.tenant.id };
   let seeAllRevision = 0;

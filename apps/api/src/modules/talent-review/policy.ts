@@ -49,12 +49,12 @@ const rdyWrite = (fields: 'body' | 'none') =>
  * docs/08_设计/R3-T04_PR-B1_路由声明.md。
  */
 function configRoutes(
-  key: 'category' | 'role' | 'field' | 'scoreRule' | 'moduleGrade' | 'form' | 'flow',
+  key: 'category' | 'role' | 'field' | 'scoreRule' | 'moduleGrade' | 'mapping' | 'form' | 'flow',
   path: string,
   table: string,
-  createGuards: readonly string[] = [],
-  updateGuards: readonly string[] = [],
+  options: { createGuards?: readonly string[]; renameGuard?: boolean; updateGuards?: readonly string[] } = {},
 ) {
+  const { createGuards = [], renameGuard = true, updateGuards = [] } = options;
   const code = TALENT_REVIEW_OBJECTS[key].code;
   const fields = projector(`talentReview.${key}`, `talentReview.${key}`);
   const point = seeAll(NOT_FOUND, { creatorLocator: `talentReview.${key}.createdBy` });
@@ -94,7 +94,7 @@ function configRoutes(
       button: button('update', 'detail'),
       scope: point,
       fields,
-      guards: ['talentReview.configRenameRequiresSeeAll', ...updateGuards],
+      guards: [...(renameGuard ? ['talentReview.configRenameRequiresSeeAll'] : []), ...updateGuards],
       write: changed('body'),
       ...(key === 'field' ? { optional: { renameBreaksDisclosure: RENAME_BREAKS_DISCLOSURE } } : {}),
     }),
@@ -122,15 +122,26 @@ export const TALENT_REVIEW_POLICIES = defineTable('talent-review', {
   ...configRoutes('category', '/api/tenant/talent-review/categories', 'talent_review_categories'),
   ...configRoutes('role', '/api/tenant/talent-review/roles', 'talent_review_roles'),
   // 新建时指定成对字段 = 同时修改另一端：另需更新权、update 按钮与 pairFieldId 编辑权（requirePairUpdate）
-  ...configRoutes('field', '/api/tenant/talent-review/fields', 'talent_review_fields', [
-    'talentReview.pairRequiresUpdate',
-  ]),
-  // PR-B2a：评价规则、模块等级（有名称，改名要求看全部）
+  ...configRoutes('field', '/api/tenant/talent-review/fields', 'talent_review_fields', {
+    createGuards: ['talentReview.pairRequiresUpdate'],
+  }),
+  // PR-B2：评价规则、模块等级（有名称，改名要求看全部）与字段映射（无名称；引用字段 = 读取字段对象，另需其查看权与范围）
   ...configRoutes('scoreRule', '/api/tenant/talent-review/score-rules', 'talent_review_score_rules'),
   ...configRoutes('moduleGrade', '/api/tenant/talent-review/module-grades', 'talent_review_module_grades'),
+  ...configRoutes('mapping', '/api/tenant/talent-review/field-mappings', 'talent_review_field_mappings', {
+    createGuards: ['talentReview.mappingFieldVisible'],
+    updateGuards: ['talentReview.mappingFieldVisible'],
+    renameGuard: false,
+  }),
   // PR-B3：盘点内容表单（引用字段目录）、盘点流程定义（引用角色）：带引用时另需目录对象的查看权
-  ...configRoutes('form', '/api/tenant/talent-review/forms', 'talent_review_forms', FORM_REF, FORM_REF),
-  ...configRoutes('flow', '/api/tenant/talent-review/flows', 'talent_review_flows', FLOW_REF, FLOW_REF),
+  ...configRoutes('form', '/api/tenant/talent-review/forms', 'talent_review_forms', {
+    createGuards: FORM_REF,
+    updateGuards: FORM_REF,
+  }),
+  ...configRoutes('flow', '/api/tenant/talent-review/flows', 'talent_review_flows', {
+    createGuards: FLOW_REF,
+    updateGuards: FLOW_REF,
+  }),
   // 租户设置是单例：读写都只有看全部（requireConfigCreatable，否则 404）；没有记录时返回默认值与 revision 0
   [`GET ${SETTINGS}`]: object({
     object: SETTINGS_CODE,

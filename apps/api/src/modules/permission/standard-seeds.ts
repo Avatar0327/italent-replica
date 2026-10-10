@@ -63,11 +63,22 @@ export const takeoverProbe: { afterAuditRead?: (profileCode: string) => Promise<
 
 registerSeed({
   ...PROFILE_ENTRY,
-  version: 1,
+  // 清单变化即递增：2 = 新增员工身份 employee_self_service（C1-2b，DEC-399）
+  version: 2,
   codes: STANDARD_PROFILES.map((profile) => profile.code),
   // 不论 source：手工同编码身份计入已有（CODE_TAKEN），不装、不覆盖
   existing: async (tx) =>
     new Set((await tx.select({ code: permissionProfiles.code }).from(permissionProfiles)).map((p) => p.code)),
+  // DEC-402⑤：计数照旧含手工同编码行，另把它们逐个列出（所有标准身份统一生效），每次回补都列
+  existingDetails: async (tx) => {
+    const standard = new Set(STANDARD_PROFILES.map((profile) => profile.code));
+    const rows = await tx
+      .select({ code: permissionProfiles.code })
+      .from(permissionProfiles)
+      .where(eq(permissionProfiles.source, 'custom'))
+      .orderBy(asc(permissionProfiles.code));
+    return rows.filter((row) => standard.has(row.code)).map((row) => ({ code: row.code, reason: 'CODE_TAKEN' }));
+  },
   install: async (tx, write, missing) => {
     const wanted = new Set(missing);
     await installProfilesForTenantAdmins(

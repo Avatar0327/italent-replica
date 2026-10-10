@@ -5,6 +5,23 @@
 import type { Graph } from '../../../evidence-graph.js';
 
 export const GRAPH: Graph = {
+  'packages/domain/src/talent-review/bound-analysis.ts#analyzeBoundItems': [
+    'packages/domain/src/expression/engine.ts#orderComputationItems',
+    'packages/domain/src/expression/engine.ts#validateFormula',
+    'packages/domain/src/expression/lexer.ts#fieldHandle',
+    'packages/domain/src/expression/lexer.ts#parseFieldHandle',
+    'packages/domain/src/expression/registry.ts#createDefaultRegistry',
+    '#toIssue',
+    'packages/domain/src/talent-review/calc-rule.ts#FORMULA_CONTEXT_FIELDS',
+    'packages/domain/src/talent-review/calc-rule.ts#formulaFieldKind',
+    'packages/domain/src/talent-review/calc-rule.ts#formulaPath',
+  ],
+  'packages/domain/src/talent-review/calc-hints.ts#projectHints': [
+    '#CYCLE_KINDS',
+    '#HINT_CYCLE_HIDDEN',
+    '#hintItemsHidden',
+    '#hintOtherHidden',
+  ],
   'packages/domain/src/talent-review/calc-rule.ts#analyzeCalcItems': [
     'packages/domain/src/expression/engine.ts#orderComputationItems',
     'packages/domain/src/expression/engine.ts#validateFormula',
@@ -37,6 +54,7 @@ export const GRAPH: Graph = {
   'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>field': ['#object'],
   'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>flow': ['#object'],
   'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>form': ['#object'],
+  'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>mapping': ['#object'],
   'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>matrix': ['#object'],
   'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>moduleGrade': ['#object'],
   'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>readiness': ['#object'],
@@ -46,7 +64,11 @@ export const GRAPH: Graph = {
   'packages/domain/src/talent-review/catalog.ts#object': ['#SYSTEM_FIELDS', '#TALENT_REVIEW_APP', '#crud'],
   'packages/domain/src/talent-review/form-flow.ts#checkFlowNodes': ['#violation'],
   'packages/domain/src/talent-review/form-flow.ts#checkFormFields': ['#violation'],
-  'packages/domain/src/talent-review/formula-audit.ts#filterHints': ['#ids', '#isObject'],
+  'packages/domain/src/talent-review/formula-audit.ts#filterHints': [
+    'packages/domain/src/talent-review/calc-hints.ts#projectHints',
+    '#idsOf',
+    '#isObject',
+  ],
   'packages/domain/src/talent-review/formula-audit.ts#filterRefs': ['#isObject'],
   'packages/domain/src/talent-review/formula-audit.ts#redactCalcRuleAuditValue': [
     '#filterHints',
