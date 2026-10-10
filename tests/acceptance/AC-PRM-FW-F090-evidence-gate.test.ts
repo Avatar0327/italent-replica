@@ -16,6 +16,7 @@ import {
   currentRegistry,
   effectiveUses,
   repoSource,
+  resolveUnits,
   syncedRegistry,
   unitText,
   registryFiles,
@@ -288,6 +289,25 @@ describe('AC-PRM-FW-F090 证据单元改名：登记里的单元在源码里不�
       expect(() => syncedRegistry(TABLE, reader, false).units, code).toThrow(code);
       expect(() => checkEvidence(TABLE, { read: reader, branch: false }), code).toThrow(code);
     }
+  });
+
+  it('真实表的有效单元集合有进程内缓存：调用方改返回的 Map / 引用数组 / 失效清单，不影响下一次读取（R3 P3-1）', () => {
+    const before = resolveUnits();
+    const [unit, uses] = [...before.uses][0]!;
+    const count = uses.length;
+    const first = effectiveUses();
+    first.get(unit)!.pop();
+    first.delete(unit);
+    const resolved = resolveUnits();
+    resolved.uses.get(unit)!.pop();
+    resolved.uses.delete(unit);
+    (resolved.texts as Map<string, string>).delete(unit);
+    (resolved.broken as string[]).push('apps/api/src/modules/fixture/none.ts#none');
+    const again = resolveUnits();
+    expect(again.uses.get(unit), '引用数组不受调用方修改影响').toHaveLength(count);
+    expect(again.texts.has(unit)).toBe(true);
+    expect(again.broken).not.toContain('apps/api/src/modules/fixture/none.ts#none');
+    expect(effectiveUses().get(unit)).toHaveLength(count);
   });
 
   it('生成登记文件（ROUTE_POLICY_UPDATE_DIGESTS=1）遇到失效单元仍然报错，不静默丢弃', () => {
