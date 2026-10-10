@@ -7,23 +7,28 @@
  * 与方案文字的一处出入（按 §3.2 公式与 A2 为准）：§6 测试 10 写“A 组的 impacts 不含 R”，但 R_reg(A) ∋ R（旧图 R→A），
  * 公式要求取并，所以 A 组含 R，且只以 snapshot 'reg' 出现；测试 10 断言“任何关于 X 的报告都不含 R、A 组不经 cur 快照连到 R”。
  */
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Finding } from './support/route-policy/compare.js';
 import { EVIDENCE_BOUNDARY, inBoundary } from './support/route-policy/evidence-boundary.js';
 import { MAX_DEPTH } from './support/route-policy/evidence-closure.js';
 import type { Graph, Registry } from './support/route-policy/evidence-graph.js';
 import { impactCounts, type StaleGroup, staleGroups, type Use } from './support/route-policy/evidence-report.js';
 import {
+  brokenUnits,
   checkEvidence,
+  checkStored,
   closureReports,
   currentRegistry,
   currentRequiredRegistry,
+  effectiveUses,
   REGISTRY,
   repoSource,
   type SourceReader,
+  syncedRegistry,
   unitText,
   usesOf,
 } from './support/route-policy/evidence.js';
+import { EVIDENCE_STRICT_ENV, gateEvidence } from './support/route-policy/evidence-gate.js';
 import { REQUIRED } from './support/route-policy/required/index.js';
 import { TENANT_SETTINGS } from './support/route-policy/required/tenant-settings.js';
 import type { RequiredTable } from './support/route-policy/required/types.js';
@@ -887,4 +892,64 @@ describe('AC-PRM-FW-02 集中报告：纯证据根第一次成为依赖不算摘
     expect([...group.kinds].sort()).toEqual(['digest', 'root']);
     expect(group.impacts.map((i) => i.root).sort()).toEqual([R, S].sort());
   });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// F-090 第 2 轮审查 P2-1：证据单元连同全部调用方一致改名、登记未更新（真实表、真实报告路径）
+// ---------------------------------------------------------------------------------------------------------------
+
+describe('AC-PRM-FW-02 集中报告：证据单元一致改名、登记未更新（F-090 R2 P2-1）', () => {
+  const OLD = 'apps/api/src/modules/permission/module-route-access.ts#objectContext';
+  /** 内存里把 objectContext 连同全部调用方一致改名（业务行为不变）；义务表与 required/digests/ 都不动。 */
+  const renamed: SourceReader = (file) => {
+    const text = repoSource(file);
+    return file.startsWith('apps/') ? text.replace(/\bobjectContext\b/g, 'objectAccessContext') : text;
+  };
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  it('失效单元只由门禁按 EVIDENCE_UNIT 报：默认只警告、不判红；严格（显式 / 环境变量）判红', () => {
+    expect(usesOf(REQUIRED).has(OLD), '义务表仍引用旧单元').toBe(true);
+    expect(brokenUnits(REQUIRED, renamed)).toEqual([OLD]);
+    expect(effectiveUses(REQUIRED, renamed).has(OLD), '有效单元集合不含失效单元').toBe(false);
+    const found = checkStored(REQUIRED, { read: renamed });
+    const unit = found.filter((f) => f.code === 'EVIDENCE_UNIT');
+    expect(unit.length).toBeGreaterThan(0);
+    expect(
+      unit.every((f) => f.detail.includes(OLD)),
+      show(unit),
+    ).toBe(true);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    expect(gateEvidence(found, '改名回归', { strict: false }), '默认模式：全部是漂移类，只警告').toEqual([]);
+    expect(warn.mock.calls.flat().join('\n')).toContain(`EVIDENCE_UNIT: `);
+    expect(gateEvidence(found, '改名回归', { strict: true }).map((f) => f.code)).toContain('EVIDENCE_UNIT');
+    vi.stubEnv(EVIDENCE_STRICT_ENV, '1');
+    expect(gateEvidence(found, '改名回归').map((f) => f.code)).toContain('EVIDENCE_UNIT');
+  });
+
+  it('集中报告的检测器在改名后的源码上照常工作：再改一个共享依赖 → 恰好 1 条，oracle 与检测器同以有效单元为根', () => {
+    // 默认模式的检测器基准 = 按当前（改名后）源码算出的登记，与 REGISTRY 在这棵树上的值相同
+    const base = syncedRegistry(REQUIRED, renamed);
+    const roots = effectiveUses(REQUIRED, renamed);
+    const reach = (id: string) => [...roots.keys()].filter((r) => r === id || dist(base.graph, r).has(id)).length;
+    const target = Object.keys(base.nodes)
+      .filter((id) => fileOf(id).endsWith('domain/src/qualification/catalog.ts') && !roots.has(id))
+      .filter((id) => /^(export )?function /.test(unitText(renamed, id)))
+      .sort((a, b) => reach(b) - reach(a))[0]!;
+    expect(reach(target), `${target} 被引用的根太少`).toBeGreaterThan(5);
+    const text = unitText(renamed, target);
+    const end = text.lastIndexOf('}');
+    const file = fileOf(target);
+    const patched = renamed(file).replace(text, `${text.slice(0, end)}void 0; ${text.slice(end)}`);
+    const touched: SourceReader = (path) => (path === file ? patched : renamed(path));
+    const found = checkEvidence(REQUIRED, { read: touched, registry: base }).filter((f) => f.code === 'EVIDENCE_STALE');
+    expect(found, show(found)).toHaveLength(1);
+    const group = found[0]!.group!;
+    expect(group.node).toBe(target);
+    expect(group.impacts).toHaveLength(reach(target));
+    assertOracle(base, currentRegistry(REQUIRED, touched), roots, [group]);
+    // 整张表要算三遍登记（基准、改动后、检测器各一次），放宽到 180s
+  }, 180_000);
 });
