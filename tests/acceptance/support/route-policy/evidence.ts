@@ -33,8 +33,10 @@ import {
   type Unresolved,
 } from './evidence-closure.js';
 import { expandGraph, type Registry, renderRegistry } from './evidence-graph.js';
+import { evidenceStrict } from './evidence-gate.js';
 import { formatGroup, staleGroups, type Use } from './evidence-report.js';
 import { DIGESTS, GRAPH, NODE_DIGESTS, UNIT_BINDINGS } from './required/digests/index.js';
+import { REQUIRED } from './required/index.js';
 import type { Digests, Evidence, Obligation, RequiredTable } from './required/types.js';
 
 export type { SourceReader } from './evidence-closure.js';
@@ -44,13 +46,43 @@ export { renderRegistry };
 export type { Use };
 export type Dependencies = Readonly<Record<string, Readonly<Record<string, string>>>>;
 
-/** 当前提交的登记（required/digests/）。 */
-export const REGISTRY: Registry = {
+/** 提交在仓库里的登记（required/digests/）。门禁断言拿它和源码比对。 */
+export const STORED_REGISTRY: Registry = {
   units: DIGESTS,
   unitBindings: UNIT_BINDINGS,
   nodes: NODE_DIGESTS,
   graph: expandGraph(GRAPH),
 };
+
+let currentRequired: Registry | undefined;
+/** 按当前源码对整张必需项表算出的登记（算一遍要十几秒，同一进程只算一次）。 */
+export const currentRequiredRegistry = (): Registry => (currentRequired ??= currentRegistry(REQUIRED));
+
+/** 按当前源码即时算出的登记，首次读取时才计算。 */
+function syncedRegistry(): Registry {
+  const current = currentRequiredRegistry;
+  return {
+    get units() {
+      return current().units;
+    },
+    get unitBindings() {
+      return current().unitBindings;
+    },
+    get nodes() {
+      return current().nodes;
+    },
+    get graph() {
+      return current().graph;
+    },
+  };
+}
+
+/**
+ * 检测器和变异用例用的登记基准。严格模式 = 提交的登记（与以前完全一样）；警告模式（F-090 默认）= 按当前源码即时
+ * 算出的登记：登记过期时，“改一处源码恰好报 1 条”这类检测器用例不会被既有的过期登记搅乱。
+ * 过期本身只由门禁断言（`checkStored` + `gateEvidence`）对着 `STORED_REGISTRY` 报告。
+ */
+export const REGISTRY: Registry = evidenceStrict() ? STORED_REGISTRY : syncedRegistry();
 
 const ROOT = process.cwd();
 const REQUIRED_DIR = 'tests/acceptance/support/route-policy/required';
@@ -477,6 +509,10 @@ function unusedRegistrations(
       .map((id) => unused(`依赖节点登记 ${id} 没有被任何证据引用`)),
   ];
 }
+
+/** 门禁用：对着提交的登记检查（F-090：漂移类发现再交给 gateEvidence 分流）。 */
+export const checkStored = (table: RequiredTable, options: EvidenceOptions = {}): Finding[] =>
+  checkEvidence(table, { registry: STORED_REGISTRY, ...options });
 
 export function checkEvidence(table: RequiredTable, options: EvidenceOptions = {}): Finding[] {
   const read = options.read ?? repoSource;

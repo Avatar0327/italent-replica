@@ -14,7 +14,8 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { readFrozenContract } from './support/route-policy/baseline.js';
 import type { Finding } from './support/route-policy/compare.js';
 import type { ObservedContract } from './support/route-policy/contract.js';
-import { checkEvidence } from './support/route-policy/evidence.js';
+import { checkStored } from './support/route-policy/evidence.js';
+import { gateEvidence } from './support/route-policy/evidence-gate.js';
 import { declaredPerms, OPTIONAL_NAME_PATTERN } from './support/route-policy/perms.js';
 import { locate } from './support/route-policy/required-mutate.js';
 import { checkRequired } from './support/route-policy/required.js';
@@ -349,7 +350,8 @@ describe('AC-PRM-FW-02 守卫内部义务：内部角色 inner、GUARD_INNER_ALT
         [{ perm: `guard:${carrier}`, at: registered.at }],
       ]),
     );
-    expect(checkEvidence(synthetic), show(checkEvidence(synthetic))).toEqual([]);
+    const found = gateEvidence(checkStored(synthetic), '守卫内部备选证据');
+    expect(found, show(found)).toEqual([]);
   });
 
   it('idp.executor 的 9 个执行入口内部角色为 or（hr 备选）；登记错了备选名 → GUARD_INNER_ALT_UNREGISTERED', () => {

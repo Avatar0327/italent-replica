@@ -22,6 +22,7 @@ import {
 } from './support/route-policy/baseline.js';
 import { compareDeclarations, type Finding } from './support/route-policy/compare.js';
 import { domainConstants } from './support/route-policy/domains.js';
+import { gateEvidence } from './support/route-policy/evidence-gate.js';
 import { MUTATIONS, mutantsOf } from './support/route-policy/mutate.js';
 import { tenantApi } from './support/tenant-api.js';
 
@@ -111,7 +112,8 @@ describe('AC-PRM-FW-02 现状必测基准（独立于声明）', () => {
 
 describe('AC-PRM-FW-02 声明 vs 基准比较', () => {
   it('真实声明不弱于基准，也不多于基准（双向零发现）', () => {
-    const findings = compareDeclarations(frozen, manifest.declared);
+    // F-090：过度声明（OVERDECLARED:*）属“登记与源码不一致”，默认只警告；弱化 / 身份不符照旧判红
+    const findings = gateEvidence(compareDeclarations(frozen, manifest.declared), '真实声明 × 基准');
     expect(findings, findings.map((f) => `${f.route} ${f.code}: ${f.detail}`).join('\n')).toEqual([]);
   });
 

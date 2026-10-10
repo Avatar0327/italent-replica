@@ -17,6 +17,7 @@ import {
   checkEvidence,
   closureReports,
   currentRegistry,
+  currentRequiredRegistry,
   REGISTRY,
   repoSource,
   type SourceReader,
@@ -33,8 +34,7 @@ const readerOf =
   (file) =>
     files[file] ?? repoSource(file);
 /** 当前源码算出的图（R_cur 的依据；与登记同步时等于登记图，但统计应以当前源码为准）。 */
-let currentGraph: Graph | undefined;
-const curGraph = () => (currentGraph ??= currentRegistry(REQUIRED).graph);
+const curGraph = (): Graph => currentRequiredRegistry().graph;
 const show = (found: readonly Finding[]) => found.map((f) => `${f.route} ${f.code}: ${f.detail}`).join('\n');
 
 // ---------------------------------------------------------------------------------------------------------------

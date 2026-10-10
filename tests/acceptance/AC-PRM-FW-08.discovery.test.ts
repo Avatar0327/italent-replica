@@ -30,6 +30,7 @@ import {
   writeFrozenProbes,
 } from './support/route-policy/discovery.js';
 import type { Finding } from './support/route-policy/compare.js';
+import { gateEvidence } from './support/route-policy/evidence-gate.js';
 import { checkKnownGapEvidence, KNOWN_GAPS, type KnownGapGroup } from './support/route-policy/probe-known-gaps.js';
 import {
   checkRedundantEvidence,
@@ -139,8 +140,9 @@ describe('AC-PRM-FW-08 P0 / P3：真实声明 + 显式表零发现', () => {
       expect(group.why.length, group.id).toBeGreaterThan(20);
       expect(group.evidence.length, group.id).toBeGreaterThan(0);
     }
-    expect(checkKnownGapEvidence(KNOWN_GAPS)).toEqual([]);
-    expect(checkRedundantEvidence(REDUNDANT_OBSERVATIONS)).toEqual([]);
+    // F-090：账本证据锚点与源码对不上默认只警告
+    expect(gateEvidence(checkKnownGapEvidence(KNOWN_GAPS), '已知缺口账本证据锚点')).toEqual([]);
+    expect(gateEvidence(checkRedundantEvidence(REDUNDANT_OBSERVATIONS), '冗余观测账本证据锚点')).toEqual([]);
     const tampered: KnownGapGroup[] = KNOWN_GAPS.map((g, i) =>
       i === 0 ? { ...g, evidence: [{ ...g.evidence[0]!, anchor: 'thisSnippetDoesNotExistAnywhere()' }] } : g,
     );

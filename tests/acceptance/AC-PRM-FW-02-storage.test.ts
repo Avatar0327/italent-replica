@@ -9,12 +9,14 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import { describe, expect, it } from 'vitest';
 import type { Finding } from './support/route-policy/compare.js';
 import { MAX_DEPTH } from './support/route-policy/evidence-closure.js';
 import { areaOf, closureFromGraph, parseRegistry, type Registry } from './support/route-policy/evidence-graph.js';
 import {
   checkEvidence,
+  checkStored,
   currentDependencies,
   currentRegistry,
   legacyDigestsFindings,
@@ -22,9 +24,11 @@ import {
   renderRegistry,
   repoSource,
   type SourceReader,
+  STORED_REGISTRY,
   unitText,
   usesOf,
 } from './support/route-policy/evidence.js';
+import { gateEvidence, softGate } from './support/route-policy/evidence-gate.js';
 import {
   explainFromGit,
   explainGraphDiff,
@@ -83,16 +87,17 @@ describe('AC-PRM-FW-02 图存储：真实表等价与确定性（F-072 测试 1�
     const legacy = currentDependencies(REQUIRED);
     const mismatched: string[] = [];
     for (const root of roots()) {
-      const closure = closureFromGraph(REGISTRY.graph, root);
+      const closure = closureFromGraph(STORED_REGISTRY.graph, root);
       const nodes = [...closure.deps.keys()].sort();
-      const registered = Object.fromEntries(nodes.map((id) => [id, REGISTRY.nodes[id]?.[0]]));
+      const registered = Object.fromEntries(nodes.map((id) => [id, STORED_REGISTRY.nodes[id]?.[0]]));
       const expected = legacy[root] ?? {};
       if (JSON.stringify(Object.keys(expected).sort()) !== JSON.stringify(nodes)) mismatched.push(`${root} 节点集合`);
       else if (nodes.some((id) => registered[id] !== expected[id])) mismatched.push(`${root} 摘要`);
     }
-    expect(mismatched).toEqual([]);
+    // F-090：提交的登记与当前源码不一致默认只警告（ROUTE_POLICY_EVIDENCE_STRICT=1 判红）
     const current = currentRegistry(REQUIRED);
-    expect(REGISTRY.units).toEqual(current.units);
+    if (!isDeepStrictEqual(STORED_REGISTRY.units, current.units)) mismatched.push('证据单元摘要（units.ts）');
+    expect(softGate('图存储：登记图与源码闭包', mismatched)).toEqual([]);
     expect(roots().length).toBeGreaterThan(600);
   });
 
@@ -105,11 +110,15 @@ describe('AC-PRM-FW-02 图存储：真实表等价与确定性（F-072 测试 1�
       onDisk.set(name, readFileSync(new URL(name, DIGESTS_DIR), 'utf8'));
     for (const name of readdirSync(new URL('graph/', DIGESTS_DIR)))
       onDisk.set(`graph/${name}`, readFileSync(new URL(`graph/${name}`, DIGESTS_DIR), 'utf8'));
-    const generated = Object.entries(first).filter(([name]) => name !== 'index.ts');
-    expect([...onDisk.keys()].filter((name) => name !== 'index.ts').sort()).toEqual(
-      generated.map(([name]) => name).sort(),
-    );
-    for (const [name, text] of generated) expect(onDisk.get(name) === text, `${name} 与生成结果不一致`).toBe(true);
+    const generated = new Map(Object.entries(first).filter(([name]) => name !== 'index.ts'));
+    const names = new Set([...onDisk.keys(), ...generated.keys()].filter((name) => name !== 'index.ts'));
+    const drift = [...names].sort().flatMap((name) => {
+      if (!onDisk.has(name)) return [`${name} 缺少（应由生成器写出）`];
+      if (!generated.has(name)) return [`${name} 多余（生成器不再写出）`];
+      return onDisk.get(name) === generated.get(name) ? [] : [`${name} 与生成结果不一致`];
+    });
+    // F-090：提交的登记文件与当前源码生成物不一致，默认只警告
+    expect(softGate('图存储：提交的登记文件', drift)).toEqual([]);
   });
 
   it('nodes.ts 无重复键；graph/* 中每个节点只出现在一个区域文件，且文件名 = 区域', () => {
@@ -437,7 +446,7 @@ describe('AC-PRM-FW-02 图存储：旧 required/digests.ts 守卫（F-072 测试
   const LEGACY = 'tests/acceptance/support/route-policy/required/digests.ts';
 
   it('仓库里没有旧文件', () => {
-    expect(legacyDigestsFindings()).toEqual([]);
+    expect(gateEvidence(legacyDigestsFindings(), '旧 digests.ts 守卫')).toEqual([]);
   });
 
   it('临时放回 required/digests.ts → LEGACY_DIGESTS_PRESENT（全表校验 unused 模式同样带出）', () => {
@@ -543,7 +552,7 @@ describe('AC-PRM-FW-02 图存储：explain-graph-diff（F-072 测试 5b、6b，�
 
 describe('AC-PRM-FW-02 图存储：回归（F-072 测试 7）', () => {
   it('全表校验零发现（含 unused 与旧文件守卫）；没有位于 modules/** 的未解析项', () => {
-    const found = checkEvidence(REQUIRED, { unused: true });
+    const found = gateEvidence(checkStored(REQUIRED, { unused: true }), '图存储回归：全表校验');
     expect(found, show(found)).toEqual([]);
   });
 
