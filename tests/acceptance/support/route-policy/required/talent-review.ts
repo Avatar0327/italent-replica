@@ -442,7 +442,66 @@ const CALC_REQUIRED: RequiredTable = {
   [`DELETE ${CALC_BASE}/:id`]: calcChange('delete'),
 };
 
+// ---- R3-T04 PR-B3：盘点内容表单 / 流程定义（modules/talent-review/form-flow-routes.ts） ------------------------------
+const FFR = `${T}/form-flow-routes.ts`;
+const ROLE_OBJECT_CONST: Evidence = { role: 'const', unit: `${CATALOG}>role`, anchor: "object('Role'" };
+/**
+ * 引用目录对象 = 读取目录：请求带引用时另需目录对象的查看权（表单 → 字段目录 requireFieldCatalog，流程 → 角色 requireRoleCatalog），
+ * 引用的可见性在命令内按目录范围判定。
+ */
+const ffReference = (register: string, guard: string, catalog: string, catalogKey: 'field' | 'role', note: string) => {
+  const target = catalogKey === 'field' ? 'TalentReview.Field' : 'TalentReview.Role';
+  return (anchor: string): Obligation[] => [
+    {
+      perm: `guard:${guard}`,
+      facts: [`guard:${guard}`],
+      note,
+      at: [{ role: 'call', unit: `${FFR}#${register}`, anchor }],
+    },
+    {
+      perm: `obj:${target}:view`,
+      purpose: `when:${guard}`,
+      at: [
+        { role: 'call', unit: `${FFR}#${catalog}`, anchor: `const ctx = await reviewContext(c, deps, referenced)` },
+        ...CONTEXT,
+        catalogKey === 'field' ? FIELD_OBJECT_CONST : ROLE_OBJECT_CONST,
+      ],
+    },
+  ];
+};
+const formReference = ffReference(
+  'registerForms',
+  'talentReview.formFieldReference',
+  'requireCatalog',
+  'field',
+  '条件守卫：请求体带字段引用时，另需字段目录的对象查看权，字段可见性在命令内按字段目录范围判定',
+);
+const flowReference = ffReference(
+  'registerFlows',
+  'talentReview.flowRoleReference',
+  'requireCatalog',
+  'role',
+  '条件守卫：请求体带角色引用时，另需盘点角色的对象查看权，角色可见性在命令内按角色范围判定',
+);
+const FORM_FLOW_REQUIRED: RequiredTable = {
+  ...cfgObject('form', 'Form', 'registerForms', 'forms', 'FORMS', FFR),
+  ...cfgObject('flow', 'Flow', 'registerFlows', 'flows', 'FLOWS', FFR),
+};
+FORM_FLOW_REQUIRED[`POST ${BASE_ROOT}/forms`]!.push(
+  ...formReference('if (references.length > 0) await requireFieldCatalog(c, deps)'),
+);
+FORM_FLOW_REQUIRED[`PATCH ${BASE_ROOT}/forms/:id`]!.push(
+  ...formReference('if (references.length > 0) await requireFieldCatalog(c, deps)'),
+);
+FORM_FLOW_REQUIRED[`POST ${BASE_ROOT}/flows`]!.push(
+  ...flowReference('if (references.length > 0) await requireRoleCatalog(c, deps)'),
+);
+FORM_FLOW_REQUIRED[`PATCH ${BASE_ROOT}/flows/:id`]!.push(
+  ...flowReference('if (references.length > 0) await requireRoleCatalog(c, deps)'),
+);
+
 export const TALENT_REVIEW: RequiredTable = {
+  ...FORM_FLOW_REQUIRED,
   ...CALC_REQUIRED,
   ...MATRIX_REQUIRED,
   ...cfgObject('category', 'Category', 'registerCategories', 'categories', 'CATEGORIES'),

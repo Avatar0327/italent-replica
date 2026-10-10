@@ -74,7 +74,6 @@ const requireRoleCatalog = (c: Context<TenantEnv>, deps: TenantRouteDeps) => req
 /**
  * 命令事务内的当前权限复核（首次执行、直接重放、失败后回查三条路径都经过 commands.ts 的 ledgerExit → guard.before）：
  * 对象数据操作权、按钮、范围、引用目录的查看权与范围都在**事务内**按当前授权重新解析，不沿用事务外保存的快照；
- * 新建 / 修改另复核载荷逐字段的编辑权（含显式清空）。
  */
 async function recheck(
   c: Context<TenantEnv>,
@@ -83,16 +82,35 @@ async function recheck(
   kind: Kind,
   expectedRevision: number,
   spec: Recheck,
-  fields: Readonly<Record<string, unknown>> | undefined,
 ): Promise<Rechecked> {
   const txDeps: TenantRouteDeps = { ...deps, authorize: authorizeInTransaction(deps.authorize, tx) };
   const ctx = await reviewWriteContext(c, txDeps, kind.object, spec.operation, expectedRevision);
   const scope = await resolveModuleScopeInTransaction(txDeps, ctx, tx, codeOf(kind.object));
-  if (fields) await checkWriteFields(txDeps, ctx, kind.object, spec.operation as 'create' | 'update', fields);
   if (spec.references.length === 0) return { txDeps, ctx, scope };
   await reviewContext(c, txDeps, kind.referenced);
   const referenceScope = await resolveModuleScopeInTransaction(txDeps, ctx, tx, codeOf(kind.referenced));
   return { txDeps, ctx, scope, referenceScope };
+}
+
+/** 新建 / 修改：另复核载荷逐字段的编辑权（含显式清空）；删除没有字段输入，只用 recheck。 */
+async function recheckFields(
+  c: Context<TenantEnv>,
+  deps: TenantRouteDeps,
+  tx: Tx,
+  kind: Kind,
+  expectedRevision: number,
+  spec: Recheck,
+  fields: Readonly<Record<string, unknown>>,
+): Promise<Rechecked> {
+  const checked = await recheck(c, deps, tx, kind, expectedRevision, spec);
+  await checkWriteFields(
+    checked.txDeps,
+    checked.ctx,
+    kind.object,
+    spec.operation === 'create' ? 'create' : 'update',
+    fields,
+  );
+  return checked;
 }
 
 type Execute<V> = (tx: Tx, ctx: ReferenceWriteContext) => Promise<V>;
@@ -109,7 +127,7 @@ async function runGuarded<V extends Viewed & { id: string; name: string }>(
   body: object,
   status: 200 | 201,
   spec: Recheck,
-  fields: Readonly<Record<string, unknown>> | undefined,
+  recheckInTx: (tx: Tx) => Promise<Rechecked>,
   execute: Execute<V>,
 ) {
   let current: Rechecked | undefined;
@@ -118,7 +136,7 @@ async function runGuarded<V extends Viewed & { id: string; name: string }>(
     fingerprint: { method: c.req.method, path: c.req.path, expectedRevision: ctx.expectedRevision, input: body },
     guard: {
       before: async (tx) => {
-        current = await recheck(c, deps, tx, kind, ctx.expectedRevision, spec, fields);
+        current = await recheckInTx(tx);
       },
       replayed: async (tx, replay) => {
         const { scope, referenceScope } = current!;
@@ -153,6 +171,35 @@ async function runGuarded<V extends Viewed & { id: string; name: string }>(
   return c.json((await trimReview(deps, ctx, kind.object, [view]))[0], result.status);
 }
 
+/** 新建 / 修改：事务内复核操作权、按钮、范围、引用目录与载荷字段编辑权。 */
+function runWrite<V extends Viewed & { id: string; name: string }>(
+  c: Context<TenantEnv>,
+  deps: TenantRouteDeps,
+  ctx: TalentReviewContext,
+  kind: Kind,
+  body: Record<string, unknown>,
+  status: 200 | 201,
+  spec: Recheck,
+  execute: Execute<V>,
+) {
+  const before = (tx: Tx) => recheckFields(c, deps, tx, kind, ctx.expectedRevision, spec, body);
+  return runGuarded(c, deps, ctx, kind, body, status, spec, before, execute);
+}
+
+/** 删除：没有字段输入，事务内只复核对象操作权、按钮与范围。 */
+function runDelete<V extends Viewed & { id: string; name: string }>(
+  c: Context<TenantEnv>,
+  deps: TenantRouteDeps,
+  ctx: TalentReviewContext,
+  kind: Kind,
+  id: string,
+  execute: Execute<V>,
+) {
+  const spec = { operation: 'delete', references: [] } as const;
+  const before = (tx: Tx) => recheck(c, deps, tx, kind, ctx.expectedRevision, spec);
+  return runGuarded(c, deps, ctx, kind, { id }, 200, spec, before, execute);
+}
+
 const formReferences = (body: { fields?: { fieldId: string }[] }): string[] =>
   (body.fields ?? []).map((f) => f.fieldId);
 const flowReferences = (body: { nodes?: { roleIds: string[] }[] }): string[] =>
@@ -183,7 +230,7 @@ function registerForms(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     // 路由层的前置检查只管早失败；以命令事务内的复核（runGuarded）为准
     if (references.length > 0) await requireFieldCatalog(c, deps);
     const spec = { operation: 'create', references } as const;
-    return runGuarded(c, deps, ctx, FORM, body, 201, spec, body, (tx, w) => forms.createForm(tx, w, body));
+    return runWrite(c, deps, ctx, FORM, body, 201, spec, (tx, w) => forms.createForm(tx, w, body));
   });
   router.patch(`${FORMS}/:id`, async (c) => {
     const ctx = await reviewWriteContext(c, deps, 'form', 'update', revision(c));
@@ -193,13 +240,12 @@ function registerForms(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const references = formReferences(body);
     if (references.length > 0) await requireFieldCatalog(c, deps);
     const spec = { operation: 'update', references } as const;
-    return runGuarded(c, deps, ctx, FORM, body, 200, spec, body, (tx, w) => forms.updateForm(tx, w, id, body));
+    return runWrite(c, deps, ctx, FORM, body, 200, spec, (tx, w) => forms.updateForm(tx, w, id, body));
   });
   router.delete(`${FORMS}/:id`, async (c) => {
     const ctx = await reviewWriteContext(c, deps, 'form', 'delete', revision(c));
     const id = uuidParam(c);
-    const spec = { operation: 'delete', references: [] } as const;
-    return runGuarded(c, deps, ctx, FORM, { id }, 200, spec, undefined, (tx, w) => forms.deleteForm(tx, w, id));
+    return runDelete(c, deps, ctx, FORM, id, (tx, w) => forms.deleteForm(tx, w, id));
   });
 }
 
@@ -222,7 +268,7 @@ function registerFlows(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const references = flowReferences(body);
     if (references.length > 0) await requireRoleCatalog(c, deps);
     const spec = { operation: 'create', references } as const;
-    return runGuarded(c, deps, ctx, FLOW, body, 201, spec, body, (tx, w) => flows.createFlow(tx, w, body));
+    return runWrite(c, deps, ctx, FLOW, body, 201, spec, (tx, w) => flows.createFlow(tx, w, body));
   });
   router.patch(`${FLOWS}/:id`, async (c) => {
     const ctx = await reviewWriteContext(c, deps, 'flow', 'update', revision(c));
@@ -232,12 +278,11 @@ function registerFlows(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const references = flowReferences(body);
     if (references.length > 0) await requireRoleCatalog(c, deps);
     const spec = { operation: 'update', references } as const;
-    return runGuarded(c, deps, ctx, FLOW, body, 200, spec, body, (tx, w) => flows.updateFlow(tx, w, id, body));
+    return runWrite(c, deps, ctx, FLOW, body, 200, spec, (tx, w) => flows.updateFlow(tx, w, id, body));
   });
   router.delete(`${FLOWS}/:id`, async (c) => {
     const ctx = await reviewWriteContext(c, deps, 'flow', 'delete', revision(c));
     const id = uuidParam(c);
-    const spec = { operation: 'delete', references: [] } as const;
-    return runGuarded(c, deps, ctx, FLOW, { id }, 200, spec, undefined, (tx, w) => flows.deleteFlow(tx, w, id));
+    return runDelete(c, deps, ctx, FLOW, id, (tx, w) => flows.deleteFlow(tx, w, id));
   });
 }
