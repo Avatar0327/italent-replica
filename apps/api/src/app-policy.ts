@@ -5,6 +5,7 @@
  */
 import { AUDIT_POLICIES } from './audit/policy.js';
 import { AVATAR_POLICIES } from './modules/avatar/policy.js';
+import { EVALUATION_POLICIES } from './modules/evaluation/policy.js';
 import { ESTABLISHMENT_POLICIES } from './modules/establishment/policy.js';
 import { IDP_POLICIES } from './modules/idp/policy.js';
 import { JOB_POLICIES } from './modules/job/policy.js';
@@ -39,6 +40,7 @@ export function tenantPolicyTable(extra: readonly PolicyTable[] = []): PolicyTab
     AVATAR_POLICIES,
     TALENT_REVIEW_POLICIES,
     QUALIFICATION_POLICIES,
+    EVALUATION_POLICIES,
     SUCCESSION_POLICIES,
     ...extra,
   ]);
