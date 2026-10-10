@@ -259,4 +259,38 @@ describe('AC-EV-activity 评定活动主体与环节', () => {
       expect(await w.adminRead(activity.id)).toEqual(activity);
     });
   });
+  describe('错误提示不泄露隐藏的环节名称（#226 第 1 轮 P2-1）', () => {
+    const TYPES = ['apply', 'material', 'defense', 'result'] as const;
+    /** 只有 `target` 环节早于 3 月 1 日开始，其余都在 3 月之后：把活动开始日期改到 3 月 1 日只会让这一个环节落到活动日期之外。 */
+    const chainsWithEarly = (target: (typeof TYPES)[number]) =>
+      chains().map((chain) => ({
+        ...chain,
+        name: `不可见环节-${chain.type}`,
+        ...(chain.type === target
+          ? { startDate: '2026-01-15' }
+          : chain.type === 'apply'
+            ? { startDate: '2026-03-05' }
+            : {}),
+      }));
+
+    it.each(TYPES)(
+      '隐藏 chains 字段的人缩短活动日期让%s环节落到范围外：400 带机器错误码，提示不含环节名称',
+      async (type) => {
+        const activity = await w.adminActivity(body({ chains: chainsWithEarly(type) }));
+        const blind = await manager({ hidden: ['chains'] });
+        const response = await patch(blind, activity, { startDate: '2026-03-01' });
+        await expectError(response, 400, 'ACTIVITY_CHAIN_DATE_OUT_OF_RANGE');
+        expect(await response.clone().text()).not.toContain('不可见环节');
+        expect(await w.adminRead(activity.id)).toMatchObject({ revision: 1, startDate: '2026-01-01' });
+      },
+    );
+
+    it('对照：对 chains 字段有查看权的人拿到带环节名称的提示', async () => {
+      const activity = await w.adminActivity(body({ chains: chainsWithEarly('defense') }));
+      const sighted = await manager();
+      const response = await patch(sighted, activity, { startDate: '2026-03-01' });
+      await expectError(response, 400, 'ACTIVITY_CHAIN_DATE_OUT_OF_RANGE');
+      expect(await response.clone().text()).toContain('不可见环节-defense环节日期须在活动起止日期之内');
+    });
+  });
 });

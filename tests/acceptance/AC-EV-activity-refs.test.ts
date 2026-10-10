@@ -303,6 +303,39 @@ describe('AC-EV-activity-refs 评定活动的引用与权限', () => {
     });
   });
 
+  describe('被引用的任职类别 / 级别不能删除（#226 第 1 轮 P2-2）', () => {
+    const removeQl = (kind: 'categories' | 'levels', item: { id: string; revision: number }) =>
+      w.setup.request('DELETE', `/api/tenant/qualification/${kind}/${item.id}`, {
+        ...w.asAdmin,
+        ifMatch: item.revision,
+      });
+
+    it('活动选用的类别 / 级别：删除 409（CATEGORY_IN_USE / LEVEL_IN_USE），对象不变；活动删除后可删', async () => {
+      const category = await w.qlCategory();
+      const level = await w.qlLevel(7);
+      const op = await manager();
+      const activity = await created(op, body({ categoryIds: [category.id], levelIds: [level.id] }));
+      await expectError(await removeQl('categories', category), 409, 'CATEGORY_IN_USE');
+      await expectError(await removeQl('levels', level), 409, 'LEVEL_IN_USE');
+      expect(await w.adminRead(activity.id)).toMatchObject({ categoryIds: [category.id], levelIds: [level.id] });
+      const stillThere = await w.setup.request('GET', `/api/tenant/qualification/categories/${category.id}`, w.asAdmin);
+      expect(stillThere.status).toBe(200);
+      await ok(await op.request('DELETE', `${ACTIVITIES}/${activity.id}`, { ifMatch: activity.revision }));
+      expect((await removeQl('categories', category)).status).toBe(200);
+      expect((await removeQl('levels', level)).status).toBe(200);
+    });
+
+    it('活动改掉引用后，原类别 / 级别可以删除；只改名称不影响', async () => {
+      const [oldCategory, newCategory] = [await w.qlCategory(), await w.qlCategory()];
+      const op = await manager();
+      const activity = await created(op, body({ categoryIds: [oldCategory.id], levelIds: [] }));
+      await expectError(await removeQl('categories', oldCategory), 409, 'CATEGORY_IN_USE');
+      await ok(await patch(op, activity, { categoryIds: [newCategory.id] }));
+      expect((await removeQl('categories', oldCategory)).status).toBe(200);
+      await expectError(await removeQl('categories', newCategory), 409, 'CATEGORY_IN_USE');
+    });
+  });
+
   describe('审计（DEC-019 / 216：业务写与审计同事务；只存 ID，不冻结名称）', () => {
     it('新建 / 修改 / 删除各一条日志，环节与引用只含 ID，负责人姓名不进快照', async () => {
       const op = await manager({ auditor: true });
