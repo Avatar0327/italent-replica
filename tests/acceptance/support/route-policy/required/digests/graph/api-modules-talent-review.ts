@@ -433,10 +433,13 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/talent-review/matrix-input.ts#axisLevel': [
     '#levelNo',
     '#name',
-    '#storedBound',
     'packages/domain/src/talent-review/matrix.ts#MATRIX_AXES',
   ],
-  'apps/api/src/modules/talent-review/matrix-input.ts#cell': ['#levelNo', '#name'],
+  'apps/api/src/modules/talent-review/matrix-input.ts#cell': [
+    '#levelNo',
+    '#name',
+    'packages/domain/src/talent-review/matrix.ts#MATRIX_MAX_LEVELS',
+  ],
   'apps/api/src/modules/talent-review/matrix-input.ts#levelNo': [
     'packages/domain/src/talent-review/matrix.ts#MATRIX_MAX_LEVELS',
   ],
@@ -472,6 +475,17 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/talent-review/matrix-routes.ts#MATRICES': [
     'apps/api/src/modules/talent-review/access.ts#TALENT_REVIEW_BASE',
   ],
+  'apps/api/src/modules/talent-review/matrix-routes.ts#recheck': [
+    'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
+    'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
+    'apps/api/src/modules/talent-review/access.ts#codeOf',
+    'apps/api/src/modules/talent-review/access.ts#reviewContext',
+    'apps/api/src/modules/talent-review/access.ts#reviewWriteContext',
+  ],
+  'apps/api/src/modules/talent-review/matrix-routes.ts#recheckFields': [
+    'apps/api/src/modules/talent-review/access.ts#checkWriteFields',
+    '#recheck',
+  ],
   'apps/api/src/modules/talent-review/matrix-routes.ts#registerMatrixRoutes': [
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
     'apps/api/src/modules/talent-review/access.ts#checkWriteFields',
@@ -492,6 +506,7 @@ export const GRAPH: Graph = {
     '#referencedFields',
     '#registerRatioGroupRoutes',
     '#requireFieldReference',
+    '#runDelete',
     '#runWrite',
     'apps/api/src/modules/talent-review/matrix-service.ts#createMatrix',
     'apps/api/src/modules/talent-review/matrix-service.ts#deleteMatrix',
@@ -524,12 +539,13 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/talent-review/access.ts#reviewContext',
     'apps/api/src/modules/talent-review/access.ts#reviewScope',
   ],
-  'apps/api/src/modules/talent-review/matrix-routes.ts#runWrite': [
+  'apps/api/src/modules/talent-review/matrix-routes.ts#runDelete': ['#recheck', '#runGuarded'],
+  'apps/api/src/modules/talent-review/matrix-routes.ts#runGuarded': [
     'apps/api/src/modules/talent-review/access.ts#requireConfigVisible',
-    'apps/api/src/modules/talent-review/access.ts#reviewScope',
     'apps/api/src/modules/talent-review/access.ts#trimReview',
     'apps/api/src/modules/talent-review/matrix-service.ts#requireReferencesVisible',
   ],
+  'apps/api/src/modules/talent-review/matrix-routes.ts#runWrite': ['#recheckFields', '#runGuarded'],
   'apps/api/src/modules/talent-review/matrix-service.ts#checkAgainstFields': [
     '#invalid',
     '#reject',
@@ -634,12 +650,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/talent-review/matrix-view.ts#loadGroups': ['#number'],
   'apps/api/src/modules/talent-review/matrix-view.ts#loadMatrixView': ['#MATRIX'],
   'apps/api/src/modules/talent-review/matrix-view.ts#selectRows': ['#row'],
-  'apps/api/src/modules/talent-review/matrix-view.ts#withChildren': [
-    '#byMatrix',
-    '#loadGroups',
-    '#number',
-    '#roleRank',
-  ],
+  'apps/api/src/modules/talent-review/matrix-view.ts#withChildren': ['#byMatrix', '#loadGroups', '#roleRank'],
   'apps/api/src/modules/talent-review/module-grade-service.ts#MODULE_GRADE': ['#row', '#withItems'],
   'apps/api/src/modules/talent-review/module-grade-service.ts#checkItems': [
     'packages/domain/src/talent-review/scoring-config.ts#gradeItemsProblem',

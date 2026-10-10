@@ -1,6 +1,6 @@
 {
-  "id": "8cfb00d2-ad72-4ea1-8608-5f69a49e45ed",
-  "prevId": "3c1dc14c-21cd-45a5-9f62-9b6dd8debb47",
+  "id": "5a6d18f5-6c1e-499f-924f-9f3fc2584bf2",
+  "prevId": "8cfb00d2-ad72-4ea1-8608-5f69a49e45ed",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -43891,6 +43891,236 @@
       },
       "isRLSEnabled": false
     },
+    "public.talent_review_module_grade_items": {
+      "name": "talent_review_module_grade_items",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "grade_id": {
+          "name": "grade_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "value": {
+          "name": "value",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sort_no": {
+          "name": "sort_no",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "min_score": {
+          "name": "min_score",
+          "type": "numeric(14, 4)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "max_score": {
+          "name": "max_score",
+          "type": "numeric(14, 4)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "min_count": {
+          "name": "min_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "talent_review_module_grade_items_tenant_id_tenants_id_fk": {
+          "name": "talent_review_module_grade_items_tenant_id_tenants_id_fk",
+          "tableFrom": "talent_review_module_grade_items",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "talent_review_module_grade_items_grade_fk": {
+          "name": "talent_review_module_grade_items_grade_fk",
+          "tableFrom": "talent_review_module_grade_items",
+          "tableTo": "talent_review_module_grades",
+          "columnsFrom": [
+            "tenant_id",
+            "grade_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "talent_review_module_grade_items_name": {
+          "name": "talent_review_module_grade_items_name",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "grade_id",
+            "name"
+          ]
+        },
+        "talent_review_module_grade_items_value": {
+          "name": "talent_review_module_grade_items_value",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "grade_id",
+            "value"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "talent_review_module_grade_items_shape": {
+          "name": "talent_review_module_grade_items_shape",
+          "value": "(\"talent_review_module_grade_items\".\"min_count\" IS NOT NULL AND \"talent_review_module_grade_items\".\"min_count\" >= 0 AND \"talent_review_module_grade_items\".\"min_score\" IS NULL AND \"talent_review_module_grade_items\".\"max_score\" IS NULL)\n        OR (\"talent_review_module_grade_items\".\"min_count\" IS NULL AND \"talent_review_module_grade_items\".\"min_score\" IS NOT NULL AND \"talent_review_module_grade_items\".\"max_score\" > \"talent_review_module_grade_items\".\"min_score\")"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.talent_review_module_grades": {
+      "name": "talent_review_module_grades",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "talent_review_module_grades_tenant_id_tenants_id_fk": {
+          "name": "talent_review_module_grades_tenant_id_tenants_id_fk",
+          "tableFrom": "talent_review_module_grades",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "talent_review_module_grades_tenant_id": {
+          "name": "talent_review_module_grades_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        },
+        "talent_review_module_grades_name": {
+          "name": "talent_review_module_grades_name",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "name"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "talent_review_module_grades_rev": {
+          "name": "talent_review_module_grades_rev",
+          "value": "\"talent_review_module_grades\".\"revision\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.talent_review_ratio_rule_cells": {
       "name": "talent_review_ratio_rule_cells",
       "schema": "",
@@ -44395,6 +44625,239 @@
         "talent_review_roles_rev": {
           "name": "talent_review_roles_rev",
           "value": "\"talent_review_roles\".\"revision\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.talent_review_score_levels": {
+      "name": "talent_review_score_levels",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rule_id": {
+          "name": "rule_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "value": {
+          "name": "value",
+          "type": "numeric(14, 4)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sort_no": {
+          "name": "sort_no",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "talent_review_score_levels_tenant_id_tenants_id_fk": {
+          "name": "talent_review_score_levels_tenant_id_tenants_id_fk",
+          "tableFrom": "talent_review_score_levels",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "talent_review_score_levels_rule_fk": {
+          "name": "talent_review_score_levels_rule_fk",
+          "tableFrom": "talent_review_score_levels",
+          "tableTo": "talent_review_score_rules",
+          "columnsFrom": [
+            "tenant_id",
+            "rule_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "talent_review_score_levels_name": {
+          "name": "talent_review_score_levels_name",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "rule_id",
+            "name"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.talent_review_score_rules": {
+      "name": "talent_review_score_rules",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "min_score": {
+          "name": "min_score",
+          "type": "numeric(14, 4)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "max_score": {
+          "name": "max_score",
+          "type": "numeric(14, 4)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "display": {
+          "name": "display",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "allow_unable": {
+          "name": "allow_unable",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "talent_review_score_rules_tenant_id_tenants_id_fk": {
+          "name": "talent_review_score_rules_tenant_id_tenants_id_fk",
+          "tableFrom": "talent_review_score_rules",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "talent_review_score_rules_tenant_id": {
+          "name": "talent_review_score_rules_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        },
+        "talent_review_score_rules_name": {
+          "name": "talent_review_score_rules_name",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "name"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "talent_review_score_rules_shape": {
+          "name": "talent_review_score_rules_shape",
+          "value": "(\"talent_review_score_rules\".\"kind\" = 'numeric' AND \"talent_review_score_rules\".\"min_score\" IS NOT NULL AND \"talent_review_score_rules\".\"max_score\" > \"talent_review_score_rules\".\"min_score\"\n        AND \"talent_review_score_rules\".\"display\" IS NULL)\n        OR (\"talent_review_score_rules\".\"kind\" = 'grade' AND \"talent_review_score_rules\".\"min_score\" IS NULL AND \"talent_review_score_rules\".\"max_score\" IS NULL\n        AND \"talent_review_score_rules\".\"display\" IN ('dropdown','tile'))"
+        },
+        "talent_review_score_rules_rev": {
+          "name": "talent_review_score_rules_rev",
+          "value": "\"talent_review_score_rules\".\"revision\" > 0"
         }
       },
       "isRLSEnabled": false

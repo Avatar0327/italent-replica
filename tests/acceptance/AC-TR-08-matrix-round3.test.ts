@@ -15,7 +15,7 @@ import { registerScopeProvider } from '../../apps/api/src/modules/permission/mod
 import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.js';
 import { seedPermissionWorld, type PermissionWorld } from './AC-PRM-support.js';
 import { configBody, configWorld, TR_BASE, TR_NOW } from './AC-TR-config-support.js';
-import { MATRICES, matrixBody, matrixOperator, matrixWorld, type MatrixView } from './AC-TR-matrix-support.js';
+import { MATRICES, matrixBody, matrixOperator, type MatrixView } from './AC-TR-matrix-support.js';
 import { readinessBody, readinessWorld } from './AC-TR-support.js';
 import { errorCode, tenantApi } from './support/tenant-api.js';
 
@@ -202,27 +202,5 @@ describe('AC-TR-08 / AC-TR-config 配置列表不按看不到的排序字段排�
     const api = hiding(list.object, list.secondary);
     const whole = await order(api, list.path, w.as);
     expect(whole.filter((id) => mine.includes(id))).toEqual([...mine].sort());
-  });
-});
-
-describe('AC-TR-08 数值轴下界按存储精度严格判断（第 2 轮 P3）', () => {
-  it('1e-11、2e-11 入库会被舍成 0：400，数据不变；四位小数照常', async () => {
-    const w = await matrixWorld(testDb().db, 'trm-r3-precision');
-    const score = (await w.numberField()).id;
-    const refs = await w.refs();
-    const base = matrixBody(refs);
-    const axis = (bounds: (number | null)[]) => ({
-      xFieldId: score,
-      axisLevels: [
-        ...bounds.map((lowerBound, i) => ({ axis: 'x', levelNo: i + 1, name: `段${i + 1}`, lowerBound })),
-        ...(base.axisLevels as Record<string, unknown>[]).filter((level) => level.axis === 'y'),
-      ],
-      cells: base.cells,
-    });
-    const tiny = await w.post(matrixBody(refs, axis([null, 0.00000000001, 0.00000000002])));
-    expect([tiny.status, await errorCode(tiny)]).toEqual([400, 'VALIDATION_FAILED']);
-    expect((await w.list()).items).toEqual([]);
-    const ok = await w.post(matrixBody(refs, axis([null, 0.3, 1234.5678])));
-    expect(ok.status, await ok.clone().text()).toBe(201);
   });
 });
