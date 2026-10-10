@@ -2530,6 +2530,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-route-access.ts#requestScope',
     'packages/domain/src/personnel/catalog.ts#PERSONNEL_OBJECT',
   ],
+  'apps/api/src/modules/survey360/sync.ts#skipOutOfPersonScope': [
+    'apps/api/src/modules/survey360/context.ts#actor',
+    'apps/api/src/modules/survey360/context.ts#audit360',
+    '#NOT_AVAILABLE',
+  ],
   'apps/api/src/modules/survey360/sync.ts#snapshotOf': [
     'apps/api/src/modules/employment/read-model.ts#findCurrentRecord',
     '#orgName',
@@ -2546,8 +2551,10 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/survey360/sync.ts#syncCursor': ['apps/api/src/modules/survey360/context.ts#uuid'],
   'apps/api/src/modules/survey360/sync.ts#syncPage': [
     'apps/api/src/modules/survey360/people.ts#loadPerson',
+    'apps/api/src/modules/survey360/people.ts#visiblePersonIds',
     '#linkedPerson',
     '#refreshLinked',
+    '#skipOutOfPersonScope',
     '#syncUnlinked',
   ],
   'apps/api/src/modules/survey360/sync.ts#syncPeople': [
