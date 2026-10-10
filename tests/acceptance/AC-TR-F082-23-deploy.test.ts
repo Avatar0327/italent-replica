@@ -6,6 +6,7 @@
  *   恢复到启用前数据（干净库）通过。
  * 以隔离测试库为目标（useTestDb）；连接数探针在 PGlite 下用注入替身，真 PG 下另有真实连接用例。
  */
+import { randomUUID } from 'node:crypto';
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -322,7 +323,8 @@ pg('AC-23 检查账号的可见性前置判定（真 PG，检查角色 ≠ 应�
   const suffix = Math.random().toString(36).slice(2, 10);
   const checker = `f082_chk_${suffix}`;
   const appRole = `f082_app_${suffix}`;
-  const password = 'f082-test-only';
+  // 临时角色的口令每次随机生成，测试结束连同角色一起删除
+  const password = randomUUID();
   let canCreateRoles = false;
   let dbName = '';
   const admin = (text: string) => testDb().db.execute(sql.raw(text));
