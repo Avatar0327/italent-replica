@@ -97,6 +97,11 @@ export function registerSuccessionRoutes(router: Hono<TenantEnv>, deps: TenantRo
     return c.json((await projectSuccession(deps, ctx, 'record', [found.view]))[0]);
   });
 
+  registerRecordWrites(router, deps);
+}
+
+/** 记录写侧（A2）：#3 新增、#3a 候选、#4 编辑、#5 批量结束、#6 软删除；共用命令执行协议（write-support.ts）。 */
+function registerRecordWrites(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   // #3 新增（含历史补录：给出结束时间即保存为已结束）；无 If-Match（新建），Idempotency-Key 必填
   router.post(RECORDS, async (c) => {
     const body = await parseBody(c, recordCreate);

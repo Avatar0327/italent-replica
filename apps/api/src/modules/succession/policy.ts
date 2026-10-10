@@ -37,7 +37,12 @@ const BASE = '/api/tenant/succession';
 const RECORD = SUCCESSION_OBJECTS.record.code;
 const OUT = projector('succession.record', 'succession.record');
 const SELF_HIDDEN = 'succession.selfHidden';
-const COMMAND = write('body', 'succession.commandRecheck', 'succession.authorizeResult', { ledger: 'single' });
+const RECHECK = 'succession.commandRecheck';
+const AUTHORIZE_RESULT = 'succession.authorizeResult';
+const COMMAND = write('body', RECHECK, AUTHORIZE_RESULT, {
+  ledger: 'single',
+  preconditions: ['succession.syncBarrier', 'succession.noOverlap'],
+});
 const MUTATE = 'succession.record.writable';
 
 export const SUCCESSION_POLICIES = defineTable('succession', {
@@ -73,8 +78,10 @@ export const SUCCESSION_POLICIES = defineTable('succession', {
     button: button('create', 'list'),
     scope: guardScope('succession.targetInScope', NOT_FOUND),
     fields: OUT,
-    guards: ['succession.successorActive', 'succession.noOverlap', 'succession.syncBarrier'],
-    write: COMMAND,
+    write: write('body', RECHECK, AUTHORIZE_RESULT, {
+      ledger: 'single',
+      preconditions: ['succession.successorActive', 'succession.syncBarrier', 'succession.noOverlap'],
+    }),
   }),
   // 候选：新增或编辑权之一；全租户在职人员（含待入职，≤ 30 条），不按员工范围裁剪（DEC-308）
   [`GET ${BASE}/successor-candidates`]: any([
@@ -100,7 +107,7 @@ export const SUCCESSION_POLICIES = defineTable('succession', {
     button: button('update', 'detail'),
     scope: pointScope({ param: 'id' }, MUTATE, NOT_FOUND),
     fields: OUT,
-    guards: ['succession.immutableFields', 'succession.noOverlap', 'succession.syncBarrier', SELF_HIDDEN],
+    guards: ['succession.immutableFields', SELF_HIDDEN],
     write: COMMAND,
   }),
   [`POST ${BASE}/records/end`]: object({
@@ -109,7 +116,7 @@ export const SUCCESSION_POLICIES = defineTable('succession', {
     button: button('end', 'list'),
     scope: pointScope({ body: 'items[*].id' }, MUTATE, NOT_FOUND),
     fields: OUT,
-    guards: ['succession.syncBarrier', SELF_HIDDEN],
+    guards: [SELF_HIDDEN],
     rows: {
       path: 'items[*]',
       operation: 'update',
@@ -118,15 +125,11 @@ export const SUCCESSION_POLICIES = defineTable('succession', {
       target: { body: 'items[*].id' },
       batch: 'atomic',
     },
-    write: write(
-      { none: true, reason: '命令式按钮，不提取字段' },
-      'succession.commandRecheck',
-      'succession.authorizeResult',
-      {
-        ledger: 'single',
-        commandOnly: true,
-      },
-    ),
+    write: write('body', RECHECK, AUTHORIZE_RESULT, {
+      ledger: 'single',
+      commandOnly: true,
+      preconditions: ['succession.syncBarrier'],
+    }),
   }),
   [`DELETE ${BASE}/records/:id`]: object({
     invalidId: BAD_REQUEST,
@@ -135,9 +138,10 @@ export const SUCCESSION_POLICIES = defineTable('succession', {
     button: button('delete', 'detail'),
     scope: pointScope({ param: 'id' }, MUTATE, NOT_FOUND),
     fields: OUT,
-    guards: ['succession.syncBarrier', SELF_HIDDEN],
-    write: write({ none: true, reason: '删除不写字段' }, 'succession.commandRecheck', 'succession.authorizeResult', {
+    guards: [SELF_HIDDEN],
+    write: write('body', RECHECK, AUTHORIZE_RESULT, {
       ledger: 'single',
+      preconditions: ['succession.syncBarrier'],
     }),
   }),
 });

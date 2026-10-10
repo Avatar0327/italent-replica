@@ -130,7 +130,8 @@ async function checkOverlap(
         AND COALESCE(target_org_id, target_position_id) = ${record.target}::uuid
         AND successor_employee_id = ${record.successor}::uuid
         ${selfId ? sql`AND id <> ${selfId}::uuid` : sql``}
-        AND daterange(start_date, end_date, '[)') && daterange(${record.start}::date, ${record.end ?? SUCCESSION_OPEN_END}::date, '[)')`),
+        AND daterange(start_date, end_date, '[)')
+          && daterange(${record.start}::date, ${record.end ?? SUCCESSION_OPEN_END}::date, '[)')`),
   );
   if (!rows.length) return;
   if (rows.some((row) => row.active)) {
@@ -225,7 +226,8 @@ const targetOf = (row: LockedRow): Target =>
 const barrierTarget = (target: Target): BarrierTarget => target;
 
 const COLUMNS = sql`id, succession_type, target_org_id, target_position_id, successor_employee_id, readiness_id,
-  backup_type, start_date::text AS start_date, end_date::text AS end_date, end_reason, end_source, revision, deleted_at`;
+  backup_type, start_date::text AS start_date, end_date::text AS end_date, end_reason, end_source, revision,
+  deleted_at`;
 
 /** 无锁读（只取目标 / 继任者定位，用于决定取锁顺序）。 */
 async function peekRows(tx: Tx, ctx: WriteContext, ids: readonly string[]): Promise<LockedRow[]> {
@@ -311,9 +313,9 @@ export async function createRecord(tx: Tx, ctx: WriteContext, body: RecordCreate
   const [created] = rowsOf<Record<string, unknown>>(
     await guardExclusion(() =>
       tx.execute(sql`INSERT INTO succession_records
-        (tenant_id, succession_type, target_org_id, target_position_id, successor_employee_id, readiness_id, backup_type,
-         start_date, end_date, end_reason, end_source, ended_at, ended_by, source_kind, created_by, updated_by,
-         created_at, updated_at)
+        (tenant_id, succession_type, target_org_id, target_position_id, successor_employee_id, readiness_id,
+         backup_type, start_date, end_date, end_reason, end_source, ended_at, ended_by, source_kind, created_by,
+         updated_by, created_at, updated_at)
         VALUES (${ctx.tenantId}::uuid, ${target.kind}, ${target.kind === 'org' ? target.id : null}::uuid,
           ${target.kind === 'position' ? target.id : null}::uuid, ${body.successorEmployeeId}::uuid,
           ${body.readinessId ?? null}::uuid, ${body.backupType ?? 'principal'}, ${body.startDate}::date,
