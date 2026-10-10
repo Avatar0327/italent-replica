@@ -66647,7 +66647,7 @@ export const DEPENDENCIES: Readonly<Record<string, Readonly<Record<string, strin
       'apps/api/src/modules/permission/scope-policy-service.ts#identityTarget': '4741687a6576',
       'apps/api/src/modules/permission/scope-policy-service.ts#identityWhere': '130532592146',
       'apps/api/src/modules/permission/scope-policy-service.ts#invalid': '89cab4591966',
-      'apps/api/src/modules/permission/scope-policy-service.ts#lockIdentityScope': '89e31b80c049',
+      'apps/api/src/modules/permission/scope-policy-service.ts#lockIdentityScope': '4abc8db38fde',
       'apps/api/src/modules/permission/scope-policy-service.ts#setIdentityScope': '9ebde543c331',
       'apps/api/src/tenant-context.ts#tenantOf': 'd3dec1bb252c',
       'packages/domain/src/approval/transfer-view.ts#TRANSFER_LINKAGE_FIELDS': '7568fb166c45',

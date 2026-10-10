@@ -51,9 +51,9 @@ async function lock(tx: Tx, write: WriteContext, key: string) {
  * 大小写不同的同一 UUID，按字符串哈希会得到不同的锁（#160 同类问题）。键内容与原 identity-scope 锁一致（小写 UUID 时哈希相同）。
  */
 export async function lockIdentityScope(tx: Tx, tenantId: string, key: IdentityScopeKey): Promise<void> {
-  const objectId = `${key.profileId}:${key.appCode}:${key.targetKind}:${key.targetCode}`;
+  const lockKey = `identity-scope:${key.profileId}:${key.appCode}:${key.targetKind}:${key.targetCode}`;
   await tx.execute(
-    sql`SELECT pg_advisory_xact_lock(hashtextextended((${tenantId}::uuid)::text || ':' || ${'identity-scope:' + objectId}, 0))`,
+    sql`SELECT pg_advisory_xact_lock(hashtextextended((${tenantId}::uuid)::text || ':' || ${lockKey}, 0))`,
   );
 }
 
