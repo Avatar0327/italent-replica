@@ -6,7 +6,8 @@
       "status": 404
     },
     "fieldQueries": [
-      "fields:TalentReview.CalcRule"
+      "fields:TalentReview.CalcRule",
+      "fields:TalentReview.Field"
     ],
     "invalidId": {
       "code": "VALIDATION_FAILED",
@@ -14,11 +15,13 @@
       "status": 400
     },
     "scopeQueries": [
-      "scope:TalentReview/TalentReview.CalcRule/-"
+      "scope:TalentReview/TalentReview.CalcRule/-",
+      "scope:TalentReview/TalentReview.Field/-"
     ],
     "trace": [
       "btn:TalentReview.CalcRule#delete@detail",
-      "obj:TalentReview.CalcRule:delete"
+      "obj:TalentReview.CalcRule:delete",
+      "obj:TalentReview.Field:view"
     ]
   },
   "DELETE /api/tenant/talent-review/categories/:id": {
@@ -206,13 +209,16 @@
       "status": 200
     },
     "fieldQueries": [
-      "fields:TalentReview.CalcRule"
+      "fields:TalentReview.CalcRule",
+      "fields:TalentReview.Field"
     ],
     "scopeQueries": [
-      "scope:TalentReview/TalentReview.CalcRule/TalentReview.CalcRule.list"
+      "scope:TalentReview/TalentReview.CalcRule/TalentReview.CalcRule.list",
+      "scope:TalentReview/TalentReview.Field/TalentReview.Field.list"
     ],
     "trace": [
-      "obj:TalentReview.CalcRule:view"
+      "obj:TalentReview.CalcRule:view",
+      "obj:TalentReview.Field:view"
     ]
   },
   "GET /api/tenant/talent-review/calc-rules/:id": {
@@ -519,7 +525,8 @@
       "status": 404
     },
     "fieldQueries": [
-      "fields:TalentReview.CalcRule"
+      "fields:TalentReview.CalcRule",
+      "fields:TalentReview.Field"
     ],
     "invalidId": {
       "code": "VALIDATION_FAILED",
@@ -527,11 +534,13 @@
       "status": 400
     },
     "scopeQueries": [
-      "scope:TalentReview/TalentReview.CalcRule/-"
+      "scope:TalentReview/TalentReview.CalcRule/-",
+      "scope:TalentReview/TalentReview.Field/-"
     ],
     "trace": [
       "btn:TalentReview.CalcRule#update@detail",
-      "obj:TalentReview.CalcRule:update"
+      "obj:TalentReview.CalcRule:update",
+      "obj:TalentReview.Field:view"
     ]
   },
   "PATCH /api/tenant/talent-review/categories/:id": {

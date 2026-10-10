@@ -17,6 +17,7 @@ import { EMPTY_SCOPE, type ModuleScope } from '../../apps/api/src/modules/permis
 import { CALC_RULES, calcBody, calcItem, calcWorld, type CalcRuleView, pathOf } from './AC-TR-calc-rule-support.js';
 import { TR_BASE, TR_NOW } from './AC-TR-config-support.js';
 import { tenantApi } from './support/tenant-api.js';
+import './support/b5-path.js';
 
 const testDb = useTestDb();
 const clock = () => TR_NOW;

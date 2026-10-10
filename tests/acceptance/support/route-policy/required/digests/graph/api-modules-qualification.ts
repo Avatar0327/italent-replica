@@ -864,6 +864,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/talent/http.ts#parseBody',
     'packages/domain/src/personnel/fields.ts#SUBSETS',
   ],
+  'apps/api/src/modules/qualification/subset-init.ts#classify': [
+    '#existingNextStart',
+    '#existingRows',
+    'apps/api/src/modules/qualification/sync-mapping.ts#mapEmploymentToQualification',
+  ],
   'apps/api/src/modules/qualification/subset-init.ts#dayBefore': ['#DAY_MS'],
   'apps/api/src/modules/qualification/subset-init.ts#effectiveRecords': [
     'apps/api/src/modules/employment/read-model.ts#listEmploymentRecords',
@@ -875,19 +880,20 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     'apps/api/src/modules/personnel/access.ts#personScope',
   ],
-  'apps/api/src/modules/qualification/subset-init.ts#endDateOf': [
+  'apps/api/src/modules/qualification/subset-init.ts#endDateOf': ['#dayBefore'],
+  'apps/api/src/modules/qualification/subset-init.ts#existingNextStart': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
-    '#dayBefore',
   ],
   'apps/api/src/modules/qualification/subset-init.ts#existingRows': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
   'apps/api/src/modules/qualification/subset-init.ts#initializeOne': [
     'apps/api/src/modules/employment/record-store.ts#lockEmploymentEmployee',
+    '#classify',
     '#effectiveRecords',
-    '#initializeRecord',
+    '#endDateOf',
+    '#insert',
     '#lastOfEachDay',
-    'apps/api/src/modules/qualification/sync-mapping.ts#mapEmploymentToQualification',
   ],
   'apps/api/src/modules/qualification/subset-init.ts#initializeQualificationSubsets': [
     '#NOT_FOUND',
@@ -895,11 +901,7 @@ export const GRAPH: Graph = {
     '#initializeOne',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
-  'apps/api/src/modules/qualification/subset-init.ts#initializeRecord': [
-    'apps/api/src/modules/personnel/subsets.ts#saveSubset',
-    '#endDateOf',
-    '#existingRows',
-  ],
+  'apps/api/src/modules/qualification/subset-init.ts#insert': ['apps/api/src/modules/personnel/subsets.ts#saveSubset'],
   'apps/api/src/modules/qualification/subset-policy.ts#QUALIFICATION_POLICY': [
     '#qualificationBeforeRequest',
     '#qualificationBeforeSave',

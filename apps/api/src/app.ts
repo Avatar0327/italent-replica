@@ -35,6 +35,7 @@ import { registerEvaluationRoutes } from './modules/evaluation/routes.js';
 import { registerAvatarRoutes } from './modules/avatar/routes.js';
 import { registerTalentReviewRoutes } from './modules/talent-review/routes.js';
 import { registerSuccessionRoutes } from './modules/succession/routes.js';
+import { assertFormulaBindingCapabilities } from './modules/talent-review/formula-binding-capabilities.js';
 import { resolveFormulaIdBinding } from './modules/talent-review/formula-binding-switch.js';
 
 /** 租户业务模块：新模块只在此追加一行注册，不改其他装配逻辑。 */
@@ -80,6 +81,8 @@ export interface AppDeps {
 
 export function createApp(deps: AppDeps = {}): Hono {
   const formulaIdBinding = resolveFormulaIdBinding(deps);
+  // F-082 契约 §10：开关打开时前置能力（items 投影、响应 / 重放投影、审计裁剪）任一未登记即拒绝启动
+  if (formulaIdBinding) assertFormulaBindingCapabilities();
   const app = new Hono();
   // F-039：根路由器套登记表，每条注册与中间件都登记，createApp 末尾校验「缺失即失败」并封闭
   const root = policed(app, ROOT_POLICIES);
@@ -127,7 +130,12 @@ export function createApp(deps: AppDeps = {}): Hono {
   if (deps.db) {
     root.route('/', createTenantRouter(deps.db, deps, formulaIdBinding));
     // 平台运营层（R1-T17）：只认平台运营身份，与租户上下文和租户内权限互不相通
-    root.route('/', createPlatformRouter(deps.db, deps.identity ?? denyAllIdentity, deps.clock ?? (() => new Date())));
+    root.route(
+      '/',
+      createPlatformRouter(deps.db, deps.identity ?? denyAllIdentity, deps.clock ?? (() => new Date()), {
+        formulaIdBinding,
+      }),
+    );
   }
 
   app.notFound((c) => errorResponse(c, 'NOT_FOUND', '接口不存在'));

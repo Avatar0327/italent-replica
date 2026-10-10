@@ -310,7 +310,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/talent-review/calc-rule-view.ts#calcRuleSpecOf': ['#CALC_RULE', '#CALC_RULE_BOUND'],
   'apps/api/src/modules/talent-review/calc-rule-view.ts#loadCalcRuleView': ['#calcRuleSpecOf'],
   'apps/api/src/modules/talent-review/calc-rule-view.ts#selectRows': ['#row'],
-  'apps/api/src/modules/talent-review/calc-rule-view.ts#withItems': ['#boundExtras', '#boundRefs'],
+  'apps/api/src/modules/talent-review/calc-rule-view.ts#withItems': ['#boundExtras', '#itemRefs'],
   'apps/api/src/modules/talent-review/config-input.ts#categoryCreate': ['#name', '#sortNo'],
   'apps/api/src/modules/talent-review/config-input.ts#categoryPatch': ['#categoryCreate'],
   'apps/api/src/modules/talent-review/config-input.ts#fieldCreate': [
@@ -864,6 +864,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/talent-review/readiness-port.ts#columns': ['#R'],
   'apps/api/src/modules/talent-review/readiness-port.ts#readinessPort': ['#R', '#columns'],
   'apps/api/src/modules/talent-review/readiness-port.ts#readinessReferrer': ['#guards'],
+  'apps/api/src/modules/talent-review/readiness-port.ts#selectReadiness': ['#R', '#columns'],
   'apps/api/src/modules/talent-review/readiness-service.ts#LIST_ORDER': ['#R'],
   'apps/api/src/modules/talent-review/readiness-service.ts#audit': [
     'apps/api/src/audit/record.ts#recordAudit',
