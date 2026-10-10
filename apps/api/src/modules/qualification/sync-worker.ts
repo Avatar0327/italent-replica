@@ -13,7 +13,12 @@
  */
 import { isUuid, sql, type Db, type Tx, withPlatform, withTenant } from '@italent/db';
 import { SYSTEM_USER_ID } from '../../system-actor.js';
-import { classifyCommandFailure, recordCommandFailure, type CommandFailure } from '../../audit/failures.js';
+import {
+  classifyCommandFailure,
+  recordCommandFailure,
+  type CommandFailure,
+  type CommandPhase,
+} from '../../audit/failures.js';
 import {
   recheckRecordEvent,
   recordEventReadySql,
@@ -44,8 +49,9 @@ const DAY_MS = 86_400_000;
 
 /** 测试探针：复核之后（仍持员工锁）/ 写子集之前各停一下，真 PG 交错与失败重试测试用。 */
 export const qualificationSyncProbe: {
-  afterRecheck?: () => Promise<void>;
-  beforeWrite?: () => Promise<void>;
+  afterRecheck?: (tx: Tx) => Promise<void>;
+  beforeWrite?: (tx: Tx) => Promise<void>;
+  afterSettle?: (tx: Tx) => Promise<void>;
 } = {};
 
 export interface SyncRunResult {
@@ -123,6 +129,7 @@ async function consume(
   item: Picked,
   today: string,
 ): Promise<keyof SyncRunResult | null> {
+  const progress: { phase: CommandPhase; attempts: number } = { phase: 'execute', attempts: 0 };
   let failure: CommandFailure | undefined;
   try {
     const counted = await withTenant(db, ctx.tenantId, async (tx) => {
@@ -135,28 +142,97 @@ async function consume(
           FOR UPDATE SKIP LOCKED`),
       );
       if (!row) return null; // 已被别的实例处理（或正被处理）
-      try {
-        const outcome = await tx.transaction((savepoint) => handle(savepoint, ctx, row, today));
-        await settle(tx, ctx, row, outcome);
-        return outcome.state === 'pending' ? null : outcome.state;
-      } catch (error) {
-        failure = classifyCommandFailure(error, 'execute');
-        await markFailed(tx, ctx, row, failure.errorCode);
-        return 'failed' as const;
-      }
+      progress.attempts = row.attempts;
+      const result = await attempt(tx, ctx, row, today, (classified) => {
+        failure = classified;
+      });
+      // 业务上的活都干完了，下面只剩提交：此后中断属于“结果未知”（探针 afterSettle 在这里模拟提交前后连接中断）
+      progress.phase = 'commit';
+      await qualificationSyncProbe.afterSettle?.(tx);
+      return result;
     });
     if (failure) await recordCommandFailure(db, ctx, ctx.commandId, failure);
     return counted;
   } catch (error) {
-    // 队列行更新本身失败（存储不可写 / 连接断开）：事务已回滚，行保持原状，下一轮重试；不伪造结果。
-    console.error('资格同步处理失败', ctx.commandId, error);
+    return recover(db, ctx, item, error, progress);
+  }
+}
+
+/** 处理一行并更新队列行；确定的业务失败在本事务内落 failed，存储 / 连接故障时事务已不可用，原样抛给外层恢复。 */
+async function attempt(
+  tx: Tx,
+  ctx: EmploymentContext,
+  row: QueueRow,
+  today: string,
+  onBusinessFailure: (failure: CommandFailure) => void,
+): Promise<keyof SyncRunResult | null> {
+  try {
+    const outcome = await tx.transaction((savepoint) => handle(savepoint, ctx, row, today));
+    await settle(tx, ctx, row, outcome);
+    return outcome.state === 'pending' ? null : outcome.state;
+  } catch (error) {
+    const classified = classifyCommandFailure(error, 'execute');
+    if (classified.outcome !== 'business_failed') throw error;
+    onBusinessFailure(classified);
+    await markFailed(tx, ctx, row.id, classified.errorCode);
     return 'failed';
   }
 }
 
+/**
+ * 事务之外的失败恢复（照 job/sequence-worker.ts 的 recoverSequenceFailure）：提交阶段中断先回查持久状态，确认已落地的不重记、
+ * 不重做；否则按阶段分类（提交前失败 = 存储不可写 / 业务失败，提交阶段中断 = 结果未知）写失败审计，再在独立事务里把队列行记为
+ * failed（次数 + 1、错误码、退避）。重试是幂等的（alreadySynced），所以“结果未知”也可以安全重试。
+ * 审计库或队列都写不进去时保持原状、下一轮再试，不伪造结果；日志与队列只出现受控错误码，不带原始异常文案。
+ */
+async function recover(
+  db: Db,
+  ctx: EmploymentContext,
+  item: Picked,
+  error: unknown,
+  progress: { phase: CommandPhase; attempts: number },
+): Promise<keyof SyncRunResult> {
+  let recheckFailed = false;
+  if (progress.phase === 'commit') {
+    try {
+      const landed = await landedOutcome(db, ctx, item.id, progress.attempts);
+      if (landed) return landed;
+    } catch {
+      recheckFailed = true;
+    }
+  }
+  const failure = classifyCommandFailure(error, progress.phase, recheckFailed);
+  await recordCommandFailure(db, ctx, ctx.commandId, failure);
+  await withTenant(db, ctx.tenantId, (tx) => markFailed(tx, ctx, item.id, failure.errorCode)).catch(() => {
+    /* 存储仍不可写：行保持原状，下一轮重试。 */
+  });
+  console.error('资格同步处理失败', ctx.commandId, failure.outcome, failure.errorCode);
+  return 'failed';
+}
+
+/** 提交阶段中断后回查：队列行已是终态，或已记过本次失败，说明事务确实提交了。 */
+async function landedOutcome(
+  db: Db,
+  ctx: EmploymentContext,
+  id: string,
+  attemptsBefore: number,
+): Promise<keyof SyncRunResult | null> {
+  const [row] = await withTenant(db, ctx.tenantId, async (tx) =>
+    rowsOf<{ state: string; attempts: number }>(
+      await tx.execute(
+        sql`SELECT state, attempts FROM ev_sync_queue WHERE tenant_id=${ctx.tenantId} AND id=${id}::uuid`,
+      ),
+    ),
+  );
+  if (row?.state === 'done') return 'done';
+  if (row?.state === 'skipped') return 'skipped';
+  if (row?.state === 'failed' && Number(row.attempts) > attemptsBefore) return 'failed';
+  return null;
+}
+
 async function handle(tx: Tx, ctx: EmploymentContext, row: QueueRow, today: string): Promise<Outcome> {
   const checked = await recheckRecordEvent(tx, ctx, row.recordId, today);
-  await qualificationSyncProbe.afterRecheck?.();
+  await qualificationSyncProbe.afterRecheck?.(tx);
   if (checked.kind === 'gone') return { state: 'skipped', reason: RECORD_NOT_EFFECTIVE };
   if (checked.kind === 'not_yet') return { state: 'pending', nextAttemptAt: dayBefore(checked.effectiveDate) };
   const { record } = checked;
@@ -166,7 +242,7 @@ async function handle(tx: Tx, ctx: EmploymentContext, row: QueueRow, today: stri
   const mapped = await mapEmploymentToQualification(tx, ctx.tenantId, record.fields, record.effectiveDate);
   if (mapped.kind === 'skipped') return { state: 'skipped', reason: mapped.reason };
   if (await alreadySynced(tx, ctx.tenantId, record.id)) return { state: 'done', reason: null };
-  await qualificationSyncProbe.beforeWrite?.();
+  await qualificationSyncProbe.beforeWrite?.(tx);
   await saveSubset(
     tx,
     ctx,
@@ -212,13 +288,18 @@ async function settle(tx: Tx, ctx: EmploymentContext, row: QueueRow, outcome: Ou
     WHERE tenant_id=${ctx.tenantId} AND id=${row.id}::uuid`);
 }
 
-/** 失败：记次数与错误码（不存原始异常文案，防止带出个人信息），指数退避到下次重试（DEC-052）。 */
-async function markFailed(tx: Tx, ctx: EmploymentContext, row: QueueRow, errorCode: string): Promise<void> {
-  const attempts = row.attempts + 1;
+/** 失败：记次数与错误码（不存原始异常文案，防止带出个人信息），指数退避到下次重试（DEC-052）。行已是终态时不动。 */
+async function markFailed(tx: Tx, ctx: EmploymentContext, id: string, errorCode: string): Promise<void> {
+  const [row] = rowsOf<{ attempts: number }>(
+    await tx.execute(sql`SELECT attempts FROM ev_sync_queue WHERE tenant_id=${ctx.tenantId} AND id=${id}::uuid
+      AND state IN ('pending','failed') FOR UPDATE`),
+  );
+  if (!row) return;
+  const attempts = Number(row.attempts) + 1;
   const backoff = Math.min(BACKOFF_BASE_MS * 2 ** (attempts - 1), BACKOFF_MAX_MS);
   await tx.execute(sql`UPDATE ev_sync_queue SET state='failed', reason=${errorCode}, attempts=${attempts},
     next_attempt_at=${new Date(ctx.now.getTime() + backoff).toISOString()}::timestamptz,
-    updated_at=${ctx.now.toISOString()}::timestamptz WHERE tenant_id=${ctx.tenantId} AND id=${row.id}::uuid`);
+    updated_at=${ctx.now.toISOString()}::timestamptz WHERE tenant_id=${ctx.tenantId} AND id=${id}::uuid`);
 }
 
 /** 进程内调度：平台遍历租户，逐租户跑到本轮取空；多实例靠 SKIP LOCKED 与员工锁去重。 */
@@ -227,7 +308,7 @@ export function startQualificationSyncScheduler(db: Db, intervalMs = 5000) {
   const tick = () => {
     if (running) return;
     running = sweep(db)
-      .catch((error: unknown) => console.error('资格同步调度失败', error))
+      .catch((error: unknown) => console.error('资格同步调度失败', classifyCommandFailure(error, 'execute').errorCode))
       .finally(() => {
         running = null;
       });

@@ -5,6 +5,9 @@
  *   职级类别 = 记录职级（levelId）在判定日的职级版本上的 level_type_id。
  * - 级别：记录的职级、职等各自关联的启用级别并集，须恰好 1 个；两个不同级别 → AMBIGUOUS_MAPPING（不猜），没有 → NO_MAPPING。
  *   “职级 → 职等”的先后在原站无实测（🟡）：并集要求唯一，比任选一个优先更保守。
+ * 命中的类别 / 级别行加共享锁（FOR SHARE）持到事务结束：配置侧停用是对同一行的 UPDATE，与同步互斥——停用先提交则这里等它提交后
+ * 重新判定“启用”（READ COMMITTED 下 FOR SHARE 会按最新版本重验 WHERE），同步先持锁则停用等同步提交；不会出现同步按旧的“启用”
+ * 生成引用已停用配置的子集（第 1 轮审查 P2-02）。不需要人工查看权限检查。
  * 只读，不带数据范围：只给后台同步判断“写哪一类 / 哪一级”，调用方不得把结果原样透出。
  */
 import { sql, type Tx } from '@italent/db';
@@ -40,7 +43,8 @@ async function enabledCategoryFor(
     await tx.execute(sql`SELECT c.id FROM ql_category_job_links l
       JOIN ql_categories c ON c.tenant_id=l.tenant_id AND c.id=l.category_id
       WHERE l.tenant_id=${tenantId} AND l.job_link_type=${type} AND c.enabled
-        AND l.job_object_id=${jobObjectId}::uuid`),
+        AND l.job_object_id=${jobObjectId}::uuid
+      FOR SHARE OF c`),
   ).map((row) => row.id);
 }
 
@@ -72,7 +76,8 @@ async function mappedLevels(tx: Tx, tenantId: string, fields: MappingFields): Pr
       await tx.execute(sql`SELECT v.id FROM ql_level_job_links l
         JOIN ql_levels v ON v.tenant_id=l.tenant_id AND v.id=l.level_id
         WHERE l.tenant_id=${tenantId} AND l.job_link_type=${type} AND v.enabled
-          AND l.job_object_id=${jobObjectId}::uuid`),
+          AND l.job_object_id=${jobObjectId}::uuid
+        FOR SHARE OF v`),
     );
     for (const row of rows) found.add(row.id);
   }
