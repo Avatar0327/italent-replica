@@ -18,6 +18,7 @@ import { SYSTEM_USER_ID } from '../../apps/api/src/system-actor.js';
 import { linkRows, resetCredentialConfig } from './AC-360-F076-support.js';
 import { START, issuedScene, login, minutes, seedThrottle, sessionRows } from './AC-360-F076-portal-support.js';
 import { ipKey, pairKey } from '../../apps/api/src/modules/survey360/throttle.js';
+import { blockedOrSettled } from './AC-360-F076-lock-barrier.js';
 import { credentialConfig } from '../../apps/api/src/modules/survey360/credential-config.js';
 
 const realPostgres = Boolean(process.env.TEST_DATABASE_URL);
@@ -32,14 +33,6 @@ afterEach(() => {
 });
 
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-const settles = (promise: Promise<unknown>, ms: number) =>
-  Promise.race([
-    promise.then(
-      () => true,
-      () => true,
-    ),
-    pause(ms).then(() => false),
-  ]);
 
 describe('AC-360-F076-R2 P2-2 会话时间取实际签发时刻', () => {
   it('较早发起、较晚完成的登录：返回的会话有效，不被自身的 5 会话上限淘汰；期限从实际签发算', async () => {
@@ -105,7 +98,8 @@ describe.skipIf(!realPostgres)('AC-360-F076-R2 P2-1 删最后一条关系 × 新
     const removing = removeRelationTx(w, s.object.id, s.rel.p1.id);
     while (!checked) await pause(5);
     const adding = w.appraiser(s.activity.id, second.id, s.person.P1.id, 'peer');
-    await settles(adding, 300);
+    // 屏障：新增已在等锁（新实现）或已提交（没有共同保护的旧实现）后才放行删除，不按固定延时猜（第 2 轮审查 P3）
+    await blockedOrSettled(w.db, adding);
     release();
     await Promise.all([removing, adding]);
 
@@ -127,7 +121,7 @@ describe.skipIf(!realPostgres)('AC-360-F076-R2 P2-1 删最后一条关系 × 新
     const adding = w.appraiser(s.activity.id, second.id, s.person.P1.id, 'peer');
     while (!locked) await pause(5);
     const removing = removeRelationTx(w, s.object.id, s.rel.p1.id);
-    await settles(removing, 300);
+    await blockedOrSettled(w.db, removing);
     release();
     await Promise.all([adding, removing]);
 
@@ -141,7 +135,7 @@ describe.skipIf(!realPostgres)('AC-360-F076-R2 P2-1 删最后一条关系 × 新
     const other = await w.appraiser(s.activity.id, second.id, s.person.P1.id, 'peer');
     const first = await removeHolding(w, s.object.id, s.rel.p1.id);
     const secondRemoval = removeHolding(w, second.id, other.id);
-    await settles(secondRemoval, 300);
+    await blockedOrSettled(w.db, secondRemoval);
     first.release();
     const later = await secondRemoval;
     later.release();
@@ -186,7 +180,7 @@ describe.skipIf(!realPostgres)('AC-360-F076-R2 P2-3 限频维护任务 × 登录
     });
     while (!held) await pause(5);
     const logging = login(w, cred.serial, cred.password, { ip });
-    await settles(logging, 300);
+    await blockedOrSettled(w.db, logging);
     release();
     const [report, res] = await Promise.all([maintenance, logging]);
     expect(res.status, await res.clone().text()).toBe(201);
