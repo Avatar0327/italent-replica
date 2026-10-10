@@ -1,5 +1,5 @@
 {
-  "id": "5da65b04-da24-4165-9ff8-ea7c781cf6d5",
+  "id": "509889fd-b70d-4497-a576-06c9a047767c",
   "prevId": "d6de1b4c-47a9-4905-b516-76bb03e99d33",
   "version": "7",
   "dialect": "postgresql",
@@ -37427,6 +37427,139 @@
       },
       "isRLSEnabled": false
     },
+    "public.ev_activity_types": {
+      "name": "ev_activity_types",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "display_order": {
+          "name": "display_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "sync_qualification": {
+          "name": "sync_qualification",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "ev_activity_types_order": {
+          "name": "ev_activity_types_order",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "display_order",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "ev_activity_types_tenant_id_tenants_id_fk": {
+          "name": "ev_activity_types_tenant_id_tenants_id_fk",
+          "tableFrom": "ev_activity_types",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "ev_activity_types_tenant_id": {
+          "name": "ev_activity_types_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        },
+        "ev_activity_types_name": {
+          "name": "ev_activity_types_name",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "name"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.idp_careers": {
       "name": "idp_careers",
       "schema": "",
@@ -43164,85 +43297,6 @@
         "succession_target_locks_kind": {
           "name": "succession_target_locks_kind",
           "value": "\"succession_target_locks\".\"target_kind\" IN ('org', 'position')"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.seed_grant_ledger": {
-      "name": "seed_grant_ledger",
-      "schema": "",
-      "columns": {
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "current_tenant_id()"
-        },
-        "entry": {
-          "name": "entry",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "code": {
-          "name": "code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "source": {
-          "name": "source",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "command_id": {
-          "name": "command_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "recorded_at": {
-          "name": "recorded_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "seed_grant_ledger_tenant_id_tenants_id_fk": {
-          "name": "seed_grant_ledger_tenant_id_tenants_id_fk",
-          "tableFrom": "seed_grant_ledger",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "seed_grant_ledger_tenant_id_entry_code_pk": {
-          "name": "seed_grant_ledger_tenant_id_entry_code_pk",
-          "columns": [
-            "tenant_id",
-            "entry",
-            "code"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "seed_grant_ledger_source_valid": {
-          "name": "seed_grant_ledger_source_valid",
-          "value": "\"seed_grant_ledger\".\"source\" IN ('install', 'adopted', 'tenant_saved', 'withheld')"
         }
       },
       "isRLSEnabled": false
