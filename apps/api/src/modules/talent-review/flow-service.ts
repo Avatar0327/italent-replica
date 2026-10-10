@@ -195,6 +195,22 @@ async function syncNodes(tx: Tx, ctx: ReferenceWriteContext, flowId: string, nod
   }
 }
 
+/**
+ * 已停用的角色只在“原节点保留原角色”时豁免（审查第 1 轮 P2-01）：按（节点 id × 角色 id）判定，不能把整份流程出现过的角色
+ * 合成一个集合——否则任意节点都能沿用其他节点的停用角色。新增节点（含删除后不带 id 重建）、已有节点新增或换成另一节点
+ * 原有的角色都算新引用；同一角色只要在任一节点是新引用，就不在返回的豁免集合里。
+ */
+function heldRoles(existing: readonly FlowNodeView[], nodes: readonly FlowNodeBody[] | undefined): Set<string> {
+  const heldBy = new Map(existing.map((n) => [n.id, new Set(n.roleIds)]));
+  const requested = nodes ?? existing;
+  const fresh = new Set<string>();
+  for (const node of requested) {
+    const kept = node.id === undefined ? undefined : heldBy.get(node.id);
+    for (const roleId of node.roleIds) if (!kept?.has(roleId)) fresh.add(roleId);
+  }
+  return new Set(requested.flatMap((node) => node.roleIds).filter((roleId) => !fresh.has(roleId)));
+}
+
 export async function createFlow(tx: Tx, ctx: ReferenceWriteContext, input: FlowCreate): Promise<FlowView> {
   const { nodes, ...columns } = input;
   requireConfigCreatable(ctx.scope, 'flow');
@@ -209,8 +225,7 @@ export async function updateFlow(tx: Tx, ctx: ReferenceWriteContext, id: string,
   requireSeeAllToRename(ctx, before, patch.name);
   const { nodes, ...columns } = patch;
   if (nodes !== undefined) checkNodes(nodes, before.nodes);
-  const held = new Set(before.nodes.flatMap((n) => n.roleIds));
-  await checkReferences(tx, ctx, ROLE_REFERENCE, ctx.references ?? [], held);
+  await checkReferences(tx, ctx, ROLE_REFERENCE, ctx.references ?? [], heldRoles(before.nodes, nodes));
   await uniqueOr(FLOW.duplicate, FLOW.label, () =>
     tx
       .update(FL)
