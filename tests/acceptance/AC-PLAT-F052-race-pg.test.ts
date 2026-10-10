@@ -3,7 +3,7 @@
  * 真 PostgreSQL（PGlite 单连接无法并发，只在设了 TEST_DATABASE_URL 时运行，写法照 AC-PLAT-F061-concurrency-pg）。
  * ① 两个不同命令 ID 同时回补同一租户（租户里一个标准身份都没有）：后到者等补装锁，之后全部已装，不 500；
  * ② 回补与同编码自定义身份创建并发：
- *    - 自定义先写（未提交）、回补后到：回补等唯一键，自定义提交后回补不覆盖、不 500，按 DEC-402⑤ 口径列为 CODE_TAKEN，
+ *    - 自定义先写（未提交）、回补后到：回补等唯一键，自定义提交后回补不覆盖、不 500，在报告 skipped 里列为 CODE_TAKEN（下一次回补起进 existingDetails，DEC-402⑤），
  *      其余标准身份照常装；自定义行原样保留（source = custom）；
  *    - 回补先写（未提交）、自定义后到：自定义创建返回 409 CONFLICT（身份编码已存在），不 500。
  */
@@ -53,7 +53,7 @@ const profileRows = (w: World) =>
   );
 
 interface SeedReport {
-  items: { key: string; installed: string[]; existing: number; existingDetails?: { code: string; reason: string }[] }[];
+  items: { key: string; installed: string[]; existing: number; skipped?: { code: string; reason: string }[] }[];
 }
 
 describe.skipIf(!realPostgres)('AC-PLAT-F052 ① 两个不同命令 ID 同时回补（真 PG）', () => {
@@ -68,7 +68,7 @@ describe.skipIf(!realPostgres)('AC-PLAT-F052 ① 两个不同命令 ID 同时回
     const firstReport = await first.done;
     const res = await second;
     expect(res.status, await res.clone().text()).toBe(200);
-    expect(firstReport.find((i) => i.key === 'standard-profiles')!.installed.sort()).toEqual([...allCodes].sort());
+    expect([...firstReport.find((i) => i.key === 'standard-profiles')!.installed].sort()).toEqual([...allCodes].sort());
     const body = (await res.json()) as SeedReport;
     expect(body.items.find((i) => i.key === 'standard-profiles')!.installed).toEqual([]);
     const rows = await profileRows(w);
@@ -77,7 +77,7 @@ describe.skipIf(!realPostgres)('AC-PLAT-F052 ① 两个不同命令 ID 同时回
 });
 
 describe.skipIf(!realPostgres)('AC-PLAT-F052 ② 回补 × 同编码自定义身份创建（真 PG）', () => {
-  it('seeds/backfill：自定义先写未提交、回补后到——回补不 500，该编码列为 CODE_TAKEN，其余照装，自定义行保留', async () => {
+  it('seeds/backfill：自定义先写未提交、回补后到——回补不 500，该编码 skipped CODE_TAKEN，其余照装，自定义行保留', async () => {
     const w = await legacyWorld(testDb().db, 'f052b', [], allCodes);
     const hold = gate();
     const custom = holdTx(w, hold, (tx) =>
@@ -96,7 +96,7 @@ describe.skipIf(!realPostgres)('AC-PLAT-F052 ② 回补 × 同编码自定义身
     expect(res.status, await res.clone().text()).toBe(200);
     const item = ((await res.json()) as SeedReport).items.find((i) => i.key === 'standard-profiles')!;
     expect(item.installed.sort()).toEqual([...otherCodes].sort());
-    expect(item.existingDetails).toEqual([{ code: HR.code, reason: 'CODE_TAKEN' }]);
+    expect(item.skipped).toEqual([{ code: HR.code, reason: 'CODE_TAKEN' }]);
     const rows = await profileRows(w);
     expect(rows.filter((r) => r.code === HR.code)).toEqual([{ code: HR.code, source: 'custom' }]);
     expect(rows.filter((r) => otherCodes.includes(r.code)).every((r) => r.source === 'standard')).toBe(true);
