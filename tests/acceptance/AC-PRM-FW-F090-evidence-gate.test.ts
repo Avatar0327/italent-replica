@@ -14,6 +14,7 @@ import {
   currentDependencies,
   currentDigestTable,
   currentRegistry,
+  effectiveUses,
   repoSource,
   syncedRegistry,
   unitText,
@@ -251,6 +252,42 @@ describe('AC-PRM-FW-F090 证据单元改名：登记里的单元在源码里不�
     };
     expect(() => unitText(broken, `${FIX}/gate.ts#gate`)).toThrow(TypeError);
     expect(() => currentRegistry(TABLE, broken, false)).toThrow(TypeError);
+  });
+
+  it('异常分类在各出口一致：不存在 / 不唯一 / ENOENT 都算失效单元；EACCES 等其他读取异常各出口都照旧抛出（R2 P3-1）', () => {
+    const unit = `${FIX}/gate.ts#gate`;
+    const errno = (code: string): SourceReader => {
+      const failing = readerOf(FILES);
+      return (file) => {
+        if (file !== `${FIX}/gate.ts`) return failing(file);
+        throw Object.assign(new Error(`${code}: ${file}`), { code });
+      };
+    };
+    // 同名嵌套函数让 gate 出现两次：单元“不唯一”
+    const nested = 'export function wrapper() {\n  function gate() {\n    return 0;\n  }\n  return gate();\n}\n';
+    const ambiguous = readerOf({ ...FILES, [`${FIX}/gate.ts`]: `${FILES[`${FIX}/gate.ts`]}${nested}` });
+    for (const [label, reader] of [
+      ['不存在', read],
+      ['不唯一', ambiguous],
+      ['ENOENT', errno('ENOENT')],
+    ] as const) {
+      expect(brokenUnits(TABLE, reader, false), label).toEqual([unit]);
+      expect(effectiveUses(TABLE, reader, false).has(unit), label).toBe(false);
+      expect(currentRegistry(TABLE, reader, false).units, label).toEqual({});
+      expect(currentDependencies(TABLE, reader, false), label).toEqual({});
+      const codes = checkEvidence(TABLE, { read: reader, branch: false }).map((f) => f.code);
+      expect(codes, label).toContain('EVIDENCE_UNIT');
+      expect(codes, label).not.toContain('EVIDENCE_STALE');
+    }
+    for (const code of ['EACCES', 'EISDIR']) {
+      const reader = errno(code);
+      expect(() => brokenUnits(TABLE, reader, false), code).toThrow(code);
+      expect(() => effectiveUses(TABLE, reader, false), code).toThrow(code);
+      expect(() => currentRegistry(TABLE, reader, false), code).toThrow(code);
+      expect(() => currentDependencies(TABLE, reader, false), code).toThrow(code);
+      expect(() => syncedRegistry(TABLE, reader, false).units, code).toThrow(code);
+      expect(() => checkEvidence(TABLE, { read: reader, branch: false }), code).toThrow(code);
+    }
   });
 
   it('生成登记文件（ROUTE_POLICY_UPDATE_DIGESTS=1）遇到失效单元仍然报错，不静默丢弃', () => {
