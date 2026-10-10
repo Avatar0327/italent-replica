@@ -303,10 +303,21 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-QL-sync 真 PG：迟提交�
   );
 
   // ---- 第 1 轮审查 P2-03：连接故障要分类审计、记次数与原因 -------------------------------------------------------------
+  /**
+   * 终止当前事务所在的 PG 后端，并等到后端确实消失、客户端也处理完断开事件，才让后面的语句发出：
+   * postgres.js 在断开事件还没处理完时发新语句，会在定时器里对已置空的连接取 write，成为进程级未捕获异常（CI 上出现过）。
+   */
   async function killOwnBackend(db: Db, tx: Tx) {
     const [row] = rowsOf<{ pid: number }>(await tx.execute(sql`SELECT pg_backend_pid() AS pid`));
     await db.execute(sql`SELECT pg_terminate_backend(${row!.pid})`);
-    await new Promise((done) => setTimeout(done, 50));
+    for (let i = 0; i < 100; i += 1) {
+      const [alive] = rowsOf<{ n: number }>(
+        await db.execute(sql`SELECT count(*)::int AS n FROM pg_stat_activity WHERE pid=${row!.pid}`),
+      );
+      if (alive!.n === 0) break;
+      await new Promise((done) => setTimeout(done, 20));
+    }
+    await new Promise((done) => setTimeout(done, 300));
   }
   const failureAudits = (w: Awaited<ReturnType<typeof configured>>['w']) =>
     withTenant(w.db, w.tenantId, async (tx) =>
