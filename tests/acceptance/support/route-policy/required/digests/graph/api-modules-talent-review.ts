@@ -300,6 +300,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/talent-review/field-service.ts#updateField',
     'apps/api/src/modules/talent-review/field-service.ts#withOptions',
     'apps/api/src/modules/talent-review/rename-disclosure.ts#resolveCalcDisclosure',
+    'apps/api/src/modules/talent-review/rename-disclosure.ts#resolveFieldColumnsViewable',
     'apps/api/src/modules/talent/http.ts#parseBody',
     'apps/api/src/modules/talent/http.ts#requireNew',
     'apps/api/src/modules/talent/http.ts#revision',
@@ -363,15 +364,11 @@ export const GRAPH: Graph = {
     '#breaksMessage',
     '#partitionBroken',
     '#solidifyCandidates',
-    '#textFallbackItems',
+    'apps/api/src/modules/talent-review/text-fallback.ts#textFallbackItems',
     'packages/domain/src/talent-review/formula-rename.ts#checkRenameRoundTrip',
   ],
   'apps/api/src/modules/talent-review/field-rename-guard.ts#partitionBroken': ['#visibleTo'],
   'apps/api/src/modules/talent-review/field-rename-guard.ts#solidifyCandidates': ['#rowsOf'],
-  'apps/api/src/modules/talent-review/field-rename-guard.ts#textFallbackItems': [
-    '#rowsOf',
-    'packages/domain/src/talent-review/calc-rule.ts#textMentionsField',
-  ],
   'apps/api/src/modules/talent-review/field-rename-guard.ts#visibleTo': [
     'apps/api/src/modules/talent-review/access.ts#requireConfigVisible',
   ],
@@ -684,6 +681,12 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/talent-review/access.ts#reviewContext',
     'apps/api/src/modules/talent-review/access.ts#reviewScope',
   ],
+  'apps/api/src/modules/talent-review/rename-disclosure.ts#resolveFieldColumnsViewable': [
+    'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
+    'apps/api/src/modules/talent-review/access.ts#codeOf',
+    'apps/api/src/modules/talent-review/access.ts#reviewContext',
+    '#REFERENCE_COLUMNS',
+  ],
   'apps/api/src/modules/talent-review/routes.ts#PATH': [
     'apps/api/src/modules/talent-review/access.ts#TALENT_REVIEW_BASE',
   ],
@@ -731,5 +734,10 @@ export const GRAPH: Graph = {
     '#columns',
     '#loadSettings',
     '#requireActiveMember',
+  ],
+  'apps/api/src/modules/talent-review/text-fallback.ts#textFallbackItems': [
+    '#rowsOf',
+    'packages/domain/src/talent-review/calc-rule.ts#fieldNameTerms',
+    'packages/domain/src/talent-review/calc-rule.ts#textMentionsField',
   ],
 };

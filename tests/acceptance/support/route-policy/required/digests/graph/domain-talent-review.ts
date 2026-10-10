@@ -21,6 +21,7 @@ export const GRAPH: Graph = {
   ],
   'packages/domain/src/talent-review/calc-rule.ts#textMentionsField': [
     'packages/domain/src/expression/engine.ts#validateFormula',
+    '#fieldNameTerms',
     '#formulaPath',
   ],
   'packages/domain/src/talent-review/calc-rule.ts#unreferenceableItem': [
@@ -39,8 +40,10 @@ export const GRAPH: Graph = {
   'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>role': ['#object'],
   'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>settings': ['#object'],
   'packages/domain/src/talent-review/catalog.ts#object': ['#SYSTEM_FIELDS', '#TALENT_REVIEW_APP', '#crud'],
+  'packages/domain/src/talent-review/formula-audit.ts#filterHints': ['#ids', '#isObject'],
   'packages/domain/src/talent-review/formula-audit.ts#filterRefs': ['#isObject'],
   'packages/domain/src/talent-review/formula-audit.ts#redactCalcRuleAuditValue': [
+    '#filterHints',
     '#filterRefs',
     '#isChange',
     '#isItem',
@@ -106,7 +109,6 @@ export const GRAPH: Graph = {
     'packages/domain/src/talent-review/calc-rule.ts#FORMULA_OBJECT',
     '#FORMULA_REPAIR_NOTICE',
     '#fieldNodes',
-    '#isObjectReference',
     '#startsWithObject',
   ],
   'packages/domain/src/talent-review/formula-binding.ts#resolveReferences': [

@@ -827,13 +827,13 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/talent-review/config-routes.ts': {
     listResponse: 'ab2a415a0736',
     registerCategories: '21d48677b1eb',
-    registerFields: '902dc37719d7',
+    registerFields: '3ed396875c5e',
     registerRoles: '9bbaa68d1347',
     registerSettings: '162387861cef',
     requirePairUpdate: '5b81ba1de22f',
   },
   'apps/api/src/modules/talent-review/field-rename-guard.ts': {
-    partitionBroken: 'd75f58edb9e1',
+    partitionBroken: 'c4b0d36cc40d',
   },
   'apps/api/src/modules/talent-review/matrix-routes.ts': {
     registerMatrixRoutes: '39431a7d1f6a',
@@ -1703,7 +1703,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/talent-review/config-kit.ts#requireSeeAllToRename': '41903ba0cf58',
   'apps/api/src/modules/talent-review/config-routes.ts#listResponse': 'ce83540cc013',
   'apps/api/src/modules/talent-review/config-routes.ts#registerCategories': '030f78ed29d5',
-  'apps/api/src/modules/talent-review/config-routes.ts#registerFields': '7a14c5c04ea7',
+  'apps/api/src/modules/talent-review/config-routes.ts#registerFields': '3a591f093912',
   'apps/api/src/modules/talent-review/config-routes.ts#registerRoles': '9875bb5b943d',
   'apps/api/src/modules/talent-review/config-routes.ts#registerSettings': '6f984e7b689f',
   'apps/api/src/modules/talent-review/config-routes.ts#requirePairUpdate': 'b7c6e63f10de',

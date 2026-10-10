@@ -196,7 +196,7 @@ const RENAME_DISCLOSURE: Obligation = {
     {
       role: 'call',
       unit: `${CFG}#registerFields`,
-      anchor: 'const calcDisclosure = body.name === undefined ? undefined : await resolveCalcDisclosure(c, deps)',
+      anchor: 'const calcDisclosure = renaming ? await resolveCalcDisclosure(c, deps) : undefined',
     },
     {
       role: 'impl',
