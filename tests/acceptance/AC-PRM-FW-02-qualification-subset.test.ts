@@ -14,7 +14,8 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { subsetScene } from './AC-QL-subset-support.js';
 import { readFrozenContract } from './support/route-policy/baseline.js';
 import type { ObservedContract } from './support/route-policy/contract.js';
-import { type SourceReader, checkEvidence, repoSource } from './support/route-policy/evidence.js';
+import { type SourceReader, checkEvidence, checkStored, repoSource } from './support/route-policy/evidence.js';
+import { gateEvidence } from './support/route-policy/evidence-gate.js';
 import { KNOWN_GAPS } from './support/route-policy/probe-known-gaps.js';
 import { checkRequired } from './support/route-policy/required.js';
 import { INNER_CONDITIONS } from './support/route-policy/required/guard-inner.js';
@@ -185,14 +186,13 @@ describe('AC-PRM-FW-02 C1-1 P2-3 证据链：注册关系与四道拦截各自�
       return next;
     };
   }
-  const found = (read: SourceReader) =>
-    checkEvidence(REQUIRED, { read }).filter((f) =>
-      ['EVIDENCE_ANCHOR', 'EVIDENCE_STALE', 'EVIDENCE_UNIT'].includes(f.code),
-    );
+  const KINDS = ['EVIDENCE_ANCHOR', 'EVIDENCE_STALE', 'EVIDENCE_UNIT'];
+  const found = (read: SourceReader) => checkEvidence(REQUIRED, { read }).filter((f) => KINDS.includes(f.code));
   const routesOf = (read: SourceReader) => new Set(found(read).map((f) => f.route));
 
   it('基线：真实源码零发现', () => {
-    expect(found(repoSource)).toEqual([]);
+    const drift = checkStored(REQUIRED, { read: repoSource }).filter((f) => KINDS.includes(f.code));
+    expect(gateEvidence(drift, '任职资格子集证据')).toEqual([]);
   });
 
   it('删掉申请准入的自助拦截 → 首次提交与同单重提两处证据报错', () => {

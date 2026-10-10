@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest';
 import { CALC_RULES, calcBody, calcItem, calcWorld, pathOf } from './AC-TR-calc-rule-support.js';
 import { rowsOf } from './support/f048.js';
 import { waitForBlocked } from './support/pg-interleave.js';
+import './support/b5-path.js';
 
 const testDb = useTestDb();
 const reasonOf = async (response: Response) =>

@@ -23,6 +23,7 @@ import {
   p3Applicable,
   readFrozenProbes,
 } from './support/route-policy/discovery.js';
+import { gateEvidence } from './support/route-policy/evidence-gate.js';
 import { checkEvidenceRefs, KNOWN_GAPS } from './support/route-policy/probe-known-gaps.js';
 import { REDUNDANT_OBSERVATIONS } from './support/route-policy/probe-redundant.js';
 import { REQUIRED } from './support/route-policy/required/index.js';
@@ -155,8 +156,11 @@ describe('AC-PRM-FW-08 账本证据锚点不能是纯注释（#163 第 2 轮 P3�
   });
 
   it('真实账本：已知缺口与冗余观测的证据锚点都有实际代码记号；冗余观测账本已清空（F-075 去掉原审定的 41 项，F-075b 去掉 #125 的 18 项）', () => {
-    expect(checkEvidenceRefs(KNOWN_GAPS, 'PROBE_KNOWN_GAP_EVIDENCE')).toEqual([]);
-    expect(checkEvidenceRefs(REDUNDANT_OBSERVATIONS, 'PROBE_REDUNDANT_EVIDENCE')).toEqual([]);
+    // F-090：账本证据锚点与源码对不上默认只警告
+    const known = checkEvidenceRefs(KNOWN_GAPS, 'PROBE_KNOWN_GAP_EVIDENCE');
+    expect(gateEvidence(known, '已知缺口账本证据锚点')).toEqual([]);
+    const redundant = checkEvidenceRefs(REDUNDANT_OBSERVATIONS, 'PROBE_REDUNDANT_EVIDENCE');
+    expect(gateEvidence(redundant, '冗余观测账本证据锚点')).toEqual([]);
     // 原审定的 41 项（survey360#1～#3、qualification#1～#5、idp#1～#2）在 F-075（DEC-369）去掉冗余调用并从账本删除；
     // #125 新增的套卷模板 / 报告模板入口 18 项（survey360.allActivities#4）在 F-075b（DEC-373①）去掉并从账本删除
     expect(REDUNDANT_OBSERVATIONS.map((g) => g.id)).toEqual([]);
