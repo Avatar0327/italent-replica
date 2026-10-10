@@ -104,7 +104,7 @@
   | `packages/testkit/` | 测试辅助：`useTestDb()` 为每个测试文件建全新库并跑迁移（设了 `TEST_DATABASE_URL` 用真 PG，否则 PGlite） |
   | `tests/acceptance/` | 验收测试 `AC-<编号>.test.ts`，示例见 `AC-SMOKE-01.test.ts` |
   | `scripts/` | `cloud-setup.sh`、`dev-db.sh`、`test-pg.sh`、`test-all.sh` |
-  | `.github/workflows/ci.yml` | CI：Node 24 跑 lint、typecheck、test、build（Node 22 每周定时/手动补跑）；另一个 job 用 postgres:16 跑 `test:pg`；Draft PR 与纯文档改动不触发 |
+  | `.github/workflows/ci.yml` | CI：Node 24 跑 lint、typecheck、test、build（Node 22 每周定时/手动补跑）；另一个 job 用 `public.ecr.aws/docker/library/postgres:16`（Docker 官方镜像在 ECR Public 的同源镜像，避开 Docker Hub 匿名限流，#186）跑 `test:pg`；Draft PR 与纯文档改动不触发 |
 - 工作区包之间直接解析到 `src/*.ts`（自定义导出条件 `@italent/source`），测试与类型检查无需先构建。
 
 ## 9. 交叉审计清单（审计方逐条检查）
