@@ -7,7 +7,13 @@ import { fileURLToPath } from 'node:url';
 import { createServer } from 'vite';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
-const server = await createServer({ root, logLevel: 'error', server: { middlewareMode: true }, appType: 'custom' });
+const server = await createServer({
+  root,
+  configFile: fileURLToPath(new URL('../vitest.config.ts', import.meta.url)), // 工作区包的 @italent/source 解析条件
+  logLevel: 'error',
+  server: { middlewareMode: true },
+  appType: 'custom',
+});
 try {
   const { explainFromGit, formatExplanation } = await server.ssrLoadModule(
     '/tests/acceptance/support/route-policy/explain-graph-diff.ts',
