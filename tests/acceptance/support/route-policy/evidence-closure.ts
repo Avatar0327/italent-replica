@@ -5,7 +5,7 @@
  * - 相对 import 指向的 `apps/api/src/**` 导出（含 `export … from` 与 `export *` 转发）；
  * - `@italent/<包>` 解析到 `packages/<包>/src/index.ts` 的声明（`@italent/domain` 等）；
  * 算到不动点（广度优先，同层按字典序，安全上限 MAX_DEPTH 层，带环检测）。不解析：注入依赖（`deps.*`、形参，由词法作用域排除）、纯类型、
- * 第三方包、边界清单内的文件（evidence-boundary.ts）。
+ * 第三方包、边界清单内的文件（evidence-boundary.ts）、二进制资源（字体 / 图片，F-080，显式排除）。
  * 解析不了的写进 unresolved：动态 import / require、命名空间 import 的计算成员访问或整体外传、找不到的相对 import、
  * 触到层数上限且有依赖落在实际访问集合之外（depth-limit，F-072 D-8 ①：与遍历顺序无关）。判定“是否要报”在 evidence.ts（位于 modules/** 且不在边界内才报）。
  * 作用域是词法近似：局部同名变量遮蔽顶层声明时按局部处理，不会误登记依赖；反过来不会漏掉真实依赖。
@@ -191,7 +191,11 @@ function fileInfo(env: ClosureEnv, file: string): FileInfo | undefined {
 
 type Target = { readonly file: string } | 'external' | 'missing';
 
+/** 二进制资源（内置字体等，F-080）：不是 TypeScript 源码单元，显式排除——不展开、不进摘要、也不当作解析失败。 */
+const ASSET_SPEC = /\.(ttf|otf|ttc|woff2?|png|jpe?g|gif|ico)$/i;
+
 function resolveModule(env: ClosureEnv, from: string, spec: string): Target {
+  if (ASSET_SPEC.test(spec)) return 'external';
   if (spec.startsWith('.')) {
     const base = path.posix.join(path.posix.dirname(from), spec).replace(/\.(js|ts)$/, '');
     const file = [`${base}.ts`, `${base}/index.ts`].find((candidate) => fileInfo(env, candidate));

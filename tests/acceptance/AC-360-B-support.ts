@@ -126,8 +126,12 @@ export function my(w: World360, user: string) {
 
 /** 转发报告的收件人链接（令牌取自转发邮件 outbox）。 */
 export function reportLink(w: World360, token: string) {
-  return (method: string, path = '') =>
-    w.api.request(method, `${REPORT_LINK}${path}`, { tenant: w.tenantId, headers: { 'x-survey360-token': token } });
+  return (method: string, path = '', options: { signal?: AbortSignal } = {}) =>
+    w.api.request(method, `${REPORT_LINK}${path}`, {
+      tenant: w.tenantId,
+      headers: { 'x-survey360-token': token },
+      ...options,
+    });
 }
 
 /** 关键行为套卷，两层指标（复合 c → 基础 b1 / b2），题目 q1、q2 挂 b1，q3 挂 b2；题目允许备注（文本答案）。 */
