@@ -43,6 +43,8 @@ export interface MaintenanceOptions {
   /** 序列号 / 密码的随机源（测试注入以构造冲突）；缺省 crypto.randomInt。 */
   readonly random?: (maxExclusive: number) => number;
   readonly config?: CredentialConfig;
+  /** 清理类 DELETE 每轮每类最多删多少行（缺省 5000）；没删完留给下一轮。 */
+  readonly cleanupLimit?: number;
   readonly hooks?: MaintenanceHooks;
 }
 
@@ -175,6 +177,34 @@ async function pool<T>(items: readonly T[], concurrency: number, run: (item: T) 
   await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, worker));
 }
 
+/** 该租户已登记的最高密钥版本（rotate 命令写的 key_rotated 事件）；没登记过为 0。 */
+async function registeredVersion(db: Db, tenantId: string): Promise<number> {
+  const [row] = await withTenant(db, tenantId, async (tx) =>
+    rowsOf<{ v: number | null }>(
+      await tx.execute(sql`SELECT max(credential_key_version)::int AS v FROM survey360_security_events
+        WHERE kind = 'key_rotated'`),
+    ),
+  );
+  return row?.v ?? 0;
+}
+
+function rollbackError(tenantId: string, registered: number, current: number): Error {
+  return new Error(
+    `凭据密钥版本回退：租户 ${tenantId} 已登记轮换到版本 ${registered}，当前配置的 CURRENT 是 ${current}（版本只增不减，设计 §2.4）`,
+  );
+}
+
+/**
+ * 防回退（设计 §2.4“版本只增不减”）：实际用密钥的进程在启动和每次发放前，对照库里已登记的最高版本，
+ * CURRENT 低于它就拒绝（部署回滚把旧配置带回来时，不能再用旧版本发新凭据）。
+ */
+export async function assertNoKeyRollback(db: Db, config: CredentialConfig = credentialConfig()): Promise<void> {
+  for await (const tenantId of tenantIds(db)) {
+    const registered = await registeredVersion(db, tenantId);
+    if (registered > config.currentVersion) throw rollbackError(tenantId, registered, config.currentVersion);
+  }
+}
+
 async function warnStale(db: Db, tenantId: string, now: Date, warn: NonNullable<MaintenanceHooks['warn']>) {
   const cutoff = new Date(now.getTime() - STALE_PENDING_MS);
   const [row] = await withTenant(db, tenantId, async (tx) =>
@@ -191,6 +221,8 @@ async function issueTenant(db: Db, tenantId: string, options: MaintenanceOptions
   const now = (options.clock ?? (() => new Date()))();
   const hooks = options.hooks ?? {};
   const warn = hooks.warn ?? defaultWarn;
+  const registered = await registeredVersion(db, tenantId);
+  if (registered > config.currentVersion) throw rollbackError(tenantId, registered, config.currentVersion);
   await warnStale(db, tenantId, now, warn);
   // 本轮失败的行（冲突 / 写回出错）已释放认领，但留到下一轮再试，否则同一轮会反复重领
   const failed = new Set<string>();
@@ -219,13 +251,13 @@ async function issueTenant(db: Db, tenantId: string, options: MaintenanceOptions
 }
 
 /** 清理：到期未清的锁定记 unlock、删空闲限频行、删过期 / 作废超过 24 小时的会话（设计 §3.2、§4.1、§5.4）。 */
-async function cleanupTenant(db: Db, tenantId: string, now: Date, report: MaintenanceReport) {
+async function cleanupTenant(db: Db, tenantId: string, now: Date, report: MaintenanceReport, limit: number) {
   const at = now.toISOString();
   await withTenant(db, tenantId, async (tx) => {
     const expired = rowsOf<{ scope: string; key_hash: string; locked_until: Date | string }>(
       await tx.execute(sql`SELECT scope, key_hash, locked_until FROM survey360_login_throttle
         WHERE locked_until IS NOT NULL AND locked_until <= ${at}::timestamptz
-        ORDER BY locked_until LIMIT ${CLEANUP_LIMIT} FOR UPDATE`),
+        ORDER BY locked_until LIMIT ${limit} FOR UPDATE`),
     );
     for (const lock of expired) {
       await recordSecurityEvent(tx, {
@@ -240,13 +272,17 @@ async function cleanupTenant(db: Db, tenantId: string, now: Date, report: Mainte
         WHERE scope = ${lock.scope} AND key_hash = ${lock.key_hash}`);
     }
     report.unlocked += expired.length;
+    // DELETE 带批量上限（ctid 子查询）：一轮删不完的留给下一轮，单个事务不会无限长
     const idle = new Date(now.getTime() - THROTTLE_IDLE_MS).toISOString();
-    const throttle = await tx.execute(sql`DELETE FROM survey360_login_throttle
-      WHERE locked_until IS NULL AND updated_at < ${idle}::timestamptz`);
+    const throttle = await tx.execute(sql`DELETE FROM survey360_login_throttle WHERE ctid IN (
+      SELECT ctid FROM survey360_login_throttle WHERE locked_until IS NULL AND updated_at < ${idle}::timestamptz
+      LIMIT ${limit})`);
     report.throttleDeleted += affected(throttle);
     const kept = new Date(now.getTime() - SESSION_REVOKED_KEEP_MS).toISOString();
-    const sessions = await tx.execute(sql`DELETE FROM survey360_answer_sessions
-      WHERE expires_at < ${at}::timestamptz OR (revoked_at IS NOT NULL AND revoked_at < ${kept}::timestamptz)`);
+    const sessions = await tx.execute(sql`DELETE FROM survey360_answer_sessions WHERE id IN (
+      SELECT id FROM survey360_answer_sessions
+      WHERE expires_at < ${at}::timestamptz OR (revoked_at IS NOT NULL AND revoked_at < ${kept}::timestamptz)
+      LIMIT ${limit})`);
     report.sessionsDeleted += affected(sessions);
   });
 }
@@ -265,7 +301,7 @@ export async function runCredentialMaintenance(db: Db, options: MaintenanceOptio
   const now = (options.clock ?? (() => new Date()))();
   for await (const tenantId of tenantIds(db, options.tenantId)) {
     await issueTenant(db, tenantId, options, report);
-    await cleanupTenant(db, tenantId, now, report);
+    await cleanupTenant(db, tenantId, now, report, options.cleanupLimit ?? CLEANUP_LIMIT);
   }
   return report;
 }

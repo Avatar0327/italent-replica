@@ -30,7 +30,12 @@ interface BoxKeys {
   readonly outboxCurrent: string;
 }
 
-const aad = (ctx: SealContext) => Buffer.from(`${ctx.tenantId}:${ctx.outboxId}:${ctx.eventType}`, 'utf8');
+/**
+ * UUID 在封装与解封两端可能是不同写法（请求头里的租户标识可以大写，库里取回的是小写）；AAD 统一成小写，
+ * 否则合法的大写租户标识会封出永远解不开的密文（F-076 第 1 轮审查 P2-1）。事件类型是固定常量，不改写。
+ */
+const aad = (ctx: SealContext) =>
+  Buffer.from(`${ctx.tenantId.toLowerCase()}:${ctx.outboxId.toLowerCase()}:${ctx.eventType}`, 'utf8');
 
 /** 用 CURRENT kid 封装；每次调用都是新 IV。 */
 export function sealJson(config: BoxKeys, plain: SealedSecrets, ctx: SealContext): Sealed {

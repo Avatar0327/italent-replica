@@ -715,6 +715,13 @@ export const survey360SecurityEvents = pgTable(
     occurredAt: at('occurred_at').notNull(),
   },
   (t) => [
+    // 完成类事件各只有一条：同一租户同一版本的 key_rotated、同一次运行的 key_retired（并发命令不得重复记，P2-2）
+    uniqueIndex('survey360_security_events_rotated')
+      .on(t.tenantId, t.credentialKeyVersion)
+      .where(sql`${t.kind} = 'key_rotated'`),
+    uniqueIndex('survey360_security_events_retired')
+      .on(t.tenantId, t.runId)
+      .where(sql`${t.kind} = 'key_retired'`),
     check(
       'survey360_security_events_kind',
       sql`${t.kind} IN ('login_success', 'logout', 'lock', 'unlock', 'credential_issued', 'credential_reissued',

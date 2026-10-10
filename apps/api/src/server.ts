@@ -10,7 +10,11 @@ import { startAuditRetentionScheduler } from './audit/retention.js';
 import { startSuccessionScheduler } from './modules/succession/scheduler.js';
 import { exportStartupCheck } from './modules/survey360/export-runtime.js';
 import { checkCredentialConfigAtStartup } from './modules/survey360/credential-config.js';
-import { startCredentialMaintenanceScheduler } from './modules/survey360/credential-maintenance.js';
+import {
+  assertNoKeyRollback,
+  startCredentialMaintenanceScheduler,
+} from './modules/survey360/credential-maintenance.js';
+import { dummyDigest } from './modules/survey360/credentials.js';
 
 // F-080：360 报告 PDF / 报表 PNG 用项目内置的中文字体；字体缺失或被改动时这里抛错，进程拒绝启动（不再有缺字体 503）
 await exportStartupCheck((line) => console.log(line));
@@ -19,7 +23,7 @@ await exportStartupCheck((line) => console.log(line));
 // 授权不在此注入：createApp 缺省使用权限模型授权器（R1-T01），默认拒绝。
 const identity = identityResolverFromEnv();
 // F-076：作答凭据 / outbox 加密密钥配置有误（缺失、长度不足、版本关系不合法）时进程拒绝启动
-checkCredentialConfigAtStartup();
+const credentialConfig = checkCredentialConfigAtStartup();
 // 设 DATABASE_URL 连真 PG；只有 NODE_ENV=development 且未设时才用本地 PGlite 并自动迁移（F-025，见 database.ts）
 const handle = await databaseFromEnv();
 if (handle?.driver === 'pglite') {
@@ -29,6 +33,9 @@ if (handle?.driver === 'pglite') {
     process.once(signal, () => void handle.close().finally(() => process.exit(0)));
   }
 }
+// F-076：已登记的凭据密钥版本只增不减——部署回滚把旧 CURRENT 带回来时拒绝启动；并预热哑摘要（设计 §2.4、§3.8）
+if (handle) await assertNoKeyRollback(handle.db, credentialConfig);
+await dummyDigest(credentialConfig.kdf);
 const port = Number(process.env.PORT ?? 3000);
 
 serve({ fetch: createApp(handle ? { db: handle.db, identity } : { identity }).fetch, port }, (info) => {

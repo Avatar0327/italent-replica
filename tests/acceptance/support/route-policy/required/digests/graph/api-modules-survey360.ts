@@ -2130,8 +2130,10 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/survey360/reports.ts#sendForward': [
     'apps/api/src/modules/survey360/context.ts#actor',
     'apps/api/src/modules/survey360/context.ts#audit360',
+    'apps/api/src/modules/survey360/credential-config.ts#credentialConfig',
     'apps/api/src/modules/survey360/links.ts#hashToken',
     '#forwardPlan',
+    'apps/api/src/modules/survey360/secret-box.ts#sealJson',
   ],
   'apps/api/src/modules/survey360/reports.ts#standardTemplate': ['#STANDARD'],
   'apps/api/src/modules/survey360/reports.ts#statusOf': ['#current'],

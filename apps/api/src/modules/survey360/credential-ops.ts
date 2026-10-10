@@ -36,11 +36,10 @@ export async function rotateKeys(
       `rotate：目标版本 ${to} 必须在 SURVEY360_CREDENTIAL_KEYS 里，且等于 SURVEY360_CREDENTIAL_KEY_CURRENT`,
     );
   }
-  const previous = Math.max(0, ...[...config.credentialKeys.keys()].filter((v) => v < to));
   const tenants = [];
   for await (const id of tenantIds(db)) tenants.push(id);
 
-  // 版本只增不减：已登记过的最大版本（不含本次目标）必须小于目标
+  // 版本只增不减：已登记过的最大版本（不含本次目标）必须小于目标；同时它就是“已登记的上一版本”
   let recorded = 0;
   for (const tenantId of tenants) {
     const [row] = await withTenant(db, tenantId, async (tx) =>
@@ -53,11 +52,15 @@ export async function rotateKeys(
   }
   if (recorded >= to)
     throw new Error(`rotate：目标版本 ${to} 必须大于已登记的上一个当前版本 ${recorded}（版本只增不减）`);
+  // 首次登记时还没有“已登记的上一版本”，退回取配置里小于目标的最大版本
+  const previous = recorded || Math.max(0, ...[...config.credentialKeys.keys()].filter((v) => v < to));
 
   const now = (input.clock ?? (() => new Date()))();
   let written = 0;
   for (const tenantId of tenants) {
     written += await withTenant(db, tenantId, async (tx) => {
+      // 两位运维同时登记同一版本：按版本串行化“查有无事件 → 写事件”，后到者看到已有事件就跳过（P2-2）
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`survey360:key_rotated:${to}`}, 0))`);
       const [exists] = rowsOf<{ n: number }>(
         await tx.execute(sql`SELECT count(*)::int AS n FROM survey360_security_events
           WHERE kind = 'key_rotated' AND credential_key_version = ${to}`),
@@ -197,87 +200,94 @@ async function resendList(tx: Tx, version: number, compromised: boolean): Promis
   return found.map((row) => ({ activityId: row.activity_id, linkIds: row.link_ids, count: row.link_ids.length }));
 }
 
-async function loadOrStartRun(db: Db, tenantId: string, input: RetireInput, runId: string, now: Date): Promise<RunRow> {
+/**
+ * 开始或接上一次运行：先 INSERT … ON CONFLICT DO NOTHING，再锁行读取，所以同一运行 ID 的两个进程同时启动也只有一行。
+ * 进度（游标、计数、状态）只认这一行里持久化的值，不依赖进程内变量（P2-2）。
+ */
+async function loadOrStartRun(db: Db, tenantId: string, input: RetireInput, runId: string, now: Date) {
   return withTenant(db, tenantId, async (tx) => {
-    const [existing] = rowsOf<RunRow>(
-      await tx.execute(sql`SELECT status, cursor_link_id, credentials_done, sessions_done, compromised,
-          credential_key_version FROM survey360_key_retire_runs WHERE run_id = ${runId}::uuid FOR UPDATE`),
-    );
-    if (existing) {
-      if (existing.credential_key_version !== input.version || existing.compromised !== input.compromised) {
-        throw new Error('retire --resume：运行与给定的版本 / 泄露处置标志不一致');
-      }
-      if (existing.status !== 'done') {
-        await tx.execute(sql`UPDATE survey360_key_retire_runs SET status = 'running', error = NULL
-          WHERE run_id = ${runId}::uuid`);
-      }
-      return existing;
-    }
     await tx.execute(sql`INSERT INTO survey360_key_retire_runs
       (run_id, tenant_id, credential_key_version, compromised, status, started_at)
       VALUES (${runId}::uuid, ${tenantId}::uuid, ${input.version}, ${input.compromised}, 'running',
-        ${now.toISOString()}::timestamptz)`);
-    return {
-      status: 'running',
-      cursor_link_id: null,
-      credentials_done: 0,
-      sessions_done: 0,
-      compromised: input.compromised,
-      credential_key_version: input.version,
-    };
+        ${now.toISOString()}::timestamptz)
+      ON CONFLICT (tenant_id, run_id) DO NOTHING`);
+    const [run] = rowsOf<RunRow>(
+      await tx.execute(sql`SELECT status, cursor_link_id, credentials_done, sessions_done, compromised,
+          credential_key_version FROM survey360_key_retire_runs WHERE run_id = ${runId}::uuid FOR UPDATE`),
+    );
+    if (!run) throw new Error('retire：运行行不存在');
+    if (run.credential_key_version !== input.version || run.compromised !== input.compromised) {
+      throw new Error('retire --resume：运行与给定的版本 / 泄露处置标志不一致');
+    }
+    if (run.status !== 'done') {
+      await tx.execute(sql`UPDATE survey360_key_retire_runs SET status = 'running', error = NULL
+        WHERE run_id = ${runId}::uuid`);
+    }
+    return run;
+  });
+}
+
+/** 一批：先锁运行行并按持久游标取本批，所以并发的两个进程轮流推进，不会各用内存游标重复处理。 */
+async function nextBatch(db: Db, tenantId: string, input: RetireInput, runId: string, now: Date, limit: number) {
+  return withTenant(db, tenantId, async (tx) => {
+    const [run] = rowsOf<{ status: string; cursor_link_id: string | null }>(
+      await tx.execute(sql`SELECT status, cursor_link_id FROM survey360_key_retire_runs
+        WHERE run_id = ${runId}::uuid FOR UPDATE`),
+    );
+    if (!run || run.status === 'done') return undefined;
+    const ids = rowsOf<{ id: string }>(
+      await tx.execute(batchQuery(input.version, input.compromised, run.cursor_link_id, limit)),
+    ).map((row) => row.id);
+    if (!ids.length) return undefined;
+    return retireBatch(tx, tenantId, { runId, version: input.version, compromised: input.compromised }, ids, now);
+  });
+}
+
+/** 收尾：锁运行行，已完成就跳过；否则标记完成并按持久进度写唯一的 key_retired（库里另有唯一索引兜底）。 */
+async function finishRun(db: Db, tenantId: string, input: RetireInput, runId: string, now: Date) {
+  return withTenant(db, tenantId, async (tx) => {
+    const [run] = rowsOf<{ status: string; credentials_done: number; sessions_done: number }>(
+      await tx.execute(sql`SELECT status, credentials_done, sessions_done FROM survey360_key_retire_runs
+        WHERE run_id = ${runId}::uuid FOR UPDATE`),
+    );
+    if (!run) throw new Error('retire：运行行不存在');
+    if (run.status !== 'done') {
+      await tx.execute(sql`UPDATE survey360_key_retire_runs SET status = 'done', error = NULL,
+        finished_at = ${now.toISOString()}::timestamptz WHERE run_id = ${runId}::uuid`);
+      await recordSecurityEvent(tx, {
+        tenantId,
+        kind: 'key_retired',
+        occurredAt: now,
+        runId,
+        credentialKeyVersion: input.version,
+        compromised: input.compromised,
+        detail: { credentials: run.credentials_done, sessions: run.sessions_done },
+      });
+    }
+    return { credentials: run.credentials_done, sessions: run.sessions_done };
   });
 }
 
 async function retireTenant(db: Db, tenantId: string, input: RetireInput, runId: string, now: Date) {
   const batchSize = input.batchSize ?? RETIRE_BATCH;
   const run = await loadOrStartRun(db, tenantId, input, runId, now);
-  const totals = { credentials: run.credentials_done, sessions: run.sessions_done };
   if (run.status !== 'done') {
     try {
-      let cursor = run.cursor_link_id;
       for (let batch = 1; ; batch += 1) {
-        const done = await withTenant(db, tenantId, async (tx) => {
-          const ids = rowsOf<{ id: string }>(
-            await tx.execute(batchQuery(input.version, input.compromised, cursor, batchSize)),
-          ).map((row) => row.id);
-          if (!ids.length) return undefined;
-          const counts = await retireBatch(
-            tx,
-            tenantId,
-            { runId, version: input.version, compromised: input.compromised },
-            ids,
-            now,
-          );
-          return { ...counts, last: ids.at(-1)! };
-        });
+        const done = await nextBatch(db, tenantId, input, runId, now, batchSize);
         if (!done) break;
-        cursor = done.last;
-        totals.credentials += done.credentials;
-        totals.sessions += done.sessions;
         await input.hooks?.afterBatch?.({ tenantId, batch, credentials: done.credentials, sessions: done.sessions });
       }
-      await withTenant(db, tenantId, async (tx) => {
-        await tx.execute(sql`UPDATE survey360_key_retire_runs SET status = 'done', error = NULL,
-          finished_at = ${now.toISOString()}::timestamptz WHERE run_id = ${runId}::uuid`);
-        await recordSecurityEvent(tx, {
-          tenantId,
-          kind: 'key_retired',
-          occurredAt: now,
-          runId,
-          credentialKeyVersion: input.version,
-          compromised: input.compromised,
-          detail: { credentials: totals.credentials, sessions: totals.sessions },
-        });
-      });
     } catch (error) {
-      // 进度已按批持久；这里只记失败次数与错误码（不记消息文本），随后抛出让调用方看到
+      // 进度已按批持久；这里只记失败次数与错误码（不记消息文本），随后抛出让调用方看到。已完成的运行不被改回失败。
       await withTenant(db, tenantId, (tx) =>
         tx.execute(sql`UPDATE survey360_key_retire_runs SET status = 'failed', attempts = attempts + 1,
-          error = ${pgErrorCode(error) ?? 'ERROR'} WHERE run_id = ${runId}::uuid`),
+          error = ${pgErrorCode(error) ?? 'ERROR'} WHERE run_id = ${runId}::uuid AND status <> 'done'`),
       );
       throw error;
     }
   }
+  const totals = await finishRun(db, tenantId, input, runId, now);
   const resend = await withTenant(db, tenantId, (tx) => resendList(tx, input.version, input.compromised));
   return { tenantId, status: 'done' as const, ...totals, resend };
 }

@@ -78,7 +78,11 @@ function parseDigest(digest: string): ParsedDigest | undefined {
 /** 校验恰好做一次 KDF；摘要串损坏时返回 false（不抛错，调用方按失败处理）。 */
 export async function verifyPassword(digest: string, key: Buffer, normalizedPassword: string): Promise<boolean> {
   const parsed = parseDigest(digest);
-  if (!parsed) return false;
+  if (!parsed) {
+    // 摘要串损坏也做一次同参数 KDF 再返回假，各失败分支的工作量一致（设计 §3.8）
+    await derive(passwordPrehash(key, normalizedPassword), randomBytes(SALT_BYTES), DEFAULT_SCRYPT);
+    return false;
+  }
   const derived = await derive(passwordPrehash(key, normalizedPassword), parsed.salt, parsed.params);
   return parsed.hash.length === derived.length && timingSafeEqual(parsed.hash, derived);
 }
