@@ -6,6 +6,7 @@
  * 台账只追加，测试不清台账；每个用例各建一个租户。
  */
 import { randomUUID } from 'node:crypto';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { bootstrapTenantAdmin } from '@italent/api';
 import {
   and,
@@ -14,6 +15,7 @@ import {
   permissionProfileFields,
   permissionProfileObjects,
   permissionProfiles,
+  sql,
   withTenant,
 } from '@italent/db';
 import { type ObjectPermission, STANDARD_GRANT_ENTRY, STANDARD_PROFILES, type StandardProfile } from '@italent/domain';
@@ -147,7 +149,14 @@ export async function putObject(
   const detailRes = await w.api.request('GET', `/api/tenant/permission/profiles/${profileId}`, w.asAdmin);
   const detail = (await detailRes.json()) as { revision: number; objects: ObjectPermission[] };
   const current = detail.objects.find((o) => o.objectCode === objectCode)!;
-  const { objectCode: _code, ...body } = mutate(current);
+  // 缺省按不带目录指纹的旧客户端保存（D2 = A 的用例自己带指纹）
+  const {
+    objectCode: _code,
+    catalogDigest: _digest,
+    ...body
+  } = mutate(current) as ObjectPermission & {
+    catalogDigest?: string;
+  };
   return w.api.request('PUT', `/api/tenant/permission/profiles/${profileId}/objects/${objectCode}`, {
     ...w.asAdmin,
     ifMatch: detail.revision,
@@ -239,4 +248,33 @@ export async function provisionWorld(db: Db, label: string): Promise<World> {
     asAdmin: { user: admin.id, tenant: result.tenant.id },
     profileIds: new Map(result.profiles.map((p) => [p.code, p.id])),
   };
+}
+
+/** 当前库里正在等锁的后端数（真 PG；行锁、咨询锁都是 wait_event_type = Lock）。 */
+async function lockWaiters(db: Db): Promise<number> {
+  const result = await db.execute(
+    sql`SELECT count(*)::int AS n FROM pg_stat_activity
+        WHERE datname = current_database() AND wait_event_type = 'Lock' AND pid <> pg_backend_pid()`,
+  );
+  const rows = (Array.isArray(result) ? result : (result as { rows: unknown[] }).rows) as { n: number }[];
+  return rows[0]!.n;
+}
+
+/**
+ * 断言 request 正在**等锁**而不是碰巧还没返回：轮询 pg_stat_activity，看到有后端在等锁才通过；
+ * 还没看到等锁请求就已返回，或超时仍没有等锁，都报错。取代“400ms 内没返回就当它在等”的时间推断。
+ */
+export async function expectWaitingOnLock(db: Db, request: Promise<unknown>, timeoutMs = 10_000): Promise<void> {
+  let settled = false;
+  void request.then(
+    () => (settled = true),
+    () => (settled = true),
+  );
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    if (settled) throw new Error('请求在持锁方释放之前就返回了：没有等锁');
+    if ((await lockWaiters(db)) > 0) return;
+    if (Date.now() > deadline) throw new Error('超时仍没有观察到等锁的后端');
+    await sleep(25);
+  }
 }

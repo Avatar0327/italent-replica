@@ -443,7 +443,7 @@ export const DIGESTS: Digests = {
     'route:POST /api/tenant/permission/grants/:id/revoke': 'ea42a2752d0b',
     'route:POST /api/tenant/permission/profiles': 'e677befa3a93',
     'route:PUT /api/tenant/permission/admins/:id': 'b3ec2383a3c1',
-    'route:PUT /api/tenant/permission/profiles/:id/objects/:objectCode': 'e0b7c2576b11',
+    'route:PUT /api/tenant/permission/profiles/:id/objects/:objectCode': '30c1c8004696',
   },
   'apps/api/src/modules/permission/scope-policy-routes.ts': {
     configRoutes: '6f56ba3d62b3',
@@ -1370,7 +1370,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/permission/routes.ts#route:POST /api/tenant/permission/profiles': 'e83e3f5b0f1a',
   'apps/api/src/modules/permission/routes.ts#route:PUT /api/tenant/permission/admins/:id': 'c1d070f1a60a',
   'apps/api/src/modules/permission/routes.ts#route:PUT /api/tenant/permission/profiles/:id/objects/:objectCode':
-    '6185536a4a43',
+    '9fb0d74a1d8c',
   'apps/api/src/modules/permission/scope-policy-routes.ts#configRoutes': '660d2391e67c',
   'apps/api/src/modules/permission/scope-policy-routes.ts#personLinkRoutes': '29749d3e8b6e',
   'apps/api/src/modules/permission/scope-policy-routes.ts#route:GET /api/tenant/permission/person-links/:userId':
