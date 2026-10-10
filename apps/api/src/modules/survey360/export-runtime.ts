@@ -10,7 +10,7 @@
  * 上限值是开发方定的工程保护（规格没有），可用 configureExport 调整（测试与部署参数）。
  */
 import { AppError } from '../../errors.js';
-import { exportFontDirectory, verifyExportFonts } from './export-fonts.js';
+import { exportFontDirectory, reclaimStaleFontDirs, verifyExportFonts } from './export-fonts.js';
 
 // ---- 字体 --------------------------------------------------------------------------------------------------------
 
@@ -20,6 +20,7 @@ export async function exportStartupCheck(
   directory = exportFontDirectory(),
 ): Promise<void> {
   const files = await verifyExportFonts(directory);
+  reclaimStaleFontDirs();
   log(`内置中文字体已校验（${files.map((f) => f.file).join('、')}）`);
 }
 
@@ -34,6 +35,8 @@ export interface ExportConfig {
   timeoutMs: number;
   /** PNG 长图像素预算（栅格化后的像素数；libvips 默认上限 2.68 亿，这里取更保守的 4000 万）。 */
   pixelBudget: number;
+  /** 栅格化子进程的可执行文件（缺省 = 当前 Node）；故障注入测试与特殊部署用。 */
+  workerExecPath?: string | undefined;
 }
 
 const DEFAULTS: Readonly<ExportConfig> = { globalLimit: 3, tenantLimit: 2, timeoutMs: 60_000, pixelBudget: 40_000_000 };
@@ -50,14 +53,27 @@ export function resetExport(): void {
 let active = 0;
 const perTenant = new Map<string, number>();
 
-const unavailable = (reason: 'EXPORT_BUSY' | 'EXPORT_TIMEOUT', message: string) =>
+const unavailable = (reason: 'EXPORT_BUSY' | 'EXPORT_TIMEOUT' | 'EXPORT_CLIENT_ABORTED', message: string) =>
   new AppError('SERVICE_UNAVAILABLE', message, { reason });
 
+export interface AdmitOptions {
+  /** 请求断开信号（c.req.raw.signal）：断开即取消渲染并释放名额，与超时信号合并（F-080，#198 审查 P2-2）。 */
+  readonly signal?: AbortSignal | undefined;
+}
+
+const clientAborted = () => unavailable('EXPORT_CLIENT_ABORTED', '客户端已断开，已取消文件生成');
+
 /**
- * 并发准入 + 超时：名额满立即 EXPORT_BUSY；run 超时 EXPORT_TIMEOUT 并中止 signal（渲染在下一页前停下），名额保留到
- * run 真正结束。tenantKey 是租户标识，仅用于计数，不进入任何响应。
+ * 并发准入 + 超时 + 客户端断开：名额满立即 EXPORT_BUSY；run 超时 EXPORT_TIMEOUT、客户端断开 EXPORT_CLIENT_ABORTED，
+ * 两者都中止 signal（栅格化子进程随即被终止），名额保留到 run 真正结束（子进程退出）。已断开的请求不占名额。
+ * tenantKey 是租户标识，仅用于计数，不进入任何响应。
  */
-export async function admitted<T>(tenantKey: string, run: (signal: AbortSignal) => Promise<T>): Promise<T> {
+export async function admitted<T>(
+  tenantKey: string,
+  run: (signal: AbortSignal) => Promise<T>,
+  options: AdmitOptions = {},
+): Promise<T> {
+  if (options.signal?.aborted) throw clientAborted();
   const mine = perTenant.get(tenantKey) ?? 0;
   if (active >= config.globalLimit || mine >= config.tenantLimit)
     throw unavailable('EXPORT_BUSY', '文件生成任务过多，请稍后重试');
@@ -73,18 +89,22 @@ export async function admitted<T>(tenantKey: string, run: (signal: AbortSignal) 
   const task = new Promise<T>((resolve) => resolve(run(controller.signal)));
   void task.then(release, release);
   let timer: NodeJS.Timeout | undefined;
+  let onAbort: (() => void) | undefined;
   try {
     return await Promise.race([
       task,
       new Promise<never>((_, reject) => {
-        timer = setTimeout(() => {
-          const timeout = unavailable('EXPORT_TIMEOUT', '文件生成超时，请稍后重试');
-          controller.abort(timeout);
-          reject(timeout);
-        }, config.timeoutMs);
+        const stop = (error: AppError) => {
+          controller.abort(error);
+          reject(error);
+        };
+        timer = setTimeout(() => stop(unavailable('EXPORT_TIMEOUT', '文件生成超时，请稍后重试')), config.timeoutMs);
+        onAbort = () => stop(clientAborted());
+        options.signal?.addEventListener('abort', onAbort, { once: true });
       }),
     ]);
   } finally {
     clearTimeout(timer);
+    if (onAbort) options.signal?.removeEventListener('abort', onAbort);
   }
 }

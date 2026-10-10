@@ -8,7 +8,7 @@
  * - 字体二进制不 import、不进 F-039 的证据闭包与摘要（evidence-closure 显式跳过资源文件）。
  */
 import { createHash } from 'node:crypto';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { lstatSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -69,13 +69,69 @@ export async function verifyExportFonts(directory: string = exportFontDirectory(
 
 const xml = (value: string) => value.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
+const CONFIG_PREFIX = 'italent-export-fontconfig-';
+/** 目录名 = 前缀 + 创建进程的 PID + mkdtemp 的 6 位随机后缀：据此判断残余目录的主人是否还活着。 */
+const CONFIG_DIR = new RegExp(`^${CONFIG_PREFIX}(\\d+)-[A-Za-z0-9]{6}$`);
+
+const processAlive = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'EPERM';
+  }
+};
+
+/**
+ * 回收崩溃（SIGKILL / 断电 / OOM）留下的 fontconfig 临时目录：只删“名字符合、是本用户的真实目录（不跟随链接）、所属进程
+ * 已不存在”的；存活进程的、不符合命名的目录一律不动。启动检查与首次创建目录时各调用一次。
+ */
+export function reclaimStaleFontDirs(): void {
+  const root = tmpdir();
+  const uid = process.getuid?.();
+  for (const name of readdirSync(root)) {
+    const owner = CONFIG_DIR.exec(name)?.[1];
+    if (owner === undefined || processAlive(Number(owner))) continue;
+    const dir = path.join(root, name);
+    try {
+      const stat = lstatSync(dir);
+      if (stat.isDirectory() && (uid === undefined || stat.uid === uid)) rmSync(dir, { recursive: true, force: true });
+    } catch {
+      // 并发回收 / 权限不足：忽略，下次再试
+    }
+  }
+}
+
+const created = new Set<string>();
+const removeCreated = () => {
+  for (const dir of created) rmSync(dir, { recursive: true, force: true });
+  created.clear();
+};
+let hooked = false;
+
+/** 退出时清理本进程创建的目录：exit 事件管正常退出，SIGINT / SIGTERM 不触发 exit，要单独接；清理后仍按原信号终止。 */
+function hookCleanup(): void {
+  if (hooked) return;
+  hooked = true;
+  process.once('exit', removeCreated);
+  for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+    process.once(signal, () => {
+      removeCreated();
+      // 本监听器已摘除；还有别的监听器（如 PGlite 的收尾）就交给它们，没有则恢复默认的终止行为
+      if (process.listenerCount(signal) === 0) process.kill(process.pid, signal);
+    });
+  }
+}
+
 /**
  * 只含内置字体目录的 fontconfig 配置：写进本进程独占的临时目录（mkdtemp，不用可预测的共享路径，避免被别的本机用户
- * 预先放置的链接劫持），进程退出时清掉；返回渲染子进程的环境变量。
+ * 预先放置的链接劫持），进程退出（含 SIGINT / SIGTERM）时清掉，崩溃残留由下次启动回收；返回渲染子进程的环境变量。
  */
 function fontEnvironment(directory: string): NodeJS.ProcessEnv {
-  const home = mkdtempSync(path.join(tmpdir(), 'italent-export-fontconfig-'));
-  process.once('exit', () => rmSync(home, { recursive: true, force: true }));
+  reclaimStaleFontDirs();
+  const home = mkdtempSync(path.join(tmpdir(), `${CONFIG_PREFIX}${process.pid}-`));
+  created.add(home);
+  hookCleanup();
   const conf = path.join(home, 'fonts.conf');
   writeFileSync(
     conf,

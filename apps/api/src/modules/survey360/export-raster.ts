@@ -11,6 +11,7 @@ import { fork } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { AppError } from '../../errors.js';
 import { exportFontEnv } from './export-fonts.js';
+import { exportConfig } from './export-runtime.js';
 
 const WORKER = fileURLToPath(new URL('../../../assets/raster-worker.mjs', import.meta.url));
 
@@ -56,11 +57,18 @@ export const activeRasterProcesses = (): number => active;
 const renderFailed = (detail: string) =>
   new AppError('SERVICE_UNAVAILABLE', '文件生成失败，请稍后重试', { reason: 'EXPORT_RENDER_FAILED', detail });
 
-/** 启动栅格化会话；signal 已中止时不启动子进程，运行中中止则终止子进程，等待中的请求以 signal.reason 失败。 */
+/**
+ * 启动栅格化会话；signal 已中止时不启动子进程，运行中中止则终止子进程，等待中的请求以 signal.reason 失败。
+ * 子进程的终结只有一条幂等路径（`finish`）：error（没能启动）/ exit / close 任一先到都只终结一次——计数只减一次、
+ * 等待中的请求拒绝、close() 返回。启动失败（可执行文件不存在、PID 限额…）可能只有 error / close 而没有 exit，
+ * 不能让计数与名额永远挂着（#198 审查 P2-1）。
+ */
 export async function openRaster(signal?: AbortSignal): Promise<RasterSession> {
   const env = await exportFontEnv();
   signal?.throwIfAborted();
+  const execPath = exportConfig().workerExecPath;
   const child = fork(WORKER, [], {
+    ...(execPath ? { execPath } : {}),
     execArgv: [],
     env,
     serialization: 'advanced',
@@ -69,16 +77,22 @@ export async function openRaster(signal?: AbortSignal): Promise<RasterSession> {
   active += 1;
   const pending = new Map<number, Pending>();
   let aborted: unknown;
+  let finished = false;
   let nextId = 0;
-  const exited = new Promise<void>((resolve) => {
-    child.once('exit', () => {
-      active -= 1;
-      for (const waiter of pending.values()) waiter.reject(aborted ?? renderFailed('栅格化进程意外退出'));
-      pending.clear();
-      resolve();
-    });
-  });
-  child.on('error', () => child.kill('SIGKILL'));
+  let settle!: () => void;
+  const exited = new Promise<void>((resolve) => (settle = resolve));
+  const finish = () => {
+    if (finished) return;
+    finished = true;
+    active -= 1;
+    for (const waiter of pending.values()) waiter.reject(aborted ?? renderFailed('栅格化进程未能启动或已退出'));
+    pending.clear();
+    settle();
+  };
+  child.once('exit', finish);
+  child.once('close', finish);
+  // error 之后 Node 不保证还有 exit：没能启动（没有 pid）直接终结；已启动的先 kill，等 exit / close
+  child.on('error', () => (child.pid === undefined ? finish() : void child.kill('SIGKILL')));
   child.on('message', (reply: Reply) => {
     const waiter = pending.get(reply.id);
     pending.delete(reply.id);
@@ -97,8 +111,7 @@ export async function openRaster(signal?: AbortSignal): Promise<RasterSession> {
   return {
     render: (request) =>
       new Promise<Raster>((resolve, reject) => {
-        if (aborted !== undefined || child.exitCode !== null || child.signalCode !== null)
-          return reject(aborted ?? renderFailed('栅格化进程已退出'));
+        if (aborted !== undefined || finished) return reject(aborted ?? renderFailed('栅格化进程已退出'));
         const id = (nextId += 1);
         pending.set(id, { resolve, reject });
         child.send({ id, ...request }, (error) => {
