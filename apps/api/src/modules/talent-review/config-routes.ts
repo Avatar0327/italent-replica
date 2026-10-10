@@ -39,6 +39,7 @@ import {
   settingsPatch,
 } from './config-input.js';
 import {
+  concurrentOr,
   createConfig,
   deleteConfig,
   listConfig,
@@ -51,16 +52,18 @@ import {
 import * as simple from './config-service.js';
 import * as fields from './field-service.js';
 import * as settings from './settings-service.js';
+import { registerScoringRoutes } from './scoring-routes.js';
+import { resolveCalcDisclosure, resolveFieldColumnsViewable } from './rename-disclosure.js';
 
 const CATEGORIES = `${TALENT_REVIEW_BASE}/categories`;
 const ROLES = `${TALENT_REVIEW_BASE}/roles`;
 const FIELDS = `${TALENT_REVIEW_BASE}/fields`;
 const SETTINGS = `${TALENT_REVIEW_BASE}/settings`;
 
-type Viewed = { createdBy: string | null; revision: number };
+export type Viewed = { createdBy: string | null; revision: number };
 
 /** 列表公共部分：分页、enabled 筛选（筛选字段须有查看权）、范围谓词；返回信封与已裁剪的条目。 */
-async function listResponse<V extends { id: string; name: string }>(
+export async function listResponse<V extends { id: string; name: string }>(
   c: Context<TenantEnv>,
   deps: TenantRouteDeps,
   ctx: TalentReviewContext,
@@ -88,7 +91,7 @@ async function listResponse<V extends { id: string; name: string }>(
   return c.json({ ...configEnvelope(page, scope), items: await trimReview(deps, ctx, object, items as object[]) });
 }
 
-async function detailResponse<V extends Viewed & { id: string; name: string }>(
+export async function detailResponse<V extends Viewed & { id: string; name: string }>(
   c: Context<TenantEnv>,
   deps: TenantRouteDeps,
   ctx: TalentReviewContext,
@@ -109,7 +112,7 @@ async function detailResponse<V extends Viewed & { id: string; name: string }>(
  * 命令执行：范围在事务外按当前权限解析，首次执行在事务内行锁后复核；幂等重放按当前范围复核结果对象
  * （撤范围后重放 404，AGENTS §10），响应按当前字段权限裁剪。
  */
-async function runWrite<V extends Viewed>(
+export async function runWrite<V extends Viewed>(
   c: Context<TenantEnv>,
   deps: TenantRouteDeps,
   ctx: TalentReviewContext,
@@ -120,20 +123,25 @@ async function runWrite<V extends Viewed>(
   execute: (tx: Tx, ctx: WriteContext) => Promise<V>,
 ) {
   const scope = await reviewScope(c, deps, ctx, object);
-  const result = await runCommand(deps.db, ctx, {
-    id: c.req.header('idempotency-key'),
-    fingerprint: { method: c.req.method, path: c.req.path, expectedRevision: ctx.expectedRevision, input: body },
-    execute: async (tx, commandId) => ({ status, body: await execute(tx, { ...ctx, commandId, scope }) }),
-  });
+  const command = () =>
+    runCommand(deps.db, ctx, {
+      id: c.req.header('idempotency-key'),
+      fingerprint: { method: c.req.method, path: c.req.path, expectedRevision: ctx.expectedRevision, input: body },
+      execute: async (tx, commandId) => ({ status, body: await execute(tx, { ...ctx, commandId, scope }) }),
+    });
+  // 只有字段目录的写入会在版本行上与计算规则写入互相等待（契约 §3.4），死锁中止才映射为受控的 CONCURRENT_WRITE；
+  // 分类、角色、租户设置的写入不涉及，保持原行为
+  const result = await (object === 'field' ? concurrentOr(command) : command());
   const view = result.body as V;
   recheck(scope, view);
   if (c.req.method !== 'DELETE') c.header('ETag', `"${view.revision}"`);
   return c.json((await trimReview(deps, ctx, object, [view]))[0], result.status);
 }
-const visibleTo = (object: ConfigObject) => (scope: ModuleScope, view: Viewed) =>
+export const visibleTo = (object: ConfigObject) => (scope: ModuleScope, view: Viewed) =>
   requireConfigVisible(scope, object, view.createdBy);
 
 export function registerConfigRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
+  registerScoringRoutes(router, deps); // PR-B2a：评价规则、模块等级
   registerSettings(router, deps);
   registerCategories(router, deps);
   registerRoles(router, deps);
@@ -271,8 +279,12 @@ function registerFields(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const id = uuidParam(c);
     const body = await parseBody(c, fieldPatch);
     await checkWriteFields(deps, ctx, 'field', 'update', body);
+    // 改名失败的错误载荷只对能看计算规则的人披露定位信息（F-082 §3.1）：仅在提交了名称时解析
+    const renaming = body.name !== undefined;
+    const calcDisclosure = renaming ? await resolveCalcDisclosure(c, deps) : undefined;
+    const fieldColumnsViewable = renaming ? await resolveFieldColumnsViewable(c, deps) : undefined;
     return runWrite(c, deps, ctx, 'field', body, 200, visibleTo('field'), (tx, w) =>
-      fields.updateField(tx, w, id, body),
+      fields.updateField(tx, { ...w, calcDisclosure, fieldColumnsViewable }, id, body),
     );
   });
   router.delete(`${FIELDS}/:id`, async (c) => {

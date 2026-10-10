@@ -1,5 +1,5 @@
 /**
- * 同步行在资格时间轴上的落位（R3-T02 C1-4 第 2 轮；用户 10-10 决定：口径 3 = A 统一时间轴、口径 6 = A 不补回；DEC-335①）。
+ * 同步行在资格时间轴上的落位（R3-T02 C1-4 第 2 轮；DEC-407：统一时间轴、同日按登记先后、HR 删除后不补回；DEC-335①）。
  * 每人的任职资格是一条不重叠的单一时间轴，自动同步与手工录入混排：
  * - 新同步行的 endDate 止于时间轴上下一条开始日的前一天（没有下一条则开放）；
  * - 此前仍覆盖新开始日的最近一行（开放或结束日不早于新开始日）收尾到新开始日前一天，只改 endDate，不改来源，留版本和审计；
@@ -71,7 +71,8 @@ export async function planTimeline(
 export async function hasSyncFootprint(tx: Tx, tenantId: string, recordId: string): Promise<boolean> {
   const [found] = rowsOf<{ n: number }>(
     await tx.execute(sql`SELECT 1 AS n FROM personnel_qualification_versions
-      WHERE tenant_id=${tenantId} AND employment_record_id=${recordId}::uuid AND source_type='employment_sync' LIMIT 1`),
+      WHERE tenant_id=${tenantId} AND employment_record_id=${recordId}::uuid
+        AND source_type='employment_sync' LIMIT 1`),
   );
   return Boolean(found);
 }

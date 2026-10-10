@@ -94,7 +94,18 @@ export type FieldsFrom =
   | { readonly guard: GuardName }
   | { readonly none: true; readonly reason: string };
 
-export interface WritePolicy {
+/**
+ * 命令台账策略：single = 整个请求一条命令（默认）；perItem = 逐项 runCommand；
+ * none = 认证专用例外（DEC-377③，F-076 登录 / 登出）：台账会留存凭据相关请求，故不走命令台账，
+ * 必须写 `ledgerReason`（替代方案与结果未知时的恢复语义见设计文档），其他取值不得带理由。
+ */
+export type LedgerPolicy =
+  | { readonly ledger?: 'single' | 'perItem'; readonly ledgerReason?: undefined }
+  | { readonly ledger: 'none'; readonly ledgerReason: string };
+
+export type WritePolicy = WritePolicyBase & LedgerPolicy;
+
+export interface WritePolicyBase {
   readonly fields: FieldsFrom;
   readonly controls?: readonly string[];
   readonly commandOnly?: boolean;
@@ -107,8 +118,6 @@ export interface WritePolicy {
     | { readonly none: true; readonly reason: string };
   /** 命令内动作前业务前提的名称登记（留在命令内执行，框架不调用）。 */
   readonly preconditions?: readonly PreconditionName[];
-  /** 命令台账策略：single = 整个请求一条命令（默认）；perItem = 逐项 runCommand。 */
-  readonly ledger?: 'single' | 'perItem';
 }
 
 export interface RowsPolicy {

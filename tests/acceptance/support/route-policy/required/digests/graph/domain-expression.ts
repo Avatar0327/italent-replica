@@ -398,6 +398,7 @@ export const GRAPH: Graph = {
     '#isIdentStart',
     '#isSpace',
   ],
+  'packages/domain/src/expression/lexer.ts#fieldHandle': ['#UUID_SOURCE'],
   'packages/domain/src/expression/lexer.ts#isIdentPart': ['#isDigit', '#isIdentStart'],
   'packages/domain/src/expression/lexer.ts#isIdentStart': ['#isCjk', '#isLetter'],
   'packages/domain/src/expression/lexer.ts#tokenize': ['#Scanner'],
@@ -458,6 +459,7 @@ export const GRAPH: Graph = {
     '#KEYWORD_FUNCTIONS',
     '#MAX_NESTING_DEPTH',
   ],
+  'packages/domain/src/expression/parser.ts#checkInputLimits': ['#scan'],
   'packages/domain/src/expression/parser.ts#limitIssue': ['#MAX_FORMULA_LENGTH', '#MAX_FORMULA_TOKENS', '#ORIGIN'],
   'packages/domain/src/expression/parser.ts#parseFormula': [
     'packages/domain/src/expression/lexer.ts#SyntaxIssueError',
@@ -465,6 +467,7 @@ export const GRAPH: Graph = {
     '#Parser',
     '#scan',
   ],
+  'packages/domain/src/expression/parser.ts#parseStoredFormula': ['#parseFormula'],
   'packages/domain/src/expression/parser.ts#scan': [
     'packages/domain/src/expression/lexer.ts#SyntaxIssueError',
     'packages/domain/src/expression/lexer.ts#tokenize',

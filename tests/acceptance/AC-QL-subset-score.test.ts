@@ -16,7 +16,7 @@ const bodyOf = async (response: Response) =>
   (await response.clone().json()) as { error?: { code?: string; message?: string; details?: { reason?: string } } };
 
 describe('AC-QL-subset-score finalScore 最多两位小数（DEC-374⑤ 🟡）', () => {
-  it('合法值原样保存：88.55 / 88.5 / 88 / 0；读取、回执与版本表一致（DEC-374④）', async () => {
+  it('合法值原样保存：88.55 / 88.5 / 88 / 0；读取、回执与版本表一致（DEC-374⑤）', async () => {
     const { w, path, add, rows, tx } = await subsetScene(database, 'qs-score-ok');
     for (const value of [88.55, 88.5, 88, 0]) {
       const response = await add({ finalScore: value });
@@ -37,7 +37,7 @@ describe('AC-QL-subset-score finalScore 最多两位小数（DEC-374⑤ 🟡）'
     expect(versions.sort()).toEqual([0, 88, 88.5, 88.55]);
   });
 
-  it('新增超过两位小数 → 400 FIELD_PRECISION，不留行不留版本（DEC-374④）', async () => {
+  it('新增超过两位小数 → 400 FIELD_PRECISION，不留行不留版本（DEC-374⑤）', async () => {
     const { add, rows, count } = await subsetScene(database, 'qs-score-create');
     for (const value of [88.555, 77.777, 0.001, 1e-7, 12.345678]) {
       const response = await add({ finalScore: value });
@@ -51,7 +51,7 @@ describe('AC-QL-subset-score finalScore 最多两位小数（DEC-374⑤ 🟡）'
     expect(await count(sql`SELECT count(*)::int AS n FROM personnel_qualification_versions`)).toBe(0);
   });
 
-  it('修改成超过两位小数 → 400，原值与版本不变；原样带回已有的合法值、改别的字段不受影响（DEC-374④）', async () => {
+  it('修改成超过两位小数 → 400，原值与版本不变；原样带回已有的合法值、改别的字段不受影响（DEC-374⑤）', async () => {
     const { w, path, add, rows, count } = await subsetScene(database, 'qs-score-patch');
     const created = (await (await add({ finalScore: 88.55 })).json()) as { id: string };
     const patch = (body: Record<string, unknown>, revision: number) =>
@@ -71,7 +71,27 @@ describe('AC-QL-subset-score finalScore 最多两位小数（DEC-374⑤ 🟡）'
     expect((await rows())[0]!.final_score).toBeNull();
   });
 
-  it('系统来源（评定发布等）超过两位小数同样拒绝，不能绕过 HTTP 限制（DEC-374④）', async () => {
+  it('存量三位小数 88.555：可读取、原样带回、只改别的字段不受影响；改成别的三位小数仍拒绝（DEC-374⑤ 🟡 存量策略）', async () => {
+    const { w, path, addOk, tx } = await subsetScene(database, 'qs-score-legacy');
+    const created = await addOk({ finalScore: 88.55 });
+    // 模拟精度校验上线前写入的历史值：绕过策略直接改库，永久覆盖“旧值不能因新精度规则而无法编辑”。
+    await tx((t) =>
+      t.execute(sql`UPDATE personnel_qualification SET final_score = 88.555 WHERE id = ${created.id}::uuid`),
+    );
+    const read = await w.json<{ items: { id: string; finalScore: number }[] }>(await w.request(w.hr.id, 'GET', path));
+    expect(read.items.find((item) => item.id === created.id)?.finalScore).toBe(88.555);
+
+    const patch = (body: Record<string, unknown>, revision: number) =>
+      w.request(w.hr.id, 'PATCH', `${path}/${created.id}`, { ifMatch: revision, body });
+    const same = await patch({ finalScore: 88.555, endDate: '2027-01-01' }, 1);
+    expect(same.status, await same.clone().text()).toBe(200);
+    expect(((await same.json()) as { finalScore: number }).finalScore).toBe(88.555);
+    const changed = await patch({ finalScore: 88.556 }, 2);
+    expect(changed.status).toBe(400);
+    expect((await bodyOf(changed)).error?.details?.reason).toBe('FIELD_PRECISION');
+  });
+
+  it('系统来源（评定发布等）超过两位小数同样拒绝，不能绕过 HTTP 限制（DEC-374⑤）', async () => {
     const { w, s, tx, base, rows } = await subsetScene(database, 'qs-score-system');
     const save = (finalScore: number) =>
       tx((t) =>

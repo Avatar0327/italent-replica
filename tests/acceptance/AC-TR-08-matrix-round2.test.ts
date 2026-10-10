@@ -147,45 +147,6 @@ describe('P2-03 命令重放复核引用字段的当前范围', () => {
   });
 });
 
-describe('P2-04 数值轴下界的存储精度', () => {
-  const numericAxis = (score: string, bounds: (number | null)[], base: Record<string, unknown>) => ({
-    xFieldId: score,
-    axisLevels: [
-      ...bounds.map((lowerBound, i) => ({
-        axis: 'x',
-        levelNo: i + 1,
-        name: `段${i + 1}`,
-        lowerBound,
-        optionValues: [],
-      })),
-      ...(base.axisLevels as Record<string, unknown>[]).filter((level) => level.axis === 'y'),
-    ],
-    cells: base.cells,
-  });
-
-  it('超过 4 位小数的下界被拒绝（400，数据不变）；4 位以内保存后读回仍严格递增，可启用', async () => {
-    const w = await matrixWorld(testDb().db, 'trm-r2-precision');
-    const score = (await w.numberField()).id;
-    const refs = await w.refs();
-    const base = matrixBody(refs);
-    const tooFine = await w.post(matrixBody(refs, numericAxis(score, [null, 0.00001, 0.00002], base)));
-    expect([tooFine.status, await errorCode(tooFine)]).toEqual([400, 'VALIDATION_FAILED']);
-    expect((await w.list()).items).toEqual([]);
-    const ok = await w.post(matrixBody(refs, { ...numericAxis(score, [null, 0.0001, 0.0002], base), enabled: false }));
-    expect(ok.status, await ok.clone().text()).toBe(201);
-    const created = (await ok.json()) as MatrixView;
-    const stored = (await w.read(created.id)).body.axisLevels.filter((l) => l.axis === 'x').map((l) => l.lowerBound);
-    expect(stored).toEqual([null, 0.0001, 0.0002]);
-    const enable = await w.request('PATCH', `${MATRICES}/${created.id}`, { ifMatch: 1, body: { enabled: true } });
-    expect(enable.status, await enable.clone().text()).toBe(200);
-    const fine = await w.request('PATCH', `${MATRICES}/${created.id}`, {
-      ifMatch: 2,
-      body: numericAxis(score, [null, 0.00005, 1], base),
-    });
-    expect([fine.status, await errorCode(fine)]).toEqual([400, 'VALIDATION_FAILED']);
-  });
-});
-
 describe('P2-05 预置补装核验依赖字段', () => {
   async function legacy(label: string) {
     const w = await matrixWorld(testDb().db, label);

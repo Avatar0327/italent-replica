@@ -19,7 +19,7 @@ import {
   type TalentReviewContext,
 } from './access.js';
 
-export type ConfigObject = 'category' | 'role' | 'field' | 'matrix' | 'calcRule';
+export type ConfigObject = 'category' | 'role' | 'field' | 'matrix' | 'calcRule' | 'scoreRule' | 'moduleGrade';
 
 export interface WriteContext extends TalentReviewContext {
   readonly scope: ModuleScope;
@@ -30,7 +30,6 @@ export type ConfigTable = PgTable & {
   readonly tenantId: AnyPgColumn;
   readonly name: AnyPgColumn;
   readonly enabled: AnyPgColumn;
-  readonly sortNo: AnyPgColumn;
   readonly revision: AnyPgColumn;
   readonly createdBy: AnyPgColumn;
   readonly updatedBy: AnyPgColumn;
@@ -58,6 +57,8 @@ const guards: Record<ConfigObject, ConfigReferenceGuard[]> = {
   category: [],
   role: [],
   field: [],
+  scoreRule: [],
+  moduleGrade: [],
   matrix: [],
   calcRule: [],
 };
@@ -142,6 +143,21 @@ export async function lockConfigRow(
       expected: ctx.expectedRevision,
       actual: row.revision,
     });
+  }
+}
+
+/**
+ * 并发写入被数据库中止（死锁 40P01、序列化失败 40001、锁超时 55P03）时的受控结果：409 CONFLICT（CONCURRENT_WRITE），
+ * 客户端刷新后显式重提，不自动盲重试（AGENTS §10「并发」；F-082 契约 §3.4：唯一键冲突的等待不纳入锁序，死锁检测中止一方）。
+ */
+export async function concurrentOr<T>(run: () => Promise<T>): Promise<T> {
+  try {
+    return await run();
+  } catch (error) {
+    if (['40P01', '40001', '55P03'].includes(pgErrorCode(error) ?? '')) {
+      throw new AppError('CONFLICT', '并发写入冲突，请刷新后显式重提', { reason: 'CONCURRENT_WRITE' });
+    }
+    throw error;
   }
 }
 

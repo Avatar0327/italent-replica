@@ -139,7 +139,8 @@ async function consume(
       // 锁序：员工 → 队列行（与任职写入、删除、改期同一把员工锁，F-055 §10.2）
       await lockEmploymentEmployee(tx, ctx, item.employeeId);
       const [row] = rowsOf<QueueRow>(
-        await tx.execute(sql`SELECT id, employee_id AS "employeeId", record_id AS "recordId", outbox_id AS "outboxId", attempts
+        await tx.execute(sql`SELECT id, employee_id AS "employeeId", record_id AS "recordId",
+            outbox_id AS "outboxId", attempts
           FROM ev_sync_queue WHERE tenant_id=${ctx.tenantId} AND id=${item.id}::uuid
             AND state IN ('pending','failed') AND next_attempt_at <= ${ctx.now.toISOString()}::timestamptz
           FOR UPDATE SKIP LOCKED`),

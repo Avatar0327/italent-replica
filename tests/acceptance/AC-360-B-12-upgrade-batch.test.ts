@@ -31,14 +31,22 @@ function statements(tagSuffix: string): string[] {
     .filter(Boolean);
 }
 
-/** PR-A 结构上临时补出 PR-B 的列与表（取升级迁移本身的 SQL），前置步骤跑完即撤掉，等同 PR-A 历史数据。 */
+/** PR-A 结构上临时补出 PR-B 的列与表（及 F-076 加在旧表上的凭据列）（取升级迁移本身的 SQL），前置步骤跑完即撤掉，等同 PR-A 历史数据。 */
 async function withPrBSchema<T>(db: Db, run: () => Promise<T>): Promise<T> {
   const ddl = statements('_survey360_b');
   const tables = ddl.flatMap((s) => [...s.matchAll(/^CREATE TABLE "(\w+)"/g)].map((m) => m[1]!));
   const columns = ddl.flatMap((s) =>
     [...s.matchAll(/ALTER TABLE "(\w+)" ADD COLUMN "(\w+)"/g)].map((m) => [m[1]!, m[2]!]),
   );
-  for (const statement of [...ddl, ...statements('_survey360_b_isolation')]) await db.execute(sql.raw(statement));
+  // F-076 往已有的 survey360_links 加了凭据列，应用代码的 insert 会带上它们；只补列，约束与新表留给最后的 migrate()
+  const credentialColumns = statements('_f076_portal_credentials').filter((s) =>
+    /^ALTER TABLE "\w+" ADD COLUMN/.test(s),
+  );
+  for (const s of credentialColumns)
+    columns.push(...[...s.matchAll(/ALTER TABLE "(\w+)" ADD COLUMN "(\w+)"/g)].map((m) => [m[1]!, m[2]!]));
+  for (const statement of [...ddl, ...statements('_survey360_b_isolation'), ...credentialColumns]) {
+    await db.execute(sql.raw(statement));
+  }
   try {
     return await run();
   } finally {

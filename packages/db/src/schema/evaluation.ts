@@ -11,6 +11,7 @@ import {
   foreignKey,
   index,
   integer,
+  numeric,
   pgTable,
   text,
   timestamp,
@@ -118,7 +119,7 @@ export const evReviewGroups = pgTable(
   ],
 );
 
-/** 评审组成员：整组编辑；有成员时组长恰好 1 个（库内至多 1 个，恰好 1 个由写入口保证），允许零成员；`seq` 记提交顺序。 */
+/** 评审组成员：整组编辑；组长 0 或 1 个（DEC-400②，库内唯一索引保证至多 1 个），允许零成员；`seq` 记提交顺序。 */
 export const evReviewMembers = pgTable(
   'ev_review_members',
   {
@@ -144,6 +145,86 @@ export const evReviewMembers = pgTable(
       columns: [t.tenantId, t.employeeId],
       foreignColumns: [employmentEmployees.tenantId, employmentEmployees.id],
       name: 'ev_review_members_employee_fk',
+    }).onDelete('restrict'),
+  ],
+);
+
+/**
+ * 评价表 EvaluationForm（B4，标准模式；设计 §3.2）：所属组织 `owner_org_id` 必填手选（DEC-324②，同评审组）；评分方式
+ * `score_mode`（按指标 / 评总分）、满分、通过分数、总分计算规则 `total_rule`（评总分时为空）。没有编码字段、名称不要求唯一
+ * （照评审组 DEC-393 的经验，原站未证实，需取证 #216）。评分项见 `ev_form_items`，随表整组编辑。
+ */
+export const evForms = pgTable(
+  'ev_forms',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    name: text('name').notNull(),
+    ownerId: uuid('owner_id').notNull(),
+    ownerOrgId: uuid('owner_org_id').notNull(),
+    enabled: enabled(),
+    scoreMode: text('score_mode').notNull(),
+    fullScore: numeric('full_score', { precision: 8, scale: 2 }).notNull(),
+    passScore: numeric('pass_score', { precision: 8, scale: 2 }).notNull(),
+    totalRule: text('total_rule'),
+    ...tracked(),
+  },
+  (t) => [
+    unique('ev_forms_tenant_id').on(t.tenantId, t.id),
+    index('ev_forms_owner_org').on(t.tenantId, t.ownerOrgId),
+    check('ev_forms_score_mode', sql`${t.scoreMode} IN ('by_indicator', 'by_total')`),
+    check('ev_forms_total_rule', sql`${t.totalRule} IN ('average', 'weighted', 'sum')`),
+    check('ev_forms_total_rule_by_mode', sql`(${t.scoreMode} = 'by_indicator') = (${t.totalRule} IS NOT NULL)`),
+    check('ev_forms_scores', sql`${t.fullScore} > 0 AND ${t.passScore} >= 0 AND ${t.passScore} <= ${t.fullScore}`),
+    foreignKey({
+      columns: [t.tenantId, t.ownerOrgId],
+      foreignColumns: [orgObjects.tenantId, orgObjects.id],
+      name: 'ev_forms_owner_org_fk',
+    }).onDelete('restrict'),
+  ],
+);
+
+/**
+ * 评价表评分项：`standard`（任职资格标准，一张表至多 1 个）或 `general`（引用通用评分项，任意条）。`weight` 是百分数（0～100，
+ * 空 = 未设置）；`hidden_target_ids` 是标准项里设置为不显示的指标 ID（只存引用，指标已被删时读取只给 ID）；`seq` 记提交顺序。
+ */
+export const evFormItems = pgTable(
+  'ev_form_items',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    formId: uuid('form_id').notNull(),
+    kind: text('kind').notNull(),
+    generalItemId: uuid('general_item_id'),
+    weight: numeric('weight', { precision: 5, scale: 2 }),
+    hiddenTargetIds: uuid('hidden_target_ids')
+      .array()
+      .notNull()
+      .default(sql`'{}'::uuid[]`),
+    seq: integer('seq').notNull(),
+  },
+  (t) => [
+    unique('ev_form_items_seq').on(t.tenantId, t.formId, t.seq),
+    uniqueIndex('ev_form_items_standard')
+      .on(t.tenantId, t.formId)
+      .where(sql`${t.kind} = 'standard'`),
+    index('ev_form_items_general').on(t.tenantId, t.generalItemId),
+    check('ev_form_items_kind', sql`${t.kind} IN ('standard', 'general')`),
+    check(
+      'ev_form_items_shape',
+      sql`(${t.kind} = 'general') = (${t.generalItemId} IS NOT NULL)
+        AND (${t.kind} = 'standard' OR cardinality(${t.hiddenTargetIds}) = 0)`,
+    ),
+    check('ev_form_items_weight', sql`${t.weight} IS NULL OR (${t.weight} >= 0 AND ${t.weight} <= 100)`),
+    foreignKey({
+      columns: [t.tenantId, t.formId],
+      foreignColumns: [evForms.tenantId, evForms.id],
+      name: 'ev_form_items_form_fk',
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [t.tenantId, t.generalItemId],
+      foreignColumns: [evGeneralItems.tenantId, evGeneralItems.id],
+      name: 'ev_form_items_general_fk',
     }).onDelete('restrict'),
   ],
 );
