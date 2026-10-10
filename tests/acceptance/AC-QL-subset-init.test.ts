@@ -16,6 +16,7 @@ import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { registerScopeProvider } from '../../apps/api/src/modules/permission/module-access.js';
 import { EMPTY_SCOPE, type ModuleScope } from '../../apps/api/src/modules/permission/scope-types.js';
+import { currentQualification } from '../../apps/api/src/modules/qualification/current.js';
 import { rowsOf, syncWorld, type SyncWorld } from './AC-QL-sync-support.js';
 import { tenantApi } from './support/tenant-api.js';
 
@@ -68,6 +69,13 @@ async function scene(label: string) {
   };
   return { w, jobLevelId, levelId, sequences, categories, fields, api, init, initOk, processed };
 }
+
+const overlaps = (rows: { startDate: string; endDate: string | null }[]) =>
+  rows.some((a, i) =>
+    rows.some(
+      (b, j) => i < j && a.startDate <= (b.endDate ?? '9999-12-31') && b.startDate <= (a.endDate ?? '9999-12-31'),
+    ),
+  );
 
 const errorOf = async (response: Response) =>
   ((await response.clone().json()) as { error: { code: string; details?: { reason?: string } } }).error;
@@ -369,5 +377,169 @@ describe('AC-QL-subset-init 逐名员工检查操作人人员范围（设计 §5
     expect(((await replay.json()) as Receipts).items).toEqual([
       { employeeId: w.subject.employee.id, outcome: 'skipped', reason: 'EMPLOYEE_NOT_FOUND' },
     ]);
+  });
+});
+
+/**
+ * 第 1 轮审查（Astra high）：三类 P2 数据正确性。每个场景都与 C1-4 逐条同步对拍——同样的任职记录交给初始化（A 员工）与
+ * 同步（B 员工），生成的资格时间轴必须一致（统一时间轴，DEC-335①）。
+ */
+describe('AC-QL-subset-init 第 1 轮 P2：时间轴与 C1-4 同步一致、人工维护优先（DEC-414）', () => {
+  const lines = (rows: Awaited<ReturnType<SyncWorld['subsets']>>) =>
+    rows.map((row) => [row.startDate, row.endDate, row.categoryId, row.levelId]);
+  const currentOf = (w: SyncWorld, employeeId: string, asOf = '2026-10-10') =>
+    withTenant(w.db, w.tenantId, (tx) => currentQualification(tx, w.tenantId, employeeId, asOf));
+
+  /** 对拍场景：A（初始化）与 B（同步）有同样的入职日和同样的任职记录；records 在两人身上各建一遍。 */
+  async function paired(label: string) {
+    const s = await scene(label);
+    const { w } = s;
+    const twin = await w.session.employee('对拍员工');
+    await w.session.business(
+      twin.id,
+      { kind: 'hire', mode: 'direct', effectiveDate: '2026-09-01', fields: { departmentId: w.from.id } },
+      twin.revision,
+    );
+    const both = async (build: (employeeId: string) => Promise<void>) => {
+      await build(w.subject.employee.id);
+      await build(twin.id);
+    };
+    /** 初始化 A，再开 SW73 跑一轮同步：A 的事件撞上初始化行让路，B 的事件正常同步。 */
+    const settle = async () => {
+      await s.initOk([w.subject.employee.id]);
+      await w.enableSync(true);
+      await w.run(TODAY);
+      return { init: await w.subsets(), sync: await w.subsets(twin.id) };
+    };
+    return { ...s, twinId: twin.id, both, settle };
+  }
+
+  it('P2-01 跳过的记录在中间：不截断前一条，结束日取下一条参与生成的记录（NO_MAPPING）（AC-QL-subset-init）', async () => {
+    const { w, categories, fields, jobLevelId, both, settle } = await paired('qlinit-r1-skip-mid');
+    const unmapped = await w.sequence('无映射序列');
+    await both(async (id) => {
+      await w.transferWith('2026-09-10', fields(0), id);
+      await w.transferWith('2026-09-20', { sequenceId: unmapped, levelId: jobLevelId }, id);
+      await w.transferWith('2026-10-01', fields(1), id);
+    });
+    const { init, sync } = await settle();
+    expect(lines(init)).toEqual([
+      ['2026-09-10', '2026-09-30', categories[0], expect.anything()],
+      ['2026-10-01', null, categories[1], expect.anything()],
+    ]);
+    expect(lines(init)).toEqual(lines(sync));
+    expect(overlaps(init)).toBe(false);
+  });
+
+  it('P2-01 跳过的记录在末尾：前一条保持开放，当前资格不消失（NO_MAPPING / AMBIGUOUS_MAPPING 两种）（AC-QL-subset-init）', async () => {
+    const { w, categories, fields, jobLevelId, both, settle } = await paired('qlinit-r1-skip-tail');
+    const unmapped = await w.sequence('无映射序列');
+    const ambiguousLevel = await w.jobLevel();
+    const ambiguousGrade = await w.jobGrade();
+    await w.level({ type: 'level', jobObjectId: ambiguousLevel });
+    await w.level({ type: 'grade', jobObjectId: ambiguousGrade });
+    const sequenceId = await w.sequence('歧义序列');
+    await w.category({ type: 'sequence', jobObjectId: sequenceId });
+    await both(async (id) => {
+      await w.transferWith('2026-09-10', fields(0), id);
+      await w.transferWith('2026-09-20', { sequenceId: unmapped, levelId: jobLevelId }, id);
+      await w.transferWith('2026-09-25', { sequenceId, levelId: ambiguousLevel, gradeId: ambiguousGrade }, id);
+    });
+    const { init, sync } = await settle();
+    expect(lines(init)).toEqual([['2026-09-10', null, categories[0], expect.anything()]]);
+    expect(lines(init)).toEqual(lines(sync));
+    expect((await currentOf(w, w.subject.employee.id))?.categoryId).toBe(categories[0]);
+  });
+
+  it('P2-02 已有资格的后继边界约束新行结束日：A 任职 9-10、已有资格 10-01～10-05，10-10 仍无当前资格，且不改既有行（AC-QL-subset-init）', async () => {
+    const { w, categories, levelId, fields, twinId, both, settle } = await paired('qlinit-r1-successor');
+    await both(async (id) => {
+      await w.transferWith('2026-09-10', fields(0), id);
+      // HR 已录入的资格 B（任何来源都算后继边界）
+      const response = await w.api.request('POST', `/api/tenant/personnel/employees/${id}/subsets/qualification`, {
+        ...w.as,
+        ifMatch: 0,
+        body: { categoryId: categories[1], levelId, startDate: '2026-10-01', endDate: '2026-10-05' },
+      });
+      expect(response.status, await response.clone().text()).toBe(201);
+    });
+    const before = await w.history();
+    const { init, sync } = await settle();
+    expect(lines(init)).toEqual([
+      ['2026-09-10', '2026-09-30', categories[0], levelId],
+      ['2026-10-01', '2026-10-05', categories[1], levelId],
+    ]);
+    expect(lines(init)).toEqual(lines(sync));
+    expect(await currentOf(w, w.subject.employee.id)).toBeNull();
+    expect(await currentOf(w, twinId)).toBeNull();
+    // 既有行没有被改：初始化只多了一个版本（新行）
+    expect((await w.history()).length).toBe(before.length + 1);
+  });
+
+  it('P2-03 同步行被 HR 改了类别后再初始化：按任职记录 ID 识别，跳过且不重复生成，当前资格不倒退（AC-QL-subset-init）', async () => {
+    const { w, categories, fields, initOk, processed } = await scene('qlinit-r1-edited-sync');
+    const record = await w.transferWith('2026-09-10', fields(0));
+    await w.setSetting('qualification.auto_sync_editable', true);
+    await w.enableSync(true);
+    await w.run(TODAY);
+    const [synced] = await w.subsets();
+    expect(synced).toMatchObject({ categoryId: categories[0], sourceType: 'employment_sync' });
+    const patched = await w.api.request(
+      'PATCH',
+      `/api/tenant/personnel/employees/${w.subject.employee.id}/subsets/qualification/${synced!.id}`,
+      { ...w.as, ifMatch: 1, body: { categoryId: categories[1] } },
+    );
+    expect(patched.status, await patched.clone().text()).toBe(200);
+
+    const receipt = processed(await initOk([w.subject.employee.id]));
+    expect(receipt.records.find((item) => item.recordId === record)).toMatchObject({
+      outcome: 'skipped',
+      reason: 'ALREADY_EXISTS',
+    });
+    expect(await w.subsets()).toMatchObject([{ id: synced!.id, categoryId: categories[1] }]);
+  });
+
+  it('P2-03 初始化行被 HR 改了级别 / 开始日后再初始化：同样识别、跳过，不盖过人工修正（AC-QL-subset-init）', async () => {
+    const { w, fields, initOk, processed } = await scene('qlinit-r1-edited-init');
+    const record = await w.transferWith('2026-09-10', fields(0));
+    await initOk([w.subject.employee.id]);
+    const [created] = await w.subsets();
+    const otherLevel = await w.level({ type: 'level', jobObjectId: randomUUID() });
+    const patch = async (revision: number, body: object) => {
+      const response = await w.api.request(
+        'PATCH',
+        `/api/tenant/personnel/employees/${w.subject.employee.id}/subsets/qualification/${created!.id}`,
+        { ...w.as, ifMatch: revision, body },
+      );
+      expect(response.status, await response.clone().text()).toBe(200);
+    };
+    await patch(1, { levelId: otherLevel });
+    await patch(2, { startDate: '2026-09-12' });
+
+    for (let round = 0; round < 2; round++) {
+      const receipt = processed(await initOk([w.subject.employee.id]));
+      expect(receipt.records.find((item) => item.recordId === record)).toMatchObject({
+        outcome: 'skipped',
+        reason: 'ALREADY_EXISTS',
+      });
+    }
+    expect(await w.subsets()).toMatchObject([{ id: created!.id, levelId: otherLevel, startDate: '2026-09-12' }]);
+  });
+
+  it('P2-03 同一天已有无任职来源的人工行（组合不同）：人工维护优先，MANUAL_SAME_DAY，不新增（AC-QL-subset-init）', async () => {
+    const { w, categories, levelId, fields, initOk, processed } = await scene('qlinit-r1-manual-same-day');
+    const record = await w.transferWith('2026-09-10', fields(0));
+    const manual = await w.api.request(
+      'POST',
+      `/api/tenant/personnel/employees/${w.subject.employee.id}/subsets/qualification`,
+      { ...w.as, ifMatch: 0, body: { categoryId: categories[1], levelId, startDate: '2026-09-10' } },
+    );
+    expect(manual.status, await manual.clone().text()).toBe(201);
+    const receipt = processed(await initOk([w.subject.employee.id]));
+    expect(receipt.records.find((item) => item.recordId === record)).toMatchObject({
+      outcome: 'skipped',
+      reason: 'MANUAL_SAME_DAY',
+    });
+    expect(await w.subsets()).toMatchObject([{ categoryId: categories[1], sourceType: 'hr_direct' }]);
   });
 });
