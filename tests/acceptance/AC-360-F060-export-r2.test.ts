@@ -4,16 +4,9 @@
  * - P2-2：PDF 表格里超过一页的长行拆分续接（题干、指标名称 + 定义等所有表格块），尾文在后续页可见，管理端与收件人链接两个入口；
  * - P2-3：PNG 按实际排版高度 / 像素预算在渲染前拒绝（413 EXPORT_TOO_LARGE，不是 500）；80 页限制在排版过程中检查；
  *   三个下载入口有应用层并发准入（EXPORT_BUSY）与渲染超时（EXPORT_TIMEOUT）；
- * - P2-4：字体覆盖用 fontconfig 查询（隔离到无中文字体的配置时必须判缺）；有字体 / 缺字体两种环境用探针覆盖固定测试，
- *   缺字体时三个入口全部 503 EXPORT_FONT_UNAVAILABLE；
+ * - P2-4：字体覆盖检查（原 fontconfig 探测与缺字体 503 已被 F-080 的项目内置字体取代，见 AC-360-F080-*）；
  * - P3：附件文件名按完整字符截断（含代理对不抛 URIError）。
  */
-import { spawnSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
-import { mkdtempSync, writeFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { survey360 } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -24,12 +17,8 @@ import {
   configureExport,
   docText,
   EXPORT_PAGE_LIMIT,
-  exportStartupCheck,
-  FONT_FAMILY,
   HIDDEN_ACTIVITY_NAME,
-  overrideFontProbe,
   paginate,
-  probeFontCoverage,
   renderPdf,
   renderPng,
   reportDocument,
@@ -41,7 +30,6 @@ import { errorOf, key, outbox, reportLink, reports, sceneB } from './AC-360-B-su
 const testDb = useTestDb();
 
 afterEach(() => {
-  overrideFontProbe(undefined);
   resetExport();
 });
 
@@ -78,7 +66,6 @@ function profile(object: 'activity' | 'result', hide: readonly string[] = []) {
 
 describe('AC-360-F060 R2 P2-1 隐藏活动名称的查看人拿不到名称', () => {
   it('PNG：图内标题与文件名用中性占位；有名称权限的人照常带名称', async () => {
-    overrideFontProbe(async () => true);
     const { s, reportId } = await scene('f060r2-name');
     const { w } = s;
     const user = await w.member('看不到活动名称');
@@ -123,7 +110,6 @@ describe('AC-360-F060 R2 P2-1 隐藏活动名称的查看人拿不到名称', ()
 
 describe('AC-360-F060 R3 P2-R2-1 隐藏活动名称的发送人不能经转发读回（第 3 轮，Opus 接手）', () => {
   it('转发预览与执行都 403、不发邮件；有完整查看权的发送人照常转发，收件人报告 JSON / PDF 保留活动名称', async () => {
-    overrideFontProbe(async () => true);
     const { s, reportId } = await scene('f060r3-forward');
     const { w } = s;
     const user = await w.member('看不到活动名称的转发人');
@@ -179,7 +165,6 @@ const insidePages = (pages: ReturnType<typeof paginate>) =>
 
 describe('AC-360-F060 R2 P2-2 PDF 长行拆分续接', () => {
   it('合法长题干：尾文在后续页可见，所有绘制都在页内（管理端与收件人链接两个入口）', async () => {
-    overrideFontProbe(async () => true);
     const { s, reportId } = await scene('f060r2-long', true);
     const json = await s.w.ok<Record<string, unknown>>(s.w.request('GET', `${s.path}/reports/${reportId}`));
     expect(JSON.stringify(json)).toContain('结尾标记');
@@ -247,7 +232,6 @@ describe('AC-360-F060 R2 P2-3 资源预算、并发准入与超时', () => {
     );
 
   it('PNG 渲染前按实际排版高度 / 像素预算拒绝（413 EXPORT_TOO_LARGE，不是 500），不进入 sharp', async () => {
-    overrideFontProbe(async () => true);
     await expect(renderPng(tooLong())).rejects.toMatchObject({
       code: 'PAYLOAD_TOO_LARGE',
       details: expect.objectContaining({ reason: 'EXPORT_TOO_LARGE' }),
@@ -255,7 +239,6 @@ describe('AC-360-F060 R2 P2-3 资源预算、并发准入与超时', () => {
   });
 
   it('HTTP：超预算返回 413 EXPORT_TOO_LARGE', async () => {
-    overrideFontProbe(async () => true);
     const { s } = await scene('f060r2-budget');
     configureExport({ pixelBudget: 50_000 });
     const res = await s.w.request('GET', `${s.path}/score-tables/download?level=question`);
@@ -282,7 +265,6 @@ describe('AC-360-F060 R2 P2-3 资源预算、并发准入与超时', () => {
   });
 
   it('并发准入：同租户占满名额时三个入口返回 503 EXPORT_BUSY；释放后恢复', async () => {
-    overrideFontProbe(async () => true);
     const { s, reportId } = await scene('f060r2-busy');
     configureExport({ tenantLimit: 1, globalLimit: 4 });
     let release!: () => void;
@@ -311,7 +293,6 @@ describe('AC-360-F060 R2 P2-3 资源预算、并发准入与超时', () => {
   });
 
   it('全局名额：不同租户也受同一上限约束', async () => {
-    overrideFontProbe(async () => true);
     const { s } = await scene('f060r2-global');
     configureExport({ tenantLimit: 4, globalLimit: 1 });
     let release!: () => void;
@@ -326,7 +307,6 @@ describe('AC-360-F060 R2 P2-3 资源预算、并发准入与超时', () => {
 
   // 第 3 轮 P3（Opus 接手）：超时后取消渲染并释放名额，不能只返回超时、让 PDF 在后台继续逐页生成
   it('超时后取消渲染：名额在超时后很快释放（不等后台把整份 PDF 生成完）', async () => {
-    overrideFontProbe(async () => true);
     const blocks = Array.from({ length: 1_600 }, (_, i) => ({ kind: 'text' as const, text: `第${i}行` }));
     const doc = { title: '取消测试', blocks };
     expect(paginate(doc, 'a4').length).toBeGreaterThan(20);
@@ -351,7 +331,6 @@ describe('AC-360-F060 R2 P2-3 资源预算、并发准入与超时', () => {
   });
 
   it('渲染超时：EXPORT_TIMEOUT（503），不是 500，也不占着名额', async () => {
-    overrideFontProbe(async () => true);
     const { s } = await scene('f060r2-timeout');
     configureExport({ timeoutMs: 1 });
     const res = await s.w.request('GET', `${s.path}/score-tables/download?level=questionnaire`);
@@ -359,115 +338,6 @@ describe('AC-360-F060 R2 P2-3 资源预算、并发准入与超时', () => {
     expect((await errorOf(res)).details?.reason).toBe('EXPORT_TIMEOUT');
     resetExport();
     expect((await s.w.request('GET', `${s.path}/score-tables/download?level=questionnaire`)).status).toBe(200);
-  });
-});
-
-// ---- P2-4 -------------------------------------------------------------------------------------------------------
-
-/** 只含西文字体的 fontconfig 配置（审查复现：隔离到仅 Arial 后探测仍为 true）。 */
-function isolatedFontconfig(): NodeJS.ProcessEnv {
-  const dir = mkdtempSync(join(tmpdir(), 'f060-fc-'));
-  const conf = join(dir, 'fonts.conf');
-  writeFileSync(
-    conf,
-    `<?xml version="1.0"?><!DOCTYPE fontconfig SYSTEM "fonts.dtd"><fontconfig><dir>${dir}</dir>` +
-      `<cachedir>${join(dir, 'cache')}</cachedir></fontconfig>`,
-  );
-  return { ...process.env, FONTCONFIG_FILE: conf, FONTCONFIG_PATH: dir };
-}
-
-/** 本机是否有可执行的 fc-list（缺命令时“判缺”来自命令不存在，不能当作隔离生效的证据）。 */
-const HAS_FC_LIST = spawnSync('fc-list', ['--version']).status === 0;
-
-/** 用 sharp（librsvg + fontconfig，与渲染同一路径）把一段中文栅格化，返回像素摘要；env 用于子进程隔离字体配置。 */
-const GLYPH_SVG =
-  `<svg xmlns="http://www.w3.org/2000/svg" width="320" height="48"><rect width="100%" height="100%" fill="#fff"/>` +
-  `<text x="4" y="36" font-size="28" font-family="${FONT_FAMILY}">中文报告评价得分</text></svg>`;
-const SHARP = createRequire(import.meta.url).resolve('sharp', { paths: [join(process.cwd(), 'apps/api')] });
-const GLYPH_SCRIPT =
-  `const sharp = require(${JSON.stringify(SHARP)});` +
-  `sharp(Buffer.from(process.env.GLYPH_SVG)).flatten({ background: '#ffffff' }).raw().toBuffer()` +
-  `.then((b) => process.stdout.write(require('node:crypto').createHash('sha256').update(b).digest('hex')));`;
-function glyphDigest(env: NodeJS.ProcessEnv): string {
-  const run = spawnSync(process.execPath, ['-e', GLYPH_SCRIPT], { env: { ...env, GLYPH_SVG }, encoding: 'utf8' });
-  expect(run.status, run.stderr).toBe(0);
-  return run.stdout;
-}
-
-describe('AC-360-F060 R2 P2-4 字体覆盖检查', () => {
-  // 第 3 轮 P3：缺 fc-list 时“判缺”来自命令不存在，不能据此通过——此时跳过并在报告里显示为 skipped
-  it.runIf(HAS_FC_LIST)('隔离到没有任何中文字体的 fontconfig 时判缺（用真实 fc-list，命令本身须能运行）', async () => {
-    const env = isolatedFontconfig();
-    const direct = spawnSync('fc-list', [':charset=4e2d', 'file'], { env, encoding: 'utf8' });
-    expect(direct.status, '隔离配置下 fc-list 本身要能正常运行').toBe(0);
-    expect(direct.stdout.trim()).toBe('');
-    expect(await probeFontCoverage({ env })).toBe(false);
-  });
-
-  // 第 3 轮 P3：正向集成——本机真有中文字体时，渲染出的中文字形必须与“无中文字体”的回退方框不同
-  it('有中文字体的环境：真实探测为有，且 sharp 渲染的中文字形不同于隔离掉中文字体后的回退结果', async (ctx) => {
-    if (!HAS_FC_LIST || !(await probeFontCoverage())) ctx.skip();
-    const withFonts = glyphDigest(process.env);
-    const isolated = glyphDigest(isolatedFontconfig());
-    expect(withFonts).toMatch(/^[0-9a-f]{64}$/);
-    expect(isolated).toMatch(/^[0-9a-f]{64}$/);
-    expect(withFonts, '有中文字体时字形应与回退方框不同').not.toBe(isolated);
-    // 同一环境渲染是确定的（排除随机差异造成的“不同”）
-    expect(glyphDigest(process.env)).toBe(withFonts);
-    expect(createHash('sha256').update(GLYPH_SVG).digest('hex')).toHaveLength(64);
-  });
-
-  it('fc-list 返回覆盖目标字符集的字体 → 有；空输出 / 命令不存在 / 失败 → 缺', async () => {
-    expect(await probeFontCoverage({ run: async () => 'NotoSansCJK-Regular.ttc\n' })).toBe(true);
-    expect(await probeFontCoverage({ run: async () => '' })).toBe(false);
-    expect(await probeFontCoverage({ run: async () => '   \n' })).toBe(false);
-    expect(
-      await probeFontCoverage({
-        run: async () => {
-          throw Object.assign(new Error('spawn fc-list ENOENT'), { code: 'ENOENT' });
-        },
-      }),
-    ).toBe(false);
-  });
-
-  it('有字体环境（探针固定为真）：三个入口 200，文件与 JSON 一致', async () => {
-    overrideFontProbe(async () => true);
-    const { s, reportId } = await scene('f060r2-fontok');
-    expect((await s.w.request('GET', `${s.path}/score-tables/download?level=questionnaire`)).status).toBe(200);
-    expect((await s.w.request('GET', `${s.path}/reports/${reportId}/download`)).status).toBe(200);
-  });
-
-  it('缺字体环境（探针固定为假）：PNG、管理端 PDF、收件人 PDF 全部 503 EXPORT_FONT_UNAVAILABLE', async () => {
-    const { s, reportId } = await scene('f060r2-fontmissing');
-    overrideFontProbe(async () => true);
-    await s.w.ok(
-      s.w.request('POST', `${s.path}/reports/forward`, {
-        idempotencyKey: key(),
-        body: { mode: 'reporting', targets: ['self'] },
-      }),
-    );
-    const mail = (await outbox(s.w, 'survey360.report_forward')).find((m) => m.payload.to === s.person.T.email)!;
-    overrideFontProbe(async () => false);
-    for (const [name, res] of [
-      ['PNG', await s.w.request('GET', `${s.path}/score-tables/download?level=questionnaire`)],
-      ['PDF', await s.w.request('GET', `${s.path}/reports/${reportId}/download`)],
-      ['收件人 PDF', await reportLink(s.w, mail.payload.token)('GET', `/reports/${reportId}/download`)],
-    ] as const) {
-      expect(res.status, name).toBe(503);
-      expect((await errorOf(res)).details?.reason, name).toBe('EXPORT_FONT_UNAVAILABLE');
-    }
-  });
-
-  it('启动检查：缺字体时记警告（含需要安装的字体），有字体时不记', async () => {
-    const lines: string[] = [];
-    overrideFontProbe(async () => false);
-    await exportStartupCheck((line) => lines.push(line));
-    expect(lines.join('\n')).toMatch(/fonts-noto-cjk|fonts-wqy-zenhei/);
-    expect(lines.join('\n')).toContain('EXPORT_FONT_UNAVAILABLE');
-    lines.length = 0;
-    overrideFontProbe(async () => true);
-    await exportStartupCheck((line) => lines.push(line));
-    expect(lines).toEqual([]);
   });
 });
 

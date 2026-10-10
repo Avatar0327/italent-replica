@@ -738,10 +738,10 @@ export const DIGESTS: Digests = {
     'route:GET /': '7e1192392081',
     'route:GET /activities/:id/reports': 'c39e1683d55a',
     'route:GET /activities/:id/reports/:reportId': '4ba4ebb1ff78',
-    'route:GET /activities/:id/reports/:reportId/download': '9b3c33ee0d60',
+    'route:GET /activities/:id/reports/:reportId/download': 'fb80938694b1',
     'route:GET /report-template': 'cd8da0ee239c',
     'route:GET /reports/:reportId': '297518dcda81',
-    'route:GET /reports/:reportId/download': 'd22fc55a173e',
+    'route:GET /reports/:reportId/download': 'ae68469868e3',
     'route:POST /activities/:id/reports/forward': '7d025de43dc7',
     'route:POST /activities/:id/reports/forward/preview': 'e36c4712adf2',
     'route:POST /activities/:id/reports/generate': '5d342b064daa',
@@ -781,7 +781,7 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/survey360/tables.ts': {
     'route:GET /activities/:id/score-tables': '45c2bcd4dad3',
-    'route:GET /activities/:id/score-tables/download': '0f26a961848f',
+    'route:GET /activities/:id/score-tables/download': '3cf86eaf3632',
     scoreTables: '9a189d4d11b1',
   },
   'apps/api/src/modules/survey360/todos.ts': {

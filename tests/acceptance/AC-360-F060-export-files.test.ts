@@ -4,16 +4,15 @@
  * （present）、同一匿名口径（报告快照没有答卷编号 / 评价者标识 / 逐份答案，DEC-355② / DEC-358② 的资格不放宽）：
  * - 文件由同一份已裁剪的 JSON 生成：版面模型（Doc）逐项包含 JSON 里的名称、分数、文本，不含任何 ID；
  * - 字节与“把 JSON 交给渲染函数”的结果完全相同（确定性），受限查看人的文件与管理员的文件不同；
- * - 渲染依赖系统里有中文字体：没有时返回 503 EXPORT_FONT_UNAVAILABLE，而不是输出一堆方框（AGENTS §10 错误码）。
+ * - 渲染用项目内置的中文字体（F-080，DEC-375①），不依赖服务器安装的字体，所以下载入口一律 200。
  */
 import { randomUUID } from 'node:crypto';
 import { survey360 } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   docText,
   EXPORT_ROW_LIMIT,
-  exportFontReady,
   renderPdf,
   renderPng,
   reportDocument,
@@ -22,11 +21,6 @@ import {
 import { errorOf, key, reportLink, reports, sceneB, type SceneB, sheets, outbox } from './AC-360-B-support.js';
 
 const testDb = useTestDb();
-
-let fonts = false;
-beforeAll(async () => {
-  fonts = await exportFontReady();
-});
 
 /** 自评、上级、两名同事提交（带建议与备注），停用、生成报告。 */
 async function answered(label: string) {
@@ -138,11 +132,6 @@ describe('AC-360-F060 报表 PNG 下载', () => {
     for (const level of LEVELS) {
       const json = await s.w.ok<TableJson>(s.w.request('GET', `${s.path}/score-tables?level=${level}`));
       const res = await file(s, `${s.path}/score-tables/download?level=${level}`);
-      if (!fonts) {
-        expect(res.status).toBe(503);
-        expect((await errorOf(res)).details?.reason).toBe('EXPORT_FONT_UNAVAILABLE');
-        continue;
-      }
       expect(res.status, level).toBe(200);
       expect(res.headers.get('content-type')).toBe('image/png');
       expect(res.headers.get('cache-control')).toBe('no-store');
@@ -181,7 +170,7 @@ describe('AC-360-F060 报表 PNG 下载', () => {
     expect(json.items).toEqual([]);
     expect(docText(scoreTableDocument(json, { activityName: s.activity.name }))).toContain('暂无数据');
     const res = await file(s, `${s.path}/score-tables/download?level=questionnaire`);
-    expect(res.status).toBe(fonts ? 200 : 503);
+    expect(res.status).toBe(200);
   });
 });
 
@@ -190,10 +179,6 @@ describe('AC-360-F060 报告 PDF 下载', () => {
     const { s, reportId } = await answered('f060-d1');
     const json = await s.w.ok<Record<string, unknown>>(s.w.request('GET', `${s.path}/reports/${reportId}`));
     const res = await file(s, `${s.path}/reports/${reportId}/download`);
-    if (!fonts) {
-      expect(res.status).toBe(503);
-      return;
-    }
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toBe('application/pdf');
     expect(res.headers.get('cache-control')).toBe('no-store');
@@ -237,14 +222,10 @@ describe('AC-360-F060 报告 PDF 下载', () => {
     const call = reportLink(s.w, mail.payload.token);
     const json = await s.w.ok<Record<string, unknown>>(call('GET', `/reports/${reportId}`));
     const res = await call('GET', `/reports/${reportId}/download`);
-    if (!fonts) {
-      expect(res.status).toBe(503);
-    } else {
-      expect(res.status).toBe(200);
-      expect(res.headers.get('content-type')).toBe('application/pdf');
-      const bytes = Buffer.from(await res.arrayBuffer());
-      expect(bytes.equals(await renderPdf(reportDocument(json as never)))).toBe(true);
-    }
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('application/pdf');
+    const bytes = Buffer.from(await res.arrayBuffer());
+    expect(bytes.equals(await renderPdf(reportDocument(json as never)))).toBe(true);
     expect((await call('GET', `/reports/${randomUUID()}/download`)).status).toBe(404);
     expect((await reportLink(s.w, 'forged-token')('GET', `/reports/${reportId}/download`)).status).toBe(404);
     const missing = await s.w.api.request('GET', `/api/survey360/report-link/reports/${reportId}/download`, {
@@ -281,12 +262,10 @@ describe('AC-360-F060 受限管理员只得到范围内的文件', () => {
 
     const json = await w.ok<TableJson>(as('GET', `${s.path}/score-tables?level=questionnaire`));
     const png = await as('GET', `${s.path}/score-tables/download?level=questionnaire`);
-    expect(png.status).toBe(fonts ? 200 : 503);
-    if (fonts) {
-      const bytes = Buffer.from(await png.arrayBuffer());
-      expect(bytes.equals(await renderPng(scoreTableDocument(json, { activityName: s.activity.name })))).toBe(true);
-    }
-    expect((await as('GET', `${s.path}/reports/${reportId}/download`)).status).toBe(fonts ? 200 : 503);
+    expect(png.status).toBe(200);
+    const bytes = Buffer.from(await png.arrayBuffer());
+    expect(bytes.equals(await renderPng(scoreTableDocument(json, { activityName: s.activity.name })))).toBe(true);
+    expect((await as('GET', `${s.path}/reports/${reportId}/download`)).status).toBe(200);
     // 范围外：真实存在、但属于另一个未授权给该管理员的活动的报告（不是随机 ID）
     const other = await w.activity({ name: '另一个活动' });
     const otherObject = await w.object(other.id, s.person.T.id, [s.q.id]);
@@ -298,9 +277,7 @@ describe('AC-360-F060 受限管理员只得到范围内的文件', () => {
       await w.ok<{ items: { id: string | null }[] }>(w.request('GET', `/activities/${other.id}/reports`))
     ).items[0]!.id!;
     expect(otherReport).toBeTruthy();
-    expect((await w.request('GET', `/activities/${other.id}/reports/${otherReport}/download`)).status).toBe(
-      fonts ? 200 : 503,
-    );
+    expect((await w.request('GET', `/activities/${other.id}/reports/${otherReport}/download`)).status).toBe(200);
     expect((await as('GET', `/activities/${other.id}/reports/${otherReport}/download`)).status).toBe(404);
     expect((await as('GET', `${s.path}/reports/${otherReport}/download`)).status).toBe(404);
   });
