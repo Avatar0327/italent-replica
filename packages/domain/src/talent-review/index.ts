@@ -1,4 +1,5 @@
 export * from './bound-analysis.js';
+export * from './calc-hints.js';
 export * from './calc-rule.js';
 export * from './catalog.js';
 export * from './fields.js';
