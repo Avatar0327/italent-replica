@@ -98,6 +98,8 @@ const at = (node: { readonly pos: { readonly line: number; readonly column: numb
 
 /** 盘点字段引用：`盘点对象.<一段名字>`（含占位符）；更深的路径、其他对象前缀不属于它。 */
 const isObjectReference = (node: FieldNode) => node.path.length === 2 && node.path[0] === FORMULA_OBJECT;
+/** 以“盘点对象”开头的任何路径（含三段及更深的非规范写法）。 */
+const startsWithObject = (node: FieldNode) => node.fieldId === undefined && node.path[0] === FORMULA_OBJECT;
 
 function fieldNodes(program: { definitions: readonly { value: ExprNode }[]; body: ExprNode }): FieldNode[] {
   const found: FieldNode[] = [];
@@ -310,11 +312,10 @@ function renderBound(stored: string, options: RenderFormulaOptions): RenderResul
   const parsed = parseStoredFormula(stored);
   if (!parsed.ok) return { ok: false };
   const names = new Map(options.visibleFields.map((field) => [field.id.toLowerCase(), field.name]));
-  const references = fieldNodes(parsed.program).filter((node) => node.fieldId !== undefined || isObjectReference(node));
   const bindings: (string | null)[] = [];
   let text = '';
   let cursor = 0;
-  for (const node of references) {
+  for (const node of fieldNodes(parsed.program).filter((n) => n.fieldId !== undefined || startsWithObject(n))) {
     text += stored.slice(cursor, node.pos.offset);
     cursor = node.end;
     if (node.fieldId !== undefined) {
@@ -325,7 +326,8 @@ function renderBound(stored: string, options: RenderFormulaOptions): RenderResul
       text += RESERVED_PATH;
       bindings.push(CONTEXT_BINDING);
     } else {
-      // bound 的规范文本里不会有名称写法：数据损坏，宁可不显示也不原样输出可能不可见的名称
+      // bound 的规范文本里只会有句柄和固定的 盘点对象.盘点方案：任何以“盘点对象”开头的其他路径（名称写法、三段及更深）
+      // 都是数据损坏，宁可不显示也不原样输出可能不可见的名称
       return { ok: false };
     }
   }
@@ -342,11 +344,12 @@ function renderLegacy(stored: string, options: RenderFormulaOptions): RenderResu
   const bindings: (string | null)[] = [];
   let text = '';
   let cursor = 0;
-  for (const node of fieldNodes(parsed.program).filter(isObjectReference)) {
+  for (const node of fieldNodes(parsed.program).filter(startsWithObject)) {
     text += stored.slice(cursor, node.pos.offset);
     cursor = node.end;
-    // 盘点对象.盘点方案 是固定的项目上下文路径名，显示它不暴露任何字段；证明一律为 null，由用户显式选择
-    const shown = node.text === RESERVED_PATH || visibleNames.has(node.path[1]!);
+    // 契约 §1.4：只有查看人可见字段里存在同名字段才原样显示（“盘点方案”也一样，没有固定路径例外）；
+    // 三段及更深的路径不是合法引用，一律按看不到处理。证明一律为 null，由用户显式选择
+    const shown = isObjectReference(node) && visibleNames.has(node.path[1]!);
     text += shown ? stored.slice(node.pos.offset, node.end) : `${FORMULA_OBJECT}.${HIDDEN_FIELD_PLACEHOLDER}`;
     bindings.push(null);
   }
