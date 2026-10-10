@@ -8,11 +8,13 @@
  * 做法：用测试探针在“写入已决定、尚未复核”处暂停，让另一连接完成调动 / 改范围，再放行并核对结果前后的值。
  */
 import { randomUUID } from 'node:crypto';
+import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { afterEach, describe, expect, it } from 'vitest';
 import { commandProbe } from '../../apps/api/src/modules/survey360/context.js';
 import { syncProbe } from '../../apps/api/src/modules/survey360/sync.js';
 import { scene, type SyncPage } from './AC-360-F043-support.js';
+import { expectWaitingOnLock } from './support/f061.js';
 
 const realPostgres = Boolean(process.env.TEST_DATABASE_URL);
 const testDb = useTestDb();
@@ -93,6 +95,29 @@ describe.skipIf(!realPostgres)('F-043 P2-1 写入前复核的是最新状态（�
     expect(inside.name).toBe(s.insidePerson.name);
     expect(inside.revision).toBe(s.insidePerson.revision);
     expect((await s.skippedLogs(s.w.admin)).map((log) => log.objectId)).toContain(s.insidePerson.id);
+  });
+});
+
+describe.skipIf(!realPostgres)('F-043 P2-1 写入处先锁员工行（真 PG）', () => {
+  it('组织侧（任职写入）持着员工行排他锁时，同步在员工行上等待；组织侧提交后同步按提交后的状态复核并照常写入范围内人员', async () => {
+    const s = await world('f043r6');
+    let release!: () => void;
+    const hold = new Promise<void>((resolve) => (release = resolve));
+    let locked!: () => void;
+    const lockedPromise = new Promise<void>((resolve) => (locked = resolve));
+    const org = withTenant(testDb().db, s.w.tenantId, async (tx) => {
+      await tx.execute(sql`SELECT id FROM employment_employees WHERE id = ${s.inside.id}::uuid FOR UPDATE`);
+      locked();
+      await hold;
+    });
+    await lockedPromise;
+    const syncing = s.sync();
+    await expectWaitingOnLock(testDb().db, syncing);
+    release();
+    await org;
+    const page = await s.w.ok<SyncPage>(syncing);
+    expect(page.updated.map((e) => e.employeeId)).toEqual([s.inside.id]);
+    expect((await s.current(s.insidePerson.id)).name).toBe('范围内新名');
   });
 });
 
