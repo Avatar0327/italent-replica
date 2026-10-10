@@ -18,6 +18,7 @@ import {
 import {
   type ObjectDefinition,
   objectCatalogDigest,
+  presetSeeAllTargets,
   profileLedgerMarker,
   SEE_ALL_BACKFILL_APPROVED,
   seeAllGrantCode,
@@ -78,7 +79,7 @@ describe('AC-PLAT-F061 D3 = A′ 批准清单守卫（DEC-374②）', () => {
   it('批准的目标都是身份定义里预置看全部的目标；只有批准的目标有看全部编码，其余（含 Readiness / Matrix / CalcRule）不进编码', () => {
     const defined = new Set(
       STANDARD_PROFILES.flatMap((p) =>
-        (p.seeAll ?? []).map((t) => seeAllGrantCode(p.code, t.appCode, t.targetKind, t.targetCode)),
+        presetSeeAllTargets(p).map((t) => seeAllGrantCode(p.code, t.appCode, t.targetKind, t.targetCode)),
       ),
     );
     for (const target of APPROVED) expect(defined.has(seeAllCode(target)), target).toBe(true);

@@ -251,3 +251,22 @@ export const STANDARD_PROFILES: readonly StandardProfile[] = [
 
 /** 开通时授予首位租户管理员的业务身份，使其能查看与配置出厂流程等业务对象（占一个核心人力名额）。 */
 export const FIRST_ADMIN_PROFILE = 'standard_org_system_admin';
+
+/** 标准身份开通时预置“看全部”的全部目标：标准 HR 身份的 DEC-121 无组织字段对象，加上身份自己登记的目标。 */
+export function presetSeeAllTargets(profile: StandardProfile): PresetSeeAllTarget[] {
+  const hr: PresetSeeAllTarget[] = profile.hr
+    ? [
+        ...NO_ORG_FIELD_SEE_ALL.entities.map((code) => ({
+          appCode: ORG_EMPLOYEE_APP,
+          targetKind: 'entity' as const,
+          targetCode: code,
+        })),
+        ...NO_ORG_FIELD_SEE_ALL.dataSources.map((code) => ({
+          appCode: ORG_EMPLOYEE_APP,
+          targetKind: 'datasource' as const,
+          targetCode: code,
+        })),
+      ]
+    : [];
+  return [...hr, ...(profile.seeAll ?? [])];
+}

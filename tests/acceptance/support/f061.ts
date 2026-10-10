@@ -147,7 +147,14 @@ export async function putObject(
   const detailRes = await w.api.request('GET', `/api/tenant/permission/profiles/${profileId}`, w.asAdmin);
   const detail = (await detailRes.json()) as { revision: number; objects: ObjectPermission[] };
   const current = detail.objects.find((o) => o.objectCode === objectCode)!;
-  const { objectCode: _code, ...body } = mutate(current);
+  // 缺省按不带目录指纹的旧客户端保存（D2 = A 的用例自己带指纹）
+  const {
+    objectCode: _code,
+    catalogDigest: _digest,
+    ...body
+  } = mutate(current) as ObjectPermission & {
+    catalogDigest?: string;
+  };
   return w.api.request('PUT', `/api/tenant/permission/profiles/${profileId}/objects/${objectCode}`, {
     ...w.asAdmin,
     ifMatch: detail.revision,

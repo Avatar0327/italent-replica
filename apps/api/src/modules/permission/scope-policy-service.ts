@@ -46,6 +46,17 @@ async function lock(tx: Tx, write: WriteContext, key: string) {
   await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${write.tenantId + ':' + key},0))`);
 }
 
+/**
+ * 身份看全部的范围锁（回补补看全部与租户保存共用同一个键）。租户 ID 按 (tenantId::uuid)::text 规范化：平台入口可能传
+ * 大小写不同的同一 UUID，按字符串哈希会得到不同的锁（#160 同类问题）。键内容与原 identity-scope 锁一致（小写 UUID 时哈希相同）。
+ */
+export async function lockIdentityScope(tx: Tx, tenantId: string, key: IdentityScopeKey): Promise<void> {
+  const objectId = `${key.profileId}:${key.appCode}:${key.targetKind}:${key.targetCode}`;
+  await tx.execute(
+    sql`SELECT pg_advisory_xact_lock(hashtextextended((${tenantId}::uuid)::text || ':' || ${'identity-scope:' + objectId}, 0))`,
+  );
+}
+
 async function identityTarget(tx: Tx, key: IdentityScopeKey) {
   await loadProfile(tx, key.profileId);
   const [app] = await tx
@@ -108,7 +119,10 @@ export async function setIdentityScope(
   expectedRevision: number,
 ) {
   const objectId = `${key.profileId}:${key.appCode}:${key.targetKind}:${key.targetCode}`;
-  await lock(tx, write, `identity-scope:${objectId}`);
+  // 锁序“身份 → 范围”（F-061 §4.1）：先锁身份行，再取范围锁并复读范围行。回补持身份行锁后插范围行，与租户插同一范围行
+  // （外键检查要对身份行取共享锁）若顺序相反会互等（40P01）；两条路径同序就没有环
+  await loadProfile(tx, key.profileId, true);
+  await lockIdentityScope(tx, write.tenantId, key);
   const before = await getIdentityScope(tx, key);
   if (before.revision !== expectedRevision) throw revisionConflict(expectedRevision, before.revision);
   const revision = before.revision + 1;

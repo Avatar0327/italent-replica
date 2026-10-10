@@ -20,10 +20,16 @@ import {
   BUTTON_LEVELS,
   type ButtonLevel,
   type DataOperation,
+  type ObjectDefinition,
   type ObjectPermission,
 } from '../permission/object-permission.js';
 import { sha256Hex } from './sha256.js';
-import { STANDARD_PROFILES, type StandardProfile } from './standard-presets.js';
+import {
+  type PresetSeeAllTarget,
+  presetSeeAllTargets,
+  STANDARD_PROFILES,
+  type StandardProfile,
+} from './standard-presets.js';
 
 /** 授权项在补装台账里的登记项编码（module/key，同 DEC-361 SeedEntry）。 */
 export const STANDARD_GRANT_ENTRY = 'permission/standard-profile-grants';
@@ -33,8 +39,48 @@ export const STANDARD_GRANT_ENTRY = 'permission/standard-profile-grants';
  * 守卫测试算出的指纹不一致即失败——任何改目录的 PR 都会撞到它，审查方一眼看到“这个 PR 会给存量标准身份补授权”。
  * version 只用于回补报告，不参与缺失判断。
  */
-export const STANDARD_GRANT_VERSION = 1;
-export const STANDARD_GRANT_DIGEST = '38aab182573854eb';
+export const STANDARD_GRANT_VERSION = 2;
+export const STANDARD_GRANT_DIGEST = 'c1ea4d2371ea2df7';
+
+/**
+ * 预置“看全部”补装批准清单（D3 = A′，DEC-374②）：看全部属于数据范围扩大，存量租户的标准身份只对**这里明确列出**的目标补，
+ * 租户关过的（范围行在但 see_all = false）不补。以后新增的看全部目标（九宫格、计算规则等）逐次由用户确认后才能加进来，
+ * 每行写身份、应用、种类、目标编码与 DEC 号；守卫测试保证：未批准目标不进授权项编码，新租户开通照旧预置全部目标。
+ */
+export interface SeeAllBackfillApproval extends PresetSeeAllTarget {
+  readonly profileCode: string;
+  readonly dec: string;
+}
+export const SEE_ALL_BACKFILL_APPROVED: readonly SeeAllBackfillApproval[] = [
+  // R3-T04 B1（#148）新增的盘点设置类对象：存量盘点管理员缺这四个对象的看全部，否则维护不了字典
+  ...['Settings', 'Category', 'Role', 'Field'].map((name): SeeAllBackfillApproval => ({
+    profileCode: 'standard_talent_review_admin',
+    appCode: 'TalentReview',
+    targetKind: 'entity',
+    targetCode: `TalentReview.${name}`,
+    dec: 'DEC-374②',
+  })),
+];
+
+const isApproved = (profileCode: string, target: PresetSeeAllTarget) =>
+  SEE_ALL_BACKFILL_APPROVED.some(
+    (a) =>
+      a.profileCode === profileCode &&
+      a.appCode === target.appCode &&
+      a.targetKind === target.targetKind &&
+      a.targetCode === target.targetCode,
+  );
+
+/** 身份定义里预置了看全部、但还没有用户批准补装的目标（报审查合并窗口转总编排问用户）。 */
+export function unapprovedSeeAllTargets(
+  profiles: readonly StandardProfile[] = STANDARD_PROFILES,
+): readonly (PresetSeeAllTarget & { readonly profileCode: string })[] {
+  return profiles.flatMap((profile) =>
+    presetSeeAllTargets(profile)
+      .filter((target) => !isApproved(profile.code, target))
+      .map((target) => ({ ...target, profileCode: profile.code })),
+  );
+}
 
 export type GrantRef =
   | { readonly kind: 'app'; readonly code: string; readonly profileCode: string; readonly appCode: string }
@@ -223,6 +269,14 @@ export function standardGrantItems(profiles: readonly StandardProfile[] = STANDA
       appCode,
     })),
     ...profile.objects.flatMap((object) => objectGrantItems(profile.code, object)),
+    ...presetSeeAllTargets(profile)
+      .filter((target) => isApproved(profile.code, target))
+      .map((target): GrantItem => ({
+        kind: 'seeAll',
+        code: seeAllGrantCode(profile.code, target.appCode, target.targetKind, target.targetCode),
+        profileCode: profile.code,
+        ...target,
+      })),
   ]);
 }
 
@@ -231,4 +285,21 @@ export const STANDARD_GRANT_CODES: readonly string[] = standardGrantItems().map(
 /** 编码集合的指纹：与顺序无关，SHA-256 前 16 位十六进制。 */
 export function grantCodesDigest(codes: readonly string[]): string {
   return sha256Hex([...codes].sort().join('\n')).slice(0, 16);
+}
+
+/**
+ * 对象目录指纹（D2 = A，方案 §3.1）：输入是**解析后的对象定义**（含租户扩展字段，与保存时校验所用定义同源）。
+ * 规范化：对象编码与应用；字段按编码排序（编码 + 是否系统字段）；按钮按 编码@层级 排序（编码 + 层级 + 依赖的数据操作）；
+ * 不含名称等展示文案。固定键序序列化后取 SHA-256 前 16 位。租户增删扩展字段、发版改目录都会让指纹变化。
+ */
+export function objectCatalogDigest(definition: ObjectDefinition): string {
+  const byKey = <T>(items: readonly T[], key: (item: T) => string) =>
+    [...items].sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0));
+  const canonical = JSON.stringify([
+    definition.code,
+    definition.application,
+    byKey(definition.fields, (f) => f.code).map((f) => [f.code, f.system]),
+    byKey(definition.buttons, (b) => `${b.code}@${b.level}`).map((b) => [b.code, b.level, b.requires ?? null]),
+  ]);
+  return sha256Hex(canonical).slice(0, 16);
 }
