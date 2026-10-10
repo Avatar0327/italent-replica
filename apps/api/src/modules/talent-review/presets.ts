@@ -88,26 +88,37 @@ registerSeed({
 });
 
 const MAPPING_CODES = ['carry_last:tags'];
+const MAPPING_TAGS = 'tags';
 registerSeed({
   module: 'talent-review',
   key: 'preset-field-mappings',
   version: 1,
   codes: MAPPING_CODES,
+  // 租户已有同一对“标签 → 标签”映射就算已有——不论 preset：租户可能手工建过，补装既不重复插入（撞唯一约束）也不覆盖其记录
   existing: async (tx, tenantId) => {
     const rows = await tx
       .select({ id: M.id })
       .from(M)
       .innerJoin(F, and(eq(F.tenantId, M.tenantId), eq(F.id, M.sourceFieldId)))
-      .where(and(eq(M.tenantId, tenantId), eq(M.preset, true), eq(M.scene, 'carry_last'), eq(F.code, 'tags')));
+      .where(
+        and(
+          eq(M.tenantId, tenantId),
+          eq(M.scene, 'carry_last'),
+          eq(M.targetFieldId, M.sourceFieldId),
+          eq(F.code, MAPPING_TAGS),
+        ),
+      );
     return new Set(rows.length > 0 ? MAPPING_CODES : []);
   },
-  // TR-R9：预置一条“标签 → 标签”映射（来源 = 目标 = 预置字段 tags，同一字段）
+  // TR-R9：预置一条“标签 → 标签”映射（来源 = 目标 = 预置字段 tags，同一字段）。依赖的字段缺失 / 已被租户停用时不装，
+  // 以 skipped 返回受控原因（与手工新建映射的“停用字段不可新引用”同一口径）
   install: async (tx, write) => {
     const [tags] = await tx
-      .select({ id: F.id })
+      .select({ id: F.id, enabled: F.enabled })
       .from(F)
-      .where(and(eq(F.tenantId, write.tenantId), eq(F.code, 'tags')));
-    if (!tags) return;
+      .where(and(eq(F.tenantId, write.tenantId), eq(F.code, MAPPING_TAGS)));
+    if (!tags) return { skipped: [{ code: MAPPING_CODES[0]!, reason: 'MAPPING_FIELD_MISSING' }] };
+    if (!tags.enabled) return { skipped: [{ code: MAPPING_CODES[0]!, reason: 'MAPPING_FIELD_DISABLED' }] };
     const [row] = await tx
       .insert(M)
       .values({
