@@ -36,26 +36,29 @@ export interface ChainView {
   readonly transferMode: 'auto' | 'manual';
   readonly noticeTemplateCode: string | null;
 }
+export interface OrgRangeItem {
+  readonly orgId: string;
+  readonly includeDescendants: boolean;
+}
 export interface ActivityView {
   readonly id: string;
   readonly revision: number;
-  readonly code: string;
   readonly name: string;
   readonly typeId: string;
   readonly cycleId: string;
   readonly year: number;
-  readonly startDate: string;
-  readonly endDate: string;
+  readonly startDate: string | null;
+  readonly endDate: string | null;
   readonly ownerId: string;
   readonly ownerOrgId: string;
-  readonly orgRange: string[];
-  readonly managerEmployeeId: string | null;
-  readonly manager?: { name?: string; code?: string } | null;
-  readonly applicantMode: 'self' | 'others' | 'both';
+  readonly orgRange: OrgRangeItem[];
+  readonly managerEmployeeId: string;
+  readonly manager?: { name?: string; code?: string };
+  readonly applicants: ('self' | 'others')[];
   readonly categoryIds: string[];
   readonly levelIds: string[];
   readonly maxLevelJump: number;
-  readonly effectiveDate: string | null;
+  readonly effectiveDate: string;
   readonly noticeOrgRange: string[];
   readonly status: 'draft' | 'published' | 'completed';
   readonly applyCount: number;
@@ -123,6 +126,17 @@ export async function activityWorld(db: Db) {
   const disableQl = (kind: 'categories' | 'levels', item: Ref) =>
     patchAs(`${QL_BASE}/${kind}/${item.id}`, item.revision, { enabled: false });
 
+  /** 管理员在某个组织下建一个下级组织（行政维度）。 */
+  async function childOrg(parentId: string, name = `下级${suffix()}`): Promise<string> {
+    return (
+      await post<{ id: string }>('/api/tenant/org/organizations', {
+        name,
+        establishedOn: '2025-01-01',
+        parents: { admin: { parentId } },
+      })
+    ).id;
+  }
+
   /** 管理员直接建活动（缺省授权钩子，看全部）。 */
   async function adminActivity(body: Record<string, unknown>): Promise<ActivityView> {
     const response = await setup.request('POST', `${EV_BASE}${ACTIVITIES}`, { ...asAdmin, ifMatch: 0, body });
@@ -153,6 +167,7 @@ export async function activityWorld(db: Db) {
     );
   return {
     ...base,
+    childOrg,
     forceDisable,
     activityType,
     activityCycle,
@@ -384,6 +399,7 @@ export async function activityFixtures(w: ActivityWorld) {
   const lv2 = await w.qlLevel(2);
   const mgrA = await w.hire('负责人甲', w.orgA);
   const mgrB = await w.hire('负责人乙', w.orgB);
+  /** 环节：资格申报首、结果发布末，材料举证、答辩评审在中间（各最多 3 个）；评价表只在答辩评审上且必填（DEC-412）。 */
   const chains = (formId: string = form1.id) => [
     {
       type: 'apply',
@@ -401,7 +417,6 @@ export async function activityFixtures(w: ActivityWorld) {
       name: '材料举证',
       startDate: '2026-04-01',
       endDate: '2026-05-31',
-      formId,
       approvalProcessCode: 'MATERIAL_REVIEW',
       materialTemplate: 'TPL_MATERIAL',
       transferMode: 'auto',
@@ -416,8 +431,9 @@ export async function activityFixtures(w: ActivityWorld) {
     },
     { type: 'result', name: '结果发布', startDate: '2026-09-01', endDate: '2026-12-31' },
   ];
+  /** 组织范围条目（默认勾“包含下级”，测试默认不勾，免得与测试里新建的下级组织互相干扰）。 */
+  const orgs = (...ids: string[]) => ids.map((orgId) => ({ orgId, includeDescendants: false }));
   const body = (extra: Record<string, unknown> = {}) => ({
-    code: `EV${suffix()}`,
     name: `评定活动${suffix()}`,
     typeId: type1.id,
     cycleId: cycle1.id,
@@ -425,9 +441,9 @@ export async function activityFixtures(w: ActivityWorld) {
     startDate: '2026-01-01',
     endDate: '2026-12-31',
     ownerOrgId: w.orgA,
-    orgRange: [w.orgA],
+    orgRange: orgs(w.orgA),
     managerEmployeeId: mgrA.id,
-    applicantMode: 'self',
+    applicants: ['self'],
     categoryIds: [cat1.id],
     levelIds: [lv1.id, lv2.id],
     effectiveDate: '2027-01-01',
@@ -435,7 +451,7 @@ export async function activityFixtures(w: ActivityWorld) {
     chains: chains(),
     ...extra,
   });
-  return { type1, type2, cycle1, form1, formB, cat1, cat2, lv1, lv2, mgrA, mgrB, chains, body };
+  return { type1, type2, cycle1, form1, formB, cat1, cat2, lv1, lv2, mgrA, mgrB, chains, body, orgs };
 }
 export type ActivityFixtures = Awaited<ReturnType<typeof activityFixtures>>;
 
@@ -443,4 +459,8 @@ export type ActivityFixtures = Awaited<ReturnType<typeof activityFixtures>>;
 export function sendableChain(chain: ChainView): Record<string, unknown> {
   const { id: _id, ...rest } = chain;
   return Object.fromEntries(Object.entries(rest).filter(([, value]) => value !== null));
+}
+/** 同上但保留环节 ID（按 ID 对应原有环节）。 */
+export function sendableChainWithId(chain: ChainView): Record<string, unknown> {
+  return { id: chain.id, ...sendableChain(chain) };
 }

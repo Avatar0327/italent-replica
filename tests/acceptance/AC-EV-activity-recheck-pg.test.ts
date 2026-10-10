@@ -116,7 +116,7 @@ describe.skipIf(!process.env['TEST_DATABASE_URL'])('AC-EV-activity-recheck-pg �
       ).toEqual([201, 404]);
       const winner = (await responses.find((r) => r.status === 201)!.json()) as ActivityView;
       expect(await responses.find((r) => r.status === 404)!.text()).not.toContain(winner.id);
-      expect((await adminList()).filter((item) => item.code === data.code)).toHaveLength(1);
+      expect((await adminList()).filter((item) => item.name === data.name)).toHaveLength(1);
     });
 
     it('PATCH：真实并发的 revision 冲突，回查前撤销活动范围 → 败者 404，名称只改一次', async () => {
@@ -160,7 +160,7 @@ describe.skipIf(!process.env['TEST_DATABASE_URL'])('AC-EV-activity-recheck-pg �
       expect(posts.map((r) => r.status)).toEqual([201, 201]);
       const [a, b] = await Promise.all(posts.map((r) => r.json()));
       expect(a).toEqual(b);
-      expect((await adminList()).filter((item) => item.code === data.code)).toHaveLength(1);
+      expect((await adminList()).filter((item) => item.name === data.name)).toHaveLength(1);
       const activity = await w.adminActivity(body({ categoryIds: [(await w.qlCategory()).id] }));
       const patch = { name: `对照${suffix()}` };
       const patchKey = randomUUID();
@@ -293,11 +293,11 @@ describe.skipIf(!process.env['TEST_DATABASE_URL'])('AC-EV-activity-recheck-pg �
         await tx.execute(sql`SELECT 1 FROM ql_categories WHERE id = ${category.id}::uuid FOR SHARE`);
         await tx.execute(sql`SELECT 1 FROM ql_levels WHERE id = ${level.id}::uuid FOR SHARE`);
         await tx.execute(sql`INSERT INTO ev_activities
-          (tenant_id, code, name, type_id, cycle_id, year, start_date, end_date, owner_id, owner_org_id,
-           applicant_mode, category_ids, level_ids, created_by)
-          VALUES (${w.tenant.id}, ${`LOCK${suffix()}`}, '并发活动', ${f.type1.id}, ${f.cycle1.id}, 2026,
-            '2026-01-01', '2026-12-31', ${w.asAdmin.user}, ${w.orgA}, 'self',
-            ARRAY[${category.id}::uuid], ARRAY[${level.id}::uuid], ${w.asAdmin.user})`);
+          (tenant_id, name, type_id, cycle_id, year, owner_id, owner_org_id, manager_employee_id, applicants,
+           category_ids, level_ids, effective_date, created_by)
+          VALUES (${w.tenant.id}, ${`并发活动${suffix()}`}, ${f.type1.id}, ${f.cycle1.id}, 2026, ${w.asAdmin.user},
+            ${w.orgA}, ${f.mgrA.id}, ARRAY['self'], ARRAY[${category.id}::uuid], ARRAY[${level.id}::uuid],
+            '2027-01-01', ${w.asAdmin.user})`);
         locked();
         await gate;
       });

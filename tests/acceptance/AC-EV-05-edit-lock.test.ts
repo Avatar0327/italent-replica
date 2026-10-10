@@ -83,9 +83,9 @@ describe('AC-EV-05 编辑锁（已有报名的活动）', () => {
     ['所属组织', () => ({ ownerOrgId: w.orgC })],
     ['年度', () => ({ year: 2027 })],
     ['周期', async () => ({ cycleId: (await w.activityCycle()).id })],
-    ['负责人', () => ({ managerEmployeeId: null })],
+    ['负责人', async () => ({ managerEmployeeId: (await w.hire('新负责人', w.orgA)).id })],
     ['起止日期', () => ({ startDate: '2025-12-01', endDate: '2027-01-31' })],
-    ['申请人', () => ({ applicantMode: 'others' })],
+    ['申请人', () => ({ applicants: ['others'] })],
     ['可申报级别（跨级限制）', () => ({ maxLevelJump: 3 })],
     ['环节名称', (a) => ({ chains: chainsWith(a, 'defense', { name: '终审' }) })],
     ['环节流程', (a) => ({ chains: chainsWith(a, 'apply', { approvalProcessCode: 'QUAL_APPLY_V2' }) })],
@@ -107,9 +107,9 @@ describe('AC-EV-05 编辑锁（已有报名的活动）', () => {
   });
 
   const locked: readonly [string, Change][] = [
-    ['活动编码', () => ({ code: `EV${suffix()}` })],
     ['活动类型', () => ({ typeId: f.type2.id })],
-    ['适用组织范围', () => ({ orgRange: [w.orgA, w.orgC] })],
+    ['适用组织范围', () => ({ orgRange: f.orgs(w.orgA, w.orgC) })],
+    ['适用组织范围的“包含下级”', () => ({ orgRange: [{ orgId: w.orgA, includeDescendants: true }] })],
     ['申请类别', () => ({ categoryIds: [f.cat2.id] })],
     ['申请级别', () => ({ levelIds: [f.lv1.id] })],
     ['评定生效日期', () => ({ effectiveDate: '2027-02-01' })],
@@ -132,7 +132,6 @@ describe('AC-EV-05 编辑锁（已有报名的活动）', () => {
     const op = await manager();
     const activity = await withApplicants();
     const same = await patch(op, activity, {
-      code: activity.code,
       typeId: activity.typeId,
       orgRange: activity.orgRange,
       categoryIds: activity.categoryIds,
@@ -163,7 +162,7 @@ describe('AC-EV-05 编辑锁（已有报名的活动）', () => {
     );
     expect(stripped.chains.map((chain) => chain.type)).toEqual(['apply', 'defense', 'result']);
     const retyped = await ok<ActivityView>(
-      await patch(op, stripped, { typeId: f.type2.id, orgRange: [w.orgA, w.orgC], code: `EV${suffix()}` }),
+      await patch(op, stripped, { typeId: f.type2.id, orgRange: f.orgs(w.orgA, w.orgC) }),
     );
     expect(retyped.typeId).toBe(f.type2.id);
   });

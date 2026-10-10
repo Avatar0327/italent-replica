@@ -129,23 +129,29 @@ describe('AC-EV-activity-refs 评定活动的引用与权限', () => {
 
     it('适用范围 / 通知范围：新增的组织须在范围内（范围外与不存在同一 404）；原有的范围外组织原样提交保留', async () => {
       const op = await manager();
-      await expectError(await post(op, body({ orgRange: [w.orgA, w.orgB] })), 404);
+      await expectError(await post(op, body({ orgRange: f.orgs(w.orgA, w.orgB) })), 404);
       await expectError(await post(op, body({ noticeOrgRange: [w.orgB] })), 404);
-      await expectError(await post(op, body({ orgRange: [randomUUID()] })), 404);
+      await expectError(await post(op, body({ orgRange: f.orgs(randomUUID()) })), 404);
       // 管理员建的活动适用范围含乙部（范围外）：操作人原样提交完整集合 200，新增丙部 404
-      const seeded = await w.adminActivity(body({ orgRange: [w.orgA, w.orgB], noticeOrgRange: [w.orgB] }));
+      const seeded = await w.adminActivity(body({ orgRange: f.orgs(w.orgA, w.orgB), noticeOrgRange: [w.orgB] }));
       const kept = await ok<ActivityView>(
-        await patch(op, seeded, { name: `保留${suffix()}`, orgRange: [w.orgA, w.orgB], noticeOrgRange: [w.orgB] }),
+        await patch(op, seeded, {
+          name: `保留${suffix()}`,
+          orgRange: f.orgs(w.orgA, w.orgB),
+          noticeOrgRange: [w.orgB],
+        }),
       );
-      expect(kept.orgRange).toEqual([w.orgA, w.orgB]);
-      await expectError(await patch(op, kept, { orgRange: [w.orgA, w.orgB, w.orgC] }), 404);
-      const dropped = await ok<ActivityView>(await patch(op, kept, { orgRange: [w.orgA] }));
-      expect(dropped.orgRange).toEqual([w.orgA]);
+      expect(kept.orgRange.map((item) => item.orgId)).toEqual([w.orgA, w.orgB]);
+      await expectError(await patch(op, kept, { orgRange: f.orgs(w.orgA, w.orgB, w.orgC) }), 404);
+      const dropped = await ok<ActivityView>(await patch(op, kept, { orgRange: f.orgs(w.orgA) }));
+      expect(dropped.orgRange.map((item) => item.orgId)).toEqual([w.orgA]);
     });
 
     it('列表与详情按所属组织 ∪ 所属人在分页前裁剪；范围外与不存在同一 404；空范围 fail-closed', async () => {
       const inA = await w.adminActivity(body());
-      const inB = await w.adminActivity(body({ ownerOrgId: w.orgB, orgRange: [w.orgB], noticeOrgRange: [w.orgB] }));
+      const inB = await w.adminActivity(
+        body({ ownerOrgId: w.orgB, orgRange: f.orgs(w.orgB), noticeOrgRange: [w.orgB] }),
+      );
       const op = await manager();
       const page = await ok<Page>(await op.request('GET', `${ACTIVITIES}?page=1&pageSize=200`));
       expect(page.items.map((item) => item.id)).toContain(inA.id);
@@ -190,7 +196,7 @@ describe('AC-EV-activity-refs 评定活动的引用与权限', () => {
       expect(listed?.manager).toEqual({});
     });
 
-    it('新增范围外负责人 404 且不落库；没有员工信息查看权新增 403；原有范围外负责人原样提交保留；清空允许', async () => {
+    it('新增范围外负责人 404 且不落库；没有员工信息查看权新增 403；原有范围外负责人原样提交保留；负责人必填不能清空', async () => {
       const op = await manager();
       await expectError(await post(op, body({ managerEmployeeId: f.mgrB.id })), 404);
       await expectError(await post(op, body({ managerEmployeeId: randomUUID() })), 404);
@@ -201,8 +207,8 @@ describe('AC-EV-activity-refs 评定活动的引用与权限', () => {
       );
       expect(kept.managerEmployeeId).toBe(f.mgrB.id);
       await expectError(await patch(op, kept, { managerEmployeeId: f.mgrB.id.replace(/.$/, '0') }), 404);
-      const cleared = await ok<ActivityView>(await patch(op, kept, { managerEmployeeId: null }));
-      expect(cleared).toMatchObject({ managerEmployeeId: null, manager: null });
+      // 负责人必填：不能清空（DEC-412）
+      await expectError(await patch(op, kept, { managerEmployeeId: null }), 400);
     });
   });
 
@@ -224,7 +230,7 @@ describe('AC-EV-activity-refs 评定活动的引用与权限', () => {
       const activity = await created(await manager());
       const readonly = await manager({ readonly: ['chains', 'managerEmployeeId', 'maxLevelJump'] });
       await expectError(await patch(readonly, activity, { chains: activity.chains.map(sendableChain) }), 403);
-      await expectError(await patch(readonly, activity, { managerEmployeeId: null }), 403);
+      await expectError(await patch(readonly, activity, { managerEmployeeId: f.mgrA.id }), 403);
       await expectError(await patch(readonly, activity, { maxLevelJump: 3 }), 403);
       expect((await patch(readonly, activity, { name: `照常${suffix()}` })).status).toBe(200);
       const hidden = await manager({ hidden: ['chains', 'manager', 'categoryIds'] });
@@ -237,7 +243,7 @@ describe('AC-EV-activity-refs 评定活动的引用与权限', () => {
 
     it('状态筛选：有 status 字段查看权才能筛选，没有 → 403 FILTER_FIELD_HIDDEN；筛选结果与排序不泄露', async () => {
       const draft = await created(await manager());
-      const live = await w.adminActivity(body({ orgRange: [w.orgB] }));
+      const live = await w.adminActivity(body({ orgRange: f.orgs(w.orgB) }));
       await w.setStatus(live.id, 'published');
       const op = await manager();
       const drafts = await ok<Page>(await op.request('GET', `${ACTIVITIES}?status=draft&pageSize=200`));
@@ -328,7 +334,7 @@ describe('AC-EV-activity-refs 评定活动的引用与权限', () => {
     it('活动改掉引用后，原类别 / 级别可以删除；只改名称不影响', async () => {
       const [oldCategory, newCategory] = [await w.qlCategory(), await w.qlCategory()];
       const op = await manager();
-      const activity = await created(op, body({ categoryIds: [oldCategory.id], levelIds: [] }));
+      const activity = await created(op, body({ categoryIds: [oldCategory.id], levelIds: [f.lv1.id] }));
       await expectError(await removeQl('categories', oldCategory), 409, 'CATEGORY_IN_USE');
       await ok(await patch(op, activity, { categoryIds: [newCategory.id] }));
       expect((await removeQl('categories', oldCategory)).status).toBe(200);

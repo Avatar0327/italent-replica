@@ -198,9 +198,9 @@ describe('AC-EV-activity-recheck 评定活动命令事务内权限复核', () =>
       await unchanged(activity);
       const range = await manager({ evOrgs: [w.orgA, w.orgC] });
       hooks.beforeCommand = () => range.setEvOrgs([w.orgA]);
-      const added = await patch(range, activity, { orgRange: [w.orgA, w.orgC] });
+      const added = await patch(range, activity, { orgRange: f.orgs(w.orgA, w.orgC) });
       expect(added.status, await added.clone().text()).toBe(404);
-      expect((await w.adminRead(activity.id)).orgRange).toEqual([w.orgA]);
+      expect((await w.adminRead(activity.id)).orgRange.map((item) => item.orgId)).toEqual([w.orgA]);
     });
 
     it('DELETE：撤销范围 → 404，对象仍在、台账不变', async () => {

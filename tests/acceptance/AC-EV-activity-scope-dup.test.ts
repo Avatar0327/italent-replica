@@ -68,7 +68,10 @@ describe('AC-EV-activity-scope-dup 适用范围重复拦截', () => {
   it('改组织后 201；只类别不同 201；冲突活动是草稿 201', async () => {
     const { category } = await live();
     const op = await manager({ evOrgs: [w.orgA, w.orgB], personOrgs: [w.orgA, w.orgB] });
-    const otherOrg = await post(op, body({ categoryIds: [category.id], orgRange: [w.orgB], noticeOrgRange: [w.orgB] }));
+    const otherOrg = await post(
+      op,
+      body({ categoryIds: [category.id], orgRange: f.orgs(w.orgB), noticeOrgRange: [w.orgB] }),
+    );
     expect(otherOrg.status, await otherOrg.clone().text()).toBe(201);
     const otherCategory = await post(op, body({ categoryIds: [(await w.qlCategory()).id] }));
     expect(otherCategory.status, await otherCategory.clone().text()).toBe(201);
@@ -80,12 +83,14 @@ describe('AC-EV-activity-scope-dup 适用范围重复拦截', () => {
 
   it('部分重叠也拦：组织范围有交集且申请类别有交集（[甲, 乙] 对 [乙, 丙]；[类别一, 类别二] 对 [类别二]），不相交放行', async () => {
     const [c1, c2] = [await w.qlCategory(), await w.qlCategory()];
-    const base = await w.adminActivity(body({ orgRange: [w.orgA, w.orgB], categoryIds: [c1.id, c2.id] }));
+    const base = await w.adminActivity(body({ orgRange: f.orgs(w.orgA, w.orgB), categoryIds: [c1.id, c2.id] }));
     await w.setStatus(base.id, 'published');
     const op = await manager({ evOrgs: [w.orgA, w.orgB, w.orgC], personOrgs: [w.orgA] });
-    await duplicate(await post(op, body({ orgRange: [w.orgB, w.orgC], categoryIds: [c1.id] })));
-    await duplicate(await post(op, body({ orgRange: [w.orgA], categoryIds: [(await w.qlCategory()).id, c2.id] })));
-    const disjoint = await post(op, body({ orgRange: [w.orgC], categoryIds: [c1.id], noticeOrgRange: [w.orgC] }));
+    await duplicate(await post(op, body({ orgRange: f.orgs(w.orgB, w.orgC), categoryIds: [c1.id] })));
+    await duplicate(
+      await post(op, body({ orgRange: f.orgs(w.orgA), categoryIds: [(await w.qlCategory()).id, c2.id] })),
+    );
+    const disjoint = await post(op, body({ orgRange: f.orgs(w.orgC), categoryIds: [c1.id], noticeOrgRange: [w.orgC] }));
     expect(disjoint.status, await disjoint.clone().text()).toBe(201);
   });
 
@@ -104,12 +109,12 @@ describe('AC-EV-activity-scope-dup 适用范围重复拦截', () => {
     const legacy = await w.adminRead(mine.id);
     const same = await patch(op, legacy, { name: `历史${randomUUID().slice(0, 6)}`, categoryIds: [category.id] });
     expect(same.status, await same.clone().text()).toBe(200);
-    await duplicate(await patch(op, await w.adminRead(mine.id), { orgRange: [w.orgA, w.orgC] }));
+    await duplicate(await patch(op, await w.adminRead(mine.id), { orgRange: f.orgs(w.orgA, w.orgC) }));
     // 进行中的活动自己改适用组织范围：排除自身，不被自己拦
     const adminSelf = await w.setup.request('PATCH', `/api/tenant/evaluation${ACTIVITIES}/${activity.id}`, {
       ...w.asAdmin,
       ifMatch: activity.revision,
-      body: { orgRange: [w.orgA, w.orgC] },
+      body: { orgRange: f.orgs(w.orgA, w.orgC) },
     });
     expect(adminSelf.status, await adminSelf.clone().text()).toBe(200);
   });
@@ -144,5 +149,38 @@ describe('AC-EV-activity-scope-dup 适用范围重复拦截', () => {
     const message = await messageOf(response);
     expect(message).toContain(inside.name);
     expect(message).not.toContain(outside.name);
+  });
+  it('冲突判断把下级算进去（Q-M0-174 第 4 点）：上级组织（包含下级）对进行中活动的下级组织 + 同类别 → 409；去掉“包含下级”后不冲突', async () => {
+    const child = await w.childOrg(w.orgA);
+    const grandchild = await w.childOrg(child);
+    const category = await w.qlCategory();
+    // 进行中的活动选的是下级组织本身（不含下级）
+    const base = await w.adminActivity(
+      body({ categoryIds: [category.id], orgRange: [{ orgId: child, includeDescendants: false }] }),
+    );
+    await w.setStatus(base.id, 'published');
+    const op = await manager({ evOrgs: [w.orgA, child] });
+    const withChildren = await post(
+      op,
+      body({ categoryIds: [category.id], orgRange: [{ orgId: w.orgA, includeDescendants: true }] }),
+    );
+    await duplicate(withChildren);
+    expect(await messageOf(withChildren)).toBe(`适用范围与已有活动【${base.name}】重复，请修改`);
+    const without = await post(
+      op,
+      body({ categoryIds: [category.id], orgRange: [{ orgId: w.orgA, includeDescendants: false }] }),
+    );
+    expect(without.status, await without.clone().text()).toBe(201);
+    // 进行中的活动勾了“包含下级”：新活动选它的孙级组织（不含下级）也冲突
+    const wide = await w.adminActivity(
+      body({ categoryIds: [category.id], orgRange: [{ orgId: child, includeDescendants: true }] }),
+    );
+    await w.setStatus(wide.id, 'published');
+    await duplicate(
+      await post(
+        op,
+        body({ categoryIds: [category.id], orgRange: [{ orgId: grandchild, includeDescendants: false }] }),
+      ),
+    );
   });
 });
