@@ -27,30 +27,65 @@ import {
   createClosureEnv,
   declText,
   edgeIds,
+  EvidenceUnitError,
   explore,
   type SourceReader,
   sourceFileOf,
   type Unresolved,
 } from './evidence-closure.js';
 import { expandGraph, type Registry, renderRegistry } from './evidence-graph.js';
+import { evidenceStrict } from './evidence-gate.js';
 import { formatGroup, staleGroups, type Use } from './evidence-report.js';
 import { DIGESTS, GRAPH, NODE_DIGESTS, UNIT_BINDINGS } from './required/digests/index.js';
+import { REQUIRED } from './required/index.js';
 import type { Digests, Evidence, Obligation, RequiredTable } from './required/types.js';
 
 export type { SourceReader } from './evidence-closure.js';
+export { EvidenceUnitError };
 
 /** 证据单元 → 依赖单元 → 依赖摘要（B-02 的平铺闭包；已不再登记，仅供等价核对与报告）。 */
 export { renderRegistry };
 export type { Use };
 export type Dependencies = Readonly<Record<string, Readonly<Record<string, string>>>>;
 
-/** 当前提交的登记（required/digests/）。 */
-export const REGISTRY: Registry = {
+/** 提交在仓库里的登记（required/digests/）。门禁断言拿它和源码比对。 */
+export const STORED_REGISTRY: Registry = {
   units: DIGESTS,
   unitBindings: UNIT_BINDINGS,
   nodes: NODE_DIGESTS,
   graph: expandGraph(GRAPH),
 };
+
+let currentRequired: Registry | undefined;
+/** 按当前源码对整张必需项表算出的登记（算一遍要十几秒，同一进程只算一次）。 */
+export const currentRequiredRegistry = (): Registry => (currentRequired ??= currentRegistry(REQUIRED));
+
+/** 按当前源码即时算出的登记，首次读取时才计算（参数供测试注入夹具）。 */
+export function syncedRegistry(
+  table: RequiredTable = REQUIRED,
+  read: SourceReader = repoSource,
+  branch: BranchBindings | false = BRANCH_BINDINGS,
+): Registry {
+  let cached: Registry | undefined;
+  const current = () =>
+    table === REQUIRED && read === repoSource && branch === BRANCH_BINDINGS
+      ? currentRequiredRegistry()
+      : (cached ??= currentRegistry(table, read, branch));
+  return {
+    get units() {
+      return current().units;
+    },
+    get unitBindings() {
+      return current().unitBindings;
+    },
+    get nodes() {
+      return current().nodes;
+    },
+    get graph() {
+      return current().graph;
+    },
+  };
+}
 
 const ROOT = process.cwd();
 const REQUIRED_DIR = 'tests/acceptance/support/route-policy/required';
@@ -67,6 +102,13 @@ export const repoSource: SourceReader = (file) => {
   }
   return text;
 };
+
+/**
+ * 检测器和变异用例用的登记基准。严格模式 = 提交的登记（与以前完全一样）；警告模式（F-090 默认）= 按当前源码即时
+ * 算出的登记：登记过期时，“改一处源码恰好报 1 条”这类检测器用例不会被既有的过期登记搅乱。
+ * 过期本身只由门禁断言（`checkStored` + `gateEvidence`）对着 `STORED_REGISTRY` 报告。
+ */
+export const REGISTRY: Registry = evidenceStrict() ? STORED_REGISTRY : syncedRegistry();
 
 /** 锚点是否出现在单元里：按词法记号序列比较；锚点落在字符串 / 模板（如 SQL）里时，按该字面量空白折叠后的文本比较。 */
 export function containsAnchor(unit: string, anchor: string): boolean {
@@ -189,15 +231,36 @@ export function findUnitNode(sf: ts.SourceFile, unit: string, name: string): ts.
     }
     scopes = hits;
   }
-  if (scopes.length !== 1) throw new Error(`证据单元 ${unit} ${scopes.length ? '不唯一' : '不存在'}`);
+  if (scopes.length !== 1) throw new EvidenceUnitError(`证据单元 ${unit} ${scopes.length ? '不唯一' : '不存在'}`);
   return scopes[0]!;
 }
 
+const isMissingFile = (error: unknown): boolean =>
+  error instanceof Error && (error as NodeJS.ErrnoException).code === 'ENOENT';
+
+/** 证据单元读不到文本的错误码：找不到 = 登记与源码不一致（漂移，F-090 默认只警告）；写法错误 = 登记自身的错误（判红）。 */
+const unitErrorCode = (error: Error) =>
+  error instanceof EvidenceUnitError ? 'EVIDENCE_UNIT' : 'EVIDENCE_UNIT_INVALID';
+
+/** 只有这两类是“这个单元有问题”；读取器的其他异常（EACCES、TypeError……）不归类，一律照旧抛出。 */
+const isUnitProblem = (error: unknown): error is EvidenceUnitError | EvidenceUnitInvalidError =>
+  error instanceof EvidenceUnitError || error instanceof EvidenceUnitInvalidError;
+
+/** 证据单元写法错误（格式不对、指向登记表文件）：登记自身的错误，不是漂移，两种模式都判红（F-090）。 */
+export class EvidenceUnitInvalidError extends Error {}
+
 export function unitText(read: SourceReader, unit: string): string {
   const [file = '', name = ''] = unit.split('#');
-  if (!file || !name) throw new Error(`证据单元格式应为 文件#名字：${unit}`);
-  if (/(^|\/)(app-)?policy\.ts$/.test(file)) throw new Error(`证据不得指向登记表文件：${unit}`);
-  const sf = sourceFileOf(read, file);
+  if (!file || !name) throw new EvidenceUnitInvalidError(`证据单元格式应为 文件#名字：${unit}`);
+  if (/(^|\/)(app-)?policy\.ts$/.test(file)) throw new EvidenceUnitInvalidError(`证据不得指向登记表文件：${unit}`);
+  let sf: ts.SourceFile;
+  try {
+    sf = sourceFileOf(read, file);
+  } catch (error) {
+    // 读取器读不到文件（改名 / 移走）= 单元找不到；读取器自己的其他异常仍然外抛
+    if (isMissingFile(error)) throw new EvidenceUnitError(`证据单元 ${unit} 的文件读不到：${file}`, { cause: error });
+    throw error;
+  }
   return findUnitNode(sf, unit, name).getText(sf);
 }
 
@@ -288,8 +351,8 @@ export function currentDigests(
   read: SourceReader = repoSource,
   branch: BranchBindings | false = BRANCH_BINDINGS,
 ): Record<string, string> {
-  const units = [...usesOf(table, branch).keys()].sort();
-  return Object.fromEntries(units.map((unit) => [unit, digestOf(unitText(read, unit))]));
+  const { texts } = validUnits(table, read, branch);
+  return Object.fromEntries([...texts.keys()].sort().map((unit) => [unit, digestOf(texts.get(unit)!)]));
 }
 
 /** 同 currentDigests，但按 文件 → 单元名 → 摘要 分组（与 DIGESTS 同形，供 checkEvidence 的 digests 选项）。 */
@@ -345,7 +408,8 @@ export function currentDependencies(
   branch: BranchBindings | false = BRANCH_BINDINGS,
   boundary: readonly BoundaryEntry[] = EVIDENCE_BOUNDARY,
 ): Record<string, Record<string, string>> {
-  const closures = closuresOf([...usesOf(table, branch).keys()].sort(), read, boundary);
+  // 只以有效单元为根（失效单元由 brokenUnits / EVIDENCE_UNIT 报告）；有效单元的闭包出错不是漂移，照旧抛出
+  const closures = closuresOf([...validUnits(table, read, branch).uses.keys()].sort(), read, boundary);
   return Object.fromEntries(
     [...closures].map(([unit, closure]) => {
       if (closure instanceof Error) throw closure;
@@ -369,7 +433,7 @@ export function closureReports(
   branch: BranchBindings | false = BRANCH_BINDINGS,
   boundary: readonly BoundaryEntry[] = EVIDENCE_BOUNDARY,
 ): ClosureReport[] {
-  const closures = closuresOf([...usesOf(table, branch).keys()].sort(), read, boundary);
+  const closures = closuresOf([...effectiveUses(table, read, branch).keys()].sort(), read, boundary);
   return [...closures].flatMap(([unit, closure]) =>
     closure instanceof Error
       ? []
@@ -411,20 +475,106 @@ function registryFor(env: ClosureEnv, roots: readonly string[], texts: ReadonlyM
   return { units, unitBindings, nodes, graph };
 }
 
-/** 当前源码算出的登记（全部被引用的单元）。 */
+export interface UnitResolution {
+  /**
+   * 有效单元 → 引用它的义务 / 登记项：被引用、且在当前源码里唯一找到的单元。检测器基准（currentRegistry / 默认模式的
+   * REGISTRY）、依赖闭包（currentDependencies / closureReports）、过期比对（checkEvidence 的集中报告）和测试 oracle
+   * 都只以它为根，失效单元不会在其中任何一处被当作“应有变化的根”（F-090 审查 R2 P2-1）。
+   */
+  readonly uses: Map<string, Use[]>;
+  readonly texts: ReadonlyMap<string, string>;
+  /** 失效单元：不存在 / 不唯一 / 文件读不到（ENOENT）——登记与源码不一致，只由门禁按 EVIDENCE_UNIT 报告。 */
+  readonly broken: readonly string[];
+  /** 写法错误的单元（EVIDENCE_UNIT_INVALID）：登记自身的错误。 */
+  readonly invalid: ReadonlyMap<string, EvidenceUnitInvalidError>;
+}
+
+let requiredResolution: UnitResolution | undefined;
+/** 缓存的每次读取都给一份副本（含引用数组），调用方改动不会污染缓存、让后续报告少算义务（审查 R3 P3-1）。 */
+const copyResolution = (r: UnitResolution): UnitResolution => ({
+  uses: new Map([...r.uses].map(([unit, list]) => [unit, [...list]])),
+  texts: new Map(r.texts),
+  broken: [...r.broken],
+  invalid: new Map(r.invalid),
+});
+/**
+ * 把被引用的单元分成 有效 / 失效 / 写法错误 三类；读取器的其他异常（EACCES 等）照旧抛出，不归入任何一类。
+ * 真实表 + 仓库源码 + 真实选择器登记的结果在进程内只算一次（源码在进程内不变）；夹具读取器每次重算。
+ */
+export function resolveUnits(
+  table: RequiredTable = REQUIRED,
+  read: SourceReader = repoSource,
+  branch: BranchBindings | false = BRANCH_BINDINGS,
+): UnitResolution {
+  const real = table === REQUIRED && read === repoSource && branch === BRANCH_BINDINGS;
+  if (real && requiredResolution) return copyResolution(requiredResolution);
+  const all = usesOf(table, branch);
+  const uses = new Map<string, Use[]>();
+  const texts = new Map<string, string>();
+  const broken: string[] = [];
+  const invalid = new Map<string, EvidenceUnitInvalidError>();
+  for (const unit of [...all.keys()].sort(compareText)) {
+    try {
+      texts.set(unit, unitText(read, unit));
+      uses.set(unit, all.get(unit)!);
+    } catch (error) {
+      if (error instanceof EvidenceUnitError) broken.push(unit);
+      else if (error instanceof EvidenceUnitInvalidError) invalid.set(unit, error);
+      else throw error;
+    }
+  }
+  const resolution = { uses, texts, broken, invalid };
+  if (real) requiredResolution = copyResolution(resolution);
+  return resolution;
+}
+
+/** 有效单元 → 引用（见 UnitResolution.uses）；resolveUnits 已给副本（含引用数组），调用方改动不影响进程内缓存。 */
+export const effectiveUses = (
+  table: RequiredTable = REQUIRED,
+  read: SourceReader = repoSource,
+  branch: BranchBindings | false = BRANCH_BINDINGS,
+): Map<string, Use[]> => resolveUnits(table, read, branch).uses;
+
+/** 被引用的单元里，在当前源码里找不到的（改名 / 删除 / 文件移走 / 不唯一）。 */
+export const brokenUnits = (
+  table: RequiredTable,
+  read: SourceReader = repoSource,
+  branch: BranchBindings | false = BRANCH_BINDINGS,
+): string[] => [...resolveUnits(table, read, branch).broken];
+
+/** 生成类出口用：有效单元；写法错误不是漂移，照旧抛出（与以前一样，登记写错了就生成不了）。 */
+function validUnits(table: RequiredTable, read: SourceReader, branch: BranchBindings | false): UnitResolution {
+  const resolution = resolveUnits(table, read, branch);
+  const [first] = resolution.invalid.values();
+  if (first) throw first;
+  return resolution;
+}
+
+/** 当前源码算出的登记（全部被引用的单元；找不到的单元跳过，由 brokenUnits / EVIDENCE_UNIT 报告）。 */
 export function currentRegistry(
   table: RequiredTable,
   read: SourceReader = repoSource,
   branch: BranchBindings | false = BRANCH_BINDINGS,
   boundary: readonly BoundaryEntry[] = EVIDENCE_BOUNDARY,
 ): Registry {
-  const roots = [...usesOf(table, branch).keys()].sort(compareText);
-  return registryFor(closureEnvFor(read, boundary), roots, new Map(roots.map((unit) => [unit, unitText(read, unit)])));
+  const { uses, texts } = validUnits(table, read, branch);
+  return registryFor(closureEnvFor(read, boundary), [...uses.keys()], texts);
+}
+
+/** 要写进 required/digests/ 的全部文件内容。有失效单元时抛错：先修义务表的证据单元，不能把它们静默丢掉。 */
+export function registryFiles(
+  table: RequiredTable,
+  read: SourceReader = repoSource,
+  branch: BranchBindings | false = BRANCH_BINDINGS,
+): Record<string, string> {
+  const { broken } = validUnits(table, read, branch);
+  if (broken.length) throw new Error(`证据单元不存在，先修义务表再生成登记：${broken.join('、')}`);
+  return renderRegistry(currentRegistry(table, read, branch));
 }
 
 /** 只重写登记文件（复核义务之后；不改义务）：required/digests/ 下的 units.ts、nodes.ts、graph/*。 */
 export function writeDigests(table: RequiredTable): void {
-  const files = renderRegistry(currentRegistry(table));
+  const files = registryFiles(table);
   mkdirSync(path.join(DIGESTS_DIR, 'graph'), { recursive: true });
   for (const name of readdirSync(path.join(DIGESTS_DIR, 'graph'))) {
     if (!(`graph/${name}` in files)) rmSync(path.join(DIGESTS_DIR, 'graph', name));
@@ -478,6 +628,10 @@ function unusedRegistrations(
   ];
 }
 
+/** 门禁用：对着提交的登记检查（F-090：漂移类发现再交给 gateEvidence 分流）。 */
+export const checkStored = (table: RequiredTable, options: EvidenceOptions = {}): Finding[] =>
+  checkEvidence(table, { registry: STORED_REGISTRY, ...options });
+
 export function checkEvidence(table: RequiredTable, options: EvidenceOptions = {}): Finding[] {
   const read = options.read ?? repoSource;
   const registry = options.registry ?? REGISTRY;
@@ -491,7 +645,8 @@ export function checkEvidence(table: RequiredTable, options: EvidenceOptions = {
       try {
         texts.set(unit, unitText(read, unit));
       } catch (error) {
-        texts.set(unit, error as Error);
+        if (!isUnitProblem(error)) throw error; // 读取器的未知异常不归类为“单元有问题”
+        texts.set(unit, error);
       }
     }
     return texts.get(unit)!;
@@ -506,7 +661,7 @@ export function checkEvidence(table: RequiredTable, options: EvidenceOptions = {
       if (!o.at.some((e) => e.role === 'call')) report('EVIDENCE_MISSING', '缺强制调用点证据（call）');
       for (const e of o.at) {
         const text = textOf(e.unit);
-        if (text instanceof Error) report('EVIDENCE_UNIT', text.message);
+        if (text instanceof Error) report(unitErrorCode(text), text.message);
         else if (!containsAnchor(text, e.anchor)) {
           report('EVIDENCE_ANCHOR', `锚点「${e.anchor}」不在 ${e.unit} 里`);
         }
@@ -516,18 +671,18 @@ export function checkEvidence(table: RequiredTable, options: EvidenceOptions = {
   for (const { evidence, route, label } of branchUses(branch)) {
     const text = textOf(evidence.unit);
     const report = (code: string, detail: string) => findings.push({ route, code, detail: `${label}：${detail}` });
-    if (text instanceof Error) report('EVIDENCE_UNIT', text.message);
+    if (text instanceof Error) report(unitErrorCode(text), text.message);
     else if (!containsAnchor(text, evidence.anchor)) {
       report('EVIDENCE_ANCHOR', `锚点「${evidence.anchor}」不在 ${evidence.unit} 里`);
     }
   }
+  // 过期比对与闭包检查只以有效单元为根（与检测器基准、测试 oracle 同一集合）；失效单元已在上面报 EVIDENCE_UNIT
   const users = usesOf(table, branch);
-  const usable = [...users.keys()].filter((unit) => !(textOf(unit) instanceof Error));
+  const { uses: usableUses, texts: usableTexts } = resolveUnits(table, read, branch);
+  const usable = [...usableUses.keys()];
   const closures = closuresOf(usable, read, boundary);
   const env = closureEnvFor(read, boundary);
-  const texts2 = new Map(usable.map((unit) => [unit, textOf(unit) as string]));
-  const current = registryFor(env, usable, texts2);
-  const usableUses = new Map(usable.map((unit) => [unit, users.get(unit)!]));
+  const current = registryFor(env, usable, usableTexts);
   for (const group of staleGroups({ reg: { ...registry, units: digests }, cur: current, roots: usableUses })) {
     const bindings = (node: string) => bindingsOf(env, node).map(formatBinding).join(' | ') || '空';
     findings.push({ route: '*', code: 'EVIDENCE_STALE', detail: formatGroup(group, bindings), group });

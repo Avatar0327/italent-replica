@@ -18,14 +18,17 @@ import { assertBoundaryShape, EVIDENCE_BOUNDARY } from './support/route-policy/e
 import { MAX_DEPTH } from './support/route-policy/evidence-closure.js';
 import {
   checkEvidence,
+  checkStored,
   closureReports,
   currentDigestTable,
   currentRegistry,
+  effectiveUses,
   repoSource,
   type SourceReader,
   unitText,
   usesOf,
 } from './support/route-policy/evidence.js';
+import { gateEvidence } from './support/route-policy/evidence-gate.js';
 import { impactCounts } from './support/route-policy/evidence-report.js';
 import { REQUIRED } from './support/route-policy/required/index.js';
 import type { Evidence, Obligation, RequiredTable } from './support/route-policy/required/types.js';
@@ -248,7 +251,7 @@ describe('AC-PRM-FW-02 证据闭包（B-02）：真实表', () => {
       return { p50: pick(0.5), p90: pick(0.9), max: sorted.at(-1) };
     };
     // 一个依赖被改，要复核的义务数 = 把它放进 R_cur 的各证据单元所引用的义务数之和（同一义务只算一次，F-072 §3.2 规则 6）
-    const affected = impactCounts(currentRegistry(REQUIRED).graph, usesOf(REQUIRED));
+    const affected = impactCounts(currentRegistry(REQUIRED).graph, effectiveUses());
     const counts = [...affected.values()].map((entry) => entry.obligations);
     const over100 = [...affected]
       .filter(([, entry]) => entry.obligations > 100)
@@ -267,8 +270,9 @@ describe('AC-PRM-FW-02 证据闭包（B-02）：真实表', () => {
     );
     console.info(`OVER100\n${over100.sort().join('\n')}`);
     expect(depth).toBeLessThanOrEqual(MAX_DEPTH);
-    const unresolved = checkEvidence(REQUIRED, { unused: true }).filter(
-      (f) => f.code === 'EVIDENCE_CLOSURE_UNRESOLVED',
+    const unresolved = gateEvidence(
+      checkStored(REQUIRED, { unused: true }).filter((f) => f.code === 'EVIDENCE_CLOSURE_UNRESOLVED'),
+      '证据闭包：未解析项',
     );
     expect(unresolved, show(unresolved)).toEqual([]);
   });
@@ -386,16 +390,16 @@ describe('AC-PRM-FW-02 选择器绑定（B-07）：登记完整性', () => {
   });
 
   it('真实声明 × 真实登记：31 个 map 选择器位置（23 条端点；设计估算 29 个，另含 failureAudit.objectType 与任职资格 owner-orgs）零发现', () => {
-    const findings = compare(manifest.declared);
+    const findings = gateEvidence(compare(manifest.declared), '真实声明 × 真实登记（选择器）');
     expect(findings, show(findings)).toEqual([]);
   });
 
   it('分支值与输入来源的证据锚点命中、摘要与依赖登记一致（EVIDENCE_STALE / ANCHOR 为零）', () => {
-    const found = checkEvidence({}, { unused: false });
-    expect(
-      found.filter((f) => /^EVIDENCE_(STALE|ANCHOR|UNIT|MISSING)$/.test(f.code)),
-      show(found),
-    ).toEqual([]);
+    const found = gateEvidence(
+      checkStored({}, { unused: false }).filter((f) => /^EVIDENCE_(STALE|ANCHOR|UNIT|MISSING)$/.test(f.code)),
+      '选择器绑定证据',
+    );
+    expect(found, show(found)).toEqual([]);
   });
 });
 
