@@ -145,7 +145,7 @@ describe('AC-TEN-04 平台开通租户：标准预置下发', () => {
     expect(await errorCode(own)).toBe('TENANT_NOT_MEMBER');
   });
 
-  it('标准业务身份已下发（source=standard），且在首位租户管理员的可授权范围内', async () => {
+  it('标准业务身份已下发（source=standard），除员工身份（autoHeld）外都在首位租户管理员的可授权范围内', async () => {
     const res = await api.request('GET', '/api/tenant/permission/profiles', asAdmin);
     expect(res.status).toBe(200);
     const { items } = (await res.json()) as { items: { code: string; source: string; licenseType: string | null }[] };
@@ -171,11 +171,16 @@ describe('AC-TEN-04 平台开通租户：标准预置下发', () => {
         'standard_qualification_admin',
         'standard_evaluation_admin',
         'standard_evaluation_specialist',
+        // R3-T02 C1-2b（DEC-399）：预置“员工”自助身份（autoHeld，自动适用于全体员工）
+        'employee_self_service',
       ].sort(),
     );
     expect(items.every((p) => p.source === 'standard')).toBe(true);
     const grantable = await api.request('GET', '/api/tenant/permission/grantable-profiles', asAdmin);
-    expect(((await grantable.json()) as { items: unknown[] }).items).toHaveLength(items.length);
+    // DEC-402③：员工身份 autoHeld，不进租户管理员的可授权业务身份，授权选择器不列它
+    const grantableItems = ((await grantable.json()) as { items: { code: string }[] }).items;
+    expect(grantableItems).toHaveLength(items.length - 1);
+    expect(grantableItems.map((p) => p.code)).not.toContain('employee_self_service');
   });
 
   it('标准流程覆盖全部审批类型、已发布、带发起条件（或显式兜底），异常管理员为开通时指定的人', async () => {

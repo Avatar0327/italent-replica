@@ -274,6 +274,8 @@ export const PRIMITIVES: readonly Primitive[] = [
       'transferBusinessContext',
       'lockEmployee',
       'ownTransferInput',
+      // C1-2b（DEC-402②）：本人调动三个按钮；预览事务第一步与提交的 CommandGuard.before（selfTransferGuard）各调一次
+      'requireSelfServiceButtons',
       'requireSelf',
       // 业务内的联动范围（DEC-178）、直接调动开关（transfer.direct）：留在命令内，按名字登记
     ].map((fn): Entry => [fn, call(fn), NEAR]),

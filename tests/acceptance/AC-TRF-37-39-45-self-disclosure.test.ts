@@ -46,7 +46,11 @@ const configure = async (dateMode: 'editable' | 'readonly' | 'hidden', extra: st
             edit: !extra.includes(fieldCode),
           })),
         ],
-        buttons: [],
+        // DEC-402②：三个本人调动按钮由身份校验，自建同编码身份须带上它们（本文件测字段披露，不测按钮）
+        buttons: ['Transfer.Self', 'Employment.Create', 'Employment.Submit'].map((buttonCode) => ({
+          buttonCode,
+          level: 'detail',
+        })),
       },
       'TenantBase.EmploymentRecord',
     ),

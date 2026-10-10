@@ -28,6 +28,7 @@ import { recordTenantSave } from '../../seeds/grant-ledger.js';
 import './standard-managed-grants.js';
 import { tenantObjectCatalog } from './tenant-catalog.js';
 import { audit, type WriteContext } from './audit.js';
+import { isAutoHeld } from './auto-held.js';
 import { revisionConflict } from './http.js';
 import { loadObjectPermissions } from './subject.js';
 
@@ -40,6 +41,8 @@ export interface ProfileView {
   readonly licenseType: string | null;
   readonly apps: string[];
   readonly revision: number;
+  /** 自动适用于全体员工（DEC-402③，只读）：管理端授权人员处只显示“自动适用于全体员工”，不逐人列出、不可手工授予。 */
+  readonly autoHeld: boolean;
 }
 
 /**
@@ -222,5 +225,6 @@ function view(p: PermissionProfile, apps: string[]): ProfileView {
     licenseType: p.licenseType,
     apps,
     revision: p.revision,
+    autoHeld: isAutoHeld(p),
   };
 }
