@@ -646,15 +646,15 @@ export const DIGESTS: Digests = {
     conditions: '026062f83713',
   },
   'apps/api/src/modules/succession/record-write.ts': {
-    requireTarget: 'd6f854b0bcf6',
+    requireTarget: '10cb226379f1',
   },
   'apps/api/src/modules/succession/routes.ts': {
     recordFilter: '858f731477d8',
     registerSuccessionRoutes: '197c41be62cc',
   },
   'apps/api/src/modules/succession/write-support.ts': {
-    checkCandidateAccess: '7ca959ef102c',
-    checkWriteAccess: '2bd973a01763',
+    checkCandidateAccess: '7843395303d7',
+    checkWriteAccess: '368ab13ad1dd',
   },
   'apps/api/src/modules/survey360/access.ts': {
     activityVisibleSql: '71b32773d62e',

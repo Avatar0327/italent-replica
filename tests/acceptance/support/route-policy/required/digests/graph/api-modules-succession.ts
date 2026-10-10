@@ -24,8 +24,8 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/succession/candidates.ts#searchCandidates': [
     '#escapeLike',
-    'apps/api/src/modules/succession/read-sql.ts#SUCCESSOR_INACTIVE_STATUSES',
     'apps/api/src/modules/succession/read-sql.ts#rowsOf',
+    'apps/api/src/modules/succession/read-sql.ts#successorStatusSql',
   ],
   'apps/api/src/modules/succession/input.ts#date': ['apps/api/src/modules/org/read-model.ts#validIsoDate'],
   'apps/api/src/modules/succession/input.ts#recordCreate': ['#backupType', '#date', '#reason', '#uuid'],
@@ -59,6 +59,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/succession/read-sql.ts#loadPersonInChargeIds': ['#rowsOf', '#uuidArray'],
   'apps/api/src/modules/succession/read-sql.ts#selfRecordHiddenSql': ['#selfSuccessorsHiddenSql', '#selfTargetSql'],
   'apps/api/src/modules/succession/read-sql.ts#selfSuccessorsHiddenSql': ['#SELF_VISIBLE_KEY'],
+  'apps/api/src/modules/succession/read-sql.ts#successorStatusSql': ['#SUCCESSOR_INACTIVE_STATUSES'],
   'apps/api/src/modules/succession/record-read.ts#conditions': [
     'apps/api/src/modules/permission/module-access.ts#scopeSql',
     'apps/api/src/modules/succession/read-sql.ts#selfRecordHiddenSql',
@@ -79,6 +80,15 @@ export const GRAPH: Graph = {
     '#toRow',
   ],
   'apps/api/src/modules/succession/record-read.ts#toRow': ['#toIso'],
+  'apps/api/src/modules/succession/record-results.ts#recordResults': [
+    'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
+    'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
+    'apps/api/src/modules/succession/access.ts#codeOf',
+    'apps/api/src/modules/succession/projection.ts#buildRecordViews',
+    'apps/api/src/modules/succession/projection.ts#projectSuccession',
+    'apps/api/src/modules/succession/record-read.ts#listRecordRows',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
   'apps/api/src/modules/succession/record-write.ts#RECORD': ['apps/api/src/modules/succession/access.ts#codeOf'],
   'apps/api/src/modules/succession/record-write.ts#anchorOrg': [
     'apps/api/src/modules/succession/read-sql.ts#rowsOf',
@@ -141,8 +151,8 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/succession/record-write.ts#guardExclusion': ['#conflict'],
   'apps/api/src/modules/succession/record-write.ts#lockActiveSuccessor': [
-    'apps/api/src/modules/succession/read-sql.ts#SUCCESSOR_INACTIVE_STATUSES',
     'apps/api/src/modules/succession/read-sql.ts#rowsOf',
+    'apps/api/src/modules/succession/read-sql.ts#successorStatusSql',
     '#invalid',
   ],
   'apps/api/src/modules/succession/record-write.ts#lockRows': [
@@ -212,6 +222,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/succession/routes.ts#registerRecordWrites': [
     'apps/api/src/modules/succession/access.ts#SUCCESSION_BASE',
+    'apps/api/src/modules/succession/candidates.ts#CANDIDATE_KEYWORD_MAX',
     'apps/api/src/modules/succession/candidates.ts#searchCandidates',
     'apps/api/src/modules/succession/input.ts#recordCreate',
     'apps/api/src/modules/succession/input.ts#recordEnd',
@@ -246,25 +257,24 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/talent/http.ts#pageQuery',
     'apps/api/src/modules/talent/http.ts#uuidParam',
   ],
-  'apps/api/src/modules/succession/routes.ts#respond': [
-    'apps/api/src/modules/succession/write-support.ts#authorizeSuccessionResult',
-  ],
   'apps/api/src/modules/succession/routes.ts#writeRecord': [
-    '#respond',
+    'apps/api/src/modules/succession/record-results.ts#recordResults',
+    'apps/api/src/modules/succession/write-support.ts#authorizeSuccessionResult',
     'apps/api/src/modules/succession/write-support.ts#checkWriteAccess',
     'apps/api/src/modules/succession/write-support.ts#runSuccessionCommand',
   ],
   'apps/api/src/modules/succession/sync-barrier.ts#assertNoSyncBarrier': ['#probe'],
-  'apps/api/src/modules/succession/write-support.ts#authorizeSuccessionResult': [
-    'apps/api/src/modules/succession/projection.ts#projectSuccession',
-    '#visibleViews',
-  ],
+  'apps/api/src/modules/succession/write-support.ts#authorizeSuccessionResult': ['#visibleViews'],
   'apps/api/src/modules/succession/write-support.ts#checkCandidateAccess': ['#checkWriteAccess'],
   'apps/api/src/modules/succession/write-support.ts#checkWriteAccess': [
     'apps/api/src/modules/permission/module-route-access.ts#button',
     'apps/api/src/modules/permission/module-route-access.ts#writeFields',
     'apps/api/src/modules/succession/access.ts#codeOf',
     'apps/api/src/modules/succession/access.ts#successionContext',
+  ],
+  'apps/api/src/modules/succession/write-support.ts#footprintIds': [
+    'apps/api/src/modules/succession/access.ts#codeOf',
+    'apps/api/src/modules/succession/read-sql.ts#rowsOf',
   ],
   'apps/api/src/modules/succession/write-support.ts#recheck': [
     'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
@@ -275,12 +285,5 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/succession/write-support.ts#runSuccessionCommand': ['#recheck', '#visibleViews'],
   'apps/api/src/modules/succession/write-support.ts#todayOf': ['packages/domain/src/tenant-time.ts#tenantLocalDate'],
-  'apps/api/src/modules/succession/write-support.ts#visibleViews': [
-    'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
-    'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
-    'apps/api/src/modules/succession/access.ts#codeOf',
-    'apps/api/src/modules/succession/projection.ts#buildRecordViews',
-    'apps/api/src/modules/succession/record-read.ts#listRecordRows',
-    '#todayOf',
-  ],
+  'apps/api/src/modules/succession/write-support.ts#visibleViews': ['#footprintIds'],
 };

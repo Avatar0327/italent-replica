@@ -65,7 +65,7 @@
   "GET /api/tenant/succession/successor-candidates": {
     "all": {
       "code": "VALIDATION_FAILED",
-      "error": "0a126c2e78fe",
+      "error": "ae54102db4e0",
       "status": 400
     },
     "fieldQueries": [],
