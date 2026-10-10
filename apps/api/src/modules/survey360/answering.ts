@@ -16,6 +16,7 @@ import {
   survey360Answers,
   survey360Confirmations,
   survey360Sheets,
+  survey360SheetTimings,
   type Tx,
   withTenant,
 } from '@italent/db';
@@ -30,7 +31,7 @@ import { SYSTEM_USER_ID } from '../../system-actor.js';
 import type { TenantContext, TenantEnv } from '../../tenant-context.js';
 import { revision, uuidParam } from '../job/context.js';
 import { requireObject, type ActivityRow } from './access.js';
-import { ownAnswers, ownSheet, ownSheetTotal } from './anonymous.js';
+import { ownAnswers, ownSheet, ownSheetTotal, sameChoice } from './anonymous.js';
 import type { AvatarReference } from '../avatar/references.js';
 import { linkAvatarContent, linkAvatars } from './avatar-links.js';
 import {
@@ -140,7 +141,12 @@ function linkWrite<T>(
     a: ActivityRow,
     input: T,
   ) => Promise<unknown>,
-  options: { status?: 200 | 201; guard?: (tx: Tx, link: LinkRow, a: ActivityRow) => Promise<unknown> } = {},
+  options: {
+    status?: 200 | 201;
+    guard?: (tx: Tx, link: LinkRow, a: ActivityRow) => Promise<unknown>;
+    /** 不针对某个对象版本的计时命令（打开 / 翻页）：不要求 If-Match（同 write() 的 revisionFree）。 */
+    revisionFree?: boolean;
+  } = {},
 ) {
   const status = options.status ?? 200;
   return async (c: C) => {
@@ -151,7 +157,7 @@ function linkWrite<T>(
       await options.guard?.(tx, current.link, current.activity);
       return current.link;
     });
-    const expectedRevision = revision(c);
+    const expectedRevision = options.revisionFree ? 0 : revision(c);
     const input = parse(schema, await jsonOrEmpty(c));
     const result = await runCommand(deps.db, caller, {
       id: c.req.header('idempotency-key'),
@@ -337,6 +343,41 @@ function checkAnswers(q: LoadedQuestionnaire, roleId: string, answers: z.infer<t
   }
 }
 
+/** 作答端“下一页”提醒的自动消失时间（DEC-392④：3 秒）；这是界面时长，不是耗时。 */
+const PAGE_REMINDER_DISMISS_SECONDS = 3;
+
+const pageSchema = z.strictObject({
+  items: z
+    .array(z.strictObject({ itemId: uuid, optionId: uuid.nullable().optional() }))
+    .min(1)
+    .max(500),
+});
+
+/** 本页题目：必须是本次作答的题目、不重复；已选的选项必须属于该题目的量表。 */
+function checkPage(q: LoadedQuestionnaire, roleId: string, items: z.infer<typeof pageSchema>['items']) {
+  const allowed = new Set(survey360.answerableItems(q.model, roleId));
+  if (new Set(items.map((i) => i.itemId)).size !== items.length)
+    fail('VALIDATION_FAILED', '同一题目只能出现一次', 'DUPLICATE_ITEM');
+  for (const item of items) {
+    if (!allowed.has(item.itemId)) fail('VALIDATION_FAILED', '题目不属于本次作答', 'ITEM_NOT_ALLOWED');
+    if (!item.optionId) continue;
+    const option = q.options.find((o) => o.id === item.optionId);
+    if (!option || option.scaleId !== scaleOfItem(q, item.itemId))
+      fail('VALIDATION_FAILED', '选项不属于该题目', 'OPTION_NOT_ALLOWED');
+  }
+}
+
+async function findTiming(tx: Tx, relationId: string, questionnaireId: string, lock = false) {
+  const query = tx
+    .select()
+    .from(survey360SheetTimings)
+    .where(
+      and(eq(survey360SheetTimings.relationId, relationId), eq(survey360SheetTimings.questionnaireId, questionnaireId)),
+    );
+  const [row] = lock ? await query.for('update') : await query;
+  return row;
+}
+
 /** 同一评价者在同一活动的作答串行化（优秀率按该评价者已提交的答卷计数）。 */
 export async function lockAppraiser(tx: Tx, tenantId: string, activityId: string, personId: string) {
   await advisoryLock(tx, asUuid(tenantId), ':survey360-answer:', asUuid(activityId), ':', asUuid(personId));
@@ -419,6 +460,8 @@ async function excellenceCheck(
 
 const task = '/tasks/:relationId/questionnaires/:questionnaireId';
 const submitTask = `${task}/submit`;
+const openTask = `${task}/open`;
+const pageCheckTask = `${task}/page-check`;
 const TODO = '/my/todos/:todoId';
 
 /**
@@ -430,6 +473,8 @@ export function registerAnswerRoutes(module: Hono<TenantEnv>, deps: TenantRouteD
   module.get(task, answerRead(deps, entryOf));
   module.put(task, answerSave(deps, entryOf));
   module.post(submitTask, answerSubmit(deps, entryOf));
+  module.post(openTask, answerOpen(deps, entryOf));
+  module.post(pageCheckTask, answerPageCheck(deps, entryOf));
 }
 
 /** 站内待办“去处理”：登录账号本人作答，与链接作答同一套页面与命令（todos.ts todoEntry）。 */
@@ -443,6 +488,8 @@ export function registerTodoAnswerRoutes(module: Hono<TenantEnv>, deps: TenantRo
   module.get(`${TODO}${task}`, answerRead(deps, entryOf));
   module.put(`${TODO}${task}`, answerSave(deps, entryOf));
   module.post(`${TODO}${submitTask}`, answerSubmit(deps, entryOf));
+  module.post(`${TODO}${openTask}`, answerOpen(deps, entryOf));
+  module.post(`${TODO}${pageCheckTask}`, answerPageCheck(deps, entryOf));
 }
 
 function answerRead(deps: TenantRouteDeps, entryOf: EntryOf) {
@@ -552,6 +599,20 @@ function answerSubmit(deps: TenantRouteDeps, entryOf: EntryOf) {
           if (option?.remarkRequired && !a.remark) fail('VALIDATION_FAILED', '所选选项须补充说明', 'REMARK_REQUIRED');
         }
         await excellenceCheck(tx, activity, link, questionnaire, t.role_id, sheet!);
+        // 提交时按整份判断“作答时间过短或连续选择同一选项”（DEC-392④）；只回布尔，不阻止提交，不回耗时
+        const timing = await findTiming(tx, relationId, qid);
+        const tooFast =
+          timing !== undefined &&
+          survey360.isTooFast(
+            ctx.now.getTime() - new Date(timing.openedAt).getTime(),
+            survey360.answerableItems(questionnaire.model, t.role_id).length,
+          );
+        const reminder =
+          tooFast ||
+          sameChoice(
+            questionnaire,
+            answers.map((a) => a.optionId),
+          );
         const [saved] = (await tx
           .update(survey360Sheets)
           .set({ status: 'submitted', submittedAt: ctx.now, revision: sheet!.revision + 1 })
@@ -559,9 +620,75 @@ function answerSubmit(deps: TenantRouteDeps, entryOf: EntryOf) {
           .returning()) as [SheetRow];
         await auditSheet(tx, ctx, 'survey360.sheet.submit', activity, await ownSheet(tx, sheet), saved);
         await completeTodo(tx, ctx, activity.id, link.personId);
-        return ownSheet(tx, saved);
+        return { ...(await ownSheet(tx, saved)), reminder };
       },
       taskGuard(relationId, qid),
+    )(c);
+  };
+}
+
+/**
+ * 作答页打开（DEC-392①）：记下该评价对象答卷**首次**打开的时刻，之后的打开不挪动起点（离开与空闲都计入耗时）。
+ * 与保存 / 提交共用 openSheet 的校验与取锁（活动启用、任务归属、答卷未提交）。耗时只存库，不进回执与审计（DEC-371⑤）。
+ */
+function answerOpen(deps: TenantRouteDeps, entryOf: EntryOf) {
+  return (c: C) => {
+    const relationId = uuidParam(c, 'relationId');
+    const qid = uuidParam(c, 'questionnaireId');
+    return linkWrite(
+      deps,
+      entryOf,
+      'answer',
+      z.object({}).passthrough(),
+      async (tx, ctx, link, activity) => {
+        await openSheet(tx, ctx, activity, link, relationId, qid);
+        await tx
+          .insert(survey360SheetTimings)
+          .values({
+            tenantId: ctx.tenantId,
+            relationId,
+            questionnaireId: qid,
+            openedAt: ctx.now,
+            pageStartedAt: ctx.now,
+          })
+          .onConflictDoNothing();
+        return { opened: true };
+      },
+      { ...taskGuard(relationId, qid), revisionFree: true },
+    )(c);
+  };
+}
+
+/**
+ * 点“下一页”时按本页判断（DEC-392④）：本页耗时 = 距上一次翻页（首页为打开）的时间，分母 = 本页题数；或本页连续选择同一
+ * 选项。回布尔与 3 秒自动消失；不阻止翻页；没有打开记录（旧客户端 / 历史答卷）不判。响应不含耗时。
+ */
+function answerPageCheck(deps: TenantRouteDeps, entryOf: EntryOf) {
+  return (c: C) => {
+    const relationId = uuidParam(c, 'relationId');
+    const qid = uuidParam(c, 'questionnaireId');
+    return linkWrite(
+      deps,
+      entryOf,
+      'answer',
+      pageSchema,
+      async (tx, ctx, link, activity, input) => {
+        const { task: t, questionnaire } = await openSheet(tx, ctx, activity, link, relationId, qid);
+        checkPage(questionnaire, t.role_id, input.items);
+        const timing = await findTiming(tx, relationId, qid, true);
+        let reminder = false;
+        if (timing) {
+          const elapsed = ctx.now.getTime() - new Date(timing.pageStartedAt).getTime();
+          const chosen = input.items.flatMap((i) => (i.optionId ? [i.optionId] : []));
+          reminder = survey360.isTooFast(elapsed, input.items.length) || sameChoice(questionnaire, chosen);
+          await tx
+            .update(survey360SheetTimings)
+            .set({ pageStartedAt: ctx.now })
+            .where(eq(survey360SheetTimings.id, timing.id));
+        }
+        return { reminder, autoDismissSeconds: PAGE_REMINDER_DISMISS_SECONDS };
+      },
+      { ...taskGuard(relationId, qid), revisionFree: true },
     )(c);
   };
 }

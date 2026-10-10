@@ -10180,6 +10180,52 @@
         ]
       }
     },
+    "POST /api/survey360/link/tasks/:relationId/questionnaires/:questionnaireId/open": {
+      "edge": {
+        "anonymous": {
+          "code": "NOT_FOUND",
+          "status": 404
+        },
+        "member": {
+          "code": "NOT_FOUND",
+          "status": 404
+        },
+        "nonMember": {
+          "code": "NOT_FOUND",
+          "status": 404
+        }
+      },
+      "module": "survey360-link",
+      "primitives": {
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ]
+      }
+    },
+    "POST /api/survey360/link/tasks/:relationId/questionnaires/:questionnaireId/page-check": {
+      "edge": {
+        "anonymous": {
+          "code": "NOT_FOUND",
+          "status": 404
+        },
+        "member": {
+          "code": "NOT_FOUND",
+          "status": 404
+        },
+        "nonMember": {
+          "code": "NOT_FOUND",
+          "status": 404
+        }
+      },
+      "module": "survey360-link",
+      "primitives": {
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ]
+      }
+    },
     "POST /api/survey360/link/tasks/:relationId/questionnaires/:questionnaireId/submit": {
       "edge": {
         "anonymous": {
@@ -15566,6 +15612,52 @@
         ],
         "scopePoint": [
           "survey360 point"
+        ]
+      }
+    },
+    "POST /api/tenant/survey360/my/todos/:todoId/tasks/:relationId/questionnaires/:questionnaireId/open": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "NOT_FOUND",
+          "status": 404
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "survey360",
+      "primitives": {
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ]
+      }
+    },
+    "POST /api/tenant/survey360/my/todos/:todoId/tasks/:relationId/questionnaires/:questionnaireId/page-check": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "NOT_FOUND",
+          "status": 404
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "survey360",
+      "primitives": {
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
         ]
       }
     },

@@ -15,7 +15,7 @@ import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import { uuidParam } from '../job/context.js';
 import { iso, requireActivity } from './access.js';
-import { sheetSnapshot } from './anonymous.js';
+import { clearTimings, sheetSnapshot } from './anonymous.js';
 import {
   actor,
   type Admin,
@@ -314,6 +314,7 @@ export function registerProgressRoutes(module: Hono<TenantEnv>, deps: TenantRout
         if (sheetIds.length) {
           await tx.delete(survey360Answers).where(inArray(survey360Answers.sheetId, sheetIds));
           await tx.delete(survey360Sheets).where(inArray(survey360Sheets.id, sheetIds));
+          await clearTimings(tx, sheets);
         }
         await tx
           .update(survey360Relations)

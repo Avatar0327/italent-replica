@@ -274,6 +274,8 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/survey360/anonymous.ts#cardViewer': ['#participates'],
   'apps/api/src/modules/survey360/anonymous.ts#isSuspected': [
     '#picks',
+    '#sameChoice',
+    '#submittedTooFast',
     'packages/domain/src/survey360/scoring.ts#answerableItems',
   ],
   'apps/api/src/modules/survey360/anonymous.ts#ownSheet': ['#ownAnswers'],
@@ -290,6 +292,16 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/survey360/anonymous.ts#scoringAnswers': ['apps/api/src/modules/survey360/context.ts#rows'],
   'apps/api/src/modules/survey360/anonymous.ts#sheetCards': ['#card', '#picks', '#requireCardViewer'],
   'apps/api/src/modules/survey360/anonymous.ts#sheetSnapshot': ['#ownAnswers'],
+  'apps/api/src/modules/survey360/anonymous.ts#submittedTooFast': [
+    'apps/api/src/modules/survey360/context.ts#rows',
+    'packages/domain/src/survey360/pace.ts#isTooFast',
+  ],
+  'apps/api/src/modules/survey360/answering.ts#answerOpen': [
+    'apps/api/src/modules/job/context.ts#uuidParam',
+    '#linkWrite',
+    '#openSheet',
+    '#taskGuard',
+  ],
   'apps/api/src/modules/survey360/answering.ts#answerPage': [
     '#answerPersonIds',
     '#appraiserLabel',
@@ -299,6 +311,18 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/survey360/avatar-links.ts#linkAvatars',
     'apps/api/src/modules/survey360/context.ts#rows',
     'apps/api/src/modules/survey360/tasks.ts#taskQuery',
+  ],
+  'apps/api/src/modules/survey360/answering.ts#answerPageCheck': [
+    'apps/api/src/modules/job/context.ts#uuidParam',
+    'apps/api/src/modules/survey360/anonymous.ts#sameChoice',
+    '#PAGE_REMINDER_DISMISS_SECONDS',
+    '#checkPage',
+    '#findTiming',
+    '#linkWrite',
+    '#openSheet',
+    '#pageSchema',
+    '#taskGuard',
+    'packages/domain/src/survey360/pace.ts#isTooFast',
   ],
   'apps/api/src/modules/survey360/answering.ts#answerRead': [
     'apps/api/src/modules/job/context.ts#uuidParam',
@@ -327,14 +351,17 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/job/context.ts#uuidParam',
     'apps/api/src/modules/survey360/anonymous.ts#ownAnswers',
     'apps/api/src/modules/survey360/anonymous.ts#ownSheet',
+    'apps/api/src/modules/survey360/anonymous.ts#sameChoice',
     '#auditSheet',
     '#excellenceCheck',
+    '#findTiming',
     '#linkWrite',
     '#openSheet',
     '#taskGuard',
     'apps/api/src/modules/survey360/context.ts#fail',
     'apps/api/src/modules/survey360/context.ts#requireRevision',
     'apps/api/src/modules/survey360/todos.ts#completeTodo',
+    'packages/domain/src/survey360/pace.ts#isTooFast',
     'packages/domain/src/survey360/scoring.ts#answerableItems',
   ],
   'apps/api/src/modules/survey360/answering.ts#answersSchema': ['apps/api/src/modules/survey360/context.ts#uuid'],
@@ -365,6 +392,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/survey360/relations.ts#confirmationView',
   ],
   'apps/api/src/modules/survey360/answering.ts#checkAnswers': [
+    '#scaleOfItem',
+    'apps/api/src/modules/survey360/context.ts#fail',
+    'packages/domain/src/survey360/scoring.ts#answerableItems',
+  ],
+  'apps/api/src/modules/survey360/answering.ts#checkPage': [
     '#scaleOfItem',
     'apps/api/src/modules/survey360/context.ts#fail',
     'packages/domain/src/survey360/scoring.ts#answerableItems',
@@ -422,10 +454,17 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/survey360/context.ts#fail',
     'apps/api/src/modules/survey360/context.ts#rows',
   ],
+  'apps/api/src/modules/survey360/answering.ts#openTask': ['#task'],
+  'apps/api/src/modules/survey360/answering.ts#pageCheckTask': ['#task'],
+  'apps/api/src/modules/survey360/answering.ts#pageSchema': ['apps/api/src/modules/survey360/context.ts#uuid'],
   'apps/api/src/modules/survey360/answering.ts#registerAnswerRoutes': [
+    '#answerOpen',
+    '#answerPageCheck',
     '#answerRead',
     '#answerSave',
     '#answerSubmit',
+    '#openTask',
+    '#pageCheckTask',
     '#submitTask',
     '#task',
   ],
@@ -465,12 +504,16 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/survey360/answering.ts#registerTodoAnswerRoutes': [
     '#TODO',
+    '#answerOpen',
     '#answerPage',
+    '#answerPageCheck',
     '#answerRead',
     '#answerSave',
     '#answerSubmit',
     '#avatarRoute',
     '#linkRead',
+    '#openTask',
+    '#pageCheckTask',
     '#submitTask',
     '#task',
   ],
@@ -548,8 +591,18 @@ export const GRAPH: Graph = {
     '#linkWrite',
     '#openConfirmation',
   ],
+  'apps/api/src/modules/survey360/answering.ts#route:POST /my/todos/:todoId/tasks/:relationId/questionnaires/:questionnaireId/open':
+    ['#TODO', '#answerOpen', '#openTask'],
+  'apps/api/src/modules/survey360/answering.ts#route:POST /my/todos/:todoId/tasks/:relationId/questionnaires/:questionnaireId/page-check':
+    ['#TODO', '#answerPageCheck', '#pageCheckTask'],
   'apps/api/src/modules/survey360/answering.ts#route:POST /my/todos/:todoId/tasks/:relationId/questionnaires/:questionnaireId/submit':
     ['#TODO', '#answerSubmit', '#submitTask'],
+  'apps/api/src/modules/survey360/answering.ts#route:POST /tasks/:relationId/questionnaires/:questionnaireId/open': [
+    '#answerOpen',
+    '#openTask',
+  ],
+  'apps/api/src/modules/survey360/answering.ts#route:POST /tasks/:relationId/questionnaires/:questionnaireId/page-check':
+    ['#answerPageCheck', '#pageCheckTask'],
   'apps/api/src/modules/survey360/answering.ts#route:POST /tasks/:relationId/questionnaires/:questionnaireId/submit': [
     '#answerSubmit',
     '#submitTask',
@@ -805,6 +858,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/survey360/links.ts#issueConfirmLink': ['#issue'],
   'apps/api/src/modules/survey360/links.ts#reissueAnswerLink': ['#issue'],
   'apps/api/src/modules/survey360/object-answers.ts#clearObjectAnswers': [
+    'apps/api/src/modules/survey360/anonymous.ts#clearTimings',
     'apps/api/src/modules/survey360/anonymous.ts#deletedSheetSnapshot',
     'apps/api/src/modules/survey360/context.ts#actor',
     'apps/api/src/modules/survey360/context.ts#audit360',
@@ -1081,6 +1135,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/survey360/progress.ts#registerProgressRoutes': [
     'apps/api/src/modules/job/context.ts#uuidParam',
     'apps/api/src/modules/survey360/access.ts#requireActivity',
+    'apps/api/src/modules/survey360/anonymous.ts#clearTimings',
     'apps/api/src/modules/survey360/anonymous.ts#sheetSnapshot',
     'apps/api/src/modules/survey360/changes.ts#markDataChanged',
     'apps/api/src/modules/survey360/context.ts#actor',
@@ -1121,6 +1176,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/survey360/progress.ts#route:POST /activities/:id/relations/:relationId/reanswer': [
     'apps/api/src/modules/job/context.ts#uuidParam',
     'apps/api/src/modules/survey360/access.ts#requireActivity',
+    'apps/api/src/modules/survey360/anonymous.ts#clearTimings',
     'apps/api/src/modules/survey360/anonymous.ts#sheetSnapshot',
     'apps/api/src/modules/survey360/changes.ts#markDataChanged',
     'apps/api/src/modules/survey360/context.ts#actor',

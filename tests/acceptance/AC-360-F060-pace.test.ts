@@ -219,6 +219,9 @@ describe('AC-360-F060 作答端提醒（DEC-392④）：按页 / 提交时，都
 
   it('站内待办入口（/my/todos/:todoId/tasks/…）同样有 open / page-check，且判定一致', async () => {
     const s = await sceneB(testDb().db, 'f060pace-i');
+    await s.w.ok(
+      s.w.request('POST', `${s.path}/todos`, { idempotencyKey: key(), body: { personIds: [s.person.P1.id] } }),
+    );
     const todo = my(s.w, s.user.P1);
     const todoId = (await s.w.ok<{ items: { id: string }[] }>(todo('GET', '/todos'))).items[0]!.id;
     const base = `/todos/${todoId}${taskPath(s, s.rel.p1.id)}`;

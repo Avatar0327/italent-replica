@@ -1,6 +1,6 @@
 /** F-034，25 §3.1 E3-R2：替换套卷清空该对象全部作答；删除快照按 Answer 当前查看权限裁剪。 */
 import { and, eq, inArray, survey360Answers, survey360Relations, survey360Sheets, type Tx } from '@italent/db';
-import { deletedSheetSnapshot } from './anonymous.js';
+import { clearTimings, deletedSheetSnapshot } from './anonymous.js';
 import { actor, audit360, type Writer } from './context.js';
 
 type Sheet = typeof survey360Sheets.$inferSelect;
@@ -44,4 +44,5 @@ export async function clearObjectAnswers(tx: Tx, ctx: Writer, sheets: readonly S
   const ids = sheets.map((sheet) => sheet.id);
   await tx.delete(survey360Answers).where(inArray(survey360Answers.sheetId, ids));
   await tx.delete(survey360Sheets).where(inArray(survey360Sheets.id, ids));
+  await clearTimings(tx, sheets);
 }

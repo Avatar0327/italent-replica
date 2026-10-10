@@ -455,6 +455,9 @@ const freshActivity = async (env: Env, grantees: string[] = []) => {
   return activity;
 };
 
+/** F-060 收尾（DEC-392）作答页打开 / 点“下一页”的计时点：回执只有布尔与 3 秒，成功路径见 AC-360-F060-pace。 */
+const TIMING_NA = '回执只有 opened / reminder 布尔与 3 秒界面时长，没有答案、评价者或对象字段，也不含耗时（DEC-371⑤）';
+
 /** 路由清单：键 = 方法 + 实际注册路径。 */
 const S = BASE;
 const ROUTE_CASES: Record<string, RouteCases> = {
@@ -1705,6 +1708,42 @@ const ROUTE_CASES: Record<string, RouteCases> = {
         },
       ),
   },
+  [`POST ${LINK}/tasks/:relationId/questionnaires/:questionnaireId/open`]: {
+    unauthorized: async (env) =>
+      void (await expectStatus(
+        env.w.api.request('POST', `${LINK}/tasks/${env.L.relation1}/questionnaires/${env.q.id}/open`, {
+          tenant: env.w.tenantId,
+          body: {},
+        }),
+        404,
+      )),
+    outOfScope: async (env) =>
+      void (await expectStatus(
+        env.w.link(env.L.t1)('POST', `/tasks/${env.L.relation2}/questionnaires/${env.q.id}/open`, {
+          body: {},
+        }),
+        404,
+      )),
+    trimming: { na: TIMING_NA },
+  },
+  [`POST ${LINK}/tasks/:relationId/questionnaires/:questionnaireId/page-check`]: {
+    unauthorized: async (env) =>
+      void (await expectStatus(
+        env.w.api.request('POST', `${LINK}/tasks/${env.L.relation1}/questionnaires/${env.q.id}/page-check`, {
+          tenant: env.w.tenantId,
+          body: { items: [{ itemId: env.q.questions[0]!.id }] },
+        }),
+        404,
+      )),
+    outOfScope: async (env) =>
+      void (await expectStatus(
+        env.w.link(env.L.t1)('POST', `/tasks/${env.L.relation2}/questionnaires/${env.q.id}/page-check`, {
+          body: { items: [{ itemId: env.q.questions[0]!.id }] },
+        }),
+        404,
+      )),
+    trimming: { na: TIMING_NA },
+  },
   [`POST ${LINK}/tasks/:relationId/questionnaires/:questionnaireId/submit`]: {
     unauthorized: async (env) =>
       void (await expectStatus(
@@ -2193,6 +2232,46 @@ const PR_B_CASES: Record<string, RouteCases> = {
     trimming: {
       na: '答卷视图只有本人作答的内容（状态、版本、答案、建议），与链接作答同一出口，不含其他评价者或对象字段',
     },
+  },
+  [`POST ${S}/my/todos/:todoId/tasks/:relationId/questionnaires/:questionnaireId/open`]: {
+    unauthorized: async (env) => {
+      const p = await prb(env);
+      await expectStatus(
+        my(env, env.users.outsider)('POST', `${todoTask(p).replace('Q', env.q.id)}/open`, { body: {} }),
+        404,
+      );
+    },
+    outOfScope: async (env) => {
+      const p = await prb(env);
+      await expectStatus(
+        my(env, p.todo.user)('POST', `${todoTask(p, p.todo.otherRelation).replace('Q', env.q.id)}/open`, {
+          body: {},
+        }),
+        404,
+      );
+    },
+    trimming: { na: TIMING_NA },
+  },
+  [`POST ${S}/my/todos/:todoId/tasks/:relationId/questionnaires/:questionnaireId/page-check`]: {
+    unauthorized: async (env) => {
+      const p = await prb(env);
+      await expectStatus(
+        my(env, env.users.outsider)('POST', `${todoTask(p).replace('Q', env.q.id)}/page-check`, {
+          body: { items: [{ itemId: env.q.questions[0]!.id }] },
+        }),
+        404,
+      );
+    },
+    outOfScope: async (env) => {
+      const p = await prb(env);
+      await expectStatus(
+        my(env, p.todo.user)('POST', `${todoTask(p, p.todo.otherRelation).replace('Q', env.q.id)}/page-check`, {
+          body: { items: [{ itemId: env.q.questions[0]!.id }] },
+        }),
+        404,
+      );
+    },
+    trimming: { na: TIMING_NA },
   },
   [`POST ${S}/my/todos/:todoId/tasks/:relationId/questionnaires/:questionnaireId/submit`]: {
     unauthorized: async (env) => {

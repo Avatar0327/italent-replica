@@ -631,13 +631,15 @@ export const DIGESTS: Digests = {
     requireCardViewer: 'da40438ded65',
   },
   'apps/api/src/modules/survey360/answering.ts': {
+    answerOpen: '4fe67ca4a049',
+    answerPageCheck: '5fbab2b506e5',
     answerRead: '3104992aafe7',
     answerSave: '761d0dbf2b05',
-    answerSubmit: '00f37bfec6bd',
+    answerSubmit: '7457fcbcadc1',
     avatarRoute: '5991955dd06b',
     linkRead: '25e8251fdd7d',
     linkTenant: 'f98ee9824fc6',
-    linkWrite: '2445bdfa1e61',
+    linkWrite: '9f362cd7c739',
     registerConfirmRoutes: 'bb5ef05d034d',
     registerLinkRoutes: 'ddc6fcf006b9',
     resolve: '5ede11662a1f',
@@ -651,7 +653,11 @@ export const DIGESTS: Digests = {
     'route:GET /tasks/:relationId/questionnaires/:questionnaireId': 'f17111a1bf24',
     'route:POST /confirmation/appraisers': '7cdd98d6b75b',
     'route:POST /confirmation/submit': '92d241eb5e1b',
+    'route:POST /my/todos/:todoId/tasks/:relationId/questionnaires/:questionnaireId/open': '089d9fabf00e',
+    'route:POST /my/todos/:todoId/tasks/:relationId/questionnaires/:questionnaireId/page-check': '5106501d7034',
     'route:POST /my/todos/:todoId/tasks/:relationId/questionnaires/:questionnaireId/submit': '063cbd778243',
+    'route:POST /tasks/:relationId/questionnaires/:questionnaireId/open': '5f8eefa2f830',
+    'route:POST /tasks/:relationId/questionnaires/:questionnaireId/page-check': '6b0f55c74b0c',
     'route:POST /tasks/:relationId/questionnaires/:questionnaireId/submit': '4cebc7715f13',
     'route:PUT /my/todos/:todoId/tasks/:relationId/questionnaires/:questionnaireId': '7039849da47a',
     'route:PUT /tasks/:relationId/questionnaires/:questionnaireId': '916e3c2d5ec8',
@@ -687,7 +693,7 @@ export const DIGESTS: Digests = {
     VIEW: '059613dc3dbf',
     'route:GET /activities/:id/progress': '559bf7619a27',
     'route:GET /activities/:id/progress/:personId': '2d394312e88d',
-    'route:POST /activities/:id/relations/:relationId/reanswer': '48d7c23236a3',
+    'route:POST /activities/:id/relations/:relationId/reanswer': '62c42d58f5ee',
     visibleRelation: '37229f8c1101',
   },
   'apps/api/src/modules/survey360/questionnaires.ts': {
@@ -1509,9 +1515,11 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/survey360/activities.ts#route:PUT /activities/:id': '35673f07e4b4',
   'apps/api/src/modules/survey360/anonymous.ts#cardViewer': '02229d4ca772',
   'apps/api/src/modules/survey360/anonymous.ts#requireCardViewer': '5cc90748c9d3',
+  'apps/api/src/modules/survey360/answering.ts#answerOpen': '2cb90e088fc6',
+  'apps/api/src/modules/survey360/answering.ts#answerPageCheck': '7f0d2246165c',
   'apps/api/src/modules/survey360/answering.ts#answerRead': '5cb73efa8498',
   'apps/api/src/modules/survey360/answering.ts#answerSave': 'bc7580920b91',
-  'apps/api/src/modules/survey360/answering.ts#answerSubmit': '8194eb3bd521',
+  'apps/api/src/modules/survey360/answering.ts#answerSubmit': '0f01505f8615',
   'apps/api/src/modules/survey360/answering.ts#avatarRoute': '4df99447fdda',
   'apps/api/src/modules/survey360/answering.ts#linkRead': 'e7d728989735',
   'apps/api/src/modules/survey360/answering.ts#linkTenant': 'aa034e0cccb0',
@@ -1532,8 +1540,16 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
     '185deb4afe73',
   'apps/api/src/modules/survey360/answering.ts#route:POST /confirmation/appraisers': '0352b209bd43',
   'apps/api/src/modules/survey360/answering.ts#route:POST /confirmation/submit': 'ca9844934675',
+  'apps/api/src/modules/survey360/answering.ts#route:POST /my/todos/:todoId/tasks/:relationId/questionnaires/:questionnaireId/open':
+    'a5c0f2987361',
+  'apps/api/src/modules/survey360/answering.ts#route:POST /my/todos/:todoId/tasks/:relationId/questionnaires/:questionnaireId/page-check':
+    'b7b34cf4831d',
   'apps/api/src/modules/survey360/answering.ts#route:POST /my/todos/:todoId/tasks/:relationId/questionnaires/:questionnaireId/submit':
     'e1aca35dc912',
+  'apps/api/src/modules/survey360/answering.ts#route:POST /tasks/:relationId/questionnaires/:questionnaireId/open':
+    '89f718a42741',
+  'apps/api/src/modules/survey360/answering.ts#route:POST /tasks/:relationId/questionnaires/:questionnaireId/page-check':
+    'b418f1417389',
   'apps/api/src/modules/survey360/answering.ts#route:POST /tasks/:relationId/questionnaires/:questionnaireId/submit':
     'c486ffac9c9b',
   'apps/api/src/modules/survey360/answering.ts#route:PUT /my/todos/:todoId/tasks/:relationId/questionnaires/:questionnaireId':
@@ -1567,7 +1583,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/survey360/progress.ts#route:GET /activities/:id/progress': '548b4f26347c',
   'apps/api/src/modules/survey360/progress.ts#route:GET /activities/:id/progress/:personId': 'dfe051045166',
   'apps/api/src/modules/survey360/progress.ts#route:POST /activities/:id/relations/:relationId/reanswer':
-    '67eca519137a',
+    '16c041acb9d9',
   'apps/api/src/modules/survey360/progress.ts#visibleRelation': '00d07496c327',
   'apps/api/src/modules/survey360/questionnaires.ts#VIEW': 'e3b0c44298fc',
   'apps/api/src/modules/survey360/questionnaires.ts#editableBy': '85caeec8d059',
