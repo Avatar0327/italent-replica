@@ -636,6 +636,34 @@ export const survey360Sheets = pgTable(
   ],
 );
 
+/**
+ * 答卷计时（F-060 收尾，DEC-392）：评价者 × 评价对象 × 套卷首次打开作答页的时刻（opened_at），与“本页”起算时刻
+ * （page_started_at：打开时等于 opened_at，之后每次点“下一页”挪到那一刻）。与答卷分开存：打开时答卷行还不存在（首次保存才
+ * 建）。耗时与逐份答案同级敏感（DEC-371⑤）：只存库，不进任何响应与审计，对外只回“是否提醒 / 是否疑似”的布尔。
+ * 本功能上线前已提交的答卷没有这一行，不判耗时、也不算疑似（DEC-371③）。
+ */
+export const survey360SheetTimings = pgTable(
+  'survey360_sheet_timings',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    relationId: uuid('relation_id').notNull(),
+    questionnaireId: uuid('questionnaire_id').notNull(),
+    openedAt: at('opened_at').notNull(),
+    pageStartedAt: at('page_started_at').notNull(),
+  },
+  (t) => [
+    unique('survey360_sheet_timings_tenant_id').on(t.tenantId, t.id),
+    unique('survey360_sheet_timings_pair').on(t.relationId, t.questionnaireId),
+    foreignKey({
+      columns: [t.tenantId, t.relationId],
+      foreignColumns: [survey360Relations.tenantId, survey360Relations.id],
+      name: 'survey360_sheet_timings_relation_fk',
+    }),
+    questionnaireFk('survey360_sheet_timings_questionnaire_fk', t.tenantId, t.questionnaireId),
+  ],
+);
+
 /** 答卷明细：题目（关键行为）或基础指标（等级评定）× 选项。 */
 export const survey360Answers = pgTable(
   'survey360_answers',

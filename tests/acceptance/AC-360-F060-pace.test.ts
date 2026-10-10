@@ -115,6 +115,33 @@ describe('AC-360-F060 评价过快：一键屏蔽疑似无效用同一判定（D
   });
 });
 
+describe('AC-360-F060 重新作答清掉旧计时（DEC-392①）', () => {
+  it('管理员“重新作答”清除答卷的同时清掉计时：再次作答要重新 open，没有 open 的不判耗时；重新 open 后快速提交算过快', async () => {
+    const s = await sceneB(testDb().db, 'f060pace-r');
+    const call = await linkOf(s, s.person.P1.id);
+    // 第一次：慢速作答，不算过快
+    await flow(s, call, s.rel.p1.id, DIFFERENT, { openAt: 0, submitAt: 600_000 });
+    s.w.setNow(at(700_000));
+    const row = (
+      await s.w.ok<{ items: { relationId: string; revision: number }[] }>(
+        s.w.as(s.w.admin)('GET', `${s.path}/progress/${s.person.P1.id}`),
+      )
+    ).items[0]!;
+    await s.w.ok(s.w.request('POST', `${s.path}/relations/${row.relationId}/reanswer`, { ifMatch: row.revision }));
+    // 再次作答：没有 open → 无耗时数据，不判（旧计时不能沿用，否则 10 分钟前的起点会让它显得“很慢”）
+    const base = taskPath(s, s.rel.p1.id);
+    s.w.setNow(at(800_000));
+    await s.w.ok(call('POST', `${base}/open`, { body: {} }));
+    await flow(s, call, s.rel.p1.id, DIFFERENT, { submitAt: 801_000 });
+    s.w.setNow(at(900_000));
+    await s.w.transition(s.activity.id, 'disable');
+    // 第二次从 800 秒重新 open、1 秒提交 = 0.33 秒 / 题 → 过快（若沿用第一次的起点 0，则 801 秒不算过快）
+    expect(
+      await s.w.ok(s.w.request('POST', `${s.path}/sheets/block-suspected`, { idempotencyKey: key(), body: {} })),
+    ).toEqual({ blocked: 1 });
+  });
+});
+
 describe('AC-360-F060 作答端提醒（DEC-392④）：按页 / 提交时，都不阻止', () => {
   it('按页：从上一次翻页（或打开）起算，除以本页题数；3 秒自动消失；响应只有布尔与 3 秒，不显示秒数', async () => {
     const s = await sceneB(testDb().db, 'f060pace-e');
