@@ -22,15 +22,12 @@ import {
   bindFormula,
   type BoundCalcItem,
   type CalcAnalysis,
-  type CalcHints,
   checkInputLimits,
-  FORMULA_CONTEXT_FIELDS,
   formulaPath,
   HIDDEN_FIELD_PLACEHOLDER,
   formulaReferences,
   type FormulaField,
   type FormulaBindingState,
-  parseFieldHandle,
   renderFormula,
   targetNotAllowed,
 } from '@italent/domain';
@@ -40,7 +37,7 @@ import type { BoundCalcItemBody, BoundCalcRuleCreate, BoundCalcRulePatch } from 
 import { type CatalogAccess, type CatalogRow, loadFullCatalog, lockFields, visibleOf } from './calc-rule-catalog.js';
 import { CALC_RULE_BOUND, type CalcRuleView, loadCalcRuleView } from './calc-rule-view.js';
 import { auditConfig, createConfig, lockConfigRow, requireSeeAllToRename, uniqueOr } from './config-kit.js';
-import { type CalcWriteContext, presentHints } from './calc-rule-service.js';
+import type { CalcWriteContext } from './calc-rule-service.js';
 import { readFieldCatalogVersion, shareLockFieldCatalog } from './field-catalog.js';
 
 const reject = (reason: string, message: string, extra: object = {}) =>
@@ -368,61 +365,4 @@ export function requireBoundItemsReferenceable(
       });
     }
   }
-}
-
-const CYCLE_HIDDEN = '存在循环依赖，涉及当前不可见的字段（不显示字段名称）；允许保存，计算时将整次失败';
-const OTHER_HIDDEN = '部分保存提示涉及当前不可见的字段，未显示';
-const UNVERIFIABLE = '部分公式当前无法完整校验（引用的字段可能已改名或删除），请检查后重新保存';
-const NOT_REBOUND = '部分计算项目尚未改绑为按字段 ID 绑定（旧公式或改绑失败），无法完整校验，请重新保存这些公式';
-
-/**
- * 写响应里的保存 / 启用提示（DEC-274，不静默省略循环）。检测在全部字段上做，输出里涉及看不到的字段的提示换成不含名称的提示
- * （可见性按字段 ID 判断）；order / blocked 按 items 列权限投影与 others 计数在 F082-4（契约 §5.2）。按规则里项目的存储形态：
- * - 全是 bound：按 ID 分析；**已有引用集合（引用表）传入**，合法保留的停用引用不当作新增引用（契约 §3.3，否则分析提前退出、循环提示丢失）；
- * - 全是 legacy：沿用 B5 按名称的检测（这些项目还是名称文本）；
- * - unresolved 或与 bound 混合：不能做完整检测，明确提示“无法完整校验”，order 仍列出全部目标（不返回全空的 hints）。
- */
-export async function presentBoundHints(
-  tx: Tx,
-  tenantId: string,
-  rawItems: CalcRuleView['items'],
-  access: CatalogAccess | undefined,
-): Promise<CalcHints> {
-  const order = rawItems.map((item) => item.targetFieldId);
-  // 没有计算项目：没有可检测的内容（也没有未改绑的项目），不提示
-  if (rawItems.length === 0) return { order, warnings: [], cycles: [], blocked: [] };
-  const states = new Set(rawItems.map((item) => item.formulaBinding ?? 'legacy'));
-  if (states.size === 1 && states.has('legacy')) return presentHints(tx, tenantId, rawItems, access);
-  if (states.size !== 1 || !states.has('bound')) {
-    return { order, warnings: [NOT_REBOUND], cycles: [], blocked: [] };
-  }
-  const full = await loadFullCatalog(tx, tenantId);
-  const held = new Map(rawItems.map((item) => [item.targetFieldId, new Set(item.refFieldIds ?? [])]));
-  const analysis = analyzeBoundItems(
-    rawItems.map((item) => ({
-      targetFieldId: item.targetFieldId,
-      priority: item.priority,
-      stored: item.formula,
-      description: item.description,
-    })),
-    full,
-    held,
-  );
-  if (!analysis.ok) return { order, warnings: [UNVERIFIABLE], cycles: [], blocked: [] };
-  const visibleIds = new Set(visibleOf(full, access).map((field) => field.id));
-  const shown = (key: string) => {
-    const id = parseFieldHandle(key);
-    return id === undefined ? key in FORMULA_CONTEXT_FIELDS : visibleIds.has(id);
-  };
-  const { hints, diagnostics } = analysis;
-  const cycles = hints.cycles.filter((cycle) => cycle.every((id) => visibleIds.has(id)));
-  const kept = diagnostics.filter((entry) => entry.fields.every(shown));
-  const dropped = diagnostics.filter((entry) => !entry.fields.every(shown));
-  const cycleKinds = new Set(['cycle', 'cyclesTruncated', 'blockedByCycle']);
-  const warnings = kept.map((entry) => entry.message);
-  if (dropped.some((entry) => cycleKinds.has(entry.kind)) || cycles.length < hints.cycles.length) {
-    warnings.push(CYCLE_HIDDEN);
-  }
-  if (dropped.some((entry) => !cycleKinds.has(entry.kind))) warnings.push(OTHER_HIDDEN);
-  return { ...hints, warnings, cycles };
 }

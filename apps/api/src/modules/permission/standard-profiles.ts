@@ -88,12 +88,10 @@ export async function installProfilesForTenantAdmins(
 ): Promise<InstalledProfile[]> {
   const installed: InstalledProfile[] = [];
   for (const profile of profiles) installed.push(await installProfile(tx, write, profile));
-  if (installed.length)
-    await grantableToTenantAdmins(
-      tx,
-      write,
-      installed.map((p) => p.id),
-    );
+  // DEC-402③：autoHeld 身份（员工）不进可授权集合；过滤后为空（如存量租户只缺员工身份）就不碰管理员记录
+  const held = new Set(profiles.filter((p) => p.autoHeld).map((p) => p.code));
+  const grantable = installed.filter((p) => !held.has(p.code)).map((p) => p.id);
+  if (grantable.length) await grantableToTenantAdmins(tx, write, grantable);
   return installed;
 }
 
