@@ -730,12 +730,12 @@ export const DIGESTS: Digests = {
     visiblePersonIds: 'edef58f9a8c8',
   },
   'apps/api/src/modules/survey360/portal.ts': {
-    attemptLogin: 'c5ddb8662ee7',
+    attemptLogin: 'b460da30d6ed',
     isLoginable: '86c0aa3dc1e4',
     logout: 'b9533eabaa3c',
     'route:POST /login': 'c7b8ef3290be',
     'route:POST /logout': '9ae6b2894313',
-    settle: 'a3627e593df5',
+    settle: '309047ddb249',
   },
   'apps/api/src/modules/survey360/progress.ts': {
     VIEW: '059613dc3dbf',

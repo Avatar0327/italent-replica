@@ -26,6 +26,7 @@ afterEach(() => {
   resetCredentialConfig();
   resetLoginHooks();
   resetLoginGate();
+  linkHooks.afterLock = undefined;
   linkHooks.afterTaskCheck = undefined;
   vi.restoreAllMocks();
 });
@@ -110,6 +111,28 @@ describe.skipIf(!realPostgres)('AC-360-F076-R2 P2-1 删最后一条关系 × 新
 
     const links = (await linkRows(w, s.activity.id)).filter((l) => l.person_id === s.person.P1.id);
     expect(links.filter((l) => !l.revoked)).toHaveLength(1);
+  });
+
+  it('新增关系先持有链接锁、尚未提交时，确认入口删除评价者另一条关系：删除等待，之后看见新增的关系，不作废链接', async () => {
+    const { s, w } = await issuedScene(testDb().db, 'f076-r2-p1c');
+    const second = await w.object(s.activity.id, s.person.M.id, [s.q.id]);
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    let locked = false;
+    linkHooks.afterLock = async () => {
+      linkHooks.afterLock = undefined;
+      locked = true;
+      await gate;
+    };
+    const adding = w.appraiser(s.activity.id, second.id, s.person.P1.id, 'peer');
+    while (!locked) await pause(5);
+    const removing = removeRelationTx(w, s.object.id, s.rel.p1.id);
+    await settles(removing, 300);
+    release();
+    await Promise.all([adding, removing]);
+
+    const links = (await linkRows(w, s.activity.id)).filter((l) => l.person_id === s.person.P1.id);
+    expect(links.map((l) => l.revoked)).toEqual([false]);
   });
 
   it('后补-权限：两个入口同时删除同一评价者最后两条关系：链接必被作废，加回后旧凭据不恢复', async () => {

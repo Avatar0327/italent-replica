@@ -862,7 +862,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/survey360/export-runtime.ts#clientAborted': ['#unavailable'],
   'apps/api/src/modules/survey360/export-runtime.ts#config': ['#DEFAULTS'],
   'apps/api/src/modules/survey360/export-runtime.ts#exportConfig': ['#config'],
-  'apps/api/src/modules/survey360/links.ts#ensureAnswerLink': ['#issue'],
+  'apps/api/src/modules/survey360/links.ts#ensureAnswerLink': ['#issue', '#lockAnswerLink'],
   'apps/api/src/modules/survey360/links.ts#findLink': ['#hashToken'],
   'apps/api/src/modules/survey360/links.ts#issue': [
     'apps/api/src/modules/survey360/credential-config.ts#credentialConfig',
@@ -870,11 +870,19 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/survey360/secret-box.ts#sealJson',
   ],
   'apps/api/src/modules/survey360/links.ts#issueConfirmLink': ['#issue'],
+  'apps/api/src/modules/survey360/links.ts#lockAnswerLink': [
+    'apps/api/src/advisory-lock.ts#advisoryLock',
+    'apps/api/src/advisory-lock.ts#asUuid',
+    '#linkHooks',
+  ],
   'apps/api/src/modules/survey360/links.ts#reissueAnswerLink': [
     '#issue',
+    '#lockAnswerLink',
     'apps/api/src/modules/survey360/security-events.ts#recordSecurityEvent',
   ],
   'apps/api/src/modules/survey360/links.ts#revokeAnswerLinkWithoutTask': [
+    '#linkHooks',
+    '#lockAnswerLink',
     'apps/api/src/modules/survey360/tasks.ts#hasTask',
   ],
   'apps/api/src/modules/survey360/login-gate.ts#acquireLoginSlot': ['#active', '#limits', '#perTenant'],

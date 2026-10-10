@@ -9,6 +9,7 @@
  * （命令事务内不做 KDF，设计 §2.5）。
  */
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { advisoryLock, asUuid } from '../../advisory-lock.js';
 import { and, eq, sql, survey360Links, survey360Outbox, type Tx } from '@italent/db';
 import { credentialConfig } from './credential-config.js';
 import type { PersonRow } from './people.js';
@@ -16,8 +17,22 @@ import { recordSecurityEvent } from './security-events.js';
 import { hasTask } from './tasks.js';
 import { sealJson } from './secret-box.js';
 
-/** 只供测试制造交错（检查剩余关系之后、作废链接之前停一下）；生产不设。 */
-export const linkHooks: { afterTaskCheck?: (() => void | Promise<void>) | undefined } = {};
+/** 只供测试制造交错（取得链接锁之后 / 检查剩余关系之后、作废链接之前停一下）；生产不设。 */
+export const linkHooks: {
+  afterLock?: (() => void | Promise<void>) | undefined;
+  afterTaskCheck?: (() => void | Promise<void>) | undefined;
+} = {};
+
+/**
+ * 评价者 × 活动的链接锁（事务级咨询锁）：“检查剩余关系 → 作废链接”（removeRelation）与“新增关系 → 确保链接”
+ * （addRelation / 启用 / 重发）必须在同一把锁里决定保留、作废或新建链接，否则两者交错会留下有任务却没有可用链接的
+ * 评价者，或让并发删除漏掉作废（第 1 轮审查 P2-1）。所有入口（管理端、上级确认入口、启用、重发）都用它，
+ * 须在判定之前取、持有到事务结束。
+ */
+export async function lockAnswerLink(tx: Tx, activityId: string, personId: string): Promise<void> {
+  await advisoryLock(tx, ':survey360-answer-link:', asUuid(activityId), ':', asUuid(personId));
+  await linkHooks.afterLock?.();
+}
 
 export function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
@@ -92,6 +107,7 @@ export async function ensureAnswerLink(
   activityId: string,
   person: PersonRow,
 ): Promise<IssuedLink | undefined> {
+  await lockAnswerLink(tx, activityId, person.id);
   const [existing] = await tx
     .select({ id: survey360Links.id })
     .from(survey360Links)
@@ -118,6 +134,7 @@ export async function reissueAnswerLink(
   activityId: string,
   person: PersonRow,
 ): Promise<IssuedLink> {
+  await lockAnswerLink(tx, activityId, person.id);
   const [old] = await tx
     .update(survey360Links)
     .set({ revoked: true })
@@ -149,6 +166,7 @@ export async function reissueAnswerLink(
  * （会话与登录都要求链接未作废），登录提示与凭据错误完全相同。调用方须在关系已标记移除之后调用。
  */
 export async function revokeAnswerLinkWithoutTask(tx: Tx, activityId: string, personId: string): Promise<void> {
+  await lockAnswerLink(tx, activityId, personId);
   if (await hasTask(tx, activityId, personId)) return;
   await linkHooks.afterTaskCheck?.();
   await tx

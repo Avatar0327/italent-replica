@@ -288,11 +288,14 @@ async function cleanupTenant(
   hooks: MaintenanceHooks,
 ) {
   const at = now.toISOString();
+  // 三个独立的短事务，且都 SKIP LOCKED：登录按“IP 行 → 序列号 × IP 行 → 链接行”取锁，清理若在一个事务里先锁
+  // 序列号 × IP 行、再去删被登录持有的 IP 行，就与登录形成等待环（第 1 轮审查 P2-3）。拆开后每个事务只持有
+  // 自己这一类行，跳过正被登录占用的行（留给下一轮），不会反向等待登录。
   await withTenant(db, tenantId, async (tx) => {
     const expired = rowsOf<{ scope: string; key_hash: string; locked_until: Date | string }>(
       await tx.execute(sql`SELECT scope, key_hash, locked_until FROM survey360_login_throttle
         WHERE locked_until IS NOT NULL AND locked_until <= ${at}::timestamptz
-        ORDER BY locked_until LIMIT ${limit} FOR UPDATE`),
+        ORDER BY locked_until LIMIT ${limit} FOR UPDATE SKIP LOCKED`),
     );
     for (const lock of expired) {
       await recordSecurityEvent(tx, {
@@ -308,19 +311,23 @@ async function cleanupTenant(
     }
     report.unlocked += expired.length;
     await hooks.duringCleanup?.();
-    // DELETE 带批量上限（ctid 子查询）：一轮删不完的留给下一轮，单个事务不会无限长
-    const idle = new Date(now.getTime() - THROTTLE_IDLE_MS).toISOString();
-    const throttle = await tx.execute(sql`DELETE FROM survey360_login_throttle WHERE ctid IN (
+  });
+  // DELETE 带批量上限（ctid 子查询）：一轮删不完的留给下一轮，单个事务不会无限长
+  const idle = new Date(now.getTime() - THROTTLE_IDLE_MS).toISOString();
+  const throttle = await withTenant(db, tenantId, (tx) =>
+    tx.execute(sql`DELETE FROM survey360_login_throttle WHERE ctid IN (
       SELECT ctid FROM survey360_login_throttle WHERE locked_until IS NULL AND updated_at < ${idle}::timestamptz
-      LIMIT ${limit})`);
-    report.throttleDeleted += affected(throttle);
-    const kept = new Date(now.getTime() - SESSION_REVOKED_KEEP_MS).toISOString();
-    const sessions = await tx.execute(sql`DELETE FROM survey360_answer_sessions WHERE id IN (
+      LIMIT ${limit} FOR UPDATE SKIP LOCKED)`),
+  );
+  report.throttleDeleted += affected(throttle);
+  const kept = new Date(now.getTime() - SESSION_REVOKED_KEEP_MS).toISOString();
+  const sessions = await withTenant(db, tenantId, (tx) =>
+    tx.execute(sql`DELETE FROM survey360_answer_sessions WHERE id IN (
       SELECT id FROM survey360_answer_sessions
       WHERE expires_at < ${at}::timestamptz OR (revoked_at IS NOT NULL AND revoked_at < ${kept}::timestamptz)
-      LIMIT ${limit})`);
-    report.sessionsDeleted += affected(sessions);
-  });
+      LIMIT ${limit} FOR UPDATE SKIP LOCKED)`),
+  );
+  report.sessionsDeleted += affected(sessions);
 }
 
 /** 跑一轮（所有启用 / 停用租户，或 options.tenantId）。可重复执行；多实例靠 SKIP LOCKED 与认领 CAS 去重。 */

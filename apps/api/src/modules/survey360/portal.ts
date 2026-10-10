@@ -144,16 +144,18 @@ async function sessionLimitRetry(tx: Tx, linkId: string, now: Date): Promise<num
 }
 
 async function issueSession(tx: Tx, tenantId: string, link: LockedLink, ipPrefix: string, now: Date) {
+  // now = 取得链接锁之后的实际签发时刻（不是请求开始时间）：较早发起、较晚完成的登录不会被排到“最早”而被淘汰
   const token = randomBytes(32).toString('base64url');
   const expiresAt = new Date(now.getTime() + SESSION_TTL_MS);
   const [session] = await tx
     .insert(survey360AnswerSessions)
     .values({ tenantId, linkId: link.id, tokenHash: hashToken(token), createdAt: now, expiresAt })
     .returning({ id: survey360AnswerSessions.id });
-  // 有效会话超过 5 个时作废最早的（按链接行加锁串行签发）
+  // 有效会话超过 5 个时作废最早的（按链接行加锁串行签发）；本次新签发的会话一定保留：它加上其余最新的 4 个
   await tx.execute(sql`UPDATE survey360_answer_sessions SET revoked_at = ${now.toISOString()}::timestamptz
     WHERE id IN (SELECT id FROM survey360_answer_sessions WHERE link_id = ${link.id}::uuid AND revoked_at IS NULL
-      AND expires_at > ${now.toISOString()}::timestamptz ORDER BY created_at DESC, id DESC OFFSET ${SESSION_CAP})`);
+      AND expires_at > ${now.toISOString()}::timestamptz AND id <> ${session!.id}::uuid
+      ORDER BY created_at DESC, id DESC OFFSET ${SESSION_CAP - 1})`);
   await recordSecurityEvent(tx, {
     tenantId,
     kind: 'login_success',
@@ -170,6 +172,8 @@ async function issueSession(tx: Tx, tenantId: string, link: LockedLink, ipPrefix
 interface Attempt {
   readonly tenantId: string;
   readonly now: Date;
+  /** 注入时钟：T2 取得链接锁后重取实际签发时刻（会话时间、D4 窗口、期限都按它）。 */
+  readonly clock: () => Date;
   readonly config: CredentialConfig;
   readonly ipKey: string;
   readonly pairKey: string;
@@ -188,10 +192,11 @@ async function settle(tx: Tx, a: Attempt): Promise<Outcome> {
           credential_key_versions FROM survey360_links WHERE id = ${a.found.id}::uuid FOR UPDATE`),
     );
     if (link && (await isLoginable(tx, a.config, link))) {
-      const retryAfter = await sessionLimitRetry(tx, link.id, a.now);
+      const issuedAt = a.clock();
+      const retryAfter = await sessionLimitRetry(tx, link.id, issuedAt);
       if (retryAfter !== undefined) return { kind: 'sessionLimit', retryAfter };
-      const { token, expiresAt } = await issueSession(tx, a.tenantId, link, a.ipKey.slice(0, 8), a.now);
-      await refundPair(tx, a.tenantId, a.pairKey, a.pairMark, a.now);
+      const { token, expiresAt } = await issueSession(tx, a.tenantId, link, a.ipKey.slice(0, 8), issuedAt);
+      await refundPair(tx, a.tenantId, a.pairKey, a.pairMark, issuedAt);
       return {
         kind: 'granted',
         token,
@@ -308,6 +313,7 @@ async function attemptLogin(
     settle(tx, {
       tenantId,
       now,
+      clock: deps.clock,
       config,
       ipKey: keys.ip,
       pairKey: keys.pair,
