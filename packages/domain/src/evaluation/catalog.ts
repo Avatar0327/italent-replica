@@ -36,6 +36,10 @@ const ACTIVITY_FLOW_BUTTONS: readonly ButtonDefinition[] = [
   { code: 'complete', level: 'list_row', requires: 'update' },
 ];
 
+function withoutDelete(definition: ObjectDefinition): ObjectDefinition {
+  return { ...definition, buttons: definition.buttons.filter((button) => button.code !== 'delete') };
+}
+
 function withButtons(definition: ObjectDefinition, buttons: readonly ButtonDefinition[]): ObjectDefinition {
   return { ...definition, buttons: [...definition.buttons, ...buttons] };
 }
@@ -46,8 +50,10 @@ export const EVALUATION_OBJECTS = {
   activityCycle: object('ActivityCycle', ['name', 'enabled']),
   /** 通用评分项：首版只做评分。 */
   generalScoreItem: object('GeneralScoreItem', ['name', 'description', 'enabled']),
-  /** 评审组：成员随组整组编辑（恰好 1 个组长）。 */
-  reviewGroup: object('ReviewGroup', ['code', 'name', 'ownerOrgId', 'enabled', 'members'], ['ownerId']),
+  /**
+   * 评审组：成员随组整组编辑。照原站没有编码字段、没有删除入口（DEC-393①⑤），所以没有“删除”按钮，列表操作只有编辑 / 停用。
+   */
+  reviewGroup: withoutDelete(object('ReviewGroup', ['name', 'ownerOrgId', 'enabled', 'members'], ['ownerId'])),
   /** 评价表（标准模式）：评分项随表整组编辑。 */
   evaluationForm: object(
     'EvaluationForm',

@@ -38,7 +38,7 @@
 | 保存命令恰两行（before / after 各一） | 400 `MATRIX_POSITION_FIELDS_INCOMPLETE` | 设计 §2.2、P3-01 |
 | 位置字段必须是“位置”分组的数值字段 | 400 `MATRIX_POSITION_FIELD_KIND` | 设计 §2.7（位置字段 number、`system_written`） |
 | X ≠ Y；轴字段只能是等级维度（单选）字段，数值字段不行（F-085：原站轴下拉只有“校准后××”这类等级字段） | 400 `MATRIX_AXIS_SAME_FIELD` / `MATRIX_AXIS_FIELD_KIND` | TR-R31；DEC-389①（Q-M0-156，撤回 DEC-374③ 的“单选或数值”） |
-| 轴分段 2～9 段、序号连续；每段至少一个选项值、选项值属于字段且各段不重复（段数可为 2～9，原站有 2 × 2；分段不再有数值下界，输入只接受 `lowerBound: null`） | 400 `MATRIX_LEVELS_INVALID` | DEC-389①；段数上限 9 仍为设计自定 |
+| 轴分段 2～9 段、序号连续；每段至少一个选项值、选项值属于字段且各段不重复（段数可为 2～9，原站有 2 × 2；分段不再有数值下界：`lower_bound` 列已删，输入带 `lowerBound` 一律 400，DEC-403 不保留旧数值轴兼容） | 400 `MATRIX_LEVELS_INVALID` | DEC-389①；段数上限 9 仍为设计自定 |
 | 格子铺满 X 段 × Y 段网格，格子号唯一 | 400 `MATRIX_CELLS_INCOMPLETE` | 🟡 设计自定项 D-B4-1（需取证 #181） |
 | 新引用已停用的字段 | 400 `MATRIX_FIELD_DISABLED` | 设计 §7 启停行（停用后不可新引用） |
 | 被比例规则引用的格子不能删 | 409 `MATRIX_CELL_IN_USE` | TR-R33 |

@@ -71,7 +71,7 @@ describe('AC-PRM-F075 去掉的 41 项冗余授权调用不再发生', () => {
     }
   });
 
-  it('也不在已知缺口 / 冗余观测两本账里（账里只剩 #125 套卷模板入口 18 项，等用户答复）', () => {
+  it('也不在已知缺口 / 冗余观测两本账里（冗余观测账本已清空：#125 的 18 项由 F-075b 去掉）', () => {
     const accounted = new Set(
       [...KNOWN_GAPS, ...REDUNDANT_OBSERVATIONS].flatMap((g) => g.pairs.map(([e, k]) => `${e}\t${k}`)),
     );

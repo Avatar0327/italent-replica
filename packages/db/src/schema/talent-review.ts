@@ -7,12 +7,15 @@
 import { sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
+  bigint,
   boolean,
   check,
   foreignKey,
+  index,
   integer,
   numeric,
   pgTable,
+  primaryKey,
   smallint,
   text,
   timestamp,
@@ -278,8 +281,8 @@ export const talentReviewMatrixPositionFields = pgTable(
 );
 
 /**
- * 轴分段：每轴从低到高 level_no = 1..n。单选轴用 option_values（该字段的选项 value，分段间不重复）；
- * 数值轴用 lower_bound（含下界，第一段为空；下一段的下界即本段的上界）。
+ * 轴分段：每轴从低到高 level_no = 1..n，用 option_values（该字段的选项 value，分段间不重复）。轴只允许单选等级字段
+ * （DEC-389①），没有数值下界（F-085 删除 lower_bound 列；DEC-403：不做数据迁移，不保留存量兼容）。
  */
 export const talentReviewMatrixAxisLevels = pgTable(
   'talent_review_matrix_axis_levels',
@@ -294,7 +297,6 @@ export const talentReviewMatrixAxisLevels = pgTable(
       .array()
       .notNull()
       .default(sql`'{}'::text[]`),
-    lowerBound: numeric('lower_bound', { precision: 14, scale: 4 }),
   },
   (t) => [
     unique('talent_review_matrix_axis_levels_no').on(t.tenantId, t.matrixId, t.axis, t.levelNo),
@@ -456,6 +458,9 @@ export const talentReviewCalcRules = pgTable(
 /**
  * 计算项目：一个目标盘点字段 + 公式 + 优先级。目标字段在规则内唯一，保存后只读（改目标 = 删除再新增）；
  * uses_ranking 由公式派生（含排名函数，待办触发时不计算，DEC-260）。
+ * F-082：formula_binding 区分公式存储形态——bound 存规范文本（字段引用为句柄 `@{tr-field:<uuid>}`），
+ * legacy / unresolved 存原来的名称文本（unresolved 的原因码在 binding_issue）；存量行迁移后为 legacy，
+ * 平台改绑命令把它们变成 bound（F082-5）。优先级 0～1000000（DEC-374⑥）。
  */
 export const talentReviewCalcRuleItems = pgTable(
   'talent_review_calc_rule_items',
@@ -469,8 +474,11 @@ export const talentReviewCalcRuleItems = pgTable(
     formula: text('formula').notNull(),
     sortNo: integer('sort_no').notNull().default(0),
     usesRanking: boolean('uses_ranking').notNull().default(false),
+    formulaBinding: text('formula_binding').notNull().default('legacy'),
+    bindingIssue: text('binding_issue'),
   },
   (t) => [
+    unique('talent_review_calc_rule_items_tenant_id').on(t.tenantId, t.id),
     unique('talent_review_calc_rule_items_target').on(t.tenantId, t.ruleId, t.targetFieldId),
     foreignKey({
       columns: [t.tenantId, t.ruleId],
@@ -482,6 +490,48 @@ export const talentReviewCalcRuleItems = pgTable(
       foreignColumns: [talentReviewFields.tenantId, talentReviewFields.id],
       name: 'talent_review_calc_rule_items_field_fk',
     }).onDelete('restrict'),
-    check('talent_review_calc_rule_items_priority', sql`${t.priority} >= 0`),
+    check('talent_review_calc_rule_items_priority', sql`${t.priority} BETWEEN 0 AND 1000000`),
+    check('talent_review_calc_rule_items_binding', sql`${t.formulaBinding} IN ('bound','legacy','unresolved')`),
   ],
 );
+
+/**
+ * 计算项目引用的盘点字段（F-082 契约 §1.3），由规范文本或改绑派生。bound 行的引用全部是 kind = 'bound'，
+ * 等于规范文本中句柄 ID 的集合；非 bound 行（legacy / unresolved）只有 kind = 'candidate'：改绑失败时的认定与
+ * 字段改名时对文本兜底的固化，只增不减，项目变为 bound 或被删除时才清除。目标字段不进本表（已有 target_field_id 外键）。
+ * 字段外键 restrict：被引用的字段库层不可删，守卫是正常路径、外键是最后一道防线。
+ */
+export const talentReviewCalcItemRefs = pgTable(
+  'talent_review_calc_item_refs',
+  {
+    tenantId: tenantId(),
+    itemId: uuid('item_id').notNull(),
+    fieldId: uuid('field_id').notNull(),
+    kind: text('kind').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.itemId, t.fieldId] }),
+    foreignKey({
+      columns: [t.tenantId, t.itemId],
+      foreignColumns: [talentReviewCalcRuleItems.tenantId, talentReviewCalcRuleItems.id],
+      name: 'talent_review_calc_item_refs_item_fk',
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [t.tenantId, t.fieldId],
+      foreignColumns: [talentReviewFields.tenantId, talentReviewFields.id],
+      name: 'talent_review_calc_item_refs_field_fk',
+    }).onDelete('restrict'),
+    index('talent_review_calc_item_refs_field').on(t.tenantId, t.fieldId),
+    check('talent_review_calc_item_refs_kind', sql`${t.kind} IN ('bound','candidate')`),
+  ],
+);
+
+/**
+ * 字段目录版本（F-082 契约 §1.3、§3.4）：字段“名称 → ID”映射的版本，每租户一行。新建 / 删除字段或改名时在同一事务里
+ * 推进（新值 = greatest(version + 1, 当前毫秒时间戳)，租户恢复后也不会回到客户端已有的旧值）；
+ * 改名在这一行上串行（锁次序里的 V）。
+ */
+export const talentReviewFieldCatalogVersions = pgTable('talent_review_field_catalog_versions', {
+  tenantId: tenantId().primaryKey(),
+  version: bigint('version', { mode: 'number' }).notNull().default(0),
+});

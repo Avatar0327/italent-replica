@@ -40,11 +40,7 @@ const shapeOf = (preset: PresetMatrix, idOf: (code: string) => string | undefine
       { role: 'before', fieldId: before! },
       { role: 'after', fieldId: after! },
     ],
-    axisLevels: presetAxisLevels().map((level) => ({
-      ...level,
-      optionValues: [...level.optionValues],
-      lowerBound: null,
-    })),
+    axisLevels: presetAxisLevels().map((level) => ({ ...level, optionValues: [...level.optionValues] })),
     cells: presetCells(preset),
   };
 };

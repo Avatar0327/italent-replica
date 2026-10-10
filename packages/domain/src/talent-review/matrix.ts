@@ -10,7 +10,7 @@ export const MATRIX_AXES = ['x', 'y'] as const;
 export type MatrixAxis = (typeof MATRIX_AXES)[number];
 /**
  * 轴字段的类型：只允许等级维度字段（单选，按选项值分段）。原站的轴下拉只有“校准后××”这类等级字段，没有得分等数值字段
- * （Q-M0-156，DEC-389①，撤回 DEC-374③ 的“单选或数值”）。
+ * （Q-M0-156，DEC-389①，撤回 DEC-374③ 的“单选或数值”）。系统未上线：不做数据迁移，也不保留旧数值轴的兼容读取（DEC-403）。
  */
 export const MATRIX_AXIS_FIELD_KINDS = ['option'] as const;
 /** 位置字段：校准前 / 后的格子号，只能是“位置”分组的数值字段（设计 §2.7）。 */

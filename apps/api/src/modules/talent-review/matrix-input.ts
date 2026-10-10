@@ -28,8 +28,6 @@ const axisLevel = z.strictObject({
   levelNo,
   name,
   optionValues: z.array(z.string().min(1).max(50)).max(200).default([]),
-  // 轴只允许单选等级字段（DEC-389①），不再有数值下界；只接受 null，让原样带回读到的视图（含 lowerBound: null）的客户端照常工作
-  lowerBound: z.null().default(null),
 });
 const cell = z.strictObject({
   cellNo: z.int().min(1).max(99),

@@ -282,7 +282,7 @@ describe('轴、分段与格子（TR-R31）', () => {
     expect((await w.read(created.id)).body).toEqual(created);
   });
 
-  it('F-085 数值轴的“下界”不再是输入：带 lowerBound 的分段 400 VALIDATION_FAILED', async () => {
+  it('F-085 数值轴的“下界”已删除（DEC-403）：带 lowerBound 的分段 400 VALIDATION_FAILED', async () => {
     const w = await matrixWorld(testDb().db, 'trm-no-lower-bound');
     const base = matrixBody(await w.refs());
     const levels = (base.axisLevels as Record<string, unknown>[]).map((level, i) =>

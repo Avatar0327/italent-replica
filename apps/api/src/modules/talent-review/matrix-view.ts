@@ -59,7 +59,7 @@ export type MatrixView = MatrixRow & {
   id: string;
   name: string;
   positionFields: { role: string; fieldId: string }[];
-  axisLevels: { axis: string; levelNo: number; name: string; optionValues: string[]; lowerBound: number | null }[];
+  axisLevels: { axis: string; levelNo: number; name: string; optionValues: string[] }[];
   cells: {
     cellNo: number;
     xLevelNo: number;
@@ -174,7 +174,6 @@ export async function withChildren(tx: Tx, tenantId: string, rows: MatrixRow[]):
       levelNo: l.levelNo,
       name: l.name,
       optionValues: l.optionValues,
-      lowerBound: number(l.lowerBound),
     })),
     cells: byMatrix(cells, r.id as string).map(
       ({ cellNo, xLevelNo, yLevelNo, name, color, textColor, exportOrder, countsGreen }) => ({

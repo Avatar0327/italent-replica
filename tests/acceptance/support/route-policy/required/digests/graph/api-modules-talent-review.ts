@@ -599,12 +599,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/talent-review/matrix-view.ts#loadGroups': ['#number'],
   'apps/api/src/modules/talent-review/matrix-view.ts#loadMatrixView': ['#MATRIX'],
   'apps/api/src/modules/talent-review/matrix-view.ts#selectRows': ['#row'],
-  'apps/api/src/modules/talent-review/matrix-view.ts#withChildren': [
-    '#byMatrix',
-    '#loadGroups',
-    '#number',
-    '#roleRank',
-  ],
+  'apps/api/src/modules/talent-review/matrix-view.ts#withChildren': ['#byMatrix', '#loadGroups', '#roleRank'],
   'apps/api/src/modules/talent-review/readiness-input.ts#readinessCreate': [
     'packages/domain/src/talent-review/catalog.ts#READINESS_COLOR_PATTERN',
   ],
