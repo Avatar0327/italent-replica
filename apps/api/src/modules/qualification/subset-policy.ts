@@ -49,6 +49,24 @@ function requireText(row: Row, field: 'categoryId' | 'levelId' | 'startDate'): v
   }
 }
 
+const TWO_DECIMALS = /^-?\d+(\.\d{1,2})?$/;
+
+/**
+ * finalScore 最多两位小数（规格 23 §10 “小数 2 位”；DEC-374⑤ 🟡 待取证原站超精度行为）：超过一律 400 FIELD_PRECISION，
+ * 不舍入。所有来源（HR、信息采集、评定发布等系统来源）同一处拦截；与修改前相等的值（含库里取出的 numeric 字符串）
+ * 原样带回不重新校验，不会因为历史值而拦住别的字段的修改。
+ */
+function assertScorePrecision(before: Row | null, row: Row): void {
+  const value = row.finalScore;
+  if (value === null || value === undefined) return;
+  if (before?.finalScore !== null && before?.finalScore !== undefined && Number(before.finalScore) === Number(value)) {
+    return;
+  }
+  if (!TWO_DECIMALS.test(String(value))) {
+    throw new AppError('VALIDATION_FAILED', '最终得分最多两位小数', { reason: 'FIELD_PRECISION', field: 'finalScore' });
+  }
+}
+
 /** 引用 ID 规范化为小写 UUID（DEC-194），写回待落库的行：库里只存规范形式，比较也按规范形式。 */
 function canonicalRefs(row: Row): void {
   for (const field of ['categoryId', 'levelId'] as const) row[field] = String(row[field]).toLowerCase();
@@ -107,6 +125,7 @@ export async function qualificationBeforeSave(tx: Tx, ctx: PersonnelContext, inp
   requireText(row, 'categoryId');
   requireText(row, 'levelId');
   requireText(row, 'startDate');
+  assertScorePrecision(before, row);
   canonicalRefs(row);
   // 未显式给出时的缺省：任职同步生成的行是自动同步数据，其余（手工 / 初始化 / 评定）不是（规格 23 §10 IfAutoSync）
   row.isAutoSync ??= source.type === 'employment_sync';

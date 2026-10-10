@@ -11,7 +11,7 @@
  * - QualificationIndicatorPort 未登记时为 null，登记后取到同一实现（§6.2 (1)）。
  */
 import { sql, withTenant } from '@italent/db';
-import { auditObjectMeta, type ObjectDefinition } from '@italent/domain';
+import { auditObjectMeta, type ObjectDefinition, type QualificationIndicator } from '@italent/domain';
 import * as domain from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it, vi } from 'vitest';
@@ -224,6 +224,32 @@ describe('PR-0 ③：Qualification / TEvaluation 对象目录（Q-M0-132、DEC-3
 });
 
 describe('PR-0 ④：QualificationIndicatorPort 登记（设计 §6.2 (1)）', () => {
+  // C1-3b（DEC-374④ 🟡）：targetTypePath 是“从根到本级的 ID 路径并附名称”，每一级 { id, name }，两者都返回。
+  // 编译期：下面的字面量必须满足端口类型（形状变了这里先编译失败）；运行期：形状由 AC-QL-indicator-port 对真实输出断言。
+  it('指标的 targetTypePath 形状：每一级 { id, name }（编译期契约，DEC-374⑤）', () => {
+    const sample: QualificationIndicator = {
+      targetId: 't',
+      code: 'c',
+      name: 'n',
+      targetTypeId: 'leaf',
+      targetTypePath: [
+        { id: 'root', name: '专业能力' },
+        { id: 'leaf', name: '编程' },
+      ],
+      evalMode: 'score',
+      gradeSchemeId: null,
+      weight: null,
+      targetValue: null,
+      abilities: [],
+      enabled: true,
+    };
+    expect(sample.targetTypePath.map((step) => Object.keys(step).sort())).toEqual([
+      ['id', 'name'],
+      ['id', 'name'],
+    ]);
+    expect(sample.targetTypePath.at(-1)?.id).toBe(sample.targetTypeId);
+  });
+
   // 第 1 轮 P3-3：隔离模块状态，保住 P0 的登记契约（未装配为 null → 装配后可取 → 还原后为 null）
   it('隔离的模块图里：未装配时为 null，装配后取到同一实现，换一份新模块图后又是 null', async () => {
     vi.resetModules();
