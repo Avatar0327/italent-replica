@@ -4,10 +4,10 @@
  * - 同文件顶层函数 / 常量 / 类 / 枚举；
  * - 相对 import 指向的 `apps/api/src/**` 导出（含 `export … from` 与 `export *` 转发）；
  * - `@italent/<包>` 解析到 `packages/<包>/src/index.ts` 的声明（`@italent/domain` 等）；
- * 算到不动点（广度优先，安全上限 12 层，带环检测）。不解析：注入依赖（`deps.*`、形参，由词法作用域排除）、纯类型、
+ * 算到不动点（广度优先，同层按字典序，安全上限 MAX_DEPTH 层，带环检测）。不解析：注入依赖（`deps.*`、形参，由词法作用域排除）、纯类型、
  * 第三方包、边界清单内的文件（evidence-boundary.ts）。
  * 解析不了的写进 unresolved：动态 import / require、命名空间 import 的计算成员访问或整体外传、找不到的相对 import、
- * 触到层数上限仍有未展开的依赖（depth-limit）。判定“是否要报”在 evidence.ts（位于 modules/** 且不在边界内才报）。
+ * 触到层数上限且有依赖落在实际访问集合之外（depth-limit，F-072 D-8 ①：与遍历顺序无关）。判定“是否要报”在 evidence.ts（位于 modules/** 且不在边界内才报）。
  * 作用域是词法近似：局部同名变量遮蔽顶层声明时按局部处理，不会误登记依赖；反过来不会漏掉真实依赖。
  */
 import path from 'node:path';
@@ -79,6 +79,8 @@ export interface ClosureEnv {
   readonly infos: Map<string, FileInfo | undefined>;
   readonly edges: Map<string, Edges>;
   readonly namespaces: Map<string, ReadonlyMap<string, NamespaceTarget>>;
+  readonly refs: Map<string, Refs>;
+  readonly bindings: Map<string, readonly BindingLine[]>;
 }
 
 export function createClosureEnv(
@@ -86,7 +88,16 @@ export function createClosureEnv(
   boundary: readonly BoundaryEntry[],
   findNode: ClosureEnv['findNode'],
 ): ClosureEnv {
-  return { read, boundary, findNode, infos: new Map(), edges: new Map(), namespaces: new Map() };
+  return {
+    read,
+    boundary,
+    findNode,
+    infos: new Map(),
+    edges: new Map(),
+    namespaces: new Map(),
+    refs: new Map(),
+    bindings: new Map(),
+  };
 }
 
 interface DeclRef {
@@ -96,6 +107,8 @@ interface DeclRef {
 const idOf = (ref: DeclRef) => `${ref.file}#${ref.name}`;
 interface Edges {
   readonly deps: readonly DeclRef[];
+  /** 依赖的 `文件#名字`，字典序。 */
+  readonly ids: readonly string[];
   readonly unresolved: readonly Unresolved[];
 }
 
@@ -194,37 +207,60 @@ type Exported = DeclRef | { readonly namespace: string } | 'boundary' | undefine
 /** 命名空间绑定指向的模块文件；边界内的模块不展开；找不到模块的记原说明符。 */
 type NamespaceTarget = { readonly file: string } | 'boundary' | { readonly missing: string };
 
+/** 导出名的解析结果，加上经过的每一跳（绑定指纹用：转导出改指也要看得见）。 */
+interface Resolved {
+  readonly found: Exported;
+  readonly chain: readonly string[];
+}
+
+const boundaryOf = (env: ClosureEnv, file: string) =>
+  env.boundary.find((e) => (e.path.endsWith('/') ? file.startsWith(e.path) : file === e.path))?.path;
+
 /** 文件导出的某个名字最终落在哪个顶层声明（跟随 `export … from`、`export * as`、导入后再导出）；边界文件返回 'boundary'。 */
-function exportedDecl(env: ClosureEnv, file: string, name: string, seen = new Set<string>()): Exported {
-  if (seen.has(`${file}#${name}`)) return undefined;
-  seen.add(`${file}#${name}`);
-  if (inBoundary(file, env.boundary)) return 'boundary';
+function exportedChain(env: ClosureEnv, file: string, name: string, seen = new Set<string>()): Resolved {
+  const here = `${file}#${name}`;
+  if (seen.has(here)) return { found: undefined, chain: [here, 'cycle'] };
+  seen.add(here);
+  const boundary = boundaryOf(env, file);
+  if (boundary) return { found: 'boundary', chain: [here, `boundary:${boundary}`] };
   const info = fileInfo(env, file);
-  if (!info) return undefined;
+  if (!info) return { found: undefined, chain: [here, 'unresolved'] };
   const local = info.exportedAs.get(name) ?? name;
-  if (info.decls.has(local)) return { file, name: local };
+  if (info.decls.has(local)) return { found: { file, name: local }, chain: [here, `decl:${file}#${local}`] };
   const imported = info.imports.get(local);
   if (imported) {
     const target = resolveModule(env, file, imported.spec);
     if (typeof target === 'object') {
-      return imported.imported === '*'
-        ? { namespace: target.file }
-        : exportedDecl(env, target.file, imported.imported, seen);
+      if (imported.imported === '*') {
+        return {
+          found: { namespace: target.file },
+          chain: [here, `import:${imported.spec}`, `namespace:${target.file}`],
+        };
+      }
+      const next = exportedChain(env, target.file, imported.imported, seen);
+      return { found: next.found, chain: [here, `import:${imported.spec}`, ...next.chain] };
     }
   }
   for (const reexport of info.reexports) {
     const target = resolveModule(env, file, reexport.spec);
     if (typeof target !== 'object') continue;
     if (reexport.namespace !== undefined) {
-      if (reexport.namespace === name) return { namespace: target.file };
+      if (reexport.namespace === name) {
+        return {
+          found: { namespace: target.file },
+          chain: [here, `export-ns:${reexport.spec}`, `namespace:${target.file}`],
+        };
+      }
       continue;
     }
     const original = reexport.names ? reexport.names.get(name) : name;
-    const found = original ? exportedDecl(env, target.file, original, seen) : undefined;
-    if (found) return found;
+    const next = original ? exportedChain(env, target.file, original, seen) : undefined;
+    if (next?.found) return { found: next.found, chain: [here, `export-from:${reexport.spec}`, ...next.chain] };
   }
-  return undefined;
+  return { found: undefined, chain: [here, 'unresolved'] };
 }
+
+const exportedDecl = (env: ClosureEnv, file: string, name: string): Exported => exportedChain(env, file, name).found;
 
 /** 文件里每个本地名若是命名空间（`import * as ns`，或具名导入的是 `export * as ns` 转出的模块），指向哪个模块。 */
 function namespaceBindings(env: ClosureEnv, file: string): ReadonlyMap<string, NamespaceTarget> {
@@ -288,12 +324,21 @@ function isReference(id: ts.Identifier): boolean {
   return !(ts.isLabeledStatement(parent) || ts.isBreakOrContinueStatement(parent));
 }
 
-interface Refs {
+/** 一处引用（按遍历顺序，含重复）：绑定指纹按它逐个登记“局部标识符 → 解析目标”（F-072 §2.3.2）。 */
+type RefPosition =
+  | { readonly kind: 'name'; readonly name: string }
+  | { readonly kind: 'member'; readonly ns: string; readonly member: string }
+  | { readonly kind: 'escape'; readonly ns: string; readonly reason: 'namespace-computed' | 'namespace-escape' }
+  | { readonly kind: 'dynamic'; readonly spec: string; readonly name: string }
+  | { readonly kind: 'require' };
+
+export interface Refs {
   readonly names: Set<string>;
   readonly members: [string, string][];
   /** 字面量说明符的动态 import 解构出的成员：`const { a } = await import('./x.js')`。 */
   readonly imports: { readonly spec: string; readonly name: string }[];
   readonly unresolved: Omit<Unresolved, 'file'>[];
+  readonly positions: RefPosition[];
 }
 
 /** `const { a, b: c } = await import('./x.js')` 按具名导入处理；其他写法（成员访问、then、非字面量说明符）记未解析。 */
@@ -304,7 +349,9 @@ function dynamicImport(node: ts.CallExpression, refs: Refs): void {
     if (ts.isObjectBindingPattern(holder.name)) {
       for (const element of holder.name.elements) {
         const original = element.propertyName ?? element.name;
-        if (ts.isIdentifier(original)) refs.imports.push({ spec: spec.text, name: original.text });
+        if (!ts.isIdentifier(original)) continue;
+        refs.imports.push({ spec: spec.text, name: original.text });
+        refs.positions.push({ kind: 'dynamic', spec: spec.text, name: original.text });
       }
       return;
     }
@@ -313,21 +360,32 @@ function dynamicImport(node: ts.CallExpression, refs: Refs): void {
     reason: 'dynamic-import',
     detail: `import(${spec ? spec.getText() : ''}) 的成员用法无法确定`,
   });
+  refs.positions.push({ kind: 'dynamic', spec: spec ? spec.getText() : '', name: '*' });
 }
 
 function collectRefs(roots: readonly ts.Node[], namespaces: ReadonlySet<string>): Refs {
-  const refs: Refs = { names: new Set(), members: [], imports: [], unresolved: [] };
+  const refs: Refs = { names: new Set(), members: [], imports: [], unresolved: [], positions: [] };
   const scopes: Set<string>[] = [];
+  const escape = (ns: string, reason: 'namespace-computed' | 'namespace-escape', detail: string) => {
+    refs.unresolved.push({ reason, detail });
+    refs.positions.push({ kind: 'escape', ns, reason });
+  };
+  const member = (ns: string, name: string) => {
+    refs.members.push([ns, name]);
+    refs.positions.push({ kind: 'member', ns, member: name });
+  };
   const onReference = (id: ts.Identifier) => {
-    if (!namespaces.has(id.text)) return void refs.names.add(id.text);
+    if (!namespaces.has(id.text)) {
+      refs.names.add(id.text);
+      return void refs.positions.push({ kind: 'name', name: id.text });
+    }
     const parent = id.parent;
-    if (ts.isPropertyAccessExpression(parent) && parent.expression === id)
-      refs.members.push([id.text, parent.name.text]);
+    if (ts.isPropertyAccessExpression(parent) && parent.expression === id) member(id.text, parent.name.text);
     else if (ts.isElementAccessExpression(parent) && parent.expression === id) {
       const key = parent.argumentExpression;
-      if (ts.isStringLiteralLike(key)) refs.members.push([id.text, key.text]);
-      else refs.unresolved.push({ reason: 'namespace-computed', detail: `${id.text}[计算成员]` });
-    } else refs.unresolved.push({ reason: 'namespace-escape', detail: `${id.text} 整体作为值使用` });
+      if (ts.isStringLiteralLike(key)) member(id.text, key.text);
+      else escape(id.text, 'namespace-computed', `${id.text}[计算成员]`);
+    } else escape(id.text, 'namespace-escape', `${id.text} 整体作为值使用`);
   };
   const visit = (node: ts.Node): void => {
     if (ts.isTypeNode(node) && !ts.isExpressionWithTypeArguments(node)) return;
@@ -338,6 +396,7 @@ function collectRefs(roots: readonly ts.Node[], namespaces: ReadonlySet<string>)
     if (ts.isIdentifier(node) && isReference(node) && !scopes.some((s) => s.has(node.text))) {
       if (node.text === 'require' && ts.isCallExpression(node.parent)) {
         refs.unresolved.push({ reason: 'dynamic-import', detail: 'require(…)' });
+        refs.positions.push({ kind: 'require' });
       } else onReference(node);
     }
     ts.forEachChild(node, visit);
@@ -347,11 +406,30 @@ function collectRefs(roots: readonly ts.Node[], namespaces: ReadonlySet<string>)
   return refs;
 }
 
-function edgesFor(env: ClosureEnv, file: string, nodes: readonly ts.Node[]): Edges {
+/** 证据单元 / 依赖节点 `文件#名字` 对应的声明节点：顶层声明按名字取（可能多个），否则按证据单元规则定位。 */
+function nodesOf(env: ClosureEnv, id: string): { readonly file: string; readonly nodes: readonly ts.Node[] } {
+  const at = id.indexOf('#');
+  const file = id.slice(0, at);
   const info = fileInfo(env, file);
-  if (!info) return { deps: [], unresolved: [] };
+  if (!info) throw new Error(`证据单元 ${id} 的文件读不到`);
+  const name = id.slice(at + 1);
+  return { file, nodes: info.decls.get(name) ?? [env.findNode(info.sf, id, name)] };
+}
+
+function nodeRefs(env: ClosureEnv, id: string): Refs {
+  let refs = env.refs.get(id);
+  if (!refs) {
+    const { file, nodes } = nodesOf(env, id);
+    refs = collectRefs(nodes, new Set(namespaceBindings(env, file).keys()));
+    env.refs.set(id, refs);
+  }
+  return refs;
+}
+
+function edgesFrom(env: ClosureEnv, file: string, refs: Refs): Edges {
+  const info = fileInfo(env, file);
+  if (!info) return { deps: [], ids: [], unresolved: [] };
   const namespaces = namespaceBindings(env, file);
-  const refs = collectRefs(nodes, new Set(namespaces.keys()));
   const deps = new Map<string, DeclRef>();
   const unresolved: Unresolved[] = refs.unresolved.map((u) => ({ file, ...u }));
   const miss = (detail: string) => unresolved.push({ file, reason: 'import-unresolvable', detail });
@@ -378,66 +456,208 @@ function edgesFor(env: ClosureEnv, file: string, nodes: readonly ts.Node[]): Edg
     else add(exportedDecl(env, target.file, member), `${namespace}.${member}`);
   }
   for (const { spec, name } of refs.imports) viaImport(spec, name);
-  return { deps: [...deps.values()], unresolved };
+  return { deps: [...deps.values()], ids: [...deps.keys()].sort(compareText), unresolved };
 }
 
-function declEdges(env: ClosureEnv, ref: DeclRef): Edges {
-  const id = idOf(ref);
+function nodeEdges(env: ClosureEnv, id: string): Edges {
   let edges = env.edges.get(id);
   if (!edges) {
-    edges = edgesFor(env, ref.file, fileInfo(env, ref.file)?.decls.get(ref.name) ?? []);
+    edges = edgesFrom(env, nodesOf(env, id).file, nodeRefs(env, id));
     env.edges.set(id, edges);
   }
   return edges;
 }
 
-function declText(env: ClosureEnv, ref: DeclRef): string {
-  const info = fileInfo(env, ref.file);
-  return (info?.decls.get(ref.name) ?? []).map((node) => node.getText(info!.sf)).join('\n');
+/** 节点的直接依赖（字典序）。 */
+export const edgeIds = (env: ClosureEnv, id: string): readonly string[] => nodeEdges(env, id).ids;
+/** 节点自身的解析不了的项。 */
+export const unresolvedOf = (env: ClosureEnv, id: string): readonly Unresolved[] => nodeEdges(env, id).unresolved;
+
+/** 依赖节点的声明文本（同名多声明按顺序拼接）。 */
+export function declText(env: ClosureEnv, id: string): string {
+  const { file, nodes } = nodesOf(env, id);
+  const info = fileInfo(env, file)!;
+  return nodes.map((node) => node.getText(info.sf)).join('\n');
 }
 
-/** 证据单元的依赖闭包（广度优先，最短链；到 MAX_DEPTH 层仍有未展开的依赖，记 depth-limit）。 */
-export function closureOf(env: ClosureEnv, unit: string): Closure {
-  const at = unit.indexOf('#');
-  const file = unit.slice(0, at);
-  const info = fileInfo(env, file);
-  if (!info) throw new Error(`证据单元 ${unit} 的文件读不到`);
-  const root = edgesFor(env, file, [env.findNode(info.sf, unit, unit.slice(at + 1))]);
-  const unresolved = new Map<string, Unresolved>();
-  const record = (items: readonly Unresolved[]) => {
-    for (const item of items) unresolved.set(`${item.file}|${item.reason}|${item.detail}`, item);
-  };
-  record(root.unresolved);
-  const deps = new Map<string, string>();
+/** 绑定清单的一行：声明内第 `at` 个引用，局部标识符解析到哪里（解析链每一跳都记）。 */
+export interface BindingLine {
+  readonly at: number;
+  readonly local: string;
+  readonly resolved: readonly string[];
+}
+
+/** 模块说明符 → 链：外部包 / 找不到的模块只记说明符，内部模块再跟随转导出每一跳。 */
+function viaChain(env: ClosureEnv, file: string, spec: string, imported: string): string[] {
+  const target = resolveModule(env, file, spec);
+  if (target === 'external') return [`external:${spec}#${imported}`];
+  if (target === 'missing') return [`missing:${spec}#${imported}`];
+  return [`import:${spec}`, ...exportedChain(env, target.file, imported).chain];
+}
+
+/**
+ * `ns.member` 的解析链：命名空间本身经过的每一跳（`import * as`、`export * as`、导入后再导出、星号 / 具名转导出、
+ * 进入边界目录）都要记，再接成员在目标模块里的链；只记最后的目标文件，中转文件改指就看不见。
+ */
+function memberChain(env: ClosureEnv, file: string, position: Extract<RefPosition, { kind: 'member' }>): string[] {
+  const binding = fileInfo(env, file)!.imports.get(position.ns);
+  const target = namespaceBindings(env, file).get(position.ns);
+  if (!binding || !target) return ['unresolved:namespace'];
+  if (typeof target === 'object' && 'missing' in target) return [`missing:${target.missing}`];
+  const module = resolveModule(env, file, binding.spec);
+  const viaNamespace =
+    binding.imported === '*' && typeof module === 'object'
+      ? [`import:${binding.spec}`, `namespace:${module.file}`]
+      : viaChain(env, file, binding.spec, binding.imported);
+  const last = viaNamespace.at(-1)?.replace(/^namespace:/, '') ?? '';
+  if (target === 'boundary') return [...viaNamespace, `boundary:${boundaryOf(env, last) ?? last}`];
+  return [...viaNamespace, ...exportedChain(env, target.file, position.member).chain];
+}
+
+function resolveRef(env: ClosureEnv, file: string, position: RefPosition): BindingLine['resolved'] {
+  const info = fileInfo(env, file)!;
+  switch (position.kind) {
+    case 'name': {
+      if (info.decls.has(position.name)) return [`decl:${file}#${position.name}`];
+      const binding = info.imports.get(position.name);
+      return binding ? viaChain(env, file, binding.spec, binding.imported) : [`global:${position.name}`];
+    }
+    case 'member':
+      return memberChain(env, file, position);
+    case 'escape':
+      return [`unresolved:${position.reason}`];
+    case 'dynamic':
+      return [
+        `dynamic:${position.spec}#${position.name}`,
+        ...(position.name === '*' ? [] : viaChain(env, file, position.spec, position.name)),
+      ];
+    case 'require':
+      return ['unresolved:require'];
+  }
+}
+
+function localOf(position: RefPosition): string {
+  switch (position.kind) {
+    case 'name':
+      return position.name;
+    case 'member':
+      return `${position.ns}.${position.member}`;
+    case 'escape':
+      return position.ns;
+    case 'dynamic':
+      return position.name;
+    case 'require':
+      return 'require';
+  }
+}
+
+/** 节点的完整绑定清单（引用位置按遍历顺序；空白与注释不影响序号）。 */
+export function bindingsOf(env: ClosureEnv, id: string): readonly BindingLine[] {
+  let lines = env.bindings.get(id);
+  if (!lines) {
+    const { file } = nodesOf(env, id);
+    lines = nodeRefs(env, id).positions.map((position, at) => ({
+      at,
+      local: localOf(position),
+      resolved: resolveRef(env, file, position),
+    }));
+    env.bindings.set(id, lines);
+  }
+  return lines;
+}
+
+export const compareText = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+
+export interface Walk {
+  /** 闭包节点 → 从哪个节点走到它（按访问顺序）。 */
+  readonly parents: ReadonlyMap<string, string>;
+  /** 最大层数（直接依赖为 1）。 */
+  readonly depth: number;
+  /** 第 MAX_DEPTH 层上、确有依赖落在实际访问集合 V(r) = {r} ∪ Cl(r) 之外的节点（depth-limit，F-072 D-8 ①）。 */
+  readonly limited: readonly string[];
+}
+
+/**
+ * 广度优先求闭包，同层按 `edgesOf` 给出的顺序（调用方保证字典序）。与旧算法的差别只在 depth-limit：旧算法在
+ * 处理第 MAX_DEPTH 层的节点时，只要它有“当时还没访问过”的依赖就报，同层先后会改变结果；这里等整张闭包走完，
+ * 只看依赖是否真的落在 V(r) 之外，因此与遍历顺序无关。
+ */
+export function walk(root: string, edgesOf: (id: string) => readonly string[]): Walk {
   const parents = new Map<string, string>();
-  const visited = new Set([unit]);
-  let frontier = root.deps.map((ref) => ({ ref, parent: unit }));
+  const visited = new Set([root]);
+  const atLimit: string[] = [];
+  let frontier = edgesOf(root).map((id) => ({ id, parent: root }));
   let depth = 0;
   let reached = 0;
   while (frontier.length) {
     depth++;
     const next: typeof frontier = [];
-    for (const { ref, parent } of frontier) {
-      const id = idOf(ref);
+    for (const { id, parent } of frontier) {
       if (visited.has(id)) continue;
       visited.add(id);
       reached = depth;
       parents.set(id, parent);
-      deps.set(id, declText(env, ref));
-      const edges = declEdges(env, ref);
-      record(edges.unresolved);
-      const fresh = edges.deps.filter((d) => !visited.has(idOf(d)));
-      if (depth < MAX_DEPTH) next.push(...fresh.map((d) => ({ ref: d, parent: id })));
-      else if (fresh.length)
-        record([{ file: ref.file, reason: 'depth-limit', detail: `${id} 在第 ${depth} 层仍有未展开的依赖` }]);
+      if (depth < MAX_DEPTH)
+        next.push(
+          ...edgesOf(id)
+            .filter((d) => !visited.has(d))
+            .map((d) => ({ id: d, parent: id })),
+        );
+      else atLimit.push(id);
     }
     frontier = next;
   }
+  const limited = atLimit.filter((id) => edgesOf(id).some((d) => !visited.has(d)));
+  return { parents, depth: reached, limited };
+}
+
+/** 从 walk 的 parents 还原最短链（含两端；根是第一层节点的 parent）。 */
+export function chainsOf(parents: ReadonlyMap<string, string>): Map<string, readonly string[]> {
   const chains = new Map<string, readonly string[]>();
-  for (const id of deps.keys()) {
+  for (const id of parents.keys()) {
     const chain = [id];
     for (let up = parents.get(id); up; up = parents.get(up)) chain.unshift(up);
     chains.set(id, chain);
   }
-  return { unit, deps, chains, depth: reached, unresolved: [...unresolved.values()] };
+  return chains;
+}
+
+/** 从一组根出发可达的全部节点（不设层数上限；登记图按它生成）。 */
+export function explore(env: ClosureEnv, roots: Iterable<string>): Set<string> {
+  const seen = new Set<string>();
+  const stack = [...roots];
+  while (stack.length) {
+    const id = stack.pop()!;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    stack.push(...edgeIds(env, id));
+  }
+  return seen;
+}
+
+/** 证据单元的依赖闭包（广度优先，最短链；depth-limit 的定义见 walk）。 */
+export function closureOf(env: ClosureEnv, unit: string): Closure {
+  const rootEdges = nodeEdges(env, unit);
+  const result = walk(unit, (id) => edgeIds(env, id));
+  const unresolved = new Map<string, Unresolved>();
+  const record = (items: readonly Unresolved[]) => {
+    for (const item of items) unresolved.set(`${item.file}|${item.reason}|${item.detail}`, item);
+  };
+  record(rootEdges.unresolved);
+  const deps = new Map<string, string>();
+  for (const id of result.parents.keys()) {
+    deps.set(id, declText(env, id));
+    record(unresolvedOf(env, id));
+  }
+  for (const id of result.limited) {
+    const file = id.slice(0, id.indexOf('#'));
+    record([{ file, reason: 'depth-limit', detail: `${id} 在第 ${MAX_DEPTH} 层仍有未展开的依赖` }]);
+  }
+  return {
+    unit,
+    deps,
+    chains: chainsOf(result.parents),
+    depth: result.depth,
+    unresolved: [...unresolved.values()],
+  };
 }
