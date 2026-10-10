@@ -198,6 +198,20 @@ describe('bindFormula：不可见引用（DEC-376①）', () => {
     expect(failure.issues.map((issue) => issue.code)).toEqual(['HIDDEN_FIELD']);
   });
 
+  it('P3-1：语法正确时 HIDDEN_FIELD 优先于类型错误与证明数量不符', () => {
+    const typeError = expectFailure(bindFormula(`盘点对象.${HIDDEN_FIELD_PLACEHOLDER} + AddDays(1,1)`, fresh()));
+    expect(typeError).toMatchObject({ code: 'FORMULA_INVALID', issues: [{ code: 'HIDDEN_FIELD' }] });
+    const mismatch = expectFailure(
+      bindFormula(`盘点对象.${HIDDEN_FIELD_PLACEHOLDER} + 盘点对象.${HIDDEN_FIELD_PLACEHOLDER}`, fresh({ proofs: [null] })),
+    );
+    expect(mismatch).toMatchObject({ code: 'FORMULA_INVALID', issues: [{ code: 'HIDDEN_FIELD' }, { code: 'HIDDEN_FIELD' }] });
+  });
+
+  it('函数不存在、参数个数不对仍先于 HIDDEN_FIELD（§1.5 前置检查）', () => {
+    const unknown = expectFailure(bindFormula(`盘点对象.${HIDDEN_FIELD_PLACEHOLDER} + NoSuchFn(1)`, fresh()));
+    expect(unknown).toMatchObject({ code: 'FORMULA_INVALID', issues: [{ code: 'UNKNOWN_FUNCTION' }] });
+  });
+
   it('语法错误仍先报语法错误', () => {
     const failure = expectFailure(bindFormula(`盘点对象.${HIDDEN_FIELD_PLACEHOLDER} +`, fresh()));
     expect(failure).toMatchObject({ code: 'FORMULA_INVALID', issues: [{ code: 'SYNTAX_ERROR' }] });
@@ -245,12 +259,13 @@ describe('bindFormula：裸词（DEC-374⑥，契约 §1.7）', () => {
   });
 });
 
-describe('renderFormula：ID → 名称', () => {
-  const names = new Map(FIELDS.map((field) => [field.id, field.name]));
+describe('renderFormula：bound（ID → 名称）', () => {
+  const bound = (stored: string, visibleFields: readonly { id: string; name: string }[] = FIELDS) =>
+    renderFormula(stored, { binding: 'bound', visibleFields });
 
   it('句柄渲染成当前名称，绑定按出现顺序；项目上下文为 context', () => {
     const stored = `${H2} * 2 + ${H1} + 盘点对象.盘点方案 + "${H1}"`;
-    expect(renderFormula(stored, { names })).toEqual({
+    expect(bound(stored)).toEqual({
       ok: true,
       text: '盘点对象.潜力 * 2 + 盘点对象.绩效 + 盘点对象.盘点方案 + "@{tr-field:11111111-1111-4111-8111-111111111111}"',
       bindings: [F2, F1, CONTEXT_BINDING],
@@ -258,58 +273,109 @@ describe('renderFormula：ID → 名称', () => {
   });
 
   it('查看人看不到的字段 → 占位符，绑定为 null', () => {
-    const result = renderFormula(`${H1} + ${H3}`, { names });
-    expect(result).toEqual({
+    expect(bound(`${H1} + ${H3}`)).toEqual({
       ok: true,
       text: `盘点对象.绩效 + 盘点对象.${HIDDEN_FIELD_PLACEHOLDER}`,
       bindings: [F1, null],
     });
   });
 
-  it('规范文本里残留的名称写法（legacy 数据）原样输出，绑定记为 null，不冒充已绑定', () => {
-    expect(renderFormula('盘点对象.绩效 + 1', { names })).toEqual({
-      ok: true,
-      text: '盘点对象.绩效 + 1',
-      bindings: [null],
-    });
+  it('bound 规范文本里出现名称写法是数据损坏：不原样输出（ok:false）', () => {
+    expect(bound('盘点对象.秘密 + 1')).toEqual({ ok: false });
   });
 
-  it('规范文本无法解析时返回 ok:false（由调用方按 legacy / 待修复显示处理）', () => {
-    expect(renderFormula('1 +', { names })).toMatchObject({ ok: false });
+  it('规范文本无法解析时返回 ok:false', () => {
+    expect(bound('1 +')).toEqual({ ok: false });
   });
 
   it('改名后渲染新名称；往返：渲染文本带全部绑定重新绑定，结果逐字等于原规范文本', () => {
     const stored = `${H2} * 2 + ${H1} + 盘点对象.盘点方案`;
-    const renamed = new Map([
-      [F1, '新绩效'],
-      [F2, '潜力'],
-    ]);
-    const rendered = renderFormula(stored, { names: renamed });
+    const renamed = [
+      { id: F1, name: '新绩效' },
+      { id: F2, name: '潜力' },
+    ];
+    const rendered = bound(stored, renamed);
     if (!rendered.ok) throw new Error('渲染失败');
     expect(rendered.text).toContain('盘点对象.新绩效');
-    const again = expectBound(
-      bindFormula(rendered.text, {
-        visibleFields: [...renamed].map(([id, name]) => ({ id, name })),
-        proofs: rendered.bindings,
-      }),
-    );
+    const again = expectBound(bindFormula(rendered.text, { visibleFields: renamed, proofs: rendered.bindings }));
     expect(again.stored).toBe(stored);
   });
 
   it('重名回显：A 改名为 B 后回显 B+B，带绑定重提仍绑定原 ID', () => {
-    const twins = new Map([
-      [F1, '潜力'],
-      [F2, '潜力'],
-    ]);
-    const rendered = renderFormula(`${H1} + ${H2}`, { names: twins });
+    const twins = [
+      { id: F1, name: '潜力' },
+      { id: F2, name: '潜力' },
+    ];
+    const rendered = bound(`${H1} + ${H2}`, twins);
     if (!rendered.ok) throw new Error('渲染失败');
     expect(rendered.text).toBe('盘点对象.潜力 + 盘点对象.潜力');
-    const again = expectBound(
-      bindFormula(rendered.text, {
-        visibleFields: [...twins].map(([id, name]) => ({ id, name })),
-        proofs: rendered.bindings,
-      }),
-    );
+    const again = expectBound(bindFormula(rendered.text, { visibleFields: twins, proofs: rendered.bindings }));
     expect(again.stored).toBe(`${H1} + ${H2}`);
+  });
+});
+
+describe('renderFormula：legacy / unresolved（契约 §1.4，DEC-376③；审查 P2-1）', () => {
+  const custom = [...FIELDS, { id: F3, name: '盘点方案' }];
+  const legacy = (text: string, extra: { allFieldsVisible?: boolean; visibleFields?: typeof FIELDS } = {}) =>
+    renderFormula(text, {
+      binding: 'legacy',
+      visibleFields: extra.visibleFields ?? FIELDS,
+      allFieldsVisible: extra.allFieldsVisible ?? false,
+    });
+
+  it('可见字段里有同名字段才原样显示，否则占位符；逐处绑定一律为 null（没有确定绑定）', () => {
+    expect(legacy('盘点对象.绩效 + 盘点对象.秘密 + 1')).toEqual({
+      ok: true,
+      text: `盘点对象.绩效 + 盘点对象.${HIDDEN_FIELD_PLACEHOLDER} + 1`,
+      bindings: [null, null],
+    });
+  });
+
+  it('同类：不存在的名称、空目录都渲染占位符，不原样输出', () => {
+    expect(legacy('盘点对象.秘密', { visibleFields: [] })).toMatchObject({
+      text: `盘点对象.${HIDDEN_FIELD_PLACEHOLDER}`,
+      bindings: [null],
+    });
+  });
+
+  it('历史公式 盘点对象.盘点方案：绑定为 null，不生成 "context" 证明；往返不会把自定义字段换成项目上下文', () => {
+    const rendered = legacy('盘点对象.盘点方案', { visibleFields: custom });
+    expect(rendered).toEqual({ ok: true, text: '盘点对象.盘点方案', bindings: [null] });
+    if (!rendered.ok) return;
+    // 不带当前目录版本：不会静默成功
+    const noVersion = bindFormula(rendered.text, { visibleFields: custom, proofs: rendered.bindings });
+    expect(noVersion).toMatchObject({ ok: false, failure: { code: 'FIELD_CATALOG_CHANGED' } });
+    // 带当前版本：要求显式选择
+    const withVersion = bindFormula(rendered.text, {
+      visibleFields: custom,
+      proofs: rendered.bindings,
+      catalogVersion: { current: CURRENT, submitted: CURRENT },
+    });
+    expect(withVersion).toMatchObject({
+      ok: false,
+      failure: { code: 'FORMULA_INVALID', issues: [{ code: 'RESERVED_PATH_AMBIGUOUS', choices: [CONTEXT_BINDING, F3] }] },
+    });
+  });
+
+  it('整段无法解析：只有“全部字段都可见”的查看人看原文，其他人只看到固定提示', () => {
+    expect(legacy('盘点对象.绩效 +', { allFieldsVisible: true })).toEqual({
+      ok: true,
+      text: '盘点对象.绩效 +',
+      bindings: [],
+      repairNeeded: true,
+    });
+    expect(legacy('盘点对象.绩效 +')).toEqual({
+      ok: true,
+      text: '〔公式待修复，无法显示〕',
+      bindings: [],
+      repairNeeded: true,
+    });
+  });
+
+  it('字符串里的“盘点对象.秘密”是普通文本，不替换', () => {
+    expect(legacy('"盘点对象.秘密" + 盘点对象.绩效')).toMatchObject({
+      text: '"盘点对象.秘密" + 盘点对象.绩效',
+      bindings: [null],
+    });
   });
 });

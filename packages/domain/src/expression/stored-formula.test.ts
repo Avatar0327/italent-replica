@@ -68,9 +68,21 @@ describe('词法：存储模式识别句柄，输入模式不认', () => {
     }
   });
 
-  it('占位符是专用词：输入与存储模式下的词法都不报非法字符', () => {
-    const kinds = tokenize(`盘点对象.${HIDDEN_FIELD_PLACEHOLDER}`).map((token) => token.kind);
+  it('占位符是专用词：F-082 路径（placeholders:true）的输入模式词法不报非法字符', () => {
+    const kinds = tokenize(`盘点对象.${HIDDEN_FIELD_PLACEHOLDER}`, { placeholders: true }).map((token) => token.kind);
     expect(kinds).toEqual(['identifier', 'dot', 'placeholder', 'eof']);
+  });
+
+  it('默认不识别占位符：B5 路径（开关关闭）逐字不变，仍报无法识别的字符（F-082 P3-2）', () => {
+    expect(() => tokenize(`盘点对象.${HIDDEN_FIELD_PLACEHOLDER}`)).toThrow(/无法识别的字符/);
+    const parsed = parseFormula(`盘点对象.${HIDDEN_FIELD_PLACEHOLDER} + 1`);
+    expect(parsed).toMatchObject({ ok: false, errors: [{ code: 'SYNTAX_ERROR' }] });
+    const validated = validateFormula(`盘点对象.${HIDDEN_FIELD_PLACEHOLDER} + 1`, { isKnownField: () => true });
+    expect(validated).toMatchObject({ ok: false, errors: [{ code: 'SYNTAX_ERROR' }] });
+  });
+
+  it('存储模式从不识别占位符（规范文本里不会有它）', () => {
+    expect(() => tokenize(HIDDEN_FIELD_PLACEHOLDER, { handles: true, placeholders: true })).toThrow();
   });
 });
 
@@ -94,14 +106,14 @@ describe('语法：句柄与占位符的位置', () => {
   });
 
   it('输入模式：占位符只能出现在“盘点对象.”之后', () => {
-    const ok = parseFormula(`盘点对象.${HIDDEN_FIELD_PLACEHOLDER} + 1`);
+    const ok = parseFormula(`盘点对象.${HIDDEN_FIELD_PLACEHOLDER} + 1`, { placeholders: true });
     expect(ok.ok).toBe(true);
     for (const source of [
       HIDDEN_FIELD_PLACEHOLDER,
       `考核结果.${HIDDEN_FIELD_PLACEHOLDER}`,
       `1 + ${HIDDEN_FIELD_PLACEHOLDER}`,
     ]) {
-      expect(parseFormula(source).ok, source).toBe(false);
+      expect(parseFormula(source, { placeholders: true }).ok, source).toBe(false);
     }
   });
 
@@ -152,6 +164,13 @@ describe('checkInputLimits：4000 字 / 800 词，与 parseFormula 同源', () =
     expect(checkInputLimits(at)).toEqual({ ok: true });
     expect(parseFormula(at).ok).toBe(true);
     expect(checkInputLimits(`${at} `)).toMatchObject({ ok: false, reason: 'TOO_LONG' });
+  });
+
+  it('带占位符的回显文本：placeholders:true 时按词数计限制（F082-3 的第 2 步）', () => {
+    const words = Array.from({ length: 401 }, () => `盘点对象.${HIDDEN_FIELD_PLACEHOLDER}`).join('+');
+    expect(checkInputLimits(words, { placeholders: true })).toMatchObject({ ok: false, reason: 'TOO_MANY_TOKENS' });
+    // 默认不识别占位符：词法错误交给后续语法检查
+    expect(checkInputLimits(words)).toEqual({ ok: true });
   });
 
   it('词法错误不在这里报：交给后续语法检查（返回 ok）', () => {
