@@ -74,6 +74,12 @@ import {
 const EMPLOYMENT_RECORD_OBJECT = 'TenantBase.EmploymentRecord';
 /** 一次同步最多处理的员工数（有界查询）；超出部分返回游标，按游标续同步。 */
 export const SYNC_LIMIT = 5000;
+
+/**
+ * 测试探针（F-043 第 2 轮，T-race 真 PG 交错用，生产为空）：对已挂接人员的写入已决定、但还没有加锁复核范围时调用，
+ * 测试在这里让组织侧把员工调出范围，验证写入前复核的是最新状态。
+ */
+export const syncProbe: { beforeWrite?: (employeeId: string) => Promise<void> } = {};
 /** 精细化下受限管理员不可添加 / 不新建人员的统一原因（与 requireCreatable 同一代码，R2-P2-7、R5-P2-1）。 */
 const NOT_AVAILABLE = 'PERSON_NOT_AVAILABLE';
 
@@ -344,6 +350,7 @@ async function refreshLinked(tx: Tx, ctx: Survey360Context, person: PersonRow, s
   const changed =
     Object.entries(values).some(([key, value]) => person[key as keyof PersonRow] !== value) || !person.emailLocked;
   if (!changed) return null;
+  await syncProbe.beforeWrite?.(person.employeeId ?? '');
   if (values.email && values.email.toLowerCase() !== person.email.toLowerCase()) {
     const other = await findPersonByEmail(tx, values.email);
     if (other && other.id !== person.id) return 'EMAIL_TAKEN' as const;

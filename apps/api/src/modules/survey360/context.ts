@@ -163,6 +163,12 @@ export async function loadAdmin(
   return { userId: tenant.userId, allActivities, people: scope.all ? null : scope };
 }
 
+/**
+ * 测试探针（F-043 第 2 轮，真 PG 交错用，生产为空）：写命令在路由层取得管理范围之后、进入命令执行器之前，
+ * 以及命令提交之后、回执裁剪之前各调用一次。
+ */
+export const commandProbe: { beforeCommand?: () => Promise<void>; beforePresent?: () => Promise<void> } = {};
+
 /** 路由层（命令前，含幂等重放）：直接复用 module-route-access 的 objectContext / button。 */
 async function routeNeed(c: C, deps: TenantRouteDeps, need: Need): Promise<ScopeBusinessContext> {
   const code = OBJECTS[need.object].code;
@@ -400,6 +406,7 @@ export async function write<T>(
   await routeFields(c, deps, route, options, input, also);
   const refs = options.refs;
   if (refs) await withTenant(deps.db, tenant.tenantId, (tx) => refs(tx, admin, input));
+  await commandProbe.beforeCommand?.();
   const result = await runCommand(deps.db, tenant, {
     id: c.req.header('idempotency-key'),
     fingerprint: { method: c.req.method, path: c.req.path, revision: expectedRevision, input },
@@ -411,6 +418,7 @@ export async function write<T>(
     },
   });
   const present = options.present ?? trimAs(options.need.object);
+  await commandProbe.beforePresent?.();
   const body = await withTenant(deps.db, tenant.tenantId, async (tx) => {
     const viewer = viewerOf(tx, deps, tenant, await loadAdmin(tx, deps, tenant, people, options.admin));
     await options.results?.(tx, viewer.admin, result.body as never);

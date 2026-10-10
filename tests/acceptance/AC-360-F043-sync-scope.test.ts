@@ -8,86 +8,12 @@
  * 反向用例断言具体值：范围外人员的 name / revision 前后各读一次，范围内的照常覆盖。
  */
 import { randomUUID } from 'node:crypto';
-import { survey360 } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { auditApi } from './AC-AUD-support.js';
-import { fullAccess, type PersonView, world360, type World360 } from './AC-360-support.js';
+import { scene as baseScene, type SyncPage } from './AC-360-F043-support.js';
 
 const testDb = useTestDb();
-const APP = survey360.SURVEY360_APP;
-
-interface SyncPage {
-  created: { personId: string; employeeId: string }[];
-  updated: { personId: string; employeeId: string }[];
-  conflicts: string[];
-  skipped: { employeeId: string; reason: string }[];
-  nextCursor: string | null;
-}
-
-async function hire(w: World360, name: string, orgId: string) {
-  const employee = await w.session.employee(name);
-  await w.session.business(
-    employee.id,
-    { kind: 'hire', mode: 'direct', effectiveDate: '2025-01-01', fields: { departmentId: orgId } },
-    employee.revision,
-  );
-  return employee;
-}
-
-async function rename(w: World360, employeeId: string, name: string) {
-  const res = await w.api.request('PATCH', `/api/tenant/personnel/employees/${employeeId}`, {
-    user: w.admin,
-    tenant: w.tenantId,
-    ifMatch: 0,
-    body: { name },
-  });
-  expect(res.status, await res.clone().text()).toBe(200);
-}
-
-/**
- * 甲部门（受限高级管理员的 360 人员范围）：范围内员工；乙部门：范围外员工。系统管理员先同步，两人都已挂接 360 人员。
- * 之后组织侧把两人都改了名——下一次同步会覆盖 360 端的名称。
- */
-async function scene(label: string, fine: boolean) {
-  const w = await world360(testDb().db, label, { access: fullAccess() });
-  const orgA = await w.session.org('甲部门', { establishedOn: '2025-01-01' });
-  const orgB = await w.session.org('乙部门', { establishedOn: '2025-01-01' });
-  const inside = await hire(w, '范围内员工', orgA.id);
-  const outside = await hire(w, '范围外员工', orgB.id);
-  await w.ok(w.request('POST', '/people/sync', { body: {} }));
-  const personOf = async (employeeId: string) =>
-    (await w.ok<{ items: PersonView[] }>(w.request('GET', '/people?pageSize=200'))).items.find(
-      (p) => p.employeeId === employeeId,
-    )!;
-  const insidePerson = await personOf(inside.id);
-  const outsidePerson = await personOf(outside.id);
-  const mou = await w.ok<{ id: string }>(
-    w.enterprise('POST', '/mous', {
-      ifMatch: 0,
-      body: { code: `mou-${label}`, name: '甲部门', orgRanges: [{ orgId: orgA.id, includeDescendants: true }] },
-    }),
-    201,
-  );
-  const admin = await w.member('受限高级管理员');
-  await w.appoint(admin, 'advanced');
-  await w.ok(w.enterprise('PUT', `/scopes/${admin}/${APP}`, { ifMatch: 0, body: { kind: 'mou', mouId: mou.id } }));
-  if (fine) {
-    const settings = await w.ok<{ revision: number }>(w.request('GET', '/settings'));
-    await w.ok(w.request('PUT', '/settings', { ifMatch: settings.revision, body: { finePermission: true } }));
-  }
-  await rename(w, inside.id, '范围内新名');
-  await rename(w, outside.id, '范围外新名');
-  const as = w.as(admin);
-  const sync = (key = randomUUID()) => as('POST', '/people/sync', { idempotencyKey: key, body: {} });
-  const current = async (id: string) => w.ok<PersonView>(w.request('GET', `/people/${id}`));
-  const audit = auditApi(testDb().db, '2026-10-01T02:00:00Z', { authorize: w.authorize });
-  const skippedLogs = async (viewer: string) =>
-    (await audit.dataChanges({ user: viewer, tenant: w.tenantId }, { limit: '100' })).items.filter(
-      (log) => log.action === 'survey360.person.sync_skipped',
-    );
-  return { w, admin, as, sync, current, insidePerson, outsidePerson, inside, outside, skippedLogs };
-}
+const scene = (label: string, fine: boolean) => baseScene(testDb().db, label, fine);
 
 describe('F-043 精细化下同步循环写入前按目标人员范围复核', () => {
   it('范围外已挂接的人员不被覆盖（名称与 revision 前后不变），范围内照常覆盖；回执里看不到范围外条目', async () => {
