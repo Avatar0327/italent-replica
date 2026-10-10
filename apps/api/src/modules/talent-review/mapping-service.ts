@@ -27,7 +27,9 @@ import {
   type ConfigSpec,
   type ConfigTable,
   lockConfigRow,
+  type OrderKey,
   registerConfigReferenceGuard,
+  visibleOrder,
   type WriteContext,
 } from './config-kit.js';
 
@@ -50,7 +52,7 @@ export const MAPPING: ConfigSpec<MappingView> = {
   label: '字段映射',
   table: M as unknown as ConfigTable,
   view: row,
-  orderBy: [],
+  orderBy: [['scene', M.scene]],
   duplicate: 'MAPPING_DUPLICATE',
   inUse: 'MAPPING_IN_USE',
   load: async (tx, tenantId, id) => {
@@ -78,10 +80,13 @@ registerConfigReferenceGuard('field', async (tx, tenantId, fieldId) => {
   return target ? 'FIELD_MAPPING' : null;
 });
 
+// 排序只用查看人看得到的字段（隐藏的 scene 不能影响顺序与分页）
+const ORDER: readonly OrderKey[] = [['scene', M.scene]];
+
 export async function listMappings(
   tx: Tx,
   tenantId: string,
-  query: { limit: number; offset: number; scene?: string; visible: SQL },
+  query: { limit: number; offset: number; scene?: string; visible: SQL; viewable: ReadonlySet<string> | undefined },
 ) {
   const filters = [eq(M.tenantId, tenantId), query.visible];
   if (query.scene !== undefined) filters.push(eq(M.scene, query.scene));
@@ -89,7 +94,7 @@ export async function listMappings(
     .select(row)
     .from(M)
     .where(and(...filters))
-    .orderBy(asc(M.scene), asc(M.createdAt), asc(M.id))
+    .orderBy(...visibleOrder(ORDER, query.viewable).map((column) => asc(column)), asc(M.id))
     .limit(query.limit)
     .offset(query.offset);
 }

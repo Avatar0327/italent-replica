@@ -31,9 +31,11 @@ import { registerTalentRoutes } from './modules/talent/routes.js';
 import { MODEL_IMAGE_BODY_LIMIT } from './modules/talent/model-image-format.js';
 import { registerIdpRoutes } from './modules/idp/routes.js';
 import { registerQualificationRoutes } from './modules/qualification/routes.js';
+import { registerEvaluationRoutes } from './modules/evaluation/routes.js';
 import { registerAvatarRoutes } from './modules/avatar/routes.js';
 import { registerTalentReviewRoutes } from './modules/talent-review/routes.js';
 import { registerSuccessionRoutes } from './modules/succession/routes.js';
+import { resolveFormulaIdBinding } from './modules/talent-review/formula-binding-switch.js';
 
 /** 租户业务模块：新模块只在此追加一行注册，不改其他装配逻辑。 */
 const TENANT_MODULES: readonly TenantRouteModule[] = [
@@ -51,6 +53,7 @@ const TENANT_MODULES: readonly TenantRouteModule[] = [
   registerTalentRoutes, // R3-T01 人才标准与指标库（TalentCenter）
   registerIdpRoutes, // R3-T07 个人发展计划（IDP）
   registerQualificationRoutes, // R3-T02 任职资格配置（Qualification）
+  registerEvaluationRoutes, // R3-T02 人才评定配置（TEvaluation；B1a 活动类型）
   registerAvatarRoutes, // F-058 账号头像与人员只读引用
   registerTalentReviewRoutes, // R3-T04 人才盘点（TalentReview；PR-A 准备度字典）
   registerSuccessionRoutes, // R3-T05 继任管理（SuccessionAndDevelopment；契约 PR 只占装配位）
@@ -68,9 +71,15 @@ export interface AppDeps {
   readonly tenantRoutes?: readonly TenantRouteModule[];
   /** 额外租户路由模块的声明登记表（F-039）：每条注册都必须在表里有声明，否则 createApp 抛错。 */
   readonly routePolicies?: readonly PolicyTable[];
+  /**
+   * F-082 总开关覆盖（契约 §10）：缺省取 FORMULA_ID_BINDING_DEFAULT。只允许测试通过依赖注入覆盖，且只能作用于
+   * useTestDb() 建的隔离测试库，否则 createApp 抛错。
+   */
+  readonly formulaIdBinding?: boolean;
 }
 
 export function createApp(deps: AppDeps = {}): Hono {
+  const formulaIdBinding = resolveFormulaIdBinding(deps);
   const app = new Hono();
   // F-039：根路由器套登记表，每条注册与中间件都登记，createApp 末尾校验「缺失即失败」并封闭
   const root = policed(app, ROOT_POLICIES);
@@ -116,7 +125,7 @@ export function createApp(deps: AppDeps = {}): Hono {
   });
 
   if (deps.db) {
-    root.route('/', createTenantRouter(deps.db, deps));
+    root.route('/', createTenantRouter(deps.db, deps, formulaIdBinding));
     // 平台运营层（R1-T17）：只认平台运营身份，与租户上下文和租户内权限互不相通
     root.route('/', createPlatformRouter(deps.db, deps.identity ?? denyAllIdentity, deps.clock ?? (() => new Date())));
   }
@@ -128,11 +137,12 @@ export function createApp(deps: AppDeps = {}): Hono {
   return app;
 }
 
-function createTenantRouter(db: Db, deps: AppDeps): Hono<TenantEnv> {
+function createTenantRouter(db: Db, deps: AppDeps, formulaIdBinding: boolean): Hono<TenantEnv> {
   const routeDeps: TenantRouteDeps = {
     db,
     authorize: deps.authorize ?? createPermissionAuthorizer(db, undefined, deps.clock),
     clock: deps.clock ?? (() => new Date()),
+    formulaIdBinding,
   };
   const router = policed(new Hono<TenantEnv>(), tenantPolicyTable(deps.routePolicies));
   // 所有租户接口都在 /api/tenant/ 之下，每次请求都重验身份、成员关系与租户状态

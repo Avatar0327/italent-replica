@@ -1,4 +1,24 @@
 {
+  "DELETE /api/tenant/talent-review/calc-rules/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "73fd3d876e71",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TalentReview/TalentReview.CalcRule/-"
+    ],
+    "trace": [
+      "btn:TalentReview.CalcRule#delete@detail",
+      "obj:TalentReview.CalcRule:delete"
+    ]
+  },
   "DELETE /api/tenant/talent-review/categories/:id": {
     "all": {
       "code": "NOT_FOUND",
@@ -57,6 +77,46 @@
     "trace": [
       "btn:TalentReview.Field#delete@detail",
       "obj:TalentReview.Field:delete"
+    ]
+  },
+  "DELETE /api/tenant/talent-review/matrices/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "1ac2f3b25681",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TalentReview/TalentReview.Matrix/-"
+    ],
+    "trace": [
+      "btn:TalentReview.Matrix#delete@detail",
+      "obj:TalentReview.Matrix:delete"
+    ]
+  },
+  "DELETE /api/tenant/talent-review/matrices/:id/ratio-groups/:groupId": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "1ac2f3b25681",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TalentReview/TalentReview.Matrix/-"
+    ],
+    "trace": [
+      "btn:TalentReview.Matrix#update@detail",
+      "obj:TalentReview.Matrix:update"
     ]
   },
   "DELETE /api/tenant/talent-review/module-grades/:id": {
@@ -137,6 +197,39 @@
     "trace": [
       "btn:TalentReview.ScoreRule#delete@detail",
       "obj:TalentReview.ScoreRule:delete"
+    ]
+  },
+  "GET /api/tenant/talent-review/calc-rules": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TalentReview.CalcRule"
+    ],
+    "scopeQueries": [
+      "scope:TalentReview/TalentReview.CalcRule/TalentReview.CalcRule.list"
+    ],
+    "trace": [
+      "obj:TalentReview.CalcRule:view"
+    ]
+  },
+  "GET /api/tenant/talent-review/calc-rules/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "73fd3d876e71",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TalentReview/TalentReview.CalcRule/TalentReview.CalcRule.detail"
+    ],
+    "trace": [
+      "obj:TalentReview.CalcRule:view"
     ]
   },
   "GET /api/tenant/talent-review/categories": {
@@ -236,6 +329,39 @@
     ],
     "trace": [
       "obj:TalentReview.Field:view"
+    ]
+  },
+  "GET /api/tenant/talent-review/matrices": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TalentReview.Matrix"
+    ],
+    "scopeQueries": [
+      "scope:TalentReview/TalentReview.Matrix/TalentReview.Matrix.list"
+    ],
+    "trace": [
+      "obj:TalentReview.Matrix:view"
+    ]
+  },
+  "GET /api/tenant/talent-review/matrices/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "1ac2f3b25681",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TalentReview/TalentReview.Matrix/TalentReview.Matrix.detail"
+    ],
+    "trace": [
+      "obj:TalentReview.Matrix:view"
     ]
   },
   "GET /api/tenant/talent-review/module-grades": {
@@ -384,6 +510,26 @@
       "obj:TalentReview.Settings:view"
     ]
   },
+  "PATCH /api/tenant/talent-review/calc-rules/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "73fd3d876e71",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TalentReview/TalentReview.CalcRule/-"
+    ],
+    "trace": [
+      "btn:TalentReview.CalcRule#update@detail",
+      "obj:TalentReview.CalcRule:update"
+    ]
+  },
   "PATCH /api/tenant/talent-review/categories/:id": {
     "all": {
       "code": "NOT_FOUND",
@@ -442,6 +588,46 @@
     "trace": [
       "btn:TalentReview.Field#update@detail",
       "obj:TalentReview.Field:update"
+    ]
+  },
+  "PATCH /api/tenant/talent-review/matrices/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "1ac2f3b25681",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TalentReview/TalentReview.Matrix/-"
+    ],
+    "trace": [
+      "btn:TalentReview.Matrix#update@detail",
+      "obj:TalentReview.Matrix:update"
+    ]
+  },
+  "PATCH /api/tenant/talent-review/matrices/:id/ratio-groups/:groupId": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "1ac2f3b25681",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TalentReview/TalentReview.Matrix/-"
+    ],
+    "trace": [
+      "btn:TalentReview.Matrix#update@detail",
+      "obj:TalentReview.Matrix:update"
     ]
   },
   "PATCH /api/tenant/talent-review/module-grades/:id": {
@@ -539,6 +725,19 @@
       "obj:TalentReview.Settings:update"
     ]
   },
+  "POST /api/tenant/talent-review/calc-rules": {
+    "all": {
+      "code": "REVISION_CONFLICT",
+      "error": "f12e1e2b793f",
+      "status": 409
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:TalentReview.CalcRule#create@list",
+      "obj:TalentReview.CalcRule:create"
+    ]
+  },
   "POST /api/tenant/talent-review/categories": {
     "all": {
       "code": "REVISION_CONFLICT",
@@ -576,6 +775,37 @@
     "trace": [
       "btn:TalentReview.Field#create@list",
       "obj:TalentReview.Field:create"
+    ]
+  },
+  "POST /api/tenant/talent-review/matrices": {
+    "all": {
+      "code": "REVISION_CONFLICT",
+      "error": "f12e1e2b793f",
+      "status": 409
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:TalentReview.Matrix#create@list",
+      "obj:TalentReview.Matrix:create"
+    ]
+  },
+  "POST /api/tenant/talent-review/matrices/:id/ratio-groups": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "0372f582d067",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "btn:TalentReview.Matrix#update@detail",
+      "obj:TalentReview.Matrix:update"
     ]
   },
   "POST /api/tenant/talent-review/module-grades": {

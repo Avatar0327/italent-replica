@@ -9,9 +9,11 @@ import type { Context, Hono } from 'hono';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
+import { getModuleViewableFields } from '../permission/module-access.js';
 import { pageQuery, parseBody, requireNew, revision, uuidParam } from '../talent/http.js';
 import {
   checkWriteFields,
+  codeOf,
   configEnvelope,
   configScopeSql,
   notFoundMessage,
@@ -141,11 +143,13 @@ function registerMappings(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     // 筛选字段同样受字段查看权约束：看不到 scene 的人不能用筛选还原场景
     if (scene !== undefined) await requireFilterVisible(deps, ctx, 'mapping', 'scene');
     const scope = await reviewScope(c, deps, ctx, 'mapping');
+    const viewable = await getModuleViewableFields(deps, ctx, codeOf('mapping'));
     const items = await withTenant(deps.db, ctx.tenantId, (tx) =>
       mappings.listMappings(tx, ctx.tenantId, {
         ...page,
         scene,
         visible: configScopeSql(scope, 'talent_review_field_mappings'),
+        viewable,
       }),
     );
     return c.json({ ...configEnvelope(page, scope), items: await trimReview(deps, ctx, 'mapping', items) });

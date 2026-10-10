@@ -20,6 +20,7 @@
       "TenantBase.ProfessionalTechnicalPostInfo",
       "TenantBase.ProjectExperience",
       "TenantBase.Punish",
+      "TenantBase.Qualification",
       "TenantBase.Skill",
       "TenantBase.Training",
       "TenantBase.VocationalQualificationInfo",
@@ -91,6 +92,7 @@
       "professional-technical-post",
       "project-experience",
       "punish",
+      "qualification",
       "skill",
       "training",
       "vocational-qualification"
@@ -274,6 +276,114 @@
         ],
         "scope": [
           "establishment visible*/check*",
+          "requestScope"
+        ]
+      }
+    },
+    "DELETE /api/tenant/evaluation/activity-cycles/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "evaluation",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "creator scope",
+          "requestScope"
+        ]
+      }
+    },
+    "DELETE /api/tenant/evaluation/activity-types/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "evaluation",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "creator scope",
+          "requestScope"
+        ]
+      }
+    },
+    "DELETE /api/tenant/evaluation/general-score-items/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "evaluation",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "creator scope",
           "requestScope"
         ]
       }
@@ -766,11 +876,14 @@
         "fieldsOut": [
           "org write()"
         ],
+        "guard": [
+          "personnel.subsetPolicy"
+        ],
         "object": [
           "personnel access"
         ],
         "objectOp": [
-          "TenantBase.Awards|TenantBase.Certificate|TenantBase.Education|TenantBase.EstimationResult|TenantBase.Family|TenantBase.Languageability|TenantBase.ProfessionalTechnicalPostInfo|TenantBase.ProjectExperience|TenantBase.Punish|TenantBase.Skill|TenantBase.Training|TenantBase.VocationalQualificationInfo|TenantBase.jobhistory:delete"
+          "TenantBase.Awards|TenantBase.Certificate|TenantBase.Education|TenantBase.EstimationResult|TenantBase.Family|TenantBase.Languageability|TenantBase.ProfessionalTechnicalPostInfo|TenantBase.ProjectExperience|TenantBase.Punish|TenantBase.Qualification|TenantBase.Skill|TenantBase.Training|TenantBase.VocationalQualificationInfo|TenantBase.jobhistory:delete"
         ],
         "scope": [
           "personnel access"
@@ -1310,6 +1423,42 @@
         ]
       }
     },
+    "DELETE /api/tenant/talent-review/calc-rules/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "talent-review",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "requestScope",
+          "visible()"
+        ]
+      }
+    },
     "DELETE /api/tenant/talent-review/categories/:id": {
       "edge": {
         "anonymous": {
@@ -1405,6 +1554,81 @@
         "command": [
           "revision(c)",
           "runCommand / runWrite"
+        ],
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "requestScope",
+          "visible()"
+        ]
+      }
+    },
+    "DELETE /api/tenant/talent-review/matrices/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "talent-review",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "requestScope",
+          "visible()"
+        ]
+      }
+    },
+    "DELETE /api/tenant/talent-review/matrices/:id/ratio-groups/:groupId": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "talent-review",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "writeFields"
         ],
         "fieldsOut": [
           "trimModuleResponse"
@@ -1992,6 +2216,24 @@
       "primitives": {}
     },
     "GET /api/survey360/report-link/reports/:reportId": {
+      "edge": {
+        "anonymous": {
+          "code": "NOT_FOUND",
+          "status": 404
+        },
+        "member": {
+          "code": "NOT_FOUND",
+          "status": 404
+        },
+        "nonMember": {
+          "code": "NOT_FOUND",
+          "status": 404
+        }
+      },
+      "module": "survey360-report-link",
+      "primitives": {}
+    },
+    "GET /api/survey360/report-link/reports/:reportId/download": {
       "edge": {
         "anonymous": {
           "code": "NOT_FOUND",
@@ -3549,6 +3791,177 @@
         ]
       }
     },
+    "GET /api/tenant/evaluation/activity-cycles": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "evaluation",
+      "primitives": {
+        "guard": [
+          "ev.filterFieldVisible"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "creator scope",
+          "requestScope",
+          "scope.all",
+          "scopeSql"
+        ]
+      }
+    },
+    "GET /api/tenant/evaluation/activity-cycles/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "evaluation",
+      "primitives": {
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "requestScope",
+          "scopeSql"
+        ]
+      }
+    },
+    "GET /api/tenant/evaluation/activity-types": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "evaluation",
+      "primitives": {
+        "guard": [
+          "ev.filterFieldVisible"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "creator scope",
+          "requestScope",
+          "scope.all",
+          "scopeSql"
+        ]
+      }
+    },
+    "GET /api/tenant/evaluation/activity-types/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "evaluation",
+      "primitives": {
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "requestScope",
+          "scopeSql"
+        ]
+      }
+    },
+    "GET /api/tenant/evaluation/general-score-items": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "evaluation",
+      "primitives": {
+        "guard": [
+          "ev.filterFieldVisible"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "creator scope",
+          "requestScope",
+          "scope.all",
+          "scopeSql"
+        ]
+      }
+    },
+    "GET /api/tenant/evaluation/general-score-items/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "evaluation",
+      "primitives": {
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "requestScope",
+          "scopeSql"
+        ]
+      }
+    },
     "GET /api/tenant/idp/approval-processes": {
       "edge": {
         "anonymous": {
@@ -4932,7 +5345,7 @@
           "personnel access"
         ],
         "objectOp": [
-          "TenantBase.Awards|TenantBase.Certificate|TenantBase.Education|TenantBase.EstimationResult|TenantBase.Family|TenantBase.Languageability|TenantBase.ProfessionalTechnicalPostInfo|TenantBase.ProjectExperience|TenantBase.Punish|TenantBase.Skill|TenantBase.Training|TenantBase.VocationalQualificationInfo|TenantBase.jobhistory:view"
+          "TenantBase.Awards|TenantBase.Certificate|TenantBase.Education|TenantBase.EstimationResult|TenantBase.Family|TenantBase.Languageability|TenantBase.ProfessionalTechnicalPostInfo|TenantBase.ProjectExperience|TenantBase.Punish|TenantBase.Qualification|TenantBase.Skill|TenantBase.Training|TenantBase.VocationalQualificationInfo|TenantBase.jobhistory:view"
         ],
         "scope": [
           "personScope",
@@ -4971,7 +5384,7 @@
           "personnel access"
         ],
         "objectOp": [
-          "TenantBase.Awards|TenantBase.Certificate|TenantBase.Education|TenantBase.EstimationResult|TenantBase.Family|TenantBase.Languageability|TenantBase.ProfessionalTechnicalPostInfo|TenantBase.ProjectExperience|TenantBase.Punish|TenantBase.Skill|TenantBase.Training|TenantBase.VocationalQualificationInfo|TenantBase.jobhistory:view"
+          "TenantBase.Awards|TenantBase.Certificate|TenantBase.Education|TenantBase.EstimationResult|TenantBase.Family|TenantBase.Languageability|TenantBase.ProfessionalTechnicalPostInfo|TenantBase.ProjectExperience|TenantBase.Punish|TenantBase.Qualification|TenantBase.Skill|TenantBase.Training|TenantBase.VocationalQualificationInfo|TenantBase.jobhistory:view"
         ],
         "scope": [
           "personnel access",
@@ -5012,7 +5425,7 @@
           "personnel access"
         ],
         "objectOp": [
-          "TenantBase.Awards|TenantBase.Certificate|TenantBase.Education|TenantBase.EstimationResult|TenantBase.Family|TenantBase.Languageability|TenantBase.ProfessionalTechnicalPostInfo|TenantBase.ProjectExperience|TenantBase.Punish|TenantBase.Skill|TenantBase.Training|TenantBase.VocationalQualificationInfo|TenantBase.jobhistory:view"
+          "TenantBase.Awards|TenantBase.Certificate|TenantBase.Education|TenantBase.EstimationResult|TenantBase.Family|TenantBase.Languageability|TenantBase.ProfessionalTechnicalPostInfo|TenantBase.ProjectExperience|TenantBase.Punish|TenantBase.Qualification|TenantBase.Skill|TenantBase.Training|TenantBase.VocationalQualificationInfo|TenantBase.jobhistory:view"
         ],
         "scope": [
           "personnel access",
@@ -5190,7 +5603,7 @@
           "personnel access"
         ],
         "objectOp": [
-          "TenantBase.Awards|TenantBase.Certificate|TenantBase.Education|TenantBase.EstimationResult|TenantBase.Family|TenantBase.Languageability|TenantBase.ProfessionalTechnicalPostInfo|TenantBase.ProjectExperience|TenantBase.Punish|TenantBase.Skill|TenantBase.Training|TenantBase.VocationalQualificationInfo|TenantBase.jobhistory:view"
+          "TenantBase.Awards|TenantBase.Certificate|TenantBase.Education|TenantBase.EstimationResult|TenantBase.Family|TenantBase.Languageability|TenantBase.ProfessionalTechnicalPostInfo|TenantBase.ProjectExperience|TenantBase.Punish|TenantBase.Qualification|TenantBase.Skill|TenantBase.Training|TenantBase.VocationalQualificationInfo|TenantBase.jobhistory:view"
         ],
         "scope": [
           "personScope",
@@ -5966,6 +6379,80 @@
         ]
       }
     },
+    "GET /api/tenant/succession/readiness": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "succession",
+      "primitives": {
+        "object": [
+          "objectContext"
+        ]
+      }
+    },
+    "GET /api/tenant/succession/records": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "succession",
+      "primitives": {
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "requestScope",
+          "scopeSql"
+        ]
+      }
+    },
+    "GET /api/tenant/succession/records/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "succession",
+      "primitives": {
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "requestScope",
+          "scopeSql"
+        ]
+      }
+    },
     "GET /api/tenant/survey360/activities": {
       "edge": {
         "anonymous": {
@@ -6276,7 +6763,68 @@
         ]
       }
     },
+    "GET /api/tenant/survey360/activities/:id/reports/:reportId/download": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "survey360",
+      "primitives": {
+        "object": [
+          "survey360 read/write(need)"
+        ],
+        "objectOp": [
+          "Survey360.Result:view"
+        ],
+        "scope": [
+          "scopeSql",
+          "survey360 visibility"
+        ],
+        "scopePoint": [
+          "survey360 point"
+        ]
+      }
+    },
     "GET /api/tenant/survey360/activities/:id/score-tables": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "survey360",
+      "primitives": {
+        "object": [
+          "survey360 read/write(need)"
+        ],
+        "scope": [
+          "scopeSql",
+          "survey360 visibility"
+        ],
+        "scopePoint": [
+          "survey360 point"
+        ]
+      }
+    },
+    "GET /api/tenant/survey360/activities/:id/score-tables/download": {
       "edge": {
         "anonymous": {
           "code": "UNAUTHENTICATED",
@@ -6701,6 +7249,69 @@
         ]
       }
     },
+    "GET /api/tenant/talent-review/calc-rules": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "talent-review",
+      "primitives": {
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "guard": [
+          "talentReview.filterFieldVisible"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "creator scope",
+          "requestScope",
+          "scope.all",
+          "scopeSql"
+        ]
+      }
+    },
+    "GET /api/tenant/talent-review/calc-rules/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "talent-review",
+      "primitives": {
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "requestScope",
+          "visible()"
+        ]
+      }
+    },
     "GET /api/tenant/talent-review/categories": {
       "edge": {
         "anonymous": {
@@ -6862,6 +7473,69 @@
       }
     },
     "GET /api/tenant/talent-review/fields/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "talent-review",
+      "primitives": {
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "requestScope",
+          "visible()"
+        ]
+      }
+    },
+    "GET /api/tenant/talent-review/matrices": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "talent-review",
+      "primitives": {
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "guard": [
+          "talentReview.filterFieldVisible"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "creator scope",
+          "requestScope",
+          "scope.all",
+          "scopeSql"
+        ]
+      }
+    },
+    "GET /api/tenant/talent-review/matrices/:id": {
       "edge": {
         "anonymous": {
           "code": "UNAUTHENTICATED",
@@ -7942,6 +8616,123 @@
         ]
       }
     },
+    "PATCH /api/tenant/evaluation/activity-cycles/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "evaluation",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "writeFields"
+        ],
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "creator scope",
+          "requestScope"
+        ]
+      }
+    },
+    "PATCH /api/tenant/evaluation/activity-types/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "evaluation",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "writeFields"
+        ],
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "creator scope",
+          "requestScope"
+        ]
+      }
+    },
+    "PATCH /api/tenant/evaluation/general-score-items/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "evaluation",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "writeFields"
+        ],
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "creator scope",
+          "requestScope"
+        ]
+      }
+    },
     "PATCH /api/tenant/idp/careers/:id": {
       "edge": {
         "anonymous": {
@@ -8501,11 +9292,14 @@
         "fieldsOut": [
           "org write()"
         ],
+        "guard": [
+          "personnel.subsetPolicy"
+        ],
         "object": [
           "personnel access"
         ],
         "objectOp": [
-          "TenantBase.Awards|TenantBase.Certificate|TenantBase.Education|TenantBase.EstimationResult|TenantBase.Family|TenantBase.Languageability|TenantBase.ProfessionalTechnicalPostInfo|TenantBase.ProjectExperience|TenantBase.Punish|TenantBase.Skill|TenantBase.Training|TenantBase.VocationalQualificationInfo|TenantBase.jobhistory:update"
+          "TenantBase.Awards|TenantBase.Certificate|TenantBase.Education|TenantBase.EstimationResult|TenantBase.Family|TenantBase.Languageability|TenantBase.ProfessionalTechnicalPostInfo|TenantBase.ProjectExperience|TenantBase.Punish|TenantBase.Qualification|TenantBase.Skill|TenantBase.Training|TenantBase.VocationalQualificationInfo|TenantBase.jobhistory:update"
         ],
         "scope": [
           "personnel access"
@@ -8916,6 +9710,50 @@
         ]
       }
     },
+    "PATCH /api/tenant/talent-review/calc-rules/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "talent-review",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "writeFields"
+        ],
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "guard": [
+          "talentReview.calcRuleFieldCatalog",
+          "talentReview.configRenameRequiresSeeAll"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "requestScope",
+          "scope.all",
+          "visible()"
+        ]
+      }
+    },
     "PATCH /api/tenant/talent-review/categories/:id": {
       "edge": {
         "anonymous": {
@@ -9040,6 +9878,90 @@
         "scope": [
           "requestScope",
           "scope.all",
+          "visible()"
+        ]
+      }
+    },
+    "PATCH /api/tenant/talent-review/matrices/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "talent-review",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "writeFields"
+        ],
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "guard": [
+          "talentReview.configRenameRequiresSeeAll",
+          "talentReview.matrixFieldReference",
+          "talentReview.matrixPositionRequiresSeeAll"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "requestScope",
+          "scope.all",
+          "visible()"
+        ]
+      }
+    },
+    "PATCH /api/tenant/talent-review/matrices/:id/ratio-groups/:groupId": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "talent-review",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "writeFields"
+        ],
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "requestScope",
           "visible()"
         ]
       }
@@ -12010,6 +12932,123 @@
         ]
       }
     },
+    "POST /api/tenant/evaluation/activity-cycles": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "evaluation",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "writeFields"
+        ],
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "creator scope",
+          "requestScope"
+        ]
+      }
+    },
+    "POST /api/tenant/evaluation/activity-types": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "evaluation",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "writeFields"
+        ],
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "creator scope",
+          "requestScope"
+        ]
+      }
+    },
+    "POST /api/tenant/evaluation/general-score-items": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "evaluation",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "writeFields"
+        ],
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "creator scope",
+          "requestScope"
+        ]
+      }
+    },
     "POST /api/tenant/idp/careers": {
       "edge": {
         "anonymous": {
@@ -13490,7 +14529,8 @@
           "assertSelfServiceFields"
         ],
         "guard": [
-          "personnel.selfServiceFields"
+          "personnel.selfServiceFields",
+          "personnel.subsetRequestPolicy"
         ],
         "precondition": [
           "requireSelf"
@@ -13534,11 +14574,14 @@
         "fieldsOut": [
           "org write()"
         ],
+        "guard": [
+          "personnel.subsetPolicy"
+        ],
         "object": [
           "personnel access"
         ],
         "objectOp": [
-          "TenantBase.Awards|TenantBase.Certificate|TenantBase.Education|TenantBase.EstimationResult|TenantBase.Family|TenantBase.Languageability|TenantBase.ProfessionalTechnicalPostInfo|TenantBase.ProjectExperience|TenantBase.Punish|TenantBase.Skill|TenantBase.Training|TenantBase.VocationalQualificationInfo|TenantBase.jobhistory:create"
+          "TenantBase.Awards|TenantBase.Certificate|TenantBase.Education|TenantBase.EstimationResult|TenantBase.Family|TenantBase.Languageability|TenantBase.ProfessionalTechnicalPostInfo|TenantBase.ProjectExperience|TenantBase.Punish|TenantBase.Qualification|TenantBase.Skill|TenantBase.Training|TenantBase.VocationalQualificationInfo|TenantBase.jobhistory:create"
         ],
         "scope": [
           "personnel access"
@@ -15293,6 +16336,48 @@
         ]
       }
     },
+    "POST /api/tenant/talent-review/calc-rules": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "talent-review",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "writeFields"
+        ],
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "guard": [
+          "talentReview.calcRuleFieldCatalog"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "requestScope",
+          "visible()"
+        ]
+      }
+    },
     "POST /api/tenant/talent-review/categories": {
       "edge": {
         "anonymous": {
@@ -15406,6 +16491,87 @@
         ],
         "guard": [
           "talentReview.pairRequiresUpdate"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "requestScope",
+          "visible()"
+        ]
+      }
+    },
+    "POST /api/tenant/talent-review/matrices": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "talent-review",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "writeFields"
+        ],
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "guard": [
+          "talentReview.matrixFieldReference"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "requestScope",
+          "visible()"
+        ]
+      }
+    },
+    "POST /api/tenant/talent-review/matrices/:id/ratio-groups": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "talent-review",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "writeFields"
+        ],
+        "fieldsOut": [
+          "trimModuleResponse"
         ],
         "object": [
           "objectContext"

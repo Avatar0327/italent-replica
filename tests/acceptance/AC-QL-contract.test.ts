@@ -11,10 +11,10 @@
  * - QualificationIndicatorPort 未登记时为 null，登记后取到同一实现（§6.2 (1)）。
  */
 import { sql, withTenant } from '@italent/db';
-import { auditObjectMeta, type ObjectDefinition } from '@italent/domain';
+import { auditObjectMeta, type ObjectDefinition, type QualificationIndicator } from '@italent/domain';
 import * as domain from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { auditObjectRegistered } from '../../apps/api/src/audit/visibility.js';
 import { scopeAppOf } from '../../apps/api/src/modules/permission/module-access.js';
 import { EMPTY_SCOPE, type ModuleScope } from '../../apps/api/src/modules/permission/scope-types.js';
@@ -224,13 +224,60 @@ describe('PR-0 ③：Qualification / TEvaluation 对象目录（Q-M0-132、DEC-3
 });
 
 describe('PR-0 ④：QualificationIndicatorPort 登记（设计 §6.2 (1)）', () => {
-  it('未登记为 null；登记后取到同一实现', () => {
+  // C1-3b（DEC-374④ 🟡）：targetTypePath 是“从根到本级的 ID 路径并附名称”，每一级 { id, name }，两者都返回。
+  // 编译期：下面的字面量必须满足端口类型（形状变了这里先编译失败）；运行期：形状由 AC-QL-indicator-port 对真实输出断言。
+  it('指标的 targetTypePath 形状：每一级 { id, name }（编译期契约，DEC-374⑤）', () => {
+    const sample: QualificationIndicator = {
+      targetId: 't',
+      code: 'c',
+      name: 'n',
+      targetTypeId: 'leaf',
+      targetTypePath: [
+        { id: 'root', name: '专业能力' },
+        { id: 'leaf', name: '编程' },
+      ],
+      evalMode: 'score',
+      gradeSchemeId: null,
+      weight: null,
+      targetValue: null,
+      abilities: [],
+      enabled: true,
+    };
+    expect(sample.targetTypePath.map((step) => Object.keys(step).sort())).toEqual([
+      ['id', 'name'],
+      ['id', 'name'],
+    ]);
+    expect(sample.targetTypePath.at(-1)?.id).toBe(sample.targetTypeId);
+  });
+
+  // 第 1 轮 P3-3：隔离模块状态，保住 P0 的登记契约（未装配为 null → 装配后可取 → 还原后为 null）
+  it('隔离的模块图里：未装配时为 null，装配后取到同一实现，换一份新模块图后又是 null', async () => {
+    vi.resetModules();
+    try {
+      const fresh = await import('@italent/domain');
+      expect(fresh.qualificationIndicatorPort()).toBeNull();
+      const { installQualificationIndicatorPort } =
+        await import('../../apps/api/src/modules/qualification/indicator-port.js');
+      installQualificationIndicatorPort();
+      const installed = fresh.qualificationIndicatorPort();
+      expect(installed).not.toBeNull();
+      expect(typeof installed!.indicators).toBe('function');
+      vi.resetModules();
+      expect((await import('@italent/domain')).qualificationIndicatorPort()).toBeNull();
+    } finally {
+      vi.resetModules();
+    }
+  });
+
+  // C1-3 起装配路由（createApp）即登记真实实现，本文件前面的用例已建过应用，所以不再断言“未登记为 null”（未登记 →
+  // 调用方报 INDICATOR_SOURCE_UNAVAILABLE 是 R3-T04 的约定，端口默认值仍是 null）；这里验登记函数的往返并还原。
+  it('登记后取到同一实现，之后还原', () => {
     const registry = domain as unknown as {
       qualificationIndicatorPort?: () => unknown;
       registerQualificationIndicatorPort?: (port: unknown) => void;
     };
     expect(typeof registry.qualificationIndicatorPort).toBe('function');
-    expect(registry.qualificationIndicatorPort!()).toBeNull();
+    const installed = registry.qualificationIndicatorPort!();
     const port = {
       indicators: async () => ({ ok: false }),
       listTargetTypes: async () => [],
@@ -238,5 +285,6 @@ describe('PR-0 ④：QualificationIndicatorPort 登记（设计 §6.2 (1)）', (
     };
     registry.registerQualificationIndicatorPort!(port);
     expect(registry.qualificationIndicatorPort!()).toBe(port);
+    if (installed) registry.registerQualificationIndicatorPort!(installed);
   });
 });

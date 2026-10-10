@@ -393,6 +393,24 @@ const PROJECTED: readonly (keyof Projections & IdpObject)[] = [
   'subProcess',
 ];
 
+/** 任职记录的字段投影与范围（阶段 dueDate 依据任职生效日时的源权限，E10）。 */
+async function employmentSources(deps: TenantRouteDeps, ctx: IdpContext): Promise<Projections['employment']> {
+  const record = MODULE_OBJECTS.employmentRecord.code;
+  return {
+    fields: (await deps.authorize({ ...ctx, action: 'object.view', resource: record, fields: [] }))
+      ? await getModuleViewableFields(deps, ctx, record)
+      : null,
+    scope: await resolveModuleScope(deps, ctx, undefined, record, `${record}.detail`),
+  };
+}
+
+/** 所属流程 / 模板的当前范围（含向下公开，与流程 / 模板详情同一判定）。 */
+async function configScopes(deps: TenantRouteDeps, ctx: IdpContext): Promise<Projections['config']> {
+  const scopeOf = (object: 'process' | 'template') =>
+    resolveModuleScope(deps, ctx, undefined, codeOf(object), `${codeOf(object)}.detail`);
+  return { ctx, process: await scopeOf('process'), template: await scopeOf('template') };
+}
+
 export async function planProjections(deps: TenantRouteDeps, ctx: IdpContext): Promise<Projections> {
   const entries = await Promise.all(PROJECTED.map(async (key) => [key, await projectionOf(deps, ctx, key)] as const));
   const scopes = await Promise.all(
@@ -401,28 +419,41 @@ export async function planProjections(deps: TenantRouteDeps, ctx: IdpContext): P
       return [kind, await resolveModuleScope(deps, ctx, undefined, code, `${code}.detail`)] as const;
     }),
   );
-  const record = MODULE_OBJECTS.employmentRecord.code;
-  const employment = {
-    fields: (await deps.authorize({ ...ctx, action: 'object.view', resource: record, fields: [] }))
-      ? await getModuleViewableFields(deps, ctx, record)
-      : null,
-    scope: await resolveModuleScope(deps, ctx, undefined, record, `${record}.detail`),
-  };
-  const configScope = (object: 'process' | 'template') =>
-    resolveModuleScope(deps, ctx, undefined, codeOf(object), `${codeOf(object)}.detail`);
+  const employment = await employmentSources(deps, ctx);
   return {
     ...Object.fromEntries(entries),
     employment,
     asOf: tenantLocalDate(deps.clock(), ctx.timezone),
     keyInfoScopes: Object.fromEntries(scopes),
-    config: { ctx, process: await configScope('process'), template: await configScope('template') },
+    config: await configScopes(deps, ctx),
   } as unknown as Projections;
+}
+
+/**
+ * 计划列表用到的投影（F-075，DEC-369）：列表只输出计划自身与阶段（stageSourcesOf 用子流程、任职源与所属流程 / 模板
+ * 范围），不输出目标 / 任务 / 回顾 / 个人综述 / 模板模块 / 指导 / 职业 / 轮岗等嵌套内容，所以不预取这些对象的查看权。
+ * 类型上只含这几项：列表路径误读其余投影会在编译时报错。
+ */
+export type ListProjections = Pick<Projections, 'plan' | 'subProcess' | 'employment' | 'asOf' | 'config'>;
+
+export async function planListProjections(deps: TenantRouteDeps, ctx: IdpContext): Promise<ListProjections> {
+  const [plan, subProcess] = await Promise.all([
+    projectionOf(deps, ctx, 'plan'),
+    projectionOf(deps, ctx, 'subProcess'),
+  ]);
+  return {
+    plan,
+    subProcess,
+    employment: await employmentSources(deps, ctx),
+    asOf: tenantLocalDate(deps.clock(), ctx.timezone),
+    config: await configScopes(deps, ctx),
+  };
 }
 
 /** 计划的所属流程 / 模板对查看人是否可见（范围内、使用用户或向下公开；不可见与不存在同样处理）。 */
 export async function configVisible(
   tx: Tx,
-  p: Projections,
+  p: Pick<Projections, 'config'>,
   plan: { readonly tenantId: string; readonly processId: string; readonly templateId: string },
 ) {
   const visible = async (table: 'idp_processes' | 'idp_templates', id: string, scope: ModuleScope) => {
@@ -444,7 +475,7 @@ export async function configVisible(
  */
 export async function stageSourcesOf(
   tx: Tx,
-  p: Projections,
+  p: Pick<Projections, 'config' | 'subProcess' | 'plan' | 'employment'>,
   plan: { readonly tenantId: string; readonly processId: string; readonly templateId: string },
 ): Promise<StageSources> {
   const { process } = await configVisible(tx, p, plan);

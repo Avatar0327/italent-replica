@@ -97,9 +97,7 @@
     },
     "scopeQueries": [],
     "trace": [
-      "btn:Survey360.Activity#viewAll@list",
       "btn:Survey360.Questionnaire#delete@detail",
-      "obj:Survey360.Activity:view",
       "obj:Survey360.Questionnaire:delete"
     ]
   },
@@ -117,9 +115,7 @@
     },
     "scopeQueries": [],
     "trace": [
-      "btn:Survey360.Activity#viewAll@list",
       "btn:Survey360.Questionnaire#delete@detail",
-      "obj:Survey360.Activity:view",
       "obj:Survey360.Questionnaire:delete"
     ]
   },
@@ -319,7 +315,49 @@
       "obj:Survey360.Result:view"
     ]
   },
+  "GET /api/tenant/survey360/activities/:id/reports/:reportId/download": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "ff79ec397a20",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/Survey360.Person.detail"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Result:view"
+    ]
+  },
   "GET /api/tenant/survey360/activities/:id/score-tables": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "ff79ec397a20",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/Survey360.Person.detail"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Result:view"
+    ]
+  },
+  "GET /api/tenant/survey360/activities/:id/score-tables/download": {
     "all": {
       "code": "NOT_FOUND",
       "error": "ff79ec397a20",
@@ -503,8 +541,6 @@
     ],
     "scopeQueries": [],
     "trace": [
-      "btn:Survey360.Activity#viewAll@list",
-      "obj:Survey360.Activity:view",
       "obj:Survey360.Questionnaire:view"
     ]
   },
@@ -522,8 +558,6 @@
     },
     "scopeQueries": [],
     "trace": [
-      "btn:Survey360.Activity#viewAll@list",
-      "obj:Survey360.Activity:view",
       "obj:Survey360.Questionnaire:view"
     ]
   },
@@ -536,8 +570,6 @@
     ],
     "scopeQueries": [],
     "trace": [
-      "btn:Survey360.Activity#viewAll@list",
-      "obj:Survey360.Activity:view",
       "obj:Survey360.Questionnaire:view"
     ]
   },
@@ -555,8 +587,6 @@
     },
     "scopeQueries": [],
     "trace": [
-      "btn:Survey360.Activity#viewAll@list",
-      "obj:Survey360.Activity:view",
       "obj:Survey360.Questionnaire:view"
     ]
   },
@@ -569,8 +599,6 @@
     ],
     "scopeQueries": [],
     "trace": [
-      "btn:Survey360.Activity#viewAll@list",
-      "obj:Survey360.Activity:view",
       "obj:Survey360.Settings:view"
     ]
   },
@@ -583,8 +611,6 @@
     ],
     "scopeQueries": [],
     "trace": [
-      "btn:Survey360.Activity#viewAll@list",
-      "obj:Survey360.Activity:view",
       "obj:Survey360.Settings:view"
     ]
   },
@@ -597,8 +623,6 @@
     ],
     "scopeQueries": [],
     "trace": [
-      "btn:Survey360.Activity#viewAll@list",
-      "obj:Survey360.Activity:view",
       "obj:Survey360.Settings:view"
     ]
   },
@@ -612,9 +636,7 @@
     "scopeQueries": [],
     "trace": [
       "btn:Survey360.Activity#create@list",
-      "btn:Survey360.Activity#viewAll@list",
-      "obj:Survey360.Activity:create",
-      "obj:Survey360.Activity:view"
+      "obj:Survey360.Activity:create"
     ]
   },
   "POST /api/tenant/survey360/activities/:id/appraisers/import": {
@@ -1115,9 +1137,7 @@
     "fieldQueries": [],
     "scopeQueries": [],
     "trace": [
-      "btn:Survey360.Activity#viewAll@list",
       "btn:Survey360.Questionnaire#create@list",
-      "obj:Survey360.Activity:view",
       "obj:Survey360.Questionnaire:create"
     ]
   },
@@ -1135,9 +1155,7 @@
     },
     "scopeQueries": [],
     "trace": [
-      "btn:Survey360.Activity#viewAll@list",
       "btn:Survey360.Questionnaire#create@list",
-      "obj:Survey360.Activity:view",
       "obj:Survey360.Questionnaire:create"
     ]
   },
@@ -1150,9 +1168,7 @@
     "fieldQueries": [],
     "scopeQueries": [],
     "trace": [
-      "btn:Survey360.Activity#viewAll@list",
       "btn:Survey360.Questionnaire#create@list",
-      "obj:Survey360.Activity:view",
       "obj:Survey360.Questionnaire:create"
     ]
   },
@@ -1170,9 +1186,7 @@
     },
     "scopeQueries": [],
     "trace": [
-      "btn:Survey360.Activity#viewAll@list",
       "btn:Survey360.Questionnaire#enable@detail",
-      "obj:Survey360.Activity:view",
       "obj:Survey360.Questionnaire:update"
     ]
   },
@@ -1190,9 +1204,7 @@
     },
     "scopeQueries": [],
     "trace": [
-      "btn:Survey360.Activity#viewAll@list",
       "btn:Survey360.Questionnaire#create@list",
-      "obj:Survey360.Activity:view",
       "obj:Survey360.Questionnaire:create"
     ]
   },
@@ -1205,9 +1217,7 @@
     "fieldQueries": [],
     "scopeQueries": [],
     "trace": [
-      "btn:Survey360.Activity#viewAll@list",
       "btn:Survey360.Settings#create@list",
-      "obj:Survey360.Activity:view",
       "obj:Survey360.Settings:create"
     ]
   },
@@ -1304,9 +1314,7 @@
     },
     "scopeQueries": [],
     "trace": [
-      "btn:Survey360.Activity#viewAll@list",
       "btn:Survey360.Questionnaire#update@detail",
-      "obj:Survey360.Activity:view",
       "obj:Survey360.Questionnaire:update"
     ]
   },
@@ -1324,9 +1332,7 @@
     },
     "scopeQueries": [],
     "trace": [
-      "btn:Survey360.Activity#viewAll@list",
       "btn:Survey360.Questionnaire#update@detail",
-      "obj:Survey360.Activity:view",
       "obj:Survey360.Questionnaire:update"
     ]
   },
@@ -1339,9 +1345,7 @@
     ],
     "scopeQueries": [],
     "trace": [
-      "btn:Survey360.Activity#viewAll@list",
       "btn:Survey360.Settings#update@detail",
-      "obj:Survey360.Activity:view",
       "obj:Survey360.Settings:update"
     ]
   },
@@ -1359,9 +1363,7 @@
     },
     "scopeQueries": [],
     "trace": [
-      "btn:Survey360.Activity#viewAll@list",
       "btn:Survey360.Settings#update@detail",
-      "obj:Survey360.Activity:view",
       "obj:Survey360.Settings:update"
     ]
   },
@@ -1374,9 +1376,7 @@
     "fieldQueries": [],
     "scopeQueries": [],
     "trace": [
-      "btn:Survey360.Activity#viewAll@list",
       "btn:Survey360.Settings#finePermission@list",
-      "obj:Survey360.Activity:view",
       "obj:Survey360.Settings:update"
     ]
   }

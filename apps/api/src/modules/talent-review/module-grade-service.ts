@@ -84,7 +84,7 @@ export const MODULE_GRADE: ConfigSpec<ModuleGradeView> = {
   label: '模块等级',
   table: G as unknown as ConfigTable,
   view: row,
-  orderBy: [G.name],
+  orderBy: [['name', G.name]],
   duplicate: 'MODULE_GRADE_DUPLICATE',
   inUse: 'MODULE_GRADE_IN_USE',
   load: async (tx, tenantId, id) => {

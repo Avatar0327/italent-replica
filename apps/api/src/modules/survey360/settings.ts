@@ -3,6 +3,7 @@
  * 在权限管理“用户授权”里授予（身份 × 应用 Survey360），见 context.ts。
  */
 import { eq, sql, survey360Roles, survey360Settings, type Tx } from '@italent/db';
+import { advisoryLock, asUuid } from '../../advisory-lock.js';
 import { survey360 } from '@italent/domain';
 import type { Hono } from 'hono';
 import { z } from 'zod';
@@ -56,8 +57,14 @@ async function loadSettings(tx: Tx) {
 
 const VIEW = { object: 'settings' } as const;
 
+/** 评价角色新增的租户级串行化（角色数量上限检查）。 */
+export async function lockRoleSettings(tx: Tx, tenantId: string): Promise<void> {
+  await advisoryLock(tx, asUuid(tenantId), ':survey360-roles');
+}
+
 export function registerSettingsRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
-  module.get('/settings', (c) => read(c, deps, VIEW, (tx) => loadSettings(tx)));
+  // 设置 / 评价角色入口只读写设置与角色，不用活动 / 人员可见范围：不预取 Activity 查看权与“全部活动”按钮（F-075，DEC-369）
+  module.get('/settings', (c) => read(c, deps, VIEW, (tx) => loadSettings(tx), undefined, 'identity'));
   module.put('/settings', (c) =>
     write(
       c,
@@ -87,7 +94,11 @@ export function registerSettingsRoutes(module: Hono<TenantEnv>, deps: TenantRout
         });
         return after;
       },
-      { need: { object: 'settings', operation: 'update', button: BUTTONS.finePermission }, fields: 'body' },
+      {
+        need: { object: 'settings', operation: 'update', button: BUTTONS.finePermission },
+        fields: 'body',
+        admin: 'identity',
+      },
     ),
   );
   registerRoleRoutes(module, deps);
@@ -96,11 +107,18 @@ export function registerSettingsRoutes(module: Hono<TenantEnv>, deps: TenantRout
 function registerRoleRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   // 评价角色属“设置”对象：查看要设置的查看权并按其字段裁剪（第 3 轮取消“持有人即可读”的选择器例外）
   module.get('/roles', (c) =>
-    read(c, deps, VIEW, async (tx, _admin, tenant) => {
-      await ensureBuiltinRoles(tx, tenant.tenantId);
-      const items = await tx.select().from(survey360Roles).orderBy(survey360Roles.sort, survey360Roles.createdAt);
-      return { items: items.map(roleView) };
-    }),
+    read(
+      c,
+      deps,
+      VIEW,
+      async (tx, _admin, tenant) => {
+        await ensureBuiltinRoles(tx, tenant.tenantId);
+        const items = await tx.select().from(survey360Roles).orderBy(survey360Roles.sort, survey360Roles.createdAt);
+        return { items: items.map(roleView) };
+      },
+      undefined,
+      'identity',
+    ),
   );
   const body = z.strictObject({ name: text(50), displayText: optionalText(50) });
   module.post('/roles', (c) =>
@@ -110,7 +128,7 @@ function registerRoleRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps): voi
       body,
       async (tx, ctx, input) => {
         requireNewObject(ctx);
-        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${ctx.tenantId}:survey360-roles`}, 0))`);
+        await lockRoleSettings(tx, ctx.tenantId);
         const [count] = rows<{ n: number }>(await tx.execute(sql`SELECT count(*)::int AS n FROM survey360_roles`));
         if (count!.n >= survey360.SURVEY360_LIMITS.tenantRoles)
           fail('VALIDATION_FAILED', '评价角色最多 90 个', 'TOO_MANY_ROLES');
@@ -128,7 +146,7 @@ function registerRoleRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps): voi
         });
         return view;
       },
-      { need: { object: 'settings', operation: 'create' }, fields: 'body', status: 201 },
+      { need: { object: 'settings', operation: 'create' }, fields: 'body', status: 201, admin: 'identity' },
     ),
   );
   module.put('/roles/:id', (c) => {
@@ -161,7 +179,7 @@ function registerRoleRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps): voi
         });
         return roleView(saved!);
       },
-      { need: { object: 'settings', operation: 'update' }, fields: 'body' },
+      { need: { object: 'settings', operation: 'update' }, fields: 'body', admin: 'identity' },
     );
   });
 }

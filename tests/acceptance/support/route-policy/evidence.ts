@@ -1,38 +1,59 @@
 /**
  * 显式表的证据校验（F-039 PR-A 第 4 轮，DEC-348② 补充 1）：每条义务的证据指向源码单元（函数 / 常量 / 方法 /
- * 某条注册的处理函数），锚点必须出现在单元里；每个单元登记一份规范化摘要（required/digests.ts），单元一改摘要
+ * 某条注册的处理函数），锚点必须出现在单元里；每个单元登记一份规范化摘要（required/digests/units.ts），单元一改摘要
  * 就不一致（EVIDENCE_STALE），开发须复核受影响的义务后再更新摘要（`ROUTE_POLICY_UPDATE_DIGESTS=1` 只改摘要，
  * 不改义务）。证据覆盖强制调用点、授权实现与决定实参的常量三处，任一处变化都要求复核。
  * 锚点存在不是语义证明：权限键与源码实参是否一致由人工审定。
  * PR-B2（设计 B-02 / B-04）：每个证据单元再求依赖闭包（evidence-closure.ts，算到不动点），依赖摘要变化或依赖集合增减
  * 报 EVIDENCE_STALE（明细写依赖链与受影响义务），解析不了的报 EVIDENCE_CLOSURE_UNRESOLVED；R9 去重键加调用点；
  * 选择器绑定的两张表（branch-inputs.ts / domains.ts）的证据同样进摘要与闭包。
+ * F-072 PR-1：依赖登记改为“节点摘要表 + 直接依赖图”（required/digests/，结构见 evidence-graph.ts），闭包由登记图推出；
+ * 图变或绑定指纹变而闭包不变也报 EVIDENCE_STALE；旧 required/digests.ts 回来报 LEGACY_DIGESTS_PRESENT。
  */
 import { createHash } from 'node:crypto';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import ts from 'typescript';
 import type { Finding } from './compare.js';
 import { BRANCH_BINDINGS, type BranchBindings } from './domains.js';
 import { type BoundaryEntry, EVIDENCE_BOUNDARY, inBoundary } from './evidence-boundary.js';
 import {
+  type BindingLine,
+  bindingsOf,
   type Closure,
+  type ClosureEnv,
   closureOf,
+  compareText,
   createClosureEnv,
+  declText,
+  edgeIds,
+  explore,
   type SourceReader,
   sourceFileOf,
   type Unresolved,
 } from './evidence-closure.js';
-import { DEPENDENCIES, DIGESTS } from './required/digests.js';
+import { closureFromGraph, expandGraph, type Registry, renderRegistry } from './evidence-graph.js';
+import { DIGESTS, GRAPH, NODE_DIGESTS, UNIT_BINDINGS } from './required/digests/index.js';
 import type { Digests, Evidence, Obligation, RequiredTable } from './required/types.js';
 
 export type { SourceReader } from './evidence-closure.js';
 
-/** 证据单元 → 依赖单元 → 依赖摘要（required/digests.ts 的 DEPENDENCIES 段，B-02）。 */
+/** 证据单元 → 依赖单元 → 依赖摘要（B-02 的平铺闭包；已不再登记，仅供等价核对与报告）。 */
+export { renderRegistry };
 export type Dependencies = Readonly<Record<string, Readonly<Record<string, string>>>>;
 
+/** 当前提交的登记（required/digests/）。 */
+export const REGISTRY: Registry = {
+  units: DIGESTS,
+  unitBindings: UNIT_BINDINGS,
+  nodes: NODE_DIGESTS,
+  graph: expandGraph(GRAPH),
+};
+
 const ROOT = process.cwd();
-const DIGESTS_PATH = path.resolve(ROOT, 'tests/acceptance/support/route-policy/required/digests.ts');
+const REQUIRED_DIR = 'tests/acceptance/support/route-policy/required';
+const DIGESTS_DIR = path.resolve(ROOT, REQUIRED_DIR, 'digests');
+const LEGACY_DIGESTS = `${REQUIRED_DIR}/digests.ts`;
 const cache = new Map<string, string>();
 
 /** 仓库相对路径读源码（缓存）。 */
@@ -189,9 +210,12 @@ const digestIn = (digests: Digests, unit: string) => {
 
 export interface EvidenceOptions {
   readonly read?: SourceReader;
+  /** 证据单元摘要（缺省 = 登记里的 units）。 */
   readonly digests?: Digests;
-  /** 依赖闭包的登记（缺省 = required/digests.ts 的 DEPENDENCIES）。 */
-  readonly dependencies?: Dependencies;
+  /** 依赖闭包的登记（缺省 = required/digests/）。 */
+  readonly registry?: Registry;
+  /** 旧 digests.ts 守卫检查的仓库根（缺省 = 当前目录；全表校验时带出）。 */
+  readonly legacyRoot?: string;
   /** 闭包边界（缺省 = evidence-boundary.ts）。 */
   readonly boundary?: readonly BoundaryEntry[];
   /** 选择器绑定两张表的证据（缺省 = 真实登记；false = 不校验，供夹具）。 */
@@ -292,7 +316,7 @@ export function currentDigestTable(
   return byFile;
 }
 
-const envs = new WeakMap<SourceReader, Map<readonly BoundaryEntry[], ReturnType<typeof createClosureEnv>>>();
+const envs = new WeakMap<SourceReader, Map<readonly BoundaryEntry[], ClosureEnv>>();
 /** 同一个读取器 + 同一份边界复用解析与边的缓存（repoSource 全程不变；测试里打补丁的读取器各用各的）。 */
 function closureEnvFor(read: SourceReader, boundary: readonly BoundaryEntry[]) {
   let byBoundary = envs.get(read);
@@ -371,40 +395,59 @@ export function closureReports(
   );
 }
 
-/** 只重写摘要文件（复核义务之后；不改义务）：证据单元摘要 + 依赖闭包登记。 */
-export function writeDigests(table: RequiredTable): void {
-  const byFile = new Map<string, string[]>();
-  for (const [unit, digest] of Object.entries(currentDigests(table))) {
-    const [file, name] = splitUnit(unit);
-    byFile.set(file, [...(byFile.get(file) ?? []), `    '${name.replaceAll("'", "\\'")}': '${digest}',`]);
+const sha = (text: string) => createHash('sha256').update(text).digest('hex').slice(0, 12);
+const formatBinding = (line: BindingLine) => `${line.at}:${line.local} → ${line.resolved.join(' → ')}`;
+/** 绑定指纹：按序的“局部标识符 → 解析链”清单的摘要；别名交换、转导出改指、遮蔽全局都会改变它（F-072 §2.3.2）。 */
+const bindingDigest = (lines: readonly BindingLine[]) => sha(lines.map(formatBinding).join('\n'));
+
+/** 当前源码算出的登记：全部被引用的单元 + 可达依赖（不设层数上限，层数上限只作用于闭包推导）。 */
+export function currentRegistry(
+  table: RequiredTable,
+  read: SourceReader = repoSource,
+  branch: BranchBindings | false = BRANCH_BINDINGS,
+  boundary: readonly BoundaryEntry[] = EVIDENCE_BOUNDARY,
+): Registry {
+  const env = closureEnvFor(read, boundary);
+  const roots = [...usesOf(table, branch).keys()].sort(compareText);
+  const graph: Record<string, readonly string[]> = {};
+  const targets = new Set<string>();
+  for (const id of explore(env, roots)) {
+    const edges = edgeIds(env, id);
+    if (edges.length) graph[id] = edges;
+    for (const dep of edges) targets.add(dep);
   }
-  const lines = [...byFile].flatMap(([file, names]) => [`  '${file}': {`, ...names, '  },']);
-  const deps = Object.entries(currentDependencies(table)).flatMap(([unit, entries]) => [
-    `  '${unit.replaceAll("'", "\\'")}': {`,
-    ...Object.entries(entries).map(([dep, digest]) => `    '${dep.replaceAll("'", "\\'")}': '${digest}',`),
-    '  },',
-  ]);
-  writeFileSync(
-    DIGESTS_PATH,
-    [
-      '/**',
-      ' * 证据单元的规范化摘要与依赖闭包登记（evidence.ts）。单元一改即 EVIDENCE_STALE：先复核引用它的义务，再用',
-      ' * `ROUTE_POLICY_UPDATE_DIGESTS=1` 重写本文件（只改摘要，不改义务），摘要 diff 随 PR 评审。',
-      ' * DEPENDENCIES：证据单元 → 依赖单元 → 依赖摘要（B-02，闭包算到不动点；边界见 evidence-boundary.ts）。',
-      ' */',
-      '/* eslint-disable max-len -- 生成文件，单元键含完整路由路径 */',
-      "import type { Digests } from './types.js';",
-      '',
-      'export const DIGESTS: Digests = {',
-      ...lines,
-      '};',
-      '',
-      'export const DEPENDENCIES: Readonly<Record<string, Readonly<Record<string, string>>>> = {',
-      ...deps,
-      '};',
-      '',
-    ].join('\n'),
+  const nodes = Object.fromEntries(
+    [...targets].map((id) => [id, [digestOf(declText(env, id)), bindingDigest(bindingsOf(env, id))] as const]),
   );
+  const unitBindings = Object.fromEntries(roots.map((unit) => [unit, bindingDigest(bindingsOf(env, unit))]));
+  return { units: currentDigestTable(table, read, branch), unitBindings, nodes, graph };
+}
+
+/** 只重写登记文件（复核义务之后；不改义务）：required/digests/ 下的 units.ts、nodes.ts、graph/*。 */
+export function writeDigests(table: RequiredTable): void {
+  const files = renderRegistry(currentRegistry(table));
+  mkdirSync(path.join(DIGESTS_DIR, 'graph'), { recursive: true });
+  for (const name of readdirSync(path.join(DIGESTS_DIR, 'graph'))) {
+    if (!(`graph/${name}` in files)) rmSync(path.join(DIGESTS_DIR, 'graph', name));
+  }
+  for (const [name, text] of Object.entries(files)) {
+    const target = path.join(DIGESTS_DIR, name);
+    if (!existsSync(target) || readFileSync(target, 'utf8') !== text) writeFileSync(target, text);
+  }
+}
+
+/** 旧的平铺 required/digests.ts 回来了（合并冲突时被保留 / 复活）：保留删除，用新生成器重算。 */
+export function legacyDigestsFindings(root: string = ROOT): Finding[] {
+  if (!existsSync(path.join(root, LEGACY_DIGESTS))) return [];
+  return [
+    {
+      route: '*',
+      code: 'LEGACY_DIGESTS_PRESENT',
+      detail:
+        `${LEGACY_DIGESTS} 不应存在：证据依赖登记已改为 required/digests/ 目录（F-072）。` +
+        '合并时保留删除（git rm），再用 ROUTE_POLICY_UPDATE_DIGESTS=1 重新生成。',
+    },
+  ];
 }
 
 const labels = (uses: readonly Use[]) => uses.map((use) => use.label).join('；');
@@ -415,21 +458,50 @@ const MODULES = 'apps/api/src/modules/';
 const reportable = (item: Unresolved, boundary: readonly BoundaryEntry[]) =>
   item.file.startsWith(MODULES) && !inBoundary(item.file, boundary);
 
+/** 闭包没变时，图的直接边或绑定指纹还是变了（重绑定、别名交换、转导出改指、遮蔽全局）：逐节点说明。 */
+function graphChanges(env: ClosureEnv, closure: Closure, registry: Registry): string[] {
+  const out: string[] = [];
+  const unit = closure.unit;
+  for (const node of [unit, ...[...closure.deps.keys()].sort(compareText)]) {
+    const now = edgeIds(env, node);
+    const was = registry.graph[node] ?? [];
+    const added = now.filter((dep) => !was.includes(dep)).map((dep) => `+${dep}`);
+    const removed = was.filter((dep) => !now.includes(dep)).map((dep) => `-${dep}`);
+    const chain = closure.chains.get(node)?.join(' → ');
+    const via = chain ? `（链：${chain}）` : '';
+    if (added.length || removed.length) {
+      out.push(`节点 ${node} 的直接依赖变化（闭包未变）：${[...added, ...removed].join('、')}${via}`);
+    }
+    const lines = bindingsOf(env, node);
+    const registered = node === unit ? registry.unitBindings[node] : registry.nodes[node]?.[1];
+    if (registered !== undefined && registered !== bindingDigest(lines)) {
+      const list = lines.map(formatBinding).join(' | ');
+      out.push(`节点 ${node} 绑定变化（当前绑定清单：${list || '空'}；旧清单用 explain-graph-diff 查看）${via}`);
+    }
+  }
+  return out;
+}
+
 function checkDependencies(
+  env: ClosureEnv,
   closure: Closure,
-  registered: Readonly<Record<string, string>> | undefined,
+  registry: Registry,
   uses: readonly Use[],
 ): { stale?: string; unresolved: Unresolved[] } {
   const current = depDigests(closure);
   const changes: string[] = [];
   const chain = (dep: string) => closure.chains.get(dep)?.join(' → ') ?? dep;
-  if (!registered) changes.push('依赖闭包没有登记');
+  if (registry.unitBindings[closure.unit] === undefined) changes.push('依赖闭包没有登记');
   else {
+    const registered = new Map(
+      [...closureFromGraph(registry.graph, closure.unit).deps.keys()].map((dep) => [dep, registry.nodes[dep]?.[0]]),
+    );
     for (const [dep, digest] of Object.entries(current)) {
-      if (!registered[dep]) changes.push(`新增依赖 ${dep}（链：${chain(dep)}）`);
-      else if (registered[dep] !== digest) changes.push(`依赖 ${dep} 已变化（链：${chain(dep)}）`);
+      if (!registered.get(dep)) changes.push(`新增依赖 ${dep}（链：${chain(dep)}）`);
+      else if (registered.get(dep) !== digest) changes.push(`依赖 ${dep} 已变化（链：${chain(dep)}）`);
     }
-    for (const dep of Object.keys(registered)) if (!current[dep]) changes.push(`依赖 ${dep} 不再被引用`);
+    for (const dep of registered.keys()) if (!current[dep]) changes.push(`依赖 ${dep} 不再被引用`);
+    if (!changes.length) changes.push(...graphChanges(env, closure, registry));
   }
   const shown = changes.slice(0, 5).join('；') + (changes.length > 5 ? `；……共 ${changes.length} 处` : '');
   const review = `复核引用 ${closure.unit} 的 ${uses.length} 条义务：${labels(uses)}`;
@@ -439,10 +511,33 @@ function checkDependencies(
   };
 }
 
+/** 登记了却没被引用的摘要、根、图节点（全表校验时开）。 */
+function unusedRegistrations(
+  env: ClosureEnv,
+  usable: readonly string[],
+  users: ReadonlyMap<string, readonly Use[]>,
+  digests: Digests,
+  registry: Registry,
+): Finding[] {
+  const reached = explore(env, usable);
+  const unused = (detail: string): Finding => ({ route: '*', code: 'EVIDENCE_UNUSED', detail });
+  const units = Object.entries(digests).flatMap(([file, names]) => Object.keys(names).map((name) => `${file}#${name}`));
+  const roots = new Set([...Object.keys(registry.unitBindings), ...Object.keys(registry.graph)]);
+  return [
+    ...units.filter((unit) => !users.has(unit)).map((unit) => unused(`摘要 ${unit} 没有被任何证据引用`)),
+    ...[...roots]
+      .filter((id) => (id in registry.unitBindings ? !users.has(id) : !reached.has(id)))
+      .map((id) => unused(`依赖登记 ${id} 没有被任何证据引用`)),
+    ...Object.keys(registry.nodes)
+      .filter((id) => !reached.has(id))
+      .map((id) => unused(`依赖节点登记 ${id} 没有被任何证据引用`)),
+  ];
+}
+
 export function checkEvidence(table: RequiredTable, options: EvidenceOptions = {}): Finding[] {
   const read = options.read ?? repoSource;
-  const digests = options.digests ?? DIGESTS;
-  const dependencies = options.dependencies ?? DEPENDENCIES;
+  const registry = options.registry ?? REGISTRY;
+  const digests = options.digests ?? registry.units;
   const boundary = options.boundary ?? EVIDENCE_BOUNDARY;
   const branch = options.branch === undefined ? BRANCH_BINDINGS : options.branch;
   const findings: Finding[] = [];
@@ -485,6 +580,7 @@ export function checkEvidence(table: RequiredTable, options: EvidenceOptions = {
   const users = usesOf(table, branch);
   const usable = [...users.keys()].filter((unit) => !(textOf(unit) instanceof Error));
   const closures = closuresOf(usable, read, boundary);
+  const env = closureEnvFor(read, boundary);
   for (const [unit, refs] of users) {
     const text = textOf(unit);
     if (text instanceof Error) continue;
@@ -499,7 +595,7 @@ export function checkEvidence(table: RequiredTable, options: EvidenceOptions = {
     }
     const closure = closures.get(unit);
     if (!closure || closure instanceof Error) continue;
-    const checked = checkDependencies(closure, dependencies[unit], refs);
+    const checked = checkDependencies(env, closure, registry, refs);
     if (checked.stale) findings.push({ route, code: 'EVIDENCE_STALE', detail: checked.stale });
     for (const item of checked.unresolved.filter((u) => reportable(u, boundary))) {
       findings.push({
@@ -509,16 +605,10 @@ export function checkEvidence(table: RequiredTable, options: EvidenceOptions = {
       });
     }
   }
-  if (options.unused) {
-    const units = Object.entries(digests).flatMap(([file, names]) =>
-      Object.keys(names).map((name) => `${file}#${name}`),
+  if (options.unused)
+    findings.push(
+      ...unusedRegistrations(env, usable, users, digests, registry),
+      ...legacyDigestsFindings(options.legacyRoot),
     );
-    for (const unit of units.filter((u) => !users.has(u))) {
-      findings.push({ route: '*', code: 'EVIDENCE_UNUSED', detail: `摘要 ${unit} 没有被任何证据引用` });
-    }
-    for (const unit of Object.keys(dependencies).filter((u) => !users.has(u))) {
-      findings.push({ route: '*', code: 'EVIDENCE_UNUSED', detail: `依赖登记 ${unit} 没有被任何证据引用` });
-    }
-  }
   return findings;
 }

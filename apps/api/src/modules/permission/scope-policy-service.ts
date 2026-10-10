@@ -13,9 +13,9 @@ import {
   permissionScopePolicyRules,
   permissionScopeVersions,
   permissionUserPersonLinks,
-  sql,
   type Tx,
 } from '@italent/db';
+import { type KeyPart, advisoryLock, asUuid } from '../../advisory-lock.js';
 import { ESTABLISHMENT_SCHEME_DATASOURCE, MODULE_OBJECTS } from '@italent/domain';
 import { z } from 'zod';
 import { AppError } from '../../errors.js';
@@ -42,8 +42,31 @@ const BUILTIN_SCOPE_DATASOURCES: Readonly<Record<string, string>> = {
   [ESTABLISHMENT_SCHEME_DATASOURCE]: MODULE_OBJECTS.establishment.code,
 };
 
-async function lock(tx: Tx, write: WriteContext, key: string) {
-  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${write.tenantId + ':' + key},0))`);
+/** 范围策略写入的串行化锁（租户 × 对象）；对象标识里的 UUID（身份、授权）用 uuid() 标出，先规范化再哈希。 */
+export async function lockScopeObject(tx: Tx, tenantId: string, ...key: KeyPart[]) {
+  await advisoryLock(tx, asUuid(tenantId), ':', ...key);
+}
+const lock = (tx: Tx, write: WriteContext, ...key: KeyPart[]) => lockScopeObject(tx, write.tenantId, ...key);
+
+/**
+ * 测试探针：取范围锁**之前**调用（此时调用方应已持有身份行锁）。T-20 在这里暂停一方，用 FOR UPDATE NOWAIT 验证身份行
+ * 已被锁住——旧锁序（先范围锁、不锁身份行）会在此处没持身份行锁而被检出。生产路径为空。
+ */
+export const scopeLockProbe: { beforeScopeLock?: (key: IdentityScopeKey) => Promise<void> } = {};
+
+/**
+ * 身份看全部的范围锁（回补补看全部与租户保存共用同一个键，F-061 §4.1）。键文本与 F-078 之后 setIdentityScope 原有的
+ * identity-scope 锁一致；租户与身份 ID 经公共函数先转规范 UUID 再哈希，大小写变体拿到同一把锁。
+ */
+export async function lockIdentityScope(tx: Tx, tenantId: string, key: IdentityScopeKey): Promise<void> {
+  await scopeLockProbe.beforeScopeLock?.(key);
+  await lockScopeObject(
+    tx,
+    tenantId,
+    'identity-scope:',
+    asUuid(key.profileId),
+    `:${key.appCode}:${key.targetKind}:${key.targetCode}`,
+  );
 }
 
 async function identityTarget(tx: Tx, key: IdentityScopeKey) {
@@ -108,7 +131,10 @@ export async function setIdentityScope(
   expectedRevision: number,
 ) {
   const objectId = `${key.profileId}:${key.appCode}:${key.targetKind}:${key.targetCode}`;
-  await lock(tx, write, `identity-scope:${objectId}`);
+  // 锁序“身份 → 范围”（F-061 §4.1）：先锁身份行，再取范围锁并复读范围行。回补持身份行锁后插范围行，与租户插同一范围行
+  // （外键检查要对身份行取共享锁）若顺序相反会互等（40P01）；两条路径同序就没有环
+  await loadProfile(tx, key.profileId, true);
+  await lockIdentityScope(tx, write.tenantId, key);
   const before = await getIdentityScope(tx, key);
   if (before.revision !== expectedRevision) throw revisionConflict(expectedRevision, before.revision);
   const revision = before.revision + 1;
@@ -222,7 +248,7 @@ export async function setDynamicOrgGrant(
   roleCode: 'head' | 'hrbp' | null,
   expectedRevision: number,
 ) {
-  await lock(tx, write, `dynamic-org:${grantId}`);
+  await lock(tx, write, 'dynamic-org:', asUuid(grantId));
   const grant = await autoGrant(tx, grantId);
   if (roleCode && grant.status !== 'active') throw invalid('授权已撤销');
   const before = await getDynamicOrgGrant(tx, grantId);

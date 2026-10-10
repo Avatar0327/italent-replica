@@ -10,3 +10,4 @@ packages/db/migrations/meta/
 *.md
 .demo/
 tests/acceptance/support/route-policy/baseline/
+tests/acceptance/support/f075-golden/

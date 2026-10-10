@@ -8,6 +8,10 @@ import { identityResolverFromEnv } from './identity.js';
 import { startEmploymentActivationScheduler } from './modules/employment/activation-scheduler.js';
 import { startAuditRetentionScheduler } from './audit/retention.js';
 import { startSuccessionScheduler } from './modules/succession/scheduler.js';
+import { exportStartupCheck } from './modules/survey360/export-runtime.js';
+
+// F-080：360 报告 PDF / 报表 PNG 用项目内置的中文字体；字体缺失或被改动时这里抛错，进程拒绝启动（不再有缺字体 503）
+await exportStartupCheck((line) => console.log(line));
 
 // 生产环境未接入真实登录（B-01）时，这里直接抛错阻止启动，不回退到不安全的身份实现。
 // 授权不在此注入：createApp 缺省使用权限模型授权器（R1-T01），默认拒绝。

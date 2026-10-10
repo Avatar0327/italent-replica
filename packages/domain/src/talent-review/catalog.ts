@@ -82,6 +82,37 @@ export const TALENT_REVIEW_OBJECTS = {
   /** 字段映射（TR-R9）：带入上次结果 / 入人才池的来源 → 目标字段；预置“标签 → 标签”。 */
   mapping: object('FieldMapping', ['scene', 'sourceFieldId', 'targetFieldId', 'preset']),
   /**
+   * 九宫格（设计 §2.2；TR-R31～R35）：轴、分段、格子、位置字段占用与比例规则组随九宫格整体维护（均为嵌套字段，权限随字段）。
+   * 设置类配置对象，没有组织字段（DEC-121）。
+   */
+  matrix: object('Matrix', [
+    'code',
+    'name',
+    'xFieldId',
+    'yFieldId',
+    'zFieldId',
+    'xDraggable',
+    'yDraggable',
+    'placementSource',
+    'greenRateReference',
+    'preset',
+    'positionFields',
+    'axisLevels',
+    'cells',
+    'ratioGroups',
+    'sortNo',
+    'enabled',
+  ]),
+  /**
+   * 盘点计算规则（设计 §2.2；TR-R27～R30）：计算项目随规则整体维护（items 是嵌套字段，权限随字段）；`hints` 是保存时返回的
+   * 排序 / 循环 / 依赖矛盾提示（派生，不可写）。设置类配置对象，没有组织字段（DEC-121）。
+   */
+  calcRule: object(
+    'CalcRule',
+    ['name', 'enabled', 'assessmentLatestWindow', 'description', 'items', 'sortNo'],
+    ['hints'],
+  ),
+  /**
    * 盘点结果审批（设计 §3.3、§2.6；N12）：审批类型 talent_review_result 的业务对象（集合审批，一单多个被盘点人）。
    * 发起 / 撤回入口随 PR-D 接入；本 PR 只登记对象，供审批类型与标准身份引用。
    */
@@ -108,6 +139,8 @@ export const TALENT_REVIEW_OBJECT_LABELS: Readonly<Record<TalentReviewObject, st
   scoreRule: '评价规则',
   moduleGrade: '模块等级',
   mapping: '字段映射',
+  matrix: '盘点九宫格',
+  calcRule: '盘点计算规则',
   resultApproval: '盘点结果审批',
 };
 
@@ -121,6 +154,8 @@ export const TALENT_REVIEW_CONFIG_OBJECTS: readonly TalentReviewObject[] = [
   'scoreRule',
   'moduleGrade',
   'mapping',
+  'matrix',
+  'calcRule',
 ];
 
 /** 准备度颜色：#RRGGBB（原站字典每项带颜色，`27` 补充 W-617）。 */

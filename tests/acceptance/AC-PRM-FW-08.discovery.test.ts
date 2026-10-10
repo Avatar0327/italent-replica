@@ -31,7 +31,11 @@ import {
 } from './support/route-policy/discovery.js';
 import type { Finding } from './support/route-policy/compare.js';
 import { checkKnownGapEvidence, KNOWN_GAPS, type KnownGapGroup } from './support/route-policy/probe-known-gaps.js';
-import { checkRedundantEvidence, REDUNDANT_OBSERVATIONS } from './support/route-policy/probe-redundant.js';
+import {
+  checkRedundantEvidence,
+  type RedundantGroup,
+  REDUNDANT_OBSERVATIONS,
+} from './support/route-policy/probe-redundant.js';
 import { permClaims } from './support/route-policy/request-perms.js';
 import { REQUIRED } from './support/route-policy/required/index.js';
 import type { Obligation, RequiredTable } from './support/route-policy/required/types.js';
@@ -66,9 +70,9 @@ const withPolicy = (base: ManifestRoute, policy: RoutePolicy): ManifestRoute => 
 const withTable = (k: string, obligations: readonly Obligation[]): RequiredTable => ({ ...REQUIRED, [k]: obligations });
 
 describe('AC-PRM-FW-08 发现探测：冻结与覆盖', () => {
-  it('覆盖全部已声明端点（505），每个模块一个冻结文件，条目数与模块端点数一致', () => {
+  it('覆盖全部已声明端点（539），每个模块一个冻结文件，条目数与模块端点数一致', () => {
     expect(Object.keys(fresh).sort()).toEqual(manifest.declared.map(key).sort());
-    expect(manifest.declared).toHaveLength(505);
+    expect(manifest.declared).toHaveLength(539);
     const groups = groupByModule(fresh);
     const files = readdirSync(PROBE_DIR).filter((f) => f.endsWith('.json'));
     expect(files.sort()).toEqual(
@@ -113,13 +117,13 @@ describe('AC-PRM-FW-08 P0 / P3：真实声明 + 显式表零发现', () => {
     expect(findings, show(findings)).toEqual([]);
   });
 
-  it('不带登记检查：未认领的"端点 × 请求键"恰好等于两本账的登记对之并集：125 项有实际用途 + 59 项冗余观测（含 #125 新增 34 + 18），互斥', () => {
+  it('不带登记检查：未认领的"端点 × 请求键"恰好等于两本账的登记对之并集：29 项有实际用途 + 0 项冗余观测（F-075 / F-075b 已清空冗余观测账本），互斥', () => {
     const open = check(manifest.declared);
     expect(codes(open).every((c) => c === 'PROBE_ADMISSION_UNCLAIMED')).toBe(true);
     const gaps = KNOWN_GAPS.flatMap((g) => g.pairs);
     const redundant = REDUNDANT_OBSERVATIONS.flatMap((g) => g.pairs);
-    expect(gaps).toHaveLength(125);
-    expect(redundant).toHaveLength(59);
+    expect(gaps).toHaveLength(29);
+    expect(redundant).toHaveLength(0);
     const all = [...gaps, ...redundant].map(([r, k]) => `${r}\t${k}`);
     expect(new Set(all).size, '登记对不重复，两本账互斥').toBe(all.length);
     expect(all).toHaveLength(open.length);
@@ -144,18 +148,23 @@ describe('AC-PRM-FW-08 P0 / P3：真实声明 + 显式表零发现', () => {
   });
 
   it('DEC-367：冗余观测只是记录——不是显式表义务，也不能豁免账外的 P0；同一对不能同时登记在两本账', () => {
-    const [route0, key0] = REDUNDANT_OBSERVATIONS[0]!.pairs[0]!;
-    // 把一个冗余观测对换成"表里真有义务"不属于本测试；这里验证：删掉冗余账后，这些请求立刻变成 P0
-    const withoutRedundant = checkDiscovery(fresh, REQUIRED, manifest.declared, {
-      knownGaps: KNOWN_GAPS,
-      redundant: [],
-    });
-    expect(withoutRedundant.filter((f) => f.code === 'PROBE_ADMISSION_UNCLAIMED')).toHaveLength(59);
+    // 真实冗余账已清空（F-075 / F-075b 去掉了全部冗余调用）；机制用夹具验证：把第一个已知缺口对挪到冗余账里
+    expect(REDUNDANT_OBSERVATIONS).toEqual([]);
+    const [first, ...rest] = KNOWN_GAPS;
+    const [route0, key0] = first!.pairs[0]!;
+    const restPairs = first!.pairs.slice(1);
+    const moved: RedundantGroup[] = [{ id: 'fixture#1', why: 'x'.repeat(30), evidence: [], pairs: [[route0, key0]] }];
+    const gaps = [{ ...first!, pairs: restPairs }, ...rest];
+    // 登记在冗余账里：只是记录，不再报 P0
+    expect(codes(checkDiscovery(fresh, REQUIRED, manifest.declared, { knownGaps: gaps, redundant: moved }))).toEqual(
+      [],
+    );
+    // 删掉冗余账后，这个请求立刻变成 P0（冗余账不是豁免，也不是义务）
+    const withoutRedundant = checkDiscovery(fresh, REQUIRED, manifest.declared, { knownGaps: gaps, redundant: [] });
+    expect(withoutRedundant.filter((f) => f.code === 'PROBE_ADMISSION_UNCLAIMED')).toHaveLength(1);
     expect(withoutRedundant.some((f) => f.route === route0 && f.detail.includes(key0))).toBe(true);
-    const overlap = checkDiscovery(fresh, REQUIRED, manifest.declared, {
-      knownGaps: [...KNOWN_GAPS, { id: 'x', purpose: 'x', owner: 'xxxxxx', evidence: [], pairs: [[route0, key0]] }],
-      redundant: REDUNDANT_OBSERVATIONS,
-    });
+    // 同一对同时登记在两本账里 → 报重叠
+    const overlap = checkDiscovery(fresh, REQUIRED, manifest.declared, { knownGaps: KNOWN_GAPS, redundant: moved });
     expect(codes(overlap)).toContain('PROBE_ACCOUNT_OVERLAP');
   });
 
@@ -167,18 +176,8 @@ describe('AC-PRM-FW-08 P0 / P3：真实声明 + 显式表零发现', () => {
     expect(findings[0]!.route).toBe(k);
   });
 
-  /** 审查原文三组替换反例：补上一个旧缺口，同时误删同类另一端点的合法登记（总数不变）。 */
+  /** 审查原文替换反例（F-073 / F-074 后 survey360 与任职资格组已无缺口，剩 idp 组；org 组只有 1 对）：补上一个旧缺口，同时误删同类另一端点的合法登记（总数不变）。 */
   const REPLACEMENTS = [
-    {
-      name: 'survey360',
-      fixed: ['DELETE /api/tenant/survey360/activities/:id', 'btn:Survey360.Activity#viewAll@list'],
-      broken: ['GET /api/tenant/survey360/activities', 'obj:Survey360.Activity:view'],
-    },
-    {
-      name: 'qualification',
-      fixed: ['DELETE /api/tenant/qualification/grade-schemes/:id', 'obj:Qualification.Target:view'],
-      broken: ['GET /api/tenant/qualification/categories', 'obj:Qualification.EmploymentCategory:view'],
-    },
     {
       name: 'idp',
       fixed: ['DELETE /api/tenant/idp/plans/:id', 'obj:IDP.Analysis:view'],
@@ -404,9 +403,10 @@ describe('AC-PRM-FW-08 P3 非法标识：观测码与根节点 invalidId 相等'
     'PATCH /api/tenant/personnel/employees/:employeeId/subsets/:kind/:id',
   ];
 
-  it('第 3 轮：状态码相同、错误体不同的 48 个端点由实际行为证明适用（不依赖证据表）', () => {
+  it('第 3 轮：状态码相同、错误体不同的 49 个端点由实际行为证明适用（不依赖证据表；含 R3-T04 PR-B4 新建规则组 1 个）', () => {
     const k48 = sameStatusOnly();
-    expect(k48).toHaveLength(48);
+    expect(k48).toHaveLength(49);
+    expect(k48).toContain('POST /api/tenant/talent-review/matrices/:id/ratio-groups');
     expect(k48).toContain('GET /api/tenant/permission/profiles/:id');
     expect(k48).toContain('POST /api/tenant/idp/plans/:id/goals');
     for (const k of k48) {
@@ -415,7 +415,7 @@ describe('AC-PRM-FW-08 P3 非法标识：观测码与根节点 invalidId 相等'
     }
   });
 
-  it('48 个端点把 invalidId 改成另一个状态码、或删掉声明 → MISMATCH:invalidId', () => {
+  it('49 个端点把 invalidId 改成另一个状态码、或删掉声明 → MISMATCH:invalidId', () => {
     for (const k of sameStatusOnly()) {
       const r = route(k);
       const declared = r.policy.invalidId!;

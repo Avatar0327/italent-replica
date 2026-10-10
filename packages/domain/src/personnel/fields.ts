@@ -316,5 +316,23 @@ export const SUBSETS = {
       { code: 'attachmentId', kind: 'uuid' },
     ],
   },
+  // R3-T02 C1-1：字段全集见规格 23 §10（去掉审批 / 所属单元等通用系统字段与“是否当前生效”——当前资格按日期计算，
+  // 不存冗余标记，DEC-335①）。类别 / 级别用 ID 引用任职资格配置；系统字段不接受 HTTP 提交（DEC-087）。
+  qualification: {
+    table: 'personnel_qualification',
+    objectCode: 'TenantBase.Qualification',
+    fields: [
+      { code: 'categoryId', kind: 'uuid' },
+      { code: 'levelId', kind: 'uuid' },
+      { code: 'startDate', kind: 'date' },
+      { code: 'endDate', kind: 'date' },
+      { code: 'finalScore', kind: 'decimal' },
+      { code: 'isAutoSync', kind: 'boolean', system: true },
+      { code: 'employmentRecordId', kind: 'uuid', system: true },
+      { code: 'activityTypeId', kind: 'uuid', system: true },
+      { code: 'evaluationId', kind: 'uuid', system: true },
+      { code: 'result', kind: 'text', system: true },
+    ],
+  },
 } as const satisfies Record<string, { table: string; objectCode: string; fields: readonly PersonnelField[] }>;
 export type SubsetKind = keyof typeof SUBSETS;

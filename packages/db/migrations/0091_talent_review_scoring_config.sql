@@ -88,8 +88,8 @@ ALTER TABLE "talent_review_module_grade_items" ADD CONSTRAINT "talent_review_mod
 ALTER TABLE "talent_review_module_grades" ADD CONSTRAINT "talent_review_module_grades_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "talent_review_score_levels" ADD CONSTRAINT "talent_review_score_levels_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "talent_review_score_levels" ADD CONSTRAINT "talent_review_score_levels_rule_fk" FOREIGN KEY ("tenant_id","rule_id") REFERENCES "public"."talent_review_score_rules"("tenant_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "talent_review_score_rules" ADD CONSTRAINT "talent_review_score_rules_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
--- R3-T04 PR-B2：评价规则 / 模块等级 / 字段映射统一租户隔离（AGENTS §2；guard-rls）。删除由服务层先询问引用守卫，应用角色需要 DELETE。
+ALTER TABLE "talent_review_score_rules" ADD CONSTRAINT "talent_review_score_rules_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;
+--> statement-breakpoint
 SELECT enable_tenant_isolation('talent_review_score_rules');
 --> statement-breakpoint
 SELECT enable_tenant_isolation('talent_review_score_levels');

@@ -1,5 +1,5 @@
 {
-  "id": "df83d7f6-ded6-4f13-9ab7-8efaf1653f15",
+  "id": "6d2c7b2a-f536-4f3a-bc9d-b29ac4b1136f",
   "prevId": "95b04f0c-fd33-4bd1-87fc-d62b6b87f2ca",
   "version": "7",
   "dialect": "postgresql",
@@ -40408,154 +40408,6 @@
       },
       "isRLSEnabled": false
     },
-    "public.talent_review_field_mappings": {
-      "name": "talent_review_field_mappings",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "scene": {
-          "name": "scene",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "source_field_id": {
-          "name": "source_field_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "target_field_id": {
-          "name": "target_field_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "preset": {
-          "name": "preset",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "revision": {
-          "name": "revision",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 1
-        },
-        "created_by": {
-          "name": "created_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_by": {
-          "name": "updated_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "talent_review_field_mappings_tenant_id_tenants_id_fk": {
-          "name": "talent_review_field_mappings_tenant_id_tenants_id_fk",
-          "tableFrom": "talent_review_field_mappings",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "talent_review_field_mappings_source_fk": {
-          "name": "talent_review_field_mappings_source_fk",
-          "tableFrom": "talent_review_field_mappings",
-          "tableTo": "talent_review_fields",
-          "columnsFrom": [
-            "tenant_id",
-            "source_field_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        },
-        "talent_review_field_mappings_target_fk": {
-          "name": "talent_review_field_mappings_target_fk",
-          "tableFrom": "talent_review_field_mappings",
-          "tableTo": "talent_review_fields",
-          "columnsFrom": [
-            "tenant_id",
-            "target_field_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "talent_review_field_mappings_pair": {
-          "name": "talent_review_field_mappings_pair",
-          "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "scene",
-            "source_field_id",
-            "target_field_id"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "talent_review_field_mappings_scene": {
-          "name": "talent_review_field_mappings_scene",
-          "value": "\"talent_review_field_mappings\".\"scene\" IN ('carry_last','talent_pool')"
-        },
-        "talent_review_field_mappings_rev": {
-          "name": "talent_review_field_mappings_rev",
-          "value": "\"talent_review_field_mappings\".\"revision\" > 0"
-        }
-      },
-      "isRLSEnabled": false
-    },
     "public.talent_review_field_options": {
       "name": "talent_review_field_options",
       "schema": "",
@@ -40869,236 +40721,6 @@
       },
       "isRLSEnabled": false
     },
-    "public.talent_review_module_grade_items": {
-      "name": "talent_review_module_grade_items",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "grade_id": {
-          "name": "grade_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "value": {
-          "name": "value",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "sort_no": {
-          "name": "sort_no",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "min_score": {
-          "name": "min_score",
-          "type": "numeric(14, 4)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "max_score": {
-          "name": "max_score",
-          "type": "numeric(14, 4)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "min_count": {
-          "name": "min_count",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "talent_review_module_grade_items_tenant_id_tenants_id_fk": {
-          "name": "talent_review_module_grade_items_tenant_id_tenants_id_fk",
-          "tableFrom": "talent_review_module_grade_items",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "talent_review_module_grade_items_grade_fk": {
-          "name": "talent_review_module_grade_items_grade_fk",
-          "tableFrom": "talent_review_module_grade_items",
-          "tableTo": "talent_review_module_grades",
-          "columnsFrom": [
-            "tenant_id",
-            "grade_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "talent_review_module_grade_items_name": {
-          "name": "talent_review_module_grade_items_name",
-          "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "grade_id",
-            "name"
-          ]
-        },
-        "talent_review_module_grade_items_value": {
-          "name": "talent_review_module_grade_items_value",
-          "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "grade_id",
-            "value"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "talent_review_module_grade_items_shape": {
-          "name": "talent_review_module_grade_items_shape",
-          "value": "(\"talent_review_module_grade_items\".\"min_count\" IS NOT NULL AND \"talent_review_module_grade_items\".\"min_count\" >= 0 AND \"talent_review_module_grade_items\".\"min_score\" IS NULL AND \"talent_review_module_grade_items\".\"max_score\" IS NULL)\n        OR (\"talent_review_module_grade_items\".\"min_count\" IS NULL AND \"talent_review_module_grade_items\".\"min_score\" IS NOT NULL AND \"talent_review_module_grade_items\".\"max_score\" > \"talent_review_module_grade_items\".\"min_score\")"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.talent_review_module_grades": {
-      "name": "talent_review_module_grades",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "enabled": {
-          "name": "enabled",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
-        },
-        "revision": {
-          "name": "revision",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 1
-        },
-        "created_by": {
-          "name": "created_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_by": {
-          "name": "updated_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "talent_review_module_grades_tenant_id_tenants_id_fk": {
-          "name": "talent_review_module_grades_tenant_id_tenants_id_fk",
-          "tableFrom": "talent_review_module_grades",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "talent_review_module_grades_tenant_id": {
-          "name": "talent_review_module_grades_tenant_id",
-          "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "id"
-          ]
-        },
-        "talent_review_module_grades_name": {
-          "name": "talent_review_module_grades_name",
-          "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "name"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "talent_review_module_grades_rev": {
-          "name": "talent_review_module_grades_rev",
-          "value": "\"talent_review_module_grades\".\"revision\" > 0"
-        }
-      },
-      "isRLSEnabled": false
-    },
     "public.talent_review_roles": {
       "name": "talent_review_roles",
       "schema": "",
@@ -41238,239 +40860,6 @@
       },
       "isRLSEnabled": false
     },
-    "public.talent_review_score_levels": {
-      "name": "talent_review_score_levels",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "rule_id": {
-          "name": "rule_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "value": {
-          "name": "value",
-          "type": "numeric(14, 4)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "sort_no": {
-          "name": "sort_no",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "talent_review_score_levels_tenant_id_tenants_id_fk": {
-          "name": "talent_review_score_levels_tenant_id_tenants_id_fk",
-          "tableFrom": "talent_review_score_levels",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "talent_review_score_levels_rule_fk": {
-          "name": "talent_review_score_levels_rule_fk",
-          "tableFrom": "talent_review_score_levels",
-          "tableTo": "talent_review_score_rules",
-          "columnsFrom": [
-            "tenant_id",
-            "rule_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "talent_review_score_levels_name": {
-          "name": "talent_review_score_levels_name",
-          "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "rule_id",
-            "name"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.talent_review_score_rules": {
-      "name": "talent_review_score_rules",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "kind": {
-          "name": "kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "min_score": {
-          "name": "min_score",
-          "type": "numeric(14, 4)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "max_score": {
-          "name": "max_score",
-          "type": "numeric(14, 4)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "display": {
-          "name": "display",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "allow_unable": {
-          "name": "allow_unable",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "enabled": {
-          "name": "enabled",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
-        },
-        "revision": {
-          "name": "revision",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 1
-        },
-        "created_by": {
-          "name": "created_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_by": {
-          "name": "updated_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "talent_review_score_rules_tenant_id_tenants_id_fk": {
-          "name": "talent_review_score_rules_tenant_id_tenants_id_fk",
-          "tableFrom": "talent_review_score_rules",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "talent_review_score_rules_tenant_id": {
-          "name": "talent_review_score_rules_tenant_id",
-          "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "id"
-          ]
-        },
-        "talent_review_score_rules_name": {
-          "name": "talent_review_score_rules_name",
-          "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "name"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "talent_review_score_rules_shape": {
-          "name": "talent_review_score_rules_shape",
-          "value": "(\"talent_review_score_rules\".\"kind\" = 'numeric' AND \"talent_review_score_rules\".\"min_score\" IS NOT NULL AND \"talent_review_score_rules\".\"max_score\" > \"talent_review_score_rules\".\"min_score\"\n        AND \"talent_review_score_rules\".\"display\" IS NULL)\n        OR (\"talent_review_score_rules\".\"kind\" = 'grade' AND \"talent_review_score_rules\".\"min_score\" IS NULL AND \"talent_review_score_rules\".\"max_score\" IS NULL\n        AND \"talent_review_score_rules\".\"display\" IN ('dropdown','tile'))"
-        },
-        "talent_review_score_rules_rev": {
-          "name": "talent_review_score_rules_rev",
-          "value": "\"talent_review_score_rules\".\"revision\" > 0"
-        }
-      },
-      "isRLSEnabled": false
-    },
     "public.talent_review_settings": {
       "name": "talent_review_settings",
       "schema": "",
@@ -41593,6 +40982,453 @@
         "talent_review_settings_rev": {
           "name": "talent_review_settings_rev",
           "value": "\"talent_review_settings\".\"revision\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.succession_records": {
+      "name": "succession_records",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "succession_type": {
+          "name": "succession_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "target_org_id": {
+          "name": "target_org_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "target_position_id": {
+          "name": "target_position_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "successor_employee_id": {
+          "name": "successor_employee_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "readiness_id": {
+          "name": "readiness_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "backup_type": {
+          "name": "backup_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'principal'"
+        },
+        "start_date": {
+          "name": "start_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "end_date": {
+          "name": "end_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'9999-12-31'"
+        },
+        "end_reason": {
+          "name": "end_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "end_source": {
+          "name": "end_source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ended_at": {
+          "name": "ended_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ended_by": {
+          "name": "ended_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "exit_record_id": {
+          "name": "exit_record_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source_kind": {
+          "name": "source_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'manual'"
+        },
+        "source_batch_id": {
+          "name": "source_batch_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source_item_id": {
+          "name": "source_item_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "deleted_by": {
+          "name": "deleted_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "succession_records_org_target": {
+          "name": "succession_records_org_target",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "succession_type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "target_org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "end_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "succession_records_position_target": {
+          "name": "succession_records_position_target",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "succession_type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "target_position_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "end_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "succession_records_successor": {
+          "name": "succession_records_successor",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "successor_employee_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "end_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "succession_records_exit": {
+          "name": "succession_records_exit",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "exit_record_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "succession_records_tenant_id_tenants_id_fk": {
+          "name": "succession_records_tenant_id_tenants_id_fk",
+          "tableFrom": "succession_records",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "succession_records_successor_fk": {
+          "name": "succession_records_successor_fk",
+          "tableFrom": "succession_records",
+          "tableTo": "employment_employees",
+          "columnsFrom": [
+            "tenant_id",
+            "successor_employee_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "succession_records_target_org_fk": {
+          "name": "succession_records_target_org_fk",
+          "tableFrom": "succession_records",
+          "tableTo": "org_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "target_org_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "succession_records_target_position_fk": {
+          "name": "succession_records_target_position_fk",
+          "tableFrom": "succession_records",
+          "tableTo": "job_position_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "target_position_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "succession_records_readiness_fk": {
+          "name": "succession_records_readiness_fk",
+          "tableFrom": "succession_records",
+          "tableTo": "talent_readiness_levels",
+          "columnsFrom": [
+            "tenant_id",
+            "readiness_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "succession_records_type": {
+          "name": "succession_records_type",
+          "value": "\"succession_records\".\"succession_type\" IN ('org', 'position')"
+        },
+        "succession_records_target": {
+          "name": "succession_records_target",
+          "value": "(\"succession_records\".\"succession_type\" = 'org' AND \"succession_records\".\"target_org_id\" IS NOT NULL AND \"succession_records\".\"target_position_id\" IS NULL)\n        OR (\"succession_records\".\"succession_type\" = 'position' AND \"succession_records\".\"target_position_id\" IS NOT NULL AND \"succession_records\".\"target_org_id\" IS NULL)"
+        },
+        "succession_records_period": {
+          "name": "succession_records_period",
+          "value": "\"succession_records\".\"start_date\" <= \"succession_records\".\"end_date\""
+        },
+        "succession_records_backup_type": {
+          "name": "succession_records_backup_type",
+          "value": "\"succession_records\".\"backup_type\" IN ('principal', 'deputy')"
+        },
+        "succession_records_end_source": {
+          "name": "succession_records_end_source",
+          "value": "\"succession_records\".\"end_source\" IS NULL OR \"succession_records\".\"end_source\" IN ('manual', 'exit', 'sync_overwrite', 'sync_scope_overwrite')"
+        },
+        "succession_records_source_kind": {
+          "name": "succession_records_source_kind",
+          "value": "\"succession_records\".\"source_kind\" IN ('manual', 'review_sync')"
+        },
+        "succession_records_revision": {
+          "name": "succession_records_revision",
+          "value": "\"succession_records\".\"revision\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.succession_target_locks": {
+      "name": "succession_target_locks",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "target_kind": {
+          "name": "target_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "target_id": {
+          "name": "target_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "succession_target_locks_tenant_id_tenants_id_fk": {
+          "name": "succession_target_locks_tenant_id_tenants_id_fk",
+          "tableFrom": "succession_target_locks",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "succession_target_locks_tenant_id_target_kind_target_id_pk": {
+          "name": "succession_target_locks_tenant_id_target_kind_target_id_pk",
+          "columns": [
+            "tenant_id",
+            "target_kind",
+            "target_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "succession_target_locks_kind": {
+          "name": "succession_target_locks_kind",
+          "value": "\"succession_target_locks\".\"target_kind\" IN ('org', 'position')"
         }
       },
       "isRLSEnabled": false

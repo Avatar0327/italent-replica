@@ -298,6 +298,10 @@ export const PRIMITIVES: readonly Primitive[] = [
     ['approval.adminTargetScope', call('adminTargetScope'), NEAR],
     ['approval.resubmitRight', calls('requireResubmitRight', 'mayResubmit'), NEAR],
     ['personnel.selfServiceFields', call('assertSelfServiceFields'), { near: true, modules: ['personnel'] }],
+    // R3-T02 P0：人员子集按子集登记的策略（subset-policy.ts），在命令深处调用，按深闭包观测——落地前复核只登记
+    // 人员子集写路由；自助申请准入覆盖首次提交与审批中心的同单重提
+    ['personnel.subsetPolicy', call('runSubsetSavePolicy'), { modules: ['personnel'] }],
+    ['personnel.subsetRequestPolicy', call('runSubsetRequestPolicy')],
     ['personnel.viewableFilters', call('listOptions'), { near: true, modules: ['personnel'] }],
     ['contracts.importScope', calls('authorizeImport', 'checkImportScope'), { near: true, modules: ['contracts'] }],
     [
@@ -324,6 +328,17 @@ export const PRIMITIVES: readonly Primitive[] = [
     ['talentReview.pairRequiresUpdate', call('requirePairUpdate'), { modules: ['talent-review'] }],
     // 字段映射引用来源 / 目标字段 = 读取字段对象：另需字段对象的查看权与范围（scoring-routes.ts requireMappingFields）
     ['talentReview.mappingFieldVisible', call('requireMappingFields'), { modules: ['talent-review'] }],
+    // 人才盘点九宫格：改位置字段要求看全部（判定在查重之前）；引用盘点字段另需字段目录的对象查看权（matrix-routes.ts）
+    [
+      'talentReview.matrixPositionRequiresSeeAll',
+      /\bMATRIX_POSITION_REQUIRES_SEE_ALL\b/,
+      { modules: ['talent-review'] },
+    ],
+    ['talentReview.matrixFieldReference', call('requireFieldReference'), { modules: ['talent-review'] }],
+    // 人才盘点计算规则：提交计算项目（公式 / 目标字段引用盘点字段目录）另需字段目录的对象查看权（calc-rule-routes.ts）
+    ['talentReview.calcRuleFieldCatalog', call('requireCatalogAccess'), { modules: ['talent-review'] }],
+    // 人才评定配置字典：按 enabled 筛选须有该字段查看权（R3-T02 B1a 路由声明）
+    ['ev.filterFieldVisible', call('requireFilterVisible'), { modules: ['evaluation'] }],
     ['selfService.transferInput', call('ownTransferInput'), { modules: ['self-service'] }],
     ['selfService.referenceChoices', call('referenceChoices'), { modules: ['self-service'] }],
     ['selfService.ownApplication', call('ownApplication'), { modules: ['self-service'] }],

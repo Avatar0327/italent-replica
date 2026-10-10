@@ -65,7 +65,7 @@ export const SCORE_RULE: ConfigSpec<ScoreRuleView> = {
   label: '评价规则',
   table: R as unknown as ConfigTable,
   view: row,
-  orderBy: [R.name],
+  orderBy: [['name', R.name]],
   duplicate: 'SCORE_RULE_DUPLICATE',
   inUse: 'SCORE_RULE_IN_USE',
   load: async (tx, tenantId, id) => {

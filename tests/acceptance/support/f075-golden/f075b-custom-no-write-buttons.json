@@ -1,0 +1,570 @@
+[
+  {
+    "body": {
+      "items": [
+        {
+          "createdBy": "<id:2>",
+          "id": "<id:1>",
+          "name": "他人模板",
+          "revision": 2,
+          "status": "draft",
+          "type": "key_behavior"
+        }
+      ]
+    },
+    "name": "op GET 模板列表",
+    "status": 200
+  },
+  {
+    "body": {
+      "error": {
+        "code": "FORBIDDEN",
+        "message": "无权执行该操作"
+      }
+    },
+    "name": "op POST 模板",
+    "status": 403
+  },
+  {
+    "body": {
+      "error": {
+        "code": "FORBIDDEN",
+        "message": "无权执行该操作"
+      }
+    },
+    "name": "op POST 模板 重放同键同内容",
+    "status": 403
+  },
+  {
+    "body": {
+      "error": {
+        "code": "FORBIDDEN",
+        "message": "无权执行该操作"
+      }
+    },
+    "name": "op POST 模板 重放",
+    "status": 403
+  },
+  {
+    "body": {
+      "error": {
+        "code": "FORBIDDEN",
+        "message": "无权执行该操作"
+      }
+    },
+    "name": "op POST 模板 同键异内容",
+    "status": 403
+  },
+  {
+    "body": {
+      "error": {
+        "code": "FORBIDDEN",
+        "message": "无权执行该操作"
+      }
+    },
+    "name": "op POST 模板 非法体",
+    "status": 403
+  },
+  {
+    "body": {
+      "error": {
+        "code": "FORBIDDEN",
+        "message": "无权执行该操作"
+      }
+    },
+    "name": "op POST 模板 非 0 revision",
+    "status": 403
+  },
+  {
+    "body": {
+      "items": [
+        {
+          "createdBy": "<id:2>",
+          "id": "<id:1>",
+          "name": "他人模板",
+          "revision": 2,
+          "status": "draft",
+          "type": "key_behavior"
+        }
+      ]
+    },
+    "name": "op GET 模板列表 之后",
+    "status": 200
+  },
+  {
+    "body": {
+      "createdBy": "<id:2>",
+      "dimensions": [
+        {
+          "definition": null,
+          "id": "<id:20>",
+          "key": "d",
+          "name": "沟通协作",
+          "parentId": null,
+          "roleIds": [],
+          "scaleId": null,
+          "weight": 100
+        }
+      ],
+      "excellence": null,
+      "guide": null,
+      "id": "<id:1>",
+      "name": "他人模板",
+      "questions": [
+        {
+          "allowRemark": false,
+          "dimensionId": "<id:20>",
+          "id": "<id:21>",
+          "key": "q1",
+          "roleIds": [],
+          "scaleId": "<id:11>",
+          "text": "主动沟通",
+          "weight": 1
+        },
+        {
+          "allowRemark": false,
+          "dimensionId": "<id:20>",
+          "id": "<id:22>",
+          "key": "q2",
+          "roleIds": [],
+          "scaleId": "<id:11>",
+          "text": "协作支持",
+          "weight": 1
+        }
+      ],
+      "revision": 2,
+      "roles": [
+        {
+          "id": "<id:3>",
+          "key": "self",
+          "roleId": "<id:4>",
+          "weight": 0
+        },
+        {
+          "id": "<id:5>",
+          "key": "superior",
+          "roleId": "<id:6>",
+          "weight": 5
+        },
+        {
+          "id": "<id:7>",
+          "key": "peer",
+          "roleId": "<id:8>",
+          "weight": 3
+        },
+        {
+          "id": "<id:9>",
+          "key": "subordinate",
+          "roleId": "<id:10>",
+          "weight": 2
+        }
+      ],
+      "scales": [
+        {
+          "id": "<id:11>",
+          "key": "s",
+          "name": "分值",
+          "options": [
+            {
+              "id": "<id:12>",
+              "key": "v1",
+              "label": "1",
+              "notScored": false,
+              "remarkRequired": false,
+              "value": 1
+            },
+            {
+              "id": "<id:13>",
+              "key": "v2",
+              "label": "2",
+              "notScored": false,
+              "remarkRequired": false,
+              "value": 2
+            },
+            {
+              "id": "<id:14>",
+              "key": "v3",
+              "label": "3",
+              "notScored": false,
+              "remarkRequired": false,
+              "value": 3
+            },
+            {
+              "id": "<id:15>",
+              "key": "v3.5",
+              "label": "3.5",
+              "notScored": false,
+              "remarkRequired": false,
+              "value": 3.5
+            },
+            {
+              "id": "<id:16>",
+              "key": "v4",
+              "label": "4",
+              "notScored": false,
+              "remarkRequired": false,
+              "value": 4
+            },
+            {
+              "id": "<id:17>",
+              "key": "v4.3",
+              "label": "4.3",
+              "notScored": false,
+              "remarkRequired": false,
+              "value": 4.3
+            },
+            {
+              "id": "<id:18>",
+              "key": "v5",
+              "label": "5",
+              "notScored": false,
+              "remarkRequired": false,
+              "value": 5
+            },
+            {
+              "id": "<id:19>",
+              "key": "none",
+              "label": "不做评价",
+              "notScored": true,
+              "remarkRequired": false,
+              "value": null
+            }
+          ]
+        }
+      ],
+      "scoreMethod": "weighted_average",
+      "status": "draft",
+      "type": "key_behavior"
+    },
+    "name": "op GET 模板详情 他人",
+    "status": 200
+  },
+  {
+    "body": {
+      "error": {
+        "code": "NOT_FOUND",
+        "message": "套卷模板不存在"
+      }
+    },
+    "name": "op GET 模板详情 普通套卷 ID",
+    "status": 404
+  },
+  {
+    "body": {
+      "error": {
+        "code": "NOT_FOUND",
+        "message": "套卷模板不存在"
+      }
+    },
+    "name": "op GET 模板详情 不存在",
+    "status": 404
+  },
+  {
+    "body": {
+      "error": {
+        "code": "VALIDATION_FAILED",
+        "message": "对象标识必须为 UUID"
+      }
+    },
+    "name": "op GET 模板详情 非法标识",
+    "status": 400
+  },
+  {
+    "body": {
+      "error": {
+        "code": "FORBIDDEN",
+        "message": "无权执行该操作"
+      }
+    },
+    "name": "op PUT 模板 他人",
+    "status": 403
+  },
+  {
+    "body": {
+      "error": {
+        "code": "FORBIDDEN",
+        "message": "无权执行该操作"
+      }
+    },
+    "name": "op PUT 模板 普通套卷 ID",
+    "status": 403
+  },
+  {
+    "body": {
+      "error": {
+        "code": "FORBIDDEN",
+        "message": "无权执行该操作"
+      }
+    },
+    "name": "op PUT 模板 不存在",
+    "status": 403
+  },
+  {
+    "body": {
+      "error": {
+        "code": "VALIDATION_FAILED",
+        "message": "对象标识必须为 UUID"
+      }
+    },
+    "name": "op PUT 模板 非法标识",
+    "status": 400
+  },
+  {
+    "body": {
+      "error": {
+        "code": "FORBIDDEN",
+        "message": "无权执行该操作"
+      }
+    },
+    "name": "op POST instantiate",
+    "status": 403
+  },
+  {
+    "body": {
+      "error": {
+        "code": "FORBIDDEN",
+        "message": "无权执行该操作"
+      }
+    },
+    "name": "op POST instantiate 重放",
+    "status": 403
+  },
+  {
+    "body": {
+      "error": {
+        "code": "FORBIDDEN",
+        "message": "无权执行该操作"
+      }
+    },
+    "name": "op POST instantiate 重放 再发",
+    "status": 403
+  },
+  {
+    "body": {
+      "error": {
+        "code": "FORBIDDEN",
+        "message": "无权执行该操作"
+      }
+    },
+    "name": "op POST instantiate 非法体",
+    "status": 403
+  },
+  {
+    "body": {
+      "error": {
+        "code": "FORBIDDEN",
+        "message": "无权执行该操作"
+      }
+    },
+    "name": "op POST instantiate 普通套卷 ID",
+    "status": 403
+  },
+  {
+    "body": {
+      "error": {
+        "code": "FORBIDDEN",
+        "message": "无权执行该操作"
+      }
+    },
+    "name": "op POST instantiate 不存在",
+    "status": 403
+  },
+  {
+    "body": {
+      "error": {
+        "code": "FORBIDDEN",
+        "message": "无权执行该操作"
+      }
+    },
+    "name": "op POST save-as-template",
+    "status": 403
+  },
+  {
+    "body": {
+      "error": {
+        "code": "FORBIDDEN",
+        "message": "无权执行该操作"
+      }
+    },
+    "name": "op POST save-as-template 重放",
+    "status": 403
+  },
+  {
+    "body": {
+      "error": {
+        "code": "FORBIDDEN",
+        "message": "无权执行该操作"
+      }
+    },
+    "name": "op POST save-as-template 重放 再发",
+    "status": 403
+  },
+  {
+    "body": {
+      "error": {
+        "code": "FORBIDDEN",
+        "message": "无权执行该操作"
+      }
+    },
+    "name": "op POST save-as-template 模板 ID",
+    "status": 403
+  },
+  {
+    "body": {
+      "error": {
+        "code": "FORBIDDEN",
+        "message": "无权执行该操作"
+      }
+    },
+    "name": "op POST save-as-template 不存在",
+    "status": 403
+  },
+  {
+    "body": {
+      "error": {
+        "code": "FORBIDDEN",
+        "message": "无权执行该操作"
+      }
+    },
+    "name": "op POST save-as-template 非法体",
+    "status": 403
+  },
+  {
+    "body": {
+      "error": {
+        "code": "FORBIDDEN",
+        "message": "无权执行该操作"
+      }
+    },
+    "name": "op POST 模板 待删甲",
+    "status": 403
+  },
+  {
+    "body": {
+      "error": {
+        "code": "FORBIDDEN",
+        "message": "无权执行该操作"
+      }
+    },
+    "name": "op DELETE 模板 他人",
+    "status": 403
+  },
+  {
+    "body": {
+      "error": {
+        "code": "FORBIDDEN",
+        "message": "无权执行该操作"
+      }
+    },
+    "name": "op DELETE 模板 普通套卷 ID",
+    "status": 403
+  },
+  {
+    "body": {
+      "error": {
+        "code": "FORBIDDEN",
+        "message": "无权执行该操作"
+      }
+    },
+    "name": "op DELETE 模板 不存在",
+    "status": 403
+  },
+  {
+    "body": {
+      "items": [
+        {
+          "createdBy": "<id:2>",
+          "id": "<id:1>",
+          "name": "源已改",
+          "revision": 3,
+          "status": "draft",
+          "type": "key_behavior"
+        }
+      ]
+    },
+    "name": "op GET 模板列表 最后",
+    "status": 200
+  },
+  {
+    "body": {
+      "code": "standard",
+      "id": "<id:23>",
+      "name": "标准版",
+      "revision": 1,
+      "showTextRole": true
+    },
+    "name": "op GET 报告模板",
+    "status": 200
+  },
+  {
+    "body": {
+      "error": {
+        "code": "FORBIDDEN",
+        "message": "无权执行该操作"
+      }
+    },
+    "name": "op PUT 报告模板",
+    "status": 403
+  },
+  {
+    "body": {
+      "error": {
+        "code": "FORBIDDEN",
+        "message": "无权执行该操作"
+      }
+    },
+    "name": "op PUT 报告模板 过期",
+    "status": 403
+  },
+  {
+    "body": {
+      "error": {
+        "code": "FORBIDDEN",
+        "message": "无权执行该操作"
+      }
+    },
+    "name": "op PUT 报告模板 非法体",
+    "status": 403
+  },
+  {
+    "body": {
+      "error": {
+        "code": "FORBIDDEN",
+        "message": "无权执行该操作"
+      }
+    },
+    "name": "op PUT 报告模板 多余字段",
+    "status": 403
+  },
+  {
+    "body": {
+      "error": {
+        "code": "FORBIDDEN",
+        "message": "无权执行该操作"
+      }
+    },
+    "name": "op PUT 报告模板 重放",
+    "status": 403
+  },
+  {
+    "body": {
+      "error": {
+        "code": "FORBIDDEN",
+        "message": "无权执行该操作"
+      }
+    },
+    "name": "op PUT 报告模板 同键异内容",
+    "status": 403
+  },
+  {
+    "body": {
+      "code": "standard",
+      "id": "<id:23>",
+      "name": "标准版",
+      "revision": 1,
+      "showTextRole": true
+    },
+    "name": "op GET 报告模板 之后",
+    "status": 200
+  }
+]

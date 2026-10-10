@@ -30,9 +30,11 @@ export {
   FIRST_ADMIN_PROFILE,
   NO_ORG_FIELD_SEE_ALL,
   type PresetSeeAllTarget,
+  presetSeeAllTargets,
   STANDARD_PROFILES,
   type StandardProfile,
 } from './platform/standard-presets.js';
+export * from './platform/standard-grants.js';
 export * from './audit/index.js';
 export * from './expression/index.js';
 export * from './talent/index.js';

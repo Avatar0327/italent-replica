@@ -126,8 +126,12 @@ export function my(w: World360, user: string) {
 
 /** 转发报告的收件人链接（令牌取自转发邮件 outbox）。 */
 export function reportLink(w: World360, token: string) {
-  return (method: string, path = '') =>
-    w.api.request(method, `${REPORT_LINK}${path}`, { tenant: w.tenantId, headers: { 'x-survey360-token': token } });
+  return (method: string, path = '', options: { signal?: AbortSignal } = {}) =>
+    w.api.request(method, `${REPORT_LINK}${path}`, {
+      tenant: w.tenantId,
+      headers: { 'x-survey360-token': token },
+      ...options,
+    });
 }
 
 /** 关键行为套卷，两层指标（复合 c → 基础 b1 / b2），题目 q1、q2 挂 b1，q3 挂 b2；题目允许备注（文本答案）。 */
@@ -154,7 +158,13 @@ export const WEIGHTS = { self: 0, superior: 5, peer: 3, subordinate: 2, customer
  * 场景：甲部门经理 M（虚线上级 D）、评价对象 T（直线经理 M、虚线经理 D）、同事 P1 / P2（同一经理，内部员工、有账号），
  * 外部客户 X（360 手工录入，无员工、无账号）。活动“一次评价一人”，T 的评价者：T 自评、M 上级、P1 / P2 同事、X 客户。
  */
-export async function sceneB(db: World360['db'], label: string, activityBody: Record<string, unknown> = {}) {
+export async function sceneB(
+  db: World360['db'],
+  label: string,
+  activityBody: Record<string, unknown> = {},
+  /** 改套卷内容（如把某道题换成很长的题干，F-060 第 2 轮 P2-2）。 */
+  patchContent: (content: ReturnType<typeof twoLevelContent>) => unknown = (content) => content,
+) {
   const w = await world360(db, label);
   const org = await w.session.org('甲部门', { establishedOn: '2025-01-01' });
   const D = await hire(w, '虚线经理', org.id);
@@ -174,7 +184,7 @@ export async function sceneB(db: World360['db'], label: string, activityBody: Re
     await w.ok<QuestionnaireView>(
       w.request('PUT', `/questionnaires/${created.id}`, {
         ifMatch: created.revision,
-        body: { content: twoLevelContent(w, WEIGHTS) },
+        body: { content: patchContent(twoLevelContent(w, WEIGHTS)) },
       }),
     ),
   );

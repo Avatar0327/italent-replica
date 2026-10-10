@@ -7,6 +7,7 @@
  * - 分类最多 5 级；有下级或被引用的对象不能删除（409，数据不变）。
  */
 import { sql, type Tx } from '@italent/db';
+import { advisoryLock32, asUuid } from '../../advisory-lock.js';
 import { tenantLocalDate } from '@italent/domain';
 import { recordImportLog } from '../../audit/record.js';
 import { AppError } from '../../errors.js';
@@ -344,8 +345,10 @@ export async function deleteCategory(tx: Tx, ctx: WriteContext, id: string) {
   await rejectInUse(tx, {
     sql: sql`SELECT 1 FROM ql_standards WHERE tenant_id = ${ctx.tenantId} AND category_id = ${id}::uuid
       UNION ALL SELECT 1 FROM ql_development_channels WHERE tenant_id = ${ctx.tenantId}
-        AND target_category_id = ${id}::uuid`,
-    message: '该任职类别已有任职资格标准或被发展通道引用，不能删除',
+        AND target_category_id = ${id}::uuid
+      UNION ALL SELECT 1 FROM personnel_qualification WHERE tenant_id = ${ctx.tenantId}
+        AND category_id = ${id}::uuid`,
+    message: '该任职类别已有任职资格标准，或被发展通道、员工任职资格记录引用，不能删除',
     reason: 'CATEGORY_IN_USE',
   });
   const before = await reload<JobLinked>(tx, ctx, 'category', id);
@@ -397,6 +400,11 @@ export async function deleteLayer(tx: Tx, ctx: WriteContext, id: string) {
 
 // ── 任职级别 ────────────────────────────────────────────────
 
+/** 同租户级别顺序号的分配串行化（与并发新建级别互斥）。沿用改造前的 hashtext，新旧进程混跑时仍是同一把锁。 */
+export async function lockLevelOrder(tx: Tx, tenantId: string): Promise<void> {
+  await advisoryLock32(tx, 'ql_levels:', asUuid(tenantId));
+}
+
 /** 顺序号从低到高、租户内唯一；新建缺省为当前最大 + 1（QL-R2）。 */
 async function levelOrder(tx: Tx, ctx: WriteContext, given: number | undefined, exceptId?: string) {
   if (given !== undefined) {
@@ -408,7 +416,7 @@ async function levelOrder(tx: Tx, ctx: WriteContext, given: number | undefined, 
     return given;
   }
   // 与并发新建串行：锁住租户的编码规则行（级别）
-  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`ql_levels:${ctx.tenantId}`}))`);
+  await lockLevelOrder(tx, ctx.tenantId);
   const max = rowsOf<{ max: number | null }>(
     await tx.execute(sql`SELECT max(display_order) AS max FROM ql_levels WHERE tenant_id = ${ctx.tenantId}`),
   )[0]!.max;
@@ -500,8 +508,10 @@ export async function deleteLevel(tx: Tx, ctx: WriteContext, id: string) {
   await rejectInUse(tx, {
     sql: sql`SELECT 1 FROM ql_standards WHERE tenant_id = ${ctx.tenantId} AND ${id}::uuid = ANY(level_ids)
       UNION ALL SELECT 1 FROM ql_development_channels WHERE tenant_id = ${ctx.tenantId}
-        AND target_level_id = ${id}::uuid`,
-    message: '该任职级别已被任职资格标准引用，不能删除',
+        AND target_level_id = ${id}::uuid
+      UNION ALL SELECT 1 FROM personnel_qualification WHERE tenant_id = ${ctx.tenantId}
+        AND level_id = ${id}::uuid`,
+    message: '该任职级别已被任职资格标准或员工任职资格记录引用，不能删除',
     reason: 'LEVEL_IN_USE',
   });
   const before = await reload<JobLinked>(tx, ctx, 'level', id);

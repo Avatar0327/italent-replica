@@ -32,6 +32,7 @@ import { uuidParam } from '../job/context.js';
 import { getModuleViewableFieldsInTransaction } from '../permission/module-access.js';
 import { type ActivityRow, iso, requireActivity } from './access.js';
 import { LINK_TOKEN_HEADER } from './answering.js';
+import { admitted, attachmentName, fileResponse, renderPdf, type ReportBody, reportDocument } from './export-files.js';
 import {
   actor,
   type Admin,
@@ -434,9 +435,34 @@ function trimReport(fields: ReadonlySet<string> | undefined, body: unknown): unk
   return { ...(trimAliases(fields, { ...top, questionnaires: [] }, REPORT_ALIASES) as object), questionnaires };
 }
 
-const reportPresent: Present = async (viewer, body: unknown) => trimReport(await viewer.fields('result'), body);
+/**
+ * 报告内容按结果字段裁剪；封面里的活动名称来自 Activity.name，隐藏该字段的查看人同样拿不到（F-060 第 2 轮 P2-1，
+ * 详情接口与 PDF 下载同一处）。
+ */
+const reportPresent: Present = async (viewer, body: unknown) => {
+  const trimmed = trimReport(await viewer.fields('result'), body) as { cover?: Record<string, unknown> };
+  const activityFields = await viewer.fields('activity');
+  if (!trimmed.cover || !activityFields || activityFields.has('name')) return trimmed;
+  const { activityName: _hidden, ...cover } = trimmed.cover;
+  return { ...trimmed, cover };
+};
 
-/** 转发让收件人看到整份报告：发送人须能看到报告正文涉及的全部结果字段，否则 403（第 2 轮 P2-5）。 */
+/**
+ * 报告详情（已按查看人裁剪）→ PDF 附件；文件名是评价对象姓名，被裁掉时用通用名。经应用层并发准入与超时（tenantKey 只用于
+ * 计数）。
+ */
+async function reportPdf(tenantKey: string, report: ReportBody, disconnect: AbortSignal): Promise<Response> {
+  // disconnect = 请求断开信号（c.req.raw.signal）：客户端断开即取消渲染并释放名额（F-080，#198 审查 P2-2）
+  const pdf = await admitted(tenantKey, (signal) => renderPdf(reportDocument(report), signal), { signal: disconnect });
+  const subject = report.cover?.objectName;
+  return fileResponse(pdf, 'application/pdf', attachmentName(`${subject ? `${subject}-` : ''}个人报告`, 'pdf'));
+}
+
+/**
+ * 转发让收件人看到整份报告：发送人须能看到报告正文涉及的全部结果字段，以及封面里活动名称的来源 Activity.name，
+ * 否则 403（第 2 轮 P2-5；F-060 第 3 轮 P2-R2-1：收件人报告不按发送人裁剪，转发给自己就能读回被隐藏的名称）。
+ * 预览与执行同一处检查。
+ */
 const REPORT_FIELDS = [
   'cover',
   'questionnaires',
@@ -446,12 +472,43 @@ const REPORT_FIELDS = [
 ];
 async function requireFullReportView(tx: Tx, deps: TenantRouteDeps, tenant: TenantContext) {
   const fields = await getModuleViewableFieldsInTransaction(deps, tenant, OBJECTS.result.code, tx);
-  if (fields && REPORT_FIELDS.some((f) => !fields.has(f)))
-    fail('FORBIDDEN', '对报告内容没有完整的查看权限，不能转发', 'REPORT_FIELDS_RESTRICTED');
+  const activityFields = await getModuleViewableFieldsInTransaction(deps, tenant, OBJECTS.activity.code, tx);
+  const restricted =
+    (fields && REPORT_FIELDS.some((f) => !fields.has(f))) || (activityFields && !activityFields.has('name'));
+  if (restricted) fail('FORBIDDEN', '对报告内容没有完整的查看权限，不能转发', 'REPORT_FIELDS_RESTRICTED');
+}
+
+/** 报告详情与 PDF 下载：同一个 detail（权限、范围、报告失效拦截都在这里），只是响应格式不同。 */
+function registerReportViewRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
+  const detail = async (c: C, tx: Tx, admin: Admin, tenant: TenantContext) => {
+    const activity = await requireActivity(tx, admin, uuidParam(c));
+    const template = await standardTemplate(tx, tenant.tenantId);
+    const reportId = uuidParam(c, 'reportId');
+    // 评价对象须在查看人范围内：范围外的与不存在同一 404
+    if (!(await visibleObjects(tx, activity.id, admin, template.id)).some((o) => o.report_id === reportId))
+      fail('NOT_FOUND', '报告不存在');
+    return reportView(tx, activity, reportId);
+  };
+  module.get('/activities/:id/reports/:reportId', (c) =>
+    read(c, deps, VIEW, (tx, admin, tenant) => detail(c, tx, admin, tenant), reportPresent),
+  );
+  // 个人报告“下载”是 PDF（`25` §10.3 ⑬⑭）：与详情接口同一权限、同一范围与字段裁剪，文件由同一份数据生成
+  module.get('/activities/:id/reports/:reportId/download', (c) =>
+    read(
+      c,
+      deps,
+      VIEW,
+      (tx, admin, tenant) => detail(c, tx, admin, tenant),
+      reportPresent,
+      'full',
+      (cc, report) => reportPdf(tenantOf(cc).tenantId, report, cc.req.raw.signal),
+    ),
+  );
 }
 
 export function registerReportRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   registerTemplateRoutes(module, deps);
+  registerReportViewRoutes(module, deps);
   module.get('/activities/:id/reports', (c) =>
     read(c, deps, VIEW, async (tx, admin, tenant) => {
       const activity = await requireActivity(tx, admin, uuidParam(c));
@@ -460,23 +517,6 @@ export function registerReportRoutes(module: Hono<TenantEnv>, deps: TenantRouteD
       const v = await validity(tx, activity);
       return { items: objects.map((o) => rowView(v, template, o)) };
     }),
-  );
-  module.get('/activities/:id/reports/:reportId', (c) =>
-    read(
-      c,
-      deps,
-      VIEW,
-      async (tx, admin, tenant) => {
-        const activity = await requireActivity(tx, admin, uuidParam(c));
-        const template = await standardTemplate(tx, tenant.tenantId);
-        const reportId = uuidParam(c, 'reportId');
-        // 评价对象须在查看人范围内：范围外的与不存在同一 404
-        if (!(await visibleObjects(tx, activity.id, admin, template.id)).some((o) => o.report_id === reportId))
-          fail('NOT_FOUND', '报告不存在');
-        return reportView(tx, activity, reportId);
-      },
-      reportPresent,
-    ),
   );
   // 生成 / 转发共用的命令处理函数；注册路径写字面量（F-039 静态扫描按注册处求值）
   const command =
@@ -535,9 +575,15 @@ export function registerReportRoutes(module: Hono<TenantEnv>, deps: TenantRouteD
 }
 
 function registerTemplateRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
+  // 报告模板读写只用租户，不用活动 / 人员可见范围，不预取 Activity 的查看权与“全部活动”按钮（F-075b，DEC-373①）
   module.get('/report-template', (c) =>
-    read(c, deps, { object: 'settings' }, async (tx, _admin, tenant) =>
-      templateView(await standardTemplate(tx, tenant.tenantId)),
+    read(
+      c,
+      deps,
+      { object: 'settings' },
+      async (tx, _admin, tenant) => templateView(await standardTemplate(tx, tenant.tenantId)),
+      undefined,
+      'identity',
     ),
   );
   module.put('/report-template', (c) =>
@@ -569,7 +615,7 @@ function registerTemplateRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps):
         });
         return templateView(saved);
       },
-      { need: { object: 'settings', operation: 'update' }, fields: 'body' },
+      { need: { object: 'settings', operation: 'update' }, fields: 'body', admin: 'identity' },
     ),
   );
 }
@@ -613,15 +659,21 @@ export function registerReportLinkRoutes(router: Hono<TenantEnv>, deps: TenantRo
     });
     return c.json(body);
   });
-  module.get('/reports/:reportId', async (c) => {
+  const linked = async (c: C) => {
     const { tenantId, hash } = await resolve(c);
     const reportId = uuidParam(c, 'reportId');
-    const body = await withTenant(deps.db, tenantId, async (tx) => {
+    const report = await withTenant(deps.db, tenantId, async (tx) => {
       const { link, activity } = await linkOf(tx, hash);
       if (!link.reportIds.includes(reportId)) fail('NOT_FOUND', '报告不存在');
       return reportView(tx, activity, reportId);
     });
-    return c.json(body);
+    return { tenantId, report };
+  };
+  module.get('/reports/:reportId', async (c) => c.json((await linked(c)).report));
+  // 收件人下载 PDF：与上面同一份报告内容（邮件里发的是链接，不发附件）
+  module.get('/reports/:reportId/download', async (c) => {
+    const { tenantId, report } = await linked(c);
+    return reportPdf(tenantId, report as never, c.req.raw.signal);
   });
   router.route('/api/survey360/report-link', module);
 }

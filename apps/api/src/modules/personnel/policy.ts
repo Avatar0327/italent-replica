@@ -21,6 +21,10 @@
  *    `result.generic.targets` 据此登记（PATCH /employees/:id 的目标才是 id）。
  * 6. 按员工的子集列表既有列表谓词又有 employeeId 点校验，单个 ObjectPolicy 放不下，用 all([列表分支, 点校验分支])
  *    表达（附录 A 类型列写 object）；`write.fields` 没有 body.values 形式，变更申请用 { guard } 登记。
+ *
+ * R3-T02 P0 契约（subset-policy.ts）：子集写路由经 saveSubset 调按子集登记的落地前复核（守卫 personnel.subsetPolicy）；
+ * 自助申请提交经 createChange 调自助申请准入（personnel.subsetRequestPolicy，审批中心同单重提同一守卫）。
+ * 未登记的子集两道检查都不调用。
  */
 import { PERSONNEL_OBJECT, PERSONNEL_REQUEST_OBJECT, SUBSETS } from '@italent/domain';
 import {
@@ -70,6 +74,8 @@ const employeePoint = (param: string) => pointScope({ param }, 'personnel.employ
 const employeeList = listScope('personnel.personScope');
 const employeeShape = shape('personnel.employee');
 const subsetShape = shape('personnel.subset');
+/** P0 契约：saveSubset 内按子集登记的落地前复核（锁人后、写入前；未登记的子集不调用）。 */
+const subsetPolicy = ['personnel.subsetPolicy'];
 /** `trimSubset`：子集字段按子集对象查看权、随行员工属性列按 EmployeeInformation 查看权（listFieldVisibility）。 */
 const subsetProjection = projector('personnel.subset', 'personnel.subset');
 const requestShape = shape('personnel.changeRequest');
@@ -231,6 +237,7 @@ export const PERSONNEL_POLICIES = defineTable('personnel', {
     operation: 'create',
     button: button('create', 'list'),
     scope: employeePoint('employeeId'),
+    guards: subsetPolicy,
     fields: subsetShape,
     write: personnelWrite('body', 'employeeId', ['lockPerson', 'validateAttachments', 'assertRevision']),
     ...byUuid,
@@ -240,6 +247,7 @@ export const PERSONNEL_POLICIES = defineTable('personnel', {
     operation: 'update',
     button: button('update', 'detail'),
     scope: employeePoint('employeeId'),
+    guards: subsetPolicy,
     fields: subsetShape,
     write: personnelWrite('body', 'employeeId', ['lockPerson', 'validateAttachments', 'loadSubset', 'assertRevision']),
     ...byUuid,
@@ -249,6 +257,7 @@ export const PERSONNEL_POLICIES = defineTable('personnel', {
     operation: 'delete',
     button: button('delete', 'detail'),
     scope: employeePoint('employeeId'),
+    guards: subsetPolicy,
     fields: subsetShape,
     // 本单位经历（isThisCompany）由任职记录维护，删除 → 409 CONFLICT（saveSubset）
     write: personnelWrite(none('删除不提取字段'), 'employeeId', ['lockPerson', 'loadSubset', 'assertRevision']),
@@ -261,8 +270,9 @@ export const PERSONNEL_POLICIES = defineTable('personnel', {
     target: { body: 'employeeId' },
     // 按钮资源 buttonResource(PERSONNEL_REQUEST_OBJECT, 'self-service-submit', 'list')，不要求子集写权与管理范围
     button: button('self-service-submit', 'list'),
-    // 字段集合 = keys(body.values) ⊆ 租户设置 personnel.self_service_fields[kind]
-    guards: ['personnel.selfServiceFields'],
+    // 字段集合 = keys(body.values) ⊆ 租户设置 personnel.self_service_fields[kind]；按子集登记的自助申请准入在
+    // createChange 锁人后、写申请前（P0 契约）
+    guards: ['personnel.selfServiceFields', 'personnel.subsetRequestPolicy'],
     fields: noFields('处理函数直接返回申请行（含 values），不经裁剪'),
     write: write(
       { guard: 'personnel.selfServiceFields' },
