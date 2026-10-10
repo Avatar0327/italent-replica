@@ -223,7 +223,7 @@ describe('AC-EV-form 评价表（标准模式）', () => {
       expect(missing.status).toBe(404);
       const item = await w.generalItem(`将停用${suffix()}`);
       const form = await created(op, body({ items: [{ kind: 'general', generalItemId: item.id, weight: 10 }] }));
-      await w.setGeneralEnabled(item, false);
+      await w.forceDisableGeneral(item.id);
       const stillShown = await ok<FormView>(await read(op, form.id));
       expect(stillShown.items[0]).toMatchObject({ generalItemId: item.id, name: item.name });
       const same = await ok<FormView>(
@@ -285,6 +285,7 @@ describe('AC-EV-form 评价表（标准模式）', () => {
       expect(seen.items[0]!.hiddenTargets).toEqual([{ id: t1.id, name: t1.name }]);
       for (const options of [{ noTargetObject: true }, { hiddenTargetFields: ['name'] }]) {
         const op = await manager(options);
+        const form = await w.adminForm(body());
         const detail = await ok<FormView>(await read(op, form.id));
         expect(detail.items[0]!.hiddenTargets).toEqual([{ id: t1.id }]);
         const listed = (await ok<Page>(await op.request('GET', `${FORMS}?pageSize=100`))).items.find(
@@ -351,11 +352,12 @@ describe('AC-EV-form 评价表（标准模式）', () => {
       expect(await ok<FormView>(await read(hidden, form.id))).not.toHaveProperty('items');
       const page = await ok<Page>(await hidden.request('GET', `${FORMS}?pageSize=100`));
       for (const item of page.items) expect(item).not.toHaveProperty('items');
-      expect(await ok<FormView>(await patch(hidden, form, { name: `名${suffix()}` }))).not.toHaveProperty('items');
+      const written = await ok<FormView>(await patch(hidden, form, { name: `名${suffix()}` }));
+      expect(written).not.toHaveProperty('items');
       const readonly = await manager({ readonly: ['items', 'fullScore'] });
-      expect((await patch(readonly, form, { items: [{ kind: 'standard', weight: 10 }] })).status).toBe(403);
-      expect((await patch(readonly, form, { fullScore: 50 })).status).toBe(403);
-      const renamed = await ok<FormView>(await patch(readonly, form, { name: `仅改名${suffix()}` }));
+      expect((await patch(readonly, written, { items: [{ kind: 'standard', weight: 10 }] })).status).toBe(403);
+      expect((await patch(readonly, written, { fullScore: 50 })).status).toBe(403);
+      const renamed = await ok<FormView>(await patch(readonly, written, { name: `仅改名${suffix()}` }));
       expect(renamed.items).toHaveLength(2);
     });
 

@@ -7,6 +7,8 @@ import { EVALUATION_AUDIT_ACTIONS } from '@italent/domain';
 import { recordAudit } from '../../audit/record.js';
 import { AppError } from '../../errors.js';
 import { auditActor } from '../../system-actor.js';
+import { scopeAllows } from '../permission/module-access.js';
+import type { FormRefAccess, FormVisibility } from './form-refs.js';
 import type { PersonRefAccess } from './person-refs.js';
 import {
   codeOf,
@@ -24,6 +26,10 @@ export interface WriteContext extends EvaluationContext {
   readonly scope: ModuleScope;
   /** 引用人员的对象（评审组成员）：员工信息的查看权 / 范围 / 字段（路由层按当前权限解析）。 */
   readonly persons?: PersonRefAccess;
+  /** 评价表的引用（通用评分项 / 指标）：对象查看权 / 范围 / 字段（命令事务内解析）。 */
+  readonly forms?: FormRefAccess;
+  /** 通用评分项写命令：引用方（评价表）的可见范围，停用被引用时只列看得到的（命令事务内解析）。 */
+  readonly formVisibility?: FormVisibility;
 }
 
 export const TABLES: Readonly<Partial<Record<EvaluationObject, string>>> = {
@@ -31,6 +37,7 @@ export const TABLES: Readonly<Partial<Record<EvaluationObject, string>>> = {
   activityCycle: 'ev_cycles',
   generalScoreItem: 'ev_general_items',
   reviewGroup: 'ev_review_groups',
+  evaluationForm: 'ev_forms',
 };
 
 export function tableOf(object: EvaluationObject): string {
@@ -114,5 +121,13 @@ export const bumped = (ctx: EvaluationContext) => ({
   revision: ctx.expectedRevision + 1,
   updatedAt: ctx.now.toISOString(),
 });
+
+/** 所属组织：须存在且在操作人范围内；不存在与范围外同一个 404。 */
+export async function requireOwnerOrg(tx: Tx, ctx: WriteContext, orgId: string): Promise<void> {
+  const found = rowsOf(
+    await tx.execute(sql`SELECT 1 FROM org_objects WHERE tenant_id = ${ctx.tenantId}::uuid AND id = ${orgId}::uuid`),
+  );
+  if (!found.length || !scopeAllows(ctx.scope, { orgId })) throw new AppError('NOT_FOUND', '所属组织不存在');
+}
 
 export { rowsOf };

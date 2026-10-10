@@ -14,7 +14,7 @@ import { addMember, BASE, createProfile, grant, makeGrantable, setObjectPermissi
 import { assignQualificationMou } from './AC-QL-support.js';
 import { createMou } from './AC-TC-support.js';
 import type { RequestOptions } from './support/tenant-api.js';
-import type { Db } from '@italent/db';
+import { type Db, sql } from '@italent/db';
 
 export const FORMS = '/evaluation-forms';
 export const GENERAL_ITEMS = '/general-score-items';
@@ -100,6 +100,13 @@ export async function formWorld(db: Db) {
     });
     expect(response.status, await response.clone().text()).toBe(200);
   }
+  /** 绕过“被引用拒停用”直接置停用（造“评价表引用着一个已停用评分项”的历史数据，库属主连接带租户上下文）。 */
+  async function forceDisableGeneral(id: string): Promise<void> {
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT set_config('app.tenant_id', ${base.tenant.id}, true)`);
+      await tx.execute(sql`UPDATE ev_general_items SET enabled = false WHERE id = ${id}::uuid`);
+    });
+  }
   /** 管理员停用 / 启用通用评分项。 */
   async function setGeneralEnabled(item: GeneralItem, enabled: boolean): Promise<GeneralItem> {
     const response = await setup.request('PATCH', `${EV_BASE}${GENERAL_ITEMS}/${item.id}`, {
@@ -116,7 +123,7 @@ export async function formWorld(db: Db) {
     expect(response.status, await response.clone().text()).toBe(201);
     return (await response.json()) as FormView;
   }
-  return { ...base, generalItem, qlTarget, disableTarget, setGeneralEnabled, adminForm };
+  return { ...base, generalItem, qlTarget, disableTarget, forceDisableGeneral, setGeneralEnabled, adminForm };
 }
 export type FormWorld = Awaited<ReturnType<typeof formWorld>> & ReviewWorld;
 
@@ -184,7 +191,13 @@ export async function formOperator(world: FormWorld, options: FormOperatorOption
     await grantObject(
       generalProfile,
       generalObject.code,
-      viewOnly(generalObject.fields, options.hiddenGeneralFields ?? []),
+      options.generalWritable
+        ? {
+            dataOperations: { create: false, update: true, delete: false },
+            fields: generalObject.fields.map((field) => ({ fieldCode: field.code, view: true, edit: !field.system })),
+            buttons: generalObject.buttons.map((button) => ({ buttonCode: button.code, level: button.level })),
+          }
+        : viewOnly(generalObject.fields, options.hiddenGeneralFields ?? []),
     );
     const seeAll = await world.api.request('PUT', `${BASE}/profiles/${generalProfile.id}/data-scopes/${EV_APP}`, {
       ...world.asAdmin,
