@@ -29,6 +29,8 @@ export type ParseResult =
 export interface ParseOptions {
   /** 存储模式（F-082 契约 §1.2）：识别字段句柄，不设 4000 字上限，只保留 800 词上限。 */
   readonly stored?: boolean;
+  /** 输入模式识别占位符 `〔不可见字段〕`（F-082 新路径才开；缺省不识别，B5 路径逐字不变）。 */
+  readonly placeholders?: boolean;
 }
 
 const DEF_NAMES = new Set(['def', '定义']);
@@ -365,12 +367,12 @@ type Scanned =
   | { readonly ok: false; readonly limit?: InputLimitReason; readonly error: SyntaxIssue };
 
 /** 长度 / 词数限制与词法扫描：parseFormula 与 checkInputLimits 同源。存储模式不设字数上限。 */
-function scan(source: string, stored: boolean): Scanned {
+function scan(source: string, stored: boolean, placeholders: boolean): Scanned {
   if (!stored && source.length > MAX_FORMULA_LENGTH) {
     return { ok: false, limit: 'TOO_LONG', error: limitIssue('TOO_LONG') };
   }
   try {
-    const tokens = tokenize(source, { handles: stored });
+    const tokens = tokenize(source, { handles: stored, placeholders });
     if (tokens.length > MAX_FORMULA_TOKENS) {
       return { ok: false, limit: 'TOO_MANY_TOKENS', error: limitIssue('TOO_MANY_TOKENS') };
     }
@@ -385,15 +387,15 @@ function scan(source: string, stored: boolean): Scanned {
  * 输入限制（4000 字、800 词）：保存与改名往返校验共用（F-082 契约 §1.2、§3.1）。
  * 词法错误不在这里报（返回 ok），交给后续的语法检查。
  */
-export function checkInputLimits(source: string): InputLimitResult {
-  const scanned = scan(source, false);
+export function checkInputLimits(source: string, options: { readonly placeholders?: boolean } = {}): InputLimitResult {
+  const scanned = scan(source, false, options.placeholders === true);
   if (scanned.ok || !scanned.limit) return { ok: true };
   return { ok: false, reason: scanned.limit, message: scanned.error.message };
 }
 
 /** 解析公式文本；语法错误以结构化结果返回（含行 / 列），不抛异常。 */
 export function parseFormula(source: string, options: ParseOptions = {}): ParseResult {
-  const scanned = scan(source, options.stored === true);
+  const scanned = scan(source, options.stored === true, options.placeholders === true);
   if (!scanned.ok) return { ok: false, errors: [scanned.error] };
   try {
     return { ok: true, program: new Parser(scanned.tokens).parseProgram() };

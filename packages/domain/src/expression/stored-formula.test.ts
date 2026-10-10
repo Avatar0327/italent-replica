@@ -167,7 +167,7 @@ describe('checkInputLimits：4000 字 / 800 词，与 parseFormula 同源', () =
   });
 
   it('带占位符的回显文本：placeholders:true 时按词数计限制（F082-3 的第 2 步）', () => {
-    const words = Array.from({ length: 401 }, () => `盘点对象.${HIDDEN_FIELD_PLACEHOLDER}`).join('+');
+    const words = Array.from({ length: 201 }, () => `盘点对象.${HIDDEN_FIELD_PLACEHOLDER}`).join('+');
     expect(checkInputLimits(words, { placeholders: true })).toMatchObject({ ok: false, reason: 'TOO_MANY_TOKENS' });
     // 默认不识别占位符：词法错误交给后续语法检查
     expect(checkInputLimits(words)).toEqual({ ok: true });

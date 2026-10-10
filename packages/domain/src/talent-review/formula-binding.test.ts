@@ -202,9 +202,15 @@ describe('bindFormula：不可见引用（DEC-376①）', () => {
     const typeError = expectFailure(bindFormula(`盘点对象.${HIDDEN_FIELD_PLACEHOLDER} + AddDays(1,1)`, fresh()));
     expect(typeError).toMatchObject({ code: 'FORMULA_INVALID', issues: [{ code: 'HIDDEN_FIELD' }] });
     const mismatch = expectFailure(
-      bindFormula(`盘点对象.${HIDDEN_FIELD_PLACEHOLDER} + 盘点对象.${HIDDEN_FIELD_PLACEHOLDER}`, fresh({ proofs: [null] })),
+      bindFormula(
+        `盘点对象.${HIDDEN_FIELD_PLACEHOLDER} + 盘点对象.${HIDDEN_FIELD_PLACEHOLDER}`,
+        fresh({ proofs: [null] }),
+      ),
     );
-    expect(mismatch).toMatchObject({ code: 'FORMULA_INVALID', issues: [{ code: 'HIDDEN_FIELD' }, { code: 'HIDDEN_FIELD' }] });
+    expect(mismatch).toMatchObject({
+      code: 'FORMULA_INVALID',
+      issues: [{ code: 'HIDDEN_FIELD' }, { code: 'HIDDEN_FIELD' }],
+    });
   });
 
   it('函数不存在、参数个数不对仍先于 HIDDEN_FIELD（§1.5 前置检查）', () => {
@@ -353,7 +359,10 @@ describe('renderFormula：legacy / unresolved（契约 §1.4，DEC-376③；审�
     });
     expect(withVersion).toMatchObject({
       ok: false,
-      failure: { code: 'FORMULA_INVALID', issues: [{ code: 'RESERVED_PATH_AMBIGUOUS', choices: [CONTEXT_BINDING, F3] }] },
+      failure: {
+        code: 'FORMULA_INVALID',
+        issues: [{ code: 'RESERVED_PATH_AMBIGUOUS', choices: [CONTEXT_BINDING, F3] }],
+      },
     });
   });
 

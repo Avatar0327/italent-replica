@@ -67,6 +67,8 @@ export interface ValidationOptions {
   readonly fieldKind?: (path: string) => ExpressionFieldKind | undefined;
   /** 存储模式（F-082）：公式是带字段句柄的规范文本；句柄就是字段目录里的字段路径。 */
   readonly storage?: boolean;
+  /** 输入模式识别占位符 `〔不可见字段〕`（F-082 新路径才开；缺省不识别，B5 路径逐字不变）。 */
+  readonly placeholders?: boolean;
   /**
    * 排序诊断的显示名称：计算项目的字段键（存储模式下是句柄）→ 对外文案里的名称。只影响文案，
    * 结构化诊断的 fields 仍是字段键（F-082 契约 §4）。缺省原样显示字段键。
@@ -196,7 +198,10 @@ const byOffset = (a: SourcePosition, b: SourcePosition) => a.offset - b.offset;
  * 返回报错行 / 列（复刻改进，`26` §8.1）；类型不确定的只给提示（warnings），不阻断保存。
  */
 export function validateFormula(source: string, options: ValidationOptions = {}): ValidationResult {
-  const parsed = parseFormula(source, { stored: options.storage === true });
+  const parsed = parseFormula(source, {
+    stored: options.storage === true,
+    placeholders: options.placeholders === true,
+  });
   if (!parsed.ok) return parsed;
   const registry = options.registry ?? createDefaultRegistry();
   const collected = new ReferenceCollector(registry, options.isKnownField, options.fieldKind).collect(parsed.program);

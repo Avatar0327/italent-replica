@@ -135,20 +135,24 @@ const acceptedByEngine = (path: string) =>
 
 const normalizeId = (id: string) => id.toLowerCase();
 
-/** 把输入文本里的字段引用绑定成 ID（契约 §1.5）。第一个失败即返回；HIDDEN_FIELD 优先于同一公式里的其他语义问题。 */
+/** 先于 HIDDEN_FIELD 报告的前置检查：语法、函数是否存在、参数个数（契约 §1.5）；参数类型等语义问题排在它之后（§1.6）。 */
+const PRECHECK_CODES: ReadonlySet<string> = new Set([
+  'SYNTAX_ERROR',
+  'CHINESE_QUOTE',
+  'UNKNOWN_FUNCTION',
+  'ARGUMENT_COUNT',
+]);
+
+/** 把输入文本里的字段引用绑定成 ID（契约 §1.5）。第一个失败即返回；语法正确时 HIDDEN_FIELD 优先于其他语义问题（§1.6）。 */
 export function bindFormula(source: string, options: BindFormulaOptions): BindResult {
-  const parsed = parseFormula(source);
+  const parsed = parseFormula(source, { placeholders: true });
   if (!parsed.ok) return invalid(fromSyntax(parsed.errors[0]!));
-  const checked = validateFormula(source, { isKnownField: acceptedByEngine });
+  const checked = validateFormula(source, { isKnownField: acceptedByEngine, placeholders: true });
   const engineErrors = checked.ok ? [] : checked.errors;
-  const structural = engineErrors.filter((error) => error.code !== 'UNKNOWN_FIELD');
-  if (structural.length > 0) return invalid(...structural.map(fromSyntax));
+  const precheck = engineErrors.filter((error) => PRECHECK_CODES.has(error.code));
+  if (precheck.length > 0) return invalid(...precheck.map(fromSyntax));
 
   const references = fieldNodes(parsed.program).filter(isObjectReference);
-  const { proofs } = options;
-  if (proofs !== undefined && proofs.length !== references.length) {
-    return invalid({ code: 'BINDING_MISMATCH', message: '公式里的字段绑定与引用处数不一致，请刷新后重新编辑' });
-  }
   const hidden = references.flatMap((node, occurrence) => (node.hidden ? [{ node, occurrence }] : []));
   if (hidden.length > 0) {
     const message = '公式里有你看不到的字段，只能原样保留或整段重写；如页面已过期请刷新';
@@ -156,7 +160,12 @@ export function bindFormula(source: string, options: BindFormulaOptions): BindRe
       ...hidden.map(({ node, occurrence }) => ({ code: 'HIDDEN_FIELD' as const, message, occurrence, ...at(node) })),
     );
   }
-  const semantic = semanticIssues(parsed.program, engineErrors, options.visibleFields);
+  const { proofs } = options;
+  if (proofs !== undefined && proofs.length !== references.length) {
+    return invalid({ code: 'BINDING_MISMATCH', message: '公式里的字段绑定与引用处数不一致，请刷新后重新编辑' });
+  }
+  const later = engineErrors.filter((error) => !PRECHECK_CODES.has(error.code));
+  const semantic = semanticIssues(parsed.program, later, options.visibleFields);
   if (semantic.length > 0) return invalid(...semantic);
   return resolveReferences(source, references, options);
 }
@@ -259,25 +268,48 @@ function canonicalText(source: string, references: readonly FieldNode[], mapping
   return text + source.slice(cursor);
 }
 
+export type FormulaBindingState = 'bound' | 'legacy' | 'unresolved';
+
 export interface RenderFormulaOptions {
-  /** 查看人可见的字段 ID（小写）→ 当前名称；不在其中的字段渲染成占位符。 */
-  readonly names: ReadonlyMap<string, string>;
+  /** 计算项目的存储形态（`formula_binding`）：bound 存规范文本，legacy / unresolved 存原来的名称文本，渲染规则不同。 */
+  readonly binding: FormulaBindingState;
+  /** 查看人可见的字段（允许重名）；不在其中的字段渲染成占位符。 */
+  readonly visibleFields: readonly BindFormulaField[];
+  /** legacy / unresolved 整段无法解析时：只有“全部字段都可见”的查看人看原文，其他人只看到固定提示。 */
+  readonly allFieldsVisible?: boolean;
 }
 
 export type RenderResult =
   | {
       readonly ok: true;
-      /** 渲染文本：句柄 → `盘点对象.<当前名称>`；看不到的字段 → `盘点对象.〔不可见字段〕`；项目上下文路径原样。 */
+      /**
+       * 渲染文本：bound 的句柄 → `盘点对象.<当前名称>`，看不到的字段 → `盘点对象.〔不可见字段〕`，项目上下文路径原样；
+       * legacy / unresolved 的 `盘点对象.<名>` 只有可见字段里存在同名字段才原样显示，否则换成占位符。
+       */
       readonly text: string;
-      /** 逐处绑定：可见字段为其 ID；项目上下文为 `"context"`；占位符为 `null`。 */
+      /**
+       * 逐处绑定：bound 时可见字段为其 ID、项目上下文为 `"context"`、占位符为 `null`；
+       * legacy / unresolved 一律为 `null`（没有确定绑定，不能作为绑定证明）。
+       */
       readonly bindings: readonly (string | null)[];
+      /** legacy / unresolved 整段无法解析（需要管理员修复公式）。 */
+      readonly repairNeeded?: true;
     }
+  /** bound 的规范文本损坏（无法解析，或残留名称写法）：不原样输出。 */
   | { readonly ok: false };
 
-/** 规范文本 → 查看人看到的名称文本（契约 §1.4）。规范文本无法解析时返回 ok:false，由调用方按“待修复”显示。 */
+/** 整段无法解析的 legacy 公式对无权看全部字段的查看人显示的固定提示。 */
+export const FORMULA_REPAIR_NOTICE = '〔公式待修复，无法显示〕';
+
+/** 渲染计算项目的公式（契约 §1.4）：先看存储形态，再按对应规则渲染，不把 legacy 当作 bound。 */
 export function renderFormula(stored: string, options: RenderFormulaOptions): RenderResult {
+  return options.binding === 'bound' ? renderBound(stored, options) : renderLegacy(stored, options);
+}
+
+function renderBound(stored: string, options: RenderFormulaOptions): RenderResult {
   const parsed = parseStoredFormula(stored);
   if (!parsed.ok) return { ok: false };
+  const names = new Map(options.visibleFields.map((field) => [field.id.toLowerCase(), field.name]));
   const references = fieldNodes(parsed.program).filter((node) => node.fieldId !== undefined || isObjectReference(node));
   const bindings: (string | null)[] = [];
   let text = '';
@@ -285,17 +317,38 @@ export function renderFormula(stored: string, options: RenderFormulaOptions): Re
   for (const node of references) {
     text += stored.slice(cursor, node.pos.offset);
     cursor = node.end;
-    const name = node.fieldId === undefined ? undefined : options.names.get(node.fieldId);
     if (node.fieldId !== undefined) {
+      const name = names.get(node.fieldId);
       text += `${FORMULA_OBJECT}.${name ?? HIDDEN_FIELD_PLACEHOLDER}`;
       bindings.push(name === undefined ? null : node.fieldId);
     } else if (node.text === RESERVED_PATH) {
       text += RESERVED_PATH;
       bindings.push(CONTEXT_BINDING);
     } else {
-      text += stored.slice(node.pos.offset, node.end);
-      bindings.push(null);
+      // bound 的规范文本里不会有名称写法：数据损坏，宁可不显示也不原样输出可能不可见的名称
+      return { ok: false };
     }
+  }
+  return { ok: true, text: text + stored.slice(cursor), bindings };
+}
+
+function renderLegacy(stored: string, options: RenderFormulaOptions): RenderResult {
+  const parsed = parseFormula(stored);
+  if (!parsed.ok) {
+    const text = options.allFieldsVisible === true ? stored : FORMULA_REPAIR_NOTICE;
+    return { ok: true, text, bindings: [], repairNeeded: true };
+  }
+  const visibleNames = new Set(options.visibleFields.map((field) => field.name));
+  const bindings: (string | null)[] = [];
+  let text = '';
+  let cursor = 0;
+  for (const node of fieldNodes(parsed.program).filter(isObjectReference)) {
+    text += stored.slice(cursor, node.pos.offset);
+    cursor = node.end;
+    // 盘点对象.盘点方案 是固定的项目上下文路径名，显示它不暴露任何字段；证明一律为 null，由用户显式选择
+    const shown = node.text === RESERVED_PATH || visibleNames.has(node.path[1]!);
+    text += shown ? stored.slice(node.pos.offset, node.end) : `${FORMULA_OBJECT}.${HIDDEN_FIELD_PLACEHOLDER}`;
+    bindings.push(null);
   }
   return { ok: true, text: text + stored.slice(cursor), bindings };
 }

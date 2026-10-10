@@ -75,6 +75,10 @@ export function parseFieldHandle(text: string): string | undefined {
 export interface TokenizeOptions {
   /** 存储模式：识别句柄 `@{tr-field:<uuid>}`，不识别占位符。输入模式（缺省）下 `@` 是非法字符。 */
   readonly handles?: boolean;
+  /**
+   * 输入模式识别占位符 `〔不可见字段〕`（F-082 新路径才开；缺省不识别，B5 路径逐字不变）。存储模式从不识别。
+   */
+  readonly placeholders?: boolean;
 }
 
 const KEYWORDS: Readonly<Record<string, Keyword>> = {
@@ -160,6 +164,7 @@ class Scanner {
   constructor(
     private readonly source: string,
     private readonly handles: boolean,
+    private readonly placeholders: boolean,
   ) {}
 
   run(): Token[] {
@@ -207,7 +212,9 @@ class Scanner {
 
   private scanToken(ch: string): void {
     if (this.handles && ch === '@') return this.scanHandle();
-    if (!this.handles && this.source.startsWith(HIDDEN_FIELD_PLACEHOLDER, this.offset)) return this.scanPlaceholder();
+    if (this.placeholders && !this.handles && this.source.startsWith(HIDDEN_FIELD_PLACEHOLDER, this.offset)) {
+      return this.scanPlaceholder();
+    }
     if (CHINESE_QUOTES.has(ch)) this.error('CHINESE_QUOTE', '字符串须用英文双引号，不能用中文引号');
     if (ch === '"') return this.scanString();
     if (ch === "'") this.error('SYNTAX_ERROR', '字符串须用英文双引号');
@@ -315,5 +322,5 @@ class Scanner {
 
 /** 把公式文本切成 token；遇到中文引号或无法识别的字符抛 SyntaxIssueError。 */
 export function tokenize(source: string, options: TokenizeOptions = {}): Token[] {
-  return new Scanner(source, options.handles === true).run();
+  return new Scanner(source, options.handles === true, options.placeholders === true).run();
 }
