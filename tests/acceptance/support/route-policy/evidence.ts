@@ -242,10 +242,17 @@ const isMissingFile = (error: unknown): boolean =>
 const unitErrorCode = (error: Error) =>
   error instanceof EvidenceUnitError ? 'EVIDENCE_UNIT' : 'EVIDENCE_UNIT_INVALID';
 
+/** 只有这两类是“这个单元有问题”；读取器的其他异常（EACCES、TypeError……）不归类，一律照旧抛出。 */
+const isUnitProblem = (error: unknown): error is EvidenceUnitError | EvidenceUnitInvalidError =>
+  error instanceof EvidenceUnitError || error instanceof EvidenceUnitInvalidError;
+
+/** 证据单元写法错误（格式不对、指向登记表文件）：登记自身的错误，不是漂移，两种模式都判红（F-090）。 */
+export class EvidenceUnitInvalidError extends Error {}
+
 export function unitText(read: SourceReader, unit: string): string {
   const [file = '', name = ''] = unit.split('#');
-  if (!file || !name) throw new Error(`证据单元格式应为 文件#名字：${unit}`);
-  if (/(^|\/)(app-)?policy\.ts$/.test(file)) throw new Error(`证据不得指向登记表文件：${unit}`);
+  if (!file || !name) throw new EvidenceUnitInvalidError(`证据单元格式应为 文件#名字：${unit}`);
+  if (/(^|\/)(app-)?policy\.ts$/.test(file)) throw new EvidenceUnitInvalidError(`证据不得指向登记表文件：${unit}`);
   let sf: ts.SourceFile;
   try {
     sf = sourceFileOf(read, file);
@@ -344,8 +351,10 @@ export function currentDigests(
   read: SourceReader = repoSource,
   branch: BranchBindings | false = BRANCH_BINDINGS,
 ): Record<string, string> {
-  const units = [...usesOf(table, branch).keys()].sort();
-  return Object.fromEntries(units.map((unit) => [unit, digestOf(unitText(read, unit))]));
+  const { texts } = validUnits(table, read, branch);
+  return Object.fromEntries(
+    [...texts].sort(([a], [b]) => a.localeCompare(b)).map(([unit, text]) => [unit, digestOf(text)]),
+  );
 }
 
 /** 同 currentDigests，但按 文件 → 单元名 → 摘要 分组（与 DIGESTS 同形，供 checkEvidence 的 digests 选项）。 */
@@ -401,12 +410,12 @@ export function currentDependencies(
   branch: BranchBindings | false = BRANCH_BINDINGS,
   boundary: readonly BoundaryEntry[] = EVIDENCE_BOUNDARY,
 ): Record<string, Record<string, string>> {
-  const closures = closuresOf([...usesOf(table, branch).keys()].sort(), read, boundary);
+  // 只以有效单元为根（失效单元由 brokenUnits / EVIDENCE_UNIT 报告）；有效单元的闭包出错不是漂移，照旧抛出
+  const closures = closuresOf([...validUnits(table, read, branch).uses.keys()].sort(), read, boundary);
   return Object.fromEntries(
-    [...closures].flatMap(([unit, closure]) => {
-      if (closure instanceof EvidenceUnitError) return []; // 失效的单元由 brokenUnits / EVIDENCE_UNIT 报告
+    [...closures].map(([unit, closure]) => {
       if (closure instanceof Error) throw closure;
-      return [[unit, depDigests(closure)] as const];
+      return [unit, depDigests(closure)];
     }),
   );
 }
@@ -426,7 +435,7 @@ export function closureReports(
   branch: BranchBindings | false = BRANCH_BINDINGS,
   boundary: readonly BoundaryEntry[] = EVIDENCE_BOUNDARY,
 ): ClosureReport[] {
-  const closures = closuresOf([...usesOf(table, branch).keys()].sort(), read, boundary);
+  const closures = closuresOf([...effectiveUses(table, read, branch).keys()].sort(), read, boundary);
   return [...closures].flatMap(([unit, closure]) =>
     closure instanceof Error
       ? []
@@ -468,33 +477,73 @@ function registryFor(env: ClosureEnv, roots: readonly string[], texts: ReadonlyM
   return { units, unitBindings, nodes, graph };
 }
 
-/** 被引用的单元的文本；在当前源码里找不到的（改名 / 删除 / 文件移走）单独列出。写法错误和读取器的未知异常照旧抛出。 */
-function readUnits(
-  table: RequiredTable,
-  read: SourceReader,
-  branch: BranchBindings | false,
-): { readonly roots: string[]; readonly texts: Map<string, string>; readonly broken: string[] } {
-  const roots: string[] = [];
-  const texts = new Map<string, string>();
-  const broken: string[] = [];
-  for (const unit of [...usesOf(table, branch).keys()].sort(compareText)) {
-    try {
-      texts.set(unit, unitText(read, unit));
-      roots.push(unit);
-    } catch (error) {
-      if (!(error instanceof EvidenceUnitError)) throw error;
-      broken.push(unit);
-    }
-  }
-  return { roots, texts, broken };
+export interface UnitResolution {
+  /**
+   * 有效单元 → 引用它的义务 / 登记项：被引用、且在当前源码里唯一找到的单元。检测器基准（currentRegistry / 默认模式的
+   * REGISTRY）、依赖闭包（currentDependencies / closureReports）、过期比对（checkEvidence 的集中报告）和测试 oracle
+   * 都只以它为根，失效单元不会在其中任何一处被当作“应有变化的根”（F-090 审查 R2 P2-1）。
+   */
+  readonly uses: Map<string, Use[]>;
+  readonly texts: ReadonlyMap<string, string>;
+  /** 失效单元：不存在 / 不唯一 / 文件读不到（ENOENT）——登记与源码不一致，只由门禁按 EVIDENCE_UNIT 报告。 */
+  readonly broken: readonly string[];
+  /** 写法错误的单元（EVIDENCE_UNIT_INVALID）：登记自身的错误。 */
+  readonly invalid: ReadonlyMap<string, EvidenceUnitInvalidError>;
 }
 
-/** 被引用的单元里，在当前源码里找不到的（改名 / 删除 / 文件移走）。 */
+let requiredResolution: UnitResolution | undefined;
+/**
+ * 把被引用的单元分成 有效 / 失效 / 写法错误 三类；读取器的其他异常（EACCES 等）照旧抛出，不归入任何一类。
+ * 真实表 + 仓库源码 + 真实选择器登记的结果在进程内只算一次（源码在进程内不变）；夹具读取器每次重算。
+ */
+export function resolveUnits(
+  table: RequiredTable = REQUIRED,
+  read: SourceReader = repoSource,
+  branch: BranchBindings | false = BRANCH_BINDINGS,
+): UnitResolution {
+  const real = table === REQUIRED && read === repoSource && branch === BRANCH_BINDINGS;
+  if (real && requiredResolution) return requiredResolution;
+  const all = usesOf(table, branch);
+  const uses = new Map<string, Use[]>();
+  const texts = new Map<string, string>();
+  const broken: string[] = [];
+  const invalid = new Map<string, EvidenceUnitInvalidError>();
+  for (const unit of [...all.keys()].sort(compareText)) {
+    try {
+      texts.set(unit, unitText(read, unit));
+      uses.set(unit, all.get(unit)!);
+    } catch (error) {
+      if (error instanceof EvidenceUnitError) broken.push(unit);
+      else if (error instanceof EvidenceUnitInvalidError) invalid.set(unit, error);
+      else throw error;
+    }
+  }
+  const resolution = { uses, texts, broken, invalid };
+  if (real) requiredResolution = resolution;
+  return resolution;
+}
+
+/** 有效单元 → 引用（见 UnitResolution.uses）。 */
+export const effectiveUses = (
+  table: RequiredTable = REQUIRED,
+  read: SourceReader = repoSource,
+  branch: BranchBindings | false = BRANCH_BINDINGS,
+): Map<string, Use[]> => resolveUnits(table, read, branch).uses;
+
+/** 被引用的单元里，在当前源码里找不到的（改名 / 删除 / 文件移走 / 不唯一）。 */
 export const brokenUnits = (
   table: RequiredTable,
   read: SourceReader = repoSource,
   branch: BranchBindings | false = BRANCH_BINDINGS,
-): string[] => readUnits(table, read, branch).broken;
+): string[] => [...resolveUnits(table, read, branch).broken];
+
+/** 生成类出口用：有效单元；写法错误不是漂移，照旧抛出（与以前一样，登记写错了就生成不了）。 */
+function validUnits(table: RequiredTable, read: SourceReader, branch: BranchBindings | false): UnitResolution {
+  const resolution = resolveUnits(table, read, branch);
+  const [first] = resolution.invalid.values();
+  if (first) throw first;
+  return resolution;
+}
 
 /** 当前源码算出的登记（全部被引用的单元；找不到的单元跳过，由 brokenUnits / EVIDENCE_UNIT 报告）。 */
 export function currentRegistry(
@@ -503,8 +552,8 @@ export function currentRegistry(
   branch: BranchBindings | false = BRANCH_BINDINGS,
   boundary: readonly BoundaryEntry[] = EVIDENCE_BOUNDARY,
 ): Registry {
-  const { roots, texts } = readUnits(table, read, branch);
-  return registryFor(closureEnvFor(read, boundary), roots, texts);
+  const { uses, texts } = validUnits(table, read, branch);
+  return registryFor(closureEnvFor(read, boundary), [...uses.keys()], texts);
 }
 
 /** 要写进 required/digests/ 的全部文件内容。有失效单元时抛错：先修义务表的证据单元，不能把它们静默丢掉。 */
@@ -513,7 +562,7 @@ export function registryFiles(
   read: SourceReader = repoSource,
   branch: BranchBindings | false = BRANCH_BINDINGS,
 ): Record<string, string> {
-  const broken = brokenUnits(table, read, branch);
+  const { broken } = validUnits(table, read, branch);
   if (broken.length) throw new Error(`证据单元不存在，先修义务表再生成登记：${broken.join('、')}`);
   return renderRegistry(currentRegistry(table, read, branch));
 }
@@ -591,7 +640,8 @@ export function checkEvidence(table: RequiredTable, options: EvidenceOptions = {
       try {
         texts.set(unit, unitText(read, unit));
       } catch (error) {
-        texts.set(unit, error as Error);
+        if (!isUnitProblem(error)) throw error; // 读取器的未知异常不归类为“单元有问题”
+        texts.set(unit, error);
       }
     }
     return texts.get(unit)!;
@@ -621,13 +671,13 @@ export function checkEvidence(table: RequiredTable, options: EvidenceOptions = {
       report('EVIDENCE_ANCHOR', `锚点「${evidence.anchor}」不在 ${evidence.unit} 里`);
     }
   }
+  // 过期比对与闭包检查只以有效单元为根（与检测器基准、测试 oracle 同一集合）；失效单元已在上面报 EVIDENCE_UNIT
   const users = usesOf(table, branch);
-  const usable = [...users.keys()].filter((unit) => !(textOf(unit) instanceof Error));
+  const { uses: usableUses, texts: usableTexts } = resolveUnits(table, read, branch);
+  const usable = [...usableUses.keys()];
   const closures = closuresOf(usable, read, boundary);
   const env = closureEnvFor(read, boundary);
-  const texts2 = new Map(usable.map((unit) => [unit, textOf(unit) as string]));
-  const current = registryFor(env, usable, texts2);
-  const usableUses = new Map(usable.map((unit) => [unit, users.get(unit)!]));
+  const current = registryFor(env, usable, usableTexts);
   for (const group of staleGroups({ reg: { ...registry, units: digests }, cur: current, roots: usableUses })) {
     const bindings = (node: string) => bindingsOf(env, node).map(formatBinding).join(' | ') || '空';
     findings.push({ route: '*', code: 'EVIDENCE_STALE', detail: formatGroup(group, bindings), group });

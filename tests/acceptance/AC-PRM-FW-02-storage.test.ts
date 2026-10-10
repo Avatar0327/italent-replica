@@ -19,6 +19,7 @@ import {
   brokenUnits,
   checkStored,
   currentDependencies,
+  effectiveUses,
   currentRegistry,
   legacyDigestsFindings,
   REGISTRY,
@@ -27,7 +28,6 @@ import {
   type SourceReader,
   STORED_REGISTRY,
   unitText,
-  usesOf,
 } from './support/route-policy/evidence.js';
 import { gateEvidence, softGate } from './support/route-policy/evidence-gate.js';
 import {
@@ -82,14 +82,15 @@ const lines = (text: string) => text.split('\n');
 // ---------------------------------------------------------------------------------------------------------------
 
 describe('AC-PRM-FW-02 图存储：真实表等价与确定性（F-072 测试 1、2）', () => {
-  const roots = () => [...usesOf(REQUIRED).keys()].sort();
+  // 根 = 有效单元集合（与生成登记同一口径）；失效单元单独作为漂移报告（F-090）
+  const roots = () => [...effectiveUses().keys()].sort();
 
   it('登记图推出的每个根的闭包，与源码逐层解析的闭包节点集合、摘要全部相等；DIGESTS 逐键相等', () => {
     const legacy = currentDependencies(REQUIRED);
     // 证据单元改名 / 删除：当前源码里找不到，生成登记时跳过，在这里作为漂移报告（F-090 审查 R1 P2-1）
     const broken = brokenUnits(REQUIRED);
     const mismatched: string[] = broken.map((unit) => `${unit} 证据单元找不到`);
-    for (const root of roots().filter((unit) => !broken.includes(unit))) {
+    for (const root of roots()) {
       const closure = closureFromGraph(STORED_REGISTRY.graph, root);
       const nodes = [...closure.deps.keys()].sort();
       const registered = Object.fromEntries(nodes.map((id) => [id, STORED_REGISTRY.nodes[id]?.[0]]));

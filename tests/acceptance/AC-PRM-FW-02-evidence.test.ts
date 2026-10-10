@@ -22,6 +22,7 @@ import {
   closureReports,
   currentDigestTable,
   currentRegistry,
+  effectiveUses,
   repoSource,
   type SourceReader,
   unitText,
@@ -250,7 +251,7 @@ describe('AC-PRM-FW-02 证据闭包（B-02）：真实表', () => {
       return { p50: pick(0.5), p90: pick(0.9), max: sorted.at(-1) };
     };
     // 一个依赖被改，要复核的义务数 = 把它放进 R_cur 的各证据单元所引用的义务数之和（同一义务只算一次，F-072 §3.2 规则 6）
-    const affected = impactCounts(currentRegistry(REQUIRED).graph, usesOf(REQUIRED));
+    const affected = impactCounts(currentRegistry(REQUIRED).graph, effectiveUses());
     const counts = [...affected.values()].map((entry) => entry.obligations);
     const over100 = [...affected]
       .filter(([, entry]) => entry.obligations > 100)
