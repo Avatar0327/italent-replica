@@ -31,6 +31,7 @@ import { registerTalentRoutes } from './modules/talent/routes.js';
 import { MODEL_IMAGE_BODY_LIMIT } from './modules/talent/model-image-format.js';
 import { registerIdpRoutes } from './modules/idp/routes.js';
 import { registerQualificationRoutes } from './modules/qualification/routes.js';
+import { registerEvaluationRoutes } from './modules/evaluation/routes.js';
 import { registerAvatarRoutes } from './modules/avatar/routes.js';
 import { registerTalentReviewRoutes } from './modules/talent-review/routes.js';
 import { registerSuccessionRoutes } from './modules/succession/routes.js';
@@ -51,6 +52,7 @@ const TENANT_MODULES: readonly TenantRouteModule[] = [
   registerTalentRoutes, // R3-T01 人才标准与指标库（TalentCenter）
   registerIdpRoutes, // R3-T07 个人发展计划（IDP）
   registerQualificationRoutes, // R3-T02 任职资格配置（Qualification）
+  registerEvaluationRoutes, // R3-T02 人才评定配置（TEvaluation；B1a 活动类型）
   registerAvatarRoutes, // F-058 账号头像与人员只读引用
   registerTalentReviewRoutes, // R3-T04 人才盘点（TalentReview；PR-A 准备度字典）
   registerSuccessionRoutes, // R3-T05 继任管理（SuccessionAndDevelopment；契约 PR 只占装配位）
