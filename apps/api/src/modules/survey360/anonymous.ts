@@ -112,8 +112,8 @@ export function sameChoice(q: LoadedQuestionnaire, optionIds: readonly string[])
 }
 
 /**
- * 耗时过快（DEC-392）：“首次打开 → 提交”的整段时间（离开与空闲都计入）除以全部可答题数 < 1.5 秒。本功能上线前已提交、没有
- * 计时记录的答卷不判耗时、也不算疑似（DEC-371③）。耗时与逐份答案同级敏感（DEC-371⑤）：只在库里比较，不出这一层，对外只回布尔。
+ * 耗时过快（DEC-392）：“首次打开 → 提交”的整段时间（离开与空闲都计入）除以全部可答题数 < 1.5 秒。没有计时记录的答卷
+ * （计时被清除后未再取页 / 保存的情形）不判耗时。耗时与逐份答案同级敏感（DEC-371⑤）：只在库里比较，对外只回布尔。
  */
 async function submittedTooFast(tx: Tx, sheetId: string, itemCount: number): Promise<boolean> {
   const [row] = rows<{ opened_at: Date | string; submitted_at: Date | string | null }>(
