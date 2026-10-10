@@ -134,11 +134,14 @@ export const GRAPH: Graph = {
     '#FORM',
     '#hasObjectView',
     'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
+    'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
     'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
   ],
   'apps/api/src/modules/evaluation/form-routes.ts#PATH': ['apps/api/src/modules/evaluation/route-support.ts#EV_BASE'],
   'apps/api/src/modules/evaluation/form-routes.ts#REFS': [
+    'apps/api/src/modules/evaluation/access.ts#checkWriteFields',
     'apps/api/src/modules/evaluation/form-refs.ts#resolveFormRefs',
+    '#OBJECT',
     'apps/api/src/modules/evaluation/form-service.ts#presentForms',
   ],
   'apps/api/src/modules/evaluation/form-routes.ts#registerFormRoutes': [
@@ -256,7 +259,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/evaluation/input.ts#memberList': ['#MAX_REVIEW_MEMBERS', '#uuid'],
   'apps/api/src/modules/evaluation/input.ts#reviewGroupCreate': ['#memberList', '#name', '#uuid'],
   'apps/api/src/modules/evaluation/input.ts#reviewGroupPatch': ['#reviewGroupCreate'],
-  'apps/api/src/modules/evaluation/input.ts#score': ['#twoDecimals'],
+  'apps/api/src/modules/evaluation/input.ts#score': ['#MAX_SCORE', '#twoDecimals'],
   'apps/api/src/modules/evaluation/input.ts#standardItem': ['#uuid', '#weight'],
   'apps/api/src/modules/evaluation/input.ts#weight': ['#twoDecimals'],
   'apps/api/src/modules/evaluation/person-refs.ts#assertNewPersonRefs': ['#employeesInScope'],

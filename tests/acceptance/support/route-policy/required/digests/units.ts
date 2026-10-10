@@ -238,7 +238,7 @@ export const DIGESTS: Digests = {
     hasObjectView: '7976f31025ca',
     referenceNames: '959db33e808e',
     resolveFormRefs: '03802ce54aa4',
-    resolveFormVisibility: '97fe35cd4c7f',
+    resolveFormVisibility: '54e8cd05b112',
   },
   'apps/api/src/modules/evaluation/form-routes.ts': {
     PATH: 'e73ebec1019e',
@@ -247,10 +247,10 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/evaluation/form-service.ts': {
     createForm: 'cd59bf43f249',
     presentForms: 'fde7076dcc14',
-    updateForm: '32f56dcb4505',
+    updateForm: 'ae252bbe6295',
   },
   'apps/api/src/modules/evaluation/form-usage.ts': {
-    registerFormUsage: 'd127b32598c0',
+    registerFormUsage: '1dad9f004f85',
   },
   'apps/api/src/modules/evaluation/person-refs.ts': {
     assertNewPersonRefs: 'c89a9b19f7af',
@@ -1254,13 +1254,13 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/evaluation/form-refs.ts#hasObjectView': 'e3b0c44298fc',
   'apps/api/src/modules/evaluation/form-refs.ts#referenceNames': '40492690eee7',
   'apps/api/src/modules/evaluation/form-refs.ts#resolveFormRefs': 'a1d5276ff84b',
-  'apps/api/src/modules/evaluation/form-refs.ts#resolveFormVisibility': '432024d8c3d4',
+  'apps/api/src/modules/evaluation/form-refs.ts#resolveFormVisibility': 'e7805be17831',
   'apps/api/src/modules/evaluation/form-routes.ts#PATH': '072f6ed3a951',
   'apps/api/src/modules/evaluation/form-routes.ts#registerFormRoutes': 'a393223f136c',
   'apps/api/src/modules/evaluation/form-service.ts#createForm': '83a58ae7a5b2',
   'apps/api/src/modules/evaluation/form-service.ts#presentForms': '66a1a6b7c6a4',
-  'apps/api/src/modules/evaluation/form-service.ts#updateForm': '918168bff49b',
-  'apps/api/src/modules/evaluation/form-usage.ts#registerFormUsage': '518c76a8664f',
+  'apps/api/src/modules/evaluation/form-service.ts#updateForm': '7c849510a2a4',
+  'apps/api/src/modules/evaluation/form-usage.ts#registerFormUsage': 'f944f52b51a5',
   'apps/api/src/modules/evaluation/person-refs.ts#assertNewPersonRefs': 'fdb5067bfe61',
   'apps/api/src/modules/evaluation/person-refs.ts#employeesInScope': '8a3057d5fca7',
   'apps/api/src/modules/evaluation/person-refs.ts#personRefAccess': '448b12740218',

@@ -395,13 +395,13 @@ const referrers: Obligation = {
   need: { scope: 'list', predicate: 'ev.owned(ev_forms)' },
   at: [
     call(`${ROUTES}#registerWrites`, 'spec.refs'),
-    call(`${FORM_REFS}#resolveFormVisibility`, 'canView: await hasObjectView(bound.authorize, ctx, FORM),'),
+    call(`${FORM_REFS}#resolveFormVisibility`, 'const canView = await hasObjectView(bound.authorize, ctx, FORM);'),
     CAN_VIEW,
     { role: 'const', unit: CATALOG, anchor: "evaluationForm: object('EvaluationForm'" },
     {
       role: 'scope',
       unit: `${EV}/form-usage.ts#registerFormUsage`,
-      anchor: "ctx.formVisibility?.canView === true ? scopePredicate(ctx.formVisibility.scope, 'evaluationForm', 'f')",
+      anchor: "access?.canView && access.nameVisible ? scopePredicate(access.scope, 'evaluationForm', 'f')",
     },
   ],
 };

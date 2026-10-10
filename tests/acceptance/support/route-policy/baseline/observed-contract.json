@@ -8609,6 +8609,7 @@
           "runCommand / runWrite"
         ],
         "fieldsIn": [
+          "checkFields",
           "writeFields"
         ],
         "fieldsOut": [
