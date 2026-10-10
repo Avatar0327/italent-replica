@@ -35,6 +35,8 @@ export interface MaintenanceHooks {
   readonly beforeWriteBack?: (linkId: string) => void | Promise<void>;
   /** 写回事务内、已通过密钥版本复核（持有协调锁）之后（测试用来制造与轮换登记的交错）。 */
   readonly duringWriteBack?: (linkId: string) => void | Promise<void>;
+  /** 清理事务内、已锁住到期的锁定行之后（测试用来制造与登录的锁序交错，F-076 PR-2a 第 1 轮 P2-3）。 */
+  readonly duringCleanup?: () => void | Promise<void>;
   /** 结构化运行日志（缺省 console.warn 一行 JSON）；数据里只放计数与 ID，不放明文。 */
   readonly warn?: (message: string, data: Record<string, unknown>) => void;
 }
@@ -277,7 +279,14 @@ async function issueRow(db: Db, tenantId: string, row: Claimed, context: IssueCo
 }
 
 /** 清理：到期未清的锁定记 unlock、删空闲限频行、删过期 / 作废超过 24 小时的会话（设计 §3.2、§4.1、§5.4）。 */
-async function cleanupTenant(db: Db, tenantId: string, now: Date, report: MaintenanceReport, limit: number) {
+async function cleanupTenant(
+  db: Db,
+  tenantId: string,
+  now: Date,
+  report: MaintenanceReport,
+  limit: number,
+  hooks: MaintenanceHooks,
+) {
   const at = now.toISOString();
   await withTenant(db, tenantId, async (tx) => {
     const expired = rowsOf<{ scope: string; key_hash: string; locked_until: Date | string }>(
@@ -298,6 +307,7 @@ async function cleanupTenant(db: Db, tenantId: string, now: Date, report: Mainte
         WHERE scope = ${lock.scope} AND key_hash = ${lock.key_hash}`);
     }
     report.unlocked += expired.length;
+    await hooks.duringCleanup?.();
     // DELETE 带批量上限（ctid 子查询）：一轮删不完的留给下一轮，单个事务不会无限长
     const idle = new Date(now.getTime() - THROTTLE_IDLE_MS).toISOString();
     const throttle = await tx.execute(sql`DELETE FROM survey360_login_throttle WHERE ctid IN (
@@ -329,7 +339,7 @@ export async function runCredentialMaintenance(db: Db, options: MaintenanceOptio
   await assertNoKeyRollback(db, options.config ?? credentialConfig());
   for await (const tenantId of tenantIds(db, options.tenantId)) {
     await issueTenant(db, tenantId, options, report);
-    await cleanupTenant(db, tenantId, now, report, options.cleanupLimit ?? CLEANUP_LIMIT);
+    await cleanupTenant(db, tenantId, now, report, options.cleanupLimit ?? CLEANUP_LIMIT, options.hooks ?? {});
   }
   return report;
 }

@@ -16,6 +16,9 @@ import { recordSecurityEvent } from './security-events.js';
 import { hasTask } from './tasks.js';
 import { sealJson } from './secret-box.js';
 
+/** 只供测试制造交错（检查剩余关系之后、作废链接之前停一下）；生产不设。 */
+export const linkHooks: { afterTaskCheck?: (() => void | Promise<void>) | undefined } = {};
+
 export function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }
@@ -147,6 +150,7 @@ export async function reissueAnswerLink(
  */
 export async function revokeAnswerLinkWithoutTask(tx: Tx, activityId: string, personId: string): Promise<void> {
   if (await hasTask(tx, activityId, personId)) return;
+  await linkHooks.afterTaskCheck?.();
   await tx
     .update(survey360Links)
     .set({ revoked: true })
