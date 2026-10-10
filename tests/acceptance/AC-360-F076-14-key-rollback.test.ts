@@ -4,6 +4,7 @@
  * 1. 轮换后新建的租户没有轮换事件：旧 CURRENT 的维护进程仍会给它发旧版本凭据；
  * 2. 轮换登记发生在发放批次中途：旧批次以登记前的版本照常写回；
  * 3. 启动校验复用跳过 restoring 租户的遍历器：恢复隔离期间以旧配置启动被放行。
+ * 另：P3 损坏摘要的参数校验（六段格式但参数非法时不得让 scrypt 抛错）。
  * 三条都不依赖并发连接（批次中途用 beforeWriteBack 钩子在写回事务之前完成登记），PGlite 与真 PG 都跑。
  * 已登记版本是全库（全局）的、只增不减，同一测试库里的三条用例依次使用更高的版本号（1～2、3～5、6～7）；
  * 写回事务与登记事务互相等待的交错见 AC-360-F076-14-key-rollback-pg.test.ts。
@@ -18,6 +19,7 @@ import {
   runCredentialMaintenance,
 } from '../../apps/api/src/modules/survey360/credential-maintenance.js';
 import { rotateKeys } from '../../apps/api/src/modules/survey360/credential-ops.js';
+import { kdfCallCount, resetKdfCallCount, verifyPassword } from '../../apps/api/src/modules/survey360/credentials.js';
 import { sceneB } from './AC-360-B-support.js';
 import { linkRows, portalCredentials, resetCredentialConfig } from './AC-360-F076-support.js';
 
@@ -108,5 +110,25 @@ describe('AC-360-F076-14 密钥版本防回退：全局已登记最高版本', (
         tx.execute(sql`UPDATE tenants SET status = 'active' WHERE status = 'restoring'`),
       );
     }
+  });
+});
+
+describe('AC-360-F076-14 P3 损坏摘要的参数校验', () => {
+  it('六段格式但参数 / 盐 / 哈希不合法：不抛错，按哑摘要路径各做一次缺省参数 KDF 并返回 false', async () => {
+    const secret = randomBytes(32);
+    const salt = randomBytes(16).toString('base64url');
+    const hash = randomBytes(32).toString('base64url');
+    const corrupted = [
+      `scrypt$3$8$1$${salt}$${hash}`, // N 不是 2 的幂（scrypt 会抛错）
+      `scrypt$${2 ** 21}$8$1$${salt}$${hash}`, // N 超过上限
+      `scrypt$1$8$1$${salt}$${hash}`, // N < 2
+      `scrypt$16384$0$1$${salt}$${hash}`, // r 非正
+      `scrypt$16384$8$99$${salt}$${hash}`, // p 超过上限
+      `scrypt$16384$8$1$${randomBytes(4).toString('base64url')}$${hash}`, // 盐长度不对
+      `scrypt$16384$8$1$${salt}$${randomBytes(8).toString('base64url')}`, // 哈希长度不对
+    ];
+    resetKdfCallCount();
+    for (const digest of corrupted) expect(await verifyPassword(digest, secret, 'ABCD2345')).toBe(false);
+    expect(kdfCallCount()).toBe(corrupted.length);
   });
 });
