@@ -112,6 +112,13 @@ export const TALENT_REVIEW_OBJECTS = {
     ['hints'],
   ),
   /**
+   * 盘点内容表单（设计 §2.2 forms / form_fields；DEC-306①）：字段随表单整组维护（fields 是嵌套字段，权限随字段），逐字段三档
+   * edit / view / hidden + required。设置类配置对象，没有组织字段（DEC-121）。
+   */
+  form: object('Form', ['code', 'name', 'kind', 'preset', 'fields', 'sortNo', 'enabled']),
+  /** 盘点流程定义（设计 §2.2 flows / nodes / node_roles；DEC-304）：节点与角色随流程整组维护。设置类配置对象（DEC-121）。 */
+  flow: object('Flow', ['name', 'nodes', 'sortNo', 'enabled']),
+  /**
    * 盘点结果审批（设计 §3.3、§2.6；N12）：审批类型 talent_review_result 的业务对象（集合审批，一单多个被盘点人）。
    * 发起 / 撤回入口随 PR-D 接入；本 PR 只登记对象，供审批类型与标准身份引用。
    */
@@ -139,6 +146,8 @@ export const TALENT_REVIEW_OBJECT_LABELS: Readonly<Record<TalentReviewObject, st
   moduleGrade: '模块等级',
   matrix: '盘点九宫格',
   calcRule: '盘点计算规则',
+  form: '盘点内容表单',
+  flow: '盘点流程',
   resultApproval: '盘点结果审批',
 };
 
@@ -153,14 +162,21 @@ export const TALENT_REVIEW_CONFIG_OBJECTS: readonly TalentReviewObject[] = [
   'moduleGrade',
   'matrix',
   'calcRule',
+  'form',
+  'flow',
 ];
 
 /**
  * 设置类配置对象里**暂不预置“看全部”**的：给标准身份预置看全部等于扩大出厂默认数据范围，须逐次由用户确认（DEC-374②，
- * 守卫 AC-PLAT-F061-scope）。评价规则 / 模块等级（B2a）取保守口径，确认前预置身份没有它们的看全部，需租户自行授予；
+ * 守卫 AC-PLAT-F061-scope）。评价规则 / 模块等级（B2a）、表单 / 流程（B3）取保守口径，确认前预置身份没有它们的看全部，需租户自行授予；
  * 数据范围谓词（创建人 / 看全部）与审计可见性不受影响，仍按 TALENT_REVIEW_CONFIG_OBJECTS。
  */
-export const TALENT_REVIEW_SEE_ALL_UNAPPROVED: readonly TalentReviewObject[] = ['scoreRule', 'moduleGrade'];
+export const TALENT_REVIEW_SEE_ALL_UNAPPROVED: readonly TalentReviewObject[] = [
+  'scoreRule',
+  'moduleGrade',
+  'form',
+  'flow',
+];
 
 /** 准备度颜色：#RRGGBB（原站字典每项带颜色，`27` 补充 W-617）。 */
 export const READINESS_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;

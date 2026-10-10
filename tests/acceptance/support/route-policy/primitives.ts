@@ -334,6 +334,9 @@ export const PRIMITIVES: readonly Primitive[] = [
     ],
     ['talentReview.matrixFieldReference', call('requireFieldReference'), { modules: ['talent-review'] }],
     // 人才盘点计算规则：提交计算项目（公式 / 目标字段引用盘点字段目录）另需字段目录的对象查看权（calc-rule-routes.ts）
+    // 盘点内容表单引用字段 / 流程节点引用角色 = 读取对应目录：请求带引用时另需目录对象的查看权（form-flow-routes.ts）
+    ['talentReview.formFieldReference', call('requireFieldCatalog'), { modules: ['talent-review'] }],
+    ['talentReview.flowRoleReference', call('requireRoleCatalog'), { modules: ['talent-review'] }],
     ['talentReview.calcRuleFieldCatalog', call('requireCatalogAccess'), { modules: ['talent-review'] }],
     // 人才评定配置字典：按 enabled 筛选须有该字段查看权（R3-T02 B1a 路由声明）
     ['ev.filterFieldVisible', call('requireFilterVisible'), { modules: ['evaluation'] }],

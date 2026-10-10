@@ -49,10 +49,11 @@ const rdyWrite = (fields: 'body' | 'none') =>
  * docs/08_设计/R3-T04_PR-B1_路由声明.md。
  */
 function configRoutes(
-  key: 'category' | 'role' | 'field' | 'scoreRule' | 'moduleGrade',
+  key: 'category' | 'role' | 'field' | 'scoreRule' | 'moduleGrade' | 'form' | 'flow',
   path: string,
   table: string,
   createGuards: readonly string[] = [],
+  updateGuards: readonly string[] = [],
 ) {
   const code = TALENT_REVIEW_OBJECTS[key].code;
   const fields = projector(`talentReview.${key}`, `talentReview.${key}`);
@@ -93,7 +94,7 @@ function configRoutes(
       button: button('update', 'detail'),
       scope: point,
       fields,
-      guards: ['talentReview.configRenameRequiresSeeAll'],
+      guards: ['talentReview.configRenameRequiresSeeAll', ...updateGuards],
       write: changed('body'),
       ...(key === 'field' ? { optional: { renameBreaksDisclosure: RENAME_BREAKS_DISCLOSURE } } : {}),
     }),
@@ -109,6 +110,8 @@ function configRoutes(
   };
 }
 
+const FORM_REF = ['talentReview.formFieldReference'];
+const FLOW_REF = ['talentReview.flowRoleReference'];
 const SETTINGS = '/api/tenant/talent-review/settings';
 const SETTINGS_CODE = TALENT_REVIEW_OBJECTS.settings.code;
 const SETTINGS_FIELDS = projector('talentReview.settings', 'talentReview.settings');
@@ -125,6 +128,9 @@ export const TALENT_REVIEW_POLICIES = defineTable('talent-review', {
   // PR-B2a：评价规则、模块等级（有名称，改名要求看全部）
   ...configRoutes('scoreRule', '/api/tenant/talent-review/score-rules', 'talent_review_score_rules'),
   ...configRoutes('moduleGrade', '/api/tenant/talent-review/module-grades', 'talent_review_module_grades'),
+  // PR-B3：盘点内容表单（引用字段目录）、盘点流程定义（引用角色）：带引用时另需目录对象的查看权
+  ...configRoutes('form', '/api/tenant/talent-review/forms', 'talent_review_forms', FORM_REF, FORM_REF),
+  ...configRoutes('flow', '/api/tenant/talent-review/flows', 'talent_review_flows', FLOW_REF, FLOW_REF),
   // 租户设置是单例：读写都只有看全部（requireConfigCreatable，否则 404）；没有记录时返回默认值与 revision 0
   [`GET ${SETTINGS}`]: object({
     object: SETTINGS_CODE,
