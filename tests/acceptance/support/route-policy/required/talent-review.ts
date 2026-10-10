@@ -483,22 +483,18 @@ const flowReference = ffReference(
   'role',
   '条件守卫：请求体带角色引用时，另需盘点角色的对象查看权，角色可见性在命令内按角色范围判定',
 );
+const FORMS_REQUIRED = cfgObject('form', 'Form', 'registerForms', 'forms', 'FORMS', FFR);
+const FLOWS_REQUIRED = cfgObject('flow', 'Flow', 'registerFlows', 'flows', 'FLOWS', FFR);
+const FORM_ANCHOR = 'if (references.length > 0) await requireFieldCatalog(c, deps)';
+const FLOW_ANCHOR = 'if (references.length > 0) await requireRoleCatalog(c, deps)';
 const FORM_FLOW_REQUIRED: RequiredTable = {
-  ...cfgObject('form', 'Form', 'registerForms', 'forms', 'FORMS', FFR),
-  ...cfgObject('flow', 'Flow', 'registerFlows', 'flows', 'FLOWS', FFR),
+  ...FORMS_REQUIRED,
+  ...FLOWS_REQUIRED,
+  [`POST ${BASE_ROOT}/forms`]: [...FORMS_REQUIRED[`POST ${BASE_ROOT}/forms`]!, ...formReference(FORM_ANCHOR)],
+  [`PATCH ${BASE_ROOT}/forms/:id`]: [...FORMS_REQUIRED[`PATCH ${BASE_ROOT}/forms/:id`]!, ...formReference(FORM_ANCHOR)],
+  [`POST ${BASE_ROOT}/flows`]: [...FLOWS_REQUIRED[`POST ${BASE_ROOT}/flows`]!, ...flowReference(FLOW_ANCHOR)],
+  [`PATCH ${BASE_ROOT}/flows/:id`]: [...FLOWS_REQUIRED[`PATCH ${BASE_ROOT}/flows/:id`]!, ...flowReference(FLOW_ANCHOR)],
 };
-FORM_FLOW_REQUIRED[`POST ${BASE_ROOT}/forms`]!.push(
-  ...formReference('if (references.length > 0) await requireFieldCatalog(c, deps)'),
-);
-FORM_FLOW_REQUIRED[`PATCH ${BASE_ROOT}/forms/:id`]!.push(
-  ...formReference('if (references.length > 0) await requireFieldCatalog(c, deps)'),
-);
-FORM_FLOW_REQUIRED[`POST ${BASE_ROOT}/flows`]!.push(
-  ...flowReference('if (references.length > 0) await requireRoleCatalog(c, deps)'),
-);
-FORM_FLOW_REQUIRED[`PATCH ${BASE_ROOT}/flows/:id`]!.push(
-  ...flowReference('if (references.length > 0) await requireRoleCatalog(c, deps)'),
-);
 
 export const TALENT_REVIEW: RequiredTable = {
   ...FORM_FLOW_REQUIRED,
