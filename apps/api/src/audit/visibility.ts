@@ -1029,7 +1029,9 @@ async function resolveRule(deps: Deps, ctx: TenantContext, rule: Rule): Promise<
         ? new CapacityAuditFields(objectFields)
         : rule.objectCode === IDP_OBJECTS.goal.code
           ? await idpGoalFields(deps, ctx, objectFields)
-          : (fixed ?? withProtocol(objectFields, rule.protocol)),
+          : rule.objectCode === EVALUATION_OBJECTS.reviewGroup.code
+            ? await reviewGroupFields(deps, ctx, objectFields)
+            : (fixed ?? withProtocol(objectFields, rule.protocol)),
     ...(linkage ? { linkage } : {}),
   };
 }
@@ -1053,6 +1055,30 @@ async function idpGoalFields(
   if (goalFields === undefined && Object.values(children).every((child) => child === undefined)) return undefined;
   const all = IDP_OBJECTS.goal.fields.map((field) => field.code);
   return new NestedAuditFields(goalFields ?? all, children as NestedChildren);
+}
+
+/**
+ * 评审组快照嵌套的成员（R3-T02 B3，设计 §8、§5.1）：成员条目只含员工 ID、当时姓名（业务事务内冻结）与组长标记。读取时
+ * 姓名按查看人**当前**的员工信息对象查看权与姓名字段权裁剪（DEC-197）：DEC-331① / DEC-339② 允许范围外成员显示姓名，
+ * 但不豁免姓名字段权限，与业务详情的成员呈现（person-refs.ts）同口径；列表差异、详情前后值、快照共用这一份可见集合。
+ */
+async function reviewGroupFields(
+  deps: Deps,
+  ctx: TenantContext,
+  groupFields: ReadonlySet<string> | undefined,
+): Promise<ReadonlySet<string> | undefined> {
+  const canViewEmployees = await deps.authorize({
+    ...ctx,
+    action: 'object.view',
+    resource: PERSONNEL_OBJECT,
+    fields: [],
+  });
+  const employeeFields = canViewEmployees ? await getModuleViewableFields(deps, ctx, PERSONNEL_OBJECT) : undefined;
+  const showsName = canViewEmployees && (employeeFields === undefined || employeeFields.has('name'));
+  if (showsName && groupFields === undefined) return undefined;
+  const member = ['employeeId', 'isLeader', ...(showsName ? ['employeeName'] : [])];
+  const all = EVALUATION_OBJECTS.reviewGroup.fields.map((field) => field.code);
+  return new NestedAuditFields(groupFields ?? all, { members: new Set(member) } as NestedChildren);
 }
 
 interface ResolvedConfig {
