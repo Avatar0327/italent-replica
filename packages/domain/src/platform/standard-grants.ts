@@ -39,8 +39,8 @@ export const STANDARD_GRANT_ENTRY = 'permission/standard-profile-grants';
  * 守卫测试算出的指纹不一致即失败——任何改目录的 PR 都会撞到它，审查方一眼看到“这个 PR 会给存量标准身份补授权”。
  * version 只用于回补报告，不参与缺失判断。
  */
-export const STANDARD_GRANT_VERSION = 2;
-export const STANDARD_GRANT_DIGEST = 'c1ea4d2371ea2df7';
+export const STANDARD_GRANT_VERSION = 3;
+export const STANDARD_GRANT_DIGEST = 'd395e4e9801ea5ff';
 
 /**
  * 预置“看全部”补装批准清单（D3 = A′，DEC-374②）：看全部属于数据范围扩大，存量租户的标准身份只对**这里明确列出**的目标补，
@@ -52,15 +52,38 @@ export interface SeeAllBackfillApproval extends PresetSeeAllTarget {
   readonly dec: string;
 }
 export const SEE_ALL_BACKFILL_APPROVED: readonly SeeAllBackfillApproval[] = [
-  // R3-T04 B1（#148）新增的盘点设置类对象：存量盘点管理员缺这四个对象的看全部，否则维护不了字典
-  ...['Settings', 'Category', 'Role', 'Field'].map((name): SeeAllBackfillApproval => ({
-    profileCode: 'standard_talent_review_admin',
-    appCode: 'TalentReview',
-    targetKind: 'entity',
-    targetCode: `TalentReview.${name}`,
-    dec: 'DEC-374②',
-  })),
+  // DEC-374②：R3-T04 B1（#148）新增的盘点设置类对象，存量盘点管理员缺它们的看全部就维护不了字典
+  approve('standard_talent_review_admin', 'TalentReview', 'entity', 'TalentReview.Settings', 'DEC-374②'),
+  approve('standard_talent_review_admin', 'TalentReview', 'entity', 'TalentReview.Category', 'DEC-374②'),
+  approve('standard_talent_review_admin', 'TalentReview', 'entity', 'TalentReview.Role', 'DEC-374②'),
+  approve('standard_talent_review_admin', 'TalentReview', 'entity', 'TalentReview.Field', 'DEC-374②'),
+  // DEC-384：用户把 #201 描述里“未批准目标清单”的 32 个目标全部批准（描述里写的“36 行”是把已批准的 4 个也数进去了的总数）；以后新增的看全部目标仍须逐次问用户
+  approve('standard_talent_review_admin', 'TalentReview', 'entity', 'TalentReview.Readiness', 'DEC-384'),
+  approve('standard_talent_review_admin', 'TalentReview', 'entity', 'TalentReview.Matrix', 'DEC-384'),
+  approve('standard_talent_review_admin', 'TalentReview', 'entity', 'TalentReview.CalcRule', 'DEC-384'),
+  approve('standard_succession_admin', 'SuccessionAndDevelopment', 'entity', 'Succession.RiskLevel', 'DEC-384'),
+  approve('standard_succession_admin', 'SuccessionAndDevelopment', 'entity', 'Succession.HealthLevel', 'DEC-384'),
+  approve('standard_succession_admin', 'SuccessionAndDevelopment', 'entity', 'Succession.Population', 'DEC-384'),
+  approve('standard_succession_admin', 'SuccessionAndDevelopment', 'entity', 'Succession.RuleSettings', 'DEC-384'),
+  approve('standard_talent_admin', 'TalentCenter', 'entity', 'TalentCenter.DescriptionType', 'DEC-384'),
+  // 三个标准 HR 身份的 DEC-121 预置：职务字典类实体 + 编制方案数据源（各 8 个）
+  ...['standard_org_system_admin', 'standard_hr_admin', 'standard_hr_specialist'].flatMap((profileCode) => [
+    ...['JobLayer', 'JobGrade', 'JobLevelType', 'JobLevel', 'JobSequence', 'JobProfessionalLine', 'JobPost'].map(
+      (name) => approve(profileCode, 'TenantBase', 'entity', `TenantBase.${name}`, 'DEC-384'),
+    ),
+    approve(profileCode, 'TenantBase', 'datasource', 'TenantBase.OrganizationEstablishment.scheme', 'DEC-384'),
+  ]),
 ];
+
+function approve(
+  profileCode: string,
+  appCode: string,
+  targetKind: 'entity' | 'datasource',
+  targetCode: string,
+  dec: string,
+): SeeAllBackfillApproval {
+  return { profileCode, appCode, targetKind, targetCode, dec };
+}
 
 const isApproved = (profileCode: string, target: PresetSeeAllTarget) =>
   SEE_ALL_BACKFILL_APPROVED.some(

@@ -7,7 +7,6 @@
  * - setIdentityScope 锁序：身份行 → 范围锁，回补与租户保存看全部不再互等（T-20，真 PG）。
  * 覆盖 T-05（看全部部分）、T-15、T-20、T-21，以及批准清单 / 编码 / 指纹守卫。
  */
-import { setTimeout as sleep } from 'node:timers/promises';
 import {
   employmentCustomFieldObjects,
   eq,
@@ -27,6 +26,7 @@ import {
   STANDARD_GRANT_VERSION,
   STANDARD_PROFILES,
   type StandardProfile,
+  standardGrantItems,
   unapprovedSeeAllTargets,
 } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
@@ -37,6 +37,7 @@ import { installMissingSeeds } from '../../apps/api/src/seeds/registry.js';
 import { recordLedger } from '../../apps/api/src/seeds/grant-ledger.js';
 import {
   BUTTON,
+  expectWaitingOnLock,
   buttonCode,
   grantsInstalled,
   HR,
@@ -58,14 +59,20 @@ const realPostgres = Boolean(process.env.TEST_DATABASE_URL);
 const TR = 'standard_talent_review_admin';
 const TR_APP = 'TalentReview';
 const APPROVED = ['Settings', 'Category', 'Role', 'Field'].map((name) => `${TR_APP}.${name}`);
-const UNAPPROVED_TR = ['Readiness', 'Matrix', 'CalcRule'].map((name) => `${TR_APP}.${name}`);
+/** DEC-384 追加批准的盘点目标。 */
+const EXTRA_TR = ['Readiness', 'Matrix', 'CalcRule'].map((name) => `${TR_APP}.${name}`);
 const seeAllCode = (target: string) => seeAllGrantCode(TR, TR_APP, 'entity', target);
 const OBJECT = OBJ.objectCode;
 const hrButton = buttonCode(HR.code, OBJECT, BUTTON);
 
-describe('AC-PLAT-F061 D3 = A′ 批准清单守卫（DEC-374②）', () => {
-  it('批准清单就是本批四个目标，每行写身份、应用、种类、目标编码与 DEC-374②', () => {
-    expect(SEE_ALL_BACKFILL_APPROVED).toEqual(
+const MATRIX = `${TR_APP}.Matrix`;
+const PRESET_COUNT = STANDARD_PROFILES.flatMap(presetSeeAllTargets).length;
+
+describe('AC-PLAT-F061 D3 批准清单守卫（DEC-374②、DEC-384）', () => {
+  it('批准清单每行写身份、应用、种类、目标编码与 DEC 号：DEC-374② 的四个盘点设置对象 + DEC-384 的 32 个', () => {
+    expect(SEE_ALL_BACKFILL_APPROVED).toHaveLength(36);
+    const byDec = (dec: string) => SEE_ALL_BACKFILL_APPROVED.filter((a) => a.dec === dec);
+    expect(byDec('DEC-374②')).toEqual(
       APPROVED.map((targetCode) => ({
         profileCode: TR,
         appCode: TR_APP,
@@ -74,43 +81,56 @@ describe('AC-PLAT-F061 D3 = A′ 批准清单守卫（DEC-374②）', () => {
         dec: 'DEC-374②',
       })),
     );
-  });
-
-  it('批准的目标都是身份定义里预置看全部的目标；只有批准的目标有看全部编码，其余（含 Readiness / Matrix / CalcRule）不进编码', () => {
-    const defined = new Set(
-      STANDARD_PROFILES.flatMap((p) =>
-        presetSeeAllTargets(p).map((t) => seeAllGrantCode(p.code, t.appCode, t.targetKind, t.targetCode)),
-      ),
+    expect(byDec('DEC-384')).toHaveLength(32);
+    expect(new Set(SEE_ALL_BACKFILL_APPROVED.map((a) => a.dec))).toEqual(new Set(['DEC-374②', 'DEC-384']));
+    for (const a of SEE_ALL_BACKFILL_APPROVED) {
+      expect(a.profileCode && a.appCode && a.targetCode, JSON.stringify(a)).toBeTruthy();
+      expect(['entity', 'datasource']).toContain(a.targetKind);
+    }
+    const unique = new Set(
+      SEE_ALL_BACKFILL_APPROVED.map((a) => `${a.profileCode}|${a.appCode}|${a.targetKind}|${a.targetCode}`),
     );
-    for (const target of APPROVED) expect(defined.has(seeAllCode(target)), target).toBe(true);
+    expect(unique.size).toBe(36);
+  });
+
+  it('批准的目标就是身份定义里全部预置看全部的目标：unapprovedSeeAllTargets() 为空，看全部编码恰好 36 个', () => {
+    expect(unapprovedSeeAllTargets()).toEqual([]);
+    expect(PRESET_COUNT).toBe(SEE_ALL_BACKFILL_APPROVED.length);
     const seeAllCodes = STANDARD_GRANT_CODES.filter((code) => code.includes('/seeAll:'));
-    expect(seeAllCodes.sort()).toEqual(APPROVED.map(seeAllCode).sort());
-    for (const target of UNAPPROVED_TR) expect(STANDARD_GRANT_CODES).not.toContain(seeAllCode(target));
-    // HR 身份的 DEC-121 目标、人才标准、继任：定义里有、但没有批准，不进编码
-    const unapproved = unapprovedSeeAllTargets();
-    expect(unapproved.length).toBeGreaterThan(UNAPPROVED_TR.length);
-    expect(unapproved.map((t) => t.targetCode)).toEqual(expect.arrayContaining(UNAPPROVED_TR));
-    for (const t of unapproved)
-      expect(STANDARD_GRANT_CODES).not.toContain(seeAllGrantCode(t.profileCode, t.appCode, t.targetKind, t.targetCode));
-    expect(unapproved.length + SEE_ALL_BACKFILL_APPROVED.length).toBe(defined.size);
+    const expected = SEE_ALL_BACKFILL_APPROVED.map((a) =>
+      seeAllGrantCode(a.profileCode, a.appCode, a.targetKind, a.targetCode),
+    );
+    expect(seeAllCodes.sort()).toEqual(expected.sort());
   });
 
-  it('授权项编码集合变了：version 已加 1', () => {
-    expect(STANDARD_GRANT_VERSION).toBeGreaterThanOrEqual(2);
+  it('以后新增、未批准的看全部目标不进授权项编码（夹具构造一个未批准目标），也不影响已批准的', () => {
+    const base = STANDARD_PROFILES.find((p) => p.code === TR)!;
+    const target = { appCode: TR_APP, targetKind: 'entity' as const, targetCode: `${TR_APP}.NotYetApproved` };
+    const fixture = { ...base, seeAll: [...(base.seeAll ?? []), target] };
+    expect(unapprovedSeeAllTargets([fixture])).toEqual([{ ...target, profileCode: TR }]);
+    const codes = standardGrantItems([fixture]).map((item) => item.code);
+    expect(codes).not.toContain(seeAllCode(target.targetCode));
+    expect(codes).toEqual(standardGrantItems([base]).map((item) => item.code));
   });
 
-  it('新租户开通不受影响：全部预置看全部行照旧写入；台账里只有批准目标的看全部编码', async () => {
+  it('授权项编码集合变了：version 已加 1（DEC-384 起为 3）', () => {
+    expect(STANDARD_GRANT_VERSION).toBeGreaterThanOrEqual(3);
+  });
+
+  it('新租户开通不受影响：全部预置看全部行照旧写入；台账里每个已批准目标的看全部编码都记 install', async () => {
     const w = await provisionWorld(testDb().db, 'f061-scope-new');
     const profileId = w.profileIds.get(TR)!;
     const rows = await scopeRows(w, profileId);
-    for (const target of [...APPROVED, ...UNAPPROVED_TR])
+    for (const target of [...APPROVED, ...EXTRA_TR])
       expect(
         rows.find((r) => r.targetCode === target),
         target,
       ).toMatchObject({ seeAll: true, revision: 1 });
     const now = await ledger(w);
-    for (const target of APPROVED) expect(now.get(seeAllCode(target))).toBe('install');
-    for (const target of UNAPPROVED_TR) expect(now.has(seeAllCode(target))).toBe(false);
+    for (const a of SEE_ALL_BACKFILL_APPROVED)
+      expect(now.get(seeAllGrantCode(a.profileCode, a.appCode, a.targetKind, a.targetCode)), a.targetCode).toBe(
+        'install',
+      );
     const report = await runBackfill(w);
     expect(report.items.every((i) => i.installed.length === 0)).toBe(true);
   });
@@ -177,24 +197,25 @@ const closeScope = (w: World, profileId: string, target: string, ifMatch: number
     body: { targetKind: 'entity', targetCode: target, seeAll: false },
   });
 
-describe('AC-PLAT-F061 T-05 看全部补装（D3 = A′）', () => {
-  it('盘点管理员缺新对象与预置看全部：对象、数据操作、字段、按钮、批准目标的看全部补齐并写范围版本与审计；未批准目标不补；租户关掉后不恢复', async () => {
-    const w = await legacyWorld(testDb().db, 'f061t05', [withoutTargets(TR, [...APPROVED, UNAPPROVED_TR[0]!])]);
+describe('AC-PLAT-F061 T-05 看全部补装（D3 = A′，DEC-374②、DEC-384）', () => {
+  it('盘点管理员缺新对象与预置看全部（含 DEC-384 追加批准的 Matrix）：对象、数据操作、字段、按钮、看全部补齐并写范围版本与审计；租户关掉后不恢复', async () => {
+    const w = await legacyWorld(testDb().db, 'f061t05', [withoutTargets(TR, [...APPROVED, MATRIX])]);
     const profileId = w.profileIds.get(TR)!;
-    for (const target of APPROVED) expect(await permissionOf(w, TR, target)).toBeUndefined();
-    expect((await scopeRows(w, profileId)).map((r) => r.targetCode)).not.toContain(APPROVED[0]);
+    const wanted = [...APPROVED, MATRIX];
+    for (const target of wanted) expect(await permissionOf(w, TR, target)).toBeUndefined();
+    expect((await scopeRows(w, profileId)).map((r) => r.targetCode)).not.toContain(MATRIX);
 
     const installed = grantsInstalled(await runBackfill(w));
-    for (const target of APPROVED) {
+    for (const target of wanted) {
       expect(installed).toContain(seeAllCode(target));
       expect(installed).toContain(`${TR}/${target}/op:view`);
       const object = (await permissionOf(w, TR, target))!;
       expect(object.fields.length).toBeGreaterThan(0);
     }
-    expect(installed.filter((c) => c.includes('/seeAll:')).sort()).toEqual(APPROVED.map(seeAllCode).sort());
+    expect(installed.filter((c) => c.includes('/seeAll:')).sort()).toEqual(wanted.map(seeAllCode).sort());
     // 范围行：see_all、revision 1，与开通预置同样留范围版本与审计
     const rows = await scopeRows(w, profileId);
-    for (const target of APPROVED) {
+    for (const target of wanted) {
       expect(rows.find((r) => r.targetCode === target)).toMatchObject({
         seeAll: true,
         revision: 1,
@@ -209,15 +230,20 @@ describe('AC-PLAT-F061 T-05 看全部补装（D3 = A′）', () => {
       expect(versions).toHaveLength(1);
       expect(versions[0]).toMatchObject({ revision: 1 });
     }
-    // 未批准的 Readiness：旧定义里没有预置行，回补不补（等用户逐次批准）
-    expect(rows.some((r) => r.targetCode === UNAPPROVED_TR[0])).toBe(false);
-    expect((await ledger(w)).get(seeAllCode(APPROVED[0]!))).toBe('install');
+    expect((await ledger(w)).get(seeAllCode(MATRIX))).toBe('install');
 
     // 租户关掉 Settings 的看全部 → 再回补不恢复
     const closed = await closeScope(w, profileId, APPROVED[0]!, 1);
     expect(closed.status, await closed.clone().text()).toBe(200);
     expect(grantsInstalled(await runBackfill(w))).toEqual([]);
     expect((await scopeRows(w, profileId)).find((r) => r.targetCode === APPROVED[0])).toMatchObject({
+      seeAll: false,
+      revision: 2,
+    });
+    // DEC-384 追加批准的 Matrix 同样：租户关过的不恢复
+    expect((await closeScope(w, profileId, MATRIX, 1)).status).toBe(200);
+    expect(grantsInstalled(await runBackfill(w))).toEqual([]);
+    expect((await scopeRows(w, profileId)).find((r) => r.targetCode === MATRIX)).toMatchObject({
       seeAll: false,
       revision: 2,
     });
@@ -355,15 +381,6 @@ describe.skipIf(!realPostgres)('AC-PLAT-F061 T-20 回补补看全部 × setIdent
     const opened = new Promise<void>((resolve) => (open = resolve));
     return { opened, open };
   };
-  const pending = async (p: Promise<unknown>) => {
-    let settled = false;
-    void p.then(
-      () => (settled = true),
-      () => (settled = true),
-    );
-    await sleep(400);
-    return !settled;
-  };
   const write = (w: World) => ({
     tenantId: w.tenantId,
     actorUserId: null,
@@ -390,7 +407,7 @@ describe.skipIf(!realPostgres)('AC-PLAT-F061 T-20 回补补看全部 × setIdent
     });
     await started.opened;
     const filling = runBackfill(w);
-    expect(await pending(filling)).toBe(true);
+    await expectWaitingOnLock(w.db, filling);
     hold.open();
     await tenant;
     const installed = grantsInstalled(await filling);
@@ -415,7 +432,7 @@ describe.skipIf(!realPostgres)('AC-PLAT-F061 T-20 回补补看全部 × setIdent
     });
     await started.opened;
     const saving = closeScope(w, profileId, APPROVED[0]!, 0);
-    expect(await pending(saving)).toBe(true);
+    await expectWaitingOnLock(w.db, saving);
     hold.open();
     await filling;
     const res = await saving;
