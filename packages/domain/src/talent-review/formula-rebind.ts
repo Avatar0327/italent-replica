@@ -84,7 +84,8 @@ function issueOf(failure: Extract<ReturnType<typeof bindFormula>, { ok: false }>
       return 'AMBIGUOUS_FIELD';
     case 'FORMULA_INVALID': {
       const code = failure.issues[0]?.code;
-      return code === 'UNKNOWN_FIELD' ? 'UNKNOWN_FIELD' : code === 'BARE_WORD' ? 'BARE_WORD' : 'INVALID';
+      if (code === 'UNKNOWN_FIELD' || code === 'BARE_WORD') return code;
+      return 'INVALID';
     }
     default:
       return 'INVALID';
