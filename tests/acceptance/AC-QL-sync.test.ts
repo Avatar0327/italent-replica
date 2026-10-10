@@ -12,6 +12,7 @@ import { describe, expect, it } from 'vitest';
 import {
   qualificationSyncProbe,
   qualificationSyncSchedulerEnabled,
+  startQualificationSyncScheduler,
 } from '../../apps/api/src/modules/qualification/sync-worker.js';
 import { HANDLER, rowsOf, syncWorld } from './AC-QL-sync-support.js';
 
@@ -167,6 +168,22 @@ describe('AC-QL-sync 租户隔离与调度开关', () => {
       ),
     );
     expect(seen[0]!.n).toBe(0);
+  });
+
+  it('进程内调度器真的在转：起一个调度器，已到期的队列行被取走并生成子集，stop 后停止（AC-QL-sync）', async () => {
+    const { w, fields } = await configured('qlsync-scheduler');
+    const recordId = await w.transferWith('2026-10-05', fields);
+    const scheduler = startQualificationSyncScheduler(w.db, 20);
+    try {
+      for (let i = 0; i < 250; i += 1) {
+        if ((await w.queue(recordId))[0]?.state === 'done') break;
+        await new Promise((done) => setTimeout(done, 20));
+      }
+    } finally {
+      await scheduler.stop();
+    }
+    expect(await w.queue(recordId)).toMatchObject([{ state: 'done' }]);
+    expect(await w.subsets()).toHaveLength(1);
   });
 
   it('环境变量可关：QUALIFICATION_SYNC_SCHEDULER=off 时进程不启动消费者（AC-QL-sync）', () => {

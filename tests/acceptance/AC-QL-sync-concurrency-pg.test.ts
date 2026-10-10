@@ -115,6 +115,40 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-QL-sync 真 PG：迟提交�
     expect(await w.subsets()).toMatchObject([{ employmentRecordId: t1Record }]);
   });
 
+  it('已写 outbox、事务未提交的事件：此时不可见；提交后下一轮被取到并处理，不被已消费的较晚事件越过（设计 §7.4 ⑤，P3-02）', async () => {
+    const { w, fields } = await configured('qlsync-pg-late-written');
+    const person = await w.hired('迟提交员工');
+    await w.run('2026-10-10T04:00:00Z'); // 入职事件先处理掉
+    // X：另一名员工的未来生效调动（10-20 才到期），T1 要为它补写一条创建时间更早的事件，所以与下面的处理互不抢锁
+    const future = await w.transferWith('2026-10-20', fields, person.employee.id);
+    const held = signal();
+    const release = signal();
+    const t1 = withTenant(w.db, w.tenantId, async (tx) => {
+      await tx.execute(sql`INSERT INTO employment_outbox (tenant_id, employee_id, business_id, object_type, object_id,
+          event_type, payload, state, command_id, payload_version_id, created_at)
+        SELECT tenant_id, employee_id, business_id, object_type, object_id, event_type, payload, state,
+          'late-' || gen_random_uuid()::text, payload_version_id, created_at - interval '1 hour'
+        FROM employment_outbox
+        WHERE tenant_id=${w.tenantId} AND object_id=${future}::uuid AND event_type='employment.record.create' LIMIT 1`);
+      held.resolve();
+      await release.promise;
+    });
+    await held.promise;
+    // T2：较晚的事件先提交并被消费；T1 的事件尚不可见
+    const recordId = await w.transferWith('2026-10-05', fields);
+    await w.run('2026-10-10T05:00:00Z');
+    expect(await w.queue(recordId)).toMatchObject([{ state: 'done' }]);
+    expect(await w.queue(future)).toHaveLength(1);
+
+    release.resolve();
+    await t1;
+    expect(await w.queue(future)).toHaveLength(2);
+    // 生效日到了：T1 的事件创建时间早于已被消费的 T2，时间游标会越过它，状态队列不会
+    await w.run('2026-10-20T05:00:00Z');
+    expect((await w.queue(future)).map((row) => row.state)).toEqual(['done', 'done']);
+    expect(await w.subsets(person.employee.id)).toHaveLength(1);
+  });
+
   it('处理器先持员工锁：删除在锁上等待，处理器按处理时的记录写下子集，随后删除成功（设计 §7.4）', async () => {
     const { w, fields } = await configured('qlsync-pg-sync-first');
     const recordId = await w.transferWith('2026-10-05', fields);
@@ -181,14 +215,17 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-QL-sync 真 PG：迟提交�
     expect(await w.subsets()).toEqual([]);
   });
 
-  it('两个调度器同时跑：每行只被一个处理（SKIP LOCKED），子集不重复（设计 §4.3）', async () => {
+  it('两个调度器同时跑：三名不同员工的事件各被处理一次，子集不重复（SKIP LOCKED + 员工锁，设计 §4.3，P3-02）', async () => {
     const { w, fields } = await configured('qlsync-pg-two-runners');
+    const people = [await w.hired('并发员工甲'), await w.hired('并发员工乙'), await w.hired('并发员工丙')];
+    await w.run('2026-10-10T04:00:00Z'); // 入职事件先处理掉，下面只看调动
     const recordIds: string[] = [];
-    for (const date of ['2026-10-02', '2026-10-03', '2026-10-04']) recordIds.push(await w.transferWith(date, fields));
+    for (const [i, person] of people.entries())
+      recordIds.push(await w.transferWith(`2026-10-0${i + 2}`, fields, person.employee.id));
     const [a, b] = await Promise.all([w.run('2026-10-10T05:00:00Z'), w.run('2026-10-10T05:00:00Z')]);
     expect(a.done + b.done).toBe(3);
     for (const id of recordIds) expect(await w.queue(id)).toMatchObject([{ state: 'done', attempts: 1 }]);
-    expect(await w.subsets()).toHaveLength(3);
+    for (const person of people) expect(await w.subsets(person.employee.id)).toHaveLength(1);
   });
 
   // ---- 第 1 轮审查 P2-02：类别 / 级别停用与同步交错 ----------------------------------------------------------------

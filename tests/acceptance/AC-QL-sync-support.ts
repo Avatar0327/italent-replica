@@ -253,8 +253,8 @@ export async function syncWorld(db: Db, label: string, options: { timezone?: str
   /** 同一任职事件再入队一行（模拟重复事件 / 重试路径），用来验证已同步的足迹。 */
   const requeue = (recordId: string) =>
     withTenant(db, tenantId, (tx) =>
-      tx.execute(sql`INSERT INTO ev_sync_queue (tenant_id, handler, dedupe_key, outbox_id, employee_id, record_id)
-        SELECT tenant_id, handler, 'dup-' || gen_random_uuid()::text, outbox_id, employee_id, record_id
+      tx.execute(sql`INSERT INTO ev_sync_queue (tenant_id, handler, dedupe_key, outbox_id, employee_id, record_id, next_attempt_at)
+        SELECT tenant_id, handler, 'dup-' || gen_random_uuid()::text, outbox_id, employee_id, record_id, next_attempt_at
         FROM ev_sync_queue WHERE tenant_id=${tenantId} AND record_id=${recordId}::uuid LIMIT 1`),
     );
 
@@ -276,6 +276,8 @@ export async function syncWorld(db: Db, label: string, options: { timezone?: str
     run,
     queue,
     subsets,
+    history,
+    requeue,
     settleBaseline,
   };
 }

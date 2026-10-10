@@ -27,9 +27,11 @@ import {
 } from '../employment/record-events.js';
 import { lockEmploymentEmployee, rowsOf } from '../employment/record-store.js';
 import type { EmploymentContext } from '../employment/types.js';
-import { saveSubset } from '../personnel/subsets.js';
+import { lockPerson } from '../personnel/store.js';
+import { loadSubset, persistSubset, saveSubset } from '../personnel/subsets.js';
 import { readEffectiveSetting } from '../tenant-settings/service.js';
 import { mapEmploymentToQualification } from './sync-mapping.js';
+import { hasSyncFootprint, planTimeline } from './sync-timeline.js';
 
 export const QUALIFICATION_SYNC_HANDLER = 'qualification_sync';
 const SYNC_SETTING = 'qualification.sync_enabled';
@@ -70,6 +72,7 @@ interface Picked {
 }
 interface QueueRow extends Picked {
   readonly recordId: string;
+  readonly outboxId: string;
   readonly attempts: number;
 }
 type Outcome =
@@ -136,7 +139,7 @@ async function consume(
       // 锁序：员工 → 队列行（与任职写入、删除、改期同一把员工锁，F-055 §10.2）
       await lockEmploymentEmployee(tx, ctx, item.employeeId);
       const [row] = rowsOf<QueueRow>(
-        await tx.execute(sql`SELECT id, employee_id AS "employeeId", record_id AS "recordId", attempts
+        await tx.execute(sql`SELECT id, employee_id AS "employeeId", record_id AS "recordId", outbox_id AS "outboxId", attempts
           FROM ev_sync_queue WHERE tenant_id=${ctx.tenantId} AND id=${item.id}::uuid
             AND state IN ('pending','failed') AND next_attempt_at <= ${ctx.now.toISOString()}::timestamptz
           FOR UPDATE SKIP LOCKED`),
@@ -182,7 +185,7 @@ async function attempt(
 /**
  * 事务之外的失败恢复（照 job/sequence-worker.ts 的 recoverSequenceFailure）：提交阶段中断先回查持久状态，确认已落地的不重记、
  * 不重做；否则按阶段分类（提交前失败 = 存储不可写 / 业务失败，提交阶段中断 = 结果未知）写失败审计，再在独立事务里把队列行记为
- * failed（次数 + 1、错误码、退避）。重试是幂等的（alreadySynced），所以“结果未知”也可以安全重试。
+ * failed（次数 + 1、错误码、退避）。重试是幂等的（同步足迹 hasSyncFootprint），所以“结果未知”也可以安全重试。
  * 审计库或队列都写不进去时保持原状、下一轮再试，不伪造结果；日志与队列只出现受控错误码，不带原始异常文案。
  */
 async function recover(
@@ -239,10 +242,35 @@ async function handle(tx: Tx, ctx: EmploymentContext, row: QueueRow, today: stri
   if (!SYNCED_KINDS.has(record.kind)) return { state: 'skipped', reason: 'KIND_NOT_SYNCED' };
   const setting = await readEffectiveSetting(tx, ctx.tenantId, SYNC_SETTING);
   if (setting.value !== true) return { state: 'skipped', reason: 'SETTING_DISABLED' };
+  // 足迹先于映射：已同步过的任职记录（含 HR 之后编辑 / 删除了的）不再补回，口径 6 = A
+  if (await hasSyncFootprint(tx, ctx.tenantId, record.id)) return { state: 'done', reason: null };
   const mapped = await mapEmploymentToQualification(tx, ctx.tenantId, record.fields, record.effectiveDate);
   if (mapped.kind === 'skipped') return { state: 'skipped', reason: mapped.reason };
-  if (await alreadySynced(tx, ctx.tenantId, record.id)) return { state: 'done', reason: null };
+  // 人员锁（员工行）之后再读时间轴：落位、收尾、取代在同一把锁内完成，与 HR 手工改子集串行
+  await lockPerson(tx, ctx, record.employeeId);
+  const placement = await planTimeline(tx, {
+    tenantId: ctx.tenantId,
+    employeeId: record.employeeId,
+    startDate: record.effectiveDate,
+    recordId: record.id,
+    outboxId: row.outboxId,
+  });
+  if (placement.kind === 'superseded') return { state: 'skipped', reason: 'SUPERSEDED_SAME_DAY' };
   await qualificationSyncProbe.beforeWrite?.(tx);
+  for (const old of placement.supersede) {
+    const source = { type: 'employment_sync' as const, id: old.employmentRecordId! };
+    await saveSubset(
+      tx,
+      { ...ctx, expectedRevision: old.revision },
+      record.employeeId,
+      'qualification',
+      {},
+      old.id,
+      true,
+      source,
+    );
+  }
+  if (placement.closeId) await closePrevious(tx, ctx, record.employeeId, placement.closeId, record.effectiveDate);
   await saveSubset(
     tx,
     ctx,
@@ -252,7 +280,7 @@ async function handle(tx: Tx, ctx: EmploymentContext, row: QueueRow, today: stri
       categoryId: mapped.categoryId,
       levelId: mapped.levelId,
       startDate: record.effectiveDate,
-      endDate: null,
+      endDate: placement.endDate,
       employmentRecordId: record.id,
       isAutoSync: true,
     },
@@ -263,14 +291,19 @@ async function handle(tx: Tx, ctx: EmploymentContext, row: QueueRow, today: stri
   return { state: 'done', reason: null };
 }
 
-/** 该任职记录已同步过（含 HR 之后删除了的行）：重试 / 重复入队都不再写第二条。 */
-async function alreadySynced(tx: Tx, tenantId: string, recordId: string): Promise<boolean> {
-  const [found] = rowsOf<{ n: number }>(
-    await tx.execute(sql`SELECT 1 AS n FROM personnel_qualification
-      WHERE tenant_id=${tenantId} AND employment_record_id=${recordId}::uuid
-        AND source_type='employment_sync' LIMIT 1`),
-  );
-  return Boolean(found);
+/**
+ * 收尾前一行：endDate 止于新开始日前一天。只改 endDate，来源 / 自动同步标记原样保留（手工行仍是手工行），
+ * 经 persistSubset 留版本和审计；系统维护时间轴不走人工入口的策略复核（SW74 锁的是人工改删）。
+ */
+async function closePrevious(tx: Tx, ctx: EmploymentContext, employeeId: string, id: string, startDate: string) {
+  const before = await loadSubset(tx, ctx, employeeId, 'qualification', id);
+  const endDate = new Date(Date.parse(`${startDate}T00:00:00Z`) - DAY_MS).toISOString().slice(0, 10);
+  await persistSubset(tx, ctx, 'qualification', before, {
+    ...before,
+    endDate,
+    revision: Number(before.revision) + 1,
+    commandId: ctx.commandId,
+  });
 }
 
 /** 未到生效日：下一次取数时间设为生效日前一天零点（UTC）——比任何时区的当地零点都早，真正的到期仍由 ReadySql 判定。 */
