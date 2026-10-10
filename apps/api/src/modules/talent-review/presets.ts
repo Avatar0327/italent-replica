@@ -5,11 +5,11 @@
 import { and, eq, talentReviewFieldOptions as O, talentReviewFields as F, type Tx } from '@italent/db';
 import { TALENT_REVIEW_PRESET_FIELDS } from '@italent/domain';
 import { recordAudit } from '../../audit/record.js';
-import { registerSeed, type SeedWriteContext } from '../../seeds/registry.js';
+import { registerSeed, type SeedInstallResult, type SeedWriteContext } from '../../seeds/registry.js';
 import { codeOf, TALENT_REVIEW_AUDIT_ACTIONS } from './access.js';
 import { loadFieldView } from './field-service.js';
 
-async function installFields(tx: Tx, write: SeedWriteContext, missing: readonly string[]): Promise<void> {
+async function installFields(tx: Tx, write: SeedWriteContext, missing: readonly string[]): Promise<SeedInstallResult> {
   const created = new Map<string, string>();
   for (const [index, preset] of TALENT_REVIEW_PRESET_FIELDS.entries()) {
     if (!missing.includes(preset.code)) continue;
@@ -65,6 +65,8 @@ async function installFields(tx: Tx, write: SeedWriteContext, missing: readonly 
       occurredAt: write.now,
     });
   }
+  // 字段目录变了；版本由 installMissingSeeds 在全部登记项装完后统一推进（锁序 V 最后，契约 §3.4）
+  return created.size > 0 ? { catalogChanged: true } : {};
 }
 
 registerSeed({

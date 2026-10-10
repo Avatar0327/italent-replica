@@ -33,6 +33,7 @@ import {
 import type { ApprovalContext } from '../approval/context.js';
 import { republishWithExceptionAdmin } from '../approval/definitions.js';
 import { designateSuccessor, takeOverOnDeactivation } from '../approval/handover.js';
+import { bumpFieldCatalog } from '../talent-review/field-catalog.js';
 import { auditAs } from '../permission/audit.js';
 import { createPermissionAuthorizer } from '../permission/authorizer.js';
 
@@ -170,6 +171,10 @@ async function reconcile(tx: Tx, target: Db, live: LiveState, meta: PlatformComm
   const tenantId = live.authorization.tenantId;
   const mirrored = await mirrorAuthorization(tx, live.authorization);
   const problems = [...mirrored.problems];
+  // 字段目录版本（F-082 契约 §1.3）：备份快照里的版本可能小于恢复前已发出的值——客户端手里的旧版本不能再次"碰巧相等"。
+  // 新值取 greatest(版本 + 1, 当前毫秒时间戳)，一定大于恢复前发出过的值；mirrorAuthorization 提前返回时租户上下文未设，这里显式设置
+  await tx.execute(sql`SELECT set_config('app.tenant_id', ${tenantId}, true)`);
+  await bumpFieldCatalog(tx, tenantId);
   const timezone = await tenantTimezone(tx, tenantId);
   const republished = await reconcileExceptionAdmins(tx, live, meta, clock, problems);
   const takenOver = await takeOverUnavailable(tx, target, { tenantId, timezone, meta, clock, live }, problems);
