@@ -21,11 +21,13 @@ import {
   closureReports,
   currentDigestTable,
   currentRegistry,
+  REGISTRY,
   repoSource,
   type SourceReader,
   unitText,
   usesOf,
 } from './support/route-policy/evidence.js';
+import { impactCounts } from './support/route-policy/evidence-report.js';
 import { REQUIRED } from './support/route-policy/required/index.js';
 import type { Evidence, Obligation, RequiredTable } from './support/route-policy/required/types.js';
 import { mapSelectors } from './support/route-policy/selectors.js';
@@ -246,18 +248,12 @@ describe('AC-PRM-FW-02 证据闭包（B-02）：真实表', () => {
       const pick = (q: number) => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * q))]!;
       return { p50: pick(0.5), p90: pick(0.9), max: sorted.at(-1) };
     };
-    const uses = usesOf(REQUIRED);
-    // 一个依赖被改，要复核的义务数 = 把它放进闭包的各单元所引用的义务数之和（同一义务只算一次）
-    const affected = new Map<string, Set<string>>();
-    for (const report of reports) {
-      for (const dep of Object.keys(report.deps)) {
-        const set = affected.get(dep) ?? new Set<string>();
-        for (const use of uses.get(report.unit) ?? []) set.add(use.label);
-        affected.set(dep, set);
-      }
-    }
-    const counts = [...affected.values()].map((set) => set.size);
-    const over100 = [...affected].filter(([, set]) => set.size > 100).map(([dep, set]) => `${dep} ${set.size}`);
+    // 一个依赖被改，要复核的义务数 = 把它放进 R_cur 的各证据单元所引用的义务数之和（同一义务只算一次，F-072 §3.2 规则 6）
+    const affected = impactCounts(REGISTRY.graph, usesOf(REQUIRED));
+    const counts = [...affected.values()].map((entry) => entry.obligations);
+    const over100 = [...affected]
+      .filter(([, entry]) => entry.obligations > 100)
+      .map(([dep, e]) => `${dep} ${e.obligations}`);
     const depth = Math.max(...reports.map((r) => r.depth));
     console.info(
       JSON.stringify({

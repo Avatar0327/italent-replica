@@ -98,7 +98,10 @@ function oracleOf(reg: Registry, cur: Registry, roots: Roots): Oracle {
   const db = new Set(
     [...ids].filter((id) => present(reg, id) && present(cur, id) && bindingOf(reg, id) !== bindingOf(cur, id)),
   );
-  const dr = new Set([...roots.keys()].filter((r) => digestOf(reg, r) !== digestOf(cur, r)));
+  const unitDigest = (x: Registry, r: string) => x.units[fileOf(r)]?.[nameOf(r)];
+  const dr = new Set(
+    [...roots.keys()].filter((r) => unitDigest(reg, r) !== unitDigest(cur, r) || !(r in reg.unitBindings)),
+  );
   const maps = {
     rReg: new Map<string, Set<string>>(),
     rCur: new Map<string, Set<string>>(),
@@ -191,6 +194,11 @@ function assertOracle(reg: Registry, cur: Registry, roots: Roots, groups: readon
       const ok =
         (o.rReg.get(g.node)?.has(i.root) ?? false) || (o.rCur.get(g.node)?.has(i.root) ?? false) || i.root === g.node;
       expect(ok, `A2：${g.node} 的影响 ${i.root} 不可达`).toBe(true);
+    }
+    // 影响集合完整：除纯根变化外恰为 R_reg ∪ R_cur（不多不少）
+    if (!(g.kinds.length === 1 && g.kinds[0] === 'root')) {
+      const expected = new Set([...(o.rReg.get(g.node) ?? []), ...(o.rCur.get(g.node) ?? [])]);
+      expect(new Set(g.impacts.map((i) => i.root)), `影响集合：${g.node}`).toEqual(expected);
     }
     // A3 标注正确
     for (const i of g.impacts) {
@@ -372,7 +380,7 @@ describe('AC-PRM-FW-02 集中报告：分快照求影响（F-072 测试 10、11�
     expect(a).toBeUndefined();
     const r = groups.find((g) => g.node === R)!;
     expect(r.kinds).toEqual(['edge']);
-    const changedA = synth({ [R]: [B], [B]: [Y], [A]: [Y] }, [R], { [A]: 'x' });
+    const changedA = synth({ [R]: [B], [B]: [Y], [A]: [Y, X] }, [R]);
     const regA = synth({ [R]: [A], [A]: [Y] }, [R]);
     const forA = staleGroups({ reg: regA, cur: changedA, roots }).find((g) => g.node === A)!;
     expect(forA.impacts.map((i) => [i.snapshot, i.chain])).toEqual([['reg', [R, A]]]);
