@@ -33,8 +33,8 @@ export const STANDARD_GRANT_ENTRY = 'permission/standard-profile-grants';
  * 守卫测试算出的指纹不一致即失败——任何改目录的 PR 都会撞到它，审查方一眼看到“这个 PR 会给存量标准身份补授权”。
  * version 只用于回补报告，不参与缺失判断。
  */
-export const STANDARD_GRANT_VERSION = 1;
-export const STANDARD_GRANT_DIGEST = '38aab182573854eb';
+export const STANDARD_GRANT_VERSION = 2;
+export const STANDARD_GRANT_DIGEST = 'ddee39a818e708ad';
 
 export type GrantRef =
   | { readonly kind: 'app'; readonly code: string; readonly profileCode: string; readonly appCode: string }
