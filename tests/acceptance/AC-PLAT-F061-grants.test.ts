@@ -162,8 +162,9 @@ describe('AC-PLAT-F061 T-16 授权项编码与指纹守卫', () => {
     // 只改 version 不改编码时，指纹与上一行相同而失败。合并前最后一次合 main 时，以 main 的最后一行为准再 +1（DEC-404）。
     const HISTORY: Record<number, string> = {
       7: 'de040eb38bfcd54a',
+      8: '1892446da0d1f77c',
       // C1-2b（DEC-399）：新增员工身份 employee_self_service 的授权项
-      8: 'c827a83ef47ee0fe',
+      9: '9805dbb4eadff84b',
     };
     expect(HISTORY[STANDARD_GRANT_VERSION], `version ${STANDARD_GRANT_VERSION} 没有登记指纹：追加一行`).toBe(
       STANDARD_GRANT_DIGEST,

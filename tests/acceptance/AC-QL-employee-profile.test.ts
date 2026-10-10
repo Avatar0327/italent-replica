@@ -52,6 +52,7 @@ import {
   withoutButton,
   type World,
 } from './support/f061.js';
+import { seedOperator } from './support/platform-api.js';
 import { cmd, tenantApi } from './support/tenant-api.js';
 
 const testDb = useTestDb();
@@ -284,6 +285,31 @@ describe('AC-QL-employee-profile 必测 5：E3 存量租户补装前后同输出
   });
 });
 
+describe('AC-QL-employee-profile 必测 5（续）：补装前后 GET /profile 披露与预览相同', () => {
+  it('同一员工在补装前（兜底）与补装后（标准行）看到的本人档案和调动预览逐字相同（AC-QL-employee-profile）', async () => {
+    const world = await approvalWorld(testDb().db, 'emp-e3-disclosure');
+    const api = tenantApi(testDb().db, { authorize: undefined, clock: world.clock });
+    const department = await world.org('合成部门');
+    const person = await world.person('补装员工', department, { place: '权限外地址' });
+    const operator = await seedOperator(testDb().db, 'ops-e3-disclosure');
+    const observe = async () => {
+      const as = world.as(person.userId);
+      const profile = await api.request('GET', '/api/tenant/self-service/profile', as);
+      const preview = await api.request('POST', '/api/tenant/self-service/transfer/preview', {
+        ...as,
+        body: { effectiveDate: '2026-10-19', fields: { departmentId: department } },
+      });
+      return { profile: [profile.status, await profile.json()], preview: [preview.status, await preview.json()] };
+    };
+    const before = await observe();
+    expect(before.profile[0]).toBe(200);
+    expect(JSON.stringify(before.profile[1])).not.toContain('权限外地址');
+    const report = await runBackfill({ api, operator, tenantId: world.tenant.id });
+    expect(report.items.find((i) => i.key === 'standard-profiles')!.installed).toContain(EMP);
+    expect(await observe()).toEqual(before);
+  });
+});
+
 describe('AC-QL-employee-profile 必测 7：员工发展通道页面判定 employeePageGranted（契约 §3.2）', () => {
   type PageWorld = Awaited<ReturnType<typeof approvalWorld>>;
   const setup = async (label: string, installEmployee: boolean) => {
@@ -469,13 +495,32 @@ describe('AC-QL-employee-profile 必测 8：撤销保留（F-061 §10 两条，�
 describe('AC-QL-employee-profile 必测 9、10：CODE_TAKEN 保留计数另加明细；重复回补无副作用（DEC-402⑤）', () => {
   it('租户已有 custom 同编码行：不装不改，existing 计数照旧，existingDetails 列 CODE_TAKEN，汇总审计带明细（AC-QL-employee-profile）', async () => {
     const w = await legacyWorld(testDb().db, 'emp-taken', [], [EMP, 'standard_manager']);
+    let customId = '';
     for (const code of [EMP, 'standard_manager']) {
       const created = await w.api.request('POST', `${PRM}/profiles`, {
         ...w.asAdmin,
         body: { code, name: '租户手工建的同编码', apps: ['TenantBase'], licenseType: null },
       });
       expect(created.status, await created.clone().text()).toBe(201);
+      if (code === EMP) {
+        // 租户收紧过：只留生效日期、只勾一个按钮——回补不得覆盖这些配置（DEC-402⑤）
+        const profile = (await created.json()) as { id: string; code: string; revision: number };
+        const tightened = await setObjectPermission(
+          w as never,
+          profile,
+          {
+            dataOperations: { create: true, update: false, delete: false },
+            fields: [{ fieldCode: 'effectiveDate', view: true, edit: true }],
+            buttons: [{ buttonCode: 'Transfer.Self', level: 'detail' }],
+          },
+          RECORD,
+        );
+        expect(tightened.status, await tightened.clone().text()).toBe(200);
+        customId = profile.id;
+      }
     }
+    const asWorld = { ...w, profileIds: new Map([[EMP, customId]]) };
+    const configured = await detailOf(asWorld, EMP);
     const custom = await withTenant(w.db, w.tenantId, (tx) =>
       tx.select().from(permissionProfiles).where(eq(permissionProfiles.code, EMP)),
     );
@@ -501,6 +546,9 @@ describe('AC-QL-employee-profile 必测 9、10：CODE_TAKEN 保留计数另加�
       tx.select().from(permissionProfiles).where(eq(permissionProfiles.code, EMP)),
     );
     expect(after[0]).toMatchObject({ source: 'custom', revision: custom[0]!.revision });
+    // 对象、字段、按钮原样保留（不被标准定义覆盖）
+    expect(await detailOf(asWorld, EMP)).toEqual(configured);
+    expect(configured.objects.map((o) => o.objectCode)).toEqual([RECORD]);
 
     const platform = await testDb()
       .db.select()
@@ -548,7 +596,7 @@ describe('AC-QL-employee-profile 必测 9、10：CODE_TAKEN 保留计数另加�
 
 describe('AC-QL-employee-profile 必测 11：version / 指纹守卫（DEC-404）', () => {
   // main 在 C1-2b 开始时的值；合并前最后一次合 main 时，把这里改成合并进来的 main 的值（DEC-404）
-  const MAIN = { version: 7, digest: 'de040eb38bfcd54a' };
+  const MAIN = { version: 8, digest: '1892446da0d1f77c' };
 
   it('授权项编码含员工身份任职对象三个按钮与页面载体按钮；version 比 main 当前值至少 +1，指纹随编码变化（AC-QL-employee-profile）', () => {
     for (const button of EMPLOYEE_SELF_SERVICE_BUTTONS)

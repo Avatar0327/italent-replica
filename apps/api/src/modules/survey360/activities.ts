@@ -54,14 +54,22 @@ async function reload(tx: Tx, id: string): Promise<ActivityRow> {
   return row!;
 }
 
-async function auditActivity(tx: Tx, ctx: Survey360Context, action: string, before: unknown, after: ActivityRow) {
+async function auditActivity(
+  tx: Tx,
+  ctx: Survey360Context,
+  action: string,
+  before: unknown,
+  after: ActivityRow,
+  credentialPending = 0,
+) {
   const view = activityView(after);
   await audit360(tx, actor(ctx), {
     action,
     objectType: 'survey360-activity',
     objectId: after.id,
     before,
-    after: { ...view, activityId: after.id },
+    // 凭据进入待发放只记人数，不记明文与摘要（F-076 设计 §2.6）
+    after: { ...view, activityId: after.id, ...(credentialPending ? { credentialPending } : {}) },
   });
 }
 
@@ -116,17 +124,19 @@ async function checkEnable(tx: Tx, activityId: string): Promise<string[]> {
   return [...used];
 }
 
-/** 给活动里每位评价者发放作答链接（已有的不重复发放）。 */
-export async function issueAnswerLinks(tx: Tx, ctx: Survey360Context, activityId: string): Promise<void> {
+/** 给活动里每位评价者发放作答链接（已有的不重复发放）。返回进入凭据待发放的人数（审计只记人数，设计 §2.6）。 */
+export async function issueAnswerLinks(tx: Tx, ctx: Survey360Context, activityId: string): Promise<number> {
   const ids = rows<{ id: string }>(
     await tx.execute(sql`SELECT DISTINCT r.appraiser_person_id AS id FROM survey360_relations r
       JOIN survey360_objects o ON o.tenant_id = r.tenant_id AND o.id = r.object_id AND NOT o.removed
       WHERE r.activity_id = ${activityId}::uuid AND NOT r.removed ORDER BY 1`),
   );
+  let pending = 0;
   for (const { id } of ids) {
     const [person] = await tx.select().from(survey360People).where(eq(survey360People.id, id));
-    await ensureAnswerLink(tx, ctx, activityId, person!);
+    if ((await ensureAnswerLink(tx, ctx, activityId, person!))?.credentialPending) pending += 1;
   }
+  return pending;
 }
 
 const VIEW = { object: 'activity' } as const;
@@ -243,18 +253,19 @@ function registerActivityLifecycle(module: Hono<TenantEnv>, deps: TenantRouteDep
           const current = await requireActivity(tx, ctx.admin, id, true);
           requireRevision(current.revision, ctx.expectedRevision);
           let saved: ActivityRow;
+          let credentialPending = 0;
           if (action === 'enable') {
             if (current.status === 'enabled') fail('CONFLICT', '活动已启用', 'ALREADY_ENABLED');
             await markUsed(tx, await checkEnable(tx, id));
             saved = await bump(tx, current, { status: 'enabled', startedAt: current.started_at ? undefined : ctx.now });
-            await issueAnswerLinks(tx, ctx, id);
+            credentialPending = await issueAnswerLinks(tx, ctx, id);
           } else {
             if (current.status !== 'enabled') fail('CONFLICT', '只有启用中的活动可以停用', 'NOT_ENABLED');
             saved = await bump(tx, current, { status: 'disabled', endedAt: ctx.now });
             await computeScores(tx, ctx, id);
             saved = await reload(tx, id);
           }
-          await auditActivity(tx, ctx, `survey360.activity.${action}`, activityView(current), saved);
+          await auditActivity(tx, ctx, `survey360.activity.${action}`, activityView(current), saved, credentialPending);
           return activityView(saved);
         },
         // 状态流转，不写活动字段

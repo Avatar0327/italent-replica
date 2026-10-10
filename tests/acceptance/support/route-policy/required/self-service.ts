@@ -79,6 +79,25 @@ const CREATE_WRITE = [
   },
 ] as const;
 const SELF_FACTS = ['self:selfAccess', 'self:transferFieldAccess'];
+/** 三个本人调动按钮的检查实现（C1-2b，契约 §2.3.2）：预览与提交各有一个调用点，同一个检查函数。 */
+const BUTTONS_IMPL = {
+  role: 'impl',
+  unit: `${ACCESS}#requireSelfServiceButtons`,
+  anchor: "reason: 'SELF_TRANSFER_BUTTON_DENIED'",
+} as const;
+const PREVIEW_BUTTONS_CALL = {
+  role: 'impl',
+  unit: `${TRANSFER}#ownTransferPreview`,
+  anchor: 'await requireSelfServiceButtons(tx, ctx)',
+} as const;
+const SUBMIT_BUTTONS_GUARD = [
+  { role: 'call', unit: `${ROUTES}#route:POST /transfer`, anchor: '{ guard: selfTransferGuard(self) }' },
+  {
+    role: 'impl',
+    unit: `${ROUTES}#selfTransferGuard`,
+    anchor: 'before: (tx) => requireSelfServiceButtons(tx, self.ctx)',
+  },
+] as const;
 
 export const SELF_SERVICE: RequiredTable = {
   'GET /api/tenant/self-service/profile': [self('GET', '/profile', ['self:selfAccess'])],
@@ -103,6 +122,8 @@ export const SELF_SERVICE: RequiredTable = {
       facts: ['button:requireTransferButton'],
       at: [
         route('POST', '/transfer/preview', 'ownTransferPreview(tx, self.ctx, self.employee.id, raw, deps)'),
+        PREVIEW_BUTTONS_CALL,
+        BUTTONS_IMPL,
         ...SOURCE_IMPL,
       ],
     },
@@ -186,6 +207,8 @@ export const SELF_SERVICE: RequiredTable = {
       facts: ['button:requireTransferButton', 'button:buttonResource', 'button:object.button'],
       at: [
         route('POST', '/transfer', 'createTransfer(tx, ctx, self.employee.id, input)'),
+        ...SUBMIT_BUTTONS_GUARD,
+        BUTTONS_IMPL,
         {
           role: 'impl',
           unit: `${SERVICE}#transferTargetContext`,
