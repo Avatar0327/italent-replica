@@ -55,11 +55,11 @@ describe('AC-PRM-F075b 去掉的 18 项冗余授权调用不再发生', () => {
     }
   });
 
-  it('只去掉这 9 个入口：其余 360 入口里仍询问 Activity 键的恰好 48 个（查看权与 viewAll 各 48），没有多删', () => {
+  it('只去掉这 9 个入口：其余仍询问 Activity 键的入口恰好 48 个（47 个 360 入口 + 审计的失败命令查询）（查看权与 viewAll 各 48），没有多删', () => {
     const nine = new Set(REMAINING.map(([endpoint]) => endpoint));
     const asking = (key: string) =>
       Object.entries(probes)
-        .filter(([endpoint, found]) => endpoint.includes(`${P}/`) && found.trace.includes(key))
+        .filter(([, found]) => found.trace.includes(key))
         .map(([endpoint]) => endpoint);
     for (const key of [VIEW, VIEW_ALL]) {
       const endpoints = asking(key);
