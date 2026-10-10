@@ -522,16 +522,20 @@ function resolveRef(env: ClosureEnv, file: string, position: RefPosition): Bindi
   }
 }
 
-const localOf = (position: RefPosition): string =>
-  position.kind === 'name'
-    ? position.name
-    : position.kind === 'member'
-      ? `${position.ns}.${position.member}`
-      : position.kind === 'escape'
-        ? position.ns
-        : position.kind === 'dynamic'
-          ? position.name
-          : 'require';
+function localOf(position: RefPosition): string {
+  switch (position.kind) {
+    case 'name':
+      return position.name;
+    case 'member':
+      return `${position.ns}.${position.member}`;
+    case 'escape':
+      return position.ns;
+    case 'dynamic':
+      return position.name;
+    case 'require':
+      return 'require';
+  }
+}
 
 /** 节点的完整绑定清单（引用位置按遍历顺序；空白与注释不影响序号）。 */
 export function bindingsOf(env: ClosureEnv, id: string): readonly BindingLine[] {

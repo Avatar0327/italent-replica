@@ -13,7 +13,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { type BoundaryEntry, EVIDENCE_BOUNDARY } from './evidence-boundary.js';
 import { bindingsOf, type BindingLine, createClosureEnv, type SourceReader } from './evidence-closure.js';
-import { type Registry, parseRegistry } from './evidence-graph.js';
+import { fileOf, parseRegistry, type Registry } from './evidence-graph.js';
 import { findUnitNode } from './evidence.js';
 
 export type ExplainKind = 'digest' | 'binding' | 'edge' | 'added' | 'removed';
@@ -38,7 +38,6 @@ export interface ExplainInput {
   readonly boundary?: readonly BoundaryEntry[];
 }
 
-const fileOf = (id: string) => id.slice(0, id.indexOf('#'));
 const sameSet = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((x) => b.includes(x));
 const present = (registry: Registry, id: string) => id in registry.nodes || id in registry.unitBindings;
 const digestOf = (registry: Registry, id: string) =>
@@ -142,7 +141,7 @@ const DIGESTS_DIR = 'tests/acceptance/support/route-policy/required/digests';
 const git = (args: string[]) => execFileSync('git', args, { encoding: 'utf8', maxBuffer: 1 << 28 });
 
 /** `git show <ref>:<file>`；文件不存在时返回 undefined。 */
-function show_(ref: string, file: string): string | undefined {
+function gitShow(ref: string, file: string): string | undefined {
   try {
     return execFileSync('git', ['show', `${ref}:${file}`], { encoding: 'utf8', maxBuffer: 1 << 28, stdio: 'pipe' });
   } catch {
@@ -175,11 +174,11 @@ export function explainFromGit(root: string, baseRef?: string): { readonly items
     ...git(['ls-files', '--others', '--exclude-standard']).split('\n'),
   ]);
   return explainGraphDiff({
-    base: registryAt((file) => show_(ref, file), baseGraph),
+    base: registryAt((file) => gitShow(ref, file), baseGraph),
     head: registryAt((file) => readFileSync(path.join(root, file), 'utf8'), headGraph),
     diffFiles,
     readBase: (file) => {
-      const text = show_(ref, file);
+      const text = gitShow(ref, file);
       if (text === undefined) throw new Error(`${ref} 上没有 ${file}`);
       return text;
     },

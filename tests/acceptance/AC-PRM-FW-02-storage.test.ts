@@ -275,6 +275,19 @@ describe('AC-PRM-FW-02 图存储：图变或绑定变而闭包不变也报（F-0
     expect(detail).toContain('绑定变化');
     expect(detail).toContain(`fmt → import:./h.js`);
     expect(detail).toContain('explain-graph-diff');
+    // explain-graph-diff 对同一夹具给出变化的位置与新旧目标
+    const explained = explainGraphDiff({
+      base: registry,
+      head: swappedRegistry,
+      diffFiles: new Set([`${FX}/mid.ts`]),
+      readBase: readerOf(aliasFiles),
+      readHead: readerOf(swapped),
+    });
+    const item = explained.items.find((i) => i.node === id);
+    expect(item?.kind).toBe('binding');
+    expect(item?.explained).toBe(true);
+    expect(item?.old?.join('\n')).toContain(`fmt → import:./h.js → ${FX}/h.ts#a`);
+    expect(item?.new?.join('\n')).toContain(`fmt → import:./h.js → ${FX}/h.ts#b`);
   });
 
   it('中间文件改转导出、局部新增 import 遮蔽全局，同样报', () => {

@@ -31,7 +31,8 @@ export function closureFromGraph(graph: Graph, root: string): Walk & { readonly 
   return { ...result, deps: result.parents };
 }
 
-const fileOf = (id: string) => id.slice(0, id.indexOf('#'));
+/** 节点 id `文件#名字` 的文件部分。 */
+export const fileOf = (id: string): string => id.slice(0, id.indexOf('#'));
 
 /** 登记里同文件的依赖写成 `#名字`（约四成直接边在同一文件内）；读入时还原成完整节点 id。 */
 export function expandGraph(graph: Graph): Graph {
