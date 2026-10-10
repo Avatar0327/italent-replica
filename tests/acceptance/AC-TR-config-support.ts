@@ -134,5 +134,10 @@ export async function configOperator(
   if (options.seeAll) await setSeeAll(true);
   const request = (method: string, path: string, extra: RequestOptions = {}) =>
     world.api.request(method, `${TR_BASE}${path}`, { ...as, ...extra });
-  return { profile, user, as, request, setSeeAll, setButtons };
+  /** 撤销一批字段的编辑权（保留查看权）。 */
+  const lockFields = async (fields: readonly string[]) => {
+    for (const field of fields) locked.add(field);
+    await setButtons(true);
+  };
+  return { profile, user, as, request, setSeeAll, setButtons, lockFields };
 }

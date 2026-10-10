@@ -101,6 +101,34 @@ describe('模块等级 · 配置规则（TR-R15 / R20）', () => {
     }
   });
 
+  it('同一等级项不能同时带分数边界与数量门槛：新建 / 修改都 400，原分数区间与 revision、审计、台账不变（P2-02）', async () => {
+    const w = await scoringWorld(testDb().db, 'trg-mixed-item');
+    const grade = (await w.post('/module-grades', moduleGradeBody())) as GradeView;
+    const mixed = [{ name: '混合', value: '9', minScore: 0, maxScore: 5, minCount: 3 }];
+    const created = await w.request('POST', '/module-grades', { ifMatch: 0, body: moduleGradeBody({ items: mixed }) });
+    expect([created.status, await reasonOf(created)]).toEqual([400, 'GRADE_ITEMS_MIXED']);
+    const key = `trg-mixed-${Date.now()}`;
+    const patched = await w.request('PATCH', `/module-grades/${grade.id}`, {
+      ifMatch: grade.revision,
+      idempotencyKey: key,
+      body: { items: mixed },
+    });
+    expect([patched.status, await reasonOf(patched)]).toEqual([400, 'GRADE_ITEMS_MIXED']);
+    const after = (await w.request('GET', `/module-grades/${grade.id}`).then((r) => r.json())) as GradeView;
+    expect(after).toEqual(grade);
+    expect(after.mode).toBe('score');
+    const audit = auditApi(testDb().db, TR_NOW.toISOString());
+    const objectType = TALENT_REVIEW_OBJECTS.moduleGrade.code;
+    const { items } = await audit.dataChanges(w.as, { objectType, limit: '50' });
+    expect(items.map((entry) => entry.operation)).toEqual(['create']);
+    const retry = await w.request('PATCH', `/module-grades/${grade.id}`, {
+      ifMatch: grade.revision,
+      idempotencyKey: key,
+      body: { items: scoreItems(0, 1) },
+    });
+    expect(retry.status, await retry.clone().text()).toBe(200); // 失败的命令不入台账，原键可重提
+  });
+
   it('按指标数目：mode = count；门槛不重复且不为负', async () => {
     const w = await scoringWorld(testDb().db, 'trg-count');
     const grade = (await w.post('/module-grades', moduleGradeBody({ items: countItems(3, 6, 10) }))) as GradeView;
