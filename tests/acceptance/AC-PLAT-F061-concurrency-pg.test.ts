@@ -5,7 +5,6 @@
  * T-22（首次接管 × 审计清理交错：接管对每个身份只读一次审计）。
  * 做法：先让一个事务持锁不放，再发起另一个请求，确认它在等待（没有返回），释放后再核对结果。
  */
-import { setTimeout as sleep } from 'node:timers/promises';
 import { auditEvents, eq, permissionProfiles, withTenant } from '@italent/db';
 import { STANDARD_PROFILES } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
@@ -18,6 +17,7 @@ import { installMissingSeeds } from '../../apps/api/src/seeds/registry.js';
 import { PLATFORM } from './support/platform-api.js';
 import {
   BUTTON,
+  expectWaitingOnLock,
   backfill,
   buttonCode,
   grantsInstalled,
@@ -65,16 +65,6 @@ function holdTx<T>(
   });
   return { started: started.opened, done };
 }
-/** 请求在 ms 内没有返回 → 视为正在等锁。 */
-async function stillPending(p: Promise<unknown>, ms = 400): Promise<boolean> {
-  let settled = false;
-  void p.then(
-    () => (settled = true),
-    () => (settled = true),
-  );
-  await sleep(ms);
-  return !settled;
-}
 const writeCtx = (w: World) => ({
   tenantId: w.tenantId,
   actorUserId: null,
@@ -95,7 +85,7 @@ describe.skipIf(!realPostgres)('AC-PLAT-F061 T-12 回补互斥（真 PG）', () 
     const first = holdTx(w, hold, (tx) => installMissingSeeds(tx, writeCtx(w), { modules: ['permission'] }));
     await first.started;
     const second = backfill(w);
-    expect(await stillPending(second)).toBe(true);
+    await expectWaitingOnLock(testDb().db, second);
     hold.open();
     const firstReport = await first.done;
     const res = await second;
@@ -122,7 +112,7 @@ describe.skipIf(!realPostgres)('AC-PLAT-F061 T-12 回补互斥（真 PG）', () 
       user: w.operator.id,
       body: {},
     });
-    expect(await stillPending(old)).toBe(true);
+    await expectWaitingOnLock(testDb().db, old);
     hold.open();
     await first.done;
     const res = await old;
@@ -155,7 +145,7 @@ describe.skipIf(!realPostgres)('AC-PLAT-F061 T-13 回补 × 对象权限保存�
     );
     await save.started;
     const pending = runBackfill(w);
-    expect(await stillPending(pending)).toBe(true);
+    await expectWaitingOnLock(testDb().db, pending);
     hold.open();
     await save.done;
     expect(grantsInstalled(await pending)).toEqual([]);
@@ -179,7 +169,7 @@ describe.skipIf(!realPostgres)('AC-PLAT-F061 T-13 回补 × 对象权限保存�
       ifMatch: revision,
       body,
     });
-    expect(await stillPending(save)).toBe(true);
+    await expectWaitingOnLock(testDb().db, save);
     hold.open();
     await fill.done;
     const res = await save;
@@ -213,7 +203,7 @@ describe.skipIf(!realPostgres)('AC-PLAT-F061 T-22 首次接管 × 审计清理�
     );
     await lock.started;
     const pending = runBackfill(w);
-    expect(await stillPending(pending)).toBe(true);
+    await expectWaitingOnLock(testDb().db, pending);
     await purgeAudits(w);
     expect(await setObjectAudits(w)).toHaveLength(0);
     hold.open();

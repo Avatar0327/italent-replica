@@ -5,6 +5,10 @@
 import type { Graph } from '../../../evidence-graph.js';
 
 export const GRAPH: Graph = {
+  'packages/domain/src/platform/sha256.ts#sha256Hex': ['#K', '#rotr', '#utf8'],
+  'packages/domain/src/platform/standard-grants.ts#objectCatalogDigest': [
+    'packages/domain/src/platform/sha256.ts#sha256Hex',
+  ],
   'packages/domain/src/platform/standard-grants.ts#objectGrantItems': [
     '#buttonGrantCode',
     '#fieldGrantCode',

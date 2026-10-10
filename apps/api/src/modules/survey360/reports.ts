@@ -451,8 +451,9 @@ const reportPresent: Present = async (viewer, body: unknown) => {
  * 报告详情（已按查看人裁剪）→ PDF 附件；文件名是评价对象姓名，被裁掉时用通用名。经应用层并发准入与超时（tenantKey 只用于
  * 计数）。
  */
-async function reportPdf(tenantKey: string, report: ReportBody): Promise<Response> {
-  const pdf = await admitted(tenantKey, (signal) => renderPdf(reportDocument(report), signal));
+async function reportPdf(tenantKey: string, report: ReportBody, disconnect: AbortSignal): Promise<Response> {
+  // disconnect = 请求断开信号（c.req.raw.signal）：客户端断开即取消渲染并释放名额（F-080，#198 审查 P2-2）
+  const pdf = await admitted(tenantKey, (signal) => renderPdf(reportDocument(report), signal), { signal: disconnect });
   const subject = report.cover?.objectName;
   return fileResponse(pdf, 'application/pdf', attachmentName(`${subject ? `${subject}-` : ''}个人报告`, 'pdf'));
 }
@@ -500,7 +501,7 @@ function registerReportViewRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps
       (tx, admin, tenant) => detail(c, tx, admin, tenant),
       reportPresent,
       'full',
-      (cc, report) => reportPdf(tenantOf(cc).tenantId, report),
+      (cc, report) => reportPdf(tenantOf(cc).tenantId, report, cc.req.raw.signal),
     ),
   );
 }
@@ -672,7 +673,7 @@ export function registerReportLinkRoutes(router: Hono<TenantEnv>, deps: TenantRo
   // 收件人下载 PDF：与上面同一份报告内容（邮件里发的是链接，不发附件）
   module.get('/reports/:reportId/download', async (c) => {
     const { tenantId, report } = await linked(c);
-    return reportPdf(tenantId, report as never);
+    return reportPdf(tenantId, report as never, c.req.raw.signal);
   });
   router.route('/api/survey360/report-link', module);
 }
