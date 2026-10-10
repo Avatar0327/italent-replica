@@ -5,6 +5,12 @@
 import type { Graph } from '../../../evidence-graph.js';
 
 export const GRAPH: Graph = {
+  'packages/domain/src/platform/standard-grants.ts#objectGrantItems': [
+    '#buttonGrantCode',
+    '#fieldGrantCode',
+    '#objectGrantCode',
+    '#opGrantCode',
+  ],
   'packages/domain/src/platform/standard-presets.ts#ESTABLISHMENT_SCHEME_DATASOURCE': [
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
   ],

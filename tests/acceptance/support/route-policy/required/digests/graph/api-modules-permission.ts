@@ -392,6 +392,7 @@ export const GRAPH: Graph = {
     '#replaceObjectRows',
     'apps/api/src/modules/permission/subject.ts#loadObjectPermissions',
     'apps/api/src/modules/permission/tenant-catalog.ts#tenantObjectCatalog',
+    'apps/api/src/seeds/grant-ledger.ts#recordTenantSave',
     'packages/domain/src/permission/object-permission.ts#isWithinProfileApps',
     'packages/domain/src/permission/object-permission.ts#validateObjectPermission',
   ],
