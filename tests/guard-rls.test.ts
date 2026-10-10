@@ -111,6 +111,8 @@ describe('守卫：带 tenant_id 的表必须启用并强制 RLS', () => {
       platform_command_ledger: '平台写命令幂等台账',
       platform_command_failures: '平台命令失败审计（R1-T16，DEC-199），平台层受限通道，只追加',
       platform_operators: '平台运营身份（R1-T17），与租户内权限隔离，不属于任何租户',
+      survey360_credential_key_versions:
+        '360 凭据密钥版本的全局登记（F-076 §2.4）：部署级配置，只有版本号与时间，租户角色只读以便发放写回复核',
     };
     const result = await testDb().db.execute(sql`
       SELECT c.relname AS "table" FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -121,7 +123,9 @@ describe('守卫：带 tenant_id 的表必须启用并强制 RLS', () => {
     const tables = rowsOf<{ table: string }>(result).map((r) => r.table);
     expect(tables).toEqual(Object.keys(platformTables).sort());
 
-    for (const table of tables.filter((t) => t !== 'system_settings')) {
+    // 租户角色只读的两张：系统预置、凭据密钥版本登记（均不含租户数据与秘密）
+    const tenantReadable = new Set(['system_settings', 'survey360_credential_key_versions']);
+    for (const table of tables.filter((t) => !tenantReadable.has(t))) {
       const [row] = rowsOf<{ ok: boolean }>(
         await testDb().db.execute(sql`SELECT has_table_privilege(${APP_ROLE.tenant}, ${table}, 'SELECT') AS ok`),
       );
