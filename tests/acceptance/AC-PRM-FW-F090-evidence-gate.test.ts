@@ -17,7 +17,7 @@ import {
   repoSource,
   syncedRegistry,
   unitText,
-  writeDigests,
+  registryFiles,
 } from './support/route-policy/evidence.js';
 import type { SourceReader } from './support/route-policy/evidence.js';
 import {
@@ -254,6 +254,7 @@ describe('AC-PRM-FW-F090 证据单元改名：登记里的单元在源码里不�
   });
 
   it('生成登记文件（ROUTE_POLICY_UPDATE_DIGESTS=1）遇到失效单元仍然报错，不静默丢弃', () => {
-    expect(() => writeDigests(TABLE, read, false)).toThrow(/不存在/);
+    expect(() => registryFiles(TABLE, read, false)).toThrow(/不存在/); // writeDigests 用它生成要写的内容
+    expect(Object.keys(registryFiles(TABLE, readerOf(FILES), false))).toContain('units.ts');
   });
 });

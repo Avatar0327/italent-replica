@@ -16,6 +16,7 @@ import { MAX_DEPTH } from './support/route-policy/evidence-closure.js';
 import { areaOf, closureFromGraph, parseRegistry, type Registry } from './support/route-policy/evidence-graph.js';
 import {
   checkEvidence,
+  brokenUnits,
   checkStored,
   currentDependencies,
   currentRegistry,
@@ -85,8 +86,10 @@ describe('AC-PRM-FW-02 图存储：真实表等价与确定性（F-072 测试 1�
 
   it('登记图推出的每个根的闭包，与源码逐层解析的闭包节点集合、摘要全部相等；DIGESTS 逐键相等', () => {
     const legacy = currentDependencies(REQUIRED);
-    const mismatched: string[] = [];
-    for (const root of roots()) {
+    // 证据单元改名 / 删除：当前源码里找不到，生成登记时跳过，在这里作为漂移报告（F-090 审查 R1 P2-1）
+    const broken = brokenUnits(REQUIRED);
+    const mismatched: string[] = broken.map((unit) => `${unit} 证据单元找不到`);
+    for (const root of roots().filter((unit) => !broken.includes(unit))) {
       const closure = closureFromGraph(STORED_REGISTRY.graph, root);
       const nodes = [...closure.deps.keys()].sort();
       const registered = Object.fromEntries(nodes.map((id) => [id, STORED_REGISTRY.nodes[id]?.[0]]));
@@ -112,11 +115,14 @@ describe('AC-PRM-FW-02 图存储：真实表等价与确定性（F-072 测试 1�
       onDisk.set(`graph/${name}`, readFileSync(new URL(`graph/${name}`, DIGESTS_DIR), 'utf8'));
     const generated = new Map(Object.entries(first).filter(([name]) => name !== 'index.ts'));
     const names = new Set([...onDisk.keys(), ...generated.keys()].filter((name) => name !== 'index.ts'));
-    const drift = [...names].sort().flatMap((name) => {
-      if (!onDisk.has(name)) return [`${name} 缺少（应由生成器写出）`];
-      if (!generated.has(name)) return [`${name} 多余（生成器不再写出）`];
-      return onDisk.get(name) === generated.get(name) ? [] : [`${name} 与生成结果不一致`];
-    });
+    const drift = brokenUnits(REQUIRED).map((unit) => `${unit} 证据单元找不到`);
+    drift.push(
+      ...[...names].sort().flatMap((name) => {
+        if (!onDisk.has(name)) return [`${name} 缺少（应由生成器写出）`];
+        if (!generated.has(name)) return [`${name} 多余（生成器不再写出）`];
+        return onDisk.get(name) === generated.get(name) ? [] : [`${name} 与生成结果不一致`];
+      }),
+    );
     // F-090：提交的登记文件与当前源码生成物不一致，默认只警告
     expect(softGate('图存储：提交的登记文件', drift)).toEqual([]);
   });
