@@ -6,6 +6,7 @@ CREATE TABLE "ev_sync_queue" (
 	"outbox_id" uuid,
 	"employee_id" uuid NOT NULL,
 	"record_id" uuid NOT NULL,
+	"seq" bigserial NOT NULL,
 	"state" text DEFAULT 'pending' NOT NULL,
 	"attempts" integer DEFAULT 0 NOT NULL,
 	"next_attempt_at" timestamp with time zone DEFAULT now() NOT NULL,
@@ -13,6 +14,7 @@ CREATE TABLE "ev_sync_queue" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "ev_sync_queue_dedupe" UNIQUE("tenant_id","handler","dedupe_key"),
+	CONSTRAINT "ev_sync_queue_seq" UNIQUE("seq"),
 	CONSTRAINT "ev_sync_queue_state" CHECK ("ev_sync_queue"."state" IN ('pending', 'done', 'skipped', 'failed')),
 	CONSTRAINT "ev_sync_queue_attempts" CHECK ("ev_sync_queue"."attempts" >= 0)
 );
@@ -28,6 +30,9 @@ CREATE INDEX "ev_sync_queue_record" ON "ev_sync_queue" USING btree ("tenant_id",
 SELECT enable_tenant_isolation('ev_sync_queue');
 --> statement-breakpoint
 GRANT SELECT, INSERT, UPDATE ON ev_sync_queue TO app_user;
+--> statement-breakpoint
+-- 入队序号的序列：触发器在写任职的租户事务里取号，应用角色需要序列的使用权
+GRANT USAGE, SELECT ON SEQUENCE ev_sync_queue_seq_seq TO app_user;
 --> statement-breakpoint
 -- 入队触发器（设计 §4.3）：任职记录事件写入 employment_outbox 的同一事务里，为 qualification_sync 插一行 pending。
 -- 事件与队列行同时提交或回滚，不论 created_at 与提交先后如何错位都不会漏；到期比较留给消费者按租户时区做

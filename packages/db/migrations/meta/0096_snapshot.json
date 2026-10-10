@@ -1,5 +1,5 @@
 {
-  "id": "03b619d6-2d55-4575-a369-f06fd5d94ee8",
+  "id": "5d40903e-ac89-4973-93fd-8d33aabc2832",
   "prevId": "5a6d18f5-6c1e-499f-924f-9f3fc2584bf2",
   "version": "7",
   "dialect": "postgresql",
@@ -29793,6 +29793,47 @@
       },
       "isRLSEnabled": false
     },
+    "public.survey360_credential_key_versions": {
+      "name": "survey360_credential_key_versions",
+      "schema": "",
+      "columns": {
+        "version": {
+          "name": "version",
+          "type": "smallint",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "previous": {
+          "name": "previous",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "registered_at": {
+          "name": "registered_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "survey360_credential_key_versions_positive": {
+          "name": "survey360_credential_key_versions_positive",
+          "value": "\"survey360_credential_key_versions\".\"version\" > 0"
+        },
+        "survey360_credential_key_versions_increasing": {
+          "name": "survey360_credential_key_versions_increasing",
+          "value": "\"survey360_credential_key_versions\".\"previous\" IS NULL OR \"survey360_credential_key_versions\".\"previous\" < \"survey360_credential_key_versions\".\"version\""
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.survey360_dimensions": {
       "name": "survey360_dimensions",
       "schema": "",
@@ -30427,7 +30468,11 @@
         },
         "survey360_links_credential_digest": {
           "name": "survey360_links_credential_digest",
-          "value": "(\"survey360_links\".\"credential_state\" = 'issued') = (\"survey360_links\".\"serial_lookup\" IS NOT NULL AND \"survey360_links\".\"password_hash\" IS NOT NULL)"
+          "value": "(\"survey360_links\".\"credential_state\" = 'issued' AND \"survey360_links\".\"serial_lookup\" IS NOT NULL AND \"survey360_links\".\"password_hash\" IS NOT NULL)\n        OR (\"survey360_links\".\"credential_state\" <> 'issued' AND \"survey360_links\".\"serial_lookup\" IS NULL AND \"survey360_links\".\"password_hash\" IS NULL)"
+        },
+        "survey360_links_credential_versions_nonnull": {
+          "name": "survey360_links_credential_versions_nonnull",
+          "value": "array_position(\"survey360_links\".\"credential_key_versions\", NULL::smallint) IS NULL"
         },
         "survey360_links_credential_version": {
           "name": "survey360_links_credential_version",
@@ -32929,7 +32974,52 @@
           "notNull": true
         }
       },
-      "indexes": {},
+      "indexes": {
+        "survey360_security_events_rotated": {
+          "name": "survey360_security_events_rotated",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "credential_key_version",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"survey360_security_events\".\"kind\" = 'key_rotated'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "survey360_security_events_retired": {
+          "name": "survey360_security_events_retired",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "run_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"survey360_security_events\".\"kind\" = 'key_retired'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "survey360_security_events_tenant_id_tenants_id_fk": {
           "name": "survey360_security_events_tenant_id_tenants_id_fk",
@@ -39023,221 +39113,6 @@
       },
       "policies": {},
       "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.ev_sync_queue": {
-      "name": "ev_sync_queue",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "handler": {
-          "name": "handler",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "dedupe_key": {
-          "name": "dedupe_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "outbox_id": {
-          "name": "outbox_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "employee_id": {
-          "name": "employee_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "record_id": {
-          "name": "record_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "state": {
-          "name": "state",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'pending'"
-        },
-        "attempts": {
-          "name": "attempts",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "next_attempt_at": {
-          "name": "next_attempt_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "reason": {
-          "name": "reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "ev_sync_queue_pickup": {
-          "name": "ev_sync_queue_pickup",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "handler",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "state",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "next_attempt_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "ev_sync_queue_record": {
-          "name": "ev_sync_queue_record",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "record_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "ev_sync_queue_tenant_id_tenants_id_fk": {
-          "name": "ev_sync_queue_tenant_id_tenants_id_fk",
-          "tableFrom": "ev_sync_queue",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "ev_sync_queue_outbox_fk": {
-          "name": "ev_sync_queue_outbox_fk",
-          "tableFrom": "ev_sync_queue",
-          "tableTo": "employment_outbox",
-          "columnsFrom": [
-            "tenant_id",
-            "outbox_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        },
-        "ev_sync_queue_employee_fk": {
-          "name": "ev_sync_queue_employee_fk",
-          "tableFrom": "ev_sync_queue",
-          "tableTo": "employment_employees",
-          "columnsFrom": [
-            "tenant_id",
-            "employee_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "ev_sync_queue_dedupe": {
-          "name": "ev_sync_queue_dedupe",
-          "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "handler",
-            "dedupe_key"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "ev_sync_queue_state": {
-          "name": "ev_sync_queue_state",
-          "value": "\"ev_sync_queue\".\"state\" IN ('pending', 'done', 'skipped', 'failed')"
-        },
-        "ev_sync_queue_attempts": {
-          "name": "ev_sync_queue_attempts",
-          "value": "\"ev_sync_queue\".\"attempts\" >= 0"
-        }
-      },
       "isRLSEnabled": false
     },
     "public.idp_careers": {

@@ -6,6 +6,7 @@
  */
 import { sql } from 'drizzle-orm';
 import {
+  bigserial,
   boolean,
   check,
   foreignKey,
@@ -248,6 +249,8 @@ export const evSyncQueue = pgTable(
     outboxId: uuid('outbox_id'),
     employeeId: uuid('employee_id').notNull(),
     recordId: uuid('record_id').notNull(),
+    /** 入队的单调序号：同一员工的任职写入在员工锁内串行，序号即任职事件的持久登记先后（同批、同时间戳也不会并列）。 */
+    seq: bigserial('seq', { mode: 'number' }).notNull(),
     state: text('state').$type<SyncQueueState>().notNull().default('pending'),
     attempts: integer('attempts').notNull().default(0),
     nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).notNull().defaultNow(),
@@ -257,6 +260,7 @@ export const evSyncQueue = pgTable(
   },
   (t) => [
     unique('ev_sync_queue_dedupe').on(t.tenantId, t.handler, t.dedupeKey),
+    unique('ev_sync_queue_seq').on(t.seq),
     index('ev_sync_queue_pickup').on(t.tenantId, t.handler, t.state, t.nextAttemptAt),
     index('ev_sync_queue_record').on(t.tenantId, t.recordId),
     // 复合外键（租户内）：outbox 事件只追加不可改删，员工不物理删除；队列行只由入队触发器按事件行复制写入

@@ -1,8 +1,5 @@
 import { startSequenceSyncScheduler } from './modules/job/sequence-worker.js';
-import {
-  qualificationSyncSchedulerEnabled,
-  startQualificationSyncScheduler,
-} from './modules/qualification/sync-worker.js';
+import { maybeStartQualificationSyncScheduler } from './modules/qualification/sync-worker.js';
 import { startOrderCodeScheduler } from './modules/personnel/order-code-scheduler.js';
 import { startContractScheduler } from './modules/contracts/scheduler.js';
 import { serve } from '@hono/node-server';
@@ -13,6 +10,12 @@ import { startEmploymentActivationScheduler } from './modules/employment/activat
 import { startAuditRetentionScheduler } from './audit/retention.js';
 import { startSuccessionScheduler } from './modules/succession/scheduler.js';
 import { exportStartupCheck } from './modules/survey360/export-runtime.js';
+import { checkCredentialConfigAtStartup } from './modules/survey360/credential-config.js';
+import {
+  assertNoKeyRollback,
+  startCredentialMaintenanceScheduler,
+} from './modules/survey360/credential-maintenance.js';
+import { dummyDigest } from './modules/survey360/credentials.js';
 
 // F-080：360 报告 PDF / 报表 PNG 用项目内置的中文字体；字体缺失或被改动时这里抛错，进程拒绝启动（不再有缺字体 503）
 await exportStartupCheck((line) => console.log(line));
@@ -20,6 +23,8 @@ await exportStartupCheck((line) => console.log(line));
 // 生产环境未接入真实登录（B-01）时，这里直接抛错阻止启动，不回退到不安全的身份实现。
 // 授权不在此注入：createApp 缺省使用权限模型授权器（R1-T01），默认拒绝。
 const identity = identityResolverFromEnv();
+// F-076：作答凭据 / outbox 加密密钥配置有误（缺失、长度不足、版本关系不合法）时进程拒绝启动
+const credentialConfig = checkCredentialConfigAtStartup();
 // 设 DATABASE_URL 连真 PG；只有 NODE_ENV=development 且未设时才用本地 PGlite 并自动迁移（F-025，见 database.ts）
 const handle = await databaseFromEnv();
 if (handle?.driver === 'pglite') {
@@ -29,6 +34,9 @@ if (handle?.driver === 'pglite') {
     process.once(signal, () => void handle.close().finally(() => process.exit(0)));
   }
 }
+// F-076：已登记的凭据密钥版本只增不减——部署回滚把旧 CURRENT 带回来时拒绝启动；并预热哑摘要（设计 §2.4、§3.8）
+if (handle) await assertNoKeyRollback(handle.db, credentialConfig);
+await dummyDigest(credentialConfig.kdf);
 const port = Number(process.env.PORT ?? 3000);
 
 serve({ fetch: createApp(handle ? { db: handle.db, identity } : { identity }).fetch, port }, (info) => {
@@ -52,9 +60,7 @@ if (handle && process.env.PERSONNEL_ORDER_CODE_SCHEDULER !== 'off') {
 
 if (handle && process.env.JOB_SEQUENCE_SYNC_SCHEDULER !== 'off') startSequenceSyncScheduler(handle.db);
 // R3-T02 C1-4：任职事件同步任职资格子集（状态队列消费者，多实例靠 SKIP LOCKED 与员工锁去重）；设为 off 时本进程不消费。
-if (handle && qualificationSyncSchedulerEnabled(process.env)) {
-  startQualificationSyncScheduler(handle.db, Number(process.env.QUALIFICATION_SYNC_INTERVAL_MS || 5000));
-}
+if (handle) maybeStartQualificationSyncScheduler(handle.db, process.env);
 // R1-T16 日志保留期：默认每天按各租户 audit.retention 清理一次过期日志（docs/02_业务建模/20 §5 第 4 条）。
 if (handle && process.env.AUDIT_RETENTION_SCHEDULER !== 'off') {
   startAuditRetentionScheduler(handle.db, {
@@ -65,5 +71,12 @@ if (handle && process.env.AUDIT_RETENTION_SCHEDULER !== 'off') {
 if (handle && process.env.SUCCESSION_SCHEDULER !== 'off') {
   startSuccessionScheduler(handle.db, {
     intervalMs: Number(process.env.SUCCESSION_SCHEDULER_INTERVAL_MS || 900_000),
+  });
+}
+
+// F-076 通用网址作答凭据维护任务（认领发放、清理过期会话与限频行）：多实例靠认领 CAS 与 SKIP LOCKED 去重，可关闭或调整间隔。
+if (handle && process.env.SURVEY360_CREDENTIAL_MAINTENANCE_SCHEDULER !== 'off') {
+  startCredentialMaintenanceScheduler(handle.db, {
+    intervalMs: Number(process.env.SURVEY360_CREDENTIAL_MAINTENANCE_INTERVAL_MS || 60_000),
   });
 }

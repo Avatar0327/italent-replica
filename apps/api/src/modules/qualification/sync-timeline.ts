@@ -3,7 +3,8 @@
  * 每人的任职资格是一条不重叠的单一时间轴，自动同步与手工录入混排：
  * - 新同步行的 endDate 止于时间轴上下一条开始日的前一天（没有下一条则开放）；
  * - 此前仍覆盖新开始日的最近一行（开放或结束日不早于新开始日）收尾到新开始日前一天，只改 endDate，不改来源，留版本和审计；
- * - 同一天的多笔同步事件按**任职事件登记先后**（outbox 事件的创建时间、事件 ID）定序，不按消费 / 重试时刻：
+ * - 同一天的多笔同步事件按**任职事件登记先后**定序，依据是入队时写入的单调序号 ev_sync_queue.seq（同一员工的任职写入在员工锁内串行，
+ *   同批导入共用同一时钟、创建时间相同也不会并列，不用随机 ID 决胜；R2-P2-01），不按消费 / 重试时刻：
  *   已有更晚登记的同日同步行 → 本条被取代，不生成；已有更早登记的同日同步行 → 被本条取代，软删（留版本，足迹不丢）。
  *   同日的手工行不动（它与同步行的先后没有口径，🟡）。
  * 全部在员工锁与人员锁之内读写，调用方负责先取锁。
@@ -31,21 +32,19 @@ export type TimelinePlacement =
 
 export async function planTimeline(
   tx: Tx,
-  at: { tenantId: string; employeeId: string; startDate: string; recordId: string; outboxId: string },
+  at: { tenantId: string; employeeId: string; startDate: string; recordId: string; queueId: string },
 ): Promise<TimelinePlacement> {
   const { tenantId, employeeId, startDate } = at;
   const sameDay = rowsOf<TimelineRef & { later: boolean }>(
     await tx.execute(sql`SELECT p.id, p.revision::int AS revision, p.employment_record_id AS "employmentRecordId",
-        ((reg.created_at, reg.id) > (me.created_at, me.id)) AS later
+        (reg.seq > me.seq) AS later
       FROM personnel_qualification p
-      CROSS JOIN (SELECT created_at, id FROM employment_outbox
-        WHERE tenant_id=${tenantId} AND id=${at.outboxId}::uuid) me
-      CROSS JOIN LATERAL (SELECT e.created_at, e.id FROM employment_outbox e
-        WHERE e.tenant_id=p.tenant_id AND e.object_id=p.employment_record_id AND e.event_type='employment.record.create'
-        ORDER BY e.created_at, e.id LIMIT 1) reg
+      CROSS JOIN (SELECT seq FROM ev_sync_queue WHERE tenant_id=${tenantId} AND id=${at.queueId}::uuid) me
+      CROSS JOIN LATERAL (SELECT min(q.seq) AS seq FROM ev_sync_queue q
+        WHERE q.tenant_id=p.tenant_id AND q.handler='qualification_sync' AND q.record_id=p.employment_record_id) reg
       WHERE p.tenant_id=${tenantId} AND p.employee_id=${employeeId}::uuid AND NOT p.deleted
         AND p.start_date=${startDate}::date AND p.source_type='employment_sync'
-        AND p.employment_record_id<>${at.recordId}::uuid`),
+        AND p.employment_record_id<>${at.recordId}::uuid AND reg.seq IS NOT NULL`),
   );
   if (sameDay.some((row) => row.later)) return { kind: 'superseded' };
   const [next] = rowsOf<{ endDate: string | null }>(

@@ -54,6 +54,8 @@ export const qualificationSyncProbe: {
   afterRecheck?: (tx: Tx) => Promise<void>;
   beforeWrite?: (tx: Tx) => Promise<void>;
   afterSettle?: (tx: Tx) => Promise<void>;
+  /** 事务已提交、回执还没处理：模拟提交回执丢失（连接在提交之后断开）。 */
+  afterCommit?: () => Promise<void>;
 } = {};
 
 export interface SyncRunResult {
@@ -72,7 +74,6 @@ interface Picked {
 }
 interface QueueRow extends Picked {
   readonly recordId: string;
-  readonly outboxId: string;
   readonly attempts: number;
 }
 type Outcome =
@@ -139,8 +140,7 @@ async function consume(
       // 锁序：员工 → 队列行（与任职写入、删除、改期同一把员工锁，F-055 §10.2）
       await lockEmploymentEmployee(tx, ctx, item.employeeId);
       const [row] = rowsOf<QueueRow>(
-        await tx.execute(sql`SELECT id, employee_id AS "employeeId", record_id AS "recordId",
-            outbox_id AS "outboxId", attempts
+        await tx.execute(sql`SELECT id, employee_id AS "employeeId", record_id AS "recordId", attempts
           FROM ev_sync_queue WHERE tenant_id=${ctx.tenantId} AND id=${item.id}::uuid
             AND state IN ('pending','failed') AND next_attempt_at <= ${ctx.now.toISOString()}::timestamptz
           FOR UPDATE SKIP LOCKED`),
@@ -155,10 +155,11 @@ async function consume(
       await qualificationSyncProbe.afterSettle?.(tx);
       return result;
     });
+    await qualificationSyncProbe.afterCommit?.();
     if (failure) await recordCommandFailure(db, ctx, ctx.commandId, failure);
     return counted;
   } catch (error) {
-    return recover(db, ctx, item, error, progress);
+    return recover(db, ctx, item, error, progress, failure);
   }
 }
 
@@ -195,12 +196,17 @@ async function recover(
   item: Picked,
   error: unknown,
   progress: { phase: CommandPhase; attempts: number },
+  businessFailure: CommandFailure | undefined,
 ): Promise<keyof SyncRunResult> {
   let recheckFailed = false;
   if (progress.phase === 'commit') {
     try {
       const landed = await landedOutcome(db, ctx, item.id, progress.attempts);
-      if (landed) return landed;
+      if (landed) {
+        // 失败已随事务落库、只是回执丢了：队列已经记好，原来的业务失败审计还没写，这里补记（不重复记次数）
+        if (landed === 'failed' && businessFailure) await recordCommandFailure(db, ctx, ctx.commandId, businessFailure);
+        return landed;
+      }
     } catch {
       recheckFailed = true;
     }
@@ -254,7 +260,7 @@ async function handle(tx: Tx, ctx: EmploymentContext, row: QueueRow, today: stri
     employeeId: record.employeeId,
     startDate: record.effectiveDate,
     recordId: record.id,
-    outboxId: row.outboxId,
+    queueId: row.id,
   });
   if (placement.kind === 'superseded') return { state: 'skipped', reason: 'SUPERSEDED_SAME_DAY' };
   await qualificationSyncProbe.beforeWrite?.(tx);
@@ -334,6 +340,12 @@ async function markFailed(tx: Tx, ctx: EmploymentContext, id: string, errorCode:
   await tx.execute(sql`UPDATE ev_sync_queue SET state='failed', reason=${errorCode}, attempts=${attempts},
     next_attempt_at=${new Date(ctx.now.getTime() + backoff).toISOString()}::timestamptz,
     updated_at=${ctx.now.toISOString()}::timestamptz WHERE tenant_id=${ctx.tenantId} AND id=${id}::uuid`);
+}
+
+/** 进程启动入口：QUALIFICATION_SYNC_SCHEDULER=off 时不起消费者（返回 null）；间隔毫秒取 QUALIFICATION_SYNC_INTERVAL_MS，缺省 5000。 */
+export function maybeStartQualificationSyncScheduler(db: Db, env: Readonly<Record<string, string | undefined>>) {
+  if (!qualificationSyncSchedulerEnabled(env)) return null;
+  return startQualificationSyncScheduler(db, Number(env.QUALIFICATION_SYNC_INTERVAL_MS || 5000));
 }
 
 /** 进程内调度：平台遍历租户，逐租户跑到本轮取空；多实例靠 SKIP LOCKED 与员工锁去重。 */

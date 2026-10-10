@@ -92,6 +92,43 @@ describe("AC-360-F076-00 F-076 PR-0 F-039：write.ledger = 'none' 必须写理�
     ).not.toThrow();
   });
 
+  describe('PR-1：none 只放行门户登录 / 登出（设计 §4.8，#220 审查 P3-1）', () => {
+    const reason = { ledger: 'none', ledgerReason: '认证入口不走命令台账（DEC-377③）' };
+
+    it('survey360-portal 表里的 POST /login 与 POST /logout（public 顶层声明）可以登记', () => {
+      expect(() =>
+        defineTable('survey360-portal', { 'POST /login': withWrite(reason), 'POST /logout': withWrite(reason) }),
+      ).not.toThrow();
+    });
+
+    it('其他表、其他路由键一律拒绝，带理由也不行', () => {
+      expect(() => defineTable('other', { 'POST /login': withWrite(reason) })).toThrow(/none/);
+      expect(() => defineTable('survey360-portal', { 'POST /x': withWrite(reason) })).toThrow(/none/);
+      expect(() => defineTable('survey360-portal', { 'PUT /login': withWrite(reason) })).toThrow(/none/);
+    });
+
+    it('普通 member / platform / admin / 本人等非 public 策略登记 none 被拒绝（即使表名与路由键对得上）', () => {
+      const asKind = (kind: string, extra: Record<string, unknown> = {}) =>
+        ({ ...withWrite(reason), kind, ...extra }) as unknown as RoutePolicy;
+      for (const kind of ['member', 'platform', 'admin', 'object', 'self', 'own', 'relation']) {
+        expect(() => defineTable('survey360-portal', { 'POST /login': asKind(kind) }), kind).toThrow(/none/);
+      }
+    });
+
+    it('组合节点（any / all / optional）里登记 none 被拒绝，顶层组合节点本身也不行', () => {
+      const child = withWrite(reason);
+      for (const nested of [
+        { kind: 'any', of: [child] },
+        { kind: 'all', of: [child] },
+        { ...withWrite({}), optional: { branch: child } },
+      ]) {
+        expect(() => defineTable('survey360-portal', { 'POST /login': nested as unknown as RoutePolicy })).toThrow(
+          /none/,
+        );
+      }
+    });
+  });
+
   it('类型层：none 必须带 ledgerReason（编译期强制，与运行时检查双保险）', () => {
     const noReason = { ...baseWrite, ledger: 'none' as const };
     // @ts-expect-error ledger 为 none 时缺 ledgerReason

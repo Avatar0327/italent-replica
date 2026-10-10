@@ -4,10 +4,13 @@ import {
   asc,
   eq,
   inArray,
+  talentReviewCalcItemRefs as R,
   talentReviewCalcRuleItems as I,
   talentReviewCalcRules as K,
+  talentReviewFields as F,
   type Tx,
 } from '@italent/db';
+import type { FormulaBindingState } from '@italent/domain';
 import type { ConfigSpec, ConfigTable } from './config-kit.js';
 
 const row = {
@@ -31,6 +34,15 @@ export interface CalcItemView {
   readonly description: string | null;
   readonly sortNo: number;
   readonly usesRanking: boolean;
+  /**
+   * 开关打开（F-082）后的存储形态，只在命令台账 / 审计用的原始视图里出现（presentCalcRules 渲染后不对外）：
+   * formula 是规范文本（bound）还是名称文本（legacy / unresolved）；bound 项目另带写入时刻的字段名与引用 ID（契约 §5.3）。
+   */
+  readonly formulaBinding?: FormulaBindingState;
+  readonly fieldNames?: Record<string, string>;
+  readonly refFieldIds?: string[];
+  /** 渲染后对外的逐处绑定（presentCalcRules 产出，契约 §1.4）。 */
+  readonly formulaBindings?: (string | null)[];
 }
 export type CalcRuleView = CalcRuleRow & { items: CalcItemView[] };
 
@@ -40,22 +52,44 @@ const selectRows = (tx: Tx, tenantId: string, ids: string[]) =>
     .from(K)
     .where(and(eq(K.tenantId, tenantId), inArray(K.id, ids))) as unknown as Promise<CalcRuleRow[]>;
 
-export const CALC_RULE: ConfigSpec<CalcRuleView> = {
-  object: 'calcRule',
-  label: '计算规则',
-  table: K as unknown as ConfigTable,
-  view: row,
-  // 列表只按查看人看得到的排序键排（config-kit visibleOrder），以 id 收尾
-  orderBy: [
-    ['sortNo', K.sortNo],
-    ['name', K.name],
-  ],
-  duplicate: 'CALC_RULE_DUPLICATE',
-  inUse: 'CALC_RULE_IN_USE',
-  load: async (tx, tenantId, id) => (await withItems(tx, tenantId, await selectRows(tx, tenantId, [id])))[0],
-};
+/** bound = 开关打开：原始视图带存储形态与（bound 项目的）引用；关闭时与 B5 完全一致。 */
+function calcRuleSpec(bound: boolean): ConfigSpec<CalcRuleView> {
+  return {
+    object: 'calcRule',
+    label: '计算规则',
+    table: K as unknown as ConfigTable,
+    view: row,
+    // 列表只按查看人看得到的排序键排（config-kit visibleOrder），以 id 收尾
+    orderBy: [
+      ['sortNo', K.sortNo],
+      ['name', K.name],
+    ],
+    duplicate: 'CALC_RULE_DUPLICATE',
+    inUse: 'CALC_RULE_IN_USE',
+    load: async (tx, tenantId, id) => (await withItems(tx, tenantId, await selectRows(tx, tenantId, [id]), bound))[0],
+  };
+}
+export const CALC_RULE: ConfigSpec<CalcRuleView> = calcRuleSpec(false);
+export const CALC_RULE_BOUND: ConfigSpec<CalcRuleView> = calcRuleSpec(true);
+export const calcRuleSpecOf = (bound: boolean) => (bound ? CALC_RULE_BOUND : CALC_RULE);
 
-export async function withItems(tx: Tx, tenantId: string, rows: CalcRuleRow[]): Promise<CalcRuleView[]> {
+/** bound 项目的引用（kind = 'bound'）与写入时刻的字段名：审计快照的 fieldNames / refFieldIds（契约 §5.3）。 */
+async function boundRefs(tx: Tx, tenantId: string, itemIds: readonly string[]) {
+  const found = new Map<string, { id: string; name: string }[]>();
+  if (itemIds.length === 0) return found;
+  const rows = await tx
+    .select({ itemId: R.itemId, fieldId: R.fieldId, name: F.name })
+    .from(R)
+    .innerJoin(F, and(eq(F.tenantId, R.tenantId), eq(F.id, R.fieldId)))
+    .where(and(eq(R.tenantId, tenantId), eq(R.kind, 'bound'), inArray(R.itemId, [...itemIds])))
+    .orderBy(asc(R.fieldId));
+  for (const entry of rows) {
+    found.set(entry.itemId, [...(found.get(entry.itemId) ?? []), { id: entry.fieldId, name: entry.name }]);
+  }
+  return found;
+}
+
+export async function withItems(tx: Tx, tenantId: string, rows: CalcRuleRow[], bound = false): Promise<CalcRuleView[]> {
   if (rows.length === 0) return [];
   const items = await tx
     .select()
@@ -70,19 +104,38 @@ export async function withItems(tx: Tx, tenantId: string, rows: CalcRuleRow[]): 
       ),
     )
     .orderBy(asc(I.sortNo), asc(I.id));
+  const refs = bound
+    ? await boundRefs(
+        tx,
+        tenantId,
+        items.filter((item) => item.formulaBinding === 'bound').map((item) => item.id),
+      )
+    : new Map();
   return rows.map((r) => ({
     ...r,
     items: items
       .filter((item) => item.ruleId === r.id)
-      .map(({ targetFieldId, priority, formula, description, sortNo, usesRanking }) => ({
+      .map(({ id, targetFieldId, priority, formula, description, sortNo, usesRanking, formulaBinding }) => ({
         targetFieldId,
         priority,
         formula,
         description,
         sortNo,
         usesRanking,
+        ...(bound ? boundExtras(formulaBinding as FormulaBindingState, refs.get(id)) : {}),
       })),
   }));
 }
 
-export const loadCalcRuleView = (tx: Tx, tenantId: string, id: string) => CALC_RULE.load!(tx, tenantId, id);
+function boundExtras(binding: FormulaBindingState, refs: { id: string; name: string }[] | undefined) {
+  if (binding !== 'bound') return { formulaBinding: binding };
+  const list = refs ?? [];
+  return {
+    formulaBinding: binding,
+    fieldNames: Object.fromEntries(list.map((entry) => [entry.id, entry.name])),
+    refFieldIds: list.map((entry) => entry.id),
+  };
+}
+
+export const loadCalcRuleView = (tx: Tx, tenantId: string, id: string, bound = false) =>
+  calcRuleSpecOf(bound).load!(tx, tenantId, id);

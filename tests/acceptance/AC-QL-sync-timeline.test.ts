@@ -6,10 +6,12 @@
  *   所以“早一条失败重试在后一条之后成功”不会让当前资格倒退（P2-01）；
  * - HR 删除（或编辑）同步生成的行后，同一任职记录不再自动补回：判重看不可变的同步足迹（子集版本表），不看当前行的来源（P3-01）。
  */
+import { randomUUID } from 'node:crypto';
 import { withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { currentQualification } from '../../apps/api/src/modules/qualification/current.js';
+import { saveSubset } from '../../apps/api/src/modules/personnel/subsets.js';
 import { qualificationSyncProbe } from '../../apps/api/src/modules/qualification/sync-worker.js';
 import { syncWorld } from './AC-QL-sync-support.js';
 
@@ -222,4 +224,76 @@ describe('AC-QL-sync 同时间戳的同日事件按持久登记序（R2-P2-01）
       expect(await w.subsets(employeeId)).toHaveLength(1);
     }
   });
+});
+
+describe('AC-QL-sync 同日已有人工维护的资格：手工优先，同步让路（DEC-414）', () => {
+  const path = (employeeId: string) => `/api/tenant/personnel/employees/${employeeId}/subsets/qualification`;
+
+  it('同日手工行 + 新事件 → 同步跳过并记 MANUAL_SAME_DAY，不改、不删手工行（AC-QL-sync）', async () => {
+    const { w, levelId, categories, fields } = await scene('qlsync-tl-manual-same-day');
+    const manual = await w.api.request('POST', path(w.subject.employee.id), {
+      ...w.as,
+      ifMatch: 0,
+      body: { categoryId: categories[0], levelId, startDate: '2026-10-05' },
+    });
+    expect(manual.status, await manual.clone().text()).toBe(201);
+    const record = await w.transferWith('2026-10-05', fields(1));
+    expect(await w.run(AT)).toMatchObject({ skipped: 1, done: 0 });
+    expect(await w.queue(record)).toMatchObject([{ state: 'skipped', reason: 'MANUAL_SAME_DAY' }]);
+    const rows = await w.subsets();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ categoryId: categories[0], endDate: null, sourceType: 'hr_direct' });
+  });
+
+  it('同日 HR 编辑过的自动行 + 新事件 → 跳过（看版本历史里出现过人工来源，不只看当前来源，AC-QL-sync）', async () => {
+    const { w, categories, fields } = await scene('qlsync-tl-edited-same-day');
+    const first = await w.transferWith('2026-10-05', fields(0));
+    await w.run(AT);
+    const [row] = await w.subsets();
+    const edited = await w.api.request('PATCH', `${path(w.subject.employee.id)}/${row!.id}`, {
+      ...w.as,
+      ifMatch: 1,
+      body: { endDate: '2026-12-31' },
+    });
+    expect(edited.status, await edited.clone().text()).toBe(200);
+    const second = await w.transferWith('2026-10-05', fields(1));
+    expect(await w.run('2026-10-10T06:00:00Z')).toMatchObject({ skipped: 1 });
+    expect(await w.queue(first)).toMatchObject([{ state: 'done' }]);
+    expect(await w.queue(second)).toMatchObject([{ state: 'skipped', reason: 'MANUAL_SAME_DAY' }]);
+    const rows = await w.subsets();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ categoryId: categories[0], endDate: '2026-12-31', employmentRecordId: first });
+  });
+
+  it.each(['initialization', 'evaluation'] as const)(
+    '同日 %s 来源的行按“人工维护”保护：新事件跳过，不软删（DEC-414 逐个说明，AC-QL-sync）',
+    async (type) => {
+      const { w, levelId, categories, fields } = await scene(`qlsync-tl-protected-${type}`);
+      await withTenant(w.db, w.tenantId, (tx) =>
+        saveSubset(
+          tx,
+          {
+            tenantId: w.tenantId,
+            userId: w.session.user.id,
+            timezone: 'Asia/Shanghai',
+            now: new Date(AT),
+            commandId: randomUUID(),
+            expectedRevision: 0,
+          },
+          w.subject.employee.id,
+          'qualification',
+          { categoryId: categories[0], levelId, startDate: '2026-10-05' },
+          undefined,
+          false,
+          { type, id: randomUUID() },
+        ),
+      );
+      const record = await w.transferWith('2026-10-05', fields(1));
+      await w.run('2026-10-10T06:00:00Z');
+      expect(await w.queue(record)).toMatchObject([{ state: 'skipped', reason: 'MANUAL_SAME_DAY' }]);
+      const rows = await w.subsets();
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ categoryId: categories[0], sourceType: type });
+    },
+  );
 });
