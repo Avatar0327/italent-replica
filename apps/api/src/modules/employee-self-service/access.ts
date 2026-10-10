@@ -1,4 +1,5 @@
 import { sql, withTenant, type Tx } from '@italent/db';
+import { buttonResource, EMPLOYEE_SELF_SERVICE_BUTTONS } from '@italent/domain';
 import type { Context } from 'hono';
 import type { Authorizer } from '../../authorization.js';
 import { AppError } from '../../errors.js';
@@ -18,7 +19,8 @@ import { employeeFieldPolicy, EMPLOYEE_READONLY_FIELDS, PROTOCOL_FIELDS } from '
 import { employeeAvatars } from '../avatar/references.js';
 
 const COMMAND_FIELDS = new Set(['initiator', 'transferTypeCode', 'formId', 'mode', 'kind', 'submit']);
-const BUTTONS = new Set(['Transfer.Self', 'Employment.Create', 'Employment.Submit']);
+/** 叠加授权器只认本人调动的三个按钮，是否放行由员工身份里是否勾选决定（DEC-402②）；其他任职按钮一律走用户自己的身份。 */
+const SELF_BUTTONS = new Set(EMPLOYEE_SELF_SERVICE_BUTTONS.map((b) => b.buttonCode));
 
 export async function boundEmployee(tx: Tx, ctx: Pick<EmploymentContext, 'tenantId' | 'userId'>) {
   const [employee] = rowsOf<{ id: string; name: string; code: string; revision: number }>(
@@ -31,6 +33,12 @@ export async function boundEmployee(tx: Tx, ctx: Pick<EmploymentContext, 'tenant
   if (!employee) throw new AppError('FORBIDDEN', '当前用户未绑定员工');
   const avatars = await employeeAvatars(tx, ctx.tenantId, [employee.id]);
   return { ...employee, avatar: avatars.get(employee.id) ?? null };
+}
+
+/** 员工身份是否授予本人调动按钮（只认三个本人调动按钮；其他任职按钮一律走用户自己的身份）。 */
+async function selfButtonGranted(tx: Tx, tenantId: string, request: Parameters<Authorizer>[0]): Promise<boolean> {
+  const button = request.resource?.split('#')[1]?.split('@')[0] ?? '';
+  return SELF_BUTTONS.has(button) && (await employeeFieldPolicy(tx, tenantId)).buttons.has(button);
 }
 
 /** 只供本人路由使用，不给 HR / 审批接口增加任何隐式授权或租户范围。 */
@@ -52,10 +60,8 @@ export async function selfAccess(c: Context<TenantEnv>, deps: TenantRouteDeps, e
     await check(tx);
     if (request.resource?.split('#')[0] !== EMPLOYMENT_OBJECT) return base(request);
     if (request.action === 'object.view') return true;
-    if (request.action === 'object.button') {
-      const button = request.resource?.split('#')[1]?.split('@')[0] ?? '';
-      return BUTTONS.has(button) || base(request);
-    }
+    if (request.action === 'object.button')
+      return (await selfButtonGranted(tx, tenant.tenantId, request)) || base(request);
     if (['object.create', 'object.update'].includes(request.action) && request.fields) {
       const policy = await employeeFieldPolicy(tx, tenant.tenantId);
       if (!policy.create && !(await base({ ...request, fields: [] }))) return false;
@@ -120,4 +126,26 @@ export type SelfAccess = Awaited<ReturnType<typeof selfAccess>>;
 export async function transferFieldAccess(tx: Tx, deps: TenantRouteDeps, ctx: EmploymentContext) {
   const granted = await getModuleViewableFieldsInTransaction(deps, ctx, EMPLOYMENT_OBJECT, tx);
   return new Set([...(await employeeFieldPolicy(tx, ctx.tenantId)).view, ...(granted ?? [])]);
+}
+
+/**
+ * 本人调动的三个按钮（Transfer.Self / Employment.Create / Employment.Submit）都须允许（契约 §2.3.1）：本人入口每次调动都是
+ * “新建并提交”。判定走叠加授权器（员工身份配置 ∪ 用户自己的身份），读调用方事务的快照。命令入口接 `CommandGuard.before`
+ * （routes.ts selfTransferGuard，覆盖首次执行 / 直接重放 / 失败后回查），预览入口在其事务第一步调用。
+ */
+export async function requireSelfServiceButtons(tx: Tx, ctx: EmploymentContext): Promise<void> {
+  if (!ctx.authorize) throw new AppError('FORBIDDEN', '无权发起本人调动');
+  const authorize = authorizeInTransaction(ctx.authorize, tx);
+  for (const { buttonCode, level } of EMPLOYEE_SELF_SERVICE_BUTTONS) {
+    const allowed = await authorize({
+      ...ctx,
+      action: 'object.button',
+      resource: buttonResource(EMPLOYMENT_OBJECT, buttonCode, level),
+    });
+    if (!allowed)
+      throw new AppError('FORBIDDEN', '无权发起本人调动', {
+        reason: 'SELF_TRANSFER_BUTTON_DENIED',
+        button: buttonCode,
+      });
+  }
 }

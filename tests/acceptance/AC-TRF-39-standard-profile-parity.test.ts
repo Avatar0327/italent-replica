@@ -14,7 +14,7 @@ import { randomUUID } from 'node:crypto';
 import { auditEvents, commandLedger, type Db, eq, sql, transferRequests, type Tx, withTenant } from '@italent/db';
 import { EMPLOYEE_SELF_SERVICE_BUTTONS, EMPLOYEE_SELF_SERVICE_CODE, STANDARD_PROFILES } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
-import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { installProfile } from '../../apps/api/src/modules/permission/standard-profiles.js';
 import type * as RunCommands from '../../apps/api/src/commands.js';
 import { approvalWorld, permissionAdmin, type Person } from './AC-APV-support.js';
@@ -209,6 +209,10 @@ describe.each(BUTTONS)('AC-TRF-39 6a：关闭本人调动按钮 %s（DEC-402②�
   let f: Fixture;
   beforeAll(async () => {
     f = await fixture(`parity-6a-${button.replace('.', '-')}`.toLowerCase(), true);
+  });
+  // 某个用例中途失败时也把三个按钮勾回，避免后续用例带着上一个用例的撤权状态而连环失败
+  afterEach(async () => {
+    await setButtons(f, BUTTONS);
   });
 
   it('预览与提交（新命令 ID）都 403 SELF_TRANSFER_BUTTON_DENIED，无申请 / 台账 / 业务变更审计；勾回即恢复（AC-TRF-39）', async () => {

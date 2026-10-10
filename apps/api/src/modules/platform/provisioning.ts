@@ -26,6 +26,7 @@ import { installPresets, publishProcess, replaceDraft } from '../approval/defini
 import { updateSettings } from '../employment/configuration.js';
 import { writeJobSettings } from '../job/settings.js';
 import type { PlatformWriteContext } from '../permission/audit.js';
+import { isAutoHeld } from '../permission/auto-held.js';
 import { listBalances, type LicenseBalance } from '../permission/licenses.js';
 import { bootstrapTenantAdminIn, setLicenseQuotaIn } from '../permission/platform.js';
 import {
@@ -102,7 +103,8 @@ export async function provisionTenant(
       ctx,
       { tenantId, userId: input.firstAdminUserId },
       meta,
-      profiles.map((p) => p.id),
+      // DEC-402③：autoHeld 身份（员工）不进首位租户管理员的可授权业务身份
+      profiles.filter((p) => !isAutoHeld({ source: 'standard', code: p.code })).map((p) => p.id),
     );
     for (const license of input.licenses ?? []) {
       await setLicenseQuotaIn(ctx, { tenantId, ...license, expectedRevision: 0 });

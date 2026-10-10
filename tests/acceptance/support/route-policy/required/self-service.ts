@@ -2,8 +2,10 @@
  * 必需项表：员工自助（modules/employee-self-service/，子应用挂在 /api/tenant/self-service）。
  * 七条都先经 selfAccess：boundEmployee 未绑定员工 → 403；事务内 self.check 复核绑定。调动两条另经
  * ownTransferInput（selfService.transferInput：调动日期可见可编辑、requireTransferWrite 按叠加授权器逐字段判 create）、
- * requireTransferSource（Transfer.Self 按钮 + 绑定本人 + 源范围）。Transfer.Self 由叠加授权器 BUTTONS 白名单放行
- * （校验在、结果恒真，声明登记的是这个校验点）。transfer.direct 守卫只在 mode = direct（requireDirectTransfer）或
+ * requireTransferSource（Transfer.Self 按钮 + 绑定本人 + 源范围）。Transfer.Self 按“员工”身份里的按钮配置放行（C1-2b，DEC-402②，
+ * 管理员可关闭）；三个本人调动按钮另由前提 requireSelfServiceButtons 统一校验（预览事务第一步 / 提交的 CommandGuard.before），
+ * Employment.Create / Employment.Submit 没有单独的 button(...) 观测，按前提原语登记。
+ * transfer.direct 守卫只在 mode = direct（requireDirectTransfer）或
  * initiator = hr（预览 allowedActions）时求值，本人入口固定 application / employee，恒不触发——按代码路径上的具名守卫登记。
  */
 import type { Obligation, RequiredTable } from './types.js';

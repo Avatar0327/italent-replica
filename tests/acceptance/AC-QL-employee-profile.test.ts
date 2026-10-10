@@ -52,7 +52,7 @@ import {
   withoutButton,
   type World,
 } from './support/f061.js';
-import { cmd } from './support/tenant-api.js';
+import { cmd, tenantApi } from './support/tenant-api.js';
 
 const testDb = useTestDb();
 const EMP = EMPLOYEE_SELF_SERVICE_CODE;
@@ -394,13 +394,15 @@ describe('AC-QL-employee-profile 必测 7：员工发展通道页面判定 emplo
 
   it('页面载体不授予任职资格业务对象：只有员工身份的员工访问发展通道 / 任职资格标准接口 403，HR 端任职接口仍 403（AC-QL-employee-profile）', async () => {
     const { world, department } = await setup('emp-page-neg', true);
+    const realApi = tenantApi(world.db, { authorize: undefined, clock: world.clock });
     const person = await world.person('普通员工', department);
     for (const path of [
       '/api/tenant/qualification/standards',
       `/api/tenant/qualification/standards/${randomUUID()}/channels`,
       '/api/tenant/employment/employees',
     ]) {
-      const res = await world.request(person.userId, 'GET', path);
+      // 真实授权器（approvalWorld 的默认请求器是放行的测试授权器）
+      const res = await realApi.request('GET', path, world.as(person.userId));
       expect(res.status, path).toBe(403);
     }
   });
@@ -436,9 +438,7 @@ describe('AC-QL-employee-profile 必测 8：撤销保留（F-061 §10 两条，�
       items: { id: string; code: string }[];
     };
     const ids = new Map(profiles.items.map((p) => [p.code, p.id]));
-    expect(
-      (await putObject({ ...w, profileIds: ids }, ids.get(EMP)!, PAGES, (o) => ({ ...o, buttons: [] }))).status,
-    ).toBe(200);
+    expect((await putObject(w, ids.get(EMP)!, PAGES, (o) => ({ ...o, buttons: [] }))).status).toBe(200);
     expect(grantsInstalled(await runBackfill(w))).toEqual([]);
     expect(
       (await detailOf({ ...w, profileIds: ids }, EMP)).objects.find((o) => o.objectCode === PAGES)!.buttons,
