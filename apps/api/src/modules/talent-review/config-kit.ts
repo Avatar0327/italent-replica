@@ -19,7 +19,7 @@ import {
   type TalentReviewContext,
 } from './access.js';
 
-export type ConfigObject = 'category' | 'role' | 'field' | 'matrix' | 'calcRule';
+export type ConfigObject = 'category' | 'role' | 'field' | 'matrix' | 'calcRule' | 'scoreRule' | 'moduleGrade';
 
 export interface WriteContext extends TalentReviewContext {
   readonly scope: ModuleScope;
@@ -30,7 +30,6 @@ export type ConfigTable = PgTable & {
   readonly tenantId: AnyPgColumn;
   readonly name: AnyPgColumn;
   readonly enabled: AnyPgColumn;
-  readonly sortNo: AnyPgColumn;
   readonly revision: AnyPgColumn;
   readonly createdBy: AnyPgColumn;
   readonly updatedBy: AnyPgColumn;
@@ -58,6 +57,8 @@ const guards: Record<ConfigObject, ConfigReferenceGuard[]> = {
   category: [],
   role: [],
   field: [],
+  scoreRule: [],
+  moduleGrade: [],
   matrix: [],
   calcRule: [],
 };
