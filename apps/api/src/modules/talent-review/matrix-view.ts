@@ -59,8 +59,17 @@ export type MatrixView = MatrixRow & {
   id: string;
   name: string;
   positionFields: { role: string; fieldId: string }[];
-  axisLevels: { axis: string; levelNo: number; name: string; optionValues: string[]; lowerBound: number | null }[];
-  cells: { cellNo: number; xLevelNo: number; yLevelNo: number; name: string; color: string; countsGreen: boolean }[];
+  axisLevels: { axis: string; levelNo: number; name: string; optionValues: string[] }[];
+  cells: {
+    cellNo: number;
+    xLevelNo: number;
+    yLevelNo: number;
+    name: string;
+    color: string;
+    textColor: string;
+    exportOrder: number | null;
+    countsGreen: boolean;
+  }[];
   ratioGroups: RatioGroupView[];
 };
 
@@ -165,16 +174,19 @@ export async function withChildren(tx: Tx, tenantId: string, rows: MatrixRow[]):
       levelNo: l.levelNo,
       name: l.name,
       optionValues: l.optionValues,
-      lowerBound: number(l.lowerBound),
     })),
-    cells: byMatrix(cells, r.id as string).map(({ cellNo, xLevelNo, yLevelNo, name, color, countsGreen }) => ({
-      cellNo,
-      xLevelNo,
-      yLevelNo,
-      name,
-      color,
-      countsGreen,
-    })),
+    cells: byMatrix(cells, r.id as string).map(
+      ({ cellNo, xLevelNo, yLevelNo, name, color, textColor, exportOrder, countsGreen }) => ({
+        cellNo,
+        xLevelNo,
+        yLevelNo,
+        name,
+        color,
+        textColor,
+        exportOrder,
+        countsGreen,
+      }),
+    ),
     ratioGroups: byMatrix(groups, r.id as string).map((g) => g.view),
   })) as MatrixView[];
 }

@@ -1,5 +1,6 @@
 /**
- * 开通租户时的九宫格预置（设计 §2.7；DEC-361）：业绩-能力、绩效-潜力两个九宫格（3 × 3 分段，选项值 1 / 2 / 3），
+ * 开通租户时的九宫格预置（设计 §2.7；DEC-361；DEC-389①）：业绩-能力、绩效-潜力两个九宫格（3 × 3 分段，选项值 1 / 2 / 3；
+ * “绩效-潜力”的格子编号 / 名称 / 颜色 / 导出顺序对齐原站，v2），
  * 位置字段占用对应的预置位置字段。登记在预置字段之后（seeds/index.ts 先收录 presets.ts），所以安装时字段已存在。
  * 可重复执行：已有编码的九宫格不重复安装、不覆盖租户的定制；写字段级审计（系统写入，DEC-216）。
  */
@@ -94,7 +95,7 @@ async function installMatrices(
       .returning({ id: M.id });
     const base = { tenantId: write.tenantId, matrixId: created!.id };
     await tx.insert(P).values(shape.positionFields.map((p) => ({ ...base, ...p })));
-    await tx.insert(L).values(shape.axisLevels.map((level) => ({ ...base, ...level, lowerBound: null })));
+    await tx.insert(L).values(shape.axisLevels.map((level) => ({ ...base, ...level })));
     await tx.insert(C).values(shape.cells.map((cell) => ({ ...base, ...cell })));
     await recordAudit(tx, {
       tenantId: write.tenantId,
@@ -114,7 +115,7 @@ async function installMatrices(
 registerSeed({
   module: 'talent-review',
   key: 'preset-matrices',
-  version: 1,
+  version: 2,
   codes: TALENT_REVIEW_PRESET_MATRICES.map((matrix) => matrix.code),
   existing: async (tx, tenantId) =>
     new Set((await tx.select({ code: M.code }).from(M).where(eq(M.tenantId, tenantId))).map((row) => row.code)),
