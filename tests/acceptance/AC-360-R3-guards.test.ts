@@ -17,6 +17,7 @@ import {
   scoreTableDocument,
 } from '../../apps/api/src/modules/survey360/export-files.js';
 import { loginEmailOf } from './AC-EMP-support.js';
+import { confirmationToken, outbox } from './AC-360-B-support.js';
 import type { RequestOptions } from './support/tenant-api.js';
 import {
   BASE,
@@ -153,15 +154,7 @@ async function grantTo(w: World360, activityId: string, userIds: string[]) {
 }
 
 /** 确认链接令牌：取自该确认单的邀请邮件（outbox）。 */
-async function confirmToken(w: World360, confirmationId: string) {
-  const rows = await withTenant(w.db, w.tenantId, (tx) =>
-    tx.execute(sql`SELECT payload->>'token' AS token FROM survey360_outbox
-      WHERE event_type = 'survey360.confirm_invitation' AND payload->>'confirmationId' = ${confirmationId}`),
-  );
-  const list = (Array.isArray(rows) ? rows : (rows as { rows: unknown[] }).rows) as { token: string }[];
-  expect(list).toHaveLength(1);
-  return list[0]!.token;
-}
+const confirmToken = confirmationToken;
 
 async function buildFineWorld(): Promise<FineWorld> {
   const w = await world360(testDb().db, 'guard-fine');
@@ -1882,12 +1875,8 @@ function prb(env: Env): Promise<PrB> {
         body: { mode: 'others', others: [{ name: 'HRBP', email: 'guard-hrbp@example.com' }] },
       }),
     );
-    const [mail] = rowsOf<{ token: string }>(
-      await withTenant(w.db, w.tenantId, (tx) =>
-        tx.execute(sql`SELECT payload->>'token' AS token FROM survey360_outbox
-          WHERE event_type = 'survey360.report_forward' ORDER BY created_at DESC LIMIT 1`),
-      ),
-    );
+    // 转发邮件的令牌在 payload.sealed 里（DEC-377②），夹具解封后给出 token；取最后一封
+    const mail = { token: (await outbox(w, 'survey360.report_forward')).at(-1)!.payload.token };
     const people = (await w.ok<{ items: PersonView[] }>(w.request('GET', '/people?pageSize=200'))).items;
     const manager = people.find((p) => p.name === '经理M')!;
     const activity = await w.activity({ name: '待办活动', showAppraiserName: false, roleDisplay: 'hidden' });

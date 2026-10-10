@@ -32,10 +32,20 @@ function assertKey(key: string, table: string): void {
 }
 
 /**
- * `write.ledger = 'none'` 必须带非空 `ledgerReason`，其他取值不得带（DEC-377③）。类型层已强制，
- * 这里在模块加载时再查一次，覆盖绕过类型的写法，并沿 any / all 的 of 与 optional 递归。
+ * `write.ledger = 'none'` 是认证专用例外（DEC-377③，F-076 设计 §4.8）：只放行门户的登录 / 登出，
+ * 登记表名、路由键与声明种类都要对得上；其他路由一律拒绝，避免业务写路由借它绕过命令台账。
+ * 门户的登记表必须叫 PORTAL_TABLE（PR-2a 用 defineTable(PORTAL_TABLE, …) 登记这两条）。
  */
-function assertLedgerReason(policy: RoutePolicy, key: string, table: string): void {
+export const PORTAL_TABLE = 'survey360-portal';
+const LEDGER_NONE_ALLOWED: ReadonlyMap<string, ReadonlySet<string>> = new Map([
+  [PORTAL_TABLE, new Set(['POST /login', 'POST /logout'])],
+]);
+
+/**
+ * 台账策略的登记期检查（类型层已强制一部分，这里在模块加载时再查一次，覆盖绕过类型的写法，并沿 any / all / optional
+ * 递归）：none 必须带非空 ledgerReason，其他取值不得带；none 只能出现在允许名单里的 public 顶层声明上。
+ */
+function assertLedger(policy: RoutePolicy, key: string, table: string, top = true): void {
   const write = policy.write;
   if (write) {
     const reason = write.ledgerReason;
@@ -44,9 +54,17 @@ function assertLedgerReason(policy: RoutePolicy, key: string, table: string): vo
         `策略表 ${table} 的 ${key}：ledger 为 none 时必须带非空 ledgerReason，其他取值不得带 ledgerReason`,
       );
     }
+    if (write.ledger === 'none') {
+      const allowed = top && policy.kind === 'public' && LEDGER_NONE_ALLOWED.get(table)?.has(key);
+      if (!allowed) {
+        throw new Error(
+          `策略表 ${table} 的 ${key}：ledger: 'none' 只允许 ${PORTAL_TABLE} 表里 public 顶层声明的 POST /login、POST /logout（DEC-377③）`,
+        );
+      }
+    }
   }
   const children = [...('of' in policy ? policy.of : []), ...Object.values(policy.optional ?? {})];
-  for (const child of children) assertLedgerReason(child, key, table);
+  for (const child of children) assertLedger(child, key, table, false);
 }
 
 /** 定义一个模块的登记表；键格式与重复在模块加载时就报错。 */
@@ -54,7 +72,7 @@ export function defineTable(module: string, entries: Readonly<Record<string, Rou
   const map = new Map<string, PolicyHit>();
   for (const [key, policy] of Object.entries(entries)) {
     assertKey(key, module);
-    assertLedgerReason(policy, key, module);
+    assertLedger(policy, key, module);
     map.set(key, { module, policy });
   }
   return {
