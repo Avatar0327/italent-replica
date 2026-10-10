@@ -31,11 +31,30 @@ function assertKey(key: string, table: string): void {
   }
 }
 
+/**
+ * `write.ledger = 'none'` 必须带非空 `ledgerReason`，其他取值不得带（DEC-377③）。类型层已强制，
+ * 这里在模块加载时再查一次，覆盖绕过类型的写法，并沿 any / all 的 of 与 optional 递归。
+ */
+function assertLedgerReason(policy: RoutePolicy, key: string, table: string): void {
+  const write = policy.write;
+  if (write) {
+    const reason = write.ledgerReason;
+    if (write.ledger === 'none' ? typeof reason !== 'string' || reason.trim() === '' : reason !== undefined) {
+      throw new Error(
+        `策略表 ${table} 的 ${key}：ledger 为 none 时必须带非空 ledgerReason，其他取值不得带 ledgerReason`,
+      );
+    }
+  }
+  const children = [...('of' in policy ? policy.of : []), ...Object.values(policy.optional ?? {})];
+  for (const child of children) assertLedgerReason(child, key, table);
+}
+
 /** 定义一个模块的登记表；键格式与重复在模块加载时就报错。 */
 export function defineTable(module: string, entries: Readonly<Record<string, RoutePolicy>>): PolicyTable {
   const map = new Map<string, PolicyHit>();
   for (const [key, policy] of Object.entries(entries)) {
     assertKey(key, module);
+    assertLedgerReason(policy, key, module);
     map.set(key, { module, policy });
   }
   return {

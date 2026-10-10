@@ -18,6 +18,13 @@ const scope = (unit: string, anchor: string): Evidence => ({ role: 'scope', unit
 
 /** 范围名字 → 强制判定处证据。 */
 export const SCOPE_AT = {
+  // F-082 字段改名失败时的定位披露：规则逐项按操作人的计算规则范围（看全部或创建人）判定，范围外只计入匿名计数
+  'talentReview.configScope(talent_review_calc_rules)': [
+    scope(
+      `${M}/talent-review/field-rename-guard.ts#partitionBroken`,
+      "visibleTo(disclosure.scope, 'calcRule', item.ruleCreatedBy) &&",
+    ),
+  ],
   'contracts.employeeVisibility': [
     scope(`${M}/contracts/context.ts#checkScope`, "throw new AppError('NOT_FOUND', '合同数据不存在')"),
   ],
