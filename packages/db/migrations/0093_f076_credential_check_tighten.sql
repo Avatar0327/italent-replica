@@ -1,4 +1,0 @@
-ALTER TABLE "survey360_links" DROP CONSTRAINT "survey360_links_credential_digest";--> statement-breakpoint
-ALTER TABLE "survey360_links" ADD CONSTRAINT "survey360_links_credential_versions_nonnull" CHECK (array_position("survey360_links"."credential_key_versions", NULL::smallint) IS NULL);--> statement-breakpoint
-ALTER TABLE "survey360_links" ADD CONSTRAINT "survey360_links_credential_digest" CHECK (("survey360_links"."credential_state" = 'issued' AND "survey360_links"."serial_lookup" IS NOT NULL AND "survey360_links"."password_hash" IS NOT NULL)
-        OR ("survey360_links"."credential_state" <> 'issued' AND "survey360_links"."serial_lookup" IS NULL AND "survey360_links"."password_hash" IS NULL));
