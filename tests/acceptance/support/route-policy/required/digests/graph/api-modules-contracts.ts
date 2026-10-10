@@ -30,13 +30,19 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/contracts/context.ts#audit',
     'apps/api/src/modules/contracts/service.ts#loadRequest',
   ],
+  'apps/api/src/modules/contracts/configuration.ts#lockContractConfig': [
+    'apps/api/src/advisory-lock.ts#advisoryLock',
+    'apps/api/src/advisory-lock.ts#asUuid',
+  ],
   'apps/api/src/modules/contracts/configuration.ts#saveMaster': [
+    '#lockContractConfig',
     'apps/api/src/modules/contracts/context.ts#audit',
     'apps/api/src/modules/contracts/context.ts#revision',
     'apps/api/src/modules/contracts/input.ts#parse',
   ],
   'apps/api/src/modules/contracts/configuration.ts#saveRule': [
     'apps/api/src/modules/approval/resolver.ts#isActiveAccount',
+    '#lockContractConfig',
     '#rules',
     '#verifyIds',
     'apps/api/src/modules/contracts/context.ts#audit',
@@ -45,6 +51,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/contracts/input.ts#ruleSchema',
   ],
   'apps/api/src/modules/contracts/configuration.ts#saveSettings': [
+    '#lockContractConfig',
     '#settings',
     '#verifyIds',
     'apps/api/src/modules/contracts/context.ts#audit',

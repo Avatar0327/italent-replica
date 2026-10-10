@@ -5,5 +5,9 @@
 import type { Graph } from '../../../evidence-graph.js';
 
 export const GRAPH: Graph = {
+  'apps/api/src/advisory-lock.ts#advisoryLock': ['#lockKey'],
+  'apps/api/src/advisory-lock.ts#advisoryLock32': ['#lockKey32'],
+  'apps/api/src/advisory-lock.ts#lockKey': ['#joined'],
+  'apps/api/src/advisory-lock.ts#lockKey32': ['#joined'],
   'apps/api/src/system-actor.ts#auditActor': ['#SYSTEM_USER_ID'],
 };

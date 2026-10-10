@@ -397,6 +397,10 @@ export const GRAPH: Graph = {
     'apps/api/src/system-actor.ts#SYSTEM_USER_ID',
   ],
   'apps/api/src/modules/survey360/answering.ts#loadConfirmation': ['#notFound'],
+  'apps/api/src/modules/survey360/answering.ts#lockAppraiser': [
+    'apps/api/src/advisory-lock.ts#advisoryLock',
+    'apps/api/src/advisory-lock.ts#asUuid',
+  ],
   'apps/api/src/modules/survey360/answering.ts#notFound': ['apps/api/src/modules/survey360/context.ts#fail'],
   'apps/api/src/modules/survey360/answering.ts#openConfirmation': [
     '#loadConfirmation',
@@ -2100,6 +2104,10 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/survey360/settings.ts#ensureBuiltinRoles': [
     'packages/domain/src/survey360/rules.ts#BUILTIN_ROLES',
   ],
+  'apps/api/src/modules/survey360/settings.ts#lockRoleSettings': [
+    'apps/api/src/advisory-lock.ts#advisoryLock',
+    'apps/api/src/advisory-lock.ts#asUuid',
+  ],
   'apps/api/src/modules/survey360/settings.ts#registerRoleRoutes': [
     'apps/api/src/modules/job/context.ts#uuidParam',
     'apps/api/src/modules/survey360/context.ts#actor',
@@ -2114,6 +2122,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/survey360/context.ts#write',
     '#VIEW',
     '#ensureBuiltinRoles',
+    '#lockRoleSettings',
     '#roleView',
     'packages/domain/src/survey360/rules.ts#SURVEY360_LIMITS',
   ],
@@ -2148,6 +2157,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/survey360/context.ts#requireNewObject',
     'apps/api/src/modules/survey360/context.ts#rows',
     'apps/api/src/modules/survey360/context.ts#write',
+    '#lockRoleSettings',
     '#roleView',
     'packages/domain/src/survey360/rules.ts#SURVEY360_LIMITS',
   ],

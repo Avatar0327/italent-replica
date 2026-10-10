@@ -688,6 +688,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/definitions.ts#assertUniquePriority': [
     'apps/api/src/modules/approval/context.ts#approvalError',
     'apps/api/src/modules/approval/context.ts#rowsOf',
+    '#lockApprovalPriority',
   ],
   'apps/api/src/modules/approval/definitions.ts#audited': [
     'apps/api/src/modules/approval/context.ts#auditApproval',
@@ -722,6 +723,10 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/context.ts#rowsOf',
     '#conditionItem',
     '#nodeOf',
+  ],
+  'apps/api/src/modules/approval/definitions.ts#lockApprovalPriority': [
+    'apps/api/src/advisory-lock.ts#advisoryLock',
+    'apps/api/src/advisory-lock.ts#asUuid',
   ],
   'apps/api/src/modules/approval/definitions.ts#lockedForChange': [
     'apps/api/src/modules/approval/context.ts#approvalError',
@@ -1242,6 +1247,10 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/types.ts#avoidsSubjects',
   ],
   'apps/api/src/modules/approval/resolver.ts#adminAncestors': ['apps/api/src/modules/approval/context.ts#rowsOf'],
+  'apps/api/src/modules/approval/resolver.ts#assigneeGate': [
+    'apps/api/src/advisory-lock.ts#asUuid',
+    'apps/api/src/advisory-lock.ts#lockKey',
+  ],
   'apps/api/src/modules/approval/resolver.ts#candidateOf': ['#NOBODY', '#departed', '#isAssignable', '#userOfPerson'],
   'apps/api/src/modules/approval/resolver.ts#departed': [
     '#memo',

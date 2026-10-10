@@ -544,6 +544,10 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/talent-review/matrix-view.ts#loadMatrixView',
   ],
   'apps/api/src/modules/talent-review/matrix-service.ts#lockPositionFields': ['#positionLockKey'],
+  'apps/api/src/modules/talent-review/matrix-service.ts#positionLockKey': [
+    'apps/api/src/advisory-lock.ts#asUuid',
+    'apps/api/src/advisory-lock.ts#lockKey',
+  ],
   'apps/api/src/modules/talent-review/matrix-service.ts#reject': ['#invalid'],
   'apps/api/src/modules/talent-review/matrix-service.ts#requireReferencesVisible': [
     '#loadFieldFacts',

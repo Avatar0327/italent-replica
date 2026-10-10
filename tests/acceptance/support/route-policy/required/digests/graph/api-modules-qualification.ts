@@ -208,11 +208,16 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/qualification/config-service.ts#levelOrder': [
     'apps/api/src/modules/qualification/access.ts#rowsOf',
+    '#lockLevelOrder',
   ],
   'apps/api/src/modules/qualification/config-service.ts#listCodingRules': [
     'apps/api/src/modules/qualification/access.ts#rowsOf',
     '#CODING_ITEMS',
     'apps/api/src/modules/qualification/read-model.ts#view',
+  ],
+  'apps/api/src/modules/qualification/config-service.ts#lockLevelOrder': [
+    'apps/api/src/advisory-lock.ts#advisoryLock32',
+    'apps/api/src/advisory-lock.ts#asUuid',
   ],
   'apps/api/src/modules/qualification/config-service.ts#patchJobLinks': ['#replaceJobLinks'],
   'apps/api/src/modules/qualification/config-service.ts#patchSimple': [

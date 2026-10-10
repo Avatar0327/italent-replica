@@ -74,6 +74,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/members.ts#assertActiveMember',
     'apps/api/src/modules/permission/profiles.ts#loadProfile',
   ],
+  'apps/api/src/modules/permission/data-scope-admin.ts#lockMouHierarchy': ['#lockMouHierarchyOf'],
+  'apps/api/src/modules/permission/data-scope-admin.ts#lockMouHierarchyOf': [
+    'apps/api/src/advisory-lock.ts#advisoryLock',
+    'apps/api/src/advisory-lock.ts#asUuid',
+  ],
   'apps/api/src/modules/permission/data-scope-admin.ts#recordScopeChange': [
     'apps/api/src/modules/permission/audit.ts#audit',
   ],
@@ -260,6 +265,10 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/permission/licenses.ts#currentOverage': ['#overageOf'],
   'apps/api/src/modules/permission/licenses.ts#licenseTypeKnown': ['#LICENSE_TYPE'],
   'apps/api/src/modules/permission/licenses.ts#listSeats': ['#licenseTypeKnown'],
+  'apps/api/src/modules/permission/licenses.ts#lockLicenseType': [
+    'apps/api/src/advisory-lock.ts#advisoryLock',
+    'apps/api/src/advisory-lock.ts#asUuid',
+  ],
   'apps/api/src/modules/permission/licenses.ts#releaseSeat': ['#lockLicenseType'],
   'apps/api/src/modules/permission/manager-identity.ts#managerIdentity': [
     'apps/api/src/modules/permission/scope-hierarchy.ts#expandScopeRoots',
@@ -595,7 +604,13 @@ export const GRAPH: Graph = {
     '#BUILTIN_SCOPE_DATASOURCES',
     '#invalid',
   ],
+  'apps/api/src/modules/permission/scope-policy-service.ts#lock': ['#lockScopeObject'],
+  'apps/api/src/modules/permission/scope-policy-service.ts#lockScopeObject': [
+    'apps/api/src/advisory-lock.ts#advisoryLock',
+    'apps/api/src/advisory-lock.ts#asUuid',
+  ],
   'apps/api/src/modules/permission/scope-policy-service.ts#setIdentityScope': [
+    'apps/api/src/advisory-lock.ts#asUuid',
     'apps/api/src/modules/permission/data-scope-admin.ts#recordScopeChange',
     'apps/api/src/modules/permission/http.ts#revisionConflict',
     '#getIdentityScope',
@@ -663,6 +678,10 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/tenant-users.ts#updateMembership',
     '#conflict',
   ],
+  'apps/api/src/modules/permission/user-provisioning.ts#lockPersonLink': [
+    'apps/api/src/advisory-lock.ts#advisoryLock',
+    'apps/api/src/advisory-lock.ts#asUuid',
+  ],
   'apps/api/src/modules/permission/user-provisioning.ts#provisionEmployeeUser': [
     'apps/api/src/modules/permission/audit.ts#audit',
     'apps/api/src/modules/permission/tenant-users.ts#getTenantUser',
@@ -672,6 +691,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/tenant-users.ts#updateMembership',
     '#conflict',
     '#keepBinding',
+    '#lockPersonLink',
   ],
   'apps/api/src/modules/permission/user-routes.ts#currentAvatar': [
     'apps/api/src/modules/avatar/references.ts#userAvatars',
