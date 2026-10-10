@@ -206,7 +206,7 @@ async function sheetsOf(tx: Tx, task: TaskRow) {
   return result;
 }
 
-async function answerPage(tx: Tx, link: LinkRow, activity: ActivityRow, avatarBase: string) {
+export async function answerPage(tx: Tx, link: LinkRow, activity: ActivityRow, avatarBase: string) {
   const tasks = rows<TaskRow>(
     await tx.execute(sql`${taskQuery(activity.id, link.personId)} ORDER BY o.sort, o.created_at, r.id`),
   );
@@ -734,7 +734,7 @@ function avatarRoute(deps: TenantRouteDeps, entryOf: EntryOf, kind: LinkRow['kin
 }
 
 /** 与作答任务 / 确认页相同的当前人员集合；匿名评价者不会成为单独的图片权限来源。 */
-async function avatarPersonIds(tx: Tx, link: LinkRow, activity: ActivityRow) {
+export async function avatarPersonIds(tx: Tx, link: LinkRow, activity: ActivityRow) {
   if (link.kind === 'answer') {
     const tasks = rows<TaskRow>(await tx.execute(taskQuery(activity.id, link.personId)));
     return answerPersonIds(link, activity, tasks);
