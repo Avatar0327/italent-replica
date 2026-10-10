@@ -285,7 +285,8 @@ describe.each(ENTRIES)('九宫格写入口命令事务内权限复核 · $name',
     const button = await prepared.send(op);
     expect(button.status, await button.clone().text()).toBe(403);
     expect(await prepared.snapshot()).toEqual(before);
-    if (entry.name.startsWith('DELETE')) return;
+    // 整张九宫格的删除没有字段输入；规则组删除要继续断言撤 ratioGroups 编辑权后 403
+    if (entry.name === 'DELETE /matrices/:id') return;
     const second = await entry.prepare();
     const locked = await writer();
     hooks.beforeCommand = () => locked.lockFields([entry.editField]);

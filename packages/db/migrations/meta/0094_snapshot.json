@@ -1,6 +1,6 @@
 {
-  "id": "3c1dc14c-21cd-45a5-9f62-9b6dd8debb47",
-  "prevId": "f2f6841d-35c2-4005-bfd5-a13ef5b9c04b",
+  "id": "8cfb00d2-ad72-4ea1-8608-5f69a49e45ed",
+  "prevId": "3c1dc14c-21cd-45a5-9f62-9b6dd8debb47",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -43574,12 +43574,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'{}'::text[]"
-        },
-        "lower_bound": {
-          "name": "lower_bound",
-          "type": "numeric(14, 4)",
-          "primaryKey": false,
-          "notNull": false
         }
       },
       "indexes": {},
@@ -43692,6 +43686,19 @@
           "primaryKey": false,
           "notNull": true
         },
+        "text_color": {
+          "name": "text_color",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'#000000'"
+        },
+        "export_order": {
+          "name": "export_order",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": false
+        },
         "counts_green": {
           "name": "counts_green",
           "type": "boolean",
@@ -43741,10 +43748,27 @@
             "matrix_id",
             "cell_no"
           ]
+        },
+        "talent_review_matrix_cells_export_order": {
+          "name": "talent_review_matrix_cells_export_order",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "matrix_id",
+            "export_order"
+          ]
         }
       },
       "policies": {},
       "checkConstraints": {
+        "talent_review_matrix_cells_text_color": {
+          "name": "talent_review_matrix_cells_text_color",
+          "value": "\"talent_review_matrix_cells\".\"text_color\" ~ '^#[0-9a-fA-F]{6}$'"
+        },
+        "talent_review_matrix_cells_export_range": {
+          "name": "talent_review_matrix_cells_export_range",
+          "value": "\"talent_review_matrix_cells\".\"export_order\" IS NULL OR \"talent_review_matrix_cells\".\"export_order\" BETWEEN 1 AND 99"
+        },
         "talent_review_matrix_cells_color": {
           "name": "talent_review_matrix_cells_color",
           "value": "\"talent_review_matrix_cells\".\"color\" ~ '^#[0-9a-fA-F]{6}$'"
