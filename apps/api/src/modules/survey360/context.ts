@@ -57,6 +57,11 @@ export interface Survey360Context extends TenantContext {
   readonly commandId: string;
   readonly admin: Admin;
   readonly expectedRevision: number;
+  /**
+   * 在命令事务内重新取得操作人的当前权限（功能权限、资源守卫、360 人员范围），不沿用 admin（命令开始时取得）。
+   * 同步类命令在每个写入目标加锁之后、写入之前调用（F-043 第 3 轮）；失去功能权限时抛错，整个命令回滚。
+   */
+  readonly reauthorize: () => Promise<Admin>;
 }
 
 export type C = Context<TenantEnv>;
@@ -422,10 +427,12 @@ export async function write<T>(
     id: c.req.header('idempotency-key'),
     fingerprint: { method: c.req.method, path: c.req.path, revision: expectedRevision, input },
     execute: async (tx, commandId): Promise<CommandResult> => {
-      // 命令事务内重新取管理范围，不沿用路由层缓存（P2-2）
-      const current = await checked(tx, await peopleInTransaction(tx, deps, tenant, options.need.object));
+      // 命令事务内重新取管理范围，不沿用路由层缓存（P2-2）；长命令逐目标再取（reauthorize，F-043 第 3 轮）
+      const reauthorize = async () => checked(tx, await peopleInTransaction(tx, deps, tenant, options.need.object));
+      const current = await reauthorize();
       for (const extra of also) await requireNeed(tx, deps, tenant, extra.need);
-      const ctx: Survey360Context = { ...tenant, now: deps.clock(), commandId, admin: current, expectedRevision };
+      const now = deps.clock();
+      const ctx: Survey360Context = { ...tenant, now, commandId, admin: current, reauthorize, expectedRevision };
       return { status: options.status ?? 200, body: await execute(tx, ctx, input) };
     },
   });

@@ -75,14 +75,17 @@ const EMPLOYMENT_RECORD_OBJECT = 'TenantBase.EmploymentRecord';
 /** 一次同步最多处理的员工数（有界查询）；超出部分返回游标，按游标续同步。 */
 export const SYNC_LIMIT = 5000;
 
-/** 写入前复核发现目标已不在管理范围内（见 lockManageable）。 */
+/** 写入前按当前权限复核发现目标已不在管理范围内（见 refreshLinked）。 */
 const OUT_OF_SCOPE = 'OUT_OF_SCOPE' as const;
 
 /**
- * 测试探针（F-043 第 2 轮，T-race 真 PG 交错用，生产为空）：对已挂接人员的写入已决定、但还没有加锁复核范围时调用，
- * 测试在这里让组织侧把员工调出范围，验证写入前复核的是最新状态。
+ * 测试探针（F-043 真 PG 交错用，生产为空）：beforeLock 在目标已列出、锁计划尚未取锁时调用（测试在这里让组织侧把
+ * 员工调出范围）；beforeWrite 在目标已加锁、要写、尚未重取当前权限时调用（测试在这里撤空管理范围或发起调动）。
  */
-export const syncProbe: { beforeWrite?: (employeeId: string) => Promise<void> } = {};
+export const syncProbe: {
+  beforeLock?: () => Promise<void>;
+  beforeWrite?: (employeeId: string) => Promise<void>;
+} = {};
 /** 精细化下受限管理员不可添加 / 不新建人员的统一原因（与 requireCreatable 同一代码，R2-P2-7、R5-P2-1）。 */
 const NOT_AVAILABLE = 'PERSON_NOT_AVAILABLE';
 
@@ -91,6 +94,8 @@ export interface SyncAccess {
   /** 员工信息、任职记录上可查看的字段；undefined = 不限。 */
   readonly personnelFields: ReadonlySet<string> | undefined;
   readonly recordFields: ReadonlySet<string> | undefined;
+  /** 重新取得员工信息的查看权、数据范围与字段（写入目标加锁后用，F-043 第 3 轮）。 */
+  readonly refresh: () => Promise<SyncAccess>;
 }
 
 /**
@@ -130,7 +135,56 @@ export async function syncAccess(
     scope,
     personnelFields: await getModuleViewableFieldsInTransaction(deps, tenant, PERSONNEL_OBJECT, tx),
     recordFields: await getModuleViewableFieldsInTransaction(deps, tenant, EMPLOYMENT_RECORD_OBJECT, tx),
+    refresh: () => syncAccess(tx, deps, tenant, pageCode),
   };
+}
+
+const uuids = (ids: readonly string[]) => sql`${`{${ids.join(',')}}`}::uuid[]`;
+
+/** 本事务已取的锁计划（员工 ID）；一个事务只取一次。 */
+const plans = new WeakMap<Tx, ReadonlySet<string>>();
+
+/**
+ * 锁计划（F-043 第 3 轮 P2-2）：一条命令要写的员工在处理任何目标之前一次取齐——员工行按员工 ID 升序 FOR SHARE（与
+ * 调动 / 任职写入同一全局顺序：transfer-locks.ts 按 UUID 升序锁员工），再按人员 ID 升序锁这些员工已挂接的 360 人员
+ * 及载荷里点名的已有人员（FOR NO KEY UPDATE）。之后新建、更新、回补、导入、自动添加只写计划内的员工，不再中途取
+ * 员工锁，不会锁住后面的员工再回头等前面的员工；组织侧的调动要么在取锁前已提交（随后按当前状态重读），要么等本命令
+ * 结束。再取一次会打乱锁顺序，按程序错误处理。
+ */
+export async function lockPlan(
+  tx: Tx,
+  tenantId: string,
+  employees: readonly string[],
+  persons: readonly string[] = [],
+): Promise<void> {
+  if (plans.has(tx)) throw new Error('同一事务只能取一次 360 同步锁计划');
+  const ids = [...new Set(employees.map((id) => id.toLowerCase()))];
+  plans.set(tx, new Set(ids));
+  await syncProbe.beforeLock?.();
+  if (ids.length)
+    await tx.execute(sql`SELECT id FROM employment_employees WHERE tenant_id = ${tenantId}::uuid
+      AND id = ANY(${uuids(ids)}) ORDER BY id FOR SHARE`);
+  const people = [...new Set(persons)];
+  if (ids.length || people.length)
+    await tx.execute(sql`SELECT id FROM survey360_people
+      WHERE employee_id = ANY(${uuids(ids)}) OR id = ANY(${uuids(people)}) ORDER BY id FOR NO KEY UPDATE`);
+}
+
+/**
+ * 写入目标须在锁计划内：列出目标到取锁之间人员被改挂到计划外的员工（如冲突处理挂接）时返回 409，由调用方刷新后
+ * 显式重提，不在中途补锁（与 transfer-locks.ts 的 TRANSFER_LOCK_PLAN_CHANGED 同一做法）。
+ */
+function requirePlanned(tx: Tx, employeeId: string): void {
+  if (!plans.get(tx)?.has(employeeId)) fail('CONFLICT', '同步涉及的人员已变化，请刷新后重试', 'SYNC_LOCK_PLAN_CHANGED');
+}
+
+/**
+ * 写入目标加锁之后、写入之前取操作人的当前权限（F-043 第 3 轮 P2-1）：功能权限、360 人员范围、员工信息范围与字段
+ * 都重新取得，不用命令开始时的 ctx.admin / access；范围收窄后目标按当前范围跳过。只在确定要写时调用。
+ */
+async function currentAuthority(ctx: Survey360Context, access: SyncAccess) {
+  const admin = await ctx.reauthorize();
+  return { ctx: { ...ctx, admin } satisfies Survey360Context, access: await access.refresh() };
 }
 
 /** 一批员工里在范围内的（与同步同一谓词，一条 SQL）。 */
@@ -262,6 +316,11 @@ async function employeeSnapshots(
   return { items, nextCursor: list.length > limit ? batch.at(-1)!.id : null };
 }
 
+/** 单个员工在范围内的当前快照；范围外、离职或没有任职记录为 undefined。 */
+async function snapshotIn(tx: Tx, ctx: Survey360Context, access: SyncAccess, employeeId: string) {
+  return (await employeeSnapshots(tx, ctx, access, { only: employeeId })).items[0];
+}
+
 async function orgName(tx: Tx, tenantId: string, id: unknown, asOf: string): Promise<string | null> {
   if (typeof id !== 'string') return null;
   const [row] = rows<{ name: string }>(
@@ -338,18 +397,10 @@ async function createSyncedPerson(tx: Tx, ctx: Survey360Context, snapshot: Emplo
 }
 
 /**
- * 已挂接人员按组织为准覆盖可见字段与上级：有变化才写，推进 revision、写审计（P2-7）；
- * 邮箱为空不覆盖（邮箱是键）；邮箱被其他人员占用时整条不写，返回 EMAIL_TAKEN。精细化下受限管理员不改邮箱：
- * 占用者可能是其看不到的人员，改与不改都会暴露占用（第 6 轮 R5-P2-1）。
+ * 已挂接人员要按组织覆盖的值：可见字段与上级，有变化才返回（P2-7）；邮箱为空不覆盖（邮箱是键）。精细化下受限管理员
+ * 不改邮箱：占用者可能是其看不到的人员，改与不改都会暴露占用（第 6 轮 R5-P2-1）。
  */
-async function refreshLinked(
-  tx: Tx,
-  ctx: Survey360Context,
-  access: SyncAccess,
-  person: PersonRow,
-  snapshot: EmployeeSnapshot,
-  verified = false,
-): Promise<PersonRow | 'EMAIL_TAKEN' | typeof OUT_OF_SCOPE | null> {
+async function changesOf(tx: Tx, ctx: Survey360Context, person: PersonRow, snapshot: EmployeeSnapshot) {
   const keepEmail = !!ctx.admin.people;
   const values: Partial<PersonRow> = Object.fromEntries(
     Object.entries(snapshot.values).filter(([key, value]) => !(key === 'email' && (!value || keepEmail))),
@@ -359,13 +410,32 @@ async function refreshLinked(
   if (values.superiorPersonId === person.id) values.superiorPersonId = null;
   const changed =
     Object.entries(values).some(([key, value]) => person[key as keyof PersonRow] !== value) || !person.emailLocked;
-  if (!changed) return null;
-  if (!verified) {
-    // 要写了：先在实际写入处确认目标仍可管理，再以加锁后的最新人员与快照重算一遍（F-043 第 2 轮 P2-1）
-    await syncProbe.beforeWrite?.(person.employeeId ?? '');
-    const target = await lockManageable(tx, ctx, access, person);
-    return target ? refreshLinked(tx, ctx, access, target.person, target.snapshot, true) : OUT_OF_SCOPE;
-  }
+  return changed ? values : null;
+}
+
+/**
+ * 已挂接人员按组织为准覆盖（推进 revision、写审计）：目标员工须在本命令的锁计划内（员工行与人员行已按全局顺序锁住）。
+ * 先按命令开始时的权限与列出时的快照判断有没有变化；要写时重取操作人的当前权限，按当前范围重读快照、复核人员可见性，
+ * 再以当前值写入（F-043 第 3 轮 P2-1）——范围在命令执行中收窄或员工已调出时返回 OUT_OF_SCOPE，不写。邮箱被其他人员
+ * 占用时整条不写，返回 EMAIL_TAKEN。
+ */
+async function refreshLinked(
+  tx: Tx,
+  ctx: Survey360Context,
+  access: SyncAccess,
+  personId: string,
+  listed: EmployeeSnapshot,
+): Promise<PersonRow | 'EMAIL_TAKEN' | typeof OUT_OF_SCOPE | null> {
+  const person = await loadPerson(tx, personId);
+  if (person.employeeId !== listed.employeeId) return OUT_OF_SCOPE;
+  requirePlanned(tx, listed.employeeId);
+  if (!(await changesOf(tx, ctx, person, listed))) return null;
+  await syncProbe.beforeWrite?.(listed.employeeId);
+  const now = await currentAuthority(ctx, access);
+  const snapshot = await snapshotIn(tx, now.ctx, now.access, listed.employeeId);
+  if (!snapshot || !(await personVisible(tx, now.ctx.admin, person))) return OUT_OF_SCOPE;
+  const values = await changesOf(tx, now.ctx, person, snapshot);
+  if (!values) return null;
   if (values.email && values.email.toLowerCase() !== person.email.toLowerCase()) {
     const other = await findPersonByEmail(tx, values.email);
     if (other && other.id !== person.id) return 'EMAIL_TAKEN' as const;
@@ -384,31 +454,6 @@ async function refreshLinked(
     after: personView(saved),
   });
   return saved;
-}
-
-/**
- * 员工行共享锁：组织侧的调动、任职变更都按员工闭包对员工行加排他锁写入（org/locks.ts 锁序，员工在前），所以先持共享锁、
- * 再重读范围与快照，范围判断和随后的写入看到的是同一个状态——组织侧要么已提交（重读即见到调出），要么要等同步事务结束。
- * 行锁而非咨询锁：一页最多 5000 人，不占共享锁表。
- */
-async function lockEmployeeShared(tx: Tx, tenantId: string, employeeId: string): Promise<void> {
-  await tx.execute(
-    sql`SELECT id FROM employment_employees WHERE tenant_id = ${tenantId}::uuid AND id = ${employeeId}::uuid FOR SHARE`,
-  );
-}
-
-/**
- * 写入处的范围复核（F-043 第 2 轮 P2-1）：先锁员工行（员工 → 人员的取锁顺序），再锁人员行，然后重读员工信息范围内
- * 的当前快照，精细化下再按 360 人员范围复核；任一不满足返回 null（调用方跳过、不写）。三处写入共用：普通同步、
- * 上级回补、导入评价者选择“同步”。
- */
-async function lockManageable(tx: Tx, ctx: Survey360Context, access: SyncAccess, person: PersonRow) {
-  if (!person.employeeId) return null;
-  await lockEmployeeShared(tx, ctx.tenantId, person.employeeId);
-  const fresh = await loadPerson(tx, person.id, true);
-  const [snapshot] = (await employeeSnapshots(tx, ctx, access, { only: person.employeeId })).items;
-  if (!snapshot || !(await personVisible(tx, ctx.admin, fresh))) return null;
-  return { person: fresh, snapshot };
 }
 
 /** 查重候选：邮箱命中任何人员；手机 / 工号命中尚未挂接的人员（DEC-030 ②）。只用操作人可见的字段查重。 */
@@ -493,19 +538,27 @@ async function syncUnlinked(
     result.conflicts.push(pending.id);
     return null;
   }
-  const blocked = creatable(snapshot);
-  if (blocked) {
-    result.skipped.push({ employeeId, reason: blocked });
+  const listedBlocked = creatable(snapshot);
+  if (listedBlocked) {
+    result.skipped.push({ employeeId, reason: listedBlocked });
     return null;
   }
-  // 要写（登记冲突 / 新建人员）了：先锁员工行再重读范围内的最新快照，员工已调出范围则跳过
-  await lockEmployeeShared(tx, ctx.tenantId, employeeId);
-  const fresh = (await employeeSnapshots(tx, ctx, access, { only: employeeId })).items[0];
+  // 要写（登记冲突 / 新建人员）了：员工已在锁计划内；按操作人的当前权限重读，范围收窄、精细化生效或员工已调出则
+  // 跳过（F-043 第 3 轮）
+  requirePlanned(tx, employeeId);
+  await syncProbe.beforeWrite?.(employeeId);
+  const now = await currentAuthority(ctx, access);
+  const fresh = now.ctx.admin.people ? undefined : await snapshotIn(tx, now.ctx, now.access, employeeId);
   if (!fresh) {
     result.skipped.push({ employeeId, reason: NOT_AVAILABLE });
     return null;
   }
   snapshot = fresh;
+  const blocked = creatable(snapshot);
+  if (blocked) {
+    result.skipped.push({ employeeId, reason: blocked });
+    return null;
+  }
   const candidates = await candidatesOf(tx, snapshot);
   if (candidates.ids.length) {
     const [conflict] = await tx
@@ -527,11 +580,15 @@ async function syncUnlinked(
     result.conflicts.push(conflict!.id);
     return null;
   }
-  const created = await createSyncedPerson(tx, ctx, snapshot, []);
+  const created = await createSyncedPerson(tx, now.ctx, snapshot, []);
   result.created.push({ personId: created.id, employeeId });
   return created;
 }
 
+/**
+ * 一次同步：先列出本次要处理的全部目标——员工阶段的一页员工，员工阶段在本页结束时连同回补阶段的一页待补人员——
+ * 一次取齐锁计划，再处理（F-043 第 3 轮：不在处理到一半时回头锁更早的员工）。
+ */
 export async function syncPeople(
   tx: Tx,
   ctx: Survey360Context,
@@ -542,14 +599,21 @@ export async function syncPeople(
   const result: SyncResult = { created: [], updated: [], conflicts: [], skipped: [], nextCursor: null };
   // 回补阶段的游标：跳过员工阶段，从游标之后续回补
   if (page.after?.startsWith(BACKFILL_CURSOR)) {
-    result.nextCursor = await backfillSuperiors(tx, ctx, access, cursorEmployee(page.after), limit, new Set(), result);
+    const targets = await backfillTargets(tx, ctx, access, cursorEmployee(page.after), limit, []);
+    await lockPlan(
+      tx,
+      ctx.tenantId,
+      targets.batch.map((t) => t.employee_id),
+    );
+    result.nextCursor = await backfillSuperiors(tx, ctx, access, targets, new Set(), result);
     return result;
   }
   const { items, nextCursor } = await employeeSnapshots(tx, ctx, access, { after: page.after, limit });
+  const listed = items.map((i) => i.employeeId);
+  const targets = nextCursor ? null : await backfillTargets(tx, ctx, access, null, limit, listed);
+  await lockPlan(tx, ctx.tenantId, [...listed, ...(targets?.batch.map((t) => t.employee_id) ?? [])]);
   await syncPage(tx, ctx, access, items, result);
-  result.nextCursor =
-    nextCursor ??
-    (await backfillSuperiors(tx, ctx, access, null, limit, new Set(items.map((i) => i.employeeId)), result));
+  result.nextCursor = nextCursor ?? (await backfillSuperiors(tx, ctx, access, targets!, new Set(listed), result));
   return result;
 }
 
@@ -590,7 +654,7 @@ async function syncPage(
   }
   // 第二遍：上级可能是本批新建的人员；覆盖与上级一次写入
   for (const { snapshot, personId, existed } of linked) {
-    const saved = await refreshLinked(tx, ctx, access, await loadPerson(tx, personId), snapshot);
+    const saved = await refreshLinked(tx, ctx, access, personId, snapshot);
     if (saved === OUT_OF_SCOPE) await skipOutOfPersonScope(tx, ctx, personId, snapshot.employeeId, result);
     else if (saved === 'EMAIL_TAKEN') result.skipped.push({ employeeId: snapshot.employeeId, reason: 'EMAIL_TAKEN' });
     else if (saved && existed) result.updated.push({ personId, employeeId: snapshot.employeeId });
@@ -636,24 +700,29 @@ export function currentManager(
     ORDER BY t.start_date, t.sort_order, r.id LIMIT 1`;
 }
 
+interface BackfillTargets {
+  readonly batch: readonly { id: string; employee_id: string }[];
+  readonly next: string | null;
+}
+
 /**
- * 回补跨页上级（第 3 轮 R2-P2-8；第 4 轮 R3-P2-3 / R3-P2-4）：按游标分页时下属可能在经理之前的页里同步，当时经理还
- * 没有 360 人员、上级留空。员工阶段结束后进入回补阶段，先用 SQL 筛出真正待补的人员——挂接员工在员工信息范围内、
+ * 回补跨页上级的目标（第 3 轮 R2-P2-8；第 4 轮 R3-P2-3 / R3-P2-4）：按游标分页时下属可能在经理之前的页里同步，当时
+ * 经理还没有 360 人员、上级留空。员工阶段结束后进入回补阶段，用 SQL 筛出待补的人员——挂接员工在员工信息范围内、
  * 人员在操作人 360 人员范围内（精细化，与人员列表同一谓词；范围外的不写入，也不列入回执，不暴露其存在）、上级为空、
- * 当前任职的直线经理已挂接 360 人员且不是本人——按员工 ID 游标分页，每页最多 limit 人。还有未补的返回回补游标，
- * 补完才返回 null。写入与同步同一路径（推进 revision、写字段级审计、计入 updated；组织邮箱被占用的计入 skipped）；
- * 本页刚同步过的人员已按本页结果写入，不重复。看不到直线经理字段的操作人无从回补。
+ * 当前任职的直线经理不是本人且已挂接 360 人员——按员工 ID 游标分页，每页最多 limit 人；还有未补的返回回补游标。
+ * 与员工阶段同一条命令时目标在处理之前列出（F-043 第 3 轮，一起取锁），经理是本页员工的也列入（本页可能为其
+ * 新建人员），处理时再按实际情况判定。看不到直线经理字段的操作人无从回补。
  */
-async function backfillSuperiors(
+async function backfillTargets(
   tx: Tx,
   ctx: Survey360Context,
   access: SyncAccess,
   after: string | null,
   limit: number,
-  handled: ReadonlySet<string>,
-  result: SyncResult,
-): Promise<string | null> {
-  if (access.recordFields !== undefined && !access.recordFields.has('directManagerId')) return null;
+  page: readonly string[],
+): Promise<BackfillTargets> {
+  if (access.recordFields !== undefined && !access.recordFields.has('directManagerId'))
+    return { batch: [], next: null };
   const people = personFilter(ctx.admin);
   const manager = currentManager(ctx.tenantId, sql`p.employee_id`, tenantLocalDate(ctx.now, ctx.timezone));
   const pending = rows<{ id: string; employee_id: string }>(
@@ -662,21 +731,37 @@ async function backfillSuperiors(
         AND ${scopeSql(access.scope, { person: sql`p.employee_id` })} ${people ? sql`AND ${people}` : sql``}
         ${after ? sql`AND p.employee_id > ${after}::uuid` : sql``}
         AND cur.kind NOT IN ('leave', 'retirement') AND cur.manager_id IS NOT NULL AND cur.manager_id <> p.employee_id
-        AND EXISTS (SELECT 1 FROM survey360_people m
+        AND (EXISTS (SELECT 1 FROM survey360_people m
           WHERE m.tenant_id = p.tenant_id AND m.employee_id = cur.manager_id AND m.id <> p.id)
+          ${page.length ? sql`OR cur.manager_id = ANY(${uuids(page)})` : sql``})
       ORDER BY p.employee_id LIMIT ${limit + 1}`),
   );
   const batch = pending.slice(0, limit);
-  for (const row of batch) {
+  return { batch, next: pending.length > limit ? `${BACKFILL_CURSOR}${batch.at(-1)!.employee_id}` : null };
+}
+
+/**
+ * 回补：写入与同步同一路径（推进 revision、写字段级审计、计入 updated；组织邮箱被占用的计入 skipped；加锁后按当前
+ * 权限复核）；本页刚同步过的人员已按本页结果写入，不重复。
+ */
+async function backfillSuperiors(
+  tx: Tx,
+  ctx: Survey360Context,
+  access: SyncAccess,
+  targets: BackfillTargets,
+  handled: ReadonlySet<string>,
+  result: SyncResult,
+): Promise<string | null> {
+  for (const row of targets.batch) {
     if (handled.has(row.employee_id)) continue;
-    const [snapshot] = (await employeeSnapshots(tx, ctx, access, { only: row.employee_id })).items;
+    const snapshot = await snapshotIn(tx, ctx, access, row.employee_id);
     if (!snapshot?.managerId || !(await linkedPerson(tx, snapshot.managerId))) continue;
-    const saved = await refreshLinked(tx, ctx, access, await loadPerson(tx, row.id), snapshot);
+    const saved = await refreshLinked(tx, ctx, access, row.id, snapshot);
     if (saved === OUT_OF_SCOPE) await skipOutOfPersonScope(tx, ctx, row.id, row.employee_id, result);
     else if (saved === 'EMAIL_TAKEN') result.skipped.push({ employeeId: row.employee_id, reason: 'EMAIL_TAKEN' });
     else if (saved) result.updated.push({ personId: row.id, employeeId: row.employee_id });
   }
-  return pending.length > limit ? `${BACKFILL_CURSOR}${batch.at(-1)!.employee_id}` : null;
+  return targets.next;
 }
 
 export async function linkedPerson(tx: Tx, employeeId: string): Promise<PersonRow | undefined> {
@@ -685,9 +770,10 @@ export async function linkedPerson(tx: Tx, employeeId: string): Promise<PersonRo
 }
 
 /**
- * 按组织架构自动添加时取员工对应的 360 人员：先校验员工在操作人当前范围内（已挂接的同样校验，P2-2），
- * 未同步的按同一规则新建（看不到姓名 / 邮箱或有冲突的不建，返回原因）。精细化下受限管理员只用已挂接的人员，
- * 未同步的一律 PERSON_NOT_AVAILABLE（不查重、不建人员；第 6 轮 R5-P2-1）。
+ * 按组织架构自动添加时取员工对应的 360 人员：员工须在调用方的锁计划内；按操作人的**当前**权限（F-043 第 3 轮）校验
+ * 员工在范围内（已挂接的同样校验，P2-2；精细化下已挂接人员另按当前人员范围判定），未同步的按同一规则新建（看不到
+ * 姓名 / 邮箱或有冲突的不建，返回原因）。精细化下受限管理员只用已挂接的人员，未同步的一律 PERSON_NOT_AVAILABLE
+ * （不查重、不建人员；第 6 轮 R5-P2-1）。
  */
 export async function personForEmployee(
   tx: Tx,
@@ -695,27 +781,31 @@ export async function personForEmployee(
   access: SyncAccess,
   employeeId: string,
 ): Promise<PersonRow | string> {
-  // 先锁员工行再读范围内的快照：随后的新建与范围判断看到同一个状态（F-043 第 2 轮 P2-1）
-  await lockEmployeeShared(tx, ctx.tenantId, employeeId);
-  const [snapshot] = (await employeeSnapshots(tx, ctx, access, { only: employeeId })).items;
+  requirePlanned(tx, employeeId);
+  await syncProbe.beforeWrite?.(employeeId);
+  const now = await currentAuthority(ctx, access);
+  const snapshot = await snapshotIn(tx, now.ctx, now.access, employeeId);
   if (!snapshot) return 'OUT_OF_SCOPE';
   const existing = await linkedPerson(tx, employeeId);
-  if (existing) return existing;
-  if (ctx.admin.people) return NOT_AVAILABLE;
+  if (existing) return (await personVisible(tx, now.ctx.admin, existing)) ? existing : 'OUT_OF_SCOPE';
+  if (now.ctx.admin.people) return NOT_AVAILABLE;
   const blocked = creatable(snapshot);
   if (blocked) return blocked;
   if ((await candidatesOf(tx, snapshot)).ids.length) return 'SYNC_CONFLICT';
-  return createSyncedPerson(tx, ctx, snapshot, []);
+  return createSyncedPerson(tx, now.ctx, snapshot, []);
 }
 
-/** 导入评价者选择“同步”：已挂接人员按组织刷新（范围外的员工不刷新，P2-6）。 */
+/**
+ * 导入评价者选择“同步”：已挂接人员按组织刷新（范围外的员工不刷新，P2-6）；人员与其挂接员工须在导入的锁计划内，
+ * 写入前按当前权限复核（F-043 第 3 轮）。
+ */
 export async function refreshFromOrg(tx: Tx, ctx: Survey360Context, access: SyncAccess, person: PersonRow) {
   if (!person.employeeId) return person;
-  const [snapshot] = (await employeeSnapshots(tx, ctx, access, { only: person.employeeId })).items;
+  const snapshot = await snapshotIn(tx, ctx, access, person.employeeId);
   if (!snapshot) return person;
-  const saved = await refreshLinked(tx, ctx, access, await loadPerson(tx, person.id), snapshot);
+  const saved = await refreshLinked(tx, ctx, access, person.id, snapshot);
   if (saved === OUT_OF_SCOPE) {
-    // 写入前复核发现员工已调出范围：不刷新，沿用 sync_skipped 审计
+    // 写入前按当前权限复核发现已不在范围内：不刷新，沿用 sync_skipped 审计（精细化下整批在提交前另行复核）
     await skipOutOfPersonScope(tx, ctx, person.id, person.employeeId);
     return person;
   }
@@ -749,7 +839,9 @@ export async function resolveConflict(
     .where(eq(survey360SyncConflicts.id, id))
     .for('update');
   if (!conflict) fail('NOT_FOUND', '冲突记录不存在');
-  const [snapshot] = (await employeeSnapshots(tx, ctx, access, { only: conflict.employeeId })).items;
+  // 锁计划（F-043 第 3 轮）：冲突员工与挂接目标人员先按全局顺序锁住
+  await lockPlan(tx, ctx.tenantId, [conflict.employeeId], input.personId ? [input.personId] : []);
+  const snapshot = await snapshotIn(tx, ctx, access, conflict.employeeId);
   // 范围外的员工按不存在处理
   if (!snapshot) fail('NOT_FOUND', '冲突记录不存在');
   if (conflict.status !== 'pending') fail('CONFLICT', '冲突已处理', 'CONFLICT_CLOSED');
@@ -836,8 +928,9 @@ async function linkConflict(
     before: personView(person),
     after: personView(saved!),
   });
-  const refreshed = await refreshLinked(tx, ctx, access, saved!, snapshot);
-  // 冲突处理只给不受限管理员（requireUnrestricted），员工范围已在 resolveConflict 里复核，OUT_OF_SCOPE 在此不会出现
+  const refreshed = await refreshLinked(tx, ctx, access, saved!.id, snapshot);
+  // 写入前按当前权限复核发现员工已不在范围内：按冲突不存在处理，整个处理回滚
+  if (refreshed === OUT_OF_SCOPE) fail('NOT_FOUND', '冲突记录不存在');
   if (refreshed === 'EMAIL_TAKEN') fail('CONFLICT', '组织员工的邮箱已被其他人员使用', 'EMAIL_TAKEN');
   return person.id;
 }

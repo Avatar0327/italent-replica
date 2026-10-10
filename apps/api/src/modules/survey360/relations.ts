@@ -74,6 +74,7 @@ import {
   employeeInScope,
   employeesInScope,
   fineEmployees,
+  lockPlan,
   personForEmployee,
   refreshFromOrg,
   restrictedSkips,
@@ -813,6 +814,12 @@ async function autoAdd(
     peer: manager ? (await reportsOf(tx, ctx.tenantId, manager, asOf)).filter((e) => e !== target.employeeId) : [],
     subordinate: await reportsOf(tx, ctx.tenantId, target.employeeId, asOf),
   };
+  // 锁计划（F-043 第 3 轮）：各角色的候选员工先按全局顺序一次锁齐，再逐个添加（不按角色分组中途取锁）
+  await lockPlan(
+    tx,
+    ctx.tenantId,
+    input.roles.flatMap((code) => candidates[code]!),
+  );
   const added: ReturnType<typeof relationView>[] = [];
   const skipped: { employeeId: string; reason: string }[] = [];
   for (const code of input.roles) {
@@ -902,6 +909,16 @@ async function importErrors(tx: Tx, admin: Admin, activityId: string, input: Imp
   return { errors, objects };
 }
 
+/** 导入行点名的已有人员（按邮箱，去重）。 */
+async function namedPeople(tx: Tx, input: ImportInput): Promise<PersonRow[]> {
+  const found = new Map<string, PersonRow>();
+  for (const row of input.rows) {
+    const person = await findPersonByEmail(tx, row.email);
+    if (person) found.set(person.id, person);
+  }
+  return [...found.values()];
+}
+
 function requireValidImport(errors: { row: number; code: string; details: { reason: string } }[]): void {
   if (errors.length) fail('VALIDATION_FAILED', '导入数据有误，整批未导入', 'IMPORT_INVALID', { errors });
 }
@@ -969,6 +986,15 @@ function registerImport(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
         // 先整批校验，再写入：任一行不合法整批失败（AGENTS.md §10「批量」）
         const { errors, objects } = await importErrors(tx, ctx.admin, id, input);
         requireValidImport(errors);
+        // 锁计划（F-043 第 3 轮）：本批点名的已有人员（选择“同步”时连同其挂接员工）先按全局顺序一次锁齐，再逐行写入
+        const named = await namedPeople(tx, input);
+        const linkedEmployees = input.sync ? named.flatMap((p) => (p.employeeId ? [p.employeeId] : [])) : [];
+        await lockPlan(
+          tx,
+          ctx.tenantId,
+          linkedEmployees,
+          named.map((p) => p.id),
+        );
         const receipts = [];
         let access: Awaited<ReturnType<typeof syncAccess>> | undefined;
         for (const [index, row] of input.rows.entries()) {
@@ -988,6 +1014,9 @@ function registerImport(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
           const relation = await addRelation(tx, ctx, activity, objects.get(index)!, person, roleId, 'import');
           receipts.push({ row: index + 1, status: 'created', relationId: relation.id });
         }
+        // 提交前按操作人的当前范围整批复核（与返回前同一判定）：执行中范围收窄则整批拒绝、回滚，不会“返回未导入、
+        // 数据却已改变”（F-043 第 3 轮）
+        await importResults(tx, await ctx.reauthorize(), { receipts });
         return { receipts };
       },
       {

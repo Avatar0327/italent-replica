@@ -1,11 +1,13 @@
 /**
  * F-043 第 2 轮（#210 第 1 轮审查 P2-1 / P2-2，真 PG 交错；PGlite 单连接无法并发，只在设了 TEST_DATABASE_URL 时运行）：
  * P2-1 范围复核之后、写入之前，组织侧把人员调出受限管理员的 360 人员范围，同步仍写入了该人员。三处同类入口都要
- *   在**实际写入时**确认目标仍可管理（先对员工行加共享锁挡住组织侧调动，再重读最新快照与范围）：
- *   普通同步（员工分页）、上级回补（回补分页）、评价者导入选择“同步”时的组织信息刷新。已调出范围的跳过并记审计。
+ *   在**实际写入时**确认目标仍可管理（第 3 轮起：目标列出后一次取齐锁计划挡住组织侧调动，加锁后重读最新快照与
+ *   范围）：普通同步（员工分页）、上级回补（回补分页）、评价者导入选择“同步”时的组织信息刷新。已调出范围的跳过
+ *   并记审计；导入在精细化下整批拒绝（提交前回滚）。
  * P2-2 同步中途收窄或撤空管理员的 360 范围：写命令执行时重新取得管理范围（不沿用路由层缓存），首次回执同样按
  *   查看人当前范围裁剪。
- * 做法：用测试探针在“写入已决定、尚未复核”处暂停，让另一连接完成调动 / 改范围，再放行并核对结果前后的值。
+ * 做法：用测试探针在“目标已列出、尚未取锁”（调动）或“已加锁、写入已决定、尚未复核”（改范围）处暂停，让另一连接
+ * 完成调动 / 改范围，再放行并核对结果前后的值。
  */
 import { randomUUID } from 'node:crypto';
 import { sql, withTenant } from '@italent/db';
@@ -22,10 +24,19 @@ const testDb = useTestDb();
 const world = (label: string) => scene(testDb().db, label, true);
 
 afterEach(() => {
+  syncProbe.beforeLock = undefined;
   syncProbe.beforeWrite = undefined;
   commandProbe.beforeCommand = undefined;
   commandProbe.beforePresent = undefined;
 });
+
+/** 目标已列出、锁计划取锁之前触发一次（组织侧在这里提交调动：取锁后按当前状态重读）。 */
+function beforeLockOnce(action: () => Promise<void>) {
+  syncProbe.beforeLock = async () => {
+    syncProbe.beforeLock = undefined;
+    await action();
+  };
+}
 
 /** 探针只对指定员工触发一次。 */
 function onceFor(employeeId: string, action: () => Promise<void>) {
@@ -39,7 +50,7 @@ function onceFor(employeeId: string, action: () => Promise<void>) {
 describe.skipIf(!realPostgres)('F-043 P2-1 写入前复核的是最新状态（真 PG）', () => {
   it('普通同步：通过复核后、写入前员工被调出范围 → 不写（名称、revision 不变），回执看不到，记 sync_skipped 审计', async () => {
     const s = await world('f043r1');
-    onceFor(s.inside.id, () => s.transferOut(s.inside.id));
+    beforeLockOnce(() => s.transferOut(s.inside.id));
     const page = await s.w.ok<SyncPage>(s.sync());
     const inside = await s.current(s.insidePerson.id);
     expect(inside.name).toBe(s.insidePerson.name);
@@ -61,7 +72,7 @@ describe.skipIf(!realPostgres)('F-043 P2-1 写入前复核的是最新状态（�
     );
     const before = await s.current(s.insidePerson.id);
     expect(before.superiorPersonId ?? null).toBeNull();
-    onceFor(s.inside.id, () => s.transferOut(s.inside.id));
+    beforeLockOnce(() => s.transferOut(s.inside.id));
     await s.w.ok<SyncPage>(s.sync(randomUUID(), { after: 'backfill:' }));
     const after = await s.current(s.insidePerson.id);
     expect(after.superiorPersonId ?? null).toBeNull();
@@ -70,7 +81,7 @@ describe.skipIf(!realPostgres)('F-043 P2-1 写入前复核的是最新状态（�
     expect((await s.skippedLogs(s.w.admin)).map((log) => log.objectId)).toContain(s.insidePerson.id);
   });
 
-  it('评价者导入选择“同步”：刷新前员工被调出范围 → 不刷新（名称、revision 不变），记 sync_skipped 审计', async () => {
+  it('评价者导入选择“同步”：列出后、取锁前员工被调出范围 → 提交前整批拒绝 400，人员名称、revision 不变', async () => {
     const s = await world('f043r3');
     const q = await s.w.enableQuestionnaire(await s.w.keyBehavior());
     const activity = await s.w.activity({ name: 'F-043 导入活动' }, s.admin);
@@ -81,7 +92,7 @@ describe.skipIf(!realPostgres)('F-043 P2-1 写入前复核的是最新状态（�
       }),
       201,
     );
-    onceFor(s.inside.id, () => s.transferOut(s.inside.id));
+    beforeLockOnce(() => s.transferOut(s.inside.id));
     const imported = await s.as('POST', `/activities/${activity.id}/appraisers/import`, {
       ifMatch: 0,
       body: {
@@ -91,11 +102,12 @@ describe.skipIf(!realPostgres)('F-043 P2-1 写入前复核的是最新状态（�
         ],
       },
     });
-    expect(imported.status, await imported.clone().text()).toBeLessThan(500);
+    // 精细化下评价者须是可见的已有人员：执行中调出范围即整批不合法，提交前拒绝并回滚（F-043 第 3 轮）
+    expect(imported.status, await imported.clone().text()).toBe(400);
+    expect(await imported.json()).toMatchObject({ error: { details: { reason: 'IMPORT_INVALID' } } });
     const inside = await s.current(s.insidePerson.id);
     expect(inside.name).toBe(s.insidePerson.name);
     expect(inside.revision).toBe(s.insidePerson.revision);
-    expect((await s.skippedLogs(s.w.admin)).map((log) => log.objectId)).toContain(s.insidePerson.id);
   });
 });
 
