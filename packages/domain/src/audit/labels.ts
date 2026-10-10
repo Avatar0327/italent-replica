@@ -226,6 +226,10 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   contentType: '文件格式',
   byteSize: '文件大小',
   sha256: '文件哈希',
+  // F-079（#172 审查 P3，DEC-374⑦）
+  displayOrder: '显示顺序',
+  syncQualification: '同步任职资格子集',
+  createdBy: '创建人',
 };
 
 export function auditFieldLabel(field: string): string {
