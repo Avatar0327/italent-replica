@@ -45,6 +45,8 @@ export type AnchorKind = 'dictionary';
 
 export const ANCHOR: Readonly<Partial<Record<EvaluationObject, AnchorKind>>> = {
   activityType: 'dictionary',
+  activityCycle: 'dictionary',
+  generalScoreItem: 'dictionary',
 };
 
 /** 对象表上的范围谓词（分页之前生效）：别名指向对象表；看全部时为真，创建人维度取 `created_by`。 */
