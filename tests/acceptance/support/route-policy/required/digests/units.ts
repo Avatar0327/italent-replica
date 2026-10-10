@@ -231,9 +231,9 @@ export const DIGESTS: Digests = {
     requireFilterVisible: 'ee40ce95ec01',
   },
   'apps/api/src/modules/evaluation/routes.ts': {
-    SPECS: '304a0790ab1b',
+    SPECS: '0a7a5dbdbe7f',
     registerEvaluationRoutes: 'ec92e85cec4d',
-    registerObject: '239bd49bcb4b',
+    registerObject: '676f96276dcd',
   },
   'apps/api/src/modules/idp/access.ts': {
     idpContext: 'a649410c2da0',
@@ -1202,9 +1202,9 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/evaluation/access.ts#evaluationContext': 'b5cc01649da7',
   'apps/api/src/modules/evaluation/access.ts#evaluationWriteContext': '0cc528c12276',
   'apps/api/src/modules/evaluation/access.ts#requireFilterVisible': '41903ba0cf58',
-  'apps/api/src/modules/evaluation/routes.ts#SPECS': 'ac972c869744',
+  'apps/api/src/modules/evaluation/routes.ts#SPECS': '099de486a020',
   'apps/api/src/modules/evaluation/routes.ts#registerEvaluationRoutes': 'f85d9e12c02b',
-  'apps/api/src/modules/evaluation/routes.ts#registerObject': 'cbe0d25c7b1e',
+  'apps/api/src/modules/evaluation/routes.ts#registerObject': '08f4e4188fa9',
   'apps/api/src/modules/idp/access.ts#idpContext': '6f9ce2c87c01',
   'apps/api/src/modules/idp/access.ts#idpWriteContext': 'ad47dfbf76d3',
   'apps/api/src/modules/idp/access.ts#objectFields': 'f7ce614aaf23',
