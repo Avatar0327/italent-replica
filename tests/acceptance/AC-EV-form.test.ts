@@ -125,6 +125,8 @@ describe('AC-EV-form 评价表（标准模式）', () => {
         { fullScore: -1 },
         { passScore: -1 },
         { fullScore: 100.123 },
+        { fullScore: 1_000_000, passScore: 60 },
+        { passScore: 1_000_000 },
         { name: '' },
         { name: 'x'.repeat(101) },
         { code: 'F1' },
@@ -374,7 +376,31 @@ describe('AC-EV-form 评价表（标准模式）', () => {
     });
   });
 
-  describe('EV-R5 锁判定函数 formLockedByActivities（本 PR 恒为 false，B5 接入）', () => {
+  describe('隐含的变更也要有字段权（第 1 轮 P2-2）', () => {
+    it('切换评分方式会清空总分计算规则：总分计算规则只读 / 隐藏的操作人只改评分方式 → 403，数据不变；显式清空同样 403', async () => {
+      const form = await w.adminForm(body());
+      for (const options of [{ readonly: ['totalRule'] }, { hidden: ['totalRule'] }]) {
+        const op = await manager(options);
+        const implicit = await patch(op, form, { scoreMode: 'by_total' });
+        expect(implicit.status, JSON.stringify(options)).toBe(403);
+        const explicit = await patch(op, form, { scoreMode: 'by_total', totalRule: null });
+        expect(explicit.status, JSON.stringify(options)).toBe(403);
+        expect(await adminReads(form.id)).toMatchObject({ revision: form.revision, scoreMode: 'by_indicator' });
+      }
+      // 有总分计算规则编辑权的人：隐含清空照常
+      const editor = await manager();
+      const cleared = await ok<FormView>(await patch(editor, form, { scoreMode: 'by_total' }));
+      expect(cleared).toMatchObject({ scoreMode: 'by_total', totalRule: null });
+      // 本来就是评总分、规则没有变化：不需要总分计算规则的编辑权
+      const guarded = await manager({ readonly: ['totalRule'] });
+      const same = await ok<FormView>(
+        await patch(guarded, cleared, { scoreMode: 'by_total', name: `仅改名${suffix()}` }),
+      );
+      expect(same.totalRule).toBeNull();
+    });
+  });
+
+  describe('EV-R5 锁判定函数 formLockedByActivities（本 PR 恒为 false，B6 接入）', () => {
     it('缺省不锁：评分相关字段照常可改', async () => {
       const op = await manager();
       const form = await created(op);
@@ -461,6 +487,21 @@ describe('AC-EV-form 评价表（标准模式）', () => {
       expect(error.error.message).not.toContain(hiddenForm.name);
       const still = await w.setup.request('GET', `${EV_BASE}${GENERAL_ITEMS}/${item.id}`, w.asAdmin);
       expect(((await still.json()) as { enabled: boolean }).enabled).toBe(true);
+      // 评价表“名称”字段看不到：提示、明细、排序都不带评价表名称，全部计入“其他 N 个”（第 1 轮 P2-1）
+      const blind = await manager({ generalWritable: true, hidden: ['name'] });
+      const masked = await blind.request('PATCH', `${GENERAL_ITEMS}/${item.id}`, {
+        ifMatch: item.revision,
+        body: { enabled: false },
+      });
+      expect(masked.status, await masked.clone().text()).toBe(409);
+      const maskedText = await masked.text();
+      expect(maskedText).not.toContain(visible.name);
+      expect(maskedText).not.toContain(hiddenForm.name);
+      const maskedError = JSON.parse(maskedText) as {
+        error: { details: { referrers: unknown[]; otherCount: number } };
+      };
+      expect(maskedError.error.details.referrers).toEqual([]);
+      expect(maskedError.error.details.otherCount).toBe(2);
       const free = await w.generalItem(`可停用${suffix()}`);
       const off = await op.request('PATCH', `${GENERAL_ITEMS}/${free.id}`, {
         ifMatch: free.revision,
