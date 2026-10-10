@@ -385,6 +385,8 @@ export async function world360(db: Db, label: string, options: { access?: Employ
       call('PUT', `/tasks/${relationId}/questionnaires/${q.id}`, { ifMatch: 0, body: { answers } }),
     );
     if (!submit) return saved;
+    // 固定时钟下作答与提交在同一毫秒会被“评价过快”判为疑似无效（DEC-392、DEC-405②）：每题留 2 秒，高于 1.5 秒阈值
+    now = new Date(now.getTime() + q.questions.length * 2000);
     return call('POST', `/tasks/${relationId}/questionnaires/${q.id}/submit`, { ifMatch: saved.revision });
   }
 
@@ -428,6 +430,11 @@ export async function world360(db: Db, label: string, options: { access?: Employ
     scores,
     setNow(iso: string) {
       now = new Date(iso);
+    },
+    /** 当前夹具时钟（毫秒）；与 advance 配合，在固定时钟的用例里模拟“作答花了多久”。 */
+    nowMs: () => now.getTime(),
+    advance(ms: number) {
+      now = new Date(now.getTime() + ms);
     },
   };
 }

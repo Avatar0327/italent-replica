@@ -234,6 +234,8 @@ export async function sceneB(
       }),
     );
     if (extra.submit === false) return;
+    // 固定时钟下作答与提交在同一毫秒会被“评价过快”判为疑似无效（DEC-392、DEC-405②）：每题留 2 秒，高于 1.5 秒阈值
+    w.advance(q.questions.length * 2000);
     await w.ok(call('POST', `/tasks/${relationId}/questionnaires/${q.id}/submit`, { ifMatch: saved.revision }));
   }
 
