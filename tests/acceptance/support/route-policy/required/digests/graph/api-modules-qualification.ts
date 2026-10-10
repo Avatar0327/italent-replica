@@ -856,6 +856,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/qualification/access.ts#assertQualificationRefs',
     'apps/api/src/modules/qualification/access.ts#codeOf',
   ],
+  'apps/api/src/modules/qualification/subset-policy.ts#assertScorePrecision': ['#TWO_DECIMALS'],
   'apps/api/src/modules/qualification/subset-policy.ts#installQualificationSubsetPolicy': [
     'apps/api/src/modules/personnel/subset-policy.ts#registerSubsetPolicy',
     '#QUALIFICATION_POLICY',
@@ -865,6 +866,7 @@ export const GRAPH: Graph = {
     '#SELF_SERVICE_CLOSED',
     '#assertAutoSyncEditable',
     '#assertRefs',
+    '#assertScorePrecision',
     '#canonicalRefs',
     '#isHuman',
     '#newRefs',
