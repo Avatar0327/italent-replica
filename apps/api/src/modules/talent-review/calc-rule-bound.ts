@@ -26,6 +26,7 @@ import {
   checkInputLimits,
   FORMULA_CONTEXT_FIELDS,
   formulaPath,
+  HIDDEN_FIELD_PLACEHOLDER,
   formulaReferences,
   type FormulaField,
   type FormulaBindingState,
@@ -192,11 +193,27 @@ function runPass(
   }));
   const held = new Map([...existing].map(([target, entry]) => [target, entry.held]));
   const analysis = analyzeBoundItems(boundItems, full as readonly FormulaField[], held);
-  if (!analysis.ok) {
-    const { reason, item, message, issues, fields } = analysis;
-    throw reject(reason, message, { item, ...(issues ? { issues } : {}), ...(fields ? { fields } : {}) });
-  }
+  if (!analysis.ok) throw analysisError(analysis, visible);
   return { plans, analysis };
+}
+
+/**
+ * 整体分析失败（类型、多选、停用、排序）的错误：分析在全部字段上做，文案和字段列表里可能出现查看人看不到的字段
+ * （原样保留的项目带着不可见引用）。句柄一律换成当前名称或占位符，字段 ID 只留可见的（DEC-376①）。
+ */
+function analysisError(analysis: Extract<CalcAnalysis, { ok: false }>, visible: readonly FormulaField[]): AppError {
+  const names = new Map(visible.map((field) => [field.id.toLowerCase(), field.name]));
+  const scrub = (text: string) =>
+    text.replace(/@\{tr-field:([0-9a-f-]{36})\}/g, (_match, id: string) => {
+      const name = names.get(id);
+      return formulaPath(name ?? HIDDEN_FIELD_PLACEHOLDER);
+    });
+  const { reason, item, message, issues, fields } = analysis;
+  return reject(reason, scrub(message), {
+    item,
+    ...(issues ? { issues: issues.map((entry) => ({ ...entry, message: scrub(entry.message) })) } : {}),
+    ...(fields ? { fields: fields.filter((id) => names.has(id.toLowerCase())) } : {}),
+  });
 }
 
 const signature = (pass: Pass) => pass.plans.map((plan) => `${plan.kind}:${plan.stored}`).join('\n');

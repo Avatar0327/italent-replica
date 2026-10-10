@@ -53,6 +53,11 @@ export const GRAPH: Graph = {
     '#codeOf',
   ],
   'apps/api/src/modules/talent-review/approval-adapter.ts#talentReviewAdapter': ['#unavailable'],
+  'apps/api/src/modules/talent-review/calc-rule-bound.ts#analysisError': [
+    '#reject',
+    'packages/domain/src/expression/lexer.ts#HIDDEN_FIELD_PLACEHOLDER',
+    'packages/domain/src/talent-review/calc-rule.ts#formulaPath',
+  ],
   'apps/api/src/modules/talent-review/calc-rule-bound.ts#bindError': ['#conflict', '#reject'],
   'apps/api/src/modules/talent-review/calc-rule-bound.ts#createBoundCalcRule': [
     'apps/api/src/modules/talent-review/access.ts#requireConfigCreatable',
@@ -91,6 +96,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/talent-review/calc-rule-bound.ts#runPass': [
     'apps/api/src/modules/talent-review/access.ts#notFoundMessage',
+    '#analysisError',
     '#bindError',
     '#reject',
     '#sameBindings',
