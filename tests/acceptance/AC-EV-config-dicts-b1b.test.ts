@@ -532,6 +532,8 @@ describe.each(SUBJECTS)('AC-EV-config-dicts B1b $label', (s) => {
           sql: (ctx, id) => sql`SELECT 1 WHERE ${id}::uuid = ${row.id}::uuid AND ${ctx.tenantId}::uuid IS NOT NULL`,
           message: '此评分项被评价表引用，无法停用',
           reason: 'GENERAL_SCORE_ITEM_IN_USE',
+          subject: '此评分项',
+          referrerKind: '评价表',
           references: (ctx, id) => sql`SELECT f.id, f.name, f.visible FROM (VALUES
               (${randomUUID()}::uuid, '评价表甲', true), (${randomUUID()}::uuid, '评价表乙', true),
               (${randomUUID()}::uuid, '隐藏表一', false), (${randomUUID()}::uuid, '隐藏表二', false),
@@ -546,13 +548,13 @@ describe.each(SUBJECTS)('AC-EV-config-dicts B1b $label', (s) => {
         error: {
           code: string;
           message: string;
-          details: { reason: string; forms: { name: string }[]; otherCount: number };
+          details: { reason: string; referrers: { name: string }[]; otherCount: number };
         };
       };
       expect(body.error.code).toBe('CONFLICT');
       expect(body.error.message).toBe('此评分项被评价表【评价表甲、评价表乙】及其他 3 个引用，无法停用');
       expect(body.error.details.reason).toBe('GENERAL_SCORE_ITEM_IN_USE');
-      expect(body.error.details.forms.map((form) => form.name)).toEqual(['评价表甲', '评价表乙']);
+      expect(body.error.details.referrers.map((referrer) => referrer.name)).toEqual(['评价表甲', '评价表乙']);
       expect(body.error.details.otherCount).toBe(3);
       expect(JSON.stringify(body)).not.toContain('隐藏表');
     });

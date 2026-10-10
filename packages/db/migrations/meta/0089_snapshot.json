@@ -1,5 +1,5 @@
 {
-  "id": "908d2c37-23d9-4d75-8f48-47b00dd96b12",
+  "id": "167ae2fa-aab2-44bc-9447-baa2760b2d13",
   "prevId": "6926b453-8561-49fa-afd7-9a8d150c924d",
   "version": "7",
   "dialect": "postgresql",
@@ -37618,29 +37618,7 @@
           "default": "now()"
         }
       },
-      "indexes": {
-        "ev_cycles_name": {
-          "name": "ev_cycles_name",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "name",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
+      "indexes": {},
       "foreignKeys": {
         "ev_cycles_tenant_id_tenants_id_fk": {
           "name": "ev_cycles_tenant_id_tenants_id_fk",
@@ -37664,6 +37642,14 @@
           "columns": [
             "tenant_id",
             "id"
+          ]
+        },
+        "ev_cycles_name": {
+          "name": "ev_cycles_name",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "name"
           ]
         }
       },
@@ -37735,29 +37721,7 @@
           "default": "now()"
         }
       },
-      "indexes": {
-        "ev_general_items_name": {
-          "name": "ev_general_items_name",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "name",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
+      "indexes": {},
       "foreignKeys": {
         "ev_general_items_tenant_id_tenants_id_fk": {
           "name": "ev_general_items_tenant_id_tenants_id_fk",
@@ -37781,6 +37745,14 @@
           "columns": [
             "tenant_id",
             "id"
+          ]
+        },
+        "ev_general_items_name": {
+          "name": "ev_general_items_name",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "name"
           ]
         }
       },

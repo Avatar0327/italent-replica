@@ -7,7 +7,8 @@ CREATE TABLE "ev_cycles" (
 	"created_by" uuid NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
-	CONSTRAINT "ev_cycles_tenant_id" UNIQUE("tenant_id","id")
+	CONSTRAINT "ev_cycles_tenant_id" UNIQUE("tenant_id","id"),
+	CONSTRAINT "ev_cycles_name" UNIQUE("tenant_id","name")
 );
 --> statement-breakpoint
 CREATE TABLE "ev_general_items" (
@@ -20,13 +21,12 @@ CREATE TABLE "ev_general_items" (
 	"created_by" uuid NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
-	CONSTRAINT "ev_general_items_tenant_id" UNIQUE("tenant_id","id")
+	CONSTRAINT "ev_general_items_tenant_id" UNIQUE("tenant_id","id"),
+	CONSTRAINT "ev_general_items_name" UNIQUE("tenant_id","name")
 );
 --> statement-breakpoint
 ALTER TABLE "ev_cycles" ADD CONSTRAINT "ev_cycles_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "ev_general_items" ADD CONSTRAINT "ev_general_items_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-CREATE INDEX "ev_cycles_name" ON "ev_cycles" USING btree ("tenant_id","name");--> statement-breakpoint
-CREATE INDEX "ev_general_items_name" ON "ev_general_items" USING btree ("tenant_id","name");--> statement-breakpoint
 -- R3-T02 PR-B B1b：统一租户隔离（AGENTS §2；guard-rls）。删除走业务命令，应用角色需要 DELETE。
 SELECT enable_tenant_isolation('ev_cycles');
 --> statement-breakpoint

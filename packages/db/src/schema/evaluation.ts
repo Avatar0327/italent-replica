@@ -41,8 +41,8 @@ export const evActivityTypes = pgTable(
 );
 
 /**
- * 活动周期 ActivityCycle：评定窗口期，用于统计（规格 24 §3）。名称是否唯一规格与取证都没有，不加唯一约束
- * （TODO(需取证 #196)）；没有组织字段（字典，DEC-121 口径）。
+ * 活动周期 ActivityCycle：评定窗口期，用于统计（规格 24 §3）。名称租户内唯一（DEC-380①，Q-M0-170）；表单只有名称、没有描述；
+ * 没有组织字段（字典，DEC-121 口径）。
  */
 export const evCycles = pgTable(
   'ev_cycles',
@@ -53,12 +53,12 @@ export const evCycles = pgTable(
     enabled: enabled(),
     ...tracked(),
   },
-  (t) => [unique('ev_cycles_tenant_id').on(t.tenantId, t.id), index('ev_cycles_name').on(t.tenantId, t.name)],
+  (t) => [unique('ev_cycles_tenant_id').on(t.tenantId, t.id), unique('ev_cycles_name').on(t.tenantId, t.name)],
 );
 
 /**
  * 通用评分项 GeneralScoreItem：任职资格标准之外的评分项（现场表现、业绩等），首版只做评分（设计 §3.2）。
- * 名称唯一性同样待取证（TODO(需取证 #196)）；描述可空。
+ * 名称租户内唯一（DEC-380②，Q-M0-171）；描述（评价标准）可空、≤500 字。
  */
 export const evGeneralItems = pgTable(
   'ev_general_items',
@@ -72,6 +72,6 @@ export const evGeneralItems = pgTable(
   },
   (t) => [
     unique('ev_general_items_tenant_id').on(t.tenantId, t.id),
-    index('ev_general_items_name').on(t.tenantId, t.name),
+    unique('ev_general_items_name').on(t.tenantId, t.name),
   ],
 );
