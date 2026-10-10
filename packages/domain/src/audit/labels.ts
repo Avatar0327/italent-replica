@@ -91,6 +91,7 @@ const OBJECTS: Readonly<Record<string, AuditObjectMeta>> = {
   'survey360-relation': { label: '评价关系', app: SURVEY360 },
   'survey360-confirmation': { label: '评价关系确认', app: SURVEY360 },
   'survey360-sheet': { label: '答卷', app: SURVEY360 },
+  'survey360-sheet-timing': { label: '答卷计时', app: SURVEY360 },
   'TalentCenter.DimensionLibrary': { label: '指标库', app: TALENT },
   'TalentCenter.Category': { label: '指标库分类', app: TALENT },
   'TalentCenter.DescriptionType': { label: '发展建议类型', app: TALENT },

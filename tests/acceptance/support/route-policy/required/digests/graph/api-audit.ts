@@ -111,6 +111,7 @@ export const GRAPH: Graph = {
   'apps/api/src/audit/routes.ts#dataChangeView': [
     '#WITHHELD_SOURCE',
     '#sourceView',
+    'apps/api/src/audit/timing-time.ts#disclosedOccurredAt',
     'apps/api/src/audit/visibility.ts#visibleChanges',
     'packages/domain/src/audit/changes.ts#AUDIT_OPERATION_LABELS',
     'packages/domain/src/audit/changes.ts#auditContent',
@@ -215,6 +216,15 @@ export const GRAPH: Graph = {
   'apps/api/src/audit/survey360-person.ts#survey360PersonAuditFields': [
     'apps/api/src/audit/transfer-linkage.ts#ExactAuditFields',
     'packages/domain/src/survey360/catalog.ts#SURVEY360_OBJECTS',
+  ],
+  'apps/api/src/audit/timing-time.ts#disclosedOccurredAt': [
+    '#tenantDayStart',
+    'apps/api/src/modules/survey360/timing-audit.ts#TIMING_AUDIT_TYPE',
+    'apps/api/src/modules/survey360/timing-audit.ts#TIMING_BLURRED_ACTIONS',
+  ],
+  'apps/api/src/audit/timing-time.ts#tenantDayStart': [
+    '#zoneOffsetMs',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/audit/transfer-linkage.ts#EMP': ['packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS'],
   'apps/api/src/audit/transfer-linkage.ts#ORG': ['packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS'],
@@ -516,6 +526,8 @@ export const GRAPH: Graph = {
     '#byResolve',
     '#inVisibleActivity',
     'apps/api/src/modules/survey360/access.ts#survey360AuditScope',
+    'apps/api/src/modules/survey360/timing-audit.ts#TIMING_AUDIT_FIELDS',
+    'apps/api/src/modules/survey360/timing-audit.ts#TIMING_AUDIT_TYPE',
   ],
   'apps/api/src/audit/visibility.ts#textArray': ['#quote'],
   'apps/api/src/audit/visibility.ts#transferLinkageRule': [

@@ -9,8 +9,8 @@ export const DIGESTS: Digests = {
   'apps/api/src/audit/routes.ts': {
     auditContext: 'd5b4775d58c3',
     'route:GET /api/tenant/audit/command-failures': '9ac7295f99cb',
-    'route:GET /api/tenant/audit/data-changes': 'fb535c575801',
-    'route:GET /api/tenant/audit/data-changes/:id': 'dfa96793df49',
+    'route:GET /api/tenant/audit/data-changes': '33293c5d5184',
+    'route:GET /api/tenant/audit/data-changes/:id': 'b5932eb67b62',
     'route:GET /api/tenant/audit/operation-logs': 'b6857e645117',
   },
   'apps/api/src/authorization.ts': {

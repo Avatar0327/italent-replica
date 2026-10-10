@@ -59,6 +59,7 @@ import {
 import { JOB_OBJECT_CODES } from '../modules/permission/module-route-access.js';
 import { creatorSql } from '../modules/permission/scope-audit.js';
 import { survey360AuditScope } from '../modules/survey360/access.js';
+import { TIMING_AUDIT_FIELDS, TIMING_AUDIT_TYPE } from '../modules/survey360/timing-audit.js';
 import { OPEN_READ } from '../modules/qualification/access.js';
 import { type SourceRedactor } from './qualification-sources.js';
 import { auditRedactors } from './source-registry.js';
@@ -398,6 +399,16 @@ const survey360Rules: readonly Rule[] = [
     objectPermission: true,
     resolve: survey360AuditScope('answer'),
     desensitize: SURVEY360_SHEET_DESENSITIZE,
+    visible: inVisibleActivity,
+  },
+  {
+    // DEC-405①：答卷计时的建立 / 翻页 / 清除。按评价关系对象的业务可见性（活动可见、精细化权限生效时不可见）披露事件存在；
+    // 固定字段白名单不含 openedAt / pageStartedAt，快照与差异里的耗时和时间元数据一律不展示（发生时间另在 routes 模糊到日）
+    types: [TIMING_AUDIT_TYPE],
+    objectCode: S360.relation.code,
+    objectPermission: true,
+    fixedFields: TIMING_AUDIT_FIELDS,
+    resolve: survey360AuditScope('relation'),
     visible: inVisibleActivity,
   },
   {
