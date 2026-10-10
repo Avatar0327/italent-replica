@@ -117,6 +117,7 @@ describe('AC-PRM-FW-F090 分类：只有登记与源码不一致的发现码降�
 
 describe('AC-PRM-FW-F090 默认模式：登记与源码不一致只警告', () => {
   it('夹具注入“依赖函数 levelOf 变了、登记没动”→ 检测器报 EVIDENCE_STALE；门禁层放行并输出完整报告', () => {
+    vi.stubEnv('GITHUB_ACTIONS', ''); // CI 上这个变量是 true，本用例验证的是非 GitHub Actions 的输出
     const found = drifted();
     expect(found.map((f) => f.code)).toContain('EVIDENCE_STALE');
     const spy = warnings();
