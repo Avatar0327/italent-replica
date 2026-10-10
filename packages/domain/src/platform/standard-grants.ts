@@ -16,7 +16,12 @@
  * 台账另用两种标记编码（不是授权项，不进报告的 installed）：`<身份>/@ledger` 该身份已完成首次接管；
  * `<身份>/<对象>/@modified` 租户保存过该身份的该对象（不随审计保留期消失）。
  */
-import { BUTTON_LEVELS, type ButtonLevel, type DataOperation } from '../permission/object-permission.js';
+import {
+  BUTTON_LEVELS,
+  type ButtonLevel,
+  type DataOperation,
+  type ObjectPermission,
+} from '../permission/object-permission.js';
 import { sha256Hex } from './sha256.js';
 import { STANDARD_PROFILES, type StandardProfile } from './standard-presets.js';
 
@@ -179,40 +184,46 @@ export function grantParentCode(
   }
 }
 
+/** 一份对象权限授予的授权项：对象可见、为 true 的数据操作、字段查看 / 编辑、按钮。保存登记与身份定义共用这一处编码。 */
+export function objectGrantItems(profileCode: string, object: ObjectPermission): readonly GrantItem[] {
+  const objectCode = object.objectCode;
+  const items: GrantItem[] = [
+    { kind: 'object', code: objectGrantCode(profileCode, objectCode), profileCode, objectCode },
+  ];
+  for (const op of ['create', 'update', 'delete'] as const)
+    if (object.dataOperations[op])
+      items.push({ kind: 'op', code: opGrantCode(profileCode, objectCode, op), profileCode, objectCode, op });
+  for (const field of object.fields) {
+    const { fieldCode } = field;
+    const base = { kind: 'field', profileCode, objectCode, fieldCode } as const;
+    if (field.view)
+      items.push({ ...base, code: fieldGrantCode(profileCode, objectCode, fieldCode, 'view'), mode: 'view' });
+    if (field.edit)
+      items.push({ ...base, code: fieldGrantCode(profileCode, objectCode, fieldCode, 'edit'), mode: 'edit' });
+  }
+  for (const { buttonCode, level } of object.buttons)
+    items.push({
+      kind: 'button',
+      code: buttonGrantCode(profileCode, objectCode, buttonCode, level),
+      profileCode,
+      objectCode,
+      buttonCode,
+      level,
+    });
+  return items;
+}
+
 /** 身份定义授予的全部授权项（按身份、对象、数据操作、字段、按钮的顺序）。profiles 参数供“旧版本升级”夹具注入旧定义。 */
 export function standardGrantItems(profiles: readonly StandardProfile[] = STANDARD_PROFILES): readonly GrantItem[] {
-  const items: GrantItem[] = [];
-  const add = (item: GrantItem) => items.push(item);
-  for (const profile of profiles) {
-    const profileCode = profile.code;
-    for (const appCode of profile.apps)
-      add({ kind: 'app', code: appGrantCode(profileCode, appCode), profileCode, appCode });
-    for (const object of profile.objects) {
-      const objectCode = object.objectCode;
-      add({ kind: 'object', code: objectGrantCode(profileCode, objectCode), profileCode, objectCode });
-      for (const op of ['create', 'update', 'delete'] as const)
-        if (object.dataOperations[op])
-          add({ kind: 'op', code: opGrantCode(profileCode, objectCode, op), profileCode, objectCode, op });
-      for (const field of object.fields) {
-        const { fieldCode } = field;
-        const base = { kind: 'field', profileCode, objectCode, fieldCode } as const;
-        if (field.view)
-          add({ ...base, code: fieldGrantCode(profileCode, objectCode, fieldCode, 'view'), mode: 'view' });
-        if (field.edit)
-          add({ ...base, code: fieldGrantCode(profileCode, objectCode, fieldCode, 'edit'), mode: 'edit' });
-      }
-      for (const { buttonCode, level } of object.buttons)
-        add({
-          kind: 'button',
-          code: buttonGrantCode(profileCode, objectCode, buttonCode, level),
-          profileCode,
-          objectCode,
-          buttonCode,
-          level,
-        });
-    }
-  }
-  return items;
+  return profiles.flatMap((profile) => [
+    ...profile.apps.map((appCode): GrantItem => ({
+      kind: 'app',
+      code: appGrantCode(profile.code, appCode),
+      profileCode: profile.code,
+      appCode,
+    })),
+    ...profile.objects.flatMap((object) => objectGrantItems(profile.code, object)),
+  ]);
 }
 
 export const STANDARD_GRANT_CODES: readonly string[] = standardGrantItems().map((item) => item.code);

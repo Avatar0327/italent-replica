@@ -30,7 +30,7 @@ import {
   standardGrantItems,
   validateObjectPermission,
 } from '@italent/domain';
-import { recordLedger } from '../../seeds/grant-ledger.js';
+import { lockTenantSeeds, recordLedger } from '../../seeds/grant-ledger.js';
 import { viewOf } from './admins.js';
 import { auditAs, type PlatformWriteContext } from './audit.js';
 import { objectCatalog } from './catalog.js';
@@ -64,24 +64,38 @@ export interface StandardBackfill {
  * 授权里改授并撤销旧授权。新装身份加入有效租户管理员的可授权业务身份。重复执行不新建任何行。
  */
 export async function installMissingStandardProfiles(tx: Tx, write: PlatformWriteContext): Promise<StandardBackfill> {
+  // 与 seeds/backfill 共用补装锁：两条路径同时装同一身份会撞（租户，编码）唯一约束返回 500（方案 §4.1）
+  await lockTenantSeeds(tx, write.tenantId);
   const existing = await tx
     .select({ code: permissionProfiles.code, source: permissionProfiles.source })
     .from(permissionProfiles);
   const sources = new Map(existing.map((p) => [p.code, p.source]));
-  const installed: InstalledProfile[] = [];
+  const missing: StandardProfile[] = [];
   const skipped: StandardBackfill['skipped'][number][] = [];
   for (const profile of STANDARD_PROFILES) {
     const source = sources.get(profile.code);
-    if (source === undefined) installed.push(await installProfile(tx, write, profile));
+    if (source === undefined) missing.push(profile);
     else skipped.push({ code: profile.code, reason: source === 'standard' ? 'ALREADY_INSTALLED' : 'CODE_TAKEN' });
   }
+  const installed = await installProfilesForTenantAdmins(tx, write, missing);
+  return { installed: installed.map((p) => p.code), skipped };
+}
+
+/** 装一批标准身份并加入有效租户管理员的可授权业务身份（旧回补路由与 standard-profiles 登记项共用）。 */
+export async function installProfilesForTenantAdmins(
+  tx: Tx,
+  write: PlatformWriteContext,
+  profiles: readonly StandardProfile[],
+): Promise<InstalledProfile[]> {
+  const installed: InstalledProfile[] = [];
+  for (const profile of profiles) installed.push(await installProfile(tx, write, profile));
   if (installed.length)
     await grantableToTenantAdmins(
       tx,
       write,
       installed.map((p) => p.id),
     );
-  return { installed: installed.map((p) => p.code), skipped };
+  return installed;
 }
 
 /** 新装身份加入有效租户管理员的可授权业务身份：推进管理员记录 revision（防并发整体覆盖丢失）、写审计。 */
