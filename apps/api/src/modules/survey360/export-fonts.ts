@@ -109,23 +109,20 @@ const removeCreated = () => {
 };
 let hooked = false;
 
-/** 退出时清理本进程创建的目录：exit 事件管正常退出，SIGINT / SIGTERM 不触发 exit，要单独接；清理后仍按原信号终止。 */
+/**
+ * 进程正常退出（exit 事件）时清理本进程创建的目录。**不接管 SIGINT / SIGTERM**：在信号上挂监听并重发信号，会抢在既有
+ * 的异步停机流程（server.ts 里落盘 PGlite 的 `handle.close().finally(process.exit)`）之前终止进程，关库做不完
+ * （#198 第 3 轮 P2-3）。被信号终止、崩溃留下的目录由下一次启动回收（reclaimStaleFontDirs）。
+ */
 function hookCleanup(): void {
   if (hooked) return;
   hooked = true;
   process.once('exit', removeCreated);
-  for (const signal of ['SIGINT', 'SIGTERM'] as const) {
-    process.once(signal, () => {
-      removeCreated();
-      // 本监听器已摘除；还有别的监听器（如 PGlite 的收尾）就交给它们，没有则恢复默认的终止行为
-      if (process.listenerCount(signal) === 0) process.kill(process.pid, signal);
-    });
-  }
 }
 
 /**
  * 只含内置字体目录的 fontconfig 配置：写进本进程独占的临时目录（mkdtemp，不用可预测的共享路径，避免被别的本机用户
- * 预先放置的链接劫持），进程退出（含 SIGINT / SIGTERM）时清掉，崩溃残留由下次启动回收；返回渲染子进程的环境变量。
+ * 预先放置的链接劫持），进程正常退出时清掉，被信号终止 / 崩溃的残留由下次启动回收；返回渲染子进程的环境变量。
  */
 function fontEnvironment(directory: string): NodeJS.ProcessEnv {
   reclaimStaleFontDirs();
