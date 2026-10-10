@@ -7,7 +7,10 @@ import { fieldHandle, orderComputationItems } from '../expression/index.js';
 import { analyzeBoundItems, type BoundCalcItem } from './bound-analysis.js';
 import type { FormulaField } from './calc-rule.js';
 
-const id = (n: number) => `${String(n).repeat(8)}-${String(n).repeat(4)}-4${String(n).repeat(3)}-8${String(n).repeat(3)}-${String(n).repeat(12)}`;
+const id = (n: number) => {
+  const d = String(n);
+  return `${d.repeat(8)}-${d.repeat(4)}-4${d.repeat(3)}-8${d.repeat(3)}-${d.repeat(12)}`;
+};
 const [SCORE, LEVEL, TOTAL, MULTI, OFF] = [1, 2, 3, 4, 5].map(id) as [string, string, string, string, string];
 const h = (fieldId: string) => fieldHandle(fieldId);
 
@@ -58,7 +61,9 @@ describe('analyzeBoundItems：基本分析', () => {
   });
 
   it('循环依赖：保存不拦截；cycles 与 blocked 都是目标字段 ID；提示用显示名称', () => {
-    const result = expectOk(analyzeBoundItems([item(SCORE, `${h(TOTAL)} + 1`), item(TOTAL, `${h(SCORE)} + 1`)], CATALOG));
+    const result = expectOk(
+      analyzeBoundItems([item(SCORE, `${h(TOTAL)} + 1`), item(TOTAL, `${h(SCORE)} + 1`)], CATALOG),
+    );
     expect(result.hints.blocked.sort()).toEqual([SCORE, TOTAL].sort());
     expect(result.hints.cycles).toHaveLength(1);
     expect(result.hints.cycles[0]!.every((entry) => entry === SCORE || entry === TOTAL)).toBe(true);
@@ -119,7 +124,11 @@ describe('orderComputationItems 的 display 回调', () => {
         { field: b, priority: 0, formula: `${a} + 1` },
         { field: a, priority: 5, formula: '80' },
       ],
-      { storage: true, isKnownField: (path) => path === a || path === b, display: (key) => (key === a ? '得分' : '总分') },
+      {
+        storage: true,
+        isKnownField: (path) => path === a || path === b,
+        display: (key) => (key === a ? '得分' : '总分'),
+      },
     );
     if (!result.ok) throw new Error(JSON.stringify(result.failure));
     expect(result.warnings[0]).toBe('总分（优先级 0）引用了 得分（优先级 5），按依赖先算 得分');

@@ -19,15 +19,16 @@ const ID_A = '11111111-1111-4111-8111-111111111111';
 const ID_B = '22222222-2222-4222-8222-222222222222';
 const HANDLE_A = `@{tr-field:${ID_A}}`;
 const HANDLE_B = `@{tr-field:${ID_B}}`;
+const UPPER = 'AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA';
 
 describe('句柄的生成与识别', () => {
   it('fieldHandle 生成小写 UUID 句柄；parseFieldHandle 只认完整、小写的句柄', () => {
-    expect(fieldHandle(ID_A.toUpperCase())).toBe(HANDLE_A);
+    expect(fieldHandle(UPPER)).toBe(`@{tr-field:${UPPER.toLowerCase()}}`);
     expect(parseFieldHandle(HANDLE_A)).toBe(ID_A);
     expect(parseFieldHandle(`${HANDLE_A} `)).toBeUndefined();
     expect(parseFieldHandle('@{tr-field:not-a-uuid}')).toBeUndefined();
     expect(parseFieldHandle('@{other:' + ID_A + '}')).toBeUndefined();
-    expect(parseFieldHandle(`@{tr-field:${ID_A.toUpperCase()}}`)).toBeUndefined();
+    expect(parseFieldHandle(`@{tr-field:${UPPER}}`)).toBeUndefined();
   });
 
   it('fieldHandle 拒绝非 UUID，避免拼出可注入的句柄', () => {
@@ -54,7 +55,7 @@ describe('词法：存储模式识别句柄，输入模式不认', () => {
   });
 
   it('存储模式也不接受大写 UUID、残缺句柄', () => {
-    expect(() => tokenize(`@{tr-field:${ID_A.toUpperCase()}}`, { handles: true })).toThrow();
+    expect(() => tokenize(`@{tr-field:${UPPER}}`, { handles: true })).toThrow();
     expect(() => tokenize('@{tr-field:abc}', { handles: true })).toThrow();
     expect(() => tokenize('@{tr-field:', { handles: true })).toThrow();
   });

@@ -120,7 +120,9 @@ describe('bindFormula：绑定证明（DEC-376②）', () => {
 
   it('同名字段：带 ID 的引用不受重名影响；新输入的引用 → CALC_FIELD_NAME_AMBIGUOUS', () => {
     const twins = [...FIELDS, { id: F3, name: '绩效' }];
-    const withProof = expectBound(bindFormula('盘点对象.绩效 + 盘点对象.绩效', fresh({ visibleFields: twins, proofs: [F1, F3] })));
+    const withProof = expectBound(
+      bindFormula('盘点对象.绩效 + 盘点对象.绩效', fresh({ visibleFields: twins, proofs: [F1, F3] })),
+    );
     expect(withProof.mapping).toEqual([F1, F3]);
     const failure = expectFailure(bindFormula('盘点对象.绩效', fresh({ visibleFields: twins })));
     expect(failure).toEqual({ code: 'CALC_FIELD_NAME_AMBIGUOUS', occurrence: 0 });
@@ -174,7 +176,9 @@ describe('bindFormula：盘点对象.盘点方案（DEC-376③）', () => {
   });
 
   it('显式选择 context 或字段 ID 后保存成功，绑定与选择一致', () => {
-    const toContext = expectBound(bindFormula('盘点对象.盘点方案', fresh({ visibleFields: custom, proofs: [CONTEXT_BINDING] })));
+    const toContext = expectBound(
+      bindFormula('盘点对象.盘点方案', fresh({ visibleFields: custom, proofs: [CONTEXT_BINDING] })),
+    );
     expect([toContext.stored, toContext.mapping]).toEqual(['盘点对象.盘点方案', [CONTEXT_BINDING]]);
     const toField = expectBound(bindFormula('盘点对象.盘点方案', fresh({ visibleFields: custom, proofs: [F3] })));
     expect([toField.stored, toField.mapping]).toEqual([H3, [F3]]);
@@ -188,9 +192,7 @@ describe('bindFormula：盘点对象.盘点方案（DEC-376③）', () => {
 
 describe('bindFormula：不可见引用（DEC-376①）', () => {
   it('提交含占位符的公式 → HIDDEN_FIELD；HIDDEN_FIELD 优先于同一公式里的其他语义问题', () => {
-    const failure = expectFailure(
-      bindFormula(`盘点对象.${HIDDEN_FIELD_PLACEHOLDER} + 盘点对象.不存在 + A`, fresh()),
-    );
+    const failure = expectFailure(bindFormula(`盘点对象.${HIDDEN_FIELD_PLACEHOLDER} + 盘点对象.不存在 + A`, fresh()));
     expect(failure).toMatchObject({ code: 'FORMULA_INVALID' });
     if (failure.code !== 'FORMULA_INVALID') return;
     expect(failure.issues.map((issue) => issue.code)).toEqual(['HIDDEN_FIELD']);
@@ -221,7 +223,9 @@ describe('bindFormula：裸词（DEC-374⑥，契约 §1.7）', () => {
   it('裸词恰是查看人可见字段的名称：追加“引用盘点字段请写 盘点对象.<名>”', () => {
     const failure = expectFailure(bindFormula('IF(盘点对象.绩效 = 潜力, 1, 2)', fresh()));
     if (failure.code !== 'FORMULA_INVALID') throw new Error(JSON.stringify(failure));
-    expect(failure.issues[0]!.message).toBe('“潜力”不是字段也不是变量；作文本请写成 "潜力"；引用盘点字段请写 盘点对象.潜力');
+    expect(failure.issues[0]!.message).toBe(
+      '“潜力”不是字段也不是变量；作文本请写成 "潜力"；引用盘点字段请写 盘点对象.潜力',
+    );
   });
 
   it('与看不到的字段同名时不提示（不泄露不可见字段的存在）', () => {
@@ -255,7 +259,11 @@ describe('renderFormula：ID → 名称', () => {
 
   it('查看人看不到的字段 → 占位符，绑定为 null', () => {
     const result = renderFormula(`${H1} + ${H3}`, { names });
-    expect(result).toEqual({ ok: true, text: `盘点对象.绩效 + 盘点对象.${HIDDEN_FIELD_PLACEHOLDER}`, bindings: [F1, null] });
+    expect(result).toEqual({
+      ok: true,
+      text: `盘点对象.绩效 + 盘点对象.${HIDDEN_FIELD_PLACEHOLDER}`,
+      bindings: [F1, null],
+    });
   });
 
   it('规范文本无法解析时返回 ok:false（由调用方按 legacy / 待修复显示处理）', () => {
@@ -264,7 +272,10 @@ describe('renderFormula：ID → 名称', () => {
 
   it('改名后渲染新名称；往返：渲染文本带全部绑定重新绑定，结果逐字等于原规范文本', () => {
     const stored = `${H2} * 2 + ${H1} + 盘点对象.盘点方案`;
-    const renamed = new Map([[F1, '新绩效'], [F2, '潜力']]);
+    const renamed = new Map([
+      [F1, '新绩效'],
+      [F2, '潜力'],
+    ]);
     const rendered = renderFormula(stored, { names: renamed });
     if (!rendered.ok) throw new Error('渲染失败');
     expect(rendered.text).toContain('盘点对象.新绩效');
@@ -278,7 +289,10 @@ describe('renderFormula：ID → 名称', () => {
   });
 
   it('重名回显：A 改名为 B 后回显 B+B，带绑定重提仍绑定原 ID', () => {
-    const twins = new Map([[F1, '潜力'], [F2, '潜力']]);
+    const twins = new Map([
+      [F1, '潜力'],
+      [F2, '潜力'],
+    ]);
     const rendered = renderFormula(`${H1} + ${H2}`, { names: twins });
     if (!rendered.ok) throw new Error('渲染失败');
     expect(rendered.text).toBe('盘点对象.潜力 + 盘点对象.潜力');

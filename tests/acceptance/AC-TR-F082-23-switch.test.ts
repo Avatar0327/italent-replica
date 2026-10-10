@@ -3,9 +3,8 @@
  * 默认值只在一处定义，F082-1 为 false；依赖注入覆盖只允许作用于 useTestDb() 建的隔离测试库。
  * 不做启用标记或运行时新旧实例互斥（DEC-386）；开关打开时的能力检查与检查脚本见 F082-5。
  */
-import { createPgliteDb } from '@italent/db';
+import { createPgDb } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
-import { PGlite } from '@electric-sql/pglite';
 import { describe, expect, it } from 'vitest';
 import { createApp } from '../../apps/api/src/app.js';
 import {
@@ -46,7 +45,8 @@ describe('AC-23 DI 隔离：覆盖只作用于隔离测试库', () => {
   });
 
   it('非 useTestDb() 建的库上覆盖开关 → createApp 抛错（不论打开还是关闭）', async () => {
-    const stranger = createPgliteDb(new PGlite());
+    // 不是 useTestDb() 建的库（连接是惰性的，这里不会真的去连）
+    const stranger = createPgDb('postgres://stranger@127.0.0.1:1/none');
     try {
       expect(() => createApp({ db: stranger.db, formulaIdBinding: true })).toThrow(/开关/);
       expect(() => createApp({ db: stranger.db, formulaIdBinding: false })).toThrow(/开关/);

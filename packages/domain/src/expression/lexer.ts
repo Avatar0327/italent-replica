@@ -17,6 +17,10 @@ export type TokenKind =
   | 'rparen'
   | 'comma'
   | 'semicolon'
+  /** 存储模式的字段句柄 `@{tr-field:<uuid>}`（F-082 契约 §1.2）；value 是小写字段 ID。 */
+  | 'handle'
+  /** 输入模式的不可见字段占位符 `〔不可见字段〕`，只能出现在 `盘点对象.` 之后（由解析器校验）。 */
+  | 'placeholder'
   | 'eof';
 
 export type Keyword = 'if' | 'then' | 'else' | 'and' | 'or' | 'not' | 'true' | 'false';
@@ -45,6 +49,32 @@ export class SyntaxIssueError extends Error {
     super(issue.message);
     this.name = 'SyntaxIssueError';
   }
+}
+
+/** 渲染时代替看不到的字段名；输入模式的词法器把它识别为专用词（契约 §1.2）。 */
+export const HIDDEN_FIELD_PLACEHOLDER = '〔不可见字段〕';
+/** 占位符只能跟在这个对象名后面（与 talent-review 的 FORMULA_OBJECT 同值，由单测核对）。 */
+export const HIDDEN_FIELD_OWNER = '盘点对象';
+
+const UUID_SOURCE = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
+const HANDLE_AT = new RegExp(`@\\{tr-field:(${UUID_SOURCE})\\}`, 'y');
+const HANDLE_WHOLE = new RegExp(`^@\\{tr-field:(${UUID_SOURCE})\\}$`);
+
+/** 字段句柄：一个完整的盘点字段引用；UUID 按 DEC-194 小写。非 UUID 直接抛错，避免拼出可注入的句柄。 */
+export function fieldHandle(fieldId: string): string {
+  const id = fieldId.toLowerCase();
+  if (!new RegExp(`^${UUID_SOURCE}$`).test(id)) throw new TypeError('字段句柄：字段 ID 必须是 UUID');
+  return `@{tr-field:${id}}`;
+}
+
+/** 句柄原文 → 字段 ID；只认完整、小写的句柄。 */
+export function parseFieldHandle(text: string): string | undefined {
+  return HANDLE_WHOLE.exec(text)?.[1];
+}
+
+export interface TokenizeOptions {
+  /** 存储模式：识别句柄 `@{tr-field:<uuid>}`，不识别占位符。输入模式（缺省）下 `@` 是非法字符。 */
+  readonly handles?: boolean;
 }
 
 const KEYWORDS: Readonly<Record<string, Keyword>> = {
@@ -127,7 +157,10 @@ class Scanner {
   private column = 1;
   readonly tokens: Token[] = [];
 
-  constructor(private readonly source: string) {}
+  constructor(
+    private readonly source: string,
+    private readonly handles: boolean,
+  ) {}
 
   run(): Token[] {
     while (this.offset < this.source.length) {
@@ -173,6 +206,8 @@ class Scanner {
   }
 
   private scanToken(ch: string): void {
+    if (this.handles && ch === '@') return this.scanHandle();
+    if (!this.handles && this.source.startsWith(HIDDEN_FIELD_PLACEHOLDER, this.offset)) return this.scanPlaceholder();
     if (CHINESE_QUOTES.has(ch)) this.error('CHINESE_QUOTE', '字符串须用英文双引号，不能用中文引号');
     if (ch === '"') return this.scanString();
     if (ch === "'") this.error('SYNTAX_ERROR', '字符串须用英文双引号');
@@ -200,6 +235,21 @@ class Scanner {
     if (normalized === 'and' || normalized === 'or' || normalized === 'not')
       this.push('keyword', raw, normalized, start);
     else this.push('operator', raw, normalized, start);
+  }
+
+  private scanHandle(): void {
+    HANDLE_AT.lastIndex = this.offset;
+    const match = HANDLE_AT.exec(this.source);
+    if (!match) this.error('SYNTAX_ERROR', '字段句柄格式不正确');
+    const start = this.position();
+    this.advance(match[0].length);
+    this.push('handle', match[0], match[1]!, start);
+  }
+
+  private scanPlaceholder(): void {
+    const start = this.position();
+    this.advance(HIDDEN_FIELD_PLACEHOLDER.length);
+    this.push('placeholder', HIDDEN_FIELD_PLACEHOLDER, HIDDEN_FIELD_PLACEHOLDER, start);
   }
 
   private scanString(): void {
@@ -264,6 +314,6 @@ class Scanner {
 }
 
 /** 把公式文本切成 token；遇到中文引号或无法识别的字符抛 SyntaxIssueError。 */
-export function tokenize(source: string): Token[] {
-  return new Scanner(source).run();
+export function tokenize(source: string, options: TokenizeOptions = {}): Token[] {
+  return new Scanner(source, options.handles === true).run();
 }

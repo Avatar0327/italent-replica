@@ -18,7 +18,8 @@ it('存量优先级超过 1000000：迁移失败并报告约束', async () => {
       VALUES (${fieldId}, ${tenantId}, 'score', '得分', 'number', 'result', 2)`);
     await tx.execute(sql`INSERT INTO talent_review_calc_rules (id, tenant_id, name, created_by, updated_by)
       VALUES (${ruleId}, ${tenantId}, '规则', ${actor}, ${actor})`);
-    await tx.execute(sql`INSERT INTO talent_review_calc_rule_items (tenant_id, rule_id, target_field_id, formula, priority)
+    await tx.execute(sql`INSERT INTO talent_review_calc_rule_items
+      (tenant_id, rule_id, target_field_id, formula, priority)
       VALUES (${tenantId}, ${ruleId}, ${fieldId}, '1', 1000001)`);
   });
   await expect(handle.migrate()).rejects.toThrow(/priority|check|约束|violat/i);

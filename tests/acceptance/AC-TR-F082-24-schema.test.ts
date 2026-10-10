@@ -11,8 +11,7 @@ import { pgErrorCode, useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 
 const testDb = useTestDb();
-const rows = <T>(result: unknown) =>
-  (Array.isArray(result) ? result : (result as { rows: T[] }).rows) as T[];
+const rows = <T>(result: unknown) => (Array.isArray(result) ? result : (result as { rows: T[] }).rows) as T[];
 
 interface World {
   readonly tenantId: string;
@@ -28,7 +27,13 @@ async function world(): Promise<World> {
   const tenantId = randomUUID();
   tenantNo += 1;
   await db.execute(sql`INSERT INTO tenants (id, code, name) VALUES (${tenantId}, ${`f082-${tenantNo}`}, 'f082')`);
-  const [fieldA, fieldB, ruleId, itemId, actor] = [randomUUID(), randomUUID(), randomUUID(), randomUUID(), randomUUID()];
+  const [fieldA, fieldB, ruleId, itemId, actor] = [
+    randomUUID(),
+    randomUUID(),
+    randomUUID(),
+    randomUUID(),
+    randomUUID(),
+  ];
   await withTenant(db, tenantId, async (tx) => {
     for (const [id, code, name] of [
       [fieldA, 'score_a', '得分A'],
@@ -127,13 +132,14 @@ describe('引用表 talent_review_calc_item_refs', () => {
     expect(await refCount(w)).toBe(1);
   });
 
-  it('被引用的字段删除被库外键拒绝（restrict，23503）；字段在引用表里不可悬挂', async () => {
+  it('被引用的字段删除被库外键拒绝（restrict）；字段在引用表里不可悬挂', async () => {
     const w = await world();
     await insertRef(w, w.fieldB, 'candidate');
     const error = await withTenant(testDb().db, w.tenantId, (tx) =>
       tx.execute(sql`DELETE FROM talent_review_fields WHERE id = ${w.fieldB}`),
     ).catch((e: unknown) => e);
-    expect(pgErrorCode(error)).toBe('23503');
+    // restrict 在 PGlite 报 23001，真 PG 报 23503，都是外键拒绝
+    expect(['23001', '23503']).toContain(pgErrorCode(error));
     const dangling = await insertRef(w, randomUUID(), 'bound').catch((e: unknown) => e);
     expect(pgErrorCode(dangling)).toBe('23503');
     expect(await refCount(w)).toBe(1);

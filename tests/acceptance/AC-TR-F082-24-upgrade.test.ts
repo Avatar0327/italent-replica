@@ -8,8 +8,7 @@ import { useTestDb } from '@italent/testkit';
 import { expect, it } from 'vitest';
 
 const database = useTestDb({ migrateBefore: '_f082_formula_id_binding' });
-const rows = <T>(result: unknown) =>
-  (Array.isArray(result) ? result : (result as { rows: T[] }).rows) as T[];
+const rows = <T>(result: unknown) => (Array.isArray(result) ? result : (result as { rows: T[] }).rows) as T[];
 
 it('存量项目升级后为 legacy；有字段的租户补一行目录版本，空租户不补；重跑迁移不重复', async () => {
   const handle = database();
@@ -28,7 +27,8 @@ it('存量项目升级后为 legacy；有字段的租户补一行目录版本，
       VALUES (${fieldId}, ${withFields}, 'score', '得分', 'number', 'result', 2)`);
     await tx.execute(sql`INSERT INTO talent_review_calc_rules (id, tenant_id, name, created_by, updated_by)
       VALUES (${ruleId}, ${withFields}, '规则', ${actor}, ${actor})`);
-    await tx.execute(sql`INSERT INTO talent_review_calc_rule_items (id, tenant_id, rule_id, target_field_id, formula, priority)
+    await tx.execute(sql`INSERT INTO talent_review_calc_rule_items
+      (id, tenant_id, rule_id, target_field_id, formula, priority)
       VALUES (${itemId}, ${withFields}, ${ruleId}, ${fieldId}, '盘点对象.得分 + 1', 1000000)`);
   });
   await handle.migrate();

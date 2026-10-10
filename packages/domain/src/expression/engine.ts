@@ -65,6 +65,13 @@ export interface ValidationOptions {
    * 取数函数参数里的记录字段（考核结果.* 等）不按它推导。
    */
   readonly fieldKind?: (path: string) => ExpressionFieldKind | undefined;
+  /** 存储模式（F-082）：公式是带字段句柄的规范文本；句柄就是字段目录里的字段路径。 */
+  readonly storage?: boolean;
+  /**
+   * 排序诊断的显示名称：计算项目的字段键（存储模式下是句柄）→ 对外文案里的名称。只影响文案，
+   * 结构化诊断的 fields 仍是字段键（F-082 契约 §4）。缺省原样显示字段键。
+   */
+  readonly display?: (key: string) => string;
 }
 
 /**
@@ -189,7 +196,7 @@ const byOffset = (a: SourcePosition, b: SourcePosition) => a.offset - b.offset;
  * 返回报错行 / 列（复刻改进，`26` §8.1）；类型不确定的只给提示（warnings），不阻断保存。
  */
 export function validateFormula(source: string, options: ValidationOptions = {}): ValidationResult {
-  const parsed = parseFormula(source);
+  const parsed = parseFormula(source, { stored: options.storage === true });
   if (!parsed.ok) return parsed;
   const registry = options.registry ?? createDefaultRegistry();
   const collected = new ReferenceCollector(registry, options.isKnownField, options.fieldKind).collect(parsed.program);
@@ -388,7 +395,11 @@ interface ParsedItems {
   readonly warnings: readonly OrderingDiagnostic[];
 }
 
+const identityDisplay = (key: string) => key;
+
 interface ItemValidation {
+  readonly storage?: boolean;
+  readonly display?: (key: string) => string;
   readonly registry: FunctionRegistry;
   readonly isKnownField?: (path: string) => boolean;
   readonly fieldKind?: (path: string) => ExpressionFieldKind | undefined;
@@ -413,11 +424,13 @@ function parseItems(items: readonly ComputationItem[], options: ItemValidation):
     : undefined;
   const parsed: { item: ComputationItem; program: Program; refs: readonly string[] }[] = [];
   const warnings: OrderingDiagnostic[] = [];
+  const show = options.display ?? identityDisplay;
   for (const item of items) {
     const validated = validateFormula(item.formula, {
       registry: options.registry,
       isKnownField,
       fieldKind,
+      storage: options.storage,
     });
     if (!validated.ok) {
       const issue = validated.errors[0]!;
@@ -426,7 +439,7 @@ function parseItems(items: readonly ComputationItem[], options: ItemValidation):
     }
     parsed.push({ item, program: validated.program, refs: validated.fields });
     for (const warning of validated.warnings) {
-      const message = `${item.field}：${warning.message}（第 ${warning.line} 行第 ${warning.column} 列）`;
+      const message = `${show(item.field)}：${warning.message}（第 ${warning.line} 行第 ${warning.column} 列）`;
       // 文案可能提到这条公式引用的任何字段：fields 取项目字段 + 公式的全部引用
       warnings.push(diagnostic('typeUncertain', [item.field, ...validated.fields], message));
     }
@@ -525,11 +538,11 @@ function cycleGroups(entries: readonly OrderedItem[], blocked: readonly string[]
 }
 
 /** 代表环，及同组里不在代表环上的成环项目。 */
-function describeGroup(group: CycleGroup): string {
+function describeGroup(group: CycleGroup, show: (key: string) => string = identityDisplay): string {
   const onPath = new Set(group.path);
   const others = group.members.filter((member) => !onPath.has(member));
-  const path = group.path.join('→');
-  return others.length ? `${path}（同组成环项目还有 ${others.join('、')}）` : path;
+  const path = group.path.map(show).join('→');
+  return others.length ? `${path}（同组成环项目还有 ${others.map(show).join('、')}）` : path;
 }
 
 interface Topology {
@@ -540,7 +553,7 @@ interface Topology {
 }
 
 /** Kahn 拓扑排序：可算的项目里先取优先级小、再取原顺序靠前的；有依赖矛盾时以依赖为准并给出提示。 */
-function topologicalOrder(entries: readonly OrderedItem[]): Topology {
+function topologicalOrder(entries: readonly OrderedItem[], show: (key: string) => string): Topology {
   const byField = new Map(entries.map((entry) => [entry.item.field, entry]));
   const index = new Map(entries.map((entry, i) => [entry.item.field, i]));
   const remaining = new Set(entries.map((entry) => entry.item.field));
@@ -556,8 +569,8 @@ function topologicalOrder(entries: readonly OrderedItem[]): Topology {
     for (const dependency of next.dependsOn) {
       const upstream = byField.get(dependency)!.item;
       if (upstream.priority > next.item.priority) {
-        const detail = `引用了 ${dependency}（优先级 ${upstream.priority}），按依赖先算 ${dependency}`;
-        const message = `${next.item.field}（优先级 ${next.item.priority}）${detail}`;
+        const detail = `引用了 ${show(dependency)}（优先级 ${upstream.priority}），按依赖先算 ${show(dependency)}`;
+        const message = `${show(next.item.field)}（优先级 ${next.item.priority}）${detail}`;
         warnings.push(diagnostic('priorityConflict', [next.item.field, dependency], message));
       }
     }
@@ -575,9 +588,16 @@ interface Ordering {
 
 function orderItems(items: readonly ComputationItem[], options: ValidationOptions): Ordering {
   const registry = options.registry ?? createDefaultRegistry();
-  const parsed = parseItems(items, { registry, isKnownField: options.isKnownField, fieldKind: options.fieldKind });
+  const show = options.display ?? identityDisplay;
+  const parsed = parseItems(items, {
+    registry,
+    isKnownField: options.isKnownField,
+    fieldKind: options.fieldKind,
+    storage: options.storage,
+    display: options.display,
+  });
   if (!('entries' in parsed)) return { result: { ok: false, failure: parsed }, groups: [] };
-  const sorted = topologicalOrder(parsed.entries);
+  const sorted = topologicalOrder(parsed.entries, show);
   const blocked = sorted.blocked.map((entry) => entry.item.field);
   const groups = cycleGroups(parsed.entries, blocked);
   const inCycle = new Set(groups.flatMap((group) => group.members));
@@ -589,7 +609,7 @@ function orderItems(items: readonly ComputationItem[], options: ValidationOption
       diagnostic(
         'cycle',
         [...group.path, ...group.members],
-        `检测到循环依赖：${describeGroup(group)}（允许保存，计算时将整次失败、不写入任何值）`,
+        `检测到循环依赖：${describeGroup(group, show)}（允许保存，计算时将整次失败、不写入任何值）`,
       ),
     ),
     ...(truncated
@@ -598,13 +618,13 @@ function orderItems(items: readonly ComputationItem[], options: ValidationOption
             'cyclesTruncated',
             cycleMembers,
             `循环依赖共 ${groups.length} 组，以上只列出前 ${reported.length} 组（已截断）；` +
-              `全部成环项目：${cycleMembers.join('、')}`,
+              `全部成环项目：${cycleMembers.map(show).join('、')}`,
           ),
         ]
       : []),
     ...blocked
       .filter((field) => !inCycle.has(field))
-      .map((field) => diagnostic('blockedByCycle', [field], `${field} 依赖成环的项目，计算时同样无法计算`)),
+      .map((field) => diagnostic('blockedByCycle', [field], `${show(field)} 依赖成环的项目，计算时同样无法计算`)),
   ];
   const diagnostics = [...parsed.warnings, ...sorted.warnings, ...cycleWarnings];
   const entries = [...sorted.order, ...sorted.blocked];
@@ -643,7 +663,7 @@ function cyclicFailure(groups: readonly CycleGroup[], members: readonly string[]
   const suffix = truncated ? `；……（已截断，共 ${groups.length} 组循环依赖、${members.length} 个成环项目）` : '';
   return {
     code: 'CYCLIC_DEPENDENCY',
-    message: `计算失败：循环依赖 ${reported.map(describeGroup).join('；')}${suffix}`,
+    message: `计算失败：循环依赖 ${reported.map((group) => describeGroup(group)).join('；')}${suffix}`,
     cycle: reported[0]!.path,
     cycles: reported.map((group) => group.path),
     members,
