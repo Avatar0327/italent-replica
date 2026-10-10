@@ -9,7 +9,7 @@ import type { AdminCapability } from '@italent/domain';
 import type { ErrorCode } from '../errors.js';
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
-export type ButtonLevel = 'list' | 'detail';
+export type ButtonLevel = 'list' | 'detail' | 'app_page';
 export type ObjectCode = string;
 /** 具名登记项的名称：定位器 / 守卫 / 谓词 / 关系 / 映射函数 / 形状 / 投影器 / 命令内前提。实现随接管 PR。 */
 export type GuardName = string;

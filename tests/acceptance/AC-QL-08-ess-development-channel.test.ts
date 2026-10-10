@@ -8,13 +8,14 @@
  * 所有 ESS 请求走真实授权器（authorize: undefined）；配置与权限用全部允许的钩子准备。
  */
 import { bootstrapTenantAdmin } from '@italent/api';
-import { sql, withTenant } from '@italent/db';
+import { eq, orgHierarchyLinks, orgVersions, sql, withTenant } from '@italent/db';
 import { EMPLOYEE_SELF_SERVICE_CODE, QUALIFICATION_OBJECTS, STANDARD_PROFILES } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
+import { MANAGER_PROFILE_CODE } from '../../apps/api/src/modules/permission/manager-identity.js';
 import { installProfile } from '../../apps/api/src/modules/permission/standard-profiles.js';
-import { createProfile, grant, makeGrantable, setObjectPermission } from './AC-PRM-support.js';
+import { createProfile, type PermissionWorld, grant, makeGrantable, setObjectPermission } from './AC-PRM-support.js';
 import { boundUser, type ChannelWorld, channelWorld, ESS } from './AC-QL-08-support.js';
 import { QL_NOW } from './AC-QL-support.js';
 import { putObject } from './support/f061.js';
@@ -39,6 +40,25 @@ interface Card {
 }
 const keys = (value: object) => Object.keys(value).sort();
 
+const admins = new WeakMap<ChannelWorld, Promise<PermissionWorld>>();
+/** 夹具的租户管理员记录（授权接口要求），每个租户只建一次。 */
+const adminOf = (cw: ChannelWorld) => {
+  if (!admins.has(cw)) {
+    admins.set(
+      cw,
+      bootstrapTenantAdmin(cw.db, { tenantId: cw.w.tenant.id, userId: cw.w.user.id }, cmd()).then((adminRecord) => ({
+        db: cw.db,
+        tenant: cw.w.tenant,
+        admin: cw.w.user,
+        adminRecord,
+        api: cw.w.api,
+        asAdmin: cw.w.as,
+      })),
+    );
+  }
+  return admins.get(cw)!;
+};
+
 async function essWorld(label: string, installEmployee = true) {
   const cw = await channelWorld(database, label);
   const real = tenantApi(cw.db, { authorize: undefined, clock: () => QL_NOW });
@@ -52,7 +72,10 @@ async function essWorld(label: string, installEmployee = true) {
   const me = await boundUser(cw, employeeId);
   const card = (who = me.as, path = '/development-channel') => real.request('GET', `${ESS}${path}`, who);
   const savePages = (buttons: readonly { buttonCode: string; level: string }[]) =>
-    putObject({ api: cw.w.api, asAdmin: cw.w.as }, profileId, PAGES, (o) => ({ ...o, buttons: [...buttons] }));
+    putObject({ api: cw.w.api, asAdmin: cw.w.as }, profileId, PAGES, (o) => ({
+      ...o,
+      buttons: [...buttons] as typeof o.buttons,
+    }));
   return { cw, real, profileId, employeeId, me, card, savePages };
 }
 
@@ -137,8 +160,7 @@ describe('AC-QL-08 ESS：员工通道卡片', () => {
 describe('AC-QL-08 ESS：固定投影（不走对象字段权限，不含各级标准明细）', () => {
   /** 给员工另授一个 Qualification 身份：DevelopmentChannel / QualificationStandard 字段全可见或全隐藏。 */
   async function withQualificationIdentity(cw: ChannelWorld, userId: string, visible: boolean) {
-    const adminRecord = await bootstrapTenantAdmin(cw.db, { tenantId: cw.w.tenant.id, userId: cw.w.user.id }, cmd());
-    const admin = { db: cw.db, tenant: cw.w.tenant, admin: cw.w.user, adminRecord, api: cw.w.api, asAdmin: cw.w.as };
+    const admin = await adminOf(cw);
     const profile = await createProfile(admin, `ql-card-${randomUUID().slice(0, 6)}`, { apps: ['Qualification'] });
     for (const object of [QUALIFICATION_OBJECTS.standard, QUALIFICATION_OBJECTS.developmentChannel]) {
       const response = await setObjectPermission(
@@ -214,5 +236,47 @@ describe('AC-QL-08 ESS：他人员工 ID 不可读；未绑定员工拒绝', () 
     const res = await card(outsider.as);
     expect(res.status).toBe(403);
     expect(await res.json()).toMatchObject({ error: { message: '当前用户未绑定员工' } });
+  });
+});
+
+describe('AC-QL-08 ESS：页面权限并集含经理自动身份（F-087 后补-权限，C1-6 顺手改为用请求的真实授权器判定）', () => {
+  it('员工身份去掉页面后，经理自动身份（department_manager_self_service）勾了页面的负责人可看，非负责人仍 403（AC-QL-08）', async () => {
+    const { cw, real, card, me, savePages, employeeId } = await essWorld('ql08-ess-manager');
+    expect((await savePages([])).status).toBe(200);
+    expect((await card()).status).toBe(403);
+
+    // 租户配置经理自动身份：Qualification 应用 + 员工发展通道页面
+    const admin = await adminOf(cw);
+    const profile = await createProfile(admin, MANAGER_PROFILE_CODE, { apps: ['Qualification'] });
+    const saved = await setObjectPermission(
+      admin,
+      profile,
+      { dataOperations: { create: false, update: false, delete: false }, fields: [], buttons: [PAGE_BUTTON] },
+      PAGES,
+    );
+    expect(saved.status, await saved.clone().text()).toBe(200);
+    // 还不是任何部门的负责人、也没有下属：派生身份不生效
+    expect((await real.request('GET', `${ESS}/development-channel`, me.as)).status).toBe(403);
+
+    // 设为部门负责人后派生身份生效
+    await cw.tx(async (tx) => {
+      const [old] = await tx
+        .select()
+        .from(orgVersions)
+        .where(eq(orgVersions.orgId, cw.w.orgId))
+        .orderBy(sql`version_no DESC`)
+        .limit(1);
+      const versionId = randomUUID();
+      await tx.insert(orgVersions).values({
+        ...old!,
+        id: versionId,
+        versionNo: old!.versionNo + 1,
+        previousVersionId: old!.id,
+        personInChargeId: employeeId,
+      });
+      const links = await tx.select().from(orgHierarchyLinks).where(eq(orgHierarchyLinks.versionId, old!.id));
+      if (links.length) await tx.insert(orgHierarchyLinks).values(links.map((link) => ({ ...link, versionId })));
+    });
+    expect((await real.request('GET', `${ESS}/development-channel`, me.as)).status).toBe(200);
   });
 });

@@ -231,7 +231,7 @@ describe('AC-PRM-FW-02 B-03 范围绑定（need）：与“或”满足合并、
     expect(codes(check([base], table))).toContain('REQUIRED_MISSING');
   });
 
-  it('R1c：含 ≥2 个承载节点的准入备选，其 obj: / admin: 准入义务缺 need → NEED_UNBOUND（设计 §1.3 实测 20 条端点）', () => {
+  it('R1c：含 ≥2 个承载节点的准入备选，其 obj: / admin: 准入义务缺 need → NEED_UNBOUND（设计 §1.3 实测 20 条端点，C1-6 +2 = 22）', () => {
     const stripped: RequiredTable = Object.fromEntries(
       Object.entries(REQUIRED).map(([key, os]) => [key, os.map(({ need: _need, ...rest }) => rest as Obligation)]),
     );
@@ -244,7 +244,7 @@ describe('AC-PRM-FW-02 B-03 范围绑定（need）：与“或”满足合并、
         return new Set(carriers).size >= 2;
       }),
     );
-    expect(multi).toHaveLength(20);
+    expect(multi).toHaveLength(22);
     expect(new Set(unbound.map((f) => f.route))).toEqual(new Set(multi.map((r) => `${r.method} ${r.path}`)));
   });
 

@@ -8,7 +8,7 @@
  * transfer.direct 守卫只在 mode = direct（requireDirectTransfer）或
  * initiator = hr（预览 allowedActions）时求值，本人入口固定 application / employee，恒不触发——按代码路径上的具名守卫登记。
  */
-import type { Obligation, RequiredTable } from './types.js';
+import type { Evidence, Obligation, RequiredTable } from './types.js';
 
 const ROUTES = 'apps/api/src/modules/employee-self-service/routes.ts';
 const ACCESS = 'apps/api/src/modules/employee-self-service/access.ts';
@@ -79,6 +79,46 @@ const CREATE_WRITE = [
   },
 ] as const;
 const SELF_FACTS = ['self:selfAccess', 'self:transferFieldAccess'];
+const DEV_CHANNEL = 'apps/api/src/modules/employee-self-service/development-channel.ts';
+const PAGE_PERMISSION = 'apps/api/src/modules/employee-self-service/page-permission.ts';
+/** 员工发展通道页面权限（C1-6）：缺权 403 PAGE_PERMISSION_REQUIRED；判定为员工身份 ∪ 用户自己的身份（F-087 经理自动身份）。 */
+const developmentChannelPage = (entry: Evidence): Obligation[] => [
+  {
+    perm: 'btn:self#EmployeeDevelopmentChannel@app_page',
+    // 判定里用请求的授权器问 Qualification.Pages 的页面按钮（buttonResource + object.button）
+    facts: ['button:buttonResource', 'button:object.button'],
+    at: [
+      entry,
+      {
+        role: 'impl',
+        unit: `${PAGE_PERMISSION}#employeePageGranted`,
+        anchor: "resource: buttonResource(QUALIFICATION_PAGES.code, page, 'app_page')",
+      },
+      {
+        role: 'const',
+        unit: 'packages/domain/src/qualification/catalog.ts#QUALIFICATION_PAGES',
+        anchor: 'code: `${QUALIFICATION_APP}.Pages`',
+      },
+    ],
+  },
+  {
+    perm: 'guard:selfService.developmentChannelPage',
+    facts: ['guard:selfService.developmentChannelPage'],
+    at: [
+      entry,
+      {
+        role: 'impl',
+        unit: `${DEV_CHANNEL}#ownDevelopmentChannel`,
+        anchor: "reason: 'PAGE_PERMISSION_REQUIRED'",
+      },
+      {
+        role: 'impl',
+        unit: `${PAGE_PERMISSION}#employeePageGranted`,
+        anchor: 'if (!carrier || has(carrier.buttons)) return true',
+      },
+    ],
+  },
+];
 /** 三个本人调动按钮的检查实现（C1-2b，契约 §2.3.2）：预览与提交各有一个调用点，同一个检查函数。 */
 const BUTTONS_IMPL = {
   role: 'impl',
@@ -280,6 +320,26 @@ export const SELF_SERVICE: RequiredTable = {
         ...CREATE_WRITE,
       ],
     },
+  ],
+  // 员工通道卡片（C1-6）：本人 + 员工发展通道页面权限；页面判定 employeePageGranted 在 ownDevelopmentChannel 内
+  'GET /api/tenant/self-service/development-channel': [
+    self('GET', '/development-channel', ['self:selfAccess']),
+    ...developmentChannelPage(route('GET', '/development-channel', 'return c.json(await card(self))')),
+  ],
+  'GET /api/tenant/self-service/employees/:id/development-channel': [
+    {
+      ...self('GET', '/employees/:id/development-channel', ['self:selfAccess']),
+      note: '另有 :id 必须是绑定本人（否则 403「只能查看本人发展通道」）',
+      at: [
+        route(
+          'GET',
+          '/employees/:id/development-channel',
+          "if (uuidParam(c) !== self.employee.id) throw new AppError('FORBIDDEN', '只能查看本人发展通道')",
+        ),
+        ...BOUND,
+      ],
+    },
+    ...developmentChannelPage(route('GET', '/employees/:id/development-channel', 'return c.json(await card(self))')),
   ],
   'GET /api/tenant/self-service/applications': [
     self('GET', '/applications', ['self:selfAccess', 'self:transferFieldAccess', 'own:ownRecords / ownApplications']),

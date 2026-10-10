@@ -5928,6 +5928,61 @@
         ]
       }
     },
+    "GET /api/tenant/qualification/employees/:employeeId/development-channel": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "qualification",
+      "primitives": {
+        "object": [
+          "object.* 动作",
+          "objectContext"
+        ],
+        "scope": [
+          "requestScope"
+        ]
+      }
+    },
+    "GET /api/tenant/qualification/employees/:employeeId/development-channel/levels/:levelId": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "qualification",
+      "primitives": {
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "object": [
+          "object.* 动作",
+          "objectContext"
+        ],
+        "scope": [
+          "requestScope"
+        ]
+      }
+    },
     "GET /api/tenant/qualification/grade-schemes": {
       "edge": {
         "anonymous": {
@@ -6405,6 +6460,64 @@
           "employment visibility",
           "scope.all",
           "scopeSql"
+        ],
+        "self": [
+          "selfAccess"
+        ]
+      }
+    },
+    "GET /api/tenant/self-service/development-channel": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "self-service",
+      "primitives": {
+        "button": [
+          "buttonResource",
+          "object.button"
+        ],
+        "guard": [
+          "selfService.developmentChannelPage"
+        ],
+        "self": [
+          "selfAccess"
+        ]
+      }
+    },
+    "GET /api/tenant/self-service/employees/:id/development-channel": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "self-service",
+      "primitives": {
+        "button": [
+          "buttonResource",
+          "object.button"
+        ],
+        "guard": [
+          "selfService.developmentChannelPage"
         ],
         "self": [
           "selfAccess"

@@ -153,7 +153,7 @@ const MODULES = 'apps/api/src/modules';
 const evidence = (role: Evidence['role'], unit: string, anchor: string): Evidence => ({ role, unit, anchor });
 const identityMap = (keys: readonly string[]) => Object.fromEntries(keys.map((key) => [key, key]));
 const ALL_CURRENT_ASSIGNEE = 'approval.currentAssignee';
-const buttonRef = (code: string, level: 'list' | 'detail') => ({ code, level });
+const buttonRef = (code: string, level: 'list' | 'detail' | 'app_page') => ({ code, level });
 const TALENT_CATALOG = 'packages/domain/src/talent/catalog.ts#TALENT_OBJECTS';
 const TALENT_ANCHORS = [
   "library: object( 'DimensionLibrary'",

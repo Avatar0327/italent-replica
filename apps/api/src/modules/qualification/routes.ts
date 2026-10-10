@@ -29,6 +29,7 @@ import {
 } from './access.js';
 import { registerQualificationCandidates } from './candidates.js';
 import * as config from './config-service.js';
+import { registerDevelopmentChannel } from './development-channel.js';
 import { registerExtras } from './extras.js';
 import { installQualificationIndicatorPort } from './indicator-port.js';
 import './subset-policy.js'; // 登记 qualification 子集策略（C1-1）
@@ -186,6 +187,7 @@ export function registerQualificationRoutes(router: Hono<TenantEnv>, deps: Tenan
   installQualificationIndicatorPort();
   registerQualificationCandidates(router, deps);
   registerExtras(router, deps);
+  registerDevelopmentChannel(router, deps);
   for (const spec of Object.values(SPECS)) registerObject(router, deps, spec as ObjectRoutes<object, object>);
 }
 
