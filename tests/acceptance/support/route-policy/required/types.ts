@@ -24,7 +24,7 @@ export interface Evidence {
   readonly role: EvidenceRole;
   /**
    * `仓库相对路径#名字`：名字是函数 / 常量 / 方法名（文件内唯一），或 `route:<方法> <注册路径>` 表示该文件里
-   * 这条注册的处理函数。摘要按单元登记在 digests.ts。
+   * 这条注册的处理函数。摘要按单元登记在 digests/units.ts。
    */
   readonly unit: string;
   /** 判定处的原文片段（按词法记号比较，空白与注释不计）。 */

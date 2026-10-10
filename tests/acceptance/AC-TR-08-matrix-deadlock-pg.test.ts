@@ -16,9 +16,19 @@ import { installMissingSeeds } from '../../apps/api/src/seeds/index.js';
 import { TR_NOW } from './AC-TR-config-support.js';
 import { MATRICES, matrixBody, matrixWorld, type MatrixView } from './AC-TR-matrix-support.js';
 import { rowsOf } from './support/f048.js';
+import { variants } from './support/lock-case.js';
 import { errorCode } from './support/tenant-api.js';
 
 const testDb = useTestDb();
+
+/** 租户 UUID 由数据库生成；大小写变体用例要求它含 a–f 字母（F-078，#195 第 1 轮 P3-01）。随机 UUID 几乎必含，仍显式保证。 */
+async function letteredWorld(db: Db, label: string) {
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const w = await matrixWorld(db, label);
+    if (/[a-f]/.test(w.as.tenant)) return w;
+  }
+  throw new Error('租户 UUID 连续十次不含 a–f 字母');
+}
 type Role = 'before' | 'after';
 const fieldOf = (m: MatrixView, role: Role) => m.positionFields.find((row) => row.role === role)!.fieldId;
 const other = (role: Role): Role => (role === 'before' ? 'after' : 'before');
@@ -67,9 +77,9 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-TR-08 位置字段占
   ])(
     '两个九宫格互换对方的位置字段 · %s：两者都在占用锁上排队，结果 409 + 409，无死锁、完整回滚',
     async (_n, x, y, mixedCase) => {
-      const w = await matrixWorld(testDb().db, `trm-dl-${x}-${y}-${mixedCase}`);
+      const w = await letteredWorld(testDb().db, `trm-dl-${x}-${y}-${mixedCase}`);
       // 第 3 轮 P2-01：B 的请求用大写的 X-Tenant-Id（中间件按原样接受）
-      const whoB = mixedCase ? { ...w.as, tenant: w.as.tenant.toUpperCase() } : w.as;
+      const whoB = mixedCase ? { ...w.as, tenant: variants(w.as.tenant).upper } : w.as;
       // 交错时机有随机性：每种组合连跑 3 轮（每轮新建两个九宫格）
       for (let round = 0; round < 3; round += 1) {
         const a = await w.create();
@@ -95,7 +105,7 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-TR-08 位置字段占
         const responses = await underBarrier(testDb().db, w.as.tenant, async (tx) => {
           // 屏障按两种大小写各取一次（规范化后是同一把锁，咨询锁可重入）：两个修改无论用哪种写法都停在占用锁上
           for (const id of [takeA, takeB]) {
-            for (const tenant of [w.as.tenant, w.as.tenant.toUpperCase()]) {
+            for (const tenant of [w.as.tenant, variants(w.as.tenant).upper]) {
               await tx.execute(sql`SELECT pg_advisory_xact_lock(${positionLockKey(tenant, id)})`);
             }
           }
@@ -141,7 +151,7 @@ const presetIds = () => {
 /** 存量租户：已有预置字段、还没有预置九宫格；预置位置字段换成固定标识（成对字段先解开再接回）。 */
 async function legacyTenant(label: string) {
   const db = testDb().db;
-  const w = await matrixWorld(db, label);
+  const w = await letteredWorld(db, label);
   const ids = presetIds();
   const write = { tenantId: w.as.tenant, actorUserId: null, now: TR_NOW, commandId: `${label}-seed` };
   await withTenant(db, w.as.tenant, (tx) => installMissingSeeds(tx, write, { modules: ['talent-review'] }));
@@ -186,7 +196,7 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))(
         const { w, backfill, ids } = await legacyTenant(`trm-dl-seed-${method}-${upper}`);
         const own = method === 'PATCH' ? await w.create() : undefined;
         // 第 3 轮 P2-01：租户用户的请求用大写的 X-Tenant-Id；补装按库里的租户 id（小写）取锁
-        const who = upper ? { ...w.as, tenant: w.as.tenant.toUpperCase() } : w.as;
+        const who = upper ? { ...w.as, tenant: variants(w.as.tenant).upper } : w.as;
         const fields = {
           before: ids.appraisal_potential_cell_before!,
           after: ids.achievement_capability_cell_after!,
