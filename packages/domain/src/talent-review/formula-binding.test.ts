@@ -266,6 +266,14 @@ describe('renderFormula：ID → 名称', () => {
     });
   });
 
+  it('规范文本里残留的名称写法（legacy 数据）原样输出，绑定记为 null，不冒充已绑定', () => {
+    expect(renderFormula('盘点对象.绩效 + 1', { names })).toEqual({
+      ok: true,
+      text: '盘点对象.绩效 + 1',
+      bindings: [null],
+    });
+  });
+
   it('规范文本无法解析时返回 ok:false（由调用方按 legacy / 待修复显示处理）', () => {
     expect(renderFormula('1 +', { names })).toMatchObject({ ok: false });
   });

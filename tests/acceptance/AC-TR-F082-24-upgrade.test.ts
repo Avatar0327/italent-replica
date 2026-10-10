@@ -10,7 +10,7 @@ import { expect, it } from 'vitest';
 const database = useTestDb({ migrateBefore: '_f082_formula_id_binding' });
 const rows = <T>(result: unknown) => (Array.isArray(result) ? result : (result as { rows: T[] }).rows) as T[];
 
-it('存量项目升级后为 legacy；有字段的租户补一行目录版本，空租户不补；重跑迁移不重复', async () => {
+it('AC-24 迁移：存量项目升级后为 legacy；有字段的租户补一行目录版本，空租户不补；重跑迁移不重复', async () => {
   const handle = database();
   const [withFields, empty, fieldId, ruleId, itemId, actor] = [
     randomUUID(),

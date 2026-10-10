@@ -82,7 +82,7 @@ describe('AC-24 优先级：库检查 0～1000000', () => {
   });
 });
 
-describe('计算项目：绑定状态列与复合唯一键', () => {
+describe('AC-24 计算项目：绑定状态列与复合唯一键（F-082 §1.3）', () => {
   it('formula_binding 默认 legacy、binding_issue 默认空；取值只允许 bound / legacy / unresolved', async () => {
     const w = await world();
     const read = await withTenant(testDb().db, w.tenantId, (tx) =>
@@ -111,7 +111,7 @@ describe('计算项目：绑定状态列与复合唯一键', () => {
   });
 });
 
-describe('引用表 talent_review_calc_item_refs', () => {
+describe('AC-24 引用表 talent_review_calc_item_refs（F-082 §1.3）', () => {
   const insertRef = (w: World, fieldId: string, kind: string, itemId = w.itemId) =>
     withTenant(testDb().db, w.tenantId, (tx) =>
       tx.execute(sql`INSERT INTO talent_review_calc_item_refs (tenant_id, item_id, field_id, kind)
@@ -165,7 +165,7 @@ describe('引用表 talent_review_calc_item_refs', () => {
   });
 });
 
-describe('字段目录版本表 talent_review_field_catalog_versions', () => {
+describe('AC-24 字段目录版本表 talent_review_field_catalog_versions（F-082 §1.3）', () => {
   it('租户主键、版本默认 0；一个租户只能有一行；其他租户读不到（RLS）', async () => {
     const [a, b] = [await world(), await world()];
     await withTenant(testDb().db, a.tenantId, (tx) =>

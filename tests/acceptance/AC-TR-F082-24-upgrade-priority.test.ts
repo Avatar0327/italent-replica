@@ -9,7 +9,7 @@ import { expect, it } from 'vitest';
 
 const database = useTestDb({ migrateBefore: '_f082_formula_id_binding' });
 
-it('存量优先级超过 1000000：迁移失败并报告约束', async () => {
+it('AC-24 迁移：存量优先级超过 1000000：迁移失败并报告约束', async () => {
   const handle = database();
   const [tenantId, fieldId, ruleId, actor] = [randomUUID(), randomUUID(), randomUUID(), randomUUID()];
   await handle.db.execute(sql`INSERT INTO tenants (id, code, name) VALUES (${tenantId}, 'f082-pri', 'f082')`);
