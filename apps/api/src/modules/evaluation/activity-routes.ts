@@ -63,9 +63,9 @@ function statusFilter(raw: string | undefined) {
 export function registerActivityRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   registerActivityUsage();
   const present = presenter(deps, OBJECT);
-  /** 读出行 → 挂环节 → 负责人整形（字段权限裁剪之前）。 */
+  /** 读出行 → 挂组织范围与环节 → 负责人整形（字段权限裁剪之前）。 */
   const shapeRows = async (tx: Tx, tenantId: string, access: PersonRefAccess, rows: Record<string, unknown>[]) =>
-    activities.presentActivities(tx, tenantId, access, await activities.withChains(tx, tenantId, rows));
+    activities.presentActivities(tx, tenantId, access, await activities.withDetails(tx, tenantId, rows));
 
   router.get(PATH, async (c) => {
     const ctx = await evaluationContext(c, deps, OBJECT);

@@ -1,5 +1,5 @@
 {
-  "id": "3e2a0fd4-3482-4d0e-a4ea-f84c35b9e2a7",
+  "id": "3d33a98b-3282-47d1-bc7e-a3b107208517",
   "prevId": "5a6d18f5-6c1e-499f-924f-9f3fc2584bf2",
   "version": "7",
   "dialect": "postgresql",
@@ -38069,12 +38069,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "code": {
-          "name": "code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
         "name": {
           "name": "name",
           "type": "text",
@@ -38103,13 +38097,13 @@
           "name": "start_date",
           "type": "date",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "end_date": {
           "name": "end_date",
           "type": "date",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "owner_id": {
           "name": "owner_id",
@@ -38123,22 +38117,15 @@
           "primaryKey": false,
           "notNull": true
         },
-        "org_range": {
-          "name": "org_range",
-          "type": "uuid[]",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'{}'::uuid[]"
-        },
         "manager_employee_id": {
           "name": "manager_employee_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
-        "applicant_mode": {
-          "name": "applicant_mode",
-          "type": "text",
+        "applicants": {
+          "name": "applicants",
+          "type": "text[]",
           "primaryKey": false,
           "notNull": true
         },
@@ -38146,15 +38133,13 @@
           "name": "category_ids",
           "type": "uuid[]",
           "primaryKey": false,
-          "notNull": true,
-          "default": "'{}'::uuid[]"
+          "notNull": true
         },
         "level_ids": {
           "name": "level_ids",
           "type": "uuid[]",
           "primaryKey": false,
-          "notNull": true,
-          "default": "'{}'::uuid[]"
+          "notNull": true
         },
         "max_level_jump": {
           "name": "max_level_jump",
@@ -38167,7 +38152,7 @@
           "name": "effective_date",
           "type": "date",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "notice_org_range": {
           "name": "notice_org_range",
@@ -38346,14 +38331,6 @@
             "tenant_id",
             "id"
           ]
-        },
-        "ev_activities_code": {
-          "name": "ev_activities_code",
-          "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "code"
-          ]
         }
       },
       "policies": {},
@@ -38366,9 +38343,13 @@
           "name": "ev_activities_max_level_jump",
           "value": "\"ev_activities\".\"max_level_jump\" BETWEEN 1 AND 5"
         },
-        "ev_activities_applicant_mode": {
-          "name": "ev_activities_applicant_mode",
-          "value": "\"ev_activities\".\"applicant_mode\" IN ('self', 'others', 'both')"
+        "ev_activities_applicants": {
+          "name": "ev_activities_applicants",
+          "value": "cardinality(\"ev_activities\".\"applicants\") >= 1 AND \"ev_activities\".\"applicants\" <@ ARRAY['self', 'others']::text[]"
+        },
+        "ev_activities_ranges": {
+          "name": "ev_activities_ranges",
+          "value": "cardinality(\"ev_activities\".\"category_ids\") >= 1 AND cardinality(\"ev_activities\".\"level_ids\") >= 1"
         },
         "ev_activities_status": {
           "name": "ev_activities_status",
@@ -38379,6 +38360,133 @@
           "value": "\"ev_activities\".\"apply_count\" >= 0"
         }
       },
+      "isRLSEnabled": false
+    },
+    "public.ev_activity_orgs": {
+      "name": "ev_activity_orgs",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "activity_id": {
+          "name": "activity_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "include_descendants": {
+          "name": "include_descendants",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "seq": {
+          "name": "seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "ev_activity_orgs_org_idx": {
+          "name": "ev_activity_orgs_org_idx",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "ev_activity_orgs_tenant_id_tenants_id_fk": {
+          "name": "ev_activity_orgs_tenant_id_tenants_id_fk",
+          "tableFrom": "ev_activity_orgs",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "ev_activity_orgs_activity_fk": {
+          "name": "ev_activity_orgs_activity_fk",
+          "tableFrom": "ev_activity_orgs",
+          "tableTo": "ev_activities",
+          "columnsFrom": [
+            "tenant_id",
+            "activity_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "ev_activity_orgs_org_fk": {
+          "name": "ev_activity_orgs_org_fk",
+          "tableFrom": "ev_activity_orgs",
+          "tableTo": "org_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "org_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "ev_activity_orgs_org": {
+          "name": "ev_activity_orgs_org",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "activity_id",
+            "org_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.ev_activity_types": {
@@ -38621,6 +38729,34 @@
         }
       },
       "indexes": {
+        "ev_chains_fixed_type": {
+          "name": "ev_chains_fixed_type",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "activity_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"ev_chains\".\"type\" IN ('apply', 'result')",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "ev_chains_form": {
           "name": "ev_chains_form",
           "columns": [
@@ -38689,17 +38825,7 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "ev_chains_type": {
-          "name": "ev_chains_type",
-          "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "activity_id",
-            "type"
-          ]
-        }
-      },
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
         "ev_chains_type_check": {
@@ -38713,6 +38839,10 @@
         "ev_chains_transfer_mode": {
           "name": "ev_chains_transfer_mode",
           "value": "\"ev_chains\".\"transfer_mode\" IN ('auto', 'manual')"
+        },
+        "ev_chains_defense_form": {
+          "name": "ev_chains_defense_form",
+          "value": "(\"ev_chains\".\"type\" = 'defense') = (\"ev_chains\".\"form_id\" IS NOT NULL)"
         }
       },
       "isRLSEnabled": false

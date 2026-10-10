@@ -236,12 +236,12 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/evaluation/activity-routes.ts': {
     PATH: '39d01a0155a3',
-    registerActivityRoutes: '6bd97f5fe5fe',
+    registerActivityRoutes: '29c0587c8fa2',
   },
   'apps/api/src/modules/evaluation/activity-service.ts': {
-    createActivity: '7100fda696ca',
-    presentActivities: '7603a8ffd5c5',
-    updateActivity: '6b417b67b362',
+    createActivity: 'd43634630a9b',
+    presentActivities: '7c4a389fcce8',
+    updateActivity: 'b76c752f78e6',
   },
   'apps/api/src/modules/evaluation/candidates.ts': {
     registerCandidates: 'ddfd024c6595',
@@ -1027,7 +1027,7 @@ export const DIGESTS: Digests = {
     contractAction: '213e0434171f',
   },
   'packages/domain/src/evaluation/catalog.ts': {
-    EVALUATION_OBJECTS: '8e8f1c184078',
+    EVALUATION_OBJECTS: '929549826622',
   },
   'packages/domain/src/idp/catalog.ts': {
     'IDP_OBJECTS>analysis': 'dc4daddf088d',
@@ -1272,10 +1272,10 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/evaluation/activity-refs.ts#assertRefs': '648d219970dd',
   'apps/api/src/modules/evaluation/activity-refs.ts#resolveActivityRefs': 'd2ec15c574ef',
   'apps/api/src/modules/evaluation/activity-routes.ts#PATH': '072f6ed3a951',
-  'apps/api/src/modules/evaluation/activity-routes.ts#registerActivityRoutes': '1d702420da55',
-  'apps/api/src/modules/evaluation/activity-service.ts#createActivity': '3aa200c5a6fc',
+  'apps/api/src/modules/evaluation/activity-routes.ts#registerActivityRoutes': 'eaec45dc9008',
+  'apps/api/src/modules/evaluation/activity-service.ts#createActivity': '31d0d93f61f9',
   'apps/api/src/modules/evaluation/activity-service.ts#presentActivities': '4b436823458b',
-  'apps/api/src/modules/evaluation/activity-service.ts#updateActivity': '687e2e0acd5b',
+  'apps/api/src/modules/evaluation/activity-service.ts#updateActivity': 'c98102fab7b4',
   'apps/api/src/modules/evaluation/candidates.ts#registerCandidates': '19e61d1ca149',
   'apps/api/src/modules/evaluation/form-refs.ts#assertNewFormRefs': 'a721fd2b0b1d',
   'apps/api/src/modules/evaluation/form-refs.ts#hasObjectView': 'e3b0c44298fc',

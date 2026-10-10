@@ -51,6 +51,9 @@ describe('AC-EV-activity 评定活动主体与环节', () => {
     op.request('PATCH', `${ACTIVITIES}/${activity.id}`, { ifMatch: activity.revision, body: data, ...extra });
   const read = (op: ActivityOperator, id: string) => op.request('GET', `${ACTIVITIES}/${id}`);
   const sendable = sendableChain;
+  /** 每个活动用自己的类别：同组织同类别的进行中活动会互相拦截，别让用例之间串扰。 */
+  const own = async (extra: Record<string, unknown> = {}) =>
+    body({ categoryIds: [(await w.qlCategory()).id], ...extra });
   const expectError = async (response: Response, status: number, reason?: string) => {
     expect(response.status, await response.clone().text()).toBe(status);
     if (reason) expect((await errorOf(response)).reason).toBe(reason);
@@ -421,7 +424,7 @@ describe('AC-EV-activity 评定活动主体与环节', () => {
         op.request('DELETE', `${ACTIVITIES}/${activity.id}`, { ifMatch: activity.revision });
       const texts = { published: '此活动进行中，无法删除', completed: '此活动已完成，无法删除' } as const;
       for (const status of ['published', 'completed'] as const) {
-        const activity = await w.adminActivity(body());
+        const activity = await w.adminActivity(await own());
         await w.setStatus(activity.id, status);
         const current = await w.adminRead(activity.id);
         const response = await remove(current);
@@ -433,14 +436,14 @@ describe('AC-EV-activity 评定活动主体与环节', () => {
 
     it('已完成的活动不能修改：409 ACTIVITY_COMPLETED，提示“此活动已完成，无法修改”；进行中可以按规则修改', async () => {
       const op = await manager();
-      const done = await w.adminActivity(body());
+      const done = await w.adminActivity(await own());
       await w.setStatus(done.id, 'completed');
       const current = await w.adminRead(done.id);
       const response = await patch(op, current, { name: `不应改${suffix()}` });
       await expectError(response, 409, 'ACTIVITY_COMPLETED');
       expect(((await response.json()) as { error: { message: string } }).error.message).toBe('此活动已完成，无法修改');
       expect(await w.adminRead(done.id)).toEqual(current);
-      const live = await w.adminActivity(body());
+      const live = await w.adminActivity(await own());
       await w.setStatus(live.id, 'published');
       const renamed = await patch(op, await w.adminRead(live.id), { name: `进行中改名${suffix()}` });
       expect(renamed.status, await renamed.clone().text()).toBe(200);
@@ -464,7 +467,7 @@ describe('AC-EV-activity 评定活动主体与环节', () => {
     it.each(TYPES)(
       '隐藏 chains 字段的人缩短活动日期让%s环节落到范围外：400 带机器错误码，提示不含环节名称',
       async (type) => {
-        const activity = await w.adminActivity(body({ chains: chainsWithEarly(type) }));
+        const activity = await w.adminActivity(await own({ chains: chainsWithEarly(type) }));
         const blind = await manager({ hidden: ['chains'] });
         const response = await patch(blind, activity, { startDate: '2026-03-01' });
         await expectError(response, 400, 'ACTIVITY_CHAIN_DATE_OUT_OF_RANGE');
@@ -474,7 +477,7 @@ describe('AC-EV-activity 评定活动主体与环节', () => {
     );
 
     it('对照：对 chains 字段有查看权的人拿到带环节名称的提示', async () => {
-      const activity = await w.adminActivity(body({ chains: chainsWithEarly('defense') }));
+      const activity = await w.adminActivity(await own({ chains: chainsWithEarly('defense') }));
       const sighted = await manager();
       const response = await patch(sighted, activity, { startDate: '2026-03-01' });
       await expectError(response, 400, 'ACTIVITY_CHAIN_DATE_OUT_OF_RANGE');

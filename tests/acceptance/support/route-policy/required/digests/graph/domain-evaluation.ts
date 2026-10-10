@@ -5,10 +5,14 @@
 import type { Graph } from '../../../evidence-graph.js';
 
 export const GRAPH: Graph = {
-  'packages/domain/src/evaluation/activity-rules.ts#activityLockedChange': ['#activityLockedContent'],
-  'packages/domain/src/evaluation/activity-rules.ts#activityLockedContent': ['#sorted'],
-  'packages/domain/src/evaluation/activity-rules.ts#checkActivityChains': ['#inapplicable', '#violation'],
+  'packages/domain/src/evaluation/activity-rules.ts#activityLockedChange': ['#lockedChainFields', '#sorted'],
+  'packages/domain/src/evaluation/activity-rules.ts#checkActivityChains': [
+    '#MAX_REPEATABLE_CHAINS',
+    '#inapplicable',
+    '#violation',
+  ],
   'packages/domain/src/evaluation/activity-rules.ts#checkActivityDates': ['#violation'],
+  'packages/domain/src/evaluation/activity-rules.ts#lockedChainFields': ['#sorted'],
   'packages/domain/src/evaluation/catalog.ts#EVALUATION_OBJECTS': [
     '#ACTIVITY_FLOW_BUTTONS',
     '#object',

@@ -51,7 +51,7 @@ const ORDER: Readonly<Partial<Record<EvaluationObject, readonly (readonly [strin
   generalScoreItem: [['name', 'name']],
   reviewGroup: [['name', 'name']],
   evaluationForm: [['name', 'name']],
-  evaluationActivity: [['code', 'code']],
+  evaluationActivity: [['name', 'name']],
 };
 
 export function orderBy(object: EvaluationObject, visible: ReadonlySet<string> | undefined): SQL {
@@ -62,9 +62,9 @@ export function orderBy(object: EvaluationObject, visible: ReadonlySet<string> |
 /**
  * 读取的列：日期列转成 `YYYY-MM-DD` 文本（业务日期不带时区，不让驱动转成 Date）；其余对象 `t.*`。
  */
-const ACTIVITY_COLUMNS = sql`t.id, t.tenant_id, t.code, t.name, t.type_id, t.cycle_id, t.year,
-  t.start_date::text AS start_date, t.end_date::text AS end_date, t.owner_id, t.owner_org_id, t.org_range,
-  t.manager_employee_id, t.applicant_mode, t.category_ids, t.level_ids, t.max_level_jump,
+const ACTIVITY_COLUMNS = sql`t.id, t.tenant_id, t.name, t.type_id, t.cycle_id, t.year,
+  t.start_date::text AS start_date, t.end_date::text AS end_date, t.owner_id, t.owner_org_id,
+  t.manager_employee_id, t.applicants, t.category_ids, t.level_ids, t.max_level_jump,
   t.effective_date::text AS effective_date, t.notice_org_range, t.status, t.apply_count,
   t.revision, t.created_by, t.created_at, t.updated_at`;
 const columnsOf = (object: EvaluationObject): SQL => (object === 'evaluationActivity' ? ACTIVITY_COLUMNS : sql`t.*`);

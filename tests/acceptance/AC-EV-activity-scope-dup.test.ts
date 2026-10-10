@@ -172,14 +172,15 @@ describe('AC-EV-activity-scope-dup 适用范围重复拦截', () => {
     );
     expect(without.status, await without.clone().text()).toBe(201);
     // 进行中的活动勾了“包含下级”：新活动选它的孙级组织（不含下级）也冲突
+    const category2 = await w.qlCategory();
     const wide = await w.adminActivity(
-      body({ categoryIds: [category.id], orgRange: [{ orgId: child, includeDescendants: true }] }),
+      body({ categoryIds: [category2.id], orgRange: [{ orgId: child, includeDescendants: true }] }),
     );
     await w.setStatus(wide.id, 'published');
     await duplicate(
       await post(
         op,
-        body({ categoryIds: [category.id], orgRange: [{ orgId: grandchild, includeDescendants: false }] }),
+        body({ categoryIds: [category2.id], orgRange: [{ orgId: grandchild, includeDescendants: false }] }),
       ),
     );
   });

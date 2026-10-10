@@ -68,7 +68,6 @@ export const EVALUATION_OBJECTS = {
     object(
       'EvaluationActivity',
       [
-        'code',
         'name',
         'typeId',
         'cycleId',
@@ -78,7 +77,7 @@ export const EVALUATION_OBJECTS = {
         'ownerOrgId',
         'orgRange',
         'managerEmployeeId',
-        'applicantMode',
+        'applicants',
         'categoryIds',
         'levelIds',
         'maxLevelJump',
