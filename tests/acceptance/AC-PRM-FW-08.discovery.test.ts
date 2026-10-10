@@ -31,7 +31,11 @@ import {
 } from './support/route-policy/discovery.js';
 import type { Finding } from './support/route-policy/compare.js';
 import { checkKnownGapEvidence, KNOWN_GAPS, type KnownGapGroup } from './support/route-policy/probe-known-gaps.js';
-import { checkRedundantEvidence, REDUNDANT_OBSERVATIONS } from './support/route-policy/probe-redundant.js';
+import {
+  checkRedundantEvidence,
+  type RedundantGroup,
+  REDUNDANT_OBSERVATIONS,
+} from './support/route-policy/probe-redundant.js';
 import { permClaims } from './support/route-policy/request-perms.js';
 import { REQUIRED } from './support/route-policy/required/index.js';
 import type { Obligation, RequiredTable } from './support/route-policy/required/types.js';
@@ -66,9 +70,9 @@ const withPolicy = (base: ManifestRoute, policy: RoutePolicy): ManifestRoute => 
 const withTable = (k: string, obligations: readonly Obligation[]): RequiredTable => ({ ...REQUIRED, [k]: obligations });
 
 describe('AC-PRM-FW-08 发现探测：冻结与覆盖', () => {
-  it('覆盖全部已声明端点（514），每个模块一个冻结文件，条目数与模块端点数一致', () => {
+  it('覆盖全部已声明端点（524），每个模块一个冻结文件，条目数与模块端点数一致', () => {
     expect(Object.keys(fresh).sort()).toEqual(manifest.declared.map(key).sort());
-    expect(manifest.declared).toHaveLength(514);
+    expect(manifest.declared).toHaveLength(524);
     const groups = groupByModule(fresh);
     const files = readdirSync(PROBE_DIR).filter((f) => f.endsWith('.json'));
     expect(files.sort()).toEqual(
@@ -113,13 +117,13 @@ describe('AC-PRM-FW-08 P0 / P3：真实声明 + 显式表零发现', () => {
     expect(findings, show(findings)).toEqual([]);
   });
 
-  it('不带登记检查：未认领的"端点 × 请求键"恰好等于两本账的登记对之并集：29 项有实际用途 + 18 项冗余观测（#125 套卷模板入口；原审定的 41 项已由 F-075 去掉），互斥', () => {
+  it('不带登记检查：未认领的"端点 × 请求键"恰好等于两本账的登记对之并集：29 项有实际用途 + 0 项冗余观测（F-075 / F-075b 已清空冗余观测账本），互斥', () => {
     const open = check(manifest.declared);
     expect(codes(open).every((c) => c === 'PROBE_ADMISSION_UNCLAIMED')).toBe(true);
     const gaps = KNOWN_GAPS.flatMap((g) => g.pairs);
     const redundant = REDUNDANT_OBSERVATIONS.flatMap((g) => g.pairs);
     expect(gaps).toHaveLength(29);
-    expect(redundant).toHaveLength(18);
+    expect(redundant).toHaveLength(0);
     const all = [...gaps, ...redundant].map(([r, k]) => `${r}\t${k}`);
     expect(new Set(all).size, '登记对不重复，两本账互斥').toBe(all.length);
     expect(all).toHaveLength(open.length);
@@ -144,18 +148,23 @@ describe('AC-PRM-FW-08 P0 / P3：真实声明 + 显式表零发现', () => {
   });
 
   it('DEC-367：冗余观测只是记录——不是显式表义务，也不能豁免账外的 P0；同一对不能同时登记在两本账', () => {
-    const [route0, key0] = REDUNDANT_OBSERVATIONS[0]!.pairs[0]!;
-    // 把一个冗余观测对换成"表里真有义务"不属于本测试；这里验证：删掉冗余账后，这些请求立刻变成 P0
-    const withoutRedundant = checkDiscovery(fresh, REQUIRED, manifest.declared, {
-      knownGaps: KNOWN_GAPS,
-      redundant: [],
-    });
-    expect(withoutRedundant.filter((f) => f.code === 'PROBE_ADMISSION_UNCLAIMED')).toHaveLength(18);
+    // 真实冗余账已清空（F-075 / F-075b 去掉了全部冗余调用）；机制用夹具验证：把第一个已知缺口对挪到冗余账里
+    expect(REDUNDANT_OBSERVATIONS).toEqual([]);
+    const [first, ...rest] = KNOWN_GAPS;
+    const [route0, key0] = first!.pairs[0]!;
+    const restPairs = first!.pairs.slice(1);
+    const moved: RedundantGroup[] = [{ id: 'fixture#1', why: 'x'.repeat(30), evidence: [], pairs: [[route0, key0]] }];
+    const gaps = [{ ...first!, pairs: restPairs }, ...rest];
+    // 登记在冗余账里：只是记录，不再报 P0
+    expect(codes(checkDiscovery(fresh, REQUIRED, manifest.declared, { knownGaps: gaps, redundant: moved }))).toEqual(
+      [],
+    );
+    // 删掉冗余账后，这个请求立刻变成 P0（冗余账不是豁免，也不是义务）
+    const withoutRedundant = checkDiscovery(fresh, REQUIRED, manifest.declared, { knownGaps: gaps, redundant: [] });
+    expect(withoutRedundant.filter((f) => f.code === 'PROBE_ADMISSION_UNCLAIMED')).toHaveLength(1);
     expect(withoutRedundant.some((f) => f.route === route0 && f.detail.includes(key0))).toBe(true);
-    const overlap = checkDiscovery(fresh, REQUIRED, manifest.declared, {
-      knownGaps: [...KNOWN_GAPS, { id: 'x', purpose: 'x', owner: 'xxxxxx', evidence: [], pairs: [[route0, key0]] }],
-      redundant: REDUNDANT_OBSERVATIONS,
-    });
+    // 同一对同时登记在两本账里 → 报重叠
+    const overlap = checkDiscovery(fresh, REQUIRED, manifest.declared, { knownGaps: KNOWN_GAPS, redundant: moved });
     expect(codes(overlap)).toContain('PROBE_ACCOUNT_OVERLAP');
   });
 

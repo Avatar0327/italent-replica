@@ -17,7 +17,6 @@ import { createApp, routeManifest } from '@italent/api';
 import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { exportFontReady } from '../../apps/api/src/modules/survey360/export-files.js';
 import { key, my, outbox, reportLink, reports, sceneB, type SceneB, sheets } from './AC-360-B-support.js';
 
 const testDb = useTestDb();
@@ -232,7 +231,7 @@ const isBinary = (res: Response) => /^(image\/|application\/pdf)/.test(res.heade
  * - 汇总 / 报告 / 链接 / 审计读取：200（内容另由标记断言保证不带逐份答案）；
  * - 卡片与按编号屏蔽：403；令牌 / 待办不是本人的：404；
  * - 报告已生成后再生成：409；“屏蔽疑似”每个活动 2 小时只能用一次（RATE_LIMITED），同一活动先调的身份 200、后调 409；
- * - 下载（PNG / PDF）：有中文字体 200，无中文字体 503 EXPORT_FONT_UNAVAILABLE。
+ * - 下载（PNG / PDF）：200（渲染用项目内置字体，F-080，不依赖服务器字体）。
  */
 const DOWNLOAD = 'download';
 const EXPECTED_STATUS: Readonly<Record<string, readonly number[] | typeof DOWNLOAD>> = {
@@ -264,10 +263,10 @@ const EXPECTED_STATUS: Readonly<Record<string, readonly number[] | typeof DOWNLO
   [`GET ${AUDIT}/operation-logs`]: [200],
   [`GET ${AUDIT}/command-failures`]: [200],
 };
-const expectedStatus = (route: string, fonts: boolean): readonly number[] => {
+const expectedStatus = (route: string): readonly number[] => {
   const expected = EXPECTED_STATUS[route];
   if (!expected) throw new Error(`缺少逐端点预期状态：${route}`);
-  return expected === DOWNLOAD ? [fonts ? 200 : 503] : expected;
+  return expected === DOWNLOAD ? [200] : expected;
 };
 
 const isDownload = (route: string) => route.endsWith('/download');
@@ -276,29 +275,23 @@ const isDownload = (route: string) => route.endsWith('/download');
  * 无资格身份逐个调用清单里的端点：响应里不得有逐题选项、答卷编号与（报告正文以外的）备注 / 建议原文，并断言预期状态：
  * 卡片类 403 / 404，其余不得 5xx。二进制下载（PNG / PDF）不能用 .text() 查标记——图内 / PDF 内的内容由数据层断言：
  * 对应 JSON 端点（score-tables / 报告详情）在本循环里逐个检查，文件内容与 JSON 一致由 AC-360-F060 的版面模型测试保证。
- * 下载端点按字体可用性分支（用 F-060 第 2 轮的 fontconfig 检测，不硬编码环境）：
- * - 有中文字体：同其余端点（不得 5xx；成功时是二进制文件，不查标记）；
- * - 无中文字体（如 CI 镜像）：授权失败仍是 4xx，通过授权的一律 503 EXPORT_FONT_UNAVAILABLE，响应体同样不含任何答案 / 建议 /
- *   答卷编号（错误体不泄露内容）。
+ * 下载端点：同其余端点（不得 5xx；成功时是二进制文件，不查标记）；字体是项目内置的（F-080），任何环境下行为相同。
  */
 async function expectNoAnswers(s: SceneB, user: string, t: Target, who: string) {
-  const fonts = await exportFontReady();
   for (const route of ANSWER_ENDPOINTS) {
     const ids = route.endsWith('/data-changes/:id') ? t.auditIds : [undefined];
     for (const auditId of ids) {
       const res = await callAs(s, user, route, t, auditId);
       const where = `${who} ${route} → ${res.status}`;
-      const noFontDownload = isDownload(route) && !fonts;
       if (CARD_DENIED.has(route)) expect([403, 404], where).toContain(res.status);
-      expect(expectedStatus(route, fonts), where).toContain(res.status);
+      expect(expectedStatus(route), where).toContain(res.status);
       if (res.status === 409 && route.endsWith('/block-suspected'))
         expect(JSON.parse(await res.clone().text()).error.details.reason, where).toBe('RATE_LIMITED');
       if (isBinary(res)) {
-        expect(isDownload(route) && fonts, `${where} 只有有字体时的下载端点返回二进制`).toBe(true);
+        expect(isDownload(route), `${where} 只有下载端点返回二进制`).toBe(true);
         continue;
       }
       const text = await res.text();
-      if (noFontDownload && res.status === 503) expect(text, where).toContain('EXPORT_FONT_UNAVAILABLE');
       for (const marker of ['"optionId"', '"optionLabel"', ...t.sheetIds]) expect(text, where).not.toContain(marker);
       if (!REPORT_CONTENT.has(route)) for (const marker of t.texts) expect(text, where).not.toContain(marker);
     }

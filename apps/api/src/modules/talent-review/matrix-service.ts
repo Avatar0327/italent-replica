@@ -25,6 +25,7 @@ import {
   talentReviewRatioRules as R,
   type Tx,
 } from '@italent/db';
+import { lockKey, asUuid } from '../../advisory-lock.js';
 import {
   checkAxisLevels,
   checkCells,
@@ -221,7 +222,7 @@ export async function lockPositionFields(tx: Tx, tenantId: string, fieldIds: rea
  * 同一租户的大小写变体若直接拼文本会得到不同的锁、等于没有锁（PR #182 第 3 轮 P2-01；与 seeds/registry.ts 的补装锁同法）。
  */
 export const positionLockKey = (tenantId: string, fieldId: string) =>
-  sql`hashtextextended((${tenantId}::uuid)::text || ':matrix-position:' || (${fieldId}::uuid)::text, 0)`;
+  lockKey(asUuid(tenantId), ':matrix-position:', asUuid(fieldId));
 
 // ---- 子数据写入 ----------------------------------------------------------------------------------------------------
 

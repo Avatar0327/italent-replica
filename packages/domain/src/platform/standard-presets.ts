@@ -174,7 +174,7 @@ const SUCCESSION_PROFILES: readonly StandardProfile[] = [
  * 与继任 / 盘点不同，这里**不**对没有组织字段的字典（层级、等级方案、编码规则；活动类型、周期、通用评分项）预置看全部，
  * 由租户管理员按（用户 × 应用）授予；原站说明评定管理员授权时人才评定、任职资格两个应用各设管理单元。
  * 各身份的功能明细原站未逐项展开（🟡）。许可归属未取证，与人才标准管理员同口径不占名额。
- * TODO(需取证 #202)：预置员工身份的发展通道查看授权（Q-T02-20 ①，登记项 qualification/employee-profile-grants）——
+ * TODO(需取证 #202，C1-2b)：预置员工身份的发展通道查看授权（Q-T02-20 ①，登记项 qualification/employee-profile-grants）——
  * employee_self_service 目前没有预置行，装到哪一行身份待定；确定前不装，也不往租户自定义身份里写授权。
  */
 const QUALIFICATION_PROFILES: readonly StandardProfile[] = [
@@ -300,3 +300,22 @@ export const STANDARD_PROFILES: readonly StandardProfile[] = [
 
 /** 开通时授予首位租户管理员的业务身份，使其能查看与配置出厂流程等业务对象（占一个核心人力名额）。 */
 export const FIRST_ADMIN_PROFILE = 'standard_org_system_admin';
+
+/** 标准身份开通时预置“看全部”的全部目标：标准 HR 身份的 DEC-121 无组织字段对象，加上身份自己登记的目标。 */
+export function presetSeeAllTargets(profile: StandardProfile): PresetSeeAllTarget[] {
+  const hr: PresetSeeAllTarget[] = profile.hr
+    ? [
+        ...NO_ORG_FIELD_SEE_ALL.entities.map((code) => ({
+          appCode: ORG_EMPLOYEE_APP,
+          targetKind: 'entity' as const,
+          targetCode: code,
+        })),
+        ...NO_ORG_FIELD_SEE_ALL.dataSources.map((code) => ({
+          appCode: ORG_EMPLOYEE_APP,
+          targetKind: 'datasource' as const,
+          targetCode: code,
+        })),
+      ]
+    : [];
+  return [...hr, ...(profile.seeAll ?? [])];
+}

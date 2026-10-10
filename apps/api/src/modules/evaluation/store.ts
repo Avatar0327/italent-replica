@@ -25,6 +25,8 @@ export interface WriteContext extends EvaluationContext {
 
 export const TABLES: Readonly<Partial<Record<EvaluationObject, string>>> = {
   activityType: 'ev_activity_types',
+  activityCycle: 'ev_cycles',
+  generalScoreItem: 'ev_general_items',
 };
 
 export function tableOf(object: EvaluationObject): string {

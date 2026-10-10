@@ -11,7 +11,6 @@ import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.js';
 import {
-  exportFontReady,
   renderPdf,
   renderPng,
   reportDocument,
@@ -2649,9 +2648,9 @@ Object.assign(ROUTE_CASES, PR_B_CASES);
 
 /**
  * F-060：报表 PNG / 报告 PDF 下载。三类反向用例与对应 JSON 接口同口径；字段裁剪格另断言文件由“裁剪后的 JSON”生成
- * （逐字节等于把该 JSON 交给渲染函数的结果；服务器无中文字体时按 503 EXPORT_FONT_UNAVAILABLE 断言）。
+ * （逐字节等于把该 JSON 交给渲染函数的结果；渲染用项目内置字体，F-080，下载一律 200）。
  */
-const downloadStatus = async () => ((await exportFontReady()) ? 200 : 503);
+const DOWNLOAD_OK = 200;
 const sameFile = async (res: Response, expected: () => Promise<Buffer>) => {
   if (res.status === 200) expect(Buffer.from(await res.arrayBuffer()).equals(await expected())).toBe(true);
 };
@@ -2673,7 +2672,7 @@ const F060_CASES: Record<string, RouteCases> = {
       const body = await json(await expectStatus(as('GET', `${path}?level=questionnaire`), 200));
       without(body, 'roleName');
       const name = (await json(await expectStatus(sa(env)('GET', `/activities/${env.SC.id}`), 200))).name as string;
-      const file = await expectStatus(as('GET', `${path}/download?level=questionnaire`), await downloadStatus());
+      const file = await expectStatus(as('GET', `${path}/download?level=questionnaire`), DOWNLOAD_OK);
       await sameFile(file, () => renderPng(scoreTableDocument(body as never, { activityName: name })));
     },
   },
@@ -2700,7 +2699,7 @@ const F060_CASES: Record<string, RouteCases> = {
       const path = `/activities/${env.SC.id}/reports/${p.reportId}`;
       const body = await json(await expectStatus(as('GET', path), 200));
       expect(body).not.toHaveProperty('questionnaires');
-      const file = await expectStatus(as('GET', `${path}/download`), await downloadStatus());
+      const file = await expectStatus(as('GET', `${path}/download`), DOWNLOAD_OK);
       await sameFile(file, () => renderPdf(reportDocument(body as never)));
     },
   },
@@ -2740,7 +2739,7 @@ const F060_CASES: Record<string, RouteCases> = {
           headers: { 'x-survey360-token': p.reportToken },
         });
       const body = await json(await expectStatus(request(''), 200));
-      const file = await expectStatus(request('/download'), await downloadStatus());
+      const file = await expectStatus(request('/download'), DOWNLOAD_OK);
       await sameFile(file, () => renderPdf(reportDocument(body as never)));
     },
   },

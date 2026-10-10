@@ -5,7 +5,7 @@
  * - 评定专员：只含流程对象（评定过程 / 评定记录）。
  * 数据范围一律缺省为空（硬规则）：三个身份开通时不预置任何看全部。
  * 新租户开通即有；存量租户经平台回补（permission/standard-profiles 登记项）补齐，不覆盖租户手工建的同编码身份，
- * 租户撤销过的授权不被再次补回（F-061 台账）。员工身份发展通道授权见 TODO(需取证 #202)，不在本文件。
+ * 租户撤销过的授权不被再次补回（F-061 台账）。员工身份发展通道授权见 TODO(需取证 #202，C1-2b)，不在本文件。
  */
 import {
   EVALUATION_FLOW_OBJECTS,
@@ -180,7 +180,7 @@ describe('AC-QL-presets 守卫：目录变化必须同步 version / 指纹（F-0
     expect(STANDARD_GRANT_VERSION).toBeGreaterThanOrEqual(2);
   });
 
-  it('STANDARD_PROFILES 不含员工身份：发展通道授权只经登记项装入（拆分方案 §8，需取证 #202）（AC-QL-presets）', () => {
+  it('STANDARD_PROFILES 不含员工身份：发展通道授权只经登记项装入（拆分方案 §8，需取证 #202，C1-2b）（AC-QL-presets）', () => {
     expect(STANDARD_PROFILES.map((p) => p.code)).not.toContain('employee_self_service');
   });
 });

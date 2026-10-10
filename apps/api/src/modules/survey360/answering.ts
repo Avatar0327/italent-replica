@@ -19,6 +19,7 @@ import {
   type Tx,
   withTenant,
 } from '@italent/db';
+import { advisoryLock, asUuid } from '../../advisory-lock.js';
 import { survey360 } from '@italent/domain';
 import { Hono } from 'hono';
 import { z } from 'zod';
@@ -46,6 +47,7 @@ import {
   type Writer,
 } from './context.js';
 import { findLink, type LinkRow } from './links.js';
+import { hasTask, type TaskRow, taskQuery } from './tasks.js';
 import { completeTodo } from './todos.js';
 import { createPerson, findPersonByEmail, loadPerson, personInput } from './people.js';
 import { type LoadedQuestionnaire, loadQuestionnaire } from './questionnaires.js';
@@ -102,6 +104,9 @@ async function resolve(tx: Tx, locate: Entry['locate'], kind?: LinkRow['kind']) 
     );
     if (!open) notFound();
   }
+  // 作答链接：评价者在本活动已没有任何有效评价关系（最后一条被删，或最后一个对象被移除）时与无效链接一致，
+  // 主页、本人头像、任务读写都不再返回活动信息（F-084，DEC-379④）
+  if (link!.kind === 'answer' && !(await hasTask(tx, activity!.id, link!.personId))) notFound();
   return { link: link!, activity: activity! };
 }
 
@@ -186,24 +191,6 @@ async function appraiserLabel(
     : {};
 }
 
-interface TaskRow {
-  id: string;
-  object_id: string;
-  role_id: string;
-  role_name: string;
-  display_text: string | null;
-  object_name: string;
-  object_person_id: string;
-}
-
-const taskQuery = (activityId: string, personId: string) => sql`SELECT r.id, r.object_id, r.role_id,
-    ro.name AS role_name, ro.display_text, p.name AS object_name, p.id AS object_person_id
-  FROM survey360_relations r
-  JOIN survey360_objects o ON o.tenant_id = r.tenant_id AND o.id = r.object_id AND NOT o.removed
-  JOIN survey360_people p ON p.tenant_id = o.tenant_id AND p.id = o.person_id
-  JOIN survey360_roles ro ON ro.tenant_id = r.tenant_id AND ro.id = r.role_id
-  WHERE r.activity_id = ${activityId}::uuid AND r.appraiser_person_id = ${personId}::uuid AND NOT r.removed`;
-
 /** 某评价关系需要作答的套卷：对象的套卷中包含该角色的。 */
 async function sheetsOf(tx: Tx, task: TaskRow) {
   const ids = rows<{ questionnaire_id: string }>(
@@ -220,10 +207,12 @@ async function sheetsOf(tx: Tx, task: TaskRow) {
   return result;
 }
 
-async function answerPage(tx: Tx, link: LinkRow, activity: ActivityRow, avatarBase: string) {
+export async function answerPage(tx: Tx, link: LinkRow, activity: ActivityRow, avatarBase: string) {
   const tasks = rows<TaskRow>(
     await tx.execute(sql`${taskQuery(activity.id, link.personId)} ORDER BY o.sort, o.created_at, r.id`),
   );
+  // 授权与返回数据同源：resolve 的检查通过后关系可能已被撤销，空任务不能带着活动信息返回（F-084 第 1 轮 P2-1）
+  if (!tasks.length) notFound();
   const avatars = await linkAvatars(tx, activity.tenant_id, answerPersonIds(link, activity, tasks), avatarBase);
   const items = [];
   for (const task of tasks)
@@ -267,6 +256,9 @@ async function requireTask(
   questionnaireId: string,
   lockObject = false,
 ) {
+  // 保护写入的锁序：关系行 → 对象行。确认链接删除评价关系不锁活动（relations.ts removeRelation 也是先关系后对象），
+  // 作答只锁对象行会漏掉它；取得锁后再读任务，等锁期间已撤销的关系 / 对象一律 404（F-084 第 1 轮 P2-1）
+  if (lockObject) await lockLiveRelation(tx, activity.id, link.personId, relationId);
   const [task] = rows<TaskRow>(
     await tx.execute(sql`${taskQuery(activity.id, link.personId)} AND r.id = ${relationId}::uuid
       ${lockObject ? sql`FOR UPDATE OF o` : sql``}`),
@@ -274,6 +266,14 @@ async function requireTask(
   if (!task) notFound();
   if (!(await sheetsOf(tx, task!)).some((q) => q.id === questionnaireId)) notFound();
   return { task: task!, questionnaire: await loadQuestionnaire(tx, questionnaireId) };
+}
+
+async function lockLiveRelation(tx: Tx, activityId: string, personId: string, relationId: string) {
+  const [live] = rows<{ id: string }>(
+    await tx.execute(sql`SELECT id FROM survey360_relations WHERE id = ${relationId}::uuid
+      AND activity_id = ${activityId}::uuid AND appraiser_person_id = ${personId}::uuid AND NOT removed FOR UPDATE`),
+  );
+  if (!live) notFound();
 }
 
 type SheetRow = typeof survey360Sheets.$inferSelect;
@@ -338,10 +338,8 @@ function checkAnswers(q: LoadedQuestionnaire, roleId: string, answers: z.infer<t
 }
 
 /** 同一评价者在同一活动的作答串行化（优秀率按该评价者已提交的答卷计数）。 */
-async function lockAppraiser(tx: Tx, tenantId: string, activityId: string, personId: string) {
-  await tx.execute(
-    sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${tenantId}:survey360-answer:${activityId}:${personId}`}, 0))`,
-  );
+export async function lockAppraiser(tx: Tx, tenantId: string, activityId: string, personId: string) {
+  await advisoryLock(tx, asUuid(tenantId), ':survey360-answer:', asUuid(activityId), ':', asUuid(personId));
 }
 
 const PAUSED = '活动暂停中，请稍后评价';
@@ -748,9 +746,11 @@ function avatarRoute(deps: TenantRouteDeps, entryOf: EntryOf, kind: LinkRow['kin
 }
 
 /** 与作答任务 / 确认页相同的当前人员集合；匿名评价者不会成为单独的图片权限来源。 */
-async function avatarPersonIds(tx: Tx, link: LinkRow, activity: ActivityRow) {
+export async function avatarPersonIds(tx: Tx, link: LinkRow, activity: ActivityRow) {
   if (link.kind === 'answer') {
     const tasks = rows<TaskRow>(await tx.execute(taskQuery(activity.id, link.personId)));
+    // 同作答页：名单由本次读到的任务生成，没有任务时本人也不在名单里（不单独放行本人头像）
+    if (!tasks.length) notFound();
     return answerPersonIds(link, activity, tasks);
   }
   const confirmation = await loadConfirmation(tx, link);

@@ -33,11 +33,19 @@ export interface IdentifierNode extends NodeBase {
   readonly name: string;
 }
 
-/** 字段引用，如 考核结果.年度；path 为各段名字，text 为用“.”拼回的完整路径。 */
+/**
+ * 字段引用，如 考核结果.年度；path 为各段名字，text 为用“.”拼回的完整路径。
+ * end 是引用在源码里的结束偏移（pos.offset 起、end 止即整段引用原文，含“.”两侧的空白）；
+ * 存储模式的句柄（F-082）解析成带 fieldId 的字段引用，text 等于句柄原文；
+ * hidden 表示输入模式里的占位符引用 `盘点对象.〔不可见字段〕`。
+ */
 export interface FieldNode extends NodeBase {
   readonly type: 'field';
   readonly path: readonly string[];
   readonly text: string;
+  readonly end: number;
+  readonly fieldId?: string;
+  readonly hidden?: true;
 }
 
 export interface UnaryNode extends NodeBase {
