@@ -226,7 +226,7 @@ describe('PR-0 ③：Qualification / TEvaluation 对象目录（Q-M0-132、DEC-3
 describe('PR-0 ④：QualificationIndicatorPort 登记（设计 §6.2 (1)）', () => {
   // C1-3b（DEC-374④ 🟡）：targetTypePath 是“从根到本级的 ID 路径并附名称”，每一级 { id, name }，两者都返回。
   // 编译期：下面的字面量必须满足端口类型（形状变了这里先编译失败）；运行期：形状由 AC-QL-indicator-port 对真实输出断言。
-  it('指标的 targetTypePath 形状：每一级 { id, name }（编译期契约，DEC-374⑤）', () => {
+  it('指标的 targetTypePath 形状：每一级 { id, name }（编译期契约，DEC-374④）', () => {
     const sample: QualificationIndicator = {
       targetId: 't',
       code: 'c',
