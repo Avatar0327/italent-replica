@@ -87,7 +87,9 @@ export type CalcAnalysis =
       readonly fields?: string[];
     };
 
-const staticKind = (kind: TalentReviewFieldKind): ExpressionFieldKind => (kind === 'option' ? 'text' : kind);
+/** 盘点字段在公式类型推导里的静态类型：单选按文本。 */
+export const formulaFieldKind = (kind: TalentReviewFieldKind): ExpressionFieldKind =>
+  kind === 'option' ? 'text' : kind;
 
 /** 公式里引用的字段路径（语法不合法时为空）；已存公式的引用判定共用，不依赖字段目录。 */
 export function formulaReferences(formula: string): string[] {
@@ -115,7 +117,7 @@ export function analyzeCalcItems(
   const isKnownField = (path: string) => byPath.has(path) || path in FORMULA_CONTEXT_FIELDS;
   const fieldKind = (path: string): ExpressionFieldKind | undefined => {
     const field = byPath.get(path);
-    return field ? staticKind(field.kind) : FORMULA_CONTEXT_FIELDS[path];
+    return field ? formulaFieldKind(field.kind) : FORMULA_CONTEXT_FIELDS[path];
   };
   const fail = (reason: CalcFailureReason, item: number, message: string, extra: object = {}): CalcAnalysis => ({
     ok: false,
@@ -143,6 +145,7 @@ export function analyzeCalcItems(
     if (!untyped.ok) return fail('FORMULA_INVALID', index, '公式不合法', { issues: untyped.errors.map(toIssue) });
     const multi = untyped.fields.filter((path) => byPath.get(path)?.kind === 'multi_option');
     if (multi.length > 0) return fail('MULTI_OPTION_IN_FORMULA', index, '公式不能引用多选字段', { fields: multi });
+    // 原站不拦“文本字段与数字比较”（Q-M0-160，DEC-389④）：D-15 不扩展到计算规则（③），此处不加保存期拦截
     const typed = validateFormula(formula, { isKnownField, fieldKind, registry });
     if (!typed.ok) return fail('FORMULA_INVALID', index, '公式不合法', { issues: typed.errors.map(toIssue) });
     const kept = new Set(formulaReferences(held.get(item.targetFieldId) ?? ''));
