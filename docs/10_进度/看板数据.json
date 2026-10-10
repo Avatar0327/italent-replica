@@ -2,7 +2,7 @@
 "updated": "2026-10-09",
 "stats": {
 "merged": 126,
-"open": 12,
+"open": 14,
 "dec": 377,
 "ev": "52/168"
 },
@@ -3135,10 +3135,10 @@
 "g": "base",
 "o": 5,
 "k": "run",
-"pr": 176,
+"pr": 197,
 "n": "F-039 闭包边界降噪 + 独立核心摘要门禁 + 集中报告",
-"seg": "ev:n ds:d4 dev:a1 rev:w mg:w",
-"now": "方案 #176 ✓；PR-1 已派新会话"
+"seg": "ev:n ds:d4 dev:d1 rev:w mg:w",
+"now": "PR-1 证据依赖改图存储 #197 待首审"
 },
 {
 "id": "F-073",
@@ -3210,9 +3210,10 @@
 "g": "base",
 "o": 6,
 "k": "run",
-"seg": "ev:n ds:n dev:a1 rev:w mg:w",
+"seg": "ev:n ds:n dev:d1 rev:w mg:w",
 "n": "部署与 CI 预装中文字体 + 启动检查",
-"now": "已派，完成后接 F-075b"
+"now": "#198 内置中文字体 + 栅格化即时取消，待首审",
+"pr": 198
 },
 {
 "id": "F-075b",
@@ -3240,7 +3241,7 @@
 "k": "run",
 "seg": "ev:n ds:a1 dev:w rev:a1 mg:w",
 "n": "F-076 设计",
-"now": "#191 设计首审中（Astra Ultra）",
+"now": "#191 设计 v2 已交（03:04），待审",
 "pr": 191
 },
 {
@@ -3250,8 +3251,8 @@
 "k": "run",
 "pr": 194,
 "n": "AGENTS 加 429 / 队列秘密加密 / 认证例外（DEC-377）",
-"seg": "ev:n ds:n dev:d1 rev:w mg:w",
-"now": "#194 待审"
+"seg": "ev:n ds:n dev:d2 rev:d1 mg:w",
+"now": "#194 首轮 1 P2（429 与既有 409 / 503 边界），已修，第 2 轮待审"
 }
 ]
 }
