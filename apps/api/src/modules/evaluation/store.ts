@@ -1,7 +1,8 @@
 /**
  * 人才评定配置写入的公共部分（设计 §3.2、§5.1、§8）：每个写入在命令台账的同一租户事务里完成“业务写 + 审计”
  * （DEC-019 / 216）。取锁顺序：新建 = 先对新增引用 FOR SHARE 再插入；修改 = 先 FOR UPDATE 本对象行（定位、revision），再对新增引用
- * FOR SHARE（评价表，B4）；B1a 字典只有本对象，无被引用方。被引用方的停用 / 删除自己 FOR UPDATE 其行，与新增引用的 FOR SHARE 串行。
+ * FOR SHARE（评价表 B4、评定活动 B5）；B5 活动在引用之后、写入之前取“租户 + 申请类别”事务级咨询锁（activity-scope.ts，适用范围重复检查），
+ * 持锁后只写本活动行与环节行，不再回头取引用方的锁，所以与上面的取锁顺序不成环；B1a 字典只有本对象，无被引用方。被引用方的停用 / 删除自己 FOR UPDATE 其行，与新增引用的 FOR SHARE 串行。
  */
 import { pgErrorCode, sql, type Tx } from '@italent/db';
 import { EVALUATION_AUDIT_ACTIONS } from '@italent/domain';
