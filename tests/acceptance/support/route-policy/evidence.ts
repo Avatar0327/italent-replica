@@ -352,9 +352,7 @@ export function currentDigests(
   branch: BranchBindings | false = BRANCH_BINDINGS,
 ): Record<string, string> {
   const { texts } = validUnits(table, read, branch);
-  return Object.fromEntries(
-    [...texts].sort(([a], [b]) => a.localeCompare(b)).map(([unit, text]) => [unit, digestOf(text)]),
-  );
+  return Object.fromEntries([...texts.keys()].sort().map((unit) => [unit, digestOf(texts.get(unit)!)]));
 }
 
 /** 同 currentDigests，但按 文件 → 单元名 → 摘要 分组（与 DIGESTS 同形，供 checkEvidence 的 digests 选项）。 */
@@ -523,12 +521,12 @@ export function resolveUnits(
   return resolution;
 }
 
-/** 有效单元 → 引用（见 UnitResolution.uses）。 */
+/** 有效单元 → 引用（见 UnitResolution.uses）；返回副本，调用方改动不影响进程内缓存。 */
 export const effectiveUses = (
   table: RequiredTable = REQUIRED,
   read: SourceReader = repoSource,
   branch: BranchBindings | false = BRANCH_BINDINGS,
-): Map<string, Use[]> => resolveUnits(table, read, branch).uses;
+): Map<string, Use[]> => new Map(resolveUnits(table, read, branch).uses);
 
 /** 被引用的单元里，在当前源码里找不到的（改名 / 删除 / 文件移走 / 不唯一）。 */
 export const brokenUnits = (
