@@ -257,7 +257,8 @@ describe('AC-PRM-FW-02 图存储：图变或绑定变而闭包不变也报（F-0
     const found = check({ [`${FX}/gate.ts`]: gate('b') });
     const stale = found.filter((f) => f.code === 'EVIDENCE_STALE');
     expect(stale, show(found)).toHaveLength(1);
-    expect(stale[0]!.detail).toContain('直接依赖变化（闭包未变）');
+    expect(stale[0]!.detail).toContain('的直接依赖变化：');
+    expect(stale[0]!.detail).toContain('仅绑定 / 路径变化');
     expect(stale[0]!.detail).toContain(`${FX}/h.ts#b`);
   });
 
