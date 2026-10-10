@@ -39,8 +39,9 @@ export const presenter =
 
 /**
  * 命令事务内的当前权限复核（首次执行与各重放路径都经过，写入之前；AGENTS §10 权限、DEC-067）：对象数据操作权、按钮与
- * 数据范围都在**事务内**按当前授权重新解析，不沿用事务外保存的快照。拒绝即整体回滚：业务写、审计、命令台账都不提交；
- * 重放被拒不回查台账返回首次结果（commands.ts CommandGuard）。
+ * 数据范围都在**事务内**按当前授权重新解析，不沿用事务外保存的快照。拒绝即整体回滚：业务写、审计、命令台账都不提交。
+ * 返回台账结果的两条路径（直接重放、并发败者失败后回查）都经过 commands.ts 的同一出口 ledgerExit，先跑本复核、
+ * 再按当前范围复核结果对象（requireStillVisible），撤权后都拿不到首次结果（#199 第 3 轮）。
  */
 async function recheck(
   c: Context<TenantEnv>,
@@ -74,8 +75,8 @@ async function recheckFields(
 type Execute<T extends View> = (tx: Tx, ctx: WriteContext) => Promise<T>;
 
 /**
- * 命令执行：权限与范围在命令事务内按当前授权复核（首次与重放），首次执行再在行锁之后复核对象；重放时结果对象按当前范围
- * 仍须可见（撤权后重放 404），响应按当前字段权限裁剪。
+ * 命令执行：权限与范围在命令事务内按当前授权复核（首次、直接重放与失败后回查都经过），首次执行再在行锁之后复核对象；
+ * 返回台账结果时结果对象按当前范围仍须可见（撤权后 404），响应按当前字段权限裁剪。
  */
 export function runWrite<T extends View>(
   c: Context<TenantEnv>,
