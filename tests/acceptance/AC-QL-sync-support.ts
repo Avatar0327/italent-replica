@@ -229,6 +229,35 @@ export async function syncWorld(db: Db, label: string, options: { timezone?: str
       ),
     );
 
+  /** 子集的全部版本（含删除）：看“谁在什么时候收尾 / 删除”，来源以每个版本落笔时为准。 */
+  const history = (employeeId = w.subject.employee.id) =>
+    withTenant(db, tenantId, async (tx) =>
+      rowsOf<{
+        recordId: string;
+        revision: number;
+        deleted: boolean;
+        sourceType: string;
+        categoryId: string;
+        startDate: string;
+        endDate: string | null;
+        employmentRecordId: string | null;
+      }>(
+        await tx.execute(sql`SELECT record_id AS "recordId", revision, deleted, source_type AS "sourceType",
+          category_id AS "categoryId", start_date::text AS "startDate", end_date::text AS "endDate",
+          employment_record_id AS "employmentRecordId"
+          FROM personnel_qualification_versions WHERE tenant_id=${tenantId} AND employee_id=${employeeId}::uuid
+          ORDER BY created_at, revision`),
+      ),
+    );
+
+  /** 同一任职事件再入队一行（模拟重复事件 / 重试路径），用来验证已同步的足迹。 */
+  const requeue = (recordId: string) =>
+    withTenant(db, tenantId, (tx) =>
+      tx.execute(sql`INSERT INTO ev_sync_queue (tenant_id, handler, dedupe_key, outbox_id, employee_id, record_id)
+        SELECT tenant_id, handler, 'dup-' || gen_random_uuid()::text, outbox_id, employee_id, record_id
+        FROM ev_sync_queue WHERE tenant_id=${tenantId} AND record_id=${recordId}::uuid LIMIT 1`),
+    );
+
   /** 夹具自带的入职事件视为已处理，让用例只关心自己保存的记录。 */
   async function settleBaseline(at = '2026-10-01T05:00:00Z') {
     await run(at);
