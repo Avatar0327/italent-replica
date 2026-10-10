@@ -23,10 +23,14 @@ import {
   ORG_EMPLOYEE_APP,
   type ObjectPermission,
   type PresetSeeAllTarget,
+  profileLedgerMarker,
+  STANDARD_GRANT_ENTRY,
   STANDARD_PROFILES,
   type StandardProfile,
+  standardGrantItems,
   validateObjectPermission,
 } from '@italent/domain';
+import { lockTenantSeeds, recordLedger } from '../../seeds/grant-ledger.js';
 import { viewOf } from './admins.js';
 import { auditAs, type PlatformWriteContext } from './audit.js';
 import { objectCatalog } from './catalog.js';
@@ -60,24 +64,38 @@ export interface StandardBackfill {
  * 授权里改授并撤销旧授权。新装身份加入有效租户管理员的可授权业务身份。重复执行不新建任何行。
  */
 export async function installMissingStandardProfiles(tx: Tx, write: PlatformWriteContext): Promise<StandardBackfill> {
+  // 与 seeds/backfill 共用补装锁：两条路径同时装同一身份会撞（租户，编码）唯一约束返回 500（方案 §4.1）
+  await lockTenantSeeds(tx, write.tenantId);
   const existing = await tx
     .select({ code: permissionProfiles.code, source: permissionProfiles.source })
     .from(permissionProfiles);
   const sources = new Map(existing.map((p) => [p.code, p.source]));
-  const installed: InstalledProfile[] = [];
+  const missing: StandardProfile[] = [];
   const skipped: StandardBackfill['skipped'][number][] = [];
   for (const profile of STANDARD_PROFILES) {
     const source = sources.get(profile.code);
-    if (source === undefined) installed.push(await installProfile(tx, write, profile));
+    if (source === undefined) missing.push(profile);
     else skipped.push({ code: profile.code, reason: source === 'standard' ? 'ALREADY_INSTALLED' : 'CODE_TAKEN' });
   }
+  const installed = await installProfilesForTenantAdmins(tx, write, missing);
+  return { installed: installed.map((p) => p.code), skipped };
+}
+
+/** 装一批标准身份并加入有效租户管理员的可授权业务身份（旧回补路由与 standard-profiles 登记项共用）。 */
+export async function installProfilesForTenantAdmins(
+  tx: Tx,
+  write: PlatformWriteContext,
+  profiles: readonly StandardProfile[],
+): Promise<InstalledProfile[]> {
+  const installed: InstalledProfile[] = [];
+  for (const profile of profiles) installed.push(await installProfile(tx, write, profile));
   if (installed.length)
     await grantableToTenantAdmins(
       tx,
       write,
       installed.map((p) => p.id),
     );
-  return { installed: installed.map((p) => p.code), skipped };
+  return installed;
 }
 
 /** 新装身份加入有效租户管理员的可授权业务身份：推进管理员记录 revision（防并发整体覆盖丢失）、写审计。 */
@@ -108,7 +126,28 @@ async function grantableToTenantAdmins(tx: Tx, write: PlatformWriteContext, prof
   }
 }
 
-async function installProfile(tx: Tx, write: PlatformWriteContext, profile: StandardProfile) {
+/**
+ * 装一个标准身份并**装入即记账**（F-061 §3.3）：权限行与审计之外，把身份定义授予的全部授权项编码和该身份的
+ * @ledger 标记以 install 登记进补装台账，以后“当前没有、台账有”即视为租户撤销，回补不再补回。
+ * 开通、旧回补路由、standard-profiles 登记项都走这里。
+ */
+export async function installProfile(tx: Tx, write: PlatformWriteContext, profile: StandardProfile) {
+  const installed = await installProfileRows(tx, write, profile);
+  await recordLedger(tx, {
+    entry: STANDARD_GRANT_ENTRY,
+    codes: [...standardGrantItems([profile]).map((item) => item.code), profileLedgerMarker(profile.code)],
+    source: 'install',
+    commandId: write.commandId,
+    now: write.now,
+  });
+  return installed;
+}
+
+/**
+ * 只写身份与权限行、预置看全部和审计，不写台账。给“F-061 上线前开通的租户”测试夹具用（按注入的旧定义装身份、
+ * 不留台账）；产品路径一律走 installProfile。
+ */
+export async function installProfileRows(tx: Tx, write: PlatformWriteContext, profile: StandardProfile) {
   const { tenantId } = write;
   const [row] = await tx
     .insert(permissionProfiles)

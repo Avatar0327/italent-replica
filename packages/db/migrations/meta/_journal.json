@@ -603,6 +603,27 @@
       "when": 1791592566985,
       "tag": "0085_talent_review_calc_rules",
       "breakpoints": true
+    },
+    {
+      "idx": 86,
+      "version": "7",
+      "when": 1791598786673,
+      "tag": "0086_evaluation_activity_types",
+      "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1791601442989,
+      "tag": "0087_woozy_veda",
+      "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1791601447732,
+      "tag": "0088_f061_seed_grant_ledger_guards",
+      "breakpoints": true
     }
   ]
 }
