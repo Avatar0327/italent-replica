@@ -323,7 +323,8 @@ describe('AC-PRM-FW-01 createApp 真实装配', () => {
    * R3-T04 PR-B4（九宫格 5 + 规则组 3）+ 8 = 504；
    * R3-T04 PR-B5（计算规则 5）+ 5 = 509；R3-T02 PR-B B1a 活动类型 + 5 = 514；B1b 活动周期 + 5、通用评分项 + 5 = 524；
    * B3 评审组 + 4（无删除，DEC-393⑤）、成员候选 + 1 = 529；B4 评价表 + 5 = 534；
-   * R3-T04 PR-B2a（评价规则 / 模块等级各 5）+ 10 = 544（PR 描述以此为准）。
+   * R3-T04 PR-B2a（评价规则 / 模块等级各 5）+ 10 = 544（PR 描述以此为准）；
+   * F-076 PR-2a 门户登录 / 登出 + 2 = 546。
    */
   const EXPECTED_BY_MODULE: Readonly<Record<string, number>> = {
     root: 1,
@@ -343,6 +344,7 @@ describe('AC-PRM-FW-01 createApp 真实装配', () => {
     survey360: 74,
     'survey360-link': 9,
     'survey360-report-link': 3,
+    'survey360-portal': 2,
     idp: 57,
     avatar: 5,
     'talent-review': 45,
