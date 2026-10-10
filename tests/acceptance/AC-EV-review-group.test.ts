@@ -197,6 +197,12 @@ describe('AC-EV-review-group 评审组', () => {
       expect((await post(empty, body())).status).toBe(404);
     });
 
+    it('仅有所属组织（管理单元）范围的操作人 hasDataPermission 为 true（第 1 轮 P3）', async () => {
+      const op = await manager();
+      const page = await ok<Page>(await op.request('GET', GROUPS));
+      expect(page.hasDataPermission).toBe(true);
+    });
+
     it('分页在范围裁剪之后：范围外的组不占页、不计入', async () => {
       for (let i = 0; i < 3; i++) await w.adminGroup(body({ ownerOrgId: w.orgB, members: members([e2]) }));
       const mine = await w.adminGroup(body({ ownerOrgId: w.orgC, name: `分页${suffix()}` }));
@@ -323,6 +329,27 @@ describe('AC-EV-review-group 评审组', () => {
       const plain = await ok<CandidatePage>(await neither.request('GET', CANDIDATES));
       for (const item of plain.items) expect(Object.keys(item)).toEqual(['id']);
     });
+    it('排序只用可见字段（第 1 轮 P2-2）：工号不可见时不按工号排序，姓名也不可见时退回员工 ID', async () => {
+      const tag = suffix();
+      // 建档顺序（工号递增）d、b、c、a，姓名顺序 a、b、c、d：工号序与姓名序、ID 序互不相同
+      const hired: Employee[] = [];
+      for (const letter of ['d', 'b', 'c', 'a']) hired.push(await w.hire(`cand-${tag}-${letter}`, w.orgA));
+      const mine = new Set(hired.map((employee) => employee.id));
+      const order = async (hiddenEmployeeFields: string[]) => {
+        const op = await manager({ hiddenEmployeeFields });
+        const page = await ok<CandidatePage>(await op.request('GET', `${CANDIDATES}?pageSize=100`));
+        return page.items.map((item) => item.id).filter((id) => mine.has(id));
+      };
+      const byName = [...hired].sort((a, b) => a.name.localeCompare(b.name)).map((employee) => employee.id);
+      expect(await order(['code'])).toEqual(byName);
+      expect(await order(['code', 'name'])).toEqual([...mine].sort());
+      // 首条（pageSize=1）同样不暴露工号的相对大小
+      const blind = await manager({ hiddenEmployeeFields: ['code', 'name'] });
+      const first = await ok<CandidatePage>(await blind.request('GET', `${CANDIDATES}?pageSize=1`));
+      const all = await ok<CandidatePage>(await blind.request('GET', `${CANDIDATES}?pageSize=100`));
+      expect(first.items.map((item) => item.id)).toEqual(all.items.slice(0, 1).map((item) => item.id));
+      expect(all.items.map((item) => item.id)).toEqual(all.items.map((item) => item.id).sort());
+    });
   });
 
   describe('权限：数据操作、按钮、字段（含显式清空）', () => {
@@ -447,6 +474,54 @@ describe('AC-EV-review-group 评审组', () => {
         expect(Object.keys(member).sort()).toEqual(['employeeId', 'employeeName', 'isLeader']);
       }
       expect((await detail('.delete')).before).toMatchObject({ id: group.id });
+    });
+  });
+  describe('审计读取期投影：成员姓名按查看人当前的员工信息对象权与姓名字段权裁剪（第 1 轮 P2-1，DEC-197）', () => {
+    /** 全权限的操作人建 / 改 / 删各一次（姓名在业务事务内冻结进日志），再由不同授权的审计管理员读取。 */
+    const history = async () => {
+      const writer = await manager({ personOrgs: [w.orgA, w.orgB, w.orgC] });
+      const group = await created(writer, body({ members: members([e1, true]) }));
+      const widened = await ok<GroupView>(
+        await patch(writer, group, { members: members([e1, true], [e2, false]), name: `新名${suffix()}` }),
+      );
+      await ok(await writer.request('DELETE', `${GROUPS}/${widened.id}`, { ifMatch: widened.revision }));
+      return group.id;
+    };
+    const readAll = async (options: ReviewOperatorOptions, id: string) => {
+      const op = await manager({ auditor: true, ...options });
+      const audit = auditApi(testDb().db, EV_NOW.toISOString(), { authorize: undefined });
+      const list = (
+        await audit.dataChanges(op.as, { objectType: 'TEvaluation.ReviewGroup', limit: '100' })
+      ).items.filter((item) => item.objectId === id);
+      expect(list).toHaveLength(3);
+      const details = await Promise.all(list.map((item) => audit.dataChange(op.as, item.id)));
+      return JSON.stringify({ list, details });
+    };
+
+    it('姓名字段不可见：列表 changes / content、详情 before / after / snapshot 都不含成员姓名，ID 与组长标记保留', async () => {
+      const id = await history();
+      const text = await readAll({ hiddenEmployeeFields: ['name'] }, id);
+      expect(text).not.toContain(e1.name);
+      expect(text).not.toContain(e2.name);
+      expect(text).not.toContain('employeeName');
+      expect(text).toContain(e1.id);
+      expect(text).toContain('isLeader');
+    });
+
+    it('没有员工信息对象查看权：同样不含成员姓名', async () => {
+      const id = await history();
+      const text = await readAll({ noEmployeeObject: true }, id);
+      expect(text).not.toContain(e1.name);
+      expect(text).not.toContain(e2.name);
+      expect(text).not.toContain('employeeName');
+      expect(text).toContain(e1.id);
+    });
+
+    it('姓名字段可见：照常带冻结时的姓名（范围外成员同口径）', async () => {
+      const id = await history();
+      const text = await readAll({ personOrgs: [w.orgA] }, id);
+      expect(text).toContain(e1.name);
+      expect(text).toContain(e2.name);
     });
   });
 });
