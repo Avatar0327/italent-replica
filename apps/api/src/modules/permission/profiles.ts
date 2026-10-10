@@ -21,8 +21,10 @@ import {
   type ObjectPermission,
   validateObjectPermission,
 } from '@italent/domain';
-import { tenantObjectCatalog } from './tenant-catalog.js';
 import { AppError } from '../../errors.js';
+import { recordTenantSave } from '../../seeds/grant-ledger.js';
+import './standard-managed-grants.js';
+import { tenantObjectCatalog } from './tenant-catalog.js';
 import { audit, type WriteContext } from './audit.js';
 import { revisionConflict } from './http.js';
 import { loadObjectPermissions } from './subject.js';
@@ -139,6 +141,8 @@ export async function setObjectPermission(
     .where(and(eq(permissionProfiles.id, profileId), eq(permissionProfiles.revision, profile.revision)))
     .returning();
   if (!bumped) throw revisionConflict(change.expectedRevision, undefined);
+  // 补装台账：租户动过这个对象，保存前后授予过的项以后回补都不再补（F-061 §4.4，不依赖是否跑过回补）
+  await recordTenantSave(tx, write, profile, permission.objectCode, before, permission);
 
   await audit(tx, write, {
     action: 'permission_profile.set_object',
@@ -150,7 +154,7 @@ export async function setObjectPermission(
   return getProfileDetail(tx, profileId);
 }
 
-async function replaceObjectRows(tx: Tx, tenantId: string, profileId: string, permission: ObjectPermission) {
+export async function replaceObjectRows(tx: Tx, tenantId: string, profileId: string, permission: ObjectPermission) {
   const key = { tenantId, profileId, objectCode: permission.objectCode };
   // 字段、按钮行随对象行级联删除（迁移 0016 的复合外键 ON DELETE CASCADE）
   await tx
