@@ -11,6 +11,8 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { advisoryLock, asUuid } from '../../advisory-lock.js';
 import { and, eq, sql, survey360Links, survey360Outbox, type Tx } from '@italent/db';
+import type { ActivityRow } from './access.js';
+import { rows } from './context.js';
 import { credentialConfig } from './credential-config.js';
 import type { PersonRow } from './people.js';
 import { recordSecurityEvent } from './security-events.js';
@@ -24,12 +26,27 @@ export const linkHooks: {
 } = {};
 
 /**
- * 评价者 × 活动的链接锁（事务级咨询锁）：“检查剩余关系 → 作废链接”（removeRelation）与“新增关系 → 确保链接”
- * （addRelation / 启用 / 重发）必须在同一把锁里决定保留、作废或新建链接，否则两者交错会留下有任务却没有可用链接的
- * 评价者，或让并发删除漏掉作废（第 1 轮审查 P2-1）。所有入口（管理端、上级确认入口、启用、重发）都用它，
- * 须在判定之前取、持有到事务结束。
+ * 评价关系增删的全局取锁顺序（设计 §3.5.1；#234 第 2 轮审查 P2）。所有会增删评价关系、或据此保留 / 作废 / 新建作答链接的
+ * 入口——管理端增删关系、移除评价对象、按组织架构自动添加、导入、启用活动、重发邀请，以及上级确认入口的增删——一律：
+ *   ① 活动行 FOR UPDATE → ② 确认单 / 评价对象 / 评价关系行 → ③ 评价者 × 活动的链接锁 → ④ 写关系、链接与活动标记。
+ * 管理端经 requireActivity(lock) 在第一步取得活动行；上级确认入口在锁确认单之前调用本函数。链接锁永远在活动行锁之内
+ * 取得，所以链接锁之间、链接锁与活动行之间都不会成环（第 2 轮的死锁是确认入口先持链接锁、再等活动行）。
+ * 返回加锁后重读的活动（已删除为 undefined），状态判定以它为准。
+ */
+export async function lockActivityForRelations(tx: Tx, activityId: string): Promise<ActivityRow | undefined> {
+  const [row] = rows<ActivityRow>(
+    await tx.execute(sql`SELECT * FROM survey360_activities WHERE id = ${activityId}::uuid AND NOT deleted FOR UPDATE`),
+  );
+  return row;
+}
+
+/**
+ * 评价者 × 活动的链接锁（③，事务级咨询锁）：“检查剩余关系 → 作废链接”（removeRelation）与“新增关系 → 确保链接”
+ * （addRelation / 启用 / 重发）在同一把锁里决定保留、作废或新建链接（第 1 轮审查 P2-1）。先补取活动行锁（①）：
+ * 调用方已持有时不等待；漏取活动锁的新入口也不会反过来先持链接锁、再等活动行。须在判定之前取、持有到事务结束。
  */
 export async function lockAnswerLink(tx: Tx, activityId: string, personId: string): Promise<void> {
+  await tx.execute(sql`SELECT 1 FROM survey360_activities WHERE id = ${activityId}::uuid FOR UPDATE`);
   await advisoryLock(tx, ':survey360-answer-link:', asUuid(activityId), ':', asUuid(personId));
   await linkHooks.afterLock?.();
 }

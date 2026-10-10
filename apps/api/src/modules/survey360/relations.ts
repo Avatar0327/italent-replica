@@ -256,8 +256,7 @@ export async function removeRelation(tx: Tx, ctx: Writer, relation: RelationRow)
   await auditRelation(tx, ctx, 'survey360.relation.remove', relation, saved!);
   // DEC-409③：评价者最后一条有效关系被移除（删关系、上级确认入口删关系、移除评价对象都经过这里）时，
   // 作废其作答链接——凭据与会话随之失效；重新加回关系时发新链接与新凭据（旧的不恢复）。
-  // 锁序：管理端先锁活动再取评价者 × 活动的链接锁，这里也先碰活动行（markDataChanged）再取该锁，
-  // 确认入口因此不会反向等待管理端（第 1 轮审查 P2-1）；判定与作废必须在同一把锁内。
+  // 锁序见 links.ts lockActivityForRelations（活动行 → 确认单 / 关系行 → 链接锁）；判定与作废在同一把链接锁内。
   await revokeAnswerLinkWithoutTask(tx, relation.activityId, relation.appraiserPersonId);
   return saved!;
 }

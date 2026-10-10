@@ -410,8 +410,10 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/survey360/answering.ts#notFound': ['apps/api/src/modules/survey360/context.ts#fail'],
   'apps/api/src/modules/survey360/answering.ts#openConfirmation': [
     '#loadConfirmation',
+    '#notFound',
     'apps/api/src/modules/survey360/context.ts#fail',
     'apps/api/src/modules/survey360/context.ts#requireRevision',
+    'apps/api/src/modules/survey360/links.ts#lockActivityForRelations',
   ],
   'apps/api/src/modules/survey360/answering.ts#openSheet': [
     '#PAUSED',
@@ -879,6 +881,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/survey360/secret-box.ts#sealJson',
   ],
   'apps/api/src/modules/survey360/links.ts#issueConfirmLink': ['#issue'],
+  'apps/api/src/modules/survey360/links.ts#lockActivityForRelations': [
+    'apps/api/src/modules/survey360/context.ts#rows',
+  ],
   'apps/api/src/modules/survey360/links.ts#lockAnswerLink': [
     'apps/api/src/advisory-lock.ts#advisoryLock',
     'apps/api/src/advisory-lock.ts#asUuid',
