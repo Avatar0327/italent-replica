@@ -610,6 +610,13 @@
       "when": 1791598786673,
       "tag": "0086_evaluation_activity_types",
       "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1791601403374,
+      "tag": "0087_evaluation_cycles_items",
+      "breakpoints": true
     }
   ]
 }

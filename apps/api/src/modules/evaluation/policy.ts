@@ -27,7 +27,7 @@ const NF = NOT_FOUND;
 /** `talent/http.uuidParam`：对象标识非 UUID → 400 VALIDATION_FAILED。 */
 const byId = { invalidId: BAD_REQUEST };
 
-type Key = 'activityType';
+type Key = 'activityType' | 'activityCycle' | 'generalScoreItem';
 
 interface Spec {
   readonly path: string;
@@ -36,6 +36,8 @@ interface Spec {
 
 const SPECS: Readonly<Record<Key, Spec>> = {
   activityType: { path: 'activity-types', out: shape('ev.activityType') },
+  activityCycle: { path: 'activity-cycles', out: shape('ev.activityCycle') },
+  generalScoreItem: { path: 'general-score-items', out: shape('ev.generalScoreItem') },
 };
 
 const locator = (key: Key) => `ev.${key}.byId`;
@@ -98,4 +100,6 @@ function crud(key: Key): Record<string, RoutePolicy> {
 
 export const EVALUATION_POLICIES = defineTable('evaluation', {
   ...crud('activityType'),
+  ...crud('activityCycle'),
+  ...crud('generalScoreItem'),
 });

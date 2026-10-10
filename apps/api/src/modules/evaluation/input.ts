@@ -17,3 +17,18 @@ export const activityTypeCreate = z.strictObject({
 export const activityTypePatch = activityTypeCreate.partial();
 export type ActivityTypeCreate = z.infer<typeof activityTypeCreate>;
 export type ActivityTypePatch = z.infer<typeof activityTypePatch>;
+
+// 活动周期、通用评分项：名称是否唯一规格与取证都没有（TODO(需取证 #196)），暂不拦重名
+export const activityCycleCreate = z.strictObject({ name, enabled: z.boolean().optional() });
+export const activityCyclePatch = activityCycleCreate.partial();
+export type ActivityCycleCreate = z.infer<typeof activityCycleCreate>;
+export type ActivityCyclePatch = z.infer<typeof activityCyclePatch>;
+
+export const generalScoreItemCreate = z.strictObject({
+  name,
+  description: z.string().trim().max(4000).nullable().optional(),
+  enabled: z.boolean().optional(),
+});
+export const generalScoreItemPatch = generalScoreItemCreate.partial();
+export type GeneralScoreItemCreate = z.infer<typeof generalScoreItemCreate>;
+export type GeneralScoreItemPatch = z.infer<typeof generalScoreItemPatch>;

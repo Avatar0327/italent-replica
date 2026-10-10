@@ -12,6 +12,7 @@ import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import { booleanQuery, pageQuery, parseBody, requireNew, revision, uuidParam } from '../talent/http.js';
 import * as activityTypes from './activity-type-service.js';
+import { activityCycles, generalScoreItems } from './dictionary-service.js';
 import {
   checkWriteFields,
   type EvaluationObject,
@@ -54,6 +55,22 @@ const SPECS = {
     update: activityTypes.updateActivityType,
     remove: activityTypes.deleteActivityType,
   } satisfies ObjectRoutes<input.ActivityTypeCreate, input.ActivityTypePatch>,
+  activityCycle: {
+    object: 'activityCycle',
+    path: 'activity-cycles',
+    createSchema: input.activityCycleCreate,
+    patchSchema: input.activityCyclePatch,
+    filters: [{ param: 'enabled', field: 'enabled', column: 'enabled' }],
+    ...activityCycles,
+  } satisfies ObjectRoutes<input.ActivityCycleCreate, input.ActivityCyclePatch>,
+  generalScoreItem: {
+    object: 'generalScoreItem',
+    path: 'general-score-items',
+    createSchema: input.generalScoreItemCreate,
+    patchSchema: input.generalScoreItemPatch,
+    filters: [{ param: 'enabled', field: 'enabled', column: 'enabled' }],
+    ...generalScoreItems,
+  } satisfies ObjectRoutes<input.GeneralScoreItemCreate, input.GeneralScoreItemPatch>,
 } as const;
 
 export function registerEvaluationRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
