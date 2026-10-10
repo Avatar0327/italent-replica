@@ -645,6 +645,13 @@
       "when": 1791618394364,
       "tag": "0091_talent_review_scoring_config",
       "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1791620171679,
+      "tag": "0092_talent_review_field_mappings",
+      "breakpoints": true
     }
   ]
 }

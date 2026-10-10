@@ -803,7 +803,7 @@ export const DIGESTS: Digests = {
     requireCatalogAccess: 'a1561ec9adc0',
   },
   'apps/api/src/modules/talent-review/config-kit.ts': {
-    requireSeeAllToRename: 'a8243eb93805',
+    requireSeeAllToRename: '78c3ddcc654c',
   },
   'apps/api/src/modules/talent-review/config-routes.ts': {
     listResponse: 'd95eb9c1fd2b',
@@ -828,8 +828,10 @@ export const DIGESTS: Digests = {
     registerTalentReviewRoutes: '73957fe282f8',
   },
   'apps/api/src/modules/talent-review/scoring-routes.ts': {
+    registerMappings: 'd48591243371',
     registerModuleGrades: '11ba5c4c5fe9',
     registerScoreRules: 'f5b047e83e24',
+    requireMappingFields: '5b03f069c3d7',
   },
   'apps/api/src/modules/talent/access.ts': {
     DATA_OPERATION: 'bb93cac2ac78',
@@ -1017,6 +1019,7 @@ export const DIGESTS: Digests = {
     'TALENT_REVIEW_OBJECTS>calcRule': 'dea7d0781f51',
     'TALENT_REVIEW_OBJECTS>category': '4e80ece39877',
     'TALENT_REVIEW_OBJECTS>field': '0d3439dea979',
+    'TALENT_REVIEW_OBJECTS>mapping': '7a31e79e9855',
     'TALENT_REVIEW_OBJECTS>matrix': '90a030f413fe',
     'TALENT_REVIEW_OBJECTS>moduleGrade': 'b5002e260751',
     'TALENT_REVIEW_OBJECTS>readiness': 'a1857e585c0c',
@@ -1683,8 +1686,10 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/talent-review/matrix-service.ts#updateMatrix': 'd21f4fba3b95',
   'apps/api/src/modules/talent-review/readiness-service.ts#updateReadiness': '28fc17e2384b',
   'apps/api/src/modules/talent-review/routes.ts#registerTalentReviewRoutes': '14dafc4fe0f2',
+  'apps/api/src/modules/talent-review/scoring-routes.ts#registerMappings': 'e471ae96376c',
   'apps/api/src/modules/talent-review/scoring-routes.ts#registerModuleGrades': 'a8e87d6fc83c',
   'apps/api/src/modules/talent-review/scoring-routes.ts#registerScoreRules': '4fe204d0f1fc',
+  'apps/api/src/modules/talent-review/scoring-routes.ts#requireMappingFields': '9ce926ee75cc',
   'apps/api/src/modules/talent/access.ts#DATA_OPERATION': 'e3b0c44298fc',
   'apps/api/src/modules/talent/access.ts#WRITE_BUTTONS': 'e3b0c44298fc',
   'apps/api/src/modules/talent/access.ts#checkWriteFields': 'd973e4973fe3',
@@ -1812,6 +1817,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>calcRule': '279002582763',
   'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>category': '279002582763',
   'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>field': '279002582763',
+  'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>mapping': '279002582763',
   'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>matrix': '279002582763',
   'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>moduleGrade': '279002582763',
   'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>readiness': '279002582763',

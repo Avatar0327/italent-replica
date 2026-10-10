@@ -2,7 +2,7 @@
  * R3-T04 人才盘点（docs/08_设计/R3-T04_人才盘点_设计.md §2；REQ-TR-001）。各 PR 在本文件追加表：
  * PR-A 建准备度共享字典（DEC-301①）；PR-B1 建租户设置、分类、角色、字段目录与选项（设计 §2.2）；
  * PR-B4 建九宫格、轴分段、格子、位置字段占用与比例规则；PR-B5 建计算规则与计算项目；
- * PR-B2a 建评价规则 / 模块等级。
+ * PR-B2 建评价规则 / 模块等级 / 字段映射。
  * 表前缀 talent_review_，准备度字典例外：它是 T04 / T05 / T06 共用的字典。
  */
 import { sql } from 'drizzle-orm';
@@ -630,5 +630,41 @@ export const talentReviewModuleGradeItems = pgTable(
       foreignColumns: [talentReviewModuleGrades.tenantId, talentReviewModuleGrades.id],
       name: 'talent_review_module_grade_items_grade_fk',
     }).onDelete('cascade'),
+  ],
+);
+
+/**
+ * 字段映射（TR-R9）：场景 carry_last / talent_pool 下的 来源 → 目标 盘点字段；类型与选项值集合相同由保存命令校验。
+ * 预置“标签 → 标签”（preset，created_by 为空 = 系统）不可改不可删；被映射引用的字段不可删（RESTRICT 兜底）。
+ */
+export const talentReviewFieldMappings = pgTable(
+  'talent_review_field_mappings',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: tenantId(),
+    scene: text('scene').notNull(),
+    sourceFieldId: uuid('source_field_id').notNull(),
+    targetFieldId: uuid('target_field_id').notNull(),
+    preset: boolean('preset').notNull().default(false),
+    revision: integer('revision').notNull().default(1),
+    createdBy: uuid('created_by'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedBy: uuid('updated_by'),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('talent_review_field_mappings_pair').on(t.tenantId, t.scene, t.sourceFieldId, t.targetFieldId),
+    check('talent_review_field_mappings_scene', sql`${t.scene} IN ('carry_last','talent_pool')`),
+    foreignKey({
+      columns: [t.tenantId, t.sourceFieldId],
+      foreignColumns: [talentReviewFields.tenantId, talentReviewFields.id],
+      name: 'talent_review_field_mappings_source_fk',
+    }).onDelete('restrict'),
+    foreignKey({
+      columns: [t.tenantId, t.targetFieldId],
+      foreignColumns: [talentReviewFields.tenantId, talentReviewFields.id],
+      name: 'talent_review_field_mappings_target_fk',
+    }).onDelete('restrict'),
+    revisionCheck('talent_review_field_mappings_rev', t.revision),
   ],
 );

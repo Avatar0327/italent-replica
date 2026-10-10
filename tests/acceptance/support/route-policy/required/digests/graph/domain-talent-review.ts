@@ -30,6 +30,7 @@ export const GRAPH: Graph = {
   'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>calcRule': ['#object'],
   'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>category': ['#object'],
   'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>field': ['#object'],
+  'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>mapping': ['#object'],
   'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>matrix': ['#object'],
   'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>moduleGrade': ['#object'],
   'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>readiness': ['#object'],

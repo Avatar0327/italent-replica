@@ -80,6 +80,7 @@ export const TALENT_REVIEW_OBJECTS = {
   /** 模块等级（TR-R15 / R20）：得分区间或按指标数目的等级项，随模块等级整组维护。 */
   moduleGrade: object('ModuleGrade', ['name', 'mode', 'items', 'enabled']),
   /** 字段映射（TR-R9）：带入上次结果 / 入人才池的来源 → 目标字段；预置“标签 → 标签”。 */
+  mapping: object('FieldMapping', ['scene', 'sourceFieldId', 'targetFieldId', 'preset']),
   /**
    * 九宫格（设计 §2.2；TR-R31～R35）：轴、分段、格子、位置字段占用与比例规则组随九宫格整体维护（均为嵌套字段，权限随字段）。
    * 设置类配置对象，没有组织字段（DEC-121）。
@@ -137,6 +138,7 @@ export const TALENT_REVIEW_OBJECT_LABELS: Readonly<Record<TalentReviewObject, st
   field: '盘点字段',
   scoreRule: '评价规则',
   moduleGrade: '模块等级',
+  mapping: '字段映射',
   matrix: '盘点九宫格',
   calcRule: '盘点计算规则',
   resultApproval: '盘点结果审批',
@@ -151,6 +153,7 @@ export const TALENT_REVIEW_CONFIG_OBJECTS: readonly TalentReviewObject[] = [
   'field',
   'scoreRule',
   'moduleGrade',
+  'mapping',
   'matrix',
   'calcRule',
 ];
