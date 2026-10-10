@@ -31,10 +31,11 @@ async function scene(label: string, activityBody: Record<string, unknown> = {}) 
 }
 type Scene = Awaited<ReturnType<typeof scene>>;
 
-/** 给 P1 在第二个评价对象（经理 M）上再建一条关系，作为“仍有其他关系”的对照。 */
+/** 在第二个评价对象（经理 M）上给 P1、P2 各建一条关系，作为“仍有其他关系”的对照。 */
 async function addSecondObject(s: SceneB) {
   const object = await s.w.object(s.activity.id, s.person.M.id, [s.q.id]);
   const relation = await s.w.appraiser(s.activity.id, object.id, s.person.P1.id, 'peer');
+  await s.w.appraiser(s.activity.id, object.id, s.person.P2.id, 'peer');
   return { object, relation };
 }
 
@@ -157,13 +158,13 @@ describe('F-084 我的待办列表', () => {
 
     await drop(sc, reason);
     expect((await sc.s.w.ok<{ items: TodoView[] }>(p1('GET', '/todos'))).items).toHaveLength(1);
+    // 其他评价者（同事二，在第二个对象上仍有关系）的待办不受影响
+    const p2 = my(sc.s.w, sc.s.user.P2);
+    expect((await sc.s.w.ok<{ items: TodoView[] }>(p2('GET', '/todos'))).items).toHaveLength(1);
 
     if (reason === 'relation') await removeRelation(sc.s, second.object.id, second.relation);
     else await removeObject(sc.s, second.object.id);
     expect((await sc.s.w.ok<{ items: TodoView[] }>(p1('GET', '/todos'))).items).toEqual([]);
-    // 其他评价者的待办不受影响
-    const p2 = my(sc.s.w, sc.s.user.P2);
-    expect((await sc.s.w.ok<{ items: TodoView[] }>(p2('GET', '/todos'))).items).toHaveLength(1);
   });
 });
 

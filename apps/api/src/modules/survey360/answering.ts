@@ -46,6 +46,7 @@ import {
   type Writer,
 } from './context.js';
 import { findLink, type LinkRow } from './links.js';
+import { hasTask, type TaskRow, taskQuery } from './tasks.js';
 import { completeTodo } from './todos.js';
 import { createPerson, findPersonByEmail, loadPerson, personInput } from './people.js';
 import { type LoadedQuestionnaire, loadQuestionnaire } from './questionnaires.js';
@@ -102,6 +103,9 @@ async function resolve(tx: Tx, locate: Entry['locate'], kind?: LinkRow['kind']) 
     );
     if (!open) notFound();
   }
+  // 作答链接：评价者在本活动已没有任何有效评价关系（最后一条被删，或最后一个对象被移除）时与无效链接一致，
+  // 主页、本人头像、任务读写都不再返回活动信息（F-084，DEC-379④）
+  if (link!.kind === 'answer' && !(await hasTask(tx, activity!.id, link!.personId))) notFound();
   return { link: link!, activity: activity! };
 }
 
@@ -185,24 +189,6 @@ async function appraiserLabel(
     ? { appraiser: { name: (await loadPerson(tx, personId)).name, avatar: avatars.get(personId) ?? null } }
     : {};
 }
-
-interface TaskRow {
-  id: string;
-  object_id: string;
-  role_id: string;
-  role_name: string;
-  display_text: string | null;
-  object_name: string;
-  object_person_id: string;
-}
-
-const taskQuery = (activityId: string, personId: string) => sql`SELECT r.id, r.object_id, r.role_id,
-    ro.name AS role_name, ro.display_text, p.name AS object_name, p.id AS object_person_id
-  FROM survey360_relations r
-  JOIN survey360_objects o ON o.tenant_id = r.tenant_id AND o.id = r.object_id AND NOT o.removed
-  JOIN survey360_people p ON p.tenant_id = o.tenant_id AND p.id = o.person_id
-  JOIN survey360_roles ro ON ro.tenant_id = r.tenant_id AND ro.id = r.role_id
-  WHERE r.activity_id = ${activityId}::uuid AND r.appraiser_person_id = ${personId}::uuid AND NOT r.removed`;
 
 /** 某评价关系需要作答的套卷：对象的套卷中包含该角色的。 */
 async function sheetsOf(tx: Tx, task: TaskRow) {

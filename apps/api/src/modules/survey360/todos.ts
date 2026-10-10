@@ -30,6 +30,7 @@ import {
 import { type LinkRow, markSent, reissueAnswerLink } from './links.js';
 import { loadPerson } from './people.js';
 import { allRelationStates, byAppraiser, isComplete, relationStates } from './progress.js';
+import { hasValidTask } from './tasks.js';
 
 export const TODO_TITLE = '请你进行';
 
@@ -198,14 +199,15 @@ export function registerTodoRoutes(module: Hono<TenantEnv>, deps: TenantRouteDep
     });
   }
 
-  // 我的待办：只要租户成员身份，只看本人账号的
+  // 我的待办：只要租户成员身份，只看本人账号的；评价关系已全部消失的待办不再列出（F-084）
   module.get('/my/todos', async (c) => {
     const tenant = tenantOf(c);
     const items = await withTenant(deps.db, tenant.tenantId, async (tx) =>
       rows<{ id: string; activity_id: string; name: string; status: string; sent_at: Date; done_at: Date | null }>(
         await tx.execute(sql`SELECT t.id, t.activity_id, a.name, t.status, t.sent_at, t.done_at
           FROM survey360_todos t JOIN survey360_activities a ON a.tenant_id = t.tenant_id AND a.id = t.activity_id
-          WHERE t.user_id = ${tenant.userId}::uuid AND NOT a.deleted ORDER BY t.sent_at DESC, t.id LIMIT 500`),
+          WHERE t.user_id = ${tenant.userId}::uuid AND NOT a.deleted
+            AND ${hasValidTask(sql`t.activity_id`, sql`t.person_id`)} ORDER BY t.sent_at DESC, t.id LIMIT 500`),
       ),
     );
     return c.json({
