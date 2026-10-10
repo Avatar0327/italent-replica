@@ -5,9 +5,13 @@
  *   都不提交；
  * - 幂等重放：同键重放按当前授权拒绝，不返回首次结果，也不因“失败后回查台账”绕过复核。
  * 确定性交错：mock `runCommand`，在它开事务前执行测试注入的钩子（路由层检查此时已全部通过）。
+ * #199 第 3 轮（DEC-338⑤ / DEC-385③）：并发同键同内容的败者走“失败后回查台账”出口时同样按当前权限复核。PGlite 单连接
+ * 无法真正交错，用确定性模拟：败者的 `runCommand` 开事务前先让胜者完整提交，把胜者的台账行暂时移走；败者主事务查不到台账、
+ * 执行时撞上胜者留下的真实冲突（新建：名称唯一；修改：revision；删除：对象已删除）并回滚；回滚后放回台账、执行撤权，
+ * 败者随即回查台账。9 个入口各测一次撤权（必须拒绝）与一次对照（不撤权时重放胜者结果，证明走的正是回查出口）。
  */
 import { randomUUID } from 'node:crypto';
-import { sql, withTenant } from '@italent/db';
+import { commandLedger, type Db, eq, sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { auditApi } from './AC-AUD-support.js';
@@ -17,7 +21,17 @@ import { tenantApi } from './support/tenant-api.js';
 import type * as RunCommands from '../../apps/api/src/commands.js';
 
 type RunCommandModule = typeof RunCommands;
-const hooks = vi.hoisted(() => ({ beforeCommand: undefined as undefined | (() => Promise<void>) }));
+interface Loser {
+  /** 胜者：同一操作人、同键同内容的完整请求。 */
+  readonly winner: () => Promise<Response>;
+  /** 败者主事务回滚、台账放回之后执行（撤权，或对照组什么都不做）。 */
+  readonly afterLoserTx: () => Promise<void>;
+  winnerResponse?: Response;
+}
+const hooks = vi.hoisted(() => ({
+  beforeCommand: undefined as undefined | (() => Promise<void>),
+  loser: undefined as undefined | Loser,
+}));
 vi.mock('../../apps/api/src/commands.js', async (importOriginal) => {
   const original = await importOriginal<RunCommandModule>();
   return {
@@ -26,10 +40,36 @@ vi.mock('../../apps/api/src/commands.js', async (importOriginal) => {
       const hook = hooks.beforeCommand;
       hooks.beforeCommand = undefined;
       await hook?.();
-      return original.runCommand(...args);
+      const loser = hooks.loser;
+      hooks.loser = undefined;
+      if (!loser) return original.runCommand(...args);
+      const [db, ctx, command] = args;
+      loser.winnerResponse = await loser.winner();
+      return original.runCommand(loserDb(db, ctx.tenantId, command.id!, loser), ctx, command);
     },
   };
 });
+
+/** 第一个事务（败者主事务）开始前移走胜者的台账行，结束后放回并执行 afterLoserTx；之后的事务（回查）原样。 */
+function loserDb(db: Db, tenantId: string, commandId: string, loser: Loser): Db {
+  let first = true;
+  const wrapper = Object.create(db) as Db;
+  wrapper.transaction = (async (fn: Parameters<Db['transaction']>[0]) => {
+    if (!first) return db.transaction(fn);
+    first = false;
+    const [row] = await withTenant(db, tenantId, (tx) =>
+      tx.delete(commandLedger).where(eq(commandLedger.commandId, commandId)).returning(),
+    );
+    if (!row) throw new Error('胜者没有写台账，模拟前提不成立');
+    try {
+      return await db.transaction(fn);
+    } finally {
+      await withTenant(db, tenantId, (tx) => tx.insert(commandLedger).values(row));
+      await loser.afterLoserTx();
+    }
+  }) as Db['transaction'];
+  return wrapper;
+}
 
 const testDb = useTestDb();
 const name = (label = '复核') => `${label}${randomUUID().slice(0, 6)}`;
@@ -183,5 +223,79 @@ describe.each(SUBJECTS)('AC-EV-config-dicts 命令事务内权限复核 $label',
     hooks.beforeCommand = () => writer.hide(s.key, [s.field]);
     const denied = await patch();
     expect(denied.status, await denied.clone().text()).toBe(403);
+  });
+});
+
+describe.each(SUBJECTS)('AC-EV-config-dicts 失败后回查台账出口的权限复核 $label', (s) => {
+  let world: PermissionWorld;
+  beforeAll(async () => {
+    const seeded = await seedPermissionWorld(testDb().db);
+    world = { ...seeded, api: tenantApi(seeded.db, { authorize: undefined, clock: () => EV_NOW }) };
+  });
+  const seeAll = () => operator(world, { seeAll: true });
+
+  /** 一个可重复发送的请求：胜者与败者同键同内容。 */
+  type Send = (op: Operator) => Promise<Response>;
+  const cases: readonly {
+    readonly method: string;
+    readonly error: string;
+    readonly send: (op: Operator) => Promise<Send>;
+  }[] = [
+    {
+      method: 'POST',
+      error: '名称唯一冲突',
+      send: async () => {
+        const key = randomUUID();
+        const body = { name: name('并发'), ...s.extra };
+        return (op) => op.request('POST', s.path, { ifMatch: 0, idempotencyKey: key, body });
+      },
+    },
+    {
+      method: 'PATCH',
+      error: 'revision 冲突',
+      send: async (op) => {
+        const row = await ok<Row>(
+          await op.request('POST', s.path, { ifMatch: 0, body: { name: name(), ...s.extra } }),
+          201,
+        );
+        const key = randomUUID();
+        const body = { name: name('改') };
+        return (o) => o.request('PATCH', `${s.path}/${row.id}`, { ifMatch: row.revision, idempotencyKey: key, body });
+      },
+    },
+    {
+      method: 'DELETE',
+      error: '对象已删除',
+      send: async (op) => {
+        const row = await ok<Row>(
+          await op.request('POST', s.path, { ifMatch: 0, body: { name: name(), ...s.extra } }),
+          201,
+        );
+        const key = randomUUID();
+        return (o) => o.request('DELETE', `${s.path}/${row.id}`, { ifMatch: row.revision, idempotencyKey: key });
+      },
+    },
+  ];
+
+  it.each(cases)('$method（$error）：败者回滚后、回查前撤销看全部 → 404，不返回胜者结果', async (c) => {
+    const op = await seeAll();
+    const send = await c.send(op);
+    const loser: Loser = { winner: () => send(op), afterLoserTx: () => op.revokeSeeAll() };
+    hooks.loser = loser;
+    const response = await send(op);
+    const won = await loser.winnerResponse!.clone().json();
+    expect(loser.winnerResponse!.ok, JSON.stringify(won)).toBe(true);
+    expect(response.status, await response.clone().text()).toBe(404);
+    expect(await response.clone().text()).not.toContain((won as Row).id);
+  });
+
+  it.each(cases)('$method（$error）对照：不撤权时败者重放胜者结果（证明走的是回查出口）', async (c) => {
+    const op = await seeAll();
+    const send = await c.send(op);
+    const loser: Loser = { winner: () => send(op), afterLoserTx: async () => undefined };
+    hooks.loser = loser;
+    const response = await send(op);
+    expect(response.status, await response.clone().text()).toBe(loser.winnerResponse!.status);
+    expect(await response.json()).toEqual(await loser.winnerResponse!.clone().json());
   });
 });
