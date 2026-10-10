@@ -265,3 +265,122 @@ pg('AC-23 真实连接（真 PG）：按前缀与按应用角色识别连接', (
     }
   });
 });
+
+/**
+ * F082-5 第 3 轮（#236 第 2 轮审查 P2-1）：检查账号与应用账号是不同角色时，检查账号必须先证明自己“看得全”——
+ * 没有统计读取权限（超级用户或 pg_read_all_stats）时，他人会话的 backend_type 等列是 NULL，不能据此算出“0 个连接”；
+ * 没有绕过行级安全的权限时，post-restore 的数据检查看到的“0 行”同样不可信。两者都必须判失败，不是“通过”。
+ * 需要能建角色的测试账号（CI 的 postgres 超级用户）；没有建角色权限时跳过。
+ */
+pg('AC-23 检查账号的可见性前置判定（真 PG，检查角色 ≠ 应用角色）', () => {
+  const suffix = Math.random().toString(36).slice(2, 10);
+  const checker = `f082_chk_${suffix}`;
+  const appRole = `f082_app_${suffix}`;
+  const password = 'f082-test-only';
+  let canCreateRoles = false;
+  let dbName = '';
+  const admin = (text: string) => testDb().db.execute(sql.raw(text));
+  const urlAs = (role: string) => {
+    const url = new URL(process.env.TEST_DATABASE_URL!);
+    url.username = role;
+    url.password = password;
+    url.pathname = `/${dbName}`;
+    return url.toString();
+  };
+  const open: { close: () => Promise<void> }[] = [];
+  /** 以应用角色开一个在线连接（可带 / 不带 italent-api: 前缀）。 */
+  const appConnection = async (applicationName?: string) => {
+    const handle = createPgDb(urlAs(appRole), { max: 1, ...(applicationName ? { applicationName } : {}) });
+    await handle.db.execute(sql`SELECT 1`);
+    open.push(handle);
+    return handle;
+  };
+  /** 以检查角色跑某个阶段。 */
+  const checkAs = async (phase: DeployPhase) => {
+    const handle = createPgDb(urlAs(checker), { max: 1, applicationName: 'italent-deploy-check' });
+    try {
+      const as: Query = async (text) => rowsOf(await handle.db.execute(sql.raw(text)));
+      return await checkDeployTarget({ phase, query: as, codeRoot: REPO, appRole });
+    } finally {
+      await handle.close();
+    }
+  };
+  const entry = (result: Awaited<ReturnType<typeof checkAs>>, name: string) =>
+    result.results.find((item) => item.name === name)!;
+  const CONNECTIONS = '目标库上没有应用连接';
+  /** 关闭应用连接后等 PG 端回收（异步），以管理角色观察。 */
+  const drain = async () => {
+    for (const handle of open.splice(0)) await handle.close();
+    for (let attempt = 0; attempt < 80; attempt += 1) {
+      const [row] = rowsOf(
+        await admin(`SELECT count(*)::int AS n FROM pg_stat_activity WHERE usename = '${appRole}'`),
+      ) as [{ n: number }];
+      if (row.n === 0) return;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    throw new Error('应用角色的连接没有回收');
+  };
+
+  beforeAll(async () => {
+    const [me] = rowsOf(
+      await admin(`SELECT current_database() AS db, (rolsuper OR rolcreaterole) AS ok
+        FROM pg_roles WHERE rolname = current_user`),
+    ) as [{ db: string; ok: boolean }];
+    dbName = me.db;
+    canCreateRoles = me.ok === true;
+    if (!canCreateRoles) return;
+    for (const role of [checker, appRole]) {
+      await admin(`CREATE ROLE ${role} LOGIN PASSWORD '${password}'`);
+      await admin(`GRANT CONNECT ON DATABASE "${dbName}" TO ${role}`);
+    }
+  });
+  afterAll(async () => {
+    for (const handle of open.splice(0)) await handle.close();
+    if (!canCreateRoles) return;
+    for (const role of [checker, appRole]) {
+      await admin(`DROP OWNED BY ${role}`);
+      await admin(`DROP ROLE ${role}`);
+    }
+  });
+
+  it('检查角色没有统计读取权限、应用角色有带前缀的在线连接 → pre-enable / post-restore 的连接检查失败（不报“没有”）', async (ctx) => {
+    if (!canCreateRoles) ctx.skip();
+    await appConnection('italent-api:test');
+    for (const phase of ['pre-enable', 'post-restore'] as const) {
+      const result = await checkAs(phase);
+      expect(result.ok).toBe(false);
+      expect(entry(result, CONNECTIONS).ok).toBe(false);
+      expect(entry(result, CONNECTIONS).detail).toContain('pg_read_all_stats');
+    }
+    await drain();
+  });
+
+  it('授予 pg_read_all_stats 后 → 带前缀与应用角色名下未带前缀的连接都被正确计数；全部关闭后通过', async (ctx) => {
+    if (!canCreateRoles) ctx.skip();
+    await drain();
+    await admin(`GRANT pg_read_all_stats TO ${checker}`);
+    try {
+      await appConnection('italent-api:test');
+      await appConnection();
+      const result = await checkAs('pre-enable');
+      expect(entry(result, CONNECTIONS).ok).toBe(false);
+      expect(entry(result, CONNECTIONS).detail).toContain('1 个带 italent-api: 前缀');
+      expect(entry(result, CONNECTIONS).detail).toContain(`1 个在应用角色 ${appRole} 名下但未带前缀`);
+      await drain();
+      expect(entry(await checkAs('pre-enable'), CONNECTIONS)).toMatchObject({ ok: true });
+    } finally {
+      await admin(`REVOKE pg_read_all_stats FROM ${checker}`);
+    }
+  });
+
+  it('post-restore：检查角色能读表但受行级安全约束 → 各项数据检查判失败（看到 0 行不等于没有），不判通过', async (ctx) => {
+    if (!canCreateRoles) ctx.skip();
+    for (const table of ['talent_review_calc_rule_items', 'audit_events', 'command_ledger'])
+      await admin(`GRANT SELECT ON ${table} TO ${checker}`);
+    const result = await checkAs('post-restore');
+    for (const name of ['库里没有 bound 行', '没有计算规则的新格式审计', '没有含句柄的命令台账结果']) {
+      expect(entry(result, name).ok, name).toBe(false);
+      expect(entry(result, name).detail, name).toContain('行级安全');
+    }
+  });
+});
