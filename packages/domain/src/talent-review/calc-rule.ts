@@ -145,7 +145,7 @@ export function analyzeCalcItems(
     if (!untyped.ok) return fail('FORMULA_INVALID', index, '公式不合法', { issues: untyped.errors.map(toIssue) });
     const multi = untyped.fields.filter((path) => byPath.get(path)?.kind === 'multi_option');
     if (multi.length > 0) return fail('MULTI_OPTION_IN_FORMULA', index, '公式不能引用多选字段', { fields: multi });
-    // TODO(需取证 #188)：D-15 文本与数字比较的保存期拦截是否扩展到计算规则（③），取证前不实现
+    // 原站不拦“文本字段与数字比较”（Q-M0-160，DEC-389④）：D-15 不扩展到计算规则（③），此处不加保存期拦截
     const typed = validateFormula(formula, { isKnownField, fieldKind, registry });
     if (!typed.ok) return fail('FORMULA_INVALID', index, '公式不合法', { issues: typed.errors.map(toIssue) });
     const kept = new Set(formulaReferences(held.get(item.targetFieldId) ?? ''));
