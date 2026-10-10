@@ -262,6 +262,7 @@ async function handle(tx: Tx, ctx: EmploymentContext, row: QueueRow, today: stri
     recordId: record.id,
     queueId: row.id,
   });
+  if (placement.kind === 'manual_same_day') return { state: 'skipped', reason: 'MANUAL_SAME_DAY' };
   if (placement.kind === 'superseded') return { state: 'skipped', reason: 'SUPERSEDED_SAME_DAY' };
   await qualificationSyncProbe.beforeWrite?.(tx);
   for (const old of placement.supersede) {

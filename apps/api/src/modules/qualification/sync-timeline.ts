@@ -6,7 +6,8 @@
  * - 同一天的多笔同步事件按**任职事件登记先后**定序，依据是入队时写入的单调序号 ev_sync_queue.seq（同一员工的任职写入在员工锁内串行，
  *   同批导入共用同一时钟、创建时间相同也不会并列，不用随机 ID 决胜；R2-P2-01），不按消费 / 重试时刻：
  *   已有更晚登记的同日同步行 → 本条被取代，不生成；已有更早登记的同日同步行 → 被本条取代，软删（留版本，足迹不丢）。
- *   同日的手工行不动（它与同步行的先后没有口径，🟡）。
+ * - 同日手工优先（DEC-414）：同日已有人工维护的资格（手工录入、信息采集、初始化、评定写入，或版本历史里出现过人工来源的行——
+ *   被 HR 编辑过的自动行也算）→ 同步让路，记 MANUAL_SAME_DAY，不软删、不改人工行；同日只有未经编辑的自动行才按登记序取舍。
  * 全部在员工锁与人员锁之内读写，调用方负责先取锁。
  */
 import { sql, type Tx } from '@italent/db';
@@ -20,6 +21,7 @@ export interface TimelineRef {
 
 export type TimelinePlacement =
   | { readonly kind: 'superseded' }
+  | { readonly kind: 'manual_same_day' }
   | {
       readonly kind: 'write';
       /** 新行的结束日：下一条开始日前一天，没有下一条则 null。 */
@@ -35,17 +37,22 @@ export async function planTimeline(
   at: { tenantId: string; employeeId: string; startDate: string; recordId: string; queueId: string },
 ): Promise<TimelinePlacement> {
   const { tenantId, employeeId, startDate } = at;
-  const sameDay = rowsOf<TimelineRef & { later: boolean }>(
+  const sameDay = rowsOf<TimelineRef & { manual: boolean; later: boolean | null }>(
     await tx.execute(sql`SELECT p.id, p.revision::int AS revision, p.employment_record_id AS "employmentRecordId",
+        EXISTS (SELECT 1 FROM personnel_qualification_versions v
+          WHERE v.tenant_id=p.tenant_id AND v.record_id=p.id AND v.source_type<>'employment_sync') AS manual,
         (reg.seq > me.seq) AS later
       FROM personnel_qualification p
       CROSS JOIN (SELECT seq FROM ev_sync_queue WHERE tenant_id=${tenantId} AND id=${at.queueId}::uuid) me
-      CROSS JOIN LATERAL (SELECT min(q.seq) AS seq FROM ev_sync_queue q
-        WHERE q.tenant_id=p.tenant_id AND q.handler='qualification_sync' AND q.record_id=p.employment_record_id) reg
+      LEFT JOIN LATERAL (SELECT min(q.seq) AS seq FROM ev_sync_queue q
+        WHERE q.tenant_id=p.tenant_id AND q.handler='qualification_sync'
+          AND q.record_id=p.employment_record_id) reg ON true
       WHERE p.tenant_id=${tenantId} AND p.employee_id=${employeeId}::uuid AND NOT p.deleted
-        AND p.start_date=${startDate}::date AND p.source_type='employment_sync'
-        AND p.employment_record_id<>${at.recordId}::uuid AND reg.seq IS NOT NULL`),
+        AND p.start_date=${startDate}::date`),
   );
+  // DEC-414 手工优先：同日有人工维护的行（手工录入、信息采集、初始化、评定写入，或历史上出现过人工来源的行，包括被 HR 编辑过的
+  // 自动行）→ 同步让路；登记序无从确定的行也不碰（宁可不生成，不删数据）
+  if (sameDay.some((row) => row.manual || row.later === null)) return { kind: 'manual_same_day' };
   if (sameDay.some((row) => row.later)) return { kind: 'superseded' };
   const [next] = rowsOf<{ endDate: string | null }>(
     await tx.execute(sql`SELECT (min(start_date) - 1)::text AS "endDate" FROM personnel_qualification
