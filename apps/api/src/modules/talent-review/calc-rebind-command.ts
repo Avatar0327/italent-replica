@@ -58,10 +58,13 @@ export async function rebindCalcFormulas(
         after: audit.after,
       });
     }
-    await ctx.auditPlatform(
-      { action: REBIND_OP, objectType: 'tenant', objectId: tenantId, before: null, after: report },
-      tenantId,
-    );
+    // 无业务变化的重跑（rules = 0）不写变更汇总：命令台账照常记录，审计里不留空操作
+    if (audits.length > 0) {
+      await ctx.auditPlatform(
+        { action: REBIND_OP, objectType: 'tenant', objectId: tenantId, before: null, after: report },
+        tenantId,
+      );
+    }
     return report;
   });
 }

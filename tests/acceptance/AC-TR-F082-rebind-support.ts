@@ -5,7 +5,7 @@
  * - 改绑经平台接口 POST /api/platform/tenants/:tenantId/talent-review/calc-formulas/rebind。
  */
 import { randomUUID } from 'node:crypto';
-import { type Db, sql, withTenant } from '@italent/db';
+import { type Db, sql, withPlatform, withTenant } from '@italent/db';
 import { CALC_RULES, type CalcRuleView } from './AC-TR-calc-rule-support.js';
 import { TR_BASE, TR_NOW } from './AC-TR-config-support.js';
 import { calcBody, calcItem, calcWorld, type F082World, type FieldRef } from './AC-TR-F082-support.js';
@@ -103,3 +103,37 @@ export async function auditCount(w: Pick<RebindWorld, 'db' | 'tenantId'>, action
 
 export const REBIND_ACTION = 'talent-review.calc-rule.rebind';
 export type { F082World };
+
+export interface AuditRow {
+  before: { items: Record<string, unknown>[] } | null;
+  after: { items: Record<string, unknown>[] } | null;
+  changes: { field: string }[] | null;
+}
+
+/** 某条规则的全部改绑审计（租户审计）：按写入顺序。 */
+export async function rebindAudits(w: Pick<RebindWorld, 'db' | 'tenantId'>, ruleId: string): Promise<AuditRow[]> {
+  const found = await withTenant(w.db, w.tenantId, (tx) =>
+    tx.execute(sql`SELECT before, after, changes FROM audit_events
+      WHERE action = ${REBIND_ACTION} AND object_id = ${ruleId} ORDER BY occurred_at, id`),
+  );
+  return rows<AuditRow>(found);
+}
+
+/** 平台审计里的逐规则副本（subject_tenant_id = 该租户）。 */
+export async function platformRuleAudits(w: Pick<RebindWorld, 'db' | 'tenantId'>, ruleId: string): Promise<AuditRow[]> {
+  const found = await withPlatform(w.db, (tx) =>
+    tx.execute(sql`SELECT before, after, NULL AS changes FROM platform_audit_events
+      WHERE action = ${REBIND_ACTION} AND object_id = ${ruleId} AND subject_tenant_id = ${w.tenantId}
+      ORDER BY occurred_at, id`),
+  );
+  return rows<AuditRow>(found);
+}
+
+/** 平台审计里的租户级汇总条数。 */
+export async function platformSummaryCount(w: Pick<RebindWorld, 'db' | 'tenantId'>): Promise<number> {
+  const found = await withPlatform(w.db, (tx) =>
+    tx.execute(sql`SELECT count(*)::int AS n FROM platform_audit_events
+      WHERE action = 'tenant.talent-review.calc-formulas.rebind' AND subject_tenant_id = ${w.tenantId}`),
+  );
+  return Number(rows<{ n: number }>(found)[0]!.n);
+}

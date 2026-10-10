@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 // F-082 部署目标检查（契约 §6.5，DEC-386；只读，不改库、不做运行时互斥）。
-// 用法：node scripts/check-deploy-target.mjs --phase=pre-enable|deploy|post-restore [--code-root=<目录>]
+// 用法：node scripts/check-deploy-target.mjs --phase=pre-enable|deploy|post-restore --app-role=<应用运行时数据库角色> [--code-root=<目录>]
+//       pre-enable / post-restore 必须给应用数据库角色（--app-role 或环境变量 APP_DB_ROLE）：该角色名下的连接不论 application_name
+//       是什么（含启用前版本的旧默认名 postgres.js）都算应用连接，与带 italent-api: 前缀的一起计数。
 //       数据库连接串取环境变量 DATABASE_URL。账号要求：pre-enable / post-restore 要看到其他会话的 application_name，
 //       须是超级用户或 pg_read_all_stats 成员；post-restore 还要读全部租户的数据，须能绕过行级安全（超级用户或
 //       BYPASSRLS，只读使用——平台运维命令行用的迁移角色受 FORCE RLS 约束，读不全，会在“检查账号能绕过行级安全”一项失败）。
@@ -41,10 +43,12 @@ export function readCodeMigrations(codeRoot) {
 const one = async (query, text) => (await query(text))[0] ?? {};
 
 /**
- * 目标库上带应用前缀的连接数。看不到其他会话的 application_name（账号既不是超级用户也不是 pg_read_all_stats 成员时，
- * 他人会话的这一列是 NULL，而真实的客户端会话至少是空串）时直接失败——不能把“看不到”当成“没有”。
+ * 目标库上的应用连接：{ marked: 带 italent-api: 前缀的, unmarked: 应用数据库角色名下、未带前缀的 }。
+ * 未带前缀的是启用前版本（旧默认连接名 postgres.js）、其他漏设连接名的入口。看不到其他会话的 application_name
+ * （账号既不是超级用户也不是 pg_read_all_stats 成员时，他人会话的这一列是 NULL，而真实的客户端会话至少是空串）时直接失败——
+ * 不能把“看不到”当成“没有”。
  */
-export async function applicationSessions(query) {
+export async function applicationSessions(query, appRole) {
   const { hidden } = await one(
     query,
     `SELECT count(*)::int AS hidden FROM pg_stat_activity
@@ -53,12 +57,21 @@ export async function applicationSessions(query) {
   );
   if (Number(hidden) > 0)
     throw new Error('检查账号看不到其他会话的 application_name：须是超级用户或 pg_read_all_stats 成员');
+  const role = quoteRole(appRole);
   const rows = await query(
-    `SELECT pid, application_name FROM pg_stat_activity
-      WHERE datname = current_database() AND pid <> pg_backend_pid()
-        AND application_name LIKE '${APP_NAME_PREFIX}%'`,
+    `SELECT application_name LIKE '${APP_NAME_PREFIX}%' AS marked FROM pg_stat_activity
+      WHERE datname = current_database() AND pid <> pg_backend_pid() AND backend_type = 'client backend'
+        AND (application_name LIKE '${APP_NAME_PREFIX}%' OR usename = '${role}')`,
   );
-  return rows.length;
+  const marked = rows.filter((row) => row.marked === true).length;
+  return { marked, unmarked: rows.length - marked };
+}
+
+function quoteRole(appRole) {
+  if (typeof appRole !== 'string' || !/^[A-Za-z0-9_.$@-]{1,128}$/.test(appRole)) {
+    throw new Error('应用数据库角色名不合法');
+  }
+  return appRole.replaceAll("'", "''");
 }
 
 async function appliedMigrations(query) {
@@ -78,7 +91,13 @@ const count = async (query, text) => Number((await one(query, text)).n);
  * 跑某个阶段的检查，返回 `{ ok, results: [{ name, ok, detail }] }`。
  * query：(sql 文本) => 行数组（同一个会话）；sessions：可替换的连接数探针（测试用，缺省查 pg_stat_activity）。
  */
-export async function checkDeployTarget({ phase, query, codeRoot = defaultRoot, sessions = applicationSessions }) {
+export async function checkDeployTarget({
+  phase,
+  query,
+  codeRoot = defaultRoot,
+  sessions = applicationSessions,
+  appRole,
+}) {
   if (!PHASES.includes(phase)) throw new Error(`未知阶段 ${phase}，可用：${PHASES.join(' | ')}`);
   const results = [];
   const check = async (name, run) => {
@@ -92,9 +111,15 @@ export async function checkDeployTarget({ phase, query, codeRoot = defaultRoot, 
 
   const noConnections = () =>
     check('目标库上没有应用连接', async () => {
-      const n = await sessions(query);
-      if (n !== 0)
-        return `仍有 ${n} 个应用会话（application_name 以 ${APP_NAME_PREFIX} 开头）：先停止全部旧实例与后台写入者`;
+      if (!appRole) {
+        return '没有指定应用数据库角色（--app-role 或环境变量 APP_DB_ROLE）：无法识别未带前缀的旧连接，不能把“认不出”当成“没有”';
+      }
+      const { marked, unmarked } = await sessions(query, appRole);
+      if (marked + unmarked === 0) return undefined;
+      const parts = [];
+      if (marked > 0) parts.push(`${marked} 个带 ${APP_NAME_PREFIX} 前缀`);
+      if (unmarked > 0) parts.push(`${unmarked} 个在应用角色 ${appRole} 名下但未带前缀（如旧默认连接名 postgres.js）`);
+      return `仍有应用连接：${parts.join('，')}。先停止全部旧实例与后台写入者`;
     });
   const switchOn = () =>
     check('待部署代码的开关默认值为 true', async () => {
@@ -180,7 +205,9 @@ async function main() {
   const phase = argument('phase');
   const url = process.env.DATABASE_URL;
   if (!phase || !PHASES.includes(phase)) {
-    console.error(`用法：node scripts/check-deploy-target.mjs --phase=${PHASES.join('|')} [--code-root=<目录>]`);
+    console.error(
+      `用法：node scripts/check-deploy-target.mjs --phase=${PHASES.join('|')} --app-role=<应用数据库角色> [--code-root=<目录>]`,
+    );
     process.exitCode = 2;
     return;
   }
@@ -195,6 +222,7 @@ async function main() {
       phase,
       query: db.query,
       codeRoot: argument('code-root') ?? defaultRoot,
+      appRole: argument('app-role') ?? process.env.APP_DB_ROLE,
     });
     for (const entry of results)
       console.log(`${entry.ok ? '通过' : '失败'}  ${entry.name}${entry.detail ? `：${entry.detail}` : ''}`);

@@ -9,10 +9,19 @@ export interface CheckResult {
 }
 export declare function readSwitchDefault(codeRoot: string): boolean | undefined;
 export declare function readCodeMigrations(codeRoot: string): { count: number; last: number };
-export declare function applicationSessions(query: Query): Promise<number>;
+export interface SessionCounts {
+  /** 带 italent-api: 前缀的连接数。 */
+  marked: number;
+  /** 应用数据库角色名下、未带前缀的连接数（如旧默认连接名 postgres.js）。 */
+  unmarked: number;
+}
+export type SessionProbe = (query: Query, appRole: string) => Promise<SessionCounts>;
+export declare function applicationSessions(query: Query, appRole: string): Promise<SessionCounts>;
 export declare function checkDeployTarget(options: {
   phase: DeployPhase;
   query: Query;
   codeRoot?: string;
-  sessions?: (query: Query) => Promise<number>;
+  sessions?: SessionProbe;
+  /** 应用运行时数据库角色（pre-enable / post-restore 必填）。 */
+  appRole?: string | undefined;
 }): Promise<{ ok: boolean; results: CheckResult[] }>;

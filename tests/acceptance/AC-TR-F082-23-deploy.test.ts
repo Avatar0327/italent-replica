@@ -18,6 +18,7 @@ import {
   type DeployPhase,
   type Query,
   readSwitchDefault,
+  type SessionProbe,
 } from '../../scripts/check-deploy-target.mjs';
 import { makeBound } from './AC-TR-F082-support.js';
 import { rebindWorld, type RebindWorld } from './AC-TR-F082-rebind-support.js';
@@ -32,8 +33,10 @@ const JOURNAL = 'packages/db/migrations/meta/_journal.json';
 const rowsOf = (result: unknown) =>
   (Array.isArray(result) ? result : (result as { rows: unknown[] }).rows) as Record<string, unknown>[];
 const query: Query = async (text) => rowsOf(await testDb().db.execute(sql.raw(text)));
-const none = async () => 0;
-const some = async () => 2;
+const none = async () => ({ marked: 0, unmarked: 0 });
+const some = async () => ({ marked: 2, unmarked: 0 });
+const legacyNamed = async () => ({ marked: 0, unmarked: 3 });
+const APP_ROLE = 'italent_app';
 
 /** 待部署代码的目录：只放检查脚本读的两个文件（开关源码与迁移日志），可改写。 */
 const roots: string[] = [];
@@ -67,8 +70,14 @@ afterAll(() => {
   for (const root of roots) rmSync(root, { recursive: true, force: true });
 });
 
-const run = (phase: DeployPhase, extra: { root?: string; sessions?: (q: Query) => Promise<number> } = {}) =>
-  checkDeployTarget({ phase, query, codeRoot: extra.root ?? REPO, sessions: extra.sessions ?? none });
+const run = (phase: DeployPhase, extra: { root?: string; sessions?: SessionProbe; appRole?: string | null } = {}) =>
+  checkDeployTarget({
+    phase,
+    query,
+    codeRoot: extra.root ?? REPO,
+    sessions: extra.sessions ?? none,
+    ...(extra.appRole === null ? {} : { appRole: extra.appRole ?? APP_ROLE }),
+  });
 const failed = (result: Awaited<ReturnType<typeof run>>) =>
   result.results.filter((entry) => !entry.ok).map((e) => e.name);
 
@@ -90,6 +99,22 @@ describe('AC-23 pre-enable', () => {
     expect(failed(await run('pre-enable', { sessions: some }))).toEqual(['目标库上没有应用连接']);
   });
 
+  it('同一应用数据库角色下、未带 italent-api: 前缀的连接（如旧默认名 postgres.js）也计数并报告', async () => {
+    const result = await run('pre-enable', { sessions: legacyNamed });
+    expect(failed(result)).toEqual(['目标库上没有应用连接']);
+    const detail = result.results.find((entry) => !entry.ok)!.detail;
+    expect(detail).toContain('3');
+    expect(detail).toContain('未带');
+  });
+
+  it('没有指定应用数据库角色（--app-role）→ 失败：无法识别未带前缀的连接，不把“认不出”当成“没有”', async () => {
+    const result = await run('pre-enable', { appRole: null });
+    expect(failed(result)).toEqual(['目标库上没有应用连接']);
+    expect(result.results.find((entry) => !entry.ok)!.detail).toContain('--app-role');
+    // deploy 阶段不检查连接，不需要角色
+    expect(failed(await run('deploy', { appRole: null }))).toEqual([]);
+  });
+
   it('迁移序号不一致（代码比库多 / 少）→ 失败', async () => {
     expect(failed(await run('pre-enable', { root: codeRoot({ extraEntries: 1 }) }))).toEqual([
       '已应用迁移与待部署代码一致',
@@ -108,11 +133,12 @@ describe('AC-23 pre-enable', () => {
   it('检查账号看不到其他会话（既不是超级用户也不是 pg_read_all_stats 成员）→ 失败，不把“看不到”当成“没有”', async () => {
     // 他人会话的 application_name 是 NULL（真实客户端会话至少是空串）
     const blind: Query = async (text) => (text.includes('IS NULL') ? [{ hidden: 1 }] : []);
-    await expect(applicationSessions(blind)).rejects.toThrow(/pg_read_all_stats/);
+    await expect(applicationSessions(blind, APP_ROLE)).rejects.toThrow(/pg_read_all_stats/);
     const result = await checkDeployTarget({
       phase: 'pre-enable',
       query: async (text) => (text.includes('IS NULL') ? [{ hidden: 1 }] : query(text)),
       codeRoot: REPO,
+      appRole: APP_ROLE,
     });
     expect(failed(result)).toEqual(['目标库上没有应用连接']);
   });
@@ -195,26 +221,47 @@ describe.skipIf(Boolean(process.env.TEST_DATABASE_URL))('AC-23 post-restore', ()
   });
 });
 
-pg('AC-23 真实连接（真 PG）：application_name 以 italent-api: 开头的会话被计数', () => {
-  it('应用连接存在时 pre-enable 失败，关闭后通过；连接带 application_name', async () => {
+pg('AC-23 真实连接（真 PG）：按前缀与按应用角色识别连接', () => {
+  const adminUrl = () => new URL(process.env.TEST_DATABASE_URL!);
+  const dbUrl = async () => {
     const [{ name }] = rowsOf(await testDb().db.execute(sql`SELECT current_database() AS name`)) as [{ name: string }];
-    const url = new URL(process.env.TEST_DATABASE_URL!);
+    const url = adminUrl();
     url.pathname = `/${name}`;
-    const app = createPgDb(url.toString(), { max: 1, applicationName: 'italent-api:test' });
+    return url.toString();
+  };
+  const probe = (appRole: string) => checkDeployTarget({ phase: 'pre-enable', query, codeRoot: REPO, appRole });
+
+  it('带 italent-api: 前缀的连接被计数；关闭后通过；连接带 application_name', async () => {
+    const app = createPgDb(await dbUrl(), { max: 1, applicationName: 'italent-api:test' });
     try {
       const [row] = rowsOf(await app.db.execute(sql`SHOW application_name`)) as [{ application_name: string }];
       expect(row.application_name).toBe('italent-api:test');
-      const withApp = await checkDeployTarget({ phase: 'pre-enable', query, codeRoot: REPO });
-      expect(failed(withApp)).toEqual(['目标库上没有应用连接']);
+      expect(failed(await probe('italent_no_such_role'))).toEqual(['目标库上没有应用连接']);
     } finally {
       await app.close();
     }
     // 连接关闭后会话消失（PG 端回收是异步的，轮询到通过为止）
-    let after = await checkDeployTarget({ phase: 'pre-enable', query, codeRoot: REPO });
+    let after = await probe('italent_no_such_role');
     for (let attempt = 0; attempt < 40 && !after.ok; attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, 50));
-      after = await checkDeployTarget({ phase: 'pre-enable', query, codeRoot: REPO });
+      after = await probe('italent_no_such_role');
     }
     expect(failed(after)).toEqual([]);
+  });
+
+  it('同一应用角色下未带前缀的连接（旧版本默认连接名 postgres.js）也被识别并报告', async () => {
+    // 启用前版本的连接：用测试库同一个登录角色、不设 application_name（postgres.js 的默认连接名）
+    const role = decodeURIComponent(adminUrl().username);
+    const legacy = createPgDb(await dbUrl(), { max: 1 });
+    try {
+      await legacy.db.execute(sql`SELECT 1`);
+      const result = await probe(role);
+      expect(failed(result)).toEqual(['目标库上没有应用连接']);
+      expect(result.results.find((entry) => !entry.ok)!.detail).toContain('未带');
+      // 另一个角色名下没有连接 → 不受影响
+      expect(failed(await probe('italent_no_such_role'))).toEqual([]);
+    } finally {
+      await legacy.close();
+    }
   });
 });

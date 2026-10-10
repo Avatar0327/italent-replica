@@ -8,8 +8,18 @@ import { formulaFieldIds } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { calcItem, catalogVersion, errorOf, fieldRevision, renameField } from './AC-TR-F082-support.js';
-import { legacyRule, rawItemOf, type RebindWorld, rebindWorld, refsFor } from './AC-TR-F082-rebind-support.js';
+import {
+  auditCount,
+  legacyRule,
+  rawItemOf,
+  type RebindWorld,
+  rebindWorld,
+  refsFor,
+  REBIND_ACTION,
+} from './AC-TR-F082-rebind-support.js';
+import { lockFieldCatalog } from '../../apps/api/src/modules/talent-review/field-catalog.js';
 import { rowsOf } from './support/f048.js';
+import { waitForBlocked } from './support/pg-interleave.js';
 
 const testDb = useTestDb();
 const pg = describe.runIf(Boolean(process.env.TEST_DATABASE_URL));
@@ -123,5 +133,49 @@ pg('AC-22 改绑 × 新建字段 / 删除字段 / 改名（真 PG）', () => {
       expect((await refsFor(w, itemOf(target))).map((ref) => ref.field_id)).toContain(source.id);
       await expectConsistent(db, w);
     }
+  });
+});
+
+pg('AC-22 两遍规划之间新增同名字段（真 PG，F082-5 第 1 轮 P3）', () => {
+  it('第一遍规划之后、版本行共享锁之前提交了同名新字段：409 CALC_FIELD_CHANGED、没有引用写入；换命令 ID 重试转 unresolved', async () => {
+    const db = testDb().db;
+    const w = await rebindWorld(db, 'f082-pg22-twopass');
+    const [target, source] = [await w.numberField(), await w.field('number', { name: '双遍乙' })];
+    const { rule, itemOf } = await legacyRule(w, [{ target, formula: '盘点对象.双遍乙 + 1' }]);
+
+    // 持有字段目录版本行（V FOR UPDATE），让“新建同名字段”与“改绑”都排在它后面，且新建先于改绑
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    let held: () => void = () => undefined;
+    const holding = new Promise<void>((resolve) => (held = resolve));
+    const holder = withTenant(db, w.tenantId, async (tx) => {
+      await lockFieldCatalog(tx, w.tenantId);
+      held();
+      await gate;
+    });
+    await holding;
+    const creating = w.field('number', { name: '双遍乙' });
+    await waitForBlocked(db, 1);
+    // 改绑的第一遍规划读到的字段目录里还没有新字段（新建未提交），随后在版本行共享锁处排队
+    const rebinding = w.rebind();
+    await waitForBlocked(db, 2);
+    release();
+    await holder;
+    const fresh = await creating;
+    const refused = await rebinding;
+
+    expect(refused.status).toBe(409);
+    expect((await errorOf(refused)).details['reason']).toBe('CALC_FIELD_CHANGED');
+    expect((await rawItemOf(w, itemOf(target))).formula_binding).toBe('legacy');
+    expect(await refsFor(w, itemOf(target))).toEqual([]);
+    expect(await auditCount(w, REBIND_ACTION, rule.id)).toBe(0);
+
+    // 换命令 ID 重试：同名字段有两个 → AMBIGUOUS_FIELD，候选是两个同名字段
+    const retried = await w.runRebind();
+    expect(retried.unresolved).toEqual([{ ruleId: rule.id, targetFieldId: target.id, reason: 'AMBIGUOUS_FIELD' }]);
+    expect((await refsFor(w, itemOf(target))).map((ref) => `${ref.kind}:${ref.field_id}`).sort()).toEqual(
+      [`candidate:${source.id}`, `candidate:${fresh.id}`].sort(),
+    );
+    await expectConsistent(db, w);
   });
 });

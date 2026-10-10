@@ -13,7 +13,7 @@ import { auditApi } from './AC-AUD-support.js';
 import { BASE, seedPermissionWorld, type PermissionWorld } from './AC-PRM-support.js';
 import { CALC_RULES, calcBody, calcItem, calcRuleOperator, type CalcRuleView } from './AC-TR-calc-rule-support.js';
 import { configBody, TR_BASE, TR_NOW } from './AC-TR-config-support.js';
-import { REBIND_ACTION, rows } from './AC-TR-F082-rebind-support.js';
+import { REBIND_ACTION, rows, setFormulaText, itemId } from './AC-TR-F082-rebind-support.js';
 import { errorOf } from './AC-TR-F082-support.js';
 import { PLATFORM, seedOperator } from './support/platform-api.js';
 import { tenantApi } from './support/tenant-api.js';
@@ -128,5 +128,30 @@ describe('AC-17a 裁剪先于改绑', () => {
     expect(hidden.count).toBe(1);
     for (const secret of ['改绑来源', source.id, '@{tr-field:']) expect(hidden.text, secret).not.toContain(secret);
     expect(hidden.text).toContain(PLACEHOLDER);
+  });
+  it('候选引用的变化同样按查看人裁剪：没有字段目录访问的查看人看不到候选字段的名称和 ID', async () => {
+    const [target, source] = [await field('候选目标'), await field('候选来源名')];
+    const created = await adminRequest(off, 'POST', CALC_RULES, {
+      ifMatch: 0,
+      body: calcBody([calcItem(target, '盘点对象.候选来源名 + 1')]),
+    });
+    expect(created.status, await created.clone().text()).toBe(201);
+    const rule = (await created.json()) as CalcRuleView;
+    const item = await itemId({ db: testDb().db, tenantId: world.tenant.id }, rule.id, target.id);
+    await setFormulaText({ db: testDb().db, tenantId: world.tenant.id }, item, '盘点对象.候选来源名 + 盘点对象.不存在');
+    expect((await rebind()).status).toBe(200); // unresolved/UNKNOWN_FIELD，候选 = 候选来源名
+
+    const seeing = await calcRuleOperator(world, { seeAll: true, fields: 'seeAll' });
+    await makeAuditor(seeing.user.id);
+    const visible = await auditText(seeing.as, rule.id);
+    expect(visible.count).toBe(1);
+    expect(visible.text).toContain(source.id);
+    expect(visible.text).toContain('UNKNOWN_FIELD');
+
+    const blind = await calcRuleOperator(world, { seeAll: true, fields: 'none' });
+    await makeAuditor(blind.user.id);
+    const hidden = await auditText(blind.as, rule.id);
+    expect(hidden.count).toBe(1);
+    for (const secret of ['候选来源名', source.id]) expect(hidden.text, secret).not.toContain(secret);
   });
 });
