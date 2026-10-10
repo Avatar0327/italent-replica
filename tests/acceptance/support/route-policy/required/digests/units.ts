@@ -636,15 +636,25 @@ export const DIGESTS: Digests = {
     requireFilterVisible: '41fc2093cc0b',
     successionContext: '293e20c468e5',
   },
+  'apps/api/src/modules/succession/input.ts': {
+    rejectImmutable: '512c60b05ed6',
+  },
   'apps/api/src/modules/succession/read-sql.ts': {
     selfRecordHiddenSql: '89628ea4a06a',
   },
   'apps/api/src/modules/succession/record-read.ts': {
-    conditions: '679d225bd6b9',
+    conditions: '026062f83713',
+  },
+  'apps/api/src/modules/succession/record-write.ts': {
+    requireTarget: '10cb226379f1',
   },
   'apps/api/src/modules/succession/routes.ts': {
     recordFilter: '858f731477d8',
-    registerSuccessionRoutes: '47b740013e16',
+    registerSuccessionRoutes: '197c41be62cc',
+  },
+  'apps/api/src/modules/succession/write-support.ts': {
+    checkCandidateAccess: '7843395303d7',
+    checkWriteAccess: '368ab13ad1dd',
   },
   'apps/api/src/modules/survey360/access.ts': {
     activityVisibleSql: '71b32773d62e',
@@ -1573,10 +1583,14 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/qualification/target-service.ts#updateTarget': '275eba198c0c',
   'apps/api/src/modules/succession/access.ts#requireFilterVisible': 'f0b3a93a6191',
   'apps/api/src/modules/succession/access.ts#successionContext': '573bb32e1617',
+  'apps/api/src/modules/succession/input.ts#rejectImmutable': '99ce3a8d9998',
   'apps/api/src/modules/succession/read-sql.ts#selfRecordHiddenSql': 'eab3bde19b0f',
-  'apps/api/src/modules/succession/record-read.ts#conditions': 'fd39905362d6',
+  'apps/api/src/modules/succession/record-read.ts#conditions': '326371d4de4d',
+  'apps/api/src/modules/succession/record-write.ts#requireTarget': '8ff43faa6c04',
   'apps/api/src/modules/succession/routes.ts#recordFilter': '8c3cfb5b80b7',
-  'apps/api/src/modules/succession/routes.ts#registerSuccessionRoutes': '0f84c72697a4',
+  'apps/api/src/modules/succession/routes.ts#registerSuccessionRoutes': 'c76666b6e94c',
+  'apps/api/src/modules/succession/write-support.ts#checkCandidateAccess': 'ea8155f2a727',
+  'apps/api/src/modules/succession/write-support.ts#checkWriteAccess': 'eac8ef9cc70b',
   'apps/api/src/modules/survey360/access.ts#activityVisibleSql': '11f326016f03',
   'apps/api/src/modules/survey360/access.ts#requireActivity': '1a11c315a971',
   'apps/api/src/modules/survey360/access.ts#requireVisibleObject': 'b5856eb5fdd3',

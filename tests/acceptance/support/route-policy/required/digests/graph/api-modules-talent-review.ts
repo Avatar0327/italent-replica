@@ -864,6 +864,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/talent-review/readiness-port.ts#columns': ['#R'],
   'apps/api/src/modules/talent-review/readiness-port.ts#readinessPort': ['#R', '#columns'],
   'apps/api/src/modules/talent-review/readiness-port.ts#readinessReferrer': ['#guards'],
+  'apps/api/src/modules/talent-review/readiness-port.ts#selectReadiness': ['#R', '#columns'],
   'apps/api/src/modules/talent-review/readiness-service.ts#LIST_ORDER': ['#R'],
   'apps/api/src/modules/talent-review/readiness-service.ts#audit': [
     'apps/api/src/audit/record.ts#recordAudit',

@@ -76,10 +76,10 @@ function only(key: string, obligations: readonly Obligation[] = entry(key)): Req
 type ObjectNode = Extract<RoutePolicy, { kind: 'object' }>;
 
 describe('AC-PRM-FW-02 显式必需项表：形状与完整性', () => {
-  it('表键与运行时 550 个端点完全相等（缺一条、多一条都失败）', () => {
+  it('表键与运行时 555 个端点完全相等（缺一条、多一条都失败）', () => {
     const declared = manifest.declared.map((r) => `${r.method} ${r.path}`).sort();
     expect(Object.keys(REQUIRED).sort()).toEqual(declared);
-    expect(declared).toHaveLength(550);
+    expect(declared).toHaveLength(555);
   });
 
   it('表文件只放字面量：不 import 声明、产品代码或探测器（不得从候选声明重新生成）', () => {
