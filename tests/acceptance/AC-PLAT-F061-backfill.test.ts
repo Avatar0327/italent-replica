@@ -10,11 +10,18 @@ import {
   auditEvents,
   employmentCustomFieldObjects,
   eq,
+  permissionProfileApps,
   permissionProfileFields,
   platformAuditEvents,
   withTenant,
 } from '@italent/db';
-import { profileLedgerMarker, STANDARD_GRANT_CODES, STANDARD_GRANT_ENTRY, STANDARD_PROFILES } from '@italent/domain';
+import {
+  profileLedgerMarker,
+  STANDARD_GRANT_CODES,
+  STANDARD_GRANT_ENTRY,
+  STANDARD_PROFILES,
+  type StandardProfile,
+} from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { registerManagedGrants, recordTenantSave, recordLedger } from '../../apps/api/src/seeds/grant-ledger.js';
@@ -145,6 +152,89 @@ describe('AC-PLAT-F061 T-04 目录新增的项补一次，撤销后不再补', (
     const afterRevoke = await permissionOf(w, HR.code, OBJECT);
     expect(grantsInstalled(await runBackfill(w))).toEqual([]);
     expect(await permissionOf(w, HR.code, OBJECT)).toEqual(afterRevoke);
+  });
+});
+
+describe('AC-PLAT-F061 T-04 补应用、数据操作、字段查看权', () => {
+  const lacking = [
+    // 旧定义：OBJ 没有“删除”数据操作，也没有 FIELD 这个字段（查看与编辑都缺）
+    (p: StandardProfile): StandardProfile =>
+      p.code !== HR.code
+        ? p
+        : {
+            ...p,
+            objects: p.objects.map((o) =>
+              o.objectCode !== OBJECT
+                ? o
+                : {
+                    ...o,
+                    dataOperations: { ...o.dataOperations, delete: false },
+                    fields: o.fields.filter((f) => f.fieldCode !== FIELD),
+                  },
+            ),
+          },
+  ];
+
+  it('应用行、数据操作 delete、字段 view / edit 缺失都补上；已有的数据操作与字段不变', async () => {
+    const w = await legacyWorld(testDb().db, 'f061t04b', lacking);
+    const profileId = w.profileIds.get(HR.code)!;
+    // 应用行也缺（身份不能改应用，所以当前没有的应用项只可能是定义新增）
+    await withTenant(w.db, w.tenantId, (tx) =>
+      tx.delete(permissionProfileApps).where(eq(permissionProfileApps.profileId, profileId)),
+    );
+    const before = (await permissionOf(w, HR.code, OBJECT))!;
+    expect(before.dataOperations.delete).toBe(false);
+    expect(before.fields.some((f) => f.fieldCode === FIELD)).toBe(false);
+
+    const installed = grantsInstalled(await runBackfill(w));
+    expect(installed).toEqual(
+      expect.arrayContaining([
+        `${HR.code}/app:${HR.apps[0]}`,
+        `${HR.code}/${OBJECT}/op:delete`,
+        fieldCode(HR.code, OBJECT, FIELD, 'view'),
+        fieldCode(HR.code, OBJECT, FIELD, 'edit'),
+      ]),
+    );
+    expect(installed).toHaveLength(4);
+    const apps = await withTenant(w.db, w.tenantId, (tx) =>
+      tx.select().from(permissionProfileApps).where(eq(permissionProfileApps.profileId, profileId)),
+    );
+    expect(apps.map((a) => a.appCode)).toEqual(HR.apps);
+    const after = (await permissionOf(w, HR.code, OBJECT))!;
+    expect(after.dataOperations).toEqual({ create: true, update: true, delete: true });
+    expect(after.fields.find((f) => f.fieldCode === FIELD)).toEqual({ fieldCode: FIELD, view: true, edit: true });
+    // 原有字段与按钮一个不少、没被改
+    for (const field of before.fields) expect(after.fields).toContainEqual(field);
+    for (const button of before.buttons) expect(after.buttons).toContainEqual(button);
+  });
+
+  it('租户先撤销了字段查看权（父项）：缺的字段编辑权（子项）不补，不会补出“能编辑却看不到”', async () => {
+    const w = await legacyWorld(testDb().db, 'f061t03b', [withObject(HR.code, OBJECT, withoutFieldEdit(FIELD))]);
+    // 已接管状态：目录之后新增了 FIELD 的编辑权，台账里还没有它
+    await withTenant(w.db, w.tenantId, (tx) =>
+      recordLedger(tx, {
+        entry: STANDARD_GRANT_ENTRY,
+        codes: [profileLedgerMarker(HR.code)],
+        source: 'install',
+        commandId: null,
+        now: new Date(),
+      }),
+    );
+    const revoked = await putObject(w, w.profileIds.get(HR.code)!, OBJECT, (o) => ({
+      ...o,
+      fields: o.fields.map((f) => (f.fieldCode === FIELD ? { ...f, view: false, edit: false } : f)),
+    }));
+    expect(revoked.status, await revoked.clone().text()).toBe(200);
+    expect((await ledger(w)).has(hrFieldEdit)).toBe(false);
+
+    const installed = grantsInstalled(await runBackfill(w));
+    expect(installed).not.toContain(hrFieldEdit);
+    expect(installed).not.toContain(fieldCode(HR.code, OBJECT, FIELD, 'view'));
+    expect((await permissionOf(w, HR.code, OBJECT))!.fields.find((f) => f.fieldCode === FIELD)).toEqual({
+      fieldCode: FIELD,
+      view: false,
+      edit: false,
+    });
   });
 });
 

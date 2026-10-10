@@ -33,6 +33,8 @@ export interface RequestOptions {
   readonly idempotencyKey?: string | null;
   /** 额外请求头（审计来源：X-Forwarded-For、User-Agent、X-Source-Page 等，R1-T16）。 */
   readonly headers?: Readonly<Record<string, string>>;
+  /** 请求的中止信号（模拟客户端断开；F-080）。 */
+  readonly signal?: AbortSignal;
 }
 
 const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
@@ -59,7 +61,7 @@ export function tenantApi(db: Db, deps: Omit<AppDeps, 'db' | 'identity'> = {}) {
       body = JSON.stringify(options.body);
       headers['content-type'] = 'application/json';
     }
-    return Promise.resolve(app.request(path, { method, headers, body }));
+    return Promise.resolve(app.request(path, { method, headers, body, signal: options.signal }));
   }
 
   return { app, request };

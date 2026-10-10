@@ -18,9 +18,11 @@ import {
 import {
   isWithinProfileApps,
   type ObjectCatalog,
+  objectCatalogDigest,
   type ObjectPermission,
   validateObjectPermission,
 } from '@italent/domain';
+import { objectCatalog } from './catalog.js';
 import { AppError } from '../../errors.js';
 import { recordTenantSave } from '../../seeds/grant-ledger.js';
 import './standard-managed-grants.js';
@@ -40,8 +42,16 @@ export interface ProfileView {
   readonly revision: number;
 }
 
+/**
+ * 身份详情里的对象权限，另带对象目录指纹（F-061 D2 = A）：租户保存时回传，服务端核对后才把面板上可见但未勾的项
+ * 记为“已决定不授予”。指纹按解析后的对象定义（含租户扩展字段）计算，与保存校验同源；对象已不在目录里时不带。
+ */
+export interface ObjectPermissionView extends ObjectPermission {
+  readonly catalogDigest?: string;
+}
+
 export interface ProfileDetail extends ProfileView {
-  readonly objects: ObjectPermission[];
+  readonly objects: ObjectPermissionView[];
 }
 
 export interface NewProfile {
@@ -66,8 +76,13 @@ export async function listProfiles(tx: Tx): Promise<ProfileView[]> {
 export async function getProfileDetail(tx: Tx, id: string): Promise<ProfileDetail> {
   const profile = await loadProfile(tx, id);
   const apps = await loadProfileApps(tx, id);
-  const objects = await loadObjectPermissions(tx, [id]);
-  objects.sort((a, b) => a.objectCode.localeCompare(b.objectCode));
+  const permissions = await loadObjectPermissions(tx, [id]);
+  permissions.sort((a, b) => a.objectCode.localeCompare(b.objectCode));
+  const objects: ObjectPermissionView[] = [];
+  for (const permission of permissions) {
+    const definition = (await tenantObjectCatalog(tx, objectCatalog, permission.objectCode)).get(permission.objectCode);
+    objects.push(definition ? { ...permission, catalogDigest: objectCatalogDigest(definition) } : permission);
+  }
   return { ...view(profile, apps), objects };
 }
 
@@ -109,6 +124,8 @@ export interface ObjectPermissionWrite {
   readonly profileId: string;
   readonly expectedRevision: number;
   readonly permission: ObjectPermission;
+  /** 客户端读到该对象权限时的对象目录指纹；不带（旧客户端）时不作负向登记，带了但与服务端不一致返回 409。 */
+  readonly catalogDigest?: string;
 }
 
 export async function setObjectPermission(
@@ -120,6 +137,11 @@ export async function setObjectPermission(
   const { profileId, permission } = change;
   const definition = (await tenantObjectCatalog(tx, catalog, permission.objectCode)).get(permission.objectCode);
   if (!definition) throw new AppError('NOT_FOUND', '对象不存在');
+  // D2 = A：面板展示的目录（含租户扩展字段）与服务端当前不一致，说明租户没看到全部现有项，不写任何行，刷新后重提。
+  // 先于权限语义校验：目录变化时旧页面提交的字段 / 按钮可能已不存在，要得到 409 CATALOG_CHANGED 而不是 400
+  if (change.catalogDigest !== undefined && change.catalogDigest !== objectCatalogDigest(definition)) {
+    throw new AppError('CATALOG_CHANGED', '对象目录已变化，请刷新后重新提交', { objectCode: definition.code });
+  }
   const violations = validateObjectPermission(definition, permission);
   if (violations.length > 0) throw new AppError('VALIDATION_FAILED', '对象权限配置不合法', violations);
 
@@ -142,7 +164,7 @@ export async function setObjectPermission(
     .returning();
   if (!bumped) throw revisionConflict(change.expectedRevision, undefined);
   // 补装台账：租户动过这个对象，保存前后授予过的项以后回补都不再补（F-061 §4.4，不依赖是否跑过回补）
-  await recordTenantSave(tx, write, profile, permission.objectCode, before, permission);
+  await recordTenantSave(tx, write, profile, permission.objectCode, before, permission, change.catalogDigest);
 
   await audit(tx, write, {
     action: 'permission_profile.set_object',

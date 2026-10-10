@@ -135,7 +135,13 @@ function profileRoutes(router: Router, deps: TenantRouteDeps): void {
     const objectCode = objectCodeParam(c);
     const expectedRevision = ifMatch(c);
     const body = await parseBody(c, objectPermissionBody);
-    const change = { profileId, expectedRevision, permission: { objectCode, ...body } };
+    const { catalogDigest, ...permission } = body;
+    const change = {
+      profileId,
+      expectedRevision,
+      permission: { objectCode, ...permission },
+      ...(catalogDigest === undefined ? {} : { catalogDigest }),
+    };
     const result = await command(c, deps, ctx, { op: 'profile.set_object', change }, (tx, w) =>
       setObjectPermission(tx, w, objectCatalog, change),
     );

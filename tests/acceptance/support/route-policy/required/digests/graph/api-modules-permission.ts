@@ -386,10 +386,13 @@ export const GRAPH: Graph = {
     '#view',
   ],
   'apps/api/src/modules/permission/profiles.ts#getProfileDetail': [
+    'apps/api/src/modules/permission/catalog.ts#objectCatalog',
     '#loadProfile',
     '#loadProfileApps',
     '#view',
     'apps/api/src/modules/permission/subject.ts#loadObjectPermissions',
+    'apps/api/src/modules/permission/tenant-catalog.ts#tenantObjectCatalog',
+    'packages/domain/src/platform/standard-grants.ts#objectCatalogDigest',
   ],
   'apps/api/src/modules/permission/profiles.ts#listProfiles': ['#view'],
   'apps/api/src/modules/permission/profiles.ts#setObjectPermission': [
@@ -404,6 +407,7 @@ export const GRAPH: Graph = {
     'apps/api/src/seeds/grant-ledger.ts#recordTenantSave',
     'packages/domain/src/permission/object-permission.ts#isWithinProfileApps',
     'packages/domain/src/permission/object-permission.ts#validateObjectPermission',
+    'packages/domain/src/platform/standard-grants.ts#objectCatalogDigest',
   ],
   'apps/api/src/modules/permission/public-down.ts#publicDownSql': [
     '#scopeOrgIds',
@@ -604,17 +608,21 @@ export const GRAPH: Graph = {
     '#BUILTIN_SCOPE_DATASOURCES',
     '#invalid',
   ],
-  'apps/api/src/modules/permission/scope-policy-service.ts#lock': ['#lockScopeObject'],
+  'apps/api/src/modules/permission/scope-policy-service.ts#lockIdentityScope': [
+    'apps/api/src/advisory-lock.ts#asUuid',
+    '#lockScopeObject',
+    '#scopeLockProbe',
+  ],
   'apps/api/src/modules/permission/scope-policy-service.ts#lockScopeObject': [
     'apps/api/src/advisory-lock.ts#advisoryLock',
     'apps/api/src/advisory-lock.ts#asUuid',
   ],
   'apps/api/src/modules/permission/scope-policy-service.ts#setIdentityScope': [
-    'apps/api/src/advisory-lock.ts#asUuid',
     'apps/api/src/modules/permission/data-scope-admin.ts#recordScopeChange',
     'apps/api/src/modules/permission/http.ts#revisionConflict',
+    'apps/api/src/modules/permission/profiles.ts#loadProfile',
     '#getIdentityScope',
-    '#lock',
+    '#lockIdentityScope',
   ],
   'apps/api/src/modules/permission/scope-resolver.ts#linkedPerson': [
     'apps/api/src/modules/permission/scope-hierarchy.ts#scopeRows',

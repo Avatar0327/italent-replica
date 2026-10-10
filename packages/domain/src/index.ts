@@ -30,6 +30,7 @@ export {
   FIRST_ADMIN_PROFILE,
   NO_ORG_FIELD_SEE_ALL,
   type PresetSeeAllTarget,
+  presetSeeAllTargets,
   STANDARD_PROFILES,
   type StandardProfile,
 } from './platform/standard-presets.js';

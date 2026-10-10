@@ -12,6 +12,7 @@ import {
   auditEvents,
   eq,
   inArray,
+  permissionIdentityScopes,
   permissionProfileApps,
   permissionProfileButtons,
   permissionProfileFields,
@@ -28,9 +29,11 @@ import {
   type GrantItem,
   grantParentCode,
   isWithinProfileApps,
+  type PresetSeeAllTarget,
   objectGrantCode,
   opGrantCode,
   parseGrantCode,
+  seeAllGrantCode,
   profileLedgerMarker,
   STANDARD_GRANT_CODES,
   STANDARD_GRANT_ENTRY,
@@ -42,10 +45,11 @@ import {
   type ObjectPermission,
 } from '@italent/domain';
 import { readLedger, recordLedger } from '../../seeds/grant-ledger.js';
-import { registerSeed, type SeedWriteContext } from '../../seeds/registry.js';
+import { registerSeed, type SeedInstallResult, type SeedSkip, type SeedWriteContext } from '../../seeds/registry.js';
 import { auditAs } from './audit.js';
 import { objectCatalog } from './catalog.js';
-import { installProfilesForTenantAdmins } from './standard-profiles.js';
+import { installProfilesForTenantAdmins, presetSeeAll } from './standard-profiles.js';
+import { lockIdentityScope } from './scope-policy-service.js';
 import './standard-managed-grants.js';
 import { replaceObjectRows } from './profiles.js';
 import { loadObjectPermissions } from './subject.js';
@@ -86,16 +90,24 @@ registerSeed({
   install: installGrants,
 });
 
-/** 一个标准身份当前已有的授权项编码（应用、对象、数据操作、字段、按钮）。 */
-async function currentGrantCodes(tx: Tx, profiles: readonly PermissionProfile[]): Promise<Map<string, Set<string>>> {
+interface CurrentGrants {
+  /** 身份编码 → 当前已有的授权项编码（应用、对象、数据操作、字段、按钮、see_all = true 的看全部）。 */
+  readonly have: Map<string, Set<string>>;
+  /** 身份编码 → 范围行在但 see_all = false 的看全部编码（租户关过，不可装、不记账）。 */
+  readonly closed: Map<string, Set<string>>;
+}
+
+/** 标准身份当前的授权项编码。 */
+async function currentGrantCodes(tx: Tx, profiles: readonly PermissionProfile[]): Promise<CurrentGrants> {
   const codeOf = new Map(profiles.map((p) => [p.id, p.code]));
   const ids = profiles.map((p) => p.id);
   const have = new Map(profiles.map((p) => [p.code, new Set<string>()]));
+  const closed = new Map(profiles.map((p) => [p.code, new Set<string>()]));
   const add = (profileId: string, code: (profileCode: string) => string) => {
     const profileCode = codeOf.get(profileId)!;
     have.get(profileCode)!.add(code(profileCode));
   };
-  if (ids.length === 0) return have;
+  if (ids.length === 0) return { have, closed };
   for (const row of await tx.select().from(permissionProfileApps).where(inArray(permissionProfileApps.profileId, ids)))
     add(row.profileId, (p) => appGrantCode(p, row.appCode));
   for (const row of await tx
@@ -119,7 +131,16 @@ async function currentGrantCodes(tx: Tx, profiles: readonly PermissionProfile[])
     .from(permissionProfileButtons)
     .where(inArray(permissionProfileButtons.profileId, ids)))
     add(row.profileId, (p) => buttonGrantCode(p, row.objectCode, row.buttonCode, row.level as ButtonLevel));
-  return have;
+  for (const row of await tx
+    .select()
+    .from(permissionIdentityScopes)
+    .where(inArray(permissionIdentityScopes.profileId, ids))) {
+    if (row.targetKind !== 'entity' && row.targetKind !== 'datasource') continue;
+    const kind = row.targetKind;
+    const code = seeAllGrantCode(codeOf.get(row.profileId)!, row.appCode, kind, row.targetCode);
+    (row.seeAll ? have : closed).get(codeOf.get(row.profileId)!)!.add(code);
+  }
+  return { have, closed };
 }
 
 /**
@@ -137,7 +158,7 @@ async function existingGrants(tx: Tx, _tenantId: string): Promise<ReadonlySet<st
     .orderBy(asc(permissionProfiles.id))
     .for('update');
   const standard = new Map(profiles.map((profile) => [profile.code, profile]));
-  const have = await currentGrantCodes(tx, profiles);
+  const { have, closed } = await currentGrantCodes(tx, profiles);
   const ledger = new Map(await readLedger(tx, STANDARD_GRANT_ENTRY));
 
   const adopted: string[] = [];
@@ -151,6 +172,7 @@ async function existingGrants(tx: Tx, _tenantId: string): Promise<ReadonlySet<st
       continue;
     }
     const current = have.get(profileCode)!;
+    const closedScopes = closed.get(profileCode)!;
     const marker = profileLedgerMarker(profileCode);
     const taken = ledger.has(marker);
     const withheldObjects = taken ? new Set<string>() : await takeoverWithheld(tx, profile, ledger, current, items);
@@ -162,8 +184,8 @@ async function existingGrants(tx: Tx, _tenantId: string): Promise<ReadonlySet<st
     if (!taken) adopted.push(marker);
     // 已有、台账已登记（含租户撤销的）、本次接管 withheld 的都算“已存在”；父项被撤销的子项另算不可装
     for (const item of items) {
-      if (current.has(item.code) || ledger.has(item.code) || withheldObjects.has(objectOf(item) ?? ''))
-        result.add(item.code);
+      const settled = current.has(item.code) || ledger.has(item.code) || closedScopes.has(item.code);
+      if (settled || withheldObjects.has(objectOf(item) ?? '')) result.add(item.code);
     }
     markRevokedChildren(items, current, ledger, withheldObjects, result);
   }
@@ -234,29 +256,38 @@ async function takeoverWithheld(
 }
 
 /** 补装缺失授权项（方案 §4.3）：按身份分组，依赖顺序写、只增不删，按租户扩展目录重验，身份 revision + 1，记 install 与审计。 */
-async function installGrants(tx: Tx, write: SeedWriteContext, missing: readonly string[]): Promise<void> {
+async function installGrants(tx: Tx, write: SeedWriteContext, missing: readonly string[]): Promise<SeedInstallResult> {
   const byProfile = new Map<string, GrantItem[]>();
   for (const code of missing) {
     const ref = parseGrantCode(code);
     if (!ref || ref.kind === 'ledger' || ref.kind === 'modified') continue;
     byProfile.set(ref.profileCode, [...(byProfile.get(ref.profileCode) ?? []), ref]);
   }
+  const skipped: SeedSkip[] = [];
   for (const [profileCode, items] of byProfile) {
     const [profile] = await tx
       .select()
       .from(permissionProfiles)
       .where(and(eq(permissionProfiles.code, profileCode), eq(permissionProfiles.source, 'standard')))
       .for('update');
-    if (profile) await installProfileGrants(tx, write, profile, items);
+    if (profile) skipped.push(...(await installProfileGrants(tx, write, profile, items)));
   }
+  return { skipped };
 }
 
-async function installProfileGrants(tx: Tx, write: SeedWriteContext, profile: PermissionProfile, items: GrantItem[]) {
+async function installProfileGrants(
+  tx: Tx,
+  write: SeedWriteContext,
+  profile: PermissionProfile,
+  all: GrantItem[],
+): Promise<SeedSkip[]> {
+  const items = all.filter((item) => item.kind !== 'seeAll');
   const objects = [...new Set(items.flatMap((item) => objectOf(item) ?? []))];
   const appsBefore = await profileApps(tx, profile.id);
   const before = await affectedObjects(tx, profile.id, objects);
 
   await writeGrants(tx, write.tenantId, profile.id, items);
+  const seeAll = await installSeeAll(tx, write, profile.id, all);
 
   const appsAfter = await profileApps(tx, profile.id);
   const after = await affectedObjects(tx, profile.id, objects);
@@ -267,9 +298,10 @@ async function installProfileGrants(tx: Tx, write: SeedWriteContext, profile: Pe
     .where(and(eq(permissionProfiles.id, profile.id), eq(permissionProfiles.revision, profile.revision)))
     .returning();
   if (!bumped) throw new Error(`标准身份 ${profile.code} 在补装授权时被并发修改`);
+  const skippedCodes = new Set(seeAll.skipped.map((skip) => skip.code));
   await recordLedger(tx, {
     entry: STANDARD_GRANT_ENTRY,
-    codes: items.map((item) => item.code),
+    codes: all.map((item) => item.code).filter((code) => !skippedCodes.has(code)),
     source: 'install',
     commandId: write.commandId,
     now: write.now,
@@ -279,8 +311,44 @@ async function installProfileGrants(tx: Tx, write: SeedWriteContext, profile: Pe
     objectType: 'permission_profile',
     objectId: profile.id,
     before: { apps: appsBefore, objects: before, revision: profile.revision },
-    after: { apps: appsAfter, objects: after, revision: bumped.revision },
+    after: { apps: appsAfter, objects: after, seeAll: seeAll.installed, revision: bumped.revision },
   });
+  return seeAll.skipped;
+}
+
+/**
+ * 补预置看全部（D3 = A′，只有批准清单里的目标才有编码）：逐目标按固定顺序取范围锁（身份行锁已持有，顺序“身份 → 范围”）、
+ * 复读范围行，仍不存在才按开通预置的同一写法插入（范围行 revision 1、范围版本、范围审计）；复读到行（租户抢先提交）就不覆盖。
+ */
+async function installSeeAll(
+  tx: Tx,
+  write: SeedWriteContext,
+  profileId: string,
+  items: readonly GrantItem[],
+): Promise<{ installed: string[]; skipped: SeedSkip[] }> {
+  const targets = items
+    .flatMap((item) => (item.kind === 'seeAll' ? [item] : []))
+    .sort((a, b) => (a.code < b.code ? -1 : 1));
+  const toInstall: PresetSeeAllTarget[] = [];
+  const skipped: SeedSkip[] = [];
+  for (const item of targets) {
+    const key = { profileId, appCode: item.appCode, targetKind: item.targetKind, targetCode: item.targetCode };
+    await lockIdentityScope(tx, write.tenantId, key);
+    const [row] = await tx
+      .select({ revision: permissionIdentityScopes.revision })
+      .from(permissionIdentityScopes)
+      .where(
+        and(
+          eq(permissionIdentityScopes.profileId, profileId),
+          eq(permissionIdentityScopes.appCode, item.appCode),
+          eq(permissionIdentityScopes.targetKind, item.targetKind),
+          eq(permissionIdentityScopes.targetCode, item.targetCode),
+        ),
+      );
+    if (row) skipped.push({ code: item.code, reason: 'SCOPE_EXISTS' });
+    else toInstall.push({ appCode: item.appCode, targetKind: item.targetKind, targetCode: item.targetCode });
+  }
+  return { installed: await presetSeeAll(tx, write, profileId, toInstall), skipped };
 }
 
 const profileApps = async (tx: Tx, profileId: string) =>
