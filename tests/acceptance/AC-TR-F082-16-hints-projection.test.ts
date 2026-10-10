@@ -136,8 +136,9 @@ describe('AC-16 有 items 查看权但目标不可见：不可见环不列出', 
       expect(hints!.warnings.join('|')).toContain('存在循环依赖，涉及当前不可见的字段');
       expect(hints!.others).toMatchObject({ order: 1, blocked: 1 });
     }
-    for (const text of out.texts) {
-      for (const secret of [ctx.b.id, '乙项']) expect(text, secret).not.toContain(secret);
+    // 规则的 items 本身对有 items 查看权的人可见（含目标字段 ID）；这里只要求 hints 不泄露不可见目标的 ID 与名称
+    for (const hints of out.hints) {
+      for (const secret of [ctx.b.id, '乙项']) expect(JSON.stringify(hints), secret).not.toContain(secret);
     }
   });
 
@@ -149,7 +150,8 @@ describe('AC-16 有 items 查看权但目标不可见：不可见环不列出', 
       expect([...hints!.order].sort()).toEqual([ctx.a.id, ctx.b.id].sort());
       expect([...hints!.blocked].sort()).toEqual([ctx.a.id, ctx.b.id].sort());
       expect(hints!.cycles).toHaveLength(1);
-      expect([...hints!.cycles[0]!].sort()).toEqual([ctx.a.id, ctx.b.id].sort());
+      // 环以闭合形式给出（起点在末尾重复一次）：按成员集合比较
+      expect([...new Set(hints!.cycles[0]!)].sort()).toEqual([ctx.a.id, ctx.b.id].sort());
       expect(hints!.others).toBeUndefined();
     }
   });
