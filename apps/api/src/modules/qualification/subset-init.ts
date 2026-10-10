@@ -111,25 +111,22 @@ async function initializeOne(
   await lockEmploymentEmployee(tx, ctx, employeeId);
   const records = lastOfEachDay(await effectiveRecords(tx, ctx.tenantId, employeeId, today));
   // 第一步：在任何写入之前定出实际待新增的记录；判重与已有后继都读写入前的快照（第 2 轮 R2-P2-01）
-  const skipped = new Map<string, InitRecordReceipt>();
-  const insertions: Insertion[] = [];
-  for (const record of records) {
-    const step = await classify(tx, ctx.tenantId, record);
-    if ('outcome' in step) skipped.set(record.id, step);
-    else insertions.push(step);
-  }
+  const steps: (Insertion | InitRecordReceipt)[] = [];
+  for (const record of records) steps.push(await classify(tx, ctx.tenantId, record));
+  const insertions = steps.filter((step): step is Insertion => !('outcome' in step));
   // 第二步：边界只取实际待新增的下一条与已有行的真实开始日，跳过的记录不参与
-  const created = new Map<string, InitRecordReceipt>();
-  for (const [index, insertion] of insertions.entries()) {
-    const endDate = endDateOf(insertions[index + 1]?.record.effectiveDate ?? null, insertion.existingNextStart);
-    created.set(insertion.record.id, await insert(tx, ctx, insertion, endDate));
+  const receipts: InitRecordReceipt[] = [];
+  let inserted = 0;
+  for (const step of steps) {
+    if ('outcome' in step) {
+      receipts.push(step);
+      continue;
+    }
+    inserted++;
+    const endDate = endDateOf(insertions[inserted]?.record.effectiveDate ?? null, step.existingNextStart);
+    receipts.push(await insert(tx, ctx, step, endDate));
   }
-  return {
-    employeeId,
-    outcome: 'processed',
-    created: created.size,
-    records: records.map((record) => created.get(record.id) ?? skipped.get(record.id)!),
-  };
+  return { employeeId, outcome: 'processed', created: inserted, records: receipts };
 }
 
 /** 第一步的单条判定：映射失败或撞上已有行 → 跳过回执；否则是实际待新增的记录。 */
