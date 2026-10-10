@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { closureOf, createClosureEnv, type SourceReader } from './support/route-policy/evidence-closure.js';
 import { EVIDENCE_BOUNDARY } from './support/route-policy/evidence-boundary.js';
 import { findUnitNode, repoSource } from './support/route-policy/evidence.js';
-import { DEPENDENCIES, DIGESTS } from './support/route-policy/required/digests.js';
+import { DIGESTS, GRAPH, NODE_DIGESTS } from './support/route-policy/required/digests/index.js';
 
 const FILES: Record<string, string> = {
   'apps/api/src/modules/x/a.ts': [
@@ -35,11 +35,13 @@ describe('AC-PRM-FW-F080 字体等二进制资源不进 F-039 闭包', () => {
     expect(closure.unresolved).toEqual([]);
   });
 
-  it('真实登记表（摘要与依赖）里只有 .ts 源码，没有 assets/ 下的任何文件', () => {
-    const files = new Set([
-      ...Object.keys(DIGESTS),
-      ...Object.entries(DEPENDENCIES).flatMap(([unit, deps]) => [fileOf(unit), ...Object.keys(deps).map(fileOf)]),
-    ]);
+  it('真实登记表（图存储：单元摘要、节点摘要、直接依赖图）里只有 .ts 源码，没有 assets/ 下的任何文件', () => {
+    const files = new Set<string>(Object.keys(DIGESTS));
+    for (const id of Object.keys(NODE_DIGESTS)) files.add(fileOf(id));
+    for (const [id, deps] of Object.entries(GRAPH)) {
+      files.add(fileOf(id));
+      for (const dep of deps) if (!dep.startsWith('#')) files.add(fileOf(dep));
+    }
     expect(files.size).toBeGreaterThan(100);
     for (const file of files) {
       expect(file, file).toMatch(/\.ts$/);
