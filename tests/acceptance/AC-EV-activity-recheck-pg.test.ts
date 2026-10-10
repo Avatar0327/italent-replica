@@ -221,13 +221,51 @@ describe.skipIf(!process.env['TEST_DATABASE_URL'])('AC-EV-activity-recheck-pg �
       expect(inScope.map((item) => item.id)).toEqual([first.id]);
     });
 
-    it('多类别按相反顺序提交的两个新建请求并发：按类别 ID 排序取锁，不死锁，两个都成功（互为草稿不冲突）', async () => {
+    it('多类别按相反顺序提交的两个新建请求并发：都先取类别 ID 较小的锁（取锁屏障固定交错），等待期间谁也不持较大的锁，放开后不死锁、都成功', async () => {
       const [c1, c2] = [await w.qlCategory(), await w.qlCategory()];
+      const [small, large] = [c1.id, c2.id].sort() as [string, string];
       const op = await manager();
       const send = (categoryIds: string[]) =>
         op.request('POST', ACTIVITIES, { ifMatch: 0, body: body({ categoryIds }) });
-      const responses = await Promise.all([send([c1.id, c2.id]), send([c2.id, c1.id])]);
-      expect(responses.map((r) => r.status)).toEqual([201, 201]);
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let locked!: () => void;
+      const holding = new Promise<void>((resolve) => {
+        locked = resolve;
+      });
+      // 屏障：外部事务持较小类别的锁，两个请求都卡在第一把锁上
+      const holder = testDb().db.transaction(async (tx) => {
+        await tx.execute(sql`SELECT set_config('app.tenant_id', ${w.tenant.id}, true)`);
+        await lockActivityScope(tx, w.tenant.id, [small]);
+        locked();
+        await gate;
+      });
+      let pending: Promise<Response[]> | undefined;
+      try {
+        await holding;
+        pending = Promise.all([send([small, large]), send([large, small])]);
+        const outcome = await Promise.race([
+          pending.then(() => 'done'),
+          new Promise<string>((resolve) => setTimeout(() => resolve('waiting'), 800)),
+        ]);
+        expect(outcome).toBe('waiting');
+        // 没按类别 ID 排序取锁时，先取较大锁的请求会在这里持着它（探针拿不到）；排序后两个请求都还停在较小的锁上
+        await testDb().db.transaction(async (tx) => {
+          await tx.execute(sql`SELECT set_config('app.tenant_id', ${w.tenant.id}, true)`);
+          await tx.execute(sql`SET LOCAL lock_timeout = '300ms'`);
+          await lockActivityScope(tx, w.tenant.id, [large]);
+        });
+        release();
+        await holder;
+        const responses = await pending;
+        expect(responses.map((r) => r.status)).toEqual([201, 201]);
+      } finally {
+        release();
+        await holder.catch(() => undefined);
+        await pending?.catch(() => undefined);
+      }
     });
   });
 

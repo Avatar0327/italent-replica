@@ -3,7 +3,7 @@
  * 范围 / 申请类别）时，若本租户已有**进行中**（status = published）的其他活动，与本活动的组织范围有交集且申请类别有交集，则拦截，
  * 409 ACTIVITY_SCOPE_DUPLICATE，提示“适用范围与已有活动【{活动名称}】重复，请修改”。
  * - **组织范围把下级算进去**：每个组织勾了“包含下级”的，按行政维度、租户时区当天的组织版本展开成组织集合（DEC-146 同口径，停用组织
- *   也展开），两个活动展开后有公共组织即有交集；去掉“包含下级”后可能不再冲突；
+ *   也展开），两个活动展开后有公共组织即有交集；有界保护按去重后的组织数计数，重叠的根不重复消耗上限；去掉“包含下级”后可能不再冲突；
  * - 检查与写入同一事务，先按“租户 + 申请类别”取事务级咨询锁（类别 ID 排序取锁，避免死锁）再判断；C2-1a 发布时复用 `lockActivityScope`
  *   与 `findScopeConflict`，防止两个草稿先后发布绕过；
  * - 冲突活动不在操作人 TEvaluation 数据范围内，或活动“名称”字段对操作人不可见时，提示不带名称，不泄露范围外 / 被裁剪的活动信息 🟡。
@@ -12,7 +12,7 @@ import { sql, type Tx } from '@italent/db';
 import { type OrgRangeEntry, tenantLocalDate } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { advisoryLock, asUuid } from '../../advisory-lock.js';
-import { expandScopeRoots } from '../permission/scope-hierarchy.js';
+import { expandScopeOrgSet } from '../permission/scope-hierarchy.js';
 import { type ModuleScope, rowsOf, scopePredicate } from './access.js';
 
 /** 取“租户 + 申请类别”的事务级咨询锁（可能等待；类别 ID 排序后依次取，调用方各入口一致）。 */
@@ -49,7 +49,7 @@ async function expand(tx: Tx, args: ScopeArgs, entries: readonly OrgRangeEntry[]
     dimension: 'admin',
     includeDescendants: entry.includeDescendants,
   }));
-  return new Set(await expandScopeRoots(tx, args.tenantId, asOf, roots));
+  return expandScopeOrgSet(tx, args.tenantId, asOf, roots);
 }
 
 /** 与给定范围冲突的进行中活动（排除自身）：可见的排前面，第一个交集命中即返回；没有冲突返回 undefined。 */

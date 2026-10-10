@@ -11,6 +11,7 @@
 import { sql } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { expandScopeOrgSet, expandScopeRoots } from '../../apps/api/src/modules/permission/scope-hierarchy.js';
 import { errorOf } from './AC-EV-support.js';
 import {
   ACTIVITIES,
@@ -32,6 +33,8 @@ describe('AC-EV-activity-scope-bounded 重叠组织根不重复消耗有界解�
   /** 10 个重叠的根，都勾“包含下级”。 */
   let overlapping: { orgId: string; includeDescendants: boolean }[];
   /** 与重叠根覆盖集合完全相同的单根选择。 */
+  /** 小树 p → q → r（租户里建满 2,100 个组织后再通过接口建组织很慢，所以在批量插入前建好）。 */
+  let small: [string, string, string];
   let top: { orgId: string; includeDescendants: boolean }[];
 
   beforeAll(async () => {
@@ -39,6 +42,9 @@ describe('AC-EV-activity-scope-bounded 重叠组织根不重复消耗有界解�
     f = await activityFixtures(w);
     chain = [await w.childOrg(w.orgA)];
     for (let level = 1; level < DEPTH; level++) chain.push(await w.childOrg(chain[level - 1]!));
+    const p = await w.childOrg(w.orgA);
+    const q = await w.childOrg(p);
+    small = [p, q, await w.childOrg(q)];
     const last = chain[DEPTH - 1]!;
     await w.asOwner(async (run) => {
       const tid = w.tenant.id;
@@ -133,5 +139,24 @@ describe('AC-EV-activity-scope-bounded 重叠组织根不重复消耗有界解�
     const message = async (response: Response) =>
       ((await response.clone().json()) as { error: { message: string } }).error.message;
     expect(await message(viaAll)).toBe(await message(viaTop));
+  });
+  it('去重变体与权限侧 expandScopeRoots 的集合一致（混合勾 / 不勾“包含下级”、重复根、不存在的根）：权限侧调用方不受影响', async () => {
+    const [p, q, r] = small;
+    const missing = '00000000-0000-4000-8000-000000000001';
+    const roots = [
+      { orgId: p, dimension: 'admin', includeDescendants: true },
+      { orgId: q, dimension: 'admin', includeDescendants: true },
+      { orgId: q, dimension: 'admin', includeDescendants: false },
+      { orgId: w.orgB, dimension: 'admin', includeDescendants: false },
+      { orgId: missing, dimension: 'admin', includeDescendants: true },
+    ];
+    await testDb().db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT set_config('app.tenant_id', ${w.tenant.id}, true)`);
+      const asOf = '2026-06-01';
+      const viaRows = new Set(await expandScopeRoots(tx, w.tenant.id, asOf, roots));
+      const viaSet = await expandScopeOrgSet(tx, w.tenant.id, asOf, roots);
+      expect([...viaSet].sort()).toEqual([...viaRows].sort());
+      expect([...viaSet].sort()).toEqual([p, q, r, w.orgB].sort());
+    });
   });
 });
