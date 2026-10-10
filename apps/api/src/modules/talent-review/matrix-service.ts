@@ -166,7 +166,7 @@ function checkAgainstFields(shape: Shape, facts: Map<string, FieldFacts>, added:
   const axisFields = { x: facts.get(shape.xFieldId)!, y: facts.get(shape.yFieldId)! };
   for (const field of Object.values(axisFields)) {
     if (!(MATRIX_AXIS_FIELD_KINDS as readonly string[]).includes(field.kind)) {
-      throw reject('MATRIX_AXIS_FIELD_KIND', '九宫格的轴只能是单选或数值字段');
+      throw reject('MATRIX_AXIS_FIELD_KIND', '九宫格的轴只能是等级维度（单选）字段');
     }
   }
   for (const { fieldId } of shape.positionFields) {
@@ -250,7 +250,6 @@ const levelRows = (ctx: MatrixWriteContext, matrixId: string, levels: readonly A
     levelNo: l.levelNo,
     name: l.name,
     optionValues: l.optionValues,
-    lowerBound: l.lowerBound === null ? null : String(l.lowerBound),
   }));
 
 const cellRow = (ctx: MatrixWriteContext, matrixId: string, c: CellBody) => ({
@@ -261,6 +260,8 @@ const cellRow = (ctx: MatrixWriteContext, matrixId: string, c: CellBody) => ({
   yLevelNo: c.yLevelNo,
   name: c.name,
   color: c.color,
+  textColor: c.textColor,
+  exportOrder: c.exportOrder,
   countsGreen: c.countsGreen,
 });
 
@@ -286,6 +287,8 @@ async function syncLevelsAndCells(
   }
   await tx.delete(L).where(and(eq(L.tenantId, ctx.tenantId), eq(L.matrixId, matrixId)));
   await tx.insert(L).values(levelRows(ctx, matrixId, levels));
+  // 导出顺序租户内唯一：先清空再逐格写入，整组互换顺序时不会在中途撞唯一约束
+  await tx.update(C).set({ exportOrder: null }).where(scope);
   for (const cell of cells) {
     if (!existing.has(cell.cellNo)) {
       await tx.insert(C).values(cellRow(ctx, matrixId, cell));

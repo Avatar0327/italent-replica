@@ -37,14 +37,14 @@
 | 位置字段租户内唯一（新建、修改位置字段、预置补装三个写入口先按统一顺序取这批字段的占用锁，互换 / 反序占用只会得到 409，不会死锁）：覆盖 before-before、after-after、两向 before-after、同一九宫格 before = after；并发由库唯一约束兜底，恰一个成功 | 409 `MATRIX_POSITION_FIELD_IN_USE` | 设计 §2.2、D-20、AC-TR-08 |
 | 保存命令恰两行（before / after 各一） | 400 `MATRIX_POSITION_FIELDS_INCOMPLETE` | 设计 §2.2、P3-01 |
 | 位置字段必须是“位置”分组的数值字段 | 400 `MATRIX_POSITION_FIELD_KIND` | 设计 §2.7（位置字段 number、`system_written`） |
-| X ≠ Y；轴字段为单选或数值 | 400 `MATRIX_AXIS_SAME_FIELD` / `MATRIX_AXIS_FIELD_KIND` | TR-R31 |
-| 轴分段 2～9 段、序号连续；单选轴选项值属于字段且各段不重复；数值轴第一段无下界、其余下界递增 | 400 `MATRIX_LEVELS_INVALID` | 🟡 设计自定项 D-B4-1（需取证 #181） |
+| X ≠ Y；轴字段只能是等级维度（单选）字段，数值字段不行（F-085：原站轴下拉只有“校准后××”这类等级字段） | 400 `MATRIX_AXIS_SAME_FIELD` / `MATRIX_AXIS_FIELD_KIND` | TR-R31；DEC-389①（Q-M0-156，撤回 DEC-374③ 的“单选或数值”） |
+| 轴分段 2～9 段、序号连续；每段至少一个选项值、选项值属于字段且各段不重复（段数可为 2～9，原站有 2 × 2；分段不再有数值下界，输入只接受 `lowerBound: null`） | 400 `MATRIX_LEVELS_INVALID` | DEC-389①；段数上限 9 仍为设计自定 |
 | 格子铺满 X 段 × Y 段网格，格子号唯一 | 400 `MATRIX_CELLS_INCOMPLETE` | 🟡 设计自定项 D-B4-1（需取证 #181） |
 | 新引用已停用的字段 | 400 `MATRIX_FIELD_DISABLED` | 设计 §7 启停行（停用后不可新引用） |
 | 被比例规则引用的格子不能删 | 409 `MATRIX_CELL_IN_USE` | TR-R33 |
 | 范围运算（between）需要上限且 ≥ 下限，其他运算不带上限；格子集合非空、无重复、属于本九宫格；一组至少一条规则；组内规则为“且”（PR-D 求值） | 400 `RATIO_RULE_INVALID` / `RATIO_RULE_CELL_UNKNOWN` | TR-R33 |
-| 默认规则组至多一个（设为默认会取消原默认） | — | TR-R33“一组为默认” |
-| 数值轴下界最多四位小数（存储精度 numeric(14,4)，超精度会被舍入而不再严格递增） | 400 `VALIDATION_FAILED` | 🟡 设计自定项 D-B4-1（需取证 #181） |
+| 默认规则组**不要求**有：零个或一个都行，至多一个（设为默认会取消原默认；删除 / 取消默认后可回到零个） | — | TR-R33；DEC-389①（Q-M0-156 撤回“恰有一个”） |
+| 格子的文字颜色 `textColor`（#RRGGBB，缺省黑色）；导出顺序 `exportOrder` 整组给出（恰为 1～格子数的排列）或整组缺省（按格子号导出）；绿化率 `greenRateReference` 默认关，打开后逐格用 `countsGreen` 标记是否计入 | 400 `VALIDATION_FAILED` / `MATRIX_EXPORT_ORDER_INVALID` | DEC-389①（Q-M0-157；绿化率默认勾选未读出 🟡） |
 | 引用字段不存在或不在字段目录范围内（幂等重放时按当前字段目录范围重新复核） | 404 `NOT_FOUND`（同一个响应，不暴露隐藏字段的存在与类型） | AGENTS §10 权限、OCR 路由规则 |
 
 ## 4. 查看人 × 接口 × 字段
@@ -70,7 +70,7 @@
 | `PATCH /matrices/:id` | 同上（编码不收） | 未提交字段保留；`axisLevels` / `cells` 未提交则保留；格子按格子号原位更新 | revision + 1 | 更新人 / 时间 | `AC-TR-08-matrix`、`-sidechannel` |
 | `DELETE /matrices/:id` | — | — | 级联删子数据 | — | `AC-TR-08-matrix`、`-ratio` |
 | 规则组增改删 | 名称、是否默认、控制范围 / 方式、起始人数、规则 | 组 id 与未提交字段保留 | 九宫格 revision + 1；设为默认时取消原默认 | — | `AC-TR-08-matrix-ratio` |
-| 种子补装 `registerSeed('talent-review/preset-matrices')` | — | 已有编码不覆盖；依赖字段被停用 / 改属性 / 位置字段已被占用时不装，补装结果 `skipped[{code,reason}]` 给出原因（`MATRIX_FIELD_DISABLED / MATRIX_POSITION_FIELD_KIND / MATRIX_POSITION_FIELD_IN_USE / MATRIX_FIELD_MISSING`），恢复后再补装 | 预置字段按编码取 id | 系统写入 + 审计 | `AC-TR-08-matrix-preset`、`-round2` |
+| 种子补装 `registerSeed('talent-review/preset-matrices')`（v2：F-085，“绩效-潜力”X = 潜力 / Y = 绩效，格子 1～9 左下沿对角线到右上，名称 / 三档蓝背景 / 黑字 / 导出顺序 9-7-8-5-4-6-2-3-1 照原站，绿化率默认关；已安装的不覆盖） | — | 已有编码不覆盖；依赖字段被停用 / 改属性 / 位置字段已被占用时不装，补装结果 `skipped[{code,reason}]` 给出原因（`MATRIX_FIELD_DISABLED / MATRIX_POSITION_FIELD_KIND / MATRIX_POSITION_FIELD_IN_USE / MATRIX_FIELD_MISSING`），恢复后再补装 | 预置字段按编码取 id | 系统写入 + 审计 | `AC-TR-08-matrix-preset`、`-round2` |
 
 ## 6. 引用守卫（非路由）
 

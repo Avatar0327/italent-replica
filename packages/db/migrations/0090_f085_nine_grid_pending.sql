@@ -1,0 +1,5 @@
+ALTER TABLE "talent_review_matrix_cells" ADD COLUMN "text_color" text DEFAULT '#000000' NOT NULL;--> statement-breakpoint
+ALTER TABLE "talent_review_matrix_cells" ADD COLUMN "export_order" smallint;--> statement-breakpoint
+ALTER TABLE "talent_review_matrix_cells" ADD CONSTRAINT "talent_review_matrix_cells_export_order" UNIQUE("tenant_id","matrix_id","export_order");--> statement-breakpoint
+ALTER TABLE "talent_review_matrix_cells" ADD CONSTRAINT "talent_review_matrix_cells_text_color" CHECK ("talent_review_matrix_cells"."text_color" ~ '^#[0-9a-fA-F]{6}$');--> statement-breakpoint
+ALTER TABLE "talent_review_matrix_cells" ADD CONSTRAINT "talent_review_matrix_cells_export_range" CHECK ("talent_review_matrix_cells"."export_order" IS NULL OR "talent_review_matrix_cells"."export_order" BETWEEN 1 AND 99);

@@ -20,16 +20,6 @@ const name = z.string().trim().min(1).max(50);
 const sortNo = z.int().min(0).max(1_000_000);
 const levelNo = z.int().min(1).max(MATRIX_MAX_LEVELS);
 const twoDecimals = (value: number) => Math.abs(value * 100 - Math.round(value * 100)) < 1e-9;
-/**
- * 数值轴下界按存储精度（numeric(14,4)，4 位小数）：超精度输入入库会被舍入，可能不再严格递增，所以直接拒绝。
- * 严格判断“按 4 位小数格式化再解析后仍是同一个数”，不用容差：容差会放过 1e-11 这类入库成 0 的值（#182 第 2 轮 P3）。
- * 4 位以内的十进制输入（JSON 解析出的最近双精度值）与其 toFixed(4) 解析回的值是同一个双精度数。
- */
-const storedBound = z
-  .number()
-  .min(-1e9)
-  .max(1e9)
-  .refine((value) => Number(value.toFixed(4)) === value, '下界最多四位小数');
 const percent = z.number().min(0).max(100).refine(twoDecimals, '百分比最多两位小数');
 
 const positionField = z.strictObject({ role: z.enum(MATRIX_POSITION_ROLES), fieldId: uuid });
@@ -38,7 +28,8 @@ const axisLevel = z.strictObject({
   levelNo,
   name,
   optionValues: z.array(z.string().min(1).max(50)).max(200).default([]),
-  lowerBound: storedBound.nullable().default(null),
+  // 轴只允许单选等级字段（DEC-389①），不再有数值下界；只接受 null，让原样带回读到的视图（含 lowerBound: null）的客户端照常工作
+  lowerBound: z.null().default(null),
 });
 const cell = z.strictObject({
   cellNo: z.int().min(1).max(99),
@@ -46,6 +37,17 @@ const cell = z.strictObject({
   yLevelNo: levelNo,
   name,
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/, '颜色须为 #RRGGBB'),
+  textColor: z
+    .string()
+    .regex(/^#[0-9a-fA-F]{6}$/, '颜色须为 #RRGGBB')
+    .default('#000000'),
+  // 导出顺序：整组给出或整组缺省，由领域层 checkCells 判定（MATRIX_EXPORT_ORDER_INVALID）
+  exportOrder: z
+    .int()
+    .min(1)
+    .max(MATRIX_MAX_LEVELS * MATRIX_MAX_LEVELS)
+    .nullable()
+    .default(null),
   countsGreen: z.boolean().default(false),
 });
 

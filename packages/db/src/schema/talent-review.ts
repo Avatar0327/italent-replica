@@ -316,10 +316,20 @@ export const talentReviewMatrixCells = pgTable(
     yLevelNo: smallint('y_level_no').notNull(),
     name: text('name').notNull(),
     color: text('color').notNull(),
+    /** 格子文字颜色（原站预置为黑色，Q-M0-157）。 */
+    textColor: text('text_color').notNull().default('#000000'),
+    /** 导出设置里的格子顺序（1..n，整组给出或整组为空；预置“绩效-潜力”为 9-7-8-5-4-6-2-3-1，Q-M0-157）。 */
+    exportOrder: smallint('export_order'),
     countsGreen: boolean('counts_green').notNull().default(false),
   },
   (t) => [
     unique('talent_review_matrix_cells_no').on(t.tenantId, t.matrixId, t.cellNo),
+    unique('talent_review_matrix_cells_export_order').on(t.tenantId, t.matrixId, t.exportOrder),
+    check('talent_review_matrix_cells_text_color', sql`${t.textColor} ~ '^#[0-9a-fA-F]{6}$'`),
+    check(
+      'talent_review_matrix_cells_export_range',
+      sql`${t.exportOrder} IS NULL OR ${t.exportOrder} BETWEEN 1 AND 99`,
+    ),
     matrixRef('talent_review_matrix_cells_matrix_fk', t),
     check('talent_review_matrix_cells_color', sql`${t.color} ~ '^#[0-9a-fA-F]{6}$'`),
     check('talent_review_matrix_cells_no_range', sql`${t.cellNo} BETWEEN 1 AND 99`),
