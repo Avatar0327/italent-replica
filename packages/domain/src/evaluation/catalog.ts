@@ -54,10 +54,10 @@ export const EVALUATION_OBJECTS = {
    * 评审组：成员随组整组编辑。照原站没有编码字段、没有删除入口（DEC-393①⑤），所以没有“删除”按钮，列表操作只有编辑 / 停用。
    */
   reviewGroup: withoutDelete(object('ReviewGroup', ['name', 'ownerOrgId', 'enabled', 'members'], ['ownerId'])),
-  /** 评价表（标准模式）：评分项随表整组编辑。 */
+  /** 评价表（标准模式）：评分项随表整组编辑。没有编码字段（照评审组 DEC-393 的经验，原站未证实，#216）。 */
   evaluationForm: object(
     'EvaluationForm',
-    ['code', 'name', 'ownerOrgId', 'enabled', 'scoreMode', 'fullScore', 'passScore', 'totalRule', 'items'],
+    ['name', 'ownerOrgId', 'enabled', 'scoreMode', 'fullScore', 'passScore', 'totalRule', 'items'],
     ['ownerId'],
   ),
   /**
