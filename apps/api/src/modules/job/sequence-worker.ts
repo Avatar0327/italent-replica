@@ -9,6 +9,7 @@ import { auditSequenceResult, sequenceResults } from './sequence-result.js';
 /** DEC-052：持久 outbox 消费，追加尝试日志；整批在保存点中成功或回滚，失败下次调度可重试。 */
 import { randomUUID } from 'node:crypto';
 import { isUuid, sql, type Db, type Tx, withPlatform, withTenant } from '@italent/db';
+import { advisoryLock, tryAdvisoryLock, asUuid } from '../../advisory-lock.js';
 import { MODULE_OBJECTS, tenantLocalDate } from '@italent/domain';
 import { type Authorizer, requirePermission } from '../../authorization.js';
 import { AppError } from '../../errors.js';
@@ -44,15 +45,10 @@ const EMPLOYMENT = MODULE_OBJECTS.employmentRecord.code;
 
 /** 职务序列任务的租户级闸：同一租户同时只处理一个序列同步任务。 */
 export async function tryLockJobSequence(tx: Tx, tenantId: string): Promise<boolean> {
-  const [gate] = rowsOf<{ entered: boolean }>(
-    await tx.execute(
-      sql`SELECT pg_try_advisory_xact_lock(hashtextextended(${`job-sequence:${tenantId}`},0)) AS entered`,
-    ),
-  );
-  return Boolean(gate?.entered);
+  return tryAdvisoryLock(tx, 'job-sequence:', asUuid(tenantId));
 }
 export async function lockJobSequence(tx: Tx, tenantId: string): Promise<void> {
-  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`job-sequence:${tenantId}`},0))`);
+  await advisoryLock(tx, 'job-sequence:', asUuid(tenantId));
 }
 
 export async function runSequenceSyncJobs(db: Db, tenantId: string, options: Options = {}) {

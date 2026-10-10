@@ -10,6 +10,7 @@ import {
   sql,
   type Tx,
 } from '@italent/db';
+import { advisoryLock, asUuid } from '../../advisory-lock.js';
 import { AppError } from '../../errors.js';
 import { audit, revision, rowsOf, type ContractContext } from './context.js';
 import { parse, settingsSchema, ruleSchema } from './input.js';
@@ -41,7 +42,7 @@ export async function verifyIds(tx: Tx, tenantId: string, table: string, ids: re
 }
 /** 合同配置（设置、类型、规则）的写入串行化（租户级）。 */
 export async function lockContractConfig(tx: Tx, tenantId: string): Promise<void> {
-  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${tenantId + ':contract-config'},0))`);
+  await advisoryLock(tx, asUuid(tenantId), ':contract-config');
 }
 export async function saveSettings(tx: Tx, ctx: ContractContext, raw: unknown) {
   const input = parse(settingsSchema, raw);

@@ -3,6 +3,7 @@
  * 在权限管理“用户授权”里授予（身份 × 应用 Survey360），见 context.ts。
  */
 import { eq, sql, survey360Roles, survey360Settings, type Tx } from '@italent/db';
+import { advisoryLock, asUuid } from '../../advisory-lock.js';
 import { survey360 } from '@italent/domain';
 import type { Hono } from 'hono';
 import { z } from 'zod';
@@ -58,7 +59,7 @@ const VIEW = { object: 'settings' } as const;
 
 /** 评价角色新增的租户级串行化（角色数量上限检查）。 */
 export async function lockRoleSettings(tx: Tx, tenantId: string): Promise<void> {
-  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${tenantId}:survey360-roles`}, 0))`);
+  await advisoryLock(tx, asUuid(tenantId), ':survey360-roles');
 }
 
 export function registerSettingsRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {

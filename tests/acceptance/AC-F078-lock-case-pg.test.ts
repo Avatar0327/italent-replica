@@ -11,7 +11,13 @@ import { lockJobSequence, tryLockJobSequence } from '../../apps/api/src/modules/
 import { lockLevelOrder } from '../../apps/api/src/modules/qualification/config-service.js';
 import { lockAppraiser } from '../../apps/api/src/modules/survey360/answering.js';
 import { lockRoleSettings } from '../../apps/api/src/modules/survey360/settings.js';
-import { expectSerializedBehind, expectTryLockRefused, uuidWithLetters, variants } from './support/lock-case.js';
+import {
+  expectIndependent,
+  expectSerializedBehind,
+  expectTryLockRefused,
+  uuidWithLetters,
+  variants,
+} from './support/lock-case.js';
 
 const testDb = useTestDb();
 const realPostgres = Boolean(process.env.TEST_DATABASE_URL);
@@ -69,6 +75,14 @@ describe.runIf(realPostgres)('其余咨询锁键大小写交错（真 PG）', ()
     );
     await expectTryLockRefused(db, tenant.lower, `job-sequence:${tenant.lower}`, (tx) =>
       tryLockJobSequence(tx, tenant.upper),
+    );
+  });
+
+  it('反向对照：不同租户的同类取锁互不阻塞', async () => {
+    const tenant = variants(uuidWithLetters());
+    const other = variants(uuidWithLetters());
+    await expectIndependent(testDb().db, tenant.lower, `${tenant.lower}:contract-config`, (tx) =>
+      lockContractConfig(tx, other.upper),
     );
   });
 });

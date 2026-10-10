@@ -79,3 +79,17 @@ export async function expectTryLockRefused(
     expect(entered).toBe(false);
   });
 }
+
+/** 反向对照：另一个租户的取锁不受持锁方影响（规范化只合并同一 UUID 的大小写变体，不会让不同租户互相阻塞）。 */
+export async function expectIndependent(
+  db: Db,
+  tenantId: string,
+  key: string,
+  run: (tx: Tx) => Promise<unknown>,
+): Promise<void> {
+  await withTenant(db, tenantId, async (holder) => {
+    await hold(holder, key, 'hashtextextended');
+    await withTenant(db, tenantId, (tx) => run(tx));
+    expect(await advisoryWaiters(db)).toBe(0);
+  });
+}

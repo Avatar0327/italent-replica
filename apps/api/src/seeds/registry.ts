@@ -9,7 +9,8 @@
  *   不会两边都读到缺失再撞唯一约束（DEC-361 R2-01）。
  * 接入方式见 docs/08_设计/DEC-361_种子补装登记表.md；各模块在 seeds/index.ts 加一行 import 即可被收录。
  */
-import { sql, type Tx } from '@italent/db';
+import type { Tx } from '@italent/db';
+import { advisoryLock, asUuid } from '../advisory-lock.js';
 
 export interface SeedWriteContext {
   readonly tenantId: string;
@@ -74,9 +75,7 @@ export async function installMissingSeeds(
 ): Promise<SeedReportItem[]> {
   // 租户级互斥：不同模块筛选、不同命令 ID 的回补与开通都在同一把锁上排队。锁键用 PostgreSQL 的 uuid 规范文本：
   // 平台入口接受大小写不同的同一租户 UUID，按字符串哈希会得到不同的锁（DEC-361 R2-01 残项）
-  await tx.execute(
-    sql`SELECT pg_advisory_xact_lock(hashtextextended((${write.tenantId}::uuid)::text || ':seed-install', 0))`,
-  );
+  await advisoryLock(tx, asUuid(write.tenantId), ':seed-install');
   const report: SeedReportItem[] = [];
   for (const entry of entries) {
     if (filter.modules && !filter.modules.includes(entry.module)) continue;

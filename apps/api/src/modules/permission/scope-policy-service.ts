@@ -13,9 +13,9 @@ import {
   permissionScopePolicyRules,
   permissionScopeVersions,
   permissionUserPersonLinks,
-  sql,
   type Tx,
 } from '@italent/db';
+import { type KeyPart, advisoryLock, asUuid } from '../../advisory-lock.js';
 import { ESTABLISHMENT_SCHEME_DATASOURCE, MODULE_OBJECTS } from '@italent/domain';
 import { z } from 'zod';
 import { AppError } from '../../errors.js';
@@ -42,11 +42,11 @@ const BUILTIN_SCOPE_DATASOURCES: Readonly<Record<string, string>> = {
   [ESTABLISHMENT_SCHEME_DATASOURCE]: MODULE_OBJECTS.establishment.code,
 };
 
-/** 范围策略写入的串行化锁；key 是对象标识（含身份 / 授权 id 等）。 */
-export async function lockScopeObject(tx: Tx, tenantId: string, key: string) {
-  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${tenantId + ':' + key},0))`);
+/** 范围策略写入的串行化锁（租户 × 对象）；对象标识里的 UUID（身份、授权）用 uuid() 标出，先规范化再哈希。 */
+export async function lockScopeObject(tx: Tx, tenantId: string, ...key: KeyPart[]) {
+  await advisoryLock(tx, asUuid(tenantId), ':', ...key);
 }
-const lock = (tx: Tx, write: WriteContext, key: string) => lockScopeObject(tx, write.tenantId, key);
+const lock = (tx: Tx, write: WriteContext, ...key: KeyPart[]) => lockScopeObject(tx, write.tenantId, ...key);
 
 async function identityTarget(tx: Tx, key: IdentityScopeKey) {
   await loadProfile(tx, key.profileId);
@@ -110,7 +110,13 @@ export async function setIdentityScope(
   expectedRevision: number,
 ) {
   const objectId = `${key.profileId}:${key.appCode}:${key.targetKind}:${key.targetCode}`;
-  await lock(tx, write, `identity-scope:${objectId}`);
+  await lock(
+    tx,
+    write,
+    'identity-scope:',
+    asUuid(key.profileId),
+    `:${key.appCode}:${key.targetKind}:${key.targetCode}`,
+  );
   const before = await getIdentityScope(tx, key);
   if (before.revision !== expectedRevision) throw revisionConflict(expectedRevision, before.revision);
   const revision = before.revision + 1;
@@ -224,7 +230,7 @@ export async function setDynamicOrgGrant(
   roleCode: 'head' | 'hrbp' | null,
   expectedRevision: number,
 ) {
-  await lock(tx, write, `dynamic-org:${grantId}`);
+  await lock(tx, write, 'dynamic-org:', asUuid(grantId));
   const grant = await autoGrant(tx, grantId);
   if (roleCode && grant.status !== 'active') throw invalid('授权已撤销');
   const before = await getDynamicOrgGrant(tx, grantId);

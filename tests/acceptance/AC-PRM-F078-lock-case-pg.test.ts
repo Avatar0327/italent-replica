@@ -3,6 +3,7 @@
  * 许可（licenses）、范围策略（scope-policy-service）、管理单元层级（data-scope-admin）、人员绑定（user-provisioning）。
  * 同一租户 / 对象，一个请求用小写、一个用大写 UUID：必须排在同一把锁后面（串行），不能各拿各的。
  */
+import { asUuid } from '../../apps/api/src/advisory-lock.js';
 import { useTestDb } from '@italent/testkit';
 import { describe, it } from 'vitest';
 import { lockMouHierarchyOf } from '../../apps/api/src/modules/permission/data-scope-admin.js';
@@ -31,10 +32,10 @@ describe.runIf(realPostgres)('权限类咨询锁键大小写交错（真 PG）',
       db,
       tenant.lower,
       `${tenant.lower}:identity-scope:${profile.lower}:app:entity:Org`,
-      (tx) => lockScopeObject(tx, tenant.upper, `identity-scope:${profile.upper}:app:entity:Org`),
+      (tx) => lockScopeObject(tx, tenant.upper, 'identity-scope:', asUuid(profile.upper), ':app:entity:Org'),
     );
     await expectSerializedBehind(db, tenant.lower, `${tenant.lower}:dynamic-org:${grant.lower}`, (tx) =>
-      lockScopeObject(tx, tenant.upper, `dynamic-org:${grant.upper}`),
+      lockScopeObject(tx, tenant.upper, 'dynamic-org:', asUuid(grant.upper)),
     );
     await expectSerializedBehind(db, tenant.lower, `${tenant.lower}:scope-app:TalentReview`, (tx) =>
       lockScopeObject(tx, tenant.upper, 'scope-app:TalentReview'),

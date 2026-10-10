@@ -17,6 +17,7 @@ import {
   tenantMemberships,
   type Tx,
 } from '@italent/db';
+import { advisoryLock, asUuid } from '../../advisory-lock.js';
 import { AppError } from '../../errors.js';
 import { audit, type WriteContext } from './audit.js';
 import type { GrantScopeInput, MouInput, OrgRangeInput, ScopeAssignment } from './data-scope-schemas.js';
@@ -134,7 +135,7 @@ async function validateParent(tx: Tx, parentId: string | null, id?: string) {
 
 /** 管理单元层级的写入（新建、改上级、删除）串行化：A→B / B→A 并发改上级、删除父级与新建下级都不能各自通过检查。 */
 export async function lockMouHierarchyOf(tx: Tx, tenantId: string) {
-  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${tenantId + ':mou-hierarchy'},0))`);
+  await advisoryLock(tx, asUuid(tenantId), ':mou-hierarchy');
 }
 const lockMouHierarchy = (tx: Tx, write: WriteContext) => lockMouHierarchyOf(tx, write.tenantId);
 

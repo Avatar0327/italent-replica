@@ -7,6 +7,7 @@
  * - 分类最多 5 级；有下级或被引用的对象不能删除（409，数据不变）。
  */
 import { sql, type Tx } from '@italent/db';
+import { advisoryLock, asUuid } from '../../advisory-lock.js';
 import { tenantLocalDate } from '@italent/domain';
 import { recordImportLog } from '../../audit/record.js';
 import { AppError } from '../../errors.js';
@@ -401,7 +402,7 @@ export async function deleteLayer(tx: Tx, ctx: WriteContext, id: string) {
 
 /** 同租户级别顺序号的分配串行化（与并发新建级别互斥）。 */
 export async function lockLevelOrder(tx: Tx, tenantId: string): Promise<void> {
-  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`ql_levels:${tenantId}`}))`);
+  await advisoryLock(tx, 'ql_levels:', asUuid(tenantId));
 }
 
 /** 顺序号从低到高、租户内唯一；新建缺省为当前最大 + 1（QL-R2）。 */

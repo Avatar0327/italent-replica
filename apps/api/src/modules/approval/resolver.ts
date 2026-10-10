@@ -3,6 +3,7 @@
  * 组织的负责人、HRBP 是结构化人员引用（REQ-ORG-001 R4），人员再经账号绑定落到可审批的用户。
  */
 import { sql, type Tx } from '@italent/db';
+import { lockKey, asUuid } from '../../advisory-lock.js';
 import {
   adminRecused,
   avoidSelfExceptionAdmin,
@@ -65,7 +66,7 @@ export async function userOfPerson(tx: Tx, tenantId: string, personId: string | 
  * 停用挂接点）对同一个人取到的都是同一把闸。
  */
 const assigneeGate = (tenantId: string, userId: string) =>
-  sql`hashtextextended('approval-assignee:' || ${tenantId}::uuid::text || ':' || ${userId}::uuid::text, 0)`;
+  lockKey('approval-assignee:', asUuid(tenantId), ':', asUuid(userId));
 
 /**
  * 派单闸（R4-2 / R5-1 / R5-2：成员停用与审批派单的串行协议）。只有审批中心使用它：

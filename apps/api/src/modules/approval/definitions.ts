@@ -4,6 +4,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
+import { advisoryLock, asUuid } from '../../advisory-lock.js';
 import {
   APPROVAL_TYPES,
   exitRulesOf,
@@ -506,9 +507,7 @@ export async function publishProcess(tx: Tx, ctx: ApprovalContext, id: string) {
  * 同租户同类型的发布以事务级咨询锁串行，避免并发发布出两个同优先级流程。
  */
 export async function lockApprovalPriority(tx: Tx, tenantId: string, approvalType: string): Promise<void> {
-  await tx.execute(
-    sql`SELECT pg_advisory_xact_lock(hashtextextended(${`approval_priority:${tenantId}:${approvalType}`}, 0))`,
-  );
+  await advisoryLock(tx, 'approval_priority:', asUuid(tenantId), ':', approvalType);
 }
 
 async function assertUniquePriority(tx: Tx, tenantId: string, process: ProcessView, priority: number) {
