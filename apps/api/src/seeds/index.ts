@@ -6,6 +6,7 @@
 import '../modules/permission/standard-seeds.js';
 import '../modules/talent-review/presets.js';
 import '../modules/talent-review/matrix-presets.js';
+import '../modules/talent-review/form-presets.js';
 
 export { installMissingSeeds, registeredSeeds, seedModules } from './registry.js';
 export type { SeedReportItem, SeedSkip, SeedWriteContext } from './registry.js';

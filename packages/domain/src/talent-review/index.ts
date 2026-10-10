@@ -3,6 +3,7 @@ export * from './calc-hints.js';
 export * from './calc-rule.js';
 export * from './catalog.js';
 export * from './fields.js';
+export * from './form-flow.js';
 export * from './scoring-config.js';
 export * from './formula-audit.js';
 export * from './formula-binding.js';

@@ -52,6 +52,8 @@ export const GRAPH: Graph = {
   'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>calcRule': ['#object'],
   'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>category': ['#object'],
   'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>field': ['#object'],
+  'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>flow': ['#object'],
+  'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>form': ['#object'],
   'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>mapping': ['#object'],
   'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>matrix': ['#object'],
   'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>moduleGrade': ['#object'],
@@ -60,6 +62,8 @@ export const GRAPH: Graph = {
   'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>scoreRule': ['#object'],
   'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>settings': ['#object'],
   'packages/domain/src/talent-review/catalog.ts#object': ['#SYSTEM_FIELDS', '#TALENT_REVIEW_APP', '#crud'],
+  'packages/domain/src/talent-review/form-flow.ts#checkFlowNodes': ['#violation'],
+  'packages/domain/src/talent-review/form-flow.ts#checkFormFields': ['#violation'],
   'packages/domain/src/talent-review/formula-audit.ts#filterHints': [
     'packages/domain/src/talent-review/calc-hints.ts#projectHints',
     '#idsOf',
