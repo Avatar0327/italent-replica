@@ -365,7 +365,8 @@ describe('AC-PRM-FW-02 集中报告：真实表（F-072 测试 8、14）', () =>
     expect(found[0]!.detail).not.toMatch(/共 \d+ 处/);
     expect(found[0]!.route).toBe('*');
     assertOracle(REGISTRY, cur, roots(), [group]);
-  });
+    // 整张表要算三遍当前登记（基准、改动后、检测器各一次），慢机器上超过默认 30s（F-090 审查期间 CI 与本地均出现），放宽到 120s
+  }, 120_000);
 
   const safeText = (id: string) => {
     try {

@@ -468,22 +468,33 @@ function registryFor(env: ClosureEnv, roots: readonly string[], texts: ReadonlyM
   return { units, unitBindings, nodes, graph };
 }
 
-/** 被引用的单元里，在当前源码里找不到的（改名 / 删除 / 文件移走）。写法错误和读取器的未知异常不在其内，照旧抛出。 */
-export function brokenUnits(
+/** 被引用的单元的文本；在当前源码里找不到的（改名 / 删除 / 文件移走）单独列出。写法错误和读取器的未知异常照旧抛出。 */
+function readUnits(
+  table: RequiredTable,
+  read: SourceReader,
+  branch: BranchBindings | false,
+): { readonly roots: string[]; readonly texts: Map<string, string>; readonly broken: string[] } {
+  const roots: string[] = [];
+  const texts = new Map<string, string>();
+  const broken: string[] = [];
+  for (const unit of [...usesOf(table, branch).keys()].sort(compareText)) {
+    try {
+      texts.set(unit, unitText(read, unit));
+      roots.push(unit);
+    } catch (error) {
+      if (!(error instanceof EvidenceUnitError)) throw error;
+      broken.push(unit);
+    }
+  }
+  return { roots, texts, broken };
+}
+
+/** 被引用的单元里，在当前源码里找不到的（改名 / 删除 / 文件移走）。 */
+export const brokenUnits = (
   table: RequiredTable,
   read: SourceReader = repoSource,
   branch: BranchBindings | false = BRANCH_BINDINGS,
-): string[] {
-  return [...usesOf(table, branch).keys()].sort(compareText).filter((unit) => {
-    try {
-      unitText(read, unit);
-      return false;
-    } catch (error) {
-      if (error instanceof EvidenceUnitError) return true;
-      throw error;
-    }
-  });
-}
+): string[] => readUnits(table, read, branch).broken;
 
 /** 当前源码算出的登记（全部被引用的单元；找不到的单元跳过，由 brokenUnits / EVIDENCE_UNIT 报告）。 */
 export function currentRegistry(
@@ -492,9 +503,8 @@ export function currentRegistry(
   branch: BranchBindings | false = BRANCH_BINDINGS,
   boundary: readonly BoundaryEntry[] = EVIDENCE_BOUNDARY,
 ): Registry {
-  const broken = new Set(brokenUnits(table, read, branch));
-  const roots = [...usesOf(table, branch).keys()].filter((unit) => !broken.has(unit)).sort(compareText);
-  return registryFor(closureEnvFor(read, boundary), roots, new Map(roots.map((unit) => [unit, unitText(read, unit)])));
+  const { roots, texts } = readUnits(table, read, branch);
+  return registryFor(closureEnvFor(read, boundary), roots, texts);
 }
 
 /** 要写进 required/digests/ 的全部文件内容。有失效单元时抛错：先修义务表的证据单元，不能把它们静默丢掉。 */
