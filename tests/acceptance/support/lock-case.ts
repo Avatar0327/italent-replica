@@ -30,16 +30,19 @@ async function advisoryWaiters(db: Db): Promise<number> {
   return Number(row?.n);
 }
 
-async function waitForAdvisoryWaiter(db: Db) {
+export async function waitForAdvisoryWaiter(db: Db) {
   for (let i = 0; i < 200; i += 1) {
     if ((await advisoryWaiters(db)) === 1) return;
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
-  throw new Error('大写变体没有在咨询锁上等待：锁键没有规范化，等于没有锁');
+  throw new Error('请求没有在咨询锁上等待：锁键没有规范化，或哈希算法与改造前不一致，等于没有锁');
 }
 
-/** 持锁方：与各取锁处相同的键文本（小写）；32 位 hashtext 用于 qualification 的旧键。 */
-const hold = (tx: Tx, key: string, hash: 'hashtext' | 'hashtextextended') =>
+/**
+ * 持锁方：与各取锁处相同的键文本（小写）。哈希算法必须和改造前一致（#195 第 1 轮 P2-01）：
+ * qualification 一直用 32 位 hashtext，其余九类用 hashtextextended；换算法会让新旧进程混跑时拿不到同一把锁。
+ */
+export const hold = (tx: Tx, key: string, hash: 'hashtext' | 'hashtextextended') =>
   hash === 'hashtext'
     ? tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${key}))`)
     : tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))`);

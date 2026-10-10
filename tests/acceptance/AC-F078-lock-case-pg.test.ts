@@ -30,7 +30,7 @@ describe.runIf(realPostgres)('其余咨询锁键大小写交错（真 PG）', ()
       tenant.lower,
       `ql_levels:${tenant.lower}`,
       (tx) => lockLevelOrder(tx, tenant.upper),
-      'hashtextextended',
+      'hashtext',
     );
   });
 
