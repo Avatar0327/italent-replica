@@ -2,7 +2,8 @@
  * 评价者的有效作答任务（F-084）：评价关系未移除、评价对象未移除。作答页、任务读写、头像名单与“我的待办”
  * 共用同一个定义——评价者在活动内一条有效任务也没有时，个人链接与待办入口一律按“链接无效”拒绝（DEC-379④）。
  */
-import { sql, type SQL, type Tx } from '@italent/db';
+import { sql, type Tx } from '@italent/db';
+import type { SQL } from 'drizzle-orm';
 import { rows } from './context.js';
 
 const taskFrom = sql`FROM survey360_relations r
