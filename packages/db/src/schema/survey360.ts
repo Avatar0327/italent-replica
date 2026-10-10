@@ -15,6 +15,8 @@ import {
   jsonb,
   numeric,
   pgTable,
+  primaryKey,
+  smallint,
   text,
   timestamp,
   unique,
@@ -561,8 +563,27 @@ export const survey360Links = pgTable(
     /** 最后发送时间：邮件邀请与站内待办都计入（`25` §10.2 更正）；重发邮件轮换链接时沿用到新链接。 */
     lastSentAt: at('last_sent_at'),
     createdAt: createdAt(),
+    /**
+     * 通用网址作答凭据（F-076，DEC-401：评价者 × 活动一组，与个人链接同发、同换、同作废）。
+     * none = 存量行与确认链接；pending = 待异步发放；issued = 可登录；retired = 所在密钥版本退役。
+     * 序列号只存 HMAC，密码只存 scrypt(HMAC) 串；明文不落库。
+     */
+    credentialState: text('credential_state').notNull().default('none'),
+    serialLookup: text('serial_lookup'),
+    passwordHash: text('password_hash'),
+    /** 当前摘要所用密钥版本。 */
+    credentialKeyVersion: smallint('credential_key_version'),
+    /** 这条凭据实际用过的全部密钥版本（只并入不删除）：泄露处置按它判定“曾暴露”（设计 §2.4）。 */
+    credentialKeyVersions: smallint('credential_key_versions')
+      .array()
+      .notNull()
+      .default(sql`'{}'::smallint[]`),
+    credentialClaimedAt: at('credential_claimed_at'),
+    credentialAttempts: integer('credential_attempts').notNull().default(0),
+    credentialError: text('credential_error'),
   },
   (t) => [
+    unique('survey360_links_tenant_id').on(t.tenantId, t.id),
     uniqueIndex('survey360_links_token').on(t.tenantId, t.tokenHash),
     uniqueIndex('survey360_links_answer')
       .on(t.activityId, t.personId)
@@ -582,6 +603,140 @@ export const survey360Links = pgTable(
       name: 'survey360_links_confirmation_fk',
     }),
     check('survey360_links_kind', sql`${t.kind} IN ('answer', 'confirm')`),
+    check('survey360_links_credential_state', sql`${t.credentialState} IN ('none', 'pending', 'issued', 'retired')`),
+    // issued 当且仅当两项摘要齐全
+    check(
+      'survey360_links_credential_digest',
+      sql`(${t.credentialState} = 'issued') = (${t.serialLookup} IS NOT NULL AND ${t.passwordHash} IS NOT NULL)`,
+    ),
+    // issued / retired 都带当前版本，且该版本在已用版本集合内（退役清空摘要，版本与集合保留）
+    check(
+      'survey360_links_credential_version',
+      sql`${t.credentialState} IN ('none', 'pending') OR (${t.credentialKeyVersion} IS NOT NULL
+        AND ${t.credentialKeyVersion} = ANY (${t.credentialKeyVersions}))`,
+    ),
+    check('survey360_links_credential_kind', sql`${t.credentialState} = 'none' OR ${t.kind} = 'answer'`),
+    // 序列号按租户 × 密钥版本唯一（含已作废的行，不复用）
+    uniqueIndex('survey360_links_serial')
+      .on(t.tenantId, t.credentialKeyVersion, t.serialLookup)
+      .where(sql`${t.serialLookup} IS NOT NULL`),
+    index('survey360_links_credential_pending')
+      .on(t.tenantId, t.createdAt)
+      .where(sql`${t.credentialState} = 'pending' AND NOT ${t.revoked}`),
+    index('survey360_links_credential_key')
+      .on(t.tenantId, t.credentialKeyVersion, t.id)
+      .where(sql`${t.credentialState} = 'issued'`),
+    // 泄露处置按“曾暴露于 v”筛选
+    index('survey360_links_credential_versions').using('gin', t.credentialKeyVersions),
+  ],
+);
+
+/**
+ * 作答会话（F-076，DEC-401 Q9：8 小时绝对过期，不滑动）。令牌只存 SHA-256；只记所属链接，不存密钥版本快照——
+ * 每次检查都读链接行当前的版本集合（设计 §2.4）。
+ */
+export const survey360AnswerSessions = pgTable(
+  'survey360_answer_sessions',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    linkId: uuid('link_id').notNull(),
+    tokenHash: text('token_hash').notNull(),
+    createdAt: at('created_at').notNull(),
+    expiresAt: at('expires_at').notNull(),
+    revokedAt: at('revoked_at'),
+  },
+  (t) => [
+    unique('survey360_answer_sessions_token').on(t.tenantId, t.tokenHash),
+    index('survey360_answer_sessions_link').on(t.tenantId, t.linkId, t.createdAt),
+    foreignKey({
+      columns: [t.tenantId, t.linkId],
+      foreignColumns: [survey360Links.tenantId, survey360Links.id],
+      name: 'survey360_answer_sessions_link_fk',
+    }).onDelete('cascade'),
+  ],
+);
+
+/**
+ * 登录限频（F-076，DEC-379③ 方案 C）。scope：ip = D1 请求频率（只用 requests）；pair = D3 序列号 × IP 失败；
+ * tenant = D5 租户失败（只告警）。键只存 HMAC，不存序列号或 IP 原值。
+ */
+export const survey360LoginThrottle = pgTable(
+  'survey360_login_throttle',
+  {
+    tenantId: tenantId(),
+    scope: text('scope').notNull(),
+    keyHash: text('key_hash').notNull(),
+    /** 窗口起点，同时是预扣标识（设计 §3.3）。 */
+    windowStartedAt: at('window_started_at').notNull(),
+    requests: integer('requests').notNull().default(0),
+    failures: integer('failures').notNull().default(0),
+    lockedUntil: at('locked_until'),
+    updatedAt: at('updated_at').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.scope, t.keyHash] }),
+    check('survey360_login_throttle_scope', sql`${t.scope} IN ('ip', 'pair', 'tenant')`),
+    check('survey360_login_throttle_counts', sql`${t.requests} >= 0 AND ${t.failures} >= 0`),
+  ],
+);
+
+/**
+ * 安全事件（F-076，DEC-377④：只记关键安全事件，只增不改，触发器禁止 UPDATE / DELETE / TRUNCATE）。
+ * 引用列（链接、会话、活动）不设外键：会话会被清理，事件必须比被引用行活得久。
+ */
+export const survey360SecurityEvents = pgTable(
+  'survey360_security_events',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    kind: text('kind').notNull(),
+    linkId: uuid('link_id'),
+    oldLinkId: uuid('old_link_id'),
+    activityId: uuid('activity_id'),
+    sessionId: uuid('session_id'),
+    runId: uuid('run_id'),
+    credentialKeyVersion: smallint('credential_key_version'),
+    compromised: boolean('compromised'),
+    scope: text('scope'),
+    /** 键 / IP 的 HMAC 前 8 位，供运维关联同一来源，不能反推原值。 */
+    keyPrefix: text('key_prefix'),
+    ipPrefix: text('ip_prefix'),
+    /** 只放计数、时间等非秘密值。 */
+    detail: jsonb('detail')
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    occurredAt: at('occurred_at').notNull(),
+  },
+  (t) => [
+    check(
+      'survey360_security_events_kind',
+      sql`${t.kind} IN ('login_success', 'logout', 'lock', 'unlock', 'credential_issued', 'credential_reissued',
+        'credential_revoked', 'key_rotated', 'key_retired')`,
+    ),
+  ],
+);
+
+/** 密钥退役 / 泄露处置的持久进度，每租户每次运行一行，可续跑（设计 §2.4.1）。 */
+export const survey360KeyRetireRuns = pgTable(
+  'survey360_key_retire_runs',
+  {
+    runId: uuid('run_id').notNull(),
+    tenantId: tenantId(),
+    credentialKeyVersion: smallint('credential_key_version').notNull(),
+    compromised: boolean('compromised').notNull(),
+    status: text('status').notNull(),
+    cursorLinkId: uuid('cursor_link_id'),
+    credentialsDone: integer('credentials_done').notNull().default(0),
+    sessionsDone: integer('sessions_done').notNull().default(0),
+    attempts: integer('attempts').notNull().default(0),
+    error: text('error'),
+    startedAt: at('started_at').notNull(),
+    finishedAt: at('finished_at'),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.runId] }),
+    check('survey360_key_retire_runs_status', sql`${t.status} IN ('running', 'done', 'failed')`),
   ],
 );
 

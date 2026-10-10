@@ -10,6 +10,7 @@
  * 接入方式见 docs/08_设计/DEC-361_种子补装登记表.md；各模块在 seeds/index.ts 加一行 import 即可被收录。
  */
 import type { Tx } from '@italent/db';
+import { bumpFieldCatalog } from '../modules/talent-review/field-catalog.js';
 import { lockTenantSeeds } from './grant-ledger.js';
 
 export interface SeedWriteContext {
@@ -42,6 +43,11 @@ export interface SeedSkip {
 }
 export interface SeedInstallResult {
   readonly skipped?: readonly SeedSkip[];
+  /**
+   * 本次安装新增了盘点字段（字段目录的名称 → ID 映射变了，F-082 契约 §1.3）。登记项自己**不推进**版本，
+   * 由 installMissingSeeds 在全部登记项（含其后的预置九宫格）都装完之后统一推进一次：版本行是事务里最后取的锁（锁序 V）。
+   */
+  readonly catalogChanged?: true;
 }
 
 export interface SeedReportItem {
@@ -76,11 +82,13 @@ export async function installMissingSeeds(
   // 租户级互斥：不同模块筛选、不同命令 ID 的回补与开通都在同一把锁上排队（锁键说明见 grant-ledger.ts）
   await lockTenantSeeds(tx, write.tenantId);
   const report: SeedReportItem[] = [];
+  let catalogChanged = false;
   for (const entry of entries) {
     if (filter.modules && !filter.modules.includes(entry.module)) continue;
     const have = await entry.existing(tx, write.tenantId);
     const missing = entry.codes.filter((code) => !have.has(code));
     const result = missing.length > 0 ? await entry.install(tx, write, missing) : undefined;
+    if (result?.catalogChanged) catalogChanged = true;
     const skipped = result?.skipped ?? [];
     const skippedCodes = new Set(skipped.map((item) => item.code));
     report.push({
@@ -92,5 +100,7 @@ export async function installMissingSeeds(
       ...(skipped.length > 0 ? { skipped } : {}),
     });
   }
+  // 字段目录版本：所有登记项（含预置九宫格的位置字段锁与字段行 KEY SHARE）都已取完锁，最后统一推进一次
+  if (catalogChanged) await bumpFieldCatalog(tx, write.tenantId);
   return report;
 }
