@@ -161,6 +161,13 @@
 4. `required/digests.ts` 新增 `DEPENDENCIES` 段（单元 → { 依赖单元 → 摘要 }），由 `ROUTE_POLICY_UPDATE_DIGESTS=1` 一并生成（生成文件）。依赖摘要变化或依赖集合增减，报 `EVIDENCE_STALE`，明细写依赖链与受影响义务。
 5. **噪声上限**：PR-B2 实测单个依赖牵连的义务数分布，写进 PR 描述。超过 100 条的非引擎依赖列出由审查裁定，不自行加进边界。
 
+> **注（F-072 PR-1，DEC-374①，方案 D-1）：第 4 点的存储形态已由 F-072 替代。** 依赖登记不再是 `required/digests.ts` 的平铺 `DEPENDENCIES`，
+> 改为 `required/digests/`：节点摘要表（`nodes.ts`）+ 直接依赖图（`graph/<区域>.ts`）+ 证据单元摘要（`units.ts`），闭包在校验时由图推出
+> （docs/08_设计/F-072_闭包边界降噪_方案.md §4）。检测语义与本节有两处不同：① 新增绑定指纹，图的直接边或绑定变化而闭包不变也报
+> `EVIDENCE_STALE`（别名交换、重绑定、转导出改指、局部 import 遮蔽全局）；② 第 2 点的 `depth-limit` 改为与遍历顺序无关的定义
+> （D-8 ①）：以实际访问集合 V(r) = {r} ∪ Cl(r) 判越界，去掉旧算法“同层后访问”的顺序相关误报，现状真实表两种定义都为空集。
+> 旧 `required/digests.ts` 回来报 `LEGACY_DIGESTS_PRESENT`。命令不变：`ROUTE_POLICY_UPDATE_DIGESTS=1` 重算。
+
 **测试与反例**（新文件 `AC-PRM-FW-02-evidence.test.ts`）
 
 - `levelOf` 恒返 `'detail'`，报 `EVIDENCE_STALE`。

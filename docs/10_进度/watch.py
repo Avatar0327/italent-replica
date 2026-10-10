@@ -52,7 +52,8 @@ def snapshot():
         done_at = ""  # 开发方贴“开发完成”（DEC：开发完成明确报到）且其后尚无审查发起 / 排队
         for c in p["comments"]:
             b = c.get("body", "")[:200]
-            if "开发完成" in b or "设计完成" in b:
+            # 只认开发方以“开发完成 / 设计完成”开头的报到；审查原文里引用这几个字不算（#198 误报）
+            if b.lstrip().startswith(("开发完成", "设计完成")):
                 done_at = c["createdAt"]
             elif done_at and any(w in b for w in ("审查已发起", "排队待审", "已发起", "审查原文", "修改清单", "清单补充", "可以合并")):
                 done_at = ""

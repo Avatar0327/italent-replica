@@ -16,6 +16,7 @@ import {
   sql,
   type Tx,
 } from '@italent/db';
+import { advisoryLock, asUuid } from '../../advisory-lock.js';
 import { AppError } from '../../errors.js';
 
 export interface LicenseBalance {
@@ -75,7 +76,7 @@ export interface SeatOutcome {
  * 两笔撤销若先各自锁授权行再争本锁会形成死锁环（revokeGrant 据此先取本锁）。
  */
 export async function lockLicenseType(tx: Tx, tenantId: string, licenseType: string) {
-  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${tenantId}:license:${licenseType}`}, 0))`);
+  await advisoryLock(tx, asUuid(tenantId), ':license:', licenseType);
 }
 
 export async function consumeSeat(tx: Tx, request: SeatRequest): Promise<SeatOutcome> {
