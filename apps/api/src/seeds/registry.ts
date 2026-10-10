@@ -10,7 +10,7 @@
  * 接入方式见 docs/08_设计/DEC-361_种子补装登记表.md；各模块在 seeds/index.ts 加一行 import 即可被收录。
  */
 import type { Tx } from '@italent/db';
-import { advisoryLock, asUuid } from '../advisory-lock.js';
+import { lockTenantSeeds } from './grant-ledger.js';
 
 export interface SeedWriteContext {
   readonly tenantId: string;
@@ -73,9 +73,8 @@ export async function installMissingSeeds(
   write: SeedWriteContext,
   filter: { readonly modules?: readonly string[] } = {},
 ): Promise<SeedReportItem[]> {
-  // 租户级互斥：不同模块筛选、不同命令 ID 的回补与开通都在同一把锁上排队。锁键用 PostgreSQL 的 uuid 规范文本：
-  // 平台入口接受大小写不同的同一租户 UUID，按字符串哈希会得到不同的锁（DEC-361 R2-01 残项）
-  await advisoryLock(tx, asUuid(write.tenantId), ':seed-install');
+  // 租户级互斥：不同模块筛选、不同命令 ID 的回补与开通都在同一把锁上排队（锁键说明见 grant-ledger.ts）
+  await lockTenantSeeds(tx, write.tenantId);
   const report: SeedReportItem[] = [];
   for (const entry of entries) {
     if (filter.modules && !filter.modules.includes(entry.module)) continue;

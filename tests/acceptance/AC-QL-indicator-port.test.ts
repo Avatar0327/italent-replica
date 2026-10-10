@@ -98,7 +98,10 @@ describe('AC-QL-indicator-port indicators：当前资格 → 标准 → 当前�
       code: 'Z1',
       name: '代码质量',
       targetTypeId: f.childType.id,
-      targetTypePath: ['专业能力', '编程'],
+      targetTypePath: [
+        { id: f.rootType.id, name: '专业能力' },
+        { id: f.childType.id, name: '编程' },
+      ],
       evalMode: 'score',
       gradeSchemeId: null,
       weight: 40,
@@ -111,7 +114,7 @@ describe('AC-QL-indicator-port indicators：当前资格 → 标准 → 当前�
     });
     expect(outcome.data[1]).toMatchObject({
       code: 'Z2',
-      targetTypePath: ['专业能力'],
+      targetTypePath: [{ id: f.rootType.id, name: '专业能力' }],
       weight: 30,
       targetValue: null,
       abilities: [{ content: '通用说明', targetValue: null, targetGradeId: null }],
@@ -151,6 +154,19 @@ describe('AC-QL-indicator-port indicators：当前资格 → 标准 → 当前�
       enabled: false,
       abilities: [{ content: '能写出可读代码' }, { content: '会做代码评审' }],
     });
+  });
+
+  it('标准停用后其指标仍可读（历史与在途引用需要，DEC-374④ 🟡 待取证）', async () => {
+    const f = await portWorld('qi-standard-disabled');
+    const id = await f.employee();
+    await f.record(id);
+    const patched = await f.w.request('PATCH', `/standards/${f.standard.id}`, {
+      ifMatch: f.standard.revision,
+      body: { enabled: false },
+    });
+    expect(patched.status, await patched.clone().text()).toBe(200);
+    const outcome = await f.tx((t) => port().indicators(t, f.w.tenant.id, id, '2026-06-01'));
+    expect(outcome.ok && outcome.data.map((item) => item.code)).toEqual(['Z1', 'Z2', 'Z3']);
   });
 
   it('三种失败原因：无当前资格 / 类别没有标准 / 当前级别不在标准里', async () => {
@@ -215,7 +231,7 @@ describe('AC-QL-indicator-port indicators：当前资格 → 标准 → 当前�
     const item = outcome.data[0]! as unknown as {
       name: string;
       abilities: { content: string }[];
-      targetTypePath: string[];
+      targetTypePath: { id: string; name: string }[];
     };
     expect(() => {
       item.name = '改名';
@@ -223,7 +239,10 @@ describe('AC-QL-indicator-port indicators：当前资格 → 标准 → 当前�
     expect(() => {
       item.abilities[0]!.content = '改写';
     }).toThrow();
-    expect(() => item.targetTypePath.push('x')).toThrow();
+    expect(() => item.targetTypePath.push({ id: 'x', name: 'x' })).toThrow();
+    expect(() => {
+      item.targetTypePath[0]!.name = '改名';
+    }).toThrow();
     expect(() => (outcome.data as unknown[]).push({})).toThrow();
   });
 
@@ -482,7 +501,9 @@ describe('AC-QL-indicator-port 第 1 轮 P3-1：指标类型树不静默截断',
     const f = await chainWorld('qi-depth-22', 22);
     const outcome = await f.run({ targetTypeIds: [f.ids[0]!] });
     expect(outcome.ok && outcome.data.map((item) => item.code)).toEqual(['ZDEEP']);
-    expect(outcome.ok && outcome.data[0]!.targetTypePath).toEqual(f.names);
+    expect(outcome.ok && outcome.data[0]!.targetTypePath).toEqual(
+      f.ids.map((id, index) => ({ id, name: f.names[index] })),
+    );
   });
 
   it('类型树深度超过上限（100 层）→ 显式 RangeError，不返回缺层的路径', async () => {
