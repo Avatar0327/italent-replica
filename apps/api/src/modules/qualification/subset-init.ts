@@ -9,6 +9,7 @@
  * - 跳过：已有同（员工, 类别, 级别, 开始日）的未删除行 → ALREADY_EXISTS，重复执行不重复生成；已被 HR 删除的行不算“已有”；
  * - 来源 initialization、isAutoSync = false、带任职记录 ID；是人工发起的管理员命令，写入者与审计主体都是操作人。
  *   带记录 ID 使之后同一记录的逐条同步在同日撞上它时按 DEC-414 让路（MANUAL_SAME_DAY），不会重复生成；
+ * - 回执只含任职记录 ID、结果与原因，不带记录的业务字段（生效日、岗职务等）：回执不经字段权裁剪，也不替查看人读任职字段；
  * - 范围：逐名员工检查操作人在子集对象上的人员范围（与 HR 逐个新增同一谓词）；范围外与不存在同一回执
  *   EMPLOYEE_NOT_FOUND，不透露是否存在，不带任何其他信息；
  * - 整批一个事务（命令台账幂等、同键同内容返回首次结果）；需要部分成功的情形用逐条回执表达，不靠局部回滚。
@@ -34,7 +35,6 @@ export type InitRecordReason = 'ALREADY_EXISTS' | 'NO_MAPPING' | 'AMBIGUOUS_MAPP
 
 export interface InitRecordReceipt {
   readonly recordId: string;
-  readonly effectiveDate: string;
   readonly outcome: 'created' | 'skipped';
   readonly reason?: InitRecordReason;
   /** 生成的子集行 ID（created 时有）。 */
@@ -115,7 +115,7 @@ async function initializeRecord(
   record: EmploymentRecord,
   endDate: string | null,
 ): Promise<InitRecordReceipt> {
-  const base = { recordId: record.id, effectiveDate: record.effectiveDate };
+  const base = { recordId: record.id };
   const mapped = await mapEmploymentToQualification(tx, ctx.tenantId, record.fields, record.effectiveDate);
   if (mapped.kind === 'skipped') return { ...base, outcome: 'skipped', reason: mapped.reason };
   if (await alreadyExists(tx, ctx.tenantId, record.employeeId, mapped.categoryId, mapped.levelId, record.effectiveDate))

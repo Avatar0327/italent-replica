@@ -742,7 +742,6 @@ const PERSONNEL_ACCESS_IMPL: Evidence = impl(
 const SUBSET_INIT: readonly Obligation[] = [
   {
     perm: 'obj:TenantBase.Qualification:create',
-    facts: ['object:personnel access', 'objectOp:TenantBase.Qualification:create'],
     at: [
       call(INIT_ROUTE, INIT_ACCESS),
       PERSONNEL_ACCESS_IMPL,

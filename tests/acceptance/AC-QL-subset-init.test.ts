@@ -26,7 +26,6 @@ const CLOCK = () => new Date(TODAY);
 
 interface RecordReceipt {
   recordId: string;
-  effectiveDate: string;
   outcome: 'created' | 'skipped';
   reason?: string;
   subsetId?: string;
@@ -108,11 +107,12 @@ describe('AC-QL-subset-init 映射与日期（QL-R15①，设计 §4.2）', () =
     const receipt = processed(receipts);
     // 夹具的入职记录没有岗职务映射：该记录回执 NO_MAPPING，其他两条各生成一行
     expect(receipt.created).toBe(2);
-    expect(receipt.records.map((record) => [record.effectiveDate, record.outcome, record.reason])).toEqual([
-      ['2026-09-01', 'skipped', 'NO_MAPPING'],
-      ['2026-09-10', 'created', undefined],
-      ['2026-10-05', 'created', undefined],
+    expect(receipt.records.map((record) => [record.recordId, record.outcome, record.reason])).toEqual([
+      [w.subject.hire.id, 'skipped', 'NO_MAPPING'],
+      [first, 'created', undefined],
+      [second, 'created', undefined],
     ]);
+    expect(receipt.records.every((record) => Object.keys(record).every((key) => !key.includes('Date')))).toBe(true);
     expect(await w.subsets()).toMatchObject([
       {
         categoryId: categories[0],
@@ -139,11 +139,11 @@ describe('AC-QL-subset-init 映射与日期（QL-R15①，设计 §4.2）', () =
 
   it('只生成已生效的入职 / 转正 / 调动类记录：未来生效的、离职的不生成（AC-QL-subset-init）', async () => {
     const { w, fields, initOk, processed } = await scene('qlinit-kinds');
-    await w.transferWith('2026-09-10', fields(0));
+    const transfer = await w.transferWith('2026-09-10', fields(0));
     await w.transferWith('2099-01-01', fields(1));
     await w.leave('2026-10-02');
     const receipt = processed(await initOk([w.subject.employee.id]));
-    expect(receipt.records.map((record) => record.effectiveDate)).toEqual(['2026-09-01', '2026-09-10']);
+    expect(receipt.records.map((record) => record.recordId)).toEqual([w.subject.hire.id, transfer]);
     expect(await w.subsets()).toMatchObject([{ startDate: '2026-09-10', endDate: null }]);
   });
 
@@ -152,9 +152,9 @@ describe('AC-QL-subset-init 映射与日期（QL-R15①，设计 §4.2）', () =
     await w.transferWith('2026-09-10', fields(0));
     const last = await w.transferWith('2026-09-10', fields(1));
     const receipt = processed(await initOk([w.subject.employee.id]));
-    expect(receipt.records.filter((record) => record.effectiveDate === '2026-09-10')).toMatchObject([
-      { recordId: last, outcome: 'created' },
-    ]);
+    // 同日先存的那笔不出现在回执里，只有当日最后一笔参与生成
+    expect(receipt.records.map((record) => record.recordId)).toEqual([w.subject.hire.id, last]);
+    expect(receipt.records[1]).toMatchObject({ outcome: 'created' });
     expect(await w.subsets()).toMatchObject([{ categoryId: categories[1], employmentRecordId: last }]);
   });
 
