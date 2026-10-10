@@ -177,7 +177,8 @@ jobs:
         shard: [1, 2, 3]
     services:
       postgres:
-        image: postgres:16
+        # Docker Hub 匿名拉取会限流（10-09 21:00Z 起 PG 分片批量失败），改用 AWS 公共镜像源的官方镜像，内容与 docker.io/library/postgres:16 相同
+        image: public.ecr.aws/docker/library/postgres:16
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
