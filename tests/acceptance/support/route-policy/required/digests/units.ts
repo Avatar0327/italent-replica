@@ -858,8 +858,8 @@ export const DIGESTS: Digests = {
     partitionBroken: 'c4b0d36cc40d',
   },
   'apps/api/src/modules/talent-review/matrix-routes.ts': {
-    registerMatrixRoutes: '39431a7d1f6a',
-    registerRatioGroupRoutes: '1f25426def10',
+    registerMatrixRoutes: 'a4ffa01ab46b',
+    registerRatioGroupRoutes: 'e53a4fe6a6c7',
     requireFieldReference: 'abcf5e0394b9',
   },
   'apps/api/src/modules/talent-review/matrix-service.ts': {
@@ -1742,7 +1742,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/talent-review/config-routes.ts#registerSettings': '6f984e7b689f',
   'apps/api/src/modules/talent-review/config-routes.ts#requirePairUpdate': 'b7c6e63f10de',
   'apps/api/src/modules/talent-review/field-rename-guard.ts#partitionBroken': '6710a8828879',
-  'apps/api/src/modules/talent-review/matrix-routes.ts#registerMatrixRoutes': '1b6ca6a49835',
+  'apps/api/src/modules/talent-review/matrix-routes.ts#registerMatrixRoutes': 'b9e2eee11987',
   'apps/api/src/modules/talent-review/matrix-routes.ts#registerRatioGroupRoutes': '7360488aac52',
   'apps/api/src/modules/talent-review/matrix-routes.ts#requireFieldReference': '9ce926ee75cc',
   'apps/api/src/modules/talent-review/matrix-service.ts#updateMatrix': 'd21f4fba3b95',

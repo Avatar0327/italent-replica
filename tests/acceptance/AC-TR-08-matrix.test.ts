@@ -212,7 +212,7 @@ describe('位置字段占用（TR-R31；D-20；AC-TR-08）', () => {
 describe('轴、分段与格子（TR-R31）', () => {
   const bad: [string, (m: MatrixView, ids: { text: string }) => Record<string, unknown>, string][] = [
     ['X 与 Y 是同一个字段', (m) => ({ yFieldId: m.xFieldId }), 'MATRIX_AXIS_SAME_FIELD'],
-    ['轴字段不是单选 / 数值', (_m, ids) => ({ xFieldId: ids.text }), 'MATRIX_AXIS_FIELD_KIND'],
+    ['轴字段不是等级维度（单选）字段', (_m, ids) => ({ xFieldId: ids.text }), 'MATRIX_AXIS_FIELD_KIND'],
     [
       '单选轴的分段引用了不存在的选项值',
       (m) => ({
@@ -267,33 +267,30 @@ describe('轴、分段与格子（TR-R31）', () => {
     expect((await w.list()).items).toHaveLength(1);
   });
 
-  it('数值轴按递增下界分段（第一段无下界）；非递增或带选项值 400', async () => {
+  it('F-085（DEC-389①）轴只能是等级维度（单选）字段：数值字段新建 / 修改都 400 MATRIX_AXIS_FIELD_KIND，数据不变', async () => {
     const w = await matrixWorld(testDb().db, 'trm-numeric-axis');
     const score = (await w.numberField()).id;
     const refs = await w.refs();
-    const base = matrixBody(refs);
-    const yLevels = (base.axisLevels as Record<string, unknown>[]).filter((l) => l.axis === 'y');
-    const numeric = (levels: Record<string, unknown>[]) => ({
-      xFieldId: score,
-      axisLevels: [...levels.map((l, i) => ({ axis: 'x', levelNo: i + 1, name: `段${i + 1}`, ...l })), ...yLevels],
-    });
-    const ok = await w.post(matrixBody(refs, numeric([{}, { lowerBound: 60 }, { lowerBound: 80 }])));
-    expect(ok.status, await ok.clone().text()).toBe(201);
-    const created = (await ok.json()) as MatrixView;
-    expect(created.axisLevels.filter((l) => l.axis === 'x').map((l) => l.lowerBound)).toEqual([null, 60, 80]);
-    for (const levels of [
-      [{ lowerBound: 10 }, { lowerBound: 60 }, { lowerBound: 80 }],
-      [{}, { lowerBound: 80 }, { lowerBound: 60 }],
-      [{}, { lowerBound: 60 }, {}],
-      [{}, { lowerBound: 60, optionValues: ['1'] }, { lowerBound: 80 }],
-    ]) {
-      const response = await w.post(matrixBody(await w.refs(), { ...numeric(levels), xFieldId: score }));
-      expect([response.status, await reasonOf(response)], JSON.stringify(levels)).toEqual([
-        400,
-        'MATRIX_LEVELS_INVALID',
-      ]);
+    for (const axisField of [{ xFieldId: score }, { yFieldId: score }]) {
+      const response = await w.post(matrixBody(refs, axisField));
+      expect([response.status, await reasonOf(response)]).toEqual([400, 'MATRIX_AXIS_FIELD_KIND']);
     }
-    expect((await w.list()).items).toHaveLength(1);
+    expect((await w.list()).items).toEqual([]);
+    const created = await w.create({}, refs);
+    const patch = await w.request('PATCH', `${MATRICES}/${created.id}`, { ifMatch: 1, body: { xFieldId: score } });
+    expect([patch.status, await reasonOf(patch)]).toEqual([400, 'MATRIX_AXIS_FIELD_KIND']);
+    expect((await w.read(created.id)).body).toEqual(created);
+  });
+
+  it('F-085 数值轴的“下界”已删除（DEC-403）：带 lowerBound 的分段 400 VALIDATION_FAILED', async () => {
+    const w = await matrixWorld(testDb().db, 'trm-no-lower-bound');
+    const base = matrixBody(await w.refs());
+    const levels = (base.axisLevels as Record<string, unknown>[]).map((level, i) =>
+      i === 0 ? { ...level, lowerBound: 60 } : level,
+    );
+    const response = await w.post({ ...base, axisLevels: levels });
+    expect([response.status, await errorCode(response)]).toEqual([400, 'VALIDATION_FAILED']);
+    expect((await w.list()).items).toEqual([]);
   });
 
   it('整组替换：轴分段与格子必须同时提交；被比例规则引用的格子不能删（409 MATRIX_CELL_IN_USE）', async () => {

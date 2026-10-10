@@ -1599,7 +1599,6 @@
           "objectContext"
         ],
         "scope": [
-          "requestScope",
           "visible()"
         ]
       }
@@ -1638,7 +1637,6 @@
           "objectContext"
         ],
         "scope": [
-          "requestScope",
           "visible()"
         ]
       }
@@ -9890,7 +9888,6 @@
           "objectContext"
         ],
         "scope": [
-          "requestScope",
           "visible()"
         ]
       }
@@ -16458,7 +16455,6 @@
           "objectContext"
         ],
         "scope": [
-          "requestScope",
           "visible()"
         ]
       }
