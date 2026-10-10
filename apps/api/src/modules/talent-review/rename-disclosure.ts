@@ -7,7 +7,12 @@ import type { Context } from 'hono';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
-import { getModuleViewableFields } from '../permission/module-access.js';
+import {
+  getModuleViewableFields,
+  getModuleViewableFieldsInTransaction,
+  resolveModuleScopeInTransaction,
+} from '../permission/module-access.js';
+import type { Tx } from '@italent/db';
 import { codeOf, reviewContext, reviewScope } from './access.js';
 import type { CalcDisclosure } from './field-rename-guard.js';
 
@@ -24,11 +29,17 @@ export async function resolveFieldColumnsViewable(c: Context<TenantEnv>, deps: T
 export async function resolveCalcDisclosure(
   c: Context<TenantEnv>,
   deps: TenantRouteDeps,
+  tx?: Tx,
 ): Promise<CalcDisclosure | undefined> {
   try {
     const ctx = await reviewContext(c, deps, 'calcRule');
-    const scope = await reviewScope(c, deps, ctx, 'calcRule');
-    const viewable = await getModuleViewableFields(deps, ctx, codeOf('calcRule'));
+    // 写命令里传入事务：披露权限与准入一样在命令事务内按当前授权解析（不用带请求缓存的范围）
+    const scope = tx
+      ? await resolveModuleScopeInTransaction(deps, ctx, tx, codeOf('calcRule'))
+      : await reviewScope(c, deps, ctx, 'calcRule');
+    const viewable = tx
+      ? await getModuleViewableFieldsInTransaction(deps, ctx, codeOf('calcRule'), tx)
+      : await getModuleViewableFields(deps, ctx, codeOf('calcRule'));
     return { scope, itemsViewable: viewable === undefined || viewable.has('items') };
   } catch (error) {
     // 没有计算规则的查看权：披露为空，不是改名的拒绝理由
