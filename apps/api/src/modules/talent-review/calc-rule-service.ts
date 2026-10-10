@@ -11,7 +11,9 @@ import {
   asc,
   eq,
   inArray,
+  ne,
   sql,
+  talentReviewCalcItemRefs as R,
   talentReviewCalcRuleItems as I,
   talentReviewCalcRules as K,
   talentReviewFields as F,
@@ -22,11 +24,11 @@ import {
   type CalcAnalysis,
   type CalcHints,
   formulaPath,
-  formulaReferences,
   FORMULA_CONTEXT_FIELDS,
   type FormulaField,
   type OrderingDiagnosticKind,
   targetNotAllowed,
+  textMentionsField,
   unreferenceableItem,
 } from '@italent/domain';
 import { AppError } from '../../errors.js';
@@ -309,26 +311,35 @@ export async function updateCalcRule(
 export const deleteCalcRule = (tx: Tx, ctx: CalcWriteContext, id: string): Promise<CalcRuleView> =>
   deleteConfig(tx, CALC_RULE, ctx, id);
 
-// ---- 字段删除守卫：被计算项目作目标、或被公式引用的字段不能删 ------------------------------------------------------
+// ---- 字段删除守卫（F-082 契约 §3.2，DEC-376⑥）：任一命中即为 CALC_RULE（409 FIELD_IN_USE） -----------------------------------
+// 保护类改动，合入即生效、不挂开关。库层另有引用表外键 restrict 兜底：正常路径由守卫 + 锁拦下，外键是最后一道防线。
 
 registerConfigReferenceGuard('field', async (tx, tenantId, fieldId) => {
+  // 1. 作为某计算项目的目标字段
   const [target] = await tx
     .select({ id: I.id })
     .from(I)
     .where(and(eq(I.tenantId, tenantId), eq(I.targetFieldId, fieldId)))
     .limit(1);
   if (target) return 'CALC_RULE';
+  // 2. 引用表里有该字段（bound 或 candidate：改绑失败时的认定与改名时对文本兜底的固化）
+  const [reference] = await tx
+    .select({ itemId: R.itemId })
+    .from(R)
+    .where(and(eq(R.tenantId, tenantId), eq(R.fieldId, fieldId)))
+    .limit(1);
+  if (reference) return 'CALC_RULE';
+  // 3. 文本兜底（长期保留，只作用于 legacy / unresolved 公式；legacy = 0 不是它的退出条件）：候选只按字段名文本粗筛，
+  //    再用解析按规范化路径精确判定（`盘点对象 . 来源`、换行等空白写法算，字符串里的、其他字段名的前缀 / 子串不算）；
+  //    解析失败的公式只要粗筛命中名称就算引用（不能解析时宁可多保护）。改名前会把这里的命中固化成第 2 条的候选引用。
   const [field] = await tx
     .select({ name: F.name })
     .from(F)
     .where(and(eq(F.tenantId, tenantId), eq(F.id, fieldId)));
   if (!field) return null;
-  const path = formulaPath(field.name);
-  // 候选只按字段名文本粗筛（字段名在公式里是连续的标识符，词法上不能拆开、没有转义），再用解析器按规范化路径精确判定：
-  // `盘点对象 . 来源`、点号两侧的换行 / 制表符都是合法写法，按完整路径的连续文本筛会漏（PR #184 第 2 轮）
   const candidates = await tx
     .select({ formula: I.formula })
     .from(I)
-    .where(and(eq(I.tenantId, tenantId), sql`strpos(${I.formula}, ${field.name}) > 0`));
-  return candidates.some((row) => formulaReferences(row.formula).includes(path)) ? 'CALC_RULE' : null;
+    .where(and(eq(I.tenantId, tenantId), ne(I.formulaBinding, 'bound'), sql`strpos(${I.formula}, ${field.name}) > 0`));
+  return candidates.some((row) => textMentionsField(row.formula, field.name)) ? 'CALC_RULE' : null;
 });

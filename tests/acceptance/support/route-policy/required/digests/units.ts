@@ -808,10 +808,13 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/talent-review/config-routes.ts': {
     listResponse: 'ab2a415a0736',
     registerCategories: '21d48677b1eb',
-    registerFields: 'a05c59ec2c85',
+    registerFields: '902dc37719d7',
     registerRoles: '9bbaa68d1347',
     registerSettings: '162387861cef',
     requirePairUpdate: '5b81ba1de22f',
+  },
+  'apps/api/src/modules/talent-review/field-rename-guard.ts': {
+    partitionBroken: 'd75f58edb9e1',
   },
   'apps/api/src/modules/talent-review/matrix-routes.ts': {
     registerMatrixRoutes: '39431a7d1f6a',
@@ -823,6 +826,9 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/talent-review/readiness-service.ts': {
     updateReadiness: '6ebb3ee4b3e3',
+  },
+  'apps/api/src/modules/talent-review/rename-disclosure.ts': {
+    resolveCalcDisclosure: '8eede32ddebc',
   },
   'apps/api/src/modules/talent-review/routes.ts': {
     registerTalentReviewRoutes: '73957fe282f8',
@@ -1667,15 +1673,17 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/talent-review/config-kit.ts#requireSeeAllToRename': '41903ba0cf58',
   'apps/api/src/modules/talent-review/config-routes.ts#listResponse': 'ce83540cc013',
   'apps/api/src/modules/talent-review/config-routes.ts#registerCategories': '030f78ed29d5',
-  'apps/api/src/modules/talent-review/config-routes.ts#registerFields': 'c277976f37c0',
+  'apps/api/src/modules/talent-review/config-routes.ts#registerFields': '7a14c5c04ea7',
   'apps/api/src/modules/talent-review/config-routes.ts#registerRoles': '9875bb5b943d',
   'apps/api/src/modules/talent-review/config-routes.ts#registerSettings': '6f984e7b689f',
   'apps/api/src/modules/talent-review/config-routes.ts#requirePairUpdate': 'b7c6e63f10de',
+  'apps/api/src/modules/talent-review/field-rename-guard.ts#partitionBroken': '6710a8828879',
   'apps/api/src/modules/talent-review/matrix-routes.ts#registerMatrixRoutes': '1b6ca6a49835',
   'apps/api/src/modules/talent-review/matrix-routes.ts#registerRatioGroupRoutes': '7360488aac52',
   'apps/api/src/modules/talent-review/matrix-routes.ts#requireFieldReference': '9ce926ee75cc',
   'apps/api/src/modules/talent-review/matrix-service.ts#updateMatrix': 'd21f4fba3b95',
   'apps/api/src/modules/talent-review/readiness-service.ts#updateReadiness': '28fc17e2384b',
+  'apps/api/src/modules/talent-review/rename-disclosure.ts#resolveCalcDisclosure': '8a1d3b2099e5',
   'apps/api/src/modules/talent-review/routes.ts#registerTalentReviewRoutes': '14dafc4fe0f2',
   'apps/api/src/modules/talent/access.ts#DATA_OPERATION': 'e3b0c44298fc',
   'apps/api/src/modules/talent/access.ts#WRITE_BUTTONS': 'e3b0c44298fc',

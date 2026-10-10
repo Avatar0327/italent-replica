@@ -145,6 +145,21 @@ export async function lockConfigRow(
   }
 }
 
+/**
+ * 并发写入被数据库中止（死锁 40P01、序列化失败 40001、锁超时 55P03）时的受控结果：409 CONFLICT（CONCURRENT_WRITE），
+ * 客户端刷新后显式重提，不自动盲重试（AGENTS §10「并发」；F-082 契约 §3.4：唯一键冲突的等待不纳入锁序，死锁检测中止一方）。
+ */
+export async function concurrentOr<T>(run: () => Promise<T>): Promise<T> {
+  try {
+    return await run();
+  } catch (error) {
+    if (['40P01', '40001', '55P03'].includes(pgErrorCode(error) ?? '')) {
+      throw new AppError('CONFLICT', '并发写入冲突，请刷新后显式重提', { reason: 'CONCURRENT_WRITE' });
+    }
+    throw error;
+  }
+}
+
 export async function uniqueOr<T>(duplicate: string, label: string, write: () => Promise<T>): Promise<T> {
   try {
     return await write();

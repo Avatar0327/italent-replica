@@ -39,6 +39,7 @@ import {
   settingsPatch,
 } from './config-input.js';
 import {
+  concurrentOr,
   createConfig,
   deleteConfig,
   listConfig,
@@ -51,6 +52,7 @@ import {
 import * as simple from './config-service.js';
 import * as fields from './field-service.js';
 import * as settings from './settings-service.js';
+import { resolveCalcDisclosure } from './rename-disclosure.js';
 
 const CATEGORIES = `${TALENT_REVIEW_BASE}/categories`;
 const ROLES = `${TALENT_REVIEW_BASE}/roles`;
@@ -120,11 +122,13 @@ async function runWrite<V extends Viewed>(
   execute: (tx: Tx, ctx: WriteContext) => Promise<V>,
 ) {
   const scope = await reviewScope(c, deps, ctx, object);
-  const result = await runCommand(deps.db, ctx, {
-    id: c.req.header('idempotency-key'),
-    fingerprint: { method: c.req.method, path: c.req.path, expectedRevision: ctx.expectedRevision, input: body },
-    execute: async (tx, commandId) => ({ status, body: await execute(tx, { ...ctx, commandId, scope }) }),
-  });
+  const result = await concurrentOr(() =>
+    runCommand(deps.db, ctx, {
+      id: c.req.header('idempotency-key'),
+      fingerprint: { method: c.req.method, path: c.req.path, expectedRevision: ctx.expectedRevision, input: body },
+      execute: async (tx, commandId) => ({ status, body: await execute(tx, { ...ctx, commandId, scope }) }),
+    }),
+  );
   const view = result.body as V;
   recheck(scope, view);
   if (c.req.method !== 'DELETE') c.header('ETag', `"${view.revision}"`);
@@ -271,8 +275,10 @@ function registerFields(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const id = uuidParam(c);
     const body = await parseBody(c, fieldPatch);
     await checkWriteFields(deps, ctx, 'field', 'update', body);
+    // 改名失败的错误载荷只对能看计算规则的人披露定位信息（F-082 §3.1）：仅在提交了名称时解析
+    const calcDisclosure = body.name === undefined ? undefined : await resolveCalcDisclosure(c, deps);
     return runWrite(c, deps, ctx, 'field', body, 200, visibleTo('field'), (tx, w) =>
-      fields.updateField(tx, w, id, body),
+      fields.updateField(tx, { ...w, calcDisclosure }, id, body),
     );
   });
   router.delete(`${FIELDS}/:id`, async (c) => {

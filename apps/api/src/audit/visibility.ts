@@ -60,7 +60,8 @@ import { JOB_OBJECT_CODES } from '../modules/permission/module-route-access.js';
 import { creatorSql } from '../modules/permission/scope-audit.js';
 import { survey360AuditScope } from '../modules/survey360/access.js';
 import { OPEN_READ } from '../modules/qualification/access.js';
-import { qualificationSources, type SourceRedactor } from './qualification-sources.js';
+import { type SourceRedactor } from './qualification-sources.js';
+import { auditRedactors } from './source-registry.js';
 import { survey360PersonAuditFields } from './survey360-person.js';
 import { IDP_AUDIT_ACTIONS, IDP_ORG_OBJECTS, IDP_PERSON_OBJECTS } from '../modules/idp/access.js';
 import { KEY_INFO, keyInfoScopeSql, keyInfoSnapshot, type KeyInfoSpec } from '../modules/idp/key-info-scope.js';
@@ -827,12 +828,6 @@ interface RowMasks {
 }
 
 const EVENT = 'audit_events';
-/** 日志里带“带出值”或引用、需要按源对象裁剪的对象类型（R3-T02 第 2 轮 P2-05、第 3 轮 R2-03）。 */
-const SOURCE_TYPES = new Set([
-  QUALIFICATION_OBJECTS.standard.code,
-  QUALIFICATION_OBJECTS.targetGradeDescription.code,
-  QUALIFICATION_OBJECTS.developmentChannel.code,
-]);
 const TASK = 'audit_operation_logs';
 
 /** 在查询事务之外解析（范围解析各自开租户事务）；返回的谓词放进查询的 WHERE，分页之前生效。 */
@@ -847,7 +842,7 @@ export async function auditViewer(deps: Deps, ctx: TenantContext, field?: string
   }
   const config = await resolveConfigFields(deps, ctx, present);
   const viewer = { tenantId: ctx.tenantId, userId: ctx.userId };
-  const sources = present.some((type) => SOURCE_TYPES.has(type)) ? await qualificationSources(deps, ctx) : undefined;
+  const redact = await auditRedactors(deps, ctx, present);
   const events = [...resolved.values()].map(
     (entry) => sql`(${eventTypes(entry.rule)}
       AND ${entry.rule.visible(entry.scope, rowOf(EVENT), viewer, entry.inputs)}
@@ -900,7 +895,7 @@ export async function auditViewer(deps: Deps, ctx: TenantContext, field?: string
       ${orgRun ? orgAdjustmentCount(orgRun, viewer) : sql`NULL::int`})`,
     withheld: maskColumn([...resolved.values()], 'withheld'),
     answersWithheld: maskColumn([...resolved.values()], 'answersWithheld'),
-    redact: async (tx, rows) => (sources ? sources.redact(tx, rows) : [...rows]),
+    redact,
     fieldsOf: (objectType, action, paths, row) => {
       if (objectType === TRANSFER_LINKAGE) return new ExactAuditFields(paths ?? []);
       const configured = config.get(configKey(objectType, action));

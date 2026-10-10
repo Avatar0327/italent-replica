@@ -114,6 +114,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/talent-review/access.ts#trimReview',
     'apps/api/src/modules/talent-review/calc-rule-service.ts#presentHints',
     'apps/api/src/modules/talent-review/calc-rule-service.ts#requireItemsReferenceable',
+    'apps/api/src/modules/talent-review/config-kit.ts#concurrentOr',
   ],
   'apps/api/src/modules/talent-review/calc-rule-service.ts#analyzeOnce': [
     'apps/api/src/modules/talent-review/access.ts#notFoundMessage',
@@ -298,6 +299,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/talent-review/field-service.ts#deleteField',
     'apps/api/src/modules/talent-review/field-service.ts#updateField',
     'apps/api/src/modules/talent-review/field-service.ts#withOptions',
+    'apps/api/src/modules/talent-review/rename-disclosure.ts#resolveCalcDisclosure',
     'apps/api/src/modules/talent/http.ts#parseBody',
     'apps/api/src/modules/talent/http.ts#requireNew',
     'apps/api/src/modules/talent/http.ts#revision',
@@ -345,17 +347,40 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/talent-review/config-routes.ts#runWrite': [
     'apps/api/src/modules/talent-review/access.ts#reviewScope',
     'apps/api/src/modules/talent-review/access.ts#trimReview',
+    'apps/api/src/modules/talent-review/config-kit.ts#concurrentOr',
   ],
   'apps/api/src/modules/talent-review/config-routes.ts#visibleTo': [
     'apps/api/src/modules/talent-review/access.ts#requireConfigVisible',
   ],
   'apps/api/src/modules/talent-review/config-service.ts#CATEGORY': ['#audited'],
   'apps/api/src/modules/talent-review/config-service.ts#ROLE': ['#audited'],
+  'apps/api/src/modules/talent-review/field-catalog.ts#bumpFieldCatalog': ['#BUMPED', '#ensureRow'],
+  'apps/api/src/modules/talent-review/field-catalog.ts#lockFieldCatalog': ['#ensureRow'],
+  'apps/api/src/modules/talent-review/field-rename-guard.ts#boundItemsReferencing': ['#rowsOf'],
+  'apps/api/src/modules/talent-review/field-rename-guard.ts#guardFieldRename': [
+    'apps/api/src/modules/talent-review/field-catalog.ts#lockFieldCatalog',
+    '#boundItemsReferencing',
+    '#breaksMessage',
+    '#partitionBroken',
+    '#solidifyCandidates',
+    '#textFallbackItems',
+    'packages/domain/src/talent-review/formula-rename.ts#checkRenameRoundTrip',
+  ],
+  'apps/api/src/modules/talent-review/field-rename-guard.ts#partitionBroken': ['#visibleTo'],
+  'apps/api/src/modules/talent-review/field-rename-guard.ts#solidifyCandidates': ['#rowsOf'],
+  'apps/api/src/modules/talent-review/field-rename-guard.ts#textFallbackItems': [
+    '#rowsOf',
+    'packages/domain/src/talent-review/calc-rule.ts#textMentionsField',
+  ],
+  'apps/api/src/modules/talent-review/field-rename-guard.ts#visibleTo': [
+    'apps/api/src/modules/talent-review/access.ts#requireConfigVisible',
+  ],
   'apps/api/src/modules/talent-review/field-service.ts#FIELD': ['#row', '#selectRows', '#withOptions'],
   'apps/api/src/modules/talent-review/field-service.ts#checkOptions': ['#hasOptions', '#invalid'],
   'apps/api/src/modules/talent-review/field-service.ts#createField': [
     'apps/api/src/modules/talent-review/access.ts#requireConfigCreatable',
     'apps/api/src/modules/talent-review/config-kit.ts#createConfig',
+    'apps/api/src/modules/talent-review/field-catalog.ts#bumpFieldCatalog',
     '#FIELD',
     '#checkOptions',
     '#insertOptions',
@@ -366,6 +391,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/talent-review/field-service.ts#deleteField': [
     'apps/api/src/modules/talent-review/config-kit.ts#deleteConfig',
+    'apps/api/src/modules/talent-review/field-catalog.ts#bumpFieldCatalog',
     '#FIELD',
   ],
   'apps/api/src/modules/talent-review/field-service.ts#linkPartner': [
@@ -385,6 +411,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/talent-review/config-kit.ts#lockConfigRow',
     'apps/api/src/modules/talent-review/config-kit.ts#requireSeeAllToRename',
     'apps/api/src/modules/talent-review/config-kit.ts#uniqueOr',
+    'apps/api/src/modules/talent-review/field-catalog.ts#bumpFieldCatalog',
+    'apps/api/src/modules/talent-review/field-rename-guard.ts#guardFieldRename',
     '#FIELD',
     '#checkOptions',
     '#invalid',
@@ -650,6 +678,12 @@ export const GRAPH: Graph = {
     '#unique',
   ],
   'apps/api/src/modules/talent-review/readiness-service.ts#view': ['#R'],
+  'apps/api/src/modules/talent-review/rename-disclosure.ts#resolveCalcDisclosure': [
+    'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
+    'apps/api/src/modules/talent-review/access.ts#codeOf',
+    'apps/api/src/modules/talent-review/access.ts#reviewContext',
+    'apps/api/src/modules/talent-review/access.ts#reviewScope',
+  ],
   'apps/api/src/modules/talent-review/routes.ts#PATH': [
     'apps/api/src/modules/talent-review/access.ts#TALENT_REVIEW_BASE',
   ],

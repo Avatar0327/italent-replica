@@ -8,6 +8,8 @@ import { and, asc, eq, inArray, talentReviewFieldOptions as O, talentReviewField
 import { FIELD_DEFAULT_PRECISION } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { notFoundMessage, requireConfigCreatable, requireConfigVisible } from './access.js';
+import { bumpFieldCatalog } from './field-catalog.js';
+import { guardFieldRename, type FieldWriteContext } from './field-rename-guard.js';
 import {
   auditConfig,
   type ConfigSpec,
@@ -189,6 +191,8 @@ export async function createField(tx: Tx, ctx: WriteContext, input: FieldCreate)
       if (partnerId) await linkPartner(tx, ctx, id, partnerId);
     },
   );
+  // 字段目录版本放在最后：S、R、A、F 都已取完（契约 §3.4 的 V）
+  await bumpFieldCatalog(tx, ctx.tenantId);
   return created;
 }
 
@@ -220,10 +224,13 @@ async function syncOptions(tx: Tx, ctx: WriteContext, fieldId: string, options: 
   }
 }
 
-export async function updateField(tx: Tx, ctx: WriteContext, id: string, patch: FieldPatch): Promise<FieldView> {
+export async function updateField(tx: Tx, ctx: FieldWriteContext, id: string, patch: FieldPatch): Promise<FieldView> {
   await lockConfigRow(tx, FIELD, ctx, id);
   const before = (await loadFieldView(tx, ctx.tenantId, id))!;
   requireSeeAllToRename(ctx, before, patch.name);
+  // 改名守卫（契约 §3.1）：只在名称实际变化时执行——版本行串行、引用它的 bound 公式往返校验、固化文本兜底
+  const renamed = patch.name !== undefined && patch.name !== before.name;
+  if (renamed) await guardFieldRename(tx, ctx, id, before.name, patch.name!);
   if (patch.precision !== undefined && before.kind !== 'number') {
     throw invalid('FIELD_PRECISION_NOT_ALLOWED', '只有数值字段可以设置小数位');
   }
@@ -238,14 +245,18 @@ export async function updateField(tx: Tx, ctx: WriteContext, id: string, patch: 
   if (options !== undefined) await syncOptions(tx, ctx, id, options);
   const after = (await loadFieldView(tx, ctx.tenantId, id))!;
   await auditConfig(tx, ctx, 'field', 'update', id, before, after);
+  if (renamed) await bumpFieldCatalog(tx, ctx.tenantId);
   return after;
 }
 
-export function deleteField(tx: Tx, ctx: WriteContext, id: string): Promise<FieldView> {
-  return deleteConfig(tx, FIELD, ctx, id, (before) => {
+export async function deleteField(tx: Tx, ctx: WriteContext, id: string): Promise<FieldView> {
+  const deleted = await deleteConfig(tx, FIELD, ctx, id, (before) => {
     if (before.preset) throw new AppError('CONFLICT', '预置字段不能删除，可以停用', { reason: 'FIELD_PRESET' });
     if (before.pairFieldId !== null) {
       throw new AppError('CONFLICT', '成对字段不能单独删除，可以停用', { reason: 'FIELD_PAIRED' });
     }
   });
+  // 引用守卫在 deleteConfig 里只读；字段行已删，最后推进字段目录版本（契约 §3.4：F → 守卫只读 → V）
+  await bumpFieldCatalog(tx, ctx.tenantId);
+  return deleted;
 }

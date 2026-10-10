@@ -212,7 +212,6 @@ describe('AC-25 改名错误不披露（FIELD_NAME_BREAKS_FORMULA）', () => {
     const revision = ((await current.json()) as { revision: number }).revision;
     return op.request(`PATCH`, `/fields/${source.id}`, { ifMatch: revision, body: { name: '名'.repeat(45) } });
   };
-  const text = async (response: Response) => JSON.stringify(await errorOf(response));
 
   it('能看规则（范围内）+ items 列 + 目标字段可见：完整定位', async () => {
     const response = await rename(await renamer({ seeAll: true }));
@@ -229,6 +228,7 @@ describe('AC-25 改名错误不披露（FIELD_NAME_BREAKS_FORMULA）', () => {
   ] as const) {
     it(`${label}：affected 为空，只有匿名计数；载荷里没有规则 ID、目标字段 ID 与原因类别`, async () => {
       const response = await rename(await renamer(rules));
+      const body = await response.clone().text();
       const error = await errorOf(response);
       expect([response.status, error.details['reason'], error.details['affected'], error.details['others']]).toEqual([
         409,
@@ -236,7 +236,6 @@ describe('AC-25 改名错误不披露（FIELD_NAME_BREAKS_FORMULA）', () => {
         [],
         1,
       ]);
-      const body = await text(response.clone());
       for (const secret of [rule.id, target.id, 'TOO_LONG', 'NOT_PARSEABLE']) expect(body).not.toContain(secret);
     });
   }

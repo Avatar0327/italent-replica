@@ -3,6 +3,7 @@
  * module-route-access.objectContext（对象 TALENT_REVIEW_OBJECTS.readiness）；写入口 reviewWriteContext 叠加 WRITE_BUTTONS
  * 按钮。路径由 TALENT_REVIEW_BASE 拼出（跨文件常量），证据绑注册函数 registerTalentReviewRoutes。
  */
+import { list, SCOPE_AT } from './scopes.js';
 import type { Evidence, Obligation, RequiredTable } from './types.js';
 
 const BASE = '/api/tenant/talent-review/readiness-levels';
@@ -182,6 +183,32 @@ const PAIR_OBLIGATIONS: Obligation[] = [
   },
 ];
 
+/**
+ * 字段改名失败时的定位披露（F-082 契约 §3.1）：可选分支，操作人的计算规则查看权 / 范围 / items 列只决定错误载荷里披露什么，
+ * 没有时也不拒绝改名（resolveCalcDisclosure 吞掉 403 / 404）。
+ */
+const RENAME_DISCLOSURE: Obligation = {
+  perm: 'obj:TalentReview.CalcRule:view',
+  purpose: 'disclosure:renameBreaksDisclosure',
+  need: list('talentReview.configScope(talent_review_calc_rules)'),
+  facts: ['object:objectContext'],
+  at: [
+    {
+      role: 'call',
+      unit: `${CFG}#registerFields`,
+      anchor: 'const calcDisclosure = body.name === undefined ? undefined : await resolveCalcDisclosure(c, deps)',
+    },
+    {
+      role: 'impl',
+      unit: `${T}/rename-disclosure.ts#resolveCalcDisclosure`,
+      anchor: "const ctx = await reviewContext(c, deps, 'calcRule')",
+    },
+    ...CONTEXT,
+    { role: 'const', unit: `${CATALOG}>calcRule`, anchor: "object( 'CalcRule'" },
+    ...SCOPE_AT['talentReview.configScope(talent_review_calc_rules)'],
+  ],
+};
+
 /** 分类 / 角色 / 字段目录五条路由；settings 另列（单例，只有读与改）。 */
 function cfgObject(key: string, label: string, register: string, base: string, constName: string): RequiredTable {
   const object = `TalentReview.${label}`;
@@ -194,7 +221,11 @@ function cfgObject(key: string, label: string, register: string, base: string, c
       ...cfgChange(object, key, label, register, 'create'),
       ...(key === 'field' ? PAIR_OBLIGATIONS : []),
     ],
-    [`PATCH ${BASE_ROOT}/${base}/:id`]: [...cfgChange(object, key, label, register, 'update'), RENAME_GUARD],
+    [`PATCH ${BASE_ROOT}/${base}/:id`]: [
+      ...cfgChange(object, key, label, register, 'update'),
+      RENAME_GUARD,
+      ...(key === 'field' ? [RENAME_DISCLOSURE] : []),
+    ],
     [`DELETE ${BASE_ROOT}/${base}/:id`]: cfgChange(object, key, label, register, 'delete'),
   };
 }

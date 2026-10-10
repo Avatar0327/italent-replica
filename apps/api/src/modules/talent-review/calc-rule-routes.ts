@@ -32,7 +32,7 @@ import { type CalcItemBody, calcRuleCreate, type CalcRulePatch, calcRulePatch } 
 import * as rules from './calc-rule-service.js';
 import type { CatalogAccess } from './calc-rule-service.js';
 import { CALC_RULE, type CalcRuleRow, type CalcRuleView, loadCalcRuleView, withItems } from './calc-rule-view.js';
-import { listConfig } from './config-kit.js';
+import { concurrentOr, listConfig } from './config-kit.js';
 
 const CALC_RULES = `${TALENT_REVIEW_BASE}/calc-rules`;
 
@@ -91,14 +91,16 @@ async function runWrite(
       rules.requireItemsReferenceable(tx, ctx.tenantId, referenced, fieldAccess),
     );
   }
-  const result = await runCommand(deps.db, ctx, {
-    id: c.req.header('idempotency-key'),
-    fingerprint: { method: c.req.method, path: c.req.path, expectedRevision: ctx.expectedRevision, input: body },
-    execute: async (tx, commandId) => ({
-      status,
-      body: await execute(tx, { ...ctx, commandId, scope, ...(fieldAccess ? { fieldAccess } : {}) }),
+  const result = await concurrentOr(() =>
+    runCommand(deps.db, ctx, {
+      id: c.req.header('idempotency-key'),
+      fingerprint: { method: c.req.method, path: c.req.path, expectedRevision: ctx.expectedRevision, input: body },
+      execute: async (tx, commandId) => ({
+        status,
+        body: await execute(tx, { ...ctx, commandId, scope, ...(fieldAccess ? { fieldAccess } : {}) }),
+      }),
     }),
-  });
+  );
   // 台账里缓存的结果不带提示；旧版本缓存过的提示也一律丢弃，不原样返回
   const { hints: _cached, ...stored } = result.body as rules.CalcWriteView;
   requireConfigVisible(scope, 'calcRule', stored.createdBy as string | null);
