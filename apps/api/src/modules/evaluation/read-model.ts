@@ -47,6 +47,10 @@ const ORDER: Readonly<Partial<Record<EvaluationObject, readonly (readonly [strin
     ['displayOrder', 'display_order'],
     ['name', 'name'],
   ],
+  reviewGroup: [
+    ['code', 'code'],
+    ['name', 'name'],
+  ],
 };
 
 export function orderBy(object: EvaluationObject, visible: ReadonlySet<string> | undefined): SQL {

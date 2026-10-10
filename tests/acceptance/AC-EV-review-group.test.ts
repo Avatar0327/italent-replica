@@ -86,10 +86,9 @@ describe('AC-EV-review-group 评审组', () => {
       expect(renamed).toMatchObject({ revision: 2 });
       expect(ids(renamed.members)).toEqual([e1.id]);
 
-      // 整组替换成员（B 范围外员工需先被管理员放进来，这里只用范围内的）
-      const swapped = await ok<GroupView>(await patch(op, renamed, { members: members([e1, false]) }));
+      // 只改成员也推进 revision，成员整组替换
+      const swapped = await ok<GroupView>(await patch(op, renamed, { members: members([e1, true]) }));
       expect(swapped.members).toHaveLength(1);
-      expect(swapped.members[0]!.isLeader).toBe(false);
       expect(swapped.revision).toBe(3);
     });
 
@@ -230,8 +229,9 @@ describe('AC-EV-review-group 评审组', () => {
 
     it('拿 E2 的 ID 查人员详情 → 404，与不存在的 ID 响应相同', async () => {
       const { op } = await fixture();
-      const outside = await op.request('GET', `/api/tenant/employment/employees/${e2.id}`);
-      const missing = await op.request('GET', `/api/tenant/employment/employees/${randomUUID()}`);
+      expect((await op.request('GET', `/api/tenant/personnel/employees/${e1.id}`)).status).toBe(200);
+      const outside = await op.request('GET', `/api/tenant/personnel/employees/${e2.id}`);
+      const missing = await op.request('GET', `/api/tenant/personnel/employees/${randomUUID()}`);
       expect(outside.status).toBe(404);
       expect(missing.status).toBe(404);
       expect(await outside.json()).toEqual(await missing.json());
@@ -350,10 +350,11 @@ describe('AC-EV-review-group 评审组', () => {
       const renamedHidden = await ok<GroupView>(await patch(hidden, group, { name: `隐藏成员改名${suffix()}` }));
       expect(renamedHidden).not.toHaveProperty('members');
       const readonly = await manager({ readonly: ['members', 'ownerOrgId'] });
-      expect((await patch(readonly, group, { members: members([e1, true]) })).status).toBe(403);
-      expect((await patch(readonly, group, { ownerOrgId: w.orgA })).status).toBe(403);
-      expect(await ok<GroupView>(await patch(readonly, group, { name: `可改${suffix()}` }))).toMatchObject({
-        revision: group.revision + 1,
+      const current = { ...group, revision: renamedHidden.revision };
+      expect((await patch(readonly, current, { members: members([e1, true]) })).status).toBe(403);
+      expect((await patch(readonly, current, { ownerOrgId: w.orgA })).status).toBe(403);
+      expect(await ok<GroupView>(await patch(readonly, current, { name: `可改${suffix()}` }))).toMatchObject({
+        revision: current.revision + 1,
       });
     });
 
@@ -412,13 +413,13 @@ describe('AC-EV-review-group 评审组', () => {
   });
 
   describe('审计（DEC-019 / 216：业务写与审计同事务；前后值呈现成员）', () => {
-    it('新建 / 修改 / 删除各一条，动作 evaluation.review-group.*；成员变化的前后值只含员工与组长标记，名称取当时姓名', async () => {
-      const op = await manager({ auditor: true });
+    it('新建 / 修改 / 删除各一条，动作 evaluation.review-group.*；成员前后值只含员工 ID、当时姓名与组长标记，范围外成员同口径', async () => {
+      const op = await manager({ auditor: true, personOrgs: [w.orgA, w.orgB, w.orgC] });
       const group = await created(op, body({ members: members([e1, true]) }));
-      const added = await ok<GroupView>(
-        await patch(op, group, { members: members([e1, true]), name: `新名${suffix()}` }),
+      const widened = await ok<GroupView>(
+        await patch(op, group, { members: members([e1, true], [e2, false]), name: `新名${suffix()}` }),
       );
-      await ok(await op.request('DELETE', `${GROUPS}/${added.id}`, { ifMatch: added.revision }));
+      await ok(await op.request('DELETE', `${GROUPS}/${widened.id}`, { ifMatch: widened.revision }));
       const audit = auditApi(testDb().db, EV_NOW.toISOString(), { authorize: undefined });
       const logs = (
         await audit.dataChanges(op.as, { objectType: 'TEvaluation.ReviewGroup', limit: '100' })
@@ -428,11 +429,24 @@ describe('AC-EV-review-group 评审组', () => {
         'evaluation.review-group.delete',
         'evaluation.review-group.update',
       ]);
-      const created1 = await audit.dataChange(op.as, logs.find((item) => item.action.endsWith('.create'))!.id);
-      expect(JSON.stringify(created1.after)).toContain(e1.id);
-      expect(created1.changes.some((change) => change.toText === e1.name)).toBe(true);
-      const removed = await audit.dataChange(op.as, logs.find((item) => item.action.endsWith('.delete'))!.id);
-      expect(removed.before).toMatchObject({ id: group.id });
+      const detail = (action: string) => audit.dataChange(op.as, logs.find((item) => item.action.endsWith(action))!.id);
+      const first = await detail('.create');
+      expect(first.after).toMatchObject({
+        members: [{ employeeId: e1.id, employeeName: e1.name, isLeader: true }],
+      });
+      const update = await detail('.update');
+      expect(update.after).toMatchObject({
+        members: [
+          { employeeId: e1.id, employeeName: e1.name, isLeader: true },
+          { employeeId: e2.id, employeeName: e2.name, isLeader: false },
+        ],
+      });
+      expect(update.changes.map((change) => change.field)).toEqual(expect.arrayContaining(['members', 'name']));
+      // 成员条目只有这三个键：不带工号、邮箱等其他字段
+      for (const member of (update.after as { members: object[] }).members) {
+        expect(Object.keys(member).sort()).toEqual(['employeeId', 'employeeName', 'isLeader']);
+      }
+      expect((await detail('.delete')).before).toMatchObject({ id: group.id });
     });
   });
 });

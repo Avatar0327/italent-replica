@@ -4,7 +4,22 @@
  *   （DEC-025）；`sync_qualification` 缺省 false（不自动写任职资格子集，C2-8 发布时按它判定）。
  * - 后续子 PR（B1b、B3～B6、C1-4、C2）在本文件追加各自的表，迁移各带一个（拆分方案第 2 节）。
  */
-import { boolean, index, integer, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+import {
+  boolean,
+  check,
+  foreignKey,
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+  unique,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
+import { employmentEmployees } from './employment.js';
+import { orgObjects } from './org.js';
 import { tenants } from './tenancy.js';
 
 const id = () => uuid('id').primaryKey().defaultRandom();
@@ -37,5 +52,64 @@ export const evActivityTypes = pgTable(
     unique('ev_activity_types_tenant_id').on(t.tenantId, t.id),
     unique('ev_activity_types_name').on(t.tenantId, t.name),
     index('ev_activity_types_order').on(t.tenantId, t.displayOrder),
+  ],
+);
+
+/**
+ * 评审组 ReviewGroup（B3）：评委分组。所属组织 `owner_org_id` 必填、由创建人手选（Q-M0-132 🟢，DEC-324②），范围外与不存在同一
+ * 404；所属人 `owner_id` 系统填创建人。编码租户内唯一（AGENTS §10 标识，格式同其他配置对象）。原站没有资源集合和向下公开。
+ */
+export const evReviewGroups = pgTable(
+  'ev_review_groups',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    code: text('code').notNull(),
+    name: text('name').notNull(),
+    ownerId: uuid('owner_id').notNull(),
+    ownerOrgId: uuid('owner_org_id').notNull(),
+    enabled: enabled(),
+    ...tracked(),
+  },
+  (t) => [
+    unique('ev_review_groups_tenant_id').on(t.tenantId, t.id),
+    unique('ev_review_groups_code').on(t.tenantId, t.code),
+    check('ev_review_groups_code_format', sql`${t.code} ~ '^[A-Za-z0-9][A-Za-z0-9_-]{0,49}$'`),
+    index('ev_review_groups_owner_org').on(t.tenantId, t.ownerOrgId),
+    foreignKey({
+      columns: [t.tenantId, t.ownerOrgId],
+      foreignColumns: [orgObjects.tenantId, orgObjects.id],
+      name: 'ev_review_groups_owner_org_fk',
+    }).onDelete('restrict'),
+  ],
+);
+
+/** 评审组成员：整组编辑，组长恰好 1 个（库内至多 1 个，恰好 1 个由写入口保证）；`seq` 记提交顺序。 */
+export const evReviewMembers = pgTable(
+  'ev_review_members',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    groupId: uuid('group_id').notNull(),
+    employeeId: uuid('employee_id').notNull(),
+    isLeader: boolean('is_leader').notNull().default(false),
+    seq: integer('seq').notNull(),
+  },
+  (t) => [
+    unique('ev_review_members_employee').on(t.tenantId, t.groupId, t.employeeId),
+    uniqueIndex('ev_review_members_leader')
+      .on(t.tenantId, t.groupId)
+      .where(sql`${t.isLeader}`),
+    index('ev_review_members_employee_idx').on(t.tenantId, t.employeeId),
+    foreignKey({
+      columns: [t.tenantId, t.groupId],
+      foreignColumns: [evReviewGroups.tenantId, evReviewGroups.id],
+      name: 'ev_review_members_group_fk',
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [t.tenantId, t.employeeId],
+      foreignColumns: [employmentEmployees.tenantId, employmentEmployees.id],
+      name: 'ev_review_members_employee_fk',
+    }).onDelete('restrict'),
   ],
 );

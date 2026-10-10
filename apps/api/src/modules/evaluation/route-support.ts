@@ -8,7 +8,7 @@ import { runCommand } from '../../commands.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import { scopeAllows } from '../permission/module-access.js';
-import { requireVisible, trimEvaluation, type EvaluationContext, type EvaluationObject } from './access.js';
+import { ANCHOR, requireVisible, trimEvaluation, type EvaluationContext, type EvaluationObject } from './access.js';
 import { rowAccess, type WriteContext } from './store.js';
 import type { Tx } from '@italent/db';
 
@@ -23,6 +23,9 @@ export type View = { readonly id: string; readonly revision: number; readonly cr
 export function writeContext(ctx: EvaluationContext, scope: WriteContext['scope']): WriteContext {
   return { ...ctx, scope };
 }
+
+/** 呈现整形（在读事务内，字段权限裁剪之前）：如评审组成员挂上人员引用出口（person-refs.ts）。 */
+export type Shaper = (tx: Tx, views: View[]) => Promise<View[]>;
 
 /** 响应按当前字段权限裁剪。 */
 export const presenter =
@@ -42,6 +45,7 @@ export async function runWrite<T extends View>(
   body: object,
   status: 200 | 201,
   execute: (tx: Tx, ctx: WriteContext) => Promise<T>,
+  shape?: Shaper,
 ) {
   const result = await runCommand(deps.db, w, {
     id: c.req.header('idempotency-key'),
@@ -51,10 +55,11 @@ export async function runWrite<T extends View>(
   const value = result.body as T;
   await requireStillVisible(deps, w, object, value, c.req.method);
   if (c.req.method !== 'DELETE') c.header('ETag', `"${value.revision}"`);
-  return c.json((await presenter(deps, object)(w, [value]))[0] as object, result.status);
+  const shaped = shape ? await withTenant(deps.db, w.tenantId, (tx) => shape(tx, [value])) : [value];
+  return c.json((await presenter(deps, object)(w, shaped))[0] as object, result.status);
 }
 
-/** 重放时按当前范围复核结果对象：现存对象按读取谓词，已删除对象按快照的创建人（字典的范围锚点）。 */
+/** 重放时按当前范围复核结果对象：现存对象按读取谓词，已删除对象按快照的范围锚点。 */
 async function requireStillVisible(
   deps: TenantRouteDeps,
   w: WriteContext,
@@ -63,7 +68,12 @@ async function requireStillVisible(
   method: string,
 ) {
   if (method === 'DELETE') {
-    requireVisible(scopeAllows(w.scope, { creatorId: value.createdBy }), object);
+    // 已删除的对象按快照的范围锚点判断：字典按创建人，所属组织对象按所属组织 ∪ 所属人
+    const target =
+      ANCHOR[object] === 'owned'
+        ? { orgId: value.ownerOrgId as string, creatorId: value.ownerId as string }
+        : { creatorId: value.createdBy };
+    requireVisible(scopeAllows(w.scope, target), object);
     return;
   }
   await withTenant(deps.db, w.tenantId, async (tx) => {

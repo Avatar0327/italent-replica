@@ -40,16 +40,21 @@ export const codeOf = (object: EvaluationObject) => EVALUATION_OBJECTS[object].c
 
 const column = (alias: string, name: string) => sql`${sql.identifier(alias)}.${sql.identifier(name)}`;
 
-/** 范围锚点：字典（无组织字段，按创建人）。B3～B5 追加按所属组织的对象。 */
-export type AnchorKind = 'dictionary';
+/** 范围锚点：字典（无组织字段，按创建人）；所属组织对象（评审组，B4 评价表、B5 活动同口径）按所属组织 ∪ 创建人。 */
+export type AnchorKind = 'dictionary' | 'owned';
 
 export const ANCHOR: Readonly<Partial<Record<EvaluationObject, AnchorKind>>> = {
   activityType: 'dictionary',
+  reviewGroup: 'owned',
 };
 
 /** 对象表上的范围谓词（分页之前生效）：别名指向对象表；看全部时为真，创建人维度取 `created_by`。 */
 export function scopePredicate(scope: ModuleScope, object: EvaluationObject, alias = 't'): SQL {
-  if (!ANCHOR[object]) throw new Error(`没有登记${EVALUATION_LABELS[object]}的范围锚点`);
+  const anchor = ANCHOR[object];
+  if (!anchor) throw new Error(`没有登记${EVALUATION_LABELS[object]}的范围锚点`);
+  // 所属组织对象：所属组织在范围内 ∪ 创建人（所属人）；不做向下公开（DEC-324②）
+  if (anchor === 'owned')
+    return scopeSql(scope, { org: column(alias, 'owner_org_id'), creator: column(alias, 'owner_id') });
   return scopeSql(scope, { creator: column(alias, 'created_by') });
 }
 
