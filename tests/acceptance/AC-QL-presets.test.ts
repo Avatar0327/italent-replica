@@ -65,7 +65,7 @@ const detailOf = async (w: World, code: string): Promise<ProfileDetail> => {
 const objectCodesOf = (detail: ProfileDetail) => detail.objects.map((o) => o.objectCode).sort();
 
 describe('AC-QL-presets 新租户开通即有三个预置身份（DEC-331②）', () => {
-  it('应用与对象：任职资格系统管理员 = Qualification 全部；评定管理员 = TEvaluation 配置 + 流程 + 四个只读引用对象；评定专员 = 仅流程对象', async () => {
+  it('应用与对象：任职资格系统管理员 = Qualification 全部；评定管理员 = TEvaluation 配置 + 流程 + 四个只读引用对象；评定专员 = 仅流程对象（AC-QL-presets）', async () => {
     const w = await provisionWorld(testDb().db, 'ql-presets-open');
     for (const code of NEW_CODES) expect(w.profileIds.has(code), code).toBe(true);
 
@@ -87,7 +87,7 @@ describe('AC-QL-presets 新租户开通即有三个预置身份（DEC-331②）'
     expect(objectCodesOf(specialist)).toEqual([...flowCodes].sort());
   });
 
-  it('授予后的实际效果：评定专员能用流程对象的按钮，配置对象与任职资格对象 403；任职资格管理员反之', async () => {
+  it('授予后的实际效果：评定专员能用流程对象的按钮，配置对象与任职资格对象 403；任职资格管理员反之（AC-QL-presets）', async () => {
     const w = await provisionWorld(testDb().db, 'ql-presets-effect');
     const specialist = await holderOfProfile(w, EV_SPECIALIST, 'ev-specialist');
     const qlAdmin = await holderOfProfile(w, QL_ADMIN, 'ql-admin');
@@ -107,7 +107,7 @@ describe('AC-QL-presets 新租户开通即有三个预置身份（DEC-331②）'
     expect(await buttonsOf(qlAdmin, EVALUATION_FLOW_OBJECTS.staffEvaluation.code)).toBe(403);
   });
 
-  it('数据范围缺省为空：三个预置身份开通时不带任何看全部 / 身份范围行（硬规则，不照继任 / 盘点预置字典看全部）', async () => {
+  it('数据范围缺省为空：三个预置身份开通时不带任何看全部 / 身份范围行（硬规则，不照继任 / 盘点预置字典看全部）（AC-QL-presets）', async () => {
     const w = await provisionWorld(testDb().db, 'ql-presets-scope');
     const rows = await withTenant(w.db, w.tenantId, (tx) => tx.select().from(permissionIdentityScopes));
     const ids = new Set(NEW_CODES.map((code) => w.profileIds.get(code)));
@@ -116,7 +116,7 @@ describe('AC-QL-presets 新租户开通即有三个预置身份（DEC-331②）'
 });
 
 describe('AC-QL-presets 存量租户经平台回补补齐（permission/standard-profiles）', () => {
-  it('补装缺失的三个身份；重复回补无副作用；revision 不变', async () => {
+  it('补装缺失的三个身份；重复回补无副作用；revision 不变（AC-QL-presets）', async () => {
     const w = await legacyWorld(testDb().db, 'ql-presets-backfill', [], NEW_CODES);
     const first = await runBackfill(w);
     const installed = first.items.find((i) => i.key === 'standard-profiles')!.installed;
@@ -127,7 +127,7 @@ describe('AC-QL-presets 存量租户经平台回补补齐（permission/standard-
     expect(grantsInstalled(second)).toEqual([]);
   });
 
-  it('租户手工建过同编码身份：不装、不覆盖、不往里写授权（CODE_TAKEN）', async () => {
+  it('租户手工建过同编码身份：不装、不覆盖、不往里写授权（CODE_TAKEN）（AC-QL-presets）', async () => {
     const w = await legacyWorld(testDb().db, 'ql-presets-taken', [], NEW_CODES);
     const manual = await w.api.request('POST', '/api/tenant/permission/profiles', {
       ...w.asAdmin,
@@ -146,7 +146,7 @@ describe('AC-QL-presets 存量租户经平台回补补齐（permission/standard-
     expect(kept).toMatchObject({ source: 'custom', revision: manualProfile.revision, objects: [] });
   });
 
-  it('租户撤销过的授权不被再次补回：开通 → 租户去掉评定专员一个按钮 → 回补不恢复', async () => {
+  it('租户撤销过的授权不被再次补回：开通 → 租户去掉评定专员一个按钮 → 回补不恢复（AC-QL-presets）', async () => {
     const w = await provisionWorld(testDb().db, 'ql-presets-revoke');
     const objectCode = EVALUATION_FLOW_OBJECTS.staffEvaluation.code;
     const profileId = w.profileIds.get(EV_SPECIALIST)!;
@@ -163,7 +163,7 @@ describe('AC-QL-presets 存量租户经平台回补补齐（permission/standard-
     expect((current.buttons as { buttonCode: string }[]).map((b) => b.buttonCode)).not.toContain('nominate');
   });
 
-  it('回补入口只认平台运营身份（租户管理员 403）', async () => {
+  it('回补入口只认平台运营身份（租户管理员 403）（AC-QL-presets）', async () => {
     const w = await legacyWorld(testDb().db, 'ql-presets-denied', [], NEW_CODES);
     const res = await backfill({ ...w, operator: { id: w.asAdmin.user } });
     expect(res.status).toBe(403);
@@ -171,7 +171,7 @@ describe('AC-QL-presets 存量租户经平台回补补齐（permission/standard-
 });
 
 describe('AC-QL-presets 守卫：目录变化必须同步 version / 指纹（F-061 方案 §3.4）', () => {
-  it('授权项编码含三个新身份；STANDARD_GRANT_VERSION 已 +1', () => {
+  it('授权项编码含三个新身份；STANDARD_GRANT_VERSION 已 +1（AC-QL-presets）', () => {
     for (const code of NEW_CODES)
       expect(
         STANDARD_GRANT_CODES.some((grant) => grant.startsWith(`${code}/`)),
@@ -180,7 +180,7 @@ describe('AC-QL-presets 守卫：目录变化必须同步 version / 指纹（F-0
     expect(STANDARD_GRANT_VERSION).toBeGreaterThanOrEqual(2);
   });
 
-  it('STANDARD_PROFILES 不含员工身份：发展通道授权只经登记项装入（拆分方案 §8，需取证 #202）', () => {
+  it('STANDARD_PROFILES 不含员工身份：发展通道授权只经登记项装入（拆分方案 §8，需取证 #202）（AC-QL-presets）', () => {
     expect(STANDARD_PROFILES.map((p) => p.code)).not.toContain('employee_self_service');
   });
 });
