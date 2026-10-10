@@ -178,13 +178,39 @@ function requirePlanned(tx: Tx, employeeId: string): void {
   if (!plans.get(tx)?.has(employeeId)) fail('CONFLICT', '同步涉及的人员已变化，请刷新后重试', 'SYNC_LOCK_PLAN_CHANGED');
 }
 
+const GRANTED: unique symbol = Symbol('survey360.syncWriteGrant');
+
 /**
- * 写入目标加锁之后、写入之前取操作人的当前权限（F-043 第 3 轮 P2-1）：功能权限、360 人员范围、员工信息范围与字段
- * 都重新取得，不用命令开始时的 ctx.admin / access；范围收窄后目标按当前范围跳过。只在确定要写时调用。
+ * 写入许可（F-043 第 4 轮，统一入口）：本文件里写 360 人员（新建、覆盖、挂接）与写同步冲突（登记、处理）的函数只接受
+ * 许可，不接受命令开始时的 ctx / access。许可只能由 authorizeTarget 产生，所以任何写入之前必然经过：目标员工在锁计划
+ * 内（已按全局顺序锁住）→ 重新取得操作人的当前权限（ctx.reauthorize：功能权限、资源守卫、360 人员范围；
+ * access.refresh：员工信息查看权、范围、字段）→ 按当前范围读到该员工的快照。验权与“有没有字段变化”无关。
  */
-async function currentAuthority(ctx: Survey360Context, access: SyncAccess) {
-  const admin = await ctx.reauthorize();
-  return { ctx: { ...ctx, admin } satisfies Survey360Context, access: await access.refresh() };
+export interface WriteGrant {
+  readonly [GRANTED]: true;
+  /** 带当前操作人（admin）的命令上下文。 */
+  readonly ctx: Survey360Context;
+  readonly access: SyncAccess;
+  /** 按当前权限读到的目标员工快照。 */
+  readonly snapshot: EmployeeSnapshot;
+}
+
+/**
+ * 取得写入许可（F-043 第 3、4 轮 P2-1）：失去功能权限时 reauthorize 抛错、整条命令回滚；员工已不在当前范围内（调出、
+ * 范围收窄、离职）返回 null，调用方按各自口径跳过或按不存在处理。
+ */
+async function authorizeTarget(
+  tx: Tx,
+  ctx: Survey360Context,
+  access: SyncAccess,
+  employeeId: string,
+): Promise<WriteGrant | null> {
+  requirePlanned(tx, employeeId);
+  await syncProbe.beforeWrite?.(employeeId);
+  const current: Survey360Context = { ...ctx, admin: await ctx.reauthorize() };
+  const fresh = await access.refresh();
+  const snapshot = await snapshotIn(tx, current, fresh, employeeId);
+  return snapshot ? { [GRANTED]: true, ctx: current, access: fresh, snapshot } : null;
 }
 
 /** 一批员工里在范围内的（与同步同一谓词，一条 SQL）。 */
@@ -367,7 +393,8 @@ async function logLink(
   });
 }
 
-async function createSyncedPerson(tx: Tx, ctx: Survey360Context, snapshot: EmployeeSnapshot, matchedBy: string[]) {
+async function createSyncedPerson(tx: Tx, grant: WriteGrant, matchedBy: string[]) {
+  const { ctx, snapshot } = grant;
   const v = snapshot.values;
   const [row] = await tx
     .insert(survey360People)
@@ -414,10 +441,9 @@ async function changesOf(tx: Tx, ctx: Survey360Context, person: PersonRow, snaps
 }
 
 /**
- * 已挂接人员按组织为准覆盖（推进 revision、写审计）：目标员工须在本命令的锁计划内（员工行与人员行已按全局顺序锁住）。
- * 先按命令开始时的权限与列出时的快照判断有没有变化；要写时重取操作人的当前权限，按当前范围重读快照、复核人员可见性，
- * 再以当前值写入（F-043 第 3 轮 P2-1）——范围在命令执行中收窄或员工已调出时返回 OUT_OF_SCOPE，不写。邮箱被其他人员
- * 占用时整条不写，返回 EMAIL_TAKEN。
+ * 已挂接人员按组织为准覆盖（同步、回补、导入同步）：先按命令开始时的权限与列出时的快照判断有没有变化——没有变化就不写，
+ * 也就不需要许可；要写时取写入许可（加锁后的当前权限与当前快照），再由 writeLinked 按许可写入。范围在命令执行中收窄
+ * 或员工已调出时返回 OUT_OF_SCOPE，不写。
  */
 async function refreshLinked(
   tx: Tx,
@@ -428,13 +454,23 @@ async function refreshLinked(
 ): Promise<PersonRow | 'EMAIL_TAKEN' | typeof OUT_OF_SCOPE | null> {
   const person = await loadPerson(tx, personId);
   if (person.employeeId !== listed.employeeId) return OUT_OF_SCOPE;
-  requirePlanned(tx, listed.employeeId);
   if (!(await changesOf(tx, ctx, person, listed))) return null;
-  await syncProbe.beforeWrite?.(listed.employeeId);
-  const now = await currentAuthority(ctx, access);
-  const snapshot = await snapshotIn(tx, now.ctx, now.access, listed.employeeId);
-  if (!snapshot || !(await personVisible(tx, now.ctx.admin, person))) return OUT_OF_SCOPE;
-  const values = await changesOf(tx, now.ctx, person, snapshot);
+  const grant = await authorizeTarget(tx, ctx, access, listed.employeeId);
+  return grant ? writeLinked(tx, grant, person) : OUT_OF_SCOPE;
+}
+
+/**
+ * 按许可覆盖已挂接人员（推进 revision、写审计）：人员须挂接在许可的员工上，并按许可里的当前人员范围可见；值取许可里的
+ * 当前快照。没有变化返回 null；邮箱被其他人员占用时整条不写，返回 EMAIL_TAKEN。
+ */
+async function writeLinked(
+  tx: Tx,
+  grant: WriteGrant,
+  person: PersonRow,
+): Promise<PersonRow | 'EMAIL_TAKEN' | typeof OUT_OF_SCOPE | null> {
+  const { ctx, snapshot } = grant;
+  if (person.employeeId !== snapshot.employeeId || !(await personVisible(tx, ctx.admin, person))) return OUT_OF_SCOPE;
+  const values = await changesOf(tx, ctx, person, snapshot);
   if (!values) return null;
   if (values.email && values.email.toLowerCase() !== person.email.toLowerCase()) {
     const other = await findPersonByEmail(tx, values.email);
@@ -524,7 +560,6 @@ async function syncUnlinked(
   result: SyncResult,
 ) {
   const employeeId = listed.employeeId;
-  let snapshot = listed;
   if (ctx.admin.people) {
     result.skipped.push({ employeeId, reason: NOT_AVAILABLE });
     return null;
@@ -538,51 +573,51 @@ async function syncUnlinked(
     result.conflicts.push(pending.id);
     return null;
   }
-  const listedBlocked = creatable(snapshot);
+  const listedBlocked = creatable(listed);
   if (listedBlocked) {
     result.skipped.push({ employeeId, reason: listedBlocked });
     return null;
   }
-  // 要写（登记冲突 / 新建人员）了：员工已在锁计划内；按操作人的当前权限重读，范围收窄、精细化生效或员工已调出则
-  // 跳过（F-043 第 3 轮）
-  requirePlanned(tx, employeeId);
-  await syncProbe.beforeWrite?.(employeeId);
-  const now = await currentAuthority(ctx, access);
-  const fresh = now.ctx.admin.people ? undefined : await snapshotIn(tx, now.ctx, now.access, employeeId);
-  if (!fresh) {
+  // 要写（登记冲突 / 新建人员）了：取写入许可；范围收窄、精细化生效或员工已调出则跳过（F-043 第 3、4 轮）
+  const grant = await authorizeTarget(tx, ctx, access, employeeId);
+  if (!grant || grant.ctx.admin.people) {
     result.skipped.push({ employeeId, reason: NOT_AVAILABLE });
     return null;
   }
-  snapshot = fresh;
-  const blocked = creatable(snapshot);
+  const blocked = creatable(grant.snapshot);
   if (blocked) {
     result.skipped.push({ employeeId, reason: blocked });
     return null;
   }
-  const candidates = await candidatesOf(tx, snapshot);
+  const candidates = await candidatesOf(tx, grant.snapshot);
   if (candidates.ids.length) {
-    const [conflict] = await tx
-      .insert(survey360SyncConflicts)
-      .values({
-        tenantId: ctx.tenantId,
-        employeeId,
-        candidatePersonIds: candidates.ids,
-        matchedBy: candidates.matchedBy,
-      })
-      .returning();
-    await audit360(tx, actor(ctx), {
-      action: 'survey360.sync_conflict.create',
-      objectType: 'survey360-sync-conflict',
-      objectId: conflict!.id,
-      before: null,
-      after: conflictView(conflict!),
-    });
-    result.conflicts.push(conflict!.id);
+    result.conflicts.push(await registerConflict(tx, grant, candidates));
     return null;
   }
-  const created = await createSyncedPerson(tx, now.ctx, snapshot, []);
+  const created = await createSyncedPerson(tx, grant, []);
   result.created.push({ personId: created.id, employeeId });
   return created;
+}
+
+/** 按许可登记同步冲突（查重命中，待系统管理员确认）。 */
+async function registerConflict(tx: Tx, grant: WriteGrant, candidates: { ids: string[]; matchedBy: string[] }) {
+  const [conflict] = await tx
+    .insert(survey360SyncConflicts)
+    .values({
+      tenantId: grant.ctx.tenantId,
+      employeeId: grant.snapshot.employeeId,
+      candidatePersonIds: candidates.ids,
+      matchedBy: candidates.matchedBy,
+    })
+    .returning();
+  await audit360(tx, actor(grant.ctx), {
+    action: 'survey360.sync_conflict.create',
+    objectType: 'survey360-sync-conflict',
+    objectId: conflict!.id,
+    before: null,
+    after: conflictView(conflict!),
+  });
+  return conflict!.id;
 }
 
 /**
@@ -770,10 +805,37 @@ export async function linkedPerson(tx: Tx, employeeId: string): Promise<PersonRo
 }
 
 /**
- * 按组织架构自动添加时取员工对应的 360 人员：员工须在调用方的锁计划内；按操作人的**当前**权限（F-043 第 3 轮）校验
- * 员工在范围内（已挂接的同样校验，P2-2；精细化下已挂接人员另按当前人员范围判定），未同步的按同一规则新建（看不到
- * 姓名 / 邮箱或有冲突的不建，返回原因）。精细化下受限管理员只用已挂接的人员，未同步的一律 PERSON_NOT_AVAILABLE
- * （不查重、不建人员；第 6 轮 R5-P2-1）。
+ * 候选员工对应的 360 人员：已挂接的用该人员（精细化下按人员范围判定，看不到按范围外处理）；未同步的按同一规则判定能否
+ * 新建（null = 可新建；看不到姓名 / 邮箱或有冲突的不建，返回原因）。精细化下受限管理员只用已挂接的人员，未同步的一律
+ * PERSON_NOT_AVAILABLE（不查重、不建人员；第 6 轮 R5-P2-1）。
+ */
+async function personOutcome(tx: Tx, admin: Admin, snapshot: EmployeeSnapshot): Promise<PersonRow | string | null> {
+  const existing = await linkedPerson(tx, snapshot.employeeId);
+  if (existing) return (await personVisible(tx, admin, existing)) ? existing : 'OUT_OF_SCOPE';
+  if (admin.people) return NOT_AVAILABLE;
+  const blocked = creatable(snapshot);
+  if (blocked) return blocked;
+  if ((await candidatesOf(tx, snapshot)).ids.length) return 'SYNC_CONFLICT';
+  return null;
+}
+
+/**
+ * 自动添加取锁之前的预判（只读，命令开始时的权限与员工范围）：调用方据此确定本次实际要处理的有界候选集合，锁计划只含
+ * 这些员工（F-043 第 4 轮 P3）。取锁后由 personForEmployee 按当前权限重新判定。
+ */
+export async function previewPerson(
+  tx: Tx,
+  ctx: Survey360Context,
+  access: SyncAccess,
+  employeeId: string,
+): Promise<PersonRow | string | null> {
+  const snapshot = await snapshotIn(tx, ctx, access, employeeId);
+  return snapshot ? personOutcome(tx, ctx.admin, snapshot) : 'OUT_OF_SCOPE';
+}
+
+/**
+ * 按组织架构自动添加时取员工对应的 360 人员：先取写入许可（员工须在调用方的锁计划内，按操作人的当前权限与员工范围，
+ * F-043 第 3、4 轮），再按 personOutcome 判定；可新建的按许可新建。员工已不在当前范围内返回 OUT_OF_SCOPE。
  */
 export async function personForEmployee(
   tx: Tx,
@@ -781,18 +843,9 @@ export async function personForEmployee(
   access: SyncAccess,
   employeeId: string,
 ): Promise<PersonRow | string> {
-  requirePlanned(tx, employeeId);
-  await syncProbe.beforeWrite?.(employeeId);
-  const now = await currentAuthority(ctx, access);
-  const snapshot = await snapshotIn(tx, now.ctx, now.access, employeeId);
-  if (!snapshot) return 'OUT_OF_SCOPE';
-  const existing = await linkedPerson(tx, employeeId);
-  if (existing) return (await personVisible(tx, now.ctx.admin, existing)) ? existing : 'OUT_OF_SCOPE';
-  if (now.ctx.admin.people) return NOT_AVAILABLE;
-  const blocked = creatable(snapshot);
-  if (blocked) return blocked;
-  if ((await candidatesOf(tx, snapshot)).ids.length) return 'SYNC_CONFLICT';
-  return createSyncedPerson(tx, now.ctx, snapshot, []);
+  const grant = await authorizeTarget(tx, ctx, access, employeeId);
+  if (!grant) return 'OUT_OF_SCOPE';
+  return (await personOutcome(tx, grant.ctx.admin, grant.snapshot)) ?? createSyncedPerson(tx, grant, []);
 }
 
 /**
@@ -841,24 +894,39 @@ export async function resolveConflict(
   if (!conflict) fail('NOT_FOUND', '冲突记录不存在');
   // 锁计划（F-043 第 3 轮）：冲突员工与挂接目标人员先按全局顺序锁住
   await lockPlan(tx, ctx.tenantId, [conflict.employeeId], input.personId ? [input.personId] : []);
-  const snapshot = await snapshotIn(tx, ctx, access, conflict.employeeId);
-  // 范围外的员工按不存在处理
-  if (!snapshot) fail('NOT_FOUND', '冲突记录不存在');
+  // 取锁后、任何写入之前取写入许可（F-043 第 4 轮）：挂接 / 新建 / 忽略三个分支都经过，与有没有字段要刷新无关；
+  // 失去功能权限整条回滚，员工已不在当前范围内按不存在处理
+  const grant = await authorizeTarget(tx, ctx, access, conflict.employeeId);
+  if (!grant) fail('NOT_FOUND', '冲突记录不存在');
   if (conflict.status !== 'pending') fail('CONFLICT', '冲突已处理', 'CONFLICT_CLOSED');
   requireRevision(conflict.revision, ctx.expectedRevision);
   let personId: string | null = null;
-  if (input.action === 'link') personId = await linkConflict(tx, ctx, access, conflict, snapshot, input.personId);
+  if (input.action === 'link') personId = await linkConflict(tx, grant, conflict, input.personId);
   else if (input.action === 'create') {
-    const blocked = creatable(snapshot);
+    const blocked = creatable(grant.snapshot);
     if (blocked) fail('VALIDATION_FAILED', '看不到员工的姓名或邮箱，或员工没有邮箱，不能建 360 人员', blocked);
-    if (await findPersonByEmail(tx, snapshot.values.email!)) fail('CONFLICT', '邮箱已被其他人员使用', 'EMAIL_TAKEN');
-    personId = (await createSyncedPerson(tx, ctx, snapshot, conflict.matchedBy)).id;
+    if (await findPersonByEmail(tx, grant.snapshot.values.email!))
+      fail('CONFLICT', '邮箱已被其他人员使用', 'EMAIL_TAKEN');
+    personId = (await createSyncedPerson(tx, grant, conflict.matchedBy)).id;
   }
+  return closeConflict(tx, grant, conflict, input.action, personId);
+}
+
+/** 按许可关闭冲突（已解决 / 已忽略），写审计。 */
+async function closeConflict(
+  tx: Tx,
+  grant: WriteGrant,
+  conflict: typeof survey360SyncConflicts.$inferSelect,
+  action: 'link' | 'create' | 'ignore',
+  personId: string | null,
+) {
+  const { ctx } = grant;
+  const id = conflict.id;
   const [saved] = await tx
     .update(survey360SyncConflicts)
     .set({
-      status: input.action === 'ignore' ? 'ignored' : 'resolved',
-      resolution: input.action,
+      status: action === 'ignore' ? 'ignored' : 'resolved',
+      resolution: action,
       resolvedPersonId: personId,
       resolvedBy: ctx.userId,
       resolvedAt: ctx.now,
@@ -898,14 +966,14 @@ async function linkTargetRefs(tx: Tx, admin: Admin, id: string, input: { action:
   await linkTarget(tx, admin, conflict.candidates, input.personId);
 }
 
+/** 按许可把冲突员工挂接到候选人员（挂接目标按许可里的当前人员范围复核），再按许可以组织值覆盖。 */
 async function linkConflict(
   tx: Tx,
-  ctx: Survey360Context,
-  access: SyncAccess,
+  grant: WriteGrant,
   conflict: typeof survey360SyncConflicts.$inferSelect,
-  snapshot: EmployeeSnapshot,
   personId: string | undefined,
 ): Promise<string> {
+  const { ctx } = grant;
   await linkTarget(tx, ctx.admin, conflict.candidatePersonIds, personId);
   if (await linkedPerson(tx, conflict.employeeId)) fail('CONFLICT', '该员工已挂接其他人员', 'EMPLOYEE_LINKED');
   const person = await loadPerson(tx, personId!, true);
@@ -928,8 +996,8 @@ async function linkConflict(
     before: personView(person),
     after: personView(saved!),
   });
-  const refreshed = await refreshLinked(tx, ctx, access, saved!.id, snapshot);
-  // 写入前按当前权限复核发现员工已不在范围内：按冲突不存在处理，整个处理回滚
+  const refreshed = await writeLinked(tx, grant, saved!);
+  // 挂接目标已按许可复核可见，OUT_OF_SCOPE 不会出现；出现即按冲突不存在处理，整个处理回滚
   if (refreshed === OUT_OF_SCOPE) fail('NOT_FOUND', '冲突记录不存在');
   if (refreshed === 'EMAIL_TAKEN') fail('CONFLICT', '组织员工的邮箱已被其他人员使用', 'EMAIL_TAKEN');
   return person.id;

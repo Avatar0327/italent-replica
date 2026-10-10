@@ -795,7 +795,7 @@ export const DIGESTS: Digests = {
     'route:POST /people/sync-conflicts/:id/resolve': '594d6f9a3a27',
     routeEmployeeScope: '16903284399b',
     syncAccess: '9478a021c8c5',
-    syncUnlinked: '5bb24a3805c8',
+    syncUnlinked: 'd40ff2a3c0a0',
     syncView: '2c382259735e',
   },
   'apps/api/src/modules/survey360/tables.ts': {
@@ -1683,7 +1683,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/survey360/sync.ts#route:POST /people/sync-conflicts/:id/resolve': '2ae04b681fa1',
   'apps/api/src/modules/survey360/sync.ts#routeEmployeeScope': 'a721871fea27',
   'apps/api/src/modules/survey360/sync.ts#syncAccess': '2bfaa423e593',
-  'apps/api/src/modules/survey360/sync.ts#syncUnlinked': 'd194e3a71976',
+  'apps/api/src/modules/survey360/sync.ts#syncUnlinked': '70df11cbdd83',
   'apps/api/src/modules/survey360/sync.ts#syncView': '2031156689d5',
   'apps/api/src/modules/survey360/tables.ts#route:GET /activities/:id/score-tables': 'bc6c08f4ef10',
   'apps/api/src/modules/survey360/tables.ts#route:GET /activities/:id/score-tables/download': '183dc7ce309a',
