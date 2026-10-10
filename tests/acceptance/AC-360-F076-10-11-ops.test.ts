@@ -175,7 +175,8 @@ describe('AC-360-F076-11 retire 中断与续跑', () => {
     expect(resumed.tenants[0]).toMatchObject({ status: 'done', credentials: 5, sessions: 0 });
     expect((await linkRows(w, s.activity.id)).every((l) => l.credential_state === 'retired')).toBe(true);
     const revoked = await securityEvents(w, 'credential_revoked');
-    expect(revoked.map((e) => e.detail['credentials'])).toEqual([2, 2, 1]);
+    // 同一次运行的事件 occurred_at 相同、id 随机，只比较各批数量的多重集
+    expect(revoked.map((e) => e.detail['credentials']).sort()).toEqual([1, 2, 2]);
     const [done] = await securityEvents(w, 'key_retired');
     expect(done).toMatchObject({ compromised: false, run_id: run!.run_id, credential_key_version: 1 });
     expect(done!.detail).toMatchObject({ credentials: 5, sessions: 0 });
