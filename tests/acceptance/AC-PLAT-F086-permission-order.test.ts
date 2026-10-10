@@ -14,9 +14,11 @@ const testDb = useTestDb();
 describe('AC-PLAT-F086 夹具读取权限与查询计划无关', () => {
   it('强制顺序扫描 / 强制索引扫描读同一对象：permissionOf 结果相等', async () => {
     const w = await provisionWorld(testDb().db, 'f086-order');
-    const seq = await permissionOf(w, 'standard_hr_admin', OBJ.objectCode, (tx) =>
-      tx.execute(sql`SET LOCAL enable_indexscan = off; SET LOCAL enable_bitmapscan = off`),
-    );
+    // 一条语句一次 execute：PGlite 的预编译语句不接受多条命令。
+    const seq = await permissionOf(w, 'standard_hr_admin', OBJ.objectCode, async (tx) => {
+      await tx.execute(sql`SET LOCAL enable_indexscan = off`);
+      await tx.execute(sql`SET LOCAL enable_bitmapscan = off`);
+    });
     const idx = await permissionOf(w, 'standard_hr_admin', OBJ.objectCode, (tx) =>
       tx.execute(sql`SET LOCAL enable_seqscan = off`),
     );
