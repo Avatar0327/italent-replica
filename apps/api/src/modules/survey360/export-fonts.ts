@@ -8,7 +8,7 @@
  * - 字体二进制不 import、不进 F-039 的证据闭包与摘要（evidence-closure 显式跳过资源文件）。
  */
 import { createHash } from 'node:crypto';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -69,11 +69,13 @@ export async function verifyExportFonts(directory: string = exportFontDirectory(
 
 const xml = (value: string) => value.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
-/** 只含内置字体目录的 fontconfig 配置（写到临时目录，同一目录幂等）；返回渲染进程的环境变量。 */
+/**
+ * 只含内置字体目录的 fontconfig 配置：写进本进程独占的临时目录（mkdtemp，不用可预测的共享路径，避免被别的本机用户
+ * 预先放置的链接劫持），进程退出时清掉；返回渲染子进程的环境变量。
+ */
 function fontEnvironment(directory: string): NodeJS.ProcessEnv {
-  const tag = createHash('sha256').update(directory).digest('hex').slice(0, 12);
-  const home = path.join(tmpdir(), `italent-export-fontconfig-${tag}`);
-  mkdirSync(home, { recursive: true });
+  const home = mkdtempSync(path.join(tmpdir(), 'italent-export-fontconfig-'));
+  process.once('exit', () => rmSync(home, { recursive: true, force: true }));
   const conf = path.join(home, 'fonts.conf');
   writeFileSync(
     conf,
