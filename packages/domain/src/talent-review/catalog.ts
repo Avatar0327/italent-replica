@@ -155,5 +155,12 @@ export const TALENT_REVIEW_CONFIG_OBJECTS: readonly TalentReviewObject[] = [
   'calcRule',
 ];
 
+/**
+ * 设置类配置对象里**暂不预置“看全部”**的：给标准身份预置看全部等于扩大出厂默认数据范围，须逐次由用户确认（DEC-374②，
+ * 守卫 AC-PLAT-F061-scope）。评价规则 / 模块等级（B2a）取保守口径，确认前预置身份没有它们的看全部，需租户自行授予；
+ * 数据范围谓词（创建人 / 看全部）与审计可见性不受影响，仍按 TALENT_REVIEW_CONFIG_OBJECTS。
+ */
+export const TALENT_REVIEW_SEE_ALL_UNAPPROVED: readonly TalentReviewObject[] = ['scoreRule', 'moduleGrade'];
+
 /** 准备度颜色：#RRGGBB（原站字典每项带颜色，`27` 补充 W-617）。 */
 export const READINESS_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;

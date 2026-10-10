@@ -11,7 +11,12 @@ import type { ObjectDefinition, ObjectPermission } from '../permission/object-pe
 import { PERSONNEL_OBJECTS } from '../personnel/catalog.js';
 import { SURVEY360_APP, SURVEY360_PROFILES } from '../survey360/catalog.js';
 import { TALENT_APP, TALENT_OBJECTS } from '../talent/catalog.js';
-import { TALENT_REVIEW_APP, TALENT_REVIEW_CONFIG_OBJECTS, TALENT_REVIEW_OBJECTS } from '../talent-review/catalog.js';
+import {
+  TALENT_REVIEW_APP,
+  TALENT_REVIEW_CONFIG_OBJECTS,
+  TALENT_REVIEW_OBJECTS,
+  TALENT_REVIEW_SEE_ALL_UNAPPROVED,
+} from '../talent-review/catalog.js';
 import {
   SUCCESSION_APP,
   SUCCESSION_CONFIG_OBJECTS,
@@ -228,11 +233,13 @@ export const STANDARD_PROFILES: readonly StandardProfile[] = [
     apps: [TALENT_REVIEW_APP],
     objects: Object.values(TALENT_REVIEW_OBJECTS).map(full),
     hr: false,
-    seeAll: TALENT_REVIEW_CONFIG_OBJECTS.map((key) => ({
-      appCode: TALENT_REVIEW_APP,
-      targetKind: 'entity' as const,
-      targetCode: TALENT_REVIEW_OBJECTS[key].code,
-    })),
+    seeAll: TALENT_REVIEW_CONFIG_OBJECTS.filter((key) => !TALENT_REVIEW_SEE_ALL_UNAPPROVED.includes(key)).map(
+      (key) => ({
+        appCode: TALENT_REVIEW_APP,
+        targetKind: 'entity' as const,
+        targetCode: TALENT_REVIEW_OBJECTS[key].code,
+      }),
+    ),
   },
   ...SUCCESSION_PROFILES,
   {
