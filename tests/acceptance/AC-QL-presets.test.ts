@@ -65,7 +65,7 @@ const detailOf = async (w: World, code: string): Promise<ProfileDetail> => {
 const objectCodesOf = (detail: ProfileDetail) => detail.objects.map((o) => o.objectCode).sort();
 
 describe('AC-QL-presets 新租户开通即有三个预置身份（DEC-331②）', () => {
-  it('应用与对象：任职资格系统管理员 = Qualification 全部；评定管理员 = TEvaluation 配置 + 流程 + 四个只读引用对象；评定专员 = 仅流程对象（AC-QL-presets）', async () => {
+  it('应用与对象：任职资格系统管理员 = Qualification 全部；评定管理员 = 配置 + 流程 + 四个只读引用对象；评定专员 = 仅流程（AC-QL-presets）', async () => {
     const w = await provisionWorld(testDb().db, 'ql-presets-open');
     for (const code of NEW_CODES) expect(w.profileIds.has(code), code).toBe(true);
 
