@@ -2,7 +2,7 @@
  * 必需项表：继任管理（R3-T05；租户接口 modules/succession/routes.ts、平台接口 platform-routes.ts）。对象操作经
  * access.successionContext → module-route-access.objectContext（对象 SUCCESSION_OBJECTS.record）；路径由 SUCCESSION_BASE
  * 拼出（跨文件常量），证据绑注册函数 registerSuccessionRoutes。实现子 PR 每新增一条路由，按人才盘点（talent-review.ts）
- * 的写法逐端点登记审定过的义务与证据，证据摘要登记在 digests.ts。
+ * 的写法逐端点登记审定过的义务与证据，证据摘要登记在 required/digests/units.ts。
  *
  * A1（记录读侧）：#1 准备度选择器、#2 记录列表 / 详情——读入口只有对象查看权，没有按钮；SELF 过滤与筛选字段可见性是守卫。
  */

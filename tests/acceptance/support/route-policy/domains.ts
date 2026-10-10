@@ -133,7 +133,7 @@ export function domainConstants(): Record<string, string[]> {
  * 选择器的映射值：域 → [{ 字段, 变体, 值: { 分支键 → 值 }, 证据 }]。比较器（compare.ts compareSelectors）要求声明里每个
  * `map` 选择器的逐键值等于这里（域 + 字段 + 变体）的条目，而不只是键集合等于域。取值优先来自源码导出常量的运行时求值
  * （JOB_OBJECT_CODES、SUBSETS[k].objectCode、TALENT_OBJECTS[k].code）；处理函数里内联的映射按字面量登记，
- * 每条带证据（单元 + 锚点，摘要进 required/digests.ts，改了即 EVIDENCE_STALE）。
+ * 每条带证据（单元 + 锚点，摘要进 required/digests/units.ts，改了即 EVIDENCE_STALE）。
  * 同一（域, 字段）有多个条目时用 `variant` 区分（任职导入预览与导入的逐行操作值不同），输入来源表按变体选。
  */
 export interface BranchValueEntry {
