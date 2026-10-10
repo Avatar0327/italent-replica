@@ -33,3 +33,56 @@ export const generalScoreItemCreate = z.strictObject({
 export const generalScoreItemPatch = generalScoreItemCreate.partial();
 export type GeneralScoreItemCreate = z.infer<typeof generalScoreItemCreate>;
 export type GeneralScoreItemPatch = z.infer<typeof generalScoreItemPatch>;
+// ── 评审组（B3，照原站 DEC-393）──────────────────────────────────────────
+// 没有编码字段；名称必填（多语言字段首版只做简体中文，DEC-045）、不要求唯一；允许零成员；成员上限 200 是系统保护（🟡，差异 D-071，
+// 原站未标示，待取证可推翻），超出提示分批。
+export const MAX_REVIEW_MEMBERS = 200;
+const uuid = z.uuid().transform((value) => value.toLowerCase());
+/** 成员整组提交；组长至多 1 个（DEC-400②）、成员不重复由写入服务校验（带 reason）。 */
+const memberList = z.array(z.strictObject({ employeeId: uuid, isLeader: z.boolean() })).max(MAX_REVIEW_MEMBERS, {
+  error: `一个评审组最多 ${MAX_REVIEW_MEMBERS} 人，请分批添加`,
+});
+
+// 所属人由系统填创建人，所属组织必填手选（DEC-324②）
+export const reviewGroupCreate = z.strictObject({
+  name,
+  ownerOrgId: uuid,
+  enabled: z.boolean().optional(),
+  members: memberList,
+});
+export const reviewGroupPatch = reviewGroupCreate.partial();
+export type ReviewGroupCreate = z.infer<typeof reviewGroupCreate>;
+export type ReviewGroupPatch = z.infer<typeof reviewGroupPatch>;
+
+// ── 评价表（B4，标准模式）──────────────────────────────────────────────
+// 没有编码字段、名称不要求唯一（照评审组 DEC-393 的经验，原站未证实，需取证 #216）。评分项数量上限 50 是系统保护 🟡。
+export const FORM_SCORE_MODES = ['by_indicator', 'by_total'] as const;
+export const MAX_FORM_ITEMS = 50;
+const twoDecimals = (value: number) => Math.abs(value * 100 - Math.round(value * 100)) < 1e-6;
+// 满分 / 通过分数的存储是 numeric(8,2)：上限 999999.99，超出 400 而不是溢出成 500
+const MAX_SCORE = 999_999.99;
+const score = z.number().max(MAX_SCORE, '分数过大').refine(twoDecimals, '最多 2 位小数');
+const weight = z.number().refine(twoDecimals, '最多 2 位小数').nullable().optional();
+const standardItem = z.strictObject({
+  kind: z.literal('standard'),
+  weight,
+  hiddenTargetIds: z.array(uuid).max(500).optional(),
+});
+const generalItem = z.strictObject({ kind: z.literal('general'), generalItemId: uuid, weight });
+const formItems = z.array(z.discriminatedUnion('kind', [standardItem, generalItem])).max(MAX_FORM_ITEMS, {
+  error: `评分项最多 ${MAX_FORM_ITEMS} 个`,
+});
+export const formCreate = z.strictObject({
+  name,
+  ownerOrgId: uuid,
+  enabled: z.boolean().optional(),
+  scoreMode: z.enum(FORM_SCORE_MODES),
+  fullScore: score.refine((value) => value > 0, '满分须大于 0'),
+  passScore: score.refine((value) => value >= 0, '通过分数不能为负'),
+  totalRule: z.enum(['average', 'weighted', 'sum']).nullable().optional(),
+  items: formItems,
+});
+export const formPatch = formCreate.partial();
+export type FormCreate = z.infer<typeof formCreate>;
+export type FormPatch = z.infer<typeof formPatch>;
+export type FormItemInput = FormCreate['items'][number];

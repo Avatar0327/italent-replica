@@ -8,6 +8,7 @@ import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import { authorizeInTransaction, resolveModuleScopeInTransaction, scopeAllows } from '../permission/module-access.js';
 import {
+  ANCHOR,
   checkWriteFields,
   codeOf,
   type EvaluationContext,
@@ -17,7 +18,7 @@ import {
   trimEvaluation,
 } from './access.js';
 import { rowAccess, type WriteContext } from './store.js';
-import type { Tx } from '@italent/db';
+import { type Tx, withTenant } from '@italent/db';
 
 export const EV_BASE = '/api/tenant/evaluation';
 
@@ -38,6 +39,17 @@ export const presenter =
     trimEvaluation(deps, ctx, object, items);
 
 /**
+ * 带引用的对象（评审组成员的人员引用、评价表的通用评分项 / 指标引用、通用评分项写命令里的引用方可见范围）：引用访问
+ * （查看权 / 范围 / 字段）在命令事务内按当前授权重新解析，不沿用事务外的快照，也不用带请求缓存的 requestScope。
+ * `resolve` 的结果并进写命令上下文（persons / forms / formVisibility），由 ledgerExit 之前的 `before` 刷新，首次、直接重放、
+ * 失败后回查三条路径都经过；`shape` 按最近一次事务内解析的结果把台账里的结果对象整形成响应（名称等投影）。
+ */
+export interface WriteRefs {
+  resolve(deps: TenantRouteDeps, ctx: EvaluationContext, tx: Tx): Promise<Partial<WriteContext>>;
+  shape?(tx: Tx, write: WriteContext, views: View[]): Promise<View[]>;
+}
+
+/**
  * 命令事务内的当前权限复核（首次执行与各重放路径都经过，写入之前；AGENTS §10 权限、DEC-067）：对象数据操作权、按钮与
  * 数据范围都在**事务内**按当前授权重新解析，不沿用事务外保存的快照。拒绝即整体回滚：业务写、审计、命令台账都不提交。
  * 返回台账结果的两条路径（直接重放、并发败者失败后回查）都经过 commands.ts 的同一出口 ledgerExit，先跑本复核、
@@ -50,10 +62,13 @@ async function recheck(
   w: WriteContext,
   object: EvaluationObject,
   operation: 'create' | 'update' | 'delete',
+  refs?: WriteRefs,
 ): Promise<{ readonly txDeps: TenantRouteDeps; readonly ctx: EvaluationContext; readonly write: WriteContext }> {
   const txDeps: TenantRouteDeps = { ...deps, authorize: authorizeInTransaction(deps.authorize, tx) };
   const ctx = await evaluationWriteContext(c, txDeps, object, operation, w.expectedRevision);
-  const write = { ...w, scope: await resolveModuleScopeInTransaction(txDeps, ctx, tx, codeOf(object)) };
+  const scoped = { ...w, scope: await resolveModuleScopeInTransaction(txDeps, ctx, tx, codeOf(object)) };
+  // 引用人员的对象每次都重新解析员工信息的访问，不保留上一次（含事务外）的 persons
+  const write = refs ? { ...scoped, ...(await refs.resolve(txDeps, ctx, tx)) } : scoped;
   return { txDeps, ctx, write };
 }
 
@@ -65,9 +80,10 @@ async function recheckFields(
   w: WriteContext,
   object: EvaluationObject,
   body: object,
+  refs?: WriteRefs,
 ): Promise<WriteContext> {
   const operation = c.req.method === 'POST' ? 'create' : 'update';
-  const { txDeps, ctx, write } = await recheck(c, deps, tx, w, object, operation);
+  const { txDeps, ctx, write } = await recheck(c, deps, tx, w, object, operation, refs);
   await checkWriteFields(txDeps, ctx, object, operation, body as Record<string, unknown>);
   return write;
 }
@@ -86,8 +102,10 @@ export function runWrite<T extends View>(
   body: object,
   status: 200 | 201,
   execute: Execute<T>,
+  refs?: WriteRefs,
 ) {
-  return runGuarded(c, deps, w, object, body, status, execute, (tx) => recheckFields(c, deps, tx, w, object, body));
+  const before = (tx: Tx) => recheckFields(c, deps, tx, w, object, body, refs);
+  return runGuarded(c, deps, w, object, body, status, execute, before, refs);
 }
 
 /** 删除：无字段输入，只复核对象数据操作权、按钮与范围。 */
@@ -98,9 +116,10 @@ export function runDelete<T extends View>(
   object: EvaluationObject,
   id: string,
   execute: Execute<T>,
+  refs?: WriteRefs,
 ) {
-  const before = async (tx: Tx) => (await recheck(c, deps, tx, w, object, 'delete')).write;
-  return runGuarded(c, deps, w, object, { id }, 200, execute, before);
+  const before = async (tx: Tx) => (await recheck(c, deps, tx, w, object, 'delete', refs)).write;
+  return runGuarded(c, deps, w, object, { id }, 200, execute, before, refs);
 }
 
 async function runGuarded<T extends View>(
@@ -112,6 +131,7 @@ async function runGuarded<T extends View>(
   status: 200 | 201,
   execute: Execute<T>,
   recheckInTx: (tx: Tx) => Promise<WriteContext>,
+  refs?: WriteRefs,
 ) {
   let current = w;
   const result = await runCommand(deps.db, w, {
@@ -127,13 +147,23 @@ async function runGuarded<T extends View>(
   });
   const value = result.body as T;
   if (c.req.method !== 'DELETE') c.header('ETag', `"${value.revision}"`);
-  return c.json((await presenter(deps, object)(w, [value]))[0] as object, result.status);
+  // 引用的名称 / 成员等按最近一次（事务内）解析的引用访问整形，再按字段权限裁剪
+  const shape = refs?.shape;
+  const shaped = shape ? await withTenant(deps.db, w.tenantId, (tx) => shape(tx, current, [value])) : [value];
+  return c.json((await presenter(deps, object)(w, shaped))[0] as object, result.status);
 }
 
-/** 重放时按当前范围复核结果对象（事务内）：现存对象按读取谓词，已删除对象按快照的创建人（字典的范围锚点）。 */
+/**
+ * 返回台账结果时按当前范围复核结果对象（事务内）：现存对象按读取谓词；已删除对象按快照的范围锚点——字典按创建人，
+ * 所属组织对象（评价表）按所属组织 ∪ 所属人（快照里的 ownerOrgId / ownerId）。
+ */
 async function requireStillVisible(tx: Tx, w: WriteContext, object: EvaluationObject, value: View, method: string) {
   if (method === 'DELETE') {
-    requireVisible(scopeAllows(w.scope, { creatorId: value.createdBy }), object);
+    const target =
+      ANCHOR[object] === 'owned'
+        ? { orgId: value.ownerOrgId as string, creatorId: value.ownerId as string }
+        : { creatorId: value.createdBy };
+    requireVisible(scopeAllows(w.scope, target), object);
     return;
   }
   requireVisible((await rowAccess(tx, w, w.scope, object, value.id)).visible, object);

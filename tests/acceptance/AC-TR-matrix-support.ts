@@ -213,5 +213,10 @@ export async function matrixOperator(world: PermissionWorld, options: MatrixOper
   if (options.fields === 'seeAll') await setSeeAll('field', true);
   const request = (method: string, path: string, extra: RequestOptions = {}) =>
     world.api.request(method, `${TR_BASE}${path}`, { ...as, ...extra });
-  return { profile, user, as, request, setSeeAll, setButtons };
+  /** 撤销若干字段的编辑权（保留查看权与按钮）：写入口的“字段编辑权”在事务内复核时用。 */
+  const lockFields = async (codes: readonly string[]) => {
+    for (const code of codes) locked.add(code);
+    await setButtons(true);
+  };
+  return { profile, user, as, request, setSeeAll, setButtons, lockFields };
 }

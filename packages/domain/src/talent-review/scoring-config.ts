@@ -66,6 +66,10 @@ export type GradeItemsProblem =
 export function gradeItemsProblem(items: readonly GradeItemInput[]): GradeItemsProblem | null {
   if (items.length === 0) return 'GRADE_ITEMS_REQUIRED';
   const byCount = items.map((item) => item.minCount != null);
+  // 同一项不能既带数量门槛又带分数边界；整组也只能用一种口径（否则存储时会悄悄丢掉其中一种）
+  if (items.some((item) => item.minCount != null && (item.minScore != null || item.maxScore != null))) {
+    return 'GRADE_ITEMS_MIXED';
+  }
   if (byCount.some((flag) => flag !== byCount[0])) return 'GRADE_ITEMS_MIXED';
   if (new Set(items.map((item) => item.name)).size !== items.length) return 'GRADE_ITEM_DUPLICATE';
   if (new Set(items.map((item) => item.value)).size !== items.length) return 'GRADE_ITEM_DUPLICATE';

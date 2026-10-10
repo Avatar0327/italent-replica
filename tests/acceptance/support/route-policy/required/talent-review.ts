@@ -3,6 +3,7 @@
  * module-route-access.objectContext（对象 TALENT_REVIEW_OBJECTS.readiness）；写入口 reviewWriteContext 叠加 WRITE_BUTTONS
  * 按钮。路径由 TALENT_REVIEW_BASE 拼出（跨文件常量），证据绑注册函数 registerTalentReviewRoutes。
  */
+import { list, SCOPE_AT } from './scopes.js';
 import type { Evidence, Obligation, RequiredTable } from './types.js';
 
 const BASE = '/api/tenant/talent-review/readiness-levels';
@@ -191,7 +192,33 @@ const PAIR_OBLIGATIONS: Obligation[] = [
   },
 ];
 
-/** 分类 / 角色 / 字段目录（B1）与评价规则 / 模块等级（B2，scoring-routes.ts）五条路由；settings 另列（单例，只有读与改）。 */
+/**
+ * 字段改名失败时的定位披露（F-082 契约 §3.1）：可选分支，操作人的计算规则查看权 / 范围 / items 列只决定错误载荷里披露什么，
+ * 没有时也不拒绝改名（resolveCalcDisclosure 吞掉 403 / 404）。
+ */
+const RENAME_DISCLOSURE: Obligation = {
+  perm: 'obj:TalentReview.CalcRule:view',
+  purpose: 'disclosure:renameBreaksDisclosure',
+  need: list('talentReview.configScope(talent_review_calc_rules)'),
+  facts: ['object:objectContext'],
+  at: [
+    {
+      role: 'call',
+      unit: `${CFG}#registerFields`,
+      anchor: 'const calcDisclosure = renaming ? await resolveCalcDisclosure(c, deps) : undefined',
+    },
+    {
+      role: 'impl',
+      unit: `${T}/rename-disclosure.ts#resolveCalcDisclosure`,
+      anchor: "const ctx = await reviewContext(c, deps, 'calcRule')",
+    },
+    ...CONTEXT,
+    { role: 'const', unit: `${CATALOG}>calcRule`, anchor: "object( 'CalcRule'" },
+    ...SCOPE_AT['talentReview.configScope(talent_review_calc_rules)'],
+  ],
+};
+
+/** 分类 / 角色 / 字段目录（B1）与评价规则 / 模块等级（B2a，scoring-routes.ts）五条路由；settings 另列（单例，只有读与改）。 */
 function cfgObject(
   key: string,
   label: string,
@@ -210,7 +237,11 @@ function cfgObject(
       ...cfgChange(object, key, label, register, 'create', file),
       ...(key === 'field' ? PAIR_OBLIGATIONS : []),
     ],
-    [`PATCH ${BASE_ROOT}/${base}/:id`]: [...cfgChange(object, key, label, register, 'update', file), RENAME_GUARD],
+    [`PATCH ${BASE_ROOT}/${base}/:id`]: [
+      ...cfgChange(object, key, label, register, 'update', file),
+      RENAME_GUARD,
+      ...(key === 'field' ? [RENAME_DISCLOSURE] : []),
+    ],
     [`DELETE ${BASE_ROOT}/${base}/:id`]: cfgChange(object, key, label, register, 'delete', file),
   };
 }
@@ -223,7 +254,7 @@ const MAPPING_GUARD = 'talentReview.mappingFieldVisible';
 const mappingFieldsCall: Evidence = {
   role: 'call',
   unit: `${SCORING}#requireMappingFields`,
-  anchor: "const ctx = await reviewContext(c, deps, 'field')",
+  anchor: "const ctx = await reviewContext(c, txDeps, 'field')",
 };
 const MAPPING_FIELD_OBLIGATIONS = (entry: string): Obligation[] => [
   {
@@ -241,11 +272,12 @@ const MAPPING_FIELD_OBLIGATIONS = (entry: string): Obligation[] => [
 function mappingTable(): RequiredTable {
   const object = 'TalentReview.FieldMapping';
   const reg = 'registerMappings';
+  const reads = 'registerMappingReads';
   const list = "router.get(MAPPINGS, async (c) => { const ctx = await reviewContext(c, deps, 'mapping')";
   const detail = "router.get(`${MAPPINGS}/:id`, async (c) => { const ctx = await reviewContext(c, deps, 'mapping')";
   return {
     [`GET ${BASE_ROOT}/field-mappings`]: [
-      cfgView(object, 'mapping', 'FieldMapping', reg, list, SCORING),
+      cfgView(object, 'mapping', 'FieldMapping', reads, list, SCORING),
       {
         perm: 'guard:talentReview.filterFieldVisible',
         facts: ['guard:talentReview.filterFieldVisible'],
@@ -253,21 +285,21 @@ function mappingTable(): RequiredTable {
         at: [
           {
             role: 'call',
-            unit: `${SCORING}#${reg}`,
+            unit: `${SCORING}#${reads}`,
             anchor: "if (scene !== undefined) await requireFilterVisible(deps, ctx, 'mapping', 'scene')",
           },
           FILTER_GUARD.at[1]!,
         ],
       },
     ],
-    [`GET ${BASE_ROOT}/field-mappings/:id`]: [cfgView(object, 'mapping', 'FieldMapping', reg, detail, SCORING)],
+    [`GET ${BASE_ROOT}/field-mappings/:id`]: [cfgView(object, 'mapping', 'FieldMapping', reads, detail, SCORING)],
     [`POST ${BASE_ROOT}/field-mappings`]: [
       ...cfgChange(object, 'mapping', 'FieldMapping', reg, 'create', SCORING),
-      ...MAPPING_FIELD_OBLIGATIONS('const fieldScope = await requireMappingFields(c, deps);'),
+      ...MAPPING_FIELD_OBLIGATIONS('await requireMappingFields(c, deps);'),
     ],
     [`PATCH ${BASE_ROOT}/field-mappings/:id`]: [
       ...cfgChange(object, 'mapping', 'FieldMapping', reg, 'update', SCORING),
-      ...MAPPING_FIELD_OBLIGATIONS('const fieldScope = touched ? await requireMappingFields(c, deps) : undefined;'),
+      ...MAPPING_FIELD_OBLIGATIONS('if (touched) await requireMappingFields(c, deps);'),
     ],
     [`DELETE ${BASE_ROOT}/field-mappings/:id`]: cfgChange(object, 'mapping', 'FieldMapping', reg, 'delete', SCORING),
   };
@@ -375,13 +407,13 @@ const MATRIX_REQUIRED: RequiredTable = {
   ],
   [`POST ${MTX_BASE}`]: [
     ...matrixChange('registerMatrixRoutes', 'create'),
-    ...matrixReference('const fieldScope = await requireFieldReference(c, deps)'),
+    ...matrixReference('await requireFieldReference(c, deps)'),
   ],
   [`PATCH ${MTX_BASE}/:id`]: [
     ...matrixChange('registerMatrixRoutes', 'update'),
     RENAME_GUARD,
     MATRIX_POSITION_GUARD,
-    ...matrixReference('const fieldScope = references.length > 0 ? await requireFieldReference(c, deps) : undefined'),
+    ...matrixReference('if (references.length > 0) await requireFieldReference(c, deps)'),
   ],
   [`DELETE ${MTX_BASE}/:id`]: matrixChange('registerMatrixRoutes', 'delete'),
   [`POST ${MTX_BASE}/:id/ratio-groups`]: matrixChange('registerRatioGroupRoutes', 'update'),

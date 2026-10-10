@@ -108,8 +108,9 @@ const itemRows = (tenantId: string, gradeId: string, items: readonly ItemInput[]
     name: item.name,
     value: item.value,
     sortNo: index + 1,
-    minScore: item.minCount == null ? (item.minScore ?? null) : null,
-    maxScore: item.minCount == null ? (item.maxScore ?? null) : null,
+    // 口径已在 gradeItemsProblem 校验为二选一，这里原样落库，不再悄悄丢弃任何一种
+    minScore: item.minScore ?? null,
+    maxScore: item.maxScore ?? null,
     minCount: item.minCount ?? null,
   }));
 

@@ -67,5 +67,6 @@ export const GRAPH: Graph = {
   'apps/api/src/route-policy/registry.ts#moveMiddlewarePath': ['#addMiddlewarePath'],
   'apps/api/src/route-policy/registry.ts#registryOf': ['#RouteRegistry', '#registryByRouter'],
   'apps/api/src/route-policy/table.ts#assertKey': ['#METHODS'],
-  'apps/api/src/route-policy/table.ts#defineTable': ['#assertKey'],
+  'apps/api/src/route-policy/table.ts#assertLedgerReason': ['#assertLedgerReason'],
+  'apps/api/src/route-policy/table.ts#defineTable': ['#assertKey', '#assertLedgerReason'],
 };

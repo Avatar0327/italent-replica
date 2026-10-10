@@ -101,6 +101,25 @@ export async function listMappings(
 
 const invalid = (reason: string, message: string) => new AppError('VALIDATION_FAILED', message, { reason });
 
+/**
+ * 重放台账结果时复核：结果映射引用的来源 / 目标字段按**当前**字段目录范围仍须可见，否则 404（与新建时同一个 404，
+ * 不暴露字段是否存在）。不加锁——重放不写入，只决定是否还能把首次结果交回去。
+ */
+export async function requireReferencedFieldsVisible(
+  tx: Tx,
+  tenantId: string,
+  fieldScope: ModuleScope,
+  view: Pick<MappingView, 'sourceFieldId' | 'targetFieldId'>,
+): Promise<void> {
+  const ids = [...new Set([view.sourceFieldId, view.targetFieldId])];
+  const rows = await tx
+    .select({ id: F.id, createdBy: F.createdBy })
+    .from(F)
+    .where(and(eq(F.tenantId, tenantId), inArray(F.id, ids)));
+  if (rows.length !== ids.length) throw new AppError('NOT_FOUND', notFoundMessage('field'));
+  for (const row of rows) requireConfigVisible(fieldScope, 'field', row.createdBy);
+}
+
 /** 共享锁住来源 / 目标字段（按 id 升序，避免与别处交叉），返回两端的形状与启用状态。 */
 async function lockFields(tx: Tx, ctx: WriteContext, fieldScope: ModuleScope, ids: readonly string[]) {
   const unique = [...new Set(ids)].sort();

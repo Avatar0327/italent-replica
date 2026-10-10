@@ -60,7 +60,8 @@ import { JOB_OBJECT_CODES } from '../modules/permission/module-route-access.js';
 import { creatorSql } from '../modules/permission/scope-audit.js';
 import { survey360AuditScope } from '../modules/survey360/access.js';
 import { OPEN_READ } from '../modules/qualification/access.js';
-import { qualificationSources, type SourceRedactor } from './qualification-sources.js';
+import { type SourceRedactor } from './qualification-sources.js';
+import { auditRedactors } from './source-registry.js';
 import { survey360PersonAuditFields } from './survey360-person.js';
 import { IDP_AUDIT_ACTIONS, IDP_ORG_OBJECTS, IDP_PERSON_OBJECTS } from '../modules/idp/access.js';
 import { KEY_INFO, keyInfoScopeSql, keyInfoSnapshot, type KeyInfoSpec } from '../modules/idp/key-info-scope.js';
@@ -827,12 +828,6 @@ interface RowMasks {
 }
 
 const EVENT = 'audit_events';
-/** 日志里带“带出值”或引用、需要按源对象裁剪的对象类型（R3-T02 第 2 轮 P2-05、第 3 轮 R2-03）。 */
-const SOURCE_TYPES = new Set([
-  QUALIFICATION_OBJECTS.standard.code,
-  QUALIFICATION_OBJECTS.targetGradeDescription.code,
-  QUALIFICATION_OBJECTS.developmentChannel.code,
-]);
 const TASK = 'audit_operation_logs';
 
 /** 在查询事务之外解析（范围解析各自开租户事务）；返回的谓词放进查询的 WHERE，分页之前生效。 */
@@ -847,7 +842,7 @@ export async function auditViewer(deps: Deps, ctx: TenantContext, field?: string
   }
   const config = await resolveConfigFields(deps, ctx, present);
   const viewer = { tenantId: ctx.tenantId, userId: ctx.userId };
-  const sources = present.some((type) => SOURCE_TYPES.has(type)) ? await qualificationSources(deps, ctx) : undefined;
+  const redact = await auditRedactors(deps, ctx, present);
   const events = [...resolved.values()].map(
     (entry) => sql`(${eventTypes(entry.rule)}
       AND ${entry.rule.visible(entry.scope, rowOf(EVENT), viewer, entry.inputs)}
@@ -900,7 +895,7 @@ export async function auditViewer(deps: Deps, ctx: TenantContext, field?: string
       ${orgRun ? orgAdjustmentCount(orgRun, viewer) : sql`NULL::int`})`,
     withheld: maskColumn([...resolved.values()], 'withheld'),
     answersWithheld: maskColumn([...resolved.values()], 'answersWithheld'),
-    redact: async (tx, rows) => (sources ? sources.redact(tx, rows) : [...rows]),
+    redact,
     fieldsOf: (objectType, action, paths, row) => {
       if (objectType === TRANSFER_LINKAGE) return new ExactAuditFields(paths ?? []);
       const configured = config.get(configKey(objectType, action));
@@ -1034,7 +1029,9 @@ async function resolveRule(deps: Deps, ctx: TenantContext, rule: Rule): Promise<
         ? new CapacityAuditFields(objectFields)
         : rule.objectCode === IDP_OBJECTS.goal.code
           ? await idpGoalFields(deps, ctx, objectFields)
-          : (fixed ?? withProtocol(objectFields, rule.protocol)),
+          : rule.objectCode === EVALUATION_OBJECTS.reviewGroup.code
+            ? await reviewGroupFields(deps, ctx, objectFields)
+            : (fixed ?? withProtocol(objectFields, rule.protocol)),
     ...(linkage ? { linkage } : {}),
   };
 }
@@ -1058,6 +1055,30 @@ async function idpGoalFields(
   if (goalFields === undefined && Object.values(children).every((child) => child === undefined)) return undefined;
   const all = IDP_OBJECTS.goal.fields.map((field) => field.code);
   return new NestedAuditFields(goalFields ?? all, children as NestedChildren);
+}
+
+/**
+ * 评审组快照嵌套的成员（R3-T02 B3，设计 §8、§5.1）：成员条目只含员工 ID、当时姓名（业务事务内冻结）与组长标记。读取时
+ * 姓名按查看人**当前**的员工信息对象查看权与姓名字段权裁剪（DEC-197）：DEC-331① / DEC-339② 允许范围外成员显示姓名，
+ * 但不豁免姓名字段权限，与业务详情的成员呈现（person-refs.ts）同口径；列表差异、详情前后值、快照共用这一份可见集合。
+ */
+async function reviewGroupFields(
+  deps: Deps,
+  ctx: TenantContext,
+  groupFields: ReadonlySet<string> | undefined,
+): Promise<ReadonlySet<string> | undefined> {
+  const canViewEmployees = await deps.authorize({
+    ...ctx,
+    action: 'object.view',
+    resource: PERSONNEL_OBJECT,
+    fields: [],
+  });
+  const employeeFields = canViewEmployees ? await getModuleViewableFields(deps, ctx, PERSONNEL_OBJECT) : undefined;
+  const showsName = canViewEmployees && (employeeFields === undefined || employeeFields.has('name'));
+  if (showsName && groupFields === undefined) return undefined;
+  const member = ['employeeId', 'isLeader', ...(showsName ? ['employeeName'] : [])];
+  const all = EVALUATION_OBJECTS.reviewGroup.fields.map((field) => field.code);
+  return new NestedAuditFields(groupFields ?? all, { members: new Set(member) } as NestedChildren);
 }
 
 interface ResolvedConfig {
