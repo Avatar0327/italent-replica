@@ -670,8 +670,15 @@
     {
       "idx": 95,
       "version": "7",
-      "when": 1791638425710,
-      "tag": "0095_f076_credential_key_versions",
+      "when": 1791637492609,
+      "tag": "0095_talent_review_scoring_config",
+      "breakpoints": true
+    },
+    {
+      "idx": 96,
+      "version": "7",
+      "when": 1791640227892,
+      "tag": "0096_f076_credential_key_versions",
       "breakpoints": true
     }
   ]

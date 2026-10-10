@@ -4,6 +4,8 @@
  */
 import {
   FIELD_MAX_PRECISION,
+  SCORE_DISPLAYS,
+  SCORE_RULE_KINDS,
   TALENT_REVIEW_FIELD_GROUPS,
   TALENT_REVIEW_FIELD_KINDS,
   TALENT_REVIEW_PAIR_ROLES,
@@ -70,3 +72,43 @@ export type FieldCreate = z.output<typeof fieldCreate>;
 export type FieldPatch = z.output<typeof fieldPatch>;
 export type FieldOptionInput = z.output<typeof fieldOption>;
 export type SettingsPatch = z.output<typeof settingsPatch>;
+
+// ---- PR-B2：评价规则 / 模块等级 / 字段映射 ----------------------------------------------------------------------
+/** 分值：numeric(14,4) 能存的 4 位小数范围，超过 4 位小数的输入拒绝而不是静默舍入。 */
+const score = z
+  .number()
+  .min(-1e9)
+  .max(1e9)
+  .refine((value) => Math.abs(value * 1e4 - Math.round(value * 1e4)) < 1e-6, '最多 4 位小数');
+const level = z.strictObject({ name: z.string().trim().min(1).max(50), value: score });
+
+export const scoreRuleCreate = z.strictObject({
+  name,
+  kind: z.enum(SCORE_RULE_KINDS),
+  minScore: score.optional(),
+  maxScore: score.optional(),
+  display: z.enum(SCORE_DISPLAYS).optional(),
+  allowUnable: z.boolean().optional(),
+  levels: z.array(level).max(50).optional(),
+  enabled: z.boolean().optional(),
+});
+export const scoreRulePatch = scoreRuleCreate.omit({ kind: true }).partial();
+
+const gradeItem = z.strictObject({
+  name: z.string().trim().min(1).max(50),
+  value: z.string().trim().min(1).max(50),
+  minScore: score.optional(),
+  maxScore: score.optional(),
+  minCount: z.int().min(0).max(100_000).optional(),
+});
+export const moduleGradeCreate = z.strictObject({
+  name,
+  items: z.array(gradeItem).max(50),
+  enabled: z.boolean().optional(),
+});
+export const moduleGradePatch = moduleGradeCreate.partial();
+
+export type ScoreRuleCreate = z.output<typeof scoreRuleCreate>;
+export type ScoreRulePatch = z.output<typeof scoreRulePatch>;
+export type ModuleGradeCreate = z.output<typeof moduleGradeCreate>;
+export type ModuleGradePatch = z.output<typeof moduleGradePatch>;

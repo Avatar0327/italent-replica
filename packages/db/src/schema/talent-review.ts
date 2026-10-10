@@ -1,7 +1,8 @@
 /**
  * R3-T04 人才盘点（docs/08_设计/R3-T04_人才盘点_设计.md §2；REQ-TR-001）。各 PR 在本文件追加表：
  * PR-A 建准备度共享字典（DEC-301①）；PR-B1 建租户设置、分类、角色、字段目录与选项（设计 §2.2）；
- * PR-B4 建九宫格、轴分段、格子、位置字段占用与比例规则；PR-B5 建计算规则与计算项目。
+ * PR-B4 建九宫格、轴分段、格子、位置字段占用与比例规则；PR-B5 建计算规则与计算项目；
+ * PR-B2a 建评价规则 / 模块等级。
  * 表前缀 talent_review_，准备度字典例外：它是 T04 / T05 / T06 共用的字典。
  */
 import { sql } from 'drizzle-orm';
@@ -535,3 +536,108 @@ export const talentReviewFieldCatalogVersions = pgTable('talent_review_field_cat
   tenantId: tenantId().primaryKey(),
   version: bigint('version', { mode: 'number' }).notNull().default(0),
 });
+
+const score = (name: string) => numeric(name, { precision: 14, scale: 4, mode: 'number' });
+
+/**
+ * 评价规则（TR-R20）：数值类（最小分 < 最大分）或等级类（下拉 / 平铺，等级见 _levels）；可启用“无法评价”。
+ * 类型建后不可改。修改规则不影响已发起的盘点——模板版本保存时整份快照（B6），本表只是配置源。
+ */
+export const talentReviewScoreRules = pgTable(
+  'talent_review_score_rules',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: tenantId(),
+    name: text('name').notNull(),
+    kind: text('kind').notNull(),
+    minScore: score('min_score'),
+    maxScore: score('max_score'),
+    display: text('display'),
+    allowUnable: boolean('allow_unable').notNull().default(false),
+    enabled: boolean('enabled').notNull().default(true),
+    ...audit(),
+  },
+  (t) => [
+    unique('talent_review_score_rules_tenant_id').on(t.tenantId, t.id),
+    unique('talent_review_score_rules_name').on(t.tenantId, t.name),
+    check(
+      'talent_review_score_rules_shape',
+      sql`(${t.kind} = 'numeric' AND ${t.minScore} IS NOT NULL AND ${t.maxScore} > ${t.minScore}
+        AND ${t.display} IS NULL)
+        OR (${t.kind} = 'grade' AND ${t.minScore} IS NULL AND ${t.maxScore} IS NULL
+        AND ${t.display} IN ('dropdown','tile'))`,
+    ),
+    revisionCheck('talent_review_score_rules_rev', t.revision),
+  ],
+);
+
+/** 等级类评价规则的等级：名称 + 对应分值，规则内名称唯一。 */
+export const talentReviewScoreLevels = pgTable(
+  'talent_review_score_levels',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: tenantId(),
+    ruleId: uuid('rule_id').notNull(),
+    name: text('name').notNull(),
+    value: score('value').notNull(),
+    sortNo: integer('sort_no').notNull().default(0),
+  },
+  (t) => [
+    unique('talent_review_score_levels_name').on(t.tenantId, t.ruleId, t.name),
+    foreignKey({
+      columns: [t.tenantId, t.ruleId],
+      foreignColumns: [talentReviewScoreRules.tenantId, talentReviewScoreRules.id],
+      name: 'talent_review_score_levels_rule_fk',
+    }).onDelete('cascade'),
+  ],
+);
+
+/** 模块等级（TR-R15 / R20）：把模块结果（得分或指标数目）匹配成等级；等级项见 _items。 */
+export const talentReviewModuleGrades = pgTable(
+  'talent_review_module_grades',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: tenantId(),
+    name: text('name').notNull(),
+    enabled: boolean('enabled').notNull().default(true),
+    ...audit(),
+  },
+  (t) => [
+    unique('talent_review_module_grades_tenant_id').on(t.tenantId, t.id),
+    unique('talent_review_module_grades_name').on(t.tenantId, t.name),
+    revisionCheck('talent_review_module_grades_rev', t.revision),
+  ],
+);
+
+/**
+ * 模块等级项：二选一——得分区间（含下界不含上界，最后一段含上界，设计 §4.2）或按指标数目的门槛 min_count。
+ * 同一模块等级内口径不混用、区间不重叠由保存命令校验（domain gradeItemsProblem）。
+ */
+export const talentReviewModuleGradeItems = pgTable(
+  'talent_review_module_grade_items',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: tenantId(),
+    gradeId: uuid('grade_id').notNull(),
+    name: text('name').notNull(),
+    value: text('value').notNull(),
+    sortNo: integer('sort_no').notNull().default(0),
+    minScore: score('min_score'),
+    maxScore: score('max_score'),
+    minCount: integer('min_count'),
+  },
+  (t) => [
+    unique('talent_review_module_grade_items_name').on(t.tenantId, t.gradeId, t.name),
+    unique('talent_review_module_grade_items_value').on(t.tenantId, t.gradeId, t.value),
+    check(
+      'talent_review_module_grade_items_shape',
+      sql`(${t.minCount} IS NOT NULL AND ${t.minCount} >= 0 AND ${t.minScore} IS NULL AND ${t.maxScore} IS NULL)
+        OR (${t.minCount} IS NULL AND ${t.minScore} IS NOT NULL AND ${t.maxScore} > ${t.minScore})`,
+    ),
+    foreignKey({
+      columns: [t.tenantId, t.gradeId],
+      foreignColumns: [talentReviewModuleGrades.tenantId, talentReviewModuleGrades.id],
+      name: 'talent_review_module_grade_items_grade_fk',
+    }).onDelete('cascade'),
+  ],
+);

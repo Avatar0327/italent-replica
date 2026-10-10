@@ -39,8 +39,8 @@ export const STANDARD_GRANT_ENTRY = 'permission/standard-profile-grants';
  * 守卫测试算出的指纹不一致即失败——任何改目录的 PR 都会撞到它，审查方一眼看到“这个 PR 会给存量标准身份补授权”。
  * version 只用于回补报告，不参与缺失判断。
  */
-export const STANDARD_GRANT_VERSION = 6;
-export const STANDARD_GRANT_DIGEST = 'f1a5ecb5b7842ebf';
+export const STANDARD_GRANT_VERSION = 7;
+export const STANDARD_GRANT_DIGEST = 'de040eb38bfcd54a';
 
 /**
  * 预置“看全部”补装批准清单（D3 = A′，DEC-374②）：看全部属于数据范围扩大，存量租户的标准身份只对**这里明确列出**的目标补，
