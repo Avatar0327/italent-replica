@@ -153,12 +153,11 @@ export const GRAPH: Graph = {
   'packages/domain/src/talent-review/matrix.ts#checkAxisLevels': [
     '#MATRIX_MAX_LEVELS',
     '#MATRIX_MIN_LEVELS',
-    '#checkNumericLevels',
     '#checkOptionLevels',
     '#violation',
   ],
-  'packages/domain/src/talent-review/matrix.ts#checkCells': ['#violation'],
-  'packages/domain/src/talent-review/matrix.ts#checkNumericLevels': ['#violation'],
+  'packages/domain/src/talent-review/matrix.ts#checkCells': ['#checkExportOrder', '#violation'],
+  'packages/domain/src/talent-review/matrix.ts#checkExportOrder': ['#violation'],
   'packages/domain/src/talent-review/matrix.ts#checkOptionLevels': ['#violation'],
   'packages/domain/src/talent-review/matrix.ts#checkRatioRule': ['#violation'],
 };
