@@ -468,29 +468,80 @@ describe('AC-EV-config-dicts 活动类型', () => {
     });
   });
 
-  describe('改名的信息泄露（名称唯一是租户级约束）', () => {
-    it('只有创建人范围的人改名：403 ACTIVITY_TYPE_NAME_REQUIRES_SEE_ALL，判定在查重之前，撞名与不撞名同一响应；不改名的修改照常', async () => {
+  describe('改名（DEC-373③：创建人可改自己类型的名称，撞名照原站提示，设计 §5.1 看全部 ∪ 创建人可编辑）', () => {
+    const NAME_EXISTS = '活动类型名称已存在，请重新输入';
+
+    it('创建人范围的人改自己类型的名称成功；不改名的修改照常', async () => {
+      const mine = await operator(creatorWorld, { seeAll: true });
+      const own = await created(mine);
+      await mine.revokeSeeAll();
+      const target = name('创建人改名');
+      const renamed = await ok<ActivityTypeView>(
+        await mine.request('PATCH', `${PATH}/${own.id}`, { ifMatch: own.revision, body: { name: target } }),
+      );
+      expect(renamed).toMatchObject({ name: target, revision: own.revision + 1 });
+      expect(await ok<ActivityTypeView>(await mine.request('GET', `${PATH}/${own.id}`))).toEqual(renamed);
+      const keep = await ok<ActivityTypeView>(
+        await mine.request('PATCH', `${PATH}/${own.id}`, {
+          ifMatch: renamed.revision,
+          body: { name: target, displayOrder: 4 },
+        }),
+      );
+      expect(keep).toMatchObject({ name: target, displayOrder: 4 });
+    });
+
+    it('创建人改名撞上自己的、别人（看不到）的类型：409 原站提示（照原站，DEC-373③），数据不变', async () => {
       const seeAll = await operator(creatorWorld, { seeAll: true });
       const mine = await operator(creatorWorld, { seeAll: true });
       const own = await created(mine);
+      const sibling = await created(mine, { name: name('自己的另一个') });
       const hidden = await created(seeAll, { name: name('范围外') });
       await mine.revokeSeeAll();
-      for (const target of [hidden.name, name('全新')]) {
+      expect(await detailStatus(mine, hidden.id)).toBe(404);
+      for (const target of [hidden.name, sibling.name]) {
         const response = await mine.request('PATCH', `${PATH}/${own.id}`, {
           ifMatch: own.revision,
           body: { name: target },
         });
-        expect(response.status, target).toBe(403);
-        expect((await errorOf(response)).reason).toBe('ACTIVITY_TYPE_NAME_REQUIRES_SEE_ALL');
+        expect(response.status, target).toBe(409);
+        const body = (await response.clone().json()) as { error: { code: string; message: string } };
+        expect(body.error).toMatchObject({ code: 'CONFLICT', message: NAME_EXISTS });
+        expect((await errorOf(response)).reason).toBe('ACTIVITY_TYPE_NAME_EXISTS');
       }
       expect(await ok<ActivityTypeView>(await mine.request('GET', `${PATH}/${own.id}`))).toEqual(own);
-      const keep = await ok<ActivityTypeView>(
-        await mine.request('PATCH', `${PATH}/${own.id}`, {
-          ifMatch: own.revision,
-          body: { name: own.name, displayOrder: 4 },
-        }),
-      );
-      expect(keep).toMatchObject({ name: own.name, displayOrder: 4 });
+    });
+
+    it('非创建人且没有看全部：改别人类型的名称仍被拒（范围外 404），无编辑权 403，数据不变', async () => {
+      const owner = await operator(creatorWorld, { seeAll: true });
+      const row = await created(owner);
+      const stranger = await operator(creatorWorld, { seeAll: true });
+      await stranger.revokeSeeAll();
+      const denied = await stranger.request('PATCH', `${PATH}/${row.id}`, {
+        ifMatch: row.revision,
+        body: { name: name('越权改名') },
+      });
+      expect(denied.status).toBe(404);
+      const noUpdate = await operator(creatorWorld, { seeAll: true, noUpdate: ['activityType'] });
+      const forbidden = await noUpdate.request('PATCH', `${PATH}/${row.id}`, {
+        ifMatch: row.revision,
+        body: { name: name('无编辑权') },
+      });
+      expect(forbidden.status).toBe(403);
+      expect(await ok<ActivityTypeView>(await owner.request('GET', `${PATH}/${row.id}`))).toEqual(row);
+    });
+
+    it('并发改名到同一名称：唯一约束兜底，只成功一条，另一条 409 专用 reason', async () => {
+      const op = await admin();
+      const a = await created(op);
+      const b = await created(op);
+      const target = name('并发改名');
+      const results = await Promise.all([
+        op.request('PATCH', `${PATH}/${a.id}`, { ifMatch: a.revision, body: { name: target } }),
+        op.request('PATCH', `${PATH}/${b.id}`, { ifMatch: b.revision, body: { name: target } }),
+      ]);
+      expect(results.map((r) => r.status).sort()).toEqual([200, 409]);
+      const loser = results.find((r) => r.status === 409)!;
+      expect((await errorOf(loser)).reason).toBe('ACTIVITY_TYPE_NAME_EXISTS');
     });
   });
 
