@@ -179,6 +179,7 @@ describe.each(SUBJECTS)('AC-TR-scoring-recheck 命令事务内权限复核 · $o
   it('修改：检查后撤销看全部 404 / 撤销字段编辑权 403 / 撤销按钮 403；数据、revision、审计、台账都不变', async () => {
     const admin = await seeAll();
     const row = await created(admin);
+    const baseline = await adminRead(row.id);
     const cases: readonly [(op: Operator) => Promise<void>, number][] = [
       [(op) => op.setSeeAll(false), 404],
       [(op) => op.lockFields([s.field]), 403],
@@ -190,7 +191,7 @@ describe.each(SUBJECTS)('AC-TR-scoring-recheck 命令事务内权限复核 · $o
       const before = await audits();
       hooks.beforeCommand = () => revoke(op);
       await expectStatus(await patch(op, row, s.fieldPatch, key), status);
-      expect(await adminRead(row.id)).toEqual(row);
+      expect(await adminRead(row.id)).toEqual(baseline);
       expect(await audits()).toBe(before);
       expect(await ledger(key)).toBe(0);
     }
@@ -199,6 +200,7 @@ describe.each(SUBJECTS)('AC-TR-scoring-recheck 命令事务内权限复核 · $o
   it('删除：检查后撤销看全部 404 / 撤销按钮 403；对象仍在，审计、台账不变', async () => {
     const admin = await seeAll();
     const row = await created(admin);
+    const baseline = await adminRead(row.id);
     const cases: readonly [(op: Operator) => Promise<void>, number][] = [
       [(op) => op.setSeeAll(false), 404],
       [(op) => op.setButtons(true, ['delete']), 403],
@@ -209,7 +211,7 @@ describe.each(SUBJECTS)('AC-TR-scoring-recheck 命令事务内权限复核 · $o
       const before = await audits();
       hooks.beforeCommand = () => revoke(op);
       await expectStatus(await remove(op, row, key), status);
-      expect(await adminRead(row.id)).toEqual(row);
+      expect(await adminRead(row.id)).toEqual(baseline);
       expect(await audits()).toBe(before);
       expect(await ledger(key)).toBe(0);
     }

@@ -853,8 +853,8 @@ export const DIGESTS: Digests = {
     registerTalentReviewRoutes: '73957fe282f8',
   },
   'apps/api/src/modules/talent-review/scoring-routes.ts': {
-    registerModuleGrades: '11ba5c4c5fe9',
-    registerScoreRules: 'f5b047e83e24',
+    registerModuleGrades: '2d1d2b293fdc',
+    registerScoreRules: '0d187497c994',
   },
   'apps/api/src/modules/talent/access.ts': {
     DATA_OPERATION: 'bb93cac2ac78',
@@ -1721,8 +1721,8 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/talent-review/readiness-service.ts#updateReadiness': '28fc17e2384b',
   'apps/api/src/modules/talent-review/rename-disclosure.ts#resolveCalcDisclosure': '8a1d3b2099e5',
   'apps/api/src/modules/talent-review/routes.ts#registerTalentReviewRoutes': '14dafc4fe0f2',
-  'apps/api/src/modules/talent-review/scoring-routes.ts#registerModuleGrades': 'a8e87d6fc83c',
-  'apps/api/src/modules/talent-review/scoring-routes.ts#registerScoreRules': '4fe204d0f1fc',
+  'apps/api/src/modules/talent-review/scoring-routes.ts#registerModuleGrades': 'fd4a133c711e',
+  'apps/api/src/modules/talent-review/scoring-routes.ts#registerScoreRules': 'bf6d3f5c40c3',
   'apps/api/src/modules/talent/access.ts#DATA_OPERATION': 'e3b0c44298fc',
   'apps/api/src/modules/talent/access.ts#WRITE_BUTTONS': 'e3b0c44298fc',
   'apps/api/src/modules/talent/access.ts#checkWriteFields': 'd973e4973fe3',
