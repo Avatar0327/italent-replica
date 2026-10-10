@@ -728,7 +728,7 @@ export const DIGESTS: Digests = {
     visiblePersonIds: 'edef58f9a8c8',
   },
   'apps/api/src/modules/survey360/portal.ts': {
-    attemptLogin: '7e7b46a3ebfa',
+    attemptLogin: 'c5ddb8662ee7',
     isLoginable: '86c0aa3dc1e4',
     logout: 'b9533eabaa3c',
     'route:POST /login': 'c7b8ef3290be',
@@ -837,7 +837,7 @@ export const DIGESTS: Digests = {
     scoreTables: '9a189d4d11b1',
   },
   'apps/api/src/modules/survey360/throttle.ts': {
-    admit: '7b0de3e51c51',
+    admit: '4c2d55098820',
   },
   'apps/api/src/modules/survey360/todos.ts': {
     'registerTodoRoutes>INVITE': 'f2dc808baf85',

@@ -123,11 +123,11 @@ export interface AdmitInput<T> {
 
 export type Admission<T> =
   | { readonly ok: false; readonly rejection: Rejection }
-  | { readonly ok: true; readonly found: T; readonly ipMark: Date; readonly pairMark: Date };
+  | { readonly ok: true; readonly found: T; readonly pairMark: Date };
 
 /**
  * T1 原子检查与预扣（短事务，不做 KDF）：按 IP 行 → 序列号 × IP 行的顺序加锁并判定；任一拒绝则不写任何计数、
- * 不新建行（只可能清掉已到期的锁并写 unlock）；全部放行才一起预扣，返回预扣标识（各行的 window_started_at）。
+ * 不新建行（只可能清掉已到期的锁并写 unlock）；全部放行才一起预扣，返回预扣标识（序列号 × IP 行的 window_started_at；成功退回只退这一行，IP 行 requests 不退）。
  */
 export async function admit<T>(tx: Tx, input: AdmitInput<T>): Promise<Admission<T>> {
   const { tenantId, now } = input;
@@ -154,7 +154,7 @@ export async function admit<T>(tx: Tx, input: AdmitInput<T>): Promise<Admission<
       ${pair.counter.failures + 1}, ${at}::timestamptz)
     ON CONFLICT (tenant_id, scope, key_hash) DO UPDATE SET window_started_at = EXCLUDED.window_started_at,
       failures = EXCLUDED.failures, locked_until = NULL, updated_at = EXCLUDED.updated_at`);
-  return { ok: true, found, ipMark: ip.counter.windowStartedAt, pairMark: pair.counter.windowStartedAt };
+  return { ok: true, found, pairMark: pair.counter.windowStartedAt };
 }
 
 /** T2 取锁：IP 行 → 序列号 × IP 行（链接行由调用方最后锁）。行不存在（被清理）时无事可做。 */

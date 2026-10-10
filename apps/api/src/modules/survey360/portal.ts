@@ -173,7 +173,6 @@ interface Attempt {
   readonly config: CredentialConfig;
   readonly ipKey: string;
   readonly pairKey: string;
-  readonly ipMark: Date;
   readonly pairMark: Date;
   readonly found: FoundLink | undefined;
   readonly matched: boolean;
@@ -312,7 +311,6 @@ async function attemptLogin(
       config,
       ipKey: keys.ip,
       pairKey: keys.pair,
-      ipMark: admission.ipMark,
       pairMark: admission.pairMark,
       found,
       matched: matched && found !== undefined,
