@@ -39,6 +39,11 @@ export function redactCalcRuleAuditValue(value: unknown, directory: AuditFieldDi
   const refs = filterRefs(changed ? inner : value, directory);
   const hinted = filterHints(refs.value, directory);
   const item = isItem(hinted.value) ? redactItem(hinted.value, directory) : hinted.value;
+  // 差异里 hints 字段自己的前后值（field = hints）：与对象里的 hints 同一套投影，派生文本丢弃后由出口重新生成
+  if (isChange(item) && item['field'] === 'hints') {
+    const project = (hints: unknown) => (isObject(hints) ? filterHints({ hints }, directory).value['hints'] : hints);
+    return withoutDerivedText({ ...item, from: project(item['from']), to: project(item['to']) });
+  }
   const touched = changed || refs.changed || hinted.changed || item !== hinted.value;
   if (!touched) return value;
   // 差异里前后值被裁剪过：写入时保存的派生文本（fromText / toText）可能带着旧内容，丢掉让出口按裁剪后的值重新生成

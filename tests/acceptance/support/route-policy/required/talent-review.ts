@@ -195,8 +195,9 @@ const RENAME_DISCLOSURE: Obligation = {
   at: [
     {
       role: 'call',
-      unit: `${CFG}#registerFields`,
-      anchor: 'const calcDisclosure = renaming ? await resolveCalcDisclosure(c, deps) : undefined',
+      // 披露权限在命令事务内解析（recheckFieldWrite，#224 第 1 轮 P2-1）
+      unit: `${T}/field-write.ts#recheckFieldWrite`,
+      anchor: 'calcDisclosure: await resolveCalcDisclosure(c, checked.txDeps, tx)',
     },
     {
       role: 'impl',
@@ -353,7 +354,7 @@ const calcConst: Evidence = { role: 'const', unit: `${CATALOG}>calcRule`, anchor
 // 路由登记拆成读（registerReads）与写（registerWrites）两个函数：开关打开时读写各有一条 bound 分支（F-082）
 const calcCall = (
   anchor: string,
-  unit: 'registerReads' | 'registerWrites' | 'presentBoundWrite' = 'registerWrites',
+  unit: 'registerReads' | 'registerWrites' | 'recheckCalcRuleWrite' = 'registerWrites',
 ): Evidence => ({
   role: 'call',
   unit: `${CRR}#${unit}`,
@@ -409,7 +410,7 @@ const calcCatalog = (anchor: string): Obligation[] => [
  * 开关打开（F-082）时响应按查看人渲染公式引用：读取字段目录的范围与列权限决定哪些引用显示名称，其余是占位符。
  * 只影响显示，不影响准入——没有字段目录访问时不拒绝，引用一律渲染为占位符（optionalCatalogAccess 吞掉 403）。
  */
-const calcRender = (anchor: string, unit: 'registerReads' | 'presentBoundWrite'): Obligation[] => [
+const calcRender = (anchor: string, unit: 'registerReads' | 'recheckCalcRuleWrite'): Obligation[] => [
   {
     perm: `guard:${CALC_CATALOG}`,
     facts: [`guard:${CALC_CATALOG}`],
@@ -431,7 +432,7 @@ const calcRender = (anchor: string, unit: 'registerReads' | 'presentBoundWrite')
   },
 ];
 const RENDER_READ = 'const access = await optionalCatalogAccess(c, deps)';
-const RENDER_WRITE = 'const access = fieldAccess ?? (await optionalCatalogAccess(c, deps))';
+const RENDER_WRITE = '? await optionalCatalogAccess(c, txDeps, tx)';
 const CALC_FILTER_GUARD: Obligation = {
   ...FILTER_GUARD,
   at: [
@@ -453,16 +454,13 @@ const CALC_REQUIRED: RequiredTable = {
     calcView("router.get(`${CALC_RULES}/:id`, async (c) => { const ctx = await reviewContext(c, deps, 'calcRule')"),
     ...calcRender(RENDER_READ, 'registerReads'),
   ],
-  [`POST ${CALC_BASE}`]: [
-    ...calcChange('create'),
-    ...calcCatalog('const access = await requireCatalogAccess(c, deps)'),
-  ],
+  [`POST ${CALC_BASE}`]: [...calcChange('create'), ...calcCatalog('await requireCatalogAccess(c, deps)')],
   [`PATCH ${CALC_BASE}/:id`]: [
     ...calcChange('update'),
     RENAME_GUARD,
-    ...calcCatalog('const access = await patchCatalogAccess(c, deps, body)'),
+    ...calcCatalog('await patchCatalogAccess(c, deps, body)'),
   ],
-  [`DELETE ${CALC_BASE}/:id`]: [...calcChange('delete'), ...calcRender(RENDER_WRITE, 'presentBoundWrite')],
+  [`DELETE ${CALC_BASE}/:id`]: [...calcChange('delete'), ...calcRender(RENDER_WRITE, 'recheckCalcRuleWrite')],
 };
 
 export const TALENT_REVIEW: RequiredTable = {

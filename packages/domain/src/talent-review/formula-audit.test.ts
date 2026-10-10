@@ -166,4 +166,29 @@ describe('审计里意外出现的 hints 按查看人可见集合防御投影（
     const value = { name: '规则' };
     expect(redactCalcRuleAuditValue(value, directory({}))).toBe(value);
   });
+
+  it('changes 里 field = hints 的独立 from / to 值同样按投影处理，派生文本丢弃（#224 P3）', () => {
+    const change = {
+      field: 'hints',
+      label: 'hints',
+      from: null,
+      to: hints,
+      fromText: '',
+      toText: JSON.stringify(hints),
+    };
+    const out = redactCalcRuleAuditValue({ changes: [change] }, directory({ [T]: '目标', [A]: '甲' })) as {
+      changes: Record<string, unknown>[];
+    };
+    const [projected] = out.changes;
+    expect(projected).not.toHaveProperty('toText');
+    expect(projected).not.toHaveProperty('fromText');
+    expect(projected!['from']).toBeNull();
+    expect(projected!['to']).toMatchObject({
+      order: [T, A],
+      blocked: [T],
+      others: { order: 1, blocked: 1, warnings: 2 },
+    });
+    expect(JSON.stringify(out)).not.toContain(B);
+    expect(JSON.stringify(out)).not.toContain('秘密');
+  });
 });

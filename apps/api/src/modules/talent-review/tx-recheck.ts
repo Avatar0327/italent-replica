@@ -12,13 +12,15 @@ import type { TenantEnv } from '../../tenant-context.js';
 import { authorizeInTransaction, resolveModuleScopeInTransaction } from '../permission/module-access.js';
 import {
   codeOf,
-  checkWriteFields,
   type ModuleScope,
   requireConfigVisible,
   reviewWriteContext,
   type TalentReviewContext,
 } from './access.js';
 import type { ConfigObject } from './config-kit.js';
+
+/** 新建 / 修改入口提供的提交字段编辑权复核（用事务内的依赖与上下文）。 */
+export type FieldCheck = (txDeps: TenantRouteDeps, ctx: TalentReviewContext) => Promise<void>;
 
 export interface Rechecked {
   /** 绑定了当前命令事务的依赖：之后的授权判定（字段目录访问、披露权限…）都用它。 */
@@ -28,7 +30,7 @@ export interface Rechecked {
   readonly scope: ModuleScope;
 }
 
-/** 对象数据操作权 + 按钮 + 范围 + （新建 / 修改）提交字段的编辑权，全部在事务内按当前授权重新判定。 */
+/** 对象数据操作权 + 按钮 + 范围 + （新建 / 修改）提交字段的编辑权（checkFields），全部在事务内按当前授权重新判定。 */
 export async function recheckWrite(
   c: Context<TenantEnv>,
   deps: TenantRouteDeps,
@@ -36,12 +38,13 @@ export async function recheckWrite(
   object: ConfigObject,
   operation: 'create' | 'update' | 'delete',
   expectedRevision: number,
-  payload?: Readonly<Record<string, unknown>>,
+  checkFields?: FieldCheck,
 ): Promise<Rechecked> {
   const txDeps: TenantRouteDeps = { ...deps, authorize: authorizeInTransaction(deps.authorize, tx) };
   const ctx = await reviewWriteContext(c, txDeps, object, operation, expectedRevision);
   const scope = await resolveModuleScopeInTransaction(txDeps, ctx, tx, codeOf(object));
-  if (operation !== 'delete' && payload) await checkWriteFields(txDeps, ctx, object, operation, payload);
+  // 提交字段的编辑权由新建 / 修改入口自己的闭包复核（删除没有字段输入，不经过字段写权限判定）
+  await checkFields?.(txDeps, ctx);
   return { txDeps, ctx, scope };
 }
 

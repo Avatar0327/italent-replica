@@ -18,8 +18,11 @@ import {
   renameField,
   type F082World,
 } from './AC-TR-F082-support.js';
+import { CALC_RULES } from './AC-TR-calc-rule-support.js';
+import { TR_BASE, TR_NOW } from './AC-TR-config-support.js';
 import { rowsOf } from './support/f048.js';
 import { waitForBlocked } from './support/pg-interleave.js';
+import { tenantApi } from './support/tenant-api.js';
 
 const testDb = useTestDb();
 const pg = describe.runIf(Boolean(process.env.TEST_DATABASE_URL));
@@ -43,20 +46,27 @@ async function expectConsistent(db: Db, w: F082World) {
   for (const row of rowsOf<{ id: string; formula: string; refs: string[] }>(found)) {
     expect([...row.refs].sort(), row.id).toEqual([...formulaFieldIds(row.formula)].sort());
   }
+  // bound 项目只有 bound 引用：变为 bound 时候选引用一并清掉（契约 §1.3）
+  const stale = await withTenant(db, w.as.tenant, (tx) =>
+    tx.execute(sql`SELECT r.item_id FROM talent_review_calc_item_refs r
+      JOIN talent_review_calc_rule_items i ON i.id = r.item_id
+      WHERE i.formula_binding = 'bound' AND r.kind = 'candidate'`),
+  );
+  expect(rowsOf(stale), '没有残留的候选引用').toEqual([]);
 }
 
 pg('AC-05 锁内映射（真 PG）', () => {
-  async function swapDuringSave(label: string, proofs: boolean) {
+  async function swapDuringSave(label: string, proofs: boolean, selfRef = false) {
     const db = testDb().db;
     const w = await boundWorld(db, label);
-    const [target, a, b] = [
-      await w.numberField(),
-      await w.field('number', { name: '互换甲' }),
-      await w.field('number', { name: '互换乙' }),
-    ];
+    const [a, b] = [await w.field('number', { name: '互换甲' }), await w.field('number', { name: '互换乙' })];
+    // selfRef：目标字段就是 a，公式引用 b；名称互换后“互换乙”会解析到目标自己（来源变自引用）
+    const target = selfRef ? a : await w.numberField();
     const before = await ruleCount(db, w);
     const version = await catalogVersion(db, w);
-    const item = calcItem(target, '盘点对象.互换甲 + 盘点对象.互换乙', proofs ? { formulaBindings: [a.id, b.id] } : {});
+    const formula = selfRef ? '盘点对象.互换乙 + 1' : '盘点对象.互换甲 + 盘点对象.互换乙';
+    const bindings = selfRef ? [b.id] : [a.id, b.id];
+    const item = calcItem(target, formula, proofs ? { formulaBindings: bindings } : {});
     let pending: Promise<Response> | undefined;
     await withTenant(db, w.as.tenant, async (tx) => {
       // 测试事务先锁住两个来源字段行：保存的第一遍绑定读已提交数据后，在取字段共享锁处排队
@@ -83,6 +93,11 @@ pg('AC-05 锁内映射（真 PG）', () => {
 
   it('不带绑定（新输入）：目录版本已变 → 409，无写入，不绑到互换后的字段', async () => {
     expect(await swapDuringSave('f082-pg05b', false)).toBe('FIELD_CATALOG_CHANGED');
+  });
+
+  it('来源变自引用：目标字段就是 a、公式引用 b，互换名称后 → 受控 409（带证明 / 不带证明），不会静默绑成自引用', async () => {
+    expect(await swapDuringSave('f082-pg05c', true, true)).toBe('CALC_BINDING_STALE');
+    expect(await swapDuringSave('f082-pg05d', false, true)).toBe('FIELD_CATALOG_CHANGED');
   });
 });
 
@@ -123,6 +138,58 @@ pg('AC-22 并发保存（真 PG）', () => {
         expect([400, 404, 409]).toContain(save.status);
         expect([200, 409]).toContain(removal.status);
       }
+      await expectConsistent(db, w);
+    }
+  });
+
+  it('两个保存共享同一来源，同时改名（P3 补并发）：无 500，结果只在契约列出的几种；引用表与规范文本一致', async () => {
+    const db = testDb().db;
+    for (let round = 0; round < 3; round += 1) {
+      const w = await boundWorld(db, `f082-pg22c-${round}`);
+      const [t1, t2, source] = [
+        await w.numberField(),
+        await w.numberField(),
+        await w.field('number', { name: '共享源' }),
+      ];
+      const version = await catalogVersion(db, w);
+      const [one, two, rename] = await Promise.all([
+        w.post(calcBody([calcItem(t1, '盘点对象.共享源 + 1')], { fieldCatalogVersion: version })),
+        w.post(calcBody([calcItem(t2, '盘点对象.共享源 + 2')], { fieldCatalogVersion: version })),
+        renameField(w, source, `共享新名${round}`),
+      ]);
+      for (const save of [one, two]) {
+        expect([201, 400, 409], `save ${save.status}`).toContain(save.status);
+        if (save.status === 409) expect(CONTROLLED).toContain((await errorOf(save)).details['reason']);
+      }
+      expect([200, 409]).toContain(rename.status);
+      await expectConsistent(db, w);
+    }
+  });
+
+  it('改名固化 legacy 候选 × 把该项目改成 bound 的保存交错（P3 补并发）：无 500；bound 项目不留候选引用', async () => {
+    const db = testDb().db;
+    for (let round = 0; round < 3; round += 1) {
+      const w = await boundWorld(db, `f082-pg22d-${round}`);
+      const [target, source] = [await w.numberField(), await w.field('number', { name: '旧公式源' })];
+      // B5 写入的 legacy 规则（开关关闭的应用实例，同一个库同一个租户）
+      const off = tenantApi(db, { clock: () => TR_NOW });
+      const made = await off.request('POST', `${TR_BASE}${CALC_RULES}`, {
+        ...w.as,
+        ifMatch: 0,
+        body: calcBody([calcItem(target, '盘点对象.旧公式源 + 1')]),
+      });
+      expect(made.status, await made.clone().text()).toBe(201);
+      const rule = (await made.json()) as { id: string; revision: number };
+      const version = await catalogVersion(db, w);
+      const [save, rename] = await Promise.all([
+        w.request('PATCH', `${CALC_RULES}/${rule.id}`, {
+          ifMatch: rule.revision,
+          body: { items: [calcItem(target, '盘点对象.旧公式源 + 1')], fieldCatalogVersion: version },
+        }),
+        renameField(w, source, `旧公式新名${round}`),
+      ]);
+      expect([200, 400, 409], `save ${save.status}`).toContain(save.status);
+      expect([200, 409]).toContain(rename.status);
       await expectConsistent(db, w);
     }
   });

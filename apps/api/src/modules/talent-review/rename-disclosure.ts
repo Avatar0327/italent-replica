@@ -20,9 +20,15 @@ import type { CalcDisclosure } from './field-rename-guard.js';
 const REFERENCE_COLUMNS = ['name', 'kind', 'enabled', 'systemWritten'];
 
 /** 改名操作人对字段目录四列的查看权：错误载荷里的目标字段与审计裁剪、计算规则接口同一口径（R1-P2-3）。 */
-export async function resolveFieldColumnsViewable(c: Context<TenantEnv>, deps: TenantRouteDeps): Promise<boolean> {
+export async function resolveFieldColumnsViewable(
+  c: Context<TenantEnv>,
+  deps: TenantRouteDeps,
+  tx?: Tx,
+): Promise<boolean> {
   const ctx = await reviewContext(c, deps, 'field');
-  const viewable = await getModuleViewableFields(deps, ctx, codeOf('field'));
+  const viewable = tx
+    ? await getModuleViewableFieldsInTransaction(deps, ctx, codeOf('field'), tx)
+    : await getModuleViewableFields(deps, ctx, codeOf('field'));
   return viewable === undefined || REFERENCE_COLUMNS.every((column) => viewable.has(column));
 }
 

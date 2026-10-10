@@ -52,7 +52,7 @@ import {
 import * as simple from './config-service.js';
 import * as fields from './field-service.js';
 import * as settings from './settings-service.js';
-import { resolveCalcDisclosure, resolveFieldColumnsViewable } from './rename-disclosure.js';
+import { runFieldWrite } from './field-write.js';
 
 const CATEGORIES = `${TALENT_REVIEW_BASE}/categories`;
 const ROLES = `${TALENT_REVIEW_BASE}/roles`;
@@ -270,24 +270,40 @@ function registerFields(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const body = await parseBody(c, fieldCreate);
     await checkWriteFields(deps, ctx, 'field', 'create', body);
     if (body.pairFieldId !== undefined) await requirePairUpdate(c, deps, body.pairFieldId);
-    return runWrite(c, deps, ctx, 'field', body, 201, visibleTo('field'), (tx, w) => fields.createField(tx, w, body));
+    return runFieldWrite(c, deps, ctx, {
+      body,
+      status: 201,
+      operation: 'create',
+      checkFields: (d, x) => checkWriteFields(d, x, 'field', 'create', body),
+      ...(body.pairFieldId !== undefined
+        ? { checkPair: (d, x) => checkWriteFields(d, x, 'field', 'update', { pairFieldId: body.pairFieldId }) }
+        : {}),
+      execute: (tx, w) => fields.createField(tx, w, body),
+    });
   });
   router.patch(`${FIELDS}/:id`, async (c) => {
     const ctx = await reviewWriteContext(c, deps, 'field', 'update', revision(c));
     const id = uuidParam(c);
     const body = await parseBody(c, fieldPatch);
     await checkWriteFields(deps, ctx, 'field', 'update', body);
-    // 改名失败的错误载荷只对能看计算规则的人披露定位信息（F-082 §3.1）：仅在提交了名称时解析
-    const renaming = body.name !== undefined;
-    const calcDisclosure = renaming ? await resolveCalcDisclosure(c, deps) : undefined;
-    const fieldColumnsViewable = renaming ? await resolveFieldColumnsViewable(c, deps) : undefined;
-    return runWrite(c, deps, ctx, 'field', body, 200, visibleTo('field'), (tx, w) =>
-      fields.updateField(tx, { ...w, calcDisclosure, fieldColumnsViewable }, id, body),
-    );
+    // 改名失败的错误载荷只对能看计算规则的人披露定位信息（F-082 §3.1）：披露权限在命令事务内解析
+    return runFieldWrite(c, deps, ctx, {
+      body,
+      status: 200,
+      operation: 'update',
+      checkFields: (d, x) => checkWriteFields(d, x, 'field', 'update', body),
+      renaming: body.name !== undefined,
+      execute: (tx, w) => fields.updateField(tx, w, id, body),
+    });
   });
   router.delete(`${FIELDS}/:id`, async (c) => {
     const ctx = await reviewWriteContext(c, deps, 'field', 'delete', revision(c));
     const id = uuidParam(c);
-    return runWrite(c, deps, ctx, 'field', { id }, 200, visibleTo('field'), (tx, w) => fields.deleteField(tx, w, id));
+    return runFieldWrite(c, deps, ctx, {
+      body: { id },
+      status: 200,
+      operation: 'delete',
+      execute: (tx, w) => fields.deleteField(tx, w, id),
+    });
   });
 }
