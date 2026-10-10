@@ -20,6 +20,7 @@ import {
   seedPermissionWorld,
   setObjectPermission,
 } from './AC-PRM-support.js';
+import { createMou } from './AC-TC-support.js';
 import { type RequestOptions, tenantApi } from './support/tenant-api.js';
 
 export const GROUPS = '/review-groups';
@@ -134,11 +135,6 @@ export interface ReviewOperatorOptions {
   readonly auditor?: boolean;
 }
 
-const rangeBody = (orgs: readonly string[] | undefined) =>
-  orgs?.length
-    ? { kind: 'org_range', orgRanges: orgs.map((orgId) => ({ orgId, includeDescendants: false })) }
-    : { kind: 'default' };
-
 export async function reviewOperator(world: ReviewWorld, options: ReviewOperatorOptions = {}) {
   const profile = await createProfile(world, `evr-${randomUUID().slice(0, 8)}`, { apps: [EV_APP, 'TenantBase'] });
   const group = EVALUATION_OBJECTS.reviewGroup;
@@ -181,11 +177,17 @@ export async function reviewOperator(world: ReviewWorld, options: ReviewOperator
     expect(response.status, await response.clone().text()).toBe(201);
   }
   const revisions = new Map<string, number>();
+  // 人才评定的数据范围是管理单元（mou，和任职资格同口径），员工信息（TenantBase）支持直接选组织范围
+  const rangeBody = async (app: string, orgs: readonly string[] | undefined) => {
+    if (!orgs?.length) return { kind: 'default' };
+    if (app === EV_APP) return { kind: 'mou', mouId: await createMou(world.api, world.asAdmin, orgs, '评审') };
+    return { kind: 'org_range', orgRanges: orgs.map((orgId) => ({ orgId, includeDescendants: false })) };
+  };
   const setRange = async (app: string, orgs: readonly string[] | undefined) => {
     const response = await world.api.request('PUT', `${BASE}/scopes/${user.id}/${app}`, {
       ...world.asAdmin,
       ifMatch: revisions.get(app) ?? 0,
-      body: rangeBody(orgs),
+      body: await rangeBody(app, orgs),
     });
     expect(response.status, await response.clone().text()).toBe(200);
     revisions.set(app, ((await response.json()) as { revision: number }).revision);
