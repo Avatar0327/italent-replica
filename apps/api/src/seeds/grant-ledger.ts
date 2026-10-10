@@ -4,8 +4,9 @@
  * seed_grant_ledger。台账不参与鉴权；回补据它区分“目录新增、该补”与“租户撤销过、不该补回”。
  * 登记一律 INSERT … ON CONFLICT DO NOTHING，同一编码第一次登记的来源为准；tenant_id 取当前租户上下文（RLS 兜底）。
  */
-import { eq, seedGrantLedger, type SeedLedgerSource, sql, type Tx } from '@italent/db';
+import { eq, seedGrantLedger, type SeedLedgerSource, type Tx } from '@italent/db';
 import { objectGrantItems, objectModifiedMarker, type ObjectPermission } from '@italent/domain';
+import { advisoryLock, asUuid } from '../advisory-lock.js';
 
 export type LedgerSource = SeedLedgerSource;
 
@@ -15,9 +16,7 @@ export type LedgerSource = SeedLedgerSource;
  * 从 registry.ts 原样抽出（SQL 与锁键逐字不变），installMissingSeeds 与旧路由共用。
  */
 export async function lockTenantSeeds(tx: Tx, tenantId: string): Promise<void> {
-  await tx.execute(
-    sql`SELECT pg_advisory_xact_lock(hashtextextended((${tenantId}::uuid)::text || ':seed-install', 0))`,
-  );
+  await advisoryLock(tx, asUuid(tenantId), ':seed-install');
 }
 
 /** 当前租户在某登记项下已登记的编码与来源。 */
