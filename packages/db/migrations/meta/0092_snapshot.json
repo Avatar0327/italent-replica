@@ -1,5 +1,5 @@
 {
-  "id": "c3bd736e-d0cd-4894-9546-db9344854035",
+  "id": "cc51e14a-de51-4ff2-a495-8e5c3a0adc05",
   "prevId": "62f94369-a2ed-44a6-a3b5-c2fde3db01f3",
   "version": "7",
   "dialect": "postgresql",
@@ -38204,6 +38204,36 @@
             "id"
           ],
           "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "ev_sync_queue_outbox_fk": {
+          "name": "ev_sync_queue_outbox_fk",
+          "tableFrom": "ev_sync_queue",
+          "tableTo": "employment_outbox",
+          "columnsFrom": [
+            "tenant_id",
+            "outbox_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "ev_sync_queue_employee_fk": {
+          "name": "ev_sync_queue_employee_fk",
+          "tableFrom": "ev_sync_queue",
+          "tableTo": "employment_employees",
+          "columnsFrom": [
+            "tenant_id",
+            "employee_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
           "onUpdate": "no action"
         }
       },

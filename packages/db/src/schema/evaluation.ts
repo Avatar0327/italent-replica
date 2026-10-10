@@ -18,7 +18,7 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { employmentEmployees } from './employment.js';
+import { employmentEmployees, employmentOutbox } from './employment.js';
 import { orgObjects } from './org.js';
 import { tenants } from './tenancy.js';
 
@@ -178,6 +178,17 @@ export const evSyncQueue = pgTable(
     unique('ev_sync_queue_dedupe').on(t.tenantId, t.handler, t.dedupeKey),
     index('ev_sync_queue_pickup').on(t.tenantId, t.handler, t.state, t.nextAttemptAt),
     index('ev_sync_queue_record').on(t.tenantId, t.recordId),
+    // 复合外键（租户内）：outbox 事件只追加不可改删，员工不物理删除；队列行只由入队触发器按事件行复制写入
+    foreignKey({
+      columns: [t.tenantId, t.outboxId],
+      foreignColumns: [employmentOutbox.tenantId, employmentOutbox.id],
+      name: 'ev_sync_queue_outbox_fk',
+    }).onDelete('restrict'),
+    foreignKey({
+      columns: [t.tenantId, t.employeeId],
+      foreignColumns: [employmentEmployees.tenantId, employmentEmployees.id],
+      name: 'ev_sync_queue_employee_fk',
+    }).onDelete('restrict'),
     check('ev_sync_queue_state', sql`${t.state} IN ('pending', 'done', 'skipped', 'failed')`),
     check('ev_sync_queue_attempts', sql`${t.attempts} >= 0`),
   ],

@@ -18,6 +18,8 @@ CREATE TABLE "ev_sync_queue" (
 );
 --> statement-breakpoint
 ALTER TABLE "ev_sync_queue" ADD CONSTRAINT "ev_sync_queue_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "ev_sync_queue" ADD CONSTRAINT "ev_sync_queue_outbox_fk" FOREIGN KEY ("tenant_id","outbox_id") REFERENCES "public"."employment_outbox"("tenant_id","id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "ev_sync_queue" ADD CONSTRAINT "ev_sync_queue_employee_fk" FOREIGN KEY ("tenant_id","employee_id") REFERENCES "public"."employment_employees"("tenant_id","id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "ev_sync_queue_pickup" ON "ev_sync_queue" USING btree ("tenant_id","handler","state","next_attempt_at");--> statement-breakpoint
 CREATE INDEX "ev_sync_queue_record" ON "ev_sync_queue" USING btree ("tenant_id","record_id");
 
