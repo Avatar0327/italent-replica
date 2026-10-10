@@ -4,6 +4,7 @@
  * 纯函数；前后值、快照、差异（from / to）共用，由 API 层的 calcRuleSources 在 visibleValue / visibleChanges 之前调用。
  */
 import { HIDDEN_FIELD_PLACEHOLDER } from '../expression/index.js';
+import { projectHints } from './calc-hints.js';
 import { renderFormula, FORMULA_REPAIR_NOTICE } from './formula-binding.js';
 
 export interface AuditFieldDirectory {
@@ -76,64 +77,34 @@ function filterRefs(value: Json, directory: AuditFieldDirectory): { value: Json;
 const idsOf = (list: unknown): string[] =>
   Array.isArray(list) ? list.filter((id): id is string => typeof id === 'string') : [];
 
-/** 固定提示文案（与保存响应里 B5 的同名提示一致；F082-4 的统一投影共用这两句）。 */
-export const HINT_CYCLE_HIDDEN = '存在循环依赖，涉及当前不可见的字段（不显示字段名称）；允许保存，计算时将整次失败';
-export const hintOtherHidden = (count: number) => `另有 ${count} 条提示涉及不可见的字段，未显示`;
-export const hintItemsHidden = (count: number) => `计算项目对你不可见，${count} 条提示未显示`;
-
 /**
- * hints（契约 §5.2、§5.3 第 3 步，只作防御：B5 起审计就不含 hints）。审计里没有结构化诊断，无法判断 warnings 文案提到的
- * 字段是否可见，所以 warnings 一律不原样输出：
- * - 没有 items 查看权：order / blocked / cycles 为空，warnings 只有一句固定文案，others 给全部个数；
- * - 有 items 查看权：order / blocked 只留目标字段可见的项目 ID，环要全部成员可见；被裁掉的环给不含名称的循环提示，
- *   warnings 汇总为一句计数提示；others 给被裁掉的个数（都为 0 时省略）。
+ * hints（契约 §5.2、§5.3 第 3 步，只作防御：B5 起审计就不含 hints）：与响应共用 projectHints。审计里没有结构化诊断，
+ * 无法判断 warnings 文案提到的字段是否可见，所以每条 warning 都当作涉及不可见字段（不原样输出，汇总成计数提示）。
  */
 function filterHints(value: Json, directory: AuditFieldDirectory): { value: Json; changed: boolean } {
   const hints = value['hints'];
   if (!isObject(hints)) return { value, changed: false };
-  const seen = (id: string) => directory.visible.has(id.toLowerCase());
-  const order = idsOf(hints['order']);
-  const blocked = idsOf(hints['blocked']);
+  const { others: _previous, order: _o, blocked: _b, cycles: _c, warnings: _w, ...rest } = hints;
+  const warnings = Array.isArray(hints['warnings']) ? hints['warnings'] : [];
   const cycles = Array.isArray(hints['cycles']) ? (hints['cycles'] as unknown[]) : [];
-  const warnings = Array.isArray(hints['warnings']) ? hints['warnings'].length : 0;
-  const { others: _previous, ...rest } = hints;
-  let out: Json;
-  if (directory.itemsViewable === false) {
-    const hiding = warnings > 0 || order.length + blocked.length + cycles.length > 0;
-    out = {
-      ...rest,
-      order: [],
-      blocked: [],
-      cycles: [],
-      warnings: hiding ? [hintItemsHidden(warnings)] : [],
-      ...(hiding ? { others: { order: order.length, blocked: blocked.length, warnings } } : {}),
-    };
-  } else {
-    const keptCycles = cycles.filter(
-      (cycle) => idsOf(cycle).length === (cycle as unknown[]).length && idsOf(cycle).every(seen),
-    );
-    const keptOrder = order.filter(seen);
-    const keptBlocked = blocked.filter(seen);
-    const droppedCycles = cycles.length - keptCycles.length;
-    const others = {
-      order: order.length - keptOrder.length,
-      blocked: blocked.length - keptBlocked.length,
-      warnings,
-    };
-    const anyDropped = others.order + others.blocked + others.warnings + droppedCycles > 0;
-    out = {
-      ...rest,
-      order: keptOrder,
-      blocked: keptBlocked,
-      cycles: keptCycles,
-      warnings: [
-        ...(droppedCycles > 0 ? [HINT_CYCLE_HIDDEN] : []),
-        ...(warnings > 0 ? [hintOtherHidden(warnings)] : []),
-      ],
-      ...(anyDropped && others.order + others.blocked + others.warnings > 0 ? { others } : {}),
-    };
-  }
-  return { value: { ...value, hints: out }, changed: true };
+  const seen = (id: string) => directory.visible.has(id.toLowerCase());
+  const projected = projectHints(
+    {
+      order: idsOf(hints['order']),
+      blocked: idsOf(hints['blocked']),
+      // 成员不全是 ID 字符串的环（B5 的路径写法等）无法按 ID 判断，视为不可见
+      cycles: cycles.map((cycle) =>
+        Array.isArray(cycle) && idsOf(cycle).length === cycle.length ? idsOf(cycle) : [''],
+      ),
+      diagnostics: warnings.map((message) => ({
+        kind: 'typeUncertain' as const,
+        fields: ['-'],
+        message: String(message),
+      })),
+    },
+    { itemsViewable: directory.itemsViewable !== false, shown: () => false, target: seen },
+  );
+  return { value: { ...value, hints: { ...rest, ...projected } }, changed: true };
 }
 
 /** 一个计算项目的公式：新格式（formulaBinding = bound）用写入时刻的名称渲染，旧格式按 legacy 规则。 */
