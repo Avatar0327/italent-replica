@@ -167,6 +167,7 @@
 > `EVIDENCE_STALE`（别名交换、重绑定、转导出改指、局部 import 遮蔽全局）；② 第 2 点的 `depth-limit` 改为与遍历顺序无关的定义
 > （D-8 ①）：以实际访问集合 V(r) = {r} ∪ Cl(r) 判越界，去掉旧算法“同层后访问”的顺序相关误报，现状真实表两种定义都为空集。
 > 旧 `required/digests.ts` 回来报 `LEGACY_DIGESTS_PRESENT`。命令不变：`ROUTE_POLICY_UPDATE_DIGESTS=1` 重算。
+> F-072 PR-2 起 `EVIDENCE_STALE` 按唯一变更节点集中报告（一个节点一条，附完整反向影响清单：全部证据单元 → 全部义务，不再逐根重复、不再“前 5 处 + 共 N 处”）。
 
 **测试与反例**（新文件 `AC-PRM-FW-02-evidence.test.ts`）
 

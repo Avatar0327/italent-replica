@@ -4,3 +4,4 @@ export * from './questionnaire.js';
 export * from './scoring.js';
 export * from './catalog.js';
 export * from './pace.js';
+export * from './credential.js';
