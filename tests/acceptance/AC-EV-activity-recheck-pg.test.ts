@@ -68,6 +68,25 @@ vi.mock('../../apps/api/src/commands.js', async (importOriginal) => {
 const testDb = useTestDb();
 const suffix = () => randomUUID().slice(0, 6);
 
+/** 等条件成立（轮询），超时报错——给并发测试做“到达屏障”，不靠固定睡眠。 */
+async function waitUntil(condition: () => Promise<boolean>, what: string, timeoutMs = 15_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await condition()) return;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error(`等待超时：${what}`);
+}
+
+/** 正在等咨询锁（未授予）的后端数。 */
+async function advisoryWaiters(): Promise<number> {
+  const result = await testDb().db.execute(
+    sql`SELECT count(*)::int AS n FROM pg_locks WHERE locktype = 'advisory' AND NOT granted`,
+  );
+  const rows = (Array.isArray(result) ? result : (result as { rows: unknown[] }).rows) as { n: number }[];
+  return Number(rows[0]?.n ?? 0);
+}
+
 describe.skipIf(!process.env['TEST_DATABASE_URL'])('AC-EV-activity-recheck-pg 真 PG 并发', () => {
   let w: ActivityWorld;
   let f: ActivityFixtures;
@@ -246,11 +265,10 @@ describe.skipIf(!process.env['TEST_DATABASE_URL'])('AC-EV-activity-recheck-pg �
       try {
         await holding;
         pending = Promise.all([send([small, large]), send([large, small])]);
-        const outcome = await Promise.race([
-          pending.then(() => 'done'),
-          new Promise<string>((resolve) => setTimeout(() => resolve('waiting'), 800)),
-        ]);
-        expect(outcome).toBe('waiting');
+        // 到达屏障：等两个请求都已排在咨询锁队列里（授权 / 引用检查都做完、真的在等锁），再探测较大类别的锁；
+        // 只靠固定等待时，请求可能还在前面的检查阶段，漏排序的实现也能过（#226 第 3 轮 P3-2）
+        await waitUntil(async () => (await advisoryWaiters()) >= 2, '两个请求都在等咨询锁');
+        expect(await Promise.race([pending.then(() => 'done'), Promise.resolve('waiting')])).toBe('waiting');
         // 没按类别 ID 排序取锁时，先取较大锁的请求会在这里持着它（探针拿不到）；排序后两个请求都还停在较小的锁上
         await testDb().db.transaction(async (tx) => {
           await tx.execute(sql`SELECT set_config('app.tenant_id', ${w.tenant.id}, true)`);

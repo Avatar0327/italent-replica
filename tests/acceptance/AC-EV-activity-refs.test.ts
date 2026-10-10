@@ -206,7 +206,11 @@ describe('AC-EV-activity-refs 评定活动的引用与权限', () => {
         await patch(op, seeded, { name: `保留${suffix()}`, managerEmployeeId: f.mgrB.id }),
       );
       expect(kept.managerEmployeeId).toBe(f.mgrB.id);
-      await expectError(await patch(op, kept, { managerEmployeeId: f.mgrB.id.replace(/.$/, '0') }), 404);
+      // 换成另一位范围外负责人（新增引用，须在人员范围内）→ 404；不能靠改 UUID 末位造“不同”的 ID（末位本来就可能是 0，
+      // 提交的仍是原负责人，按保留引用规则返回 200，#226 第 3 轮 P3-1）
+      const otherOutside = await w.hire('范围外负责人丙', w.orgB);
+      expect(otherOutside.id).not.toBe(f.mgrB.id);
+      await expectError(await patch(op, kept, { managerEmployeeId: otherOutside.id }), 404);
       // 负责人必填：不能清空（DEC-412）
       await expectError(await patch(op, kept, { managerEmployeeId: null }), 400);
     });
