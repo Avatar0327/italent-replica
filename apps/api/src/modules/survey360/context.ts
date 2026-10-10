@@ -22,6 +22,7 @@ import {
   authorizeInTransaction,
   getModuleViewableFieldsInTransaction,
   type ModuleScope,
+  resolveModuleScopeInTransaction,
 } from '../permission/module-access.js';
 import type { ScopeBusinessContext } from '../permission/module-contracts.js';
 import { button, objectContext, requestScope, writeFields } from '../permission/module-route-access.js';
@@ -56,6 +57,11 @@ export interface Survey360Context extends TenantContext {
   readonly commandId: string;
   readonly admin: Admin;
   readonly expectedRevision: number;
+  /**
+   * 在命令事务内重新取得操作人的当前权限（功能权限、资源守卫、360 人员范围），不沿用 admin（命令开始时取得）。
+   * 同步类命令在每个写入目标加锁之后、写入之前调用（F-043 第 3 轮）；失去功能权限时抛错，整个命令回滚。
+   */
+  readonly reauthorize: () => Promise<Admin>;
 }
 
 export type C = Context<TenantEnv>;
@@ -163,6 +169,12 @@ export async function loadAdmin(
   return { userId: tenant.userId, allActivities, people: scope.all ? null : scope };
 }
 
+/**
+ * 测试探针（F-043 第 2 轮，真 PG 交错用，生产为空）：写命令在路由层取得管理范围之后、进入命令执行器之前，
+ * 以及命令提交之后、回执裁剪之前各调用一次。
+ */
+export const commandProbe: { beforeCommand?: () => Promise<void>; beforePresent?: () => Promise<void> } = {};
+
 /** 路由层（命令前，含幂等重放）：直接复用 module-route-access 的 objectContext / button。 */
 async function routeNeed(c: C, deps: TenantRouteDeps, need: Need): Promise<ScopeBusinessContext> {
   const code = OBJECTS[need.object].code;
@@ -182,13 +194,23 @@ const PERSON_OBJECTS: ReadonlySet<ObjectKey> = new Set(['person', 'relation', 'r
  */
 async function routePeople(c: C, deps: TenantRouteDeps, ctx: ScopeBusinessContext, object: ObjectKey) {
   if (!PERSON_OBJECTS.has(object)) return undefined;
-  const scope = await requestScope(c, deps, ctx, OBJECTS.person.code);
+  return personScope(await requestScope(c, deps, ctx, OBJECTS.person.code), ctx.tenantId, deps.clock(), ctx.timezone);
+}
+
+/**
+ * 命令事务内重新取（用户 × Survey360）的 360 人员范围（F-043 第 2 轮 P2-2）：路由层的范围在请求开始时缓存，
+ * 同步等长命令执行时管理员的范围可能已被收窄或撤空，写入与回执都以执行时的当前范围为准。
+ */
+async function peopleInTransaction(tx: Tx, deps: TenantRouteDeps, tenant: TenantContext, object: ObjectKey) {
+  if (!PERSON_OBJECTS.has(object)) return undefined;
+  const scope = await resolveModuleScopeInTransaction(deps, tenant, tx, OBJECTS.person.code);
+  return personScope(scope, tenant.tenantId, deps.clock(), tenant.timezone);
+}
+
+/** 管理单元 / 组织条件按挂接员工的当前任职组织判定（personQuery）；汇报关系维度不放行（Q-M0-112）。 */
+function personScope(scope: ModuleScope, tenantId: string, now: Date, timezone: string): ModuleScope {
   if (scope.all) return scope;
-  const personQuery = {
-    kind: 'organization' as const,
-    tenantId: ctx.tenantId,
-    asOf: tenantLocalDate(deps.clock(), ctx.timezone),
-  };
+  const personQuery = { kind: 'organization' as const, tenantId, asOf: tenantLocalDate(now, timezone) };
   const terms = (scope.terms ?? [{ dimension: 'management', orgIds: scope.orgIds, personIds: scope.personIds }]).map(
     (term) => (term.dimension === 'management' || term.dimension === 'organization' ? { ...term, personQuery } : term),
   );
@@ -385,14 +407,14 @@ export async function write<T>(
 ): Promise<Response> {
   const tenant = tenantOf(c);
   const route = await routeNeed(c, deps, options.need);
-  const people = await routePeople(c, deps, route, options.need.object);
-  const checked = async (tx: Tx) => {
+  const routeScope = await routePeople(c, deps, route, options.need.object);
+  const checked = async (tx: Tx, people: ModuleScope | undefined) => {
     await requireNeed(tx, deps, tenant, options.need);
     const admin = await loadAdmin(tx, deps, tenant, people, options.admin);
     await options.guard?.(tx, admin);
     return admin;
   };
-  const admin = await withTenant(deps.db, tenant.tenantId, checked);
+  const admin = await withTenant(deps.db, tenant.tenantId, (tx) => checked(tx, routeScope));
   await options.preflight?.(admin);
   const expectedRevision = options.revisionFree ? 0 : revision(c);
   const input = parse(schema, await jsonOrEmpty(c));
@@ -400,19 +422,26 @@ export async function write<T>(
   await routeFields(c, deps, route, options, input, also);
   const refs = options.refs;
   if (refs) await withTenant(deps.db, tenant.tenantId, (tx) => refs(tx, admin, input));
+  await commandProbe.beforeCommand?.();
   const result = await runCommand(deps.db, tenant, {
     id: c.req.header('idempotency-key'),
     fingerprint: { method: c.req.method, path: c.req.path, revision: expectedRevision, input },
     execute: async (tx, commandId): Promise<CommandResult> => {
-      const current = await checked(tx);
+      // 命令事务内重新取管理范围，不沿用路由层缓存（P2-2）；长命令逐目标再取（reauthorize，F-043 第 3 轮）
+      const reauthorize = async () => checked(tx, await peopleInTransaction(tx, deps, tenant, options.need.object));
+      const current = await reauthorize();
       for (const extra of also) await requireNeed(tx, deps, tenant, extra.need);
-      const ctx: Survey360Context = { ...tenant, now: deps.clock(), commandId, admin: current, expectedRevision };
+      const now = deps.clock();
+      const ctx: Survey360Context = { ...tenant, now, commandId, admin: current, reauthorize, expectedRevision };
       return { status: options.status ?? 200, body: await execute(tx, ctx, input) };
     },
   });
   const present = options.present ?? trimAs(options.need.object);
+  await commandProbe.beforePresent?.();
   const body = await withTenant(deps.db, tenant.tenantId, async (tx) => {
-    const viewer = viewerOf(tx, deps, tenant, await loadAdmin(tx, deps, tenant, people, options.admin));
+    // 首次回执与重放回执都按查看人当前的范围裁剪（P2-2）
+    const fresh = await peopleInTransaction(tx, deps, tenant, options.need.object);
+    const viewer = viewerOf(tx, deps, tenant, await loadAdmin(tx, deps, tenant, fresh, options.admin));
     await options.results?.(tx, viewer.admin, result.body as never);
     return present(viewer, result.body as never);
   });

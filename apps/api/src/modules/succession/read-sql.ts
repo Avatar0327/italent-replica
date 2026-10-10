@@ -14,6 +14,29 @@ const uuidArray = (ids: readonly string[]) => sql`${`{${ids.join(',')}}`}::uuid[
 /** 在职且算现任：不是待入职 1 / 调出 4 / 退休 6 / 离职 8（§4.1）。 */
 export const INCUMBENT_EXCLUDED_STATUSES = sql`1, 4, 6, 8`;
 
+/** 不能作为继任者的人员状态：调出 4 / 退休 6 / 离职 8（§4.1；待入职 1 可以，DEC-308）。 */
+export const SUCCESSOR_INACTIVE_STATUSES: readonly number[] = [4, 6, 8];
+
+/**
+ * 继任者资格的唯一判定（设计 §4.1、§5.1；候选搜索与写侧共用）：返回标量子查询，值是人员状态，NULL = 不具资格。
+ * - 请求当日时间轴上有任职行：取不属于 调出 / 退休 / 离职 的状态（兼职并存时，只要有一条在职就算在职）；
+ * - 当日没有任职行：只有时间轴上存在**未来**任职行（日期在后的入职，待入职 = 1）才算；
+ *   时间轴完全为空（唯一入职记录已删除，墓碑，§4.1）一律不具资格，不能与“待入职”混为一谈。
+ * `employeeId` 是员工主键的 SQL 表达式（如 `e.id`）；调用方须已取得员工行锁，再单独执行本查询（锁等待后重读）。
+ */
+export const successorStatusSql = (tenantId: string, employeeId: SQL, today: string): SQL => {
+  const inactive = sql`${`{${SUCCESSOR_INACTIVE_STATUSES.join(',')}}`}::int[]`;
+  return sql`COALESCE(
+    (SELECT min(s.employee_status)::int FROM employment_timeline t
+      JOIN LATERAL employment_record_status(t.tenant_id, t.record_id) s ON true
+      WHERE t.tenant_id = ${tenantId}::uuid AND t.employee_id = ${employeeId} AND t.valid_during @> ${today}::date
+        AND s.employee_status <> ALL(${inactive})),
+    (SELECT 1 WHERE NOT EXISTS (SELECT 1 FROM employment_timeline t
+        WHERE t.tenant_id = ${tenantId}::uuid AND t.employee_id = ${employeeId} AND t.valid_during @> ${today}::date)
+      AND EXISTS (SELECT 1 FROM employment_timeline t
+        WHERE t.tenant_id = ${tenantId}::uuid AND t.employee_id = ${employeeId} AND t.start_date > ${today}::date)))`;
+};
+
 /** 嵌套人员展示（DEC-311③，照原站“姓名(邮箱)”；展示字段取证待补，Q02 🟡）。 */
 export interface PersonView {
   readonly employeeId: string;
