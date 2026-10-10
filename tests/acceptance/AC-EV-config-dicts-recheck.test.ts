@@ -57,14 +57,15 @@ function loserDb(db: Db, tenantId: string, commandId: string, loser: Loser): Db 
   wrapper.transaction = (async (fn: Parameters<Db['transaction']>[0]) => {
     if (!first) return db.transaction(fn);
     first = false;
-    const [row] = await withTenant(db, tenantId, (tx) =>
+    // 测试库属主连接：租户角色对命令台账没有 DELETE 权限
+    const [row] = await db.transaction((tx) =>
       tx.delete(commandLedger).where(eq(commandLedger.commandId, commandId)).returning(),
     );
     if (!row) throw new Error('胜者没有写台账，模拟前提不成立');
     try {
       return await db.transaction(fn);
     } finally {
-      await withTenant(db, tenantId, (tx) => tx.insert(commandLedger).values(row));
+      await db.transaction((tx) => tx.insert(commandLedger).values(row));
       await loser.afterLoserTx();
     }
   }) as Db['transaction'];

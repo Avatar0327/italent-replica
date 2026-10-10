@@ -255,13 +255,14 @@ describe('台账出口统一守卫（CommandGuard）', () => {
     wrapper.transaction = (async (fn: Parameters<Db['transaction']>[0]) => {
       if (!first) return db.transaction(fn);
       first = false;
-      const [row] = await withTenant(db, tenantId, (tx) =>
+      // 测试库属主连接：租户角色对命令台账没有 DELETE 权限
+      const [row] = await db.transaction((tx) =>
         tx.delete(commandLedger).where(eq(commandLedger.commandId, commandId)).returning(),
       );
       try {
         return await db.transaction(fn);
       } finally {
-        if (row) await withTenant(db, tenantId, (tx) => tx.insert(commandLedger).values(row));
+        if (row) await db.transaction((tx) => tx.insert(commandLedger).values(row));
       }
     }) as Db['transaction'];
     return wrapper;
