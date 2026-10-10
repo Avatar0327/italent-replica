@@ -20,8 +20,8 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employee-self-service/access.ts#selfAccess': [
     '#COMMAND_FIELDS',
-    '#SELF_BUTTONS',
     '#boundEmployee',
+    '#selfButtonGranted',
     'apps/api/src/modules/employee-self-service/policy.ts#PROTOCOL_FIELDS',
     'apps/api/src/modules/employee-self-service/policy.ts#employeeFieldPolicy',
     'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT',
@@ -32,6 +32,10 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/scope-types.ts#EMPTY_SCOPE',
     'apps/api/src/modules/transfer/employee-policy.ts#EMPLOYEE_READONLY_FIELDS',
     'apps/api/src/tenant-context.ts#tenantOf',
+  ],
+  'apps/api/src/modules/employee-self-service/access.ts#selfButtonGranted': [
+    '#SELF_BUTTONS',
+    'apps/api/src/modules/employee-self-service/policy.ts#employeeFieldPolicy',
   ],
   'apps/api/src/modules/employee-self-service/access.ts#transferFieldAccess': [
     'apps/api/src/modules/employee-self-service/policy.ts#employeeFieldPolicy',

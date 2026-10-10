@@ -130,7 +130,7 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/employee-self-service/access.ts': {
     boundEmployee: 'cde7cba2052a',
-    selfAccess: '8cd78ccfb8be',
+    selfAccess: 'cef0cef4b0b7',
   },
   'apps/api/src/modules/employee-self-service/queries.ts': {
     ownApplication: 'a4a35b04bb32',
@@ -1176,7 +1176,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/contracts/routes.ts#routeContext': 'ae6815d235ed',
   'apps/api/src/modules/contracts/todos.ts#registerMergedTodos': '73b57b28a247',
   'apps/api/src/modules/employee-self-service/access.ts#boundEmployee': '107479715613',
-  'apps/api/src/modules/employee-self-service/access.ts#selfAccess': '15bec868d6d9',
+  'apps/api/src/modules/employee-self-service/access.ts#selfAccess': '8bb8fb420ee3',
   'apps/api/src/modules/employee-self-service/queries.ts#ownApplication': '8a95f51afdbb',
   'apps/api/src/modules/employee-self-service/queries.ts#ownApplications': 'd2e565abc9a5',
   'apps/api/src/modules/employee-self-service/references.ts#referenceChoices': '5ed5d8993877',
