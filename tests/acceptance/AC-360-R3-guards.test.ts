@@ -17,6 +17,7 @@ import {
   scoreTableDocument,
 } from '../../apps/api/src/modules/survey360/export-files.js';
 import { loginEmailOf } from './AC-EMP-support.js';
+import { confirmationToken } from './AC-360-B-support.js';
 import type { RequestOptions } from './support/tenant-api.js';
 import {
   BASE,
@@ -153,15 +154,7 @@ async function grantTo(w: World360, activityId: string, userIds: string[]) {
 }
 
 /** 确认链接令牌：取自该确认单的邀请邮件（outbox）。 */
-async function confirmToken(w: World360, confirmationId: string) {
-  const rows = await withTenant(w.db, w.tenantId, (tx) =>
-    tx.execute(sql`SELECT payload->>'token' AS token FROM survey360_outbox
-      WHERE event_type = 'survey360.confirm_invitation' AND payload->>'confirmationId' = ${confirmationId}`),
-  );
-  const list = (Array.isArray(rows) ? rows : (rows as { rows: unknown[] }).rows) as { token: string }[];
-  expect(list).toHaveLength(1);
-  return list[0]!.token;
-}
+const confirmToken = confirmationToken;
 
 async function buildFineWorld(): Promise<FineWorld> {
   const w = await world360(testDb().db, 'guard-fine');

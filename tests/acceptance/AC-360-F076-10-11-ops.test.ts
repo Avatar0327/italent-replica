@@ -3,6 +3,7 @@
  * 三代密钥、计划退役、泄露处置（含已迁移与此前已退役的凭据）、中断与续跑、手动重发清单。
  */
 import { randomBytes, randomUUID } from 'node:crypto';
+import { type Db, sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { afterEach, describe, expect, it } from 'vitest';
 import { credentialConfig } from '../../apps/api/src/modules/survey360/credential-config.js';
@@ -46,7 +47,7 @@ describe('AC-360-F076-10 三代密钥与计划退役', () => {
     const s = await sceneB(testDb().db, 'f076-10');
     const { w } = s;
     const db = w.db;
-    await runCredentialMaintenance(db, { clock: at('2026-10-01T02:00:00Z') });
+    await runCredentialMaintenance(db, { tenantId: w.tenantId, clock: at('2026-10-01T02:00:00Z') });
     const batch1 = (await linkRows(w, s.activity.id)).map((l) => l.id);
     expect((await linkRows(w, s.activity.id)).every((l) => l.credential_key_version === 1)).toBe(true);
 
@@ -65,7 +66,7 @@ describe('AC-360-F076-10 三代密钥与计划退役', () => {
         body: { personIds: [s.person.X.id, s.person.P1.id, s.person.P2.id] },
       }),
     );
-    await runCredentialMaintenance(db, { clock: at('2026-10-01T06:00:00Z') });
+    await runCredentialMaintenance(db, { tenantId: w.tenantId, clock: at('2026-10-01T06:00:00Z') });
 
     // 第三代
     cfg = configure([1, 2, 3], 3);
@@ -80,7 +81,7 @@ describe('AC-360-F076-10 三代密钥与计划退役', () => {
         body: { personIds: [s.person.X.id] },
       }),
     );
-    await runCredentialMaintenance(db, { clock: at('2026-10-01T08:00:00Z') });
+    await runCredentialMaintenance(db, { tenantId: w.tenantId, clock: at('2026-10-01T08:00:00Z') });
 
     const issuedBy = async () => {
       const all = await linkRows(w, s.activity.id);
@@ -109,11 +110,13 @@ describe('AC-360-F076-10 三代密钥与计划退役', () => {
     ]);
 
     // 版本仍在 KEYS：拒绝
-    await expect(retireKeys(db, { version: 1, compromised: false, config: cfg })).rejects.toThrow(/KEYS|RETIRED/);
+    await expect(retireKeys(db, { tenantId: w.tenantId, version: 1, compromised: false, config: cfg })).rejects.toThrow(
+      /KEYS|RETIRED/,
+    );
     // 1 移入 RETIRED（2、3 保留）后执行
     cfg = configure([2, 3], 3, { retired: [1] });
-    const run = await retireKeys(db, { version: 1, compromised: false, config: cfg });
-    expect(run.tenants[0]).toMatchObject({ status: 'done', credentials: 2, sessions: 0 });
+    const run = await retireKeys(db, { tenantId: w.tenantId, version: 1, compromised: false, config: cfg });
+    expect(run.tenants[0]).toMatchObject({ status: 'done', credentials: 5, sessions: 0 });
 
     const after = await linkRows(w, s.activity.id);
     for (const link of after.filter((l) => !l.revoked)) {
@@ -137,11 +140,12 @@ describe('AC-360-F076-11 retire 中断与续跑', () => {
     configure([1], 1);
     const s = await sceneB(testDb().db, 'f076-11a');
     const { w } = s;
-    await runCredentialMaintenance(w.db, { clock: at('2026-10-01T02:00:00Z') });
+    await runCredentialMaintenance(w.db, { tenantId: w.tenantId, clock: at('2026-10-01T02:00:00Z') });
     const cfg = configure([2], 2, { retired: [1] });
 
     await expect(
       retireKeys(w.db, {
+        tenantId: w.tenantId,
         version: 1,
         compromised: false,
         config: cfg,
@@ -161,6 +165,7 @@ describe('AC-360-F076-11 retire 中断与续跑', () => {
     expect(await securityEvents(w, 'key_retired')).toHaveLength(0);
 
     const resumed = await retireKeys(w.db, {
+      tenantId: w.tenantId,
       version: 1,
       compromised: false,
       config: cfg,
@@ -176,6 +181,7 @@ describe('AC-360-F076-11 retire 中断与续跑', () => {
     expect(done!.detail).toMatchObject({ credentials: 5, sessions: 0 });
     // 已完成的运行再续跑是幂等的
     const again = await retireKeys(w.db, {
+      tenantId: w.tenantId,
       version: 1,
       compromised: false,
       config: cfg,
@@ -215,10 +221,21 @@ describe('AC-360-F076-11 retire 中断与续跑', () => {
 
     // 前置检查：泄露处置要求版本在 COMPROMISED 里
     await expect(
-      retireKeys(w.db, { version: 1, compromised: true, config: configure([2, 3], 3, { retired: [1] }) }),
+      retireKeys(w.db, {
+        tenantId: w.tenantId,
+        version: 1,
+        compromised: true,
+        config: configure([2, 3], 3, { retired: [1] }),
+      }),
     ).rejects.toThrow(/COMPROMISED/);
 
-    const run = await retireKeys(w.db, { version: 1, compromised: true, config: cfg, batchSize: 2 });
+    const run = await retireKeys(w.db, {
+      tenantId: w.tenantId,
+      version: 1,
+      compromised: true,
+      config: cfg,
+      batchSize: 2,
+    });
 
     expect(run.tenants[0]).toMatchObject({ status: 'done', credentials: 3, sessions: 8 });
     const after = new Map((await linkRows(w, s.activity.id)).map((l) => [l.id, l]));
@@ -247,10 +264,16 @@ describe('AC-360-F076-11 retire 中断与续跑', () => {
     await setCredential(w, first!.id, { state: 'issued', version: 1 });
     await addSession(w, first!.id, 'k1');
 
-    await retireKeys(w.db, { version: 1, compromised: false, config: configure([2], 2, { retired: [1] }) });
+    await retireKeys(w.db, {
+      tenantId: w.tenantId,
+      version: 1,
+      compromised: false,
+      config: configure([2], 2, { retired: [1] }),
+    });
     expect(await sessionStates(w, first!.id)).toEqual([false]); // 计划退役不动会话
 
     const run = await retireKeys(w.db, {
+      tenantId: w.tenantId,
       version: 1,
       compromised: true,
       config: configure([2], 2, { retired: [1], compromised: [1] }),
@@ -261,8 +284,7 @@ describe('AC-360-F076-11 retire 中断与续跑', () => {
   });
 });
 
-async function runRows(w: { db: import('@italent/db').Db; tenantId: string }) {
-  const { sql, withTenant } = await import('@italent/db');
+async function runRows(w: { db: Db; tenantId: string }) {
   const result = await withTenant(w.db, w.tenantId, (tx) =>
     tx.execute(sql`SELECT run_id, status, cursor_link_id, credentials_done, sessions_done, attempts
       FROM survey360_key_retire_runs ORDER BY started_at`),

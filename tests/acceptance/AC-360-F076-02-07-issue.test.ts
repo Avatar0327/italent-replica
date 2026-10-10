@@ -19,8 +19,6 @@ import {
 const testDb = useTestDb();
 afterEach(() => resetCredentialConfig());
 
-const ANSWER = 'survey360.answer_invitation';
-
 describe('AC-360-F076-02 开关打开：启用活动只把链接标为待发放', () => {
   it('作答链接 pending、摘要为空；邀请 awaiting_credential，sealed 解封后只有令牌；命令内 KDF 0 次', async () => {
     portalCredentials(true);
@@ -162,7 +160,10 @@ describe('AC-360-F076-07 开关关闭：行为同以前，令牌已加密', () =
 
     const { runCredentialMaintenance } = await import('../../apps/api/src/modules/survey360/credential-maintenance.js');
     resetKdfCallCount();
-    const report = await runCredentialMaintenance(w.db, { clock: () => new Date('2026-10-01T02:00:00Z') });
+    const report = await runCredentialMaintenance(w.db, {
+      tenantId: w.tenantId,
+      clock: () => new Date('2026-10-01T02:00:00Z'),
+    });
     expect(report.issued).toBe(0);
     expect(kdfCallCount()).toBe(0);
     expect((await linkRows(w, s.activity.id)).every((l) => l.credential_state === 'none')).toBe(true);

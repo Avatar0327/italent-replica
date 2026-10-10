@@ -39,7 +39,7 @@ describe('AC-360-F076-03 维护任务跑一轮', () => {
     const before = await invitations(w);
     const tokens = new Map(before.map((m) => [m.payload['linkId'] as string, m.secrets.token]));
 
-    const report = await runCredentialMaintenance(w.db, { clock: at('2026-10-01T02:00:00Z') });
+    const report = await runCredentialMaintenance(w.db, { tenantId: w.tenantId, clock: at('2026-10-01T02:00:00Z') });
     expect(report.issued).toBe(5);
 
     const config = credentialConfig();
@@ -72,7 +72,9 @@ describe('AC-360-F076-03 维护任务跑一轮', () => {
     expect(events.every((e) => e.activity_id === s.activity.id)).toBe(true);
 
     // 再跑一轮没有可发放的行
-    expect((await runCredentialMaintenance(w.db, { clock: at('2026-10-01T02:10:00Z') })).issued).toBe(0);
+    expect(
+      (await runCredentialMaintenance(w.db, { tenantId: w.tenantId, clock: at('2026-10-01T02:10:00Z') })).issued,
+    ).toBe(0);
   });
 });
 
@@ -81,7 +83,7 @@ describe('AC-360-F076-08 库中查不到明文', () => {
     portalCredentials(true);
     const s = await sceneB(testDb().db, 'f076-08');
     const { w } = s;
-    await runCredentialMaintenance(w.db, { clock: at('2026-10-01T02:00:00Z') });
+    await runCredentialMaintenance(w.db, { tenantId: w.tenantId, clock: at('2026-10-01T02:00:00Z') });
     w.setNow('2026-10-01T05:00:00Z');
     await w.ok(
       w.request('POST', `${s.path}/invitations`, {
@@ -89,7 +91,7 @@ describe('AC-360-F076-08 库中查不到明文', () => {
         body: { personIds: [s.person.X.id] },
       }),
     );
-    await runCredentialMaintenance(w.db, { clock: at('2026-10-01T06:00:00Z') });
+    await runCredentialMaintenance(w.db, { tenantId: w.tenantId, clock: at('2026-10-01T06:00:00Z') });
 
     const surface = await leakSurface(w);
     const links = await linkRows(w, s.activity.id);
@@ -163,11 +165,11 @@ describe('AC-360-F076-09 批量发放：有界批次、KDF 并发上限、崩溃
     portalCredentials(true, { kdf: { N: 1024, r: 8, p: 1 } });
     const s = await sceneB(testDb().db, 'f076-09a');
     const { w } = s;
-    await runCredentialMaintenance(w.db, { clock: at('2026-10-01T02:00:00Z') });
+    await runCredentialMaintenance(w.db, { tenantId: w.tenantId, clock: at('2026-10-01T02:00:00Z') });
     await seedPending(w, s.activity.id, 500);
     resetKdfCallCount();
 
-    const report = await runCredentialMaintenance(w.db, { clock: at('2026-10-01T03:00:00Z') });
+    const report = await runCredentialMaintenance(w.db, { tenantId: w.tenantId, clock: at('2026-10-01T03:00:00Z') });
 
     expect(report.issued).toBe(500);
     expect(report.batches).toEqual([100, 100, 100, 100, 100]);
@@ -185,6 +187,7 @@ describe('AC-360-F076-09 批量发放：有界批次、KDF 并发上限、崩溃
 
     await expect(
       runCredentialMaintenance(w.db, {
+        tenantId: w.tenantId,
         clock: at('2026-10-01T02:00:00Z'),
         hooks: {
           beforeWriteBack: () => {
@@ -199,9 +202,13 @@ describe('AC-360-F076-09 批量发放：有界批次、KDF 并发上限、崩溃
     expect((await invitations(w)).every((m) => m.state === 'awaiting_credential')).toBe(true);
 
     // 认领未满 5 分钟：其他进程不会抢
-    expect((await runCredentialMaintenance(w.db, { clock: at('2026-10-01T02:04:00Z') })).issued).toBe(0);
+    expect(
+      (await runCredentialMaintenance(w.db, { tenantId: w.tenantId, clock: at('2026-10-01T02:04:00Z') })).issued,
+    ).toBe(0);
     // 满 5 分钟后重领
-    expect((await runCredentialMaintenance(w.db, { clock: at('2026-10-01T02:06:00Z') })).issued).toBe(5);
+    expect(
+      (await runCredentialMaintenance(w.db, { tenantId: w.tenantId, clock: at('2026-10-01T02:06:00Z') })).issued,
+    ).toBe(5);
     links = await linkRows(w, s.activity.id);
     expect(links.every((l) => l.credential_state === 'issued')).toBe(true);
     expect(new Set(links.map((l) => l.serial_lookup)).size).toBe(5);
@@ -214,7 +221,11 @@ describe('AC-360-F076-09 批量发放：有界批次、KDF 并发上限、崩溃
     const { w } = s;
 
     // 随机源恒返回 0：所有行生成同一序列号，只有第一行写得进去
-    const first = await runCredentialMaintenance(w.db, { clock: at('2026-10-01T02:00:00Z'), random: () => 0 });
+    const first = await runCredentialMaintenance(w.db, {
+      tenantId: w.tenantId,
+      clock: at('2026-10-01T02:00:00Z'),
+      random: () => 0,
+    });
     expect(first.issued).toBe(1);
     expect(first.conflicts).toBe(4);
     let links = await linkRows(w, s.activity.id);
@@ -224,7 +235,7 @@ describe('AC-360-F076-09 批量发放：有界批次、KDF 并发上限、崩溃
     expect(stuck.every((l) => l.credential_claimed_at === null)).toBe(true);
     expect((await invitations(w)).filter((m) => m.state === 'awaiting_credential')).toHaveLength(4);
 
-    const second = await runCredentialMaintenance(w.db, { clock: at('2026-10-01T02:01:00Z') });
+    const second = await runCredentialMaintenance(w.db, { tenantId: w.tenantId, clock: at('2026-10-01T02:01:00Z') });
     expect(second.issued).toBe(4);
     links = await linkRows(w, s.activity.id);
     expect(links.every((l) => l.credential_state === 'issued')).toBe(true);
@@ -237,6 +248,7 @@ describe('AC-360-F076-09 批量发放：有界批次、KDF 并发上限、崩溃
     const warnings: { message: string; data: Record<string, unknown> }[] = [];
     const run = (clock: string) =>
       runCredentialMaintenance(w.db, {
+        tenantId: w.tenantId,
         clock: at(clock),
         random: () => 0,
         hooks: { warn: (message, data) => warnings.push({ message, data }) },
@@ -265,11 +277,15 @@ describe('AC-360-F076-09 批量发放：有界批次、KDF 并发上限、崩溃
       },
     };
     const soon = () => new Date(Date.now() + 5 * 60_000);
-    await expect(runCredentialMaintenance(s.w.db, { clock: soon, hooks })).rejects.toThrow('simulated crash');
+    await expect(runCredentialMaintenance(s.w.db, { tenantId: s.w.tenantId, clock: soon, hooks })).rejects.toThrow(
+      'simulated crash',
+    );
     expect(warnings.some((x) => x.message === 'survey360.credential.pending_stale')).toBe(false);
 
     const later = () => new Date(Date.now() + 2 * 3_600_000);
-    await expect(runCredentialMaintenance(s.w.db, { clock: later, hooks })).rejects.toThrow('simulated crash');
+    await expect(runCredentialMaintenance(s.w.db, { tenantId: s.w.tenantId, clock: later, hooks })).rejects.toThrow(
+      'simulated crash',
+    );
     const stale = warnings.find((x) => x.message === 'survey360.credential.pending_stale');
     expect(stale?.data['count']).toBe(5);
     expect(JSON.stringify(warnings)).not.toMatch(/token|password|serial/i);

@@ -9,9 +9,13 @@ import { startEmploymentActivationScheduler } from './modules/employment/activat
 import { startAuditRetentionScheduler } from './audit/retention.js';
 import { startSuccessionScheduler } from './modules/succession/scheduler.js';
 import { exportStartupCheck } from './modules/survey360/export-runtime.js';
+import { checkCredentialConfigAtStartup } from './modules/survey360/credential-config.js';
+import { startCredentialMaintenanceScheduler } from './modules/survey360/credential-maintenance.js';
 
 // F-080：360 报告 PDF / 报表 PNG 用项目内置的中文字体；字体缺失或被改动时这里抛错，进程拒绝启动（不再有缺字体 503）
 await exportStartupCheck((line) => console.log(line));
+// F-076：作答凭据 / outbox 加密密钥配置有误（缺失、长度不足、版本关系不合法）时进程拒绝启动
+checkCredentialConfigAtStartup();
 
 // 生产环境未接入真实登录（B-01）时，这里直接抛错阻止启动，不回退到不安全的身份实现。
 // 授权不在此注入：createApp 缺省使用权限模型授权器（R1-T01），默认拒绝。
@@ -57,5 +61,12 @@ if (handle && process.env.AUDIT_RETENTION_SCHEDULER !== 'off') {
 if (handle && process.env.SUCCESSION_SCHEDULER !== 'off') {
   startSuccessionScheduler(handle.db, {
     intervalMs: Number(process.env.SUCCESSION_SCHEDULER_INTERVAL_MS || 900_000),
+  });
+}
+
+// F-076 通用网址作答凭据维护任务（认领发放、清理过期会话与限频行）：多实例靠认领 CAS 与 SKIP LOCKED 去重，可关闭或调整间隔。
+if (handle && process.env.SURVEY360_CREDENTIAL_MAINTENANCE_SCHEDULER !== 'off') {
+  startCredentialMaintenanceScheduler(handle.db, {
+    intervalMs: Number(process.env.SURVEY360_CREDENTIAL_MAINTENANCE_INTERVAL_MS || 60_000),
   });
 }

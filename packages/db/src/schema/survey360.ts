@@ -604,10 +604,16 @@ export const survey360Links = pgTable(
     }),
     check('survey360_links_kind', sql`${t.kind} IN ('answer', 'confirm')`),
     check('survey360_links_credential_state', sql`${t.credentialState} IN ('none', 'pending', 'issued', 'retired')`),
-    // issued 当且仅当两项摘要齐全
+    // issued 时两项摘要都齐全；非 issued 时两项都必须为空（不能只留一项，#220 审查 P3-2）
     check(
       'survey360_links_credential_digest',
-      sql`(${t.credentialState} = 'issued') = (${t.serialLookup} IS NOT NULL AND ${t.passwordHash} IS NOT NULL)`,
+      sql`(${t.credentialState} = 'issued' AND ${t.serialLookup} IS NOT NULL AND ${t.passwordHash} IS NOT NULL)
+        OR (${t.credentialState} <> 'issued' AND ${t.serialLookup} IS NULL AND ${t.passwordHash} IS NULL)`,
+    ),
+    // 版本集合不得含 NULL 元素：ANY 遇到 NULL 得 NULL，CHECK 会放过
+    check(
+      'survey360_links_credential_versions_nonnull',
+      sql`array_position(${t.credentialKeyVersions}, NULL::smallint) IS NULL`,
     ),
     // issued / retired 都带当前版本，且该版本在已用版本集合内（退役清空摘要，版本与集合保留）
     check(
