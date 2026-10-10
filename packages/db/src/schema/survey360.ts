@@ -807,8 +807,6 @@ export const survey360SheetTimings = pgTable(
     questionnaireId: uuid('questionnaire_id').notNull(),
     openedAt: at('opened_at').notNull(),
     pageStartedAt: at('page_started_at').notNull(),
-    // 翻页次数：计时审计里可披露的变化量（耗时与翻页时刻不披露，DEC-405①）
-    pageCount: integer('page_count').notNull().default(0),
   },
   (t) => [
     unique('survey360_sheet_timings_tenant_id').on(t.tenantId, t.id),

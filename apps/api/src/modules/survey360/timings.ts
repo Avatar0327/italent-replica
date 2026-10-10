@@ -2,18 +2,28 @@
  * 答卷计时（F-060 收尾，DEC-392 / DEC-405 / DEC-402）：每个（评价关系 × 套卷）一行，记“首次打开”与“本页起点”。
  * - 首次打开 = 评价者第一次取到该套卷的作答页（GET）；保存时补建作兜底，所以不取页面直接保存 / 提交的新答卷也纳入判定；
  * - 耗时只存库，对外只回“是否提醒 / 是否疑似”的布尔（DEC-371⑤）；
- * - 计时的每一次写入都写字段级审计（DEC-019）：建立、翻页更新、清除（保留快照）；库内存完整快照，审计查看按业务可见性
- *   只披露事件存在，裁掉耗时与能反推耗时的时间（见 timing-audit.ts，DEC-405①）；
+ * - 计时的每一次写入都写字段级审计（DEC-019，DEC-405①）：建立、翻页更新、清除（保留快照），与业务同事务；
+ *   只留存、不披露（DEC-409①）；
  * - 计时跟着它所属的评价关系 / 评价对象清除：重新作答清该评价关系的全部计时，替换套卷清该评价对象所有评价关系的
  *   全部计时——不论答卷是否已保存（只打开过、部分保存的也清）。
  */
 import { and, eq, inArray, survey360Relations, survey360SheetTimings, type Tx } from '@italent/db';
 import { actor, audit360, type Writer } from './context.js';
-import { TIMING_ACTIONS, TIMING_AUDIT_TYPE } from './timing-audit.js';
+
+/**
+ * 审计对象类型与动作。**不登记审计查看规则**（audit/visibility.ts fail-closed）：计时事件只留存在库，产品审计接口一律不披露
+ * （DEC-409①，修订 DEC-405①）——事件的存在、次数、时间、排序 / 游标与命令编号都是反推耗时的旁路（DEC-371⑤）。
+ */
+export const TIMING_AUDIT_TYPE = 'survey360-sheet-timing';
+export const TIMING_ACTIONS = {
+  open: 'survey360.sheet-timing.open',
+  page: 'survey360.sheet-timing.page',
+  clear: 'survey360.sheet-timing.clear',
+} as const;
 
 export type Timing = typeof survey360SheetTimings.$inferSelect;
 
-/** 审计快照：库内完整值（审计存证）；审计查看只披露 timing-audit.ts 的白名单字段。 */
+/** 审计快照：库内完整值（审计存证，不披露）。 */
 function snapshot(activityId: string, t: Timing) {
   return {
     activityId,
@@ -21,7 +31,6 @@ function snapshot(activityId: string, t: Timing) {
     questionnaireId: t.questionnaireId,
     openedAt: new Date(t.openedAt).toISOString(),
     pageStartedAt: new Date(t.pageStartedAt).toISOString(),
-    pageCount: t.pageCount,
   };
 }
 
@@ -67,7 +76,7 @@ export async function ensureTiming(
 export async function advancePage(tx: Tx, ctx: Writer, activityId: string, timing: Timing): Promise<void> {
   const [updated] = await tx
     .update(survey360SheetTimings)
-    .set({ pageStartedAt: ctx.now, pageCount: timing.pageCount + 1 })
+    .set({ pageStartedAt: ctx.now })
     .where(eq(survey360SheetTimings.id, timing.id))
     .returning();
   await audit360(tx, actor(ctx), {

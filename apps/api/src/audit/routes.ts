@@ -51,7 +51,6 @@ import {
 } from './query.js';
 import { auditViewer, visibleChanges, visibleErrorReport, visibleValue } from './visibility.js';
 import { linkageSnapshot } from './transfer-linkage.js';
-import { disclosedOccurredAt } from './timing-time.js';
 
 const BASE = '/api/tenant/audit';
 const CODE = /^[A-Za-z0-9_.:#-]{1,200}$/;
@@ -89,12 +88,7 @@ function registerDataChanges(router: Hono<TenantEnv>, deps: TenantRouteDeps): vo
         const redacted = await viewer.redact(tx, page.items.map(recounted));
         return {
           items: redacted.map((row) =>
-            dataChangeView(
-              row,
-              operator(row),
-              viewer.fieldsOf(row.objectType, row.action, row.linkagePaths, row),
-              ctx.timezone,
-            ),
+            dataChangeView(row, operator(row), viewer.fieldsOf(row.objectType, row.action, row.linkagePaths, row)),
           ),
           nextCursor: page.nextCursor,
           window,
@@ -125,7 +119,7 @@ function registerDataChanges(router: Hono<TenantEnv>, deps: TenantRouteDeps): vo
         if (!found) throw new AppError('NOT_FOUND', '日志不存在或已超出保留期');
         const row = (await viewer.redact(tx, [recounted(found)]))[0]!;
         const fields = viewer.fieldsOf(row.objectType, row.action, row.linkagePaths, row);
-        const view = dataChangeView(row, (await operatorNames(tx, [row]))(row), fields, ctx.timezone);
+        const view = dataChangeView(row, (await operatorNames(tx, [row]))(row), fields);
         return {
           ...view,
           before: visibleValue(row.before, fields),
@@ -325,7 +319,6 @@ function dataChangeView(
   row: AuditEventRow,
   operator: { userId: string | null; name: string },
   fields: ReadonlySet<string> | undefined,
-  timezone: string,
 ) {
   const operation = (row.operation ?? auditOperationOf(row.action, row.before, row.after)) as AuditOperation;
   const stored = (row.changes as AuditFieldChange[] | null) ?? diffAuditFields(row.before, row.after);
@@ -334,8 +327,7 @@ function dataChangeView(
   const meta = auditObjectMeta(row.objectType);
   return {
     id: row.id,
-    // DEC-405①：答卷计时的建立 / 翻页事件，发生时间就是计时时刻，披露时模糊到租户当地日
-    occurredAt: disclosedOccurredAt(row, timezone),
+    occurredAt: new Date(row.occurredAt).toISOString(),
     operator,
     operation,
     operationLabel: AUDIT_OPERATION_LABELS[operation],

@@ -38,7 +38,6 @@ const TIMINGS_DDL = `CREATE TABLE "survey360_sheet_timings" (
   "questionnaire_id" uuid NOT NULL,
   "opened_at" timestamp with time zone NOT NULL,
   "page_started_at" timestamp with time zone NOT NULL,
-  "page_count" integer DEFAULT 0 NOT NULL,
   CONSTRAINT "survey360_sheet_timings_pair" UNIQUE("relation_id","questionnaire_id")
 )`;
 
