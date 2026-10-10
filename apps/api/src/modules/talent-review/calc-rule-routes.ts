@@ -41,14 +41,9 @@ import {
   calcRuleCreate,
   calcRulePatch,
 } from './calc-rule-input.js';
-import {
-  createBoundCalcRule,
-  presentBoundHints,
-  requireBoundItemsReferenceable,
-  updateBoundCalcRule,
-} from './calc-rule-bound.js';
+import { createBoundCalcRule, requireBoundItemsReferenceable, updateBoundCalcRule } from './calc-rule-bound.js';
 import { loadFullCatalog } from './calc-rule-catalog.js';
-import { presentCalcRules } from './calc-rule-present.js';
+import { type PresentViewer, presentCalcRules } from './calc-rule-present.js';
 import * as rules from './calc-rule-service.js';
 import type { CatalogAccess } from './calc-rule-service.js';
 import { CALC_RULE, type CalcRuleRow, type CalcRuleView, loadCalcRuleView, withItems } from './calc-rule-view.js';
@@ -129,6 +124,8 @@ interface Rechecked {
   readonly ctx: TalentReviewContext;
   readonly scope: ModuleScope;
   readonly access: CatalogAccess | undefined;
+  /** 对计算规则 items 列的查看权（事务内解析）：hints 投影随它。 */
+  readonly itemsViewable: boolean;
 }
 
 /** 事务内重新授权（对象数据操作权 + 按钮 + 范围 + 提交字段编辑权 + 字段目录访问 + 引用可引用），首次执行与各重放路径共用。 */
@@ -158,7 +155,8 @@ async function recheckCalcRuleWrite(
     if (bound) requireBoundItemsReferenceable(await loadFullCatalog(tx, fresh.tenantId), boundReferenced ?? [], access);
     else await rules.requireItemsReferenceable(tx, fresh.tenantId, referenced, access);
   }
-  return { ctx: fresh, scope, access };
+  const viewable = await getModuleViewableFieldsInTransaction(txDeps, fresh, codeOf('calcRule'), tx);
+  return { ctx: fresh, scope, access, itemsViewable: viewable === undefined || viewable.has('items') };
 }
 
 /**
@@ -201,13 +199,13 @@ async function runWrite(
       }),
     }),
   );
-  const { access, scope } = current!;
+  const { access, scope, itemsViewable } = current!;
   // 台账里缓存的结果不带提示；旧版本缓存过的提示也一律丢弃，不原样返回
   const { hints: _cached, ...stored } = result.body as rules.CalcWriteView;
   requireResultVisible(scope, 'calcRule', stored);
   const hinted = options.hinted === true;
   const view = bound
-    ? await presentBoundWrite(deps, ctx, stored, access, hinted)
+    ? await presentBoundWrite(deps, ctx, stored, { access, itemsViewable }, c.req.method !== 'DELETE')
     : await presentB5Write(deps, ctx, stored, access, hinted);
   if (c.req.method !== 'DELETE') c.header('ETag', `"${view.revision}"`);
   return c.json((await trimReview(deps, ctx, 'calcRule', [view]))[0], result.status);
@@ -227,19 +225,21 @@ async function presentB5Write(
   return { ...stored, hints };
 }
 
-/** 开关打开：保存提示按原始视图（规范文本）检测，响应里的公式与绑定按当前名称、当前查看人渲染。 */
+/**
+ * 开关打开：公式 / 绑定 / 版本 / hints 经统一投影一次产出（presentCalcRules）；hints 随 items 查看权投影，GET 与写响应同一套。
+ * 删除回执不带 hints（规则已删除，没有可检测的内容）。
+ */
 async function presentBoundWrite(
   deps: TenantRouteDeps,
   ctx: TalentReviewContext,
   stored: CalcRuleView,
-  access: CatalogAccess | undefined,
-  hinted: boolean,
+  viewer: PresentViewer,
+  withHints: boolean,
 ): Promise<rules.CalcWriteView> {
-  return withTenant(deps.db, ctx.tenantId, async (tx) => {
-    const hints = hinted ? await presentBoundHints(tx, ctx.tenantId, stored.items, access) : undefined;
-    const [presented] = await presentCalcRules(tx, ctx.tenantId, [stored], access);
-    return hints ? { ...presented!, hints } : presented!;
-  });
+  const [presented] = await withTenant(deps.db, ctx.tenantId, (tx) =>
+    presentCalcRules(tx, ctx.tenantId, [stored], viewer, withHints),
+  );
+  return presented as unknown as rules.CalcWriteView;
 }
 
 /** 提交里去掉协议元数据（字段目录版本不是配置字段）：只对真正的业务字段做写权限检查。 */
@@ -253,7 +253,9 @@ function registerReads(router: Hono<TenantEnv>, deps: TenantRouteDeps, bound: bo
   const present = async (ctx: TalentReviewContext, c: Context<TenantEnv>, views: CalcRuleView[]) => {
     if (!bound) return views;
     const access = await optionalCatalogAccess(c, deps);
-    return withTenant(deps.db, ctx.tenantId, (tx) => presentCalcRules(tx, ctx.tenantId, views, access));
+    const viewable = await getModuleViewableFields(deps, ctx, codeOf('calcRule'));
+    const viewer = { access, itemsViewable: viewable === undefined || viewable.has('items') };
+    return withTenant(deps.db, ctx.tenantId, (tx) => presentCalcRules(tx, ctx.tenantId, views, viewer, true));
   };
   router.get(CALC_RULES, async (c) => {
     const ctx = await reviewContext(c, deps, 'calcRule');

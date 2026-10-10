@@ -5,7 +5,9 @@
       "error": "73fd3d876e71",
       "status": 404
     },
-    "fieldQueries": [],
+    "fieldQueries": [
+      "fields:TalentReview.CalcRule"
+    ],
     "invalidId": {
       "code": "VALIDATION_FAILED",
       "error": "17147722c2a8",
@@ -463,7 +465,9 @@
       "error": "73fd3d876e71",
       "status": 404
     },
-    "fieldQueries": [],
+    "fieldQueries": [
+      "fields:TalentReview.CalcRule"
+    ],
     "invalidId": {
       "code": "VALIDATION_FAILED",
       "error": "17147722c2a8",

@@ -79,18 +79,6 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/talent-review/field-catalog.ts#readFieldCatalogVersion',
     'apps/api/src/modules/talent-review/field-catalog.ts#shareLockFieldCatalog',
   ],
-  'apps/api/src/modules/talent-review/calc-rule-bound.ts#presentBoundHints': [
-    '#CYCLE_HIDDEN',
-    '#NOT_REBOUND',
-    '#OTHER_HIDDEN',
-    '#UNVERIFIABLE',
-    'apps/api/src/modules/talent-review/calc-rule-catalog.ts#loadFullCatalog',
-    'apps/api/src/modules/talent-review/calc-rule-catalog.ts#visibleOf',
-    'apps/api/src/modules/talent-review/calc-rule-service.ts#presentHints',
-    'packages/domain/src/expression/lexer.ts#parseFieldHandle',
-    'packages/domain/src/talent-review/bound-analysis.ts#analyzeBoundItems',
-    'packages/domain/src/talent-review/calc-rule.ts#FORMULA_CONTEXT_FIELDS',
-  ],
   'apps/api/src/modules/talent-review/calc-rule-bound.ts#requireBoundItemsReferenceable': [
     'apps/api/src/modules/talent-review/access.ts#notFoundMessage',
     '#reject',
@@ -127,6 +115,30 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/talent-review/calc-rule-catalog.ts#visibleOf': [
     'apps/api/src/modules/talent-review/access.ts#requireConfigVisible',
   ],
+  'apps/api/src/modules/talent-review/calc-rule-hints.ts#detectBound': [
+    '#UNVERIFIABLE',
+    '#note',
+    'packages/domain/src/talent-review/bound-analysis.ts#analyzeBoundItems',
+  ],
+  'apps/api/src/modules/talent-review/calc-rule-hints.ts#detectHints': [
+    '#NOT_REBOUND',
+    '#detectBound',
+    '#detectLegacy',
+    '#note',
+  ],
+  'apps/api/src/modules/talent-review/calc-rule-hints.ts#detectLegacy': [
+    '#UNVERIFIABLE',
+    '#note',
+    'packages/domain/src/talent-review/calc-rule.ts#analyzeCalcItems',
+    'packages/domain/src/talent-review/calc-rule.ts#formulaPath',
+  ],
+  'apps/api/src/modules/talent-review/calc-rule-hints.ts#projectRuleHints': [
+    '#detectHints',
+    'packages/domain/src/expression/lexer.ts#parseFieldHandle',
+    'packages/domain/src/talent-review/calc-hints.ts#projectHints',
+    'packages/domain/src/talent-review/calc-rule.ts#FORMULA_CONTEXT_FIELDS',
+    'packages/domain/src/talent-review/calc-rule.ts#formulaPath',
+  ],
   'apps/api/src/modules/talent-review/calc-rule-input.ts#binding': ['#uuid'],
   'apps/api/src/modules/talent-review/calc-rule-input.ts#boundCalcItem': ['#binding', '#uuid'],
   'apps/api/src/modules/talent-review/calc-rule-input.ts#boundCalcRuleCreate': [
@@ -145,6 +157,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/talent-review/calc-rule-present.ts#presentCalcRules': [
     'apps/api/src/modules/talent-review/calc-rule-catalog.ts#loadFullCatalog',
     'apps/api/src/modules/talent-review/calc-rule-catalog.ts#visibleOf',
+    'apps/api/src/modules/talent-review/calc-rule-hints.ts#projectRuleHints',
     'apps/api/src/modules/talent-review/field-catalog.ts#readFieldCatalogVersion',
     'packages/domain/src/talent-review/formula-binding.ts#FORMULA_REPAIR_NOTICE',
     'packages/domain/src/talent-review/formula-binding.ts#renderFormula',
@@ -161,10 +174,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/talent-review/calc-rule-service.ts#presentHints',
   ],
   'apps/api/src/modules/talent-review/calc-rule-routes.ts#presentBoundWrite': [
-    'apps/api/src/modules/talent-review/calc-rule-bound.ts#presentBoundHints',
     'apps/api/src/modules/talent-review/calc-rule-present.ts#presentCalcRules',
   ],
   'apps/api/src/modules/talent-review/calc-rule-routes.ts#recheckCalcRuleWrite': [
+    'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
+    'apps/api/src/modules/talent-review/access.ts#codeOf',
     'apps/api/src/modules/talent-review/calc-rule-bound.ts#requireBoundItemsReferenceable',
     'apps/api/src/modules/talent-review/calc-rule-catalog.ts#loadFullCatalog',
     '#optionalCatalogAccess',
