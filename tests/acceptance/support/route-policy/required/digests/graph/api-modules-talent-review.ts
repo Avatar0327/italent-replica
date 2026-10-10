@@ -395,10 +395,13 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/talent-review/matrix-input.ts#axisLevel': [
     '#levelNo',
     '#name',
-    '#storedBound',
     'packages/domain/src/talent-review/matrix.ts#MATRIX_AXES',
   ],
-  'apps/api/src/modules/talent-review/matrix-input.ts#cell': ['#levelNo', '#name'],
+  'apps/api/src/modules/talent-review/matrix-input.ts#cell': [
+    '#levelNo',
+    '#name',
+    'packages/domain/src/talent-review/matrix.ts#MATRIX_MAX_LEVELS',
+  ],
   'apps/api/src/modules/talent-review/matrix-input.ts#levelNo': [
     'packages/domain/src/talent-review/matrix.ts#MATRIX_MAX_LEVELS',
   ],
