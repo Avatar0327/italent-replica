@@ -23,7 +23,9 @@ import {
   type CalcHints,
   formulaPath,
   formulaReferences,
+  FORMULA_CONTEXT_FIELDS,
   type FormulaField,
+  type OrderingDiagnosticKind,
   targetNotAllowed,
   unreferenceableItem,
 } from '@italent/domain';
@@ -171,13 +173,16 @@ async function prepareItems(
 const CYCLE_HIDDEN = '存在循环依赖，涉及当前不可见的字段（不显示字段名称）；允许保存，计算时将整次失败';
 const OTHER_HIDDEN = '部分保存提示涉及当前不可见的字段，未显示';
 const UNVERIFIABLE = '部分公式当前无法完整校验（引用的字段可能已改名、删除或重名），请检查后重新保存';
-const aboutCycles = (warning: string) => warning.includes('循环') || warning.includes('成环');
+/** 循环类诊断（结构化类别，不看文案）：被裁掉时汇总成不含名称的循环提示。 */
+const CYCLE_KINDS: ReadonlySet<OrderingDiagnosticKind> = new Set(['cycle', 'cyclesTruncated', 'blockedByCycle']);
 
 /**
  * 写响应里的保存提示（DEC-274：保存或启用时检测，不阻断）。首次执行与幂等重放走同一套：每次按**当前**授权生成，不用命令台账里
  * 缓存的提示（PR #184 第 2 轮：重放返回旧提示，泄露撤权后看不到的字段名）。
  * 检测在全部字段上做（看不到字段的人也要得到循环提示，不能静默省略）；输出按查看人裁剪：涉及看不到的字段路径的提示一律
  * 换成不含名称的提示，代表环里有看不到的字段就不列出该环。顺序与成环项目只给目标字段 id（规则自身的数据）。
+ * 裁剪只用结构化诊断（PR #184 第 3 轮）：可见性按诊断里的**完整字段路径**逐个精确判断（不做文本子串匹配——看不到的“绩效”
+ * 不能连带可见的“绩效得分”）；汇总按诊断类别（不从含字段名的文案推断——字段名里的“循环”不是循环依赖）。
  */
 export async function presentHints(
   tx: Tx,
@@ -195,14 +200,16 @@ export async function presentHints(
   const analysis = analyzeCalcItems(items, full, held);
   if (!analysis.ok) return { order, warnings: [UNVERIFIABLE], cycles: [], blocked: [] };
   const visiblePaths = new Set(visibleOf(full, access).map((field) => formulaPath(field.name)));
-  const hidden = [...new Set(full.map((field) => formulaPath(field.name)))].filter((path) => !visiblePaths.has(path));
-  const leaks = (text: string) => hidden.some((path) => text.includes(path));
-  const { hints } = analysis;
-  const cycles = hints.cycles.filter((cycle) => !cycle.some(leaks));
-  const dropped = hints.warnings.filter(leaks);
-  const warnings = hints.warnings.filter((warning) => !leaks(warning));
-  if (cycles.length < hints.cycles.length || dropped.some(aboutCycles)) warnings.push(CYCLE_HIDDEN);
-  if (dropped.some((warning) => !aboutCycles(warning))) warnings.push(OTHER_HIDDEN);
+  // 查看人能看到的路径：可见字段的完整路径与项目 / 方案固定字段；其余一律按看不到处理（含解析不到的路径，宁严勿漏）
+  const shown = (path: string) => visiblePaths.has(path) || path in FORMULA_CONTEXT_FIELDS;
+  const { hints, diagnostics } = analysis;
+  const cycles = hints.cycles.filter((cycle) => cycle.every(shown));
+  const kept = diagnostics.filter((item) => item.fields.every(shown));
+  const dropped = diagnostics.filter((item) => !item.fields.every(shown));
+  const warnings = kept.map((item) => item.message);
+  const droppedCycle = dropped.some((item) => CYCLE_KINDS.has(item.kind)) || cycles.length < hints.cycles.length;
+  if (droppedCycle) warnings.push(CYCLE_HIDDEN);
+  if (dropped.some((item) => !CYCLE_KINDS.has(item.kind))) warnings.push(OTHER_HIDDEN);
   return { ...hints, warnings, cycles };
 }
 

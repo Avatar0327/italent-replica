@@ -8,6 +8,7 @@
 import {
   createDefaultRegistry,
   orderComputationItems,
+  type OrderingDiagnostic,
   validateFormula,
   type ExpressionFieldKind,
 } from '../expression/index.js';
@@ -69,6 +70,11 @@ export type CalcAnalysis =
       readonly ok: true;
       readonly usesRanking: boolean[];
       readonly hints: CalcHints;
+      /**
+       * 与 hints.warnings 一一对应的结构化诊断（类别 + 提到的全部字段路径）：按查看人裁剪提示时只看它，
+       * 不从含字段名的文案推断类别或可见性（PR #184 第 3 轮）。
+       */
+      readonly diagnostics: readonly OrderingDiagnostic[];
       /** 目标字段与公式引用的全部盘点字段 id：保存前按序加锁、锁内复核。 */
       readonly fieldIds: string[];
     }
@@ -158,6 +164,7 @@ export function analyzeCalcItems(
     ok: true,
     usesRanking,
     fieldIds: [...fieldIds],
+    diagnostics: ordering.diagnostics,
     hints: {
       order: ids(ordering.order.map((item) => item.field)),
       warnings: [...ordering.warnings],
