@@ -8,7 +8,17 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Finding } from './support/route-policy/compare.js';
-import { checkEvidence, currentDigestTable, currentRegistry, repoSource } from './support/route-policy/evidence.js';
+import {
+  brokenUnits,
+  checkEvidence,
+  currentDependencies,
+  currentDigestTable,
+  currentRegistry,
+  repoSource,
+  syncedRegistry,
+  unitText,
+  writeDigests,
+} from './support/route-policy/evidence.js';
 import type { SourceReader } from './support/route-policy/evidence.js';
 import {
   DEFAULT_EVIDENCE_STRICT,
@@ -63,12 +73,12 @@ afterEach(() => {
 });
 
 describe('AC-PRM-FW-F090 开关：默认警告，显式打开严格模式', () => {
-  it('默认是警告；ROUTE_POLICY_EVIDENCE_STRICT=1 / true 才是严格，其余值按警告', () => {
-    expect(DEFAULT_EVIDENCE_STRICT).toBe(false);
+  it('没设（或空串）取默认常量；1 / true 明确严格；0 / false 明确警告（F-087 改常量后这条不用改）', () => {
     expect(EVIDENCE_STRICT_ENV).toBe('ROUTE_POLICY_EVIDENCE_STRICT');
-    expect(evidenceStrict({})).toBe(false);
-    expect(evidenceStrict({ ROUTE_POLICY_EVIDENCE_STRICT: '' })).toBe(false);
+    expect(evidenceStrict({})).toBe(DEFAULT_EVIDENCE_STRICT);
+    expect(evidenceStrict({ ROUTE_POLICY_EVIDENCE_STRICT: '' })).toBe(DEFAULT_EVIDENCE_STRICT);
     expect(evidenceStrict({ ROUTE_POLICY_EVIDENCE_STRICT: '0' })).toBe(false);
+    expect(evidenceStrict({ ROUTE_POLICY_EVIDENCE_STRICT: 'false' })).toBe(false);
     expect(evidenceStrict({ ROUTE_POLICY_EVIDENCE_STRICT: '1' })).toBe(true);
     expect(evidenceStrict({ ROUTE_POLICY_EVIDENCE_STRICT: 'true' })).toBe(true);
   });
@@ -77,7 +87,7 @@ describe('AC-PRM-FW-F090 开关：默认警告，显式打开严格模式', () =
     vi.stubEnv('ROUTE_POLICY_EVIDENCE_STRICT', '1');
     expect(evidenceStrict()).toBe(true);
     vi.stubEnv('ROUTE_POLICY_EVIDENCE_STRICT', '');
-    expect(evidenceStrict()).toBe(false);
+    expect(evidenceStrict()).toBe(DEFAULT_EVIDENCE_STRICT);
   });
 });
 
@@ -171,15 +181,79 @@ describe('AC-PRM-FW-F090 严格模式：同一情况判红', () => {
     expect(spy).not.toHaveBeenCalled(); // 判红时由断言的失败信息承载，不重复输出警告
   });
 
-  it('环境变量 ROUTE_POLICY_EVIDENCE_STRICT=1（不传参数）：同样判红；取消后又放行', () => {
+  it('环境变量 ROUTE_POLICY_EVIDENCE_STRICT=1（不传参数）：同样判红；=0 明确放行', () => {
     vi.stubEnv('ROUTE_POLICY_EVIDENCE_STRICT', '1');
     expect(gateEvidence(drifted(), '夹具').length).toBeGreaterThan(0);
-    vi.stubEnv('ROUTE_POLICY_EVIDENCE_STRICT', '');
+    vi.stubEnv('ROUTE_POLICY_EVIDENCE_STRICT', '0');
     warnings();
     expect(gateEvidence(drifted(), '夹具')).toEqual([]);
   });
 
   it('softGate 严格模式原样返回', () => {
     expect(softGate('图存储', ['a'], (item) => item, { strict: true })).toEqual(['a']);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// 审查 R1 P2-1：证据单元改名（函数与调用方一致改名、登记没更新）——默认只警告，严格判红，且不在门禁之前抛错
+// ---------------------------------------------------------------------------------------------------------------
+
+describe('AC-PRM-FW-F090 证据单元改名：登记里的单元在源码里不存在', () => {
+  const renamed = {
+    ...FILES,
+    [`${FIX}/gate.ts`]: FILES[`${FIX}/gate.ts`]!.replaceAll('gate', 'gateV2'),
+  };
+  const read = readerOf(renamed);
+
+  it('检测器照旧报 EVIDENCE_UNIT（漂移类，默认只警告；严格判红）', () => {
+    const found = checkEvidence(TABLE, { read, branch: false });
+    expect(found.map((f) => f.code)).toContain('EVIDENCE_UNIT');
+    warnings();
+    expect(gateEvidence(found, '夹具改名', { strict: false })).toEqual([]);
+    expect(gateEvidence(found, '夹具改名', { strict: true }).map((f) => f.code)).toContain('EVIDENCE_UNIT');
+  });
+
+  it('按当前源码生成登记 / 依赖不再抛错：失效的单元跳过，并由 brokenUnits 列出', () => {
+    expect(() => currentRegistry(TABLE, read, false)).not.toThrow();
+    expect(() => currentDependencies(TABLE, read, false)).not.toThrow();
+    expect(currentRegistry(TABLE, read, false).units).toEqual({});
+    expect(brokenUnits(TABLE, read, false)).toEqual([`${FIX}/gate.ts#gate`]);
+    expect(brokenUnits(TABLE, readerOf(FILES), false)).toEqual([]);
+  });
+
+  it('默认模式的检测器基准（REGISTRY 的惰性版本）读取时不抛错', () => {
+    const lazy = syncedRegistry(TABLE, read, false);
+    expect(() => [lazy.units, lazy.unitBindings, lazy.nodes, lazy.graph]).not.toThrow();
+    expect(lazy.units).toEqual({});
+  });
+
+  it('只有“单元不存在 / 文件读不到”降级；单元写法错误（格式、指向登记表文件）与读取器的未知异常照旧失败', () => {
+    const bad: RequiredTable = {
+      'GET /api/tenant/fixture': [
+        {
+          perm: 'btn:Fixture#open@list',
+          at: [
+            { ...CALL, unit: `${FIX}/policy.ts#gate` },
+            { ...CALL, unit: 'nohash' },
+          ],
+        },
+      ],
+    };
+    const found = checkEvidence(bad, { read: readerOf(FILES), branch: false });
+    expect(found.map((f) => f.code)).toContain('EVIDENCE_UNIT_INVALID');
+    expect(found.map((f) => f.code)).not.toContain('EVIDENCE_UNIT');
+    warnings();
+    expect(gateEvidence(found, '夹具写法错误', { strict: false }).map((f) => f.code)).toContain(
+      'EVIDENCE_UNIT_INVALID',
+    );
+    const broken = () => {
+      throw new TypeError('读取器自己坏了');
+    };
+    expect(() => unitText(broken, `${FIX}/gate.ts#gate`)).toThrow(TypeError);
+    expect(() => currentRegistry(TABLE, broken, false)).toThrow(TypeError);
+  });
+
+  it('生成登记文件（ROUTE_POLICY_UPDATE_DIGESTS=1）遇到失效单元仍然报错，不静默丢弃', () => {
+    expect(() => writeDigests(TABLE, read, false)).toThrow(/不存在/);
   });
 });
