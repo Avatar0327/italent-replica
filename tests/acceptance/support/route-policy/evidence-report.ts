@@ -59,8 +59,6 @@ const sameSet = (a: readonly string[], b: readonly string[]) => a.length === b.l
 
 const digestOf = (r: Registry, id: string): string | undefined => r.nodes[id]?.[0];
 const unitDigestOf = (r: Registry, id: string): string | undefined => r.units[fileOf(id)]?.[nameOf(id)];
-const bindingOf = (r: Registry, id: string): string | undefined => r.nodes[id]?.[1] ?? r.unitBindings[id];
-const present = (r: Registry, id: string) => id in r.nodes || id in r.unitBindings;
 
 /** 一个快照：每个根的闭包（walk 的 parents）与反向索引 R_G(x)。未登记的根在登记侧视为空闭包。 */
 interface Side {
@@ -89,6 +87,11 @@ function chainTo(parents: ReadonlyMap<string, string>, root: string, node: strin
   return node === root ? [root] : chain;
 }
 
+/**
+ * 变更节点集合。Δd 除“两边都有、摘要不同”外，还含登记图仍引用、但 nodes 记录缺失的节点（登记副本不一致，旧版把它报为
+ * “新增依赖”）；绑定指纹在节点层面（nodes 记录）与证据单元层面（unitBindings）各自比较，不让节点记录遮住根自己的指纹。
+ * `unitLevel` = 只有证据单元层面的变化（单元摘要 / 单元绑定 / 未登记），节点层面没变：影响只列它自己。
+ */
 function changedNodes(reg: Registry, cur: Registry, roots: Iterable<string>) {
   const ids = new Set([
     ...Object.keys(reg.nodes),
@@ -98,18 +101,30 @@ function changedNodes(reg: Registry, cur: Registry, roots: Iterable<string>) {
     ...Object.keys(reg.graph),
     ...Object.keys(cur.graph),
   ]);
-  const both = (id: string) => id in reg.nodes && id in cur.nodes;
-  return {
-    digest: new Set([...ids].filter((id) => both(id) && digestOf(reg, id) !== digestOf(cur, id))),
-    edge: new Set([...ids].filter((id) => !sameSet(reg.graph[id] ?? [], cur.graph[id] ?? []))),
-    binding: new Set(
-      [...ids].filter((id) => present(reg, id) && present(cur, id) && bindingOf(reg, id) !== bindingOf(cur, id)),
+  const regRefs = new Set([...Object.keys(reg.graph), ...Object.values(reg.graph).flat()]);
+  const digest = new Set(
+    Object.keys(cur.nodes).filter(
+      (id) => digestOf(reg, id) !== digestOf(cur, id) && (id in reg.nodes || regRefs.has(id)),
     ),
-    // 证据单元自身摘要变化，或闭包没有登记（unitBindings 是登记标记）
-    root: new Set(
-      [...roots].filter((id) => unitDigestOf(reg, id) !== unitDigestOf(cur, id) || reg.unitBindings[id] === undefined),
+  );
+  const edge = new Set([...ids].filter((id) => !sameSet(reg.graph[id] ?? [], cur.graph[id] ?? [])));
+  const nodeBinding = new Set(
+    Object.keys(cur.nodes).filter((id) => id in reg.nodes && reg.nodes[id]![1] !== cur.nodes[id]![1]),
+  );
+  const unitBinding = new Set(
+    Object.keys(cur.unitBindings).filter(
+      (id) => id in reg.unitBindings && reg.unitBindings[id] !== cur.unitBindings[id],
     ),
-  };
+  );
+  // 证据单元自身摘要变化，或闭包没有登记（unitBindings 是登记标记）
+  const root = new Set(
+    [...roots].filter((id) => unitDigestOf(reg, id) !== unitDigestOf(cur, id) || reg.unitBindings[id] === undefined),
+  );
+  const binding = new Set([...nodeBinding, ...unitBinding]);
+  const unitLevel = new Set(
+    [...root, ...unitBinding].filter((x) => !digest.has(x) && !edge.has(x) && !nodeBinding.has(x)),
+  );
+  return { digest, edge, binding, root, unitLevel };
 }
 
 /** 旧逐根算法在某个根上的三元组集合（added / removed / changed），归因 closureChanged 用。 */
@@ -157,10 +172,9 @@ export function staleGroups(input: ReportInput): StaleGroup[] {
     const now = cur.graph[node] ?? [];
     const added = now.filter((d) => !was.includes(d));
     const removed = was.filter((d) => !now.includes(d));
-    const affected =
-      kinds.length === 1 && kinds[0] === 'root'
-        ? [node]
-        : [...new Set([...(regSide.reach.get(node) ?? []), ...(curSide.reach.get(node) ?? [])])];
+    const affected = delta.unitLevel.has(node)
+      ? [node]
+      : [...new Set([...(regSide.reach.get(node) ?? []), ...(curSide.reach.get(node) ?? [])])];
     const closureChanged = (root: string): boolean => {
       const t = triples.get(root)!;
       if (t.changed.has(node)) return true;

@@ -32,6 +32,9 @@ const readerOf =
   (files: Record<string, string>): SourceReader =>
   (file) =>
     files[file] ?? repoSource(file);
+/** 当前源码算出的图（R_cur 的依据；与登记同步时等于登记图，但统计应以当前源码为准）。 */
+let currentGraph: Graph | undefined;
+const curGraph = () => (currentGraph ??= currentRegistry(REQUIRED).graph);
 const show = (found: readonly Finding[]) => found.map((f) => `${f.route} ${f.code}: ${f.detail}`).join('\n');
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -337,7 +340,7 @@ describe('AC-PRM-FW-02 集中报告：真实表（F-072 测试 8、14）', () =>
     return { file, text: repoSource(file).replace(text, `${text.slice(0, end)}void 0; ${text.slice(end)}`) };
   };
   const independentCount = (id: string) =>
-    [...roots().keys()].filter((r) => r === id || dist(REGISTRY.graph, r).has(id)).length;
+    [...roots().keys()].filter((r) => r === id || dist(curGraph(), r).has(id)).length;
 
   it('改一个被多个根引用的依赖（domain/qualification/catalog.ts 的某函数）→ 恰好 1 条，impacts 数 = R_cur 实测，含每个根的全部 uses', () => {
     const rootIds = new Set(roots().keys());
@@ -385,9 +388,9 @@ describe('AC-PRM-FW-02 集中报告：真实表（F-072 测试 8、14）', () =>
   });
 
   it('依赖牵连的义务数分布从 R_cur 计算：同一义务只算一次，与独立实现一致', () => {
-    const counts = impactCounts(REGISTRY.graph, roots());
+    const counts = impactCounts(curGraph(), roots());
     const target = 'apps/api/src/modules/permission/module-access.ts#terms';
-    const reaching = [...roots()].filter(([r]) => r === target || dist(REGISTRY.graph, r).has(target));
+    const reaching = [...roots()].filter(([r]) => r === target || dist(curGraph(), r).has(target));
     expect(counts.get(target)).toEqual({
       units: reaching.length,
       obligations: new Set(reaching.flatMap(([, uses]) => uses.map((u) => u.label))).size,
@@ -740,7 +743,7 @@ describe('AC-PRM-FW-02 集中报告：登记缺项 / 副本不一致不丢失（
       expect(group.kinds).toContain('digest');
       expect(group.impacts).toHaveLength(reachCount(id));
       expect(
-        group.impacts.every((i) => i.closureChanged),
+        group.impacts.every((i) => i.root === id || i.closureChanged),
         `${id} 每条影响都有闭包级变化`,
       ).toBe(true);
       assertOracle(reg, REGISTRY, roots(), staleGroups({ reg, cur: REGISTRY, roots: roots() }));
