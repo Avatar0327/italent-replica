@@ -7,6 +7,7 @@ import { EVALUATION_AUDIT_ACTIONS } from '@italent/domain';
 import { recordAudit } from '../../audit/record.js';
 import { AppError } from '../../errors.js';
 import { auditActor } from '../../system-actor.js';
+import type { PersonRefAccess } from './person-refs.js';
 import {
   codeOf,
   EVALUATION_LABELS,
@@ -21,12 +22,15 @@ import {
 /** 写命令的上下文：请求上下文 + 查看人当前的范围（按对象，事务外解析）。 */
 export interface WriteContext extends EvaluationContext {
   readonly scope: ModuleScope;
+  /** 引用人员的对象（评审组成员）：员工信息的查看权 / 范围 / 字段（路由层按当前权限解析）。 */
+  readonly persons?: PersonRefAccess;
 }
 
 export const TABLES: Readonly<Partial<Record<EvaluationObject, string>>> = {
   activityType: 'ev_activity_types',
   activityCycle: 'ev_cycles',
   generalScoreItem: 'ev_general_items',
+  reviewGroup: 'ev_review_groups',
 };
 
 export function tableOf(object: EvaluationObject): string {
@@ -76,7 +80,7 @@ export async function audit(
   object: EvaluationObject,
   operation: string,
   id: string,
-  change: { before: unknown; after: unknown },
+  change: { before: unknown; after: unknown; orgId?: string | null },
 ) {
   await recordAudit(tx, {
     tenantId: ctx.tenantId,
@@ -88,6 +92,8 @@ export async function audit(
     after: change.after,
     commandId: ctx.commandId,
     occurredAt: ctx.now,
+    // DEC-197 归属：所属组织对象的审计按查看人当前范围裁剪（设计 §8，orgRule）
+    ...(change.orgId ? { scope: { orgId: change.orgId } } : {}),
   });
 }
 
