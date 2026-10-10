@@ -41,9 +41,11 @@ describe('AC-QL-sync 入队触发器（设计 §4.3）', () => {
     const counts = await withTenant(w.db, w.tenantId, async (tx) =>
       rowsOf<{ events: number; queued: number; others: number }>(
         await tx.execute(sql`SELECT
-          (SELECT count(*)::int FROM employment_outbox WHERE tenant_id=${w.tenantId} AND event_type='employment.record.create') AS events,
+          (SELECT count(*)::int FROM employment_outbox
+            WHERE tenant_id=${w.tenantId} AND event_type='employment.record.create') AS events,
           (SELECT count(*)::int FROM ev_sync_queue WHERE tenant_id=${w.tenantId} AND handler=${HANDLER}) AS queued,
-          (SELECT count(*)::int FROM employment_outbox WHERE tenant_id=${w.tenantId} AND event_type<>'employment.record.create') AS others`),
+          (SELECT count(*)::int FROM employment_outbox
+            WHERE tenant_id=${w.tenantId} AND event_type<>'employment.record.create') AS others`),
       ),
     );
     expect(counts[0]!.others).toBeGreaterThan(0);
@@ -64,7 +66,8 @@ describe('AC-QL-sync 入队触发器（设计 §4.3）', () => {
     await expect(
       withTenant(w.db, w.tenantId, (tx) =>
         tx.execute(sql`INSERT INTO ev_sync_queue (tenant_id, handler, dedupe_key, employee_id, record_id)
-          VALUES (${w.tenantId}, ${HANDLER}, ${before[0]!.dedupeKey}, ${before[0]!.employeeId}::uuid, ${recordId}::uuid)`),
+          VALUES (${w.tenantId}, ${HANDLER}, ${before[0]!.dedupeKey}, ${before[0]!.employeeId}::uuid,
+            ${recordId}::uuid)`),
       ),
     ).rejects.toThrow();
   });

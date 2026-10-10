@@ -43,7 +43,7 @@ export async function syncWorld(db: Db, label: string, options: { timezone?: str
   const w = await f055World(db, label, options);
   const tenantId = w.tenantId;
   const userId = w.session.user.id;
-  const api = tenantApi(db, { authorize: undefined });
+  const api = tenantApi(db);
   const as = { user: userId, tenant: tenantId };
   let settingRevision = 0;
 

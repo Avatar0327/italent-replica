@@ -4,7 +4,8 @@
  *   （DEC-025）；`sync_qualification` 缺省 false（不自动写任职资格子集，C2-8 发布时按它判定）。
  * - 后续子 PR（B1b、B3～B6、C1-4、C2）在本文件追加各自的表，迁移各带一个（拆分方案第 2 节）。
  */
-import { boolean, index, integer, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+import { boolean, check, index, integer, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core';
 import { tenants } from './tenancy.js';
 
 const id = () => uuid('id').primaryKey().defaultRandom();
@@ -73,5 +74,40 @@ export const evGeneralItems = pgTable(
   (t) => [
     unique('ev_general_items_tenant_id').on(t.tenantId, t.id),
     unique('ev_general_items_name').on(t.tenantId, t.name),
+  ],
+);
+
+export type SyncQueueState = 'pending' | 'done' | 'skipped' | 'failed';
+
+/**
+ * 任职事件同步队列（R3-T02 C1-4，设计 §4.3）：每个（任职事件, 处理器）一行，由 employment_outbox 上的
+ * AFTER INSERT 触发器在写任职的同一事务内插入（迁移里的 ev_enqueue_qualification_sync），事件与队列行同时提交或回滚。
+ * 消费者按状态取数（pending / failed 且到了 next_attempt_at），没有时间游标，所以迟提交的事件下一轮自然被取到。
+ * 判重键 UNIQUE(tenant_id, handler, dedupe_key)：qualification_sync 的 dedupe_key = outbox 事件 ID，重复入队只一行。
+ * handler 是文本而不是枚举：C2-1b 追加 evaluation_leave 时只改触发器函数，不改本表。
+ */
+export const evSyncQueue = pgTable(
+  'ev_sync_queue',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    handler: text('handler').notNull(),
+    dedupeKey: text('dedupe_key').notNull(),
+    outboxId: uuid('outbox_id'),
+    employeeId: uuid('employee_id').notNull(),
+    recordId: uuid('record_id').notNull(),
+    state: text('state').$type<SyncQueueState>().notNull().default('pending'),
+    attempts: integer('attempts').notNull().default(0),
+    nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).notNull().defaultNow(),
+    reason: text('reason'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('ev_sync_queue_dedupe').on(t.tenantId, t.handler, t.dedupeKey),
+    index('ev_sync_queue_pickup').on(t.tenantId, t.handler, t.state, t.nextAttemptAt),
+    index('ev_sync_queue_record').on(t.tenantId, t.recordId),
+    check('ev_sync_queue_state', sql`${t.state} IN ('pending', 'done', 'skipped', 'failed')`),
+    check('ev_sync_queue_attempts', sql`${t.attempts} >= 0`),
   ],
 );
