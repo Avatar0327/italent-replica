@@ -10,3 +10,4 @@
 | 10-10 ~10:1x | #215 / 第 3 轮（[job](https://github.com/Avatar0327/italent-replica/actions/runs/38048924929/job/114201128515)） | PG 2/3 | AC-PLAT-F061-backfill T-02（权限数组换序） | 断言失败；同一日志中 AC-CT-F016-upgrade-mixed 通过 | 已由 #222 F-086 修复（10-10 更正：原误记为 upgrade-mixed） |
 | — | 本地环境 | 本地非超级用户 PG | AC-CT-F016-upgrade-mixed（合同升级迁移） | 只在本地非超级用户 PG 失败，原因 FORCE RLS；CI 未复现 | #231 在该环境下跳过 |
 | 10-10 16:51 | #228 / a3a3bf5 | PG 1/3 | （无断言失败）日志末尾 CONNECTION_ENDED | 分片跑满约 18 分钟，疑似撞 timeout-minutes: 18 | 待 rerun；若反复，PG 改 4 片或上限调高 |
+| 10-10 17:01 | #230 / b2a2a84 | PG 1/3 | 日志末尾 CONNECTION_ENDED；另 F-072 用例“改一个被多个根引用的依赖…恰好 1 条”30s 超时 | 第二次在 PG 1/3 撞 18 分钟上限 | 建议 PG 改 4 片或上限 25 分钟（已报总编排） |
