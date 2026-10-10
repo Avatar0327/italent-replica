@@ -5,10 +5,12 @@
  *   组织调整不生成，DEC-335② 🟡）；同一天多笔只取当日最后一笔（DEC-108）；
  * // TODO(需取证 #237) 取哪些记录、起止日期、同日多笔、重复与删除后再初始化的原站行为均未取证，以下为设计推荐 🟡
  * - 类别 / 级别：同 C1-4 的唯一映射（sync-mapping，QL-R15 🟢），不唯一或没有命中 → 该记录回执 skipped；
- * - 日期：开始日 = 记录生效日；结束日 = 下一个约束点前一天，约束点取较早的：本批**实际参与生成**（映射唯一）的下一条记录
- *   开始日，与该员工已有子集（任何来源）里开始日晚于本行的最早一条（统一时间轴，DEC-335①；第 1 轮 P2-01 / P2-02）。映射失败
- *   （NO_MAPPING / AMBIGUOUS_MAPPING）的记录不是边界，不截断前一条；不因中间夹着不生成的记录（如组织调整）而断档 🟡
- *   （拆分方案写“日期 = 记录区间”）。只约束新行自己，不收尾既有行；
+ * - 日期：开始日 = 记录生效日；结束日 = 下一个约束点前一天，约束点取较早的：本批**实际待新增**的下一条记录开始日，与该员工
+ *   已有子集（任何来源、未删除）里开始日晚于本行的最早一条的**真实开始日**（统一时间轴，DEC-335①）。分两步算（第 2 轮
+ *   R2-P2-01）：先在任何写入之前定出实际待新增的记录（映射唯一且不撞已有行），再算边界；被跳过的记录（NO_MAPPING /
+ *   AMBIGUOUS_MAPPING / ALREADY_EXISTS / MANUAL_SAME_DAY）一律不是边界，它们的原任职日期不参与——已有行被 HR 改过开始日时，
+ *   以已有行现在的开始日为准。不因中间夹着不生成的记录（如组织调整）而断档 🟡（拆分方案写“日期 = 记录区间”）。
+ *   只约束新行自己，不收尾既有行；
  * - 跳过（人工维护优先，DEC-414；第 1 轮 P2-03）：同（类别, 级别, 开始日）或**同一任职记录 ID** 的未删除行 → ALREADY_EXISTS
  *   （含被 HR 改过类别 / 级别 / 开始日的同步行、初始化行，不静默恢复旧值）；同一开始日已有别的未删除行 → MANUAL_SAME_DAY；
  *   已被 HR 删除的行不算“已有”；
@@ -93,6 +95,13 @@ export async function initializeQualificationSubsets(
   return { items: employeeIds.map((employeeId) => done.get(employeeId) ?? NOT_FOUND(employeeId)) };
 }
 
+/** 第一步的产物：映射唯一、不撞已有行、实际会新增的一条记录，带写入前快照里它之后最早的已有行开始日。 */
+interface Insertion {
+  readonly record: EmploymentRecord;
+  readonly mapped: Extract<MappingResult, { kind: 'mapped' }>;
+  readonly existingNextStart: string | null;
+}
+
 async function initializeOne(
   tx: Tx,
   ctx: AccessContext,
@@ -101,41 +110,40 @@ async function initializeOne(
 ): Promise<InitEmployeeReceipt> {
   await lockEmploymentEmployee(tx, ctx, employeeId);
   const records = lastOfEachDay(await effectiveRecords(tx, ctx.tenantId, employeeId, today));
-  // 先确定哪些记录真正参与生成（映射唯一）：映射失败的记录不是资格时间轴上的边界（第 1 轮 P2-01，与 C1-4 一致）
-  const planned: { record: EmploymentRecord; mapping: MappingResult }[] = [];
+  // 第一步：在任何写入之前定出实际待新增的记录；判重与已有后继都读写入前的快照（第 2 轮 R2-P2-01）
+  const skipped = new Map<string, InitRecordReceipt>();
+  const insertions: Insertion[] = [];
   for (const record of records) {
-    planned.push({
-      record,
-      mapping: await mapEmploymentToQualification(tx, ctx.tenantId, record.fields, record.effectiveDate),
-    });
+    const step = await classify(tx, ctx.tenantId, record);
+    if ('outcome' in step) skipped.set(record.id, step);
+    else insertions.push(step);
   }
-  const receipts: InitRecordReceipt[] = [];
-  for (const [index, { record, mapping }] of planned.entries()) {
-    if (mapping.kind === 'skipped') {
-      receipts.push({ recordId: record.id, outcome: 'skipped', reason: mapping.reason });
-      continue;
-    }
-    const next = planned.slice(index + 1).find((item) => item.mapping.kind === 'mapped');
-    receipts.push(await initializeRecord(tx, ctx, record, mapping, next?.record.effectiveDate ?? null));
+  // 第二步：边界只取实际待新增的下一条与已有行的真实开始日，跳过的记录不参与
+  const created = new Map<string, InitRecordReceipt>();
+  for (const [index, insertion] of insertions.entries()) {
+    const endDate = endDateOf(insertions[index + 1]?.record.effectiveDate ?? null, insertion.existingNextStart);
+    created.set(insertion.record.id, await insert(tx, ctx, insertion, endDate));
   }
   return {
     employeeId,
     outcome: 'processed',
-    created: receipts.filter((receipt) => receipt.outcome === 'created').length,
-    records: receipts,
+    created: created.size,
+    records: records.map((record) => created.get(record.id) ?? skipped.get(record.id)!),
   };
 }
 
-async function initializeRecord(
-  tx: Tx,
-  ctx: AccessContext,
-  record: EmploymentRecord,
-  mapped: Extract<MappingResult, { kind: 'mapped' }>,
-  nextRecordStart: string | null,
-): Promise<InitRecordReceipt> {
-  const base = { recordId: record.id };
-  const blocked = await existingRows(tx, ctx.tenantId, record, mapped);
-  if (blocked) return { ...base, outcome: 'skipped', reason: blocked };
+/** 第一步的单条判定：映射失败或撞上已有行 → 跳过回执；否则是实际待新增的记录。 */
+async function classify(tx: Tx, tenantId: string, record: EmploymentRecord): Promise<Insertion | InitRecordReceipt> {
+  const skip = (reason: InitRecordReason): InitRecordReceipt => ({ recordId: record.id, outcome: 'skipped', reason });
+  const mapped = await mapEmploymentToQualification(tx, tenantId, record.fields, record.effectiveDate);
+  if (mapped.kind === 'skipped') return skip(mapped.reason);
+  const blocked = await existingRows(tx, tenantId, record, mapped);
+  if (blocked) return skip(blocked);
+  return { record, mapped, existingNextStart: await existingNextStart(tx, tenantId, record) };
+}
+
+async function insert(tx: Tx, ctx: AccessContext, insertion: Insertion, endDate: string | null) {
+  const { record, mapped } = insertion;
   const saved = await saveSubset(
     tx,
     { ...ctx, expectedRevision: 0 },
@@ -145,7 +153,7 @@ async function initializeRecord(
       categoryId: mapped.categoryId,
       levelId: mapped.levelId,
       startDate: record.effectiveDate,
-      endDate: await endDateOf(tx, ctx.tenantId, record, nextRecordStart),
+      endDate,
       employmentRecordId: record.id,
       isAutoSync: false,
     },
@@ -153,7 +161,7 @@ async function initializeRecord(
     false,
     { type: 'initialization', id: record.id },
   );
-  return { ...base, outcome: 'created', subsetId: String(saved.id) };
+  return { recordId: record.id, outcome: 'created', subsetId: String(saved.id) } as const;
 }
 
 /** 今天及以前已生效、且业务类型参与生成的任职记录，按时间轴顺序（读模型已按开始日、同日顺序号排序）。 */
@@ -182,17 +190,19 @@ function lastOfEachDay(records: readonly EmploymentRecord[]): EmploymentRecord[]
 
 const dayBefore = (date: string) => new Date(Date.parse(`${date}T00:00:00Z`) - DAY_MS).toISOString().slice(0, 10);
 
-/**
- * 新行结束日 = 下一个约束点前一天，约束点取两者较早的一个：本批下一条参与生成的任职记录开始日，与该员工**已有子集（任何来源）**
- * 里开始日晚于本行的最早一条（第 1 轮 P2-02：与 C1-4 落位的“下一条”同一口径）。只约束新行自己，不改既有行。
- */
-async function endDateOf(tx: Tx, tenantId: string, record: EmploymentRecord, nextRecordStart: string | null) {
-  const [existing] = rowsOf<{ start: string | null }>(
+/** 写入前快照里，该员工已有子集（任何来源、未删除）中开始日晚于本记录的最早一条的真实开始日（与 C1-4 落位同一口径）。 */
+async function existingNextStart(tx: Tx, tenantId: string, record: EmploymentRecord): Promise<string | null> {
+  const [found] = rowsOf<{ start: string | null }>(
     await tx.execute(sql`SELECT min(start_date)::text AS start FROM personnel_qualification
       WHERE tenant_id=${tenantId} AND employee_id=${record.employeeId}::uuid AND NOT deleted
         AND start_date > ${record.effectiveDate}::date`),
   );
-  const boundary = [nextRecordStart, existing?.start ?? null].filter((date): date is string => date !== null).sort()[0];
+  return found?.start ?? null;
+}
+
+/** 新行结束日 = 两个约束点中较早的一个的前一天；都没有则开放。只约束新行自己，不改既有行。 */
+function endDateOf(nextInsertionStart: string | null, existingNext: string | null): string | null {
+  const boundary = [nextInsertionStart, existingNext].filter((date): date is string => date !== null).sort()[0];
   return boundary ? dayBefore(boundary) : null;
 }
 
