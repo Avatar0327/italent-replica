@@ -53,7 +53,10 @@ export const FIELD: ConfigSpec<FieldView> = {
   label: '盘点字段',
   table: F as unknown as ConfigTable,
   view: row,
-  orderBy: [F.sortNo, F.code],
+  orderBy: [
+    ['sortNo', F.sortNo],
+    ['code', F.code],
+  ],
   duplicate: 'FIELD_DUPLICATE',
   inUse: 'FIELD_IN_USE',
   load: async (tx, tenantId, id) => (await withOptions(tx, tenantId, await selectRows(tx, tenantId, [id])))[0],

@@ -247,6 +247,7 @@ describe('存量租户补装 T04 预置字段（审查 P2-4；DEC-361 统一机�
   it('补装全空租户：25 个字段连同选项、配对关系一次装齐（与开通同一安装逻辑）', async () => {
     const t = await legacyTenant('trc-backfill-empty');
     await withTenant(testDb().db, t.tenant, async (tx) => {
+      await tx.execute(sql`DELETE FROM talent_review_matrices`); // PR-B4：预置九宫格引用预置字段（restrict）
       await tx.execute(sql`UPDATE talent_review_fields SET pair_field_id = NULL`);
       await tx.execute(sql`DELETE FROM talent_review_fields`);
     });

@@ -326,6 +326,13 @@ export const PRIMITIVES: readonly Primitive[] = [
     ['talentReview.configRenameRequiresSeeAll', /\bNAME_REQUIRES_SEE_ALL\b/, { modules: ['talent-review'] }],
     // 新建字段时指定成对字段：另需字段更新权 + update 按钮 + pairFieldId 编辑权（config-routes.ts requirePairUpdate）
     ['talentReview.pairRequiresUpdate', call('requirePairUpdate'), { modules: ['talent-review'] }],
+    // 人才盘点九宫格：改位置字段要求看全部（判定在查重之前）；引用盘点字段另需字段目录的对象查看权（matrix-routes.ts）
+    [
+      'talentReview.matrixPositionRequiresSeeAll',
+      /\bMATRIX_POSITION_REQUIRES_SEE_ALL\b/,
+      { modules: ['talent-review'] },
+    ],
+    ['talentReview.matrixFieldReference', call('requireFieldReference'), { modules: ['talent-review'] }],
     // 人才盘点计算规则：提交计算项目（公式 / 目标字段引用盘点字段目录）另需字段目录的对象查看权（calc-rule-routes.ts）
     ['talentReview.calcRuleFieldCatalog', call('requireCatalogAccess'), { modules: ['talent-review'] }],
     ['selfService.transferInput', call('ownTransferInput'), { modules: ['self-service'] }],

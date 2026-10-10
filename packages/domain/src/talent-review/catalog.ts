@@ -67,6 +67,28 @@ export const TALENT_REVIEW_OBJECTS = {
     'enabled',
   ]),
   /**
+   * 九宫格（设计 §2.2；TR-R31～R35）：轴、分段、格子、位置字段占用与比例规则组随九宫格整体维护（均为嵌套字段，权限随字段）。
+   * 设置类配置对象，没有组织字段（DEC-121）。
+   */
+  matrix: object('Matrix', [
+    'code',
+    'name',
+    'xFieldId',
+    'yFieldId',
+    'zFieldId',
+    'xDraggable',
+    'yDraggable',
+    'placementSource',
+    'greenRateReference',
+    'preset',
+    'positionFields',
+    'axisLevels',
+    'cells',
+    'ratioGroups',
+    'sortNo',
+    'enabled',
+  ]),
+  /**
    * 盘点计算规则（设计 §2.2；TR-R27～R30）：计算项目随规则整体维护（items 是嵌套字段，权限随字段）；`hints` 是保存时返回的
    * 排序 / 循环 / 依赖矛盾提示（派生，不可写）。设置类配置对象，没有组织字段（DEC-121）。
    */
@@ -99,6 +121,7 @@ export const TALENT_REVIEW_OBJECT_LABELS: Readonly<Record<TalentReviewObject, st
   category: '盘点分类',
   role: '盘点角色',
   field: '盘点字段',
+  matrix: '盘点九宫格',
   calcRule: '盘点计算规则',
   resultApproval: '盘点结果审批',
 };
@@ -110,6 +133,7 @@ export const TALENT_REVIEW_CONFIG_OBJECTS: readonly TalentReviewObject[] = [
   'category',
   'role',
   'field',
+  'matrix',
   'calcRule',
 ];
 

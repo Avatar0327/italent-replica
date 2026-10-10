@@ -9,9 +9,11 @@ import { runCommand } from '../../commands.js';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
+import { getModuleViewableFields } from '../permission/module-access.js';
 import { booleanQuery, pageQuery, parseBody, requireNew, revision, uuidParam } from '../talent/http.js';
 import {
   checkWriteFields,
+  codeOf,
   configEnvelope,
   configScopeSql,
   notFoundMessage,
@@ -26,6 +28,7 @@ import {
 } from './access.js';
 import { registerCalcRuleRoutes } from './calc-rule-routes.js';
 import { registerConfigRoutes } from './config-routes.js';
+import { registerMatrixRoutes } from './matrix-routes.js';
 import { readinessCreate, readinessPatch } from './readiness-input.js';
 import * as readiness from './readiness-service.js';
 
@@ -33,6 +36,7 @@ const PATH = `${TALENT_REVIEW_BASE}/readiness-levels`;
 
 export function registerTalentReviewRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   registerConfigRoutes(router, deps); // PR-B1：设置、分类、角色、字段目录
+  registerMatrixRoutes(router, deps); // PR-B4：九宫格与比例规则组
   registerCalcRuleRoutes(router, deps); // PR-B5：计算规则与计算项目
   router.get(PATH, async (c) => {
     const ctx = await reviewContext(c, deps, 'readiness');
@@ -42,8 +46,10 @@ export function registerTalentReviewRoutes(router: Hono<TenantEnv>, deps: Tenant
     if (enabled !== undefined) await requireFilterVisible(deps, ctx, 'readiness', 'enabled');
     const scope = await reviewScope(c, deps, ctx, 'readiness');
     const visible = configScopeSql(scope, 'talent_readiness_levels');
+    // 排序只用查看人看得到的字段（隐藏的 sortNo / code 不能影响顺序与分页）
+    const viewable = await getModuleViewableFields(deps, ctx, codeOf('readiness'));
     const items = await withTenant(deps.db, ctx.tenantId, (tx) =>
-      readiness.listReadinessViews(tx, ctx.tenantId, { ...page, enabled, visible }),
+      readiness.listReadinessViews(tx, ctx.tenantId, { ...page, enabled, visible, viewable }),
     );
     return c.json({ ...configEnvelope(page, scope), items: await trimReview(deps, ctx, 'readiness', items) });
   });

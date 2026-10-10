@@ -17,6 +17,7 @@ import {
   seeAll,
   write,
 } from '../../route-policy/presets.js';
+import { MATRIX_POLICIES } from './matrix-policy.js';
 import { CALC_RULE_POLICIES } from './calc-rule-policy.js';
 
 const PATH = '/api/tenant/talent-review/readiness-levels';
@@ -99,6 +100,7 @@ const SETTINGS_CODE = TALENT_REVIEW_OBJECTS.settings.code;
 const SETTINGS_FIELDS = projector('talentReview.settings', 'talentReview.settings');
 
 export const TALENT_REVIEW_POLICIES = defineTable('talent-review', {
+  ...MATRIX_POLICIES,
   ...CALC_RULE_POLICIES,
   ...configRoutes('category', '/api/tenant/talent-review/categories', 'talent_review_categories'),
   ...configRoutes('role', '/api/tenant/talent-review/roles', 'talent_review_roles'),

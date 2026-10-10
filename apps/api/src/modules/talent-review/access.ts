@@ -41,6 +41,7 @@ export const TALENT_REVIEW_AUDIT_ACTIONS: Readonly<Record<TalentReviewObject, st
   category: 'talent-review.category',
   role: 'talent-review.role',
   field: 'talent-review.field',
+  matrix: 'talent-review.matrix',
   calcRule: 'talent-review.calc-rule',
   resultApproval: 'talent-review.result-approval',
 };
