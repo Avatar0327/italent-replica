@@ -505,10 +505,14 @@ export async function publishProcess(tx: Tx, ctx: ApprovalContext, id: string) {
  * DEC-096：同类型普通流程优先级相同禁止发布（兜底流程始终排在最后，不参与比较）。
  * 同租户同类型的发布以事务级咨询锁串行，避免并发发布出两个同优先级流程。
  */
-async function assertUniquePriority(tx: Tx, tenantId: string, process: ProcessView, priority: number) {
+export async function lockApprovalPriority(tx: Tx, tenantId: string, approvalType: string): Promise<void> {
   await tx.execute(
-    sql`SELECT pg_advisory_xact_lock(hashtextextended(${`approval_priority:${tenantId}:${process.approvalType}`}, 0))`,
+    sql`SELECT pg_advisory_xact_lock(hashtextextended(${`approval_priority:${tenantId}:${approvalType}`}, 0))`,
   );
+}
+
+async function assertUniquePriority(tx: Tx, tenantId: string, process: ProcessView, priority: number) {
+  await lockApprovalPriority(tx, tenantId, process.approvalType);
   const [tie] = rowsOf<{ code: string }>(
     await tx.execute(sql`SELECT p.code FROM approval_processes p
       JOIN approval_process_versions v ON v.tenant_id=p.tenant_id AND v.id=p.current_version_id

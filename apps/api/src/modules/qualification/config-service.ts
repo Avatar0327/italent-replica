@@ -399,6 +399,11 @@ export async function deleteLayer(tx: Tx, ctx: WriteContext, id: string) {
 
 // ── 任职级别 ────────────────────────────────────────────────
 
+/** 同租户级别顺序号的分配串行化（与并发新建级别互斥）。 */
+export async function lockLevelOrder(tx: Tx, tenantId: string): Promise<void> {
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`ql_levels:${tenantId}`}))`);
+}
+
 /** 顺序号从低到高、租户内唯一；新建缺省为当前最大 + 1（QL-R2）。 */
 async function levelOrder(tx: Tx, ctx: WriteContext, given: number | undefined, exceptId?: string) {
   if (given !== undefined) {
@@ -410,7 +415,7 @@ async function levelOrder(tx: Tx, ctx: WriteContext, given: number | undefined, 
     return given;
   }
   // 与并发新建串行：锁住租户的编码规则行（级别）
-  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`ql_levels:${ctx.tenantId}`}))`);
+  await lockLevelOrder(tx, ctx.tenantId);
   const max = rowsOf<{ max: number | null }>(
     await tx.execute(sql`SELECT max(display_order) AS max FROM ql_levels WHERE tenant_id = ${ctx.tenantId}`),
   )[0]!.max;

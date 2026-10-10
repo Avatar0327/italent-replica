@@ -42,6 +42,19 @@ interface Options {
 }
 const EMPLOYMENT = MODULE_OBJECTS.employmentRecord.code;
 
+/** 职务序列任务的租户级闸：同一租户同时只处理一个序列同步任务。 */
+export async function tryLockJobSequence(tx: Tx, tenantId: string): Promise<boolean> {
+  const [gate] = rowsOf<{ entered: boolean }>(
+    await tx.execute(
+      sql`SELECT pg_try_advisory_xact_lock(hashtextextended(${`job-sequence:${tenantId}`},0)) AS entered`,
+    ),
+  );
+  return Boolean(gate?.entered);
+}
+export async function lockJobSequence(tx: Tx, tenantId: string): Promise<void> {
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`job-sequence:${tenantId}`},0))`);
+}
+
 export async function runSequenceSyncJobs(db: Db, tenantId: string, options: Options = {}) {
   const limit = options.limit ?? 100;
   if (!Number.isInteger(limit) || limit < 1 || limit > 200) throw new RangeError('同步任务上限须为 1～200');
@@ -104,11 +117,7 @@ async function consumeJob(
   let failure: CommandFailure | undefined;
   try {
     const outcome = await withTenant(db, tenantId, async (tx) => {
-      const [gate] = rowsOf<{ entered: boolean }>(
-        await tx.execute(sql`
-      SELECT pg_try_advisory_xact_lock(hashtextextended(${`job-sequence:${tenantId}`},0)) AS entered`),
-      );
-      if (!gate?.entered) return null;
+      if (!(await tryLockJobSequence(tx, tenantId))) return null;
       const [job] = rowsOf<QueuedJob>(
         await tx.execute(sql`
       SELECT o.id,o.command_id AS "commandId",o.payload FROM employment_outbox o
@@ -170,7 +179,7 @@ async function recoverSequenceFailure(db: Db, ctx: EmploymentContext, id: string
   const failure = classifyCommandFailure(error, phase);
   await recordCommandFailure(db, { ...ctx, userId: SYSTEM_USER_ID }, ctx.commandId, failure);
   await withTenant(db, tenantId, async (tx) => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`job-sequence:${tenantId}`},0))`);
+    await lockJobSequence(tx, tenantId);
     const latest = rowsOf<{ state: string }>(
       await tx.execute(sql`SELECT state FROM employment_outbox_attempts
         WHERE tenant_id=${tenantId} AND outbox_id=${id}::uuid ORDER BY attempt_no DESC LIMIT 1`),

@@ -10,6 +10,11 @@ import { AppError } from '../../errors.js';
 import { audit, type WriteContext } from './audit.js';
 import { getTenantUser, insertMembership, memberSnapshot, provisionAccount, updateMembership } from './tenant-users.js';
 
+/** 同一账号的并发建档串行化（租户 × 账号）。 */
+export async function lockPersonLink(tx: Tx, tenantId: string, userId: string): Promise<void> {
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${tenantId}:person-link:${userId}`}, 0))`);
+}
+
 export interface EmployeeUserRequest {
   readonly employeeId: string;
   /** 登录邮箱；建立人员档案时可暂无，办理入职前必须补齐（DEC-140）。 */
@@ -54,9 +59,7 @@ export async function provisionEmployeeUser(
 
   const account = await provisionAccount(tx, write, request.loginEmail, request.displayName);
   // 同一账号的并发建档串行化：后到者看到已有绑定，按“账号已绑定另一人员”拒绝，而不是撞唯一键
-  await tx.execute(
-    sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${write.tenantId}:person-link:${account.userId}`}, 0))`,
-  );
+  await lockPersonLink(tx, write.tenantId, account.userId);
   const [other] = await tx
     .select()
     .from(permissionUserPersonLinks)

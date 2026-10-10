@@ -338,7 +338,7 @@ function checkAnswers(q: LoadedQuestionnaire, roleId: string, answers: z.infer<t
 }
 
 /** 同一评价者在同一活动的作答串行化（优秀率按该评价者已提交的答卷计数）。 */
-async function lockAppraiser(tx: Tx, tenantId: string, activityId: string, personId: string) {
+export async function lockAppraiser(tx: Tx, tenantId: string, activityId: string, personId: string) {
   await tx.execute(
     sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${tenantId}:survey360-answer:${activityId}:${personId}`}, 0))`,
   );

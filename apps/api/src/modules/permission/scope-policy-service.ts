@@ -42,9 +42,11 @@ const BUILTIN_SCOPE_DATASOURCES: Readonly<Record<string, string>> = {
   [ESTABLISHMENT_SCHEME_DATASOURCE]: MODULE_OBJECTS.establishment.code,
 };
 
-async function lock(tx: Tx, write: WriteContext, key: string) {
-  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${write.tenantId + ':' + key},0))`);
+/** 范围策略写入的串行化锁；key 是对象标识（含身份 / 授权 id 等）。 */
+export async function lockScopeObject(tx: Tx, tenantId: string, key: string) {
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${tenantId + ':' + key},0))`);
 }
+const lock = (tx: Tx, write: WriteContext, key: string) => lockScopeObject(tx, write.tenantId, key);
 
 async function identityTarget(tx: Tx, key: IdentityScopeKey) {
   await loadProfile(tx, key.profileId);

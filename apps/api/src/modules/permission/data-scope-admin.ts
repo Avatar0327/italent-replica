@@ -133,9 +133,10 @@ async function validateParent(tx: Tx, parentId: string | null, id?: string) {
 }
 
 /** 管理单元层级的写入（新建、改上级、删除）串行化：A→B / B→A 并发改上级、删除父级与新建下级都不能各自通过检查。 */
-async function lockMouHierarchy(tx: Tx, write: WriteContext) {
-  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${write.tenantId + ':mou-hierarchy'},0))`);
+export async function lockMouHierarchyOf(tx: Tx, tenantId: string) {
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${tenantId + ':mou-hierarchy'},0))`);
 }
+const lockMouHierarchy = (tx: Tx, write: WriteContext) => lockMouHierarchyOf(tx, write.tenantId);
 
 export async function createMou(tx: Tx, write: WriteContext, input: MouInput, expectedRevision: number) {
   if (expectedRevision !== 0) throw revisionConflict(expectedRevision, 0);
