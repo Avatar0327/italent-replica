@@ -9,7 +9,7 @@
  * 命令行入口：scripts/explain-graph-diff.mjs。
  */
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { type BoundaryEntry, EVIDENCE_BOUNDARY } from './evidence-boundary.js';
 import { bindingsOf, type BindingLine, createClosureEnv, type SourceReader } from './evidence-closure.js';
@@ -119,17 +119,37 @@ export function explainGraphDiff(input: ExplainInput): { readonly items: readonl
   return { items };
 }
 
+/** 去掉序号后做多重集差：旧清单里没有对应的新行 / 新清单里没有对应的旧行（序号会因插入引用整体后移，不比较）。 */
+function changedBindings(item: ExplainItem): { readonly old: string[]; readonly new: string[] } {
+  const strip = (line: string) => line.replace(/^\d+:/, '');
+  const minus = (from: readonly string[], other: readonly string[]) => {
+    const rest = [...other.map(strip)];
+    return from.map(strip).filter((line) => {
+      const at = rest.indexOf(line);
+      if (at < 0) return true;
+      rest.splice(at, 1);
+      return false;
+    });
+  };
+  return { old: minus(item.old ?? [], item.new ?? []), new: minus(item.new ?? [], item.old ?? []) };
+}
+
+/** 命令行输出：先汇总，再列待说明项，最后列全部绑定 / 直接依赖变化的新旧目标（可解释的也要给人看到）。 */
 export function formatExplanation(items: readonly ExplainItem[]): string {
   const count = (explained: boolean) => items.filter((i) => i.explained === explained).length;
-  const render = (item: ExplainItem) => [
-    `${item.explained ? '可解释' : '待说明'} ${item.kind} ${item.node}：${item.reason}`,
-    ...(item.old && !item.explained
-      ? [...item.old.map((l) => `    旧 ${l}`), ...item.new!.map((l) => `    新 ${l}`)]
-      : []),
-  ];
+  const head = (item: ExplainItem) =>
+    `${item.explained ? '可解释' : '待说明'} ${item.kind} ${item.node}：${item.reason}`;
+  const detail = (item: ExplainItem) => {
+    const changed = changedBindings(item);
+    return [...changed.old.map((l) => `    旧 ${l}`), ...changed.new.map((l) => `    新 ${l}`)];
+  };
+  const unexplained = items.filter((i) => !i.explained);
+  const bindings = items.filter((i) => i.explained && (i.kind === 'binding' || i.kind === 'edge'));
   return [
     `可解释 ${count(true)} 项，待说明 ${count(false)} 项（待说明项必须在 PR 描述里逐条说明）`,
-    ...items.filter((i) => !i.explained).flatMap(render),
+    ...unexplained.flatMap((item) => [head(item), ...detail(item)]),
+    ...(bindings.length ? ['', `绑定 / 直接依赖变化 ${bindings.length} 项（新旧目标，请核对是否符合预期）：`] : []),
+    ...bindings.flatMap((item) => [head(item), ...detail(item)]),
   ].join('\n');
 }
 
@@ -138,50 +158,63 @@ export function formatExplanation(items: readonly ExplainItem[]): string {
 // ---------------------------------------------------------------------------------------------------------------
 
 const DIGESTS_DIR = 'tests/acceptance/support/route-policy/required/digests';
-const git = (args: string[]) => execFileSync('git', args, { encoding: 'utf8', maxBuffer: 1 << 28 });
+const runGit = (root: string, args: string[]) =>
+  execFileSync('git', args, { cwd: root, encoding: 'utf8', maxBuffer: 1 << 28, stdio: 'pipe' });
 
 /** `git show <ref>:<file>`；文件不存在时返回 undefined。 */
-function gitShow(ref: string, file: string): string | undefined {
+function gitShow(root: string, ref: string, file: string): string | undefined {
   try {
-    return execFileSync('git', ['show', `${ref}:${file}`], { encoding: 'utf8', maxBuffer: 1 << 28, stdio: 'pipe' });
+    return runGit(root, ['show', `${ref}:${file}`]);
   } catch {
     return undefined;
   }
 }
 
-function registryAt(read: (file: string) => string | undefined, listGraph: () => string[]): Registry {
+function registryAt(read: (file: string) => string | undefined, graphFiles: readonly string[]): Registry {
   const files: Record<string, string> = {};
   for (const name of ['units.ts', 'nodes.ts']) files[name] = read(`${DIGESTS_DIR}/${name}`) ?? '';
-  for (const name of listGraph()) files[`graph/${name}`] = read(`${DIGESTS_DIR}/graph/${name}`) ?? '';
+  for (const name of graphFiles) files[`graph/${name}`] = read(`${DIGESTS_DIR}/graph/${name}`) ?? '';
   return parseRegistry(files);
 }
 
+const names = (output: string) =>
+  output
+    .split('\n')
+    .filter(Boolean)
+    .map((file) => path.basename(file));
+
+/** 工作区里的登记：按目录实际内容枚举区域文件（含未跟踪、不含已删除）。 */
+export function worktreeRegistry(root: string): Registry {
+  const graphDir = path.join(root, DIGESTS_DIR, 'graph');
+  const graphFiles = existsSync(graphDir) ? readdirSync(graphDir).filter((name) => name.endsWith('.ts')) : [];
+  const read = (file: string) =>
+    existsSync(path.join(root, file)) ? readFileSync(path.join(root, file), 'utf8') : undefined;
+  return registryAt(read, graphFiles);
+}
+
+/**
+ * 对比 `ref`（缺省 merge-base）与工作区。工作区侧按目录实际内容枚举区域文件：重算后、`git add` 之前，
+ * 新增（未跟踪）与删除的区域文件都要读对；本分支改过的文件 = 与 ref 的差异 + 未跟踪文件。
+ */
 export function explainFromGit(root: string, baseRef?: string): { readonly items: readonly ExplainItem[] } {
-  process.chdir(root);
-  const ref = baseRef ?? git(['merge-base', 'origin/main', 'HEAD']).trim();
-  const baseGraph = () =>
-    git(['ls-tree', '--name-only', ref, `${DIGESTS_DIR}/graph/`])
-      .split('\n')
-      .filter(Boolean)
-      .map((file) => path.basename(file));
-  const headGraph = () =>
-    git(['ls-files', `${DIGESTS_DIR}/graph/`])
-      .split('\n')
-      .filter(Boolean)
-      .map((f) => path.basename(f));
+  const ref = baseRef ?? runGit(root, ['merge-base', 'origin/main', 'HEAD']).trim();
   const diffFiles = new Set([
-    ...git(['diff', '--name-only', ref]).split('\n'),
-    ...git(['ls-files', '--others', '--exclude-standard']).split('\n'),
+    ...runGit(root, ['diff', '--name-only', ref]).split('\n'),
+    ...runGit(root, ['ls-files', '--others', '--exclude-standard']).split('\n'),
   ]);
+  const readHead = (file: string) => readFileSync(path.join(root, file), 'utf8');
   return explainGraphDiff({
-    base: registryAt((file) => gitShow(ref, file), baseGraph),
-    head: registryAt((file) => readFileSync(path.join(root, file), 'utf8'), headGraph),
+    base: registryAt(
+      (file) => gitShow(root, ref, file),
+      names(runGit(root, ['ls-tree', '--name-only', ref, `${DIGESTS_DIR}/graph/`])),
+    ),
+    head: worktreeRegistry(root),
     diffFiles,
     readBase: (file) => {
-      const text = gitShow(ref, file);
+      const text = gitShow(root, ref, file);
       if (text === undefined) throw new Error(`${ref} 上没有 ${file}`);
       return text;
     },
-    readHead: (file) => readFileSync(path.join(root, file), 'utf8'),
+    readHead,
   });
 }

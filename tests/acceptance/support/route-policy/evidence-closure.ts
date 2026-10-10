@@ -495,6 +495,25 @@ function viaChain(env: ClosureEnv, file: string, spec: string, imported: string)
   return [`import:${spec}`, ...exportedChain(env, target.file, imported).chain];
 }
 
+/**
+ * `ns.member` 的解析链：命名空间本身经过的每一跳（`import * as`、`export * as`、导入后再导出、星号 / 具名转导出、
+ * 进入边界目录）都要记，再接成员在目标模块里的链；只记最后的目标文件，中转文件改指就看不见。
+ */
+function memberChain(env: ClosureEnv, file: string, position: Extract<RefPosition, { kind: 'member' }>): string[] {
+  const binding = fileInfo(env, file)!.imports.get(position.ns);
+  const target = namespaceBindings(env, file).get(position.ns);
+  if (!binding || !target) return ['unresolved:namespace'];
+  if (typeof target === 'object' && 'missing' in target) return [`missing:${target.missing}`];
+  const module = resolveModule(env, file, binding.spec);
+  const viaNamespace =
+    binding.imported === '*' && typeof module === 'object'
+      ? [`import:${binding.spec}`, `namespace:${module.file}`]
+      : viaChain(env, file, binding.spec, binding.imported);
+  const last = viaNamespace.at(-1)?.replace(/^namespace:/, '') ?? '';
+  if (target === 'boundary') return [...viaNamespace, `boundary:${boundaryOf(env, last) ?? last}`];
+  return [...viaNamespace, ...exportedChain(env, target.file, position.member).chain];
+}
+
 function resolveRef(env: ClosureEnv, file: string, position: RefPosition): BindingLine['resolved'] {
   const info = fileInfo(env, file)!;
   switch (position.kind) {
@@ -503,13 +522,8 @@ function resolveRef(env: ClosureEnv, file: string, position: RefPosition): Bindi
       const binding = info.imports.get(position.name);
       return binding ? viaChain(env, file, binding.spec, binding.imported) : [`global:${position.name}`];
     }
-    case 'member': {
-      const target = namespaceBindings(env, file).get(position.ns);
-      const spec = info.imports.get(position.ns)?.spec ?? '';
-      if (!target || target === 'boundary') return [`import:${spec}`, 'boundary-namespace'];
-      if ('missing' in target) return [`missing:${target.missing}`];
-      return [`import:${spec}`, `namespace:${target.file}`, ...exportedChain(env, target.file, position.member).chain];
-    }
+    case 'member':
+      return memberChain(env, file, position);
     case 'escape':
       return [`unresolved:${position.reason}`];
     case 'dynamic':

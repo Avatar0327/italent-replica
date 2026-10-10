@@ -5,13 +5,14 @@
  * LEGACY_DIGESTS_PRESENT。depth-limit 按 D-8 ①：与遍历顺序无关，以实际访问集合 V(r) = {r} ∪ Cl(r) 判越界。
  * 零行为变化：只读源码，不发请求。
  */
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { Finding } from './support/route-policy/compare.js';
 import { MAX_DEPTH } from './support/route-policy/evidence-closure.js';
-import { areaOf, closureFromGraph, parseRegistry } from './support/route-policy/evidence-graph.js';
+import { areaOf, closureFromGraph, parseRegistry, type Registry } from './support/route-policy/evidence-graph.js';
 import {
   checkEvidence,
   currentDependencies,
@@ -24,7 +25,12 @@ import {
   unitText,
   usesOf,
 } from './support/route-policy/evidence.js';
-import { explainGraphDiff } from './support/route-policy/explain-graph-diff.js';
+import {
+  explainFromGit,
+  explainGraphDiff,
+  formatExplanation,
+  worktreeRegistry,
+} from './support/route-policy/explain-graph-diff.js';
 import { REQUIRED } from './support/route-policy/required/index.js';
 import type { RequiredTable } from './support/route-policy/required/types.js';
 
@@ -363,6 +369,8 @@ describe('AC-PRM-FW-02 图存储：depth-limit 与遍历顺序无关（D-8 ①�
     return {
       // R → n01 → … → n39 → {z40, a40}，z40 → a40：旧算法按源码顺序先处理 z40，误报；a40 本来就在闭包里
       cross: { ...stem(), n39: ['z40', 'a40'], z40: ['a40'], a40: [] },
+      // 反向同层边：n39 → {z40, a40}，a40 → z40（z40 先处理时没有依赖，a40 的依赖已访问；新旧都不报）
+      reverse: { ...stem(), n39: ['z40', 'a40'], z40: [], a40: ['z40'] },
       // R → n01 → … → n40 → R：回指根，根从一开始就算已访问
       backref: { ...stem(), n39: ['n40'], n40: ['gate'] },
       // z40 → b41：确实越界
@@ -378,9 +386,10 @@ describe('AC-PRM-FW-02 图存储：depth-limit 与遍历顺序无关（D-8 ①�
     found.filter((f) => f.code === 'EVIDENCE_CLOSURE_UNRESOLVED' && f.detail.includes('depth-limit'));
 
   it('上限层同层交叉边 / 回指根：不报；确实越界：报', () => {
-    const { cross, backref, beyond } = shapes();
+    const { cross, backref, beyond, reverse } = shapes();
     expect(depthLimited(run(cross!).found)).toEqual([]);
     expect(depthLimited(run(backref!).found)).toEqual([]);
+    expect(depthLimited(run(reverse!).found)).toEqual([]);
     const limited = depthLimited(run(beyond!).found);
     expect(limited).toHaveLength(1);
     expect(limited[0]!.detail).toContain('z40');
@@ -544,5 +553,170 @@ describe('AC-PRM-FW-02 图存储：回归（F-072 测试 7）', () => {
     expect(check({}, true)).toEqual([]);
     expect(Object.keys(registry.graph).sort()).toEqual([`${FX}/gate.ts#gate`, `${FX}/h.ts#a`]);
     expect(Object.keys(registry.nodes).sort()).toEqual([`${FX}/h.ts#a`, `${FX}/h.ts#b`]);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// 第 1 轮审查 P2-1 / P2-2 / P3：CLI 输出新旧目标、工作区区域文件增删、命名空间转导出链
+// ---------------------------------------------------------------------------------------------------------------
+
+describe('AC-PRM-FW-02 图存储：explain-graph-diff 命令行输出（#197 第 1 轮 P2-1）', () => {
+  const explainText = (before: Record<string, string>, after: Record<string, string>, diff: string[]) => {
+    const table = tableOf(`${FX}/gate.ts#gate`);
+    const result = explainGraphDiff({
+      base: currentRegistry(table, readerOf(before), false),
+      head: currentRegistry(table, readerOf(after), false),
+      diffFiles: new Set(diff),
+      readBase: readerOf(before),
+      readHead: readerOf(after),
+    });
+    return formatExplanation(result.items);
+  };
+  const gateOf = (imports: string, body: string) => `${imports}export function gate() {\n  return ${body};\n}\n`;
+
+  it('别名交换（可解释）：输出仍列出变化的引用位置与新旧目标，而不是只写“待说明 0 项”', () => {
+    const mid = (a: string, b: string) =>
+      `import { a as fmt, b as tz } from './h.js';\nexport function r() {\n  return fmt() + tz();\n}\n`.replace(
+        '{ a as fmt, b as tz }',
+        `{ ${a} as fmt, ${b} as tz }`,
+      );
+    const gate = gateOf("import { r } from './mid.js';\n", 'r()');
+    const before = { [`${FX}/gate.ts`]: gate, [`${FX}/mid.ts`]: mid('a', 'b'), [`${FX}/h.ts`]: HELPER };
+    const text = explainText(before, { ...before, [`${FX}/mid.ts`]: mid('b', 'a') }, [`${FX}/mid.ts`]);
+    expect(text).toContain('待说明 0 项');
+    expect(text).toContain('绑定 / 直接依赖变化 1 项');
+    expect(text).toContain(`旧 fmt → import:./h.js → ${FX}/h.ts#a`);
+    expect(text).toContain(`新 fmt → import:./h.js → ${FX}/h.ts#b`);
+  });
+
+  it('导入重绑定 / 转导出改指 / 局部 import 遮蔽全局：同样输出新旧目标', () => {
+    const rebound = (second: string) =>
+      gateOf(`import { a as fmt, ${second} as other } from './h.js';\n`, 'fmt() + other()');
+    const files = { [`${FX}/gate.ts`]: rebound('a'), [`${FX}/h.ts`]: HELPER };
+    const edge = explainText(files, { ...files, [`${FX}/gate.ts`]: rebound('b') }, [`${FX}/gate.ts`]);
+    expect(edge).toContain(`新 other → import:./h.js → ${FX}/h.ts#b`);
+
+    const mid = (target: string) => `export { ${target} as pick } from './h.js';\n`;
+    const gate = gateOf("import { pick } from './mid.js';\nimport { a, b } from './h.js';\n", 'pick() + a() + b()');
+    const re = { [`${FX}/gate.ts`]: gate, [`${FX}/mid.ts`]: mid('a'), [`${FX}/h.ts`]: HELPER };
+    const reexport = explainText(re, { ...re, [`${FX}/mid.ts`]: mid('b') }, [`${FX}/mid.ts`]);
+    expect(reexport).toContain(`旧 pick → import:./mid.js → ${FX}/mid.ts#pick → export-from:./h.js → ${FX}/h.ts#a`);
+    expect(reexport).toContain(`新 pick → import:./mid.js → ${FX}/mid.ts#pick → export-from:./h.js → ${FX}/h.ts#b`);
+
+    const shadow = (withImport: boolean) =>
+      gateOf(withImport ? "import { Intl } from './shim.js';\n" : '', 'Intl.name');
+    const shim = "export const Intl = { name: 'shim' };\n";
+    const base = { [`${FX}/gate.ts`]: shadow(false), [`${FX}/shim.ts`]: shim };
+    const global = explainText(base, { ...base, [`${FX}/gate.ts`]: shadow(true) }, [`${FX}/gate.ts`]);
+    expect(global).toContain('旧 Intl → global:Intl');
+    expect(global).toContain(`新 Intl → import:./shim.js → ${FX}/shim.ts#Intl`);
+  });
+
+  it('待说明项带新旧目标', () => {
+    const mid = (target: string) => `export { ${target} as pick } from './h.js';\n`;
+    const gate = gateOf("import { pick } from './mid.js';\nimport { a, b } from './h.js';\n", 'pick() + a() + b()');
+    const re = { [`${FX}/gate.ts`]: gate, [`${FX}/mid.ts`]: mid('a'), [`${FX}/h.ts`]: HELPER };
+    const text = explainText(re, { ...re, [`${FX}/mid.ts`]: mid('b') }, [`${FX}/other.ts`]);
+    expect(text).toContain('待说明 1 项');
+    expect(text).toContain('待说明 binding');
+    expect(text).toContain(`新 pick → import:./mid.js → ${FX}/mid.ts#pick → export-from:./h.js → ${FX}/h.ts#b`);
+  });
+});
+
+describe('AC-PRM-FW-02 图存储：explain-graph-diff 读真实 Git 工作区（#197 第 1 轮 P2-2）', () => {
+  const DIR = 'tests/acceptance/support/route-policy/required/digests';
+  const git = (root: string, ...args: string[]) =>
+    execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', ...args], { cwd: root, stdio: 'pipe' });
+  const writeFile = (root: string, file: string, text: string) => {
+    mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
+    writeFileSync(path.join(root, file), text);
+  };
+  /** 重算：删掉旧的区域文件，写出新登记（不 git add）。 */
+  const regenerate = (root: string, registry: Registry) => {
+    rmSync(path.join(root, DIR), { recursive: true, force: true });
+    for (const [name, text] of Object.entries(renderRegistry(registry))) writeFile(root, `${DIR}/${name}`, text);
+  };
+
+  it('重算后、暂存前：删除的区域文件不读旧路径，新增（未跟踪）的区域文件读得到，命令行入口不抛错', () => {
+    const gate = (from: string, name: string) =>
+      `import { ${name} } from '../${from}.js';\nexport function gate() {\n  return ${name}();\n}\n`;
+    const unit = `${FX}/gate.ts#gate`;
+    const before = {
+      [`${FX}/gate.ts`]: gate('fy/h', 'a'),
+      'apps/api/src/modules/fy/h.ts': HELPER,
+    };
+    const fz = 'export function n() {\n  return m();\n}\nexport function m() {\n  return 1;\n}\n';
+    const after = { [`${FX}/gate.ts`]: gate('fz/n', 'n'), 'apps/api/src/modules/fz/n.ts': fz };
+    const root = mkdtempSync(path.join(os.tmpdir(), 'explain-git-'));
+    git(root, 'init', '-q');
+    for (const [file, text] of Object.entries(before)) writeFile(root, file, text);
+    const baseRegistry = currentRegistry(tableOf(unit), readerOf(before), false);
+    regenerate(root, baseRegistry);
+    git(root, 'add', '-A');
+    git(root, 'commit', '-q', '-m', 'base');
+    expect(Object.keys(renderRegistry(baseRegistry))).toContain('graph/api-modules-fy.ts');
+
+    rmSync(path.join(root, 'apps/api/src/modules/fy'), { recursive: true });
+    for (const [file, text] of Object.entries(after)) writeFile(root, file, text);
+    const headRegistry = currentRegistry(tableOf(unit), readerOf(after), false);
+    regenerate(root, headRegistry);
+
+    expect(Object.keys(worktreeRegistry(root).graph).sort()).toEqual(Object.keys(headRegistry.graph).sort());
+    const { items } = explainFromGit(root, 'HEAD');
+    const byKind = (kind: string) => items.filter((i) => i.kind === kind).map((i) => i.node.split('modules/')[1]);
+    expect(byKind('added')).toEqual(['fz/n.ts#m', 'fz/n.ts#n']);
+    expect(byKind('removed')).toEqual(['fy/h.ts#a', 'fy/h.ts#b']);
+    expect(
+      items.filter((i) => !i.explained),
+      formatExplanation(items),
+    ).toEqual([]);
+  });
+});
+
+describe('AC-PRM-FW-02 图存储：命名空间绑定记每一跳（#197 第 1 轮 P3）', () => {
+  const GATE = "import { r } from './use.js';\nexport function gate() {\n  return r();\n}\n";
+  const use = (member: string) =>
+    `import { ns } from './mid.js';\nexport function r() {\n  return ns.${member}();\n}\n`;
+  const NS = "export * as ns from './h.js';\n";
+  const bindingOf = (files: Record<string, string>, member = 'a') =>
+    currentRegistry(tableOf(`${FX}/gate.ts#gate`), readerOf({ ...files, [`${FX}/use.ts`]: use(member) }), false).nodes[
+      `${FX}/use.ts#r`
+    ]!;
+  const base = { [`${FX}/gate.ts`]: GATE, [`${FX}/h.ts`]: HELPER, [`${FX}/top.ts`]: NS, [`${FX}/top2.ts`]: NS };
+
+  /** 命名空间最终指向同一个文件、成员也相同，只有中转文件的某一跳改指：邻接与摘要不变，指纹必须变。 */
+  const reroute = (name: string, before: string, after: string) =>
+    it(`${name}：中转文件改指（最终目标不变）→ 绑定指纹变化`, () => {
+      const files = { ...base, [`${FX}/mid.ts`]: before };
+      const rerouted = { ...files, [`${FX}/mid.ts`]: after };
+      expect(bindingOf(rerouted)[0]).toBe(bindingOf(files)[0]);
+      expect(bindingOf(rerouted)[1]).not.toBe(bindingOf(files)[1]);
+    });
+
+  reroute('具名转导出命名空间', "export { ns } from './top.js';\n", "export { ns } from './top2.js';\n");
+  reroute(
+    '导入 namespace 再导出',
+    "import { ns as inner } from './top.js';\nexport { inner as ns };\n",
+    "import { ns as inner } from './top2.js';\nexport { inner as ns };\n",
+  );
+  reroute('星号转导出', "export * from './top.js';\n", "export * from './top2.js';\n");
+  reroute('export * as ns', "export * as ns from './h.js';\n", "export * as ns from './h2.js';\n");
+
+  it('命名空间落进边界目录：换成另一个边界文件，指纹变化', () => {
+    const into = (file: string) => ({ ...base, [`${FX}/mid.ts`]: `export * as ns from '${file}';\n` });
+    const [one, other] = [into('../../errors.js'), into('../../commands.js')];
+    expect(bindingOf(other, 'AppError')[1]).not.toBe(bindingOf(one, 'AppError')[1]);
+  });
+
+  it('中转文件改指 → EVIDENCE_STALE（绑定变化）', () => {
+    const files = {
+      ...base,
+      [`${FX}/gate.ts`]: GATE,
+      [`${FX}/use.ts`]: use('a'),
+      [`${FX}/mid.ts`]: "export { ns } from './top.js';\n",
+    };
+    const { check } = baseline(files, `${FX}/gate.ts#gate`);
+    const found = check({ [`${FX}/mid.ts`]: "export { ns } from './top2.js';\n" });
+    expect(found.map((f) => f.detail).join('\n')).toContain('绑定变化');
   });
 });
