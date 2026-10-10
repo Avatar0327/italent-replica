@@ -57,7 +57,7 @@ describe('AC-17 新格式审计 + hints 防御投影（真实授权器）', () =
   let setup: ReturnType<typeof tenantApi>;
   const setupRequest = (method: string, path: string, options: Record<string, unknown> = {}) =>
     setup.request(method, `${TR_BASE}${path}`, { ...world.asAdmin, ...options });
-  const asWorld = () => ({ as: { tenant: world.tenant.id } }) as unknown as F082World;
+  const asWorld = () => ({ as: { tenant: world.tenant.id }, request: setupRequest }) as unknown as F082World;
   const field = async (name: string) => {
     const response = await setupRequest('POST', '/fields', {
       ifMatch: 0,
@@ -135,12 +135,15 @@ describe('AC-17 新格式审计 + hints 防御投影（真实授权器）', () =
     let ruleId: string;
 
     beforeAll(async () => {
-      ruleId = randomUUID();
-      [ids.t, ids.a, ids.s] = [
-        (await field('提示目标')).id,
-        (await field('提示来源')).id,
-        (await field('提示机密')).id,
-      ];
+      // t、a 是真实字段（查看人看得到）；s 不在字段目录里，对任何查看人都等同不可见
+      [ids.t, ids.a, ids.s] = [(await field('提示目标')).id, (await field('提示来源')).id, randomUUID()];
+      // 审计行要挂在一条真实的规则上（来源裁剪按规则行的范围判定可见性）
+      const made = await setupRequest('POST', CALC_RULES, {
+        ifMatch: 0,
+        body: calcBody([calcItem({ id: ids.t, name: '提示目标' }, '1')]),
+      });
+      expect(made.status, await made.clone().text()).toBe(201);
+      ruleId = ((await made.json()) as CalcRuleView).id;
       const hints = {
         order: [ids.t, ids.a, ids.s],
         blocked: [ids.t, ids.s],
@@ -158,27 +161,23 @@ describe('AC-17 新格式审计 + hints 防御投影（真实授权器）', () =
           objectType: RULE.code,
           objectId: ruleId,
           before: { id: ruleId, name: '提示规则', items: [] },
-          after: { id: ruleId, name: '提示规则', items: [], hints },
+          after: { id: ruleId, name: '提示规则（改）', items: [], hints },
           commandId: randomUUID(),
           occurredAt: TR_NOW,
         }),
       );
     });
 
-    /** 查看人只看得到“自己创建”的字段：把 t、a 归到查看人名下，s 不归他。 */
     async function viewerWithFields(extra: { hidden?: readonly string[] }) {
-      const viewer = await calcRuleOperator(world, { seeAll: true, fields: 'creator', ...extra });
+      const viewer = await calcRuleOperator(world, { seeAll: true, fields: 'seeAll', ...extra });
       await makeAuditor(viewer.user.id);
-      for (const id of [ids.t, ids.a]) {
-        await withTenant(testDb().db, world.tenant.id, (tx) =>
-          tx.execute(sql`UPDATE talent_review_fields SET created_by = ${viewer.user.id} WHERE id = ${id}`),
-        );
-      }
       return viewer;
     }
     const hintsOf = async (viewer: Awaited<ReturnType<typeof viewerWithFields>>) => {
       const seen = await auditText(viewer.as, ruleId);
-      const detail = seen.details[0] as { after?: { hints?: Record<string, unknown> } };
+      const detail = seen.details.find((entry) => (entry as { after?: { hints?: unknown } }).after?.hints) as {
+        after?: { hints?: Record<string, unknown> };
+      };
       return { hints: detail.after?.hints, text: seen.text };
     };
 

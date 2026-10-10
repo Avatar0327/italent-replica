@@ -190,11 +190,11 @@ describe('AC-11 句柄不可注入；AC-13 裸词；AC-12 盘点方案', () => {
     const error = await errorOf(bare);
     expect([bare.status, error.details['reason']]).toEqual([400, 'FORMULA_INVALID']);
     expect(JSON.stringify(error.details['issues'])).toContain('BARE_WORD');
-    expect(JSON.stringify(error.details['issues'])).toContain('"A"');
+    expect(JSON.stringify(error.details['issues'])).toContain('作文本请写成 \\"A\\"');
     const withField = await save(w, [calcItem(target, `绩效结果1 + 1`)]);
     expect(JSON.stringify((await errorOf(withField)).details['issues'])).toContain(`盘点对象.绩效结果1`);
     expect((await save(w, [calcItem(target, `IF(盘点对象.${named.name} = "A", 1, 0)`)])).status).toBe(201);
-    expect((await save(w, [calcItem(target, 'Def x = 1\nx + 1')])).status).toBe(201);
+    expect((await save(w, [calcItem(target, 'Def(x, 1); x + 1')])).status).toBe(201);
   });
 
   it('盘点方案：没有同名字段 → 项目上下文；有可见同名字段 → 400 RESERVED_PATH_AMBIGUOUS 带 choices；选择后保存成功', async () => {

@@ -11,6 +11,8 @@ export interface AuditFieldDirectory {
   readonly visible: ReadonlyMap<string, string>;
   /** 查看人能看到租户的全部字段（无法解析的历史公式只对这样的人显示原文）。 */
   readonly allVisible: boolean;
+  /** 查看人对计算规则 items 列的查看权（hints 的投影随它，契约 §5.2）；缺省按有处理。 */
+  readonly itemsViewable?: boolean;
 }
 
 type Json = Record<string, unknown>;
@@ -66,31 +68,66 @@ function filterRefs(value: Json, directory: AuditFieldDirectory): { value: Json;
   return { value: changed ? out : value, changed };
 }
 
-const ids = (list: unknown, directory: AuditFieldDirectory): string[] =>
-  Array.isArray(list)
-    ? list.filter((id): id is string => typeof id === 'string' && directory.visible.has(id.toLowerCase()))
-    : [];
+const idsOf = (list: unknown): string[] =>
+  Array.isArray(list) ? list.filter((id): id is string => typeof id === 'string') : [];
+
+/** 固定提示文案（与保存响应里 B5 的同名提示一致；F082-4 的统一投影共用这两句）。 */
+export const HINT_CYCLE_HIDDEN = '存在循环依赖，涉及当前不可见的字段（不显示字段名称）；允许保存，计算时将整次失败';
+export const hintOtherHidden = (count: number) => `另有 ${count} 条提示涉及不可见的字段，未显示`;
+export const hintItemsHidden = (count: number) => `计算项目对你不可见，${count} 条提示未显示`;
 
 /**
- * hints（契约 §5.3 第 3 步，只作防御：B5 起审计就不含 hints）。审计里没有结构化诊断，无法判断 warnings 文案提到的字段是否可见，
- * 所以 order / blocked / cycles 只留可见的目标字段 ID（环要全部成员可见），warnings 一律汇总为不含名称的计数提示。
+ * hints（契约 §5.2、§5.3 第 3 步，只作防御：B5 起审计就不含 hints）。审计里没有结构化诊断，无法判断 warnings 文案提到的
+ * 字段是否可见，所以 warnings 一律不原样输出：
+ * - 没有 items 查看权：order / blocked / cycles 为空，warnings 只有一句固定文案，others 给全部个数；
+ * - 有 items 查看权：order / blocked 只留目标字段可见的项目 ID，环要全部成员可见；被裁掉的环给不含名称的循环提示，
+ *   warnings 汇总为一句计数提示；others 给被裁掉的个数（都为 0 时省略）。
  */
 function filterHints(value: Json, directory: AuditFieldDirectory): { value: Json; changed: boolean } {
   const hints = value['hints'];
   if (!isObject(hints)) return { value, changed: false };
-  const cycles = Array.isArray(hints['cycles'])
-    ? (hints['cycles'] as unknown[]).filter(
-        (cycle) => Array.isArray(cycle) && ids(cycle, directory).length === cycle.length,
-      )
-    : [];
+  const seen = (id: string) => directory.visible.has(id.toLowerCase());
+  const order = idsOf(hints['order']);
+  const blocked = idsOf(hints['blocked']);
+  const cycles = Array.isArray(hints['cycles']) ? (hints['cycles'] as unknown[]) : [];
   const warnings = Array.isArray(hints['warnings']) ? hints['warnings'].length : 0;
-  const out: Json = {
-    ...hints,
-    order: ids(hints['order'], directory),
-    blocked: ids(hints['blocked'], directory),
-    cycles,
-    warnings: warnings > 0 ? [`另有 ${warnings} 条提示涉及不可见的字段，未显示`] : [],
-  };
+  const { others: _previous, ...rest } = hints;
+  let out: Json;
+  if (directory.itemsViewable === false) {
+    const hiding = warnings > 0 || order.length + blocked.length + cycles.length > 0;
+    out = {
+      ...rest,
+      order: [],
+      blocked: [],
+      cycles: [],
+      warnings: hiding ? [hintItemsHidden(warnings)] : [],
+      ...(hiding ? { others: { order: order.length, blocked: blocked.length, warnings } } : {}),
+    };
+  } else {
+    const keptCycles = cycles.filter(
+      (cycle) => idsOf(cycle).length === (cycle as unknown[]).length && idsOf(cycle).every(seen),
+    );
+    const keptOrder = order.filter(seen);
+    const keptBlocked = blocked.filter(seen);
+    const droppedCycles = cycles.length - keptCycles.length;
+    const others = {
+      order: order.length - keptOrder.length,
+      blocked: blocked.length - keptBlocked.length,
+      warnings,
+    };
+    const anyDropped = others.order + others.blocked + others.warnings + droppedCycles > 0;
+    out = {
+      ...rest,
+      order: keptOrder,
+      blocked: keptBlocked,
+      cycles: keptCycles,
+      warnings: [
+        ...(droppedCycles > 0 ? [HINT_CYCLE_HIDDEN] : []),
+        ...(warnings > 0 ? [hintOtherHidden(warnings)] : []),
+      ],
+      ...(anyDropped && others.order + others.blocked + others.warnings > 0 ? { others } : {}),
+    };
+  }
   return { value: { ...value, hints: out }, changed: true };
 }
 
