@@ -40,6 +40,9 @@ export interface Closure {
  */
 export const MAX_DEPTH = 40;
 
+/** 证据单元 / 依赖节点在源码里找不到（改名、删除、文件移走）：登记与源码不一致，不是写法错误（F-090）。 */
+export class EvidenceUnitError extends Error {}
+
 const sourceFiles = new WeakMap<SourceReader, Map<string, ts.SourceFile>>();
 
 /** 读源码并解析（按读取器缓存）；读不到时抛读取器的错误。 */
@@ -415,7 +418,7 @@ function nodesOf(env: ClosureEnv, id: string): { readonly file: string; readonly
   const at = id.indexOf('#');
   const file = id.slice(0, at);
   const info = fileInfo(env, file);
-  if (!info) throw new Error(`证据单元 ${id} 的文件读不到`);
+  if (!info) throw new EvidenceUnitError(`证据单元 ${id} 的文件读不到`);
   const name = id.slice(at + 1);
   return { file, nodes: info.decls.get(name) ?? [env.findNode(info.sf, id, name)] };
 }

@@ -7,22 +7,28 @@
  * 与方案文字的一处出入（按 §3.2 公式与 A2 为准）：§6 测试 10 写“A 组的 impacts 不含 R”，但 R_reg(A) ∋ R（旧图 R→A），
  * 公式要求取并，所以 A 组含 R，且只以 snapshot 'reg' 出现；测试 10 断言“任何关于 X 的报告都不含 R、A 组不经 cur 快照连到 R”。
  */
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Finding } from './support/route-policy/compare.js';
 import { EVIDENCE_BOUNDARY, inBoundary } from './support/route-policy/evidence-boundary.js';
 import { MAX_DEPTH } from './support/route-policy/evidence-closure.js';
 import type { Graph, Registry } from './support/route-policy/evidence-graph.js';
 import { impactCounts, type StaleGroup, staleGroups, type Use } from './support/route-policy/evidence-report.js';
 import {
+  brokenUnits,
   checkEvidence,
+  checkStored,
   closureReports,
   currentRegistry,
+  currentRequiredRegistry,
+  effectiveUses,
   REGISTRY,
   repoSource,
   type SourceReader,
+  syncedRegistry,
   unitText,
   usesOf,
 } from './support/route-policy/evidence.js';
+import { EVIDENCE_STRICT_ENV, gateEvidence } from './support/route-policy/evidence-gate.js';
 import { REQUIRED } from './support/route-policy/required/index.js';
 import { TENANT_SETTINGS } from './support/route-policy/required/tenant-settings.js';
 import type { RequiredTable } from './support/route-policy/required/types.js';
@@ -33,8 +39,7 @@ const readerOf =
   (file) =>
     files[file] ?? repoSource(file);
 /** 当前源码算出的图（R_cur 的依据；与登记同步时等于登记图，但统计应以当前源码为准）。 */
-let currentGraph: Graph | undefined;
-const curGraph = () => (currentGraph ??= currentRegistry(REQUIRED).graph);
+const curGraph = (): Graph => currentRequiredRegistry().graph;
 const show = (found: readonly Finding[]) => found.map((f) => `${f.route} ${f.code}: ${f.detail}`).join('\n');
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -298,7 +303,7 @@ function fixtureRun(files: Record<string, string>, patch: Record<string, string>
   );
   const reg = currentRegistry(table, readerOf(files), false);
   const cur = currentRegistry(table, readerOf({ ...files, ...patch }), false);
-  const roots = usesOf(table, false);
+  const roots = effectiveUses(table, readerOf({ ...files, ...patch }), false);
   const found = checkEvidence(table, {
     read: readerOf({ ...files, ...patch }),
     branch: false,
@@ -331,7 +336,8 @@ function expectedUnresolved(table: RequiredTable, read: SourceReader, branch: fa
 // ---------------------------------------------------------------------------------------------------------------
 
 describe('AC-PRM-FW-02 集中报告：真实表（F-072 测试 8、14）', () => {
-  const roots = () => usesOf(REQUIRED);
+  // 根 = 有效单元集合：失效单元不进检测器基准，也不进 oracle，只由证据门禁按 EVIDENCE_UNIT 报（F-090）
+  const roots = () => effectiveUses();
   /** 在函数体末尾加一个不改依赖 / 绑定的语句 → 只有摘要变化。 */
   const touch = (id: string) => {
     const text = unitText(repoSource, id);
@@ -365,7 +371,8 @@ describe('AC-PRM-FW-02 集中报告：真实表（F-072 测试 8、14）', () =>
     expect(found[0]!.detail).not.toMatch(/共 \d+ 处/);
     expect(found[0]!.route).toBe('*');
     assertOracle(REGISTRY, cur, roots(), [group]);
-  });
+    // 整张表要算三遍当前登记（基准、改动后、检测器各一次），慢机器上超过默认 30s（F-090 审查期间 CI 与本地均出现），放宽到 120s
+  }, 120_000);
 
   const safeText = (id: string) => {
     try {
@@ -471,7 +478,7 @@ describe('AC-PRM-FW-02 集中报告：纯根变化（F-072 测试 12b，R2-2）'
     const reg = currentRegistry({ [key]: [{ ...original }] }, repoSource);
     const reader = readerOf({ [file]: patched });
     const cur = currentRegistry(table, reader);
-    const roots = usesOf(table);
+    const roots = effectiveUses(table, reader);
     const groups = staleGroups({ reg, cur, roots });
     const o = assertOracle(reg, cur, roots, groups);
     expect([...o.added.values(), ...o.removed.values(), ...o.changed.values()].every((s) => s.size === 0)).toBe(true);
@@ -598,7 +605,7 @@ describe('AC-PRM-FW-02 集中报告：oracle 随机变异（F-072 测试 13）',
   it('真实登记上固定种子改 30 个节点（摘要 / 加边 / 删边 / 绑定 / 别名交换 / 纯根），A1～A4 逐条成立', () => {
     const rand = mulberry32(20261010);
     const pick = <T>(list: readonly T[]) => list[Math.floor(rand() * list.length)]!;
-    const roots = usesOf(REQUIRED);
+    const roots = effectiveUses();
     const nodeIds = Object.keys(REGISTRY.nodes);
     const graphIds = Object.keys(REGISTRY.graph);
     const reg = {
@@ -702,7 +709,7 @@ describe('AC-PRM-FW-02 集中报告：输出形态（F-072 §3.2 规则 1、3、
 // ---------------------------------------------------------------------------------------------------------------
 
 describe('AC-PRM-FW-02 集中报告：登记缺项 / 副本不一致不丢失（#212 第 1 轮 P2-1）', () => {
-  const roots = () => usesOf(REQUIRED);
+  const roots = () => effectiveUses();
   const rootIds = () => new Set(roots().keys());
   /** 每个节点被多少个根（含自身为根）到达：对所有根各做一次朴素 BFS 累加，只算一次。 */
   let counts: Map<string, number> | undefined;
@@ -886,4 +893,64 @@ describe('AC-PRM-FW-02 集中报告：纯证据根第一次成为依赖不算摘
     expect([...group.kinds].sort()).toEqual(['digest', 'root']);
     expect(group.impacts.map((i) => i.root).sort()).toEqual([R, S].sort());
   });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// F-090 第 2 轮审查 P2-1：证据单元连同全部调用方一致改名、登记未更新（真实表、真实报告路径）
+// ---------------------------------------------------------------------------------------------------------------
+
+describe('AC-PRM-FW-02 集中报告：证据单元一致改名、登记未更新（F-090 R2 P2-1）', () => {
+  const OLD = 'apps/api/src/modules/permission/module-route-access.ts#objectContext';
+  /** 内存里把 objectContext 连同全部调用方一致改名（业务行为不变）；义务表与 required/digests/ 都不动。 */
+  const renamed: SourceReader = (file) => {
+    const text = repoSource(file);
+    return file.startsWith('apps/') ? text.replace(/\bobjectContext\b/g, 'objectAccessContext') : text;
+  };
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  it('失效单元只由门禁按 EVIDENCE_UNIT 报：默认只警告、不判红；严格（显式 / 环境变量）判红', () => {
+    expect(usesOf(REQUIRED).has(OLD), '义务表仍引用旧单元').toBe(true);
+    expect(brokenUnits(REQUIRED, renamed)).toEqual([OLD]);
+    expect(effectiveUses(REQUIRED, renamed).has(OLD), '有效单元集合不含失效单元').toBe(false);
+    const found = checkStored(REQUIRED, { read: renamed });
+    const unit = found.filter((f) => f.code === 'EVIDENCE_UNIT');
+    expect(unit.length).toBeGreaterThan(0);
+    expect(
+      unit.every((f) => f.detail.includes(OLD)),
+      show(unit),
+    ).toBe(true);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    expect(gateEvidence(found, '改名回归', { strict: false }), '默认模式：全部是漂移类，只警告').toEqual([]);
+    expect(warn.mock.calls.flat().join('\n')).toContain(`EVIDENCE_UNIT: `);
+    expect(gateEvidence(found, '改名回归', { strict: true }).map((f) => f.code)).toContain('EVIDENCE_UNIT');
+    vi.stubEnv(EVIDENCE_STRICT_ENV, '1');
+    expect(gateEvidence(found, '改名回归').map((f) => f.code)).toContain('EVIDENCE_UNIT');
+  });
+
+  it('集中报告的检测器在改名后的源码上照常工作：再改一个共享依赖 → 恰好 1 条，oracle 与检测器同以有效单元为根', () => {
+    // 默认模式的检测器基准 = 按当前（改名后）源码算出的登记，与 REGISTRY 在这棵树上的值相同
+    const base = syncedRegistry(REQUIRED, renamed);
+    const roots = effectiveUses(REQUIRED, renamed);
+    const reach = (id: string) => [...roots.keys()].filter((r) => r === id || dist(base.graph, r).has(id)).length;
+    const target = Object.keys(base.nodes)
+      .filter((id) => fileOf(id).endsWith('domain/src/qualification/catalog.ts') && !roots.has(id))
+      .filter((id) => /^(export )?function /.test(unitText(renamed, id)))
+      .sort((a, b) => reach(b) - reach(a))[0]!;
+    expect(reach(target), `${target} 被引用的根太少`).toBeGreaterThan(5);
+    const text = unitText(renamed, target);
+    const end = text.lastIndexOf('}');
+    const file = fileOf(target);
+    const patched = renamed(file).replace(text, `${text.slice(0, end)}void 0; ${text.slice(end)}`);
+    const touched: SourceReader = (path) => (path === file ? patched : renamed(path));
+    const found = checkEvidence(REQUIRED, { read: touched, registry: base }).filter((f) => f.code === 'EVIDENCE_STALE');
+    expect(found, show(found)).toHaveLength(1);
+    const group = found[0]!.group!;
+    expect(group.node).toBe(target);
+    expect(group.impacts).toHaveLength(reach(target));
+    assertOracle(base, currentRegistry(REQUIRED, touched), roots, [group]);
+    // 整张表要算三遍登记（基准、改动后、检测器各一次），放宽到 180s
+  }, 180_000);
 });

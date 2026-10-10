@@ -28,6 +28,10 @@ export interface RecordFilter {
   readonly targetPositionId?: string;
   readonly successorEmployeeId?: string;
   readonly id?: string;
+  /** 写命令返回前复核用：按一组 ID 取（批量结束的回执）。 */
+  readonly ids?: readonly string[];
+  /** 删除回执的复核：已软删除的行也要按它的目标判范围（读入口永远不设）。 */
+  readonly includeDeleted?: boolean;
 }
 
 export interface RecordRow {
@@ -66,7 +70,7 @@ function conditions(visibility: RecordVisibility, filter: RecordFilter): SQL {
   const { tenantId, userId, today, asOf, scope } = visibility;
   const parts: SQL[] = [
     sql`r.tenant_id = ${tenantId}::uuid`,
-    sql`r.deleted_at IS NULL`,
+    filter.includeDeleted ? sql`true` : sql`r.deleted_at IS NULL`,
     sql`r.start_date <= ${asOf}::date`,
     statusPredicate(filter.status, asOf),
     // 范围锚点 = 目标组织；职位继任 = 职位**今天**所属的组织（DEC-368①：资源归属只按今天的管理范围判断，
@@ -79,6 +83,7 @@ function conditions(visibility: RecordVisibility, filter: RecordFilter): SQL {
     )}`,
   ];
   if (filter.id) parts.push(sql`r.id = ${filter.id}::uuid`);
+  if (filter.ids) parts.push(sql`r.id = ANY(${`{${filter.ids.join(',')}}`}::uuid[])`);
   if (filter.successionType) parts.push(sql`r.succession_type = ${filter.successionType}`);
   if (filter.targetOrgId) parts.push(sql`r.target_org_id = ${filter.targetOrgId}::uuid`);
   if (filter.targetPositionId) parts.push(sql`r.target_position_id = ${filter.targetPositionId}::uuid`);

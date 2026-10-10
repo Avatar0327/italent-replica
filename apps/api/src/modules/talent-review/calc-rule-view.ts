@@ -41,6 +41,8 @@ export interface CalcItemView {
   readonly formulaBinding?: FormulaBindingState;
   readonly fieldNames?: Record<string, string>;
   readonly refFieldIds?: string[];
+  /** unresolved 的原因码（改绑失败，契约 §6.3）：同样只在原始视图里出现。 */
+  readonly bindingIssue?: string;
   /** 渲染后对外的逐处绑定（presentCalcRules 产出，契约 §1.4）。 */
   readonly formulaBindings?: (string | null)[];
 }
@@ -73,15 +75,19 @@ export const CALC_RULE: ConfigSpec<CalcRuleView> = calcRuleSpec(false);
 export const CALC_RULE_BOUND: ConfigSpec<CalcRuleView> = calcRuleSpec(true);
 export const calcRuleSpecOf = (bound: boolean) => (bound ? CALC_RULE_BOUND : CALC_RULE);
 
-/** bound 项目的引用（kind = 'bound'）与写入时刻的字段名：审计快照的 fieldNames / refFieldIds（契约 §5.3）。 */
-async function boundRefs(tx: Tx, tenantId: string, itemIds: readonly string[]) {
+/**
+ * 项目的引用与写入时刻的字段名：审计快照的 fieldNames / refFieldIds（契约 §5.3）。bound 项目是 bound 引用；
+ * legacy / unresolved 项目是候选引用（改绑失败或改名固化，契约 §6.2）——候选变化也要进审计，否则改绑重试新增候选时
+ * 前后快照相同、changes 为空（F082-5 第 1 轮 P2-2）。读取时同样按查看人的字段目录权限裁剪。
+ */
+async function itemRefs(tx: Tx, tenantId: string, itemIds: readonly string[]) {
   const found = new Map<string, { id: string; name: string }[]>();
   if (itemIds.length === 0) return found;
   const rows = await tx
     .select({ itemId: R.itemId, fieldId: R.fieldId, name: F.name })
     .from(R)
     .innerJoin(F, and(eq(F.tenantId, R.tenantId), eq(F.id, R.fieldId)))
-    .where(and(eq(R.tenantId, tenantId), eq(R.kind, 'bound'), inArray(R.itemId, [...itemIds])))
+    .where(and(eq(R.tenantId, tenantId), inArray(R.itemId, [...itemIds])))
     .orderBy(asc(R.fieldId));
   for (const entry of rows) {
     found.set(entry.itemId, [...(found.get(entry.itemId) ?? []), { id: entry.fieldId, name: entry.name }]);
@@ -105,35 +111,46 @@ export async function withItems(tx: Tx, tenantId: string, rows: CalcRuleRow[], b
     )
     .orderBy(asc(I.sortNo), asc(I.id));
   const refs = bound
-    ? await boundRefs(
+    ? await itemRefs(
         tx,
         tenantId,
-        items.filter((item) => item.formulaBinding === 'bound').map((item) => item.id),
+        items.map((item) => item.id),
       )
     : new Map();
   return rows.map((r) => ({
     ...r,
     items: items
       .filter((item) => item.ruleId === r.id)
-      .map(({ id, targetFieldId, priority, formula, description, sortNo, usesRanking, formulaBinding }) => ({
-        targetFieldId,
-        priority,
-        formula,
-        description,
-        sortNo,
-        usesRanking,
-        ...(bound ? boundExtras(formulaBinding as FormulaBindingState, refs.get(id)) : {}),
-      })),
+      .map(
+        ({ id, targetFieldId, priority, formula, description, sortNo, usesRanking, formulaBinding, bindingIssue }) => ({
+          targetFieldId,
+          priority,
+          formula,
+          description,
+          sortNo,
+          usesRanking,
+          ...(bound ? boundExtras(formulaBinding as FormulaBindingState, refs.get(id), bindingIssue) : {}),
+        }),
+      ),
   }));
 }
 
-function boundExtras(binding: FormulaBindingState, refs: { id: string; name: string }[] | undefined) {
-  if (binding !== 'bound') return { formulaBinding: binding };
+function boundExtras(
+  binding: FormulaBindingState,
+  refs: { id: string; name: string }[] | undefined,
+  issue: string | null,
+) {
   const list = refs ?? [];
-  return {
-    formulaBinding: binding,
+  const references = {
     fieldNames: Object.fromEntries(list.map((entry) => [entry.id, entry.name])),
     refFieldIds: list.map((entry) => entry.id),
+  };
+  if (binding === 'bound') return { formulaBinding: binding, ...references };
+  // legacy / unresolved：候选引用有变化才出现在快照里，没有候选的保持原来的形状
+  return {
+    formulaBinding: binding,
+    ...(issue ? { bindingIssue: issue } : {}),
+    ...(list.length > 0 ? references : {}),
   };
 }
 
