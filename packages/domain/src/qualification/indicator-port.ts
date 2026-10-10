@@ -10,7 +10,8 @@ export interface QualificationIndicator {
   readonly code: string;
   readonly name: string;
   readonly targetTypeId: string;
-  readonly targetTypePath: readonly string[];
+  /** 指标所属类型从根到本级的路径，每一级同时给 ID 和名称（DEC-374④ 🟡）；最后一级的 id 等于 targetTypeId。 */
+  readonly targetTypePath: readonly { readonly id: string; readonly name: string }[];
   readonly evalMode: 'score' | 'grade';
   readonly gradeSchemeId: string | null;
   readonly weight: number | null;
