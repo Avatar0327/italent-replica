@@ -389,6 +389,8 @@ export async function presentBoundHints(
   access: CatalogAccess | undefined,
 ): Promise<CalcHints> {
   const order = rawItems.map((item) => item.targetFieldId);
+  // 没有计算项目：没有可检测的内容（也没有未改绑的项目），不提示
+  if (rawItems.length === 0) return { order, warnings: [], cycles: [], blocked: [] };
   const states = new Set(rawItems.map((item) => item.formulaBinding ?? 'legacy'));
   if (states.size === 1 && states.has('legacy')) return presentHints(tx, tenantId, rawItems, access);
   if (states.size !== 1 || !states.has('bound')) {

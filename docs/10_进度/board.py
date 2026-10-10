@@ -128,17 +128,85 @@ def sync(d):
         s["ev"] = f"{m.group(1)}/{m.group(2)}"
 
 
+def live_prs():
+    """进行中看板的自动部分：在途 PR 逐个判状态（卡点优先），以及已合并 PR 清单。"""
+    now = datetime.datetime.now(datetime.timezone.utc)
+    def age(t):
+        return int((now - datetime.datetime.fromisoformat(t.replace("Z", "+00:00"))).total_seconds() // 60) if t else 10**6
+    try:
+        opened = json.loads(sh("gh pr list --state open --limit 40 --json number,title,isDraft,mergeable,statusCheckRollup,createdAt,headRefOid") or "[]")
+        for p in opened:  # 评论与最新提交逐个取，避免一次查询过大被 GraphQL 拒绝
+            p["comments"] = [{"createdAt": c["created_at"], "body": c["body"]} for c in
+                             json.loads(sh(f"gh api --paginate repos/{{owner}}/{{repo}}/issues/{p['number']}/comments --jq '[.[] | {{created_at, body}}]' | jq -s add") or "[]") or []]
+            cd = sh(f"gh api repos/{{owner}}/{{repo}}/commits/{p['headRefOid']} --jq .commit.committer.date")
+            p["commits"] = [{"committedDate": cd}] if cd else []
+        merged = json.loads(sh("gh pr list --state merged --limit 500 --json number,title,mergedAt") or "[]")
+    except ValueError:
+        return None
+    paused = set()
+    try:
+        paused = set(open(os.path.expanduser("~/.cache/italent-paused-prs")).read().split())
+    except OSError:
+        pass
+    out = []
+    for p in opened:
+        n = p["number"]
+        if str(n) in paused:
+            continue
+        checks = [c.get("conclusion") or c.get("status") for c in p["statusCheckRollup"] if c.get("conclusion") != "SKIPPED"]
+        ci = "none" if not checks else "green" if all(c == "SUCCESS" for c in checks) else "red" if any(c in ("FAILURE", "CANCELLED", "TIMED_OUT") for c in checks) else "running"
+        cs = p["comments"]
+        last_push = p["commits"][-1]["committedDate"] if p["commits"] else p["createdAt"]
+        def last(pred):
+            ts = [c["createdAt"] for c in cs if pred(c.get("body", "").lstrip())]
+            return max(ts) if ts else ""
+        t_ask = last(lambda b: b.startswith("【等决定】"))
+        t_dec = last(lambda b: b.startswith("【决定】") or "已按 A 处理" in b[:40] or "按 DEC-" in b[:60] and "处理" in b[:60])
+        t_rev = last(lambda b: b.startswith("【审查已发起】"))
+        t_res = last(lambda b: b.startswith("## 审查原文"))
+        res_body = next((c["body"] for c in reversed(cs) if c.get("body", "").lstrip().startswith("## 审查原文")), "")
+        t_done = last(lambda b: b.startswith(("开发完成", "设计完成")))
+        rounds = sum(1 for c in cs if c.get("body", "").lstrip().startswith("## 审查原文"))
+        act = max([x for x in (last_push, cs[-1]["createdAt"] if cs else "") if x] or [p["createdAt"]])
+        st, why = "dev", "开发中"
+        if t_ask and t_ask > t_dec:
+            st, why = "decide", "【等决定】待你 / 总编排定"
+        elif p["mergeable"] == "CONFLICTING":
+            st, why = "conflict", "与 main 冲突，CI 不跑"
+        elif ci == "red":
+            st, why = "cired", "CI 红"
+        elif t_rev and t_rev > t_res:
+            st, why = "review", f"第 {rounds + 1} 轮审查中"
+        elif t_res and t_res > max(t_done, last_push) and "可以合并" in res_body[:400]:
+            st, why = "merge", "审查通过，待合并"
+        elif t_res and t_res > max(t_done, last_push):
+            st, why = "rework", f"第 {rounds} 轮未过，返工中"
+        elif not p["isDraft"] and ci == "green":
+            st, why = "queue", "待发起审查"
+        elif not p["isDraft"]:
+            st, why = "ci", "等 CI"
+        idle = age(act)
+        stuck = st in ("decide", "conflict", "cired") or (st in ("dev", "rework") and idle >= 60) or (st == "queue" and idle >= 15)
+        out.append({"n": n, "t": p["title"][:60], "s": st, "why": why, "r": rounds, "idle": idle, "stuck": stuck,
+                    "ask": age(t_ask) if st == "decide" else None})
+    today = now.strftime("%Y-%m-%d")
+    return {"at": now.strftime("%m-%d %H:%MZ"), "open": out,
+            "merged": {str(m["number"]): m["mergedAt"][:10] for m in merged},
+            "today": [{"n": m["number"], "t": m["title"][:60], "at": m["mergedAt"][11:16]} for m in merged if m["mergedAt"][:10] == today]}
+
+
 def build(d, nosync):
     if not nosync:
         sync(d)
         save(d)
     live = open(os.path.join(HERE, "进行中看板.template.html"), encoding="utf8").read().replace(
-        "__DATA__", json.dumps({k: d.get(k) for k in ("items", "chains", "liveUpdated", "updated")}, ensure_ascii=False))
+        "__DATA__", json.dumps({"main": d.get("main"), "items": d.get("items"), "log": d.get("log", [])[:12],
+                                "live": live_prs() if not nosync else d.get("_live")}, ensure_ascii=False))
     with open(os.path.join(HERE, "进行中看板.html"), "w", encoding="utf8") as f:
         f.write(live)
     ljs = live[live.index("const DATA"):live.rindex("</script>")]
     lstub = """const els={};const mk=()=>({innerHTML:"",textContent:""});global.document={getElementById:id=>els[id]||(els[id]=mk())};
-""" + ljs + "\nconsole.log('live chains',(els.chains.innerHTML.match(/class=\"chain\"/g)||[]).length,'items',(els.chains.innerHTML.match(/class=\"it/g)||[]).length);"
+""" + ljs + "\nconsole.log('live lines',(els.lines.innerHTML.match(/class=\"line\"/g)||[]).length,'chips',(els.lines.innerHTML.match(/class=\"chip/g)||[]).length,'stuck',(els.stuck.innerHTML.match(/class=\"sk/g)||[]).length);"
     rr = subprocess.run(["node", "-e", lstub], capture_output=True, text=True)
     print(rr.stdout.strip() or rr.stderr.strip()[:800])
     if rr.returncode:

@@ -66,6 +66,20 @@ export const TALENT_REVIEW_OBJECTS = {
     'sortNo',
     'enabled',
   ]),
+  /** 评价规则（TR-R20）：数值类 / 等级类；等级随规则整组维护。设置类配置对象（DEC-121）。 */
+  scoreRule: object('ScoreRule', [
+    'name',
+    'kind',
+    'minScore',
+    'maxScore',
+    'display',
+    'allowUnable',
+    'levels',
+    'enabled',
+  ]),
+  /** 模块等级（TR-R15 / R20）：得分区间或按指标数目的等级项，随模块等级整组维护。 */
+  moduleGrade: object('ModuleGrade', ['name', 'mode', 'items', 'enabled']),
+  /** 字段映射（TR-R9）：带入上次结果 / 入人才池的来源 → 目标字段；预置“标签 → 标签”。 */
   /**
    * 九宫格（设计 §2.2；TR-R31～R35）：轴、分段、格子、位置字段占用与比例规则组随九宫格整体维护（均为嵌套字段，权限随字段）。
    * 设置类配置对象，没有组织字段（DEC-121）。
@@ -121,6 +135,8 @@ export const TALENT_REVIEW_OBJECT_LABELS: Readonly<Record<TalentReviewObject, st
   category: '盘点分类',
   role: '盘点角色',
   field: '盘点字段',
+  scoreRule: '评价规则',
+  moduleGrade: '模块等级',
   matrix: '盘点九宫格',
   calcRule: '盘点计算规则',
   resultApproval: '盘点结果审批',
@@ -133,9 +149,18 @@ export const TALENT_REVIEW_CONFIG_OBJECTS: readonly TalentReviewObject[] = [
   'category',
   'role',
   'field',
+  'scoreRule',
+  'moduleGrade',
   'matrix',
   'calcRule',
 ];
+
+/**
+ * 设置类配置对象里**暂不预置“看全部”**的：给标准身份预置看全部等于扩大出厂默认数据范围，须逐次由用户确认（DEC-374②，
+ * 守卫 AC-PLAT-F061-scope）。评价规则 / 模块等级（B2a）取保守口径，确认前预置身份没有它们的看全部，需租户自行授予；
+ * 数据范围谓词（创建人 / 看全部）与审计可见性不受影响，仍按 TALENT_REVIEW_CONFIG_OBJECTS。
+ */
+export const TALENT_REVIEW_SEE_ALL_UNAPPROVED: readonly TalentReviewObject[] = ['scoreRule', 'moduleGrade'];
 
 /** 准备度颜色：#RRGGBB（原站字典每项带颜色，`27` 补充 W-617）。 */
 export const READINESS_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;

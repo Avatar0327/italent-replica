@@ -112,3 +112,21 @@ describe('legacy / unresolved：不返回全空的 hints', () => {
     expect([...(view.hints?.order ?? [])].sort()).toEqual([a.id, b.id].sort());
   });
 });
+
+describe('空规则（没有计算项目）：不提示“尚未改绑”（#224 第 2 轮 P3-1）', () => {
+  it('新建 / 重放 / 启用 / 清空项目后保存：hints 为空且没有改绑提示', async () => {
+    const w = await boundWorld(db(), 'f082-p31');
+    const body = calcBody([], { fieldCatalogVersion: await catalogVersion(db(), w) });
+    const created = await w.post(body, { idempotencyKey: 'f082-p31-key' });
+    expect(created.status, await created.clone().text()).toBe(201);
+    const rule = (await created.json()) as CalcRuleView;
+    expect(rule.hints?.warnings).toEqual([]);
+    const replay = (await (await w.post(body, { idempotencyKey: 'f082-p31-key' })).json()) as CalcRuleView;
+    expect(replay.hints?.warnings).toEqual([]);
+    const enable = await w.request('PATCH', `${CALC_RULES}/${rule.id}`, {
+      ifMatch: rule.revision,
+      body: { enabled: true },
+    });
+    expect(((await enable.json()) as CalcRuleView).hints?.warnings).toEqual([]);
+  });
+});
