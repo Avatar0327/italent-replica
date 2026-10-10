@@ -230,6 +230,19 @@ export const DIGESTS: Digests = {
     evaluationWriteContext: 'dd8d9c528232',
     requireFilterVisible: 'ee40ce95ec01',
   },
+  'apps/api/src/modules/evaluation/activity-refs.ts': {
+    assertRefs: '45b82f1b12b4',
+    resolveActivityRefs: '3a7b3d5cfbfc',
+  },
+  'apps/api/src/modules/evaluation/activity-routes.ts': {
+    PATH: '39d01a0155a3',
+    registerActivityRoutes: '6bd97f5fe5fe',
+  },
+  'apps/api/src/modules/evaluation/activity-service.ts': {
+    createActivity: '049cfb3620ab',
+    presentActivities: '7603a8ffd5c5',
+    updateActivity: '27bb9f62ed21',
+  },
   'apps/api/src/modules/evaluation/candidates.ts': {
     registerCandidates: 'ddfd024c6595',
   },
@@ -256,6 +269,7 @@ export const DIGESTS: Digests = {
     assertNewPersonRefs: 'c89a9b19f7af',
     employeesInScope: 'f3fed91ffa7e',
     personRefAccess: '6e8a07c0e485',
+    personRefAccessInTransaction: 'd5f83baf9ae6',
     presentPersonRefs: '9abd9723bc12',
   },
   'apps/api/src/modules/evaluation/review-group-routes.ts': {
@@ -269,7 +283,7 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/evaluation/routes.ts': {
     SPECS: 'a73d064dbefb',
-    registerEvaluationRoutes: '1b0ecad81e38',
+    registerEvaluationRoutes: '2c3d121cdf33',
     registerObject: '707afdebb88b',
     registerWrites: '38aa5eafeaf5',
   },
@@ -1009,7 +1023,7 @@ export const DIGESTS: Digests = {
     contractAction: '213e0434171f',
   },
   'packages/domain/src/evaluation/catalog.ts': {
-    EVALUATION_OBJECTS: 'ce22bc1ed62e',
+    EVALUATION_OBJECTS: '8e8f1c184078',
   },
   'packages/domain/src/idp/catalog.ts': {
     'IDP_OBJECTS>analysis': 'dc4daddf088d',
@@ -1249,6 +1263,13 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/evaluation/access.ts#evaluationContext': 'b5cc01649da7',
   'apps/api/src/modules/evaluation/access.ts#evaluationWriteContext': '0cc528c12276',
   'apps/api/src/modules/evaluation/access.ts#requireFilterVisible': '41903ba0cf58',
+  'apps/api/src/modules/evaluation/activity-refs.ts#assertRefs': '648d219970dd',
+  'apps/api/src/modules/evaluation/activity-refs.ts#resolveActivityRefs': '1351ac6c4494',
+  'apps/api/src/modules/evaluation/activity-routes.ts#PATH': '072f6ed3a951',
+  'apps/api/src/modules/evaluation/activity-routes.ts#registerActivityRoutes': '1d702420da55',
+  'apps/api/src/modules/evaluation/activity-service.ts#createActivity': 'e0f6ebc86867',
+  'apps/api/src/modules/evaluation/activity-service.ts#presentActivities': '4b436823458b',
+  'apps/api/src/modules/evaluation/activity-service.ts#updateActivity': '7422cea84e15',
   'apps/api/src/modules/evaluation/candidates.ts#registerCandidates': '19e61d1ca149',
   'apps/api/src/modules/evaluation/form-refs.ts#assertNewFormRefs': 'a721fd2b0b1d',
   'apps/api/src/modules/evaluation/form-refs.ts#hasObjectView': 'e3b0c44298fc',
@@ -1264,6 +1285,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/evaluation/person-refs.ts#assertNewPersonRefs': 'fdb5067bfe61',
   'apps/api/src/modules/evaluation/person-refs.ts#employeesInScope': '8a3057d5fca7',
   'apps/api/src/modules/evaluation/person-refs.ts#personRefAccess': '448b12740218',
+  'apps/api/src/modules/evaluation/person-refs.ts#personRefAccessInTransaction': '7313e5fbd251',
   'apps/api/src/modules/evaluation/person-refs.ts#presentPersonRefs': '4a3d2dec21cf',
   'apps/api/src/modules/evaluation/review-group-routes.ts#PATH': '072f6ed3a951',
   'apps/api/src/modules/evaluation/review-group-routes.ts#registerReviewGroupRoutes': 'dbe700c81275',
@@ -1271,7 +1293,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/evaluation/review-group-service.ts#presentGroups': '4b436823458b',
   'apps/api/src/modules/evaluation/review-group-service.ts#updateReviewGroup': '6d536f03935d',
   'apps/api/src/modules/evaluation/routes.ts#SPECS': 'a716aea11db4',
-  'apps/api/src/modules/evaluation/routes.ts#registerEvaluationRoutes': '5ce75b407df6',
+  'apps/api/src/modules/evaluation/routes.ts#registerEvaluationRoutes': 'e5f7ca2d4e8c',
   'apps/api/src/modules/evaluation/routes.ts#registerObject': 'a3bbb6a37375',
   'apps/api/src/modules/evaluation/routes.ts#registerWrites': '89281f061f66',
   'apps/api/src/modules/evaluation/store.ts#requireOwnerOrg': '45aed9d26b12',

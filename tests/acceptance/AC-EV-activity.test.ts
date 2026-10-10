@@ -179,41 +179,61 @@ describe('AC-EV-activity 评定活动主体与环节', () => {
     const material = () => chains()[1]!;
     const defense = () => chains()[2]!;
     const result = () => chains()[3]!;
-    const cases: readonly [string, Record<string, unknown>[], string][] = [
-      ['缺少资格申报环节', [material(), defense(), result()], 'ACTIVITY_CHAIN_APPLY_REQUIRED'],
-      ['缺少结果发布环节', [apply(), material(), defense()], 'ACTIVITY_CHAIN_RESULT_REQUIRED'],
+    const cases: readonly [string, () => Record<string, unknown>[], string][] = [
+      ['缺少资格申报环节', () => [material(), defense(), result()], 'ACTIVITY_CHAIN_APPLY_REQUIRED'],
+      ['缺少结果发布环节', () => [apply(), material(), defense()], 'ACTIVITY_CHAIN_RESULT_REQUIRED'],
       [
         '同一类型出现两次',
-        [apply(), material(), { ...material(), name: '再来一次' }, result()],
+        () => [apply(), material(), { ...material(), name: '再来一次' }, result()],
         'ACTIVITY_CHAIN_TYPE_DUPLICATE',
       ],
-      ['资格申报不在首位', [material(), apply(), result()], 'ACTIVITY_CHAIN_ORDER_INVALID'],
-      ['结果发布不在末位', [apply(), result(), defense()], 'ACTIVITY_CHAIN_ORDER_INVALID'],
-      ['环节日期早于活动开始', [{ ...apply(), startDate: '2025-12-31' }, result()], 'ACTIVITY_CHAIN_DATE_OUT_OF_RANGE'],
-      ['环节日期晚于活动结束', [apply(), { ...result(), endDate: '2027-01-01' }], 'ACTIVITY_CHAIN_DATE_OUT_OF_RANGE'],
+      ['资格申报不在首位', () => [material(), apply(), result()], 'ACTIVITY_CHAIN_ORDER_INVALID'],
+      ['结果发布不在末位', () => [apply(), result(), defense()], 'ACTIVITY_CHAIN_ORDER_INVALID'],
+      [
+        '环节日期早于活动开始',
+        () => [{ ...apply(), startDate: '2025-12-31' }, result()],
+        'ACTIVITY_CHAIN_DATE_OUT_OF_RANGE',
+      ],
+      [
+        '环节日期晚于活动结束',
+        () => [apply(), { ...result(), endDate: '2027-01-01' }],
+        'ACTIVITY_CHAIN_DATE_OUT_OF_RANGE',
+      ],
       [
         '环节开始晚于结束',
-        [{ ...apply(), startDate: '2026-03-31', endDate: '2026-01-10' }, result()],
+        () => [{ ...apply(), startDate: '2026-03-31', endDate: '2026-01-10' }, result()],
         'ACTIVITY_CHAIN_DATE_INVALID',
       ],
       [
         '答辩评审后直接结果发布只能手动转入',
-        [apply(), { ...defense(), transferMode: 'auto' }, result()],
+        () => [apply(), { ...defense(), transferMode: 'auto' }, result()],
         'ACTIVITY_CHAIN_DEFENSE_TRANSFER_MANUAL',
       ],
-      ['资格申报没有审批流程', [{ ...apply(), approvalProcessCode: undefined }, result()], 'APPROVAL_PROCESS_REQUIRED'],
-      ['资格申报审批流程为空串', [{ ...apply(), approvalProcessCode: '' }, result()], 'APPROVAL_PROCESS_REQUIRED'],
-      ['资格申报审批流程为 null', [{ ...apply(), approvalProcessCode: null }, result()], 'APPROVAL_PROCESS_REQUIRED'],
-      ['结果发布带评价表', [apply(), { ...result(), formId: form1.id }], 'ACTIVITY_CHAIN_FIELD_NOT_ALLOWED'],
+      [
+        '资格申报没有审批流程',
+        () => [{ ...apply(), approvalProcessCode: undefined }, result()],
+        'APPROVAL_PROCESS_REQUIRED',
+      ],
+      [
+        '资格申报审批流程为空串',
+        () => [{ ...apply(), approvalProcessCode: '' }, result()],
+        'APPROVAL_PROCESS_REQUIRED',
+      ],
+      [
+        '资格申报审批流程为 null',
+        () => [{ ...apply(), approvalProcessCode: null }, result()],
+        'APPROVAL_PROCESS_REQUIRED',
+      ],
+      ['结果发布带评价表', () => [apply(), { ...result(), formId: form1.id }], 'ACTIVITY_CHAIN_FIELD_NOT_ALLOWED'],
       [
         '非资格申报环节设强控截止',
-        [apply(), { ...material(), hardDeadline: true }, result()],
+        () => [apply(), { ...material(), hardDeadline: true }, result()],
         'ACTIVITY_CHAIN_FIELD_NOT_ALLOWED',
       ],
     ];
     it.each(cases)('%s → 400 %#', async (label, list, reason) => {
       const op = await manager();
-      const response = await post(op, body({ chains: list }));
+      const response = await post(op, body({ chains: list() }));
       expect(response.status, `${label}: ${await response.clone().text()}`).toBe(400);
       expect((await errorOf(response)).reason, label).toBe(reason);
     });

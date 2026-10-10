@@ -61,7 +61,7 @@ export const EVALUATION_OBJECTS = {
     ['ownerId'],
   ),
   /**
-   * 评定活动：参评条件与环节随活动整份提交；状态与报名数由流程维护（只读）。行操作发布 / 取消发布 / 完成（规格 24
+   * 评定活动：参评条件与环节随活动整份提交；状态与报名数由流程维护（只读）；`manager` 是负责人的展示投影（姓名 / 工号，只读）。行操作发布 / 取消发布 / 完成（规格 24
    * EV-R14 / R15、Q-M0-136）是活动级整体操作（设计 §5.1），按钮由 P0 契约随流程对象一起冻结。
    */
   evaluationActivity: withButtons(
@@ -87,7 +87,7 @@ export const EVALUATION_OBJECTS = {
         'conditions',
         'chains',
       ],
-      ['ownerId', 'status', 'applyCount'],
+      ['ownerId', 'status', 'applyCount', 'manager'],
     ),
     ACTIVITY_FLOW_BUTTONS,
   ),

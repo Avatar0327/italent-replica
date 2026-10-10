@@ -9,6 +9,7 @@ import { recordAudit } from '../../audit/record.js';
 import { AppError } from '../../errors.js';
 import { auditActor } from '../../system-actor.js';
 import { scopeAllows } from '../permission/module-access.js';
+import type { ActivityRefAccess } from './activity-refs.js';
 import type { FormRefAccess, FormVisibility } from './form-refs.js';
 import type { PersonRefAccess } from './person-refs.js';
 import {
@@ -29,6 +30,8 @@ export interface WriteContext extends EvaluationContext {
   readonly persons?: PersonRefAccess;
   /** 评价表的引用（通用评分项 / 指标）：对象查看权 / 范围 / 字段（命令事务内解析）。 */
   readonly forms?: FormRefAccess;
+  /** 评定活动的引用（类型 / 周期 / 评价表 / 类别 / 级别）：对象查看权 / 范围，及活动“名称”字段权（命令事务内解析）。 */
+  readonly activities?: ActivityRefAccess;
   /** 通用评分项写命令：引用方（评价表）的可见范围，停用被引用时只列看得到的（命令事务内解析）。 */
   readonly formVisibility?: FormVisibility;
   /** 事务内按当前授权校验本对象的字段编辑权（载荷之外的隐含变更用，如评价表切换评分方式清空总分规则）。 */
@@ -41,6 +44,7 @@ export const TABLES: Readonly<Partial<Record<EvaluationObject, string>>> = {
   generalScoreItem: 'ev_general_items',
   reviewGroup: 'ev_review_groups',
   evaluationForm: 'ev_forms',
+  evaluationActivity: 'ev_activities',
 };
 
 export function tableOf(object: EvaluationObject): string {

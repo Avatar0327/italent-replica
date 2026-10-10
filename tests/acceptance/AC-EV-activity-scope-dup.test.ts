@@ -93,7 +93,7 @@ describe('AC-EV-activity-scope-dup 适用范围重复拦截', () => {
     const { activity, category } = await live();
     const op = await manager({ evOrgs: [w.orgA, w.orgC] });
     const spare = await w.qlCategory();
-    const mine = await ok<ActivityView>(await post(op, body({ categoryIds: [spare.id] })));
+    const mine = await ok<ActivityView>(await post(op, body({ categoryIds: [spare.id] })), 201);
     await duplicate(await patch(op, mine, { categoryIds: [category.id] }));
     const renamed = await ok<ActivityView>(await patch(op, mine, { name: `改名${randomUUID().slice(0, 6)}` }));
     expect(renamed.categoryIds).toEqual([spare.id]);
@@ -121,10 +121,11 @@ describe('AC-EV-activity-scope-dup 适用范围重复拦截', () => {
     await duplicate(hidden);
     expect(await messageOf(hidden)).toBe('适用范围与已有活动重复，请修改');
     expect(await hidden.clone().text()).not.toContain(activity.name);
-    // 冲突活动在范围内，但操作人对活动“名称”字段没有查看权
+    // 冲突活动在范围内，但操作人对活动“名称”字段没有查看权（名称不可见也就写不了名称，所以用修改适用范围的请求验证）
     const inside = await live();
+    const own = await w.adminActivity(body({ categoryIds: [(await w.qlCategory()).id] }));
     const blind = await manager({ hidden: ['name'] });
-    const noName = await post(blind, body({ categoryIds: [inside.category.id] }));
+    const noName = await patch(blind, own, { categoryIds: [inside.category.id] });
     await duplicate(noName);
     expect(await messageOf(noName)).toBe('适用范围与已有活动重复，请修改');
     expect(await noName.clone().text()).not.toContain(inside.activity.name);
