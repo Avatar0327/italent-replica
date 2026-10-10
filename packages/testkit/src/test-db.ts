@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
 import { btree_gist } from '@electric-sql/pglite/contrib/btree_gist';
-import { createPgDb, createPgliteDb, type DbHandle, migrationsFolder } from '@italent/db';
+import { createPgDb, createPgliteDb, type DbHandle, markIsolatedTestDb, migrationsFolder } from '@italent/db';
 import postgres from 'postgres';
 
 /**
@@ -27,6 +27,8 @@ export interface TestDbOptions {
 export async function createTestDb(options: TestDbOptions = {}): Promise<DbHandle> {
   const url = process.env.TEST_DATABASE_URL;
   const handle = url ? await createFreshPgDatabase(url) : createPgliteDb(new PGlite({ extensions: { btree_gist } }));
+  // F-082：总开关的依赖注入覆盖只允许作用于这里建出来的隔离库
+  markIsolatedTestDb(handle.db);
   if (options.migrateBefore === undefined) {
     await handle.migrate();
     return handle;
