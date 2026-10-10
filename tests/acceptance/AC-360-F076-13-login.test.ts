@@ -56,7 +56,7 @@ describe('AC-360-F076-13 登录成功', () => {
     for (const [serial, password] of [
       [fullwidth(cred.serial), fullwidth(cred.password)],
       [spaced(cred.serial.toLowerCase(), '—'), spaced(cred.password.toLowerCase(), '‑')],
-      [` ${spaced(cred.serial, '－')} `, `${spaced(cred.password, '　')} `],
+      [` ${spaced(cred.serial, '\uff0d')} `, `${spaced(cred.password, '\u3000')}\u00a0`],
       [spaced(fullwidth(cred.serial.toLowerCase()), '―'), spaced(cred.password, '­')],
     ] as const) {
       const res = await login(w, serial, password, { ip: `203.0.113.${randomBytes(1)[0]}` });
@@ -67,7 +67,12 @@ describe('AC-360-F076-13 登录成功', () => {
   it('请求体不合格 → 400 VALIDATION_FAILED，只给字段路径，不回显值', async () => {
     const { w } = await issuedScene(testDb().db, 'f076-13-400');
     const secret = 'TOPSECRET-VALUE';
-    for (const body of [{}, { serial: 'ABC' }, { serial: 'x'.repeat(65), password: secret }, { serial: 1, password: 2 }]) {
+    for (const body of [
+      {},
+      { serial: 'ABC' },
+      { serial: 'x'.repeat(65), password: secret },
+      { serial: 1, password: 2 },
+    ]) {
       const res = await loginRaw(w, { body });
       const text = await res.text();
       expect(res.status, text).toBe(400);
@@ -120,9 +125,17 @@ describe('AC-360-F076-13 失败不可区分（401）', () => {
     }
     // 租户停用
     const tenant = (await getTenant(w.db, w.tenantId))!;
-    await setTenantStatus(w.db, { tenantId: w.tenantId, status: 'suspended', expectedRevision: tenant.revision }, cmd());
+    await setTenantStatus(
+      w.db,
+      { tenantId: w.tenantId, status: 'suspended', expectedRevision: tenant.revision },
+      cmd(),
+    );
     bodies.push(await failure(await login(w, cred(P1).serial, cred(P1).password, ip(10))));
-    await setTenantStatus(w.db, { tenantId: w.tenantId, status: 'active', expectedRevision: tenant.revision + 1 }, cmd());
+    await setTenantStatus(
+      w.db,
+      { tenantId: w.tenantId, status: 'active', expectedRevision: tenant.revision + 1 },
+      cmd(),
+    );
     // 活动已删
     await sql1(w, sql`UPDATE survey360_activities SET deleted = true WHERE id = ${s.activity.id}::uuid`);
     bodies.push(await failure(await login(w, cred(P1).serial, cred(P1).password, ip(9))));

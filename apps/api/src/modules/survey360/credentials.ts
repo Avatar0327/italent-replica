@@ -39,7 +39,7 @@ function derive(secret: Buffer, salt: Buffer, params: ScryptParams): Promise<Buf
   inflight += 1;
   peak = Math.max(peak, inflight);
   return new Promise<Buffer>((resolve, reject) => {
-    // maxmem 留出余量：128 * N * r 是 scrypt 的主要内存，默认上限 32MB 对 N=2^14、r=8（16MB）够用，参数升级时不被卡住
+    // maxmem 留出余量：128 * N * r 是 scrypt 的主要内存（N=2^14、r=8 约 16MB，默认上限 32MB 也够用），参数升级时不被卡住
     const maxmem = 256 * params.N * params.r + 1024 * 1024;
     scrypt(secret, salt, HASH_BYTES, { N: params.N, r: params.r, p: params.p, maxmem }, (error, derived) => {
       inflight -= 1;
@@ -68,17 +68,22 @@ interface ParsedDigest {
 }
 
 /**
- * 摘要里能接受的 scrypt 参数：N 为 2 的幂且不超过 2^20（单次约 128MB，防止损坏或被篡改的行拖垮登录线程池），
- * r ≤ 32、p ≤ 16；不合法的一律当作损坏摘要（走哑摘要路径），不交给 scrypt 抛错。
+ * 摘要里能接受的 scrypt 参数。不合法的一律当作损坏摘要（走哑摘要路径、返回 false），不交给 scrypt 抛错，
+ * 这样损坏行与其他失败分支一样恰好做一次 KDF（设计 §3.8）：
+ * - N 为 2 的幂、至少 2，且 N < 2^(16·r)（scrypt 自身的要求：N=65536、r=1 会抛错）；
+ * - r ≤ 32、p ≤ 16；
+ * - 单次内存约 128·N·r 字节，上限 256MB（DEFAULT 的 N=2^14、r=8 约 16MB，升级留有余量），
+ *   防止损坏或被篡改的行拖垮登录线程池。
  */
-const MAX_N = 2 ** 20;
+const MAX_MEMORY_BYTES = 256 * 1024 * 1024;
 const validParams = ({ N, r, p }: ScryptParams) =>
   [N, r, p].every((n) => Number.isSafeInteger(n) && n > 0) &&
   N >= 2 &&
-  N <= MAX_N &&
   (N & (N - 1)) === 0 &&
   r <= 32 &&
-  p <= 16;
+  p <= 16 &&
+  N < 2 ** (16 * r) &&
+  128 * N * r <= MAX_MEMORY_BYTES;
 
 function parseDigest(digest: string): ParsedDigest | undefined {
   const parts = digest.split('$');

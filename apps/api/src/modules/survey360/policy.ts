@@ -10,6 +10,7 @@
  */
 import { PERSONNEL_OBJECT, survey360 } from '@italent/domain';
 import { defineTable, type RoutePolicy, type WritePolicy } from '../../route-policy/index.js';
+import { PORTAL_TABLE } from '../../route-policy/table.js';
 import {
   all,
   BAD_REQUEST,
@@ -578,4 +579,43 @@ export const SURVEY360_LINK_POLICIES = defineTable('survey360-link', {
   'POST /confirmation/appraisers': linkWrite('确认人添加评价者', 'body'),
   'DELETE /confirmation/appraisers/:relationId': linkWrite('确认人删除评价者', 'none', byId),
   'POST /confirmation/submit': linkWrite('确认人提交', 'body'),
+});
+
+/**
+ * 通用网址（序列号 + 密码）作答门户 /api/survey360/portal（F-076 设计 §5.1；PR-2a 只有登录 / 登出，会话入口五条归 PR-2b）。
+ * 登录 / 登出是认证入口，不走命令台账（`ledger: 'none'`，DEC-377③）：台账会留存凭据相关请求，重试即重新登录
+ * （结果未知时的恢复语义见设计 §4.8）；限频计数与临时会话不进业务字段日志（DEC-377④）。
+ */
+const PORTAL_LEDGER = {
+  ledger: 'none',
+  ledgerReason: '认证入口不走命令台账（DEC-377③，设计 §4.8）：台账会留存凭据与会话令牌；结果未知时重新登录 / 重试登出',
+} as const;
+
+export const SURVEY360_PORTAL_POLICIES = defineTable(PORTAL_TABLE, {
+  'POST /login': publicRoute(
+    '序列号 + 密码换取作答会话：凭据正确且评价者仍有有效评价关系才签发，失败一律同一个 401',
+    'DEC-291 Q2 / F-076',
+    ['survey360.credentialExchange'],
+    {
+      write: write(
+        none('登录请求体含凭据，不提取业务字段'),
+        none('无业务写足迹：只写限频计数、会话行与关键安全事件（DEC-377④）'),
+        none('回执只有会话令牌与过期时间，不含名单或答卷'),
+        PORTAL_LEDGER,
+      ),
+    },
+  ),
+  'POST /logout': publicRoute(
+    '登出：只作废与请求头令牌摘要匹配的会话，任何情况一律 204',
+    'DEC-291 Q2 / F-076',
+    ['survey360.sessionPossession'],
+    {
+      write: write(
+        none('登出不带业务字段'),
+        none('无业务写足迹：只作废持有令牌的那个会话并写关键安全事件'),
+        none('204 无内容'),
+        PORTAL_LEDGER,
+      ),
+    },
+  ),
 });

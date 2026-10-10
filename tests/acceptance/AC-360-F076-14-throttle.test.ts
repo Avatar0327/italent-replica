@@ -114,7 +114,7 @@ describe('AC-360-F076-17 方案 C：不设 IP 失败锁，也不锁租户', () =
     const { w, s, creds } = await issuedScene(testDb().db, 'f076-17');
     const cred = creds.get(s.person.P1.id)!;
     for (let i = 0; i < 301; i += 1) {
-      const serial = `K${String(i).padStart(9, '2')}`.replace(/[01]/g, '3');
+      const serial = `K${i.toString(31).toUpperCase().padStart(9, '2')}`;
       expect((await login(w, serial, 'ZZZZZZZZ')).status, `第 ${i + 1} 次`).toBe(401);
     }
     expect((await login(w, cred.serial, cred.password, { ip: '203.0.113.30' })).status).toBe(201);
@@ -173,7 +173,7 @@ describe('AC-360-F076-21 租户失败只告警', () => {
     // 跨过阈值之后不再重复告警
     await login(w, 'CCCCCCCCCC', 'ZZZZZZZZ', { ip: '203.0.113.42' });
     expect(warn).toHaveBeenCalledTimes(1);
-    expect(await securityEvents(w)).toHaveLength(0);
+    expect((await securityEvents(w)).filter((e) => e.kind !== 'credential_issued')).toHaveLength(0);
     expect((await login(w, cred.serial, cred.password, { ip: '203.0.113.43' })).status).toBe(201);
   });
 });
@@ -184,9 +184,7 @@ describe('AC-360-F076-22 并发原子性：预扣计入在途请求', () => {
     const cred = creds.get(s.person.P1.id)!;
     configureLoginGate({ global: 100, perTenant: 100 });
     resetKdfCallCount();
-    const results = await Promise.all(
-      Array.from({ length: 20 }, () => login(w, cred.serial, wrongPassword(cred))),
-    );
+    const results = await Promise.all(Array.from({ length: 20 }, () => login(w, cred.serial, wrongPassword(cred))));
     const statuses = results.map((r) => r.status);
     expect(statuses.filter((code) => code === 401).length).toBeLessThanOrEqual(5);
     expect(statuses.every((code) => code === 401 || code === 429)).toBe(true);

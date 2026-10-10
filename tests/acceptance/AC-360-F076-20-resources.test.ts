@@ -131,7 +131,9 @@ describe('AC-360-F076-25 资源保护', () => {
     while (waiting < 2) await new Promise((resolve) => setTimeout(resolve, 5));
     const third = await login(a.w, credA(2).serial, credA(2).password, { ip: '203.0.113.72' });
     expect(third.status).toBe(503);
-    expect(await json(third)).toMatchObject({ error: { code: 'SERVICE_UNAVAILABLE', details: { reason: 'LOGIN_BUSY' } } });
+    expect(await json(third)).toMatchObject({
+      error: { code: 'SERVICE_UNAVAILABLE', details: { reason: 'LOGIN_BUSY' } },
+    });
     const credB = [...b.creds.values()][0]!;
     expect((await login(b.w, credB.serial, credB.password, { ip: '203.0.113.73' })).status).toBe(201);
     release();
@@ -157,7 +159,9 @@ describe('AC-360-F076-26 并发闸全局满', () => {
     const rowsBefore = await throttleRows(w);
     const res = await login(w, second.serial, wrongPassword(second), { ip: '203.0.113.81' });
     expect(res.status).toBe(503);
-    expect(await json(res)).toMatchObject({ error: { code: 'SERVICE_UNAVAILABLE', details: { reason: 'LOGIN_BUSY' } } });
+    expect(await json(res)).toMatchObject({
+      error: { code: 'SERVICE_UNAVAILABLE', details: { reason: 'LOGIN_BUSY' } },
+    });
     expect(await throttleRows(w)).toEqual(rowsBefore);
     expect(await pairRow(w, second.serial, '203.0.113.81')).toBeUndefined();
     release();

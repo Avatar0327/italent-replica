@@ -11,7 +11,7 @@ describe('AC-360-F076-40 门户路由声明', () => {
     expect(hit?.module).toBe('survey360-portal');
     expect(hit?.policy.kind).toBe('public');
     expect(hit?.policy.guards).toContain('survey360.credentialExchange');
-    expect(hit?.policy.dec).toContain('DEC-291 Q2');
+    expect(hit?.policy.kind === 'public' && hit.policy.dec).toContain('DEC-291 Q2');
     expect(hit?.policy.write?.ledger).toBe('none');
     expect(hit?.policy.write?.ledgerReason).toContain('DEC-377');
   });

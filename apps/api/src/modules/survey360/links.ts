@@ -13,6 +13,7 @@ import { and, eq, sql, survey360Links, survey360Outbox, type Tx } from '@italent
 import { credentialConfig } from './credential-config.js';
 import type { PersonRow } from './people.js';
 import { recordSecurityEvent } from './security-events.js';
+import { hasTask } from './tasks.js';
 import { sealJson } from './secret-box.js';
 
 export function hashToken(token: string): string {
@@ -138,6 +139,25 @@ export async function reissueAnswerLink(
     });
   }
   return issued;
+}
+
+/**
+ * 评价者在本活动已没有任何有效评价关系时，作废其作答链接（DEC-409③ / DEC-401⑧）：链接上的凭据与全部会话随之失效
+ * （会话与登录都要求链接未作废），登录提示与凭据错误完全相同。调用方须在关系已标记移除之后调用。
+ */
+export async function revokeAnswerLinkWithoutTask(tx: Tx, activityId: string, personId: string): Promise<void> {
+  if (await hasTask(tx, activityId, personId)) return;
+  await tx
+    .update(survey360Links)
+    .set({ revoked: true })
+    .where(
+      and(
+        eq(survey360Links.activityId, activityId),
+        eq(survey360Links.personId, personId),
+        eq(survey360Links.kind, 'answer'),
+        eq(survey360Links.revoked, false),
+      ),
+    );
 }
 
 /** 站内待办发送也计入最后发送时间。 */

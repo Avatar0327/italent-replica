@@ -75,7 +75,8 @@ describe('AC-360-F076-13b 移除最后一条有效关系即作废链接与凭据
     const { s, w, creds } = await issuedScene(testDb().db, 'f076-13b-c');
     const second = await w.object(s.activity.id, s.person.M.id, [s.q.id]);
     await w.appraiser(s.activity.id, second.id, s.person.P2.id, 'peer');
-    const current = await w.ok<{ revision: number }>(w.request('GET', `${s.path}/objects/${s.object.id}`));
+    const listed = await w.ok<{ items: { id: string; revision: number }[] }>(w.request('GET', `${s.path}/objects`));
+    const current = listed.items.find((item) => item.id === s.object.id)!;
     const res = await w.request('DELETE', `${s.path}/objects/${s.object.id}`, { ifMatch: current.revision });
     expect(res.status, await res.clone().text()).toBe(200);
 

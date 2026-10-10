@@ -55,7 +55,9 @@ describe('AC-360-F076-27 会话签发与登出', () => {
     const { session, expiresAt } = await loginOk(w, cred);
     const columns = rowsOf<{ column_name: string }>(
       await withTenant(w.db, w.tenantId, (tx) =>
-        tx.execute(sql`SELECT column_name FROM information_schema.columns WHERE table_name = 'survey360_answer_sessions'`),
+        tx.execute(
+          sql`SELECT column_name FROM information_schema.columns WHERE table_name = 'survey360_answer_sessions'`,
+        ),
       ),
     ).map((c) => c.column_name);
     expect(columns.sort()).toEqual(
@@ -173,7 +175,9 @@ describe('AC-360-F076-29 曾暴露于 COMPROMISED 版本（登录侧）', () => 
     portalCredentials(true, { ...base, currentVersion: 3 });
     expect((await login(w, p2.serial, p2.password, ip())).status).toBe(201);
     expect((await login(w, p3.serial, p3.password, ip())).status).toBe(201);
-    const versions = Object.fromEntries((await linkRows(w, s.activity.id)).map((l) => [l.id, l.credential_key_versions]));
+    const versions = Object.fromEntries(
+      (await linkRows(w, s.activity.id)).map((l) => [l.id, l.credential_key_versions]),
+    );
     expect(versions[p1.linkId]).toEqual([1, 2]);
     expect(versions[p2.linkId]).toEqual([1, 2, 3]);
     expect(versions[p3.linkId]).toEqual([1, 3]);
@@ -247,16 +251,22 @@ describe('AC-360-F076-32 安全事件生命周期', () => {
     for (let i = 0; i < 5; i += 1) await login(w, cred.serial, wrongPassword(cred));
     w.setNow(minutes(16));
     for (let i = 0; i < 5; i += 1) await login(w, cred.serial, wrongPassword(cred));
-    expect((await securityEvents(w)).map((e) => e.kind)).toEqual(['lock', 'unlock', 'lock']);
-    const events = await securityEvents(w);
-    expect(events[1]!.detail).toMatchObject({ unlockedAt: '2026-10-01T01:15:00.000Z' });
-    expect(events[2]!.detail).toMatchObject({ lockedUntil: '2026-10-01T01:31:00.000Z' });
+    // 同一时钟下写入的事件按 occurred_at 无法区分先后，按种类与细节断言
+    const throttleEvents = async () =>
+      (await securityEvents(w)).filter((e) => e.kind === 'lock' || e.kind === 'unlock');
+    const pick = (events: Awaited<ReturnType<typeof throttleEvents>>, kind: string, field: string, value: string) =>
+      events.filter((e) => e.kind === kind && e.detail[field] === value);
+    const events = await throttleEvents();
+    expect(events.map((e) => e.kind).sort()).toEqual(['lock', 'lock', 'unlock']);
+    expect(pick(events, 'lock', 'lockedUntil', '2026-10-01T01:15:00.000Z')).toHaveLength(1);
+    expect(pick(events, 'unlock', 'unlockedAt', '2026-10-01T01:15:00.000Z')).toHaveLength(1);
+    expect(pick(events, 'lock', 'lockedUntil', '2026-10-01T01:31:00.000Z')).toHaveLength(1);
 
     w.setNow(minutes(40));
     await runCredentialMaintenance(w.db, { tenantId: w.tenantId, clock: () => new Date(minutes(40)) });
-    const after = await securityEvents(w);
-    expect(after.map((e) => e.kind)).toEqual(['lock', 'unlock', 'lock', 'unlock']);
-    expect(after[3]!.detail).toMatchObject({ unlockedAt: '2026-10-01T01:31:00.000Z' });
+    const after = await throttleEvents();
+    expect(after.map((e) => e.kind).sort()).toEqual(['lock', 'lock', 'unlock', 'unlock']);
+    expect(pick(after, 'unlock', 'unlockedAt', '2026-10-01T01:31:00.000Z')).toHaveLength(1);
 
     const rows = rowsOf<Record<string, unknown>>(
       await withTenant(w.db, w.tenantId, (tx) =>
@@ -298,7 +308,10 @@ describe('AC-360-F076-08 登录相关位置不落明文', () => {
   });
 });
 
-async function dumpTable(w: { db: Parameters<typeof withTenant>[0]; tenantId: string }, table: string): Promise<string> {
+async function dumpTable(
+  w: { db: Parameters<typeof withTenant>[0]; tenantId: string },
+  table: string,
+): Promise<string> {
   const result = await withTenant(w.db, w.tenantId, (tx) =>
     tx.execute(sql.raw(`SELECT coalesce(string_agg(to_jsonb(t)::text, ' '), '') AS t FROM ${table} t`)),
   );

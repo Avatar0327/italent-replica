@@ -56,7 +56,7 @@ import {
   type Writer,
 } from './context.js';
 import { markDataChanged } from './changes.js';
-import { ensureAnswerLink, issueConfirmLink } from './links.js';
+import { ensureAnswerLink, issueConfirmLink, revokeAnswerLinkWithoutTask } from './links.js';
 import {
   createPerson,
   findPersonByEmail,
@@ -251,6 +251,9 @@ export async function removeRelation(tx: Tx, ctx: Writer, relation: RelationRow)
     .set({ removed: true, revision: relation.revision + 1 })
     .where(eq(survey360Relations.id, relation.id))
     .returning();
+  // DEC-409③：评价者最后一条有效关系被移除（删关系、上级确认入口删关系、移除评价对象都经过这里）时，
+  // 作废其作答链接——凭据与会话随之失效；重新加回关系时发新链接与新凭据（旧的不恢复）
+  await revokeAnswerLinkWithoutTask(tx, relation.activityId, relation.appraiserPersonId);
   await markDataChanged(tx, relation.activityId, ctx.now, [relation.objectId]);
   await auditRelation(tx, ctx, 'survey360.relation.remove', relation, saved!);
   return saved!;

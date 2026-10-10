@@ -25,6 +25,11 @@ export const GRAPH: Graph = {
   'packages/domain/src/survey360/catalog.ts#SURVEY360_OBJECTS>settings': ['#SURVEY360_BUTTONS', '#button', '#object'],
   'packages/domain/src/survey360/catalog.ts#crud': ['#button'],
   'packages/domain/src/survey360/catalog.ts#object': ['#SURVEY360_APP'],
+  'packages/domain/src/survey360/credential.ts#normalizeCredentialInput': [
+    '#CREDENTIAL_INPUT_MAX_LENGTH',
+    '#FULLWIDTH_OFFSET',
+    '#SEPARATORS',
+  ],
   'packages/domain/src/survey360/questionnaire.ts#allowedScoreMethods': ['#isLeaf'],
   'packages/domain/src/survey360/questionnaire.ts#methodIssues': ['#allowedScoreMethods'],
   'packages/domain/src/survey360/questionnaire.ts#roleIssues': [

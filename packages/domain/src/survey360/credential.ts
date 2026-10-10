@@ -35,10 +35,18 @@ export function generateCredentialPair(randomInt: (maxExclusive: number) => numb
   };
 }
 
-/** 去掉空白与连字符、转大写、限长 64。不替换易混字符：0 / O 在字母表里本来就不存在，输错只会判为不匹配。 */
+/**
+ * 全角字母数字（U+FF01～FF5E 整段）→ 半角；各种横线（连字符 U+2010～2015、减号 U+2212、软连字符 U+00AD、
+ * 小写连字符 U+FE63、日文长音符 U+30FC / U+FF70）和零宽字符一并当作分隔符去掉（DEC-409④ 选 B）。
+ */
+const FULLWIDTH_OFFSET = 0xfee0;
+const SEPARATORS = /[\s\u00ad\u2010-\u2015\u2212\ufe58\ufe63\u30fc\uff70\u200b-\u200d\u2060-]+/g;
+
+/** 全角转半角后去掉空白与各种横线、转大写、限长 64。不替换易混字符：0 / O 在字母表里本来就不存在，输错只会判为不匹配。 */
 export function normalizeCredentialInput(raw: string): string {
   return raw
-    .replace(/[\s-]+/g, '')
+    .replace(/[\uff01-\uff5e]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - FULLWIDTH_OFFSET))
+    .replace(SEPARATORS, '')
     .toUpperCase()
     .slice(0, CREDENTIAL_INPUT_MAX_LENGTH);
 }

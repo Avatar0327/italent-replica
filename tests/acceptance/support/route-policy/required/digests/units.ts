@@ -709,6 +709,9 @@ export const DIGESTS: Digests = {
     routeNeed: '7ac6de135d7b',
     write: '7f7519b43dfa',
   },
+  'apps/api/src/modules/survey360/credentials.ts': {
+    verifyPassword: 'db6059f47d7b',
+  },
   'apps/api/src/modules/survey360/people.ts': {
     VIEW: 'c9de88d0021a',
     personFilter: '7a023b306c2d',
@@ -723,6 +726,14 @@ export const DIGESTS: Digests = {
     'route:PUT /people/:id': '48cec120e351',
     visiblePerson: 'a44eb95d09d9',
     visiblePersonIds: 'edef58f9a8c8',
+  },
+  'apps/api/src/modules/survey360/portal.ts': {
+    attemptLogin: '7e7b46a3ebfa',
+    isLoginable: '86c0aa3dc1e4',
+    logout: 'b9533eabaa3c',
+    'route:POST /login': 'c7b8ef3290be',
+    'route:POST /logout': '9ae6b2894313',
+    settle: 'a3627e593df5',
   },
   'apps/api/src/modules/survey360/progress.ts': {
     VIEW: '059613dc3dbf',
@@ -789,7 +800,7 @@ export const DIGESTS: Digests = {
     'route:PUT /report-template': '760ee8b14af5',
   },
   'apps/api/src/modules/survey360/routes.ts': {
-    registerSurvey360Routes: '43bfb0d91ca9',
+    registerSurvey360Routes: '9be4abcfece1',
   },
   'apps/api/src/modules/survey360/settings.ts': {
     VIEW: '935e9928be29',
@@ -824,6 +835,9 @@ export const DIGESTS: Digests = {
     'route:GET /activities/:id/score-tables': '45c2bcd4dad3',
     'route:GET /activities/:id/score-tables/download': '3cf86eaf3632',
     scoreTables: '9a189d4d11b1',
+  },
+  'apps/api/src/modules/survey360/throttle.ts': {
+    admit: '7b0de3e51c51',
   },
   'apps/api/src/modules/survey360/todos.ts': {
     'registerTodoRoutes>INVITE': 'f2dc808baf85',
@@ -1631,6 +1645,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/survey360/context.ts#routeFields': '69b471ce5ac6',
   'apps/api/src/modules/survey360/context.ts#routeNeed': 'b5b38ff7477f',
   'apps/api/src/modules/survey360/context.ts#write': '2cb69daf772e',
+  'apps/api/src/modules/survey360/credentials.ts#verifyPassword': '7bb2c0048dff',
   'apps/api/src/modules/survey360/people.ts#VIEW': 'e3b0c44298fc',
   'apps/api/src/modules/survey360/people.ts#personFilter': '98c892ac3724',
   'apps/api/src/modules/survey360/people.ts#personVisible': '79adc1cb1430',
@@ -1644,6 +1659,12 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/survey360/people.ts#route:PUT /people/:id': '4973cfdf0f4a',
   'apps/api/src/modules/survey360/people.ts#visiblePerson': '1c209d62b2e3',
   'apps/api/src/modules/survey360/people.ts#visiblePersonIds': '4514c032e28d',
+  'apps/api/src/modules/survey360/portal.ts#attemptLogin': '2fe8cac3b685',
+  'apps/api/src/modules/survey360/portal.ts#isLoginable': 'a97cd77e4cc6',
+  'apps/api/src/modules/survey360/portal.ts#logout': '2fff3d9ef603',
+  'apps/api/src/modules/survey360/portal.ts#route:POST /login': '0bc21112ddbe',
+  'apps/api/src/modules/survey360/portal.ts#route:POST /logout': 'c799621ab3a5',
+  'apps/api/src/modules/survey360/portal.ts#settle': '0c3c4e3e262a',
   'apps/api/src/modules/survey360/progress.ts#VIEW': 'e3b0c44298fc',
   'apps/api/src/modules/survey360/progress.ts#route:GET /activities/:id/progress': '548b4f26347c',
   'apps/api/src/modules/survey360/progress.ts#route:GET /activities/:id/progress/:personId': 'dfe051045166',
@@ -1706,7 +1727,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/survey360/reports.ts#route:POST /activities/:id/reports/forward/preview': '7d3298512919',
   'apps/api/src/modules/survey360/reports.ts#route:POST /activities/:id/reports/generate': '42ab9a2eb06d',
   'apps/api/src/modules/survey360/reports.ts#route:PUT /report-template': '8af23477ae3c',
-  'apps/api/src/modules/survey360/routes.ts#registerSurvey360Routes': 'feafbdae33bd',
+  'apps/api/src/modules/survey360/routes.ts#registerSurvey360Routes': 'f010db2ad15f',
   'apps/api/src/modules/survey360/settings.ts#VIEW': 'e3b0c44298fc',
   'apps/api/src/modules/survey360/settings.ts#route:GET /roles': '7de66ddc79bf',
   'apps/api/src/modules/survey360/settings.ts#route:GET /settings': 'feaa9bfd0f16',
@@ -1733,6 +1754,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/survey360/tables.ts#route:GET /activities/:id/score-tables': 'bc6c08f4ef10',
   'apps/api/src/modules/survey360/tables.ts#route:GET /activities/:id/score-tables/download': '183dc7ce309a',
   'apps/api/src/modules/survey360/tables.ts#scoreTables': 'a8ede61db1ef',
+  'apps/api/src/modules/survey360/throttle.ts#admit': '5be15175e179',
   'apps/api/src/modules/survey360/todos.ts#registerTodoRoutes>INVITE': 'e3b0c44298fc',
   'apps/api/src/modules/survey360/todos.ts#route:GET /my/todos': '1315063676ad',
   'apps/api/src/modules/survey360/todos.ts#route:POST /activities/:id/invitations': '5aa31fa268fc',

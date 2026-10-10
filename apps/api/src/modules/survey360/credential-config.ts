@@ -4,6 +4,7 @@
  * - development / test 缺省时在进程内生成随机密钥（重启后旧数据解不开，只用于本地与测试）。
  */
 import { randomBytes } from 'node:crypto';
+import { isIPv4, isIPv6 } from 'node:net';
 
 export interface ScryptParams {
   readonly N: number;
@@ -32,6 +33,8 @@ export interface CredentialConfig {
   /** SURVEY360_PORTAL_CREDENTIALS：缺省关闭；关闭时作答链接不进入 pending（维护任务就位前不产生无人发放的等待邀请）。 */
   readonly portalCredentials: boolean;
   readonly kdf: ScryptParams;
+  /** TRUSTED_PROXY_CIDRS：套接字对端属于这些网段时才读 X-Forwarded-For（设计 §3.6 代理契约）；缺省空 = 一律用套接字地址。 */
+  readonly trustedProxyCidrs: readonly string[];
 }
 
 type Env = Readonly<Record<string, string | undefined>>;
@@ -138,6 +141,14 @@ export function parseCredentialConfig(env: Env, options: { readonly lenient: boo
     (lenient && outboxText === undefined ? 'dev' : fail('SURVEY360_OUTBOX_KEY_CURRENT 缺失'));
   if (!outboxKeys.has(outboxCurrent)) fail('SURVEY360_OUTBOX_KEY_CURRENT 必须在 SURVEY360_OUTBOX_KEYS 里');
 
+  const trustedProxyCidrs = (env['TRUSTED_PROXY_CIDRS'] ?? '')
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+  for (const cidr of trustedProxyCidrs) {
+    if (!isValidCidr(cidr)) fail(`TRUSTED_PROXY_CIDRS 的条目不是合法的 CIDR：${cidr}`);
+  }
+
   return {
     credentialKeys,
     currentVersion,
@@ -148,7 +159,17 @@ export function parseCredentialConfig(env: Env, options: { readonly lenient: boo
     outboxCurrent,
     portalCredentials: env['SURVEY360_PORTAL_CREDENTIALS']?.trim() === 'on',
     kdf: DEFAULT_SCRYPT,
+    trustedProxyCidrs,
   };
+}
+
+/** 形如 10.0.0.0/8 或 fd00::/8（前缀长度必填，避免把单个地址误写成整段）。 */
+export function isValidCidr(cidr: string): boolean {
+  const [address = '', prefix, ...rest] = cidr.split('/');
+  if (rest.length || prefix === undefined || !/^\d{1,3}$/.test(prefix)) return false;
+  const length = Number(prefix);
+  if (isIPv4(address)) return length <= 32;
+  return isIPv6(address) && length <= 128;
 }
 
 /** development / test 才允许缺省生成密钥和覆盖配置；其余环境按生产处理。 */

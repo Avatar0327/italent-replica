@@ -10756,6 +10756,39 @@
         ]
       }
     },
+    "POST /api/survey360/portal/login": {
+      "edge": {
+        "anonymous": {
+          "code": "VALIDATION_FAILED",
+          "status": 400
+        },
+        "member": {
+          "code": "VALIDATION_FAILED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "VALIDATION_FAILED",
+          "status": 400
+        }
+      },
+      "module": "survey360-portal",
+      "primitives": {}
+    },
+    "POST /api/survey360/portal/logout": {
+      "edge": {
+        "anonymous": {
+          "status": 204
+        },
+        "member": {
+          "status": 204
+        },
+        "nonMember": {
+          "status": 204
+        }
+      },
+      "module": "survey360-portal",
+      "primitives": {}
+    },
     "POST /api/tenant/account/avatar/attachments": {
       "edge": {
         "anonymous": {

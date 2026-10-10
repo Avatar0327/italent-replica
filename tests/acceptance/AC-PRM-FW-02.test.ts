@@ -55,10 +55,10 @@ describe('AC-PRM-FW-02 现状必测基准（独立于声明）', () => {
     expect(canonicalJson(fresh)).not.toMatch(/"kind"/);
   });
 
-  it('基准覆盖全部已声明端点（544），键是 METHOD 最终路径', () => {
+  it('基准覆盖全部已声明端点（546），键是 METHOD 最终路径', () => {
     const declared = manifest.declared.map((r) => `${r.method} ${r.path}`).sort();
     expect(Object.keys(fresh.routes).sort()).toEqual(declared);
-    expect(declared).toHaveLength(544);
+    expect(declared).toHaveLength(546);
   });
 
   it('边界探测：租户接口匿名 401、非成员 403；平台非运营 403；360 链接无令牌 404；/healthz 200', () => {
@@ -73,6 +73,14 @@ describe('AC-PRM-FW-02 现状必测基准（独立于声明）', () => {
         // 360 链接作答 / 报告收件人链接不经成员中间件：没有令牌（或令牌不对）三种身份都是 404，不泄露链接是否存在
         for (const edge of [entry.edge.anonymous, entry.edge.nonMember, entry.edge.member]) {
           expect(edge, key).toEqual({ status: 404, code: 'NOT_FOUND' });
+        }
+        continue;
+      }
+      if (key.includes(' /api/survey360/portal')) {
+        // 通用网址门户的登录 / 登出不经成员中间件：探测请求体为空，登录先判请求体 → 400，登出任何情况 → 204（F-076）
+        const expected = key.endsWith('/login') ? { status: 400, code: 'VALIDATION_FAILED' } : { status: 204 };
+        for (const edge of [entry.edge.anonymous, entry.edge.nonMember, entry.edge.member]) {
+          expect(edge, key).toEqual(expected);
         }
         continue;
       }
