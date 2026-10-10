@@ -818,7 +818,9 @@ export const DIGESTS: Digests = {
     reviewWriteContext: '007b2d9a1eb5',
   },
   'apps/api/src/modules/talent-review/calc-rule-routes.ts': {
-    registerCalcRuleRoutes: '57605a228e80',
+    presentBoundWrite: '63e7c47b1640',
+    registerReads: '11042a2eeac1',
+    registerWrites: 'b40f4e2c225f',
     requireCatalogAccess: 'a1561ec9adc0',
   },
   'apps/api/src/modules/talent-review/config-kit.ts': {
@@ -1035,7 +1037,7 @@ export const DIGESTS: Digests = {
     crud: 'a441bd24abb2',
   },
   'packages/domain/src/talent-review/catalog.ts': {
-    'TALENT_REVIEW_OBJECTS>calcRule': 'dea7d0781f51',
+    'TALENT_REVIEW_OBJECTS>calcRule': '69168d968ff2',
     'TALENT_REVIEW_OBJECTS>category': '4e80ece39877',
     'TALENT_REVIEW_OBJECTS>field': '0d3439dea979',
     'TALENT_REVIEW_OBJECTS>matrix': '90a030f413fe',
@@ -1698,7 +1700,9 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/talent-review/access.ts#requireFilterVisible': '039036967089',
   'apps/api/src/modules/talent-review/access.ts#reviewContext': 'b22d1ebb92ff',
   'apps/api/src/modules/talent-review/access.ts#reviewWriteContext': '4ad9f97ef260',
-  'apps/api/src/modules/talent-review/calc-rule-routes.ts#registerCalcRuleRoutes': '85da550103d4',
+  'apps/api/src/modules/talent-review/calc-rule-routes.ts#presentBoundWrite': 'dbb89e6bb2df',
+  'apps/api/src/modules/talent-review/calc-rule-routes.ts#registerReads': '6ce830964fe1',
+  'apps/api/src/modules/talent-review/calc-rule-routes.ts#registerWrites': 'b31b84df7002',
   'apps/api/src/modules/talent-review/calc-rule-routes.ts#requireCatalogAccess': '57290a0f5689',
   'apps/api/src/modules/talent-review/config-kit.ts#requireSeeAllToRename': '41903ba0cf58',
   'apps/api/src/modules/talent-review/config-routes.ts#listResponse': 'ce83540cc013',

@@ -384,6 +384,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/expression/values.ts#EMPTY',
   ],
   'packages/domain/src/expression/lexer.ts#HANDLE_AT': ['#UUID_SOURCE'],
+  'packages/domain/src/expression/lexer.ts#HANDLE_WHOLE': ['#UUID_SOURCE'],
   'packages/domain/src/expression/lexer.ts#Scanner': [
     '#CHINESE_QUOTES',
     '#HANDLE_AT',
@@ -401,6 +402,7 @@ export const GRAPH: Graph = {
   'packages/domain/src/expression/lexer.ts#fieldHandle': ['#UUID_SOURCE'],
   'packages/domain/src/expression/lexer.ts#isIdentPart': ['#isDigit', '#isIdentStart'],
   'packages/domain/src/expression/lexer.ts#isIdentStart': ['#isCjk', '#isLetter'],
+  'packages/domain/src/expression/lexer.ts#parseFieldHandle': ['#HANDLE_WHOLE'],
   'packages/domain/src/expression/lexer.ts#tokenize': ['#Scanner'],
   'packages/domain/src/expression/operators.ts#comparable': [
     'packages/domain/src/expression/dates.ts#dateOrdinal',
