@@ -490,6 +490,13 @@ export interface UnitResolution {
 }
 
 let requiredResolution: UnitResolution | undefined;
+/** 缓存的每次读取都给一份副本（含引用数组），调用方改动不会污染缓存、让后续报告少算义务（审查 R3 P3-1）。 */
+const copyResolution = (r: UnitResolution): UnitResolution => ({
+  uses: new Map([...r.uses].map(([unit, list]) => [unit, [...list]])),
+  texts: new Map(r.texts),
+  broken: [...r.broken],
+  invalid: new Map(r.invalid),
+});
 /**
  * 把被引用的单元分成 有效 / 失效 / 写法错误 三类；读取器的其他异常（EACCES 等）照旧抛出，不归入任何一类。
  * 真实表 + 仓库源码 + 真实选择器登记的结果在进程内只算一次（源码在进程内不变）；夹具读取器每次重算。
@@ -500,7 +507,7 @@ export function resolveUnits(
   branch: BranchBindings | false = BRANCH_BINDINGS,
 ): UnitResolution {
   const real = table === REQUIRED && read === repoSource && branch === BRANCH_BINDINGS;
-  if (real && requiredResolution) return requiredResolution;
+  if (real && requiredResolution) return copyResolution(requiredResolution);
   const all = usesOf(table, branch);
   const uses = new Map<string, Use[]>();
   const texts = new Map<string, string>();
@@ -517,16 +524,16 @@ export function resolveUnits(
     }
   }
   const resolution = { uses, texts, broken, invalid };
-  if (real) requiredResolution = resolution;
+  if (real) requiredResolution = copyResolution(resolution);
   return resolution;
 }
 
-/** 有效单元 → 引用（见 UnitResolution.uses）；返回副本，调用方改动不影响进程内缓存。 */
+/** 有效单元 → 引用（见 UnitResolution.uses）；resolveUnits 已给副本（含引用数组），调用方改动不影响进程内缓存。 */
 export const effectiveUses = (
   table: RequiredTable = REQUIRED,
   read: SourceReader = repoSource,
   branch: BranchBindings | false = BRANCH_BINDINGS,
-): Map<string, Use[]> => new Map(resolveUnits(table, read, branch).uses);
+): Map<string, Use[]> => resolveUnits(table, read, branch).uses;
 
 /** 被引用的单元里，在当前源码里找不到的（改名 / 删除 / 文件移走 / 不唯一）。 */
 export const brokenUnits = (
