@@ -98,6 +98,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/employees.ts#getEmployee',
     '#managerScope',
   ],
+  'apps/api/src/modules/transfer/employee-policy.ts#EMPLOYEE_READONLY_FIELDS': [
+    'packages/domain/src/platform/employee-self-service.ts#EMPLOYEE_READONLY_FIELDS',
+  ],
   'apps/api/src/modules/transfer/employee-policy.ts#requireEmployeeTransferBusiness': [
     'apps/api/src/modules/employment/record-store.ts#camelRow',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',

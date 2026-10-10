@@ -35,6 +35,7 @@ export {
   type StandardProfile,
 } from './platform/standard-presets.js';
 export * from './platform/standard-grants.js';
+export * from './platform/employee-self-service.js';
 export * from './audit/index.js';
 export * from './expression/index.js';
 export * from './talent/index.js';
