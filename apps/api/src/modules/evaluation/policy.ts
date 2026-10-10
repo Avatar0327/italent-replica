@@ -83,8 +83,6 @@ function crud(key: Key): Record<string, RoutePolicy> {
       operation: 'update',
       button: button('update', 'detail'),
       scope: point('editable'),
-      // 名称实际变化且不是看全部 → 403 ACTIVITY_TYPE_NAME_REQUIRES_SEE_ALL（在查重之前，不暴露范围外的重名）
-      guards: ['ev.nameRequiresSeeAll'],
       write: evWrite(key, 'body'),
     }),
     [`DELETE ${path}/:id`]: object({

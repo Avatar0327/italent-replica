@@ -91,16 +91,6 @@ const spec = (key: Key): Evidence[] => [
   ),
 ];
 
-const SERVICE = `${EV}/activity-type-service.ts`;
-const nameRequiresSeeAll: Obligation = {
-  perm: 'guard:ev.nameRequiresSeeAll',
-  facts: ['guard:ev.nameRequiresSeeAll'],
-  note: '名称实际变化且不是看全部 → 403 ACTIVITY_TYPE_NAME_REQUIRES_SEE_ALL（在查重之前判定，撞名与不撞名同一响应，不暴露范围外的重名）',
-  at: [
-    call(`${SERVICE}#updateActivityType`, 'if (body.name !== undefined && body.name !== row.name && !ctx.scope.all) {'),
-  ],
-};
-
 /** 列表筛选字段须有查看权（字段级，只在带筛选参数时判定）。 */
 const filterFieldVisible = (key: Key): Obligation => ({
   perm: 'guard:ev.filterFieldVisible',
@@ -123,7 +113,7 @@ function crud(key: Key): RequiredTable {
     [`GET ${path}`]: [view(key, registered('list'), spec(key)), filterFieldVisible(key)],
     [`GET ${path}/:id`]: [view(key, registered('detail'), spec(key))],
     [`POST ${path}`]: op('create'),
-    [`PATCH ${path}/:id`]: [...op('update'), nameRequiresSeeAll],
+    [`PATCH ${path}/:id`]: op('update'),
     [`DELETE ${path}/:id`]: op('delete'),
   };
 }
