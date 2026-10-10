@@ -1,6 +1,6 @@
 {
-  "id": "3c1dc14c-21cd-45a5-9f62-9b6dd8debb47",
-  "prevId": "f2f6841d-35c2-4005-bfd5-a13ef5b9c04b",
+  "id": "5f63c9cd-facf-4a73-843e-e856a3622036",
+  "prevId": "3c1dc14c-21cd-45a5-9f62-9b6dd8debb47",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -33025,6 +33025,124 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.survey360_sheet_timings": {
+      "name": "survey360_sheet_timings",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "relation_id": {
+          "name": "relation_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "questionnaire_id": {
+          "name": "questionnaire_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "opened_at": {
+          "name": "opened_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "page_started_at": {
+          "name": "page_started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "page_count": {
+          "name": "page_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "survey360_sheet_timings_tenant_id_tenants_id_fk": {
+          "name": "survey360_sheet_timings_tenant_id_tenants_id_fk",
+          "tableFrom": "survey360_sheet_timings",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "survey360_sheet_timings_relation_fk": {
+          "name": "survey360_sheet_timings_relation_fk",
+          "tableFrom": "survey360_sheet_timings",
+          "tableTo": "survey360_relations",
+          "columnsFrom": [
+            "tenant_id",
+            "relation_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "survey360_sheet_timings_questionnaire_fk": {
+          "name": "survey360_sheet_timings_questionnaire_fk",
+          "tableFrom": "survey360_sheet_timings",
+          "tableTo": "survey360_questionnaires",
+          "columnsFrom": [
+            "tenant_id",
+            "questionnaire_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "survey360_sheet_timings_tenant_id": {
+          "name": "survey360_sheet_timings_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        },
+        "survey360_sheet_timings_pair": {
+          "name": "survey360_sheet_timings_pair",
+          "nullsNotDistinct": false,
+          "columns": [
+            "relation_id",
+            "questionnaire_id"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false

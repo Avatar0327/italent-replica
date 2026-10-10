@@ -17,4 +17,12 @@ export const GRAPH: Graph = {
     'packages/domain/src/evaluation/catalog.ts#EVALUATION_APP',
     '#SYSTEM_FIELDS',
   ],
+  'packages/domain/src/evaluation/score-weights.ts#computeScoreWeights': [
+    '#WEIGHT_DIGITS',
+    '#firstInvalidWeight',
+    '#participants',
+    'packages/domain/src/expression/functions/math.ts#roundDecimal',
+  ],
+  'packages/domain/src/evaluation/score-weights.ts#firstInvalidWeight': ['#isValidWeight'],
+  'packages/domain/src/evaluation/score-weights.ts#participants': ['#participates'],
 };

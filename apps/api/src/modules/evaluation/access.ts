@@ -48,6 +48,7 @@ export const ANCHOR: Readonly<Partial<Record<EvaluationObject, AnchorKind>>> = {
   activityCycle: 'dictionary',
   generalScoreItem: 'dictionary',
   reviewGroup: 'owned',
+  evaluationForm: 'owned',
 };
 
 /** 对象表上的范围谓词（分页之前生效）：别名指向对象表；看全部时为真，创建人维度取 `created_by`。 */

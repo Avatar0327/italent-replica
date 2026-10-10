@@ -223,7 +223,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/survey360/timing-audit.ts#TIMING_BLURRED_ACTIONS',
   ],
   'apps/api/src/audit/timing-time.ts#tenantDayStart': [
-    '#zoneOffsetMs',
+    '#HOUR_MS',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/audit/transfer-linkage.ts#EMP': ['packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS'],

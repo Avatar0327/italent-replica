@@ -1,19 +1,18 @@
 /**
  * 评审组（`TEvaluation.ReviewGroup`）的读写服务（设计 §3.2、§5.1、§8）：
  * - 所属组织必填手选，须存在且在操作人 TEvaluation 范围内（DEC-082 / DEC-324②，范围外与不存在同一 404），读写同一谓词；
- * - 成员整组编辑，允许零成员，有成员时组长恰好 1 个、不重复；新增的成员须在人员范围内，集合里原有的范围外成员原样保留
+ * - 成员整组编辑，允许零成员，组长 0 或 1 个（DEC-400② 改定）、成员不重复；新增的成员须在人员范围内，集合里原有的范围外成员原样保留
  *   （person-refs.ts）；
  * - 照原站（DEC-393）没有编码、名称不要求唯一、被引用也能停用、没有删除入口；成员上限 200 是系统保护（D-071 🟡）；
  * 每个写入口在命令台账的同一事务里写业务与审计（DEC-019 / 216）。
  */
 import { sql, type Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
-import { scopeAllows } from '../permission/module-access.js';
 import type * as input from './input.js';
 import { assertNewPersonRefs, loadEmployees, presentPersonRefs, type PersonRefAccess } from './person-refs.js';
 import { type Tracked, view } from './read-model.js';
 import type { View } from './route-support.js';
-import { audit, bumped, lockEditable, rowsOf, type WriteContext } from './store.js';
+import { audit, bumped, lockEditable, requireOwnerOrg, rowsOf, type WriteContext } from './store.js';
 
 export interface MemberInput {
   readonly employeeId: string;
@@ -27,22 +26,15 @@ export type ReviewGroupView = Tracked & {
   readonly members: MemberInput[];
 };
 
-/** 允许零成员；有成员时组长恰好 1 个、成员不重复（对完整集合校验；与成员是否在范围内无关）。 */
+/** 允许零成员，组长 0 或 1 个（DEC-400②）、成员不重复（对完整集合校验；与成员是否在范围内无关）。 */
 export function checkMembers(members: readonly MemberInput[]): void {
   if (new Set(members.map((m) => m.employeeId)).size !== members.length) {
     throw new AppError('VALIDATION_FAILED', '成员不能重复', { reason: 'REVIEW_GROUP_MEMBER_DUPLICATE' });
   }
-  if (members.length && members.filter((m) => m.isLeader).length !== 1) {
-    throw new AppError('VALIDATION_FAILED', '评审组须恰好有 1 个组长', { reason: 'REVIEW_GROUP_LEADER_REQUIRED' });
+  // 组长 0 或 1 个（DEC-400② 改定：有成员时也可以不设组长）；库内“至多一个组长”的唯一索引兜底
+  if (members.filter((m) => m.isLeader).length > 1) {
+    throw new AppError('VALIDATION_FAILED', '评审组最多只能有 1 个组长', { reason: 'REVIEW_GROUP_LEADER_TOO_MANY' });
   }
-}
-
-/** 所属组织：须存在且在操作人范围内；不存在与范围外同一个 404。 */
-async function requireOwnerOrg(tx: Tx, ctx: WriteContext, orgId: string): Promise<void> {
-  const found = rowsOf(
-    await tx.execute(sql`SELECT 1 FROM org_objects WHERE tenant_id = ${ctx.tenantId}::uuid AND id = ${orgId}::uuid`),
-  );
-  if (!found.length || !scopeAllows(ctx.scope, { orgId })) throw new AppError('NOT_FOUND', '所属组织不存在');
 }
 
 /** 读出成员（按提交顺序）并挂到评审组视图上。 */

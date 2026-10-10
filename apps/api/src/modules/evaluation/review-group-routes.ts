@@ -25,16 +25,16 @@ import * as input from './input.js';
 import { type PersonRefAccess, personRefAccess, personRefAccessInTransaction } from './person-refs.js';
 import * as read from './read-model.js';
 import * as groups from './review-group-service.js';
-import { EV_BASE, presenter, type PersonRefs, runWrite, writeContext } from './route-support.js';
+import { EV_BASE, presenter, type WriteRefs, runWrite, writeContext } from './route-support.js';
 import { rowAccess } from './store.js';
 
 const OBJECT = 'reviewGroup';
 const PATH = `${EV_BASE}/review-groups`;
 
 /** 成员的人员引用：写命令在事务内重新解析员工信息的访问；响应按解析结果整形（person-refs.ts）。 */
-const REFS: PersonRefs = {
-  resolve: personRefAccessInTransaction,
-  shape: (tx, tenantId, persons, views) => groups.presentGroups(tx, tenantId, persons, views),
+const REFS: WriteRefs = {
+  resolve: async (deps, ctx, tx) => ({ persons: await personRefAccessInTransaction(deps, ctx, tx) }),
+  shape: (tx, write, views) => groups.presentGroups(tx, write.tenantId, write.persons!, views),
 };
 
 export function registerReviewGroupRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
