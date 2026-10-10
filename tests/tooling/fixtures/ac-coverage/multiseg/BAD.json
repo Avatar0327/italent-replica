@@ -1,0 +1,4 @@
+{
+  "title": "夹具：多段编号的非法配置",
+  "groups": [{ "name": "非法", "include": ["AC-PRM-FW-1", "AC-PRM-FW-01～AC-PRM-FW-03", "AC-NOPE-FW-*"] }]
+}

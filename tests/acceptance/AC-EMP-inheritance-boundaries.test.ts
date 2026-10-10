@@ -25,10 +25,11 @@ describe('AC-EMP-08 入职忽略继承设置与跨任职周期', () => {
     expect(hired.record?.fields.remarks ?? null).toBeNull();
   });
 
+  // `$entering` 后须留空格：紧跟中文时 Vitest 把中文也当成变量名，两行标题都会渲染成 undefined（F-030 / DEC-282）
   it.each([
     { ending: 'leave', entering: 'rehire' },
     { ending: 'retirement', entering: 'retire_rehire' },
-  ])('$entering开启新周期，标准和自定义字段都不从上一周期继承', async ({ ending, entering }) => {
+  ])('$entering 开启新周期，标准和自定义字段都不从上一周期继承', async ({ ending, entering }) => {
     const fixture = await inheritanceFixture(testDb().db, `inherit-cycle-${entering}`);
     const ended = await fixture.business(
       fixture.employee.id,

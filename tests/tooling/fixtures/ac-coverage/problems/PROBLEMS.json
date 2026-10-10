@@ -1,0 +1,5 @@
+{
+  "title": "夹具：收集问题",
+  "groups": [{ "name": "问题", "include": ["AC-DEMO-01"] }],
+  "notes": { "AC-DEMO-02": { "status": "部分覆盖", "note": "夹具：不在范围内且缺分类" } }
+}

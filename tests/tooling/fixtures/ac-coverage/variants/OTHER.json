@@ -1,0 +1,4 @@
+{
+  "title": "夹具：阶段过滤",
+  "groups": [{ "name": "另一阶段", "include": ["AC-DEMO-01~02"] }]
+}

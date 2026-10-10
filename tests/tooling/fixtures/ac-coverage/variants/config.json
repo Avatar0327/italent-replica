@@ -1,0 +1,11 @@
+{
+  "root": ".",
+  "vitestConfig": "vitest.fixture.config.mjs",
+  "filters": [],
+  "definitions": ["definitions.md"],
+  "ignore": { "AC-DEMO-97": "夹具：已登记的非业务编号" },
+  "profiles": {
+    "pglite": { "unset": ["AC_FIXTURE_PG"] },
+    "pg": { "set": { "AC_FIXTURE_PG": "1" } }
+  }
+}

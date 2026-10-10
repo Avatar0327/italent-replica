@@ -1,0 +1,24 @@
+{
+  "title": "R2 人事完整化（范围口径待总编排确认：追溯表 L 节模块）",
+  "groups": [
+    {
+      "name": "追溯表 L 节模块",
+      "include": [
+        "AC-OF-*",
+        "AC-EN-*",
+        "AC-ON-*",
+        "AC-PB-*",
+        "AC-DM-*",
+        "AC-RT-*",
+        "AC-DT-*",
+        "AC-PT-*",
+        "AC-IN-*",
+        "AC-LB-*",
+        "AC-CT-*",
+        "AC-OA-*",
+        "AC-HA-*"
+      ]
+    }
+  ],
+  "notes": {}
+}
