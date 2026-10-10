@@ -116,7 +116,7 @@ describe('递归：items 数组、变更差异（from / to）、改绑审计的 
   });
 });
 
-describe('R1-P3-2：审计里意外出现的 hints 按查看人可见集合防御裁剪（契约 §5.3 第 3 步）', () => {
+describe('审计里意外出现的 hints 按查看人可见集合防御投影（契约 §5.2、§5.3 第 3 步；#214 第 2 轮 P3）', () => {
   const hints = {
     warnings: ['字段“秘密”与“甲”循环', '另一条'],
     cycles: [
@@ -126,18 +126,69 @@ describe('R1-P3-2：审计里意外出现的 hints 按查看人可见集合防�
     order: [T, A, B],
     blocked: [T, B],
   };
+  const CYCLE_HIDDEN = '存在循环依赖，涉及当前不可见的字段（不显示字段名称）；允许保存，计算时将整次失败';
 
-  it('order / blocked / cycles 只留可见的目标字段 ID；warnings 含名称一律不原样输出，汇总为不含名称的计数提示', () => {
-    const out = redactCalcRuleAuditValue({ hints }, directory({ [T]: '目标', [A]: '甲' })) as { hints: typeof hints };
+  it('有 items 查看权：order / blocked / cycles 只留可见的目标字段 ID；warnings 汇总为不含名称的提示；others 给被裁掉的个数', () => {
+    const out = redactCalcRuleAuditValue({ hints }, directory({ [T]: '目标', [A]: '甲' })) as {
+      hints: Record<string, unknown>;
+    };
     expect(out.hints.order).toEqual([T, A]);
     expect(out.hints.blocked).toEqual([T]);
     expect(out.hints.cycles).toEqual([[T, A]]);
+    expect(out.hints.others).toEqual({ order: 1, blocked: 1, warnings: 2 });
+    expect(out.hints.warnings).toEqual([CYCLE_HIDDEN, '另有 2 条提示涉及不可见的字段，未显示']);
     expect(JSON.stringify(out)).not.toContain('秘密');
-    expect(out.hints.warnings).toEqual(['另有 2 条提示涉及不可见的字段，未显示']);
+    expect(JSON.stringify(out)).not.toContain(B);
+  });
+
+  it('全部可见时不产生 others，也不改 warnings 以外的内容', () => {
+    const all = directory({ [T]: '目标', [A]: '甲', [B]: '乙' });
+    const out = redactCalcRuleAuditValue({ hints: { ...hints, warnings: [] } }, all) as {
+      hints: Record<string, unknown>;
+    };
+    expect(out.hints.others).toBeUndefined();
+    expect(out.hints.order).toEqual([T, A, B]);
+    expect(out.hints.cycles).toEqual(hints.cycles);
+  });
+
+  it('没有 items 查看权：全空，只有一句固定文案，others 是全部个数', () => {
+    const out = redactCalcRuleAuditValue({ hints }, { ...directory({ [T]: '目标', [A]: '甲' }), itemsViewable: false });
+    expect((out as { hints: unknown }).hints).toEqual({
+      order: [],
+      blocked: [],
+      cycles: [],
+      warnings: ['计算项目对你不可见，2 条提示未显示'],
+      others: { order: 3, blocked: 2, warnings: 2 },
+    });
   });
 
   it('没有 hints 时原样返回（不产生新对象）', () => {
     const value = { name: '规则' };
     expect(redactCalcRuleAuditValue(value, directory({}))).toBe(value);
+  });
+
+  it('changes 里 field = hints 的独立 from / to 值同样按投影处理，派生文本丢弃（#224 P3）', () => {
+    const change = {
+      field: 'hints',
+      label: 'hints',
+      from: null,
+      to: hints,
+      fromText: '',
+      toText: JSON.stringify(hints),
+    };
+    const out = redactCalcRuleAuditValue({ changes: [change] }, directory({ [T]: '目标', [A]: '甲' })) as {
+      changes: Record<string, unknown>[];
+    };
+    const [projected] = out.changes;
+    expect(projected).not.toHaveProperty('toText');
+    expect(projected).not.toHaveProperty('fromText');
+    expect(projected!['from']).toBeNull();
+    expect(projected!['to']).toMatchObject({
+      order: [T, A],
+      blocked: [T],
+      others: { order: 1, blocked: 1, warnings: 2 },
+    });
+    expect(JSON.stringify(out)).not.toContain(B);
+    expect(JSON.stringify(out)).not.toContain('秘密');
   });
 });

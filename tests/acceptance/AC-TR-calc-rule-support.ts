@@ -29,6 +29,8 @@ export interface CalcItemView {
   readonly description: string | null;
   readonly sortNo: number;
   readonly usesRanking: boolean;
+  /** F-082（开关打开）：逐处引用的绑定（字段 ID / "context" / null）。 */
+  readonly formulaBindings?: (string | null)[];
 }
 export interface CalcRuleView {
   readonly id: string;
@@ -72,8 +74,8 @@ export const calcBody = (items: Record<string, unknown>[], extra: Record<string,
 });
 
 /** 一个租户 + 一名成员（全部允许），带计算规则与字段的快捷方法。 */
-export async function calcWorld(db: Db, label: string) {
-  const world = await configWorld(db, label);
+export async function calcWorld(db: Db, label: string, deps: Parameters<typeof configWorld>[2] = {}) {
+  const world = await configWorld(db, label, deps);
   const field = (kind: string, extra: Record<string, unknown> = {}): Promise<FieldRef> =>
     world.create('field', configBody('field', { kind, group: 'result', ...extra }));
   const numberField = () => field('number');

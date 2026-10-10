@@ -7,7 +7,7 @@
  * - 被映射引用的字段不可删（409 FIELD_IN_USE，referrer FIELD_MAPPING）；创建审计、revision、幂等。
  * 纯函数 mappingCompatibility 供 PR-C 在带入时复核（字段选项之后可能变化）。负向用例断言具体响应码，并前后各读一次对比。
  */
-import { eq, talentReviewFieldMappings, withTenant } from '@italent/db';
+import { eq, talentReviewFieldMappings, talentReviewFields, withTenant } from '@italent/db';
 import { mappingCompatibility } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
@@ -172,5 +172,49 @@ describe('预置“标签 → 标签”映射（DEC-361 种子补装登记表）
     const del = await w.request('DELETE', `/field-mappings/${preset.id}`, { ifMatch: 1 });
     expect([del.status, await reasonOf(del)]).toEqual([409, 'MAPPING_PRESET']);
     expect(await mappings(w.as.tenant)).toHaveLength(1);
+  });
+
+  it('补装时租户已手工建了同一对“标签 → 标签”映射（preset = false）：识别为已有，不撞唯一约束、不覆盖租户记录', async () => {
+    const db = testDb().db;
+    const w = await scoringWorld(db, 'trm-preset-manual');
+    const write = { tenantId: w.as.tenant, actorUserId: null, now: TR_NOW, commandId: 'preset-mapping-manual' };
+    const run = () =>
+      withTenant(db, w.as.tenant, (tx) => installMissingSeeds(tx, write, { modules: ['talent-review'] }));
+    await run();
+    // 模拟存量租户：预置映射是租户自己手工建的（preset = false）
+    await withTenant(db, w.as.tenant, (tx) =>
+      tx.update(talentReviewFieldMappings).set({ preset: false }).where(eq(talentReviewFieldMappings.preset, true)),
+    );
+    const before = await withTenant(db, w.as.tenant, (tx) => tx.select().from(talentReviewFieldMappings));
+    const again = await run();
+    expect(again.find((item) => item.key === 'preset-field-mappings')).toMatchObject({ installed: [], existing: 1 });
+    expect(await withTenant(db, w.as.tenant, (tx) => tx.select().from(talentReviewFieldMappings))).toEqual(before);
+  });
+
+  it('补装前租户已停用“标签”字段：不新建映射，登记表以 skipped 返回受控原因；字段恢复后再补装才装入', async () => {
+    const db = testDb().db;
+    const w = await scoringWorld(db, 'trm-preset-disabled');
+    const write = { tenantId: w.as.tenant, actorUserId: null, now: TR_NOW, commandId: 'preset-mapping-disabled' };
+    const run = () =>
+      withTenant(db, w.as.tenant, (tx) => installMissingSeeds(tx, write, { modules: ['talent-review'] }));
+    await run();
+    const setTagsEnabled = (enabled: boolean) =>
+      withTenant(db, w.as.tenant, async (tx) => {
+        await tx.delete(talentReviewFieldMappings);
+        await tx.update(talentReviewFields).set({ enabled }).where(eq(talentReviewFields.code, 'tags'));
+      });
+    await setTagsEnabled(false);
+    const report = (await run()).find((item) => item.key === 'preset-field-mappings')!;
+    expect(report).toMatchObject({
+      installed: [],
+      skipped: [{ code: 'carry_last:tags', reason: 'MAPPING_FIELD_DISABLED' }],
+    });
+    expect(await withTenant(db, w.as.tenant, (tx) => tx.select().from(talentReviewFieldMappings))).toEqual([]);
+    await withTenant(db, w.as.tenant, (tx) =>
+      tx.update(talentReviewFields).set({ enabled: true }).where(eq(talentReviewFields.code, 'tags')),
+    );
+    const after = (await run()).find((item) => item.key === 'preset-field-mappings')!;
+    expect(after).toMatchObject({ installed: ['carry_last:tags'] });
+    expect(after).not.toHaveProperty('skipped');
   });
 });

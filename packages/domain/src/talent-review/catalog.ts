@@ -110,7 +110,7 @@ export const TALENT_REVIEW_OBJECTS = {
   calcRule: object(
     'CalcRule',
     ['name', 'enabled', 'assessmentLatestWindow', 'description', 'items', 'sortNo'],
-    ['hints'],
+    ['hints', 'fieldCatalogVersion'],
   ),
   /**
    * 盘点结果审批（设计 §3.3、§2.6；N12）：审批类型 talent_review_result 的业务对象（集合审批，一单多个被盘点人）。

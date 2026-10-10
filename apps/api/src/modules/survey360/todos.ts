@@ -121,13 +121,18 @@ async function cancelTodos(tx: Tx, ctx: Survey360Context, activityId: string, pe
 async function sendInvitations(tx: Tx, ctx: Survey360Context, activityId: string, personIds?: readonly string[]) {
   const candidates = await unfinished(tx, activityId, ctx.admin, personIds);
   if (!candidates.length) fail('CONFLICT', '选中的评价者都已完成作答或不存在', 'NO_ELIGIBLE_APPRAISER');
-  for (const personId of candidates) await reissueAnswerLink(tx, ctx, activityId, await loadPerson(tx, personId));
+  let credentialPending = 0;
+  for (const personId of candidates) {
+    const issued = await reissueAnswerLink(tx, ctx, activityId, await loadPerson(tx, personId));
+    if (issued.credentialPending) credentialPending += 1;
+  }
   await audit360(tx, actor(ctx), {
     action: 'survey360.invitation.send',
     objectType: 'survey360-activity',
     objectId: activityId,
     before: null,
-    after: { activityId, personIds: [...candidates].sort() },
+    // 凭据进入待发放只记人数（F-076 设计 §2.6）
+    after: { activityId, personIds: [...candidates].sort(), ...(credentialPending ? { credentialPending } : {}) },
   });
   return { sent: candidates.length };
 }

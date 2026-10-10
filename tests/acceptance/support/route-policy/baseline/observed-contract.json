@@ -1487,6 +1487,9 @@
         "fieldsOut": [
           "trimModuleResponse"
         ],
+        "guard": [
+          "talentReview.calcRuleFieldCatalog"
+        ],
         "object": [
           "objectContext"
         ],
@@ -7452,6 +7455,7 @@
           "trimModuleResponse"
         ],
         "guard": [
+          "talentReview.calcRuleFieldCatalog",
           "talentReview.filterFieldVisible"
         ],
         "object": [
@@ -7461,7 +7465,8 @@
           "creator scope",
           "requestScope",
           "scope.all",
-          "scopeSql"
+          "scopeSql",
+          "visible()"
         ]
       }
     },
@@ -7484,6 +7489,9 @@
       "primitives": {
         "fieldsOut": [
           "trimModuleResponse"
+        ],
+        "guard": [
+          "talentReview.calcRuleFieldCatalog"
         ],
         "object": [
           "objectContext"

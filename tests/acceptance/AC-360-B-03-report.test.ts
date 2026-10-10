@@ -8,7 +8,7 @@
  *   收件人一封邮件，发链接不发附件；收件人只能看邮件里的报告；
  * - Lastest360Cent 在报告生成后才计入，报告失效后不再计入。
  */
-import { withTenant } from '@italent/db';
+import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { loadSurvey360Port } from '../../apps/api/src/modules/survey360/port.js';
@@ -210,6 +210,12 @@ describe('PR-B 报告转发', () => {
     );
     expect(mails[0]!.payload).toMatchObject({ subject: '请下载报告', channel: 'email' });
     expect(mails[0]!.payload).not.toHaveProperty('attachments');
+    // DEC-377②：收件人令牌只以 sealed 密文进 outbox，payload 里没有明文 token（直接查库，不经解封夹具）
+    const plain = await withTenant(w.db, w.tenantId, (tx) =>
+      tx.execute(sql`SELECT count(*)::int AS n FROM survey360_outbox
+        WHERE event_type = 'survey360.report_forward' AND (payload ? 'token' OR NOT payload ? 'sealed')`),
+    );
+    expect((Array.isArray(plain) ? plain : (plain as { rows: unknown[] }).rows)[0]).toEqual({ n: 0 });
 
     const mine = mails.find((m) => m.payload.to === s.person.T.email)!.payload.token;
     const call = reportLink(w, mine);
