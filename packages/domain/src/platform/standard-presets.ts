@@ -8,7 +8,10 @@
 import { APPROVAL_OBJECTS, APPROVAL_PROCESS_OBJECT } from '../approval/catalog.js';
 import { MODULE_OBJECTS, ORG_EMPLOYEE_APP } from '../permission/module-actions.js';
 import type { ObjectDefinition, ObjectPermission } from '../permission/object-permission.js';
+import { EVALUATION_APP, EVALUATION_OBJECTS } from '../evaluation/catalog.js';
+import { EVALUATION_FLOW_OBJECTS } from '../evaluation/flow-catalog.js';
 import { PERSONNEL_OBJECTS } from '../personnel/catalog.js';
+import { QUALIFICATION_APP, QUALIFICATION_OBJECTS } from '../qualification/catalog.js';
 import { SURVEY360_APP, SURVEY360_PROFILES } from '../survey360/catalog.js';
 import { TALENT_APP, TALENT_OBJECTS } from '../talent/catalog.js';
 import {
@@ -171,6 +174,51 @@ const SUCCESSION_PROFILES: readonly StandardProfile[] = [
   },
 ];
 
+/**
+ * R3-T02 的三个预置身份（Q-T02-02，DEC-331②，规格 23 §14；设计 §1.3）。数据范围一律不预置（硬规则：默认空）：
+ * 与继任 / 盘点不同，这里**不**对没有组织字段的字典（层级、等级方案、编码规则；活动类型、周期、通用评分项）预置看全部，
+ * 由租户管理员按（用户 × 应用）授予；原站说明评定管理员授权时人才评定、任职资格两个应用各设管理单元。
+ * 各身份的功能明细原站未逐项展开（🟡）。许可归属未取证，与人才标准管理员同口径不占名额。
+ * TODO(需取证 #202，C1-2b)：预置员工身份的发展通道查看授权（Q-T02-20 ①，登记项 qualification/employee-profile-grants）——
+ * employee_self_service 目前没有预置行，装到哪一行身份待定；确定前不装，也不往租户自定义身份里写授权。
+ */
+const QUALIFICATION_PROFILES: readonly StandardProfile[] = [
+  {
+    code: 'standard_qualification_admin',
+    name: '任职资格系统管理员（任职资格）',
+    description: '拥有任职资格的全部业务功能，可见数据按数据范围控制',
+    licenseType: null,
+    apps: [QUALIFICATION_APP],
+    objects: Object.values(QUALIFICATION_OBJECTS).map(full),
+    hr: false,
+  },
+  {
+    // 全部信息，含活动设置 / 基础设置：配置对象 + 流程对象；活动、评价表、发展通道引用类别 / 级别 / 指标 / 标准时被引用
+    // 对象须有对象查看权（设计 §5.2，DEC-352），所以在任职资格应用里只读这四个对象（🟡）
+    code: 'standard_evaluation_admin',
+    name: '评定管理员（人才评定）',
+    description: '拥有人才评定的全部信息，含活动设置与基础设置，可见数据按数据范围控制',
+    licenseType: null,
+    apps: [EVALUATION_APP, QUALIFICATION_APP],
+    objects: [
+      ...Object.values(EVALUATION_OBJECTS).map(full),
+      ...Object.values(EVALUATION_FLOW_OBJECTS).map(full),
+      ...(['category', 'level', 'target', 'standard'] as const).map((key) => readOnly(QUALIFICATION_OBJECTS[key])),
+    ],
+    hr: false,
+  },
+  {
+    // 只含流程对象：评定过程 / 评定记录（不含活动设置与基础设置）
+    code: 'standard_evaluation_specialist',
+    name: '评定专员（人才评定）',
+    description: '维护评定过程与评定记录，可见数据按数据范围控制',
+    licenseType: null,
+    apps: [EVALUATION_APP],
+    objects: Object.values(EVALUATION_FLOW_OBJECTS).map(full),
+    hr: false,
+  },
+];
+
 const MANAGER_OBJECTS = new Set<string>([
   MODULE_OBJECTS.employee.code,
   MODULE_OBJECTS.employmentRecord.code,
@@ -242,6 +290,7 @@ export const STANDARD_PROFILES: readonly StandardProfile[] = [
     ),
   },
   ...SUCCESSION_PROFILES,
+  ...QUALIFICATION_PROFILES,
   {
     // 经理自助须显式授权（C-003 复核，06 §8）；数据范围由汇报关系规则给出，不预置看全部
     code: 'standard_manager',

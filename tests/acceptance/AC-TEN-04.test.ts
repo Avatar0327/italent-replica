@@ -167,6 +167,10 @@ describe('AC-TEN-04 平台开通租户：标准预置下发', () => {
         'standard_succession_admin',
         'standard_succession_hr',
         'standard_succession_runner',
+        // R3-T02 C1-2（DEC-331②）：任职资格系统管理员 / 评定管理员 / 评定专员
+        'standard_qualification_admin',
+        'standard_evaluation_admin',
+        'standard_evaluation_specialist',
       ].sort(),
     );
     expect(items.every((p) => p.source === 'standard')).toBe(true);
