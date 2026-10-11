@@ -49,7 +49,9 @@ export interface TemplateModuleView {
     allowUnable: boolean;
     levels: { name: string; value: number }[];
   } | null;
-  readonly gradeSnapshot?: { items: { name: string; value: string; minScore: number | null }[] } | null;
+  readonly gradeSnapshot?: {
+    items: { name: string; value: string; minScore: number | null; maxScore: number | null; minCount: number | null }[];
+  } | null;
   readonly fieldIds?: string[];
   readonly [key: string]: unknown;
 }
