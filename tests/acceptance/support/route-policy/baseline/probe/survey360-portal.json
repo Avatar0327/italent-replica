@@ -57,6 +57,21 @@
     "scopeQueries": [],
     "trace": []
   },
+  "POST /api/survey360/portal/tasks/:relationId/questionnaires/:questionnaireId/page-check": {
+    "all": {
+      "code": "UNAUTHENTICATED",
+      "error": "b9583abfca58",
+      "status": 401
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
   "POST /api/survey360/portal/tasks/:relationId/questionnaires/:questionnaireId/submit": {
     "all": {
       "code": "UNAUTHENTICATED",
