@@ -86,7 +86,7 @@ function bindPass(
         rendered.text === item.formula &&
         JSON.stringify(rendered.bindings) === JSON.stringify(item.formulaBindings ?? [])
       ) {
-        return { ...carryResultModules(kept, previousModules, modules), priority: item.priority };
+        return { ...carryResultModules(kept, previousModules, modules, full), priority: item.priority };
       }
     }
     if (!checkInputLimits(item.formula, { placeholders: true }).ok) throw invalid('FORMULA_INVALID');
@@ -127,8 +127,9 @@ export async function planResultRules(
   version: number | undefined,
 ): Promise<ResultRuleView[]> {
   if (submitted === undefined) {
-    const carried = previous.map((row) => carryResultModules(row, previousModules, modules));
-    if (carried.length && !analyzeResults(carried, await loadFullCatalog(tx, ctx.tenantId), modules).ok) {
+    const full = previous.length ? await loadFullCatalog(tx, ctx.tenantId) : [];
+    const carried = previous.map((row) => carryResultModules(row, previousModules, modules, full));
+    if (carried.length && !analyzeResults(carried, full, modules).ok) {
       throw invalid('FORMULA_INVALID', '模块变更后结果公式不再有效，请同时修改结果规则');
     }
     return carried;

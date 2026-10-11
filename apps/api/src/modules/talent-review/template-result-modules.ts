@@ -1,5 +1,5 @@
 /** DEC-425①：引用表持有模块 ID，名称文本只在版本内冻结；换版本必须经过身份映射，不能按同名接管。 */
-import { fieldNodes, parseStoredFormula } from '@italent/domain';
+import { checkRenameRoundTrip, fieldNodes, parseStoredFormula } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import type { ResultRuleView } from './template-results.js';
 
@@ -33,6 +33,7 @@ export function carryResultModules(
   row: ResultRuleView,
   previous: readonly ResultModule[],
   modules: readonly ResultModule[],
+  fields: readonly { id: string; name: string }[],
 ): ResultRuleView {
   const bindings = row.refModuleIds.map((id) => {
     const before = previous.find((m) => m.id === id);
@@ -49,5 +50,11 @@ export function carryResultModules(
     formula += row.formula.slice(cursor, node.pos.offset) + `模块.${pair.after.name}.${node.path.at(-1)}`;
     cursor = node.end;
   }
-  return { ...row, formula: formula + row.formula.slice(cursor), refModuleIds: bindings.map(({ after }) => after.id) };
+  formula += row.formula.slice(cursor);
+  const known = (path: string) =>
+    modules.some((m) => m.kind === 'indicator' && (path === `模块.${m.name}.得分` || path === `模块.${m.name}.等级`));
+  if (formula !== row.formula && !checkRenameRoundTrip(formula, fields, known).ok) {
+    throw invalid('RESULT_MODULE_FORMULA_INVALID');
+  }
+  return { ...row, formula, refModuleIds: bindings.map(({ after }) => after.id) };
 }

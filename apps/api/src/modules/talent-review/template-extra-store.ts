@@ -106,6 +106,21 @@ export async function loadTemplateExtras(
         )
         .orderBy(asc(F.sortNo))
     : [];
+  return {
+    stepForms: forms.map((row): StepFormView => ({
+      nodeKey: steps.find((s) => s.id === row.stepId)!.nodeKey,
+      roleId: row.roleId,
+      purpose: row.purpose,
+      formId: row.formId,
+      formSnapshot: fields
+        .filter((f) => f.stepFormId === row.id)
+        .map(({ fieldId, access, required }) => ({ fieldId, access, required })),
+    })),
+    resultRules: await loadResultRules(tx, tenantId, versionId),
+  };
+}
+
+async function loadResultRules(tx: Tx, tenantId: string, versionId: string): Promise<ResultRuleView[]> {
   const rules = await tx
     .select()
     .from(R)
@@ -139,25 +154,14 @@ export async function loadTemplateExtras(
           ),
         )
     : [];
-  return {
-    stepForms: forms.map((row): StepFormView => ({
-      nodeKey: steps.find((s) => s.id === row.stepId)!.nodeKey,
-      roleId: row.roleId,
-      purpose: row.purpose,
-      formId: row.formId,
-      formSnapshot: fields
-        .filter((f) => f.stepFormId === row.id)
-        .map(({ fieldId, access, required }) => ({ fieldId, access, required })),
-    })),
-    resultRules: rules.map((row): ResultRuleView => ({
-      targetFieldId: row.targetFieldId,
-      formula: row.formula,
-      priority: row.priority,
-      formulaBinding: 'bound',
-      refModuleIds: moduleRefs.filter((r) => r.ruleId === row.id).map((r) => r.moduleId),
-      refFieldIds: refs.filter((r) => r.ruleId === row.id).map((r) => r.fieldId),
-    })),
-  };
+  return rules.map((row): ResultRuleView => ({
+    targetFieldId: row.targetFieldId,
+    formula: row.formula,
+    priority: row.priority,
+    formulaBinding: 'bound',
+    refModuleIds: moduleRefs.filter((r) => r.ruleId === row.id).map((r) => r.moduleId),
+    refFieldIds: refs.filter((r) => r.ruleId === row.id).map((r) => r.fieldId),
+  }));
 }
 
 // DEC-387：目标与公式引用都拒删；表单字段即使从源表单移除，历史快照仍持有引用。
