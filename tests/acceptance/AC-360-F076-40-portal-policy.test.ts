@@ -33,8 +33,14 @@ describe('AC-360-F076-40 门户路由声明', () => {
     for (const [route, obligations] of Object.entries(SURVEY360)) {
       if (!route.includes(base)) continue;
       const units = obligations.flatMap((obligation) => obligation.at ?? []).map((evidence) => evidence.unit);
-      expect(units.some((unit) => unit.endsWith('#registerPortalRoutes')), route).toBe(true);
-      expect(units.some((unit) => unit.endsWith('#registerLinkRoutes')), route).toBe(false);
+      expect(
+        units.some((unit) => unit.endsWith('#registerPortalRoutes')),
+        route,
+      ).toBe(true);
+      expect(
+        units.some((unit) => unit.endsWith('#registerLinkRoutes')),
+        route,
+      ).toBe(false);
     }
   });
 

@@ -1547,7 +1547,7 @@ const SESSION_ROUTES: readonly (readonly [string, string, readonly Evidence[]])[
         [
           impl(`${PORTAL}#registerPortalRoutes`, 'registerAnswerRoutes(module, deps, sessionEntry(deps))'),
           call(`${ANSWERING}#route:${method} ${path}`, anchor),
-          ...impls,
+          ...impls.filter((evidence) => evidence !== LINK_ANSWERS),
           method === 'GET' ? LINK_READ : LINK_WRITE,
         ],
       ] as const,
