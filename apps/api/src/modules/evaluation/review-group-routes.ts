@@ -90,7 +90,7 @@ export function registerReviewGroupRoutes(router: Hono<TenantEnv>, deps: TenantR
     const body = await parseBody(c, input.reviewGroupCreate);
     await checkWriteFields(deps, ctx, OBJECT, 'create', body);
     const w = await writing(c, ctx);
-    return runWrite(c, deps, w, OBJECT, body, 201, (tx, x) => groups.createReviewGroup(tx, x, body), REFS);
+    return runWrite(c, deps, w, OBJECT, body, 201, (tx, x) => groups.createReviewGroup(tx, x, body, deps.clock), REFS);
   });
 
   router.patch(`${PATH}/:id`, async (c) => {
@@ -99,6 +99,15 @@ export function registerReviewGroupRoutes(router: Hono<TenantEnv>, deps: TenantR
     const body = await parseBody(c, input.reviewGroupPatch);
     await checkWriteFields(deps, ctx, OBJECT, 'update', body);
     const w = await writing(c, ctx);
-    return runWrite(c, deps, w, OBJECT, body, 200, (tx, x) => groups.updateReviewGroup(tx, x, id, body), REFS);
+    return runWrite(
+      c,
+      deps,
+      w,
+      OBJECT,
+      body,
+      200,
+      (tx, x) => groups.updateReviewGroup(tx, x, id, body, deps.clock),
+      REFS,
+    );
   });
 }

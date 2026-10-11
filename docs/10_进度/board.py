@@ -215,7 +215,9 @@ def live_prs():
             st, why = "ci", "等 CI"
         why += note
         idle = age(act)
-        stuck = st == "decide" or (st in ("conflict", "cired", "merge") and idle >= 60) or (st in ("dev", "rework") and idle >= 60) or (st == "queue" and idle >= 15)
+        # DEC-428 暂停派发期间（标记文件同 watch.py），待审 / 返工 / CI 红都是在等恢复，不算卡点；待决定与合并中超时仍算
+        hold = os.path.exists(os.path.expanduser("~/.cache/italent-dispatch-paused"))
+        stuck = (st == "decide" or (st == "merge" and idle >= 60)) if hold else st == "decide" or (st in ("conflict", "cired", "merge") and idle >= 60) or (st in ("dev", "rework") and idle >= 60) or (st == "queue" and idle >= 15)
         out.append({"n": n, "t": p["title"][:60], "s": st, "why": why, "r": rounds, "idle": idle, "stuck": stuck,
                     "ask": age(t_ask) if st == "decide" else None})
     today = now.strftime("%Y-%m-%d")
@@ -224,13 +226,53 @@ def live_prs():
             "today": [{"n": m["number"], "t": m["title"][:60], "at": m["mergedAt"][11:16]} for m in merged if m["mergedAt"][:10] == today]}
 
 
+PROG = os.path.expanduser("~/.cache/italent-board-progress.json")
+
+
+def progress(d, live):
+    """进行中看板顶部的“已完成 / 计划 PR”（用户 10-11 要求）：主线 + 支撑任务的步骤，暂停的不计；
+    分子 = 步骤 PR 已合并或标 done。与上次不同则把上次读数记为 prev，看板显示变化量"""
+    merged = (live or {}).get("merged", {})
+    done = tot = 0
+    for ln in (d.get("main") or {}).get("lines", []) + (d.get("main") or {}).get("support", []):
+        steps = [s for g in ln.get("groups", []) for s in g["steps"]] if ln.get("groups") else ln.get("steps", [])
+        for st in steps:
+            if st.get("s") == "paused":
+                continue
+            tot += 1
+            done += bool(st.get("s") == "done" or (st.get("pr") and str(st["pr"]) in merged))
+    # 依赖已满足但没派的步骤（10-11 B6 漏派 4.5 小时）：after 里的步骤全部合并、自身没有 PR 也没标已派
+    ready = []
+    for ln in (d.get("main") or {}).get("lines", []):
+        steps = [s for g in ln.get("groups", []) for s in g["steps"]]
+        byk = {s["k"]: s for s in steps}
+        isdone = lambda s: s and (s.get("s") == "done" or (s.get("pr") and str(s["pr"]) in merged))
+        for st in steps:
+            if st.get("after") and not st.get("pr") and st.get("s") not in ("assigned", "paused") and all(isdone(byk.get(k)) for k in st["after"]):
+                ready.append(f"{ln['id']} {st['k']} {st['n']}")
+    print("ready " + ("；".join(ready) if ready else "无"))
+    at = (live or {}).get("at", "")
+    try:
+        rec = json.load(open(PROG))
+    except (OSError, ValueError):
+        rec = {}
+    cur = rec.get("cur")
+    if not cur or cur[:2] != [done, tot]:
+        rec = {"cur": [done, tot, at], "prev": cur}
+        os.makedirs(os.path.dirname(PROG), exist_ok=True)
+        json.dump(rec, open(PROG, "w"))
+    print(f"progress {done}/{tot}" + (f" prev {rec['prev'][0]}/{rec['prev'][1]} @{rec['prev'][2]}" if rec.get("prev") else ""))
+    return {"done": done, "tot": tot, "prev": rec.get("prev"), "since": rec["cur"][2]}
+
+
 def build(d, nosync):
     if not nosync:
         sync(d)
         save(d)
+    lv = live_prs() if not nosync else d.get("_live")
     live = open(os.path.join(HERE, "进行中看板.template.html"), encoding="utf8").read().replace(
         "__DATA__", json.dumps({"main": d.get("main"), "items": d.get("items"), "log": d.get("log", [])[:12],
-                                "live": live_prs() if not nosync else d.get("_live")}, ensure_ascii=False))
+                                "live": lv, "prog": progress(d, lv)}, ensure_ascii=False))
     with open(os.path.join(HERE, "进行中看板.html"), "w", encoding="utf8") as f:
         f.write(live)
     ljs = live[live.index("const DATA"):live.rindex("</script>")]

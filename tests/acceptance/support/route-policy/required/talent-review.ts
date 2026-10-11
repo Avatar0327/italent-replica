@@ -660,7 +660,13 @@ const TPL_READONLY: Obligation = {
     },
   ],
 };
-const TPL_CATALOG_LABEL = { flow: 'Flow', scoreRule: 'ScoreRule', moduleGrade: 'ModuleGrade', field: 'Field' } as const;
+const TPL_CATALOG_LABEL = {
+  form: 'Form',
+  flow: 'Flow',
+  scoreRule: 'ScoreRule',
+  moduleGrade: 'ModuleGrade',
+  field: 'Field',
+} as const;
 const TPL_REPLAY_READONLY: Obligation = {
   perm: 'guard:talentReview.templatePublicDownReadonly',
   facts: ['guard:talentReview.templatePublicDownReadonly'],
@@ -675,10 +681,10 @@ const TPL_REFERENCE = (): Obligation[] => [
   {
     perm: 'guard:talentReview.templateCatalogReference',
     facts: ['guard:talentReview.templateCatalogReference'],
-    note: '条件守卫：请求体带流程 / 评价规则 / 模块等级 / 字段引用时，另需对应目录的对象查看权，引用的可见性在命令内按目录范围判定',
+    note: '条件守卫：请求体带流程 / 评价规则 / 模块等级 / 字段 / 表单引用时，另需对应目录的对象查看权，引用的可见性在命令内按目录范围判定',
     at: [tplEntry('await requireCatalogs(c, deps, references)')],
   },
-  ...(['flow', 'scoreRule', 'moduleGrade', 'field'] as const).map((key): Obligation => ({
+  ...(['flow', 'scoreRule', 'moduleGrade', 'field', 'form'] as const).map((key): Obligation => ({
     perm: `obj:TalentReview.${TPL_CATALOG_LABEL[key]}:view`,
     purpose: 'when:talentReview.templateCatalogReference',
     at: [
@@ -692,6 +698,28 @@ const TPL_REFERENCE = (): Obligation[] => [
     ],
   })),
 ];
+
+/** 公式引用的可选披露：字段目录对象权、四列查看权和目录范围决定名称 / ID 是否可见。 */
+const TPL_RESULT_FIELDS: Obligation = {
+  perm: 'obj:TalentReview.Field:view',
+  purpose: 'disclosure:resultFields',
+  facts: ['object:object.* 动作'],
+  need: list('talentReview.configScope(talent_review_fields)'),
+  at: [
+    { role: 'call', unit: `${TPR}#trimmed`, anchor: 'await projectTemplateResults(deps, ctx, view)' },
+    {
+      role: 'impl',
+      unit: `${T}/template-extra-present.ts#resultCatalogAccess`,
+      anchor: "await deps.authorize({ ...ctx, action: 'object.view', resource, fields: [] })",
+    },
+    FIELD_OBJECT_CONST,
+    {
+      role: 'scope',
+      unit: `${T}/calc-rule-catalog.ts#visibleOf`,
+      anchor: "requireConfigVisible(access.scope, 'field', createdBy)",
+    },
+  ],
+};
 const TEMPLATE_REQUIRED: RequiredTable = {
   [`GET ${BASE_ROOT}/templates`]: [
     tplView("router.get(TEMPLATES, async (c) => { const ctx = await reviewContext(c, deps, 'template')"),
@@ -699,10 +727,17 @@ const TEMPLATE_REQUIRED: RequiredTable = {
   ],
   [`GET ${BASE_ROOT}/templates/:id`]: [
     tplView("router.get(`${TEMPLATES}/:id`, async (c) => { const ctx = await reviewContext(c, deps, 'template')"),
+    TPL_RESULT_FIELDS,
   ],
-  [`POST ${BASE_ROOT}/templates`]: [...tplChange('create'), TPL_CREATABLE, TPL_REPLAY_READONLY, ...TPL_REFERENCE()],
-  [`PATCH ${BASE_ROOT}/templates/:id`]: [...tplChange('update'), TPL_READONLY, ...TPL_REFERENCE()],
-  [`DELETE ${BASE_ROOT}/templates/:id`]: [...tplChange('delete'), TPL_READONLY],
+  [`POST ${BASE_ROOT}/templates`]: [
+    ...tplChange('create'),
+    TPL_CREATABLE,
+    TPL_REPLAY_READONLY,
+    ...TPL_REFERENCE(),
+    TPL_RESULT_FIELDS,
+  ],
+  [`PATCH ${BASE_ROOT}/templates/:id`]: [...tplChange('update'), TPL_READONLY, ...TPL_REFERENCE(), TPL_RESULT_FIELDS],
+  [`DELETE ${BASE_ROOT}/templates/:id`]: [...tplChange('delete'), TPL_READONLY, TPL_RESULT_FIELDS],
 };
 
 export const TALENT_REVIEW: RequiredTable = {

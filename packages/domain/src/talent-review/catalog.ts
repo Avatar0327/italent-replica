@@ -126,8 +126,19 @@ export const TALENT_REVIEW_OBJECTS = {
    */
   template: object(
     'Template',
-    ['name', 'ownerOrgId', 'downwardPublic', 'flowId', 'enabled', 'steps', 'modules', 'permissions'],
-    ['currentVersionNo', 'versionNo', 'accessLevel', 'configErrors', 'versions'],
+    [
+      'name',
+      'ownerOrgId',
+      'downwardPublic',
+      'flowId',
+      'enabled',
+      'steps',
+      'modules',
+      'permissions',
+      'stepForms',
+      'resultRules',
+    ],
+    ['currentVersionNo', 'versionNo', 'accessLevel', 'configErrors', 'versions', 'fieldCatalogVersion', 'hints'],
   ),
   /**
    * 盘点结果审批（设计 §3.3、§2.6；N12）：审批类型 talent_review_result 的业务对象（集合审批，一单多个被盘点人）。

@@ -270,11 +270,15 @@ def main():
                 if cnt > cprev.get(k, [0, pr])[0] and "probe" not in str(pr):  # 总编排每 30 分钟的额度探测不报
                     ev.append(f"本机 ChatGPT 会话完成 #{pr}（{k[-12:]}，第 {cnt} 次；审查会话即出了结论，开发任务即已停下）")
         cprev = cx
+        # DEC-428 暂停派发期间（总编排 10-11）：不报“停摆 / 待送审 / 开发完成待审 / 衔接超时 / Draft 闲置”（合并队列由审查合并窗口盯），合并 / CI 红照报；恢复时删标记文件
+        hold = os.path.exists(os.path.expanduser("~/.cache/italent-dispatch-paused"))
         for n, p in cur.items():
             key = f"{n}@{p['head']}@{p['nc']}"
-            if p["ci"] == "green" and not p["draft"] and mins_since(p["commit"]) > STALL and mins_since(p["comment"]) > STALL and key not in stalled:
+            if not hold and p["ci"] == "green" and not p["draft"] and mins_since(p["commit"]) > STALL and mins_since(p["comment"]) > STALL and key not in stalled:
                 ev.append(f"停摆 #{n} {p['t']}：CI 绿，最新提交 {int(mins_since(p['commit']))} 分钟前，{STALL} 分钟内无评论")
                 stalled.add(key)
+            if hold:
+                continue
             if p.get("done") and f"{n}@done@{p['done']}" not in stalled:
                 ev.append(f"开发完成待审 #{n} {p['t']}：开发方 {p['done'][11:16]}Z 已贴“开发完成”，尚无审查发起，请发起审查")
                 stalled.add(f"{n}@done@{p['done']}")
