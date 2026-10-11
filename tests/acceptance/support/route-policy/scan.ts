@@ -530,6 +530,7 @@ const SUB_APPS = new Set([
   'survey360',
   'survey360-link',
   'survey360-report-link',
+  'survey360-portal',
 ]);
 export function moduleDirs(fullPath: string): RouteModule {
   const modules = path.join(API_SRC, 'modules');
@@ -551,6 +552,7 @@ export function moduleDirs(fullPath: string): RouteModule {
     ['survey360', '/api/tenant/survey360', [path.join(modules, 'survey360')]],
     ['survey360-link', '/api/survey360/link', [path.join(modules, 'survey360')]],
     ['survey360-report-link', '/api/survey360/report-link', [path.join(modules, 'survey360')]],
+    ['survey360-portal', '/api/survey360/portal', [path.join(modules, 'survey360')]],
     ['talent', '/api/tenant/talent', [path.join(modules, 'talent')]],
     ['idp', '/api/tenant/idp', [path.join(modules, 'idp')]],
     ['talent-review', '/api/tenant/talent-review', [path.join(modules, 'talent-review')]],

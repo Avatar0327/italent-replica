@@ -1008,8 +1008,13 @@ async function todoScene(env: Env) {
   };
 }
 Object.assign(REPLAY_CASES, PR_B_REPLAY);
+// F-076 通用网址门户：登录 / 登出是认证入口，不引用受范围约束的资源，也不走命令台账（DEC-377③），没有幂等重放可测
+REPLAY_CASES['POST /api/survey360/portal/login'] = { na: '认证入口不走命令台账，重试即重新登录（设计 §4.8）' };
+REPLAY_CASES['POST /api/survey360/portal/logout'] = { na: '认证入口不走命令台账，二次登出幂等且总是 204' };
 
 const CONFIG_ROUTES = new Set([
+  'POST /api/survey360/portal/login',
+  'POST /api/survey360/portal/logout',
   `PUT ${S}/settings`,
   `POST ${S}/roles`,
   `PUT ${S}/roles/:id`,
