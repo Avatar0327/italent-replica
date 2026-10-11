@@ -2,10 +2,25 @@
 import { randomUUID } from 'node:crypto';
 import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { exitWorld, rowsOf } from './AC-EV-F092-support.js';
 import { reviewOperator } from './AC-EV-review-support.js';
 import { errorOf, EV_BASE, ok } from './AC-EV-support.js';
+import type * as EmploymentStore from '../../apps/api/src/modules/employment/record-store.js';
+
+const fault = vi.hoisted(() => ({ beforeLock: false }));
+vi.mock('../../apps/api/src/modules/employment/record-store.js', async (load) => {
+  const original = await load<typeof EmploymentStore>();
+  return {
+    ...original,
+    lockEmploymentEmployee: async (...args: Parameters<typeof original.lockEmploymentEmployee>) => {
+      if (fault.beforeLock && args[1].commandId.startsWith('review-group-exit:')) {
+        throw Object.assign(new Error('合成连接中断'), { code: 'ECONNRESET' });
+      }
+      return original.lockEmploymentEmployee(...args);
+    },
+  };
+});
 
 const database = useTestDb();
 
@@ -109,7 +124,7 @@ describe('AC-EV-F092 离职生效自动退出评审组', () => {
     w.setTime('2026-10-11T16:00:00Z');
     await w.db.execute(sql`CREATE FUNCTION f092_retry_audit() RETURNS trigger LANGUAGE plpgsql AS $$
       BEGIN IF NEW.action='evaluation.review-group.update' THEN
-        RAISE EXCEPTION '模拟审计存储失败'; END IF; RETURN NEW; END $$`);
+        RAISE EXCEPTION USING ERRCODE='53100', MESSAGE='模拟审计存储失败'; END IF; RETURN NEW; END $$`);
     await w.db.execute(sql`CREATE TRIGGER f092_retry_audit BEFORE INSERT ON audit_events
       FOR EACH ROW EXECUTE FUNCTION f092_retry_audit()`);
     try {
@@ -120,12 +135,21 @@ describe('AC-EV-F092 离职生效自动退出评审组', () => {
     }
     expect(await w.group(g.id)).toEqual(g);
     expect(await w.audits(g.id)).toHaveLength(0);
-    expect(await w.queue(record.id)).toMatchObject([{ state: 'failed', attempts: 1 }]);
+    expect(await w.queue(record.id)).toMatchObject([{ state: 'failed', attempts: 1, reason: '53100' }]);
     expect(await w.run()).toMatchObject({ picked: 0 });
     w.setTime('2026-10-11T16:01:00Z');
+    // 下一次重试在拿到队列行之前连接中断，也必须按当前持久次数累加，不能当成第一次失败。
+    fault.beforeLock = true;
+    try {
+      expect(await w.run()).toMatchObject({ failed: 1 });
+    } finally {
+      fault.beforeLock = false;
+    }
+    expect(await w.queue(record.id)).toMatchObject([{ state: 'failed', attempts: 2, reason: 'ECONNRESET' }]);
+    w.setTime('2026-10-11T16:03:00Z');
     expect(await w.run()).toMatchObject({ done: 1 });
     await w.expectMembers(g.id, []);
-    expect(await w.queue(record.id)).toMatchObject([{ state: 'done', attempts: 2 }]);
+    expect(await w.queue(record.id)).toMatchObject([{ state: 'done', attempts: 3 }]);
     expect(await w.audits(g.id)).toHaveLength(1);
   });
 
@@ -144,7 +168,7 @@ describe('AC-EV-F092 离职生效自动退出评审组', () => {
       }),
       201,
     );
-    const pending = await ok<{ id: string; revision: number }>(
+    await ok<{ id: string; revision: number }>(
       await w.request('POST', '/api/tenant/employment/employees', {
         ifMatch: 0,
         body: { name: '候选尚未任职', code: `P${randomUUID().slice(0, 6)}` },
@@ -174,21 +198,15 @@ describe('AC-EV-F092 离职生效自动退出评审组', () => {
     const candidates = (await w.candidates()).items;
     expect(candidates.map((p) => p.id).sort()).toEqual([active.id, outside.id].sort());
     expect(candidates.find((p) => p.id === active.id)).toMatchObject({ name: active.name, code: active.code });
-    const manager = await reviewOperator(w, { evOrgs: [w.orgA], personOrgs: [w.orgA] });
+    const manager = await reviewOperator(w.review, { evOrgs: [w.orgA], personOrgs: [w.orgA] });
     const visible = await ok<{ items: { id: string }[] }>(
       await manager.request('GET', '/candidates/review-members?pageSize=1'),
     );
     expect(visible.items.map((p) => p.id)).toEqual([active.id]);
-    for (const person of [left, retired, pending, future, outside]) {
+    for (const keyword of [left.code, retired.code, '尚未任职', '未来入职', outside.code]) {
       expect(
-        (
-          await ok<{ items: unknown[] }>(
-            await manager.request(
-              'GET',
-              `/candidates/review-members?keyword=${person.id === pending.id ? '尚未任职' : person.id === future.id ? '未来入职' : person.code}`,
-            ),
-          )
-        ).items,
+        (await ok<{ items: unknown[] }>(await manager.request('GET', `/candidates/review-members?keyword=${keyword}`)))
+          .items,
       ).toEqual([]);
     }
   });
@@ -223,7 +241,7 @@ describe('AC-EV-F092 离职生效自动退出评审组', () => {
     await w.db.execute(sql`CREATE FUNCTION f092_reject_audit() RETURNS trigger LANGUAGE plpgsql AS $$
       BEGIN IF NEW.action='evaluation.review-group.update' AND EXISTS (SELECT 1 FROM audit_events
         WHERE action=NEW.action AND command_id=NEW.command_id) THEN
-        RAISE EXCEPTION '模拟审计存储失败'; END IF; RETURN NEW; END $$`);
+        RAISE EXCEPTION USING ERRCODE='53100', MESSAGE='模拟审计存储失败'; END IF; RETURN NEW; END $$`);
     await w.db.execute(sql`CREATE TRIGGER f092_reject_audit BEFORE INSERT ON audit_events
       FOR EACH ROW EXECUTE FUNCTION f092_reject_audit()`);
     try {

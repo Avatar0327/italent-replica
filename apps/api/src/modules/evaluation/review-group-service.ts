@@ -12,6 +12,7 @@ import type * as input from './input.js';
 import { assertNewPersonRefs, loadEmployees, presentPersonRefs, type PersonRefAccess } from './person-refs.js';
 import { type Tracked, view } from './read-model.js';
 import type { View } from './route-support.js';
+import { lockReviewGroupPeople, requireEmployedReviewMembers } from './review-group-people.js';
 import { audit, bumped, lockEditable, requireOwnerOrg, rowsOf, type WriteContext } from './store.js';
 
 export interface MemberInput {
@@ -91,7 +92,7 @@ export async function presentGroups(
  * 姓名在业务事务内冻结，改名后历史日志仍是当时的值；读取时按查看人当前的员工信息对象查看权与姓名字段权裁剪
  * （audit/visibility.ts 的 reviewGroupFields，DEC-197）。
  */
-async function auditSnapshot(tx: Tx, tenantId: string, group: ReviewGroupView) {
+export async function auditSnapshot(tx: Tx, tenantId: string, group: ReviewGroupView) {
   const names = new Map(
     (
       await loadEmployees(
@@ -129,6 +130,16 @@ export async function createReviewGroup(tx: Tx, ctx: WriteContext, body: input.R
     ctx.persons!,
     body.members.map((member) => member.employeeId),
   );
+  await lockReviewGroupPeople(
+    tx,
+    ctx,
+    body.members.map((member) => member.employeeId),
+  );
+  await requireEmployedReviewMembers(
+    tx,
+    ctx,
+    body.members.map((member) => member.employeeId),
+  );
   const now = ctx.now.toISOString();
   const result = await tx.execute(sql`INSERT INTO ev_review_groups
       (tenant_id, name, owner_id, owner_org_id, enabled, created_by, created_at, updated_at)
@@ -148,6 +159,7 @@ export async function createReviewGroup(tx: Tx, ctx: WriteContext, body: input.R
 const COLUMNS = { name: 'name', enabled: 'enabled', ownerOrgId: 'owner_org_id' } as const;
 
 export async function updateReviewGroup(tx: Tx, ctx: WriteContext, id: string, body: input.ReviewGroupPatch) {
+  await lockReviewGroupPeople(tx, ctx, body.members?.map((member) => member.employeeId) ?? [], id);
   const row = await lockEditable(tx, ctx, 'reviewGroup', id);
   const before = await loadGroup(tx, ctx.tenantId, id);
   if (body.members) checkMembers(body.members);
@@ -160,6 +172,7 @@ export async function updateReviewGroup(tx: Tx, ctx: WriteContext, id: string, b
     const existing = new Set(before.members.map((member) => member.employeeId));
     const added = body.members.map((member) => member.employeeId).filter((employeeId) => !existing.has(employeeId));
     await assertNewPersonRefs(tx, ctx.persons!, added);
+    await requireEmployedReviewMembers(tx, ctx, added);
   }
   const bump = bumped(ctx);
   const sets = (Object.keys(COLUMNS) as (keyof typeof COLUMNS)[])

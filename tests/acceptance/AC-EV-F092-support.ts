@@ -5,6 +5,7 @@ import { expect } from 'vitest';
 import { CANDIDATES, GROUPS, reviewWorld, type Employee, type GroupView } from './AC-EV-review-support.js';
 import { EV_BASE, ok } from './AC-EV-support.js';
 import { tenantApi } from './support/tenant-api.js';
+import { runReviewGroupExits } from '../../apps/api/src/modules/evaluation/review-group-exit-worker.js';
 
 const EMP_BASE = '/api/tenant/employment';
 export const EXIT_HANDLER = 'review_group_exit';
@@ -31,9 +32,9 @@ export async function exitWorld(db: Db) {
       ifMatch: 0,
       body: { name: `离职评审组${randomUUID().slice(0, 6)}`, ownerOrgId, enabled, members: members(...people) },
     }).then((r) => ok<GroupView>(r, 201));
-  const edit = (g: GroupView, body: Record<string, unknown>, key = randomUUID()) =>
+  const edit = (g: GroupView, body: Record<string, unknown>, key: string = randomUUID()) =>
     request('PATCH', `${EV_BASE}${GROUPS}/${g.id}`, { ifMatch: g.revision, body, idempotencyKey: key });
-  async function leave(person: Employee, lastWorkDate: string, key = randomUUID()) {
+  async function leave(person: Employee, lastWorkDate: string, key: string = randomUUID()) {
     const current = await employee(person.id);
     return request('POST', `${EMP_BASE}/employees/${person.id}/businesses`, {
       ifMatch: current.revision,
@@ -55,8 +56,10 @@ export async function exitWorld(db: Db) {
         actorUserId: string | null;
         changes: { field: string }[];
       }>(
-        await tx.execute(sql`SELECT "before", "after", command_id AS "commandId", actor_user_id AS "actorUserId", changes
-    FROM audit_events WHERE tenant_id=${w.tenant.id} AND object_id=${id} AND action='evaluation.review-group.update'
+        await tx.execute(sql`SELECT "before", "after", command_id AS "commandId",
+      actor_user_id AS "actorUserId", changes
+    FROM audit_events WHERE tenant_id=${w.tenant.id} AND object_id=${id}
+      AND action='evaluation.review-group.update'
     ORDER BY occurred_at, id`),
       ),
     );
@@ -71,23 +74,7 @@ export async function exitWorld(db: Db) {
     WHERE tenant_id=${w.tenant.id} AND handler=${EXIT_HANDLER} AND record_id=${id}::uuid`),
       ),
     );
-  // 红测提交时处理器尚未存在；动态加载仅在到期消费用例执行时触发，其他用例可验证旧 HTTP 实现的真实错误。
-  const run = async () => {
-    const path = '../../apps/api/src/modules/evaluation/review-group-exit-worker.js';
-    const worker = (await import(path)) as {
-      runReviewGroupExits(
-        db: Db,
-        tenantId: string,
-        options: { clock: () => Date },
-      ): Promise<{
-        picked: number;
-        done: number;
-        skipped: number;
-        failed: number;
-      }>;
-    };
-    return worker.runReviewGroupExits(db, w.tenant.id, { clock: () => now });
-  };
+  const run = () => runReviewGroupExits(db, w.tenant.id, { clock: () => now });
   async function savedLeave(person: Employee, lastWorkDate: string, key?: string) {
     return ok<{ id: string; revision: number }>(await leave(person, lastWorkDate, key), 201);
   }
@@ -97,6 +84,7 @@ export async function exitWorld(db: Db) {
   return {
     ...w,
     api: permissionApi,
+    review: { ...w, api: permissionApi },
     db,
     request,
     setTime,

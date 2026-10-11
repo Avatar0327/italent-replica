@@ -32,6 +32,7 @@ import { registerCandidates } from './candidates.js';
 import { resolveFormVisibility } from './form-refs.js';
 import { registerFormRoutes } from './form-routes.js';
 import { registerReviewGroupRoutes } from './review-group-routes.js';
+import { registerReviewGroupExitHook } from './review-group-exit.js';
 import { rowAccess, type WriteContext } from './store.js';
 
 export { EV_BASE };
@@ -82,6 +83,7 @@ const SPECS = {
 } as const;
 
 export function registerEvaluationRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
+  registerReviewGroupExitHook();
   registerReviewGroupRoutes(router, deps);
   registerFormRoutes(router, deps);
   registerCandidates(router, deps);
