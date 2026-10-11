@@ -4,6 +4,7 @@
  * 每个任务自己按租户时区与幂等键去重（AGENTS §10「定时任务」），这里只负责按间隔串行触发：同一进程上一轮未结束时
  * 不叠加新一轮；一个任务失败只上报，不影响其他任务。没有任务时不起定时器。
  */
+import { runScheduledCalc, SUCCESSION_PRODUCERS } from './calc-jobs.js';
 import type { Db } from '@italent/db';
 
 export type SuccessionJobKind = 'exit_sweep' | 'position_risk' | 'org_stats';
@@ -13,7 +14,12 @@ export interface SuccessionJob {
   run(db: Db, now: Date): Promise<void>;
 }
 
-export const SUCCESSION_JOBS: readonly SuccessionJob[] = [];
+export const SUCCESSION_JOBS: readonly SuccessionJob[] = (['exit_sweep', 'position_risk', 'org_stats'] as const).map(
+  (kind) => ({
+    kind,
+    run: (db, now) => runScheduledCalc(db, now, kind),
+  }),
+);
 
 export interface SuccessionScheduler {
   stop(): Promise<void>;
@@ -28,7 +34,7 @@ export function startSuccessionScheduler(
     readonly onError?: (kind: SuccessionJobKind, error: unknown) => void;
   } = {},
 ): SuccessionScheduler {
-  const jobs = options.jobs ?? SUCCESSION_JOBS;
+  const jobs = options.jobs ?? SUCCESSION_JOBS.filter((job) => SUCCESSION_PRODUCERS.some((p) => p.kind === job.kind));
   if (!jobs.length) return { stop: async () => undefined };
   const intervalMs = options.intervalMs ?? 15 * 60_000;
   if (!Number.isSafeInteger(intervalMs) || intervalMs < 1000)

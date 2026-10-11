@@ -39,6 +39,58 @@
       "obj:Succession.Record:delete"
     ]
   },
+  "GET /api/tenant/succession/calc-runs": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:Succession.CalcRun"
+    ],
+    "scopeQueries": [
+      "scope:SuccessionAndDevelopment/Succession.CalcRun/-"
+    ],
+    "trace": [
+      "obj:Succession.CalcRun:view"
+    ]
+  },
+  "GET /api/tenant/succession/calc-runs/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "e496ce865006",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:SuccessionAndDevelopment/Succession.CalcRun/-"
+    ],
+    "trace": [
+      "obj:Succession.CalcRun:view"
+    ]
+  },
+  "GET /api/tenant/succession/calc-runs/:id/failures": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "e496ce865006",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:SuccessionAndDevelopment/Succession.CalcRun/-"
+    ],
+    "trace": [
+      "obj:Succession.CalcRun:view"
+    ]
+  },
   "GET /api/tenant/succession/populations": {
     "all": {
       "status": 200
@@ -139,6 +191,27 @@
     "trace": [
       "btn:Succession.Record#create@list",
       "obj:Succession.Record:create"
+    ]
+  },
+  "POST /api/tenant/succession/calc-runs/:id/retry": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "e496ce865006",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:SuccessionAndDevelopment/Succession.CalcRun/-"
+    ],
+    "trace": [
+      "btn:Succession.CalcRun#retry@detail",
+      "obj:Succession.CalcRun:update",
+      "obj:Succession.CalcRun:view"
     ]
   },
   "POST /api/tenant/succession/populations": {
