@@ -345,6 +345,7 @@ export const PRIMITIVES: readonly Primitive[] = [
     // 盘点模板（B6a）：引用流程 / 评价规则 / 模块等级 / 盘点字段 = 读取目录，请求带引用时另需目录对象查看权（template-routes.ts）；
     // 向下公开的模板只读（template-access.ts requireEditable）
     ['talentReview.templateCatalogReference', call('requireCatalogs'), { modules: ['talent-review'] }],
+    ['talentReview.projectCatalogReference', call('requireProjectCatalogs'), { modules: ['talent-review'] }],
     ['talentReview.templatePublicDownReadonly', /\bTEMPLATE_PUBLIC_DOWN_READONLY\b/, { modules: ['talent-review'] }],
     // 人才评定配置字典：按 enabled 筛选须有该字段查看权（R3-T02 B1a 路由声明）
     ['ev.filterFieldVisible', call('requireFilterVisible'), { modules: ['evaluation'] }],

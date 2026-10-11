@@ -705,7 +705,112 @@ const TEMPLATE_REQUIRED: RequiredTable = {
   [`DELETE ${BASE_ROOT}/templates/:id`]: [...tplChange('delete'), TPL_READONLY],
 };
 
+// B7a：项目 CRUD 与状态按钮；目录引用仅在请求显式带引用时准入。
+const PR = `${T}/project-routes.ts`;
+const PROJECT = 'TalentReview.Project';
+const PROJECT_LABELS = { category: 'Category', calcRule: 'CalcRule', matrix: 'Matrix', field: 'Field' };
+const projectConst: Evidence = { role: 'const', unit: `${CATALOG}>project`, anchor: "'Project'" };
+const projectCall = (anchor: string): Evidence => ({ role: 'call', unit: `${PR}#registerProjectRoutes`, anchor });
+const projectReference: Obligation[] = [
+  {
+    perm: 'guard:talentReview.projectCatalogReference',
+    facts: ['guard:talentReview.projectCatalogReference'],
+    at: [projectCall('await requireProjectCatalogs(c, deps, input)')],
+  },
+  ...(['category', 'calcRule', 'matrix', 'field'] as const).map((key): Obligation => ({
+    perm: `obj:TalentReview.${PROJECT_LABELS[key]}:view`,
+    purpose: 'when:talentReview.projectCatalogReference',
+    at: [
+      { role: 'impl', unit: `${PR}#requireProjectCatalogs`, anchor: 'await reviewContext(c, deps, key)' },
+      ...CONTEXT,
+      {
+        role: 'const',
+        unit: `${CATALOG}>${key}`,
+        anchor: `object('${PROJECT_LABELS[key]}'`,
+      },
+    ],
+  })),
+];
+const projectAction = (action: 'start' | 'end' | 'restart'): Obligation[] => {
+  const entry = projectCall('const ctx = await projectWriteContext(c, deps, action, revision(c))');
+  return [
+    {
+      perm: `obj:${PROJECT}:update`,
+      facts: ['object:objectContext'],
+      at: [
+        entry,
+        {
+          role: 'impl',
+          unit: `${PR}#projectWriteContext`,
+          anchor: "await reviewContext(c, deps, 'project', 'update', expectedRevision)",
+        },
+        ...CONTEXT,
+        projectConst,
+      ],
+    },
+    {
+      perm: `btn:${PROJECT}#${action}@detail`,
+      facts: ['button:button()'],
+      at: [
+        entry,
+        {
+          role: 'impl',
+          unit: `${PR}#projectWriteContext`,
+          anchor: "await button(deps, ctx, codeOf('project'), action, 'detail')",
+        },
+        BUTTON[1]!,
+        projectConst,
+      ],
+    },
+  ];
+};
+const PROJECT_REQUIRED: RequiredTable = {
+  [`GET ${BASE_ROOT}/projects`]: [
+    cfgView(
+      PROJECT,
+      'project',
+      'Project',
+      'registerProjectRoutes',
+      "router.get(PATH, async (c) => { const ctx = await reviewContext(c, deps, 'project')",
+      PR,
+    ),
+  ],
+  [`GET ${BASE_ROOT}/projects/:id`]: [
+    cfgView(
+      PROJECT,
+      'project',
+      'Project',
+      'registerProjectRoutes',
+      "router.get(`${PATH}/:id`, async (c) => { const ctx = await reviewContext(c, deps, 'project')",
+      PR,
+    ),
+  ],
+  [`POST ${BASE_ROOT}/projects`]: [
+    ...cfgChange(PROJECT, 'project', 'Project', 'registerProjectRoutes', 'create', PR),
+    ...projectReference,
+    {
+      perm: 'guard:talentReview.projectCreatable',
+      at: [
+        {
+          role: 'impl',
+          unit: `${T}/project-service.ts#createProject`,
+          anchor: "visible(ctx.scope, input.ownerOrgId, notFoundMessage('project'))",
+        },
+      ],
+    },
+  ],
+  [`PATCH ${BASE_ROOT}/projects/:id`]: [
+    ...cfgChange(PROJECT, 'project', 'Project', 'registerProjectRoutes', 'update', PR),
+    ...projectReference,
+  ],
+  [`DELETE ${BASE_ROOT}/projects/:id`]: cfgChange(PROJECT, 'project', 'Project', 'registerProjectRoutes', 'delete', PR),
+  [`POST ${BASE_ROOT}/projects/:id/start`]: projectAction('start'),
+  [`POST ${BASE_ROOT}/projects/:id/end`]: projectAction('end'),
+  [`POST ${BASE_ROOT}/projects/:id/restart`]: projectAction('restart'),
+};
+
 export const TALENT_REVIEW: RequiredTable = {
+  ...PROJECT_REQUIRED,
   ...TEMPLATE_REQUIRED,
   ...FORM_FLOW_REQUIRED,
   ...CALC_REQUIRED,

@@ -129,6 +129,33 @@ export const TALENT_REVIEW_OBJECTS = {
     ['name', 'ownerOrgId', 'downwardPublic', 'flowId', 'enabled', 'steps', 'modules', 'permissions'],
     ['currentVersionNo', 'versionNo', 'accessLevel', 'configErrors', 'versions'],
   ),
+  /** 项目定义与状态（设计 §2.4 / §3.1；B7b 再接公开 / 共享只读谓词）。 */
+  project: object(
+    'Project',
+    [
+      'code',
+      'name',
+      'categoryId',
+      'ownerOrgId',
+      'downwardPublic',
+      'year',
+      'period',
+      'periodStartDate',
+      'periodEndDate',
+      'businessDate',
+      'calcRuleId',
+      'carryLastResult',
+      'sharedOrgIds',
+      'excludedCategoryIds',
+      'matrices',
+      'calibrationFields',
+    ],
+    ['ownerId', 'status', 'endedCount', 'calcState', 'lastFullCalcAt'],
+    [
+      ...crud,
+      ...['start', 'end', 'restart'].map((code): ButtonDefinition => ({ code, level: 'detail', requires: 'update' })),
+    ],
+  ),
   /**
    * 盘点结果审批（设计 §3.3、§2.6；N12）：审批类型 talent_review_result 的业务对象（集合审批，一单多个被盘点人）。
    * 发起 / 撤回入口随 PR-D 接入；本 PR 只登记对象，供审批类型与标准身份引用。
@@ -159,6 +186,7 @@ export const TALENT_REVIEW_OBJECT_LABELS: Readonly<Record<TalentReviewObject, st
   matrix: '盘点九宫格',
   calcRule: '盘点计算规则',
   template: '盘点模板',
+  project: '盘点项目',
   form: '盘点内容表单',
   flow: '盘点流程',
   resultApproval: '盘点结果审批',
@@ -180,6 +208,9 @@ export const TALENT_REVIEW_CONFIG_OBJECTS: readonly TalentReviewObject[] = [
   'flow',
 ];
 
+/** 按所属组织与创建人查看审计的对象（设计 §6.1），与业务公开 / 共享只读入口分开。 */
+export const TALENT_REVIEW_ORG_OBJECTS = ['template', 'project'] as const;
+
 /**
  * 设置类配置对象里**暂不预置“看全部”**的：给标准身份预置看全部等于扩大出厂默认数据范围（DEC-374②，守卫 AC-PLAT-F061-scope）。
  * DEC-415 起新对象的看全部默认给所属模块的预置管理员（盘点管理员），本清单为空；字段映射 / 表单 / 流程（DEC-415）已移出。
@@ -194,6 +225,7 @@ export const TALENT_REVIEW_SEE_ALL_UNAPPROVED: readonly TalentReviewObject[] = [
 export const TALENT_REVIEW_SEE_ALL_OBJECTS: readonly TalentReviewObject[] = [
   ...TALENT_REVIEW_CONFIG_OBJECTS,
   'template',
+  'project',
 ].filter((key) => !TALENT_REVIEW_SEE_ALL_UNAPPROVED.includes(key as TalentReviewObject)) as TalentReviewObject[];
 
 /** 准备度颜色：#RRGGBB（原站字典每项带颜色，`27` 补充 W-617）。 */
