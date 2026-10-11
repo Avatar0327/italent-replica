@@ -226,13 +226,10 @@ async function callAs(s: SceneB, user: string, route: string, t: Target, auditId
   const base = { user, tenant: s.w.tenantId };
   const linkRoute = route.includes(LINK) || route.includes(REPORT_LINK) || route.includes(PORTAL);
   // 报告收件人请求必须带令牌，否则只是在测“缺令牌 404”；链接作答用他人（客户）的令牌，待办用查看人自己的账号
-  const headers: Record<string, string> | undefined = route.includes(REPORT_LINK)
-    ? { 'x-survey360-token': t.reportToken }
-    : route.includes(LINK)
-      ? { 'x-survey360-token': t.token }
-      : route.includes(PORTAL)
-        ? { 'x-survey360-session': t.session }
-        : undefined;
+  let headers: Record<string, string> | undefined;
+  if (route.includes(REPORT_LINK)) headers = { 'x-survey360-token': t.reportToken };
+  else if (route.includes(LINK)) headers = { 'x-survey360-token': t.token };
+  else if (route.includes(PORTAL)) headers = { 'x-survey360-session': t.session };
   const opts = linkRoute ? { tenant: s.w.tenantId, ...(headers ? { headers } : {}) } : base;
   if (route.endsWith('/block') || route.endsWith('/unblock'))
     return s.w.api.request(method, path, { ...opts, ifMatch: t.sheet.revision });
