@@ -16,16 +16,16 @@
     "qualification": 55,
     "root": 1,
     "self-service": 9,
-    "succession": 15,
-    "succession-platform": 1,
+    "succession": 19,
+    "succession-platform": 2,
     "survey360": 75,
     "survey360-link": 10,
     "survey360-portal": 8,
     "survey360-report-link": 3,
     "talent": 40,
-    "talent-review": 65,
+    "talent-review": 73,
     "talent-review-platform": 1,
     "tenant-settings": 3
   },
-  "total": 599
+  "total": 612
 }

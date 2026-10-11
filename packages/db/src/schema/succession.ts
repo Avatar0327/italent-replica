@@ -5,6 +5,7 @@
  */
 import { sql } from 'drizzle-orm';
 import {
+  boolean,
   check,
   date,
   foreignKey,
@@ -22,7 +23,7 @@ import { employmentEmployees } from './employment.js';
 import { jobPositionObjects } from './job.js';
 import { orgObjects } from './org.js';
 import { talentReadinessLevels } from './talent-review.js';
-import { tenants } from './tenancy.js';
+import { tenantMemberships, tenants } from './tenancy.js';
 
 export const SUCCESSION_TYPES = ['org', 'position'] as const;
 export type SuccessionType = (typeof SUCCESSION_TYPES)[number];
@@ -195,5 +196,148 @@ export const successionRuleSettings = pgTable(
     check('succession_rule_settings_kind', sql`${t.kind} IN ('position_risk', 'org_health')`),
     check('succession_rule_settings_color', sql`${t.defaultColor} ~ '^#[0-9A-Fa-f]{6}$'`),
     check('succession_rule_settings_revision', sql`${t.revision} >= 0 AND ${t.levelsRevision} >= 0`),
+  ],
+);
+
+// B3a / DEC-427：对象集合独立冻结；NULL outcome = 尚未执行，重试只重置可恢复行。
+export const CALC_KINDS = ['position_risk', 'org_health', 'org_health_reset', 'org_stats', 'exit_sweep'] as const;
+export const CALC_STATUSES = ['pending', 'running', 'succeeded', 'partial', 'blocked', 'aborted'] as const;
+export const CALC_OUTCOMES = ['written', 'unchanged', 'manual_kept', 'failed', 'revision_conflict'] as const;
+export const successionCalcRuns = pgTable(
+  'succession_calc_runs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
+    kind: text('kind').$type<(typeof CALC_KINDS)[number]>().notNull(),
+    trigger: text('trigger').notNull(),
+    idempotencyKey: text('idempotency_key').notNull(),
+    requestHash: text('request_hash').notNull(),
+    scope: jsonb('scope').$type<{ rootOrgId?: string; sourceBatchId?: string }>().notNull().default({}),
+    principalUserId: uuid('principal_user_id'),
+    ownerUserId: uuid('owner_user_id'),
+    requestedBy: uuid('requested_by'),
+    commandId: text('command_id').notNull(),
+    businessDate: date('business_date').notNull(),
+    phase: integer('phase').notNull().default(0),
+    status: text('status').$type<(typeof CALC_STATUSES)[number]>().notNull().default('pending'),
+    blockReason: text('block_reason'),
+    attemptNo: integer('attempt_no').notNull().default(1),
+    lastErrorCode: text('last_error_code'),
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    finishedAt: timestamp('finished_at', { withTimezone: true }),
+    revision: integer('revision').notNull().default(1),
+  },
+  (t) => [
+    unique('succession_calc_runs_tenant_id').on(t.tenantId, t.id),
+    unique('succession_calc_runs_key').on(t.tenantId, t.idempotencyKey),
+    ...[t.principalUserId, t.ownerUserId, t.requestedBy].map((column) =>
+      foreignKey({
+        columns: [t.tenantId, column],
+        foreignColumns: [tenantMemberships.tenantId, tenantMemberships.userId],
+      }),
+    ),
+    check('succession_calc_runs_kind', sql`${t.kind} IN (${list(CALC_KINDS)})`),
+    check('succession_calc_runs_status', sql`${t.status} IN (${list(CALC_STATUSES)})`),
+    check(
+      'succession_calc_runs_trigger',
+      sql`${t.trigger} IN ('schedule','manual','review_sync','preferences_change','retry')`,
+    ),
+    check('succession_calc_runs_counters', sql`${t.phase} >= 0 AND ${t.attemptNo} > 0 AND ${t.revision} > 0`),
+    check('succession_calc_runs_owner', sql`${t.ownerUserId} IS NOT DISTINCT FROM ${t.principalUserId}`),
+  ],
+);
+export const successionCalcRunObjects = pgTable(
+  'succession_calc_run_objects',
+  {
+    tenantId: uuid('tenant_id').notNull(),
+    runId: uuid('run_id').notNull(),
+    objectType: text('object_type').$type<'org' | 'position' | 'employee'>().notNull(),
+    objectId: uuid('object_id').notNull(),
+    expectedRevision: integer('expected_revision'),
+    outcome: text('outcome').$type<(typeof CALC_OUTCOMES)[number]>(),
+    retryable: boolean('retryable').notNull().default(false),
+    pageNo: integer('page_no').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.runId, t.objectType, t.objectId] }),
+    foreignKey({
+      columns: [t.tenantId, t.runId],
+      foreignColumns: [successionCalcRuns.tenantId, successionCalcRuns.id],
+    }),
+    check('succession_calc_objects_type', sql`${t.objectType} IN ('org','position','employee')`),
+    check('succession_calc_objects_outcome', sql`${t.outcome} IN (${list(CALC_OUTCOMES)})`),
+    check('succession_calc_objects_revision', sql`${t.expectedRevision} >= 0`),
+    check('succession_calc_objects_page', sql`${t.pageNo} >= 0`),
+    check('succession_calc_objects_retry', sql`NOT ${t.retryable} OR ${t.outcome} = 'failed'`),
+  ],
+);
+export const successionCalcRunFailures = pgTable(
+  'succession_calc_run_failures',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    runId: uuid('run_id').notNull(),
+    objectType: text('object_type').notNull(),
+    objectId: uuid('object_id').notNull(),
+    levelId: uuid('level_id'),
+    rowNo: integer('row_no'),
+    code: text('code').notNull(),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.tenantId, t.runId, t.objectType, t.objectId],
+      foreignColumns: [
+        successionCalcRunObjects.tenantId,
+        successionCalcRunObjects.runId,
+        successionCalcRunObjects.objectType,
+        successionCalcRunObjects.objectId,
+      ],
+    }),
+    check('succession_calc_failures_code', sql`${t.code} ~ '^[A-Z][A-Z0-9_]{0,63}$'`),
+  ],
+);
+// 通知行本身就是事务 outbox：消费者按 pending/failed 游标拉取；unknown 只回查，不盲重发。
+export const successionNotifications = pgTable(
+  'succession_notifications',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
+    runId: uuid('run_id'),
+    batchId: uuid('batch_id'), // D1 建批次表后补复合外键。
+    subjectId: uuid('subject_id')
+      .generatedAlwaysAs(sql`COALESCE(run_id, batch_id)`)
+      .notNull(),
+    recipientUserId: uuid('recipient_user_id').notNull(),
+    kind: text('kind').notNull(),
+    channel: text('channel').notNull().default('in_app'),
+    state: text('state').$type<'pending' | 'sent' | 'failed' | 'unknown'>().notNull().default('pending'),
+    attemptNo: integer('attempt_no').notNull().default(0),
+    commandId: text('command_id').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    sentAt: timestamp('sent_at', { withTimezone: true }),
+  },
+  (t) => [
+    unique('succession_notifications_dedupe').on(t.tenantId, t.subjectId, t.recipientUserId, t.kind),
+    foreignKey({
+      columns: [t.tenantId, t.recipientUserId],
+      foreignColumns: [tenantMemberships.tenantId, tenantMemberships.userId],
+    }),
+    foreignKey({
+      columns: [t.tenantId, t.runId],
+      foreignColumns: [successionCalcRuns.tenantId, successionCalcRuns.id],
+    }),
+    check('succession_notifications_subject', sql`num_nonnulls(${t.runId},${t.batchId}) = 1`),
+    check(
+      'succession_notifications_kind',
+      sql`(${t.kind}='calc_done' AND ${t.runId} IS NOT NULL)
+    OR (${t.kind}='sync_done' AND ${t.batchId} IS NOT NULL)`,
+    ),
+    check('succession_notifications_state', sql`${t.state} IN ('pending','sent','failed','unknown')`),
+    check('succession_notifications_attempt', sql`${t.attemptNo} >= 0`),
+    index('succession_notifications_pending').on(t.tenantId, t.state, t.createdAt, t.id),
   ],
 );

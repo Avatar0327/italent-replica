@@ -336,6 +336,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/platform/standard-presets.ts#ESTABLISHMENT_SCHEME_DATASOURCE',
     'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_CONFIG_OBJECTS',
     'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS',
+    'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_ORG_OBJECTS',
     'packages/domain/src/talent/catalog.ts#TALENT_OBJECTS',
   ],
   'apps/api/src/audit/visibility.ts#RULE_BY_TYPE': ['#RULES'],

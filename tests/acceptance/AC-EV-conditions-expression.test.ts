@@ -80,6 +80,14 @@ describe('AC-EV-conditions 明细运算符（9 种 🟢）', () => {
     expect(validateActivityConditionDetails([detail(1, 'between', 3, 3)])).toEqual({ ok: true });
   });
 
+  it('D-068：日期范围开始不晚于结束；与保存入口同一校验，业务日期不依赖时区', () => {
+    expect(validateActivityConditionDetails([detail(3, 'between', '2026-09-30', '2026-09-01')])).toEqual({
+      ok: false,
+      issues: [{ seq: 3, code: 'RANGE_INVERTED' }],
+    });
+    expect(validateActivityConditionDetails([detail(3, 'between', '2026-09-01', '2026-09-01')])).toEqual({ ok: true });
+  });
+
   it('未知运算符 → OPERATOR_INVALID；序号须为正整数且不重复', () => {
     expect(validateActivityConditionDetails([detail(1, 'like', 'x')])).toEqual({
       ok: false,

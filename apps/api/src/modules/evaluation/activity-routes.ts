@@ -25,6 +25,7 @@ import {
   viewableFields,
 } from './access.js';
 import { resolveActivityRefs } from './activity-refs.js';
+import { registerActivityFormLock } from './activity-form-lock.js';
 import * as activities from './activity-service.js';
 import { registerActivityUsage } from './activity-usage.js';
 import * as input from './input.js';
@@ -62,6 +63,7 @@ function statusFilter(raw: string | undefined) {
 
 export function registerActivityRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   registerActivityUsage();
+  registerActivityFormLock();
   const present = presenter(deps, OBJECT);
   /** 读出行 → 挂组织范围与环节 → 负责人整形（字段权限裁剪之前）。 */
   const shapeRows = async (tx: Tx, tenantId: string, access: PersonRefAccess, rows: Record<string, unknown>[]) =>

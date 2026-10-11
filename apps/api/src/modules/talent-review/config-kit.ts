@@ -90,6 +90,31 @@ export async function configReferrer(tx: Tx, tenantId: string, object: ConfigObj
   return null;
 }
 
+/** 属性变更不能破坏引用方的约束；调用方须已持对象行 FOR UPDATE，并在同一事务内完成变更。 */
+export type ConfigUpdateConstraint = (
+  tx: Tx,
+  tenantId: string,
+  id: string,
+  patch: Readonly<Record<string, unknown>>,
+) => Promise<void>;
+const updateConstraints = new Map<ConfigObject, Set<ConfigUpdateConstraint>>();
+
+export function registerConfigUpdateConstraint(object: ConfigObject, guard: ConfigUpdateConstraint): void {
+  const constraints = updateConstraints.get(object) ?? new Set<ConfigUpdateConstraint>();
+  constraints.add(guard);
+  updateConstraints.set(object, constraints);
+}
+
+export async function checkConfigUpdateConstraints(
+  tx: Tx,
+  tenantId: string,
+  object: ConfigObject,
+  id: string,
+  patch: Readonly<Record<string, unknown>>,
+) {
+  for (const guard of updateConstraints.get(object) ?? []) await guard(tx, tenantId, id, patch);
+}
+
 export async function loadConfig<V extends { id: string }>(
   tx: Tx,
   spec: ConfigSpec<V>,
@@ -254,6 +279,7 @@ export async function updateConfig<V extends { id: string }>(
   await lockConfigRow(tx, spec, ctx, id);
   const before = (await loadConfig(tx, spec, ctx.tenantId, id))!;
   requireSeeAllToRename(ctx, before as { name?: string }, patch.name as string | undefined);
+  await checkConfigUpdateConstraints(tx, ctx.tenantId, spec.object, id, patch);
   await uniqueOr(spec.duplicate, spec.label, () =>
     tx
       .update(spec.table)

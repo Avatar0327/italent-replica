@@ -13,6 +13,7 @@ import { guardFieldRename, type FieldWriteContext } from './field-rename-guard.j
 import { guardTemplateResultRename } from './template-result-rename.js';
 import {
   auditConfig,
+  checkConfigUpdateConstraints,
   type ConfigSpec,
   type ConfigTable,
   createConfig,
@@ -229,6 +230,7 @@ export async function updateField(tx: Tx, ctx: FieldWriteContext, id: string, pa
   await lockConfigRow(tx, FIELD, ctx, id);
   const before = (await loadFieldView(tx, ctx.tenantId, id))!;
   requireSeeAllToRename(ctx, before, patch.name);
+  await checkConfigUpdateConstraints(tx, ctx.tenantId, 'field', id, patch);
   // 改名守卫（契约 §3.1）：只在名称实际变化时执行——版本行串行、引用它的 bound 公式往返校验、固化文本兜底
   const renamed = patch.name !== undefined && patch.name !== before.name;
   if (renamed) await guardFieldRename(tx, ctx, id, before.name, patch.name!);
