@@ -591,6 +591,9 @@ export const DIGESTS: Digests = {
     ownerObject: 'a370fec1273a',
     registerQualificationCandidates: 'ffd06d15a688',
   },
+  'apps/api/src/modules/qualification/chart-export.ts': {
+    registerChartExport: '80c5aeeac82e',
+  },
   'apps/api/src/modules/qualification/config-service.ts': {
     JOB_KINDS: 'e6615d8f31ad',
     createCategory: '0a2f553856db',
@@ -612,7 +615,7 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/qualification/extras.ts': {
     registerChannels: '5713deee61bb',
-    registerChart: 'e0bfdb21c3a0',
+    registerChart: 'c1b0a1e97c5d',
     registerCodingRules: 'c612bd75d2e8',
     registerGradeDescriptions: 'e7472e8831c3',
     registerImports: 'c655070d40cf',
@@ -1627,6 +1630,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/qualification/candidates.ts#organizationAccess': '6c1fab0ace0d',
   'apps/api/src/modules/qualification/candidates.ts#ownerObject': '168187c35f0f',
   'apps/api/src/modules/qualification/candidates.ts#registerQualificationCandidates': '3a3081a00826',
+  'apps/api/src/modules/qualification/chart-export.ts#registerChartExport': '9e5f0399050f',
   'apps/api/src/modules/qualification/config-service.ts#JOB_KINDS': 'e3b0c44298fc',
   'apps/api/src/modules/qualification/config-service.ts#createCategory': '445e6857d09c',
   'apps/api/src/modules/qualification/config-service.ts#createCategoryClass': 'd1660d3994f1',
@@ -1643,7 +1647,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/qualification/development-channel.ts#registerDevelopmentChannel': 'db7402682be4',
   'apps/api/src/modules/qualification/development-channel.ts#viewEmployeeQualification': '52a68ac1a869',
   'apps/api/src/modules/qualification/extras.ts#registerChannels': '9296f2570c88',
-  'apps/api/src/modules/qualification/extras.ts#registerChart': '9b1a6930a637',
+  'apps/api/src/modules/qualification/extras.ts#registerChart': '68f9ef9d5a54',
   'apps/api/src/modules/qualification/extras.ts#registerCodingRules': '5e9538a09fd3',
   'apps/api/src/modules/qualification/extras.ts#registerGradeDescriptions': '441d1fe787ea',
   'apps/api/src/modules/qualification/extras.ts#registerImports': '3530b1b71dac',

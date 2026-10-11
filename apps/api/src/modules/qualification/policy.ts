@@ -337,6 +337,13 @@ export const QUALIFICATION_POLICIES = defineTable('qualification', {
     scope: STANDARD_DETAIL,
     fields: projector('ql.chart', 'ql.chart'),
   }),
+  [`GET ${BASE}/chart-export`]: object({
+    object: Q.standard.code,
+    operation: 'view',
+    button: noButton('图谱导出按图谱查看权'),
+    scope: listScope('ql.openRead(ql_standards)'),
+    fields: projector('ql.chartExport', 'ql.chart'),
+  }),
   // ---- subset-init-routes.ts：任职资格子集初始化（C1-5，设计 §4.1 / §5.1 点名的批量命令）--------------------------------
   // 与 HR 逐个新增子集同一道门：TenantBase.Qualification 新增权 + 列表层“新增”按钮；人员范围用同一个 personScope 谓词，
   // 逐名员工判定，范围外与不存在同一回执 EMPLOYEE_NOT_FOUND（HTTP 恒 200，不透露是否存在）。整批一条命令（单台账行，
