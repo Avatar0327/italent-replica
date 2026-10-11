@@ -20,7 +20,7 @@ import {
 } from './access.js';
 
 export type ConfigObject =
-  'category' | 'role' | 'field' | 'matrix' | 'calcRule' | 'scoreRule' | 'moduleGrade' | 'mapping';
+  'category' | 'role' | 'field' | 'matrix' | 'calcRule' | 'scoreRule' | 'moduleGrade' | 'mapping' | 'form' | 'flow';
 
 export interface WriteContext extends TalentReviewContext {
   readonly scope: ModuleScope;
@@ -62,6 +62,8 @@ const guards: Record<ConfigObject, ConfigReferenceGuard[]> = {
   mapping: [],
   matrix: [],
   calcRule: [],
+  form: [],
+  flow: [],
 };
 
 /** 引用方（项目、模板、公式…）在加载时登记；删除时同事务逐个询问。 */

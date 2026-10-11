@@ -197,6 +197,7 @@ describe('存量租户补装 T04 预置字段（审查 P2-4；DEC-361 统一机�
     });
     const tenant = result.tenant.id;
     await withTenant(db, tenant, async (tx) => {
+      await tx.execute(sql`DELETE FROM talent_review_forms`); // PR-B3：预置表单引用预置字段（restrict）
       // B2 起开通会下发引用“标签”的预置映射；B2 之前开通的租户没有它，模拟时一并清掉才能删字段
       await tx.execute(sql`DELETE FROM talent_review_field_mappings`);
       await tx.execute(sql`DELETE FROM talent_review_fields WHERE code IN ('tags', 'strengths', 'development_areas')`);
@@ -249,6 +250,7 @@ describe('存量租户补装 T04 预置字段（审查 P2-4；DEC-361 统一机�
   it('补装全空租户：25 个字段连同选项、配对关系一次装齐（与开通同一安装逻辑）', async () => {
     const t = await legacyTenant('trc-backfill-empty');
     await withTenant(testDb().db, t.tenant, async (tx) => {
+      await tx.execute(sql`DELETE FROM talent_review_forms`); // PR-B3：预置表单引用预置字段（restrict）
       await tx.execute(sql`DELETE FROM talent_review_field_mappings`);
       await tx.execute(sql`DELETE FROM talent_review_matrices`); // PR-B4：预置九宫格引用预置字段（restrict）
       await tx.execute(sql`UPDATE talent_review_fields SET pair_field_id = NULL`);
