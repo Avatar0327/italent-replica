@@ -11,7 +11,7 @@ import { AppError } from '../../errors.js';
 import { notFoundMessage, requireConfigVisible, type ModuleScope } from './access.js';
 import type { WriteContext } from './config-kit.js';
 
-export type ReferencedObject = 'field' | 'role';
+export type ReferencedObject = 'field' | 'role' | 'flow' | 'scoreRule' | 'moduleGrade';
 export type ReferencedTable = PgTable & {
   readonly id: AnyPgColumn;
   readonly tenantId: AnyPgColumn;
