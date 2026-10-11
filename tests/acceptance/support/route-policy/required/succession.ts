@@ -246,32 +246,31 @@ for (const kind of ['risk', 'health'] as const) {
     [`PUT ${path}/order`]: configRequired(key, 'update', 'reorder'),
   });
   const result = kind === 'risk' ? 'RiskResult' : 'HealthResult';
-  SUCCESSION[`GET ${path}/options`] = (kind === 'risk' ? ['assign'] : ['assign', 'reset']).flatMap(
-    (code): Obligation[] => {
-      const at: Evidence[] = [
-        {
-          role: 'call',
-          unit: `${S}/levels-routes.ts#levelOptionAccess`,
-          anchor: "await successionContext(c, deps, object, 'update')",
-        },
-        ...CONTEXT,
-      ];
-      const group = `options:${code}`;
-      return [
-        { perm: `obj:Succession.${result}:update`, or: group, facts: ['object:objectContext'], at },
-        {
-          perm: `btn:Succession.${result}#${code}@${code === 'reset' ? 'list' : 'detail'}`,
-          or: group,
-          facts: ['button:button()'],
-          at: [
-            {
-              role: 'call',
-              unit: `${S}/levels-routes.ts#levelOptionAccess`,
-              anchor: `await button(deps, ctx, codeOf(object), '${code}', '${code === 'reset' ? 'list' : 'detail'}')`,
-            },
-          ],
-        },
-      ];
-    },
-  );
+  const options = (kind === 'risk' ? ['assign'] : ['assign', 'reset']).flatMap((code): Obligation[] => {
+    const at: Evidence[] = [
+      {
+        role: 'call',
+        unit: `${S}/levels-routes.ts#levelOptionAccess`,
+        anchor: "await successionContext(c, deps, object, 'update')",
+      },
+      ...CONTEXT,
+    ];
+    const group = `options:${code}`;
+    return [
+      { perm: `obj:Succession.${result}:update`, or: group, facts: ['object:objectContext'], at },
+      {
+        perm: `btn:Succession.${result}#${code}@${code === 'reset' ? 'list' : 'detail'}`,
+        or: group,
+        facts: ['button:button()'],
+        at: [
+          {
+            role: 'call',
+            unit: `${S}/levels-routes.ts#levelOptionAccess`,
+            anchor: `await button(deps, ctx, codeOf(object), '${code}', '${code === 'reset' ? 'list' : 'detail'}')`,
+          },
+        ],
+      },
+    ];
+  });
+  Object.assign(SUCCESSION, { [`GET ${path}/options`]: options });
 }

@@ -17,10 +17,10 @@ export const levelBody = (kind: LevelKind, populationId?: string) => ({
     rows: [
       {
         rowNo: 1,
-        fieldCode: kind === 'risk' ? 'age' : 'on_duty_count',
+        fieldCode: kind === 'risk' ? 'age' : 'readiness_code',
         filterOperator: 'eq',
-        filterValues: [30],
-        measure: kind === 'risk' ? 'count_over_incumbents' : 'count',
+        filterValues: kind === 'risk' ? [30] : ['READY'],
+        measure: kind === 'risk' ? 'count_over_incumbents' : 'successor_count',
         comparator: 'ge',
         threshold: 0.3,
         thresholdHigh: null,
@@ -30,7 +30,7 @@ export const levelBody = (kind: LevelKind, populationId?: string) => ({
           : {
               population: populationId ? 'custom' : 'all',
               populationId: populationId ?? null,
-              fieldSource: 'org',
+              fieldSource: 'succession',
             }),
       },
     ],

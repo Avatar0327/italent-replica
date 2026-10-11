@@ -66,8 +66,7 @@ export function compileSuccessionLevel(
         (row.fieldSource !== 'org' || row.fieldCode !== null || row.filterOperator !== null)) ||
       (row.measure === 'review_result_ratio' &&
         (row.fieldSource !== 'review' || !field || row.filterOperator === null)) ||
-      (row.measure === 'successor_count' &&
-        (row.fieldSource !== 'succession' || (row.fieldCode !== null && row.fieldCode !== 'successor_count')))
+      (row.measure === 'successor_count' && row.fieldSource !== 'succession')
     ) {
       invalid('FIELD_MISMATCH');
       continue;

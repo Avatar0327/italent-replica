@@ -4903,7 +4903,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'packages/domain/src/succession/catalog.ts#object': ['4659ce1edc1f', '11fe4f2ebe92'],
   'packages/domain/src/succession/catalog.ts#reorder': ['efa32bc1b7a4', 'e3b0c44298fc'],
   'packages/domain/src/succession/levels.ts#compileLevelComparisons': ['1c8d664646da', '8f8389bd3687'],
-  'packages/domain/src/succession/levels.ts#compileSuccessionLevel': ['a8013568c925', 'fda9c009b266'],
+  'packages/domain/src/succession/levels.ts#compileSuccessionLevel': ['20c4c379835c', 'fda9c009b266'],
   'packages/domain/src/succession/levels.ts#orgFields': ['c56529030ead', 'ecf1adcdf426'],
   'packages/domain/src/succession/levels.ts#ref': ['684df1a0bb74', 'e3b0c44298fc'],
   'packages/domain/src/succession/levels.ts#successionFields': ['8f7707f848ca', 'e7d4af508716'],

@@ -160,6 +160,7 @@ describe('AC-SC B2b #11 / #12 风险与健康度等级', () => {
       fieldSource: 'review',
       fieldCode: 'SC_SCORE',
       measure: 'average',
+      filterValues: [30],
     };
     const saved = await w.createLevel('health', { ...levelBody('health'), rules: { expression: '1', rows: [row] } });
     for (const bad of [
