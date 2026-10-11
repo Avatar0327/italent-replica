@@ -921,9 +921,9 @@ export const DIGESTS: Digests = {
     requireEditable: 'b4086c4f65db',
   },
   'apps/api/src/modules/talent-review/template-routes.ts': {
-    registerTemplateRoutes: 'ed6e0a2349dc',
+    registerTemplateRoutes: 'a3cff6f1c0cc',
     requireCatalogs: '573047e216de',
-    runGuarded: '81cc6f842d6b',
+    runGuarded: 'ff55849b43a5',
   },
   'apps/api/src/modules/talent-review/template-service.ts': {
     createTemplate: 'df8a9906537e',
@@ -1837,9 +1837,9 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/talent-review/scoring-routes.ts#requireMappingFields': '940a2bde2b00',
   'apps/api/src/modules/talent-review/template-access.ts#requireCreatable': '191b7000d8b0',
   'apps/api/src/modules/talent-review/template-access.ts#requireEditable': '5b6575aaabe1',
-  'apps/api/src/modules/talent-review/template-routes.ts#registerTemplateRoutes': '61ad38a4c6dc',
+  'apps/api/src/modules/talent-review/template-routes.ts#registerTemplateRoutes': 'd3f624eb3081',
   'apps/api/src/modules/talent-review/template-routes.ts#requireCatalogs': '06e325feca31',
-  'apps/api/src/modules/talent-review/template-routes.ts#runGuarded': 'ba9cf9aac1aa',
+  'apps/api/src/modules/talent-review/template-routes.ts#runGuarded': 'cf046247ef90',
   'apps/api/src/modules/talent-review/template-service.ts#createTemplate': '407d0c1d506a',
   'apps/api/src/modules/talent-review/template-service.ts#lockTemplate': '9bb9240b9fb1',
   'apps/api/src/modules/talent/access.ts#DATA_OPERATION': 'e3b0c44298fc',

@@ -160,6 +160,22 @@ const ENTRIES: readonly Entry[] = [
     },
   },
   {
+    name: 'PATCH /templates/:id（只改名并原样带流程）',
+    status: 200,
+    references: true,
+    prepare: async () => {
+      const template = await freshTemplate();
+      const key = randomUUID();
+      const body = { name: unique('只改名'), flowId: ids.flow };
+      return {
+        send: send('PATCH', `${TEMPLATES}/${template.id}`, key, template.revision, body),
+        key,
+        snapshot: () => adminRead(template.id),
+        marker: () => body.name,
+      };
+    },
+  },
+  {
     name: 'DELETE /templates/:id',
     status: 200,
     prepare: async () => {
@@ -197,7 +213,7 @@ beforeAll(async () => {
   ids.rule = (await post<{ id: string }>('/score-rules', scoreRuleBody())).id;
 });
 
-describe.each(ENTRIES)('盘点模板写入口命令事务内权限复核 · $name', (entry) => {
+describe.each(ENTRIES)('AC-TR-template-recheck 盘点模板写入口命令事务内权限复核（DEC-388①）· $name', (entry) => {
   it('首次执行：路由检查后撤销所属组织范围 → 404，业务 / 审计 / 台账都不提交', async () => {
     const prepared = await entry.prepare();
     const op = await writer();
@@ -263,26 +279,29 @@ describe.each(ENTRIES)('盘点模板写入口命令事务内权限复核 · $nam
   });
 });
 
-describe.each(ENTRIES)('盘点模板写入口失败后回查台账出口的权限复核 · $name', (entry) => {
-  it('败者回滚后、回查前撤销所属组织范围 → 404，不返回胜者结果', async () => {
-    const prepared = await entry.prepare();
-    const op = await writer();
-    const loser: Loser = { winner: () => prepared.send(op), afterLoserTx: () => op.setOrg(null) };
-    hooks.loser = loser;
-    const response = await prepared.send(op);
-    const won = await loser.winnerResponse!.clone().text();
-    expect(loser.winnerResponse!.ok, won).toBe(true);
-    expect(response.status, await response.clone().text()).toBe(404);
-    expect(await response.clone().text()).not.toContain(prepared.marker(JSON.parse(won)));
-  });
+describe.each(ENTRIES)(
+  'AC-TR-template-recheck 盘点模板写入口失败后回查台账出口的权限复核（DEC-388①）· $name',
+  (entry) => {
+    it('败者回滚后、回查前撤销所属组织范围 → 404，不返回胜者结果', async () => {
+      const prepared = await entry.prepare();
+      const op = await writer();
+      const loser: Loser = { winner: () => prepared.send(op), afterLoserTx: () => op.setOrg(null) };
+      hooks.loser = loser;
+      const response = await prepared.send(op);
+      const won = await loser.winnerResponse!.clone().text();
+      expect(loser.winnerResponse!.ok, won).toBe(true);
+      expect(response.status, await response.clone().text()).toBe(404);
+      expect(await response.clone().text()).not.toContain(prepared.marker(JSON.parse(won)));
+    });
 
-  it('对照：不撤权时败者重放胜者结果（证明走的是回查出口）', async () => {
-    const prepared = await entry.prepare();
-    const op = await writer();
-    const loser: Loser = { winner: () => prepared.send(op), afterLoserTx: async () => undefined };
-    hooks.loser = loser;
-    const response = await prepared.send(op);
-    expect(response.status, await response.clone().text()).toBe(loser.winnerResponse!.status);
-    expect(await response.json()).toEqual(await loser.winnerResponse!.clone().json());
-  });
-});
+    it('对照：不撤权时败者重放胜者结果（证明走的是回查出口）', async () => {
+      const prepared = await entry.prepare();
+      const op = await writer();
+      const loser: Loser = { winner: () => prepared.send(op), afterLoserTx: async () => undefined };
+      hooks.loser = loser;
+      const response = await prepared.send(op);
+      expect(response.status, await response.clone().text()).toBe(loser.winnerResponse!.status);
+      expect(await response.json()).toEqual(await loser.winnerResponse!.clone().json());
+    });
+  },
+);

@@ -82,6 +82,16 @@ function present(view: TemplateView, access: Exclude<TemplateAccess, 'none'>) {
   return { ...rest, versionNo: view.versionNo, accessLevel: access };
 }
 
+/**
+ * 字段裁剪后的响应。`configErrors` 是从 `modules`（模块名称）与 `permissions`（权重）派生的，两者任一被裁掉就不得把派生值
+ * 重新挂回（嵌套内容逐层裁剪）；其余字段各按本对象字段权限。
+ */
+async function trimmed(deps: TenantRouteDeps, ctx: TalentReviewContext, view: ReturnType<typeof present>) {
+  const [shown] = await trimReview(deps, ctx, 'template', [view]);
+  if (shown && !('modules' in shown && 'permissions' in shown)) delete shown.configErrors;
+  return shown;
+}
+
 /** 路由层的前置检查只管早失败（目录对象的查看权）；以命令事务内的复核为准。 */
 async function requireCatalogs(c: Context<TenantEnv>, deps: TenantRouteDeps, references: References) {
   for (const kind of referenced(references)) {
@@ -185,7 +195,7 @@ async function runGuarded(
   });
   const view = result.body as TemplateView;
   if (c.req.method !== 'DELETE') c.header('ETag', `"${view.revision}"`);
-  return c.json((await trimReview(deps, ctx, 'template', [present(view, 'manage')]))[0], result.status);
+  return c.json(await trimmed(deps, ctx, present(view, 'manage')), result.status);
 }
 
 function versionQuery(c: Context): number | undefined {
@@ -238,7 +248,7 @@ export function registerTemplateRoutes(router: Hono<TenantEnv>, deps: TenantRout
       return { view: await service.readTemplate(tx, ctx.tenantId, id, version), access };
     });
     c.header('ETag', `"${found.view.revision}"`);
-    return c.json((await trimReview(deps, ctx, 'template', [present(found.view, found.access)]))[0]);
+    return c.json(await trimmed(deps, ctx, present(found.view, found.access)));
   });
 
   router.post(TEMPLATES, async (c) => {

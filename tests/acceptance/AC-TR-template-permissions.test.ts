@@ -173,6 +173,12 @@ describe('盘点模板权限（TR-R3 同谓词、DEC-043 / 082）', () => {
     const detail = (await (await op.request('GET', `${TEMPLATES}/${created.inside.id}`)).json()) as object;
     expect(detail).toMatchObject({ id: created.inside.id });
     for (const key of ['modules', 'enabled']) expect(detail).not.toHaveProperty(key);
+    // 派生值 configErrors 带模块名称与权重，modules 被裁掉时不得重新挂回
+    expect(detail).not.toHaveProperty('configErrors');
+    const full = await templateOperator(world, { orgId: ids.insideOrg, references: 'seeAll' });
+    expect(await (await full.request('GET', `${TEMPLATES}/${created.inside.id}`)).json()).toHaveProperty(
+      'configErrors',
+    );
     const before = await adminRead(created.inside.id);
     for (const body of [{ modules: [] }, { name: '只读字段' }, { enabled: true }]) {
       const response = await op.request('PATCH', `${TEMPLATES}/${before.id}`, { ifMatch: before.revision, body });
