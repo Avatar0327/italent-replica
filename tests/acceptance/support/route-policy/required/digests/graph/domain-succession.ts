@@ -6,7 +6,14 @@ import type { Graph } from '../../../evidence-graph.js';
 
 export const GRAPH: Graph = {
   'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS': ['#crud', '#levelObject', '#object', '#reorder'],
+  'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>population': ['#crud', '#object', '#reorder'],
   'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>record': ['#crud', '#object'],
+  'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>ruleSettings': ['#object'],
   'packages/domain/src/succession/catalog.ts#levelObject': ['#crud', '#object', '#reorder'],
   'packages/domain/src/succession/catalog.ts#object': ['#SUCCESSION_APP', '#SYSTEM_FIELDS'],
+  'packages/domain/src/succession/populations.ts#POPULATION_FIELDS': ['#field'],
+  'packages/domain/src/succession/populations.ts#compilePopulation': [
+    'packages/domain/src/expression/rules/compile.ts#compileRuleSet',
+    '#POPULATION_FIELDS',
+  ],
 };
