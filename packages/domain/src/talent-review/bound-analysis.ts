@@ -51,16 +51,18 @@ export function analyzeBoundItems(
   items: readonly BoundCalcItem[],
   catalog: readonly FormulaField[],
   held: HeldReferences = new Map(),
+  versionFields: Readonly<Record<string, ExpressionFieldKind>> = {},
 ): CalcAnalysis {
   const byId = new Map(catalog.map((field) => [field.id.toLowerCase(), field]));
   const fieldOf = (key: string): FormulaField | undefined => {
     const id = parseFieldHandle(key);
     return id === undefined ? undefined : byId.get(id);
   };
-  const isKnownField = (path: string) => fieldOf(path) !== undefined || path in FORMULA_CONTEXT_FIELDS;
+  const isKnownField = (path: string) =>
+    fieldOf(path) !== undefined || path in FORMULA_CONTEXT_FIELDS || Object.hasOwn(versionFields, path);
   const fieldKind = (path: string): ExpressionFieldKind | undefined => {
     const field = fieldOf(path);
-    return field ? formulaFieldKind(field.kind) : FORMULA_CONTEXT_FIELDS[path];
+    return field ? formulaFieldKind(field.kind) : (versionFields[path] ?? FORMULA_CONTEXT_FIELDS[path]);
   };
   const display = (key: string) => {
     const field = fieldOf(key);

@@ -18,6 +18,7 @@ import {
   talentReviewTemplateSteps as S,
   talentReviewTemplateVersions as V,
   talentReviewFlows,
+  talentReviewForms,
   talentReviewFields,
   talentReviewModuleGrades,
   talentReviewRoles,
@@ -35,15 +36,22 @@ import { SCORE_RULE } from './score-rule-service.js';
 import type { ModuleBody, PermissionBody, TemplateCreate, TemplatePatch } from './template-input.js';
 import type { ModuleView, PermissionView, Structure, StepView } from './template-view.js';
 
-export type TemplateReference = 'flow' | 'scoreRule' | 'moduleGrade' | 'field';
-export const TEMPLATE_REFERENCES: readonly TemplateReference[] = ['flow', 'scoreRule', 'moduleGrade', 'field'];
+export type TemplateReference = 'flow' | 'scoreRule' | 'moduleGrade' | 'field' | 'form';
+export const TEMPLATE_REFERENCES: readonly TemplateReference[] = ['flow', 'scoreRule', 'moduleGrade', 'field', 'form'];
+
+import { planStepForms, type StepFormView } from './template-forms.js';
+import { planResultRules, type ResultRuleView } from './template-results.js';
+import { writeTemplateExtras } from './template-extra-store.js';
+import type { CatalogAccess } from './calc-rule-catalog.js';
 
 export interface TemplateWriteContext extends WriteContext {
+  readonly fieldAccess?: CatalogAccess | undefined;
   /** 被引用目录对象（流程 / 评价规则 / 模块等级 / 盘点字段）在命令事务内解析的当前范围；请求不引用的对象没有。 */
   readonly scopes: Partial<Record<TemplateReference, ModuleScope>>;
 }
 
 const SPECS = {
+  form: { table: talentReviewForms, object: 'form', disabledReason: 'TEMPLATE_FORM_DISABLED', label: '盘点表单' },
   flow: { table: talentReviewFlows, object: 'flow', disabledReason: 'TEMPLATE_FLOW_DISABLED', label: '盘点流程' },
   scoreRule: {
     table: talentReviewScoreRules,
@@ -80,6 +88,8 @@ const unique = <T>(values: readonly (T | null | undefined)[]): T[] => [
 
 type ModuleDraft = Omit<ModuleView, 'id'>;
 export interface Plan {
+  readonly stepForms: StepFormView[];
+  readonly resultRules: ResultRuleView[];
   readonly flowId: string | null;
   readonly steps: StepView[];
   readonly modules: ModuleDraft[];
@@ -319,7 +329,16 @@ export async function buildPlan(
     ? await draftModules(tx, ctx, input.modules, previous?.modules ?? [])
     : (previous?.modules ?? []).map(({ id: _id, ...draft }) => draft);
   const permissions = planPermissions(steps, modules, input.permissions, previous?.permissions ?? []);
-  return { flowId, steps, modules, permissions };
+  const stepForms = await planStepForms(tx, ctx, steps, input.stepForms, previous?.stepForms ?? []);
+  const resultRules = await planResultRules(
+    tx,
+    ctx,
+    modules,
+    input.resultRules,
+    previous?.resultRules ?? [],
+    input.fieldCatalogVersion,
+  );
+  return { flowId, steps, modules, permissions, stepForms, resultRules };
 }
 
 const sortNo = (index: number) => index + 1;
@@ -370,6 +389,7 @@ export async function writeVersion(
     ...row,
   }));
   if (permissionRows.length) await tx.insert(P).values(permissionRows);
+  await writeTemplateExtras(tx, tenantId, versionId, stepId, plan.stepForms, plan.resultRules);
 }
 
 async function writeModules(tx: Tx, tenantId: string, versionId: string, modules: readonly ModuleDraft[]) {

@@ -32,6 +32,8 @@ export interface BindFormulaField {
 }
 
 export interface BindFormulaOptions {
+  /** 模板版本内冻结的模块路径（DEC-387），不参与盘点字段 ID 绑定。 */
+  readonly versionField?: (path: string) => boolean;
   /** 对提交人可见的字段（name / kind / enabled / systemWritten 四列都可见，且在字段目录范围内）；允许重名。 */
   readonly visibleFields: readonly BindFormulaField[];
   /**
@@ -149,7 +151,10 @@ const PRECHECK_CODES: ReadonlySet<string> = new Set([
 export function bindFormula(source: string, options: BindFormulaOptions): BindResult {
   const parsed = parseFormula(source, { placeholders: true });
   if (!parsed.ok) return invalid(fromSyntax(parsed.errors[0]!));
-  const checked = validateFormula(source, { isKnownField: acceptedByEngine, placeholders: true });
+  const checked = validateFormula(source, {
+    isKnownField: (path) => acceptedByEngine(path) || options.versionField?.(path) === true,
+    placeholders: true,
+  });
   const engineErrors = checked.ok ? [] : checked.errors;
   const precheck = engineErrors.filter((error) => PRECHECK_CODES.has(error.code));
   if (precheck.length > 0) return invalid(...precheck.map(fromSyntax));

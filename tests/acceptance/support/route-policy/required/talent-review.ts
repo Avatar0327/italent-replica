@@ -660,7 +660,13 @@ const TPL_READONLY: Obligation = {
     },
   ],
 };
-const TPL_CATALOG_LABEL = { flow: 'Flow', scoreRule: 'ScoreRule', moduleGrade: 'ModuleGrade', field: 'Field' } as const;
+const TPL_CATALOG_LABEL = {
+  form: 'Form',
+  flow: 'Flow',
+  scoreRule: 'ScoreRule',
+  moduleGrade: 'ModuleGrade',
+  field: 'Field',
+} as const;
 const TPL_REPLAY_READONLY: Obligation = {
   perm: 'guard:talentReview.templatePublicDownReadonly',
   facts: ['guard:talentReview.templatePublicDownReadonly'],
@@ -678,7 +684,7 @@ const TPL_REFERENCE = (): Obligation[] => [
     note: '条件守卫：请求体带流程 / 评价规则 / 模块等级 / 字段引用时，另需对应目录的对象查看权，引用的可见性在命令内按目录范围判定',
     at: [tplEntry('await requireCatalogs(c, deps, references)')],
   },
-  ...(['flow', 'scoreRule', 'moduleGrade', 'field'] as const).map((key): Obligation => ({
+  ...(['flow', 'scoreRule', 'moduleGrade', 'field', 'form'] as const).map((key): Obligation => ({
     perm: `obj:TalentReview.${TPL_CATALOG_LABEL[key]}:view`,
     purpose: 'when:talentReview.templateCatalogReference',
     at: [

@@ -7,6 +7,7 @@
  */
 import {
   talentReviewFields,
+  talentReviewForms,
   talentReviewFlows,
   talentReviewModuleGrades,
   talentReviewScoreRules,
@@ -52,10 +53,15 @@ import * as service from './template-service.js';
 import { TEMPLATE_REFERENCES, type TemplateReference, type TemplateWriteContext } from './template-structure.js';
 import { headerColumns, headerOf, type TemplateView } from './template-view.js';
 
+import { projectTemplateResults, resultCatalogAccess, templateBusinessFields } from './template-extra-present.js';
+import { requireBoundItemsReferenceable } from './calc-rule-bound.js';
+import { loadFullCatalog } from './calc-rule-catalog.js';
+
 const TEMPLATES = `${TALENT_REVIEW_BASE}/templates`;
 const TABLE = talentReviewTemplates as unknown as ConfigTable;
 const CATALOG_TABLES: Record<TemplateReference, ReferencedTable> = {
   flow: talentReviewFlows as never,
+  form: talentReviewForms as never,
   scoreRule: talentReviewScoreRules as never,
   moduleGrade: talentReviewModuleGrades as never,
   field: talentReviewFields as never,
@@ -71,7 +77,8 @@ function referencesOf(body: TemplateCreate | TemplatePatch): References {
     flow: uniq([body.flowId]),
     scoreRule: uniq(modules.map((m) => m.scoreRuleId)),
     moduleGrade: uniq(modules.map((m) => m.moduleGradeId)),
-    field: uniq(modules.flatMap((m) => m.fieldIds ?? [])),
+    form: uniq((body.stepForms ?? []).map((s) => s.formId)),
+    field: uniq([...modules.flatMap((m) => m.fieldIds ?? []), ...(body.resultRules ?? []).map((r) => r.targetFieldId)]),
   };
 }
 const referenced = (references: References) => TEMPLATE_REFERENCES.filter((kind) => references[kind].length > 0);
@@ -87,7 +94,8 @@ function present(view: TemplateView, access: Exclude<TemplateAccess, 'none'>) {
  * 重新挂回（嵌套内容逐层裁剪）；其余字段各按本对象字段权限。
  */
 async function trimmed(deps: TenantRouteDeps, ctx: TalentReviewContext, view: ReturnType<typeof present>) {
-  const [shown] = await trimReview(deps, ctx, 'template', [view]);
+  const projected = await projectTemplateResults(deps, ctx, view);
+  const [shown] = await trimReview(deps, ctx, 'template', [projected]);
   if (shown && !('modules' in shown && 'permissions' in shown)) delete shown.configErrors;
   return shown;
 }
@@ -104,6 +112,7 @@ interface Rechecked {
   readonly ctx: TalentReviewContext;
   readonly scope: ModuleScope;
   readonly scopes: TemplateWriteContext['scopes'];
+  readonly fieldAccess?: TemplateWriteContext['fieldAccess'];
 }
 
 /**
@@ -140,8 +149,19 @@ async function recheckFields(
   fields: Readonly<Record<string, unknown>>,
 ): Promise<Rechecked> {
   const checked = await recheck(c, deps, tx, operation, expectedRevision, references);
-  await checkWriteFields(checked.txDeps, checked.ctx, 'template', operation, fields);
-  return checked;
+  const input = fields as TemplatePatch;
+  await checkWriteFields(checked.txDeps, checked.ctx, 'template', operation, templateBusinessFields(input));
+  const fieldAccess = input.resultRules?.length
+    ? await resultCatalogAccess(checked.txDeps, checked.ctx, tx)
+    : undefined;
+  if (fieldAccess && input.resultRules) {
+    await requireBoundItemsReferenceable(
+      await loadFullCatalog(tx, checked.ctx.tenantId),
+      input.resultRules,
+      fieldAccess,
+    );
+  }
+  return { ...checked, fieldAccess };
 }
 
 /**
@@ -189,8 +209,8 @@ async function runGuarded(
       },
     },
     execute: async (tx, commandId) => {
-      const { ctx: fresh, scope, scopes } = current!;
-      return { status, body: await execute(tx, { ...fresh, commandId, scope, scopes }) };
+      const { ctx: fresh, scope, scopes, fieldAccess } = current!;
+      return { status, body: await execute(tx, { ...fresh, commandId, scope, scopes, fieldAccess }) };
     },
   });
   const view = result.body as TemplateView;
@@ -255,7 +275,7 @@ export function registerTemplateRoutes(router: Hono<TenantEnv>, deps: TenantRout
     const ctx = await reviewWriteContext(c, deps, 'template', 'create', revision(c));
     requireNew(ctx.expectedRevision);
     const body = await parseBody(c, templateCreate);
-    await checkWriteFields(deps, ctx, 'template', 'create', body);
+    await checkWriteFields(deps, ctx, 'template', 'create', templateBusinessFields(body));
     const references = referencesOf(body);
     await requireCatalogs(c, deps, references);
     const before = (tx: Tx) => recheckFields(c, deps, tx, 'create', ctx.expectedRevision, references, body);
@@ -268,7 +288,7 @@ export function registerTemplateRoutes(router: Hono<TenantEnv>, deps: TenantRout
     const ctx = await reviewWriteContext(c, deps, 'template', 'update', revision(c));
     const id = uuidParam(c);
     const body = await parseBody(c, templatePatch);
-    await checkWriteFields(deps, ctx, 'template', 'update', body);
+    await checkWriteFields(deps, ctx, 'template', 'update', templateBusinessFields(body));
     const references = referencesOf(body);
     await requireCatalogs(c, deps, references);
     const before = (tx: Tx) => recheckFields(c, deps, tx, 'update', ctx.expectedRevision, references, body);

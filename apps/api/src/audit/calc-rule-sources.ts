@@ -20,17 +20,22 @@ const FIELD = TALENT_REVIEW_OBJECTS.field.code;
 /** 引用盘点字段需要查看人对字段目录这四列的查看权（与计算规则接口一致）。 */
 const REFERENCE_COLUMNS = ['name', 'kind', 'enabled', 'systemWritten'];
 
-export async function calcRuleSources(deps: TenantRouteDeps, ctx: TenantContext): Promise<SourceRedactor> {
+export async function calcRuleSources(
+  deps: TenantRouteDeps,
+  ctx: TenantContext,
+  objectType = CALC_RULE_AUDIT_TYPE,
+  itemsColumn = 'items',
+): Promise<SourceRedactor> {
   const allowed = await deps.authorize({ ...ctx, action: 'object.view', resource: FIELD, fields: [] });
   const scope = allowed ? await resolveModuleScope(deps, ctx, undefined, FIELD) : null;
   const viewable = allowed ? await getModuleViewableFields(deps, ctx, FIELD) : undefined;
   const columns = allowed && (viewable === undefined || REFERENCE_COLUMNS.every((column) => viewable.has(column)));
   // hints 的投影随 items 列的查看权（契约 §5.2）；没有计算规则的对象查看权时 items 也看不到
-  const ruleViewable = await getModuleViewableFields(deps, ctx, CALC_RULE_AUDIT_TYPE);
-  const itemsViewable = ruleViewable === undefined || ruleViewable.has('items');
+  const ruleViewable = await getModuleViewableFields(deps, ctx, objectType);
+  const itemsViewable = ruleViewable === undefined || ruleViewable.has(itemsColumn);
   return {
     async redact(tx: Tx, rows) {
-      if (!rows.some((row) => row.objectType === CALC_RULE_AUDIT_TYPE)) return [...rows];
+      if (!rows.some((row) => row.objectType === objectType)) return [...rows];
       const fields = await tx
         .select({ id: F.id, name: F.name, createdBy: F.createdBy })
         .from(F)
@@ -42,7 +47,7 @@ export async function calcRuleSources(deps: TenantRouteDeps, ctx: TenantContext)
         itemsViewable,
       };
       return rows.map((row) =>
-        row.objectType === CALC_RULE_AUDIT_TYPE
+        row.objectType === objectType
           ? {
               ...row,
               before: redactCalcRuleAuditValue(row.before, directory),

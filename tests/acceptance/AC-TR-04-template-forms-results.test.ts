@@ -1,10 +1,23 @@
 /**
  * R3-T04 B6a-2：步骤表单与结果公式的版本入口验收（设计 §2.3、§4.3、§7）。
- * 当前为先行红测；stepForms / resultRules 是沿用模板结构保存入口的拟议载荷，接线范围待总编排确认。
+ * DEC-423④ 已确认：沿用模板结构保存入口，保留 B6a 既有行为。
  */
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { formBody } from './AC-TR-form-flow-support.js';
+import { seedPermissionWorld } from './AC-PRM-support.js';
+import { createOrg } from './AC-IDP-support.js';
+import { tenantApi } from './support/tenant-api.js';
+import { configBody } from './AC-TR-config-support.js';
+import { TR_BASE, TR_NOW } from './AC-TR-template-support.js';
+import { templateOperator } from './AC-TR-template-support.js';
+import {
+  and,
+  eq,
+  withTenant,
+  talentReviewTemplateResultRules as R,
+  talentReviewTemplateResultRefs as RF,
+} from '@italent/db';
 import { indicatorModule, templateBody, templateWorld, type TemplateView } from './AC-TR-template-support.js';
 
 const testDb = useTestDb();
@@ -63,5 +76,140 @@ describe('AC-TR-04 / AC-TR-15：模板步骤表单与结果公式', () => {
     const removed = await w.trRequest('DELETE', `/fields/${target.id}`, { ifMatch: 1 });
     expect(removed.status, await removed.clone().text()).toBe(409);
     expect((await w.read(initial.id)).body.resultRules).toEqual(saved.resultRules);
+  });
+
+  it('四种用途与会签角色可配置；错误席位 / 用途 / 类型 / 跨租户引用整体拒绝，清空生成版本', async () => {
+    const w = await templateWorld(testDb().db, 'b6a2-seats');
+    const { flow, roles } = await w.threeStepFlow();
+    const forms = await Promise.all(
+      ['info', 'calibrate_edit', 'succession_edit'].map((kind) =>
+        w.created<{ id: string }>('/forms', formBody([], { kind })),
+      ),
+    );
+    const stepForms = [
+      { nodeKey: 'peers', roleId: roles.peerA.id, purpose: 'info', formId: forms[0]!.id },
+      { nodeKey: 'calibrate', purpose: 'calibrate_edit', formId: forms[1]!.id },
+      { nodeKey: 'self', purpose: 'successor_edit', formId: forms[2]!.id },
+      { nodeKey: 'self', purpose: 'target_edit', formId: forms[2]!.id },
+    ];
+    const t = await w.template(templateBody(w.orgId, { flowId: flow.id, stepForms }));
+    expect(t.stepForms).toMatchObject(stepForms);
+    const other = await templateWorld(testDb().db, 'b6a2-foreign');
+    const foreign = await other.created<{ id: string }>('/forms', formBody([]));
+    for (const [status, rows] of [
+      [400, [{ ...stepForms[0], roleId: null }]],
+      [400, [{ ...stepForms[1], nodeKey: 'self' }]],
+      [400, [{ ...stepForms[2], formId: forms[0]!.id }]],
+      [400, [stepForms[0], stepForms[0]]],
+      [404, [{ ...stepForms[0], formId: foreign.id }]],
+    ] as const) {
+      const before = (await w.read(t.id)).body;
+      expect((await w.patch(t, { stepForms: rows })).status).toBe(status);
+      expect((await w.read(t.id)).body).toEqual(before);
+    }
+    const cleared = await w.patch(t, { stepForms: [] });
+    expect(cleared.status).toBe(200);
+    expect(await cleared.json()).toMatchObject({ currentVersionNo: 2, stepForms: [] });
+    expect((await w.read(t.id, '?version=1')).body.stepForms).toMatchObject(stepForms);
+  });
+
+  it('盘点字段按 ID 存储与引用；改名后历史 / 重放按当前名渲染，引用阻止删除', async () => {
+    const w = await templateWorld(testDb().db, 'b6a2-bind');
+    const source = await w.field({ name: '源分', kind: 'number' });
+    const target = await w.field({ kind: 'number' });
+    const initial = await w.template(templateBody(w.orgId));
+    const body = {
+      resultRules: [
+        { targetFieldId: target.id, formula: '盘点对象.源分 + 1', formulaBindings: [source.id], priority: 1000000 },
+      ],
+    };
+    const first = await w.patch(initial, body, 'b6a2-bound');
+    expect(first.status, await first.clone().text()).toBe(200);
+    const stored = await withTenant(testDb().db, w.as.tenant, async (tx) => {
+      const rules = await tx.select().from(R).where(eq(R.tenantId, w.as.tenant));
+      const refs = await tx
+        .select()
+        .from(RF)
+        .where(and(eq(RF.tenantId, w.as.tenant), eq(RF.fieldId, source.id)));
+      return { rules, refs };
+    });
+    expect(stored.rules[0]!.formula).toBe(`@{tr-field:${source.id}} + 1`);
+    expect(stored.refs).toHaveLength(1);
+    expect(
+      (await w.trRequest('PATCH', `/fields/${source.id}`, { ifMatch: 1, body: { name: '改名源分' } })).status,
+    ).toBe(200);
+    const replay = await w.patch(initial, body, 'b6a2-bound');
+    expect(replay.status).toBe(200);
+    expect(await replay.json()).toMatchObject({
+      resultRules: [{ formula: '盘点对象.改名源分 + 1', formulaBindings: [source.id] }],
+    });
+    expect((await w.trRequest('DELETE', `/fields/${source.id}`, { ifMatch: 2 })).status).toBe(409);
+    const current = (await w.read(initial.id)).body;
+    expect((await w.patch(current, body)).status).toBe(409);
+    expect((await w.read(initial.id)).body).toEqual(current);
+    const brokenName = await w.trRequest('PATCH', `/fields/${source.id}`, {
+      ifMatch: 2, body: { name: '坏.名称' },
+    });
+    expect(brokenName.status).toBe(409);
+    expect((await w.read(initial.id)).body).toEqual(current);
+  });
+
+  it('循环可保存；resultRules 不可见时只返回匿名提示，隐藏引用不返回字段 ID / 名称', async () => {
+    const base = await seedPermissionWorld(testDb().db);
+    const clock = () => TR_NOW;
+    const setup = tenantApi(base.db, { clock });
+    const world = { ...base, api: tenantApi(base.db, { authorize: undefined, clock }) };
+    const orgId = await createOrg(setup, base.asAdmin, '模板组织');
+    const post = async <T>(path: string, body: unknown): Promise<T> => {
+      const response = await setup.request('POST', `${TR_BASE}${path}`, { ...base.asAdmin, ifMatch: 0, body });
+      expect(response.status, await response.clone().text()).toBe(201);
+      return await response.json() as T;
+    };
+    const w = { orgId, field: (extra: Record<string, unknown>) => post<{ id: string }>('/fields', configBody('field', extra)),
+      template: (body: unknown) => post<TemplateView>('/templates', body) };
+    const a = await w.field({ name: '甲分', kind: 'number' });
+    const b = await w.field({ name: '乙分', kind: 'number' });
+    const t = await w.template(
+      templateBody(w.orgId, {
+        resultRules: [
+          { targetFieldId: a.id, formula: '盘点对象.乙分', formulaBindings: [b.id], priority: 1 },
+          { targetFieldId: b.id, formula: '盘点对象.甲分', formulaBindings: [a.id], priority: 2 },
+        ],
+      }),
+    );
+    expect(t.hints).toMatchObject({ cycles: [expect.arrayContaining([a.id, b.id])] });
+    const reader = await templateOperator(world, { orgId: w.orgId, references: 'none' });
+    const hidden = await reader.request('GET', `/templates/${t.id}`);
+    expect(hidden.status).toBe(200);
+    const text = await hidden.text();
+    expect(text).toContain('不可见字段');
+    for (const secret of [a.id, b.id, '甲分', '乙分', '@{tr-field:']) expect(text).not.toContain(secret);
+    const noItems = await templateOperator(world, { orgId: w.orgId, references: 'seeAll', hidden: ['resultRules'] });
+    const projected = (await (await noItems.request('GET', `/templates/${t.id}`)).json()) as Record<string, unknown>;
+    expect(projected).not.toHaveProperty('resultRules');
+    expect(projected.hints).toMatchObject({ order: [], cycles: [], blocked: [], others: expect.any(Object) });
+  });
+
+  it('裸词 / 多选 / 越界优先级 / 重复目标均拒绝，新输入须目录版本，旧模块被改名须同时改公式', async () => {
+    const w = await templateWorld(testDb().db, 'b6a2-invalid');
+    const field = await w.field({ kind: 'number', name: '分数' });
+    const rule = await w.scoreRule();
+    const t = await w.template(templateBody(w.orgId, { modules: [indicatorModule(rule.id, { name: '业绩' })] }));
+    const item = { targetFieldId: field.id, formula: '模块.业绩.得分', priority: 0 };
+    for (const [status, body] of [
+      [400, { resultRules: [{ ...item, formula: '分数 + 1' }] }],
+      [400, { resultRules: [{ ...item, priority: -1 }] }],
+      [400, { resultRules: [{ ...item, priority: 1000001 }] }],
+      [400, { resultRules: [item, item] }],
+      [409, { resultRules: [{ ...item, formula: '盘点对象.分数' }] }],
+    ] as const) {
+      expect((await w.patch(t, body)).status).toBe(status);
+      expect((await w.read(t.id)).body).toEqual(t);
+    }
+    const saved = await w.patch(t, { resultRules: [item] });
+    expect(saved.status).toBe(200);
+    const next = (await saved.json()) as TemplateView;
+    expect((await w.patch(next, { modules: [indicatorModule(rule.id, { name: '改名' })] })).status).toBe(400);
+    expect((await w.read(t.id)).body).toEqual(next);
   });
 });

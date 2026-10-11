@@ -19,6 +19,10 @@ import {
 } from '@italent/db';
 import { weightConfigErrors, type ConfigError } from '@italent/domain';
 
+import { loadTemplateExtras } from './template-extra-store.js';
+import type { StepFormView } from './template-forms.js';
+import type { ResultRuleView } from './template-results.js';
+
 export const headerColumns = {
   id: T.id,
   name: T.name,
@@ -94,6 +98,8 @@ export interface PermissionView {
   targetAccess: string | null;
 }
 export interface Structure {
+  stepForms: StepFormView[];
+  resultRules: ResultRuleView[];
   versionId: string;
   versionNo: number;
   steps: StepView[];
@@ -172,6 +178,7 @@ export async function loadStructure(
   const roleOrder = (id: string | null, stepId: string) =>
     roles.findIndex((role) => role.stepId === stepId && role.roleId === id);
   return {
+    ...(await loadTemplateExtras(tx, tenantId, version.id, steps)),
     versionId: version.id,
     versionNo,
     steps: steps.map((step) => stepView(step, roles)),

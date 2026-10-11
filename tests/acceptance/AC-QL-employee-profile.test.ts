@@ -608,6 +608,9 @@ describe('AC-QL-employee-profile 必测 11：version / 指纹守卫（DEC-404）
     expect(grantCodesDigest(STANDARD_GRANT_CODES)).toBe(STANDARD_GRANT_DIGEST);
     expect(STANDARD_GRANT_DIGEST).not.toBe(MAIN.digest);
     expect(STANDARD_GRANT_VERSION).toBeGreaterThan(MAIN.version);
+    // B6a-2 叠在 #244 的 version 12 上（DEC-423）；新增模板字段授权必须再次递增。
+    expect(STANDARD_GRANT_VERSION).toBeGreaterThan(12);
+    expect(STANDARD_GRANT_DIGEST).not.toBe('5898a7ef473ce1a4');
     // 去掉员工身份的编码，再去掉之后合入的其它 PR 新增的编码，就回到 main（C1-2b 起点）的指纹（防止“指纹变了但变化与本 PR 无关”）。
     // 之后合入的 PR：R3-T04 B2b（#219）新增字段映射对象，并给盘点管理员预置评价规则 / 模块等级的看全部（DEC-408②）；
     // R3-T04 B3（#229）新增盘点内容表单 / 流程定义对象；R3-T04 B6a 新增盘点模板对象，并按 DEC-415 预置字段映射 / 表单 / 流程 / 模板的看全部
