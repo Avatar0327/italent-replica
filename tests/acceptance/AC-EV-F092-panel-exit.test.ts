@@ -37,10 +37,9 @@ describe('AC-EV-F092 离职生效自动退出评审组', () => {
     const commandId = randomUUID();
     await w.savedLeave(leaving, lastWorkDate, commandId);
     for (const [index, original] of groups.entries()) {
-      await w.expectMembers(
-        original.id,
-        removed ? (index === 0 ? [kept] : []) : index === 0 ? [leaving, kept] : [leaving],
-      );
+      let expectedMembers = index === 0 ? [leaving, kept] : [leaving];
+      if (removed) expectedMembers = index === 0 ? [kept] : [];
+      await w.expectMembers(original.id, expectedMembers);
       expect((await w.group(original.id)).revision).toBe(original.revision + Number(removed));
       const audits = await w.audits(original.id);
       expect(audits).toHaveLength(Number(removed));

@@ -88,12 +88,11 @@ async function consume(db: Db, ctx: EmploymentContext, item: Picked, today: stri
       progress.attempts = Number(row.attempts);
       const checked = await recheckRecordEvent(tx, ctx, row.recordId, today);
       if (checked.kind === 'not_yet') return null;
-      const reason =
-        checked.kind === 'gone'
-          ? checked.reason
-          : checked.record.kind !== 'leave' || checked.record.employeeStatus !== EMPLOYEE_STATUS.left
-            ? 'KIND_NOT_LEAVE'
-            : null;
+      let reason: string | null = null;
+      if (checked.kind === 'gone') reason = checked.reason;
+      else if (checked.record.kind !== 'leave' || checked.record.employeeStatus !== EMPLOYEE_STATUS.left) {
+        reason = 'KIND_NOT_LEAVE';
+      }
       const state = reason ? 'skipped' : 'done';
       if (!reason) await exitEmployeeReviewGroups(tx, ctx, item.employeeId);
       await settleReviewGroupExit(tx, ctx, row.id, state, reason);
