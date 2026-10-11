@@ -111,6 +111,21 @@ function afterChange(files: Record<string, string>, table: RequiredTable = FIXTU
   return checkEvidence(table, { ...base, read: readerOf(files) });
 }
 
+describe('AC-PRM-FW-02 接班人计算范围锚点（合并 main 回归）', () => {
+  it('动态 SQL 模板中的范围调用登记有效；删除调用仍报 EVIDENCE_ANCHOR', () => {
+    const table: RequiredTable = Object.fromEntries(
+      Object.entries(REQUIRED).filter(([key]) => /^(GET|POST) \/api\/tenant\/succession\/calc-runs/.test(key)),
+    );
+    const found = registrationGate(checkStored(table, { branch: false }), '计算任务范围证据登记');
+    expect(found, show(found)).toEqual([]);
+    const file = 'apps/api/src/modules/succession/calc-read.ts';
+    // 保留动态 SQL 的其余部分，独立移除实际范围调用，避免只验证锚点能在任意源码位置命中。
+    const removed: SourceReader = (path) =>
+      path === file ? repoSource(path).replace('whole(scope, ctx)', 'missingRange(scope, ctx)') : repoSource(path);
+    expect(codes(checkStored(table, { branch: false, read: removed }))).toContain('EVIDENCE_ANCHOR');
+  });
+});
+
 describe('AC-PRM-FW-02 证据闭包（B-02）：夹具', () => {
   it('原始源码：零发现；闭包 = 同文件与相对 import 的函数（levelOf、allowed），AppError 在边界内不展开', () => {
     const { table, base } = baseline();
