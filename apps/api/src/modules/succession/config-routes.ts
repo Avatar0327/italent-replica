@@ -5,7 +5,7 @@ import type { Context, Hono } from 'hono';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import { AppError } from '../../errors.js';
-import { pageQuery, parseBody, revision, uuidParam } from '../talent/http.js';
+import { pageQuery, parseBody, requireNew, revision, uuidParam } from '../talent/http.js';
 import { successionContext, SUCCESSION_BASE } from './access.js';
 import {
   configAccess,
@@ -42,11 +42,13 @@ export async function writeConfig(c: Context<TenantEnv>, deps: TenantRouteDeps, 
 function registerPopulationWrites(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.post(POPULATIONS, async (c) => {
     const body = await parseBody(c, populationBody);
+    const expectedRevision = revision(c);
+    requireNew(expectedRevision);
     const id = randomUUID();
     return writeConfig(c, deps, {
       operation: 'create',
       button: { code: 'create', level: 'list' },
-      expectedRevision: 0,
+      expectedRevision,
       payload: body,
       input: body,
       status: 201,

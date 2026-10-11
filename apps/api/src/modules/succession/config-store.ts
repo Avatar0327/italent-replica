@@ -70,39 +70,41 @@ export function requireRevision(view: ConfigView, expected: number) {
 export async function populationViews(tx: Tx, tenantId: string, ids: readonly string[]): Promise<ConfigView[]> {
   if (!ids.length) return [];
   const array = `{${ids.join(',')}}`;
-  const parents = rowsOf<ConfigView & { expression: string; errors: RuleCompileError[] | null }>(
-    await tx.execute(sql`SELECT id, code, name, display_order AS "displayOrder", revision,
-      condition_expression AS expression, compile_error AS errors FROM succession_populations
-      WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${array}::uuid[])`),
+  // 一条语句共用 MVCC 快照，避免并发保存把头部与条件行拼成从未提交过的规则。
+  const parents = rowsOf<
+    ConfigView & {
+      expression: string;
+      errors: RuleCompileError[] | null;
+      rows: {
+        row_no: number;
+        field_code: string;
+        filter_operator: RuleSet['rows'][number]['operator'];
+        filter_values: (string | number | boolean)[];
+      }[];
+    }
+  >(
+    await tx.execute(sql`SELECT p.id, p.code, p.name, p.display_order AS "displayOrder", p.revision,
+      p.condition_expression AS expression, p.compile_error AS errors,
+      COALESCE((SELECT jsonb_agg(r ORDER BY r.row_no) FROM succession_population_rows r
+        WHERE r.tenant_id = p.tenant_id AND r.population_id = p.id), '[]'::jsonb) AS rows
+      FROM succession_populations p WHERE p.tenant_id = ${tenantId}::uuid AND p.id = ANY(${array}::uuid[])`),
   );
-  const rows = rowsOf<{
-    population_id: string;
-    row_no: number;
-    field_code: string;
-    filter_operator: RuleSet['rows'][number]['operator'];
-    filter_values: (string | number | boolean)[];
-  }>(
-    await tx.execute(sql`SELECT * FROM succession_population_rows WHERE tenant_id = ${tenantId}::uuid
-      AND population_id = ANY(${array}::uuid[]) ORDER BY population_id, row_no`),
-  );
-  const views = parents.map(({ expression, errors, ...parent }) => ({
+  const views = parents.map(({ expression, errors, rows, ...parent }) => ({
     ...parent,
     rules: {
       expression,
-      rows: rows
-        .filter((row) => row.population_id === parent.id)
-        .map((row) => ({
-          rowNo: row.row_no,
-          kind: 'field',
-          field: POPULATION_FIELDS.find((field) => field.code === row.field_code) ?? {
-            object: 'employee',
-            code: row.field_code,
-            path: `employee.${row.field_code}`,
-            kind: 'text',
-          },
-          operator: row.filter_operator,
-          values: row.filter_values,
-        })),
+      rows: rows.map((row) => ({
+        rowNo: row.row_no,
+        kind: 'field',
+        field: POPULATION_FIELDS.find((field) => field.code === row.field_code) ?? {
+          object: 'employee',
+          code: row.field_code,
+          path: `employee.${row.field_code}`,
+          kind: 'text',
+        },
+        operator: row.filter_operator,
+        values: row.filter_values,
+      })),
     },
     compileError: errors ? ruleErrors(errors) : null,
   }));
