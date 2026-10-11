@@ -17,7 +17,7 @@ describe('AC-SC B2a 命令、原始规则与授权', () => {
     withTenant(w.db, w.tenant.id, async (tx) =>
       resultRows(await tx.execute(sql`SELECT * FROM succession_populations WHERE id = ${id}::uuid`)),
     );
-  it.each([undefined, '非法', 1])('AC-SC 新增要求 If-Match 0，拒绝 %s 且无写入', async (ifMatch) => {
+  it.each([undefined, 'invalid', 1])('AC-SC 新增要求 If-Match 0，拒绝 %s 且无写入', async (ifMatch) => {
     const before = await (await w.request('GET', '/populations')).json();
     const response = await w.raw.request('POST', '/api/tenant/succession/populations', {
       ...w.asAdmin,
