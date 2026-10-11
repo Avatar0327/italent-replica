@@ -254,6 +254,16 @@ def main():
             quota_snapshot()
         except Exception:
             pass
+        # 额度回调提醒（用户 10-10：临时 fast + Ultra，Codex 周额度剩余 ≥50% 时回到 DEC-406）
+        arm = os.path.expanduser("~/.cache/italent-quota-revert-armed")
+        if os.path.exists(arm):
+            try:
+                last = json.loads(open(os.path.expanduser("~/.cache/italent-codex-quota.jsonl")).read().strip().splitlines()[-1])
+                if last.get("used") is not None and last["used"] <= 50:
+                    ev.append(f"⚠ Codex 周额度已用 {last['used']}%（剩余 ≥50%）——按用户 10-10 决定，通知审查合并窗口回调到 DEC-406 省额度规则")
+                    os.remove(arm)
+            except Exception:
+                pass
         cx = codex_results()
         if cprev is not None:
             for k, (cnt, pr) in cx.items():

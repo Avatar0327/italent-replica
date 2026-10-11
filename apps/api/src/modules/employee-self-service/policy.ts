@@ -138,6 +138,11 @@ const transferPreconditions = [
   'requireTransferWrite',
 ];
 
+/** 员工发展通道页面权限（employeePageGranted，C1-6）：员工身份缺载体行默认授予，用户自己的身份按并集。 */
+const DEVELOPMENT_CHANNEL_PAGE = 'selfService.developmentChannelPage';
+/** 页面载体 Qualification.Pages 上的 app_page 按钮（C1-2b 契约 §3），由 employeePageGranted 经请求的授权器判定。 */
+const DEVELOPMENT_CHANNEL_BUTTON = button('EmployeeDevelopmentChannel', 'app_page');
+
 export const SELF_SERVICE_POLICIES = defineTable('self-service', {
   // ---- registerProfileRoutes：本人档案与任职记录 -----------------------------------------------------------------
   // 响应 { employee, timezone, today, record }：record 为当前任职（无则 null），经 discloseOwnRecord 裁剪
@@ -179,6 +184,22 @@ export const SELF_SERVICE_POLICIES = defineTable('self-service', {
       preconditions: transferPreconditions,
       ledger: 'single',
     }),
+  }),
+  // ---- registerDevelopmentChannelRoutes：员工通道卡片（C1-6，23 §19）---------------------------------------------
+  // 关系入口：本人 + 员工发展通道页面权限（employeePageGranted，缺权 403 PAGE_PERMISSION_REQUIRED），不要求 Qualification
+  // 数据范围，也不要求 DevelopmentChannel / QualificationStandard 的对象权限；固定投影，不含各级标准明细
+  'GET /development-channel': self({
+    button: DEVELOPMENT_CHANNEL_BUTTON,
+    guards: [DEVELOPMENT_CHANNEL_PAGE],
+    fields: projector('selfService.developmentChannel', 'selfService.developmentChannel'),
+  }),
+  // :id 必须是绑定本人（否则 403「只能查看本人发展通道」）；selfAccess 先于 uuidParam 的 400
+  'GET /employees/:id/development-channel': self({
+    target: { param: 'id' },
+    invalidId: BAD_REQUEST,
+    button: DEVELOPMENT_CHANNEL_BUTTON,
+    guards: [DEVELOPMENT_CHANNEL_PAGE],
+    fields: projector('selfService.developmentChannel', 'selfService.developmentChannel'),
   }),
   // ---- registerApplicationRoutes：本人发起的调动申请 ---------------------------------------------------------------
   // ownApplications：initiator_user_id = 本人用户 ∧ employee_id = 绑定本人（本人前提自带，不另登记 scope）；
