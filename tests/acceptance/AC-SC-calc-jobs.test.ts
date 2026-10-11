@@ -1,6 +1,6 @@
 /** DEC-429：生产者替身只在测试登记，真实业务集合由 A3/C1/B4 提供。 */
 import { randomUUID } from 'node:crypto';
-import { sql, withTenant, withPlatform, type Tx } from '@italent/db';
+import { sql, withTenant, withPlatform, type Db, type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
@@ -163,6 +163,40 @@ describe('AC-SC-calc-jobs 按租户调度', () => {
     const missing = await api.request('POST', PATH, { user: operator.id, body: { ...body, kind: 'exit_sweep' } });
     expect(missing.status).toBe(503);
     expect(await missing.json()).toMatchObject({ error: { details: { reason: 'KIND_UNAVAILABLE' } } });
+  });
+  it('P2-1：平台计划提交回包丢失后回查，且同键并发跨槽只生产一个周期', async () => {
+    const tenantId = tenants[0]!.tenant.id;
+    const actual = db();
+    let lost = false;
+    const transaction: Db['transaction'] = async (callback, config) => {
+      const value = await actual.transaction(callback, config);
+      if (!lost && value && typeof value === 'object' && 'productionAt' in value) {
+        lost = true;
+        throw new Error('合成平台计划提交回包丢失');
+      }
+      return value;
+    };
+    const wrapped = new Proxy(actual, {
+      get: (target, key, receiver) => (key === 'transaction' ? transaction : Reflect.get(target, key, receiver)),
+    });
+    const input = { kind: 'org_stats' as const, tenantId, userId: operator.id, commandId: randomUUID() };
+    const before = await list(tenantId);
+    const results = await Promise.all(
+      ['2026-10-20', '2026-10-21'].map((date) =>
+        dispatchCalcJobs({ db: wrapped, clock: () => new Date(`${date}T08:00:00Z`) }, input, SUCCESSION_PRODUCERS),
+      ),
+    );
+    expect(lost).toBe(true);
+    expect(results[0]).toEqual(results[1]);
+    expect(results[0]!.items[0]).toHaveProperty('runIds');
+    expect(await list(tenantId)).toHaveLength(before.length + 1);
+    const conflict = await tenantApi(db()).request('POST', PATH, {
+      user: operator.id,
+      body: { kind: 'org_stats', tenantId: tenants[1]!.tenant.id },
+      idempotencyKey: input.commandId,
+    });
+    expect(conflict.status).toBe(409);
+    expect(await conflict.json()).toMatchObject({ error: { code: 'IDEMPOTENCY_CONFLICT' } });
   });
   it('P2-1：租户停用 / 新增后的跨槽 HTTP 重放保持第一页、游标与 run 集合', async () => {
     for (let i = 0; i < 18; i++) tenants.push(await seedTenantWithMember(db(), `page-${i}`));
