@@ -1,4 +1,5 @@
-import { registration, registrationGate, registrationDrift } from './support/route-policy/registration.js';
+import { disclosureChecks } from './support/route-policy/local-checks/disclosure.js';
+
 /**
  * AC-PRM-FW-02（续，F-039 PR-B1，设计 docs/08_设计/F-039_PR-B_设计.md B-01 / B-03；DEC-356 / DEC-359 / DEC-362）：
  * 披露语义与范围绑定。零行为变化——只改比较器、显式表与测试支撑，不动任何处理函数。
@@ -16,11 +17,9 @@ import { readFrozenContract } from './support/route-policy/baseline.js';
 import { DETECTOR_CONTRACT, DETECTOR_REQUIRED, DETECTOR_SEMANTICS } from './support/route-policy/detector-fixtures.js';
 import type { Finding } from './support/route-policy/compare.js';
 import type { ObservedContract } from './support/route-policy/contract.js';
-import { checkStored } from './support/route-policy/evidence.js';
-import { declaredPerms, OPTIONAL_NAME_PATTERN } from './support/route-policy/perms.js';
+import { OPTIONAL_NAME_PATTERN } from './support/route-policy/perms.js';
 import { locate } from './support/route-policy/required-mutate.js';
 import { checkRequired } from './support/route-policy/required.js';
-import { GUARD_INNER_ALTS } from './support/route-policy/required/guard-inner.js';
 import { REQUIRED } from './support/route-policy/required/index.js';
 import type { Obligation, RequiredTable } from './support/route-policy/required/types.js';
 import { DISCLOSURE_WEAKENING_KINDS, disclosureWeakeningsOf } from './support/route-policy/weakenings.js';
@@ -41,7 +40,7 @@ beforeAll(() => {
 const MANAGER = 'GET /api/tenant/employment/transfers/manager';
 const ISSUE = 'POST /api/tenant/idp/plans/tasks/issue';
 const COPY = 'POST /api/tenant/idp/templates/:id/copy';
-const GOALS = 'POST /api/tenant/idp/plans/:id/goals';
+
 const APPROVAL_PROCESSES = 'GET /api/tenant/idp/approval-processes';
 const AUTO_APPRAISERS = 'POST /api/tenant/survey360/activities/:id/objects/:objectId/appraisers/auto';
 const MODULE_VIEW = 'obj:IDP.IDPTemplateModule:view';
@@ -81,21 +80,9 @@ const disclosureBranches = () =>
 
 describe('AC-PRM-FW-02 B-01 披露分支：位置 / 嵌套 / 名字（D1～D3）与逐备选比较（R3）', () => {
   it('真实声明 × 真实表零发现；披露位置全部挂在根节点，名字合 D3，数量等于表里的披露分支数', () => {
-    const findings = registrationGate(
-      checkRequired(REQUIRED, frozen, manifest.declared),
-      '真实声明 × 披露义务登记（DEC-416③）',
-    );
-    expect(findings, show(findings)).toEqual([]);
-    const branches = manifest.declared.flatMap((r) => [...declaredPerms(r.policy).optional]);
-    const drift = [];
-    if (branches.length !== disclosureBranches().length) drift.push('声明披露分支数与义务登记不同');
-    if (branches.length < 33) drift.push('披露分支数少于冻结下限 33');
-    expect(registrationDrift('披露分支静态登记', drift)).toEqual([]);
-    for (const [name, branch] of branches) {
-      expect(OPTIONAL_NAME_PATTERN.test(name), name).toBe(true);
-      expect(branch.path, name).toBe(`optional.${name}.`);
-    }
-    expect(manifest.declared.flatMap((r) => declaredPerms(r.policy).layout)).toEqual([]);
+    disclosureChecks({ table: REQUIRED, routes: manifest.declared, contract: frozen })
+      .find((check) => check.id === 'layout')!
+      .verify();
   });
 
   it('审查原文例一：canViewReporting → any([HR 按钮, 普通成员]) → DISCLOSURE_WEAK，指出第几个备选', () => {
@@ -225,12 +212,9 @@ describe('AC-PRM-FW-02 B-03 范围绑定（need）：与“或”满足合并、
   });
 
   it('GET /idp/approval-processes（view AND (create OR update)）：need 随所属组内备选参与“或”，零发现', () => {
-    expect(
-      registrationGate(checkRequired(REQUIRED, frozen, [route(APPROVAL_PROCESSES)]), 'IDP 审批流程静态登记'),
-    ).toEqual([]);
-    expect(check([route(APPROVAL_PROCESSES)])).toEqual([]);
-    const needs = (REQUIRED[APPROVAL_PROCESSES] ?? []).map((o) => o.need);
-    registration('IDP 审批流程 need 登记', () => expect(needs.every((n) => n !== undefined)).toBe(true));
+    disclosureChecks({ table: REQUIRED, routes: manifest.declared, contract: frozen })
+      .find((check) => check.id === 'approvalProcesses')!
+      .verify();
   });
 
   it('“或”组 need：备选 {view, create} 里 create 的范围与 need 不符时，不被同组另一支（update）顶替 → REQUIRED_MISSING', () => {
@@ -243,48 +227,21 @@ describe('AC-PRM-FW-02 B-03 范围绑定（need）：与“或”满足合并、
   });
 
   it('R1c：含 ≥2 个承载节点的准入备选，其 obj: / admin: 准入义务缺 need → NEED_UNBOUND（20 + C1-6 两条 + B3b 重试 = 23）', () => {
-    const stripped: RequiredTable = Object.fromEntries(
-      Object.entries(REQUIRED).map(([key, os]) => [key, os.map(({ need: _need, ...rest }) => rest as Obligation)]),
-    );
-    const unbound = check(manifest.declared, stripped).filter((f) => f.code === 'NEED_UNBOUND');
-    const multi = manifest.declared.filter((r) =>
-      declaredPerms(r.policy).alternatives.some((alt) => {
-        const carriers = [...alt].flatMap(([perm, sources]) =>
-          /^(obj|admin):/.test(perm) ? sources.filter((s) => s.carrier).map((s) => s.path) : [],
-        );
-        return new Set(carriers).size >= 2;
-      }),
-    );
-    registration('多个准入承载节点的静态统计', () => expect(multi).toHaveLength(23));
-    // 对每个实际进入反例的完整表项验证检测器；未登记的端点由真实总入口报告，不能混入这个反例的 oracle。
-    const registered = multi.filter((r) => REQUIRED[`${r.method} ${r.path}`]);
-    expect(new Set(unbound.map((f) => f.route))).toEqual(new Set(registered.map((r) => `${r.method} ${r.path}`)));
+    disclosureChecks({ table: REQUIRED, routes: manifest.declared, contract: frozen })
+      .find((check) => check.id === 'admissionNeed')!
+      .verify();
   });
 
   it('R3c：披露义务缺 need → DISCLOSURE_NEED_UNBOUND（每条披露义务一条）', () => {
-    const base = route(MANAGER);
-    const table = withEntry(
-      MANAGER,
-      entry(MANAGER).map(({ need: _need, ...rest }) => rest as Obligation),
-    );
-    const found = check([base], table).filter((f) => f.code === 'DISCLOSURE_NEED_UNBOUND');
-    expect(found).toHaveLength(entry(MANAGER).filter(isDisclosure).length);
-    const all = Object.values(REQUIRED).flat().filter(isDisclosure);
-    registration('全表披露 need 完整性', () => expect(all.every((o) => o.need !== undefined)).toBe(true));
+    disclosureChecks({ table: REQUIRED, routes: manifest.declared, contract: frozen })
+      .find((check) => check.id === 'disclosureNeed')!
+      .verify();
   });
 
   it('NEED_EVIDENCE_MISSING：need.scope 不是 none 的义务必须有 role: scope 的证据', () => {
-    const scoped = Object.entries(REQUIRED).filter(([, os]) => os.some((o) => o.need && o.need.scope !== 'none'));
-    expect(scoped.length).toBeGreaterThan(0);
-    for (const [key, os] of scoped) {
-      const noEvidence = os.map((o) => ({ ...o, at: o.at.filter((e) => e.role !== 'scope') }));
-      const found = check([route(key)], withEntry(key, noEvidence)).filter((f) => f.code === 'NEED_EVIDENCE_MISSING');
-      expect(found.length, key).toBeGreaterThan(0);
-    }
-    const findings = checkRequired(REQUIRED, frozen, manifest.declared).filter(
-      (f) => f.code === 'NEED_EVIDENCE_MISSING',
-    );
-    expect(registrationGate(findings, '范围义务静态证据登记（DEC-416③）')).toEqual([]);
+    disclosureChecks({ table: REQUIRED, routes: manifest.declared, contract: frozen })
+      .find((check) => check.id === 'scopeEvidence')!
+      .verify();
   });
 
   it('删一条 need（准入 / 披露）→ NEED_UNBOUND / DISCLOSURE_NEED_UNBOUND', () => {
@@ -338,12 +295,9 @@ describe('AC-PRM-FW-02 守卫内部义务：内部角色 inner、GUARD_INNER_ALT
   );
 
   it('现表全部守卫内部义务（PR-A 台账 45 条 + 任职资格 18 条）都登记 inner；角色只取 required / or / when', () => {
-    registration('守卫内部义务静态数量', () => expect(guards.length).toBeGreaterThanOrEqual(45));
-    for (const [key, o] of guards) {
-      registration(`${key} ${o.perm} 内部角色`, () =>
-        expect(['required', 'or', 'when'], `${key} ${o.perm}`).toContain(o.inner?.role),
-      );
-    }
+    disclosureChecks({ table: REQUIRED, routes: manifest.declared, contract: frozen })
+      .find((check) => check.id === 'guardRoles')!
+      .verify();
   });
 
   it('删 inner → GUARD_ROLE_UNBOUND（逐条）', () => {
@@ -358,31 +312,14 @@ describe('AC-PRM-FW-02 守卫内部义务：内部角色 inner、GUARD_INNER_ALT
   });
 
   it('idp.executor 的内部“或”：HR（权限）或参与人（数据态，不经授权器），带证据', () => {
-    const executor = GUARD_INNER_ALTS['idp.executor'];
-    registration('idp.executor 内部备选登记', () => expect(executor).toBeDefined());
-    registration('idp.executor 内部备选集合', () =>
-      expect(Object.keys(executor?.alts ?? {}).sort()).toEqual(['hr', 'participant']),
-    );
-    registration('idp.executor HR 备选', () => expect(executor?.alts['hr']).toEqual(['obj:IDP.Idp:view']));
-    registration('idp.executor 参与人备选', () =>
-      expect(executor?.alts['participant']).toBe('data:idp.planParticipant'),
-    );
-    const synthetic: RequiredTable = Object.fromEntries(
-      Object.entries(GUARD_INNER_ALTS).map(([carrier, registered]) => [
-        `inner ${carrier}`,
-        [{ perm: `guard:${carrier}`, at: registered.at }],
-      ]),
-    );
-    const found = registrationGate(checkStored(synthetic), '守卫内部备选证据');
-    expect(found, show(found)).toEqual([]);
+    disclosureChecks({ table: REQUIRED, routes: manifest.declared, contract: frozen })
+      .find((check) => check.id === 'executorAlternatives')!
+      .verify();
   });
 
   it('idp.executor 的 9 个执行入口内部角色为 or（hr 备选）；登记错了备选名 → GUARD_INNER_ALT_UNREGISTERED', () => {
-    const inner = (REQUIRED[GOALS] ?? []).find((o) => o.purpose === 'guard:idp.executor')?.inner;
-    registration('IDP 执行入口内部角色', () => expect(inner).toEqual({ role: 'or', group: 'executor', alt: 'hr' }));
-    const wrong = entry(GOALS).map((o) =>
-      o.purpose === 'guard:idp.executor' ? { ...o, inner: { role: 'or' as const, group: 'executor', alt: 'x' } } : o,
-    );
-    expect(codes(check([route(GOALS)], withEntry(GOALS, wrong)))).toContain('GUARD_INNER_ALT_UNREGISTERED');
+    disclosureChecks({ table: REQUIRED, routes: manifest.declared, contract: frozen })
+      .find((check) => check.id === 'executorRole')!
+      .verify();
   });
 });
