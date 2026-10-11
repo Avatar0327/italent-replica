@@ -129,7 +129,9 @@ async function planSteps(
   previous: Structure | null,
   submitted: TemplatePatch['steps'],
 ): Promise<StepView[]> {
-  const frozen = !flowId ? [] : flowChanged || !previous ? await freezeSteps(tx, tenantId, flowId) : previous.steps;
+  // 流程换了（或还没有版本）才重新冻结节点副本；同一流程沿用当前版本的副本，流程之后的修改不影响已保存版本
+  let frozen: StepView[] = [];
+  if (flowId) frozen = flowChanged || !previous ? await freezeSteps(tx, tenantId, flowId) : previous.steps;
   const matrix = new Map(previous?.steps.map((step) => [step.nodeKey, step.showMatrix]));
   const requested = new Map<string, boolean>();
   for (const step of submitted ?? []) {

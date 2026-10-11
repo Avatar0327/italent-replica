@@ -20,7 +20,7 @@ const testDb = useTestDb();
 const list = async (w: Awaited<ReturnType<typeof templateWorld>>) =>
   ((await (await w.trRequest('GET', `${TEMPLATES}?pageSize=100`)).json()) as { items: TemplateView[] }).items;
 
-describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('盘点模板引用 · PostgreSQL 16 并发', () => {
+describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-TR-template-pg 盘点模板引用 · PostgreSQL 16 并发', () => {
   it('新建引用评价规则的模板与删除该规则同时发生：要么模板建成且删除 409，要么规则先删模板 404，库里无悬空引用', async () => {
     const w = await templateWorld(testDb().db, 'trt-pg-rule');
     const { flow } = await w.threeStepFlow();

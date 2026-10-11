@@ -24,6 +24,37 @@
     "scopeQueries": [],
     "trace": []
   },
+  "GET /api/tenant/self-service/development-channel": {
+    "all": {
+      "code": "FORBIDDEN",
+      "error": "be409e90433c",
+      "status": 403
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "not-asked"
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "GET /api/tenant/self-service/employees/:id/development-channel": {
+    "all": {
+      "code": "FORBIDDEN",
+      "error": "be409e90433c",
+      "status": 403
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "not-asked"
+    },
+    "invalidId": {
+      "code": "FORBIDDEN",
+      "error": "be409e90433c",
+      "status": 403
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
   "GET /api/tenant/self-service/employees/:id/records": {
     "all": {
       "code": "FORBIDDEN",

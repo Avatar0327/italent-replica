@@ -7,9 +7,10 @@
  * 写入共性：If-Match 必带（标准明细导入例外，逐标准在请求体带 revision）、Idempotency-Key 必带、ledger single；
  * write.fields = 'body'，确认框、引入条目与所属管理单元的选择是控制键（access.checkWriteFields）。
  */
-import { MODULE_OBJECTS, QUALIFICATION_OBJECTS } from '@italent/domain';
+import { MODULE_OBJECTS, QUALIFICATION_OBJECTS, SUBSETS } from '@italent/domain';
 import { defineTable, type ObjectPolicy, type RoutePolicy } from '../../route-policy/index.js';
 import {
+  all,
   BAD_REQUEST,
   button,
   FORBIDDEN,
@@ -17,6 +18,7 @@ import {
   guardScope,
   listScope,
   noButton,
+  noFields,
   none,
   noScope,
   NOT_FOUND,
@@ -235,6 +237,22 @@ function importRoute(key: 'category' | 'level'): RoutePolicy {
   });
 }
 
+/** 员工任职资格子集（当前资格的来源）：对象查看权 + 员工点校验（personnel.preflight → requirePerson，404「人员不存在」）。 */
+const employeeSubsetView = () =>
+  object({
+    object: SUBSETS.qualification.objectCode,
+    operation: 'view',
+    button: noButton('随员工详情，无按钮'),
+    scope: pointScope({ param: 'employeeId' }, 'personnel.employee', NF),
+    fields: noFields('当前资格字段随子集字段权；看不到 categoryId / levelId 时按空态，出口在组合层'),
+  });
+const channelView = (objectCode: string) => ({
+  object: objectCode,
+  operation: 'view' as const,
+  button: noButton('随员工详情，无按钮'),
+  scope: noScope('类别 / 标准 / 通道只放开查看（DEC-352），不按管理单元裁剪'),
+});
+
 export const QUALIFICATION_POLICIES = defineTable('qualification', {
   ...crud('categoryClass'),
   ...crud('category'),
@@ -319,6 +337,19 @@ export const QUALIFICATION_POLICIES = defineTable('qualification', {
     scope: STANDARD_DETAIL,
     fields: projector('ql.chart', 'ql.chart'),
   }),
+  // ---- development-channel.ts：员工发展通道查看——管理入口（C1-6，AC-QL-08）------------------------------------------
+  // 两道授权缺一不可：员工任职资格子集的查看权 + 员工在查看人人员范围内（范围外与不存在同为 404），以及 Qualification 的
+  // DevelopmentChannel（卡片）/ QualificationStandard（点级别）对象查看权；内容按查看人字段权与源对象读取权投影（不拒绝）
+  [`GET ${BASE}/employees/:employeeId/development-channel`]: all(
+    [employeeSubsetView(), object({ ...channelView(Q.developmentChannel.code), fields: noFields('出口在组合层') })],
+    projector('ql.employeeChannel', 'ql.employeeChannel'),
+    byId,
+  ),
+  [`GET ${BASE}/employees/:employeeId/development-channel/levels/:levelId`]: all(
+    [employeeSubsetView(), object({ ...channelView(Q.standard.code), fields: noFields('出口在组合层') })],
+    projector('ql.employeeChannelLevel', 'ql.employeeChannelLevel'),
+    byId,
+  ),
   // ---- candidates.ts：新建时的所属管理单元候选（DEC-339 / DEC-316②）------------------------------------------------
   [`GET ${BASE}/candidates/owner-orgs`]: object({
     object: {

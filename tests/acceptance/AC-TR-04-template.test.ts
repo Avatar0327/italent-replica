@@ -30,7 +30,7 @@ async function fixture(label: string) {
   return { w, ...flow, rule };
 }
 
-describe('盘点模板 · 新建与步骤冻结（TR-R11、R17、R18）', () => {
+describe('AC-TR-04-template 盘点模板 · 新建与步骤冻结（TR-R11、R17、R18）', () => {
   it('新建：版本 1；步骤冻结自流程节点（含角色 resolver）；缺省停用；不选流程不能启用', async () => {
     const { w, flow, roles } = await fixture('tpl-create');
     const created = await w.template(templateBody(w.orgId, { flowId: flow.id }));
@@ -119,7 +119,7 @@ describe('盘点模板 · 新建与步骤冻结（TR-R11、R17、R18）', () => 
   });
 });
 
-describe('盘点模板 · 模块与默认权限（TR-R13～R16、R18）', () => {
+describe('AC-TR-04-template 盘点模板 · 模块与默认权限（TR-R13～R16、R18）', () => {
   it('指标模块：评价规则头部与等级整份快照；缺省权限行物化（单人一行、会签按角色一行）；校准步骤同样', async () => {
     const { w, flow, roles } = await fixture('tpl-module');
     const rule = await w.gradeRule();
@@ -210,7 +210,7 @@ describe('盘点模板 · 模块与默认权限（TR-R13～R16、R18）', () => 
   });
 });
 
-describe('盘点模板 · 保存校验（先拒后读，数据不变）', () => {
+describe('AC-TR-04-template 盘点模板 · 保存校验（先拒后读，数据不变）', () => {
   it('模块 / 权限 / 引用不合法分别 400 / 404，且模板与版本都不变', async () => {
     const { w, flow, rule } = await fixture('tpl-invalid');
     const t = await w.template(
@@ -280,7 +280,7 @@ describe('盘点模板 · 保存校验（先拒后读，数据不变）', () => 
   });
 });
 
-describe('盘点模板 · 版本（TR-R12、D-02）', () => {
+describe('AC-TR-04-template 盘点模板 · 版本（TR-R12、D-02）', () => {
   it('结构保存生成新版本，头部字段修改不生成；旧版本可读且不变；revision 冲突 409；幂等重放返回原结果', async () => {
     const { w, flow, rule } = await fixture('tpl-versions');
     const v1 = await w.template(
@@ -327,7 +327,7 @@ describe('盘点模板 · 版本（TR-R12、D-02）', () => {
   });
 });
 
-describe('盘点模板 · 引用保护（设计 §5.1；TR-R12、R20）', () => {
+describe('AC-TR-04-template 盘点模板 · 引用保护（设计 §5.1；TR-R12、R20）', () => {
   it('流程 / 角色 / 评价规则 / 模块等级 / 字段被模板引用不能删（409 *_IN_USE），模板删除后可删', async () => {
     const { w, flow, roles, rule } = await fixture('tpl-refs');
     const grade = await w.moduleGrade();

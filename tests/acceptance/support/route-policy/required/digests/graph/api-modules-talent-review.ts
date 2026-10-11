@@ -1367,6 +1367,7 @@ export const GRAPH: Graph = {
     '#referencesOf',
     '#requireCatalogs',
     '#runGuarded',
+    '#trimmed',
     '#versionQuery',
     'apps/api/src/modules/talent-review/template-service.ts#createTemplate',
     'apps/api/src/modules/talent-review/template-service.ts#deleteTemplate',
@@ -1388,13 +1389,16 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/talent-review/template-routes.ts#runGuarded': [
     'apps/api/src/modules/talent-review/access.ts#notFoundMessage',
-    'apps/api/src/modules/talent-review/access.ts#trimReview',
     'apps/api/src/modules/talent-review/reference-kit.ts#requireReferencesVisible',
     'apps/api/src/modules/talent-review/template-access.ts#requireEditable',
     '#CATALOG_TABLES',
     '#present',
     '#referenced',
+    '#trimmed',
     'apps/api/src/modules/talent-review/template-view.ts#headerOf',
+  ],
+  'apps/api/src/modules/talent-review/template-routes.ts#trimmed': [
+    'apps/api/src/modules/talent-review/access.ts#trimReview',
   ],
   'apps/api/src/modules/talent-review/template-service.ts#audit': [
     'apps/api/src/audit/record.ts#recordAudit',
@@ -1439,6 +1443,7 @@ export const GRAPH: Graph = {
     '#requireOrg',
     '#structural',
     'apps/api/src/modules/talent-review/template-structure.ts#buildPlan',
+    'apps/api/src/modules/talent-review/template-structure.ts#checkTemplateReferences',
     'apps/api/src/modules/talent-review/template-structure.ts#writeVersion',
     'apps/api/src/modules/talent-review/template-view.ts#loadTemplate',
   ],

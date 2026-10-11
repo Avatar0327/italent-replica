@@ -179,4 +179,7 @@ SELECT enable_tenant_isolation('talent_review_template_module_fields');
 --> statement-breakpoint
 SELECT enable_tenant_isolation('talent_review_template_step_module_permissions');
 --> statement-breakpoint
-GRANT SELECT, INSERT, UPDATE, DELETE ON talent_review_templates, talent_review_template_versions, talent_review_template_steps, talent_review_template_step_roles, talent_review_template_modules, talent_review_template_module_levels, talent_review_template_module_fields, talent_review_template_step_module_permissions TO app_user;
+GRANT SELECT, INSERT, UPDATE, DELETE ON talent_review_templates TO app_user;
+--> statement-breakpoint
+-- 版本内容只追加：已冻结的版本（步骤、模块、快照、权限）对应用角色不授予 UPDATE，改版本只能写新版本（TR-R20、AC-TR-15）
+GRANT SELECT, INSERT, DELETE ON talent_review_template_versions, talent_review_template_steps, talent_review_template_step_roles, talent_review_template_modules, talent_review_template_module_levels, talent_review_template_module_fields, talent_review_template_step_module_permissions TO app_user;

@@ -22,9 +22,9 @@ import { codeOf, notFoundMessage, TALENT_REVIEW_AUDIT_ACTIONS } from './access.j
 import { configReferrer, registerConfigReferenceGuard, uniqueOr } from './config-kit.js';
 import { registerTalentCriterionReferenceGuard } from '../talent/port.js';
 import type { TemplateCreate, TemplatePatch } from './template-input.js';
-import { accessOf, requireCreatable, requireEditable, type TemplateAnchor } from './template-access.js';
-import { buildPlan, type TemplateWriteContext, writeVersion } from './template-structure.js';
-import { loadTemplate, loadStructure, type TemplateView } from './template-view.js';
+import { requireCreatable, requireEditable, type TemplateAnchor } from './template-access.js';
+import { buildPlan, checkTemplateReferences, type TemplateWriteContext, writeVersion } from './template-structure.js';
+import { loadTemplate, type TemplateView } from './template-view.js';
 
 const invalid = (reason: string, message: string) => new AppError('VALIDATION_FAILED', message, { reason });
 
@@ -139,6 +139,10 @@ export async function updateTemplate(
   requireFlowWhenEnabled(patch.enabled ?? before.enabled, flowId);
   const flowChanged = flowId !== before.flowId;
   const isStructural = structural(patch, flowChanged);
+  // 只改头部字段但原样带上流程时，引用的流程同样须当前可见（显式提交的引用每次都复核，与 B3 同口径）
+  if (!isStructural && patch.flowId) {
+    await checkTemplateReferences(tx, ctx, 'flow', [patch.flowId], new Set(before.flowId ? [before.flowId] : []));
+  }
   const versionNo = isStructural ? before.currentVersionNo + 1 : before.currentVersionNo;
   if (isStructural) {
     const plan = await buildPlan(tx, ctx, { flowId: before.flowId, structure: before }, patch);
@@ -181,8 +185,6 @@ export async function readTemplate(tx: Tx, tenantId: string, id: string, version
   if (!view) throw new AppError('NOT_FOUND', notFoundMessage('template'));
   return view;
 }
-
-export { accessOf, loadStructure };
 
 // ---- 被模板引用拒删（外键 restrict 兜底；这里给出可读的 409 *_IN_USE 而不是 500）-------------------------------------
 
