@@ -28,10 +28,12 @@ import {
   rowsOf,
   trimQualification,
 } from './access.js';
+import { loadChart } from './chart.js';
+import { registerChartExport } from './chart-export.js';
 import * as config from './config-service.js';
 import * as input from './input.js';
 import { presentChannels, presentChart, presentGradeDescriptions } from './presenters.js';
-import * as read from './read-model.js';
+import type * as read from './read-model.js';
 import { presenter, QL_BASE, requireAllVisible, runWrite, writeContext } from './route-support.js';
 import * as standards from './standard-service.js';
 import { rowAccess } from './store.js';
@@ -47,6 +49,7 @@ export function registerExtras(router: Hono<TenantEnv>, deps: TenantRouteDeps): 
   registerStandardImport(router, deps);
   registerChannels(router, deps);
   registerChart(router, deps);
+  registerChartExport(router, deps);
 }
 
 /**
@@ -278,14 +281,7 @@ function registerChart(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const scope = await qualificationScope(c, deps, ctx, 'standard');
     const { standard, orders } = await withTenant(deps.db, ctx.tenantId, async (tx) => {
       requireReadable((await rowAccess(tx, ctx, scope, 'standard', id)).access, 'standard');
-      const [found] = await read.withStandardParts(tx, ctx.tenantId, [
-        (await read.loadRow(tx, ctx.tenantId, 'standard', id))!,
-      ]);
-      const levels = rowsOf<{ id: string; display_order: number }>(
-        await tx.execute(sql`SELECT id, display_order FROM ql_levels WHERE tenant_id = ${ctx.tenantId}::uuid
-          AND id = ANY(${`{${found!.levelIds.join(',')}}`}::uuid[])`),
-      );
-      return { standard: found!, orders: new Map(levels.map((level) => [level.id, level.display_order])) };
+      return loadChart(tx, ctx, id);
     });
     return c.json(await presentChart(c, deps, ctx, standard, orders));
   });
