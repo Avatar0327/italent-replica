@@ -6,7 +6,7 @@
  * - 所属组织、适用范围、通知范围：新增的组织须存在且在操作人范围内，范围外与不存在同一 404；
  * - 负责人（人员引用出口）：范围内姓名 + 工号，范围外只有姓名，人员详情仍 404；
  * - 数据操作 / 按钮 / 字段权（含显式清空）、列表筛选与分页前裁剪；
- * - 活动类型 / 周期 / 评价表被活动引用时拒删（类型 / 周期另拒停用）；审计只存 ID。
+ * - 活动类型 / 周期 / 评价表被活动引用时拒删（类型 / 周期 / 评价表另拒停用，DEC-413②）；审计只存 ID。
  */
 import { randomUUID } from 'node:crypto';
 import { useTestDb } from '@italent/testkit';
@@ -291,7 +291,7 @@ describe('AC-EV-activity-refs 评定活动的引用与权限', () => {
       expect(remove.status, await remove.clone().text()).toBe(200);
     });
 
-    it('评价表被环节引用：删除 409 EVALUATION_FORM_IN_USE；停用不拦（新引用会被拒），活动删除后可删', async () => {
+    it('DEC-413② 评价表被环节引用：删除与停用 409 EVALUATION_FORM_IN_USE，活动删除后可停用 / 删除', async () => {
       const spare = await w.form(w.orgA);
       const op = await manager();
       const activity = await created(op, body({ chains: f.chains(spare.id) }));
@@ -301,8 +301,21 @@ describe('AC-EV-activity-refs 评定活动的引用与权限', () => {
           ifMatch: spare.revision,
         });
       await expectError(await remove(), 409, 'EVALUATION_FORM_IN_USE');
-      await w.setFormEnabled(spare, false);
+      const before = await w.setup.request('GET', `/api/tenant/evaluation/evaluation-forms/${spare.id}`, w.asAdmin);
+      const beforeBody = await before.json();
+      await expectError(
+        await w.setup.request('PATCH', `/api/tenant/evaluation/evaluation-forms/${spare.id}`, {
+          ...w.asAdmin,
+          ifMatch: spare.revision,
+          body: { enabled: false },
+        }),
+        409,
+        'EVALUATION_FORM_IN_USE',
+      );
+      const after = await w.setup.request('GET', `/api/tenant/evaluation/evaluation-forms/${spare.id}`, w.asAdmin);
+      expect(await after.json()).toEqual(beforeBody);
       await ok(await op.request('DELETE', `${ACTIVITIES}/${activity.id}`, { ifMatch: activity.revision }));
+      await w.setFormEnabled(spare, false);
       const current = await w.setup.request('GET', `/api/tenant/evaluation/evaluation-forms/${spare.id}`, w.asAdmin);
       const revision = ((await current.json()) as { revision: number }).revision;
       const done = await w.setup.request('DELETE', `/api/tenant/evaluation/evaluation-forms/${spare.id}`, {
