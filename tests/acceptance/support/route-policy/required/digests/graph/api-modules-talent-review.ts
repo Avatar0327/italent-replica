@@ -1044,6 +1044,9 @@ export const GRAPH: Graph = {
     '#projectListAccess',
     '#sharedSql',
   ],
+  'apps/api/src/modules/talent-review/project-access.ts#sharedSql': [
+    'apps/api/src/modules/permission/module-access.ts#scopeSql',
+  ],
   'apps/api/src/modules/talent-review/project-guards.ts#checkProjectGuards': ['#guards'],
   'apps/api/src/modules/talent-review/project-guards.ts#requireProjectEmpty': ['#objectChecks'],
   'apps/api/src/modules/talent-review/project-input.ts#calibration': ['#uuid'],

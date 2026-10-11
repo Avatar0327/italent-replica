@@ -3701,7 +3701,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/talent-review/project-access.ts#projectReadable': ['7af590f7c9a2', 'dc64f29f2e63'],
   'apps/api/src/modules/talent-review/project-access.ts#requireProjectEditable': ['a5ca70648113', 'b6bd1364a335'],
   'apps/api/src/modules/talent-review/project-access.ts#requireProjectReadable': ['7e35ba33cc95', 'ef324862c90e'],
-  'apps/api/src/modules/talent-review/project-access.ts#sharedSql': ['9130f3a33bc9', '3c2cbcdc422f'],
+  'apps/api/src/modules/talent-review/project-access.ts#sharedSql': ['ecc66c53df89', '1ead07ae679c'],
   'apps/api/src/modules/talent-review/project-guards.ts#checkProjectGuards': ['c094316c35aa', 'f2d66c0c36d8'],
   'apps/api/src/modules/talent-review/project-guards.ts#guards': ['3c945f8f575b', '15d819d8dcdf'],
   'apps/api/src/modules/talent-review/project-guards.ts#objectChecks': ['0e83dd3dbc6e', '82583603a31b'],

@@ -1926,6 +1926,7 @@
         ],
         "scope": [
           "creator scope",
+          "scopeSql",
           "visible()"
         ]
       }
@@ -8613,7 +8614,8 @@
         ],
         "scope": [
           "creator scope",
-          "requestScope"
+          "requestScope",
+          "scopeSql"
         ]
       }
     },
@@ -11313,6 +11315,7 @@
         ],
         "scope": [
           "creator scope",
+          "scopeSql",
           "visible()"
         ]
       }
@@ -18521,6 +18524,7 @@
         ],
         "scope": [
           "creator scope",
+          "scopeSql",
           "visible()"
         ]
       }
@@ -18560,6 +18564,7 @@
         ],
         "scope": [
           "creator scope",
+          "scopeSql",
           "visible()"
         ]
       }
@@ -18599,6 +18604,7 @@
         ],
         "scope": [
           "creator scope",
+          "scopeSql",
           "visible()"
         ]
       }
@@ -18638,6 +18644,7 @@
         ],
         "scope": [
           "creator scope",
+          "scopeSql",
           "visible()"
         ]
       }

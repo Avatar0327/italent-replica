@@ -14,17 +14,9 @@ export interface ProjectAnchor {
 }
 /** 共享组织只匹配范围展开后的管理 / 组织维度，人员及创建人范围不能推导组织。 */
 function sharedSql(ctx: PublicDownContext, scope: ModuleScope, projectId: SQL): SQL {
-  const orgIds = [
-    ...new Set(
-      (scope.terms ?? [{ dimension: 'management', orgIds: scope.orgIds }])
-        .filter((term) => term.dimension === 'management' || term.dimension === 'organization')
-        .flatMap((term) => term.orgIds),
-    ),
-  ];
-  if (!orgIds.length) return sql`false`;
   return sql`EXISTS (SELECT 1 FROM talent_review_project_shared_orgs s
     WHERE s.tenant_id = ${ctx.tenantId}::uuid AND s.project_id = ${projectId}
-      AND s.org_id = ANY(${`{${orgIds.join(',')}}`}::uuid[]))`;
+      AND ${scopeSql(scope, { org: sql`s.org_id` })})`;
 }
 export function projectReadable(ctx: PublicDownContext, scope: ModuleScope): SQL {
   return sql`(${scopeSql(scope, { org: sql`owner_org_id`, creator: sql`owner_id` })}

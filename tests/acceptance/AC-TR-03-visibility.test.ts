@@ -95,7 +95,7 @@ describe('AC-TR-03-visibility', () => {
       for (const [method, suffix, body] of [
         ['PATCH', '', { name: '不能保存' }],
         ['DELETE', '', undefined],
-        ...['start', 'end', 'restart', 'calculate', 'sync'].map((action) => ['POST', `/${action}`, {}]),
+        ...['start', 'end', 'restart', 'calculate', 'sync'].map((action) => ['POST', `/${action}`, {}] as const),
       ] as const) {
         const res = await op.request(method, `${PATH}/${p.id}${suffix}`, { ifMatch: p.revision, body });
         expect(res.status, `${method} ${suffix}: ${await res.clone().text()}`).toBe(403);
