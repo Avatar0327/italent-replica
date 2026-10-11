@@ -35,6 +35,8 @@ export interface MaintenanceHooks {
   readonly beforeWriteBack?: (linkId: string) => void | Promise<void>;
   /** 写回事务内、已通过密钥版本复核（持有协调锁）之后（测试用来制造与轮换登记的交错）。 */
   readonly duringWriteBack?: (linkId: string) => void | Promise<void>;
+  /** 清理事务内、已锁住到期的锁定行之后（测试用来制造与登录的锁序交错，F-076 PR-2a 第 1 轮 P2-3）。 */
+  readonly duringCleanup?: () => void | Promise<void>;
   /** 结构化运行日志（缺省 console.warn 一行 JSON）；数据里只放计数与 ID，不放明文。 */
   readonly warn?: (message: string, data: Record<string, unknown>) => void;
 }
@@ -277,13 +279,23 @@ async function issueRow(db: Db, tenantId: string, row: Claimed, context: IssueCo
 }
 
 /** 清理：到期未清的锁定记 unlock、删空闲限频行、删过期 / 作废超过 24 小时的会话（设计 §3.2、§4.1、§5.4）。 */
-async function cleanupTenant(db: Db, tenantId: string, now: Date, report: MaintenanceReport, limit: number) {
+async function cleanupTenant(
+  db: Db,
+  tenantId: string,
+  now: Date,
+  report: MaintenanceReport,
+  limit: number,
+  hooks: MaintenanceHooks,
+) {
   const at = now.toISOString();
+  // 三个独立的短事务，且都 SKIP LOCKED：登录按“IP 行 → 序列号 × IP 行 → 链接行”取锁，清理若在一个事务里先锁
+  // 序列号 × IP 行、再去删被登录持有的 IP 行，就与登录形成等待环（第 1 轮审查 P2-3）。拆开后每个事务只持有
+  // 自己这一类行，跳过正被登录占用的行（留给下一轮），不会反向等待登录。
   await withTenant(db, tenantId, async (tx) => {
     const expired = rowsOf<{ scope: string; key_hash: string; locked_until: Date | string }>(
       await tx.execute(sql`SELECT scope, key_hash, locked_until FROM survey360_login_throttle
         WHERE locked_until IS NOT NULL AND locked_until <= ${at}::timestamptz
-        ORDER BY locked_until LIMIT ${limit} FOR UPDATE`),
+        ORDER BY locked_until LIMIT ${limit} FOR UPDATE SKIP LOCKED`),
     );
     for (const lock of expired) {
       await recordSecurityEvent(tx, {
@@ -298,19 +310,24 @@ async function cleanupTenant(db: Db, tenantId: string, now: Date, report: Mainte
         WHERE scope = ${lock.scope} AND key_hash = ${lock.key_hash}`);
     }
     report.unlocked += expired.length;
-    // DELETE 带批量上限（ctid 子查询）：一轮删不完的留给下一轮，单个事务不会无限长
-    const idle = new Date(now.getTime() - THROTTLE_IDLE_MS).toISOString();
-    const throttle = await tx.execute(sql`DELETE FROM survey360_login_throttle WHERE ctid IN (
+    await hooks.duringCleanup?.();
+  });
+  // DELETE 带批量上限（ctid 子查询）：一轮删不完的留给下一轮，单个事务不会无限长
+  const idle = new Date(now.getTime() - THROTTLE_IDLE_MS).toISOString();
+  const throttle = await withTenant(db, tenantId, (tx) =>
+    tx.execute(sql`DELETE FROM survey360_login_throttle WHERE ctid IN (
       SELECT ctid FROM survey360_login_throttle WHERE locked_until IS NULL AND updated_at < ${idle}::timestamptz
-      LIMIT ${limit})`);
-    report.throttleDeleted += affected(throttle);
-    const kept = new Date(now.getTime() - SESSION_REVOKED_KEEP_MS).toISOString();
-    const sessions = await tx.execute(sql`DELETE FROM survey360_answer_sessions WHERE id IN (
+      LIMIT ${limit} FOR UPDATE SKIP LOCKED)`),
+  );
+  report.throttleDeleted += affected(throttle);
+  const kept = new Date(now.getTime() - SESSION_REVOKED_KEEP_MS).toISOString();
+  const sessions = await withTenant(db, tenantId, (tx) =>
+    tx.execute(sql`DELETE FROM survey360_answer_sessions WHERE id IN (
       SELECT id FROM survey360_answer_sessions
       WHERE expires_at < ${at}::timestamptz OR (revoked_at IS NOT NULL AND revoked_at < ${kept}::timestamptz)
-      LIMIT ${limit})`);
-    report.sessionsDeleted += affected(sessions);
-  });
+      LIMIT ${limit} FOR UPDATE SKIP LOCKED)`),
+  );
+  report.sessionsDeleted += affected(sessions);
 }
 
 /** 跑一轮（所有启用 / 停用租户，或 options.tenantId）。可重复执行；多实例靠 SKIP LOCKED 与认领 CAS 去重。 */
@@ -329,7 +346,7 @@ export async function runCredentialMaintenance(db: Db, options: MaintenanceOptio
   await assertNoKeyRollback(db, options.config ?? credentialConfig());
   for await (const tenantId of tenantIds(db, options.tenantId)) {
     await issueTenant(db, tenantId, options, report);
-    await cleanupTenant(db, tenantId, now, report, options.cleanupLimit ?? CLEANUP_LIMIT);
+    await cleanupTenant(db, tenantId, now, report, options.cleanupLimit ?? CLEANUP_LIMIT, options.hooks ?? {});
   }
   return report;
 }

@@ -280,6 +280,43 @@
         ]
       }
     },
+    "DELETE /api/tenant/evaluation/activities/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "evaluation",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "creator scope",
+          "requestScope",
+          "scopeSql"
+        ]
+      }
+    },
     "DELETE /api/tenant/evaluation/activity-cycles/:id": {
       "edge": {
         "anonymous": {
@@ -3931,6 +3968,65 @@
         ]
       }
     },
+    "GET /api/tenant/evaluation/activities": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "evaluation",
+      "primitives": {
+        "guard": [
+          "ev.filterFieldVisible"
+        ],
+        "object": [
+          "object.* 动作",
+          "objectContext"
+        ],
+        "scope": [
+          "creator scope",
+          "requestScope",
+          "scope.all",
+          "scopeSql"
+        ]
+      }
+    },
+    "GET /api/tenant/evaluation/activities/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "evaluation",
+      "primitives": {
+        "object": [
+          "object.* 动作",
+          "objectContext"
+        ],
+        "scope": [
+          "requestScope",
+          "scopeSql"
+        ]
+      }
+    },
     "GET /api/tenant/evaluation/activity-cycles": {
       "edge": {
         "anonymous": {
@@ -6068,6 +6164,61 @@
         ]
       }
     },
+    "GET /api/tenant/qualification/employees/:employeeId/development-channel": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "qualification",
+      "primitives": {
+        "object": [
+          "object.* 动作",
+          "objectContext"
+        ],
+        "scope": [
+          "requestScope"
+        ]
+      }
+    },
+    "GET /api/tenant/qualification/employees/:employeeId/development-channel/levels/:levelId": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "qualification",
+      "primitives": {
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "object": [
+          "object.* 动作",
+          "objectContext"
+        ],
+        "scope": [
+          "requestScope"
+        ]
+      }
+    },
     "GET /api/tenant/qualification/grade-schemes": {
       "edge": {
         "anonymous": {
@@ -6545,6 +6696,64 @@
           "employment visibility",
           "scope.all",
           "scopeSql"
+        ],
+        "self": [
+          "selfAccess"
+        ]
+      }
+    },
+    "GET /api/tenant/self-service/development-channel": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "self-service",
+      "primitives": {
+        "button": [
+          "buttonResource",
+          "object.button"
+        ],
+        "guard": [
+          "selfService.developmentChannelPage"
+        ],
+        "self": [
+          "selfAccess"
+        ]
+      }
+    },
+    "GET /api/tenant/self-service/employees/:id/development-channel": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "self-service",
+      "primitives": {
+        "button": [
+          "buttonResource",
+          "object.button"
+        ],
+        "guard": [
+          "selfService.developmentChannelPage"
         ],
         "self": [
           "selfAccess"
@@ -9062,6 +9271,46 @@
         ]
       }
     },
+    "PATCH /api/tenant/evaluation/activities/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "evaluation",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "writeFields"
+        ],
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "creator scope",
+          "requestScope",
+          "scopeSql"
+        ]
+      }
+    },
     "PATCH /api/tenant/evaluation/activity-cycles/:id": {
       "edge": {
         "anonymous": {
@@ -11287,6 +11536,39 @@
           "runCommand / runWrite"
         ]
       }
+    },
+    "POST /api/survey360/portal/login": {
+      "edge": {
+        "anonymous": {
+          "code": "VALIDATION_FAILED",
+          "status": 400
+        },
+        "member": {
+          "code": "VALIDATION_FAILED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "VALIDATION_FAILED",
+          "status": 400
+        }
+      },
+      "module": "survey360-portal",
+      "primitives": {}
+    },
+    "POST /api/survey360/portal/logout": {
+      "edge": {
+        "anonymous": {
+          "status": 204
+        },
+        "member": {
+          "status": 204
+        },
+        "nonMember": {
+          "status": 204
+        }
+      },
+      "module": "survey360-portal",
+      "primitives": {}
     },
     "POST /api/tenant/account/avatar/attachments": {
       "edge": {
@@ -13592,6 +13874,46 @@
         ]
       }
     },
+    "POST /api/tenant/evaluation/activities": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "evaluation",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "writeFields"
+        ],
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "creator scope",
+          "requestScope",
+          "scopeSql"
+        ]
+      }
+    },
     "POST /api/tenant/evaluation/activity-cycles": {
       "edge": {
         "anonymous": {
@@ -15764,6 +16086,32 @@
           "requestScope",
           "resolveModuleScope",
           "scopeSql"
+        ]
+      }
+    },
+    "POST /api/tenant/qualification/subsets/initialize": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "qualification",
+      "primitives": {
+        "button": [
+          "personnel access(button)"
+        ],
+        "command": [
+          "assertRevision",
+          "runCommand / runWrite"
         ]
       }
     },

@@ -8,7 +8,7 @@
  * 写入口的 `object.* 动作` 事实是写字段权（checkWriteFields）与被引用对象 / 岗职务的查看权（writeContext），随数据
  * 操作义务承接；查看口的同一事实是投影里按源对象查看权逐节点裁剪（不拒绝），随查看义务承接。
  */
-import { list, SCOPE_AT } from './scopes.js';
+import { bound, list, NONE, point, SCOPE_AT, withNeeds } from './scopes.js';
 import type { Evidence, Inner, Obligation, RequiredTable } from './types.js';
 
 const BASE = '/api/tenant/qualification';
@@ -49,6 +49,48 @@ const code = (key: Ref) => `Qualification.${OBJECTS[key][0]}`;
 const objectConst = (key: Ref): Evidence => ({ role: 'const', unit: CATALOG, anchor: OBJECTS[key][2] });
 const call = (unit: string, anchor: string): Evidence => ({ role: 'call', unit, anchor });
 const impl = (unit: string, anchor: string): Evidence => ({ role: 'impl', unit, anchor });
+
+const DEV_CHANNEL = `${QL}/development-channel.ts#registerDevelopmentChannel`;
+const DEV_CTX_CHANNEL = "const ctx = await qualificationContext(c, deps, 'developmentChannel')";
+const DEV_CTX_STANDARD = "const ctx = await qualificationContext(c, deps, 'standard')";
+const PERSONNEL = 'apps/api/src/modules/personnel/access.ts';
+/** 员工点校验：preflight → requirePerson（范围外与不存在同为 404「人员不存在」）。 */
+const EMPLOYEE_POINT_AT: Evidence[] = [
+  {
+    role: 'scope',
+    unit: `${DEV_CHANNEL.replace('#registerDevelopmentChannel', '#viewEmployeeQualification')}`,
+    anchor: 'await preflight(deps, pctx, employeeId)',
+  },
+  {
+    role: 'scope',
+    unit: `${PERSONNEL}#requirePerson`,
+    anchor: "if (!person) throw new AppError('NOT_FOUND', '人员不存在')",
+  },
+];
+/** 员工任职资格子集（当前资格的来源）：对象查看权（personnel access）+ 员工在查看人人员范围内（preflight → requirePerson）。 */
+function employeeSubsetView(unit: string): Obligation {
+  return {
+    perm: 'obj:TenantBase.Qualification:view',
+    facts: [],
+    at: [
+      call(unit, 'await viewEmployeeQualification(c, deps, employeeId)'),
+      impl(
+        unit.replace('#registerDevelopmentChannel', '#viewEmployeeQualification'),
+        "const pctx = await access(c, deps, SUBSET, 'view')",
+      ),
+      impl(`${PERSONNEL}#access`, 'await authorize(deps.authorize, ctx, operation, payload, button)'),
+      impl(
+        `${PERSONNEL}#authorize`,
+        'else await requirePermission(authorizer, { ...ctx, action: `object.${operation}`, resource: ctx.objectCode })',
+      ),
+      {
+        role: 'const',
+        unit: 'packages/domain/src/personnel/fields.ts#SUBSETS',
+        anchor: "objectCode: 'TenantBase.Qualification'",
+      },
+    ],
+  };
+}
 
 const CONTEXT: Evidence[] = [
   impl(`${ACCESS}#qualificationContext`, 'return objectContext(c, deps, codeOf(object), operation, expectedRevision)'),
@@ -677,6 +719,21 @@ const EXTRA: RequiredTable = {
       { role: 'when', condition: 'channels.nonEmpty' },
     ),
   ],
+  // 员工发展通道查看——管理入口（C1-6）：员工任职资格子集查看权（personnel access + preflight 人员点校验）+ Qualification 对象查看权
+  [`GET ${BASE}/employees/:employeeId/development-channel`]: withNeeds(
+    [view('developmentChannel', call(DEV_CHANNEL, DEV_CTX_CHANNEL), true), employeeSubsetView(DEV_CHANNEL)],
+    {
+      [`obj:${code('developmentChannel')}:view`]: bound(NONE),
+      'obj:TenantBase.Qualification:view': bound(point('personnel.employee'), EMPLOYEE_POINT_AT),
+    },
+  ),
+  [`GET ${BASE}/employees/:employeeId/development-channel/levels/:levelId`]: withNeeds(
+    [view('standard', call(DEV_CHANNEL, DEV_CTX_STANDARD), true), employeeSubsetView(DEV_CHANNEL)],
+    {
+      [`obj:${code('standard')}:view`]: bound(NONE),
+      'obj:TenantBase.Qualification:view': bound(point('personnel.employee'), EMPLOYEE_POINT_AT),
+    },
+  ),
   [`GET ${BASE}/standards/:id/chart`]: [
     view(
       'standard',
@@ -722,6 +779,51 @@ const OWNER_ORGS: Obligation[] = [
   },
 ];
 
+/**
+ * 子集初始化（C1-5，subset-init-routes.ts）：与 HR 逐个新增任职资格同一道门——personnel `access()` 问
+ * TenantBase.Qualification 的新增数据操作（requireObjectWrite，空载荷）与列表层“新增”按钮；人员范围是命令内逐名员工的
+ * personScope 谓词（范围外与不存在同一回执，不是拒绝），不另造功能点。
+ */
+const INIT_ROUTE = `${QL}/subset-init-routes.ts#registerSubsetInitialize`;
+const PERSONNEL_ACCESS = 'apps/api/src/modules/personnel/access.ts';
+const INIT_ACCESS = "const ctx = await access(c, deps, SUBSETS.qualification.objectCode, 'create', {}, 'create')";
+const INIT_CONST: Evidence = {
+  role: 'const',
+  unit: 'packages/domain/src/personnel/fields.ts#SUBSETS',
+  anchor: "objectCode: 'TenantBase.Qualification'",
+};
+const PERSONNEL_ACCESS_IMPL: Evidence = impl(
+  `${PERSONNEL_ACCESS}#access`,
+  'await authorize(deps.authorize, ctx, operation, payload, button)',
+);
+const SUBSET_INIT: readonly Obligation[] = [
+  {
+    perm: 'obj:TenantBase.Qualification:create',
+    at: [
+      call(INIT_ROUTE, INIT_ACCESS),
+      PERSONNEL_ACCESS_IMPL,
+      impl(
+        `${PERSONNEL_ACCESS}#authorize`,
+        'await requireObjectWrite(authorizer, ctx, { objectCode: ctx.objectCode, operation, payload })',
+      ),
+      INIT_CONST,
+    ],
+  },
+  {
+    perm: 'btn:TenantBase.Qualification#create@list',
+    facts: ['button:personnel access(button)'],
+    at: [
+      call(INIT_ROUTE, INIT_ACCESS),
+      PERSONNEL_ACCESS_IMPL,
+      impl(
+        `${PERSONNEL_ACCESS}#authorize`,
+        "resource: buttonResource(ctx.objectCode, button, ['create', 'submit'].includes(button) ? 'list' : 'detail')",
+      ),
+      INIT_CONST,
+    ],
+  },
+];
+
 export const QUALIFICATION: RequiredTable = {
   ...crud('categoryClass'),
   ...crud('category'),
@@ -733,4 +835,5 @@ export const QUALIFICATION: RequiredTable = {
   ...crud('standard'),
   ...EXTRA,
   [`GET ${BASE}/candidates/owner-orgs`]: OWNER_ORGS,
+  [`POST ${BASE}/subsets/initialize`]: SUBSET_INIT,
 };

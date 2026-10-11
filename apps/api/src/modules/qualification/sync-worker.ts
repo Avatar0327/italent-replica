@@ -30,20 +30,12 @@ import type { EmploymentContext } from '../employment/types.js';
 import { lockPerson } from '../personnel/store.js';
 import { loadSubset, persistSubset, saveSubset } from '../personnel/subsets.js';
 import { readEffectiveSetting } from '../tenant-settings/service.js';
+import { SYNCED_KINDS } from './sync-kinds.js';
 import { mapEmploymentToQualification } from './sync-mapping.js';
 import { hasSyncFootprint, planTimeline } from './sync-timeline.js';
 
 export const QUALIFICATION_SYNC_HANDLER = 'qualification_sync';
 const SYNC_SETTING = 'qualification.sync_enabled';
-/** 入职（含重聘、退休返聘）、转正（含实习转正）、调动同步；离职 / 退休 / 组织调整不同步（QL-R15②，DEC-335②）。 */
-const SYNCED_KINDS: ReadonlySet<string> = new Set([
-  'hire',
-  'rehire',
-  'retire_rehire',
-  'regularization',
-  'intern_regularization',
-  'transfer',
-]);
 const BATCH = 100;
 const BACKOFF_BASE_MS = 60_000;
 const BACKOFF_MAX_MS = 3_600_000;
