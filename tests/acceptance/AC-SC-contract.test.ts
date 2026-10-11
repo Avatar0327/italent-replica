@@ -566,9 +566,9 @@ describe('对外端口与定时任务登记位（SP-15 / DEC-330、§4.6 / DEC-3
 });
 
 describe('平台装配登记位（拆分方案 v2 P0；设计 §2.2 #19；DEC-357）', () => {
-  it('平台路由器装配继任平台模块；继任平台声明表为空（P0 不新增任何路由）', () => {
+  it('平台路由器装配继任平台模块；B2a 声明规则重编译路由', () => {
     expect(PLATFORM_MODULES).toContain(registerSuccessionPlatformRoutes);
-    expect(SUCCESSION_PLATFORM_POLICIES.keys()).toEqual([]);
+    expect(SUCCESSION_PLATFORM_POLICIES.keys()).toEqual(['POST /api/platform/succession/rules/recompile']);
   });
 
   it('F-039 扫描：/api/platform/succession 归继任平台模块，其余平台路径仍归平台模块', () => {

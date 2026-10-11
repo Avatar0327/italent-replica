@@ -10,11 +10,13 @@ import {
   foreignKey,
   index,
   integer,
+  jsonb,
   pgTable,
   primaryKey,
   text,
   timestamp,
   uuid,
+  unique,
 } from 'drizzle-orm/pg-core';
 import { employmentEmployees } from './employment.js';
 import { jobPositionObjects } from './job.js';
@@ -126,5 +128,72 @@ export const successionTargetLocks = pgTable(
   (t) => [
     primaryKey({ columns: [t.tenantId, t.targetKind, t.targetId] }),
     check('succession_target_locks_kind', sql`${t.targetKind} IN (${list(SUCCESSION_TYPES)})`),
+  ],
+);
+
+/** B2a，设计 §1.4：条件行是原始数据，公式和编译错误仅为缓存。 */
+export const successionPopulations = pgTable(
+  'succession_populations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
+    code: text('code').notNull(),
+    name: text('name').notNull(),
+    conditionExpression: text('condition_expression').notNull(),
+    compiledFormula: text('compiled_formula'),
+    compilerVersion: text('compiler_version'),
+    compileError: jsonb('compile_error'),
+    displayOrder: integer('display_order').notNull(),
+    revision: integer('revision').notNull().default(1),
+  },
+  (t) => [
+    unique().on(t.tenantId, t.id),
+    unique().on(t.tenantId, t.code),
+    check('succession_populations_revision', sql`${t.revision} > 0`),
+  ],
+);
+
+export const successionPopulationRows = pgTable(
+  'succession_population_rows',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
+    populationId: uuid('population_id').notNull(),
+    rowNo: integer('row_no').notNull(),
+    fieldCode: text('field_code').notNull(),
+    filterOperator: text('filter_operator').notNull(),
+    filterValues: jsonb('filter_values').notNull(),
+  },
+  (t) => [
+    unique().on(t.tenantId, t.populationId, t.rowNo),
+    foreignKey({
+      columns: [t.tenantId, t.populationId],
+      foreignColumns: [successionPopulations.tenantId, successionPopulations.id],
+    }).onDelete('cascade'),
+    check('succession_population_rows_number', sql`${t.rowNo} BETWEEN 1 AND 2147483647`),
+  ],
+);
+
+/** DEC-420 / D-077：初值由读取服务提供；首次写入按 revision 0 CAS，不在 GET 中制造业务写入。 */
+export const successionRuleSettings = pgTable(
+  'succession_rule_settings',
+  {
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
+    kind: text('kind').notNull(),
+    defaultColor: text('default_color').notNull(),
+    levelsRevision: integer('levels_revision').notNull().default(0),
+    revision: integer('revision').notNull().default(0),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.kind] }),
+    check('succession_rule_settings_kind', sql`${t.kind} IN ('position_risk', 'org_health')`),
+    check('succession_rule_settings_color', sql`${t.defaultColor} ~ '^#[0-9A-Fa-f]{6}$'`),
+    check('succession_rule_settings_revision', sql`${t.revision} >= 0 AND ${t.levelsRevision} >= 0`),
   ],
 );
