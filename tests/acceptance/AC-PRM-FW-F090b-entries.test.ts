@@ -1,13 +1,38 @@
 import { useTestDb } from '@italent/testkit';
-import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { readFrozenContract } from './support/route-policy/baseline.js';
 import { createRig, discoverAll, type EndpointDiscovery } from './support/route-policy/discovery.js';
 import type { ManifestRoute } from '@italent/api';
 import type { Finding } from './support/route-policy/compare.js';
-import { registration, registrationGate, compareRegisteredDeclarations } from './support/route-policy/registration.js';
+import {
+  registration,
+  registrationIt,
+  registrationDrift,
+  registrationGate,
+  compareRegisteredDeclarations,
+} from './support/route-policy/registration.js';
 import { checkRequired } from './support/route-policy/required.js';
 import { REQUIRED } from './support/route-policy/required/index.js';
 import type { Obligation, RequiredTable } from './support/route-policy/required/types.js';
+
+// 捕获 registrationIt 注册的真实回调，在当前进程里执行默认 / 严格两种环境。
+const captured = vi.hoisted(() => ({ active: false, callback: undefined as (() => void) | undefined }));
+vi.mock('vitest', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('vitest')>();
+  return {
+    ...actual,
+    it: Object.assign((label: string, verify: () => void) => {
+      if (captured.active) captured.callback = verify;
+      else return actual.it(label, verify);
+    }, actual.it),
+  };
+});
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.restoreAllMocks();
+  captured.active = false;
+  captured.callback = undefined;
+});
 
 const testDb = useTestDb();
 const tables: Record<string, RequiredTable> = { complete: REQUIRED };
@@ -80,4 +105,43 @@ describe('AC-PRM-FW-F090b 单一真实登记入口（DEC-431①；#248 P2-1 / P3
       warn.mockRestore();
     }
   });
+});
+
+describe('AC-PRM-FW-F095 包装入口委托 registrationGate（DEC-416③）', () => {
+  it.each(['registration', 'registrationIt', 'registrationDrift'] as const)(
+    '%s：默认警告 / 严格失败，完整正例不警告',
+    (entry) => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const invoke = (different: boolean) => {
+        if (entry === 'registrationDrift') {
+          expect(registrationDrift('包装文本差异', different ? ['局部差异'] : [])).toEqual([]);
+          return;
+        }
+        const verify = () => expect(different ? '局部差异' : '完整登记').toBe('完整登记');
+        if (entry === 'registration') return registration('包装断言差异', verify);
+        captured.active = true;
+        try {
+          registrationIt('包装用例差异', verify);
+        } finally {
+          captured.active = false;
+        }
+        expect(captured.callback).toBeTypeOf('function');
+        captured.callback!();
+      };
+      for (const strict of [false, true]) {
+        vi.stubEnv('ROUTE_POLICY_EVIDENCE_STRICT', strict ? '1' : '0');
+        warn.mockClear();
+        expect(() => invoke(false)).not.toThrow();
+        expect(warn).not.toHaveBeenCalled();
+        if (strict) {
+          expect(() => invoke(true)).toThrow(expect.objectContaining({ name: 'AssertionError' }));
+          expect(warn).not.toHaveBeenCalled();
+        } else {
+          expect(() => invoke(true)).not.toThrow();
+          expect(warn.mock.calls.flat().join('\n')).toContain('[证据门禁·警告]');
+          expect(warn.mock.calls.flat().join('\n')).toContain('局部差异');
+        }
+      }
+    },
+  );
 });
