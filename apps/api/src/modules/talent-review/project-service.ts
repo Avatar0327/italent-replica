@@ -114,12 +114,11 @@ export async function updateProject(tx: Tx, ctx: ProjectWriteContext, id: string
 }
 export async function transitionProject(tx: Tx, ctx: ProjectWriteContext, id: string, action: ProjectAction) {
   const before = await lockProject(tx, ctx, id);
-  const allowed =
-    action === 'start'
-      ? before.status === 'new'
-      : action === 'end'
-        ? before.status !== 'ended'
-        : before.status === 'ended';
+  const allowed = {
+    start: before.status === 'new',
+    end: before.status !== 'ended',
+    restart: before.status === 'ended',
+  }[action];
   if (!allowed) throw new AppError('CONFLICT', '当前状态不能执行此操作', { reason: 'PROJECT_STATE_INVALID' });
   await checkProjectGuards(tx, ctx, action, before);
   await tx

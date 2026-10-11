@@ -792,7 +792,7 @@ const PROJECT_REQUIRED: RequiredTable = {
       perm: 'guard:talentReview.projectCreatable',
       at: [
         {
-          role: 'impl',
+          role: 'call',
           unit: `${T}/project-service.ts#createProject`,
           anchor: "visible(ctx.scope, input.ownerOrgId, notFoundMessage('project'))",
         },

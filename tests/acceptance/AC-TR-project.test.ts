@@ -251,7 +251,10 @@ describe('AC-TR-project 状态机 / AC-TR-01 删除定义侧（DEC-353）', () =
       if (state === 'in_progress') p = (await (await f.write(p, 'POST', {}, '/start')).json()) as Project;
       if (state === 'ended') p = (await (await f.write(p, 'POST', {}, '/end')).json()) as Project;
       for (const action of ['start', 'end', 'restart']) {
-        const allowed = action === 'start' ? state === 'new' : action === 'end' ? state !== 'ended' : state === 'ended';
+        const allowed =
+          (action === 'start' && state === 'new') ||
+          (action === 'end' && state !== 'ended') ||
+          (action === 'restart' && state === 'ended');
         const res = await f.write(p, 'POST', {}, `/${action}`);
         expect(res.status, `${state} × ${action}`).toBe(allowed ? 200 : 409);
         if (allowed) {
