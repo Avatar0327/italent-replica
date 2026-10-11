@@ -210,6 +210,31 @@ describe('AC-SC-calc-runs / AC-SC-projection', () => {
     expect(denied.status).toBe(409);
     expect(await read(id)).toEqual(before);
   });
+  it.each(['pending', 'running', 'succeeded', 'aborted'])('%s 不可重试，拒绝后 run 不变', async (status) => {
+    const id = await create([]);
+    await tx((t) => t.execute(sql`UPDATE succession_calc_runs SET status=${status} WHERE id=${id}::uuid`));
+    const before = await read(id);
+    const res = await request(tenantApi(db()), `/${id}/retry`, 'POST', Number(before.revision));
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ error: { details: { reason: 'RUN_NOT_RETRYABLE' } } });
+    expect(await read(id)).toEqual(before);
+  });
+  it('失败明细只按错误码与行号返回固定文案', async () => {
+    const id = await create([randomUUID()]);
+    await runCalcPage(
+      db(),
+      seed.tenant.id,
+      id,
+      handlers(async () => {
+        throw new CalcObjectFailure('TYPE_CONVERSION', false, undefined, 2);
+      }),
+      now,
+    );
+    const res = await request(tenantApi(db()), `/${id}/failures`);
+    expect(await res.json()).toMatchObject({
+      items: [{ code: 'TYPE_CONVERSION', rowNo: 2, message: '第 2 行条件出错：比较或转换时类型不符' }],
+    });
+  });
   it('提交已成功但回包丢失，经失败回查重放返回同一投影，不再次重试', async () => {
     const id = await create([randomUUID()]);
     await runCalcPage(db(), seed.tenant.id, id, [], now);
