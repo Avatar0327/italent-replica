@@ -242,7 +242,7 @@ function calcRequired(retry = false): Obligation[] {
     {
       perm: 'guard:succession.calcVisible',
       at: [
-        { role: 'call', unit: `${S}/calc-read.ts#readCalcRuns`, anchor: '${whole(scope, ctx)}' },
+        { role: 'call', unit: `${S}/calc-read.ts#readCalcRuns`, anchor: 'whole(scope, ctx)' },
         { role: 'impl', unit: `${S}/calc-read.ts#whole`, anchor: 'calcRowsVisible(scope, ctx.tenantId' },
       ],
     },
@@ -299,7 +299,7 @@ function calcRequired(retry = false): Obligation[] {
           need: { scope: 'guard' as const, guard: 'succession.calcVisible' },
           at: [
             ...obligation.at,
-            { role: 'scope' as const, unit: `${S}/calc-read.ts#readCalcRuns`, anchor: '${whole(scope, ctx)}' },
+            { role: 'scope' as const, unit: `${S}/calc-read.ts#readCalcRuns`, anchor: 'whole(scope, ctx)' },
           ],
         }
       : obligation,

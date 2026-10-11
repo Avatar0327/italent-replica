@@ -122,7 +122,17 @@ describe('AC-PRM-FW-02 接班人计算范围锚点（合并 main 回归）', () 
     // 保留动态 SQL 的其余部分，独立移除实际范围调用，避免只验证锚点能在任意源码位置命中。
     const removed: SourceReader = (path) =>
       path === file ? repoSource(path).replace('whole(scope, ctx)', 'missingRange(scope, ctx)') : repoSource(path);
-    expect(codes(checkStored(table, { branch: false, read: removed }))).toContain('EVIDENCE_ANCHOR');
+    const fixture: RequiredTable = {
+      'GET /api/tenant/fixture/calc-runs': [
+        {
+          perm: 'guard:fixture.calcVisible',
+          at: [{ role: 'call', unit: `${file}#readCalcRuns`, anchor: 'whole(scope, ctx)' }],
+        },
+      ],
+    };
+    const registry = currentRegistry(fixture, repoSource, false);
+    expect(checkEvidence(fixture, { branch: false, registry })).toEqual([]);
+    expect(codes(checkEvidence(fixture, { branch: false, registry, read: removed }))).toContain('EVIDENCE_ANCHOR');
   });
 });
 
