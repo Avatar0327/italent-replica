@@ -1,5 +1,6 @@
 import { startSequenceSyncScheduler } from './modules/job/sequence-worker.js';
 import { maybeStartQualificationSyncScheduler } from './modules/qualification/sync-worker.js';
+import { startReviewGroupExitScheduler } from './modules/evaluation/review-group-exit-worker.js';
 import { startOrderCodeScheduler } from './modules/personnel/order-code-scheduler.js';
 import { startContractScheduler } from './modules/contracts/scheduler.js';
 import { serve } from '@hono/node-server';
@@ -61,6 +62,8 @@ if (handle && process.env.PERSONNEL_ORDER_CODE_SCHEDULER !== 'off') {
 if (handle && process.env.JOB_SEQUENCE_SYNC_SCHEDULER !== 'off') startSequenceSyncScheduler(handle.db);
 // R3-T02 C1-4：任职事件同步任职资格子集（状态队列消费者，多实例靠 SKIP LOCKED 与员工锁去重）；设为 off 时本进程不消费。
 if (handle) maybeStartQualificationSyncScheduler(handle.db, process.env);
+// F-092 / DEC-416⑦：未来直接离职到期退出评审组，不依赖任职资格同步开关。
+if (handle && process.env.REVIEW_GROUP_EXIT_SCHEDULER !== 'off') startReviewGroupExitScheduler(handle.db);
 // R1-T16 日志保留期：默认每天按各租户 audit.retention 清理一次过期日志（docs/02_业务建模/20 §5 第 4 条）。
 if (handle && process.env.AUDIT_RETENTION_SCHEDULER !== 'off') {
   startAuditRetentionScheduler(handle.db, {

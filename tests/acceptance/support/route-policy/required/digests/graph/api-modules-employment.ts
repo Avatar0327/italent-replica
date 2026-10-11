@@ -1121,6 +1121,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/routes.ts#splitLoginEmail': ['#loginEmail', '#parse'],
   'apps/api/src/modules/employment/status-hooks.ts#employeeStatusHooks': ['#hookContext', '#subscribers'],
+  'apps/api/src/modules/employment/status-hooks.ts#registerEmployeeStatusHooks': ['#registry'],
   'apps/api/src/modules/employment/status-hooks.ts#subscribers': ['#registry'],
   'apps/api/src/modules/employment/timeline.ts#employmentTimelineNeighbors': ['#neighborsAt', '#timelinePosition'],
   'apps/api/src/modules/employment/timeline.ts#insertEmploymentTimeline': [
