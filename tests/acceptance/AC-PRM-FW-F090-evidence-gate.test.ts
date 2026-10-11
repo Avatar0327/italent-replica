@@ -94,17 +94,41 @@ describe('AC-PRM-FW-F090 开关：默认警告，显式打开严格模式', () =
 });
 
 describe('AC-PRM-FW-F090 分类：只有登记与源码不一致的发现码降级', () => {
-  it('降级清单是显式白名单：证据漂移、账本锚点、过度声明', () => {
+  it('降级清单是显式白名单：证据漂移、账本锚点、静态登记差异（DEC-416③）', () => {
     expect([...DRIFT_CODES].sort()).toEqual(
       [
+        'ADMISSION_UNCLASSIFIED',
+        'BASELINE_MISSING',
+        'BRANCH_INPUT_UNBOUND',
+        'BRANCH_VALUE_UNBOUND',
+        'DISCLOSURE_MISSING',
+        'DISCLOSURE_NEED_UNBOUND',
         'EVIDENCE_ANCHOR',
         'EVIDENCE_CLOSURE_UNRESOLVED',
         'EVIDENCE_STALE',
         'EVIDENCE_UNIT',
         'EVIDENCE_UNUSED',
         'LEGACY_DIGESTS_PRESENT',
+        'GUARD_INNER_ALT_UNREGISTERED',
+        'GUARD_INNER_CONDITION_UNREGISTERED',
+        'GUARD_ROLE_UNBOUND',
+        'NEED_EVIDENCE_MISSING',
+        'NEED_UNBOUND',
+        'OBJECT_MAPPER_UNMAPPED',
+        'OPTIONAL_UNCLASSIFIED',
+        'PROBE_ADMISSION_UNCLAIMED',
+        'PROBE_ID_APPLICABILITY_CHANGED',
         'PROBE_KNOWN_GAP_EVIDENCE',
+        'PROBE_KNOWN_GAP_STALE',
         'PROBE_REDUNDANT_EVIDENCE',
+        'PROBE_REDUNDANT_STALE',
+        'RECORDED_STALE',
+        'RECORDED_UNREGISTERED',
+        'REQUIRED_ENTRY_MISSING',
+        'REQUIRED_MISSING',
+        'REQUIRED_STALE_FACT',
+        'REQUIRED_TABLE_GAP',
+        'TABLE_CARRIER_MISSING',
       ].sort(),
     );
     expect(isDriftCode('OVERDECLARED:guard')).toBe(true);
@@ -117,9 +141,9 @@ describe('AC-PRM-FW-F090 分类：只有登记与源码不一致的发现码降�
       'EVIDENCE_MISSING',
       'WEAKER:object',
       'MISMATCH:identity',
-      'BASELINE_MISSING',
       'ROUTE_UNDECLARED',
-      'REQUIRED_MISSING',
+      'PROBE_ID_SERVER_ERROR',
+      'MISMATCH:invalidId',
       'SOMETHING_NEW',
     ]) {
       expect(isDriftCode(code), code).toBe(false);

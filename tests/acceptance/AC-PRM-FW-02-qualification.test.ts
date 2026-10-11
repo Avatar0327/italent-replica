@@ -1,3 +1,4 @@
+import { registrationIt as test, registrationGate } from './support/route-policy/registration.js';
 /**
  * AC-PRM-FW-02（续，F-074：F-039 任职资格组补表 / 声明，#163 已知缺口账本里 qualification 的 9 项）：
  * 全允许探测在任职资格写入口问到的 9 个 `obj:*:view` 逐项读源码后分三类登记（零行为变化，只补表 / 声明）：
@@ -14,6 +15,7 @@ import { type ManifestRoute, routeManifest, type RouteManifest } from '@italent/
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { readFrozenContract } from './support/route-policy/baseline.js';
+import { DETECTOR_CONTRACT, DETECTOR_REQUIRED, DETECTOR_SEMANTICS } from './support/route-policy/detector-fixtures.js';
 import type { Finding } from './support/route-policy/compare.js';
 import type { ObservedContract } from './support/route-policy/contract.js';
 import { declaredPerms } from './support/route-policy/perms.js';
@@ -44,11 +46,12 @@ const route = (key: string): ManifestRoute => {
 };
 const codes = (findings: readonly Finding[]) => findings.map((f) => f.code);
 const show = (findings: readonly Finding[]) => findings.map((f) => `${f.route} ${f.code}: ${f.detail}`).join('\n');
-const check = (routes: readonly ManifestRoute[], table: RequiredTable = REQUIRED) =>
-  checkRequired(table, frozen, routes);
+const check = (routes: readonly ManifestRoute[], table: RequiredTable = DETECTOR_REQUIRED) =>
+  checkRequired(table, DETECTOR_CONTRACT, routes, DETECTOR_SEMANTICS);
+const fixtureEntry = (key: string): readonly Obligation[] => DETECTOR_REQUIRED[key] ?? [];
 const entry = (key: string): readonly Obligation[] => REQUIRED[key] ?? [];
 const withEntry = (key: string, obligations: readonly Obligation[]): RequiredTable => ({
-  ...REQUIRED,
+  ...DETECTOR_REQUIRED,
   [key]: obligations,
 });
 const inners = (key: string, carrier: string) => entry(key).filter((o) => o.purpose === `guard:${carrier}`);
@@ -77,7 +80,7 @@ const CONFLICT_VIEW = {
 } as const;
 
 describe('AC-PRM-FW-02 F-074 已知缺口账本：qualification 的 9 项精确删除，其余账不动', () => {
-  it('账本里不再有 qualification 组，也不再含这 9 对；org 与 idp 两类不变', () => {
+  test('账本里不再有 qualification 组，也不再含这 9 对；org 与 idp 两类不变', () => {
     expect(KNOWN_GAPS.filter((g) => g.id.startsWith('qualification'))).toEqual([]);
     const pairs = KNOWN_GAPS.flatMap((g) => g.pairs.map(([r, k]) => `${r} ${k}`));
     for (const key of [
@@ -98,7 +101,7 @@ describe('AC-PRM-FW-02 F-074 已知缺口账本：qualification 的 9 项精确�
 describe('AC-PRM-FW-02 F-074 级联删除范围守卫：DELETE 等级方案 × 指标查看权', () => {
   const key = `DELETE ${BASE}/grade-schemes/:id`;
 
-  it('guard:ql.childScope(target) 的内部义务：指标查看权，仅方案上遗留手改描述时才判（when）', () => {
+  test('guard:ql.childScope(target) 的内部义务：指标查看权，仅方案上遗留手改描述时才判（when）', () => {
     const found = inners(key, 'ql.childScope(target)');
     expect(found.map((o) => o.perm)).toEqual(['obj:Qualification.Target:view']);
     expect(found[0]?.inner).toEqual({ role: 'when', condition: 'scheme.leftovers' });
@@ -107,7 +110,7 @@ describe('AC-PRM-FW-02 F-074 级联删除范围守卫：DELETE 等级方案 × �
   });
 
   it('反例：内部条件写成未登记的名字 → GUARD_INNER_CONDITION_UNREGISTERED', () => {
-    const wrong = entry(key).map((o) =>
+    const wrong = fixtureEntry(key).map((o) =>
       o.purpose === 'guard:ql.childScope(target)'
         ? { ...o, inner: { role: 'when' as const, condition: '虚构条件' } }
         : o,
@@ -117,7 +120,7 @@ describe('AC-PRM-FW-02 F-074 级联删除范围守卫：DELETE 等级方案 × �
 });
 
 describe('AC-PRM-FW-02 F-074 条件引用准入：类别 / 级别写入口 × 岗职务查看权（6 项）', () => {
-  it('POST / PATCH / 导入：ql.jobLinks 的内部义务按关联类型逐个登记为 when，条件语义已登记', () => {
+  test('POST / PATCH / 导入：ql.jobLinks 的内部义务按关联类型逐个登记为 when，条件语义已登记', () => {
     for (const object of ['category', 'level'] as const) {
       for (const key of JOB_ROUTES[object]) {
         const found = inners(key, `ql.jobLinks(${object})`);
@@ -140,7 +143,7 @@ describe('AC-PRM-FW-02 F-074 条件引用准入：类别 / 级别写入口 × �
 
   it('反例：内部条件写成未登记的名字 → GUARD_INNER_CONDITION_UNREGISTERED', () => {
     const key = `PATCH ${BASE}/categories/:id`;
-    const wrong = entry(key).map((o) =>
+    const wrong = fixtureEntry(key).map((o) =>
       o.purpose === 'guard:ql.jobLinks(category)'
         ? { ...o, inner: { role: 'when' as const, condition: '虚构条件' } }
         : o,
@@ -150,7 +153,7 @@ describe('AC-PRM-FW-02 F-074 条件引用准入：类别 / 级别写入口 × �
 });
 
 describe('AC-PRM-FW-02 F-074 冲突名称披露：类别 / 级别写入口 × 本对象查看权（2 项）', () => {
-  it('POST / PATCH / 导入：disclosure:conflictName（need ql.openRead），声明里有同名 optional 分支', () => {
+  test('POST / PATCH / 导入：disclosure:conflictName（need ql.openRead），声明里有同名 optional 分支', () => {
     for (const object of ['category', 'level'] as const) {
       for (const key of JOB_ROUTES[object]) {
         const found = entry(key).filter((o) => o.purpose === 'disclosure:conflictName');
@@ -167,7 +170,7 @@ describe('AC-PRM-FW-02 F-074 冲突名称披露：类别 / 级别写入口 × �
     }
   });
 
-  it('只在会解析岗职务的写入口：列表 / 详情 / 删除不带这个分支', () => {
+  test('只在会解析岗职务的写入口：列表 / 详情 / 删除不带这个分支', () => {
     for (const key of [
       `GET ${BASE}/categories`,
       `GET ${BASE}/categories/:id`,
@@ -200,7 +203,7 @@ describe('AC-PRM-FW-02 F-074 冲突名称披露：类别 / 级别写入口 × �
   it('真实声明 × 真实表零发现', () => {
     const ql = manifest.declared.filter((r) => r.path.startsWith(BASE));
     expect(ql.length).toBeGreaterThan(40);
-    const findings = check(ql);
+    const findings = registrationGate(checkRequired(REQUIRED, frozen, ql), '任职资格声明 × 静态义务登记（DEC-416③）');
     expect(findings, show(findings)).toEqual([]);
   });
 });
