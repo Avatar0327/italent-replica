@@ -650,7 +650,7 @@ export const DIGESTS: Digests = {
     successionContext: '293e20c468e5',
   },
   'apps/api/src/modules/succession/config-routes.ts': {
-    registerSuccessionConfigRoutes: '7e5464ea7a6f',
+    registerSuccessionConfigRoutes: 'a36c520ca622',
   },
   'apps/api/src/modules/succession/input.ts': {
     rejectImmutable: '512c60b05ed6',
@@ -1616,7 +1616,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/qualification/target-service.ts#updateTarget': '275eba198c0c',
   'apps/api/src/modules/succession/access.ts#requireFilterVisible': 'f0b3a93a6191',
   'apps/api/src/modules/succession/access.ts#successionContext': '573bb32e1617',
-  'apps/api/src/modules/succession/config-routes.ts#registerSuccessionConfigRoutes': '51e01d31b009',
+  'apps/api/src/modules/succession/config-routes.ts#registerSuccessionConfigRoutes': '3fb660443fbe',
   'apps/api/src/modules/succession/input.ts#rejectImmutable': '99ce3a8d9998',
   'apps/api/src/modules/succession/read-sql.ts#selfRecordHiddenSql': 'eab3bde19b0f',
   'apps/api/src/modules/succession/record-read.ts#conditions': '326371d4de4d',
