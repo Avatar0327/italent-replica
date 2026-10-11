@@ -1327,6 +1327,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/talent-review/template-forms.ts#planStepForms': [
     'apps/api/src/modules/talent-review/form-service.ts#FORM',
     '#fail',
+    '#purposeValid',
     '#seatValid',
     'apps/api/src/modules/talent-review/template-structure.ts#checkTemplateReferences',
   ],
@@ -1397,16 +1398,19 @@ export const GRAPH: Graph = {
     'packages/domain/src/talent-review/formula-binding.ts#bindFormula',
     'packages/domain/src/talent-review/formula-binding.ts#renderFormula',
   ],
+  'apps/api/src/modules/talent-review/template-results.ts#carryPass': [
+    'apps/api/src/modules/talent-review/template-result-modules.ts#carryResultModules',
+    '#analyzeResults',
+    '#invalid',
+  ],
   'apps/api/src/modules/talent-review/template-results.ts#planResultRules': [
     'apps/api/src/modules/talent-review/calc-rule-catalog.ts#loadFullCatalog',
     'apps/api/src/modules/talent-review/calc-rule-catalog.ts#lockFields',
     'apps/api/src/modules/talent-review/field-catalog.ts#readFieldCatalogVersion',
     'apps/api/src/modules/talent-review/field-catalog.ts#shareLockFieldCatalog',
-    'apps/api/src/modules/talent-review/template-result-modules.ts#carryResultModules',
-    '#analyzeResults',
     '#bindPass',
+    '#carryPass',
     '#conflict',
-    '#invalid',
   ],
   'apps/api/src/modules/talent-review/template-results.ts#rejectBinding': ['#conflict'],
   'apps/api/src/modules/talent-review/template-routes.ts#TEMPLATES': [
