@@ -58,7 +58,14 @@ function chartOf(bytes: Buffer) {
       levels.forEach((value, index) => {
         if (!value) return;
         chart.levels[index] ??= {};
-        chart.levels[index]![field!] = JSON.parse(value);
+        const parts = field!.split('/');
+        let node: Record<string, unknown> = chart.levels[index]!;
+        for (let i = 0; i < parts.length - 1; i++) {
+          const key = parts[i]!;
+          node[key] ??= /^\d+$/.test(parts[i + 1]!) ? [] : {};
+          node = node[key] as Record<string, unknown>;
+        }
+        node[parts.at(-1)!] = JSON.parse(value);
       });
   }
   return chart;
@@ -129,6 +136,17 @@ describe('AC-QL-chart-export 图谱导出', () => {
     expect(chartOf(files.get(`${data.closed.id}.xlsx`)!)).toEqual({ levels: [] });
   });
 
+  it('通用指标说明隐藏时省略覆盖能力标准内容，与查看接口的 projectionHidden 一致', async () => {
+    const op = await operator(world, { hidden: { target: ['description'] } });
+    const bytes = await download(await op.request('GET', path([data.open.id])));
+    const shown = chartOf(bytes);
+    expect(shown).toEqual(await (await op.request('GET', `/standards/${data.standardId}/chart`)).json());
+    expect(JSON.stringify(shown)).toContain('projectionHidden');
+    const xml = unzip(bytes).get('xl/worksheets/sheet1.xml')!.toString();
+    expect(xml).not.toContain('通用保密说明');
+    expect(xml).not.toContain('/content');
+  });
+
   it('级别范围隐藏时导出空级别，同查看投影；撤权后重新下载不保留旧字段', async () => {
     const op = await operator(world, { mouId: data.parentMou });
     await download(await op.request('GET', path([data.open.id])));
@@ -183,6 +201,35 @@ describe('AC-QL-chart-export 图谱导出', () => {
     for (const ids of [[], ['not-a-uuid'], [data.open.id, data.open.id.toUpperCase()]]) {
       await error(await op.request('GET', path(ids)), 400);
     }
+  });
+
+  it('多选按整批累计 Excel 行数，各文件未超限但整批超限仍拒绝', async () => {
+    const sample = await qualificationWorld(world.db, 'chart-export-row-total');
+    const klass = await sample.categoryClass();
+    const level = await sample.level(1);
+    const type = await sample.targetType();
+    const categories = [];
+    for (let i = 0; i < 3; i++) {
+      const category = await sample.category(klass.id);
+      categories.push(category.id);
+      const standard = await sample.standard({ categoryId: category.id, levelIds: [level.id], details: [] });
+      await withTenant(world.db, sample.tenant.id, async (tx) => {
+        await tx.execute(sql`INSERT INTO ql_targets
+          (id, tenant_id, type_id, owner_id, owner_org_id, created_by, code, name, eval_mode)
+          SELECT gen_random_uuid(), ${sample.tenant.id}::uuid, ${type.id}::uuid,
+            ${sample.user.id}::uuid, ${sample.orgId}::uuid, ${sample.user.id}::uuid,
+            ${`batch${i}-`} || n, '累计行数指标', 'score'
+          FROM generate_series(1,300) n`);
+        await tx.execute(sql`INSERT INTO ql_standard_details (id, tenant_id, standard_id, level_id, target_id)
+          SELECT gen_random_uuid(), tenant_id, ${standard.id}::uuid, ${level.id}::uuid, id
+          FROM ql_targets WHERE tenant_id = ${sample.tenant.id}::uuid AND code LIKE ${`batch${i}-%`}`);
+        await tx.execute(sql`INSERT INTO ql_ability_details (id, tenant_id, detail_id, content, source)
+          SELECT gen_random_uuid(), tenant_id, id, '累计行数能力', 'manual'
+          FROM ql_standard_details WHERE tenant_id = ${sample.tenant.id}::uuid AND standard_id = ${standard.id}::uuid`);
+      });
+    }
+    await download(await sample.request('GET', path([categories[0]!])));
+    await error(await sample.request('GET', path(categories)), 400, 'EXPORT_ROW_LIMIT');
   });
 
   it('超 10000 数据行在组装前拒绝，不截断输出', async () => {

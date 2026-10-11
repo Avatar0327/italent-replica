@@ -629,6 +629,13 @@ const CHANNEL_REFS = call(CHANNELS, "const w = await writeContext(c, deps, ctx, 
 const PUT_CHANNELS = `${STANDARDS}#putChannels`;
 
 const EXTRA: RequiredTable = {
+  [`GET ${BASE}/chart-export`]: [
+    view(
+      'standard',
+      call(`${QL}/chart-export.ts#registerChartExport`, "const ctx = await qualificationContext(c, deps, 'standard')"),
+      true,
+    ),
+  ],
   [`POST ${BASE}/categories/import`]: importRoute('category'),
   [`POST ${BASE}/levels/import`]: importRoute('level'),
   [`GET ${BASE}/targets/:id/grade-descriptions`]: [

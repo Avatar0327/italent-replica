@@ -319,6 +319,13 @@ export const QUALIFICATION_POLICIES = defineTable('qualification', {
     scope: STANDARD_DETAIL,
     fields: projector('ql.chart', 'ql.chart'),
   }),
+  [`GET ${BASE}/chart-export`]: object({
+    object: Q.standard.code,
+    operation: 'view',
+    button: noButton('图谱导出按图谱查看权'),
+    scope: listScope('ql.openRead(ql_standards)'),
+    fields: projector('ql.chartExport', 'ql.chart'),
+  }),
   // ---- candidates.ts：新建时的所属管理单元候选（DEC-339 / DEC-316②）------------------------------------------------
   [`GET ${BASE}/candidates/owner-orgs`]: object({
     object: {

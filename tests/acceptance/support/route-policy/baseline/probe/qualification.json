@@ -245,6 +245,18 @@
       "obj:Qualification.EmploymentCategoryClassify:view"
     ]
   },
+  "GET /api/tenant/qualification/chart-export": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "ce4d6432f2d1",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "obj:Qualification.QualificationStandard:view"
+    ]
+  },
   "GET /api/tenant/qualification/coding-rules": {
     "all": {
       "status": 200
