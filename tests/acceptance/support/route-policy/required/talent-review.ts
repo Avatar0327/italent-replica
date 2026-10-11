@@ -766,14 +766,7 @@ const projectAction = (action: 'start' | 'end' | 'restart'): Obligation[] => {
 };
 const PROJECT_REQUIRED: RequiredTable = {
   [`GET ${BASE_ROOT}/projects`]: [
-    cfgView(
-      PROJECT,
-      'project',
-      'Project',
-      'registerProjectRoutes',
-      "router.get(PATH, async (c) => { const ctx = await reviewContext(c, deps, 'project')",
-      PR,
-    ),
+    cfgView(PROJECT, 'project', 'Project', 'projectList', "const ctx = await reviewContext(c, deps, 'project')", PR),
   ],
   [`GET ${BASE_ROOT}/projects/:id`]: [
     cfgView(

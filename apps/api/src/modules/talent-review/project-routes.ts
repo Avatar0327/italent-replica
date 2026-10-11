@@ -92,34 +92,36 @@ async function runWrite(
   return c.json((await trimReview(deps, ctx, 'project', [view]))[0], result.status);
 }
 
-export function registerProjectRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
-  router.get(PATH, async (c) => {
-    const ctx = await reviewContext(c, deps, 'project');
-    const scope = await reviewScope(c, deps, ctx, 'project');
-    const page = pageQuery(c);
-    const viewable = await getModuleViewableFields(deps, ctx, codeOf('project'));
-    const items = await withTenant(deps.db, ctx.tenantId, async (tx) => {
-      const rows = await tx
-        .select({ id: P.id })
-        .from(P)
-        .where(
-          and(eq(P.tenantId, ctx.tenantId), scopeSql(scope, { org: sql`${P.ownerOrgId}`, creator: sql`${P.ownerId}` })),
-        )
-        .orderBy(...visibleOrder([['name', P.name]], viewable).map((col) => asc(col)), asc(P.id))
-        .limit(page.limit)
-        .offset(page.offset)
-        .for('share');
-      const views: ProjectView[] = [];
-      for (const row of rows) views.push((await loadProject(tx, ctx.tenantId, row.id))!);
-      return views;
-    });
-    return c.json({
-      page: page.page,
-      pageSize: page.pageSize,
-      hasDataPermission: scope.all || scope.hasDataPermission,
-      items: await trimReview(deps, ctx, 'project', items),
-    });
+async function projectList(c: Context<TenantEnv>, deps: TenantRouteDeps) {
+  const ctx = await reviewContext(c, deps, 'project');
+  const scope = await reviewScope(c, deps, ctx, 'project');
+  const page = pageQuery(c);
+  const viewable = await getModuleViewableFields(deps, ctx, codeOf('project'));
+  const items = await withTenant(deps.db, ctx.tenantId, async (tx) => {
+    const rows = await tx
+      .select({ id: P.id })
+      .from(P)
+      .where(
+        and(eq(P.tenantId, ctx.tenantId), scopeSql(scope, { org: sql`${P.ownerOrgId}`, creator: sql`${P.ownerId}` })),
+      )
+      .orderBy(...visibleOrder([['name', P.name]], viewable).map((col) => asc(col)), asc(P.id))
+      .limit(page.limit)
+      .offset(page.offset)
+      .for('share');
+    const views: ProjectView[] = [];
+    for (const row of rows) views.push((await loadProject(tx, ctx.tenantId, row.id))!);
+    return views;
   });
+  return c.json({
+    page: page.page,
+    pageSize: page.pageSize,
+    hasDataPermission: scope.all || scope.hasDataPermission,
+    items: await trimReview(deps, ctx, 'project', items),
+  });
+}
+
+export function registerProjectRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  router.get(PATH, (c) => projectList(c, deps));
   router.get(`${PATH}/:id`, async (c) => {
     const ctx = await reviewContext(c, deps, 'project');
     const id = uuidParam(c);
