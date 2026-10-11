@@ -24,13 +24,14 @@ describe('AC-360-F076-40 门户路由声明', () => {
     expect(hit?.policy.write?.ledgerReason).toContain('DEC-377');
   });
 
-  it('AC-40：七条门户路由齐全，五条会话入口声明 answerSession', () => {
+  it('AC-40：八条门户路由齐全，六条会话入口声明 answerSession', () => {
     const sessionRoutes = [
       'GET /',
       'GET /avatars/:attachmentId/content',
       'GET /tasks/:relationId/questionnaires/:questionnaireId',
       'PUT /tasks/:relationId/questionnaires/:questionnaireId',
       'POST /tasks/:relationId/questionnaires/:questionnaireId/submit',
+      'POST /tasks/:relationId/questionnaires/:questionnaireId/page-check',
     ];
     expect([...SURVEY360_PORTAL_POLICIES.keys()].sort()).toEqual(
       [...sessionRoutes, 'POST /login', 'POST /logout'].sort(),

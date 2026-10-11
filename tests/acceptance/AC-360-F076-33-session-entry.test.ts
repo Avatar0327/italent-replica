@@ -159,19 +159,53 @@ describe('AC-360-F076-33～39 会话入口', () => {
     expect(stopped.status).toBe(409);
     expect(await stopped.text()).toContain('ACTIVITY_NOT_OPEN');
   });
-  it('AC-39：预检后、命令台账返回前登出，重放必须由 CommandGuard.before 拒绝', async () => {
-    const { w, s, call, cred } = await setup('entry-replay-race');
-    const options = { ifMatch: 0, idempotencyKey: randomUUID(), body: { answers: [], suggestion: '已保存的草稿' } };
-    const saved = await call('PUT', task(s), options);
-    expect(saved.status).toBe(200);
-    commandBoundary.before = () =>
-      sql1(
-        w,
-        sql`UPDATE survey360_answer_sessions SET revoked_at = now()
-      WHERE link_id = ${cred.linkId}::uuid`,
-      );
-    const replay = await call('PUT', task(s), options);
-    expect(replay.status).toBe(404);
-    expect(await replay.text()).not.toContain('已保存的草稿');
+  it('AC-40 / DEC-426：门户翻页本人成功、他人拒绝、重放不重复计时或审计', async () => {
+    const { w, s, call, creds, cred } = await setup('entry-page-check');
+    const path = `${task(s)}/page-check`;
+    const body = { items: s.q.questions.slice(0, 2).map((q) => ({ itemId: q.id })) };
+    const options = { idempotencyKey: randomUUID(), body };
+    expect((await call('GET', task(s))).status).toBe(200);
+    w.setNow(minutes(1));
+    const checked = await call('POST', path, options);
+    expect(checked.status).toBe(200);
+    const receipt = await checked.json();
+    expect(receipt).toEqual({ reminder: false, autoDismissSeconds: 3 });
+    const snapshot = () =>
+      withTenant(w.db, w.tenantId, async (tx) => ({
+        timings: rowsOf(await tx.execute(sql`SELECT * FROM survey360_sheet_timings ORDER BY relation_id`)),
+        sheets: rowsOf(await tx.execute(sql`SELECT * FROM survey360_sheets ORDER BY id`)),
+        audit: rowsOf(await tx.execute(sql`SELECT * FROM audit_events ORDER BY id`)),
+        ledger: rowsOf(await tx.execute(sql`SELECT * FROM command_ledger ORDER BY command_id`)),
+      }));
+    const before = await snapshot();
+    w.setNow(minutes(2));
+    expect(await (await call('POST', path, options)).json()).toEqual(receipt);
+    expect(await snapshot()).toEqual(before);
+    const other = await loginOk(w, creds.get(s.person.P2.id)!);
+    expect((await sessionCall(w, other.session)('POST', path, { body })).status).toBe(404);
+    expect(await snapshot()).toEqual(before);
+    expect((await w.link(cred.token)('POST', path, options)).status).toBe(409);
   });
+
+  it.each(['PUT', 'POST'] as const)(
+    'AC-39/40：%s 预检后、台账返回前登出，重放由 CommandGuard.before 拒绝',
+    async (method) => {
+      const { w, s, call, cred } = await setup(`entry-replay-${method}`);
+      const path = method === 'PUT' ? task(s) : `${task(s)}/page-check`;
+      const body =
+        method === 'PUT' ? { answers: [], suggestion: '已保存的草稿' } : { items: [{ itemId: s.q.questions[0]!.id }] };
+      const options = { ifMatch: 0, idempotencyKey: randomUUID(), body };
+      const saved = await call(method, path, options);
+      expect(saved.status).toBe(200);
+      commandBoundary.before = () =>
+        sql1(
+          w,
+          sql`UPDATE survey360_answer_sessions SET revoked_at = now()
+      WHERE link_id = ${cred.linkId}::uuid`,
+        );
+      const replay = await call(method, path, options);
+      expect(replay.status).toBe(404);
+      expect(await replay.text()).not.toContain('已保存的草稿');
+    },
+  );
 });
