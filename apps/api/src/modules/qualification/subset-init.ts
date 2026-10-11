@@ -2,8 +2,9 @@
  * 任职资格子集初始化命令（R3-T02 C1-5，设计 §4.1 初始化行 / §4.2 / §5.1 点名的批量命令；QL-R15①、DEC-251、DEC-067）。
  * 管理员按员工批（≤ 500）把“历史任职记录”一次性生成任职资格子集，只新增、不更新：
  * - 取数：每名员工租户时区今天及以前已生效的任职记录；业务类型同 C1-4 同步（入职 / 重聘 / 转正 / 调动类，离职 / 退休 /
- *   组织调整不生成，DEC-335② 🟡）；同一天多笔只取当日最后一笔（DEC-108）；
- * // TODO(需取证 #237) 取哪些记录、起止日期、同日多笔、重复与删除后再初始化的原站行为均未取证，以下为设计推荐 🟡
+ *   组织调整不生成，DEC-335② 🟡）；同一天多笔取当日最后一笔**能成功映射**的记录（DEC-108 同日取最后一次操作；DEC-416④
+ *   与 C1-4 同步一致）：从当日最后一笔往前试，试过而映射失败的各给回执，选中那笔之前的不参与；当日全部映射失败则不生成；
+ * // TODO(需取证 #237) 取哪些记录、起止日期、重复与删除后再初始化的原站行为均未取证，以下为设计推荐 🟡
  * - 类别 / 级别：同 C1-4 的唯一映射（sync-mapping，QL-R15 🟢），不唯一或没有命中 → 该记录回执 skipped；
  * - 日期：开始日 = 记录生效日；结束日 = 下一个约束点前一天，约束点取较早的：本批**实际待新增**的下一条记录开始日，与该员工
  *   已有子集（任何来源、未删除）里开始日晚于本行的最早一条的**真实开始日**（统一时间轴，DEC-335①）。分两步算（第 2 轮
@@ -109,10 +110,10 @@ async function initializeOne(
   today: string,
 ): Promise<InitEmployeeReceipt> {
   await lockEmploymentEmployee(tx, ctx, employeeId);
-  const records = lastOfEachDay(await effectiveRecords(tx, ctx.tenantId, employeeId, today));
+  const days = byDay(await effectiveRecords(tx, ctx.tenantId, employeeId, today));
   // 第一步：在任何写入之前定出实际待新增的记录；判重与已有后继都读写入前的快照（第 2 轮 R2-P2-01）
   const steps: (Insertion | InitRecordReceipt)[] = [];
-  for (const record of records) steps.push(await classify(tx, ctx.tenantId, record));
+  for (const day of days) steps.push(...(await classifyDay(tx, ctx.tenantId, day)));
   const insertions = steps.filter((step): step is Insertion => !('outcome' in step));
   // 第二步：边界只取实际待新增的下一条与已有行的真实开始日，跳过的记录不参与
   const receipts: InitRecordReceipt[] = [];
@@ -129,14 +130,31 @@ async function initializeOne(
   return { employeeId, outcome: 'processed', created: inserted, records: receipts };
 }
 
-/** 第一步的单条判定：映射失败或撞上已有行 → 跳过回执；否则是实际待新增的记录。 */
-async function classify(tx: Tx, tenantId: string, record: EmploymentRecord): Promise<Insertion | InitRecordReceipt> {
-  const skip = (reason: InitRecordReason): InitRecordReceipt => ({ recordId: record.id, outcome: 'skipped', reason });
-  const mapped = await mapEmploymentToQualification(tx, tenantId, record.fields, record.effectiveDate);
-  if (mapped.kind === 'skipped') return skip(mapped.reason);
-  const blocked = await existingRows(tx, tenantId, record, mapped);
-  if (blocked) return skip(blocked);
-  return { record, mapped, existingNextStart: await existingNextStart(tx, tenantId, record) };
+/**
+ * 第一步对一天的判定（DEC-416④）：从当日最后一笔往前，取第一笔映射成功的记录——撞上已有行 → 跳过回执，否则是实际待新增；
+ * 它之后映射失败的各给跳过回执；它之前的被同日更晚的操作取代（DEC-108），不参与、不出回执。全部映射失败 → 只有跳过回执。
+ * 结果按时间轴顺序。
+ */
+async function classifyDay(
+  tx: Tx,
+  tenantId: string,
+  day: readonly EmploymentRecord[],
+): Promise<(Insertion | InitRecordReceipt)[]> {
+  const unmapped: InitRecordReceipt[] = [];
+  for (const record of [...day].reverse()) {
+    const skip = (reason: InitRecordReason): InitRecordReceipt => ({ recordId: record.id, outcome: 'skipped', reason });
+    const mapped = await mapEmploymentToQualification(tx, tenantId, record.fields, record.effectiveDate);
+    if (mapped.kind === 'skipped') {
+      unmapped.unshift(skip(mapped.reason));
+      continue;
+    }
+    const blocked = await existingRows(tx, tenantId, record, mapped);
+    const chosen = blocked
+      ? skip(blocked)
+      : { record, mapped, existingNextStart: await existingNextStart(tx, tenantId, record) };
+    return [chosen, ...unmapped];
+  }
+  return unmapped;
 }
 
 async function insert(tx: Tx, ctx: AccessContext, insertion: Insertion, endDate: string | null) {
@@ -176,13 +194,15 @@ async function effectiveRecords(tx: Tx, tenantId: string, employeeId: string, to
   return all.filter((record) => record.effectiveDate <= today && SYNCED_KINDS.has(record.kind));
 }
 
-/**
- * 同一生效日有多笔时只取最后一笔（DEC-108：同日取最后一次操作）。
- * TODO(需取证 #237) 末笔映射失败时本日不生成；C1-4 同步则保留当日可映射的那笔。推荐统一为“当日最后一笔可成功映射的记录”，
- * 待总编排确认后再改（第 1 轮审查 P3）。
- */
-function lastOfEachDay(records: readonly EmploymentRecord[]): EmploymentRecord[] {
-  return records.filter((record, index) => records[index + 1]?.effectiveDate !== record.effectiveDate);
+/** 按生效日分组，组内保持读模型的同日顺序（登记先后）。 */
+function byDay(records: readonly EmploymentRecord[]): EmploymentRecord[][] {
+  const days: EmploymentRecord[][] = [];
+  for (const record of records) {
+    const last = days.at(-1);
+    if (last?.[0]?.effectiveDate === record.effectiveDate) last.push(record);
+    else days.push([record]);
+  }
+  return days;
 }
 
 const dayBefore = (date: string) => new Date(Date.parse(`${date}T00:00:00Z`) - DAY_MS).toISOString().slice(0, 10);

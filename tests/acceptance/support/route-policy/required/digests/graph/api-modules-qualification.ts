@@ -864,7 +864,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/talent/http.ts#parseBody',
     'packages/domain/src/personnel/fields.ts#SUBSETS',
   ],
-  'apps/api/src/modules/qualification/subset-init.ts#classify': [
+  'apps/api/src/modules/qualification/subset-init.ts#classifyDay': [
     '#existingNextStart',
     '#existingRows',
     'apps/api/src/modules/qualification/sync-mapping.ts#mapEmploymentToQualification',
@@ -889,11 +889,11 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/qualification/subset-init.ts#initializeOne': [
     'apps/api/src/modules/employment/record-store.ts#lockEmploymentEmployee',
-    '#classify',
+    '#byDay',
+    '#classifyDay',
     '#effectiveRecords',
     '#endDateOf',
     '#insert',
-    '#lastOfEachDay',
   ],
   'apps/api/src/modules/qualification/subset-init.ts#initializeQualificationSubsets': [
     '#NOT_FOUND',
