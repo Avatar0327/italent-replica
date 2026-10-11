@@ -33,7 +33,11 @@ const JOURNAL = 'packages/db/migrations/meta/_journal.json';
 
 const rowsOf = (result: unknown) =>
   (Array.isArray(result) ? result : (result as { rows: unknown[] }).rows) as Record<string, unknown>[];
-const query: Query = async (text) => rowsOf(await testDb().db.execute(sql.raw(text)));
+// F-093 的集群参数由 AC-TEN-06-deploy-max-locks 模拟 SHOW 验收；本文件专测 F-082 条件，不依赖测试集群容量。
+const query: Query = async (text) =>
+  text === 'SHOW max_locks_per_transaction'
+    ? [{ max_locks_per_transaction: '256' }]
+    : rowsOf(await testDb().db.execute(sql.raw(text)));
 const none = async () => ({ marked: 0, unmarked: 0 });
 const some = async () => ({ marked: 2, unmarked: 0 });
 const legacyNamed = async () => ({ marked: 0, unmarked: 3 });
@@ -347,7 +351,10 @@ pg('AC-23 检查账号的可见性前置判定（真 PG，检查角色 ≠ 应�
   const checkAs = async (phase: DeployPhase) => {
     const handle = createPgDb(urlAs(checker), { max: 1, applicationName: 'italent-deploy-check' });
     try {
-      const as: Query = async (text) => rowsOf(await handle.db.execute(sql.raw(text)));
+      const as: Query = async (text) =>
+        text === 'SHOW max_locks_per_transaction'
+          ? [{ max_locks_per_transaction: '256' }]
+          : rowsOf(await handle.db.execute(sql.raw(text)));
       return await checkDeployTarget({ phase, query: as, codeRoot: REPO, appRole });
     } finally {
       await handle.close();
