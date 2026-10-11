@@ -28,7 +28,7 @@ import {
   unitText,
   usesOf,
 } from './support/route-policy/evidence.js';
-import { gateEvidence } from './support/route-policy/evidence-gate.js';
+import { gateEvidence, softGate } from './support/route-policy/evidence-gate.js';
 import { impactCounts } from './support/route-policy/evidence-report.js';
 import { REQUIRED } from './support/route-policy/required/index.js';
 import type { Evidence, Obligation, RequiredTable } from './support/route-policy/required/types.js';
@@ -367,10 +367,14 @@ describe('AC-PRM-FW-02 选择器绑定（B-07）：登记完整性', () => {
     const registered = Object.entries(BRANCH_INPUTS).flatMap(([key, entries]) =>
       entries.map((e) => `${key} @${e.position}`),
     );
-    expect(declaredSites.length).toBeGreaterThanOrEqual(29);
-    expect(new Set(Object.keys(BRANCH_INPUTS)).size).toBe(23);
-    expect(declaredSites).toHaveLength(31);
-    expect([...registered].sort()).toEqual([...declaredSites].sort());
+    const drift = [
+      ...declaredSites.filter((site) => !registered.includes(site)).map((site) => `${site} 未绑定输入来源`),
+      ...registered.filter((site) => !declaredSites.includes(site)).map((site) => `${site} 声明中已不存在`),
+    ];
+    if (declaredSites.length !== 31) drift.push(`选择器位置 ${declaredSites.length}，冻结计数 31`);
+    if (Object.keys(BRANCH_INPUTS).length !== 23)
+      drift.push(`输入来源端点 ${Object.keys(BRANCH_INPUTS).length}，冻结计数 23`);
+    expect(softGate('选择器绑定登记完整性（DEC-416③）', drift)).toEqual([]);
     expect(new Set(registered).size).toBe(registered.length);
   });
 

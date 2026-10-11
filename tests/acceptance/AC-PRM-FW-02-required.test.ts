@@ -23,7 +23,7 @@ import {
   type SourceReader,
   writeDigests,
 } from './support/route-policy/evidence.js';
-import { gateEvidence } from './support/route-policy/evidence-gate.js';
+import { gateEvidence, softGate } from './support/route-policy/evidence-gate.js';
 import { admissionPrimitives, checkRequired } from './support/route-policy/required.js';
 import { expectedMutationKeys, missingCoverage } from './support/route-policy/required-coverage.js';
 import { REQUIRED_MUTATION_KINDS, requiredMutants } from './support/route-policy/required-mutate.js';
@@ -83,9 +83,14 @@ function only(key: string, obligations: readonly Obligation[] = entry(key)): Req
 type ObjectNode = Extract<RoutePolicy, { kind: 'object' }>;
 
 describe('AC-PRM-FW-02 显式必需项表：形状与完整性', () => {
-  it('表键与运行时 565 个端点完全相等（缺一条、多一条都失败）', () => {
+  it('表键与运行时 565 个端点相等：静态漏登 / 多登默认警告（DEC-416③）', () => {
     const declared = manifest.declared.map((r) => `${r.method} ${r.path}`).sort();
-    expect(Object.keys(REQUIRED).sort()).toEqual(declared);
+    const registered = Object.keys(REQUIRED);
+    const drift = [
+      ...declared.filter((key) => !registered.includes(key)).map((key) => `${key} 静态义务表漏登`),
+      ...registered.filter((key) => !declared.includes(key)).map((key) => `${key} 静态义务表多登`),
+    ];
+    expect(softGate('静态义务表端点登记', drift)).toEqual([]);
     expect(declared).toHaveLength(565);
   });
 
@@ -109,7 +114,7 @@ describe('AC-PRM-FW-02 显式必需项表：形状与完整性', () => {
   });
 
   it('真实声明 × 真实表：零发现', () => {
-    const findings = check(manifest.declared);
+    const findings = gateEvidence(check(manifest.declared), '真实声明 × 静态义务表（DEC-416③）');
     expect(findings, show(findings)).toEqual([]);
   });
 

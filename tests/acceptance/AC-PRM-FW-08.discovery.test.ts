@@ -30,7 +30,7 @@ import {
   writeFrozenProbes,
 } from './support/route-policy/discovery.js';
 import type { Finding } from './support/route-policy/compare.js';
-import { gateEvidence } from './support/route-policy/evidence-gate.js';
+import { gateEvidence, softGate } from './support/route-policy/evidence-gate.js';
 import { checkKnownGapEvidence, KNOWN_GAPS, type KnownGapGroup } from './support/route-policy/probe-known-gaps.js';
 import {
   checkRedundantEvidence,
@@ -76,22 +76,28 @@ describe('AC-PRM-FW-08 发现探测：冻结与覆盖', () => {
     expect(manifest.declared).toHaveLength(565);
     const groups = groupByModule(fresh);
     const files = readdirSync(PROBE_DIR).filter((f) => f.endsWith('.json'));
-    expect(files.sort()).toEqual(
-      Object.keys(groups)
-        .map((m) => `${m}.json`)
-        .sort(),
-    );
+    const expected = Object.keys(groups).map((m) => `${m}.json`);
+    const drift = [
+      ...expected.filter((file) => !files.includes(file)).map((file) => `缺少 ${file}`),
+      ...files.filter((file) => !expected.includes(file)).map((file) => `多余 ${file}`),
+    ];
     for (const [module, entries] of Object.entries(groups)) {
+      if (!existsSync(probeFilePath(module))) continue; // 缺文件已计入冻结登记差异
       const stored = JSON.parse(readFileSync(probeFilePath(module), 'utf8')) as Record<string, unknown>;
-      expect(Object.keys(stored).sort(), module).toEqual(Object.keys(entries).sort());
+      if (canonicalJson(Object.keys(stored).sort()) !== canonicalJson(Object.keys(entries).sort())) {
+        drift.push(`${module} 冻结端点集合与当前探测不同`);
+      }
     }
+    expect(softGate('probe 冻结登记完整性（DEC-416③）', drift)).toEqual([]);
   });
 
-  it('冻结新鲜：重新发现与冻结文件逐字节相等（改动须 ROUTE_POLICY_UPDATE_BASELINE=1 重新生成并随 PR 评审）', () => {
+  it('冻结新鲜：逐字节差异默认警告、严格判红（DEC-416③）', () => {
+    const drift: string[] = [];
     for (const [module, entries] of Object.entries(groupByModule(fresh))) {
-      expect(existsSync(probeFilePath(module)), module).toBe(true);
-      expect(canonicalJson(entries), module).toBe(readFileSync(probeFilePath(module), 'utf8'));
+      const file = probeFilePath(module);
+      if (!existsSync(file) || canonicalJson(entries) !== readFileSync(file, 'utf8')) drift.push(file);
     }
+    expect(softGate('probe 冻结新鲜度', drift)).toEqual([]);
   });
 
   it('请求数 = 端点数 + 带 id 参数的端点数（非法标识各多一次）；探测可重复（两次结果相同）', async () => {
@@ -114,7 +120,7 @@ describe('AC-PRM-FW-08 发现探测：冻结与覆盖', () => {
 
 describe('AC-PRM-FW-08 P0 / P3：真实声明 + 显式表零发现', () => {
   it('全部端点零发现（P0 认领、P3 非法标识、映射）；未认领的请求只经精确的 KNOWN_GAPS 逐对登记', () => {
-    const findings = checkAll();
+    const findings = gateEvidence(checkAll(), '真实发现 × 静态义务登记（DEC-416③）');
     expect(findings, show(findings)).toEqual([]);
   });
 
@@ -434,7 +440,9 @@ describe('AC-PRM-FW-08 P3 非法标识：观测码与根节点 invalidId 相等'
   });
 
   it('适用性与冻结事实零漂移（PROBE_ID_APPLICABILITY_CHANGED 为空）；非法标识没有 5xx', () => {
-    expect(checkIdApplicabilityDrift(fresh, readFrozenProbes())).toEqual([]);
+    expect(gateEvidence(checkIdApplicabilityDrift(fresh, readFrozenProbes()), '非法标识适用性（DEC-416③）')).toEqual(
+      [],
+    );
     expect(Object.entries(fresh).filter(([, d]) => (d.invalidId?.status ?? 0) >= 500)).toEqual([]);
   });
 

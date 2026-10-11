@@ -27,6 +27,7 @@ import {
   writeFrozenRecorded,
 } from './support/route-policy/recorded.js';
 import { preconditionName } from './support/route-policy/features.js';
+import { gateEvidence, softGate } from './support/route-policy/evidence-gate.js';
 import { tenantApi } from './support/tenant-api.js';
 
 const testDb = useTestDb();
@@ -233,12 +234,18 @@ describe('AC-PRM-FW-01 recorded：收集 ↔ 冻结 双向核对', () => {
 describe('AC-PRM-FW-01 recorded：冻结文件', () => {
   it('baseline/recorded.json 存在、是规范化 JSON、键都是已声明端点（本 PR 为空，首批事实随模块组）', () => {
     const frozen = readFrozenRecorded();
-    expect(canonicalJson(frozen)).toBe(readFileSync(RECORDED_PATH, 'utf8'));
+    const drift = canonicalJson(frozen) === readFileSync(RECORDED_PATH, 'utf8') ? [] : [RECORDED_PATH];
+    expect(softGate('recorded 冻结文件格式（DEC-416③）', drift)).toEqual([]);
     const declared = new Set(routes.map((r) => `${r.method} ${r.path}`));
-    for (const key of Object.keys(frozen)) expect(declared.has(key), key).toBe(true);
+    expect(
+      softGate(
+        'recorded 冻结端点',
+        Object.keys(frozen).filter((key) => !declared.has(key)),
+      ),
+    ).toEqual([]);
     // 真实冻结文件对真实声明的核对（本文件不负责任何端点，只核对冻结的端点还存在）
     const findings = checkRecorded({ collected: {}, frozen, scope: new Set(), routes, contract });
-    expect(findings).toEqual([]);
+    expect(gateEvidence(findings, 'recorded 收集 × 冻结（DEC-416③）')).toEqual([]);
   });
 
   it('mergeRecorded：只替换本文件负责的端点，其余模块组的冻结事实原样保留', async () => {

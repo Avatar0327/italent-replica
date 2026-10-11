@@ -103,7 +103,7 @@ describe('AC-PRM-FW-02 C1-1 P2-3 守卫内部义务：qualification 的新引用
 
   it('真实声明 × 真实表对这几个端点零发现', () => {
     const routes = [POST_KEY, PATCH_KEY, DELETE_KEY, REQUEST_KEY].map(route);
-    const findings = checkRequired(REQUIRED, frozen, routes);
+    const findings = gateEvidence(checkRequired(REQUIRED, frozen, routes), '任职资格子集静态义务登记（DEC-416③）');
     expect(findings.map((f) => `${f.route} ${f.code}: ${f.detail}`)).toEqual([]);
   });
 });

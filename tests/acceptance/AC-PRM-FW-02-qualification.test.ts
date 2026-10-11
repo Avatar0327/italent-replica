@@ -16,6 +16,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { readFrozenContract } from './support/route-policy/baseline.js';
 import type { Finding } from './support/route-policy/compare.js';
 import type { ObservedContract } from './support/route-policy/contract.js';
+import { gateEvidence } from './support/route-policy/evidence-gate.js';
 import { declaredPerms } from './support/route-policy/perms.js';
 import { KNOWN_GAPS } from './support/route-policy/probe-known-gaps.js';
 import { checkRequired } from './support/route-policy/required.js';
@@ -200,7 +201,7 @@ describe('AC-PRM-FW-02 F-074 冲突名称披露：类别 / 级别写入口 × �
   it('真实声明 × 真实表零发现', () => {
     const ql = manifest.declared.filter((r) => r.path.startsWith(BASE));
     expect(ql.length).toBeGreaterThan(40);
-    const findings = check(ql);
+    const findings = gateEvidence(check(ql), '任职资格声明 × 静态义务登记（DEC-416③）');
     expect(findings, show(findings)).toEqual([]);
   });
 });

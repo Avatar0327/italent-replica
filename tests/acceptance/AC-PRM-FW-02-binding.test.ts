@@ -21,6 +21,7 @@ import { REQUIRED } from './support/route-policy/required/index.js';
 import type { Obligation, RequiredTable } from './support/route-policy/required/types.js';
 import { disclosureWeakeningsOf } from './support/route-policy/weakenings.js';
 import { tenantApi } from './support/tenant-api.js';
+import { gateEvidence } from './support/route-policy/evidence-gate.js';
 
 const testDb = useTestDb();
 
@@ -81,7 +82,7 @@ describe('AC-PRM-FW-02 P2-1 范围按实际对象逐项选择（审查 #162 第 
   it('byObject 有 * 兜底时静态对象取兜底项；真实 byObject 声明（职务 :kind 等）仍零发现', () => {
     const jobRoutes = manifest.declared.filter((r) => JSON.stringify(r.policy).includes('"byObject"'));
     expect(jobRoutes.length).toBeGreaterThan(0);
-    expect(check(jobRoutes)).toEqual([]);
+    expect(gateEvidence(check(jobRoutes), '真实 byObject 声明 × 静态义务登记（DEC-416③）')).toEqual([]);
   });
 
   it('生成弱化 scope→foreign-object（范围只登记给无关对象）：对每个“唯一满足 need 的来源节点”施加，全部报出', () => {

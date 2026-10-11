@@ -22,7 +22,7 @@ import {
 } from './support/route-policy/baseline.js';
 import { compareDeclarations, type Finding } from './support/route-policy/compare.js';
 import { domainConstants } from './support/route-policy/domains.js';
-import { gateEvidence } from './support/route-policy/evidence-gate.js';
+import { gateEvidence, softGate } from './support/route-policy/evidence-gate.js';
 import { MUTATIONS, mutantsOf } from './support/route-policy/mutate.js';
 import { tenantApi } from './support/tenant-api.js';
 
@@ -104,9 +104,9 @@ describe('AC-PRM-FW-02 现状必测基准（独立于声明）', () => {
     );
   });
 
-  it('基准新鲜：重新探测与冻结文件逐字节相等（改动须 ROUTE_POLICY_UPDATE_BASELINE=1 重新生成并随 PR 评审）', () => {
-    expect(canonicalJson(fresh)).toBe(readFileSync(BASELINE_PATH, 'utf8'));
-    expect(fresh).toEqual(frozen);
+  it('基准新鲜：逐字节差异默认警告、严格判红（DEC-416③）', () => {
+    const drift = canonicalJson(fresh) === readFileSync(BASELINE_PATH, 'utf8') ? [] : [BASELINE_PATH];
+    expect(softGate('冻结现状基准新鲜度', drift)).toEqual([]);
   });
 });
 

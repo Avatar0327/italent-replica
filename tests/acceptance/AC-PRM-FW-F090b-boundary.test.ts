@@ -114,6 +114,7 @@ describe('AC-PRM-FW-F090b / DEC-416③ 适用性与静态登记差异：默认�
         kind: 'object',
         object: { from: 'param', path: 'kind', map: { a: 'Fixture.A', b: 'Fixture.B' } },
         operation: 'view',
+        button: { none: true, reason: '合成夹具' },
         scope: { mode: 'none', reason: '合成夹具' },
         fields: { mode: 'none', reason: '合成夹具' },
       },

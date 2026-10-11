@@ -15,7 +15,7 @@ import { readFrozenContract } from './support/route-policy/baseline.js';
 import type { Finding } from './support/route-policy/compare.js';
 import type { ObservedContract } from './support/route-policy/contract.js';
 import { checkStored } from './support/route-policy/evidence.js';
-import { gateEvidence } from './support/route-policy/evidence-gate.js';
+import { gateEvidence, softGate } from './support/route-policy/evidence-gate.js';
 import { declaredPerms, OPTIONAL_NAME_PATTERN } from './support/route-policy/perms.js';
 import { locate } from './support/route-policy/required-mutate.js';
 import { checkRequired } from './support/route-policy/required.js';
@@ -80,10 +80,13 @@ const disclosureBranches = () =>
 
 describe('AC-PRM-FW-02 B-01 披露分支：位置 / 嵌套 / 名字（D1～D3）与逐备选比较（R3）', () => {
   it('真实声明 × 真实表零发现；披露位置全部挂在根节点，名字合 D3，数量等于表里的披露分支数', () => {
-    expect(check(manifest.declared), show(check(manifest.declared))).toEqual([]);
+    const findings = gateEvidence(check(manifest.declared), '真实声明 × 披露义务登记（DEC-416③）');
+    expect(findings, show(findings)).toEqual([]);
     const branches = manifest.declared.flatMap((r) => [...declaredPerms(r.policy).optional]);
-    expect(branches).toHaveLength(disclosureBranches().length);
-    expect(branches.length).toBeGreaterThanOrEqual(33);
+    const drift = [];
+    if (branches.length !== disclosureBranches().length) drift.push('声明披露分支数与义务登记不同');
+    if (branches.length < 33) drift.push('披露分支数少于冻结下限 33');
+    expect(softGate('披露分支静态登记', drift)).toEqual([]);
     for (const [name, branch] of branches) {
       expect(OPTIONAL_NAME_PATTERN.test(name), name).toBe(true);
       expect(branch.path, name).toBe(`optional.${name}.`);
@@ -269,7 +272,8 @@ describe('AC-PRM-FW-02 B-03 范围绑定（need）：与“或”满足合并、
       const found = check([route(key)], withEntry(key, noEvidence)).filter((f) => f.code === 'NEED_EVIDENCE_MISSING');
       expect(found.length, key).toBeGreaterThan(0);
     }
-    expect(check(manifest.declared).filter((f) => f.code === 'NEED_EVIDENCE_MISSING')).toEqual([]);
+    const findings = check(manifest.declared).filter((f) => f.code === 'NEED_EVIDENCE_MISSING');
+    expect(gateEvidence(findings, '范围义务静态证据登记（DEC-416③）')).toEqual([]);
   });
 
   it('删一条 need（准入 / 披露）→ NEED_UNBOUND / DISCLOSURE_NEED_UNBOUND', () => {

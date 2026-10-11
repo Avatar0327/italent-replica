@@ -192,7 +192,7 @@ describe('AC-PRM-FW-02 F-073 人员 / 列表用途分别登记', () => {
   it('真实声明 × 真实表零发现', () => {
     const survey = manifest.declared.filter((r) => r.path.startsWith(BASE));
     expect(survey.length).toBeGreaterThan(40);
-    const findings = check(survey);
+    const findings = gateEvidence(check(survey), '360 声明 × 静态义务登记（DEC-416③）');
     expect(findings, show(findings)).toEqual([]);
   });
 });
