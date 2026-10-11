@@ -11,6 +11,7 @@ import {
   bigint,
   boolean,
   check,
+  date,
   foreignKey,
   index,
   integer,
@@ -1119,5 +1120,133 @@ export const talentReviewTemplateStepModulePermissions = pgTable(
       'talent_review_template_step_module_permissions_weight',
       sql`${t.weight} IS NULL OR (${t.weight} >= 0 AND ${t.weight} <= 100)`,
     ),
+  ],
+);
+
+/** 盘点项目（设计 §2.4；DEC-306③）：只存计划业务日期，计算派生列由 PR-C 填写。 */
+export const talentReviewProjects = pgTable(
+  'talent_review_projects',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: tenantId(),
+    code: text('code').notNull(),
+    name: text('name').notNull(),
+    categoryId: uuid('category_id'),
+    ownerOrgId: uuid('owner_org_id').notNull(),
+    ownerId: uuid('owner_id')
+      .notNull()
+      .references(() => users.id),
+    downwardPublic: boolean('downward_public').notNull().default(false),
+    year: integer('year').notNull(),
+    period: text('period').notNull(),
+    periodStartDate: date('period_start_date').notNull(),
+    periodEndDate: date('period_end_date').notNull(),
+    businessDate: date('business_date'),
+    lastFullCalcAt: timestamp('last_full_calc_at', { withTimezone: true }),
+    calcState: text('calc_state').notNull().default('not_calculated'),
+    calcRuleId: uuid('calc_rule_id'),
+    carryLastResult: boolean('carry_last_result').notNull().default(false),
+    status: text('status').notNull().default('new'),
+    endedCount: integer('ended_count').notNull().default(0),
+    ...audit(),
+  },
+  (t) => [
+    unique('talent_review_projects_tenant_id').on(t.tenantId, t.id),
+    unique('talent_review_projects_code').on(t.tenantId, t.code),
+    index('talent_review_projects_org').on(t.tenantId, t.ownerOrgId),
+    foreignKey({ columns: [t.tenantId, t.ownerOrgId], foreignColumns: [orgObjects.tenantId, orgObjects.id] }),
+    foreignKey({
+      columns: [t.tenantId, t.categoryId],
+      foreignColumns: [talentReviewCategories.tenantId, talentReviewCategories.id],
+    }).onDelete('restrict'),
+    foreignKey({
+      columns: [t.tenantId, t.calcRuleId],
+      foreignColumns: [talentReviewCalcRules.tenantId, talentReviewCalcRules.id],
+    }).onDelete('restrict'),
+    check('talent_review_projects_dates', sql`${t.periodStartDate} <= ${t.periodEndDate}`),
+    check('talent_review_projects_status', sql`${t.status} IN ('new','in_progress','ended')`),
+    check(
+      'talent_review_projects_calc_state',
+      sql`${t.calcState} IN ('not_calculated','calculating','success','failed')`,
+    ),
+    check('talent_review_projects_ended_count', sql`${t.endedCount} >= 0`),
+    revisionCheck('talent_review_projects_rev', t.revision),
+  ],
+);
+
+const projectColumns = () => ({ tenantId: tenantId(), projectId: uuid('project_id').notNull() });
+const projectFk = (name: string, t: { tenantId: AnyPgColumn; projectId: AnyPgColumn }) =>
+  foreignKey({
+    name,
+    columns: [t.tenantId, t.projectId],
+    foreignColumns: [talentReviewProjects.tenantId, talentReviewProjects.id],
+  }).onDelete('cascade');
+
+export const talentReviewProjectSharedOrgs = pgTable(
+  'talent_review_project_shared_orgs',
+  {
+    ...projectColumns(),
+    orgId: uuid('org_id').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.projectId, t.orgId] }),
+    projectFk('tr_project_shared_project_fk', t),
+    foreignKey({ columns: [t.tenantId, t.orgId], foreignColumns: [orgObjects.tenantId, orgObjects.id] }),
+  ],
+);
+export const talentReviewProjectExcludedCategories = pgTable(
+  'talent_review_project_excluded_categories',
+  {
+    ...projectColumns(),
+    categoryId: uuid('category_id').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.projectId, t.categoryId] }),
+    projectFk('tr_project_excluded_project_fk', t),
+    foreignKey({
+      name: 'tr_project_excluded_category_fk',
+      columns: [t.tenantId, t.categoryId],
+      foreignColumns: [talentReviewCategories.tenantId, talentReviewCategories.id],
+    }).onDelete('restrict'),
+  ],
+);
+export const talentReviewProjectMatrices = pgTable(
+  'talent_review_project_matrices',
+  {
+    ...projectColumns(),
+    matrixId: uuid('matrix_id').notNull(),
+    ratioGroupId: uuid('ratio_group_id'),
+    sortNo: integer('sort_no').notNull().default(0),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.projectId, t.matrixId] }),
+    projectFk('tr_project_matrix_project_fk', t),
+    foreignKey({
+      name: 'tr_project_matrix_matrix_fk',
+      columns: [t.tenantId, t.matrixId],
+      foreignColumns: [talentReviewMatrices.tenantId, talentReviewMatrices.id],
+    }).onDelete('restrict'),
+    foreignKey({
+      name: 'tr_project_matrix_group_fk',
+      columns: [t.tenantId, t.ratioGroupId],
+      foreignColumns: [talentReviewRatioRuleGroups.tenantId, talentReviewRatioRuleGroups.id],
+    }).onDelete('restrict'),
+  ],
+);
+export const talentReviewProjectCalibrationFields = pgTable(
+  'talent_review_project_calibration_fields',
+  {
+    ...projectColumns(),
+    fieldId: uuid('field_id').notNull(),
+    required: boolean('required').notNull().default(false),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.projectId, t.fieldId] }),
+    projectFk('tr_project_calibration_project_fk', t),
+    foreignKey({
+      name: 'tr_project_calibration_field_fk',
+      columns: [t.tenantId, t.fieldId],
+      foreignColumns: [talentReviewFields.tenantId, talentReviewFields.id],
+    }).onDelete('restrict'),
   ],
 );

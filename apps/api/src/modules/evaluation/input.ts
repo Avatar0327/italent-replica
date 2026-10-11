@@ -11,6 +11,7 @@ import {
 } from '@italent/domain';
 import { z } from 'zod';
 import { roundDecimal } from '@italent/domain';
+import { activityConditions } from './condition-input.js';
 
 // 名称租户内唯一由库内约束 + service 转 409（Q-M0-152）；这里 trim，所以首尾空白不构成不同名称
 const name = z.string().trim().min(1).max(100);
@@ -156,6 +157,7 @@ export const activityCreate = z.strictObject({
   maxLevelJump: z.int().min(1).max(5).optional(),
   effectiveDate: date,
   noticeOrgRange: z.array(uuid).max(MAX_ACTIVITY_NOTICE_ORGS).optional(),
+  conditions: activityConditions.optional(),
   chains: z.array(chainInput).max(CHAIN_TYPES.length + 2 * (MAX_REPEATABLE_CHAINS - 1)),
 });
 export const activityPatch = activityCreate.partial();
