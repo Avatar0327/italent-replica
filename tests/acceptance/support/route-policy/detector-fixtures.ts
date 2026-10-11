@@ -305,12 +305,16 @@ export const DETECTOR_REQUIRED: RequiredTable = Object.fromEntries(
 
 export const DETECTOR_CONTRACT = { routes: {}, domains: {} };
 
+// 固定原始源码共享读取器，复用 evidence-closure 的 AST 缓存；注入变异时另建读取器，不能混用缓存。
+const fixtureSource: SourceReader = (file) =>
+  file === FIXTURE_FILE ? 'export function gate() { return true; }' : repoSource(file);
+
 /** 证据反例也有自己的完整原始图；不把真实全表的漂移混入夹具 oracle。 */
 export function checkDetectorEvidence(table: RequiredTable, options: { readonly read?: SourceReader } = {}) {
-  const original: SourceReader = (file) =>
-    file === FIXTURE_FILE ? 'export function gate() { return true; }' : repoSource(file);
-  const registry = syncedRegistry(table, original, false);
-  const read: SourceReader = (file) => (file === FIXTURE_FILE ? original(file) : (options.read ?? repoSource)(file));
+  const registry = syncedRegistry(table, fixtureSource, false);
+  const read = options.read
+    ? (file: string) => (file === FIXTURE_FILE ? fixtureSource(file) : options.read!(file))
+    : fixtureSource;
   return checkEvidence(table, { branch: false, registry, digests: registry.units, read });
 }
 
