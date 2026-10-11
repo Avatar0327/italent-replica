@@ -224,13 +224,43 @@ def live_prs():
             "today": [{"n": m["number"], "t": m["title"][:60], "at": m["mergedAt"][11:16]} for m in merged if m["mergedAt"][:10] == today]}
 
 
+PROG = os.path.expanduser("~/.cache/italent-board-progress.json")
+
+
+def progress(d, live):
+    """进行中看板顶部的“已完成 / 计划 PR”（用户 10-11 要求）：主线 + 支撑任务的步骤，暂停的不计；
+    分子 = 步骤 PR 已合并或标 done。与上次不同则把上次读数记为 prev，看板显示变化量"""
+    merged = (live or {}).get("merged", {})
+    done = tot = 0
+    for ln in (d.get("main") or {}).get("lines", []) + (d.get("main") or {}).get("support", []):
+        steps = [s for g in ln.get("groups", []) for s in g["steps"]] if ln.get("groups") else ln.get("steps", [])
+        for st in steps:
+            if st.get("s") == "paused":
+                continue
+            tot += 1
+            done += bool(st.get("s") == "done" or (st.get("pr") and str(st["pr"]) in merged))
+    at = (live or {}).get("at", "")
+    try:
+        rec = json.load(open(PROG))
+    except (OSError, ValueError):
+        rec = {}
+    cur = rec.get("cur")
+    if not cur or cur[:2] != [done, tot]:
+        rec = {"cur": [done, tot, at], "prev": cur}
+        os.makedirs(os.path.dirname(PROG), exist_ok=True)
+        json.dump(rec, open(PROG, "w"))
+    print(f"progress {done}/{tot}" + (f" prev {rec['prev'][0]}/{rec['prev'][1]} @{rec['prev'][2]}" if rec.get("prev") else ""))
+    return {"done": done, "tot": tot, "prev": rec.get("prev"), "since": rec["cur"][2]}
+
+
 def build(d, nosync):
     if not nosync:
         sync(d)
         save(d)
+    lv = live_prs() if not nosync else d.get("_live")
     live = open(os.path.join(HERE, "进行中看板.template.html"), encoding="utf8").read().replace(
         "__DATA__", json.dumps({"main": d.get("main"), "items": d.get("items"), "log": d.get("log", [])[:12],
-                                "live": live_prs() if not nosync else d.get("_live")}, ensure_ascii=False))
+                                "live": lv, "prog": progress(d, lv)}, ensure_ascii=False))
     with open(os.path.join(HERE, "进行中看板.html"), "w", encoding="utf8") as f:
         f.write(live)
     ljs = live[live.index("const DATA"):live.rindex("</script>")]
