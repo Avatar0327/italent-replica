@@ -7,6 +7,7 @@ export const populationRules = z.strictObject({
   expression: z.string(),
   rows: z.array(
     z.strictObject({
+      // 未引用行仍会落库，须与 PostgreSQL integer 同界，避免绕过表达式解析后返回 500。
       rowNo: z.number().int().max(2147483647),
       kind: z.literal('field'),
       field: z.strictObject({
