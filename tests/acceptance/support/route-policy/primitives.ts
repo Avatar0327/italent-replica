@@ -347,6 +347,7 @@ export const PRIMITIVES: readonly Primitive[] = [
     ['selfService.transferInput', call('ownTransferInput'), { modules: ['self-service'] }],
     ['selfService.referenceChoices', call('referenceChoices'), { modules: ['self-service'] }],
     ['selfService.ownApplication', call('ownApplication'), { modules: ['self-service'] }],
+    ['selfService.developmentChannelPage', call('employeePageGranted'), { modules: ['self-service'] }],
     ['org.visibleParents', call('visibleParents'), { near: true, modules: ['org'] }],
     ['job.assignmentReferences', call('assignmentReferences'), { near: true, modules: ['job'] }],
     ['job.employmentScope', call('authorizeSequenceTargets'), { modules: ['job'] }],

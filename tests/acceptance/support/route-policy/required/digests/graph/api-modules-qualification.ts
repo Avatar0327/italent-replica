@@ -291,6 +291,44 @@ export const GRAPH: Graph = {
     '#normalizedUuid',
     '#rowsOf',
   ],
+  'apps/api/src/modules/qualification/development-channel-data.ts#channelOverview': [
+    'apps/api/src/modules/qualification/current.ts#currentQualification',
+    '#displayOrders',
+    '#standardOfCategory',
+    'apps/api/src/modules/qualification/standard-service.ts#loadChannels',
+  ],
+  'apps/api/src/modules/qualification/development-channel-data.ts#displayOrders': [
+    'apps/api/src/modules/qualification/access.ts#rowsOf',
+  ],
+  'apps/api/src/modules/qualification/development-channel-data.ts#standardOfCategory': [
+    'apps/api/src/modules/qualification/access.ts#rowsOf',
+  ],
+  'apps/api/src/modules/qualification/development-channel.ts#SUBSET': [
+    'packages/domain/src/personnel/fields.ts#SUBSETS',
+  ],
+  'apps/api/src/modules/qualification/development-channel.ts#registerDevelopmentChannel': [
+    'apps/api/src/modules/qualification/access.ts#qualificationContext',
+    'apps/api/src/modules/qualification/access.ts#rowsOf',
+    'apps/api/src/modules/qualification/current.ts#currentQualification',
+    'apps/api/src/modules/qualification/development-channel-data.ts#channelOverview',
+    'apps/api/src/modules/qualification/development-channel-data.ts#standardOfCategory',
+    '#viewEmployeeQualification',
+    'apps/api/src/modules/qualification/presenters.ts#presentChannels',
+    'apps/api/src/modules/qualification/presenters.ts#presentChart',
+    'apps/api/src/modules/qualification/read-model.ts#loadRow',
+    'apps/api/src/modules/qualification/read-model.ts#withStandardParts',
+    'apps/api/src/modules/qualification/route-support.ts#QL_BASE',
+    'apps/api/src/modules/talent/http.ts#uuidParam',
+    'apps/api/src/modules/talent/http.ts#uuidQuery',
+    'apps/api/src/tenant-context.ts#tenantOf',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/qualification/development-channel.ts#viewEmployeeQualification': [
+    'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
+    'apps/api/src/modules/personnel/access.ts#access',
+    'apps/api/src/modules/personnel/access.ts#preflight',
+    '#SUBSET',
+  ],
   'apps/api/src/modules/qualification/extras.ts#categoryAnchors': [
     'apps/api/src/modules/permission/module-access.ts#scopeSql',
     'apps/api/src/modules/qualification/access.ts#rowsOf',
@@ -712,6 +750,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/qualification/routes.ts#registerQualificationRoutes': [
     'apps/api/src/modules/qualification/candidates.ts#registerQualificationCandidates',
+    'apps/api/src/modules/qualification/development-channel.ts#registerDevelopmentChannel',
     'apps/api/src/modules/qualification/extras.ts#registerExtras',
     'apps/api/src/modules/qualification/indicator-port.ts#installQualificationIndicatorPort',
     '#SPECS',
