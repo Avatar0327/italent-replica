@@ -523,6 +523,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/qualification/input.ts#standardImport': ['#MAX_IMPORT_ROWS', '#expectedStandard', '#importRow'],
   'apps/api/src/modules/qualification/input.ts#standardPatch': ['#standardCreate'],
+  'apps/api/src/modules/qualification/input.ts#subsetInitialize': ['#MAX_INIT_EMPLOYEES', '#uuid'],
   'apps/api/src/modules/qualification/input.ts#targetCreate': [
     '#code',
     '#common',
@@ -716,6 +717,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/qualification/indicator-port.ts#installQualificationIndicatorPort',
     '#SPECS',
     '#registerObject',
+    'apps/api/src/modules/qualification/subset-init-routes.ts#registerSubsetInitialize',
   ],
   'apps/api/src/modules/qualification/standard-service.ts#checkGrades': [
     'apps/api/src/modules/qualification/access.ts#rowsOf',
@@ -848,6 +850,58 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/qualification/access.ts#QUALIFICATION_LABELS',
     '#TABLES',
   ],
+  'apps/api/src/modules/qualification/subset-init-routes.ts#redactOutOfScope': [
+    'apps/api/src/modules/qualification/subset-init.ts#employeesInScope',
+  ],
+  'apps/api/src/modules/qualification/subset-init-routes.ts#registerSubsetInitialize': [
+    'apps/api/src/modules/personnel/access.ts#access',
+    'apps/api/src/modules/personnel/access.ts#authorizeTx',
+    'apps/api/src/modules/personnel/http.ts#safe',
+    'apps/api/src/modules/qualification/input.ts#subsetInitialize',
+    'apps/api/src/modules/qualification/route-support.ts#QL_BASE',
+    '#redactOutOfScope',
+    'apps/api/src/modules/qualification/subset-init.ts#initializeQualificationSubsets',
+    'apps/api/src/modules/talent/http.ts#parseBody',
+    'packages/domain/src/personnel/fields.ts#SUBSETS',
+  ],
+  'apps/api/src/modules/qualification/subset-init.ts#classifyDay': [
+    '#existingNextStart',
+    '#existingRows',
+    'apps/api/src/modules/qualification/sync-mapping.ts#mapEmploymentToQualification',
+  ],
+  'apps/api/src/modules/qualification/subset-init.ts#dayBefore': ['#DAY_MS'],
+  'apps/api/src/modules/qualification/subset-init.ts#effectiveRecords': [
+    'apps/api/src/modules/employment/read-model.ts#listEmploymentRecords',
+    '#MAX_RECORD_PAGES',
+    '#RECORD_PAGE',
+    'apps/api/src/modules/qualification/sync-kinds.ts#SYNCED_KINDS',
+  ],
+  'apps/api/src/modules/qualification/subset-init.ts#employeesInScope': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    'apps/api/src/modules/personnel/access.ts#personScope',
+  ],
+  'apps/api/src/modules/qualification/subset-init.ts#endDateOf': ['#dayBefore'],
+  'apps/api/src/modules/qualification/subset-init.ts#existingNextStart': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/qualification/subset-init.ts#existingRows': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/qualification/subset-init.ts#initializeOne': [
+    'apps/api/src/modules/employment/record-store.ts#lockEmploymentEmployee',
+    '#byDay',
+    '#classifyDay',
+    '#effectiveRecords',
+    '#endDateOf',
+    '#insert',
+  ],
+  'apps/api/src/modules/qualification/subset-init.ts#initializeQualificationSubsets': [
+    '#NOT_FOUND',
+    '#employeesInScope',
+    '#initializeOne',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/qualification/subset-init.ts#insert': ['apps/api/src/modules/personnel/subsets.ts#saveSubset'],
   'apps/api/src/modules/qualification/subset-policy.ts#QUALIFICATION_POLICY': [
     '#qualificationBeforeRequest',
     '#qualificationBeforeSave',
@@ -876,6 +930,24 @@ export const GRAPH: Graph = {
     '#isHuman',
     '#newRefs',
     '#requireText',
+  ],
+  'apps/api/src/modules/qualification/sync-mapping.ts#enabledCategoryFor': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/qualification/sync-mapping.ts#levelTypeOf': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/qualification/sync-mapping.ts#mapEmploymentToQualification': [
+    '#mappedCategory',
+    '#mappedLevels',
+  ],
+  'apps/api/src/modules/qualification/sync-mapping.ts#mappedCategory': [
+    '#CATEGORY_PRIORITY',
+    '#enabledCategoryFor',
+    '#levelTypeOf',
+  ],
+  'apps/api/src/modules/qualification/sync-mapping.ts#mappedLevels': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
   'apps/api/src/modules/qualification/target-service.ts#cellsOf': [
     'apps/api/src/modules/qualification/read-model.ts#loadRow',

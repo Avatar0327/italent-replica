@@ -15744,6 +15744,32 @@
         ]
       }
     },
+    "POST /api/tenant/qualification/subsets/initialize": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "qualification",
+      "primitives": {
+        "button": [
+          "personnel access(button)"
+        ],
+        "command": [
+          "assertRevision",
+          "runCommand / runWrite"
+        ]
+      }
+    },
     "POST /api/tenant/qualification/target-types": {
       "edge": {
         "anonymous": {

@@ -722,6 +722,51 @@ const OWNER_ORGS: Obligation[] = [
   },
 ];
 
+/**
+ * 子集初始化（C1-5，subset-init-routes.ts）：与 HR 逐个新增任职资格同一道门——personnel `access()` 问
+ * TenantBase.Qualification 的新增数据操作（requireObjectWrite，空载荷）与列表层“新增”按钮；人员范围是命令内逐名员工的
+ * personScope 谓词（范围外与不存在同一回执，不是拒绝），不另造功能点。
+ */
+const INIT_ROUTE = `${QL}/subset-init-routes.ts#registerSubsetInitialize`;
+const PERSONNEL_ACCESS = 'apps/api/src/modules/personnel/access.ts';
+const INIT_ACCESS = "const ctx = await access(c, deps, SUBSETS.qualification.objectCode, 'create', {}, 'create')";
+const INIT_CONST: Evidence = {
+  role: 'const',
+  unit: 'packages/domain/src/personnel/fields.ts#SUBSETS',
+  anchor: "objectCode: 'TenantBase.Qualification'",
+};
+const PERSONNEL_ACCESS_IMPL: Evidence = impl(
+  `${PERSONNEL_ACCESS}#access`,
+  'await authorize(deps.authorize, ctx, operation, payload, button)',
+);
+const SUBSET_INIT: readonly Obligation[] = [
+  {
+    perm: 'obj:TenantBase.Qualification:create',
+    at: [
+      call(INIT_ROUTE, INIT_ACCESS),
+      PERSONNEL_ACCESS_IMPL,
+      impl(
+        `${PERSONNEL_ACCESS}#authorize`,
+        'await requireObjectWrite(authorizer, ctx, { objectCode: ctx.objectCode, operation, payload })',
+      ),
+      INIT_CONST,
+    ],
+  },
+  {
+    perm: 'btn:TenantBase.Qualification#create@list',
+    facts: ['button:personnel access(button)'],
+    at: [
+      call(INIT_ROUTE, INIT_ACCESS),
+      PERSONNEL_ACCESS_IMPL,
+      impl(
+        `${PERSONNEL_ACCESS}#authorize`,
+        "resource: buttonResource(ctx.objectCode, button, ['create', 'submit'].includes(button) ? 'list' : 'detail')",
+      ),
+      INIT_CONST,
+    ],
+  },
+];
+
 export const QUALIFICATION: RequiredTable = {
   ...crud('categoryClass'),
   ...crud('category'),
@@ -733,4 +778,5 @@ export const QUALIFICATION: RequiredTable = {
   ...crud('standard'),
   ...EXTRA,
   [`GET ${BASE}/candidates/owner-orgs`]: OWNER_ORGS,
+  [`POST ${BASE}/subsets/initialize`]: SUBSET_INIT,
 };

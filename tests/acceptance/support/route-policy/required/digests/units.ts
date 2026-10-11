@@ -602,7 +602,7 @@ export const DIGESTS: Digests = {
     SPECS: 'ea5d29a5fc52',
     childDeleteRights: 'de08fd350c31',
     registerObject: '849fa6161898',
-    registerQualificationRoutes: '6c8412dccc3c',
+    registerQualificationRoutes: '2012205145e3',
   },
   'apps/api/src/modules/qualification/standard-service.ts': {
     createStandard: '8cd995eb08ed',
@@ -615,6 +615,9 @@ export const DIGESTS: Digests = {
     deleteChildren: '90a21b3a9cd5',
     ownerOf: '03ae8b632d21',
     referenced: 'b2b7d60d9139',
+  },
+  'apps/api/src/modules/qualification/subset-init-routes.ts': {
+    registerSubsetInitialize: '3a59113ca350',
   },
   'apps/api/src/modules/qualification/subset-policy.ts': {
     QUALIFICATION_POLICY: '46ce29574953',
@@ -1567,7 +1570,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/qualification/routes.ts#SPECS': '711d8685edfb',
   'apps/api/src/modules/qualification/routes.ts#childDeleteRights': '49251d263f86',
   'apps/api/src/modules/qualification/routes.ts#registerObject': '8c695efe87d8',
-  'apps/api/src/modules/qualification/routes.ts#registerQualificationRoutes': '78704d8ae46e',
+  'apps/api/src/modules/qualification/routes.ts#registerQualificationRoutes': '6543cc0406d2',
   'apps/api/src/modules/qualification/standard-service.ts#createStandard': '290968858093',
   'apps/api/src/modules/qualification/standard-service.ts#deleteStandard': '416432ace259',
   'apps/api/src/modules/qualification/standard-service.ts#putChannels': '4aa3ce6db911',
@@ -1576,6 +1579,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/qualification/store.ts#deleteChildren': 'c78b728b946c',
   'apps/api/src/modules/qualification/store.ts#ownerOf': 'b82ab976d96a',
   'apps/api/src/modules/qualification/store.ts#referenced': 'a3a47f8d4c08',
+  'apps/api/src/modules/qualification/subset-init-routes.ts#registerSubsetInitialize': '7f7a831fca15',
   'apps/api/src/modules/qualification/subset-policy.ts#QUALIFICATION_POLICY': '7276f725076a',
   'apps/api/src/modules/qualification/subset-policy.ts#assertAutoSyncEditable': '6bd9bed5d734',
   'apps/api/src/modules/qualification/subset-policy.ts#assertRefs': '5a1450363070',
