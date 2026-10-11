@@ -1287,6 +1287,41 @@
         ]
       }
     },
+    "DELETE /api/tenant/succession/populations/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "succession",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "writeFields"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "scope.all"
+        ]
+      }
+    },
     "DELETE /api/tenant/succession/records/:id": {
       "edge": {
         "anonymous": {
@@ -6917,6 +6952,56 @@
         ]
       }
     },
+    "GET /api/tenant/succession/populations": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "succession",
+      "primitives": {
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "scope.all"
+        ]
+      }
+    },
+    "GET /api/tenant/succession/populations/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "succession",
+      "primitives": {
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "scope.all"
+        ]
+      }
+    },
     "GET /api/tenant/succession/readiness": {
       "edge": {
         "anonymous": {
@@ -6988,6 +7073,31 @@
         "scope": [
           "requestScope",
           "scopeSql"
+        ]
+      }
+    },
+    "GET /api/tenant/succession/rule-settings/:kind": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "VALIDATION_FAILED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "succession",
+      "primitives": {
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "scope.all"
         ]
       }
     },
@@ -11440,6 +11550,30 @@
         "scope": [
           "requestScope",
           "visible()"
+        ]
+      }
+    },
+    "POST /api/platform/succession/rules/recompile": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "reason": "PLATFORM_OPERATOR_REQUIRED",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "FORBIDDEN",
+          "reason": "PLATFORM_OPERATOR_REQUIRED",
+          "status": 403
+        }
+      },
+      "module": "succession-platform",
+      "primitives": {
+        "command": [
+          "ifMatch / meta"
         ]
       }
     },
@@ -16460,6 +16594,41 @@
         ]
       }
     },
+    "POST /api/tenant/succession/populations": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "VALIDATION_FAILED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "succession",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "writeFields"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "scope.all"
+        ]
+      }
+    },
     "POST /api/tenant/succession/records": {
       "edge": {
         "anonymous": {
@@ -19529,6 +19698,41 @@
         ]
       }
     },
+    "PUT /api/tenant/succession/populations/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "VALIDATION_FAILED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "succession",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "writeFields"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "scope.all"
+        ]
+      }
+    },
     "PUT /api/tenant/succession/records/:id": {
       "edge": {
         "anonymous": {
@@ -19562,6 +19766,41 @@
         "scope": [
           "creator scope",
           "scopeSql"
+        ]
+      }
+    },
+    "PUT /api/tenant/succession/rule-settings/:kind": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "VALIDATION_FAILED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "succession",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "writeFields"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "scope.all"
         ]
       }
     },
