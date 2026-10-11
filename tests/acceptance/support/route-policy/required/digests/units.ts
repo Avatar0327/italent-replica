@@ -938,8 +938,9 @@ export const DIGESTS: Digests = {
     updateMatrix: 'd48d193bd52b',
   },
   'apps/api/src/modules/talent-review/project-routes.ts': {
+    projectList: 'db5fcc33fe8b',
     projectWriteContext: '59ba2722e590',
-    registerProjectRoutes: '4dd8c0efac90',
+    registerProjectRoutes: 'cd3febad53e5',
     requireProjectCatalogs: 'd740841c5234',
   },
   'apps/api/src/modules/talent-review/project-service.ts': {
@@ -1898,8 +1899,9 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/talent-review/matrix-routes.ts#registerRatioGroupRoutes': '7360488aac52',
   'apps/api/src/modules/talent-review/matrix-routes.ts#requireFieldReference': '9ce926ee75cc',
   'apps/api/src/modules/talent-review/matrix-service.ts#updateMatrix': 'd21f4fba3b95',
+  'apps/api/src/modules/talent-review/project-routes.ts#projectList': '95d21f880d44',
   'apps/api/src/modules/talent-review/project-routes.ts#projectWriteContext': '59076c91d06d',
-  'apps/api/src/modules/talent-review/project-routes.ts#registerProjectRoutes': '5963b69cac1d',
+  'apps/api/src/modules/talent-review/project-routes.ts#registerProjectRoutes': 'd201b5757ea8',
   'apps/api/src/modules/talent-review/project-routes.ts#requireProjectCatalogs': 'f3dd89d76f27',
   'apps/api/src/modules/talent-review/project-service.ts#createProject': 'a5a0ce1c6ce3',
   'apps/api/src/modules/talent-review/readiness-service.ts#updateReadiness': '28fc17e2384b',
