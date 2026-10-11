@@ -9,6 +9,7 @@ import { defineTable } from '../../route-policy/index.js';
 import { none, platform, write } from '../../route-policy/presets.js';
 import { operatorOf, type PlatformEnv } from '../platform/context.js';
 import { requireTenant } from '../platform/operations.js';
+import { dispatchCalcJobs, SUCCESSION_PRODUCERS } from './calc-jobs.js';
 import { recompilePopulations } from './config-write.js';
 import { populationViews, type ConfigView } from './config-store.js';
 import { rowsOf } from './read-sql.js';
@@ -20,6 +21,12 @@ export interface PlatformRouteDeps {
 }
 const PATH = '/api/platform/succession/rules/recompile';
 export const SUCCESSION_PLATFORM_POLICIES = defineTable('succession-platform', {
+  'POST /api/platform/succession/jobs/run': platform({
+    write: write(none('平台按租户生产及推进计算任务'), 'succession.platformRecheck', 'succession.platformRecheck', {
+      ledger: 'single',
+      commandOnly: true,
+    }),
+  }),
   [`POST ${PATH}`]: platform({
     write: write(none('平台重编译命令，无人工业务字段'), 'succession.platformRecheck', 'succession.authorizeResult', {
       ledger: 'single',
@@ -61,6 +68,30 @@ const platformResults: ResultAdapter<ConfigView> = {
   },
 };
 export function registerSuccessionPlatformRoutes(router: Hono<PlatformEnv>, deps: PlatformRouteDeps): void {
+  router.post('/api/platform/succession/jobs/run', async (c) => {
+    const parsed = z
+      .strictObject({
+        kind: z.enum(['exit_sweep', 'position_risk', 'org_stats']),
+        tenantId: z
+          .uuid()
+          .transform((id) => id.toLowerCase())
+          .optional(),
+        cursor: z
+          .uuid()
+          .transform((id) => id.toLowerCase())
+          .optional(),
+      })
+      .safeParse(await c.req.json().catch(() => undefined));
+    if (!parsed.success || (parsed.data.tenantId && parsed.data.cursor))
+      throw new AppError('VALIDATION_FAILED', '调度参数不合法，单租户与游标不能同时指定');
+    return c.json(
+      await dispatchCalcJobs(
+        deps,
+        { ...parsed.data, userId: operatorOf(c).userId, commandId: c.req.header('idempotency-key') },
+        SUCCESSION_PRODUCERS,
+      ),
+    );
+  });
   router.post(PATH, async (c) => {
     const parsed = input.safeParse(await c.req.json().catch(() => undefined));
     if (!parsed.success) throw new AppError('VALIDATION_FAILED', '重新编译参数不合法');

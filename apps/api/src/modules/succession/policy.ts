@@ -19,6 +19,7 @@ import { SUCCESSION_OBJECTS } from '@italent/domain';
 import { defineTable } from '../../route-policy/index.js';
 import {
   any,
+  all,
   BAD_REQUEST,
   button,
   fixed,
@@ -58,7 +59,33 @@ function configPolicy(key: 'population' | 'ruleSettings', operation: 'view' | 'c
   });
 }
 
+function calcPolicy(retry = false) {
+  return object({
+    object: SUCCESSION_OBJECTS.calcRun.code,
+    operation: retry ? 'update' : 'view',
+    button: retry ? button('retry', 'detail') : noButton('计算 run 查看'),
+    scope: guardScope('succession.calcVisible', NOT_FOUND),
+    fields: projector('succession.calc', 'succession.calc'),
+    ...(retry
+      ? {
+          write: write('body', 'succession.calcRetry', AUTHORIZE_RESULT, {
+            ledger: 'single',
+            commandOnly: true,
+          }),
+          guards: ['succession.calcRetryScope'],
+        }
+      : {}),
+  });
+}
+
 export const SUCCESSION_POLICIES = defineTable('succession', {
+  [`GET ${BASE}/calc-runs`]: calcPolicy(),
+  [`GET ${BASE}/calc-runs/:id`]: { ...calcPolicy(), invalidId: BAD_REQUEST },
+  [`GET ${BASE}/calc-runs/:id/failures`]: { ...calcPolicy(), invalidId: BAD_REQUEST },
+  [`POST ${BASE}/calc-runs/:id/retry`]: {
+    ...all([calcPolicy(), calcPolicy(true)], projector('succession.calc', 'succession.calc')),
+    invalidId: BAD_REQUEST,
+  },
   [`GET ${BASE}/populations`]: configPolicy('population', 'view'),
   [`GET ${BASE}/populations/:id`]: { ...configPolicy('population', 'view'), invalidId: BAD_REQUEST },
   [`POST ${BASE}/populations`]: configPolicy('population', 'create'),

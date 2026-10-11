@@ -20,6 +20,27 @@ export const GRAPH: Graph = {
     '#withoutDelete',
   ],
   'packages/domain/src/evaluation/catalog.ts#object': ['#EVALUATION_APP', '#SYSTEM_FIELDS', '#crud'],
+  'packages/domain/src/evaluation/conditions.ts#activityConditionField': ['#FIELD_PREFIX'],
+  'packages/domain/src/evaluation/conditions.ts#notAllowed': ['#COMBINATION_FUNCTIONS', '#registry'],
+  'packages/domain/src/evaluation/conditions.ts#rangeInverted': [
+    'packages/domain/src/expression/dates.ts#parseDateText',
+    'packages/domain/src/expression/dates.ts#utcMs',
+  ],
+  'packages/domain/src/evaluation/conditions.ts#registry': [
+    'packages/domain/src/expression/registry.ts#createDefaultRegistry',
+  ],
+  'packages/domain/src/evaluation/conditions.ts#validateActivityConditionDetails': [
+    '#ACTIVITY_CONDITION_OPERATORS',
+    '#valueIssue',
+  ],
+  'packages/domain/src/evaluation/conditions.ts#validateActivityConditionExpression': [
+    '#CONDITION_KIND',
+    '#activityConditionField',
+    '#notAllowed',
+    '#registry',
+    'packages/domain/src/expression/engine.ts#validateFormula',
+  ],
+  'packages/domain/src/evaluation/conditions.ts#valueIssue': ['#COMPARISONS', '#hasValue', '#rangeInverted'],
   'packages/domain/src/evaluation/flow-catalog.ts#EVALUATION_FLOW_OBJECTS': ['#STAFF_EVALUATION_BUTTONS', '#object'],
   'packages/domain/src/evaluation/flow-catalog.ts#object': [
     'packages/domain/src/evaluation/catalog.ts#EVALUATION_APP',

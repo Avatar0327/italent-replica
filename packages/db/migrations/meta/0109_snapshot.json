@@ -1,5 +1,5 @@
 {
-  "id": "659d43de-ef92-4809-a748-0ff77db2815b",
+  "id": "add31a71-e216-43f0-bdc0-3bfc81161461",
   "prevId": "d8bf1701-afcd-4621-a131-569e66fb7597",
   "version": "7",
   "dialect": "postgresql",
@@ -46052,696 +46052,6 @@
       },
       "isRLSEnabled": false
     },
-    "public.talent_review_project_calibration_fields": {
-      "name": "talent_review_project_calibration_fields",
-      "schema": "",
-      "columns": {
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "project_id": {
-          "name": "project_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "field_id": {
-          "name": "field_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "required": {
-          "name": "required",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "talent_review_project_calibration_fields_tenant_id_tenants_id_fk": {
-          "name": "talent_review_project_calibration_fields_tenant_id_tenants_id_fk",
-          "tableFrom": "talent_review_project_calibration_fields",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "tr_project_calibration_project_fk": {
-          "name": "tr_project_calibration_project_fk",
-          "tableFrom": "talent_review_project_calibration_fields",
-          "tableTo": "talent_review_projects",
-          "columnsFrom": [
-            "tenant_id",
-            "project_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "tr_project_calibration_field_fk": {
-          "name": "tr_project_calibration_field_fk",
-          "tableFrom": "talent_review_project_calibration_fields",
-          "tableTo": "talent_review_fields",
-          "columnsFrom": [
-            "tenant_id",
-            "field_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "talent_review_project_calibration_fields_tenant_id_project_id_field_id_pk": {
-          "name": "talent_review_project_calibration_fields_tenant_id_project_id_field_id_pk",
-          "columns": [
-            "tenant_id",
-            "project_id",
-            "field_id"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.talent_review_project_excluded_categories": {
-      "name": "talent_review_project_excluded_categories",
-      "schema": "",
-      "columns": {
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "project_id": {
-          "name": "project_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "category_id": {
-          "name": "category_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "talent_review_project_excluded_categories_tenant_id_tenants_id_fk": {
-          "name": "talent_review_project_excluded_categories_tenant_id_tenants_id_fk",
-          "tableFrom": "talent_review_project_excluded_categories",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "tr_project_excluded_project_fk": {
-          "name": "tr_project_excluded_project_fk",
-          "tableFrom": "talent_review_project_excluded_categories",
-          "tableTo": "talent_review_projects",
-          "columnsFrom": [
-            "tenant_id",
-            "project_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "tr_project_excluded_category_fk": {
-          "name": "tr_project_excluded_category_fk",
-          "tableFrom": "talent_review_project_excluded_categories",
-          "tableTo": "talent_review_categories",
-          "columnsFrom": [
-            "tenant_id",
-            "category_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "talent_review_project_excluded_categories_tenant_id_project_id_category_id_pk": {
-          "name": "talent_review_project_excluded_categories_tenant_id_project_id_category_id_pk",
-          "columns": [
-            "tenant_id",
-            "project_id",
-            "category_id"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.talent_review_project_matrices": {
-      "name": "talent_review_project_matrices",
-      "schema": "",
-      "columns": {
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "project_id": {
-          "name": "project_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "matrix_id": {
-          "name": "matrix_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "ratio_group_id": {
-          "name": "ratio_group_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "sort_no": {
-          "name": "sort_no",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "talent_review_project_matrices_tenant_id_tenants_id_fk": {
-          "name": "talent_review_project_matrices_tenant_id_tenants_id_fk",
-          "tableFrom": "talent_review_project_matrices",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "tr_project_matrix_project_fk": {
-          "name": "tr_project_matrix_project_fk",
-          "tableFrom": "talent_review_project_matrices",
-          "tableTo": "talent_review_projects",
-          "columnsFrom": [
-            "tenant_id",
-            "project_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "tr_project_matrix_matrix_fk": {
-          "name": "tr_project_matrix_matrix_fk",
-          "tableFrom": "talent_review_project_matrices",
-          "tableTo": "talent_review_matrices",
-          "columnsFrom": [
-            "tenant_id",
-            "matrix_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        },
-        "tr_project_matrix_group_fk": {
-          "name": "tr_project_matrix_group_fk",
-          "tableFrom": "talent_review_project_matrices",
-          "tableTo": "talent_review_ratio_rule_groups",
-          "columnsFrom": [
-            "tenant_id",
-            "ratio_group_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "talent_review_project_matrices_tenant_id_project_id_matrix_id_pk": {
-          "name": "talent_review_project_matrices_tenant_id_project_id_matrix_id_pk",
-          "columns": [
-            "tenant_id",
-            "project_id",
-            "matrix_id"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.talent_review_project_shared_orgs": {
-      "name": "talent_review_project_shared_orgs",
-      "schema": "",
-      "columns": {
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "project_id": {
-          "name": "project_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "org_id": {
-          "name": "org_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "talent_review_project_shared_orgs_tenant_id_tenants_id_fk": {
-          "name": "talent_review_project_shared_orgs_tenant_id_tenants_id_fk",
-          "tableFrom": "talent_review_project_shared_orgs",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "tr_project_shared_project_fk": {
-          "name": "tr_project_shared_project_fk",
-          "tableFrom": "talent_review_project_shared_orgs",
-          "tableTo": "talent_review_projects",
-          "columnsFrom": [
-            "tenant_id",
-            "project_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "talent_review_project_shared_orgs_tenant_id_org_id_org_objects_tenant_id_id_fk": {
-          "name": "talent_review_project_shared_orgs_tenant_id_org_id_org_objects_tenant_id_id_fk",
-          "tableFrom": "talent_review_project_shared_orgs",
-          "tableTo": "org_objects",
-          "columnsFrom": [
-            "tenant_id",
-            "org_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "talent_review_project_shared_orgs_tenant_id_project_id_org_id_pk": {
-          "name": "talent_review_project_shared_orgs_tenant_id_project_id_org_id_pk",
-          "columns": [
-            "tenant_id",
-            "project_id",
-            "org_id"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.talent_review_projects": {
-      "name": "talent_review_projects",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "code": {
-          "name": "code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "category_id": {
-          "name": "category_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "owner_org_id": {
-          "name": "owner_org_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "owner_id": {
-          "name": "owner_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "downward_public": {
-          "name": "downward_public",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "year": {
-          "name": "year",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "period": {
-          "name": "period",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "period_start_date": {
-          "name": "period_start_date",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "period_end_date": {
-          "name": "period_end_date",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "business_date": {
-          "name": "business_date",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "last_full_calc_at": {
-          "name": "last_full_calc_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "calc_state": {
-          "name": "calc_state",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'not_calculated'"
-        },
-        "criterion_id": {
-          "name": "criterion_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "calc_rule_id": {
-          "name": "calc_rule_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "carry_last_result": {
-          "name": "carry_last_result",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'new'"
-        },
-        "ended_count": {
-          "name": "ended_count",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "revision": {
-          "name": "revision",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 1
-        },
-        "created_by": {
-          "name": "created_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_by": {
-          "name": "updated_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "talent_review_projects_org": {
-          "name": "talent_review_projects_org",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "owner_org_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "talent_review_projects_tenant_id_tenants_id_fk": {
-          "name": "talent_review_projects_tenant_id_tenants_id_fk",
-          "tableFrom": "talent_review_projects",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "talent_review_projects_owner_id_users_id_fk": {
-          "name": "talent_review_projects_owner_id_users_id_fk",
-          "tableFrom": "talent_review_projects",
-          "tableTo": "users",
-          "columnsFrom": [
-            "owner_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "talent_review_projects_tenant_id_owner_org_id_org_objects_tenant_id_id_fk": {
-          "name": "talent_review_projects_tenant_id_owner_org_id_org_objects_tenant_id_id_fk",
-          "tableFrom": "talent_review_projects",
-          "tableTo": "org_objects",
-          "columnsFrom": [
-            "tenant_id",
-            "owner_org_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "talent_review_projects_tenant_id_category_id_talent_review_categories_tenant_id_id_fk": {
-          "name": "talent_review_projects_tenant_id_category_id_talent_review_categories_tenant_id_id_fk",
-          "tableFrom": "talent_review_projects",
-          "tableTo": "talent_review_categories",
-          "columnsFrom": [
-            "tenant_id",
-            "category_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        },
-        "talent_review_projects_tenant_id_calc_rule_id_talent_review_calc_rules_tenant_id_id_fk": {
-          "name": "talent_review_projects_tenant_id_calc_rule_id_talent_review_calc_rules_tenant_id_id_fk",
-          "tableFrom": "talent_review_projects",
-          "tableTo": "talent_review_calc_rules",
-          "columnsFrom": [
-            "tenant_id",
-            "calc_rule_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        },
-        "talent_review_projects_tenant_id_criterion_id_talent_criteria_tenant_id_id_fk": {
-          "name": "talent_review_projects_tenant_id_criterion_id_talent_criteria_tenant_id_id_fk",
-          "tableFrom": "talent_review_projects",
-          "tableTo": "talent_criteria",
-          "columnsFrom": [
-            "tenant_id",
-            "criterion_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "talent_review_projects_tenant_id": {
-          "name": "talent_review_projects_tenant_id",
-          "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "id"
-          ]
-        },
-        "talent_review_projects_code": {
-          "name": "talent_review_projects_code",
-          "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "code"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "talent_review_projects_dates": {
-          "name": "talent_review_projects_dates",
-          "value": "\"talent_review_projects\".\"period_start_date\" <= \"talent_review_projects\".\"period_end_date\""
-        },
-        "talent_review_projects_status": {
-          "name": "talent_review_projects_status",
-          "value": "\"talent_review_projects\".\"status\" IN ('new','in_progress','ended')"
-        },
-        "talent_review_projects_calc_state": {
-          "name": "talent_review_projects_calc_state",
-          "value": "\"talent_review_projects\".\"calc_state\" IN ('not_calculated','calculating','success','failed')"
-        },
-        "talent_review_projects_ended_count": {
-          "name": "talent_review_projects_ended_count",
-          "value": "\"talent_review_projects\".\"ended_count\" >= 0"
-        },
-        "talent_review_projects_rev": {
-          "name": "talent_review_projects_rev",
-          "value": "\"talent_review_projects\".\"revision\" > 0"
-        }
-      },
-      "isRLSEnabled": false
-    },
     "public.talent_review_ratio_rule_cells": {
       "name": "talent_review_ratio_rule_cells",
       "schema": "",
@@ -49359,644 +48669,6 @@
       },
       "isRLSEnabled": false
     },
-    "public.succession_calc_run_failures": {
-      "name": "succession_calc_run_failures",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "run_id": {
-          "name": "run_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "object_type": {
-          "name": "object_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "object_id": {
-          "name": "object_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "level_id": {
-          "name": "level_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "row_no": {
-          "name": "row_no",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "code": {
-          "name": "code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "succession_calc_run_failures_tenant_id_run_id_object_type_object_id_succession_calc_run_objects_tenant_id_run_id_object_type_object_id_fk": {
-          "name": "succession_calc_run_failures_tenant_id_run_id_object_type_object_id_succession_calc_run_objects_tenant_id_run_id_object_type_object_id_fk",
-          "tableFrom": "succession_calc_run_failures",
-          "tableTo": "succession_calc_run_objects",
-          "columnsFrom": [
-            "tenant_id",
-            "run_id",
-            "object_type",
-            "object_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "run_id",
-            "object_type",
-            "object_id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "succession_calc_failures_code": {
-          "name": "succession_calc_failures_code",
-          "value": "\"succession_calc_run_failures\".\"code\" ~ '^[A-Z][A-Z0-9_]{0,63}$'"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.succession_calc_run_objects": {
-      "name": "succession_calc_run_objects",
-      "schema": "",
-      "columns": {
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "run_id": {
-          "name": "run_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "object_type": {
-          "name": "object_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "object_id": {
-          "name": "object_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "expected_revision": {
-          "name": "expected_revision",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "outcome": {
-          "name": "outcome",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "retryable": {
-          "name": "retryable",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "page_no": {
-          "name": "page_no",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "succession_calc_run_objects_tenant_id_run_id_succession_calc_runs_tenant_id_id_fk": {
-          "name": "succession_calc_run_objects_tenant_id_run_id_succession_calc_runs_tenant_id_id_fk",
-          "tableFrom": "succession_calc_run_objects",
-          "tableTo": "succession_calc_runs",
-          "columnsFrom": [
-            "tenant_id",
-            "run_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "succession_calc_run_objects_tenant_id_run_id_object_type_object_id_pk": {
-          "name": "succession_calc_run_objects_tenant_id_run_id_object_type_object_id_pk",
-          "columns": [
-            "tenant_id",
-            "run_id",
-            "object_type",
-            "object_id"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "succession_calc_objects_type": {
-          "name": "succession_calc_objects_type",
-          "value": "\"succession_calc_run_objects\".\"object_type\" IN ('org','position','employee')"
-        },
-        "succession_calc_objects_outcome": {
-          "name": "succession_calc_objects_outcome",
-          "value": "\"succession_calc_run_objects\".\"outcome\" IN ('written', 'unchanged', 'manual_kept', 'failed', 'revision_conflict')"
-        },
-        "succession_calc_objects_revision": {
-          "name": "succession_calc_objects_revision",
-          "value": "\"succession_calc_run_objects\".\"expected_revision\" >= 0"
-        },
-        "succession_calc_objects_page": {
-          "name": "succession_calc_objects_page",
-          "value": "\"succession_calc_run_objects\".\"page_no\" >= 0"
-        },
-        "succession_calc_objects_retry": {
-          "name": "succession_calc_objects_retry",
-          "value": "NOT \"succession_calc_run_objects\".\"retryable\" OR \"succession_calc_run_objects\".\"outcome\" = 'failed'"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.succession_calc_runs": {
-      "name": "succession_calc_runs",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "kind": {
-          "name": "kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "trigger": {
-          "name": "trigger",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "idempotency_key": {
-          "name": "idempotency_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "request_hash": {
-          "name": "request_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "scope": {
-          "name": "scope",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'{}'::jsonb"
-        },
-        "principal_user_id": {
-          "name": "principal_user_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "owner_user_id": {
-          "name": "owner_user_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "requested_by": {
-          "name": "requested_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "command_id": {
-          "name": "command_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "business_date": {
-          "name": "business_date",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "phase": {
-          "name": "phase",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'pending'"
-        },
-        "block_reason": {
-          "name": "block_reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "attempt_no": {
-          "name": "attempt_no",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 1
-        },
-        "last_error_code": {
-          "name": "last_error_code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "started_at": {
-          "name": "started_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "finished_at": {
-          "name": "finished_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "revision": {
-          "name": "revision",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 1
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "succession_calc_runs_tenant_id_tenants_id_fk": {
-          "name": "succession_calc_runs_tenant_id_tenants_id_fk",
-          "tableFrom": "succession_calc_runs",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "succession_calc_runs_tenant_id_principal_user_id_tenant_memberships_tenant_id_user_id_fk": {
-          "name": "succession_calc_runs_tenant_id_principal_user_id_tenant_memberships_tenant_id_user_id_fk",
-          "tableFrom": "succession_calc_runs",
-          "tableTo": "tenant_memberships",
-          "columnsFrom": [
-            "tenant_id",
-            "principal_user_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "user_id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "succession_calc_runs_tenant_id_owner_user_id_tenant_memberships_tenant_id_user_id_fk": {
-          "name": "succession_calc_runs_tenant_id_owner_user_id_tenant_memberships_tenant_id_user_id_fk",
-          "tableFrom": "succession_calc_runs",
-          "tableTo": "tenant_memberships",
-          "columnsFrom": [
-            "tenant_id",
-            "owner_user_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "user_id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "succession_calc_runs_tenant_id_requested_by_tenant_memberships_tenant_id_user_id_fk": {
-          "name": "succession_calc_runs_tenant_id_requested_by_tenant_memberships_tenant_id_user_id_fk",
-          "tableFrom": "succession_calc_runs",
-          "tableTo": "tenant_memberships",
-          "columnsFrom": [
-            "tenant_id",
-            "requested_by"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "user_id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "succession_calc_runs_tenant_id": {
-          "name": "succession_calc_runs_tenant_id",
-          "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "id"
-          ]
-        },
-        "succession_calc_runs_key": {
-          "name": "succession_calc_runs_key",
-          "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "idempotency_key"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "succession_calc_runs_kind": {
-          "name": "succession_calc_runs_kind",
-          "value": "\"succession_calc_runs\".\"kind\" IN ('position_risk', 'org_health', 'org_health_reset', 'org_stats', 'exit_sweep')"
-        },
-        "succession_calc_runs_status": {
-          "name": "succession_calc_runs_status",
-          "value": "\"succession_calc_runs\".\"status\" IN ('pending', 'running', 'succeeded', 'partial', 'blocked', 'aborted')"
-        },
-        "succession_calc_runs_trigger": {
-          "name": "succession_calc_runs_trigger",
-          "value": "\"succession_calc_runs\".\"trigger\" IN ('schedule','manual','review_sync','preferences_change','retry')"
-        },
-        "succession_calc_runs_counters": {
-          "name": "succession_calc_runs_counters",
-          "value": "\"succession_calc_runs\".\"phase\" >= 0 AND \"succession_calc_runs\".\"attempt_no\" > 0 AND \"succession_calc_runs\".\"revision\" > 0"
-        },
-        "succession_calc_runs_owner": {
-          "name": "succession_calc_runs_owner",
-          "value": "\"succession_calc_runs\".\"owner_user_id\" IS NOT DISTINCT FROM \"succession_calc_runs\".\"principal_user_id\""
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.succession_notifications": {
-      "name": "succession_notifications",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "run_id": {
-          "name": "run_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "batch_id": {
-          "name": "batch_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "subject_id": {
-          "name": "subject_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true,
-          "generated": {
-            "as": "COALESCE(run_id, batch_id)",
-            "type": "stored"
-          }
-        },
-        "recipient_user_id": {
-          "name": "recipient_user_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "kind": {
-          "name": "kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "channel": {
-          "name": "channel",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'in_app'"
-        },
-        "state": {
-          "name": "state",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'pending'"
-        },
-        "attempt_no": {
-          "name": "attempt_no",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "command_id": {
-          "name": "command_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "sent_at": {
-          "name": "sent_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "succession_notifications_pending": {
-          "name": "succession_notifications_pending",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "state",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "succession_notifications_tenant_id_tenants_id_fk": {
-          "name": "succession_notifications_tenant_id_tenants_id_fk",
-          "tableFrom": "succession_notifications",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "succession_notifications_tenant_id_recipient_user_id_tenant_memberships_tenant_id_user_id_fk": {
-          "name": "succession_notifications_tenant_id_recipient_user_id_tenant_memberships_tenant_id_user_id_fk",
-          "tableFrom": "succession_notifications",
-          "tableTo": "tenant_memberships",
-          "columnsFrom": [
-            "tenant_id",
-            "recipient_user_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "user_id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "succession_notifications_tenant_id_run_id_succession_calc_runs_tenant_id_id_fk": {
-          "name": "succession_notifications_tenant_id_run_id_succession_calc_runs_tenant_id_id_fk",
-          "tableFrom": "succession_notifications",
-          "tableTo": "succession_calc_runs",
-          "columnsFrom": [
-            "tenant_id",
-            "run_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "succession_notifications_dedupe": {
-          "name": "succession_notifications_dedupe",
-          "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "subject_id",
-            "recipient_user_id",
-            "kind"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "succession_notifications_subject": {
-          "name": "succession_notifications_subject",
-          "value": "num_nonnulls(\"succession_notifications\".\"run_id\",\"succession_notifications\".\"batch_id\") = 1"
-        },
-        "succession_notifications_kind": {
-          "name": "succession_notifications_kind",
-          "value": "(\"succession_notifications\".\"kind\"='calc_done' AND \"succession_notifications\".\"run_id\" IS NOT NULL)\n    OR (\"succession_notifications\".\"kind\"='sync_done' AND \"succession_notifications\".\"batch_id\" IS NOT NULL)"
-        },
-        "succession_notifications_state": {
-          "name": "succession_notifications_state",
-          "value": "\"succession_notifications\".\"state\" IN ('pending','sent','failed','unknown')"
-        },
-        "succession_notifications_attempt": {
-          "name": "succession_notifications_attempt",
-          "value": "\"succession_notifications\".\"attempt_no\" >= 0"
-        }
-      },
-      "isRLSEnabled": false
-    },
     "public.succession_population_rows": {
       "name": "succession_population_rows",
       "schema": "",
@@ -50810,6 +49482,1598 @@
         "seed_grant_ledger_source_valid": {
           "name": "seed_grant_ledger_source_valid",
           "value": "\"seed_grant_ledger\".\"source\" IN ('install', 'adopted', 'tenant_saved', 'withheld')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.succession_calc_run_failures": {
+      "name": "succession_calc_run_failures",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "run_id": {
+          "name": "run_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "object_type": {
+          "name": "object_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "object_id": {
+          "name": "object_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "level_id": {
+          "name": "level_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "row_no": {
+          "name": "row_no",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "succession_calc_run_failures_tenant_id_run_id_object_type_object_id_succession_calc_run_objects_tenant_id_run_id_object_type_object_id_fk": {
+          "name": "succession_calc_run_failures_tenant_id_run_id_object_type_object_id_succession_calc_run_objects_tenant_id_run_id_object_type_object_id_fk",
+          "tableFrom": "succession_calc_run_failures",
+          "tableTo": "succession_calc_run_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "run_id",
+            "object_type",
+            "object_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "run_id",
+            "object_type",
+            "object_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "succession_calc_failures_code": {
+          "name": "succession_calc_failures_code",
+          "value": "\"succession_calc_run_failures\".\"code\" ~ '^[A-Z][A-Z0-9_]{0,63}$'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.succession_calc_run_objects": {
+      "name": "succession_calc_run_objects",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "run_id": {
+          "name": "run_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "object_type": {
+          "name": "object_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "object_id": {
+          "name": "object_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expected_revision": {
+          "name": "expected_revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "outcome": {
+          "name": "outcome",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "retryable": {
+          "name": "retryable",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "page_no": {
+          "name": "page_no",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "succession_calc_run_objects_tenant_id_run_id_succession_calc_runs_tenant_id_id_fk": {
+          "name": "succession_calc_run_objects_tenant_id_run_id_succession_calc_runs_tenant_id_id_fk",
+          "tableFrom": "succession_calc_run_objects",
+          "tableTo": "succession_calc_runs",
+          "columnsFrom": [
+            "tenant_id",
+            "run_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "succession_calc_run_objects_tenant_id_run_id_object_type_object_id_pk": {
+          "name": "succession_calc_run_objects_tenant_id_run_id_object_type_object_id_pk",
+          "columns": [
+            "tenant_id",
+            "run_id",
+            "object_type",
+            "object_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "succession_calc_objects_type": {
+          "name": "succession_calc_objects_type",
+          "value": "\"succession_calc_run_objects\".\"object_type\" IN ('org','position','employee')"
+        },
+        "succession_calc_objects_outcome": {
+          "name": "succession_calc_objects_outcome",
+          "value": "\"succession_calc_run_objects\".\"outcome\" IN ('written', 'unchanged', 'manual_kept', 'failed', 'revision_conflict')"
+        },
+        "succession_calc_objects_revision": {
+          "name": "succession_calc_objects_revision",
+          "value": "\"succession_calc_run_objects\".\"expected_revision\" >= 0"
+        },
+        "succession_calc_objects_page": {
+          "name": "succession_calc_objects_page",
+          "value": "\"succession_calc_run_objects\".\"page_no\" >= 0"
+        },
+        "succession_calc_objects_retry": {
+          "name": "succession_calc_objects_retry",
+          "value": "NOT \"succession_calc_run_objects\".\"retryable\" OR \"succession_calc_run_objects\".\"outcome\" = 'failed'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.succession_calc_runs": {
+      "name": "succession_calc_runs",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "trigger": {
+          "name": "trigger",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "idempotency_key": {
+          "name": "idempotency_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "request_hash": {
+          "name": "request_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scope": {
+          "name": "scope",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "principal_user_id": {
+          "name": "principal_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "owner_user_id": {
+          "name": "owner_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "requested_by": {
+          "name": "requested_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "command_id": {
+          "name": "command_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "business_date": {
+          "name": "business_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "phase": {
+          "name": "phase",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "block_reason": {
+          "name": "block_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "attempt_no": {
+          "name": "attempt_no",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "last_error_code": {
+          "name": "last_error_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "finished_at": {
+          "name": "finished_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "succession_calc_runs_tenant_id_tenants_id_fk": {
+          "name": "succession_calc_runs_tenant_id_tenants_id_fk",
+          "tableFrom": "succession_calc_runs",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "succession_calc_runs_tenant_id_principal_user_id_tenant_memberships_tenant_id_user_id_fk": {
+          "name": "succession_calc_runs_tenant_id_principal_user_id_tenant_memberships_tenant_id_user_id_fk",
+          "tableFrom": "succession_calc_runs",
+          "tableTo": "tenant_memberships",
+          "columnsFrom": [
+            "tenant_id",
+            "principal_user_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "user_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "succession_calc_runs_tenant_id_owner_user_id_tenant_memberships_tenant_id_user_id_fk": {
+          "name": "succession_calc_runs_tenant_id_owner_user_id_tenant_memberships_tenant_id_user_id_fk",
+          "tableFrom": "succession_calc_runs",
+          "tableTo": "tenant_memberships",
+          "columnsFrom": [
+            "tenant_id",
+            "owner_user_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "user_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "succession_calc_runs_tenant_id_requested_by_tenant_memberships_tenant_id_user_id_fk": {
+          "name": "succession_calc_runs_tenant_id_requested_by_tenant_memberships_tenant_id_user_id_fk",
+          "tableFrom": "succession_calc_runs",
+          "tableTo": "tenant_memberships",
+          "columnsFrom": [
+            "tenant_id",
+            "requested_by"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "user_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "succession_calc_runs_tenant_id": {
+          "name": "succession_calc_runs_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        },
+        "succession_calc_runs_key": {
+          "name": "succession_calc_runs_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "idempotency_key"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "succession_calc_runs_kind": {
+          "name": "succession_calc_runs_kind",
+          "value": "\"succession_calc_runs\".\"kind\" IN ('position_risk', 'org_health', 'org_health_reset', 'org_stats', 'exit_sweep')"
+        },
+        "succession_calc_runs_status": {
+          "name": "succession_calc_runs_status",
+          "value": "\"succession_calc_runs\".\"status\" IN ('pending', 'running', 'succeeded', 'partial', 'blocked', 'aborted')"
+        },
+        "succession_calc_runs_trigger": {
+          "name": "succession_calc_runs_trigger",
+          "value": "\"succession_calc_runs\".\"trigger\" IN ('schedule','manual','review_sync','preferences_change','retry')"
+        },
+        "succession_calc_runs_counters": {
+          "name": "succession_calc_runs_counters",
+          "value": "\"succession_calc_runs\".\"phase\" >= 0 AND \"succession_calc_runs\".\"attempt_no\" > 0 AND \"succession_calc_runs\".\"revision\" > 0"
+        },
+        "succession_calc_runs_owner": {
+          "name": "succession_calc_runs_owner",
+          "value": "\"succession_calc_runs\".\"owner_user_id\" IS NOT DISTINCT FROM \"succession_calc_runs\".\"principal_user_id\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.succession_notifications": {
+      "name": "succession_notifications",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "run_id": {
+          "name": "run_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "batch_id": {
+          "name": "batch_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "subject_id": {
+          "name": "subject_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true,
+          "generated": {
+            "as": "COALESCE(run_id, batch_id)",
+            "type": "stored"
+          }
+        },
+        "recipient_user_id": {
+          "name": "recipient_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "channel": {
+          "name": "channel",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'in_app'"
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "attempt_no": {
+          "name": "attempt_no",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "command_id": {
+          "name": "command_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "sent_at": {
+          "name": "sent_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "succession_notifications_pending": {
+          "name": "succession_notifications_pending",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "succession_notifications_tenant_id_tenants_id_fk": {
+          "name": "succession_notifications_tenant_id_tenants_id_fk",
+          "tableFrom": "succession_notifications",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "succession_notifications_tenant_id_recipient_user_id_tenant_memberships_tenant_id_user_id_fk": {
+          "name": "succession_notifications_tenant_id_recipient_user_id_tenant_memberships_tenant_id_user_id_fk",
+          "tableFrom": "succession_notifications",
+          "tableTo": "tenant_memberships",
+          "columnsFrom": [
+            "tenant_id",
+            "recipient_user_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "user_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "succession_notifications_tenant_id_run_id_succession_calc_runs_tenant_id_id_fk": {
+          "name": "succession_notifications_tenant_id_run_id_succession_calc_runs_tenant_id_id_fk",
+          "tableFrom": "succession_notifications",
+          "tableTo": "succession_calc_runs",
+          "columnsFrom": [
+            "tenant_id",
+            "run_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "succession_notifications_dedupe": {
+          "name": "succession_notifications_dedupe",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "subject_id",
+            "recipient_user_id",
+            "kind"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "succession_notifications_subject": {
+          "name": "succession_notifications_subject",
+          "value": "num_nonnulls(\"succession_notifications\".\"run_id\",\"succession_notifications\".\"batch_id\") = 1"
+        },
+        "succession_notifications_kind": {
+          "name": "succession_notifications_kind",
+          "value": "(\"succession_notifications\".\"kind\"='calc_done' AND \"succession_notifications\".\"run_id\" IS NOT NULL)\n    OR (\"succession_notifications\".\"kind\"='sync_done' AND \"succession_notifications\".\"batch_id\" IS NOT NULL)"
+        },
+        "succession_notifications_state": {
+          "name": "succession_notifications_state",
+          "value": "\"succession_notifications\".\"state\" IN ('pending','sent','failed','unknown')"
+        },
+        "succession_notifications_attempt": {
+          "name": "succession_notifications_attempt",
+          "value": "\"succession_notifications\".\"attempt_no\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.talent_review_project_calibration_fields": {
+      "name": "talent_review_project_calibration_fields",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "field_id": {
+          "name": "field_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "required": {
+          "name": "required",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "talent_review_project_calibration_fields_tenant_id_tenants_id_fk": {
+          "name": "talent_review_project_calibration_fields_tenant_id_tenants_id_fk",
+          "tableFrom": "talent_review_project_calibration_fields",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "tr_project_calibration_project_fk": {
+          "name": "tr_project_calibration_project_fk",
+          "tableFrom": "talent_review_project_calibration_fields",
+          "tableTo": "talent_review_projects",
+          "columnsFrom": [
+            "tenant_id",
+            "project_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "tr_project_calibration_field_fk": {
+          "name": "tr_project_calibration_field_fk",
+          "tableFrom": "talent_review_project_calibration_fields",
+          "tableTo": "talent_review_fields",
+          "columnsFrom": [
+            "tenant_id",
+            "field_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "talent_review_project_calibration_fields_tenant_id_project_id_field_id_pk": {
+          "name": "talent_review_project_calibration_fields_tenant_id_project_id_field_id_pk",
+          "columns": [
+            "tenant_id",
+            "project_id",
+            "field_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.talent_review_project_excluded_categories": {
+      "name": "talent_review_project_excluded_categories",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "category_id": {
+          "name": "category_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "talent_review_project_excluded_categories_tenant_id_tenants_id_fk": {
+          "name": "talent_review_project_excluded_categories_tenant_id_tenants_id_fk",
+          "tableFrom": "talent_review_project_excluded_categories",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "tr_project_excluded_project_fk": {
+          "name": "tr_project_excluded_project_fk",
+          "tableFrom": "talent_review_project_excluded_categories",
+          "tableTo": "talent_review_projects",
+          "columnsFrom": [
+            "tenant_id",
+            "project_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "tr_project_excluded_category_fk": {
+          "name": "tr_project_excluded_category_fk",
+          "tableFrom": "talent_review_project_excluded_categories",
+          "tableTo": "talent_review_categories",
+          "columnsFrom": [
+            "tenant_id",
+            "category_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "talent_review_project_excluded_categories_tenant_id_project_id_category_id_pk": {
+          "name": "talent_review_project_excluded_categories_tenant_id_project_id_category_id_pk",
+          "columns": [
+            "tenant_id",
+            "project_id",
+            "category_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.talent_review_project_matrices": {
+      "name": "talent_review_project_matrices",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "matrix_id": {
+          "name": "matrix_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ratio_group_id": {
+          "name": "ratio_group_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sort_no": {
+          "name": "sort_no",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "talent_review_project_matrices_tenant_id_tenants_id_fk": {
+          "name": "talent_review_project_matrices_tenant_id_tenants_id_fk",
+          "tableFrom": "talent_review_project_matrices",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "tr_project_matrix_project_fk": {
+          "name": "tr_project_matrix_project_fk",
+          "tableFrom": "talent_review_project_matrices",
+          "tableTo": "talent_review_projects",
+          "columnsFrom": [
+            "tenant_id",
+            "project_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "tr_project_matrix_matrix_fk": {
+          "name": "tr_project_matrix_matrix_fk",
+          "tableFrom": "talent_review_project_matrices",
+          "tableTo": "talent_review_matrices",
+          "columnsFrom": [
+            "tenant_id",
+            "matrix_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "tr_project_matrix_group_fk": {
+          "name": "tr_project_matrix_group_fk",
+          "tableFrom": "talent_review_project_matrices",
+          "tableTo": "talent_review_ratio_rule_groups",
+          "columnsFrom": [
+            "tenant_id",
+            "ratio_group_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "talent_review_project_matrices_tenant_id_project_id_matrix_id_pk": {
+          "name": "talent_review_project_matrices_tenant_id_project_id_matrix_id_pk",
+          "columns": [
+            "tenant_id",
+            "project_id",
+            "matrix_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.talent_review_project_shared_orgs": {
+      "name": "talent_review_project_shared_orgs",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "talent_review_project_shared_orgs_tenant_id_tenants_id_fk": {
+          "name": "talent_review_project_shared_orgs_tenant_id_tenants_id_fk",
+          "tableFrom": "talent_review_project_shared_orgs",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "tr_project_shared_project_fk": {
+          "name": "tr_project_shared_project_fk",
+          "tableFrom": "talent_review_project_shared_orgs",
+          "tableTo": "talent_review_projects",
+          "columnsFrom": [
+            "tenant_id",
+            "project_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "talent_review_project_shared_orgs_tenant_id_org_id_org_objects_tenant_id_id_fk": {
+          "name": "talent_review_project_shared_orgs_tenant_id_org_id_org_objects_tenant_id_id_fk",
+          "tableFrom": "talent_review_project_shared_orgs",
+          "tableTo": "org_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "org_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "talent_review_project_shared_orgs_tenant_id_project_id_org_id_pk": {
+          "name": "talent_review_project_shared_orgs_tenant_id_project_id_org_id_pk",
+          "columns": [
+            "tenant_id",
+            "project_id",
+            "org_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.talent_review_projects": {
+      "name": "talent_review_projects",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "category_id": {
+          "name": "category_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "owner_org_id": {
+          "name": "owner_org_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "downward_public": {
+          "name": "downward_public",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "year": {
+          "name": "year",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "period": {
+          "name": "period",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "period_start_date": {
+          "name": "period_start_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "period_end_date": {
+          "name": "period_end_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "business_date": {
+          "name": "business_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_full_calc_at": {
+          "name": "last_full_calc_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "calc_state": {
+          "name": "calc_state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'not_calculated'"
+        },
+        "calc_rule_id": {
+          "name": "calc_rule_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "carry_last_result": {
+          "name": "carry_last_result",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'new'"
+        },
+        "ended_count": {
+          "name": "ended_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "talent_review_projects_org": {
+          "name": "talent_review_projects_org",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "owner_org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "talent_review_projects_tenant_id_tenants_id_fk": {
+          "name": "talent_review_projects_tenant_id_tenants_id_fk",
+          "tableFrom": "talent_review_projects",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "talent_review_projects_owner_id_users_id_fk": {
+          "name": "talent_review_projects_owner_id_users_id_fk",
+          "tableFrom": "talent_review_projects",
+          "tableTo": "users",
+          "columnsFrom": [
+            "owner_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "talent_review_projects_tenant_id_owner_org_id_org_objects_tenant_id_id_fk": {
+          "name": "talent_review_projects_tenant_id_owner_org_id_org_objects_tenant_id_id_fk",
+          "tableFrom": "talent_review_projects",
+          "tableTo": "org_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "owner_org_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "talent_review_projects_tenant_id_category_id_talent_review_categories_tenant_id_id_fk": {
+          "name": "talent_review_projects_tenant_id_category_id_talent_review_categories_tenant_id_id_fk",
+          "tableFrom": "talent_review_projects",
+          "tableTo": "talent_review_categories",
+          "columnsFrom": [
+            "tenant_id",
+            "category_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "talent_review_projects_tenant_id_calc_rule_id_talent_review_calc_rules_tenant_id_id_fk": {
+          "name": "talent_review_projects_tenant_id_calc_rule_id_talent_review_calc_rules_tenant_id_id_fk",
+          "tableFrom": "talent_review_projects",
+          "tableTo": "talent_review_calc_rules",
+          "columnsFrom": [
+            "tenant_id",
+            "calc_rule_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "talent_review_projects_tenant_id": {
+          "name": "talent_review_projects_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        },
+        "talent_review_projects_code": {
+          "name": "talent_review_projects_code",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "code"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "talent_review_projects_dates": {
+          "name": "talent_review_projects_dates",
+          "value": "\"talent_review_projects\".\"period_start_date\" <= \"talent_review_projects\".\"period_end_date\""
+        },
+        "talent_review_projects_status": {
+          "name": "talent_review_projects_status",
+          "value": "\"talent_review_projects\".\"status\" IN ('new','in_progress','ended')"
+        },
+        "talent_review_projects_calc_state": {
+          "name": "talent_review_projects_calc_state",
+          "value": "\"talent_review_projects\".\"calc_state\" IN ('not_calculated','calculating','success','failed')"
+        },
+        "talent_review_projects_ended_count": {
+          "name": "talent_review_projects_ended_count",
+          "value": "\"talent_review_projects\".\"ended_count\" >= 0"
+        },
+        "talent_review_projects_rev": {
+          "name": "talent_review_projects_rev",
+          "value": "\"talent_review_projects\".\"revision\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.ev_condition_details": {
+      "name": "ev_condition_details",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "condition_id": {
+          "name": "condition_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "position": {
+          "name": "position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "seq": {
+          "name": "seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "field": {
+          "name": "field",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "operator": {
+          "name": "operator",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "value1": {
+          "name": "value1",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "value2": {
+          "name": "value2",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "value1_type": {
+          "name": "value1_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "value2_type": {
+          "name": "value2_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "ev_condition_details_tenant_id_tenants_id_fk": {
+          "name": "ev_condition_details_tenant_id_tenants_id_fk",
+          "tableFrom": "ev_condition_details",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "ev_condition_details_condition_fk": {
+          "name": "ev_condition_details_condition_fk",
+          "tableFrom": "ev_condition_details",
+          "tableTo": "ev_conditions",
+          "columnsFrom": [
+            "tenant_id",
+            "condition_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "ev_condition_details_seq": {
+          "name": "ev_condition_details_seq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "condition_id",
+            "seq"
+          ]
+        },
+        "ev_condition_details_position": {
+          "name": "ev_condition_details_position",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "condition_id",
+            "position"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "ev_condition_details_order": {
+          "name": "ev_condition_details_order",
+          "value": "\"ev_condition_details\".\"seq\" > 0 AND \"ev_condition_details\".\"position\" >= 0"
+        },
+        "ev_condition_details_field": {
+          "name": "ev_condition_details_field",
+          "value": "length(btrim(\"ev_condition_details\".\"source\")) > 0 AND length(btrim(\"ev_condition_details\".\"field\")) > 0"
+        },
+        "ev_condition_details_operator": {
+          "name": "ev_condition_details_operator",
+          "value": "\"ev_condition_details\".\"operator\" IN ('eq', 'ne', 'gt', 'lt', 'ge', 'le', 'is_empty', 'not_empty', 'between')"
+        },
+        "ev_condition_details_types": {
+          "name": "ev_condition_details_types",
+          "value": "(\"ev_condition_details\".\"value1\" IS NULL) = (\"ev_condition_details\".\"value1_type\" IS NULL)\n      AND (\"ev_condition_details\".\"value2\" IS NULL) = (\"ev_condition_details\".\"value2_type\" IS NULL)\n      AND (\"ev_condition_details\".\"value1_type\" IS NULL OR \"ev_condition_details\".\"value1_type\" IN ('string', 'number'))\n      AND (\"ev_condition_details\".\"value2_type\" IS NULL OR \"ev_condition_details\".\"value2_type\" IN ('string', 'number'))"
+        },
+        "ev_condition_details_values": {
+          "name": "ev_condition_details_values",
+          "value": "CASE WHEN \"ev_condition_details\".\"operator\" IN ('is_empty', 'not_empty') THEN \"ev_condition_details\".\"value1\" IS NULL AND \"ev_condition_details\".\"value2\" IS NULL\n      WHEN \"ev_condition_details\".\"operator\" = 'between' THEN \"ev_condition_details\".\"value1\" IS NOT NULL AND \"ev_condition_details\".\"value2\" IS NOT NULL\n      ELSE \"ev_condition_details\".\"value1\" IS NOT NULL AND \"ev_condition_details\".\"value2\" IS NULL END"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.ev_conditions": {
+      "name": "ev_conditions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "activity_id": {
+          "name": "activity_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "seq": {
+          "name": "seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "applicant_kind": {
+          "name": "applicant_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "category_ids": {
+          "name": "category_ids",
+          "type": "uuid[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::uuid[]"
+        },
+        "level_ids": {
+          "name": "level_ids",
+          "type": "uuid[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::uuid[]"
+        },
+        "expression": {
+          "name": "expression",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "ev_conditions_tenant_id_tenants_id_fk": {
+          "name": "ev_conditions_tenant_id_tenants_id_fk",
+          "tableFrom": "ev_conditions",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "ev_conditions_activity_fk": {
+          "name": "ev_conditions_activity_fk",
+          "tableFrom": "ev_conditions",
+          "tableTo": "ev_activities",
+          "columnsFrom": [
+            "tenant_id",
+            "activity_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "ev_conditions_tenant_id": {
+          "name": "ev_conditions_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        },
+        "ev_conditions_seq": {
+          "name": "ev_conditions_seq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "activity_id",
+            "seq"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "ev_conditions_kind": {
+          "name": "ev_conditions_kind",
+          "value": "\"ev_conditions\".\"kind\" IN ('common', 'extra')"
+        },
+        "ev_conditions_applicant": {
+          "name": "ev_conditions_applicant",
+          "value": "\"ev_conditions\".\"applicant_kind\" IN ('self', 'others')"
+        },
+        "ev_conditions_seq_nonnegative": {
+          "name": "ev_conditions_seq_nonnegative",
+          "value": "\"ev_conditions\".\"seq\" >= 0"
         }
       },
       "isRLSEnabled": false
