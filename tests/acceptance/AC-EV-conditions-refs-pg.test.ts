@@ -183,8 +183,9 @@ describe('AC-EV-conditions 类别 / 级别引用完整性', () => {
         race.evaluation = race.qualification = false;
       }
       const responses = await Promise.all([first, second!]);
+      const savedStatus = method === 'POST' ? 201 : 200;
       expect(responses.map((response) => response.status)).toEqual(
-        order === '保存先行' ? [method === 'POST' ? 201 : 200, 409] : [200, 404],
+        order === '保存先行' ? [savedStatus, 409] : [200, 404],
       );
       if (order === '保存先行') {
         const saved = (await responses[0]!.json()) as { id: string };

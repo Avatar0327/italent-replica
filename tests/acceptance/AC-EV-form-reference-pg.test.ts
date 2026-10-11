@@ -96,7 +96,7 @@ describe.skipIf(!process.env['TEST_DATABASE_URL'])('AC-EV-form × 活动引用�
     const responses = await Promise.all([first, second!]);
     expect(
       responses.map((response) => response.status),
-      await Promise.all(responses.map((r) => r.clone().text())),
+      (await Promise.all(responses.map((r) => r.clone().text()))).join('\n'),
     ).toEqual([200, 200]);
     const saved = await w.adminRead(activity.id);
     expect(saved.revision).toBe(activity.revision + 1);

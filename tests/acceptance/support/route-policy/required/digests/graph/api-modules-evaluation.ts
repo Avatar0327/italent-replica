@@ -44,7 +44,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
   ],
   'apps/api/src/modules/evaluation/activity-form-lock.ts#activityFormLocked': [
-    'apps/api/src/modules/evaluation/access.ts#rowsOf',
+    'apps/api/src/modules/evaluation/reference-locks.ts#lockActivitiesForForm',
   ],
   'apps/api/src/modules/evaluation/activity-form-lock.ts#registerActivityFormLock': [
     '#activityFormLocked',
@@ -192,11 +192,13 @@ export const GRAPH: Graph = {
     '#writeOrgs',
     'apps/api/src/modules/evaluation/conditions.ts#prepareConditions',
     'apps/api/src/modules/evaluation/conditions.ts#replaceConditions',
+    'apps/api/src/modules/evaluation/reference-locks.ts#coordinateActivityForms',
     'apps/api/src/modules/evaluation/store.ts#audit',
     'apps/api/src/modules/evaluation/store.ts#requireOwnerOrg',
   ],
   'apps/api/src/modules/evaluation/activity-service.ts#deleteActivity': [
     '#loadActivity',
+    'apps/api/src/modules/evaluation/reference-locks.ts#coordinateActivityForms',
     'apps/api/src/modules/evaluation/store.ts#audit',
     'apps/api/src/modules/evaluation/store.ts#lockEditable',
   ],
@@ -235,6 +237,7 @@ export const GRAPH: Graph = {
     '#writeOrgs',
     'apps/api/src/modules/evaluation/conditions.ts#prepareConditions',
     'apps/api/src/modules/evaluation/conditions.ts#replaceConditions',
+    'apps/api/src/modules/evaluation/reference-locks.ts#coordinateActivityForms',
     'apps/api/src/modules/evaluation/store.ts#audit',
     'apps/api/src/modules/evaluation/store.ts#bumped',
     'apps/api/src/modules/evaluation/store.ts#lockEditable',
@@ -431,12 +434,14 @@ export const GRAPH: Graph = {
     '#loadForm',
     '#replaceItems',
     '#toStored',
+    'apps/api/src/modules/evaluation/reference-locks.ts#coordinateActivityForms',
     'apps/api/src/modules/evaluation/store.ts#audit',
     'apps/api/src/modules/evaluation/store.ts#requireOwnerOrg',
   ],
   'apps/api/src/modules/evaluation/form-service.ts#deleteForm': [
     '#auditSnapshot',
     '#loadForm',
+    'apps/api/src/modules/evaluation/reference-locks.ts#coordinateActivityForms',
     'apps/api/src/modules/evaluation/store.ts#audit',
     'apps/api/src/modules/evaluation/store.ts#lockEditable',
     'apps/api/src/modules/evaluation/usage.ts#rejectInUse',
@@ -469,6 +474,7 @@ export const GRAPH: Graph = {
     '#lockedContent',
     '#mergedSettings',
     '#replaceItems',
+    'apps/api/src/modules/evaluation/reference-locks.ts#coordinateActivityForms',
     'apps/api/src/modules/evaluation/store.ts#audit',
     'apps/api/src/modules/evaluation/store.ts#bumped',
     'apps/api/src/modules/evaluation/store.ts#lockEditable',
@@ -581,6 +587,14 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/evaluation/read-model.ts#orderBy': ['#ORDER'],
   'apps/api/src/modules/evaluation/read-model.ts#reload': ['#loadRow', '#view'],
   'apps/api/src/modules/evaluation/read-model.ts#view': ['#INTERNAL', '#camel'],
+  'apps/api/src/modules/evaluation/reference-locks.ts#coordinateActivityForms': [
+    'apps/api/src/advisory-lock.ts#advisoryLock',
+    'apps/api/src/advisory-lock.ts#asUuid',
+    '#lockActivitiesForForm',
+  ],
+  'apps/api/src/modules/evaluation/reference-locks.ts#lockActivitiesForForm': [
+    'apps/api/src/modules/evaluation/access.ts#rowsOf',
+  ],
   'apps/api/src/modules/evaluation/review-group-routes.ts#PATH': [
     'apps/api/src/modules/evaluation/route-support.ts#EV_BASE',
   ],
