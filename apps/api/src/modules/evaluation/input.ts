@@ -3,6 +3,7 @@
  * 所属人、创建人由系统填写）一律 400。名称长度同任职资格配置（≤100）。
  */
 import { z } from 'zod';
+import { roundDecimal } from '@italent/domain';
 
 // 名称租户内唯一由库内约束 + service 转 409（Q-M0-152）；这里 trim，所以首尾空白不构成不同名称
 const name = z.string().trim().min(1).max(100);
@@ -54,14 +55,15 @@ export const reviewGroupPatch = reviewGroupCreate.partial();
 export type ReviewGroupCreate = z.infer<typeof reviewGroupCreate>;
 export type ReviewGroupPatch = z.infer<typeof reviewGroupPatch>;
 
-// ── 评价表（B4，标准模式）──────────────────────────────────────────────
-// 没有编码字段、名称不要求唯一（照评审组 DEC-393 的经验，原站未证实，需取证 #216）。评分项数量上限 50 是系统保护 🟡。
-export const FORM_SCORE_MODES = ['by_indicator', 'by_total'] as const;
-export const MAX_FORM_ITEMS = 50;
+// DEC-413 / 规格 24 Q-M0-175：无编码、不校验名称唯一；通用项是多选集合、不设数量上限。
+export const FORM_SCORE_MODES = ['by_indicator', 'by_total', 'by_vote'] as const;
 const twoDecimals = (value: number) => Math.abs(value * 100 - Math.round(value * 100)) < 1e-6;
-// 满分 / 通过分数的存储是 numeric(8,2)：上限 999999.99，超出 400 而不是溢出成 500
-const MAX_SCORE = 999_999.99;
-const score = z.number().max(MAX_SCORE, '分数过大').refine(twoDecimals, '最多 2 位小数');
+// 按十进制截位，不用乘 100 的浮点运算；15 位数字包括整数与保留的小数（小数点不计位数）。
+const score = z
+  .number()
+  .transform((value) => roundDecimal(value, 2, 'down'))
+  .refine((value) => value > 0, '请设置大于0的数字')
+  .refine((value) => value < 1e15 && String(value).replace('.', '').length <= 15, '最多输入15位数字');
 const weight = z.number().refine(twoDecimals, '最多 2 位小数').nullable().optional();
 const standardItem = z.strictObject({
   kind: z.literal('standard'),
@@ -69,17 +71,17 @@ const standardItem = z.strictObject({
   hiddenTargetIds: z.array(uuid).max(500).optional(),
 });
 const generalItem = z.strictObject({ kind: z.literal('general'), generalItemId: uuid, weight });
-const formItems = z.array(z.discriminatedUnion('kind', [standardItem, generalItem])).max(MAX_FORM_ITEMS, {
-  error: `评分项最多 ${MAX_FORM_ITEMS} 个`,
-});
+const formItems = z.array(z.discriminatedUnion('kind', [standardItem, generalItem]));
 export const formCreate = z.strictObject({
   name,
   ownerOrgId: uuid,
   enabled: z.boolean().optional(),
   scoreMode: z.enum(FORM_SCORE_MODES),
-  fullScore: score.refine((value) => value > 0, '满分须大于 0'),
-  passScore: score.refine((value) => value >= 0, '通过分数不能为负'),
+  fullScore: score.nullable().optional(),
+  passScore: score.nullable().optional(),
   totalRule: z.enum(['average', 'weighted', 'sum']).nullable().optional(),
+  votePassRatio: z.number().min(0).max(100).nullable().optional(),
+  indicatorReference: z.boolean().optional(),
   items: formItems,
 });
 export const formPatch = formCreate.partial();

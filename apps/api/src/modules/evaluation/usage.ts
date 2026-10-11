@@ -12,7 +12,8 @@
  * TODO(B5): 登记 activityType / activityCycle 被 ev_activities 引用的 delete 与 disable 规则（还没有活动表）。
  * B4 已登记 generalScoreItem 被评价表评分项引用的 delete 与 disable 规则（form-usage.ts；disable 带 `references`，visible 取评价表的
  * 范围谓词，范围由路由层在命令事务内解析进写命令上下文 formVisibility）。
- * TODO(B5): 登记 evaluationForm 被活动环节引用的 delete 与 disable 规则。
+ * F-091（DEC-413）已接通评价表停用的 disable 检查；B5 登记实际活动环节引用的 delete 与 disable 规则。
+ * disable 提示固定“已在活动中使用此评价表，无法停用”；活动新增引用须先 FOR SHARE 评价表并重新检查 enabled。
  */
 import { sql, type Tx } from '@italent/db';
 import type { SQL } from 'drizzle-orm';

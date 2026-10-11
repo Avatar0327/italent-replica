@@ -152,8 +152,8 @@ export const evReviewMembers = pgTable(
 
 /**
  * 评价表 EvaluationForm（B4，标准模式；设计 §3.2）：所属组织 `owner_org_id` 必填手选（DEC-324②，同评审组）；评分方式
- * `score_mode`（按指标 / 评总分）、满分、通过分数、总分计算规则 `total_rule`（评总分时为空）。没有编码字段、名称不要求唯一
- * （照评审组 DEC-393 的经验，原站未证实，需取证 #216）。评分项见 `ev_form_items`，随表整组编辑。
+ * `score_mode`（按指标 / 评总分 / 投票）。DEC-413：投票比例与参考评分开关；分数 > 0，允许通过分超过满分。
+ * 无编码、名称不要求唯一。纯投票不存分数与总分规则；评分项见 `ev_form_items`，随表整组编辑。
  */
 export const evForms = pgTable(
   'ev_forms',
@@ -165,18 +165,40 @@ export const evForms = pgTable(
     ownerOrgId: uuid('owner_org_id').notNull(),
     enabled: enabled(),
     scoreMode: text('score_mode').notNull(),
-    fullScore: numeric('full_score', { precision: 8, scale: 2 }).notNull(),
-    passScore: numeric('pass_score', { precision: 8, scale: 2 }).notNull(),
+    fullScore: numeric('full_score', { precision: 17, scale: 2 }),
+    passScore: numeric('pass_score', { precision: 17, scale: 2 }),
     totalRule: text('total_rule'),
+    votePassRatio: numeric('vote_pass_ratio'),
+    indicatorReference: boolean('indicator_reference').notNull().default(false),
     ...tracked(),
   },
   (t) => [
     unique('ev_forms_tenant_id').on(t.tenantId, t.id),
     index('ev_forms_owner_org').on(t.tenantId, t.ownerOrgId),
-    check('ev_forms_score_mode', sql`${t.scoreMode} IN ('by_indicator', 'by_total')`),
+    check('ev_forms_score_mode', sql`${t.scoreMode} IN ('by_indicator', 'by_total', 'by_vote')`),
     check('ev_forms_total_rule', sql`${t.totalRule} IN ('average', 'weighted', 'sum')`),
-    check('ev_forms_total_rule_by_mode', sql`(${t.scoreMode} = 'by_indicator') = (${t.totalRule} IS NOT NULL)`),
-    check('ev_forms_scores', sql`${t.fullScore} > 0 AND ${t.passScore} >= 0 AND ${t.passScore} <= ${t.fullScore}`),
+    check(
+      'ev_forms_total_rule_by_mode',
+      sql`(${t.scoreMode} = 'by_indicator'
+      OR (${t.scoreMode} = 'by_vote' AND ${t.indicatorReference})) = (${t.totalRule} IS NOT NULL)`,
+    ),
+    check(
+      'ev_forms_scores',
+      sql`(${t.fullScore} IS NULL OR (${t.fullScore} > 0 AND ${t.fullScore} < 1000000000000000))
+      AND (${t.passScore} IS NULL OR (${t.passScore} > 0 AND ${t.passScore} < 1000000000000000))`,
+    ),
+    check(
+      'ev_forms_scores_by_mode',
+      sql`CASE WHEN ${t.scoreMode} = 'by_vote' AND NOT ${t.indicatorReference}
+      THEN ${t.fullScore} IS NULL AND ${t.passScore} IS NULL
+      ELSE ${t.fullScore} IS NOT NULL AND ${t.passScore} IS NOT NULL END`,
+    ),
+    check(
+      'ev_forms_vote_settings',
+      sql`(${t.scoreMode} = 'by_vote') = (${t.votePassRatio} IS NOT NULL)
+      AND (${t.votePassRatio} IS NULL OR (${t.votePassRatio} >= 0 AND ${t.votePassRatio} <= 100))
+      AND (${t.scoreMode} = 'by_vote' OR NOT ${t.indicatorReference})`,
+    ),
     foreignKey({
       columns: [t.tenantId, t.ownerOrgId],
       foreignColumns: [orgObjects.tenantId, orgObjects.id],
@@ -209,6 +231,9 @@ export const evFormItems = pgTable(
     uniqueIndex('ev_form_items_standard')
       .on(t.tenantId, t.formId)
       .where(sql`${t.kind} = 'standard'`),
+    uniqueIndex('ev_form_items_general_once')
+      .on(t.tenantId, t.formId, t.generalItemId)
+      .where(sql`${t.kind} = 'general'`),
     index('ev_form_items_general').on(t.tenantId, t.generalItemId),
     check('ev_form_items_kind', sql`${t.kind} IN ('standard', 'general')`),
     check(

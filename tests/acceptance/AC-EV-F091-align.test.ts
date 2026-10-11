@@ -61,7 +61,15 @@ describe('AC-EV-F091-align 评价表原站口径（DEC-413）', () => {
     const form = await ok<FormView>(await create(body()), 201);
     await testDb().db.execute(sql`INSERT INTO ev_f091_refs VALUES (${w.tenant.id}, ${form.id})`);
     const before = await read(form.id);
-    const response = await patch(form, { enabled: false });
+    const countWrites = () =>
+      withTenant(testDb().db, w.tenant.id, async (tx) => {
+        const result = await tx.execute(sql`SELECT count(*)::int AS n FROM audit_events
+        WHERE object_id = ${form.id} AND action = 'evaluation.form.update'`);
+        return (Array.isArray(result) ? result : (result as { rows: { n: number }[] }).rows)[0].n;
+      });
+    const auditBefore = await countWrites();
+    const key = randomUUID();
+    const response = await patch(form, { enabled: false }, key);
     expect(response.status, await response.clone().text()).toBe(409);
     expect(await response.clone().json()).toMatchObject({
       error: {
@@ -70,6 +78,12 @@ describe('AC-EV-F091-align 评价表原站口径（DEC-413）', () => {
       },
     });
     expect(await read(form.id)).toEqual(before);
+    expect(await countWrites()).toBe(auditBefore);
+    await withTenant(testDb().db, w.tenant.id, async (tx) => {
+      const result = await tx.execute(sql`SELECT count(*)::int AS n FROM command_ledger WHERE command_id = ${key}`);
+      const rows = Array.isArray(result) ? result : (result as { rows: { n: number }[] }).rows;
+      expect(rows[0].n).toBe(0);
+    });
     await testDb().db.execute(sql`DELETE FROM ev_f091_refs WHERE form_id = ${form.id}`);
     const disabled = await ok<AlignedForm>(await patch(form, { enabled: false }));
     expect(disabled).toMatchObject({ enabled: false, revision: form.revision + 1 });

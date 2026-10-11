@@ -54,11 +54,22 @@ export const EVALUATION_OBJECTS = {
    * 评审组：成员随组整组编辑。照原站没有编码字段、没有删除入口（DEC-393①⑤），所以没有“删除”按钮，列表操作只有编辑 / 停用。
    */
   reviewGroup: withoutDelete(object('ReviewGroup', ['name', 'ownerOrgId', 'enabled', 'members'], ['ownerId'])),
-  /** 评价表（标准模式）：评分项随表整组编辑。没有编码字段（照评审组 DEC-393 的经验，原站未证实，#216）。 */
+  /** 评价表（标准模式，DEC-413）：无编码、名称不唯一；投票可同时启用指标评分作为参考。 */
   evaluationForm: object(
     'EvaluationForm',
-    ['name', 'ownerOrgId', 'enabled', 'scoreMode', 'fullScore', 'passScore', 'totalRule', 'items'],
-    ['ownerId'],
+    [
+      'name',
+      'ownerOrgId',
+      'enabled',
+      'scoreMode',
+      'fullScore',
+      'passScore',
+      'totalRule',
+      'votePassRatio',
+      'indicatorReference',
+      'items',
+    ],
+    ['ownerId', 'weightWarning'],
   ),
   /**
    * 评定活动：参评条件与环节随活动整份提交；状态与报名数由流程维护（只读）。行操作发布 / 取消发布 / 完成（规格 24
