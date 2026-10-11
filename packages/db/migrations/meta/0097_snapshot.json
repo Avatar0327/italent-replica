@@ -1,5 +1,5 @@
 {
-  "id": "c355c84b-20ac-4b57-8764-9d78095734fd",
+  "id": "903dd3c0-897d-471d-bd00-d9c752ea4a23",
   "prevId": "5d40903e-ac89-4973-93fd-8d33aabc2832",
   "version": "7",
   "dialect": "postgresql",
@@ -33119,117 +33119,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.survey360_sheet_timings": {
-      "name": "survey360_sheet_timings",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "relation_id": {
-          "name": "relation_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "questionnaire_id": {
-          "name": "questionnaire_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "opened_at": {
-          "name": "opened_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "page_started_at": {
-          "name": "page_started_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "survey360_sheet_timings_tenant_id_tenants_id_fk": {
-          "name": "survey360_sheet_timings_tenant_id_tenants_id_fk",
-          "tableFrom": "survey360_sheet_timings",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "survey360_sheet_timings_relation_fk": {
-          "name": "survey360_sheet_timings_relation_fk",
-          "tableFrom": "survey360_sheet_timings",
-          "tableTo": "survey360_relations",
-          "columnsFrom": [
-            "tenant_id",
-            "relation_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "survey360_sheet_timings_questionnaire_fk": {
-          "name": "survey360_sheet_timings_questionnaire_fk",
-          "tableFrom": "survey360_sheet_timings",
-          "tableTo": "survey360_questionnaires",
-          "columnsFrom": [
-            "tenant_id",
-            "questionnaire_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "survey360_sheet_timings_tenant_id": {
-          "name": "survey360_sheet_timings_tenant_id",
-          "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "id"
-          ]
-        },
-        "survey360_sheet_timings_pair": {
-          "name": "survey360_sheet_timings_pair",
-          "nullsNotDistinct": false,
-          "columns": [
-            "relation_id",
-            "questionnaire_id"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.survey360_sheets": {
       "name": "survey360_sheets",
       "schema": "",
@@ -39224,6 +39113,234 @@
       },
       "policies": {},
       "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.ev_sync_queue": {
+      "name": "ev_sync_queue",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "handler": {
+          "name": "handler",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "dedupe_key": {
+          "name": "dedupe_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "outbox_id": {
+          "name": "outbox_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "employee_id": {
+          "name": "employee_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "record_id": {
+          "name": "record_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "seq": {
+          "name": "seq",
+          "type": "bigserial",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "next_attempt_at": {
+          "name": "next_attempt_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "ev_sync_queue_pickup": {
+          "name": "ev_sync_queue_pickup",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "handler",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "next_attempt_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "ev_sync_queue_record": {
+          "name": "ev_sync_queue_record",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "record_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "ev_sync_queue_tenant_id_tenants_id_fk": {
+          "name": "ev_sync_queue_tenant_id_tenants_id_fk",
+          "tableFrom": "ev_sync_queue",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "ev_sync_queue_outbox_fk": {
+          "name": "ev_sync_queue_outbox_fk",
+          "tableFrom": "ev_sync_queue",
+          "tableTo": "employment_outbox",
+          "columnsFrom": [
+            "tenant_id",
+            "outbox_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "ev_sync_queue_employee_fk": {
+          "name": "ev_sync_queue_employee_fk",
+          "tableFrom": "ev_sync_queue",
+          "tableTo": "employment_employees",
+          "columnsFrom": [
+            "tenant_id",
+            "employee_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "ev_sync_queue_dedupe": {
+          "name": "ev_sync_queue_dedupe",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "handler",
+            "dedupe_key"
+          ]
+        },
+        "ev_sync_queue_seq": {
+          "name": "ev_sync_queue_seq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "seq"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "ev_sync_queue_state": {
+          "name": "ev_sync_queue_state",
+          "value": "\"ev_sync_queue\".\"state\" IN ('pending', 'done', 'skipped', 'failed')"
+        },
+        "ev_sync_queue_attempts": {
+          "name": "ev_sync_queue_attempts",
+          "value": "\"ev_sync_queue\".\"attempts\" >= 0"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.idp_careers": {

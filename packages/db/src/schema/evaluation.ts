@@ -6,6 +6,7 @@
  */
 import { sql } from 'drizzle-orm';
 import {
+  bigserial,
   boolean,
   check,
   foreignKey,
@@ -19,7 +20,7 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { employmentEmployees } from './employment.js';
+import { employmentEmployees, employmentOutbox } from './employment.js';
 import { orgObjects } from './org.js';
 import { tenants } from './tenancy.js';
 
@@ -226,5 +227,54 @@ export const evFormItems = pgTable(
       foreignColumns: [evGeneralItems.tenantId, evGeneralItems.id],
       name: 'ev_form_items_general_fk',
     }).onDelete('restrict'),
+  ],
+);
+
+export type SyncQueueState = 'pending' | 'done' | 'skipped' | 'failed';
+
+/**
+ * 任职事件同步队列（R3-T02 C1-4，设计 §4.3）：每个（任职事件, 处理器）一行，由 employment_outbox 上的
+ * AFTER INSERT 触发器在写任职的同一事务内插入（迁移里的 ev_enqueue_qualification_sync），事件与队列行同时提交或回滚。
+ * 消费者按状态取数（pending / failed 且到了 next_attempt_at），没有时间游标，所以迟提交的事件下一轮自然被取到。
+ * 判重键 UNIQUE(tenant_id, handler, dedupe_key)：qualification_sync 的 dedupe_key = outbox 事件 ID，重复入队只一行。
+ * handler 是文本而不是枚举：C2-1b 追加 evaluation_leave 时只改触发器函数，不改本表。
+ */
+export const evSyncQueue = pgTable(
+  'ev_sync_queue',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    handler: text('handler').notNull(),
+    dedupeKey: text('dedupe_key').notNull(),
+    outboxId: uuid('outbox_id'),
+    employeeId: uuid('employee_id').notNull(),
+    recordId: uuid('record_id').notNull(),
+    /** 入队的单调序号：同一员工的任职写入在员工锁内串行，序号即任职事件的持久登记先后（同批、同时间戳也不会并列）。 */
+    seq: bigserial('seq', { mode: 'number' }).notNull(),
+    state: text('state').$type<SyncQueueState>().notNull().default('pending'),
+    attempts: integer('attempts').notNull().default(0),
+    nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).notNull().defaultNow(),
+    reason: text('reason'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('ev_sync_queue_dedupe').on(t.tenantId, t.handler, t.dedupeKey),
+    unique('ev_sync_queue_seq').on(t.seq),
+    index('ev_sync_queue_pickup').on(t.tenantId, t.handler, t.state, t.nextAttemptAt),
+    index('ev_sync_queue_record').on(t.tenantId, t.recordId),
+    // 复合外键（租户内）：outbox 事件只追加不可改删，员工不物理删除；队列行只由入队触发器按事件行复制写入
+    foreignKey({
+      columns: [t.tenantId, t.outboxId],
+      foreignColumns: [employmentOutbox.tenantId, employmentOutbox.id],
+      name: 'ev_sync_queue_outbox_fk',
+    }).onDelete('restrict'),
+    foreignKey({
+      columns: [t.tenantId, t.employeeId],
+      foreignColumns: [employmentEmployees.tenantId, employmentEmployees.id],
+      name: 'ev_sync_queue_employee_fk',
+    }).onDelete('restrict'),
+    check('ev_sync_queue_state', sql`${t.state} IN ('pending', 'done', 'skipped', 'failed')`),
+    check('ev_sync_queue_attempts', sql`${t.attempts} >= 0`),
   ],
 );

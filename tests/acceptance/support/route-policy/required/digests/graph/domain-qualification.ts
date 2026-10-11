@@ -7,6 +7,7 @@ import type { Graph } from '../../../evidence-graph.js';
 export const GRAPH: Graph = {
   'packages/domain/src/qualification/catalog.ts#QUALIFICATION_OBJECTS': ['#OWNER_FIELDS', '#object', '#owned'],
   'packages/domain/src/qualification/catalog.ts#QUALIFICATION_ORG_AUDITED': ['#QUALIFICATION_OWNED_OBJECTS'],
+  'packages/domain/src/qualification/catalog.ts#QUALIFICATION_PAGES': ['#QUALIFICATION_APP'],
   'packages/domain/src/qualification/catalog.ts#object': ['#QUALIFICATION_APP', '#SYSTEM_FIELDS', '#crud'],
   'packages/domain/src/qualification/catalog.ts#owned': ['#OWNER_FIELDS', '#object'],
   'packages/domain/src/qualification/indicator-port.ts#registerQualificationIndicatorPort': ['#registered'],

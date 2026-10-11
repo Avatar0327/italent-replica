@@ -5,6 +5,8 @@
 import type { Graph } from '../../../evidence-graph.js';
 
 export const GRAPH: Graph = {
+  'packages/domain/src/survey360/catalog.ts#ADVANCED_WITHOUT': ['#SURVEY360_BUTTONS'],
+  'packages/domain/src/survey360/catalog.ts#ALL': ['#SURVEY360_OBJECTS'],
   'packages/domain/src/survey360/catalog.ts#SURVEY360_OBJECTS': ['#SURVEY360_BUTTONS', '#button', '#crud', '#object'],
   'packages/domain/src/survey360/catalog.ts#SURVEY360_OBJECTS>activity': [
     '#SURVEY360_BUTTONS',
@@ -23,6 +25,12 @@ export const GRAPH: Graph = {
   'packages/domain/src/survey360/catalog.ts#SURVEY360_OBJECTS>relation': ['#button', '#crud', '#object'],
   'packages/domain/src/survey360/catalog.ts#SURVEY360_OBJECTS>result': ['#button', '#object'],
   'packages/domain/src/survey360/catalog.ts#SURVEY360_OBJECTS>settings': ['#SURVEY360_BUTTONS', '#button', '#object'],
+  'packages/domain/src/survey360/catalog.ts#SURVEY360_PROFILES': [
+    '#ADVANCED_WITHOUT',
+    '#ALL',
+    '#SURVEY360_BUTTONS',
+    '#grant',
+  ],
   'packages/domain/src/survey360/catalog.ts#crud': ['#button'],
   'packages/domain/src/survey360/catalog.ts#object': ['#SURVEY360_APP'],
   'packages/domain/src/survey360/pace.ts#isTooFast': ['#FAST_ANSWER_MS_PER_ITEM'],

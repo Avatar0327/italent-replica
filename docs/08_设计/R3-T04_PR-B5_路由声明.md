@@ -87,3 +87,18 @@
 | 命令台账 / 审计 | 台账存规范文本与存储形态，响应时渲染（改名后用原命令 ID 重放读回新名称；B5 旧台账按 legacy 渲染）。审计 before / after / 快照存 `{ formula（规范文本）, formulaBinding, fieldNames（写入时刻名称）, refFieldIds }`，读取时按查看人当前字段目录权限裁剪（F082-2 的 `calcRuleSources`），`hints` 在最终出口按 §5.2 投影（`others` 匿名计数 + 固定提示） |
 
 不变：写入口 × 值来源（§6）新增“派生：规范文本、引用表、`formula_binding = bound`”，其余同前。
+
+### 8.1 F082-4 增量（统一投影，开关打开后）
+
+- `GET /calc-rules[/:id]`、`POST` / `PATCH` 写响应、幂等重放都返回 `hints`（B5 的“GET 不带 hints”作废）：公式 / 绑定 / `fieldCatalogVersion` / `hints` 由同一个投影（`presentCalcRules` → `projectHints`）一次产出，并仍经 `hints` 字段查看权裁剪。`DELETE` 回执不带 `hints`。
+- `hints` 随 `items` 列查看权：没有 `items` 查看权，`order` / `blocked` / `cycles` 为空，`warnings` 只有固定一句，`others` 给全部个数；有 `items` 查看权，只列目标字段可见的项目、全部成员可见的环，涉及不可见字段的提示汇总为不含名称的提示，`others` 给被裁掉的个数。
+- `cycles` 的元素由字段路径改为目标字段 ID（对 B5 的表示变更）；全 legacy 的规则按名称检测后同样映射成目标字段 ID；unresolved 或与 bound 混合明确提示“无法完整校验”。
+- GET 读取该查看人对 `CalcRule` 的可见字段（`items` 列）来决定投影：只影响显示，不影响准入。
+
+### 8.2 F082-5 增量（改绑与启用）
+
+- **总开关 `formulaIdBinding` 默认值改为 `true`**：B5 声明的“默认关闭，B5 行为不变”随之改为“默认打开”；开关关闭的路径仍保留（`createApp` 依赖注入显式关闭，仅限 `useTestDb()` 隔离库），B5 / #184 时代的计算规则套件固定在这条路径上验证“关闭时与 B5 完全一致”（契约 AC-23）。
+- **新增平台路由** `POST /api/platform/tenants/:tenantId/talent-review/calc-formulas/rebind`（平台运营身份，平台命令台账 `Idempotency-Key`，请求体 `{ retryUnresolved?: boolean }`）：准入同平台其他命令（`platformContext`），处理函数内没有对象 / 按钮 / 范围判定，必需项为空数组；`tenantId` 非 UUID → 404。**路由与声明只在开关打开时存在**（关闭时 404，声明不并入平台登记表）。命令开始前就绪检查：审计来源裁剪 `calcRuleSources` 未登记 → 503 `AUDIT_REDACTOR_MISSING`，不写任何数据。
+- 报告 `{ rules, bound, unresolved: [{ ruleId, targetFieldId, reason }] }` 只有 ID 与原因码，不含公式原文与字段名称；`rules` 是本次有变化的规则数，`unresolved` 是本次处理后仍为 unresolved 的项目（含重试仍失败的）。
+- 审计：每条有变化的规则一条 `talent-review.calc-rule.rebind`（租户审计 + 平台审计的逐规则副本，同事务，原始视图读取时按查看人裁剪）。视图里 bound 项目带 bound 引用，legacy / unresolved 项目带候选引用的 `refFieldIds` / `fieldNames`（和 unresolved 的 `bindingIssue` 原因码），所以候选的新增 / 清除也在前后值里；有业务变化时平台审计另留一条汇总 `tenant.talent-review.calc-formulas.rebind`，无变化的重跑不写（命令台账照常记录）。
+- 开关打开时 `createApp` 核对前置能力（hints 的 `items` 投影、响应 / 重放投影、审计裁剪），任一未登记即拒绝启动。

@@ -2,7 +2,7 @@
  * R3-T04 人才盘点（docs/08_设计/R3-T04_人才盘点_设计.md §2；REQ-TR-001）。各 PR 在本文件追加表：
  * PR-A 建准备度共享字典（DEC-301①）；PR-B1 建租户设置、分类、角色、字段目录与选项（设计 §2.2）；
  * PR-B4 建九宫格、轴分段、格子、位置字段占用与比例规则；PR-B5 建计算规则与计算项目；
- * PR-B2a 建评价规则 / 模块等级。
+ * PR-B2 建评价规则 / 模块等级 / 字段映射；PR-B3 建盘点内容表单、流程定义（节点与角色）。
  * 表前缀 talent_review_，准备度字典例外：它是 T04 / T05 / T06 共用的字典。
  */
 import { sql } from 'drizzle-orm';
@@ -639,5 +639,183 @@ export const talentReviewModuleGradeItems = pgTable(
       foreignColumns: [talentReviewModuleGrades.tenantId, talentReviewModuleGrades.id],
       name: 'talent_review_module_grade_items_grade_fk',
     }).onDelete('cascade'),
+  ],
+);
+
+/**
+ * 字段映射（TR-R9）：场景 carry_last / talent_pool 下的 来源 → 目标 盘点字段；类型与选项值集合相同由保存命令校验。
+ * 预置“标签 → 标签”（preset，created_by 为空 = 系统）不可改不可删；被映射引用的字段不可删（RESTRICT 兜底）。
+ */
+export const talentReviewFieldMappings = pgTable(
+  'talent_review_field_mappings',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: tenantId(),
+    scene: text('scene').notNull(),
+    sourceFieldId: uuid('source_field_id').notNull(),
+    targetFieldId: uuid('target_field_id').notNull(),
+    preset: boolean('preset').notNull().default(false),
+    revision: integer('revision').notNull().default(1),
+    createdBy: uuid('created_by'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedBy: uuid('updated_by'),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('talent_review_field_mappings_pair').on(t.tenantId, t.scene, t.sourceFieldId, t.targetFieldId),
+    check('talent_review_field_mappings_scene', sql`${t.scene} IN ('carry_last','talent_pool')`),
+    foreignKey({
+      columns: [t.tenantId, t.sourceFieldId],
+      foreignColumns: [talentReviewFields.tenantId, talentReviewFields.id],
+      name: 'talent_review_field_mappings_source_fk',
+    }).onDelete('restrict'),
+    foreignKey({
+      columns: [t.tenantId, t.targetFieldId],
+      foreignColumns: [talentReviewFields.tenantId, talentReviewFields.id],
+      name: 'talent_review_field_mappings_target_fk',
+    }).onDelete('restrict'),
+    revisionCheck('talent_review_field_mappings_rev', t.revision),
+  ],
+);
+
+/**
+ * 盘点内容表单（设计 §2.2 forms；DEC-306①）：一组盘点字段逐字段三档的定义，供模板步骤选用（B6，模板版本冻结快照）。
+ * 编码租户唯一、建后不可改；名称租户唯一。预置四个由种子补装登记表安装（created_by 为空 = 系统，不可删除）。
+ */
+export const talentReviewForms = pgTable(
+  'talent_review_forms',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: tenantId(),
+    code: text('code').notNull(),
+    name: text('name').notNull(),
+    kind: text('kind').notNull(),
+    preset: boolean('preset').notNull().default(false),
+    sortNo: integer('sort_no').notNull().default(0),
+    enabled: boolean('enabled').notNull().default(true),
+    revision: integer('revision').notNull().default(1),
+    createdBy: uuid('created_by'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedBy: uuid('updated_by'),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('talent_review_forms_tenant_id').on(t.tenantId, t.id),
+    unique('talent_review_forms_code').on(t.tenantId, t.code),
+    unique('talent_review_forms_name').on(t.tenantId, t.name),
+    check('talent_review_forms_code_format', sql`${t.code} ~ '^[A-Za-z][A-Za-z0-9_]{0,49}$'`),
+    check('talent_review_forms_kind', sql`${t.kind} IN ('info','calibrate_edit','succession_edit')`),
+    revisionCheck('talent_review_forms_rev', t.revision),
+  ],
+);
+
+/** 表单里的字段：三档 edit / view / hidden；required 只能设在 edit 上。引用的字段不能删除（restrict）。 */
+export const talentReviewFormFields = pgTable(
+  'talent_review_form_fields',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: tenantId(),
+    formId: uuid('form_id').notNull(),
+    fieldId: uuid('field_id').notNull(),
+    access: text('access').notNull(),
+    required: boolean('required').notNull().default(false),
+    sortNo: integer('sort_no').notNull().default(0),
+  },
+  (t) => [
+    unique('talent_review_form_fields_field').on(t.tenantId, t.formId, t.fieldId),
+    foreignKey({
+      columns: [t.tenantId, t.formId],
+      foreignColumns: [talentReviewForms.tenantId, talentReviewForms.id],
+      name: 'talent_review_form_fields_form_fk',
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [t.tenantId, t.fieldId],
+      foreignColumns: [talentReviewFields.tenantId, talentReviewFields.id],
+      name: 'talent_review_form_fields_field_fk',
+    }).onDelete('restrict'),
+    check('talent_review_form_fields_access', sql`${t.access} IN ('edit','view','hidden')`),
+    check('talent_review_form_fields_required', sql`NOT ${t.required} OR ${t.access} = 'edit'`),
+  ],
+);
+
+/** 盘点流程定义（设计 §2.2 flows；DEC-304）：有序节点，节点带角色；模板版本保存时冻结一份副本（B6），本表只是配置源。 */
+export const talentReviewFlows = pgTable(
+  'talent_review_flows',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: tenantId(),
+    name: text('name').notNull(),
+    sortNo: integer('sort_no').notNull().default(0),
+    enabled: boolean('enabled').notNull().default(true),
+    ...audit(),
+  },
+  (t) => [
+    unique('talent_review_flows_tenant_id').on(t.tenantId, t.id),
+    unique('talent_review_flows_name').on(t.tenantId, t.name),
+    revisionCheck('talent_review_flows_rev', t.revision),
+  ],
+);
+
+/**
+ * 流程节点：node_key 流程内唯一、保存后不可改（模板按它冻结）；countersign 只能 evaluate + single。
+ * single 恰一个角色、countersign 至少一个角色由保存命令校验（行数约束数据库表达不了）。
+ */
+export const talentReviewFlowNodes = pgTable(
+  'talent_review_flow_nodes',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: tenantId(),
+    flowId: uuid('flow_id').notNull(),
+    nodeKey: text('node_key').notNull(),
+    name: text('name').notNull(),
+    kind: text('kind').notNull(),
+    stepType: text('step_type').notNull(),
+    mode: text('mode').notNull(),
+    allowReturn: boolean('allow_return').notNull().default(false),
+    allowTransfer: boolean('allow_transfer').notNull().default(false),
+    allowDisagree: boolean('allow_disagree').notNull().default(false),
+    sortNo: integer('sort_no').notNull().default(0),
+  },
+  (t) => [
+    unique('talent_review_flow_nodes_tenant_id').on(t.tenantId, t.id),
+    unique('talent_review_flow_nodes_key').on(t.tenantId, t.flowId, t.nodeKey),
+    foreignKey({
+      columns: [t.tenantId, t.flowId],
+      foreignColumns: [talentReviewFlows.tenantId, talentReviewFlows.id],
+      name: 'talent_review_flow_nodes_flow_fk',
+    }).onDelete('cascade'),
+    check('talent_review_flow_nodes_key_format', sql`${t.nodeKey} ~ '^[a-z][a-z0-9_]{0,31}$'`),
+    check('talent_review_flow_nodes_kind', sql`${t.kind} IN ('single','countersign')`),
+    check('talent_review_flow_nodes_step_type', sql`${t.stepType} IN ('evaluate','calibrate')`),
+    check('talent_review_flow_nodes_mode', sql`${t.mode} IN ('single','batch')`),
+    check(
+      'talent_review_flow_nodes_countersign',
+      sql`${t.kind} <> 'countersign' OR (${t.stepType} = 'evaluate' AND ${t.mode} = 'single')`,
+    ),
+  ],
+);
+
+/** 节点的角色：引用的盘点角色不能删除（restrict）。 */
+export const talentReviewFlowNodeRoles = pgTable(
+  'talent_review_flow_node_roles',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: tenantId(),
+    nodeId: uuid('node_id').notNull(),
+    roleId: uuid('role_id').notNull(),
+    sortNo: integer('sort_no').notNull().default(0),
+  },
+  (t) => [
+    unique('talent_review_flow_node_roles_role').on(t.tenantId, t.nodeId, t.roleId),
+    foreignKey({
+      columns: [t.tenantId, t.nodeId],
+      foreignColumns: [talentReviewFlowNodes.tenantId, talentReviewFlowNodes.id],
+      name: 'talent_review_flow_node_roles_node_fk',
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [t.tenantId, t.roleId],
+      foreignColumns: [talentReviewRoles.tenantId, talentReviewRoles.id],
+      name: 'talent_review_flow_node_roles_role_fk',
+    }).onDelete('restrict'),
   ],
 );

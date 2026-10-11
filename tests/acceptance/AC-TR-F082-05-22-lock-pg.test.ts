@@ -15,6 +15,8 @@ import {
   catalogVersion,
   errorOf,
   fieldRevision,
+  itemIdOf,
+  refsOf,
   renameField,
   type F082World,
 } from './AC-TR-F082-support.js';
@@ -26,6 +28,13 @@ import { tenantApi } from './support/tenant-api.js';
 
 const testDb = useTestDb();
 const pg = describe.runIf(Boolean(process.env.TEST_DATABASE_URL));
+/** 保存输掉与删除的竞争后的受控失败（来源已不存在 / 目录版本已变）。 */
+const SAVE_LOST_TO_DELETE = [
+  '400:FORMULA_INVALID',
+  '409:FIELD_CATALOG_CHANGED',
+  '409:CALC_FIELD_CHANGED',
+  '409:CALC_BINDING_STALE',
+];
 const CONTROLLED = ['CALC_BINDING_STALE', 'FIELD_CATALOG_CHANGED', 'CALC_FIELD_CHANGED'];
 
 async function ruleCount(db: Db, w: F082World) {
@@ -172,7 +181,7 @@ pg('AC-22 并发保存（真 PG）', () => {
       const w = await boundWorld(db, `f082-pg22d-${round}`);
       const [target, source] = [await w.numberField(), await w.field('number', { name: '旧公式源' })];
       // B5 写入的 legacy 规则（开关关闭的应用实例，同一个库同一个租户）
-      const off = tenantApi(db, { clock: () => TR_NOW });
+      const off = tenantApi(db, { clock: () => TR_NOW, formulaIdBinding: false });
       const made = await off.request('POST', `${TR_BASE}${CALC_RULES}`, {
         ...w.as,
         ifMatch: 0,
@@ -190,6 +199,75 @@ pg('AC-22 并发保存（真 PG）', () => {
       ]);
       expect([200, 400, 409], `save ${save.status}`).toContain(save.status);
       expect([200, 409]).toContain(rename.status);
+      await expectConsistent(db, w);
+    }
+  });
+});
+
+/** #224 第 2 轮 P3-2：候选固化 → 保存转 bound 的固定顺序（PGlite 也跑，确定性）。 */
+describe('AC-22 候选固化后保存转 bound：候选清除', () => {
+  it('legacy 项目引用 X：改名固化出候选（先确认存在），随后保存成功转 bound，候选被清除、只剩 bound 引用', async () => {
+    const db = testDb().db;
+    const w = await boundWorld(db, 'f082-cand-seq');
+    const [target, source] = [await w.numberField(), await w.field('number', { name: '固化源' })];
+    // B5 写入的 legacy 规则（开关关闭的应用实例，同一个库同一个租户）
+    const off = tenantApi(db, { clock: () => TR_NOW, formulaIdBinding: false });
+    const made = await off.request('POST', `${TR_BASE}${CALC_RULES}`, {
+      ...w.as,
+      ifMatch: 0,
+      body: calcBody([calcItem(target, '盘点对象.固化源 + 1')]),
+    });
+    expect(made.status, await made.clone().text()).toBe(201);
+    const rule = (await made.json()) as { id: string; revision: number };
+    const itemId = await itemIdOf(db, w, rule.id, target.id);
+
+    expect((await renameField(w, source, '固化后的新名')).status).toBe(200);
+    const candidates = await refsOf(db, w, itemId);
+    expect(candidates).toEqual([{ item_id: itemId, field_id: source.id, kind: 'candidate' }]);
+
+    const save = await w.request('PATCH', `${CALC_RULES}/${rule.id}`, {
+      ifMatch: rule.revision,
+      body: {
+        items: [calcItem(target, '盘点对象.固化后的新名 + 1')],
+        fieldCatalogVersion: await catalogVersion(db, w),
+      },
+    });
+    expect(save.status, await save.clone().text()).toBe(200);
+    expect(await refsOf(db, w, itemId)).toEqual([{ item_id: itemId, field_id: source.id, kind: 'bound' }]);
+    await expectConsistent(db, w);
+  });
+});
+
+pg('AC-22 两个保存共享来源 × 同时删除来源（真 PG，#224 P3-2）', () => {
+  it('有保存成功时删除必须 409 FIELD_IN_USE；删除成功时两个保存都不成功；无悬挂引用', async () => {
+    const db = testDb().db;
+    for (let round = 0; round < 3; round += 1) {
+      const w = await boundWorld(db, `f082-pg22e-${round}`);
+      const [t1, t2, source] = [
+        await w.numberField(),
+        await w.numberField(),
+        await w.field('number', { name: '共删源' }),
+      ];
+      const version = await catalogVersion(db, w);
+      const revision = await fieldRevision(w, source.id);
+      const [one, two, removal] = await Promise.all([
+        w.post(calcBody([calcItem(t1, '盘点对象.共删源 + 1')], { fieldCatalogVersion: version })),
+        w.post(calcBody([calcItem(t2, '盘点对象.共删源 + 2')], { fieldCatalogVersion: version })),
+        w.request('DELETE', `/fields/${source.id}`, { ifMatch: revision }),
+      ]);
+      // #233 P3-1：两个保存各自断言允许的结果（不能放过 201 / 500 / 409 FIELD_IN_USE 这类组合），再断言保存与删除互斥
+      const outcome = async (response: Response, ok: number) =>
+        response.status === ok ? 'ok' : `${response.status}:${String((await errorOf(response)).details['reason'])}`;
+      const saves = [await outcome(one, 201), await outcome(two, 201)];
+      for (const result of saves) expect(['ok', ...SAVE_LOST_TO_DELETE], result).toContain(result);
+      const removed = await outcome(removal, 200);
+      if (saves.includes('ok')) {
+        expect(removed).toBe('409:FIELD_IN_USE');
+      } else {
+        // 没有保存成功：来源没有被引用，删除必须成功；两个保存都因来源已被删除而受控失败
+        expect(removed).toBe('ok');
+        for (const result of saves) expect(SAVE_LOST_TO_DELETE, result).toContain(result);
+      }
       await expectConsistent(db, w);
     }
   });

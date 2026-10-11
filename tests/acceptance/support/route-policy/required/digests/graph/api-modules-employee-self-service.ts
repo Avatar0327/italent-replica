@@ -5,14 +5,23 @@
 import type { Graph } from '../../../evidence-graph.js';
 
 export const GRAPH: Graph = {
+  'apps/api/src/modules/employee-self-service/access.ts#SELF_BUTTONS': [
+    'packages/domain/src/platform/employee-self-service.ts#EMPLOYEE_SELF_SERVICE_BUTTONS',
+  ],
   'apps/api/src/modules/employee-self-service/access.ts#boundEmployee': [
     'apps/api/src/modules/avatar/references.ts#employeeAvatars',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
+  'apps/api/src/modules/employee-self-service/access.ts#requireSelfServiceButtons': [
+    'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT',
+    'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
+    'packages/domain/src/permission/decide.ts#buttonResource',
+    'packages/domain/src/platform/employee-self-service.ts#EMPLOYEE_SELF_SERVICE_BUTTONS',
+  ],
   'apps/api/src/modules/employee-self-service/access.ts#selfAccess': [
-    '#BUTTONS',
     '#COMMAND_FIELDS',
     '#boundEmployee',
+    '#selfButtonGranted',
     'apps/api/src/modules/employee-self-service/policy.ts#PROTOCOL_FIELDS',
     'apps/api/src/modules/employee-self-service/policy.ts#employeeFieldPolicy',
     'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT',
@@ -23,6 +32,10 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/scope-types.ts#EMPTY_SCOPE',
     'apps/api/src/modules/transfer/employee-policy.ts#EMPLOYEE_READONLY_FIELDS',
     'apps/api/src/tenant-context.ts#tenantOf',
+  ],
+  'apps/api/src/modules/employee-self-service/access.ts#selfButtonGranted': [
+    '#SELF_BUTTONS',
+    'apps/api/src/modules/employee-self-service/policy.ts#employeeFieldPolicy',
   ],
   'apps/api/src/modules/employee-self-service/access.ts#transferFieldAccess': [
     'apps/api/src/modules/employee-self-service/policy.ts#employeeFieldPolicy',
@@ -35,17 +48,21 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT',
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
   ],
-  'apps/api/src/modules/employee-self-service/policy.ts#DEFAULT_READ': [
-    '#DEFAULT_EDIT',
-    'apps/api/src/modules/transfer/employee-policy.ts#EMPLOYEE_READONLY_FIELDS',
+  'apps/api/src/modules/employee-self-service/policy.ts#DEFAULT_BUTTONS': [
+    'packages/domain/src/platform/employee-self-service.ts#EMPLOYEE_SELF_SERVICE_BUTTONS',
+  ],
+  'apps/api/src/modules/employee-self-service/policy.ts#EMPLOYEE_PROFILE_CODE': [
+    'packages/domain/src/platform/employee-self-service.ts#EMPLOYEE_SELF_SERVICE_CODE',
   ],
   'apps/api/src/modules/employee-self-service/policy.ts#employeeFieldPolicy': [
-    '#DEFAULT_EDIT',
-    '#DEFAULT_READ',
+    '#DEFAULT_BUTTONS',
     '#EMPLOYEE_PROFILE_CODE',
     'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT',
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
     'apps/api/src/modules/permission/subject.ts#loadObjectPermissions',
+    'apps/api/src/modules/transfer/employee-policy.ts#EMPLOYEE_READONLY_FIELDS',
+    'packages/domain/src/platform/employee-self-service.ts#EMPLOYEE_DEFAULT_CREATE',
+    'packages/domain/src/platform/employee-self-service.ts#EMPLOYEE_DEFAULT_EDIT_FIELDS',
   ],
   'apps/api/src/modules/employee-self-service/queries.ts#currentRecord': [
     'apps/api/src/modules/employment/read-model.ts#findCurrentRecord',
@@ -121,6 +138,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employee-self-service/routes.ts#route:POST /transfer': [
     'apps/api/src/modules/employee-self-service/access.ts#selfAccess',
+    '#selfTransferGuard',
     'apps/api/src/modules/employee-self-service/transfer.ts#ownTransferInput',
     'apps/api/src/modules/employment/context.ts#jsonBody',
     'apps/api/src/modules/employment/context.ts#runWrite',
@@ -132,6 +150,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employee-self-service/transfer.ts#ownTransferPreview',
     'apps/api/src/modules/employment/context.ts#jsonBody',
   ],
+  'apps/api/src/modules/employee-self-service/routes.ts#selfTransferGuard': [
+    'apps/api/src/modules/employee-self-service/access.ts#requireSelfServiceButtons',
+  ],
   'apps/api/src/modules/employee-self-service/transfer.ts#ownTransferInput': [
     'apps/api/src/modules/employee-self-service/access.ts#transferFieldAccess',
     '#inputSchema',
@@ -141,6 +162,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/transfer/service.ts#requireTransferWrite',
   ],
   'apps/api/src/modules/employee-self-service/transfer.ts#ownTransferPreview': [
+    'apps/api/src/modules/employee-self-service/access.ts#requireSelfServiceButtons',
     'apps/api/src/modules/employee-self-service/access.ts#transferFieldAccess',
     'apps/api/src/modules/employee-self-service/field-disclosure.ts#visibleFields',
     '#ownTransferInput',
