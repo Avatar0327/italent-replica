@@ -52,11 +52,14 @@ export function rawFacts(observed: ObservedRoute): string[] {
 export function admissionPrimitives(
   observed: ObservedRoute,
   obligations: readonly Obligation[],
+  registeredOnly = false,
 ): Record<string, string[]> {
   const out: Record<string, string[]> = {};
   for (const [dim, names] of Object.entries(observed.primitives)) {
     const kept = names.filter((name) => {
       const claimers = obligations.filter((o) => o.facts?.includes(`${dim}:${name}`));
+      // 缺登记时只排除用途未知的权限事实，范围 / 字段 / 前提等独立元数据仍须硬比较（#248 P2-1）。
+      if (registeredOnly && !claimers.length && PERMISSION_DIMENSIONS.has(dim)) return false;
       return !claimers.length || claimers.some(isAdmission);
     });
     if (kept.length) out[dim] = kept;

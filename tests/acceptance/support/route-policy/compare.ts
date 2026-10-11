@@ -258,7 +258,13 @@ export function compareRoute(
   if (!raw) return [{ route: key, code: 'BASELINE_MISSING', detail: '基准没有这条端点，先重新探测' }];
   // 第一道：与必需项显式表硬比对；第二道的输入只留准入义务承接（或无人承接的元数据）的事实
   const findings: Finding[] = checkRequired(table, contract, [route]);
-  const observed: ObservedRoute = { ...raw, primitives: admissionPrimitives(raw, table[key] ?? []) };
+  const incomplete =
+    options.allowIncompleteRegistration &&
+    findings.some((finding) =>
+      ['REQUIRED_ENTRY_MISSING', 'REQUIRED_TABLE_GAP', 'REQUIRED_STALE_FACT'].includes(finding.code),
+    );
+  // 未认领权限的用途不确定，只报告静态缺项；已登记权限、独立元数据、身份与选择器仍照常比较。
+  const observed: ObservedRoute = { ...raw, primitives: admissionPrimitives(raw, table[key] ?? [], incomplete) };
   const decl = declared(route.policy);
   const seen = new Set<string>();
   const report = (code: string, detail: string) => {
@@ -273,16 +279,9 @@ export function compareRoute(
   if (route.method === 'GET' && decl.union.dims.has('write')) report('OVERDECLARED:write', 'GET 路由带 write');
 
   const many = decl.alternatives.length > 1;
-  const incomplete =
-    options.allowIncompleteRegistration &&
-    findings.some((finding) =>
-      ['REQUIRED_ENTRY_MISSING', 'REQUIRED_TABLE_GAP', 'REQUIRED_STALE_FACT'].includes(finding.code),
-    );
-  // 缺承接登记时无法分流准入 / 披露，不能把原始披露事实误判成 WEAKER；身份、write 与选择器结构仍照常检查。
-  if (!incomplete)
-    decl.alternatives.forEach((alt, i) => {
-      compareAlternative(observed, alt, many ? `备选 ${i + 1}/${decl.alternatives.length}：` : '', report);
-    });
+  decl.alternatives.forEach((alt, i) => {
+    compareAlternative(observed, alt, many ? `备选 ${i + 1}/${decl.alternatives.length}：` : '', report);
+  });
 
   // “或”关系原语的各支维度也算观测到（流程查看的管理员分支）
   const ors = DISJUNCTIONS.filter((d) => observed.primitives['or']?.includes(d.name));
