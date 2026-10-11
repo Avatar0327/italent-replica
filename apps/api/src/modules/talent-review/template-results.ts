@@ -13,6 +13,7 @@ import {
 import { AppError } from '../../errors.js';
 import { loadFullCatalog, lockFields, visibleOf, type CatalogAccess, type CatalogRow } from './calc-rule-catalog.js';
 import { readFieldCatalogVersion, shareLockFieldCatalog } from './field-catalog.js';
+import { bindResultModules, carryResultModules, type ResultModule } from './template-result-modules.js';
 import type { ResultRuleInput } from './template-extra-input.js';
 
 export interface ResultRuleView {
@@ -21,6 +22,7 @@ export interface ResultRuleView {
   priority: number;
   formulaBinding: 'bound';
   refFieldIds: string[];
+  refModuleIds: string[];
 }
 type Module = { name: string; kind: string };
 export const moduleFields = (modules: readonly Module[]): Record<string, ExpressionFieldKind> =>
@@ -61,7 +63,8 @@ function bindPass(
   previous: readonly ResultRuleView[],
   full: readonly CatalogRow[],
   access: CatalogAccess | undefined,
-  modules: readonly Module[],
+  modules: readonly ResultModule[],
+  previousModules: readonly ResultModule[],
   current: number,
   submittedVersion: number | undefined,
 ): ResultRuleView[] {
@@ -83,7 +86,7 @@ function bindPass(
         rendered.text === item.formula &&
         JSON.stringify(rendered.bindings) === JSON.stringify(item.formulaBindings ?? [])
       ) {
-        return { ...kept, priority: item.priority };
+        return { ...carryResultModules(kept, previousModules, modules), priority: item.priority };
       }
     }
     if (!checkInputLimits(item.formula, { placeholders: true }).ok) throw invalid('FORMULA_INVALID');
@@ -100,6 +103,7 @@ function bindPass(
       formula: bound.stored,
       formulaBinding: 'bound',
       refFieldIds: [...bound.fieldIds],
+      refModuleIds: bindResultModules(bound.stored, modules),
     };
   });
   // DEC-391：类型分析复用引擎，额外的“文本与数字比较”保存期拦截不启用。
@@ -116,20 +120,22 @@ function bindPass(
 export async function planResultRules(
   tx: Tx,
   ctx: { tenantId: string; fieldAccess?: CatalogAccess | undefined },
-  modules: readonly Module[],
+  modules: readonly ResultModule[],
+  previousModules: readonly ResultModule[],
   submitted: readonly ResultRuleInput[] | undefined,
   previous: readonly ResultRuleView[],
   version: number | undefined,
 ): Promise<ResultRuleView[]> {
   if (submitted === undefined) {
-    if (previous.length && !analyzeResults(previous, await loadFullCatalog(tx, ctx.tenantId), modules).ok) {
+    const carried = previous.map((row) => carryResultModules(row, previousModules, modules));
+    if (carried.length && !analyzeResults(carried, await loadFullCatalog(tx, ctx.tenantId), modules).ok) {
       throw invalid('FORMULA_INVALID', '模块变更后结果公式不再有效，请同时修改结果规则');
     }
-    return [...previous];
+    return carried;
   }
   if (!submitted.length) return [];
   const pass = (full: CatalogRow[], current: number) =>
-    bindPass(submitted, previous, full, ctx.fieldAccess, modules, current, version);
+    bindPass(submitted, previous, full, ctx.fieldAccess, modules, previousModules, current, version);
   const first = pass(await loadFullCatalog(tx, ctx.tenantId), await readFieldCatalogVersion(tx, ctx.tenantId));
   const ids = [...new Set(first.flatMap((r) => [r.targetFieldId, ...r.refFieldIds]))].sort();
   await lockFields(tx, ctx.tenantId, ids);

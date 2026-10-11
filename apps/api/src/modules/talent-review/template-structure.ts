@@ -5,6 +5,7 @@
  * - 模块：提交了就按提交整份重建并重新快照评价规则 / 模块等级；没提交原样沿用（含当时的快照）；
  * - 权限：步骤 × 角色 × 模块的席位由服务端物化——提交了就以提交行为准、未提交的席位取缺省；没提交整组则沿用当前版本同席位的行。
  */
+import { randomUUID } from 'node:crypto';
 import {
   and,
   eq,
@@ -99,7 +100,7 @@ export interface Plan {
   readonly resultRules: ResultRuleView[];
   readonly flowId: string | null;
   readonly steps: StepView[];
-  readonly modules: ModuleDraft[];
+  readonly modules: ModuleView[];
   readonly permissions: PermissionView[];
 }
 
@@ -407,9 +408,10 @@ export async function buildPlan(
   }
   const previous = current?.structure ?? null;
   const steps = await planSteps(tx, ctx.tenantId, flowId, flowChanged, previous, input.steps);
-  const modules = input.modules
+  const drafts = input.modules
     ? await draftModules(tx, ctx, input.modules, previous?.modules ?? [])
     : (previous?.modules ?? []).map(({ id, ...draft }) => ({ ...draft, previousModuleId: id }));
+  const modules = drafts.map((draft) => ({ ...draft, id: randomUUID() }));
   const permissions = planPermissions(steps, modules, input.permissions, {
     rows: previous?.permissions ?? [],
     modules: previous?.modules ?? [],
@@ -419,6 +421,7 @@ export async function buildPlan(
     tx,
     ctx,
     modules,
+    previous?.modules ?? [],
     input.resultRules,
     previous?.resultRules ?? [],
     input.fieldCatalogVersion,
@@ -477,7 +480,7 @@ export async function writeVersion(
   await writeTemplateExtras(tx, tenantId, versionId, stepId, plan.stepForms, plan.resultRules);
 }
 
-async function writeModules(tx: Tx, tenantId: string, versionId: string, modules: readonly ModuleDraft[]) {
+async function writeModules(tx: Tx, tenantId: string, versionId: string, modules: readonly ModuleView[]) {
   const rows = modules.length
     ? await tx
         .insert(M)
@@ -485,6 +488,7 @@ async function writeModules(tx: Tx, tenantId: string, versionId: string, modules
           modules.map((module, index) => ({
             tenantId,
             versionId,
+            id: module.id,
             kind: module.kind,
             name: module.name,
             sortNo: sortNo(index),

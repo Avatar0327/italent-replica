@@ -9,6 +9,13 @@ CREATE TABLE "talent_review_template_form_fields" (
 	CONSTRAINT "tr_template_form_access" CHECK ("talent_review_template_form_fields"."access" IN ('hidden','view','edit') AND (NOT "talent_review_template_form_fields"."required" OR "talent_review_template_form_fields"."access" = 'edit'))
 );
 --> statement-breakpoint
+CREATE TABLE "talent_review_template_result_module_refs" (
+	"tenant_id" uuid NOT NULL,
+	"rule_id" uuid NOT NULL,
+	"module_id" uuid NOT NULL,
+	CONSTRAINT "talent_review_template_result_module_refs_tenant_id_rule_id_module_id_pk" PRIMARY KEY("tenant_id","rule_id","module_id")
+);
+--> statement-breakpoint
 CREATE TABLE "talent_review_template_result_refs" (
 	"tenant_id" uuid NOT NULL,
 	"rule_id" uuid NOT NULL,
@@ -45,6 +52,9 @@ CREATE TABLE "talent_review_template_step_forms" (
 ALTER TABLE "talent_review_template_form_fields" ADD CONSTRAINT "talent_review_template_form_fields_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "talent_review_template_form_fields" ADD CONSTRAINT "talent_review_template_form_fields_tenant_id_step_form_id_talent_review_template_step_forms_tenant_id_id_fk" FOREIGN KEY ("tenant_id","step_form_id") REFERENCES "public"."talent_review_template_step_forms"("tenant_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "talent_review_template_form_fields" ADD CONSTRAINT "talent_review_template_form_fields_tenant_id_field_id_talent_review_fields_tenant_id_id_fk" FOREIGN KEY ("tenant_id","field_id") REFERENCES "public"."talent_review_fields"("tenant_id","id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "talent_review_template_result_module_refs" ADD CONSTRAINT "talent_review_template_result_module_refs_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "talent_review_template_result_module_refs" ADD CONSTRAINT "talent_review_template_result_module_refs_tenant_id_rule_id_talent_review_template_result_rules_tenant_id_id_fk" FOREIGN KEY ("tenant_id","rule_id") REFERENCES "public"."talent_review_template_result_rules"("tenant_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "talent_review_template_result_module_refs" ADD CONSTRAINT "talent_review_template_result_module_refs_tenant_id_module_id_talent_review_template_modules_tenant_id_id_fk" FOREIGN KEY ("tenant_id","module_id") REFERENCES "public"."talent_review_template_modules"("tenant_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "talent_review_template_result_refs" ADD CONSTRAINT "talent_review_template_result_refs_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "talent_review_template_result_refs" ADD CONSTRAINT "talent_review_template_result_refs_tenant_id_rule_id_talent_review_template_result_rules_tenant_id_id_fk" FOREIGN KEY ("tenant_id","rule_id") REFERENCES "public"."talent_review_template_result_rules"("tenant_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "talent_review_template_result_refs" ADD CONSTRAINT "talent_review_template_result_refs_tenant_id_field_id_talent_review_fields_tenant_id_id_fk" FOREIGN KEY ("tenant_id","field_id") REFERENCES "public"."talent_review_fields"("tenant_id","id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
@@ -66,3 +76,8 @@ SELECT enable_tenant_isolation('talent_review_template_result_refs');
 --> statement-breakpoint
 -- 版本子表只追加，应用角色不可覆盖历史版本。
 GRANT SELECT, INSERT, DELETE ON talent_review_template_step_forms, talent_review_template_form_fields, talent_review_template_result_rules, talent_review_template_result_refs TO app_user;
+
+--> statement-breakpoint
+SELECT enable_tenant_isolation('talent_review_template_result_module_refs');
+--> statement-breakpoint
+GRANT SELECT, INSERT, DELETE ON talent_review_template_result_module_refs TO app_user;

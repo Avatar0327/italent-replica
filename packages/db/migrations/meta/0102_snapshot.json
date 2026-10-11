@@ -1,5 +1,5 @@
 {
-  "id": "6be731f1-982d-4fae-bb7a-7d18b4f803fa",
+  "id": "e3119657-6dfd-487d-a1be-e0e1ba29598b",
   "prevId": "878dde14-2375-4b48-9999-f847372f5d3e",
   "version": "7",
   "dialect": "postgresql",
@@ -48077,6 +48077,90 @@
           "value": "\"talent_review_template_form_fields\".\"access\" IN ('hidden','view','edit') AND (NOT \"talent_review_template_form_fields\".\"required\" OR \"talent_review_template_form_fields\".\"access\" = 'edit')"
         }
       },
+      "isRLSEnabled": false
+    },
+    "public.talent_review_template_result_module_refs": {
+      "name": "talent_review_template_result_module_refs",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rule_id": {
+          "name": "rule_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "module_id": {
+          "name": "module_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "talent_review_template_result_module_refs_tenant_id_tenants_id_fk": {
+          "name": "talent_review_template_result_module_refs_tenant_id_tenants_id_fk",
+          "tableFrom": "talent_review_template_result_module_refs",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "talent_review_template_result_module_refs_tenant_id_rule_id_talent_review_template_result_rules_tenant_id_id_fk": {
+          "name": "talent_review_template_result_module_refs_tenant_id_rule_id_talent_review_template_result_rules_tenant_id_id_fk",
+          "tableFrom": "talent_review_template_result_module_refs",
+          "tableTo": "talent_review_template_result_rules",
+          "columnsFrom": [
+            "tenant_id",
+            "rule_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "talent_review_template_result_module_refs_tenant_id_module_id_talent_review_template_modules_tenant_id_id_fk": {
+          "name": "talent_review_template_result_module_refs_tenant_id_module_id_talent_review_template_modules_tenant_id_id_fk",
+          "tableFrom": "talent_review_template_result_module_refs",
+          "tableTo": "talent_review_template_modules",
+          "columnsFrom": [
+            "tenant_id",
+            "module_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "talent_review_template_result_module_refs_tenant_id_rule_id_module_id_pk": {
+          "name": "talent_review_template_result_module_refs_tenant_id_rule_id_module_id_pk",
+          "columns": [
+            "tenant_id",
+            "rule_id",
+            "module_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.talent_review_template_result_refs": {

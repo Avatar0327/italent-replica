@@ -59,7 +59,7 @@ async function audit(
           ...view,
           versions: undefined,
           versionId: undefined,
-          resultRules: view.resultRules.map((r) => ({
+          resultRules: view.resultRules.map(({ refModuleIds: _moduleIds, ...r }) => ({
             ...r,
             fieldNames: Object.fromEntries(r.refFieldIds.map((id) => [id, names.get(id)])),
           })),

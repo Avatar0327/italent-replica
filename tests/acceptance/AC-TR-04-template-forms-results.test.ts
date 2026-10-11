@@ -248,7 +248,7 @@ describe('AC-TR-04 / AC-TR-15：模板步骤表单与结果公式', () => {
     expect(await after.json()).toEqual(savedView);
   });
 
-  it('DEC-387：裸词 / 多选 / 越界优先级 / 重复目标均拒绝，新输入须目录版本，旧模块被改名须同时改公式', async () => {
+  it('DEC-387：裸词 / 多选 / 越界优先级 / 重复目标均拒绝，新输入须目录版本，旧模块被移除须同时改公式', async () => {
     const w = await templateWorld(testDb().db, 'b6a2-invalid');
     const field = await w.field({ kind: 'number', name: '分数' });
     const rule = await w.scoreRule();

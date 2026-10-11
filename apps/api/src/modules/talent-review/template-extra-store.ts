@@ -9,6 +9,7 @@ import {
   talentReviewTemplateFormFields as F,
   talentReviewTemplateResultRules as R,
   talentReviewTemplateResultRefs as RF,
+  talentReviewTemplateResultModuleRefs as RM,
 } from '@italent/db';
 import type { StepFormView } from './template-forms.js';
 import type { ResultRuleView } from './template-results.js';
@@ -56,6 +57,8 @@ export async function writeTemplateExtras(
         sortNo,
       })
       .returning({ id: R.id });
+    if (row.refModuleIds.length)
+      await tx.insert(RM).values(row.refModuleIds.map((moduleId) => ({ tenantId, ruleId: saved!.id, moduleId })));
     if (row.refFieldIds.length)
       await tx.insert(RF).values(
         row.refFieldIds.map((fieldId) => ({
@@ -122,6 +125,20 @@ export async function loadTemplateExtras(
           ),
         )
     : [];
+  const moduleRefs = rules.length
+    ? await tx
+        .select()
+        .from(RM)
+        .where(
+          and(
+            eq(RM.tenantId, tenantId),
+            inArray(
+              RM.ruleId,
+              rules.map((r) => r.id),
+            ),
+          ),
+        )
+    : [];
   return {
     stepForms: forms.map((row): StepFormView => ({
       nodeKey: steps.find((s) => s.id === row.stepId)!.nodeKey,
@@ -137,6 +154,7 @@ export async function loadTemplateExtras(
       formula: row.formula,
       priority: row.priority,
       formulaBinding: 'bound',
+      refModuleIds: moduleRefs.filter((r) => r.ruleId === row.id).map((r) => r.moduleId),
       refFieldIds: refs.filter((r) => r.ruleId === row.id).map((r) => r.fieldId),
     })),
   };

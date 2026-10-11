@@ -45,6 +45,15 @@ export async function planStepForms(
       fail('STEP_FORM_PURPOSE_INVALID');
     }
   }
+  const retained = (row: StepFormInput) =>
+    previous.find(
+      (old) =>
+        old.nodeKey === row.nodeKey &&
+        old.roleId === (row.roleId ?? null) &&
+        old.purpose === row.purpose &&
+        old.formId === row.formId,
+    );
+  const fresh = new Set(submitted.filter((row) => !retained(row)).map((row) => row.formId));
   const ids = [...new Set(submitted.map((row) => row.formId))].sort();
   // 与 B3 修改表单的头部行锁互斥，保证头部与字段快照来自同一次提交。
   if (ids.length)
@@ -54,7 +63,7 @@ export async function planStepForms(
       .where(and(eq(F.tenantId, ctx.tenantId), inArray(F.id, ids)))
       .orderBy(asc(F.id))
       .for('share');
-  await checkTemplateReferences(tx, ctx, 'form', ids, new Set(previous.map((row) => row.formId)));
+  await checkTemplateReferences(tx, ctx, 'form', ids, new Set(ids.filter((id) => !fresh.has(id))));
   const forms = new Map(
     await Promise.all(ids.map(async (id) => [id, (await FORM.load!(tx, ctx.tenantId, id))!] as const)),
   );
@@ -68,6 +77,6 @@ export async function planStepForms(
     } as const;
     const kind = kinds[row.purpose];
     if (form.kind !== kind) fail('STEP_FORM_KIND_MISMATCH');
-    return { ...row, roleId: row.roleId ?? null, formSnapshot: form.fields };
+    return { ...row, roleId: row.roleId ?? null, formSnapshot: retained(row)?.formSnapshot ?? form.fields };
   });
 }

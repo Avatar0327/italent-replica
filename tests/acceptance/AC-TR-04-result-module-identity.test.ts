@@ -1,5 +1,13 @@
 /** DEC-425：结果绑定随模块身份逐版本迁移；停用引用只由原席位 / 原结果项继续持有。 */
 import { describe, expect, it } from 'vitest';
+import {
+  and,
+  eq,
+  withTenant,
+  talentReviewTemplateResultModuleRefs as MR,
+  talentReviewTemplateResultRules as R,
+  talentReviewTemplateVersions as V,
+} from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { evaluateFormula, inMemorySubject } from '@italent/domain';
 import { indicatorModule, templateBody, templateWorld, type TemplateView } from './AC-TR-template-support.js';
@@ -32,6 +40,15 @@ describe('AC-TR-04：结果公式模块身份（DEC-425）', () => {
       expect(response.status, await response.clone().text()).toBe(200);
       t = (await response.json()) as TemplateView;
       expect(t.modules[0]!.previousModuleId).toBe(before.modules[0]!.id);
+      const refs = await withTenant(testDb().db, w.as.tenant, (tx) =>
+        tx
+          .select({ moduleId: MR.moduleId })
+          .from(MR)
+          .innerJoin(R, and(eq(R.tenantId, MR.tenantId), eq(R.id, MR.ruleId)))
+          .innerJoin(V, and(eq(V.tenantId, R.tenantId), eq(V.id, R.versionId)))
+          .where(and(eq(V.tenantId, w.as.tenant), eq(V.templateId, t.id), eq(V.versionNo, t.currentVersionNo))),
+      );
+      expect(refs).toEqual([{ moduleId: t.modules[0]!.id }]);
       expect(rulesOf(t)[0]!.formula).toBe(`IF("模块.业绩.得分" = "模块.业绩.得分", 模块.${name}.得分 + 1, 0)`);
       expect(
         evaluateFormula(rulesOf(t)[0]!.formula, {

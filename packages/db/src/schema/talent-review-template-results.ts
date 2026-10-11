@@ -5,6 +5,7 @@ import { tenants } from './tenancy.js';
 import {
   talentReviewTemplateSteps as S,
   talentReviewTemplateVersions as V,
+  talentReviewTemplateModules as M,
   talentReviewForms as F,
   talentReviewFields as D,
   talentReviewRoles as R,
@@ -97,5 +98,24 @@ export const talentReviewTemplateResultRefs = pgTable(
       foreignColumns: [talentReviewTemplateResultRules.tenantId, talentReviewTemplateResultRules.id],
     }).onDelete('cascade'),
     foreignKey({ columns: [t.tenantId, t.fieldId], foreignColumns: [D.tenantId, D.id] }).onDelete('restrict'),
+  ],
+);
+
+export const talentReviewTemplateResultModuleRefs = pgTable(
+  'talent_review_template_result_module_refs',
+  {
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
+    ruleId: uuid('rule_id').notNull(),
+    moduleId: uuid('module_id').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.ruleId, t.moduleId] }),
+    foreignKey({
+      columns: [t.tenantId, t.ruleId],
+      foreignColumns: [talentReviewTemplateResultRules.tenantId, talentReviewTemplateResultRules.id],
+    }).onDelete('cascade'),
+    foreignKey({ columns: [t.tenantId, t.moduleId], foreignColumns: [M.tenantId, M.id] }).onDelete('cascade'),
   ],
 );
