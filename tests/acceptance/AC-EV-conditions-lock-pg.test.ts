@@ -1,7 +1,7 @@
 /** B6 真 PG：整份条件 CAS，EV-R5 与状态 / 报名数事务交错；PGlite 不执行并发用例。 */
 import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   activityFixtures,
   activityWorld,
@@ -10,6 +10,28 @@ import {
 } from './AC-EV-activity-support.js';
 import { EV_BASE, errorOf, ok } from './AC-EV-support.js';
 import { FORMS, type FormView } from './AC-EV-form-support.js';
+import type * as Conditions from '../../apps/api/src/modules/evaluation/conditions.js';
+
+const readRace = vi.hoisted(() => ({
+  target: '',
+  reached: undefined as (() => void) | undefined,
+  release: undefined as Promise<void> | undefined,
+}));
+vi.mock('../../apps/api/src/modules/evaluation/conditions.js', async (importOriginal) => {
+  const original = await importOriginal<typeof Conditions>();
+  return {
+    ...original,
+    loadConditions: async (...args: Parameters<typeof original.loadConditions>) => {
+      if (args[2].includes(readRace.target) && readRace.reached) {
+        const reached = readRace.reached;
+        readRace.reached = undefined;
+        reached();
+        await readRace.release;
+      }
+      return original.loadConditions(...args);
+    },
+  };
+});
 
 const testDb = useTestDb();
 const gate = () => {
@@ -72,6 +94,40 @@ describe.skipIf(!process.env['TEST_DATABASE_URL'])('AC-EV-conditions / AC-EV-for
       return (Array.isArray(result) ? result : (result as { rows: unknown[] }).rows)[0];
     });
     expect(counts).toEqual({ conditions: 1, details: 1 });
+  });
+
+  it('读取活动头与条件交错时，详情 / 列表均保持同一 revision 的整份配置，写请求等待读取完成', async () => {
+    for (const list of [false, true]) {
+      const activity = await w.adminActivity(f.body({ conditions: conditions(18) }));
+      const reached = gate();
+      const release = gate();
+      readRace.target = activity.id;
+      readRace.reached = reached.open;
+      readRace.release = release.promise;
+      const reading = w.setup.request(
+        'GET',
+        `${EV_BASE}/activities${list ? '?pageSize=200' : `/${activity.id}`}`,
+        w.asAdmin,
+      );
+      await reached.promise;
+      let writing: Promise<Response> | undefined;
+      try {
+        writing = w.setup.request('PATCH', `${EV_BASE}/activities/${activity.id}`, {
+          ...w.asAdmin,
+          ifMatch: activity.revision,
+          body: { conditions: conditions(21) },
+        });
+        await waitForActivityLock();
+      } finally {
+        release.open();
+        readRace.target = '';
+      }
+      const response = await ok<{ items: unknown[] } & typeof activity>(await reading);
+      const read = list ? response.items.find((item) => (item as { id: string }).id === activity.id) : response;
+      expect(read).toEqual(activity);
+      const saved = await ok<{ revision: number; conditions: unknown[] }>(await writing!);
+      expect(saved).toMatchObject({ revision: activity.revision + 1, conditions: conditions(21) });
+    }
   });
 
   it.each(['报名数', '发布状态'] as const)('EV-R5：%s 未提交时评价表修改等待，提交后按当前值拒绝', async (kind) => {
