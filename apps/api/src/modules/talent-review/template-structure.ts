@@ -18,6 +18,7 @@ import {
   talentReviewTemplateSteps as S,
   talentReviewTemplateVersions as V,
   talentReviewFlows,
+  talentReviewForms,
   talentReviewFields,
   talentReviewModuleGrades,
   talentReviewRoles,
@@ -39,18 +40,26 @@ import { FLOW } from './flow-service.js';
 import { MODULE_GRADE } from './module-grade-service.js';
 import { checkReferences, type ReferencedTable } from './reference-kit.js';
 import { SCORE_RULE } from './score-rule-service.js';
-import type { ModuleBody, PermissionBody, TemplateCreate, TemplatePatch } from './template-input.js';
+import type { ModuleBody, PermissionBody, TemplatePatch } from './template-input.js';
 import type { ModuleView, PermissionView, Structure, StepView } from './template-view.js';
 
-export type TemplateReference = 'flow' | 'scoreRule' | 'moduleGrade' | 'field';
-export const TEMPLATE_REFERENCES: readonly TemplateReference[] = ['flow', 'scoreRule', 'moduleGrade', 'field'];
+export type TemplateReference = 'flow' | 'scoreRule' | 'moduleGrade' | 'field' | 'form';
+export const TEMPLATE_REFERENCES: readonly TemplateReference[] = ['flow', 'scoreRule', 'moduleGrade', 'field', 'form'];
+
+import type { StepFormView } from './template-forms.js';
+import type { ResultRuleView } from './template-results.js';
+export { buildPlan } from './template-save-plan.js';
+import { writeTemplateExtras } from './template-extra-store.js';
+import type { CatalogAccess } from './calc-rule-catalog.js';
 
 export interface TemplateWriteContext extends WriteContext {
+  readonly fieldAccess?: CatalogAccess | undefined;
   /** 被引用目录对象（流程 / 评价规则 / 模块等级 / 盘点字段）在命令事务内解析的当前范围；请求不引用的对象没有。 */
   readonly scopes: Partial<Record<TemplateReference, ModuleScope>>;
 }
 
 const SPECS = {
+  form: { table: talentReviewForms, object: 'form', disabledReason: 'TEMPLATE_FORM_DISABLED', label: '盘点表单' },
   flow: { table: talentReviewFlows, object: 'flow', disabledReason: 'TEMPLATE_FLOW_DISABLED', label: '盘点流程' },
   scoreRule: {
     table: talentReviewScoreRules,
@@ -74,10 +83,11 @@ export function checkTemplateReferences(
   kind: TemplateReference,
   ids: readonly string[],
   held: ReadonlySet<string>,
+  lock = true,
 ) {
   const spec = SPECS[kind];
   const scoped = { ...ctx, ...(ctx.scopes[kind] ? { referenceScope: ctx.scopes[kind] } : {}) };
-  return checkReferences(tx, scoped, { ...spec, table: spec.table as unknown as ReferencedTable }, ids, held);
+  return checkReferences(tx, scoped, { ...spec, table: spec.table as unknown as ReferencedTable }, ids, held, lock);
 }
 
 const invalid = (reason: string, message: string) => new AppError('VALIDATION_FAILED', message, { reason });
@@ -87,9 +97,11 @@ const unique = <T>(values: readonly (T | null | undefined)[]): T[] => [
 
 type ModuleDraft = Omit<ModuleView, 'id'>;
 export interface Plan {
+  readonly stepForms: StepFormView[];
+  readonly resultRules: ResultRuleView[];
   readonly flowId: string | null;
   readonly steps: StepView[];
-  readonly modules: ModuleDraft[];
+  readonly modules: ModuleView[];
   readonly permissions: PermissionView[];
 }
 
@@ -118,7 +130,7 @@ async function freezeSteps(tx: Tx, tenantId: string, flowId: string): Promise<St
   }));
 }
 
-async function planSteps(
+export async function planSteps(
   tx: Tx,
   tenantId: string,
   flowId: string | null,
@@ -186,20 +198,19 @@ function referencesOf(
   return { ids: [...ids], held: new Set([...ids].filter((id) => !fresh.has(id))) };
 }
 
-/** 指定人才标准：新增的引用须存在且已启用（行加 FOR KEY SHARE，与人才标准删除互斥）；原模块继续持有的原样保留。 */
+/** 指定人才标准：调用方已持来源锁，新增引用须存在且启用；原模块继续持有的原样保留。 */
 async function checkCriteria(tx: Tx, tenantId: string, refs: { ids: string[]; held: ReadonlySet<string> }) {
   for (const id of refs.ids.filter((criterion) => !refs.held.has(criterion))) {
     const [found] = await tx
       .select({ enabled: talentCriteria.enabled })
       .from(talentCriteria)
-      .where(and(eq(talentCriteria.tenantId, tenantId), eq(talentCriteria.id, id)))
-      .for('key share');
+      .where(and(eq(talentCriteria.tenantId, tenantId), eq(talentCriteria.id, id)));
     if (!found?.enabled) throw invalid('CRITERION_NOT_REFERENCEABLE', '人才标准不存在或已停用，不能引用');
   }
 }
 
 /** 提交的模块 → 新版本的模块（评价规则 / 模块等级整份快照；带上一版本模块 ID 且引用未变的沿用原快照）。 */
-async function draftModules(
+export async function draftModules(
   tx: Tx,
   ctx: TemplateWriteContext,
   bodies: readonly ModuleBody[],
@@ -232,9 +243,9 @@ async function draftModules(
     (m) => [m.criterionId],
     (m) => [m.criterionId],
   );
-  await checkTemplateReferences(tx, ctx, 'scoreRule', rules.ids, rules.held);
-  await checkTemplateReferences(tx, ctx, 'moduleGrade', grades.ids, grades.held);
-  await checkTemplateReferences(tx, ctx, 'field', fields.ids, fields.held);
+  await checkTemplateReferences(tx, ctx, 'scoreRule', rules.ids, rules.held, false);
+  await checkTemplateReferences(tx, ctx, 'moduleGrade', grades.ids, grades.held, false);
+  await checkTemplateReferences(tx, ctx, 'field', fields.ids, fields.held, false);
   await checkCriteria(tx, ctx.tenantId, criteria);
   const drafts: ModuleDraft[] = [];
   for (const [index, body] of bodies.entries()) {
@@ -245,6 +256,22 @@ async function draftModules(
     drafts.push(draft);
   }
   return drafts;
+}
+
+/** 在统一字段锁内复核显式模块字段；新引用不能借旧模块绕过停用校验（DEC-425②）。 */
+export async function checkModuleFields(
+  tx: Tx,
+  ctx: TemplateWriteContext,
+  bodies: readonly ModuleBody[],
+  previous: readonly ModuleView[],
+) {
+  const fields = referencesOf(
+    bodies,
+    matchPrevious(bodies, previous),
+    (m) => m.fieldIds ?? [],
+    (m) => m.fieldIds,
+  );
+  await checkTemplateReferences(tx, ctx, 'field', fields.ids, fields.held, false);
 }
 
 /**
@@ -343,7 +370,7 @@ function defaultPermission(kind: ModuleDraft['kind']): Omit<PermissionView, 'nod
 }
 
 /** 物化席位：步骤（单人一个、会签每个角色一个）× 非信息模块；提交行覆盖缺省，未提交整组时沿用当前版本同席位的行。 */
-function planPermissions(
+export function planPermissions(
   steps: readonly StepView[],
   modules: readonly ModuleDraft[],
   submitted: readonly PermissionBody[] | undefined,
@@ -397,32 +424,6 @@ function planPermissions(
   return rows;
 }
 
-/** 合并请求与当前版本，得到新版本的全部内容（只读库、不写）。 */
-export async function buildPlan(
-  tx: Tx,
-  ctx: TemplateWriteContext,
-  current: { flowId: string | null; structure: Structure } | null,
-  input: TemplateCreate | TemplatePatch,
-): Promise<Plan> {
-  const flowId = input.flowId !== undefined ? input.flowId : (current?.flowId ?? null);
-  const flowChanged = flowId !== (current?.flowId ?? null);
-  // 请求里显式提交的流程（含原样带上的当前流程）都须当前操作人可见；停用的流程只在原样保留时豁免
-  if (input.flowId) {
-    const held = new Set(current?.flowId ? [current.flowId] : []);
-    await checkTemplateReferences(tx, ctx, 'flow', [input.flowId], held);
-  }
-  const previous = current?.structure ?? null;
-  const steps = await planSteps(tx, ctx.tenantId, flowId, flowChanged, previous, input.steps);
-  const modules = input.modules
-    ? await draftModules(tx, ctx, input.modules, previous?.modules ?? [])
-    : (previous?.modules ?? []).map(({ id, ...draft }) => ({ ...draft, previousModuleId: id }));
-  const permissions = planPermissions(steps, modules, input.permissions, {
-    rows: previous?.permissions ?? [],
-    modules: previous?.modules ?? [],
-  });
-  return { flowId, steps, modules, permissions };
-}
-
 const sortNo = (index: number) => index + 1;
 
 /** 写入新版本的全部结构行。 */
@@ -471,9 +472,10 @@ export async function writeVersion(
     ...row,
   }));
   if (permissionRows.length) await tx.insert(P).values(permissionRows);
+  await writeTemplateExtras(tx, tenantId, versionId, stepId, plan.stepForms, plan.resultRules);
 }
 
-async function writeModules(tx: Tx, tenantId: string, versionId: string, modules: readonly ModuleDraft[]) {
+async function writeModules(tx: Tx, tenantId: string, versionId: string, modules: readonly ModuleView[]) {
   const rows = modules.length
     ? await tx
         .insert(M)
@@ -481,6 +483,7 @@ async function writeModules(tx: Tx, tenantId: string, versionId: string, modules
           modules.map((module, index) => ({
             tenantId,
             versionId,
+            id: module.id,
             kind: module.kind,
             name: module.name,
             sortNo: sortNo(index),

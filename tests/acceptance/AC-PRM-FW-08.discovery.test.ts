@@ -37,7 +37,9 @@ import {
   writeFrozenProbes,
 } from './support/route-policy/discovery.js';
 import type { Finding } from './support/route-policy/compare.js';
-import { gateEvidence, softGate } from './support/route-policy/evidence-gate.js';
+import { countDrift, countEndpoints, readEndpointCounts } from './support/route-policy/endpoint-counts.js';
+import { gateEvidence } from './support/route-policy/evidence-gate.js';
+import { generatedGate, textDrift } from './support/route-policy/generated-gate.js';
 import { checkKnownGapEvidence, KNOWN_GAPS, type KnownGapGroup } from './support/route-policy/probe-known-gaps.js';
 import {
   checkRedundantEvidence,
@@ -81,33 +83,36 @@ const fixtureTable = (k: string, obligations: readonly Obligation[]): RequiredTa
 });
 
 describe('AC-PRM-FW-08 发现探测：冻结与覆盖', () => {
-  it('覆盖全部已声明端点（592），每个模块一个冻结文件，条目数与模块端点数一致', () => {
+  // DEC-430①：冻结文件的总数、文件集合与逐字节新鲜度都是生成物检查，PR 上只警告，main / 队首 PR 判红
+  it('覆盖全部已声明端点，每个模块一个冻结文件，条目数与模块端点数一致', () => {
     expect(Object.keys(fresh).sort()).toEqual(manifest.declared.map(key).sort());
-    expect(manifest.declared).toHaveLength(592);
+    const drift = countDrift(countEndpoints(manifest.declared), readEndpointCounts(), { totalOnly: true });
     const groups = groupByModule(fresh);
     const files = readdirSync(PROBE_DIR).filter((f) => f.endsWith('.json'));
-    const expected = Object.keys(groups).map((m) => `${m}.json`);
-    const drift = [
-      ...expected.filter((file) => !files.includes(file)).map((file) => `缺少 ${file}`),
-      ...files.filter((file) => !expected.includes(file)).map((file) => `多余 ${file}`),
-    ];
+    const expected = new Set(Object.keys(groups).map((m) => `${m}.json`));
+    drift.push(...files.filter((f) => !expected.has(f)).map((f) => `${f} 多余（生成器不再写出）`));
     for (const [module, entries] of Object.entries(groups)) {
-      if (!existsSync(probeFilePath(module))) continue; // 缺文件已计入冻结登记差异
-      const stored = JSON.parse(readFileSync(probeFilePath(module), 'utf8')) as Record<string, unknown>;
-      if (canonicalJson(Object.keys(stored).sort()) !== canonicalJson(Object.keys(entries).sort())) {
-        drift.push(`${module} 冻结端点集合与当前探测不同`);
+      if (!existsSync(probeFilePath(module))) {
+        drift.push(`${module}.json 缺少（应由生成器写出）`);
+        continue;
       }
+      const stored = JSON.parse(readFileSync(probeFilePath(module), 'utf8')) as Record<string, unknown>;
+      const same = JSON.stringify(Object.keys(stored).sort()) === JSON.stringify(Object.keys(entries).sort());
+      if (!same) drift.push(`${module}.json 条目与模块端点不一致`);
     }
-    expect(softGate('probe 冻结登记完整性（DEC-416③）', drift)).toEqual([]);
+    expect(generatedGate('发现探测冻结文件：覆盖', drift)).toEqual([]);
   });
 
-  it('冻结新鲜：逐字节差异默认警告、严格判红（DEC-416③）', () => {
-    const drift: string[] = [];
-    for (const [module, entries] of Object.entries(groupByModule(fresh))) {
+  it('冻结新鲜：重新发现与冻结文件逐字节相等（改动须 ROUTE_POLICY_UPDATE_BASELINE=1 重新生成并随 PR 评审）', () => {
+    const drift = Object.entries(groupByModule(fresh)).flatMap(([module, entries]) => {
       const file = probeFilePath(module);
-      if (!existsSync(file) || canonicalJson(entries) !== readFileSync(file, 'utf8')) drift.push(file);
-    }
-    expect(softGate('probe 冻结新鲜度', drift)).toEqual([]);
+      return textDrift(
+        `probe/${module}.json`,
+        canonicalJson(entries),
+        existsSync(file) ? readFileSync(file, 'utf8') : undefined,
+      );
+    });
+    expect(generatedGate('发现探测冻结文件：新鲜', drift)).toEqual([]);
   });
 
   it('请求数 = 端点数 + 带 id 参数的端点数（非法标识各多一次）；探测可重复（两次结果相同）', async () => {

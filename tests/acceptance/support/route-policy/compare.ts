@@ -53,6 +53,8 @@ const WEAKER_ONLY = [
 ] as const;
 /** 匿名请求不被 401 拦下的路由不经成员中间件（/healthz、360 链接作答：令牌不对按 404）。 */
 export function observedIdentity(key: string, route: ObservedRoute): Identity {
+  // F-076 §4.7：门户独立认证，缺会话也返回 401；不能据此推成租户成员接口。
+  if (/^[A-Z]+ \/api\/survey360\/portal(?:\/|$)/.test(key)) return 'public';
   if (route.edge.anonymous.status !== 401) return 'public';
   if (key.includes(' /api/platform/')) return 'platform';
   return 'tenant';

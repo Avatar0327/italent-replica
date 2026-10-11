@@ -29,7 +29,7 @@ import {
   STORED_REGISTRY,
   unitText,
 } from './support/route-policy/evidence.js';
-import { gateEvidence, softGate } from './support/route-policy/evidence-gate.js';
+import { evidenceStrict, gateEvidence, softGate } from './support/route-policy/evidence-gate.js';
 import { registration } from './support/route-policy/registration.js';
 import {
   explainFromGit,
@@ -37,6 +37,7 @@ import {
   formatExplanation,
   worktreeRegistry,
 } from './support/route-policy/explain-graph-diff.js';
+import { generatedGate, generatedStrict, textDrift } from './support/route-policy/generated-gate.js';
 import { REQUIRED } from './support/route-policy/required/index.js';
 import type { RequiredTable } from './support/route-policy/required/types.js';
 
@@ -117,16 +118,16 @@ describe('AC-PRM-FW-02 图存储：真实表等价与确定性（F-072 测试 1�
       onDisk.set(`graph/${name}`, readFileSync(new URL(`graph/${name}`, DIGESTS_DIR), 'utf8'));
     const generated = new Map(Object.entries(first).filter(([name]) => name !== 'index.ts'));
     const names = new Set([...onDisk.keys(), ...generated.keys()].filter((name) => name !== 'index.ts'));
-    const drift = brokenUnits(REQUIRED).map((unit) => `${unit} 证据单元找不到`);
-    drift.push(
-      ...[...names].sort().flatMap((name) => {
-        if (!onDisk.has(name)) return [`${name} 缺少（应由生成器写出）`];
-        if (!generated.has(name)) return [`${name} 多余（生成器不再写出）`];
-        return onDisk.get(name) === generated.get(name) ? [] : [`${name} 与生成结果不一致`];
-      }),
-    );
-    // F-090：提交的登记文件与当前源码生成物不一致，默认只警告
-    expect(softGate('图存储：提交的登记文件', drift)).toEqual([]);
+    // F-090：证据单元在源码里找不到属登记错误，按证据门禁开关
+    const broken = brokenUnits(REQUIRED).map((unit) => `${unit} 证据单元找不到`);
+    expect(softGate('图存储：证据单元', broken)).toEqual([]);
+    const drift = [...names].sort().flatMap((name) => {
+      if (!generated.has(name)) return [`${name} 多余（生成器不再写出）`];
+      return textDrift(name, generated.get(name)!, onDisk.get(name));
+    });
+    // DEC-430①：提交的登记文件是生成物，PR 上只警告；main / 队首 PR（GENERATED_STRICT=1）或证据严格模式判红
+    const strict = evidenceStrict() || generatedStrict();
+    expect(generatedGate('图存储：提交的登记文件', drift, String, { strict })).toEqual([]);
   });
 
   it('nodes.ts 无重复键；graph/* 中每个节点只出现在一个区域文件，且文件名 = 区域', () => {

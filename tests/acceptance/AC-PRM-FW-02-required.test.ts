@@ -25,6 +25,8 @@ import { type Finding } from './support/route-policy/compare.js';
 import type { ObservedContract } from './support/route-policy/contract.js';
 import { checkStored, repoSource, type SourceReader, writeDigests } from './support/route-policy/evidence.js';
 import { gateEvidence, softGate } from './support/route-policy/evidence-gate.js';
+import { countDrift, countEndpoints, readEndpointCounts } from './support/route-policy/endpoint-counts.js';
+import { generatedGate } from './support/route-policy/generated-gate.js';
 import { admissionPrimitives, checkRequired } from './support/route-policy/required.js';
 import { expectedMutationKeys, missingCoverage } from './support/route-policy/required-coverage.js';
 import { REQUIRED_MUTATION_KINDS, requiredMutants } from './support/route-policy/required-mutate.js';
@@ -92,7 +94,8 @@ describe('AC-PRM-FW-02 显式必需项表：形状与完整性', () => {
       ...registered.filter((key) => !declared.includes(key)).map((key) => `${key} 静态义务表多登`),
     ];
     expect(softGate('静态义务表端点登记', drift)).toEqual([]);
-    expect(declared).toHaveLength(592);
+    const counts = countDrift(countEndpoints(manifest.declared), readEndpointCounts(), { totalOnly: true });
+    expect(generatedGate('端点计数（显式表）', counts)).toEqual([]);
   });
 
   it('表文件只放字面量：不 import 声明、产品代码或探测器（不得从候选声明重新生成）', () => {

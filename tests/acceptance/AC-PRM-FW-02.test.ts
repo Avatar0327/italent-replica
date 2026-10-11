@@ -22,8 +22,10 @@ import {
 } from './support/route-policy/baseline.js';
 import { compareDeclarations, type Finding } from './support/route-policy/compare.js';
 import { domainConstants } from './support/route-policy/domains.js';
+import { countDrift, countEndpoints, readEndpointCounts } from './support/route-policy/endpoint-counts.js';
+import { gateEvidence } from './support/route-policy/evidence-gate.js';
+import { generatedGate, generatedStrict, textDrift } from './support/route-policy/generated-gate.js';
 import { compareMutants } from './support/route-policy/detector-fixtures.js';
-import { gateEvidence, softGate } from './support/route-policy/evidence-gate.js';
 import { compareRegisteredDeclarations } from './support/route-policy/registration.js';
 import { MUTATIONS, mutantsOf } from './support/route-policy/mutate.js';
 import { tenantApi } from './support/tenant-api.js';
@@ -41,7 +43,8 @@ beforeAll(async () => {
   if (process.env.ROUTE_POLICY_UPDATE_BASELINE === '1') writeFrozenContract(fresh);
   const stored = readFrozenContract();
   if (!stored) throw new Error(`冻结基准不存在：先用 ROUTE_POLICY_UPDATE_BASELINE=1 生成 ${BASELINE_PATH}`);
-  frozen = stored;
+  // DEC-430①：警告模式下冻结文件可能还没按最新源码重算，比较改用本次重新探测的现状（同一生成器，独立于声明）
+  frozen = generatedStrict() ? stored : fresh;
 });
 
 function codes(findings: readonly Finding[]): string[] {
@@ -58,10 +61,11 @@ describe('AC-PRM-FW-02 现状必测基准（独立于声明）', () => {
     expect(canonicalJson(fresh)).not.toMatch(/"kind"/);
   });
 
-  it('基准覆盖全部已声明端点（592），键是 METHOD 最终路径', () => {
+  it('基准覆盖全部已声明端点（总数见 endpoint-counts.json），键是 METHOD 最终路径', () => {
     const declared = manifest.declared.map((r) => `${r.method} ${r.path}`).sort();
     expect(Object.keys(fresh.routes).sort()).toEqual(declared);
-    expect(declared).toHaveLength(592);
+    const drift = countDrift(countEndpoints(manifest.declared), readEndpointCounts(), { totalOnly: true });
+    expect(generatedGate('端点计数（基准）', drift)).toEqual([]);
   });
 
   it('边界探测：租户接口匿名 401、非成员 403；平台非运营 403；360 链接无令牌 404；/healthz 200', () => {
@@ -80,8 +84,10 @@ describe('AC-PRM-FW-02 现状必测基准（独立于声明）', () => {
         continue;
       }
       if (key.includes(' /api/survey360/portal')) {
-        // 通用网址门户的登录 / 登出不经成员中间件：探测请求体为空，登录先判请求体 → 400，登出任何情况 → 204（F-076）
-        const expected = key.endsWith('/login') ? { status: 400, code: 'VALIDATION_FAILED' } : { status: 204 };
+        // 门户不经成员中间件：登录空请求体 400，登出 204，六条会话入口缺会话 401（F-076 §4.7）。
+        let expected: { status: number; code?: string } = { status: 401, code: 'UNAUTHENTICATED' };
+        if (key.endsWith('/login')) expected = { status: 400, code: 'VALIDATION_FAILED' };
+        if (key.endsWith('/logout')) expected = { status: 204 };
         for (const edge of [entry.edge.anonymous, entry.edge.nonMember, entry.edge.member]) {
           expect(edge, key).toEqual(expected);
         }
@@ -114,9 +120,10 @@ describe('AC-PRM-FW-02 现状必测基准（独立于声明）', () => {
     );
   });
 
-  it('基准新鲜：逐字节差异默认警告、严格判红（DEC-416③）', () => {
-    const drift = canonicalJson(fresh) === readFileSync(BASELINE_PATH, 'utf8') ? [] : [BASELINE_PATH];
-    expect(softGate('冻结现状基准新鲜度', drift)).toEqual([]);
+  it('基准新鲜：重新探测与冻结文件逐字节相等（改动须 ROUTE_POLICY_UPDATE_BASELINE=1 重新生成并随 PR 评审）', () => {
+    // DEC-430①：PR 上只警告，main / 队首 PR（GENERATED_STRICT=1）判红
+    const drift = textDrift('observed-contract.json', canonicalJson(fresh), readFileSync(BASELINE_PATH, 'utf8'));
+    expect(generatedGate('冻结基准', drift)).toEqual([]);
   });
 });
 
@@ -138,6 +145,16 @@ describe('AC-PRM-FW-02 声明 vs 基准比较', () => {
       policy: { kind: 'member' as const, reason: '突变', fields: { mode: 'none' as const, reason: '突变' } },
     };
     expect(codes(compareDeclarations(frozen, [memberHealth]))).toContain('MISMATCH:identity');
+  });
+
+  it('AC-360-F076-40：门户缺会话的 401 不是成员认证；错改成 member 声明仍报身份不符', () => {
+    const portal = manifest.declared.find((r) => r.path === '/api/survey360/portal')!;
+    expect(frozen.routes['GET /api/survey360/portal']!.edge.member.status).toBe(401);
+    const memberPortal = {
+      ...portal,
+      policy: { kind: 'member' as const, reason: '突变', fields: { mode: 'none' as const, reason: '突变' } },
+    };
+    expect(codes(compareDeclarations(frozen, [memberPortal]))).toContain('MISMATCH:identity');
   });
 
   it('删整条声明：夹具登记表少一键 → createApp 抛 ROUTE_UNDECLARED', () => {
