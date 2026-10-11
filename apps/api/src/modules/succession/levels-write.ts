@@ -1,16 +1,12 @@
 /** 设计 §7：规则集合行 → 等级行；健康度与人员范围共用 org_health 锁，RESTRICT 外键兜底。 */
 import { pgErrorCode, sql, type Tx } from '@italent/db';
-import {
-  compileSuccessionLevel,
-  type RuleFieldRef,
-  type SuccessionLevelKind,
-  type SuccessionLevelRules,
-} from '@italent/domain';
+import { compileSuccessionLevel, type SuccessionLevelKind, type SuccessionLevelRules } from '@italent/domain';
 import type { TenantRouteDeps } from '../../routes.js';
 import { AppError } from '../../errors.js';
 import type { SuccessionContext } from './access.js';
 import { configAccess, lockRuleSettings, missing, requireRevision } from './config-store.js';
 import { applyLevelChanges } from './levels-changes.js';
+import { lockLevelReviewFields } from './levels-references.js';
 import { invalidRule } from './population-input.js';
 import { collectionRevisionSql, levelSpec, levelViews } from './levels-store.js';
 import { rowsOf } from './read-sql.js';
@@ -23,21 +19,6 @@ interface LevelBody {
   enabled?: boolean;
   rules?: SuccessionLevelRules | null;
 }
-async function reviewCatalog(tx: Tx, tenantId: string): Promise<RuleFieldRef[]> {
-  const rows = rowsOf<{ code: string; kind: RuleFieldRef['kind']; options: RuleFieldRef['optionDomain'] }>(
-    await tx.execute(sql`
-    SELECT f.code, f.kind, COALESCE((SELECT jsonb_agg(jsonb_build_object('value', o.value, 'label', o.label,
-      'enabled', o.enabled)) FROM talent_review_field_options o WHERE o.tenant_id = f.tenant_id AND o.field_id = f.id),
-      '[]'::jsonb) AS options FROM talent_review_fields f WHERE f.tenant_id = ${tenantId}::uuid AND f.enabled`),
-  );
-  return rows.map((field) => ({
-    object: 'review_object',
-    code: field.code,
-    path: `review_object.${field.code}`,
-    kind: field.kind,
-    optionDomain: field.options,
-  }));
-}
 async function saveLevelRules(
   tx: Tx,
   tenantId: string,
@@ -48,7 +29,7 @@ async function saveLevelRules(
   const spec = levelSpec(kind);
   let compiled: ReturnType<typeof compileSuccessionLevel> | null = null;
   if (rules !== null) {
-    const fields = rules.rows.some((row) => row.fieldSource === 'review') ? await reviewCatalog(tx, tenantId) : [];
+    const fields = await lockLevelReviewFields(tx, tenantId, rules);
     compiled = compileSuccessionLevel(kind, rules, fields);
   }
   if (compiled && !compiled.ok) invalidRule(compiled.errors);
