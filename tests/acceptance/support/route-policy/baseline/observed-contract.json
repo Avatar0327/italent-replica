@@ -9702,6 +9702,7 @@
           "button()"
         ],
         "command": [
+          "assertRevision",
           "revision(c)",
           "runCommand / runWrite"
         ],
@@ -14372,6 +14373,7 @@
           "button()"
         ],
         "command": [
+          "assertRevision",
           "revision(c)",
           "runCommand / runWrite"
         ],
