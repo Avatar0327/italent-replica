@@ -61,6 +61,8 @@ section{min-width:0}
 .chip.decide,.chip.conflict,.chip.cired{background:var(--bad-bg);border-color:var(--bad);color:var(--bad);font-weight:600}
 .chip.assigned{border-style:dashed;color:var(--ink2)}
 .kpi .dl{font-style:normal;margin-left:6px;color:var(--ok);font-size:.85em}
+.banner{background:var(--work-bg);color:var(--work);border:1px solid var(--work);border-radius:8px;padding:8px 12px;font-weight:600}
+.chip.ready{color:var(--ok);background:var(--ok-bg);border:1px dashed var(--ok);font-weight:600}
 .chip.todo{color:var(--faint);border-style:dotted}
 .chip.wait{color:var(--faint);background:var(--sunk)}
 .chip.paused{color:var(--faint);background:repeating-linear-gradient(135deg,var(--sunk) 0 5px,var(--panel) 5px 10px)}
@@ -82,6 +84,7 @@ details summary{cursor:pointer;color:var(--muted);font-size:13px}
     <span class="sub" id="at"></span>
     <div class="kpis" id="kpis"></div>
   </header>
+  <div class="banner" id="banner" hidden></div>
   <section><h2>卡点与待你决定</h2><div id="stuck"></div></section>
   <section>
     <h2>主线</h2>
@@ -98,11 +101,17 @@ const DATA = __DATA__;
 const L = DATA.live || {open: [], merged: {}, today: [], at: "—"};
 const M = DATA.main || {lines: [], support: [], asks: []};
 const OPEN = {}; (L.open || []).forEach(p => OPEN[p.n] = p);
-const NAME = {done:"已合并",review:"审查中",rework:"返工中",merge:"待合并",queue:"待发起审查",ci:"等 CI",dev:"开发中",decide:"待你决定",conflict:"与 main 冲突",cired:"CI 红",assigned:"已派",todo:"待派",wait:"等前置",paused:"暂停"};
+const NAME = {done:"已合并",review:"审查中",rework:"返工中",merge:"待合并",queue:"待发起审查",ci:"等 CI",dev:"开发中",decide:"待你决定",conflict:"与 main 冲突",cired:"CI 红",assigned:"已派",ready:"可派（前置已满足）",todo:"待派",wait:"等前置",paused:"暂停"};
 const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const dur = m => m == null ? "" : m >= 1440 ? Math.floor(m/1440) + " 天" : m >= 60 ? Math.floor(m/60) + " 小时" + (m%60 ? (m%60) + " 分" : "") : m + " 分";
 const used = new Set();
+let LKEYS = {};  // 当前任务线 k → 步骤，供 after 依赖判定
+function stepDone(st){ return st && (st.s === "done" || (st.pr && L.merged && L.merged[st.pr])); }
 function stepState(st){
+  if (!st.pr && st.after && st.s !== "paused" && st.s !== "assigned"){
+    const left = st.after.filter(k => !stepDone(LKEYS[k]));
+    return left.length ? {s:"wait", left} : {s:"ready"};
+  }
   if (st.pr){
     used.add(st.pr);
     if (L.merged && L.merged[st.pr]) return {s:"done"};
@@ -113,17 +122,18 @@ function stepState(st){
 }
 function chip(st){
   const x = stepState(st), o = x.o;
-  const tip = [st.k + " " + st.n, NAME[x.s] || x.s, st.pr ? "#" + st.pr : "", o ? o.why + (o.idle < 1e5 ? " · " + dur(o.idle) + "无动静" : "") : "", st.note || ""].filter(Boolean).join(" · ");
+  const tip = [st.k + " " + st.n, NAME[x.s] || x.s, st.pr ? "#" + st.pr : "", x.left ? "等 " + x.left.join(" / ") : "", x.s === "ready" ? "前置已全部合并，可派" : "", o ? o.why + (o.idle < 1e5 ? " · " + dur(o.idle) + "无动静" : "") : "", st.note || ""].filter(Boolean).join(" · ");
   return `<span class="chip ${x.s}${o && o.stuck ? " stuck" : ""}" title="${esc(tip)}"><span class="k">${esc(st.k)}</span>${esc(st.n)}${st.pr ? `<span class="p">#${st.pr}</span>` : ""}</span>`;
 }
 function block(l){
   const gs = l.groups || (l.steps ? [{n:"", steps:l.steps}] : []);
   const all = [].concat(...gs.map(g => g.steps));
+  LKEYS = {}; all.forEach(st => LKEYS[st.k] = st);
   const ss = all.map(stepState);
-  const done = ss.filter(x => x.s === "done").length, act = ss.filter(x => !["done","todo","wait","paused","assigned"].includes(x.s)).length;
+  const done = ss.filter(x => x.s === "done").length, act = ss.filter(x => !["done","todo","wait","paused","assigned","ready"].includes(x.s)).length;
   const tot = all.length;
   const hot = all.map((st,i) => [st, ss[i]]).filter(p => p[1].o).map(p => (p[1].o.stuck ? "<b>" : "") + esc(p[0].k) + " " + (NAME[p[1].s]||p[1].s) + (p[1].o.stuck ? "</b>" : "")).join("；");
-  const nextTodo = all.find((st,i) => ["todo","assigned","wait"].includes(ss[i].s));
+  const nextTodo = all.find((st,i) => ["ready","todo","assigned","wait"].includes(ss[i].s));
   const idleLine = tot && !act && done < tot;
   const focus = tot === 0 ? "已完成" : hot ? "在途：" + hot : idleLine ? "<b>当前没有在途 PR</b>" + (nextTodo ? "，下一步 " + esc(nextTodo.k + " " + nextTodo.n) + (nextTodo.note ? "（" + esc(nextTodo.note) + "）" : "") : "") : "";
   const groups = gs.map(g => `<div class="grp"><div class="gn">${esc(g.n)}</div><div class="chips">${g.steps.map(chip).join("")}</div></div>`).join("");
@@ -134,7 +144,7 @@ function block(l){
 }
 document.getElementById("lines").innerHTML = (M.lines || []).map(block).join("");
 document.getElementById("support").innerHTML = (M.support || []).map(block).join("");
-const legendKeys = ["done","review","merge","queue","dev","rework","decide","conflict","cired","assigned","todo","wait","paused"];
+const legendKeys = ["done","review","merge","queue","dev","rework","decide","conflict","cired","assigned","ready","todo","wait","paused"];
 document.getElementById("legend").innerHTML = legendKeys.map(k => `<span class="chip ${k}">${NAME[k]}</span>`).join("") + `<span>红框 = 卡住（冲突 / CI 红 / 待决定 / 超时无动静）；把鼠标停在格子上看详情</span>`;
 const stuck = (L.open || []).filter(p => p.stuck).sort((a,b) => (b.s === "decide") - (a.s === "decide") || b.idle - a.idle);
 const asks = (M.asks || []).map(a => `<div class="sk ask"><div class="h"><b>待你</b><span>${esc(a.where)}</span></div><div class="w">${esc(a.t)}</div><div class="t">${esc(a.note || "")}</div></div>`);
@@ -145,6 +155,7 @@ document.getElementById("others").innerHTML = others.length ? `<div class="tblw"
   others.map(p => `<tr><td class="mono">#${p.n}</td><td>${esc(p.t)}</td><td><span class="chip ${p.s}${p.stuck ? " stuck" : ""}">${esc(NAME[p.s] || p.s)}</span> ${esc(p.why)}</td><td>${p.r}</td><td>${dur(p.idle)}</td></tr>`).join("") + `</table></div>` : `<div class="none">没有主线外的在途 PR。</div>`;
 const td = L.today || [];
 document.getElementById("today").innerHTML = td.length ? `<div class="tblw"><table class="tbl">` + td.map(m => `<tr><td class="mono">${esc(m.at)}Z</td><td class="mono">#${m.n}</td><td>${esc(m.t)}</td></tr>`).join("") + `</table></div>` : `<div class="pre">今天还没有合并。</div>`;
+if (M.banner) { const b = document.getElementById("banner"); b.textContent = M.banner; b.hidden = false; }
 document.getElementById("log").innerHTML = (DATA.log || []).map(x => `<li>${esc(x[0])}　${esc(x[1])}</li>`).join("");
 const nStuck = stuck.length + (M.asks || []).length, nRev = (L.open || []).filter(p => p.s === "review").length, nWork = (L.open || []).filter(p => p.s === "rework").length;
 const PG = DATA.prog, pgd = PG && PG.prev ? [PG.done - PG.prev[0], PG.tot - PG.prev[1]] : null;

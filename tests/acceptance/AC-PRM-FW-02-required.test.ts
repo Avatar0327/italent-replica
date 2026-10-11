@@ -23,7 +23,9 @@ import {
   type SourceReader,
   writeDigests,
 } from './support/route-policy/evidence.js';
+import { countDrift, countEndpoints, readEndpointCounts } from './support/route-policy/endpoint-counts.js';
 import { gateEvidence } from './support/route-policy/evidence-gate.js';
+import { generatedGate } from './support/route-policy/generated-gate.js';
 import { admissionPrimitives, checkRequired } from './support/route-policy/required.js';
 import { expectedMutationKeys, missingCoverage } from './support/route-policy/required-coverage.js';
 import { REQUIRED_MUTATION_KINDS, requiredMutants } from './support/route-policy/required-mutate.js';
@@ -83,10 +85,11 @@ function only(key: string, obligations: readonly Obligation[] = entry(key)): Req
 type ObjectNode = Extract<RoutePolicy, { kind: 'object' }>;
 
 describe('AC-PRM-FW-02 显式必需项表：形状与完整性', () => {
-  it('表键与运行时 598 个端点完全相等（缺一条、多一条都失败）', () => {
+  it('表键与运行时端点完全相等（缺一条、多一条都失败）', () => {
     const declared = manifest.declared.map((r) => `${r.method} ${r.path}`).sort();
     expect(Object.keys(REQUIRED).sort()).toEqual(declared);
-    expect(declared).toHaveLength(598);
+    const drift = countDrift(countEndpoints(manifest.declared), readEndpointCounts(), { totalOnly: true });
+    expect(generatedGate('端点计数（显式表）', drift)).toEqual([]);
   });
 
   it('表文件只放字面量：不 import 声明、产品代码或探测器（不得从候选声明重新生成）', () => {
