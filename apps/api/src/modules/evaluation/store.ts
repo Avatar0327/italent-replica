@@ -1,7 +1,8 @@
 /**
  * 人才评定配置写入的公共部分（设计 §3.2、§5.1、§8）：每个写入在命令台账的同一租户事务里完成“业务写 + 审计”
  * （DEC-019 / 216）。取锁顺序：新建 = 先对新增引用 FOR SHARE 再插入；修改 = 先 FOR UPDATE 本对象行（定位、revision），再对新增引用
- * FOR SHARE（评价表，B4）；B1a 字典只有本对象，无被引用方。被引用方的停用 / 删除自己 FOR UPDATE 其行，与新增引用的 FOR SHARE 串行。
+ * FOR SHARE（评价表 B4、评定活动 B5）；B5 活动在引用之后、写入之前取“租户 + 申请类别”事务级咨询锁（activity-scope.ts，适用范围重复检查），
+ * 持锁后只写本活动行与环节行，不再回头取引用方的锁，所以与上面的取锁顺序不成环；B1a 字典只有本对象，无被引用方。被引用方的停用 / 删除自己 FOR UPDATE 其行，与新增引用的 FOR SHARE 串行。
  */
 import { pgErrorCode, sql, type Tx } from '@italent/db';
 import { EVALUATION_AUDIT_ACTIONS } from '@italent/domain';
@@ -9,6 +10,7 @@ import { recordAudit } from '../../audit/record.js';
 import { AppError } from '../../errors.js';
 import { auditActor } from '../../system-actor.js';
 import { scopeAllows } from '../permission/module-access.js';
+import type { ActivityRefAccess } from './activity-refs.js';
 import type { FormRefAccess, FormVisibility } from './form-refs.js';
 import type { PersonRefAccess } from './person-refs.js';
 import {
@@ -29,6 +31,8 @@ export interface WriteContext extends EvaluationContext {
   readonly persons?: PersonRefAccess;
   /** 评价表的引用（通用评分项 / 指标）：对象查看权 / 范围 / 字段（命令事务内解析）。 */
   readonly forms?: FormRefAccess;
+  /** 评定活动的引用（类型 / 周期 / 评价表 / 类别 / 级别）：对象查看权 / 范围，及活动“名称”字段权（命令事务内解析）。 */
+  readonly activities?: ActivityRefAccess;
   /** 通用评分项写命令：引用方（评价表）的可见范围，停用被引用时只列看得到的（命令事务内解析）。 */
   readonly formVisibility?: FormVisibility;
   /** 事务内按当前授权校验本对象的字段编辑权（载荷之外的隐含变更用，如评价表切换评分方式清空总分规则）。 */
@@ -41,6 +45,7 @@ export const TABLES: Readonly<Partial<Record<EvaluationObject, string>>> = {
   generalScoreItem: 'ev_general_items',
   reviewGroup: 'ev_review_groups',
   evaluationForm: 'ev_forms',
+  evaluationActivity: 'ev_activities',
 };
 
 export function tableOf(object: EvaluationObject): string {

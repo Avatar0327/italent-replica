@@ -2,17 +2,15 @@
  * “被引用拒删 / 拒停用”的钩子位（拆分方案 B1a；原站 W-755～756：被活动引用的类型“停用”置灰，Q-M0-152）：配置对象被别的
  * 对象引用时不能删除、也不能停用，引用方在各自的子 PR 里登记，本 PR 只留位置：
  * - B4（评价表）已登记通用评分项被评价表评分项引用（form-usage.ts）；
- * - B5（评定活动）登记活动类型 / 周期被活动引用、评价表被环节引用、评审组被环节引用等；
+ * - B5（评定活动）已登记活动类型 / 周期被活动引用、评价表被环节引用（activity-usage.ts）；评审组照原站被引用也能停用，不拦；
  * - C2 有评定数据表后按需补充。
  * 登记的是“引用查询”（命中任意一行即在用），删除 / 停用命令在同一事务里依次执行，命中即 409 CONFLICT 并带引用方给出的
  * reason。删除与停用分开登记（`phase`），互不串用。
  * 两类“被引用”各自照原站（DEC-380③）：活动类型 / 活动周期事先置灰（服务端拒绝停用，提示由引用方给出）；通用评分项点击后拒绝并
  * 列出引用它的评价表——规则带 `references`（返回引用方的 id / name / visible），只列操作人看得到的，看不到的计为“其他 N 个”
  * （DEC-374⑥），响应 details.referrers / details.otherCount。
- * TODO(B5): 登记 activityType / activityCycle 被 ev_activities 引用的 delete 与 disable 规则（还没有活动表）。
  * B4 已登记 generalScoreItem 被评价表评分项引用的 delete 与 disable 规则（form-usage.ts；disable 带 `references`，visible 取评价表的
  * 范围谓词，范围由路由层在命令事务内解析进写命令上下文 formVisibility）。
- * TODO(B5): 登记 evaluationForm 被活动环节引用的 delete 与 disable 规则。
  */
 import { sql, type Tx } from '@italent/db';
 import type { SQL } from 'drizzle-orm';

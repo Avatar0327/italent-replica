@@ -596,7 +596,7 @@ describe('AC-QL-employee-profile 必测 9、10：CODE_TAKEN 保留计数另加�
 
 describe('AC-QL-employee-profile 必测 11：version / 指纹守卫（DEC-404）', () => {
   // main 在 C1-2b 开始时的值；合并前最后一次合 main 时，把这里改成合并进来的 main 的值（DEC-404）
-  const MAIN = { version: 8, digest: '1892446da0d1f77c' };
+  const MAIN = { version: 11, digest: '23cb2ad23825abd9' };
 
   it('授权项编码含员工身份任职对象三个按钮与页面载体按钮；version 比 main 当前值至少 +1，指纹随编码变化（AC-QL-employee-profile）', () => {
     for (const button of EMPLOYEE_SELF_SERVICE_BUTTONS)
@@ -608,20 +608,10 @@ describe('AC-QL-employee-profile 必测 11：version / 指纹守卫（DEC-404）
     expect(grantCodesDigest(STANDARD_GRANT_CODES)).toBe(STANDARD_GRANT_DIGEST);
     expect(STANDARD_GRANT_DIGEST).not.toBe(MAIN.digest);
     expect(STANDARD_GRANT_VERSION).toBeGreaterThan(MAIN.version);
-    // B6a-2 叠在 #244 的 version 12 上（DEC-423）；新增模板字段授权必须再次递增。
+    // DEC-404：本次合 main 时授权版本为 12，模板字段授权增量须递增。
     expect(STANDARD_GRANT_VERSION).toBeGreaterThan(12);
-    expect(STANDARD_GRANT_DIGEST).not.toBe('5898a7ef473ce1a4');
-    // 去掉员工身份的编码，再去掉之后合入的其它 PR 新增的编码，就回到 main（C1-2b 起点）的指纹（防止“指纹变了但变化与本 PR 无关”）。
-    // 之后合入的 PR：R3-T04 B2b（#219）新增字段映射对象，并给盘点管理员预置评价规则 / 模块等级的看全部（DEC-408②）；
-    // R3-T04 B3（#229）新增盘点内容表单 / 流程定义对象；R3-T04 B6a 新增盘点模板对象，并按 DEC-415 预置字段映射 / 表单 / 流程 / 模板的看全部
-    const addedLater = (code: string) =>
-      code.includes('TalentReview.FieldMapping') ||
-      code.includes('TalentReview.Form') ||
-      code.includes('TalentReview.Flow') ||
-      code.includes('TalentReview.Template') ||
-      /\/seeAll:TalentReview:entity:TalentReview\.(FieldMapping|Form|Flow|Template)$/.test(code) ||
-      /\/seeAll:TalentReview:entity:TalentReview\.(ScoreRule|ModuleGrade)$/.test(code);
-    const withoutEmployee = STANDARD_GRANT_CODES.filter((code) => !code.startsWith(`${EMP}/`) && !addedLater(code));
-    expect(grantCodesDigest(withoutEmployee)).toBe(MAIN.digest);
+    expect(STANDARD_GRANT_DIGEST).not.toBe('2077da982ac181f1');
+    // “去掉员工身份的编码就回到 main 的指纹”只在 C1-2b 自己的 PR 里成立；员工身份并入 main 之后，别的 PR（B5 评定活动改了
+    // EvaluationActivity 的字段授权项）再改编码集合时它必然对不上，所以不再断言，递增由上面的 version / 指纹比较保证
   });
 });

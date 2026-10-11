@@ -40,7 +40,7 @@ export const STANDARD_GRANT_ENTRY = 'permission/standard-profile-grants';
  * version 只用于回补报告，不参与缺失判断。
  */
 export const STANDARD_GRANT_VERSION = 13;
-export const STANDARD_GRANT_DIGEST = '9dc07ff144431cdb';
+export const STANDARD_GRANT_DIGEST = '3a83602d9312e5c6';
 
 /**
  * 预置“看全部”补装批准清单（D3 = A′，DEC-374②）：看全部属于数据范围扩大，存量租户的标准身份只对**这里明确列出**的目标补，

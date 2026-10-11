@@ -15,7 +15,8 @@ const ACCESS = `${EV}/access.ts`;
 const MRA = 'apps/api/src/modules/permission/module-route-access.ts';
 const CATALOG = 'packages/domain/src/evaluation/catalog.ts#EVALUATION_OBJECTS';
 
-type Key = 'activityType' | 'activityCycle' | 'generalScoreItem' | 'reviewGroup' | 'evaluationForm';
+type Key =
+  'activityType' | 'activityCycle' | 'generalScoreItem' | 'reviewGroup' | 'evaluationForm' | 'evaluationActivity';
 /** 对象 → [编码后缀, 路径, 目录里的定义片段]。 */
 const OBJECTS: Readonly<Record<Key, readonly [string, string, string]>> = {
   activityType: ['ActivityType', 'activity-types', "activityType: object('ActivityType'"],
@@ -23,6 +24,7 @@ const OBJECTS: Readonly<Record<Key, readonly [string, string, string]>> = {
   generalScoreItem: ['GeneralScoreItem', 'general-score-items', "generalScoreItem: object('GeneralScoreItem'"],
   reviewGroup: ['ReviewGroup', 'review-groups', "reviewGroup: withoutDelete(object('ReviewGroup'"],
   evaluationForm: ['EvaluationForm', 'evaluation-forms', "evaluationForm: object('EvaluationForm'"],
+  evaluationActivity: ['EvaluationActivity', 'activities', "'EvaluationActivity',"],
 };
 const code = (key: Key) => `TEvaluation.${OBJECTS[key][0]}`;
 const objectConst = (key: Key): Evidence => ({ role: 'const', unit: CATALOG, anchor: OBJECTS[key][2] });
@@ -91,6 +93,7 @@ const REGISTER: Readonly<Record<'list' | 'detail' | 'create' | 'update' | 'delet
 const OWN_FILE = {
   reviewGroup: { file: `${EV}/review-group-routes.ts`, register: 'registerReviewGroupRoutes', path: 'review-groups' },
   evaluationForm: { file: `${EV}/form-routes.ts`, register: 'registerFormRoutes', path: 'evaluation-forms' },
+  evaluationActivity: { file: `${EV}/activity-routes.ts`, register: 'registerActivityRoutes', path: 'activities' },
 } as const;
 type OwnKey = keyof typeof OWN_FILE;
 const isOwn = (key: Key): key is OwnKey => key in OWN_FILE;
@@ -134,7 +137,9 @@ const filterFieldVisible = (key: Key): Obligation => ({
     isOwn(key)
       ? call(
           `${OWN_FILE[key].file}#${OWN_FILE[key].register}`,
-          "if (enabled !== undefined) requireFilterVisible(fields, 'enabled')",
+          key === 'evaluationActivity'
+            ? "if (status !== undefined) requireFilterVisible(fields, 'status')"
+            : "if (enabled !== undefined) requireFilterVisible(fields, 'enabled')",
         )
       : call(`${ROUTES}#registerObject`, 'requireFilterVisible(fields, field)'),
     impl(
@@ -385,6 +390,144 @@ const candidates: RequiredTable = {
   ],
 };
 
+// ---- 评定活动（B5）：所属组织、各类引用（类型 / 周期 / 评价表 / 类别 / 级别 / 负责人）、负责人呈现 -----------------------------
+const ACTIVITY_REFS = `${EV}/activity-refs.ts`;
+const ACTIVITY_SERVICE = `${EV}/activity-service.ts`;
+const QL_CATALOG = 'packages/domain/src/qualification/catalog.ts#QUALIFICATION_OBJECTS';
+const refCanView = impl(
+  `${ACTIVITY_REFS}#resolveActivityRefs`,
+  "const canView = (resource: string) => bound.authorize({ ...ctx, action: 'object.view', resource, fields: [] });",
+);
+/** 活动新增引用的各对象查看权（命令事务内解析，resolveActivityRefs 里逐个调用）。 */
+const refObject = (code: string, anchor: string, constant: Evidence): Obligation => ({
+  perm: `obj:${code}:view`,
+  purpose: 'guard:ev.newActivityRefs',
+  inner: { role: 'required' },
+  at: [call(`${ACTIVITY_REFS}#resolveActivityRefs`, anchor), refCanView, constant],
+});
+const qlConst = (anchor: string): Evidence => ({ role: 'const', unit: QL_CATALOG, anchor });
+const evConst = (anchor: string): Evidence => ({ role: 'const', unit: CATALOG, anchor });
+
+/** 新增的引用：类型 / 周期 / 评价表须有查看权、存在且在范围内（范围外与不存在同一 404）、已启用；原有引用原样保留。 */
+function newActivityRefs(entry: Evidence): Obligation[] {
+  return [
+    {
+      perm: 'guard:ev.newActivityRefs',
+      note: '只校验本次新增的引用与组织；原有引用不重校（DEC-281⑧ 同口径）；负责人经人员引用出口（B3）',
+      at: [
+        entry,
+        impl(
+          `${ACTIVITY_REFS}#assertRefs`,
+          "if (!access) throw new AppError('FORBIDDEN', `无权查看${label}`, { reason: spec.reason });",
+        ),
+      ],
+    },
+    refObject('TEvaluation.ActivityType', 'type: await object(TYPE),', evConst("activityType: object('ActivityType'")),
+    refObject(
+      'TEvaluation.ActivityCycle',
+      'cycle: await object(CYCLE),',
+      evConst("activityCycle: object('ActivityCycle'"),
+    ),
+    refObject(
+      'TEvaluation.EvaluationForm',
+      'form: await object(FORM),',
+      evConst("evaluationForm: object('EvaluationForm'"),
+    ),
+    refObject(
+      'Qualification.EmploymentCategory',
+      'category: await scopeOnly(CATEGORY),',
+      qlConst("category: owned('EmploymentCategory'"),
+    ),
+    refObject(
+      'Qualification.EmploymentLevel',
+      'level: await scopeOnly(LEVEL),',
+      qlConst("level: owned('EmploymentLevel'"),
+    ),
+    {
+      perm: `obj:${PERSONNEL}:view`,
+      purpose: 'guard:ev.newActivityRefs',
+      inner: { role: 'required' },
+      at: [
+        call(
+          `${PERSONS}#personRefAccessInTransaction`,
+          'const canView = await bound.authorize({ ...ctx, action: ' +
+            "'object.view', resource: PERSONNEL_OBJECT, fields: [] });",
+        ),
+        PERSONNEL_CONST,
+      ],
+    },
+  ];
+}
+
+/** 适用范围重复提示是否带冲突活动名称：活动“名称”字段对操作人的可见性，在命令事务内解析；只决定提示文字，不是准入。 */
+const activityName: Obligation = {
+  perm: 'obj:TEvaluation.EvaluationActivity:view',
+  purpose: 'disclosure:activityName',
+  note: '重复提示只在活动“名称”字段可见且冲突活动在范围内时带名称，否则不带（不泄露范围外 / 被裁剪的活动）',
+  need: NONE,
+  at: [
+    call(`${ACTIVITY_REFS}#resolveActivityRefs`, 'const activityFields = (await canView(ACTIVITY))'),
+    refCanView,
+    evConst("'EvaluationActivity',"),
+  ],
+};
+
+/** 每个活动出口都带负责人：姓名 / 工号按员工信息查看权与字段权、人员范围披露（范围外只有姓名），不是准入。 */
+const managerRef: Obligation = {
+  perm: `obj:${PERSONNEL}:view`,
+  purpose: 'disclosure:managerRef',
+  facts: ['object:object.* 动作'],
+  note: '负责人的姓名 / 工号按员工信息查看权与字段权、人员范围披露（DEC-331① / DEC-339②）；范围外只有姓名',
+  need: { scope: 'list', predicate: 'ev.personScope' },
+  at: [
+    call(`${ACTIVITY_SERVICE}#presentActivities`, 'const refs = await presentPersonRefs('),
+    impl(`${PERSONS}#presentPersonRefs`, 'if (!ids.length || !access.scope) return result;'),
+    PERSON_VIEW_CALL,
+    PERSONNEL_CONST,
+    {
+      role: 'scope',
+      unit: `${PERSONS}#employeesInScope`,
+      anchor: 'const inScope = scopeSql(scope, { person: sql`e.id` });',
+    },
+  ],
+};
+const { facts: _managerReadFacts, ...managerRefBase } = managerRef;
+const managerRefWrite: Obligation = managerRefBase;
+
+const activityOwnerOrgInScope: Obligation = {
+  perm: 'guard:ev.ownerOrgInScope',
+  note: '改所属组织时新组织须存在且在范围内（范围外与不存在同一 404，DEC-082）',
+  at: [
+    call(`${ACTIVITY_SERVICE}#updateActivity`, 'await requireOwnerOrg(tx, ctx, merged.ownerOrgId);'),
+    impl(`${EV}/store.ts#requireOwnerOrg`, "throw new AppError('NOT_FOUND', '所属组织不存在')"),
+  ],
+};
+
+function activityCrud(): RequiredTable {
+  const key: Key = 'evaluationActivity';
+  const path = `${BASE}/${OBJECTS[key][1]}`;
+  const op = (operation: 'create' | 'update' | 'delete') =>
+    writeOp(key, operation, registered(operation, key), spec(key));
+  return {
+    [`GET ${path}`]: [view(key, registered('list', key), spec(key)), filterFieldVisible(key), managerRef],
+    [`GET ${path}/:id`]: [view(key, registered('detail', key), spec(key)), managerRef],
+    [`POST ${path}`]: [
+      ...op('create'),
+      ...newActivityRefs(call(`${ACTIVITY_SERVICE}#createActivity`, 'await assertAddedRefs(')),
+      activityName,
+      managerRefWrite,
+    ],
+    [`PATCH ${path}/:id`]: [
+      ...op('update'),
+      ...newActivityRefs(call(`${ACTIVITY_SERVICE}#updateActivity`, 'await assertAddedRefs(')),
+      activityName,
+      activityOwnerOrgInScope,
+      managerRefWrite,
+    ],
+    [`DELETE ${path}/:id`]: [...op('delete'), managerRefWrite],
+  };
+}
+
 // ---- 通用评分项停用 / 删除：被评价表引用时只列操作人看得到的评价表（B4，DEC-374⑥）----------------------------------------
 const FORM_CODE = 'TEvaluation.EvaluationForm';
 /** 引用方评价表的可见范围：评价表查看权 + 所属组织 ∪ 所属人范围，在命令事务内解析；只决定提示里列哪些名称，不是准入。 */
@@ -424,5 +567,6 @@ export const EVALUATION: RequiredTable = {
   ...crud('generalScoreItem'),
   ...reviewGroupCrud(),
   ...formCrud(),
+  ...activityCrud(),
   ...candidates,
 };
