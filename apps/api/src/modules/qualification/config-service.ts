@@ -25,6 +25,7 @@ import {
 } from './access.js';
 import type * as input from './input.js';
 import { loadRow, view, withJobLinks, type JobLinked, type OwnedView } from './read-model.js';
+import { lockUnusedQualificationRef } from './reference-usage.js';
 import {
   audit,
   autoCode,
@@ -341,18 +342,7 @@ export async function updateCategory(tx: Tx, ctx: ConfigWriteContext, id: string
 }
 
 export async function deleteCategory(tx: Tx, ctx: WriteContext, id: string) {
-  const row = await lockEditable(tx, ctx, 'category', id);
-  await rejectInUse(tx, {
-    sql: sql`SELECT 1 FROM ql_standards WHERE tenant_id = ${ctx.tenantId} AND category_id = ${id}::uuid
-      UNION ALL SELECT 1 FROM ql_development_channels WHERE tenant_id = ${ctx.tenantId}
-        AND target_category_id = ${id}::uuid
-      UNION ALL SELECT 1 FROM personnel_qualification WHERE tenant_id = ${ctx.tenantId}
-        AND category_id = ${id}::uuid
-      UNION ALL SELECT 1 FROM ev_activities WHERE tenant_id = ${ctx.tenantId}
-        AND ${id}::uuid = ANY(category_ids)`,
-    message: '该任职类别已有任职资格标准，或被发展通道、评定活动、员工任职资格记录引用，不能删除',
-    reason: 'CATEGORY_IN_USE',
-  });
+  const row = await lockUnusedQualificationRef(tx, ctx, 'category', id);
   const before = await reload<JobLinked>(tx, ctx, 'category', id);
   await tx.execute(sql`DELETE FROM ql_categories WHERE tenant_id = ${ctx.tenantId} AND id = ${id}::uuid`);
   await audit(tx, ctx, 'category', 'delete', id, { before, after: null, orgId: orgOf(row) });
@@ -506,18 +496,7 @@ export async function updateLevel(tx: Tx, ctx: ConfigWriteContext, id: string, b
 }
 
 export async function deleteLevel(tx: Tx, ctx: WriteContext, id: string) {
-  const row = await lockEditable(tx, ctx, 'level', id);
-  await rejectInUse(tx, {
-    sql: sql`SELECT 1 FROM ql_standards WHERE tenant_id = ${ctx.tenantId} AND ${id}::uuid = ANY(level_ids)
-      UNION ALL SELECT 1 FROM ql_development_channels WHERE tenant_id = ${ctx.tenantId}
-        AND target_level_id = ${id}::uuid
-      UNION ALL SELECT 1 FROM personnel_qualification WHERE tenant_id = ${ctx.tenantId}
-        AND level_id = ${id}::uuid
-      UNION ALL SELECT 1 FROM ev_activities WHERE tenant_id = ${ctx.tenantId}
-        AND ${id}::uuid = ANY(level_ids)`,
-    message: '该任职级别已被任职资格标准、评定活动或员工任职资格记录引用，不能删除',
-    reason: 'LEVEL_IN_USE',
-  });
+  const row = await lockUnusedQualificationRef(tx, ctx, 'level', id);
   const before = await reload<JobLinked>(tx, ctx, 'level', id);
   await tx.execute(sql`DELETE FROM ql_levels WHERE tenant_id = ${ctx.tenantId} AND id = ${id}::uuid`);
   await audit(tx, ctx, 'level', 'delete', id, { before, after: null, orgId: orgOf(row) });
