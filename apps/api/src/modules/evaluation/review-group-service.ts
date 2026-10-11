@@ -13,6 +13,7 @@ import { assertNewPersonRefs, loadEmployees, presentPersonRefs, type PersonRefAc
 import { type Tracked, view } from './read-model.js';
 import type { View } from './route-support.js';
 import { lockReviewGroupPeople, requireEmployedReviewMembers } from './review-group-people.js';
+import { settleDueReviewGroupExits } from './review-group-exit.js';
 import { audit, bumped, lockEditable, requireOwnerOrg, rowsOf, type WriteContext } from './store.js';
 
 export interface MemberInput {
@@ -122,7 +123,7 @@ async function replaceMembers(tx: Tx, ctx: WriteContext, groupId: string, member
   }
 }
 
-export async function createReviewGroup(tx: Tx, ctx: WriteContext, body: input.ReviewGroupCreate) {
+export async function createReviewGroup(tx: Tx, ctx: WriteContext, body: input.ReviewGroupCreate, clock: () => Date) {
   checkMembers(body.members);
   await requireOwnerOrg(tx, ctx, body.ownerOrgId);
   await assertNewPersonRefs(
@@ -135,6 +136,14 @@ export async function createReviewGroup(tx: Tx, ctx: WriteContext, body: input.R
     ctx,
     body.members.map((member) => member.employeeId),
   );
+  await settleDueReviewGroupExits(
+    tx,
+    ctx,
+    body.members.map((member) => member.employeeId),
+    clock,
+  );
+  // 员工 / 退出相关组锁等待可能跨租户午夜；新增引用用锁后的业务日期（DEC-416⑦）。
+  ctx = { ...ctx, now: clock() };
   await requireEmployedReviewMembers(
     tx,
     ctx,
@@ -158,9 +167,17 @@ export async function createReviewGroup(tx: Tx, ctx: WriteContext, body: input.R
 
 const COLUMNS = { name: 'name', enabled: 'enabled', ownerOrgId: 'owner_org_id' } as const;
 
-export async function updateReviewGroup(tx: Tx, ctx: WriteContext, id: string, body: input.ReviewGroupPatch) {
+export async function updateReviewGroup(
+  tx: Tx,
+  ctx: WriteContext,
+  id: string,
+  body: input.ReviewGroupPatch,
+  clock: () => Date,
+) {
   await lockReviewGroupPeople(tx, ctx, body.members?.map((member) => member.employeeId) ?? [], id);
+  await settleDueReviewGroupExits(tx, ctx, body.members?.map((member) => member.employeeId) ?? [], clock, id);
   const row = await lockEditable(tx, ctx, 'reviewGroup', id);
+  ctx = { ...ctx, now: clock() };
   const before = await loadGroup(tx, ctx.tenantId, id);
   if (body.members) checkMembers(body.members);
   // 改所属组织：新组织同样须在范围内（DEC-082）；没改就不重判

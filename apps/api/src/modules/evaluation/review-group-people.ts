@@ -32,7 +32,7 @@ export async function lockReviewGroupPeople(
   for (const person of found) await lockEmploymentEmployee(tx, ctx, person.id);
 }
 
-/** 新增引用已通过人员范围校验，且员工锁仍持有；状态使用任职模块当前读取口径。 */
+/** 新增引用已通过人员范围校验，且相关锁仍持有；ctx.now 由服务在锁后刷新，状态使用任职模块当前读取口径。 */
 export async function requireEmployedReviewMembers(tx: Tx, ctx: EvaluationContext, ids: readonly string[]) {
   const today = tenantLocalDate(ctx.now, ctx.timezone);
   for (const id of ids) {

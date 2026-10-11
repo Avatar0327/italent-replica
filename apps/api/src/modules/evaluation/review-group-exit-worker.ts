@@ -43,7 +43,8 @@ export async function runReviewGroupExits(
   );
   const result = { picked: 0, done: 0, skipped: 0, failed: 0 };
   if (!tenant) return result;
-  const now = (options.clock ?? (() => new Date()))();
+  const clock = options.clock ?? (() => new Date());
+  const now = clock();
   const ctx: EmploymentContext = {
     tenantId,
     userId: SYSTEM_USER_ID,
@@ -65,18 +66,20 @@ export async function runReviewGroupExits(
   );
   result.picked = ready.length;
   for (const item of ready) {
-    const outcome = await consume(db, { ...ctx, commandId: `review-group-exit:${item.id}` }, item, today);
+    const outcome = await consume(db, { ...ctx, commandId: `review-group-exit:${item.id}` }, item, clock);
     if (outcome) result[outcome]++;
   }
   return result;
 }
 
-async function consume(db: Db, ctx: EmploymentContext, item: Picked, today: string): Promise<Outcome | null> {
+async function consume(db: Db, ctx: EmploymentContext, item: Picked, clock: () => Date): Promise<Outcome | null> {
   const progress: { phase: CommandPhase; attempts: number | null } = { phase: 'execute', attempts: null };
   try {
     return await withTenant(db, ctx.tenantId, async (tx) => {
       // 员工 → 队列 → 组（组 UUID 排序），与同事务离职及组编辑串行；多实例拿到终态后直接跳过。
       await lockEmploymentEmployee(tx, ctx, item.employeeId);
+      ctx = { ...ctx, now: clock() };
+      const today = recordEventToday(ctx);
       const [row] = rowsOf<QueueRow>(
         await tx.execute(sql`SELECT id, record_id AS "recordId",
         employee_id AS "employeeId", attempts FROM ev_sync_queue
@@ -94,7 +97,7 @@ async function consume(db: Db, ctx: EmploymentContext, item: Picked, today: stri
         reason = 'KIND_NOT_LEAVE';
       }
       const state = reason ? 'skipped' : 'done';
-      if (!reason) await exitEmployeeReviewGroups(tx, ctx, item.employeeId);
+      if (!reason) await exitEmployeeReviewGroups(tx, ctx, [item.employeeId]);
       await settleReviewGroupExit(tx, ctx, row.id, state, reason);
       progress.phase = 'commit';
       return state;
