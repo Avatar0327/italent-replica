@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
+import { buttonResource } from '@italent/domain';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { levelBody, levelKinds, levelsWorld } from './AC-SC-levels-support.js';
 import { resultRows } from './AC-ORG-people-support.js';
@@ -140,6 +141,41 @@ describe('AC-SC B2b #11 / #12 风险与健康度等级', () => {
     );
     expect((await w.request('DELETE', `/populations/${population.id}`, { ifMatch: 1 })).status).toBe(200);
   });
+  it('AC-SC 健康度：盘点目录决定过滤类型，多选与非法来源／度量组合拒绝，空阈值给警告', async () => {
+    await withTenant(w.db, w.tenant.id, (tx) =>
+      tx.execute(sql`INSERT INTO talent_review_fields
+      (tenant_id, code, name, kind, field_group, precision)
+      VALUES (${w.tenant.id}::uuid, 'SC_SCORE', '合成分数', 'number', 'result', 2),
+      (${w.tenant.id}::uuid, 'SC_TAGS', '合成标签', 'multi_option', 'basic', NULL)`),
+    );
+    const row = {
+      ...levelBody('health').rules.rows[0]!,
+      fieldSource: 'review',
+      fieldCode: 'SC_SCORE',
+      measure: 'average',
+    };
+    const saved = await w.createLevel('health', { ...levelBody('health'), rules: { expression: '1', rows: [row] } });
+    for (const bad of [
+      { ...row, fieldCode: 'SC_TAGS', measure: 'count' },
+      { ...row, measure: 'green_rate' },
+      { ...row, fieldSource: 'org', fieldCode: 'person_in_charge_id' },
+    ]) {
+      const rejected = await w.request('PUT', `/health-levels/${saved.id}`, {
+        ifMatch: 1,
+        body: { rules: { expression: '1', rows: [bad] } },
+      });
+      expect(rejected.status).toBe(400);
+      expect(await (await w.request('GET', `/health-levels/${saved.id}`)).json()).toEqual(saved);
+    }
+    const warned = await w.createLevel('risk', {
+      ...levelBody('risk'),
+      rules: {
+        expression: '1',
+        rows: [{ ...levelBody('risk').rules.rows[0], threshold: null }],
+      },
+    });
+    expect(warned).toMatchObject({ warnings: [{ code: 'RULE_ROW_VALUE_MISSING', rowNo: 1 }] });
+  });
   it.each(levelKinds)('AC-SC %s：首次、直接重放、提交确认丢失回查均只写一次', async (kind) => {
     const saved = await w.createLevel(kind);
     const path = `/${kind}-levels/${saved.id}`;
@@ -196,7 +232,8 @@ describe('AC-SC B2b #11 / #12 风险与健康度等级', () => {
     expect((await api.request('GET', `/api/tenant/succession/${kind}-levels/options`, w.asAdmin)).status).toBe(403);
     const resetOnly = tenantApi(w.db, {
       authorize: (request) =>
-        request.action !== 'object.button' || request.resource === 'Succession.HealthResult#reset@list',
+        request.action !== 'object.button' ||
+        request.resource === buttonResource('Succession.HealthResult', 'reset', 'list'),
     });
     expect((await resetOnly.request('GET', '/api/tenant/succession/health-levels/options', w.asAdmin)).status).toBe(
       200,

@@ -380,7 +380,7 @@ describe('AC-PRM-FW-01 createApp 真实装配', () => {
     const byModule: Record<string, number> = {};
     for (const route of manifest.declared) byModule[route.module] = (byModule[route.module] ?? 0) + 1;
     expect(byModule).toEqual(EXPECTED_BY_MODULE);
-    expect(manifest.declared).toHaveLength(592);
+    expect(manifest.declared).toHaveLength(606);
     expect(manifest.declared.map((r) => `${r.method} ${r.path}`)).toContain(
       'POST /api/tenant/org/organizations/:id/employment-preview',
     );

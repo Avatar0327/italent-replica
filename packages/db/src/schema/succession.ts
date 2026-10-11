@@ -6,6 +6,8 @@
 import { sql } from 'drizzle-orm';
 import {
   check,
+  boolean,
+  doublePrecision,
   date,
   foreignKey,
   index,
@@ -195,5 +197,101 @@ export const successionRuleSettings = pgTable(
     check('succession_rule_settings_kind', sql`${t.kind} IN ('position_risk', 'org_health')`),
     check('succession_rule_settings_color', sql`${t.defaultColor} ~ '^#[0-9A-Fa-f]{6}$'`),
     check('succession_rule_settings_revision', sql`${t.revision} >= 0 AND ${t.levelsRevision} >= 0`),
+  ],
+);
+
+// B2b，设计 §1.3 / §1.4：两套独立关系表共用结构；排序唯一约束在 SQL 迁移中设为延迟检查。
+function levelTable<N extends 'succession_risk_levels' | 'succession_health_levels'>(name: N) {
+  return pgTable(
+    name,
+    {
+      id: uuid('id').primaryKey().defaultRandom(),
+      tenantId: uuid('tenant_id')
+        .notNull()
+        .references(() => tenants.id),
+      code: text('code').notNull(),
+      name: text('name').notNull(),
+      color: text('color').notNull(),
+      description: text('description'),
+      displayOrder: integer('display_order').notNull(),
+      conditionExpression: text('condition_expression'),
+      compiledFormula: text('compiled_formula'),
+      compilerVersion: text('compiler_version'),
+      compileError: jsonb('compile_error'),
+      enabled: boolean('enabled').notNull().default(true),
+      revision: integer('revision').notNull().default(1),
+    },
+    (t) => [
+      unique(`${name}_tenant_id`).on(t.tenantId, t.id),
+      unique(`${name}_code`).on(t.tenantId, t.code),
+      unique(`${name}_name`).on(t.tenantId, t.name),
+      check(`${name}_color`, sql`${t.color} ~ '^#[0-9A-Fa-f]{6}$'`),
+      check(`${name}_revision`, sql`${t.revision} > 0 AND ${t.displayOrder} > 0`),
+    ],
+  );
+}
+export const successionRiskLevels = levelTable('succession_risk_levels');
+export const successionHealthLevels = levelTable('succession_health_levels');
+const levelRowColumns = () => ({
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id')
+    .notNull()
+    .references(() => tenants.id),
+  levelId: uuid('level_id').notNull(),
+  rowNo: integer('row_no').notNull(),
+  fieldCode: text('field_code'),
+  filterOperator: text('filter_operator'),
+  filterValues: jsonb('filter_values').notNull().default([]),
+  measure: text('measure').notNull(),
+  comparator: text('comparator').notNull(),
+  threshold: doublePrecision('threshold'),
+  thresholdHigh: doublePrecision('threshold_high'),
+  isPercent: boolean('is_percent').notNull().default(false),
+});
+export const successionRiskLevelRows = pgTable(
+  'succession_risk_level_rows',
+  {
+    ...levelRowColumns(),
+    subject: text('subject').notNull(),
+  },
+  (t) => [
+    unique().on(t.tenantId, t.levelId, t.rowNo),
+    foreignKey({
+      columns: [t.tenantId, t.levelId],
+      foreignColumns: [successionRiskLevels.tenantId, successionRiskLevels.id],
+    }).onDelete('cascade'),
+    check('succession_risk_rows_number', sql`${t.rowNo} > 0`),
+    check('succession_risk_rows_subject', sql`${t.subject} IN ('incumbent', 'successor')`),
+    check(
+      'succession_risk_rows_measure',
+      sql`${t.measure} IN ('count', 'count_over_incumbents', 'count_over_successors')`,
+    ),
+  ],
+);
+export const successionHealthLevelRows = pgTable(
+  'succession_health_level_rows',
+  {
+    ...levelRowColumns(),
+    population: text('population').notNull(),
+    populationId: uuid('population_id'),
+    fieldSource: text('field_source').notNull(),
+  },
+  (t) => [
+    unique().on(t.tenantId, t.levelId, t.rowNo),
+    foreignKey({
+      columns: [t.tenantId, t.levelId],
+      foreignColumns: [successionHealthLevels.tenantId, successionHealthLevels.id],
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [t.tenantId, t.populationId],
+      foreignColumns: [successionPopulations.tenantId, successionPopulations.id],
+    }).onDelete('restrict'),
+    check('succession_health_rows_number', sql`${t.rowNo} > 0`),
+    check(
+      'succession_health_rows_population',
+      sql`${t.population} IN ('all', 'successors', 'incumbents', 'custom')
+    AND ((${t.population} = 'custom') = (${t.populationId} IS NOT NULL))`,
+    ),
+    check('succession_health_rows_source', sql`${t.fieldSource} IN ('review', 'org', 'succession')`),
   ],
 );

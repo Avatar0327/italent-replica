@@ -71,9 +71,9 @@ const withPolicy = (base: ManifestRoute, policy: RoutePolicy): ManifestRoute => 
 const withTable = (k: string, obligations: readonly Obligation[]): RequiredTable => ({ ...REQUIRED, [k]: obligations });
 
 describe('AC-PRM-FW-08 发现探测：冻结与覆盖', () => {
-  it('覆盖全部已声明端点（592），每个模块一个冻结文件，条目数与模块端点数一致', () => {
+  it('覆盖全部已声明端点（606），每个模块一个冻结文件，条目数与模块端点数一致', () => {
     expect(Object.keys(fresh).sort()).toEqual(manifest.declared.map(key).sort());
-    expect(manifest.declared).toHaveLength(592);
+    expect(manifest.declared).toHaveLength(606);
     const groups = groupByModule(fresh);
     const files = readdirSync(PROBE_DIR).filter((f) => f.endsWith('.json'));
     expect(files.sort()).toEqual(
@@ -405,19 +405,21 @@ describe('AC-PRM-FW-08 P3 非法标识：观测码与根节点 invalidId 相等'
     'PATCH /api/tenant/personnel/employees/:employeeId/subsets/:kind/:id',
   ];
 
-  it('第 3 轮：状态码相同、错误体不同的 51 个端点由实际行为证明适用（不依赖证据表；含 R3-T04 PR-B4 新建规则组 1 个、R3-T05 A2 / B2a 编辑各 1 个）', () => {
+  it('第 3 轮：状态码相同、错误体不同的 53 个端点由实际行为证明适用（含 B2b 两种等级编辑）', () => {
     const k48 = sameStatusOnly();
-    expect(k48).toHaveLength(51);
+    expect(k48).toHaveLength(53);
     expect(k48).toContain('POST /api/tenant/talent-review/matrices/:id/ratio-groups');
     expect(k48).toContain('GET /api/tenant/permission/profiles/:id');
     expect(k48).toContain('POST /api/tenant/idp/plans/:id/goals');
+    expect(k48).toContain('PUT /api/tenant/succession/risk-levels/:id');
+    expect(k48).toContain('PUT /api/tenant/succession/health-levels/:id');
     for (const k of k48) {
       expect(p3Applicable(k, fresh[k]!), k).toBe(true);
       expect(route(k).policy.invalidId, `${k} 真实声明有 invalidId`).toBeDefined();
     }
   });
 
-  it('51 个端点把 invalidId 改成另一个状态码、或删掉声明 → MISMATCH:invalidId', () => {
+  it('53 个端点把 invalidId 改成另一个状态码、或删掉声明 → MISMATCH:invalidId', () => {
     for (const k of sameStatusOnly()) {
       const r = route(k);
       const declared = r.policy.invalidId!;

@@ -161,11 +161,27 @@ export const SUCCESSION: RequiredTable = {
 
 /** B2a：配置对象看全部；首次与重放共享 A2 的对象／按钮复核；平台命令只认平台运营。 */
 const CONFIG_ROUTES = `${S}/config-routes.ts#registerSuccessionConfigRoutes`;
-function configRequired(key: 'population' | 'ruleSettings', operation: 'view' | 'create' | 'update' | 'delete') {
-  const code = key === 'population' ? 'Succession.Population' : 'Succession.RuleSettings';
+function configRequired(
+  key: 'population' | 'ruleSettings' | 'riskLevel' | 'healthLevel',
+  operation: 'view' | 'create' | 'update' | 'delete',
+  buttonCode: 'view' | 'create' | 'update' | 'delete' | 'reorder' = operation,
+) {
+  const name = {
+    population: 'Population',
+    ruleSettings: 'RuleSettings',
+    riskLevel: 'RiskLevel',
+    healthLevel: 'HealthLevel',
+  }[key];
+  const code = `Succession.${name}`;
   const entry: Evidence =
     operation === 'view'
-      ? { role: 'call', unit: CONFIG_ROUTES, anchor: `await successionContext(c, deps, '${key}')` }
+      ? key === 'population' || key === 'ruleSettings'
+        ? { role: 'call', unit: CONFIG_ROUTES, anchor: `await successionContext(c, deps, '${key}')` }
+        : {
+            role: 'call',
+            unit: `${S}/levels-routes.ts#registerLevelReads`,
+            anchor: 'await successionContext(c, deps, spec.object)',
+          }
       : {
           role: 'call',
           unit: SUCCESSION_CONTEXT,
@@ -174,14 +190,19 @@ function configRequired(key: 'population' | 'ruleSettings', operation: 'view' | 
   const constant: Evidence = {
     role: 'const',
     unit: `packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>${key}`,
-    anchor: key === 'population' ? "object('Population'" : "object( 'RuleSettings'",
+    anchor:
+      key === 'population'
+        ? "object('Population'"
+        : key === 'ruleSettings'
+          ? "object( 'RuleSettings'"
+          : `levelObject('${name}')`,
   };
   const obligations: Obligation[] = [
     { perm: `obj:${code}:${operation}`, facts: ['object:objectContext'], at: [entry, ...CONTEXT, constant] },
   ];
   if (operation !== 'view')
     obligations.push({
-      perm: `btn:${code}#${operation}@${operation === 'create' ? 'list' : 'detail'}`,
+      perm: `btn:${code}#${buttonCode}@${operation === 'create' || buttonCode === 'reorder' ? 'list' : 'detail'}`,
       facts: ['button:button()'],
       at: [
         {
@@ -209,3 +230,45 @@ Object.assign(SUCCESSION, {
   [`PUT ${BASE}/rule-settings/:kind`]: configRequired('ruleSettings', 'update'),
   'POST /api/platform/succession/rules/recompile': [],
 });
+
+for (const kind of ['risk', 'health'] as const) {
+  const key = kind === 'risk' ? 'riskLevel' : 'healthLevel';
+  const path = `${BASE}/${kind}-levels`;
+  Object.assign(SUCCESSION, {
+    [`GET ${path}`]: configRequired(key, 'view'),
+    [`POST ${path}`]: configRequired(key, 'create'),
+    [`GET ${path}/:id`]: configRequired(key, 'view'),
+    [`PUT ${path}/:id`]: configRequired(key, 'update'),
+    [`DELETE ${path}/:id`]: configRequired(key, 'delete'),
+    [`PUT ${path}/order`]: configRequired(key, 'update', 'reorder'),
+  });
+  const result = kind === 'risk' ? 'RiskResult' : 'HealthResult';
+  SUCCESSION[`GET ${path}/options`] = (kind === 'risk' ? ['assign'] : ['assign', 'reset']).flatMap(
+    (code): Obligation[] => {
+      const at: Evidence[] = [
+        {
+          role: 'call',
+          unit: `${S}/levels-routes.ts#levelOptionAccess`,
+          anchor: "await successionContext(c, deps, object, 'update')",
+        },
+        ...CONTEXT,
+      ];
+      const group = `options:${code}`;
+      return [
+        { perm: `obj:Succession.${result}:update`, or: group, facts: ['object:objectContext'], at },
+        {
+          perm: `btn:Succession.${result}#${code}@${code === 'reset' ? 'list' : 'detail'}`,
+          or: group,
+          facts: ['button:button()'],
+          at: [
+            {
+              role: 'call',
+              unit: `${S}/levels-routes.ts#levelOptionAccess`,
+              anchor: `await button(deps, ctx, codeOf(object), '${code}', '${code === 'reset' ? 'list' : 'detail'}')`,
+            },
+          ],
+        },
+      ];
+    },
+  );
+}

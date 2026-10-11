@@ -36,6 +36,7 @@ import {
 } from './record-read.js';
 import './settings.js';
 import { installSuccessionPorts } from './ports.js';
+import { registerSuccessionLevelRoutes } from './levels-routes.js';
 import { createRecord, deleteRecord, endRecords, updateRecord } from './record-write.js';
 import { recordResults } from './record-results.js';
 import {
@@ -100,6 +101,7 @@ export function registerSuccessionRoutes(router: Hono<TenantEnv>, deps: TenantRo
 
   registerRecordWrites(router, deps);
   registerSuccessionConfigRoutes(router, deps);
+  registerSuccessionLevelRoutes(router, deps);
 }
 
 /** 记录写侧（A2）：#3 新增、#3a 候选、#4 编辑、#5 批量结束、#6 软删除；共用命令执行协议（write-support.ts）。 */

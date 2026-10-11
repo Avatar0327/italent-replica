@@ -672,6 +672,10 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/succession/input.ts': {
     rejectImmutable: '512c60b05ed6',
   },
+  'apps/api/src/modules/succession/levels-routes.ts': {
+    levelOptionAccess: '860821af3908',
+    registerSuccessionLevelRoutes: '72a6b2744582',
+  },
   'apps/api/src/modules/succession/read-sql.ts': {
     selfRecordHiddenSql: '89628ea4a06a',
   },
@@ -683,7 +687,7 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/succession/routes.ts': {
     recordFilter: '858f731477d8',
-    registerSuccessionRoutes: 'b745b2b4d9fd',
+    registerSuccessionRoutes: '0b1d31880ab7',
   },
   'apps/api/src/modules/succession/write-support.ts': {
     checkCandidateAccess: '7843395303d7',
@@ -1136,8 +1140,10 @@ export const DIGESTS: Digests = {
     QUALIFICATION_PAGES: '21fe401c6f6b',
   },
   'packages/domain/src/succession/catalog.ts': {
+    'SUCCESSION_OBJECTS>healthLevel': '94ff5db43799',
     'SUCCESSION_OBJECTS>population': 'dd9208c0947c',
     'SUCCESSION_OBJECTS>record': 'a17b8e7432d2',
+    'SUCCESSION_OBJECTS>riskLevel': 'ad0584cc6f9f',
     'SUCCESSION_OBJECTS>ruleSettings': 'a8e71b2fb2b9',
   },
   'packages/domain/src/survey360/catalog.ts': {
@@ -1675,11 +1681,13 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/succession/access.ts#successionContext': '573bb32e1617',
   'apps/api/src/modules/succession/config-routes.ts#registerSuccessionConfigRoutes': '3fb660443fbe',
   'apps/api/src/modules/succession/input.ts#rejectImmutable': '99ce3a8d9998',
+  'apps/api/src/modules/succession/levels-routes.ts#levelOptionAccess': '07e9bf4002f1',
+  'apps/api/src/modules/succession/levels-routes.ts#registerSuccessionLevelRoutes': '0393265c7db5',
   'apps/api/src/modules/succession/read-sql.ts#selfRecordHiddenSql': 'eab3bde19b0f',
   'apps/api/src/modules/succession/record-read.ts#conditions': '326371d4de4d',
   'apps/api/src/modules/succession/record-write.ts#requireTarget': '8ff43faa6c04',
   'apps/api/src/modules/succession/routes.ts#recordFilter': '8c3cfb5b80b7',
-  'apps/api/src/modules/succession/routes.ts#registerSuccessionRoutes': '063447f376c3',
+  'apps/api/src/modules/succession/routes.ts#registerSuccessionRoutes': 'd07376648b14',
   'apps/api/src/modules/succession/write-support.ts#checkCandidateAccess': 'ea8155f2a727',
   'apps/api/src/modules/succession/write-support.ts#checkWriteAccess': 'eac8ef9cc70b',
   'apps/api/src/modules/survey360/access.ts#activityVisibleSql': '11f326016f03',
@@ -2019,8 +2027,10 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'packages/domain/src/personnel/fields.ts#SUBSETS': 'e3b0c44298fc',
   'packages/domain/src/qualification/catalog.ts#QUALIFICATION_OBJECTS': 'b534bdb4d131',
   'packages/domain/src/qualification/catalog.ts#QUALIFICATION_PAGES': '7456b7e1794d',
+  'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>healthLevel': '929ee4841589',
   'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>population': 'e6610430d922',
   'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>record': '11325ba861f5',
+  'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>riskLevel': '929ee4841589',
   'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>ruleSettings': 'ddd5b264fc87',
   'packages/domain/src/survey360/catalog.ts#SURVEY360_BUTTONS': 'e3b0c44298fc',
   'packages/domain/src/survey360/catalog.ts#SURVEY360_OBJECTS>activity': 'a9beadd495ef',
