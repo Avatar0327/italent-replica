@@ -37,3 +37,13 @@ export declare function rebaseSnapshots(
   mainLast: Snapshot,
 ): { snapshots: Snapshot[]; conflicts: string[] };
 export declare function drizzleJson(value: unknown): string;
+export interface Diff3Hunk {
+  ours: string;
+  base: string | null;
+  theirs: string;
+}
+export declare function parseDiff3(text: string): (string | Diff3Hunk)[];
+export declare function maskNumbers(text: string): string;
+export declare function isCountOnlyHunk(hunk: Diff3Hunk): boolean;
+export declare function classifyConflict(diff3Text: string): { hunks: number; countOnly: boolean };
+export declare function takeOursForCounts(diff3Text: string): { text: string; remaining: number };

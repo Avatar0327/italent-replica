@@ -1,17 +1,21 @@
 #!/usr/bin/env node
 // DEC-430①：把 origin/main 合进当前分支，并处理“生成物”与迁移编号，开发线程和合并队列共用。
-// 用法：pnpm merge:main [--check] [--continue] [--no-regen] [--no-fetch]
+// 用法：pnpm merge:main [--check] [--continue] [--no-regen] [--no-fetch] [--take-ours-for-counts]
 //   （默认）fetch → merge origin/main → 只在生成物白名单内的冲突取 main 版本 → 本分支迁移改号接在 main 之后
 //           → 重算 F-039 证据登记与冻结基准 / 端点计数 → 提交“merge: 合入 main 并重算生成物”
 //   --check     只预演：列出会冲突的文件（区分生成物 / 业务文件）和迁移改号计划，不改工作区；有业务冲突退出码 1
 //   --continue  业务冲突手工解决并 git add 之后，从改号那一步继续
 //   --no-regen  不跑重算命令（只合并、改号、提交）
+//   --take-ours-for-counts  业务冲突里 main 一侧只改了数字字面量（如端点计数）的文件，冲突处取本分支一侧并 git add；
+//               默认不自动处理，只提示（DEC-430① 补充）
 // 白名单之外的冲突一律停下并列出，须人工处理。规则说明见 docs/08_设计/DEC-430_生成物合并后重算.md。
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  classifyConflict,
   drizzleJson,
   GENERATED_PATHS,
   isGeneratedPath,
@@ -20,6 +24,7 @@ import {
   rebaseSnapshots,
   snapshotPath,
   sqlPath,
+  takeOursForCounts,
 } from './merge-main-lib.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -68,6 +73,65 @@ function splitConflicts(files) {
 function printConflicts({ generated, other }) {
   if (generated.length) console.log(`生成物冲突（取 main 版本后重算）：\n  ${generated.join('\n  ')}`);
   if (other.length) console.log(`业务文件冲突（须人工处理）：\n  ${other.join('\n  ')}`);
+}
+
+/**
+ * 冲突文件的 diff3 文本：revs = [本分支, 分叉点, main]（合并进行中用索引的 :2 / :1 / :3）。
+ * 任一侧缺文件（新增 / 删除冲突）返回 undefined。
+ */
+function diff3Text(file, revs) {
+  const [ours, base, theirs] = revs.map((rev) => show(rev, file));
+  if (ours === undefined || base === undefined || theirs === undefined) return undefined;
+  const dir = mkdtempSync(path.join(tmpdir(), 'merge-main-'));
+  try {
+    const paths = Object.entries({ ours, base, theirs }).map(([name, text]) => {
+      writeFileSync(path.join(dir, name), text);
+      return path.join(dir, name);
+    });
+    const run = spawnSync(
+      'git',
+      ['merge-file', '-p', '--diff3', '-L', 'HEAD', '-L', 'merge-base', '-L', MAIN, ...paths],
+      { encoding: 'utf8', maxBuffer: 1 << 28 },
+    );
+    return run.status === null || run.status < 0 ? undefined : run.stdout;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/** 业务冲突里“main 一侧只改了数字字面量”的文件（不自动处理，只用来提示或按 --take-ours-for-counts 处理）。 */
+function countOnlyConflicts(files, revs) {
+  return files.flatMap((file) => {
+    const text = diff3Text(file, revs);
+    if (text === undefined) return [];
+    const { hunks, countOnly } = classifyConflict(text);
+    return countOnly ? [{ file, hunks, text }] : [];
+  });
+}
+
+function printCountHint(items) {
+  if (!items.length) return;
+  console.log(
+    [
+      '其中以下文件 main 一侧相对分叉点只改了数字字面量（如端点计数 592→593）：',
+      ...items.map(({ file, hunks }) => `  ${file}（${hunks} 处冲突）`),
+      '  建议：若本分支已改为读生成物（如 baseline/endpoint-counts.json）或计数会随重算更新，冲突处保留本分支一侧，',
+      '  git add 后运行 pnpm merge:main --continue 重算生成物；也可运行 pnpm merge:main --continue --take-ours-for-counts，',
+      '  只把这些冲突处取本分支一侧（文件里不冲突的 main 改动保留）。',
+    ].join('\n'),
+  );
+}
+
+/** --take-ours-for-counts：整份文件的冲突都“只改计数”时取本分支一侧并 git add，返回已处理的文件。 */
+function resolveCountOnly(items) {
+  const done = items.filter(({ text }) => takeOursForCounts(text).remaining === 0);
+  for (const { file, text } of done) {
+    writeRepo(file, takeOursForCounts(text).text);
+    git('add', '--', file);
+  }
+  if (done.length)
+    console.log(`只改计数的冲突取本分支一侧（--take-ours-for-counts）：\n  ${done.map((d) => d.file).join('\n  ')}`);
+  return new Set(done.map((d) => d.file));
 }
 
 /** 预演合并冲突：git merge-tree --write-tree 不碰工作区，冲突时退出码 1，第一行后是冲突文件。 */
@@ -180,6 +244,10 @@ function check() {
   console.log(upToDate ? `当前分支已包含 ${MAIN}。` : `需要合并 ${MAIN}。`);
   const conflicts = splitConflicts(upToDate ? [] : predictConflicts());
   printConflicts(conflicts);
+  if (conflicts.other.length) {
+    const base = git('merge-base', 'HEAD', MAIN).trim();
+    printCountHint(countOnlyConflicts(conflicts.other, ['HEAD', base, MAIN]));
+  }
   printPlan(migrationPlan());
   console.log(`生成物白名单：\n  ${GENERATED_PATHS.join('\n  ')}`);
   process.exit(conflicts.other.length ? 1 : 0);
@@ -199,8 +267,15 @@ function main() {
   if (!args.has('--continue')) startMerge();
   const conflicts = splitConflicts(unmerged());
   resolveGenerated(conflicts.generated);
-  if (conflicts.other.length) {
-    printConflicts({ generated: [], other: conflicts.other });
+  let other = conflicts.other;
+  const countOnly = other.length ? countOnlyConflicts(other, [':2', ':1', ':3']) : [];
+  if (args.has('--take-ours-for-counts') && countOnly.length) {
+    const resolved = resolveCountOnly(countOnly);
+    other = other.filter((f) => !resolved.has(f));
+  }
+  if (other.length) {
+    printConflicts({ generated: [], other });
+    printCountHint(countOnly.filter(({ file }) => other.includes(file)));
     fail('请手工解决上面的业务冲突并 git add，然后运行 pnpm merge:main --continue');
   }
   const plan = migrationPlan();

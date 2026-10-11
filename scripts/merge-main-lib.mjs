@@ -1,7 +1,8 @@
 // DEC-430①：pnpm merge:main 的纯函数部分（不碰 git、不碰文件系统），单测见 tests/merge-main.test.ts。
 // - 哪些路径算“生成物”（合并冲突时直接取 main 的版本，之后重算）；
 // - 迁移编号在合并时分配：本分支自己的迁移接在 main 最后一条之后，journal 的 when 严格递增；
-// - 快照三方合并：本分支快照相对“分叉前快照”的改动叠到 main 最新快照上，并接上 prevId 链。
+// - 快照三方合并：本分支快照相对“分叉前快照”的改动叠到 main 最新快照上，并接上 prevId 链；
+// - “只改计数”的业务冲突识别：main 一侧相对分叉点只改了数字字面量（如端点计数 592→593）。
 
 const MIGRATIONS = 'packages/db/migrations';
 const ROUTE_POLICY = 'tests/acceptance/support/route-policy';
@@ -92,6 +93,69 @@ export function rebaseSnapshots(forkSnapshot, ownSnapshots, mainLast) {
     return out;
   });
   return { snapshots, conflicts };
+}
+
+/**
+ * 解析 diff3 风格的冲突文本（git merge-file --diff3 的输出）：返回片段数组，
+ * 字符串是无冲突的部分，对象 { ours, base, theirs } 是一处冲突；没有 ||||||| 段时 base 为 null。
+ */
+export function parseDiff3(text) {
+  const segments = [];
+  let clean = '';
+  let hunk = null;
+  let part = '';
+  for (const line of text.split(/(?<=\n)/)) {
+    const head = line.replace(/\r?\n$/, '');
+    if (!hunk) {
+      if (/^<{7}(?: |$)/.test(head)) {
+        if (clean) segments.push(clean);
+        clean = '';
+        hunk = { ours: '', base: null, theirs: '' };
+        part = 'ours';
+      } else clean += line;
+      continue;
+    }
+    if (part === 'ours' && /^\|{7}(?: |$)/.test(head)) {
+      hunk.base = '';
+      part = 'base';
+    } else if (part !== 'theirs' && /^={7}$/.test(head)) part = 'theirs';
+    else if (part === 'theirs' && /^>{7}(?: |$)/.test(head)) {
+      segments.push(hunk);
+      hunk = null;
+    } else hunk[part] += line;
+  }
+  if (hunk) throw new Error('冲突标记不完整');
+  if (clean) segments.push(clean);
+  return segments;
+}
+
+/** 独立的数字字面量（592、1_000、0.5）；标识符里的数字（FW-01、v2、x1）不算。 */
+const NUMBER_RE = /(?<![\w$.-])\d[\d_]*(?:\.\d+)?(?![\w$])/g;
+export const maskNumbers = (text) => text.replace(NUMBER_RE, '#');
+
+/** 一处冲突“只改计数”：有分叉点内容，且 main 一侧相对分叉点只有数字字面量不同。 */
+export const isCountOnlyHunk = ({ base, theirs }) =>
+  base !== null && base !== theirs && maskNumbers(base) === maskNumbers(theirs);
+
+/** 冲突文件分类：hunks 为冲突处数，countOnly 表示每一处都是“main 只改计数”。 */
+export function classifyConflict(diff3Text) {
+  const hunks = parseDiff3(diff3Text).filter((s) => typeof s !== 'string');
+  return { hunks: hunks.length, countOnly: hunks.length > 0 && hunks.every(isCountOnlyHunk) };
+}
+
+/** 把“只改计数”的冲突处取本分支一侧，其余冲突原样保留（含标记）；返回新文本与剩余冲突处数。 */
+export function takeOursForCounts(diff3Text) {
+  let remaining = 0;
+  const text = parseDiff3(diff3Text)
+    .map((s) => {
+      if (typeof s === 'string') return s;
+      if (isCountOnlyHunk(s)) return s.ours;
+      remaining += 1;
+      const base = s.base === null ? '' : `||||||| merge-base\n${s.base}`;
+      return `<<<<<<< HEAD\n${s.ours}${base}=======\n${s.theirs}>>>>>>> origin/main\n`;
+    })
+    .join('');
+  return { text, remaining };
 }
 
 /** drizzle 的写法：两空格缩进、末尾无换行。 */
