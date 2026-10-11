@@ -1,6 +1,6 @@
 {
-  "id": "96c05ea5-1b3a-4968-80ea-57e57fe58b1c",
-  "prevId": "2dab2bf2-08d8-418d-a99f-73f3ad5a8626",
+  "id": "2dab2bf2-08d8-418d-a99f-73f3ad5a8626",
+  "prevId": "659d43de-ef92-4809-a748-0ff77db2815b",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -50592,6 +50592,12 @@
           "notNull": true,
           "default": "'not_calculated'"
         },
+        "criterion_id": {
+          "name": "criterion_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "calc_rule_id": {
           "name": "calc_rule_id",
           "type": "uuid",
@@ -50740,6 +50746,21 @@
           "columnsFrom": [
             "tenant_id",
             "calc_rule_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "talent_review_projects_tenant_id_criterion_id_talent_criteria_tenant_id_id_fk": {
+          "name": "talent_review_projects_tenant_id_criterion_id_talent_criteria_tenant_id_id_fk",
+          "tableFrom": "talent_review_projects",
+          "tableTo": "talent_criteria",
+          "columnsFrom": [
+            "tenant_id",
+            "criterion_id"
           ],
           "columnsTo": [
             "tenant_id",
@@ -51181,57 +51202,57 @@
         "succession_health_level_rows_tenant_id_tenants_id_fk": {
           "name": "succession_health_level_rows_tenant_id_tenants_id_fk",
           "tableFrom": "succession_health_level_rows",
+          "tableTo": "tenants",
           "columnsFrom": [
             "tenant_id"
           ],
-          "tableTo": "tenants",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "succession_health_level_rows_tenant_id_level_id_succession_health_levels_tenant_id_id_fk": {
           "name": "succession_health_level_rows_tenant_id_level_id_succession_health_levels_tenant_id_id_fk",
           "tableFrom": "succession_health_level_rows",
+          "tableTo": "succession_health_levels",
           "columnsFrom": [
             "tenant_id",
             "level_id"
           ],
-          "tableTo": "succession_health_levels",
           "columnsTo": [
             "tenant_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "succession_health_level_rows_tenant_id_population_id_succession_populations_tenant_id_id_fk": {
           "name": "succession_health_level_rows_tenant_id_population_id_succession_populations_tenant_id_id_fk",
           "tableFrom": "succession_health_level_rows",
+          "tableTo": "succession_populations",
           "columnsFrom": [
             "tenant_id",
             "population_id"
           ],
-          "tableTo": "succession_populations",
           "columnsTo": [
             "tenant_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "succession_health_level_rows_tenant_id_level_id_row_no_unique": {
           "name": "succession_health_level_rows_tenant_id_level_id_row_no_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "tenant_id",
             "level_id",
             "row_no"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -51342,50 +51363,42 @@
         "succession_health_levels_tenant_id_tenants_id_fk": {
           "name": "succession_health_levels_tenant_id_tenants_id_fk",
           "tableFrom": "succession_health_levels",
+          "tableTo": "tenants",
           "columnsFrom": [
             "tenant_id"
           ],
-          "tableTo": "tenants",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "succession_health_levels_tenant_id": {
           "name": "succession_health_levels_tenant_id",
+          "nullsNotDistinct": false,
           "columns": [
             "tenant_id",
             "id"
-          ],
-          "nullsNotDistinct": false
+          ]
         },
         "succession_health_levels_code": {
           "name": "succession_health_levels_code",
+          "nullsNotDistinct": false,
           "columns": [
             "tenant_id",
             "code"
-          ],
-          "nullsNotDistinct": false
+          ]
         },
         "succession_health_levels_name": {
           "name": "succession_health_levels_name",
+          "nullsNotDistinct": false,
           "columns": [
             "tenant_id",
             "name"
-          ],
-          "nullsNotDistinct": false
-        },
-        "succession_health_levels_order": {
-          "name": "succession_health_levels_order",
-          "columns": [
-            "tenant_id",
-            "display_order"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -51492,42 +51505,42 @@
         "succession_risk_level_rows_tenant_id_tenants_id_fk": {
           "name": "succession_risk_level_rows_tenant_id_tenants_id_fk",
           "tableFrom": "succession_risk_level_rows",
+          "tableTo": "tenants",
           "columnsFrom": [
             "tenant_id"
           ],
-          "tableTo": "tenants",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "succession_risk_level_rows_tenant_id_level_id_succession_risk_levels_tenant_id_id_fk": {
           "name": "succession_risk_level_rows_tenant_id_level_id_succession_risk_levels_tenant_id_id_fk",
           "tableFrom": "succession_risk_level_rows",
+          "tableTo": "succession_risk_levels",
           "columnsFrom": [
             "tenant_id",
             "level_id"
           ],
-          "tableTo": "succession_risk_levels",
           "columnsTo": [
             "tenant_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "succession_risk_level_rows_tenant_id_level_id_row_no_unique": {
           "name": "succession_risk_level_rows_tenant_id_level_id_row_no_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "tenant_id",
             "level_id",
             "row_no"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -51638,50 +51651,42 @@
         "succession_risk_levels_tenant_id_tenants_id_fk": {
           "name": "succession_risk_levels_tenant_id_tenants_id_fk",
           "tableFrom": "succession_risk_levels",
+          "tableTo": "tenants",
           "columnsFrom": [
             "tenant_id"
           ],
-          "tableTo": "tenants",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "succession_risk_levels_tenant_id": {
           "name": "succession_risk_levels_tenant_id",
+          "nullsNotDistinct": false,
           "columns": [
             "tenant_id",
             "id"
-          ],
-          "nullsNotDistinct": false
+          ]
         },
         "succession_risk_levels_code": {
           "name": "succession_risk_levels_code",
+          "nullsNotDistinct": false,
           "columns": [
             "tenant_id",
             "code"
-          ],
-          "nullsNotDistinct": false
+          ]
         },
         "succession_risk_levels_name": {
           "name": "succession_risk_levels_name",
+          "nullsNotDistinct": false,
           "columns": [
             "tenant_id",
             "name"
-          ],
-          "nullsNotDistinct": false
-        },
-        "succession_risk_levels_order": {
-          "name": "succession_risk_levels_order",
-          "columns": [
-            "tenant_id",
-            "display_order"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},

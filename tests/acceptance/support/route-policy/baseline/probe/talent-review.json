@@ -1181,7 +1181,6 @@
       "scope:TalentReview/TalentReview.Project/-"
     ],
     "trace": [
-      "btn:TalentReview.Project#end@detail",
       "obj:TalentReview.Project:update"
     ]
   },
@@ -1201,7 +1200,6 @@
       "scope:TalentReview/TalentReview.Project/-"
     ],
     "trace": [
-      "btn:TalentReview.Project#restart@detail",
       "obj:TalentReview.Project:update"
     ]
   },
@@ -1221,7 +1219,6 @@
       "scope:TalentReview/TalentReview.Project/-"
     ],
     "trace": [
-      "btn:TalentReview.Project#start@detail",
       "obj:TalentReview.Project:update"
     ]
   },

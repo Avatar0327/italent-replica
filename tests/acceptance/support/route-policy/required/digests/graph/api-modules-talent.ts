@@ -150,6 +150,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/talent/write-support.ts#lockOwned',
   ],
   'apps/api/src/modules/talent/criterion-service.ts#updateCriterion': [
+    'apps/api/src/modules/talent-review/config-kit.ts#checkConfigUpdateConstraints',
     '#C',
     '#auditCriterion',
     '#checkReferences',

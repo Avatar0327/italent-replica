@@ -775,15 +775,22 @@
     {
       "idx": 110,
       "version": "7",
-      "when": 1791708535735,
-      "tag": "0110_succession_levels",
+      "when": 1791746323723,
+      "tag": "0110_large_gauntlet",
       "breakpoints": true
     },
     {
       "idx": 111,
       "version": "7",
-      "when": 1791708567552,
-      "tag": "0111_succession_levels_rls",
+      "when": 1791746323724,
+      "tag": "0111_succession_levels",
+      "breakpoints": true
+    },
+    {
+      "idx": 112,
+      "version": "7",
+      "when": 1791746323725,
+      "tag": "0112_succession_levels_rls",
       "breakpoints": true
     }
   ]
