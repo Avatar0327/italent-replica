@@ -1,0 +1,326 @@
+/** R3-T04 PR-B7a：设计 §2.4 / §3.1；TR-R1 / R2 / R7 / R9 / R38；DEC-353 定义侧。 */
+import { randomUUID } from 'node:crypto';
+import { and, auditEvents, eq, withTenant } from '@italent/db';
+import { useTestDb } from '@italent/testkit';
+import { describe, expect, it } from 'vitest';
+import { talentWorld } from './AC-TC-support.js';
+import { configBody, configOperator } from './AC-TR-config-support.js';
+import { LEVEL_OPTIONS, matrixBody, ratioGroupBody, type MatrixView } from './AC-TR-matrix-support.js';
+import { seedPermissionWorld } from './AC-PRM-support.js';
+import { TR_BASE, TR_NOW } from './AC-TR-support.js';
+import { tenantApi, type RequestOptions } from './support/tenant-api.js';
+
+const testDb = useTestDb();
+const PATH = '/projects';
+type Project = {
+  id: string;
+  revision: number;
+  status: string;
+  endedCount: number;
+  matrices: { matrixId: string; ratioGroupId: string | null }[];
+  [key: string]: unknown;
+};
+const body = (org: string, extra: Record<string, unknown> = {}) => ({
+  code: `prj_${randomUUID().slice(0, 8)}`,
+  name: '合成盘点项目',
+  ownerOrgId: org,
+  year: 2026,
+  period: '年度',
+  periodStartDate: '2026-01-01',
+  periodEndDate: '2026-12-31',
+  ...extra,
+});
+const reason = async (res: Response) =>
+  ((await res.json()) as { error: { details?: { reason: string } } }).error.details?.reason;
+
+async function fixture(label: string) {
+  const w = await talentWorld(testDb().db, label);
+  const request = (method: string, path: string, options: RequestOptions = {}) =>
+    w.api.request(method, `${TR_BASE}${path}`, { ...w.as, ...options });
+  const create = async <T>(path: string, input: unknown): Promise<T> => {
+    const res = await request('POST', path, { ifMatch: 0, body: input });
+    expect(res.status, await res.clone().text()).toBe(201);
+    return (await res.json()) as T;
+  };
+  const project = (extra: Record<string, unknown> = {}) => create<Project>(PATH, body(w.orgId, extra));
+  const read = async (p: Project) => (await (await request('GET', `${PATH}/${p.id}`)).json()) as Project;
+  const write = (p: Project, method: string, input?: unknown, action = '', key?: string) =>
+    request(method, `${PATH}/${p.id}${action}`, { ifMatch: p.revision, body: input, idempotencyKey: key });
+  const matrix = async (enabled = true) => {
+    const field = async (kind: string, group: string) =>
+      (
+        await create<{ id: string }>(
+          '/fields',
+          configBody('field', { kind, group, ...(kind === 'option' ? { options: LEVEL_OPTIONS } : {}) }),
+        )
+      ).id;
+    const refs = {
+      x: await field('option', 'result'),
+      y: await field('option', 'result'),
+      before: await field('number', 'position'),
+      after: await field('number', 'position'),
+    };
+    return create<MatrixView>('/matrices', matrixBody(refs, { enabled }));
+  };
+  return { w, request, create, project, read, write, matrix };
+}
+
+describe('AC-TR-project 项目定义', () => {
+  it('计划日期 / 年度周期 / 业务日期原样保存；所属人取创建人；calc_state 只读；列表与详情一致', async () => {
+    const f = await fixture('project-header');
+    const p = await f.project({ businessDate: '2027-01-02', downwardPublic: true, carryLastResult: true });
+    expect(p).toMatchObject({
+      ownerOrgId: f.w.orgId,
+      ownerId: f.w.as.user,
+      year: 2026,
+      period: '年度',
+      status: 'new',
+      endedCount: 0,
+      periodStartDate: '2026-01-01',
+      periodEndDate: '2026-12-31',
+      businessDate: '2027-01-02',
+      calcState: 'not_calculated',
+      lastFullCalcAt: null,
+      downwardPublic: true,
+      carryLastResult: true,
+    });
+    expect(p).not.toHaveProperty('startedAt');
+    expect(p).not.toHaveProperty('endedAt');
+    expect(p).not.toHaveProperty('resultVersion');
+    const list = (await (await f.request('GET', PATH)).json()) as { items: Project[] };
+    expect(list.items).toContainEqual(p);
+    expect(await f.read(p)).toEqual(p);
+    for (const patch of [
+      { calcState: 'success' },
+      { lastFullCalcAt: TR_NOW.toISOString() },
+      { ownerId: randomUUID() },
+    ]) {
+      expect((await f.write(p, 'PATCH', patch)).status).toBe(400);
+      expect(await f.read(p)).toEqual(p);
+    }
+  });
+
+  it('必填 / 非法日期 / 结束早于开始均 400；单改日期也按完整配置检查且不改数据', async () => {
+    const f = await fixture('project-date');
+    for (const patch of [
+      { periodStartDate: undefined },
+      { periodEndDate: null },
+      { periodStartDate: '2026-02-30' },
+      { periodEndDate: '2025-12-31' },
+      { year: undefined },
+      { period: '' },
+      { ownerOrgId: 'bad' },
+    ])
+      expect((await f.request('POST', PATH, { ifMatch: 0, body: body(f.w.orgId, patch) })).status).toBe(400);
+    const p = await f.project();
+    const invalid = await f.write(p, 'PATCH', { periodStartDate: '2027-01-01' });
+    expect([invalid.status, await reason(invalid)]).toEqual([400, 'PROJECT_DATE_RANGE_INVALID']);
+    expect(await f.read(p)).toEqual(p);
+    expect((await f.write(p, 'PATCH', { periodStartDate: '2027-01-01', periodEndDate: '2027-01-01' })).status).toBe(
+      200,
+    );
+  });
+
+  it('创建缺省带入全部启用九宫格与默认规则组；显式空集合清空；停用九宫格不带入', async () => {
+    const f = await fixture('project-matrices');
+    const m = await f.matrix();
+    const disabled = await f.matrix(false);
+    const groupRes = await f.request('POST', `/matrices/${m.id}/ratio-groups`, {
+      ifMatch: m.revision,
+      body: ratioGroupBody({ isDefault: true }),
+    });
+    expect(groupRes.status, await groupRes.clone().text()).toBe(201);
+    const group = ((await groupRes.json()) as MatrixView).ratioGroups[0]!;
+    const p = await f.project();
+    expect(p.matrices).toContainEqual({ matrixId: m.id, ratioGroupId: group.id, sortNo: 0 });
+    expect(p.matrices.some((x) => x.matrixId === disabled.id)).toBe(false);
+    const cleared = (await (await f.write(p, 'PATCH', { matrices: [] })).json()) as Project;
+    expect(cleared.matrices).toEqual([]);
+    expect((await f.project({ matrices: [] })).matrices).toEqual([]);
+  });
+
+  it('共享组织 / 排除分类 / 校准原因 / 计算规则随项目保存与清空；引用删除 409', async () => {
+    const f = await fixture('project-relations');
+    const category = await f.create<{ id: string; revision: number }>('/categories', configBody('category'));
+    const field = await f.create<{ id: string; revision: number }>(
+      '/fields',
+      configBody('field', { group: 'calibration' }),
+    );
+    const rule = await f.create<{ id: string; revision: number }>('/calc-rules', { name: '项目计算规则', items: [] });
+    const extra = {
+      categoryId: category.id,
+      excludedCategoryIds: [category.id],
+      sharedOrgIds: [f.w.orgId.toUpperCase()],
+      calcRuleId: rule.id,
+      calibrationFields: [{ fieldId: field.id, required: true }],
+      matrices: [],
+    };
+    const p = await f.project(extra);
+    expect(p).toMatchObject({ ...extra, sharedOrgIds: [f.w.orgId] });
+    for (const [path, ref, expected] of [
+      ['categories', category, 'CATEGORY_IN_USE'],
+      ['fields', field, 'FIELD_IN_USE'],
+      ['calc-rules', rule, 'CALC_RULE_IN_USE'],
+    ] as const) {
+      const res = await f.request('DELETE', `/${path}/${ref.id}`, { ifMatch: ref.revision });
+      expect([res.status, await reason(res)]).toEqual([409, expected]);
+      expect(await f.read(p)).toEqual(p);
+    }
+    const empty = (await (
+      await f.write(p, 'PATCH', {
+        sharedOrgIds: [],
+        excludedCategoryIds: [],
+        calibrationFields: [],
+        categoryId: null,
+        calcRuleId: null,
+        businessDate: null,
+      })
+    ).json()) as Project;
+    expect(empty).toMatchObject({
+      sharedOrgIds: [],
+      excludedCategoryIds: [],
+      calibrationFields: [],
+      categoryId: null,
+      calcRuleId: null,
+      businessDate: null,
+      revision: p.revision + 1,
+    });
+  });
+
+  it('无效 / 跨租户引用 404；错误校准分组与重复关系 400，整单不写', async () => {
+    const f = await fixture('project-invalid-ref');
+    const other = await fixture('project-other-tenant');
+    const foreign = await other.create<{ id: string }>('/categories', configBody('category'));
+    const field = await f.create<{ id: string }>('/fields', configBody('field'));
+    const p = await f.project();
+    for (const patch of [
+      { categoryId: foreign.id },
+      { ownerOrgId: other.w.orgId },
+      { calcRuleId: randomUUID() },
+      { matrices: [{ matrixId: randomUUID() }] },
+      { sharedOrgIds: [other.w.orgId] },
+    ]) {
+      expect((await f.write(p, 'PATCH', patch)).status).toBe(404);
+      expect(await f.read(p)).toEqual(p);
+    }
+    for (const patch of [{ calibrationFields: [{ fieldId: field.id }] }, { sharedOrgIds: [f.w.orgId, f.w.orgId] }]) {
+      expect((await f.write(p, 'PATCH', patch)).status).toBe(400);
+      expect(await f.read(p)).toEqual(p);
+    }
+  });
+
+  it('编码冲突 / revision 冲突 409；创建及状态命令幂等，同键异内容 409', async () => {
+    const f = await fixture('project-idempotency');
+    const input = body(f.w.orgId);
+    const options = { ifMatch: 0, body: input, idempotencyKey: randomUUID() };
+    const a = await f.request('POST', PATH, options);
+    expect(a.status, await a.clone().text()).toBe(201);
+    const p = (await a.json()) as Project;
+    expect(await (await f.request('POST', PATH, options)).json()).toEqual(p);
+    expect((await f.request('POST', PATH, { ...options, body: { ...input, name: '不同内容' } })).status).toBe(409);
+    const dup = await f.request('POST', PATH, { ifMatch: 0, body: input });
+    expect([dup.status, await reason(dup)]).toEqual([409, 'PROJECT_DUPLICATE']);
+    const key = randomUUID();
+    const started = (await (await f.write(p, 'POST', {}, '/start', key)).json()) as Project;
+    expect(started.status).toBe('in_progress');
+    expect(await (await f.write(p, 'POST', {}, '/start', key)).json()).toEqual(started);
+    expect((await f.write(p, 'PATCH', { name: '过期写' })).status).toBe(409);
+    expect(await f.read(p)).toEqual(started);
+  });
+});
+
+describe('AC-TR-project 状态机 / AC-TR-01 删除定义侧（DEC-353）', () => {
+  it('状态 × 操作：新建可结束；仅新建能启动、仅已结束能重启；已结束不能编辑；重启计数递增', async () => {
+    const f = await fixture('project-states');
+    for (const state of ['new', 'in_progress', 'ended']) {
+      let p = await f.project();
+      if (state === 'in_progress') p = (await (await f.write(p, 'POST', {}, '/start')).json()) as Project;
+      if (state === 'ended') p = (await (await f.write(p, 'POST', {}, '/end')).json()) as Project;
+      for (const action of ['start', 'end', 'restart']) {
+        const allowed = action === 'start' ? state === 'new' : action === 'end' ? state !== 'ended' : state === 'ended';
+        const res = await f.write(p, 'POST', {}, `/${action}`);
+        expect(res.status, `${state} × ${action}`).toBe(allowed ? 200 : 409);
+        if (allowed) {
+          // 每个操作使用独立项目，避免前一次成功转换改变下一格的起始状态。
+          let fresh = await f.project();
+          if (state !== 'new')
+            fresh = (await (await f.write(fresh, 'POST', {}, state === 'ended' ? '/end' : '/start')).json()) as Project;
+          p = fresh;
+        } else expect(await f.read(p)).toEqual(p);
+      }
+      const edit = await f.write(p, 'PATCH', { name: '配置可编辑性' });
+      expect(edit.status).toBe(state === 'ended' ? 409 : 200);
+      const current = await f.read(p);
+      expect((await f.write(current, 'DELETE')).status).toBe(200);
+      expect((await f.request('GET', `${PATH}/${p.id}`)).status).toBe(404);
+    }
+    let p = await f.project();
+    for (let count = 1; count <= 2; count++) {
+      p = (await (await f.write(p, 'POST', {}, '/end')).json()) as Project;
+      p = (await (await f.write(p, 'POST', {}, '/restart')).json()) as Project;
+      expect(p).toMatchObject({ status: 'in_progress', endedCount: count });
+    }
+  });
+
+  it('start / end / restart 的扩展守卫事务内运行；失败回滚且不写成功审计', async () => {
+    const f = await fixture('project-guard');
+    const p = await f.project();
+    const { registerProjectGuard } = await import('../../apps/api/src/modules/talent-review/project-guards.js');
+    const { AppError } = await import('@italent/api');
+    const undo = registerProjectGuard('start', async () => {
+      throw new AppError('CONFLICT', '合成守卫', { reason: 'CALC_RUN_IN_PROGRESS' });
+    });
+    try {
+      const res = await f.write(p, 'POST', {}, '/start');
+      expect([res.status, await reason(res)]).toEqual([409, 'CALC_RUN_IN_PROGRESS']);
+      expect(await f.read(p)).toEqual(p);
+    } finally {
+      undo();
+    }
+    const rows = await withTenant(testDb().db, f.w.as.tenant, (tx) =>
+      tx
+        .select()
+        .from(auditEvents)
+        .where(and(eq(auditEvents.tenantId, f.w.as.tenant), eq(auditEvents.objectId, p.id))),
+    );
+    expect(rows).toHaveLength(1);
+    expect((await f.write(p, 'POST', {}, '/start')).status).toBe(200);
+  });
+
+  it('AC-TR-01 对象存在守卫拒删 409；解除后删除、保存完整关系快照', async () => {
+    const f = await fixture('project-delete');
+    const p = await f.project({ sharedOrgIds: [f.w.orgId] });
+    const { registerProjectObjectCheck } = await import('../../apps/api/src/modules/talent-review/project-guards.js');
+    const undo = registerProjectObjectCheck(
+      async (_tx, tenantId, projectId) => tenantId === f.w.as.tenant && projectId === p.id,
+    );
+    try {
+      const res = await f.write(p, 'DELETE');
+      expect([res.status, await reason(res)]).toEqual([409, 'PROJECT_HAS_OBJECTS']);
+      expect(await f.read(p)).toEqual(p);
+    } finally {
+      undo();
+    }
+    expect((await f.write(p, 'DELETE')).status).toBe(200);
+    const rows = await withTenant(testDb().db, f.w.as.tenant, (tx) =>
+      tx
+        .select()
+        .from(auditEvents)
+        .where(and(eq(auditEvents.tenantId, f.w.as.tenant), eq(auditEvents.objectId, p.id))),
+    );
+    expect(rows.find((r) => r.action.endsWith('.delete'))!.before).toMatchObject({ sharedOrgIds: [f.w.orgId] });
+  });
+
+  it('权限缺省范围空 404；缺按钮 403；字段裁剪与撤按钮后命令重放复核', async () => {
+    const f = await fixture('project-permission-red');
+    await f.project(); // 旧实现先在真实 HTTP 新建上红。
+    let w = await seedPermissionWorld(testDb().db);
+    w = { ...w, api: tenantApi(w.db, { authorize: undefined, clock: () => TR_NOW }) };
+    const op = await configOperator(w, 'project');
+    expect(await (await op.request('GET', PATH)).json()).toMatchObject({ items: [], hasDataPermission: false });
+    expect((await op.request('POST', PATH, { ifMatch: 0, body: body(f.w.orgId) })).status).toBe(404);
+    await op.setSeeAll(true);
+    await op.setButtons(false);
+    expect((await op.request('POST', PATH, { ifMatch: 0, body: body(f.w.orgId) })).status).toBe(403);
+  });
+});
