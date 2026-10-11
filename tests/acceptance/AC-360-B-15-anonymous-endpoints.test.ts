@@ -226,7 +226,7 @@ async function callAs(s: SceneB, user: string, route: string, t: Target, auditId
   const base = { user, tenant: s.w.tenantId };
   const linkRoute = route.includes(LINK) || route.includes(REPORT_LINK) || route.includes(PORTAL);
   // 报告收件人请求必须带令牌，否则只是在测“缺令牌 404”；链接作答用他人（客户）的令牌，待办用查看人自己的账号
-  const headers = route.includes(REPORT_LINK)
+  const headers: Record<string, string> | undefined = route.includes(REPORT_LINK)
     ? { 'x-survey360-token': t.reportToken }
     : route.includes(LINK)
       ? { 'x-survey360-token': t.token }

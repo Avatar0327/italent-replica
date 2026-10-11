@@ -78,8 +78,10 @@ describe('AC-PRM-FW-02 现状必测基准（独立于声明）', () => {
         continue;
       }
       if (key.includes(' /api/survey360/portal')) {
-        // 通用网址门户的登录 / 登出不经成员中间件：探测请求体为空，登录先判请求体 → 400，登出任何情况 → 204（F-076）
-        const expected = key.endsWith('/login') ? { status: 400, code: 'VALIDATION_FAILED' } : { status: 204 };
+        // 门户不经成员中间件：登录空请求体 400，登出 204，五条会话入口缺会话 401（F-076 §4.7）。
+        let expected: { status: number; code?: string } = { status: 401, code: 'UNAUTHENTICATED' };
+        if (key.endsWith('/login')) expected = { status: 400, code: 'VALIDATION_FAILED' };
+        if (key.endsWith('/logout')) expected = { status: 204 };
         for (const edge of [entry.edge.anonymous, entry.edge.nonMember, entry.edge.member]) {
           expect(edge, key).toEqual(expected);
         }
@@ -136,6 +138,16 @@ describe('AC-PRM-FW-02 声明 vs 基准比较', () => {
       policy: { kind: 'member' as const, reason: '突变', fields: { mode: 'none' as const, reason: '突变' } },
     };
     expect(codes(compareDeclarations(frozen, [memberHealth]))).toContain('MISMATCH:identity');
+  });
+
+  it('AC-360-F076-40：门户缺会话的 401 不是成员认证；错改成 member 声明仍报身份不符', () => {
+    const portal = manifest.declared.find((r) => r.path === '/api/survey360/portal')!;
+    expect(frozen.routes['GET /api/survey360/portal']!.edge.member.status).toBe(401);
+    const memberPortal = {
+      ...portal,
+      policy: { kind: 'member' as const, reason: '突变', fields: { mode: 'none' as const, reason: '突变' } },
+    };
+    expect(codes(compareDeclarations(frozen, [memberPortal]))).toContain('MISMATCH:identity');
   });
 
   it('删整条声明：夹具登记表少一键 → createApp 抛 ROUTE_UNDECLARED', () => {

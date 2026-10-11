@@ -7,10 +7,11 @@ import { resetCredentialConfig, rowsOf } from './AC-360-F076-support.js';
 import { issuedScene, login, loginOk, logout, minutes, sql1, sessionCall } from './AC-360-F076-portal-support.js';
 
 import { cmd } from './support/tenant-api.js';
+import type * as Commands from '../../apps/api/src/commands.js';
 
 const commandBoundary = vi.hoisted(() => ({ before: undefined as undefined | (() => Promise<void>) }));
 vi.mock('../../apps/api/src/commands.js', async (original) => {
-  const actual = await original<typeof import('../../apps/api/src/commands.js')>();
+  const actual = await original<typeof Commands>();
   return {
     ...actual,
     runCommand: async (...args: Parameters<typeof actual.runCommand>) => {
