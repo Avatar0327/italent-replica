@@ -77,6 +77,14 @@ describe('AC-PRM-FW-02 现状必测基准（独立于声明）', () => {
         }
         continue;
       }
+      if (key.includes(' /api/survey360/portal')) {
+        // 通用网址门户的登录 / 登出不经成员中间件：探测请求体为空，登录先判请求体 → 400，登出任何情况 → 204（F-076）
+        const expected = key.endsWith('/login') ? { status: 400, code: 'VALIDATION_FAILED' } : { status: 204 };
+        for (const edge of [entry.edge.anonymous, entry.edge.nonMember, entry.edge.member]) {
+          expect(edge, key).toEqual(expected);
+        }
+        continue;
+      }
       expect(entry.edge.anonymous, key).toEqual({ status: 401, code: 'UNAUTHENTICATED' });
       if (key.includes(' /api/platform/')) {
         expect(entry.edge.nonMember, key).toEqual(OPERATOR_REQUIRED);

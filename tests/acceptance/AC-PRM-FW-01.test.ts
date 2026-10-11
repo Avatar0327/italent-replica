@@ -326,7 +326,9 @@ describe('AC-PRM-FW-01 createApp 真实装配', () => {
    * R3-T04 PR-B2a（评价规则 / 模块等级各 5）+ 10 = 544；R3-T04 PR-B2b（字段映射 5）+ 5 = 549；
    * R3-T05 A2（继任记录写侧 4 + 候选 1）+ 5 = 554；
    * F-082 F082-5（改绑平台命令，总开关默认打开）+ 1 = 555；R3-T04 PR-B3（盘点内容表单 5、流程定义 5）+ 10 = 565；
-   * R3-T02 C1-6（发展通道查看：管理 2 + ESS 2）+ 4 = 569；R3-T05 B2a（配置 7 + 平台 1）+ 8 = 577。
+   * R3-T02 C1-6（发展通道查看：管理 2 + ESS 2）+ 4 = 569；
+   * R3-T02 C1-5 子集初始化 + 1 = 570；F-076 PR-2a 门户登录 / 登出 + 2 = 572；
+   * R3-T02 B5 评定活动 + 5 = 577；R3-T05 B2a（配置 7 + 平台 1）+ 8 = 585。
    */
   const EXPECTED_BY_MODULE: Readonly<Record<string, number>> = {
     root: 1,
@@ -346,12 +348,13 @@ describe('AC-PRM-FW-01 createApp 真实装配', () => {
     survey360: 74,
     'survey360-link': 9,
     'survey360-report-link': 3,
+    'survey360-portal': 2,
     idp: 57,
     avatar: 5,
     'talent-review': 60,
     'talent-review-platform': 1,
-    qualification: 53,
-    evaluation: 25,
+    qualification: 54,
+    evaluation: 30,
     succession: 15,
     'succession-platform': 1,
   };

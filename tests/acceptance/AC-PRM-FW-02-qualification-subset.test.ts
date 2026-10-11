@@ -173,7 +173,9 @@ describe('AC-PRM-FW-02 C1-1 P2-3 有效载荷授权轨迹：真实请求问到�
   });
 });
 
-describe('AC-PRM-FW-02 C1-1 P2-3 证据链：注册关系与四道拦截各自带锚点，删除任何一道都报错', () => {
+// 每条用例都对整张义务表做一到两次完整证据计算（CI 负载下单次 13～19 秒，两次约 34 秒，超过默认 30 秒）
+const EVIDENCE_CHAIN = 'AC-PRM-FW-02 C1-1 P2-3 证据链：注册关系与四道拦截各自带锚点，删除任何一道都报错';
+describe(EVIDENCE_CHAIN, { timeout: 120_000 }, () => {
   const POLICY_FILE = 'apps/api/src/modules/qualification/subset-policy.ts';
 
   /** 在策略文件里把 `from` 换成 `to`；其他文件原样。 */

@@ -9,11 +9,13 @@ import {
   bigserial,
   boolean,
   check,
+  date,
   foreignKey,
   index,
   integer,
   numeric,
   pgTable,
+  smallint,
   text,
   timestamp,
   unique,
@@ -226,6 +228,156 @@ export const evFormItems = pgTable(
       columns: [t.tenantId, t.generalItemId],
       foreignColumns: [evGeneralItems.tenantId, evGeneralItems.id],
       name: 'ev_form_items_general_fk',
+    }).onDelete('restrict'),
+  ],
+);
+
+/**
+ * 评定活动 EvaluationActivity（B5；设计 §3.2；Q-M0-174 / DEC-412）：**没有编码字段**（原站没有）。所属组织 `owner_org_id` 必填手选
+ * （DEC-324②，同评审组 / 评价表）。必填：名称、类型、所属组织、年度、周期、负责人、评定生效日期、申请人（多选，本人 / 非本人）、
+ * 组织范围（`ev_activity_orgs`，最多 100 个、每个带“包含下级”）、类别 / 级别范围（总落到具体级别，不能为空）、跨级数
+ * （`max_level_jump` 1～5，默认 1，没有“不限”，DEC-372②）；非必填：起止日期、通知范围（ID 列表）、通知模板。`status` 本 PR 只写
+ * draft，`apply_count` 只读（C2 在活动行锁内维护）。参评条件见 B6 的 `ev_conditions`，环节见 `ev_chains`。
+ */
+export const evActivities = pgTable(
+  'ev_activities',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    name: text('name').notNull(),
+    typeId: uuid('type_id').notNull(),
+    cycleId: uuid('cycle_id').notNull(),
+    year: integer('year').notNull(),
+    startDate: date('start_date'),
+    endDate: date('end_date'),
+    ownerId: uuid('owner_id').notNull(),
+    ownerOrgId: uuid('owner_org_id').notNull(),
+    managerEmployeeId: uuid('manager_employee_id').notNull(),
+    applicants: text('applicants').array().notNull(),
+    categoryIds: uuid('category_ids').array().notNull(),
+    levelIds: uuid('level_ids').array().notNull(),
+    maxLevelJump: smallint('max_level_jump').notNull().default(1),
+    effectiveDate: date('effective_date').notNull(),
+    noticeOrgRange: uuid('notice_org_range')
+      .array()
+      .notNull()
+      .default(sql`'{}'::uuid[]`),
+    status: text('status').notNull().default('draft'),
+    applyCount: integer('apply_count').notNull().default(0),
+    ...tracked(),
+  },
+  (t) => [
+    unique('ev_activities_tenant_id').on(t.tenantId, t.id),
+    index('ev_activities_owner_org').on(t.tenantId, t.ownerOrgId),
+    index('ev_activities_status').on(t.tenantId, t.status),
+    check('ev_activities_dates', sql`${t.startDate} <= ${t.endDate}`),
+    check('ev_activities_max_level_jump', sql`${t.maxLevelJump} BETWEEN 1 AND 5`),
+    check(
+      'ev_activities_applicants',
+      sql`cardinality(${t.applicants}) >= 1 AND ${t.applicants} <@ ARRAY['self', 'others']::text[]`,
+    ),
+    check('ev_activities_ranges', sql`cardinality(${t.categoryIds}) >= 1 AND cardinality(${t.levelIds}) >= 1`),
+    check('ev_activities_status', sql`${t.status} IN ('draft', 'published', 'completed')`),
+    check('ev_activities_apply_count', sql`${t.applyCount} >= 0`),
+    foreignKey({
+      columns: [t.tenantId, t.ownerOrgId],
+      foreignColumns: [orgObjects.tenantId, orgObjects.id],
+      name: 'ev_activities_owner_org_fk',
+    }).onDelete('restrict'),
+    foreignKey({
+      columns: [t.tenantId, t.typeId],
+      foreignColumns: [evActivityTypes.tenantId, evActivityTypes.id],
+      name: 'ev_activities_type_fk',
+    }).onDelete('restrict'),
+    foreignKey({
+      columns: [t.tenantId, t.cycleId],
+      foreignColumns: [evCycles.tenantId, evCycles.id],
+      name: 'ev_activities_cycle_fk',
+    }).onDelete('restrict'),
+    foreignKey({
+      columns: [t.tenantId, t.managerEmployeeId],
+      foreignColumns: [employmentEmployees.tenantId, employmentEmployees.id],
+      name: 'ev_activities_manager_fk',
+    }).onDelete('restrict'),
+  ],
+);
+
+/**
+ * 活动的适用组织范围（最多 100 个，应用层限制）：每行一个组织，`include_descendants` 默认勾（Q-M0-174 第 4 点）。重复拦截时把
+ * “包含下级”的组织按行政维度展开后再求交集（activity-scope.ts）。随活动整组替换。
+ */
+export const evActivityOrgs = pgTable(
+  'ev_activity_orgs',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    activityId: uuid('activity_id').notNull(),
+    orgId: uuid('org_id').notNull(),
+    includeDescendants: boolean('include_descendants').notNull().default(true),
+    seq: integer('seq').notNull(),
+  },
+  (t) => [
+    unique('ev_activity_orgs_org').on(t.tenantId, t.activityId, t.orgId),
+    index('ev_activity_orgs_org_idx').on(t.tenantId, t.orgId),
+    foreignKey({
+      columns: [t.tenantId, t.activityId],
+      foreignColumns: [evActivities.tenantId, evActivities.id],
+      name: 'ev_activity_orgs_activity_fk',
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [t.tenantId, t.orgId],
+      foreignColumns: [orgObjects.tenantId, orgObjects.id],
+      name: 'ev_activity_orgs_org_fk',
+    }).onDelete('restrict'),
+  ],
+);
+
+/**
+ * 活动环节（B5）：类型 apply / material / defense / result。资格申报、结果发布各固定 1 个（部分唯一索引）且分别在首、末；材料举证、
+ * 答辩评审各最多 3 个（应用层限制）、先后不限；`seq` 记提交顺序。环节按 ID（或同类型顺序）就地更新、保留稳定 ID（C2 指标明细按环节 ID
+ * 引用）。评价表只在答辩评审上且必填（CHECK），被引用时拒删（外键 restrict 兜底并发）。
+ */
+export const evChains = pgTable(
+  'ev_chains',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    activityId: uuid('activity_id').notNull(),
+    type: text('type').notNull(),
+    seq: integer('seq').notNull(),
+    name: text('name').notNull(),
+    startDate: date('start_date').notNull(),
+    endDate: date('end_date').notNull(),
+    formId: uuid('form_id'),
+    approvalProcessCode: text('approval_process_code'),
+    materialTemplate: text('material_template'),
+    hardDeadline: boolean('hard_deadline').notNull().default(false),
+    allowException: boolean('allow_exception').notNull().default(false),
+    exceptionRoles: text('exception_roles')
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
+    transferMode: text('transfer_mode').notNull().default('manual'),
+    noticeTemplateCode: text('notice_template_code'),
+  },
+  (t) => [
+    uniqueIndex('ev_chains_fixed_type')
+      .on(t.tenantId, t.activityId, t.type)
+      .where(sql`${t.type} IN ('apply', 'result')`),
+    index('ev_chains_form').on(t.tenantId, t.formId),
+    check('ev_chains_type_check', sql`${t.type} IN ('apply', 'material', 'defense', 'result')`),
+    check('ev_chains_dates', sql`${t.startDate} <= ${t.endDate}`),
+    check('ev_chains_transfer_mode', sql`${t.transferMode} IN ('auto', 'manual')`),
+    check('ev_chains_defense_form', sql`(${t.type} = 'defense') = (${t.formId} IS NOT NULL)`),
+    foreignKey({
+      columns: [t.tenantId, t.activityId],
+      foreignColumns: [evActivities.tenantId, evActivities.id],
+      name: 'ev_chains_activity_fk',
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [t.tenantId, t.formId],
+      foreignColumns: [evForms.tenantId, evForms.id],
+      name: 'ev_chains_form_fk',
     }).onDelete('restrict'),
   ],
 );
