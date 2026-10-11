@@ -1,3 +1,6 @@
+import { sql, withTenant } from '@italent/db';
+import { codeOf } from '../../apps/api/src/modules/succession/access.js';
+import { rowsOf } from '../../apps/api/src/modules/succession/read-sql.js';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { levelBody, levelKinds, levelsWorld } from './AC-SC-levels-support.js';
@@ -13,6 +16,15 @@ describe('AC-SC B2b P2-1 按实际内容推进等级与集合版本', () => {
       const b = await w.createLevel(kind);
       const c = await w.createLevel(kind);
       const before = await w.list(kind);
+      const auditCount = () =>
+        withTenant(w.db, w.tenant.id, async (tx) => {
+          const [count] = rowsOf<{ n: number }>(
+            await tx.execute(sql`SELECT count(*)::int AS n FROM audit_events
+          WHERE tenant_id = ${w.tenant.id}::uuid AND object_type = ${codeOf(kind === 'risk' ? 'riskLevel' : 'healthLevel')}`),
+          );
+          return count!.n;
+        });
+      const audits = await auditCount();
       let response: Response;
       if (operation === 'save') {
         response = await w.request('PUT', `/${kind}-levels/${a.id}`, {
@@ -44,12 +56,14 @@ describe('AC-SC B2b P2-1 按实际内容推进等级与集合版本', () => {
       expect(after.items.map((item) => item.id)).toEqual(
         operation === 'swap' ? [b.id, a.id, c.id] : before.items.map((item) => item.id),
       );
-      const edited = await w.request('PUT', `/${kind}-levels/${c.id}`, {
+      expect(await auditCount()).toBe(audits + (operation === 'swap' ? 2 : 0));
+      const unchanged = operation === 'save' ? a : c;
+      const edited = await w.request('PUT', `/${kind}-levels/${unchanged.id}`, {
         ifMatch: 1,
         body: { color: '#010203' },
       });
       expect(edited.status, await edited.clone().text()).toBe(200);
-      expect(await edited.json()).toMatchObject({ id: c.id, color: '#010203', revision: 2 });
+      expect(await edited.json()).toMatchObject({ id: unchanged.id, color: '#010203', revision: 2 });
     },
   );
 });

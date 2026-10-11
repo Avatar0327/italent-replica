@@ -11,7 +11,8 @@ export async function lockLevelReviewFields(tx: Tx, tenantId: string, rules: Suc
   const fields = rowsOf<{ code: string; kind: RuleFieldRef['kind']; options: RuleFieldRef['optionDomain'] }>(
     await tx.execute(sql`SELECT f.code, f.kind,
       COALESCE((SELECT jsonb_agg(jsonb_build_object('value', o.value, 'label', o.label, 'enabled', o.enabled))
-        FROM talent_review_field_options o WHERE o.tenant_id = f.tenant_id AND o.field_id = f.id), '[]'::jsonb) AS options
+        FROM talent_review_field_options o
+        WHERE o.tenant_id = f.tenant_id AND o.field_id = f.id), '[]'::jsonb) AS options
       FROM talent_review_fields f WHERE f.tenant_id = ${tenantId}::uuid AND f.enabled
         AND f.code IN (${sql.join(
           codes.map((code) => sql`${code}`),
