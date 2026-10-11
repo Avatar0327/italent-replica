@@ -1,5 +1,5 @@
 /**
- * 通用网址作答门户 /api/survey360/portal（F-076 设计 §3.5、§4.1、§5；PR-2a：登录与登出，会话入口归 PR-2b）。
+ * 通用网址作答门户 /api/survey360/portal（F-076 设计 §3.5、§4.1、§5；PR-2a 登录与登出；PR-2b 会话入口）。
  * 评价者凭“序列号 + 密码”换取 8 小时的作答会话；令牌只存 SHA-256，经 x-survey360-session 头传递，不放 Cookie 与路径。
  * 登录不走命令台账（DEC-377③，设计 §4.8）：重试即重新登录，每次都经过同样的限频与恒定工作量的 KDF。
  *
@@ -18,13 +18,15 @@ import { z } from 'zod';
 import { AppError, errorResponse, handleError } from '../../errors.js';
 import { policedSub } from '../../route-policy/index.js';
 import type { TenantRouteDeps } from '../../routes.js';
-import type { TenantEnv } from '../../tenant-context.js';
+import type { TenantContext, TenantEnv } from '../../tenant-context.js';
+import { SYSTEM_USER_ID } from '../../system-actor.js';
+import { answerPage, avatarRoute, type EntryOf, linkRead, registerAnswerRoutes } from './answering.js';
 import { requestBucket } from './client-ip.js';
 import { jsonOrEmpty, mapDbError, rows } from './context.js';
 import { credentialConfig, type CredentialConfig } from './credential-config.js';
 import { assertIssuableVersion } from './credential-key-registry.js';
 import { dummyDigest, hashPassword, serialLookup, verifyPassword } from './credentials.js';
-import { hashToken } from './links.js';
+import { hashToken, type LinkRow } from './links.js';
 import { acquireLoginSlot } from './login-gate.js';
 import { SURVEY360_PORTAL_POLICIES } from './policy.js';
 import { recordSecurityEvent } from './security-events.js';
@@ -367,11 +369,75 @@ async function logout(c: Context<TenantEnv>, deps: TenantRouteDeps): Promise<Res
   return c.body(null, 204);
 }
 
+/** 门户只接受租户与会话专用头，不借用成员身份、个人链接或报告令牌（设计 §4.3、§4.7）。 */
+async function portalTenant(c: Context<TenantEnv>, deps: TenantRouteDeps) {
+  const tenantId = c.req.header('x-tenant-id');
+  const token = c.req.header(SESSION_HEADER);
+  if (!tenantId || !isUuid(tenantId) || !token || token.length > 200) throw unauthenticated();
+  const tenant = await getTenant(deps.db, tenantId);
+  if (!tenant || tenant.status !== 'active') throw unauthenticated();
+  return { tenant: { tenantId: tenant.id, userId: SYSTEM_USER_ID, timezone: tenant.timezone }, token };
+}
+
+/**
+ * 事务内定位：先锁活动，后读取会话 / 链接的当前值，不取链接行锁或咨询锁。与关系增删的活动 FOR UPDATE 互斥，
+ * 保持 §3.5.1 的“活动 → 关系 → 对象”顺序；等待期间已移除的关系、作废的链接不能复活。
+ * 预检用 lock=false，只判资格；正式读取和命令 guard 都用默认的活动 FOR KEY SHARE。
+ */
+async function sessionLink(tx: Tx, hash: string, clock: () => Date, lock = true): Promise<LinkRow | undefined> {
+  const [owner] = rows<{ activity_id: string }>(
+    await tx.execute(sql`SELECT l.activity_id FROM survey360_answer_sessions s
+      JOIN survey360_links l ON l.tenant_id = s.tenant_id AND l.id = s.link_id WHERE s.token_hash = ${hash}`),
+  );
+  if (!owner) return undefined;
+  const [activity] = rows<{ id: string }>(
+    await tx.execute(sql`SELECT id FROM survey360_activities WHERE id = ${owner.activity_id}::uuid AND NOT deleted
+      ${lock ? sql`FOR KEY SHARE` : sql``}`),
+  );
+  if (!activity) return undefined;
+  const [link] = rows<LinkRow & { credential_key_versions: number[] }>(
+    await tx.execute(sql`SELECT l.id, l.activity_id AS "activityId", l.kind, l.person_id AS "personId",
+        l.confirmation_id AS "confirmationId", l.credential_key_versions
+      FROM survey360_answer_sessions s JOIN survey360_links l ON l.tenant_id = s.tenant_id AND l.id = s.link_id
+      WHERE s.token_hash = ${hash} AND s.revoked_at IS NULL AND s.expires_at > ${clock().toISOString()}::timestamptz
+        AND NOT l.revoked AND l.kind = 'answer'`),
+  );
+  if (!link) return undefined;
+  const config = credentialConfig();
+  if (link.credential_key_versions.some((version) => config.compromisedVersions.has(version))) return undefined;
+  // 只计划退役不会结束已有会话，所以不要求 credential_state = issued（设计 §4.2）。
+  if (!(await hasTask(tx, link.activityId, link.personId))) return undefined;
+  return link;
+}
+
+/** 事务外预检失败统一 401；随后事务内失效由 answering.resolve 返回 404（设计 §4.2）。 */
+async function requireSession(deps: TenantRouteDeps, tenant: TenantContext, hash: string): Promise<void> {
+  const link = await withTenant(deps.db, tenant.tenantId, (tx) => sessionLink(tx, hash, deps.clock, false));
+  if (!link) throw unauthenticated();
+}
+
+function sessionEntry(deps: TenantRouteDeps): EntryOf {
+  return async (c) => {
+    c.header('Cache-Control', 'private, no-store');
+    const { tenant, token } = await portalTenant(c, deps);
+    const hash = hashToken(token);
+    await requireSession(deps, tenant, hash);
+    return { tenant, caller: tenant, avatarBase: PORTAL_BASE, locate: (tx) => sessionLink(tx, hash, deps.clock) };
+  };
+}
+
 export function registerPortalRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   // F-039：门户子应用套登记表（SURVEY360_PORTAL_POLICIES）
   const module = policedSub(router, SURVEY360_PORTAL_POLICIES, () => new Hono<TenantEnv>());
   module.onError((error, c) => handleError(mapDbError(error) ?? error, c));
   module.post('/login', (c) => login(c, deps));
   module.post('/logout', (c) => logout(c, deps));
+  module.get('/', (c) =>
+    linkRead(deps, sessionEntry(deps), 'answer', (tx, link, activity, entry) =>
+      answerPage(tx, link, activity, entry.avatarBase),
+    )(c),
+  );
+  module.get('/avatars/:attachmentId/content', avatarRoute(deps, sessionEntry(deps), 'answer'));
+  registerAnswerRoutes(module, deps, sessionEntry(deps));
   router.route(PORTAL_BASE, module);
 }

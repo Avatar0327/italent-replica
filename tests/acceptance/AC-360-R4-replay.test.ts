@@ -9,7 +9,7 @@ import { randomUUID } from 'node:crypto';
 import { sql, withTenant } from '@italent/db';
 import { survey360 } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { loginEmailOf } from './AC-EMP-support.js';
 import { confirmationToken } from './AC-360-B-support.js';
 import type { RequestOptions } from './support/tenant-api.js';
@@ -24,7 +24,11 @@ import {
   type World360,
 } from './AC-360-support.js';
 
+import { PORTAL_REPLAY_CASES } from './AC-360-F076-guard-support.js';
+import { resetCredentialConfig } from './AC-360-F076-support.js';
+
 const testDb = useTestDb();
+afterAll(resetCredentialConfig);
 const OBJ = survey360.SURVEY360_OBJECTS;
 const APP = survey360.SURVEY360_APP;
 const S = BASE;
@@ -1088,6 +1092,9 @@ async function buildEnv(): Promise<Env> {
     swq,
   };
 }
+
+// F-076 AC-34/37/39/40：真实门户会话的反向 / 重放覆盖。
+Object.assign(REPLAY_CASES, PORTAL_REPLAY_CASES);
 
 describe('路由 × 守卫第四类：成功后收窄范围，再用原幂等键重放（表驱动）', () => {
   let env: Env;
