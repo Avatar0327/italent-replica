@@ -173,9 +173,8 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/qualification/config-service.ts#deleteCategory': [
     '#orgOf',
     '#reload',
+    'apps/api/src/modules/qualification/reference-usage.ts#lockUnusedQualificationRef',
     'apps/api/src/modules/qualification/store.ts#audit',
-    'apps/api/src/modules/qualification/store.ts#lockEditable',
-    'apps/api/src/modules/qualification/store.ts#rejectInUse',
   ],
   'apps/api/src/modules/qualification/config-service.ts#deleteCategoryClass': [
     '#orgOf',
@@ -193,9 +192,8 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/qualification/config-service.ts#deleteLevel': [
     '#orgOf',
     '#reload',
+    'apps/api/src/modules/qualification/reference-usage.ts#lockUnusedQualificationRef',
     'apps/api/src/modules/qualification/store.ts#audit',
-    'apps/api/src/modules/qualification/store.ts#lockEditable',
-    'apps/api/src/modules/qualification/store.ts#rejectInUse',
   ],
   'apps/api/src/modules/qualification/config-service.ts#deleteTargetType': [
     '#orgOf',
@@ -677,6 +675,10 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/qualification/read-model.ts#withStandardParts': [
     'apps/api/src/modules/qualification/access.ts#rowsOf',
     '#view',
+  ],
+  'apps/api/src/modules/qualification/reference-usage.ts#lockUnusedQualificationRef': [
+    'apps/api/src/modules/qualification/store.ts#lockEditable',
+    'apps/api/src/modules/qualification/store.ts#rejectInUse',
   ],
   'apps/api/src/modules/qualification/route-support.ts#fieldEditable': [
     'apps/api/src/modules/permission/module-route-access.ts#writeFields',

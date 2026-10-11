@@ -5,6 +5,7 @@
  * 不按人员求值：C2 先逐条算真假，再以条件序号作布尔字段交 evaluateFormula。运算符编码与 T05 条件行（RULE_OPERATORS）一致。
  */
 import { createDefaultRegistry, validateFormula } from '../expression/index.js';
+import { parseDateText, utcMs } from '../expression/dates.js';
 
 export const ACTIVITY_CONDITION_OPERATORS = [
   'eq',
@@ -42,6 +43,16 @@ const hasValue = (value: string | number | null | undefined): boolean =>
 
 const COMPARISONS: readonly string[] = ['eq', 'ne', 'gt', 'lt', 'ge', 'le'];
 
+/** D-068：日期按业务日期比较，不转浏览器时区；数字沿用 B2 口径，文本不推算数字类型。 */
+function rangeInverted(value1: string | number, value2: string | number): boolean {
+  if (typeof value1 === 'number' && typeof value2 === 'number') return value1 > value2;
+  if (typeof value1 !== 'string' || typeof value2 !== 'string') return false;
+  const start = parseDateText(value1);
+  const end = parseDateText(value2);
+  if (start?.precision !== 'date' || end?.precision !== 'date') return false;
+  return utcMs(start.year, start.month, start.day) > utcMs(end.year, end.month, end.day);
+}
+
 /** 单条明细的取值形状；运算符不认识时只报运算符。 */
 function valueIssue(detail: ActivityConditionDetailInput): ActivityConditionDetailIssueCode | undefined {
   const { operator, value1, value2 } = detail;
@@ -51,7 +62,7 @@ function valueIssue(detail: ActivityConditionDetailInput): ActivityConditionDeta
   }
   if (operator === 'between') {
     if (!hasValue(value1) || !hasValue(value2)) return 'VALUE_REQUIRED';
-    return typeof value1 === 'number' && typeof value2 === 'number' && value1 > value2 ? 'RANGE_INVERTED' : undefined;
+    return rangeInverted(value1!, value2!) ? 'RANGE_INVERTED' : undefined;
   }
   return hasValue(value1) || hasValue(value2) ? 'VALUE_NOT_ALLOWED' : undefined; // is_empty / not_empty
 }
