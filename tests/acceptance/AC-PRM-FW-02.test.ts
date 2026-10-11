@@ -151,6 +151,8 @@ describe('AC-PRM-FW-02 声明 vs 基准比较', () => {
 
 describe('AC-PRM-FW-02 突变套件：第 5 轮列出的每类削弱都被报出', () => {
   it('突变目录覆盖 PR-A 范围内的削弱种类', () => {
+    const base = compareMutants({ routes: {}, domains: {} }, manifest.declared);
+    expect(codes(base).filter((c) => !['BASELINE_MISSING', 'REQUIRED_ENTRY_MISSING'].includes(c))).toEqual([]);
     expect(MUTATIONS.map((m) => m.name)).toEqual(
       expect.arrayContaining([
         'button→none',
