@@ -211,3 +211,13 @@ export type StandardCreate = z.infer<typeof standardCreate>;
 export type StandardPatch = z.infer<typeof standardPatch>;
 export type StandardImport = z.infer<typeof standardImport>;
 export type ChannelsPut = z.infer<typeof channelsPut>;
+
+/** 子集初始化（C1-5）：一批员工，上限 500（设计 §4.1），不得重复（重复项没有第二种合理含义，整体 400）。 */
+export const MAX_INIT_EMPLOYEES = 500;
+export const subsetInitialize = z
+  .strictObject({ employeeIds: z.array(uuid).min(1).max(MAX_INIT_EMPLOYEES) })
+  .refine((body) => new Set(body.employeeIds).size === body.employeeIds.length, {
+    message: '员工不能重复',
+    path: ['employeeIds'],
+  });
+export type SubsetInitialize = z.infer<typeof subsetInitialize>;
