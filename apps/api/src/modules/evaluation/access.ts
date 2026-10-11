@@ -110,12 +110,21 @@ export const evaluationScope = (
   object: EvaluationObject,
 ) => requestScope(c, deps, ctx, codeOf(object));
 
-export const trimEvaluation = <T extends object>(
+export const trimEvaluation = async <T extends object>(
   deps: TenantRouteDeps,
   ctx: EvaluationContext,
   object: EvaluationObject,
   value: T[],
-): Promise<Partial<T>[]> => trimModuleResponse(deps, ctx, codeOf(object), value) as Promise<Partial<T>[]>;
+): Promise<Partial<T>[]> => {
+  const trimmed = (await trimModuleResponse(deps, ctx, codeOf(object), value)) as Partial<T>[];
+  // 合计警示派生自评分项：评分项被裁掉时不能用合计反推其内容（DEC-413 / AGENTS §10）。
+  if (object === 'evaluationForm') {
+    for (const row of trimmed) {
+      if (!('items' in row)) delete (row as Record<string, unknown>).weightWarning;
+    }
+  }
+  return trimmed;
+};
 
 /** 查看人当前对某对象的可见字段（undefined = 全部）。 */
 export const viewableFields = (deps: TenantRouteDeps, ctx: EvaluationContext, object: EvaluationObject) =>
