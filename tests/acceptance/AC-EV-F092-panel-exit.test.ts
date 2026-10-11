@@ -152,6 +152,99 @@ describe('AC-EV-F092 离职生效自动退出评审组', () => {
     expect(await w.audits(g.id)).toHaveLength(1);
   });
 
+  it('AC-EV-F092 P2-1 到期未消费就撤销离职：全部组退出并审计，撤销后重新入组不被旧任务删除', async () => {
+    const w = await exitWorld(database().db);
+    const person = await w.hire('到期撤销评委', w.orgA);
+    const kept = await w.hire('撤销留任评委', w.orgB);
+    const groups = [await w.createGroup([person, kept]), await w.createGroup([person], false, w.orgB)];
+    const record = await w.savedLeave(person, '2026-10-11');
+    w.setTime('2026-10-11T16:00:00Z');
+    expect((await w.employee(person.id)).status).toBe('left');
+    expect((await w.undo(record.id, record.revision)).status).toBe(200);
+    expect((await w.employee(person.id)).status).toBe('employed');
+    for (const [index, g] of groups.entries()) {
+      await w.expectMembers(g.id, index ? [] : [kept]);
+      expect((await w.group(g.id)).revision).toBe(g.revision + 1);
+      expect(await w.audits(g.id)).toMatchObject([
+        { actorUserId: w.admin.id, after: { members: index ? [] : [{ employeeId: kept.id, isLeader: false }] } },
+      ]);
+    }
+    expect(await w.queue(record.id)).toMatchObject([{ state: 'done', attempts: 1 }]);
+    const fresh = await w.createGroup([person]);
+    expect(await w.run()).toMatchObject({ picked: 0 });
+    await w.expectMembers(fresh.id, [person]);
+    for (const g of groups) expect(await w.audits(g.id)).toHaveLength(1);
+  });
+
+  it('AC-EV-F092 P2-1 删除重聘恢复离职：旧退出已完成也移出全部新组，保留其他成员及审计', async () => {
+    const w = await exitWorld(database().db);
+    const person = await w.hire('删除重聘评委', w.orgA);
+    const kept = await w.hire('删除重聘留任评委', w.orgB);
+    const old = await w.createGroup([person]);
+    const leave = await w.savedLeave(person, '2026-10-10');
+    const rehire = await w.rehire(person, '2026-10-11');
+    const groups = [await w.createGroup([person, kept]), await w.createGroup([person], false, w.orgB)];
+    expect((await w.undo(rehire.id, rehire.revision)).status).toBe(200);
+    expect((await w.employee(person.id)).status).toBe('left');
+    for (const [index, g] of groups.entries()) {
+      await w.expectMembers(g.id, index ? [] : [kept]);
+      expect((await w.group(g.id)).revision).toBe(g.revision + 1);
+      expect(await w.audits(g.id)).toHaveLength(1);
+      expect((await w.audits(g.id))[0]!.actorUserId).toBe(w.admin.id);
+    }
+    await w.expectMembers(old.id, []);
+    expect(await w.audits(old.id)).toHaveLength(1);
+    expect(await w.queue(leave.id)).toMatchObject([{ state: 'done', attempts: 1 }]);
+    expect(await w.run()).toMatchObject({ picked: 0 });
+  });
+
+  it.each([
+    { mode: '新建', failed: false },
+    { mode: '编辑新增', failed: false },
+    { mode: '新建', failed: true },
+    { mode: '编辑新增', failed: true },
+  ])(
+    'AC-EV-F092 P2-2 $mode：结清旧退出（失败退避=$failed），旧组退出且重聘后新增成员不被迟到任务删除',
+    async ({ mode, failed }) => {
+      const w = await exitWorld(database().db);
+      const person = await w.hire('迟到退出重聘评委', w.orgA);
+      const kept = await w.hire('迟到退出留任评委', w.orgB);
+      const old = await w.createGroup([person, kept]);
+      const target = mode === '编辑新增' ? await w.createGroup([kept]) : undefined;
+      const leave = await w.savedLeave(person, '2026-10-11');
+      w.setTime('2026-10-12T16:00:00Z');
+      if (failed) {
+        await w.db.execute(sql`CREATE FUNCTION f092_late_audit() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN IF NEW.action='evaluation.review-group.update' THEN
+          RAISE EXCEPTION USING ERRCODE='53100', MESSAGE='模拟审计存储失败'; END IF; RETURN NEW; END $$`);
+        await w.db.execute(sql`CREATE TRIGGER f092_late_audit BEFORE INSERT ON audit_events
+        FOR EACH ROW EXECUTE FUNCTION f092_late_audit()`);
+        try {
+          expect(await w.run()).toMatchObject({ failed: 1 });
+        } finally {
+          await w.db.execute(sql`DROP TRIGGER f092_late_audit ON audit_events`);
+          await w.db.execute(sql`DROP FUNCTION f092_late_audit()`);
+        }
+      }
+      await w.rehire(person, '2026-10-13');
+      expect((await w.employee(person.id)).status).toBe('employed');
+      const fresh = target
+        ? await ok<{ id: string; revision: number }>(await w.edit(target, { members: w.members(person, kept) }))
+        : await w.createGroup([person, kept]);
+      // 先核对迟到任务不会伤害新周期成员，再核对旧组没有被“当前在职”短路而漏退。
+      w.setTime('2026-10-12T16:01:00Z');
+      await w.run();
+      await w.expectMembers(fresh.id, [person, kept]);
+      expect((await w.group(fresh.id)).revision).toBe(fresh.revision);
+      expect(await w.audits(fresh.id)).toHaveLength(target ? 1 : 0);
+      await w.expectMembers(old.id, [kept]);
+      expect((await w.group(old.id)).revision).toBe(old.revision + 1);
+      expect(await w.audits(old.id)).toHaveLength(1);
+      expect(await w.queue(leave.id)).toMatchObject([{ state: 'done', attempts: failed ? 2 : 1 }]);
+      expect(await w.run()).toMatchObject({ picked: 0 });
+    },
+  );
+
   it('AC-EV-F092 候选只列当前在职；未任职、未来入职、退休与离职不占分页；范围外仍不可见', async () => {
     const w = await exitWorld(database().db);
     const active = await w.hire('候选在职评委', w.orgA);

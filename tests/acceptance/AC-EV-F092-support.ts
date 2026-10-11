@@ -2,6 +2,7 @@
 import { randomUUID } from 'node:crypto';
 import { sql, withTenant, type Db } from '@italent/db';
 import { expect } from 'vitest';
+import { loginEmailOf } from './AC-EMP-support.js';
 import { CANDIDATES, GROUPS, reviewWorld, type Employee, type GroupView } from './AC-EV-review-support.js';
 import { EV_BASE, ok } from './AC-EV-support.js';
 import { tenantApi } from './support/tenant-api.js';
@@ -41,6 +42,22 @@ export async function exitWorld(db: Db) {
       idempotencyKey: key,
       body: { kind: 'leave', mode: 'direct', lastWorkDate, fields: {} },
     });
+  }
+  async function rehire(person: Employee, effectiveDate: string) {
+    const current = await employee(person.id);
+    return ok<{ id: string; revision: number }>(
+      await request('POST', `${EMP_BASE}/employees/${person.id}/businesses`, {
+        ifMatch: current.revision,
+        body: {
+          kind: 'rehire',
+          mode: 'direct',
+          effectiveDate,
+          fields: { departmentId: w.orgA },
+          loginEmail: loginEmailOf(person.id),
+        },
+      }),
+      201,
+    );
   }
   const undo = (id: string, revision = 1) => request('DELETE', `${EMP_BASE}/businesses/${id}`, { ifMatch: revision });
   const candidates = (query = '?pageSize=100') =>
@@ -95,6 +112,7 @@ export async function exitWorld(db: Db) {
     edit,
     leave,
     savedLeave,
+    rehire,
     undo,
     candidates,
     audits,

@@ -11,12 +11,19 @@ const barrier = vi.hoisted(() => ({
   employeeId: '',
   reached: undefined as undefined | (() => void),
   release: undefined as undefined | Promise<void>,
+  beforeKey: '',
+  beforeReached: undefined as undefined | (() => void),
+  beforeRelease: undefined as undefined | Promise<void>,
 }));
 vi.mock('../../apps/api/src/modules/employment/record-store.js', async (load) => {
   const original = await load<typeof EmploymentStore>();
   return {
     ...original,
     lockEmploymentEmployee: async (...args: Parameters<typeof original.lockEmploymentEmployee>) => {
+      if (args[1].commandId === barrier.beforeKey && args[2] === barrier.employeeId) {
+        barrier.beforeReached?.();
+        await barrier.beforeRelease;
+      }
       const result = await original.lockEmploymentEmployee(...args);
       if (args[1].commandId === barrier.key && args[2] === barrier.employeeId) {
         barrier.reached?.();
@@ -55,6 +62,9 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-EV-F092 真 PG：离职 × �
     barrier.employeeId = '';
     barrier.reached = undefined;
     barrier.release = undefined;
+    barrier.beforeKey = '';
+    barrier.beforeReached = undefined;
+    barrier.beforeRelease = undefined;
   });
 
   it('AC-EV-F092 离职先持员工锁：编辑真实等待，离职提交后旧 revision 返回 409、不能加回', async () => {
@@ -160,4 +170,69 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-EV-F092 真 PG：离职 × �
     expect(await w.queue(record.id)).toMatchObject([{ state: 'done', attempts: 1 }]);
     expect(await w.audits(g.id)).toHaveLength(1);
   });
+
+  it.each(['新建', '编辑新增'])(
+    'AC-EV-F092 P2-3 %s跨午夜等员工锁：消费者先退组，锁后按新业务日拒绝离职员工',
+    async (mode) => {
+      const w = await exitWorld(database().db);
+      w.setTime('2026-10-10T15:59:59Z');
+      const person = await w.hire('跨午夜等待评委', w.orgA);
+      const g = mode === '编辑新增' ? await w.createGroup([]) : undefined;
+      const leave = await w.savedLeave(person, '2026-10-10');
+      const [queue] = rowsOf<{ id: string }>(
+        await w.db.execute(sql`SELECT id FROM ev_sync_queue
+      WHERE tenant_id=${w.tenant.id} AND handler='review_group_exit' AND record_id=${leave.id}::uuid`),
+      );
+      const writingReady = signal();
+      const allowWriteLock = signal();
+      const workerReady = signal();
+      const allowWorkerFinish = signal();
+      barrier.beforeKey = randomUUID();
+      barrier.employeeId = person.id;
+      barrier.beforeReached = writingReady.resolve;
+      barrier.beforeRelease = allowWriteLock.promise;
+      barrier.key = `review-group-exit:${queue!.id}`;
+      barrier.reached = workerReady.resolve;
+      barrier.release = allowWorkerFinish.promise;
+      let finished = false;
+      const writing = w
+        .request(g ? 'PATCH' : 'POST', `/api/tenant/evaluation/review-groups${g ? `/${g.id}` : ''}`, {
+          ifMatch: g?.revision ?? 0,
+          idempotencyKey: barrier.beforeKey,
+          body: { ...(g ? {} : { name: '跨午夜新组', ownerOrgId: w.orgA }), members: w.members(person) },
+        })
+        .then((response) => {
+          finished = true;
+          return response;
+        });
+      await Promise.race([
+        writingReady.promise,
+        writing.then(() => {
+          throw new Error('保存未到达员工锁');
+        }),
+      ]);
+      w.setTime('2026-10-10T16:00:00Z');
+      const worker = w.run();
+      try {
+        await workerReady.promise;
+        allowWriteLock.resolve();
+        await waitsForLock(w.db, () => finished);
+      } finally {
+        allowWriteLock.resolve();
+        allowWorkerFinish.resolve();
+        await Promise.all([worker, writing]);
+      }
+      const response = await writing;
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({
+        error: { code: 'VALIDATION_FAILED', reason: 'REVIEW_GROUP_MEMBER_NOT_EMPLOYED' },
+      });
+      expect((await w.employee(person.id)).status).toBe('left');
+      expect(await w.queue(leave.id)).toMatchObject([{ state: 'done', attempts: 1 }]);
+      expect(await w.run()).toMatchObject({ picked: 0 });
+      if (g) expect(await w.group(g.id)).toEqual(g);
+      const rows = rowsOf(await w.db.execute(sql`SELECT id FROM ev_review_groups WHERE tenant_id=${w.tenant.id}`));
+      expect(rows).toHaveLength(g ? 1 : 0);
+    },
+  );
 });
