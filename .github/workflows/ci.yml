@@ -202,63 +202,89 @@ jobs:
     runs-on: ubuntu-24.04
     # F-056 首测最慢片 9m34s（含容器启动/安装/收尾），18 分钟约为 1.88 倍
     timeout-minutes: 18
+    # packages: read 用于拉本仓库 ghcr 上的 PostgreSQL 镜像（DEC-431④）；job 级权限会覆盖顶层，故补写 contents
+    permissions:
+      contents: read
+      packages: read
     strategy:
       fail-fast: false
       matrix:
         shard: [1, 2, 3, 4]
-    services:
-      postgres:
-        # Docker Hub 匿名拉取会限流（10-09 21:00Z 起 PG 分片批量失败），改用 AWS 公共镜像源的官方镜像，内容与 docker.io/library/postgres:16 相同
-        image: public.ecr.aws/docker/library/postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: italent_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
     env:
       # CI 一次性容器内的测试口令，非机密
       TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/italent_test
     steps:
       - uses: actions/checkout@v4
+      # 不用 services（拉取失败不能换源）：脚本先拉 ghcr 镜像，失败再落到 AWS 公共镜像源 / Docker Hub 并退避重试，
+      # 启动参数直接带 max_locks_per_transaction=256（#250），健康检查通过后打印并校验生效值（DEC-431④）
+      - name: Log in to ghcr.io (failure falls back to public registries)
+        continue-on-error: true
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
+        run: echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+      - name: Start PostgreSQL 16 (max_locks_per_transaction = 256)
+        run: bash scripts/ci-postgres.sh
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: pnpm
-      # 10-11 #226 合并后整库迁移 / 恢复单事务锁的表超过默认 max_locks_per_transaction=64（53200 out of shared memory）。
-      # services 不能传 postgres 启动参数，改用 ALTER SYSTEM 写入后重启容器，再等健康检查通过
-      - name: Raise max_locks_per_transaction
-        run: |
-          docker exec ${{ job.services.postgres.id }} psql -U postgres -c "ALTER SYSTEM SET max_locks_per_transaction = 256"
-          docker restart ${{ job.services.postgres.id }}
-          for i in $(seq 1 30); do
-            docker exec ${{ job.services.postgres.id }} pg_isready -U postgres && break
-            sleep 1
-          done
-          docker exec ${{ job.services.postgres.id }} psql -U postgres -tAc "SHOW max_locks_per_transaction"
       - run: pnpm install --frozen-lockfile
-      - run: pnpm test:pg --shard=${{ matrix.shard }}/4
+      # F-043 真 PG 并发用例偶发 30 秒超时，单独在 test-pg-race 跑并允许重试一次（DEC-431④）
+      - run: pnpm test:pg --shard=${{ matrix.shard }}/4 --exclude=tests/acceptance/AC-360-F043-race-pg.test.ts
         env:
           GENERATED_STRICT: ${{ needs.changes.outputs.generated_strict }}
 
+  test-pg-race:
+    name: test (PostgreSQL 16, F-043 race)
+    needs: changes
+    if: github.event.pull_request.draft != true && needs.changes.outputs.docs_only != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    permissions:
+      contents: read
+      packages: read
+    env:
+      TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/italent_test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Log in to ghcr.io (failure falls back to public registries)
+        continue-on-error: true
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
+        run: echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+      - name: Start PostgreSQL 16 (max_locks_per_transaction = 256)
+        run: bash scripts/ci-postgres.sh
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # 只跑这一个文件；失败的用例自动重跑一次，仍失败才判红
+      - run: pnpm test:pg --retry=1 tests/acceptance/AC-360-F043-race-pg.test.ts
+
   test-pg:
     name: test (PostgreSQL 16)
-    needs: [changes, test-pg-shards]
+    needs: [changes, test-pg-shards, test-pg-race]
     if: always() && github.event.pull_request.draft != true
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
-      - name: Require every PostgreSQL shard to succeed (skipped only for docs-only PRs)
+      - name: Require every PostgreSQL shard and the F-043 race job to succeed (skipped only for docs-only PRs)
         env:
           CHANGES_RESULT: ${{ needs.changes.result }}
           DOCS_ONLY: ${{ needs.changes.outputs.docs_only }}
           SHARDS_RESULT: ${{ needs.test-pg-shards.result }}
+          RACE_RESULT: ${{ needs.test-pg-race.result }}
         run: |
           test "$CHANGES_RESULT" = success
-          if [ "$DOCS_ONLY" = true ]; then test "$SHARDS_RESULT" = skipped; else test "$SHARDS_RESULT" = success; fi
+          if [ "$DOCS_ONLY" = true ]; then
+            test "$SHARDS_RESULT" = skipped
+            test "$RACE_RESULT" = skipped
+          else
+            test "$SHARDS_RESULT" = success
+            test "$RACE_RESULT" = success
+          fi
