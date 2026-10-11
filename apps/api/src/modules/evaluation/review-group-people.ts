@@ -1,8 +1,8 @@
 /** F-092 / DEC-416⑦：评审组成员的员工锁与当前在职校验。 */
 import { sql, type Tx } from '@italent/db';
-import { EMPLOYEE_STATUS, tenantLocalDate } from '@italent/domain';
+import { EMPLOYEE_STATUS } from '@italent/domain';
 import { AppError } from '../../errors.js';
-import { getEmployee } from '../employment/employees.js';
+import { reviewGroupEmployeeStatus, type ReviewGroupState } from './review-group-state.js';
 import { lockEmploymentEmployee, rowsOf } from '../employment/record-store.js';
 import type { EvaluationContext } from './access.js';
 
@@ -32,11 +32,10 @@ export async function lockReviewGroupPeople(
   for (const person of found) await lockEmploymentEmployee(tx, ctx, person.id);
 }
 
-/** 新增引用已通过人员范围校验，且相关锁仍持有；ctx.now 由服务在锁后刷新，状态使用任职模块当前读取口径。 */
-export async function requireEmployedReviewMembers(tx: Tx, ctx: EvaluationContext, ids: readonly string[]) {
-  const today = tenantLocalDate(ctx.now, ctx.timezone);
+/** 新增引用已通过人员范围校验；旧周期结清和当前在职校验必须用同一个锁后快照。 */
+export async function requireEmployedReviewMembers(tx: Tx, state: ReviewGroupState, ids: readonly string[]) {
   for (const id of ids) {
-    if ((await getEmployee(tx, ctx.tenantId, id, today)).status !== 'employed') {
+    if ((await reviewGroupEmployeeStatus(tx, state, id)) !== 'employed') {
       throw new AppError('VALIDATION_FAILED', '评审组成员必须是在职员工', {
         reason: 'REVIEW_GROUP_MEMBER_NOT_EMPLOYED',
       });

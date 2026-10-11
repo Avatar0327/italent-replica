@@ -13,6 +13,7 @@ import { assertNewPersonRefs, loadEmployees, presentPersonRefs, type PersonRefAc
 import { type Tracked, view } from './read-model.js';
 import type { View } from './route-support.js';
 import { lockReviewGroupPeople, requireEmployedReviewMembers } from './review-group-people.js';
+import { lockReviewGroupState } from './review-group-state.js';
 import { settleDueReviewGroupExits } from './review-group-exit.js';
 import { audit, bumped, lockEditable, requireOwnerOrg, rowsOf, type WriteContext } from './store.js';
 
@@ -136,17 +137,17 @@ export async function createReviewGroup(tx: Tx, ctx: WriteContext, body: input.R
     ctx,
     body.members.map((member) => member.employeeId),
   );
-  await settleDueReviewGroupExits(
+  const state = await lockReviewGroupState(
     tx,
     ctx,
     body.members.map((member) => member.employeeId),
     clock,
   );
-  // 员工 / 退出相关组锁等待可能跨租户午夜；新增引用用锁后的业务日期（DEC-416⑦）。
-  ctx = { ...ctx, now: clock() };
+  ctx = state.ctx;
+  await settleDueReviewGroupExits(tx, state);
   await requireEmployedReviewMembers(
     tx,
-    ctx,
+    state,
     body.members.map((member) => member.employeeId),
   );
   const now = ctx.now.toISOString();
@@ -175,10 +176,13 @@ export async function updateReviewGroup(
   clock: () => Date,
 ) {
   await lockReviewGroupPeople(tx, ctx, body.members?.map((member) => member.employeeId) ?? [], id);
-  await settleDueReviewGroupExits(tx, ctx, body.members?.map((member) => member.employeeId) ?? [], clock, id);
+  const state = await lockReviewGroupState(tx, ctx, body.members?.map((member) => member.employeeId) ?? [], clock, id);
+  ctx = state.ctx;
+  // 组锁已统一取得：先校验客户端看到的版本，再允许本事务的旧周期结清推进版本。
   const row = await lockEditable(tx, ctx, 'reviewGroup', id);
-  ctx = { ...ctx, now: clock() };
+  await settleDueReviewGroupExits(tx, state);
   const before = await loadGroup(tx, ctx.tenantId, id);
+  ctx = { ...ctx, expectedRevision: before.revision };
   if (body.members) checkMembers(body.members);
   // 改所属组织：新组织同样须在范围内（DEC-082）；没改就不重判
   if (body.ownerOrgId !== undefined && body.ownerOrgId !== row.owner_org_id) {
@@ -189,7 +193,7 @@ export async function updateReviewGroup(
     const existing = new Set(before.members.map((member) => member.employeeId));
     const added = body.members.map((member) => member.employeeId).filter((employeeId) => !existing.has(employeeId));
     await assertNewPersonRefs(tx, ctx.persons!, added);
-    await requireEmployedReviewMembers(tx, ctx, added);
+    await requireEmployedReviewMembers(tx, state, added);
   }
   const bump = bumped(ctx);
   const sets = (Object.keys(COLUMNS) as (keyof typeof COLUMNS)[])
