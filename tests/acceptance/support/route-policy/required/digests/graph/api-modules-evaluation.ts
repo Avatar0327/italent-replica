@@ -569,11 +569,13 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/evaluation/read-model.ts#listRows': [
     'apps/api/src/modules/evaluation/access.ts#rowsOf',
     '#columnsOf',
+    '#readLock',
     'apps/api/src/modules/evaluation/store.ts#tableOf',
   ],
   'apps/api/src/modules/evaluation/read-model.ts#loadRow': [
     'apps/api/src/modules/evaluation/access.ts#rowsOf',
     '#columnsOf',
+    '#readLock',
     'apps/api/src/modules/evaluation/store.ts#tableOf',
   ],
   'apps/api/src/modules/evaluation/read-model.ts#orderBy': ['#ORDER'],

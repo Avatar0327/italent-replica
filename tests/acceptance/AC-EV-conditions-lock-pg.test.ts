@@ -121,6 +121,7 @@ describe.skipIf(!process.env['TEST_DATABASE_URL'])('AC-EV-conditions / AC-EV-for
       } finally {
         release.open();
         readRace.target = '';
+        await Promise.allSettled([reading, writing]);
       }
       const response = await ok<{ items: unknown[] } & typeof activity>(await reading);
       const read = list ? response.items.find((item) => (item as { id: string }).id === activity.id) : response;
