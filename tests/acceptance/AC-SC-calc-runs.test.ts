@@ -263,36 +263,50 @@ describe('AC-SC-calc-runs / AC-SC-projection', () => {
     expect(await res.json()).toMatchObject({ id, status: 'pending' });
     expect((await read(id)).attempt_no).toBe(Number(before.attempt_no) + 1);
   });
-  it.skipIf(!process.env.TEST_DATABASE_URL)('真 PG：retry 等待 worker 行锁后按最新 revision 拒绝', async () => {
-    const id = await create([randomUUID()]);
-    const before = await read(id);
-    let entered!: () => void, release!: () => void;
-    const inside = new Promise<void>((resolve) => {
-      entered = resolve;
-    });
-    const gate = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    const worker = runCalcPage(
-      db(),
-      seed.tenant.id,
-      id,
-      handlers(async () => {
-        entered();
-        await gate;
-        return 'written';
-      }),
-      now,
-    );
-    await inside;
-    const retry = request(tenantApi(db()), `/${id}/retry`, 'POST', Number(before.revision));
-    try {
-      await waitForBlocked(db(), 1);
-    } finally {
-      release();
-    }
-    expect(await worker).toBe('succeeded');
-    expect((await retry).status).toBe(409);
-    expect((await read(id)).status).toBe('succeeded');
-  });
+  it.skipIf(!process.env.TEST_DATABASE_URL).each(['succeeded', 'partial'] as const)(
+    '真 PG：retry 等待 worker 行锁后按最新 revision 拒绝（%s）',
+    async (status) => {
+      const id = await create([randomUUID()]);
+      const before = await read(id);
+      let entered!: () => void, release!: () => void;
+      const inside = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const worker = runCalcPage(
+        db(),
+        seed.tenant.id,
+        id,
+        handlers(async () => {
+          entered();
+          await gate;
+          if (status === 'partial') throw new CalcObjectFailure('SOURCE_REVOKED', true);
+          return 'written';
+        }),
+        now,
+      );
+      await inside;
+      const retry = request(tenantApi(db()), `/${id}/retry`, 'POST', Number(before.revision));
+      try {
+        await waitForBlocked(db(), 1);
+      } finally {
+        release();
+      }
+      expect(await worker).toBe(status);
+      const res = await retry;
+      expect(res.status).toBe(409);
+      expect(await res.json()).toMatchObject({ error: { code: 'REVISION_CONFLICT' } });
+      expect(await read(id)).toMatchObject({ status, attempt_no: before.attempt_no });
+      expect(
+        await tx(async (t) =>
+          rowsOf(
+            await t.execute(sql`
+      SELECT outcome,retryable FROM succession_calc_run_objects WHERE run_id=${id}::uuid`),
+          ),
+        ),
+      ).toEqual([{ outcome: status === 'partial' ? 'failed' : 'written', retryable: status === 'partial' }]);
+    },
+  );
 });

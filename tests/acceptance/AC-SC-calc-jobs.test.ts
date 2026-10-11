@@ -1,6 +1,6 @@
 /** DEC-429：生产者替身只在测试登记，真实业务集合由 A3/C1/B4 提供。 */
 import { randomUUID } from 'node:crypto';
-import { sql, withTenant, type Tx } from '@italent/db';
+import { sql, withTenant, withPlatform, type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
@@ -163,5 +163,50 @@ describe('AC-SC-calc-jobs 按租户调度', () => {
     const missing = await api.request('POST', PATH, { user: operator.id, body: { ...body, kind: 'exit_sweep' } });
     expect(missing.status).toBe(503);
     expect(await missing.json()).toMatchObject({ error: { details: { reason: 'KIND_UNAVAILABLE' } } });
+  });
+  it('P2-1：租户停用 / 新增后的跨槽 HTTP 重放保持第一页、游标与 run 集合', async () => {
+    for (let i = 0; i < 18; i++) tenants.push(await seedTenantWithMember(db(), `page-${i}`));
+    tenants.sort((a, b) => a.tenant.id.localeCompare(b.tenant.id));
+    let time = new Date('2026-11-01T08:00:00Z');
+    const api = tenantApi(db(), { clock: () => time });
+    const opts = { user: operator.id, body: { kind: 'org_stats' }, idempotencyKey: randomUUID() };
+    const initial = await api.request('POST', PATH, opts);
+    expect(initial.status).toBe(200);
+    const first = await initial.json();
+    expect(first.items).toHaveLength(20);
+    expect(first.nextCursor).toBe(tenants[19]!.tenant.id);
+    const before = await Promise.all(tenants.map((tenant) => list(tenant.tenant.id)));
+    await withPlatform(db(), (t) =>
+      t.execute(sql`
+      UPDATE tenants SET status='suspended' WHERE id=${tenants[0]!.tenant.id}::uuid`),
+    );
+    tenants.push(await seedTenantWithMember(db(), 'page-new'));
+    time = new Date('2026-11-02T08:00:00Z');
+    const replay = await api.request('POST', PATH, opts);
+    expect(replay.status).toBe(200);
+    expect(await replay.json()).toEqual(first);
+    expect(await Promise.all(tenants.slice(0, 21).map((tenant) => list(tenant.tenant.id)))).toEqual(before);
+    expect(await list(tenants[21]!.tenant.id)).toEqual([]);
+  });
+  it('P2-1：某租户生产失败后跨槽恢复仍使用首次生产时点', async () => {
+    const tenantId = tenants[1]!.tenant.id;
+    let time = new Date('2026-11-03T08:00:00Z'),
+      fail = true;
+    const times: string[] = [];
+    const flaky: CalcProducer = {
+      ...producer,
+      async runTenant(tx, tenant, at) {
+        times.push(at.toISOString());
+        if (fail) throw new Error('合成生产失败');
+        await producer.runTenant(tx, tenant, at);
+      },
+    };
+    const deps = { db: db(), clock: () => time };
+    const input = { kind: 'org_stats' as const, tenantId, userId: operator.id, commandId: randomUUID() };
+    expect((await dispatchCalcJobs(deps, input, [flaky])).items[0]).toHaveProperty('error');
+    fail = false;
+    time = new Date('2026-11-04T08:00:00Z');
+    expect((await dispatchCalcJobs(deps, input, [flaky])).items[0]).toHaveProperty('runIds');
+    expect(times).toEqual(['2026-11-03T08:00:00.000Z', '2026-11-03T08:00:00.000Z']);
   });
 });
