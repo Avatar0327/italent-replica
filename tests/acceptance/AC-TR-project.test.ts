@@ -10,6 +10,10 @@ import { seedPermissionWorld } from './AC-PRM-support.js';
 import { TR_BASE, TR_NOW } from './AC-TR-support.js';
 import { tenantApi, type RequestOptions } from './support/tenant-api.js';
 import { waitForBlocked } from './support/pg-interleave.js';
+import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.js';
+import { updateField } from '../../apps/api/src/modules/talent-review/field-service.js';
+import { projectCreate } from '../../apps/api/src/modules/talent-review/project-input.js';
+import { createProject } from '../../apps/api/src/modules/talent-review/project-service.js';
 
 const testDb = useTestDb();
 const PATH = '/projects';
@@ -244,6 +248,92 @@ describe('AC-TR-project 项目定义', () => {
     expect((await f.write(p, 'PATCH', { name: '过期写' })).status).toBe(409);
     expect(await f.read(p)).toEqual(started);
   });
+});
+
+describe('AC-TR-project 校准引用属性约束（PR #256 P2-1）', () => {
+  const context = (f: Awaited<ReturnType<typeof fixture>>, expectedRevision = 0) => {
+    const scope = { ...EMPTY_SCOPE, all: true, hasDataPermission: true };
+    return {
+      tenantId: f.w.as.tenant,
+      userId: f.w.as.user,
+      timezone: 'Asia/Shanghai',
+      now: TR_NOW,
+      commandId: randomUUID(),
+      expectedRevision,
+      scope,
+      referenceScopes: { category: scope, calcRule: scope, matrix: scope, field: scope },
+    };
+  };
+  const calibration = (f: Awaited<ReturnType<typeof fixture>>) =>
+    f.create<{ id: string; revision: number; group: string }>('/fields', configBody('field', { group: 'calibration' }));
+  const selection = (id: string) => ({ calibrationFields: [{ fieldId: id, required: true }], matrices: [] });
+
+  it('被引用字段不能改离校准分组；失败不改字段 / 项目 / 审计，原项目可原样保存；解除引用后可改组', async () => {
+    const f = await fixture('project-field-group');
+    const field = await calibration(f);
+    const p = await f.project(selection(field.id));
+    const audits = () =>
+      withTenant(testDb().db, f.w.as.tenant, (tx) =>
+        tx.select().from(auditEvents).where(eq(auditEvents.objectId, field.id)),
+      );
+    const beforeAudits = await audits();
+    const changed = await f.request('PATCH', `/fields/${field.id}`, {
+      ifMatch: field.revision,
+      body: { group: 'result', name: '不应保存的字段名称' },
+    });
+    expect(changed.status, await changed.clone().text()).toBe(409);
+    expect(await reason(changed)).toBe('FIELD_GROUP_BREAKS_PROJECT');
+    expect(await (await f.request('GET', `/fields/${field.id}`)).json()).toEqual(field);
+    expect(await f.read(p)).toEqual(p);
+    expect(await audits()).toEqual(beforeAudits);
+    const saved = await f.write(p, 'PATCH', { name: '项目正常保存', ...selection(field.id) });
+    expect(saved.status, await saved.clone().text()).toBe(200);
+    const current = (await saved.json()) as Project;
+    expect((await f.write(current, 'PATCH', { calibrationFields: [] })).status).toBe(200);
+    expect(
+      (await f.request('PATCH', `/fields/${field.id}`, { ifMatch: field.revision, body: { group: 'result' } })).status,
+    ).toBe(200);
+  });
+
+  it.runIf(Boolean(process.env.TEST_DATABASE_URL))(
+    '真 PG：新建引用先持字段共享锁，改组等待后须读到引用并返回 409',
+    async () => {
+      const f = await fixture('project-reference-first');
+      const field = await calibration(f);
+      const { p, pending } = await withTenant(testDb().db, f.w.as.tenant, async (tx) => {
+        const p = await createProject(tx, context(f), projectCreate.parse(body(f.w.orgId, selection(field.id))));
+        const pending = f.request('PATCH', `/fields/${field.id}`, {
+          ifMatch: field.revision,
+          body: { group: 'result' },
+        });
+        await waitForBlocked(testDb().db, 1);
+        return { p, pending };
+      });
+      const changed = await pending;
+      expect(changed.status, await changed.clone().text()).toBe(409);
+      expect(await reason(changed)).toBe('FIELD_GROUP_BREAKS_PROJECT');
+      expect(await (await f.request('GET', `/fields/${field.id}`)).json()).toEqual(field);
+      expect((await f.write(p, 'PATCH', { name: '交错后正常保存', ...selection(field.id) })).status).toBe(200);
+    },
+  );
+
+  it.runIf(Boolean(process.env.TEST_DATABASE_URL))(
+    '真 PG：改组先持字段排他锁，新建引用等待后拒绝新分组，项目未落库',
+    async () => {
+      const f = await fixture('project-group-first');
+      const field = await calibration(f);
+      const { pending } = await withTenant(testDb().db, f.w.as.tenant, async (tx) => {
+        await updateField(tx, context(f, field.revision), field.id, { group: 'result' });
+        const pending = f.request('POST', PATH, { ifMatch: 0, body: body(f.w.orgId, selection(field.id)) });
+        await waitForBlocked(testDb().db, 1);
+        return { pending };
+      });
+      const created = await pending;
+      expect([created.status, await reason(created)]).toEqual([400, 'PROJECT_CALIBRATION_FIELD_INVALID']);
+      expect(await (await f.request('GET', `/fields/${field.id}`)).json()).toMatchObject({ group: 'result' });
+      expect(await (await f.request('GET', PATH)).json()).toMatchObject({ items: [] });
+    },
+  );
 });
 
 describe('AC-TR-project 状态机 / AC-TR-01 删除定义侧（DEC-353）', () => {
