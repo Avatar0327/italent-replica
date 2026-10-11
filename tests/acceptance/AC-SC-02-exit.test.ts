@@ -11,6 +11,7 @@ import { OPEN_END, type SuccessionWorld, successionWorld } from './AC-SC-support
 
 const testDb = useTestDb();
 const leaveDate = '2026-10-02';
+// TODO(需取证 #264)：明确改期后已自动结束记录是否移动结束日，再补改期验收用例。
 
 describe('AC-SC-02 离职事件与继任记录（DEC-343）', () => {
   let w: SuccessionWorld;
