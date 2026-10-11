@@ -1,9 +1,12 @@
 /** AC-QL-chart-export：真实授权器与实际下载文件；QL-R12、设计 §5.1 / §5.3、DEC-067 / 352。 */
 import { randomUUID } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { inflateRawSync } from 'node:zlib';
 import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { chartWorkbook, MAX_EXPORT_BYTES } from '../../apps/api/src/modules/qualification/chart-files.js';
 import { seedPermissionWorld, type PermissionWorld } from './AC-PRM-support.js';
 import { code, type Data, operator, seed } from './AC-QL-perm-support.js';
 import { QL_NOW } from './AC-QL-support.js';
@@ -36,22 +39,17 @@ function unzip(bytes: Buffer): Map<string, Buffer> {
   }
   return files;
 }
-const unescape = (value: string) =>
-  value
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&amp;/g, '&');
-
 function chartOf(bytes: Buffer) {
-  const files = unzip(bytes);
-  expect(files.has('[Content_Types].xml')).toBe(true);
-  const xml = files.get('xl/worksheets/sheet1.xml')!.toString();
-  const rows = [...xml.matchAll(/<row[^>]*>(.*?)<\/row>/gs)].map((match) =>
-    [...match[1]!.matchAll(/<t[^>]*>(.*?)<\/t>/gs)].map((cell) => unescape(cell[1]!)),
-  );
+  const parsed = JSON.parse(
+    execFileSync('python3', [fileURLToPath(new URL('./support/read-chart-xlsx.py', import.meta.url))], {
+      input: bytes,
+      maxBuffer: 16 * 1024 * 1024,
+      timeout: 10_000,
+    }).toString(),
+  ) as { sheetNames: string[]; rows: string[][] };
+  expect(parsed.sheetNames).toEqual(['任职资格图谱']);
   const chart: { standardId?: string; levels: Record<string, unknown>[] } = { levels: [] };
-  for (const [field, meta, ...levels] of rows.slice(1)) {
+  for (const [field, meta, ...levels] of parsed.rows.slice(1)) {
     if (field === 'standardId') chart.standardId = JSON.parse(meta!);
     else if (field === 'levels') chart.levels = JSON.parse(meta!);
     else
@@ -117,6 +115,77 @@ describe('AC-QL-chart-export 图谱导出', () => {
     expect(chartOf(bytes)).toEqual(view);
     expect(JSON.stringify(chartOf(bytes))).toContain('中文');
     expect(unzip(bytes).get('xl/worksheets/sheet1.xml')!.toString()).not.toContain('<f>');
+  });
+
+  it('保存后真正下载：XML 禁止字符在全部文本来源逐字保留，单选与多选均由独立解析器读取', async () => {
+    const sample = await qualificationWorld(world.db, 'chart-export-xml');
+    // PostgreSQL 文本不接收 NUL；其余 C0 禁止字符与 FFFE / FFFF 都由真实写接口保存。
+    const controls = String.fromCharCode(...Array.from({ length: 31 }, (_, index) => index + 1));
+    const text = `中文${controls}\uFFFE\uFFFF😀<&>"\\uFFFF_xFFFF__x0041_结尾`;
+    const klass = await sample.categoryClass();
+    const category = await sample.category(klass.id, { name: text });
+    const empty = await sample.category(klass.id);
+    const level = await sample.level(1);
+    const type = await sample.targetType();
+    const manual = await sample.target(type.id);
+    const copied = await sample.target(type.id, { description: text });
+    const common = await sample.target(type.id, { isCommon: true, description: '待覆盖' });
+    const standard = await sample.standard({
+      categoryId: category.id,
+      name: text,
+      levelIds: [level.id],
+      details: [
+        {
+          levelId: level.id,
+          targetId: manual.id,
+          targetValue: text,
+          abilities: [{ content: text, targetValue: text }],
+        },
+        { levelId: level.id, targetId: copied.id, targetValue: text },
+        { levelId: level.id, targetId: common.id, targetValue: text },
+      ],
+      levelDescriptions: [{ levelId: level.id, description: text }],
+    });
+    await sample.patch(`/targets/${common.id}`, common.revision, { description: text, confirmOverwrite: true });
+    const response = await sample.request('GET', `/standards/${standard.id}/chart`);
+    expect(response.status).toBe(200);
+    const view = await response.json();
+    expect(view.levels[0].description).toBe(text);
+    for (const cell of view.levels[0].cells) {
+      expect(cell.targetValue).toBe(text);
+      expect(cell.abilities[0].content).toBe(text);
+    }
+    const ability = view.levels[0].cells.find((cell: { targetId: string }) => cell.targetId === manual.id).abilities[0];
+    expect(ability.targetValue).toBe(text);
+    expect(
+      view.levels[0].cells.map((cell: { abilities: { source: string }[] }) => cell.abilities[0]!.source).sort(),
+    ).toEqual(['common_overwrite', 'copied', 'manual']);
+    const single = await sample.request('GET', path([category.id]));
+    expect(single.headers.get('content-disposition')).toBe(`attachment; filename="${category.id}.xlsx"`);
+    expect(chartOf(await download(single))).toEqual(view);
+    const multiple = await sample.request('GET', path([category.id, empty.id]));
+    expect(multiple.headers.get('content-disposition')).toBe('attachment; filename="qualification-charts.zip"');
+    const files = unzip(await download(multiple));
+    expect([...files.keys()]).toEqual([`${category.id}.xlsx`, `${empty.id}.xlsx`]);
+    expect(chartOf(files.get(`${category.id}.xlsx`)!)).toEqual(view);
+    expect(chartOf(files.get(`${empty.id}.xlsx`)!)).toEqual({ levels: [] });
+  });
+
+  it('统一文本出口对全部 C0、孤立代理项及 FFFE / FFFF 保值，并保留合法代理对与字面转义串', () => {
+    const controls = String.fromCharCode(...Array.from({ length: 32 }, (_, index) => index));
+    const content = `原文${controls}\uD800孤立\uDC00\uFFFE\uFFFF😀_x0000_\\uFFFF终`;
+    const chart = { levels: [{ description: content, cells: [{ targetValue: content, abilities: [{ content }] }] }] };
+    expect(chartOf(chartWorkbook(chart))).toEqual(chart);
+  });
+
+  it('整批字节预算计入全部工作簿 XML，余量不足时明确拒绝', () => {
+    const budget = { rows: 0, bytes: 0 };
+    const file = chartWorkbook({ levels: [] }, budget);
+    const size = [...unzip(file).values()].reduce((total, part) => total + part.length, 0);
+    expect(budget.bytes).toBe(size);
+    expect(() => chartWorkbook({ levels: [] }, { rows: 0, bytes: MAX_EXPORT_BYTES - size + 1 })).toThrow(
+      '导出文件最多 8 MiB',
+    );
   });
 
   it('多选每类别一个 xlsx，隐藏明细、级别描述与顺序号的字段名和值都不出现', async () => {
