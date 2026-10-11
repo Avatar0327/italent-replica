@@ -24,7 +24,7 @@ export interface ConditionRecord {
 const ids = (list: readonly string[]) => `{${list.join(',')}}`;
 const unique = (list: readonly string[] | undefined) => [...new Set(list ?? [])];
 const normalizeValue = (value: Value | undefined): Value =>
-  value == null || (typeof value === 'string' && value.trim() === '') ? null : value;
+  value === null || value === undefined || (typeof value === 'string' && value.trim() === '') ? null : value;
 const valueType = (value: Value) => (value === null ? null : typeof value);
 
 /** 错误定位只含提交的条件组下标 / 明细序号，不回显已有条件的字段和值。 */
@@ -91,8 +91,10 @@ interface DetailRow {
   value1_type: string | null;
   value2_type: string | null;
 }
-const decode = (value: string | null, type: string | null): Value =>
-  value === null ? null : type === 'number' ? Number(value) : value;
+function decode(value: string | null, type: string | null): Value {
+  if (value === null) return null;
+  return type === 'number' ? Number(value) : value;
+}
 
 export async function loadConditions(tx: Tx, tenantId: string, activityIds: readonly string[]) {
   const result = new Map<string, ConditionRecord[]>();
@@ -147,14 +149,16 @@ export async function replaceConditions(
     const result = await tx.execute(sql`INSERT INTO ev_conditions
         (tenant_id, activity_id, seq, kind, applicant_kind, category_ids, level_ids, expression)
       VALUES (${tenantId}, ${activityId}, ${seq}, ${condition.kind}, ${condition.applicantKind},
-        ${ids(condition.categoryIds)}::uuid[], ${ids(condition.levelIds)}::uuid[], ${condition.expression}) RETURNING id`);
+        ${ids(condition.categoryIds)}::uuid[], ${ids(condition.levelIds)}::uuid[],
+        ${condition.expression}) RETURNING id`);
     const conditionId = rowsOf<{ id: string }>(result)[0]!.id;
     for (const [position, detail] of condition.details.entries()) {
       await tx.execute(sql`INSERT INTO ev_condition_details
           (tenant_id, condition_id, position, seq, source, field, operator, value1, value2, value1_type, value2_type)
         VALUES (${tenantId}, ${conditionId}, ${position}, ${detail.seq}, ${detail.source}, ${detail.field},
           ${detail.operator}, ${detail.value1 === null ? null : String(detail.value1)},
-          ${detail.value2 === null ? null : String(detail.value2)}, ${valueType(detail.value1)}, ${valueType(detail.value2)})`);
+          ${detail.value2 === null ? null : String(detail.value2)},
+          ${valueType(detail.value1)}, ${valueType(detail.value2)})`);
     }
   }
 }
