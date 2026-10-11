@@ -1454,6 +1454,11 @@ export const GRAPH: Graph = {
     '#planSteps',
   ],
   'apps/api/src/modules/talent-review/template-structure.ts#checkCriteria': ['#invalid'],
+  'apps/api/src/modules/talent-review/template-structure.ts#checkScoringAgainstSnapshots': [
+    '#invalid',
+    '#snapshotMode',
+    'packages/domain/src/talent-review/template.ts#checkByCount',
+  ],
   'apps/api/src/modules/talent-review/template-structure.ts#checkTemplateReferences': [
     'apps/api/src/modules/talent-review/reference-kit.ts#checkReferences',
     '#SPECS',
@@ -1463,13 +1468,13 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/talent-review/score-rule-service.ts#SCORE_RULE',
     '#asInput',
     '#checkCriteria',
+    '#checkScoringAgainstSnapshots',
     '#checkTemplateReferences',
     '#invalid',
     '#matchPrevious',
     '#moduleDraft',
     '#referencesOf',
     '#withIdentity',
-    'packages/domain/src/talent-review/template.ts#checkByCount',
     'packages/domain/src/talent-review/template.ts#checkModules',
   ],
   'apps/api/src/modules/talent-review/template-structure.ts#freezeSteps': [
