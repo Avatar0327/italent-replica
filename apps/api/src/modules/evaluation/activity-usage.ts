@@ -1,7 +1,7 @@
 /**
  * 被评定活动引用时拒删 / 拒停用（B5 填 B1a / B4 的钩子位，usage.ts）：
  * - 活动类型 / 活动周期：被活动引用后删除、停用都拒绝（原站“停用”置灰，Q-M0-152，提示由服务端给出，不列引用方）；
- * - 评价表：被活动环节引用后拒删（停用不拦，新引用会被拒、已有引用照常显示，DEC-281⑧）；外键 restrict 兜底并发。
+ * - 评价表：被活动环节引用后拒删、拒停用（DEC-413②）；停用与新增引用沿用 coordinateActivityForms 的协调锁序。
  * 评审组不拦（照原站被引用也能停用，没有删除入口，DEC-393）；EV-R5 修改锁由 activity-form-lock.ts 判定。
  */
 import { sql } from 'drizzle-orm';
@@ -33,5 +33,10 @@ export function registerActivityUsage(): void {
     'evaluationForm',
     { sql: chainUsesForm, message: '此评价表已被评定活动引用，无法删除', reason: 'EVALUATION_FORM_IN_USE' },
     'delete',
+  );
+  registerInUse(
+    'evaluationForm',
+    { sql: chainUsesForm, message: '已在活动中使用此评价表，无法停用', reason: 'EVALUATION_FORM_IN_USE' },
+    'disable',
   );
 }
