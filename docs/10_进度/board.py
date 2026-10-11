@@ -215,7 +215,9 @@ def live_prs():
             st, why = "ci", "等 CI"
         why += note
         idle = age(act)
-        stuck = st == "decide" or (st in ("conflict", "cired", "merge") and idle >= 60) or (st in ("dev", "rework") and idle >= 60) or (st == "queue" and idle >= 15)
+        # DEC-428 暂停派发期间（标记文件同 watch.py），待审 / 返工 / CI 红都是在等恢复，不算卡点；待决定与合并中超时仍算
+        hold = os.path.exists(os.path.expanduser("~/.cache/italent-dispatch-paused"))
+        stuck = (st == "decide" or (st == "merge" and idle >= 60)) if hold else st == "decide" or (st in ("conflict", "cired", "merge") and idle >= 60) or (st in ("dev", "rework") and idle >= 60) or (st == "queue" and idle >= 15)
         out.append({"n": n, "t": p["title"][:60], "s": st, "why": why, "r": rounds, "idle": idle, "stuck": stuck,
                     "ask": age(t_ask) if st == "decide" else None})
     today = now.strftime("%Y-%m-%d")
