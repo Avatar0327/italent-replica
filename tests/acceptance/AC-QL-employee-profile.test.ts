@@ -595,8 +595,8 @@ describe('AC-QL-employee-profile 必测 9、10：CODE_TAKEN 保留计数另加�
 });
 
 describe('AC-QL-employee-profile 必测 11：version / 指纹守卫（DEC-404）', () => {
-  // main 在 C1-2b 开始时的值；合并前最后一次合 main 时，把这里改成合并进来的 main 的值（DEC-404）
-  const MAIN = { version: 11, digest: '23cb2ad23825abd9' };
+  // 合并前最后一次合 main 时，以合并进来的 main 版本和指纹为基线（DEC-404）
+  const MAIN = { version: 14, digest: '057bfa81674d414f' };
 
   it('授权项编码含员工身份任职对象三个按钮与页面载体按钮；version 比 main 当前值至少 +1，指纹随编码变化（AC-QL-employee-profile）', () => {
     for (const button of EMPLOYEE_SELF_SERVICE_BUTTONS)
@@ -608,10 +608,8 @@ describe('AC-QL-employee-profile 必测 11：version / 指纹守卫（DEC-404）
     expect(grantCodesDigest(STANDARD_GRANT_CODES)).toBe(STANDARD_GRANT_DIGEST);
     expect(STANDARD_GRANT_DIGEST).not.toBe(MAIN.digest);
     expect(STANDARD_GRANT_VERSION).toBeGreaterThan(MAIN.version);
-    // DEC-404：B6a 授权版本为 13，B6a-2 模板字段授权增量须继续递增。
-    expect(STANDARD_GRANT_VERSION).toBeGreaterThan(13);
-    expect(STANDARD_GRANT_DIGEST).not.toBe('547b4d9da5397954');
-    // “去掉员工身份的编码就回到 main 的指纹”只在 C1-2b 自己的 PR 里成立；员工身份并入 main 之后，别的 PR（B5 评定活动改了
-    // EvaluationActivity 的字段授权项）再改编码集合时它必然对不上，所以不再断言，递增由上面的 version / 指纹比较保证
+    // 去掉本 PR 新增的模板字段编码，还原已合入 F-091 的 main 指纹（DEC-404）。
+    const addedLater = (code: string) => /\/TalentReview\.Template\/field:(stepForms|resultRules):/.test(code);
+    expect(grantCodesDigest(STANDARD_GRANT_CODES.filter((code) => !addedLater(code)))).toBe(MAIN.digest);
   });
 });
