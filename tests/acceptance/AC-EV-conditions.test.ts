@@ -71,7 +71,8 @@ describe('AC-EV-conditions 活动参评条件', () => {
   const count = async (table: 'ev_conditions' | 'ev_condition_details') =>
     withTenant(testDb().db, w.tenant.id, async (tx) => {
       const result = await tx.execute(sql`SELECT count(*)::int AS n FROM ${sql.identifier(table)}`);
-      return (Array.isArray(result) ? result : result.rows)[0]!.n;
+      const rows = (Array.isArray(result) ? result : (result as { rows: { n: number }[] }).rows) as { n: number }[];
+      return Number(rows[0]!.n);
     });
 
   it('通用 / 附加 × 本人 / 非本人整份保存，来源 / 字段、数字 / 文本 / 日期与表达式完整回读', async () => {
@@ -186,6 +187,40 @@ describe('AC-EV-conditions 活动参评条件', () => {
     expect((await read(activity.id)).conditions).toEqual(after.conditions);
   });
 
+  it('超出存储整数范围的序号在入口返回 400，不能落到数据库错误；新建非法条件也不留下活动', async () => {
+    const activity = await create();
+    const response = await patch(activity, { conditions: [condition({ details: [detail(2_147_483_648)] })] });
+    expect(response.status).toBe(400);
+    expect(await read(activity.id)).toEqual(activity);
+    const body = f.body({ name: '非法条件不得新建', conditions: [condition({ expression: '条件99' })] });
+    const before = [await count('ev_conditions'), await count('ev_condition_details')];
+    const created = await w.setup.request('POST', `${EV_BASE}${ACTIVITIES}`, { ...w.asAdmin, ifMatch: 0, body });
+    expect(created.status).toBe(400);
+    expect((await errorOf(created)).reason).toBe('CONDITION_EXPRESSION_INVALID');
+    const page = await ok<{ items: Activity[] }>(await w.setup.request('GET', `${EV_BASE}${ACTIVITIES}`, w.asAdmin));
+    expect(page.items.some((item) => item.name === body.name)).toBe(false);
+    expect([await count('ev_conditions'), await count('ev_condition_details')]).toEqual(before);
+  });
+
+  it('附加范围的新增类别 / 级别引用复用 B5 校验：不存在 404、无查看权 403、停用 400，整份回滚', async () => {
+    const activity = await create();
+    const missing = await patch(activity, { conditions: [condition({ kind: 'extra', levelIds: [randomUUID()] })] });
+    expect(missing.status).toBe(404);
+    expect(await read(activity.id)).toEqual(activity);
+    const category = await w.qlCategory();
+    const op = await activityOperator(w, { evOrgs: [w.orgA], noCategoryObject: true });
+    const body = { conditions: [condition({ kind: 'extra', categoryIds: [category.id] })] };
+    expect(
+      (await op.request('PATCH', `${ACTIVITIES}/${activity.id}`, { ifMatch: activity.revision, body })).status,
+    ).toBe(403);
+    expect(await read(activity.id)).toEqual(activity);
+    await w.disableQl('categories', category);
+    const disabled = await patch(activity, body);
+    expect(disabled.status).toBe(400);
+    expect((await errorOf(disabled)).reason).toBe('REFERENCE_DISABLED');
+    expect(await read(activity.id)).toEqual(activity);
+  });
+
   it('EV-R14：已发布且已有报名时可整份替换条件，仍拒绝增删环节；完成后条件只读', async () => {
     const activity = await create();
     await w.setStatus(activity.id, 'published');
@@ -252,17 +287,13 @@ describe('AC-EV-conditions 活动参评条件', () => {
     });
     expect(await ok<Activity>(removed)).toEqual(changed);
     expect([await count('ev_conditions'), await count('ev_condition_details')]).toEqual(counts.map((n) => n - 1));
-    const audit = auditApi(testDb().db, EV_NOW);
-    const logs = await ok<{ items: { id: string; action: string; objectId: string }[] }>(
-      await audit.request('GET', '/api/tenant/audit/data-changes?pageSize=200', w.asAdmin),
-    );
+    const audit = auditApi(testDb().db, () => EV_NOW);
+    const logs = await audit.dataChanges(w.asAdmin, { pageSize: '200' });
     const log = logs.items.find(
       (item) => item.objectId === initial.id && item.action === 'evaluation.activity.delete',
     )!;
     expect(log).toBeDefined();
-    const snapshot = await ok<{ before: Activity }>(
-      await audit.request('GET', `/api/tenant/audit/data-changes/${log.id}`, w.asAdmin),
-    );
-    expect(snapshot.before.conditions).toEqual(changed.conditions);
+    const snapshot = await audit.dataChange(w.asAdmin, log.id);
+    expect(snapshot.before).toMatchObject({ conditions: changed.conditions });
   });
 });

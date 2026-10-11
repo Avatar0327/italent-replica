@@ -25,7 +25,8 @@ async function waitForActivityLock() {
     const result = await testDb().db.execute(sql`SELECT count(*)::int AS n FROM pg_stat_activity
       WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE '%ev_activities%'
       AND pid <> pg_backend_pid()`);
-    if (Number((Array.isArray(result) ? result : result.rows)[0]!.n) > 0) return;
+    const rows = (Array.isArray(result) ? result : (result as { rows: { n: number }[] }).rows) as { n: number }[];
+    if (Number(rows[0]!.n) > 0) return;
     await new Promise((resolve) => setTimeout(resolve, 30));
   }
   throw new Error('未观测到真实活动行锁等待');
@@ -68,7 +69,7 @@ describe.skipIf(!process.env['TEST_DATABASE_URL'])('AC-EV-conditions / AC-EV-for
         (SELECT count(*)::int FROM ev_conditions WHERE activity_id = ${activity.id}::uuid) AS conditions,
         (SELECT count(*)::int FROM ev_condition_details d JOIN ev_conditions c ON c.tenant_id = d.tenant_id
           AND c.id = d.condition_id WHERE c.activity_id = ${activity.id}::uuid) AS details`);
-      return (Array.isArray(result) ? result : result.rows)[0];
+      return (Array.isArray(result) ? result : (result as { rows: unknown[] }).rows)[0];
     });
     expect(counts).toEqual({ conditions: 1, details: 1 });
   });

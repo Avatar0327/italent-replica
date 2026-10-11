@@ -30,6 +30,7 @@ import { AppError } from '../../errors.js';
 import { assertNewActivityRefs, assertNewOrgs } from './activity-refs.js';
 import { assertScopeUnique } from './activity-scope.js';
 import type * as input from './input.js';
+import { loadConditions, prepareConditions, replaceConditions, type ConditionRecord } from './conditions.js';
 import { assertNewPersonRefs, presentPersonRefs, type PersonRefAccess } from './person-refs.js';
 import { loadRow, type Tracked, view } from './read-model.js';
 import type { View } from './route-support.js';
@@ -59,6 +60,7 @@ export type ActivityRecord = Tracked & {
   readonly status: ActivityStatus;
   readonly applyCount: number;
   readonly chains: ChainRecord[];
+  readonly conditions: ConditionRecord[];
 };
 
 const invalid = (message: string, reason: string) => new AppError('VALIDATION_FAILED', message, { reason });
@@ -80,6 +82,11 @@ export async function withDetails(
 ): Promise<ActivityRecord[]> {
   if (!rows.length) return [];
   const ids = arrayLiteral(rows.map((row) => row.id as string));
+  const conditions = await loadConditions(
+    tx,
+    tenantId,
+    rows.map((row) => row.id as string),
+  );
   const chains = rowsOf<Record<string, unknown>>(
     await tx.execute(sql`SELECT ${CHAIN_COLUMNS} FROM ev_chains
       WHERE tenant_id = ${tenantId}::uuid AND activity_id = ANY(${ids}::uuid[]) ORDER BY activity_id, seq`),
@@ -89,7 +96,8 @@ export async function withDetails(
       WHERE tenant_id = ${tenantId}::uuid AND activity_id = ANY(${ids}::uuid[]) ORDER BY activity_id, seq`),
   );
   return rows.map((row) => ({
-    ...view<Omit<ActivityRecord, 'chains' | 'orgRange'>>(row),
+    ...view<Omit<ActivityRecord, 'chains' | 'orgRange' | 'conditions'>>(row),
+    conditions: conditions.get(row.id as string) ?? [],
     orgRange: orgs
       .filter((org) => org.activity_id === row.id)
       .map((org) => ({ orgId: org.org_id, includeDescendants: org.include_descendants })),
@@ -181,6 +189,7 @@ interface RefsInput {
   readonly levelIds: readonly string[];
   readonly managerEmployeeId: string;
   readonly chains: readonly ChainDraft[];
+  readonly conditions: readonly ConditionRecord[];
 }
 
 /** 新增的引用：类型 / 周期 / 评价表 / 类别 / 级别 / 组织 / 负责人里原有集合之外的（原有的原样保留，不重校）。 */
@@ -197,12 +206,20 @@ async function assertAddedRefs(tx: Tx, ctx: WriteContext, next: RefsInput, befor
   ]);
   const formIds = (chains: readonly ChainDraft[] | undefined) =>
     (chains ?? []).flatMap((chain) => (chain.formId ? [chain.formId] : []));
+  const conditionRefs = (conditions: readonly ConditionRecord[] | undefined, field: 'categoryIds' | 'levelIds') =>
+    (conditions ?? []).flatMap((condition) => condition[field]);
   await assertNewActivityRefs(tx, ctx, refs, {
     ...(before?.typeId === next.typeId ? {} : { typeId: next.typeId }),
     ...(before?.cycleId === next.cycleId ? {} : { cycleId: next.cycleId }),
     formIds: added(formIds(before?.chains), formIds(next.chains)),
-    categoryIds: added(before?.categoryIds, next.categoryIds),
-    levelIds: added(before?.levelIds, next.levelIds),
+    categoryIds: added(
+      [...(before?.categoryIds ?? []), ...conditionRefs(before?.conditions, 'categoryIds')],
+      [...next.categoryIds, ...conditionRefs(next.conditions, 'categoryIds')],
+    ),
+    levelIds: added(
+      [...(before?.levelIds ?? []), ...conditionRefs(before?.conditions, 'levelIds')],
+      [...next.levelIds, ...conditionRefs(next.conditions, 'levelIds')],
+    ),
   });
   if (next.managerEmployeeId !== before?.managerEmployeeId) {
     await assertNewPersonRefs(tx, persons, [next.managerEmployeeId], '负责人');
@@ -263,6 +280,7 @@ function matchOrFail(existing: readonly ChainRecord[], submitted: readonly Submi
 
 export async function createActivity(tx: Tx, ctx: WriteContext, body: input.ActivityCreate): Promise<ActivityRecord> {
   const chains = body.chains.map(toDraft);
+  const conditions = prepareConditions(body.conditions ?? []);
   const startDate = body.startDate ?? null;
   const endDate = body.endDate ?? null;
   checkRules({ startDate, endDate }, chains, activityAccess(ctx).refs.chainsVisible);
@@ -277,6 +295,7 @@ export async function createActivity(tx: Tx, ctx: WriteContext, body: input.Acti
     levelIds: unique(body.levelIds),
     noticeOrgRange: unique(body.noticeOrgRange),
     chains,
+    conditions,
   };
   await requireOwnerOrg(tx, ctx, body.ownerOrgId);
   await assertAddedRefs(tx, ctx, next, undefined);
@@ -303,6 +322,7 @@ export async function createActivity(tx: Tx, ctx: WriteContext, body: input.Acti
   const id = rowsOf<{ id: string }>(result)[0]!.id;
   await writeOrgs(tx, ctx, id, orgRange);
   await writeChains(tx, ctx, id, { pairs: [], removed: [] }, chains);
+  await replaceConditions(tx, ctx.tenantId, id, conditions);
   const after = await loadActivity(tx, ctx.tenantId, id);
   await audit(tx, ctx, 'evaluationActivity', 'create', id, { before: null, after, orgId: after.ownerOrgId });
   return after;
@@ -355,6 +375,7 @@ export async function updateActivity(
     effectiveDate: body.effectiveDate ?? before.effectiveDate,
     noticeOrgRange: body.noticeOrgRange ? unique(body.noticeOrgRange) : before.noticeOrgRange,
     chains,
+    conditions: body.conditions ? prepareConditions(body.conditions) : before.conditions,
   };
   checkRules(merged, chains, activityAccess(ctx).refs.chainsVisible);
   // EV-R14 / AC-EV-05：已有报名后只许改规定的字段（apply_count 取行锁后的当前值）
@@ -397,6 +418,7 @@ export async function updateActivity(
     WHERE tenant_id = ${ctx.tenantId}::uuid AND id = ${id}::uuid`);
   if (body.orgRange) await writeOrgs(tx, ctx, id, orgRange);
   if (submitted && match) await writeChains(tx, ctx, id, match, submitted);
+  if (body.conditions) await replaceConditions(tx, ctx.tenantId, id, merged.conditions);
   const after = await loadActivity(tx, ctx.tenantId, id);
   await audit(tx, ctx, 'evaluationActivity', 'update', id, { before, after, orgId: after.ownerOrgId });
   return after;
