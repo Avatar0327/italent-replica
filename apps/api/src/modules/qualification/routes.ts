@@ -29,6 +29,7 @@ import {
 } from './access.js';
 import { registerQualificationCandidates } from './candidates.js';
 import * as config from './config-service.js';
+import { registerDevelopmentChannel } from './development-channel.js';
 import { registerExtras } from './extras.js';
 import { registerSubsetInitialize } from './subset-init-routes.js';
 import { installQualificationIndicatorPort } from './indicator-port.js';
@@ -188,6 +189,7 @@ export function registerQualificationRoutes(router: Hono<TenantEnv>, deps: Tenan
   registerQualificationCandidates(router, deps);
   registerExtras(router, deps);
   registerSubsetInitialize(router, deps);
+  registerDevelopmentChannel(router, deps);
   for (const spec of Object.values(SPECS)) registerObject(router, deps, spec as ObjectRoutes<object, object>);
 }
 

@@ -10,6 +10,7 @@ import { createTransfer } from '../transfer/service.js';
 import type { CommandGuard } from '../../commands.js';
 import { requireSelfServiceButtons, type SelfAccess, selfAccess, transferFieldAccess } from './access.js';
 import { applicationStatus, currentRecord, ownApplication, ownApplications, ownRecords } from './queries.js';
+import { ownDevelopmentChannel } from './development-channel.js';
 import { ownTransferInput, ownTransferPreview } from './transfer.js';
 import { readTransferCatalog } from '../transfer/configuration.js';
 import { discloseOwnRecord } from './disclosure.js';
@@ -30,6 +31,7 @@ export const registerEmployeeSelfServiceRoutes: TenantRouteModule = (router, dep
   registerProfileRoutes(module, deps);
   registerTransferRoutes(module, deps);
   registerApplicationRoutes(module, deps);
+  registerDevelopmentChannelRoutes(module, deps);
   router.route('/api/tenant/self-service', module);
 };
 
@@ -180,5 +182,26 @@ function registerApplicationRoutes(module: Hono<TenantEnv>, deps: TenantRouteDep
       status: applicationStatus(result.item.state),
       record: await discloseOwnRecord(self, { ...result.business }),
     });
+  });
+}
+
+/**
+ * 员工通道卡片（C1-6）：selfAccess（未绑定 → 403）→ 事务内复核绑定 → 页面权限（ownDevelopmentChannel 内）→ 按本人直接取数。
+ * 第二条带 :id 的路径只接受绑定本人（同 /employees/:id/records），别人的员工 ID 403，查询参数不能换人。
+ */
+function registerDevelopmentChannelRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  const card = (self: SelfAccess) =>
+    withTenant(deps.db, self.ctx.tenantId, async (tx) => {
+      await self.check(tx);
+      return ownDevelopmentChannel(tx, self, tenantLocalDate(self.ctx.now, self.ctx.timezone));
+    });
+  module.get('/development-channel', async (c) => {
+    const self = await selfAccess(c, deps);
+    return c.json(await card(self));
+  });
+  module.get('/employees/:id/development-channel', async (c) => {
+    const self = await selfAccess(c, deps);
+    if (uuidParam(c) !== self.employee.id) throw new AppError('FORBIDDEN', '只能查看本人发展通道');
+    return c.json(await card(self));
   });
 }

@@ -165,7 +165,7 @@ jobs:
           if [ "$DOCS_ONLY" = true ]; then test "$SHARDS_RESULT" = skipped; else test "$SHARDS_RESULT" = success; fi
 
   test-pg-shards:
-    name: test (PostgreSQL 16, shard ${{ matrix.shard }}/3)
+    name: test (PostgreSQL 16, shard ${{ matrix.shard }}/4)
     needs: changes
     if: github.event.pull_request.draft != true && needs.changes.outputs.docs_only != 'true'
     runs-on: ubuntu-24.04
@@ -174,7 +174,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3]
+        shard: [1, 2, 3, 4]
     services:
       postgres:
         # Docker Hub 匿名拉取会限流（10-09 21:00Z 起 PG 分片批量失败），改用 AWS 公共镜像源的官方镜像，内容与 docker.io/library/postgres:16 相同
@@ -201,7 +201,7 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm test:pg --shard=${{ matrix.shard }}/3
+      - run: pnpm test:pg --shard=${{ matrix.shard }}/4
 
   test-pg:
     name: test (PostgreSQL 16)

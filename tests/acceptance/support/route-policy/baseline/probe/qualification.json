@@ -257,6 +257,46 @@
       "obj:Qualification.CodingRule:view"
     ]
   },
+  "GET /api/tenant/qualification/employees/:employeeId/development-channel": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "dd3b675d03b7",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.Qualification/TenantBase.Qualification.detail"
+    ],
+    "trace": [
+      "obj:Qualification.DevelopmentChannel:view",
+      "obj:TenantBase.Qualification:view"
+    ]
+  },
+  "GET /api/tenant/qualification/employees/:employeeId/development-channel/levels/:levelId": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "dd3b675d03b7",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.Qualification/TenantBase.Qualification.detail"
+    ],
+    "trace": [
+      "obj:Qualification.QualificationStandard:view",
+      "obj:TenantBase.Qualification:view"
+    ]
+  },
   "GET /api/tenant/qualification/grade-schemes": {
     "all": {
       "status": 200
