@@ -1,14 +1,15 @@
 /** R3-T04 PR-B7a：设计 §2.4 / §3.1；TR-R1 / R2 / R7 / R9 / R38；DEC-353 定义侧。 */
 import { randomUUID } from 'node:crypto';
-import { and, auditEvents, eq, withTenant } from '@italent/db';
+import { and, auditEvents, eq, talentReviewProjects as P, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { talentWorld } from './AC-TC-support.js';
+import { createOrg, talentWorld } from './AC-TC-support.js';
 import { configBody, configOperator } from './AC-TR-config-support.js';
 import { LEVEL_OPTIONS, matrixBody, ratioGroupBody, type MatrixView } from './AC-TR-matrix-support.js';
 import { seedPermissionWorld } from './AC-PRM-support.js';
 import { TR_BASE, TR_NOW } from './AC-TR-support.js';
 import { tenantApi, type RequestOptions } from './support/tenant-api.js';
+import { waitForBlocked } from './support/pg-interleave.js';
 
 const testDb = useTestDb();
 const PATH = '/projects';
@@ -130,10 +131,23 @@ describe('AC-TR-project 项目定义', () => {
       body: ratioGroupBody({ isDefault: true }),
     });
     expect(groupRes.status, await groupRes.clone().text()).toBe(201);
-    const group = ((await groupRes.json()) as MatrixView).ratioGroups[0]!;
+    const configured = (await groupRes.json()) as MatrixView;
+    const group = configured.ratioGroups[0]!;
     const p = await f.project();
     expect(p.matrices).toContainEqual({ matrixId: m.id, ratioGroupId: group.id, sortNo: 0 });
     expect(p.matrices.some((x) => x.matrixId === disabled.id)).toBe(false);
+    for (const [path, expected] of [
+      [`/matrices/${m.id}`, 'MATRIX_IN_USE'],
+      [`/matrices/${m.id}/ratio-groups/${group.id}`, 'RATIO_GROUP_IN_USE'],
+    ]) {
+      const res = await f.request('DELETE', path!, { ifMatch: configured.revision });
+      expect([res.status, await reason(res)]).toEqual([409, expected]);
+    }
+    expect((await f.write(p, 'PATCH', { matrices: [{ matrixId: disabled.id }] })).status).toBe(400);
+    expect((await f.write(p, 'PATCH', { matrices: [{ matrixId: m.id, ratioGroupId: randomUUID() }] })).status).toBe(
+      400,
+    );
+    expect(await f.read(p)).toEqual(p);
     const cleared = (await (await f.write(p, 'PATCH', { matrices: [] })).json()) as Project;
     expect(cleared.matrices).toEqual([]);
     expect((await f.project({ matrices: [] })).matrices).toEqual([]);
@@ -264,28 +278,52 @@ describe('AC-TR-project 状态机 / AC-TR-01 删除定义侧（DEC-353）', () =
 
   it('start / end / restart 的扩展守卫事务内运行；失败回滚且不写成功审计', async () => {
     const f = await fixture('project-guard');
-    const p = await f.project();
     const { registerProjectGuard } = await import('../../apps/api/src/modules/talent-review/project-guards.js');
     const { AppError } = await import('@italent/api');
-    const undo = registerProjectGuard('start', async () => {
-      throw new AppError('CONFLICT', '合成守卫', { reason: 'CALC_RUN_IN_PROGRESS' });
-    });
-    try {
-      const res = await f.write(p, 'POST', {}, '/start');
-      expect([res.status, await reason(res)]).toEqual([409, 'CALC_RUN_IN_PROGRESS']);
-      expect(await f.read(p)).toEqual(p);
-    } finally {
-      undo();
+    for (const action of ['start', 'end', 'restart'] as const) {
+      let p = await f.project();
+      if (action === 'restart') p = (await (await f.write(p, 'POST', {}, '/end')).json()) as Project;
+      const undo = registerProjectGuard(action, async (tx) => {
+        await tx.update(P).set({ name: '守卫内尚未提交的写入' }).where(eq(P.id, p.id));
+        throw new AppError('CONFLICT', '合成守卫', { reason: 'CALC_RUN_IN_PROGRESS' });
+      });
+      try {
+        const res = await f.write(p, 'POST', {}, `/${action}`);
+        expect([res.status, await reason(res)]).toEqual([409, 'CALC_RUN_IN_PROGRESS']);
+        expect(await f.read(p)).toEqual(p);
+      } finally {
+        undo();
+      }
+      const rows = await withTenant(testDb().db, f.w.as.tenant, (tx) =>
+        tx
+          .select()
+          .from(auditEvents)
+          .where(and(eq(auditEvents.tenantId, f.w.as.tenant), eq(auditEvents.objectId, p.id))),
+      );
+      expect(rows).toHaveLength(action === 'restart' ? 2 : 1);
+      expect((await f.write(p, 'POST', {}, `/${action}`)).status).toBe(200);
     }
-    const rows = await withTenant(testDb().db, f.w.as.tenant, (tx) =>
-      tx
-        .select()
-        .from(auditEvents)
-        .where(and(eq(auditEvents.tenantId, f.w.as.tenant), eq(auditEvents.objectId, p.id))),
-    );
-    expect(rows).toHaveLength(1);
-    expect((await f.write(p, 'POST', {}, '/start')).status).toBe(200);
   });
+
+  it.runIf(Boolean(process.env.TEST_DATABASE_URL))(
+    '真 PG：配置写等待项目锁，结束先提交后旧 revision 写入 409',
+    async () => {
+      const f = await fixture('project-state-lock');
+      const p = await f.project();
+      const { pending } = await withTenant(testDb().db, f.w.as.tenant, async (tx) => {
+        await tx.select().from(P).where(eq(P.id, p.id)).for('update');
+        const pending = f.write(p, 'PATCH', { name: '不能覆盖结束后的配置' });
+        await waitForBlocked(testDb().db, 1);
+        await tx
+          .update(P)
+          .set({ status: 'ended', revision: p.revision + 1 })
+          .where(eq(P.id, p.id));
+        return { pending };
+      });
+      expect((await pending).status).toBe(409);
+      expect(await f.read(p)).toMatchObject({ name: p.name, status: 'ended', revision: p.revision + 1 });
+    },
+  );
 
   it('AC-TR-01 对象存在守卫拒删 409；解除后删除、保存完整关系快照', async () => {
     const f = await fixture('project-delete');
@@ -315,12 +353,36 @@ describe('AC-TR-project 状态机 / AC-TR-01 删除定义侧（DEC-353）', () =
     const f = await fixture('project-permission-red');
     await f.project(); // 旧实现先在真实 HTTP 新建上红。
     let w = await seedPermissionWorld(testDb().db);
+    const setup = tenantApi(w.db, { clock: () => TR_NOW });
+    const org = await createOrg(setup, w.asAdmin, '合成项目所属组织');
+    const res = await setup.request('POST', `${TR_BASE}${PATH}`, {
+      ...w.asAdmin,
+      ifMatch: 0,
+      body: body(org, { businessDate: '2026-01-02' }),
+    });
+    expect(res.status).toBe(201);
+    const p = (await res.json()) as Project;
     w = { ...w, api: tenantApi(w.db, { authorize: undefined, clock: () => TR_NOW }) };
-    const op = await configOperator(w, 'project');
+    const op = await configOperator(w, 'project', { hidden: ['businessDate', 'matrices'] });
     expect(await (await op.request('GET', PATH)).json()).toMatchObject({ items: [], hasDataPermission: false });
     expect((await op.request('POST', PATH, { ifMatch: 0, body: body(f.w.orgId) })).status).toBe(404);
     await op.setSeeAll(true);
     await op.setButtons(false);
     expect((await op.request('POST', PATH, { ifMatch: 0, body: body(f.w.orgId) })).status).toBe(403);
+    await op.setButtons(true);
+    const detail = await (await op.request('GET', `${PATH}/${p.id}`)).json();
+    expect(detail).not.toHaveProperty('businessDate');
+    expect(detail).not.toHaveProperty('matrices');
+    expect(detail).toMatchObject({ year: 2026, status: 'new' });
+    expect(
+      (await op.request('PATCH', `${PATH}/${p.id}`, { ifMatch: p.revision, body: { businessDate: null } })).status,
+    ).toBe(403);
+    const command = { ifMatch: p.revision, body: { name: '可见字段改名' }, idempotencyKey: randomUUID() };
+    expect((await op.request('PATCH', `${PATH}/${p.id}`, command)).status).toBe(200);
+    await op.setButtons(false);
+    expect((await op.request('PATCH', `${PATH}/${p.id}`, command)).status).toBe(403);
+    await op.setButtons(true);
+    await op.setSeeAll(false);
+    expect((await op.request('PATCH', `${PATH}/${p.id}`, command)).status).toBe(404);
   });
 });
