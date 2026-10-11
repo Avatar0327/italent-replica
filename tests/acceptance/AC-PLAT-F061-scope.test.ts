@@ -186,7 +186,15 @@ describe('AC-PLAT-F061 对象目录指纹 objectCatalogDigest（方案 §3.1）'
 
 async function scopeRows(w: Pick<World, 'db' | 'tenantId'>, profileId: string) {
   return withTenant(w.db, w.tenantId, (tx) =>
-    tx.select().from(permissionIdentityScopes).where(eq(permissionIdentityScopes.profileId, profileId)),
+    tx
+      .select()
+      .from(permissionIdentityScopes)
+      .where(eq(permissionIdentityScopes.profileId, profileId))
+      .orderBy(
+        permissionIdentityScopes.appCode,
+        permissionIdentityScopes.targetKind,
+        permissionIdentityScopes.targetCode,
+      ),
   );
 }
 /** 旧定义：盘点管理员没有这些目标的对象与预置看全部（模拟 #148 前开通的租户）。 */
@@ -269,7 +277,7 @@ describe('AC-PLAT-F061 T-05 看全部补装（D3 = A′，DEC-374②、DEC-384�
     });
   });
 
-  it('DEC-415 补装路径：盘点管理员缺字段映射 / 表单 / 流程 / 模板的看全部：补齐并写范围版本；其他身份的范围不受影响', async () => {
+  it('DEC-415 补装路径：盘点管理员缺字段映射 / 表单 / 流程 / 模板 / 项目的看全部：补齐并写范围版本；其他身份的范围不受影响', async () => {
     const w = await legacyWorld(testDb().db, 'f061t05c', [withoutTargets(TR, DEC_415)]);
     const profileId = w.profileIds.get(TR)!;
     const others = [...w.profileIds.entries()].filter(([code]) => code !== TR);

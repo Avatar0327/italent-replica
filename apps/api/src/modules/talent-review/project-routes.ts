@@ -56,6 +56,7 @@ async function runWrite(
   action: Action,
   input: ProjectPatch,
   execute: (tx: Tx, ctx: ProjectWriteContext) => Promise<ProjectView>,
+  recheckInput?: (deps: TenantRouteDeps, ctx: ProjectWriteContext) => Promise<void>,
 ) {
   let current: ProjectWriteContext;
   const result = await runCommand(deps.db, ctx, {
@@ -66,13 +67,12 @@ async function runWrite(
         const txDeps = { ...deps, authorize: authorizeInTransaction(deps.authorize, tx) };
         const fresh = await projectWriteContext(c, txDeps, action, ctx.expectedRevision);
         const scope = await resolveModuleScopeInTransaction(txDeps, fresh, tx, codeOf('project'));
-        if (action === 'create' || action === 'update') await checkWriteFields(txDeps, fresh, 'project', action, input);
-        await requireProjectCatalogs(c, txDeps, input);
         const referenceScopes: ProjectWriteContext['referenceScopes'] = {};
         for (const key of referenceKinds(input)) {
           referenceScopes[key] = await resolveModuleScopeInTransaction(txDeps, fresh, tx, codeOf(key));
         }
         current = { ...fresh, scope, referenceScopes };
+        await recheckInput?.(txDeps, current);
       },
       replayed: async (tx, replay) => {
         const view = replay.body as ProjectView;
@@ -138,14 +138,36 @@ export function registerProjectRoutes(router: Hono<TenantEnv>, deps: TenantRoute
     requireNew(ctx.expectedRevision);
     const input = await parseBody(c, projectCreate);
     await requireProjectCatalogs(c, deps, input);
-    return runWrite(c, deps, ctx, 'create', input, (tx, w) => createProject(tx, w, input));
+    return runWrite(
+      c,
+      deps,
+      ctx,
+      'create',
+      input,
+      (tx, w) => createProject(tx, w, input),
+      async (d, w) => {
+        await checkWriteFields(d, w, 'project', 'create', input);
+        await requireProjectCatalogs(c, d, input);
+      },
+    );
   });
   router.patch(`${PATH}/:id`, async (c) => {
     const ctx = await reviewWriteContext(c, deps, 'project', 'update', revision(c));
     const id = uuidParam(c);
     const input = await parseBody(c, projectPatch);
     await requireProjectCatalogs(c, deps, input);
-    return runWrite(c, deps, ctx, 'update', input, (tx, w) => updateProject(tx, w, id, input));
+    return runWrite(
+      c,
+      deps,
+      ctx,
+      'update',
+      input,
+      (tx, w) => updateProject(tx, w, id, input),
+      async (d, w) => {
+        await checkWriteFields(d, w, 'project', 'update', input);
+        await requireProjectCatalogs(c, d, input);
+      },
+    );
   });
   router.delete(`${PATH}/:id`, async (c) => {
     const ctx = await reviewWriteContext(c, deps, 'project', 'delete', revision(c));
