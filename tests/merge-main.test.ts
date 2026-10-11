@@ -1,18 +1,21 @@
 /**
  * DEC-430①：生成物合并后重算、迁移编号合并时分配。
- * 1. pnpm merge:main 的纯函数（scripts/merge-main-lib.mjs）：生成物白名单、迁移改号、快照三方合并；
+ * 1. pnpm merge:main 的纯函数（scripts/merge-main-lib.mjs）：生成物白名单、迁移改号、快照三方合并、“只改计数”冲突识别；
  * 2. 生成物开关（generated-gate.ts）：PR 上只警告、GENERATED_STRICT=1 判红；
  * 3. 端点计数比较（endpoint-counts.ts）。
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  classifyConflict,
   type Journal,
   type JournalEntry,
   isGeneratedPath,
+  maskNumbers,
   merge3,
   planRenumber,
   rebaseSnapshots,
   type Snapshot,
+  takeOursForCounts,
 } from '../scripts/merge-main-lib.mjs';
 import { countDrift } from './acceptance/support/route-policy/endpoint-counts.js';
 import {
@@ -183,5 +186,59 @@ describe('端点计数比较（countDrift）', () => {
     expect(countDrift(actual, stored)).toEqual(['总数 4（冻结 3）', 'succession 1（冻结 0）']);
     expect(countDrift(actual, stored, { totalOnly: true })).toEqual(['总数 4（冻结 3）']);
     expect(countDrift(actual, undefined)).toEqual(['endpoint-counts.json 不存在']);
+  });
+});
+
+describe('“只改计数”的业务冲突（classifyConflict / takeOursForCounts）', () => {
+  const hunk = (ours: string, base: string, theirs: string) =>
+    `<<<<<<< HEAD\n${ours}||||||| merge-base\n${base}=======\n${theirs}>>>>>>> origin/main\n`;
+  // 真实案例：本分支把字面量改为读 endpoint-counts.json，main 把 592 改成 593
+  const counts = hunk(
+    '    expect(declared).toHaveLength(counts.total);\n',
+    '    expect(declared).toHaveLength(592);\n',
+    '    expect(declared).toHaveLength(593);\n',
+  );
+  const total = hunk(
+    'const TOTAL = readCounts().total;\n',
+    'const TOTAL = 592; // 端点总数\n',
+    'const TOTAL = 593; // 端点总数\n',
+  );
+  const mixed = hunk(
+    '    expect(declared).toHaveLength(counts.total);\n',
+    '    expect(declared).toHaveLength(592);\n',
+    '    expect(declared.filter(isPublic)).toHaveLength(593);\n',
+  );
+
+  it('main 一侧每处冲突都只改了数字字面量：识别为只改计数', () => {
+    const text = `import x from 'y';\n${counts}\nmid();\n${total}tail();\n`;
+    expect(classifyConflict(text)).toEqual({ hunks: 2, countOnly: true });
+  });
+
+  it('有一处冲突 main 改了数字以外的内容：不算只改计数', () => {
+    expect(classifyConflict(`${counts}${mixed}`)).toEqual({ hunks: 2, countOnly: false });
+    expect(classifyConflict(mixed).countOnly).toBe(false);
+  });
+
+  it('没有分叉点内容（非 diff3）或没有冲突：不算只改计数', () => {
+    const noBase = '<<<<<<< HEAD\na(1);\n=======\na(2);\n>>>>>>> origin/main\n';
+    expect(classifyConflict(noBase)).toEqual({ hunks: 1, countOnly: false });
+    expect(classifyConflict('a(1);\n')).toEqual({ hunks: 0, countOnly: false });
+  });
+
+  it('标识符里的数字不当计数：AC-PRM-FW-01 → 02、v1 → v2 不算只改计数', () => {
+    expect(classifyConflict(hunk('x\n', "run('AC-PRM-FW-01');\n", "run('AC-PRM-FW-02');\n")).countOnly).toBe(false);
+    expect(classifyConflict(hunk('x\n', 'api.v1(3);\n', 'api.v2(3);\n')).countOnly).toBe(false);
+    expect(maskNumbers('toHaveLength(1_024); x = 0.5; FW-01')).toBe('toHaveLength(#); x = #; FW-01');
+  });
+
+  it('takeOursForCounts 只把只改计数的冲突处取本分支一侧，其余冲突原样保留', () => {
+    expect(takeOursForCounts(`head\n${counts}tail\n`)).toEqual({
+      text: 'head\n    expect(declared).toHaveLength(counts.total);\ntail\n',
+      remaining: 0,
+    });
+    const out = takeOursForCounts(`${total}${mixed}`);
+    expect(out.remaining).toBe(1);
+    expect(out.text).toBe(`const TOTAL = readCounts().total;\n${mixed}`);
+    expect(classifyConflict(out.text)).toEqual({ hunks: 1, countOnly: false });
   });
 });
