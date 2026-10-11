@@ -84,6 +84,7 @@ import {
 import type { ModuleScope } from '../permission/module-access.js';
 import { loadQuestionnaire, lockQuestionnaires, markUsed } from './questionnaires.js';
 import { clearObjectAnswers, objectSheets } from './object-answers.js';
+import { clearObjectTimings } from './timings.js';
 
 const LIMITS = survey360.SURVEY360_LIMITS;
 const personRef = { personId: uuid.optional(), person: personInput.optional() };
@@ -628,6 +629,8 @@ function registerObjectQuestionnaires(module: Hono<TenantEnv>, deps: TenantRoute
             'ANSWER_CLEAR_CONFIRMATION_REQUIRED',
           );
         await clearObjectAnswers(tx, ctx, sheets);
+        // 计时跟着评价对象清：只打开过、部分保存的套卷也清（第 1 轮审查 P2-1）
+        await clearObjectTimings(tx, ctx, id, objectId);
         await tx.delete(survey360ObjectQuestionnaires).where(eq(survey360ObjectQuestionnaires.objectId, objectId));
         await tx
           .insert(survey360ObjectQuestionnaires)

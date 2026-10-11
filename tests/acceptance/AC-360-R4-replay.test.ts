@@ -744,6 +744,21 @@ const REPLAY_CASES: Record<string, Case | NotApplicable> = {
     );
     await expectStatus(replay, 404);
   },
+  [`POST ${LINK}/tasks/:relationId/questionnaires/:questionnaireId/page-check`]: async (env) => {
+    const { w, q } = env;
+    const s = await linkScene(env, true);
+    const link = w.link(await w.token(s.activity.id, s.rater.id));
+    const replay = await replayAfter(
+      (key) =>
+        link('POST', `/tasks/${s.relation.id}/questionnaires/${q.id}/page-check`, {
+          body: { items: [{ itemId: q.questions[0]!.id }] },
+          idempotencyKey: key,
+        }),
+      200,
+      () => removeRelation(w, s.activity.id, s.object.id, s.relation.id),
+    );
+    await expectStatus(replay, 404);
+  },
   [`POST ${LINK}/tasks/:relationId/questionnaires/:questionnaireId/submit`]: async (env) => {
     const { w, q } = env;
     const s = await linkScene(env, true);
@@ -958,6 +973,20 @@ const PR_B_REPLAY: Record<string, Case | NotApplicable> = {
     const t = await todoScene(env);
     const replay = await replayAfter(
       (key) => t.my('PUT', t.task, { ifMatch: 0, idempotencyKey: key, body: { answers: [] } }),
+      200,
+      () => removeRelation(env.w, t.activityId, t.objectId, t.relationId),
+    );
+    await expectStatus(replay, 404);
+  },
+  [`POST ${S}/my/todos/:todoId/tasks/:relationId/questionnaires/:questionnaireId/page-check`]: async (env) => {
+    const t = await todoScene(env);
+    const { q } = env;
+    const replay = await replayAfter(
+      (key) =>
+        t.my('POST', `${t.task}/page-check`, {
+          body: { items: [{ itemId: q.questions[0]!.id }] },
+          idempotencyKey: key,
+        }),
       200,
       () => removeRelation(env.w, t.activityId, t.objectId, t.relationId),
     );

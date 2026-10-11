@@ -16,6 +16,7 @@ import type { TenantEnv } from '../../tenant-context.js';
 import { uuidParam } from '../job/context.js';
 import { iso, requireActivity } from './access.js';
 import { sheetSnapshot } from './anonymous.js';
+import { clearRelationTimings } from './timings.js';
 import {
   actor,
   type Admin,
@@ -316,6 +317,8 @@ export function registerProgressRoutes(module: Hono<TenantEnv>, deps: TenantRout
           await tx.delete(survey360Answers).where(inArray(survey360Answers.sheetId, sheetIds));
           await tx.delete(survey360Sheets).where(inArray(survey360Sheets.id, sheetIds));
         }
+        // 计时跟着评价关系清：含只打开过、没有答卷的套卷（第 1 轮审查 P2-1）
+        await clearRelationTimings(tx, ctx, activity.id, relationId);
         await tx
           .update(survey360Relations)
           .set({ revision: locked!.revision + 1 })

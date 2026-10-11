@@ -429,6 +429,8 @@ export const SURVEY360_POLICIES = defineTable('survey360', {
   'PUT /my/todos/:todoId/tasks/:relationId/questionnaires/:questionnaireId': todoWrite(),
   // 提交答卷
   'POST /my/todos/:todoId/tasks/:relationId/questionnaires/:questionnaireId/submit': todoWrite(),
+  // F-060 收尾（DEC-392）：点“下一页”的计时点，同保存、提交的待办入口（首次打开由取作答页建立，DEC-405②）
+  'POST /my/todos/:todoId/tasks/:relationId/questionnaires/:questionnaireId/page-check': todoWrite(),
   // sheets.ts：原始数据按答卷查看；屏蔽 / 取消屏蔽 / 屏蔽疑似 / 恢复是答卷的 block 按钮
   'GET /activities/:id/sheets': route({ key: 'answer', scope: ACTIVITY, guards: [SHEET_CARDS], byId: true }),
   ...Object.fromEntries(
@@ -562,7 +564,7 @@ const linkWrite = (reason: string, fields: 'body' | 'none', extra: { invalidId?:
 export const SURVEY360_LINK_POLICIES = defineTable('survey360-link', {
   'GET /': linkRead('链接主页：作答链接给任务清单、确认链接给确认单'),
   'GET /tasks/:relationId/questionnaires/:questionnaireId': linkRead(
-    '作答页：只读本链接评价者的任务（requireTask）',
+    '作答页：只读本链接评价者的任务（requireTask）；活动启用且未提交时顺带建立首次打开计时（DEC-405②，审计记系统）',
     byId,
   ),
   'PUT /tasks/:relationId/questionnaires/:questionnaireId': linkWrite(
@@ -571,6 +573,12 @@ export const SURVEY360_LINK_POLICIES = defineTable('survey360-link', {
     byId,
   ),
   'POST /tasks/:relationId/questionnaires/:questionnaireId/submit': linkWrite('提交答卷', 'body', byId),
+  // F-060 收尾（DEC-392）：点“下一页”的计时点（只存库，响应只有布尔，不含耗时）
+  'POST /tasks/:relationId/questionnaires/:questionnaireId/page-check': linkWrite(
+    '点“下一页”：按本页判断是否提醒',
+    'body',
+    byId,
+  ),
   'GET /confirmation/candidates': linkRead('确认链接：候选评价者'),
   // F-058：本单人员集合（avatarPersonIds：作答任务 / 确认页的评价对象与评价者）里的当前有效头像；集合外、
   // 非 UUID、不存在一律 404（linkRead 内 notFound）

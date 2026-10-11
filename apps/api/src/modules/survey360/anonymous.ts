@@ -105,11 +105,30 @@ function card(sheet: CardSheet, q: LoadedQuestionnaire, answers: Pick[]) {
   };
 }
 
+/** 关键行为套卷里所有已选题目选择同一选项（至少两题）——“连续选择同一选项”，答卷整份与翻页本页共用。 */
+export function sameChoice(q: LoadedQuestionnaire, optionIds: readonly string[]): boolean {
+  if (q.model.type !== 'key_behavior' || optionIds.length < 2) return false;
+  return new Set(optionIds).size === 1;
+}
+
 /**
- * 疑似无效（汇总投影，只回布尔）：放弃作答（不计分选项）题量过半；关键行为套卷所有题目选择同一选项（至少两题）。
- * TODO(需取证 #170)：规格 25 §10.1 的“平均单题耗时 <1.5s”——耗时起算点与分母（#170 ①②④）仍在取证，库里也没有耗时
- * 数据，未做。DEC-371 已定：③ 本功能上线前已提交、无耗时数据的历史答卷不判耗时、也不算疑似；⑤ 耗时与逐份答案同级敏感，
- * 只存库、对外只回“是否疑似”布尔，经本层。口径定下后在本函数补判。
+ * 耗时过快（DEC-392）：“首次打开 → 提交”的整段时间（离开与空闲都计入）除以全部可答题数 < 1.5 秒。没有计时记录的答卷
+ * （计时被清除后未再取页 / 保存的情形）不判耗时。耗时与逐份答案同级敏感（DEC-371⑤）：只在库里比较，对外只回布尔。
+ */
+async function submittedTooFast(tx: Tx, sheetId: string, itemCount: number): Promise<boolean> {
+  const [row] = rows<{ opened_at: Date | string; submitted_at: Date | string | null }>(
+    await tx.execute(sql`SELECT t.opened_at, s.submitted_at FROM survey360_sheets s
+      JOIN survey360_sheet_timings t ON t.tenant_id = s.tenant_id AND t.relation_id = s.relation_id
+        AND t.questionnaire_id = s.questionnaire_id
+      WHERE s.id = ${sheetId}::uuid`),
+  );
+  if (!row?.submitted_at) return false;
+  return survey360.isTooFast(new Date(row.submitted_at).getTime() - new Date(row.opened_at).getTime(), itemCount);
+}
+
+/**
+ * 疑似无效（汇总投影，只回布尔）：放弃作答（不计分选项）题量过半；关键行为套卷所有题目选择同一选项（至少两题）；
+ * 平均单题耗时 < 1.5 秒（DEC-392：首次打开 → 提交，空闲计入；分母为全部可答题；按份判断）。
  */
 export async function isSuspected(tx: Tx, q: LoadedQuestionnaire, roleId: string, sheetId: string) {
   const answers = await picks(tx, sheetId);
@@ -117,8 +136,11 @@ export async function isSuspected(tx: Tx, q: LoadedQuestionnaire, roleId: string
   const notScored = new Set(q.options.filter((o) => o.notScored).map((o) => o.id));
   const abandoned = answers.filter((a) => notScored.has(a.optionId)).length;
   if (items.length && abandoned / items.length > 0.5) return true;
-  if (q.model.type !== 'key_behavior' || answers.length < 2) return false;
-  return new Set(answers.map((a) => a.optionId)).size === 1;
+  if (await submittedTooFast(tx, sheetId, items.length)) return true;
+  return sameChoice(
+    q,
+    answers.map((a) => a.optionId),
+  );
 }
 
 /** 计分（汇总投影）：活动内已提交、未屏蔽答卷的逐题选项，只交给计分引擎聚合，不出接口（scoring.ts）。 */

@@ -138,6 +138,14 @@ const NO_ANSWER_DATA: Readonly<Record<string, string>> = {
       `POST ${LINK}/confirmation/submit`,
     ].map((k) => [k, ANSWERING]),
   ),
+  ...Object.fromEntries(
+    [TODO, LINK].flatMap((base) =>
+      ['page-check'].map((action) => [
+        `POST ${base}/tasks/:relationId/questionnaires/:questionnaireId/${action}`,
+        '作答计时点（DEC-392）：回执只有布尔与 3 秒界面时长，没有答案、评价者标识或耗时',
+      ]),
+    ),
+  ),
   [`GET ${TODO}/avatars/:attachmentId/content`]: '评价对象头像图片',
   [`GET ${LINK}/avatars/:attachmentId/content`]: '评价对象头像图片',
   [`POST ${ACT}/relations/:relationId/reanswer`]: '回执只有评价关系进度；清除前快照只进审计（审计出口逐个调用）',
