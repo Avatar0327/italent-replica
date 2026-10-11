@@ -1,6 +1,7 @@
 // 独立夹具固定权限、用途、范围与角色（DEC-416③，#248 P2-1）；数字索引用途 / 范围 / 角色，-1 为缺省；真实登记另走门禁。
 import type { Evidence, Inner, Need, Obligation, Purpose, RequiredTable } from './required/types.js';
-import type { RequiredSemantics } from './required.js';
+import { checkRequired, type RequiredSemantics } from './required.js';
+import { compareDeclarations } from './compare.js';
 import { checkEvidence, repoSource, syncedRegistry, type SourceReader } from './evidence.js';
 
 const PURPOSES = [
@@ -359,3 +360,11 @@ export const DETECTOR_SEMANTICS: RequiredSemantics = {
     'survey360.personCreatable': { group: 'unrestricted', alts: unrestricted, at: [CALL] },
   },
 };
+
+/** 全表变异保留原比较；组合权限另用独立完整夹具校验，缺真实登记不影响这些反例的依据。 */
+export function compareMutants(...args: Parameters<typeof compareDeclarations>) {
+  return [
+    ...compareDeclarations(...args),
+    ...checkRequired(DETECTOR_REQUIRED, DETECTOR_CONTRACT, args[1], DETECTOR_SEMANTICS),
+  ];
+}

@@ -22,6 +22,7 @@ import {
 } from './support/route-policy/baseline.js';
 import { compareDeclarations, type Finding } from './support/route-policy/compare.js';
 import { domainConstants } from './support/route-policy/domains.js';
+import { compareMutants } from './support/route-policy/detector-fixtures.js';
 import { gateEvidence, softGate } from './support/route-policy/evidence-gate.js';
 import { compareRegisteredDeclarations } from './support/route-policy/registration.js';
 import { MUTATIONS, mutantsOf } from './support/route-policy/mutate.js';
@@ -176,7 +177,7 @@ describe('AC-PRM-FW-02 突变套件：第 5 轮列出的每类削弱都被报出
       expect(mutants.length, `没有任何真实声明能施加突变 ${mutation.name}`).toBeGreaterThan(0);
       const undetected = mutants.filter(
         (m) =>
-          !codes(compareDeclarations(frozen, [m.route])).some((code) =>
+          !codes(compareMutants(frozen, [m.route])).some((code) =>
             mutation.expected.split('|').some((expected) => code.startsWith(expected)),
           ),
       );
