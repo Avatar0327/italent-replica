@@ -329,7 +329,8 @@ describe('AC-PRM-FW-01 createApp 真实装配', () => {
    * R3-T02 C1-6（发展通道查看：管理 2 + ESS 2）+ 4 = 569；
    * R3-T02 C1-5 子集初始化 + 1 = 570；
    * F-076 PR-2a 门户登录 / 登出 + 2 = 572；
-   * R3-T02 B5 评定活动 + 5 = 577；R3-T04 B6a 盘点模板 + 5 = 582（PR 描述以此为准）。
+   * R3-T02 B5 评定活动 + 5 = 577；
+   * R3-T04 PR-B6a（盘点模板 5）+ 5 = 582（PR 描述以此为准）。
    */
   const EXPECTED_BY_MODULE: Readonly<Record<string, number>> = {
     root: 1,

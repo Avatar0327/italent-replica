@@ -858,7 +858,7 @@ export const talentReviewTemplates = pgTable(
   ],
 );
 
-/** 模板版本：每次结构保存新增一行；旧版本不变（已发起对象钉旧版本）。 */
+/** 模板版本：每次结构保存新增一行；旧版本不变（已发起对象钉旧版本）。flow_id = 该版本冻结的流程。 */
 export const talentReviewTemplateVersions = pgTable(
   'talent_review_template_versions',
   {
@@ -878,6 +878,12 @@ export const talentReviewTemplateVersions = pgTable(
       foreignColumns: [talentReviewTemplates.tenantId, talentReviewTemplates.id],
       name: 'talent_review_template_versions_template_fk',
     }).onDelete('cascade'),
+    // 版本冻结时所选流程：流程被任一版本引用（含换流程 / 清空流程之后的旧版本）都不能删
+    foreignKey({
+      columns: [t.tenantId, t.flowId],
+      foreignColumns: [talentReviewFlows.tenantId, talentReviewFlows.id],
+      name: 'talent_review_template_versions_flow_fk',
+    }).onDelete('restrict'),
     check('talent_review_template_versions_no_pos', sql`${t.versionNo} > 0`),
   ],
 );
@@ -973,6 +979,8 @@ export const talentReviewTemplateModules = pgTable(
     allowOrg: boolean('allow_org'),
     allowPosition: boolean('allow_position'),
     allowTarget: boolean('allow_target'),
+    /** 本模块延续的上一版本模块（结构保存带了模块 ID 即同一模块；模块改名后的 旧 ID → 新 ID 映射，供按模块 ID 绑定的结果公式沿链找到）。 */
+    previousModuleId: uuid('previous_module_id'),
   },
   (t) => [
     unique('talent_review_template_modules_tenant_id').on(t.tenantId, t.id),

@@ -25,7 +25,14 @@ import {
   talentReviewScoreRules,
   type Tx,
 } from '@italent/db';
-import { checkByCount, checkModules, checkPermissions, type ModuleInput, type PermissionInput } from '@italent/domain';
+import {
+  checkByCount,
+  checkFinalPermissions,
+  checkModules,
+  checkPermissions,
+  type ModuleInput,
+  type PermissionInput,
+} from '@italent/domain';
 import { AppError } from '../../errors.js';
 import type { ModuleScope } from './access.js';
 import type { WriteContext } from './config-kit.js';
@@ -96,16 +103,6 @@ export interface Plan {
   readonly permissions: PermissionView[];
 }
 
-/** 当前版本已持有的引用：停用后仍原样保留可改，只有新增的引用才要求启用。 */
-function heldOf(modules: readonly ModuleDraft[]) {
-  return {
-    rules: new Set(unique(modules.map((m) => m.scoreRuleId))),
-    grades: new Set(unique(modules.map((m) => m.moduleGradeId))),
-    fields: new Set(modules.flatMap((m) => m.fieldIds)),
-    criteria: new Set(unique(modules.map((m) => m.criterionId))),
-  };
-}
-
 /** 版本内冻结流程节点副本；角色 resolver 取自盘点角色当前值。 */
 async function freezeSteps(tx: Tx, tenantId: string, flowId: string): Promise<StepView[]> {
   const flow = (await FLOW.load!(tx, tenantId, flowId))!;
@@ -159,9 +156,49 @@ async function planSteps(
 
 const asInput = (module: ModuleBody): ModuleInput => module;
 
-/** 指定人才标准：新增的引用须存在且已启用（行加 FOR KEY SHARE，与人才标准删除互斥）；已持有的原样保留。 */
-async function checkCriteria(tx: Tx, tenantId: string, modules: readonly ModuleBody[], held: ReadonlySet<string>) {
-  for (const id of unique(modules.map((module) => module.criterionId)).filter((criterion) => !held.has(criterion))) {
+/**
+ * 提交的模块里带的 `id` = 上一版本（当前版本）的模块 ID：带了就是同一模块（改名不丢身份）；ID 不存在 / 不属于上一版本 /
+ * 重复 → 400。返回与 bodies 逐项对应的上一版本模块（没带 ID 的是新模块 → undefined）。
+ */
+function matchPrevious(bodies: readonly ModuleBody[], previous: readonly ModuleView[]): (ModuleView | undefined)[] {
+  const byId = new Map(previous.map((module) => [module.id, module]));
+  const seen = new Set<string>();
+  return bodies.map((body) => {
+    if (body.id === undefined) return undefined;
+    if (seen.has(body.id)) throw invalid('MODULE_ID_DUPLICATE', `模块标识 ${body.id} 重复`);
+    seen.add(body.id);
+    const found = byId.get(body.id);
+    if (!found) throw invalid('MODULE_ID_UNKNOWN', '模块标识不属于上一版本，不能沿用');
+    return found;
+  });
+}
+
+/**
+ * 某类引用的全部 id 与“原样保留”集合（按模块判断，与流程节点 × 角色同口径，DEC-425②）：只有原模块继续持有的引用才豁免启用检查；
+ * 挪到另一模块 / 新模块的同一个 id 算新引用——同一个 id 只要在任一处是新引用，就不在豁免集合里。
+ */
+function referencesOf(
+  bodies: readonly ModuleBody[],
+  before: readonly (ModuleView | undefined)[],
+  pick: (body: ModuleBody) => readonly (string | null | undefined)[],
+  kept: (module: ModuleView) => readonly (string | null)[],
+) {
+  const ids = new Set<string>();
+  const fresh = new Set<string>();
+  bodies.forEach((body, index) => {
+    const own = new Set(before[index] ? kept(before[index]) : []);
+    for (const id of pick(body)) {
+      if (!id) continue;
+      ids.add(id);
+      if (!own.has(id)) fresh.add(id);
+    }
+  });
+  return { ids: [...ids], held: new Set([...ids].filter((id) => !fresh.has(id))) };
+}
+
+/** 指定人才标准：新增的引用须存在且已启用（行加 FOR KEY SHARE，与人才标准删除互斥）；原模块继续持有的原样保留。 */
+async function checkCriteria(tx: Tx, tenantId: string, refs: { ids: string[]; held: ReadonlySet<string> }) {
+  for (const id of refs.ids.filter((criterion) => !refs.held.has(criterion))) {
     const [found] = await tx
       .select({ enabled: talentCriteria.enabled })
       .from(talentCriteria)
@@ -171,28 +208,46 @@ async function checkCriteria(tx: Tx, tenantId: string, modules: readonly ModuleB
   }
 }
 
-/** 提交的模块 → 新版本的模块（评价规则 / 模块等级整份快照）。 */
+/** 提交的模块 → 新版本的模块（评价规则 / 模块等级整份快照；带上一版本模块 ID 且引用未变的沿用原快照）。 */
 async function draftModules(
   tx: Tx,
   ctx: TemplateWriteContext,
   bodies: readonly ModuleBody[],
-  previous: readonly ModuleDraft[],
+  previous: readonly ModuleView[],
 ): Promise<ModuleDraft[]> {
+  const before = matchPrevious(bodies, previous);
   const problem = checkModules(bodies.map(asInput));
   if (problem) throw invalid(problem.reason, problem.message);
-  const held = heldOf(previous);
-  await checkTemplateReferences(tx, ctx, 'scoreRule', unique(bodies.map((m) => m.scoreRuleId)), held.rules);
-  await checkTemplateReferences(tx, ctx, 'moduleGrade', unique(bodies.map((m) => m.moduleGradeId)), held.grades);
-  await checkTemplateReferences(
-    tx,
-    ctx,
-    'field',
-    bodies.flatMap((m) => m.fieldIds ?? []),
-    held.fields,
+  const rules = referencesOf(
+    bodies,
+    before,
+    (m) => [m.scoreRuleId],
+    (m) => [m.scoreRuleId],
   );
-  await checkCriteria(tx, ctx.tenantId, bodies, held.criteria);
+  const grades = referencesOf(
+    bodies,
+    before,
+    (m) => [m.moduleGradeId],
+    (m) => [m.moduleGradeId],
+  );
+  const fields = referencesOf(
+    bodies,
+    before,
+    (m) => m.fieldIds ?? [],
+    (m) => m.fieldIds,
+  );
+  const criteria = referencesOf(
+    bodies,
+    before,
+    (m) => [m.criterionId],
+    (m) => [m.criterionId],
+  );
+  await checkTemplateReferences(tx, ctx, 'scoreRule', rules.ids, rules.held);
+  await checkTemplateReferences(tx, ctx, 'moduleGrade', grades.ids, grades.held);
+  await checkTemplateReferences(tx, ctx, 'field', fields.ids, fields.held);
+  await checkCriteria(tx, ctx.tenantId, criteria);
   const drafts: ModuleDraft[] = [];
-  for (const body of bodies) {
+  for (const [index, body] of bodies.entries()) {
     const rule = body.scoreRuleId ? (await SCORE_RULE.load!(tx, ctx.tenantId, body.scoreRuleId))! : null;
     const grade = body.moduleGradeId ? (await MODULE_GRADE.load!(tx, ctx.tenantId, body.moduleGradeId))! : null;
     if (body.scoring === 'by_count') {
@@ -201,9 +256,22 @@ async function draftModules(
     } else if (grade?.mode === 'count') {
       throw invalid('MODULE_GRADE_MODE', '只有按指标数目算分才能选按指标数目的模块等级');
     }
-    drafts.push(moduleDraft(body, rule, grade));
+    drafts.push(withIdentity(moduleDraft(body, rule, grade), before[index]));
   }
   return drafts;
+}
+
+/** 同一模块（带了上一版本的 ID）：记映射 previousModuleId；引用没换就沿用原快照，改名不改变已冻结的规则内容。 */
+function withIdentity(draft: ModuleDraft, before: ModuleView | undefined): ModuleDraft {
+  if (!before) return draft;
+  return {
+    ...draft,
+    previousModuleId: before.id,
+    ruleSnapshot:
+      before.scoreRuleId === draft.scoreRuleId && before.ruleSnapshot ? before.ruleSnapshot : draft.ruleSnapshot,
+    gradeSnapshot:
+      before.moduleGradeId === draft.moduleGradeId && before.gradeSnapshot ? before.gradeSnapshot : draft.gradeSnapshot,
+  };
 }
 
 function moduleDraft(
@@ -244,6 +312,7 @@ function moduleDraft(
         }
       : null,
     fieldIds: body.fieldIds ?? [],
+    previousModuleId: null,
     allowOrg: succession ? (body.allowOrg ?? true) : null,
     allowPosition: succession ? (body.allowPosition ?? true) : null,
     allowTarget: succession ? (body.allowTarget ?? true) : null,
@@ -272,7 +341,7 @@ function planPermissions(
   steps: readonly StepView[],
   modules: readonly ModuleDraft[],
   submitted: readonly PermissionBody[] | undefined,
-  previous: readonly PermissionView[],
+  previous: { readonly rows: readonly PermissionView[]; readonly modules: readonly ModuleView[] },
 ): PermissionView[] {
   const problem = checkPermissions(
     steps.map((step) => ({ nodeKey: step.nodeKey, kind: step.kind, roleIds: step.roles.map((role) => role.roleId) })),
@@ -294,7 +363,17 @@ function planPermissions(
       } as Partial<PermissionView>);
     }
   } else {
-    for (const row of previous) given.set(seatKey(row), row);
+    // 沿用同一模块（previousModuleId 指向的旧模块，改名后按新名称）同席位的旧行；不带 ID 的新模块不继承；
+    // 模块类型变了（指标 ↔ 继任）旧行里的设置对新类型不适用，整行丢弃取缺省
+    const successor = new Map<string, ModuleDraft>();
+    for (const module of modules) {
+      const old = previous.modules.find((item) => item.id === module.previousModuleId);
+      if (old && old.kind === module.kind) successor.set(old.name, module);
+    }
+    for (const row of previous.rows) {
+      const next = successor.get(row.moduleName);
+      if (next) given.set(seatKey({ ...row, moduleName: next.name }), { ...row, moduleName: next.name });
+    }
   }
   const rows: PermissionView[] = [];
   for (const step of steps) {
@@ -306,6 +385,9 @@ function planPermissions(
       }
     }
   }
+  // 最终完整结构整体再校验一遍（继承 / 缺省物化出来的行也不能是读回后会被自己拒绝的状态）
+  const final = checkFinalPermissions(modules, rows);
+  if (final) throw invalid(final.reason, final.message);
   return rows;
 }
 
@@ -327,8 +409,11 @@ export async function buildPlan(
   const steps = await planSteps(tx, ctx.tenantId, flowId, flowChanged, previous, input.steps);
   const modules = input.modules
     ? await draftModules(tx, ctx, input.modules, previous?.modules ?? [])
-    : (previous?.modules ?? []).map(({ id: _id, ...draft }) => draft);
-  const permissions = planPermissions(steps, modules, input.permissions, previous?.permissions ?? []);
+    : (previous?.modules ?? []).map(({ id, ...draft }) => ({ ...draft, previousModuleId: id }));
+  const permissions = planPermissions(steps, modules, input.permissions, {
+    rows: previous?.permissions ?? [],
+    modules: previous?.modules ?? [],
+  });
   const stepForms = await planStepForms(tx, ctx, steps, input.stepForms, previous?.stepForms ?? []);
   const resultRules = await planResultRules(
     tx,
@@ -418,6 +503,7 @@ async function writeModules(tx: Tx, tenantId: string, versionId: string, modules
             allowOrg: module.allowOrg,
             allowPosition: module.allowPosition,
             allowTarget: module.allowTarget,
+            previousModuleId: module.previousModuleId,
           })),
         )
         .returning({ id: M.id, name: M.name })

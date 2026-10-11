@@ -43,6 +43,7 @@ CREATE TABLE "talent_review_template_modules" (
 	"allow_org" boolean,
 	"allow_position" boolean,
 	"allow_target" boolean,
+	"previous_module_id" uuid,
 	CONSTRAINT "talent_review_template_modules_tenant_id" UNIQUE("tenant_id","id"),
 	CONSTRAINT "talent_review_template_modules_name" UNIQUE("tenant_id","version_id","name"),
 	CONSTRAINT "talent_review_template_modules_kind" CHECK ("talent_review_template_modules"."kind" IN ('indicator','info','succession')),
@@ -158,6 +159,7 @@ ALTER TABLE "talent_review_template_steps" ADD CONSTRAINT "talent_review_templat
 ALTER TABLE "talent_review_template_steps" ADD CONSTRAINT "talent_review_template_steps_version_fk" FOREIGN KEY ("tenant_id","version_id") REFERENCES "public"."talent_review_template_versions"("tenant_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "talent_review_template_versions" ADD CONSTRAINT "talent_review_template_versions_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "talent_review_template_versions" ADD CONSTRAINT "talent_review_template_versions_template_fk" FOREIGN KEY ("tenant_id","template_id") REFERENCES "public"."talent_review_templates"("tenant_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "talent_review_template_versions" ADD CONSTRAINT "talent_review_template_versions_flow_fk" FOREIGN KEY ("tenant_id","flow_id") REFERENCES "public"."talent_review_flows"("tenant_id","id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "talent_review_templates" ADD CONSTRAINT "talent_review_templates_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "talent_review_templates" ADD CONSTRAINT "talent_review_templates_org_fk" FOREIGN KEY ("tenant_id","owner_org_id") REFERENCES "public"."org_objects"("tenant_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "talent_review_templates" ADD CONSTRAINT "talent_review_templates_flow_fk" FOREIGN KEY ("tenant_id","flow_id") REFERENCES "public"."talent_review_flows"("tenant_id","id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint

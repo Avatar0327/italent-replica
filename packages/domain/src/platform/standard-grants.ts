@@ -39,7 +39,7 @@ export const STANDARD_GRANT_ENTRY = 'permission/standard-profile-grants';
  * 守卫测试算出的指纹不一致即失败——任何改目录的 PR 都会撞到它，审查方一眼看到“这个 PR 会给存量标准身份补授权”。
  * version 只用于回补报告，不参与缺失判断。
  */
-export const STANDARD_GRANT_VERSION = 13;
+export const STANDARD_GRANT_VERSION = 14;
 export const STANDARD_GRANT_DIGEST = '3a83602d9312e5c6';
 
 /**

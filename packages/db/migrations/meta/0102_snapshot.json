@@ -1,6 +1,6 @@
 {
-  "id": "750c17e7-e873-4759-a2fc-6cf073efafe6",
-  "prevId": "db0a5a32-c88e-499a-a639-8a0ec93af1c9",
+  "id": "6be731f1-982d-4fae-bb7a-7d18b4f803fa",
+  "prevId": "878dde14-2375-4b48-9999-f847372f5d3e",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -47098,6 +47098,12 @@
           "type": "boolean",
           "primaryKey": false,
           "notNull": false
+        },
+        "previous_module_id": {
+          "name": "previous_module_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {},
@@ -47725,6 +47731,21 @@
             "id"
           ],
           "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "talent_review_template_versions_flow_fk": {
+          "name": "talent_review_template_versions_flow_fk",
+          "tableFrom": "talent_review_template_versions",
+          "tableTo": "talent_review_flows",
+          "columnsFrom": [
+            "tenant_id",
+            "flow_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
           "onUpdate": "no action"
         }
       },

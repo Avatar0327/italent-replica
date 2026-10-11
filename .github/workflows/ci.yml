@@ -201,6 +201,17 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
+      # 10-11 #226 合并后整库迁移 / 恢复单事务锁的表超过默认 max_locks_per_transaction=64（53200 out of shared memory）。
+      # services 不能传 postgres 启动参数，改用 ALTER SYSTEM 写入后重启容器，再等健康检查通过
+      - name: Raise max_locks_per_transaction
+        run: |
+          docker exec ${{ job.services.postgres.id }} psql -U postgres -c "ALTER SYSTEM SET max_locks_per_transaction = 256"
+          docker restart ${{ job.services.postgres.id }}
+          for i in $(seq 1 30); do
+            docker exec ${{ job.services.postgres.id }} pg_isready -U postgres && break
+            sleep 1
+          done
+          docker exec ${{ job.services.postgres.id }} psql -U postgres -tAc "SHOW max_locks_per_transaction"
       - run: pnpm install --frozen-lockfile
       - run: pnpm test:pg --shard=${{ matrix.shard }}/4
 

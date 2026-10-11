@@ -25,6 +25,8 @@ const access = z.enum(SUCCESSION_ACCESS);
 
 const step = z.strictObject({ nodeKey, showMatrix: z.boolean() });
 const module = z.strictObject({
+  /** 上一版本（当前版本）的模块 ID：带了就是同一模块（改名保留身份与权限行 / 快照），不带就是新模块。 */
+  id: uuid.optional(),
   kind: z.enum(TEMPLATE_MODULE_KINDS),
   name,
   source: z.enum(INDICATOR_SOURCES).nullish(),
