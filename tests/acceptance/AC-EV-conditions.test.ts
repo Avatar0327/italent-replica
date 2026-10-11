@@ -288,7 +288,10 @@ describe('AC-EV-conditions 活动参评条件', () => {
     expect(await ok<Activity>(removed)).toEqual(changed);
     expect([await count('ev_conditions'), await count('ev_condition_details')]).toEqual(counts.map((n) => n - 1));
     const audit = auditApi(testDb().db, () => EV_NOW);
-    const logs = await audit.dataChanges(w.asAdmin, { pageSize: '200' });
+    const logs = await audit.dataChanges(w.asAdmin, {
+      objectId: initial.id,
+      action: 'evaluation.activity.delete',
+    });
     const log = logs.items.find(
       (item) => item.objectId === initial.id && item.action === 'evaluation.activity.delete',
     )!;
