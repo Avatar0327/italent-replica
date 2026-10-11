@@ -1,0 +1,65 @@
+name: PostgreSQL image mirror
+
+# DEC-431④：把 CI 用的 PostgreSQL 16 镜像同步到本仓库的 ghcr，CI 先拉 ghcr，避免公共镜像源限流（toomanyrequests）。
+# - 每周一定时刷新（跟上 postgres:16 的小版本补丁），也可在 Actions 页手动触发强制刷新
+# - 同时推一个带日期的标签（16-YYYYMMDD），需要回到旧镜像时把 scripts/ci-postgres.sh 的 MIRROR 默认值改成该标签
+# - 本流程失败不影响 CI：scripts/ci-postgres.sh 拉 ghcr 失败会落到 AWS 公共镜像源 / Docker Hub
+on:
+  schedule:
+    - cron: '30 0 * * 1' # 每周一 08:30（北京时间），早于 CI 每周定时
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: pg-image-mirror
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    name: mirror postgres:16 to ghcr
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      # 与 scripts/ci-postgres.sh 的 UPSTREAM / MIRROR 保持一致；ghcr 仓库名必须小写
+      UPSTREAM: public.ecr.aws/docker/library/postgres:16
+      FALLBACK: docker.io/library/postgres:16
+      MIRROR: ghcr.io/avatar0327/italent-replica/postgres
+    steps:
+      - name: Log in to ghcr.io
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
+        run: echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+      - name: Pull upstream image (with retries)
+        id: pull
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            for candidate in "$UPSTREAM" "$FALLBACK"; do
+              if timeout 300 docker pull "$candidate"; then
+                echo "source=$candidate" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+            done
+            sleep $((attempt * 30))
+          done
+          echo "::error::上游镜像拉取失败" >&2
+          exit 1
+      - name: Push to ghcr
+        env:
+          SOURCE: ${{ steps.pull.outputs.source }}
+        run: |
+          set -euo pipefail
+          dated="16-$(date -u +%Y%m%d)"
+          docker tag "$SOURCE" "$MIRROR:16"
+          docker tag "$SOURCE" "$MIRROR:$dated"
+          docker push "$MIRROR:16"
+          docker push "$MIRROR:$dated"
+          {
+            echo "来源：\`$SOURCE\`（$(docker image inspect --format '{{index .RepoDigests 0}}' "$SOURCE")）"
+            echo
+            echo "已推送：\`$MIRROR:16\`、\`$MIRROR:$dated\`"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -215,7 +215,9 @@ def live_prs():
             st, why = "ci", "等 CI"
         why += note
         idle = age(act)
-        stuck = st == "decide" or (st in ("conflict", "cired", "merge") and idle >= 60) or (st in ("dev", "rework") and idle >= 60) or (st == "queue" and idle >= 15)
+        # DEC-428 暂停派发期间（标记文件同 watch.py），待审 / 返工 / CI 红都是在等恢复，不算卡点；待决定与合并中超时仍算
+        hold = os.path.exists(os.path.expanduser("~/.cache/italent-dispatch-paused"))
+        stuck = (st == "decide" or (st == "merge" and idle >= 60)) if hold else st == "decide" or (st in ("conflict", "cired", "merge") and idle >= 60) or (st in ("dev", "rework") and idle >= 60) or (st == "queue" and idle >= 15)
         out.append({"n": n, "t": p["title"][:60], "s": st, "why": why, "r": rounds, "idle": idle, "stuck": stuck,
                     "ask": age(t_ask) if st == "decide" else None})
     today = now.strftime("%Y-%m-%d")
@@ -239,6 +241,16 @@ def progress(d, live):
                 continue
             tot += 1
             done += bool(st.get("s") == "done" or (st.get("pr") and str(st["pr"]) in merged))
+    # 依赖已满足但没派的步骤（10-11 B6 漏派 4.5 小时）：after 里的步骤全部合并、自身没有 PR 也没标已派
+    ready = []
+    for ln in (d.get("main") or {}).get("lines", []):
+        steps = [s for g in ln.get("groups", []) for s in g["steps"]]
+        byk = {s["k"]: s for s in steps}
+        isdone = lambda s: s and (s.get("s") == "done" or (s.get("pr") and str(s["pr"]) in merged))
+        for st in steps:
+            if st.get("after") and not st.get("pr") and st.get("s") not in ("assigned", "paused") and all(isdone(byk.get(k)) for k in st["after"]):
+                ready.append(f"{ln['id']} {st['k']} {st['n']}")
+    print("ready " + ("；".join(ready) if ready else "无"))
     at = (live or {}).get("at", "")
     try:
         rec = json.load(open(PROG))

@@ -26,6 +26,10 @@ export const AUDIT_SOURCES: readonly AuditSource[] = [
   },
   // F-082：计算规则（公式里的字段引用按查看人当前的字段目录权限裁剪，DEC-376④）
   { types: new Set([CALC_RULE_AUDIT_TYPE]), create: calcRuleSources },
+  {
+    types: new Set(['TalentReview.Template']),
+    create: (deps, ctx) => calcRuleSources(deps, ctx, 'TalentReview.Template', 'resultRules'),
+  },
 ];
 
 /** 该审计对象类型的“带出值”裁剪是否已登记。 */

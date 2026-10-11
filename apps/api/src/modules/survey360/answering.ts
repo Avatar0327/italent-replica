@@ -112,7 +112,7 @@ async function resolve(tx: Tx, locate: Entry['locate'], kind?: LinkRow['kind']) 
   return { link: link!, activity: activity! };
 }
 
-function linkRead<T>(
+export function linkRead<T>(
   deps: TenantRouteDeps,
   entryOf: EntryOf,
   kind: LinkRow['kind'] | undefined,
@@ -163,6 +163,17 @@ function linkWrite<T>(
     const result = await runCommand(deps.db, caller, {
       id: c.req.header('idempotency-key'),
       fingerprint: { method: c.req.method, path: c.req.path, link: link.id, revision: expectedRevision, input },
+      // 作答的首次执行、重放和失败回查共用 ledgerExit 的事务内复核（#199；F-076 §4.2）。
+      ...(kind === 'answer'
+        ? {
+            guard: {
+              before: async (tx: Tx) => {
+                const current = await resolve(tx, locate, kind);
+                await options.guard?.(tx, current.link, current.activity);
+              },
+            },
+          }
+        : {}),
       execute: async (tx, commandId) => {
         const current = await resolve(tx, locate, kind);
         const ctx = {
@@ -379,7 +390,6 @@ const PAUSED = '活动暂停中，请稍后评价';
 async function openSheet(tx: Tx, ctx: Writer, activity: ActivityRow, link: LinkRow, relationId: string, qid: string) {
   // 原站停用期间打开作答链接提示“活动暂停中，请稍后评价”（`25` §10.3 ③）
   if (activity.status !== 'enabled') fail('CONFLICT', PAUSED, 'ACTIVITY_NOT_OPEN');
-  await lockAppraiser(tx, ctx.tenantId, activity.id, link.personId);
   // F-034 R2 / E3-R2：与替换共用活动 → 对象 → 答卷顺序；先锁活动避免新答卷外键形成反向等待。
   const [current] = rows<ActivityRow>(
     await tx.execute(sql`SELECT * FROM survey360_activities
@@ -387,6 +397,8 @@ async function openSheet(tx: Tx, ctx: Writer, activity: ActivityRow, link: LinkR
   );
   if (!current) notFound();
   if (current!.status !== 'enabled') fail('CONFLICT', PAUSED, 'ACTIVITY_NOT_OPEN');
+  // F-076 §3.5.1：所有作答入口都先锁活动，再锁评价者，避免门户与个人链接形成反向等待。
+  await lockAppraiser(tx, ctx.tenantId, activity.id, link.personId);
   // 等锁期间可能已替换套卷，任务与套卷归属必须在取得对象锁后重新读取。
   const found = await requireTask(tx, link, current!, relationId, qid, true);
   const sheet = await findSheet(tx, relationId, qid, true);
@@ -842,7 +854,7 @@ export function registerLinkRoutes(router: Hono<TenantEnv>, deps: TenantRouteDep
 }
 
 /** 本入口作答页 / 确认页里具名人员的头像字节（F-058）；不在本单人员集合里的与不存在同一 404。 */
-function avatarRoute(deps: TenantRouteDeps, entryOf: EntryOf, kind: LinkRow['kind'] | undefined) {
+export function avatarRoute(deps: TenantRouteDeps, entryOf: EntryOf, kind: LinkRow['kind'] | undefined) {
   return (c: C) =>
     linkRead(
       deps,
