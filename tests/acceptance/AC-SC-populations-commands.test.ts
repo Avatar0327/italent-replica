@@ -42,20 +42,47 @@ describe('AC-SC B2a 命令、原始规则与授权', () => {
   it('错误行定位、未知引用、恶意字面量：拒绝且原始行／缓存／revision 不变', async () => {
     const saved = await w.create();
     const before = await rows(saved.id);
-    for (const rules of [
-      { ...configBody().rules, expression: '1 or 99' },
-      { ...configBody().rules, expression: '1 && 2' },
-      { ...configBody().rules, rows: [{ ...configBody().rules.rows[0], values: ['私密值"\n'] }] },
-    ]) {
+    for (const [rules, error] of [
+      [
+        { ...configBody().rules, expression: '1 or 99' },
+        { code: 'RULE_ROW_UNKNOWN', rowNo: 99, offset: 5 },
+      ],
+      [
+        { ...configBody().rules, expression: '1 && 2' },
+        { code: 'RULE_EXPRESSION_SYNTAX', offset: 2 },
+      ],
+      [
+        {
+          ...configBody().rules,
+          rows: [
+            {
+              ...configBody().rules.rows[0],
+              field: { object: 'employee', code: 'name', path: 'employee.name', kind: 'text' },
+              operator: 'eq',
+              values: ['私密值"\n'],
+            },
+          ],
+        },
+        { code: 'RULE_LITERAL_INVALID', rowNo: 1 },
+      ],
+    ] as const) {
       const response = await w.request('PUT', `/populations/${saved.id}`, { ifMatch: 1, body: { rules } });
       expect(response.status).toBe(400);
       const text = await response.text();
-      expect(text).toContain('RULE_');
+      expect(JSON.parse(text)).toMatchObject({ error: { code: 'VALIDATION_FAILED', details: { errors: [error] } } });
       expect(text).not.toContain('私密值');
       expect(await rows(saved.id)).toEqual(before);
     }
     const duplicate = await w.request('POST', '/populations', { body: { ...configBody(), code: saved.code } });
     expect(duplicate.status).toBe(409);
+  });
+  it('未引用行号超出 PostgreSQL integer 范围时返回 400，原对象不变', async () => {
+    const saved = await w.create();
+    const body = configBody();
+    body.rules.rows.push({ ...body.rules.rows[0]!, rowNo: 2147483648 });
+    const response = await w.request('PUT', `/populations/${saved.id}`, { ifMatch: 1, body: { rules: body.rules } });
+    expect(response.status).toBe(400);
+    expect(await (await w.request('GET', `/populations/${saved.id}`)).json()).toMatchObject(saved);
   });
   it('真实字段权：首次与直接重放都裁掉 name / rules；撤看全部后重放拒绝', async () => {
     const object = SUCCESSION_OBJECTS.population;
@@ -147,7 +174,9 @@ describe('AC-SC B2a 命令、原始规则与授权', () => {
       tx.execute(sql`UPDATE succession_population_rows
       SET field_code = 'removed_field' WHERE population_id = ${saved.id}::uuid AND row_no = 1`),
     );
-    const input = { user: w.admin.id, body: { tenantId: w.tenant.id }, idempotencyKey: randomUUID() };
+    const operator = await addMember(w, '平台重编译');
+    await grantPlatformOperator(w.db, { userId: operator.id, expectedRevision: 0 }, cmd());
+    const input = { user: operator.id, body: { tenantId: w.tenant.id }, idempotencyKey: randomUUID() };
     const path = '/api/platform/succession/rules/recompile';
     for (let i = 0; i < 2; i++) expect((await w.raw.request('POST', path, input)).status).toBe(200);
     expect((await rows(saved.id))[0]).toMatchObject({
