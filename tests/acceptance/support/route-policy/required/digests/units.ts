@@ -133,6 +133,12 @@ export const DIGESTS: Digests = {
     requireSelfServiceButtons: 'f061788dc9ba',
     selfAccess: 'cef0cef4b0b7',
   },
+  'apps/api/src/modules/employee-self-service/development-channel.ts': {
+    ownDevelopmentChannel: 'ab01695d60cf',
+  },
+  'apps/api/src/modules/employee-self-service/page-permission.ts': {
+    employeePageGranted: '60075b3241ff',
+  },
   'apps/api/src/modules/employee-self-service/queries.ts': {
     ownApplication: 'a4a35b04bb32',
     ownApplications: '289613d24b3b',
@@ -143,6 +149,8 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/employee-self-service/routes.ts': {
     'route:GET /applications': '519db2a976df',
     'route:GET /applications/:id': 'ba17a3139208',
+    'route:GET /development-channel': 'a16d08080fc3',
+    'route:GET /employees/:id/development-channel': '5f30168dc69b',
     'route:GET /employees/:id/records': '5c144ecc6adf',
     'route:GET /profile': '5b2fd7047cd6',
     'route:GET /transfer/references/:code': '43a78c55a883',
@@ -506,6 +514,7 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/personnel/access.ts': {
     access: '69531b516cee',
     authorize: '5553a31a6af6',
+    requirePerson: '017a85ec52b5',
   },
   'apps/api/src/modules/personnel/change-requests.ts': {
     assertSelfServiceFields: '836b6ee170ad',
@@ -583,6 +592,10 @@ export const DIGESTS: Digests = {
     updateCategory: '56253d61fa88',
     updateLevel: '580a8785b0bd',
   },
+  'apps/api/src/modules/qualification/development-channel.ts': {
+    registerDevelopmentChannel: '8c1b9b79d5aa',
+    viewEmployeeQualification: '8ed435680748',
+  },
   'apps/api/src/modules/qualification/extras.ts': {
     registerChannels: '5713deee61bb',
     registerChart: 'e0bfdb21c3a0',
@@ -602,7 +615,7 @@ export const DIGESTS: Digests = {
     SPECS: 'ea5d29a5fc52',
     childDeleteRights: 'de08fd350c31',
     registerObject: '849fa6161898',
-    registerQualificationRoutes: '6c8412dccc3c',
+    registerQualificationRoutes: 'eb2ac6b292eb',
   },
   'apps/api/src/modules/qualification/standard-service.ts': {
     createStandard: '8cd995eb08ed',
@@ -1084,6 +1097,7 @@ export const DIGESTS: Digests = {
   },
   'packages/domain/src/qualification/catalog.ts': {
     QUALIFICATION_OBJECTS: '5362e11495c2',
+    QUALIFICATION_PAGES: '21fe401c6f6b',
   },
   'packages/domain/src/succession/catalog.ts': {
     'SUCCESSION_OBJECTS>record': 'a17b8e7432d2',
@@ -1220,11 +1234,15 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employee-self-service/access.ts#boundEmployee': '107479715613',
   'apps/api/src/modules/employee-self-service/access.ts#requireSelfServiceButtons': '068fd9fcc31a',
   'apps/api/src/modules/employee-self-service/access.ts#selfAccess': '8bb8fb420ee3',
+  'apps/api/src/modules/employee-self-service/development-channel.ts#ownDevelopmentChannel': '3fa342e5e393',
+  'apps/api/src/modules/employee-self-service/page-permission.ts#employeePageGranted': '56f201e2ddd6',
   'apps/api/src/modules/employee-self-service/queries.ts#ownApplication': '8a95f51afdbb',
   'apps/api/src/modules/employee-self-service/queries.ts#ownApplications': 'd2e565abc9a5',
   'apps/api/src/modules/employee-self-service/references.ts#referenceChoices': '5ed5d8993877',
   'apps/api/src/modules/employee-self-service/routes.ts#route:GET /applications': 'faa019bd1e25',
   'apps/api/src/modules/employee-self-service/routes.ts#route:GET /applications/:id': '8047d0491771',
+  'apps/api/src/modules/employee-self-service/routes.ts#route:GET /development-channel': 'f59babe60074',
+  'apps/api/src/modules/employee-self-service/routes.ts#route:GET /employees/:id/development-channel': 'b856b8a50770',
   'apps/api/src/modules/employee-self-service/routes.ts#route:GET /employees/:id/records': '8ad2fdc94082',
   'apps/api/src/modules/employee-self-service/routes.ts#route:GET /profile': 'c14f9dfe949c',
   'apps/api/src/modules/employee-self-service/routes.ts#route:GET /transfer/references/:code': 'c5abbe8d2cc3',
@@ -1507,6 +1525,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/permission/user-routes.ts#route:PUT /api/tenant/permission/users/:userId': '2c4e0a1ad4fb',
   'apps/api/src/modules/personnel/access.ts#access': '8c2c9e76e362',
   'apps/api/src/modules/personnel/access.ts#authorize': 'd461523d213b',
+  'apps/api/src/modules/personnel/access.ts#requirePerson': '26e8917a54da',
   'apps/api/src/modules/personnel/change-requests.ts#assertSelfServiceFields': '7041bcd9d078',
   'apps/api/src/modules/personnel/change-requests.ts#createChange': '117ca6e13d2d',
   'apps/api/src/modules/personnel/change-requests.ts#requireSelf': '52740292ae80',
@@ -1567,6 +1586,8 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/qualification/config-service.ts#replaceJobLinks': '21aef72c6185',
   'apps/api/src/modules/qualification/config-service.ts#updateCategory': '3b01fe0e7e42',
   'apps/api/src/modules/qualification/config-service.ts#updateLevel': '788f8f5f94eb',
+  'apps/api/src/modules/qualification/development-channel.ts#registerDevelopmentChannel': 'db7402682be4',
+  'apps/api/src/modules/qualification/development-channel.ts#viewEmployeeQualification': '52a68ac1a869',
   'apps/api/src/modules/qualification/extras.ts#registerChannels': '9296f2570c88',
   'apps/api/src/modules/qualification/extras.ts#registerChart': '9b1a6930a637',
   'apps/api/src/modules/qualification/extras.ts#registerCodingRules': '5e9538a09fd3',
@@ -1581,7 +1602,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/qualification/routes.ts#SPECS': '711d8685edfb',
   'apps/api/src/modules/qualification/routes.ts#childDeleteRights': '49251d263f86',
   'apps/api/src/modules/qualification/routes.ts#registerObject': '8c695efe87d8',
-  'apps/api/src/modules/qualification/routes.ts#registerQualificationRoutes': '78704d8ae46e',
+  'apps/api/src/modules/qualification/routes.ts#registerQualificationRoutes': '413c7d98af95',
   'apps/api/src/modules/qualification/standard-service.ts#createStandard': '290968858093',
   'apps/api/src/modules/qualification/standard-service.ts#deleteStandard': '416432ace259',
   'apps/api/src/modules/qualification/standard-service.ts#putChannels': '4aa3ce6db911',
@@ -1936,6 +1957,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'packages/domain/src/personnel/catalog.ts#PERSONNEL_OBJECT': 'e3b0c44298fc',
   'packages/domain/src/personnel/fields.ts#SUBSETS': 'e3b0c44298fc',
   'packages/domain/src/qualification/catalog.ts#QUALIFICATION_OBJECTS': 'b534bdb4d131',
+  'packages/domain/src/qualification/catalog.ts#QUALIFICATION_PAGES': '7456b7e1794d',
   'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>record': '11325ba861f5',
   'packages/domain/src/survey360/catalog.ts#SURVEY360_BUTTONS': 'e3b0c44298fc',
   'packages/domain/src/survey360/catalog.ts#SURVEY360_OBJECTS>activity': 'a9beadd495ef',

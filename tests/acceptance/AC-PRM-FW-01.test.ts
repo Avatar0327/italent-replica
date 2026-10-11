@@ -1,7 +1,7 @@
 /**
  * AC-PRM-FW-01（F-039 PR-A，docs/08_设计/F-039_权限框架强制_设计.md §2.3；DEC-300 / DEC-303）：
  * 路由声明的注册校验——缺失即失败。反例按 DEC-300 的三类致命项分组：身份不匹配、缺失声明、初始化不可信；
- * 校验按**注册实例**（包装函数身份）绑定，不只看 method / path。正例核对全部 567 个端点都已登记、
+ * 校验按**注册实例**（包装函数身份）绑定，不只看 method / path。正例核对全部 571 个端点都已登记、
  * 中间件按最终路径登记、HEAD 走 GET 声明。前四组用内存 Hono + 框架；最后一组用 createApp 真实装配。
  */
 import {
@@ -326,7 +326,8 @@ describe('AC-PRM-FW-01 createApp 真实装配', () => {
    * R3-T04 PR-B2a（评价规则 / 模块等级各 5）+ 10 = 544；R3-T04 PR-B2b（字段映射 5）+ 5 = 549；
    * R3-T05 A2（继任记录写侧 4 + 候选 1）+ 5 = 554；
    * F-082 F082-5（改绑平台命令，总开关默认打开）+ 1 = 555；R3-T04 PR-B3（盘点内容表单 5、流程定义 5）+ 10 = 565；
-   * F-076 PR-2a 门户登录 / 登出 + 2 = 567（PR 描述以此为准）。
+   * R3-T02 C1-6（发展通道查看：管理 2 + ESS 2）+ 4 = 569；
+   * F-076 PR-2a 门户登录 / 登出 + 2 = 571（PR 描述以此为准）。
    */
   const EXPECTED_BY_MODULE: Readonly<Record<string, number>> = {
     root: 1,
@@ -337,7 +338,7 @@ describe('AC-PRM-FW-01 createApp 真实装配', () => {
     establishment: 16,
     personnel: 18,
     contracts: 23,
-    'self-service': 7,
+    'self-service': 9,
     org: 14,
     employment: 46,
     approval: 34,
@@ -351,7 +352,7 @@ describe('AC-PRM-FW-01 createApp 真实装配', () => {
     avatar: 5,
     'talent-review': 60,
     'talent-review-platform': 1,
-    qualification: 51,
+    qualification: 53,
     evaluation: 25,
     succession: 8,
   };
@@ -369,12 +370,12 @@ describe('AC-PRM-FW-01 createApp 真实装配', () => {
     expect(keys).toContain('DELETE /api/tenant/probes/:id');
   });
 
-  it('全部 567 个端点已声明，按模块统计一致', () => {
+  it('全部 571 个端点已声明，按模块统计一致', () => {
     const manifest = routeManifest(createApp({ db: testDb().db }));
     const byModule: Record<string, number> = {};
     for (const route of manifest.declared) byModule[route.module] = (byModule[route.module] ?? 0) + 1;
     expect(byModule).toEqual(EXPECTED_BY_MODULE);
-    expect(manifest.declared).toHaveLength(567);
+    expect(manifest.declared).toHaveLength(571);
     expect(manifest.declared.map((r) => `${r.method} ${r.path}`)).toContain(
       'POST /api/tenant/org/organizations/:id/employment-preview',
     );

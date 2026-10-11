@@ -281,6 +281,9 @@ export const GRAPH: Graph = {
     'apps/api/src/advisory-lock.ts#asUuid',
   ],
   'apps/api/src/modules/permission/licenses.ts#releaseSeat': ['#lockLicenseType'],
+  'apps/api/src/modules/permission/manager-identity.ts#defaultManagerPermissions': [
+    'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
+  ],
   'apps/api/src/modules/permission/manager-identity.ts#managerIdentity': [
     'apps/api/src/modules/permission/scope-hierarchy.ts#expandScopeRoots',
     'apps/api/src/modules/permission/scope-hierarchy.ts#scopeRows',
@@ -651,6 +654,14 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/permission/scope-resolver.ts#roleRoots': [
     'apps/api/src/modules/permission/scope-hierarchy.ts#scopeRows',
     '#linkedPerson',
+  ],
+  'apps/api/src/modules/permission/subject.ts#loadGrantedObjectPermissions': [
+    'apps/api/src/modules/permission/manager-identity.ts#MANAGER_PROFILE_CODE',
+    'apps/api/src/modules/permission/manager-identity.ts#defaultManagerPermissions',
+    'apps/api/src/modules/permission/manager-identity.ts#managerIdentity',
+    'apps/api/src/modules/permission/scope-hierarchy.ts#scopeRows',
+    '#loadActiveProfileIds',
+    '#loadObjectPermissionRows',
   ],
   'apps/api/src/modules/permission/subject.ts#loadObjectPermissions': ['#loadObjectPermissionRows'],
   'apps/api/src/modules/permission/tenant-catalog.ts#tenantObjectCatalog': [
