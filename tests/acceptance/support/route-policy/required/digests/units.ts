@@ -894,7 +894,7 @@ export const DIGESTS: Digests = {
     resolveCalcDisclosure: 'fbcc5b5f5574',
   },
   'apps/api/src/modules/talent-review/routes.ts': {
-    registerTalentReviewRoutes: '40762a358be6',
+    registerTalentReviewRoutes: 'bed0cc08fb2a',
   },
   'apps/api/src/modules/talent-review/scoring-routes.ts': {
     registerMappingReads: 'f69ca622c38d',
@@ -902,6 +902,18 @@ export const DIGESTS: Digests = {
     registerModuleGrades: '2d1d2b293fdc',
     registerScoreRules: '0d187497c994',
     requireMappingFields: 'f5d42a50f304',
+  },
+  'apps/api/src/modules/talent-review/template-access.ts': {
+    requireCreatable: 'f6ad0d258f54',
+    requireEditable: 'b4086c4f65db',
+  },
+  'apps/api/src/modules/talent-review/template-routes.ts': {
+    registerTemplateRoutes: 'b79182c2ca48',
+    requireCatalogs: '573047e216de',
+  },
+  'apps/api/src/modules/talent-review/template-service.ts': {
+    createTemplate: 'df8a9906537e',
+    lockTemplate: '80734cd0ce51',
   },
   'apps/api/src/modules/talent/access.ts': {
     DATA_OPERATION: 'bb93cac2ac78',
@@ -1098,6 +1110,7 @@ export const DIGESTS: Digests = {
     'TALENT_REVIEW_OBJECTS>role': '25aaaf980051',
     'TALENT_REVIEW_OBJECTS>scoreRule': '0b7b672a5186',
     'TALENT_REVIEW_OBJECTS>settings': '81657ab4046d',
+    'TALENT_REVIEW_OBJECTS>template': 'd191612bb46c',
   },
   'packages/domain/src/talent/catalog.ts': {
     TALENT_OBJECTS: 'f6a74ccb16cf',
@@ -1794,12 +1807,18 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/talent-review/matrix-service.ts#updateMatrix': 'd21f4fba3b95',
   'apps/api/src/modules/talent-review/readiness-service.ts#updateReadiness': '28fc17e2384b',
   'apps/api/src/modules/talent-review/rename-disclosure.ts#resolveCalcDisclosure': 'e45d018245fc',
-  'apps/api/src/modules/talent-review/routes.ts#registerTalentReviewRoutes': 'b3a714ee36a8',
+  'apps/api/src/modules/talent-review/routes.ts#registerTalentReviewRoutes': '81d5330ede6d',
   'apps/api/src/modules/talent-review/scoring-routes.ts#registerMappingReads': '0a363e4b4f7f',
   'apps/api/src/modules/talent-review/scoring-routes.ts#registerMappings': '2ec92dbf0be3',
   'apps/api/src/modules/talent-review/scoring-routes.ts#registerModuleGrades': 'fd4a133c711e',
   'apps/api/src/modules/talent-review/scoring-routes.ts#registerScoreRules': 'bf6d3f5c40c3',
   'apps/api/src/modules/talent-review/scoring-routes.ts#requireMappingFields': '940a2bde2b00',
+  'apps/api/src/modules/talent-review/template-access.ts#requireCreatable': '191b7000d8b0',
+  'apps/api/src/modules/talent-review/template-access.ts#requireEditable': '5b6575aaabe1',
+  'apps/api/src/modules/talent-review/template-routes.ts#registerTemplateRoutes': '75849df7c825',
+  'apps/api/src/modules/talent-review/template-routes.ts#requireCatalogs': '06e325feca31',
+  'apps/api/src/modules/talent-review/template-service.ts#createTemplate': '407d0c1d506a',
+  'apps/api/src/modules/talent-review/template-service.ts#lockTemplate': '9bb9240b9fb1',
   'apps/api/src/modules/talent/access.ts#DATA_OPERATION': 'e3b0c44298fc',
   'apps/api/src/modules/talent/access.ts#WRITE_BUTTONS': 'e3b0c44298fc',
   'apps/api/src/modules/talent/access.ts#checkWriteFields': 'd973e4973fe3',
@@ -1936,6 +1955,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>role': '279002582763',
   'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>scoreRule': '279002582763',
   'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>settings': '279002582763',
+  'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>template': '279002582763',
   'packages/domain/src/talent/catalog.ts#TALENT_OBJECTS': 'f0c15b8bc074',
   'packages/domain/src/talent/catalog.ts#TALENT_OBJECTS>criterion': '73a978d38e23',
   'packages/domain/src/talent/catalog.ts#TALENT_OBJECTS>criterionCategory': 'b3c1cb4127e0',

@@ -645,6 +645,7 @@ const TPL_CREATABLE: Obligation = {
 };
 const TPL_READONLY: Obligation = {
   perm: 'guard:talentReview.templatePublicDownReadonly',
+  facts: ['guard:talentReview.templatePublicDownReadonly'],
   note: '仅因向下公开可见的模板只读：修改 / 删除 403 TEMPLATE_PUBLIC_DOWN_READONLY（行锁后判定）',
   at: [
     {
@@ -657,6 +658,15 @@ const TPL_READONLY: Obligation = {
       unit: `${T}/template-access.ts#requireEditable`,
       anchor: "reason: 'TEMPLATE_PUBLIC_DOWN_READONLY'",
     },
+  ],
+};
+const TPL_REPLAY_READONLY: Obligation = {
+  perm: 'guard:talentReview.templatePublicDownReadonly',
+  facts: ['guard:talentReview.templatePublicDownReadonly'],
+  note: '新建的幂等重放：返回台账结果前按模板当前归属复核可编辑性，已变为仅向下公开可见时 403 TEMPLATE_PUBLIC_DOWN_READONLY',
+  at: [
+    { role: 'call', unit: `${TPR}#runGuarded`, anchor: 'await requireEditable(tx, ctx, scope, anchor)' },
+    TPL_READONLY.at[1]!,
   ],
 };
 /** 引用流程 / 评价规则 / 模块等级 / 盘点字段 = 读取目录：请求带引用时另需目录对象的查看权，可见性在命令内按目录范围判定。 */
@@ -689,7 +699,7 @@ const TEMPLATE_REQUIRED: RequiredTable = {
   [`GET ${BASE_ROOT}/templates/:id`]: [
     tplView("router.get(`${TEMPLATES}/:id`, async (c) => { const ctx = await reviewContext(c, deps, 'template')"),
   ],
-  [`POST ${BASE_ROOT}/templates`]: [...tplChange('create'), TPL_CREATABLE, ...TPL_REFERENCE()],
+  [`POST ${BASE_ROOT}/templates`]: [...tplChange('create'), TPL_CREATABLE, TPL_REPLAY_READONLY, ...TPL_REFERENCE()],
   [`PATCH ${BASE_ROOT}/templates/:id`]: [...tplChange('update'), TPL_READONLY, ...TPL_REFERENCE()],
   [`DELETE ${BASE_ROOT}/templates/:id`]: [...tplChange('delete'), TPL_READONLY],
 };

@@ -107,18 +107,31 @@ async function recheck(
   operation: 'create' | 'update' | 'delete',
   expectedRevision: number,
   references: References,
-  fields?: Readonly<Record<string, unknown>>,
-): Promise<Rechecked> {
+): Promise<Rechecked & { txDeps: TenantRouteDeps }> {
   const txDeps: TenantRouteDeps = { ...deps, authorize: authorizeInTransaction(deps.authorize, tx) };
   const ctx = await reviewWriteContext(c, txDeps, 'template', operation, expectedRevision);
   const scope = await resolveModuleScopeInTransaction(txDeps, ctx, tx, codeOf('template'));
-  if (fields) await checkWriteFields(txDeps, ctx, 'template', operation === 'create' ? 'create' : 'update', fields);
   const scopes: Rechecked['scopes'] = {};
   for (const kind of referenced(references)) {
     await reviewContext(c, txDeps, kind);
     scopes[kind] = await resolveModuleScopeInTransaction(txDeps, ctx, tx, codeOf(kind));
   }
-  return { ctx, scope, scopes };
+  return { ctx, scope, scopes, txDeps };
+}
+
+/** 新建 / 修改：另复核载荷逐字段的编辑权（含显式清空）；删除没有字段输入，只用 recheck。 */
+async function recheckFields(
+  c: Context<TenantEnv>,
+  deps: TenantRouteDeps,
+  tx: Tx,
+  operation: 'create' | 'update',
+  expectedRevision: number,
+  references: References,
+  fields: Readonly<Record<string, unknown>>,
+): Promise<Rechecked> {
+  const checked = await recheck(c, deps, tx, operation, expectedRevision, references);
+  await checkWriteFields(checked.txDeps, checked.ctx, 'template', operation, fields);
+  return checked;
 }
 
 /**
@@ -131,11 +144,8 @@ async function runGuarded(
   ctx: TalentReviewContext,
   body: object,
   status: 200 | 201,
-  check: {
-    operation: 'create' | 'update' | 'delete';
-    references: References;
-    fields?: Readonly<Record<string, unknown>>;
-  },
+  check: { operation: 'create' | 'update' | 'delete'; references: References },
+  recheckInTx: (tx: Tx) => Promise<Rechecked>,
   execute: (tx: Tx, w: TemplateWriteContext) => Promise<TemplateView>,
 ) {
   let current: Rechecked | undefined;
@@ -144,7 +154,7 @@ async function runGuarded(
     fingerprint: { method: c.req.method, path: c.req.path, expectedRevision: ctx.expectedRevision, input: body },
     guard: {
       before: async (tx) => {
-        current = await recheck(c, deps, tx, check.operation, ctx.expectedRevision, check.references, check.fields);
+        current = await recheckInTx(tx);
       },
       replayed: async (tx, replay) => {
         const { scope, scopes } = current!;
@@ -238,7 +248,8 @@ export function registerTemplateRoutes(router: Hono<TenantEnv>, deps: TenantRout
     await checkWriteFields(deps, ctx, 'template', 'create', body);
     const references = referencesOf(body);
     await requireCatalogs(c, deps, references);
-    return runGuarded(c, deps, ctx, body, 201, { operation: 'create', references, fields: body }, (tx, w) =>
+    const before = (tx: Tx) => recheckFields(c, deps, tx, 'create', ctx.expectedRevision, references, body);
+    return runGuarded(c, deps, ctx, body, 201, { operation: 'create', references }, before, (tx, w) =>
       service.createTemplate(tx, w, body),
     );
   });
@@ -250,7 +261,8 @@ export function registerTemplateRoutes(router: Hono<TenantEnv>, deps: TenantRout
     await checkWriteFields(deps, ctx, 'template', 'update', body);
     const references = referencesOf(body);
     await requireCatalogs(c, deps, references);
-    return runGuarded(c, deps, ctx, body, 200, { operation: 'update', references, fields: body }, (tx, w) =>
+    const before = (tx: Tx) => recheckFields(c, deps, tx, 'update', ctx.expectedRevision, references, body);
+    return runGuarded(c, deps, ctx, body, 200, { operation: 'update', references }, before, (tx, w) =>
       service.updateTemplate(tx, w, id, body),
     );
   });
@@ -259,7 +271,8 @@ export function registerTemplateRoutes(router: Hono<TenantEnv>, deps: TenantRout
     const ctx = await reviewWriteContext(c, deps, 'template', 'delete', revision(c));
     const id = uuidParam(c);
     const references = referencesOf({});
-    return runGuarded(c, deps, ctx, { id }, 200, { operation: 'delete', references }, (tx, w) =>
+    const before = (tx: Tx) => recheck(c, deps, tx, 'delete', ctx.expectedRevision, references);
+    return runGuarded(c, deps, ctx, { id }, 200, { operation: 'delete', references }, before, (tx, w) =>
       service.deleteTemplate(tx, w, id),
     );
   });

@@ -61,6 +61,11 @@ export const GRAPH: Graph = {
   'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>role': ['#object'],
   'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>scoreRule': ['#object'],
   'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>settings': ['#object'],
+  'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>template': ['#object'],
+  'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_SEE_ALL_OBJECTS': [
+    '#TALENT_REVIEW_CONFIG_OBJECTS',
+    '#TALENT_REVIEW_SEE_ALL_UNAPPROVED',
+  ],
   'packages/domain/src/talent-review/catalog.ts#object': ['#SYSTEM_FIELDS', '#TALENT_REVIEW_APP', '#crud'],
   'packages/domain/src/talent-review/form-flow.ts#checkFlowNodes': ['#violation'],
   'packages/domain/src/talent-review/form-flow.ts#checkFormFields': ['#violation'],
@@ -171,4 +176,16 @@ export const GRAPH: Graph = {
   'packages/domain/src/talent-review/matrix.ts#checkExportOrder': ['#violation'],
   'packages/domain/src/talent-review/matrix.ts#checkOptionLevels': ['#violation'],
   'packages/domain/src/talent-review/matrix.ts#checkRatioRule': ['#violation'],
+  'packages/domain/src/talent-review/template.ts#checkByCount': ['#violation'],
+  'packages/domain/src/talent-review/template.ts#checkModules': ['#indicatorProblem', '#violation'],
+  'packages/domain/src/talent-review/template.ts#checkPermissions': ['#permissionRowProblem', '#violation'],
+  'packages/domain/src/talent-review/template.ts#indicatorProblem': [
+    '#violation',
+    'packages/domain/src/talent/catalog.ts#TALENT_DIMENSION_TYPES',
+  ],
+  'packages/domain/src/talent-review/template.ts#permissionRowProblem': ['#violation'],
+  'packages/domain/src/talent-review/template.ts#weightConfigErrors': [
+    'packages/domain/src/expression/functions/math.ts#roundDecimal',
+    '#WEIGHT_TOTAL',
+  ],
 };

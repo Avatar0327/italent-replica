@@ -54,7 +54,8 @@ export const TEMPLATE_POLICIES = {
     button: button('create', 'list'),
     scope: guardScope('talentReview.templateCreatable', NOT_FOUND),
     fields,
-    guards: [REFERENCE],
+    // 重放：首次成功后模板被改成只读（向下公开）时，同键重放按当前归属拒绝（guard.replayed 的 requireEditable）
+    guards: [READONLY, REFERENCE],
     write: changed('body'),
   }),
   [`PATCH ${BASE}/:id`]: object({
