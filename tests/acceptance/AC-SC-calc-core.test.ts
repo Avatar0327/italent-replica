@@ -81,6 +81,15 @@ beforeAll(async () => {
 });
 
 describe('AC-SC-calc-core run 契约', () => {
+  it('夏令时回拨的两个 01:30，按租户午夜起算的实际分钟进入不同小时槽', async () => {
+    const input = { ...request(0), trigger: 'schedule' as const, timezone: 'America/Chicago',
+      businessDate: '2026-11-01', intervalHours: 1 };
+    const first = await create({ ...input,now: new Date('2026-11-01T06:30:00Z') });
+    const second = await create({ ...input,now: new Date('2026-11-01T07:30:00Z') });
+    expect(first).not.toBe(second);
+    expect((await read(first)).idempotency_key).toBe(`org_stats:schedule:${input.tenantId}:2026-11-01:1h:1`);
+    expect((await read(second)).idempotency_key).toBe(`org_stats:schedule:${input.tenantId}:2026-11-01:1h:2`);
+  });
   it('五类键、租户本地日期、统计槽与改回旧间隔去重', async () => {
     const base = request();
     expect(calcKey(base)).toBe(`org_stats:manual:${base.commandId}`);
