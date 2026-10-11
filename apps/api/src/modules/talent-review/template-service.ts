@@ -27,6 +27,8 @@ import { requireCreatable, requireEditable, type TemplateAnchor } from './templa
 import { buildPlan, checkTemplateReferences, type TemplateWriteContext, writeVersion } from './template-structure.js';
 import { loadTemplate, type TemplateView } from './template-view.js';
 
+import { loadFullCatalog } from './calc-rule-catalog.js';
+
 const invalid = (reason: string, message: string) => new AppError('VALIDATION_FAILED', message, { reason });
 
 async function requireOrg(tx: Tx, tenantId: string, orgId: string) {
@@ -50,7 +52,19 @@ async function audit(
   before: TemplateView | null,
   after: TemplateView | null,
 ) {
-  const strip = (view: TemplateView | null) => (view ? { ...view, versions: undefined, versionId: undefined } : null);
+  const names = new Map((await loadFullCatalog(tx, ctx.tenantId)).map((f) => [f.id, f.name]));
+  const strip = (view: TemplateView | null) =>
+    view
+      ? {
+          ...view,
+          versions: undefined,
+          versionId: undefined,
+          resultRules: view.resultRules.map(({ refModuleIds: _moduleIds, ...r }) => ({
+            ...r,
+            fieldNames: Object.fromEntries(r.refFieldIds.map((id) => [id, names.get(id)])),
+          })),
+        }
+      : null;
   await recordAudit(tx, {
     tenantId: ctx.tenantId,
     actorUserId: auditActor(ctx.userId),
@@ -122,7 +136,12 @@ export async function createTemplate(tx: Tx, ctx: TemplateWriteContext, input: T
 }
 
 const structural = (patch: TemplatePatch, flowChanged: boolean) =>
-  flowChanged || patch.steps !== undefined || patch.modules !== undefined || patch.permissions !== undefined;
+  flowChanged ||
+  patch.steps !== undefined ||
+  patch.modules !== undefined ||
+  patch.permissions !== undefined ||
+  patch.stepForms !== undefined ||
+  patch.resultRules !== undefined;
 
 export async function updateTemplate(
   tx: Tx,
@@ -149,7 +168,16 @@ export async function updateTemplate(
     const plan = await buildPlan(tx, ctx, { flowId: before.flowId, structure: before }, patch);
     await writeVersion(tx, ctx, id, versionNo, plan);
   }
-  const { steps: _s, modules: _m, permissions: _p, flowId: _f, ...header } = patch;
+  const {
+    steps: _s,
+    modules: _m,
+    permissions: _p,
+    flowId: _f,
+    stepForms: _sf,
+    resultRules: _rr,
+    fieldCatalogVersion: _cv,
+    ...header
+  } = patch;
   await uniqueOr('TEMPLATE_DUPLICATE', '盘点模板', () =>
     tx
       .update(T)
