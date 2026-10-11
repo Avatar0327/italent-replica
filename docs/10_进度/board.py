@@ -176,25 +176,46 @@ def live_prs():
         t_done = last(lambda b: b.startswith(("开发完成", "设计完成")))
         rounds = sum(1 for c in cs if c.get("body", "").lstrip().startswith("## 审查原文"))
         act = max([x for x in (last_push, cs[-1]["createdAt"] if cs else "") if x] or [p["createdAt"]])
+        # 10-11 用户指出看板与实际不符：CI 红 / 冲突原先排在审查阶段之前，审查中、审查通过待合并的 PR 被误报为卡点。
+        # 现在先按流程阶段定状态（等决定 → 审查中 → 审查通过合并中 → 返工 → 待送审），CI / 冲突只作附注
+        t_merge = last(lambda b: b.startswith(("待合并", "已合并 main，待合并", "【待合并】")))
+        # “暂不能合并：本轮代码复审通过，但 CI 未全绿”（#243）也算审查通过；之后贴过“待合并”同样算
+        head = res_body[:400]
+        approved = bool(t_res) and not (t_rev > t_res) and (("可以合并" in head and "暂不能合并" not in head) or "代码复审通过" in head or "代码审查通过" in head or t_merge > t_res)
+        # 【等决定】之后已有开发完成 / 审查发起，说明已不再等（如 #245 D02 随 #244 合并自然解除，未补【决定】）
+        asking = t_ask and t_ask > t_dec and t_ask > max(t_done, t_rev)
+        note = "；与 main 冲突" if p["mergeable"] == "CONFLICTING" else "；CI 红" if ci == "red" else "；CI 运行中" if ci == "running" else ""
         st, why = "dev", "开发中"
-        if t_ask and t_ask > t_dec:
+        if asking:
             st, why = "decide", "【等决定】待你 / 总编排定"
-        elif p["mergeable"] == "CONFLICTING":
-            st, why = "conflict", "与 main 冲突，CI 不跑"
-        elif ci == "red":
-            st, why = "cired", "CI 红"
         elif t_rev and t_rev > t_res:
             st, why = "review", f"第 {rounds + 1} 轮审查中"
-        elif t_res and t_res > max(t_done, last_push) and "可以合并" in res_body[:400]:
-            st, why = "merge", "审查通过，待合并"
-        elif t_res and t_res > max(t_done, last_push):
-            st, why = "rework", f"第 {rounds} 轮未过，返工中"
+        elif approved and ci == "red" and not t_merge > t_res:
+            st, why = "rework", "审查通过，CI 红修复中"
+            note = ""
+        elif approved:
+            st, why = "merge", "审查通过，合并中" + note
+            note = ""
+        elif t_res and t_done <= t_res:
+            st, why = f"rework", f"第 {rounds} 轮未过，返工中"
+        elif t_done and t_done > max(t_res, t_rev) and p["mergeable"] == "CONFLICTING":
+            st, why = "conflict", "开发完成，待合 main 后送审"
+            note = ""
+        elif t_done and t_done > max(t_res, t_rev) and not p["isDraft"]:
+            st, why = "queue", "开发完成，待发起审查"
+        elif p["mergeable"] == "CONFLICTING" and not p["isDraft"]:
+            st, why = "conflict", "与 main 冲突，CI 不跑"
+            note = ""
+        elif ci == "red" and not p["isDraft"]:
+            st, why = "cired", "CI 红"
+            note = ""
         elif not p["isDraft"] and ci == "green":
             st, why = "queue", "待发起审查"
         elif not p["isDraft"]:
             st, why = "ci", "等 CI"
+        why += note
         idle = age(act)
-        stuck = st in ("decide", "conflict", "cired") or (st in ("dev", "rework") and idle >= 60) or (st == "queue" and idle >= 15)
+        stuck = st == "decide" or (st in ("conflict", "cired", "merge") and idle >= 60) or (st in ("dev", "rework") and idle >= 60) or (st == "queue" and idle >= 15)
         out.append({"n": n, "t": p["title"][:60], "s": st, "why": why, "r": rounds, "idle": idle, "stuck": stuck,
                     "ask": age(t_ask) if st == "decide" else None})
     today = now.strftime("%Y-%m-%d")
