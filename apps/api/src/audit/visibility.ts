@@ -603,16 +603,13 @@ const RULES: readonly Rule[] = [
   }),
   // R3-T04 盘点模板（设计 §6.1）：按所属组织（日志写入时的所属组织）裁剪，“创建人”按保留的创建元数据（DEC-198）；
   // 向下公开只放开业务查看与选用，不放开审计（同 IDP 🟡 K-23）
-  orgRule(
-    [TALENT_REVIEW_OBJECTS.template.code],
-    TALENT_REVIEW_OBJECTS.template.code,
-    (row, viewer) =>
-      creatorSql(
-        viewer.tenantId,
-        row.objectId,
-        `${TALENT_REVIEW_AUDIT_ACTIONS.template}.create`,
-        TALENT_REVIEW_OBJECTS.template.code,
-      ),
+  orgRule([TALENT_REVIEW_OBJECTS.template.code], TALENT_REVIEW_OBJECTS.template.code, (row, viewer) =>
+    creatorSql(
+      viewer.tenantId,
+      row.objectId,
+      `${TALENT_REVIEW_AUDIT_ACTIONS.template}.create`,
+      TALENT_REVIEW_OBJECTS.template.code,
+    ),
   ),
   ...successionRules(),
   {

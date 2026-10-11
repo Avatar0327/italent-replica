@@ -1330,11 +1330,14 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/talent-review/template-routes.ts#recheck': [
     'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
     'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
-    'apps/api/src/modules/talent-review/access.ts#checkWriteFields',
     'apps/api/src/modules/talent-review/access.ts#codeOf',
     'apps/api/src/modules/talent-review/access.ts#reviewContext',
     'apps/api/src/modules/talent-review/access.ts#reviewWriteContext',
     '#referenced',
+  ],
+  'apps/api/src/modules/talent-review/template-routes.ts#recheckFields': [
+    'apps/api/src/modules/talent-review/access.ts#checkWriteFields',
+    '#recheck',
   ],
   'apps/api/src/modules/talent-review/template-routes.ts#referenced': [
     'apps/api/src/modules/talent-review/template-structure.ts#TEMPLATE_REFERENCES',
@@ -1359,6 +1362,8 @@ export const GRAPH: Graph = {
     '#TABLE',
     '#TEMPLATES',
     '#present',
+    '#recheck',
+    '#recheckFields',
     '#referencesOf',
     '#requireCatalogs',
     '#runGuarded',
@@ -1388,7 +1393,6 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/talent-review/template-access.ts#requireEditable',
     '#CATALOG_TABLES',
     '#present',
-    '#recheck',
     '#referenced',
     'apps/api/src/modules/talent-review/template-view.ts#headerOf',
   ],

@@ -660,6 +660,7 @@ const TPL_READONLY: Obligation = {
     },
   ],
 };
+const TPL_CATALOG_LABEL = { flow: 'Flow', scoreRule: 'ScoreRule', moduleGrade: 'ModuleGrade', field: 'Field' } as const;
 const TPL_REPLAY_READONLY: Obligation = {
   perm: 'guard:talentReview.templatePublicDownReadonly',
   facts: ['guard:talentReview.templatePublicDownReadonly'],
@@ -678,7 +679,7 @@ const TPL_REFERENCE = (): Obligation[] => [
     at: [tplEntry('await requireCatalogs(c, deps, references)')],
   },
   ...(['flow', 'scoreRule', 'moduleGrade', 'field'] as const).map((key): Obligation => ({
-    perm: `obj:TalentReview.${{ flow: 'Flow', scoreRule: 'ScoreRule', moduleGrade: 'ModuleGrade', field: 'Field' }[key]}:view`,
+    perm: `obj:TalentReview.${TPL_CATALOG_LABEL[key]}:view`,
     purpose: 'when:talentReview.templateCatalogReference',
     at: [
       { role: 'call', unit: `${TPR}#requireCatalogs`, anchor: 'const ctx = await reviewContext(c, deps, kind)' },
@@ -686,7 +687,7 @@ const TPL_REFERENCE = (): Obligation[] => [
       {
         role: 'const',
         unit: `${CATALOG}>${key}`,
-        anchor: `object('${{ flow: 'Flow', scoreRule: 'ScoreRule', moduleGrade: 'ModuleGrade', field: 'Field' }[key]}'`,
+        anchor: `object('${TPL_CATALOG_LABEL[key]}'`,
       },
     ],
   })),

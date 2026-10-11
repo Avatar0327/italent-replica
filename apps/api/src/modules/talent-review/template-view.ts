@@ -174,20 +174,7 @@ export async function loadStructure(
   return {
     versionId: version.id,
     versionNo,
-    steps: steps.map((step) => ({
-      nodeKey: step.nodeKey,
-      name: step.name,
-      kind: step.kind as StepView['kind'],
-      stepType: step.stepType,
-      mode: step.mode,
-      showMatrix: step.showMatrix,
-      allowReturn: step.allowReturn,
-      allowTransfer: step.allowTransfer,
-      allowDisagree: step.allowDisagree,
-      roles: roles
-        .filter((role) => role.stepId === step.id)
-        .map((role) => ({ roleId: role.roleId, resolver: role.resolver })),
-    })),
+    steps: steps.map((step) => stepView(step, roles)),
     modules: modules.map((module) => moduleView(module, levels, fields)),
     permissions: permissions
       .map((row) => ({ row, step: stepOf.get(row.stepId)!, module: moduleOf.get(row.moduleId)! }))
@@ -197,19 +184,40 @@ export async function loadStructure(
           roleOrder(a.row.roleId, a.row.stepId) - roleOrder(b.row.roleId, b.row.stepId) ||
           moduleOrder.get(a.row.moduleId)! - moduleOrder.get(b.row.moduleId)!,
       )
-      .map(({ row, step, module }) => ({
-        nodeKey: step.nodeKey,
-        roleId: row.roleId,
-        moduleName: module.name,
-        visible: row.visible,
-        scoreEnabled: row.scoreEnabled,
-        scoreRequired: row.scoreRequired,
-        commentEnabled: row.commentEnabled,
-        commentRequired: row.commentRequired,
-        weight: row.weight,
-        successorAccess: row.successorAccess,
-        targetAccess: row.targetAccess,
-      })),
+      .map(({ row, step, module }) => permissionView(row, step.nodeKey, module.name)),
+  };
+}
+
+function stepView(step: typeof S.$inferSelect, roles: (typeof SR.$inferSelect)[]): StepView {
+  return {
+    nodeKey: step.nodeKey,
+    name: step.name,
+    kind: step.kind as StepView['kind'],
+    stepType: step.stepType,
+    mode: step.mode,
+    showMatrix: step.showMatrix,
+    allowReturn: step.allowReturn,
+    allowTransfer: step.allowTransfer,
+    allowDisagree: step.allowDisagree,
+    roles: roles
+      .filter((role) => role.stepId === step.id)
+      .map((role) => ({ roleId: role.roleId, resolver: role.resolver })),
+  };
+}
+
+function permissionView(row: typeof P.$inferSelect, nodeKey: string, moduleName: string): PermissionView {
+  return {
+    nodeKey,
+    roleId: row.roleId,
+    moduleName,
+    visible: row.visible,
+    scoreEnabled: row.scoreEnabled,
+    scoreRequired: row.scoreRequired,
+    commentEnabled: row.commentEnabled,
+    commentRequired: row.commentRequired,
+    weight: row.weight,
+    successorAccess: row.successorAccess,
+    targetAccess: row.targetAccess,
   };
 }
 

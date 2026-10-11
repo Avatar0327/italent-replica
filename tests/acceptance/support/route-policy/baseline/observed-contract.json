@@ -1950,9 +1950,6 @@
           "revision(c)",
           "runCommand / runWrite"
         ],
-        "fieldsIn": [
-          "writeFields"
-        ],
         "fieldsOut": [
           "trimModuleResponse"
         ],
