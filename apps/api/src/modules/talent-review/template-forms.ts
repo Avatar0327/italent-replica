@@ -18,7 +18,12 @@ const fail = (reason: string) => {
 };
 const seatValid = (row: StepFormView | StepFormInput, steps: readonly StepView[]) => {
   const step = steps.find((s) => s.nodeKey === row.nodeKey);
-  return step && (step.kind === 'countersign' ? step.roles.some((r) => r.roleId === row.roleId) : row.roleId == null);
+  return (
+    step &&
+    (step.kind === 'countersign'
+      ? step.roles.some((r) => r.roleId === row.roleId)
+      : row.roleId === null || row.roleId === undefined)
+  );
 };
 
 export async function planStepForms(
@@ -55,8 +60,13 @@ export async function planStepForms(
   );
   return submitted.map((row) => {
     const form = forms.get(row.formId)!;
-    const kind =
-      row.purpose === 'info' ? 'info' : row.purpose === 'calibrate_edit' ? 'calibrate_edit' : 'succession_edit';
+    const kinds = {
+      info: 'info',
+      calibrate_edit: 'calibrate_edit',
+      successor_edit: 'succession_edit',
+      target_edit: 'succession_edit',
+    } as const;
+    const kind = kinds[row.purpose];
     if (form.kind !== kind) fail('STEP_FORM_KIND_MISMATCH');
     return { ...row, roleId: row.roleId ?? null, formSnapshot: form.fields };
   });

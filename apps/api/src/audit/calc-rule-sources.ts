@@ -45,6 +45,7 @@ export async function calcRuleSources(
         visible: new Map(seen.map((field) => [field.id.toLowerCase(), field.name])),
         allVisible: seen.length === fields.length,
         itemsViewable,
+        maskTargets: objectType === TALENT_REVIEW_OBJECTS.template.code,
       };
       return rows.map((row) =>
         row.objectType === objectType

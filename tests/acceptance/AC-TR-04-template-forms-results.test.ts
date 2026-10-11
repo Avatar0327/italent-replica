@@ -199,10 +199,14 @@ describe('AC-TR-04 / AC-TR-15：模板步骤表单与结果公式', () => {
     const text = await hidden.text();
     expect(text).toContain('不可见字段');
     for (const secret of [a.id, b.id, '甲分', '乙分', '@{tr-field:']) expect(text).not.toContain(secret);
-    expect((await world.api.request('POST', `${BASE}/admins`, {
-      ...base.asAdmin,
-      body: { userId: reader.user.id, role: 'audit_admin', grantableAdminRoles: [], grantableProfileIds: [] },
-    })).status).toBe(201);
+    expect(
+      (
+        await world.api.request('POST', `${BASE}/admins`, {
+          ...base.asAdmin,
+          body: { userId: reader.user.id, role: 'audit_admin', grantableAdminRoles: [], grantableProfileIds: [] },
+        })
+      ).status,
+    ).toBe(201);
     const audit = auditApi(testDb().db, TR_NOW.toISOString(), { authorize: undefined });
     const entries = await audit.dataChanges(reader.as, { objectType: 'TalentReview.Template', limit: '50' });
     const entry = entries.items.find((e) => e.objectId === t.id)!;
