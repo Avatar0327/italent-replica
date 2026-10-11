@@ -13,6 +13,7 @@ export type RenameRoundTrip = { readonly ok: true } | { readonly ok: false; read
 export function checkRenameRoundTrip(
   stored: string,
   fields: readonly { readonly id: string; readonly name: string }[],
+  versionField: (path: string) => boolean = () => false,
 ): RenameRoundTrip {
   const rendered = renderFormula(stored, { binding: 'bound', visibleFields: fields });
   if (!rendered.ok) return { ok: false, reason: 'NOT_PARSEABLE' };
@@ -22,6 +23,7 @@ export function checkRenameRoundTrip(
   const bound = bindFormula(rendered.text, {
     visibleFields: fields,
     proofs: rendered.bindings,
+    versionField,
     catalogVersion: { current: 0, submitted: 0 },
   });
   return bound.ok && bound.stored === stored ? { ok: true } : { ok: false, reason: 'NOT_PARSEABLE' };

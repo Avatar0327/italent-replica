@@ -114,11 +114,12 @@ async function reachedBeforeFinish(reached: ReturnType<typeof signal>, request: 
 }
 
 describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-360-F034 真实 PG 替换与作答交错', () => {
-  it('A 已提交；B 首次保存等待评价者锁；确认替换提交后 B 必须 404，旧答卷和答案不复活', async () => {
+  it('F-076 §3.5.1：B 持活动锁等待评价者锁，替换排在 B 后面；依次提交后旧答卷清空', async () => {
     const f = await fixture('f034-pg-appraiser');
     const lockKey = f.w.tenantId + ':survey360-answer:' + f.activity.id + ':' + f.b.id;
     const gate = hold(f.w.db, f.w.tenantId, sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`);
     let save: Promise<Response> | undefined;
+    let replace: Promise<Response> | undefined;
     try {
       await reachedBeforeFinish(gate.reached, gate.promise);
       let finished = false;
@@ -126,16 +127,22 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-360-F034 真实 PG �
         finished = true;
       });
       await waitForLock(f.w.db, '%pg_advisory_xact_lock%', () => finished);
-      await f.w.ok(f.replace());
-      expect(await counts(f.w, f.activity.id, f.old.id)).toEqual({ sheets: 0, answers: 0 });
+      // 活动在评价者锁之前：替换须等待 B 的活动 KEY SHARE，不能在这里等替换完成再释放评价者锁。
+      let replaced = false;
+      replace = f.replace().finally(() => {
+        replaced = true;
+      });
+      await waitForLock(f.w.db, '%survey360_activities%', () => replaced);
       gate.release.resolve();
-      await assertRejected(f, await save);
-      // 原命令重提不能复活旧任务；原链接仍可作答新套卷。
-      await assertRejected(f, await f.save());
+      await f.w.ok(await save);
+      await f.w.ok(await replace);
+      expect(await counts(f.w, f.activity.id, f.old.id)).toEqual({ sheets: 0, answers: 0 });
+      // B 先成功保存，替换随后清空；原命令重放也不能返回已经被替换的旧答卷。
+      expect((await f.save()).status).toBe(404);
       await f.w.ok((await f.w.answer(f.tokenB, f.relationB.id, f.next, ['v3', 'v3'])) as Response);
     } finally {
       gate.release.resolve();
-      await Promise.allSettled([gate.promise, ...(save ? [save] : [])]);
+      await Promise.allSettled([gate.promise, ...(save ? [save] : []), ...(replace ? [replace] : [])]);
     }
   });
 

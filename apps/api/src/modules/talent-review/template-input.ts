@@ -15,6 +15,7 @@ import {
   FLOW_MAX_NODES,
 } from '@italent/domain';
 import { z } from 'zod';
+import { resultRuleInput, stepFormInput } from './template-extra-input.js';
 
 /** 标识统一小写规范化（DEC-194）。 */
 const uuid = z.uuid().transform((value) => value.toLowerCase());
@@ -63,6 +64,9 @@ export const templateCreate = z.strictObject({
   steps: z.array(step).max(FLOW_MAX_NODES).optional(),
   modules: z.array(module).max(TEMPLATE_MAX_MODULES).optional(),
   permissions: z.array(permission).max(TEMPLATE_MAX_PERMISSIONS).optional(),
+  stepForms: z.array(stepFormInput).max(400).optional(),
+  resultRules: z.array(resultRuleInput).max(100).optional(),
+  fieldCatalogVersion: z.int().min(0).optional(),
 });
 export const templatePatch = templateCreate.partial();
 
