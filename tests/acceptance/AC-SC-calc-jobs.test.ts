@@ -28,6 +28,7 @@ const now = new Date('2026-10-11T08:00:00Z');
 const PATH = '/api/platform/succession/jobs/run';
 let tenants: Awaited<ReturnType<typeof seedTenantWithMember>>[];
 let operator: Awaited<ReturnType<typeof seedOperator>>;
+let objectIds: string[] = [];
 const producer: CalcProducer = {
   kind: 'org_stats',
   async runTenant(t: Tx, tenant, time) {
@@ -43,7 +44,7 @@ const producer: CalcProducer = {
         requestedBy: null,
         businessDate: tenantLocalDate(time, tenant.timezone),
         commandId: randomUUID(),
-        objects: [],
+        objects: objectIds.map((objectId) => ({ objectType: 'org', objectId })),
       },
       time,
     );
@@ -127,6 +128,31 @@ describe('AC-SC-calc-jobs 按租户调度', () => {
     );
     expect(last.nextCursor).toBeNull();
     expect(await list(tenants[2]!.tenant.id)).toMatchObject([{ status: 'succeeded' }]);
+  });
+  it('平台命令恢复推进 running；同一当期重放不重复执行冻结对象', async () => {
+    objectIds = Array.from({ length: 201 }, () => randomUUID());
+    const input = {
+      kind: 'org_stats' as const,
+      tenantId: tenants[2]!.tenant.id,
+      userId: operator.id,
+      commandId: randomUUID(),
+    };
+    const deps = { db: db(), clock: () => new Date('2026-10-12T08:00:00Z') };
+    const first = await dispatchCalcJobs(deps, input, SUCCESSION_PRODUCERS);
+    const id = first.items[0]!.runIds![0]!;
+    expect((await list(input.tenantId)).find((run) => run.id === id)?.status).toBe('running');
+    const resumed = await dispatchCalcJobs(deps, input, SUCCESSION_PRODUCERS);
+    expect(resumed).toEqual(first);
+    expect((await list(input.tenantId)).find((run) => run.id === id)?.status).toBe('succeeded');
+    expect(
+      await withTenant(db(), input.tenantId, async (t) =>
+        rowsOf(
+          await t.execute(sql`
+      SELECT count(*)::int n FROM succession_calc_run_objects WHERE run_id=${id}::uuid AND outcome='written'`),
+        ),
+      ),
+    ).toEqual([{ n: 201 }]);
+    objectIds = [];
   });
   it('无平台身份、非法输入、缺幂等键、未登记 kind 明确拒绝', async () => {
     const api = tenantApi(db());
