@@ -1,6 +1,6 @@
 /** DEC-427 / 设计 §1.5、§4.6：同一契约在 PGlite 与真 PG 执行；HTTP 入口归 B3b。 */
 import { randomUUID } from 'node:crypto';
-import { sql, withTenant } from '@italent/db';
+import { sql, withTenant, type Db } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
@@ -10,7 +10,10 @@ import {
   defineCalcKinds,
 } from '../../apps/api/src/modules/succession/calc-contract.js';
 import { enqueueCalcRun, changeCalcRun, runCalcPage } from '../../apps/api/src/modules/succession/calc-worker.js';
-import { deliverCalcNotification } from '../../apps/api/src/modules/succession/calc-notifications.js';
+import {
+  deliverCalcNotification,
+  pendingCalcNotifications,
+} from '../../apps/api/src/modules/succession/calc-notifications.js';
 import { seedTenantWithMember } from './support/tenant-api.js';
 import { rowsOf } from './support/f048.js';
 import { waitForBlocked } from './support/pg-interleave.js';
@@ -149,7 +152,7 @@ describe('AC-SC-calc-core run 契约', () => {
       execute: async (ctx, object) => {
         await kinds()[0]!.execute(ctx, object);
         if (object.objectId === retry!.objectId) throw new CalcObjectFailure('PRINCIPAL_SCOPE_MISSING', true);
-        if (object.objectId === conflict!.objectId) throw new CalcObjectFailure('REVISION_CONFLICT', false);
+        if (object.objectId === conflict!.objectId) throw new CalcObjectFailure('REVISION_CONFLICT', true);
         return 'written';
       },
     });
@@ -221,6 +224,114 @@ describe('AC-SC-calc-core run 契约', () => {
       details: { reason: 'RUN_NOT_RETRYABLE' },
     });
   });
+
+  it('主体无有效成员时 blocked；恢复重验主体；已提交页在下一页失败后仍保留', async () => {
+    const id = await create(request(201));
+    expect(await page(id, kinds({ authorizePage: async () => randomUUID() }))).toBe('blocked');
+    expect(await read(id)).toMatchObject({ block_reason: 'PRINCIPAL_UNAVAILABLE' });
+    expect(await effects(id)).toBe(0);
+    await change(id, 'retry');
+    expect(await page(id)).toBe('running');
+    expect(
+      await page(
+        id,
+        kinds({
+          authorizePage: async () => {
+            throw new CalcBlocked('RULE_CACHE_STALE');
+          },
+        }),
+      ),
+    ).toBe('blocked');
+    expect(await effects(id)).toBe(200);
+    await change(id, 'retry');
+    expect(await page(id)).toBe('succeeded');
+    expect(await effects(id)).toBe(201);
+  });
+
+  it('通知 unknown 不盲重发；停用或撤销接收人不登记；对象与通知约束由数据库兜底', async () => {
+    const id = await create();
+    expect(await page(id)).toBe('succeeded');
+    const [notice] = rowsOf<{ id: string }>(
+      await tx((t) => t.execute(sql`SELECT id FROM succession_notifications WHERE run_id=${id}::uuid`)),
+    );
+    let sends = 0;
+    const send = async () => {
+      sends++;
+      throw new Error('模拟结果未知');
+    };
+    await deliverCalcNotification(db(), member.tenant.id, notice!.id, send, now);
+    await deliverCalcNotification(db(), member.tenant.id, notice!.id, send, now);
+    expect(sends).toBe(1);
+    const [state] = rowsOf<{ state: string; attempt_no: number }>(
+      await tx((t) =>
+        t.execute(sql`SELECT state,attempt_no FROM succession_notifications WHERE id=${notice!.id}::uuid`),
+      ),
+    );
+    expect(state).toEqual({ state: 'unknown', attempt_no: 1 });
+    expect((await tx((t) => pendingCalcNotifications(t, member.tenant.id))).map((n) => n.id)).not.toContain(notice!.id);
+    for (const column of ['user', 'member']) {
+      const recipient = await seedTenantWithMember(db(), `calc-inactive-${column}`);
+      await db().execute(sql`INSERT INTO tenant_memberships (tenant_id,user_id,status)
+        VALUES (${member.tenant.id}::uuid,${recipient.user.id}::uuid,'active')`);
+      if (column === 'user')
+        await db().execute(sql`UPDATE users SET status='disabled' WHERE id=${recipient.user.id}::uuid`);
+      else
+        await tx((t) =>
+          t.execute(sql`UPDATE tenant_memberships SET status='revoked' WHERE user_id=${recipient.user.id}::uuid`),
+        );
+      const inactive = await create({ ...request(), requestedBy: recipient.user.id });
+      expect(await page(inactive)).toBe('succeeded');
+      expect(
+        rowsOf(await tx((t) => t.execute(sql`SELECT id FROM succession_notifications WHERE run_id=${inactive}::uuid`))),
+      ).toEqual([]);
+    }
+    await expect(
+      tx((t) =>
+        t.execute(sql`INSERT INTO succession_notifications
+      (tenant_id,run_id,batch_id,recipient_user_id,kind,command_id)
+      VALUES (${member.tenant.id}::uuid,${id}::uuid,${randomUUID()}::uuid,${member.user.id}::uuid,'calc_done','bad')`),
+      ),
+    ).rejects.toMatchObject({ cause: { code: '23514' } });
+  });
+
+  it('已提交但连接回报失败：按 revision 回查确认，不改 blocked、不重复对象/通知/审计', async () => {
+    const id = await create();
+    let unknown = true;
+    const actual = db();
+    const transaction: Db['transaction'] = async (callback, config) => {
+      const result = await actual.transaction(callback, config);
+      if (unknown) {
+        unknown = false;
+        throw new Error('提交已完成，回包丢失');
+      }
+      return result;
+    };
+    const wrapped = new Proxy(actual, {
+      get(target, key, receiver) {
+        return key === 'transaction' ? transaction : Reflect.get(target, key, receiver);
+      },
+    });
+    expect(await runCalcPage(wrapped, member.tenant.id, id, kinds(), now)).toBe('succeeded');
+    expect(await page(id)).toBe('succeeded');
+    expect(await effects(id)).toBe(1);
+    const audit = rowsOf<{ n: number }>(
+      await tx((t) => t.execute(sql`SELECT count(*)::int n FROM audit_events WHERE object_id=${id}`)),
+    );
+    expect(audit[0]!.n).toBe(2);
+  });
+
+  it.runIf(Boolean(process.env.TEST_DATABASE_URL))(
+    'AC-SC-calc-pg 并发同键建 run 只冻结一次，异内容败者不覆盖',
+    async () => {
+      const input = request(2);
+      const ids = await Promise.all([create(input), create(input)]);
+      expect(ids[0]).toBe(ids[1]);
+      const results = await Promise.allSettled([create(input), create({ ...input, objects: objects(1) })]);
+      expect(results.map((r) => r.status)).toEqual(['fulfilled', 'rejected']);
+      expect(await page(ids[0]!)).toBe('succeeded');
+      expect(await effects(ids[0]!)).toBe(2);
+    },
+  );
 
   it.runIf(Boolean(process.env.TEST_DATABASE_URL))(
     'AC-SC-calc-pg 双 worker 在 run 行锁交错；第二个从下一页继续',
