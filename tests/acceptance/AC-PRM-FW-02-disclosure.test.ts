@@ -12,6 +12,8 @@ import { type ManifestRoute, routeManifest, type RouteManifest, type RoutePolicy
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { readFrozenContract } from './support/route-policy/baseline.js';
+import { DETECTOR_CONTRACT, DETECTOR_REQUIRED, DETECTOR_SEMANTICS } from './support/route-policy/detector-fixtures.js';
+import { registration } from './support/route-policy/registration.js';
 import type { Finding } from './support/route-policy/compare.js';
 import type { ObservedContract } from './support/route-policy/contract.js';
 import { checkStored } from './support/route-policy/evidence.js';
@@ -58,15 +60,15 @@ const withPolicy = (base: ManifestRoute, policy: unknown): ManifestRoute => ({
 });
 const codes = (findings: readonly Finding[]) => findings.map((f) => f.code);
 const show = (findings: readonly Finding[]) => findings.map((f) => `${f.route} ${f.code}: ${f.detail}`).join('\n');
-const check = (routes: readonly ManifestRoute[], table: RequiredTable = REQUIRED) =>
-  checkRequired(table, frozen, routes);
+const check = (routes: readonly ManifestRoute[], table: RequiredTable = DETECTOR_REQUIRED) =>
+  checkRequired(table, DETECTOR_CONTRACT, routes, DETECTOR_SEMANTICS);
 const entry = (key: string): readonly Obligation[] => {
-  const found = REQUIRED[key];
+  const found = DETECTOR_REQUIRED[key];
   if (!found) throw new Error(`表里没有 ${key}`);
   return found;
 };
 const withEntry = (key: string, obligations: readonly Obligation[]): RequiredTable => ({
-  ...REQUIRED,
+  ...DETECTOR_REQUIRED,
   [key]: obligations,
 });
 const MEMBER = { kind: 'member', reason: '夹具', fields: { mode: 'none', reason: '夹具' } };
@@ -80,7 +82,10 @@ const disclosureBranches = () =>
 
 describe('AC-PRM-FW-02 B-01 披露分支：位置 / 嵌套 / 名字（D1～D3）与逐备选比较（R3）', () => {
   it('真实声明 × 真实表零发现；披露位置全部挂在根节点，名字合 D3，数量等于表里的披露分支数', () => {
-    const findings = gateEvidence(check(manifest.declared), '真实声明 × 披露义务登记（DEC-416③）');
+    const findings = gateEvidence(
+      checkRequired(REQUIRED, frozen, manifest.declared),
+      '真实声明 × 披露义务登记（DEC-416③）',
+    );
     expect(findings, show(findings)).toEqual([]);
     const branches = manifest.declared.flatMap((r) => [...declaredPerms(r.policy).optional]);
     const drift = [];
@@ -221,9 +226,12 @@ describe('AC-PRM-FW-02 B-03 范围绑定（need）：与“或”满足合并、
   });
 
   it('GET /idp/approval-processes（view AND (create OR update)）：need 随所属组内备选参与“或”，零发现', () => {
+    expect(gateEvidence(checkRequired(REQUIRED, frozen, [route(APPROVAL_PROCESSES)]), 'IDP 审批流程静态登记')).toEqual(
+      [],
+    );
     expect(check([route(APPROVAL_PROCESSES)])).toEqual([]);
-    const needs = entry(APPROVAL_PROCESSES).map((o) => o.need);
-    expect(needs.every((n) => n !== undefined)).toBe(true);
+    const needs = (REQUIRED[APPROVAL_PROCESSES] ?? []).map((o) => o.need);
+    registration('IDP 审批流程 need 登记', () => expect(needs.every((n) => n !== undefined)).toBe(true));
   });
 
   it('“或”组 need：备选 {view, create} 里 create 的范围与 need 不符时，不被同组另一支（update）顶替 → REQUIRED_MISSING', () => {
@@ -248,8 +256,10 @@ describe('AC-PRM-FW-02 B-03 范围绑定（need）：与“或”满足合并、
         return new Set(carriers).size >= 2;
       }),
     );
-    expect(multi).toHaveLength(22);
-    expect(new Set(unbound.map((f) => f.route))).toEqual(new Set(multi.map((r) => `${r.method} ${r.path}`)));
+    registration('多个准入承载节点的静态统计', () => expect(multi).toHaveLength(22));
+    // 对每个实际进入反例的完整表项验证检测器；未登记的端点由真实总入口报告，不能混入这个反例的 oracle。
+    const registered = multi.filter((r) => REQUIRED[`${r.method} ${r.path}`]);
+    expect(new Set(unbound.map((f) => f.route))).toEqual(new Set(registered.map((r) => `${r.method} ${r.path}`)));
   });
 
   it('R3c：披露义务缺 need → DISCLOSURE_NEED_UNBOUND（每条披露义务一条）', () => {
@@ -261,7 +271,7 @@ describe('AC-PRM-FW-02 B-03 范围绑定（need）：与“或”满足合并、
     const found = check([base], table).filter((f) => f.code === 'DISCLOSURE_NEED_UNBOUND');
     expect(found).toHaveLength(entry(MANAGER).filter(isDisclosure).length);
     const all = Object.values(REQUIRED).flat().filter(isDisclosure);
-    expect(all.every((o) => o.need !== undefined)).toBe(true);
+    registration('全表披露 need 完整性', () => expect(all.every((o) => o.need !== undefined)).toBe(true));
   });
 
   it('NEED_EVIDENCE_MISSING：need.scope 不是 none 的义务必须有 role: scope 的证据', () => {
@@ -272,7 +282,9 @@ describe('AC-PRM-FW-02 B-03 范围绑定（need）：与“或”满足合并、
       const found = check([route(key)], withEntry(key, noEvidence)).filter((f) => f.code === 'NEED_EVIDENCE_MISSING');
       expect(found.length, key).toBeGreaterThan(0);
     }
-    const findings = check(manifest.declared).filter((f) => f.code === 'NEED_EVIDENCE_MISSING');
+    const findings = checkRequired(REQUIRED, frozen, manifest.declared).filter(
+      (f) => f.code === 'NEED_EVIDENCE_MISSING',
+    );
     expect(gateEvidence(findings, '范围义务静态证据登记（DEC-416③）')).toEqual([]);
   });
 
@@ -300,13 +312,15 @@ describe('AC-PRM-FW-02 B-01 / B-03 结构弱化：按声明结构与表的披露
   for (const kind of DISCLOSURE_WEAKENING_KINDS) {
     it(`${kind}：每一个都报出期望码`, () => {
       const weakenings = all().filter((w) => w.kind === kind);
-      const missed = weakenings.filter((w) => !check([w.route]).some((f) => f.code === w.expected));
+      const missed = weakenings.filter((w) => !check([w.route], REQUIRED).some((f) => f.code === w.expected));
       expect(
         missed.map((w) => `${w.route.method} ${w.route.path} @${w.at}`),
         `${kind}：生成 ${weakenings.length} 个，未报出 ${missed.length}`,
       ).toEqual([]);
       if (kind.includes('scope')) {
-        const detail = weakenings.map((w) => check([w.route]).find((f) => f.code === w.expected)!.detail).join('\n');
+        const detail = weakenings
+          .map((w) => check([w.route], REQUIRED).find((f) => f.code === w.expected)!.detail)
+          .join('\n');
         expect(detail, kind).toContain('范围不符');
       }
     });
@@ -325,9 +339,11 @@ describe('AC-PRM-FW-02 守卫内部义务：内部角色 inner、GUARD_INNER_ALT
   );
 
   it('现表全部守卫内部义务（PR-A 台账 45 条 + 任职资格 18 条）都登记 inner；角色只取 required / or / when', () => {
-    expect(guards.length).toBeGreaterThanOrEqual(45);
+    registration('守卫内部义务静态数量', () => expect(guards.length).toBeGreaterThanOrEqual(45));
     for (const [key, o] of guards) {
-      expect(['required', 'or', 'when'], `${key} ${o.perm}`).toContain(o.inner?.role);
+      registration(`${key} ${o.perm} 内部角色`, () =>
+        expect(['required', 'or', 'when'], `${key} ${o.perm}`).toContain(o.inner?.role),
+      );
     }
   });
 
@@ -344,10 +360,14 @@ describe('AC-PRM-FW-02 守卫内部义务：内部角色 inner、GUARD_INNER_ALT
 
   it('idp.executor 的内部“或”：HR（权限）或参与人（数据态，不经授权器），带证据', () => {
     const executor = GUARD_INNER_ALTS['idp.executor'];
-    expect(executor).toBeDefined();
-    expect(Object.keys(executor!.alts).sort()).toEqual(['hr', 'participant']);
-    expect(executor!.alts['hr']).toEqual(['obj:IDP.Idp:view']);
-    expect(executor!.alts['participant']).toBe('data:idp.planParticipant');
+    registration('idp.executor 内部备选登记', () => expect(executor).toBeDefined());
+    registration('idp.executor 内部备选集合', () =>
+      expect(Object.keys(executor?.alts ?? {}).sort()).toEqual(['hr', 'participant']),
+    );
+    registration('idp.executor HR 备选', () => expect(executor?.alts['hr']).toEqual(['obj:IDP.Idp:view']));
+    registration('idp.executor 参与人备选', () =>
+      expect(executor?.alts['participant']).toBe('data:idp.planParticipant'),
+    );
     const synthetic: RequiredTable = Object.fromEntries(
       Object.entries(GUARD_INNER_ALTS).map(([carrier, registered]) => [
         `inner ${carrier}`,
@@ -359,8 +379,8 @@ describe('AC-PRM-FW-02 守卫内部义务：内部角色 inner、GUARD_INNER_ALT
   });
 
   it('idp.executor 的 9 个执行入口内部角色为 or（hr 备选）；登记错了备选名 → GUARD_INNER_ALT_UNREGISTERED', () => {
-    const inner = entry(GOALS).find((o) => o.purpose === 'guard:idp.executor')!.inner;
-    expect(inner).toEqual({ role: 'or', group: 'executor', alt: 'hr' });
+    const inner = (REQUIRED[GOALS] ?? []).find((o) => o.purpose === 'guard:idp.executor')?.inner;
+    registration('IDP 执行入口内部角色', () => expect(inner).toEqual({ role: 'or', group: 'executor', alt: 'hr' }));
     const wrong = entry(GOALS).map((o) =>
       o.purpose === 'guard:idp.executor' ? { ...o, inner: { role: 'or' as const, group: 'executor', alt: 'x' } } : o,
     );

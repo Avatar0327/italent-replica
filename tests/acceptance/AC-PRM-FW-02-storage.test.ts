@@ -30,6 +30,7 @@ import {
   unitText,
 } from './support/route-policy/evidence.js';
 import { gateEvidence, softGate } from './support/route-policy/evidence-gate.js';
+import { registration } from './support/route-policy/registration.js';
 import {
   explainFromGit,
   explainGraphDiff,
@@ -102,7 +103,7 @@ describe('AC-PRM-FW-02 图存储：真实表等价与确定性（F-072 测试 1�
     const current = currentRegistry(REQUIRED);
     if (!isDeepStrictEqual(STORED_REGISTRY.units, current.units)) mismatched.push('证据单元摘要（units.ts）');
     expect(softGate('图存储：登记图与源码闭包', mismatched)).toEqual([]);
-    expect(roots().length).toBeGreaterThan(600);
+    registration('真实登记图的根统计', () => expect(roots().length).toBeGreaterThan(600));
   });
 
   it('生成两次字节相同；提交的登记文件 = 当前源码生成的内容（登记与源码同步）', () => {

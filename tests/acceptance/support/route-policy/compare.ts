@@ -31,6 +31,11 @@ export interface Finding {
   readonly group?: StaleGroup;
 }
 
+export interface ComparisonOptions {
+  /** 真实登记缺端点 / 原语承接时先报告缺项；检测器夹具保持完整输入和原有硬比较。 */
+  readonly allowIncompleteRegistration?: boolean;
+}
+
 /** 双向比较的维度。 */
 const BOTH_WAYS = ['admin', 'self'] as const;
 /** 只查"声明不得弱于现状"的维度。 */
@@ -246,6 +251,7 @@ export function compareRoute(
   route: ManifestRoute,
   table: RequiredTable = REQUIRED,
   bindings: BranchBindings = BRANCH_BINDINGS,
+  options: ComparisonOptions = {},
 ): Finding[] {
   const key = `${route.method} ${route.path}`;
   const raw = contract.routes[key];
@@ -267,9 +273,16 @@ export function compareRoute(
   if (route.method === 'GET' && decl.union.dims.has('write')) report('OVERDECLARED:write', 'GET 路由带 write');
 
   const many = decl.alternatives.length > 1;
-  decl.alternatives.forEach((alt, i) => {
-    compareAlternative(observed, alt, many ? `备选 ${i + 1}/${decl.alternatives.length}：` : '', report);
-  });
+  const incomplete =
+    options.allowIncompleteRegistration &&
+    findings.some((finding) =>
+      ['REQUIRED_ENTRY_MISSING', 'REQUIRED_TABLE_GAP', 'REQUIRED_STALE_FACT'].includes(finding.code),
+    );
+  // 缺承接登记时无法分流准入 / 披露，不能把原始披露事实误判成 WEAKER；身份、write 与选择器结构仍照常检查。
+  if (!incomplete)
+    decl.alternatives.forEach((alt, i) => {
+      compareAlternative(observed, alt, many ? `备选 ${i + 1}/${decl.alternatives.length}：` : '', report);
+    });
 
   // “或”关系原语的各支维度也算观测到（流程查看的管理员分支）
   const ors = DISJUNCTIONS.filter((d) => observed.primitives['or']?.includes(d.name));
@@ -295,6 +308,7 @@ export function compareDeclarations(
   routes: readonly ManifestRoute[],
   table: RequiredTable = REQUIRED,
   bindings: BranchBindings = BRANCH_BINDINGS,
+  options: ComparisonOptions = {},
 ): Finding[] {
-  return routes.flatMap((route) => compareRoute(contract, route, table, bindings));
+  return routes.flatMap((route) => compareRoute(contract, route, table, bindings, options));
 }

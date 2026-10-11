@@ -4,6 +4,9 @@ import type { Obligation, RequiredTable } from './required/types.js';
 // 只改变当前测试进程读到的真实登记；产品、声明、冻结文件与测试主体均保持原样。
 vi.mock('./required/index.js', async (original) => {
   const actual = await original<{ REQUIRED: RequiredTable }>();
+  if (!['endpoints', 'guard-inner'].includes(process.env['ROUTE_POLICY_TEST_OMISSION'] ?? '')) {
+    throw new Error('真实入口回归必须显式选择 endpoints 或 guard-inner');
+  }
   const endpoints = new Set([
     'GET /api/tenant/employment/transfers/manager',
     'GET /api/tenant/talent/criteria/:id/model-image',

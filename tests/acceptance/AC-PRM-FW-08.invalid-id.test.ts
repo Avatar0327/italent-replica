@@ -23,7 +23,7 @@ import {
   p3Applicable,
   readFrozenProbes,
 } from './support/route-policy/discovery.js';
-import { gateEvidence } from './support/route-policy/evidence-gate.js';
+import { gateEvidence, softGate } from './support/route-policy/evidence-gate.js';
 import { checkEvidenceRefs, KNOWN_GAPS } from './support/route-policy/probe-known-gaps.js';
 import { REDUNDANT_OBSERVATIONS } from './support/route-policy/probe-redundant.js';
 import { REQUIRED } from './support/route-policy/required/index.js';
@@ -163,7 +163,11 @@ describe('AC-PRM-FW-08 账本证据锚点不能是纯注释（#163 第 2 轮 P3�
     expect(gateEvidence(redundant, '冗余观测账本证据锚点')).toEqual([]);
     // 原审定的 41 项（survey360#1～#3、qualification#1～#5、idp#1～#2）在 F-075（DEC-369）去掉冗余调用并从账本删除；
     // #125 新增的套卷模板 / 报告模板入口 18 项（survey360.allActivities#4）在 F-075b（DEC-373①）去掉并从账本删除
-    expect(REDUNDANT_OBSERVATIONS.map((g) => g.id)).toEqual([]);
-    expect(REDUNDANT_OBSERVATIONS.flatMap((g) => g.pairs)).toHaveLength(0);
+    expect(
+      softGate(
+        '真实冗余观测台账',
+        REDUNDANT_OBSERVATIONS.map((g) => g.id),
+      ),
+    ).toEqual([]);
   });
 });

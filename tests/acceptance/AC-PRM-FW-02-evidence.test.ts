@@ -29,6 +29,8 @@ import {
   usesOf,
 } from './support/route-policy/evidence.js';
 import { gateEvidence, softGate } from './support/route-policy/evidence-gate.js';
+import { compareRegisteredDeclarations, registration } from './support/route-policy/registration.js';
+import { DETECTOR_REQUIRED, checkDetectorEvidence } from './support/route-policy/detector-fixtures.js';
 import { impactCounts } from './support/route-policy/evidence-report.js';
 import { REQUIRED } from './support/route-policy/required/index.js';
 import type { Evidence, Obligation, RequiredTable } from './support/route-policy/required/types.js';
@@ -244,7 +246,7 @@ describe('AC-PRM-FW-02 证据闭包（B-02）：真实表', () => {
 
   it('全表零发现，且没有任何位于 modules/** 的未解析项；输出闭包大小 / 最大深度 / unresolved / 依赖牵连的义务数分布', () => {
     const reports = closureReports(REQUIRED);
-    expect(reports.length).toBeGreaterThan(100);
+    registration('真实登记的证据根统计', () => expect(reports.length).toBeGreaterThan(100));
     const quantiles = (values: number[]) => {
       const sorted = [...values].sort((a, b) => a - b);
       const pick = (q: number) => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * q))]!;
@@ -294,7 +296,7 @@ describe('AC-PRM-FW-02 证据闭包（B-02）：真实表', () => {
 
 describe('AC-PRM-FW-02 R9 去重键加调用点（B-04）', () => {
   const GOALS = 'POST /api/tenant/idp/plans/:id/goals';
-  const entry = (key: string) => REQUIRED[key]!;
+  const entry = (key: string) => DETECTOR_REQUIRED[key]!;
   const base: Obligation = {
     perm: 'btn:Fixture#open@list',
     at: [GATE_CALL],
@@ -321,9 +323,9 @@ describe('AC-PRM-FW-02 R9 去重键加调用点（B-04）', () => {
   });
 
   it('IDP 执行人入口“守卫内部 + 披露”复用同一权限仍通过；完全相同的重复才冲突', () => {
-    expect(codes(checkEvidence({ [GOALS]: entry(GOALS) }))).not.toContain('TABLE_CONFLICT');
+    expect(codes(checkDetectorEvidence({ [GOALS]: entry(GOALS) }))).not.toContain('TABLE_CONFLICT');
     const view = entry(GOALS).find((o) => o.perm === 'obj:IDP.Idp:view')!;
-    expect(codes(checkEvidence({ [GOALS]: [...entry(GOALS), view] }))).toContain('TABLE_CONFLICT');
+    expect(codes(checkDetectorEvidence({ [GOALS]: [...entry(GOALS), view] }))).toContain('TABLE_CONFLICT');
   });
 });
 
@@ -394,7 +396,10 @@ describe('AC-PRM-FW-02 选择器绑定（B-07）：登记完整性', () => {
   });
 
   it('真实声明 × 真实登记：31 个 map 选择器位置（23 条端点；设计估算 29 个，另含 failureAudit.objectType 与任职资格 owner-orgs）零发现', () => {
-    const findings = gateEvidence(compare(manifest.declared), '真实声明 × 真实登记（选择器）');
+    const findings = gateEvidence(
+      compareRegisteredDeclarations(frozen, manifest.declared),
+      '真实声明 × 真实登记（选择器）',
+    );
     expect(findings, show(findings)).toEqual([]);
   });
 

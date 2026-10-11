@@ -13,6 +13,8 @@ import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { subsetScene } from './AC-QL-subset-support.js';
 import { readFrozenContract } from './support/route-policy/baseline.js';
+import { DETECTOR_CONTRACT, DETECTOR_REQUIRED, DETECTOR_SEMANTICS } from './support/route-policy/detector-fixtures.js';
+import { registrationIt as test } from './support/route-policy/registration.js';
 import type { ObservedContract } from './support/route-policy/contract.js';
 import { type SourceReader, checkEvidence, checkStored, repoSource } from './support/route-policy/evidence.js';
 import { gateEvidence } from './support/route-policy/evidence-gate.js';
@@ -52,7 +54,7 @@ const route = (key: string): ManifestRoute => {
   return found;
 };
 const withEntry = (key: string, obligations: readonly Obligation[]): RequiredTable => ({
-  ...REQUIRED,
+  ...DETECTOR_REQUIRED,
   [key]: obligations,
 });
 
@@ -60,7 +62,7 @@ const CATEGORY = 'Qualification.EmploymentCategory';
 const LEVEL = 'Qualification.EmploymentLevel';
 
 describe('AC-PRM-FW-02 C1-1 P2-3 守卫内部义务：qualification 的新引用校验 × 类别 / 级别查看权', () => {
-  it('POST 新增、PATCH 更换引用：personnel.subsetPolicy 登记两条内部 when 义务；DELETE 不产生', () => {
+  test('POST 新增、PATCH 更换引用：personnel.subsetPolicy 登记两条内部 when 义务；DELETE 不产生', () => {
     for (const key of [POST_KEY, PATCH_KEY]) {
       const found = inners(key);
       expect(
@@ -75,7 +77,7 @@ describe('AC-PRM-FW-02 C1-1 P2-3 守卫内部义务：qualification 的新引用
     expect(inners(DELETE_KEY)).toEqual([]);
   });
 
-  it('条件语义已登记：人工来源 + 新引用 + 规范化后才算变化；只改日期、同一 UUID 大小写不同、删除不判', () => {
+  test('条件语义已登记：人工来源 + 新引用 + 规范化后才算变化；只改日期、同一 UUID 大小写不同、删除不判', () => {
     for (const name of ['qualification.newCategoryRef', 'qualification.newLevelRef']) {
       const text = INNER_CONDITIONS[name];
       expect(text, name).toBeDefined();
@@ -86,14 +88,14 @@ describe('AC-PRM-FW-02 C1-1 P2-3 守卫内部义务：qualification 的新引用
   });
 
   it('反例：内部条件写成未登记的名字 → GUARD_INNER_CONDITION_UNREGISTERED', () => {
-    const wrong = entry(PATCH_KEY).map((o) =>
+    const wrong = DETECTOR_REQUIRED[PATCH_KEY]!.map((o) =>
       o.purpose === `guard:${CARRIER}` ? { ...o, inner: { role: 'when' as const, condition: '虚构条件' } } : o,
     );
-    const found = checkRequired(withEntry(PATCH_KEY, wrong), frozen, [route(PATCH_KEY)]);
+    const found = checkRequired(withEntry(PATCH_KEY, wrong), DETECTOR_CONTRACT, [route(PATCH_KEY)], DETECTOR_SEMANTICS);
     expect(codes(found)).toContain('GUARD_INNER_CONDITION_UNREGISTERED');
   });
 
-  it('不进已知缺口账本（这些是登记的义务，不是缺口）', () => {
+  test('不进已知缺口账本（这些是登记的义务，不是缺口）', () => {
     const pairs = KNOWN_GAPS.flatMap((g) => g.pairs.map(([r, k]) => `${r} ${k}`));
     expect(
       pairs.filter((p) => p.includes('personnel/employees/:employeeId/subsets') && p.includes('Qualification.')),
@@ -166,7 +168,7 @@ describe('AC-PRM-FW-02 C1-1 P2-3 有效载荷授权轨迹：真实请求问到�
     expect(await f.trace(() => f.send('DELETE', `${path}/${created.id}`, undefined, 5), 200)).toEqual([]);
   });
 
-  it('问到的每一项都在登记里（不多）；登记的每一项在上面的载荷下都被问到过（不少）', () => {
+  test('问到的每一项都在登记里（不多）；登记的每一项在上面的载荷下都被问到过（不少）', () => {
     expect(declared(POST_KEY).sort()).toEqual([CATEGORY, LEVEL]);
     expect(declared(PATCH_KEY).sort()).toEqual([CATEGORY, LEVEL]);
     expect(declared(DELETE_KEY)).toEqual([]);
