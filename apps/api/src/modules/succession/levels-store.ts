@@ -1,6 +1,12 @@
 /** #11 的读取在单条 SQL 中取头部与条件行，避免 READ COMMITTED 下拼接两个版本（同 B2a）。 */
 import { sql, type Tx } from '@italent/db';
-import { compileLevelComparisons, type SuccessionLevelKind, type SuccessionLevelRules } from '@italent/domain';
+import {
+  compileLevelComparisons,
+  compileSuccessionLevel,
+  type RuleFieldRef,
+  type SuccessionLevelKind,
+  type SuccessionLevelRules,
+} from '@italent/domain';
 import type { TenantRouteDeps } from '../../routes.js';
 import { codeOf, type SuccessionContext } from './access.js';
 import { configAccess, missing, projectConfig, type ConfigView } from './config-store.js';
@@ -15,13 +21,29 @@ export const levelSpec = (kind: SuccessionLevelKind) => ({
 export interface LevelView extends ConfigView {
   rules: SuccessionLevelRules | null;
 }
+interface StoredLevelView extends LevelView {
+  reviewFields: RuleFieldRef[];
+}
+// 字段元信息只供重建过滤警告；与头／条件行共用一个 MVCC 快照，assemble 后即移除，永不出站。
+const reviewFieldsSql = (kind: SuccessionLevelKind) =>
+  kind === 'risk'
+    ? sql`'[]'::jsonb`
+    : sql`
+  COALESCE((SELECT jsonb_agg(jsonb_build_object('object', 'review_object', 'code', f.code,
+    'path', 'review_object.' || f.code, 'kind', f.kind, 'optionDomain',
+    COALESCE((SELECT jsonb_agg(jsonb_build_object('value', o.value, 'label', o.label, 'enabled', o.enabled))
+      FROM talent_review_field_options o WHERE o.tenant_id = f.tenant_id AND o.field_id = f.id), '[]'::jsonb)))
+    FROM talent_review_fields f WHERE f.tenant_id = p.tenant_id AND f.code IN (
+      SELECT r.field_code FROM succession_health_level_rows r WHERE r.tenant_id = p.tenant_id
+        AND r.level_id = p.id AND r.field_source = 'review')), '[]'::jsonb)`;
 const viewColumns = (kind: SuccessionLevelKind) => sql`p.id, p.code, p.name, p.color, p.description, p.enabled,
   p.display_order AS "displayOrder", p.revision, p.compile_error AS "compileError",
   CASE WHEN p.condition_expression IS NULL THEN NULL ELSE jsonb_build_object('expression', p.condition_expression,
     'rows', COALESCE((SELECT jsonb_agg(to_jsonb(r) - 'tenant_id' - 'id' - 'level_id' ORDER BY r.row_no)
       FROM ${levelSpec(kind).rows} r WHERE r.tenant_id = p.tenant_id
-        AND r.level_id = p.id), '[]'::jsonb)) END AS rules`;
-function assemble(view: LevelView): LevelView {
+        AND r.level_id = p.id), '[]'::jsonb)) END AS rules, ${reviewFieldsSql(kind)} AS "reviewFields"`;
+function assemble(stored: StoredLevelView, kind: SuccessionLevelKind): LevelView {
+  const { reviewFields, ...view } = stored;
   const result: LevelView = {
     ...view,
     rules:
@@ -40,15 +62,19 @@ function assemble(view: LevelView): LevelView {
             ),
           },
   };
-  const compiled = result.rules === null ? null : compileLevelComparisons(result.rules);
-  return { ...result, warnings: compiled?.ok ? compiled.warnings : [] };
+  if (result.rules === null) return { ...result, warnings: [] };
+  const compiled = compileSuccessionLevel(kind, result.rules, reviewFields);
+  const compared = compileLevelComparisons(result.rules);
+  let warnings = compared.ok ? compared.warnings : [];
+  if (compiled.ok) warnings = compiled.warnings;
+  return { ...result, warnings };
 }
 export async function levelViews(tx: Tx, tenantId: string, kind: SuccessionLevelKind, ids: readonly string[]) {
   if (!ids.length) return [];
-  const views = rowsOf<LevelView>(
+  const views = rowsOf<StoredLevelView>(
     await tx.execute(sql`SELECT ${viewColumns(kind)} FROM ${levelSpec(kind).table} p
     WHERE p.tenant_id = ${tenantId}::uuid AND p.id = ANY(${`{${ids.join(',')}}`}::uuid[])`),
-  ).map(assemble);
+  ).map((view) => assemble(view, kind));
   return ids.flatMap((id) => views.filter((view) => view.id === id));
 }
 export const collectionRevisionSql = (
@@ -62,7 +88,7 @@ export async function listLevels(
   kind: SuccessionLevelKind,
   page: { limit: number; offset: number },
 ) {
-  const [found] = rowsOf<{ items: LevelView[]; total: number; collectionRevision: number }>(
+  const [found] = rowsOf<{ items: StoredLevelView[]; total: number; collectionRevision: number }>(
     await tx.execute(sql`
     SELECT ${collectionRevisionSql(tenantId, kind)} AS "collectionRevision",
       (SELECT count(*)::int FROM ${levelSpec(kind).table} WHERE tenant_id = ${tenantId}::uuid) AS total,
@@ -70,7 +96,7 @@ export async function listLevels(
         (SELECT ${viewColumns(kind)} FROM ${levelSpec(kind).table} p WHERE p.tenant_id = ${tenantId}::uuid
           ORDER BY p.display_order, p.id LIMIT ${page.limit} OFFSET ${page.offset}) x), '[]'::jsonb) AS items`),
   );
-  return { ...found!, items: found!.items.map(assemble) };
+  return { ...found!, items: found!.items.map((view) => assemble(view, kind)) };
 }
 export function levelResults(kind: SuccessionLevelKind): ResultAdapter<LevelView> {
   const object = levelSpec(kind).object;

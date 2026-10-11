@@ -4,6 +4,7 @@ import {
   type RuleFieldRef,
   type RuleOperator,
   type RuleCompileError,
+  type RuleWarning,
 } from '../expression/rules/index.js';
 import { POPULATION_FIELDS } from './populations.js';
 
@@ -46,6 +47,7 @@ export function compileSuccessionLevel(
 ) {
   if (rules.rows.length > 50) return { ok: false as const, errors: [{ code: 'RULE_TOO_LARGE' as const }] };
   const errors: RuleCompileError[] = [];
+  const warnings: RuleWarning[] = [];
   for (const row of rules.rows) {
     let fields: readonly RuleFieldRef[] = POPULATION_FIELDS;
     if (kind === 'risk') {
@@ -89,10 +91,20 @@ export function compileSuccessionLevel(
         { resolve: () => field },
       );
       if (!checked.ok) errors.push(...checked.errors);
+      else warnings.push(...checked.warnings);
     } else if (row.filterValues.length > 20) errors.push({ code: 'RULE_TOO_LARGE', rowNo: row.rowNo });
   }
   if (errors.length) return { ok: false as const, errors };
-  return compileLevelComparisons(rules);
+  const compared = compileLevelComparisons(rules);
+  if (!compared.ok) return compared;
+  return {
+    ...compared,
+    warnings: [
+      ...new Map(
+        [...warnings, ...compared.warnings].map((warning) => [`${warning.code}:${warning.rowNo}`, warning]),
+      ).values(),
+    ],
+  };
 }
 /** 读取时从原始比较行重建保存警告，不从编译公式反推条件行（DEC-261）。 */
 export function compileLevelComparisons(rules: SuccessionLevelRules) {
