@@ -20,12 +20,12 @@
     "succession-platform": 1,
     "survey360": 75,
     "survey360-link": 10,
-    "survey360-portal": 2,
+    "survey360-portal": 8,
     "survey360-report-link": 3,
     "talent": 40,
     "talent-review": 65,
     "talent-review-platform": 1,
     "tenant-settings": 3
   },
-  "total": 593
+  "total": 599
 }
