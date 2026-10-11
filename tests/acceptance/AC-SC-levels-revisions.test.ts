@@ -20,7 +20,8 @@ describe('AC-SC B2b P2-1 按实际内容推进等级与集合版本', () => {
         withTenant(w.db, w.tenant.id, async (tx) => {
           const [count] = rowsOf<{ n: number }>(
             await tx.execute(sql`SELECT count(*)::int AS n FROM audit_events
-          WHERE tenant_id = ${w.tenant.id}::uuid AND object_type = ${codeOf(kind === 'risk' ? 'riskLevel' : 'healthLevel')}`),
+          WHERE tenant_id = ${w.tenant.id}::uuid
+            AND object_type = ${codeOf(kind === 'risk' ? 'riskLevel' : 'healthLevel')}`),
           );
           return count!.n;
         });

@@ -136,6 +136,14 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/succession/input.ts#recordEnd': ['#MAX_END_ITEMS', '#date', '#reason', '#uuid'],
   'apps/api/src/modules/succession/input.ts#recordPatch': ['#backupType', '#date', '#reason', '#uuid'],
   'apps/api/src/modules/succession/input.ts#rejectImmutable': ['#IMMUTABLE'],
+  'apps/api/src/modules/succession/levels-changes.ts#applyLevelChanges': [
+    'apps/api/src/modules/succession/config-write.ts#configAudit',
+    '#content',
+    'apps/api/src/modules/succession/levels-store.ts#levelSpec',
+    'apps/api/src/modules/succession/levels-store.ts#levelViews',
+  ],
+  'apps/api/src/modules/succession/levels-changes.ts#canonical': ['#canonical'],
+  'apps/api/src/modules/succession/levels-changes.ts#content': ['#canonical'],
   'apps/api/src/modules/succession/levels-input.ts#commonRow': [
     'packages/domain/src/expression/rules/types.ts#RULE_OPERATORS',
   ],
@@ -143,6 +151,9 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/succession/levels-input.ts#levelOrder': ['#uuid'],
   'apps/api/src/modules/succession/levels-input.ts#levelSchemas': ['#healthRow', '#riskRow'],
   'apps/api/src/modules/succession/levels-input.ts#riskRow': ['#commonRow'],
+  'apps/api/src/modules/succession/levels-references.ts#lockLevelReviewFields': [
+    'apps/api/src/modules/succession/read-sql.ts#rowsOf',
+  ],
   'apps/api/src/modules/succession/levels-routes.ts#levelOptionAccess': [
     'apps/api/src/modules/permission/module-route-access.ts#button',
     'apps/api/src/modules/succession/access.ts#codeOf',
@@ -184,6 +195,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/succession/levels-store.ts#assemble': [
     'packages/domain/src/succession/levels.ts#compileLevelComparisons',
+    'packages/domain/src/succession/levels.ts#compileSuccessionLevel',
   ],
   'apps/api/src/modules/succession/levels-store.ts#collectionRevisionSql': ['#levelSpec'],
   'apps/api/src/modules/succession/levels-store.ts#levelResults': [
@@ -208,39 +220,31 @@ export const GRAPH: Graph = {
     '#viewColumns',
     'apps/api/src/modules/succession/read-sql.ts#rowsOf',
   ],
-  'apps/api/src/modules/succession/levels-store.ts#viewColumns': ['#levelSpec'],
-  'apps/api/src/modules/succession/levels-write.ts#bumpCollection': [
-    'apps/api/src/modules/succession/levels-store.ts#levelSpec',
-  ],
+  'apps/api/src/modules/succession/levels-store.ts#viewColumns': ['#levelSpec', '#reviewFieldsSql'],
   'apps/api/src/modules/succession/levels-write.ts#mutateLevel': [
     'apps/api/src/modules/succession/config-store.ts#configAccess',
     'apps/api/src/modules/succession/config-store.ts#lockRuleSettings',
     'apps/api/src/modules/succession/config-store.ts#missing',
     'apps/api/src/modules/succession/config-store.ts#requireRevision',
-    'apps/api/src/modules/succession/config-write.ts#configAudit',
+    'apps/api/src/modules/succession/levels-changes.ts#applyLevelChanges',
     'apps/api/src/modules/succession/levels-store.ts#levelSpec',
     'apps/api/src/modules/succession/levels-store.ts#levelViews',
-    '#bumpCollection',
     '#saveLevelRules',
   ],
   'apps/api/src/modules/succession/levels-write.ts#reorderLevels': [
     'apps/api/src/modules/succession/config-store.ts#configAccess',
     'apps/api/src/modules/succession/config-store.ts#lockRuleSettings',
     'apps/api/src/modules/succession/config-store.ts#requireRevision',
-    'apps/api/src/modules/succession/config-write.ts#configAudit',
+    'apps/api/src/modules/succession/levels-changes.ts#applyLevelChanges',
     'apps/api/src/modules/succession/levels-store.ts#collectionRevisionSql',
     'apps/api/src/modules/succession/levels-store.ts#levelSpec',
     'apps/api/src/modules/succession/levels-store.ts#levelViews',
-    '#bumpCollection',
-    'apps/api/src/modules/succession/read-sql.ts#rowsOf',
-  ],
-  'apps/api/src/modules/succession/levels-write.ts#reviewCatalog': [
     'apps/api/src/modules/succession/read-sql.ts#rowsOf',
   ],
   'apps/api/src/modules/succession/levels-write.ts#saveLevelRules': [
     'apps/api/src/modules/succession/config-store.ts#missing',
+    'apps/api/src/modules/succession/levels-references.ts#lockLevelReviewFields',
     'apps/api/src/modules/succession/levels-store.ts#levelSpec',
-    '#reviewCatalog',
     'apps/api/src/modules/succession/population-input.ts#invalidRule',
     'apps/api/src/modules/succession/read-sql.ts#rowsOf',
     'packages/domain/src/succession/levels.ts#compileSuccessionLevel',
