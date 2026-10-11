@@ -10,7 +10,7 @@ import type { TenantRouteDeps } from '../../routes.js';
 import { AppError } from '../../errors.js';
 import type { SuccessionContext } from './access.js';
 import { configAccess, lockRuleSettings, missing, requireRevision } from './config-store.js';
-import { configAudit } from './config-write.js';
+import { applyLevelChanges } from './levels-changes.js';
 import { invalidRule } from './population-input.js';
 import { collectionRevisionSql, levelSpec, levelViews } from './levels-store.js';
 import { rowsOf } from './read-sql.js';
@@ -78,10 +78,6 @@ async function saveLevelRules(
     compiler_version = ${compiled?.ok ? compiled.compiled.compilerVersion : null}, compile_error = NULL
     WHERE tenant_id = ${tenantId}::uuid AND id = ${id}::uuid`);
 }
-async function bumpCollection(tx: Tx, tenantId: string, kind: SuccessionLevelKind) {
-  await tx.execute(sql`UPDATE succession_rule_settings SET levels_revision = levels_revision + 1
-    WHERE tenant_id = ${tenantId}::uuid AND kind = ${levelSpec(kind).ruleKind}`);
-}
 export async function mutateLevel(
   tx: Tx,
   deps: TenantRouteDeps,
@@ -102,33 +98,42 @@ export async function mutateLevel(
     if (!before) throw missing();
     requireRevision(before, ctx.expectedRevision);
   }
-  try {
-    if (operation === 'delete') {
-      await tx.execute(sql`DELETE FROM ${spec.table} WHERE tenant_id = ${ctx.tenantId}::uuid AND id = ${id}::uuid`);
-    } else if (operation === 'create') {
-      await tx.execute(sql`INSERT INTO ${spec.table}(id, tenant_id, code, name, color, description, enabled,
+  await applyLevelChanges(tx, ctx, kind, operation, [
+    {
+      id,
+      before: before ?? null,
+      after: operation === 'delete' ? null : { ...before, ...body },
+      write: async () => {
+        try {
+          if (operation === 'delete') {
+            await tx.execute(
+              sql`DELETE FROM ${spec.table} WHERE tenant_id = ${ctx.tenantId}::uuid AND id = ${id}::uuid`,
+            );
+          } else if (operation === 'create') {
+            await tx.execute(sql`INSERT INTO ${spec.table}(id, tenant_id, code, name, color, description, enabled,
         display_order)
         SELECT ${id}::uuid, ${ctx.tenantId}::uuid, ${body!.code}, ${body!.name}, ${body!.color}, ${body!.description},
           ${body!.enabled}, COALESCE(MAX(display_order), 0) + 1 FROM ${spec.table}
           WHERE tenant_id = ${ctx.tenantId}::uuid`);
-    } else {
-      const changes = Object.entries(body!)
-        .filter(([key]) => key !== 'rules')
-        .map(([key, value]) => sql`${sql.identifier(key)} = ${value}`);
-      await tx.execute(sql`UPDATE ${spec.table} SET ${sql.join([...changes, sql`revision = revision + 1`], sql`, `)}
+          } else {
+            const changes = Object.entries(body!)
+              .filter(([key]) => key !== 'rules')
+              .map(([key, value]) => sql`${sql.identifier(key)} = ${value}`);
+            if (changes.length)
+              await tx.execute(sql`UPDATE ${spec.table} SET ${sql.join(changes, sql`, `)}
         WHERE tenant_id = ${ctx.tenantId}::uuid AND id = ${id}::uuid`);
-    }
-  } catch (error) {
-    if (pgErrorCode(error) === '23505')
-      throw new AppError('CONFLICT', '等级编码或名称重复', { reason: 'LEVEL_DUPLICATE' });
-    if (['23503', '23001'].includes(pgErrorCode(error) ?? ''))
-      throw new AppError('CONFLICT', '等级已被引用', { reason: 'LEVEL_IN_USE' });
-    throw error;
-  }
-  if (body?.rules !== undefined) await saveLevelRules(tx, ctx.tenantId, kind, id, body.rules);
-  await bumpCollection(tx, ctx.tenantId, kind);
-  const after = operation === 'delete' ? null : (await levelViews(tx, ctx.tenantId, kind, [id]))[0]!;
-  await configAudit(tx, ctx, spec.object, operation, id, before ?? null, after);
+          }
+        } catch (error) {
+          if (pgErrorCode(error) === '23505')
+            throw new AppError('CONFLICT', '等级编码或名称重复', { reason: 'LEVEL_DUPLICATE' });
+          if (['23503', '23001'].includes(pgErrorCode(error) ?? ''))
+            throw new AppError('CONFLICT', '等级已被引用', { reason: 'LEVEL_IN_USE' });
+          throw error;
+        }
+        if (body?.rules !== undefined) await saveLevelRules(tx, ctx.tenantId, kind, id, body.rules);
+      },
+    },
+  ]);
   return { kind: operation === 'delete' ? ('receipt' as const) : ('record' as const), ids: [id] };
 }
 export async function reorderLevels(
@@ -151,23 +156,21 @@ export async function reorderLevels(
   );
   if (ids.length !== current.length || new Set(ids).size !== ids.length || current.some((row) => !ids.includes(row.id)))
     throw new AppError('VALIDATION_FAILED', '重排必须包含完整且无重复的等级集合', { reason: 'LEVEL_ORDER_INVALID' });
-  // 空集合没有等级可改，也没有对应审计对象，不制造一次无业务内容的集合版本变更。
-  if (!ids.length) return { kind: 'records' as const, ids };
   const before = await levelViews(tx, ctx.tenantId, kind, ids);
-  for (const [index, id] of ids.entries())
-    await tx.execute(sql`UPDATE ${spec.table} SET display_order = ${index + 1},
-    revision = revision + 1 WHERE tenant_id = ${ctx.tenantId}::uuid AND id = ${id}::uuid`);
-  await bumpCollection(tx, ctx.tenantId, kind);
-  const after = await levelViews(tx, ctx.tenantId, kind, ids);
-  for (const view of after)
-    await configAudit(
-      tx,
-      ctx,
-      spec.object,
-      'reorder',
-      view.id,
-      before.find((row) => row.id === view.id),
-      view,
-    );
+  await applyLevelChanges(
+    tx,
+    ctx,
+    kind,
+    'reorder',
+    before.map((view, index) => ({
+      id: view.id,
+      before: view,
+      after: { ...view, displayOrder: index + 1 },
+      write: async () => {
+        await tx.execute(sql`UPDATE ${spec.table} SET display_order = ${index + 1}
+        WHERE tenant_id = ${ctx.tenantId}::uuid AND id = ${view.id}::uuid`);
+      },
+    })),
+  );
   return { kind: 'records' as const, ids };
 }
