@@ -1,6 +1,5 @@
 /**
- * 检测器的独立夹具：固定权限、用途、范围与内部角色，不 import 真实登记。
- * 只供正反例；真实登记由各文件的 gateEvidence / registration 单独校验（DEC-416③，#248 P2-1）。
+ * 检测器独立夹具固定权限、用途、范围与内部角色；真实登记另走门禁（DEC-416③，#248 P2-1）。
  * 数字分别索引下方用途 / 范围 / 内部角色；-1 表示缺省；证据检查另用其专用夹具。
  */
 import type { Evidence, Inner, Need, Obligation, Purpose, RequiredTable } from './required/types.js';
@@ -81,23 +80,20 @@ const OBJECT_SET_1 = [
 ]
   .flatMap((names) => names.split(' ').map((name) => `TenantBase.${name}`))
   .join(',');
-const OBJECT_SET_2 = [
-  'TalentCenter.Category',
-  'TalentCenter.Dimension',
-  'TalentCenter.DimensionLibrary',
-  'TalentCenter.TalentCriterion',
-  'TalentCenter.TalentCriterionCategory',
-].join(',');
+const OBJECT_SET_2 = 'Category Dimension DimensionLibrary TalentCriterion TalentCriterionCategory'
+  .split(' ')
+  .map((name) => `TalentCenter.${name}`)
+  .join(',');
 const OBJECT_SET_3 = [...OBJECT_SET_2.split(','), 'TalentCenter.DescriptionType'].sort().join(',');
 
 type Row = readonly [string, number?, number?, number?, string?];
 const ROWS: readonly Row[] = [
   ['obj:TenantBase.EmployeeInformation:view'],
   ['obj:{mapper:personnel.nestedSubsets}:view', 0, 0],
-  [`obj:${OBJECT_SET_1}:view`, -1, 0],
+  [`obj:{${OBJECT_SET_1}}:view`, -1, 0],
   ['guard:personnel.viewableFilters'],
-  [`obj:${OBJECT_SET_1}:update`],
-  [`btn:${OBJECT_SET_1}#update@detail`],
+  [`obj:{${OBJECT_SET_1}}:update`],
+  [`btn:{${OBJECT_SET_1}}#update@detail`],
   ['guard:personnel.subsetPolicy'],
   ['obj:Qualification.EmploymentCategory:view', 1, -1, 0],
   ['obj:Qualification.EmploymentLevel:view', 1, -1, 1],
@@ -117,7 +113,7 @@ const ROWS: readonly Row[] = [
   ['obj:TalentCenter.TalentCriterion:view'],
   ['obj:TalentCenter.TalentCriterion:update', 6, 2],
   ['btn:TalentCenter.TalentCriterion#update@detail', 6, 2],
-  [`obj:${OBJECT_SET_2}:create`, -1, -1, -1, 'candidate:create'],
+  [`obj:{${OBJECT_SET_2}}:create`, -1, -1, -1, 'candidate:create'],
   ['obj:TalentCenter.TalentCriterion:update', -1, -1, -1, 'candidate:edit'],
   ['btn:TalentCenter.TalentCriterion#update@detail', -1, -1, -1, 'candidate:edit'],
   ['guard:talent.criterionDimensionsEditable', -1, -1, -1, 'candidate:edit'],
@@ -132,10 +128,10 @@ const ROWS: readonly Row[] = [
   ['guard:talent.copyCategoryName'],
   ['guard:talent.relationUnit'],
   ['obj:TalentCenter.Dimension:view', 10, 4],
-  [`obj:${OBJECT_SET_3}:{create,update}`, -1, 5],
-  [`btn:${OBJECT_SET_3}#{create@list,update@detail}`],
+  [`obj:{${OBJECT_SET_3}}:{create,update}`, -1, 5],
+  [`btn:{${OBJECT_SET_3}}#{create@list,update@detail}`],
   ['guard:talent.formScope(operation)'],
-  [`obj:${OBJECT_SET_3}:view`, -1, 1],
+  [`obj:{${OBJECT_SET_3}}:view`, -1, 1],
   ['obj:Survey360.Person:view', -1, 6],
   ['btn:Survey360.Person#sync@list'],
   ['guard:survey360.unrestricted'],
@@ -289,14 +285,7 @@ function obligation([perm, purpose = -1, need = -1, inner = -1, or]: Row): Oblig
   let at: readonly Evidence[] = [CALL];
   if (scope && scope.scope !== 'none') at = [CALL, { ...CALL, role: 'scope' }];
   if (perm === 'btn:TenantBase.EmploymentRecord#Transfer.Hr@detail' && purpose === -1) at = HR_AT;
-  return {
-    perm,
-    purpose: PURPOSES[purpose],
-    need: NEEDS[need],
-    inner: INNERS[inner],
-    or,
-    at,
-  };
+  return { perm, purpose: PURPOSES[purpose], need: scope, inner: INNERS[inner], or, at };
 }
 
 export const DETECTOR_REQUIRED: RequiredTable = Object.fromEntries(
@@ -317,6 +306,40 @@ export function checkDetectorEvidence(table: RequiredTable, options: { readonly 
     ? (file: string) => (file === FIXTURE_FILE ? fixtureSource(file) : injected(file))
     : fixtureSource;
   return checkEvidence(table, { branch: false, registry, digests: registry.units, read });
+}
+
+/** 策略拦截的固定证据链；真实表缺项不改变源码变异检测，真实路由调用点另由全表入口校验。 */
+export function subsetChainFixture(saveKeys: readonly string[], requestKeys: readonly string[]): RequiredTable {
+  const file = 'apps/api/src/modules/qualification/subset-policy.ts';
+  const evidence = (role: Evidence['role'], name: string, anchor: string): Evidence => ({
+    role,
+    unit: `${file}#${name}`,
+    anchor,
+  });
+  const registration = [
+    evidence('impl', 'installQualificationSubsetPolicy', "registerSubsetPolicy('qualification', QUALIFICATION_POLICY)"),
+    evidence(
+      'const',
+      'QUALIFICATION_POLICY',
+      'beforeRequest: qualificationBeforeRequest, beforeSave: qualificationBeforeSave',
+    ),
+  ];
+  const chain = (method: string, anchors: readonly string[]): readonly Obligation[] => [
+    {
+      perm: `guard:qualification.${method}`,
+      at: [
+        ...anchors.map((anchor, i) => evidence(i === 0 ? 'call' : 'impl', `qualificationBefore${method}`, anchor)),
+        ...registration,
+      ],
+    },
+  ];
+  const save = chain('Save', [
+    "if (source.type === 'self_service') throw SELF_SERVICE_CLOSED();",
+    'if (human && before?.isAutoSync === true) await assertAutoSyncEditable(tx, ctx);',
+    'if (human) await assertRefs(tx, ctx, newRefs(before, row));',
+  ]);
+  const request = chain('Request', ['throw SELF_SERVICE_CLOSED();']);
+  return Object.fromEntries([...saveKeys.map((key) => [key, save]), ...requestKeys.map((key) => [key, request])]);
 }
 
 const activity = ['obj:Survey360.Activity:view', 'btn:Survey360.Activity#viewAll@list'];

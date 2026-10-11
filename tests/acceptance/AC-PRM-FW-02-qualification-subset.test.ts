@@ -13,10 +13,16 @@ import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { subsetScene } from './AC-QL-subset-support.js';
 import { readFrozenContract } from './support/route-policy/baseline.js';
-import { DETECTOR_CONTRACT, DETECTOR_REQUIRED, DETECTOR_SEMANTICS } from './support/route-policy/detector-fixtures.js';
+import {
+  DETECTOR_CONTRACT,
+  DETECTOR_REQUIRED,
+  DETECTOR_SEMANTICS,
+  checkDetectorEvidence,
+  subsetChainFixture,
+} from './support/route-policy/detector-fixtures.js';
 import { registrationIt as test } from './support/route-policy/registration.js';
 import type { ObservedContract } from './support/route-policy/contract.js';
-import { type SourceReader, checkEvidence, checkStored, repoSource } from './support/route-policy/evidence.js';
+import { type SourceReader, checkStored, repoSource } from './support/route-policy/evidence.js';
 import { gateEvidence } from './support/route-policy/evidence-gate.js';
 import { KNOWN_GAPS } from './support/route-policy/probe-known-gaps.js';
 import { checkRequired } from './support/route-policy/required.js';
@@ -175,7 +181,7 @@ describe('AC-PRM-FW-02 C1-1 P2-3 有效载荷授权轨迹：真实请求问到�
   });
 });
 
-// 每条用例都对整张义务表做一到两次完整证据计算（CI 负载下单次 13～19 秒，两次约 34 秒，超过默认 30 秒）
+// 真实表的基线仍走门禁；源码反例用固定策略证据链，避免整张表的登记漂移影响反例结论。
 const EVIDENCE_CHAIN = 'AC-PRM-FW-02 C1-1 P2-3 证据链：注册关系与四道拦截各自带锚点，删除任何一道都报错';
 describe(EVIDENCE_CHAIN, { timeout: 120_000 }, () => {
   const POLICY_FILE = 'apps/api/src/modules/qualification/subset-policy.ts';
@@ -191,10 +197,12 @@ describe(EVIDENCE_CHAIN, { timeout: 120_000 }, () => {
     };
   }
   const KINDS = ['EVIDENCE_ANCHOR', 'EVIDENCE_STALE', 'EVIDENCE_UNIT'];
-  const found = (read: SourceReader) => checkEvidence(REQUIRED, { read }).filter((f) => KINDS.includes(f.code));
+  const fixture = subsetChainFixture([POST_KEY, PATCH_KEY, DELETE_KEY], [REQUEST_KEY, RESUBMIT_KEY]);
+  const found = (read: SourceReader) => checkDetectorEvidence(fixture, { read }).filter((f) => KINDS.includes(f.code));
   const routesOf = (read: SourceReader) => new Set(found(read).map((f) => f.route));
 
   it('基线：真实源码零发现', () => {
+    expect(found(repoSource)).toEqual([]);
     const drift = checkStored(REQUIRED, { read: repoSource }).filter((f) => KINDS.includes(f.code));
     expect(gateEvidence(drift, '任职资格子集证据')).toEqual([]);
   });
