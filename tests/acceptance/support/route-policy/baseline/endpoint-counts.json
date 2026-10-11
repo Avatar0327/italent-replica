@@ -13,7 +13,7 @@
     "permission": 43,
     "personnel": 18,
     "platform": 9,
-    "qualification": 54,
+    "qualification": 55,
     "root": 1,
     "self-service": 9,
     "succession": 15,
@@ -27,5 +27,5 @@
     "talent-review-platform": 1,
     "tenant-settings": 3
   },
-  "total": 592
+  "total": 593
 }
