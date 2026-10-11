@@ -132,6 +132,16 @@ describe('AC-PRM-FW-02 显式必需项表：形状与完整性', () => {
     );
   });
 
+  it('缺登记也保留已知运行时元数据硬比较：模型图去掉准入范围仍报 WEAKER:scope', () => {
+    const base = route(MODEL_IMAGE);
+    const policy = { ...base.policy, scope: { mode: 'none' as const, reason: '夹具删除范围' } };
+    const changed = { ...base, policy: policy as RoutePolicy };
+    const findings = compareRegisteredDeclarations(frozen, [changed], undefined, { [MODEL_IMAGE]: [] });
+    expect(codes(findings)).toContain('REQUIRED_TABLE_GAP');
+    expect(codes(gateEvidence(findings, '缺登记且范围弱化', { strict: false }))).toContain('WEAKER:scope');
+    expect(codes(gateEvidence(findings, '缺登记且范围弱化', { strict: true }))).toContain('WEAKER:scope');
+  });
+
   it('同一权限多种用途（IDP 执行人写入口的计划查看权：执行人判定内部 + responseView 披露）不算冲突', () => {
     const plan = entry(GOALS).filter((o) => o.perm === 'obj:IDP.Idp:view');
     expect(new Set(plan.map((o) => o.purpose ?? 'admission')).size).toBeGreaterThanOrEqual(2);
