@@ -9,6 +9,8 @@ import {
   CalcObjectFailure,
   defineCalcKinds,
   type CalcInput,
+  type CalcContext,
+  type CalcObject,
 } from '../../apps/api/src/modules/succession/calc-contract.js';
 import { enqueueCalcRun, changeCalcRun, runCalcPage } from '../../apps/api/src/modules/succession/calc-worker.js';
 import {
@@ -82,6 +84,88 @@ beforeAll(async () => {
 });
 
 describe('AC-SC-calc-core run 契约', () => {
+  it('重复午夜：两个 00:30 均可登记，默认 4 小时槽及跨日以最早午夜为准', async () => {
+    const input: CalcInput = {
+      ...request(0),
+      trigger: 'schedule',
+      timezone: 'America/Havana',
+      businessDate: '2026-11-01',
+      intervalHours: 1,
+    };
+    const first = await create({ ...input, now: new Date('2026-11-01T04:30:00Z') });
+    const second = await create({ ...input, now: new Date('2026-11-01T05:30:00Z') });
+    expect(first).not.toBe(second);
+    expect((await read(first)).idempotency_key).toBe(`org_stats:schedule:${input.tenantId}:2026-11-01:1h:0`);
+    expect((await read(second)).idempotency_key).toBe(`org_stats:schedule:${input.tenantId}:2026-11-01:1h:1`);
+    const before = await create({ ...input, intervalHours: 4, now: new Date('2026-11-01T07:59:59.999Z') });
+    const boundary = await create({ ...input, intervalHours: 4, now: new Date('2026-11-01T08:00:00Z') });
+    expect((await read(before)).idempotency_key).toContain(':4h:0');
+    expect((await read(boundary)).idempotency_key).toContain(':4h:1');
+    const next = await create({ ...input, businessDate: '2026-11-02', now: new Date('2026-11-02T05:00:00Z') });
+    expect((await read(next)).idempotency_key).toContain(':2026-11-02:1h:0');
+  });
+
+  it.each([
+    ['America/Havana', '2026-11-01', '2026-11-01T04:00Z', '2026-11-02T05:00Z'],
+    ['America/Havana', '2026-03-08', '2026-03-08T05:00Z', '2026-03-09T04:00Z'],
+    ['America/Santiago', '2026-09-06', '2026-09-06T04:00Z', '2026-09-07T03:00Z'],
+    ['America/Chicago', '2026-11-01', '2026-11-01T05:00Z', '2026-11-02T06:00Z'],
+    ['Asia/Shanghai', '2026-11-01', '2026-10-31T16:00Z', '2026-11-01T16:00Z'],
+    ['UTC', '2026-11-01', '2026-11-01T00:00Z', '2026-11-02T00:00Z'],
+  ])('%s %s：1～24 小时间隔的全部槽边界、缺失/重复午夜与跨日', async (timezone, businessDate, start, end) => {
+    const input: CalcInput = { ...request(0), trigger: 'schedule', timezone, businessDate };
+    const epoch = Date.parse(start);
+    const nextDay = Date.parse(end);
+    const key = (instant: number, h: number, date = businessDate) =>
+      calcKey({
+        ...input,
+        businessDate: date,
+        now: new Date(instant),
+        intervalHours: h,
+      });
+    const nextDate = new Date(Date.parse(`${businessDate}T00:00Z`) + 86400000).toISOString().slice(0, 10);
+    for (let h = 1; h <= 24; h++) {
+      const prefix = `org_stats:schedule:${input.tenantId}:${businessDate}:${h}h:`;
+      expect(key(epoch, h)).toBe(`${prefix}0`);
+      for (let slot = 1; epoch + slot * h * 3600000 < nextDay; slot++) {
+        const boundary = epoch + slot * h * 3600000;
+        expect(key(boundary - 1, h)).toBe(`${prefix}${slot - 1}`);
+        expect(key(boundary, h)).toBe(`${prefix}${slot}`);
+        expect(key(boundary + 1, h)).toBe(`${prefix}${slot}`);
+      }
+      expect(key(nextDay - 1, h)).toBe(`${prefix}${Math.floor((nextDay - epoch - 1) / (h * 3600000))}`);
+      expect(key(nextDay, h, nextDate)).toBe(`org_stats:schedule:${input.tenantId}:${nextDate}:${h}h:0`);
+    }
+    const id = await create({ ...input, now: new Date(epoch), intervalHours: 4 });
+    expect((await read(id)).idempotency_key).toContain(`:${businessDate}:4h:0`);
+  });
+
+  it('class handler 的原型方法及 private this 上下文通过登记后实际写入对象', async () => {
+    class Handler {
+      readonly kind = 'org_stats' as const;
+      readonly objectType = 'org' as const;
+      #principal = member.user.id;
+      #calls = 0;
+      async authorizePage() {
+        return this.#principal;
+      }
+      async execute({ tx: t, run }: CalcContext, object: CalcObject) {
+        this.#calls++;
+        await t.execute(sql`INSERT INTO sc_calc_effects VALUES
+          (${run.tenantId}::uuid, ${run.id}::uuid, ${object.objectId}::uuid)`);
+        return 'written' as const;
+      }
+      get calls() {
+        return this.#calls;
+      }
+    }
+    const instance = new Handler();
+    const id = await create();
+    expect(await page(id, defineCalcKinds([instance]))).toBe('succeeded');
+    expect(await effects(id)).toBe(1);
+    expect(instance.calls).toBe(1);
+  });
+
   it('夏令时回拨的两个 01:30，按租户午夜起算的实际分钟进入不同小时槽', async () => {
     const input = {
       ...request(0),
