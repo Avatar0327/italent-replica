@@ -16446,6 +16446,7 @@
           "button()"
         ],
         "command": [
+          "revision(c)",
           "runCommand / runWrite"
         ],
         "fieldsIn": [

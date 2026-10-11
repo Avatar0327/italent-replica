@@ -44,6 +44,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/succession/population-input.ts#populationBody',
     'apps/api/src/modules/succession/population-input.ts#populationPatch',
     'apps/api/src/modules/talent/http.ts#parseBody',
+    'apps/api/src/modules/talent/http.ts#requireNew',
     'apps/api/src/modules/talent/http.ts#revision',
     'apps/api/src/modules/talent/http.ts#uuidParam',
   ],
