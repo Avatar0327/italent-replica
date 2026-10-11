@@ -120,4 +120,20 @@ describe('守卫：迁移后的库结构与 drizzle 最新快照一致', () => {
     const inverted = entries.filter((e, i) => i > 0 && e.when <= (entries[i - 1] as { when: number }).when);
     expect(inverted.map((e) => e.tag)).toEqual(KNOWN_INVERTED);
   });
+
+  it('守卫本身有效：排序唯一约束的延迟属性被改坏也会被查出来', async () => {
+    const diff = await structureDiff(async (tx) => {
+      await tx.execute(sql`ALTER TABLE succession_risk_levels DROP CONSTRAINT succession_risk_levels_order`);
+      await tx.execute(sql`ALTER TABLE succession_risk_levels ADD CONSTRAINT succession_risk_levels_order
+        UNIQUE (tenant_id, display_order) NOT DEFERRABLE`);
+    });
+    const constraint =
+      'constraint succession_risk_levels succession_risk_levels_order UNIQUE (tenant_id, display_order)';
+    expect(diff.onlyInDatabase.filter((row) => row.startsWith('constraint succession_risk_levels '))).toEqual([
+      constraint,
+    ]);
+    expect(diff.onlyInSnapshot.filter((row) => row.startsWith('constraint succession_risk_levels '))).toEqual([
+      `${constraint} DEFERRABLE INITIALLY DEFERRED`,
+    ]);
+  });
 });
