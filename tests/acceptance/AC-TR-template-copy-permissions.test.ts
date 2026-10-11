@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { createOrg } from './AC-IDP-support.js';
 import { seedPermissionWorld } from './AC-PRM-support.js';
 import { templateBody, templateOperator, TR_BASE, TR_NOW, type TemplateView } from './AC-TR-template-support.js';
+import { configBody } from './AC-TR-config-support.js';
 import { tenantApi } from './support/tenant-api.js';
 
 const testDb = useTestDb();
@@ -64,4 +65,48 @@ describe('AC-TR-template-copy 权限', () => {
     }
     expect(await list()).toEqual(after);
   });
+});
+
+it('AC-TR-template-copy：原件清空模块后重放仍校验复制回执持有的目录引用', async () => {
+  const base = await seedPermissionWorld(testDb().db);
+  const clock = () => TR_NOW;
+  const setup = tenantApi(base.db, { clock });
+  const world = { ...base, api: tenantApi(base.db, { authorize: undefined, clock }) };
+  const orgId = await createOrg(setup, base.asAdmin, '复制重放目录');
+  const post = async (path: string, body: unknown) => {
+    const response = await setup.request('POST', `${TR_BASE}${path}`, { ...base.asAdmin, ifMatch: 0, body });
+    expect(response.status).toBe(201);
+    return (await response.json()) as { id: string; revision: number };
+  };
+  const field = await post('/fields', configBody('field'));
+  const source = await post(
+    '/templates',
+    templateBody(orgId, {
+      modules: [{ kind: 'info', name: '信息', fieldIds: [field.id] }],
+    }),
+  );
+  const writer = await templateOperator(world, { orgId, references: 'seeAll' });
+  const copy = () =>
+    writer.request('POST', `/templates/${source.id}/copy`, {
+      ifMatch: source.revision,
+      idempotencyKey: 'copy-receipt-refs',
+      body: { name: '保留引用的复制件' },
+    });
+  const created = await copy();
+  expect(created.status).toBe(201);
+  const duplicate = (await created.json()) as TemplateView;
+  expect(
+    (
+      await setup.request('PATCH', `${TR_BASE}/templates/${source.id}`, {
+        ...base.asAdmin,
+        ifMatch: source.revision,
+        body: { modules: [] },
+      })
+    ).status,
+  ).toBe(200);
+  await writer.setSeeAll('field', false);
+  const denied = await copy();
+  expect(denied.status, await denied.clone().text()).toBe(404);
+  const after = await setup.request('GET', `${TR_BASE}/templates/${duplicate.id}`, base.asAdmin);
+  expect(await after.json()).toEqual(duplicate);
 });
