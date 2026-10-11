@@ -2606,7 +2606,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/succession/audit-scope.ts#recordSelfRestrict': ['b4f5af8a6032', '3e9c08aca7d7'],
   'apps/api/src/modules/succession/calc-notifications.ts#enqueueCalcDone': ['c774c7ecdbb7', '7a645dc8391f'],
   'apps/api/src/modules/succession/calc-read.ts#calcAccess': ['1734d6939c9b', 'c7bacfe6a69a'],
-  'apps/api/src/modules/succession/calc-read.ts#calcObjectVisible': ['656aab5d1d27', '00a1426191b6'],
+  'apps/api/src/modules/succession/calc-read.ts#calcObjectVisible': ['fd0c09565f05', '00a1426191b6'],
   'apps/api/src/modules/succession/calc-read.ts#calcResults': ['2de89f0308af', 'fd74814ec475'],
   'apps/api/src/modules/succession/calc-read.ts#calcRowsVisible': ['72a5312dc3c9', '5a4b26d925ca'],
   'apps/api/src/modules/succession/calc-read.ts#missing': ['34ca14a4ea40', '583ee92c250c'],

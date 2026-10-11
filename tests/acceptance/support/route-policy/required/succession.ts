@@ -292,7 +292,18 @@ function calcRequired(retry = false): Obligation[] {
         ],
       },
     );
-  return obligations;
+  return obligations.map((obligation) =>
+    obligation.perm.startsWith('obj:')
+      ? {
+          ...obligation,
+          need: { scope: 'guard' as const, guard: 'succession.calcVisible' },
+          at: [
+            ...obligation.at,
+            { role: 'scope' as const, unit: `${S}/calc-read.ts#readCalcRuns`, anchor: '${whole(scope, ctx)}' },
+          ],
+        }
+      : obligation,
+  );
 }
 Object.assign(SUCCESSION, {
   [`GET ${BASE}/calc-runs`]: calcRequired(),
