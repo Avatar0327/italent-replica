@@ -1994,10 +1994,12 @@
           "talentReview.templatePublicDownReadonly"
         ],
         "object": [
+          "object.* 动作",
           "objectContext"
         ],
         "scope": [
           "creator scope",
+          "resolveModuleScope",
           "visible()"
         ]
       }
@@ -8594,11 +8596,14 @@
           "trimModuleResponse"
         ],
         "object": [
+          "object.* 动作",
           "objectContext"
         ],
         "scope": [
           "creator scope",
-          "requestScope"
+          "requestScope",
+          "resolveModuleScope",
+          "visible()"
         ]
       }
     },
@@ -11176,11 +11181,13 @@
           "talentReview.templatePublicDownReadonly"
         ],
         "object": [
+          "object.* 动作",
           "objectContext"
         ],
         "scope": [
           "creator scope",
           "requestScope",
+          "resolveModuleScope",
           "visible()"
         ]
       }
@@ -18182,11 +18189,13 @@
           "talentReview.templatePublicDownReadonly"
         ],
         "object": [
+          "object.* 动作",
           "objectContext"
         ],
         "scope": [
           "creator scope",
           "requestScope",
+          "resolveModuleScope",
           "visible()"
         ]
       }

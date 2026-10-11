@@ -60,6 +60,6 @@
 - 名称证明过期或字段目录版本变化为 409，客户端刷新并显式重提；不盲重试。
 - 沿用 #244 的 revision / 幂等冲突、向下公开只读、字段编辑权和租户隔离。
 - 验收：`AC-TR-04-template-forms-results`、`AC-TR-04-result-module-identity`、`AC-TR-04-forms-results-pg`；原模板、冻结、权限与事务复核用例为回归约束。
-- F-039 无新增路由：扩展模板必需项表中的 Form 条件准入，重算摘要与基准；发现探测路由集合不变。
+- F-039 无新增路由：扩展模板必需项表中的 Form 条件准入；详情与写响应登记 resultFields 可选披露（字段目录对象权、范围及四列查看权），重算摘要与基准；发现探测路由集合不变。
 - 不修改 `evidence-core.ts / core-digests.ts`。
 - 表单被模板引用的友好拒删由 B6b 接线，本片外键 restrict 兜底；运行期求值、对象字段三档执行属 PR-C。

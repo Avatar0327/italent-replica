@@ -898,6 +898,9 @@ export const DIGESTS: Digests = {
     reviewContext: 'a98e74068a24',
     reviewWriteContext: '007b2d9a1eb5',
   },
+  'apps/api/src/modules/talent-review/calc-rule-catalog.ts': {
+    visibleOf: '21a010591754',
+  },
   'apps/api/src/modules/talent-review/calc-rule-routes.ts': {
     recheckCalcRuleWrite: 'f76636e3fb4c',
     registerReads: '4b3c3f702a11',
@@ -954,10 +957,14 @@ export const DIGESTS: Digests = {
     requireCreatable: 'f6ad0d258f54',
     requireEditable: 'b4086c4f65db',
   },
+  'apps/api/src/modules/talent-review/template-extra-present.ts': {
+    resultCatalogAccess: 'b5b471aa0560',
+  },
   'apps/api/src/modules/talent-review/template-routes.ts': {
-    registerTemplateRoutes: 'a3cff6f1c0cc',
+    registerTemplateRoutes: '93b6057d6b7b',
     requireCatalogs: '573047e216de',
-    runGuarded: 'ff55849b43a5',
+    runGuarded: 'f11cd3aaccbf',
+    trimmed: '174873e56bbd',
   },
   'apps/api/src/modules/talent-review/template-service.ts': {
     createTemplate: 'df8a9906537e',
@@ -1159,7 +1166,7 @@ export const DIGESTS: Digests = {
     'TALENT_REVIEW_OBJECTS>role': '25aaaf980051',
     'TALENT_REVIEW_OBJECTS>scoreRule': '0b7b672a5186',
     'TALENT_REVIEW_OBJECTS>settings': '81657ab4046d',
-    'TALENT_REVIEW_OBJECTS>template': 'd191612bb46c',
+    'TALENT_REVIEW_OBJECTS>template': 'c1b4bc670782',
   },
   'packages/domain/src/talent/catalog.ts': {
     TALENT_OBJECTS: 'f6a74ccb16cf',
@@ -1863,6 +1870,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/talent-review/access.ts#requireFilterVisible': '039036967089',
   'apps/api/src/modules/talent-review/access.ts#reviewContext': 'b22d1ebb92ff',
   'apps/api/src/modules/talent-review/access.ts#reviewWriteContext': '4ad9f97ef260',
+  'apps/api/src/modules/talent-review/calc-rule-catalog.ts#visibleOf': 'f31c51ed2f43',
   'apps/api/src/modules/talent-review/calc-rule-routes.ts#recheckCalcRuleWrite': 'e8ef4f031923',
   'apps/api/src/modules/talent-review/calc-rule-routes.ts#registerReads': '4438ef96c53b',
   'apps/api/src/modules/talent-review/calc-rule-routes.ts#registerWrites': '9f9cf74cdf39',
@@ -1893,9 +1901,11 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/talent-review/scoring-routes.ts#requireMappingFields': '940a2bde2b00',
   'apps/api/src/modules/talent-review/template-access.ts#requireCreatable': '191b7000d8b0',
   'apps/api/src/modules/talent-review/template-access.ts#requireEditable': '5b6575aaabe1',
-  'apps/api/src/modules/talent-review/template-routes.ts#registerTemplateRoutes': 'd3f624eb3081',
+  'apps/api/src/modules/talent-review/template-extra-present.ts#resultCatalogAccess': 'f9ef0ad27e84',
+  'apps/api/src/modules/talent-review/template-routes.ts#registerTemplateRoutes': '47bdf40c0b68',
   'apps/api/src/modules/talent-review/template-routes.ts#requireCatalogs': '06e325feca31',
   'apps/api/src/modules/talent-review/template-routes.ts#runGuarded': 'cf046247ef90',
+  'apps/api/src/modules/talent-review/template-routes.ts#trimmed': 'd6d741e4df20',
   'apps/api/src/modules/talent-review/template-service.ts#createTemplate': '407d0c1d506a',
   'apps/api/src/modules/talent-review/template-service.ts#lockTemplate': '9bb9240b9fb1',
   'apps/api/src/modules/talent/access.ts#DATA_OPERATION': 'e3b0c44298fc',
