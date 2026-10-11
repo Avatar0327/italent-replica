@@ -120,6 +120,16 @@ export const TALENT_REVIEW_OBJECTS = {
   /** 盘点流程定义（设计 §2.2 flows / nodes / node_roles；DEC-304）：节点与角色随流程整组维护。设置类配置对象（DEC-121）。 */
   flow: object('Flow', ['name', 'nodes', 'sortNo', 'enabled']),
   /**
+   * 盘点模板（设计 §2.3；TR-R11～R20）：按所属组织（owner_org_id）∪ 创建人，可向下公开（只读）。结构（步骤、模块、权限）随模板
+   * 整体维护，每次结构保存生成新版本；steps / modules / permissions 是嵌套字段（权限随字段），`configErrors` 与 `versions`
+   * 是派生只读值。不是“设置类配置对象”（有组织字段），不在 TALENT_REVIEW_CONFIG_OBJECTS 里。
+   */
+  template: object(
+    'Template',
+    ['name', 'ownerOrgId', 'downwardPublic', 'flowId', 'enabled', 'steps', 'modules', 'permissions'],
+    ['currentVersionNo', 'versionNo', 'accessLevel', 'configErrors', 'versions'],
+  ),
+  /**
    * 盘点结果审批（设计 §3.3、§2.6；N12）：审批类型 talent_review_result 的业务对象（集合审批，一单多个被盘点人）。
    * 发起 / 撤回入口随 PR-D 接入；本 PR 只登记对象，供审批类型与标准身份引用。
    */
@@ -148,6 +158,7 @@ export const TALENT_REVIEW_OBJECT_LABELS: Readonly<Record<TalentReviewObject, st
   mapping: '字段映射',
   matrix: '盘点九宫格',
   calcRule: '盘点计算规则',
+  template: '盘点模板',
   form: '盘点内容表单',
   flow: '盘点流程',
   resultApproval: '盘点结果审批',

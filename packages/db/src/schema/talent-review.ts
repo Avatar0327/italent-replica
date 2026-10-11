@@ -24,6 +24,7 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
+import { orgObjects } from './org.js';
 import { tenants, users } from './tenancy.js';
 
 /**
@@ -817,5 +818,298 @@ export const talentReviewFlowNodeRoles = pgTable(
       foreignColumns: [talentReviewRoles.tenantId, talentReviewRoles.id],
       name: 'talent_review_flow_node_roles_role_fk',
     }).onDelete('restrict'),
+  ],
+);
+
+/**
+ * 盘点模板（设计 §2.3；TR-R11、R12）：按所属组织 ∪ 创建人，可向下公开（下级只读）。结构在版本表下，每次结构保存生成新版本；
+ * 对象钉住 version_id（PR-C）。启用须已选流程（check）；流程被模板引用不能删（restrict，友好的 409 由守卫给）。
+ */
+export const talentReviewTemplates = pgTable(
+  'talent_review_templates',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: tenantId(),
+    name: text('name').notNull(),
+    ownerOrgId: uuid('owner_org_id').notNull(),
+    downwardPublic: boolean('downward_public').notNull().default(false),
+    flowId: uuid('flow_id'),
+    enabled: boolean('enabled').notNull().default(false),
+    currentVersionNo: integer('current_version_no').notNull().default(1),
+    ...audit(),
+  },
+  (t) => [
+    unique('talent_review_templates_tenant_id').on(t.tenantId, t.id),
+    unique('talent_review_templates_name').on(t.tenantId, t.name),
+    index('talent_review_templates_org').on(t.tenantId, t.ownerOrgId),
+    foreignKey({
+      columns: [t.tenantId, t.ownerOrgId],
+      foreignColumns: [orgObjects.tenantId, orgObjects.id],
+      name: 'talent_review_templates_org_fk',
+    }),
+    foreignKey({
+      columns: [t.tenantId, t.flowId],
+      foreignColumns: [talentReviewFlows.tenantId, talentReviewFlows.id],
+      name: 'talent_review_templates_flow_fk',
+    }).onDelete('restrict'),
+    check('talent_review_templates_enabled_flow', sql`NOT ${t.enabled} OR ${t.flowId} IS NOT NULL`),
+    check('talent_review_templates_version', sql`${t.currentVersionNo} > 0`),
+    revisionCheck('talent_review_templates_rev', t.revision),
+  ],
+);
+
+/** 模板版本：每次结构保存新增一行；旧版本不变（已发起对象钉旧版本）。 */
+export const talentReviewTemplateVersions = pgTable(
+  'talent_review_template_versions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: tenantId(),
+    templateId: uuid('template_id').notNull(),
+    versionNo: integer('version_no').notNull(),
+    flowId: uuid('flow_id'),
+    createdBy: uuid('created_by').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('talent_review_template_versions_tenant_id').on(t.tenantId, t.id),
+    unique('talent_review_template_versions_no').on(t.tenantId, t.templateId, t.versionNo),
+    foreignKey({
+      columns: [t.tenantId, t.templateId],
+      foreignColumns: [talentReviewTemplates.tenantId, talentReviewTemplates.id],
+      name: 'talent_review_template_versions_template_fk',
+    }).onDelete('cascade'),
+    check('talent_review_template_versions_no_pos', sql`${t.versionNo} > 0`),
+  ],
+);
+
+/** 版本内冻结的流程节点副本（流程定义之后修改只影响新版本）；show_matrix 是模板自己的设置。 */
+export const talentReviewTemplateSteps = pgTable(
+  'talent_review_template_steps',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: tenantId(),
+    versionId: uuid('version_id').notNull(),
+    nodeKey: text('node_key').notNull(),
+    name: text('name').notNull(),
+    kind: text('kind').notNull(),
+    stepType: text('step_type').notNull(),
+    mode: text('mode').notNull(),
+    showMatrix: boolean('show_matrix').notNull().default(false),
+    allowReturn: boolean('allow_return').notNull().default(false),
+    allowTransfer: boolean('allow_transfer').notNull().default(false),
+    allowDisagree: boolean('allow_disagree').notNull().default(false),
+    sortNo: integer('sort_no').notNull().default(0),
+  },
+  (t) => [
+    unique('talent_review_template_steps_tenant_id').on(t.tenantId, t.id),
+    unique('talent_review_template_steps_key').on(t.tenantId, t.versionId, t.nodeKey),
+    foreignKey({
+      columns: [t.tenantId, t.versionId],
+      foreignColumns: [talentReviewTemplateVersions.tenantId, talentReviewTemplateVersions.id],
+      name: 'talent_review_template_steps_version_fk',
+    }).onDelete('cascade'),
+    check('talent_review_template_steps_kind', sql`${t.kind} IN ('single','countersign')`),
+    check('talent_review_template_steps_step_type', sql`${t.stepType} IN ('evaluate','calibrate')`),
+    check('talent_review_template_steps_mode', sql`${t.mode} IN ('single','batch')`),
+    check(
+      'talent_review_template_steps_countersign',
+      sql`${t.kind} <> 'countersign' OR (${t.stepType} = 'evaluate' AND ${t.mode} = 'single')`,
+    ),
+  ],
+);
+
+/** 步骤的角色（冻结 resolver）：引用的盘点角色不能删除（restrict）。 */
+export const talentReviewTemplateStepRoles = pgTable(
+  'talent_review_template_step_roles',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: tenantId(),
+    stepId: uuid('step_id').notNull(),
+    roleId: uuid('role_id').notNull(),
+    resolver: text('resolver').notNull(),
+    sortNo: integer('sort_no').notNull().default(0),
+  },
+  (t) => [
+    unique('talent_review_template_step_roles_role').on(t.tenantId, t.stepId, t.roleId),
+    foreignKey({
+      columns: [t.tenantId, t.stepId],
+      foreignColumns: [talentReviewTemplateSteps.tenantId, talentReviewTemplateSteps.id],
+      name: 'talent_review_template_step_roles_step_fk',
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [t.tenantId, t.roleId],
+      foreignColumns: [talentReviewRoles.tenantId, talentReviewRoles.id],
+      name: 'talent_review_template_step_roles_role_fk',
+    }).onDelete('restrict'),
+  ],
+);
+
+/**
+ * 模板模块（TR-R13～R15）：indicator 指标评估（来源、算分方式、评价规则头部快照）、info 盘点信息（展示字段另表）、
+ * succession 继任信息。评价规则 / 模块等级的头部与等级在版本保存时整份快照（修改规则不影响已发起的盘点，TR-R20）。
+ * 人才标准是外部对象，不建外键，由人才标准的外部引用守卫保护（设计 §5.1）。
+ */
+export const talentReviewTemplateModules = pgTable(
+  'talent_review_template_modules',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: tenantId(),
+    versionId: uuid('version_id').notNull(),
+    kind: text('kind').notNull(),
+    name: text('name').notNull(),
+    sortNo: integer('sort_no').notNull().default(0),
+    source: text('source'),
+    criterionMode: text('criterion_mode'),
+    criterionId: uuid('criterion_id'),
+    dimensionTypes: text('dimension_types').array(),
+    scoring: text('scoring'),
+    ruleKind: text('rule_kind'),
+    ruleMin: numeric('rule_min', { precision: 14, scale: 4, mode: 'number' }),
+    ruleMax: numeric('rule_max', { precision: 14, scale: 4, mode: 'number' }),
+    ruleDisplay: text('rule_display'),
+    ruleAllowUnable: boolean('rule_allow_unable'),
+    sourceScoreRuleId: uuid('source_score_rule_id'),
+    sourceModuleGradeId: uuid('source_module_grade_id'),
+    allowOrg: boolean('allow_org'),
+    allowPosition: boolean('allow_position'),
+    allowTarget: boolean('allow_target'),
+  },
+  (t) => [
+    unique('talent_review_template_modules_tenant_id').on(t.tenantId, t.id),
+    unique('talent_review_template_modules_name').on(t.tenantId, t.versionId, t.name),
+    foreignKey({
+      columns: [t.tenantId, t.versionId],
+      foreignColumns: [talentReviewTemplateVersions.tenantId, talentReviewTemplateVersions.id],
+      name: 'talent_review_template_modules_version_fk',
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [t.tenantId, t.sourceScoreRuleId],
+      foreignColumns: [talentReviewScoreRules.tenantId, talentReviewScoreRules.id],
+      name: 'talent_review_template_modules_rule_fk',
+    }).onDelete('restrict'),
+    foreignKey({
+      columns: [t.tenantId, t.sourceModuleGradeId],
+      foreignColumns: [talentReviewModuleGrades.tenantId, talentReviewModuleGrades.id],
+      name: 'talent_review_template_modules_grade_fk',
+    }).onDelete('restrict'),
+    check('talent_review_template_modules_kind', sql`${t.kind} IN ('indicator','info','succession')`),
+    check(
+      'talent_review_template_modules_source',
+      sql`${t.source} IS NULL OR ${t.source} IN ('qualification','talent_standard')`,
+    ),
+    check(
+      'talent_review_template_modules_criterion_mode',
+      sql`${t.criterionMode} IS NULL OR ${t.criterionMode} IN ('designated','by_job')`,
+    ),
+    check(
+      'talent_review_template_modules_scoring',
+      sql`${t.scoring} IS NULL OR ${t.scoring} IN ('weighted_sum','arithmetic_mean','arithmetic_sum','by_count')`,
+    ),
+    check(
+      'talent_review_template_modules_rule_kind',
+      sql`${t.ruleKind} IS NULL OR ${t.ruleKind} IN ('numeric','grade')`,
+    ),
+  ],
+);
+
+/** 模块等级快照（评价规则的等级 / 模块等级的项，各按 source 区分）：版本内冻结。 */
+export const talentReviewTemplateModuleLevels = pgTable(
+  'talent_review_template_module_levels',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: tenantId(),
+    moduleId: uuid('module_id').notNull(),
+    source: text('source').notNull(),
+    name: text('name').notNull(),
+    value: text('value').notNull(),
+    sortNo: integer('sort_no').notNull().default(0),
+    minScore: numeric('min_score', { precision: 14, scale: 4, mode: 'number' }),
+    maxScore: numeric('max_score', { precision: 14, scale: 4, mode: 'number' }),
+    minCount: integer('min_count'),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.tenantId, t.moduleId],
+      foreignColumns: [talentReviewTemplateModules.tenantId, talentReviewTemplateModules.id],
+      name: 'talent_review_template_module_levels_module_fk',
+    }).onDelete('cascade'),
+    check('talent_review_template_module_levels_source', sql`${t.source} IN ('rule','grade')`),
+  ],
+);
+
+/** 盘点信息模块展示的盘点字段：字段被模板引用不能删（restrict）。 */
+export const talentReviewTemplateModuleFields = pgTable(
+  'talent_review_template_module_fields',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: tenantId(),
+    moduleId: uuid('module_id').notNull(),
+    fieldId: uuid('field_id').notNull(),
+    sortNo: integer('sort_no').notNull().default(0),
+  },
+  (t) => [
+    unique('talent_review_template_module_fields_field').on(t.tenantId, t.moduleId, t.fieldId),
+    foreignKey({
+      columns: [t.tenantId, t.moduleId],
+      foreignColumns: [talentReviewTemplateModules.tenantId, talentReviewTemplateModules.id],
+      name: 'talent_review_template_module_fields_module_fk',
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [t.tenantId, t.fieldId],
+      foreignColumns: [talentReviewFields.tenantId, talentReviewFields.id],
+      name: 'talent_review_template_module_fields_field_fk',
+    }).onDelete('restrict'),
+  ],
+);
+
+/**
+ * 步骤 × 角色 × 模块的权限（TR-R16、R18）：role_id 仅会签步骤有值（单人步骤为空）；指标模块用 visible / 评分 / 评语 / 权重，
+ * 继任模块用 successor_access / target_access（DEC-306①，三档）。默认行由保存命令物化。
+ */
+export const talentReviewTemplateStepModulePermissions = pgTable(
+  'talent_review_template_step_module_permissions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: tenantId(),
+    stepId: uuid('step_id').notNull(),
+    roleId: uuid('role_id'),
+    moduleId: uuid('module_id').notNull(),
+    visible: boolean('visible').notNull().default(true),
+    scoreEnabled: boolean('score_enabled').notNull().default(true),
+    scoreRequired: boolean('score_required').notNull().default(false),
+    commentEnabled: boolean('comment_enabled').notNull().default(true),
+    commentRequired: boolean('comment_required').notNull().default(false),
+    weight: numeric('weight', { precision: 7, scale: 4, mode: 'number' }),
+    successorAccess: text('successor_access'),
+    targetAccess: text('target_access'),
+  },
+  (t) => [
+    unique('talent_review_template_step_module_permissions_seat')
+      .on(t.tenantId, t.stepId, t.roleId, t.moduleId)
+      .nullsNotDistinct(),
+    foreignKey({
+      columns: [t.tenantId, t.stepId],
+      foreignColumns: [talentReviewTemplateSteps.tenantId, talentReviewTemplateSteps.id],
+      name: 'talent_review_template_step_module_permissions_step_fk',
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [t.tenantId, t.moduleId],
+      foreignColumns: [talentReviewTemplateModules.tenantId, talentReviewTemplateModules.id],
+      name: 'talent_review_template_step_module_permissions_module_fk',
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [t.tenantId, t.roleId],
+      foreignColumns: [talentReviewRoles.tenantId, talentReviewRoles.id],
+      name: 'talent_review_template_step_module_permissions_role_fk',
+    }).onDelete('restrict'),
+    check(
+      'talent_review_template_step_module_permissions_access',
+      sql`(${t.successorAccess} IS NULL OR ${t.successorAccess} IN ('edit','view','hidden'))
+        AND (${t.targetAccess} IS NULL OR ${t.targetAccess} IN ('edit','view','hidden'))`,
+    ),
+    check(
+      'talent_review_template_step_module_permissions_weight',
+      sql`${t.weight} IS NULL OR (${t.weight} >= 0 AND ${t.weight} <= 100)`,
+    ),
   ],
 );
