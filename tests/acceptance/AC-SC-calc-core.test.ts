@@ -8,6 +8,7 @@ import {
   CalcBlocked,
   CalcObjectFailure,
   defineCalcKinds,
+  type CalcInput,
 } from '../../apps/api/src/modules/succession/calc-contract.js';
 import { enqueueCalcRun, changeCalcRun, runCalcPage } from '../../apps/api/src/modules/succession/calc-worker.js';
 import {
@@ -49,7 +50,7 @@ const effects = async (id: string) =>
   SELECT count(*)::int n FROM sc_calc_effects WHERE run_id=${id}::uuid`),
     ),
   )[0]!.n;
-const create = (input = request()) => tx((t) => enqueueCalcRun(t, input, now));
+const create = (input: CalcInput = request()) => tx((t) => enqueueCalcRun(t, input, now));
 const change = async (id: string, action: 'retry' | 'abort') => {
   const row = await read(id);
   return tx((t) => changeCalcRun(t, member.tenant.id, id, Number(row.revision), action, randomUUID(), now));
