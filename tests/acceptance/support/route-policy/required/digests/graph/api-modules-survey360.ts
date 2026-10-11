@@ -1111,6 +1111,8 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/survey360/policy.ts#SURVEY360_PORTAL_POLICIES': [
     '#PORTAL_LEDGER',
+    '#byId',
+    '#sessionPolicy',
     'apps/api/src/route-policy/presets.ts#none',
     'apps/api/src/route-policy/presets.ts#publicRoute',
     'apps/api/src/route-policy/presets.ts#write',
@@ -1151,6 +1153,11 @@ export const GRAPH: Graph = {
     'apps/api/src/route-policy/presets.ts#none',
     'apps/api/src/route-policy/presets.ts#object',
     'apps/api/src/route-policy/presets.ts#shape',
+    'apps/api/src/route-policy/presets.ts#write',
+  ],
+  'apps/api/src/modules/survey360/policy.ts#sessionPolicy': [
+    'apps/api/src/route-policy/presets.ts#none',
+    'apps/api/src/route-policy/presets.ts#publicRoute',
     'apps/api/src/route-policy/presets.ts#write',
   ],
   'apps/api/src/modules/survey360/policy.ts#todoOwn': [
@@ -1218,20 +1225,52 @@ export const GRAPH: Graph = {
     '#loginHooks',
   ],
   'apps/api/src/modules/survey360/portal.ts#parseLoginBody': ['#loginBody'],
+  'apps/api/src/modules/survey360/portal.ts#portalTenant': [
+    '#SESSION_HEADER',
+    '#unauthenticated',
+    'apps/api/src/system-actor.ts#SYSTEM_USER_ID',
+  ],
   'apps/api/src/modules/survey360/portal.ts#registerPortalRoutes': [
+    'apps/api/src/modules/survey360/answering.ts#answerPage',
+    'apps/api/src/modules/survey360/answering.ts#avatarRoute',
+    'apps/api/src/modules/survey360/answering.ts#linkRead',
+    'apps/api/src/modules/survey360/answering.ts#registerAnswerRoutes',
     'apps/api/src/modules/survey360/context.ts#mapDbError',
     'apps/api/src/modules/survey360/policy.ts#SURVEY360_PORTAL_POLICIES',
     '#PORTAL_BASE',
     '#login',
     '#logout',
+    '#sessionEntry',
     'apps/api/src/route-policy/declare.ts#policedSub',
+  ],
+  'apps/api/src/modules/survey360/portal.ts#requireSession': ['#sessionLink', '#unauthenticated'],
+  'apps/api/src/modules/survey360/portal.ts#route:GET /': [
+    'apps/api/src/modules/survey360/answering.ts#answerPage',
+    'apps/api/src/modules/survey360/answering.ts#linkRead',
+    '#sessionEntry',
+  ],
+  'apps/api/src/modules/survey360/portal.ts#route:GET /avatars/:attachmentId/content': [
+    'apps/api/src/modules/survey360/answering.ts#avatarRoute',
+    '#sessionEntry',
   ],
   'apps/api/src/modules/survey360/portal.ts#route:POST /login': ['#login'],
   'apps/api/src/modules/survey360/portal.ts#route:POST /logout': ['#logout'],
+  'apps/api/src/modules/survey360/portal.ts#sessionEntry': [
+    'apps/api/src/modules/survey360/links.ts#hashToken',
+    '#PORTAL_BASE',
+    '#portalTenant',
+    '#requireSession',
+    '#sessionLink',
+  ],
   'apps/api/src/modules/survey360/portal.ts#sessionLimitRetry': [
     'apps/api/src/modules/survey360/context.ts#rows',
     '#D4_LIMIT',
     '#D4_WINDOW_MS',
+  ],
+  'apps/api/src/modules/survey360/portal.ts#sessionLink': [
+    'apps/api/src/modules/survey360/context.ts#rows',
+    'apps/api/src/modules/survey360/credential-config.ts#credentialConfig',
+    'apps/api/src/modules/survey360/tasks.ts#hasTask',
   ],
   'apps/api/src/modules/survey360/portal.ts#settle': [
     'apps/api/src/modules/survey360/context.ts#rows',

@@ -33,11 +33,24 @@ describe('AC-360-F076-35/41/42 会话密钥生命周期', () => {
     const old = await loginOk(w, p1);
     configure(2);
     const migrated = await loginOk(w, p1);
+    const v2 = await issuedScene(testDb().db, 'session-issued-v2', {
+      currentVersion: 2,
+      credentialKeys: keys,
+      retiredVersions: new Set(),
+      compromisedVersions: new Set(),
+    });
+    const v2Session = await loginOk(v2.w, v2.creds.get(v2.s.person.P1.id)!);
     configure(3);
     const skipped = await loginOk(w, creds.get(s.person.P2.id)!);
     configure(3, [2], [2]);
     const paths = ['', `/tasks/${s.rel.p1.id}/questionnaires/${s.q.id}`, `/avatars/${randomUUID()}/content`];
     const check = async () => {
+      for (const path of [
+        '',
+        `/tasks/${v2.s.rel.p1.id}/questionnaires/${v2.s.q.id}`,
+        `/avatars/${randomUUID()}/content`,
+      ])
+        expect((await sessionCall(v2.w, v2Session.session)('GET', path)).status).toBe(401);
       for (const { session } of [old, migrated])
         for (const path of paths) expect((await sessionCall(w, session)('GET', path)).status).toBe(401);
       expect((await sessionCall(w, skipped.session)('GET')).status).toBe(200);
@@ -74,6 +87,14 @@ describe('AC-360-F076-35/41/42 会话密钥生命周期', () => {
     await check();
     expect((await sessionRows(w, p1.linkId)).every((row) => row.revoked_at !== null)).toBe(true);
     expect((await sessionRows(w, creds.get(s.person.P2.id)!.linkId))[0]!.revoked_at).toBeNull();
+    const v2Done = await retireKeys(v2.w.db, {
+      tenantId: v2.w.tenantId,
+      version: 2,
+      compromised: true,
+      config: credentialConfig(),
+    });
+    expect(v2Done.tenants[0]).toMatchObject({ credentials: 5, sessions: 1 });
+    await check();
     expect((await securityEvents(w, 'key_retired'))[0]!.detail).toMatchObject({ credentials: 1, sessions: 2 });
   });
 
@@ -99,8 +120,9 @@ describe('AC-360-F076-35/41/42 会话密钥生命周期', () => {
       compromised: true,
       config: credentialConfig(),
     });
-    expect(done.tenants[0]).toMatchObject({ credentials: 5, sessions: 1 });
+    expect(done.tenants[0]).toMatchObject({ credentials: 0, sessions: 1 });
     expect((await sessionRows(w, cred.linkId))[0]!.revoked_at).not.toBeNull();
+    expect(done.tenants[0]!.resend.flatMap((group) => group.linkIds)).toContain(cred.linkId);
     expect((await call('GET')).status).toBe(401);
     expect((await securityEvents(w, 'key_retired')).filter((e) => e.compromised)).toHaveLength(1);
   });

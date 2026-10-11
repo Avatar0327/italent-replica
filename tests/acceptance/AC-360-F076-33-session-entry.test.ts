@@ -1,13 +1,31 @@
 /** F-076 §4.2～4.7：真实登录后的会话读取、撤销、任务归属与命令语义。 */
 import { randomUUID } from 'node:crypto';
-import { sql } from '@italent/db';
+import { sql, withTenant, getTenant, setTenantStatus } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
-import { afterEach, describe, expect, it } from 'vitest';
-import { resetCredentialConfig } from './AC-360-F076-support.js';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { resetCredentialConfig, rowsOf } from './AC-360-F076-support.js';
 import { issuedScene, login, loginOk, logout, minutes, sql1, sessionCall } from './AC-360-F076-portal-support.js';
 
+import { cmd } from './support/tenant-api.js';
+
+const commandBoundary = vi.hoisted(() => ({ before: undefined as undefined | (() => Promise<void>) }));
+vi.mock('../../apps/api/src/commands.js', async (original) => {
+  const actual = await original<typeof import('../../apps/api/src/commands.js')>();
+  return {
+    ...actual,
+    runCommand: async (...args: Parameters<typeof actual.runCommand>) => {
+      const before = commandBoundary.before;
+      commandBoundary.before = undefined;
+      await before?.();
+      return actual.runCommand(...args);
+    },
+  };
+});
 const testDb = useTestDb();
-afterEach(resetCredentialConfig);
+afterEach(() => {
+  resetCredentialConfig();
+  commandBoundary.before = undefined;
+});
 const task = (s: Awaited<ReturnType<typeof issuedScene>>['s']) => `/tasks/${s.rel.p1.id}/questionnaires/${s.q.id}`;
 
 async function setup(label: string) {
@@ -98,6 +116,18 @@ describe('AC-360-F076-33～39 会话入口', () => {
     expect((await call('GET', '/confirmation/candidates')).status).toBe(404);
     expect((await call('GET', `/tasks/${randomUUID()}/questionnaires/${s.q.id}`)).status).toBe(404);
     expect((await call('GET', `/tasks/bad/questionnaires/${s.q.id}`)).status).toBe(400);
+    const another = await w.activity();
+    const object = await w.object(another.id, s.person.T.id, [s.q.id]);
+    const relation = await w.appraiser(another.id, object.id, s.person.P1.id, 'peer');
+    await w.transition(another.id, 'enable');
+    expect((await call('GET', `/tasks/${relation.id}/questionnaires/${s.q.id}`)).status).toBe(404);
+    const tenant = (await getTenant(w.db, w.tenantId))!;
+    await setTenantStatus(
+      w.db,
+      { tenantId: w.tenantId, status: 'suspended', expectedRevision: tenant.revision },
+      cmd(),
+    );
+    expect((await call('GET')).status).toBe(401);
   });
 
   it('AC-39：本人保存、同键重放、跨入口冲突、If-Match、停用与匿名投影', async () => {
@@ -108,6 +138,13 @@ describe('AC-360-F076-33～39 会话入口', () => {
     const saved = await call('PUT', task(s), opts);
     expect(saved.status, await saved.clone().text()).toBe(200);
     const data = await saved.json();
+    const audit = rowsOf<{ actor_user_id: string | null }>(
+      await withTenant(w.db, w.tenantId, (tx) =>
+        tx.execute(sql`SELECT actor_user_id FROM audit_events WHERE command_id = ${command}`),
+      ),
+    );
+    expect(audit.length).toBeGreaterThan(0);
+    expect(audit.every((row) => row.actor_user_id === null)).toBe(true);
     expect(await (await call('PUT', task(s), opts)).json()).toEqual(data);
     const cross = await w.link(cred.token)('PUT', task(s), opts);
     expect(cross.status).toBe(409);
@@ -120,5 +157,20 @@ describe('AC-360-F076-33～39 会话入口', () => {
     const stopped = await call('PUT', task(s), { ifMatch: data.revision, body });
     expect(stopped.status).toBe(409);
     expect(await stopped.text()).toContain('ACTIVITY_NOT_OPEN');
+  });
+  it('AC-39：预检后、命令台账返回前登出，重放必须由 CommandGuard.before 拒绝', async () => {
+    const { w, s, call, cred } = await setup('entry-replay-race');
+    const options = { ifMatch: 0, idempotencyKey: randomUUID(), body: { answers: [], suggestion: '已保存的草稿' } };
+    const saved = await call('PUT', task(s), options);
+    expect(saved.status).toBe(200);
+    commandBoundary.before = () =>
+      sql1(
+        w,
+        sql`UPDATE survey360_answer_sessions SET revoked_at = now()
+      WHERE link_id = ${cred.linkId}::uuid`,
+      );
+    const replay = await call('PUT', task(s), options);
+    expect(replay.status).toBe(404);
+    expect(await replay.text()).not.toContain('已保存的草稿');
   });
 });

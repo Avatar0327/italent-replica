@@ -1506,6 +1506,51 @@ const sessionPossession: Obligation[] = [
   },
 ];
 
+// PR-2b：五条入口共用会话守卫，任务处理器仍由 answering 注册。
+const SESSION: Evidence[] = [
+  impl(
+    `${PORTAL}#portalTenant`,
+    'if (!tenantId || !isUuid(tenantId) || !token || token.length > 200) throw unauthenticated()',
+  ),
+  impl(`${PORTAL}#portalTenant`, "if (!tenant || tenant.status !== 'active') throw unauthenticated()"),
+  impl(`${PORTAL}#sessionEntry`, 'await requireSession(deps, tenant, hash)'),
+  impl(`${PORTAL}#requireSession`, 'if (!link) throw unauthenticated()'),
+  impl(`${PORTAL}#requireSession`, 'sessionLink(tx, hash, deps.clock, false)'),
+  impl(`${PORTAL}#sessionEntry`, 'sessionLink(tx, hash, deps.clock)'),
+  impl(`${PORTAL}#sessionLink`, 'if (!activity) return undefined'),
+  impl(`${PORTAL}#sessionLink`, 'if (!link) return undefined'),
+  impl(
+    `${PORTAL}#sessionLink`,
+    'if (link.credential_key_versions.some((version) => config.compromisedVersions.has(version))) return undefined',
+  ),
+  impl(`${PORTAL}#sessionLink`, 'if (!(await hasTask(tx, link.activityId, link.personId))) return undefined'),
+];
+const SESSION_ROUTES: readonly (readonly [string, string, readonly Evidence[]])[] = [
+  ['GET', '/', [portalCall('GET /', "linkRead(deps, sessionEntry(deps), 'answer'"), LINK_READ]],
+  [
+    'GET',
+    '/avatars/:attachmentId/content',
+    [
+      portalCall('GET /avatars/:attachmentId/content', "avatarRoute(deps, sessionEntry(deps), 'answer')"),
+      AVATAR,
+      LINK_READ,
+    ],
+  ],
+  ...LINKS.filter(([, path]) => path.startsWith('/tasks')).map(
+    ([method, path, anchor]) =>
+      [
+        method,
+        path,
+        [
+          impl(`${PORTAL}#registerPortalRoutes`, 'registerAnswerRoutes(module, deps, sessionEntry(deps))'),
+          call(`${ANSWERING}#route:${method} ${path}`, anchor),
+          method === 'GET' ? ANSWER_READ : method === 'PUT' ? ANSWER_SAVE : ANSWER_SUBMIT,
+          method === 'GET' ? LINK_READ : LINK_WRITE,
+        ],
+      ] as const,
+  ),
+];
+
 export const SURVEY360: RequiredTable = {
   ...Object.fromEntries([...ROUTES, ...PR_B_ROUTES].map((r) => [`${r.method} ${BASE}${r.path}`, obligations(r)])),
   ...Object.fromEntries(
@@ -1537,4 +1582,16 @@ export const SURVEY360: RequiredTable = {
   'GET /api/survey360/report-link/reports/:reportId/download': reportLinkReport('/reports/:reportId/download'),
   'POST /api/survey360/portal/login': credentialExchange,
   'POST /api/survey360/portal/logout': sessionPossession,
+  ...Object.fromEntries(
+    SESSION_ROUTES.map(([method, path, at]) => [
+      `${method} /api/survey360/portal${path === '/' ? '' : path}`,
+      [
+        {
+          perm: 'guard:survey360.answerSession',
+          note: '当前会话、链接、暴露版本与有效关系双检（F-076 §4.2）',
+          at: [...at, ...SESSION],
+        },
+      ],
+    ]),
+  ),
 };
