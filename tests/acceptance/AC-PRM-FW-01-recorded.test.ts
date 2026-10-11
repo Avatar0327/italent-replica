@@ -28,7 +28,7 @@ import {
 } from './support/route-policy/recorded.js';
 import { preconditionName } from './support/route-policy/features.js';
 import { generatedGate, textDrift } from './support/route-policy/generated-gate.js';
-import { gateEvidence, softGate } from './support/route-policy/evidence-gate.js';
+import { registrationGate, registrationDrift } from './support/route-policy/registration.js';
 import { tenantApi } from './support/tenant-api.js';
 
 const testDb = useTestDb();
@@ -240,14 +240,14 @@ describe('AC-PRM-FW-01 recorded：冻结文件', () => {
     expect(generatedGate('recorded 冻结文件', drift)).toEqual([]);
     const declared = new Set(routes.map((r) => `${r.method} ${r.path}`));
     expect(
-      softGate(
+      registrationDrift(
         'recorded 冻结端点',
         Object.keys(frozen).filter((key) => !declared.has(key)),
       ),
     ).toEqual([]);
     // 真实冻结文件对真实声明的核对（本文件不负责任何端点，只核对冻结的端点还存在）
     const findings = checkRecorded({ collected: {}, frozen, scope: new Set(), routes, contract });
-    expect(gateEvidence(findings, 'recorded 收集 × 冻结（DEC-416③）')).toEqual([]);
+    expect(registrationGate(findings, 'recorded 收集 × 冻结（DEC-416③）')).toEqual([]);
   });
 
   it('mergeRecorded：只替换本文件负责的端点，其余模块组的冻结事实原样保留', async () => {

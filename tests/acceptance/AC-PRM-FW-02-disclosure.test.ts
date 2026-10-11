@@ -1,3 +1,4 @@
+import { registration, registrationGate, registrationDrift } from './support/route-policy/registration.js';
 /**
  * AC-PRM-FW-02（续，F-039 PR-B1，设计 docs/08_设计/F-039_PR-B_设计.md B-01 / B-03；DEC-356 / DEC-359 / DEC-362）：
  * 披露语义与范围绑定。零行为变化——只改比较器、显式表与测试支撑，不动任何处理函数。
@@ -13,11 +14,9 @@ import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { readFrozenContract } from './support/route-policy/baseline.js';
 import { DETECTOR_CONTRACT, DETECTOR_REQUIRED, DETECTOR_SEMANTICS } from './support/route-policy/detector-fixtures.js';
-import { registration } from './support/route-policy/registration.js';
 import type { Finding } from './support/route-policy/compare.js';
 import type { ObservedContract } from './support/route-policy/contract.js';
 import { checkStored } from './support/route-policy/evidence.js';
-import { gateEvidence, softGate } from './support/route-policy/evidence-gate.js';
 import { declaredPerms, OPTIONAL_NAME_PATTERN } from './support/route-policy/perms.js';
 import { locate } from './support/route-policy/required-mutate.js';
 import { checkRequired } from './support/route-policy/required.js';
@@ -82,7 +81,7 @@ const disclosureBranches = () =>
 
 describe('AC-PRM-FW-02 B-01 披露分支：位置 / 嵌套 / 名字（D1～D3）与逐备选比较（R3）', () => {
   it('真实声明 × 真实表零发现；披露位置全部挂在根节点，名字合 D3，数量等于表里的披露分支数', () => {
-    const findings = gateEvidence(
+    const findings = registrationGate(
       checkRequired(REQUIRED, frozen, manifest.declared),
       '真实声明 × 披露义务登记（DEC-416③）',
     );
@@ -91,7 +90,7 @@ describe('AC-PRM-FW-02 B-01 披露分支：位置 / 嵌套 / 名字（D1～D3）
     const drift = [];
     if (branches.length !== disclosureBranches().length) drift.push('声明披露分支数与义务登记不同');
     if (branches.length < 33) drift.push('披露分支数少于冻结下限 33');
-    expect(softGate('披露分支静态登记', drift)).toEqual([]);
+    expect(registrationDrift('披露分支静态登记', drift)).toEqual([]);
     for (const [name, branch] of branches) {
       expect(OPTIONAL_NAME_PATTERN.test(name), name).toBe(true);
       expect(branch.path, name).toBe(`optional.${name}.`);
@@ -226,9 +225,9 @@ describe('AC-PRM-FW-02 B-03 范围绑定（need）：与“或”满足合并、
   });
 
   it('GET /idp/approval-processes（view AND (create OR update)）：need 随所属组内备选参与“或”，零发现', () => {
-    expect(gateEvidence(checkRequired(REQUIRED, frozen, [route(APPROVAL_PROCESSES)]), 'IDP 审批流程静态登记')).toEqual(
-      [],
-    );
+    expect(
+      registrationGate(checkRequired(REQUIRED, frozen, [route(APPROVAL_PROCESSES)]), 'IDP 审批流程静态登记'),
+    ).toEqual([]);
     expect(check([route(APPROVAL_PROCESSES)])).toEqual([]);
     const needs = (REQUIRED[APPROVAL_PROCESSES] ?? []).map((o) => o.need);
     registration('IDP 审批流程 need 登记', () => expect(needs.every((n) => n !== undefined)).toBe(true));
@@ -285,7 +284,7 @@ describe('AC-PRM-FW-02 B-03 范围绑定（need）：与“或”满足合并、
     const findings = checkRequired(REQUIRED, frozen, manifest.declared).filter(
       (f) => f.code === 'NEED_EVIDENCE_MISSING',
     );
-    expect(gateEvidence(findings, '范围义务静态证据登记（DEC-416③）')).toEqual([]);
+    expect(registrationGate(findings, '范围义务静态证据登记（DEC-416③）')).toEqual([]);
   });
 
   it('删一条 need（准入 / 披露）→ NEED_UNBOUND / DISCLOSURE_NEED_UNBOUND', () => {
@@ -374,7 +373,7 @@ describe('AC-PRM-FW-02 守卫内部义务：内部角色 inner、GUARD_INNER_ALT
         [{ perm: `guard:${carrier}`, at: registered.at }],
       ]),
     );
-    const found = gateEvidence(checkStored(synthetic), '守卫内部备选证据');
+    const found = registrationGate(checkStored(synthetic), '守卫内部备选证据');
     expect(found, show(found)).toEqual([]);
   });
 

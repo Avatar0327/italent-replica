@@ -1,3 +1,9 @@
+import {
+  registration,
+  compareRegisteredDeclarations,
+  registrationGate,
+  registrationDrift,
+} from './support/route-policy/registration.js';
 /**
  * AC-PRM-FW-02（续，F-039 PR-A 第 4 轮，DEC-348②）：必需项显式表与硬比对。
  * 表（support/route-policy/required/）逐端点登记审定过的义务：权限键 + 用途（准入 / 披露 / 守卫内部 / 条件准入）+
@@ -20,11 +26,9 @@ import {
   DETECTOR_SEMANTICS,
   checkDetectorEvidence,
 } from './support/route-policy/detector-fixtures.js';
-import { registration, compareRegisteredDeclarations } from './support/route-policy/registration.js';
 import { type Finding } from './support/route-policy/compare.js';
 import type { ObservedContract } from './support/route-policy/contract.js';
 import { checkStored, repoSource, type SourceReader, writeDigests } from './support/route-policy/evidence.js';
-import { gateEvidence, softGate } from './support/route-policy/evidence-gate.js';
 import { countDrift, countEndpoints, readEndpointCounts } from './support/route-policy/endpoint-counts.js';
 import { generatedGate } from './support/route-policy/generated-gate.js';
 import { admissionPrimitives, checkRequired } from './support/route-policy/required.js';
@@ -93,7 +97,7 @@ describe('AC-PRM-FW-02 显式必需项表：形状与完整性', () => {
       ...declared.filter((key) => !registered.includes(key)).map((key) => `${key} 静态义务表漏登`),
       ...registered.filter((key) => !declared.includes(key)).map((key) => `${key} 静态义务表多登`),
     ];
-    expect(softGate('静态义务表端点登记', drift)).toEqual([]);
+    expect(registrationDrift('静态义务表端点登记', drift)).toEqual([]);
     const counts = countDrift(countEndpoints(manifest.declared), readEndpointCounts(), { totalOnly: true });
     expect(generatedGate('端点计数（显式表）', counts)).toEqual([]);
   });
@@ -113,12 +117,12 @@ describe('AC-PRM-FW-02 显式必需项表：形状与完整性', () => {
   it('全表证据校验零发现：每条义务都有强制调用点证据，锚点命中，摘要与源码一致', () => {
     if (process.env['ROUTE_POLICY_UPDATE_DIGESTS'] === '1') writeDigests(REQUIRED);
     // F-090：登记与源码不一致默认只警告；登记自身的错误仍判红；ROUTE_POLICY_EVIDENCE_STRICT=1 全部判红
-    const findings = gateEvidence(checkStored(REQUIRED, { unused: true }), '全表证据校验');
+    const findings = registrationGate(checkStored(REQUIRED, { unused: true }), '全表证据校验');
     expect(findings, show(findings)).toEqual([]);
   });
 
   it('真实声明 × 真实表：零发现', () => {
-    const findings = gateEvidence(
+    const findings = registrationGate(
       checkRequired(REQUIRED, frozen, manifest.declared),
       '真实声明 × 静态义务表（DEC-416③）',
     );
@@ -129,8 +133,8 @@ describe('AC-PRM-FW-02 显式必需项表：形状与完整性', () => {
     const findings = compareRegisteredDeclarations(frozen, [route(MODEL_IMAGE)], undefined, { [MODEL_IMAGE]: [] });
     expect(codes(findings)).toContain('REQUIRED_TABLE_GAP');
     expect(codes(findings).filter((code) => code.startsWith('WEAKER:'))).toEqual([]);
-    expect(gateEvidence(findings, '保留键但漏义务', { strict: false })).toEqual([]);
-    expect(gateEvidence(findings, '保留键但漏义务', { strict: true }).map((f) => f.code)).toContain(
+    expect(registrationGate(findings, '保留键但漏义务', { strict: false })).toEqual([]);
+    expect(registrationGate(findings, '保留键但漏义务', { strict: true }).map((f) => f.code)).toContain(
       'REQUIRED_TABLE_GAP',
     );
   });
@@ -141,8 +145,8 @@ describe('AC-PRM-FW-02 显式必需项表：形状与完整性', () => {
     const changed = { ...base, policy: policy as RoutePolicy };
     const findings = compareRegisteredDeclarations(frozen, [changed], undefined, { [MODEL_IMAGE]: [] });
     expect(codes(findings)).toContain('REQUIRED_TABLE_GAP');
-    expect(codes(gateEvidence(findings, '缺登记且范围弱化', { strict: false }))).toContain('WEAKER:scope');
-    expect(codes(gateEvidence(findings, '缺登记且范围弱化', { strict: true }))).toContain('WEAKER:scope');
+    expect(codes(registrationGate(findings, '缺登记且范围弱化', { strict: false }))).toContain('WEAKER:scope');
+    expect(codes(registrationGate(findings, '缺登记且范围弱化', { strict: true }))).toContain('WEAKER:scope');
   });
 
   it('同一权限多种用途（IDP 执行人写入口的计划查看权：执行人判定内部 + responseView 披露）不算冲突', () => {
@@ -194,7 +198,7 @@ describe('AC-PRM-FW-02 显式表反例：准入 / 披露 / optional', () => {
   });
 
   it('经理入口：真实声明零发现；canApply / canViewReporting 在表里是披露义务', () => {
-    expect(gateEvidence(checkRequired(REQUIRED, frozen, [route(MANAGER)]), '经理入口静态义务登记')).toEqual([]);
+    expect(registrationGate(checkRequired(REQUIRED, frozen, [route(MANAGER)]), '经理入口静态义务登记')).toEqual([]);
     expect(check([route(MANAGER)])).toEqual([]);
     const purposes = Object.fromEntries((REQUIRED[MANAGER] ?? []).map((o) => [o.perm, o.purpose]));
     registration('经理入口 canViewReporting 用途', () =>
@@ -220,9 +224,9 @@ describe('AC-PRM-FW-02 显式表反例：准入 / 披露 / optional', () => {
   });
 
   it('模型图：准入与 optional.canEdit 共用同一个 point 范围，零发现（按 对象 + 操作 + 用途 匹配，不按范围字符串）', () => {
-    expect(gateEvidence(checkRequired(REQUIRED, frozen, [route(MODEL_IMAGE)]), '模型图静态义务登记')).toEqual([]);
+    expect(registrationGate(checkRequired(REQUIRED, frozen, [route(MODEL_IMAGE)]), '模型图静态义务登记')).toEqual([]);
     expect(check([route(MODEL_IMAGE)])).toEqual([]);
-    const findings = gateEvidence(compareRegisteredDeclarations(frozen, [route(MODEL_IMAGE)]), '模型图冻结基准');
+    const findings = registrationGate(compareRegisteredDeclarations(frozen, [route(MODEL_IMAGE)]), '模型图冻结基准');
     expect(findings, show(findings)).toEqual([]);
     const canEdit = entry(MODEL_IMAGE).filter((o) => o.purpose === 'disclosure:canEdit');
     expect(canEdit.map((o) => o.perm)).toContain('obj:TalentCenter.TalentCriterion:update');

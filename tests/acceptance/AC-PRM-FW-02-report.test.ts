@@ -28,7 +28,8 @@ import {
   unitText,
   usesOf,
 } from './support/route-policy/evidence.js';
-import { EVIDENCE_STRICT_ENV, gateEvidence } from './support/route-policy/evidence-gate.js';
+import { EVIDENCE_STRICT_ENV } from './support/route-policy/evidence-gate.js';
+import { registrationGate } from './support/route-policy/registration.js';
 import { REQUIRED } from './support/route-policy/required/index.js';
 import { TENANT_SETTINGS } from './support/route-policy/required/tenant-settings.js';
 import type { RequiredTable } from './support/route-policy/required/types.js';
@@ -935,11 +936,11 @@ describe('AC-PRM-FW-02 集中报告：证据单元一致改名、登记未更新
       show(unit),
     ).toBe(true);
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-    expect(gateEvidence(found, '改名回归', { strict: false }), '默认模式：全部是漂移类，只警告').toEqual([]);
+    expect(registrationGate(found, '改名回归', { strict: false }), '默认模式：全部是漂移类，只警告').toEqual([]);
     expect(warn.mock.calls.flat().join('\n')).toContain(`EVIDENCE_UNIT: `);
-    expect(gateEvidence(found, '改名回归', { strict: true }).map((f) => f.code)).toContain('EVIDENCE_UNIT');
+    expect(registrationGate(found, '改名回归', { strict: true }).map((f) => f.code)).toContain('EVIDENCE_UNIT');
     vi.stubEnv(EVIDENCE_STRICT_ENV, '1');
-    expect(gateEvidence(found, '改名回归').map((f) => f.code)).toContain('EVIDENCE_UNIT');
+    expect(registrationGate(found, '改名回归').map((f) => f.code)).toContain('EVIDENCE_UNIT');
   });
 
   it('集中报告的检测器在改名后的源码上照常工作：再改一个共享依赖 → 恰好 1 条，oracle 与检测器同以有效单元为根', () => {

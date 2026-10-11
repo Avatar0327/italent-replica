@@ -1,83 +1,54 @@
-import { execFile } from 'node:child_process';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { promisify } from 'node:util';
-import { describe, expect, it } from 'vitest';
-import { registration } from './support/route-policy/registration.js';
+import { useTestDb } from '@italent/testkit';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { readFrozenContract } from './support/route-policy/baseline.js';
+import { createRig, discoverAll, type EndpointDiscovery } from './support/route-policy/discovery.js';
+import type { ManifestRoute } from '@italent/api';
+import type { Finding } from './support/route-policy/compare.js';
+import { registration, registrationGate, compareRegisteredDeclarations } from './support/route-policy/registration.js';
+import { checkRequired } from './support/route-policy/required.js';
+import { REQUIRED } from './support/route-policy/required/index.js';
+import type { Obligation, RequiredTable } from './support/route-policy/required/types.js';
 
-const execute = promisify(execFile);
-const root = fileURLToPath(new URL('../../', import.meta.url));
-const cli = join(root, 'node_modules/vitest/vitest.mjs');
-const config = fileURLToPath(new URL('./support/route-policy/registry-regression.config.ts', import.meta.url));
-const files = [
-  'AC-PRM-FW-02-required',
-  'AC-PRM-FW-02-disclosure',
-  'AC-PRM-FW-02-binding',
-  'AC-PRM-FW-08.discovery',
-  'AC-PRM-FW-02-qualification-subset',
-  'AC-PRM-FW-02-qualification',
-  'AC-PRM-FW-02-survey360',
-  'AC-PRM-FW-02-weakenings',
-  'AC-PRM-FW-02',
-].map((name) => `tests/acceptance/${name}.test.ts`);
+const testDb = useTestDb();
+const tables: Record<string, RequiredTable> = { complete: REQUIRED };
+const assessments: Record<string, Finding[]> = {};
+let routes: readonly ManifestRoute[];
+let discoveries: Record<string, EndpointDiscovery>;
+const omitted = new Set([
+  'GET /api/tenant/employment/transfers/manager',
+  'GET /api/tenant/talent/criteria/:id/model-image',
+  'GET /api/tenant/personnel/employees/:id',
+  'GET /api/tenant/idp/approval-processes',
+]);
 
-interface Result {
-  readonly numFailedTests: number;
-  readonly numPassedTests: number;
-  readonly numPendingTests: number;
-  readonly testResults: readonly { readonly status: string; readonly message: string }[];
-}
-
-async function run(omission: string, strict: boolean) {
-  const dir = await mkdtemp(join(tmpdir(), 'f090b-entries-'));
-  const report = join(dir, 'result.json');
-  const env: NodeJS.ProcessEnv = { ...process.env, ROUTE_POLICY_TEST_OMISSION: omission };
-  delete env['ROUTE_POLICY_UPDATE_BASELINE'];
-  delete env['ROUTE_POLICY_UPDATE_DIGESTS'];
-  delete env['ROUTE_POLICY_EVIDENCE_STRICT'];
-  if (strict) env['ROUTE_POLICY_EVIDENCE_STRICT'] = '1';
-  const args = [
-    cli,
-    'run',
-    ...(omission === 'complete' ? [files[3]!] : strict ? files.slice(0, 1) : files),
-    '--config',
-    config,
-    '--testTimeout=180000',
-    '--hookTimeout=600000',
-    '--disableConsoleIntercept',
-    '--silent=false',
-    '--reporter=json',
-    '--outputFile',
-    report,
-  ];
-  if (omission === 'complete') args.push('-t', '不带登记检查');
-  else if (strict) args.push('-t', '真实声明.*(真实表|零发现)|表键.*端点');
-  let exitCode = 0;
-  let output = '';
-  try {
-    try {
-      const result = await execute(process.execPath, args, {
-        cwd: root,
-        env,
-        maxBuffer: 16 * 1024 * 1024,
-        timeout: 1_100_000,
-      });
-      output = result.stdout + result.stderr;
-    } catch (error) {
-      const failure = error as { code: number; stdout: string; stderr: string };
-      exitCode = failure.code;
-      output = failure.stdout + failure.stderr;
-    }
-    const result = JSON.parse(await readFile(report, 'utf8')) as Result;
-    return { exitCode, output, result };
-  } finally {
-    await rm(dir, { recursive: true, force: true });
+beforeAll(async () => {
+  const { rig, manifest } = await createRig(testDb().db);
+  routes = manifest.declared;
+  discoveries = await discoverAll(rig, routes);
+  const contract = readFrozenContract();
+  if (!contract) throw new Error('真实冻结基准不存在');
+  tables['endpoints'] = Object.fromEntries(Object.entries(REQUIRED).filter(([key]) => !omitted.has(key)));
+  tables['guard-inner'] = Object.fromEntries(
+    Object.entries(REQUIRED).map(([key, os]) => [
+      key,
+      os.map((o) => (o.purpose?.startsWith('guard:') ? ({ ...o, inner: undefined } as Obligation) : o)),
+    ]),
+  );
+  // 局部用例由外层 FW 全套各自运行；这里复用一次真实探测与每种登记的一次静态比较，不再嵌套启动整组 Vitest。
+  for (const [name, table] of Object.entries(tables)) {
+    assessments[name] = [
+      ...checkRequired(table, contract, routes),
+      ...compareRegisteredDeclarations(contract, routes, undefined, table),
+    ];
   }
-}
+}, 600_000);
 
-describe('AC-PRM-FW-F090b 真实入口漏登记：九个文件完整回归（DEC-416③；#248 P2-1）', () => {
+const check = (name: string, strict: boolean) => [
+  ...registrationGate(assessments[name]!, name, { strict }),
+  ...registrationGate({ discoveries, routes, table: tables[name]! }, name, { strict }),
+];
+
+describe('AC-PRM-FW-F090b 单一真实登记入口（DEC-431①；#248 P2-1 / P3-1）', () => {
   it('真实登记门禁不吞读取 / 解析等未知异常', () => {
     expect(() =>
       registration('未知读取错误', () => {
@@ -85,37 +56,28 @@ describe('AC-PRM-FW-F090b 真实入口漏登记：九个文件完整回归（DEC
       }),
     ).toThrow('未知读取错误');
   });
-  it.each([false, true])('完整登记：strict=%s 不把已知台账记录当差异', async (strict) => {
-    const result = await run('complete', strict);
-    expect(result.exitCode, result.output + JSON.stringify(result.result)).toBe(0);
-    expect(result.result.numFailedTests).toBe(0);
-    expect(result.result.numPassedTests).toBe(1);
-  }, 180_000);
-  it.each(['endpoints', 'guard-inner'])(
-    '%s：默认整组通过只警告，严格模式在真实入口判红',
-    async (omission) => {
-      const normal = await run(omission, false);
-      expect(normal.exitCode, normal.output + JSON.stringify(normal.result)).toBe(0);
-      expect(normal.result.numFailedTests, normal.output).toBe(0);
-      expect(normal.result.numPendingTests).toBe(0);
-      expect(normal.result.numPassedTests).toBeGreaterThan(100);
-      expect(normal.result.testResults).toHaveLength(files.length);
-      expect(normal.output).toContain('[证据门禁·警告]');
-      expect(normal.output).toContain(omission === 'endpoints' ? 'REQUIRED_ENTRY_MISSING' : 'GUARD_ROLE_UNBOUND');
-
-      const strict = await run(omission, true);
-      expect(strict.exitCode).toBe(1);
-      expect(strict.result.numFailedTests).toBeGreaterThan(0);
-      const messages = JSON.stringify(strict.result) + strict.output;
-      expect(messages).toContain('AssertionError');
-      expect(messages).toContain(omission === 'endpoints' ? 'REQUIRED_ENTRY_MISSING' : 'GUARD_ROLE_UNBOUND');
-      expect(messages).not.toMatch(/Hook timed out|Test timed out/);
-      console.info(
-        `${omission}：默认 ${files.length} 文件 / ${normal.result.numPassedTests} 条通过，只警告；` +
-          `严格 ${strict.result.numFailedTests} 条断言判红`,
-      );
-    },
-    // 一条回归串行执行九个完整文件和严格总入口；聚合预算包含子进程启动与整组运行。
-    1_200_000,
-  );
+  it.each([false, true])('完整登记：strict=%s 不把已知台账记录当差异', (strict) => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      expect(check('complete', strict)).toEqual([]);
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+  it.each(['endpoints', 'guard-inner'])('%s：默认通过只警告，严格模式判红', (name) => {
+    const code = name === 'endpoints' ? 'REQUIRED_ENTRY_MISSING' : 'GUARD_ROLE_UNBOUND';
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      expect(check(name, false)).toEqual([]);
+      expect(warn.mock.calls.flat().join('\n')).toContain('[证据门禁·警告]');
+      expect(warn.mock.calls.flat().join('\n')).toContain(code);
+      const strict = check(name, true);
+      expect(strict.map((f) => f.code)).toContain(code);
+      expect(() => expect(strict).toEqual([])).toThrow(expect.objectContaining({ name: 'AssertionError' }));
+      console.info(`${name}：默认仅警告，严格 ${strict.length} 项真实登记差异`);
+    } finally {
+      warn.mockRestore();
+    }
+  });
 });

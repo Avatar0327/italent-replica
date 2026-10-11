@@ -1,3 +1,4 @@
+import { registration, registrationGate } from './support/route-policy/registration.js';
 /**
  * AC-PRM-FW-02（续，F-039 PR-B1 第 2 轮，#162 审查 P2-1 / P2-2 / P2-3 与 P3）：
  * - P2-1 范围按**实际对象**逐项选择，缺项即失败，不能借用其他对象的范围：byObject 没有该对象也没有 `*` → 范围缺失；
@@ -12,7 +13,6 @@ import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { readFrozenContract } from './support/route-policy/baseline.js';
 import { DETECTOR_CONTRACT, DETECTOR_REQUIRED, DETECTOR_SEMANTICS } from './support/route-policy/detector-fixtures.js';
-import { registration } from './support/route-policy/registration.js';
 import type { Finding } from './support/route-policy/compare.js';
 import type { ObservedContract } from './support/route-policy/contract.js';
 import { coverageStats, expectedMutationKeys, extraCoverage } from './support/route-policy/required-coverage.js';
@@ -23,7 +23,6 @@ import { REQUIRED } from './support/route-policy/required/index.js';
 import type { Obligation, RequiredTable } from './support/route-policy/required/types.js';
 import { disclosureWeakeningsOf } from './support/route-policy/weakenings.js';
 import { tenantApi } from './support/tenant-api.js';
-import { gateEvidence } from './support/route-policy/evidence-gate.js';
 
 const testDb = useTestDb();
 
@@ -85,7 +84,7 @@ describe('AC-PRM-FW-02 P2-1 范围按实际对象逐项选择（审查 #162 第 
     const jobRoutes = manifest.declared.filter((r) => JSON.stringify(r.policy).includes('"byObject"'));
     expect(jobRoutes.length).toBeGreaterThan(0);
     expect(
-      gateEvidence(checkRequired(REQUIRED, frozen, jobRoutes), '真实 byObject 声明 × 静态义务登记（DEC-416③）'),
+      registrationGate(checkRequired(REQUIRED, frozen, jobRoutes), '真实 byObject 声明 × 静态义务登记（DEC-416③）'),
     ).toEqual([]);
   });
 

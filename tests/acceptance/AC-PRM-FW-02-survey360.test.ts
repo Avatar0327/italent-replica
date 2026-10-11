@@ -1,3 +1,4 @@
+import { registrationIt as test, registration, registrationGate } from './support/route-policy/registration.js';
 /**
  * AC-PRM-FW-02（续，F-073：F-039 survey360 组补表 / 声明，#163 已知缺口账本里 survey360 的 87 项）：
  * 全允许探测在 survey360 管理端问到的 `obj:Survey360.Activity:view` / `btn:Survey360.Activity#viewAll@list`
@@ -19,11 +20,9 @@ import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { readFrozenContract } from './support/route-policy/baseline.js';
 import { DETECTOR_CONTRACT, DETECTOR_REQUIRED, DETECTOR_SEMANTICS } from './support/route-policy/detector-fixtures.js';
-import { registrationIt as test, registration } from './support/route-policy/registration.js';
 import type { Finding } from './support/route-policy/compare.js';
 import type { ObservedContract } from './support/route-policy/contract.js';
 import { checkStored } from './support/route-policy/evidence.js';
-import { gateEvidence } from './support/route-policy/evidence-gate.js';
 import { declaredPerms } from './support/route-policy/perms.js';
 import { KNOWN_GAPS } from './support/route-policy/probe-known-gaps.js';
 import { REDUNDANT_OBSERVATIONS } from './support/route-policy/probe-redundant.js';
@@ -119,7 +118,7 @@ describe('AC-PRM-FW-02 F-073 活动资源守卫：38 个 /activities/:id… 端�
         [{ perm: `guard:${carrier}`, at: one.at }],
       ]),
     );
-    const found = gateEvidence(checkStored(synthetic), '360 守卫内部备选证据');
+    const found = registrationGate(checkStored(synthetic), '360 守卫内部备选证据');
     expect(found, show(found)).toEqual([]);
   });
 
@@ -201,7 +200,7 @@ describe('AC-PRM-FW-02 F-073 人员 / 列表用途分别登记', () => {
   it('真实声明 × 真实表零发现', () => {
     const survey = manifest.declared.filter((r) => r.path.startsWith(BASE));
     expect(survey.length).toBeGreaterThan(40);
-    const findings = gateEvidence(checkRequired(REQUIRED, frozen, survey), '360 声明 × 静态义务登记（DEC-416③）');
+    const findings = registrationGate(checkRequired(REQUIRED, frozen, survey), '360 声明 × 静态义务登记（DEC-416③）');
     expect(findings, show(findings)).toEqual([]);
   });
 });

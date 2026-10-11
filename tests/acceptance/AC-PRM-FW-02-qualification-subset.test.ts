@@ -1,3 +1,4 @@
+import { registrationIt as test, registrationGate } from './support/route-policy/registration.js';
 /**
  * AC-PRM-FW-02（续，R3-T02 C1-1 第 1 轮 P2-3）：任职资格子集策略的 F-039 登记。
  * 通用钩子证据（runSubsetSavePolicy / runSubsetRequestPolicy）只证明“钩子被调用”，qualification 策略里的拦截被删掉时它仍然成立。
@@ -20,10 +21,8 @@ import {
   checkDetectorEvidence,
   subsetChainFixture,
 } from './support/route-policy/detector-fixtures.js';
-import { registrationIt as test } from './support/route-policy/registration.js';
 import type { ObservedContract } from './support/route-policy/contract.js';
 import { type SourceReader, checkStored, repoSource } from './support/route-policy/evidence.js';
-import { gateEvidence } from './support/route-policy/evidence-gate.js';
 import { KNOWN_GAPS } from './support/route-policy/probe-known-gaps.js';
 import { checkRequired } from './support/route-policy/required.js';
 import { INNER_CONDITIONS } from './support/route-policy/required/guard-inner.js';
@@ -111,7 +110,7 @@ describe('AC-PRM-FW-02 C1-1 P2-3 守卫内部义务：qualification 的新引用
 
   it('真实声明 × 真实表对这几个端点零发现', () => {
     const routes = [POST_KEY, PATCH_KEY, DELETE_KEY, REQUEST_KEY].map(route);
-    const findings = gateEvidence(checkRequired(REQUIRED, frozen, routes), '任职资格子集静态义务登记（DEC-416③）');
+    const findings = registrationGate(checkRequired(REQUIRED, frozen, routes), '任职资格子集静态义务登记（DEC-416③）');
     expect(findings.map((f) => `${f.route} ${f.code}: ${f.detail}`)).toEqual([]);
   });
 });
@@ -204,7 +203,7 @@ describe(EVIDENCE_CHAIN, { timeout: 120_000 }, () => {
   it('基线：真实源码零发现', () => {
     expect(found(repoSource)).toEqual([]);
     const drift = checkStored(REQUIRED, { read: repoSource }).filter((f) => KINDS.includes(f.code));
-    expect(gateEvidence(drift, '任职资格子集证据')).toEqual([]);
+    expect(registrationGate(drift, '任职资格子集证据')).toEqual([]);
   });
 
   it('删掉申请准入的自助拦截 → 首次提交与同单重提两处证据报错', () => {

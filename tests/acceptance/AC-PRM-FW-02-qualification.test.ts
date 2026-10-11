@@ -1,3 +1,4 @@
+import { registrationIt as test, registrationGate } from './support/route-policy/registration.js';
 /**
  * AC-PRM-FW-02（续，F-074：F-039 任职资格组补表 / 声明，#163 已知缺口账本里 qualification 的 9 项）：
  * 全允许探测在任职资格写入口问到的 9 个 `obj:*:view` 逐项读源码后分三类登记（零行为变化，只补表 / 声明）：
@@ -15,10 +16,8 @@ import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { readFrozenContract } from './support/route-policy/baseline.js';
 import { DETECTOR_CONTRACT, DETECTOR_REQUIRED, DETECTOR_SEMANTICS } from './support/route-policy/detector-fixtures.js';
-import { registrationIt as test } from './support/route-policy/registration.js';
 import type { Finding } from './support/route-policy/compare.js';
 import type { ObservedContract } from './support/route-policy/contract.js';
-import { gateEvidence } from './support/route-policy/evidence-gate.js';
 import { declaredPerms } from './support/route-policy/perms.js';
 import { KNOWN_GAPS } from './support/route-policy/probe-known-gaps.js';
 import { checkRequired } from './support/route-policy/required.js';
@@ -204,7 +203,7 @@ describe('AC-PRM-FW-02 F-074 冲突名称披露：类别 / 级别写入口 × �
   it('真实声明 × 真实表零发现', () => {
     const ql = manifest.declared.filter((r) => r.path.startsWith(BASE));
     expect(ql.length).toBeGreaterThan(40);
-    const findings = gateEvidence(checkRequired(REQUIRED, frozen, ql), '任职资格声明 × 静态义务登记（DEC-416③）');
+    const findings = registrationGate(checkRequired(REQUIRED, frozen, ql), '任职资格声明 × 静态义务登记（DEC-416③）');
     expect(findings, show(findings)).toEqual([]);
   });
 });

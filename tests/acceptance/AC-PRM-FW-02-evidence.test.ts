@@ -1,3 +1,9 @@
+import {
+  registrationGate,
+  registrationDrift,
+  compareRegisteredDeclarations,
+  registration,
+} from './support/route-policy/registration.js';
 /**
  * AC-PRM-FW-02（续，F-039 PR-B2，docs/08_设计/F-039_PR-B_设计.md B-02 / B-04 / B-07；DEC-356 / 359 / 362）：
  * - B-02 证据依赖闭包：每个证据单元的依赖算到不动点（上限 12 层），依赖摘要与依赖集合变化报 EVIDENCE_STALE，
@@ -28,8 +34,6 @@ import {
   unitText,
   usesOf,
 } from './support/route-policy/evidence.js';
-import { gateEvidence, softGate } from './support/route-policy/evidence-gate.js';
-import { compareRegisteredDeclarations, registration } from './support/route-policy/registration.js';
 import { DETECTOR_REQUIRED, checkDetectorEvidence } from './support/route-policy/detector-fixtures.js';
 import { impactCounts } from './support/route-policy/evidence-report.js';
 import { REQUIRED } from './support/route-policy/required/index.js';
@@ -272,7 +276,7 @@ describe('AC-PRM-FW-02 证据闭包（B-02）：真实表', () => {
     );
     console.info(`OVER100\n${over100.sort().join('\n')}`);
     expect(depth).toBeLessThanOrEqual(MAX_DEPTH);
-    const unresolved = gateEvidence(
+    const unresolved = registrationGate(
       checkStored(REQUIRED, { unused: true }).filter((f) => f.code === 'EVIDENCE_CLOSURE_UNRESOLVED'),
       '证据闭包：未解析项',
     );
@@ -376,7 +380,7 @@ describe('AC-PRM-FW-02 选择器绑定（B-07）：登记完整性', () => {
     if (declaredSites.length !== 31) drift.push(`选择器位置 ${declaredSites.length}，冻结计数 31`);
     if (Object.keys(BRANCH_INPUTS).length !== 23)
       drift.push(`输入来源端点 ${Object.keys(BRANCH_INPUTS).length}，冻结计数 23`);
-    expect(softGate('选择器绑定登记完整性（DEC-416③）', drift)).toEqual([]);
+    expect(registrationDrift('选择器绑定登记完整性（DEC-416③）', drift)).toEqual([]);
     expect(new Set(registered).size).toBe(registered.length);
   });
 
@@ -396,7 +400,7 @@ describe('AC-PRM-FW-02 选择器绑定（B-07）：登记完整性', () => {
   });
 
   it('真实声明 × 真实登记：31 个 map 选择器位置（23 条端点；设计估算 29 个，另含 failureAudit.objectType 与任职资格 owner-orgs）零发现', () => {
-    const findings = gateEvidence(
+    const findings = registrationGate(
       compareRegisteredDeclarations(frozen, manifest.declared),
       '真实声明 × 真实登记（选择器）',
     );
@@ -404,7 +408,7 @@ describe('AC-PRM-FW-02 选择器绑定（B-07）：登记完整性', () => {
   });
 
   it('分支值与输入来源的证据锚点命中、摘要与依赖登记一致（EVIDENCE_STALE / ANCHOR 为零）', () => {
-    const found = gateEvidence(
+    const found = registrationGate(
       checkStored({}, { unused: false }).filter((f) => /^EVIDENCE_(STALE|ANCHOR|UNIT|MISSING)$/.test(f.code)),
       '选择器绑定证据',
     );
