@@ -116,10 +116,13 @@ export const GRAPH: Graph = {
     '#REL',
     '#boundedSize',
     '#exportLimit',
+    '#fieldRow',
     '#leaves',
+    '#literal',
     '#xml',
     '#zipFiles',
   ],
+  'apps/api/src/modules/qualification/chart-files.ts#fieldRow': ['#literal'],
   'apps/api/src/modules/qualification/chart-files.ts#leaves': ['#leaves'],
   'apps/api/src/modules/qualification/chart-files.ts#zipFiles': ['#boundedSize'],
   'apps/api/src/modules/qualification/chart.ts#loadChart': [

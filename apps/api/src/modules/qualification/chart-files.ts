@@ -63,17 +63,28 @@ const REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships
 const PKG = 'http://schemas.openxmlformats.org/package/2006/relationships';
 const xml = (value: string) => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-/** JSON 字面量保留空值与类型；字段路径按级别横向排列，隐藏字段连路径名都不生成。 */
-function leaves(value: unknown, prefix = '', result = new Map<string, string>()) {
-  if (value === undefined) return result;
+/** JSON 已保值编码 C0 与孤立代理项；FFFE / FFFF 也用 JSON 编码，避免依赖读取器的 Excel 转义行为。 */
+function literal(value: unknown): string {
+  return JSON.stringify(value)
+    .replace(/[\uFFFE\uFFFF]/g, (char) => `\\u${char.charCodeAt(0).toString(16)}`)
+    .replace(/_x[0-9a-f]{4}_/gi, (token) => `\\u005f${token.slice(1)}`);
+}
+
+/** 只遍历可见字段；先保留原值引用，等逐格检查字节预算时再序列化，避免预先复制全部长文本。 */
+function* leaves(value: unknown, prefix = ''): Generator<readonly [string, unknown]> {
+  if (value === undefined) return;
   const entries = value !== null && typeof value === 'object' ? Object.entries(value) : [];
-  if (!entries.length)
-    result.set(
-      prefix,
-      JSON.stringify(value).replace(/_x[0-9a-f]{4}_/gi, (token) => `\\u005f${token.slice(1)}`),
-    );
-  else for (const [key, child] of entries) leaves(child, prefix ? `${prefix}/${key}` : key, result);
-  return result;
+  if (!entries.length) yield [prefix, value];
+  else for (const [key, child] of entries) yield* leaves(child, prefix ? `${prefix}/${key}` : key);
+}
+
+function* fieldRow(field: string, levels: readonly ReadonlyMap<string, unknown>[]) {
+  yield field;
+  yield '';
+  for (const level of levels) {
+    const value = level.get(field);
+    yield value === undefined ? '' : literal(value);
+  }
 }
 
 export interface ChartFileView {
@@ -82,29 +93,25 @@ export interface ChartFileView {
 }
 
 export function chartWorkbook(chart: ChartFileView, budget = { rows: 0, bytes: 0 }): Buffer {
-  const levels = chart.levels.map((level) => leaves(level));
-  const fields = [...new Set(levels.flatMap((level) => [...level.keys()]))];
-  const rows = [
-    ['字段', '图谱', ...levels.map((_, index) => `级别${index + 1}`)],
-    ...(chart.standardId ? [['standardId', JSON.stringify(chart.standardId)]] : []),
-    ...(!levels.length ? [['levels', '[]']] : []),
-    ...fields.map((field) => [field, '', ...levels.map((level) => level.get(field) ?? '')]),
-  ];
-  budget.rows += rows.length;
-  if (budget.rows > MAX_EXPORT_ROWS) throw exportLimit('EXPORT_ROW_LIMIT', '整批导出最多 10000 行');
-  const sheet = rows
-    .map((row, index) => {
-      const cells = row.map((value) => {
-        // JSON 转义控制字符；字符串均为 inlineStr，公式样式文本不会作为公式执行。
-        if (value.length > 32767) throw exportLimit('EXPORT_CELL_LIMIT', '导出单元格超过 Excel 的 32767 字符上限');
-        const text = `<c t="inlineStr"><is><t xml:space="preserve">${xml(value)}</t></is></c>`;
-        budget.bytes += Buffer.byteLength(text);
-        boundedSize(budget.bytes);
-        return text;
-      });
-      return `<row r="${index + 1}">${cells.join('')}</row>`;
-    })
-    .join('');
+  const fields = new Set<string>();
+  const fixedRows = 1 + (chart.standardId ? 1 : 0) + (chart.levels.length ? 0 : 1);
+  const checkRows = () => {
+    if (budget.rows + fixedRows + fields.size > MAX_EXPORT_ROWS)
+      throw exportLimit('EXPORT_ROW_LIMIT', '整批导出最多 10000 行');
+  };
+  checkRows();
+  const levels = chart.levels.map((level) => {
+    const values = new Map<string, unknown>();
+    for (const [field, value] of leaves(level)) {
+      fields.add(field);
+      checkRows();
+      values.set(field, value);
+    }
+    return values;
+  });
+  budget.rows += fixedRows + fields.size;
+  const opening = `<worksheet xmlns="${NS}"><sheetData>`;
+  const closing = '</sheetData></worksheet>';
   const entries = {
     '[Content_Types].xml': `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
       <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
@@ -120,7 +127,29 @@ export function chartWorkbook(chart: ChartFileView, budget = { rows: 0, bytes: 0
       <sheet name="任职资格图谱" sheetId="1" r:id="rId1"/></sheets></workbook>`,
     'xl/_rels/workbook.xml.rels': `<Relationships xmlns="${PKG}"><Relationship Id="rId1"
       Type="${REL}/worksheet" Target="worksheets/sheet1.xml"/></Relationships>`,
-    'xl/worksheets/sheet1.xml': `<worksheet xmlns="${NS}"><sheetData>${sheet}</sheetData></worksheet>`,
+    'xl/worksheets/sheet1.xml': opening + closing,
   };
+  const account = (text: string) => {
+    budget.bytes += Buffer.byteLength(text);
+    boundedSize(budget.bytes);
+    return text;
+  };
+  // 包括 XML 元数据与行标签；先验行数再逐行生成，不分配“字段行 × 级别列”的完整矩阵。
+  for (const part of Object.values(entries)) account(part);
+  const rows: string[] = [];
+  const writeRow = (values: Iterable<string>) => {
+    const cells = [account(`<row r="${rows.length + 1}">`)];
+    for (const value of values) {
+      if (value.length > 32767) throw exportLimit('EXPORT_CELL_LIMIT', '导出单元格超过 Excel 的 32767 字符上限');
+      cells.push(account(`<c t="inlineStr"><is><t xml:space="preserve">${xml(value)}</t></is></c>`));
+    }
+    cells.push(account('</row>'));
+    rows.push(cells.join(''));
+  };
+  writeRow(['字段', '图谱', ...levels.map((_, index) => `级别${index + 1}`)]);
+  if (chart.standardId) writeRow(['standardId', literal(chart.standardId)]);
+  if (!levels.length) writeRow(['levels', '[]']);
+  for (const field of fields) writeRow(fieldRow(field, levels));
+  entries['xl/worksheets/sheet1.xml'] = opening + rows.join('') + closing;
   return zipFiles(Object.entries(entries).map(([name, data]) => ({ name, data: Buffer.from(data) })));
 }
