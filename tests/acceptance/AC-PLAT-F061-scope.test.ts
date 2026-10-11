@@ -65,6 +65,8 @@ const TR_APP = 'TalentReview';
 const APPROVED = ['Settings', 'Category', 'Role', 'Field'].map((name) => `${TR_APP}.${name}`);
 /** DEC-384 追加批准的盘点目标。 */
 const EXTRA_TR = ['Readiness', 'Matrix', 'CalcRule'].map((name) => `${TR_APP}.${name}`);
+/** DEC-415：字段映射 / 表单 / 流程 / 盘点模板的看全部预置给盘点管理员。 */
+const DEC_415 = ['FieldMapping', 'Form', 'Flow', 'Template'].map((name) => `${TR_APP}.${name}`);
 const seeAllCode = (target: string) => seeAllGrantCode(TR, TR_APP, 'entity', target);
 const OBJECT = OBJ.objectCode;
 const hrButton = buttonCode(HR.code, OBJECT, BUTTON);
@@ -73,8 +75,8 @@ const MATRIX = `${TR_APP}.Matrix`;
 const PRESET_COUNT = STANDARD_PROFILES.flatMap(presetSeeAllTargets).length;
 
 describe('AC-PLAT-F061 D3 批准清单守卫（DEC-374②、DEC-384）', () => {
-  it('批准清单每行写身份、应用、种类、目标编码与 DEC 号：DEC-374② 的四个盘点设置对象 + DEC-384 的 32 个 + DEC-408② 的 2 个', () => {
-    expect(SEE_ALL_BACKFILL_APPROVED).toHaveLength(38);
+  it('批准清单每行写身份、应用、种类、目标编码与 DEC 号：DEC-374② 的四个盘点设置对象 + DEC-384 的 32 个 + DEC-408② 的 2 个 + DEC-415 的 4 个', () => {
+    expect(SEE_ALL_BACKFILL_APPROVED).toHaveLength(42);
     const byDec = (dec: string) => SEE_ALL_BACKFILL_APPROVED.filter((a) => a.dec === dec);
     expect(byDec('DEC-374②')).toEqual(
       APPROVED.map((targetCode) => ({
@@ -87,7 +89,10 @@ describe('AC-PLAT-F061 D3 批准清单守卫（DEC-374②、DEC-384）', () => {
     );
     expect(byDec('DEC-384')).toHaveLength(32);
     expect(byDec('DEC-408②').map((a) => a.targetCode)).toEqual([`${TR_APP}.ScoreRule`, `${TR_APP}.ModuleGrade`]);
-    expect(new Set(SEE_ALL_BACKFILL_APPROVED.map((a) => a.dec))).toEqual(new Set(['DEC-374②', 'DEC-384', 'DEC-408②']));
+    expect(byDec('DEC-415').map((a) => a.targetCode)).toEqual(DEC_415);
+    expect(new Set(SEE_ALL_BACKFILL_APPROVED.map((a) => a.dec))).toEqual(
+      new Set(['DEC-374②', 'DEC-384', 'DEC-408②', 'DEC-415']),
+    );
     for (const a of SEE_ALL_BACKFILL_APPROVED) {
       expect(a.profileCode && a.appCode && a.targetCode, JSON.stringify(a)).toBeTruthy();
       expect(['entity', 'datasource']).toContain(a.targetKind);
@@ -95,10 +100,10 @@ describe('AC-PLAT-F061 D3 批准清单守卫（DEC-374②、DEC-384）', () => {
     const unique = new Set(
       SEE_ALL_BACKFILL_APPROVED.map((a) => `${a.profileCode}|${a.appCode}|${a.targetKind}|${a.targetCode}`),
     );
-    expect(unique.size).toBe(38);
+    expect(unique.size).toBe(42);
   });
 
-  it('批准的目标就是身份定义里全部预置看全部的目标：unapprovedSeeAllTargets() 为空，看全部编码恰好 38 个', () => {
+  it('批准的目标就是身份定义里全部预置看全部的目标：unapprovedSeeAllTargets() 为空，看全部编码恰好 42 个', () => {
     expect(unapprovedSeeAllTargets()).toEqual([]);
     expect(PRESET_COUNT).toBe(SEE_ALL_BACKFILL_APPROVED.length);
     const seeAllCodes = STANDARD_GRANT_CODES.filter((code) => code.includes('/seeAll:'));
@@ -126,7 +131,7 @@ describe('AC-PLAT-F061 D3 批准清单守卫（DEC-374②、DEC-384）', () => {
     const w = await provisionWorld(testDb().db, 'f061-scope-new');
     const profileId = w.profileIds.get(TR)!;
     const rows = await scopeRows(w, profileId);
-    for (const target of [...APPROVED, ...EXTRA_TR])
+    for (const target of [...APPROVED, ...EXTRA_TR, ...DEC_415])
       expect(
         rows.find((r) => r.targetCode === target),
         target,
@@ -262,6 +267,27 @@ describe('AC-PLAT-F061 T-05 看全部补装（D3 = A′，DEC-374②、DEC-384�
       seeAll: false,
       revision: 2,
     });
+  });
+
+  it('DEC-415 补装路径：盘点管理员缺字段映射 / 表单 / 流程 / 模板的看全部：补齐并写范围版本；其他身份的范围不受影响', async () => {
+    const w = await legacyWorld(testDb().db, 'f061t05c', [withoutTargets(TR, DEC_415)]);
+    const profileId = w.profileIds.get(TR)!;
+    const others = [...w.profileIds.entries()].filter(([code]) => code !== TR);
+    const before = await Promise.all(others.map(([, id]) => scopeRows(w, id)));
+    expect((await scopeRows(w, profileId)).map((r) => r.targetCode)).not.toContain(`${TR_APP}.Template`);
+
+    const installed = grantsInstalled(await runBackfill(w));
+    expect(installed.filter((c) => c.includes('/seeAll:')).sort()).toEqual(DEC_415.map(seeAllCode).sort());
+    const rows = await scopeRows(w, profileId);
+    for (const target of DEC_415) {
+      expect(
+        rows.find((r) => r.targetCode === target),
+        target,
+      ).toMatchObject({ seeAll: true, revision: 1 });
+    }
+    // 非管理员身份（含其它应用的管理员）的范围行一行不变
+    const after = await Promise.all(others.map(([, id]) => scopeRows(w, id)));
+    expect(after).toEqual(before);
   });
 
   it('范围行已存在但 see_all=false（租户在回补前关过）：不可装，不覆盖', async () => {

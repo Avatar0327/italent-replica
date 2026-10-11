@@ -39,8 +39,8 @@ export const STANDARD_GRANT_ENTRY = 'permission/standard-profile-grants';
  * 守卫测试算出的指纹不一致即失败——任何改目录的 PR 都会撞到它，审查方一眼看到“这个 PR 会给存量标准身份补授权”。
  * version 只用于回补报告，不参与缺失判断。
  */
-export const STANDARD_GRANT_VERSION = 11;
-export const STANDARD_GRANT_DIGEST = '23cb2ad23825abd9';
+export const STANDARD_GRANT_VERSION = 12;
+export const STANDARD_GRANT_DIGEST = '5898a7ef473ce1a4';
 
 /**
  * 预置“看全部”补装批准清单（D3 = A′，DEC-374②）：看全部属于数据范围扩大，存量租户的标准身份只对**这里明确列出**的目标补，
@@ -64,6 +64,11 @@ export const SEE_ALL_BACKFILL_APPROVED: readonly SeeAllBackfillApproval[] = [
   // DEC-408②：R3-T04 B2（#180 / #219）新增的评价规则、模块等级，盘点管理员预置看全部，否则开箱不能维护这两类配置
   approve('standard_talent_review_admin', 'TalentReview', 'entity', 'TalentReview.ScoreRule', 'DEC-408②'),
   approve('standard_talent_review_admin', 'TalentReview', 'entity', 'TalentReview.ModuleGrade', 'DEC-408②'),
+  // DEC-415：新对象的“看全部”默认给所属模块的预置管理员——B2b 字段映射、B3 表单 / 流程、B6a 盘点模板
+  approve('standard_talent_review_admin', 'TalentReview', 'entity', 'TalentReview.FieldMapping', 'DEC-415'),
+  approve('standard_talent_review_admin', 'TalentReview', 'entity', 'TalentReview.Form', 'DEC-415'),
+  approve('standard_talent_review_admin', 'TalentReview', 'entity', 'TalentReview.Flow', 'DEC-415'),
+  approve('standard_talent_review_admin', 'TalentReview', 'entity', 'TalentReview.Template', 'DEC-415'),
   approve('standard_succession_admin', 'SuccessionAndDevelopment', 'entity', 'Succession.RiskLevel', 'DEC-384'),
   approve('standard_succession_admin', 'SuccessionAndDevelopment', 'entity', 'Succession.HealthLevel', 'DEC-384'),
   approve('standard_succession_admin', 'SuccessionAndDevelopment', 'entity', 'Succession.Population', 'DEC-384'),

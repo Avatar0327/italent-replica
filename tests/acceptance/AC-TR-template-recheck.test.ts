@@ -1,0 +1,288 @@
+/**
+ * AC-TR-template-recheck · R3-T04 PR-B6a：盘点模板 3 个写入口的“命令事务内当前权限复核”（DEC-388①；AGENTS §10 权限、DEC-067）。
+ * 入口：POST / PATCH / DELETE /templates。路由层检查之后、命令事务之前撤权，三个出口都必须按**事务内**当前授权拒绝，且业务、
+ * revision、审计、台账都不提交：
+ * - 首次执行：撤所属组织范围 404、撤按钮 403、撤字段编辑权 403、撤流程目录范围 404（带流程引用的入口）；
+ * - 直接重放：首次成功后、同键重放前撤范围，不返回首次结果；
+ * - 失败后回查台账：并发同键败者回滚后、回查前撤范围，不返回胜者结果（对照：不撤权时重放胜者结果）。
+ * 确定性交错：mock `runCommand`，在它开事务前执行测试注入的钩子（路由层检查此时已全部通过）；失败后回查的败者模拟同
+ * AC-TR-08-matrix-recheck（PGlite 单连接无法真正交错）。
+ */
+import { randomUUID } from 'node:crypto';
+import { commandLedger, type Db, eq, sql, type Tx, withTenant } from '@italent/db';
+import { useTestDb } from '@italent/testkit';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { auditApi } from './AC-AUD-support.js';
+import { createOrg } from './AC-IDP-support.js';
+import { seedPermissionWorld, type PermissionWorld } from './AC-PRM-support.js';
+import { configBody } from './AC-TR-config-support.js';
+import { flowBody, nodeBody } from './AC-TR-form-flow-support.js';
+import {
+  indicatorModule,
+  templateBody,
+  TEMPLATES,
+  templateOperator,
+  TR_BASE,
+  TR_NOW,
+  type TemplateView,
+} from './AC-TR-template-support.js';
+import { scoreRuleBody } from './AC-TR-scoring-support.js';
+import { tenantApi } from './support/tenant-api.js';
+import type * as RunCommands from '../../apps/api/src/commands.js';
+
+type RunCommandModule = typeof RunCommands;
+interface Loser {
+  readonly winner: () => Promise<Response>;
+  readonly afterLoserTx: () => Promise<void>;
+  winnerResponse?: Response;
+}
+const hooks = vi.hoisted(() => ({
+  beforeCommand: undefined as undefined | (() => Promise<void>),
+  loser: undefined as undefined | Loser,
+}));
+vi.mock('../../apps/api/src/commands.js', async (importOriginal) => {
+  const original = await importOriginal<RunCommandModule>();
+  return {
+    ...original,
+    runCommand: async (...args: Parameters<typeof original.runCommand>) => {
+      const hook = hooks.beforeCommand;
+      hooks.beforeCommand = undefined;
+      await hook?.();
+      const loser = hooks.loser;
+      hooks.loser = undefined;
+      if (!loser) return original.runCommand(...args);
+      const [db, ctx, command] = args;
+      loser.winnerResponse = await loser.winner();
+      return original.runCommand(loserDb(db, ctx.tenantId, command.id!, loser), ctx, command);
+    },
+  };
+});
+
+function asOwner<T>(db: Db, tenantId: string, fn: (tx: Tx) => Promise<T>): Promise<T> {
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT set_config('app.tenant_id', ${tenantId}, true)`);
+    return fn(tx);
+  });
+}
+
+/** 第一个事务（败者主事务）开始前移走胜者的台账行，结束后放回并执行 afterLoserTx；之后的事务（回查）原样。 */
+function loserDb(db: Db, tenantId: string, commandId: string, loser: Loser): Db {
+  let first = true;
+  const wrapper = Object.create(db) as Db;
+  wrapper.transaction = (async (fn: Parameters<Db['transaction']>[0]) => {
+    if (!first) return db.transaction(fn);
+    first = false;
+    const [row] = await asOwner(db, tenantId, (tx) =>
+      tx.delete(commandLedger).where(eq(commandLedger.commandId, commandId)).returning(),
+    );
+    if (!row) throw new Error('胜者没有写台账，模拟前提不成立');
+    try {
+      return await db.transaction(fn);
+    } finally {
+      await asOwner(db, tenantId, (tx) => tx.insert(commandLedger).values(row));
+      await loser.afterLoserTx();
+    }
+  }) as Db['transaction'];
+  return wrapper;
+}
+
+const testDb = useTestDb();
+const clock = () => TR_NOW;
+const unique = (label: string) => `${label}${randomUUID().slice(0, 6)}`;
+
+let world: PermissionWorld;
+let setup: ReturnType<typeof tenantApi>;
+const ids = { org: '', flow: '', rule: '' };
+const post = async <T>(path: string, body: unknown): Promise<T> => {
+  const response = await setup.request('POST', `${TR_BASE}${path}`, { ...world.asAdmin, ifMatch: 0, body });
+  expect(response.status, await response.clone().text()).toBe(201);
+  return (await response.json()) as T;
+};
+const adminRead = async (id: string) =>
+  (await (await setup.request('GET', `${TR_BASE}${TEMPLATES}/${id}`, world.asAdmin)).json()) as TemplateView;
+const freshTemplate = () => post<TemplateView>(TEMPLATES, templateBody(ids.org, { flowId: ids.flow }));
+
+type Operator = Awaited<ReturnType<typeof templateOperator>>;
+interface Prepared {
+  readonly send: (op: Operator) => Promise<Response>;
+  readonly key: string;
+  /** 撤权被拒时必须不变的状态。 */
+  readonly snapshot: () => Promise<unknown>;
+  /** 写成功后响应里能认出首次结果的标识（重放被拒时响应不得含它）。 */
+  readonly marker: (first: unknown) => string;
+}
+interface Entry {
+  readonly name: string;
+  readonly status: 200 | 201;
+  readonly prepare: () => Promise<Prepared>;
+  /** 带流程引用的入口：另有“流程目录范围”复核。 */
+  readonly references?: boolean;
+}
+const send = (method: string, path: string, key: string, ifMatch: number, body?: unknown) => (op: Operator) =>
+  op.request(method, path, { ifMatch, idempotencyKey: key, ...(body === undefined ? {} : { body }) });
+
+const ENTRIES: readonly Entry[] = [
+  {
+    name: 'POST /templates',
+    status: 201,
+    references: true,
+    prepare: async () => {
+      const body = templateBody(ids.org, { flowId: ids.flow, modules: [indicatorModule(ids.rule, { name: '业绩' })] });
+      const key = randomUUID();
+      return {
+        send: send('POST', TEMPLATES, key, 0, body),
+        key,
+        snapshot: async () => {
+          const list = (await (
+            await setup.request('GET', `${TR_BASE}${TEMPLATES}?pageSize=200`, world.asAdmin)
+          ).json()) as { items: { name: string }[] };
+          return list.items.some((item) => item.name === body.name);
+        },
+        marker: (first) => (first as TemplateView).id,
+      };
+    },
+  },
+  {
+    name: 'PATCH /templates/:id',
+    status: 200,
+    references: true,
+    prepare: async () => {
+      const template = await freshTemplate();
+      const key = randomUUID();
+      // 改名 + 换模块（结构保存，带评价规则引用）+ 重新提交流程
+      const body = { name: unique('改名'), flowId: ids.flow, modules: [indicatorModule(ids.rule, { name: '业绩' })] };
+      return {
+        send: send('PATCH', `${TEMPLATES}/${template.id}`, key, template.revision, body),
+        key,
+        snapshot: () => adminRead(template.id),
+        marker: () => body.name,
+      };
+    },
+  },
+  {
+    name: 'DELETE /templates/:id',
+    status: 200,
+    prepare: async () => {
+      const template = await freshTemplate();
+      const key = randomUUID();
+      return {
+        send: send('DELETE', `${TEMPLATES}/${template.id}`, key, template.revision),
+        key,
+        snapshot: () => adminRead(template.id),
+        marker: () => template.name,
+      };
+    },
+  },
+];
+
+const ledger = (key: string) =>
+  withTenant(testDb().db, world.tenant.id, async (tx) => {
+    const result = await tx.execute(sql`SELECT count(*)::int AS n FROM command_ledger WHERE command_id = ${key}`);
+    const rows = (Array.isArray(result) ? result : (result as { rows: { n: number }[] }).rows) as { n: number }[];
+    return Number(rows[0]?.n);
+  });
+const auditCount = async () => {
+  const audit = auditApi(testDb().db, TR_NOW.toISOString(), { authorize: undefined });
+  return (await audit.dataChanges(world.asAdmin, { objectType: 'TalentReview.Template', limit: '100' })).items.length;
+};
+const writer = () => templateOperator(world, { orgId: ids.org, references: 'seeAll' });
+
+beforeAll(async () => {
+  world = await seedPermissionWorld(testDb().db);
+  setup = tenantApi(world.db, { clock });
+  world = { ...world, api: tenantApi(world.db, { authorize: undefined, clock }) };
+  ids.org = await createOrg(setup, world.asAdmin, '研发部');
+  const role = await post<{ id: string }>('/roles', configBody('role'));
+  ids.flow = (await post<{ id: string }>('/flows', flowBody([nodeBody([role.id])]))).id;
+  ids.rule = (await post<{ id: string }>('/score-rules', scoreRuleBody())).id;
+});
+
+describe.each(ENTRIES)('盘点模板写入口命令事务内权限复核 · $name', (entry) => {
+  it('首次执行：路由检查后撤销所属组织范围 → 404，业务 / 审计 / 台账都不提交', async () => {
+    const prepared = await entry.prepare();
+    const op = await writer();
+    const before = await prepared.snapshot();
+    const audits = await auditCount();
+    hooks.beforeCommand = () => op.setOrg(null);
+    const response = await prepared.send(op);
+    expect(response.status, await response.clone().text()).toBe(404);
+    expect(await prepared.snapshot()).toEqual(before);
+    expect(await auditCount()).toBe(audits);
+    expect(await ledger(prepared.key)).toBe(0);
+  });
+
+  it('首次执行：路由检查后撤销按钮 → 403；撤销字段编辑权 → 403；都不提交', async () => {
+    const prepared = await entry.prepare();
+    const op = await writer();
+    const before = await prepared.snapshot();
+    hooks.beforeCommand = () => op.setButtons(false);
+    const button = await prepared.send(op);
+    expect(button.status, await button.clone().text()).toBe(403);
+    expect(await prepared.snapshot()).toEqual(before);
+    // 删除没有字段输入，不经过字段编辑权复核
+    if (entry.name === 'DELETE /templates/:id') return;
+    const second = await entry.prepare();
+    const locked = await writer();
+    hooks.beforeCommand = () => locked.lockFields(['name']);
+    const field = await second.send(locked);
+    expect(field.status, await field.clone().text()).toBe(403);
+    expect(await ledger(second.key)).toBe(0);
+  });
+
+  it.runIf(entry.references)('首次执行：路由检查后撤销流程目录范围 → 404（引用的流程看不到），不提交', async () => {
+    const prepared = await entry.prepare();
+    const op = await writer();
+    const before = await prepared.snapshot();
+    hooks.beforeCommand = () => op.setSeeAll('flow', false);
+    const response = await prepared.send(op);
+    expect(response.status, await response.clone().text()).toBe(404);
+    expect(await prepared.snapshot()).toEqual(before);
+    expect(await ledger(prepared.key)).toBe(0);
+  });
+
+  it('直接重放：首次成功后、同键重放前撤销所属组织范围 → 404，不返回首次结果', async () => {
+    const prepared = await entry.prepare();
+    const op = await writer();
+    const first = await prepared.send(op);
+    expect(first.status, await first.clone().text()).toBe(entry.status);
+    const firstBody = await first.json();
+    hooks.beforeCommand = () => op.setOrg(null);
+    const replay = await prepared.send(op);
+    expect(replay.status, await replay.clone().text()).toBe(404);
+    expect(await replay.clone().text()).not.toContain(prepared.marker(firstBody));
+  });
+
+  it.runIf(entry.references)('直接重放：首次成功后撤销流程目录范围 → 404（请求里的引用按当前范围复核）', async () => {
+    const prepared = await entry.prepare();
+    const op = await writer();
+    const first = await prepared.send(op);
+    expect(first.status, await first.clone().text()).toBe(entry.status);
+    hooks.beforeCommand = () => op.setSeeAll('flow', false);
+    const replay = await prepared.send(op);
+    expect(replay.status, await replay.clone().text()).toBe(404);
+  });
+});
+
+describe.each(ENTRIES)('盘点模板写入口失败后回查台账出口的权限复核 · $name', (entry) => {
+  it('败者回滚后、回查前撤销所属组织范围 → 404，不返回胜者结果', async () => {
+    const prepared = await entry.prepare();
+    const op = await writer();
+    const loser: Loser = { winner: () => prepared.send(op), afterLoserTx: () => op.setOrg(null) };
+    hooks.loser = loser;
+    const response = await prepared.send(op);
+    const won = await loser.winnerResponse!.clone().text();
+    expect(loser.winnerResponse!.ok, won).toBe(true);
+    expect(response.status, await response.clone().text()).toBe(404);
+    expect(await response.clone().text()).not.toContain(prepared.marker(JSON.parse(won)));
+  });
+
+  it('对照：不撤权时败者重放胜者结果（证明走的是回查出口）', async () => {
+    const prepared = await entry.prepare();
+    const op = await writer();
+    const loser: Loser = { winner: () => prepared.send(op), afterLoserTx: async () => undefined };
+    hooks.loser = loser;
+    const response = await prepared.send(op);
+    expect(response.status, await response.clone().text()).toBe(loser.winnerResponse!.status);
+    expect(await response.json()).toEqual(await loser.winnerResponse!.clone().json());
+  });
+});

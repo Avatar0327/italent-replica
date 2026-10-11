@@ -136,14 +136,12 @@ describe('盘点模板 · 模块与默认权限（TR-R13～R16、R18）', () => 
       ruleSnapshot: { kind: 'grade', allowUnable: false },
     });
     expect(module.ruleSnapshot!.levels.map((l) => l.name)).toEqual(['高', '中', '低']);
-    expect(t.permissions.map((p) => [p.nodeKey, p.roleId, p.moduleName, p.visible, p.scoreEnabled, p.weight])).toEqual(
-      [
-        ['self', null, '业绩', true, true, null],
-        ['peers', roles.peerA.id, '业绩', true, true, null],
-        ['peers', roles.peerB.id, '业绩', true, true, null],
-        ['calibrate', null, '业绩', true, true, null],
-      ].sort((a, b) => String(a[0]).localeCompare(String(b[0]))) as never,
-    );
+    expect(t.permissions.map((p) => [p.nodeKey, p.roleId, p.moduleName, p.visible, p.scoreEnabled, p.weight])).toEqual([
+      ['self', null, '业绩', true, true, null],
+      ['peers', roles.peerA.id, '业绩', true, true, null],
+      ['peers', roles.peerB.id, '业绩', true, true, null],
+      ['calibrate', null, '业绩', true, true, null],
+    ]);
   });
 
   it('configErrors：权重之和 ≠ 100 → WEIGHT_SUM_NOT_100 且允许保存；调到 100 清除（D-03）', async () => {
@@ -244,8 +242,9 @@ describe('盘点模板 · 保存校验（先拒后读，数据不变）', () => 
         { permissions: [{ nodeKey: 'self', moduleName: '业绩', scoreRequired: true, scoreEnabled: false }] },
       ],
     ];
-    for (const [status, reason, body] of cases) {
-      const key = `tpl-bad-${Math.random()}`;
+    for (const testCase of cases) {
+      const [status, reason, body] = testCase;
+      const key = `tpl-bad-${cases.indexOf(testCase)}`;
       const response = await w.patch(t, body, key);
       expect([response.status, reason ? await reasonOf(response.clone()) : null], JSON.stringify(body)).toEqual([
         status,

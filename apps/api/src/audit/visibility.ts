@@ -601,6 +601,19 @@ const RULES: readonly Rule[] = [
         }),
     };
   }),
+  // R3-T04 盘点模板（设计 §6.1）：按所属组织（日志写入时的所属组织）裁剪，“创建人”按保留的创建元数据（DEC-198）；
+  // 向下公开只放开业务查看与选用，不放开审计（同 IDP 🟡 K-23）
+  orgRule(
+    [TALENT_REVIEW_OBJECTS.template.code],
+    TALENT_REVIEW_OBJECTS.template.code,
+    (row, viewer) =>
+      creatorSql(
+        viewer.tenantId,
+        row.objectId,
+        `${TALENT_REVIEW_AUDIT_ACTIONS.template}.create`,
+        TALENT_REVIEW_OBJECTS.template.code,
+      ),
+  ),
   ...successionRules(),
   {
     // Q-M0-126：模型图没有独立可见性设置，日志同样随标准对象查看权与当前管理单元范围。

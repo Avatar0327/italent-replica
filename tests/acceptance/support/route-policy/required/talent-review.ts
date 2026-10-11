@@ -592,7 +592,110 @@ const FORM_FLOW_REQUIRED: RequiredTable = {
   [`PATCH ${BASE_ROOT}/flows/:id`]: [...FLOWS_REQUIRED[`PATCH ${BASE_ROOT}/flows/:id`]!, ...flowReference(FLOW_ANCHOR)],
 };
 
+// ---- R3-T04 PR-B6a：盘点模板（modules/talent-review/template-routes.ts） ----------------------------------------------
+const TPR = `${T}/template-routes.ts`;
+const TPL_OBJECT = 'TalentReview.Template';
+const TPL_CONST: Evidence = { role: 'const', unit: `${CATALOG}>template`, anchor: "object( 'Template'" };
+const tplEntry = (anchor: string): Evidence => ({ role: 'call', unit: `${TPR}#registerTemplateRoutes`, anchor });
+const tplView = (anchor: string): Obligation => ({
+  perm: `obj:${TPL_OBJECT}:view`,
+  facts: ['object:objectContext'],
+  at: [tplEntry(anchor), ...CONTEXT, TPL_CONST],
+});
+function tplChange(operation: Exclude<Operation, 'view'>): Obligation[] {
+  const entry = tplEntry(`const ctx = await reviewWriteContext(c, deps, 'template', '${operation}', revision(c))`);
+  const level = operation === 'create' ? 'list' : 'detail';
+  return [
+    { perm: `obj:${TPL_OBJECT}:${operation}`, facts: ['object:objectContext'], at: [entry, ...CONTEXT, TPL_CONST] },
+    {
+      perm: `btn:${TPL_OBJECT}#${operation}@${level}`,
+      facts: ['button:button()'],
+      at: [
+        entry,
+        ...BUTTON,
+        { role: 'const', unit: `${ACCESS}#WRITE_BUTTONS`, anchor: `${operation}: ['${operation}', '${level}']` },
+      ],
+    },
+  ];
+}
+const TPL_FILTER_GUARD: Obligation = {
+  perm: 'guard:talentReview.filterFieldVisible',
+  facts: ['guard:talentReview.filterFieldVisible'],
+  note: '带 enabled 筛选而无 enabled 字段查看权 → 403 FILTER_FIELD_HIDDEN（字段级，只在带筛选时判定）',
+  at: [
+    tplEntry("if (enabled !== undefined) await requireFilterVisible(deps, ctx, 'template', 'enabled')"),
+    FILTER_GUARD.at[1]!,
+  ],
+};
+const TPL_CREATABLE: Obligation = {
+  perm: 'guard:talentReview.templateCreatable',
+  note: '新建 / 改所属组织：目标组织须在范围内（不因创建人或向下公开放行），范围外 404',
+  at: [
+    {
+      role: 'call',
+      unit: `${T}/template-service.ts#createTemplate`,
+      anchor: 'requireCreatable(ctx.scope, input.ownerOrgId)',
+    },
+    {
+      role: 'impl',
+      unit: `${T}/template-access.ts#requireCreatable`,
+      anchor: "visible(scope, ownerOrgId, notFoundMessage('template'))",
+    },
+  ],
+};
+const TPL_READONLY: Obligation = {
+  perm: 'guard:talentReview.templatePublicDownReadonly',
+  note: '仅因向下公开可见的模板只读：修改 / 删除 403 TEMPLATE_PUBLIC_DOWN_READONLY（行锁后判定）',
+  at: [
+    {
+      role: 'call',
+      unit: `${T}/template-service.ts#lockTemplate`,
+      anchor: 'await requireEditable(tx, ctx, ctx.scope, row)',
+    },
+    {
+      role: 'impl',
+      unit: `${T}/template-access.ts#requireEditable`,
+      anchor: "reason: 'TEMPLATE_PUBLIC_DOWN_READONLY'",
+    },
+  ],
+};
+/** 引用流程 / 评价规则 / 模块等级 / 盘点字段 = 读取目录：请求带引用时另需目录对象的查看权，可见性在命令内按目录范围判定。 */
+const TPL_REFERENCE = (): Obligation[] => [
+  {
+    perm: 'guard:talentReview.templateCatalogReference',
+    facts: ['guard:talentReview.templateCatalogReference'],
+    note: '条件守卫：请求体带流程 / 评价规则 / 模块等级 / 字段引用时，另需对应目录的对象查看权，引用的可见性在命令内按目录范围判定',
+    at: [tplEntry('await requireCatalogs(c, deps, references)')],
+  },
+  ...(['flow', 'scoreRule', 'moduleGrade', 'field'] as const).map((key): Obligation => ({
+    perm: `obj:TalentReview.${{ flow: 'Flow', scoreRule: 'ScoreRule', moduleGrade: 'ModuleGrade', field: 'Field' }[key]}:view`,
+    purpose: 'when:talentReview.templateCatalogReference',
+    at: [
+      { role: 'call', unit: `${TPR}#requireCatalogs`, anchor: 'const ctx = await reviewContext(c, deps, kind)' },
+      ...CONTEXT,
+      {
+        role: 'const',
+        unit: `${CATALOG}>${key}`,
+        anchor: `object('${{ flow: 'Flow', scoreRule: 'ScoreRule', moduleGrade: 'ModuleGrade', field: 'Field' }[key]}'`,
+      },
+    ],
+  })),
+];
+const TEMPLATE_REQUIRED: RequiredTable = {
+  [`GET ${BASE_ROOT}/templates`]: [
+    tplView("router.get(TEMPLATES, async (c) => { const ctx = await reviewContext(c, deps, 'template')"),
+    TPL_FILTER_GUARD,
+  ],
+  [`GET ${BASE_ROOT}/templates/:id`]: [
+    tplView("router.get(`${TEMPLATES}/:id`, async (c) => { const ctx = await reviewContext(c, deps, 'template')"),
+  ],
+  [`POST ${BASE_ROOT}/templates`]: [...tplChange('create'), TPL_CREATABLE, ...TPL_REFERENCE()],
+  [`PATCH ${BASE_ROOT}/templates/:id`]: [...tplChange('update'), TPL_READONLY, ...TPL_REFERENCE()],
+  [`DELETE ${BASE_ROOT}/templates/:id`]: [...tplChange('delete'), TPL_READONLY],
+};
+
 export const TALENT_REVIEW: RequiredTable = {
+  ...TEMPLATE_REQUIRED,
   ...FORM_FLOW_REQUIRED,
   ...CALC_REQUIRED,
   ...MATRIX_REQUIRED,

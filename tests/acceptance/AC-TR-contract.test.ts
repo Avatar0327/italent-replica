@@ -14,9 +14,8 @@ import {
   PRESET_PROCESSES,
   roundDecimal,
   TALENT_REVIEW_APP,
-  TALENT_REVIEW_CONFIG_OBJECTS,
   TALENT_REVIEW_OBJECTS,
-  TALENT_REVIEW_SEE_ALL_UNAPPROVED,
+  TALENT_REVIEW_SEE_ALL_OBJECTS,
 } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
@@ -78,10 +77,8 @@ describe('C-06 应用、预置身份、审计标签、租户字段来源（DEC-0
         asAdmin,
       );
       const { seeAll } = (await response.json()) as { seeAll: boolean };
-      // 评价规则 / 模块等级的看全部尚未经用户确认（DEC-374②），不预置
-      const config = TALENT_REVIEW_CONFIG_OBJECTS.filter((key) => !TALENT_REVIEW_SEE_ALL_UNAPPROVED.includes(key)).map(
-        (key) => TALENT_REVIEW_OBJECTS[key].code,
-      );
+      // DEC-415：设置类配置对象与盘点模板预置看全部（未批准清单为空）
+      const config = TALENT_REVIEW_SEE_ALL_OBJECTS.map((key) => TALENT_REVIEW_OBJECTS[key].code);
       expect(seeAll, definition.code).toBe(config.includes(definition.code));
     }
   });

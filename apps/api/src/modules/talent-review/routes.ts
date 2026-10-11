@@ -30,6 +30,7 @@ import { registerCalcRuleRoutes } from './calc-rule-routes.js';
 import { registerConfigRoutes } from './config-routes.js';
 import { registerFormFlowRoutes } from './form-flow-routes.js';
 import { registerMatrixRoutes } from './matrix-routes.js';
+import { registerTemplateRoutes } from './template-routes.js';
 import { readinessCreate, readinessPatch } from './readiness-input.js';
 import * as readiness from './readiness-service.js';
 
@@ -40,6 +41,7 @@ export function registerTalentReviewRoutes(router: Hono<TenantEnv>, deps: Tenant
   registerMatrixRoutes(router, deps); // PR-B4：九宫格与比例规则组
   registerFormFlowRoutes(router, deps); // PR-B3：盘点内容表单、盘点流程定义
   registerCalcRuleRoutes(router, deps); // PR-B5：计算规则与计算项目
+  registerTemplateRoutes(router, deps); // PR-B6a：盘点模板（结构与版本）
   router.get(PATH, async (c) => {
     const ctx = await reviewContext(c, deps, 'readiness');
     const page = pageQuery(c);

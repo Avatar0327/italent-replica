@@ -181,11 +181,20 @@ export const TALENT_REVIEW_CONFIG_OBJECTS: readonly TalentReviewObject[] = [
 ];
 
 /**
- * 设置类配置对象里**暂不预置“看全部”**的：给标准身份预置看全部等于扩大出厂默认数据范围，须逐次由用户确认（DEC-374②，
- * 守卫 AC-PLAT-F061-scope）。评价规则 / 模块等级已由 DEC-408② 批准；表单 / 流程（B3）与字段映射（B2b）尚未确认，确认前预置身份没有它的
- * 看全部，需租户自行授予。数据范围谓词（创建人 / 看全部）与审计可见性不受影响，仍按 TALENT_REVIEW_CONFIG_OBJECTS。
+ * 设置类配置对象里**暂不预置“看全部”**的：给标准身份预置看全部等于扩大出厂默认数据范围（DEC-374②，守卫 AC-PLAT-F061-scope）。
+ * DEC-415 起新对象的看全部默认给所属模块的预置管理员（盘点管理员），本清单为空；字段映射 / 表单 / 流程（DEC-415）已移出。
+ * 以后确需不预置的对象再加回这里。数据范围谓词（创建人 / 看全部）与审计可见性不受影响，仍按 TALENT_REVIEW_CONFIG_OBJECTS。
  */
-export const TALENT_REVIEW_SEE_ALL_UNAPPROVED: readonly TalentReviewObject[] = ['mapping', 'form', 'flow'];
+export const TALENT_REVIEW_SEE_ALL_UNAPPROVED: readonly TalentReviewObject[] = [];
+
+/**
+ * 盘点管理员预置“看全部”的对象（DEC-415）：设置类配置对象 + 盘点模板（有所属组织字段，看全部按对象级登记，否则开箱建不了
+ * 模板；范围内 / 创建人 / 向下公开谓词照旧）。
+ */
+export const TALENT_REVIEW_SEE_ALL_OBJECTS: readonly TalentReviewObject[] = [
+  ...TALENT_REVIEW_CONFIG_OBJECTS,
+  'template',
+].filter((key) => !TALENT_REVIEW_SEE_ALL_UNAPPROVED.includes(key as TalentReviewObject)) as TalentReviewObject[];
 
 /** 准备度颜色：#RRGGBB（原站字典每项带颜色，`27` 补充 W-617）。 */
 export const READINESS_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
