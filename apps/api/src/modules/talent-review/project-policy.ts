@@ -1,4 +1,4 @@
-/** R3-T04 B7a（设计 §6.1 / §7）：基础管理范围；B7b 接入公开 / 共享只读访问。 */
+/** R3-T04 B7a（设计 §6.1 / §7）：管理 / 公开 / 共享范围；项目写入统一只读守卫。 */
 import { TALENT_REVIEW_OBJECTS } from '@italent/domain';
 import {
   BAD_REQUEST,
@@ -18,6 +18,7 @@ const BASE = '/api/tenant/talent-review/projects';
 const PROJECT = TALENT_REVIEW_OBJECTS.project.code;
 const fields = projector('talentReview.project', 'talentReview.project');
 const point = pointScope({ param: 'id' }, 'talentReview.project.byId', NOT_FOUND);
+const readonly = 'talentReview.projectReadonly';
 const reference = ['talentReview.projectCatalogReference'];
 const changed = (action: string) =>
   write(
@@ -34,7 +35,7 @@ const change = (action: 'create' | 'update' | 'delete' | 'start' | 'end' | 'rest
     button: button(action, action === 'create' ? 'list' : 'detail'),
     scope: action === 'create' ? guardScope('talentReview.projectCreatable', NOT_FOUND) : point,
     fields,
-    guards: action === 'create' || action === 'update' ? reference : [],
+    guards: [readonly, ...(action === 'create' || action === 'update' ? reference : [])],
     write: changed(action),
   });
 export const PROJECT_POLICIES = {
