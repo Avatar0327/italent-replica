@@ -2029,10 +2029,12 @@
           "talentReview.templatePublicDownReadonly"
         ],
         "object": [
+          "object.* 动作",
           "objectContext"
         ],
         "scope": [
           "creator scope",
+          "resolveModuleScope",
           "visible()"
         ]
       }
@@ -8735,11 +8737,14 @@
           "trimModuleResponse"
         ],
         "object": [
+          "object.* 动作",
           "objectContext"
         ],
         "scope": [
           "creator scope",
-          "requestScope"
+          "requestScope",
+          "resolveModuleScope",
+          "visible()"
         ]
       }
     },
@@ -9733,6 +9738,7 @@
           "button()"
         ],
         "command": [
+          "assertRevision",
           "revision(c)",
           "runCommand / runWrite"
         ],
@@ -11317,11 +11323,13 @@
           "talentReview.templatePublicDownReadonly"
         ],
         "object": [
+          "object.* 动作",
           "objectContext"
         ],
         "scope": [
           "creator scope",
           "requestScope",
+          "resolveModuleScope",
           "visible()"
         ]
       }
@@ -14403,6 +14411,7 @@
           "button()"
         ],
         "command": [
+          "assertRevision",
           "revision(c)",
           "runCommand / runWrite"
         ],
@@ -18382,11 +18391,13 @@
           "talentReview.templatePublicDownReadonly"
         ],
         "object": [
+          "object.* 动作",
           "objectContext"
         ],
         "scope": [
           "creator scope",
           "requestScope",
+          "resolveModuleScope",
           "visible()"
         ]
       }

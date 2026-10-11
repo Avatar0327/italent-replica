@@ -5,13 +5,13 @@
  * - 请求里显式提交的引用（含原样带上的已有引用）都须当前操作人在目录范围内可见，看不到与不存在同一个 404；
  * - 新引用的对象不能是已停用的（400）；聚合已持有的引用原样保留可改。
  */
-import { and, eq, inArray, type Tx } from '@italent/db';
+import { and, asc, eq, inArray, type Tx } from '@italent/db';
 import type { AnyPgColumn, PgTable } from 'drizzle-orm/pg-core';
 import { AppError } from '../../errors.js';
 import { notFoundMessage, requireConfigVisible, type ModuleScope } from './access.js';
 import type { WriteContext } from './config-kit.js';
 
-export type ReferencedObject = 'field' | 'role' | 'flow' | 'scoreRule' | 'moduleGrade';
+export type ReferencedObject = 'field' | 'role' | 'flow' | 'scoreRule' | 'moduleGrade' | 'form';
 export type ReferencedTable = PgTable & {
   readonly id: AnyPgColumn;
   readonly tenantId: AnyPgColumn;
@@ -36,7 +36,8 @@ async function loadFacts(tx: Tx, table: ReferencedTable, tenantId: string, ids: 
   const query = tx
     .select({ id: table.id, enabled: table.enabled, createdBy: table.createdBy })
     .from(table)
-    .where(and(eq(table.tenantId, tenantId), inArray(table.id, [...ids])));
+    .where(and(eq(table.tenantId, tenantId), inArray(table.id, [...ids])))
+    .orderBy(asc(table.id));
   const rows = (await (lock ? query.for('key share') : query)) as (Facts & { id: string })[];
   return new Map(rows.map((row) => [row.id, row]));
 }
@@ -68,17 +69,18 @@ export async function requireReferencesVisible(
   requireVisible(object, scope, await loadFacts(tx, table, tenantId, unique, false), unique);
 }
 
-/** 写入前复核：全部显式引用可见；其中新增的（不在 held 里）不能已停用。 */
+/** 写入前复核：全部显式引用可见，新增的须启用；lock=false 只用于调用方已统一持来源锁后的只读复核。 */
 export async function checkReferences(
   tx: Tx,
   ctx: ReferenceWriteContext,
   spec: { table: ReferencedTable; object: ReferencedObject; disabledReason: string; label: string },
   ids: readonly string[],
   held: ReadonlySet<string>,
+  lock = true,
 ): Promise<void> {
   const unique = [...new Set(ids)];
   if (unique.length === 0) return;
-  const facts = await loadFacts(tx, spec.table, ctx.tenantId, unique, true);
+  const facts = await loadFacts(tx, spec.table, ctx.tenantId, unique, lock);
   requireVisible(spec.object, ctx.referenceScope, facts, unique);
   for (const id of unique) {
     if (!held.has(id) && !facts.get(id)!.enabled) {

@@ -239,6 +239,16 @@ def progress(d, live):
                 continue
             tot += 1
             done += bool(st.get("s") == "done" or (st.get("pr") and str(st["pr"]) in merged))
+    # 依赖已满足但没派的步骤（10-11 B6 漏派 4.5 小时）：after 里的步骤全部合并、自身没有 PR 也没标已派
+    ready = []
+    for ln in (d.get("main") or {}).get("lines", []):
+        steps = [s for g in ln.get("groups", []) for s in g["steps"]]
+        byk = {s["k"]: s for s in steps}
+        isdone = lambda s: s and (s.get("s") == "done" or (s.get("pr") and str(s["pr"]) in merged))
+        for st in steps:
+            if st.get("after") and not st.get("pr") and st.get("s") not in ("assigned", "paused") and all(isdone(byk.get(k)) for k in st["after"]):
+                ready.append(f"{ln['id']} {st['k']} {st['n']}")
+    print("ready " + ("；".join(ready) if ready else "无"))
     at = (live or {}).get("at", "")
     try:
         rec = json.load(open(PROG))
