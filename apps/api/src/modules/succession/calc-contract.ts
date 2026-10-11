@@ -65,8 +65,8 @@ export class CalcObjectFailure extends Error {
     if (!/^[A-Z][A-Z0-9_]{0,63}$/.test(code)) throw new TypeError('失败仅允许错误码');
   }
 }
-/** §4.6：日期与槽按租户墙上时间计算（包括夏令时重复小时）；业务日期由可信调用方冻结。 */
-export function calcKey(input: CalcInput): string {
+/** §4.6：统计槽的 elapsedMinutes 必须来自数据库的租户午夜时间差，不能用钟面小时代替。 */
+export function calcKey(input: CalcInput, elapsedMinutes?: number): string {
   const { kind, trigger, tenantId } = input;
   if (trigger === 'manual') return `${kind}:manual:${input.commandId}`;
   if (
@@ -89,14 +89,8 @@ export function calcKey(input: CalcInput): string {
     if (kind !== 'org_stats') return key;
     const h = input.intervalHours;
     if (!Number.isInteger(h) || h! < 1 || h! > 24) throw new TypeError('统计间隔必须为 1～24 小时');
-    const parts = new Intl.DateTimeFormat('en-GB', {
-      timeZone: input.timezone,
-      hour: '2-digit',
-      minute: '2-digit',
-      hourCycle: 'h23',
-    }).formatToParts(input.now);
-    const value = (type: string) => Number(parts.find((p) => p.type === type)!.value);
-    return `${key}:${h}h:${Math.floor((value('hour') * 60 + value('minute')) / (h! * 60))}`;
+    if (!Number.isSafeInteger(elapsedMinutes) || elapsedMinutes! < 0) throw new TypeError('缺少租户午夜起算分钟数');
+    return `${key}:${h}h:${Math.floor(elapsedMinutes! / (h! * 60))}`;
   }
   throw new TypeError('计算触发来源或幂等键参数非法');
 }

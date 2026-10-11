@@ -82,10 +82,15 @@ beforeAll(async () => {
 
 describe('AC-SC-calc-core run 契约', () => {
   it('夏令时回拨的两个 01:30，按租户午夜起算的实际分钟进入不同小时槽', async () => {
-    const input = { ...request(0), trigger: 'schedule' as const, timezone: 'America/Chicago',
-      businessDate: '2026-11-01', intervalHours: 1 };
-    const first = await create({ ...input,now: new Date('2026-11-01T06:30:00Z') });
-    const second = await create({ ...input,now: new Date('2026-11-01T07:30:00Z') });
+    const input = {
+      ...request(0),
+      trigger: 'schedule' as const,
+      timezone: 'America/Chicago',
+      businessDate: '2026-11-01',
+      intervalHours: 1,
+    };
+    const first = await create({ ...input, now: new Date('2026-11-01T06:30:00Z') });
+    const second = await create({ ...input, now: new Date('2026-11-01T07:30:00Z') });
     expect(first).not.toBe(second);
     expect((await read(first)).idempotency_key).toBe(`org_stats:schedule:${input.tenantId}:2026-11-01:1h:1`);
     expect((await read(second)).idempotency_key).toBe(`org_stats:schedule:${input.tenantId}:2026-11-01:1h:2`);
@@ -100,9 +105,9 @@ describe('AC-SC-calc-core run 契约', () => {
       now: new Date('2026-10-12T03:00Z'),
       intervalHours: 4,
     };
-    expect(calcKey(scheduled)).toBe(`org_stats:schedule:${base.tenantId}:2026-10-11:4h:5`);
+    expect(calcKey(scheduled, 22 * 60)).toBe(`org_stats:schedule:${base.tenantId}:2026-10-11:4h:5`);
     expect(calcKey({ ...scheduled, kind: 'exit_sweep' })).toBe(`exit_sweep:schedule:${base.tenantId}:2026-10-11`);
-    expect(calcKey({ ...scheduled, now: new Date('2026-10-12T06:00Z') })).not.toBe(calcKey(scheduled));
+    expect(calcKey({ ...scheduled, now: new Date('2026-10-12T06:00Z') }, 60)).not.toBe(calcKey(scheduled, 22 * 60));
     expect(calcKey({ ...base, trigger: 'preferences_change', preferencesRevision: 2 })).toBe(
       `org_stats:preferences:${base.requestedBy}:2`,
     );
