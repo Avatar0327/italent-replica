@@ -156,6 +156,14 @@ const NO_ANSWER_DATA: Readonly<Record<string, string>> = {
   ),
   [`GET ${PORTAL}`]: '本活动的任务与具名人员，不含逐份答案',
   [`GET ${PORTAL}/avatars/:attachmentId/content`]: '本单具名人员头像字节，不含答卷',
+  ...Object.fromEntries(
+    [TODO, LINK].flatMap((base) =>
+      ['page-check'].map((action) => [
+        `POST ${base}/tasks/:relationId/questionnaires/:questionnaireId/${action}`,
+        '作答计时点（DEC-392）：回执只有布尔与 3 秒界面时长，没有答案、评价者标识或耗时',
+      ]),
+    ),
+  ),
   [`POST ${PORTAL}/login`]: '回执只有会话令牌与过期时间，不含答卷或名单；凭据错误一律 401',
   [`POST ${PORTAL}/logout`]: '总是 204 无内容，只作废与令牌摘要匹配的会话',
   [`GET ${TODO}/avatars/:attachmentId/content`]: '评价对象头像图片',
