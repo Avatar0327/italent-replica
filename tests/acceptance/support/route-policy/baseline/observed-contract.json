@@ -2064,10 +2064,12 @@
           "talentReview.templatePublicDownReadonly"
         ],
         "object": [
+          "object.* 动作",
           "objectContext"
         ],
         "scope": [
           "creator scope",
+          "resolveModuleScope",
           "visible()"
         ]
       }
@@ -2481,6 +2483,60 @@
         }
       },
       "module": "survey360-link",
+      "primitives": {}
+    },
+    "GET /api/survey360/portal": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "nonMember": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        }
+      },
+      "module": "survey360-portal",
+      "primitives": {}
+    },
+    "GET /api/survey360/portal/avatars/:attachmentId/content": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "nonMember": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        }
+      },
+      "module": "survey360-portal",
+      "primitives": {}
+    },
+    "GET /api/survey360/portal/tasks/:relationId/questionnaires/:questionnaireId": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "nonMember": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        }
+      },
+      "module": "survey360-portal",
       "primitives": {}
     },
     "GET /api/survey360/report-link": {
@@ -6248,6 +6304,37 @@
         ]
       }
     },
+    "GET /api/tenant/qualification/chart-export": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "qualification",
+      "primitives": {
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "object": [
+          "object.* 动作",
+          "objectContext"
+        ],
+        "scope": [
+          "requestScope",
+          "scope.all",
+          "scopeSql"
+        ]
+      }
+    },
     "GET /api/tenant/qualification/coding-rules": {
       "edge": {
         "anonymous": {
@@ -8798,11 +8885,14 @@
           "trimModuleResponse"
         ],
         "object": [
+          "object.* 动作",
           "objectContext"
         ],
         "scope": [
           "creator scope",
-          "requestScope"
+          "requestScope",
+          "resolveModuleScope",
+          "visible()"
         ]
       }
     },
@@ -9796,6 +9886,7 @@
           "button()"
         ],
         "command": [
+          "assertRevision",
           "revision(c)",
           "runCommand / runWrite"
         ],
@@ -11421,11 +11512,13 @@
           "talentReview.templatePublicDownReadonly"
         ],
         "object": [
+          "object.* 动作",
           "objectContext"
         ],
         "scope": [
           "creator scope",
           "requestScope",
+          "resolveModuleScope",
           "visible()"
         ]
       }
@@ -11984,6 +12077,52 @@
       },
       "module": "survey360-portal",
       "primitives": {}
+    },
+    "POST /api/survey360/portal/tasks/:relationId/questionnaires/:questionnaireId/page-check": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "nonMember": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        }
+      },
+      "module": "survey360-portal",
+      "primitives": {
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ]
+      }
+    },
+    "POST /api/survey360/portal/tasks/:relationId/questionnaires/:questionnaireId/submit": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "nonMember": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        }
+      },
+      "module": "survey360-portal",
+      "primitives": {
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ]
+      }
     },
     "POST /api/tenant/account/avatar/attachments": {
       "edge": {
@@ -14507,6 +14646,7 @@
           "button()"
         ],
         "command": [
+          "assertRevision",
           "revision(c)",
           "runCommand / runWrite"
         ],
@@ -18632,11 +18772,13 @@
           "talentReview.templatePublicDownReadonly"
         ],
         "object": [
+          "object.* 动作",
           "objectContext"
         ],
         "scope": [
           "creator scope",
           "requestScope",
+          "resolveModuleScope",
           "visible()"
         ]
       }
@@ -19058,6 +19200,29 @@
         }
       },
       "module": "survey360-link",
+      "primitives": {
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ]
+      }
+    },
+    "PUT /api/survey360/portal/tasks/:relationId/questionnaires/:questionnaireId": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "nonMember": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        }
+      },
+      "module": "survey360-portal",
       "primitives": {
         "command": [
           "revision(c)",

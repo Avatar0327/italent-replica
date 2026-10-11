@@ -126,8 +126,19 @@ export const TALENT_REVIEW_OBJECTS = {
    */
   template: object(
     'Template',
-    ['name', 'ownerOrgId', 'downwardPublic', 'flowId', 'enabled', 'steps', 'modules', 'permissions'],
-    ['currentVersionNo', 'versionNo', 'accessLevel', 'configErrors', 'versions'],
+    [
+      'name',
+      'ownerOrgId',
+      'downwardPublic',
+      'flowId',
+      'enabled',
+      'steps',
+      'modules',
+      'permissions',
+      'stepForms',
+      'resultRules',
+    ],
+    ['currentVersionNo', 'versionNo', 'accessLevel', 'configErrors', 'versions', 'fieldCatalogVersion', 'hints'],
   ),
   /** 项目定义与状态（设计 §2.4 / §3.1；B7b 再接公开 / 共享只读谓词）。 */
   project: object(

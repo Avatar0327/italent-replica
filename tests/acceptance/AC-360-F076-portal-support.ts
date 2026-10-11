@@ -8,6 +8,7 @@ import { credentialConfig } from '../../apps/api/src/modules/survey360/credentia
 import { dummyDigest } from '../../apps/api/src/modules/survey360/credentials.js';
 import { ipKey, pairKey } from '../../apps/api/src/modules/survey360/throttle.js';
 import { sceneB, type SceneB } from './AC-360-B-support.js';
+import type { RequestOptions } from './support/tenant-api.js';
 import type { World360 } from './AC-360-support.js';
 import { invitations, portalCredentials, rowsOf } from './AC-360-F076-support.js';
 
@@ -182,3 +183,12 @@ export async function sql1(w: World360, statement: ReturnType<typeof sql>): Prom
 }
 
 export { sceneB, type SceneB };
+
+export const sessionCall =
+  (w: World360, session: string) =>
+  (method: string, path = '', options: RequestOptions = {}) =>
+    w.api.request(method, `${PORTAL}${path}`, {
+      ...options,
+      tenant: options.tenant ?? w.tenantId,
+      headers: { 'x-survey360-session': session, ...options.headers },
+    });

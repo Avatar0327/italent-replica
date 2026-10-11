@@ -596,7 +596,7 @@ describe('AC-QL-employee-profile 必测 9、10：CODE_TAKEN 保留计数另加�
 
 describe('AC-QL-employee-profile 必测 11：version / 指纹守卫（DEC-404）', () => {
   // 合并前最后一次合 main 时，以合并进来的 main 版本和指纹为基线（DEC-404）
-  const MAIN = { version: 14, digest: '057bfa81674d414f' };
+  const MAIN = { version: 15, digest: '507b6cf9f37e4f62' };
 
   it('授权项编码含员工身份任职对象三个按钮与页面载体按钮；version 比 main 当前值至少 +1，指纹随编码变化（AC-QL-employee-profile）', () => {
     for (const button of EMPLOYEE_SELF_SERVICE_BUTTONS)

@@ -10,6 +10,7 @@ import { AppError } from '../../errors.js';
 import { notFoundMessage, requireConfigCreatable, requireConfigVisible } from './access.js';
 import { bumpFieldCatalog } from './field-catalog.js';
 import { guardFieldRename, type FieldWriteContext } from './field-rename-guard.js';
+import { guardTemplateResultRename } from './template-result-rename.js';
 import {
   auditConfig,
   checkConfigUpdateConstraints,
@@ -233,6 +234,7 @@ export async function updateField(tx: Tx, ctx: FieldWriteContext, id: string, pa
   // 改名守卫（契约 §3.1）：只在名称实际变化时执行——版本行串行、引用它的 bound 公式往返校验、固化文本兜底
   const renamed = patch.name !== undefined && patch.name !== before.name;
   if (renamed) await guardFieldRename(tx, ctx, id, before.name, patch.name!);
+  if (renamed) await guardTemplateResultRename(tx, ctx.tenantId, id, patch.name!);
   if (patch.precision !== undefined && before.kind !== 'number') {
     throw invalid('FIELD_PRECISION_NOT_ALLOWED', '只有数值字段可以设置小数位');
   }
