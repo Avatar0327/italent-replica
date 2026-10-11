@@ -6,6 +6,7 @@ import type { Graph } from '../../../evidence-graph.js';
 
 export const GRAPH: Graph = {
   'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS': ['#crud', '#levelObject', '#object', '#reorder'],
+  'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>calcRun': ['#object'],
   'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>healthLevel': ['#levelObject'],
   'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>population': ['#crud', '#object', '#reorder'],
   'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>record': ['#crud', '#object'],

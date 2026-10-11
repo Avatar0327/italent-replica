@@ -234,6 +234,109 @@ Object.assign(SUCCESSION, {
   'POST /api/platform/succession/rules/recompile': [],
 });
 
+/** B3b：三条读口与重试共用 calc-read 范围谓词；重试的 before 在 ledgerExit 中取锁后重判。 */
+function calcRequired(retry = false): Obligation[] {
+  const constant: Evidence = {
+    role: 'const',
+    unit: 'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>calcRun',
+    anchor: "object( 'CalcRun'",
+  };
+  const route = `${S}/calc-routes.ts#registerCalcRoutes`;
+  const obligations: Obligation[] = [
+    {
+      perm: `obj:Succession.CalcRun:${retry ? 'update' : 'view'}`,
+      facts: ['object:objectContext', 'object:object.* 动作'],
+      at: [
+        retry
+          ? {
+              role: 'call',
+              unit: SUCCESSION_CONTEXT,
+              anchor: 'await successionContext(c, deps, spec.object, spec.operation, spec.expectedRevision)',
+            }
+          : { role: 'call', unit: route, anchor: "await successionContext(c, deps, 'calcRun')" },
+        {
+          role: 'impl',
+          unit: `${S}/calc-read.ts#calcAccess`,
+          anchor: "action: 'object.view', resource: codeOf('calcRun')",
+        },
+        ...CONTEXT,
+        constant,
+      ],
+    },
+    {
+      perm: 'guard:succession.calcVisible',
+      at: [
+        { role: 'call', unit: `${S}/calc-read.ts#readCalcRuns`, anchor: '${whole(scope, ctx)}' },
+        { role: 'impl', unit: `${S}/calc-read.ts#whole`, anchor: 'calcRowsVisible(scope, ctx.tenantId' },
+      ],
+    },
+  ];
+  if (retry)
+    obligations.push({
+      perm: 'obj:Succession.CalcRun:view',
+      facts: ['object:object.* 动作'],
+      at: [
+        { role: 'call', unit: `${S}/calc-read.ts#calcAccess`, anchor: 'await requirePermission(bound.authorize' },
+        {
+          role: 'impl',
+          unit: `${S}/calc-read.ts#calcAccess`,
+          anchor: "action: 'object.view', resource: codeOf('calcRun')",
+        },
+        constant,
+      ],
+    });
+  if (retry)
+    obligations.push(
+      {
+        perm: 'btn:Succession.CalcRun#retry@detail',
+        facts: ['button:button()'],
+        at: [
+          {
+            role: 'call',
+            unit: SUCCESSION_CONTEXT,
+            anchor: 'await button(deps, ctx, codeOf(spec.object), spec.button.code, spec.button.level)',
+          },
+          {
+            role: 'impl',
+            unit: `${MRA}#button`,
+            anchor: "action: 'object.button', resource: buttonResource(objectCode, code, level)",
+          },
+          constant,
+        ],
+      },
+      {
+        perm: 'guard:succession.calcRetryScope',
+        at: [
+          { role: 'call', unit: route, anchor: 'await requireCalcRetryScope(tx, deps, ctx, id)' },
+          {
+            role: 'impl',
+            unit: `${S}/calc-read.ts#requireCalcRetryScope`,
+            anchor: "reason: 'RUN_SCOPE_EXCEEDS_REQUESTER'",
+          },
+        ],
+      },
+    );
+  return obligations.map((obligation) =>
+    obligation.perm.startsWith('obj:')
+      ? {
+          ...obligation,
+          need: { scope: 'guard' as const, guard: 'succession.calcVisible' },
+          at: [
+            ...obligation.at,
+            { role: 'scope' as const, unit: `${S}/calc-read.ts#readCalcRuns`, anchor: '${whole(scope, ctx)}' },
+          ],
+        }
+      : obligation,
+  );
+}
+Object.assign(SUCCESSION, {
+  [`GET ${BASE}/calc-runs`]: calcRequired(),
+  [`GET ${BASE}/calc-runs/:id`]: calcRequired(),
+  [`GET ${BASE}/calc-runs/:id/failures`]: calcRequired(),
+  [`POST ${BASE}/calc-runs/:id/retry`]: calcRequired(true),
+  'POST /api/platform/succession/jobs/run': [],
+});
+
 for (const kind of ['risk', 'health'] as const) {
   const key = kind === 'risk' ? 'riskLevel' : 'healthLevel';
   const path = `${BASE}/${kind}-levels`;

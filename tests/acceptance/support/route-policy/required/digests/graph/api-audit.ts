@@ -18,6 +18,7 @@ export const GRAPH: Graph = {
     '#visible',
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
     'apps/api/src/modules/permission/module-access.ts#resolveModuleScope',
+    'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS',
     'packages/domain/src/talent-review/formula-audit.ts#redactCalcRuleAuditValue',
   ],
   'apps/api/src/audit/calc-rule-sources.ts#visible': [
@@ -335,6 +336,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/platform/standard-presets.ts#ESTABLISHMENT_SCHEME_DATASOURCE',
     'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_CONFIG_OBJECTS',
     'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS',
+    'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_ORG_OBJECTS',
     'packages/domain/src/talent/catalog.ts#TALENT_OBJECTS',
   ],
   'apps/api/src/audit/visibility.ts#RULE_BY_TYPE': ['#RULES'],

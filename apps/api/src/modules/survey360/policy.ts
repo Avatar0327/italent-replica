@@ -590,7 +590,7 @@ export const SURVEY360_LINK_POLICIES = defineTable('survey360-link', {
 });
 
 /**
- * 通用网址（序列号 + 密码）作答门户 /api/survey360/portal（F-076 设计 §5.1；PR-2a 只有登录 / 登出，会话入口五条归 PR-2b）。
+ * 通用网址（序列号 + 密码）作答门户 /api/survey360/portal（F-076 设计 §5.1；PR-2a 登录 / 登出，PR-2b 六条会话入口，DEC-426）。
  * 登录 / 登出是认证入口，不走命令台账（`ledger: 'none'`，DEC-377③）：台账会留存凭据相关请求，重试即重新登录
  * （结果未知时的恢复语义见设计 §4.8）；限频计数与临时会话不进业务字段日志（DEC-377④）。
  */
@@ -599,7 +599,21 @@ const PORTAL_LEDGER = {
   ledgerReason: '认证入口不走命令台账（DEC-377③，设计 §4.8）：台账会留存凭据与会话令牌；结果未知时重新登录 / 重试登出',
 } as const;
 
+const sessionPolicy = (reason: string, save = false, extra: { invalidId?: typeof BAD_REQUEST } = {}): RoutePolicy =>
+  publicRoute(reason, 'DEC-291 Q2 / F-076', ['survey360.answerSession'], {
+    ...extra,
+    ...(save
+      ? { write: write('body', 'survey360.linkResolve', none('会话写入回执只含本人答案'), { ledger: 'single' }) }
+      : {}),
+  });
+
 export const SURVEY360_PORTAL_POLICIES = defineTable(PORTAL_TABLE, {
+  'GET /': sessionPolicy('会话主页：本评价者本活动的有效任务'),
+  'GET /avatars/:attachmentId/content': sessionPolicy('本单具名人员当前头像'),
+  'GET /tasks/:relationId/questionnaires/:questionnaireId': sessionPolicy('本人任务答卷', false, byId),
+  'PUT /tasks/:relationId/questionnaires/:questionnaireId': sessionPolicy('保存本人答卷', true, byId),
+  'POST /tasks/:relationId/questionnaires/:questionnaireId/submit': sessionPolicy('提交本人答卷', true, byId),
+  'POST /tasks/:relationId/questionnaires/:questionnaireId/page-check': sessionPolicy('本人翻页提醒', true, byId),
   'POST /login': publicRoute(
     '序列号 + 密码换取作答会话：凭据正确且评价者仍有有效评价关系才签发，失败一律同一个 401',
     'DEC-291 Q2 / F-076',

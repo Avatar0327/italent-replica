@@ -1,5 +1,5 @@
 {
-  "id": "2dab2bf2-08d8-418d-a99f-73f3ad5a8626",
+  "id": "cc159d57-ca09-4cb0-a728-6c85687aabaf",
   "prevId": "96aeb4fb-6515-4ffb-b4bb-d55c09e81bf7",
   "version": "7",
   "dialect": "postgresql",
@@ -48132,8 +48132,283 @@
       },
       "isRLSEnabled": false
     },
-    "public.succession_health_level_rows": {
-      "name": "succession_health_level_rows",
+    "public.talent_review_template_form_fields": {
+      "name": "talent_review_template_form_fields",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "step_form_id": {
+          "name": "step_form_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "field_id": {
+          "name": "field_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "access": {
+          "name": "access",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "required": {
+          "name": "required",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sort_no": {
+          "name": "sort_no",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "talent_review_template_form_fields_tenant_id_tenants_id_fk": {
+          "name": "talent_review_template_form_fields_tenant_id_tenants_id_fk",
+          "tableFrom": "talent_review_template_form_fields",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "talent_review_template_form_fields_tenant_id_step_form_id_talent_review_template_step_forms_tenant_id_id_fk": {
+          "name": "talent_review_template_form_fields_tenant_id_step_form_id_talent_review_template_step_forms_tenant_id_id_fk",
+          "tableFrom": "talent_review_template_form_fields",
+          "tableTo": "talent_review_template_step_forms",
+          "columnsFrom": [
+            "tenant_id",
+            "step_form_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "talent_review_template_form_fields_tenant_id_field_id_talent_review_fields_tenant_id_id_fk": {
+          "name": "talent_review_template_form_fields_tenant_id_field_id_talent_review_fields_tenant_id_id_fk",
+          "tableFrom": "talent_review_template_form_fields",
+          "tableTo": "talent_review_fields",
+          "columnsFrom": [
+            "tenant_id",
+            "field_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "talent_review_template_form_fields_tenant_id_step_form_id_field_id_pk": {
+          "name": "talent_review_template_form_fields_tenant_id_step_form_id_field_id_pk",
+          "columns": [
+            "tenant_id",
+            "step_form_id",
+            "field_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "tr_template_form_access": {
+          "name": "tr_template_form_access",
+          "value": "\"talent_review_template_form_fields\".\"access\" IN ('hidden','view','edit') AND (NOT \"talent_review_template_form_fields\".\"required\" OR \"talent_review_template_form_fields\".\"access\" = 'edit')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.talent_review_template_result_module_refs": {
+      "name": "talent_review_template_result_module_refs",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rule_id": {
+          "name": "rule_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "module_id": {
+          "name": "module_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "talent_review_template_result_module_refs_tenant_id_tenants_id_fk": {
+          "name": "talent_review_template_result_module_refs_tenant_id_tenants_id_fk",
+          "tableFrom": "talent_review_template_result_module_refs",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "talent_review_template_result_module_refs_tenant_id_rule_id_talent_review_template_result_rules_tenant_id_id_fk": {
+          "name": "talent_review_template_result_module_refs_tenant_id_rule_id_talent_review_template_result_rules_tenant_id_id_fk",
+          "tableFrom": "talent_review_template_result_module_refs",
+          "tableTo": "talent_review_template_result_rules",
+          "columnsFrom": [
+            "tenant_id",
+            "rule_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "talent_review_template_result_module_refs_tenant_id_module_id_talent_review_template_modules_tenant_id_id_fk": {
+          "name": "talent_review_template_result_module_refs_tenant_id_module_id_talent_review_template_modules_tenant_id_id_fk",
+          "tableFrom": "talent_review_template_result_module_refs",
+          "tableTo": "talent_review_template_modules",
+          "columnsFrom": [
+            "tenant_id",
+            "module_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "talent_review_template_result_module_refs_tenant_id_rule_id_module_id_pk": {
+          "name": "talent_review_template_result_module_refs_tenant_id_rule_id_module_id_pk",
+          "columns": [
+            "tenant_id",
+            "rule_id",
+            "module_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.talent_review_template_result_refs": {
+      "name": "talent_review_template_result_refs",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rule_id": {
+          "name": "rule_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "field_id": {
+          "name": "field_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "talent_review_template_result_refs_tenant_id_tenants_id_fk": {
+          "name": "talent_review_template_result_refs_tenant_id_tenants_id_fk",
+          "tableFrom": "talent_review_template_result_refs",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "talent_review_template_result_refs_tenant_id_rule_id_talent_review_template_result_rules_tenant_id_id_fk": {
+          "name": "talent_review_template_result_refs_tenant_id_rule_id_talent_review_template_result_rules_tenant_id_id_fk",
+          "tableFrom": "talent_review_template_result_refs",
+          "tableTo": "talent_review_template_result_rules",
+          "columnsFrom": [
+            "tenant_id",
+            "rule_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "talent_review_template_result_refs_tenant_id_field_id_talent_review_fields_tenant_id_id_fk": {
+          "name": "talent_review_template_result_refs_tenant_id_field_id_talent_review_fields_tenant_id_id_fk",
+          "tableFrom": "talent_review_template_result_refs",
+          "tableTo": "talent_review_fields",
+          "columnsFrom": [
+            "tenant_id",
+            "field_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "talent_review_template_result_refs_tenant_id_rule_id_field_id_pk": {
+          "name": "talent_review_template_result_refs_tenant_id_rule_id_field_id_pk",
+          "columns": [
+            "tenant_id",
+            "rule_id",
+            "field_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.talent_review_template_result_rules": {
+      "name": "talent_review_template_result_rules",
       "schema": "",
       "columns": {
         "id": {
@@ -48149,92 +48424,42 @@
           "primaryKey": false,
           "notNull": true
         },
-        "level_id": {
-          "name": "level_id",
+        "version_id": {
+          "name": "version_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },
-        "row_no": {
-          "name": "row_no",
+        "target_field_id": {
+          "name": "target_field_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "formula": {
+          "name": "formula",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "priority": {
+          "name": "priority",
           "type": "integer",
           "primaryKey": false,
           "notNull": true
         },
-        "field_code": {
-          "name": "field_code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "filter_operator": {
-          "name": "filter_operator",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "filter_values": {
-          "name": "filter_values",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'[]'::jsonb"
-        },
-        "measure": {
-          "name": "measure",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "comparator": {
-          "name": "comparator",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "threshold": {
-          "name": "threshold",
-          "type": "double precision",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "threshold_high": {
-          "name": "threshold_high",
-          "type": "double precision",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "is_percent": {
-          "name": "is_percent",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "population": {
-          "name": "population",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "population_id": {
-          "name": "population_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "field_source": {
-          "name": "field_source",
-          "type": "text",
+        "sort_no": {
+          "name": "sort_no",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true
         }
       },
       "indexes": {},
       "foreignKeys": {
-        "succession_health_level_rows_tenant_id_tenants_id_fk": {
-          "name": "succession_health_level_rows_tenant_id_tenants_id_fk",
-          "tableFrom": "succession_health_level_rows",
+        "talent_review_template_result_rules_tenant_id_tenants_id_fk": {
+          "name": "talent_review_template_result_rules_tenant_id_tenants_id_fk",
+          "tableFrom": "talent_review_template_result_rules",
           "tableTo": "tenants",
           "columnsFrom": [
             "tenant_id"
@@ -48245,13 +48470,13 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "succession_health_level_rows_tenant_id_level_id_succession_health_levels_tenant_id_id_fk": {
-          "name": "succession_health_level_rows_tenant_id_level_id_succession_health_levels_tenant_id_id_fk",
-          "tableFrom": "succession_health_level_rows",
-          "tableTo": "succession_health_levels",
+        "talent_review_template_result_rules_tenant_id_version_id_talent_review_template_versions_tenant_id_id_fk": {
+          "name": "talent_review_template_result_rules_tenant_id_version_id_talent_review_template_versions_tenant_id_id_fk",
+          "tableFrom": "talent_review_template_result_rules",
+          "tableTo": "talent_review_template_versions",
           "columnsFrom": [
             "tenant_id",
-            "level_id"
+            "version_id"
           ],
           "columnsTo": [
             "tenant_id",
@@ -48260,13 +48485,13 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "succession_health_level_rows_tenant_id_population_id_succession_populations_tenant_id_id_fk": {
-          "name": "succession_health_level_rows_tenant_id_population_id_succession_populations_tenant_id_id_fk",
-          "tableFrom": "succession_health_level_rows",
-          "tableTo": "succession_populations",
+        "talent_review_template_result_rules_tenant_id_target_field_id_talent_review_fields_tenant_id_id_fk": {
+          "name": "talent_review_template_result_rules_tenant_id_target_field_id_talent_review_fields_tenant_id_id_fk",
+          "tableFrom": "talent_review_template_result_rules",
+          "tableTo": "talent_review_fields",
           "columnsFrom": [
             "tenant_id",
-            "population_id"
+            "target_field_id"
           ],
           "columnsTo": [
             "tenant_id",
@@ -48278,35 +48503,35 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
-        "succession_health_level_rows_tenant_id_level_id_row_no_unique": {
-          "name": "succession_health_level_rows_tenant_id_level_id_row_no_unique",
+        "tr_result_rules_tenant_id": {
+          "name": "tr_result_rules_tenant_id",
           "nullsNotDistinct": false,
           "columns": [
             "tenant_id",
-            "level_id",
-            "row_no"
+            "id"
+          ]
+        },
+        "tr_result_rules_target": {
+          "name": "tr_result_rules_target",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "version_id",
+            "target_field_id"
           ]
         }
       },
       "policies": {},
       "checkConstraints": {
-        "succession_health_rows_number": {
-          "name": "succession_health_rows_number",
-          "value": "\"succession_health_level_rows\".\"row_no\" > 0"
-        },
-        "succession_health_rows_population": {
-          "name": "succession_health_rows_population",
-          "value": "\"succession_health_level_rows\".\"population\" IN ('all', 'successors', 'incumbents', 'custom')\n    AND ((\"succession_health_level_rows\".\"population\" = 'custom') = (\"succession_health_level_rows\".\"population_id\" IS NOT NULL))"
-        },
-        "succession_health_rows_source": {
-          "name": "succession_health_rows_source",
-          "value": "\"succession_health_level_rows\".\"field_source\" IN ('review', 'org', 'succession')"
+        "tr_result_rules_priority": {
+          "name": "tr_result_rules_priority",
+          "value": "\"talent_review_template_result_rules\".\"priority\" BETWEEN 0 AND 1000000"
         }
       },
       "isRLSEnabled": false
     },
-    "public.succession_health_levels": {
-      "name": "succession_health_levels",
+    "public.talent_review_template_step_forms": {
+      "name": "talent_review_template_step_forms",
       "schema": "",
       "columns": {
         "id": {
@@ -48322,80 +48547,42 @@
           "primaryKey": false,
           "notNull": true
         },
-        "code": {
-          "name": "code",
-          "type": "text",
+        "step_id": {
+          "name": "step_id",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "color": {
-          "name": "color",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "description": {
-          "name": "description",
-          "type": "text",
+        "role_id": {
+          "name": "role_id",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": false
         },
-        "display_order": {
-          "name": "display_order",
+        "purpose": {
+          "name": "purpose",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "form_id": {
+          "name": "form_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sort_no": {
+          "name": "sort_no",
           "type": "integer",
           "primaryKey": false,
           "notNull": true
-        },
-        "condition_expression": {
-          "name": "condition_expression",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "compiled_formula": {
-          "name": "compiled_formula",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "compiler_version": {
-          "name": "compiler_version",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "compile_error": {
-          "name": "compile_error",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "enabled": {
-          "name": "enabled",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
-        },
-        "revision": {
-          "name": "revision",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 1
         }
       },
       "indexes": {},
       "foreignKeys": {
-        "succession_health_levels_tenant_id_tenants_id_fk": {
-          "name": "succession_health_levels_tenant_id_tenants_id_fk",
-          "tableFrom": "succession_health_levels",
+        "talent_review_template_step_forms_tenant_id_tenants_id_fk": {
+          "name": "talent_review_template_step_forms_tenant_id_tenants_id_fk",
+          "tableFrom": "talent_review_template_step_forms",
           "tableTo": "tenants",
           "columnsFrom": [
             "tenant_id"
@@ -48405,44 +48592,79 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "talent_review_template_step_forms_tenant_id_step_id_talent_review_template_steps_tenant_id_id_fk": {
+          "name": "talent_review_template_step_forms_tenant_id_step_id_talent_review_template_steps_tenant_id_id_fk",
+          "tableFrom": "talent_review_template_step_forms",
+          "tableTo": "talent_review_template_steps",
+          "columnsFrom": [
+            "tenant_id",
+            "step_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "talent_review_template_step_forms_tenant_id_role_id_talent_review_roles_tenant_id_id_fk": {
+          "name": "talent_review_template_step_forms_tenant_id_role_id_talent_review_roles_tenant_id_id_fk",
+          "tableFrom": "talent_review_template_step_forms",
+          "tableTo": "talent_review_roles",
+          "columnsFrom": [
+            "tenant_id",
+            "role_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "talent_review_template_step_forms_tenant_id_form_id_talent_review_forms_tenant_id_id_fk": {
+          "name": "talent_review_template_step_forms_tenant_id_form_id_talent_review_forms_tenant_id_id_fk",
+          "tableFrom": "talent_review_template_step_forms",
+          "tableTo": "talent_review_forms",
+          "columnsFrom": [
+            "tenant_id",
+            "form_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
-        "succession_health_levels_tenant_id": {
-          "name": "succession_health_levels_tenant_id",
+        "tr_step_forms_tenant_id": {
+          "name": "tr_step_forms_tenant_id",
           "nullsNotDistinct": false,
           "columns": [
             "tenant_id",
             "id"
           ]
         },
-        "succession_health_levels_code": {
-          "name": "succession_health_levels_code",
-          "nullsNotDistinct": false,
+        "tr_step_forms_seat": {
+          "name": "tr_step_forms_seat",
+          "nullsNotDistinct": true,
           "columns": [
             "tenant_id",
-            "code"
-          ]
-        },
-        "succession_health_levels_name": {
-          "name": "succession_health_levels_name",
-          "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "name"
+            "step_id",
+            "role_id",
+            "purpose"
           ]
         }
       },
       "policies": {},
       "checkConstraints": {
-        "succession_health_levels_color": {
-          "name": "succession_health_levels_color",
-          "value": "\"succession_health_levels\".\"color\" ~ '^#[0-9A-Fa-f]{6}$'"
-        },
-        "succession_health_levels_revision": {
-          "name": "succession_health_levels_revision",
-          "value": "\"succession_health_levels\".\"revision\" > 0 AND \"succession_health_levels\".\"display_order\" > 0"
+        "tr_step_forms_purpose": {
+          "name": "tr_step_forms_purpose",
+          "value": "\"talent_review_template_step_forms\".\"purpose\" IN ('info','calibrate_edit','successor_edit','target_edit')"
         }
       },
       "isRLSEnabled": false
@@ -49042,294 +49264,6 @@
         "succession_records_revision": {
           "name": "succession_records_revision",
           "value": "\"succession_records\".\"revision\" > 0"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.succession_risk_level_rows": {
-      "name": "succession_risk_level_rows",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "level_id": {
-          "name": "level_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "row_no": {
-          "name": "row_no",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "field_code": {
-          "name": "field_code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "filter_operator": {
-          "name": "filter_operator",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "filter_values": {
-          "name": "filter_values",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'[]'::jsonb"
-        },
-        "measure": {
-          "name": "measure",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "comparator": {
-          "name": "comparator",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "threshold": {
-          "name": "threshold",
-          "type": "double precision",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "threshold_high": {
-          "name": "threshold_high",
-          "type": "double precision",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "is_percent": {
-          "name": "is_percent",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "subject": {
-          "name": "subject",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "succession_risk_level_rows_tenant_id_tenants_id_fk": {
-          "name": "succession_risk_level_rows_tenant_id_tenants_id_fk",
-          "tableFrom": "succession_risk_level_rows",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "succession_risk_level_rows_tenant_id_level_id_succession_risk_levels_tenant_id_id_fk": {
-          "name": "succession_risk_level_rows_tenant_id_level_id_succession_risk_levels_tenant_id_id_fk",
-          "tableFrom": "succession_risk_level_rows",
-          "tableTo": "succession_risk_levels",
-          "columnsFrom": [
-            "tenant_id",
-            "level_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "succession_risk_level_rows_tenant_id_level_id_row_no_unique": {
-          "name": "succession_risk_level_rows_tenant_id_level_id_row_no_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "level_id",
-            "row_no"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "succession_risk_rows_number": {
-          "name": "succession_risk_rows_number",
-          "value": "\"succession_risk_level_rows\".\"row_no\" > 0"
-        },
-        "succession_risk_rows_subject": {
-          "name": "succession_risk_rows_subject",
-          "value": "\"succession_risk_level_rows\".\"subject\" IN ('incumbent', 'successor')"
-        },
-        "succession_risk_rows_measure": {
-          "name": "succession_risk_rows_measure",
-          "value": "\"succession_risk_level_rows\".\"measure\" IN ('count', 'count_over_incumbents', 'count_over_successors')"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.succession_risk_levels": {
-      "name": "succession_risk_levels",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "code": {
-          "name": "code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "color": {
-          "name": "color",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "description": {
-          "name": "description",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "display_order": {
-          "name": "display_order",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "condition_expression": {
-          "name": "condition_expression",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "compiled_formula": {
-          "name": "compiled_formula",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "compiler_version": {
-          "name": "compiler_version",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "compile_error": {
-          "name": "compile_error",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "enabled": {
-          "name": "enabled",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
-        },
-        "revision": {
-          "name": "revision",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 1
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "succession_risk_levels_tenant_id_tenants_id_fk": {
-          "name": "succession_risk_levels_tenant_id_tenants_id_fk",
-          "tableFrom": "succession_risk_levels",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "succession_risk_levels_tenant_id": {
-          "name": "succession_risk_levels_tenant_id",
-          "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "id"
-          ]
-        },
-        "succession_risk_levels_code": {
-          "name": "succession_risk_levels_code",
-          "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "code"
-          ]
-        },
-        "succession_risk_levels_name": {
-          "name": "succession_risk_levels_name",
-          "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "name"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "succession_risk_levels_color": {
-          "name": "succession_risk_levels_color",
-          "value": "\"succession_risk_levels\".\"color\" ~ '^#[0-9A-Fa-f]{6}$'"
-        },
-        "succession_risk_levels_revision": {
-          "name": "succession_risk_levels_revision",
-          "value": "\"succession_risk_levels\".\"revision\" > 0 AND \"succession_risk_levels\".\"display_order\" > 0"
         }
       },
       "isRLSEnabled": false
