@@ -9,11 +9,48 @@
  * （命令事务内不做 KDF，设计 §2.5）。
  */
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { advisoryLock, asUuid } from '../../advisory-lock.js';
 import { and, eq, sql, survey360Links, survey360Outbox, type Tx } from '@italent/db';
+import type { ActivityRow } from './access.js';
+import { rows } from './context.js';
 import { credentialConfig } from './credential-config.js';
 import type { PersonRow } from './people.js';
 import { recordSecurityEvent } from './security-events.js';
+import { hasTask } from './tasks.js';
 import { sealJson } from './secret-box.js';
+
+/** 只供测试制造交错（取得链接锁之后 / 检查剩余关系之后、作废链接之前停一下）；生产不设。 */
+export const linkHooks: {
+  afterLock?: (() => void | Promise<void>) | undefined;
+  afterTaskCheck?: (() => void | Promise<void>) | undefined;
+} = {};
+
+/**
+ * 评价关系增删的全局取锁顺序（设计 §3.5.1；#234 第 2 轮审查 P2）。所有会增删评价关系、或据此保留 / 作废 / 新建作答链接的
+ * 入口——管理端增删关系、移除评价对象、按组织架构自动添加、导入、启用活动、重发邀请，以及上级确认入口的增删——一律：
+ *   ① 活动行 FOR UPDATE（最先）→ ② 确认单 / 评价对象 / 评价关系行 → ③ 写关系行与活动标记（addRelation 插入、
+ *   removeRelation 标记移除）→ ④ 评价者 × 活动的链接锁，锁内判定并写链接（沿用 / 新建 / 作废）。
+ * 管理端经 requireActivity(lock) 在第一步取得活动行；上级确认入口在锁确认单之前调用本函数。链接锁永远在活动行锁之内
+ * 取得，所以链接锁之间、链接锁与活动行之间都不会成环（第 2 轮的死锁是确认入口先持链接锁、再等活动行）。设计 §3.5.1。
+ * 返回加锁后重读的活动（已删除为 undefined），状态判定以它为准。
+ */
+export async function lockActivityForRelations(tx: Tx, activityId: string): Promise<ActivityRow | undefined> {
+  const [row] = rows<ActivityRow>(
+    await tx.execute(sql`SELECT * FROM survey360_activities WHERE id = ${activityId}::uuid AND NOT deleted FOR UPDATE`),
+  );
+  return row;
+}
+
+/**
+ * 评价者 × 活动的链接锁（③，事务级咨询锁）：“检查剩余关系 → 作废链接”（removeRelation）与“新增关系 → 确保链接”
+ * （addRelation / 启用 / 重发）在同一把锁里决定保留、作废或新建链接（第 1 轮审查 P2-1）。先补取活动行锁（①）：
+ * 调用方已持有时不等待；漏取活动锁的新入口也不会反过来先持链接锁、再等活动行。须在判定之前取、持有到事务结束。
+ */
+export async function lockAnswerLink(tx: Tx, activityId: string, personId: string): Promise<void> {
+  await tx.execute(sql`SELECT 1 FROM survey360_activities WHERE id = ${activityId}::uuid FOR UPDATE`);
+  await advisoryLock(tx, ':survey360-answer-link:', asUuid(activityId), ':', asUuid(personId));
+  await linkHooks.afterLock?.();
+}
 
 export function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
@@ -88,6 +125,7 @@ export async function ensureAnswerLink(
   activityId: string,
   person: PersonRow,
 ): Promise<IssuedLink | undefined> {
+  await lockAnswerLink(tx, activityId, person.id);
   const [existing] = await tx
     .select({ id: survey360Links.id })
     .from(survey360Links)
@@ -114,6 +152,7 @@ export async function reissueAnswerLink(
   activityId: string,
   person: PersonRow,
 ): Promise<IssuedLink> {
+  await lockAnswerLink(tx, activityId, person.id);
   const [old] = await tx
     .update(survey360Links)
     .set({ revoked: true })
@@ -138,6 +177,27 @@ export async function reissueAnswerLink(
     });
   }
   return issued;
+}
+
+/**
+ * 评价者在本活动已没有任何有效评价关系时，作废其作答链接（DEC-409③ / DEC-401⑧）：链接上的凭据与全部会话随之失效
+ * （会话与登录都要求链接未作废），登录提示与凭据错误完全相同。调用方须在关系已标记移除之后调用。
+ */
+export async function revokeAnswerLinkWithoutTask(tx: Tx, activityId: string, personId: string): Promise<void> {
+  await lockAnswerLink(tx, activityId, personId);
+  if (await hasTask(tx, activityId, personId)) return;
+  await linkHooks.afterTaskCheck?.();
+  await tx
+    .update(survey360Links)
+    .set({ revoked: true })
+    .where(
+      and(
+        eq(survey360Links.activityId, activityId),
+        eq(survey360Links.personId, personId),
+        eq(survey360Links.kind, 'answer'),
+        eq(survey360Links.revoked, false),
+      ),
+    );
 }
 
 /** 站内待办发送也计入最后发送时间。 */

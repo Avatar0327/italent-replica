@@ -139,3 +139,39 @@ describe('AC-360-F076-01 格式校验（纯函数，登录流程不得用它提�
     expect(hasPasswordFormat('2345ABCI')).toBe(false);
   });
 });
+
+describe('AC-360-F076-01 DEC-409④ 输入容错（全角转半角、各种横线归一化）', () => {
+  const fullwidth = (text: string) =>
+    [...text].map((ch) => (/[A-Za-z0-9]/.test(ch) ? String.fromCharCode(ch.charCodeAt(0) + 0xfee0) : ch)).join('');
+
+  it('全角字母数字转半角后再做大小写与空白处理', () => {
+    expect(normalizeCredentialInput(fullwidth('ab23CD'))).toBe('AB23CD');
+    expect(normalizeCredentialInput('ＡＢ　２３')).toBe('AB23');
+  });
+
+  it.each([
+    ['全角横线 U+FF0D', '\uff0d'],
+    ['连字符 U+2010', '\u2010'],
+    ['不换行连字符 U+2011', '\u2011'],
+    ['数字破折号 U+2012', '\u2012'],
+    ['短破折号 U+2013', '\u2013'],
+    ['长横线 U+2014', '\u2014'],
+    ['水平线 U+2015', '\u2015'],
+    ['减号 U+2212', '\u2212'],
+    ['软连字符 U+00AD', '\u00ad'],
+    ['小写连字符 U+FE63', '\ufe63'],
+  ])('%s 被去掉', (_name, dash) => {
+    expect(normalizeCredentialInput(`ab${dash}cd${dash}23`)).toBe('ABCD23');
+  });
+
+  it('不换行空格、全角空格、零宽空格也被去掉；规范化后仍限长 64', () => {
+    expect(normalizeCredentialInput('AB\u00a0CD\u3000EF\u200b23')).toBe('ABCDEF23');
+    expect(normalizeCredentialInput(fullwidth('A'.repeat(80))).length).toBe(CREDENTIAL_INPUT_MAX_LENGTH);
+  });
+
+  it('规范化后的格式校验与半角输入一致', () => {
+    expect(hasSerialFormat(normalizeCredentialInput(fullwidth('2345-6789-AB')))).toBe(true);
+    expect(hasPasswordFormat(normalizeCredentialInput('ＡＢＣＤ－２３４５'))).toBe(true);
+    expect(hasPasswordFormat(normalizeCredentialInput('ＡＢＣＤ－２３４０'))).toBe(false);
+  });
+});

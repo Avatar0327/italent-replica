@@ -46,7 +46,7 @@ import {
   uuid,
   type Writer,
 } from './context.js';
-import { findLink, type LinkRow } from './links.js';
+import { findLink, type LinkRow, lockActivityForRelations } from './links.js';
 import { hasTask, type TaskRow, taskQuery } from './tasks.js';
 import { completeTodo } from './todos.js';
 import { createPerson, findPersonByEmail, loadPerson, personInput } from './people.js';
@@ -256,8 +256,9 @@ async function requireTask(
   questionnaireId: string,
   lockObject = false,
 ) {
-  // 保护写入的锁序：关系行 → 对象行。确认链接删除评价关系不锁活动（relations.ts removeRelation 也是先关系后对象），
-  // 作答只锁对象行会漏掉它；取得锁后再读任务，等锁期间已撤销的关系 / 对象一律 404（F-084 第 1 轮 P2-1）
+  // 保护写入的锁序：关系行 → 对象行。作答不锁活动；删除评价关系（管理端、确认入口）都要锁关系行再改对象行
+  // （removeRelation 先关系后对象），作答只锁对象行会漏掉它；取得锁后再读任务，等锁期间已撤销的关系 / 对象一律 404
+  // （F-084 第 1 轮 P2-1）
   if (lockObject) await lockLiveRelation(tx, activity.id, link.personId, relationId);
   const [task] = rows<TaskRow>(
     await tx.execute(sql`${taskQuery(activity.id, link.personId)} AND r.id = ${relationId}::uuid
@@ -598,14 +599,20 @@ async function confirmPage(tx: Tx, link: LinkRow, activity: ActivityRow) {
   };
 }
 
-/** 确认人改评价关系：确认单待确认、活动未停用、revision 一致（AC-360-07：确认后前台不可改）。 */
-async function openConfirmation(tx: Tx, ctx: { expectedRevision: number }, link: LinkRow, activity: ActivityRow) {
+/**
+ * 确认人改评价关系：确认单待确认、活动未停用、revision 一致（AC-360-07：确认后前台不可改）。
+ * 先锁活动行、再锁确认单（关系增删的全局锁序，links.ts lockActivityForRelations）：确认入口与管理端、两个确认入口之间
+ * 都按 活动 → 确认单 / 关系 → 链接锁 取锁，新增 × 删除不再成环（#234 第 2 轮审查 P2）；活动状态以加锁后重读的为准。
+ */
+async function openConfirmation(tx: Tx, ctx: { expectedRevision: number }, link: LinkRow, snapshot: ActivityRow) {
+  const activity = await lockActivityForRelations(tx, snapshot.id);
+  if (!activity) notFound();
   const confirmation = await loadConfirmation(tx, link, true);
   if (confirmation.status !== 'pending')
     fail('CONFLICT', '评价关系已确认，不能再修改，如需调整请联系管理员', 'CONFIRMATION_CLOSED');
-  if (activity.status === 'disabled') fail('CONFLICT', '活动已停用', 'ACTIVITY_DISABLED');
+  if (activity!.status === 'disabled') fail('CONFLICT', '活动已停用', 'ACTIVITY_DISABLED');
   requireRevision(confirmation.revision, ctx.expectedRevision);
-  return confirmation;
+  return { confirmation, activity: activity! };
 }
 
 async function bumpConfirmation(
@@ -652,7 +659,7 @@ function registerConfirmRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
       'confirm',
       z.strictObject({ personId: uuid.optional(), person: personInput.optional(), roleId: uuid }),
       async (tx, ctx, link, activity, input) => {
-        const confirmation = await openConfirmation(tx, ctx, link, activity);
+        const { confirmation, activity: locked } = await openConfirmation(tx, ctx, link, activity);
         const role = rows<{ code: string | null }>(
           await tx.execute(sql`SELECT code FROM survey360_roles WHERE id = ${input.roleId}::uuid`),
         )[0];
@@ -665,7 +672,7 @@ function registerConfirmRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
         else fail('VALIDATION_FAILED', '上级、同事、下级、其他只能从内部员工中选', 'INTERNAL_ONLY');
         if (internalOnly && !person!.employeeId)
           fail('VALIDATION_FAILED', '上级、同事、下级、其他只能从内部员工中选', 'INTERNAL_ONLY');
-        const relation = await addRelation(tx, ctx, activity, confirmation.objectId, person!, input.roleId, 'confirm');
+        const relation = await addRelation(tx, ctx, locked, confirmation.objectId, person!, input.roleId, 'confirm');
         await bumpConfirmation(tx, ctx, confirmation);
         return { id: relation.id, appraiserPersonId: relation.appraiserPersonId, roleId: relation.roleId };
       },
@@ -684,7 +691,7 @@ function registerConfirmRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
       z.object({}).passthrough(),
       async (tx, ctx, link, activity) => {
         await owned(tx, link);
-        const confirmation = await openConfirmation(tx, ctx, link, activity);
+        const { confirmation } = await openConfirmation(tx, ctx, link, activity);
         const relation = await loadRelation(tx, confirmation.objectId, relationId, true);
         await removeRelation(tx, ctx, relation);
         await bumpConfirmation(tx, ctx, confirmation);
@@ -695,7 +702,7 @@ function registerConfirmRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
   });
   module.post('/confirmation/submit', (c) =>
     linkWrite(deps, entryOf, 'confirm', z.object({}).passthrough(), async (tx, ctx, link, activity) => {
-      const confirmation = await openConfirmation(tx, ctx, link, activity);
+      const { confirmation } = await openConfirmation(tx, ctx, link, activity);
       await bumpConfirmation(tx, ctx, confirmation, 'confirmed');
       return confirmPage(tx, link, activity);
     })(c),

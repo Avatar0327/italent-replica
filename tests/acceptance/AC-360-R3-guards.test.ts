@@ -2567,6 +2567,32 @@ const PR_B_CASES: Record<string, RouteCases> = {
       );
     },
   },
+  // F-076 通用网址门户：认证入口，凭据在请求体里；失败一律同一个 401（逐字节相同由 AC-360-F076-13 断言）
+  [`POST /api/survey360/portal/login`]: {
+    unauthorized: async (env) =>
+      void (await expectStatus(
+        env.w.api.request('POST', '/api/survey360/portal/login', {
+          tenant: env.w.tenantId,
+          body: { serial: 'ZZZZZZZZZZ', password: 'ZZZZZZZZ' },
+        }),
+        401,
+      )),
+    outOfScope: { na: '凭据绑定租户：别的租户的序列号与不存在同一个 401（AC-360-F076-13 逐字节核对）' },
+    trimming: { na: '回执只有会话令牌与过期时间，不含任何对象字段' },
+  },
+  // 登出：持有令牌才能作废对应会话；无效 / 缺失 / 二次登出一律 204，不返回任何内容
+  [`POST /api/survey360/portal/logout`]: {
+    unauthorized: async (env) =>
+      void (await expectStatus(
+        env.w.api.request('POST', '/api/survey360/portal/logout', {
+          tenant: env.w.tenantId,
+          headers: { 'x-survey360-session': 'not-a-session' },
+        }),
+        204,
+      )),
+    outOfScope: { na: '令牌摘要只在本租户的会话表里匹配，别的租户的令牌作废不了任何会话' },
+    trimming: { na: '204 无内容，响应体没有任何字段' },
+  },
   [`GET /api/survey360/report-link`]: {
     unauthorized: async (env) =>
       void (await expectStatus(

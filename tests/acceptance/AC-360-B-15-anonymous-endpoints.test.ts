@@ -26,6 +26,7 @@ const ACT = `${SURVEY}/activities/:id`;
 const TODO = `${SURVEY}/my/todos/:todoId`;
 const LINK = '/api/survey360/link';
 const REPORT_LINK = '/api/survey360/report-link';
+const PORTAL = '/api/survey360/portal';
 const AUDIT = '/api/tenant/audit';
 
 /** 返回答卷相关数据的端点：逐个调用（写入类带最小请求体，无资格身份通常 403 / 404 / 400，同样不得带答卷）。 */
@@ -138,6 +139,8 @@ const NO_ANSWER_DATA: Readonly<Record<string, string>> = {
       `POST ${LINK}/confirmation/submit`,
     ].map((k) => [k, ANSWERING]),
   ),
+  [`POST ${PORTAL}/login`]: '回执只有会话令牌与过期时间，不含答卷或名单；凭据错误一律 401',
+  [`POST ${PORTAL}/logout`]: '总是 204 无内容，只作废与令牌摘要匹配的会话',
   [`GET ${TODO}/avatars/:attachmentId/content`]: '评价对象头像图片',
   [`GET ${LINK}/avatars/:attachmentId/content`]: '评价对象头像图片',
   [`POST ${ACT}/relations/:relationId/reanswer`]: '回执只有评价关系进度；清除前快照只进审计（审计出口逐个调用）',
@@ -152,7 +155,7 @@ const OWN_ANSWER_ENDPOINTS = [
   `POST ${LINK}/tasks/:relationId/questionnaires/:questionnaireId/submit`,
 ] as const;
 
-const MODULES = new Set(['survey360', 'survey360-link', 'survey360-report-link', 'audit']);
+const MODULES = new Set(['survey360', 'survey360-link', 'survey360-report-link', 'survey360-portal', 'audit']);
 
 interface Target {
   activityId: string;
