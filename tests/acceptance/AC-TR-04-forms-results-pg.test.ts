@@ -8,7 +8,7 @@ import { formBody } from './AC-TR-form-flow-support.js';
 
 const testDb = useTestDb();
 describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('B6a-2 PostgreSQL 锁交错', () => {
-  it('公式第一遍后来源改名：第二遍拒绝旧绑定，模板与版本不变', async () => {
+  it('DEC-387：公式第一遍后来源改名：第二遍拒绝旧绑定，模板与版本不变', async () => {
     const db = testDb().db;
     const w = await templateWorld(db, 'b6a2-pg-bind');
     const source = await w.field({ name: '原名', kind: 'number' });
@@ -17,8 +17,11 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('B6a-2 PostgreSQL 锁交�
     let pending: Promise<Response> | undefined;
     await withTenant(db, w.as.tenant, async (tx) => {
       await tx.execute(sql`SELECT id FROM talent_review_fields WHERE id = ${source.id} FOR UPDATE`);
-      pending = w.patch(t, { resultRules: [{ targetFieldId: target.id,
-        formula: '盘点对象.原名 + 1', formulaBindings: [source.id], priority: 0 }] });
+      pending = w.patch(t, {
+        resultRules: [
+          { targetFieldId: target.id, formula: '盘点对象.原名 + 1', formulaBindings: [source.id], priority: 0 },
+        ],
+      });
       await waitForBlocked(db, 1);
       await tx.execute(sql`UPDATE talent_review_fields SET name = '新名' WHERE id = ${source.id}`);
       await tx.execute(sql`UPDATE talent_review_field_catalog_versions SET version = version + 1`);
@@ -29,7 +32,7 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('B6a-2 PostgreSQL 锁交�
     expect(current).toMatchObject({ revision: t.revision, versionNo: 1, resultRules: [] });
   });
 
-  it('源表单修改持锁：模板选用等待提交，快照完整取到提交后的三档配置', async () => {
+  it('AC-TR-15：源表单修改持锁：模板选用等待提交，快照完整取到提交后的三档配置', async () => {
     const db = testDb().db;
     const w = await templateWorld(db, 'b6a2-pg-form');
     const { flow } = await w.threeStepFlow();
@@ -45,8 +48,12 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('B6a-2 PostgreSQL 锁交�
     });
     const response = await pending!;
     expect(response.status, await response.clone().text()).toBe(200);
-    expect(await response.json()).toMatchObject({ stepForms: [{
-      formSnapshot: [{ fieldId: field.id, access: 'view', required: false }],
-    }] });
+    expect(await response.json()).toMatchObject({
+      stepForms: [
+        {
+          formSnapshot: [{ fieldId: field.id, access: 'view', required: false }],
+        },
+      ],
+    });
   });
 });
