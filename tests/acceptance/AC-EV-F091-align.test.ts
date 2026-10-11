@@ -313,4 +313,20 @@ describe('AC-EV-F091-align 评价表原站口径（DEC-413）', () => {
       ),
     ).rejects.toThrow();
   });
+  it('AC-EV-F091-13 合计警示只用于响应，不作为业务字段持久化进审计', async () => {
+    const form = await ok<FormView>(await create(body({ items: [
+      { kind: 'general', generalItemId: generalId, weight: 90 },
+    ] })), 201);
+    await withTenant(testDb().db, w.tenant.id, async (tx) => {
+      const result = await tx.execute(sql`SELECT "after", changes FROM audit_events
+        WHERE object_id = ${form.id} AND action = 'evaluation.form.create'`);
+      const rows = (Array.isArray(result) ? result : (result as { rows: unknown[] }).rows) as {
+        after: Record<string, unknown>; changes: { field: string }[];
+      }[];
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.after).not.toHaveProperty('weightWarning');
+      expect(rows[0]!.changes.map((change) => change.field)).toContain('items');
+      expect(rows[0]!.changes.map((change) => change.field)).not.toContain('weightWarning');
+    });
+  });
 });
