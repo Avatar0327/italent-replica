@@ -1,6 +1,6 @@
 /** B3a / DEC-427：可信的模块内端口，不是 HTTP 授权入口。A3/C1/B4/B5 只追加 kind 实例。 */
 import { CALC_KINDS, type Tx, type successionCalcRuns, type successionCalcRunObjects } from '@italent/db';
-import { tenantLocalDate } from '@italent/domain';
+import { calcScheduleSlot } from './calc-time.js';
 
 export type CalcKind = (typeof CALC_KINDS)[number];
 export type CalcRun = Readonly<typeof successionCalcRuns.$inferSelect>;
@@ -42,7 +42,16 @@ export function defineCalcKinds(handlers: readonly CalcHandler[]): readonly Calc
     if (!CALC_KINDS.includes(handler.kind) || seen.has(handler.kind)) throw new Error('计算 kind 重复或未登记');
     seen.add(handler.kind);
   }
-  return Object.freeze(handlers.map((handler) => Object.freeze({ ...handler })));
+  return Object.freeze(
+    handlers.map((handler) =>
+      Object.freeze({
+        kind: handler.kind,
+        objectType: handler.objectType,
+        authorizePage: handler.authorizePage.bind(handler),
+        execute: handler.execute.bind(handler),
+      }),
+    ),
+  );
 }
 /** A3 的 exit_sweep/employee、C1 的 org_stats/org、B4/B5 的 position/org 在此追加模块级实例。 */
 export const SUCCESSION_CALC_KINDS = defineCalcKinds([]);
@@ -65,8 +74,8 @@ export class CalcObjectFailure extends Error {
     if (!/^[A-Z][A-Z0-9_]{0,63}$/.test(code)) throw new TypeError('失败仅允许错误码');
   }
 }
-/** §4.6：统计槽的 elapsedMinutes 必须来自数据库的租户午夜时间差，不能用钟面小时代替。 */
-export function calcKey(input: CalcInput, elapsedMinutes?: number): string {
+/** §4.6：定时日期与槽序号只由 calcScheduleSlot 确定，调用方不能注入经过分钟数。 */
+export function calcKey(input: CalcInput): string {
   const { kind, trigger, tenantId } = input;
   if (trigger === 'manual') return `${kind}:manual:${input.commandId}`;
   if (
@@ -84,13 +93,10 @@ export function calcKey(input: CalcInput, elapsedMinutes?: number): string {
     input.now &&
     ['org_stats', 'position_risk', 'exit_sweep'].includes(kind)
   ) {
-    const date = tenantLocalDate(input.now, input.timezone);
-    const key = `${kind}:schedule:${tenantId}:${date}`;
+    const slot = calcScheduleSlot(input);
+    const key = `${kind}:schedule:${tenantId}:${slot.businessDate}`;
     if (kind !== 'org_stats') return key;
-    const h = input.intervalHours;
-    if (!Number.isInteger(h) || h! < 1 || h! > 24) throw new TypeError('统计间隔必须为 1～24 小时');
-    if (!Number.isSafeInteger(elapsedMinutes) || elapsedMinutes! < 0) throw new TypeError('缺少租户午夜起算分钟数');
-    return `${key}:${h}h:${Math.floor(elapsedMinutes! / (h! * 60))}`;
+    return `${key}:${input.intervalHours}h:${slot.slotIndex}`;
   }
   throw new TypeError('计算触发来源或幂等键参数非法');
 }
