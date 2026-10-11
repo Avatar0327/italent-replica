@@ -1223,7 +1223,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/evaluation/activity-type-service.ts#updateActivityType': ['84b6f8af6afb', '581a86e70f3e'],
   'apps/api/src/modules/evaluation/activity-usage.ts#activityUses': ['e5977cbbe58d', '0d85e160154e'],
   'apps/api/src/modules/evaluation/activity-usage.ts#chainUsesForm': ['ca1fec05d91d', 'd61d9e149ad8'],
-  'apps/api/src/modules/evaluation/activity-usage.ts#registerActivityUsage': ['2e2faa91cf29', '0340a730a35a'],
+  'apps/api/src/modules/evaluation/activity-usage.ts#registerActivityUsage': ['74a969cb8a8e', '9a333d62b0fc'],
   'apps/api/src/modules/evaluation/activity-usage.ts#registered': ['a95276c48cfb', 'e3b0c44298fc'],
   'apps/api/src/modules/evaluation/candidates.ts#MAX_KEYWORD': ['795e730566a1', 'e3b0c44298fc'],
   'apps/api/src/modules/evaluation/candidates.ts#escapeLike': ['af75f5731f2f', 'e3b0c44298fc'],
