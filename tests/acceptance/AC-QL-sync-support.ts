@@ -45,26 +45,23 @@ export async function syncWorld(db: Db, label: string, options: { timezone?: str
   const userId = w.session.user.id;
   const api = tenantApi(db);
   const as = { user: userId, tenant: tenantId };
-  let settingRevision = 0;
+  const settingRevisions = new Map<string, number>();
 
-  /** 租户覆盖 SW73（qualification.sync_enabled）。 */
-  async function enableSync(value: boolean) {
+  /** 租户覆盖某个设置（按键各自记 revision）。 */
+  async function setSetting(key: string, value: boolean) {
+    const revision = settingRevisions.get(key) ?? 0;
     await withTenant(db, tenantId, (tx) =>
       overrideSetting(
         tx,
-        {
-          tenantId,
-          userId,
-          key: SYNC_SETTING,
-          expectedRevision: settingRevision,
-          now: new Date(),
-          commandId: randomUUID(),
-        },
+        { tenantId, userId, key, expectedRevision: revision, now: new Date(), commandId: randomUUID() },
         value,
       ),
     );
-    settingRevision += 1;
+    settingRevisions.set(key, revision + 1);
   }
+
+  /** 租户覆盖 SW73（qualification.sync_enabled）。 */
+  const enableSync = (value: boolean) => setSetting(SYNC_SETTING, value);
 
   /** 组织员工侧的职务序列（任职记录的 sequenceId 要能通过存在性校验）。 */
   async function sequence(name: string): Promise<string> {
@@ -93,6 +90,29 @@ export async function syncWorld(db: Db, label: string, options: { timezone?: str
         code: `JL${randomUUID().slice(0, 6)}`,
         level: 5,
         levelTypeId: ((await type.json()) as { id: string }).id,
+        startDate: '2020-01-01',
+      },
+    });
+    expect(created.status, await created.clone().text()).toBe(201);
+    return ((await created.json()) as { id: string }).id;
+  }
+
+  /** 组织员工侧的职等（先建职层）；任职记录的 gradeId 要能通过存在性校验。 */
+  async function jobGrade(): Promise<string> {
+    const layer = await api.request('POST', '/api/tenant/job/layers', {
+      ...as,
+      ifMatch: 0,
+      body: { name: '同步职层', code: `LY${randomUUID().slice(0, 6)}`, layerLevel: 1, startDate: '2020-01-01' },
+    });
+    expect(layer.status, await layer.clone().text()).toBe(201);
+    const created = await api.request('POST', '/api/tenant/job/grades', {
+      ...as,
+      ifMatch: 0,
+      body: {
+        name: '同步职等',
+        code: `JG${randomUUID().slice(0, 6)}`,
+        grade: 1,
+        layerId: ((await layer.json()) as { id: string }).id,
         startDate: '2020-01-01',
       },
     });
@@ -269,8 +289,10 @@ export async function syncWorld(db: Db, label: string, options: { timezone?: str
     api,
     as,
     enableSync,
+    setSetting,
     sequence,
     jobLevel,
+    jobGrade,
     transferWith,
     category,
     level,

@@ -1,0 +1,20 @@
+{
+  "POST /api/survey360/portal/login": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "6a490b523adf",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/survey360/portal/logout": {
+    "all": {
+      "status": 204
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": []
+  }
+}

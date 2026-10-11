@@ -40,7 +40,7 @@ export const codeOf = (object: EvaluationObject) => EVALUATION_OBJECTS[object].c
 
 const column = (alias: string, name: string) => sql`${sql.identifier(alias)}.${sql.identifier(name)}`;
 
-/** 范围锚点：字典（无组织字段，按创建人）；所属组织对象（评审组，B4 评价表、B5 活动同口径）按所属组织 ∪ 创建人。 */
+/** 范围锚点：字典（无组织字段，按创建人）；所属组织对象（评审组、评价表、评定活动）按所属组织 ∪ 创建人。 */
 export type AnchorKind = 'dictionary' | 'owned';
 
 export const ANCHOR: Readonly<Partial<Record<EvaluationObject, AnchorKind>>> = {
@@ -49,6 +49,7 @@ export const ANCHOR: Readonly<Partial<Record<EvaluationObject, AnchorKind>>> = {
   generalScoreItem: 'dictionary',
   reviewGroup: 'owned',
   evaluationForm: 'owned',
+  evaluationActivity: 'owned',
 };
 
 /** 对象表上的范围谓词（分页之前生效）：别名指向对象表；看全部时为真，创建人维度取 `created_by`。 */
