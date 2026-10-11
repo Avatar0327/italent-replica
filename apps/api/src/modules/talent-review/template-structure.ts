@@ -441,6 +441,7 @@ export async function buildPlan(
     input.resultRules,
     previous?.resultRules ?? [],
     input.fieldCatalogVersion,
+    [...modules.flatMap((m) => m.fieldIds), ...stepForms.flatMap((f) => f.formSnapshot.map((field) => field.fieldId))],
   );
   return { flowId, steps, modules, permissions, stepForms, resultRules };
 }

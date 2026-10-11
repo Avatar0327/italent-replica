@@ -6,7 +6,7 @@ import {
   inArray,
   type Tx,
   talentReviewTemplateStepForms as S,
-  talentReviewTemplateFormFields as F,
+  talentReviewTemplateFormFields as SnapshotField,
   talentReviewTemplateResultRules as R,
   talentReviewTemplateResultRefs as RF,
   talentReviewTemplateResultModuleRefs as RM,
@@ -36,7 +36,7 @@ export async function writeTemplateExtras(
       })
       .returning({ id: S.id });
     if (row.formSnapshot.length)
-      await tx.insert(F).values(
+      await tx.insert(SnapshotField).values(
         row.formSnapshot.map((field, index) => ({
           ...field,
           tenantId,
@@ -94,17 +94,17 @@ export async function loadTemplateExtras(
   const fields = forms.length
     ? await tx
         .select()
-        .from(F)
+        .from(SnapshotField)
         .where(
           and(
-            eq(F.tenantId, tenantId),
+            eq(SnapshotField.tenantId, tenantId),
             inArray(
-              F.stepFormId,
+              SnapshotField.stepFormId,
               forms.map((f) => f.id),
             ),
           ),
         )
-        .orderBy(asc(F.sortNo))
+        .orderBy(asc(SnapshotField.sortNo))
     : [];
   return {
     stepForms: forms.map((row): StepFormView => ({
@@ -169,7 +169,7 @@ registerConfigReferenceGuard('field', async (tx, tenantId, id) => {
   for (const [table, field] of [
     [R, R.targetFieldId],
     [RF, RF.fieldId],
-    [F, F.fieldId],
+    [SnapshotField, SnapshotField.fieldId],
   ] as const) {
     const rows = await tx
       .select({ tenantId: table.tenantId })

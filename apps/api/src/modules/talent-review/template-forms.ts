@@ -26,6 +26,9 @@ const seatValid = (row: StepFormView | StepFormInput, steps: readonly StepView[]
   );
 };
 
+const purposeValid = (row: StepFormView | StepFormInput, steps: readonly StepView[]) =>
+  row.purpose !== 'calibrate_edit' || steps.find((s) => s.nodeKey === row.nodeKey)?.stepType === 'calibrate';
+
 export async function planStepForms(
   tx: Tx,
   ctx: TemplateWriteContext,
@@ -33,19 +36,17 @@ export async function planStepForms(
   submitted: readonly StepFormInput[] | undefined,
   previous: readonly StepFormView[],
 ): Promise<StepFormView[]> {
-  // 换流程时只沿用仍存在的席位；旧版本完整保留。
-  if (submitted === undefined) return previous.filter((row) => seatValid(row, steps));
+  // DEC-425：先确定最终沿用的冻结配置；换流程清理不适用用途，旧版本完整保留。
+  const candidates = submitted ?? previous.filter((row) => seatValid(row, steps) && purposeValid(row, steps));
   const seats = new Set<string>();
-  for (const row of submitted) {
+  for (const row of candidates) {
     if (!seatValid(row, steps)) fail('STEP_FORM_SEAT_INVALID');
     const key = JSON.stringify([row.nodeKey, row.roleId ?? null, row.purpose]);
     if (seats.has(key)) fail('STEP_FORM_DUPLICATE');
     seats.add(key);
-    if (row.purpose === 'calibrate_edit' && steps.find((s) => s.nodeKey === row.nodeKey)!.stepType !== 'calibrate') {
-      fail('STEP_FORM_PURPOSE_INVALID');
-    }
+    if (!purposeValid(row, steps)) fail('STEP_FORM_PURPOSE_INVALID');
   }
-  const retained = (row: StepFormInput) =>
+  const retained = (row: StepFormInput | StepFormView) =>
     previous.find(
       (old) =>
         old.nodeKey === row.nodeKey &&
@@ -53,8 +54,9 @@ export async function planStepForms(
         old.purpose === row.purpose &&
         old.formId === row.formId,
     );
-  const fresh = new Set(submitted.filter((row) => !retained(row)).map((row) => row.formId));
-  const ids = [...new Set(submitted.map((row) => row.formId))].sort();
+  const fresh = new Set(candidates.filter((row) => !retained(row)).map((row) => row.formId));
+  // 显式提交仍复核当前引用权限；未提交只沿用已有快照，无需读取实时表单。
+  const ids = [...new Set((submitted ?? []).map((row) => row.formId))].sort();
   // 与 B3 修改表单的头部行锁互斥，保证头部与字段快照来自同一次提交。
   if (ids.length)
     await tx
@@ -67,16 +69,18 @@ export async function planStepForms(
   const forms = new Map(
     await Promise.all(ids.map(async (id) => [id, (await FORM.load!(tx, ctx.tenantId, id))!] as const)),
   );
-  return submitted.map((row) => {
+  return candidates.map((row) => {
+    const frozen = retained(row);
+    if (frozen) return { ...frozen };
     const form = forms.get(row.formId)!;
-    const kinds = {
+    const kinds: Record<string, string> = {
       info: 'info',
       calibrate_edit: 'calibrate_edit',
       successor_edit: 'succession_edit',
       target_edit: 'succession_edit',
-    } as const;
+    };
     const kind = kinds[row.purpose];
     if (form.kind !== kind) fail('STEP_FORM_KIND_MISMATCH');
-    return { ...row, roleId: row.roleId ?? null, formSnapshot: retained(row)?.formSnapshot ?? form.fields };
+    return { ...row, roleId: row.roleId ?? null, formSnapshot: form.fields };
   });
 }

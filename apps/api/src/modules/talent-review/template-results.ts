@@ -117,6 +117,19 @@ function bindPass(
   return rows;
 }
 
+function carryPass(
+  previous: readonly ResultRuleView[],
+  previousModules: readonly ResultModule[],
+  modules: readonly ResultModule[],
+  full: readonly CatalogRow[],
+): ResultRuleView[] {
+  const carried = previous.map((row) => carryResultModules(row, previousModules, modules, full));
+  if (carried.length && !analyzeResults(carried, full, modules).ok) {
+    throw invalid('FORMULA_INVALID', '模块变更后结果公式不再有效，请同时修改结果规则');
+  }
+  return carried;
+}
+
 export async function planResultRules(
   tx: Tx,
   ctx: { tenantId: string; fieldAccess?: CatalogAccess | undefined },
@@ -125,22 +138,19 @@ export async function planResultRules(
   submitted: readonly ResultRuleInput[] | undefined,
   previous: readonly ResultRuleView[],
   version: number | undefined,
+  structureFieldIds: readonly string[],
 ): Promise<ResultRuleView[]> {
-  if (submitted === undefined) {
-    const full = previous.length ? await loadFullCatalog(tx, ctx.tenantId) : [];
-    const carried = previous.map((row) => carryResultModules(row, previousModules, modules, full));
-    if (carried.length && !analyzeResults(carried, full, modules).ok) {
-      throw invalid('FORMULA_INVALID', '模块变更后结果公式不再有效，请同时修改结果规则');
-    }
-    return carried;
-  }
-  if (!submitted.length) return [];
   const pass = (full: CatalogRow[], current: number) =>
-    bindPass(submitted, previous, full, ctx.fieldAccess, modules, previousModules, current, version);
+    submitted === undefined
+      ? carryPass(previous, previousModules, modules, full)
+      : bindPass(submitted, previous, full, ctx.fieldAccess, modules, previousModules, current, version);
   const first = pass(await loadFullCatalog(tx, ctx.tenantId), await readFieldCatalogVersion(tx, ctx.tenantId));
-  const ids = [...new Set(first.flatMap((r) => [r.targetFieldId, ...r.refFieldIds]))].sort();
+  // F-082 §3.4：最终结构的全部字段一次按 ID 取 F 锁，再取 V；快照外键不能在 V 后反向等待 F。
+  const ids = [...new Set([...structureFieldIds, ...first.flatMap((r) => [r.targetFieldId, ...r.refFieldIds])])].sort();
   await lockFields(tx, ctx.tenantId, ids);
+  if (!first.length) return [];
   const current = await shareLockFieldCatalog(tx, ctx.tenantId);
+  // 沿用与显式提交共用锁内复核，字段改名与模块迁移合并后的回显也必须能完整往返。
   const second = pass(await loadFullCatalog(tx, ctx.tenantId), current);
   if (JSON.stringify(first) !== JSON.stringify(second)) throw conflict('CALC_FIELD_CHANGED');
   return second;
