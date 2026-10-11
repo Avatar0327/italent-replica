@@ -78,7 +78,7 @@ describe('AC-PRM-FW-02 现状必测基准（独立于声明）', () => {
         continue;
       }
       if (key.includes(' /api/survey360/portal')) {
-        // 门户不经成员中间件：登录空请求体 400，登出 204，五条会话入口缺会话 401（F-076 §4.7）。
+        // 门户不经成员中间件：登录空请求体 400，登出 204，六条会话入口缺会话 401（F-076 §4.7）。
         let expected: { status: number; code?: string } = { status: 401, code: 'UNAUTHENTICATED' };
         if (key.endsWith('/login')) expected = { status: 400, code: 'VALIDATION_FAILED' };
         if (key.endsWith('/logout')) expected = { status: 204 };

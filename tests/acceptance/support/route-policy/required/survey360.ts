@@ -1509,7 +1509,7 @@ const sessionPossession: Obligation[] = [
   },
 ];
 
-// PR-2b：五条入口共用会话守卫，任务处理器仍由 answering 注册。
+// PR-2b：六条入口共用会话守卫，任务处理器仍由 answering 注册。
 const SESSION: Evidence[] = [
   impl(
     `${PORTAL}#portalTenant`,
@@ -1540,14 +1540,14 @@ const SESSION_ROUTES: readonly (readonly [string, string, readonly Evidence[]])[
     ],
   ],
   ...LINKS.filter(([, path]) => path.startsWith('/tasks')).map(
-    ([method, path, anchor]) =>
+    ([method, path, anchor, impls]) =>
       [
         method,
         path,
         [
           impl(`${PORTAL}#registerPortalRoutes`, 'registerAnswerRoutes(module, deps, sessionEntry(deps))'),
           call(`${ANSWERING}#route:${method} ${path}`, anchor),
-          method === 'GET' ? ANSWER_READ : method === 'PUT' ? ANSWER_SAVE : ANSWER_SUBMIT,
+          ...impls,
           method === 'GET' ? LINK_READ : LINK_WRITE,
         ],
       ] as const,

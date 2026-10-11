@@ -157,7 +157,7 @@ const NO_ANSWER_DATA: Readonly<Record<string, string>> = {
   [`GET ${PORTAL}`]: '本活动的任务与具名人员，不含逐份答案',
   [`GET ${PORTAL}/avatars/:attachmentId/content`]: '本单具名人员头像字节，不含答卷',
   ...Object.fromEntries(
-    [TODO, LINK].flatMap((base) =>
+    [TODO, LINK, PORTAL].flatMap((base) =>
       ['page-check'].map((action) => [
         `POST ${base}/tasks/:relationId/questionnaires/:questionnaireId/${action}`,
         '作答计时点（DEC-392）：回执只有布尔与 3 秒界面时长，没有答案、评价者标识或耗时',

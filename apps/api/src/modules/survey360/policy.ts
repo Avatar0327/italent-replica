@@ -590,7 +590,7 @@ export const SURVEY360_LINK_POLICIES = defineTable('survey360-link', {
 });
 
 /**
- * 通用网址（序列号 + 密码）作答门户 /api/survey360/portal（F-076 设计 §5.1；PR-2a 登录 / 登出，PR-2b 五条会话入口）。
+ * 通用网址（序列号 + 密码）作答门户 /api/survey360/portal（F-076 设计 §5.1；PR-2a 登录 / 登出，PR-2b 六条会话入口，DEC-426）。
  * 登录 / 登出是认证入口，不走命令台账（`ledger: 'none'`，DEC-377③）：台账会留存凭据相关请求，重试即重新登录
  * （结果未知时的恢复语义见设计 §4.8）；限频计数与临时会话不进业务字段日志（DEC-377④）。
  */
@@ -613,6 +613,7 @@ export const SURVEY360_PORTAL_POLICIES = defineTable(PORTAL_TABLE, {
   'GET /tasks/:relationId/questionnaires/:questionnaireId': sessionPolicy('本人任务答卷', false, byId),
   'PUT /tasks/:relationId/questionnaires/:questionnaireId': sessionPolicy('保存本人答卷', true, byId),
   'POST /tasks/:relationId/questionnaires/:questionnaireId/submit': sessionPolicy('提交本人答卷', true, byId),
+  'POST /tasks/:relationId/questionnaires/:questionnaireId/page-check': sessionPolicy('本人翻页提醒', true, byId),
   'POST /login': publicRoute(
     '序列号 + 密码换取作答会话：凭据正确且评价者仍有有效评价关系才签发，失败一律同一个 401',
     'DEC-291 Q2 / F-076',
