@@ -64,6 +64,7 @@ const condition = (categoryIds: string[], levelIds: string[], kind = 'extra', ap
 describe('AC-EV-conditions 类别 / 级别引用完整性', () => {
   let w: ActivityWorld;
   let f: ActivityFixtures;
+  let displayOrder = 20;
   beforeAll(async () => {
     w = await activityWorld(testDb().db);
     f = await activityFixtures(w);
@@ -77,7 +78,7 @@ describe('AC-EV-conditions 类别 / 级别引用完整性', () => {
     '%s：主体缩小后仅条件引用仍拒删；清空最后条件引用后允许删除',
     async (group) => {
       const category = await w.qlCategory();
-      const level = await w.qlLevel(10);
+      const level = await w.qlLevel(displayOrder++);
       const [kind, applicant] = group.split('/');
       const conditions = [condition([category.id], [level.id], kind, applicant)];
       const activity = await w.adminActivity(
@@ -123,7 +124,7 @@ describe('AC-EV-conditions 类别 / 级别引用完整性', () => {
 
   it('多组引用：清除一组仍拒删，主体引用保留时清空全部条件仍拒删', async () => {
     const category = await w.qlCategory();
-    const level = await w.qlLevel(11);
+    const level = await w.qlLevel(displayOrder++);
     const groups = [condition([category.id], [level.id], 'common', 'self'), condition([category.id], [level.id])];
     const activity = await w.adminActivity(
       f.body({ categoryIds: [category.id], levelIds: [level.id], conditions: groups }),
@@ -144,7 +145,7 @@ describe('AC-EV-conditions 类别 / 级别引用完整性', () => {
         ['POST', 'PATCH'].flatMap((method) => ['保存先行', '删除先行'].map((order) => [kind, method, order])),
       ),
     )('%s × %s：%s，等待后复核，不留下失效条件', async (kind, method, order) => {
-      const ref = kind === 'categories' ? await w.qlCategory() : await w.qlLevel(12);
+      const ref = kind === 'categories' ? await w.qlCategory() : await w.qlLevel(displayOrder++);
       const conditions = [condition(kind === 'categories' ? [ref.id] : [], kind === 'levels' ? [ref.id] : [])];
       const activity = method === 'PATCH' ? await w.adminActivity(f.body()) : undefined;
       const save = () =>
