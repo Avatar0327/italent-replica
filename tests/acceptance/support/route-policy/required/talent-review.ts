@@ -721,7 +721,7 @@ const projectReference: Obligation[] = [
     perm: `obj:TalentReview.${PROJECT_LABELS[key]}:view`,
     purpose: 'when:talentReview.projectCatalogReference',
     at: [
-      { role: 'impl', unit: `${PR}#requireProjectCatalogs`, anchor: 'await reviewContext(c, deps, key)' },
+      { role: 'call', unit: `${PR}#requireProjectCatalogs`, anchor: 'await reviewContext(c, deps, key)' },
       ...CONTEXT,
       {
         role: 'const',

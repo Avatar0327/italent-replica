@@ -3,6 +3,8 @@ import { z } from 'zod';
 
 const uuid = z.uuid().transform((value) => value.toLowerCase());
 const name = z.string().trim().min(1).max(50);
+// PostgreSQL date 无零年；年度用 int32，与落库列一致，避免合法 JSON 落成数据库 500。
+const date = z.iso.date().refine((value) => !value.startsWith('0000-'), '业务日期不支持零年');
 const uniqueIds = z
   .array(uuid)
   .max(500)
@@ -19,11 +21,11 @@ export const projectCreate = z.strictObject({
   categoryId: uuid.nullable().optional(),
   ownerOrgId: uuid,
   downwardPublic: z.boolean().optional(),
-  year: z.int(),
+  year: z.int32(),
   period: name,
-  periodStartDate: z.iso.date(),
-  periodEndDate: z.iso.date(),
-  businessDate: z.iso.date().nullable().optional(),
+  periodStartDate: date,
+  periodEndDate: date,
+  businessDate: date.nullable().optional(),
   calcRuleId: uuid.nullable().optional(),
   carryLastResult: z.boolean().optional(),
   sharedOrgIds: uniqueIds.optional(),
