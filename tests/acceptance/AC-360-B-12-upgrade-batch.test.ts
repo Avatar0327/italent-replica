@@ -31,6 +31,16 @@ function statements(tagSuffix: string): string[] {
     .filter(Boolean);
 }
 
+const TIMINGS_DDL = `CREATE TABLE "survey360_sheet_timings" (
+  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+  "tenant_id" uuid NOT NULL,
+  "relation_id" uuid NOT NULL,
+  "questionnaire_id" uuid NOT NULL,
+  "opened_at" timestamp with time zone NOT NULL,
+  "page_started_at" timestamp with time zone NOT NULL,
+  CONSTRAINT "survey360_sheet_timings_pair" UNIQUE("relation_id","questionnaire_id")
+)`;
+
 /** PR-A 结构上临时补出 PR-B 的列与表（及 F-076 加在旧表上的凭据列）（取升级迁移本身的 SQL），前置步骤跑完即撤掉，等同 PR-A 历史数据。 */
 async function withPrBSchema<T>(db: Db, run: () => Promise<T>): Promise<T> {
   const ddl = statements('_survey360_b');
@@ -47,9 +57,13 @@ async function withPrBSchema<T>(db: Db, run: () => Promise<T>): Promise<T> {
   for (const statement of [...ddl, ...statements('_survey360_b_isolation'), ...credentialColumns]) {
     await db.execute(sql.raw(statement));
   }
+  // F-060 收尾（DEC-392）：提交答卷会读 / 写答卷计时表，它在 PR-B 之后的迁移里；这里同样临时补出最小结构，跑完即撤掉
+  await db.execute(sql.raw(TIMINGS_DDL));
+  await db.execute(sql.raw('GRANT SELECT, INSERT, UPDATE, DELETE ON survey360_sheet_timings TO app_user'));
   try {
     return await run();
   } finally {
+    await db.execute(sql.raw('DROP TABLE "survey360_sheet_timings" CASCADE'));
     await db.execute(sql.raw(`DROP TABLE ${tables.map((t) => `"${t}"`).join(', ')} CASCADE`));
     for (const [table, column] of columns) await db.execute(sql.raw(`ALTER TABLE "${table}" DROP COLUMN "${column}"`));
   }
