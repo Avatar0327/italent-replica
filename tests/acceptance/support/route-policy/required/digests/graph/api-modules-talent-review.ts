@@ -1480,6 +1480,7 @@ export const GRAPH: Graph = {
     '#defaultPermission',
     '#invalid',
     '#seatKey',
+    'packages/domain/src/talent-review/template.ts#checkFinalPermissions',
     'packages/domain/src/talent-review/template.ts#checkPermissions',
   ],
   'apps/api/src/modules/talent-review/template-structure.ts#planSteps': ['#freezeSteps', '#invalid'],

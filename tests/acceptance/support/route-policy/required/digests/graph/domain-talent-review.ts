@@ -177,7 +177,13 @@ export const GRAPH: Graph = {
   'packages/domain/src/talent-review/matrix.ts#checkOptionLevels': ['#violation'],
   'packages/domain/src/talent-review/matrix.ts#checkRatioRule': ['#violation'],
   'packages/domain/src/talent-review/template.ts#checkByCount': ['#violation'],
-  'packages/domain/src/talent-review/template.ts#checkModules': ['#indicatorProblem', '#violation'],
+  'packages/domain/src/talent-review/template.ts#checkFinalPermissions': ['#violation'],
+  'packages/domain/src/talent-review/template.ts#checkModules': [
+    '#hasIndicatorSettings',
+    '#hasSuccessionSwitch',
+    '#indicatorProblem',
+    '#violation',
+  ],
   'packages/domain/src/talent-review/template.ts#checkPermissions': ['#permissionRowProblem', '#violation'],
   'packages/domain/src/talent-review/template.ts#indicatorProblem': [
     '#violation',
