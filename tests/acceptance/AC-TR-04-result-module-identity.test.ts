@@ -122,4 +122,22 @@ describe('AC-TR-04：结果公式模块身份（DEC-425）', () => {
     expect(kept.status, await kept.clone().text()).toBe(200);
     expect(((await kept.json()) as TemplateView).stepForms).toEqual(t.stepForms);
   });
+  it('DEC-387 / DEC-425：模块改名不能使已绑定公式读回超长而无法原样重提', async () => {
+    const w = await templateWorld(testDb().db, 'b6a2-module-length');
+    const rule = await w.scoreRule();
+    const target = await w.field({ kind: 'number' });
+    const formula = `Len("${'x'.repeat(3000)}") + ${Array(90).fill('模块.甲.得分').join(' + ')}`;
+    const t = await w.template(
+      templateBody(w.orgId, {
+        modules: [indicatorModule(rule.id, { name: '甲' })],
+        resultRules: [{ targetFieldId: target.id, formula, priority: 0 }],
+      }),
+    );
+    const modules = [indicatorModule(rule.id, { id: t.modules[0]!.id, name: '长'.repeat(50) })];
+    for (const patch of [{ modules }, { modules, resultRules: t.resultRules }]) {
+      const response = await w.patch(t, patch);
+      expect(response.status, await response.clone().text()).toBe(400);
+      expect((await w.read(t.id)).body).toEqual(t);
+    }
+  });
 });
