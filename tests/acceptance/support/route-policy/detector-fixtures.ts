@@ -312,8 +312,9 @@ const fixtureSource: SourceReader = (file) =>
 /** 证据反例也有自己的完整原始图；不把真实全表的漂移混入夹具 oracle。 */
 export function checkDetectorEvidence(table: RequiredTable, options: { readonly read?: SourceReader } = {}) {
   const registry = syncedRegistry(table, fixtureSource, false);
-  const read = options.read
-    ? (file: string) => (file === FIXTURE_FILE ? fixtureSource(file) : options.read!(file))
+  const injected = options.read;
+  const read = injected
+    ? (file: string) => (file === FIXTURE_FILE ? fixtureSource(file) : injected(file))
     : fixtureSource;
   return checkEvidence(table, { branch: false, registry, digests: registry.units, read });
 }
