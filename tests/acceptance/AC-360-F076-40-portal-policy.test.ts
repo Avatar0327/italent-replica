@@ -24,7 +24,22 @@ describe('AC-360-F076-40 门户路由声明', () => {
     expect(hit?.policy.write?.ledgerReason).toContain('DEC-377');
   });
 
-  it('PR-2a 只登记这两条（会话入口的五条归 PR-2b）', () => {
-    expect([...SURVEY360_PORTAL_POLICIES.keys()].sort()).toEqual(['POST /login', 'POST /logout']);
+  it('AC-40：七条门户路由齐全，五条会话入口声明 answerSession', () => {
+    const sessionRoutes = [
+      'GET /',
+      'GET /avatars/:attachmentId/content',
+      'GET /tasks/:relationId/questionnaires/:questionnaireId',
+      'PUT /tasks/:relationId/questionnaires/:questionnaireId',
+      'POST /tasks/:relationId/questionnaires/:questionnaireId/submit',
+    ];
+    expect([...SURVEY360_PORTAL_POLICIES.keys()].sort()).toEqual(
+      [...sessionRoutes, 'POST /login', 'POST /logout'].sort(),
+    );
+    for (const route of sessionRoutes) {
+      const policy = SURVEY360_PORTAL_POLICIES.lookup(route)?.policy;
+      expect(policy?.kind).toBe('public');
+      expect(policy?.guards).toContain('survey360.answerSession');
+      if (!route.startsWith('GET')) expect(policy?.write?.ledger).toBe('single');
+    }
   });
 });

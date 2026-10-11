@@ -296,3 +296,13 @@ export async function reports(s: SceneB, by = s.w.admin) {
 }
 
 export const key = () => randomUUID();
+
+/** F-076：凭据只从 outbox 解封，经真实登录换会话（调用前须打开凭据开关再创建活动）。 */
+export async function portalSession(scene: SceneB, appraiser: { id: string }) {
+  const { issueAll, credsOf, loginOk, sessionCall } = await import('./AC-360-F076-portal-support.js');
+  await issueAll(scene.w);
+  const cred = (await credsOf(scene.w)).get(appraiser.id);
+  if (!cred) throw new Error('缺少已发放的作答凭据');
+  const { session } = await loginOk(scene.w, cred);
+  return { session, call: sessionCall(scene.w, session) };
+}

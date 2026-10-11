@@ -16,10 +16,24 @@ import { fileURLToPath } from 'node:url';
 import { createApp, routeManifest } from '@italent/api';
 import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
-import { describe, expect, it } from 'vitest';
-import { key, my, outbox, reportLink, reports, sceneB, type SceneB, sheets } from './AC-360-B-support.js';
+import { afterEach, describe, expect, it } from 'vitest';
+import {
+  key,
+  my,
+  outbox,
+  portalSession,
+  reportLink,
+  reports,
+  sceneB,
+  type SceneB,
+  sheets,
+} from './AC-360-B-support.js';
 
+import { portalCredentials, resetCredentialConfig } from './AC-360-F076-support.js';
+import { FAST } from './AC-360-F076-portal-support.js';
+import { employeeAvatar } from './AC-EMP-F058-avatar-support.js';
 const testDb = useTestDb();
+afterEach(resetCredentialConfig);
 
 const SURVEY = '/api/tenant/survey360';
 const ACT = `${SURVEY}/activities/:id`;
@@ -51,6 +65,7 @@ const ANSWER_ENDPOINTS = [
   `GET ${TODO}/tasks/:relationId/questionnaires/:questionnaireId`,
   `GET ${LINK}`,
   `GET ${LINK}/tasks/:relationId/questionnaires/:questionnaireId`,
+  `GET ${PORTAL}/tasks/:relationId/questionnaires/:questionnaireId`,
   `GET ${REPORT_LINK}`,
   `GET ${REPORT_LINK}/reports/:reportId`,
   `GET ${REPORT_LINK}/reports/:reportId/download`,
@@ -139,6 +154,8 @@ const NO_ANSWER_DATA: Readonly<Record<string, string>> = {
       `POST ${LINK}/confirmation/submit`,
     ].map((k) => [k, ANSWERING]),
   ),
+  [`GET ${PORTAL}`]: '本活动的任务与具名人员，不含逐份答案',
+  [`GET ${PORTAL}/avatars/:attachmentId/content`]: '本单具名人员头像字节，不含答卷',
   [`POST ${PORTAL}/login`]: '回执只有会话令牌与过期时间，不含答卷或名单；凭据错误一律 401',
   [`POST ${PORTAL}/logout`]: '总是 204 无内容，只作废与令牌摘要匹配的会话',
   [`GET ${TODO}/avatars/:attachmentId/content`]: '评价对象头像图片',
@@ -149,6 +166,8 @@ const NO_ANSWER_DATA: Readonly<Record<string, string>> = {
 
 /** 保存 / 提交答卷：回执含评价者**本人**的答案与建议（ownSheet），他人拿不到——见“本人 / 他人边界”。 */
 const OWN_ANSWER_ENDPOINTS = [
+  `PUT ${PORTAL}/tasks/:relationId/questionnaires/:questionnaireId`,
+  `POST ${PORTAL}/tasks/:relationId/questionnaires/:questionnaireId/submit`,
   `PUT ${TODO}/tasks/:relationId/questionnaires/:questionnaireId`,
   `POST ${TODO}/tasks/:relationId/questionnaires/:questionnaireId/submit`,
   `PUT ${LINK}/tasks/:relationId/questionnaires/:questionnaireId`,
@@ -158,6 +177,7 @@ const OWN_ANSWER_ENDPOINTS = [
 const MODULES = new Set(['survey360', 'survey360-link', 'survey360-report-link', 'survey360-portal', 'audit']);
 
 interface Target {
+  session: string;
   activityId: string;
   objectId: string;
   personId: string;
@@ -204,13 +224,15 @@ async function callAs(s: SceneB, user: string, route: string, t: Target, auditId
   const [method] = route.split(' ') as [string];
   const path = fill(route, t, auditId) + (QUERIES[route] ?? '');
   const base = { user, tenant: s.w.tenantId };
-  const linkRoute = route.includes(LINK) || route.includes(REPORT_LINK);
+  const linkRoute = route.includes(LINK) || route.includes(REPORT_LINK) || route.includes(PORTAL);
   // 报告收件人请求必须带令牌，否则只是在测“缺令牌 404”；链接作答用他人（客户）的令牌，待办用查看人自己的账号
   const headers = route.includes(REPORT_LINK)
     ? { 'x-survey360-token': t.reportToken }
     : route.includes(LINK)
       ? { 'x-survey360-token': t.token }
-      : undefined;
+      : route.includes(PORTAL)
+        ? { 'x-survey360-session': t.session }
+        : undefined;
   const opts = linkRoute ? { tenant: s.w.tenantId, ...(headers ? { headers } : {}) } : base;
   if (route.endsWith('/block') || route.endsWith('/unblock'))
     return s.w.api.request(method, path, { ...opts, ifMatch: t.sheet.revision });
@@ -258,6 +280,7 @@ const EXPECTED_STATUS: Readonly<Record<string, readonly number[] | typeof DOWNLO
   [`GET ${TODO}/tasks/:relationId/questionnaires/:questionnaireId`]: [404],
   [`GET ${LINK}`]: [200],
   [`GET ${LINK}/tasks/:relationId/questionnaires/:questionnaireId`]: [404],
+  [`GET ${PORTAL}/tasks/:relationId/questionnaires/:questionnaireId`]: [404],
   [`GET ${REPORT_LINK}`]: [200],
   [`GET ${REPORT_LINK}/reports/:reportId`]: [200],
   [`GET ${REPORT_LINK}/reports/:reportId/download`]: DOWNLOAD,
@@ -321,6 +344,7 @@ async function auditSheetIds(s: SceneB, activityId: string) {
 
 /** 被评价人 T 的自评、上级 M、同事 P1 / P2 提交（各带建议与备注），停用、生成报告。 */
 async function answered(label: string) {
+  portalCredentials(true, { kdf: FAST });
   const s = await sceneB(testDb().db, label);
   const texts: string[] = [];
   await s.w.ok(
@@ -349,6 +373,7 @@ async function answered(label: string) {
   const mail = (await outbox(s.w, 'survey360.report_forward')).find((m) => m.payload.to === s.person.T.email)!;
   const cards = await sheets(s);
   const target: Target = {
+    session: (await portalSession(s, s.person.X)).session,
     activityId: s.activity.id,
     objectId: s.object.id,
     personId: s.person.P1.id,
@@ -556,6 +581,55 @@ describe('AC-360-B-15 / F-060 有效资源、成功状态与本人 / 他人边�
     const ownSubmit = await my(w, s.user.P2)('POST', `${todoPath}/submit`, { ifMatch: ownRevision });
     expect(ownSubmit.status).toBe(200);
     expect(await ownSubmit.text()).toContain('本人建议二');
+  });
+
+  it('AC-40：门户主页与头像有效读取不含答案；三条任务路由本人成功、他人拒绝且答卷不变', async () => {
+    portalCredentials(true, { kdf: FAST });
+    const s = await sceneB(testDb().db, 'portal-boundary');
+    const own = (await portalSession(s, s.person.P1)).call;
+    const other = (await portalSession(s, s.person.P2)).call;
+    const avatar = await employeeAvatar(s.w, s.employees.T.id);
+    const appraiserAvatar = await employeeAvatar(s.w, s.employees.P1.id);
+    const path = `/tasks/${s.rel.p1.id}/questionnaires/${s.q.id}`;
+    const content = answersOf(s, ['v4', 'v3', 'v4'], '门户本人建议');
+    const page = await own('GET');
+    expect(page.status).toBe(200);
+    const pageText = await page.text();
+    expect(pageText).not.toContain('"optionId"');
+    expect(pageText).toContain(`${PORTAL}/avatars/${avatar.avatar.id}/content`);
+    for (const item of [avatar, appraiserAvatar]) {
+      const image = await own('GET', `/avatars/${item.avatar.id}/content`);
+      expect(image.status).toBe(200);
+      expect(Buffer.from(await image.arrayBuffer())).toEqual(item.fixture.bytes);
+    }
+    const before = await (await own('GET', path)).json();
+    for (const [method, suffix] of [
+      ['GET', ''],
+      ['PUT', ''],
+      ['POST', '/submit'],
+    ]) {
+      const denied = await other(method!, path + suffix, { ifMatch: 0, body: method === 'PUT' ? content : undefined });
+      expect(denied.status).toBe(404);
+      expect(await denied.text()).not.toContain('"optionId"');
+      expect(await (await own('GET', path)).json()).toEqual(before);
+    }
+    const saved = await own('PUT', path, { ifMatch: 0, body: content });
+    expect(saved.status).toBe(200);
+    const body = await saved.json();
+    expect(body).toMatchObject({ suggestion: '门户本人建议' });
+    expect(body.answers).toEqual(expect.arrayContaining(content.answers.map((a) => expect.objectContaining(a))));
+    const read = await own('GET', path);
+    expect(read.status).toBe(200);
+    expect((await read.json()).sheet).toMatchObject({ suggestion: '门户本人建议' });
+    const submitted = await own('POST', `${path}/submit`, { ifMatch: body.revision, body: {} });
+    expect(submitted.status).toBe(200);
+    expect(await submitted.json()).toMatchObject({ suggestion: '门户本人建议' });
+    await s.w.ok(
+      s.w.request('DELETE', `${s.path}/objects/${s.object.id}/appraisers/${s.rel.p1.id}`, {
+        ifMatch: s.rel.p1.revision,
+      }),
+    );
+    expect((await own('GET', `/avatars/${appraiserAvatar.avatar.id}/content`)).status).toBe(401);
   });
 
   it('报告收件人链接：带有效令牌读到汇总，不带答卷编号 / 逐份选项；令牌与报告不匹配、缺令牌 404', async () => {
