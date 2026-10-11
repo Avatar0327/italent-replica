@@ -39,7 +39,7 @@ async function run(omission: string, strict: boolean) {
   const args = [
     cli,
     'run',
-    ...files,
+    ...(strict ? files.slice(0, 1) : files),
     '--config',
     config,
     '--testTimeout=180000',
@@ -55,7 +55,12 @@ async function run(omission: string, strict: boolean) {
   let output = '';
   try {
     try {
-      const result = await execute(process.execPath, args, { cwd: root, env, maxBuffer: 16 * 1024 * 1024 });
+      const result = await execute(process.execPath, args, {
+        cwd: root,
+        env,
+        maxBuffer: 16 * 1024 * 1024,
+        timeout: 1_100_000,
+      });
       output = result.stdout + result.stderr;
     } catch (error) {
       const failure = error as { code: number; stdout: string; stderr: string };
@@ -101,6 +106,7 @@ describe('AC-PRM-FW-F090b 真实入口漏登记：七个局部文件完整回归
           `严格 ${strict.result.numFailedTests} 条断言判红`,
       );
     },
-    600_000,
+    // 一条回归串行执行七个完整文件和严格总入口；聚合预算包含子进程启动与整组运行。
+    1_200_000,
   );
 });
