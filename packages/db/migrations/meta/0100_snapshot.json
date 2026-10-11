@@ -1,5 +1,5 @@
 {
-  "id": "8a87f51a-cadf-4291-ade7-e568b037fa4e",
+  "id": "31f3ffc1-2c91-4526-b30c-250c85c51c6e",
   "prevId": "c2451d5c-7385-4df1-a4f7-3a01f2a97f22",
   "version": "7",
   "dialect": "postgresql",
@@ -47063,6 +47063,21 @@
             "id"
           ],
           "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "talent_review_template_versions_flow_fk": {
+          "name": "talent_review_template_versions_flow_fk",
+          "tableFrom": "talent_review_template_versions",
+          "tableTo": "talent_review_flows",
+          "columnsFrom": [
+            "tenant_id",
+            "flow_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
           "onUpdate": "no action"
         }
       },

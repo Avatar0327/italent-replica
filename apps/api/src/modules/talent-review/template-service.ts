@@ -13,6 +13,7 @@ import {
   talentReviewTemplateStepModulePermissions as P,
   talentReviewTemplateStepRoles as SR,
   talentReviewTemplates as T,
+  talentReviewTemplateVersions as V,
   type Tx,
 } from '@italent/db';
 import { AppError } from '../../errors.js';
@@ -190,18 +191,20 @@ export async function readTemplate(tx: Tx, tenantId: string, id: string, version
 
 const exists = async (tx: Tx, query: Promise<unknown[]>) => (await query).length > 0;
 
-registerConfigReferenceGuard('flow', async (tx, tenantId, id) =>
-  (await exists(
-    tx,
-    tx
-      .select({ id: T.id })
-      .from(T)
-      .where(and(eq(T.tenantId, tenantId), eq(T.flowId, id)))
-      .limit(1),
-  ))
-    ? 'TEMPLATE'
-    : null,
-);
+// 流程被任一版本引用都不能删：头部的当前流程，以及换流程 / 清空流程之后旧版本冻结的流程
+registerConfigReferenceGuard('flow', async (tx, tenantId, id) => {
+  const header = tx
+    .select({ id: T.id })
+    .from(T)
+    .where(and(eq(T.tenantId, tenantId), eq(T.flowId, id)))
+    .limit(1);
+  const versions = tx
+    .select({ id: V.id })
+    .from(V)
+    .where(and(eq(V.tenantId, tenantId), eq(V.flowId, id)))
+    .limit(1);
+  return (await exists(tx, header)) || (await exists(tx, versions)) ? 'TEMPLATE' : null;
+});
 registerConfigReferenceGuard('role', async (tx, tenantId, id) => {
   const steps = tx
     .select({ id: SR.id })

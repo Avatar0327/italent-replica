@@ -39,6 +39,9 @@ export interface ModuleInput {
   readonly scoreRuleId?: string | null;
   readonly moduleGradeId?: string | null;
   readonly fieldIds?: readonly string[] | null;
+  readonly allowOrg?: boolean;
+  readonly allowPosition?: boolean;
+  readonly allowTarget?: boolean;
 }
 
 function indicatorProblem(module: ModuleInput): TemplateViolation | null {
@@ -65,6 +68,19 @@ function indicatorProblem(module: ModuleInput): TemplateViolation | null {
   return null;
 }
 
+const hasIndicatorSettings = (module: ModuleInput) =>
+  !!(
+    module.source ||
+    module.scoring ||
+    module.scoreRuleId ||
+    module.moduleGradeId ||
+    module.criterionMode ||
+    module.criterionId ||
+    module.dimensionTypes?.length
+  );
+const hasSuccessionSwitch = (module: ModuleInput) =>
+  module.allowOrg !== undefined || module.allowPosition !== undefined || module.allowTarget !== undefined;
+
 /** 模块自身的规则：名称版本内唯一（结果公式按名称引用）、各类型的必填 / 禁填项。 */
 export function checkModules(modules: readonly ModuleInput[]): TemplateViolation | null {
   const names = new Set<string>();
@@ -74,8 +90,11 @@ export function checkModules(modules: readonly ModuleInput[]): TemplateViolation
     if (module.kind === 'indicator') {
       const problem = indicatorProblem(module);
       if (problem) return problem;
-    } else if (module.source || module.scoring || module.scoreRuleId || module.moduleGradeId || module.criterionId) {
-      return violation('MODULE_KIND_MISMATCH', `“${module.name}”不是指标评估模块，不能带评分配置`);
+    } else if (hasIndicatorSettings(module)) {
+      return violation('MODULE_KIND_MISMATCH', `“${module.name}”不是指标评估模块，不能带评分配置或人才标准设置`);
+    }
+    if (module.kind !== 'succession' && hasSuccessionSwitch(module)) {
+      return violation('MODULE_KIND_MISMATCH', `“${module.name}”不是继任信息模块，不能带继任开关`);
     }
     if (module.kind !== 'info' && module.fieldIds?.length) {
       return violation('MODULE_KIND_MISMATCH', `“${module.name}”不是盘点信息模块，不能带展示字段`);
@@ -150,7 +169,8 @@ export function checkPermissions(
 function permissionRowProblem(kind: TemplateModuleKind, row: PermissionInput): TemplateViolation | null {
   const succession = row.successorAccess != null || row.targetAccess != null;
   if (kind === 'succession') {
-    const indicator = row.scoreEnabled || row.commentEnabled || row.weight != null;
+    const indicator =
+      row.scoreEnabled || row.scoreRequired || row.commentEnabled || row.commentRequired || row.weight != null;
     return indicator ? violation('PERMISSION_KIND_MISMATCH', '继任模块只配置继任者与目标继任的访问档') : null;
   }
   if (succession) return violation('PERMISSION_KIND_MISMATCH', '继任访问档只用于继任信息模块');
@@ -162,6 +182,50 @@ function permissionRowProblem(kind: TemplateModuleKind, row: PermissionInput): T
   }
   if (row.weight != null && row.scoreEnabled === false) {
     return violation('PERMISSION_WEIGHT_NEEDS_SCORE', '只有启用评分的席位才有权重');
+  }
+  return null;
+}
+
+/** 物化后的完整席位行（API 读回的形状）。 */
+export interface FinalPermissionRow {
+  readonly moduleName: string;
+  readonly visible: boolean;
+  readonly scoreEnabled: boolean;
+  readonly scoreRequired: boolean;
+  readonly commentEnabled: boolean;
+  readonly commentRequired: boolean;
+  readonly weight: number | null;
+  readonly successorAccess: string | null;
+  readonly targetAccess: string | null;
+}
+
+/**
+ * 校验最终完整结构（提交行与继承 / 缺省物化之后的全部席位行）：只校验显式提交的行拦不住改模块类型后继承下来的旧设置。
+ * 继任模块不带评分 / 评语设置与权重，指标模块不带继任访问档；必填以启用为前提；权重只给启用评分的席位。
+ */
+export function checkFinalPermissions(
+  modules: readonly Pick<ModuleInput, 'kind' | 'name'>[],
+  rows: readonly FinalPermissionRow[],
+): TemplateViolation | null {
+  for (const row of rows) {
+    const module = modules.find((m) => m.name === row.moduleName);
+    if (!module) return violation('PERMISSION_MODULE_UNKNOWN', `模块“${row.moduleName}”不存在`);
+    if (module.kind === 'info') return violation('PERMISSION_INFO_MODULE', '盘点信息模块没有步骤权限');
+    if (module.kind === 'succession') {
+      const indicator =
+        row.scoreEnabled || row.scoreRequired || row.commentEnabled || row.commentRequired || row.weight != null;
+      if (indicator) return violation('PERMISSION_KIND_MISMATCH', '继任模块只配置继任者与目标继任的访问档');
+      continue;
+    }
+    if (row.successorAccess != null || row.targetAccess != null) {
+      return violation('PERMISSION_KIND_MISMATCH', '继任访问档只用于继任信息模块');
+    }
+    if ((row.scoreRequired && !row.scoreEnabled) || (row.commentRequired && !row.commentEnabled)) {
+      return violation('PERMISSION_REQUIRED_NEEDS_ENABLED', '必填须以启用为前提');
+    }
+    if (row.weight != null && !row.scoreEnabled) {
+      return violation('PERMISSION_WEIGHT_NEEDS_SCORE', '只有启用评分的席位才有权重');
+    }
   }
   return null;
 }

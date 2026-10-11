@@ -44,9 +44,11 @@
 | 指定的人才标准须存在且已启用（新引用；已持有的原样保留）；行加 `FOR KEY SHARE` 与人才标准删除互斥 | 400 `CRITERION_NOT_REFERENCEABLE` | 设计 §5.1 |
 | 权限行：对应已有步骤 / 模块；会签步骤须指到该步骤的角色，单人步骤不带角色；必填以启用为前提；权重只在启用评分时有意义；继任两项只用于继任模块；信息模块没有权限行；同一步骤 × 角色 × 模块至多一行 | 400 `PERMISSION_STEP_UNKNOWN / _MODULE_UNKNOWN / _INFO_MODULE / _ROLE_INVALID / _DUPLICATE / _KIND_MISMATCH / _REQUIRED_NEEDS_ENABLED / _WEIGHT_NEEDS_SCORE` | TR-R16、R18 |
 | **权限行由服务端物化**：步骤（单人一个、会签每个角色一个）× 非信息模块的每个席位都有一行；提交了 `permissions` 就以提交行为准、未提交的席位取缺省（指标：可见、评分 / 评语启用、非必填、权重空；继任：两项 `hidden`）；没提交整组则沿用当前版本同席位的行 | — | TR-R16；🟡 缺省值为本设计自定项 |
+| **改模块类型（指标 ↔ 继任）时，沿用的旧席位行整行丢弃、取新类型缺省**；提交行与物化后的**最终完整结构**再整体校验（继任模块不带评分 / 评语 / 必填 / 权重，指标模块不带继任档，必填须启用，权重须启用评分），读回的权限行原样再保存必须成功 | 400 `PERMISSION_KIND_MISMATCH / PERMISSION_REQUIRED_NEEDS_ENABLED / PERMISSION_WEIGHT_NEEDS_SCORE` | 第 1 轮 P2-02 |
+| 信息 / 继任模块带人才标准设置（来源除外：`criterionMode / dimensionTypes`），指标 / 信息模块带继任开关（`allowOrg / allowPosition / allowTarget`）→ 拒绝而不是静默丢弃 | 400 `MODULE_KIND_MISMATCH` | 第 1 轮 P3 |
 | 权重之和 ≠ 100 → `configErrors: [{moduleName, code: 'WEIGHT_SUM_NOT_100', sum}]`，**允许保存、不拦截**（照原站只标红） | — | TR-R16，D-03 |
 | 评价规则头部与等级、模块等级项在版本保存时**整份快照**；之后改规则 / 模块等级不影响已保存版本，只有再次保存模块的新版本才取新内容；未重新提交模块的新版本沿用当时的快照 | — | TR-R20、AC-TR-15 |
-| 流程 / 角色 / 评价规则 / 模块等级 / 盘点字段被模板版本引用不能删（外键 restrict 兜底，守卫给出可读 409）；人才标准被模板模块引用不能删 | 409 `FLOW_IN_USE / ROLE_IN_USE / SCORE_RULE_IN_USE / MODULE_GRADE_IN_USE / FIELD_IN_USE`；人才标准侧 `CRITERION_REFERENCED`（引用方 `TALENT_REVIEW_TEMPLATE`） | 设计 §5.1；本 PR 登记 `flow / role / scoreRule / moduleGrade / field` 的模板侧守卫，B6b 接线其余（表单 / 九宫格 / 计算规则） |
+| 流程 / 角色 / 评价规则 / 模块等级 / 盘点字段被**任一模板版本**引用不能删（含换流程 / 清空流程之后旧版本冻结的引用；守卫查头部与全部版本，版本表另有 (tenant_id, flow_id) 复合外键 ON DELETE RESTRICT 兜底，第 1 轮 P2-01）（外键 restrict 兜底，守卫给出可读 409）；人才标准被模板模块引用不能删 | 409 `FLOW_IN_USE / ROLE_IN_USE / SCORE_RULE_IN_USE / MODULE_GRADE_IN_USE / FIELD_IN_USE`；人才标准侧 `CRITERION_REFERENCED`（引用方 `TALENT_REVIEW_TEMPLATE`） | 设计 §5.1；本 PR 登记 `flow / role / scoreRule / moduleGrade / field` 的模板侧守卫，B6b 接线其余（表单 / 九宫格 / 计算规则） |
 
 ## 4. 与 DEC-387 / DEC-391 的关系
 

@@ -56,12 +56,36 @@ describe('AC-TR-04-template P2-01 旧版本引用的流程不能删', () => {
   });
 });
 
+describe('AC-TR-04-template P2-01 同类出口：旧版本引用的规则 / 模块等级 / 字段 / 角色也不能删', () => {
+  it('版本 2 去掉模块后，版本 1 引用的评价规则、模块等级、字段仍 409；流程换掉后版本 1 的节点角色仍 409 ROLE_IN_USE', async () => {
+    const { w, flow, roles, rule } = await fixture('tpl-r2-refs');
+    const grade = await w.moduleGrade();
+    const field = await w.field();
+    const t = await w.template(
+      templateBody(w.orgId, {
+        flowId: flow.id,
+        modules: [
+          indicatorModule(rule.id, { name: '业绩', moduleGradeId: grade.id }),
+          { kind: 'info', name: '信息', fieldIds: [field.id] },
+        ],
+      }),
+    );
+    const other = await w.threeStepFlow();
+    const v2 = (await (await w.patch(t, { flowId: other.flow.id, modules: [] })).json()) as TemplateView;
+    expect(v2).toMatchObject({ currentVersionNo: 2, modules: [] });
+    expect(await deleteConfig(w, `/score-rules/${rule.id}`)).toEqual([409, 'SCORE_RULE_IN_USE']);
+    expect(await deleteConfig(w, `/module-grades/${grade.id}`)).toEqual([409, 'MODULE_GRADE_IN_USE']);
+    expect(await deleteConfig(w, `/fields/${field.id}`)).toEqual([409, 'FIELD_IN_USE']);
+    expect(await deleteConfig(w, `/roles/${roles.self.id}`)).toEqual([409, 'ROLE_IN_USE']);
+  });
+});
+
 const succession = (name: string, extra: Record<string, unknown> = {}) => ({ kind: 'succession', name, ...extra });
 const permissionsOf = (view: TemplateView, moduleName: string) =>
   view.permissions.filter((row) => row.moduleName === moduleName);
 
 describe('AC-TR-04-template P2-02 改模块类型不留不适用的设置', () => {
-  it('指标 → 继任：评分 / 必填 / 权重清掉，继任访问档取缺省；已存下的结构原样再保存成功', async () => {
+  it('指标 → 继任：评分 / 必填 / 权重清掉，继任访问档取缺省；已存下的权限行原样再保存成功', async () => {
     const { w, flow, rule } = await fixture('tpl-r2-to-succession');
     const t = await w.template(
       templateBody(w.orgId, {
@@ -86,12 +110,12 @@ describe('AC-TR-04-template P2-02 改模块类型不留不适用的设置', () =
       });
     }
     expect(changed.configErrors).toEqual([]);
-    // 读回的整份结构原样再保存：不得被自己的校验拒绝
-    const again = await w.patch(changed, { modules: changed.modules, permissions: changed.permissions });
+    // 读回的权限行原样再保存：不得被自己的校验拒绝
+    const again = await w.patch(changed, { permissions: changed.permissions });
     expect(again.status, await again.clone().text()).toBe(200);
   });
 
-  it('继任 → 指标：继任访问档清掉，指标设置取缺省；已存下的结构原样再保存成功', async () => {
+  it('继任 → 指标：继任访问档清掉，指标设置取缺省；已存下的权限行原样再保存成功', async () => {
     const { w, flow, rule } = await fixture('tpl-r2-to-indicator');
     const t = await w.template(
       templateBody(w.orgId, {
@@ -113,7 +137,7 @@ describe('AC-TR-04-template P2-02 改模块类型不留不适用的设置', () =
         targetAccess: null,
       });
     }
-    const again = await w.patch(changed, { modules: changed.modules, permissions: changed.permissions });
+    const again = await w.patch(changed, { permissions: changed.permissions });
     expect(again.status, await again.clone().text()).toBe(200);
   });
 

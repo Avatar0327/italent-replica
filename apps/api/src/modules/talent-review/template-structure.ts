@@ -24,7 +24,14 @@ import {
   talentReviewScoreRules,
   type Tx,
 } from '@italent/db';
-import { checkByCount, checkModules, checkPermissions, type ModuleInput, type PermissionInput } from '@italent/domain';
+import {
+  checkByCount,
+  checkFinalPermissions,
+  checkModules,
+  checkPermissions,
+  type ModuleInput,
+  type PermissionInput,
+} from '@italent/domain';
 import { AppError } from '../../errors.js';
 import type { ModuleScope } from './access.js';
 import type { WriteContext } from './config-kit.js';
@@ -262,7 +269,7 @@ function planPermissions(
   steps: readonly StepView[],
   modules: readonly ModuleDraft[],
   submitted: readonly PermissionBody[] | undefined,
-  previous: readonly PermissionView[],
+  previous: { readonly rows: readonly PermissionView[]; readonly modules: readonly { kind: string; name: string }[] },
 ): PermissionView[] {
   const problem = checkPermissions(
     steps.map((step) => ({ nodeKey: step.nodeKey, kind: step.kind, roleIds: step.roles.map((role) => role.roleId) })),
@@ -284,7 +291,12 @@ function planPermissions(
       } as Partial<PermissionView>);
     }
   } else {
-    for (const row of previous) given.set(seatKey(row), row);
+    // 沿用同席位的旧行；模块类型变了（指标 ↔ 继任）旧行里的设置对新类型不适用，整行丢弃取缺省
+    const kindBefore = new Map(previous.modules.map((module) => [module.name, module.kind]));
+    const kindNow = new Map(modules.map((module) => [module.name, module.kind]));
+    for (const row of previous.rows) {
+      if (kindBefore.get(row.moduleName) === kindNow.get(row.moduleName)) given.set(seatKey(row), row);
+    }
   }
   const rows: PermissionView[] = [];
   for (const step of steps) {
@@ -296,6 +308,9 @@ function planPermissions(
       }
     }
   }
+  // 最终完整结构整体再校验一遍（继承 / 缺省物化出来的行也不能是读回后会被自己拒绝的状态）
+  const final = checkFinalPermissions(modules, rows);
+  if (final) throw invalid(final.reason, final.message);
   return rows;
 }
 
@@ -318,7 +333,10 @@ export async function buildPlan(
   const modules = input.modules
     ? await draftModules(tx, ctx, input.modules, previous?.modules ?? [])
     : (previous?.modules ?? []).map(({ id: _id, ...draft }) => draft);
-  const permissions = planPermissions(steps, modules, input.permissions, previous?.permissions ?? []);
+  const permissions = planPermissions(steps, modules, input.permissions, {
+    rows: previous?.permissions ?? [],
+    modules: previous?.modules ?? [],
+  });
   return { flowId, steps, modules, permissions };
 }
 
