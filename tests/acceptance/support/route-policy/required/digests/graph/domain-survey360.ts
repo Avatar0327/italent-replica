@@ -38,6 +38,7 @@ export const GRAPH: Graph = {
     '#FULLWIDTH_OFFSET',
     '#SEPARATORS',
   ],
+  'packages/domain/src/survey360/pace.ts#isTooFast': ['#FAST_ANSWER_MS_PER_ITEM'],
   'packages/domain/src/survey360/questionnaire.ts#allowedScoreMethods': ['#isLeaf'],
   'packages/domain/src/survey360/questionnaire.ts#methodIssues': ['#allowedScoreMethods'],
   'packages/domain/src/survey360/questionnaire.ts#roleIssues': [

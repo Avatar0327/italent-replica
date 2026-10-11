@@ -83,7 +83,7 @@ function only(key: string, obligations: readonly Obligation[] = entry(key)): Req
 type ObjectNode = Extract<RoutePolicy, { kind: 'object' }>;
 
 describe('AC-PRM-FW-02 显式必需项表：形状与完整性', () => {
-  it('表键与运行时 577 个端点相等：静态漏登 / 多登默认警告（DEC-416③）', () => {
+  it('表键与运行时 579 个端点相等：静态漏登 / 多登默认警告（DEC-416③）', () => {
     const declared = manifest.declared.map((r) => `${r.method} ${r.path}`).sort();
     const registered = Object.keys(REQUIRED);
     const drift = [
@@ -91,7 +91,7 @@ describe('AC-PRM-FW-02 显式必需项表：形状与完整性', () => {
       ...registered.filter((key) => !declared.includes(key)).map((key) => `${key} 静态义务表多登`),
     ];
     expect(softGate('静态义务表端点登记', drift)).toEqual([]);
-    expect(declared).toHaveLength(577);
+    expect(declared).toHaveLength(579);
   });
 
   it('表文件只放字面量：不 import 声明、产品代码或探测器（不得从候选声明重新生成）', () => {
