@@ -114,11 +114,12 @@ jobs:
           fi
           echo "docs_only=$docs_only" | tee -a "$GITHUB_OUTPUT"
   check-shards:
-    name: test (PGlite, Node ${{ matrix.node }}, shard ${{ matrix.shard }}/3)
+    name: test (PGlite, Node ${{ matrix.node }}, shard ${{ matrix.shard }}/4)
     needs: changes
     if: github.event.pull_request.draft != true && needs.changes.outputs.docs_only != 'true'
     runs-on: ubuntu-24.04
-    # F-056 两轮实测最慢片 14m33s（含 quality/安装/收尾），25 分钟约为 1.72 倍
+    # F-056 两轮实测最慢片 14m33s（含 quality/安装/收尾），25 分钟约为 1.72 倍；
+    # 10-11 main 上第 1 片已到 21m44s（测试持续增长 + 第 1 片兼跑 lint/typecheck/build），改 4 片
     timeout-minutes: 25
     strategy:
       fail-fast: false
@@ -126,7 +127,7 @@ jobs:
         node: >-
           ${{ fromJSON((github.event_name == 'schedule' ||
           (github.event_name == 'workflow_dispatch' && inputs.node_22)) && '[22, 24]' || '[24]') }}
-        shard: [1, 2, 3]
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4 # 版本取自 package.json 的 packageManager
@@ -139,7 +140,7 @@ jobs:
         if: matrix.shard == 1
       - run: pnpm typecheck
         if: matrix.shard == 1
-      - run: pnpm test --shard=${{ matrix.shard }}/3
+      - run: pnpm test --shard=${{ matrix.shard }}/4
       - run: pnpm build
         if: matrix.shard == 1
 
