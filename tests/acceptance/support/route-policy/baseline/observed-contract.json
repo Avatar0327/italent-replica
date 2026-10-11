@@ -1250,6 +1250,41 @@
         ]
       }
     },
+    "DELETE /api/tenant/succession/records/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "succession",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "writeFields"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "scopeSql"
+        ]
+      }
+    },
     "DELETE /api/tenant/survey360/activities/:id": {
       "edge": {
         "anonymous": {
@@ -1487,6 +1522,9 @@
         "fieldsOut": [
           "trimModuleResponse"
         ],
+        "guard": [
+          "talentReview.calcRuleFieldCatalog"
+        ],
         "object": [
           "objectContext"
         ],
@@ -1532,6 +1570,41 @@
         ]
       }
     },
+    "DELETE /api/tenant/talent-review/field-mappings/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "talent-review",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "visible()"
+        ]
+      }
+    },
     "DELETE /api/tenant/talent-review/fields/:id": {
       "edge": {
         "anonymous": {
@@ -1564,6 +1637,76 @@
         ],
         "scope": [
           "requestScope",
+          "visible()"
+        ]
+      }
+    },
+    "DELETE /api/tenant/talent-review/flows/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "talent-review",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "visible()"
+        ]
+      }
+    },
+    "DELETE /api/tenant/talent-review/forms/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "talent-review",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
           "visible()"
         ]
       }
@@ -6600,6 +6743,31 @@
         ]
       }
     },
+    "GET /api/tenant/succession/successor-candidates": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "succession",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "object": [
+          "objectContext"
+        ]
+      }
+    },
     "GET /api/tenant/survey360/activities": {
       "edge": {
         "anonymous": {
@@ -7417,6 +7585,7 @@
           "trimModuleResponse"
         ],
         "guard": [
+          "talentReview.calcRuleFieldCatalog",
           "talentReview.filterFieldVisible"
         ],
         "object": [
@@ -7426,7 +7595,8 @@
           "creator scope",
           "requestScope",
           "scope.all",
-          "scopeSql"
+          "scopeSql",
+          "visible()"
         ]
       }
     },
@@ -7449,6 +7619,9 @@
       "primitives": {
         "fieldsOut": [
           "trimModuleResponse"
+        ],
+        "guard": [
+          "talentReview.calcRuleFieldCatalog"
         ],
         "object": [
           "objectContext"
@@ -7522,6 +7695,69 @@
         ]
       }
     },
+    "GET /api/tenant/talent-review/field-mappings": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "talent-review",
+      "primitives": {
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "guard": [
+          "talentReview.filterFieldVisible"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "creator scope",
+          "requestScope",
+          "scope.all",
+          "scopeSql"
+        ]
+      }
+    },
+    "GET /api/tenant/talent-review/field-mappings/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "talent-review",
+      "primitives": {
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "requestScope",
+          "visible()"
+        ]
+      }
+    },
     "GET /api/tenant/talent-review/fields": {
       "edge": {
         "anonymous": {
@@ -7557,6 +7793,132 @@
       }
     },
     "GET /api/tenant/talent-review/fields/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "talent-review",
+      "primitives": {
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "requestScope",
+          "visible()"
+        ]
+      }
+    },
+    "GET /api/tenant/talent-review/flows": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "talent-review",
+      "primitives": {
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "guard": [
+          "talentReview.filterFieldVisible"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "creator scope",
+          "requestScope",
+          "scope.all",
+          "scopeSql"
+        ]
+      }
+    },
+    "GET /api/tenant/talent-review/flows/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "talent-review",
+      "primitives": {
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "requestScope",
+          "visible()"
+        ]
+      }
+    },
+    "GET /api/tenant/talent-review/forms": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "talent-review",
+      "primitives": {
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "guard": [
+          "talentReview.filterFieldVisible"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "creator scope",
+          "requestScope",
+          "scope.all",
+          "scopeSql"
+        ]
+      }
+    },
+    "GET /api/tenant/talent-review/forms/:id": {
       "edge": {
         "anonymous": {
           "code": "UNAUTHENTICATED",
@@ -9962,6 +10324,48 @@
         ]
       }
     },
+    "PATCH /api/tenant/talent-review/field-mappings/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "talent-review",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "writeFields"
+        ],
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "guard": [
+          "talentReview.mappingFieldVisible"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "requestScope",
+          "visible()"
+        ]
+      }
+    },
     "PATCH /api/tenant/talent-review/fields/:id": {
       "edge": {
         "anonymous": {
@@ -9994,6 +10398,95 @@
         ],
         "guard": [
           "talentReview.configRenameRequiresSeeAll"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "requestScope",
+          "scope.all",
+          "visible()"
+        ]
+      }
+    },
+    "PATCH /api/tenant/talent-review/flows/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "talent-review",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "writeFields"
+        ],
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "guard": [
+          "talentReview.configRenameRequiresSeeAll",
+          "talentReview.flowRoleReference"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "requestScope",
+          "scope.all",
+          "visible()"
+        ]
+      }
+    },
+    "PATCH /api/tenant/talent-review/forms/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "talent-review",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "checkFields",
+          "writeFields"
+        ],
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "guard": [
+          "talentReview.configRenameRequiresSeeAll",
+          "talentReview.formFieldReference"
         ],
         "object": [
           "objectContext"
@@ -10632,6 +11125,30 @@
       }
     },
     "POST /api/platform/tenants/:tenantId/status": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "reason": "PLATFORM_OPERATOR_REQUIRED",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "FORBIDDEN",
+          "reason": "PLATFORM_OPERATOR_REQUIRED",
+          "status": 403
+        }
+      },
+      "module": "platform",
+      "primitives": {
+        "command": [
+          "ifMatch / meta"
+        ]
+      }
+    },
+    "POST /api/platform/tenants/:tenantId/talent-review/calc-formulas/rebind": {
       "edge": {
         "anonymous": {
           "code": "UNAUTHENTICATED",
@@ -15355,7 +15872,8 @@
           "requireObjectWrite（对象写操作权）"
         ],
         "precondition": [
-          "ownTransferInput"
+          "ownTransferInput",
+          "requireSelfServiceButtons"
         ],
         "scope": [
           "checkScope",
@@ -15409,7 +15927,8 @@
           "object.* 动作"
         ],
         "precondition": [
-          "ownTransferInput"
+          "ownTransferInput",
+          "requireSelfServiceButtons"
         ],
         "scope": [
           "employment scope",
@@ -15421,6 +15940,74 @@
         "self": [
           "selfAccess",
           "transferFieldAccess"
+        ]
+      }
+    },
+    "POST /api/tenant/succession/records": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "VALIDATION_FAILED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "succession",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "command": [
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "writeFields"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "creator scope"
+        ]
+      }
+    },
+    "POST /api/tenant/succession/records/end": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "VALIDATION_FAILED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "succession",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "command": [
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "writeFields"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "scopeSql"
         ]
       }
     },
@@ -16617,6 +17204,48 @@
         ]
       }
     },
+    "POST /api/tenant/talent-review/field-mappings": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "talent-review",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "writeFields"
+        ],
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "guard": [
+          "talentReview.mappingFieldVisible"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "requestScope",
+          "visible()"
+        ]
+      }
+    },
     "POST /api/tenant/talent-review/fields": {
       "edge": {
         "anonymous": {
@@ -16649,6 +17278,91 @@
         ],
         "guard": [
           "talentReview.pairRequiresUpdate"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "requestScope",
+          "visible()"
+        ]
+      }
+    },
+    "POST /api/tenant/talent-review/flows": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "talent-review",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "writeFields"
+        ],
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "guard": [
+          "talentReview.flowRoleReference"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "requestScope",
+          "visible()"
+        ]
+      }
+    },
+    "POST /api/tenant/talent-review/forms": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "talent-review",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "checkFields",
+          "writeFields"
+        ],
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "guard": [
+          "talentReview.formFieldReference"
         ],
         "object": [
           "objectContext"
@@ -18228,6 +18942,42 @@
           "assertRevision",
           "ifMatch / meta",
           "runCommand / runWrite"
+        ]
+      }
+    },
+    "PUT /api/tenant/succession/records/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "succession",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "writeFields"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "creator scope",
+          "scopeSql"
         ]
       }
     },

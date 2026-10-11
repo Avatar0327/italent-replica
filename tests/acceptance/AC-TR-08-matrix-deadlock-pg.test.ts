@@ -156,6 +156,7 @@ async function legacyTenant(label: string) {
   const write = { tenantId: w.as.tenant, actorUserId: null, now: TR_NOW, commandId: `${label}-seed` };
   await withTenant(db, w.as.tenant, (tx) => installMissingSeeds(tx, write, { modules: ['talent-review'] }));
   await withTenant(db, w.as.tenant, async (tx) => {
+    await tx.execute(sql`DELETE FROM talent_review_forms`); // PR-B3：预置表单引用预置字段（restrict），改字段 id 前先删
     await tx.execute(sql`DELETE FROM talent_review_matrices`);
     const codes = Object.keys(ids);
     await tx.execute(sql`UPDATE talent_review_fields SET pair_field_id = NULL WHERE code IN ${codes}`);

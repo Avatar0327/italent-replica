@@ -44,6 +44,12 @@ export interface OperatorOptions {
   readonly view?: boolean;
   /** 同时开通审计查看（admin 角色 audit_admin）。 */
   readonly audit?: boolean;
+  /** 写权限（A2）：数据操作开关、按钮（缺省全列表级 / 详情级按对象目录）与可编辑字段（缺省全部）；缺省无写权限。 */
+  readonly writer?: {
+    readonly operations: { create?: boolean; update?: boolean; delete?: boolean };
+    readonly buttons: readonly string[];
+    readonly noEdit?: readonly string[];
+  };
 }
 
 /** 继任记录查看人：对象查看权 + 字段 +（可选）看全部 / 管理单元；所有字段都可查看，除 hidden 外。 */
@@ -55,9 +61,15 @@ export async function recordOperator(world: PermissionWorld, options: OperatorOp
       world,
       profile,
       {
-        dataOperations: { create: false, update: false, delete: false },
-        fields: RECORD.fields.map((field) => ({ fieldCode: field.code, view: !hidden.has(field.code), edit: false })),
-        buttons: [],
+        dataOperations: { create: false, update: false, delete: false, ...options.writer?.operations },
+        fields: RECORD.fields.map((field) => ({
+          fieldCode: field.code,
+          view: !hidden.has(field.code),
+          edit: Boolean(options.writer) && !field.system && !(options.writer?.noEdit ?? []).includes(field.code),
+        })),
+        buttons: RECORD.buttons
+          .filter((button) => options.writer?.buttons.includes(button.code))
+          .map((button) => ({ buttonCode: button.code, level: button.level })),
       },
       RECORD.code,
     );

@@ -5,18 +5,18 @@
  * - 评定专员：只含流程对象（评定过程 / 评定记录）。
  * 数据范围一律缺省为空（硬规则）：三个身份开通时不预置任何看全部。
  * 新租户开通即有；存量租户经平台回补（permission/standard-profiles 登记项）补齐，不覆盖租户手工建的同编码身份，
- * 租户撤销过的授权不被再次补回（F-061 台账）。员工身份发展通道授权见 TODO(需取证 #202，C1-2b)，不在本文件。
+ * 租户撤销过的授权不被再次补回（F-061 台账）。员工身份（C1-2b，DEC-399）见 AC-QL-employee-profile。
  */
 import {
   EVALUATION_FLOW_OBJECTS,
   EVALUATION_OBJECTS,
   QUALIFICATION_OBJECTS,
   STANDARD_GRANT_CODES,
-  STANDARD_GRANT_VERSION,
   STANDARD_PROFILES,
 } from '@italent/domain';
 import { permissionIdentityScopes, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
+import { objectCatalog } from '../../apps/api/src/modules/permission/catalog.js';
 import { describe, expect, it } from 'vitest';
 import {
   backfill,
@@ -54,7 +54,8 @@ interface ProfileDetail {
   objects: {
     objectCode: string;
     dataOperations: { create: boolean; update: boolean; delete: boolean };
-    buttons: unknown[];
+    fields: { fieldCode: string; view: boolean; edit: boolean }[];
+    buttons: { buttonCode: string; level: string }[];
   }[];
 }
 const detailOf = async (w: World, code: string): Promise<ProfileDetail> => {
@@ -85,6 +86,47 @@ describe('AC-QL-presets 新租户开通即有三个预置身份（DEC-331②）'
     const specialist = await detailOf(w, EV_SPECIALIST);
     expect(specialist.apps).toEqual(['TEvaluation']);
     expect(objectCodesOf(specialist)).toEqual([...flowCodes].sort());
+  });
+
+  it('完整权限矩阵：每个预置身份的每个对象，数据操作 / 字段 / 按钮都等于对象目录推出的期望值（AC-QL-presets，#203 P3）', async () => {
+    const w = await provisionWorld(testDb().db, 'ql-presets-matrix');
+    const FULL = 'full';
+    const READONLY = 'readonly';
+    // 期望值只从对象目录（对象自己的字段 / 按钮清单）推出，不读 STANDARD_PROFILES，避免“拿定义验定义”
+    const expectedOf = (objectCode: string, mode: typeof FULL | typeof READONLY) => {
+      const definition = objectCatalog.get(objectCode)!;
+      const all = mode === FULL;
+      return {
+        dataOperations: { create: all, update: all, delete: all },
+        fields: definition.fields
+          .map((f) => ({ fieldCode: f.code, view: true, edit: all && !f.system }))
+          .sort((a, b) => a.fieldCode.localeCompare(b.fieldCode)),
+        buttons: all ? definition.buttons.map((b) => ({ buttonCode: b.code, level: b.level })).sort(byButton) : [],
+      };
+    };
+    const byButton = (a: { buttonCode: string; level: string }, b: { buttonCode: string; level: string }) =>
+      `${a.buttonCode}@${a.level}`.localeCompare(`${b.buttonCode}@${b.level}`);
+    const matrix: Record<string, Record<string, typeof FULL | typeof READONLY>> = {
+      [QL_ADMIN]: Object.fromEntries(qualificationCodes.map((code) => [code, FULL])),
+      [EV_ADMIN]: {
+        ...Object.fromEntries([...evalConfigCodes, ...flowCodes].map((code) => [code, FULL])),
+        ...Object.fromEntries(referencedCodes.map((code) => [code, READONLY])),
+      },
+      [EV_SPECIALIST]: Object.fromEntries(flowCodes.map((code) => [code, FULL])),
+    };
+    for (const [profile, objects] of Object.entries(matrix)) {
+      const detail = await detailOf(w, profile);
+      expect(detail.objects.map((o) => o.objectCode).sort(), profile).toEqual(Object.keys(objects).sort());
+      for (const permission of detail.objects) {
+        const expected = expectedOf(permission.objectCode, objects[permission.objectCode]!);
+        const actual = {
+          dataOperations: permission.dataOperations,
+          fields: [...permission.fields].sort((a, b) => a.fieldCode.localeCompare(b.fieldCode)),
+          buttons: [...permission.buttons].sort(byButton),
+        };
+        expect(actual, `${profile} / ${permission.objectCode}`).toEqual(expected);
+      }
+    }
   });
 
   it('授予后的实际效果：评定专员能用流程对象的按钮，配置对象与任职资格对象 403；任职资格管理员反之（AC-QL-presets）', async () => {
@@ -171,16 +213,24 @@ describe('AC-QL-presets 存量租户经平台回补补齐（permission/standard-
 });
 
 describe('AC-QL-presets 守卫：目录变化必须同步 version / 指纹（F-061 方案 §3.4）', () => {
-  it('授权项编码含三个新身份；STANDARD_GRANT_VERSION 已 +1（AC-QL-presets）', () => {
+  it('授权项编码含三个新身份（AC-QL-presets）', () => {
     for (const code of NEW_CODES)
       expect(
         STANDARD_GRANT_CODES.some((grant) => grant.startsWith(`${code}/`)),
         code,
       ).toBe(true);
-    expect(STANDARD_GRANT_VERSION).toBeGreaterThanOrEqual(2);
+    // version 递增与指纹历史由 AC-PLAT-F061-grants 的“版本历史”守卫和 AC-QL-employee-profile 必测 11 证明
   });
 
-  it('STANDARD_PROFILES 不含员工身份：发展通道授权只经登记项装入（拆分方案 §8，需取证 #202，C1-2b）（AC-QL-presets）', () => {
-    expect(STANDARD_PROFILES.map((p) => p.code)).not.toContain('employee_self_service');
+  it('STANDARD_PROFILES 含员工身份且 autoHeld；其对象清单不含发展通道 / 任职资格标准（DEC-399，AC-QL-presets）', () => {
+    const employee = STANDARD_PROFILES.find((p) => p.code === 'employee_self_service');
+    expect(employee).toMatchObject({ autoHeld: true });
+    const objectCodes = employee!.objects.map((o) => o.objectCode);
+    expect(objectCodes).not.toContain(QUALIFICATION_OBJECTS.developmentChannel.code);
+    expect(objectCodes).not.toContain(QUALIFICATION_OBJECTS.standard.code);
+    expect(
+      STANDARD_PROFILES.filter((p) => 'autoHeld' in p && p.autoHeld).map((p) => p.code),
+      '只有员工身份是 autoHeld',
+    ).toEqual(['employee_self_service']);
   });
 });

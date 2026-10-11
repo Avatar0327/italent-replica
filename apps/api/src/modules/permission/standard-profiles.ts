@@ -77,23 +77,31 @@ export async function installMissingStandardProfiles(tx: Tx, write: PlatformWrit
     else skipped.push({ code: profile.code, reason: source === 'standard' ? 'ALREADY_INSTALLED' : 'CODE_TAKEN' });
   }
   const installed = await installProfilesForTenantAdmins(tx, write, missing);
+  // F-052：读已有编码与插入之间，租户可能已提交同编码自定义身份（创建身份不取补装锁）：该编码没装上，按 CODE_TAKEN 跳过
+  const done = new Set(installed.map((p) => p.code));
+  for (const profile of missing)
+    if (!done.has(profile.code)) skipped.push({ code: profile.code, reason: 'CODE_TAKEN' });
   return { installed: installed.map((p) => p.code), skipped };
 }
 
-/** 装一批标准身份并加入有效租户管理员的可授权业务身份（旧回补路由与 standard-profiles 登记项共用）。 */
+/**
+ * 装一批标准身份并加入有效租户管理员的可授权业务身份（旧回补路由与 standard-profiles 登记项共用）。
+ * F-052：某编码在安装时已被并发提交的自定义身份占用，则不装、不覆盖，返回值里没有它（调用方按 CODE_TAKEN 报告）。
+ */
 export async function installProfilesForTenantAdmins(
   tx: Tx,
   write: PlatformWriteContext,
   profiles: readonly StandardProfile[],
 ): Promise<InstalledProfile[]> {
   const installed: InstalledProfile[] = [];
-  for (const profile of profiles) installed.push(await installProfile(tx, write, profile));
-  if (installed.length)
-    await grantableToTenantAdmins(
-      tx,
-      write,
-      installed.map((p) => p.id),
-    );
+  for (const profile of profiles) {
+    const row = await installProfileIfFree(tx, write, profile);
+    if (row) installed.push(row);
+  }
+  // DEC-402③：autoHeld 身份（员工）不进可授权集合；过滤后为空（如存量租户只缺员工身份）就不碰管理员记录
+  const held = new Set(profiles.filter((p) => p.autoHeld).map((p) => p.code));
+  const grantable = installed.filter((p) => !held.has(p.code)).map((p) => p.id);
+  if (grantable.length) await grantableToTenantAdmins(tx, write, grantable);
   return installed;
 }
 
@@ -132,6 +140,26 @@ async function grantableToTenantAdmins(tx: Tx, write: PlatformWriteContext, prof
  */
 export async function installProfile(tx: Tx, write: PlatformWriteContext, profile: StandardProfile) {
   const installed = await installProfileRows(tx, write, profile);
+  await recordProfileInstall(tx, write, profile);
+  return installed;
+}
+
+/**
+ * 回补用：同 installProfile，但该（租户，编码）已被并发提交的身份占用时不报唯一约束错，返回 null（什么都不写、不记账）。
+ * 读已有编码之后到插入之前，租户可能刚创建了同编码自定义身份；ON CONFLICT DO NOTHING 在对方未提交时会等它提交，
+ * 之后不覆盖对方（F-052）。
+ */
+export async function installProfileIfFree(
+  tx: Tx,
+  write: PlatformWriteContext,
+  profile: StandardProfile,
+): Promise<InstalledProfile | null> {
+  const installed = await installProfileRows(tx, write, profile, { ifFree: true });
+  if (installed) await recordProfileInstall(tx, write, profile);
+  return installed;
+}
+
+async function recordProfileInstall(tx: Tx, write: PlatformWriteContext, profile: StandardProfile) {
   await recordLedger(tx, {
     entry: STANDARD_GRANT_ENTRY,
     codes: [...standardGrantItems([profile]).map((item) => item.code), profileLedgerMarker(profile.code)],
@@ -139,30 +167,44 @@ export async function installProfile(tx: Tx, write: PlatformWriteContext, profil
     commandId: write.commandId,
     now: write.now,
   });
-  return installed;
 }
 
 /**
  * 只写身份与权限行、预置看全部和审计，不写台账。给“F-061 上线前开通的租户”测试夹具用（按注入的旧定义装身份、
  * 不留台账）；产品路径一律走 installProfile。
  */
-export async function installProfileRows(tx: Tx, write: PlatformWriteContext, profile: StandardProfile) {
+export async function installProfileRows(
+  tx: Tx,
+  write: PlatformWriteContext,
+  profile: StandardProfile,
+): Promise<InstalledProfile>;
+export async function installProfileRows(
+  tx: Tx,
+  write: PlatformWriteContext,
+  profile: StandardProfile,
+  options: { readonly ifFree: true },
+): Promise<InstalledProfile | null>;
+export async function installProfileRows(
+  tx: Tx,
+  write: PlatformWriteContext,
+  profile: StandardProfile,
+  options?: { readonly ifFree: true },
+): Promise<InstalledProfile | null> {
   const { tenantId } = write;
-  const [row] = await tx
-    .insert(permissionProfiles)
-    .values({
-      tenantId,
-      code: profile.code,
-      name: profile.name,
-      description: profile.description,
-      source: 'standard',
-      licenseType: profile.licenseType,
-      createdBy: write.actorUserId,
-      createdAt: write.now,
-      updatedAt: write.now,
-    })
-    .returning();
-  const profileId = row!.id;
+  const insert = tx.insert(permissionProfiles).values({
+    tenantId,
+    code: profile.code,
+    name: profile.name,
+    description: profile.description,
+    source: 'standard',
+    licenseType: profile.licenseType,
+    createdBy: write.actorUserId,
+    createdAt: write.now,
+    updatedAt: write.now,
+  });
+  const [row] = await (options?.ifFree ? insert.onConflictDoNothing().returning() : insert.returning());
+  if (!row) return null;
+  const profileId = row.id;
   await tx.insert(permissionProfileApps).values(profile.apps.map((appCode) => ({ tenantId, profileId, appCode })));
   for (const permission of profile.objects) await insertObject(tx, tenantId, profileId, permission);
   const seeAll = await presetSeeAll(tx, write, profileId, presetSeeAllTargets(profile));
@@ -179,7 +221,7 @@ export async function installProfileRows(tx: Tx, write: PlatformWriteContext, pr
       apps: profile.apps,
       objects: profile.objects.map((o) => o.objectCode),
       seeAll,
-      revision: row!.revision,
+      revision: row.revision,
     },
   });
   return { id: profileId, code: profile.code, name: profile.name, licenseType: profile.licenseType };

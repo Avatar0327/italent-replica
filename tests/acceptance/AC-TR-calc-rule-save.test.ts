@@ -27,6 +27,7 @@ import {
   withoutHints,
 } from './AC-TR-calc-rule-support.js';
 import { errorCode } from './support/tenant-api.js';
+import './support/b5-path.js';
 
 const testDb = useTestDb();
 const referenced = new Set<string>();

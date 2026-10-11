@@ -204,8 +204,9 @@ const RENAME_DISCLOSURE: Obligation = {
   at: [
     {
       role: 'call',
-      unit: `${CFG}#registerFields`,
-      anchor: 'const calcDisclosure = renaming ? await resolveCalcDisclosure(c, deps) : undefined',
+      // 披露权限在命令事务内解析（recheckFieldWrite，#224 第 1 轮 P2-1）
+      unit: `${T}/field-write.ts#recheckFieldWrite`,
+      anchor: 'calcDisclosure: await resolveCalcDisclosure(c, checked.txDeps, tx)',
     },
     {
       role: 'impl',
@@ -246,6 +247,64 @@ function cfgObject(
   };
 }
 
+/**
+ * 字段映射（B2）：无名称（无改名守卫）；列表自己写 scene 筛选守卫；新建 / 改来源或目标字段 = 读取字段对象，
+ * 另需字段对象的查看权（条件准入，随守卫 talentReview.mappingFieldVisible）。
+ */
+const MAPPING_GUARD = 'talentReview.mappingFieldVisible';
+const mappingFieldsCall: Evidence = {
+  role: 'call',
+  unit: `${SCORING}#requireMappingFields`,
+  anchor: "const ctx = await reviewContext(c, txDeps, 'field')",
+};
+const MAPPING_FIELD_OBLIGATIONS = (entry: string): Obligation[] => [
+  {
+    perm: `guard:${MAPPING_GUARD}`,
+    facts: [`guard:${MAPPING_GUARD}`],
+    note: '引用来源 / 目标字段 = 读取字段对象：另需字段对象查看权与范围（先于读取字段；不存在与范围外同一个 404）',
+    at: [{ role: 'call', unit: `${SCORING}#registerMappings`, anchor: entry }],
+  },
+  {
+    perm: 'obj:TalentReview.Field:view',
+    purpose: `when:${MAPPING_GUARD}`,
+    at: [mappingFieldsCall, ...CONTEXT, FIELD_OBJECT_CONST],
+  },
+];
+function mappingTable(): RequiredTable {
+  const object = 'TalentReview.FieldMapping';
+  const reg = 'registerMappings';
+  const reads = 'registerMappingReads';
+  const list = "router.get(MAPPINGS, async (c) => { const ctx = await reviewContext(c, deps, 'mapping')";
+  const detail = "router.get(`${MAPPINGS}/:id`, async (c) => { const ctx = await reviewContext(c, deps, 'mapping')";
+  return {
+    [`GET ${BASE_ROOT}/field-mappings`]: [
+      cfgView(object, 'mapping', 'FieldMapping', reads, list, SCORING),
+      {
+        perm: 'guard:talentReview.filterFieldVisible',
+        facts: ['guard:talentReview.filterFieldVisible'],
+        note: '带 scene 筛选而无 scene 字段查看权 → 403 FILTER_FIELD_HIDDEN（字段级，只在带筛选时判定）',
+        at: [
+          {
+            role: 'call',
+            unit: `${SCORING}#${reads}`,
+            anchor: "if (scene !== undefined) await requireFilterVisible(deps, ctx, 'mapping', 'scene')",
+          },
+          FILTER_GUARD.at[1]!,
+        ],
+      },
+    ],
+    [`GET ${BASE_ROOT}/field-mappings/:id`]: [cfgView(object, 'mapping', 'FieldMapping', reads, detail, SCORING)],
+    [`POST ${BASE_ROOT}/field-mappings`]: [
+      ...cfgChange(object, 'mapping', 'FieldMapping', reg, 'create', SCORING),
+      ...MAPPING_FIELD_OBLIGATIONS('await requireMappingFields(c, deps);'),
+    ],
+    [`PATCH ${BASE_ROOT}/field-mappings/:id`]: [
+      ...cfgChange(object, 'mapping', 'FieldMapping', reg, 'update', SCORING),
+      ...MAPPING_FIELD_OBLIGATIONS('if (touched) await requireMappingFields(c, deps);'),
+    ],
+    [`DELETE ${BASE_ROOT}/field-mappings/:id`]: cfgChange(object, 'mapping', 'FieldMapping', reg, 'delete', SCORING),
+  };
+}
 const BASE_ROOT = '/api/tenant/talent-review';
 const SETTINGS_OBJECT = 'TalentReview.Settings';
 
@@ -367,11 +426,19 @@ const MATRIX_REQUIRED: RequiredTable = {
 const CRR = `${T}/calc-rule-routes.ts`;
 const CALC_OBJECT = 'TalentReview.CalcRule';
 const calcConst: Evidence = { role: 'const', unit: `${CATALOG}>calcRule`, anchor: "object( 'CalcRule'" };
-const calcCall = (anchor: string): Evidence => ({ role: 'call', unit: `${CRR}#registerCalcRuleRoutes`, anchor });
+// 路由登记拆成读（registerReads）与写（registerWrites）两个函数：开关打开时读写各有一条 bound 分支（F-082）
+const calcCall = (
+  anchor: string,
+  unit: 'registerReads' | 'registerWrites' | 'recheckCalcRuleWrite' = 'registerWrites',
+): Evidence => ({
+  role: 'call',
+  unit: `${CRR}#${unit}`,
+  anchor,
+});
 const calcView = (anchor: string): Obligation => ({
   perm: `obj:${CALC_OBJECT}:view`,
   facts: ['object:objectContext'],
-  at: [calcCall(anchor), ...CONTEXT, calcConst],
+  at: [calcCall(anchor, 'registerReads'), ...CONTEXT, calcConst],
 });
 function calcChange(operation: Exclude<Operation, 'view'>): Obligation[] {
   const entry = calcCall(`const ctx = await reviewWriteContext(c, deps, 'calcRule', '${operation}', revision(c))`);
@@ -414,10 +481,40 @@ const calcCatalog = (anchor: string): Obligation[] => [
     ],
   },
 ];
+/**
+ * 开关打开（F-082）时响应按查看人渲染公式引用：读取字段目录的范围与列权限决定哪些引用显示名称，其余是占位符。
+ * 只影响显示，不影响准入——没有字段目录访问时不拒绝，引用一律渲染为占位符（optionalCatalogAccess 吞掉 403）。
+ */
+const calcRender = (anchor: string, unit: 'registerReads' | 'recheckCalcRuleWrite'): Obligation[] => [
+  {
+    perm: `guard:${CALC_CATALOG}`,
+    facts: [`guard:${CALC_CATALOG}`],
+    note: '渲染用的可选守卫：开关打开时按字段目录范围与列权限渲染公式引用，没有访问也不拒绝（引用显示为占位符）',
+    at: [calcCall(anchor, unit)],
+  },
+  {
+    perm: 'obj:TalentReview.Field:view',
+    purpose: `when:${CALC_CATALOG}`,
+    at: [
+      {
+        role: 'call',
+        unit: `${CRR}#requireCatalogAccess`,
+        anchor: "const ctx = await reviewContext(c, deps, 'field')",
+      },
+      ...CONTEXT,
+      FIELD_OBJECT_CONST,
+    ],
+  },
+];
+const RENDER_READ = 'const access = await optionalCatalogAccess(c, deps)';
+const RENDER_WRITE = '? await optionalCatalogAccess(c, txDeps, tx)';
 const CALC_FILTER_GUARD: Obligation = {
   ...FILTER_GUARD,
   at: [
-    calcCall("if (enabled !== undefined) await requireFilterVisible(deps, ctx, 'calcRule', 'enabled')"),
+    calcCall(
+      "if (enabled !== undefined) await requireFilterVisible(deps, ctx, 'calcRule', 'enabled')",
+      'registerReads',
+    ),
     ...FILTER_GUARD.at.slice(1),
   ],
 };
@@ -426,23 +523,77 @@ const CALC_REQUIRED: RequiredTable = {
   [`GET ${CALC_BASE}`]: [
     calcView("router.get(CALC_RULES, async (c) => { const ctx = await reviewContext(c, deps, 'calcRule')"),
     CALC_FILTER_GUARD,
+    ...calcRender(RENDER_READ, 'registerReads'),
   ],
   [`GET ${CALC_BASE}/:id`]: [
     calcView("router.get(`${CALC_RULES}/:id`, async (c) => { const ctx = await reviewContext(c, deps, 'calcRule')"),
+    ...calcRender(RENDER_READ, 'registerReads'),
   ],
-  [`POST ${CALC_BASE}`]: [
-    ...calcChange('create'),
-    ...calcCatalog('const access = await requireCatalogAccess(c, deps)'),
-  ],
+  [`POST ${CALC_BASE}`]: [...calcChange('create'), ...calcCatalog('await requireCatalogAccess(c, deps)')],
   [`PATCH ${CALC_BASE}/:id`]: [
     ...calcChange('update'),
     RENAME_GUARD,
-    ...calcCatalog('const access = await patchCatalogAccess(c, deps, body)'),
+    ...calcCatalog('await patchCatalogAccess(c, deps, body)'),
   ],
-  [`DELETE ${CALC_BASE}/:id`]: calcChange('delete'),
+  [`DELETE ${CALC_BASE}/:id`]: [...calcChange('delete'), ...calcRender(RENDER_WRITE, 'recheckCalcRuleWrite')],
+};
+
+// ---- R3-T04 PR-B3：盘点内容表单 / 流程定义（modules/talent-review/form-flow-routes.ts） ------------------------------
+const FFR = `${T}/form-flow-routes.ts`;
+const ROLE_OBJECT_CONST: Evidence = { role: 'const', unit: `${CATALOG}>role`, anchor: "object('Role'" };
+/**
+ * 引用目录对象 = 读取目录：请求带引用时另需目录对象的查看权（表单 → 字段目录 requireFieldCatalog，流程 → 角色 requireRoleCatalog），
+ * 引用的可见性在命令内按目录范围判定。
+ */
+const ffReference = (register: string, guard: string, catalog: string, catalogKey: 'field' | 'role', note: string) => {
+  const target = catalogKey === 'field' ? 'TalentReview.Field' : 'TalentReview.Role';
+  return (anchor: string): Obligation[] => [
+    {
+      perm: `guard:${guard}`,
+      facts: [`guard:${guard}`],
+      note,
+      at: [{ role: 'call', unit: `${FFR}#${register}`, anchor }],
+    },
+    {
+      perm: `obj:${target}:view`,
+      purpose: `when:${guard}`,
+      at: [
+        { role: 'call', unit: `${FFR}#${catalog}`, anchor: `const ctx = await reviewContext(c, deps, referenced)` },
+        ...CONTEXT,
+        catalogKey === 'field' ? FIELD_OBJECT_CONST : ROLE_OBJECT_CONST,
+      ],
+    },
+  ];
+};
+const formReference = ffReference(
+  'registerForms',
+  'talentReview.formFieldReference',
+  'requireCatalog',
+  'field',
+  '条件守卫：请求体带字段引用时，另需字段目录的对象查看权，字段可见性在命令内按字段目录范围判定',
+);
+const flowReference = ffReference(
+  'registerFlows',
+  'talentReview.flowRoleReference',
+  'requireCatalog',
+  'role',
+  '条件守卫：请求体带角色引用时，另需盘点角色的对象查看权，角色可见性在命令内按角色范围判定',
+);
+const FORMS_REQUIRED = cfgObject('form', 'Form', 'registerForms', 'forms', 'FORMS', FFR);
+const FLOWS_REQUIRED = cfgObject('flow', 'Flow', 'registerFlows', 'flows', 'FLOWS', FFR);
+const FORM_ANCHOR = 'if (references.length > 0) await requireFieldCatalog(c, deps)';
+const FLOW_ANCHOR = 'if (references.length > 0) await requireRoleCatalog(c, deps)';
+const FORM_FLOW_REQUIRED: RequiredTable = {
+  ...FORMS_REQUIRED,
+  ...FLOWS_REQUIRED,
+  [`POST ${BASE_ROOT}/forms`]: [...FORMS_REQUIRED[`POST ${BASE_ROOT}/forms`]!, ...formReference(FORM_ANCHOR)],
+  [`PATCH ${BASE_ROOT}/forms/:id`]: [...FORMS_REQUIRED[`PATCH ${BASE_ROOT}/forms/:id`]!, ...formReference(FORM_ANCHOR)],
+  [`POST ${BASE_ROOT}/flows`]: [...FLOWS_REQUIRED[`POST ${BASE_ROOT}/flows`]!, ...flowReference(FLOW_ANCHOR)],
+  [`PATCH ${BASE_ROOT}/flows/:id`]: [...FLOWS_REQUIRED[`PATCH ${BASE_ROOT}/flows/:id`]!, ...flowReference(FLOW_ANCHOR)],
 };
 
 export const TALENT_REVIEW: RequiredTable = {
+  ...FORM_FLOW_REQUIRED,
   ...CALC_REQUIRED,
   ...MATRIX_REQUIRED,
   ...cfgObject('category', 'Category', 'registerCategories', 'categories', 'CATEGORIES'),
@@ -450,6 +601,7 @@ export const TALENT_REVIEW: RequiredTable = {
   ...cfgObject('field', 'Field', 'registerFields', 'fields', 'FIELDS'),
   ...cfgObject('scoreRule', 'ScoreRule', 'registerScoreRules', 'score-rules', 'SCORE_RULES', SCORING),
   ...cfgObject('moduleGrade', 'ModuleGrade', 'registerModuleGrades', 'module-grades', 'MODULE_GRADES', SCORING),
+  ...mappingTable(),
   [`GET ${BASE_ROOT}/settings`]: [
     cfgView(
       SETTINGS_OBJECT,

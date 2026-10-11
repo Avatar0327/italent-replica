@@ -157,6 +157,32 @@ describe('AC-PLAT-F061 T-16 授权项编码与指纹守卫', () => {
     expect(grantCodesDigest(STANDARD_GRANT_CODES.slice(1))).not.toBe(STANDARD_GRANT_DIGEST);
   });
 
+  it('版本历史：编码集合每变一次 version 必须递增（#203 P3，DEC-404）', () => {
+    // 每次改动授权项编码集合：version +1，并在这里追加一行“version → 指纹”。只改指纹不改 version 时，这一行对不上而失败；
+    // 只改 version 不改编码时，指纹与上一行相同而失败。合并前最后一次合 main 时，以 main 的最后一行为准再 +1（DEC-404）。
+    const HISTORY: Record<number, string> = {
+      7: 'de040eb38bfcd54a',
+      8: '1892446da0d1f77c',
+      // C1-2b（DEC-399）：新增员工身份 employee_self_service 的授权项
+      9: '9805dbb4eadff84b',
+      // R3-T04 B2b（#219）：新增字段映射对象，评价规则 / 模块等级预置看全部（DEC-408②）
+      10: '622b3592d3bddc96',
+      // R3-T04 B3（#229）：新增盘点内容表单 / 流程定义对象
+      11: '23cb2ad23825abd9',
+    };
+    expect(HISTORY[STANDARD_GRANT_VERSION], `version ${STANDARD_GRANT_VERSION} 没有登记指纹：追加一行`).toBe(
+      STANDARD_GRANT_DIGEST,
+    );
+    const versions = Object.keys(HISTORY)
+      .map(Number)
+      .sort((a, b) => a - b);
+    expect(versions[versions.length - 1], '当前 version 必须是历史里最大的').toBe(STANDARD_GRANT_VERSION);
+    for (let i = 1; i < versions.length; i++)
+      expect(HISTORY[versions[i]!], `version ${versions[i]} 与上一版指纹相同：编码没变就不该递增`).not.toBe(
+        HISTORY[versions[i - 1]!],
+      );
+  });
+
   it('纯 TS 的 SHA-256 与 node:crypto 一致（含多块、中文、空串）', () => {
     for (const text of [
       '',

@@ -274,6 +274,8 @@ export const PRIMITIVES: readonly Primitive[] = [
       'transferBusinessContext',
       'lockEmployee',
       'ownTransferInput',
+      // C1-2b（DEC-402②）：本人调动三个按钮；预览事务第一步与提交的 CommandGuard.before（selfTransferGuard）各调一次
+      'requireSelfServiceButtons',
       'requireSelf',
       // 业务内的联动范围（DEC-178）、直接调动开关（transfer.direct）：留在命令内，按名字登记
     ].map((fn): Entry => [fn, call(fn), NEAR]),
@@ -326,6 +328,8 @@ export const PRIMITIVES: readonly Primitive[] = [
     ['talentReview.configRenameRequiresSeeAll', /\bNAME_REQUIRES_SEE_ALL\b/, { modules: ['talent-review'] }],
     // 新建字段时指定成对字段：另需字段更新权 + update 按钮 + pairFieldId 编辑权（config-routes.ts requirePairUpdate）
     ['talentReview.pairRequiresUpdate', call('requirePairUpdate'), { modules: ['talent-review'] }],
+    // 字段映射引用来源 / 目标字段 = 读取字段对象：另需字段对象的查看权与范围（scoring-routes.ts requireMappingFields）
+    ['talentReview.mappingFieldVisible', call('requireMappingFields'), { modules: ['talent-review'] }],
     // 人才盘点九宫格：改位置字段要求看全部（判定在查重之前）；引用盘点字段另需字段目录的对象查看权（matrix-routes.ts）
     [
       'talentReview.matrixPositionRequiresSeeAll',
@@ -334,6 +338,9 @@ export const PRIMITIVES: readonly Primitive[] = [
     ],
     ['talentReview.matrixFieldReference', call('requireFieldReference'), { modules: ['talent-review'] }],
     // 人才盘点计算规则：提交计算项目（公式 / 目标字段引用盘点字段目录）另需字段目录的对象查看权（calc-rule-routes.ts）
+    // 盘点内容表单引用字段 / 流程节点引用角色 = 读取对应目录：请求带引用时另需目录对象的查看权（form-flow-routes.ts）
+    ['talentReview.formFieldReference', call('requireFieldCatalog'), { modules: ['talent-review'] }],
+    ['talentReview.flowRoleReference', call('requireRoleCatalog'), { modules: ['talent-review'] }],
     ['talentReview.calcRuleFieldCatalog', call('requireCatalogAccess'), { modules: ['talent-review'] }],
     // 人才评定配置字典：按 enabled 筛选须有该字段查看权（R3-T02 B1a 路由声明）
     ['ev.filterFieldVisible', call('requireFilterVisible'), { modules: ['evaluation'] }],

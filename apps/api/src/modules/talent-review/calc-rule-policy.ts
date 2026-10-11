@@ -33,7 +33,7 @@ export const CALC_RULE_POLICIES = {
     button: noButton('列表按对象查看权'),
     scope: listScope('talentReview.configScope(talent_review_calc_rules)'),
     fields,
-    guards: ['talentReview.filterFieldVisible'],
+    guards: ['talentReview.filterFieldVisible', 'talentReview.calcRuleFieldCatalog'],
   }),
   [`GET ${BASE}/:id`]: object({
     ...byId,
@@ -42,6 +42,7 @@ export const CALC_RULE_POLICIES = {
     button: noButton('详情按对象查看权'),
     scope: point,
     fields,
+    guards: ['talentReview.calcRuleFieldCatalog'],
   }),
   [`POST ${BASE}`]: object({
     object: CALC,
@@ -69,6 +70,7 @@ export const CALC_RULE_POLICIES = {
     button: button('delete', 'detail'),
     scope: point,
     fields,
+    guards: ['talentReview.calcRuleFieldCatalog'],
     write: changed('none'),
   }),
 };

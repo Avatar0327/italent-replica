@@ -2,8 +2,10 @@
  * 必需项表：员工自助（modules/employee-self-service/，子应用挂在 /api/tenant/self-service）。
  * 七条都先经 selfAccess：boundEmployee 未绑定员工 → 403；事务内 self.check 复核绑定。调动两条另经
  * ownTransferInput（selfService.transferInput：调动日期可见可编辑、requireTransferWrite 按叠加授权器逐字段判 create）、
- * requireTransferSource（Transfer.Self 按钮 + 绑定本人 + 源范围）。Transfer.Self 由叠加授权器 BUTTONS 白名单放行
- * （校验在、结果恒真，声明登记的是这个校验点）。transfer.direct 守卫只在 mode = direct（requireDirectTransfer）或
+ * requireTransferSource（Transfer.Self 按钮 + 绑定本人 + 源范围）。Transfer.Self 按“员工”身份里的按钮配置放行（C1-2b，DEC-402②，
+ * 管理员可关闭）；三个本人调动按钮另由前提 requireSelfServiceButtons 统一校验（预览事务第一步 / 提交的 CommandGuard.before），
+ * Employment.Create / Employment.Submit 没有单独的 button(...) 观测，按前提原语登记。
+ * transfer.direct 守卫只在 mode = direct（requireDirectTransfer）或
  * initiator = hr（预览 allowedActions）时求值，本人入口固定 application / employee，恒不触发——按代码路径上的具名守卫登记。
  */
 import type { Obligation, RequiredTable } from './types.js';
@@ -77,6 +79,25 @@ const CREATE_WRITE = [
   },
 ] as const;
 const SELF_FACTS = ['self:selfAccess', 'self:transferFieldAccess'];
+/** 三个本人调动按钮的检查实现（C1-2b，契约 §2.3.2）：预览与提交各有一个调用点，同一个检查函数。 */
+const BUTTONS_IMPL = {
+  role: 'impl',
+  unit: `${ACCESS}#requireSelfServiceButtons`,
+  anchor: "reason: 'SELF_TRANSFER_BUTTON_DENIED'",
+} as const;
+const PREVIEW_BUTTONS_CALL = {
+  role: 'impl',
+  unit: `${TRANSFER}#ownTransferPreview`,
+  anchor: 'await requireSelfServiceButtons(tx, ctx)',
+} as const;
+const SUBMIT_BUTTONS_GUARD = [
+  { role: 'call', unit: `${ROUTES}#route:POST /transfer`, anchor: '{ guard: selfTransferGuard(self) }' },
+  {
+    role: 'impl',
+    unit: `${ROUTES}#selfTransferGuard`,
+    anchor: 'before: (tx) => requireSelfServiceButtons(tx, self.ctx)',
+  },
+] as const;
 
 export const SELF_SERVICE: RequiredTable = {
   'GET /api/tenant/self-service/profile': [self('GET', '/profile', ['self:selfAccess'])],
@@ -101,6 +122,8 @@ export const SELF_SERVICE: RequiredTable = {
       facts: ['button:requireTransferButton'],
       at: [
         route('POST', '/transfer/preview', 'ownTransferPreview(tx, self.ctx, self.employee.id, raw, deps)'),
+        PREVIEW_BUTTONS_CALL,
+        BUTTONS_IMPL,
         ...SOURCE_IMPL,
       ],
     },
@@ -184,6 +207,8 @@ export const SELF_SERVICE: RequiredTable = {
       facts: ['button:requireTransferButton', 'button:buttonResource', 'button:object.button'],
       at: [
         route('POST', '/transfer', 'createTransfer(tx, ctx, self.employee.id, input)'),
+        ...SUBMIT_BUTTONS_GUARD,
+        BUTTONS_IMPL,
         {
           role: 'impl',
           unit: `${SERVICE}#transferTargetContext`,

@@ -28,6 +28,7 @@ import {
 } from './access.js';
 import { registerCalcRuleRoutes } from './calc-rule-routes.js';
 import { registerConfigRoutes } from './config-routes.js';
+import { registerFormFlowRoutes } from './form-flow-routes.js';
 import { registerMatrixRoutes } from './matrix-routes.js';
 import { readinessCreate, readinessPatch } from './readiness-input.js';
 import * as readiness from './readiness-service.js';
@@ -37,6 +38,7 @@ const PATH = `${TALENT_REVIEW_BASE}/readiness-levels`;
 export function registerTalentReviewRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   registerConfigRoutes(router, deps); // PR-B1：设置、分类、角色、字段目录
   registerMatrixRoutes(router, deps); // PR-B4：九宫格与比例规则组
+  registerFormFlowRoutes(router, deps); // PR-B3：盘点内容表单、盘点流程定义
   registerCalcRuleRoutes(router, deps); // PR-B5：计算规则与计算项目
   router.get(PATH, async (c) => {
     const ctx = await reviewContext(c, deps, 'readiness');

@@ -11,9 +11,11 @@
  * - GET /transfer/references/:code：directManagerId 分支由 managerChoices 返回 id / name / orgPath
  *   （transfer/employee-managers.ts:43），附录 A「一般引用 id / name」漏了 orgPath，fixed 键并入；:code 不可见 → 403
  *   先于「字段不是引用字段」400（references.ts:53 / :76），乱填的 :code 观测码是 403，故不登记 invalidId。
- * - POST /transfer、POST /transfer/preview：按钮 Transfer.Self（requireTransferSource → requireTransferButton）与
- *   Employment.Create / Employment.Submit 由叠加授权器的 BUTTONS 白名单直接放行（access.ts:20、:55），身份配置撤不掉，
- *   登记 button none 而不是可撤销的 button(...)；附录 A 把按钮写在 guards 描述里。
+ * - POST /transfer、POST /transfer/preview：按钮 Transfer.Self（requireTransferSource → requireTransferButton）仍按
+ *   button(...) 登记；
+ *   三个本人调动按钮（Transfer.Self / Employment.Create / Employment.Submit）自 C1-2b（DEC-402②）起由“员工”身份里是否勾选决定，
+ *   管理员可关闭；检查 requireSelfServiceButtons 在预览事务第一步、提交的 CommandGuard.before（命令事务内、查台账前），
+ *   两个按钮 Employment.Create / Employment.Submit 没有单独的 button(...) 观测，按前提原语登记（契约 §2.3.2）。
  * - POST /transfer/preview：附录 A 写足迹列为「只读预览」；代码在 ownTransferInput 内经 requireTransferWrite →
  *   requireEmploymentWrite('create', writable)（transfer.ts:46），提取规则就是 body.fields+customFields，故 write.fields
  *   照登，footprint / result 为 none（不开命令事务）。
@@ -23,6 +25,12 @@
  */
 import { EMPLOYEE_READONLY_FIELDS } from '../transfer/employee-policy.js';
 import { sql, type Tx } from '@italent/db';
+import {
+  EMPLOYEE_DEFAULT_CREATE,
+  EMPLOYEE_DEFAULT_EDIT_FIELDS,
+  EMPLOYEE_SELF_SERVICE_BUTTONS,
+  EMPLOYEE_SELF_SERVICE_CODE,
+} from '@italent/domain';
 import { EMPLOYMENT_OBJECT } from '../employment/context.js';
 import { rowsOf } from '../employment/read-model.js';
 import { loadObjectPermissions } from '../permission/subject.js';
@@ -30,10 +38,10 @@ import { defineTable } from '../../route-policy/index.js';
 import { BAD_REQUEST, button, fixed, none, projector, self, write } from '../../route-policy/presets.js';
 
 // DEC-205：这是自动员工身份的出厂权限，不是表单白名单。租户可用现有身份配置接口覆盖，另有身份按并集合并。
-export const EMPLOYEE_PROFILE_CODE = 'employee_self_service';
+// 出厂默认值的唯一来源在 domain（platform/employee-self-service.ts，C1-2b）：开通时装的标准身份行与这里没有行时的兜底值同出一处。
+export const EMPLOYEE_PROFILE_CODE = EMPLOYEE_SELF_SERVICE_CODE;
 export { EMPLOYEE_READONLY_FIELDS } from '../transfer/employee-policy.js';
-const DEFAULT_EDIT = ['effectiveDate', 'reasonCode', 'departmentId', 'directManagerId'];
-const DEFAULT_READ = [...DEFAULT_EDIT, ...EMPLOYEE_READONLY_FIELDS];
+const DEFAULT_BUTTONS = EMPLOYEE_SELF_SERVICE_BUTTONS.map((b) => b.buttonCode);
 export const PROTOCOL_FIELDS = [
   'id',
   'employeeId',
@@ -46,7 +54,15 @@ export const PROTOCOL_FIELDS = [
   'isLatest',
 ];
 
-export async function employeeFieldPolicy(tx: Tx, tenantId: string) {
+export interface EmployeeFieldPolicy {
+  readonly view: Set<string>;
+  readonly edit: Set<string>;
+  readonly create: boolean;
+  /** 员工身份在任职对象上授予的 detail 级按钮编码（本人调动三个按钮的实际开关，DEC-402②）。 */
+  readonly buttons: Set<string>;
+}
+
+export async function employeeFieldPolicy(tx: Tx, tenantId: string): Promise<EmployeeFieldPolicy> {
   const [profile] = rowsOf<{ id: string }>(
     await tx.execute(sql`
     SELECT p.id FROM permission_profiles p
@@ -54,9 +70,17 @@ export async function employeeFieldPolicy(tx: Tx, tenantId: string) {
     WHERE p.tenant_id=${tenantId} AND p.code=${EMPLOYEE_PROFILE_CODE}
   `),
   );
-  if (!profile) return { view: new Set(DEFAULT_READ), edit: new Set(DEFAULT_EDIT), create: true };
+  if (!profile) {
+    return {
+      view: new Set([...EMPLOYEE_DEFAULT_EDIT_FIELDS, ...EMPLOYEE_READONLY_FIELDS]),
+      edit: new Set(EMPLOYEE_DEFAULT_EDIT_FIELDS),
+      create: EMPLOYEE_DEFAULT_CREATE,
+      buttons: new Set(DEFAULT_BUTTONS),
+    };
+  }
   const [permission] = await loadObjectPermissions(tx, [profile.id], EMPLOYMENT_OBJECT);
   return {
+    buttons: new Set(permission?.buttons.filter((b) => b.level === 'detail').map((b) => b.buttonCode) ?? []),
     view: new Set(permission?.fields.filter((field) => field.view).map((field) => field.fieldCode) ?? []),
     edit: new Set(permission?.fields.filter((field) => field.view && field.edit).map((field) => field.fieldCode) ?? []),
     create: permission?.dataOperations.create ?? false,
@@ -71,8 +95,8 @@ export async function employeeFieldPolicy(tx: Tx, tenantId: string) {
  */
 const ownRecord = projector('selfService.ownRecord', 'selfService.ownRecord');
 /**
- * 自助调动仍经 requireTransferButton(employee) 校验 Transfer.Self@detail；叠加授权器 selfService 对 Transfer.Self /
- * Employment.Create / Employment.Submit 三个按钮直接放行（access.ts BUTTONS），所以身份配置撤不掉——校验在、结果恒真。
+ * 自助调动经 requireTransferButton(employee) 校验 Transfer.Self@detail，经叠加授权器 selfService 按“员工”身份里的按钮配置
+ * 放行（C1-2b：管理员可关闭，不再恒真）；Employment.Create / Employment.Submit 与它一起由 requireSelfServiceButtons 校验。
  */
 const whitelistedButtons = button('Transfer.Self', 'detail');
 /**
@@ -83,21 +107,28 @@ const whitelistedButtons = button('Transfer.Self', 'detail');
  * 只读（DEC-209）→ 403；requireTransferWrite → requireEmploymentWrite('create', writable) 由叠加授权器逐字段判定。
  */
 const TRANSFER_INPUT = 'selfService.transferInput';
-/** 预览在同一租户事务内：绑定复核、表单与字段权限、previewTransfer 内的来源 / 只读字段 / 目标部门范围复核。 */
+/**
+ * 预览在同一租户事务内：绑定复核、三个本人调动按钮（事务第一步）、表单与字段权限、previewTransfer 内的来源 / 只读字段 /
+ * 目标部门范围复核。
+ */
 const previewPreconditions = [
   'self.check',
+  'requireSelfServiceButtons',
   'ownTransferInput',
   'requireTransferSource',
   'requireEmployeeTransferFields',
   'requireScopedEmploymentObject',
 ];
 /**
- * 自助调动命令内（runWrite → runCommand → execute）：绑定复核、ownTransferInput 事务内再算（命令外已先算一次，
- * routes.ts:99），createTransfer 内锁参与人与员工（lockEmploymentEmployee 比对 If-Match revision → 409 REVISION_CONFLICT）、
- * transferTargetContext → requireTransferSource（绑定本人 / 源范围）、requireTransferWrite 复核后再提交审批。
+ * 自助调动命令内（runWrite → runCommand → ledgerExit → CommandGuard.before / execute）：三个本人调动按钮在 guard.before
+ * （routes.ts selfTransferGuard，事务内、查台账前，覆盖首次执行 / 直接重放 / 失败后回查）；execute 内绑定复核、ownTransferInput
+ * 事务内再算（命令外已先算一次，routes.ts:99），createTransfer 内锁参与人与员工（lockEmploymentEmployee 比对 If-Match
+ * revision → 409 REVISION_CONFLICT）、transferTargetContext → requireTransferSource（绑定本人 / 源范围）、
+ * requireTransferWrite 复核后再提交审批。
  */
 const transferPreconditions = [
   'self.check',
+  'requireSelfServiceButtons',
   'ownTransferInput',
   'lockTransferParticipants',
   'lockEmploymentEmployee',

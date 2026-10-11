@@ -8,9 +8,7 @@
  */
 import {
   and,
-  asc,
   eq,
-  inArray,
   talentReviewCalcItemRefs as R,
   talentReviewCalcRuleItems as I,
   talentReviewCalcRules as K,
@@ -23,15 +21,15 @@ import {
   type CalcHints,
   formulaPath,
   FORMULA_CONTEXT_FIELDS,
-  type FormulaField,
   type OrderingDiagnosticKind,
   targetNotAllowed,
   unreferenceableItem,
 } from '@italent/domain';
 import { AppError } from '../../errors.js';
-import { notFoundMessage, requireConfigCreatable, requireConfigVisible, type ModuleScope } from './access.js';
+import { notFoundMessage, requireConfigCreatable } from './access.js';
 import type { CalcItemBody, CalcRuleCreate, CalcRulePatch } from './calc-rule-input.js';
-import { CALC_RULE, type CalcRuleView, loadCalcRuleView } from './calc-rule-view.js';
+import { type CatalogAccess, loadFullCatalog, loadVisibleCatalog, lockFields, visibleOf } from './calc-rule-catalog.js';
+import { CALC_RULE, calcRuleSpecOf, type CalcRuleView, loadCalcRuleView } from './calc-rule-view.js';
 import { textFallbackItems } from './text-fallback.js';
 import {
   auditConfig,
@@ -44,12 +42,7 @@ import {
   type WriteContext,
 } from './config-kit.js';
 
-/** 公式 / 目标字段解析所需的字段目录访问：对象范围 + 查看人对 name / kind / enabled / systemWritten 四列的查看权。 */
-export interface CatalogAccess {
-  readonly scope: ModuleScope;
-  /** 四列都可见才可引用；缺任一列时每个字段都与“不存在”不可区分（不暴露名称、类型、停用与系统写入属性）。 */
-  readonly columns: boolean;
-}
+export type { CatalogAccess };
 export interface CalcWriteContext extends WriteContext {
   /** 请求不带计算项目时为空。 */
   readonly fieldAccess?: CatalogAccess;
@@ -59,48 +52,6 @@ export type CalcWriteView = CalcRuleView & { hints?: CalcHints };
 
 const reject = (reason: string, message: string, extra: object = {}) =>
   new AppError('VALIDATION_FAILED', message, { reason, ...extra });
-
-type CatalogRow = FormulaField & { readonly createdBy: string | null };
-
-/** 租户的全部盘点字段（不按查看人过滤）：只用于计算不暴露名称的提示，以及按查看人过滤出可引用的目录。 */
-async function loadFullCatalog(tx: Tx, tenantId: string): Promise<CatalogRow[]> {
-  const rows = await tx
-    .select({
-      id: F.id,
-      name: F.name,
-      kind: F.kind,
-      enabled: F.enabled,
-      systemWritten: F.systemWritten,
-      createdBy: F.createdBy,
-    })
-    .from(F)
-    .where(eq(F.tenantId, tenantId));
-  return rows.map((r) => ({ ...r, kind: r.kind as FormulaField['kind'] }));
-}
-
-/** 查看人能引用的字段：没有字段目录访问、缺四列任一列查看权时为空；否则按字段目录范围过滤。 */
-function visibleOf(rows: readonly CatalogRow[], access: CatalogAccess | undefined): FormulaField[] {
-  if (!access?.columns) return [];
-  const visible = (createdBy: string | null) => {
-    try {
-      requireConfigVisible(access.scope, 'field', createdBy);
-      return true;
-    } catch {
-      return false;
-    }
-  };
-  return rows.filter((r) => visible(r.createdBy)).map(({ createdBy: _createdBy, ...r }) => r);
-}
-
-/** 当前操作人可引用的盘点字段：字段目录对象范围内可见，且四个相关列都有查看权。 */
-async function loadVisibleCatalog(
-  tx: Tx,
-  tenantId: string,
-  access: CatalogAccess | undefined,
-): Promise<FormulaField[]> {
-  if (!access) throw new Error('计算项目缺少字段目录访问');
-  return visibleOf(await loadFullCatalog(tx, tenantId), access);
-}
 
 const failure = (analysis: Extract<CalcAnalysis, { ok: false }>) => {
   const { reason, item, message, issues, fields } = analysis;
@@ -135,17 +86,6 @@ async function analyzeOnce(
   const analysis = analyzeCalcItems(items, catalog, held);
   if (!analysis.ok) throw failure(analysis);
   return analysis;
-}
-
-/** 被引用字段行的共享锁，按字段 id 排序（与字段变更入口的行锁同序）。 */
-async function lockFields(tx: Tx, tenantId: string, ids: readonly string[]) {
-  if (ids.length === 0) return;
-  await tx
-    .select({ id: F.id })
-    .from(F)
-    .where(and(eq(F.tenantId, tenantId), inArray(F.id, [...ids])))
-    .orderBy(asc(F.id))
-    .for('share');
 }
 
 /**
@@ -306,8 +246,9 @@ export async function updateCalcRule(
   return after;
 }
 
-export const deleteCalcRule = (tx: Tx, ctx: CalcWriteContext, id: string): Promise<CalcRuleView> =>
-  deleteConfig(tx, CALC_RULE, ctx, id);
+/** bound = 开关打开：删除快照与回执用带存储形态的原始视图（审计的新格式，契约 §5.3）。 */
+export const deleteCalcRule = (tx: Tx, ctx: CalcWriteContext, id: string, bound = false): Promise<CalcRuleView> =>
+  deleteConfig(tx, calcRuleSpecOf(bound), ctx, id);
 
 // ---- 字段删除守卫（F-082 契约 §3.2，DEC-376⑥）：任一命中即为 CALC_RULE（409 FIELD_IN_USE） -----------------------------------
 // 保护类改动，合入即生效、不挂开关。库层另有引用表外键 restrict 兜底：正常路径由守卫 + 锁拦下，外键是最后一道防线。

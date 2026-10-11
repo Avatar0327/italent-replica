@@ -36,7 +36,15 @@ def snapshot():
     prs = [p for p in prs if str(p["number"]) not in paused]
     out = {}
     for p in prs:
-        checks = [c.get("conclusion") or c.get("status") for c in p["statusCheckRollup"] if c.get("conclusion") != "SKIPPED"]
+        best = {}  # 同名检查可能有多条（取消后重跑），按名取最好结果：任一 SUCCESS 即算 SUCCESS
+        for c in p["statusCheckRollup"]:
+            if c.get("conclusion") == "SKIPPED":
+                continue
+            v = c.get("conclusion") or c.get("status")
+            k = c.get("name") or c.get("context") or str(len(best))
+            if best.get(k) != "SUCCESS":
+                best[k] = v
+        checks = list(best.values())
         ci = "none" if not checks else "green" if checks and all(c == "SUCCESS" for c in checks) else ("red" if any(c in ("FAILURE", "CANCELLED", "TIMED_OUT") for c in checks) else "running")
         last_commit = p["commits"][-1]["committedDate"] if p["commits"] else ""
         last_comment = p["comments"][-1]["createdAt"] if p["comments"] else ""
@@ -246,6 +254,16 @@ def main():
             quota_snapshot()
         except Exception:
             pass
+        # 额度回调提醒（用户 10-10：临时 fast + Ultra，Codex 周额度剩余 ≥50% 时回到 DEC-406）
+        arm = os.path.expanduser("~/.cache/italent-quota-revert-armed")
+        if os.path.exists(arm):
+            try:
+                last = json.loads(open(os.path.expanduser("~/.cache/italent-codex-quota.jsonl")).read().strip().splitlines()[-1])
+                if last.get("used") is not None and last["used"] <= 50:
+                    ev.append(f"⚠ Codex 周额度已用 {last['used']}%（剩余 ≥50%）——按用户 10-10 决定，通知审查合并窗口回调到 DEC-406 省额度规则")
+                    os.remove(arm)
+            except Exception:
+                pass
         cx = codex_results()
         if cprev is not None:
             for k, (cnt, pr) in cx.items():
