@@ -149,7 +149,20 @@ describe('AC-TR-template-copy：独立版本与生命周期', () => {
     expect((await w.patch(copy, { enabled: true })).status).toBe(400);
     expect((await w.read(copy.id)).body).toEqual(copy);
     const rename = async (t: TemplateView, name: string) => {
-      const response = await w.patch(t, { modules: [{ ...module, id: t.modules[0]!.id, name }] });
+      const response = await w.patch(t, {
+        modules: [
+          { ...module, id: t.modules[0]!.id, name },
+          { kind: 'info', id: t.modules[1]!.id, name: '信息', fieldIds: [field.id] },
+          {
+            kind: 'succession',
+            id: t.modules[2]!.id,
+            name: '继任',
+            allowOrg: true,
+            allowPosition: false,
+            allowTarget: true,
+          },
+        ],
+      });
       expect(response.status, await response.clone().text()).toBe(200);
       return (await response.json()) as TemplateView;
     };
@@ -169,15 +182,25 @@ describe('AC-TR-template-copy：独立版本与生命周期', () => {
     const ready = (await enabled.json()) as TemplateView;
     expect(ready.steps.every((s) => s.showMatrix === false)).toBe(true);
     expect(
-      ready.permissions.every(
-        (p) =>
-          p.visible &&
-          p.scoreEnabled &&
-          p.commentEnabled &&
-          !p.scoreRequired &&
-          !p.commentRequired &&
-          p.weight === null,
-      ),
+      ready.permissions
+        .filter((p) => p.moduleName !== '继任')
+        .every(
+          (p) =>
+            p.visible &&
+            p.scoreEnabled &&
+            p.commentEnabled &&
+            !p.scoreRequired &&
+            !p.commentRequired &&
+            p.weight === null,
+        ),
+    ).toBe(true);
+    expect(ready.permissions.filter((p) => p.moduleName === '继任')).toEqual(
+      expect.arrayContaining([expect.objectContaining({ successorAccess: 'hidden', targetAccess: 'hidden' })]),
+    );
+    expect(
+      ready.permissions
+        .filter((p) => p.moduleName === '继任')
+        .every((p) => p.successorAccess === 'hidden' && p.targetAccess === 'hidden'),
     ).toBe(true);
     const disabled = await w.patch(ready, { enabled: false });
     expect(disabled.status).toBe(200);

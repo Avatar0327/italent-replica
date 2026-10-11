@@ -3,7 +3,7 @@
  * module-route-access.objectContext（对象 TALENT_REVIEW_OBJECTS.readiness）；写入口 reviewWriteContext 叠加 WRITE_BUTTONS
  * 按钮。路径由 TALENT_REVIEW_BASE 拼出（跨文件常量），证据绑注册函数 registerTalentReviewRoutes。
  */
-import { list, SCOPE_AT } from './scopes.js';
+import { guardScope, list, point, SCOPE_AT } from './scopes.js';
 import type { Evidence, Obligation, RequiredTable } from './types.js';
 
 const BASE = '/api/tenant/talent-review/readiness-levels';
@@ -677,12 +677,12 @@ const TPL_REPLAY_READONLY: Obligation = {
   ],
 };
 /** 引用流程 / 评价规则 / 模块等级 / 盘点字段 = 读取目录：请求带引用时另需目录对象的查看权，可见性在命令内按目录范围判定。 */
-const TPL_REFERENCE = (): Obligation[] => [
+const TPL_REFERENCE = (entry = 'await requireCatalogs(c, deps, references)', copying = false): Obligation[] => [
   {
     perm: 'guard:talentReview.templateCatalogReference',
     facts: ['guard:talentReview.templateCatalogReference'],
     note: '条件守卫：请求体带流程 / 评价规则 / 模块等级 / 字段 / 表单引用时，另需对应目录的对象查看权，引用的可见性在命令内按目录范围判定',
-    at: [tplEntry('await requireCatalogs(c, deps, references)')],
+    at: [{ ...tplEntry(entry), ...(copying ? { unit: `${TPR}#registerTemplateCopyRoute` } : {}) }],
   },
   ...(['flow', 'scoreRule', 'moduleGrade', 'field', 'form'] as const).map((key): Obligation => ({
     perm: `obj:TalentReview.${TPL_CATALOG_LABEL[key]}:view`,
@@ -720,7 +720,69 @@ const TPL_RESULT_FIELDS: Obligation = {
     },
   ],
 };
+const COPY_ENTRY: Evidence = {
+  role: 'call',
+  unit: `${TPR}#registerTemplateCopyRoute`,
+  anchor: 'const ctx = await copyContext(c, deps, revision(c))',
+};
+const COPY_REQUIRED: Obligation[] = [
+  ...(['create', 'view'] as const).map((op): Obligation => ({
+    perm: `obj:${TPL_OBJECT}:${op}`,
+    need: op === 'create' ? guardScope('talentReview.templateCreatable') : point('talentReview.template.byId'),
+    facts: ['object:objectContext'],
+    at: [
+      COPY_ENTRY,
+      {
+        role: 'impl',
+        unit: `${TPR}#copyContext`,
+        anchor:
+          op === 'create'
+            ? "await reviewContext(c, deps, 'template', 'create', expectedRevision)"
+            : "await reviewContext(c, deps, 'template')",
+      },
+      ...CONTEXT,
+      TPL_CONST,
+      {
+        role: 'scope',
+        unit: `${TPR}#registerTemplateCopyRoute`,
+        anchor:
+          op === 'create'
+            ? 'requireCreatable(checked.scope, source.ownerOrgId)'
+            : 'await requireEditable(tx, checked.ctx, checked.scope, source)',
+      },
+    ],
+  })),
+  {
+    perm: `btn:${TPL_OBJECT}#copy@list`,
+    facts: ['button:button()'],
+    at: [
+      COPY_ENTRY,
+      {
+        role: 'impl',
+        unit: `${TPR}#copyContext`,
+        anchor: "await button(deps, ctx, codeOf('template'), 'copy', 'list')",
+      },
+      BUTTON[1]!,
+      TPL_CONST,
+    ],
+  },
+  {
+    ...TPL_CREATABLE,
+    at: [
+      {
+        role: 'call',
+        unit: `${T}/template-service.ts#copyTemplate`,
+        anchor: 'requireCreatable(ctx.scope, source.ownerOrgId)',
+      },
+      TPL_CREATABLE.at[1]!,
+    ],
+  },
+  TPL_READONLY,
+  ...TPL_REFERENCE('await requireCatalogs(c, checked.txDeps, references, tx)', true),
+  TPL_RESULT_FIELDS,
+];
 const TEMPLATE_REQUIRED: RequiredTable = {
+  [`POST ${BASE_ROOT}/templates/:id/copy`]: COPY_REQUIRED,
   [`GET ${BASE_ROOT}/templates`]: [
     tplView("router.get(TEMPLATES, async (c) => { const ctx = await reviewContext(c, deps, 'template')"),
     TPL_FILTER_GUARD,

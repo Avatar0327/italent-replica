@@ -95,6 +95,7 @@ it('AC-TR-template-copy：原件清空模块后重放仍校验复制回执持有
   const created = await copy();
   expect(created.status).toBe(201);
   const duplicate = (await created.json()) as TemplateView;
+  const before = await (await setup.request('GET', `${TR_BASE}/templates/${duplicate.id}`, base.asAdmin)).json();
   expect(
     (
       await setup.request('PATCH', `${TR_BASE}/templates/${source.id}`, {
@@ -108,5 +109,5 @@ it('AC-TR-template-copy：原件清空模块后重放仍校验复制回执持有
   const denied = await copy();
   expect(denied.status, await denied.clone().text()).toBe(404);
   const after = await setup.request('GET', `${TR_BASE}/templates/${duplicate.id}`, base.asAdmin);
-  expect(await after.json()).toEqual(duplicate);
+  expect(await after.json()).toEqual(before);
 });

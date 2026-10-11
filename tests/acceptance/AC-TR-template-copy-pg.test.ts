@@ -38,11 +38,11 @@ function pauseForm() {
   });
   return { entered, resume, spy };
 }
-async function arrived(pause: ReturnType<typeof pauseVersion>, request: Promise<Response>) {
+async function arrived(pause: Pick<ReturnType<typeof pauseVersion>, 'entered'>, request: Promise<Response>) {
   await Promise.race([
     pause.entered.promise,
     request.then(async (response) => {
-      throw new Error(`请求未到持锁边界即结束：${response.status} ${await response.text()}`);
+      throw new Error(`请求未到持锁边界即结束：${response.status} ${await response.clone().text()}`);
     }),
   ]);
 }
