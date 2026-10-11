@@ -1,7 +1,7 @@
 /**
  * AC-PRM-FW-01（F-039 PR-A，docs/08_设计/F-039_权限框架强制_设计.md §2.3；DEC-300 / DEC-303）：
  * 路由声明的注册校验——缺失即失败。反例按 DEC-300 的三类致命项分组：身份不匹配、缺失声明、初始化不可信；
- * 校验按**注册实例**（包装函数身份）绑定，不只看 method / path。正例核对全部 592 个端点都已登记、
+ * 校验按**注册实例**（包装函数身份）绑定，不只看 method / path。正例核对全部端点都已登记、
  * 中间件按最终路径登记、HEAD 走 GET 声明。前四组用内存 Hono + 框架；最后一组用 createApp 真实装配。
  */
 import {
@@ -27,6 +27,13 @@ import {
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { PROBE_POLICIES, probeRoutes } from './support/probe-routes.js';
+import {
+  countDrift,
+  countEndpoints,
+  readEndpointCounts,
+  writeEndpointCounts,
+} from './support/route-policy/endpoint-counts.js';
+import { generatedGate } from './support/route-policy/generated-gate.js';
 import { tenantApi } from './support/tenant-api.js';
 
 const testDb = useTestDb();
@@ -313,54 +320,9 @@ describe('AC-PRM-FW-01 正例', () => {
 
 describe('AC-PRM-FW-01 createApp 真实装配', () => {
   /**
-   * 合并 main（DEC-333）后的运行时端点按登记表统计：附录 A 227 + DEC-303 补的 employment-preview + 平台回补 1 +
-   * 审批 reject-previous / jump 2 + 人才标准 40 + 360 管理端 40 + 360 链接 8 + IDP 56 = 375；
-   * 合并 #138（F-058 账号头像）后 + 头像 5 + 360 链接头像 1 = 381；合并 #146（F-066 IDP 转交）后 + 1 = 382；
-   * 合并 #144（R3-T04 准备度字典）后 + 5 = 387；R3-T02 PR-A 任职资格配置 + 51 = 438；R3-T03 PR-B（360 管理端
-   * + 27、待办作答 + 5、报告收件人链接 + 2）后 = 472；
-   * DEC-361 种子回补命令 + 1 = 473；R3-T04 PR-B1（设置 2 + 分类 / 角色 / 字段目录各 5）+ 17 = 490；R3-T05 A1（继任记录读侧）+ 3 = 493；
-   * F-060 报表 PNG / 报告 PDF（管理端 + 2、收件人链接 + 1）后 = 496；
-   * R3-T04 PR-B4（九宫格 5 + 规则组 3）+ 8 = 504；
-   * R3-T04 PR-B5（计算规则 5）+ 5 = 509；R3-T02 PR-B B1a 活动类型 + 5 = 514；B1b 活动周期 + 5、通用评分项 + 5 = 524；
-   * B3 评审组 + 4（无删除，DEC-393⑤）、成员候选 + 1 = 529；B4 评价表 + 5 = 534；
-   * R3-T04 PR-B2a（评价规则 / 模块等级各 5）+ 10 = 544；R3-T04 PR-B2b（字段映射 5）+ 5 = 549；
-   * R3-T05 A2（继任记录写侧 4 + 候选 1）+ 5 = 554；
-   * F-082 F082-5（改绑平台命令，总开关默认打开）+ 1 = 555；R3-T04 PR-B3（盘点内容表单 5、流程定义 5）+ 10 = 565；
-   * R3-T02 C1-6（发展通道查看：管理 2 + ESS 2）+ 4 = 569；
-   * R3-T02 C1-5 子集初始化 + 1 = 570；
-   * F-076 PR-2a 门户登录 / 登出 + 2 = 572；
-   * R3-T02 B5 评定活动 + 5 = 577；
-   * F-060 评价过快（点“下一页”：链接 + 1、待办作答 + 1；首次打开由取作答页建立，不另设接口，DEC-405②）+ 2 = 579；
-   * R3-T05 B2a（配置 7 + 平台 1）+ 8 = 587；R3-T04 B6a 模板结构 + 5 = 592。
+   * 端点总数与按模块统计不再写成字面量（DEC-430①）：由本文件在 ROUTE_POLICY_UPDATE_BASELINE=1 时生成到
+   * baseline/endpoint-counts.json，不一致走生成物开关（PR 上警告、main / 队首 PR 判红）。各次增减的来历见 git 历史。
    */
-  const EXPECTED_BY_MODULE: Readonly<Record<string, number>> = {
-    root: 1,
-    platform: 9,
-    'tenant-settings': 3,
-    permission: 43,
-    job: 14,
-    establishment: 16,
-    personnel: 18,
-    contracts: 23,
-    'self-service': 9,
-    org: 14,
-    employment: 46,
-    approval: 34,
-    audit: 4,
-    talent: 40,
-    survey360: 75,
-    'survey360-link': 10,
-    'survey360-report-link': 3,
-    'survey360-portal': 2,
-    idp: 57,
-    avatar: 5,
-    'talent-review': 65,
-    'talent-review-platform': 1,
-    qualification: 54,
-    evaluation: 30,
-    succession: 15,
-    'succession-platform': 1,
-  };
 
   it('未声明的夹具路由 → createApp 抛 ROUTE_UNDECLARED，应用无法启动', () => {
     const error = failure(() => createApp({ db: testDb().db, tenantRoutes: [probeRoutes] }));
@@ -375,12 +337,12 @@ describe('AC-PRM-FW-01 createApp 真实装配', () => {
     expect(keys).toContain('DELETE /api/tenant/probes/:id');
   });
 
-  it('全部 592 个端点已声明，按模块统计一致', () => {
+  it('全部端点已声明，总数与按模块统计等于冻结计数（endpoint-counts.json）', () => {
     const manifest = routeManifest(createApp({ db: testDb().db }));
-    const byModule: Record<string, number> = {};
-    for (const route of manifest.declared) byModule[route.module] = (byModule[route.module] ?? 0) + 1;
-    expect(byModule).toEqual(EXPECTED_BY_MODULE);
-    expect(manifest.declared).toHaveLength(592);
+    const counts = countEndpoints(manifest.declared);
+    if (process.env.ROUTE_POLICY_UPDATE_BASELINE === '1') writeEndpointCounts(counts);
+    expect(generatedGate('端点计数', countDrift(counts, readEndpointCounts()))).toEqual([]);
+    expect(counts.total).toBeGreaterThan(500);
     expect(manifest.declared.map((r) => `${r.method} ${r.path}`)).toContain(
       'POST /api/tenant/org/organizations/:id/employment-preview',
     );

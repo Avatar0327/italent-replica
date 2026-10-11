@@ -27,6 +27,7 @@ import {
   writeFrozenRecorded,
 } from './support/route-policy/recorded.js';
 import { preconditionName } from './support/route-policy/features.js';
+import { generatedGate, textDrift } from './support/route-policy/generated-gate.js';
 import { tenantApi } from './support/tenant-api.js';
 
 const testDb = useTestDb();
@@ -233,7 +234,9 @@ describe('AC-PRM-FW-01 recorded：收集 ↔ 冻结 双向核对', () => {
 describe('AC-PRM-FW-01 recorded：冻结文件', () => {
   it('baseline/recorded.json 存在、是规范化 JSON、键都是已声明端点（本 PR 为空，首批事实随模块组）', () => {
     const frozen = readFrozenRecorded();
-    expect(canonicalJson(frozen)).toBe(readFileSync(RECORDED_PATH, 'utf8'));
+    // DEC-430①：规范化格式属生成物检查，PR 上只警告；键必须是已声明端点照旧判红
+    const drift = textDrift('recorded.json', canonicalJson(frozen), readFileSync(RECORDED_PATH, 'utf8'));
+    expect(generatedGate('recorded 冻结文件', drift)).toEqual([]);
     const declared = new Set(routes.map((r) => `${r.method} ${r.path}`));
     for (const key of Object.keys(frozen)) expect(declared.has(key), key).toBe(true);
     // 真实冻结文件对真实声明的核对（本文件不负责任何端点，只核对冻结的端点还存在）
