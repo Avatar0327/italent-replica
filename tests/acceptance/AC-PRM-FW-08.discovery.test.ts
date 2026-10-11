@@ -200,6 +200,7 @@ describe('AC-PRM-FW-08 P0 / P3：真实声明 + 显式表零发现', () => {
     const dropped = DISCOVERY_TABLE[k]!.filter((o) => !permClaims(o.perm, DISCOVERY_FACTS[k]!.trace[0]!));
     const findings = checkDiscovery(DISCOVERY_FACTS, fixtureTable(k, dropped), DISCOVERY_ROUTES, {
       knownGaps: DISCOVERY_GAPS,
+      redundant: [],
     });
     expect(codes(findings)).toEqual(['PROBE_ADMISSION_UNCLAIMED']);
     expect(findings[0]!.route).toBe(k);

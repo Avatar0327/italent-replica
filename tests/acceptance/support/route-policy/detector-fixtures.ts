@@ -1,6 +1,5 @@
 /**
- * 检测器独立夹具固定权限、用途、范围与内部角色；真实登记另走门禁（DEC-416③，#248 P2-1）。
- * 数字分别索引下方用途 / 范围 / 内部角色；-1 表示缺省；证据检查另用其专用夹具。
+ * 独立夹具固定权限、用途、范围与角色（DEC-416③，#248 P2-1）；数字索引用途 / 范围 / 角色，-1 为缺省；真实登记另走门禁。
  */
 import type { Evidence, Inner, Need, Obligation, Purpose, RequiredTable } from './required/types.js';
 import type { RequiredSemantics } from './required.js';
