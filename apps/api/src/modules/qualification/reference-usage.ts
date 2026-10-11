@@ -2,7 +2,12 @@
 import { sql, type Tx } from '@italent/db';
 import { lockEditable, rejectInUse, type WriteContext } from './store.js';
 
-export async function lockUnusedQualificationRef(tx: Tx, ctx: WriteContext, object: 'category' | 'level', id: string) {
+export async function lockUnusedQualificationRef(
+  tx: Tx,
+  ctx: WriteContext,
+  object: 'category' | 'level',
+  id: string,
+): ReturnType<typeof lockEditable> {
   const row = await lockEditable(tx, ctx, object, id);
   const column = object === 'category' ? 'category_id' : 'level_id';
   const array = object === 'category' ? 'category_ids' : 'level_ids';
