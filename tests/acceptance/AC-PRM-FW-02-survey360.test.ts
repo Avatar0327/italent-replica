@@ -177,7 +177,7 @@ describe('AC-PRM-FW-02 F-073 人员 / 列表用途分别登记', () => {
     }
   });
 
-  test('列表范围披露 / 写范围与披露：GET /activities、GET /people、POST /people/sync → disclosure:allActivities（两个键，need none）', () => {
+  test('列表 / 写范围披露：GET /activities、GET /people、POST /people/sync → disclosure:allActivities（两个键，need none）', () => {
     for (const key of [`GET ${BASE}/activities`, `GET ${BASE}/people`, `POST ${BASE}/people/sync`]) {
       const found = entry(key).filter((o) => o.purpose === 'disclosure:allActivities');
       expect(found.map((o) => o.perm).sort(), key).toEqual([VIEW_ALL, VIEW].sort());
