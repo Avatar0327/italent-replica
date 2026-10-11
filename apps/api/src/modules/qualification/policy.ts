@@ -337,6 +337,29 @@ export const QUALIFICATION_POLICIES = defineTable('qualification', {
     scope: STANDARD_DETAIL,
     fields: projector('ql.chart', 'ql.chart'),
   }),
+  // ---- subset-init-routes.ts：任职资格子集初始化（C1-5，设计 §4.1 / §5.1 点名的批量命令）--------------------------------
+  // 与 HR 逐个新增子集同一道门：TenantBase.Qualification 新增权 + 列表层“新增”按钮；人员范围用同一个 personScope 谓词，
+  // 逐名员工判定，范围外与不存在同一回执 EMPLOYEE_NOT_FOUND（HTTP 恒 200，不透露是否存在）。整批一条命令（单台账行，
+  // Idempotency-Key 必带），事务内先复核当前权限（guard.before）；返回前按当前范围再裁一遍回执（幂等重放也不带出范围外明细）
+  [`POST ${BASE}/subsets/initialize`]: object({
+    object: SUBSETS.qualification.objectCode,
+    operation: 'create',
+    button: button('create', 'list'),
+    scope: pointScope({ body: 'employeeIds[*]' }, 'personnel.employee', NF),
+    fields: shape('ql.subsetInitReceipt'),
+    rows: {
+      path: 'employeeIds[*]',
+      fields: none('请求行只有员工 ID，没有字段；类别 / 级别 / 日期由任职记录的岗职务映射得出'),
+      target: { body: 'employeeIds[*]' },
+      batch: 'receipt',
+    },
+    write: write(
+      none('请求体只含员工 ID 列表；生成的子集字段由系统映射得出，不接受提交'),
+      'personnel.write',
+      { generic: { targets: 'employeeIds[*]', locator: 'personnel.employee' } },
+      { ledger: 'single', preconditions: ['lockEmploymentEmployee', 'lockPerson'] },
+    ),
+  }),
   // ---- development-channel.ts：员工发展通道查看——管理入口（C1-6，AC-QL-08）------------------------------------------
   // 两道授权缺一不可：员工任职资格子集的查看权 + 员工在查看人人员范围内（范围外与不存在同为 404），以及 Qualification 的
   // DevelopmentChannel（卡片）/ QualificationStandard（点级别）对象查看权；内容按查看人字段权与源对象读取权投影（不拒绝）
