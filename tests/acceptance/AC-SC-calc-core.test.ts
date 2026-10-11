@@ -190,9 +190,11 @@ describe('AC-SC-calc-core run 契约', () => {
       now: new Date('2026-10-12T03:00Z'),
       intervalHours: 4,
     };
-    expect(calcKey(scheduled, 22 * 60)).toBe(`org_stats:schedule:${base.tenantId}:2026-10-11:4h:5`);
+    expect(calcKey(scheduled)).toBe(`org_stats:schedule:${base.tenantId}:2026-10-11:4h:5`);
     expect(calcKey({ ...scheduled, kind: 'exit_sweep' })).toBe(`exit_sweep:schedule:${base.tenantId}:2026-10-11`);
-    expect(calcKey({ ...scheduled, now: new Date('2026-10-12T06:00Z') }, 60)).not.toBe(calcKey(scheduled, 22 * 60));
+    expect(calcKey({ ...scheduled, businessDate: '2026-10-12', now: new Date('2026-10-12T06:00Z') })).not.toBe(
+      calcKey(scheduled),
+    );
     expect(calcKey({ ...base, trigger: 'preferences_change', preferencesRevision: 2 })).toBe(
       `org_stats:preferences:${base.requestedBy}:2`,
     );

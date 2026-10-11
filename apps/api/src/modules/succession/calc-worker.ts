@@ -13,7 +13,6 @@ import {
   successionCalcRunFailures as failures,
 } from '@italent/db';
 import { isNull } from 'drizzle-orm';
-import { tenantLocalDate } from '@italent/domain';
 import { recordAudit } from '../../audit/record.js';
 import { AppError } from '../../errors.js';
 import {
@@ -73,10 +72,8 @@ export async function enqueueCalcRun(tx: Tx, input: CalcInput, now: Date): Promi
     requestedBy: input.requestedBy ? uuid(input.requestedBy) : null,
     batchId: input.batchId ? uuid(input.batchId) : undefined,
   };
-  const key = await runKey(tx, normalized);
+  const key = calcKey(normalized);
   if (!input.commandId.trim()) throw new TypeError('命令 ID 不得为空');
-  if (input.trigger === 'schedule' && input.businessDate !== tenantLocalDate(input.now!, input.timezone!))
-    throw new TypeError('定时业务日期必须与租户槽日期相同');
   const scope = {
     ...(input.scope?.rootOrgId ? { rootOrgId: uuid(input.scope.rootOrgId) } : {}),
     ...(input.scope?.sourceBatchId ? { sourceBatchId: uuid(input.scope.sourceBatchId) } : {}),
@@ -143,18 +140,6 @@ export async function enqueueCalcRun(tx: Tx, input: CalcInput, now: Date): Promi
       );
   await audit(tx, created, null, now);
   return created.id;
-}
-
-async function runKey(tx: Tx, input: CalcInput): Promise<string> {
-  let minutes: number | undefined;
-  if (input.trigger === 'schedule' && input.kind === 'org_stats' && input.now && input.timezone) {
-    const instant = input.now.toISOString();
-    const result = await tx.execute(sql`SELECT floor(EXTRACT(EPOCH FROM (
-      ${instant}::timestamptz - (date_trunc('day', ${instant}::timestamptz AT TIME ZONE ${input.timezone})
-        AT TIME ZONE ${input.timezone}))) / 60)::int AS minutes`);
-    minutes = rowsOf<{ minutes: number }>(result)[0]!.minutes;
-  }
-  return calcKey(input, minutes);
 }
 
 /** 内部状态操作：B3b 在 runSuccessionCommand/CommandGuard 中调用，返回前复用 authorizeSuccessionResult。
