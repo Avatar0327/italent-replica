@@ -950,6 +950,15 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/talent-review/matrix-service.ts': {
     updateMatrix: 'd48d193bd52b',
   },
+  'apps/api/src/modules/talent-review/project-routes.ts': {
+    projectList: 'db5fcc33fe8b',
+    projectWriteContext: '59ba2722e590',
+    registerProjectRoutes: 'cd3febad53e5',
+    requireProjectCatalogs: 'd740841c5234',
+  },
+  'apps/api/src/modules/talent-review/project-service.ts': {
+    createProject: 'd219f2fc9a41',
+  },
   'apps/api/src/modules/talent-review/readiness-service.ts': {
     updateReadiness: '6ebb3ee4b3e3',
   },
@@ -957,7 +966,7 @@ export const DIGESTS: Digests = {
     resolveCalcDisclosure: 'fbcc5b5f5574',
   },
   'apps/api/src/modules/talent-review/routes.ts': {
-    registerTalentReviewRoutes: 'bed0cc08fb2a',
+    registerTalentReviewRoutes: 'b7f576d7e12d',
   },
   'apps/api/src/modules/talent-review/scoring-routes.ts': {
     registerMappingReads: 'f69ca622c38d',
@@ -1177,6 +1186,7 @@ export const DIGESTS: Digests = {
     'TALENT_REVIEW_OBJECTS>mapping': '7a31e79e9855',
     'TALENT_REVIEW_OBJECTS>matrix': '90a030f413fe',
     'TALENT_REVIEW_OBJECTS>moduleGrade': 'b5002e260751',
+    'TALENT_REVIEW_OBJECTS>project': '51c489846762',
     'TALENT_REVIEW_OBJECTS>readiness': 'a1857e585c0c',
     'TALENT_REVIEW_OBJECTS>role': '25aaaf980051',
     'TALENT_REVIEW_OBJECTS>scoreRule': '0b7b672a5186',
@@ -1915,9 +1925,14 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/talent-review/matrix-routes.ts#registerRatioGroupRoutes': '7360488aac52',
   'apps/api/src/modules/talent-review/matrix-routes.ts#requireFieldReference': '9ce926ee75cc',
   'apps/api/src/modules/talent-review/matrix-service.ts#updateMatrix': 'd21f4fba3b95',
+  'apps/api/src/modules/talent-review/project-routes.ts#projectList': '95d21f880d44',
+  'apps/api/src/modules/talent-review/project-routes.ts#projectWriteContext': '59076c91d06d',
+  'apps/api/src/modules/talent-review/project-routes.ts#registerProjectRoutes': 'd201b5757ea8',
+  'apps/api/src/modules/talent-review/project-routes.ts#requireProjectCatalogs': 'f3dd89d76f27',
+  'apps/api/src/modules/talent-review/project-service.ts#createProject': 'a5a0ce1c6ce3',
   'apps/api/src/modules/talent-review/readiness-service.ts#updateReadiness': '28fc17e2384b',
   'apps/api/src/modules/talent-review/rename-disclosure.ts#resolveCalcDisclosure': 'e45d018245fc',
-  'apps/api/src/modules/talent-review/routes.ts#registerTalentReviewRoutes': '81d5330ede6d',
+  'apps/api/src/modules/talent-review/routes.ts#registerTalentReviewRoutes': '744d435e617b',
   'apps/api/src/modules/talent-review/scoring-routes.ts#registerMappingReads': '0a363e4b4f7f',
   'apps/api/src/modules/talent-review/scoring-routes.ts#registerMappings': '2ec92dbf0be3',
   'apps/api/src/modules/talent-review/scoring-routes.ts#registerModuleGrades': 'fd4a133c711e',
@@ -2067,6 +2082,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>mapping': '279002582763',
   'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>matrix': '279002582763',
   'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>moduleGrade': '279002582763',
+  'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>project': '0da57e279b29',
   'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>readiness': '279002582763',
   'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>role': '279002582763',
   'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>scoreRule': '279002582763',
