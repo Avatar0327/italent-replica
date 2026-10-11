@@ -1,11 +1,11 @@
 /**
  * 评价表（`TEvaluation.EvaluationForm`，标准模式）的读写服务（设计 §3.2、§5.2 #6；规格 24 EV-R3～R5、R40；拆分方案 B4）：
  * - 所属组织必填手选，须存在且在操作人 TEvaluation 范围内（DEC-082 / DEC-324②，范围外与不存在同一 404），读写同一谓词；
- * - 表单设置：评分方式（按指标 / 评总分）、满分、通过分数、总分计算规则（按指标评分才有；评总分只设满分与通过分数）；
+ * - DEC-413：按指标 / 评总分 / 投票，投票比例与参考评分；通过分可超过满分，评总分无总分规则和权重；
  * - 评分项整组编辑：standard 至多 1 个、general 任意条；权重经 B2 纯函数校验；新增的通用评分项 / 隐藏指标引用校验权限与
  *   存在性（form-refs.ts），原有引用原样保留不重校；
  * - EV-R5 锁（form-lock.ts）：被“已发布且有提名”的活动引用后，评分相关字段有变化 → 409 FORM_LOCKED（本 PR 恒不锁）；
- * - 删除前检查“被引用”钩子（usage.ts，B5 登记活动环节引用），成员评分项随表删除，快照连同评分项写进审计。
+ * - 停用 / 删除前检查“被引用”钩子（usage.ts，B5 登记活动环节引用），行锁内检查，评分项随表删除并审计。
  * 评分项只存引用（ID 与权重），不冻结名称：通用评分项 / 指标的名称在读取时按查看人当前权限投影（presentForms）。
  * 每个写入口在命令台账的同一事务里写业务与审计（DEC-019 / 216）。
  */
@@ -31,10 +31,13 @@ export type FormRecord = Tracked & {
   readonly ownerId: string;
   readonly ownerOrgId: string;
   readonly enabled: boolean;
-  readonly scoreMode: 'by_indicator' | 'by_total';
-  readonly fullScore: number;
-  readonly passScore: number;
+  readonly scoreMode: 'by_indicator' | 'by_total' | 'by_vote';
+  readonly fullScore: number | null;
+  readonly passScore: number | null;
   readonly totalRule: 'average' | 'weighted' | 'sum' | null;
+  readonly votePassRatio: number | null;
+  readonly indicatorReference: boolean;
+  readonly weightWarning: { readonly total: number; readonly message: string } | null;
   readonly items: StoredItem[];
 };
 
@@ -58,10 +61,11 @@ export async function withItems(tx: Tx, tenantId: string, rows: Record<string, u
   );
   return rows.map((row) => {
     const base = view<Omit<FormRecord, 'items'>>(row);
-    return {
+    const form = {
       ...base,
-      fullScore: Number(base.fullScore),
-      passScore: Number(base.passScore),
+      fullScore: num(base.fullScore),
+      passScore: num(base.passScore),
+      votePassRatio: num(base.votePassRatio),
       items: found
         .filter((item) => item.form_id === row.id)
         .map((item) => ({
@@ -71,6 +75,7 @@ export async function withItems(tx: Tx, tenantId: string, rows: Record<string, u
           hiddenTargetIds: item.hidden_target_ids,
         })),
     };
+    return { ...form, weightWarning: weightWarning(form) };
   });
 }
 
@@ -102,11 +107,11 @@ export async function presentForms(
             kind: item.kind,
             generalItemId: item.generalItemId,
             ...(names.general.has(item.generalItemId!) ? { name: names.general.get(item.generalItemId!) } : {}),
-            weight: item.weight,
+            ...(hasIndicators(form) ? { weight: item.weight } : {}),
           }
         : {
             kind: item.kind,
-            weight: item.weight,
+            ...(hasIndicators(form) ? { weight: item.weight } : {}),
             hiddenTargets: item.hiddenTargetIds.map((id) => ({
               id,
               ...(names.target.has(id) ? { name: names.target.get(id) } : {}),
@@ -118,21 +123,44 @@ export async function presentForms(
 
 interface Settings {
   readonly scoreMode: FormRecord['scoreMode'];
-  readonly fullScore: number;
-  readonly passScore: number;
+  readonly fullScore: number | null;
+  readonly passScore: number | null;
   readonly totalRule: FormRecord['totalRule'];
+  readonly votePassRatio: number | null;
+  readonly indicatorReference: boolean;
+}
+
+const hasIndicators = (settings: Pick<Settings, 'scoreMode' | 'indicatorReference'>) =>
+  settings.scoreMode === 'by_indicator' || (settings.scoreMode === 'by_vote' && settings.indicatorReference);
+const hasScores = (settings: Pick<Settings, 'scoreMode' | 'indicatorReference'>) =>
+  settings.scoreMode !== 'by_vote' || settings.indicatorReference;
+
+/** DEC-413：合计按百分数的小数位精确相加，仅给警示，保存不阻断。 */
+function weightWarning(form: Settings & { items: readonly StoredItem[] }): FormRecord['weightWarning'] {
+  if (!hasIndicators(form) || form.totalRule !== 'weighted') return null;
+  const scaled = form.items.reduce((sum, item) => sum + Math.round((item.weight ?? 0) * 100), 0);
+  return scaled === 10_000 ? null : { total: scaled / 100, message: '评分项权重合计不等于100%' };
 }
 
 /** 表单设置的跨字段规则（对合并后的完整值判）。 */
 function checkSettings(settings: Settings): void {
-  if (settings.scoreMode === 'by_indicator' && !settings.totalRule) {
+  if (hasIndicators(settings) && !settings.totalRule) {
     throw invalid('按指标评分须设置总分计算规则', 'FORM_TOTAL_RULE_REQUIRED');
   }
-  if (settings.scoreMode === 'by_total' && settings.totalRule) {
+  if (!hasIndicators(settings) && settings.totalRule) {
     throw invalid('评总分只设满分与通过分数，不设总分计算规则', 'FORM_TOTAL_RULE_NOT_ALLOWED');
   }
-  if (settings.passScore > settings.fullScore) {
-    throw invalid('通过分数不能超过满分', 'FORM_PASS_SCORE_EXCEEDS_FULL');
+  if (hasScores(settings)) {
+    if (settings.fullScore === null || settings.passScore === null) {
+      throw invalid('满分与通过分数必填', 'FORM_SCORES_REQUIRED');
+    }
+  } else if (settings.fullScore !== null || settings.passScore !== null) {
+    throw invalid('未启用参考评分的投票不设满分与通过分数', 'FORM_SCORES_NOT_ALLOWED');
+  }
+  if (settings.scoreMode === 'by_vote') {
+    if (settings.votePassRatio === null) throw invalid('通过票数比例必填', 'FORM_VOTE_RATIO_REQUIRED');
+  } else if (settings.votePassRatio !== null || settings.indicatorReference) {
+    throw invalid('只有投票设置通过票数比例与参考评分', 'FORM_VOTE_SETTINGS_NOT_ALLOWED');
   }
 }
 
@@ -150,6 +178,10 @@ const toStored = (item: input.FormItemInput): StoredItem =>
 function checkItems(items: readonly StoredItem[]): void {
   if (items.filter((item) => item.kind === 'standard').length > 1) {
     throw invalid('任职资格标准评分项最多一个', 'FORM_STANDARD_ITEM_DUPLICATE');
+  }
+  const generalIds = items.flatMap((item) => (item.generalItemId ? [item.generalItemId] : []));
+  if (new Set(generalIds).size !== generalIds.length) {
+    throw invalid('通用评分项不能重复', 'FORM_GENERAL_ITEM_DUPLICATE');
   }
   const scoreItems: ScoreItemInput[] = items.map((item, index) =>
     item.kind === 'general'
@@ -191,29 +223,42 @@ function formAccess(ctx: WriteContext): FormRefAccess {
   return ctx.forms;
 }
 
+/** 派生警示只用于响应；审计记录实际业务字段，避免合计成为评分项字段裁剪以外的披露出口。 */
+const auditSnapshot = (form: FormRecord) =>
+  Object.fromEntries(Object.entries(form).filter(([field]) => field !== 'weightWarning'));
+
 export async function createForm(tx: Tx, ctx: WriteContext, body: input.FormCreate): Promise<FormRecord> {
   const settings: Settings = {
     scoreMode: body.scoreMode,
-    fullScore: body.fullScore,
-    passScore: body.passScore,
+    fullScore: body.fullScore ?? null,
+    passScore: body.passScore ?? null,
     totalRule: body.totalRule ?? null,
+    votePassRatio: body.votePassRatio ?? null,
+    indicatorReference: body.indicatorReference ?? false,
   };
   checkSettings(settings);
   const items = body.items.map(toStored);
   checkItems(items);
+  checkItemMode(settings, items);
   await requireOwnerOrg(tx, ctx, body.ownerOrgId);
   await assertNewFormRefs(tx, ctx, formAccess(ctx), addedRefs(items, []));
   const now = ctx.now.toISOString();
   const result = await tx.execute(sql`INSERT INTO ev_forms
       (tenant_id, name, owner_id, owner_org_id, enabled, score_mode, full_score, pass_score, total_rule,
+       vote_pass_ratio, indicator_reference,
        created_by, created_at, updated_at)
     VALUES (${ctx.tenantId}, ${body.name}, ${ctx.userId}, ${body.ownerOrgId}, ${body.enabled ?? true},
       ${settings.scoreMode}, ${settings.fullScore}, ${settings.passScore}, ${settings.totalRule},
+      ${settings.votePassRatio}, ${settings.indicatorReference},
       ${ctx.userId}, ${now}, ${now}) RETURNING id`);
   const id = rowsOf<{ id: string }>(result)[0]!.id;
   await replaceItems(tx, ctx, id, items);
   const after = await loadForm(tx, ctx.tenantId, id);
-  await audit(tx, ctx, 'evaluationForm', 'create', id, { before: null, after, orgId: after.ownerOrgId });
+  await audit(tx, ctx, 'evaluationForm', 'create', id, {
+    before: null,
+    after: auditSnapshot(after),
+    orgId: after.ownerOrgId,
+  });
   return after;
 }
 
@@ -224,28 +269,74 @@ const lockedContent = (form: Settings & { items: readonly StoredItem[] }) =>
     fullScore: form.fullScore,
     passScore: form.passScore,
     totalRule: form.totalRule,
+    votePassRatio: form.votePassRatio,
+    indicatorReference: form.indicatorReference,
     items: form.items.map((item) => ({ ...item, hiddenTargetIds: [...item.hiddenTargetIds].sort() })),
   });
+
+/** 模式切换清空不适用的值；显式提交不适用的值仍按规则拒绝，不能默默吞掉输入（DEC-413）。 */
+function settingValue<T>(next: T | undefined, current: T, applicable: boolean): T | null {
+  if (next !== undefined) return next;
+  return applicable ? current : null;
+}
+
+function mergedSettings(before: FormRecord, body: input.FormPatch): Settings & { items: StoredItem[] } {
+  const scoreMode = body.scoreMode ?? before.scoreMode;
+  const indicatorReference = body.indicatorReference ?? (scoreMode === 'by_vote' && before.indicatorReference);
+  const mode = { scoreMode, indicatorReference };
+  const items = body.items ? body.items.map(toStored) : before.items;
+  return {
+    ...mode,
+    fullScore: settingValue(body.fullScore, before.fullScore, hasScores(mode)),
+    passScore: settingValue(body.passScore, before.passScore, hasScores(mode)),
+    totalRule: settingValue(body.totalRule, before.totalRule, hasIndicators(mode)),
+    votePassRatio: settingValue(body.votePassRatio, before.votePassRatio, scoreMode === 'by_vote'),
+    items: !body.items && !hasIndicators(mode) ? items.map((item) => ({ ...item, weight: null })) : items,
+  };
+}
+
+function checkItemMode(settings: Settings, items: readonly StoredItem[]): void {
+  if (!hasIndicators(settings) && items.some((item) => item.weight !== null)) {
+    throw invalid('当前打分规则不设评分项权重', 'FORM_WEIGHT_NOT_ALLOWED');
+  }
+}
+
+/** 载荷之外的实际变更同样复核编辑权（#218 P2-2）；权重属于 items，清空分数 / 投票设置各用自身字段权。 */
+async function checkImplicitFields(
+  ctx: WriteContext,
+  before: FormRecord,
+  merged: Settings & { items: StoredItem[] },
+  body: input.FormPatch,
+): Promise<void> {
+  const changes: Record<string, unknown> = {};
+  for (const field of [
+    'fullScore',
+    'passScore',
+    'totalRule',
+    'votePassRatio',
+    'indicatorReference',
+    'items',
+  ] as const) {
+    if (body[field] === undefined && JSON.stringify(merged[field]) !== JSON.stringify(before[field])) {
+      changes[field] = merged[field];
+    }
+  }
+  if (Object.keys(changes).length) {
+    if (!ctx.checkFields) throw new Error('评价表写命令缺少字段授权校验（checkFields）');
+    await ctx.checkFields(changes);
+  }
+}
 
 export async function updateForm(tx: Tx, ctx: WriteContext, id: string, body: input.FormPatch): Promise<FormRecord> {
   const row = await lockEditable(tx, ctx, 'evaluationForm', id);
   const before = await loadForm(tx, ctx.tenantId, id);
-  const scoreMode = body.scoreMode ?? before.scoreMode;
-  const merged = {
-    scoreMode,
-    fullScore: body.fullScore ?? before.fullScore,
-    passScore: body.passScore ?? before.passScore,
-    // 改成评总分又没给规则 → 清空；改成按指标而没给规则 → 沿用原值（原为空则报必填）
-    totalRule: body.totalRule !== undefined ? body.totalRule : scoreMode === 'by_total' ? null : before.totalRule,
-    items: body.items ? body.items.map(toStored) : before.items,
-  };
+  const merged = mergedSettings(before, body);
   checkSettings(merged);
-  // 切换评分方式会隐含清空总分计算规则：载荷里没写也是一次实际变更，按字段编辑权校验（只读 / 隐藏 → 403）
-  if (body.totalRule === undefined && merged.totalRule !== before.totalRule) {
-    if (!ctx.checkFields) throw new Error('评价表写命令缺少字段授权校验（checkFields）');
-    await ctx.checkFields({ totalRule: merged.totalRule });
-  }
-  if (body.items) checkItems(merged.items);
+  await checkImplicitFields(ctx, before, merged, body);
+  checkItems(merged.items);
+  checkItemMode(merged, merged.items);
+  // 活动引用的共享锁与此处 lockEditable 的排他锁串行，引用检查必须在拿锁后执行（DEC-413）。
+  if (body.enabled === false && before.enabled) await rejectInUse(tx, ctx, 'evaluationForm', id, 'disable');
   if (lockedContent(merged) !== lockedContent(before) && (await formLockedByActivities(tx, ctx.tenantId, id))) {
     throw new AppError('CONFLICT', '评价表已被进行中且已有提名人员的活动引用，评分相关内容不能修改', {
       reason: 'FORM_LOCKED',
@@ -262,6 +353,8 @@ export async function updateForm(tx: Tx, ctx: WriteContext, id: string, body: in
     sql`full_score = ${merged.fullScore}`,
     sql`pass_score = ${merged.passScore}`,
     sql`total_rule = ${merged.totalRule}`,
+    sql`vote_pass_ratio = ${merged.votePassRatio}`,
+    sql`indicator_reference = ${merged.indicatorReference}`,
     ...(body.name !== undefined ? [sql`name = ${body.name}`] : []),
     ...(body.enabled !== undefined ? [sql`enabled = ${body.enabled}`] : []),
     ...(body.ownerOrgId !== undefined ? [sql`owner_org_id = ${body.ownerOrgId}`] : []),
@@ -270,9 +363,15 @@ export async function updateForm(tx: Tx, ctx: WriteContext, id: string, body: in
   ];
   await tx.execute(sql`UPDATE ev_forms SET ${sql.join(sets, sql`, `)}
     WHERE tenant_id = ${ctx.tenantId}::uuid AND id = ${id}::uuid`);
-  if (body.items) await replaceItems(tx, ctx, id, merged.items);
+  if (body.items || JSON.stringify(merged.items) !== JSON.stringify(before.items)) {
+    await replaceItems(tx, ctx, id, merged.items);
+  }
   const after = await loadForm(tx, ctx.tenantId, id);
-  await audit(tx, ctx, 'evaluationForm', 'update', id, { before, after, orgId: after.ownerOrgId });
+  await audit(tx, ctx, 'evaluationForm', 'update', id, {
+    before: auditSnapshot(before),
+    after: auditSnapshot(after),
+    orgId: after.ownerOrgId,
+  });
   return after;
 }
 
@@ -283,6 +382,10 @@ export async function deleteForm(tx: Tx, ctx: WriteContext, id: string): Promise
   const before = await loadForm(tx, ctx.tenantId, id);
   // 评分项随评价表删除（外键 CASCADE），删除快照连同评分项写进审计
   await tx.execute(sql`DELETE FROM ev_forms WHERE tenant_id = ${ctx.tenantId}::uuid AND id = ${id}::uuid`);
-  await audit(tx, ctx, 'evaluationForm', 'delete', id, { before, after: null, orgId: before.ownerOrgId });
+  await audit(tx, ctx, 'evaluationForm', 'delete', id, {
+    before: auditSnapshot(before),
+    after: null,
+    orgId: before.ownerOrgId,
+  });
   return before;
 }
