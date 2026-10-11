@@ -173,6 +173,8 @@ describe('AC-PLAT-F061 T-16 授权项编码与指纹守卫', () => {
       12: '2077da982ac181f1',
       // R3-T04 B6a：新增盘点模板对象；盘点管理员预置字段映射 / 表单 / 流程 / 模板的看全部（DEC-415）
       13: '547b4d9da5397954',
+      // F-091（DEC-413）：评价表投票比例、参考评分与只读权重合计警示
+      14: '057bfa81674d414f',
     };
     expect(HISTORY[STANDARD_GRANT_VERSION], `version ${STANDARD_GRANT_VERSION} 没有登记指纹：追加一行`).toBe(
       STANDARD_GRANT_DIGEST,
