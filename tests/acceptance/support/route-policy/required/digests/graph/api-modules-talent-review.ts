@@ -355,6 +355,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/talent-review/access.ts#codeOf',
     'apps/api/src/system-actor.ts#auditActor',
   ],
+  'apps/api/src/modules/talent-review/config-kit.ts#checkConfigUpdateConstraints': ['#updateConstraints'],
   'apps/api/src/modules/talent-review/config-kit.ts#configReferrer': ['#guards'],
   'apps/api/src/modules/talent-review/config-kit.ts#createConfig': [
     'apps/api/src/modules/talent-review/access.ts#requireConfigCreatable',
@@ -375,6 +376,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/talent-review/config-kit.ts#updateConfig': [
     '#auditConfig',
+    '#checkConfigUpdateConstraints',
     '#loadConfig',
     '#lockConfigRow',
     '#requireSeeAllToRename',
@@ -560,6 +562,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/talent-review/field-service.ts#syncOptions': ['#insertOptions', '#invalid'],
   'apps/api/src/modules/talent-review/field-service.ts#updateField': [
     'apps/api/src/modules/talent-review/config-kit.ts#auditConfig',
+    'apps/api/src/modules/talent-review/config-kit.ts#checkConfigUpdateConstraints',
     'apps/api/src/modules/talent-review/config-kit.ts#lockConfigRow',
     'apps/api/src/modules/talent-review/config-kit.ts#requireSeeAllToRename',
     'apps/api/src/modules/talent-review/config-kit.ts#uniqueOr',
