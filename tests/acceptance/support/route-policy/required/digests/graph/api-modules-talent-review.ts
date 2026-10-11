@@ -1481,7 +1481,12 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/talent-review/template-structure.ts#writeModules': ['#sortNo'],
   'apps/api/src/modules/talent-review/template-structure.ts#writeVersion': ['#sortNo', '#writeModules'],
   'apps/api/src/modules/talent-review/template-view.ts#headerOf': ['#headerColumns'],
-  'apps/api/src/modules/talent-review/template-view.ts#loadStructure': ['#ids', '#moduleView'],
+  'apps/api/src/modules/talent-review/template-view.ts#loadStructure': [
+    '#ids',
+    '#moduleView',
+    '#permissionView',
+    '#stepView',
+  ],
   'apps/api/src/modules/talent-review/template-view.ts#loadTemplate': [
     '#headerOf',
     '#loadStructure',
