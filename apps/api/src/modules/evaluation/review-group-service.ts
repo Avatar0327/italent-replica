@@ -12,6 +12,9 @@ import type * as input from './input.js';
 import { assertNewPersonRefs, loadEmployees, presentPersonRefs, type PersonRefAccess } from './person-refs.js';
 import { type Tracked, view } from './read-model.js';
 import type { View } from './route-support.js';
+import { lockReviewGroupPeople, requireEmployedReviewMembers } from './review-group-people.js';
+import { lockReviewGroupState } from './review-group-state.js';
+import { settleDueReviewGroupExits } from './review-group-exit.js';
 import { audit, bumped, lockEditable, requireOwnerOrg, rowsOf, type WriteContext } from './store.js';
 
 export interface MemberInput {
@@ -91,7 +94,7 @@ export async function presentGroups(
  * 姓名在业务事务内冻结，改名后历史日志仍是当时的值；读取时按查看人当前的员工信息对象查看权与姓名字段权裁剪
  * （audit/visibility.ts 的 reviewGroupFields，DEC-197）。
  */
-async function auditSnapshot(tx: Tx, tenantId: string, group: ReviewGroupView) {
+export async function auditSnapshot(tx: Tx, tenantId: string, group: ReviewGroupView) {
   const names = new Map(
     (
       await loadEmployees(
@@ -121,12 +124,30 @@ async function replaceMembers(tx: Tx, ctx: WriteContext, groupId: string, member
   }
 }
 
-export async function createReviewGroup(tx: Tx, ctx: WriteContext, body: input.ReviewGroupCreate) {
+export async function createReviewGroup(tx: Tx, ctx: WriteContext, body: input.ReviewGroupCreate, clock: () => Date) {
   checkMembers(body.members);
   await requireOwnerOrg(tx, ctx, body.ownerOrgId);
   await assertNewPersonRefs(
     tx,
     ctx.persons!,
+    body.members.map((member) => member.employeeId),
+  );
+  await lockReviewGroupPeople(
+    tx,
+    ctx,
+    body.members.map((member) => member.employeeId),
+  );
+  const state = await lockReviewGroupState(
+    tx,
+    ctx,
+    body.members.map((member) => member.employeeId),
+    clock,
+  );
+  ctx = state.ctx;
+  await settleDueReviewGroupExits(tx, state);
+  await requireEmployedReviewMembers(
+    tx,
+    state,
     body.members.map((member) => member.employeeId),
   );
   const now = ctx.now.toISOString();
@@ -147,9 +168,21 @@ export async function createReviewGroup(tx: Tx, ctx: WriteContext, body: input.R
 
 const COLUMNS = { name: 'name', enabled: 'enabled', ownerOrgId: 'owner_org_id' } as const;
 
-export async function updateReviewGroup(tx: Tx, ctx: WriteContext, id: string, body: input.ReviewGroupPatch) {
+export async function updateReviewGroup(
+  tx: Tx,
+  ctx: WriteContext,
+  id: string,
+  body: input.ReviewGroupPatch,
+  clock: () => Date,
+) {
+  await lockReviewGroupPeople(tx, ctx, body.members?.map((member) => member.employeeId) ?? [], id);
+  const state = await lockReviewGroupState(tx, ctx, body.members?.map((member) => member.employeeId) ?? [], clock, id);
+  ctx = state.ctx;
+  // 组锁已统一取得：先校验客户端看到的版本，再允许本事务的旧周期结清推进版本。
   const row = await lockEditable(tx, ctx, 'reviewGroup', id);
+  await settleDueReviewGroupExits(tx, state);
   const before = await loadGroup(tx, ctx.tenantId, id);
+  ctx = { ...ctx, expectedRevision: before.revision };
   if (body.members) checkMembers(body.members);
   // 改所属组织：新组织同样须在范围内（DEC-082）；没改就不重判
   if (body.ownerOrgId !== undefined && body.ownerOrgId !== row.owner_org_id) {
@@ -160,6 +193,7 @@ export async function updateReviewGroup(tx: Tx, ctx: WriteContext, id: string, b
     const existing = new Set(before.members.map((member) => member.employeeId));
     const added = body.members.map((member) => member.employeeId).filter((employeeId) => !existing.has(employeeId));
     await assertNewPersonRefs(tx, ctx.persons!, added);
+    await requireEmployedReviewMembers(tx, state, added);
   }
   const bump = bumped(ctx);
   const sets = (Object.keys(COLUMNS) as (keyof typeof COLUMNS)[])
