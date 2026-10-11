@@ -223,12 +223,10 @@ describe(EVIDENCE_CHAIN, { timeout: 120_000 }, () => {
     expect(routes.has(PATCH_KEY)).toBe(true);
   });
 
-  it('删掉登记关系（登记函数里的 registerSubsetPolicy 或策略常量里的回调）→ 证据报错', () => {
-    expect(found(patched("registerSubsetPolicy('qualification', QUALIFICATION_POLICY);", '')).length).toBeGreaterThan(
-      0,
-    );
-    expect(
-      found(patched('beforeRequest: qualificationBeforeRequest,', 'beforeRequest: undefined,')).length,
-    ).toBeGreaterThan(0);
+  it.each([
+    ['登记函数里的 registerSubsetPolicy', "registerSubsetPolicy('qualification', QUALIFICATION_POLICY);", ''],
+    ['策略常量里的回调', 'beforeRequest: qualificationBeforeRequest,', 'beforeRequest: undefined,'],
+  ])('删掉登记关系（%s）→ 证据报错', (_name, from, to) => {
+    expect(found(patched(from, to)).length).toBeGreaterThan(0);
   });
 });
