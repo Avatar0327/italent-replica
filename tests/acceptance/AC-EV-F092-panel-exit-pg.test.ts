@@ -4,6 +4,7 @@ import { sql, type Db } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { exitWorld, rowsOf } from './AC-EV-F092-support.js';
+import { errorOf } from './AC-EV-support.js';
 import type * as EmploymentStore from '../../apps/api/src/modules/employment/record-store.js';
 
 const barrier = vi.hoisted(() => ({
@@ -224,8 +225,9 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-EV-F092 真 PG：离职 × �
       }
       const response = await writing;
       expect(response.status).toBe(400);
-      expect(await response.json()).toMatchObject({
-        error: { code: 'VALIDATION_FAILED', reason: 'REVIEW_GROUP_MEMBER_NOT_EMPLOYED' },
+      expect(await errorOf(response)).toEqual({
+        code: 'VALIDATION_FAILED',
+        reason: 'REVIEW_GROUP_MEMBER_NOT_EMPLOYED',
       });
       expect((await w.employee(person.id)).status).toBe('left');
       expect(await w.queue(leave.id)).toMatchObject([{ state: 'done', attempts: 1 }]);
