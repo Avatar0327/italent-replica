@@ -251,28 +251,44 @@ async function draftModules(
   for (const [index, body] of bodies.entries()) {
     const rule = body.scoreRuleId ? (await SCORE_RULE.load!(tx, ctx.tenantId, body.scoreRuleId))! : null;
     const grade = body.moduleGradeId ? (await MODULE_GRADE.load!(tx, ctx.tenantId, body.moduleGradeId))! : null;
-    if (body.scoring === 'by_count') {
-      const countProblem = checkByCount(rule!, grade);
-      if (countProblem) throw invalid(countProblem.reason, countProblem.message);
-    } else if (grade?.mode === 'count') {
-      throw invalid('MODULE_GRADE_MODE', '只有按指标数目算分才能选按指标数目的模块等级');
-    }
-    drafts.push(withIdentity(moduleDraft(body, rule, grade), before[index]));
+    const draft = withIdentity(moduleDraft(body, rule, grade), before[index]);
+    checkScoringAgainstSnapshots(draft);
+    drafts.push(draft);
   }
   return drafts;
 }
 
-/** 同一模块（带了上一版本的 ID）：记映射 previousModuleId；引用没换就沿用原快照，改名不改变已冻结的规则内容。 */
+/**
+ * 同一模块（带了上一版本的 ID）：记映射 previousModuleId；引用没换且计分方式没变就沿用原快照，改名不改变已冻结的规则内容。
+ * 计分方式换了（如加权求和 ↔ 按指标数目）要的是新口径，改取实时快照，再由 checkScoringAgainstSnapshots 校验。
+ */
 function withIdentity(draft: ModuleDraft, before: ModuleView | undefined): ModuleDraft {
   if (!before) return draft;
+  const sameScoring = before.scoring === draft.scoring;
+  const rule = sameScoring && before.scoreRuleId === draft.scoreRuleId && before.ruleSnapshot;
+  const grade = sameScoring && before.moduleGradeId === draft.moduleGradeId && before.gradeSnapshot;
   return {
     ...draft,
     previousModuleId: before.id,
-    ruleSnapshot:
-      before.scoreRuleId === draft.scoreRuleId && before.ruleSnapshot ? before.ruleSnapshot : draft.ruleSnapshot,
-    gradeSnapshot:
-      before.moduleGradeId === draft.moduleGradeId && before.gradeSnapshot ? before.gradeSnapshot : draft.gradeSnapshot,
+    ruleSnapshot: rule || draft.ruleSnapshot,
+    gradeSnapshot: grade || draft.gradeSnapshot,
   };
+}
+
+/** 模块等级快照的口径：等级项带 minCount 为按指标数目，否则得分区间（同 module-grade-service 的 mode 派生）。 */
+const snapshotMode = (snapshot: NonNullable<ModuleDraft['gradeSnapshot']>) =>
+  snapshot.items[0]?.minCount != null ? 'count' : 'score';
+
+/** 计分方式与**最终保存的快照**一致（不看源对象的实时口径——沿用旧快照时实时口径可能已变，TR-R15）。 */
+function checkScoringAgainstSnapshots(draft: ModuleDraft): void {
+  if (draft.kind !== 'indicator') return;
+  const grade = draft.gradeSnapshot ? { mode: snapshotMode(draft.gradeSnapshot) } : null;
+  if (draft.scoring === 'by_count') {
+    const problem = checkByCount(draft.ruleSnapshot ?? { kind: 'numeric' }, grade);
+    if (problem) throw invalid(problem.reason, problem.message);
+  } else if (grade?.mode === 'count') {
+    throw invalid('MODULE_GRADE_MODE', '只有按指标数目算分才能选按指标数目的模块等级');
+  }
 }
 
 function moduleDraft(
