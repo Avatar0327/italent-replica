@@ -6,5 +6,6 @@ export default mergeConfig(base, {
   test: {
     setupFiles: [fileURLToPath(new URL('./registry-omission.setup.ts', import.meta.url))],
     maxWorkers: 1,
+    fsModuleCache: true,
   },
 });
