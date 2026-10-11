@@ -32,6 +32,27 @@ export async function pendingCalcNotifications(
     .orderBy(notifications.createdAt, notifications.id)
     .limit(200);
 }
+/** 仅在渠道已按通知 id 回查并给出确切结论后调用；旧 attempt 的回执不能覆盖新一次投递。 */
+export async function settleCalcNotification(
+  tx: Tx,
+  tenantId: string,
+  id: string,
+  attemptNo: number,
+  state: 'sent' | 'failed' | 'unknown',
+  now: Date,
+): Promise<void> {
+  await tx
+    .update(notifications)
+    .set({ state, sentAt: state === 'sent' ? now : null })
+    .where(
+      and(
+        eq(notifications.tenantId, tenantId),
+        eq(notifications.id, id),
+        eq(notifications.attemptNo, attemptNo),
+        eq(notifications.state, 'unknown'),
+      ),
+    );
+}
 /** 调用方按 (createdAt,id) 有界拉取 pending/failed。投递器必须以通知 id 去重，并在发送前按当前权限
  * 投影（B3b），内容仅 run/batch ID 与可见计数。没有投递器不标 sent。
  * 先持久标 unknown 再外发；崩溃/超时保持 unknown，只能经渠道回查确认，禁止直接重发。 */
@@ -64,10 +85,5 @@ export async function deliverCalcNotification(
   } catch {
     /* 投递结果未知，不能假记 failed 再重发。 */
   }
-  await withTenant(db, tenantId, (tx) =>
-    tx
-      .update(notifications)
-      .set({ state, sentAt: state === 'sent' ? now : null })
-      .where(and(where, eq(notifications.attemptNo, notice.attemptNo), eq(notifications.state, 'unknown'))),
-  );
+  await withTenant(db, tenantId, (tx) => settleCalcNotification(tx, tenantId, id, notice.attemptNo, state, now));
 }

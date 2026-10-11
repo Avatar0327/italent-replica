@@ -13,6 +13,7 @@ import { enqueueCalcRun, changeCalcRun, runCalcPage } from '../../apps/api/src/m
 import {
   deliverCalcNotification,
   pendingCalcNotifications,
+  settleCalcNotification,
 } from '../../apps/api/src/modules/succession/calc-notifications.js';
 import { seedTenantWithMember } from './support/tenant-api.js';
 import { rowsOf } from './support/f048.js';
@@ -126,6 +127,11 @@ describe('AC-SC-calc-core run 契约', () => {
     const id = await create(request(201));
     expect(await page(id)).toBe('running');
     expect(await effects(id)).toBe(200);
+    const before = await read(id);
+    await expect(
+      tx((t) => changeCalcRun(t, member.tenant.id, id, 1, 'abort', randomUUID(), now)),
+    ).rejects.toMatchObject({ code: 'REVISION_CONFLICT' });
+    expect(await read(id)).toEqual(before);
     expect(await page(id)).toBe('succeeded');
     expect(await effects(id)).toBe(201);
     expect(await page(id)).toBe('succeeded');
@@ -219,10 +225,12 @@ describe('AC-SC-calc-core run 契约', () => {
     await change(id, 'abort');
     expect(await page(id)).toBe('aborted');
     expect(await effects(id)).toBe(0);
+    const aborted = await read(id);
     await expect(change(id, 'retry')).rejects.toMatchObject({
       code: 'CONFLICT',
       details: { reason: 'RUN_NOT_RETRYABLE' },
     });
+    expect(await read(id)).toEqual(aborted);
   });
 
   it('主体无有效成员时 blocked；恢复重验主体；已提交页在下一页失败后仍保留', async () => {
@@ -269,6 +277,10 @@ describe('AC-SC-calc-core run 契约', () => {
     );
     expect(state).toEqual({ state: 'unknown', attempt_no: 1 });
     expect((await tx((t) => pendingCalcNotifications(t, member.tenant.id))).map((n) => n.id)).not.toContain(notice!.id);
+    await tx((t) => settleCalcNotification(t, member.tenant.id, notice!.id, 0, 'failed', now));
+    expect((await tx((t) => pendingCalcNotifications(t, member.tenant.id))).map((n) => n.id)).not.toContain(notice!.id);
+    await tx((t) => settleCalcNotification(t, member.tenant.id, notice!.id, 1, 'failed', now));
+    expect((await tx((t) => pendingCalcNotifications(t, member.tenant.id))).map((n) => n.id)).toContain(notice!.id);
     for (const column of ['user', 'member']) {
       const recipient = await seedTenantWithMember(db(), `calc-inactive-${column}`);
       await db().execute(sql`INSERT INTO tenant_memberships (tenant_id,user_id,status)

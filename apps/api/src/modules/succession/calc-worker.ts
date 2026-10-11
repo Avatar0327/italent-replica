@@ -35,8 +35,10 @@ const uuid = (id: string) => {
   if (!isUuid(id)) throw new TypeError('计算对象 ID 非法');
   return id.toLowerCase();
 };
-const objectType = (kind: CalcInput['kind']) =>
-  kind === 'exit_sweep' ? 'employee' : kind === 'position_risk' ? 'position' : 'org';
+const objectType = (kind: CalcInput['kind']) => {
+  if (kind === 'exit_sweep') return 'employee';
+  return kind === 'position_risk' ? 'position' : 'org';
+};
 
 async function audit(tx: Tx, run: CalcRun, before: unknown, now: Date, commandId = run.commandId) {
   await recordAudit(tx, {
@@ -249,7 +251,9 @@ async function executePage(tx: Tx, run: CalcRun, handler: CalcHandler, now: Date
     })
     .from(objects)
     .where(objectMatch(run.tenantId, run.id));
-  const status = counts!.pending ? 'running' : counts!.failed ? 'partial' : 'succeeded';
+  let status: CalcRun['status'] = 'succeeded';
+  if (counts!.failed) status = 'partial';
+  if (counts!.pending) status = 'running';
   const [after] = await tx
     .update(runs)
     .set({
