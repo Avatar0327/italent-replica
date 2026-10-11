@@ -3,6 +3,7 @@
  * 登录 / 登出都是 public 声明，守卫齐全，台账策略为 none 并写理由（DEC-377③）。
  */
 import { describe, expect, it } from 'vitest';
+import { SURVEY360 } from './support/route-policy/required/survey360.js';
 import { SURVEY360_PORTAL_POLICIES } from '../../apps/api/src/modules/survey360/policy.js';
 
 describe('AC-360-F076-40 门户路由声明', () => {
@@ -22,6 +23,19 @@ describe('AC-360-F076-40 门户路由声明', () => {
     expect(hit?.policy.guards).toContain('survey360.sessionPossession');
     expect(hit?.policy.write?.ledger).toBe('none');
     expect(hit?.policy.write?.ledgerReason).toContain('DEC-377');
+  });
+
+  it('AC-40 / DEC-426：翻页 required 指向本处理器，门户任务不借用个人链接入口证据', () => {
+    const base = '/api/survey360/portal/tasks/:relationId/questionnaires/:questionnaireId';
+    const page = SURVEY360[`POST ${base}/page-check`]!.flatMap((obligation) => obligation.at ?? []);
+    expect(page.some((evidence) => evidence.unit.endsWith('#answerPageCheck'))).toBe(true);
+    expect(page.some((evidence) => evidence.unit.endsWith('#answerSubmit'))).toBe(false);
+    for (const [route, obligations] of Object.entries(SURVEY360)) {
+      if (!route.includes(base)) continue;
+      const units = obligations.flatMap((obligation) => obligation.at ?? []).map((evidence) => evidence.unit);
+      expect(units.some((unit) => unit.endsWith('#registerPortalRoutes')), route).toBe(true);
+      expect(units.some((unit) => unit.endsWith('#registerLinkRoutes')), route).toBe(false);
+    }
   });
 
   it('AC-40：八条门户路由齐全，六条会话入口声明 answerSession', () => {
