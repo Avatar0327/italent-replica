@@ -8,7 +8,7 @@ import { randomUUID } from 'node:crypto';
 import { sql, withTenant } from '@italent/db';
 import { survey360 } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.js';
 import {
   renderPdf,
@@ -30,7 +30,11 @@ import {
   type World360,
 } from './AC-360-support.js';
 
+import { PORTAL_GUARD_CASES } from './AC-360-F076-guard-support.js';
+import { resetCredentialConfig } from './AC-360-F076-support.js';
+
 const testDb = useTestDb();
+afterAll(resetCredentialConfig);
 const OBJ = survey360.SURVEY360_OBJECTS;
 type Key = 'activity' | 'relation' | 'result' | 'questionnaire' | 'person' | 'settings' | 'answer';
 const KEYS: readonly Key[] = ['activity', 'relation', 'result', 'questionnaire', 'person', 'settings'];
@@ -2802,6 +2806,9 @@ const F060_CASES: Record<string, RouteCases> = {
   },
 };
 Object.assign(ROUTE_CASES, F060_CASES);
+
+// F-076 AC-34/37/39/40：真实门户会话的反向 / 重放覆盖。
+Object.assign(ROUTE_CASES, PORTAL_GUARD_CASES);
 
 describe('路由 × 守卫：三类反向用例（表驱动）', () => {
   let env: Env;
