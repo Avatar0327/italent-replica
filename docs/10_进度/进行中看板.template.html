@@ -60,6 +60,7 @@ section{min-width:0}
 .chip.rework{background:var(--work-bg);border-color:var(--work);color:var(--ink)}
 .chip.decide,.chip.conflict,.chip.cired{background:var(--bad-bg);border-color:var(--bad);color:var(--bad);font-weight:600}
 .chip.assigned{border-style:dashed;color:var(--ink2)}
+.kpi .dl{font-style:normal;margin-left:6px;color:var(--ok);font-size:.85em}
 .chip.todo{color:var(--faint);border-style:dotted}
 .chip.wait{color:var(--faint);background:var(--sunk)}
 .chip.paused{color:var(--faint);background:repeating-linear-gradient(135deg,var(--sunk) 0 5px,var(--panel) 5px 10px)}
@@ -146,6 +147,8 @@ const td = L.today || [];
 document.getElementById("today").innerHTML = td.length ? `<div class="tblw"><table class="tbl">` + td.map(m => `<tr><td class="mono">${esc(m.at)}Z</td><td class="mono">#${m.n}</td><td>${esc(m.t)}</td></tr>`).join("") + `</table></div>` : `<div class="pre">今天还没有合并。</div>`;
 document.getElementById("log").innerHTML = (DATA.log || []).map(x => `<li>${esc(x[0])}　${esc(x[1])}</li>`).join("");
 const nStuck = stuck.length + (M.asks || []).length, nRev = (L.open || []).filter(p => p.s === "review").length, nWork = (L.open || []).filter(p => p.s === "rework").length;
-document.getElementById("kpis").innerHTML = `<span class="kpi${nStuck ? " bad" : ""}"><b>${nStuck}</b>卡点</span><span class="kpi"><b>${nRev}</b>审查中</span><span class="kpi"><b>${nWork}</b>返工</span><span class="kpi"><b>${(L.open || []).length}</b>在途 PR</span><span class="kpi"><b>${td.length}</b>今日合并</span>`;
+const PG = DATA.prog, pgd = PG && PG.prev ? [PG.done - PG.prev[0], PG.tot - PG.prev[1]] : null;
+const sg = n => (n > 0 ? "+" : "") + n;
+document.getElementById("kpis").innerHTML = (PG ? `<span class="kpi" title="主线 + 支撑任务的计划 PR（不含暂停项）；分子 = 已合并${pgd ? `；${esc(PG.since)} 起较上次读数（${PG.prev[0]}/${PG.prev[1]}）：已完成 ${sg(pgd[0])}，总数 ${sg(pgd[1])}` : ""}"><b>${PG.done}/${PG.tot}</b>已完成 / 计划 PR${pgd ? `<em class="dl">${pgd[0] ? "完成 " + sg(pgd[0]) : ""}${pgd[0] && pgd[1] ? " · " : ""}${pgd[1] ? "总数 " + sg(pgd[1]) : ""}</em>` : ""}</span>` : "") + `<span class="kpi${nStuck ? " bad" : ""}"><b>${nStuck}</b>卡点</span><span class="kpi"><b>${nRev}</b>审查中</span><span class="kpi"><b>${nWork}</b>返工</span><span class="kpi"><b>${(L.open || []).length}</b>在途 PR</span><span class="kpi"><b>${td.length}</b>今日合并</span>`;
 document.getElementById("at").textContent = "GitHub 状态取自 " + (L.at || "—") + "（发布时刷新）";
 </script>
