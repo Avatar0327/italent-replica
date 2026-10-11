@@ -1,7 +1,7 @@
 /**
  * AC-PRM-FW-01（F-039 PR-A，docs/08_设计/F-039_权限框架强制_设计.md §2.3；DEC-300 / DEC-303）：
  * 路由声明的注册校验——缺失即失败。反例按 DEC-300 的三类致命项分组：身份不匹配、缺失声明、初始化不可信；
- * 校验按**注册实例**（包装函数身份）绑定，不只看 method / path。正例核对全部 592 个端点都已登记、
+ * 校验按**注册实例**（包装函数身份）绑定，不只看 method / path。正例核对全部 600 个端点都已登记、
  * 中间件按最终路径登记、HEAD 走 GET 声明。前四组用内存 Hono + 框架；最后一组用 createApp 真实装配。
  */
 import {
@@ -331,7 +331,8 @@ describe('AC-PRM-FW-01 createApp 真实装配', () => {
    * F-076 PR-2a 门户登录 / 登出 + 2 = 572；
    * R3-T02 B5 评定活动 + 5 = 577；
    * F-060 评价过快（点“下一页”：链接 + 1、待办作答 + 1；首次打开由取作答页建立，不另设接口，DEC-405②）+ 2 = 579；
-   * R3-T04 PR-B6a（盘点模板 5）+ 5 = 584；R3-T04 PR-B7a（项目 8）+ 8 = 592（PR 描述以此为准）。
+   * R3-T05 B2a（配置 7 + 平台 1）+ 8 = 587；R3-T04 B6a 模板结构 + 5 = 592；
+   * R3-T04 PR-B7a（项目 8）+ 8 = 600（PR 描述以此为准）。
    */
   const EXPECTED_BY_MODULE: Readonly<Record<string, number>> = {
     root: 1,
@@ -358,7 +359,8 @@ describe('AC-PRM-FW-01 createApp 真实装配', () => {
     'talent-review-platform': 1,
     qualification: 54,
     evaluation: 30,
-    succession: 8,
+    succession: 15,
+    'succession-platform': 1,
   };
 
   it('未声明的夹具路由 → createApp 抛 ROUTE_UNDECLARED，应用无法启动', () => {
@@ -374,12 +376,12 @@ describe('AC-PRM-FW-01 createApp 真实装配', () => {
     expect(keys).toContain('DELETE /api/tenant/probes/:id');
   });
 
-  it('全部 592 个端点已声明，按模块统计一致', () => {
+  it('全部 600 个端点已声明，按模块统计一致', () => {
     const manifest = routeManifest(createApp({ db: testDb().db }));
     const byModule: Record<string, number> = {};
     for (const route of manifest.declared) byModule[route.module] = (byModule[route.module] ?? 0) + 1;
     expect(byModule).toEqual(EXPECTED_BY_MODULE);
-    expect(manifest.declared).toHaveLength(592);
+    expect(manifest.declared).toHaveLength(600);
     expect(manifest.declared.map((r) => `${r.method} ${r.path}`)).toContain(
       'POST /api/tenant/org/organizations/:id/employment-preview',
     );

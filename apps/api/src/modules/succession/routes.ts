@@ -1,3 +1,4 @@
+import { registerSuccessionConfigRoutes } from './config-routes.js';
 /**
  * R3-T05 继任管理接口（设计 §2.2；前缀 /api/tenant/succession）。装配位：登记权限对象、开关校验、准备度引用守卫与
  * 对外端口；路由随实现子 PR 追加，并按 F-039 格式在 policy.ts 登记声明、在
@@ -98,6 +99,7 @@ export function registerSuccessionRoutes(router: Hono<TenantEnv>, deps: TenantRo
   });
 
   registerRecordWrites(router, deps);
+  registerSuccessionConfigRoutes(router, deps);
 }
 
 /** 记录写侧（A2）：#3 新增、#3a 候选、#4 编辑、#5 批量结束、#6 软删除；共用命令执行协议（write-support.ts）。 */
