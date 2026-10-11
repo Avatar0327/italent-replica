@@ -1,4 +1,24 @@
 {
+  "DELETE /api/tenant/succession/populations/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "eac22738b986",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:SuccessionAndDevelopment/Succession.Population/-"
+    ],
+    "trace": [
+      "btn:Succession.Population#delete@detail",
+      "obj:Succession.Population:delete"
+    ]
+  },
   "DELETE /api/tenant/succession/records/:id": {
     "all": {
       "code": "NOT_FOUND",
@@ -17,6 +37,39 @@
     "trace": [
       "btn:Succession.Record#delete@detail",
       "obj:Succession.Record:delete"
+    ]
+  },
+  "GET /api/tenant/succession/populations": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:Succession.Population"
+    ],
+    "scopeQueries": [
+      "scope:SuccessionAndDevelopment/Succession.Population/-"
+    ],
+    "trace": [
+      "obj:Succession.Population:view"
+    ]
+  },
+  "GET /api/tenant/succession/populations/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "eac22738b986",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:SuccessionAndDevelopment/Succession.Population/-"
+    ],
+    "trace": [
+      "obj:Succession.Population:view"
     ]
   },
   "GET /api/tenant/succession/readiness": {
@@ -62,6 +115,19 @@
       "obj:Succession.Record:view"
     ]
   },
+  "GET /api/tenant/succession/rule-settings/:kind": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "0f0f1179c51f",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
   "GET /api/tenant/succession/successor-candidates": {
     "all": {
       "code": "VALIDATION_FAILED",
@@ -74,6 +140,19 @@
       "btn:Succession.Record#create@list",
       "obj:Succession.Record:create"
     ]
+  },
+  "POST /api/tenant/succession/populations": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "d6c7aca91656",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
+    },
+    "scopeQueries": [],
+    "trace": []
   },
   "POST /api/tenant/succession/records": {
     "all": {
@@ -101,6 +180,24 @@
     "scopeQueries": [],
     "trace": []
   },
+  "PUT /api/tenant/succession/populations/:id": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "0125d9d3d6ed",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
+    },
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
   "PUT /api/tenant/succession/records/:id": {
     "all": {
       "code": "VALIDATION_FAILED",
@@ -115,6 +212,19 @@
       "code": "VALIDATION_FAILED",
       "error": "17147722c2a8",
       "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "PUT /api/tenant/succession/rule-settings/:kind": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "0f0f1179c51f",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
     },
     "scopeQueries": [],
     "trace": []
