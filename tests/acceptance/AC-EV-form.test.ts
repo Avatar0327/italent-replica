@@ -104,14 +104,13 @@ describe('AC-EV-form 评价表（标准模式）', () => {
       expect((await read(op, form.id)).status).toBe(404);
     });
 
-    it('表单设置：评总分只设满分与通过分数（无总分计算规则）；按指标评分必须有总分计算规则；通过分不能超过满分', async () => {
+    it('表单设置：评总分无总分规则；按指标评分必须有规则；通过分可超过满分（DEC-413）', async () => {
       const op = await manager();
       const total = await created(op, body({ scoreMode: 'by_total', totalRule: undefined, items: [] }));
       expect(total).toMatchObject({ scoreMode: 'by_total', totalRule: null, items: [] });
       const cases: [string, Record<string, unknown>, string][] = [
         ['按指标缺总分规则', { totalRule: undefined }, 'FORM_TOTAL_RULE_REQUIRED'],
         ['评总分带总分规则', { scoreMode: 'by_total', items: [] }, 'FORM_TOTAL_RULE_NOT_ALLOWED'],
-        ['通过分超过满分', { passScore: 101 }, 'FORM_PASS_SCORE_EXCEEDS_FULL'],
       ];
       for (const [label, data, reason] of cases) {
         const response = await post(op, body(data));
@@ -124,9 +123,8 @@ describe('AC-EV-form 评价表（标准模式）', () => {
         { fullScore: 0 },
         { fullScore: -1 },
         { passScore: -1 },
-        { fullScore: 100.123 },
-        { fullScore: 1_000_000, passScore: 60 },
-        { passScore: 1_000_000 },
+        { passScore: 0 },
+        { fullScore: 1_000_000_000_000_000 },
         { name: '' },
         { name: 'x'.repeat(101) },
         { code: 'F1' },
@@ -134,6 +132,8 @@ describe('AC-EV-form 评价表（标准模式）', () => {
       ]) {
         expect((await post(op, body(bad))).status, JSON.stringify(bad)).toBe(400);
       }
+      const higher = await created(op, body({ passScore: 150 }));
+      expect(higher).toMatchObject({ fullScore: 100, passScore: 150 });
     });
 
     it('名称不要求唯一；缺省启用；并发与幂等：缺 If-Match 400、过期 409、同键重放不重复写、同键异内容 409', async () => {

@@ -24,7 +24,7 @@ export interface ItemView {
   readonly kind: 'standard' | 'general';
   readonly generalItemId?: string;
   readonly name?: string;
-  readonly weight: number | null;
+  readonly weight?: number | null;
   readonly hiddenTargets?: { id: string; name?: string }[];
 }
 export interface FormView {
@@ -34,10 +34,13 @@ export interface FormView {
   readonly ownerId: string;
   readonly ownerOrgId: string;
   readonly enabled: boolean;
-  readonly scoreMode: 'by_indicator' | 'by_total';
-  readonly fullScore: number;
-  readonly passScore: number;
+  readonly scoreMode: 'by_indicator' | 'by_total' | 'by_vote';
+  readonly fullScore: number | null;
+  readonly passScore: number | null;
   readonly totalRule: 'average' | 'weighted' | 'sum' | null;
+  readonly votePassRatio: number | null;
+  readonly indicatorReference: boolean;
+  readonly weightWarning: { readonly total: number; readonly message: string } | null;
   readonly createdBy: string;
   readonly items: ItemView[];
 }
