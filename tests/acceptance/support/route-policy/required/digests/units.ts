@@ -1906,7 +1906,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/talent-review/template-routes.ts#requireCatalogs': '06e325feca31',
   'apps/api/src/modules/talent-review/template-routes.ts#runGuarded': 'cf046247ef90',
   'apps/api/src/modules/talent-review/template-routes.ts#trimmed': 'd6d741e4df20',
-  'apps/api/src/modules/talent-review/template-service.ts#createTemplate': '407d0c1d506a',
+  'apps/api/src/modules/talent-review/template-service.ts#createTemplate': '690cec9de0e5',
   'apps/api/src/modules/talent-review/template-service.ts#lockTemplate': '9bb9240b9fb1',
   'apps/api/src/modules/talent/access.ts#DATA_OPERATION': 'e3b0c44298fc',
   'apps/api/src/modules/talent/access.ts#WRITE_BUTTONS': 'e3b0c44298fc',

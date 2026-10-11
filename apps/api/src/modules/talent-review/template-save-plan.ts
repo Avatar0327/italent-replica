@@ -38,7 +38,7 @@ import type { ModuleView, Structure } from './template-view.js';
 
 type Current = { flowId: string | null; structure: Structure } | null;
 const sorted = (ids: readonly (string | null | undefined)[]) =>
-  [...new Set(ids.filter((id): id is string => id != null))].sort();
+  [...new Set(ids.filter((id): id is string => id !== null && id !== undefined))].sort();
 
 async function lockSources(tx: Tx, tenantId: string, table: ReferencedTable, ids: readonly string[]) {
   if (!ids.length) return;
