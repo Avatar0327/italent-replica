@@ -125,7 +125,8 @@ export async function recompilePopulations(tx: Tx, ctx: SuccessionContext, curso
   ).map((row) => row.id);
   for (const before of await populationViews(tx, ctx.tenantId, ids)) {
     const result = compilePopulation(before.rules as RuleSet);
-    await tx.execute(sql`UPDATE succession_populations SET compiled_formula = ${result.ok ? result.compiled.formula : null},
+    await tx.execute(sql`UPDATE succession_populations
+      SET compiled_formula = ${result.ok ? result.compiled.formula : null},
       compiler_version = ${result.ok ? result.compiled.compilerVersion : null},
       compile_error = ${result.ok ? null : JSON.stringify(result.errors)}::jsonb, revision = revision + 1
       WHERE tenant_id = ${ctx.tenantId}::uuid AND id = ${before.id}::uuid`);

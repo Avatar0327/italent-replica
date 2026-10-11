@@ -39,47 +39,7 @@ export async function writeConfig(c: Context<TenantEnv>, deps: TenantRouteDeps, 
   c.header('ETag', `"${revisions.get(result.ids[0]!)}"`);
   return c.json(items[0], status);
 }
-export function registerSuccessionConfigRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
-  router.get(POPULATIONS, async (c) => {
-    const ctx = await successionContext(c, deps, 'population');
-    const page = pageQuery(c);
-    const result = await withTenant(deps.db, ctx.tenantId, async (tx) => {
-      await configAccess(tx, deps, ctx, 'population');
-      const ids = rowsOf<{ id: string }>(
-        await tx.execute(sql`SELECT id FROM succession_populations
-        WHERE tenant_id = ${ctx.tenantId}::uuid ORDER BY display_order, id LIMIT ${page.limit} OFFSET ${page.offset}`),
-      );
-      const [count] = rowsOf<{ total: number }>(
-        await tx.execute(sql`SELECT count(*)::int AS total
-        FROM succession_populations WHERE tenant_id = ${ctx.tenantId}::uuid`),
-      );
-      return {
-        total: count!.total,
-        items: await populationViews(
-          tx,
-          ctx.tenantId,
-          ids.map((row) => row.id),
-        ),
-      };
-    });
-    return c.json({
-      page: page.page,
-      pageSize: page.pageSize,
-      total: result.total,
-      items: await projectConfig(deps, ctx, 'population', result.items),
-    });
-  });
-  router.get(`${POPULATIONS}/:id`, async (c) => {
-    const ctx = await successionContext(c, deps, 'population');
-    const id = uuidParam(c);
-    const [view] = await withTenant(deps.db, ctx.tenantId, async (tx) => {
-      await configAccess(tx, deps, ctx, 'population');
-      return populationViews(tx, ctx.tenantId, [id]);
-    });
-    if (!view) throw missing();
-    c.header('ETag', `"${view.revision}"`);
-    return c.json((await projectConfig(deps, ctx, 'population', [view]))[0]);
-  });
+function registerPopulationWrites(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.post(POPULATIONS, async (c) => {
     const body = await parseBody(c, populationBody);
     const id = randomUUID();
@@ -119,6 +79,49 @@ export function registerSuccessionConfigRoutes(router: Hono<TenantEnv>, deps: Te
       results: configResults('population'),
       execute: (tx, ctx) => mutatePopulation(tx, deps, ctx, 'delete', id),
     });
+  });
+}
+export function registerSuccessionConfigRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  registerPopulationWrites(router, deps);
+  router.get(POPULATIONS, async (c) => {
+    const ctx = await successionContext(c, deps, 'population');
+    const page = pageQuery(c);
+    const result = await withTenant(deps.db, ctx.tenantId, async (tx) => {
+      await configAccess(tx, deps, ctx, 'population');
+      const ids = rowsOf<{ id: string }>(
+        await tx.execute(sql`SELECT id FROM succession_populations
+        WHERE tenant_id = ${ctx.tenantId}::uuid ORDER BY display_order, id LIMIT ${page.limit} OFFSET ${page.offset}`),
+      );
+      const [count] = rowsOf<{ total: number }>(
+        await tx.execute(sql`SELECT count(*)::int AS total
+        FROM succession_populations WHERE tenant_id = ${ctx.tenantId}::uuid`),
+      );
+      return {
+        total: count!.total,
+        items: await populationViews(
+          tx,
+          ctx.tenantId,
+          ids.map((row) => row.id),
+        ),
+      };
+    });
+    return c.json({
+      page: page.page,
+      pageSize: page.pageSize,
+      total: result.total,
+      items: await projectConfig(deps, ctx, 'population', result.items),
+    });
+  });
+  router.get(`${POPULATIONS}/:id`, async (c) => {
+    const ctx = await successionContext(c, deps, 'population');
+    const id = uuidParam(c);
+    const [view] = await withTenant(deps.db, ctx.tenantId, async (tx) => {
+      await configAccess(tx, deps, ctx, 'population');
+      return populationViews(tx, ctx.tenantId, [id]);
+    });
+    if (!view) throw missing();
+    c.header('ETag', `"${view.revision}"`);
+    return c.json((await projectConfig(deps, ctx, 'population', [view]))[0]);
   });
   router.get(SETTINGS, async (c) => {
     const kind = kindOf(c);

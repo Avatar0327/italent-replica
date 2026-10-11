@@ -41,12 +41,4 @@ CREATE TABLE "succession_rule_settings" (
 ALTER TABLE "succession_population_rows" ADD CONSTRAINT "succession_population_rows_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "succession_population_rows" ADD CONSTRAINT "succession_population_rows_tenant_id_population_id_succession_populations_tenant_id_id_fk" FOREIGN KEY ("tenant_id","population_id") REFERENCES "public"."succession_populations"("tenant_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "succession_populations" ADD CONSTRAINT "succession_populations_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "succession_rule_settings" ADD CONSTRAINT "succession_rule_settings_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-SELECT enable_tenant_isolation('succession_populations');
---> statement-breakpoint
-SELECT enable_tenant_isolation('succession_population_rows');
---> statement-breakpoint
-SELECT enable_tenant_isolation('succession_rule_settings');
---> statement-breakpoint
-GRANT SELECT, INSERT, UPDATE, DELETE ON succession_populations, succession_population_rows,
-  succession_rule_settings TO app_user;
+ALTER TABLE "succession_rule_settings" ADD CONSTRAINT "succession_rule_settings_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;

@@ -7,7 +7,7 @@ export const populationRules = z.strictObject({
   expression: z.string(),
   rows: z.array(
     z.strictObject({
-      rowNo: z.number().int(),
+      rowNo: z.number().int().max(2147483647),
       kind: z.literal('field'),
       field: z.strictObject({
         object: z.enum(['employee', 'employment', 'successor', 'review_object', 'org']),
