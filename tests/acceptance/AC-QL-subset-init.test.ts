@@ -654,3 +654,75 @@ describe('AC-QL-subset-init 第 2 轮 R2-P2-01：已跳过记录的原任职日�
     expect(await lines(twin.id)).toEqual(await lines(subject));
   });
 });
+
+describe('AC-QL-subset-init DEC-416④：同日多笔取当日最后一笔能成功映射的记录（与 C1-4 一致）', () => {
+  /** 对拍员工：同样的入职日；同样的任职记录交给 C1-4 同步。 */
+  async function twinScene(label: string) {
+    const s = await scene(label);
+    const twin = await s.w.session.employee('对拍员工');
+    await s.w.session.business(
+      twin.id,
+      { kind: 'hire', mode: 'direct', effectiveDate: '2026-09-01', fields: { departmentId: s.w.from.id } },
+      twin.revision,
+    );
+    const lines = async (id: string) =>
+      (await s.w.subsets(id)).map((row) => [row.startDate, row.endDate, row.categoryId, row.levelId]);
+    /** 初始化本人，再开 SW73 跑同步：本人的事件撞上初始化行让路，对拍员工的事件正常同步。 */
+    const settle = async () => {
+      const receipt = s.processed(await s.initOk([s.w.subject.employee.id]));
+      await s.w.enableSync(true);
+      await s.w.run(TODAY);
+      return { receipt, init: await lines(s.w.subject.employee.id), sync: await lines(twin.id) };
+    };
+    return { ...s, twinId: twin.id, settle };
+  }
+
+  it('同日先 A 可映射、后 B 无映射 → 生成 A，B 回执 NO_MAPPING；与 C1-4 同步一致（AC-QL-subset-init）', async () => {
+    const { w, categories, levelId, fields, jobLevelId, twinId, settle } = await twinScene('qlinit-dec416-tail');
+    const unmapped = await w.sequence('无映射序列');
+    const ids: string[][] = [];
+    for (const id of [w.subject.employee.id, twinId]) {
+      ids.push([
+        await w.transferWith('2026-09-10', fields(0), id),
+        await w.transferWith('2026-09-10', { sequenceId: unmapped, levelId: jobLevelId }, id),
+      ]);
+    }
+    const [a, b] = ids[0]!;
+    const { receipt, init, sync } = await settle();
+    expect(receipt.records.map((record) => [record.recordId, record.outcome, record.reason])).toEqual([
+      [w.subject.hire.id, 'skipped', 'NO_MAPPING'],
+      [a, 'created', undefined],
+      [b, 'skipped', 'NO_MAPPING'],
+    ]);
+    expect(init).toEqual([['2026-09-10', null, categories[0], levelId]]);
+    expect(sync).toEqual(init);
+  });
+
+  it('同日全部无映射 → 当天不生成，逐笔回执原因；前一天的资格保持开放，与 C1-4 同步一致（AC-QL-subset-init）', async () => {
+    const { w, categories, levelId, fields, jobLevelId, twinId, settle } = await twinScene('qlinit-dec416-none');
+    const unmapped = await w.sequence('无映射序列');
+    const ambiguousLevel = await w.jobLevel();
+    const ambiguousGrade = await w.jobGrade();
+    await w.level({ type: 'level', jobObjectId: ambiguousLevel });
+    await w.level({ type: 'grade', jobObjectId: ambiguousGrade });
+    const ids: string[][] = [];
+    for (const id of [w.subject.employee.id, twinId]) {
+      ids.push([
+        await w.transferWith('2026-09-05', fields(0), id),
+        await w.transferWith('2026-09-10', { sequenceId: unmapped, levelId: jobLevelId }, id),
+        await w.transferWith('2026-09-10', { ...fields(1), levelId: ambiguousLevel, gradeId: ambiguousGrade }, id),
+      ]);
+    }
+    const [c, a, b] = ids[0]!;
+    const { receipt, init, sync } = await settle();
+    expect(receipt.created).toBe(1);
+    expect(receipt.records.map((record) => [record.recordId, record.outcome, record.reason])).toEqual([
+      [w.subject.hire.id, 'skipped', 'NO_MAPPING'],
+      [c, 'created', undefined],
+      [a, 'skipped', 'NO_MAPPING'],
+      [b, 'skipped', 'AMBIGUOUS_MAPPING'],
+    ]);
+    expect(init).toEqual([['2026-09-05', null, categories[0], levelId]]);
+    expect(sync).toEqual(init);
+  });
+});
