@@ -46,14 +46,11 @@ async function saveLevelRules(
   rules: SuccessionLevelRules | null,
 ) {
   const spec = levelSpec(kind);
-  const compiled =
-    rules === null
-      ? null
-      : compileSuccessionLevel(
-          kind,
-          rules,
-          rules.rows.some((row) => row.fieldSource === 'review') ? await reviewCatalog(tx, tenantId) : [],
-        );
+  let compiled: ReturnType<typeof compileSuccessionLevel> | null = null;
+  if (rules !== null) {
+    const fields = rules.rows.some((row) => row.fieldSource === 'review') ? await reviewCatalog(tx, tenantId) : [];
+    compiled = compileSuccessionLevel(kind, rules, fields);
+  }
   if (compiled && !compiled.ok) invalidRule(compiled.errors);
   if (rules)
     for (const row of rules.rows)
@@ -154,6 +151,8 @@ export async function reorderLevels(
   );
   if (ids.length !== current.length || new Set(ids).size !== ids.length || current.some((row) => !ids.includes(row.id)))
     throw new AppError('VALIDATION_FAILED', '重排必须包含完整且无重复的等级集合', { reason: 'LEVEL_ORDER_INVALID' });
+  // 空集合没有等级可改，也没有对应审计对象，不制造一次无业务内容的集合版本变更。
+  if (!ids.length) return { kind: 'records' as const, ids };
   const before = await levelViews(tx, ctx.tenantId, kind, ids);
   for (const [index, id] of ids.entries())
     await tx.execute(sql`UPDATE ${spec.table} SET display_order = ${index + 1},

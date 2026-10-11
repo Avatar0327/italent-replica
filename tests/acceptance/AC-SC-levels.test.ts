@@ -13,6 +13,13 @@ describe('AC-SC B2b #11 / #12 风险与健康度等级', () => {
   beforeAll(async () => {
     w = await levelsWorld(testDb().db);
   });
+  it.each(levelKinds)('AC-SC %s：空等级集合重排不制造业务变更', async (kind) => {
+    const before = await w.list(kind);
+    const response = await w.request('PUT', `/${kind}-levels/order`, { ifMatch: 0, body: { ids: [] } });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ items: [] });
+    expect(await w.list(kind)).toEqual(before);
+  });
   it.each(levelKinds)('AC-SC %s：原始行、编译缓存、十进制比例、清空规则和删除快照', async (kind) => {
     const body = levelBody(kind);
     const saved = await w.createLevel(kind, body);

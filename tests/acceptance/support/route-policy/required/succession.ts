@@ -173,29 +173,32 @@ function configRequired(
     healthLevel: 'HealthLevel',
   }[key];
   const code = `Succession.${name}`;
-  const entry: Evidence =
-    operation === 'view'
-      ? key === 'population' || key === 'ruleSettings'
+  let entry: Evidence;
+  if (operation === 'view') {
+    entry =
+      key === 'population' || key === 'ruleSettings'
         ? { role: 'call', unit: CONFIG_ROUTES, anchor: `await successionContext(c, deps, '${key}')` }
         : {
             role: 'call',
             unit: `${S}/levels-routes.ts#registerLevelReads`,
             anchor: 'await successionContext(c, deps, spec.object)',
-          }
-      : {
-          role: 'call',
-          unit: SUCCESSION_CONTEXT,
-          anchor: 'await successionContext(c, deps, spec.object, spec.operation, spec.expectedRevision)',
-        };
+          };
+  } else {
+    entry = {
+      role: 'call',
+      unit: SUCCESSION_CONTEXT,
+      anchor: 'await successionContext(c, deps, spec.object, spec.operation, spec.expectedRevision)',
+    };
+  }
   const constant: Evidence = {
     role: 'const',
     unit: `packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>${key}`,
-    anchor:
-      key === 'population'
-        ? "object('Population'"
-        : key === 'ruleSettings'
-          ? "object( 'RuleSettings'"
-          : `levelObject('${name}')`,
+    anchor: {
+      population: "object('Population'",
+      ruleSettings: "object( 'RuleSettings'",
+      riskLevel: "levelObject('RiskLevel')",
+      healthLevel: "levelObject('HealthLevel')",
+    }[key],
   };
   const obligations: Obligation[] = [
     { perm: `obj:${code}:${operation}`, facts: ['object:objectContext'], at: [entry, ...CONTEXT, constant] },

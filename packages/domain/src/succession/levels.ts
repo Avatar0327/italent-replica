@@ -47,14 +47,12 @@ export function compileSuccessionLevel(
   if (rules.rows.length > 50) return { ok: false as const, errors: [{ code: 'RULE_TOO_LARGE' as const }] };
   const errors: RuleCompileError[] = [];
   for (const row of rules.rows) {
-    const fields =
-      kind === 'risk'
-        ? [...POPULATION_FIELDS, ...(row.subject === 'successor' ? [ref('successor', 'readiness_id', 'text')] : [])]
-        : row.fieldSource === 'review'
-          ? reviewFields
-          : row.fieldSource === 'org'
-            ? orgFields
-            : successionFields;
+    let fields: readonly RuleFieldRef[] = POPULATION_FIELDS;
+    if (kind === 'risk') {
+      if (row.subject === 'successor') fields = [...fields, ref('successor', 'readiness_id', 'text')];
+    } else if (row.fieldSource === 'review') fields = reviewFields;
+    else if (row.fieldSource === 'org') fields = orgFields;
+    else fields = successionFields;
     const field = fields.find((item) => item.code === row.fieldCode);
     const invalid = (reason: RuleCompileError['reason']) =>
       errors.push({ code: 'RULE_ROW_INVALID', rowNo: row.rowNo, reason });

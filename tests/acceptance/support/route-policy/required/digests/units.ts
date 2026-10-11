@@ -674,7 +674,7 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/succession/levels-routes.ts': {
     levelOptionAccess: '860821af3908',
-    registerSuccessionLevelRoutes: '72a6b2744582',
+    registerLevelReads: 'ba1d174232f9',
   },
   'apps/api/src/modules/succession/read-sql.ts': {
     selfRecordHiddenSql: '89628ea4a06a',
@@ -1682,7 +1682,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/succession/config-routes.ts#registerSuccessionConfigRoutes': '3fb660443fbe',
   'apps/api/src/modules/succession/input.ts#rejectImmutable': '99ce3a8d9998',
   'apps/api/src/modules/succession/levels-routes.ts#levelOptionAccess': '07e9bf4002f1',
-  'apps/api/src/modules/succession/levels-routes.ts#registerSuccessionLevelRoutes': '0393265c7db5',
+  'apps/api/src/modules/succession/levels-routes.ts#registerLevelReads': '1c4dc4f4f005',
   'apps/api/src/modules/succession/read-sql.ts#selfRecordHiddenSql': 'eab3bde19b0f',
   'apps/api/src/modules/succession/record-read.ts#conditions': '326371d4de4d',
   'apps/api/src/modules/succession/record-write.ts#requireTarget': '8ff43faa6c04',
