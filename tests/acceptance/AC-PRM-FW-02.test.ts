@@ -22,7 +22,9 @@ import {
 } from './support/route-policy/baseline.js';
 import { compareDeclarations, type Finding } from './support/route-policy/compare.js';
 import { domainConstants } from './support/route-policy/domains.js';
+import { countDrift, countEndpoints, readEndpointCounts } from './support/route-policy/endpoint-counts.js';
 import { gateEvidence } from './support/route-policy/evidence-gate.js';
+import { generatedGate, generatedStrict, textDrift } from './support/route-policy/generated-gate.js';
 import { MUTATIONS, mutantsOf } from './support/route-policy/mutate.js';
 import { tenantApi } from './support/tenant-api.js';
 
@@ -39,7 +41,8 @@ beforeAll(async () => {
   if (process.env.ROUTE_POLICY_UPDATE_BASELINE === '1') writeFrozenContract(fresh);
   const stored = readFrozenContract();
   if (!stored) throw new Error(`冻结基准不存在：先用 ROUTE_POLICY_UPDATE_BASELINE=1 生成 ${BASELINE_PATH}`);
-  frozen = stored;
+  // DEC-430①：警告模式下冻结文件可能还没按最新源码重算，比较改用本次重新探测的现状（同一生成器，独立于声明）
+  frozen = generatedStrict() ? stored : fresh;
 });
 
 function codes(findings: readonly Finding[]): string[] {
@@ -56,10 +59,11 @@ describe('AC-PRM-FW-02 现状必测基准（独立于声明）', () => {
     expect(canonicalJson(fresh)).not.toMatch(/"kind"/);
   });
 
-  it('基准覆盖全部已声明端点（593），键是 METHOD 最终路径', () => {
+  it('基准覆盖全部已声明端点（总数见 endpoint-counts.json），键是 METHOD 最终路径', () => {
     const declared = manifest.declared.map((r) => `${r.method} ${r.path}`).sort();
     expect(Object.keys(fresh.routes).sort()).toEqual(declared);
-    expect(declared).toHaveLength(593);
+    const drift = countDrift(countEndpoints(manifest.declared), readEndpointCounts(), { totalOnly: true });
+    expect(generatedGate('端点计数（基准）', drift)).toEqual([]);
   });
 
   it('边界探测：租户接口匿名 401、非成员 403；平台非运营 403；360 链接无令牌 404；/healthz 200', () => {
@@ -113,8 +117,9 @@ describe('AC-PRM-FW-02 现状必测基准（独立于声明）', () => {
   });
 
   it('基准新鲜：重新探测与冻结文件逐字节相等（改动须 ROUTE_POLICY_UPDATE_BASELINE=1 重新生成并随 PR 评审）', () => {
-    expect(canonicalJson(fresh)).toBe(readFileSync(BASELINE_PATH, 'utf8'));
-    expect(fresh).toEqual(frozen);
+    // DEC-430①：PR 上只警告，main / 队首 PR（GENERATED_STRICT=1）判红
+    const drift = textDrift('observed-contract.json', canonicalJson(fresh), readFileSync(BASELINE_PATH, 'utf8'));
+    expect(generatedGate('冻结基准', drift)).toEqual([]);
   });
 });
 

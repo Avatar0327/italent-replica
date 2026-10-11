@@ -72,6 +72,7 @@ jobs:
     timeout-minutes: 2
     outputs:
       docs_only: ${{ steps.classify.outputs.docs_only }}
+      generated_strict: ${{ steps.generated.outputs.strict }}
     steps:
       # 取 PR 合并提交及其两个父提交：HEAD^1 是 base，diff 即本 PR 相对 base 的完整改动
       - uses: actions/checkout@v4
@@ -113,6 +114,33 @@ jobs:
             fi
           fi
           echo "docs_only=$docs_only" | tee -a "$GITHUB_OUTPUT"
+      # DEC-430①：生成物（F-039 冻结基准 / 发现探测 / 证据登记、端点计数）的新鲜度只在 main、定时 / 手动运行
+      # 和“PR 头已包含最新 main”时判红（GENERATED_STRICT=1），其余 PR 只警告。
+      # PR 检出的是 GitHub 的测试合并提交：HEAD^1 = base、HEAD^2 = PR 头。合并结果与 PR 头树相同，
+      # 说明 base 的改动 PR 头都已含有（合并队列用 pnpm merge:main 准备好的队首 PR 就是这样），测的正是 PR 提交的生成物；
+      # 用树比较而不是 merge-base --is-ancestor，fetch-depth 2 就够，不用拉全历史
+      - id: generated
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          strict=1
+          reason="$EVENT_NAME 运行"
+          if [ "$EVENT_NAME" = pull_request ]; then
+            if ! git rev-parse -q --verify 'HEAD^2' > /dev/null; then
+              strict=0
+              reason="取不到 PR 头提交，按未包含最新 main 处理"
+            elif git diff --quiet 'HEAD^2' HEAD; then
+              reason="PR 头已包含最新 main"
+            else
+              strict=0
+              reason="PR 头未包含最新 main（合并前由队列 pnpm merge:main 重算）"
+            fi
+          fi
+          mode=$([ "$strict" = 1 ] && echo "严格（不一致判红）" || echo "仅警告")
+          echo "strict=$strict" | tee -a "$GITHUB_OUTPUT"
+          echo "::notice title=生成物新鲜度::GENERATED_STRICT=$strict，$mode：$reason"
+          echo "生成物新鲜度（DEC-430①）：GENERATED_STRICT=$strict，$mode；$reason" >> "$GITHUB_STEP_SUMMARY"
   check-shards:
     name: test (PGlite, Node ${{ matrix.node }}, shard ${{ matrix.shard }}/4)
     needs: changes
@@ -141,6 +169,8 @@ jobs:
       - run: pnpm typecheck
         if: matrix.shard == 1
       - run: pnpm test --shard=${{ matrix.shard }}/4
+        env:
+          GENERATED_STRICT: ${{ needs.changes.outputs.generated_strict }}
       - run: pnpm build
         if: matrix.shard == 1
 
@@ -203,6 +233,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       # F-043 真 PG 并发用例偶发 30 秒超时，单独在 test-pg-race 跑并允许重试一次（DEC-431④）
       - run: pnpm test:pg --shard=${{ matrix.shard }}/4 --exclude=tests/acceptance/AC-360-F043-race-pg.test.ts
+        env:
+          GENERATED_STRICT: ${{ needs.changes.outputs.generated_strict }}
 
   test-pg-race:
     name: test (PostgreSQL 16, F-043 race)
