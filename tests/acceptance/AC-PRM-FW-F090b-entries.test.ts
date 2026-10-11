@@ -41,7 +41,7 @@ async function run(omission: string, strict: boolean) {
   const args = [
     cli,
     'run',
-    ...(strict ? files.slice(0, 1) : files),
+    ...(omission === 'complete' ? [files[3]!] : strict ? files.slice(0, 1) : files),
     '--config',
     config,
     '--testTimeout=180000',
@@ -52,7 +52,8 @@ async function run(omission: string, strict: boolean) {
     '--outputFile',
     report,
   ];
-  if (strict) args.push('-t', '真实声明.*(真实表|零发现)|表键.*端点');
+  if (omission === 'complete') args.push('-t', '不带登记检查');
+  else if (strict) args.push('-t', '真实声明.*(真实表|零发现)|表键.*端点');
   let exitCode = 0;
   let output = '';
   try {
@@ -84,6 +85,12 @@ describe('AC-PRM-FW-F090b 真实入口漏登记：九个文件完整回归（DEC
       }),
     ).toThrow('未知读取错误');
   });
+  it.each([false, true])('完整登记：strict=%s 不把已知台账记录当差异', async (strict) => {
+    const result = await run('complete', strict);
+    expect(result.exitCode, result.output + JSON.stringify(result.result)).toBe(0);
+    expect(result.result.numFailedTests).toBe(0);
+    expect(result.result.numPassedTests).toBe(1);
+  }, 180_000);
   it.each(['endpoints', 'guard-inner'])(
     '%s：默认整组通过只警告，严格模式在真实入口判红',
     async (omission) => {
