@@ -31,6 +31,7 @@ import { assertNewActivityRefs, assertNewOrgs } from './activity-refs.js';
 import { assertScopeUnique } from './activity-scope.js';
 import type * as input from './input.js';
 import { loadConditions, prepareConditions, replaceConditions, type ConditionRecord } from './conditions.js';
+import { coordinateActivityForms } from './reference-locks.js';
 import { assertNewPersonRefs, presentPersonRefs, type PersonRefAccess } from './person-refs.js';
 import { loadRow, type Tracked, view } from './read-model.js';
 import type { View } from './route-support.js';
@@ -279,6 +280,7 @@ function matchOrFail(existing: readonly ChainRecord[], submitted: readonly Submi
 }
 
 export async function createActivity(tx: Tx, ctx: WriteContext, body: input.ActivityCreate): Promise<ActivityRecord> {
+  await coordinateActivityForms(tx, ctx.tenantId);
   const chains = body.chains.map(toDraft);
   const conditions = prepareConditions(body.conditions ?? []);
   const startDate = body.startDate ?? null;
@@ -347,6 +349,7 @@ export async function updateActivity(
   id: string,
   body: input.ActivityPatch,
 ): Promise<ActivityRecord> {
+  await coordinateActivityForms(tx, ctx.tenantId);
   const row = await lockEditable(tx, ctx, 'evaluationActivity', id);
   // Q-M0-174 第 8 点：已完成的活动不能修改（原站“编辑”置灰，悬停提示原文）
   if (row.status === 'completed') {
@@ -426,6 +429,7 @@ export async function updateActivity(
 
 /** 删除只允许草稿（Q-M0-174 第 7 点）：进行中 / 已完成按原站文案拒绝；草稿有报名的也拒绝（保守，正常不会出现）。 */
 export async function deleteActivity(tx: Tx, ctx: WriteContext, id: string): Promise<ActivityRecord> {
+  await coordinateActivityForms(tx, ctx.tenantId);
   const row = await lockEditable(tx, ctx, 'evaluationActivity', id);
   if (row.status === 'published') {
     throw new AppError('CONFLICT', '此活动进行中，无法删除', { reason: 'ACTIVITY_NOT_DRAFT' });
