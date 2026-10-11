@@ -14,6 +14,8 @@ export interface AuditFieldDirectory {
   readonly allVisible: boolean;
   /** 查看人对计算规则 items 列的查看权（hints 的投影随它，契约 §5.2）；缺省按有处理。 */
   readonly itemsViewable?: boolean;
+  /** 模板结果规则同时裁剪目标字段；默认关闭，保留计算规则既有审计契约。 */
+  readonly maskTargets?: boolean;
 }
 
 type Json = Record<string, unknown>;
@@ -112,7 +114,10 @@ function redactItem(item: Json, directory: AuditFieldDirectory): Json {
   const formula = item['formula'] as string;
   const text =
     item['formulaBinding'] === 'bound' ? renderStored(item, formula, directory) : renderOld(formula, directory);
-  return text === formula ? item : { ...item, formula: text };
+  const hiddenTarget =
+    directory.maskTargets === true && !directory.visible.has((item['targetFieldId'] as string).toLowerCase());
+  if (text === formula && !hiddenTarget) return item;
+  return { ...item, formula: text, targetFieldId: hiddenTarget ? null : item['targetFieldId'] };
 }
 
 function renderStored(item: Json, formula: string, directory: AuditFieldDirectory): string {

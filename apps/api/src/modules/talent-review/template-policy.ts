@@ -9,6 +9,7 @@ import {
   BAD_REQUEST,
   button,
   guardScope,
+  fixed,
   listScope,
   noButton,
   none,
@@ -29,6 +30,15 @@ const changed = (body: 'body' | 'none') =>
   write(body === 'body' ? 'body' : none('删除不写字段'), 'talentReview.commandScope', result, { ledger: 'single' });
 const REFERENCE = 'talentReview.templateCatalogReference';
 const READONLY = 'talentReview.templatePublicDownReadonly';
+// F-082：字段目录权限仅决定公式的引用披露，没有访问时显示占位符，不拒绝模板读取。
+const resultFields = object({
+  object: TALENT_REVIEW_OBJECTS.field.code,
+  operation: 'view',
+  button: noButton('公式引用披露'),
+  scope: listScope('talentReview.configScope(talent_review_fields)'),
+  fields: fixed(['name', 'kind', 'enabled', 'systemWritten'], 'F-082 引用投影', TALENT_REVIEW_OBJECTS.field.code),
+});
+const optional = { resultFields };
 
 export const TEMPLATE_POLICIES = {
   [`GET ${BASE}`]: object({
@@ -46,6 +56,7 @@ export const TEMPLATE_POLICIES = {
     button: noButton('详情按对象查看权'),
     scope: point,
     fields,
+    optional,
   }),
   // 新建：所属组织须在范围内（不因创建人或向下公开放行），范围外 404
   [`POST ${BASE}`]: object({
@@ -54,6 +65,7 @@ export const TEMPLATE_POLICIES = {
     button: button('create', 'list'),
     scope: guardScope('talentReview.templateCreatable', NOT_FOUND),
     fields,
+    optional,
     // 重放：首次成功后模板被改成只读（向下公开）时，同键重放按当前归属拒绝（guard.replayed 的 requireEditable）
     guards: [READONLY, REFERENCE],
     write: changed('body'),
@@ -65,6 +77,7 @@ export const TEMPLATE_POLICIES = {
     button: button('update', 'detail'),
     scope: point,
     fields,
+    optional,
     guards: [READONLY, REFERENCE],
     write: changed('body'),
   }),
@@ -75,6 +88,7 @@ export const TEMPLATE_POLICIES = {
     button: button('delete', 'detail'),
     scope: point,
     fields,
+    optional,
     guards: [READONLY],
     write: changed('none'),
   }),
