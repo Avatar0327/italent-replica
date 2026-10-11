@@ -266,34 +266,44 @@ describe('AC-TR-project 校准引用属性约束（PR #256 P2-1）', () => {
   };
   const calibration = (f: Awaited<ReturnType<typeof fixture>>) =>
     f.create<{ id: string; revision: number; group: string }>('/fields', configBody('field', { group: 'calibration' }));
-  const selection = (id: string) => ({ calibrationFields: [{ fieldId: id, required: true }], matrices: [] });
+  const selection = (id: string, required = true) => ({ calibrationFields: [{ fieldId: id, required }], matrices: [] });
 
-  it('被引用字段不能改离校准分组；失败不改字段 / 项目 / 审计，原项目可原样保存；解除引用后可改组', async () => {
-    const f = await fixture('project-field-group');
-    const field = await calibration(f);
-    const p = await f.project(selection(field.id));
-    const audits = () =>
-      withTenant(testDb().db, f.w.as.tenant, (tx) =>
-        tx.select().from(auditEvents).where(eq(auditEvents.objectId, field.id)),
-      );
-    const beforeAudits = await audits();
-    const changed = await f.request('PATCH', `/fields/${field.id}`, {
-      ifMatch: field.revision,
-      body: { group: 'result', name: '不应保存的字段名称' },
-    });
-    expect(changed.status, await changed.clone().text()).toBe(409);
-    expect(await reason(changed)).toBe('FIELD_GROUP_BREAKS_PROJECT');
-    expect(await (await f.request('GET', `/fields/${field.id}`)).json()).toEqual(field);
-    expect(await f.read(p)).toEqual(p);
-    expect(await audits()).toEqual(beforeAudits);
-    const saved = await f.write(p, 'PATCH', { name: '项目正常保存', ...selection(field.id) });
-    expect(saved.status, await saved.clone().text()).toBe(200);
-    const current = (await saved.json()) as Project;
-    expect((await f.write(current, 'PATCH', { calibrationFields: [] })).status).toBe(200);
-    expect(
-      (await f.request('PATCH', `/fields/${field.id}`, { ifMatch: field.revision, body: { group: 'result' } })).status,
-    ).toBe(200);
-  });
+  it.each([true, false])(
+    '校准原因 required=%s：改组拒绝且不写；合法属性修改和原样保存允许；解除后可改组',
+    async (required) => {
+      const f = await fixture('project-field-group');
+      const field = await calibration(f);
+      const p = await f.project(selection(field.id, required));
+      const audits = () =>
+        withTenant(testDb().db, f.w.as.tenant, (tx) =>
+          tx.select().from(auditEvents).where(eq(auditEvents.objectId, field.id)),
+        );
+      const beforeAudits = await audits();
+      const changed = await f.request('PATCH', `/fields/${field.id}`, {
+        ifMatch: field.revision,
+        body: { group: 'result', name: '不应保存的字段名称' },
+      });
+      expect(changed.status, await changed.clone().text()).toBe(409);
+      expect(await reason(changed)).toBe('FIELD_GROUP_BREAKS_PROJECT');
+      expect(await (await f.request('GET', `/fields/${field.id}`)).json()).toEqual(field);
+      expect(await f.read(p)).toEqual(p);
+      expect(await audits()).toEqual(beforeAudits);
+      const allowed = await f.request('PATCH', `/fields/${field.id}`, {
+        ifMatch: field.revision,
+        body: { group: 'calibration', name: '校准原因正常改名', enabled: false },
+      });
+      expect(allowed.status, await allowed.clone().text()).toBe(200);
+      const updated = (await allowed.json()) as { revision: number };
+      const saved = await f.write(p, 'PATCH', { name: '项目正常保存', ...selection(field.id, required) });
+      expect(saved.status, await saved.clone().text()).toBe(200);
+      const current = (await saved.json()) as Project;
+      expect((await f.write(current, 'PATCH', { calibrationFields: [] })).status).toBe(200);
+      expect(
+        (await f.request('PATCH', `/fields/${field.id}`, { ifMatch: updated.revision, body: { group: 'result' } }))
+          .status,
+      ).toBe(200);
+    },
+  );
 
   it.runIf(Boolean(process.env.TEST_DATABASE_URL))(
     '真 PG：新建引用先持字段共享锁，改组等待后须读到引用并返回 409',

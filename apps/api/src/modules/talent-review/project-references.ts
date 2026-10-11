@@ -18,7 +18,7 @@ import {
 } from '@italent/db';
 import { AppError } from '../../errors.js';
 import { notFoundMessage, requireConfigVisible, type ModuleScope } from './access.js';
-import { registerConfigReferenceGuard, type WriteContext } from './config-kit.js';
+import { registerConfigReferenceGuard, registerConfigUpdateConstraint, type WriteContext } from './config-kit.js';
 import { registerRatioGroupReferenceGuard } from './matrix-service.js';
 import type { ProjectPatch } from './project-input.js';
 import type { ProjectView } from './project-store.js';
@@ -122,6 +122,21 @@ export async function resolveProjectMatrices(
   }
   return result;
 }
+
+// 设计 §2.4 TR-R38：引用写持字段共享锁，改组持排他锁；等待提交后在同一事务复核，避免留下无法原样保存的配置。
+registerConfigUpdateConstraint('field', async (tx, tenantId, id, patch) => {
+  if (patch.group === undefined || patch.group === 'calibration') return;
+  const [reference] = await tx
+    .select({ id: CF.projectId })
+    .from(CF)
+    .where(and(eq(CF.tenantId, tenantId), eq(CF.fieldId, id)))
+    .limit(1);
+  if (reference) {
+    throw new AppError('CONFLICT', '字段已被项目选为校准原因，不能改离校准分组', {
+      reason: 'FIELD_GROUP_BREAKS_PROJECT',
+    });
+  }
+});
 
 // 被引用配置的删除与保存引用在同一行锁上串行，避免悬空引用或外键错误落成 503。
 registerConfigReferenceGuard('category', async (tx, tenantId, id) => {
