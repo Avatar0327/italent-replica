@@ -65,8 +65,8 @@ const TR_APP = 'TalentReview';
 const APPROVED = ['Settings', 'Category', 'Role', 'Field'].map((name) => `${TR_APP}.${name}`);
 /** DEC-384 追加批准的盘点目标。 */
 const EXTRA_TR = ['Readiness', 'Matrix', 'CalcRule'].map((name) => `${TR_APP}.${name}`);
-/** DEC-415：字段映射 / 表单 / 流程 / 盘点模板的看全部预置给盘点管理员。 */
-const DEC_415 = ['FieldMapping', 'Form', 'Flow', 'Template'].map((name) => `${TR_APP}.${name}`);
+/** DEC-415：字段映射 / 表单 / 流程 / 盘点模板 / 盘点项目的看全部预置给盘点管理员。 */
+const DEC_415 = ['FieldMapping', 'Form', 'Flow', 'Template', 'Project'].map((name) => `${TR_APP}.${name}`);
 const seeAllCode = (target: string) => seeAllGrantCode(TR, TR_APP, 'entity', target);
 const OBJECT = OBJ.objectCode;
 const hrButton = buttonCode(HR.code, OBJECT, BUTTON);
@@ -75,8 +75,8 @@ const MATRIX = `${TR_APP}.Matrix`;
 const PRESET_COUNT = STANDARD_PROFILES.flatMap(presetSeeAllTargets).length;
 
 describe('AC-PLAT-F061 D3 批准清单守卫（DEC-374②、DEC-384）', () => {
-  it('批准清单每行写身份、应用、种类、目标编码与 DEC 号：DEC-374② 的四个盘点设置对象 + DEC-384 的 32 个 + DEC-408② 的 2 个 + DEC-415 的 4 个', () => {
-    expect(SEE_ALL_BACKFILL_APPROVED).toHaveLength(42);
+  it('批准清单每行写身份、应用、种类、目标编码与 DEC 号：DEC-374② 的四个盘点设置对象 + DEC-384 的 32 个 + DEC-408② 的 2 个 + DEC-415 的 5 个', () => {
+    expect(SEE_ALL_BACKFILL_APPROVED).toHaveLength(43);
     const byDec = (dec: string) => SEE_ALL_BACKFILL_APPROVED.filter((a) => a.dec === dec);
     expect(byDec('DEC-374②')).toEqual(
       APPROVED.map((targetCode) => ({
@@ -100,10 +100,10 @@ describe('AC-PLAT-F061 D3 批准清单守卫（DEC-374②、DEC-384）', () => {
     const unique = new Set(
       SEE_ALL_BACKFILL_APPROVED.map((a) => `${a.profileCode}|${a.appCode}|${a.targetKind}|${a.targetCode}`),
     );
-    expect(unique.size).toBe(42);
+    expect(unique.size).toBe(43);
   });
 
-  it('批准的目标就是身份定义里全部预置看全部的目标：unapprovedSeeAllTargets() 为空，看全部编码恰好 42 个', () => {
+  it('批准的目标就是身份定义里全部预置看全部的目标：unapprovedSeeAllTargets() 为空，看全部编码恰好 43 个', () => {
     expect(unapprovedSeeAllTargets()).toEqual([]);
     expect(PRESET_COUNT).toBe(SEE_ALL_BACKFILL_APPROVED.length);
     const seeAllCodes = STANDARD_GRANT_CODES.filter((code) => code.includes('/seeAll:'));
