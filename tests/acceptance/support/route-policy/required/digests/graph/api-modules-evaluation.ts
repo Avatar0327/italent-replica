@@ -529,40 +529,35 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/evaluation/read-model.ts#reload': ['#loadRow', '#view'],
   'apps/api/src/modules/evaluation/read-model.ts#view': ['#INTERNAL', '#camel'],
   'apps/api/src/modules/evaluation/review-group-exit.ts#exitEmployeeReviewGroups': [
-    '#lockExitGroups',
     'apps/api/src/modules/evaluation/review-group-service.ts#auditSnapshot',
     'apps/api/src/modules/evaluation/review-group-service.ts#loadGroup',
     'apps/api/src/modules/evaluation/store.ts#audit',
   ],
   'apps/api/src/modules/evaluation/review-group-exit.ts#hooks': [
-    'apps/api/src/modules/employment/employees.ts#getEmployee',
     'apps/api/src/modules/employment/record-events.ts#RECORD_CREATE_EVENT',
     'apps/api/src/modules/evaluation/access.ts#rowsOf',
-    '#REVIEW_GROUP_EXIT_HANDLER',
     '#exitEmployeeReviewGroups',
     '#settleDueReviewGroupExits',
     '#settleReviewGroupExit',
+    'apps/api/src/modules/evaluation/review-group-state.ts#REVIEW_GROUP_EXIT_HANDLER',
+    'apps/api/src/modules/evaluation/review-group-state.ts#isDueReviewGroupLeave',
+    'apps/api/src/modules/evaluation/review-group-state.ts#lockReviewGroupState',
+    'apps/api/src/modules/evaluation/review-group-state.ts#reviewGroupEmployeeStatus',
     'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS',
-    'packages/domain/src/tenant-time.ts#tenantLocalDate',
-  ],
-  'apps/api/src/modules/evaluation/review-group-exit.ts#lockExitGroups': [
-    'apps/api/src/modules/evaluation/access.ts#rowsOf',
   ],
   'apps/api/src/modules/evaluation/review-group-exit.ts#registerReviewGroupExitHook': [
     'apps/api/src/modules/employment/status-hooks.ts#registerEmployeeStatusHooks',
-    '#REVIEW_GROUP_EXIT_HANDLER',
     '#hooks',
+    'apps/api/src/modules/evaluation/review-group-state.ts#REVIEW_GROUP_EXIT_HANDLER',
   ],
   'apps/api/src/modules/evaluation/review-group-exit.ts#settleDueReviewGroupExits': [
-    'apps/api/src/modules/evaluation/access.ts#rowsOf',
-    '#REVIEW_GROUP_EXIT_HANDLER',
     '#exitEmployeeReviewGroups',
-    '#lockExitGroups',
     '#settleReviewGroupExit',
-    'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS',
-    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+    'apps/api/src/modules/evaluation/review-group-state.ts#isDueReviewGroupLeave',
   ],
-  'apps/api/src/modules/evaluation/review-group-exit.ts#settleReviewGroupExit': ['#REVIEW_GROUP_EXIT_HANDLER'],
+  'apps/api/src/modules/evaluation/review-group-exit.ts#settleReviewGroupExit': [
+    'apps/api/src/modules/evaluation/review-group-state.ts#REVIEW_GROUP_EXIT_HANDLER',
+  ],
   'apps/api/src/modules/evaluation/review-group-people.ts#employedReviewMemberSql': [
     'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS',
   ],
@@ -571,8 +566,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
   'apps/api/src/modules/evaluation/review-group-people.ts#requireEmployedReviewMembers': [
-    'apps/api/src/modules/employment/employees.ts#getEmployee',
-    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+    'apps/api/src/modules/evaluation/review-group-state.ts#reviewGroupEmployeeStatus',
   ],
   'apps/api/src/modules/evaluation/review-group-routes.ts#PATH': [
     'apps/api/src/modules/evaluation/route-support.ts#EV_BASE',
@@ -628,6 +622,7 @@ export const GRAPH: Graph = {
     '#checkMembers',
     '#loadGroup',
     '#replaceMembers',
+    'apps/api/src/modules/evaluation/review-group-state.ts#lockReviewGroupState',
     'apps/api/src/modules/evaluation/store.ts#audit',
     'apps/api/src/modules/evaluation/store.ts#requireOwnerOrg',
   ],
@@ -648,6 +643,7 @@ export const GRAPH: Graph = {
     '#checkMembers',
     '#loadGroup',
     '#replaceMembers',
+    'apps/api/src/modules/evaluation/review-group-state.ts#lockReviewGroupState',
     'apps/api/src/modules/evaluation/store.ts#audit',
     'apps/api/src/modules/evaluation/store.ts#bumped',
     'apps/api/src/modules/evaluation/store.ts#lockEditable',
@@ -656,6 +652,18 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/evaluation/review-group-service.ts#withMembers': [
     'apps/api/src/modules/evaluation/access.ts#rowsOf',
     'apps/api/src/modules/evaluation/read-model.ts#view',
+  ],
+  'apps/api/src/modules/evaluation/review-group-state.ts#isDueReviewGroupLeave': [
+    'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS',
+  ],
+  'apps/api/src/modules/evaluation/review-group-state.ts#lockReviewGroupState': [
+    'apps/api/src/audit/request-context.ts#currentAuditRequest',
+    'apps/api/src/modules/evaluation/access.ts#rowsOf',
+    '#REVIEW_GROUP_EXIT_HANDLER',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/evaluation/review-group-state.ts#reviewGroupEmployeeStatus': [
+    'apps/api/src/modules/employment/employees.ts#getEmployee',
   ],
   'apps/api/src/modules/evaluation/route-support.ts#presenter': [
     'apps/api/src/modules/evaluation/access.ts#trimEvaluation',

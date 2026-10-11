@@ -287,9 +287,9 @@ export const DIGESTS: Digests = {
     registerReviewGroupRoutes: 'f2e00fdd8922',
   },
   'apps/api/src/modules/evaluation/review-group-service.ts': {
-    createReviewGroup: '43c6abb83229',
+    createReviewGroup: '96c4c112dfa4',
     presentGroups: 'a57b9288476f',
-    updateReviewGroup: '36c8fe680a50',
+    updateReviewGroup: 'edfb67b1817f',
   },
   'apps/api/src/modules/evaluation/routes.ts': {
     SPECS: 'a73d064dbefb',
@@ -1377,9 +1377,9 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/evaluation/person-refs.ts#presentPersonRefs': '4a3d2dec21cf',
   'apps/api/src/modules/evaluation/review-group-routes.ts#PATH': '072f6ed3a951',
   'apps/api/src/modules/evaluation/review-group-routes.ts#registerReviewGroupRoutes': 'dbe700c81275',
-  'apps/api/src/modules/evaluation/review-group-service.ts#createReviewGroup': '3a278de93094',
+  'apps/api/src/modules/evaluation/review-group-service.ts#createReviewGroup': '52dc2df78303',
   'apps/api/src/modules/evaluation/review-group-service.ts#presentGroups': '4b436823458b',
-  'apps/api/src/modules/evaluation/review-group-service.ts#updateReviewGroup': '5835f2c59f70',
+  'apps/api/src/modules/evaluation/review-group-service.ts#updateReviewGroup': '9afe1510f20d',
   'apps/api/src/modules/evaluation/routes.ts#SPECS': 'a716aea11db4',
   'apps/api/src/modules/evaluation/routes.ts#registerEvaluationRoutes': 'f71caee004a1',
   'apps/api/src/modules/evaluation/routes.ts#registerObject': 'a3bbb6a37375',
