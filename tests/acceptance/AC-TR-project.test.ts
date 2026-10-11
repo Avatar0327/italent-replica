@@ -109,6 +109,9 @@ describe('AC-TR-project 项目定义', () => {
       { periodStartDate: '2026-02-30' },
       { periodEndDate: '2025-12-31' },
       { year: undefined },
+      { year: 2147483648 },
+      { periodStartDate: '0000-01-01' },
+      { businessDate: '0000-01-01' },
       { period: '' },
       { ownerOrgId: 'bad' },
     ])
