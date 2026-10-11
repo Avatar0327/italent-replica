@@ -20,6 +20,7 @@ import {
 } from '../../route-policy/presets.js';
 import { MATRIX_POLICIES } from './matrix-policy.js';
 import { CALC_RULE_POLICIES } from './calc-rule-policy.js';
+import { TEMPLATE_POLICIES } from './template-policy.js';
 
 /**
  * 字段改名失败（FIELD_NAME_BREAKS_FORMULA，F-082 契约 §3.1）时错误载荷里的定位信息：可选分支，只决定披露什么、不参与准入、
@@ -119,6 +120,7 @@ const SETTINGS_FIELDS = projector('talentReview.settings', 'talentReview.setting
 export const TALENT_REVIEW_POLICIES = defineTable('talent-review', {
   ...MATRIX_POLICIES,
   ...CALC_RULE_POLICIES,
+  ...TEMPLATE_POLICIES,
   ...configRoutes('category', '/api/tenant/talent-review/categories', 'talent_review_categories'),
   ...configRoutes('role', '/api/tenant/talent-review/roles', 'talent_review_roles'),
   // 新建时指定成对字段 = 同时修改另一端：另需更新权、update 按钮与 pairFieldId 编辑权（requirePairUpdate）
