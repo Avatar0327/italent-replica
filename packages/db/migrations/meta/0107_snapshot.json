@@ -48432,6 +48432,14 @@
             "name"
           ],
           "nullsNotDistinct": false
+        },
+        "succession_health_levels_order": {
+          "name": "succession_health_levels_order",
+          "columns": [
+            "tenant_id",
+            "display_order"
+          ],
+          "nullsNotDistinct": false
         }
       },
       "policies": {},
@@ -49317,6 +49325,14 @@
           "columns": [
             "tenant_id",
             "name"
+          ],
+          "nullsNotDistinct": false
+        },
+        "succession_risk_levels_order": {
+          "name": "succession_risk_levels_order",
+          "columns": [
+            "tenant_id",
+            "display_order"
           ],
           "nullsNotDistinct": false
         }

@@ -225,6 +225,7 @@ function levelTable<N extends 'succession_risk_levels' | 'succession_health_leve
       unique(`${name}_tenant_id`).on(t.tenantId, t.id),
       unique(`${name}_code`).on(t.tenantId, t.code),
       unique(`${name}_name`).on(t.tenantId, t.name),
+      unique(`${name}_order`).on(t.tenantId, t.displayOrder),
       check(`${name}_color`, sql`${t.color} ~ '^#[0-9A-Fa-f]{6}$'`),
       check(`${name}_revision`, sql`${t.revision} > 0 AND ${t.displayOrder} > 0`),
     ],

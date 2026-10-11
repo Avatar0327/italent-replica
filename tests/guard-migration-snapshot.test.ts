@@ -36,6 +36,24 @@ function latestSnapshot(): DrizzleSnapshotJSON {
   return JSON.parse(readFileSync(join(metaDir, files.at(-1) as string), 'utf8'));
 }
 
+/** Drizzle 快照只登记唯一键；延迟属性由手写迁移声明补入期望 schema，不读取实际库来推导期望。 */
+function deferredUniqueStatements(statements: string[]): string[] {
+  const declarations = readdirSync(migrationsFolder)
+    .filter((file) => file.endsWith('.sql'))
+    .flatMap((file) => [
+      ...readFileSync(join(migrationsFolder, file), 'utf8').matchAll(
+        /ADD CONSTRAINT\s+"?(\w+)"?\s+UNIQUE\s*\([^)]*\)\s+(DEFERRABLE(?:\s+INITIALLY\s+(?:DEFERRED|IMMEDIATE))?)/g,
+      ),
+    ]);
+  return statements.map((statement) => {
+    for (const declaration of declarations) {
+      const constraint = new RegExp(`CONSTRAINT "${declaration[1]}" UNIQUE(?: NULLS NOT DISTINCT)?\\([^)]*\\)`, 'g');
+      statement = statement.replace(constraint, `$& ${declaration[2]!.replace(/\s+/g, ' ')}`);
+    }
+    return statement;
+  });
+}
+
 /** 某个 schema 下全部表的结构，按 PostgreSQL 规范化文本输出；EXCLUDE 约束及其索引不在快照里，不计入。 */
 async function structureOf(tx: Tx, schema: string): Promise<string[]> {
   // public 留在路径里，函数引用两边才都输出为不带 schema 的形式
@@ -71,7 +89,7 @@ async function structureOf(tx: Tx, schema: string): Promise<string[]> {
 
 /** 在一个事务里比对后整体回滚；mutate 用于证明守卫本身有效。 */
 async function structureDiff(mutate?: (tx: Tx) => Promise<void>) {
-  const statements = await generateMigration(generateDrizzleJson({}), latestSnapshot());
+  const statements = deferredUniqueStatements(await generateMigration(generateDrizzleJson({}), latestSnapshot()));
   return testDb()
     .db.transaction(async (tx) => {
       await mutate?.(tx);
