@@ -1,6 +1,7 @@
 /** B7a 项目接口（设计 §7）：命令 ledgerExit → guard.before 复核；管理范围用统一 scopeSql / visible；B7b 扩展只读谓词。 */
-import { and, asc, eq, sql, talentReviewProjects as P, withTenant, type Tx } from '@italent/db';
+import { and, asc, eq, talentReviewProjects as P, withTenant, type Tx } from '@italent/db';
 import type { Context, Hono } from 'hono';
+import { useMiddleware } from '../../route-policy/index.js';
 import { runCommand } from '../../commands.js';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
@@ -9,7 +10,6 @@ import {
   authorizeInTransaction,
   getModuleViewableFields,
   resolveModuleScopeInTransaction,
-  scopeSql,
 } from '../permission/module-access.js';
 import { button } from '../permission/module-route-access.js';
 import { pageQuery, parseBody, requireNew, revision, uuidParam } from '../talent/http.js';
@@ -28,8 +28,15 @@ import { visibleOrder } from './config-kit.js';
 import { projectActionBody, projectCreate, projectPatch, type ProjectPatch } from './project-input.js';
 import { checkProjectReferences, referenceKinds, type ProjectWriteContext } from './project-references.js';
 import { loadProject, projectHeader, type ProjectView } from './project-store.js';
-import { createProject, deleteProject, projectVisible, transitionProject, updateProject } from './project-service.js';
+import { createProject, deleteProject, transitionProject, updateProject } from './project-service.js';
 import type { ProjectAction } from './project-guards.js';
+
+import {
+  projectReadable,
+  projectListAccess,
+  requireProjectReadable,
+  requireProjectEditable,
+} from './project-access.js';
 
 const PATH = `${TALENT_REVIEW_BASE}/projects`;
 type Action = 'create' | 'update' | 'delete' | ProjectAction;
@@ -78,7 +85,7 @@ async function runWrite(
         const view = replay.body as ProjectView;
         const anchor = action === 'delete' ? view : await projectHeader(tx, ctx.tenantId, view.id);
         if (!anchor) throw new AppError('NOT_FOUND', notFoundMessage('project'));
-        projectVisible(current.scope, anchor);
+        await requireProjectEditable(tx, current, current.scope, anchor);
         await checkProjectReferences(tx, current, input, view, true);
       },
     },
@@ -89,7 +96,7 @@ async function runWrite(
   });
   const view = result.body as ProjectView;
   if (action !== 'delete') c.header('ETag', `"${view.revision}"`);
-  return c.json((await trimReview(deps, ctx, 'project', [view]))[0], result.status);
+  return c.json({ ...(await trimReview(deps, ctx, 'project', [view]))[0], accessLevel: 'manage' }, result.status);
 }
 
 async function projectList(c: Context<TenantEnv>, deps: TenantRouteDeps) {
@@ -101,9 +108,7 @@ async function projectList(c: Context<TenantEnv>, deps: TenantRouteDeps) {
     const rows = await tx
       .select({ id: P.id })
       .from(P)
-      .where(
-        and(eq(P.tenantId, ctx.tenantId), scopeSql(scope, { org: sql`${P.ownerOrgId}`, creator: sql`${P.ownerId}` })),
-      )
+      .where(and(eq(P.tenantId, ctx.tenantId), projectReadable(ctx, scope)))
       .orderBy(...visibleOrder([['name', P.name]], viewable).map((col) => asc(col)), asc(P.id))
       .limit(page.limit)
       .offset(page.offset)
@@ -116,11 +121,27 @@ async function projectList(c: Context<TenantEnv>, deps: TenantRouteDeps) {
     page: page.page,
     pageSize: page.pageSize,
     hasDataPermission: scope.all || scope.hasDataPermission,
-    items: await trimReview(deps, ctx, 'project', items),
+    items: (await trimReview(deps, ctx, 'project', items)).map((view, index) => ({
+      ...view,
+      accessLevel: projectListAccess(scope, items[index]!),
+    })),
   });
 }
 
 export function registerProjectRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  useMiddleware(router, `${PATH}/:id/*`, async (c, next) => {
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(c.req.method) && c.req.path !== `${PATH}/${c.req.param('id')}`) {
+      const ctx = await reviewContext(c, deps, 'project', 'update');
+      const id = uuidParam(c);
+      const scope = await reviewScope(c, deps, ctx, 'project');
+      await withTenant(deps.db, ctx.tenantId, async (tx) => {
+        const anchor = await projectHeader(tx, ctx.tenantId, id);
+        if (!anchor) throw new AppError('NOT_FOUND', notFoundMessage('project'));
+        await requireProjectEditable(tx, ctx, scope, anchor);
+      });
+    }
+    await next();
+  });
   router.get(PATH, (c) => projectList(c, deps));
   router.get(`${PATH}/:id`, async (c) => {
     const ctx = await reviewContext(c, deps, 'project');
@@ -129,11 +150,11 @@ export function registerProjectRoutes(router: Hono<TenantEnv>, deps: TenantRoute
     const view = await withTenant(deps.db, ctx.tenantId, async (tx) => {
       const found = await loadProject(tx, ctx.tenantId, id);
       if (!found) throw new AppError('NOT_FOUND', notFoundMessage('project'));
-      projectVisible(scope, found);
-      return found;
+      const accessLevel = await requireProjectReadable(tx, ctx, scope, found);
+      return { found, accessLevel };
     });
-    c.header('ETag', `"${view.revision}"`);
-    return c.json((await trimReview(deps, ctx, 'project', [view]))[0]);
+    c.header('ETag', `"${view.found.revision}"`);
+    return c.json({ ...(await trimReview(deps, ctx, 'project', [view.found]))[0], accessLevel: view.accessLevel });
   });
   router.post(PATH, async (c) => {
     const ctx = await reviewWriteContext(c, deps, 'project', 'create', revision(c));

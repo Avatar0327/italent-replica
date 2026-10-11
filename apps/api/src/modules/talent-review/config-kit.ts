@@ -32,6 +32,9 @@ export type ConfigObject =
   | 'flow'
   | 'template';
 
+/** 来源对象仅参与引用与属性约束，不注册为 TalentReview 配置目录。 */
+type ConstraintObject = ConfigObject | 'criterion';
+
 export interface WriteContext extends TalentReviewContext {
   readonly scope: ModuleScope;
 }
@@ -63,7 +66,7 @@ export interface ConfigSpec<V extends { id: string }> {
 
 /** 返回引用方编码（如 'TEMPLATE_MODULE'）表示被引用；返回 null 表示未引用。 */
 export type ConfigReferenceGuard = (tx: Tx, tenantId: string, id: string) => Promise<string | null>;
-const guards: Record<ConfigObject, ConfigReferenceGuard[]> = {
+const guards: Record<ConstraintObject, ConfigReferenceGuard[]> = {
   category: [],
   role: [],
   field: [],
@@ -75,14 +78,15 @@ const guards: Record<ConfigObject, ConfigReferenceGuard[]> = {
   form: [],
   flow: [],
   template: [],
+  criterion: [],
 };
 
 /** 引用方（项目、模板、公式…）在加载时登记；删除时同事务逐个询问。 */
-export function registerConfigReferenceGuard(object: ConfigObject, guard: ConfigReferenceGuard): void {
+export function registerConfigReferenceGuard(object: ConstraintObject, guard: ConfigReferenceGuard): void {
   if (!guards[object].includes(guard)) guards[object].push(guard);
 }
 
-export async function configReferrer(tx: Tx, tenantId: string, object: ConfigObject, id: string) {
+export async function configReferrer(tx: Tx, tenantId: string, object: ConstraintObject, id: string) {
   for (const guard of guards[object]) {
     const referrer = await guard(tx, tenantId, id);
     if (referrer) return referrer;
@@ -97,9 +101,9 @@ export type ConfigUpdateConstraint = (
   id: string,
   patch: Readonly<Record<string, unknown>>,
 ) => Promise<void>;
-const updateConstraints = new Map<ConfigObject, Set<ConfigUpdateConstraint>>();
+const updateConstraints = new Map<ConstraintObject, Set<ConfigUpdateConstraint>>();
 
-export function registerConfigUpdateConstraint(object: ConfigObject, guard: ConfigUpdateConstraint): void {
+export function registerConfigUpdateConstraint(object: ConstraintObject, guard: ConfigUpdateConstraint): void {
   const constraints = updateConstraints.get(object) ?? new Set<ConfigUpdateConstraint>();
   constraints.add(guard);
   updateConstraints.set(object, constraints);
@@ -108,7 +112,7 @@ export function registerConfigUpdateConstraint(object: ConfigObject, guard: Conf
 export async function checkConfigUpdateConstraints(
   tx: Tx,
   tenantId: string,
-  object: ConfigObject,
+  object: ConstraintObject,
   id: string,
   patch: Readonly<Record<string, unknown>>,
 ) {

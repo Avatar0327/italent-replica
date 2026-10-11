@@ -10,7 +10,7 @@ import { TR_BASE, TR_NOW } from './AC-TR-support.js';
 
 const testDb = useTestDb();
 const PATH = '/projects';
-export const projectBody = (ownerOrgId: string, extra: Record<string, unknown> = {}) => ({
+const projectBody = (ownerOrgId: string, extra: Record<string, unknown> = {}) => ({
   code: `prj_${randomUUID().slice(0, 8)}`,
   name: '合成可见性项目',
   ownerOrgId,
@@ -38,7 +38,7 @@ describe('AC-TR-03-visibility', () => {
       expect(res.status, await res.clone().text()).toBe(201);
       return (await res.json()) as { id: string; revision: number; name: string };
     };
-    const managed = await make(child);
+    const managed = await make(child, { downwardPublic: true });
     const down = await make(parent, { downwardPublic: true });
     const shared = await make(outside, { sharedOrgIds: [child] });
     const closed = await make(parent);
@@ -109,5 +109,26 @@ describe('AC-TR-03-visibility', () => {
     ).toBe(200);
     const page = (await (await op.request('GET', `${PATH}?pageSize=1&page=2`)).json()) as { items: unknown[] };
     expect(page.items).toHaveLength(1);
+    const current = (await (await op.request('GET', `${PATH}/${managed.id}`)).json()) as { revision: number };
+    const command = { ifMatch: current.revision, body: { name: '降权前幂等修改' }, idempotencyKey: randomUUID() };
+    expect((await op.request('PATCH', `${PATH}/${managed.id}`, command)).status).toBe(200);
+    const grandchild = await createOrg(setup, w.asAdmin, '再下一级', child);
+    const narrower = await createMou(setup, w.asAdmin, [grandchild]);
+    expect(
+      (
+        await setup.request('PUT', `${BASE}/scopes/${op.user.id}/TalentReview`, {
+          ...w.asAdmin,
+          ifMatch: 1,
+          body: { kind: 'mou', mouId: narrower },
+        })
+      ).status,
+    ).toBe(200);
+    expect(await (await op.request('GET', `${PATH}/${managed.id}`)).json()).toMatchObject({
+      accessLevel: 'readonly',
+      name: '降权前幂等修改',
+    });
+    const replay = await op.request('PATCH', `${PATH}/${managed.id}`, command);
+    expect(replay.status, await replay.clone().text()).toBe(403);
+    expect(await replay.json()).toMatchObject({ error: { details: { reason: 'PROJECT_READONLY' } } });
   });
 });

@@ -1,6 +1,6 @@
 /** B7b：人才标准引用同事务检查 / 保存，并与删除共用来源行锁。 */
 import { randomUUID } from 'node:crypto';
-import { withTenant, eq, talentCriteria, talentReviewProjects as P } from '@italent/db';
+import { withTenant, eq, auditEvents, talentCriteria, talentReviewProjects as P } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { talentWorld } from './AC-TC-support.js';
@@ -49,7 +49,23 @@ describe('AC-TR-project-criterion', () => {
     expect(res.status, await res.clone().text()).toBe(201);
     const p = (await res.json()) as { id: string; revision: number; criterionId: string };
     expect(p.criterionId).toBe(c.id);
-    const removed = await w.request('DELETE', `/criteria/${c.id}`, { ifMatch: c.revision });
+    const audits = () =>
+      withTenant(testDb().db, w.as.tenant, (tx) => tx.select().from(auditEvents).where(eq(auditEvents.objectId, c.id)));
+    const beforeAudits = await audits();
+    const changed = await w.request('PATCH', `/criteria/${c.id}`, {
+      ifMatch: c.revision,
+      body: { enabled: false, name: '不应保存的属性修改' },
+    });
+    expect(changed.status, await changed.clone().text()).toBe(409);
+    expect(await changed.json()).toMatchObject({ error: { details: { reason: 'CRITERION_DISABLE_BREAKS_PROJECT' } } });
+    expect(await audits()).toEqual(beforeAudits);
+    const renamed = await w.request('PATCH', `/criteria/${c.id}`, {
+      ifMatch: c.revision,
+      body: { name: '允许改名的已引用标准' },
+    });
+    expect(renamed.status, await renamed.clone().text()).toBe(200);
+    const current = (await renamed.json()) as { revision: number };
+    const removed = await w.request('DELETE', `/criteria/${c.id}`, { ifMatch: current.revision });
     expect(removed.status, await removed.clone().text()).toBe(409);
     expect(await removed.json()).toMatchObject({ error: { details: { reason: 'CRITERION_REFERENCED' } } });
     expect(await w.read(`/criteria/${c.id}`)).toMatchObject({ id: c.id, enabled: true });
@@ -63,7 +79,10 @@ describe('AC-TR-project-criterion', () => {
         })
       ).status,
     ).toBe(200);
-    expect((await w.request('DELETE', `/criteria/${c.id}`, { ifMatch: c.revision })).status).toBe(200);
+    expect(
+      (await w.request('PATCH', `/criteria/${c.id}`, { ifMatch: current.revision, body: { enabled: false } })).status,
+    ).toBe(200);
+    expect((await w.request('DELETE', `/criteria/${c.id}`, { ifMatch: current.revision + 1 })).status).toBe(200);
   });
 
   it.runIf(Boolean(process.env.TEST_DATABASE_URL))(
@@ -112,6 +131,7 @@ describe('AC-TR-project-criterion', () => {
       expect(res.status, await res.clone().text()).toBe(400);
       expect(await res.json()).toMatchObject({ error: { details: { reason: 'CRITERION_NOT_REFERENCEABLE' } } });
       expect(await list()).toMatchObject({ items: [] });
+      expect((await w.request('GET', `/criteria/${c.id}`)).status).toBe(404);
     },
   );
 });
