@@ -285,18 +285,17 @@ const HR_AT: readonly Evidence[] = [
   },
 ];
 function obligation([perm, purpose = -1, need = -1, inner = -1, or]: Row): Obligation {
+  const scope = NEEDS[need];
+  let at: readonly Evidence[] = [CALL];
+  if (scope && scope.scope !== 'none') at = [CALL, { ...CALL, role: 'scope' }];
+  if (perm === 'btn:TenantBase.EmploymentRecord#Transfer.Hr@detail' && purpose === -1) at = HR_AT;
   return {
     perm,
     purpose: PURPOSES[purpose],
     need: NEEDS[need],
     inner: INNERS[inner],
     or,
-    at:
-      perm === 'btn:TenantBase.EmploymentRecord#Transfer.Hr@detail' && purpose === -1
-        ? HR_AT
-        : NEEDS[need] && NEEDS[need]?.scope !== 'none'
-          ? [CALL, { ...CALL, role: 'scope' }]
-          : [CALL],
+    at,
   };
 }
 
