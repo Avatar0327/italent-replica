@@ -118,6 +118,11 @@ describe('AC-SC-calc-core run 契约', () => {
     await expect(create({ ...scheduled, businessDate: '2026-10-12' })).rejects.toThrow(
       '定时业务日期必须与租户槽日期相同',
     );
+    const initial = await create(scheduled);
+    expect(await create({ ...scheduled, intervalHours: 2 })).not.toBe(initial);
+    expect(await create({ ...scheduled, objects: objects(2) })).toBe(initial);
+    expect(await page(initial)).toBe('succeeded');
+    expect(await effects(initial)).toBe(1);
     expect(() => defineCalcKinds([{ ...kinds()[0]! }, { ...kinds()[0]! }])).toThrow();
   });
 
