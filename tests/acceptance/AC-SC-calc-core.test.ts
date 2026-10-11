@@ -81,7 +81,7 @@ beforeAll(async () => {
 });
 
 describe('AC-SC-calc-core run 契约', () => {
-  it('五类键、租户本地日期、统计槽与改回旧间隔去重', () => {
+  it('五类键、租户本地日期、统计槽与改回旧间隔去重', async () => {
     const base = request();
     expect(calcKey(base)).toBe(`org_stats:manual:${base.commandId}`);
     const scheduled = {
@@ -101,6 +101,9 @@ describe('AC-SC-calc-core run 契约', () => {
       `org_health:sync:${base.commandId}`,
     );
     expect(() => calcKey({ ...scheduled, intervalHours: 0 })).toThrow();
+    await expect(create({ ...scheduled, businessDate: '2026-10-12' })).rejects.toThrow(
+      '定时业务日期必须与租户槽日期相同',
+    );
     expect(() => defineCalcKinds([{ ...kinds()[0]! }, { ...kinds()[0]! }])).toThrow();
   });
 

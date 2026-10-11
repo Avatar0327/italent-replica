@@ -244,6 +244,10 @@ async function executePage(tx: Tx, run: CalcRun, handler: CalcHandler, now: Date
       });
     }
   }
+  return finishPage(tx, run, principal, now);
+}
+
+async function finishPage(tx: Tx, run: CalcRun, principal: string, now: Date): Promise<CalcRun> {
   const [counts] = await tx
     .select({
       pending: sql<number>`count(*) FILTER (WHERE outcome IS NULL)::int`,

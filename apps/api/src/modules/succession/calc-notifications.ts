@@ -5,8 +5,10 @@ import { rowsOf } from './read-sql.js';
 
 export async function enqueueCalcDone(tx: Tx, run: CalcRun, now: Date): Promise<void> {
   if (!run.requestedBy) return;
-  await tx.execute(sql`INSERT INTO succession_notifications (tenant_id,run_id,recipient_user_id,kind,command_id,created_at)
-    SELECT ${run.tenantId}::uuid,${run.id}::uuid,${run.requestedBy}::uuid,'calc_done',${run.commandId},${now.toISOString()}::timestamptz
+  await tx.execute(sql`INSERT INTO succession_notifications
+    (tenant_id,run_id,recipient_user_id,kind,command_id,created_at)
+    SELECT ${run.tenantId}::uuid,${run.id}::uuid,${run.requestedBy}::uuid,
+      'calc_done',${run.commandId},${now.toISOString()}::timestamptz
     WHERE succession_calc_user_active(${run.tenantId}::uuid,${run.requestedBy}::uuid)
     ON CONFLICT (tenant_id,subject_id,recipient_user_id,kind) DO NOTHING`);
 }
@@ -25,7 +27,8 @@ export async function pendingCalcNotifications(
         eq(notifications.tenantId, tenantId),
         sql`${notifications.state} IN ('pending','failed')`,
         after
-          ? sql`(${notifications.createdAt},${notifications.id}) > (${after.createdAt.toISOString()}::timestamptz,${after.id}::uuid)`
+          ? sql`(${notifications.createdAt},${notifications.id}) >
+              (${after.createdAt.toISOString()}::timestamptz,${after.id}::uuid)`
           : undefined,
       ),
     )
