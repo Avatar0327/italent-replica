@@ -30,6 +30,7 @@ import * as read from './read-model.js';
 import { EV_BASE, presenter, runDelete, runWrite, type View, type WriteRefs, writeContext } from './route-support.js';
 import { registerCandidates } from './candidates.js';
 import { resolveFormVisibility } from './form-refs.js';
+import { registerActivityRoutes } from './activity-routes.js';
 import { registerFormRoutes } from './form-routes.js';
 import { registerReviewGroupRoutes } from './review-group-routes.js';
 import { registerReviewGroupExitHook } from './review-group-exit.js';
@@ -86,6 +87,7 @@ export function registerEvaluationRoutes(router: Hono<TenantEnv>, deps: TenantRo
   registerReviewGroupExitHook();
   registerReviewGroupRoutes(router, deps);
   registerFormRoutes(router, deps);
+  registerActivityRoutes(router, deps);
   registerCandidates(router, deps);
   for (const spec of Object.values(SPECS)) registerObject(router, deps, spec as ObjectRoutes<object, object>);
 }

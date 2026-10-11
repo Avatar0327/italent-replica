@@ -347,8 +347,10 @@ export async function deleteCategory(tx: Tx, ctx: WriteContext, id: string) {
       UNION ALL SELECT 1 FROM ql_development_channels WHERE tenant_id = ${ctx.tenantId}
         AND target_category_id = ${id}::uuid
       UNION ALL SELECT 1 FROM personnel_qualification WHERE tenant_id = ${ctx.tenantId}
-        AND category_id = ${id}::uuid`,
-    message: '该任职类别已有任职资格标准，或被发展通道、员工任职资格记录引用，不能删除',
+        AND category_id = ${id}::uuid
+      UNION ALL SELECT 1 FROM ev_activities WHERE tenant_id = ${ctx.tenantId}
+        AND ${id}::uuid = ANY(category_ids)`,
+    message: '该任职类别已有任职资格标准，或被发展通道、评定活动、员工任职资格记录引用，不能删除',
     reason: 'CATEGORY_IN_USE',
   });
   const before = await reload<JobLinked>(tx, ctx, 'category', id);
@@ -510,8 +512,10 @@ export async function deleteLevel(tx: Tx, ctx: WriteContext, id: string) {
       UNION ALL SELECT 1 FROM ql_development_channels WHERE tenant_id = ${ctx.tenantId}
         AND target_level_id = ${id}::uuid
       UNION ALL SELECT 1 FROM personnel_qualification WHERE tenant_id = ${ctx.tenantId}
-        AND level_id = ${id}::uuid`,
-    message: '该任职级别已被任职资格标准或员工任职资格记录引用，不能删除',
+        AND level_id = ${id}::uuid
+      UNION ALL SELECT 1 FROM ev_activities WHERE tenant_id = ${ctx.tenantId}
+        AND ${id}::uuid = ANY(level_ids)`,
+    message: '该任职级别已被任职资格标准、评定活动或员工任职资格记录引用，不能删除',
     reason: 'LEVEL_IN_USE',
   });
   const before = await reload<JobLinked>(tx, ctx, 'level', id);

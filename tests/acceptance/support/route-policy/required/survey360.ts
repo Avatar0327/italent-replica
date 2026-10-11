@@ -1462,6 +1462,50 @@ const reportLinkReport = (path: string): Obligation[] => [
   },
 ];
 
+// ---- 通用网址作答门户（portal.ts，F-076 PR-2a）：登录 / 登出是认证入口，守卫在处理函数里 ------------------------------
+// 登录：T1 原子检查与预扣（throttle.admit）→ 事务外恒做一次 KDF → T2 复核（isLoginable，含 hasTask）；登出：按令牌摘要作废。
+const PORTAL = `${S}/portal.ts`;
+const portalCall = (route: string, anchor: string) => call(`${PORTAL}#route:${route}`, anchor);
+const impl = (unit: string, anchor: string): Evidence => ({ role: 'impl', unit, anchor });
+const credentialExchange: Obligation[] = [
+  {
+    perm: 'guard:survey360.credentialExchange',
+    note: '序列号 + 密码换取会话：T1 限频检查与预扣、恒做一次 KDF、T2 复核有效评价关系（设计 §3.5、§5.2）',
+    at: [
+      portalCall('POST /login', 'login(c, deps)'),
+      impl(`${PORTAL}#attemptLogin`, 'if (!admission.ok) return rejectionResponse(c, admission.rejection)'),
+      impl(`${S}/throttle.ts#admit`, "const ip = judge(await selectRow(tx, tenantId, 'ip', input.ipKey), now, 'ip')"),
+      impl(
+        `${S}/throttle.ts#admit`,
+        "const pair = judge(await selectRow(tx, tenantId, 'pair', input.pairKey), now, 'pair')",
+      ),
+      impl(
+        `${PORTAL}#attemptLogin`,
+        'const matched = await verifyPassword(found?.password_hash ?? (await dummyDigest(config.kdf)), key, password)',
+      ),
+      impl(
+        `${S}/credentials.ts#verifyPassword`,
+        'const derived = await derive(passwordPrehash(key, normalizedPassword), parsed.salt, parsed.params)',
+      ),
+      impl(`${PORTAL}#settle`, 'if (link && (await isLoginable(tx, a.config, link)))'),
+      impl(
+        `${PORTAL}#isLoginable`,
+        'return Boolean(activity) && (await hasTask(tx, link.activity_id, link.person_id))',
+      ),
+    ],
+  },
+];
+const sessionPossession: Obligation[] = [
+  {
+    perm: 'guard:survey360.sessionPossession',
+    note: '登出：只作废与请求头令牌摘要匹配的会话，持有令牌才能作废（设计 §4.1、§5.2）',
+    at: [
+      portalCall('POST /logout', 'logout(c, deps)'),
+      impl(`${PORTAL}#logout`, 'if (tenantId && isUuid(tenantId) && token && token.length <= 200)'),
+    ],
+  },
+];
+
 export const SURVEY360: RequiredTable = {
   ...Object.fromEntries([...ROUTES, ...PR_B_ROUTES].map((r) => [`${r.method} ${BASE}${r.path}`, obligations(r)])),
   ...Object.fromEntries(
@@ -1491,4 +1535,6 @@ export const SURVEY360: RequiredTable = {
   'GET /api/survey360/report-link': reportLinkToken('/', []),
   'GET /api/survey360/report-link/reports/:reportId': reportLinkReport('/reports/:reportId'),
   'GET /api/survey360/report-link/reports/:reportId/download': reportLinkReport('/reports/:reportId/download'),
+  'POST /api/survey360/portal/login': credentialExchange,
+  'POST /api/survey360/portal/logout': sessionPossession,
 };
