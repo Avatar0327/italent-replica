@@ -1,5 +1,4 @@
 /** 模板结果规则：复用 F-082 绑定 / 两遍锁校验 / 分析；模块路径在版本内冻结（DEC-387）。 */
-import type { Tx } from '@italent/db';
 import {
   analyzeBoundItems,
   bindFormula,
@@ -11,8 +10,7 @@ import {
   type BindFailure,
 } from '@italent/domain';
 import { AppError } from '../../errors.js';
-import { loadFullCatalog, lockFields, visibleOf, type CatalogAccess, type CatalogRow } from './calc-rule-catalog.js';
-import { readFieldCatalogVersion, shareLockFieldCatalog } from './field-catalog.js';
+import { visibleOf, type CatalogAccess, type CatalogRow } from './calc-rule-catalog.js';
 import { bindResultModules, carryResultModules, type ResultModule } from './template-result-modules.js';
 import type { ResultRuleInput } from './template-extra-input.js';
 
@@ -130,28 +128,17 @@ function carryPass(
   return carried;
 }
 
-export async function planResultRules(
-  tx: Tx,
+/** 显式与沿用共用同一只读规划；两遍所用目录及全部取锁由 buildPlan 提供。 */
+export function resultRulesPass(
   ctx: { tenantId: string; fieldAccess?: CatalogAccess | undefined },
   modules: readonly ResultModule[],
   previousModules: readonly ResultModule[],
   submitted: readonly ResultRuleInput[] | undefined,
   previous: readonly ResultRuleView[],
   version: number | undefined,
-  structureFieldIds: readonly string[],
-): Promise<ResultRuleView[]> {
-  const pass = (full: CatalogRow[], current: number) =>
+): (full: CatalogRow[], current: number) => ResultRuleView[] {
+  return (full, current) =>
     submitted === undefined
       ? carryPass(previous, previousModules, modules, full)
       : bindPass(submitted, previous, full, ctx.fieldAccess, modules, previousModules, current, version);
-  const first = pass(await loadFullCatalog(tx, ctx.tenantId), await readFieldCatalogVersion(tx, ctx.tenantId));
-  // F-082 §3.4：最终结构的全部字段一次按 ID 取 F 锁，再取 V；快照外键不能在 V 后反向等待 F。
-  const ids = [...new Set([...structureFieldIds, ...first.flatMap((r) => [r.targetFieldId, ...r.refFieldIds])])].sort();
-  await lockFields(tx, ctx.tenantId, ids);
-  if (!first.length) return [];
-  const current = await shareLockFieldCatalog(tx, ctx.tenantId);
-  // 沿用与显式提交共用锁内复核，字段改名与模块迁移合并后的回显也必须能完整往返。
-  const second = pass(await loadFullCatalog(tx, ctx.tenantId), current);
-  if (JSON.stringify(first) !== JSON.stringify(second)) throw conflict('CALC_FIELD_CHANGED');
-  return second;
 }

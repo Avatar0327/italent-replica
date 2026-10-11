@@ -59,7 +59,7 @@ const cases = purposes.flatMap((purpose) =>
   ),
 );
 
-async function formFixture(label: string, purpose: string) {
+async function formFixture(label: string, purpose: (typeof purposes)[number]) {
   const w = await templateWorld(testDb().db, label);
   const field = await w.field({ name: '冻结字段', kind: 'number' });
   const x = await w.field({ name: '新增字段', kind: 'number' });
@@ -67,7 +67,12 @@ async function formFixture(label: string, purpose: string) {
   const { flow } = await w.threeStepFlow();
   const nextFlow = await w.threeStepFlow();
   const rule = await w.scoreRule();
-  const kind = purpose === 'info' ? 'info' : purpose === 'calibrate_edit' ? 'calibrate_edit' : 'succession_edit';
+  const kind = {
+    info: 'info',
+    calibrate_edit: 'calibrate_edit',
+    successor_edit: 'succession_edit',
+    target_edit: 'succession_edit',
+  }[purpose];
   const form = await w.created<{ id: string }>('/forms', formBody([{ fieldId: field.id }], { kind }));
   const nodeKey = purpose === 'calibrate_edit' ? 'calibrate' : 'self';
   const stepForms = [{ nodeKey, purpose, formId: form.id }];

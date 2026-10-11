@@ -609,7 +609,8 @@ describe('AC-QL-employee-profile 必测 11：version / 指纹守卫（DEC-404）
     expect(STANDARD_GRANT_DIGEST).not.toBe(MAIN.digest);
     expect(STANDARD_GRANT_VERSION).toBeGreaterThan(MAIN.version);
     // 去掉本 PR 新增的模板字段编码，还原已合入 F-091 的 main 指纹（DEC-404）。
-    const addedLater = (code: string) => /\/TalentReview\.Template\/field:(stepForms|resultRules):/.test(code);
+    const addedLater = (code: string) =>
+      /\/TalentReview\.Template\/field:(stepForms|resultRules|fieldCatalogVersion|hints):/.test(code);
     expect(grantCodesDigest(STANDARD_GRANT_CODES.filter((code) => !addedLater(code)))).toBe(MAIN.digest);
   });
 });
