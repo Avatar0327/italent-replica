@@ -76,13 +76,14 @@ describe('AC-SC B2a 人员范围保存与默认颜色', () => {
     expect(view).not.toHaveProperty('compiled_formula');
   });
 
-  it.each(['POST', 'PUT'])('设计 §2.2：%s 的 40KB 合法 JSON 不被全局 32KB 上限拦截', async (method) => {
+  it.each(['POST', 'PUT'])('设计 §2.2：%s 的 64KB 合法 JSON 不被全局 32KB 上限拦截', async (method) => {
     const app = createApp({
       db: testDb().db,
       authorize: allowAll,
       identity: { resolve: async () => userId },
     });
-    const body = ' '.repeat(40 * 1024) + JSON.stringify({ code: 'BODY_LIMIT', name: '人员范围', rules });
+    const json = JSON.stringify({ code: 'BODY_LIMIT', name: '人员范围', rules });
+    const body = ' '.repeat(64 * 1024 - Buffer.byteLength(json)) + json;
     const suffix = method === 'PUT' ? `/${randomUUID()}` : '';
     const response = await app.request(`${BASE}/populations${suffix}`, {
       method,
@@ -98,5 +99,21 @@ describe('AC-SC B2a 人员范围保存与默认颜色', () => {
     // PUT 的目标不存在应为 404；POST 应进入保存，二者都不能先被全局中间件以 413 拒绝。
     expect(response.status, await response.clone().text()).not.toBe(413);
     expect(response.status).toBe(method === 'POST' ? 201 : 404);
+  });
+  it.each([
+    ['POST', '/populations', 64 * 1024 + 1],
+    ['PUT', `/populations/${randomUUID()}`, 64 * 1024 + 1],
+    ['PUT', '/rule-settings/org_health', 40 * 1024],
+    ['POST', '/records', 40 * 1024],
+  ])('DEC-422：%s %s 超上限仍返回 413', async (method, path, size) => {
+    const app = createApp({ db: testDb().db, authorize: allowAll, identity: { resolve: () => userId } });
+    const body = ' '.repeat(Number(size)) + '{}';
+    const response = await app.request(`${BASE}${path}`, {
+      method: String(method),
+      body,
+      headers: { 'content-type': 'application/json', 'x-tenant-id': tenantId },
+    });
+    expect(response.status).toBe(413);
+    expect(await response.json()).toMatchObject({ error: { code: 'PAYLOAD_TOO_LARGE' } });
   });
 });
