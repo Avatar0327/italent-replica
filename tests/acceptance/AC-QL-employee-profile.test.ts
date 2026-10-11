@@ -596,7 +596,7 @@ describe('AC-QL-employee-profile 必测 9、10：CODE_TAKEN 保留计数另加�
 
 describe('AC-QL-employee-profile 必测 11：version / 指纹守卫（DEC-404）', () => {
   // 合并前最后一次合 main 时，以合并进来的 main 版本和指纹为基线（DEC-404）
-  const MAIN = { version: 13, digest: '547b4d9da5397954' };
+  const MAIN = { version: 14, digest: '057bfa81674d414f' };
 
   it('授权项编码含员工身份任职对象三个按钮与页面载体按钮；version 比 main 当前值至少 +1，指纹随编码变化（AC-QL-employee-profile）', () => {
     for (const button of EMPLOYEE_SELF_SERVICE_BUTTONS)
@@ -608,10 +608,9 @@ describe('AC-QL-employee-profile 必测 11：version / 指纹守卫（DEC-404）
     expect(grantCodesDigest(STANDARD_GRANT_CODES)).toBe(STANDARD_GRANT_DIGEST);
     expect(STANDARD_GRANT_DIGEST).not.toBe(MAIN.digest);
     expect(STANDARD_GRANT_VERSION).toBeGreaterThan(MAIN.version);
-    // 去掉本 PR 新增的编码，应还原合并进来的 main 指纹，证明本次递增来自 F-091（DEC-404）。
+    // 去掉本 PR 新增的模板字段编码，还原已合入 F-091 的 main 指纹（DEC-404）。
     const addedLater = (code: string) =>
-      /\/TEvaluation\.EvaluationForm\/field:(votePassRatio|indicatorReference|weightWarning):/.test(code);
-    const mainCodes = STANDARD_GRANT_CODES.filter((code) => !addedLater(code));
-    expect(grantCodesDigest(mainCodes)).toBe(MAIN.digest);
+      /\/TalentReview\.Template\/field:(stepForms|resultRules|fieldCatalogVersion|hints):/.test(code);
+    expect(grantCodesDigest(STANDARD_GRANT_CODES.filter((code) => !addedLater(code)))).toBe(MAIN.digest);
   });
 });
