@@ -22,6 +22,8 @@ import {
   BAD_REQUEST,
   button,
   fixed,
+  seeAll,
+  FORBIDDEN,
   guardScope,
   listScope,
   noButton,
@@ -45,7 +47,25 @@ const COMMAND = write('body', RECHECK, AUTHORIZE_RESULT, {
 });
 const MUTATE = 'succession.record.writable';
 
+function configPolicy(key: 'population' | 'ruleSettings', operation: 'view' | 'create' | 'update' | 'delete') {
+  return object({
+    object: SUCCESSION_OBJECTS[key].code,
+    operation,
+    button: operation === 'view' ? noButton('配置查看') : button(operation, operation === 'create' ? 'list' : 'detail'),
+    scope: seeAll(FORBIDDEN),
+    fields: projector('succession.config', 'succession.config'),
+    ...(operation === 'view' ? {} : { write: write('body', RECHECK, AUTHORIZE_RESULT, { ledger: 'single' }) }),
+  });
+}
+
 export const SUCCESSION_POLICIES = defineTable('succession', {
+  [`GET ${BASE}/populations`]: configPolicy('population', 'view'),
+  [`GET ${BASE}/populations/:id`]: { ...configPolicy('population', 'view'), invalidId: BAD_REQUEST },
+  [`POST ${BASE}/populations`]: configPolicy('population', 'create'),
+  [`PUT ${BASE}/populations/:id`]: { ...configPolicy('population', 'update'), invalidId: BAD_REQUEST },
+  [`DELETE ${BASE}/populations/:id`]: { ...configPolicy('population', 'delete'), invalidId: BAD_REQUEST },
+  [`GET ${BASE}/rule-settings/:kind`]: configPolicy('ruleSettings', 'view'),
+  [`PUT ${BASE}/rule-settings/:kind`]: configPolicy('ruleSettings', 'update'),
   [`GET ${BASE}/readiness`]: object({
     object: RECORD,
     operation: 'view',

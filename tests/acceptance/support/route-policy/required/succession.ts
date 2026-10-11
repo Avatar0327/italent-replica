@@ -158,3 +158,54 @@ export const SUCCESSION: RequiredTable = {
   [`DELETE ${RECORDS_PATH}/:id`]: [...change('delete'), SELF_HIDDEN],
   [`GET ${BASE}/successor-candidates`]: [...candidates('create'), ...candidates('update')],
 };
+
+/** B2a：配置对象看全部；首次与重放共享 A2 的对象／按钮复核；平台命令只认平台运营。 */
+const CONFIG_ROUTES = `${S}/config-routes.ts#registerSuccessionConfigRoutes`;
+function configRequired(key: 'population' | 'ruleSettings', operation: 'view' | 'create' | 'update' | 'delete') {
+  const code = key === 'population' ? 'Succession.Population' : 'Succession.RuleSettings';
+  const entry: Evidence =
+    operation === 'view'
+      ? { role: 'call', unit: CONFIG_ROUTES, anchor: `await successionContext(c, deps, '${key}')` }
+      : {
+          role: 'call',
+          unit: SUCCESSION_CONTEXT,
+          anchor: 'await successionContext(c, deps, spec.object, spec.operation, spec.expectedRevision)',
+        };
+  const constant: Evidence = {
+    role: 'const',
+    unit: `packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>${key}`,
+    anchor: key === 'population' ? "object('Population'" : "object( 'RuleSettings'",
+  };
+  const obligations: Obligation[] = [
+    { perm: `obj:${code}:${operation}`, facts: ['object:objectContext'], at: [entry, ...CONTEXT, constant] },
+  ];
+  if (operation !== 'view')
+    obligations.push({
+      perm: `btn:${code}#${operation}@${operation === 'create' ? 'list' : 'detail'}`,
+      facts: ['button:button()'],
+      at: [
+        {
+          role: 'call',
+          unit: SUCCESSION_CONTEXT,
+          anchor: 'await button(deps, ctx, codeOf(spec.object), spec.button.code, spec.button.level)',
+        },
+        {
+          role: 'impl',
+          unit: `${MRA}#button`,
+          anchor: "action: 'object.button', resource: buttonResource(objectCode, code, level)",
+        },
+        constant,
+      ],
+    });
+  return obligations;
+}
+Object.assign(SUCCESSION, {
+  [`GET ${BASE}/populations`]: configRequired('population', 'view'),
+  [`GET ${BASE}/populations/:id`]: configRequired('population', 'view'),
+  [`POST ${BASE}/populations`]: configRequired('population', 'create'),
+  [`PUT ${BASE}/populations/:id`]: configRequired('population', 'update'),
+  [`DELETE ${BASE}/populations/:id`]: configRequired('population', 'delete'),
+  [`GET ${BASE}/rule-settings/:kind`]: configRequired('ruleSettings', 'view'),
+  [`PUT ${BASE}/rule-settings/:kind`]: configRequired('ruleSettings', 'update'),
+  'POST /api/platform/succession/rules/recompile': [],
+});

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// F-082 部署目标检查（契约 §6.5，DEC-386；只读，不改库、不做运行时互斥）。
+// 部署目标检查（F-082 契约 §6.5，DEC-386；F-093，DEC-424②；只读，不改库、不做运行时互斥）。
 // 用法：node scripts/check-deploy-target.mjs --phase=pre-enable|deploy|post-restore
 //       --app-role=<应用运行时数据库角色> [--code-root=<目录>]
 //       pre-enable / post-restore 必须给应用数据库角色（--app-role 或环境变量 APP_DB_ROLE）：该角色名下的连接不论 application_name
@@ -10,6 +10,7 @@
 //   backend_type、state 等列是 NULL（application_name 仍可见），任何按这些列过滤的计数都会把应用连接漏掉；
 // - 数据检查（post-restore）：须能绕过行级安全（超级用户或 BYPASSRLS）。受行级安全约束时看到的“0 行”不可信——平台运维
 //   命令行用的迁移角色受 FORCE RLS 约束，就属于这种账号。
+// - 锁容量（三个阶段）：SHOW max_locks_per_transaction 须返回一行可见整数，且至少为 256；读取失败或结果异常也失败。
 // 任一项不满足 → 对应检查判失败，退出码非零，部署 / 启动中止。
 //
 // 阶段：
@@ -28,6 +29,7 @@ const SWITCH_FILE = 'apps/api/src/modules/talent-review/formula-binding-switch.t
 const JOURNAL_FILE = 'packages/db/migrations/meta/_journal.json';
 const CALC_RULE_AUDIT_TYPE = 'TalentReview.CalcRule';
 const HANDLE = '@{tr-field:';
+const MIN_LOCKS_PER_TRANSACTION = 256;
 const defaultRoot = fileURLToPath(new URL('..', import.meta.url));
 
 /** 待部署代码的开关默认值（从源码里读，不执行代码）；找不到定义视为不满足。 */
@@ -90,6 +92,21 @@ async function appliedMigrations(query) {
 }
 
 const count = async (query, text) => Number((await one(query, text)).n);
+
+/** DEC-424②：先证明当前生效参数可见，再核对容量；配置写入但未重启不能满足部署前置条件。 */
+async function lockCapacity(query) {
+  const rows = await query('SHOW max_locks_per_transaction');
+  const value = rows[0]?.max_locks_per_transaction;
+  if (rows.length !== 1 || typeof value !== 'string' || !/^\d+$/.test(value) || !Number.isSafeInteger(Number(value))) {
+    return '无法确认 max_locks_per_transaction：须读到一行可见的整数参数值，不能判定部署条件满足';
+  }
+  if (Number(value) < MIN_LOCKS_PER_TRANSACTION) {
+    return (
+      `当前 max_locks_per_transaction = ${value}，要求至少 ${MIN_LOCKS_PER_TRANSACTION}；` +
+      '请调整 PostgreSQL 配置并重启后重新检查'
+    );
+  }
+}
 
 /**
  * post-restore 的数据检查：库里不能有启用后才会产生的数据（bound 行、新格式审计、含句柄的台账结果）。检查账号受行级安全
@@ -183,6 +200,7 @@ export async function checkDeployTarget({
       if (bad)
         return `库里已应用 ${applied.count} 条（最后 ${applied.last}），代码 ${code.count} 条（最后 ${code.last}）`;
     });
+  await check(`PostgreSQL max_locks_per_transaction ≥ ${MIN_LOCKS_PER_TRANSACTION}`, () => lockCapacity(query));
   if (phase === 'pre-enable') {
     await noConnections();
     await migrations('equal');
