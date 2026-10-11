@@ -61,6 +61,7 @@ section{min-width:0}
 .chip.decide,.chip.conflict,.chip.cired{background:var(--bad-bg);border-color:var(--bad);color:var(--bad);font-weight:600}
 .chip.assigned{border-style:dashed;color:var(--ink2)}
 .kpi .dl{font-style:normal;margin-left:6px;color:var(--ok);font-size:.85em}
+.banner{background:var(--work-bg);color:var(--work);border:1px solid var(--work);border-radius:8px;padding:8px 12px;font-weight:600}
 .chip.todo{color:var(--faint);border-style:dotted}
 .chip.wait{color:var(--faint);background:var(--sunk)}
 .chip.paused{color:var(--faint);background:repeating-linear-gradient(135deg,var(--sunk) 0 5px,var(--panel) 5px 10px)}
@@ -82,6 +83,7 @@ details summary{cursor:pointer;color:var(--muted);font-size:13px}
     <span class="sub" id="at"></span>
     <div class="kpis" id="kpis"></div>
   </header>
+  <div class="banner" id="banner" hidden></div>
   <section><h2>卡点与待你决定</h2><div id="stuck"></div></section>
   <section>
     <h2>主线</h2>
@@ -145,6 +147,7 @@ document.getElementById("others").innerHTML = others.length ? `<div class="tblw"
   others.map(p => `<tr><td class="mono">#${p.n}</td><td>${esc(p.t)}</td><td><span class="chip ${p.s}${p.stuck ? " stuck" : ""}">${esc(NAME[p.s] || p.s)}</span> ${esc(p.why)}</td><td>${p.r}</td><td>${dur(p.idle)}</td></tr>`).join("") + `</table></div>` : `<div class="none">没有主线外的在途 PR。</div>`;
 const td = L.today || [];
 document.getElementById("today").innerHTML = td.length ? `<div class="tblw"><table class="tbl">` + td.map(m => `<tr><td class="mono">${esc(m.at)}Z</td><td class="mono">#${m.n}</td><td>${esc(m.t)}</td></tr>`).join("") + `</table></div>` : `<div class="pre">今天还没有合并。</div>`;
+if (M.banner) { const b = document.getElementById("banner"); b.textContent = M.banner; b.hidden = false; }
 document.getElementById("log").innerHTML = (DATA.log || []).map(x => `<li>${esc(x[0])}　${esc(x[1])}</li>`).join("");
 const nStuck = stuck.length + (M.asks || []).length, nRev = (L.open || []).filter(p => p.s === "review").length, nWork = (L.open || []).filter(p => p.s === "rework").length;
 const PG = DATA.prog, pgd = PG && PG.prev ? [PG.done - PG.prev[0], PG.tot - PG.prev[1]] : null;
