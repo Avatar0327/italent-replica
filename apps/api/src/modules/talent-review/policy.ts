@@ -49,7 +49,7 @@ const rdyWrite = (fields: 'body' | 'none') =>
  * docs/08_设计/R3-T04_PR-B1_路由声明.md。
  */
 function configRoutes(
-  key: 'category' | 'role' | 'field' | 'scoreRule' | 'moduleGrade' | 'mapping',
+  key: 'category' | 'role' | 'field' | 'scoreRule' | 'moduleGrade' | 'mapping' | 'form' | 'flow',
   path: string,
   table: string,
   options: { createGuards?: readonly string[]; renameGuard?: boolean; updateGuards?: readonly string[] } = {},
@@ -110,6 +110,8 @@ function configRoutes(
   };
 }
 
+const FORM_REF = ['talentReview.formFieldReference'];
+const FLOW_REF = ['talentReview.flowRoleReference'];
 const SETTINGS = '/api/tenant/talent-review/settings';
 const SETTINGS_CODE = TALENT_REVIEW_OBJECTS.settings.code;
 const SETTINGS_FIELDS = projector('talentReview.settings', 'talentReview.settings');
@@ -130,6 +132,15 @@ export const TALENT_REVIEW_POLICIES = defineTable('talent-review', {
     createGuards: ['talentReview.mappingFieldVisible'],
     updateGuards: ['talentReview.mappingFieldVisible'],
     renameGuard: false,
+  }),
+  // PR-B3：盘点内容表单（引用字段目录）、盘点流程定义（引用角色）：带引用时另需目录对象的查看权
+  ...configRoutes('form', '/api/tenant/talent-review/forms', 'talent_review_forms', {
+    createGuards: FORM_REF,
+    updateGuards: FORM_REF,
+  }),
+  ...configRoutes('flow', '/api/tenant/talent-review/flows', 'talent_review_flows', {
+    createGuards: FLOW_REF,
+    updateGuards: FLOW_REF,
   }),
   // 租户设置是单例：读写都只有看全部（requireConfigCreatable，否则 404）；没有记录时返回默认值与 revision 0
   [`GET ${SETTINGS}`]: object({
