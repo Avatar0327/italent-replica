@@ -557,6 +557,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/permission/object-permission.ts#BUTTON_LEVELS',
   ],
   'apps/api/src/modules/permission/schemas.ts#profileBody': ['#APP_CODE', '#LICENSE_TYPE', '#PROFILE_CODE', '#code'],
+  'apps/api/src/modules/permission/scope-hierarchy.ts#expandScopeOrgSet': ['#MAX_SCOPE_IDS', '#scopeRows'],
   'apps/api/src/modules/permission/scope-hierarchy.ts#expandScopeRoots': ['#scopeHierarchyReader'],
   'apps/api/src/modules/permission/scope-hierarchy.ts#scopeHierarchyReader': ['#MAX_SCOPE_IDS', '#scopeRows'],
   'apps/api/src/modules/permission/scope-persons.ts#managedPersonsSql': ['#currentPersons'],

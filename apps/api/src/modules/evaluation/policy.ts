@@ -30,7 +30,8 @@ const NF = NOT_FOUND;
 /** `talent/http.uuidParam`：对象标识非 UUID → 400 VALIDATION_FAILED。 */
 const byId = { invalidId: BAD_REQUEST };
 
-type Key = 'activityType' | 'activityCycle' | 'generalScoreItem' | 'reviewGroup' | 'evaluationForm';
+type Key =
+  'activityType' | 'activityCycle' | 'generalScoreItem' | 'reviewGroup' | 'evaluationForm' | 'evaluationActivity';
 
 interface Spec {
   readonly path: string;
@@ -43,6 +44,8 @@ interface Spec {
   };
   /** 照原站没有删除入口（评审组，DEC-393⑤）：不注册 DELETE 路由。 */
   readonly noDelete?: true;
+  /** 新建 / 修改才有的披露分支（如活动适用范围重复提示是否带名称）。 */
+  readonly optionalOnSave?: Record<string, RoutePolicy>;
   /** 不按所属组织裁剪的对象也可以带披露分支（如通用评分项停用时的引用方）。 */
   readonly optional?: Record<string, RoutePolicy>;
 }
@@ -80,6 +83,18 @@ const FORM_REFERRERS: RoutePolicy = object({
   fields: fixed(['name'], 'DEC-374⑥', E.evaluationForm.code),
 });
 
+/** 活动负责人的人员引用（同评审组成员，DEC-331① / DEC-339②）：范围内 姓名 + 工号，范围外只有姓名，是披露分支不是准入。 */
+const MANAGER_REF: RoutePolicy = MEMBER_REFS;
+
+/** 适用范围重复提示是否带冲突活动名称：只取活动“名称”字段的查看权（不是准入，命令事务内解析）。 */
+const ACTIVITY_NAME_VISIBILITY: RoutePolicy = object({
+  object: E.evaluationActivity.code,
+  operation: 'view',
+  button: noButton('只取字段查看权'),
+  scope: noScope('只决定提示文字，范围由冲突活动的所属组织谓词另判'),
+  fields: fixed(['name'], 'DEC-372② 🟡', E.evaluationActivity.code),
+});
+
 const SPECS: Readonly<Record<Key, Spec>> = {
   activityType: { path: 'activity-types', out: shape('ev.activityType') },
   activityCycle: { path: 'activity-cycles', out: shape('ev.activityCycle') },
@@ -103,6 +118,12 @@ const SPECS: Readonly<Record<Key, Spec>> = {
       refs: { generalItemRefs: GENERAL_ITEM_REFS, targetRefs: TARGET_REFS },
     },
   },
+  evaluationActivity: {
+    path: 'activities',
+    out: projector('ev.activityManager', 'ev.evaluationActivity'),
+    owned: { table: 'ev_activities', refGuards: ['ev.newActivityRefs'], refs: { managerRef: MANAGER_REF } },
+    optionalOnSave: { activityName: ACTIVITY_NAME_VISIBILITY },
+  },
 };
 
 const guards = (list: readonly string[]) => (list.length ? { guards: list } : {});
@@ -124,6 +145,8 @@ function crud(key: Key): Record<string, RoutePolicy> {
   const base = { object: code, fields: spec.out, ...(refs ? { optional: refs } : {}) };
   // 停用 / 删除时的披露分支（通用评分项的引用方）只挂在这两个写入口
   const onRemoval = spec.optional ? { optional: spec.optional } : {};
+  // 新建 / 修改的披露分支并入共有的披露分支（base.optional）
+  const onSave = spec.optionalOnSave ? { optional: { ...refs, ...spec.optionalOnSave } } : {};
   const owned = spec.owned;
   // 详情 / 编辑 / 删除：范围外与不存在同一个 404（读写同一谓词）
   const point = (op: 'byId' | 'editable') => pointScope({ param: 'id' }, `ev.${key}.${op}`, NF);
@@ -145,6 +168,7 @@ function crud(key: Key): Record<string, RoutePolicy> {
     }),
     [`POST ${path}`]: object({
       ...base,
+      ...onSave,
       operation: 'create',
       button: button('create', 'list'),
       // 新建：字典只认看全部；所属组织对象的所属组织须存在且在范围内（范围外与不存在同一 404，DEC-082）
@@ -154,6 +178,7 @@ function crud(key: Key): Record<string, RoutePolicy> {
     }),
     [`PATCH ${path}/:id`]: object({
       ...base,
+      ...onSave,
       ...onRemoval,
       ...byId,
       operation: 'update',
@@ -193,4 +218,5 @@ export const EVALUATION_POLICIES = defineTable('evaluation', {
   ...crud('generalScoreItem'),
   ...crud('reviewGroup'),
   ...crud('evaluationForm'),
+  ...crud('evaluationActivity'),
 });

@@ -104,3 +104,51 @@ export async function expandScopeRoots(tx: Tx, tenantId: string, asOf: string, r
   }
   return [...ids];
 }
+
+/**
+ * 范围根展开成**去重后**的组织 ID 集合，有界保护按去重后的组织数计数（#226 第 2 轮 P2-1）。
+ * `expandScopeRoots` 保留“根 × 下级”的展开行，重叠的根（如一条组织链上的多个上级都勾“包含下级”）会让同一组织被不同祖先重复计数，
+ * 覆盖 2,110 个组织的合法选择也会撞 20,000 行保护；这里递归时只以（维度，组织）去重，勾了“包含下级”的根共用一次遍历，
+ * 不勾的根直接并入。只给需要“集合”语义的调用方用（评定活动适用范围判重复）；权限侧现有调用方仍用 `expandScopeRoots`，行为不变。
+ * 与 `scopeHierarchyReader` 同口径（DEC-146）：维度须已开启，范围根与下级按 `asOf` 当天的组织版本取，停用的组织也展开。
+ */
+export async function expandScopeOrgSet(
+  tx: Tx,
+  tenantId: string,
+  asOf: string,
+  roots: readonly ScopeRoot[],
+): Promise<Set<string>> {
+  if (roots.length > 200) throw new AppError('PAYLOAD_TOO_LARGE', '范围根节点最多 200 条');
+  if (!roots.length) return new Set();
+  const values = roots.map(
+    (root) => sql`(${root.orgId}::uuid,${root.dimension}::text,${root.includeDescendants}::boolean)`,
+  );
+  const rows = scopeRows<{ org_id: string }>(
+    await tx.execute(sql`
+      WITH RECURSIVE requested(org_id,dimension,expand) AS (VALUES ${sql.join(values, sql`, `)}),
+      current_versions AS (
+        SELECT DISTINCT ON (org_id) id,org_id FROM org_versions
+        WHERE tenant_id=${tenantId} AND start_date<=${asOf}::date
+        ORDER BY org_id,start_date DESC,version_no DESC
+      ), roots AS (
+        SELECT q.* FROM requested q LEFT JOIN org_settings s ON s.tenant_id=${tenantId}
+        WHERE CASE q.dimension WHEN 'admin' THEN true WHEN 'business' THEN s.business_enabled
+          WHEN 'product' THEN s.product_enabled WHEN 'reserve4' THEN s.reserve4_enabled
+          WHEN 'reserve5' THEN s.reserve5_enabled ELSE false END
+      ), tree(dimension,org_id) AS (
+        SELECT DISTINCT q.dimension,v.org_id FROM roots q
+        JOIN current_versions v ON v.org_id=q.org_id WHERE q.expand
+        UNION
+        SELECT tree.dimension,v.org_id FROM tree
+        JOIN org_hierarchy_links h ON h.tenant_id=${tenantId} AND h.dimension=tree.dimension
+          AND h.parent_org_id=tree.org_id
+        JOIN current_versions v ON v.id=h.version_id
+      )
+      SELECT org_id FROM (SELECT org_id FROM tree LIMIT ${MAX_SCOPE_IDS + 1}) bounded
+      UNION
+      SELECT v.org_id FROM roots q JOIN current_versions v ON v.org_id=q.org_id
+    `),
+  );
+  if (rows.length > MAX_SCOPE_IDS) throw new AppError('PAYLOAD_TOO_LARGE', '数据范围超过有界解析上限');
+  return new Set(rows.map((row) => row.org_id));
+}

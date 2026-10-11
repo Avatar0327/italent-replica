@@ -1,4 +1,28 @@
 {
+  "DELETE /api/tenant/evaluation/activities/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "962b6f939652",
+      "status": 404
+    },
+    "fieldQueries": [
+      "fields:TenantBase.EmployeeInformation"
+    ],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TEvaluation/TEvaluation.EvaluationActivity/-",
+      "scope:TenantBase/TenantBase.EmployeeInformation/-"
+    ],
+    "trace": [
+      "btn:TEvaluation.EvaluationActivity#delete@detail",
+      "obj:TEvaluation.EvaluationActivity:delete",
+      "obj:TenantBase.EmployeeInformation:view"
+    ]
+  },
   "DELETE /api/tenant/evaluation/activity-cycles/:id": {
     "all": {
       "code": "NOT_FOUND",
@@ -88,6 +112,46 @@
       "btn:TEvaluation.GeneralScoreItem#delete@detail",
       "obj:TEvaluation.EvaluationForm:view",
       "obj:TEvaluation.GeneralScoreItem:delete"
+    ]
+  },
+  "GET /api/tenant/evaluation/activities": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TEvaluation.EvaluationActivity",
+      "fields:TenantBase.EmployeeInformation"
+    ],
+    "scopeQueries": [
+      "scope:TEvaluation/TEvaluation.EvaluationActivity/TEvaluation.EvaluationActivity.list",
+      "scope:TenantBase/TenantBase.EmployeeInformation/TenantBase.EmployeeInformation.list"
+    ],
+    "trace": [
+      "obj:TEvaluation.EvaluationActivity:view",
+      "obj:TenantBase.EmployeeInformation:view"
+    ]
+  },
+  "GET /api/tenant/evaluation/activities/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "962b6f939652",
+      "status": 404
+    },
+    "fieldQueries": [
+      "fields:TenantBase.EmployeeInformation"
+    ],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TEvaluation/TEvaluation.EvaluationActivity/TEvaluation.EvaluationActivity.detail",
+      "scope:TenantBase/TenantBase.EmployeeInformation/TenantBase.EmployeeInformation.detail"
+    ],
+    "trace": [
+      "obj:TEvaluation.EvaluationActivity:view",
+      "obj:TenantBase.EmployeeInformation:view"
     ]
   },
   "GET /api/tenant/evaluation/activity-cycles": {
@@ -289,6 +353,45 @@
       "obj:TenantBase.EmployeeInformation:view"
     ]
   },
+  "PATCH /api/tenant/evaluation/activities/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "962b6f939652",
+      "status": 404
+    },
+    "fieldQueries": [
+      "fields:TEvaluation.ActivityCycle",
+      "fields:TEvaluation.ActivityType",
+      "fields:TEvaluation.EvaluationActivity",
+      "fields:TEvaluation.EvaluationForm",
+      "fields:TenantBase.EmployeeInformation"
+    ],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Qualification/Qualification.EmploymentCategory/-",
+      "scope:Qualification/Qualification.EmploymentLevel/-",
+      "scope:TEvaluation/TEvaluation.ActivityCycle/-",
+      "scope:TEvaluation/TEvaluation.ActivityType/-",
+      "scope:TEvaluation/TEvaluation.EvaluationActivity/-",
+      "scope:TEvaluation/TEvaluation.EvaluationForm/-",
+      "scope:TenantBase/TenantBase.EmployeeInformation/-"
+    ],
+    "trace": [
+      "btn:TEvaluation.EvaluationActivity#update@detail",
+      "obj:Qualification.EmploymentCategory:view",
+      "obj:Qualification.EmploymentLevel:view",
+      "obj:TEvaluation.ActivityCycle:view",
+      "obj:TEvaluation.ActivityType:view",
+      "obj:TEvaluation.EvaluationActivity:update",
+      "obj:TEvaluation.EvaluationActivity:view",
+      "obj:TEvaluation.EvaluationForm:view",
+      "obj:TenantBase.EmployeeInformation:view"
+    ]
+  },
   "PATCH /api/tenant/evaluation/activity-cycles/:id": {
     "all": {
       "code": "NOT_FOUND",
@@ -402,6 +505,19 @@
       "btn:TEvaluation.ReviewGroup#update@detail",
       "obj:TEvaluation.ReviewGroup:update",
       "obj:TenantBase.EmployeeInformation:view"
+    ]
+  },
+  "POST /api/tenant/evaluation/activities": {
+    "all": {
+      "code": "REVISION_CONFLICT",
+      "error": "f12e1e2b793f",
+      "status": 409
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:TEvaluation.EvaluationActivity#create@list",
+      "obj:TEvaluation.EvaluationActivity:create"
     ]
   },
   "POST /api/tenant/evaluation/activity-cycles": {
