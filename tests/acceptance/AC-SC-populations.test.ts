@@ -30,7 +30,7 @@ describe('AC-SC B2a 人员范围保存与默认颜色', () => {
     userId = seed.user.id;
     api = tenantApi(testDb().db);
   });
-  const request = (method: string, path: string, body?: unknown, ifMatch?: number) =>
+  const request = (method: string, path: string, body?: unknown, ifMatch = method === 'POST' ? 0 : undefined) =>
     api.request(method, `${BASE}${path}`, { user: userId, tenant: tenantId, body, ifMatch });
 
   // 🟡 DEC-420 / D-077：取自测试租户当前值，未证实是北森出厂值。

@@ -30,7 +30,11 @@ export async function configWorld(db: Db) {
   const w = await seedPermissionWorld(db);
   const api = tenantApi(db);
   const request = (method: string, path: string, options: RequestOptions = {}) =>
-    api.request(method, `/api/tenant/succession${path}`, { ...w.asAdmin, ...options });
+    api.request(method, `/api/tenant/succession${path}`, {
+      ...w.asAdmin,
+      ...(method === 'POST' && path === '/populations' ? { ifMatch: 0 } : {}),
+      ...options,
+    });
   const create = async () => {
     const response = await request('POST', '/populations', { body: configBody() });
     expect(response.status, await response.clone().text()).toBe(201);

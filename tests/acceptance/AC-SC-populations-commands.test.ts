@@ -17,6 +17,19 @@ describe('AC-SC B2a 命令、原始规则与授权', () => {
     withTenant(w.db, w.tenant.id, async (tx) =>
       resultRows(await tx.execute(sql`SELECT * FROM succession_populations WHERE id = ${id}::uuid`)),
     );
+  it.each([undefined, '非法', 1])('AC-SC 新增要求 If-Match 0，拒绝 %s 且无写入', async (ifMatch) => {
+    const before = await (await w.request('GET', '/populations')).json();
+    const response = await w.raw.request('POST', '/api/tenant/succession/populations', {
+      ...w.asAdmin,
+      body: configBody(),
+      ifMatch,
+    });
+    expect(response.status).toBe(ifMatch === 1 ? 409 : 400);
+    expect(await response.json()).toMatchObject({
+      error: { code: ifMatch === 1 ? 'REVISION_CONFLICT' : 'REVISION_REQUIRED' },
+    });
+    expect(await (await w.request('GET', '/populations')).json()).toEqual(before);
+  });
   it('编辑 CAS、同键重放和删除快照：编码释放、审计只写一次', async () => {
     const saved = await w.create();
     const path = `/populations/${saved.id}`;
