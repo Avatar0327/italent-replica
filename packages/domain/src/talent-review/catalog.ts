@@ -154,6 +154,7 @@ export const TALENT_REVIEW_OBJECTS = {
       'periodStartDate',
       'periodEndDate',
       'businessDate',
+      'criterionId',
       'calcRuleId',
       'carryLastResult',
       'sharedOrgIds',

@@ -1918,10 +1918,15 @@
         "fieldsOut": [
           "trimModuleResponse"
         ],
+        "guard": [
+          "talentReview.projectReadonly"
+        ],
         "object": [
           "objectContext"
         ],
         "scope": [
+          "creator scope",
+          "scopeSql",
           "visible()"
         ]
       }
@@ -8658,6 +8663,7 @@
           "objectContext"
         ],
         "scope": [
+          "creator scope",
           "requestScope",
           "scope.all",
           "scopeSql"
@@ -8688,8 +8694,9 @@
           "objectContext"
         ],
         "scope": [
+          "creator scope",
           "requestScope",
-          "visible()"
+          "scopeSql"
         ]
       }
     },
@@ -11381,12 +11388,15 @@
           "trimModuleResponse"
         ],
         "guard": [
-          "talentReview.projectCatalogReference"
+          "talentReview.projectCatalogReference",
+          "talentReview.projectReadonly"
         ],
         "object": [
           "objectContext"
         ],
         "scope": [
+          "creator scope",
+          "scopeSql",
           "visible()"
         ]
       }
@@ -18648,12 +18658,15 @@
           "trimModuleResponse"
         ],
         "guard": [
-          "talentReview.projectCatalogReference"
+          "talentReview.projectCatalogReference",
+          "talentReview.projectReadonly"
         ],
         "object": [
           "objectContext"
         ],
         "scope": [
+          "creator scope",
+          "scopeSql",
           "visible()"
         ]
       }
@@ -18665,8 +18678,8 @@
           "status": 401
         },
         "member": {
-          "code": "REVISION_REQUIRED",
-          "status": 400
+          "code": "FORBIDDEN",
+          "status": 403
         },
         "nonMember": {
           "code": "TENANT_NOT_MEMBER",
@@ -18685,10 +18698,15 @@
         "fieldsOut": [
           "trimModuleResponse"
         ],
+        "guard": [
+          "talentReview.projectReadonly"
+        ],
         "object": [
           "objectContext"
         ],
         "scope": [
+          "creator scope",
+          "scopeSql",
           "visible()"
         ]
       }
@@ -18700,8 +18718,8 @@
           "status": 401
         },
         "member": {
-          "code": "REVISION_REQUIRED",
-          "status": 400
+          "code": "FORBIDDEN",
+          "status": 403
         },
         "nonMember": {
           "code": "TENANT_NOT_MEMBER",
@@ -18720,10 +18738,15 @@
         "fieldsOut": [
           "trimModuleResponse"
         ],
+        "guard": [
+          "talentReview.projectReadonly"
+        ],
         "object": [
           "objectContext"
         ],
         "scope": [
+          "creator scope",
+          "scopeSql",
           "visible()"
         ]
       }
@@ -18735,8 +18758,8 @@
           "status": 401
         },
         "member": {
-          "code": "REVISION_REQUIRED",
-          "status": 400
+          "code": "FORBIDDEN",
+          "status": 403
         },
         "nonMember": {
           "code": "TENANT_NOT_MEMBER",
@@ -18755,10 +18778,15 @@
         "fieldsOut": [
           "trimModuleResponse"
         ],
+        "guard": [
+          "talentReview.projectReadonly"
+        ],
         "object": [
           "objectContext"
         ],
         "scope": [
+          "creator scope",
+          "scopeSql",
           "visible()"
         ]
       }

@@ -26,6 +26,7 @@ export const projectCreate = z.strictObject({
   periodStartDate: date,
   periodEndDate: date,
   businessDate: date.nullable().optional(),
+  criterionId: uuid.nullable().optional(),
   calcRuleId: uuid.nullable().optional(),
   carryLastResult: z.boolean().optional(),
   sharedOrgIds: uniqueIds.optional(),

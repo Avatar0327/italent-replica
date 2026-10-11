@@ -52,6 +52,8 @@ import {
   type WriteContext,
 } from './write-support.js';
 
+import { checkConfigUpdateConstraints } from '../talent-review/config-kit.js';
+
 const N = talentCriterionCategories;
 const C = talentCriteria;
 
@@ -121,6 +123,7 @@ export async function createCriterion(tx: Tx, ctx: WriteContext, input: Criterio
 
 export async function updateCriterion(tx: Tx, ctx: WriteContext, id: string, patch: CriterionPatch) {
   await lockOwned(tx, ctx, 'criterion', id);
+  await checkConfigUpdateConstraints(tx, ctx.tenantId, 'criterion', id, patch);
   const before = (await loadCriterion(tx, ctx.tenantId, id))!;
   const { dimensions, relationOwnerOrgId, ...fields } = patch;
   if (fields.categoryId !== undefined && fields.categoryId !== before.categoryId) {

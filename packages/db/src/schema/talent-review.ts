@@ -25,6 +25,7 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
+import { talentCriteria } from './talent.js';
 import { orgObjects } from './org.js';
 import { tenants, users } from './tenancy.js';
 
@@ -1144,6 +1145,7 @@ export const talentReviewProjects = pgTable(
     businessDate: date('business_date'),
     lastFullCalcAt: timestamp('last_full_calc_at', { withTimezone: true }),
     calcState: text('calc_state').notNull().default('not_calculated'),
+    criterionId: uuid('criterion_id'),
     calcRuleId: uuid('calc_rule_id'),
     carryLastResult: boolean('carry_last_result').notNull().default(false),
     status: text('status').notNull().default('new'),
@@ -1162,6 +1164,10 @@ export const talentReviewProjects = pgTable(
     foreignKey({
       columns: [t.tenantId, t.calcRuleId],
       foreignColumns: [talentReviewCalcRules.tenantId, talentReviewCalcRules.id],
+    }).onDelete('restrict'),
+    foreignKey({
+      columns: [t.tenantId, t.criterionId],
+      foreignColumns: [talentCriteria.tenantId, talentCriteria.id],
     }).onDelete('restrict'),
     check('talent_review_projects_dates', sql`${t.periodStartDate} <= ${t.periodEndDate}`),
     check('talent_review_projects_status', sql`${t.status} IN ('new','in_progress','ended')`),

@@ -4,7 +4,7 @@ import { AppError } from '../../errors.js';
 import { recordAudit } from '../../audit/record.js';
 import { auditActor } from '../../system-actor.js';
 import { visible } from '../permission/module-route-access.js';
-import { codeOf, notFoundMessage, type ModuleScope } from './access.js';
+import { codeOf, notFoundMessage } from './access.js';
 import { uniqueOr } from './config-kit.js';
 import { checkProjectGuards, requireProjectEmpty, type ProjectAction } from './project-guards.js';
 import type { ProjectInput, ProjectPatch } from './project-input.js';
@@ -16,8 +16,7 @@ import {
 } from './project-references.js';
 import { loadProject, projectWhere, splitProject, writeProjectRelations, type ProjectView } from './project-store.js';
 
-export const projectVisible = (scope: ModuleScope, row: { ownerOrgId: string; ownerId: string }) =>
-  visible(scope, row.ownerOrgId, notFoundMessage('project'), row.ownerId);
+import { requireProjectEditable } from './project-access.js';
 const ended = () => new AppError('CONFLICT', '盘点项目已结束，禁止修改', { reason: 'PROJECT_ENDED' });
 function checkDates(input: { periodStartDate: string; periodEndDate: string }) {
   if (input.periodStartDate > input.periodEndDate) {
@@ -48,7 +47,7 @@ async function audit(
 async function lockProject(tx: Tx, ctx: ProjectWriteContext, id: string) {
   const [row] = await tx.select().from(P).where(projectWhere(ctx.tenantId, id)).for('update');
   if (!row) throw new AppError('NOT_FOUND', notFoundMessage('project'));
-  projectVisible(ctx.scope, row);
+  await requireProjectEditable(tx, ctx, ctx.scope, row);
   if (row.revision !== ctx.expectedRevision) {
     throw new AppError('REVISION_CONFLICT', '项目已变更，请刷新后显式重提', {
       expected: ctx.expectedRevision,
