@@ -76,6 +76,8 @@ export interface ModuleView {
     }[];
   } | null;
   fieldIds: string[];
+  /** 本模块延续的上一版本模块 ID（旧 ID → 新 ID 的映射；新模块为空）。 */
+  previousModuleId: string | null;
   allowOrg: boolean | null;
   allowPosition: boolean | null;
   allowTarget: boolean | null;
@@ -262,6 +264,7 @@ function moduleView(
         }
       : null,
     fieldIds: fields.filter((field) => field.moduleId === module.id).map((field) => field.fieldId),
+    previousModuleId: module.previousModuleId,
     allowOrg: module.allowOrg,
     allowPosition: module.allowPosition,
     allowTarget: module.allowTarget,

@@ -979,6 +979,8 @@ export const talentReviewTemplateModules = pgTable(
     allowOrg: boolean('allow_org'),
     allowPosition: boolean('allow_position'),
     allowTarget: boolean('allow_target'),
+    /** 本模块延续的上一版本模块（结构保存带了模块 ID 即同一模块；模块改名后的 旧 ID → 新 ID 映射，供按模块 ID 绑定的结果公式沿链找到）。 */
+    previousModuleId: uuid('previous_module_id'),
   },
   (t) => [
     unique('talent_review_template_modules_tenant_id').on(t.tenantId, t.id),

@@ -1,5 +1,5 @@
 {
-  "id": "6646a1e9-8aae-4204-86a3-01bf28fc1942",
+  "id": "878dde14-2375-4b48-9999-f847372f5d3e",
   "prevId": "01deb589-c206-4406-9c38-f68f449c033e",
   "version": "7",
   "dialect": "postgresql",
@@ -47096,6 +47096,12 @@
         "allow_target": {
           "name": "allow_target",
           "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "previous_module_id": {
+          "name": "previous_module_id",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": false
         }

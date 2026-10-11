@@ -43,6 +43,7 @@ CREATE TABLE "talent_review_template_modules" (
 	"allow_org" boolean,
 	"allow_position" boolean,
 	"allow_target" boolean,
+	"previous_module_id" uuid,
 	CONSTRAINT "talent_review_template_modules_tenant_id" UNIQUE("tenant_id","id"),
 	CONSTRAINT "talent_review_template_modules_name" UNIQUE("tenant_id","version_id","name"),
 	CONSTRAINT "talent_review_template_modules_kind" CHECK ("talent_review_template_modules"."kind" IN ('indicator','info','succession')),
