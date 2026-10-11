@@ -1,38 +1,18 @@
-/**
- * 独立夹具固定权限、用途、范围与角色（DEC-416③，#248 P2-1）；数字索引用途 / 范围 / 角色，-1 为缺省；真实登记另走门禁。
- */
+// 独立夹具固定权限、用途、范围与角色（DEC-416③，#248 P2-1）；数字索引用途 / 范围 / 角色，-1 为缺省；真实登记另走门禁。
 import type { Evidence, Inner, Need, Obligation, Purpose, RequiredTable } from './required/types.js';
 import type { RequiredSemantics } from './required.js';
 import { checkEvidence, repoSource, syncedRegistry, type SourceReader } from './evidence.js';
 
-const PURPOSES: readonly Purpose[] = [
-  'disclosure:nestedSubsets',
-  'guard:personnel.subsetPolicy',
-  'when:contracts.importInitializeDelete',
-  'disclosure:canApply',
-  'disclosure:canViewReporting',
-  'guard:approval.canOpen',
-  'disclosure:canEdit',
-  'disclosure:orgFields',
-  'guard:talent.referenced(criterionCategory)',
-  'guard:talent.referenced(dimension)',
-  'disclosure:nestedDimension',
-  'guard:survey360.unrestricted',
-  'disclosure:allActivities',
-  'guard:survey360.personVisible',
-  'guard:survey360.personCreatable',
-  'guard:survey360.activityScope',
-  'guard:survey360.alsoObjects',
-  'when:survey360.syncEmployees',
-  'guard:idp.processReference',
-  'when:idp.copyNestedWrites',
-  'guard:idp.executor',
-  'disclosure:responseView',
-  'guard:ql.jobLinks(category)',
-  'disclosure:conflictName',
-  'guard:ql.childScope(target)',
-  'guard:ql.childDeletes(targetGradeDescription)',
-];
+const PURPOSES = [
+  'disclosure:nestedSubsets guard:personnel.subsetPolicy when:contracts.importInitializeDelete disclosure:canApply',
+  'disclosure:canViewReporting guard:approval.canOpen disclosure:canEdit disclosure:orgFields',
+  'guard:talent.referenced(criterionCategory) guard:talent.referenced(dimension) disclosure:nestedDimension',
+  'guard:survey360.unrestricted disclosure:allActivities guard:survey360.personVisible',
+  'guard:survey360.personCreatable guard:survey360.activityScope guard:survey360.alsoObjects',
+  'when:survey360.syncEmployees guard:idp.processReference when:idp.copyNestedWrites',
+  'guard:idp.executor disclosure:responseView guard:ql.jobLinks(category) disclosure:conflictName',
+  'guard:ql.childScope(target) guard:ql.childDeletes(targetGradeDescription)',
+].flatMap((names) => names.split(' ')) as readonly Purpose[];
 
 const NEEDS: readonly Need[] = [
   { scope: 'list', predicate: 'personnel.personScope' },

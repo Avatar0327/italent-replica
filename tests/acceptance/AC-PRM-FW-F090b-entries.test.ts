@@ -19,6 +19,8 @@ const files = [
   'AC-PRM-FW-02-qualification-subset',
   'AC-PRM-FW-02-qualification',
   'AC-PRM-FW-02-survey360',
+  'AC-PRM-FW-02-weakenings',
+  'AC-PRM-FW-02',
 ].map((name) => `tests/acceptance/${name}.test.ts`);
 
 interface Result {
@@ -74,7 +76,7 @@ async function run(omission: string, strict: boolean) {
   }
 }
 
-describe('AC-PRM-FW-F090b 真实入口漏登记：七个局部文件完整回归（DEC-416③；#248 P2-1）', () => {
+describe('AC-PRM-FW-F090b 真实入口漏登记：九个文件完整回归（DEC-416③；#248 P2-1）', () => {
   it('真实登记门禁不吞读取 / 解析等未知异常', () => {
     expect(() =>
       registration('未知读取错误', () => {
@@ -106,7 +108,7 @@ describe('AC-PRM-FW-F090b 真实入口漏登记：七个局部文件完整回归
           `严格 ${strict.result.numFailedTests} 条断言判红`,
       );
     },
-    // 一条回归串行执行七个完整文件和严格总入口；聚合预算包含子进程启动与整组运行。
+    // 一条回归串行执行九个完整文件和严格总入口；聚合预算包含子进程启动与整组运行。
     1_200_000,
   );
 });
