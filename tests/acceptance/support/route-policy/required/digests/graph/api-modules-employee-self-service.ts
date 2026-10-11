@@ -42,11 +42,31 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT',
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
   ],
+  'apps/api/src/modules/employee-self-service/development-channel.ts#names': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/employee-self-service/development-channel.ts#ownDevelopmentChannel': [
+    '#PAGE',
+    '#names',
+    'apps/api/src/modules/employee-self-service/page-permission.ts#employeePageGranted',
+    'apps/api/src/modules/qualification/development-channel-data.ts#channelOverview',
+    'packages/domain/src/qualification/catalog.ts#QUALIFICATION_APP',
+  ],
   'apps/api/src/modules/employee-self-service/disclosure.ts#discloseOwnRecord': [
     'apps/api/src/modules/employee-self-service/field-disclosure.ts#visibleFields',
     'apps/api/src/modules/employee-self-service/references.ts#referenceLabels',
     'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT',
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
+  ],
+  'apps/api/src/modules/employee-self-service/page-permission.ts#employeePageGranted': [
+    'apps/api/src/modules/employee-self-service/access.ts#boundEmployee',
+    'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
+    'apps/api/src/modules/permission/subject.ts#loadGrantedObjectPermissions',
+    'apps/api/src/modules/permission/subject.ts#loadObjectPermissions',
+    'packages/domain/src/permission/decide.ts#buttonResource',
+    'packages/domain/src/platform/employee-self-service.ts#EMPLOYEE_SELF_SERVICE_CODE',
+    'packages/domain/src/qualification/catalog.ts#QUALIFICATION_APP',
+    'packages/domain/src/qualification/catalog.ts#QUALIFICATION_PAGES',
   ],
   'apps/api/src/modules/employee-self-service/policy.ts#DEFAULT_BUTTONS': [
     'packages/domain/src/platform/employee-self-service.ts#EMPLOYEE_SELF_SERVICE_BUTTONS',
@@ -116,6 +136,13 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/read-model.ts#loadEmploymentBusiness',
     'apps/api/src/modules/job/context.ts#uuidParam',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/employee-self-service/routes.ts#route:GET /development-channel': [
+    'apps/api/src/modules/employee-self-service/access.ts#selfAccess',
+  ],
+  'apps/api/src/modules/employee-self-service/routes.ts#route:GET /employees/:id/development-channel': [
+    'apps/api/src/modules/employee-self-service/access.ts#selfAccess',
+    'apps/api/src/modules/job/context.ts#uuidParam',
   ],
   'apps/api/src/modules/employee-self-service/routes.ts#route:GET /employees/:id/records': [
     'apps/api/src/modules/employee-self-service/access.ts#selfAccess',
