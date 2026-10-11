@@ -223,6 +223,10 @@ function formAccess(ctx: WriteContext): FormRefAccess {
   return ctx.forms;
 }
 
+/** 派生警示只用于响应；审计记录实际业务字段，避免合计成为评分项字段裁剪以外的披露出口。 */
+const auditSnapshot = (form: FormRecord) =>
+  Object.fromEntries(Object.entries(form).filter(([field]) => field !== 'weightWarning'));
+
 export async function createForm(tx: Tx, ctx: WriteContext, body: input.FormCreate): Promise<FormRecord> {
   const settings: Settings = {
     scoreMode: body.scoreMode,
@@ -250,7 +254,11 @@ export async function createForm(tx: Tx, ctx: WriteContext, body: input.FormCrea
   const id = rowsOf<{ id: string }>(result)[0]!.id;
   await replaceItems(tx, ctx, id, items);
   const after = await loadForm(tx, ctx.tenantId, id);
-  await audit(tx, ctx, 'evaluationForm', 'create', id, { before: null, after, orgId: after.ownerOrgId });
+  await audit(tx, ctx, 'evaluationForm', 'create', id, {
+    before: null,
+    after: auditSnapshot(after),
+    orgId: after.ownerOrgId,
+  });
   return after;
 }
 
@@ -267,6 +275,11 @@ const lockedContent = (form: Settings & { items: readonly StoredItem[] }) =>
   });
 
 /** 模式切换清空不适用的值；显式提交不适用的值仍按规则拒绝，不能默默吞掉输入（DEC-413）。 */
+function settingValue<T>(next: T | undefined, current: T, applicable: boolean): T | null {
+  if (next !== undefined) return next;
+  return applicable ? current : null;
+}
+
 function mergedSettings(before: FormRecord, body: input.FormPatch): Settings & { items: StoredItem[] } {
   const scoreMode = body.scoreMode ?? before.scoreMode;
   const indicatorReference = body.indicatorReference ?? (scoreMode === 'by_vote' && before.indicatorReference);
@@ -274,11 +287,10 @@ function mergedSettings(before: FormRecord, body: input.FormPatch): Settings & {
   const items = body.items ? body.items.map(toStored) : before.items;
   return {
     ...mode,
-    fullScore: body.fullScore !== undefined ? body.fullScore : hasScores(mode) ? before.fullScore : null,
-    passScore: body.passScore !== undefined ? body.passScore : hasScores(mode) ? before.passScore : null,
-    totalRule: body.totalRule !== undefined ? body.totalRule : hasIndicators(mode) ? before.totalRule : null,
-    votePassRatio:
-      body.votePassRatio !== undefined ? body.votePassRatio : scoreMode === 'by_vote' ? before.votePassRatio : null,
+    fullScore: settingValue(body.fullScore, before.fullScore, hasScores(mode)),
+    passScore: settingValue(body.passScore, before.passScore, hasScores(mode)),
+    totalRule: settingValue(body.totalRule, before.totalRule, hasIndicators(mode)),
+    votePassRatio: settingValue(body.votePassRatio, before.votePassRatio, scoreMode === 'by_vote'),
     items: !body.items && !hasIndicators(mode) ? items.map((item) => ({ ...item, weight: null })) : items,
   };
 }
@@ -355,7 +367,11 @@ export async function updateForm(tx: Tx, ctx: WriteContext, id: string, body: in
     await replaceItems(tx, ctx, id, merged.items);
   }
   const after = await loadForm(tx, ctx.tenantId, id);
-  await audit(tx, ctx, 'evaluationForm', 'update', id, { before, after, orgId: after.ownerOrgId });
+  await audit(tx, ctx, 'evaluationForm', 'update', id, {
+    before: auditSnapshot(before),
+    after: auditSnapshot(after),
+    orgId: after.ownerOrgId,
+  });
   return after;
 }
 
@@ -366,6 +382,10 @@ export async function deleteForm(tx: Tx, ctx: WriteContext, id: string): Promise
   const before = await loadForm(tx, ctx.tenantId, id);
   // 评分项随评价表删除（外键 CASCADE），删除快照连同评分项写进审计
   await tx.execute(sql`DELETE FROM ev_forms WHERE tenant_id = ${ctx.tenantId}::uuid AND id = ${id}::uuid`);
-  await audit(tx, ctx, 'evaluationForm', 'delete', id, { before, after: null, orgId: before.ownerOrgId });
+  await audit(tx, ctx, 'evaluationForm', 'delete', id, {
+    before: auditSnapshot(before),
+    after: null,
+    orgId: before.ownerOrgId,
+  });
   return before;
 }
