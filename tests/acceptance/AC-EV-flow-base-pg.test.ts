@@ -1,11 +1,12 @@
 /** C2-1a：真 PG 的双发布竞争，两个命令到达协调锁前再同时放行。 */
 import { useTestDb } from '@italent/testkit';
+import type * as ReferenceLocks from '../../apps/api/src/modules/evaluation/reference-locks.js';
 import { describe, expect, it, vi } from 'vitest';
 import { activityFixtures, activityWorld } from './AC-EV-activity-support.js';
 
 const race = vi.hoisted(() => ({ armed: false, arrived: 0, release: () => {}, gate: Promise.resolve() }));
 vi.mock('../../apps/api/src/modules/evaluation/reference-locks.js', async (original) => {
-  const actual = await original<typeof import('../../apps/api/src/modules/evaluation/reference-locks.js')>();
+  const actual = await original<typeof ReferenceLocks>();
   return {
     ...actual,
     coordinateActivityForms: async (...args: Parameters<typeof actual.coordinateActivityForms>) => {

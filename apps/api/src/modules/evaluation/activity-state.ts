@@ -1,7 +1,6 @@
 /** 活动整体操作只检查活动授权（DEC-320②），不对活动内人员做全覆盖检查。 */
 import { sql, type Tx } from '@italent/db';
-import { buttonResource } from '@italent/domain';
-import { requirePermission } from '../../authorization.js';
+import { button } from '../permission/module-route-access.js';
 import type { Context, Hono } from 'hono';
 import { z } from 'zod';
 import { runCommand } from '../../commands.js';
@@ -65,11 +64,7 @@ async function activityCommand(c: Context<TenantEnv>, deps: TenantRouteDeps, act
   const id = uuidParam(c);
   const expectedRevision = revision(c);
   const ctx = await evaluationContext(c, deps, OBJECT, 'update', expectedRevision);
-  await requirePermission(deps.authorize, {
-    ...ctx,
-    action: 'object.button',
-    resource: buttonResource(codeOf(OBJECT), action, 'list_row'),
-  });
+  await button(deps, ctx, codeOf(OBJECT), action, 'list_row');
   const body = await parseBody(c, empty);
   let current: WriteContext;
   let nameVisible = false;
@@ -80,11 +75,7 @@ async function activityCommand(c: Context<TenantEnv>, deps: TenantRouteDeps, act
       before: async (tx) => {
         const bound = { ...deps, authorize: authorizeInTransaction(deps.authorize, tx) };
         const fresh = await evaluationContext(c, bound, OBJECT, 'update', expectedRevision);
-        await requirePermission(bound.authorize, {
-          ...fresh,
-          action: 'object.button',
-          resource: buttonResource(codeOf(OBJECT), action, 'list_row'),
-        });
+        await button(bound, fresh, codeOf(OBJECT), action, 'list_row');
         current = { ...fresh, scope: await resolveModuleScopeInTransaction(bound, fresh, tx, codeOf(OBJECT)) };
         const fields = await getModuleViewableFieldsInTransaction(bound, fresh, codeOf(OBJECT), tx);
         nameVisible = fields === undefined || fields.has('name');

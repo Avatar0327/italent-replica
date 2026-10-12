@@ -14882,8 +14882,7 @@
       "module": "evaluation",
       "primitives": {
         "button": [
-          "buttonResource",
-          "object.button"
+          "button()"
         ],
         "command": [
           "revision(c)",
@@ -14918,8 +14917,7 @@
       "module": "evaluation",
       "primitives": {
         "button": [
-          "buttonResource",
-          "object.button"
+          "button()"
         ],
         "command": [
           "revision(c)",

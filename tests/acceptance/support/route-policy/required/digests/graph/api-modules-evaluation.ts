@@ -197,7 +197,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/evaluation/store.ts#requireOwnerOrg',
   ],
   'apps/api/src/modules/evaluation/activity-service.ts#deleteActivity': [
+    'apps/api/src/modules/evaluation/access.ts#rowsOf',
     '#loadActivity',
+    'apps/api/src/modules/evaluation/read-model.ts#view',
     'apps/api/src/modules/evaluation/reference-locks.ts#coordinateActivityForms',
     'apps/api/src/modules/evaluation/store.ts#audit',
     'apps/api/src/modules/evaluation/store.ts#lockEditable',
@@ -256,7 +258,6 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/evaluation/route-support.ts#EV_BASE',
   ],
   'apps/api/src/modules/evaluation/activity-state.ts#activityCommand': [
-    'apps/api/src/authorization.ts#requirePermission',
     'apps/api/src/modules/evaluation/access.ts#codeOf',
     'apps/api/src/modules/evaluation/access.ts#evaluationContext',
     'apps/api/src/modules/evaluation/access.ts#requireVisible',
@@ -268,10 +269,10 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
     'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
+    'apps/api/src/modules/permission/module-route-access.ts#button',
     'apps/api/src/modules/talent/http.ts#parseBody',
     'apps/api/src/modules/talent/http.ts#revision',
     'apps/api/src/modules/talent/http.ts#uuidParam',
-    'packages/domain/src/permission/decide.ts#buttonResource',
   ],
   'apps/api/src/modules/evaluation/activity-state.ts#changeState': [
     'apps/api/src/modules/evaluation/activity-scope.ts#assertScopeUnique',

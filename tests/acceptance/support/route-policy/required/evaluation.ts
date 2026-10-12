@@ -576,9 +576,7 @@ const flowView = (detail: boolean): Obligation => ({
     {
       role: 'scope',
       unit: FLOW_ROUTE,
-      anchor: detail
-        ? "if (!row) throw new AppError('NOT_FOUND', '评定数据不存在')"
-        : 'WHERE ${filter} ORDER BY e.id LIMIT ${page.pageSize}',
+      anchor: detail ? "if (!row) throw new AppError('NOT_FOUND', '评定数据不存在')" : 'activityPersonSql(scope)',
     },
     impl(`${EV}/flow-access.ts#activityPersonSql`, "scopeSql(scope, { person: col('employee_id')"),
   ],
@@ -608,11 +606,11 @@ function flowBase(): RequiredTable {
       { perm: 'obj:TEvaluation.EvaluationActivity:update', facts: ['object:objectContext'], at },
       {
         perm: `btn:TEvaluation.EvaluationActivity#${action}@list_row`,
-        facts: ['button:buttonResource', 'button:object.button'],
+        facts: ['button:button()'],
         at: [
           ...at,
-          call(STATE_ROUTE, "resource: buttonResource(codeOf(OBJECT), action, 'list_row')"),
-          impl('apps/api/src/authorization.ts#requirePermission', 'if (!(await authorizer(request)))'),
+          call(STATE_ROUTE, "await button(deps, ctx, codeOf(OBJECT), action, 'list_row')"),
+          impl(`${MRA}#button`, "action: 'object.button', resource: buttonResource(objectCode, code, level)"),
         ],
       },
     ];

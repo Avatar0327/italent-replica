@@ -120,7 +120,7 @@ describe('AC-EV-flow-base', () => {
       { result_status: 'published' },
       { terminated_at: EV_NOW.toISOString(), terminated_reason: 'revoked' },
     ];
-    const ids = [];
+    const ids: string[] = [];
     for (const state of states) ids.push(await seed(a.id, f.mgrA.id, state));
     const before = await Promise.all(ids.map(read));
     for (const reason of ['leave', 'activity_completed', 'revoked'] as const) {
@@ -170,7 +170,7 @@ describe('AC-EV-flow-base', () => {
 
   it('管理列表/详情与审计共用当前活动∧人员范围；分页前过滤，范围外不计数，字段裁剪', async () => {
     const a = await fresh();
-    const inside = await seed(a.id, f.mgrA.id, { final_score: '88.25' });
+    const inside = await seed(a.id, f.mgrA.id, { final_score: '88.25', effective_date: '2026-11-01' });
     const outside = await seed(a.id, f.mgrB.id, { final_score: '99.50' });
     const op = await activityOperator(w, { evOrgs: [w.orgA], auditor: true });
     const profile = await createProfile(w, `flow-${randomUUID().slice(0, 8)}`, { apps: ['TEvaluation'] });
@@ -198,6 +198,10 @@ describe('AC-EV-flow-base', () => {
     expect(page.items).toHaveLength(1);
     expect(page.items[0]).toMatchObject({ id: inside, employeeId: f.mgrA.id, applyStatus: 'draft' });
     expect(page.items[0]).not.toHaveProperty('finalScore');
+    expect(page.items[0].effectiveDate).toBe('2026-11-01');
+    const detail = await ok(await op.request('GET', `/staff-evaluations/${inside}`));
+    expect(detail.effectiveDate).toBe('2026-11-01');
+    expect(detail).not.toHaveProperty('finalScore');
     expect((await op.request('GET', `/staff-evaluations/${outside}`)).status).toBe(404);
     const kernel = await import('../../apps/api/src/modules/evaluation/flow-service.js');
     await withTenant(testDb().db, w.tenant.id, (tx) =>
@@ -218,9 +222,9 @@ describe('AC-EV-flow-base', () => {
     const audit = auditApi(testDb().db, () => EV_NOW, { authorize: undefined });
     const query = { objectType: FLOW.code, action: 'evaluation.staff-evaluation.terminate' };
     const logs = await audit.dataChanges(op.as, query);
-    expect(logs.items.filter((row) => [inside, outside].includes(row.objectId)).map((row) => row.objectId)).toEqual([
-      inside,
-    ]);
+    expect(
+      logs.items.filter((row) => [String(inside), String(outside)].includes(row.objectId)).map((row) => row.objectId),
+    ).toEqual([inside]);
     expect(JSON.stringify(logs)).not.toContain('finalScore');
     await op.setEvOrgs([]);
     expect((await ok(await op.request('GET', path))).total).toBe(0);
@@ -269,6 +273,20 @@ describe('AC-EV-flow-base', () => {
       expect(pgErrorCode(caught)).toBe(code);
     };
     await fail(() => seed(a.id, f.mgrA.id, { cycle_id: randomUUID() }), '23503');
+    await fail(() => seed(a.id, f.mgrA.id, { employee_id: f.mgrB.id }), '23503');
+    for (const invalid of [
+      { source: 'invalid' },
+      { target_version: 0 },
+      { revision: 0 },
+      { current_stage: 'invalid' },
+      { apply_status: 'invalid' },
+      { material_status: 'invalid' },
+      { defense_status: 'invalid' },
+      { result_status: 'invalid' },
+      { terminated_reason: 'leave' },
+      { terminated_at: EV_NOW.toISOString() },
+    ])
+      await fail(() => seed(a.id, f.mgrA.id, invalid), '23514');
     await fail(
       () =>
         withTenant(testDb().db, w.tenant.id, (tx) =>

@@ -254,7 +254,7 @@ export const DIGESTS: Digests = {
     updateActivity: '1bbcbe10a4e1',
   },
   'apps/api/src/modules/evaluation/activity-state.ts': {
-    activityCommand: 'bfd06f5ea10f',
+    activityCommand: 'b512753ccb9e',
     registerActivityStateRoutes: '602a8f075658',
   },
   'apps/api/src/modules/evaluation/candidates.ts': {
@@ -1422,7 +1422,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/evaluation/activity-service.ts#createActivity': '6cea1ae2d374',
   'apps/api/src/modules/evaluation/activity-service.ts#presentActivities': '4b436823458b',
   'apps/api/src/modules/evaluation/activity-service.ts#updateActivity': '1970287b39ae',
-  'apps/api/src/modules/evaluation/activity-state.ts#activityCommand': 'a93ee31d025b',
+  'apps/api/src/modules/evaluation/activity-state.ts#activityCommand': 'c8e7d35e4b10',
   'apps/api/src/modules/evaluation/activity-state.ts#registerActivityStateRoutes': 'c1a7cc9061ab',
   'apps/api/src/modules/evaluation/candidates.ts#registerCandidates': 'c162fd500d1e',
   'apps/api/src/modules/evaluation/flow-access.ts#activityPersonSql': '1cef62ba8084',
