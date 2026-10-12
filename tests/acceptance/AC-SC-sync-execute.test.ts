@@ -1,8 +1,8 @@
 /** D2：真实 SQL 业务写入 + SP-18 共同事务替身；旧实现停在计划，以下验收必须先红。 */
 import { randomUUID } from 'node:crypto';
-import { sql, type Tx } from '@italent/db';
-import { useTestDb } from '@italent/testkit';
-import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { sql, type DbHandle, type Tx } from '@italent/db';
+import { createTestDb } from '@italent/testkit';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { consumeRun, consumeSyncOutbox } from '../../apps/api/src/modules/succession/sync-consume.js';
 import { createInMemoryTalentReviewSyncPort } from '../../apps/api/src/modules/talent-review/sync-port-memory.js';
 import { overrideSetting } from '../../apps/api/src/modules/tenant-settings/service.js';
@@ -16,7 +16,10 @@ import { waitForBlocked } from './support/pg-interleave.js';
 import { registerScopeProvider } from '../../apps/api/src/modules/permission/module-access.js';
 import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.js';
 
-const testDb = useTestDb();
+let handle: DbHandle;
+afterAll(async () => {
+  await handle?.close();
+});
 let w: SuccessionWorld;
 let std: Awaited<ReturnType<SuccessionWorld['standard']>>;
 let revision = 0;
@@ -36,7 +39,8 @@ const setting = (key: string, value: unknown, expectedRevision = 0) =>
     ),
   );
 beforeAll(async () => {
-  w = await successionWorld(testDb().db, 'sc-sync-execute');
+  handle = await createTestDb();
+  w = await successionWorld(handle.db, 'sc-sync-execute');
   std = await w.standard();
   await setting('system_principal_user_id', w.user.id);
   await w.asTenant(async (tx) => {
@@ -46,7 +50,7 @@ beforeAll(async () => {
       SELECT ${w.tenant.id}::uuid,${w.user.id}::uuid,id FROM permission_profiles
       WHERE tenant_id=${w.tenant.id}::uuid AND code='standard_succession_runner' ON CONFLICT DO NOTHING`);
   });
-});
+}, 180_000);
 async function setup(strategy = 'append', empty = false, position = false) {
   await w.asTenant(async (tx) => {
     await tx.execute(sql`UPDATE succession_sync_mutex SET batch_id=NULL WHERE tenant_id=${w.tenant.id}::uuid`);
@@ -55,7 +59,7 @@ async function setup(strategy = 'append', empty = false, position = false) {
   await setting('sync_strategy', strategy, revision++);
   const org = await w.org(`执行目标${revision}`);
   const target = position ? await w.position(org.id, `目标职位${revision}`) : org;
-  const kind = position ? 'position' : 'org';
+  const kind = position ? ('position' as const) : ('org' as const);
   const oldId = await w.insertRecord({ type: kind, targetId: target.id, successorId: std.head.id });
   const fixture = syncFixture();
   const original = fixture.runs![0]!;
@@ -108,18 +112,32 @@ async function setup(strategy = 'append', empty = false, position = false) {
       rowsOf<Record<string, unknown>>(
         await tx.execute(sql`
     SELECT id,successor_employee_id,end_date::text,readiness_id,revision,source_kind,source_batch_id
-    FROM succession_records WHERE tenant_id=${w.tenant.id}::uuid AND coalesce(target_org_id,target_position_id)=${target.id}::uuid ORDER BY id`),
+    FROM succession_records WHERE tenant_id=${w.tenant.id}::uuid
+    AND coalesce(target_org_id,target_position_id)=${target.id}::uuid ORDER BY id`),
       ),
     );
   const outcomes = async () => (await deps.transaction((tx) => port.getOutcomes(tx, key))).items;
   return { deps, port, input, key, org, target, oldId, records, outcomes };
 }
 type Harness = Awaited<ReturnType<typeof setup>>;
+const hookErrors: unknown[] = [];
+afterEach(() => {
+  const errors = hookErrors.splice(0);
+  if (errors.length) throw errors[0];
+});
+async function fixtureHook(work: () => Promise<void> | void) {
+  try {
+    await work();
+  } catch (error) {
+    hookErrors.push(error);
+    throw error;
+  }
+}
 function afterPlan(h: Harness, work: (tx: Tx) => Promise<void> | void) {
   const register = h.port.registerTargets.bind(h.port);
   vi.spyOn(h.port, 'registerTargets').mockImplementation(async (tx, input) => {
     const result = await register(tx, input);
-    await work(tx);
+    await fixtureHook(() => work(tx));
     return result;
   });
 }
@@ -133,7 +151,7 @@ function afterPlanCommit(h: Harness, work: () => Promise<void>) {
     const value = await transaction(job);
     if (planned) {
       planned = false;
-      await work();
+      await fixtureHook(work);
     }
     return value;
   };
@@ -438,7 +456,8 @@ describe('AC-SC-03-04-sync D2 执行与终结', () => {
       expect(complete).toHaveBeenCalledTimes(2);
       const rows = await w.asTenant((tx) =>
         tx.execute(sql`SELECT kind FROM succession_notifications
-      WHERE tenant_id=${w.tenant.id}::uuid AND batch_id=${before.find((r) => r.source_batch_id)?.source_batch_id}::uuid`),
+      WHERE tenant_id=${w.tenant.id}::uuid
+      AND batch_id=${before.find((r) => r.source_batch_id)?.source_batch_id}::uuid`),
       );
       expect(rowsOf(rows)).toEqual([{ kind: 'sync_done' }]);
     } finally {
@@ -505,13 +524,18 @@ describe('AC-SC-03-04-sync D2 执行与终结', () => {
         );
       else {
         const response = await w.call('POST', `employment/employees/${employee.id}/businesses`, {
-          ifMatch: (await w.detail(employee.id)).revision,
+          ifMatch: (await w.getEmployee(employee.id)).revision,
           body: { kind: 'leave', mode: 'direct', lastWorkDate: '2026-09-30', fields: {} },
         });
         expect(response.status, await response.clone().text()).toBe(201);
-        expect(await w.employmentRecords(employee.id)).toEqual(
-          expect.arrayContaining([expect.objectContaining({ kind: 'leave', isCurrent: true })]),
+        const state = await w.asTenant((tx) =>
+          tx.execute(sql`
+          SELECT t.start_date,t.valid_during::text,s.employee_status FROM employment_timeline t
+          JOIN LATERAL employment_record_status(t.tenant_id,t.record_id) s ON true
+          WHERE t.tenant_id=${w.tenant.id}::uuid AND t.employee_id=${employee.id}::uuid
+          AND t.valid_during @> ${SC_TODAY}::date`),
         );
+        expect(rowsOf(state)).toEqual([expect.objectContaining({ employee_status: 8 })]);
       }
     });
     expect(await consumeRun(h.deps, h.input)).toMatchObject({ status: 'completed', result: 'partial' });
