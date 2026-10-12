@@ -1,6 +1,6 @@
 /** F-089 / DEC-409⑦：集合顺序不制造审计差异，真实成员和值变化仍须保留。 */
 import { randomUUID } from 'node:crypto';
-import { registerObjectDefinition } from '@italent/api';
+import { createPermissionAuthorizer, registerObjectDefinition } from '@italent/api';
 import { and, auditEvents, eq, orgObjects, permissionOutbox, withTenant } from '@italent/db';
 import { MODULE_OBJECTS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
@@ -99,7 +99,7 @@ describe('AC-PRM F-089 权限集合保存与读取', () => {
   }
 
   it.each(['字段', '按钮', '字段及按钮'])('DEC-409⑦ 仅%s顺序变化：审计无字段变更，revision与重放不变', async (kind) => {
-    const profile = await createProfile(world, `order-${kind === '字段' ? 'f' : kind === '按钮' ? 'b' : 'both'}`);
+    const profile = await createProfile(world, `order-${randomUUID()}`);
     expect((await setObjectPermission(world, profile, permission, OBJECT)).status).toBe(200);
     const path = `/profiles/${profile.id}/objects/${OBJECT}`;
     const reordered = {
@@ -156,8 +156,33 @@ describe('AC-PRM F-089 权限集合保存与读取', () => {
     expect(before.status).toBe(200);
     const effective = await before.json();
     expect(effective).toMatchObject({ viewableFields: ['Alpha', 'Zulu'], editableFields: ['Zulu'], buttons });
+    const authorize = createPermissionAuthorizer(world.db);
+    const queries = [
+      { action: 'object.view', resource: OBJECT },
+      { action: 'object.update', resource: OBJECT, fields: ['Zulu'] },
+      { action: 'object.update', resource: OBJECT, fields: ['Alpha'] },
+      { action: 'object.create', resource: OBJECT, fields: ['Zulu'] },
+      { action: 'object.delete', resource: OBJECT },
+      { action: 'object.button', resource: `${OBJECT}#Action@list` },
+      { action: 'object.button', resource: `${OBJECT}#Action@detail` },
+      { action: 'object.button', resource: `${OBJECT}#Action@list_row` },
+    ];
+    const decisions = async () => {
+      const results: boolean[] = [];
+      for (const query of queries)
+        results.push(
+          await authorize({
+            ...query,
+            tenantId: world.tenant.id,
+            userId: user.id,
+          }),
+        );
+      return results;
+    };
+    expect(await decisions()).toEqual([true, true, false, false, false, true, true, false]);
     expect((await setObjectPermission(world, profile, permission, OBJECT)).status).toBe(200);
     expect(await (await myObject(world, user, OBJECT)).json()).toEqual(effective);
+    expect(await decisions()).toEqual([true, true, false, false, false, true, true, false]);
     const outsider = await addMember(world, 'set-outsider');
     expect((await myObject(world, outsider, OBJECT)).status).toBe(403);
   });
@@ -276,7 +301,10 @@ describe('AC-PRM F-089 权限集合保存与读取', () => {
     expect((await get(path)).rules).toEqual(rules);
     const reordered = await put(path, input(rules), 1);
     await unchanged(reordered.key);
-    const real = await put(path, input(rules.slice(1)), 2);
+    const duplicate = await put(path, input([...rules, rules[0]!]), 2);
+    expect(duplicate.body.rules).toEqual(rules);
+    await unchanged(duplicate.key);
+    const real = await put(path, input(rules.slice(1)), 3);
     await changed(real.key, ['rules']);
     const stored = await withTenant(world.db, world.tenant.id, (tx) =>
       tx
