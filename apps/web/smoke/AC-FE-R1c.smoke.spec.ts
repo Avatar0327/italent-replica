@@ -76,13 +76,13 @@ test('AC-FE-R1c-03 调动列表、表单、我的申请与注释', async ({ page
   await page.screenshot({ path: testInfo.outputPath('transfer-list.png'), fullPage: true });
   await page.getByRole('button', { name: '林晓（合成）', exact: true }).click();
   await expect(page.getByRole('dialog')).toContainText('企业服务事业部');
-  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.getByRole('button', { name: '关闭', exact: true }).click();
   await page.getByRole('button', { name: '他人调动申请', exact: true }).click();
   await page.locator('select[name="employeeId"]').selectOption(employee);
   await expect(page.locator('input[name="place"]')).toBeVisible();
   await expect(page.getByRole('button', { name: /提\s*交/, exact: true })).toBeEnabled();
   await page.screenshot({ path: testInfo.outputPath('transfer-form.png'), fullPage: true });
-  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.getByRole('button', { name: '关闭', exact: true }).click();
   await page.getByRole('tab', { name: '我的申请', exact: true }).click();
   await page.getByRole('button', { name: '合成员工的调动申请', exact: true }).click();
   await expect(page.getByText('合成工作地', { exact: true })).toBeVisible();
@@ -106,13 +106,13 @@ test('AC-FE-R1c-04 审批中心三个页签、详情与操作弹窗', async ({ p
     await expect(page.getByRole('dialog').last()).toBeVisible();
     await page.getByRole('button', { name: /取\s*消/, exact: true }).click();
   }
-  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.getByRole('button', { name: '关闭', exact: true }).click();
   await page.getByRole('tab', { name: '已办', exact: true }).click();
   await expect(page.getByText('演示数据', { exact: true }).first()).toBeVisible();
   await page.getByRole('button', { name: '合成员工林晓的调动申请', exact: true }).click();
   await expect(page.getByText('审批已通过，业务是否生效以业务申请单为准。')).toBeVisible();
   await expect(page.getByRole('button', { name: /同\s*意/, exact: true })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.getByRole('button', { name: '关闭', exact: true }).click();
   await page.getByRole('tab', { name: '我发起', exact: true }).click();
   await expect(page.getByRole('button', { name: '合成员工的调动申请', exact: true })).toBeVisible();
   await page.getByRole('switch', { name: '注释' }).click();
@@ -255,4 +255,5 @@ async function switchIdentity(page: Page, path: string) {
   await page.getByLabel('切换演示身份').selectOption(user);
   await page.waitForURL('**/staff');
   await page.goto(path);
+  await expect(page.locator('.shell-workspace h1').first()).toBeVisible({ timeout: 15_000 });
 }
