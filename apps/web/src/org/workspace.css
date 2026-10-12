@@ -49,3 +49,7 @@
     grid-template-columns: 180px minmax(0, 1fr);
   }
 }
+
+.r1-wide-control {
+  width: 100%;
+}

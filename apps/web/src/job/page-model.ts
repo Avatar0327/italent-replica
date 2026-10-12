@@ -24,19 +24,20 @@ export interface JobRow {
   id: string;
   revision: number;
   name?: string;
+  parents?: Partial<Record<'admin' | 'dotted', { parentId: string | null; sequence?: number | null }>>;
   [field: string]: unknown;
 }
 export function jobBody(kind: JobKind, values: Record<string, unknown>, original: JobRow | undefined, date: string) {
+  const { adminParent, adminSequence, dottedParent, dottedSequence, ...fields } = values;
   const body: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(values)) {
+  const links = { adminParent, adminSequence, dottedParent, dottedSequence };
+  if (kind === 'positions') {
+    const parents = positionParents(links, original);
+    if (parents) body.parents = parents;
+  }
+  for (const [key, value] of Object.entries(fields)) {
     if (value === undefined) continue;
-    body[key] = key.endsWith('Id')
-      ? typeof value === 'string' && value
-        ? value.toLowerCase()
-        : null
-      : key === 'name' && typeof value === 'string'
-        ? value.trim()
-        : value;
+    body[key] = normalizeField(key, value);
   }
   if (!original && (typeof body.name !== 'string' || !body.name)) throw new Error(m.required);
   if (!original && kind === 'positions' && (!body.orgId || !body.postId)) throw new Error(m.positionRequired);
@@ -48,4 +49,45 @@ export function jobBody(kind: JobKind, values: Record<string, unknown>, original
   )
     body.syncSequenceToAssignments = true;
   return { ...body, [original ? 'effectiveDate' : 'startDate']: date };
+}
+
+function positionParents(values: Record<string, unknown>, original?: JobRow) {
+  const parents = { ...original?.parents };
+  let changed = false;
+  for (const key of ['admin', 'dotted'] as const) {
+    const parent = values[`${key}Parent`];
+    const sequence = values[`${key}Sequence`];
+    if (parent === undefined && sequence === undefined) continue;
+    const next = {
+      ...parents[key],
+      parentId: parents[key]?.parentId ?? null,
+      sequence: parents[key]?.sequence ?? null,
+    };
+    if (parent !== undefined) next.parentId = typeof parent === 'string' && parent ? parent.toLowerCase() : null;
+    if (sequence !== undefined) next.sequence = typeof sequence === 'number' ? sequence : null;
+    if (next.parentId !== parents[key]?.parentId || next.sequence !== parents[key]?.sequence) {
+      parents[key] = next;
+      changed = true;
+    }
+  }
+  return changed ? parents : undefined;
+}
+export function jobPermissionField(name: string) {
+  return ['adminParent', 'adminSequence', 'dottedParent', 'dottedSequence'].includes(name) ? 'parents' : name;
+}
+export function jobInitialValues(original?: JobRow): Record<string, unknown> {
+  if (!original) return { enabled: true, stopDate: '9999-12-31' };
+  return {
+    ...original,
+    adminParent: original.parents?.admin?.parentId,
+    adminSequence: original.parents?.admin?.sequence,
+    dottedParent: original.parents?.dotted?.parentId,
+    dottedSequence: original.parents?.dotted?.sequence,
+  };
+}
+
+function normalizeField(key: string, value: unknown) {
+  if (key.endsWith('Id')) return typeof value === 'string' && value ? value.toLowerCase() : null;
+  if (key === 'name' && typeof value === 'string') return value.trim();
+  return value;
 }

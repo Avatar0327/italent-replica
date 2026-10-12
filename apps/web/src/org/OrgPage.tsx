@@ -14,7 +14,7 @@ import {
 import { EstablishmentOverview, establishmentObject } from '../establishment/EstablishmentOverview.js';
 import { OrgEditor, type OrgAction } from './OrgEditor.js';
 import { organizationTree, type Dimension, type OrgRow } from './page-model.js';
-import { usePagePermissions, useRemote, type PageAccess } from './page-support.js';
+import { usePagePermissions, useRemote, RemoteContent, type PageAccess } from './page-support.js';
 import { pageText as m } from './messages.js';
 import './workspace.css';
 const object = 'TenantBase.Organization';
@@ -146,18 +146,18 @@ function OrgTree({ s }: { s: Catalog }) {
   return (
     <aside className="r1-tree-panel" aria-label={m.tree}>
       <h2>{m[s.dimension]}</h2>
-      {s.remote.loading ? (
-        <PageState kind="loading" />
-      ) : s.remote.data?.items.length ? (
-        <Tree
-          key={`${s.date}/${s.dimension}/${s.page.page}/${s.name}`}
-          defaultExpandAll
-          treeData={organizationTree(s.remote.data.items, s.dimension)}
-          onSelect={(keys) => s.setSelected(String(keys[0] ?? ''))}
-        />
-      ) : (
-        <Empty description={m.empty} />
-      )}
+      <RemoteContent state={s.remote}>
+        {s.remote.data?.items.length ? (
+          <Tree
+            key={`${s.date}/${s.dimension}/${s.page.page}/${s.name}`}
+            defaultExpandAll
+            treeData={organizationTree(s.remote.data.items, s.dimension)}
+            onSelect={(keys) => s.setSelected(String(keys[0] ?? ''))}
+          />
+        ) : (
+          <Empty description={m.empty} />
+        )}
+      </RemoteContent>
     </aside>
   );
 }
@@ -280,14 +280,10 @@ function OrgDetail({ s, access }: { s: Catalog; access: PageAccess }) {
   const { detail } = s;
   return (
     <Drawer open={!!s.selected} width={740} title={m.detail} onClose={() => s.setSelected(undefined)}>
-      {detail.loading ? (
-        <PageState kind="loading" />
-      ) : detail.error ? (
-        <PageState kind="error" error={detail.error} />
-      ) : (
-        detail.data && (
+      <RemoteContent state={detail}>
+        {detail.data && (
           <DetailPage
-            title={detail.data.name ?? m.detail}
+            title={access.field('name').visible ? (detail.data.name ?? m.detail) : m.detail}
             actions={<OrgDetailActions s={s} access={access} />}
             sections={[
               {
@@ -330,8 +326,8 @@ function OrgDetail({ s, access }: { s: Catalog; access: PageAccess }) {
                 : []),
             ]}
           />
-        )
-      )}
+        )}
+      </RemoteContent>
     </Drawer>
   );
 }

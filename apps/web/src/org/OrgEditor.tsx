@@ -89,7 +89,7 @@ function parentFields(
           }}
         />
       ),
-      rules: [{ required: true, message: m.required }],
+      rules: [{ required: !!original.parents?.[dimension]?.parentId, message: m.required }],
     }));
 }
 function useSubmit(props: Props) {
@@ -102,12 +102,9 @@ function useSubmit(props: Props) {
       ...values,
       ...(values.addEmployment !== undefined ? { addEmployment: values.addEmployment === 'yes' } : {}),
     };
-    const body =
-      action === 'edit'
-        ? values
-        : action === 'disable'
-          ? { effectiveDate: date, enabled: false }
-          : orgChangeBody(original, input, date);
+    let body = values;
+    if (action === 'disable') body = { effectiveDate: date, enabled: false };
+    if (action === 'change') body = orgChangeBody(original, input, date);
     if (action === 'change' && Object.keys(body).length === 1)
       throw new ApiError(422, 'VALIDATION_FAILED', 'fields', m.noChange);
     if (body.addEmployment === true) {
@@ -142,7 +139,7 @@ export function OrgEditor(props: Props) {
   const { original, action, date } = props;
   const fields = useFields(props);
   const onSubmit = useSubmit(props);
-  const hint = action === 'edit' ? m.editHint : action === 'disable' ? m.disableHint : m.changeHint;
+  const hint = { edit: m.editHint, disable: m.disableHint, change: m.changeHint }[action];
   const initialValues: Record<string, unknown> = { ...original };
   for (const dimension of ['admin', 'business', 'product'] as const)
     initialValues[`${dimension}Parent`] = original.parents?.[dimension]?.parentId;

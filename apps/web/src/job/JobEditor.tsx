@@ -2,10 +2,20 @@ import { Alert, Input, InputNumber, Select } from 'antd';
 import { useState } from 'react';
 import { FormOverlay, TenantDatePicker, type FormField } from '../foundation/index.js';
 import { usePageWrite, useRemote, type PageAccess } from '../org/page-support.js';
-import { jobBody, type JobKind, type JobRow } from './page-model.js';
+import { jobBody, jobInitialValues, jobPermissionField, type JobKind, type JobRow } from './page-model.js';
 import { pageText as m } from './messages.js';
 
-const numbers = new Set(['layerLevel', 'grade', 'level', 'scoreLow', 'scoreHigh', 'displayOrder', 'evaluationScore']);
+const numbers = new Set([
+  'layerLevel',
+  'grade',
+  'level',
+  'scoreLow',
+  'scoreHigh',
+  'displayOrder',
+  'evaluationScore',
+  'adminSequence',
+  'dottedSequence',
+]);
 const references: Record<string, string> = {
   layerId: 'layers',
   levelTypeId: 'level-types',
@@ -17,6 +27,9 @@ const references: Record<string, string> = {
   professionalLineId: 'professional-lines',
   orgId: 'org',
   postId: 'posts',
+  adminParent: 'positions',
+  dottedParent: 'positions',
+  standardPositionId: 'positions',
 };
 export const jobFields: Record<JobKind, string[]> = {
   layers: ['layerLevel'],
@@ -48,6 +61,11 @@ export const jobFields: Record<JobKind, string[]> = {
     'minGradeId',
     'maxGradeId',
     'workLocation',
+    'standardPositionId',
+    'adminParent',
+    'adminSequence',
+    'dottedParent',
+    'dottedSequence',
   ],
 };
 export const label = (field: string) => m[field as keyof typeof m] ?? field;
@@ -83,14 +101,14 @@ export function ReferenceSelect({
       showSearch
       allowClear
       filterOption={false}
-      style={{ width: '100%' }}
+      className="r1-wide-control"
       value={value}
       onChange={(value) => onChange?.(value ?? null)}
       onSearch={setQuery}
       options={choices}
       loading={remote.loading}
       placeholder={m.candidateHint}
-      notFoundContent={remote.error ? m.missing : undefined}
+      notFoundContent={remote.error ? m.candidateFailed : undefined}
       popupRender={(menu) => (
         <>
           {menu}
@@ -116,30 +134,12 @@ export function JobEditor(props: {
     {
       title: m.basic,
       fields: fields.map((name): FormField => {
-        const target = name === 'parentId' ? kind : references[name];
-        const control = target ? (
-          <ReferenceSelect kind={target} date={date} exclude={original?.id} />
-        ) : numbers.has(name) ? (
-          <InputNumber style={{ width: '100%' }} />
-        ) : name.endsWith('Date') || name === 'establishedOn' ? (
-          <TenantDatePicker />
-        ) : name === 'enabled' ? (
-          <Select
-            options={[
-              { value: true, label: m.active },
-              { value: false, label: m.inactive },
-            ]}
-          />
-        ) : ['responsibilities', 'requirements'].includes(name) ? (
-          <Input.TextArea maxLength={4000} rows={3} />
-        ) : (
-          <Input maxLength={name === 'code' ? 64 : 200} />
-        );
+        const control = jobControl(name, kind, date, original?.id);
         return {
           name,
           label: label(name),
           control,
-          access: access.field(name),
+          access: access.field(jobPermissionField(name)),
           rules:
             name === 'name' || (!original && ['orgId', 'postId'].includes(name))
               ? [{ required: true, message: m.required }]
@@ -153,7 +153,7 @@ export function JobEditor(props: {
       open
       title={`${original ? m.edit : m.create}${m[kind]}`}
       groups={groups}
-      initialValues={original ?? { enabled: true, stopDate: '9999-12-31' }}
+      initialValues={jobInitialValues(original)}
       onClose={props.onClose}
       onRefresh={props.onClose}
       onSubmit={async (values) => {
@@ -170,4 +170,22 @@ export function JobEditor(props: {
 }
 export function JobHints({ kind }: { kind: JobKind }) {
   return <Alert type="info" showIcon message={kind === 'posts' || kind === 'positions' ? m.syncHint : m.versionHint} />;
+}
+
+function jobControl(name: string, kind: JobKind, date: string, exclude?: string) {
+  const target = name === 'parentId' ? kind : references[name];
+  if (target) return <ReferenceSelect kind={target} date={date} exclude={exclude} />;
+  if (numbers.has(name)) return <InputNumber className="r1-wide-control" />;
+  if (name.endsWith('Date') || name === 'establishedOn') return <TenantDatePicker />;
+  if (name === 'enabled')
+    return (
+      <Select
+        options={[
+          { value: true, label: m.active },
+          { value: false, label: m.inactive },
+        ]}
+      />
+    );
+  if (['responsibilities', 'requirements'].includes(name)) return <Input.TextArea maxLength={4000} rows={3} />;
+  return <Input maxLength={name === 'code' ? 64 : 200} />;
 }

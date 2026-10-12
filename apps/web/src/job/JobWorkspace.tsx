@@ -11,9 +11,10 @@ import {
   useSession,
   type PageResult,
 } from '../foundation/index.js';
-import { usePagePermissions, useRemote, type PageAccess } from '../org/page-support.js';
+import { usePagePermissions, useRemote, RemoteContent, type PageAccess } from '../org/page-support.js';
+import { useSequenceSelection } from './SequenceSync.js';
 import { JobEditor, JobHints, jobFields, label } from './JobEditor.js';
-import { jobKinds, jobObjects, type JobKind, type JobRow } from './page-model.js';
+import { jobKinds, jobObjects, jobInitialValues, jobPermissionField, type JobKind, type JobRow } from './page-model.js';
 import { pageText as m } from './messages.js';
 import '../org/workspace.css';
 
@@ -25,7 +26,8 @@ export function JobWorkspace() {
   if (permissions.error) return <PageState kind="error" error={permissions.error} />;
   const allowed = jobKinds.filter((kind) => permissions.access(jobObjects[kind]).readable);
   if (!allowed.length) return <PageState kind="forbidden" />;
-  const kind = allowed.includes(requested) ? requested : allowed.includes('posts') ? 'posts' : allowed[0]!;
+  const fallback = allowed.includes('posts') ? 'posts' : allowed[0]!;
+  const kind = allowed.includes(requested) ? requested : fallback;
   return (
     <div className="r1-workspace">
       <DecisionNote id="job" />
@@ -128,27 +130,14 @@ function JobFilters({ s }: { s: Catalog }) {
 function JobCatalog({ kind, access }: { kind: JobKind; access: PageAccess }) {
   const { message } = App.useApp();
   const s = useCatalog(kind);
-  const fields = ['code', 'name', ...jobFields[kind].slice(0, 5), 'enabled', 'startDate', 'stopDate'];
-  const columns = fields
-    .filter((field) => access.field(field).visible)
-    .map((field) => ({
-      key: field,
-      title: label(field),
-      dataIndex: field,
-      render: (value: unknown, row: JobRow) =>
-        field === 'name' ? (
-          <Button type="link" onClick={() => s.setSelected(row.id)}>
-            {String(value ?? m.missing)}
-          </Button>
-        ) : (
-          renderValue(field, value)
-        ),
-    }));
+  const selection = useSequenceSelection(kind, s.remote.data, access, s.remote.refresh);
+  const columns = jobColumns(kind, access, s.setSelected);
   return (
     <>
       <ListPage
         title={`${m.title} · ${m[kind]}`}
         rowKey="id"
+        selection={selection}
         page={s.page}
         onPageChange={s.setPage}
         data={
@@ -162,7 +151,7 @@ function JobCatalog({ kind, access }: { kind: JobKind; access: PageAccess }) {
           <>
             <Button onClick={s.remote.refresh}>{m.refresh}</Button>
             {access.can('create', 'list') && (
-              <Button type="primary" onClick={() => s.setEditor({})}>
+              <Button type="primary" disabled={s.remote.loading || !!s.remote.error} onClick={() => s.setEditor({})}>
                 {m.create}
               </Button>
             )}
@@ -189,7 +178,10 @@ function JobCatalog({ kind, access }: { kind: JobKind; access: PageAccess }) {
           original={s.editor.original}
           date={s.date}
           access={access}
-          onClose={() => s.setEditor(undefined)}
+          onClose={() => {
+            s.setEditor(undefined);
+            s.remote.refresh();
+          }}
           onSaved={() => {
             s.remote.refresh();
             void message.success(m.saved);
@@ -201,16 +193,13 @@ function JobCatalog({ kind, access }: { kind: JobKind; access: PageAccess }) {
 }
 function JobDetail({ s, access }: { s: Catalog; access: PageAccess }) {
   const { detail, kind } = s;
+  const values = jobInitialValues(detail.data);
   return (
     <Drawer open={!!s.selected} width={700} title={`${m[kind]}${m.detail}`} onClose={() => s.setSelected(undefined)}>
-      {detail.loading ? (
-        <PageState kind="loading" />
-      ) : detail.error ? (
-        <PageState kind="error" error={detail.error} />
-      ) : (
-        detail.data && (
+      <RemoteContent state={detail}>
+        {detail.data && (
           <DetailPage
-            title={detail.data.name ?? m.detail}
+            title={access.field('name').visible ? (detail.data.name ?? m.detail) : m.detail}
             actions={
               access.can('update') && (
                 <Button
@@ -242,19 +231,39 @@ function JobDetail({ s, access }: { s: Catalog; access: PageAccess }) {
                       'stopDate',
                       'establishedOn',
                     ]
-                      .filter((field) => access.field(field).visible && detail.data?.[field] !== undefined)
+                      .filter((field) => access.field(jobPermissionField(field)).visible && values[field] !== undefined)
                       .map((field) => ({
                         key: field,
                         label: label(field),
-                        children: renderValue(field, detail.data?.[field]),
+                        children: renderValue(field, values[field]),
                       }))}
                   />
                 ),
               },
             ]}
           />
-        )
-      )}
+        )}
+      </RemoteContent>
     </Drawer>
   );
+}
+
+function jobColumns(kind: JobKind, access: PageAccess, select: (id: string) => void) {
+  const fields = ['code', 'name', ...jobFields[kind].slice(0, 5), 'enabled', 'startDate', 'stopDate'];
+  const columns = fields
+    .filter((field) => access.field(field).visible)
+    .map((field) => ({
+      key: field,
+      title: label(field),
+      dataIndex: field,
+      render: (value: unknown, row: JobRow) =>
+        field === 'name' ? (
+          <Button type="link" onClick={() => select(row.id)}>
+            {String(value ?? m.missing)}
+          </Button>
+        ) : (
+          renderValue(field, value)
+        ),
+    }));
+  return columns;
 }

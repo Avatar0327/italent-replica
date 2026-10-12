@@ -75,6 +75,7 @@ export function pageAccess(permission: ObjectPermission | undefined) {
     readable: !!permission,
     field: (name: string) => fieldAccess(permission, name),
     can: (button: string, level = 'detail') =>
-      canButton(permission, button, level) && permission?.dataOperations[button] === true,
+      canButton(permission, button, level) &&
+      (!['create', 'update', 'delete'].includes(button) || permission?.dataOperations[button] === true),
   };
 }

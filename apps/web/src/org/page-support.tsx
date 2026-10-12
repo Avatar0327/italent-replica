@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { ApiError, newCommand, useApiClient, useSession } from '../foundation/index.js';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { ApiError, newCommand, useApiClient, useSession, PageState } from '../foundation/index.js';
 import { type ObjectPermission } from '../foundation/permission-model.js';
 import { pageAccess } from './page-model.js';
 import { pageText as m } from './messages.js';
@@ -87,4 +87,16 @@ export function usePageWrite() {
       throw error;
     }
   };
+}
+
+export function RemoteContent({
+  state,
+  children,
+}: {
+  state: { loading: boolean; error?: unknown };
+  children: ReactNode;
+}) {
+  if (state.loading) return <PageState kind="loading" />;
+  if (state.error) return <PageState kind="error" error={state.error} />;
+  return children;
 }

@@ -1,7 +1,7 @@
 import { Alert, Button, Descriptions, Drawer, Tag } from 'antd';
 import { useState } from 'react';
 import { ListPage, PageState, DecisionNote, type PageResult } from '../foundation/index.js';
-import { usePagePermissions, useRemote } from '../org/page-support.js';
+import { usePagePermissions, useRemote, RemoteContent } from '../org/page-support.js';
 import { messages as m } from './messages.js';
 interface Scheme {
   id: string;
@@ -31,8 +31,10 @@ export function EstablishmentOverview() {
     'stopDate',
   ];
   const label = (key: string) => m[key as keyof typeof m] ?? key;
-  const display = (value: unknown) =>
-    typeof value === 'boolean' ? (value ? m.active : m.inactive) : label(String(value ?? m.empty));
+  const display = (value: unknown) => {
+    if (typeof value === 'boolean') return value ? m.active : m.inactive;
+    return label(String(value ?? m.empty));
+  };
   if (permissions.loading) return <PageState kind="loading" />;
   if (permissions.error) return <PageState kind="error" error={permissions.error} />;
   if (!access.readable) return <PageState kind="forbidden" />;
@@ -72,11 +74,7 @@ export function EstablishmentOverview() {
       />
       <Alert type="info" message={m.hint} showIcon />
       <Drawer open={!!selected} onClose={() => setSelected(undefined)} width={640} title={m.detail}>
-        {detail.loading ? (
-          <PageState kind="loading" />
-        ) : detail.error ? (
-          <PageState kind="error" error={detail.error} />
-        ) : (
+        <RemoteContent state={detail}>
           <Descriptions
             column={1}
             bordered
@@ -84,7 +82,7 @@ export function EstablishmentOverview() {
               .filter((field) => access.field(field).visible && detail.data?.[field] !== undefined)
               .map((field) => ({ key: field, label: label(field), children: display(detail.data?.[field]) }))}
           />
-        )}
+        </RemoteContent>
       </Drawer>
     </>
   );
