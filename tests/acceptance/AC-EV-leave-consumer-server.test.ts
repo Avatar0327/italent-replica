@@ -5,11 +5,13 @@ const startup = vi.hoisted(() => ({
   db: {},
   connected: true,
   start: vi.fn(() => ({ stop: async () => undefined })),
+  serve: vi.fn(),
 }));
 vi.mock('../../apps/api/src/modules/employment/outbox-consumer.js', () => ({
   startEmploymentOutboxConsumer: startup.start,
 }));
-vi.mock('@hono/node-server', () => ({ serve: vi.fn() }));
+// 该依赖只装在 API 工作区；从根测试文件按裸包名 mock 会变成另一个虚拟模块。
+vi.mock('../../apps/api/node_modules/@hono/node-server/dist/index.mjs', () => ({ serve: startup.serve }));
 vi.mock('../../apps/api/src/app.js', () => ({ createApp: () => ({ fetch: vi.fn() }) }));
 vi.mock('../../apps/api/src/database.js', () => ({
   databaseFromEnv: async () => (startup.connected ? { db: startup.db, driver: 'pg' } : null),
@@ -66,6 +68,7 @@ it.each([
   const dispose = registerLeaveConsumer(consumer);
   try {
     await import('../../apps/api/src/server.js');
+    expect(startup.serve).toHaveBeenCalledTimes(1);
     expect(startup.start).toHaveBeenCalledTimes(starts);
     if (starts) expect(startup.start).toHaveBeenCalledWith(startup.db, consumer, Number(interval ?? 5000));
   } finally {
