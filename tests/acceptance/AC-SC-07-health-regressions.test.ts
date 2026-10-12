@@ -67,6 +67,20 @@ describe('AC-SC-07 第 1 轮计算正确性回归', () => {
     expect(after).toEqual(before);
     expect(member(after[0]!)).toMatchObject({ ok: true, value: { kind: 'number', value: 1 } });
     expect(after[0]!.fields['employment.position_id']).toBe(position.id);
+    const cleared = await w.call('PATCH', `employment/records/${person.recordId}`, {
+      ifMatch: current.revision,
+      body: { fields: { positionId: null, levelId: null, sequenceId: null } },
+    });
+    expect(cleared.status, await cleared.clone().text()).toBe(200);
+    const emptyPosition = (await read())[0]!;
+    expect(emptyPosition.fields).toMatchObject({
+      'employee.entry_date': SC_TODAY,
+      'employment.org_id': org.id,
+      'employment.position_id': null,
+      'employment.job_level_id': null,
+      'employment.job_sequence_id': null,
+    });
+    expect(member(emptyPosition)).toMatchObject({ ok: true, value: { kind: 'number', value: 1 } });
   });
 });
 
@@ -288,5 +302,147 @@ describe('AC-SC-07 P2-3 字段过滤与去重回归', () => {
     expect(
       await measure(port, { ...row, fieldCode: 'successor_count', filterOperator: null, filterValues: [] }),
     ).toEqual({ status: 'value', value: 0 });
+  });
+});
+
+describe('AC-SC-07 同类度量矩阵', () => {
+  it('P2-2/3：盘点六度量共用五态、过滤与分母；真实零不变 empty', async () => {
+    const { w, org, person, measure } = await metricWorld('health-review-matrix');
+    const second = await w.hire('合成第二成员', { departmentId: org.id });
+    await w.setHead(org, person);
+    let field: FieldRead = { status: 'value', value: 2 };
+    const port = Object.assign(reviewPort(w.tenant.id, person.id, field), {
+      readReviewFields: async () =>
+        new Map([
+          [person.id, { values: { score: field }, source: null }],
+          [second.id, { values: { score: { status: 'empty' as const, value: null } }, source: null }],
+        ]),
+      readSuccessionEntries: async () => [
+        {
+          employeeId: null,
+          orgId: org.id,
+          positionId: null,
+          status: 'value' as const,
+          nominations: [nomination(org.id, person.id)],
+          source: null,
+        },
+      ],
+    });
+    for (const kind of measures) {
+      const row = metricRow({
+        fieldSource: 'review',
+        fieldCode: 'score',
+        measure: kind,
+        filterOperator: 'eq',
+        filterValues: [2],
+      });
+      const expected = {
+        count: 1,
+        average: 2,
+        ratio: 0.5,
+        review_result_ratio: 1,
+        count_over_successors: 1,
+        count_over_incumbents: 1,
+      }[kind];
+      expect(await measure(port, row), kind).toEqual({ status: 'value', value: expected });
+      for (const status of ['forbidden', 'unavailable'] as const) {
+        field = { status, value: null };
+        expect(await measure(port, row), `${kind}/${status}`).toEqual({ status });
+      }
+      field = { status: 'value', value: 2 };
+    }
+    field = { status: 'value', value: 0 };
+    expect(await measure(port, metricRow({ fieldSource: 'review', fieldCode: 'score', measure: 'average' }))).toEqual({
+      status: 'value',
+      value: 0,
+    });
+    expect(
+      await measure(
+        port,
+        metricRow({
+          fieldSource: 'review',
+          fieldCode: 'score',
+          measure: 'count',
+          filterOperator: 'gt',
+          filterValues: [0],
+        }),
+      ),
+    ).toEqual({ status: 'value', value: 0 });
+    expect(
+      await measure(
+        port,
+        metricRow({
+          fieldSource: 'review',
+          fieldCode: 'score',
+          population: 'successors',
+          measure: 'count_over_incumbents',
+        }),
+      ),
+    ).toEqual({ status: 'value', value: 1 });
+  });
+  it('P2-2/3：绿化率直接度量与字段度量共用五态，缺来源与空率区分', async () => {
+    const { w, org, measure } = await metricWorld('health-green-matrix');
+    let rate: number | null = null,
+      status: 'value' | 'forbidden' | 'unavailable' = 'value',
+      present = true;
+    const port = Object.assign(createInMemoryTalentReviewSyncPort({ tenantId: w.tenant.id }), {
+      greenRate: async () => new Map(present ? [[org.id, { status, rate, placed: 0, green: 0, source: null }]] : []),
+    });
+    for (const row of [
+      metricRow({ fieldCode: null, measure: 'green_rate' }),
+      metricRow({ fieldCode: 'green_rate', measure: 'average' }),
+      metricRow({ fieldCode: 'green_rate', measure: 'count' }),
+      metricRow({ fieldCode: 'green_rate', measure: 'ratio' }),
+    ]) {
+      expect(await measure(port, row)).toEqual({ status: 'empty' });
+      rate = 0;
+      expect(await measure(port, row)).toEqual({
+        status: 'value',
+        value: row.measure === 'count' || row.measure === 'ratio' ? 1 : 0,
+      });
+      for (const failed of ['forbidden', 'unavailable'] as const) {
+        status = failed;
+        expect(await measure(port, row)).toEqual({ status: failed });
+      }
+      status = 'value';
+      present = false;
+      expect(await measure(port, row)).toEqual({ status: 'unavailable' });
+      present = true;
+      rate = null;
+    }
+  });
+  it('P2-2/3：继任五态覆盖人数和准备度；空人口与零分母仍 empty', async () => {
+    const { w, org, person, measure } = await metricWorld('health-nomination-states');
+    let status: 'value' | 'forbidden' | 'unavailable' | 'module_absent' = 'value';
+    const port = Object.assign(createInMemoryTalentReviewSyncPort({ tenantId: w.tenant.id }), {
+      readSuccessionEntries: async () => [
+        {
+          employeeId: null,
+          orgId: org.id,
+          positionId: null,
+          status,
+          nominations: [nomination(org.id, person.id, 'READY')],
+          source: null,
+        },
+      ],
+    });
+    for (const code of ['successor_count', 'readiness_code'])
+      for (const kind of ['count', 'successor_count', 'ratio', 'count_over_successors', 'count_over_incumbents'])
+        for (const failure of ['forbidden', 'unavailable', 'module_absent'] as const) {
+          status = failure;
+          expect(await measure(port, metricRow({ fieldSource: 'succession', fieldCode: code, measure: kind }))).toEqual(
+            { status: failure },
+          );
+        }
+    status = 'value';
+    expect(await measure(port, metricRow({ fieldCode: null, population: 'incumbents', measure: 'count' }))).toEqual({
+      status: 'empty',
+    });
+    expect(
+      await measure(
+        port,
+        metricRow({ fieldSource: 'succession', fieldCode: 'successor_count', measure: 'count_over_incumbents' }),
+      ),
+    ).toEqual({ status: 'empty' });
   });
 });
