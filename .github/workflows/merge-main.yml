@@ -1,0 +1,185 @@
+name: merge main (cloud)
+
+# DEC-454①：合并队列的 pnpm merge:main 改在 GitHub Actions 上跑，避开本机负载导致的超时。
+# 合并队列（审查合并窗口）对队首 PR 手动触发：gh workflow run merge-main.yml -f pr=<编号>
+#  1. 只接受本仓库分支、base 为 main、未关闭的 PR；
+#  2. 检出 PR 分支全历史，跑 pnpm merge:main（合入 origin/main、生成物冲突取 main 后重算、迁移改号）；
+#     业务冲突时 job 判红，冲突清单写进运行摘要，须人工处理（本机 pnpm merge:main / --continue）；
+#  3. 给 PR 打 queue-head 标签（标明队首；此后推到该 PR 的提交跑完整 CI），有新提交就推回 PR 分支（不强推）；
+#  4. 派发完整 CI：用默认 GITHUB_TOKEN 推送不会触发任何工作流（GitHub 防递归），
+#     所以本流程用 workflow_dispatch 在 PR 分支上触发 ci.yml（workflow_dispatch 是该限制的例外）。
+#     派发的运行检出 PR 分支头，即推送后的提交，检查结果挂在同一提交上，分支保护按名称认这两项必需检查。
+# 可选仓库机密 MERGE_BOT_TOKEN（有 contents 写权限、含 workflows 权限的细粒度 PAT）：
+#   设了就用它检出和推送，推送会触发 pull_request 运行（带 queue-head 标签即完整模式），不再另外派发；
+#   没设时 GITHUB_TOKEN 推不了改动 .github/workflows/ 的合并提交，遇到会判红并提示改在本机合并。
+on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: PR 编号
+        required: true
+        type: number
+      take_ours_for_counts:
+        description: 业务冲突中 main 一侧只改数字字面量的文件取本分支一侧（pnpm merge:main --take-ours-for-counts）
+        type: boolean
+        default: false
+      run_ci:
+        description: 完成后派发完整 CI（PR 头已有完整运行成功时可关）
+        type: boolean
+        default: true
+
+permissions:
+  contents: write # 推送合并提交
+  actions: write # 派发 ci.yml
+  pull-requests: write # 打 queue-head 标签
+  issues: write # 首次运行时创建 queue-head 标签（标签接口归 issues）
+
+concurrency:
+  group: merge-main-${{ inputs.pr }}
+  cancel-in-progress: false
+
+jobs:
+  merge-main:
+    name: 'merge:main (PR #${{ inputs.pr }})'
+    runs-on: ubuntu-24.04
+    # 重算只跑 4 个 F-039 验收文件（PGlite），实测数分钟；安装与合并另计
+    timeout-minutes: 30
+    steps:
+      - name: Resolve PR (same-repo, open, base main)
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ inputs.pr }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh pr view "$PR" --repo "$REPO" \
+            --json state,isCrossRepository,headRefName,headRefOid,baseRefName > "$RUNNER_TEMP/pr.json"
+          state=$(jq -r .state "$RUNNER_TEMP/pr.json")
+          cross=$(jq -r .isCrossRepository "$RUNNER_TEMP/pr.json")
+          branch=$(jq -r .headRefName "$RUNNER_TEMP/pr.json")
+          base=$(jq -r .baseRefName "$RUNNER_TEMP/pr.json")
+          if [ "$state" != OPEN ]; then echo "::error::PR #$PR 状态为 $state" && exit 1; fi
+          if [ "$cross" != false ]; then echo "::error::只处理本仓库分支，PR #$PR 来自 fork" && exit 1; fi
+          if [ "$base" != main ]; then echo "::error::PR #$PR 的 base 是 $base，不是 main" && exit 1; fi
+          if [ "$branch" = main ]; then echo "::error::PR 头分支不能是 main" && exit 1; fi
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+          echo "head=$(jq -r .headRefOid "$RUNNER_TEMP/pr.json")" >> "$GITHUB_OUTPUT"
+          echo "PR #$PR：\`$branch\`（头 $(jq -r .headRefOid "$RUNNER_TEMP/pr.json" | cut -c1-8)）" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.pr.outputs.branch }}
+          fetch-depth: 0 # merge:main 要算分叉点、读 main 的迁移与快照
+          token: ${{ secrets.MERGE_BOT_TOKEN || github.token }}
+      - uses: pnpm/action-setup@v4 # 版本取自 package.json 的 packageManager
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: pnpm merge:main
+        env:
+          TAKE_OURS: ${{ inputs.take_ours_for_counts }}
+        run: |
+          set -uo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          args=()
+          if [ "$TAKE_OURS" = true ]; then args+=(--take-ours-for-counts); fi
+          log="$RUNNER_TEMP/merge-main.log"
+          pnpm merge:main "${args[@]}" 2>&1 | tee "$log"
+          status=${PIPESTATUS[0]}
+          if [ "$status" != 0 ]; then
+            {
+              echo "### pnpm merge:main 失败（退出码 $status）"
+              echo
+              if grep -q '业务文件冲突' "$log"; then
+                echo "业务冲突须人工处理：在本机该分支上运行 \`pnpm merge:main\`，解决冲突并 \`git add\` 后 \`pnpm merge:main --continue\`，推送后再触发本流程。"
+                echo
+                echo '```'
+                # 冲突清单与“只改计数”提示：从“业务文件冲突”起到日志末尾
+                sed -n '/业务文件冲突/,$p' "$log" | head -80
+                echo '```'
+              else
+                echo '日志末尾：'
+                echo
+                echo '```'
+                tail -60 "$log"
+                echo '```'
+              fi
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit "$status"
+          fi
+          {
+            echo '### pnpm merge:main 完成'
+            echo
+            echo '```'
+            grep -E '^(迁移|  |生成物冲突|已提交|已是最新|已包含|注意)' "$log" | head -60
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Mark queue head
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ inputs.pr }}
+          REPO: ${{ github.repository }}
+        # 先打标签再推送：用 MERGE_BOT_TOKEN 推送时触发的 pull_request 运行据此走完整模式；
+        # GITHUB_TOKEN 打标签不触发工作流，ci.yml 也不监听 labeled
+        run: |
+          set -euo pipefail
+          gh label create queue-head --repo "$REPO" --force --color B60205 \
+            --description '合并队列队首：推送跑完整 CI（DEC-454①）'
+          gh pr edit "$PR" --repo "$REPO" --add-label queue-head
+      - name: Push to PR branch
+        id: push
+        env:
+          BRANCH: ${{ steps.pr.outputs.branch }}
+          HAS_BOT_TOKEN: ${{ secrets.MERGE_BOT_TOKEN != '' }}
+        run: |
+          set -euo pipefail
+          head=$(git rev-parse HEAD)
+          echo "sha=$head" >> "$GITHUB_OUTPUT"
+          if [ "$head" = "$(git rev-parse "origin/$BRANCH")" ]; then
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
+            echo "无新提交，不推送（PR 头 ${head:0:8}）" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          # GITHUB_TOKEN 没有 workflows 权限，推不了改动 .github/workflows/ 的提交
+          if [ "$HAS_BOT_TOKEN" != true ] && ! git diff --quiet "origin/$BRANCH" HEAD -- .github/workflows; then
+            {
+              echo "### 推送受限"
+              echo "合并提交改动了 .github/workflows/，默认 GITHUB_TOKEN 无权推送。"
+              echo "请在本机该分支运行 \`pnpm merge:main\` 后推送，或配置仓库机密 MERGE_BOT_TOKEN。"
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::合并提交改动了 .github/workflows/，GITHUB_TOKEN 无权推送"
+            exit 1
+          fi
+          # 不强推：期间有人推了 PR 分支则被拒，重新触发本流程即可
+          git push origin "HEAD:refs/heads/$BRANCH"
+          echo "pushed=true" >> "$GITHUB_OUTPUT"
+          echo "已推送 ${head:0:8} 到 \`$BRANCH\`" >> "$GITHUB_STEP_SUMMARY"
+      - name: Dispatch full CI on the PR branch
+        if: inputs.run_ci
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ steps.pr.outputs.branch }}
+          SHA: ${{ steps.push.outputs.sha }}
+          PUSHED: ${{ steps.push.outputs.pushed }}
+          HAS_BOT_TOKEN: ${{ secrets.MERGE_BOT_TOKEN != '' }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [ "$PUSHED" = true ] && [ "$HAS_BOT_TOKEN" = true ]; then
+            echo "用 MERGE_BOT_TOKEN 推送，pull_request 运行已带 queue-head 标签走完整模式，不再派发" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          since=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          # node_22=false：只跑 Node 24，必需检查名称正好是 lint / typecheck / test (PGlite, Node 24)
+          gh workflow run ci.yml --repo "$REPO" --ref "$BRANCH" -f node_22=false
+          url=""
+          for _ in $(seq 1 12); do
+            sleep 5
+            url=$(gh run list --repo "$REPO" --workflow ci.yml --branch "$BRANCH" --event workflow_dispatch \
+              --created ">=$since" --json headSha,url --jq "map(select(.headSha == \"$SHA\")) | .[0].url // empty")
+            [ -n "$url" ] && break
+          done
+          echo "已派发完整 CI（${SHA:0:8}）：${url:-（未查到运行链接，请到 Actions 页查看）}" >> "$GITHUB_STEP_SUMMARY"
