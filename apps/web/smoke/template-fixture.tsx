@@ -2,9 +2,9 @@ import { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ConfigProvider, Button, Input, Select } from 'antd';
 import zhCN from 'antd/es/locale/zh_CN.js';
-import { ListPage, DetailPage } from '../src/foundation/templates';
-import { FilterDrawer } from '../src/foundation/FilterDrawer';
-import { theme } from '../src/foundation/theme';
+import { ListPage, DetailPage } from '../src/foundation/templates.js';
+import { FilterDrawer } from '../src/foundation/FilterDrawer.js';
+import { theme } from '../src/foundation/theme.js';
 import '../src/foundation/shell.css';
 function Preview() {
   const [detail, setDetail] = useState(false);
