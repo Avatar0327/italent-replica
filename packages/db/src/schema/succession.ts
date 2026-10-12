@@ -20,7 +20,7 @@ import {
   uuid,
   unique,
 } from 'drizzle-orm/pg-core';
-import { employmentEmployees } from './employment.js';
+import { employmentEmployees, employmentRecords } from './employment.js';
 import { jobPositionObjects } from './job.js';
 import { orgObjects } from './org.js';
 import { talentReadinessLevels } from './talent-review.js';
@@ -135,6 +135,45 @@ export const successionTargetLocks = pgTable(
   (t) => [
     primaryKey({ columns: [t.tenantId, t.targetKind, t.targetId] }),
     check('succession_target_locks_kind', sql`${t.targetKind} IN (${list(SUCCESSION_TYPES)})`),
+  ],
+);
+
+/** A3 / §5.4：事件时冻结候选，逐类型消费；不扫描补处理事件之后新增的继任记录。 */
+export const successionExitApplications = pgTable(
+  'succession_exit_applications',
+  {
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
+    employeeId: uuid('employee_id').notNull(),
+    employmentRecordId: uuid('employment_record_id').notNull(),
+    leaveDate: date('leave_date', { mode: 'string' }).notNull(),
+    appliedAt: timestamp('applied_at', { withTimezone: true }).notNull(),
+    source: text('source').$type<'record_write' | 'sweep' | 'delete_revert'>().notNull(),
+    /** 只含本事件尚未判定的候选 ID；已结束 / 已删除也消费，不能因以后手工恢复而重放本次离职。 */
+    candidateRecordIds: jsonb('candidate_record_ids').$type<string[]>().notNull().default([]),
+    endedRecordIds: jsonb('ended_record_ids').$type<string[]>().notNull().default([]),
+    commandId: text('command_id').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.employmentRecordId] }),
+    foreignKey({
+      name: 'succession_exit_employee_fk',
+      columns: [t.tenantId, t.employeeId],
+      foreignColumns: [employmentEmployees.tenantId, employmentEmployees.id],
+    }),
+    foreignKey({
+      name: 'succession_exit_record_fk',
+      columns: [t.tenantId, t.employmentRecordId],
+      foreignColumns: [employmentRecords.tenantId, employmentRecords.id],
+    }),
+    index('succession_exit_employee').on(t.tenantId, t.employeeId),
+    check('succession_exit_source', sql`${t.source} IN ('record_write','sweep','delete_revert')`),
+    check(
+      'succession_exit_arrays',
+      sql`jsonb_typeof(${t.candidateRecordIds})='array'
+      AND jsonb_typeof(${t.endedRecordIds})='array'`,
+    ),
   ],
 );
 
