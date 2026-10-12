@@ -145,6 +145,7 @@ export function OrgEditor(props: Props) {
     initialValues[`${dimension}Parent`] = original.parents?.[dimension]?.parentId;
   return (
     <FormOverlay
+      recordKey={`${original.id}:${original.revision}:${action}:${date}`}
       open
       title={`${m[action]} · ${original.name ?? m.detail}`}
       onClose={props.onClose}

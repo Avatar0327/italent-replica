@@ -129,6 +129,7 @@ export function JobEditor(props: {
 }) {
   const { kind, original, access, date } = props;
   const write = usePageWrite();
+  const [openKey] = useState(() => crypto.randomUUID());
   const fields = ['name', 'code', ...jobFields[kind], 'displayOrder', 'establishedOn', 'stopDate', 'enabled'];
   const groups = [
     {
@@ -150,6 +151,7 @@ export function JobEditor(props: {
   ];
   return (
     <FormOverlay
+      recordKey={original ? `${original.id}:${original.revision}` : openKey}
       open
       title={`${original ? m.edit : m.create}${m[kind]}`}
       groups={groups}
