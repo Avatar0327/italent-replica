@@ -16,6 +16,7 @@ const row: SuccessionLevelRow = {
   isPercent: false,
 };
 const people = {
+  sources: { age: { status: 'available' as const } },
   incumbents: [
     { id: 'a', age: 20 },
     { id: 'b', age: 30 },
@@ -85,8 +86,12 @@ it('AC-SC-risk DEC-452 零人口或零分母不能把不可用的工龄降为 EM
     { ...row, fieldCode: 'work_years', filterOperator: 'ge', filterValues: [1] },
   ]);
   for (const population of [
-    { incumbents: [], successors: [] },
-    { incumbents: [], successors: [{ id: 'c', work_years: { status: 'unavailable' as const } }] },
+    { sources: { work_years: { status: 'unavailable' as const } }, incumbents: [], successors: [] },
+    {
+      sources: { work_years: { status: 'unavailable' as const } },
+      incumbents: [],
+      successors: [{ id: 'c', work_years: { status: 'unavailable' as const } }],
+    },
   ]) {
     expect(() => evaluateRisk([unavailable, level('next')], population, calendar)).toThrow('DATA_UNAVAILABLE');
     expect(() =>
@@ -101,7 +106,7 @@ it('AC-SC-risk 来源失败优先于空人口及三种度量的零分母，覆�
       for (const measure of ['count', 'count_over_incumbents', 'count_over_successors'] as const) {
         const source = { status };
         for (const successors of [[], [{ id: 'hidden', [fieldCode]: source }]]) {
-          const sources = successors.length ? undefined : { [fieldCode]: source };
+          const sources = { [fieldCode]: successors.length ? { status: 'available' as const } : source };
           const population = { incumbents: [], successors, sources };
           expect(() => riskMeasure({ ...row, fieldCode, measure }, population, calendar)).toThrow(
             status === 'forbidden' ? 'FIELD_FORBIDDEN' : 'DATA_UNAVAILABLE',
