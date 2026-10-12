@@ -1,9 +1,9 @@
 {
 "updated": "2026-10-12",
 "stats": {
-"merged": 200,
-"open": 26,
-"dec": 457,
+"merged": 201,
+"open": 25,
+"dec": 459,
 "ev": "43/177"
 },
 "tasks": {
@@ -983,6 +983,14 @@
 }
 },
 "log": [
+[
+"10-12",
+"#282 B5 第 3 轮仍有同类 P2，DEC-431① 止损改 GPT-6 Astra 新线程接手，第 4 轮 Sol xhigh 审；#295 FE-0 回 Draft 按原站参考包续做"
+],
+[
+"10-12",
+"#265 R3-T05 C1 合并；合并队列头移至 #281"
+],
 [
 "10-12",
 "FE 页面片已开 Draft：FE-R1a #296、FE-R1c #297、FE-R3a #298（叠在 FE-0 #295）"
@@ -3846,7 +3854,7 @@
 "g": "demo",
 "o": 1,
 "k": "run",
-"n": "前端底座（#295 Draft）",
+"n": "前端底座（#295 Draft，按原站参考包续做）",
 "u": "Codex Astra max",
 "pr": 295
 },
@@ -3899,7 +3907,7 @@
 "k": "FE-0",
 "n": "布局/路由/接口客户端/权限渲染/注释层",
 "s": "assigned",
-"note": "已派 Codex Astra max · codex/FE-0-frontend-base · Sol xhigh 审",
+"note": "Codex Astra max · 第 1 轮已完成，回 Draft 按原站界面参考包续做（去面包屑、主题对齐）· 续做完 Ready 后 Sol xhigh 审",
 "pr": 295
 }
 ]
@@ -3915,7 +3923,7 @@
 "FE-0"
 ],
 "pr": 296,
-"note": "Codex Astra · 叠在 FE-0 #295 上"
+"note": "Codex Astra · 叠在 FE-0 #295 上 · 按原站参考包续做，补完再审（轻流程 Sol 一轮）"
 },
 {
 "k": "FE-R1b",
@@ -3933,7 +3941,7 @@
 "FE-0"
 ],
 "pr": 297,
-"note": "Codex Astra · 叠在 FE-0 #295 上"
+"note": "Codex Astra · 叠在 FE-0 #295 上 · 按原站参考包续做，补完再审（轻流程 Sol 一轮）"
 },
 {
 "k": "FE-R1d",
@@ -3951,7 +3959,7 @@
 "FE-0"
 ],
 "pr": 298,
-"note": "Codex Astra · 叠在 FE-0 #295 上"
+"note": "Codex Astra · 叠在 FE-0 #295 上 · 按原站参考包续做，补完再审（轻流程 Sol 一轮）"
 },
 {
 "k": "FE-R3b",
@@ -4737,7 +4745,8 @@
 "B2b"
 ],
 "pr": 282,
-"note": "DEC-448 / DEC-451（放行到 1800 行）"
+"note": "返工中（第 4 轮，GPT-6 Astra 新线程接手，DEC-431① 止损；Sol xhigh 审）· DEC-448 / DEC-451",
+"s": "assigned"
 }
 ]
 },

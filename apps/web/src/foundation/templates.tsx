@@ -1,11 +1,25 @@
-import { Button, Empty, Pagination, Space, Table, Tabs, Tooltip, type TableColumnsType, type TabsProps } from 'antd';
+import {
+  Button,
+  Drawer,
+  Empty,
+  Pagination,
+  Space,
+  Table,
+  Tabs,
+  Tooltip,
+  type TableColumnsType,
+  type TabsProps,
+} from 'antd';
 import type { Key, ReactNode } from 'react';
 import type { PageRequest, PageResult } from './client.js';
 import { ui } from './messages.js';
 import { PageState } from './PageState.js';
+import { ViewHeading, type ListView } from './ViewHeading.js';
 
 interface ListPageProps<T extends object> {
   title: string;
+  icon?: ReactNode;
+  view?: ListView;
   data: PageResult<T>;
   columns: TableColumnsType<T>;
   rowKey: string | ((row: T) => string);
@@ -26,9 +40,9 @@ export function ListPage<T extends object>(props: ListPageProps<T>) {
     onPageChange(next);
   };
   return (
-    <section>
+    <section className="list-page">
       <header className="page-heading">
-        <h1>{title}</h1>
+        <ViewHeading title={title} icon={props.icon} view={props.view} />
         <Space>
           {actions}
           <Tooltip title={ui.exportPending}>
@@ -36,43 +50,45 @@ export function ListPage<T extends object>(props: ListPageProps<T>) {
           </Tooltip>
         </Space>
       </header>
-      {filters && (
-        <div className="page-filters" aria-label={ui.filter}>
-          {filters}
-        </div>
-      )}
-      {error ? (
-        <PageState kind="error" error={error} retry={retry} />
-      ) : (
-        <>
-          {selection && (
-            <div className="page-toolbar">
-              <Space>
-                <span>
-                  {ui.selected} {selection.keys.length} {ui.count}
-                </span>
-                <Button type="link" onClick={() => selection.onChange([], [])}>
-                  {ui.clear}
-                </Button>
-              </Space>
-              {selection.keys.length > 0 && selection.actions}
-            </div>
-          )}
-          <Table<T>
-            columns={columns}
-            dataSource={data.items}
-            rowKey={rowKey}
-            loading={loading}
-            pagination={false}
-            scroll={{ x: 'max-content' }}
-            locale={{ emptyText: <Empty description={data.hasDataPermission === false ? ui.noScope : ui.empty} /> }}
-            rowSelection={selection ? { selectedRowKeys: selection.keys, onChange: selection.onChange } : undefined}
-          />
-          <div className="page-toolbar">
-            <ListPagination data={data} page={page} changePage={changePage} loading={loading} />
+      <div className="list-card">
+        {filters && (
+          <div className="page-filters" aria-label={ui.filter}>
+            {filters}
           </div>
-        </>
-      )}
+        )}
+        {error ? (
+          <PageState kind="error" error={error} retry={retry} />
+        ) : (
+          <>
+            {selection && (
+              <div className="page-toolbar">
+                <Space>
+                  <span>
+                    {ui.selected} {selection.keys.length} {ui.count}
+                  </span>
+                  <Button type="link" onClick={() => selection.onChange([], [])}>
+                    {ui.clear}
+                  </Button>
+                </Space>
+                {selection.keys.length > 0 && selection.actions}
+              </div>
+            )}
+            <Table<T>
+              columns={columns}
+              dataSource={data.items}
+              rowKey={rowKey}
+              loading={loading}
+              pagination={false}
+              scroll={{ x: 'max-content' }}
+              locale={{ emptyText: <Empty description={data.hasDataPermission === false ? ui.noScope : ui.empty} /> }}
+              rowSelection={selection ? { selectedRowKeys: selection.keys, onChange: selection.onChange } : undefined}
+            />
+            <div className="page-toolbar">
+              <ListPagination data={data} page={page} changePage={changePage} loading={loading} />
+            </div>
+          </>
+        )}
+      </div>
     </section>
   );
 }
@@ -82,24 +98,33 @@ export interface DetailSection {
   children: ReactNode;
 }
 export function DetailPage({
+  open,
+  onClose,
   title,
   summary,
   actions,
   tabs,
   sections = [],
 }: {
+  open: boolean;
+  onClose(): void;
   title: string;
   summary?: ReactNode;
   actions?: ReactNode;
   tabs?: TabsProps['items'];
   sections?: DetailSection[];
 }) {
-  return (
-    <section>
-      <header className="page-heading">
-        <h1>{title}</h1>
-        <Space>{actions}</Space>
-      </header>
+  return open ? (
+    <Drawer
+      open
+      placement="right"
+      closable={{ placement: 'end' }}
+      width={960}
+      title={title}
+      onClose={onClose}
+      extra={actions}
+      rootClassName="detail-drawer"
+    >
       {summary}
       {tabs && <Tabs items={tabs} />}
       {sections.map((section) => (
@@ -108,8 +133,8 @@ export function DetailPage({
           {section.children}
         </section>
       ))}
-    </section>
-  );
+    </Drawer>
+  ) : null;
 }
 
 function ListPagination({
@@ -125,16 +150,21 @@ function ListPagination({
 }) {
   return (
     <>
-      {' '}
       {data.total !== undefined ? (
-        <Pagination
-          current={page.page}
-          pageSize={page.pageSize}
-          total={data.total}
-          showSizeChanger
-          pageSizeOptions={[20, 50, 100, 200]}
-          onChange={(next, size) => changePage({ page: size === page.pageSize ? next : 1, pageSize: size })}
-        />
+        <>
+          <span className="page-total">{ui.totalRows(data.total)}</span>
+          <Pagination
+            current={page.page}
+            pageSize={page.pageSize}
+            total={data.total}
+            showSizeChanger={{
+              labelRender: ({ value }) => `${value}${ui.perPage}`,
+              optionRender: ({ value }) => `${value}${ui.perPage}`,
+            }}
+            pageSizeOptions={[15, 20, 50, 100, 200]}
+            onChange={(next, size) => changePage({ page: size === page.pageSize ? next : 1, pageSize: size })}
+          />
+        </>
       ) : (
         <Space>
           <Button disabled={page.page <= 1 || loading} onClick={() => changePage({ ...page, page: page.page - 1 })}>
