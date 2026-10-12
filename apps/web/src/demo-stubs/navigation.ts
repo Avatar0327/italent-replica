@@ -1,20 +1,22 @@
 import { ApiError, type ApiClient } from '../foundation/client.js';
 import type { ObjectPermission } from '../foundation/permission-model.js';
 import { APP_ROUTES } from '../foundation/routes.js';
+import { menuObjects } from './object-directory.js';
 
 export interface MenuNode {
   key: string;
   label: string;
   path: string;
   group: string;
+  editable?: boolean;
   children?: MenuNode[];
 }
 export interface PermissionSnapshot {
   objects: Record<string, ObjectPermission>;
   menus: MenuNode[];
   // 当前用户数据范围读取接口缺失。不得把无法读取误作全部组织；业务列表继续由后端裁剪。
-  scope: { status: 'unavailable'; organizationIds: readonly string[] };
-  source: 'demo';
+  scope: { status: 'unavailable' | 'ready'; organizationIds: readonly string[] };
+  source: 'demo' | 'server';
 }
 export const emptyPermissions: PermissionSnapshot = {
   objects: {},
@@ -31,6 +33,9 @@ async function readable<T>(api: ApiClient, path: string, signal: AbortSignal): P
     throw error;
   }
 }
+export function loadObjectPermission(api: ApiClient, object: string, signal: AbortSignal) {
+  return readable<ObjectPermission>(api, `/api/tenant/permission/me/objects/${encodeURIComponent(object)}`, signal);
+}
 
 /** L2 菜单结构适配：没有全应用菜单接口，结构集中在此；可见性仍来自现有服务端接口，不判断角色。 */
 export async function loadPermissions(api: ApiClient, signal: AbortSignal): Promise<PermissionSnapshot> {
@@ -40,14 +45,13 @@ export async function loadPermissions(api: ApiClient, signal: AbortSignal): Prom
       let allowed = false;
       let children: MenuNode[] | undefined;
       if (route.objectCode) {
-        const permission = await readable<ObjectPermission>(
-          api,
-          `/api/tenant/permission/me/objects/${encodeURIComponent(route.objectCode)}`,
-          signal,
-        );
-        if (permission) {
-          objects[route.objectCode] = permission;
-          allowed = true;
+        for (const code of menuObjects(route)) {
+          const permission = await loadObjectPermission(api, code, signal);
+          if (permission) {
+            objects[code] = permission;
+            allowed = true;
+            break;
+          }
         }
       } else if (route.id === 'settings') {
         const response = await readable<{ items: { code: string; path: string; editable: boolean }[] }>(
@@ -58,6 +62,7 @@ export async function loadPermissions(api: ApiClient, signal: AbortSignal): Prom
         children = response?.items.map((menu) => ({
           key: menu.code,
           label: menu.path,
+          editable: menu.editable,
           group: route.group,
           path: `/settings/menu/${encodeURIComponent(menu.code)}`,
         }));

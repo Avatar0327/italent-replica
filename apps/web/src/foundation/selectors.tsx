@@ -2,6 +2,7 @@ import { DatePicker, Select, TreeSelect, type TreeSelectProps } from 'antd';
 import dayjs from 'dayjs';
 import 'dayjs/locale/zh-cn.js';
 import { useEffect, useState } from 'react';
+import { tenantDate } from './dates.js';
 import { ui } from './messages.js';
 import { useSession } from './Session.js';
 
@@ -16,13 +17,13 @@ export function OrgTreeSelect({
   dimension: string;
   treeData: TreeSelectProps['treeData'];
   value?: string;
-  onChange?: (value: string) => void;
+  onChange?: (value: string | undefined) => void;
   disabled?: boolean;
 }) {
   return (
     <TreeSelect
       {...props}
-      style={{ width: '100%' }}
+      className="full-width-selector"
       showSearch
       allowClear
       treeNodeFilterProp="title"
@@ -70,6 +71,9 @@ export function PersonSelect({
       controller.abort();
     };
   }, [load, query, session.tenantId, session.identityKey, disabled]);
+  let emptyText: string = ui.empty;
+  if (loading) emptyText = ui.loading;
+  if (failed) emptyText = ui.failed;
   return (
     <Select
       showSearch
@@ -78,14 +82,14 @@ export function PersonSelect({
       filterOption={false}
       value={value}
       onChange={onChange}
-      style={{ width: '100%' }}
+      className="full-width-selector"
       onSearch={setQuery}
       loading={loading}
       disabled={disabled}
       options={options}
       aria-label={ui.person}
       placeholder={ui.searchPerson}
-      notFoundContent={failed ? ui.failed : loading ? ui.loading : ui.empty}
+      notFoundContent={emptyText}
     />
   );
 }
@@ -102,6 +106,8 @@ export function TenantDatePicker({
   return (
     <DatePicker
       value={value ? dayjs(value).locale('zh-cn') : null}
+      defaultPickerValue={timezone ? dayjs(tenantDate(new Date(), timezone)) : undefined}
+      showNow={false}
       format="YYYY-MM-DD"
       disabled={disabled || !timezone}
       aria-label={ui.date}

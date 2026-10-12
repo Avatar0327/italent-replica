@@ -8,7 +8,7 @@ export function demoSession(): Session {
   return {
     tenantId: initialTenantId(),
     identityKey: match ? decodeURIComponent(match[1]!) : '',
-    tenantName: ui.demo,
+    tenantName: ui.demoTenant,
     timezone: 'Asia/Shanghai',
     displayName: ui.identity,
     source: 'demo',

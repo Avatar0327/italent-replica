@@ -154,6 +154,7 @@ describe('AC-FE-0-03 最小组件集', () => {
         h(FormOverlay, {
           open: true,
           title: '合成表单',
+          recordKey: 'example:1',
           mode: 'modal',
           onSubmit: submit,
           onClose: vi.fn(),
