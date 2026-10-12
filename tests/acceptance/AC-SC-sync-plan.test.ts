@@ -6,6 +6,7 @@ import { useTestDb } from '@italent/testkit';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { consumeRun, consumeSyncOutbox } from '../../apps/api/src/modules/succession/sync-consume.js';
 import { createInMemoryTalentReviewSyncPort } from '../../apps/api/src/modules/talent-review/sync-port-memory.js';
+import { createPermissionAuthorizer } from '../../apps/api/src/modules/permission/authorizer.js';
 import { overrideSetting } from '../../apps/api/src/modules/tenant-settings/service.js';
 import { syncFixture, FX } from './support/sync-port-contract.js';
 import { rowsOf } from './support/f048.js';
@@ -294,8 +295,8 @@ it.each(['HEALTH_LEVEL_UNKNOWN', 'HEALTH_LEVEL_DISABLED', 'SOURCE_REVOKED'] as c
       );
     const original = await h.deps.transaction((tx) => h.port.listRunOrgHealth(tx, h.key));
     vi.spyOn(h.port, 'listRunOrgHealth').mockResolvedValue(
-      original.map((row, i) =>
-        i
+      original.map((row) =>
+        row.orgId !== std.orgA.id
           ? row
           : {
               ...row,
@@ -484,4 +485,104 @@ it('AC-SC-03 unknown 证明执行号错误不得认作提交成功', async () =>
     return proof ? { ...proof, executionNo: proof.executionNo + 1 } : null;
   });
   await expect(consumeRun(h.deps, h.input)).rejects.toMatchObject({ code: 'STORAGE_UNAVAILABLE' });
+});
+
+it('AC-SC-03 真实权限解析：执行身份没有对象权限/数据范围时 fail-closed', async () => {
+  const h = setup();
+  await consumeRun({ ...h.deps, authorize: createPermissionAuthorizer(testDb().db) }, h.input);
+  expect(await batch(h.input.runId)).toMatchObject({
+    status: 'blocked',
+    block_reason: 'PRINCIPAL_UNAVAILABLE',
+    has_plan: false,
+  });
+});
+it('AC-SC-03 页 0 未提交时同命令重试，提名与目标没有重复', async () => {
+  const h = setup();
+  const register = h.port.registerTargets.bind(h.port);
+  const spy = vi.spyOn(h.port, 'registerTargets');
+  spy.mockRejectedValueOnce(new Error('模拟提交前存储中断'));
+  spy.mockImplementation((tx, input) => register(tx, input));
+  await consumeRun(h.deps, h.input);
+  expect(spy.mock.calls.map((call) => call[1].planCommandId)).toEqual([
+    `${h.input.runId}:succession:1:0`,
+    `${h.input.runId}:succession:1:0`,
+  ]);
+  expect(await count('succession_sync_items', (await batch(h.input.runId))['id'])).toBe(3);
+});
+it.runIf(Boolean(process.env['TEST_DATABASE_URL']))(
+  'AC-SC-03 真 PG：consumeRun 持目标锁时 A2 等待，提交后 409',
+  async () => {
+    const h = setup();
+    let enter!: () => void;
+    let release!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      enter = resolve;
+    });
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const register = h.port.registerTargets.bind(h.port);
+    vi.spyOn(h.port, 'registerTargets').mockImplementation(async (tx, input) => {
+      enter();
+      await gate;
+      return register(tx, input);
+    });
+    const plan = consumeRun(h.deps, h.input);
+    await ready;
+    const write = w.request('POST', '/records', {
+      ifMatch: 0,
+      body: {
+        successionType: 'org',
+        targetOrgId: std.orgA.id,
+        successorEmployeeId: std.successor2.id,
+        backupType: 'principal',
+        startDate: SC_TODAY,
+      },
+    });
+    try {
+      await waitForBlocked(testDb().db, 1);
+    } finally {
+      release();
+    }
+    await plan;
+    const response = await write;
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ error: { details: { reason: 'TARGET_SYNC_IN_PROGRESS' } } });
+  },
+);
+
+it('AC-SC-03 步骤 4：非同步触发 run 在 begin 前 new_run 中止', async () => {
+  const h = setup();
+  const load = h.port.loadRun.bind(h.port);
+  vi.spyOn(h.port, 'loadRun').mockImplementation(async (tx, key) => ({
+    ...(await load(tx, key))!,
+    trigger: 'snapshot' as 'sync_requested',
+  })); // 验收历史/异常来源，不改变端口定义。
+  const begin = vi.spyOn(h.port, 'beginConsumption');
+  await consumeRun(h.deps, h.input);
+  expect(await batch(h.input.runId)).toMatchObject({ status: 'rejected', end_reason: 'UNSUPPORTED_TRIGGER' });
+  expect(begin).not.toHaveBeenCalled();
+  expect((await h.outcomes()).every((r) => r.status === 'aborted')).toBe(true);
+});
+it('AC-SC-03 步骤 7：对象分两页逐页授权，冻结的提名字段撤权写永久失败', async () => {
+  const h = setup();
+  const list = h.port.listRunObjects.bind(h.port);
+  const objects = vi.spyOn(h.port, 'listRunObjects').mockImplementation(async (tx, key) => {
+    const all = await list(tx, { tenantId: key.tenantId, runId: key.runId, limit: key.limit });
+    return key.after ? { items: all.items.slice(1), next: null } : { items: all.items.slice(0, 1), next: '第二页' };
+  });
+  const authorize = vi.spyOn(h.port, 'authorizeSourceRead');
+  h.port.revoke({ fieldCodes: ['readinessId'] });
+  await consumeRun(h.deps, h.input);
+  expect(objects.mock.calls.map((call) => call[1].limit)).toEqual([500, 500]);
+  expect(authorize.mock.calls.slice(0, 2).map((call) => call[1].page.objectIds?.length)).toEqual([1, 2]);
+  expect(await h.outcomes()).toContainEqual(
+    expect.objectContaining({
+      rowKind: 'nomination',
+      rowId: FX.n1,
+      errorCode: 'SOURCE_REVOKED',
+      recovery: 'none',
+      errorParams: { scope: 'field', ref: 'readinessId' },
+    }),
+  );
 });
