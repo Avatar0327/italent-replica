@@ -26,6 +26,7 @@ import {
 import { objectOutcomes, persistTarget } from './sync-execute-outcomes.js';
 import { executeHealthTarget, enqueueSyncHealth } from './sync-health.js';
 import { lockOrganizationSettings } from '../org/locks.js';
+import { lockHealthRules } from './health-references.js';
 
 const pending = sql`(status='pending' OR (status='failed' AND retryable))`;
 class Execution {
@@ -157,7 +158,10 @@ class Execution {
     for (const id of employees)
       await tx.execute(sql`SELECT id FROM employment_employees
       WHERE tenant_id=${this.key.tenantId}::uuid AND id=${id}::uuid FOR SHARE`);
-    if (healthIds.length) await lockOrganizationSettings(tx, this.key.tenantId);
+    if (healthIds.length) {
+      await lockOrganizationSettings(tx, this.key.tenantId);
+      await lockHealthRules(tx, this.key.tenantId);
+    }
     await lockTargets(
       tx,
       this.key.tenantId,

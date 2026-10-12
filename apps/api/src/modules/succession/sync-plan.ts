@@ -1,3 +1,4 @@
+import { lockHealthRules } from './health-references.js';
 /** §5.7 步骤 7、9～13：快照规划和全部页 0 终态；不写继任记录，不调用 recordOutcome。 */
 import { sql, successionSyncItems as items, successionSyncTargets as targets, type Tx } from '@italent/db';
 import type {
@@ -298,6 +299,7 @@ function objectOutcomes(plan: FrozenPlan, outcomes: Outcomes, put: Put) {
 }
 export async function persistPlan(tx: Tx, input: PlanInput) {
   const { tenantId, batchId, plan, executionNo, pageCommandId, now } = input;
+  if (input.targets.some((t) => t.kind === 'org_health')) await lockHealthRules(tx, tenantId);
   await lockTargets(
     tx,
     tenantId,

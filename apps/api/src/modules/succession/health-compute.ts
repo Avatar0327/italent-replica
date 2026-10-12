@@ -3,7 +3,7 @@ import { isUuid, sql, type Tx } from '@italent/db';
 import { RULE_COMPILER_VERSION, type SuccessionLevelRow } from '@italent/domain';
 import { validIsoDate } from '../org/read-model.js';
 import { AppError } from '../../errors.js';
-import type { OrgHealthComputePort, OrgHealthComputeResult } from '../talent-review/health-port.js';
+import type { OrgHealthComputePort } from '../talent-review/health-port.js';
 import type { TalentReviewSyncPort } from '../talent-review/sync-port.js';
 import { createInMemoryTalentReviewSyncPort } from '../talent-review/sync-port-memory.js';
 import { activeUser } from './sync-access.js';
@@ -11,6 +11,9 @@ import { levelViews, type LevelView } from './levels-store.js';
 import { rowsOf } from './read-sql.js';
 import { SUCCESSION_PORTS } from './ports.js';
 import { CalcBlocked, CalcObjectFailure } from './calc-contract.js';
+import { runProjectHealthCompute } from './health-compute-run.js';
+import { lockOrganizationSettings } from '../org/locks.js';
+import { lockHealthRules } from './health-references.js';
 
 export type HealthReads = Pick<
   TalentReviewSyncPort,
@@ -18,10 +21,10 @@ export type HealthReads = Pick<
 >;
 type Metric = { status: 'value'; value: number } | { status: 'empty' | 'forbidden' | 'unavailable' | 'module_absent' };
 type Evaluation = { levelId: string | null; failure?: { code: string; levelId?: string; rowNo?: number } };
-/** B5 函数的消费侧结构：只列 host 实际读取的上下文字段；本端口不创建虚假的本地计算 run。 */
+/** B5 函数的消费侧结构：只列 host 实际读取的上下文字段；run 来自当前事务内真实的计算任务。 */
 export interface HealthComputeHost {
   metricReader(
-    ctx: { tx: Tx; run: { tenantId: string; businessDate: string; id: null }; now: Date },
+    ctx: { tx: Tx; run: { tenantId: string; businessDate: string; id: string }; now: Date },
     object: { objectId: string },
     principal: { userId: string; today: string; timezone: string },
     reads: HealthReads,
@@ -85,8 +88,8 @@ export const healthComputePort: OrgHealthComputePort = {
       SELECT succession_tenant_today(${tenantId}::uuid)::text AS today,current_tenant_timezone() AS timezone,
       transaction_timestamp()::text AS now`),
     );
-    await tx.execute(sql`SELECT kind FROM succession_rule_settings
-      WHERE tenant_id=${tenantId}::uuid AND kind='org_health' FOR SHARE`);
+    await lockOrganizationSettings(tx, tenantId);
+    await lockHealthRules(tx, tenantId);
     const ids = rowsOf<{ id: string; stale: boolean }>(
       await tx.execute(sql`
       SELECT id,condition_expression IS NOT NULL AND (compiler_version IS DISTINCT FROM ${RULE_COMPILER_VERSION}
@@ -99,14 +102,13 @@ export const healthComputePort: OrgHealthComputePort = {
       'health',
       ids.map((l) => l.id),
     );
-    const engine = await host(),
-      result: OrgHealthComputeResult[] = [];
+    const engine = await host();
     const reads = contextReads(SUCCESSION_PORTS.reviewReads ?? createInMemoryTalentReviewSyncPort({ tenantId }), input);
-    for (const orgId of new Set(input.orgIds.map((id) => id.toLowerCase()))) {
+    return runProjectHealthCompute(tx, input, new Date(calendar!.now), async ({ tx, run }, orgId) => {
       let evaluated: Evaluation;
       try {
         const read = engine.metricReader(
-          { tx, run: { tenantId, businessDate, id: null }, now: new Date(calendar!.now) },
+          { tx, run, now: new Date(calendar!.now) },
           { objectId: orgId },
           { userId: principalUserId, ...calendar! },
           reads,
@@ -125,7 +127,7 @@ export const healthComputePort: OrgHealthComputePort = {
         };
       }
       const selected = levels.find((l) => l.id === evaluated.levelId);
-      result.push({
+      return {
         orgId,
         levelId: selected?.id ?? null,
         levelCode: selected ? String(selected.code) : null,
@@ -140,8 +142,7 @@ export const healthComputePort: OrgHealthComputePort = {
               },
             ]
           : [],
-      });
-    }
-    return result;
+      };
+    });
   },
 };

@@ -164,6 +164,17 @@ describe('AC-SC-health-sync / AC-SC-07 D4', () => {
     expect(await consumeRun(h.deps, h.input)).toMatchObject({ status: 'completed', result: 'succeeded' });
     expect(await h.local()).toEqual([expect.objectContaining({ level_id: level.id, method: 'synced' })]);
   });
+  it.each(['blocked', 'terminated'] as const)('计划 %s 后等级删除只保护可恢复目标', async (status) => {
+    const level = await mappedLevel();
+    const h = await setup('value', false, false, { levelId: level.id, levelCode: level.code });
+    const batch = await planSyncRun(h.deps, h.input);
+    await w.asTenant((tx) =>
+      tx.execute(sql`UPDATE succession_sync_batches SET status=${status}
+      WHERE tenant_id=${w.tenant.id}::uuid AND id=${batch!.id}::uuid`),
+    );
+    const deletion = await w.request('DELETE', `/health-levels/${level.id}`, { ifMatch: level.revision });
+    expect(deletion.status, await deletion.clone().text()).toBe(status === 'blocked' ? 409 : 200);
+  });
   it.runIf(Boolean(process.env.TEST_DATABASE_URL))(
     '真 PG：映射未提交时 HTTP 删除等待同一规则锁，提交后拒删',
     async () => {
@@ -197,6 +208,47 @@ describe('AC-SC-health-sync / AC-SC-07 D4', () => {
       expect(observed).toBe('blocked');
       expect(response.status, await response.clone().text()).toBe(409);
       expect(await consumeRun(h.deps, h.input)).toMatchObject({ status: 'completed', result: 'succeeded' });
+    },
+  );
+  it.runIf(Boolean(process.env.TEST_DATABASE_URL))(
+    '真 PG：删除先取得规则锁，后来的计划只在计划期报等级未知',
+    async () => {
+      const level = await mappedLevel();
+      const h = await setup('value', false, false, { levelId: level.id, levelCode: level.code });
+      let ready!: () => void, release!: () => void;
+      const entered = new Promise<void>((resolve) => {
+        ready = resolve;
+      });
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const blocker = w.asTenant(async (tx) => {
+        await tx.execute(sql`SELECT kind FROM succession_rule_settings
+        WHERE tenant_id=${w.tenant.id}::uuid AND kind='org_health' FOR UPDATE`);
+        ready();
+        await gate;
+      });
+      await entered;
+      const deletion = w.request('DELETE', `/health-levels/${level.id}`, { ifMatch: level.revision });
+      let planning: ReturnType<typeof planSyncRun> | undefined;
+      try {
+        expect(await settledOrBlocked(w.db, deletion, 1)).toBe('blocked');
+        planning = planSyncRun(h.deps, h.input);
+        expect(await settledOrBlocked(w.db, planning, 2)).toBe('blocked');
+      } finally {
+        release();
+        await blocker;
+        await Promise.allSettled([deletion, planning]);
+      }
+      expect((await deletion).status).toBe(200);
+      expect(await planning).toMatchObject({ status: 'executing' });
+      expect(await consumeRun(h.deps, h.input)).toMatchObject({ status: 'completed', result: 'partial' });
+      expect((await h.outcomes()).find((r) => r.rowKind === 'org_health')).toMatchObject({
+        errorCode: 'HEALTH_LEVEL_UNKNOWN',
+        pageCommandId: `${h.input.runId}:succession:1:0`,
+        recovery: 'none',
+      });
+      expect(await h.local()).toEqual([]);
     },
   );
   it.each(['module_absent', 'present'] as const)('嵌套继任 %s + 0 不阻断健康度及其后续 run', async (status) => {

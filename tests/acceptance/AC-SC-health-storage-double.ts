@@ -10,7 +10,8 @@ export async function healthStorageDouble(db: Db) {
   await db.execute(sql`CREATE TABLE succession_health_results (
     tenant_id uuid NOT NULL,org_id uuid NOT NULL,level_id uuid,method text NOT NULL,revision integer NOT NULL,
     run_id uuid,computed_at timestamptz,assigned_by uuid,source_batch_id uuid,source_project_id uuid,
-    source_meeting_id uuid,PRIMARY KEY(tenant_id,org_id))`);
+    source_meeting_id uuid,PRIMARY KEY(tenant_id,org_id),
+    FOREIGN KEY(tenant_id,level_id) REFERENCES succession_health_levels(tenant_id,id) ON DELETE RESTRICT)`);
   await db.execute(sql`GRANT SELECT,INSERT,UPDATE ON succession_health_results TO app_user`);
   await db.execute(sql`SELECT enable_tenant_isolation('succession_health_results')`);
   await db.execute(sql`ALTER TABLE succession_target_locks DROP CONSTRAINT succession_target_locks_kind`);
