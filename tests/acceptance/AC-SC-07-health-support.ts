@@ -1,4 +1,6 @@
-import { sql } from '@italent/db';
+import { sql, type DbHandle } from '@italent/db';
+import { createTestDb } from '@italent/testkit';
+import { beforeAll, afterAll } from 'vitest';
 import type { SuccessionWorld } from './AC-SC-support.js';
 import { enableStatsRunner } from './AC-SC-stats-support.js';
 export async function enableHealthRunner(w: SuccessionWorld) {
@@ -9,4 +11,15 @@ export async function enableHealthRunner(w: SuccessionWorld) {
       SELECT ${w.tenant.id}::uuid,id,'SuccessionAndDevelopment','entity','Succession.HealthResult',true
       FROM permission_profiles WHERE code='standard_succession_runner'`);
   });
+}
+/** 118 份迁移、333 张表：本机多窗口验证曾超过 60s；仅本组建库给 180s，不重试或跳过迁移。 */
+export function useHealthDb() {
+  let handle: DbHandle;
+  beforeAll(async () => {
+    handle = await createTestDb();
+  }, 180_000);
+  afterAll(async () => {
+    await handle?.close();
+  });
+  return () => handle;
 }

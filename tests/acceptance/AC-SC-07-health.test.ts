@@ -1,10 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { sql, successionCalcRuns, successionCalcRunObjects } from '@italent/db';
 import type { SuccessionLevelRow } from '@italent/domain';
-import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { successionWorld, SC_TODAY, SC_NOW } from './AC-SC-support.js';
-import { enableHealthRunner } from './AC-SC-07-health-support.js';
+import { enableHealthRunner, useHealthDb } from './AC-SC-07-health-support.js';
 import { rowsOf } from '../../apps/api/src/modules/succession/read-sql.js';
 import { runCalcPage, enqueueCalcRun } from '../../apps/api/src/modules/succession/calc-worker.js';
 import { healthMetricReader } from '../../apps/api/src/modules/succession/health-metrics.js';
@@ -12,8 +11,32 @@ import { healthPrincipal } from '../../apps/api/src/modules/succession/health-pr
 import { createInMemoryTalentReviewSyncPort } from '../../apps/api/src/modules/talent-review/sync-port-memory.js';
 import { dispatchCalcJobs } from '../../apps/api/src/modules/succession/calc-jobs.js';
 
-const testDb = useTestDb();
+const testDb = useHealthDb();
 describe('AC-SC-07 组织健康度', () => {
+  it('DEC-449 清除手工值保留行、原子恢复 computed，revision 递增', async () => {
+    const w = await successionWorld(testDb().db, 'health-clear'),
+      org = await w.org('清除健康度');
+    for (const revision of [0, 1]) {
+      const response = await w.request('PUT', `/health-results/${org.id}`, {
+        ifMatch: revision,
+        body: { levelId: null },
+      });
+      expect(response.status).toBe(200);
+    }
+    expect(
+      await w.asTenant(async (tx) =>
+        rowsOf(
+          await tx.execute(sql`
+      SELECT level_id,method,revision FROM succession_health_results WHERE org_id=${org.id}::uuid`),
+        ),
+      ),
+    ).toEqual([{ level_id: null, method: 'computed', revision: 2 }]);
+  });
+  it('系统主体在 app_user 事务中正常授权，暴露 worker blocked 的底层原因', async () => {
+    const w = await successionWorld(testDb().db, 'health-principal');
+    await enableHealthRunner(w);
+    expect(await w.asTenant((tx) => healthPrincipal(tx, w.tenant.id, false))).toMatchObject({ userId: w.user.id });
+  });
   it('T04 替身：盘点数值、module_absent 与逐字段撤权不混淆', async () => {
     const w = await successionWorld(testDb().db, 'health-source'),
       org = await w.org('取数组织');

@@ -1,16 +1,15 @@
 import { randomUUID } from 'node:crypto';
 import { sql } from '@italent/db';
-import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { successionWorld, SC_NOW, SC_TODAY } from './AC-SC-support.js';
-import { enableHealthRunner } from './AC-SC-07-health-support.js';
+import { enableHealthRunner, useHealthDb } from './AC-SC-07-health-support.js';
 import { waitForBlocked } from './support/pg-interleave.js';
 import { enqueueCalcRun, runCalcPage } from '../../apps/api/src/modules/succession/calc-worker.js';
 import { createHealthHandler } from '../../apps/api/src/modules/succession/health-worker.js';
 import { createInMemoryTalentReviewSyncPort } from '../../apps/api/src/modules/talent-review/sync-port-memory.js';
 import { rowsOf } from '../../apps/api/src/modules/succession/read-sql.js';
 
-const testDb = useTestDb();
+const testDb = useHealthDb();
 describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-SC-07 真 PG 健康度交错', () => {
   it.each(['org_health', 'org_health_reset'] as const)('%s 先持目标锁，手动赋值等待后 revision 冲突', async (kind) => {
     const w = await successionWorld(testDb().db, `health-pg-${kind}`),
@@ -114,6 +113,6 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-SC-07 真 PG 健康�
       SELECT method,revision FROM succession_health_results WHERE org_id=${org.id}::uuid`),
         ),
       ),
-    ).toEqual([{ method: 'manual', revision: 2 }]);
+    ).toEqual([{ method: 'computed', revision: 2 }]);
   });
 });
