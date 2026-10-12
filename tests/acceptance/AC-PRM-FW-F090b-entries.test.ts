@@ -1,3 +1,4 @@
+import * as evidence from './support/route-policy/evidence.js';
 import { requiredChecks } from './support/route-policy/local-checks/required.js';
 import { disclosureChecks } from './support/route-policy/local-checks/disclosure.js';
 import { bindingChecks } from './support/route-policy/local-checks/binding.js';
@@ -122,6 +123,7 @@ describe('AC-PRM-FW-F090b 单一真实登记入口（DEC-431①；#248 P2-1 / P3
     }
   });
   it.each(['endpoints', 'guard-inner'])('%s：默认通过只警告，严格模式判红', (name) => {
+    const stored = vi.spyOn(evidence, 'checkStored');
     const code = name === 'endpoints' ? 'REQUIRED_ENTRY_MISSING' : 'GUARD_ROLE_UNBOUND';
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {
@@ -129,7 +131,10 @@ describe('AC-PRM-FW-F090b 单一真实登记入口（DEC-431①；#248 P2-1 / P3
       expect(normal.failures).toEqual([]);
       expect(warn.mock.calls.flat().join('\n')).toContain('[证据门禁·警告]');
       expect(warn.mock.calls.flat().join('\n')).toContain(code);
+      const calculated = stored.mock.calls.filter(([table]) => table === tables[name]).length;
+      expect(calculated).toBeGreaterThan(0);
       const strict = check(name, true);
+      expect(stored.mock.calls.filter(([table]) => table === tables[name]).length).toBe(calculated);
       expect(strict.executed).toEqual(normal.executed);
       expect(strict.failures.length).toBeGreaterThan(0);
       expect(strict.failures.map((f) => f.message).join('\n')).toContain(code);
