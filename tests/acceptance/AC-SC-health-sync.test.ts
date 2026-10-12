@@ -4,7 +4,7 @@ import { sql, type DbHandle, type Tx } from '@italent/db';
 import type { SyncOrgHealth } from '@italent/domain';
 import { createTestDb } from '@italent/testkit';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { consumeRun } from '../../apps/api/src/modules/succession/sync-consume.js';
+import { consumeRun, planSyncRun } from '../../apps/api/src/modules/succession/sync-consume.js';
 import { createInMemoryTalentReviewSyncPort } from '../../apps/api/src/modules/talent-review/sync-port-memory.js';
 import { overrideSetting } from '../../apps/api/src/modules/tenant-settings/service.js';
 import { registerScopeProvider } from '../../apps/api/src/modules/permission/module-access.js';
@@ -14,6 +14,8 @@ import { rowsOf } from './support/f048.js';
 import { successionWorld, SC_NOW, SC_TODAY, type SuccessionWorld } from './AC-SC-support.js';
 import { syncTestTransaction } from './AC-SC-sync-support.js';
 import { healthStorageDouble } from './AC-SC-health-storage-double.js';
+import { levelBody } from './AC-SC-levels-support.js';
+import { settledOrBlocked } from './support/pg-interleave.js';
 
 let handle: DbHandle;
 let w: SuccessionWorld;
@@ -147,6 +149,56 @@ function afterPlan(h: Harness, work: (tx: Tx) => Promise<void>) {
 }
 
 describe('AC-SC-health-sync / AC-SC-07 D4', () => {
+  async function mappedLevel() {
+    const created = await w.request('POST', '/health-levels', { ifMatch: 0, body: levelBody('health') });
+    expect(created.status).toBe(201);
+    return (await created.json()) as { id: string; revision: number; code: string };
+  }
+  it('计划提交后真实 HTTP 删除等级返回 LEVEL_IN_USE，原批次仍能完成', async () => {
+    const level = await mappedLevel();
+    const h = await setup('value', false, false, { levelId: level.id, levelCode: level.code });
+    expect(await planSyncRun(h.deps, h.input)).toMatchObject({ status: 'executing' });
+    const deletion = await w.request('DELETE', `/health-levels/${level.id}`, { ifMatch: level.revision });
+    expect(deletion.status, await deletion.clone().text()).toBe(409);
+    expect(await deletion.json()).toMatchObject({ error: { details: { reason: 'LEVEL_IN_USE' } } });
+    expect(await consumeRun(h.deps, h.input)).toMatchObject({ status: 'completed', result: 'succeeded' });
+    expect(await h.local()).toEqual([expect.objectContaining({ level_id: level.id, method: 'synced' })]);
+  });
+  it.runIf(Boolean(process.env.TEST_DATABASE_URL))(
+    '真 PG：映射未提交时 HTTP 删除等待同一规则锁，提交后拒删',
+    async () => {
+      const level = await mappedLevel();
+      const h = await setup('value', false, false, { levelId: level.id, levelCode: level.code });
+      let entered!: () => void, release!: () => void;
+      const reached = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const register = h.port.registerTargets.bind(h.port);
+      vi.spyOn(h.port, 'registerTargets').mockImplementationOnce(async (tx, input) => {
+        const result = await register(tx, input);
+        entered();
+        await gate;
+        return result;
+      });
+      const planning = planSyncRun(h.deps, h.input);
+      await reached;
+      const deletion = w.request('DELETE', `/health-levels/${level.id}`, { ifMatch: level.revision });
+      let observed: string;
+      try {
+        observed = await settledOrBlocked(w.db, deletion, 1);
+      } finally {
+        release();
+      }
+      await planning;
+      const response = await deletion;
+      expect(observed).toBe('blocked');
+      expect(response.status, await response.clone().text()).toBe(409);
+      expect(await consumeRun(h.deps, h.input)).toMatchObject({ status: 'completed', result: 'succeeded' });
+    },
+  );
   it.each(['module_absent', 'present'] as const)('嵌套继任 %s + 0 不阻断健康度及其后续 run', async (status) => {
     const h = await setup(
       'value',
