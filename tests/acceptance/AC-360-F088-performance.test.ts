@@ -10,7 +10,13 @@ describe.skipIf(process.env.F088_PERFORMANCE !== '1')('AC-360-06 / F-088 10,000 
   it('添加 1 名与末位范围候选：每次锁 1 人，候选每页最多 100 人', async () => {
     const s = await boundedScene(testDb().db, 'f088perf', 10_000);
     for (const restricted of [false, true]) {
-      if (restricted) s.access.scope = { ...s.access.scope, all: false, personIds: [s.manager.id, s.id(10_000)] };
+      if (restricted)
+        s.access.scope = {
+          ...s.access.scope,
+          all: false,
+          personIds: [s.manager.id, s.id(10_000)],
+          terms: [{ dimension: 'reporting', orgIds: [], personIds: [s.manager.id, s.id(10_000)] }],
+        };
       s.observations.length = 0;
       const started = performance.now();
       const response = await s.auto();

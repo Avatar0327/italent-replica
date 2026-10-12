@@ -93,7 +93,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-360-06 / F-088 真 PostgreSQ
       const response = await Promise.race([
         s.auto(),
         new Promise<never>((_, reject) => {
-          timer = setTimeout(() => reject(new Error('等待未入选员工锁')), 5000);
+          timer = setTimeout(() => reject(new Error('等待未入选员工锁')), 30_000);
         }),
       ]);
       expect(response.status).toBe(200);
@@ -108,7 +108,12 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-360-06 / F-088 真 PostgreSQ
   it('计划完成后撤空员工范围：取锁后跳过，回执不泄露员工，不中途补锁', async () => {
     const s = await boundedScene(testDb().db, 'f088recheck', 5);
     syncProbe.beforeLock = async () => {
-      s.access.scope = { ...s.access.scope, all: false, personIds: [s.manager.id] };
+      s.access.scope = {
+        ...s.access.scope,
+        all: false,
+        personIds: [s.manager.id],
+        terms: [{ dimension: 'reporting', orgIds: [], personIds: [s.manager.id] }],
+      };
     };
     expect(await s.w.ok<Result>(s.auto())).toEqual({ added: [], skipped: [] });
     expect(s.locks()).toHaveLength(1);

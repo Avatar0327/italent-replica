@@ -29,6 +29,7 @@ describe('AC-360-06 / F-088 锁计划有界', () => {
       ...s.access.scope,
       all: false,
       personIds: [s.manager.id, s.id(650)],
+      terms: [{ dimension: 'reporting', orgIds: [], personIds: [s.manager.id, s.id(650)] }],
     };
     const result = await s.w.ok<Result>(s.auto());
     expect(result.added).toHaveLength(1);
