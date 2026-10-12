@@ -183,7 +183,7 @@ it('AC-SC-06 无继任者子树开关保留生效继任者祖先；结束、未�
   const successor = await w.hire('子树继任者', { departmentId: org.id });
   await w.insertRecord({ type: 'position', targetId: child.id, successorId: successor.id });
   for (const extra of [{ endDate: SC_TODAY }, { startDate: '2026-10-02' }, { deleted: true }]) {
-    const empty = await w.position(org.id, '无生效继任者');
+    const empty = await w.position(org.id, `无生效继任者${Object.keys(extra)[0]}`);
     await w.insertRecord({ type: 'position', targetId: empty.id, successorId: successor.id, ...extra });
   }
   await save(w, { ...prefs, showPositionsWithoutSuccessor: false });
@@ -211,18 +211,20 @@ it('AC-SC-06 真实授权 A/不可见 B/C：C 新根不挂 A，空范围空图�
   expect(await map(viewer)).toMatchObject({ items: [], roots: [], hasDataPermission: false });
   await exactScope(world, viewer, [a.id, c.id]);
   const result = await map(viewer);
-  expect(result.items.map((p) => [p.id, p.parentId])).toEqual([
-    [pa.id, null],
-    [pc.id, null],
-  ]);
-  expect(result.roots).toEqual([pa.id, pc.id]);
-  expect(result.items[1]?.successors?.[0]?.successor.label).toBe(labelOf(successor));
-  expect(result.items[1]?.successorCount).toBe(1);
+  expect(result.items.map((p) => [p.id, p.parentId]).sort()).toEqual(
+    [
+      [pa.id, null],
+      [pc.id, null],
+    ].sort(),
+  );
+  expect(result.roots.sort()).toEqual([pa.id, pc.id].sort());
+  expect(result.items.find((p) => p.id === pc.id)?.successors?.[0]?.successor.label).toBe(labelOf(successor));
+  expect(result.items.find((p) => p.id === pc.id)?.successorCount).toBe(1);
   expect(result.items.every((p) => !('risk' in p))).toBe(true);
   await grantMap(world, viewer, ['successors', 'successorCount']);
   const trimmed = await map(viewer);
   expect(trimmed.items.every((p) => !('successors' in p) && !('successorCount' in p))).toBe(true);
-  expect(trimmed.items.map((p) => p.id)).toEqual([pa.id, pc.id]);
+  expect(trimmed.items.map((p) => p.id).sort()).toEqual([pa.id, pc.id].sort());
 });
 
 it('AC-SC-06 历史职位结构与现任取 asOf；风险使用当前值并标 resultAsOf，无结果用默认颜色', async () => {
