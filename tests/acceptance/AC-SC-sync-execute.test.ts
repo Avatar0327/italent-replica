@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
-import { consumeRun } from '../../apps/api/src/modules/succession/sync-consume.js';
+import { consumeRun, consumeSyncOutbox } from '../../apps/api/src/modules/succession/sync-consume.js';
 import { createInMemoryTalentReviewSyncPort } from '../../apps/api/src/modules/talent-review/sync-port-memory.js';
 import { overrideSetting } from '../../apps/api/src/modules/tenant-settings/service.js';
 import { syncFixture, FX } from './support/sync-port-contract.js';
@@ -47,14 +47,16 @@ beforeAll(async () => {
       WHERE tenant_id=${w.tenant.id}::uuid AND code='standard_succession_runner' ON CONFLICT DO NOTHING`);
   });
 });
-async function setup(strategy = 'append', empty = false) {
+async function setup(strategy = 'append', empty = false, position = false) {
   await w.asTenant(async (tx) => {
     await tx.execute(sql`UPDATE succession_sync_mutex SET batch_id=NULL WHERE tenant_id=${w.tenant.id}::uuid`);
     await tx.execute(sql`UPDATE succession_sync_batches SET status='terminated' WHERE tenant_id=${w.tenant.id}::uuid`);
   });
   await setting('sync_strategy', strategy, revision++);
   const org = await w.org(`执行目标${revision}`);
-  const oldId = await w.insertRecord({ type: 'org', targetId: org.id, successorId: std.head.id });
+  const target = position ? await w.position(org.id, `目标职位${revision}`) : org;
+  const kind = position ? 'position' : 'org';
+  const oldId = await w.insertRecord({ type: kind, targetId: target.id, successorId: std.head.id });
   const fixture = syncFixture();
   const original = fixture.runs![0]!;
   const runId = randomUUID();
@@ -64,7 +66,9 @@ async function setup(strategy = 'append', empty = false) {
         ...original.nominations[0]!,
         nominationId: i ? FX.n2 : FX.n1,
         objectId: i ? FX.o2 : FX.o1,
-        orgId: org.id,
+        kind,
+        orgId: position ? null : org.id,
+        positionId: position ? target.id : null,
         successorEmployeeId: i ? std.successor2.id : std.successor1.id,
         readinessId: null,
         readinessCode: null,
@@ -104,11 +108,11 @@ async function setup(strategy = 'append', empty = false) {
       rowsOf<Record<string, unknown>>(
         await tx.execute(sql`
     SELECT id,successor_employee_id,end_date::text,readiness_id,revision,source_kind,source_batch_id
-    FROM succession_records WHERE tenant_id=${w.tenant.id}::uuid AND target_org_id=${org.id}::uuid ORDER BY id`),
+    FROM succession_records WHERE tenant_id=${w.tenant.id}::uuid AND coalesce(target_org_id,target_position_id)=${target.id}::uuid ORDER BY id`),
       ),
     );
   const outcomes = async () => (await deps.transaction((tx) => port.getOutcomes(tx, key))).items;
-  return { deps, port, input, key, org, oldId, records, outcomes };
+  return { deps, port, input, key, org, target, oldId, records, outcomes };
 }
 type Harness = Awaited<ReturnType<typeof setup>>;
 function afterPlan(h: Harness, work: (tx: Tx) => Promise<void> | void) {
@@ -198,7 +202,13 @@ describe('AC-SC-03-04-sync D2 执行与终结', () => {
     const active = vi.spyOn(h.port, 'assertExecutionActive');
     const record = vi.spyOn(h.port, 'recordOutcome');
     const complete = vi.spyOn(h.port, 'completeConsumption');
-    expect(await consumeRun(h.deps, h.input)).toMatchObject({ status: 'completed' });
+    expect(
+      await consumeSyncOutbox(
+        h.deps,
+        { tenantId: h.input.tenantId, payload: { runId: h.input.runId } },
+        h.input.leaseOwner,
+      ),
+    ).toMatchObject({ status: 'completed' });
     expect(renew).toHaveBeenCalledTimes(1);
     expect(active).toHaveBeenCalled();
     expect(renew.mock.calls[0]![0]).not.toBe(record.mock.calls[0]![0]);
@@ -283,52 +293,105 @@ describe('AC-SC-03-04-sync D2 执行与终结', () => {
     expect(await h.records()).toEqual(before);
     expect(record).not.toHaveBeenCalled();
   });
-  it('已接管的旧 worker 续租失效，不改批次', async () => {
+  it('租约已过期并被真实接管：旧 worker 续租停止，不改批次', async () => {
     const h = await setup();
-    vi.spyOn(h.port, 'renewLease').mockRejectedValue(new SyncPortError('EXECUTION_INACTIVE', '旧执行'));
-    expect(await consumeRun(h.deps, h.input)).toMatchObject({ status: 'executing', nextPageNo: 1 });
+    afterPlanCommit(h, async () => {
+      h.port.advance(121);
+      expect(
+        await h.deps.transaction((tx) =>
+          h.port.beginConsumption(tx, {
+            ...h.key,
+            leaseOwner: randomUUID(),
+            leaseSeconds: 120,
+          }),
+        ),
+      ).toMatchObject({ executionNo: 2 });
+    });
+    expect(await consumeRun(h.deps, h.input)).toMatchObject({ status: 'executing', nextPageNo: 1, executionNo: 1 });
     expect(await h.records()).toHaveLength(1);
   });
-  it.each([false, true])('执行页提交结果未知（已提交=%s）：证明回查或原页命令重做', async (committed) => {
-    const h = await setup('overwrite_in_scope', true);
-    const transaction = h.deps.transaction;
-    const record = h.port.recordOutcome.bind(h.port);
-    const commands: string[] = [];
-    let page = false,
-      fail = true;
-    vi.spyOn(h.port, 'recordOutcome').mockImplementation(async (tx, input) => {
-      page = true;
-      commands.push(input.pageCommandId);
-      return record(tx, input);
+  it('临近过期的租约由页外续租延长，后续页断言有效', async () => {
+    const h = await setup();
+    afterPlan(h, () => h.port.advance(119));
+    const active = h.port.assertExecutionActive.bind(h.port);
+    vi.spyOn(h.port, 'assertExecutionActive').mockImplementation(async (tx, input) => {
+      h.port.advance(2);
+      return active(tx, input);
     });
-    h.deps.transaction = async (work) => {
-      page = false;
-      const result = await transaction(async (tx) => {
-        const value = await work(tx);
-        if (page && fail && !committed) {
-          fail = false;
-          throw new Error('提交前中断');
-        }
-        return value;
-      });
-      if (page && fail) {
-        fail = false;
-        throw new Error('提交后回包丢失');
-      }
-      return result;
-    };
-    const proof = vi.spyOn(h.port, 'getPageCommit');
     expect(await consumeRun(h.deps, h.input)).toMatchObject({ status: 'completed' });
-    expect(proof).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        pageCommandId: `${h.input.runId}:succession:1:1`,
-      }),
-    );
-    expect(new Set(commands).size).toBe(1);
-    expect(commands).toHaveLength(committed ? 1 : 2);
-    expect((await h.records())[0]).toMatchObject({ end_date: SC_TODAY, revision: 2 });
   });
+  it('锁内关键职位失效：R4 目标与全部 planned 提名永久失败', async () => {
+    const h = await setup('overwrite', false, true);
+    const before = await h.records();
+    afterPlanCommit(h, async () => {
+      const response = await w.call('PATCH', `job/positions/${h.target.id}`, {
+        ifMatch: h.target.revision,
+        body: { isKey: false, effectiveDate: SC_TODAY },
+      });
+      expect(response.status, await response.clone().text()).toBe(200);
+    });
+    expect(await consumeRun(h.deps, h.input)).toMatchObject({ status: 'completed', result: 'partial' });
+    expect(await h.records()).toEqual(before);
+    expect(
+      (await h.outcomes())
+        .filter((r) => r.rowKind !== 'object')
+        .every((r) => r.errorCode === 'TARGET_NOT_KEY_POSITION' && r.recovery === 'none'),
+    ).toBe(true);
+  });
+  it.each(['uncommitted', 'committed', 'wrong_kind', 'wrong_execution'])(
+    '执行页结果未知 %s：只认匹配执行的提交证明',
+    async (mode) => {
+      const committed = mode === 'committed';
+      const h = await setup('overwrite_in_scope', true);
+      const transaction = h.deps.transaction;
+      const record = h.port.recordOutcome.bind(h.port);
+      const commands: string[] = [];
+      let page = false,
+        fail = true;
+      vi.spyOn(h.port, 'recordOutcome').mockImplementation(async (tx, input) => {
+        page = true;
+        commands.push(input.pageCommandId);
+        return record(tx, input);
+      });
+      h.deps.transaction = async (work) => {
+        page = false;
+        const result = await transaction(async (tx) => {
+          const value = await work(tx);
+          if (page && fail && !committed) {
+            fail = false;
+            throw new Error('提交前中断');
+          }
+          return value;
+        });
+        if (page && fail) {
+          fail = false;
+          throw new Error('提交后回包丢失');
+        }
+        return result;
+      };
+      const proof = vi.spyOn(h.port, 'getPageCommit');
+      if (mode.startsWith('wrong'))
+        proof.mockResolvedValueOnce({
+          ...h.key,
+          rowCount: 0,
+          kind: mode === 'wrong_kind' ? 'plan' : 'execute',
+          executionNo: mode === 'wrong_execution' ? 99 : 1,
+          pageNo: 1,
+          pageCommandId: `${h.input.runId}:succession:1:1`,
+          committedAt: SC_NOW,
+        });
+      expect(await consumeRun(h.deps, h.input)).toMatchObject({ status: 'completed' });
+      expect(proof).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          pageCommandId: `${h.input.runId}:succession:1:1`,
+        }),
+      );
+      expect(new Set(commands).size).toBe(1);
+      expect(commands).toHaveLength(committed ? 1 : 2);
+      expect((await h.records())[0]).toMatchObject({ end_date: SC_TODAY, revision: 2 });
+    },
+  );
   it('目标保存点基础设施失败：业务与审计回滚，R9 / R10 可重试，不终结', async () => {
     const h = await setup('overwrite');
     const before = await h.records();
@@ -354,16 +417,71 @@ describe('AC-SC-03-04-sync D2 执行与终结', () => {
       spy.mockRestore();
     }
   });
-  it('终结失败不回滚已提交执行页，再驱动只终结，不重写业务', async () => {
+  it('终结本地提交失败：complete 与本地状态一起回滚，已提交执行页保留', async () => {
     const h = await setup();
-    const complete = vi.spyOn(h.port, 'completeConsumption').mockRejectedValueOnce(new Error('终结事务故障'));
-    expect(await consumeRun(h.deps, h.input)).toMatchObject({ status: 'blocked', nextPageNo: 2 });
-    const before = await h.records();
-    expect(before).toHaveLength(3);
-    expect(await consumeRun(h.deps, h.input)).toMatchObject({ status: 'completed' });
-    expect(await h.records()).toEqual(before);
-    expect(complete).toHaveBeenCalledTimes(2);
+    const complete = vi.spyOn(h.port, 'completeConsumption');
+    const original = audit.recordAudit;
+    let fail = true;
+    const spy = vi.spyOn(audit, 'recordAudit').mockImplementation(async (tx, input) => {
+      if (input.action === 'succession.sync-batch.complete' && fail) {
+        fail = false;
+        throw new Error('终结本地审计故障');
+      }
+      return original(tx, input);
+    });
+    try {
+      expect(await consumeRun(h.deps, h.input)).toMatchObject({ status: 'blocked', nextPageNo: 2 });
+      const before = await h.records();
+      expect(before).toHaveLength(3);
+      expect(await consumeRun(h.deps, h.input)).toMatchObject({ status: 'completed' });
+      expect(await h.records()).toEqual(before);
+      expect(complete).toHaveBeenCalledTimes(2);
+      const rows = await w.asTenant((tx) =>
+        tx.execute(sql`SELECT kind FROM succession_notifications
+      WHERE tenant_id=${w.tenant.id}::uuid AND batch_id=${before.find((r) => r.source_batch_id)?.source_batch_id}::uuid`),
+      );
+      expect(rowsOf(rows)).toEqual([{ kind: 'sync_done' }]);
+    } finally {
+      spy.mockRestore();
+    }
   });
+  it('执行前源 run 已取代：本地清理屏障，不再次 abort 源端', async () => {
+    const h = await setup();
+    afterPlanCommit(h, async () => {
+      await h.port.supersede(h.input.runId);
+    });
+    const abort = vi.spyOn(h.port, 'abortConsumption');
+    expect(await consumeRun(h.deps, h.input)).toMatchObject({ status: 'terminated', endReason: 'RUN_SUPERSEDED' });
+    expect(await h.records()).toHaveLength(1);
+    expect(abort).not.toHaveBeenCalled();
+    expect((await w.request('DELETE', `/records/${h.oldId}`, { ifMatch: 1 })).status).toBe(200);
+  });
+  it.runIf(Boolean(process.env.TEST_DATABASE_URL))(
+    '真 PG：201 个 delete_only 目标分两页续租且全部有终态证明',
+    async () => {
+      const h = await setup('overwrite_in_scope', true);
+      const ids = [h.org.id];
+      for (let i = 0; i < 200; i++) {
+        const org = await w.org(`分页目标${i}`);
+        ids.push(org.id);
+        await w.insertRecord({ type: 'org', targetId: org.id, successorId: std.head.id });
+      }
+      const load = h.port.loadRun.bind(h.port);
+      vi.spyOn(h.port, 'loadRun').mockImplementation(async (tx, input) => ({
+        ...(await load(tx, input))!,
+        scopeOrgIds: ids,
+      }));
+      const record = vi.spyOn(h.port, 'recordOutcome');
+      const renew = vi.spyOn(h.port, 'renewLease');
+      expect(await consumeRun(h.deps, h.input)).toMatchObject({ status: 'completed', nextPageNo: 3 });
+      expect(record.mock.calls.map(([, input]) => input.items.filter((r) => r.rowKind === 'target').length)).toEqual([
+        200, 1,
+      ]);
+      expect(renew).toHaveBeenCalledTimes(2);
+      expect((await h.outcomes()).filter((r) => r.rowKind === 'target' && r.status === 'synced')).toHaveLength(201);
+    },
+    120_000,
+  );
   it.each(['readiness', 'employee'])('计划后 %s 失效：锁内 R3 导致覆盖整组失败', async (kind) => {
     const h = await setup('overwrite');
     const before = await h.records();
@@ -391,6 +509,9 @@ describe('AC-SC-03-04-sync D2 执行与终结', () => {
           body: { kind: 'leave', mode: 'direct', lastWorkDate: '2026-09-30', fields: {} },
         });
         expect(response.status, await response.clone().text()).toBe(201);
+        expect(await w.employmentRecords(employee.id)).toEqual(
+          expect.arrayContaining([expect.objectContaining({ kind: 'leave', isCurrent: true })]),
+        );
       }
     });
     expect(await consumeRun(h.deps, h.input)).toMatchObject({ status: 'completed', result: 'partial' });
