@@ -1,8 +1,21 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createApiClient } from '../../apps/web/src/foundation/client.js';
-import { listResource, saveResource, writablePatch, validateValues } from '../../apps/web/src/talent/catalog/api.js';
+import {
+  listResource,
+  saveResource,
+  writablePatch,
+  validateValues,
+  newStandardCells,
+} from '../../apps/web/src/talent/catalog/api.js';
 import { talentResources } from '../../apps/web/src/talent/catalog/resources.js';
 import { qualificationResources } from '../../apps/web/src/qualification/resources.js';
+
+it('AC-FE-R3a 生成级别与指标网格，去重且不推算能力标准', () => {
+  expect(newStandardCells(['L1', 'L2'], ['T1', 'T1'])).toEqual([
+    { levelId: 'L1', targetId: 'T1' },
+    { levelId: 'L2', targetId: 'T1' },
+  ]);
+});
 
 describe('AC-FE-R3a 基础配置表单与接口契约', () => {
   it('编辑仅提交当前可编辑且实际改变的字段，不回填裁剪字段或覆盖明细', () => {
