@@ -125,7 +125,7 @@ describe('scripts/ci-classify.sh', () => {
     const yml = readFileSync(CI_YML, 'utf8');
     const types = /pull_request:\n(?:\s*#.*\n)*\s*types: \[([^\]]*)\]/
       .exec(yml)?.[1]
-      .split(',')
+      ?.split(',')
       .map((t) => t.trim());
     expect(types).toEqual(expect.arrayContaining(['opened', 'synchronize', 'reopened', 'ready_for_review']));
     // 不监听 labeled：只打标签不触发运行，必须关闭重开或推送
