@@ -1,5 +1,5 @@
 {
-  "id": "1ec16bb2-2885-4827-9c60-c99d81447e64",
+  "id": "b3a9e619-4c4f-4f20-b041-6be821a115b5",
   "prevId": "96c05ea5-1b3a-4968-80ea-57e57fe58b1c",
   "version": "7",
   "dialect": "postgresql",
@@ -50076,6 +50076,158 @@
       },
       "isRLSEnabled": false
     },
+    "public.succession_exit_applications": {
+      "name": "succession_exit_applications",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "employee_id": {
+          "name": "employee_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "employment_record_id": {
+          "name": "employment_record_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "leave_date": {
+          "name": "leave_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "applied_at": {
+          "name": "applied_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "candidate_record_ids": {
+          "name": "candidate_record_ids",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "ended_record_ids": {
+          "name": "ended_record_ids",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "command_id": {
+          "name": "command_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "succession_exit_employee": {
+          "name": "succession_exit_employee",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "employee_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "succession_exit_applications_tenant_id_tenants_id_fk": {
+          "name": "succession_exit_applications_tenant_id_tenants_id_fk",
+          "tableFrom": "succession_exit_applications",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "succession_exit_employee_fk": {
+          "name": "succession_exit_employee_fk",
+          "tableFrom": "succession_exit_applications",
+          "tableTo": "employment_employees",
+          "columnsFrom": [
+            "tenant_id",
+            "employee_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "succession_exit_record_fk": {
+          "name": "succession_exit_record_fk",
+          "tableFrom": "succession_exit_applications",
+          "tableTo": "employment_records",
+          "columnsFrom": [
+            "tenant_id",
+            "employment_record_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "succession_exit_applications_tenant_id_employment_record_id_pk": {
+          "name": "succession_exit_applications_tenant_id_employment_record_id_pk",
+          "columns": [
+            "tenant_id",
+            "employment_record_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "succession_exit_source": {
+          "name": "succession_exit_source",
+          "value": "\"succession_exit_applications\".\"source\" IN ('record_write','sweep','delete_revert')"
+        },
+        "succession_exit_arrays": {
+          "name": "succession_exit_arrays",
+          "value": "jsonb_typeof(\"succession_exit_applications\".\"candidate_record_ids\")='array'\n      AND jsonb_typeof(\"succession_exit_applications\".\"ended_record_ids\")='array'"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.succession_health_level_rows": {
       "name": "succession_health_level_rows",
       "schema": "",
@@ -50399,161 +50551,6 @@
       },
       "isRLSEnabled": false
     },
-    "public.succession_map_preferences": {
-      "name": "succession_map_preferences",
-      "schema": "",
-      "columns": {
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "map_kind": {
-          "name": "map_kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "root_org_id": {
-          "name": "root_org_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "depth": {
-          "name": "depth",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "hidden_org_ids": {
-          "name": "hidden_org_ids",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'[]'::jsonb"
-        },
-        "hide_virtual": {
-          "name": "hide_virtual",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "show_key_positions": {
-          "name": "show_key_positions",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "show_positions_without_successor": {
-          "name": "show_positions_without_successor",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
-        },
-        "show_incumbents": {
-          "name": "show_incumbents",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
-        },
-        "revision": {
-          "name": "revision",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 1
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "succession_map_preferences_tenant_id_tenants_id_fk": {
-          "name": "succession_map_preferences_tenant_id_tenants_id_fk",
-          "tableFrom": "succession_map_preferences",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "succession_map_preferences_tenant_id_user_id_tenant_memberships_tenant_id_user_id_fk": {
-          "name": "succession_map_preferences_tenant_id_user_id_tenant_memberships_tenant_id_user_id_fk",
-          "tableFrom": "succession_map_preferences",
-          "tableTo": "tenant_memberships",
-          "columnsFrom": [
-            "tenant_id",
-            "user_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "user_id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "succession_map_preferences_tenant_id_root_org_id_org_objects_tenant_id_id_fk": {
-          "name": "succession_map_preferences_tenant_id_root_org_id_org_objects_tenant_id_id_fk",
-          "tableFrom": "succession_map_preferences",
-          "tableTo": "org_objects",
-          "columnsFrom": [
-            "tenant_id",
-            "root_org_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "succession_map_preferences_tenant_id_user_id_map_kind_pk": {
-          "name": "succession_map_preferences_tenant_id_user_id_map_kind_pk",
-          "columns": [
-            "tenant_id",
-            "user_id",
-            "map_kind"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "succession_preferences_kind": {
-          "name": "succession_preferences_kind",
-          "value": "\"succession_map_preferences\".\"map_kind\" IN ('org','position')"
-        },
-        "succession_preferences_depth": {
-          "name": "succession_preferences_depth",
-          "value": "\"succession_map_preferences\".\"depth\" BETWEEN 2 AND 4"
-        },
-        "succession_preferences_hidden": {
-          "name": "succession_preferences_hidden",
-          "value": "jsonb_typeof(\"succession_map_preferences\".\"hidden_org_ids\")='array'\n    AND jsonb_array_length(\"succession_map_preferences\".\"hidden_org_ids\")<=200"
-        },
-        "succession_preferences_revision": {
-          "name": "succession_preferences_revision",
-          "value": "\"succession_map_preferences\".\"revision\">0"
-        }
-      },
-      "isRLSEnabled": false
-    },
     "public.succession_notifications": {
       "name": "succession_notifications",
       "schema": "",
@@ -50756,131 +50753,6 @@
         "succession_notifications_attempt": {
           "name": "succession_notifications_attempt",
           "value": "\"succession_notifications\".\"attempt_no\" >= 0"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.succession_org_stats": {
-      "name": "succession_org_stats",
-      "schema": "",
-      "columns": {
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "org_id": {
-          "name": "org_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "stat_date": {
-          "name": "stat_date",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "on_duty_count": {
-          "name": "on_duty_count",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "green_rate": {
-          "name": "green_rate",
-          "type": "numeric",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "green_source_project_id": {
-          "name": "green_source_project_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "slot_key": {
-          "name": "slot_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "computed_at": {
-          "name": "computed_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "run_id": {
-          "name": "run_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "succession_org_stats_tenant_id_tenants_id_fk": {
-          "name": "succession_org_stats_tenant_id_tenants_id_fk",
-          "tableFrom": "succession_org_stats",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "succession_org_stats_tenant_id_org_id_org_objects_tenant_id_id_fk": {
-          "name": "succession_org_stats_tenant_id_org_id_org_objects_tenant_id_id_fk",
-          "tableFrom": "succession_org_stats",
-          "tableTo": "org_objects",
-          "columnsFrom": [
-            "tenant_id",
-            "org_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "succession_org_stats_tenant_id_run_id_succession_calc_runs_tenant_id_id_fk": {
-          "name": "succession_org_stats_tenant_id_run_id_succession_calc_runs_tenant_id_id_fk",
-          "tableFrom": "succession_org_stats",
-          "tableTo": "succession_calc_runs",
-          "columnsFrom": [
-            "tenant_id",
-            "run_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "succession_org_stats_tenant_id_org_id_stat_date_pk": {
-          "name": "succession_org_stats_tenant_id_org_id_stat_date_pk",
-          "columns": [
-            "tenant_id",
-            "org_id",
-            "stat_date"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "succession_stats_count": {
-          "name": "succession_stats_count",
-          "value": "\"succession_org_stats\".\"on_duty_count\">=0"
         }
       },
       "isRLSEnabled": false

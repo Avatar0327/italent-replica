@@ -6,6 +6,7 @@
  */
 import { TALENT_REVIEW_OBJECTS } from '@italent/domain';
 import {
+  all,
   BAD_REQUEST,
   button,
   guardScope,
@@ -70,6 +71,20 @@ export const TEMPLATE_POLICIES = {
     guards: [READONLY, REFERENCE],
     write: changed('body'),
   }),
+  [`POST ${BASE}/:id/copy`]: all(
+    [
+      object({
+        object: TPL,
+        operation: 'create',
+        button: button('copy', 'list'),
+        scope: guardScope('talentReview.templateCreatable', NOT_FOUND),
+        fields,
+      }),
+      object({ object: TPL, operation: 'view', button: noButton('复制读取原模板'), scope: point, fields }),
+    ],
+    fields,
+    { ...byId, optional, guards: [READONLY, REFERENCE], write: changed('body') },
+  ),
   [`PATCH ${BASE}/:id`]: object({
     ...byId,
     object: TPL,

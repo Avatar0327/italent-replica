@@ -169,7 +169,7 @@ def live_prs():
             ts = [c["createdAt"] for c in cs if pred(c.get("body", "").lstrip())]
             return max(ts) if ts else ""
         t_ask = last(lambda b: b.startswith("【等决定】"))
-        t_dec = last(lambda b: b.startswith("【决定】") or "已按 A 处理" in b[:40] or "按 DEC-" in b[:60] and "处理" in b[:60])
+        t_dec = last(lambda b: b.startswith(("【决定】", "【派发更正】")) or "已按 A 处理" in b[:40] or "按 DEC-" in b[:60] and "处理" in b[:60])
         t_rev = last(lambda b: b.startswith("【审查已发起】"))
         t_res = last(lambda b: b.startswith("## 审查原文"))
         res_body = next((c["body"] for c in reversed(cs) if c.get("body", "").lstrip().startswith("## 审查原文")), "")
@@ -217,7 +217,9 @@ def live_prs():
         idle = age(act)
         # DEC-428 暂停派发期间（标记文件同 watch.py），待审 / 返工 / CI 红都是在等恢复，不算卡点；待决定与合并中超时仍算
         hold = os.path.exists(os.path.expanduser("~/.cache/italent-dispatch-paused"))
-        stuck = (st == "decide" or (st == "merge" and idle >= 60)) if hold else st == "decide" or (st in ("conflict", "cired", "merge") and idle >= 60) or (st in ("dev", "rework") and idle >= 60) or (st == "queue" and idle >= 15)
+        # 已过审在合并队列里（合并中 / 审查通过 CI 红修复中）由审查合并窗口盯，180 分钟才算卡点（10-12 用户同意减误报）
+        lim = 180 if why.startswith("审查通过") else 60
+        stuck = (st == "decide" or (st == "merge" and idle >= 180)) if hold else st == "decide" or (st in ("conflict", "cired") and idle >= 60) or (st in ("merge", "dev", "rework") and idle >= lim) or (st == "queue" and idle >= 15)
         out.append({"n": n, "t": p["title"][:60], "s": st, "why": why, "r": rounds, "idle": idle, "stuck": stuck,
                     "ask": age(t_ask) if st == "decide" else None})
     today = now.strftime("%Y-%m-%d")

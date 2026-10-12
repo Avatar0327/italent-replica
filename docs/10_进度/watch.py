@@ -28,7 +28,7 @@ def gh(args):
 
 
 def snapshot():
-    prs = gh(["pr", "list", "--state", "open", "--json", "number,title,headRefOid,isDraft,statusCheckRollup,comments,commits"])
+    prs = gh(["pr", "list", "--state", "open", "--json", "number,title,headRefOid,isDraft,statusCheckRollup,comments,commits,baseRefName"])
     try:  # 搁置中的 PR（每行一个号）不再报停摆 / 待送审
         paused = set(open(os.path.expanduser("~/.cache/italent-paused-prs")).read().split())
     except Exception:
@@ -68,7 +68,16 @@ def snapshot():
                 done_at = ""
         if done_at and handled:  # 审查发起与“开发完成”几乎同时贴（同一 head 已发起）时不再报
             done_at = ""
-        out[str(p["number"])] = {"opus": opus, "handled": handled, "done": done_at, "t": p["title"][:40], "head": p["headRefOid"][:7], "draft": p["isDraft"], "ci": ci,
+        # 10-12 用户同意减误报：等决定中 / 叠在别的 PR 上 / 标题写明红测或 WIP 的 Draft 不报“待送审”；
+        # 审查已通过（在合并队列里）的 PR 停摆阈值放宽到 180 分钟，队列由审查合并窗口盯
+        def lastc(pred):
+            ts = [c["createdAt"] for c in p["comments"] if pred(c.get("body", "").lstrip())]
+            return max(ts) if ts else ""
+        waiting = lastc(lambda b: b.startswith("【等决定】")) > lastc(lambda b: b.startswith(("【决定】", "【派发更正】", "开发完成")))
+        res = next((c.get("body", "") for c in reversed(p["comments"]) if c.get("body", "").lstrip().startswith("## 审查原文")), "")[:400]
+        approved = ("可以合并" in res and "暂不能合并" not in res) or "代码复审通过" in res or "代码审查通过" in res
+        quiet_draft = p["isDraft"] and (waiting or p.get("baseRefName", "main") != "main" or any(w in p["title"] for w in ("红测", "WIP", "待", "开发中")))
+        out[str(p["number"])] = {"waiting": waiting, "approved": approved, "quiet": quiet_draft, "opus": opus, "handled": handled, "done": done_at, "t": p["title"][:40], "head": p["headRefOid"][:7], "draft": p["isDraft"], "ci": ci,
                                  "commit": last_commit, "comment": last_comment, "nc": len(p["comments"])}
     return out
 
@@ -275,7 +284,7 @@ def main():
         hold = os.path.exists(os.path.expanduser("~/.cache/italent-dispatch-paused"))
         for n, p in cur.items():
             key = f"{n}@{p['head']}@{p['nc']}"
-            if not hold and p["ci"] == "green" and not p["draft"] and mins_since(p["commit"]) > STALL and mins_since(p["comment"]) > STALL and key not in stalled:
+            if not hold and p["ci"] == "green" and not p["draft"] and mins_since(p["commit"]) > (180 if p.get("approved") else STALL) and mins_since(p["comment"]) > STALL and key not in stalled:
                 ev.append(f"停摆 #{n} {p['t']}：CI 绿，最新提交 {int(mins_since(p['commit']))} 分钟前，{STALL} 分钟内无评论")
                 stalled.add(key)
             if hold:
@@ -290,7 +299,7 @@ def main():
                 ev.append(f"⚠ 衔接超时 #{n} {p['t']}：“开发完成”已贴 {int(mins_since(p['done']))} 分钟，{why}——进度窗口直接催审查合并窗口")
                 stalled.add(f"{n}@late@{p['done']}")
             k2 = f"{n}@ready@{p['head']}"
-            if p["ci"] in ("green", "none") and mins_since(p["commit"]) >= (READY_DRAFT if p["draft"] else READY) and not p.get("handled") and k2 not in stalled:
+            if p["ci"] in ("green", "none") and not p.get("quiet") and not p.get("approved") and mins_since(p["commit"]) >= (READY_DRAFT if p["draft"] else READY) and not p.get("handled") and k2 not in stalled:
                 ev.append(f"待送审 #{n} {p['t']}：最新提交 {p['head']} 已 {int(mins_since(p['commit']))} 分钟、CI {'绿' if p['ci'] == 'green' else '无'}，提交后 PR 上没有审查发起 / 排队 / 修改清单评论——开发方可能已完成，请确认并发起审查")
                 stalled.add(k2)
             # Draft 闲置（10-10 #180 停 11 小时、#203 停 3 小时未被发现）：Draft 无新提交且无新评论超过 DRAFT_IDLE 分钟，每小时报一次，

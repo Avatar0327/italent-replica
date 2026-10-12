@@ -451,9 +451,10 @@ describe('AC-PRM-FW-08 P3 非法标识：观测码与根节点 invalidId 相等'
     'PATCH /api/tenant/personnel/employees/:employeeId/subsets/:kind/:id',
   ];
 
-  it('第 3 轮：状态码相同、错误体不同的 54 个端点由实际行为证明适用（含 B5 健康度赋值）', () => {
+  it('第 3 轮：状态码相同、错误体不同的 55 个端点由实际行为证明适用（含 B5 健康度与 B6b 模板复制）', () => {
     const k48 = sameStatusOnly();
-    expect(k48).toHaveLength(54);
+    expect(k48).toHaveLength(55);
+    expect(k48).toContain('POST /api/tenant/talent-review/templates/:id/copy');
     expect(k48).toContain('POST /api/tenant/talent-review/matrices/:id/ratio-groups');
     expect(k48).toContain('GET /api/tenant/permission/profiles/:id');
     expect(k48).toContain('POST /api/tenant/idp/plans/:id/goals');
@@ -466,7 +467,7 @@ describe('AC-PRM-FW-08 P3 非法标识：观测码与根节点 invalidId 相等'
     }
   });
 
-  it('53 个端点把 invalidId 改成另一个状态码、或删掉声明 → MISMATCH:invalidId', () => {
+  it('54 个端点把 invalidId 改成另一个状态码、或删掉声明 → MISMATCH:invalidId', () => {
     for (const k of sameStatusOnly()) {
       const r = route(k);
       const declared = r.policy.invalidId!;
