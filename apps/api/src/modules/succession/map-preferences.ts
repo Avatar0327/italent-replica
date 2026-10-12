@@ -14,13 +14,18 @@ const uuid = z
   .string()
   .refine(isUuid)
   .transform((id) => id.toLowerCase());
-export const preferenceBody = z.strictObject({
-  rootOrgId: uuid.nullable(),
-  depth: z.number().int().min(2).max(4),
-  hiddenOrgIds: z
-    .array(uuid)
-    .max(200)
-    .transform((ids) => [...new Set(ids)].sort()),
+/** #265 R2：显示与冻结共用同一条件白名单；省略键由当前设置补齐。 */
+export const mapDisplayBody = z
+  .strictObject({
+    rootOrgId: uuid.nullable(),
+    depth: z.number().int().min(2).max(4),
+    hiddenOrgIds: z
+      .array(uuid)
+      .max(200)
+      .transform((ids) => [...new Set(ids)].sort()),
+  })
+  .partial();
+export const preferenceBody = mapDisplayBody.required().extend({
   showKeyPositions: z.boolean(),
   showPositionsWithoutSuccessor: z.boolean(),
 });

@@ -251,11 +251,11 @@ Object.assign(SUCCESSION, {
         {
           role: 'call',
           unit: `${S}/map-routes.ts#registerMapRoutes`,
-          anchor: 'await validateIds(tx, current.ctx, current.scope, body as MapPreferences)',
+          anchor: 'await resolveMapDisplayConditions(',
         },
         {
           role: 'impl',
-          unit: `${S}/map-routes.ts#validateIds`,
+          unit: `${S}/map-display.ts#resolveMapDisplayConditions`,
           anchor:
             "if (ids.some((id) => !orgs.some((o) => o.id === id))) throw new AppError('NOT_FOUND', '显示组织不存在')",
         },
@@ -312,12 +312,23 @@ Object.assign(SUCCESSION, {
         {
           role: 'call',
           unit: `${S}/map-routes.ts#registerMapRoutes`,
-          anchor: "await readMapDisplayScope(tx, { ...ctx, scope, asOf }, 'org')",
+          anchor: "await readMapDisplayScope(tx, { ...ctx, scope, asOf }, 'org', body)",
         },
         {
           role: 'impl',
           unit: `${S}/map-display.ts#readMapDisplayScope`,
           anchor: 'if (!ctx.scope.hasDataPermission) return []',
+        },
+        {
+          role: 'call',
+          unit: `${S}/map-routes.ts#registerMapRoutes`,
+          anchor: 'await resolveMapDisplayConditions(',
+        },
+        {
+          role: 'impl',
+          unit: `${S}/map-display.ts#resolveMapDisplayConditions`,
+          anchor:
+            "if (ids.some((id) => !orgs.some((o) => o.id === id))) throw new AppError('NOT_FOUND', '显示组织不存在')",
         },
       ],
     },

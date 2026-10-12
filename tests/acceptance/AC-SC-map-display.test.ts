@@ -24,8 +24,6 @@ it('AC-SC-map-display 根、层数、隐藏子树、虚拟子树、权限断层�
     rootOrgId: root.id,
     depth: 3,
     hiddenOrgIds: [],
-    showKeyPositions: false,
-    showPositionsWithoutSuccessor: true,
   };
   const all = { ...EMPTY_SCOPE, all: true, hasDataPermission: true };
   const read = (extra = {}, scope = all) =>
@@ -81,7 +79,7 @@ it('AC-SC-map-display F-087：真实授权范围 A/C、不可见 B；C 职位新
         viewer.profile,
         {
           dataOperations: { create: false, update: false, delete: false },
-          buttons: [],
+          buttons: [{ buttonCode: 'computeStats', level: 'list' }],
           fields: map.fields.map((f) => ({ fieldCode: f.code, view: true, edit: false })),
         },
         map.code,
@@ -130,6 +128,14 @@ it('AC-SC-map-display F-087：真实授权范围 A/C、不可见 B；C 职位新
   expect((await w.asTenant((tx) => readMapDisplayScope(tx, ctx, 'position', prefs))).sort()).toEqual(
     [pA.id, pC.id, pD.id].sort(),
   );
+  for (const rootOrgId of [b.id, randomUUID()]) {
+    const response = await world.api.request('POST', '/api/tenant/succession/maps/org/compute-stats', {
+      ...viewer.as,
+      ifMatch: 0,
+      body: { rootOrgId, depth: 2, hiddenOrgIds: [] },
+    });
+    expect(response.status, await response.clone().text()).toBe(404);
+  }
 });
 
 it('AC-SC-map-display 职位图保留有继任者的祖先；停用/非关键祖先跳过，权限断层多根', async () => {

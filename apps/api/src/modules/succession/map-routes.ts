@@ -1,7 +1,6 @@
 /** #8 / #9：Map.view + 个人白名单；写命令所有出口共用 A2 的结果复核。 */
 import { sql, withTenant, type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
-import { z } from 'zod';
 import type { Context, Hono } from 'hono';
 import { runCommand } from '../../commands.js';
 import { recordAudit } from '../../audit/record.js';
@@ -11,13 +10,13 @@ import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import { authorizeInTransaction, resolveModuleScopeInTransaction, scopeSql } from '../permission/module-access.js';
 import { button } from '../permission/module-route-access.js';
-import { loadOrgSnapshot } from '../org/read-model.js';
 import { parseBody, revision, requireNew } from '../talent/http.js';
 import { codeOf, successionContext, SUCCESSION_BASE, type SuccessionContext } from './access.js';
-import { readMapDisplayScope } from './map-display.js';
+import { readMapDisplayScope, resolveMapDisplayConditions } from './map-display.js';
 import {
   mapKind,
   preferenceBody,
+  mapDisplayBody,
   preferenceResults,
   readPreferences,
   type MapKind,
@@ -53,20 +52,6 @@ const statsResults: ResultAdapter<{ id: string }> = {
   },
   project: async (_deps, _ctx, views) => [...views],
 };
-async function validateIds(
-  tx: Tx,
-  ctx: SuccessionContext,
-  scope: Parameters<typeof scopeSql>[0],
-  body: MapPreferences,
-) {
-  const ids = [...new Set([body.rootOrgId, ...body.hiddenOrgIds].filter((id): id is string => !!id))];
-  if (!ids.length) return;
-  const orgs = await loadOrgSnapshot(tx, ctx.tenantId, tenantLocalDate(ctx.now, ctx.timezone), undefined, {
-    scope,
-    includeDisabled: false,
-  });
-  if (ids.some((id) => !orgs.some((o) => o.id === id))) throw new AppError('NOT_FOUND', '显示组织不存在');
-}
 async function savePreferences(
   tx: Tx,
   ctx: SuccessionContext,
@@ -144,7 +129,7 @@ export function registerMapRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps
     if (compute) await button(deps, ctx, codeOf('map'), 'computeStats', 'list');
     const kind = compute ? 'org' : mapKind(c.req.param('kind'));
     const expected = revision(c);
-    const body = compute ? await parseBody(c, z.strictObject({})) : await parseBody(c, preferenceBody);
+    const body = compute ? await parseBody(c, mapDisplayBody) : await parseBody(c, preferenceBody);
     if (compute) requireNew(expected);
     const results: ResultAdapter = compute ? statsResults : preferenceResults;
     const response = await runCommand(deps.db, ctx, {
@@ -153,7 +138,16 @@ export function registerMapRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps
       guard: {
         before: async (tx) => {
           const current = await mapAccess(c, deps, tx, compute);
-          if (!compute) await validateIds(tx, current.ctx, current.scope, body as MapPreferences);
+          await resolveMapDisplayConditions(
+            tx,
+            {
+              ...current.ctx,
+              scope: current.scope,
+              asOf: tenantLocalDate(ctx.now, ctx.timezone),
+            },
+            kind,
+            body,
+          );
         },
         replayed: async (tx, stored) => {
           await results.load(tx, deps, ctx, (stored.body as StoredResult).ids, { includeDeleted: false });
@@ -172,7 +166,7 @@ export function registerMapRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps
                 requestedBy: ctx.userId,
                 commandId,
                 businessDate: asOf,
-                objects: (await readMapDisplayScope(tx, { ...ctx, scope, asOf }, 'org')).map((objectId) => ({
+                objects: (await readMapDisplayScope(tx, { ...ctx, scope, asOf }, 'org', body)).map((objectId) => ({
                   objectType: 'org',
                   objectId,
                 })),
