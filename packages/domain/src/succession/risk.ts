@@ -11,6 +11,7 @@ export interface RiskPerson {
   [field: string]: RiskValue;
 }
 export interface RiskPopulation {
+  sources?: Readonly<Record<string, RiskValue>>;
   incumbents: readonly RiskPerson[];
   successors: readonly RiskPerson[];
 }
@@ -34,9 +35,14 @@ export function riskIncumbents(primary: readonly RiskPerson[], partTime: readonl
   return [...new Map([...(include ? partTime : []), ...primary].map((p) => [p.id, p])).values()];
 }
 export function riskMeasure(row: SuccessionLevelRow, population: RiskPopulation, calendar: EvaluationCalendar) {
-  // DEC-452 / F-100：来源尚未接入，零人口 / 零分母也不能把不可用降为 EMPTY。
-  if (row.fieldCode === 'work_years') throw new RiskFailure('DATA_UNAVAILABLE', row.rowNo);
   const people = row.subject === 'incumbent' ? population.incumbents : population.successors;
+  // §4.1：来源状态独立于人口；先统一验权 / 验源，再允许空人口和零分母成为 EMPTY。
+  if (row.fieldCode) {
+    for (const value of [population.sources?.[row.fieldCode], ...people.map((p) => p[row.fieldCode!])])
+      if (value && typeof value === 'object' && 'status' in value)
+        throw new RiskFailure(value.status === 'forbidden' ? 'FIELD_FORBIDDEN' : 'DATA_UNAVAILABLE', row.rowNo);
+    if (row.fieldCode === 'work_years') throw new RiskFailure('DATA_UNAVAILABLE', row.rowNo); // DEC-452 / F-100
+  }
   let denominator = 1;
   if (row.measure === 'count_over_incumbents') denominator = population.incumbents.length;
   else if (row.measure === 'count_over_successors') denominator = population.successors.length;
@@ -67,9 +73,7 @@ export function riskMeasure(row: SuccessionLevelRow, population: RiskPopulation,
     if (!compiled.ok) throw new RiskFailure('RULE_ROW_INVALID', row.rowNo);
     selected = 0;
     for (const person of people) {
-      const value = person[row.fieldCode];
-      if (value && typeof value === 'object' && 'status' in value)
-        throw new RiskFailure(value.status === 'forbidden' ? 'FIELD_FORBIDDEN' : 'DATA_UNAVAILABLE', row.rowNo);
+      const value = person[row.fieldCode] as PlainValue;
       const result = evaluateFormula(compiled.compiled.formula, {
         calendar,
         subject: {
