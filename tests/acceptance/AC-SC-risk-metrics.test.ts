@@ -109,3 +109,11 @@ it('AC-SC-risk 来源失败优先于空人口及三种度量的零分母，覆�
         }
       }
 });
+it('AC-SC-risk 宿主遗漏来源状态不能被视为授权，全部过滤字段与三种度量均失败', () => {
+  for (const fieldCode of [...POPULATION_FIELDS.map((f) => f.code), 'readiness_id'])
+    for (const measure of ['count', 'count_over_incumbents', 'count_over_successors'] as const)
+      for (const sources of [undefined, {}])
+        expect(() =>
+          riskMeasure({ ...row, fieldCode, measure }, { incumbents: [], successors: [], sources }, calendar),
+        ).toThrow('DATA_UNAVAILABLE');
+});
