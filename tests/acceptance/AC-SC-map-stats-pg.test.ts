@@ -1,0 +1,82 @@
+import { randomUUID } from 'node:crypto';
+import { sql } from '@italent/db';
+import { useTestDb } from '@italent/testkit';
+import { describe, expect, it } from 'vitest';
+import { successionWorld } from './AC-SC-support.js';
+import { waitForBlocked } from './support/pg-interleave.js';
+import { rowsOf } from '../../apps/api/src/modules/succession/read-sql.js';
+
+const testDb = useTestDb();
+describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-SC-map-stats 真 PG 并发', () => {
+  it.each([true, false])('偏好行锁交错：同键=%s，重放或 revision 冲突，统计一次', async (sameKey) => {
+    const w = await successionWorld(testDb().db, `sc-prefs-pg-${sameKey}`);
+    const root = await w.org('并发根');
+    const body = {
+      rootOrgId: root.id,
+      depth: 3,
+      hiddenOrgIds: [],
+      hideVirtual: false,
+      showKeyPositions: false,
+      showPositionsWithoutSuccessor: true,
+      showIncumbents: true,
+    };
+    expect((await w.request('PUT', '/maps/org/preferences', { ifMatch: 0, body })).status).toBe(200);
+    let ready!: () => void, release!: () => void;
+    const entered = new Promise<void>((r) => {
+      ready = r;
+    });
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    const blocker = w.asTenant(async (tx) => {
+      await tx.execute(sql`SELECT * FROM succession_map_preferences WHERE user_id=${w.user.id}::uuid FOR UPDATE`);
+      ready();
+      await gate;
+    });
+    await entered;
+    const key = randomUUID();
+    const send = (idempotencyKey: string) =>
+      w.request('PUT', '/maps/org/preferences', {
+        ifMatch: 1,
+        body: { ...body, showIncumbents: false },
+        idempotencyKey,
+      });
+    const requests = [send(key), send(sameKey ? key : randomUUID())];
+    try {
+      await waitForBlocked(w.db, 2);
+    } finally {
+      release();
+    }
+    await blocker;
+    const responses = await Promise.all(requests);
+    expect(responses.map((r) => r.status).sort()).toEqual(sameKey ? [200, 200] : [200, 409]);
+    const rows = await w.asTenant(async (tx) =>
+      rowsOf(
+        await tx.execute(sql`SELECT revision,
+      show_incumbents FROM succession_map_preferences WHERE map_kind='org'`),
+      ),
+    );
+    expect(rows).toEqual([{ revision: 2, show_incumbents: false }]);
+    const runs = await w.asTenant(async (tx) =>
+      rowsOf(
+        await tx.execute(sql`SELECT id
+      FROM succession_calc_runs WHERE trigger='preferences_change'`),
+      ),
+    );
+    expect(runs).toHaveLength(2);
+  });
+
+  it('compute-stats 两并发同命令只冻结一次；失去连接回查保留同一 run', async () => {
+    const w = await successionWorld(testDb().db, 'sc-compute-pg');
+    await w.org('并发统计');
+    const options = { ifMatch: 0, idempotencyKey: randomUUID(), body: {} };
+    const responses = await Promise.all([
+      w.request('POST', '/maps/org/compute-stats', options),
+      w.request('POST', '/maps/org/compute-stats', options),
+    ]);
+    expect(responses.map((r) => r.status)).toEqual([202, 202]);
+    expect(await responses[0]!.json()).toEqual(await responses[1]!.json());
+    const runs = await w.asTenant(async (tx) => rowsOf(await tx.execute(sql`SELECT id FROM succession_calc_runs`)));
+    expect(runs).toHaveLength(1);
+  });
+});

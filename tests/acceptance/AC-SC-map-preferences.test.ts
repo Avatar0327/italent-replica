@@ -1,5 +1,4 @@
-/** C1：这里只断言设计已经明确的契约，不在红测里猜显示开关初值。 */
-// TODO(需取证 #263)：总编排登记四个显示开关初值后，补 org / position 的完整默认值断言。
+/** C1 / DEC-439①：开关初值未经原站证实，取证中（#263）。 */
 import { randomUUID } from 'node:crypto';
 import { sql } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
@@ -31,7 +30,16 @@ describe('AC-SC-map-preferences 个人显示设置', () => {
   it('尚未保存时层数取租户默认设置，读操作不写入偏好', async () => {
     const response = await w.request('GET', '/maps/org/preferences');
     expect(response.status, await response.clone().text()).toBe(200);
-    expect(await response.json()).toMatchObject({ depth: 3, revision: 0 });
+    expect(await response.json()).toMatchObject({
+      depth: 3,
+      revision: 0,
+      hideVirtual: false,
+      showKeyPositions: false,
+      showPositionsWithoutSuccessor: true,
+      showIncumbents: true,
+    });
+    const position = await w.request('GET', '/maps/position/preferences');
+    expect(await position.json()).toEqual(await (await w.request('GET', '/maps/org/preferences')).json());
     const rows = await w.asTenant((tx) =>
       tx.execute(sql`SELECT * FROM succession_map_preferences WHERE user_id = ${w.user.id}::uuid`),
     );
@@ -82,5 +90,30 @@ describe('AC-SC-map-preferences 个人显示设置', () => {
       const response = await w.request('PUT', '/maps/position/preferences', { ifMatch: 1, body });
       expect(response.status, await response.clone().text()).toBe(400);
     }
+  });
+
+  it('组织设置变更同事务冻结统计；相同值保存不重复触发，重放不新建 run', async () => {
+    const response = await w.request('PUT', '/maps/org/preferences', {
+      ifMatch: 1,
+      body: { ...preferences(), showIncumbents: true },
+    });
+    expect(response.status, await response.clone().text()).toBe(200);
+    const rows = () =>
+      w.asTenant(async (tx) =>
+        rowsOf<{ idempotency_key: string }>(
+          await tx.execute(sql`SELECT idempotency_key FROM succession_calc_runs
+        WHERE trigger='preferences_change' ORDER BY idempotency_key`),
+        ),
+      );
+    expect(await rows()).toEqual([
+      { idempotency_key: `org_stats:preferences:${w.user.id}:1` },
+      { idempotency_key: `org_stats:preferences:${w.user.id}:2` },
+    ]);
+    const same = await w.request('PUT', '/maps/org/preferences', {
+      ifMatch: 2,
+      body: { ...preferences(), showIncumbents: true },
+    });
+    expect(same.status).toBe(200);
+    expect(await rows()).toHaveLength(2);
   });
 });
