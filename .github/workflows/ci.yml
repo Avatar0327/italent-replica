@@ -200,8 +200,10 @@ jobs:
     needs: changes
     if: github.event.pull_request.draft != true && needs.changes.outputs.docs_only != 'true'
     runs-on: ubuntu-24.04
-    # F-056 首测最慢片 9m34s（含容器启动/安装/收尾），18 分钟约为 1.88 倍
-    timeout-minutes: 18
+    # F-056 首测最慢片 9m34s（含容器启动/安装/收尾），原 18 分钟约为 1.88 倍
+    # 10-11 测试量增长后第 2 片在 #255 / #262 / #268 上连续跑满 18 分钟被取消（其余三片 14～15 分钟），
+    # 先与 PGlite 分片对齐到 25 分钟止血；片数是否再加由后续数据定
+    timeout-minutes: 25
     # packages: read 用于拉本仓库 ghcr 上的 PostgreSQL 镜像（DEC-431④）；job 级权限会覆盖顶层，故补写 contents
     permissions:
       contents: read
