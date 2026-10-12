@@ -1,0 +1,55 @@
+.approval-page {
+  min-height: 620px;
+}
+.approval-title-link.ant-btn {
+  padding: 0;
+  height: auto;
+  white-space: normal;
+  text-align: left;
+  color: #20252d;
+  font-weight: 500;
+}
+.approval-list-panel .ant-table-thead {
+  display: none;
+}
+.approval-list-panel .ant-table-cell {
+  padding: 22px 16px;
+}
+.approval-record {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.approval-record-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  color: #fff;
+  border-radius: 50%;
+  background: #fd6b9d;
+}
+.approval-record-meta {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin: 10px 0 12px;
+  color: #5e6d7b;
+  font-size: 12px;
+}
+.approval-summary {
+  padding-bottom: 20px;
+}
+.approval-muted {
+  color: #89929f;
+  font-size: 12px;
+}
+.approval-action-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 0;
+  margin-top: 28px;
+  border-top: 1px solid #edf0f4;
+}
