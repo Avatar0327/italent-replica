@@ -848,6 +848,13 @@
       "when": 1791774714375,
       "tag": "0120_succession_display_settings_seed",
       "breakpoints": true
+    },
+    {
+      "idx": 121,
+      "version": "7",
+      "when": 1791774714376,
+      "tag": "0121_chief_james_howlett",
+      "breakpoints": true
     }
   ]
 }
