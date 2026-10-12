@@ -39,6 +39,7 @@ import {
 import './settings.js';
 import { installSuccessionPorts } from './ports.js';
 import { registerSuccessionLevelRoutes } from './levels-routes.js';
+import { registerHealthRoutes } from './health-routes.js';
 import { createRecord, deleteRecord, endRecords, updateRecord } from './record-write.js';
 import { recordResults } from './record-results.js';
 import {
@@ -53,6 +54,7 @@ const RECORDS = `${SUCCESSION_BASE}/records`;
 
 export function registerSuccessionRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   registerMapRoutes(router, deps);
+  registerHealthRoutes(router, deps);
   installSuccessionPorts();
 
   // #1 准备度选择器：启用项的 id / code / name / color / sort（HR 读字典契约，设计 §8.3；只需 Record 查看权）

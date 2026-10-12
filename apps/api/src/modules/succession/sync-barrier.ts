@@ -10,7 +10,7 @@ import type { SuccessionType } from '@italent/db';
 import { AppError } from '../../errors.js';
 
 export interface BarrierTarget {
-  readonly kind: SuccessionType;
+  readonly kind: SuccessionType | 'org_health';
   readonly id: string;
 }
 

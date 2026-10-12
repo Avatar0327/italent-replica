@@ -13,7 +13,10 @@ import { createInMemoryTalentReviewSyncPort } from '../talent-review/sync-port-m
 
 export interface SuccessionPorts {
   readonly orgHealthCompute?: OrgHealthComputePort;
-  readonly reviewReads?: Pick<TalentReviewSyncPort, 'greenRate'>;
+  readonly reviewReads?: Pick<
+    TalentReviewSyncPort,
+    'greenRate' | 'readReviewFields' | 'readSuccessionEntries' | 'listReviewFields'
+  >;
 }
 
 export const SUCCESSION_PORTS: SuccessionPorts = {};

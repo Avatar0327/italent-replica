@@ -3,7 +3,7 @@ import { sql } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { successionWorld, SC_NOW, SC_TODAY } from './AC-SC-support.js';
-import { enableStatsRunner } from './AC-SC-stats-support.js';
+import { enableHealthRunner } from './AC-SC-07-health-support.js';
 import { waitForBlocked } from './support/pg-interleave.js';
 import { enqueueCalcRun, runCalcPage } from '../../apps/api/src/modules/succession/calc-worker.js';
 import { createHealthHandler } from '../../apps/api/src/modules/succession/health-worker.js';
@@ -15,7 +15,7 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-SC-07 真 PG 健康�
   it.each(['org_health', 'org_health_reset'] as const)('%s 先持目标锁，手动赋值等待后 revision 冲突', async (kind) => {
     const w = await successionWorld(testDb().db, `health-pg-${kind}`),
       org = await w.org('健康并发');
-    await enableStatsRunner(w);
+    await enableHealthRunner(w);
     const response = await w.request('POST', '/health-levels', {
       ifMatch: 0,
       body: {
@@ -69,7 +69,12 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-SC-07 真 PG 健康�
       },
     });
     const worker = runCalcPage(w.db, w.tenant.id, id, [createHealthHandler(kind, reads)], SC_NOW);
-    await ready;
+    await Promise.race([
+      ready,
+      worker.then((status) => {
+        throw new Error(`worker 提前结束：${status}`);
+      }),
+    ]);
     const assign = w.request('PUT', `/health-results/${org.id}`, { ifMatch: 0, body: { levelId: null } });
     try {
       await waitForBlocked(w.db, 1);

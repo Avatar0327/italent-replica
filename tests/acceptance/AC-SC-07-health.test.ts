@@ -1,21 +1,104 @@
 import { randomUUID } from 'node:crypto';
-import { sql } from '@italent/db';
+import { sql, successionCalcRuns, successionCalcRunObjects } from '@italent/db';
+import type { SuccessionLevelRow } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { successionWorld, SC_TODAY, SC_NOW } from './AC-SC-support.js';
-import { enableStatsRunner } from './AC-SC-stats-support.js';
+import { enableHealthRunner } from './AC-SC-07-health-support.js';
 import { rowsOf } from '../../apps/api/src/modules/succession/read-sql.js';
-import { runCalcPage } from '../../apps/api/src/modules/succession/calc-worker.js';
+import { runCalcPage, enqueueCalcRun } from '../../apps/api/src/modules/succession/calc-worker.js';
+import { healthMetricReader } from '../../apps/api/src/modules/succession/health-metrics.js';
+import { healthPrincipal } from '../../apps/api/src/modules/succession/health-principal.js';
 import { createInMemoryTalentReviewSyncPort } from '../../apps/api/src/modules/talent-review/sync-port-memory.js';
 import { dispatchCalcJobs } from '../../apps/api/src/modules/succession/calc-jobs.js';
 
 const testDb = useTestDb();
 describe('AC-SC-07 组织健康度', () => {
+  it('T04 替身：盘点数值、module_absent 与逐字段撤权不混淆', async () => {
+    const w = await successionWorld(testDb().db, 'health-source'),
+      org = await w.org('取数组织');
+    const person = await w.hire('合成员工', { departmentId: org.id });
+    await enableHealthRunner(w);
+    const port = createInMemoryTalentReviewSyncPort({
+      tenantId: w.tenant.id,
+      fields: [
+        {
+          code: 'score',
+          label: '分数',
+          group: '盘点',
+          kind: 'number',
+          systemWritten: true,
+          formulaUsable: true,
+        },
+      ],
+      sources: [
+        {
+          projectId: randomUUID(),
+          meetingId: null,
+          code: 'P',
+          status: 'in_progress',
+          periodStartDate: SC_TODAY,
+          periodEndDate: SC_TODAY,
+          businessDate: SC_TODAY,
+          objects: [
+            {
+              employeeId: person.id,
+              orgId: org.id,
+              fields: { score: { status: 'value', value: 0.35 } },
+              succession: null,
+            },
+          ],
+        },
+      ],
+    });
+    await w.asTenant(async (tx) => {
+      await enqueueCalcRun(
+        tx,
+        {
+          tenantId: w.tenant.id,
+          kind: 'org_health',
+          trigger: 'manual',
+          commandId: randomUUID(),
+          requestedBy: w.user.id,
+          businessDate: SC_TODAY,
+          objects: [{ objectType: 'org', objectId: org.id }],
+        },
+        SC_NOW,
+      );
+      const [run] = await tx.select().from(successionCalcRuns),
+        [object] = await tx.select().from(successionCalcRunObjects);
+      const read = healthMetricReader(
+        { tx, run: run!, now: SC_NOW },
+        object!,
+        await healthPrincipal(tx, w.tenant.id, false),
+        port,
+      );
+      const row: SuccessionLevelRow = {
+        rowNo: 1,
+        population: 'all',
+        fieldSource: 'review',
+        fieldCode: 'score',
+        measure: 'average',
+        comparator: 'ge',
+        threshold: 0.3,
+        thresholdHigh: null,
+        isPercent: true,
+        filterOperator: null,
+        filterValues: [],
+      };
+      expect(await read(row)).toEqual({ status: 'value', value: 0.35 });
+      expect(await read({ ...row, fieldSource: 'succession', fieldCode: null, measure: 'successor_count' })).toEqual({
+        status: 'module_absent',
+      });
+      port.denyViewer(w.user.id, { fieldCodes: ['score'] });
+      expect(await read(row)).toEqual({ status: 'forbidden' });
+    });
+  });
   it('计算冻结全部授权组织、原命令重放保留集合；缓存取数、手工保留、重置冲突逐对象拒绝', async () => {
     const w = await successionWorld(testDb().db, 'health');
     const root = await w.org('健康根'),
       child = await w.org('健康下级', root.id);
-    await enableStatsRunner(w);
+    await enableHealthRunner(w);
     const levelResponse = await w.request('POST', '/health-levels', {
       ifMatch: 0,
       body: {
@@ -64,7 +147,7 @@ describe('AC-SC-07 组织健康度', () => {
         await tx.execute(sql`SELECT object_id FROM succession_calc_run_objects WHERE run_id=${runId}::uuid`),
       ),
     );
-    expect(frozen.map((r) => r.object_id).sort()).toEqual([root.id, child.id].sort());
+    expect(frozen.map((r) => r.object_id).sort()).toEqual([w.tenant.id, root.id, child.id].sort());
     const { createHealthHandler } = await import('../../apps/api/src/modules/succession/health-worker.js');
     const port = createInMemoryTalentReviewSyncPort({ tenantId: w.tenant.id });
     expect(await runCalcPage(w.db, w.tenant.id, runId, [createHealthHandler('org_health', port)], SC_NOW)).toBe(
@@ -102,7 +185,10 @@ describe('AC-SC-07 组织健康度', () => {
     expect((await read()).items.find((r) => r.orgId === child.id)).toMatchObject({ method: 'manual', revision: 2 });
     expect((await read()).items.find((r) => r.orgId === root.id)).toMatchObject({ method: 'computed', revision: 2 });
     const failures = await w.asTenant(async (tx) =>
-      rowsOf(await tx.execute(sql`SELECT code FROM succession_calc_run_failures WHERE run_id=${resetId}::uuid`)),
+      rowsOf(
+        await tx.execute(sql`SELECT code FROM succession_calc_run_failures
+          WHERE run_id=${resetId}::uuid`),
+      ),
     );
     expect(failures).toEqual([{ code: 'REVISION_CONFLICT' }]);
     const count = await w.asTenant(async (tx) => rowsOf(await tx.execute(sql`SELECT id FROM succession_calc_runs`)));

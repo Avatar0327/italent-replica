@@ -446,6 +446,83 @@ Object.assign(SUCCESSION, {
   'POST /api/platform/succession/jobs/run': [],
 });
 
+/** B5：读结果按 SQL 范围；赋值与队列按当前授权，重放保留原集合。 */
+function healthRequired(mode: 'read' | 'assign' | 'reset' | 'compute'): Obligation[] {
+  const queue = mode === 'reset' || mode === 'compute',
+    map = mode === 'compute';
+  const key = map ? 'map' : 'healthResult',
+    code = map ? 'Map' : 'HealthResult';
+  const operation = mode === 'read' || map ? 'view' : 'update';
+  const unit = queue
+    ? `${S}/health-routes.ts#queueAccess`
+    : mode === 'assign'
+      ? `${WS}#checkWriteAccess`
+      : `${S}/health-routes.ts#registerHealthRoutes`;
+  const anchor = queue
+    ? map
+      ? "await successionContext(c, bound, 'map')"
+      : "object: 'healthResult', operation: 'update'"
+    : mode === 'assign'
+      ? 'const ctx = await successionContext(c, deps, spec.object, spec.operation, spec.expectedRevision)'
+      : "await successionContext(c, deps, 'healthResult')";
+  const constant: Evidence = {
+    role: 'const',
+    unit: `packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>${key}`,
+    anchor: `object( '${code}'`,
+  };
+  const obligations: Obligation[] = [
+    {
+      perm: `obj:Succession.${code}:${operation}`,
+      facts: ['object:objectContext'],
+      need:
+        mode === 'read'
+          ? { scope: 'list' }
+          : { scope: 'guard', guard: queue ? 'succession.healthQueue' : 'succession.healthOrg' },
+      at: [
+        { role: 'call', unit, anchor },
+        ...CONTEXT,
+        constant,
+        {
+          role: 'scope',
+          unit: queue ? `${S}/health-routes.ts#queueResults` : `${S}/health-results.ts#readHealthResults`,
+          anchor: queue ? 'AND NOT EXISTS' : 'scopeSql(scope, { org: sql`v.org_id` })',
+        },
+      ],
+    },
+  ];
+  if (mode !== 'read')
+    obligations.push({
+      perm: `btn:Succession.${code}#${map ? 'computeHealth' : mode}@${mode === 'assign' ? 'detail' : 'list'}`,
+      facts: ['button:button()'],
+      at: [
+        {
+          role: 'impl',
+          unit: `${MRA}#button`,
+          anchor: "action: 'object.button', resource: buttonResource(objectCode, code, level)",
+        },
+        constant,
+      ],
+    });
+  if (mode !== 'read')
+    obligations.push({
+      perm: `guard:${queue ? 'succession.healthQueue' : 'succession.healthOrg'}`,
+      at: [
+        {
+          role: 'impl',
+          unit: queue ? `${S}/health-routes.ts#queueResults` : `${S}/health-results.ts#requireHealthOrg`,
+          anchor: queue ? 'if (views.length !== ids.length) throw healthMissing()' : 'throw healthMissing()',
+        },
+      ],
+    });
+  return obligations;
+}
+Object.assign(SUCCESSION, {
+  [`GET ${BASE}/health-results`]: healthRequired('read'),
+  [`PUT ${BASE}/health-results/:orgId`]: healthRequired('assign'),
+  [`POST ${BASE}/health-results/reset`]: healthRequired('reset'),
+  [`POST ${BASE}/maps/org/compute-health`]: healthRequired('compute'),
+});
+
 for (const kind of ['risk', 'health'] as const) {
   const key = kind === 'risk' ? 'riskLevel' : 'healthLevel';
   const path = `${BASE}/${kind}-levels`;
