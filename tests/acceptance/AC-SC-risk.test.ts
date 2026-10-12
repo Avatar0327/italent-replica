@@ -141,7 +141,8 @@ it('AC-SC-risk #15：非空手动赋值可读、可重放，旧 revision 拒绝�
   const before = await read();
   expect((await w.request('PUT', path, { ...options, idempotencyKey: randomUUID() })).status).toBe(409);
   expect(await read()).toEqual(before);
-  const cleared = await w.request('PUT', path, { ifMatch: 1, body: { levelId: null } });
+  const clear = { ifMatch: 1, idempotencyKey: randomUUID(), body: { levelId: null } };
+  const cleared = await w.request('PUT', path, clear);
   expect(cleared.status, await cleared.clone().text()).toBe(200);
   expect(await cleared.json()).toMatchObject({
     positionId: position.id,
@@ -149,6 +150,23 @@ it('AC-SC-risk #15：非空手动赋值可读、可重放，旧 revision 拒绝�
     method: 'computed',
     revision: 2,
   });
+  const runs = await w.asTenant(async (tx) =>
+    rowsOf<{ id: string }>(
+      await tx.execute(sql`
+    SELECT id FROM succession_calc_runs WHERE kind='position_risk' AND trigger='manual'`),
+    ),
+  );
+  expect(runs).toHaveLength(1);
+  expect(await frozen(w, runs[0]!.id)).toEqual([position.id]);
+  expect((await w.request('PUT', path, clear)).status).toBe(200);
+  expect(
+    await w.asTenant(async (tx) =>
+      rowsOf(
+        await tx.execute(sql`
+    SELECT id FROM succession_calc_runs WHERE kind='position_risk'`),
+      ),
+    ),
+  ).toEqual(runs);
   expect(await read()).toHaveLength(1);
 });
 
