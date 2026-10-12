@@ -64,25 +64,7 @@ export function ApprovalListPanel({
           title={view === 'initiated' ? m.mine : m[view]}
           data={{ ...data, items: data.items.filter((row) => row.title.includes(query.trim())) }}
           columns={
-            !onViewChange
-              ? applicationColumns(setSelected, timezone)
-              : [
-                  {
-                    title: m.titleColumn,
-                    key: 'content',
-                    render: (_: unknown, row: ApprovalRow) => (
-                      <ApprovalRecord row={row} timezone={timezone} onOpen={() => setSelected(row)} />
-                    ),
-                  },
-                  {
-                    title: m.operation,
-                    key: 'action',
-                    width: 110,
-                    render: (_: unknown, row: ApprovalRow) => (
-                      <Button onClick={() => setSelected(row)}>{view === 'pending' ? m.handle : m.view}</Button>
-                    ),
-                  },
-                ]
+            !onViewChange ? applicationColumns(setSelected, timezone) : recordColumns(view, setSelected, timezone)
           }
           rowKey={(row) => row.taskId ?? row.id}
           page={page}
@@ -195,5 +177,29 @@ function applicationColumns(onOpen: (row: ApprovalRow) => void, timezone: string
     { title: m.type, dataIndex: 'approvalType', render: (type: string) => typeLabels[type] ?? type },
     { title: m.status, dataIndex: 'status', render: (status: string) => statusLabels[status] ?? status },
     { title: m.created, dataIndex: 'createdAt', render: (time: string) => formatInstant(time, timezone) },
+  ];
+}
+
+function recordColumns(
+  view: ApprovalView,
+  onOpen: (row: ApprovalRow) => void,
+  timezone: string,
+): TableColumnsType<ApprovalRow> {
+  return [
+    {
+      title: m.titleColumn,
+      key: 'content',
+      render: (_: unknown, row: ApprovalRow) => (
+        <ApprovalRecord row={row} timezone={timezone} onOpen={() => onOpen(row)} />
+      ),
+    },
+    {
+      title: m.operation,
+      key: 'action',
+      width: 110,
+      render: (_: unknown, row: ApprovalRow) => (
+        <Button onClick={() => onOpen(row)}>{view === 'pending' ? m.handle : m.view}</Button>
+      ),
+    },
   ];
 }
