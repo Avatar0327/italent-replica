@@ -1,0 +1,277 @@
+/** D1b：设计 §5.7 第 1～14 步；数据库与 SP-18 替身共同事务。 */
+import { randomUUID } from 'node:crypto';
+import { sql } from '@italent/db';
+import { useTestDb } from '@italent/testkit';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { consumeRun, consumeSyncOutbox } from '../../apps/api/src/modules/succession/sync-consume.js';
+import { createInMemoryTalentReviewSyncPort } from '../../apps/api/src/modules/talent-review/sync-port-memory.js';
+import { overrideSetting } from '../../apps/api/src/modules/tenant-settings/service.js';
+import { syncFixture, FX } from './support/sync-port-contract.js';
+import { rowsOf } from './support/f048.js';
+import { waitForBlocked } from './support/pg-interleave.js';
+import { successionWorld, SC_NOW, SC_TODAY, type SuccessionWorld } from './AC-SC-support.js';
+import { syncTestTransaction } from './AC-SC-sync-support.js';
+
+const testDb = useTestDb();
+let w: SuccessionWorld;
+let std: Awaited<ReturnType<SuccessionWorld['standard']>>;
+let revision = 0;
+const setting = (key: string, value: unknown, expectedRevision = 0) =>
+  w.asTenant((tx) =>
+    overrideSetting(
+      tx,
+      {
+        tenantId: w.tenant.id,
+        userId: w.user.id,
+        key: `succession.${key}`,
+        expectedRevision,
+        now: SC_NOW,
+        commandId: randomUUID(),
+      },
+      value,
+    ),
+  );
+beforeAll(async () => {
+  w = await successionWorld(testDb().db, 'sc-sync-plan');
+  std = await w.standard();
+  await setting('system_principal_user_id', w.user.id);
+  await w.asTenant(async (tx) => {
+    await tx.execute(sql`INSERT INTO permission_profiles (tenant_id,code,name,source)
+      VALUES (${w.tenant.id}::uuid,'standard_succession_runner','继任执行身份','standard') ON CONFLICT DO NOTHING`);
+    await tx.execute(sql`INSERT INTO permission_grants (tenant_id,user_id,profile_id)
+      SELECT ${w.tenant.id}::uuid,${w.user.id}::uuid,id FROM permission_profiles
+      WHERE tenant_id=${w.tenant.id}::uuid AND code='standard_succession_runner' ON CONFLICT DO NOTHING`);
+  });
+});
+afterEach(async () => {
+  if (!w) return;
+  await w.asTenant(async (tx) => {
+    await tx.execute(sql`UPDATE succession_sync_mutex SET batch_id=NULL WHERE tenant_id=${w.tenant.id}::uuid`);
+    await tx.execute(sql`UPDATE succession_sync_batches SET status='terminated' WHERE tenant_id=${w.tenant.id}::uuid`);
+  });
+  await setting('sync_strategy', 'append', revision++);
+});
+function setup(options: { empty?: boolean; scopeExplicit?: boolean } = {}) {
+  const source = syncFixture({ withEmptyObject: true });
+  const original = source.runs[0]!;
+  const runId = randomUUID();
+  const nominations = original.nominations.map((n) => ({
+    ...n,
+    orgId: n.orgId ? std.orgA.id : null,
+    positionId: n.positionId ? std.keyPosition.id : null,
+    successorEmployeeId: std.successor1.id,
+    readinessId: null,
+    readinessCode: null,
+  }));
+  const header = {
+    ...original.header,
+    runId,
+    actorUserId: w.user.id,
+    ownerUserId: w.user.id,
+    principalUserId: w.user.id,
+    businessDate: SC_TODAY,
+    scopeExplicit: options.scopeExplicit ?? false,
+  };
+  const port = createInMemoryTalentReviewSyncPort({
+    ...source,
+    tenantId: w.tenant.id,
+    runs: [
+      {
+        ...original,
+        header,
+        nominations: options.empty ? [] : nominations,
+        orgHealth: original.orgHealth.map((h) => ({
+          ...h,
+          orgId: h.orgId === FX.g1 ? std.orgA.id : std.orgB.id,
+          status: 'not_provided' as const,
+          levelId: null,
+          levelCode: null,
+        })),
+      },
+    ],
+  });
+  const input = { tenantId: w.tenant.id, runId, leaseOwner: randomUUID() };
+  const key = { tenantId: w.tenant.id, runId, consumer: 'succession' as const };
+  const deps = {
+    db: testDb().db,
+    port,
+    clock: () => SC_NOW,
+    authorize: () => true,
+    transaction: syncTestTransaction(testDb().db, w.tenant.id, port),
+  };
+  const outcomes = async () => (await deps.transaction((tx) => port.getOutcomes(tx, key))).items;
+  return { deps, port, input, key, outcomes };
+}
+const batch = async (runId: string) =>
+  rowsOf<Record<string, unknown>>(
+    await w.asTenant((tx) => tx.execute(sql`SELECT * FROM succession_sync_batches WHERE source_run_id=${runId}::uuid`)),
+  )[0]!;
+const count = async (table: string, batchId: unknown) =>
+  rowsOf<{ n: number }>(
+    await w.asTenant((tx) =>
+      tx.execute(sql`SELECT count(*)::int n FROM ${sql.identifier(table)} WHERE batch_id=${String(batchId)}::uuid`),
+    ),
+  )[0]!.n;
+
+describe('AC-SC-03-04-sync D1b 首次计划', () => {
+  it('步骤 1～14：冻结计划、一次 registerTargets、页 0 证明、屏障，重投不重复 begin', async () => {
+    const h = setup();
+    const register = vi.spyOn(h.port, 'registerTargets');
+    const begin = vi.spyOn(h.port, 'beginConsumption');
+    const record = vi.spyOn(h.port, 'recordOutcome');
+    await consumeSyncOutbox(h.deps, { tenantId: w.tenant.id, payload: { runId: h.input.runId } }, h.input.leaseOwner);
+    const b = await batch(h.input.runId);
+    expect(b).toMatchObject({ status: 'executing', has_plan: true, business_date: SC_TODAY, execution_no: 1 });
+    expect(await count('succession_sync_items', b['id'])).toBe(3);
+    expect(await count('succession_sync_targets', b['id'])).toBe(2);
+    expect(register).toHaveBeenCalledTimes(1);
+    expect(record).not.toHaveBeenCalled();
+    const call = register.mock.calls[0]![1];
+    expect(call.planCommandId).toBe(`${h.input.runId}:succession:1:0`);
+    expect(call.planOutcomes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ rowKind: 'nomination', rowId: FX.n3, status: 'skipped' }),
+        expect.objectContaining({ rowKind: 'object', rowId: FX.o3, status: 'skipped' }),
+      ]),
+    );
+    expect(
+      await h.deps.transaction((tx) => h.port.getPageCommit(tx, { ...h.key, pageCommandId: call.planCommandId })),
+    ).toMatchObject({ kind: 'plan', executionNo: 1 });
+    await consumeRun(h.deps, h.input);
+    expect(begin).toHaveBeenCalledTimes(1);
+    const response = await w.request('POST', '/records', {
+      ifMatch: 0,
+      body: {
+        successionType: 'org',
+        targetOrgId: std.orgA.id,
+        successorEmployeeId: std.successor2.id,
+        backupType: 'principal',
+        startDate: SC_TODAY,
+      },
+    });
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ error: { details: { reason: 'TARGET_SYNC_IN_PROGRESS' } } });
+  });
+  it('步骤 3：另一 run 持互斥时只记 waiting，不能进入 begin', async () => {
+    const first = setup();
+    await consumeRun(first.deps, first.input);
+    const next = setup();
+    const begin = vi.spyOn(next.port, 'beginConsumption');
+    await consumeRun(next.deps, next.input);
+    expect(await batch(next.input.runId)).toMatchObject({ status: 'waiting', block_reason: 'BATCH_IN_PROGRESS' });
+    expect(begin).not.toHaveBeenCalled();
+  });
+  it('步骤 14：零执行目标同事务完成，登记空集并释放互斥；终态重投幂等', async () => {
+    const h = setup({ empty: true });
+    const complete = vi.spyOn(h.port, 'completeConsumption');
+    await consumeRun(h.deps, h.input);
+    expect(await batch(h.input.runId)).toMatchObject({ status: 'completed', result: 'succeeded', has_plan: true });
+    expect((await h.outcomes()).every((r) => r.status === 'skipped')).toBe(true);
+    expect(complete).toHaveBeenCalledTimes(1);
+    await consumeRun(h.deps, h.input);
+    expect(complete).toHaveBeenCalledTimes(1);
+    await expect(consumeRun(h.deps, { ...h.input, requesterUserId: w.user.id })).rejects.toMatchObject({
+      code: 'FORBIDDEN',
+      details: { reason: 'RUN_NOT_RETRYABLE' },
+    });
+    const next = setup();
+    await consumeRun(next.deps, next.input);
+    expect(await batch(next.input.runId)).toMatchObject({ status: 'executing' });
+  });
+  it('步骤 6：隐式范围覆盖回滚后 abort(null,new_run)，无计划/互斥，通知原触发人', async () => {
+    await setting('sync_strategy', 'overwrite_in_scope', revision++);
+    const h = setup();
+    const abort = vi.spyOn(h.port, 'abortConsumption');
+    await consumeRun(h.deps, h.input);
+    const b = await batch(h.input.runId);
+    expect(b).toMatchObject({ status: 'rejected', has_plan: false, end_reason: 'SCOPE_REQUIRED' });
+    expect(abort).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        executionNo: null,
+        code: 'SCOPE_REQUIRED',
+        recovery: 'new_run',
+      }),
+    );
+    expect(await count('succession_sync_items', b['id'])).toBe(0);
+    expect(await count('succession_notifications', b['id'])).toBe(1);
+    expect((await h.outcomes()).every((r) => r.status === 'aborted')).toBe(true);
+  });
+  it('步骤 7：源失效整事务回滚，恢复后第一次消费执行号仍为 1', async () => {
+    const h = setup();
+    const source = vi.spyOn(h.port, 'authorizeSourceRead');
+    source.mockResolvedValueOnce({
+      ok: false,
+      runStatus: 'frozen',
+      reason: 'OWNER_UNAVAILABLE',
+      forbidden: { objectIds: [], fields: {}, sources: [], orgIds: [], orgFields: {} },
+    });
+    await consumeRun(h.deps, h.input);
+    expect(await batch(h.input.runId)).toMatchObject({ status: 'blocked', has_plan: false });
+    await consumeRun(h.deps, h.input);
+    expect(await batch(h.input.runId)).toMatchObject({ status: 'executing', execution_no: 1 });
+  });
+  it('步骤 8：写主体撤销执行身份不能留下计划', async () => {
+    const h = setup();
+    await w.asTenant((tx) =>
+      tx.execute(sql`UPDATE permission_grants SET status='revoked'
+      WHERE tenant_id=${w.tenant.id}::uuid AND user_id=${w.user.id}::uuid`),
+    );
+    try {
+      await consumeRun(h.deps, h.input);
+      expect(await batch(h.input.runId)).toMatchObject({ status: 'blocked', block_reason: 'PRINCIPAL_UNAVAILABLE' });
+    } finally {
+      await w.asTenant((tx) =>
+        tx.execute(sql`UPDATE permission_grants SET status='active'
+        WHERE tenant_id=${w.tenant.id}::uuid AND user_id=${w.user.id}::uuid`),
+      );
+    }
+  });
+  it('步骤 13：提交返回未知时按同执行号页 0 证明回查，不重复登记', async () => {
+    const h = setup();
+    const transaction = h.deps.transaction;
+    let fail = true;
+    h.deps.transaction = async (work) => {
+      const value = await transaction(work);
+      if (fail) {
+        fail = false;
+        throw new Error('模拟 COMMIT 回包丢失');
+      }
+      return value;
+    };
+    const register = vi.spyOn(h.port, 'registerTargets');
+    await consumeRun(h.deps, h.input);
+    expect(await batch(h.input.runId)).toMatchObject({ has_plan: true, status: 'executing' });
+    expect(register).toHaveBeenCalledTimes(1);
+  });
+  it.runIf(Boolean(process.env['TEST_DATABASE_URL']))('真 PG：并发两次 consumeRun 只有一个进入 begin', async () => {
+    const first = setup();
+    const next = setup();
+    let release!: () => void;
+    let entered!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const ready = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const original = first.port.beginConsumption.bind(first.port);
+    vi.spyOn(first.port, 'beginConsumption').mockImplementation(async (tx, input) => {
+      entered();
+      await gate;
+      return original(tx, input);
+    });
+    const secondBegin = vi.spyOn(next.port, 'beginConsumption');
+    const a = consumeRun(first.deps, first.input);
+    await ready;
+    const b = consumeRun(next.deps, next.input);
+    try {
+      await waitForBlocked(testDb().db, 1);
+    } finally {
+      release();
+    }
+    await Promise.all([a, b]);
+    expect(secondBegin).not.toHaveBeenCalled();
+    expect(await batch(next.input.runId)).toMatchObject({ status: 'waiting' });
+  });
+});
