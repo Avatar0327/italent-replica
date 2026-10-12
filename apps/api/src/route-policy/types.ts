@@ -5,11 +5,13 @@
  * 响应与形状；框架不据此拦截或改写请求，只做注册身份核对与自检（§3.1）。注释里“框架评估 / 框架调用”的描述
  * 是接管阶段（§10）的目标语义，在 PR-A 由反向测试按现状核对其真实性。
  */
-import type { AdminCapability } from '@italent/domain';
+import type { AdminCapability, ButtonLevel } from '@italent/domain';
 import type { ErrorCode } from '../errors.js';
 
+/** DEC-442①：按钮层级以领域目录为单一来源。 */
+export type { ButtonLevel } from '@italent/domain';
+
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
-export type ButtonLevel = 'list' | 'detail' | 'app_page';
 export type ObjectCode = string;
 /** 具名登记项的名称：定位器 / 守卫 / 谓词 / 关系 / 映射函数 / 形状 / 投影器 / 命令内前提。实现随接管 PR。 */
 export type GuardName = string;
