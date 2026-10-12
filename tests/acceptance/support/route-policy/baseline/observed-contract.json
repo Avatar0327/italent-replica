@@ -20925,9 +20925,6 @@
       },
       "module": "succession",
       "primitives": {
-        "button": [
-          "button()"
-        ],
         "command": [
           "revision(c)",
           "runCommand / runWrite"
