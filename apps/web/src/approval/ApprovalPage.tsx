@@ -6,7 +6,7 @@ import { approvalList } from './api.js';
 import { ApprovalDetail, formatInstant } from './ApprovalDetail.js';
 import { messages as m, statusLabels, typeLabels } from './messages.js';
 import type { ApprovalList, ApprovalRow, ApprovalView } from './types.js';
-import { ReferenceTheme, ReferenceView } from '../transfer/ReferenceView.js';
+import { ReferenceFrame, ReferenceView } from '../transfer/ReferenceView.js';
 import './approval.css';
 
 export function ApprovalPage() {
@@ -14,7 +14,7 @@ export function ApprovalPage() {
   const value = params.get('view');
   const view: ApprovalView = value === 'completed' || value === 'initiated' ? value : 'pending';
   return (
-    <ReferenceTheme>
+    <ReferenceFrame>
       <section className="approval-page">
         <Tabs
           tabPosition="left"
@@ -30,7 +30,7 @@ export function ApprovalPage() {
           }))}
         />
       </section>
-    </ReferenceTheme>
+    </ReferenceFrame>
   );
 }
 

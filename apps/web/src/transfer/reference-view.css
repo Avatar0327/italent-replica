@@ -1,91 +1,15 @@
-/* DEC-456：仅适配本片；公共壳与主题由 FE-0 收敛后删除这些选择器。 */
-.shell-content:has(.r1c-reference) {
-  background: #f7f9fa;
-}
-.shell-content:has(.r1c-reference) > .shell-context {
-  display: none;
-}
-.shell-workspace:has(.r1c-reference) {
-  background: transparent;
-  padding: 0;
-  min-height: calc(100vh - 74px);
-}
-.r1c-reference {
-  color: #33383d;
-  font-size: 12px;
-  font-family: -apple-system, system-ui, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
-}
-.r1c-view-heading {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 56px;
-}
-.r1c-view-heading h1,
-.r1c-view-title.ant-btn {
-  margin: 0;
-  padding-inline: 0;
-  font-size: 16px;
-  font-weight: 600;
-  line-height: 24px;
-  color: #33383d;
-}
-.r1c-view-icon {
-  display: grid;
-  place-items: center;
-  width: 26px;
-  height: 26px;
-  color: white;
-  background: #146eff;
-  border-radius: 5px;
-  font-size: 20px;
-}
-.r1c-view-actions {
-  margin-left: auto;
-}
-.r1c-list {
-  background: white;
-  padding: 16px;
-  border-radius: 8px;
-}
+/* 公共主题、无面包屑外壳、视图标题与抽屉均复用 FE-0；这里只保留业务区排版。 */
 .r1c-list > section > .page-heading {
   display: none;
 }
-.r1c-reference .ant-table-thead > tr > th,
-.r1c-reference .ant-table-tbody > tr > td {
-  height: 40px;
-  border-color: #e6e8eb;
-}
-.r1c-reference .ant-table-cell .ant-btn-link {
-  height: 20px;
-  padding: 0;
-  font-size: 12px;
-  color: #0054f0;
-}
-.r1c-reference .page-toolbar {
-  justify-content: flex-end;
-  margin-bottom: 0;
-}
-.r1c-reference .page-filters {
-  padding-bottom: 16px;
-}
-.r1c-reference .ant-pagination-options-size-changer {
-  height: 26px;
-}
-.r1c-reference-drawer .detail-section h2 {
-  border-color: #146eff;
-  font-size: 14px;
+.r1c-list > .list-page {
+  min-height: 620px;
 }
 .r1c-reference-drawer .ant-drawer-body {
   background: #f7f9fa;
 }
-.r1c-reference-drawer .ant-drawer-body > section,
 .r1c-reference-drawer .ant-drawer-body > .legacy-page {
   background: white;
   padding: 20px;
   border-radius: 8px;
-}
-
-.r1c-view-title.ant-btn {
-  color: #0054f0;
 }

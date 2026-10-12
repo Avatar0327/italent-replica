@@ -85,7 +85,7 @@ test('AC-FE-R1c-03 调动列表、表单、我的申请与注释', async ({ page
   await expect(page.getByRole('button', { name: /提\s*交/, exact: true })).toBeEnabled();
   await page.screenshot({ path: testInfo.outputPath('transfer-form.png'), fullPage: true, animations: 'disabled' });
   await page.getByRole('button', { name: '关闭', exact: true }).click();
-  await page.getByRole('button', { name: '调动中员工', exact: true }).click();
+  await page.getByRole('button', { name: '切换视图', exact: true }).click();
   await page.getByRole('menuitem', { name: '我的申请', exact: true }).click();
   await page.getByRole('button', { name: '合成员工的调动申请', exact: true }).click();
   await expect(page.getByText('合成工作地', { exact: true })).toBeVisible();
@@ -265,7 +265,7 @@ async function switchIdentity(page: Page, path: string) {
 test('AC-FE-R1c-10 参考包视图切换、主题密度与右侧详情抽屉', async ({ page }) => {
   await switchIdentity(page, '/transfer');
   await expect(page.locator('.ant-breadcrumb')).toBeHidden();
-  const view = page.getByRole('button', { name: '调动中员工', exact: true });
+  const view = page.getByRole('button', { name: '切换视图', exact: true });
   await expect(view).toBeVisible();
   await view.click();
   await page.getByRole('menuitem', { name: '全部调动记录', exact: true }).click();

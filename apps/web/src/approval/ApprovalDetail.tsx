@@ -1,4 +1,4 @@
-import { Alert, Button, Drawer, Empty, Input, Space, Table, Tag, Timeline } from 'antd';
+import { Alert, Button, Empty, Input, Space, Table, Tag, Timeline } from 'antd';
 import { useEffect, useState } from 'react';
 import {
   ApiError,
@@ -109,61 +109,68 @@ function useApprovalDetail({ row, demo, onClose, onChanged }: DetailProps) {
 
 export function ApprovalDetail(props: DetailProps) {
   const state = useApprovalDetail(props);
-  return (
-    <Drawer
-      open
-      title={m.detail}
-      width={1040}
-      rootClassName="r1c-reference-drawer"
-      onClose={props.onClose}
-      destroyOnHidden
-    >
-      <DecisionNote id="approval" />
-      {props.demo && <Alert type="info" message={m.demo} description={m.demoDetail} showIcon />}
-      {!!state.error && <PageState kind="error" error={state.error} retry={state.refresh} />}
-      {!state.error && !state.detail && <PageState kind="loading" />}
-      {state.detail && (
-        <>
-          {state.mustReload && <Alert type="warning" message={m.reloadRequired} showIcon />}
-          <DetailContent detail={state.detail} refresh={state.refresh} />
-          <ActionBar {...props} state={state} detail={state.detail} />
-          {state.action && (
-            <FormOverlay
-              open
-              mode="modal"
-              recordKey={`${state.detail.id}:${state.detail.revision}:${state.action}`}
-              title={m[state.action]}
-              onClose={() => state.setAction(undefined)}
-              onRefresh={state.refresh}
-              onSubmit={state.submit}
-              groups={[actionGroup(state.action, state.detail)]}
-            />
-          )}
-        </>
-      )}
-    </Drawer>
-  );
-}
-function DetailContent({ detail, refresh }: { detail: Detail; refresh(): void }) {
+  const detail = state.detail;
   return (
     <>
-      {detail.status === 'approved' && <Alert type="info" message={m.approvedNotice} showIcon />}
       <DetailPage
-        title={detail.title}
-        summary={
-          <Space className="approval-summary">
-            <Tag color={detail.status === 'approved' ? 'green' : 'blue'}>
-              {statusLabels[detail.status ?? ''] ?? detail.status}
-            </Tag>
-            <span>{typeLabels[detail.approvalType] ?? detail.approvalType}</span>
-          </Space>
+        open
+        onClose={props.onClose}
+        title={detail?.title ?? m.detail}
+        summary={<DetailSummary state={state} demo={props.demo} />}
+        actions={detail && <Button onClick={state.refresh}>{m.refresh}</Button>}
+        tabs={
+          detail
+            ? [
+                { key: 'form', label: m.values, children: <ApprovalFields detail={detail} /> },
+                { key: 'history', label: m.history, children: <ApprovalHistory detail={detail} /> },
+              ]
+            : undefined
         }
-        actions={<Button onClick={refresh}>{m.refresh}</Button>}
-        tabs={[
-          { key: 'form', label: m.values, children: <ApprovalFields detail={detail} /> },
-          { key: 'history', label: m.history, children: <ApprovalHistory detail={detail} /> },
-        ]}
+        sections={
+          detail
+            ? [
+                {
+                  key: 'actions',
+                  title: m.operation,
+                  children: <ActionBar {...props} state={state} detail={detail} />,
+                },
+              ]
+            : []
+        }
       />
+      {detail && state.action && (
+        <FormOverlay
+          open
+          mode="modal"
+          recordKey={detail.id + ':' + detail.revision + ':' + state.action}
+          title={m[state.action]}
+          onClose={() => state.setAction(undefined)}
+          onRefresh={state.refresh}
+          onSubmit={state.submit}
+          groups={[actionGroup(state.action, detail)]}
+        />
+      )}
+    </>
+  );
+}
+function DetailSummary({ state, demo }: { state: ReturnType<typeof useApprovalDetail>; demo?: boolean }) {
+  const detail = state.detail;
+  return (
+    <>
+      <DecisionNote id="approval" />
+      {demo && <Alert type="info" message={m.demo} description={m.demoDetail} showIcon />}
+      {!!state.error && <PageState kind="error" error={state.error} retry={state.refresh} />}
+      {!state.error && !detail && <PageState kind="loading" />}
+      {state.mustReload && <Alert type="warning" message={m.reloadRequired} showIcon />}
+      {detail?.status === 'approved' && <Alert type="info" message={m.approvedNotice} showIcon />}
+      {detail && (
+        <Space className="approval-summary">
+          <Tag color={detail.status === 'approved' ? 'green' : 'blue'}>
+            {statusLabels[detail.status ?? ''] ?? detail.status}
+          </Tag>
+          <span>{typeLabels[detail.approvalType] ?? detail.approvalType}</span>
+        </Space>
+      )}
     </>
   );
 }

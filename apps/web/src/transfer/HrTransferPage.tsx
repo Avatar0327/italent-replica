@@ -5,15 +5,15 @@ import { transferExamples, type TransferListRow } from '../demo-stubs/transfer.j
 import { Can, DecisionNote, DetailPage, ListPage, useSession, type PageRequest } from '../foundation/index.js';
 import { TransferApplication } from '../self-service/shared/TransferApplication.js';
 import { text as m } from './messages.js';
-import { ReferenceTheme, ReferenceView } from './ReferenceView.js';
+import { ReferenceFrame, ReferenceView } from './ReferenceView.js';
 import './transfer.css';
 import './hr-transfer.css';
 
 export function HrTransferPage() {
   return (
-    <ReferenceTheme>
+    <ReferenceFrame>
       <HrTransferContent />
-    </ReferenceTheme>
+    </ReferenceFrame>
   );
 }
 function HrTransferContent() {
@@ -150,38 +150,40 @@ function TransferList({ tab }: { tab: string }) {
 function TransferExampleDetail({ selected, onClose }: { selected: TransferListRow; onClose(): void }) {
   const statuses = { running: m.running, approved: m.approved, effective: m.effectiveStatus };
   return (
-    <Drawer open title={m.detailTitle} width={920} rootClassName="r1c-reference-drawer" onClose={onClose}>
-      <DecisionNote id="transfer" />
-      <Alert type="info" message={m.demo} description={m.listGap} showIcon />
-      <DetailPage
-        title={selected.name}
-        summary={
+    <DetailPage
+      open
+      onClose={onClose}
+      title={selected.name}
+      summary={
+        <>
+          <DecisionNote id="transfer" />
+          <Alert type="info" message={m.demo} description={m.listGap} showIcon />
           <Space>
             <Tag>{statuses[selected.status]}</Tag>
             {selected.code}
           </Space>
-        }
-        sections={[
-          {
-            key: 'transfer',
-            title: m.adjustment,
-            children: (
-              <Descriptions
-                bordered
-                column={2}
-                items={[
-                  { key: 'date', label: m.date, children: selected.effectiveDate },
-                  { key: 'type', label: m.type, children: selected.type },
-                  { key: 'before', label: m.beforeDepartment, children: selected.beforeDepartment },
-                  { key: 'after', label: m.afterDepartment, children: selected.department },
-                  { key: 'beforePosition', label: m.beforePosition, children: selected.beforePosition },
-                  { key: 'afterPosition', label: m.afterPosition, children: selected.position },
-                ]}
-              />
-            ),
-          },
-        ]}
-      />
-    </Drawer>
+        </>
+      }
+      sections={[
+        {
+          key: 'transfer',
+          title: m.adjustment,
+          children: (
+            <Descriptions
+              bordered
+              column={2}
+              items={[
+                { key: 'date', label: m.date, children: selected.effectiveDate },
+                { key: 'type', label: m.type, children: selected.type },
+                { key: 'before', label: m.beforeDepartment, children: selected.beforeDepartment },
+                { key: 'after', label: m.afterDepartment, children: selected.department },
+                { key: 'beforePosition', label: m.beforePosition, children: selected.beforePosition },
+                { key: 'afterPosition', label: m.afterPosition, children: selected.position },
+              ]}
+            />
+          ),
+        },
+      ]}
+    />
   );
 }
