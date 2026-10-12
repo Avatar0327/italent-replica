@@ -1,5 +1,5 @@
 /** §1.5 / #8：本人偏好是 Map.view 的个人配置，不是 Map 数据编辑字段。 */
-import { isUuid, sql, type Tx } from '@italent/db';
+import { isUuid, sql, type Tx, SUCCESSION_MAP_DISPLAY_DEFAULTS } from '@italent/db';
 import { z } from 'zod';
 import { AppError } from '../../errors.js';
 import { readEffectiveSetting } from '../tenant-settings/service.js';
@@ -50,16 +50,13 @@ export async function readPreferences(
   );
   const depth =
     stored?.depth ?? Number((await readEffectiveSetting(tx, tenantId, 'succession.map_default_depth')).value);
-  // DEC-439①：两种地图初值相同，未经原站证实，取证中（#263）。
+  // DEC-439① 暂定，口径讨论中；未经原站证实，取证中（#263）。
   return {
     id: `${userId}:${kind}`,
     rootOrgId: null,
     depth,
     hiddenOrgIds: [],
-    hideVirtual: false,
-    showKeyPositions: false,
-    showPositionsWithoutSuccessor: true,
-    showIncumbents: true,
+    ...SUCCESSION_MAP_DISPLAY_DEFAULTS,
     revision: 0,
     ...stored,
   };

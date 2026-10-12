@@ -37,7 +37,15 @@ export const SUCCESSION_OPEN_END = '9999-12-31';
 
 const list = (values: readonly string[]) => sql.raw(values.map((value) => `'${value}'`).join(', '));
 
-/** C1 / DEC-439①：四个显示开关初值未经原站证实，取证中（#263）。 */
+/** DEC-439① 暂定，口径讨论中；两种地图共用。未经原站证实，取证中（#263）。 */
+export const SUCCESSION_MAP_DISPLAY_DEFAULTS = Object.freeze({
+  hideVirtual: false,
+  showKeyPositions: false,
+  showPositionsWithoutSuccessor: true,
+  showIncumbents: true,
+});
+
+/** C1 / DEC-439① 暂定，口径讨论中；初值统一取具名常量，未经原站证实，取证中（#263）。 */
 export const successionMapPreferences = pgTable(
   'succession_map_preferences',
   {
@@ -49,10 +57,12 @@ export const successionMapPreferences = pgTable(
     rootOrgId: uuid('root_org_id'),
     depth: integer('depth').notNull(),
     hiddenOrgIds: jsonb('hidden_org_ids').$type<string[]>().notNull().default([]),
-    hideVirtual: boolean('hide_virtual').notNull().default(false),
-    showKeyPositions: boolean('show_key_positions').notNull().default(false),
-    showPositionsWithoutSuccessor: boolean('show_positions_without_successor').notNull().default(true),
-    showIncumbents: boolean('show_incumbents').notNull().default(true),
+    hideVirtual: boolean('hide_virtual').notNull().default(SUCCESSION_MAP_DISPLAY_DEFAULTS.hideVirtual),
+    showKeyPositions: boolean('show_key_positions').notNull().default(SUCCESSION_MAP_DISPLAY_DEFAULTS.showKeyPositions),
+    showPositionsWithoutSuccessor: boolean('show_positions_without_successor')
+      .notNull()
+      .default(SUCCESSION_MAP_DISPLAY_DEFAULTS.showPositionsWithoutSuccessor),
+    showIncumbents: boolean('show_incumbents').notNull().default(SUCCESSION_MAP_DISPLAY_DEFAULTS.showIncumbents),
     revision: integer('revision').notNull().default(1),
   },
   (t) => [

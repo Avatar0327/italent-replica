@@ -2711,7 +2711,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/succession/map-preferences.ts#mapKind': ['33f3aded4670', '583ee92c250c'],
   'apps/api/src/modules/succession/map-preferences.ts#preferenceBody': ['5f7d027d35a0', '5053376e78bb'],
   'apps/api/src/modules/succession/map-preferences.ts#preferenceResults': ['aca767e48feb', '5b773205eb87'],
-  'apps/api/src/modules/succession/map-preferences.ts#readPreferences': ['edbc840ce37a', 'e107b231567f'],
+  'apps/api/src/modules/succession/map-preferences.ts#readPreferences': ['e4abc8bfafbe', '669f976c5d46'],
   'apps/api/src/modules/succession/map-preferences.ts#uuid': ['27799036cd38', '116fb9b41710'],
   'apps/api/src/modules/succession/map-routes.ts#PREFS': ['2b880b6679fa', '1243a33d3e35'],
   'apps/api/src/modules/succession/map-routes.ts#STATS': ['8b4697610d76', '1243a33d3e35'],
