@@ -2,6 +2,7 @@
 import { type SuccessionLevelRow, type SyncNomination, type HealthMetric } from '@italent/domain';
 import type { TalentReviewSyncPort } from '../talent-review/sync-port.js';
 import { readOnDutyCount } from './org-stats.js';
+import { orgHealthSourceStatus } from './health-source-access.js';
 import { healthPeople, customHealthPopulation } from './health-population.js';
 import type { healthPrincipal } from './health-principal.js';
 import { type CalcContext, type CalcObject, CalcObjectFailure } from './calc-contract.js';
@@ -27,6 +28,13 @@ async function readHealthSource(row: SuccessionLevelRow, context: MetricContext)
     incumbents: 0,
     field: { object: 'org', code: row.fieldCode ?? 'count', path: 'org.value', kind: 'number' },
   };
+  base.status = await orgHealthSourceStatus(tx, row, {
+    tenantId: run.tenantId,
+    userId: principal.userId,
+    orgId: object.objectId,
+    today: principal.today,
+  });
+  if (base.status === 'forbidden') return base;
   const args = {
     tenantId: run.tenantId,
     orgIds: [object.objectId],

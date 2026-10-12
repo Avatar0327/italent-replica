@@ -31,7 +31,7 @@ describe('AC-SC-07 空人口 / 原始来源 / 匹配结果独立矩阵', () => {
         await w.asTenant(async (tx) => {
           await tx.execute(sql`INSERT INTO permission_profile_apps(tenant_id,profile_id,app_code)
             SELECT ${w.tenant.id}::uuid,id,'TenantBase' FROM permission_profiles
-            WHERE code='standard_succession_runner'`);
+            WHERE code='standard_succession_runner' ON CONFLICT DO NOTHING`);
           await tx.execute(sql`INSERT INTO permission_profile_objects
             (tenant_id,profile_id,object_code,can_create,can_update,can_delete)
             SELECT ${w.tenant.id}::uuid,id,'TenantBase.EmployeeInformation',false,false,false
