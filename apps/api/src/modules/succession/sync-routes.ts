@@ -93,14 +93,22 @@ async function writeSync(c: Context<TenantEnv>, deps: TenantRouteDeps, action: '
       if (batch && id && batch.revision !== expectedRevision)
         throw new AppError('REVISION_CONFLICT', '同步批次已变化', { reason: 'REVISION_MISMATCH' });
       const sync = currentPort();
-      if (action === 'abort') batch = await abortSync(tx, sync, batch!, commandId, expectedRevision);
+      if (action === 'abort') batch = await abortSync(tx, sync, batch!, commandId, expectedRevision, ctx.userId);
       else {
         if (!batch) {
           const header = await sync.port.loadRun(tx, { tenantId: ctx.tenantId, runId: runId! });
           if (!header) throw new AppError('NOT_FOUND', '同步来源不存在');
           batch = await ensureBatch(tx, { tenantId: ctx.tenantId, runId: runId!, leaseOwner: commandId }, header);
         }
-        batch = await save(tx, batch, { nextRetryAt: ctx.now, autoRetryCount: 0 }, ctx.now, commandId, action);
+        batch = await save(
+          tx,
+          batch,
+          { nextRetryAt: ctx.now, autoRetryCount: 0 },
+          ctx.now,
+          commandId,
+          action,
+          ctx.userId,
+        );
       }
       return {
         status: action === 'abort' ? 200 : 202,
@@ -109,20 +117,23 @@ async function writeSync(c: Context<TenantEnv>, deps: TenantRouteDeps, action: '
     },
   });
   const stored = response.body as StoredResult;
+  if (action !== 'abort') await driveSync(deps, ctx, stored.ids[0]!);
+  const result = await authorizeSuccessionResult(deps, ctx, stored, syncResults);
+  c.header('ETag', `"${result.revisions.get(stored.ids[0]!)}"`);
+  return c.json(result.items[0], response.status);
+}
+async function driveSync(deps: TenantRouteDeps, ctx: SuccessionContext, id: string) {
   // 已提交的驱动请求可由恢复扫描接续；终态重放只投影，不再次执行。
   const [fresh] = await withTenant(deps.db, ctx.tenantId, (tx) =>
-    tx.select().from(batches).where(batchWhere(ctx.tenantId, stored.ids[0]!)),
+    tx.select().from(batches).where(batchWhere(ctx.tenantId, id)),
   );
-  if (action !== 'abort' && fresh && !terminalBatch(fresh))
-    await consumeRun(currentPort(), {
+  if (fresh && !terminalBatch(fresh))
+    await consumeRun(requireSyncPort(deps), {
       tenantId: ctx.tenantId,
       runId: fresh.sourceRunId,
       leaseOwner: randomUUID(),
       requesterUserId: ctx.userId,
     });
-  const result = await authorizeSuccessionResult(deps, ctx, stored, syncResults);
-  c.header('ETag', `"${result.revisions.get(stored.ids[0]!)}"`);
-  return c.json(result.items[0], response.status);
 }
 export function registerSyncRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.get(PATH, async (c) => {

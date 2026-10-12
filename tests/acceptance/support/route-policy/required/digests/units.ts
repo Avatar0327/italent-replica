@@ -709,7 +709,7 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/succession/sync-routes.ts': {
     checkTargets: '46870e308cf2',
-    writeSync: 'c54fd194f509',
+    writeSync: '9f4a97a41696',
   },
   'apps/api/src/modules/succession/write-support.ts': {
     checkCandidateAccess: '7843395303d7',
@@ -1752,7 +1752,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/succession/sync-read.ts#syncAdmin': 'bee0478d2055',
   'apps/api/src/modules/succession/sync-read.ts#syncRowsVisible': '9ec5d621e3ff',
   'apps/api/src/modules/succession/sync-routes.ts#checkTargets': '89f78ee359dd',
-  'apps/api/src/modules/succession/sync-routes.ts#writeSync': 'c31469898370',
+  'apps/api/src/modules/succession/sync-routes.ts#writeSync': 'c5c4bf742342',
   'apps/api/src/modules/succession/write-support.ts#checkCandidateAccess': 'ea8155f2a727',
   'apps/api/src/modules/succession/write-support.ts#checkWriteAccess': 'eac8ef9cc70b',
   'apps/api/src/modules/survey360/access.ts#activityVisibleSql': '11f326016f03',

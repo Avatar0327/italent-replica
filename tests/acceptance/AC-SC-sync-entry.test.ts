@@ -511,7 +511,7 @@ function sameExecution(event: BatchAudit, actor: string | null, execution: numbe
   expect(Object.keys(event.before).sort()).toEqual(Object.keys(event.after).sort());
   expect(event.changes.some((change) => change.field === 'executionNo')).toBe(false);
 }
-describe('第 1 轮审计正确性与明细 recovery 回归', () => {
+describe('AC-SC-03/04 第 1 轮审计正确性与明细 recovery 回归', () => {
   it('人工 sync 驱动、计划、完成与通知保留实际操作人和真实前后值，同键不重复通知审计', async () => {
     const h = await setup(false);
     const options = { body: { runId: h.input.runId }, idempotencyKey: randomUUID() };
@@ -554,15 +554,25 @@ describe('第 1 轮审计正确性与明细 recovery 回归', () => {
     expect(claim.before).toMatchObject({ status: 'blocked', executionNo: 1 });
     expect(claim.after).toMatchObject({ status: 'executing', executionNo: 2 });
   });
-  it('SA abort 已计划批次记本人操作，执行号保持 1，不制造空→1', async () => {
+  it('SA abort 已计划批次记实际调用人而非原触发人，执行号保持 1，不制造空→1', async () => {
     const h = await setup();
-    const response = await w.request('POST', `/sync-batches/${h.batch.id}/abort`, {
+    const operator = await w.userOf(std.successor2);
+    expect(operator).not.toBe(h.batch.actorUserId);
+    await w.asTenant((tx) =>
+      tx.execute(sql`INSERT INTO permission_grants (tenant_id,user_id,profile_id)
+      SELECT ${w.tenant.id}::uuid,${operator}::uuid,id FROM permission_profiles
+      WHERE tenant_id=${w.tenant.id}::uuid AND code='standard_succession_admin' ON CONFLICT DO NOTHING`),
+    );
+    const api = tenantApi(w.db, { clock: () => SC_NOW });
+    const response = await api.request('POST', `/api/tenant/succession/sync-batches/${h.batch.id}/abort`, {
+      user: operator,
+      tenant: w.tenant.id,
       ifMatch: h.batch.revision,
       body: {},
     });
     expect(response.status).toBe(200);
     const event = (await batchAudit(h.batch.id, 'terminated'))[0]!;
-    sameExecution(event, w.user.id, 1);
+    sameExecution(event, operator, 1);
     expect(event.before).toMatchObject({ status: 'executing', endReason: null });
     expect(event.after).toMatchObject({ status: 'terminated', endReason: 'aborted' });
   });
@@ -574,6 +584,24 @@ describe('第 1 轮审计正确性与明细 recovery 回归', () => {
     sameExecution(event, null, 1);
     expect(event.before.endReason).toBeNull();
     expect(event.after.endReason).toBe('superseded');
+  });
+  it('自动重试、接管和完成通知使用系统操作人，次数取真实前后值', async () => {
+    const h = await setup();
+    await consumeRun({ ...h.deps, authorize: () => false }, h.input);
+    h.port.advance(121);
+    const now = new Date(SC_NOW.getTime() + 60_001);
+    await recoverSyncBatches({ ...h.deps, clock: () => now }, w.tenant.id);
+    const retry = (await batchAudit(h.batch.id, 'auto-retry'))[0]!;
+    expect(retry.actor).toBeNull();
+    expect(retry.before.autoRetryCount).toBe(0);
+    expect(retry.after.autoRetryCount).toBe(1);
+    for (const phase of ['claim', 'execute', 'complete', 'sync_done'])
+      expect((await batchAudit(h.batch.id, phase))[0]!.actor, phase).toBeNull();
+    const notification = (await batchAudit(h.batch.id, 'sync_done'))[0]!;
+    expect(notification.before).toBeNull();
+    expect(notification.after).toMatchObject({ kind: 'sync_done', state: 'pending', recipientUserId: w.user.id });
+    await recoverSyncBatches({ ...h.deps, clock: () => now }, w.tenant.id);
+    expect(await batchAudit(h.batch.id, 'sync_done')).toHaveLength(1);
   });
   it('items 与 targets 在投影层统一输出 recovery，不暴露内部 retryable', async () => {
     const h = await setup();

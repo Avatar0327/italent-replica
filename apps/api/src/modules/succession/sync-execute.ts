@@ -210,6 +210,7 @@ class Execution {
       ctx.now,
       commandId,
       'execute',
+      this.input.requesterUserId ?? null,
     );
   }
   async finish(tx: Tx) {
@@ -224,6 +225,7 @@ class Execution {
         this.deps.clock(),
         `${this.key.runId}:succession:${this.key.executionNo}:blocked`,
         'blocked',
+        this.input.requesterUserId ?? null,
       );
     }
     const state = await this.deps.port.completeConsumption(tx, this.key);
@@ -242,9 +244,10 @@ class Execution {
       now,
       `${this.key.runId}:succession:${this.key.executionNo}:complete`,
       'complete',
+      this.input.requesterUserId ?? null,
     );
     await release(tx, completed);
-    await notify(tx, completed, now);
+    await notify(tx, completed, now, this.input.requesterUserId ?? null);
     const orgs = await tx
       .select({ id: targets.targetId })
       .from(targets)
@@ -274,7 +277,14 @@ class Execution {
       await mutex(tx, this.key.tenantId);
       const [batch] = await this.load(tx, true);
       if (['completed', 'terminated', 'rejected'].includes(batch!.status)) return batch!;
-      return terminateLocal(tx, batch!, 'superseded', this.deps.clock(), `${this.key.runId}:superseded`);
+      return terminateLocal(
+        tx,
+        batch!,
+        'superseded',
+        this.deps.clock(),
+        `${this.key.runId}:superseded`,
+        this.input.requesterUserId ?? null,
+      );
     }
     // 新执行接管或终止后，旧 worker 不得再以错误处理覆盖批次。
     try {
@@ -291,6 +301,7 @@ class Execution {
       this.deps.clock(),
       `${this.key.runId}:succession:${this.key.executionNo}:blocked`,
       'blocked',
+      this.input.requesterUserId ?? null,
     );
   }
 }

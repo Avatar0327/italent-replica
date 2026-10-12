@@ -30,6 +30,8 @@ export async function terminateLocal(
   reason: 'aborted' | 'superseded',
   now: Date,
   command: string,
+  actorUserId: string | null = null,
+  executionNo = batch.executionNo,
 ) {
   await tx.execute(sql`UPDATE succession_sync_targets SET status='aborted',retryable=false
     WHERE tenant_id=${batch.tenantId}::uuid AND batch_id=${batch.id}::uuid
@@ -47,20 +49,29 @@ export async function terminateLocal(
       blockReason: null,
       finishedAt: now,
       nextRetryAt: null,
-      executionNo: batch.executionNo,
+      executionNo,
     },
     now,
     command,
     'terminated',
+    actorUserId,
   );
 }
-export async function abortSync(tx: Tx, deps: SyncDeps, batch: SyncBatch, commandId: string, expectedRevision: number) {
+export async function abortSync(
+  tx: Tx,
+  deps: SyncDeps,
+  batch: SyncBatch,
+  commandId: string,
+  expectedRevision: number,
+  actorUserId: string | null = null,
+) {
   const key = { tenantId: batch.tenantId, runId: batch.sourceRunId, consumer: 'succession' as const };
   // 调用方先取互斥；不先锁批次，避免与持消费记录 S 锁的执行页形成反向等待。
   let executionNo = batch.executionNo;
   if (executionNo === null) {
     const state = await deps.port.beginConsumption(tx, { ...key, leaseOwner: commandId, leaseSeconds: 120 });
-    if (state.status === 'superseded') return terminateLocal(tx, batch, 'superseded', deps.clock(), commandId);
+    if (state.status === 'superseded')
+      return terminateLocal(tx, batch, 'superseded', deps.clock(), commandId, actorUserId);
     executionNo = state.executionNo;
   }
   const state = await deps.port.abortConsumption(tx, {
@@ -75,10 +86,12 @@ export async function abortSync(tx: Tx, deps: SyncDeps, batch: SyncBatch, comman
   if (terminalBatch(current!)) return current!;
   return terminateLocal(
     tx,
-    { ...current!, executionNo },
+    current!,
     state.status === 'superseded' ? 'superseded' : 'aborted',
     deps.clock(),
     commandId,
+    actorUserId,
+    executionNo,
   );
 }
 export async function claimSync(deps: SyncDeps, input: SyncInput, batch: SyncBatch, timezone: string) {
@@ -93,7 +106,14 @@ export async function claimSync(deps: SyncDeps, input: SyncInput, batch: SyncBat
       const key = { tenantId: input.tenantId, runId: input.runId, consumer: 'succession' as const };
       const header = await deps.port.loadRun(tx, key);
       if (header?.status === 'superseded')
-        return terminateLocal(tx, current!, 'superseded', deps.clock(), `${input.runId}:superseded`);
+        return terminateLocal(
+          tx,
+          current!,
+          'superseded',
+          deps.clock(),
+          `${input.runId}:superseded`,
+          input.requesterUserId ?? null,
+        );
       if (current!.leaseOwner === input.leaseOwner) return current!;
       const state = await deps.port.beginConsumption(tx, { ...key, leaseOwner: input.leaseOwner, leaseSeconds: 120 });
       if (state.status !== 'running')
@@ -103,6 +123,7 @@ export async function claimSync(deps: SyncDeps, input: SyncInput, batch: SyncBat
           state.status === 'superseded' ? 'superseded' : 'aborted',
           deps.clock(),
           `${input.runId}:terminated`,
+          input.requesterUserId ?? null,
         );
       const [locked] = await tx.select().from(batches).where(batchWhere(input.tenantId, batch.id)).for('update');
       return save(
@@ -118,6 +139,7 @@ export async function claimSync(deps: SyncDeps, input: SyncInput, batch: SyncBat
         deps.clock(),
         `${input.runId}:claim:${state.executionNo}`,
         'claim',
+        input.requesterUserId ?? null,
       );
     });
   } catch (error) {

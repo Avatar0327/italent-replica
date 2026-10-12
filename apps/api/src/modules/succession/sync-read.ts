@@ -153,7 +153,13 @@ export async function readSyncRows(
   const recordFields = await getModuleViewableFieldsInTransaction(deps, ctx, codeOf('record'), tx);
   if (recordFields && !recordFields.has('successorEmployeeId'))
     for (const item of items) delete item.successorEmployeeId;
-  return { items, total: count!.total };
+  return {
+    items: items.map(({ retryable, ...item }) => ({
+      ...item,
+      recovery: retryable === true ? 'retry_same_run' : 'none',
+    })),
+    total: count!.total,
+  };
 }
 export async function projectSync(deps: TenantRouteDeps, ctx: SuccessionContext, views: readonly BatchView[]) {
   const fields = await getModuleViewableFields(deps, ctx, codeOf('syncBatch'));

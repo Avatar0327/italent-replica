@@ -10,7 +10,7 @@ import {
   type Db,
   type Tx,
 } from '@italent/db';
-import { recordAudit } from '../../audit/record.js';
+import { recordSyncAudit, batchAuditSnapshot } from './sync-audit.js';
 import { AppError } from '../../errors.js';
 import type { SyncRunHeader, TalentReviewSyncPort } from '../talent-review/sync-port.js';
 import { SyncPortError } from '../talent-review/sync-port.js';
@@ -70,46 +70,53 @@ export async function release(tx: Tx, batch: Batch) {
   await tx.execute(sql`UPDATE succession_sync_mutex SET batch_id=NULL
     WHERE tenant_id=${batch.tenantId}::uuid AND batch_id=${batch.id}::uuid`);
 }
-export async function save(tx: Tx, batch: Batch, patch: Partial<Batch>, now: Date, commandId: string, phase = 'plan') {
+export async function save(
+  tx: Tx,
+  batch: Batch,
+  patch: Partial<Batch>,
+  now: Date,
+  commandId: string,
+  phase = 'plan',
+  actorUserId: string | null = null,
+) {
+  // 调用方先按协议取得互斥/消费记录锁；统一在更新前锁内重读，禁止用镜像伪造前值。
+  const where = and(eq(batches.tenantId, batch.tenantId), eq(batches.id, batch.id));
+  const [before] = await tx.select().from(batches).where(where).for('update');
   const [saved] = await tx
     .update(batches)
     .set({
       ...(patch.status === 'blocked' || patch.status === 'waiting'
-        ? { nextRetryAt: retryTime(batch.autoRetryCount, now) }
+        ? { nextRetryAt: retryTime(before!.autoRetryCount, now) }
         : patch.status === 'completed'
           ? { nextRetryAt: null }
           : {}),
       ...patch,
-      revision: batch.revision + 1,
+      revision: before!.revision + 1,
     })
     .where(and(eq(batches.tenantId, batch.tenantId), eq(batches.id, batch.id)))
     .returning();
-  await recordAudit(tx, {
-    tenantId: batch.tenantId,
-    actorUserId: null,
-    objectType: 'Succession.SyncBatch',
-    objectId: batch.id,
-    action: `succession.sync-batch.${phase}`,
-    commandId,
-    occurredAt: now,
-    before: { status: batch.status, hasPlan: batch.hasPlan },
-    after: {
-      status: saved!.status,
-      hasPlan: saved!.hasPlan,
-      blockReason: saved!.blockReason,
-      endReason: saved!.endReason,
-      executionNo: saved!.executionNo,
-    },
-  });
+  await recordSyncAudit(
+    tx,
+    batch,
+    { actorUserId, now, commandId, phase },
+    batchAuditSnapshot(before!),
+    batchAuditSnapshot(saved!),
+  );
   return saved!;
 }
-export async function notify(tx: Tx, batch: Batch, now: Date) {
-  await tx.execute(sql`INSERT INTO succession_notifications
+export async function notify(tx: Tx, batch: Batch, now: Date, actorUserId: string | null = null) {
+  const commandId = `${batch.sourceRunId}:succession:done`;
+  const inserted = rowsOf<Record<string, unknown>>(
+    await tx.execute(sql`INSERT INTO succession_notifications
     (tenant_id,batch_id,recipient_user_id,kind,command_id,created_at)
     SELECT ${batch.tenantId}::uuid,${batch.id}::uuid,${batch.actorUserId}::uuid,'sync_done',
-      ${`${batch.sourceRunId}:succession:done`},${now.toISOString()}::timestamptz
+      ${commandId},${now.toISOString()}::timestamptz
     WHERE succession_calc_user_active(${batch.tenantId}::uuid,${batch.actorUserId}::uuid)
-    ON CONFLICT (tenant_id,subject_id,recipient_user_id,kind) DO NOTHING`);
+    ON CONFLICT (tenant_id,subject_id,recipient_user_id,kind) DO NOTHING
+    RETURNING id,recipient_user_id AS "recipientUserId",kind,state`),
+  );
+  if (inserted[0])
+    await recordSyncAudit(tx, batch, { actorUserId, now, commandId, phase: 'sync_done' }, null, inserted[0]);
 }
 class FirstPlan {
   header: SyncRunHeader | null = null;
@@ -222,10 +229,12 @@ class FirstPlan {
       },
       now,
       pageCommandId,
+      'plan',
+      input.requesterUserId ?? null,
     );
     if (!planned.pending) {
       await release(tx, batch);
-      await notify(tx, batch, now);
+      await notify(tx, batch, now, input.requesterUserId ?? null);
     }
     return batch;
   }
@@ -266,9 +275,11 @@ class FirstPlan {
       },
       now,
       `${input.runId}:succession:plan:${failure.code}`,
+      'plan',
+      input.requesterUserId ?? null,
     );
     await release(tx, batch);
-    if (rejected) await notify(tx, batch, now);
+    if (rejected) await notify(tx, batch, now, input.requesterUserId ?? null);
     return batch;
   }
 }

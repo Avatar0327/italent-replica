@@ -600,6 +600,7 @@ export const GRAPH: Graph = {
     '#targetAccess',
     'apps/api/src/modules/tenant-settings/service.ts#readEffectiveSetting',
   ],
+  'apps/api/src/modules/succession/sync-audit.ts#recordSyncAudit': ['apps/api/src/audit/record.ts#recordAudit'],
   'apps/api/src/modules/succession/sync-barrier.ts#assertNoSyncBarrier': ['#persistentBarrier', '#probe'],
   'apps/api/src/modules/succession/sync-barrier.ts#persistentBarrier': [
     'apps/api/src/modules/succession/read-sql.ts#rowsOf',
@@ -631,6 +632,10 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/succession/sync-consume.ts#ensureBatch': ['#batchKey'],
   'apps/api/src/modules/succession/sync-consume.ts#mutex': ['apps/api/src/modules/succession/read-sql.ts#rowsOf'],
+  'apps/api/src/modules/succession/sync-consume.ts#notify': [
+    'apps/api/src/modules/succession/read-sql.ts#rowsOf',
+    'apps/api/src/modules/succession/sync-audit.ts#recordSyncAudit',
+  ],
   'apps/api/src/modules/succession/sync-consume.ts#planSyncRun': [
     'apps/api/src/modules/succession/sync-access.ts#PlanFailure',
     '#FirstPlan',
@@ -638,7 +643,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/talent-review/sync-port.ts#SyncPortError',
   ],
   'apps/api/src/modules/succession/sync-consume.ts#save': [
-    'apps/api/src/audit/record.ts#recordAudit',
+    'apps/api/src/modules/succession/sync-audit.ts#batchAuditSnapshot',
+    'apps/api/src/modules/succession/sync-audit.ts#recordSyncAudit',
     'apps/api/src/modules/succession/sync-control.ts#retryTime',
   ],
   'apps/api/src/modules/succession/sync-control.ts#abortSync': ['#batchWhere', '#terminalBatch', '#terminateLocal'],
@@ -774,6 +780,12 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/succession/sync-plan.ts#readPlan',
     'apps/api/src/modules/tenant-settings/service.ts#readEffectiveSetting',
   ],
+  'apps/api/src/modules/succession/sync-routes.ts#driveSync': [
+    'apps/api/src/modules/succession/sync-consume.ts#consumeRun',
+    'apps/api/src/modules/succession/sync-control.ts#batchWhere',
+    'apps/api/src/modules/succession/sync-control.ts#terminalBatch',
+    '#requireSyncPort',
+  ],
   'apps/api/src/modules/succession/sync-routes.ts#registerSyncRoutes': [
     'apps/api/src/modules/succession/access.ts#SUCCESSION_BASE',
     'apps/api/src/modules/succession/access.ts#successionContext',
@@ -790,7 +802,6 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/succession/sync-routes.ts#writeSync': [
     'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
-    'apps/api/src/modules/succession/sync-consume.ts#consumeRun',
     'apps/api/src/modules/succession/sync-consume.ts#ensureBatch',
     'apps/api/src/modules/succession/sync-consume.ts#mutex',
     'apps/api/src/modules/succession/sync-consume.ts#save',
@@ -802,6 +813,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/succession/sync-read.ts#syncAdmin',
     'apps/api/src/modules/succession/sync-read.ts#syncResults',
     '#checkTargets',
+    '#driveSync',
     '#requireSyncPort',
     '#runBody',
     'apps/api/src/modules/succession/write-support.ts#authorizeSuccessionResult',
