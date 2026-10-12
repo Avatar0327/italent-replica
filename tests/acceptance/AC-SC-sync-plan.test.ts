@@ -54,7 +54,7 @@ afterEach(async () => {
 });
 function setup(options: { empty?: boolean; scopeExplicit?: boolean } = {}) {
   const source = syncFixture({ withEmptyObject: true });
-  const original = source.runs[0]!;
+  const original = source.runs![0]!;
   const runId = randomUUID();
   const nominations = original.nominations.map((n) => ({
     ...n,
@@ -166,7 +166,11 @@ describe('AC-SC-03-04-sync D1b 首次计划', () => {
     const h = setup({ empty: true });
     const complete = vi.spyOn(h.port, 'completeConsumption');
     await consumeRun(h.deps, h.input);
-    expect(await batch(h.input.runId), JSON.stringify(await batch(h.input.runId))).toMatchObject({ status: 'completed', result: 'succeeded', has_plan: true });
+    expect(await batch(h.input.runId), JSON.stringify(await batch(h.input.runId))).toMatchObject({
+      status: 'completed',
+      result: 'succeeded',
+      has_plan: true,
+    });
     expect((await h.outcomes()).every((r) => r.status === 'skipped')).toBe(true);
     expect(complete).toHaveBeenCalledTimes(1);
     await consumeRun(h.deps, h.input);
@@ -418,4 +422,66 @@ it('AC-SC-03 已终止对象全跳过，应在首次计划内完成', async () =
   await consumeRun(h.deps, h.input);
   expect(await batch(h.input.runId)).toMatchObject({ status: 'completed' });
   expect((await h.outcomes()).every((r) => r.status === 'skipped')).toBe(true);
+});
+
+it('AC-SC-03 步骤 4/5：superseded 本地终止；持租约者退出且不改回执', async () => {
+  const old = setup();
+  await old.port.supersede(old.input.runId);
+  const abort = vi.spyOn(old.port, 'abortConsumption');
+  await consumeRun(old.deps, old.input);
+  expect(await batch(old.input.runId)).toMatchObject({ status: 'terminated', end_reason: 'RUN_SUPERSEDED' });
+  expect(abort).not.toHaveBeenCalled();
+  const h = setup();
+  await h.deps.transaction((tx) =>
+    h.port.beginConsumption(tx, { ...h.key, leaseOwner: '另一个 worker', leaseSeconds: 60 }),
+  );
+  await consumeRun(h.deps, h.input);
+  expect(await batch(h.input.runId)).toBeUndefined();
+  expect((await h.outcomes()).every((r) => r.status === 'pending')).toBe(true);
+});
+it('AC-SC-04 启用等级按 code 映射到 B2b ID；empty 健康度保留清空计划', async () => {
+  const h = setup({ empty: true });
+  const id = randomUUID();
+  await w.asTenant((tx) =>
+    tx.execute(sql`INSERT INTO succession_health_levels
+    (id,tenant_id,code,name,color,display_order,enabled)
+    VALUES (${id}::uuid,${w.tenant.id}::uuid,${id},${id},'#3366FF',2,true)`),
+  );
+  const original = await h.deps.transaction((tx) => h.port.listRunOrgHealth(tx, h.key));
+  vi.spyOn(h.port, 'listRunOrgHealth').mockResolvedValue(
+    original.map((row, i) => ({ ...row, levelId: null, levelCode: i ? null : id, status: i ? 'empty' : 'value' })),
+  );
+  await consumeRun(h.deps, h.input);
+  const b = await batch(h.input.runId);
+  expect(b).toMatchObject({ status: 'executing' });
+  expect(
+    rowsOf(
+      await w.asTenant((tx) =>
+        tx.execute(sql`SELECT health_status,health_level_id FROM succession_sync_targets
+    WHERE batch_id=${String(b['id'])}::uuid ORDER BY health_status`),
+      ),
+    ),
+  ).toEqual([
+    { health_status: 'empty', health_level_id: null },
+    { health_status: 'value', health_level_id: id },
+  ]);
+});
+it('AC-SC-03 unknown 证明执行号错误不得认作提交成功', async () => {
+  const h = setup();
+  const transaction = h.deps.transaction;
+  let fail = true;
+  h.deps.transaction = async (work) => {
+    const value = await transaction(work);
+    if (fail) {
+      fail = false;
+      throw new Error('模拟 COMMIT 回包丢失');
+    }
+    return value;
+  };
+  const get = h.port.getPageCommit.bind(h.port);
+  vi.spyOn(h.port, 'getPageCommit').mockImplementation(async (tx, key) => {
+    const proof = await get(tx, key);
+    return proof ? { ...proof, executionNo: proof.executionNo + 1 } : null;
+  });
+  await expect(consumeRun(h.deps, h.input)).rejects.toMatchObject({ code: 'STORAGE_UNAVAILABLE' });
 });
