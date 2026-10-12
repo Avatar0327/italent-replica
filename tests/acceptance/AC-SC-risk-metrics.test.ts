@@ -79,3 +79,17 @@ it('AC-SC-risk 缓存失效、来源无权 / 不可用使对象失败，不向�
       ),
     ).toThrow(status === 'forbidden' ? 'FIELD_FORBIDDEN' : 'DATA_UNAVAILABLE');
 });
+it('AC-SC-risk DEC-452 零人口或零分母不能把不可用的工龄降为 EMPTY', () => {
+  const unavailable = level('work-years', [
+    { ...row, fieldCode: 'work_years', filterOperator: 'ge', filterValues: [1] },
+  ]);
+  for (const population of [
+    { incumbents: [], successors: [] },
+    { incumbents: [], successors: [{ id: 'c', work_years: { status: 'unavailable' as const } }] },
+  ]) {
+    expect(() => evaluateRisk([unavailable, level('next')], population, calendar)).toThrow('DATA_UNAVAILABLE');
+    expect(() =>
+      riskMeasure({ ...unavailable.rules.rows[0]!, measure: 'count_over_incumbents' }, population, calendar),
+    ).toThrow('DATA_UNAVAILABLE');
+  }
+});
