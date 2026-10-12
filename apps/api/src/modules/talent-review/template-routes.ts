@@ -41,9 +41,16 @@ import {
 } from './access.js';
 import { listConfig, type ConfigTable } from './config-kit.js';
 import { requireReferencesVisible, type ReferencedTable } from './reference-kit.js';
-import { templateCreate, templatePatch, type TemplateCreate, type TemplatePatch } from './template-input.js';
+import {
+  templateCopy,
+  templateCreate,
+  templatePatch,
+  type TemplateCreate,
+  type TemplatePatch,
+} from './template-input.js';
 import {
   listAccess,
+  requireCreatable,
   requireEditable,
   requireReadable,
   templateReadable,
@@ -51,6 +58,8 @@ import {
 } from './template-access.js';
 import * as service from './template-service.js';
 import { TEMPLATE_REFERENCES, type TemplateReference, type TemplateWriteContext } from './template-structure.js';
+import { button } from '../permission/module-route-access.js';
+import { copyReferences } from './template-copy.js';
 import { headerColumns, headerOf, type TemplateView } from './template-view.js';
 
 import { projectTemplateResults, resultCatalogAccess, templateBusinessFields } from './template-extra-present.js';
@@ -100,12 +109,20 @@ async function trimmed(deps: TenantRouteDeps, ctx: TalentReviewContext, view: Re
   return shown;
 }
 
-/** 路由层的前置检查只管早失败（目录对象的查看权）；以命令事务内的复核为准。 */
-async function requireCatalogs(c: Context<TenantEnv>, deps: TenantRouteDeps, references: References) {
+/** 目录准入：事务内调用必须传 tx，避免范围查询另开连接或在单连接环境等待自身事务。 */
+async function requireCatalogs(c: Context<TenantEnv>, deps: TenantRouteDeps, references: References, tx?: Tx) {
   for (const kind of referenced(references)) {
     const ctx = await reviewContext(c, deps, kind);
-    await reviewScope(c, deps, ctx, kind);
+    if (tx) await resolveModuleScopeInTransaction(deps, ctx, tx, codeOf(kind));
+    else await reviewScope(c, deps, ctx, kind);
   }
+}
+
+async function copyContext(c: Context<TenantEnv>, deps: TenantRouteDeps, expectedRevision: number) {
+  const ctx = await reviewContext(c, deps, 'template', 'create', expectedRevision);
+  await reviewContext(c, deps, 'template');
+  await button(deps, ctx, codeOf('template'), 'copy', 'list');
+  return ctx;
 }
 
 interface Rechecked {
@@ -126,9 +143,12 @@ async function recheck(
   operation: 'create' | 'update' | 'delete',
   expectedRevision: number,
   references: References,
+  copying = false,
 ): Promise<Rechecked & { txDeps: TenantRouteDeps }> {
   const txDeps: TenantRouteDeps = { ...deps, authorize: authorizeInTransaction(deps.authorize, tx) };
-  const ctx = await reviewWriteContext(c, txDeps, 'template', operation, expectedRevision);
+  const ctx = copying
+    ? await copyContext(c, txDeps, expectedRevision)
+    : await reviewWriteContext(c, txDeps, 'template', operation, expectedRevision);
   const scope = await resolveModuleScopeInTransaction(txDeps, ctx, tx, codeOf('template'));
   const scopes: Rechecked['scopes'] = {};
   for (const kind of referenced(references)) {
@@ -174,7 +194,7 @@ async function runGuarded(
   ctx: TalentReviewContext,
   body: object,
   status: 200 | 201,
-  check: { operation: 'create' | 'update' | 'delete'; references: References },
+  check: { operation: 'create' | 'update' | 'delete'; references: References; copying?: boolean },
   recheckInTx: (tx: Tx) => Promise<Rechecked>,
   execute: (tx: Tx, w: TemplateWriteContext) => Promise<TemplateView>,
 ) {
@@ -187,23 +207,20 @@ async function runGuarded(
         current = await recheckInTx(tx);
       },
       replayed: async (tx, replay) => {
-        const { scope, scopes } = current!;
         const view = replay.body as TemplateView;
+        // 原件后来可以移除引用；复制回执仍持有的引用必须按当前授权单独复核。
+        const references = check.copying ? copyReferences(view) : check.references;
+        const { scope, scopes } = check.copying
+          ? await recheck(c, deps, tx, 'create', ctx.expectedRevision, references, true)
+          : current!;
         // 删除的受控快照按删除时的归属判定；其余按模板当前归属（已不存在 → 404）
         const anchor = check.operation === 'delete' ? view : await headerOf(tx, ctx.tenantId, view.id);
         if (!anchor) throw new AppError('NOT_FOUND', notFoundMessage('template'));
         await requireEditable(tx, ctx, scope, anchor);
-        for (const kind of referenced(check.references)) {
+        for (const kind of referenced(references)) {
           const catalog = scopes[kind];
           if (catalog) {
-            await requireReferencesVisible(
-              tx,
-              CATALOG_TABLES[kind],
-              kind,
-              ctx.tenantId,
-              check.references[kind],
-              catalog,
-            );
+            await requireReferencesVisible(tx, CATALOG_TABLES[kind], kind, ctx.tenantId, references[kind], catalog);
           }
         }
       },
@@ -225,7 +242,31 @@ function versionQuery(c: Context): number | undefined {
   return Number(raw);
 }
 
+function registerTemplateCopyRoute(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
+  router.post(`${TEMPLATES}/:id/copy`, async (c) => {
+    const ctx = await copyContext(c, deps, revision(c));
+    const id = uuidParam(c);
+    const body = await parseBody(c, templateCopy);
+    const references = referencesOf({});
+    const before = async (tx: Tx) => {
+      const checked = await recheck(c, deps, tx, 'create', ctx.expectedRevision, references, true);
+      await checkWriteFields(checked.txDeps, checked.ctx, 'template', 'create', body);
+      const source = await service.readTemplate(tx, ctx.tenantId, id);
+      await requireEditable(tx, checked.ctx, checked.scope, source);
+      requireCreatable(checked.scope, source.ownerOrgId);
+      Object.assign(references, copyReferences(source));
+      await requireCatalogs(c, checked.txDeps, references, tx);
+      // 自动带入的配置也按当前目录权限复核；同键重放同样经过 before。
+      return recheck(c, deps, tx, 'create', ctx.expectedRevision, references, true);
+    };
+    return runGuarded(c, deps, ctx, body, 201, { operation: 'create', references, copying: true }, before, (tx, w) =>
+      service.copyTemplate(tx, w, id, body.name),
+    );
+  });
+}
+
 export function registerTemplateRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
+  registerTemplateCopyRoute(router, deps);
   router.get(TEMPLATES, async (c) => {
     const ctx = await reviewContext(c, deps, 'template');
     const page = pageQuery(c);
