@@ -511,3 +511,41 @@ export const successionNotifications = pgTable(
     index('succession_notifications_pending').on(t.tenantId, t.state, t.createdAt, t.id),
   ],
 );
+
+/** B4 / DEC-449：清除保留结果行与 revision，原子恢复 computed。 */
+export const successionRiskResults = pgTable(
+  'succession_risk_results',
+  {
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
+    positionId: uuid('position_id').notNull(),
+    levelId: uuid('level_id'),
+    method: text('method').$type<'computed' | 'manual'>().notNull(),
+    runId: uuid('run_id'),
+    computedAt: timestamp('computed_at', { withTimezone: true }),
+    assignedBy: uuid('assigned_by'),
+    revision: integer('revision').notNull().default(1),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.positionId] }),
+    foreignKey({
+      columns: [t.tenantId, t.positionId],
+      foreignColumns: [jobPositionObjects.tenantId, jobPositionObjects.id],
+    }),
+    foreignKey({
+      columns: [t.tenantId, t.levelId],
+      foreignColumns: [successionRiskLevels.tenantId, successionRiskLevels.id],
+    }),
+    foreignKey({
+      columns: [t.tenantId, t.runId],
+      foreignColumns: [successionCalcRuns.tenantId, successionCalcRuns.id],
+    }),
+    foreignKey({
+      columns: [t.tenantId, t.assignedBy],
+      foreignColumns: [tenantMemberships.tenantId, tenantMemberships.userId],
+    }),
+    check('succession_risk_results_method', sql`${t.method} IN ('manual','computed')`),
+    check('succession_risk_results_revision', sql`${t.revision} > 0`),
+  ],
+);

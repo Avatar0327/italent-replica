@@ -1,3 +1,4 @@
+import { registerRiskRoutes } from './risk-routes.js';
 import { registerCalcRoutes } from './calc-routes.js';
 import { registerSuccessionConfigRoutes } from './config-routes.js';
 import { registerMapRoutes } from './map-routes.js';
@@ -52,6 +53,7 @@ import {
 const RECORDS = `${SUCCESSION_BASE}/records`;
 
 export function registerSuccessionRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
+  registerRiskRoutes(router, deps);
   registerMapRoutes(router, deps);
   installSuccessionPorts();
 

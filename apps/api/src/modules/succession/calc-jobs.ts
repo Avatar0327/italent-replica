@@ -1,3 +1,4 @@
+import { riskProducer } from './risk-producer.js';
 /** DEC-429：按租户生产者只冻结本期候选；状态转换、逐页执行与幂等键全部交 B3a。 */
 import { APP_ROLE, runPlatformCommand, sql, withPlatform, withTenant, type Db, type Tx } from '@italent/db';
 import { runCommand } from '../../commands.js';
@@ -19,7 +20,7 @@ export interface CalcProducer {
   runTenant(tx: Tx, tenant: CalcTenant, now: Date): Promise<void>;
 }
 /** A3/C1/B4 追加生产者；没有生产者时平台明确返回 KIND_UNAVAILABLE。 */
-export const SUCCESSION_PRODUCERS: readonly CalcProducer[] = [orgStatsProducer];
+export const SUCCESSION_PRODUCERS: readonly CalcProducer[] = [orgStatsProducer, riskProducer];
 export interface JobInput {
   readonly kind: SuccessionJobKind;
   readonly tenantId?: string;
