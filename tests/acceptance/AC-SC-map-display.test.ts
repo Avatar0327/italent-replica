@@ -85,3 +85,72 @@ it('AC-SC-map-display 职位图保留有继任者的祖先；停用/非关键祖
     (await w.asTenant((tx) => readMapDisplayScope(tx, ctx, 'position', { ...prefs, showKeyPositions: false }))).sort(),
   ).toEqual([parent.id, skipped.id, child.id].sort());
 });
+
+it('AC-SC-map-display P2-1：同组织四层职位链按职位层数截断，保存值供冻结读取', async () => {
+  const w = await successionWorld(db().db, 'sc-position-depth');
+  const org = await w.org('层数组织');
+  const p1 = await w.position(org.id, 'P1');
+  const p2 = await w.position(org.id, 'P2', { parents: { admin: { parentId: p1.id } } });
+  const p3 = await w.position(org.id, 'P3', { parents: { admin: { parentId: p2.id } } });
+  const p4 = await w.position(org.id, 'P4', { parents: { admin: { parentId: p3.id } } });
+  const ctx = {
+    tenantId: w.tenant.id,
+    userId: w.user.id,
+    asOf: SC_TODAY,
+    scope: { ...EMPTY_SCOPE, all: true, hasDataPermission: true },
+  };
+  for (const depth of [2, 3, 4]) {
+    const saved = await w.request('PUT', '/maps/position/preferences', {
+      ifMatch: depth - 2,
+      body: {
+        rootOrgId: org.id,
+        depth,
+        hiddenOrgIds: [],
+        showKeyPositions: false,
+        showPositionsWithoutSuccessor: true,
+      },
+    });
+    expect(saved.status, await saved.clone().text()).toBe(200);
+    const ids = await w.asTenant((tx) => readMapDisplayScope(tx, ctx, 'position'));
+    expect(ids.sort()).toEqual([p1.id, p2.id, p3.id, p4.id].slice(0, depth).sort());
+  }
+});
+
+it('AC-SC-map-display P2-1：先跳过停用/非关键结构节点，再计层；组织下级不消耗职位层数', async () => {
+  const w = await successionWorld(db().db, 'sc-position-skip-depth');
+  const a = await w.org('A');
+  const b = await w.org('B', a.id);
+  const c = await w.org('C', b.id);
+  const d = await w.org('D', c.id);
+  const p1 = await w.position(a.id, '根');
+  const disabled = await w.position(a.id, '停用', { parents: { admin: { parentId: p1.id } } });
+  const nonkey = await w.position(a.id, '非关键', { isKey: false, parents: { admin: { parentId: disabled.id } } });
+  const p2 = await w.position(d.id, '第二展示层', { parents: { admin: { parentId: nonkey.id } } });
+  const p3 = await w.position(d.id, '第三展示层', { parents: { admin: { parentId: p2.id } } });
+  expect(
+    (
+      await w.call('PATCH', `job/positions/${disabled.id}`, {
+        ifMatch: disabled.revision,
+        body: { enabled: false, effectiveDate: SC_TODAY },
+      })
+    ).status,
+  ).toBe(200);
+  const successor = await w.hire('深层继任者', { departmentId: d.id });
+  await w.insertRecord({ type: 'position', targetId: p3.id, successorId: successor.id });
+  const ctx = {
+    tenantId: w.tenant.id,
+    userId: w.user.id,
+    asOf: SC_TODAY,
+    scope: { ...EMPTY_SCOPE, all: true, hasDataPermission: true },
+  };
+  const prefs = {
+    rootOrgId: a.id,
+    depth: 2,
+    hiddenOrgIds: [],
+    showKeyPositions: true,
+    showPositionsWithoutSuccessor: false,
+  };
+  expect((await w.asTenant((tx) => readMapDisplayScope(tx, ctx, 'position', prefs))).sort()).toEqual(
+    [p1.id, p2.id].sort(),
+  );
+});
