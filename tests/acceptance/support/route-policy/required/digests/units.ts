@@ -689,12 +689,12 @@ export const DIGESTS: Digests = {
     registerLevelReads: 'ba1d174232f9',
   },
   'apps/api/src/modules/succession/map-display.ts': {
-    readMapDisplayScope: '6a8cd1721121',
-    resolveMapDisplayConditions: '428481987c14',
+    readMapDisplayScope: 'c882955e941b',
+    resolveMapDisplayConditions: 'ae79200fc8cb',
   },
   'apps/api/src/modules/succession/map-routes.ts': {
     mapAccess: '4c92488394ad',
-    registerMapRoutes: '90e47333d39b',
+    registerMapRoutes: '8c1aa15b06b4',
   },
   'apps/api/src/modules/succession/read-sql.ts': {
     selfRecordHiddenSql: '89628ea4a06a',
@@ -1743,7 +1743,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/succession/map-display.ts#readMapDisplayScope': 'affc54d2a8f0',
   'apps/api/src/modules/succession/map-display.ts#resolveMapDisplayConditions': '1f93fb5a8650',
   'apps/api/src/modules/succession/map-routes.ts#mapAccess': '208b27aa5d33',
-  'apps/api/src/modules/succession/map-routes.ts#registerMapRoutes': 'bedb3dc988cb',
+  'apps/api/src/modules/succession/map-routes.ts#registerMapRoutes': '152728d4a1ca',
   'apps/api/src/modules/succession/read-sql.ts#selfRecordHiddenSql': 'eab3bde19b0f',
   'apps/api/src/modules/succession/record-read.ts#conditions': '326371d4de4d',
   'apps/api/src/modules/succession/record-write.ts#requireTarget': '8ff43faa6c04',

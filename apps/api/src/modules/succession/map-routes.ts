@@ -137,17 +137,8 @@ export function registerMapRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps
       fingerprint: { method: c.req.method, path: c.req.path, expectedRevision: expected, body },
       guard: {
         before: async (tx) => {
-          const current = await mapAccess(c, deps, tx, compute);
-          await resolveMapDisplayConditions(
-            tx,
-            {
-              ...current.ctx,
-              scope: current.scope,
-              asOf: tenantLocalDate(ctx.now, ctx.timezone),
-            },
-            kind,
-            body,
-          );
+          // ledgerExit 在查台账前只复核当前授权，不能把首次引用启用性门槛重新施加给原命令。
+          await mapAccess(c, deps, tx, compute);
         },
         replayed: async (tx, stored) => {
           await results.load(tx, deps, ctx, (stored.body as StoredResult).ids, { includeDeleted: false });
@@ -156,6 +147,8 @@ export function registerMapRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps
       execute: async (tx, commandId) => {
         const { scope } = await mapAccess(c, deps, tx, compute);
         const asOf = tenantLocalDate(ctx.now, ctx.timezone);
+        // 只有未命中台账的实际首次执行才校验新条件；直接重放和失败回查都走结果适配器。
+        if (!compute) await resolveMapDisplayConditions(tx, { ...ctx, scope, asOf }, kind, body, 'submitted');
         const id = compute
           ? await enqueueCalcRun(
               tx,
@@ -166,10 +159,12 @@ export function registerMapRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps
                 requestedBy: ctx.userId,
                 commandId,
                 businessDate: asOf,
-                objects: (await readMapDisplayScope(tx, { ...ctx, scope, asOf }, 'org', body)).map((objectId) => ({
-                  objectType: 'org',
-                  objectId,
-                })),
+                objects: (await readMapDisplayScope(tx, { ...ctx, scope, asOf }, 'org', body, 'submitted')).map(
+                  (objectId) => ({
+                    objectType: 'org',
+                    objectId,
+                  }),
+                ),
               },
               ctx.now,
             )

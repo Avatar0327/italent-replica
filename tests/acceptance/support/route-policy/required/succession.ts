@@ -312,7 +312,7 @@ Object.assign(SUCCESSION, {
         {
           role: 'call',
           unit: `${S}/map-routes.ts#registerMapRoutes`,
-          anchor: "await readMapDisplayScope(tx, { ...ctx, scope, asOf }, 'org', body)",
+          anchor: "await readMapDisplayScope(tx, { ...ctx, scope, asOf }, 'org', body, 'submitted')",
         },
         {
           role: 'impl',
@@ -321,8 +321,8 @@ Object.assign(SUCCESSION, {
         },
         {
           role: 'call',
-          unit: `${S}/map-routes.ts#registerMapRoutes`,
-          anchor: 'await resolveMapDisplayConditions(',
+          unit: `${S}/map-display.ts#readMapDisplayScope`,
+          anchor: 'await resolveMapDisplayConditions(tx, ctx, kind, supplied, origin)',
         },
         {
           role: 'impl',

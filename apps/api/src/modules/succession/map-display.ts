@@ -20,31 +20,43 @@ export interface MapDisplayContext {
   readonly asOf: string;
   readonly scope: ModuleScope;
 }
-/** 条件省略沿用当前默认/本人职位筛选；组织条件不允许混入个人或租户开关。 */
+/** DEC-431①：新提交校验引用启用性；保存筛选仅应用有效隐藏项，不能用首次门槛阻断重放。 */
+export type MapConditionOrigin = 'submitted' | 'saved';
 export async function resolveMapDisplayConditions(
   tx: Tx,
   ctx: MapDisplayContext,
   kind: MapKind,
   supplied?: unknown,
+  origin: MapConditionOrigin = 'saved',
 ): Promise<MapPreferences> {
   const parsed = (kind === 'org' ? mapDisplayBody : preferenceBody.partial()).safeParse(
     supplied === undefined ? {} : supplied,
   );
   if (!parsed.success) throw new AppError('VALIDATION_FAILED', '地图显示条件不合法');
   const prefs = { ...(await readPreferences(tx, ctx.tenantId, ctx.userId, kind)), ...parsed.data };
-  const ids = [...new Set([prefs.rootOrgId, ...prefs.hiddenOrgIds].filter((id): id is string => !!id))];
-  if (ids.length) {
+  const references = origin === 'submitted' ? [prefs.rootOrgId, ...prefs.hiddenOrgIds] : [prefs.rootOrgId];
+  const ids = [...new Set(references.filter((id): id is string => !!id))];
+  if (ids.length || prefs.hiddenOrgIds.length) {
     const orgs = await loadOrgSnapshot(tx, ctx.tenantId, ctx.asOf, undefined, {
       scope: ctx.scope,
       includeDisabled: false,
     });
     if (ids.some((id) => !orgs.some((o) => o.id === id))) throw new AppError('NOT_FOUND', '显示组织不存在');
+    // 根必须仍有效且在当前范围，不能静默回退扩大地图；保存的隐藏项无效则忽略，不改原偏好行。
+    if (origin === 'saved') prefs.hiddenOrgIds = prefs.hiddenOrgIds.filter((id) => orgs.some((o) => o.id === id));
   }
   return prefs;
 }
-export async function readMapDisplayScope(tx: Tx, ctx: MapDisplayContext, kind: MapKind, supplied?: unknown) {
+export async function readMapDisplayScope(
+  tx: Tx,
+  ctx: MapDisplayContext,
+  kind: MapKind,
+  supplied?: unknown,
+  origin: MapConditionOrigin = 'saved',
+) {
+  if (!ctx.scope.hasDataPermission && origin === 'saved') return [];
+  const prefs = await resolveMapDisplayConditions(tx, ctx, kind, supplied, origin);
   if (!ctx.scope.hasDataPermission) return [];
-  const prefs = await resolveMapDisplayConditions(tx, ctx, kind, supplied);
   const settings = await readMapTenantSettings(tx, ctx.tenantId, kind);
   const orgs = await loadOrgSnapshot(tx, ctx.tenantId, ctx.asOf, undefined, { includeDisabled: false });
   const byId = new Map(orgs.map((o) => [o.id, o]));

@@ -220,3 +220,28 @@ it.each(['统计', '偏好'] as const)(
     expect(await runs(w)).toHaveLength(1);
   },
 );
+
+it('AC-SC-map-lifecycle 不重验启用门槛仍复核原集合授权；范围撤销后重放 404', async () => {
+  const w = await successionWorld(db().db, 'sc-original-scope-revoked');
+  const a = await w.org('A');
+  const h = await w.org('隐藏 H', a.id);
+  let hasScope = true;
+  const api = tenantApi(w.db, {
+    clock: () => SC_NOW,
+    authorize: (q) => q.action !== 'data.scope.all' || hasScope,
+  });
+  const options = {
+    user: w.user.id,
+    tenant: w.tenant.id,
+    ifMatch: 0,
+    idempotencyKey: randomUUID(),
+    body: { rootOrgId: a.id, depth: 2, hiddenOrgIds: [h.id] },
+  };
+  const path = '/api/tenant/succession/maps/org/compute-stats';
+  expect((await api.request('POST', path, options)).status).toBe(202);
+  await stop(w, h);
+  hasScope = false;
+  const before = await runs(w);
+  expect((await api.request('POST', path, options)).status).toBe(404);
+  expect(await runs(w)).toEqual(before);
+});
