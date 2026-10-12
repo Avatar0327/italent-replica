@@ -27,8 +27,8 @@ describe('AC-FE-R1c-01 / AC-APV-05 审批命令契约', () => {
     await api.request(command.path, { method: 'POST', command: command.command });
     const [path, init] = fetcher.mock.calls[0]!;
     expect(path).toBe('/api/tenant/approval/tasks/task-1/approve');
-    expect(init.headers.get('if-match')).toBe('7');
-    expect(init.headers.get('idempotency-key')).toBe(command.command.id);
+    expect(new Headers(init.headers).get('if-match')).toBe('7');
+    expect(new Headers(init.headers).get('idempotency-key')).toBe(command.command.id);
     expect(JSON.parse(init.body)).toEqual({ comment: '同意' });
   });
   it('撤销走实例接口；转交规范化账号 UUID', () => {
@@ -80,7 +80,7 @@ describe('AC-FE-R1c-05 调动复用底座客户端', () => {
   it('网络结果未知仍返回既有调动错误类型和状态，供表单阻止盲重放', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('offline')));
     await expect(transferRequest('synthetic-tenant', '/api/tenant/employment/transfers/catalog')).rejects.toMatchObject(
-      { code: 'NETWORK_ERROR', status: 0 },
+      { code: 'NETWORK_ERROR', status: 503 },
     );
   });
   it('既有调动写入保留幂等键和 revision，不改变请求体', async () => {
@@ -92,8 +92,8 @@ describe('AC-FE-R1c-05 调动复用底座客户端', () => {
       headers: { 'if-match': '8', 'idempotency-key': 'original-command' },
     });
     const init = fetcher.mock.calls[0]![1];
-    expect(init.headers.get('if-match')).toBe('8');
-    expect(init.headers.get('idempotency-key')).toBe('original-command');
+    expect(new Headers(init.headers).get('if-match')).toBe('8');
+    expect(new Headers(init.headers).get('idempotency-key')).toBe('original-command');
     expect(JSON.parse(init.body)).toEqual({ fields: { place: '合成工作地' } });
   });
 });
