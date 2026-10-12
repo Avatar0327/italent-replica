@@ -102,11 +102,12 @@ export async function riskPeople(
   };
 }
 
+// 入职日期属于任职周期；载荷快照不含此字段，必须从有效任职记录读取。
 async function readRiskPerson(tx: Tx, input: Parameters<typeof riskPeople>[1], id: string) {
   return rowsOf<{ values: Record<string, RiskValue>; orgId: string | null; currentOrgId: string | null }>(
     await tx.execute(sql`
       SELECT jsonb_build_object('name',COALESCE(v.name,e.name),'gender',v.gender,'birthday',v.birthday,
-      'entry_date',r.body->>'entry_date','org_id',r.body->>'department_id','position_id',r.body->>'position_id',
+      'entry_date',r.entry_date,'org_id',r.body->>'department_id','position_id',r.body->>'position_id',
       'job_level_id',r.body->>'level_id','job_sequence_id',r.body->>'sequence_id',
       'employee_status',r.employee_status) AS values,
       r.body->>'department_id' AS "orgId",cur.body->>'department_id' AS "currentOrgId"

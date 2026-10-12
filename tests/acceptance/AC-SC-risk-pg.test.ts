@@ -2,6 +2,7 @@ import { sql, type DbHandle } from '@italent/db';
 import { createTestDb } from '@italent/testkit';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { settledOrBlocked } from './support/pg-interleave.js';
+import { rowsOf } from '../../apps/api/src/modules/succession/read-sql.js';
 import { riskWorld } from './AC-SC-risk-support.js';
 
 describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-SC-risk 真 PG 清除 / 赋值 / 计算', () => {
@@ -18,7 +19,21 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-SC-risk 真 PG 清除
       expect(initial.status, await initial.clone().text()).toBe(200);
       if (order === 'compute-assign') expect((await w.assign(1, null)).status).toBe(200);
       const initialRevision = order === 'compute-assign' ? 2 : 1;
-      const runId = await w.enqueue();
+      const extra = await w.newPosition(w.org.id, '批量同行关键职位');
+      const batch = await w.request('POST', '/maps/position/compute-risk', {
+        ifMatch: 0,
+        body: { showKeyPositions: true, showPositionsWithoutSuccessor: true },
+      });
+      expect(batch.status).toBe(202);
+      const { runId } = (await batch.json()) as { runId: string };
+      expect(
+        await w.asTenant(async (tx) =>
+          rowsOf(
+            await tx.execute(sql`
+        SELECT object_id FROM succession_calc_run_objects WHERE run_id=${runId}::uuid`),
+          ),
+        ),
+      ).toEqual(expect.arrayContaining([{ object_id: w.position.id }, { object_id: extra.id }]));
       let release!: () => void, ready!: () => void;
       const acquired = new Promise<void>((resolve) => {
         ready = resolve;
@@ -55,6 +70,15 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-SC-risk 真 PG 清除
         'assign-clear': { method: 'manual', level_id: w.levelId, revision: 2 },
       };
       expect(await w.result()).toEqual(states[order]);
+      if (order.includes('compute'))
+        expect(
+          await w.asTenant(async (tx) =>
+            rowsOf(
+              await tx.execute(sql`
+        SELECT level_id,method FROM succession_risk_results WHERE position_id=${extra.id}::uuid`),
+            ),
+          ),
+        ).toEqual([{ level_id: null, method: 'computed' }]);
       const writes = responses.filter((r): r is Response => r instanceof Response);
       expect(writes.map((r) => r.status)).toEqual(
         ['clear-assign', 'assign-clear'].includes(order) ? [200, 409] : order === 'compute-assign' ? [409] : [200],

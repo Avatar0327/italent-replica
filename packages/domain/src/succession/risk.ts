@@ -34,13 +34,12 @@ export function riskIncumbents(primary: readonly RiskPerson[], partTime: readonl
   return [...new Map([...(include ? partTime : []), ...primary].map((p) => [p.id, p])).values()];
 }
 export function riskMeasure(row: SuccessionLevelRow, population: RiskPopulation, calendar: EvaluationCalendar) {
+  // DEC-452 / F-100：来源尚未接入，零人口 / 零分母也不能把不可用降为 EMPTY。
+  if (row.fieldCode === 'work_years') throw new RiskFailure('DATA_UNAVAILABLE', row.rowNo);
   const people = row.subject === 'incumbent' ? population.incumbents : population.successors;
-  const denominator =
-    row.measure === 'count_over_incumbents'
-      ? population.incumbents.length
-      : row.measure === 'count_over_successors'
-        ? population.successors.length
-        : 1;
+  let denominator = 1;
+  if (row.measure === 'count_over_incumbents') denominator = population.incumbents.length;
+  else if (row.measure === 'count_over_successors') denominator = population.successors.length;
   if (!people.length || !denominator) return null;
   let selected = people.length;
   if (row.fieldCode) {
@@ -77,7 +76,7 @@ export function riskMeasure(row: SuccessionLevelRow, population: RiskPopulation,
           id: person.id,
           resolveField: () => ({ status: 'found', value }),
         },
-        fieldKind: () => (field.kind === 'date' ? 'date' : field.kind === 'number' ? 'number' : 'text'),
+        fieldKind: () => (field.kind === 'date' || field.kind === 'number' ? field.kind : 'text'),
       });
       if (!result.ok) throw new RiskFailure(result.failure.code, row.rowNo);
       if (result.value.kind === 'number' && result.value.value === 1) selected++;
