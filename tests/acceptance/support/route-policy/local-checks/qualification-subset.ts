@@ -7,7 +7,7 @@ import { registrationGate } from '../registration.js';
 import { checkRequired } from '../required.js';
 import { type SourceReader, repoSource, checkStored } from '../evidence.js';
 import { checkDetectorEvidence, subsetChainFixture } from '../detector-fixtures.js';
-import type { LocalCheckContext } from './types.js';
+import { evaluateLocal, type LocalCheckContext } from './types.js';
 
 // F-095：原局部用例与入口专项共用实际断言；登记副本从 context.table 注入。
 export function qualificationSubsetChecks(context: LocalCheckContext) {
@@ -112,8 +112,10 @@ export function qualificationSubsetChecks(context: LocalCheckContext) {
         const found = (read: SourceReader) =>
           checkDetectorEvidence(fixture, { read }).filter((f) => KINDS.includes(f.code));
 
-        expect(found(repoSource)).toEqual([]);
-        const drift = checkStored(REQUIRED, { read: repoSource }).filter((f) => KINDS.includes(f.code));
+        expect(evaluateLocal(context, 'subset.fixture', () => found(repoSource))).toEqual([]);
+        const drift = evaluateLocal(context, 'subset.stored', () => checkStored(REQUIRED, { read: repoSource })).filter(
+          (f) => KINDS.includes(f.code),
+        );
         expect(registrationGate(drift, '任职资格子集证据')).toEqual([]);
       },
     },

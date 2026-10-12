@@ -8,7 +8,7 @@ import { checkRequired } from '../required.js';
 import { type ManifestRoute } from '@italent/api';
 import { type RequiredTable, type Obligation } from '../required/types.js';
 import { DETECTOR_REQUIRED, DETECTOR_CONTRACT, DETECTOR_SEMANTICS } from '../detector-fixtures.js';
-import type { LocalCheckContext } from './types.js';
+import { evaluateLocal, type LocalCheckContext } from './types.js';
 
 // F-095：原局部用例与入口专项共用实际断言；登记副本从 context.table 注入。
 export function requiredChecks(context: LocalCheckContext) {
@@ -57,7 +57,10 @@ export function requiredChecks(context: LocalCheckContext) {
       wrapped: false,
       verify: () => {
         // F-090：登记与源码不一致默认只警告；登记自身的错误仍判红；ROUTE_POLICY_EVIDENCE_STRICT=1 全部判红
-        const findings = registrationGate(checkStored(REQUIRED, { unused: true }), '全表证据校验');
+        const findings = registrationGate(
+          evaluateLocal(context, 'required.stored', () => checkStored(REQUIRED, { unused: true })),
+          '全表证据校验',
+        );
         expect(findings, show(findings)).toEqual([]);
       },
     },

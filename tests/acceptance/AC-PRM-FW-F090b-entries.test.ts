@@ -83,12 +83,21 @@ const groups = {
   'FW-02': fw02Checks,
 };
 
+// 每种登记副本独立缓存；两种模式仍逐项重跑共享断言和 registration 包装。
+const calculations = new Map<string, Map<string, unknown>>();
 function check(name: string, strict: boolean) {
   vi.stubEnv('ROUTE_POLICY_EVIDENCE_STRICT', strict ? '1' : '0');
+  const values = calculations.get(name) ?? new Map<string, unknown>();
+  calculations.set(name, values);
+  const evaluate = <T>(key: string, calculate: () => T): T => {
+    // 只在成功计算后写入：读取 / 解析等未知异常不能被缓存或转换。
+    if (!values.has(key)) values.set(key, calculate());
+    return values.get(key) as T;
+  };
   const failures: { group: string; label: string; message: string }[] = [];
   const executed: string[] = [];
   for (const [group, checksOf] of Object.entries(groups)) {
-    const checks = checksOf({ table: tables[name]!, routes, contract, discoveries });
+    const checks = checksOf({ table: tables[name]!, routes, contract, discoveries, evaluate });
     expect(checks.length, group).toBeGreaterThan(0);
     for (const check of checks) {
       executed.push(`${group}:${check.id}`);
@@ -122,29 +131,35 @@ describe('AC-PRM-FW-F090b 单一真实登记入口（DEC-431①；#248 P2-1 / P3
       warn.mockRestore();
     }
   });
-  it.each(['endpoints', 'guard-inner'])('%s：默认通过只警告，严格模式判红', (name) => {
-    const stored = vi.spyOn(evidence, 'checkStored');
-    const code = name === 'endpoints' ? 'REQUIRED_ENTRY_MISSING' : 'GUARD_ROLE_UNBOUND';
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    try {
-      const normal = check(name, false);
-      expect(normal.failures).toEqual([]);
-      expect(warn.mock.calls.flat().join('\n')).toContain('[证据门禁·警告]');
-      expect(warn.mock.calls.flat().join('\n')).toContain(code);
-      const calculated = stored.mock.calls.filter(([table]) => table === tables[name]).length;
-      expect(calculated).toBeGreaterThan(0);
-      const strict = check(name, true);
-      expect(stored.mock.calls.filter(([table]) => table === tables[name]).length).toBe(calculated);
-      expect(strict.executed).toEqual(normal.executed);
-      expect(strict.failures.length).toBeGreaterThan(0);
-      expect(strict.failures.map((f) => f.message).join('\n')).toContain(code);
-      const local = name === 'endpoints' ? '经理入口：真实声明零发现' : '现表全部守卫内部义务';
-      expect(strict.failures.some((f) => f.label.startsWith(local))).toBe(true);
-      console.info(`${name}：九组局部检查默认仅警告，严格 ${strict.failures.length} 项失败`);
-    } finally {
-      warn.mockRestore();
-    }
-  });
+  // #270 队列 aab6fad：PG 分片曾耗时 35.915 / 35.140 秒；源码冷计算与并行负载需要单测余量。
+  // 已复用原始计算；仅这两条允许 60 秒，CI 作业仍为 18 分钟，断言与模式分流全部重跑。
+  it.each(['endpoints', 'guard-inner'])(
+    '%s：默认通过只警告，严格模式判红',
+    (name) => {
+      const stored = vi.spyOn(evidence, 'checkStored');
+      const code = name === 'endpoints' ? 'REQUIRED_ENTRY_MISSING' : 'GUARD_ROLE_UNBOUND';
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      try {
+        const normal = check(name, false);
+        expect(normal.failures).toEqual([]);
+        expect(warn.mock.calls.flat().join('\n')).toContain('[证据门禁·警告]');
+        expect(warn.mock.calls.flat().join('\n')).toContain(code);
+        const calculated = stored.mock.calls.filter(([table]) => table === tables[name]).length;
+        expect(calculated).toBeGreaterThan(0);
+        const strict = check(name, true);
+        expect(stored.mock.calls.filter(([table]) => table === tables[name]).length).toBe(calculated);
+        expect(strict.executed).toEqual(normal.executed);
+        expect(strict.failures.length).toBeGreaterThan(0);
+        expect(strict.failures.map((f) => f.message).join('\n')).toContain(code);
+        const local = name === 'endpoints' ? '经理入口：真实声明零发现' : '现表全部守卫内部义务';
+        expect(strict.failures.some((f) => f.label.startsWith(local))).toBe(true);
+        console.info(`${name}：九组局部检查默认仅警告，严格 ${strict.failures.length} 项失败`);
+      } finally {
+        warn.mockRestore();
+      }
+    },
+    60_000,
+  );
 });
 
 describe('AC-PRM-FW-F095 包装入口委托 registrationGate（DEC-416③）', () => {
