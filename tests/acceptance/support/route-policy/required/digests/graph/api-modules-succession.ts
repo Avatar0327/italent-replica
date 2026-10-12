@@ -211,7 +211,6 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-access.ts#scopeAllows',
     'apps/api/src/modules/succession/calc-contract.ts#CalcObjectFailure',
     '#key',
-    '#lockExitTargets',
     '#records',
     'apps/api/src/system-actor.ts#auditActor',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',

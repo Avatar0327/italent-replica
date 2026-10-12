@@ -2668,7 +2668,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/succession/config-write.ts#mutatePopulation': ['c9a19717baec', 'c361af1334d4'],
   'apps/api/src/modules/succession/config-write.ts#saveRules': ['3c8747fe6893', '50f5f5af9c32'],
   'apps/api/src/modules/succession/config-write.ts#updateColor': ['cf788a7e1521', '0b043a98d53d'],
-  'apps/api/src/modules/succession/exit-store.ts#applyExit': ['607fce769207', '7c903cca7819'],
+  'apps/api/src/modules/succession/exit-store.ts#applyExit': ['ae088a997835', 'd8ce03c096d3'],
   'apps/api/src/modules/succession/exit-store.ts#idsSql': ['c57aeeef72e5', '7a645dc8391f'],
   'apps/api/src/modules/succession/exit-store.ts#installSuccessionExitHooks': ['8f03e3978d58', 'ab54aac3aaa3'],
   'apps/api/src/modules/succession/exit-store.ts#key': ['d963740ee187', '5c4d996c2d8f'],
