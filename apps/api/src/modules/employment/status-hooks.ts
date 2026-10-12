@@ -40,7 +40,7 @@ export interface EmployeeStatusHooks {
   /** 已生效记录被删除（写墓碑、恢复前一条区间）之后；事件是被删除的那条记录。 */
   onRecordDeleted?(tx: Tx, ctx: EmployeeStatusHookContext, event: EmploymentRecordEvent): Promise<void>;
   /**
-   * 预留：记录生效日改期。main 没有改期路径（任职编辑拒绝改日期 RECORD_DATE_IMMUTABLE，离职 R2-T03 搁置），
+   * 预留：记录生效日改期。main 没有离职改期路径（任职编辑拒绝改日期 RECORD_DATE_IMMUTABLE，离职 R2-T03 搁置），
    * 接入改期时由 employment 在同一事务里调用。
    */
   onRecordRescheduled?(
