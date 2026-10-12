@@ -1,41 +1,27 @@
 .catalog-layout {
   display: flex;
   min-height: 620px;
-  margin: -12px;
+  margin: -24px;
+  background: var(--shell-background);
 }
 .catalog-navigation {
-  width: 168px;
-  flex: 0 0 168px;
-  border-right: 1px solid #edf0f4;
-  padding-top: 12px;
+  width: 200px;
+  flex: 0 0 200px;
+  border-right: 1px solid var(--shell-border);
+  padding-top: 6px;
+  background: #fff;
 }
 .catalog-navigation .ant-menu {
   border: 0 !important;
 }
 .catalog-navigation .ant-menu-item {
-  margin: 4px 8px;
+  margin: 10px 8px;
   width: calc(100% - 16px);
 }
 .catalog-content {
   flex: 1;
   min-width: 0;
-  padding: 16px 24px;
-}
-.catalog-page .page-heading {
-  margin-bottom: 24px;
-}
-.catalog-page .page-heading h1 {
-  font-size: 18px;
-}
-.catalog-page .ant-table-thead > tr > th {
-  background: #f7f8fa;
-  font-size: 12px;
-  font-weight: 500;
-}
-.catalog-page .ant-table-tbody > tr > td {
-  padding-top: 11px;
-  padding-bottom: 11px;
-  font-size: 13px;
+  padding: 0 16px 16px;
 }
 .catalog-name {
   padding-left: 0;
@@ -52,13 +38,13 @@
 }
 .channel-node {
   min-width: 160px;
-  border: 1px solid #e5eaf1;
+  border: 1px solid var(--shell-border);
   border-radius: 8px;
   padding: 20px;
   background: #fff;
 }
 .channel-node.current {
-  border-color: #1677ff;
+  border-color: var(--shell-primary);
   background: #f0f6ff;
 }
 .channel-node h3 {
@@ -66,7 +52,7 @@
   font-size: 15px;
 }
 .channel-date {
-  color: #86909c;
+  color: var(--shell-muted);
   font-size: 12px;
   margin-left: auto;
 }
@@ -78,11 +64,11 @@
 .catalog-maintenance th,
 .catalog-maintenance td {
   padding: 12px;
-  border-bottom: 1px solid #edf0f4;
+  border-bottom: 1px solid var(--shell-border);
   text-align: left;
 }
 .catalog-maintenance th {
-  background: #f7f8fa;
+  background: var(--shell-background);
   font-weight: 500;
 }
 .catalog-maintenance button,
@@ -92,6 +78,10 @@
 }
 .catalog-maintenance form {
   padding: 20px;
-  border: 1px solid #edf0f4;
+  border: 1px solid var(--shell-border);
   border-radius: 6px;
+}
+
+.legacy-page:has(> .catalog-layout) {
+  margin-top: 0;
 }

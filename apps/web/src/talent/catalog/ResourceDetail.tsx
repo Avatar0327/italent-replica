@@ -1,4 +1,4 @@
-import { Alert, Button, Descriptions, Drawer, Empty, Table, Tabs } from 'antd';
+import { Alert, Button, Descriptions, Empty, Table, Tabs } from 'antd';
 import { DetailPage } from '../../foundation/templates.js';
 import { PageState } from '../../foundation/PageState.js';
 import type { ObjectPermission } from '../../foundation/permission-model.js';
@@ -82,51 +82,50 @@ export function ResourceDetail({
   const row = state.data;
   const names = useReferenceNames(resource);
   return (
-    <Drawer
-      width={900}
+    <DetailPage
       open
-      title={`${resource.title} · ${m.detail}`}
       onClose={onClose}
-      footer={<Button onClick={onClose}>{m.close}</Button>}
-    >
-      {state.error ? (
-        <PageState kind="error" error={state.error} />
-      ) : !row ? (
-        <PageState kind="loading" />
-      ) : (
-        <DetailPage
-          title={fieldAccess(permission, 'name').visible ? (row.name ?? resource.title) : resource.title}
-          summary={
-            <Descriptions
-              column={2}
-              items={resource.fields
-                .filter(
-                  (field) =>
-                    fieldAccess(permission, field.key).visible &&
-                    Object.hasOwn(row, field.key) &&
-                    !Array.isArray(row[field.key]),
-                )
-                .map((field) => ({
-                  key: field.key,
-                  label: field.label,
-                  children: display(
-                    typeof row[field.key] === 'string'
-                      ? (names.data?.get(String(row[field.key])) ?? row[field.key])
-                      : row[field.key],
-                  ),
-                }))}
-            />
-          }
-          sections={[
-            {
-              key: 'detail',
-              title: m.standardDetails,
-              children: <MoreDetails row={row} resource={resource} names={names.data} />,
-            },
-          ]}
-        />
-      )}
-    </Drawer>
+      title={row && fieldAccess(permission, 'name').visible ? (row.name ?? resource.title) : resource.title}
+      actions={<Button onClick={onClose}>{m.close}</Button>}
+      summary={
+        state.error ? (
+          <PageState kind="error" error={state.error} />
+        ) : !row ? (
+          <PageState kind="loading" />
+        ) : (
+          <Descriptions
+            column={2}
+            items={resource.fields
+              .filter(
+                (field) =>
+                  fieldAccess(permission, field.key).visible &&
+                  Object.hasOwn(row, field.key) &&
+                  !Array.isArray(row[field.key]),
+              )
+              .map((field) => ({
+                key: field.key,
+                label: field.label,
+                children: display(
+                  typeof row[field.key] === 'string'
+                    ? (names.data?.get(String(row[field.key])) ?? row[field.key])
+                    : row[field.key],
+                ),
+              }))}
+          />
+        )
+      }
+      sections={
+        row
+          ? [
+              {
+                key: 'detail',
+                title: m.standardDetails,
+                children: <MoreDetails row={row} resource={resource} names={names.data} />,
+              },
+            ]
+          : []
+      }
+    />
   );
 }
 

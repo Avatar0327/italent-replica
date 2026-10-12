@@ -1,20 +1,21 @@
 import type { DecisionAnnotation } from './foundation.js';
 export const qualificationNotes: Record<string, DecisionAnnotation> = {
   'qualification-category': {
-    original: '任职类别按所属分类组织，可以新建或从岗职务引入。',
-    decision: '基础配置调用已有接口；不建资源集合，按所属管理单元与向下公开管理。批量引入后续接入。',
+    original: 'UI/R3_任职资格/01、08：类别按分类组织，编辑为双列居中弹窗，可以新建或从岗职务引入。',
+    decision: '复用 FE-0 双列表单弹窗与同套实测主题；按所属管理单元与向下公开管理，批量引入后续接入。',
     decisions: ['DEC-456', 'DEC-026', 'DEC-324'],
     level: 'L3',
   },
   'qualification-level': {
-    original: '级别列表显示编码、名称、层级和顺序号，顺序号由低到高。',
+    original: 'UI/R3_任职资格/02：级别列表显示编码、名称、层级和顺序号，默认每页 15 条。',
     decision: '不在前端计算最大顺序号；新建省略时由服务端决定。权限未返回的字段不补全。',
     decisions: ['DEC-456', 'DEC-285'],
     level: 'L3',
   },
   'qualification-standard': {
-    original: '标准列表按分类组织，点名称查看各级别的能力标准。类别和级别范围建后不能改。',
-    decision: '原地修改标准基础信息，保留明细；不新增标准版本机制。图谱导出、课程和完整明细编辑后续接入。',
+    original: 'UI/R3_任职资格/04、07：标准按分类组织，详情按级别查看能力标准。独立指标页原站截图缺失。',
+    decision:
+      '按 DEC-456 修订将级别页签和能力表放入统一右侧抽屉；指标选择按规格与相邻版式实现。图谱、课程和完整明细编辑后续接入。',
     decisions: ['DEC-456', 'DEC-055', 'DEC-026'],
     level: 'L3',
   },

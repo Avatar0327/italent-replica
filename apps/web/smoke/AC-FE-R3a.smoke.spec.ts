@@ -80,7 +80,9 @@ test.beforeEach(async ({ page }) => {
             requiredFields: ['name'],
           },
         });
-      return route.fulfill({ json: path.endsWith(rows[0]!.id) ? rows[0] : { items: rows, total: 1, hasDataPermission: true } });
+      return route.fulfill({
+        json: path.endsWith(rows[0]!.id) ? rows[0] : { items: rows, total: 1, hasDataPermission: true },
+      });
     });
   }
 });

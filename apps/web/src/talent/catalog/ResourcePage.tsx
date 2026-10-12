@@ -14,7 +14,7 @@ import { m } from './messages.js';
 
 function useResourceState(resource: Resource) {
   const api = useApiClient();
-  const [page, setPage] = useState({ page: 1, pageSize: 20 });
+  const [page, setPage] = useState({ page: 1, pageSize: 15 });
   const [generation, refresh] = useState(0);
   const names = useReferenceNames(resource, generation);
   const [search, setSearch] = useState('');

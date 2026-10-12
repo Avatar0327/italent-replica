@@ -119,6 +119,7 @@ export function ResourceForm({
     : fields;
   return (
     <FormOverlay
+      mode={resource.module === 'qualification' && resource.key === 'categories' ? 'modal' : 'drawer'}
       recordKey={original ? `${original.id}:${original.revision}` : `new:${resource.key}`}
       title={`${original ? m.edit : m.create} · ${resource.title}`}
       open

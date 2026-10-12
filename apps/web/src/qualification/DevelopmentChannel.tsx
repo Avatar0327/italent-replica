@@ -1,6 +1,8 @@
-import { Button, Card, Descriptions, Drawer, Empty, Space, Tag } from 'antd';
+import { Button, Card, Descriptions, Empty, Tag } from 'antd';
 import { useCallback, useState } from 'react';
 import { DecisionNote } from '../foundation/DecisionNote.js';
+import { DetailPage } from '../foundation/templates.js';
+import { ViewHeading } from '../foundation/ViewHeading.js';
 import { PageState } from '../foundation/PageState.js';
 import { PersonSelect, type Choice } from '../foundation/selectors.js';
 import { useApiClient } from '../foundation/Session.js';
@@ -31,7 +33,7 @@ export function DevelopmentChannel() {
     <div className="catalog-page">
       <DecisionNote id="qualification-channel" />
       <header className="page-heading">
-        <h1>{q.channels}</h1>
+        <ViewHeading title={q.channels} />
       </header>
       <div style={{ maxWidth: 340 }}>
         <PersonSelect value={person} onChange={setPerson} load={load} />
@@ -130,29 +132,25 @@ function LevelDetail({
     api.request<{ level: { description?: string; cells?: unknown[] } }>(path, { signal }),
   );
   return (
-    <Drawer
+    <DetailPage
       open
       title={q.viewStandard}
-      width={860}
       onClose={onClose}
-      footer={
-        <Space>
-          <Button onClick={onClose}>{m.close}</Button>
-          <span>{q.courses}</span>
-        </Space>
+      actions={<Button onClick={onClose}>{m.close}</Button>}
+      summary={
+        state.error ? (
+          <PageState kind="error" error={state.error} />
+        ) : !state.data ? (
+          <PageState kind="loading" />
+        ) : (
+          <>
+            <p>{state.data.level.description}</p>
+            <StandardCells cells={state.data.level.cells} />
+            <p>{q.courses}</p>
+          </>
+        )
       }
-    >
-      {state.error ? (
-        <PageState kind="error" error={state.error} />
-      ) : !state.data ? (
-        <PageState kind="loading" />
-      ) : (
-        <>
-          <p>{state.data.level.description}</p>
-          <StandardCells cells={state.data.level.cells} />
-        </>
-      )}
-    </Drawer>
+    />
   );
 }
 
