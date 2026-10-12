@@ -7,6 +7,7 @@ import { runCalcPage } from './calc-worker.js';
 import { rowsOf } from './read-sql.js';
 import { recheckPlatform } from './platform-routes.js';
 import type { SuccessionJobKind } from './scheduler.js';
+import { EXIT_SWEEP_PRODUCER } from './exit-sweep.js';
 
 export interface CalcTenant {
   readonly id: string;
@@ -18,7 +19,7 @@ export interface CalcProducer {
   runTenant(tx: Tx, tenant: CalcTenant, now: Date): Promise<void>;
 }
 /** A3/C1/B4 追加生产者；没有生产者时平台明确返回 KIND_UNAVAILABLE。 */
-export const SUCCESSION_PRODUCERS: readonly CalcProducer[] = [];
+export const SUCCESSION_PRODUCERS: readonly CalcProducer[] = [EXIT_SWEEP_PRODUCER];
 export interface JobInput {
   readonly kind: SuccessionJobKind;
   readonly tenantId?: string;

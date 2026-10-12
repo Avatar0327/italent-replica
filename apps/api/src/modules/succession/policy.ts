@@ -40,6 +40,7 @@ const BASE = '/api/tenant/succession';
 const RECORD = SUCCESSION_OBJECTS.record.code;
 const OUT = projector('succession.record', 'succession.record');
 const SELF_HIDDEN = 'succession.selfHidden';
+const LEFT_PROJECTED = 'succession.successorLeftProjected';
 const RECHECK = 'succession.commandRecheck';
 const AUTHORIZE_RESULT = 'succession.authorizeResult';
 const COMMAND = write('body', RECHECK, AUTHORIZE_RESULT, {
@@ -141,7 +142,7 @@ export const SUCCESSION_POLICIES = defineTable('succession', {
     button: noButton('列表按对象查看权'),
     scope: listScope('succession.recordScope(org ∪ creator)'),
     fields: OUT,
-    guards: ['succession.filterFieldVisible', SELF_HIDDEN],
+    guards: ['succession.filterFieldVisible', SELF_HIDDEN, LEFT_PROJECTED],
   }),
   [`GET ${BASE}/records/:id`]: object({
     invalidId: BAD_REQUEST,
@@ -150,7 +151,7 @@ export const SUCCESSION_POLICIES = defineTable('succession', {
     button: noButton('详情按对象查看权'),
     scope: pointScope({ param: 'id' }, 'succession.record.byId', NOT_FOUND),
     fields: OUT,
-    guards: [SELF_HIDDEN],
+    guards: [SELF_HIDDEN, LEFT_PROJECTED],
   }),
   [`POST ${BASE}/records`]: object({
     object: RECORD,
@@ -158,6 +159,7 @@ export const SUCCESSION_POLICIES = defineTable('succession', {
     button: button('create', 'list'),
     scope: guardScope('succession.targetInScope', NOT_FOUND),
     fields: OUT,
+    guards: [LEFT_PROJECTED],
     write: write('body', RECHECK, AUTHORIZE_RESULT, {
       ledger: 'single',
       preconditions: ['succession.successorActive', 'succession.syncBarrier', 'succession.noOverlap'],
@@ -187,7 +189,7 @@ export const SUCCESSION_POLICIES = defineTable('succession', {
     button: button('update', 'detail'),
     scope: pointScope({ param: 'id' }, MUTATE, NOT_FOUND),
     fields: OUT,
-    guards: ['succession.immutableFields', SELF_HIDDEN],
+    guards: ['succession.immutableFields', SELF_HIDDEN, LEFT_PROJECTED],
     write: COMMAND,
   }),
   [`POST ${BASE}/records/end`]: object({
@@ -196,7 +198,7 @@ export const SUCCESSION_POLICIES = defineTable('succession', {
     button: button('end', 'list'),
     scope: pointScope({ body: 'items[*].id' }, MUTATE, NOT_FOUND),
     fields: OUT,
-    guards: [SELF_HIDDEN],
+    guards: [SELF_HIDDEN, LEFT_PROJECTED],
     rows: {
       path: 'items[*]',
       operation: 'update',

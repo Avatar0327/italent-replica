@@ -688,6 +688,10 @@ export const DIGESTS: Digests = {
     levelOptionAccess: '860821af3908',
     registerLevelReads: 'ba1d174232f9',
   },
+  'apps/api/src/modules/succession/projection.ts': {
+    GOVERNING_FIELD: 'fe154b4c6a8f',
+    projectSuccession: '636787edd80e',
+  },
   'apps/api/src/modules/succession/read-sql.ts': {
     selfRecordHiddenSql: '89628ea4a06a',
   },
@@ -699,7 +703,7 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/succession/routes.ts': {
     recordFilter: '858f731477d8',
-    registerSuccessionRoutes: 'e9902eabe671',
+    registerSuccessionRoutes: 'a6cb83171a24',
   },
   'apps/api/src/modules/succession/write-support.ts': {
     checkCandidateAccess: '7843395303d7',
@@ -1734,11 +1738,13 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/succession/input.ts#rejectImmutable': '99ce3a8d9998',
   'apps/api/src/modules/succession/levels-routes.ts#levelOptionAccess': '07e9bf4002f1',
   'apps/api/src/modules/succession/levels-routes.ts#registerLevelReads': '1c4dc4f4f005',
+  'apps/api/src/modules/succession/projection.ts#GOVERNING_FIELD': 'e3b0c44298fc',
+  'apps/api/src/modules/succession/projection.ts#projectSuccession': '100b13723c09',
   'apps/api/src/modules/succession/read-sql.ts#selfRecordHiddenSql': 'eab3bde19b0f',
   'apps/api/src/modules/succession/record-read.ts#conditions': '326371d4de4d',
   'apps/api/src/modules/succession/record-write.ts#requireTarget': '8ff43faa6c04',
   'apps/api/src/modules/succession/routes.ts#recordFilter': '8c3cfb5b80b7',
-  'apps/api/src/modules/succession/routes.ts#registerSuccessionRoutes': 'c8b8e25186fb',
+  'apps/api/src/modules/succession/routes.ts#registerSuccessionRoutes': 'dc0e8f6c0b46',
   'apps/api/src/modules/succession/write-support.ts#checkCandidateAccess': 'ea8155f2a727',
   'apps/api/src/modules/succession/write-support.ts#checkWriteAccess': 'eac8ef9cc70b',
   'apps/api/src/modules/survey360/access.ts#activityVisibleSql': '11f326016f03',
