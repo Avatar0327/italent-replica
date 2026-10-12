@@ -18,6 +18,18 @@ interface SettingSpec<T> {
 }
 
 export const SUCCESSION_SETTINGS = {
+  /** DEC-443：仅组织地图隐藏虚拟组织，管理员租户级配置。 */
+  'succession.hide_virtual_org': {
+    description: '继任：组织地图隐藏虚拟组织',
+    defaultValue: false,
+    valid: (value) => typeof value === 'boolean',
+  } satisfies SettingSpec<boolean>,
+  /** DEC-443：两种地图是否展示当前任职人员，个人不可改。 */
+  'succession.show_incumbents': {
+    description: '继任：地图展示当前任职人员',
+    defaultValue: true,
+    valid: (value) => typeof value === 'boolean',
+  } satisfies SettingSpec<boolean>,
   /** SC-R7：查看人本人作为负责人 / 现任时，能否看到自己的继任者（§5.5、§8.4）。 */
   'succession.self_successors_visible': {
     description: '继任：本人作为负责人 / 现任时可见自己的继任者',

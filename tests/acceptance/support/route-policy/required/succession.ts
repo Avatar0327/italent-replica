@@ -129,6 +129,15 @@ const IMMUTABLE: Obligation = {
   at: [{ role: 'call', unit: `${S}/input.ts#rejectImmutable`, anchor: "reason: 'FIELD_IMMUTABLE'" }],
 };
 
+/** A3 / DEC-343④：提示继承继任者字段权限，首次与重放仍共用 A2 的公共投影。 */
+const LEFT_PROJECTED: Obligation = {
+  perm: 'guard:succession.successorLeftProjected',
+  at: [
+    { role: 'call', unit: `${S}/projection.ts#projectSuccession`, anchor: 'fields.has(GOVERNING_FIELD[key] ?? key)' },
+    { role: 'const', unit: `${S}/projection.ts#GOVERNING_FIELD`, anchor: "successorLeft: 'successorEmployeeId'" },
+  ],
+};
+
 export const SUCCESSION: RequiredTable = {
   [`GET ${BASE}/readiness`]: [view(`router.get(\`\${SUCCESSION_BASE}/readiness\`, async (c) => { ${VIEW}`)],
   [`GET ${BASE}/records`]: [
@@ -150,11 +159,16 @@ export const SUCCESSION: RequiredTable = {
       ],
     },
     SELF_HIDDEN,
+    LEFT_PROJECTED,
   ],
-  [`GET ${BASE}/records/:id`]: [view(`router.get(\`\${RECORDS}/:id\`, async (c) => { ${VIEW}`), SELF_HIDDEN],
-  [`POST ${RECORDS_PATH}`]: [...change('create'), TARGET_IN_SCOPE],
-  [`PUT ${RECORDS_PATH}/:id`]: [...change('update'), IMMUTABLE, SELF_HIDDEN],
-  [`POST ${RECORDS_PATH}/end`]: [...change('update', 'end'), SELF_HIDDEN],
+  [`GET ${BASE}/records/:id`]: [
+    view(`router.get(\`\${RECORDS}/:id\`, async (c) => { ${VIEW}`),
+    SELF_HIDDEN,
+    LEFT_PROJECTED,
+  ],
+  [`POST ${RECORDS_PATH}`]: [...change('create'), TARGET_IN_SCOPE, LEFT_PROJECTED],
+  [`PUT ${RECORDS_PATH}/:id`]: [...change('update'), IMMUTABLE, SELF_HIDDEN, LEFT_PROJECTED],
+  [`POST ${RECORDS_PATH}/end`]: [...change('update', 'end'), SELF_HIDDEN, LEFT_PROJECTED],
   [`DELETE ${RECORDS_PATH}/:id`]: [...change('delete'), SELF_HIDDEN],
   [`GET ${BASE}/successor-candidates`]: [...candidates('create'), ...candidates('update')],
 };
@@ -224,6 +238,115 @@ function configRequired(
   return obligations;
 }
 Object.assign(SUCCESSION, {
+  [`GET ${BASE}/maps/:kind/preferences`]: [
+    {
+      perm: 'obj:Succession.Map:view',
+      facts: ['object:objectContext'],
+      at: [
+        {
+          role: 'call',
+          unit: `${S}/map-routes.ts#registerMapRoutes`,
+          anchor: "await successionContext(c, deps, 'map')",
+        },
+        ...CONTEXT,
+        {
+          role: 'const',
+          unit: 'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>map',
+          anchor: "object( 'Map'",
+        },
+      ],
+    },
+  ],
+  [`PUT ${BASE}/maps/:kind/preferences`]: [
+    {
+      perm: 'guard:succession.preferenceIds',
+      note: '本人偏好内引用的组织按当前范围验证',
+      at: [
+        {
+          role: 'call',
+          unit: `${S}/map-routes.ts#registerMapRoutes`,
+          anchor: 'await resolveMapDisplayConditions(',
+        },
+        {
+          role: 'impl',
+          unit: `${S}/map-display.ts#resolveMapDisplayConditions`,
+          anchor:
+            "if (ids.some((id) => !orgs.some((o) => o.id === id))) throw new AppError('NOT_FOUND', '显示组织不存在')",
+        },
+      ],
+    },
+    {
+      perm: 'obj:Succession.Map:view',
+      facts: ['object:objectContext'],
+      at: [
+        { role: 'call', unit: `${S}/map-routes.ts#mapAccess`, anchor: "await successionContext(c, bound, 'map')" },
+        ...CONTEXT,
+        {
+          role: 'const',
+          unit: 'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>map',
+          anchor: "object( 'Map'",
+        },
+      ],
+    },
+  ],
+  [`POST ${BASE}/maps/org/compute-stats`]: [
+    {
+      perm: 'obj:Succession.Map:view',
+      facts: ['object:objectContext'],
+      at: [
+        { role: 'call', unit: `${S}/map-routes.ts#mapAccess`, anchor: "await successionContext(c, bound, 'map')" },
+        ...CONTEXT,
+        {
+          role: 'const',
+          unit: 'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>map',
+          anchor: "object( 'Map'",
+        },
+      ],
+    },
+    {
+      perm: 'btn:Succession.Map#computeStats@list',
+      facts: ['button:button()'],
+      at: [
+        {
+          role: 'call',
+          unit: `${S}/map-routes.ts#computeAccess`,
+          anchor: "await button(bound, access.ctx, codeOf('map'), 'computeStats', 'list')",
+        },
+        {
+          role: 'impl',
+          unit: `${MRA}#button`,
+          anchor: "action: 'object.button', resource: buttonResource(objectCode, code, level)",
+        },
+      ],
+    },
+    {
+      perm: 'guard:succession.mapDisplay',
+      note: '请求人当前范围 ∩ 地图显示；重放复核原冻结集合',
+      at: [
+        {
+          role: 'call',
+          unit: `${S}/map-routes.ts#registerMapRoutes`,
+          anchor: "await readMapDisplayScope(tx, { ...ctx, scope, asOf }, 'org', body, 'submitted')",
+        },
+        {
+          role: 'impl',
+          unit: `${S}/map-display.ts#readMapDisplayScope`,
+          anchor: 'if (!ctx.scope.hasDataPermission) return []',
+        },
+        {
+          role: 'call',
+          unit: `${S}/map-display.ts#readMapDisplayScope`,
+          anchor: 'await resolveMapDisplayConditions(tx, ctx, kind, supplied, origin)',
+        },
+        {
+          role: 'impl',
+          unit: `${S}/map-display.ts#resolveMapDisplayConditions`,
+          anchor:
+            "if (ids.some((id) => !orgs.some((o) => o.id === id))) throw new AppError('NOT_FOUND', '显示组织不存在')",
+        },
+      ],
+    },
+  ],
   [`GET ${BASE}/populations`]: configRequired('population', 'view'),
   [`GET ${BASE}/populations/:id`]: configRequired('population', 'view'),
   [`POST ${BASE}/populations`]: configRequired('population', 'create'),
