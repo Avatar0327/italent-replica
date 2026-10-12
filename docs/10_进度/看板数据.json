@@ -1,9 +1,9 @@
 {
 "updated": "2026-10-11",
 "stats": {
-"merged": 195,
-"open": 13,
-"dec": 445,
+"merged": 196,
+"open": 12,
+"dec": 446,
 "ev": "43/176"
 },
 "tasks": {
@@ -983,6 +983,10 @@
 }
 },
 "log": [
+[
+"10-11",
+"#262 T04 B6b 模板复制 / 删除 / 历史引用保护合并（fb9f37f，Codex 独立审查后合并）；T04 PR-B 全部完成；派 F-094（Sol high）"
+],
 [
 "10-11",
 "#277 契约：F-039 ButtonLevel 与共享 button helper 补 list_row 合并（DEC-442①）；C2-1a #271 解锁续做"
