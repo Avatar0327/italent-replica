@@ -47,7 +47,7 @@ async function records(tx: Tx, tenant: string, ids: readonly string[], today: st
     ORDER BY r.id ${lock ? sql`FOR UPDATE OF r` : sql``}`),
   );
 }
-/** 多个离职台账同一员工执行时也先统一取全部目标，避免跨台账反向取目标锁。 */
+/** 调用方先准备本事务全部员工锁，再一次性传入全部候选；复用 A2 的 kind:id 目标排序。 */
 export async function lockExitTargets(tx: Tx, ctx: ExitContext, ids: readonly string[]) {
   const rows = await records(tx, ctx.tenantId, ids, tenantLocalDate(ctx.now, ctx.timezone));
   await lockTargets(
@@ -57,7 +57,8 @@ export async function lockExitTargets(tx: Tx, ctx: ExitContext, ids: readonly st
   );
 }
 
-/** 冻结候选只来自离职事件当时；applyExit 消费本类型，不能再扩展到后来新增的记录。 */
+/** 冻结候选只来自离职事件当时；消费本类型，不能扩展到后来新增的记录。
+ * 调用方必须已持本事务全部员工与目标锁；此处只取记录锁，避免逐台账重新扩展锁集合。 */
 export async function applyExit(
   tx: Tx,
   ctx: ExitContext,
@@ -68,7 +69,6 @@ export async function applyExit(
 ): Promise<number> {
   const today = tenantLocalDate(ctx.now, ctx.timezone);
   if (application.source === 'delete_revert' || leaveDate > today) return 0;
-  await lockExitTargets(tx, ctx, application.candidateRecordIds);
   const selected = (await records(tx, ctx.tenantId, application.candidateRecordIds, today, true)).filter((r) =>
     types.includes(r.succession_type),
   );

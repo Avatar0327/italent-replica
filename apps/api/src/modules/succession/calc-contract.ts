@@ -32,6 +32,9 @@ export interface CalcHandler {
   /** 每页（包括空集合）重验当前系统主体/所属人、standard_succession_runner、对象权限与非空范围。
    * 从租户设置解析，返回当前系统主体；失效抛 CalcBlocked。禁止外部 IO 或获取其他 run 的锁。 */
   authorizePage(ctx: CalcContext): Promise<string>;
+  /** 在整页根事务内、任何对象保存点之前统一准备领域锁；首次执行与重试共用。
+   * 只准备锁，不写业务值；禁止外部 IO 或获取其他 run 的锁。未提供时维持对象级执行。 */
+  preparePage?(ctx: CalcContext, objects: readonly CalcObject[]): Promise<void>;
   /** 在提供的对象保存点事务内执行；不得自行提交/启动事务。按领域锁序取对象锁，再复核范围、资格、
    * expectedRevision 与字段权限；失败抛 CalcObjectFailure。业务审计/outbox 必须也用 ctx.tx。
    * 返回 failed 不可作为正常结果；未知异常回滚整页并 blocked，不能吞错变成 unchanged。 */
@@ -49,6 +52,7 @@ export function defineCalcKinds(handlers: readonly CalcHandler[]): readonly Calc
         kind: handler.kind,
         objectType: handler.objectType,
         authorizePage: handler.authorizePage.bind(handler),
+        ...(handler.preparePage ? { preparePage: handler.preparePage.bind(handler) } : {}),
         execute: handler.execute.bind(handler),
       }),
     ),

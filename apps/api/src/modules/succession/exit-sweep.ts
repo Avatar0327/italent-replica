@@ -1,6 +1,7 @@
 /** A3 / DEC-429：生产者冻结员工集合；worker 重读当前时间轴与权限，逐员工保存点执行。 */
 import { randomUUID } from 'node:crypto';
 import { and, eq, isUuid, sql, successionExitApplications as applications, type Tx } from '@italent/db';
+import { inArray } from 'drizzle-orm';
 import { decide, EMPLOYEE_STATUS, SUCCESSION_APP, tenantLocalDate } from '@italent/domain';
 import { objectCatalog } from '../permission/catalog.js';
 import { loadSubject } from '../permission/subject.js';
@@ -10,7 +11,7 @@ import { lockEmploymentEmployee } from '../employment/record-store.js';
 import { recheckRecordEvent } from '../employment/record-events.js';
 import { applyExit, lockExitTargets } from './exit-store.js';
 import { rowsOf } from './read-sql.js';
-import { CalcBlocked, type CalcHandler, type CalcInput } from './calc-contract.js';
+import { CalcBlocked, type CalcContext, type CalcObject, type CalcHandler, type CalcInput } from './calc-contract.js';
 import type { CalcProducer } from './calc-jobs.js';
 import { calcScheduleSlot } from './calc-time.js';
 import { enqueueCalcRun } from './calc-worker.js';
@@ -48,6 +49,31 @@ async function timezone(tx: Tx) {
   // 复用平台受控时区函数，不直接读取 tenants 表。
   const [row] = rowsOf<{ timezone: string }>(await tx.execute(sql`SELECT current_tenant_timezone() AS timezone`));
   return row!.timezone;
+}
+
+/** #266 P2-1：保存点成功会把锁留在整页事务；必须在处理任何员工前准备全页锁集合。 */
+async function prepareExitPage({ tx, run, now }: CalcContext, objects: readonly CalcObject[]) {
+  const employeeIds = [...new Set(objects.map((object) => object.objectId))].sort();
+  if (!employeeIds.length) return;
+  const ctx = {
+    tenantId: run.tenantId,
+    timezone: await timezone(tx),
+    now,
+    commandId: run.commandId,
+    userId: run.principalUserId!,
+    expectedRevision: 0,
+  };
+  // 冻结对象不能 SKIP LOCKED 后当作成功；全体员工锁之后用独立语句重读台账（DEC-343）。
+  for (const employeeId of employeeIds) await lockEmploymentEmployee(tx, ctx, employeeId);
+  const pending = await tx
+    .select()
+    .from(applications)
+    .where(and(eq(applications.tenantId, run.tenantId), inArray(applications.employeeId, employeeIds)));
+  await lockExitTargets(
+    tx,
+    ctx,
+    pending.filter((a) => a.source !== 'delete_revert').flatMap((a) => a.candidateRecordIds),
+  );
 }
 
 export const EXIT_SWEEP_PRODUCER: CalcProducer = {
@@ -88,6 +114,7 @@ export const EXIT_SWEEP_HANDLER: CalcHandler = {
     const zone = await timezone(tx);
     return (await principal(tx, run.tenantId, tenantLocalDate(now, zone))).userId;
   },
+  preparePage: prepareExitPage,
   async execute({ tx, run, now }, object) {
     const zone = await timezone(tx);
     const today = tenantLocalDate(now, zone);
@@ -99,19 +126,12 @@ export const EXIT_SWEEP_HANDLER: CalcHandler = {
       userId: run.principalUserId!,
       expectedRevision: 0,
     };
-    // 冻结对象不能 SKIP LOCKED 后当作成功；等员工锁并在独立语句里重读（§7、DEC-343）。
-    await lockEmploymentEmployee(tx, ctx, object.objectId);
     const pending = await tx
       .select()
       .from(applications)
       .where(and(eq(applications.tenantId, run.tenantId), eq(applications.employeeId, object.objectId)))
       .orderBy(applications.employmentRecordId);
     const active = pending.filter((a) => a.source !== 'delete_revert' && a.candidateRecordIds.length);
-    await lockExitTargets(
-      tx,
-      ctx,
-      active.flatMap((a) => a.candidateRecordIds),
-    );
     const current = await principal(tx, run.tenantId, today);
     if (current.userId !== run.principalUserId) throw new CalcBlocked('PRINCIPAL_UNAVAILABLE');
     let changed = 0;
