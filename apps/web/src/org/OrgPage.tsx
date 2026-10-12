@@ -16,6 +16,7 @@ import { OrgEditor, type OrgAction } from './OrgEditor.js';
 import { organizationTree, type Dimension, type OrgRow } from './page-model.js';
 import { usePagePermissions, useRemote, RemoteContent, type PageAccess } from './page-support.js';
 import { pageText as m } from './messages.js';
+import { FilterDrawer } from './FilterDrawer.js';
 import { ListViews } from '../foundation/ListViews.js';
 import './workspace.css';
 const object = 'TenantBase.Organization';
@@ -166,6 +167,8 @@ function OrgFilters({ s }: { s: Catalog }) {
   return (
     <Space wrap>
       <Input.Search
+        key={s.name}
+        defaultValue={s.name}
         aria-label={m.search}
         placeholder={m.search}
         allowClear
@@ -194,6 +197,19 @@ function OrgFilters({ s }: { s: Catalog }) {
           { value: 'enabled', label: m.enabled },
           { value: 'all', label: m.all },
         ]}
+      />
+      <FilterDrawer
+        value={{ name: s.name, status: s.includeDisabled ? 'all' : 'enabled' }}
+        statuses={[
+          { value: 'enabled', label: m.enabled },
+          { value: 'all', label: m.all },
+        ]}
+        clearStatus="all"
+        onApply={({ name, status }) => {
+          s.setName(name);
+          s.setIncludeDisabled(status === 'all');
+          s.reset();
+        }}
       />
       <span>{m.date}</span>
       <TenantDatePicker

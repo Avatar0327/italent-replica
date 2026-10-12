@@ -103,3 +103,26 @@
     grid-template-columns: 180px minmax(0, 1fr);
   }
 }
+
+.r1-workspace .page-filters > .ant-alert {
+  margin-bottom: 12px;
+}
+.r1-filter-field {
+  display: grid;
+  grid-template-columns: 80px minmax(0, 1fr);
+  gap: 16px;
+  align-items: center;
+  margin: 24px 0;
+}
+.r1-filter-field > span {
+  text-align: right;
+  color: #868b8f;
+}
+.r1-filter-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.r1-filter-drawer .ant-drawer-footer {
+  padding: 16px 24px;
+}

@@ -16,6 +16,7 @@ import { useSequenceSelection } from './SequenceSync.js';
 import { JobEditor, JobHints, jobFields, label } from './JobEditor.js';
 import { jobKinds, jobObjects, jobInitialValues, jobPermissionField, type JobKind, type JobRow } from './page-model.js';
 import { pageText as m } from './messages.js';
+import { FilterDrawer } from '../org/FilterDrawer.js';
 import { ListViews } from '../foundation/ListViews.js';
 import '../org/workspace.css';
 
@@ -95,6 +96,8 @@ function JobFilters({ s }: { s: Catalog }) {
   return (
     <Space wrap>
       <Input.Search
+        key={s.name}
+        defaultValue={s.name}
         aria-label={m.search}
         placeholder={m.search}
         allowClear
@@ -115,6 +118,20 @@ function JobFilters({ s }: { s: Catalog }) {
           { value: 'false', label: m.inactive },
           { value: '', label: m.all },
         ]}
+      />
+      <FilterDrawer
+        value={{ name: s.name, status: s.enabled }}
+        statuses={[
+          { value: 'true', label: m.active },
+          { value: 'false', label: m.inactive },
+          { value: '', label: m.all },
+        ]}
+        clearStatus=""
+        onApply={({ name, status }) => {
+          s.setName(name);
+          s.setEnabled(status);
+          s.reset();
+        }}
       />
       <span>{m.startDate}</span>
       <TenantDatePicker
