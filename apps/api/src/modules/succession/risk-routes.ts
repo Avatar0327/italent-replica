@@ -102,6 +102,9 @@ export function registerRiskRoutes(router: Hono<TenantEnv>, deps: TenantRouteDep
     await authorizeSuccessionResult(deps, ctx, response.body as StoredResult, riskRunResults);
     return c.json({ runId: (response.body as StoredResult).ids[0] }, 202);
   });
+  registerRiskResultRoutes(router, deps);
+}
+function registerRiskResultRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.get(`${SUCCESSION_BASE}/risk-results`, async (c) => {
     const ctx = await successionContext(c, deps, 'riskResult');
     const page = pageQuery(c);

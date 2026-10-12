@@ -43,7 +43,8 @@ export async function riskRead(
   });
   const scope = await resolveModuleScopeInTransaction(bound, ctx, tx, codeOf('riskResult'));
   const today = tenantLocalDate(ctx.now, ctx.timezone);
-  const where = sql`r.tenant_id=${ctx.tenantId}::uuid AND ${scopeSql(scope, { org: sql`p.org_id`, creator: sql`r.assigned_by` })}
+  const where = sql`r.tenant_id=${ctx.tenantId}::uuid
+    AND ${scopeSql(scope, { org: sql`p.org_id`, creator: sql`r.assigned_by` })}
     ${ids ? sql`AND r.position_id=ANY(${`{${ids.join(',')}}`}::uuid[])` : sql``}`;
   const from = sql`FROM succession_risk_results r LEFT JOIN LATERAL (
     SELECT org_id,stop_date FROM job_position_versions WHERE tenant_id=r.tenant_id AND object_id=r.position_id
@@ -105,7 +106,8 @@ export async function storeRisk(
       ${input.runId}::uuid,${input.runId ? input.now.toISOString() : null}::timestamptz,
       ${input.runId ? null : input.userId}::uuid,${revision})
     ON CONFLICT (tenant_id,position_id) DO UPDATE SET level_id=excluded.level_id,method=excluded.method,
-      run_id=excluded.run_id,computed_at=excluded.computed_at,assigned_by=excluded.assigned_by,revision=excluded.revision`);
+      run_id=excluded.run_id,computed_at=excluded.computed_at,
+      assigned_by=excluded.assigned_by,revision=excluded.revision`);
   await recordAudit(tx, {
     tenantId: input.tenantId,
     actorUserId: input.userId,

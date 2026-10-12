@@ -542,7 +542,11 @@ Object.assign(SUCCESSION, {
       perm: 'obj:Succession.RiskResult:view',
       facts: ['object:objectContext'],
       at: [
-        { role: 'call', unit: RISK_ROUTES, anchor: "await successionContext(c, deps, 'riskResult')" },
+        {
+          role: 'call',
+          unit: `${S}/risk-routes.ts#registerRiskResultRoutes`,
+          anchor: "await successionContext(c, deps, 'riskResult')",
+        },
         ...CONTEXT,
         riskConst,
       ],

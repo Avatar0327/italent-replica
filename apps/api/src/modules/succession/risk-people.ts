@@ -72,29 +72,7 @@ export async function riskPeople(
     ? await loadJobObject(tx, input.tenantId, 'positions', input.positionId, input.today, true)
     : undefined;
   for (const id of ids) {
-    const [row] = rowsOf<{ values: Record<string, RiskValue>; orgId: string | null; currentOrgId: string | null }>(
-      await tx.execute(sql`
-      SELECT jsonb_build_object('name',COALESCE(v.name,e.name),'gender',v.gender,'birthday',v.birthday,
-      'entry_date',r.body->>'entry_date','org_id',r.body->>'department_id','position_id',r.body->>'position_id',
-      'job_level_id',r.body->>'level_id','job_sequence_id',r.body->>'sequence_id','employee_status',r.employee_status) AS values,
-      r.body->>'department_id' AS "orgId",cur.body->>'department_id' AS "currentOrgId"
-      FROM employment_employees e LEFT JOIN LATERAL (SELECT * FROM personnel_employee_versions
-        WHERE tenant_id=e.tenant_id AND employee_id=e.id ORDER BY revision DESC LIMIT 1) v ON true
-      LEFT JOIN LATERAL (SELECT er.entry_date,COALESCE(p.body,to_jsonb(er)) AS body,s.employee_status
-        FROM employment_timeline t JOIN employment_records er ON er.tenant_id=t.tenant_id AND er.id=t.record_id
-        LEFT JOIN LATERAL (SELECT to_jsonb(pv) AS body FROM employment_payload_versions pv
-          WHERE pv.tenant_id=er.tenant_id AND pv.business_id=er.id AND pv.is_record_snapshot ORDER BY version_no DESC LIMIT 1) p ON true
-        JOIN LATERAL employment_record_status(t.tenant_id,er.id) s ON true
-        WHERE t.tenant_id=e.tenant_id AND t.employee_id=e.id AND t.valid_during @> ${input.asOf}::date
-          AND er.service_type='primary' LIMIT 1) r ON true
-      LEFT JOIN LATERAL (SELECT COALESCE(p.body,to_jsonb(er)) AS body FROM employment_timeline t
-        JOIN employment_records er ON er.tenant_id=t.tenant_id AND er.id=t.record_id
-        LEFT JOIN LATERAL (SELECT to_jsonb(pv) AS body FROM employment_payload_versions pv WHERE pv.tenant_id=er.tenant_id
-          AND pv.business_id=er.id AND pv.is_record_snapshot ORDER BY version_no DESC LIMIT 1) p ON true
-        WHERE t.tenant_id=e.tenant_id AND t.employee_id=e.id AND t.valid_during @> ${input.today}::date
-          AND er.service_type='primary' LIMIT 1) cur ON true
-      WHERE e.tenant_id=${input.tenantId}::uuid AND e.id=${id}::uuid`),
-    );
+    const [row] = await readRiskPerson(tx, input, id);
     const person: RiskPerson = { id };
     for (const field of fields) {
       const mapping = fieldMap[field];
@@ -122,4 +100,34 @@ export async function riskPeople(
     incumbents: riskIncumbents(from(primary), from(part), input.partTime),
     successors: from([...new Set(records.map((r) => r.successorEmployeeId))]),
   };
+}
+
+async function readRiskPerson(tx: Tx, input: Parameters<typeof riskPeople>[1], id: string) {
+  return rowsOf<{ values: Record<string, RiskValue>; orgId: string | null; currentOrgId: string | null }>(
+    await tx.execute(sql`
+      SELECT jsonb_build_object('name',COALESCE(v.name,e.name),'gender',v.gender,'birthday',v.birthday,
+      'entry_date',r.body->>'entry_date','org_id',r.body->>'department_id','position_id',r.body->>'position_id',
+      'job_level_id',r.body->>'level_id','job_sequence_id',r.body->>'sequence_id',
+      'employee_status',r.employee_status) AS values,
+      r.body->>'department_id' AS "orgId",cur.body->>'department_id' AS "currentOrgId"
+      FROM employment_employees e LEFT JOIN LATERAL (SELECT * FROM personnel_employee_versions
+        WHERE tenant_id=e.tenant_id AND employee_id=e.id ORDER BY revision DESC LIMIT 1) v ON true
+      LEFT JOIN LATERAL (SELECT er.entry_date,COALESCE(p.body,to_jsonb(er)) AS body,s.employee_status
+        FROM employment_timeline t JOIN employment_records er ON er.tenant_id=t.tenant_id AND er.id=t.record_id
+        LEFT JOIN LATERAL (SELECT to_jsonb(pv) AS body FROM employment_payload_versions pv
+          WHERE pv.tenant_id=er.tenant_id AND pv.business_id=er.id AND pv.is_record_snapshot
+          ORDER BY version_no DESC LIMIT 1) p ON true
+        JOIN LATERAL employment_record_status(t.tenant_id,er.id) s ON true
+        WHERE t.tenant_id=e.tenant_id AND t.employee_id=e.id AND t.valid_during @> ${input.asOf}::date
+          AND er.service_type='primary' LIMIT 1) r ON true
+      LEFT JOIN LATERAL (SELECT COALESCE(p.body,to_jsonb(er)) AS body FROM employment_timeline t
+        JOIN employment_records er ON er.tenant_id=t.tenant_id AND er.id=t.record_id
+        LEFT JOIN LATERAL (SELECT to_jsonb(pv) AS body FROM employment_payload_versions pv
+          WHERE pv.tenant_id=er.tenant_id
+          AND pv.business_id=er.id AND pv.is_record_snapshot
+          ORDER BY version_no DESC LIMIT 1) p ON true
+        WHERE t.tenant_id=e.tenant_id AND t.employee_id=e.id AND t.valid_during @> ${input.today}::date
+          AND er.service_type='primary' LIMIT 1) cur ON true
+      WHERE e.tenant_id=${input.tenantId}::uuid AND e.id=${id}::uuid`),
+  );
 }

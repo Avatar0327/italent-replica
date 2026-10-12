@@ -50,10 +50,12 @@ async function riskPrincipal(tx: Tx, tenantId: string) {
 async function riskLevels(tx: Tx, tenantId: string): Promise<RiskLevel[]> {
   const levels = rowsOf<RiskLevel & { expression: string; rows: Record<string, unknown>[] }>(
     await tx.execute(sql`
-    SELECT l.id,l.condition_expression AS expression,l.compiled_formula AS formula,l.compiler_version AS "compilerVersion",
+    SELECT l.id,l.condition_expression AS expression,l.compiled_formula AS formula,
+      l.compiler_version AS "compilerVersion",
       l.compile_error AS "compileError",COALESCE((SELECT jsonb_agg(to_jsonb(r) ORDER BY row_no)
         FROM succession_risk_level_rows r WHERE r.tenant_id=l.tenant_id AND r.level_id=l.id),'[]'::jsonb) AS rows
-    FROM succession_risk_levels l WHERE l.tenant_id=${tenantId}::uuid AND l.enabled AND l.condition_expression IS NOT NULL
+    FROM succession_risk_levels l WHERE l.tenant_id=${tenantId}::uuid
+      AND l.enabled AND l.condition_expression IS NOT NULL
     ORDER BY l.display_order,l.id`),
   );
   return levels.map((l) => ({
