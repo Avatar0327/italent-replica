@@ -4608,6 +4608,9 @@
         "fieldsOut": [
           "trimModuleResponse"
         ],
+        "guard": [
+          "ev.filterFieldVisible"
+        ],
         "object": [
           "objectContext"
         ],
