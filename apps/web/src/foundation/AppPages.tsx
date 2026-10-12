@@ -34,7 +34,7 @@ function LandingPage({ title }: { title: string }) {
       data={{ items: [], total: 0 }}
       columns={[{ title: ui.name, dataIndex: 'name' }]}
       rowKey="id"
-      page={{ page: 1, pageSize: 20 }}
+      page={{ page: 1, pageSize: 15 }}
       onPageChange={() => {}}
     />
   );

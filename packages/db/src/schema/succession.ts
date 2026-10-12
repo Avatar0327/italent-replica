@@ -13,6 +13,7 @@ import {
   index,
   integer,
   jsonb,
+  numeric,
   pgTable,
   primaryKey,
   text,
@@ -35,6 +36,77 @@ export const SUCCESSION_SOURCE_KINDS = ['manual', 'review_sync'] as const;
 export const SUCCESSION_OPEN_END = '9999-12-31';
 
 const list = (values: readonly string[]) => sql.raw(values.map((value) => `'${value}'`).join(', '));
+
+/** DEC-443：个人筛选仅用于职位地图，管理员显示开关不存于个人表。 */
+export const SUCCESSION_POSITION_PREFERENCES_DEFAULTS = Object.freeze({
+  showKeyPositions: false,
+  showPositionsWithoutSuccessor: true,
+});
+
+/** C1 / DEC-443：root / depth / hidden 是位置筛选；两个布尔筛选按个人保存。 */
+export const successionMapPreferences = pgTable(
+  'succession_map_preferences',
+  {
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
+    userId: uuid('user_id').notNull(),
+    mapKind: text('map_kind').$type<'position'>().notNull(),
+    rootOrgId: uuid('root_org_id'),
+    depth: integer('depth').notNull(),
+    hiddenOrgIds: jsonb('hidden_org_ids').$type<string[]>().notNull().default([]),
+    showKeyPositions: boolean('show_key_positions')
+      .notNull()
+      .default(SUCCESSION_POSITION_PREFERENCES_DEFAULTS.showKeyPositions),
+    showPositionsWithoutSuccessor: boolean('show_positions_without_successor')
+      .notNull()
+      .default(SUCCESSION_POSITION_PREFERENCES_DEFAULTS.showPositionsWithoutSuccessor),
+    revision: integer('revision').notNull().default(1),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.userId, t.mapKind] }),
+    foreignKey({
+      columns: [t.tenantId, t.userId],
+      foreignColumns: [tenantMemberships.tenantId, tenantMemberships.userId],
+    }),
+    foreignKey({ columns: [t.tenantId, t.rootOrgId], foreignColumns: [orgObjects.tenantId, orgObjects.id] }),
+    check('succession_preferences_kind', sql`${t.mapKind} = 'position'`),
+    check('succession_preferences_depth', sql`${t.depth} BETWEEN 2 AND 4`),
+    check(
+      'succession_preferences_hidden',
+      sql`jsonb_typeof(${t.hiddenOrgIds})='array'
+    AND jsonb_array_length(${t.hiddenOrgIds})<=200`,
+    ),
+    check('succession_preferences_revision', sql`${t.revision}>0`),
+  ],
+);
+
+/** §4.5：同一组织各业务日独立缓存，run 与来源项目只存引用。 */
+export const successionOrgStats = pgTable(
+  'succession_org_stats',
+  {
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
+    orgId: uuid('org_id').notNull(),
+    statDate: date('stat_date', { mode: 'string' }).notNull(),
+    onDutyCount: integer('on_duty_count').notNull(),
+    greenRate: numeric('green_rate'),
+    greenSourceProjectId: uuid('green_source_project_id'),
+    slotKey: text('slot_key').notNull(),
+    computedAt: timestamp('computed_at', { withTimezone: true }).notNull(),
+    runId: uuid('run_id').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.orgId, t.statDate] }),
+    foreignKey({ columns: [t.tenantId, t.orgId], foreignColumns: [orgObjects.tenantId, orgObjects.id] }),
+    foreignKey({
+      columns: [t.tenantId, t.runId],
+      foreignColumns: [successionCalcRuns.tenantId, successionCalcRuns.id],
+    }),
+    check('succession_stats_count', sql`${t.onDutyCount}>=0`),
+  ],
+);
 
 /**
  * 继任记录（原站 `Map`，§1.1）。区间 [start_date, end_date) 半开；同目标同继任者任何两条未删除记录区间不得重叠

@@ -4,7 +4,7 @@ import { APP_ROUTES } from '../src/foundation/routes.js';
 test('AC-FE-0-04 通过现有演示身份选择器进入应用，注释可切换', async ({ page }) => {
   await page.goto('/staff');
   await page.getByLabel('切换演示身份').selectOption(user);
-  await expect(page.getByRole('heading', { name: '员工管理', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '员工', exact: true })).toBeVisible();
   await expect(page.locator('.ant-pagination-options')).toContainText('条/页');
   expect((await page.context().cookies()).find((cookie) => cookie.name === 'italent_demo_tenant')?.value).toBe(tenant);
   await expect(page.getByText('DEC-456', { exact: true })).toHaveCount(0);
@@ -25,7 +25,8 @@ for (const app of APP_ROUTES) {
     ]);
     await page.goto(app.path);
     await expect(page.locator('.shell-workspace h1').first()).toBeVisible();
-    await expect(page.locator('.shell-context')).toContainText(app.label);
+    await expect(page.getByRole('combobox', { name: '应用导航' })).toBeVisible();
+    await expect(page.locator('.app-switch')).toContainText(app.label);
     await expect(page.locator('.shell-workspace')).not.toContainText('正在加载');
     expect(errors).toEqual([]);
   });
@@ -50,4 +51,44 @@ test('AC-FE-0-06 旧路径保留参数与锚点，无权限页和未知页面均
   await expect(page.getByText('暂无访问权限', { exact: true })).toBeVisible();
   await page.goto('/not-a-page');
   await expect(page.getByRole('status').getByText('页面或记录不存在', { exact: true })).toBeVisible();
+});
+
+test('AC-FE-0-09 无面包屑、视图标题、紧凑主题与可收起侧栏对齐原站', async ({ page }) => {
+  await page.goto('/staff');
+  await page.getByLabel('切换演示身份').selectOption(user);
+  await expect(page.locator('.shell-workspace h1')).toBeVisible();
+  await expect(page.locator('.ant-breadcrumb')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '切换视图' })).toContainText('员工');
+  await expect(page.locator('.page-view-icon')).toBeVisible();
+  await expect(page.locator('.ant-pagination-options')).toContainText('15条/页');
+  await expect(page.locator('.shell-header')).toHaveCSS('height', '50px');
+  await expect(page.locator('.shell-content')).toHaveCSS('background-color', 'rgb(247, 249, 250)');
+  await expect(page.locator('.page-view-trigger')).toHaveCSS('color', 'rgb(0, 84, 240)');
+  await expect(page.locator('.ant-table-thead th')).toHaveCSS('height', '40px');
+  await expect(page.locator('.ant-table-thead th')).toHaveCSS('font-size', '12px');
+  await expect(page.locator('.ant-table-thead th')).toHaveCSS('color', 'rgb(51, 56, 61)');
+  await expect(page.locator('.shell-sidebar')).toHaveCSS('width', '200px');
+  await page.getByRole('button', { name: '收起菜单' }).click();
+  await expect(page.locator('.shell-sidebar')).toHaveCSS('width', '72px');
+  await page.getByRole('button', { name: '展开菜单' }).click();
+  await expect(page.locator('.shell-sidebar')).toHaveCSS('width', '200px');
+});
+
+test('AC-FE-0-10 行内操作保持 40px，详情与筛选从右侧打开', async ({ page }) => {
+  await page.goto('/smoke/template-fixture.html');
+  await expect(page.locator('tr[data-row-key]')).toHaveCSS('height', '40px');
+  await expect(page.locator('.page-heading .ant-btn-primary')).toHaveCSS('background-color', 'rgb(20, 110, 255)');
+  await expect(page.locator('.page-heading .ant-btn-primary')).toHaveCSS('height', '32px');
+  await page.getByRole('button', { name: '合成示例组织', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: '合成示例组织' })).toBeVisible();
+  await expect(page.locator('.detail-drawer')).toHaveClass(/ant-drawer-right/);
+  await page.getByRole('tab', { name: '变更记录' }).click();
+  await expect(page.getByRole('tabpanel')).toHaveText('合成变更记录');
+  await page.getByRole('button', { name: '关闭' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.locator('tr[data-row-key]')).toBeVisible();
+  await page.getByRole('button', { name: '高级筛选', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: '高级筛选' })).toBeVisible();
+  await expect(page.locator('.filter-drawer .ant-drawer-content-wrapper')).toHaveCSS('width', '500px');
+  await expect(page.locator('.filter-footer button')).toHaveText(['清空', '取 消', '确 定']);
 });
