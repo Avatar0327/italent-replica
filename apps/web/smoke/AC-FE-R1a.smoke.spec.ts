@@ -276,8 +276,8 @@ test('AC-FE-R1a-13 原站视图切换、主题尺寸与15条分页', async ({ pa
   await expect(page.getByText('15条/页', { exact: true })).toBeVisible();
   expect(sizes.length).toBeGreaterThan(0);
   expect(sizes.every((size) => size === '15')).toBe(true);
-  await page.getByRole('combobox', { name: '每页条数' }).click();
-  await page.getByRole('option', { name: '30条/页', exact: true }).click();
+  await page.getByText('15条/页', { exact: true }).click();
+  await page.getByText('30条/页', { exact: true }).click();
   await expect.poll(() => sizes.at(-1)).toBe('30');
   const create = page.getByRole('button', { name: /新\s*建/, exact: true });
   await expect(create).toHaveCSS('background-color', 'rgb(20, 110, 255)');
