@@ -68,6 +68,8 @@ const ACTIVITY_COLUMNS = sql`t.id, t.tenant_id, t.name, t.type_id, t.cycle_id, t
   t.effective_date::text AS effective_date, t.notice_org_range, t.status, t.apply_count,
   t.revision, t.created_by, t.created_at, t.updated_at`;
 const columnsOf = (object: EvaluationObject): SQL => (object === 'evaluationActivity' ? ACTIVITY_COLUMNS : sql`t.*`);
+// B6：读取活动头后还要读取条件 / 明细，整份保存以活动行为锁边界；共享锁保证同一 revision 的配置不会混读。
+const readLock = (object: EvaluationObject): SQL => (object === 'evaluationActivity' ? sql`FOR SHARE OF t` : sql``);
 
 /** 列表：`readable` 是作用在别名 t 上的范围谓词（分页之前生效）。 */
 export async function listRows(
@@ -81,13 +83,13 @@ export async function listRows(
 ): Promise<Record<string, unknown>[]> {
   const result = await tx.execute(sql`SELECT ${columnsOf(object)} FROM ${sql.identifier(tableOf(object))} t
     WHERE t.tenant_id = ${tenantId}::uuid AND ${readable} AND ${filter}
-    ORDER BY ${order} LIMIT ${page.limit} OFFSET ${page.offset}`);
+    ORDER BY ${order} LIMIT ${page.limit} OFFSET ${page.offset} ${readLock(object)}`);
   return rowsOf(result);
 }
 
 export async function loadRow(tx: Tx, tenantId: string, object: EvaluationObject, id: string) {
   const result = await tx.execute(sql`SELECT ${columnsOf(object)} FROM ${sql.identifier(tableOf(object))} t
-    WHERE t.tenant_id = ${tenantId}::uuid AND t.id = ${id}::uuid`);
+    WHERE t.tenant_id = ${tenantId}::uuid AND t.id = ${id}::uuid ${readLock(object)}`);
   return rowsOf<Record<string, unknown>>(result)[0];
 }
 

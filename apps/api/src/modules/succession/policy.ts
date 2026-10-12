@@ -16,9 +16,10 @@
  * - #4 PUT、#6 DELETE：按记录定位（范围外 / 已删除 / SELF 与不存在同一个 404）；#5 POST /records/end：逐条同上，整批 404。
  */
 import { SUCCESSION_OBJECTS } from '@italent/domain';
-import { defineTable } from '../../route-policy/index.js';
+import { defineTable, type RoutePolicy } from '../../route-policy/index.js';
 import {
   any,
+  all,
   BAD_REQUEST,
   button,
   fixed,
@@ -47,7 +48,10 @@ const COMMAND = write('body', RECHECK, AUTHORIZE_RESULT, {
 });
 const MUTATE = 'succession.record.writable';
 
-function configPolicy(key: 'population' | 'ruleSettings', operation: 'view' | 'create' | 'update' | 'delete') {
+function configPolicy(
+  key: 'population' | 'ruleSettings' | 'riskLevel' | 'healthLevel',
+  operation: 'view' | 'create' | 'update' | 'delete',
+) {
   return object({
     object: SUCCESSION_OBJECTS[key].code,
     operation,
@@ -58,7 +62,63 @@ function configPolicy(key: 'population' | 'ruleSettings', operation: 'view' | 'c
   });
 }
 
+function levelPolicies(): Record<string, RoutePolicy> {
+  const policies: Record<string, RoutePolicy> = {};
+  for (const kind of ['risk', 'health'] as const) {
+    const key = kind === 'risk' ? 'riskLevel' : 'healthLevel';
+    const path = `${BASE}/${kind}-levels`;
+    policies[`GET ${path}`] = configPolicy(key, 'view');
+    policies[`POST ${path}`] = configPolicy(key, 'create');
+    for (const [method, operation] of [
+      ['GET', 'view'],
+      ['PUT', 'update'],
+      ['DELETE', 'delete'],
+    ] as const)
+      policies[`${method} ${path}/:id`] = { ...configPolicy(key, operation), invalidId: BAD_REQUEST };
+    policies[`PUT ${path}/order`] = { ...configPolicy(key, 'update'), button: button('reorder', 'list') };
+    const result = kind === 'risk' ? SUCCESSION_OBJECTS.riskResult.code : SUCCESSION_OBJECTS.healthResult.code;
+    const option = (code: string, level: 'list' | 'detail') =>
+      object({
+        object: result,
+        operation: 'update',
+        button: button(code, level),
+        scope: noScope('设计 §2.2 #12：赋值选择器只含启用等级的安全字典，不读取规则正文'),
+        fields: fixed(['id', 'code', 'name', 'color', 'enabled'], '设计 §2.2 #12 固定键'),
+      });
+    policies[`GET ${path}/options`] =
+      kind === 'risk' ? option('assign', 'detail') : any([option('assign', 'detail'), option('reset', 'list')]);
+  }
+  return policies;
+}
+
+function calcPolicy(retry = false) {
+  return object({
+    object: SUCCESSION_OBJECTS.calcRun.code,
+    operation: retry ? 'update' : 'view',
+    button: retry ? button('retry', 'detail') : noButton('计算 run 查看'),
+    scope: guardScope('succession.calcVisible', NOT_FOUND),
+    fields: projector('succession.calc', 'succession.calc'),
+    ...(retry
+      ? {
+          write: write('body', 'succession.calcRetry', AUTHORIZE_RESULT, {
+            ledger: 'single',
+            commandOnly: true,
+          }),
+          guards: ['succession.calcRetryScope'],
+        }
+      : {}),
+  });
+}
+
 export const SUCCESSION_POLICIES = defineTable('succession', {
+  ...levelPolicies(),
+  [`GET ${BASE}/calc-runs`]: calcPolicy(),
+  [`GET ${BASE}/calc-runs/:id`]: { ...calcPolicy(), invalidId: BAD_REQUEST },
+  [`GET ${BASE}/calc-runs/:id/failures`]: { ...calcPolicy(), invalidId: BAD_REQUEST },
+  [`POST ${BASE}/calc-runs/:id/retry`]: {
+    ...all([calcPolicy(), calcPolicy(true)], projector('succession.calc', 'succession.calc')),
+    invalidId: BAD_REQUEST,
+  },
   [`GET ${BASE}/populations`]: configPolicy('population', 'view'),
   [`GET ${BASE}/populations/:id`]: { ...configPolicy('population', 'view'), invalidId: BAD_REQUEST },
   [`POST ${BASE}/populations`]: configPolicy('population', 'create'),

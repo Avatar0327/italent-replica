@@ -10,6 +10,7 @@ import { sql } from '@italent/db';
 import type { SuccessionObject } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import type { ModuleScope } from '../permission/module-access.js';
+import { calcRowsVisible } from './calc-read.js';
 import { selfRecordHiddenSql } from './read-sql.js';
 
 /** 审计行可用的列（与 audit/visibility.ts 的 Row 同义）。 */
@@ -69,6 +70,10 @@ export const SUCCESSION_AUDIT: Readonly<Partial<Record<SuccessionObject, Success
   healthLevel: { kind: 'seeAll' },
   population: { kind: 'seeAll' },
   ruleSettings: { kind: 'seeAll' },
-  calcRun: { kind: 'rows' },
+  calcRun: {
+    kind: 'rows',
+    visible: (scope, row, viewer) =>
+      calcRowsVisible(scope, viewer.tenantId, row.objectId, sql`succession_tenant_today(${viewer.tenantId}::uuid)`),
+  },
   syncBatch: { kind: 'rows' },
 };

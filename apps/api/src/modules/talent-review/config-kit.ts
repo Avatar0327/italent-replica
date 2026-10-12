@@ -32,6 +32,9 @@ export type ConfigObject =
   | 'flow'
   | 'template';
 
+/** 来源对象仅参与引用与属性约束，不注册为 TalentReview 配置目录。 */
+type ConstraintObject = ConfigObject | 'criterion';
+
 export interface WriteContext extends TalentReviewContext {
   readonly scope: ModuleScope;
 }
@@ -63,7 +66,7 @@ export interface ConfigSpec<V extends { id: string }> {
 
 /** 返回引用方编码（如 'TEMPLATE_MODULE'）表示被引用；返回 null 表示未引用。 */
 export type ConfigReferenceGuard = (tx: Tx, tenantId: string, id: string) => Promise<string | null>;
-const guards: Record<ConfigObject, ConfigReferenceGuard[]> = {
+const guards: Record<ConstraintObject, ConfigReferenceGuard[]> = {
   category: [],
   role: [],
   field: [],
@@ -75,19 +78,45 @@ const guards: Record<ConfigObject, ConfigReferenceGuard[]> = {
   form: [],
   flow: [],
   template: [],
+  criterion: [],
 };
 
 /** 引用方（项目、模板、公式…）在加载时登记；删除时同事务逐个询问。 */
-export function registerConfigReferenceGuard(object: ConfigObject, guard: ConfigReferenceGuard): void {
+export function registerConfigReferenceGuard(object: ConstraintObject, guard: ConfigReferenceGuard): void {
   if (!guards[object].includes(guard)) guards[object].push(guard);
 }
 
-export async function configReferrer(tx: Tx, tenantId: string, object: ConfigObject, id: string) {
+export async function configReferrer(tx: Tx, tenantId: string, object: ConstraintObject, id: string) {
   for (const guard of guards[object]) {
     const referrer = await guard(tx, tenantId, id);
     if (referrer) return referrer;
   }
   return null;
+}
+
+/** 属性变更不能破坏引用方的约束；调用方须已持对象行 FOR UPDATE，并在同一事务内完成变更。 */
+export type ConfigUpdateConstraint = (
+  tx: Tx,
+  tenantId: string,
+  id: string,
+  patch: Readonly<Record<string, unknown>>,
+) => Promise<void>;
+const updateConstraints = new Map<ConstraintObject, Set<ConfigUpdateConstraint>>();
+
+export function registerConfigUpdateConstraint(object: ConstraintObject, guard: ConfigUpdateConstraint): void {
+  const constraints = updateConstraints.get(object) ?? new Set<ConfigUpdateConstraint>();
+  constraints.add(guard);
+  updateConstraints.set(object, constraints);
+}
+
+export async function checkConfigUpdateConstraints(
+  tx: Tx,
+  tenantId: string,
+  object: ConstraintObject,
+  id: string,
+  patch: Readonly<Record<string, unknown>>,
+) {
+  for (const guard of updateConstraints.get(object) ?? []) await guard(tx, tenantId, id, patch);
 }
 
 export async function loadConfig<V extends { id: string }>(
@@ -254,6 +283,7 @@ export async function updateConfig<V extends { id: string }>(
   await lockConfigRow(tx, spec, ctx, id);
   const before = (await loadConfig(tx, spec, ctx.tenantId, id))!;
   requireSeeAllToRename(ctx, before as { name?: string }, patch.name as string | undefined);
+  await checkConfigUpdateConstraints(tx, ctx.tenantId, spec.object, id, patch);
   await uniqueOr(spec.duplicate, spec.label, () =>
     tx
       .update(spec.table)

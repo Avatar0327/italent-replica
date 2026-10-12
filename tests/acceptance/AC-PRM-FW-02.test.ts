@@ -1,3 +1,4 @@
+import { registrationGate, compareRegisteredDeclarations } from './support/route-policy/registration.js';
 /**
  * AC-PRM-FW-02（F-039 PR-A，docs/08_设计/F-039_权限框架强制_设计.md §4.2 / §4.4 限定版；DEC-300 / DEC-303）：
  * 现状必测基准与声明的反向比较。基准**不读声明**，由三部分生成并冻结在 support/route-policy/baseline/observed-contract.json：
@@ -23,8 +24,8 @@ import {
 import { compareDeclarations, type Finding } from './support/route-policy/compare.js';
 import { domainConstants } from './support/route-policy/domains.js';
 import { countDrift, countEndpoints, readEndpointCounts } from './support/route-policy/endpoint-counts.js';
-import { gateEvidence } from './support/route-policy/evidence-gate.js';
 import { generatedGate, generatedStrict, textDrift } from './support/route-policy/generated-gate.js';
+import { compareMutants } from './support/route-policy/detector-fixtures.js';
 import { MUTATIONS, mutantsOf } from './support/route-policy/mutate.js';
 import { tenantApi } from './support/tenant-api.js';
 
@@ -128,7 +129,7 @@ describe('AC-PRM-FW-02 现状必测基准（独立于声明）', () => {
 describe('AC-PRM-FW-02 声明 vs 基准比较', () => {
   it('真实声明不弱于基准，也不多于基准（双向零发现）', () => {
     // F-090：过度声明（OVERDECLARED:*）属“登记与源码不一致”，默认只警告；弱化 / 身份不符照旧判红
-    const findings = gateEvidence(compareDeclarations(frozen, manifest.declared), '真实声明 × 基准');
+    const findings = registrationGate(compareRegisteredDeclarations(frozen, manifest.declared), '真实声明 × 基准');
     expect(findings, findings.map((f) => `${f.route} ${f.code}: ${f.detail}`).join('\n')).toEqual([]);
   });
 
@@ -166,6 +167,8 @@ describe('AC-PRM-FW-02 声明 vs 基准比较', () => {
 
 describe('AC-PRM-FW-02 突变套件：第 5 轮列出的每类削弱都被报出', () => {
   it('突变目录覆盖 PR-A 范围内的削弱种类', () => {
+    const base = compareMutants({ routes: {}, domains: {} }, manifest.declared);
+    expect(codes(base).filter((c) => !['BASELINE_MISSING', 'REQUIRED_ENTRY_MISSING'].includes(c))).toEqual([]);
     expect(MUTATIONS.map((m) => m.name)).toEqual(
       expect.arrayContaining([
         'button→none',
@@ -192,7 +195,7 @@ describe('AC-PRM-FW-02 突变套件：第 5 轮列出的每类削弱都被报出
       expect(mutants.length, `没有任何真实声明能施加突变 ${mutation.name}`).toBeGreaterThan(0);
       const undetected = mutants.filter(
         (m) =>
-          !codes(compareDeclarations(frozen, [m.route])).some((code) =>
+          !codes(compareMutants(frozen, [m.route])).some((code) =>
             mutation.expected.split('|').some((expected) => code.startsWith(expected)),
           ),
       );

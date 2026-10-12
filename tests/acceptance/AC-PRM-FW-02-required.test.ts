@@ -1,3 +1,9 @@
+import {
+  registration,
+  compareRegisteredDeclarations,
+  registrationGate,
+  registrationDrift,
+} from './support/route-policy/registration.js';
 /**
  * AC-PRM-FW-02（续，F-039 PR-A 第 4 轮，DEC-348②）：必需项显式表与硬比对。
  * 表（support/route-policy/required/）逐端点登记审定过的义务：权限键 + 用途（准入 / 披露 / 守卫内部 / 条件准入）+
@@ -14,17 +20,16 @@ import { useTestDb } from '@italent/testkit';
 import { readdirSync, readFileSync } from 'node:fs';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { readFrozenContract } from './support/route-policy/baseline.js';
-import { compareDeclarations, type Finding } from './support/route-policy/compare.js';
-import type { ObservedContract } from './support/route-policy/contract.js';
 import {
-  checkEvidence,
-  checkStored,
-  repoSource,
-  type SourceReader,
-  writeDigests,
-} from './support/route-policy/evidence.js';
+  DETECTOR_CONTRACT,
+  DETECTOR_REQUIRED,
+  DETECTOR_SEMANTICS,
+  checkDetectorEvidence,
+} from './support/route-policy/detector-fixtures.js';
+import { type Finding } from './support/route-policy/compare.js';
+import type { ObservedContract } from './support/route-policy/contract.js';
+import { checkStored, repoSource, type SourceReader, writeDigests } from './support/route-policy/evidence.js';
 import { countDrift, countEndpoints, readEndpointCounts } from './support/route-policy/endpoint-counts.js';
-import { gateEvidence } from './support/route-policy/evidence-gate.js';
 import { generatedGate } from './support/route-policy/generated-gate.js';
 import { admissionPrimitives, checkRequired } from './support/route-policy/required.js';
 import { expectedMutationKeys, missingCoverage } from './support/route-policy/required-coverage.js';
@@ -64,17 +69,17 @@ function route(key: string): ManifestRoute {
 const withPolicy = (base: ManifestRoute, policy: RoutePolicy): ManifestRoute => ({ ...base, policy });
 const codes = (findings: readonly Finding[]) => findings.map((f) => f.code);
 const show = (findings: readonly Finding[]) => findings.map((f) => `${f.route} ${f.code}: ${f.detail}`).join('\n');
-const check = (routes: readonly ManifestRoute[], table: RequiredTable = REQUIRED) =>
-  checkRequired(table, frozen, routes);
+const check = (routes: readonly ManifestRoute[], table: RequiredTable = DETECTOR_REQUIRED) =>
+  checkRequired(table, DETECTOR_CONTRACT, routes, DETECTOR_SEMANTICS);
 
 function entry(key: string): readonly Obligation[] {
-  const found = REQUIRED[key];
+  const found = DETECTOR_REQUIRED[key];
   if (!found) throw new Error(`表里没有 ${key}`);
   return found;
 }
 
 function withEntry(key: string, obligations: readonly Obligation[]): RequiredTable {
-  return { ...REQUIRED, [key]: obligations };
+  return { ...DETECTOR_REQUIRED, [key]: obligations };
 }
 
 /** 只读一个端点的表项，供证据校验的夹具（全表校验太慢且无关）。 */
@@ -85,11 +90,16 @@ function only(key: string, obligations: readonly Obligation[] = entry(key)): Req
 type ObjectNode = Extract<RoutePolicy, { kind: 'object' }>;
 
 describe('AC-PRM-FW-02 显式必需项表：形状与完整性', () => {
-  it('表键与运行时端点完全相等（缺一条、多一条都失败）', () => {
+  it('表键与运行时 592 个端点相等：静态漏登 / 多登默认警告（DEC-416③）', () => {
     const declared = manifest.declared.map((r) => `${r.method} ${r.path}`).sort();
-    expect(Object.keys(REQUIRED).sort()).toEqual(declared);
-    const drift = countDrift(countEndpoints(manifest.declared), readEndpointCounts(), { totalOnly: true });
-    expect(generatedGate('端点计数（显式表）', drift)).toEqual([]);
+    const registered = Object.keys(REQUIRED);
+    const drift = [
+      ...declared.filter((key) => !registered.includes(key)).map((key) => `${key} 静态义务表漏登`),
+      ...registered.filter((key) => !declared.includes(key)).map((key) => `${key} 静态义务表多登`),
+    ];
+    expect(registrationDrift('静态义务表端点登记', drift)).toEqual([]);
+    const counts = countDrift(countEndpoints(manifest.declared), readEndpointCounts(), { totalOnly: true });
+    expect(generatedGate('端点计数（显式表）', counts)).toEqual([]);
   });
 
   it('表文件只放字面量：不 import 声明、产品代码或探测器（不得从候选声明重新生成）', () => {
@@ -107,23 +117,46 @@ describe('AC-PRM-FW-02 显式必需项表：形状与完整性', () => {
   it('全表证据校验零发现：每条义务都有强制调用点证据，锚点命中，摘要与源码一致', () => {
     if (process.env['ROUTE_POLICY_UPDATE_DIGESTS'] === '1') writeDigests(REQUIRED);
     // F-090：登记与源码不一致默认只警告；登记自身的错误仍判红；ROUTE_POLICY_EVIDENCE_STRICT=1 全部判红
-    const findings = gateEvidence(checkStored(REQUIRED, { unused: true }), '全表证据校验');
+    const findings = registrationGate(checkStored(REQUIRED, { unused: true }), '全表证据校验');
     expect(findings, show(findings)).toEqual([]);
   });
 
   it('真实声明 × 真实表：零发现', () => {
-    const findings = check(manifest.declared);
+    const findings = registrationGate(
+      checkRequired(REQUIRED, frozen, manifest.declared),
+      '真实声明 × 静态义务表（DEC-416③）',
+    );
     expect(findings, show(findings)).toEqual([]);
+  });
+
+  it('漏掉整组义务但保留端点键：只报告静态缺项，不把披露原语误判成 WEAKER；严格恢复判红', () => {
+    const findings = compareRegisteredDeclarations(frozen, [route(MODEL_IMAGE)], undefined, { [MODEL_IMAGE]: [] });
+    expect(codes(findings)).toContain('REQUIRED_TABLE_GAP');
+    expect(codes(findings).filter((code) => code.startsWith('WEAKER:'))).toEqual([]);
+    expect(registrationGate(findings, '保留键但漏义务', { strict: false })).toEqual([]);
+    expect(registrationGate(findings, '保留键但漏义务', { strict: true }).map((f) => f.code)).toContain(
+      'REQUIRED_TABLE_GAP',
+    );
+  });
+
+  it('缺登记也保留已知运行时元数据硬比较：模型图去掉准入范围仍报 WEAKER:scope', () => {
+    const base = route(MODEL_IMAGE);
+    const policy = { ...base.policy, scope: { mode: 'none' as const, reason: '夹具删除范围' } };
+    const changed = { ...base, policy: policy as RoutePolicy };
+    const findings = compareRegisteredDeclarations(frozen, [changed], undefined, { [MODEL_IMAGE]: [] });
+    expect(codes(findings)).toContain('REQUIRED_TABLE_GAP');
+    expect(codes(registrationGate(findings, '缺登记且范围弱化', { strict: false }))).toContain('WEAKER:scope');
+    expect(codes(registrationGate(findings, '缺登记且范围弱化', { strict: true }))).toContain('WEAKER:scope');
   });
 
   it('同一权限多种用途（IDP 执行人写入口的计划查看权：执行人判定内部 + responseView 披露）不算冲突', () => {
     const plan = entry(GOALS).filter((o) => o.perm === 'obj:IDP.Idp:view');
     expect(new Set(plan.map((o) => o.purpose ?? 'admission')).size).toBeGreaterThanOrEqual(2);
     expect(plan.map((o) => o.purpose)).toContain('disclosure:responseView');
-    expect(codes(checkEvidence(only(GOALS)))).not.toContain('TABLE_CONFLICT');
+    expect(codes(checkDetectorEvidence(only(GOALS)))).not.toContain('TABLE_CONFLICT');
     // 权限 + 用途 + 承载者完全相同的重复才是冲突
     const duplicated = only(GOALS, [...entry(GOALS), plan[0]!]);
-    expect(codes(checkEvidence(duplicated))).toContain('TABLE_CONFLICT');
+    expect(codes(checkDetectorEvidence(duplicated))).toContain('TABLE_CONFLICT');
   });
 });
 
@@ -165,10 +198,13 @@ describe('AC-PRM-FW-02 显式表反例：准入 / 披露 / optional', () => {
   });
 
   it('经理入口：真实声明零发现；canApply / canViewReporting 在表里是披露义务', () => {
+    expect(registrationGate(checkRequired(REQUIRED, frozen, [route(MANAGER)]), '经理入口静态义务登记')).toEqual([]);
     expect(check([route(MANAGER)])).toEqual([]);
-    const purposes = Object.fromEntries(entry(MANAGER).map((o) => [o.perm, o.purpose]));
-    expect(purposes[HR_BUTTON]).toBe('disclosure:canViewReporting');
-    expect(purposes[MANAGER_BUTTON]).toBe('disclosure:canApply');
+    const purposes = Object.fromEntries((REQUIRED[MANAGER] ?? []).map((o) => [o.perm, o.purpose]));
+    registration('经理入口 canViewReporting 用途', () =>
+      expect(purposes[HR_BUTTON]).toBe('disclosure:canViewReporting'),
+    );
+    registration('经理入口 canApply 用途', () => expect(purposes[MANAGER_BUTTON]).toBe('disclosure:canApply'));
   });
 
   it('经理入口：删掉 optional 里的合法披露 canViewReporting → DISCLOSURE_MISSING', () => {
@@ -188,8 +224,9 @@ describe('AC-PRM-FW-02 显式表反例：准入 / 披露 / optional', () => {
   });
 
   it('模型图：准入与 optional.canEdit 共用同一个 point 范围，零发现（按 对象 + 操作 + 用途 匹配，不按范围字符串）', () => {
+    expect(registrationGate(checkRequired(REQUIRED, frozen, [route(MODEL_IMAGE)]), '模型图静态义务登记')).toEqual([]);
     expect(check([route(MODEL_IMAGE)])).toEqual([]);
-    const findings = compareDeclarations(frozen, [route(MODEL_IMAGE)]);
+    const findings = registrationGate(compareRegisteredDeclarations(frozen, [route(MODEL_IMAGE)]), '模型图冻结基准');
     expect(findings, show(findings)).toEqual([]);
     const canEdit = entry(MODEL_IMAGE).filter((o) => o.purpose === 'disclosure:canEdit');
     expect(canEdit.map((o) => o.perm)).toContain('obj:TalentCenter.TalentCriterion:update');
@@ -349,7 +386,7 @@ describe('AC-PRM-FW-02 显式表：证据覆盖调用点、授权实现与常量
       "buttonResource(EMPLOYMENT_OBJECT, 'Transfer.Hr'",
       "buttonResource(EMPLOYMENT_OBJECT, 'Transfer.Manager'",
     );
-    const found = codes(checkEvidence(only(REPORTING), { read: reader }));
+    const found = codes(checkDetectorEvidence(only(REPORTING), { read: reader }));
     expect(found).toContain('EVIDENCE_STALE');
   });
 
@@ -361,7 +398,7 @@ describe('AC-PRM-FW-02 显式表：证据覆盖调用点、授权实现与常量
       "if (!(await managerHasHr(ctx, deps))) throw new AppError('FORBIDDEN', '需要人事身份');",
       '',
     );
-    const found = codes(checkEvidence(only(REPORTING), { read: reader }));
+    const found = codes(checkDetectorEvidence(only(REPORTING), { read: reader }));
     expect(found).toContain('EVIDENCE_STALE');
   });
 
@@ -372,7 +409,7 @@ describe('AC-PRM-FW-02 显式表：证据覆盖调用点、授权实现与常量
       const text = repoSource(path);
       return path === file ? text.replace(new RegExp(`(${name}\\s*=\\s*)'`), "$1'X") : text;
     };
-    expect(codes(checkEvidence(only(REPORTING), { read: reader }))).toContain('EVIDENCE_STALE');
+    expect(codes(checkDetectorEvidence(only(REPORTING), { read: reader }))).toContain('EVIDENCE_STALE');
   });
 
   it('改错锚点（实现证据写成 Transfer.Manager）→ EVIDENCE_ANCHOR', () => {
@@ -381,12 +418,12 @@ describe('AC-PRM-FW-02 显式表：证据覆盖调用点、授权实现与常量
         ? { ...o, at: o.at.map((e) => (e.role === 'impl' ? { ...e, anchor: "'Transfer.Manager'" } : e)) }
         : o,
     );
-    expect(codes(checkEvidence(only(REPORTING, wrong)))).toContain('EVIDENCE_ANCHOR');
+    expect(codes(checkDetectorEvidence(only(REPORTING, wrong)))).toContain('EVIDENCE_ANCHOR');
   });
 
   it('只改权限键、保留真实锚点和摘要：证据校验发现不了（锚点存在不是语义证明），声明同错时硬比对也发现不了——靠人工审定', () => {
     const wrong = entry(REPORTING).map((o) => (o.perm === HR_BUTTON ? { ...o, perm: MANAGER_BUTTON } : o));
-    expect(checkEvidence(only(REPORTING, wrong))).toEqual([]);
+    expect(checkDetectorEvidence(only(REPORTING, wrong))).toEqual([]);
     const base = route(REPORTING);
     const policy = base.policy as ObjectNode;
     const sameWrong = withPolicy(base, { ...policy, button: { code: 'Transfer.Manager', level: 'detail' } });
@@ -395,11 +432,11 @@ describe('AC-PRM-FW-02 显式表：证据覆盖调用点、授权实现与常量
 
   it('义务缺证据或缺强制调用点证据 → EVIDENCE_MISSING', () => {
     const none = entry(REPORTING).map((o) => (o.perm === HR_BUTTON ? { ...o, at: [] } : o));
-    expect(codes(checkEvidence(only(REPORTING, none)))).toContain('EVIDENCE_MISSING');
+    expect(codes(checkDetectorEvidence(only(REPORTING, none)))).toContain('EVIDENCE_MISSING');
     const implOnly = entry(REPORTING).map((o) =>
       o.perm === HR_BUTTON ? { ...o, at: o.at.filter((e) => e.role !== 'call') } : o,
     );
-    expect(codes(checkEvidence(only(REPORTING, implOnly)))).toContain('EVIDENCE_MISSING');
+    expect(codes(checkDetectorEvidence(only(REPORTING, implOnly)))).toContain('EVIDENCE_MISSING');
   });
 });
 
@@ -408,7 +445,7 @@ describe('AC-PRM-FW-02 显式表突变：按审定义务逐项、逐准入备选
     it(`${kind}`, () => {
       const mutants = manifest.declared.flatMap((r) => requiredMutants(r, REQUIRED)).filter((m) => m.kind === kind);
       expect(mutants.length, `没有任何义务能施加 ${kind}`).toBeGreaterThan(0);
-      const missed = mutants.filter((m) => !codes(check([m.route])).includes(m.expected));
+      const missed = mutants.filter((m) => !codes(check([m.route], REQUIRED)).includes(m.expected));
       expect(
         missed.map((m) => `${m.route.method} ${m.route.path} ${m.perm} @${m.at}`),
         `${kind} 未报 ${mutants[0]?.expected}`,
@@ -430,8 +467,8 @@ describe('AC-PRM-FW-02 显式表突变：按审定义务逐项、逐准入备选
 
   it('B-05 覆盖断言本身可失败：夹具里少生成一个备选的突变，断言报缺口', () => {
     const key = 'GET /api/tenant/idp/approval-processes';
-    const expected = expectedMutationKeys(route(key), REQUIRED);
-    const mutants = requiredMutants(route(key), REQUIRED);
+    const expected = expectedMutationKeys(route(key), DETECTOR_REQUIRED);
+    const mutants = requiredMutants(route(key), DETECTOR_REQUIRED);
     expect(missingCoverage(expected, mutants)).toEqual([]);
     const lacking = mutants.filter((m) => !m.coverageKey.includes('|2|'));
     expect(missingCoverage(expected, lacking).length).toBeGreaterThan(0);
@@ -439,7 +476,7 @@ describe('AC-PRM-FW-02 显式表突变：按审定义务逐项、逐准入备选
 
   it('B-05 “或”组：|S|=1 对组内备选每个权限生成 or-member→none；|S|>1 生成 or-group→none，都报 REQUIRED_MISSING', () => {
     const key = 'GET /api/tenant/idp/approval-processes';
-    const members = requiredMutants(route(key), REQUIRED).filter((m) => m.kind === 'or-member→none');
+    const members = requiredMutants(route(key), DETECTOR_REQUIRED).filter((m) => m.kind === 'or-member→none');
     expect(members.map((m) => `${m.perm}@${m.at.split(':')[0]}`).sort()).toEqual([
       'obj:IDP.IDPProcess:create@备选1',
       'obj:IDP.IDPProcess:update@备选2',
@@ -449,7 +486,7 @@ describe('AC-PRM-FW-02 显式表突变：按审定义务逐项、逐准入备选
     const both = JSON.parse(JSON.stringify(base.policy)) as { of: { kind: string; of?: unknown[] }[] };
     const group = both.of[1]!;
     group.kind = 'all';
-    const found = requiredMutants({ ...base, policy: both as unknown as RoutePolicy }, REQUIRED);
+    const found = requiredMutants({ ...base, policy: both as unknown as RoutePolicy }, DETECTOR_REQUIRED);
     const groups = found.filter((m) => m.kind === 'or-group→none');
     expect(groups.length).toBeGreaterThan(0);
     for (const m of groups) expect(codes(check([m.route])), `${m.perm} @${m.at}`).toContain('REQUIRED_MISSING');
@@ -458,7 +495,7 @@ describe('AC-PRM-FW-02 显式表突变：按审定义务逐项、逐准入备选
 
   it('B-05 人才候选编辑分支（update + 按钮 + 守卫）三项任删其一都被报出', () => {
     const key = 'GET /api/tenant/talent/candidates/owner-orgs';
-    const mutants = requiredMutants(route(key), REQUIRED).filter((m) => m.kind === 'or-member→none');
+    const mutants = requiredMutants(route(key), DETECTOR_REQUIRED).filter((m) => m.kind === 'or-member→none');
     const perms = new Set(mutants.map((m) => m.perm));
     for (const perm of [
       'obj:TalentCenter.TalentCriterion:update',

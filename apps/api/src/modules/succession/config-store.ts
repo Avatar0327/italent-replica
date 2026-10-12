@@ -20,7 +20,7 @@ import { rowsOf } from './read-sql.js';
 import { ruleErrors } from './population-input.js';
 import type { ResultAdapter } from './write-support.js';
 
-export type ConfigObject = 'population' | 'ruleSettings';
+export type ConfigObject = 'population' | 'ruleSettings' | 'riskLevel' | 'healthLevel';
 export interface ConfigView {
   readonly id: string;
   readonly revision: number;
@@ -115,7 +115,7 @@ export async function populationViews(tx: Tx, tenantId: string, ids: readonly st
     return [{ ...view, warnings: result.ok ? result.warnings : [] }];
   });
 }
-export function configResults(object: ConfigObject): ResultAdapter<ConfigView> {
+export function configResults(object: 'population' | 'ruleSettings'): ResultAdapter<ConfigView> {
   return {
     object,
     async load(tx, deps, ctx, ids, options) {
