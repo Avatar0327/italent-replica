@@ -166,6 +166,37 @@ describe('AC-SC-calc-core run 契约', () => {
     expect(instance.calls).toBe(1);
   });
 
+  it('整页准备只调用一次且在对象保存点之前，登记保留 class preparePage 的 private this', async () => {
+    class Handler {
+      readonly kind = 'org_stats' as const;
+      readonly objectType = 'org' as const;
+      #prepared = 0;
+      #calls = 0;
+      async authorizePage() {
+        return member.user.id;
+      }
+      async preparePage(_ctx: CalcContext, selected: readonly CalcObject[]) {
+        this.#prepared++;
+        expect(selected).toHaveLength(2);
+      }
+      async execute({ tx: t, run }: CalcContext, object: CalcObject) {
+        expect(this.#prepared).toBe(1);
+        this.#calls++;
+        await t.execute(sql`INSERT INTO sc_calc_effects VALUES
+          (${run.tenantId}::uuid,${run.id}::uuid,${object.objectId}::uuid)`);
+        return 'written' as const;
+      }
+      get calls() {
+        return this.#calls;
+      }
+    }
+    const instance = new Handler();
+    const id = await create(request(2));
+    expect(await page(id, defineCalcKinds([instance]))).toBe('succeeded');
+    expect(instance.calls).toBe(2);
+    expect(await effects(id)).toBe(2);
+  });
+
   it('夏令时回拨的两个 01:30，按租户午夜起算的实际分钟进入不同小时槽', async () => {
     const input = {
       ...request(0),

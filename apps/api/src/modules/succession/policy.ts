@@ -23,6 +23,7 @@ import {
   BAD_REQUEST,
   button,
   fixed,
+  commandWrite,
   seeAll,
   FORBIDDEN,
   guardScope,
@@ -40,6 +41,7 @@ const BASE = '/api/tenant/succession';
 const RECORD = SUCCESSION_OBJECTS.record.code;
 const OUT = projector('succession.record', 'succession.record');
 const SELF_HIDDEN = 'succession.selfHidden';
+const LEFT_PROJECTED = 'succession.successorLeftProjected';
 const RECHECK = 'succession.commandRecheck';
 const AUTHORIZE_RESULT = 'succession.authorizeResult';
 const COMMAND = write('body', RECHECK, AUTHORIZE_RESULT, {
@@ -111,6 +113,35 @@ function calcPolicy(retry = false) {
 }
 
 export const SUCCESSION_POLICIES = defineTable('succession', {
+  [`GET ${BASE}/maps/:kind/preferences`]: object({
+    object: SUCCESSION_OBJECTS.map.code,
+    operation: 'view',
+    button: noButton('本人显示设置'),
+    scope: noScope('本人偏好，不是组织数据集'),
+    fields: fixed(
+      ['rootOrgId', 'depth', 'hiddenOrgIds', 'showKeyPositions', 'showPositionsWithoutSuccessor', 'revision'],
+      '设计 #8 个人设置白名单',
+    ),
+  }),
+  [`PUT ${BASE}/maps/:kind/preferences`]: object({
+    object: SUCCESSION_OBJECTS.map.code,
+    operation: 'view',
+    button: noButton('Map.view 保存本人显示设置'),
+    scope: guardScope('succession.preferenceIds', NOT_FOUND),
+    fields: fixed(
+      ['rootOrgId', 'depth', 'hiddenOrgIds', 'showKeyPositions', 'showPositionsWithoutSuccessor', 'revision'],
+      '设计 #8 个人设置白名单',
+    ),
+    write: commandWrite('succession.mapCommandRecheck', AUTHORIZE_RESULT, { ledger: 'single' }),
+  }),
+  [`POST ${BASE}/maps/org/compute-stats`]: object({
+    object: SUCCESSION_OBJECTS.map.code,
+    operation: 'view',
+    button: button('computeStats', 'list'),
+    scope: guardScope('succession.mapDisplay', NOT_FOUND),
+    fields: fixed(['runId'], '设计 #9 202 回执'),
+    write: commandWrite('succession.mapCommandRecheck', AUTHORIZE_RESULT, { ledger: 'single' }),
+  }),
   ...levelPolicies(),
   [`GET ${BASE}/calc-runs`]: calcPolicy(),
   [`GET ${BASE}/calc-runs/:id`]: { ...calcPolicy(), invalidId: BAD_REQUEST },
@@ -141,7 +172,7 @@ export const SUCCESSION_POLICIES = defineTable('succession', {
     button: noButton('列表按对象查看权'),
     scope: listScope('succession.recordScope(org ∪ creator)'),
     fields: OUT,
-    guards: ['succession.filterFieldVisible', SELF_HIDDEN],
+    guards: ['succession.filterFieldVisible', SELF_HIDDEN, LEFT_PROJECTED],
   }),
   [`GET ${BASE}/records/:id`]: object({
     invalidId: BAD_REQUEST,
@@ -150,7 +181,7 @@ export const SUCCESSION_POLICIES = defineTable('succession', {
     button: noButton('详情按对象查看权'),
     scope: pointScope({ param: 'id' }, 'succession.record.byId', NOT_FOUND),
     fields: OUT,
-    guards: [SELF_HIDDEN],
+    guards: [SELF_HIDDEN, LEFT_PROJECTED],
   }),
   [`POST ${BASE}/records`]: object({
     object: RECORD,
@@ -158,6 +189,7 @@ export const SUCCESSION_POLICIES = defineTable('succession', {
     button: button('create', 'list'),
     scope: guardScope('succession.targetInScope', NOT_FOUND),
     fields: OUT,
+    guards: [LEFT_PROJECTED],
     write: write('body', RECHECK, AUTHORIZE_RESULT, {
       ledger: 'single',
       preconditions: ['succession.successorActive', 'succession.syncBarrier', 'succession.noOverlap'],
@@ -187,7 +219,7 @@ export const SUCCESSION_POLICIES = defineTable('succession', {
     button: button('update', 'detail'),
     scope: pointScope({ param: 'id' }, MUTATE, NOT_FOUND),
     fields: OUT,
-    guards: ['succession.immutableFields', SELF_HIDDEN],
+    guards: ['succession.immutableFields', SELF_HIDDEN, LEFT_PROJECTED],
     write: COMMAND,
   }),
   [`POST ${BASE}/records/end`]: object({
@@ -196,7 +228,7 @@ export const SUCCESSION_POLICIES = defineTable('succession', {
     button: button('end', 'list'),
     scope: pointScope({ body: 'items[*].id' }, MUTATE, NOT_FOUND),
     fields: OUT,
-    guards: [SELF_HIDDEN],
+    guards: [SELF_HIDDEN, LEFT_PROJECTED],
     rows: {
       path: 'items[*]',
       operation: 'update',

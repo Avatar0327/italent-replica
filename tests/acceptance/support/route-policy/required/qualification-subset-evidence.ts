@@ -5,10 +5,20 @@ import type { Evidence } from './types.js';
 
 export const QL_POLICY = 'apps/api/src/modules/qualification/subset-policy.ts';
 /**
- * 任职资格子集策略（R3-T02 C1-1）的证据：注册关系（常量 + 登记函数）与落地前复核里各道拦截的所在行。
+ * 任职资格子集策略（R3-T02 C1-1）的证据：安装两条边、注册关系（常量 + 登记函数）与各道拦截的所在行。
  * 通用钩子证据只证明“钩子被调用”，策略里的拦截被删掉时它仍然成立，所以每道拦截单独带锚点。
  */
 const QL_REGISTRATION: Evidence[] = [
+  {
+    role: 'impl',
+    unit: `${QL_POLICY}#top-call:installQualificationSubsetPolicy`,
+    anchor: 'installQualificationSubsetPolicy();',
+  },
+  {
+    role: 'impl',
+    unit: 'apps/api/src/modules/qualification/routes.ts#top-import:./subset-policy.js',
+    anchor: "import './subset-policy.js';",
+  },
   {
     role: 'impl',
     unit: `${QL_POLICY}#installQualificationSubsetPolicy`,
