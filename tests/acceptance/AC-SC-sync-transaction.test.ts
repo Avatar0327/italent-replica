@@ -101,3 +101,40 @@ describe('AC-SC-sync-transaction D1 首次计划的跨端口事务边界', () =>
     ).resolves.toMatchObject({ status: 'aborted', terminalRecovery: 'new_run' });
   });
 });
+
+it('AC-SC-sync-transaction 替身证明只在 SQL 事务成功后对其他事务可见', async () => {
+  const { port, key, transaction } = setup();
+  const pageCommandId = `${FX.run}:succession:1:0`;
+  let planned!: () => void;
+  let release!: () => void;
+  const ready = new Promise<void>((resolve) => {
+    planned = resolve;
+  });
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const work = transaction(async (tx) => {
+    await port.beginConsumption(tx, { ...key, leaseOwner: 'worker-1', leaseSeconds: 60 });
+    await port.registerTargets(tx, {
+      ...key,
+      executionNo: 1,
+      planCommandId: pageCommandId,
+      targets: [],
+      planOutcomes: [],
+    });
+    planned();
+    await gate;
+  });
+  await ready;
+  try {
+    expect(await port.transaction((tx) => port.getPageCommit(tx, { ...key, pageCommandId }))).toBeNull();
+  } finally {
+    release();
+  }
+  await work;
+  expect(await port.transaction((tx) => port.getPageCommit(tx, { ...key, pageCommandId }))).toMatchObject({
+    kind: 'plan',
+    executionNo: 1,
+    pageNo: 0,
+  });
+});

@@ -134,3 +134,46 @@ describe('AC-SC-sync-schema', () => {
     expect(rows).toEqual([{ batch_id: id }]);
   });
 });
+
+// 子表必须同时受 RLS 与批次复合外键约束，不能仅靠调用方的 WHERE tenant_id。
+it.each(['items', 'targets', 'mutex'] as const)('AC-SC-sync-schema %s 跨租户读写、引用与父删除', async (kind) => {
+  const id = await batch();
+  const table = sql.identifier(`succession_sync_${kind}`);
+  const insert = (tenant: string, batchId: string) => {
+    if (kind === 'mutex')
+      return sql`INSERT INTO ${table} (tenant_id,batch_id)
+      VALUES (${tenant}::uuid,${batchId}::uuid)`;
+    if (kind === 'targets')
+      return sql`INSERT INTO ${table}
+      (tenant_id,batch_id,target_kind,target_id,action,target_row_key,execution_no,page_command_id)
+      VALUES (${tenant}::uuid,${batchId}::uuid,'org',${std.orgA.id}::uuid,'append','org:test',1,'plan')`;
+    return sql`INSERT INTO ${table}
+      (tenant_id,batch_id,nomination_id,object_id,subject_employee_id,kind,direction,target_org_id,
+       successor_employee_id,plan_outcome,execution_no,page_command_id)
+      VALUES (${tenant}::uuid,${batchId}::uuid,${randomUUID()}::uuid,${randomUUID()}::uuid,
+        ${std.successor1.id}::uuid,'org','successor',${std.orgA.id}::uuid,
+        ${std.successor2.id}::uuid,'planned',1,'plan')`;
+  };
+  expect(await code(() => other.asTenant((tx) => tx.execute(insert(other.tenant.id, id))))).toBe('23503');
+  expect(await code(() => other.asTenant((tx) => tx.execute(insert(w.tenant.id, id))))).toBe('42501');
+  await w.asTenant((tx) => tx.execute(insert(w.tenant.id, id)));
+  const before = rowsOf(await w.asTenant((tx) => tx.execute(sql`SELECT * FROM ${table} WHERE batch_id=${id}::uuid`)));
+  expect(before).toHaveLength(1);
+  expect(
+    rowsOf(await other.asTenant((tx) => tx.execute(sql`SELECT * FROM ${table} WHERE batch_id=${id}::uuid`))),
+  ).toEqual([]);
+  expect(
+    rowsOf(
+      await other.asTenant((tx) =>
+        tx.execute(sql`DELETE FROM ${table}
+    WHERE batch_id=${id}::uuid RETURNING *`),
+      ),
+    ),
+  ).toEqual([]);
+  expect(['23503', '23001']).toContain(
+    await code(() => w.asTenant((tx) => tx.execute(sql`DELETE FROM succession_sync_batches WHERE id=${id}::uuid`))),
+  );
+  expect(rowsOf(await w.asTenant((tx) => tx.execute(sql`SELECT * FROM ${table} WHERE batch_id=${id}::uuid`)))).toEqual(
+    before,
+  );
+});
