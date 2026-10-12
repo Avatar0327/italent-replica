@@ -94,4 +94,24 @@ describe('AC-FE-0-01 统一客户端', () => {
     expect(() => pageQuery({ page: 0, pageSize: 20 })).toThrow();
     expect(() => pageQuery({ page: 1, pageSize: 201 })).toThrow();
   });
+  it('现有后端的 Zod issues 数组回填表单，保留数组字段下标', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        json(
+          {
+            error: {
+              code: 'VALIDATION_FAILED',
+              details: [{ path: ['members', 0, 'name'], message: '名称不能为空' }],
+            },
+          },
+          400,
+        ),
+      ),
+    );
+    await expect(createApiClient(() => context).request('/api/tenant/example')).rejects.toMatchObject({
+      kind: 'fields',
+      fieldErrors: [{ name: ['members', 0, 'name'], errors: ['名称不能为空'] }],
+    });
+  });
 });

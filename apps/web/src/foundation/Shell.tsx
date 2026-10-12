@@ -30,7 +30,7 @@ function Header() {
         className="app-switch"
         aria-label={ui.apps}
         placeholder={ui.apps}
-        value={appRoute(location.pathname)?.path}
+        value={menus.find((menu) => menu.path === appRoute(location.pathname)?.path)?.path}
         onChange={(path: string) => navigate(path)}
         options={menus.map((menu) => ({ value: menu.path, label: menu.label }))}
       />
@@ -38,7 +38,7 @@ function Header() {
       <Input className="shell-search" aria-label={ui.search} placeholder={ui.search} disabled prefix="⌕" />
       <Popover content={ui.noMessages} trigger="click">
         <Button type="text" aria-label={ui.messages}>
-          ♧
+          {ui.messages}
         </Button>
       </Popover>
       {DemoSwitcher ? (
@@ -62,7 +62,16 @@ export function Shell() {
       type: 'group' as const,
       key,
       label,
-      children: menus.filter((menu) => menu.group === key).map((menu) => ({ key: menu.path, label: menu.label })),
+      children: menus
+        .filter((menu) => menu.group === key)
+        .map((menu) => ({
+          key: menu.path,
+          label: menu.label,
+          onTitleClick: () => navigate(menu.path),
+          children: menu.children?.length
+            ? menu.children.map((child) => ({ key: child.path, label: child.label }))
+            : undefined,
+        })),
     }))
     .filter((group) => group.children.length > 0);
   return (
@@ -72,7 +81,8 @@ export function Shell() {
         <Layout.Sider width={200} className="shell-sidebar" aria-label={ui.apps}>
           <Menu
             mode="inline"
-            selectedKeys={active ? [active.path] : []}
+            selectedKeys={[location.pathname]}
+            defaultOpenKeys={active ? [active.path] : []}
             items={groups}
             onClick={({ key }) => navigate(key)}
           />

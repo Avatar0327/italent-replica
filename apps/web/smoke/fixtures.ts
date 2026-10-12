@@ -38,6 +38,7 @@ export const test = base.extend({
           record: null,
         };
       if (path.endsWith('/transfers/manager')) body = { canApply: false, canViewReporting: false };
+      if (path.endsWith('/transfers/catalog')) body = { types: [], reasons: [], today: '2026-10-12' };
       return route.fulfill({ json: body });
     });
     await use(page);

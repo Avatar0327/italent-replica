@@ -124,6 +124,7 @@ export function ApprovalDetail(props: DetailProps) {
             <FormOverlay
               open
               mode="modal"
+              recordKey={`${state.detail.id}:${state.detail.revision}:${state.action}`}
               title={m[state.action]}
               onClose={() => state.setAction(undefined)}
               onRefresh={state.refresh}
