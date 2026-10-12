@@ -184,6 +184,26 @@
       "obj:TalentReview.ModuleGrade:delete"
     ]
   },
+  "DELETE /api/tenant/talent-review/projects/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "ade62e315bf2",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TalentReview/TalentReview.Project/-"
+    ],
+    "trace": [
+      "btn:TalentReview.Project#delete@detail",
+      "obj:TalentReview.Project:delete"
+    ]
+  },
   "DELETE /api/tenant/talent-review/readiness-levels/:id": {
     "all": {
       "code": "NOT_FOUND",
@@ -531,6 +551,39 @@
       "obj:TalentReview.ModuleGrade:view"
     ]
   },
+  "GET /api/tenant/talent-review/projects": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TalentReview.Project"
+    ],
+    "scopeQueries": [
+      "scope:TalentReview/TalentReview.Project/TalentReview.Project.list"
+    ],
+    "trace": [
+      "obj:TalentReview.Project:view"
+    ]
+  },
+  "GET /api/tenant/talent-review/projects/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "ade62e315bf2",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TalentReview/TalentReview.Project/TalentReview.Project.detail"
+    ],
+    "trace": [
+      "obj:TalentReview.Project:view"
+    ]
+  },
   "GET /api/tenant/talent-review/readiness-levels": {
     "all": {
       "status": 200
@@ -862,6 +915,26 @@
       "obj:TalentReview.ModuleGrade:update"
     ]
   },
+  "PATCH /api/tenant/talent-review/projects/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "ade62e315bf2",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TalentReview/TalentReview.Project/-"
+    ],
+    "trace": [
+      "btn:TalentReview.Project#update@detail",
+      "obj:TalentReview.Project:update"
+    ]
+  },
   "PATCH /api/tenant/talent-review/readiness-levels/:id": {
     "all": {
       "code": "NOT_FOUND",
@@ -1077,6 +1150,76 @@
     "trace": [
       "btn:TalentReview.ModuleGrade#create@list",
       "obj:TalentReview.ModuleGrade:create"
+    ]
+  },
+  "POST /api/tenant/talent-review/projects": {
+    "all": {
+      "code": "REVISION_CONFLICT",
+      "error": "f12e1e2b793f",
+      "status": 409
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:TalentReview.Project#create@list",
+      "obj:TalentReview.Project:create"
+    ]
+  },
+  "POST /api/tenant/talent-review/projects/:id/end": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "ade62e315bf2",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TalentReview/TalentReview.Project/-"
+    ],
+    "trace": [
+      "obj:TalentReview.Project:update"
+    ]
+  },
+  "POST /api/tenant/talent-review/projects/:id/restart": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "ade62e315bf2",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TalentReview/TalentReview.Project/-"
+    ],
+    "trace": [
+      "obj:TalentReview.Project:update"
+    ]
+  },
+  "POST /api/tenant/talent-review/projects/:id/start": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "ade62e315bf2",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TalentReview/TalentReview.Project/-"
+    ],
+    "trace": [
+      "obj:TalentReview.Project:update"
     ]
   },
   "POST /api/tenant/talent-review/readiness-levels": {

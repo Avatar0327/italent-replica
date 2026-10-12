@@ -96,9 +96,11 @@ export function createApp(deps: AppDeps = {}): Hono {
     '*',
     limitBody(DEFAULT_BODY_LIMIT, [
       ...PERMISSION_BODY_LIMITS,
-      // DEC-422：仅人员范围规则保存放宽到 64KB，其余继任接口仍为 32KB。
+      // DEC-422：继任规则保存放宽到 64KB；B2b 等级复用同一例外，其余接口仍为 32KB。
       { method: 'POST', path: /^\/api\/tenant\/succession\/populations$/, maxSize: 64 * 1024 },
       { method: 'PUT', path: /^\/api\/tenant\/succession\/populations\/[^/]+$/, maxSize: 64 * 1024 },
+      { method: 'POST', path: /^\/api\/tenant\/succession\/(risk|health)-levels$/, maxSize: 64 * 1024 },
+      { method: 'PUT', path: /^\/api\/tenant\/succession\/(risk|health)-levels\/(?!order$)[^/]+$/, maxSize: 64 * 1024 },
       {
         method: 'POST',
         path: /^\/api\/tenant\/account\/avatar\/attachments\/[^/]+\/upload$/,

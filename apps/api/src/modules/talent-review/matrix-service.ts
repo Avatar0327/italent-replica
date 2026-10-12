@@ -39,6 +39,7 @@ import { AppError } from '../../errors.js';
 import { notFoundMessage, requireConfigCreatable, requireConfigVisible, type ModuleScope } from './access.js';
 import {
   auditConfig,
+  configReferrer,
   createConfig,
   deleteConfig,
   lockConfigRow,
@@ -390,6 +391,11 @@ export async function updateMatrix(
 export function deleteMatrix(tx: Tx, ctx: MatrixWriteContext, id: string): Promise<MatrixView> {
   return deleteConfig(tx, MATRIX, ctx, id, async (before) => {
     if (before.preset) throw new AppError('CONFLICT', '预置九宫格不能删除，可以停用', { reason: 'MATRIX_PRESET' });
+    // 项目同时引用九宫格与比例组：先问引用守卫，避免清理比例组时外键错误抢先变成 500。
+    const referrer = await configReferrer(tx, ctx.tenantId, 'matrix', id);
+    if (referrer) {
+      throw new AppError('CONFLICT', '九宫格已被引用，不能删除，可以停用', { reason: MATRIX.inUse, referrer });
+    }
     // 删除会释放位置字段占用（级联删占用行）：同样在写入之前取这批字段的占用锁（锁协议见 lockPositionFields）
     await lockPositionFields(
       tx,
@@ -397,7 +403,6 @@ export function deleteMatrix(tx: Tx, ctx: MatrixWriteContext, id: string): Promi
       (before.positionFields as PositionFieldBody[]).map((p) => p.fieldId),
     );
     // 规则对格子的引用是 NO ACTION，同一条语句里级联的先后不定：先删规则组（级联规则与格子集合），再删九宫格。
-    // 之后被引用守卫拒绝时整个命令事务回滚，规则组不会丢
     await tx.delete(G).where(and(eq(G.tenantId, ctx.tenantId), eq(G.matrixId, id)));
   });
 }

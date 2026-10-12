@@ -4,7 +4,7 @@
  * - DEC-413：按指标 / 评总分 / 投票，投票比例与参考评分；通过分可超过满分，评总分无总分规则和权重；
  * - 评分项整组编辑：standard 至多 1 个、general 任意条；权重经 B2 纯函数校验；新增的通用评分项 / 隐藏指标引用校验权限与
  *   存在性（form-refs.ts），原有引用原样保留不重校；
- * - EV-R5 锁（form-lock.ts）：被“已发布且有提名”的活动引用后，评分相关字段有变化 → 409 FORM_LOCKED（本 PR 恒不锁）；
+ * - EV-R5 锁（form-lock.ts）：被“已发布且有提名”的活动引用后，评分相关字段有变化 → 409 FORM_LOCKED（B6 接真实引用）；
  * - 停用 / 删除前检查“被引用”钩子（usage.ts，B5 登记活动环节引用），行锁内检查，评分项随表删除并审计。
  * 评分项只存引用（ID 与权重），不冻结名称：通用评分项 / 指标的名称在读取时按查看人当前权限投影（presentForms）。
  * 每个写入口在命令台账的同一事务里写业务与审计（DEC-019 / 216）。
@@ -14,6 +14,7 @@ import { computeScoreWeights, type ScoreItemInput } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { assertNewFormRefs, type FormRefAccess, referenceNames } from './form-refs.js';
 import { formLockedByActivities } from './form-lock.js';
+import { coordinateActivityForms } from './reference-locks.js';
 import type * as input from './input.js';
 import { type Tracked, view } from './read-model.js';
 import type { View } from './route-support.js';
@@ -228,6 +229,7 @@ const auditSnapshot = (form: FormRecord) =>
   Object.fromEntries(Object.entries(form).filter(([field]) => field !== 'weightWarning'));
 
 export async function createForm(tx: Tx, ctx: WriteContext, body: input.FormCreate): Promise<FormRecord> {
+  await coordinateActivityForms(tx, ctx.tenantId);
   const settings: Settings = {
     scoreMode: body.scoreMode,
     fullScore: body.fullScore ?? null,
@@ -328,6 +330,7 @@ async function checkImplicitFields(
 }
 
 export async function updateForm(tx: Tx, ctx: WriteContext, id: string, body: input.FormPatch): Promise<FormRecord> {
+  await coordinateActivityForms(tx, ctx.tenantId, id);
   const row = await lockEditable(tx, ctx, 'evaluationForm', id);
   const before = await loadForm(tx, ctx.tenantId, id);
   const merged = mergedSettings(before, body);
@@ -335,7 +338,7 @@ export async function updateForm(tx: Tx, ctx: WriteContext, id: string, body: in
   await checkImplicitFields(ctx, before, merged, body);
   checkItems(merged.items);
   checkItemMode(merged, merged.items);
-  // 活动引用的共享锁与此处 lockEditable 的排他锁串行，引用检查必须在拿锁后执行（DEC-413）。
+  // 协调入口先锁引用活动，再锁评价表；引用集合稳定后检查，包含新增环节的外键隐式锁（B6 P2-2）。
   if (body.enabled === false && before.enabled) await rejectInUse(tx, ctx, 'evaluationForm', id, 'disable');
   if (lockedContent(merged) !== lockedContent(before) && (await formLockedByActivities(tx, ctx.tenantId, id))) {
     throw new AppError('CONFLICT', '评价表已被进行中且已有提名人员的活动引用，评分相关内容不能修改', {
@@ -376,6 +379,7 @@ export async function updateForm(tx: Tx, ctx: WriteContext, id: string, body: in
 }
 
 export async function deleteForm(tx: Tx, ctx: WriteContext, id: string): Promise<FormRecord> {
+  await coordinateActivityForms(tx, ctx.tenantId, id);
   await lockEditable(tx, ctx, 'evaluationForm', id);
   // B5 登记“被评定活动环节引用”（usage.ts 钩子位）
   await rejectInUse(tx, ctx, 'evaluationForm', id);

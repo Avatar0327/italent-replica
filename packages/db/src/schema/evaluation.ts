@@ -407,6 +407,87 @@ export const evChains = pgTable(
   ],
 );
 
+/** B6：通用 / 附加条件、申请人类型与匹配范围；随活动整份替换，seq 保留提交顺序（设计 §3.2）。 */
+export const evConditions = pgTable(
+  'ev_conditions',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    activityId: uuid('activity_id').notNull(),
+    seq: integer('seq').notNull(),
+    kind: text('kind').notNull(),
+    applicantKind: text('applicant_kind').notNull(),
+    categoryIds: uuid('category_ids')
+      .array()
+      .notNull()
+      .default(sql`'{}'::uuid[]`),
+    levelIds: uuid('level_ids')
+      .array()
+      .notNull()
+      .default(sql`'{}'::uuid[]`),
+    expression: text('expression'),
+  },
+  (t) => [
+    unique('ev_conditions_tenant_id').on(t.tenantId, t.id),
+    unique('ev_conditions_seq').on(t.tenantId, t.activityId, t.seq),
+    check('ev_conditions_kind', sql`${t.kind} IN ('common', 'extra')`),
+    check('ev_conditions_applicant', sql`${t.applicantKind} IN ('self', 'others')`),
+    check('ev_conditions_seq_nonnegative', sql`${t.seq} >= 0`),
+    foreignKey({
+      columns: [t.tenantId, t.activityId],
+      foreignColumns: [evActivities.tenantId, evActivities.id],
+      name: 'ev_conditions_activity_fk',
+    }).onDelete('cascade'),
+  ],
+);
+
+/** value 类型单独存：数字 0 与文本 "0" 回读后仍分别交给 B2 / C2，不用 JSON 承载条件对象。 */
+export const evConditionDetails = pgTable(
+  'ev_condition_details',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    conditionId: uuid('condition_id').notNull(),
+    position: integer('position').notNull(),
+    seq: integer('seq').notNull(),
+    source: text('source').notNull(),
+    field: text('field').notNull(),
+    operator: text('operator').notNull(),
+    value1: text('value1'),
+    value2: text('value2'),
+    value1Type: text('value1_type'),
+    value2Type: text('value2_type'),
+  },
+  (t) => [
+    unique('ev_condition_details_seq').on(t.tenantId, t.conditionId, t.seq),
+    unique('ev_condition_details_position').on(t.tenantId, t.conditionId, t.position),
+    check('ev_condition_details_order', sql`${t.seq} > 0 AND ${t.position} >= 0`),
+    check('ev_condition_details_field', sql`length(btrim(${t.source})) > 0 AND length(btrim(${t.field})) > 0`),
+    check(
+      'ev_condition_details_operator',
+      sql`${t.operator} IN ('eq', 'ne', 'gt', 'lt', 'ge', 'le', 'is_empty', 'not_empty', 'between')`,
+    ),
+    check(
+      'ev_condition_details_types',
+      sql`(${t.value1} IS NULL) = (${t.value1Type} IS NULL)
+      AND (${t.value2} IS NULL) = (${t.value2Type} IS NULL)
+      AND (${t.value1Type} IS NULL OR ${t.value1Type} IN ('string', 'number'))
+      AND (${t.value2Type} IS NULL OR ${t.value2Type} IN ('string', 'number'))`,
+    ),
+    check(
+      'ev_condition_details_values',
+      sql`CASE WHEN ${t.operator} IN ('is_empty', 'not_empty') THEN ${t.value1} IS NULL AND ${t.value2} IS NULL
+      WHEN ${t.operator} = 'between' THEN ${t.value1} IS NOT NULL AND ${t.value2} IS NOT NULL
+      ELSE ${t.value1} IS NOT NULL AND ${t.value2} IS NULL END`,
+    ),
+    foreignKey({
+      columns: [t.tenantId, t.conditionId],
+      foreignColumns: [evConditions.tenantId, evConditions.id],
+      name: 'ev_condition_details_condition_fk',
+    }).onDelete('cascade'),
+  ],
+);
+
 export type SyncQueueState = 'pending' | 'done' | 'skipped' | 'failed';
 
 /**

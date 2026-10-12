@@ -17,6 +17,7 @@ import { readFrozenContract } from './support/route-policy/baseline.js';
 import { compareDeclarations, type Finding } from './support/route-policy/compare.js';
 import type { ObservedContract } from './support/route-policy/contract.js';
 import { domainConstants, NO_SNAPSHOT_YET } from './support/route-policy/domains.js';
+import { compareMutants } from './support/route-policy/detector-fixtures.js';
 import { WEAKENING_KINDS, weakeningsOf } from './support/route-policy/weakenings.js';
 import { tenantApi } from './support/tenant-api.js';
 
@@ -148,7 +149,7 @@ describe('AC-PRM-FW-02 独立登记的结构弱化：全部真实声明逐个施
     it(`${kind}`, () => {
       const weakenings = manifest.declared.flatMap((r) => weakeningsOf(r, frozen)).filter((w) => w.kind === kind);
       expect(weakenings.length, `没有任何真实声明能施加 ${kind}`).toBeGreaterThan(0);
-      const missed = weakenings.filter((w) => !reported(compareDeclarations(frozen, [w.route])));
+      const missed = weakenings.filter((w) => !reported(compareMutants(frozen, [w.route])));
       expect(
         missed.map((w) => `${w.route.method} ${w.route.path} @${w.at}`),
         `${kind} 未被报出`,

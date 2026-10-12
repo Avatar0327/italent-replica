@@ -23,7 +23,7 @@ import type { ManifestRoute } from '@italent/api';
 import type { Finding } from './compare.js';
 import type { ObservedContract, ObservedRoute } from './contract.js';
 import { branchPerms, declaredPerms, provides, type PermMap, type ScopeSig } from './perms.js';
-import { GUARD_INNER_ALTS, INNER_CONDITIONS } from './required/guard-inner.js';
+import { GUARD_INNER_ALTS, INNER_CONDITIONS, type GuardInnerAlts } from './required/guard-inner.js';
 import type { Need, Obligation, RequiredTable } from './required/types.js';
 
 /** 权限类原语维度：它们的每个原始事实都要有义务承接；其余维度（范围 / 字段 / 命令 / 前提 …）是元数据。 */
@@ -52,11 +52,14 @@ export function rawFacts(observed: ObservedRoute): string[] {
 export function admissionPrimitives(
   observed: ObservedRoute,
   obligations: readonly Obligation[],
+  registeredOnly = false,
 ): Record<string, string[]> {
   const out: Record<string, string[]> = {};
   for (const [dim, names] of Object.entries(observed.primitives)) {
     const kept = names.filter((name) => {
       const claimers = obligations.filter((o) => o.facts?.includes(`${dim}:${name}`));
+      // 缺登记时只排除用途未知的权限事实，范围 / 字段 / 前提等独立元数据仍须硬比较（#248 P2-1）。
+      if (registeredOnly && !claimers.length && PERMISSION_DIMENSIONS.has(dim)) return false;
       return !claimers.length || claimers.some(isAdmission);
     });
     if (kept.length) out[dim] = kept;
@@ -103,11 +106,18 @@ export function satisfiedGroupAlts(alt: PermMap, alts: ReadonlyMap<string, reado
 
 const isCarrierPerm = (perm: string) => perm.startsWith('obj:') || perm.startsWith('admin:');
 
+/** 检测器夹具独立注入语义登记；真实入口缺省仍检查真实表。 */
+export interface RequiredSemantics {
+  readonly guardAlts?: Readonly<Record<string, GuardInnerAlts>>;
+  readonly conditions?: Readonly<Record<string, string>>;
+}
+
 export function checkRoute(
   key: string,
   obligations: readonly Obligation[],
   route: ManifestRoute,
   observed: ObservedRoute | undefined,
+  semantics: RequiredSemantics = {},
 ): Finding[] {
   const findings: Finding[] = [];
   const report = (code: string, detail: string) => findings.push({ route: key, code, detail });
@@ -218,7 +228,7 @@ export function checkRoute(
     if (!o.inner) {
       report('GUARD_ROLE_UNBOUND', `${o.perm} 在 ${carrierOf(o)} 内部的角色未登记（required / or / when）`);
     } else if (o.inner.role === 'or') {
-      const registered = GUARD_INNER_ALTS[carrierOf(o)];
+      const registered = (semantics.guardAlts ?? GUARD_INNER_ALTS)[carrierOf(o)];
       const alt = registered?.alts[o.inner.alt];
       // 数据态备选（`data:` 字符串）不经授权器，不能承载带权限键的义务；权限备选必须含该权限键（#162 审查 P2-3）
       const ok = registered?.group === o.inner.group && Array.isArray(alt) && alt.includes(o.perm);
@@ -227,7 +237,7 @@ export function checkRoute(
           'GUARD_INNER_ALT_UNREGISTERED',
           `${o.perm} 的内部备选 ${o.inner.group}:${o.inner.alt} 未在 GUARD_INNER_ALTS 登记，或不是含该权限的权限备选`,
         );
-    } else if (o.inner.role === 'when' && !INNER_CONDITIONS[o.inner.condition]) {
+    } else if (o.inner.role === 'when' && !(semantics.conditions ?? INNER_CONDITIONS)[o.inner.condition]) {
       report(
         'GUARD_INNER_CONDITION_UNREGISTERED',
         `${o.perm} 的条件 ${o.inner.condition} 未在 INNER_CONDITIONS 登记语义`,
@@ -266,11 +276,12 @@ export function checkRequired(
   table: RequiredTable,
   contract: ObservedContract,
   routes: readonly ManifestRoute[],
+  semantics: RequiredSemantics = {},
 ): Finding[] {
   return routes.flatMap((route) => {
     const key = `${route.method} ${route.path}`;
     const obligations = table[key];
     if (!obligations) return [{ route: key, code: 'REQUIRED_ENTRY_MISSING', detail: '必需项表没有这条端点' }];
-    return checkRoute(key, obligations, route, contract.routes[key]);
+    return checkRoute(key, obligations, route, contract.routes[key], semantics);
   });
 }

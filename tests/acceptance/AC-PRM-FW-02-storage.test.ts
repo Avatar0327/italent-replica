@@ -1,3 +1,5 @@
+import { registrationGate, registrationDrift, registration } from './support/route-policy/registration.js';
+import { evidenceStrict } from './support/route-policy/evidence-gate.js';
 /**
  * AC-PRM-FW-02（续，F-072 PR-1 图存储，docs/08_设计/F-072_闭包边界降噪_方案.md §4、§6 测试 1～7；DEC-374①）：
  * 证据依赖闭包的登记从“根 → 依赖 → 摘要”平铺（required/digests.ts）改为“节点摘要表 + 直接依赖图”
@@ -29,7 +31,6 @@ import {
   STORED_REGISTRY,
   unitText,
 } from './support/route-policy/evidence.js';
-import { evidenceStrict, gateEvidence, softGate } from './support/route-policy/evidence-gate.js';
 import {
   explainFromGit,
   explainGraphDiff,
@@ -102,8 +103,8 @@ describe('AC-PRM-FW-02 图存储：真实表等价与确定性（F-072 测试 1�
     // F-090：提交的登记与当前源码不一致默认只警告（ROUTE_POLICY_EVIDENCE_STRICT=1 判红）
     const current = currentRegistry(REQUIRED);
     if (!isDeepStrictEqual(STORED_REGISTRY.units, current.units)) mismatched.push('证据单元摘要（units.ts）');
-    expect(softGate('图存储：登记图与源码闭包', mismatched)).toEqual([]);
-    expect(roots().length).toBeGreaterThan(600);
+    expect(registrationDrift('图存储：登记图与源码闭包', mismatched)).toEqual([]);
+    registration('真实登记图的根统计', () => expect(roots().length).toBeGreaterThan(600));
   });
 
   it('生成两次字节相同；提交的登记文件 = 当前源码生成的内容（登记与源码同步）', () => {
@@ -119,7 +120,7 @@ describe('AC-PRM-FW-02 图存储：真实表等价与确定性（F-072 测试 1�
     const names = new Set([...onDisk.keys(), ...generated.keys()].filter((name) => name !== 'index.ts'));
     // F-090：证据单元在源码里找不到属登记错误，按证据门禁开关
     const broken = brokenUnits(REQUIRED).map((unit) => `${unit} 证据单元找不到`);
-    expect(softGate('图存储：证据单元', broken)).toEqual([]);
+    expect(registrationDrift('图存储：证据单元', broken)).toEqual([]);
     const drift = [...names].sort().flatMap((name) => {
       if (!generated.has(name)) return [`${name} 多余（生成器不再写出）`];
       return textDrift(name, generated.get(name)!, onDisk.get(name));
@@ -454,7 +455,7 @@ describe('AC-PRM-FW-02 图存储：旧 required/digests.ts 守卫（F-072 测试
   const LEGACY = 'tests/acceptance/support/route-policy/required/digests.ts';
 
   it('仓库里没有旧文件', () => {
-    expect(gateEvidence(legacyDigestsFindings(), '旧 digests.ts 守卫')).toEqual([]);
+    expect(registrationGate(legacyDigestsFindings(), '旧 digests.ts 守卫')).toEqual([]);
   });
 
   it('临时放回 required/digests.ts → LEGACY_DIGESTS_PRESENT（全表校验 unused 模式同样带出）', () => {
@@ -560,7 +561,7 @@ describe('AC-PRM-FW-02 图存储：explain-graph-diff（F-072 测试 5b、6b，�
 
 describe('AC-PRM-FW-02 图存储：回归（F-072 测试 7）', () => {
   it('全表校验零发现（含 unused 与旧文件守卫）；没有位于 modules/** 的未解析项', () => {
-    const found = gateEvidence(checkStored(REQUIRED, { unused: true }), '图存储回归：全表校验');
+    const found = registrationGate(checkStored(REQUIRED, { unused: true }), '图存储回归：全表校验');
     expect(found, show(found)).toEqual([]);
   });
 

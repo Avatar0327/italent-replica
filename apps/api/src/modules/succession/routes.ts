@@ -1,3 +1,4 @@
+import { registerCalcRoutes } from './calc-routes.js';
 import { registerSuccessionConfigRoutes } from './config-routes.js';
 /**
  * R3-T05 继任管理接口（设计 §2.2；前缀 /api/tenant/succession）。装配位：登记权限对象、开关校验、准备度引用守卫与
@@ -36,6 +37,7 @@ import {
 } from './record-read.js';
 import './settings.js';
 import { installSuccessionPorts } from './ports.js';
+import { registerSuccessionLevelRoutes } from './levels-routes.js';
 import { createRecord, deleteRecord, endRecords, updateRecord } from './record-write.js';
 import { recordResults } from './record-results.js';
 import {
@@ -98,8 +100,10 @@ export function registerSuccessionRoutes(router: Hono<TenantEnv>, deps: TenantRo
     return c.json((await projectSuccession(deps, ctx, 'record', [found.view]))[0]);
   });
 
+  registerCalcRoutes(router, deps);
   registerRecordWrites(router, deps);
   registerSuccessionConfigRoutes(router, deps);
+  registerSuccessionLevelRoutes(router, deps);
 }
 
 /** 记录写侧（A2）：#3 新增、#3a 候选、#4 编辑、#5 批量结束、#6 软删除；共用命令执行协议（write-support.ts）。 */
