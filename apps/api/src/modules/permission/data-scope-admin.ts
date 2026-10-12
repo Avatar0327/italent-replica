@@ -389,9 +389,12 @@ export async function grantScopePrefill(tx: Tx, userId: string, profileId: strin
       kind: row?.kind ?? 'default',
       mouId: row?.mouId ?? null,
       revision: row?.revision ?? 0,
-      orgRanges: refs
-        .filter((ref) => ref.mouId === row?.mouId)
-        .map(({ orgId, dimension, includeDescendants }) => ({ orgId, dimension, includeDescendants })),
+      orgRanges: permissionSet(
+        refs
+          .filter((ref) => ref.mouId === row?.mouId)
+          .map(({ orgId, dimension, includeDescendants }) => ({ orgId, dimension, includeDescendants })),
+        ['orgId', 'dimension'],
+      ),
     };
   });
   return { sharedScopeNotice: '此范围由该用户在应用下的所有身份共享', scopes };

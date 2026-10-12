@@ -95,7 +95,7 @@ describe('AC-PRM F-089 权限集合保存与读取', () => {
   async function changed(key: string, expected: string[]) {
     const audit = await events(key);
     expect(audit).toHaveLength(1);
-    expect(audit[0]!.changes!.map((c) => c.field).sort()).toEqual([...expected].sort());
+    expect(audit[0]!.changes).toEqual([...expected].sort().map((field) => expect.objectContaining({ field })));
   }
 
   it.each(['字段', '按钮', '字段及按钮'])('DEC-409⑦ 仅%s顺序变化：审计无字段变更，revision与重放不变', async (kind) => {
@@ -225,6 +225,9 @@ describe('AC-PRM F-089 权限集合保存与读取', () => {
       body = { kind: 'org_range', orgRanges: ranges };
       const created = await put(path, { kind: 'org_range', orgRanges: [...ranges].reverse() }, 0);
       expect(created.body.orgRanges).toEqual(ranges);
+      const profile = await createProfile(world, 'set-prefill');
+      const prefill = await get(`/grant-prefill/${user.id}/${profile.id}`);
+      expect(prefill.scopes[0].orgRanges).toEqual(ranges);
     }
     const saved = await put(path, body, 1);
     expect(saved.body.orgRanges).toEqual(ranges);
@@ -240,7 +243,7 @@ describe('AC-PRM F-089 权限集合保存与读取', () => {
         : { kind: 'org_range', orgRanges: [{ ...ranges[0]!, includeDescendants: true }, ...ranges.slice(1)] };
     const real = await put(path, next, 2);
     const audit = await events(real.key);
-    for (const event of audit) expect(event.changes!.map((c) => c.field)).toEqual(['orgRanges']);
+    for (const event of audit) expect(event.changes).toEqual([expect.objectContaining({ field: 'orgRanges' })]);
   });
 
   it('DEC-409⑦ 应用允许范围类型是集合：读取排序，重排无差异，删除成员仍记差异', async () => {
@@ -312,6 +315,6 @@ describe('AC-PRM F-089 权限集合保存与读取', () => {
         .from(auditEvents)
         .where(and(eq(auditEvents.commandId, real.key), eq(auditEvents.objectType, 'permission_scope_policy'))),
     );
-    expect(stored[0]!.changes![0]!.from).toEqual(rules);
+    expect(stored[0]!.changes).toEqual([expect.objectContaining({ field: 'rules', from: rules })]);
   });
 });
