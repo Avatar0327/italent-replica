@@ -120,7 +120,10 @@ describe('AC-SC-07 组织健康度', () => {
   it('计算冻结全部授权组织、原命令重放保留集合；缓存取数、手工保留、重置冲突逐对象拒绝', async () => {
     const w = await successionWorld(testDb().db, 'health');
     const root = await w.org('健康根'),
-      child = await w.org('健康下级', root.id);
+      child = await w.org('健康下级', root.id, { isVirtual: true });
+    expect(
+      (await w.call('PUT', 'settings/succession.hide_virtual_org', { ifMatch: 0, body: { value: true } })).status,
+    ).toBe(200);
     await enableHealthRunner(w);
     const levelResponse = await w.request('POST', '/health-levels', {
       ifMatch: 0,
@@ -161,13 +164,15 @@ describe('AC-SC-07 组织健康度', () => {
     await w.asTenant(async (tx) => {
       await tx.execute(sql`INSERT INTO succession_org_stats
         (tenant_id,org_id,stat_date,on_duty_count,slot_key,computed_at,run_id)
-        VALUES (${w.tenant.id}::uuid,${root.id}::uuid,${SC_TODAY}::date,7,'cached',${SC_NOW.toISOString()}::timestamptz,${runId}::uuid)`);
+        VALUES (${w.tenant.id}::uuid,${root.id}::uuid,${SC_TODAY}::date,7,'cached',
+          ${SC_NOW.toISOString()}::timestamptz,${runId}::uuid)`);
     });
     await w.org('排队后新组织');
     expect(await (await w.request('POST', '/maps/org/compute-health', options)).json()).toEqual({ runId });
     const frozen = await w.asTenant(async (tx) =>
       rowsOf<{ object_id: string }>(
-        await tx.execute(sql`SELECT object_id FROM succession_calc_run_objects WHERE run_id=${runId}::uuid`),
+        await tx.execute(sql`SELECT object_id FROM succession_calc_run_objects
+          WHERE run_id=${runId}::uuid`),
       ),
     );
     expect(frozen.map((r) => r.object_id).sort()).toEqual([w.tenant.id, root.id, child.id].sort());
@@ -214,6 +219,21 @@ describe('AC-SC-07 组织健康度', () => {
       ),
     );
     expect(failures).toEqual([{ code: 'REVISION_CONFLICT' }]);
+    const clearKey = randomUUID();
+    const clear = await w.request('PUT', `/health-results/${child.id}`, { ifMatch: 2, body: { levelId: null }, idempotencyKey: clearKey });
+    expect(clear.status).toBe(200);
+    expect(await clear.json()).toMatchObject({ levelId: null, method: 'computed', revision: 3 });
+    expect(await w.asTenant(async (tx) => rowsOf(await tx.execute(sql`
+      SELECT "before"->>'levelId' AS old_level,"after"->>'method' AS method FROM audit_events
+      WHERE command_id=${clearKey} AND object_type='Succession.HealthResult'`))))
+      .toEqual([{ old_level: level.id, method: 'computed' }]);
+    const next = await w.request('POST', '/maps/org/compute-health', { ifMatch: 0, body: {} });
+    expect(next.status).toBe(202);
+    const nextId = ((await next.json()) as { runId: string }).runId;
+    expect(await runCalcPage(w.db, w.tenant.id, nextId, [createHealthHandler('org_health', port)], SC_NOW)).toBe(
+      'succeeded',
+    );
+    expect((await read()).items.find((r) => r.orgId === child.id)).toMatchObject({ method: 'computed', revision: 4 });
     const count = await w.asTenant(async (tx) => rowsOf(await tx.execute(sql`SELECT id FROM succession_calc_runs`)));
     await dispatchCalcJobs({ db: w.db, clock: () => SC_NOW }, { kind: 'org_health' });
     expect(
