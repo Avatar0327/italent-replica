@@ -587,6 +587,7 @@ function flowBase(): RequiredTable {
       flowView(false),
       {
         perm: 'guard:ev.filterFieldVisible',
+        facts: ['guard:ev.filterFieldVisible'],
         at: [
           call(FLOW_ROUTE, "requireFilterVisible(await getModuleViewableFields(deps, ctx, OBJECT), 'activityId')"),
           impl(`${ACCESS}#requireFilterVisible`, 'if (fields !== undefined && !fields.has(field))'),

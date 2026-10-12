@@ -5,5 +5,9 @@ export interface EvaluationState {
   readonly resultStatus: string | null;
 }
 export function isInProgress(row: EvaluationState): boolean {
-  return row.terminatedAt == null && row.applyStatus !== 'failed' && row.resultStatus !== 'published';
+  return (
+    (row.terminatedAt === null || row.terminatedAt === undefined) &&
+    row.applyStatus !== 'failed' &&
+    row.resultStatus !== 'published'
+  );
 }

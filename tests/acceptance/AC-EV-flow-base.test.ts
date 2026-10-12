@@ -226,9 +226,15 @@ describe('AC-EV-flow-base', () => {
       logs.items.filter((row) => [String(inside), String(outside)].includes(row.objectId)).map((row) => row.objectId),
     ).toEqual([inside]);
     expect(JSON.stringify(logs)).not.toContain('finalScore');
+    const logId = logs.items.find((row) => row.objectId === inside)!.id;
+    const auditDetail = await audit.dataChange(op.as, logId);
+    expect(auditDetail.before).not.toHaveProperty('finalScore');
+    expect(auditDetail.after).not.toHaveProperty('finalScore');
+    expect(auditDetail.after).toMatchObject({ terminatedReason: 'activity_completed' });
     await op.setEvOrgs([]);
     expect((await ok(await op.request('GET', path))).total).toBe(0);
     expect((await audit.dataChanges(op.as, query)).items).toHaveLength(0);
+    expect((await audit.get(`/data-changes/${logId}`, op.as)).status).toBe(404);
   });
   it('取消发布保留通知登记；无报名草稿仍可删除，删除快照保留通知历史', async () => {
     const a = await fresh();
