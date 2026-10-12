@@ -31,6 +31,7 @@ test.beforeEach(async ({ page }) => {
         buttons: [
           { buttonCode: 'create', level: 'list' },
           { buttonCode: 'update', level: 'detail' },
+          { buttonCode: 'syncSequence', level: 'list' },
         ],
       },
     }),
@@ -38,7 +39,15 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/tenant/org/organizations**', (route) =>
     route.fulfill({
       json: new URL(route.request().url()).pathname.endsWith(id)
-        ? { id, revision: 1, name: '合成组织', code: 'ORG-001', enabled: true, establishedOn: '2026-01-01' }
+        ? {
+            id,
+            revision: 1,
+            name: '合成组织',
+            code: 'ORG-001',
+            enabled: true,
+            establishedOn: '2026-01-01',
+            parents: { admin: { parentId: null, sequence: null } },
+          }
         : { items: [{ id, revision: 1, name: '合成组织', code: 'ORG-001', enabled: true }], hasDataPermission: true },
     }),
   );
@@ -89,7 +98,7 @@ for (const kind of [
     await page.getByRole('button', { name: /取\s*消/, exact: true }).click();
     await page.getByRole('button', { name: /新\s*建/, exact: true }).click();
     await expect(page.getByRole('dialog').getByLabel('名称', { exact: true })).toBeVisible();
-    await page.screenshot({ path: testInfo.outputPath('page.png'), fullPage: true });
+    await page.screenshot({ path: testInfo.outputPath('page.png'), fullPage: true, animations: 'disabled' });
     expect(errors).toEqual([]);
   });
 }
@@ -118,7 +127,7 @@ for (const tab of ['list', 'tree', 'changes', 'establishment']) {
     }
     await page.getByRole('switch', { name: '注释' }).click();
     await expect(page.locator('.decision-note')).toHaveCount(2);
-    await page.screenshot({ path: testInfo.outputPath('page.png'), fullPage: true });
+    await page.screenshot({ path: testInfo.outputPath('page.png'), fullPage: true, animations: 'disabled' });
     expect(errors).toEqual([]);
   });
 }
@@ -213,7 +222,7 @@ test('AC-FE-R1a-09 组织停用提交后端校验，编制详情只读', async (
   await page.goto('/org');
   await page.getByRole('button', { name: '合成组织', exact: true }).click();
   await page.getByRole('button', { name: /停\s*用/, exact: true }).click();
-  await expect(page.getByRole('dialog')).toContainText('级联停用');
+  await expect(page.getByRole('dialog', { name: '停用 · 合成组织' })).toContainText('级联停用');
   await page.getByRole('button', { name: /保\s*存/ }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(body).toEqual({ enabled: false, effectiveDate: '2026-10-12' });
@@ -231,4 +240,23 @@ test('AC-FE-R1a-09 组织停用提交后端校验，编制详情只读', async (
   await page.getByRole('button', { name: '合成年度方案' }).click();
   await expect(page.getByRole('dialog')).toContainText('年度');
   await expect(page.getByRole('dialog').getByRole('button', { name: /保\s*存/ })).toHaveCount(0);
+});
+
+test('AC-FE-R1a-12 列表序列同步保留选中对象 revision 和异步回执', async ({ page, baseURL }) => {
+  await page.context().addCookies([
+    { name: 'italent_demo_tenant', value: '10000000-0000-4000-8000-000000000001', url: baseURL! },
+    { name: 'italent_demo_user', value: user, url: baseURL! },
+  ]);
+  const writes: unknown[] = [];
+  await page.route('**/api/tenant/job/posts/sync-sequence', (route) => {
+    writes.push(route.request().postDataJSON());
+    return route.fulfill({ status: 202, json: { taskId: id, state: 'pending' } });
+  });
+  await page.goto('/job?kind=posts');
+  await expect(page.getByRole('button', { name: '合成条目' })).toBeVisible();
+  await page.getByRole('checkbox').nth(1).check();
+  await page.getByRole('button', { name: '同步序列到任职', exact: true }).click();
+  await page.getByRole('button', { name: /确\s*认/, exact: true }).click();
+  await expect(page.getByText('后台开始处理对应任职记录上的序列，完成后会给你发送消息。')).toBeVisible();
+  expect(writes).toEqual([{ items: [{ id, revision: 1 }] }]);
 });

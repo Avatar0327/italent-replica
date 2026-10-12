@@ -89,3 +89,29 @@ describe('AC-FE-R1a-05 服务端权限契约', () => {
     expect(pageAccess(permission).field('parents')).toEqual({ visible: false, editable: false });
   });
 });
+
+it('AC-FE-R1a-10 职位多维上级分别提交，编辑一维保留另一维，空上级使用 null', async () => {
+  const { jobBody } = await job();
+  const parent = '10000000-0000-4000-8000-000000000003';
+  const position = {
+    ...original,
+    parents: { admin: { parentId: parent, sequence: 1 }, dotted: { parentId: parent, sequence: 2 } },
+  };
+  expect(jobBody('positions', { adminParent: '', adminSequence: 3 }, position, '2026-10-12')).toEqual({
+    effectiveDate: '2026-10-12',
+    parents: { admin: { parentId: null, sequence: 3 }, dotted: position.parents.dotted },
+  });
+});
+
+it('AC-FE-R1a-11 服务端已计算的业务按钮不依赖不存在的同名数据操作开关', async () => {
+  const { pageAccess } = await org();
+  expect(
+    pageAccess({
+      objectCode: 'TenantBase.JobPost',
+      dataOperations: { update: true },
+      viewableFields: [],
+      editableFields: [],
+      buttons: [{ buttonCode: 'syncSequence', level: 'list' }],
+    }).can('syncSequence', 'list'),
+  ).toBe(true);
+});
