@@ -163,12 +163,13 @@ class FirstPlan {
       ...targets,
       ...plan.nominations.map((n) => ({ kind: n.kind, id: (n.orgId ?? n.positionId)! })),
     ];
-    for (const userId of [header.actorUserId, ...(input.requesterUserId ? [input.requesterUserId] : [])]) {
+    const principals = [header.actorUserId, ...(input.requesterUserId ? [input.requesterUserId] : [])];
+    for (const [phase, userId] of principals.entries()) {
       const access = await targetAccess(deps, tx, input.tenantId, timezone, userId);
       let covered = await activeUser(tx, input.tenantId, userId);
       for (const target of authorizationTargets) if (!(await access.covers(target))) covered = false;
       if (!covered) {
-        if (userId === header.actorUserId) throw new PlanFailure('ACTOR_SCOPE_EXCEEDED');
+        if (phase === 0) throw new PlanFailure('ACTOR_SCOPE_EXCEEDED');
         throw denied('BATCH_SCOPE_EXCEEDS_REQUESTER');
       }
     }
