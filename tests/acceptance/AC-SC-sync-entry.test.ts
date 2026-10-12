@@ -2,7 +2,7 @@
 import { randomUUID } from 'node:crypto';
 import { sql, type DbHandle } from '@italent/db';
 import { createTestDb } from '@italent/testkit';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { consumeRun, planSyncRun } from '../../apps/api/src/modules/succession/sync-consume.js';
 import { createInMemoryTalentReviewSyncPort } from '../../apps/api/src/modules/talent-review/sync-port-memory.js';
 import { overrideSetting } from '../../apps/api/src/modules/tenant-settings/service.js';
@@ -10,6 +10,12 @@ import { syncFixture } from './support/sync-port-contract.js';
 import { rowsOf } from './support/f048.js';
 import { successionWorld, SC_NOW, SC_TODAY, type SuccessionWorld } from './AC-SC-support.js';
 import { syncTestTransaction } from './AC-SC-sync-support.js';
+
+const binding = vi.hoisted(() => ({ current: null as unknown }));
+vi.mock('../../apps/api/src/modules/succession/ports.js', async (original) => ({
+  ...(await original<object>()),
+  getSuccessionSync: () => binding.current,
+}));
 
 let handle: DbHandle;
 let w: SuccessionWorld;
@@ -90,6 +96,7 @@ async function setup() {
     authorize: () => true,
     transaction: syncTestTransaction(w.db, w.tenant.id, port),
   };
+  binding.current = deps;
   const batch = await planSyncRun(deps, input);
   expect(batch?.status).toBe('executing');
   return { input, deps, port, batch: batch! };
@@ -171,5 +178,63 @@ describe('AC-SC-03/04 D3 同步入口与恢复', () => {
       WHERE tenant_id=${w.tenant.id}::uuid`),
     );
     expect(rowsOf(mutex)).toEqual([{ batch_id: h.batch.id }]);
+  });
+});
+
+describe('DEC-453① 无计划终止', () => {
+  it.each(['waiting', 'blocked'])('%s 无执行号时先分配再终止，不建计划、不写业务数据', async (status) => {
+    const h = await setup();
+    const freshId = randomUUID();
+    const fixture = syncFixture();
+    const run = fixture.runs![0]!;
+    const port = createInMemoryTalentReviewSyncPort({
+      ...fixture,
+      tenantId: w.tenant.id,
+      runs: [{ ...run, header: { ...run.header, runId: freshId } }],
+    });
+    // HTTP 命令拥有 SQL 事务；替身消费操作必须由同一外层内存事务发布。
+    binding.current = { ...h.deps, port };
+    const id = randomUUID();
+    await w.asTenant((tx) =>
+      tx.execute(sql`INSERT INTO succession_sync_batches
+      (id,tenant_id,source_run_id,project_id,trigger,actor_user_id,owner_user_id,
+       source_principal_user_id,business_date,status)
+      VALUES (${id}::uuid,${w.tenant.id}::uuid,${freshId}::uuid,${run.header.projectId}::uuid,
+      'sync_requested',${w.user.id}::uuid,${w.user.id}::uuid,${w.user.id}::uuid,${SC_TODAY},${status})`),
+    );
+    const before = await w.asTenant((tx) => tx.execute(sql`SELECT id,revision FROM succession_records ORDER BY id`));
+    const begin = vi.spyOn(port, 'beginConsumption');
+    const abort = vi.spyOn(port, 'abortConsumption');
+    const result = await port.transaction(async (memory) => {
+      const nativePort = new Proxy(port, {
+        get(target, name) {
+          const fn: unknown = Reflect.get(target, name);
+          return typeof fn === 'function' ? (_tx: unknown, input: unknown) => fn.call(target, memory, input) : fn;
+        },
+      });
+      binding.current = { ...h.deps, port: nativePort };
+      return w.request('POST', `/sync-batches/${id}/abort`, { ifMatch: 1, body: {} });
+    });
+    expect(result.status, await result.clone().text()).toBe(200);
+    expect(begin).toHaveBeenCalledOnce();
+    expect(abort).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        executionNo: 1,
+        code: 'ABORTED_BY_ADMIN',
+        recovery: 'terminate',
+      }),
+    );
+    const local = await w.asTenant((tx) =>
+      tx.execute(sql`SELECT status,has_plan,execution_no,end_reason
+      FROM succession_sync_batches WHERE id=${id}::uuid`),
+    );
+    expect(rowsOf(local)).toEqual([{ status: 'terminated', has_plan: false, execution_no: 1, end_reason: 'aborted' }]);
+    const after = await w.asTenant((tx) => tx.execute(sql`SELECT id,revision FROM succession_records ORDER BY id`));
+    expect(rowsOf(after)).toEqual(rowsOf(before));
+    const plans = await w.asTenant((tx) =>
+      tx.execute(sql`SELECT id FROM succession_sync_targets WHERE batch_id=${id}::uuid`),
+    );
+    expect(rowsOf(plans)).toEqual([]);
   });
 });
