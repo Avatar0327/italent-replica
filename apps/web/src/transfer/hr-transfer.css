@@ -44,6 +44,12 @@
   padding-left: 10px;
   font-size: 15px;
 }
+.r1c-transfer-form .transfer-linkage-field {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
 .r1c-transfer-form .transfer-values {
   grid-template-columns: 1fr;
 }
