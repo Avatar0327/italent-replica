@@ -17,10 +17,16 @@ const testDb = useTestDb();
 it('AC-SC-org-stats worker 登记、在岗缓存包含行政下级、历史日零人数；主体撤权 blocked', async () => {
   const w = await successionWorld(testDb().db, 'sc-stats-worker');
   const root = await w.org('统计根');
-  const child = await w.org('下级', root.id);
+  const child = await w.org('下级', root.id, { isVirtual: true });
   await w.hire('在岗甲', { departmentId: root.id });
   await w.hire('在岗乙', { departmentId: child.id });
   await enableStatsRunner(w);
+  expect(
+    (await w.call('PUT', 'settings/succession.hide_virtual_org', { ifMatch: 0, body: { value: true } })).status,
+  ).toBe(200);
+  expect(
+    (await w.call('PUT', 'settings/succession.show_incumbents', { ifMatch: 0, body: { value: false } })).status,
+  ).toBe(200);
   const id = await w.asTenant((tx) =>
     enqueueCalcRun(
       tx,
