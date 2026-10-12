@@ -633,6 +633,7 @@ export const DIGESTS: Digests = {
     childDeleteRights: 'de08fd350c31',
     registerObject: '849fa6161898',
     registerQualificationRoutes: '1dbe1d63bc27',
+    'top-import:./subset-policy.js': 'b84e680c80f6',
   },
   'apps/api/src/modules/qualification/standard-service.ts': {
     createStandard: '8cd995eb08ed',
@@ -656,6 +657,7 @@ export const DIGESTS: Digests = {
     installQualificationSubsetPolicy: 'afc59474d856',
     qualificationBeforeRequest: '2f08d99c5ee8',
     qualificationBeforeSave: '1e4fcf11fe4b',
+    'top-call:installQualificationSubsetPolicy': 'e6c2a6483775',
   },
   'apps/api/src/modules/qualification/target-service.ts': {
     checkEvalMode: '6f57e66ebe1e',
@@ -1716,6 +1718,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/qualification/routes.ts#childDeleteRights': '49251d263f86',
   'apps/api/src/modules/qualification/routes.ts#registerObject': '8c695efe87d8',
   'apps/api/src/modules/qualification/routes.ts#registerQualificationRoutes': '3a846c883f39',
+  'apps/api/src/modules/qualification/routes.ts#top-import:./subset-policy.js': 'e3b0c44298fc',
   'apps/api/src/modules/qualification/standard-service.ts#createStandard': '290968858093',
   'apps/api/src/modules/qualification/standard-service.ts#deleteStandard': '416432ace259',
   'apps/api/src/modules/qualification/standard-service.ts#putChannels': '4aa3ce6db911',
@@ -1731,6 +1734,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/qualification/subset-policy.ts#installQualificationSubsetPolicy': 'ade9cee7f798',
   'apps/api/src/modules/qualification/subset-policy.ts#qualificationBeforeRequest': '93ecfb7b9cce',
   'apps/api/src/modules/qualification/subset-policy.ts#qualificationBeforeSave': '44877e5900f6',
+  'apps/api/src/modules/qualification/subset-policy.ts#top-call:installQualificationSubsetPolicy': '2a80a42ad7d9',
   'apps/api/src/modules/qualification/target-service.ts#checkEvalMode': 'e38a2c49aadd',
   'apps/api/src/modules/qualification/target-service.ts#createTarget': 'd403e84954d3',
   'apps/api/src/modules/qualification/target-service.ts#deleteGradeScheme': '7abfdd820381',
