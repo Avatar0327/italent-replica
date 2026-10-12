@@ -1727,6 +1727,7 @@ export const GRAPH: Graph = {
     '#requireTargetInScope',
     'apps/api/src/modules/survey360/sync.ts#lockPlan',
     'apps/api/src/modules/survey360/sync.ts#personForEmployee',
+    'apps/api/src/modules/survey360/sync.ts#previewPerson',
     'apps/api/src/modules/survey360/sync.ts#syncAccess',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],

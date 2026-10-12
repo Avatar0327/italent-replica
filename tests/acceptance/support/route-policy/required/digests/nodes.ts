@@ -3216,7 +3216,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/survey360/relations.ts#appraiserList': ['b6b1c3839c8f', '62be0eef0a49'],
   'apps/api/src/modules/survey360/relations.ts#appraiserListView': ['e947713fd8be', 'f5edceae9df9'],
   'apps/api/src/modules/survey360/relations.ts#auditRelation': ['108f8fcfb104', 'fcc41adfcb1d'],
-  'apps/api/src/modules/survey360/relations.ts#autoAdd': ['e8f03a421770', '16bbe8cd37e6'],
+  'apps/api/src/modules/survey360/relations.ts#autoAdd': ['ecf39dec5efc', '433be7d3e0f0'],
   'apps/api/src/modules/survey360/relations.ts#autoAddPlan': ['f3e97e10cc61', '7f7248840dda'],
   'apps/api/src/modules/survey360/relations.ts#autoAddView': ['fb16dadedc5c', 'f4fe7c646b1f'],
   'apps/api/src/modules/survey360/relations.ts#candidateFilter': ['13e909ee9ff2', 'da5fd1742e5a'],
