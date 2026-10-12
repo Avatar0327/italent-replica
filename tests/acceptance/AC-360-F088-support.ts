@@ -1,12 +1,29 @@
 /** F-088：只克隆合成任职种子，保留外键、不可变快照和时间线约束。 */
 import { randomUUID } from 'node:crypto';
-import { type Db, type Tx, sql, withTenant } from '@italent/db';
+import { type Db, type DbHandle, type Tx, sql, withTenant } from '@italent/db';
+import { createTestDb } from '@italent/testkit';
+import { afterAll, beforeAll } from 'vitest';
 import { fullAccess, type PersonView, world360 } from './AC-360-support.js';
 import { hire } from './AC-360-F043-support.js';
 
 interface Observation {
   query: string;
   ids: string[];
+}
+
+/** 大租户测试仍每文件一个隔离库；并行工作区争用时给全量迁移留足启动时间。 */
+export function useBoundedDb(): () => DbHandle {
+  let handle: DbHandle | undefined;
+  beforeAll(async () => {
+    handle = await createTestDb();
+  }, 180_000);
+  afterAll(async () => {
+    await handle?.close();
+  });
+  return () => {
+    if (!handle) throw new Error('F-088 隔离测试库尚未初始化');
+    return handle;
+  };
 }
 
 export async function boundedScene(db: Db, label: string, size: number) {

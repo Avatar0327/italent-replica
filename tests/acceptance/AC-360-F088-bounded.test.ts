@@ -1,10 +1,9 @@
 /** AC-360-06 补强（DEC-408①）：候选先筛范围再分页，锁集合不随租户规模增长。 */
 import { sql, withTenant } from '@italent/db';
-import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { boundedScene } from './AC-360-F088-support.js';
+import { boundedScene, useBoundedDb } from './AC-360-F088-support.js';
 
-const testDb = useTestDb();
+const testDb = useBoundedDb();
 interface Result {
   added: { appraiserPersonId: string }[];
   skipped: { employeeId: string; reason: string }[];

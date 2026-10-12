@@ -2,12 +2,11 @@
  * AC-360-06 / F-088 大租户性能后补：显式 F088_PERFORMANCE=1 才运行，不进入 CI 关键路径。
  * 合成 10,000 名当前下级（含完整任职链）；仅报告 HTTP 命令耗时，不把机器速度设成 CI 门禁。
  */
-import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { boundedScene } from './AC-360-F088-support.js';
+import { boundedScene, useBoundedDb } from './AC-360-F088-support.js';
 
 describe.skipIf(process.env.F088_PERFORMANCE !== '1')('AC-360-06 / F-088 10,000 名下级性能', () => {
-  const testDb = useTestDb();
+  const testDb = useBoundedDb();
   it('添加 1 名与末位范围候选：每次锁 1 人，候选每页最多 100 人', async () => {
     const s = await boundedScene(testDb().db, 'f088perf', 10_000);
     for (const restricted of [false, true]) {

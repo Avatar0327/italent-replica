@@ -1,11 +1,10 @@
 /** AC-360-06 / DEC-408①：分页预判保持顺序、查重、人数上限与原子性。 */
 import { sql, withTenant } from '@italent/db';
-import { useTestDb } from '@italent/testkit';
 import { afterEach, describe, expect, it } from 'vitest';
 import { syncProbe } from '../../apps/api/src/modules/survey360/sync.js';
-import { boundedScene } from './AC-360-F088-support.js';
+import { boundedScene, useBoundedDb } from './AC-360-F088-support.js';
 
-const testDb = useTestDb();
+const testDb = useBoundedDb();
 afterEach(() => {
   syncProbe.beforeLock = undefined;
 });
