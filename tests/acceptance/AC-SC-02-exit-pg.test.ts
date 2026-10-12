@@ -13,6 +13,13 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-SC-02 离职与编辑
     await runner(w);
   });
   async function hold(kind: 'employee' | 'org' | 'position', id: string) {
+    // 先提交锁行，避免两个 INSERT 在同一未提交唯一键上等醒后争抢，保证断言的先后顺序。
+    if (kind !== 'employee')
+      await w.asTenant((tx) =>
+        tx.execute(sql`
+      INSERT INTO succession_target_locks (tenant_id,target_kind,target_id)
+      VALUES (${w.tenant.id}::uuid,${kind},${id}::uuid) ON CONFLICT DO NOTHING`),
+      );
     let ready!: () => void;
     let release!: () => void;
     const locked = new Promise<void>((r) => (ready = r));
@@ -22,8 +29,6 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-SC-02 离职与编辑
       if (kind === 'employee') {
         await tx.execute(sql`SELECT id FROM employment_employees WHERE id=${id}::uuid FOR NO KEY UPDATE`);
       } else {
-        await tx.execute(sql`INSERT INTO succession_target_locks (tenant_id,target_kind,target_id)
-          VALUES (${w.tenant.id}::uuid,${kind},${id}::uuid) ON CONFLICT DO NOTHING`);
         await tx.execute(sql`SELECT 1 FROM succession_target_locks
           WHERE tenant_id=${w.tenant.id}::uuid AND target_kind=${kind} AND target_id=${id}::uuid FOR UPDATE`);
       }

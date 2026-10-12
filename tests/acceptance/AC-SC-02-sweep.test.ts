@@ -13,7 +13,9 @@ import type { EmploymentBusiness } from './AC-EMP-support.js';
 import {
   employeeStatusHooks,
   registerEmployeeStatusHooks,
+  resetEmployeeStatusHooksForTest,
 } from '../../apps/api/src/modules/employment/status-hooks.js';
+import { installSuccessionExitHooks, successionExitHooks } from '../../apps/api/src/modules/succession/exit-store.js';
 import { runCalcPage, changeCalcRun } from '../../apps/api/src/modules/succession/calc-worker.js';
 import { SUCCESSION_JOBS } from '../../apps/api/src/modules/succession/scheduler.js';
 import { SUCCESSION_PRODUCERS } from '../../apps/api/src/modules/succession/calc-jobs.js';
@@ -27,6 +29,7 @@ describe('AC-SC-02 sweep 与删除 / 撤销', () => {
   beforeAll(async () => {
     w = await exitWorld(testDb().db, 'sc-exit-sweep');
     await runner(w);
+    await installApprovalFallbacks(w.db, w.tenant.id, w.user.id);
   });
   it('正式登记唯一 kind / 生产者 / 任务；未来保存不结束，到期两类候选结束并幂等', async () => {
     expect(SUCCESSION_PRODUCERS.filter((p) => p.kind === 'exit_sweep')).toHaveLength(1);
@@ -48,7 +51,7 @@ describe('AC-SC-02 sweep 与删除 / 撤销', () => {
     const audits = rowsOf<{ n: number }>(
       await w.asTenant((tx) =>
         tx.execute(sql`
-      SELECT count(*)::int n FROM audit_events WHERE object_id=ANY(${`{${ids.join(',')}}`}::uuid[])
+      SELECT count(*)::int n FROM audit_events WHERE object_id=ANY(${`{${ids.join(',')}}`}::text[])
         AND action='succession.record.update'`),
       ),
     );
@@ -72,12 +75,13 @@ describe('AC-SC-02 sweep 与删除 / 撤销', () => {
     expect(await w.read(zero)).toMatchObject({ end_date: '2026-10-03', end_source: 'exit' });
     const old = await w.hire();
     w.setNow(due);
-    const oldLeave = await w.leave(old);
-    // 模拟订阅登记之前已离职：没有本模块台账，不能扫描全任职补处理。
-    await w.asTenant((tx) =>
-      tx.execute(sql`DELETE FROM succession_exit_applications
-      WHERE employment_record_id=${oldLeave.id}::uuid`),
-    );
+    // 登记前已离职：端口不补发，恢复登记后 sweep 不能扫描全任职补处理。
+    resetEmployeeStatusHooksForTest();
+    try {
+      await w.leave(old);
+    } finally {
+      installSuccessionExitHooks();
+    }
     const untracked = await w.seedRecord(old.id);
     await w.sweep('2026-10-05T01:00:00Z');
     expect(await w.read(untracked)).toMatchObject({ end_date: '9999-12-31', revision: 1 });
@@ -124,6 +128,45 @@ describe('AC-SC-02 sweep 与删除 / 撤销', () => {
     await w.sweep('2026-10-08T01:00:00Z');
     expect(await w.read(laterId)).toMatchObject({ end_source: 'exit' });
   });
+  it('撤销未生效离职申请不登记台账、不改变继任；DEC-440 未生效候选按当前时间轴新日期到期', async () => {
+    const e = await w.hire();
+    const id = await w.seedRecord(e.id, 'org');
+    const app = await w.business(e.id, { kind: 'leave', mode: 'application', lastWorkDate: '2026-10-01' }, e.revision);
+    const submitted = await w.requestEmployment('POST', `/businesses/${app.id}/submit`, {
+      ifMatch: app.revision,
+      body: {},
+    });
+    expect(submitted.status).toBe(200);
+    const reviewing = (await submitted.json()) as EmploymentBusiness;
+    const revoked = await w.requestEmployment('POST', `/businesses/${app.id}/revoke`, {
+      ifMatch: reviewing.revision,
+      body: {},
+    });
+    expect(revoked.status, await revoked.clone().text()).toBe(200);
+    expect(await revoked.json()).toMatchObject({ status: 'voided' });
+    await w.sweep('2026-10-09T01:00:00Z');
+    expect(await w.apps(e.id)).toEqual([]);
+    expect(await w.read(id)).toMatchObject({ revision: 1, end_date: '9999-12-31' });
+
+    const moved = await w.hire();
+    const movedId = await w.seedRecord(moved.id, 'org');
+    const exit = await w.leave(moved);
+    // 只构造 employment 当前时间轴已经改期的输入；本 PR 不新增或实现离职改期入口。
+    await w.asTenant(async (tx) => {
+      await tx.execute(sql`WITH removed AS (DELETE FROM employment_timeline
+        WHERE record_id=${exit.id}::uuid RETURNING *)
+        INSERT INTO employment_timeline (tenant_id,employee_id,record_id,staff_id,sort_order,start_date,valid_during)
+        SELECT tenant_id,employee_id,record_id,staff_id,sort_order,'2026-10-20'::date,
+          daterange('2026-10-20'::date,upper(valid_during),'[)') FROM removed`);
+      await tx.execute(sql`UPDATE employment_timeline SET valid_during=daterange(start_date,'2026-10-20'::date,'[)')
+        WHERE record_id=${moved.recordId}::uuid`);
+    });
+    await w.sweep('2026-10-19T01:00:00Z');
+    expect(await w.read(movedId)).toMatchObject({ revision: 1, end_date: '9999-12-31' });
+    await w.sweep('2026-10-20T01:00:00Z');
+    expect(await w.read(movedId)).toMatchObject({ revision: 2, end_date: '2026-10-20', end_source: 'exit' });
+    expect((await w.apps(moved.id))[0]!.leave_date).toBe('2026-10-20');
+  });
   it('任职写命令直接重放：台账 / 继任修订 / 审计均不重复；订阅失败整单回滚', async () => {
     const e = await w.hire();
     const id = await w.seedRecord(e.id);
@@ -152,14 +195,15 @@ describe('AC-SC-02 sweep 与删除 / 撤销', () => {
       ifMatch: failing.revision,
       body: options.body,
     });
-    expect(failed.status).toBe(503);
+    // errors.ts：未分类的订阅异常精确返回 INTERNAL_ERROR / 500，仍须整个业务回滚。
+    expect(failed.status).toBe(500);
+    expect(await failed.json()).toMatchObject({ error: { code: 'INTERNAL_ERROR' } });
     expect(await w.apps(failing.id)).toEqual([]);
     expect(await w.read(failedId)).toMatchObject({ end_date: '9999-12-31', revision: 1 });
   });
   it.each([false, true])('审批即时 / 定时（定时=%s）：只有实际 materialize 才登记并结束', async (future) => {
     const e = await w.hire();
     const id = await w.seedRecord(e.id);
-    await installApprovalFallbacks(w.db, w.tenant.id, w.user.id);
     const app = await w.business(e.id, { kind: 'leave', mode: 'application', lastWorkDate: '2026-10-01' }, e.revision);
     const submitted = await w.requestEmployment('POST', `/businesses/${app.id}/submit`, {
       ifMatch: app.revision,
@@ -196,10 +240,44 @@ describe('AC-SC-02 sweep 与删除 / 撤销', () => {
 });
 
 describe('AC-SC-02 当前权限与提示', () => {
+  it('离职台账 RLS 隔离；跨租户员工 / 任职外键拒绝，范围外 UPDATE 不改变原台账', async () => {
+    const a = await exitWorld(testDb().db, 'sc-exit-tenant-a');
+    const b = await exitWorld(testDb().db, 'sc-exit-tenant-b');
+    const e = await a.hire();
+    await a.seedRecord(e.id, 'org');
+    const exit = await a.leave(e);
+    const snapshot = await a.apps(e.id);
+    expect(await b.apps(e.id)).toEqual([]);
+    const changed = rowsOf<{ employee_id: string }>(
+      await b.asTenant((tx) =>
+        tx.execute(sql`
+      UPDATE succession_exit_applications SET source='delete_revert'
+      WHERE employment_record_id=${exit.id}::uuid RETURNING employee_id`),
+      ),
+    );
+    expect(changed).toEqual([]);
+    expect(await a.apps(e.id)).toEqual(snapshot);
+    await expect(
+      b.asTenant((tx) =>
+        tx.execute(sql`
+      INSERT INTO succession_exit_applications (tenant_id,employee_id,employment_record_id,
+        leave_date,applied_at,source,command_id)
+      VALUES (${b.tenant.id}::uuid,${e.id}::uuid,${exit.id}::uuid,'2026-10-02',now(),'record_write','sc-cross-tenant')`),
+      ),
+    ).rejects.toMatchObject({ cause: { code: '23503' } });
+    expect(await a.apps(e.id)).toEqual(snapshot);
+  });
   it('系统主体未配置 blocked、恢复同一 run；范围外对象 partial 且无半写；撤权后再页不写', async () => {
     const w = await exitWorld(testDb().db, 'sc-exit-principal');
     const e = await w.hire();
     const id = await w.seedRecord(e.id, 'org');
+    const other = await w.org('范围外部门');
+    const inside = await w.insertRecord({
+      type: 'org',
+      targetId: other.id,
+      successorId: e.id,
+      startDate: '2026-10-01',
+    });
     await w.leave(e);
     await w.sweep(due);
     const [run] = rowsOf<{ id: string; status: string; revision: number }>(
@@ -209,13 +287,13 @@ describe('AC-SC-02 当前权限与提示', () => {
     );
     expect(run!.status).toBe('blocked');
     expect(await w.read(id)).toMatchObject({ revision: 1 });
-    const other = await w.org('范围外部门');
     const principal = await runner(w, [other.id]);
     await w.asTenant((tx) =>
       changeCalcRun(tx, w.tenant.id, run!.id, run!.revision, 'retry', randomUUID(), new Date(due)),
     );
     expect(await runCalcPage(w.db, w.tenant.id, run!.id, undefined, new Date(due))).toBe('partial');
     expect(await w.read(id)).toMatchObject({ revision: 1 });
+    expect(await w.read(inside)).toMatchObject({ revision: 1, end_date: '9999-12-31' });
     const failures = rowsOf<{ code: string }>(
       await w.asTenant((tx) =>
         tx.execute(sql`
@@ -280,6 +358,22 @@ describe('AC-SC-02 当前权限与提示', () => {
           employeeStatus: status,
         }),
       );
+    expect(await w.apps(e.id)).toEqual([]);
+    expect(await w.read(id)).toMatchObject({ revision: 1 });
+    const event = {
+      employeeId: e.id,
+      recordId: e.recordId,
+      kind: 'leave' as const,
+      effectiveDate: '2026-10-02',
+      lastWorkDate: '2026-10-01',
+      employeeStatus: 8 as const,
+    };
+    await w.asTenant((tx) =>
+      successionExitHooks.onRecordRescheduled!(tx, ctx, {
+        before: event,
+        after: { ...event, effectiveDate: '2026-10-10' },
+      }),
+    );
     expect(await w.apps(e.id)).toEqual([]);
     expect(await w.read(id)).toMatchObject({ revision: 1 });
   });
