@@ -1,0 +1,100 @@
+import { Breadcrumb, Button, Input, Layout, Menu, Popover, Select, Tag } from 'antd';
+import { lazy, Suspense } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router';
+import { DecisionNote, DecisionNoteToggle } from './DecisionNote.js';
+import { PermissionObject, usePermissions } from './Permissions.js';
+import { useSession } from './Session.js';
+import { AppPages } from './AppPages.js';
+import { appRoute } from './routes.js';
+import { ui } from './messages.js';
+import './shell.css';
+
+const DemoSwitcher = import.meta.env.DEV
+  ? lazy(() => import('../demo/DemoIdentitySwitcher.js').then((m) => ({ default: m.DemoIdentitySwitcher })))
+  : null;
+
+function Header() {
+  const session = useSession();
+  const { menus } = usePermissions();
+  const location = useLocation();
+  const navigate = useNavigate();
+  return (
+    <Layout.Header className="shell-header">
+      <Link className="shell-brand" to="/">
+        {ui.brand}
+      </Link>
+      <span className="shell-tenant" title={session.tenantId}>
+        {session.tenantName || ui.tenant}
+      </span>
+      <Select
+        className="app-switch"
+        aria-label={ui.apps}
+        placeholder={ui.apps}
+        value={appRoute(location.pathname)?.path}
+        onChange={(path: string) => navigate(path)}
+        options={menus.map((menu) => ({ value: menu.path, label: menu.label }))}
+      />
+      <div className="header-spacer" />
+      <Input className="shell-search" aria-label={ui.search} placeholder={ui.search} disabled prefix="⌕" />
+      <Popover content={ui.noMessages} trigger="click">
+        <Button type="text" aria-label={ui.messages}>
+          ♧
+        </Button>
+      </Popover>
+      {DemoSwitcher ? (
+        <Suspense fallback={null}>
+          <DemoSwitcher />
+        </Suspense>
+      ) : (
+        <Link to="/settings/account">{session.displayName || ui.identity}</Link>
+      )}
+      <DecisionNoteToggle />
+    </Layout.Header>
+  );
+}
+export function Shell() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { menus } = usePermissions();
+  const active = appRoute(location.pathname);
+  const groups = Object.entries(ui.groups)
+    .map(([key, label]) => ({
+      type: 'group' as const,
+      key,
+      label,
+      children: menus.filter((menu) => menu.group === key).map((menu) => ({ key: menu.path, label: menu.label })),
+    }))
+    .filter((group) => group.children.length > 0);
+  return (
+    <Layout className="app-shell">
+      <Header />
+      <Layout>
+        <Layout.Sider width={200} className="shell-sidebar" aria-label={ui.apps}>
+          <Menu
+            mode="inline"
+            selectedKeys={active ? [active.path] : []}
+            items={groups}
+            onClick={({ key }) => navigate(key)}
+          />
+          <Link className="account-link" to="/settings/account">
+            {ui.account}
+          </Link>
+        </Layout.Sider>
+        <Layout.Content className="shell-content">
+          <div className="shell-context">
+            <Breadcrumb
+              items={[{ title: active ? ui.groups[active.group] : ui.brand }, { title: active?.label ?? ui.missing }]}
+            />
+            <Tag color="blue">{ui.demo}</Tag>
+          </div>
+          <DecisionNote id="foundation" />
+          <div className="shell-workspace">
+            <PermissionObject object={active?.objectCode}>
+              <AppPages />
+            </PermissionObject>
+          </div>
+        </Layout.Content>
+      </Layout>
+    </Layout>
+  );
+}

@@ -9,7 +9,7 @@ const json = (body: unknown, status = 200) =>
 
 describe('AC-FE-0-01 统一客户端', () => {
   it('会话走同源 Cookie，租户头来自当前上下文，写命令保留原幂等键与 revision', async () => {
-    const fetcher = vi.fn().mockResolvedValue(json({ revision: 3 }));
+    const fetcher = vi.fn().mockImplementation(() => Promise.resolve(json({ revision: 3 })));
     vi.stubGlobal('fetch', fetcher);
     const api = createApiClient(() => context);
     const command = newCommand({ name: '合成名称' }, 2);
@@ -56,6 +56,7 @@ describe('AC-FE-0-01 统一客户端', () => {
       .request('/api/tenant/example')
       .catch((cause) => cause);
     expect(error).toBeInstanceOf(ApiError);
+    if (!(error instanceof ApiError)) throw error;
     expect(error.fieldErrors).toEqual([{ name: ['name'], errors: ['名称不能为空'] }]);
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(json({ error: { code: 'CONFLICT' } }, 409)));
     await expect(createApiClient(() => context).request('/api/tenant/example')).rejects.toMatchObject({
