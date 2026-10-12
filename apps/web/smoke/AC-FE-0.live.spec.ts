@@ -17,7 +17,7 @@ test('AC-FE-0-08 真实演示身份与现有后端集成', async ({ page }, test
     await expectLive(page.locator('.shell-workspace')).not.toContainText('正在加载');
   }
   await page.goto('/staff');
-  await expectLive(page.locator('.shell-workspace h1')).toHaveText('员工管理');
+  await expectLive(page.locator('.shell-workspace h1')).toHaveText('员工');
   await page.screenshot({ path: testInfo.outputPath('staff.png'), fullPage: true });
   await page.getByLabel('切换演示身份').selectOption({ label: '平台研发员工甲（演示）（普通员工）' });
   await expectLive(page).toHaveURL(/\/self$/);

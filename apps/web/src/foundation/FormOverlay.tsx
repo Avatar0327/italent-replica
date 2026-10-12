@@ -99,15 +99,14 @@ function OpenForm(props: FormOverlayProps) {
         />
       )}
       <Form form={form} layout="vertical" initialValues={props.initialValues} onFinish={submit} disabled={busy}>
-        <FormGroups groups={props.groups} initialValues={props.initialValues} />
+        <FormGroups groups={props.groups} initialValues={props.initialValues} mode={props.mode} />
       </Form>
     </>
   );
   return props.mode === 'modal' ? (
     <Modal
-      width={820}
-      rootClassName="reference-form-modal"
       open
+      width={800}
       title={props.title}
       onCancel={props.onClose}
       closable={!busy}
@@ -120,10 +119,11 @@ function OpenForm(props: FormOverlayProps) {
   ) : (
     <Drawer
       open
+      rootClassName="form-overlay"
       title={props.title}
       width={560}
       onClose={props.onClose}
-      closable={!busy}
+      closable={busy ? false : { placement: 'end' }}
       maskClosable={!busy}
       keyboard={!busy}
       footer={footer}
@@ -133,30 +133,32 @@ function OpenForm(props: FormOverlayProps) {
   );
 }
 
-function FormGroups(props: Pick<FormOverlayProps, 'groups' | 'initialValues'>) {
+function FormGroups(props: Pick<FormOverlayProps, 'groups' | 'initialValues' | 'mode'>) {
   return (
     <>
       {props.groups.map((group) => (
         <section key={group.title}>
           <h2 className="form-group-title">{group.title}</h2>
-          {group.fields
-            .filter((field) => field.access.visible)
-            .map((field) =>
-              field.access.editable ? (
-                <Form.Item key={field.name} name={field.name} label={field.label} rules={field.rules}>
-                  {field.control}
-                </Form.Item>
-              ) : (
-                <Form.Item key={field.name} label={field.label}>
-                  <PermissionField
-                    access={field.access}
-                    value={field.display ?? String(props.initialValues?.[field.name] ?? '—')}
-                  >
+          <div className={props.mode === 'modal' ? 'form-fields-modal' : undefined}>
+            {group.fields
+              .filter((field) => field.access.visible)
+              .map((field) =>
+                field.access.editable ? (
+                  <Form.Item key={field.name} name={field.name} label={field.label} rules={field.rules}>
                     {field.control}
-                  </PermissionField>
-                </Form.Item>
-              ),
-            )}
+                  </Form.Item>
+                ) : (
+                  <Form.Item key={field.name} label={field.label}>
+                    <PermissionField
+                      access={field.access}
+                      value={field.display ?? String(props.initialValues?.[field.name] ?? '—')}
+                    >
+                      {field.control}
+                    </PermissionField>
+                  </Form.Item>
+                ),
+              )}
+          </div>
         </section>
       ))}
     </>

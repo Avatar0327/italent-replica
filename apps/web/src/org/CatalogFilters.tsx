@@ -1,11 +1,12 @@
-import { Button, Drawer, Input, Select, Space } from 'antd';
+import { Button, Input, Select } from 'antd';
 import { useState } from 'react';
+import { FilterDrawer } from '../foundation/index.js';
 import { pageText as m } from './messages.js';
 interface Filters {
   name: string;
   status: string;
 }
-export function FilterDrawer({
+export function CatalogFilters({
   value,
   statuses,
   clearStatus,
@@ -23,31 +24,14 @@ export function FilterDrawer({
       <Button type="link" onClick={() => setDraft({ ...value })}>
         {m.advanced}
       </Button>
-      <Drawer
+      <FilterDrawer
         open={!!draft}
-        width={500}
-        title={m.advanced}
         onClose={close}
-        rootClassName="r1-filter-drawer"
-        footer={
-          <div className="r1-filter-footer">
-            <Button type="text" onClick={() => setDraft({ name: '', status: clearStatus })}>
-              {m.clear}
-            </Button>
-            <Space>
-              <Button onClick={close}>{m.cancel}</Button>
-              <Button
-                type="primary"
-                onClick={() => {
-                  if (draft) onApply(draft);
-                  close();
-                }}
-              >
-                {m.filterConfirm}
-              </Button>
-            </Space>
-          </div>
-        }
+        onClear={() => setDraft({ name: '', status: clearStatus })}
+        onApply={() => {
+          if (draft) onApply(draft);
+          close();
+        }}
       >
         {draft && (
           <>
@@ -67,7 +51,7 @@ export function FilterDrawer({
             </label>
           </>
         )}
-      </Drawer>
+      </FilterDrawer>
     </>
   );
 }

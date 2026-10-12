@@ -2,6 +2,7 @@
 import { CALC_KINDS, type Tx, type successionCalcRuns, type successionCalcRunObjects } from '@italent/db';
 import { calcScheduleSlot } from './calc-time.js';
 import { EXIT_SWEEP_HANDLER } from './exit-sweep.js';
+import { orgStatsHandler } from './org-stats.js';
 
 export type CalcKind = (typeof CALC_KINDS)[number];
 export type CalcRun = Readonly<typeof successionCalcRuns.$inferSelect>;
@@ -59,7 +60,7 @@ export function defineCalcKinds(handlers: readonly CalcHandler[]): readonly Calc
   );
 }
 /** A3 的 exit_sweep/employee、C1 的 org_stats/org、B4/B5 的 position/org 在此追加模块级实例。 */
-export const SUCCESSION_CALC_KINDS = defineCalcKinds([EXIT_SWEEP_HANDLER]);
+export const SUCCESSION_CALC_KINDS = defineCalcKinds([EXIT_SWEEP_HANDLER, orgStatsHandler]);
 
 export class CalcBlocked extends Error {
   constructor(

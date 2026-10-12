@@ -1,4 +1,4 @@
-import { Button, Descriptions, Drawer, Input, Select, Space, Tag, App } from 'antd';
+import { Button, Descriptions, Input, Select, Space, Tag, App } from 'antd';
 import { useState } from 'react';
 import { useSearchParams } from 'react-router';
 import {
@@ -10,14 +10,14 @@ import {
   tenantDate,
   useSession,
   type PageResult,
+  type ListView,
 } from '../foundation/index.js';
 import { usePagePermissions, useRemote, RemoteContent, type PageAccess } from '../org/page-support.js';
 import { useSequenceSelection } from './SequenceSync.js';
 import { JobEditor, JobHints, jobFields, label } from './JobEditor.js';
 import { jobKinds, jobObjects, jobInitialValues, jobPermissionField, type JobKind, type JobRow } from './page-model.js';
 import { pageText as m } from './messages.js';
-import { FilterDrawer } from '../org/FilterDrawer.js';
-import { ListViews } from '../foundation/ListViews.js';
+import { CatalogFilters } from '../org/CatalogFilters.js';
 import '../org/workspace.css';
 
 export function JobWorkspace() {
@@ -33,13 +33,16 @@ export function JobWorkspace() {
   return (
     <div className="r1-workspace">
       <DecisionNote id="job" />
-      <ListViews
-        value={kind}
-        items={allowed.map((key) => ({ key, label: m[key] }))}
-        onChange={(kind) => setParams({ kind })}
-      >
-        <JobCatalog key={kind} kind={kind} access={permissions.access(jobObjects[kind])} />
-      </ListViews>
+      <JobCatalog
+        key={kind}
+        kind={kind}
+        access={permissions.access(jobObjects[kind])}
+        view={{
+          value: kind,
+          options: allowed.map((key) => ({ key, label: m[key] })),
+          onChange: (kind) => setParams({ kind }),
+        }}
+      />
     </div>
   );
 }
@@ -119,7 +122,7 @@ function JobFilters({ s }: { s: Catalog }) {
           { value: '', label: m.all },
         ]}
       />
-      <FilterDrawer
+      <CatalogFilters
         value={{ name: s.name, status: s.enabled }}
         statuses={[
           { value: 'true', label: m.active },
@@ -146,7 +149,7 @@ function JobFilters({ s }: { s: Catalog }) {
     </Space>
   );
 }
-function JobCatalog({ kind, access }: { kind: JobKind; access: PageAccess }) {
+function JobCatalog({ kind, access, view }: { kind: JobKind; access: PageAccess; view: ListView }) {
   const { message } = App.useApp();
   const s = useCatalog(kind);
   const selection = useSequenceSelection(kind, s.remote.data, access, s.remote.refresh);
@@ -155,6 +158,7 @@ function JobCatalog({ kind, access }: { kind: JobKind; access: PageAccess }) {
     <>
       <ListPage
         title={m[kind]}
+        view={view}
         rowKey="id"
         selection={selection}
         page={s.page}
@@ -214,63 +218,56 @@ function JobDetail({ s, access }: { s: Catalog; access: PageAccess }) {
   const { detail, kind } = s;
   const values = jobInitialValues(detail.data);
   return (
-    <Drawer
-      rootClassName="r1-detail"
+    <DetailPage
       open={!!s.selected}
-      width="min(940px, calc(100vw - 64px))"
-      title={`${m[kind]}${m.detail}`}
       onClose={() => s.setSelected(undefined)}
-    >
-      <RemoteContent state={detail}>
-        {detail.data && (
-          <DetailPage
-            title={access.field('name').visible ? (detail.data.name ?? m.detail) : m.detail}
-            actions={
-              access.can('update') && (
-                <Button
-                  onClick={() => {
-                    s.setEditor({ original: detail.data });
-                    s.setSelected(undefined);
-                  }}
-                >
-                  {m.edit}
-                </Button>
-              )
-            }
-            tabs={[{ key: 'record', label: m[kind] }]}
-            sections={[
-              {
-                key: 'basic',
-                title: m.basic,
-                children: (
-                  <Descriptions
-                    column={2}
-                    layout="vertical"
-                    size="small"
-                    items={[
-                      'name',
-                      'code',
-                      ...jobFields[kind],
-                      'displayOrder',
-                      'enabled',
-                      'startDate',
-                      'stopDate',
-                      'establishedOn',
-                    ]
-                      .filter((field) => access.field(jobPermissionField(field)).visible && values[field] !== undefined)
-                      .map((field) => ({
-                        key: field,
-                        label: label(field),
-                        children: renderValue(field, values[field]),
-                      }))}
-                  />
-                ),
-              },
-            ]}
-          />
-        )}
-      </RemoteContent>
-    </Drawer>
+      summary={<RemoteContent state={detail}>{null}</RemoteContent>}
+      title={access.field('name').visible ? (detail.data?.name ?? m.detail) : m.detail}
+      actions={
+        detail.data &&
+        access.can('update') && (
+          <Button
+            onClick={() => {
+              s.setEditor({ original: detail.data });
+              s.setSelected(undefined);
+            }}
+          >
+            {m.edit}
+          </Button>
+        )
+      }
+      tabs={[{ key: 'record', label: m[kind] }]}
+      sections={[
+        {
+          key: 'basic',
+          title: m.basic,
+          children: (
+            <Descriptions
+              className="r1-detail-fields"
+              column={2}
+              layout="vertical"
+              size="small"
+              items={[
+                'name',
+                'code',
+                ...jobFields[kind],
+                'displayOrder',
+                'enabled',
+                'startDate',
+                'stopDate',
+                'establishedOn',
+              ]
+                .filter((field) => access.field(jobPermissionField(field)).visible && values[field] !== undefined)
+                .map((field) => ({
+                  key: field,
+                  label: label(field),
+                  children: renderValue(field, values[field]),
+                }))}
+            />
+          ),
+        },
+      ].filter(() => !!detail.data)}
+    />
   );
 }
 

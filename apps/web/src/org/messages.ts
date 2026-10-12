@@ -37,8 +37,6 @@ export const pageText = {
   advanced: '高级筛选',
   filterName: '名称',
   customSearch: '自定义搜索',
-  clear: '清空',
-  filterConfirm: '确定',
   shortName: '机构简称',
   title: '组织管理',
   list: '组织',

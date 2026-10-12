@@ -23,6 +23,7 @@ import {
   BAD_REQUEST,
   button,
   fixed,
+  commandWrite,
   seeAll,
   FORBIDDEN,
   guardScope,
@@ -112,6 +113,35 @@ function calcPolicy(retry = false) {
 }
 
 export const SUCCESSION_POLICIES = defineTable('succession', {
+  [`GET ${BASE}/maps/:kind/preferences`]: object({
+    object: SUCCESSION_OBJECTS.map.code,
+    operation: 'view',
+    button: noButton('本人显示设置'),
+    scope: noScope('本人偏好，不是组织数据集'),
+    fields: fixed(
+      ['rootOrgId', 'depth', 'hiddenOrgIds', 'showKeyPositions', 'showPositionsWithoutSuccessor', 'revision'],
+      '设计 #8 个人设置白名单',
+    ),
+  }),
+  [`PUT ${BASE}/maps/:kind/preferences`]: object({
+    object: SUCCESSION_OBJECTS.map.code,
+    operation: 'view',
+    button: noButton('Map.view 保存本人显示设置'),
+    scope: guardScope('succession.preferenceIds', NOT_FOUND),
+    fields: fixed(
+      ['rootOrgId', 'depth', 'hiddenOrgIds', 'showKeyPositions', 'showPositionsWithoutSuccessor', 'revision'],
+      '设计 #8 个人设置白名单',
+    ),
+    write: commandWrite('succession.mapCommandRecheck', AUTHORIZE_RESULT, { ledger: 'single' }),
+  }),
+  [`POST ${BASE}/maps/org/compute-stats`]: object({
+    object: SUCCESSION_OBJECTS.map.code,
+    operation: 'view',
+    button: button('computeStats', 'list'),
+    scope: guardScope('succession.mapDisplay', NOT_FOUND),
+    fields: fixed(['runId'], '设计 #9 202 回执'),
+    write: commandWrite('succession.mapCommandRecheck', AUTHORIZE_RESULT, { ledger: 'single' }),
+  }),
   ...levelPolicies(),
   [`GET ${BASE}/calc-runs`]: calcPolicy(),
   [`GET ${BASE}/calc-runs/:id`]: { ...calcPolicy(), invalidId: BAD_REQUEST },
