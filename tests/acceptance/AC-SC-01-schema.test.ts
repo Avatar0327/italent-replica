@@ -1,6 +1,6 @@
 /**
  * AC-SC-01（R3-T05 A1，设计 §1.1）：继任记录表与目标锁表的库级约束——类型与目标二选一、区间合法、区间排他
- * （含历史，软删除不占）、同租户外键、准备度 RESTRICT、租户隔离、软删除清准备度引用、source_batch_id 先建列不建外键（D1 补）。
+ * （含历史，软删除不占）、同租户外键、准备度 RESTRICT、租户隔离、软删除清准备度引用、source_batch_id 由 D1 补同租户外键。
  * 约束违反只断言 PostgreSQL 错误码（23514 检查 / 23P01 排他 / 23503 外键（RESTRICT 在 PGlite 为 23001）/ 23505 唯一），不依赖文案。
  */
 import { pgErrorCode, sql, withTenant } from '@italent/db';
@@ -177,7 +177,7 @@ describe('AC-SC-01 继任记录表约束（设计 §1.1）', () => {
     await w.asTenant((tx) => tx.execute(sql`DELETE FROM talent_readiness_levels WHERE id = ${kept.id}::uuid`));
   });
 
-  it('租户隔离：别的租户读不到记录与目标锁；source_batch_id 先建列、没有外键（D1 补）', async () => {
+  it('租户隔离：别的租户读不到记录与目标锁；source_batch_id 不接受不存在的批次（D1）', async () => {
     const other = await successionWorld(testDb().db, 'sc-schema-other');
     const visible = await withTenant(testDb().db, other.tenant.id, async (tx) =>
       resultRows<{ n: number }>(await tx.execute(sql`SELECT count(*)::int AS n FROM succession_records`)),
@@ -206,15 +206,21 @@ describe('AC-SC-01 继任记录表约束（设计 §1.1）', () => {
       startDate: '2024-01-01',
       endDate: '2024-02-01',
     });
-    await w.asTenant((tx) =>
-      tx.execute(sql`UPDATE succession_records SET source_batch_id = gen_random_uuid() WHERE id = ${id}::uuid`),
-    );
+    expect(
+      await failure(() =>
+        w.asTenant((tx) =>
+          tx.execute(sql`UPDATE succession_records SET source_batch_id = gen_random_uuid() WHERE id = ${id}::uuid`),
+        ),
+      ),
+    ).toBe('23503');
     const foreignKeys = await w.asTenant(async (tx) =>
       resultRows<{ conname: string }>(
         await tx.execute(sql`SELECT c.conname FROM pg_constraint c WHERE c.contype = 'f'
           AND c.conrelid = 'succession_records'::regclass`),
       ),
     );
-    expect(foreignKeys.map((row) => row.conname).filter((name) => name.includes('batch'))).toEqual([]);
+    expect(foreignKeys.map((row) => row.conname).filter((name) => name.includes('batch'))).toEqual([
+      'succession_records_source_batch_fk',
+    ]);
   });
 });
