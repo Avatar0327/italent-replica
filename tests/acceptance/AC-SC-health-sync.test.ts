@@ -138,6 +138,7 @@ describe('AC-SC-health-sync / AC-SC-07 D4', () => {
     const h = await setup(status, manual, byCode);
     const batch = await consumeRun(h.deps, h.input);
     expect(batch).toMatchObject({ status: 'completed', result: 'succeeded' });
+    if (!batch) throw new Error('同步必须返回批次');
     expect(await h.local()).toEqual([
       expect.objectContaining({
         level_id: status === 'value' ? levelId : null,
