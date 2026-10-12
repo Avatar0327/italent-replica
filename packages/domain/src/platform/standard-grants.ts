@@ -41,8 +41,8 @@ export const STANDARD_GRANT_ENTRY = 'permission/standard-profile-grants';
  * 合并时定号（DEC-439④）：开发中 version 写占位（当时 main + 1 即可），指纹写测试提示的值；合并前 `pnpm merge:main`
  * 按合并结果统一定为 main + 1 并重算指纹、改写 AC-PLAT-F061-grants 的 HISTORY。这两行请保持单行字面量写法（脚本按行改写）。
  */
-export const STANDARD_GRANT_VERSION = 17;
-export const STANDARD_GRANT_DIGEST = '02db592a85571f4f';
+export const STANDARD_GRANT_VERSION = 18;
+export const STANDARD_GRANT_DIGEST = '1782e8b0f7923b5a';
 
 /**
  * 预置“看全部”补装批准清单（D3 = A′，DEC-374②）：看全部属于数据范围扩大，存量租户的标准身份只对**这里明确列出**的目标补，
