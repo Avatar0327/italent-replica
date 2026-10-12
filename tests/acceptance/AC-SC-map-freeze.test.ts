@@ -15,7 +15,7 @@ it('AC-SC-map-freeze P2-2：当前根 B/两层冻结 B、C；规范化、原集�
   const b = await w.org('B', a.id);
   const c = await w.org('C', b.id);
   const d = await w.org('D', c.id);
-  const body = { rootOrgId: b.id.toUpperCase(), depth: 2, hiddenOrgIds: [] };
+  const body = { rootOrgId: b.id.toUpperCase(), depth: 2, hiddenOrgIds: [] as string[] };
   const opts = { ifMatch: 0, idempotencyKey: randomUUID(), body };
   const send = (options = opts) => w.request('POST', '/maps/org/compute-stats', options);
   const first = await send();
@@ -50,7 +50,7 @@ it('AC-SC-map-freeze P2-2：当前根 B/两层冻结 B、C；规范化、原集�
         scope: { ...EMPTY_SCOPE, all: true, hasDataPermission: true },
       },
       'org',
-      { ...changed, showKeyPositions: false, showPositionsWithoutSuccessor: true },
+      changed,
     ),
   );
   expect(display.sort()).toEqual([b.id, c.id, d.id].sort());
@@ -64,6 +64,7 @@ it('AC-SC-map-freeze P2-2：非法显示条件拒绝且不冻结；隐藏引用�
   const foreign = await other.org('其他租户根');
   const send = (body: unknown) => w.request('POST', '/maps/org/compute-stats', { ifMatch: 0, body });
   for (const body of [
+    null,
     { depth: 1 },
     { depth: 5 },
     { depth: 2.5 },
@@ -74,6 +75,15 @@ it('AC-SC-map-freeze P2-2：非法显示条件拒绝且不冻结；隐藏引用�
     { arbitrary: true },
   ])
     expect((await send(body)).status).toBe(400);
+  const ctx = {
+    tenantId: w.tenant.id,
+    userId: w.user.id,
+    asOf: SC_TODAY,
+    scope: { ...EMPTY_SCOPE, all: true, hasDataPermission: true },
+  };
+  await expect(w.asTenant((tx) => readMapDisplayScope(tx, ctx, 'org', null))).rejects.toMatchObject({
+    code: 'VALIDATION_FAILED',
+  });
   for (const body of [
     { rootOrgId: randomUUID() },
     { rootOrgId: foreign.id },
