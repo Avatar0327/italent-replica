@@ -2707,7 +2707,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/succession/levels-write.ts#reorderLevels': ['5bf9f73d8c4a', '97a18e79503b'],
   'apps/api/src/modules/succession/levels-write.ts#saveLevelRules': ['967e2df606b4', 'b48f8a648117'],
   'apps/api/src/modules/succession/map-display.ts#mapPositions': ['08086ed6f78c', 'cdafd47189ef'],
-  'apps/api/src/modules/succession/map-display.ts#positionScope': ['b8758e14c23c', '3adc1e736474'],
+  'apps/api/src/modules/succession/map-display.ts#positionScope': ['e63798bf6a16', '75b6f28f8e1d'],
   'apps/api/src/modules/succession/map-display.ts#readMapDisplayScope': ['d1f1c1818b67', 'affc54d2a8f0'],
   'apps/api/src/modules/succession/map-display.ts#readPositionMapStructure': ['545dddf5cb7d', '7c733eebd615'],
   'apps/api/src/modules/succession/map-display.ts#resolveMapDisplayConditions': ['ae79200fc8cb', '1f93fb5a8650'],

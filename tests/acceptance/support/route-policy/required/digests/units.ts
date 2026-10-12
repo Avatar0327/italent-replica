@@ -689,7 +689,7 @@ export const DIGESTS: Digests = {
     registerLevelReads: 'ba1d174232f9',
   },
   'apps/api/src/modules/succession/map-display.ts': {
-    positionScope: 'b8758e14c23c',
+    positionScope: 'e63798bf6a16',
     readMapDisplayScope: 'd1f1c1818b67',
     resolveMapDisplayConditions: 'ae79200fc8cb',
   },
@@ -1757,7 +1757,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/succession/input.ts#rejectImmutable': '99ce3a8d9998',
   'apps/api/src/modules/succession/levels-routes.ts#levelOptionAccess': '07e9bf4002f1',
   'apps/api/src/modules/succession/levels-routes.ts#registerLevelReads': '1c4dc4f4f005',
-  'apps/api/src/modules/succession/map-display.ts#positionScope': '3adc1e736474',
+  'apps/api/src/modules/succession/map-display.ts#positionScope': '75b6f28f8e1d',
   'apps/api/src/modules/succession/map-display.ts#readMapDisplayScope': 'affc54d2a8f0',
   'apps/api/src/modules/succession/map-display.ts#resolveMapDisplayConditions': '1f93fb5a8650',
   'apps/api/src/modules/succession/map-routes.ts#mapAccess': '208b27aa5d33',

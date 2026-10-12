@@ -342,6 +342,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/job/read-model.ts#listJobObjects',
   ],
   'apps/api/src/modules/succession/map-display.ts#positionScope': [
+    'apps/api/src/modules/permission/module-access.ts#scopeAllows',
     '#mapPositions',
     '#readPositionMapStructure',
     'apps/api/src/modules/succession/read-sql.ts#rowsOf',
