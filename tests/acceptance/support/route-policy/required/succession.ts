@@ -496,6 +496,13 @@ function healthRequired(mode: 'read' | 'assign' | 'reset' | 'compute'): Obligati
       facts: ['button:button()'],
       at: [
         {
+          role: 'call',
+          unit: map ? unit : SUCCESSION_CONTEXT,
+          anchor: map
+            ? "await button(bound, ctx, codeOf('map'), 'computeHealth', 'list')"
+            : 'await button(deps, ctx, codeOf(spec.object), spec.button.code, spec.button.level)',
+        },
+        {
           role: 'impl',
           unit: `${MRA}#button`,
           anchor: "action: 'object.button', resource: buttonResource(objectCode, code, level)",
@@ -508,7 +515,7 @@ function healthRequired(mode: 'read' | 'assign' | 'reset' | 'compute'): Obligati
       perm: `guard:${queue ? 'succession.healthQueue' : 'succession.healthOrg'}`,
       at: [
         {
-          role: 'impl',
+          role: 'call',
           unit: queue ? `${S}/health-routes.ts#queueResults` : `${S}/health-results.ts#requireHealthOrg`,
           anchor: queue ? 'if (views.length !== ids.length) throw healthMissing()' : 'throw healthMissing()',
         },

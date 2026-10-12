@@ -1,7 +1,6 @@
-import { sql } from '@italent/db';
+import { sql, type Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
-import { RULE_COMPILER_VERSION } from '@italent/domain';
-import { evaluateHealthLevels } from '../../../../../packages/domain/src/succession/health.js';
+import { RULE_COMPILER_VERSION, evaluateHealthLevels } from '@italent/domain';
 import { lockOrganizationSettings } from '../org/locks.js';
 import { scopeAllows } from '../permission/module-access.js';
 import { CalcBlocked, CalcObjectFailure, type CalcHandler } from './calc-contract.js';
@@ -36,32 +35,18 @@ export function createHealthHandler(kind: 'org_health' | 'org_health_reset', por
       if (reset && (before?.revision ?? 0) !== object.expectedRevision)
         throw new CalcObjectFailure('REVISION_CONFLICT', false);
       if (!reset && before?.method === 'manual') return 'manual_kept';
-      const stored = rowsOf<{
-        id: string;
-        compiler_version: string | null;
-        compile_error: unknown;
-        condition_expression: string | null;
-      }>(
-        await tx.execute(
-          sql`SELECT * FROM succession_health_levels WHERE tenant_id=${run.tenantId}::uuid AND enabled
-        ORDER BY display_order,id`,
-        ),
-      );
-      if (
-        stored.some(
-          (l) => l.condition_expression !== null && (l.compiler_version !== RULE_COMPILER_VERSION || l.compile_error),
-        )
-      )
-        throw new CalcBlocked('RULE_CACHE_STALE');
-      const levels = await levelViews(
-        tx,
-        run.tenantId,
-        'health',
-        stored.map((l) => l.id),
-      );
+      const levels = await healthLevels(tx, run.tenantId);
+      const read = healthMetricReader(ctx, object, principal, port ?? successionReviewReads(run.tenantId));
       const result = await evaluateHealthLevels(
         levels.map((l) => ({ ...l, displayOrder: Number(l.displayOrder) })),
-        healthMetricReader(ctx, object, principal, port ?? successionReviewReads(run.tenantId)),
+        async (row, levelId) => {
+          try {
+            return await read(row);
+          } catch (error) {
+            if (!(error instanceof CalcObjectFailure)) throw error;
+            throw new CalcObjectFailure(error.code, error.retryable, levelId, error.rowNo ?? row.rowNo);
+          }
+        },
         { today: run.businessDate, timeZone: principal.timezone },
       );
       if (result.failure?.code === 'RULE_CACHE_STALE') throw new CalcBlocked('RULE_CACHE_STALE');
@@ -98,3 +83,29 @@ export const healthProducers: readonly CalcProducer[] = (['org_health', 'org_hea
   kind,
   runTenant: async () => undefined,
 }));
+
+async function healthLevels(tx: Tx, tenantId: string) {
+  const stored = rowsOf<{
+    id: string;
+    compiler_version: string | null;
+    compile_error: unknown;
+    condition_expression: string | null;
+  }>(
+    await tx.execute(
+      sql`SELECT * FROM succession_health_levels WHERE tenant_id=${tenantId}::uuid AND enabled
+        ORDER BY display_order,id`,
+    ),
+  );
+  if (
+    stored.some(
+      (l) => l.condition_expression !== null && (l.compiler_version !== RULE_COMPILER_VERSION || l.compile_error),
+    )
+  )
+    throw new CalcBlocked('RULE_CACHE_STALE');
+  return levelViews(
+    tx,
+    tenantId,
+    'health',
+    stored.map((l) => l.id),
+  );
+}

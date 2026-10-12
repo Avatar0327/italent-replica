@@ -8,8 +8,9 @@ import {
   type SuccessionLevelRow,
   type FieldRead,
   type SyncNomination,
+  type HealthMetric,
+  type GreenRateResult,
 } from '@italent/domain';
-import type { HealthMetric } from '../../../../../packages/domain/src/succession/health.js';
 import type { TalentReviewSyncPort } from '../talent-review/sync-port.js';
 import { readOnDutyCount } from './org-stats.js';
 import { healthPeople, customHealthPopulation } from './health-population.js';
@@ -75,12 +76,10 @@ export function healthMetricReader(
     const successors = [...new Set(nominations.map((n) => n.successorEmployeeId))];
     const [org] = await loadOrgSnapshot(tx, tenantId, asOf, undefined, { id: orgId, includeDisabled: false });
     const incumbents = org?.personInChargeId ? [org.personInChargeId] : [];
-    let people =
-      row.population === 'successors'
-        ? successors
-        : row.population === 'incumbents'
-          ? incumbents
-          : (await healthPeople(tx, tenantId, orgId, asOf)).map((p) => p.id);
+    let people: string[];
+    if (row.population === 'successors') people = successors;
+    else if (row.population === 'incumbents') people = incumbents;
+    else people = (await healthPeople(tx, tenantId, orgId, asOf)).map((p) => p.id);
     if (row.population === 'custom')
       people = (
         await customHealthPopulation(
@@ -94,13 +93,13 @@ export function healthMetricReader(
           await healthPeople(tx, tenantId, orgId, asOf),
         )
       ).map((p) => p.id);
+    const scopedNominations = nominations.filter(
+      (n) => row.population === 'all' || people.includes(n.successorEmployeeId),
+    );
     if (row.fieldCode === null && row.measure !== 'successor_count') {
-      const denominator =
-        row.measure === 'count_over_successors'
-          ? successors.length
-          : row.measure === 'count_over_incumbents'
-            ? incumbents.length
-            : 1;
+      let denominator = 1;
+      if (row.measure === 'count_over_successors') denominator = successors.length;
+      if (row.measure === 'count_over_incumbents') denominator = incumbents.length;
       if (!people.length || !denominator) return { status: 'empty' };
       return { status: 'value', value: people.length / denominator };
     }
@@ -108,10 +107,10 @@ export function healthMetricReader(
       row,
       [ctx, object, principal, port],
       people,
-      nominations,
+      scopedNominations,
       org?.personInChargeId ?? null,
     );
-    return aggregateHealth(row, values, field, nominations, successors, incumbents, asOf, principal.timezone);
+    return aggregateHealth(row, values, field, scopedNominations, successors, incumbents, asOf, principal.timezone);
   };
 }
 
@@ -130,17 +129,16 @@ async function loadHealthValues(
     viewer = { kind: 'principal' as const, userId: principal.userId };
   let values: FieldRead[], field: RuleFieldRef;
   if (row.fieldSource === 'org') {
-    const value =
-      row.fieldCode === 'on_duty_count'
-        ? await readOnDutyCount(tx, { tenantId, orgId, asOf, runId: run.id, now })
-        : row.fieldCode === 'green_rate'
-          ? (await port.greenRate(tx, { tenantId, orgIds: [orgId], context, viewer })).get(orgId)
-          : (head ?? null);
+    let value: string | number | null | undefined | GreenRateResult = head;
+    if (row.fieldCode === 'on_duty_count')
+      value = await readOnDutyCount(tx, { tenantId, orgId, asOf, runId: run.id, now });
+    if (row.fieldCode === 'green_rate')
+      value = (await port.greenRate(tx, { tenantId, orgIds: [orgId], context, viewer })).get(orgId);
     values =
       typeof value === 'object' && value !== null
         ? [
             {
-              status: value.status === 'value' ? (value.rate === null ? 'empty' : 'value') : value.status,
+              status: value.status === 'value' ? scalar(value.rate).status : value.status,
               value: value.rate,
             },
           ]
@@ -152,11 +150,10 @@ async function loadHealthValues(
       kind: row.fieldCode === 'person_in_charge_id' ? 'text' : 'number',
     };
   } else if (row.fieldSource === 'succession') {
-    const matched = nominations.filter((n) => row.population === 'all' || people.includes(n.successorEmployeeId));
     values =
       row.fieldCode === 'readiness_code'
-        ? matched.map((n) => scalar(n.readinessCode))
-        : [scalar(new Set(matched.map((n) => n.successorEmployeeId)).size)];
+        ? nominations.map((n) => scalar(n.readinessCode))
+        : [scalar(new Set(nominations.map((n) => n.successorEmployeeId)).size)];
     field = {
       object: 'successor',
       code: row.fieldCode ?? 'count',
@@ -208,21 +205,17 @@ function aggregateHealth(
               .filter((n) => matches(row, n.readinessCode, field, asOf, timezone))
               .map((n) => n.successorEmployeeId),
           ).size
-        : successors.length;
+        : new Set(nominations.map((n) => n.successorEmployeeId)).size;
   } else if (row.measure === 'average') {
     const numbers = selected.map((v) => v.value);
     if (!numbers.length) return { status: 'empty' };
     if (numbers.some((n) => typeof n !== 'number' || !Number.isFinite(n))) return { status: 'unavailable' };
     value = (numbers as number[]).reduce((sum, n) => sum + n, 0) / numbers.length;
   } else if (['ratio', 'review_result_ratio', 'count_over_successors', 'count_over_incumbents'].includes(row.measure)) {
-    const denominator =
-      row.measure === 'count_over_successors'
-        ? successors.length
-        : row.measure === 'count_over_incumbents'
-          ? incumbents.length
-          : row.measure === 'review_result_ratio'
-            ? nonempty.length
-            : values.length;
+    let denominator = values.length;
+    if (row.measure === 'count_over_successors') denominator = successors.length;
+    if (row.measure === 'count_over_incumbents') denominator = incumbents.length;
+    if (row.measure === 'review_result_ratio') denominator = nonempty.length;
     if (!denominator) return { status: 'empty' };
     value /= denominator;
   }

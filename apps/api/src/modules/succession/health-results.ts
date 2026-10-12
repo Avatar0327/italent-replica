@@ -43,9 +43,12 @@ export async function lockHealthTarget(tx: Tx, tenantId: string, orgId: string) 
   await tx.execute(sql`SELECT target_id FROM succession_target_locks WHERE tenant_id=${tenantId}::uuid
     AND target_kind='org_health' AND target_id=${orgId}::uuid FOR UPDATE`);
   await assertNoSyncBarrier(tx, tenantId, [{ kind: 'org_health', id: orgId }]);
-  return rowsOf<{ level_id: string | null; method: string; revision: number }>(
+  return rowsOf<{ levelId: string | null; method: string; revision: number }>(
     await tx.execute(sql`
-    SELECT * FROM succession_health_results WHERE tenant_id=${tenantId}::uuid AND org_id=${orgId}::uuid FOR UPDATE`),
+    SELECT org_id AS "orgId",level_id AS "levelId",method,revision,run_id AS "runId",
+      computed_at AS "computedAt",assigned_by AS "assignedBy",source_batch_id AS "sourceBatchId",
+      source_project_id AS "sourceProjectId",source_meeting_id AS "sourceMeetingId"
+    FROM succession_health_results WHERE tenant_id=${tenantId}::uuid AND org_id=${orgId}::uuid FOR UPDATE`),
   )[0];
 }
 export async function healthAccess(tx: Tx, deps: TenantRouteDeps, ctx: SuccessionContext) {
@@ -71,7 +74,8 @@ export async function readHealthResults(
     AND ${scopeSql(scope, { org: sql`v.org_id` })}
     ${ids ? sql`AND v.org_id=ANY(${`{${ids.join(',')}}`}::uuid[])` : sql``}`;
   const latest = sql`(SELECT DISTINCT ON (org_id) * FROM org_versions
-    WHERE tenant_id=${ctx.tenantId}::uuid AND start_date<=${today}::date ORDER BY org_id,start_date DESC,version_no DESC)`;
+    WHERE tenant_id=${ctx.tenantId}::uuid AND start_date<=${today}::date
+    ORDER BY org_id,start_date DESC,version_no DESC)`;
   const views = rowsOf<HealthView>(
     await tx.execute(sql`SELECT v.org_id AS id,v.org_id AS "orgId",
     r.level_id AS "levelId",l.name AS "levelName",
@@ -128,7 +132,18 @@ export async function storeHealth(
     occurredAt: ctx.now,
     scope: { orgId },
     before: before ?? null,
-    after: { orgId, levelId, method, revision, runId },
+    after: {
+      orgId,
+      levelId,
+      method,
+      revision,
+      runId,
+      computedAt: ctx.now.toISOString(),
+      assignedBy: method === 'manual' ? ctx.userId : null,
+      sourceBatchId: null,
+      sourceProjectId: null,
+      sourceMeetingId: null,
+    },
   });
 }
 export async function assignHealth(
@@ -154,5 +169,6 @@ export async function assignHealth(
     ).length
   )
     throw healthMissing();
-  await storeHealth(tx, ctx, orgId, levelId, 'manual', before, expected + 1);
+  // DEC-449：清除仅交还规则计算，保留同一行和递增的 CAS 版本。
+  await storeHealth(tx, ctx, orgId, levelId, levelId === null ? 'computed' : 'manual', before, expected + 1);
 }

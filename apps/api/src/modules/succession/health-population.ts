@@ -42,7 +42,7 @@ export async function healthPeople(tx: Tx, tenantId: string, orgId: string, asOf
     COALESCE(to_jsonb(v),'{}'::jsonb)||jsonb_build_object('name',COALESCE(v.name,e.name)) AS profile,
     COALESCE(p.body,to_jsonb(r)) AS payload FROM employment_timeline t
     JOIN employment_records r ON r.tenant_id=t.tenant_id AND r.id=t.record_id
-    JOIN employment_employees e ON e.tenant_id=t.tenant_id AND e.id=t.employee_id AND e.deleted_at IS NULL
+    JOIN employment_employees e ON e.tenant_id=t.tenant_id AND e.id=t.employee_id
     LEFT JOIN LATERAL (SELECT to_jsonb(p) AS body FROM employment_payload_versions p
       WHERE p.tenant_id=r.tenant_id AND p.business_id=r.id AND p.is_record_snapshot
       ORDER BY p.version_no DESC LIMIT 1) p ON true
@@ -51,6 +51,7 @@ export async function healthPeople(tx: Tx, tenantId: string, orgId: string, asOf
       ORDER BY revision DESC LIMIT 1) v ON true
     WHERE t.tenant_id=${tenantId}::uuid AND t.valid_during @> ${asOf}::date AND r.service_type='primary'
     AND s.employee_status NOT IN (${INCUMBENT_EXCLUDED_STATUSES})
+    AND NOT EXISTS (SELECT 1 FROM employment_record_tombstones d WHERE d.tenant_id=r.tenant_id AND d.record_id=r.id)
     AND (COALESCE(p.body,to_jsonb(r))->>'department_id')::uuid=ANY(${`{${[orgId, ...descendants].join(',')}}`}::uuid[])
     ORDER BY e.id,t.start_date DESC,t.sort_order DESC`),
   );

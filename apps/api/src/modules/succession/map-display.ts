@@ -58,9 +58,9 @@ export async function readMapDisplayScope(
   // DEC-448 / DEC-305④：共用范围与时点入口，健康度不应用地图筛选。
   if (purpose === 'health') {
     if (!ctx.scope.hasDataPermission) return [];
-    return (await loadOrgSnapshot(tx, ctx.tenantId, ctx.asOf, undefined, { includeDisabled: false }))
-      .filter((o) => scopeAllows(ctx.scope, { orgId: o.id }))
-      .map((o) => o.id);
+    return (
+      await loadOrgSnapshot(tx, ctx.tenantId, ctx.asOf, undefined, { includeDisabled: false, scope: ctx.scope })
+    ).map((o) => o.id);
   }
   if (!ctx.scope.hasDataPermission && origin === 'saved') return [];
   const prefs = await resolveMapDisplayConditions(tx, ctx, kind, supplied, origin);

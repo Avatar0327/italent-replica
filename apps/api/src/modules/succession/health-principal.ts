@@ -17,13 +17,17 @@ export async function healthPrincipal(tx: Tx, tenantId: string, reset: boolean) 
       SELECT 1 FROM permission_grants g JOIN permission_profiles p ON p.tenant_id=g.tenant_id AND p.id=g.profile_id
       WHERE g.tenant_id=${tenantId}::uuid AND g.user_id=${userId}::uuid AND g.status='active'
       AND p.code='standard_succession_runner') AS ok,
-    succession_tenant_today(${tenantId}::uuid)::text AS today,timezone FROM tenants WHERE id=${tenantId}::uuid`),
+    succession_tenant_today(${tenantId}::uuid)::text AS today,current_tenant_timezone() AS timezone`),
   );
   if (!active?.ok) throw new CalcBlocked('PRINCIPAL_UNAVAILABLE');
   const subject = await loadSubject(tx, userId, codeOf('healthResult'), { tenantId, userId, asOf: active.today });
   const permission = resolveObjectPermission(codeOf('healthResult'), subject.objectPermissions, objectCatalog);
   if (
-    !decide(subject, { action: 'object.update', resource: codeOf('healthResult') }, objectCatalog) ||
+    !decide(
+      subject,
+      { action: 'object.update', resource: codeOf('healthResult'), fields: ['levelId'] },
+      objectCatalog,
+    ) ||
     !permission?.effective.editableFields.has('levelId') ||
     (reset &&
       !decide(

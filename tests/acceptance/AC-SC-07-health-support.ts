@@ -12,7 +12,7 @@ export async function enableHealthRunner(w: SuccessionWorld) {
       FROM permission_profiles WHERE code='standard_succession_runner'`);
   });
 }
-/** 118 份迁移、333 张表：本机多窗口验证曾超过 60s；仅本组建库给 180s，不重试或跳过迁移。 */
+/** 百余份迁移、333 张表：本机多窗口验证曾超过 60s；仅本组建库给 180s，不重试或跳过迁移。 */
 export function useHealthDb() {
   let handle: DbHandle;
   beforeAll(async () => {

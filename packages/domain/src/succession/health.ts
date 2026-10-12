@@ -3,13 +3,13 @@ import { evaluateFormula, inMemorySubject } from '../expression/index.js';
 import { compileLevelComparisons, type SuccessionLevelRow, type SuccessionLevelRules } from './levels.js';
 export type HealthMetric =
   { status: 'value'; value: number } | { status: 'empty' | 'forbidden' | 'unavailable' | 'module_absent' };
-export interface HealthLevel {
+export interface SuccessionHealthLevel {
   id: string;
   displayOrder: number;
   rules: SuccessionLevelRules | null;
 }
 export async function evaluateHealthLevels(
-  levels: readonly HealthLevel[],
+  levels: readonly SuccessionHealthLevel[],
   read: (row: SuccessionLevelRow, levelId: string) => Promise<HealthMetric>,
   calendar = { today: '2000-01-01', timeZone: 'UTC' },
 ) {

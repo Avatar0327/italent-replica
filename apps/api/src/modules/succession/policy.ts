@@ -142,7 +142,7 @@ export const SUCCESSION_POLICIES = defineTable('succession', {
     button: button('computeHealth', 'list'),
     scope: guardScope('succession.healthQueue', NOT_FOUND),
     fields: fixed(['runId'], '设计 #9a 202 回执'),
-    write: commandWrite('succession.healthQueueRecheck', AUTHORIZE_RESULT, { ledger: 'single' }),
+    write: write('body', 'succession.healthQueueRecheck', AUTHORIZE_RESULT, { ledger: 'single' }),
   }),
   [`GET ${BASE}/maps/:kind/preferences`]: object({
     object: SUCCESSION_OBJECTS.map.code,
