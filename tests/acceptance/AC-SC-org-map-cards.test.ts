@@ -205,7 +205,8 @@ it('AC-SC-org-map 历史树 / 名称 / 任职 / 继任按 asOf，健康度当前
   await w.asTenant(async (tx) => {
     await tx.execute(sql`INSERT INTO succession_org_stats
       (tenant_id,org_id,stat_date,on_duty_count,green_rate,slot_key,computed_at,run_id)
-      VALUES (${w.tenant.id}::uuid,${s.orgA.id}::uuid,${SC_TODAY}::date,7,0.25,'test',${SC_NOW},${runId}::uuid)`);
+      VALUES (${w.tenant.id}::uuid,${s.orgA.id}::uuid,${SC_TODAY}::date,7,0.25,'test',
+        ${SC_NOW.toISOString()}::timestamptz,${runId}::uuid)`);
   });
   await w.insertRecord({ type: 'org', targetId: s.orgA.id, successorId: s.successor1.id, endDate: '2026-10-02' });
   expect(
@@ -222,6 +223,12 @@ it('AC-SC-org-map 历史树 / 名称 / 任职 / 继任按 asOf，健康度当前
     ).status,
   ).toBe(200);
   const api = tenantApi(w.db, { clock: () => new Date('2026-10-03T01:00:00Z') });
+  const historicalPosition = await w.position(s.orgA.id, '后来过期的空岗');
+  const expired = await w.call('PATCH', `job/positions/${historicalPosition.id}`, {
+    ifMatch: historicalPosition.revision,
+    body: { stopDate: '2026-10-02', effectiveDate: '2026-10-02' },
+  });
+  expect(expired.status, await expired.clone().text()).toBe(200);
   const read = async (asOf: string) => {
     const response = await api.request('GET', `/api/tenant/succession/maps/org${queryOf({ root: s.orgA.id, asOf })}`, {
       user: w.user.id,
@@ -247,6 +254,10 @@ it('AC-SC-org-map 历史树 / 名称 / 任职 / 继任按 asOf，健康度当前
     health: { levelId, levelName: '当前等级', levelColor: '#123456', resultAsOf: SC_NOW.toISOString() },
     stats: { onDutyCount: 7, greenRate: 0.25, capacity: '--', statDate: SC_TODAY },
   });
+  expect(past.keyPositions!.find((p) => p.id === s.keyPosition.id)!.incumbents).toMatchObject([
+    { employeeId: s.incumbent.id },
+  ]);
+  expect(past.keyPositions!.map((p) => p.id)).toContain(historicalPosition.id);
   const today = (await read('2026-10-03')).items[0]!;
   expect(today).toMatchObject({ name: '改名后', personInCharge: { employeeId: s.successor2.id }, successorCount: 0 });
   expect(today.stats).toMatchObject({ onDutyCount: null, greenRate: null, statDate: '2026-10-03' });
