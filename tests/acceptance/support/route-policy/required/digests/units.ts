@@ -483,7 +483,7 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/permission/module-route-access.ts': {
     JOB_OBJECT_CODES: '3365e0cde1dc',
-    button: '93e7eac5a72b',
+    button: 'acbcb4bfc6e7',
     objectContext: '51a4c886054b',
     writeFields: '6da4330d51a4',
   },

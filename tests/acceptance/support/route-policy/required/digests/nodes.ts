@@ -2114,7 +2114,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/permission/module-contracts.ts#jobReader': ['6e6593d8dbdd', 'e3b0c44298fc'],
   'apps/api/src/modules/permission/module-contracts.ts#jobScopeReader': ['8ff5d422c84b', '6d87b86f3450'],
   'apps/api/src/modules/permission/module-route-access.ts#JOB_OBJECT_CODES': ['3365e0cde1dc', '1f397b8d369b'],
-  'apps/api/src/modules/permission/module-route-access.ts#button': ['93e7eac5a72b', 'a611aeeb43a0'],
+  'apps/api/src/modules/permission/module-route-access.ts#button': ['acbcb4bfc6e7', 'a611aeeb43a0'],
   'apps/api/src/modules/permission/module-route-access.ts#objectContext': ['51a4c886054b', '9d063f8ea5e6'],
   'apps/api/src/modules/permission/module-route-access.ts#requestScope': ['02cfcb2f5beb', '8ff009402aa7'],
   'apps/api/src/modules/permission/module-route-access.ts#requestScopes': ['58758a014a00', '6db7d94156a7'],

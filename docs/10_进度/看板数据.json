@@ -1,8 +1,8 @@
 {
 "updated": "2026-10-11",
 "stats": {
-"merged": 194,
-"open": 14,
+"merged": 195,
+"open": 13,
 "dec": 445,
 "ev": "43/176"
 },
@@ -983,6 +983,10 @@
 }
 },
 "log": [
+[
+"10-11",
+"#277 契约：F-039 ButtonLevel 与共享 button helper 补 list_row 合并（DEC-442①）；C2-1a #271 解锁续做"
+],
 [
 "10-11",
 "DEC-444：PR-C 实现（含 C0）10-12 17:00Z 后交 Claude；F-099 须在 C2a / C3e / C6b / C6e 开工前处理"
