@@ -262,7 +262,8 @@ describe('AC-SC-02 当前权限与提示', () => {
         tx.execute(sql`
       INSERT INTO succession_exit_applications (tenant_id,employee_id,employment_record_id,
         leave_date,applied_at,source,command_id)
-      VALUES (${b.tenant.id}::uuid,${e.id}::uuid,${exit.id}::uuid,'2026-10-02',now(),'record_write','sc-cross-tenant')`),
+      VALUES (${b.tenant.id}::uuid,${e.id}::uuid,${exit.id}::uuid,
+        '2026-10-02',now(),'record_write','sc-cross-tenant')`),
       ),
     ).rejects.toMatchObject({ cause: { code: '23503' } });
     expect(await a.apps(e.id)).toEqual(snapshot);
