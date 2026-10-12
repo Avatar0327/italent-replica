@@ -12,6 +12,9 @@ import { successionWorld, SC_NOW, SC_TODAY, type SuccessionWorld } from './AC-SC
 import { syncTestTransaction } from './AC-SC-sync-support.js';
 import { SyncPortError } from '../../apps/api/src/modules/talent-review/sync-port.js';
 import * as audit from '../../apps/api/src/audit/record.js';
+import { waitForBlocked } from './support/pg-interleave.js';
+import { registerScopeProvider } from '../../apps/api/src/modules/permission/module-access.js';
+import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.js';
 
 const testDb = useTestDb();
 let w: SuccessionWorld;
@@ -116,6 +119,21 @@ function afterPlan(h: Harness, work: (tx: Tx) => Promise<void> | void) {
     return result;
   });
 }
+function afterPlanCommit(h: Harness, work: () => Promise<void>) {
+  let planned = false;
+  afterPlan(h, () => {
+    planned = true;
+  });
+  const transaction = h.deps.transaction;
+  h.deps.transaction = async (job) => {
+    const value = await transaction(job);
+    if (planned) {
+      planned = false;
+      await work();
+    }
+    return value;
+  };
+}
 
 describe('AC-SC-03-04-sync D2 执行与终结', () => {
   it.each(['append', 'overwrite', 'overwrite_in_scope', 'delete_only'])(
@@ -193,7 +211,7 @@ describe('AC-SC-03-04-sync D2 执行与终结', () => {
   });
   it.each(['append', 'overwrite'])('%s：已有同继任者记录返回 exists / updated，不重复插入', async (strategy) => {
     const h = await setup(strategy);
-    const readiness = await w.readiness('原准备度');
+    const readiness = await w.readiness(`原准备度${strategy}`);
     const id = await w.insertRecord({
       type: 'org',
       targetId: h.org.id,
@@ -219,9 +237,9 @@ describe('AC-SC-03-04-sync D2 执行与终结', () => {
   it('锁内目标停用：目标与 planned 提名同码，旧集合保持', async () => {
     const h = await setup('overwrite');
     const before = await h.records();
-    afterPlan(h, async (tx) => {
-      await tx.execute(sql`UPDATE org_versions SET enabled=false
-      WHERE tenant_id=${w.tenant.id}::uuid AND org_id=${h.org.id}::uuid`);
+    afterPlanCommit(h, async () => {
+      const response = await w.patchOrg(h.org, { enabled: false, effectiveDate: SC_TODAY });
+      expect(response.status).toBe(200);
     });
     expect(await consumeRun(h.deps, h.input)).toMatchObject({ status: 'completed', result: 'partial' });
     expect(await h.records()).toEqual(before);
@@ -346,4 +364,124 @@ describe('AC-SC-03-04-sync D2 执行与终结', () => {
     expect(await h.records()).toEqual(before);
     expect(complete).toHaveBeenCalledTimes(2);
   });
+  it.each(['readiness', 'employee'])('计划后 %s 失效：锁内 R3 导致覆盖整组失败', async (kind) => {
+    const h = await setup('overwrite');
+    const before = await h.records();
+    const employee = await w.hire(`离职反例${revision}`, {}, '2026-08-01');
+    const ready = await w.readiness(`停用反例${revision}`);
+    const list = h.port.listRunNominations.bind(h.port);
+    vi.spyOn(h.port, 'listRunNominations').mockImplementation(async (tx, input) => {
+      const page = await list(tx, input);
+      return {
+        ...page,
+        items: page.items.map((n) =>
+          n.nominationId === FX.n1 ? { ...n, successorEmployeeId: employee.id, readinessId: ready.id } : n,
+        ),
+      };
+    });
+    afterPlanCommit(h, async () => {
+      if (kind === 'readiness')
+        await w.asTenant((tx) =>
+          tx.execute(sql`UPDATE talent_readiness_levels SET enabled=false
+        WHERE tenant_id=${w.tenant.id}::uuid AND id=${ready.id}::uuid`),
+        );
+      else {
+        const response = await w.call('POST', `employment/employees/${employee.id}/businesses`, {
+          ifMatch: (await w.detail(employee.id)).revision,
+          body: { kind: 'leave', mode: 'direct', lastWorkDate: '2026-09-30', fields: {} },
+        });
+        expect(response.status, await response.clone().text()).toBe(201);
+      }
+    });
+    expect(await consumeRun(h.deps, h.input)).toMatchObject({ status: 'completed', result: 'partial' });
+    expect(await h.records()).toEqual(before);
+    expect((await h.outcomes()).find((r) => r.rowId === FX.n1)).toMatchObject({
+      errorCode: kind === 'readiness' ? 'READINESS_DISABLED' : 'SUCCESSOR_NOT_ACTIVE',
+      recovery: 'none',
+    });
+    expect((await h.outcomes()).find((r) => r.rowId === FX.n2)).toMatchObject({
+      errorCode: 'TARGET_PARTIAL_NOMINATIONS',
+    });
+  });
+  it.runIf(Boolean(process.env.TEST_DATABASE_URL))(
+    '真 PG：页等待目标锁期间撤写范围，锁内重验 R4，无业务变更',
+    async () => {
+      const h = await setup('overwrite');
+      let covers = true;
+      registerScopeProvider(h.deps.authorize, {
+        authorize: async () => true,
+        fields: async () => new Set(),
+        scope: async () => ({
+          ...EMPTY_SCOPE,
+          terms: undefined,
+          hasDataPermission: true,
+          orgIds: covers ? [h.org.id, std.orgB.id] : [std.orgB.id],
+        }),
+      });
+      const before = await h.records();
+      let release!: () => void, holding!: Promise<void>;
+      afterPlanCommit(h, async () => {
+        let locked!: () => void;
+        const ready = new Promise<void>((r) => {
+          locked = r;
+        });
+        const gate = new Promise<void>((r) => {
+          release = r;
+        });
+        holding = w.asTenant(async (tx) => {
+          await tx.execute(sql`SELECT 1 FROM succession_target_locks WHERE tenant_id=${w.tenant.id}::uuid
+          AND target_kind='org' AND target_id=${h.org.id}::uuid FOR UPDATE`);
+          locked();
+          await gate;
+        });
+        await ready;
+      });
+      const running = consumeRun(h.deps, h.input);
+      try {
+        await waitForBlocked(w.db, 1);
+        covers = false;
+      } finally {
+        release?.();
+      }
+      await holding;
+      expect(await running).toMatchObject({ status: 'completed', result: 'partial' });
+      expect(await h.records()).toEqual(before);
+      expect((await h.outcomes()).find((r) => r.rowKind === 'target')).toMatchObject({
+        errorCode: 'TARGET_OUT_OF_SCOPE',
+        recovery: 'none',
+      });
+    },
+  );
+  it.runIf(Boolean(process.env.TEST_DATABASE_URL))(
+    '真 PG：A2 删除等待执行目标锁；页回滚后 D1 屏障仍返回 409',
+    async () => {
+      const h = await setup('overwrite');
+      const before = await h.records();
+      let release!: () => void, entered!: () => void;
+      const ready = new Promise<void>((r) => {
+        entered = r;
+      });
+      const gate = new Promise<void>((r) => {
+        release = r;
+      });
+      vi.spyOn(h.port, 'recordOutcome').mockImplementation(async () => {
+        entered();
+        await gate;
+        throw new SyncPortError('SOURCE_UNAVAILABLE', '页失败');
+      });
+      const running = consumeRun(h.deps, h.input);
+      await ready;
+      const deleting = w.request('DELETE', `/records/${h.oldId}`, { ifMatch: 1 });
+      try {
+        await waitForBlocked(w.db, 1);
+      } finally {
+        release();
+      }
+      expect(await running).toMatchObject({ status: 'blocked' });
+      const response = await deleting;
+      expect(response.status).toBe(409);
+      expect(await response.json()).toMatchObject({ error: { details: { reason: 'TARGET_SYNC_IN_PROGRESS' } } });
+      expect(await h.records()).toEqual(before);
+    },
+  );
 });
