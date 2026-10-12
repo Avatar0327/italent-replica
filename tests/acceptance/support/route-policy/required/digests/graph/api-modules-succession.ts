@@ -567,7 +567,10 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/succession/write-support.ts#checkWriteAccess',
     'apps/api/src/modules/succession/write-support.ts#runSuccessionCommand',
   ],
-  'apps/api/src/modules/succession/sync-barrier.ts#assertNoSyncBarrier': ['#probe'],
+  'apps/api/src/modules/succession/sync-barrier.ts#assertNoSyncBarrier': ['#persistentBarrier', '#probe'],
+  'apps/api/src/modules/succession/sync-barrier.ts#persistentBarrier': [
+    'apps/api/src/modules/succession/read-sql.ts#rowsOf',
+  ],
   'apps/api/src/modules/succession/write-support.ts#authorizeSuccessionResult': ['#visibleViews'],
   'apps/api/src/modules/succession/write-support.ts#checkCandidateAccess': ['#checkWriteAccess'],
   'apps/api/src/modules/succession/write-support.ts#checkWriteAccess': [

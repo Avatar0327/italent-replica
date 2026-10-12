@@ -6,6 +6,7 @@ import { createInMemoryTalentReviewSyncPort } from '../../apps/api/src/modules/t
 import { seedTenantWithMember } from './support/tenant-api.js';
 import { syncFixture, FX } from './support/sync-port-contract.js';
 import { rowsOf } from './support/f048.js';
+import { syncTestTransaction } from './AC-SC-sync-support.js';
 
 const testDb = useTestDb();
 let member: Awaited<ReturnType<typeof seedTenantWithMember>>;
@@ -13,7 +14,7 @@ const stopped = new Error('模拟首次计划失败');
 const setup = () => {
   const port = createInMemoryTalentReviewSyncPort({ ...syncFixture(), tenantId: member.tenant.id });
   const key = { tenantId: member.tenant.id, runId: FX.run, consumer: 'succession' as const };
-  return { port, key };
+  return { port, key, transaction: syncTestTransaction(testDb().db, member.tenant.id, port) };
 };
 beforeAll(async () => {
   member = await seedTenantWithMember(testDb().db, 'sc-sync-transaction');
@@ -31,9 +32,9 @@ const localCount = async () =>
 
 describe('AC-SC-sync-transaction D1 首次计划的跨端口事务边界', () => {
   it('计划失败回滚后本地无计划、T04 无消费记录，重试仍是 executionNo=1', async () => {
-    const { port, key } = setup();
+    const { port, key, transaction } = setup();
     await expect(
-      withTenant(testDb().db, member.tenant.id, async (tx) => {
+      transaction(async (tx) => {
         await tx.execute(sql`INSERT INTO sc_sync_tx_probe VALUES (${member.tenant.id}::uuid, ${FX.run}::uuid)`);
         await port.beginConsumption(tx, { ...key, leaseOwner: 'worker-1', leaseSeconds: 60 });
         throw stopped;
@@ -41,17 +42,15 @@ describe('AC-SC-sync-transaction D1 首次计划的跨端口事务边界', () =>
     ).rejects.toBe(stopped);
     expect(await localCount()).toBe(0);
     await expect(
-      withTenant(testDb().db, member.tenant.id, (tx) =>
-        port.beginConsumption(tx, { ...key, leaseOwner: 'worker-2', leaseSeconds: 60 }),
-      ),
+      transaction((tx) => port.beginConsumption(tx, { ...key, leaseOwner: 'worker-2', leaseSeconds: 60 })),
     ).resolves.toMatchObject({ executionNo: 1, targetsSealed: false });
   });
 
   it('registerTargets 后数据库回滚：页 0 提交证明不得存在，预建回执仍全部 pending', async () => {
-    const { port, key } = setup();
+    const { port, key, transaction } = setup();
     const pageCommandId = `${FX.run}:succession:1:0`;
     await expect(
-      withTenant(testDb().db, member.tenant.id, async (tx) => {
+      transaction(async (tx) => {
         await tx.execute(sql`INSERT INTO sc_sync_tx_probe VALUES (${member.tenant.id}::uuid, ${FX.run}::uuid)`);
         await port.beginConsumption(tx, { ...key, leaseOwner: 'worker-1', leaseSeconds: 60 });
         await port.registerTargets(tx, {
@@ -76,24 +75,22 @@ describe('AC-SC-sync-transaction D1 首次计划的跨端口事务边界', () =>
       }),
     ).rejects.toBe(stopped);
     expect(await localCount()).toBe(0);
-    const proof = await withTenant(testDb().db, member.tenant.id, (tx) =>
-      port.getPageCommit(tx, { ...key, pageCommandId }),
-    );
+    const proof = await transaction((tx) => port.getPageCommit(tx, { ...key, pageCommandId }));
     expect(proof).toBeNull();
-    const rows = await withTenant(testDb().db, member.tenant.id, (tx) => port.getOutcomes(tx, key));
+    const rows = await transaction((tx) => port.getOutcomes(tx, key));
     expect(rows.items.every((row) => row.status === 'pending')).toBe(true);
   });
 
   it('C 类计划回滚后能 abortConsumption(null, ACTOR_SCOPE_EXCEEDED, new_run)', async () => {
-    const { port, key } = setup();
+    const { port, key, transaction } = setup();
     await expect(
-      withTenant(testDb().db, member.tenant.id, async (tx) => {
+      transaction(async (tx) => {
         await port.beginConsumption(tx, { ...key, leaseOwner: 'worker-1', leaseSeconds: 60 });
         throw stopped;
       }),
     ).rejects.toBe(stopped);
     await expect(
-      withTenant(testDb().db, member.tenant.id, (tx) =>
+      transaction((tx) =>
         port.abortConsumption(tx, {
           ...key,
           executionNo: null,

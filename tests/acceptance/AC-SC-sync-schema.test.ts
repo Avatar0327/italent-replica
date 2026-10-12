@@ -16,13 +16,13 @@ beforeAll(async () => {
   other = await successionWorld(testDb().db, 'sc-sync-foreign');
   std = await w.standard();
 });
-const batch = async () => {
+const batch = async (world = w) => {
   const id = randomUUID();
-  await w.asTenant((tx) =>
+  await world.asTenant((tx) =>
     tx.execute(sql`INSERT INTO succession_sync_batches
     (id,tenant_id,source_run_id,project_id,trigger,actor_user_id,source_principal_user_id,owner_user_id,business_date)
-    VALUES (${id}::uuid,${w.tenant.id}::uuid,${randomUUID()}::uuid,${randomUUID()}::uuid,
-      'sync_requested',${w.user.id}::uuid,${w.user.id}::uuid,${w.user.id}::uuid,'2026-10-01')`),
+    VALUES (${id}::uuid,${world.tenant.id}::uuid,${randomUUID()}::uuid,${randomUUID()}::uuid,
+      'sync_requested',${world.user.id}::uuid,${world.user.id}::uuid,${world.user.id}::uuid,'2026-10-01')`),
   );
   return id;
 };
@@ -39,7 +39,7 @@ describe('AC-SC-sync-schema', () => {
   it('四张表全部开启并强制 RLS', async () => {
     const rows = rowsOf<{ relname: string; relrowsecurity: boolean; relforcerowsecurity: boolean }>(
       await testDb().db.execute(sql`SELECT relname,relrowsecurity,relforcerowsecurity FROM pg_class
-        WHERE relname = ANY(${tables}::text[]) ORDER BY relname`),
+        WHERE relname = ANY(${`{${tables.join(',')}}`}::text[]) ORDER BY relname`),
     );
     expect(rows.map((row) => row.relname)).toEqual([...tables].sort());
     expect(rows.every((row) => row.relrowsecurity && row.relforcerowsecurity)).toBe(true);
@@ -62,7 +62,8 @@ describe('AC-SC-sync-schema', () => {
         w.asTenant((tx) =>
           tx.execute(sql`INSERT INTO succession_sync_batches
       (tenant_id,source_run_id,project_id,trigger,actor_user_id,source_principal_user_id,owner_user_id,business_date)
-      SELECT tenant_id,source_run_id,project_id,trigger,actor_user_id,source_principal_user_id,owner_user_id,business_date
+      SELECT tenant_id,source_run_id,project_id,trigger,actor_user_id,
+        source_principal_user_id,owner_user_id,business_date
       FROM succession_sync_batches WHERE id=${id}::uuid`),
         ),
       ),
@@ -77,6 +78,15 @@ describe('AC-SC-sync-schema', () => {
         w.asTenant((tx) =>
           tx.execute(sql`UPDATE succession_records
       SET source_batch_id=${randomUUID()}::uuid WHERE id=${record}::uuid`),
+        ),
+      ),
+    ).toBe('23503');
+    const foreignBatch = await batch(other);
+    expect(
+      await code(() =>
+        w.asTenant((tx) =>
+          tx.execute(sql`UPDATE succession_records
+      SET source_batch_id=${foreignBatch}::uuid WHERE id=${record}::uuid`),
         ),
       ),
     ).toBe('23503');
