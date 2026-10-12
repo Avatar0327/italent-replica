@@ -73,7 +73,7 @@ def snapshot():
         def lastc(pred):
             ts = [c["createdAt"] for c in p["comments"] if pred(c.get("body", "").lstrip())]
             return max(ts) if ts else ""
-        waiting = lastc(lambda b: b.startswith("【等决定】")) > lastc(lambda b: b.startswith("【决定】"))
+        waiting = lastc(lambda b: b.startswith("【等决定】")) > lastc(lambda b: b.startswith(("【决定】", "【派发更正】", "开发完成")))
         res = next((c.get("body", "") for c in reversed(p["comments"]) if c.get("body", "").lstrip().startswith("## 审查原文")), "")[:400]
         approved = ("可以合并" in res and "暂不能合并" not in res) or "代码复审通过" in res or "代码审查通过" in res
         quiet_draft = p["isDraft"] and (waiting or p.get("baseRefName", "main") != "main" or any(w in p["title"] for w in ("红测", "WIP", "待", "开发中")))

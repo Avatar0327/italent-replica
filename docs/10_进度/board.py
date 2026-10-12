@@ -169,7 +169,7 @@ def live_prs():
             ts = [c["createdAt"] for c in cs if pred(c.get("body", "").lstrip())]
             return max(ts) if ts else ""
         t_ask = last(lambda b: b.startswith("【等决定】"))
-        t_dec = last(lambda b: b.startswith("【决定】") or "已按 A 处理" in b[:40] or "按 DEC-" in b[:60] and "处理" in b[:60])
+        t_dec = last(lambda b: b.startswith(("【决定】", "【派发更正】")) or "已按 A 处理" in b[:40] or "按 DEC-" in b[:60] and "处理" in b[:60])
         t_rev = last(lambda b: b.startswith("【审查已发起】"))
         t_res = last(lambda b: b.startswith("## 审查原文"))
         res_body = next((c["body"] for c in reversed(cs) if c.get("body", "").lstrip().startswith("## 审查原文")), "")
