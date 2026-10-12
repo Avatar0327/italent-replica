@@ -64,8 +64,8 @@ export function measureHealth(
   );
   const count = selected.filter((s) => s.key !== null).length;
   if (row.measure === 'green_rate' || row.measure === 'average') {
-    if (!selected.length) return { status: 'empty' };
-    const values = selected.map((s) => s.read.value);
+    const values = selected.filter((s) => s.read.status === 'value').map((s) => s.read.value);
+    if (!values.length) return { status: 'empty' };
     if (values.some((v) => typeof v !== 'number' || !Number.isFinite(v))) return { status: 'unavailable' };
     return { status: 'value', value: (values as number[]).reduce((sum, n) => sum + n, 0) / values.length };
   }
