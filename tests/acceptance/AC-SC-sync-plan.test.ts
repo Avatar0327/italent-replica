@@ -1,6 +1,7 @@
 /** D1b：设计 §5.7 第 1～14 步；数据库与 SP-18 替身共同事务。 */
 import { randomUUID } from 'node:crypto';
 import { sql } from '@italent/db';
+import type { AuthorizationRequest } from '../../apps/api/src/authorization.js';
 import { useTestDb } from '@italent/testkit';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { consumeRun, consumeSyncOutbox } from '../../apps/api/src/modules/succession/sync-consume.js';
@@ -96,7 +97,7 @@ function setup(options: { empty?: boolean; scopeExplicit?: boolean } = {}) {
     db: testDb().db,
     port,
     clock: () => SC_NOW,
-    authorize: () => true,
+    authorize: (_request: AuthorizationRequest) => true,
     transaction: syncTestTransaction(testDb().db, w.tenant.id, port),
   };
   const outcomes = async () => (await deps.transaction((tx) => port.getOutcomes(tx, key))).items;
@@ -165,7 +166,7 @@ describe('AC-SC-03-04-sync D1b 首次计划', () => {
     const h = setup({ empty: true });
     const complete = vi.spyOn(h.port, 'completeConsumption');
     await consumeRun(h.deps, h.input);
-    expect(await batch(h.input.runId)).toMatchObject({ status: 'completed', result: 'succeeded', has_plan: true });
+    expect(await batch(h.input.runId), JSON.stringify(await batch(h.input.runId))).toMatchObject({ status: 'completed', result: 'succeeded', has_plan: true });
     expect((await h.outcomes()).every((r) => r.status === 'skipped')).toBe(true);
     expect(complete).toHaveBeenCalledTimes(1);
     await consumeRun(h.deps, h.input);
@@ -274,4 +275,147 @@ describe('AC-SC-03-04-sync D1b 首次计划', () => {
     expect(secondBegin).not.toHaveBeenCalled();
     expect(await batch(next.input.runId)).toMatchObject({ status: 'waiting' });
   });
+});
+
+it.each(['HEALTH_LEVEL_UNKNOWN', 'HEALTH_LEVEL_DISABLED', 'SOURCE_REVOKED'] as const)(
+  'AC-SC-04 健康度计划失败 %s，零目标完成 partial，不误登记 target',
+  async (code) => {
+    const h = setup({ empty: true });
+    const id = randomUUID();
+    if (code === 'HEALTH_LEVEL_DISABLED')
+      await w.asTenant((tx) =>
+        tx.execute(sql`
+      INSERT INTO succession_health_levels (id,tenant_id,code,name,color,display_order,enabled)
+      VALUES (${id}::uuid,${w.tenant.id}::uuid,${id},${id},'#3366FF',1,false)`),
+      );
+    const original = await h.deps.transaction((tx) => h.port.listRunOrgHealth(tx, h.key));
+    vi.spyOn(h.port, 'listRunOrgHealth').mockResolvedValue(
+      original.map((row, i) =>
+        i
+          ? row
+          : {
+              ...row,
+              levelId: id,
+              status: 'value',
+              levelCode: null,
+            },
+      ),
+    );
+    if (code === 'SOURCE_REVOKED') h.port.revoke({ fieldCodes: ['levelId'] });
+    const register = vi.spyOn(h.port, 'registerTargets');
+    await consumeRun(h.deps, h.input);
+    expect(await batch(h.input.runId)).toMatchObject({ status: 'completed', result: 'partial' });
+    expect(register.mock.calls[0]![1].targets).toEqual([]);
+    expect(await h.outcomes()).toContainEqual(
+      expect.objectContaining({
+        rowKind: 'org_health',
+        rowId: std.orgA.id,
+        status: 'failed',
+        errorCode: code,
+        recovery: 'none',
+      }),
+    );
+  },
+);
+it('AC-SC-03 原触发人范围撤回为 C 类；调用人范围不足保持原状态', async () => {
+  const h = setup();
+  const actor = await w.userOf(std.head);
+  const original = h.port.loadRun.bind(h.port);
+  vi.spyOn(h.port, 'loadRun').mockImplementation(async (tx, key) => ({
+    ...(await original(tx, key))!,
+    actorUserId: actor,
+  }));
+  h.deps.authorize = (request) => request.userId !== actor;
+  await consumeRun(h.deps, h.input);
+  expect(await batch(h.input.runId)).toMatchObject({ status: 'rejected', end_reason: 'ACTOR_SCOPE_EXCEEDED' });
+  const next = setup();
+  next.deps.authorize = (request) => request.userId !== actor;
+  await expect(consumeRun(next.deps, { ...next.input, requesterUserId: actor })).rejects.toMatchObject({
+    code: 'FORBIDDEN',
+    details: { reason: 'BATCH_SCOPE_EXCEEDS_REQUESTER' },
+  });
+  expect(await batch(next.input.runId)).toBeUndefined();
+  expect((await next.outcomes()).every((r) => r.status === 'pending')).toBe(true);
+});
+it('AC-SC-03 覆盖目标部分提名失败，合法提名同组失败，旧集合保持', async () => {
+  await setting('sync_strategy', 'overwrite', revision++);
+  const h = setup();
+  const original = h.port.listRunNominations.bind(h.port);
+  vi.spyOn(h.port, 'listRunNominations').mockImplementation(async (tx, input) => {
+    const page = await original(tx, input);
+    return {
+      ...page,
+      items: page.items.map((n) => ({
+        ...n,
+        kind: 'org',
+        positionId: null,
+        orgId: std.orgA.id,
+        readinessId: n.nominationId === FX.n2 ? randomUUID() : null,
+      })),
+    };
+  });
+  const old = await w.insertRecord({ type: 'org', targetId: std.orgA.id, successorId: std.successor2.id });
+  await consumeRun(h.deps, h.input);
+  expect(await batch(h.input.runId)).toMatchObject({ status: 'completed', result: 'partial' });
+  expect(await h.outcomes()).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ rowId: FX.n2, errorCode: 'READINESS_UNKNOWN' }),
+      expect.objectContaining({ rowId: FX.n1, errorCode: 'TARGET_PARTIAL_NOMINATIONS' }),
+      expect.objectContaining({ rowId: FX.o1, errorCode: 'NOMINATIONS_FAILED' }),
+    ]),
+  );
+  expect(
+    rowsOf(
+      await w.asTenant((tx) =>
+        tx.execute(sql`SELECT end_date::text FROM succession_records
+    WHERE id=${old}::uuid`),
+      ),
+    ),
+  ).toEqual([{ end_date: '9999-12-31' }]);
+});
+it('AC-SC-03 源对象撤权覆盖 R10 聚合；无计划提交前不留互斥', async () => {
+  const h = setup();
+  h.port.revoke({ objectIds: [FX.o1] });
+  await consumeRun(h.deps, h.input);
+  expect(await h.outcomes()).toContainEqual(
+    expect.objectContaining({
+      rowKind: 'object',
+      rowId: FX.o1,
+      errorCode: 'SOURCE_REVOKED',
+      errorParams: { scope: 'object', ref: FX.o1 },
+    }),
+  );
+});
+it('AC-SC-03 显式空范围不扩大 delete_only；范围覆盖保留旧集合快照', async () => {
+  await setting('sync_strategy', 'overwrite_in_scope', revision++);
+  const empty = setup({ empty: true, scopeExplicit: true });
+  await consumeRun(empty.deps, empty.input);
+  expect(await batch(empty.input.runId)).toMatchObject({ status: 'completed' });
+  expect(await count('succession_sync_targets', (await batch(empty.input.runId))['id'])).toBe(0);
+  const h = setup({ empty: true, scopeExplicit: true });
+  const load = h.port.loadRun.bind(h.port);
+  vi.spyOn(h.port, 'loadRun').mockImplementation(async (tx, key) => ({
+    ...(await load(tx, key))!,
+    scopeOrgIds: [std.orgA.id],
+  }));
+  await consumeRun(h.deps, h.input);
+  const b = await batch(h.input.runId);
+  const plans = rowsOf(
+    await w.asTenant((tx) =>
+      tx.execute(sql`SELECT action,old_record_ids
+    FROM succession_sync_targets WHERE batch_id=${String(b['id'])}::uuid`),
+    ),
+  );
+  expect(plans).toEqual([expect.objectContaining({ action: 'delete_only', old_record_ids: [expect.any(String)] })]);
+});
+it('AC-SC-03 已终止对象全跳过，应在首次计划内完成', async () => {
+  const h = setup();
+  const list = h.port.listRunObjects.bind(h.port);
+  vi.spyOn(h.port, 'listRunObjects').mockImplementation(async (tx, key) => {
+    const page = await list(tx, key);
+    return { ...page, items: page.items.map((o) => ({ ...o, status: 'terminated', blockReason: 'terminated' })) };
+  });
+  await consumeRun(h.deps, h.input);
+  expect(await batch(h.input.runId)).toMatchObject({ status: 'completed' });
+  expect((await h.outcomes()).every((r) => r.status === 'skipped')).toBe(true);
 });
