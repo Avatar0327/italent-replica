@@ -130,13 +130,20 @@ describe('AC-SC-03-04-sync D2 执行与终结', () => {
       const register = h.port.registerTargets.bind(h.port);
       vi.spyOn(h.port, 'registerTargets').mockImplementation(async (tx, input) => {
         const result = await register(tx, input);
-        h.port.revoke(
-          scope === 'object'
-            ? { objectIds: [FX.o1] }
-            : scope === 'field'
-              ? { fields: { [FX.o1]: ['readinessId'] } }
-              : { sources: [{ objectId: FX.o1, source: 'current_project' }] },
-        );
+        if (scope === 'field') {
+          const authorize = h.port.authorizeSourceRead.bind(h.port);
+          vi.spyOn(h.port, 'authorizeSourceRead').mockImplementation(async (pageTx, pageInput) => {
+            const authorization = await authorize(pageTx, pageInput);
+            return {
+              ...authorization,
+              forbidden: { ...authorization.forbidden, fields: { [FX.o1]: ['readinessId'] } },
+            };
+          });
+        } else {
+          h.port.revoke(
+            scope === 'object' ? { objectIds: [FX.o1] } : { sources: [{ objectId: FX.o1, source: 'current_project' }] },
+          );
+        }
         return result;
       });
       expect(await consumeRun(h.deps, h.input)).toMatchObject({ status: 'completed', result: 'partial' });
