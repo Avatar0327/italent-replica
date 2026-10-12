@@ -32,15 +32,25 @@ export async function healthPeople(tx: Tx, tenantId: string, orgId: string, asOf
     { tenantId, orgId: orgId as OrgId, dimension: 'admin', asOf },
     { includeDisabled: false },
   );
+  // 任职接口 read-model 的同一来源规则：完整快照可保留显式 null，入职日期属于记录／任职周期。
+  const department = sql`CASE WHEN p.body IS NULL THEN r.department_id::text ELSE p.body->>'department_id' END`;
   const people = rowsOf<{
     id: string;
     org_id: string;
     profile: Record<string, string | null>;
-    payload: Record<string, string | number | null>;
+    entry_date: string;
+    position_id: string | null;
+    level_id: string | null;
+    sequence_id: string | null;
+    employee_status: number;
   }>(
-    await tx.execute(sql`SELECT DISTINCT ON (e.id) e.id,COALESCE(p.body,to_jsonb(r))->>'department_id' AS org_id,
+    await tx.execute(sql`SELECT DISTINCT ON (e.id) e.id,${department} AS org_id,
     COALESCE(to_jsonb(v),'{}'::jsonb)||jsonb_build_object('name',COALESCE(v.name,e.name)) AS profile,
-    COALESCE(p.body,to_jsonb(r)) AS payload FROM employment_timeline t
+    r.entry_date::text AS entry_date,
+    CASE WHEN p.body IS NULL THEN r.position_id::text ELSE p.body->>'position_id' END AS position_id,
+    CASE WHEN p.body IS NULL THEN r.level_id::text ELSE p.body->>'level_id' END AS level_id,
+    CASE WHEN p.body IS NULL THEN r.sequence_id::text ELSE p.body->>'sequence_id' END AS sequence_id,
+    s.employee_status FROM employment_timeline t
     JOIN employment_records r ON r.tenant_id=t.tenant_id AND r.id=t.record_id
     JOIN employment_employees e ON e.tenant_id=t.tenant_id AND e.id=t.employee_id
     LEFT JOIN LATERAL (SELECT to_jsonb(p) AS body FROM employment_payload_versions p
@@ -52,17 +62,17 @@ export async function healthPeople(tx: Tx, tenantId: string, orgId: string, asOf
     WHERE t.tenant_id=${tenantId}::uuid AND t.valid_during @> ${asOf}::date AND r.service_type='primary'
     AND s.employee_status NOT IN (${INCUMBENT_EXCLUDED_STATUSES})
     AND NOT EXISTS (SELECT 1 FROM employment_record_tombstones d WHERE d.tenant_id=r.tenant_id AND d.record_id=r.id)
-    AND (COALESCE(p.body,to_jsonb(r))->>'department_id')::uuid=ANY(${`{${[orgId, ...descendants].join(',')}}`}::uuid[])
+    AND (${department})::uuid=ANY(${`{${[orgId, ...descendants].join(',')}}`}::uuid[])
     ORDER BY e.id,t.start_date DESC,t.sort_order DESC`),
   );
-  return people.map(({ id, org_id, profile: p, payload: r }) => ({
+  return people.map(({ id, org_id, profile: p, ...r }) => ({
     id,
     orgId: org_id,
     fields: {
       'employee.name': p.name,
       'employee.gender': p.gender,
       'employee.age': ageOn(p.birthday ?? null, asOf),
-      'employee.entry_date': r.entry_date as string | null,
+      'employee.entry_date': r.entry_date,
       'employee.work_years': p.work_date
         ? Number(decimalYears(Math.max(0, (Date.parse(asOf) - Date.parse(p.work_date)) / 86400000), 4))
         : null,
