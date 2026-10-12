@@ -257,3 +257,28 @@ async function switchIdentity(page: Page, path: string) {
   await page.goto(path);
   await expect(page.locator('.shell-workspace h1').first()).toBeVisible({ timeout: 15_000 });
 }
+
+test('AC-FE-R1c-10 参考包视图切换、主题密度与右侧详情抽屉', async ({ page }) => {
+  await switchIdentity(page, '/transfer');
+  await expect(page.locator('.ant-breadcrumb')).toBeHidden();
+  const view = page.getByRole('button', { name: '调动中员工', exact: true });
+  await expect(view).toBeVisible();
+  await view.click();
+  await page.getByRole('menuitem', { name: '全部调动记录', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '全部调动记录', exact: true })).toBeVisible();
+  const launch = page.getByRole('button', { name: '他人调动申请', exact: true });
+  await expect(launch).toHaveCSS('background-color', 'rgb(20, 110, 255)');
+  await expect(launch).toHaveCSS('height', '32px');
+  await expect(page.locator('.ant-table-thead > tr')).toHaveCSS('height', '40px');
+  await expect(page.locator('.ant-pagination-options')).toContainText('15');
+  await page.getByRole('button', { name: '林晓（合成）', exact: true }).click();
+  await expect(page.locator('.ant-drawer-right')).toBeVisible();
+  await page.getByRole('button', { name: '关闭', exact: true }).click();
+  const pending = page.waitForRequest((request) => request.url().includes('/approval/todos?'));
+  await page.goto('/approval');
+  expect(new URL((await pending).url()).searchParams.get('pageSize')).toBe('15');
+  await expect(page.locator('.ant-breadcrumb')).toBeHidden();
+  await expect(page.getByRole('tablist')).toHaveAttribute('aria-orientation', 'vertical');
+  await page.getByRole('tab', { name: '已处理', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '已处理', exact: true })).toBeVisible();
+});
