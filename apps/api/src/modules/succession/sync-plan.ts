@@ -302,7 +302,7 @@ export async function persistPlan(tx: Tx, input: PlanInput) {
     tx,
     tenantId,
     input.targets.map((t) => ({
-      kind: t.kind === 'position' ? 'position' : 'org',
+      kind: t.kind,
       id: t.id,
     })),
   );

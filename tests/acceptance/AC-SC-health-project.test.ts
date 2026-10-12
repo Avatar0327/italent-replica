@@ -5,6 +5,26 @@ import { writeProjectHealth } from '../../apps/api/src/modules/succession/health
 import { syncFixture, FX } from './support/sync-port-contract.js';
 
 describe('AC-SC-health-sync SP-16 项目回写', () => {
+  it('读不到版本不推测为 0；forbidden 与缺行响应均不进入写入', async () => {
+    const port = createInMemoryTalentReviewSyncPort(syncFixture());
+    const input = {
+      tenantId: FX.tenant,
+      context: { projectId: FX.project, meetingId: null },
+      credential: { kind: 'assign' as const, userId: FX.actor, commandId: 'denied' },
+      rows: [{ orgId: FX.g1, status: 'empty' as const, levelId: null, levelCode: null }],
+    };
+    const write = vi.spyOn(port, 'recordOrgHealth');
+    vi.spyOn(port, 'readOrgHealthRows')
+      .mockResolvedValueOnce([{ status: 'forbidden', orgId: FX.g1, context: input.context }])
+      .mockResolvedValueOnce([]);
+    await expect(port.transaction((tx) => writeProjectHealth(tx, port, input))).rejects.toMatchObject({
+      code: 'FORBIDDEN',
+    });
+    await expect(port.transaction((tx) => writeProjectHealth(tx, port, input))).rejects.toMatchObject({
+      code: 'SERVICE_UNAVAILABLE',
+    });
+    expect(write).not.toHaveBeenCalled();
+  });
   it.each([null, FX.meeting])('取目标会议 %s 的当前版本，不能用本地结果版本', async (meetingId) => {
     const fixture = syncFixture();
     const context = { projectId: FX.project, meetingId };
@@ -52,22 +72,23 @@ describe('AC-SC-health-sync SP-16 项目回写', () => {
     const port = createInMemoryTalentReviewSyncPort(syncFixture());
     const context = { projectId: FX.project, meetingId: null };
     const read = port.readOrgHealthRows.bind(port);
-    vi.spyOn(port, 'readOrgHealthRows').mockImplementationOnce(async (tx, input) => {
-      const before = await read(tx, input);
-      await port.recordOrgHealth(tx, {
-        tenantId: FX.tenant,
-        context,
-        credential: { kind: 'assign', userId: FX.actor, commandId: 'other' },
-        rows: [{ orgId: FX.g1, expectedRevision: 3, status: 'value', levelId: FX.readyLater, levelCode: 'RN3' }],
-      });
-      return before;
-    });
+    const readSpy = vi.spyOn(port, 'readOrgHealthRows');
     const result = await port.transaction((tx) =>
       writeProjectHealth(tx, port, {
         tenantId: FX.tenant,
         context,
         credential: { kind: 'reset', userId: FX.actor, commandId: 'reset-race' },
         rows: [{ orgId: FX.g1, status: 'empty', levelId: null, levelCode: null }],
+        calculate: async (tx) => {
+          expect(readSpy).toHaveBeenCalledTimes(1);
+          await port.recordOrgHealth(tx, {
+            tenantId: FX.tenant,
+            context,
+            credential: { kind: 'assign', userId: FX.actor, commandId: 'other' },
+            rows: [{ orgId: FX.g1, expectedRevision: 3, status: 'value', levelId: FX.readyLater, levelCode: 'RN3' }],
+          });
+          return [{ orgId: FX.g1, status: 'empty', levelId: null, levelCode: null }];
+        },
       }),
     );
     expect(result.items).toEqual([
@@ -113,6 +134,7 @@ describe('AC-SC-health-sync SP-16 项目回写', () => {
         context,
         rows,
         credential: { kind: 'reset', userId: FX.actor, commandId: 'reset' },
+        calculate: async () => rows,
       }),
     );
     expect(reset.items[0]).toMatchObject({ outcome: 'written', currentRevision: 4, currentManual: false });

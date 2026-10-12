@@ -34,7 +34,7 @@ import {
   registerSuccessionPlatformRoutes,
   SUCCESSION_PLATFORM_POLICIES,
 } from '../../apps/api/src/modules/succession/platform-routes.js';
-import { installSuccessionPorts } from '../../apps/api/src/modules/succession/ports.js';
+import { installSuccessionPorts, SUCCESSION_PORTS } from '../../apps/api/src/modules/succession/ports.js';
 import { startSuccessionScheduler, type SuccessionJob } from '../../apps/api/src/modules/succession/scheduler.js';
 import {
   orgHealthComputePort,
@@ -526,11 +526,12 @@ describe('任职状态钩子端口（§5.4；DEC-343）', () => {
 describe('对外端口与定时任务登记位（SP-15 / DEC-330、§4.6 / DEC-343）', () => {
   afterEach(() => resetOrgHealthComputePortForTest());
 
-  it('契约 PR 不登记健康度实现（T04 仍 400）；装配位登记的实现可重复安装', () => {
+  it('D4 登记健康度模块单例；装配位实现可重复安装且不能被另一实例替换', () => {
     resetOrgHealthComputePortForTest();
     tenantApi(testDb().db);
     installSuccessionPorts();
-    expect(orgHealthComputePort()).toBeNull();
+    expect(orgHealthComputePort()).toBe(SUCCESSION_PORTS.orgHealthCompute);
+    resetOrgHealthComputePortForTest();
     const port: OrgHealthComputePort = { compute: async () => [], listLevels: async () => [] };
     installSuccessionPorts({ orgHealthCompute: port });
     installSuccessionPorts({ orgHealthCompute: port });

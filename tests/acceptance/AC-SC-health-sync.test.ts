@@ -1,4 +1,4 @@
-/** D4 / §4.4：真实同步事务 + SP-18 替身。B5 合并前不复制其表或健康度实现。 */
+/** D4 / §4.4：真实同步事务 + SP-18 替身。B5 合并前存储采用契约替身，不复制 B5 业务实现。 */
 import { randomUUID } from 'node:crypto';
 import { sql, type DbHandle, type Tx } from '@italent/db';
 import type { SyncOrgHealth } from '@italent/domain';
@@ -13,6 +13,7 @@ import { syncFixture, FX } from './support/sync-port-contract.js';
 import { rowsOf } from './support/f048.js';
 import { successionWorld, SC_NOW, SC_TODAY, type SuccessionWorld } from './AC-SC-support.js';
 import { syncTestTransaction } from './AC-SC-sync-support.js';
+import { healthStorageDouble } from './AC-SC-health-storage-double.js';
 
 let handle: DbHandle;
 let w: SuccessionWorld;
@@ -21,6 +22,7 @@ const levelId = randomUUID();
 const disabledId = randomUUID();
 beforeAll(async () => {
   handle = await createTestDb();
+  await healthStorageDouble(handle.db);
   w = await successionWorld(handle.db, 'sc-health-sync');
   std = await w.standard();
   await w.asTenant(async (tx) => {
@@ -51,7 +53,13 @@ afterAll(async () => {
   await handle?.close();
 });
 
-async function setup(status: SyncOrgHealth['status'] = 'value', manual = false, byCode = false) {
+async function setup(
+  status: SyncOrgHealth['status'] = 'value',
+  manual = false,
+  byCode = false,
+  extra: Partial<SyncOrgHealth> = {},
+  nomination = true,
+) {
   await w.asTenant(async (tx) => {
     await tx.execute(sql`UPDATE succession_sync_mutex SET batch_id=NULL WHERE tenant_id=${w.tenant.id}::uuid`);
     await tx.execute(sql`UPDATE succession_sync_batches SET status='terminated'
@@ -68,6 +76,7 @@ async function setup(status: SyncOrgHealth['status'] = 'value', manual = false, 
     manual,
     levelId: status === 'value' && !byCode ? levelId : null,
     levelCode: status === 'value' ? 'D4_OK' : null,
+    ...extra,
   };
   const fixture = {
     ...source,
@@ -83,16 +92,18 @@ async function setup(status: SyncOrgHealth['status'] = 'value', manual = false, 
           principalUserId: w.user.id,
           businessDate: SC_TODAY,
         },
-        objects: [original.objects[0]!],
-        nominations: [
-          {
-            ...original.nominations[0]!,
-            orgId: std.orgA.id,
-            successorEmployeeId: std.successor1.id,
-            readinessId: null,
-            readinessCode: null,
-          },
-        ],
+        objects: nomination ? [original.objects[0]!] : [],
+        nominations: nomination
+          ? [
+              {
+                ...original.nominations[0]!,
+                orgId: std.orgA.id,
+                successorEmployeeId: std.successor1.id,
+                readinessId: null,
+                readinessCode: null,
+              },
+            ]
+          : [],
         orgHealth: [health],
       },
     ],
@@ -111,13 +122,21 @@ async function setup(status: SyncOrgHealth['status'] = 'value', manual = false, 
   const local = () =>
     w.asTenant(async (tx) =>
       rowsOf<Record<string, unknown>>(
-        await tx.execute(sql`SELECT level_id,method,revision,source_batch_id,source_project_id
+        await tx.execute(sql`SELECT level_id,method,revision,source_batch_id,source_project_id,source_meeting_id
       FROM succession_health_results WHERE tenant_id=${w.tenant.id}::uuid AND org_id=${org.id}::uuid`),
       ),
     );
   return { org, health, deps, port, input, key, outcomes, local };
 }
 type Harness = Awaited<ReturnType<typeof setup>>;
+async function seedResult(h: Harness, method = 'manual') {
+  await w.asTenant((tx) =>
+    tx.execute(sql`INSERT INTO succession_health_results
+    (tenant_id,org_id,level_id,method,revision) VALUES
+    (${w.tenant.id}::uuid,${h.org.id}::uuid,${levelId}::uuid,${method},7)`),
+  );
+  return h.local();
+}
 function afterPlan(h: Harness, work: (tx: Tx) => Promise<void>) {
   const register = h.port.registerTargets.bind(h.port);
   vi.spyOn(h.port, 'registerTargets').mockImplementation(async (tx, input) => {
@@ -128,6 +147,110 @@ function afterPlan(h: Harness, work: (tx: Tx) => Promise<void>) {
 }
 
 describe('AC-SC-health-sync / AC-SC-07 D4', () => {
+  it.each(['module_absent', 'present'] as const)('嵌套继任 %s + 0 不阻断健康度及其后续 run', async (status) => {
+    const h = await setup(
+      'value',
+      false,
+      false,
+      {
+        meetingId: FX.meeting,
+        succession: { status, count: 0, nominations: [] },
+      },
+      false,
+    );
+    const batch = await consumeRun(h.deps, h.input);
+    expect(batch).toMatchObject({ status: 'completed', result: 'succeeded' });
+    expect(await h.local()).toEqual([expect.objectContaining({ source_meeting_id: FX.meeting, level_id: levelId })]);
+    const runs = await w.asTenant(async (tx) =>
+      rowsOf(
+        await tx.execute(sql`
+      SELECT object_id FROM succession_calc_run_objects o JOIN succession_calc_runs r
+      ON r.tenant_id=o.tenant_id AND r.id=o.run_id WHERE r.tenant_id=${w.tenant.id}::uuid
+      AND r.idempotency_key=${`org_health:sync:${batch!.id}`}`),
+      ),
+    );
+    expect(runs).toEqual([{ object_id: h.org.id }]);
+  });
+  it('没有执行页的永久失败批次仍按同一幂等键入队一次', async () => {
+    const h = await setup('value', false, false, { levelId: randomUUID() }, false);
+    const batch = await consumeRun(h.deps, h.input);
+    expect(batch).toMatchObject({ status: 'completed', result: 'partial', nextPageNo: 1 });
+    await consumeRun(h.deps, h.input);
+    expect(
+      await w.asTenant(async (tx) =>
+        rowsOf(
+          await tx.execute(sql`
+      SELECT count(*)::int AS n FROM succession_calc_runs WHERE tenant_id=${w.tenant.id}::uuid
+      AND idempotency_key=${`org_health:sync:${batch!.id}`}`),
+        ),
+      ),
+    ).toEqual([{ n: 1 }]);
+  });
+  it.each(['value', 'empty'] as const)('Q-SC-16：本地 manual 遇 %s 同步保持等级、标记和 revision', async (status) => {
+    const h = await setup(status),
+      before = await seedResult(h);
+    expect(await consumeRun(h.deps, h.input)).toMatchObject({ status: 'completed', result: 'succeeded' });
+    expect(await h.local()).toEqual(before);
+    expect((await h.outcomes()).find((r) => r.rowKind === 'org_health')).toMatchObject({
+      status: 'synced',
+      errorParams: { manualKept: true },
+      recovery: 'none',
+    });
+  });
+  it.each([
+    ['未知 ID', { levelId: randomUUID() }, 'HEALTH_LEVEL_UNKNOWN'],
+    ['未知 code', { levelId: null, levelCode: 'MISSING' }, 'HEALTH_LEVEL_UNKNOWN'],
+    ['停用 ID', { levelId: disabledId }, 'HEALTH_LEVEL_DISABLED'],
+    ['停用 code', { levelId: null, levelCode: 'D4_OFF' }, 'HEALTH_LEVEL_DISABLED'],
+  ] as const)('%s：计划永久失败并保持旧值，同页合法提名仍成功', async (_name, extra, code) => {
+    const h = await setup('value', false, false, extra),
+      before = await seedResult(h, 'computed');
+    expect(await consumeRun(h.deps, h.input)).toMatchObject({ status: 'completed', result: 'partial' });
+    expect(await h.local()).toEqual(before);
+    expect((await h.outcomes()).find((r) => r.rowKind === 'org_health')).toMatchObject({
+      status: 'failed',
+      errorCode: code,
+      recovery: 'none',
+      pageCommandId: `${h.input.runId}:succession:1:0`,
+    });
+    expect((await h.outcomes()).find((r) => r.rowKind === 'nomination')).toMatchObject({ status: 'synced' });
+  });
+  it('not_provided 不改旧值、不建健康度目标', async () => {
+    const h = await setup('not_provided'),
+      before = await seedResult(h, 'computed');
+    const batch = await consumeRun(h.deps, h.input);
+    expect(batch).toMatchObject({ status: 'completed' });
+    expect(await h.local()).toEqual(before);
+    expect(
+      await w.asTenant(async (tx) =>
+        rowsOf(
+          await tx.execute(sql`SELECT id FROM succession_sync_targets
+      WHERE tenant_id=${w.tenant.id}::uuid AND batch_id=${batch!.id}::uuid AND target_kind='org_health'`),
+        ),
+      ),
+    ).toEqual([]);
+  });
+  it('回执失败回滚健康度及审计，页内重做只产生 revision 1', async () => {
+    const h = await setup(),
+      record = h.port.recordOutcome.bind(h.port);
+    let attempts = 0;
+    vi.spyOn(h.port, 'recordOutcome').mockImplementation(async (tx, input) => {
+      const result = await record(tx, input);
+      if (!attempts++) throw new Error('模拟回执后事务回滚');
+      return result;
+    });
+    expect(await consumeRun(h.deps, h.input)).toMatchObject({ status: 'completed' });
+    expect(await h.local()).toEqual([expect.objectContaining({ revision: 1, method: 'synced' })]);
+    expect(
+      await w.asTenant(async (tx) =>
+        rowsOf(
+          await tx.execute(sql`SELECT count(*)::int AS n FROM audit_events
+      WHERE tenant_id=${w.tenant.id}::uuid AND object_id=${h.org.id}
+      AND action='succession.health-result.sync'`),
+        ),
+      ),
+    ).toEqual([{ n: 1 }]);
+  });
   it.each([
     ['value', false, false, 'synced'],
     ['value', true, false, 'manual'],
@@ -194,6 +317,7 @@ describe('AC-SC-health-sync / AC-SC-07 D4', () => {
 
   it.each(['org', 'field'] as const)('执行期源%s撤权只失败健康度行，字段授权包含 levelId', async (scope) => {
     const h = await setup();
+    const before = await seedResult(h, 'computed');
     afterPlan(h, async () => {
       await h.port.revoke(scope === 'org' ? { orgIds: [h.org.id] } : { fieldCodes: ['levelId'] });
     });
@@ -204,10 +328,13 @@ describe('AC-SC-health-sync / AC-SC-07 D4', () => {
       recovery: 'none',
       errorParams: { scope, ref: scope === 'org' ? h.org.id : 'levelId' },
     });
+    expect(await h.local()).toEqual(before);
+    expect((await h.outcomes()).find((r) => r.rowKind === 'nomination')).toMatchObject({ status: 'synced' });
   });
 
   it('SP-19 #17：计划后健康度写范围收回，同页其他目标成功且提交证明有效', async () => {
     const h = await setup();
+    const before = await seedResult(h);
     afterPlan(h, async () => {
       registerScopeProvider(h.deps.authorize, {
         authorize: async () => true,
@@ -227,6 +354,7 @@ describe('AC-SC-health-sync / AC-SC-07 D4', () => {
       recovery: 'none',
     });
     expect(rows.find((r) => r.rowKind === 'nomination')).toMatchObject({ status: 'synced' });
+    expect(await h.local()).toEqual(before);
     expect(
       await h.deps.transaction((tx) =>
         h.port.getPageCommit(tx, {

@@ -30,6 +30,7 @@ export interface TargetContext {
   denied: SourceReadAuthorization['forbidden'];
   now: Date;
   commandId: string;
+  healthMeetings?: ReadonlyMap<string, string | null>;
 }
 export const openItem = (item: SyncItem) =>
   item.planOutcome === 'planned' && (item.execOutcome === null || (item.execOutcome === 'failed' && item.retryable));

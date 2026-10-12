@@ -11,6 +11,28 @@ import { installProfile } from '../../apps/api/src/modules/permission/standard-p
 import { overrideSetting } from '../../apps/api/src/modules/tenant-settings/service.js';
 import { successionWorld, SC_NOW, SC_TODAY, type SuccessionWorld } from './AC-SC-support.js';
 import { levelBody } from './AC-SC-levels-support.js';
+import type { HealthComputeHost } from '../../apps/api/src/modules/succession/health-compute.js';
+import { runProjectHealthCommand } from '../../apps/api/src/modules/succession/health-project.js';
+import { createInMemoryTalentReviewSyncPort } from '../../apps/api/src/modules/talent-review/sync-port-memory.js';
+import { AppError } from '../../apps/api/src/errors.js';
+
+// B5 宿主仅作调用边界替身：记录取数调用并返回预定等级，不实现条件求值或人员人口算法。
+const host: HealthComputeHost = {
+  metricReader: (ctx, object, principal, reads) => async () => {
+    await reads.greenRate(ctx.tx, {
+      tenantId: ctx.run.tenantId,
+      orgIds: [object.objectId],
+      context: { asOf: ctx.run.businessDate },
+      viewer: { kind: 'principal', userId: principal.userId },
+    });
+    return { status: 'value', value: 0.75 };
+  },
+  evaluate: vi.fn<HealthComputeHost['evaluate']>().mockImplementation(async (levels, read) => {
+    const level = levels[0]!;
+    await read(level.rules!.rows[0]!, level.id);
+    return { levelId: level.id };
+  }),
+};
 
 // #282 health-metrics.ts 的 HealthReads 接口形状；只替代来源读取，不复制 B5 的计算实现。
 type HealthReads = Pick<
@@ -38,6 +60,7 @@ function healthReadsDouble() {
 let handle: DbHandle, w: SuccessionWorld, orgId: string;
 let level: { id: string; code: string; name: string; color: string; displayOrder: number };
 beforeAll(async () => {
+  Reflect.set(SUCCESSION_PORTS, 'healthComputeHost', host);
   handle = await createTestDb();
   w = await successionWorld(handle.db, 'sc-health-port');
   orgId = (await w.org('端口计算组织')).id;
@@ -92,10 +115,74 @@ beforeAll(async () => {
   level = (await response.json()) as typeof level;
 }, 180_000);
 afterAll(async () => {
+  Reflect.deleteProperty(SUCCESSION_PORTS, 'healthComputeHost');
   await handle?.close();
 });
 
 describe('AC-SC-health-sync 计算端口装配', () => {
+  it('SP-16 命令台账重放不重读版本，撤权后先 guard 再出结果', async () => {
+    const port = createInMemoryTalentReviewSyncPort({ tenantId: w.tenant.id });
+    const context = { projectId: randomUUID(), meetingId: null };
+    const read = vi
+      .spyOn(port, 'readOrgHealthRows')
+      .mockResolvedValue([{ status: 'absent', context, orgId, revision: 0 }]);
+    const write = vi.spyOn(port, 'recordOrgHealth').mockResolvedValue({
+      items: [{ orgId, outcome: 'written', currentRevision: 1, currentLevelId: level.id, currentManual: true }],
+    });
+    let allowed = true;
+    const guard = {
+      before: vi.fn(async () => {
+        if (!allowed) throw new AppError('FORBIDDEN', '已撤权');
+      }),
+    };
+    const input = {
+      tenantId: w.tenant.id,
+      context,
+      credential: { kind: 'assign' as const, userId: w.user.id, commandId: randomUUID() },
+      rows: [{ orgId, status: 'value' as const, levelId: level.id, levelCode: level.code }],
+    };
+    const run = () =>
+      runProjectHealthCommand(
+        w.db,
+        { tenantId: w.tenant.id, userId: w.user.id, timezone: 'Asia/Shanghai' },
+        port,
+        input,
+        guard,
+        null,
+      );
+    const first = await run();
+    expect(await run()).toEqual(first);
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(guard.before).toHaveBeenCalledTimes(2);
+    allowed = false;
+    await expect(run()).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    expect(write).toHaveBeenCalledTimes(1);
+  });
+  it('宿主失败只返回失败码和行定位，不带中文文案或内部异常', async () => {
+    vi.mocked(host.evaluate).mockResolvedValueOnce({
+      levelId: null,
+      failure: { code: 'FIELD_FORBIDDEN', levelId: level.id, rowNo: 1 },
+    });
+    expect(
+      await w.asTenant((tx) =>
+        SUCCESSION_PORTS.orgHealthCompute!.compute(tx, {
+          tenantId: w.tenant.id,
+          principalUserId: w.user.id,
+          context: { projectId: randomUUID(), meetingId: null },
+          orgIds: [orgId],
+          businessDate: SC_TODAY,
+        }),
+      ),
+    ).toEqual([
+      {
+        orgId,
+        levelId: null,
+        levelCode: null,
+        failures: [{ code: 'FIELD_FORBIDDEN', params: { levelId: level.id, rowNo: 1 } }],
+      },
+    ]);
+  });
   it('SUCCESSION_PORTS 登记可重复装配的 compute + listLevels 模块单例', () => {
     expect(SUCCESSION_PORTS.orgHealthCompute).toBeDefined();
     expect(SUCCESSION_PORTS.orgHealthCompute?.compute).toBeTypeOf('function');
@@ -129,7 +216,7 @@ describe('AC-SC-health-sync 计算端口装配', () => {
       if (!port) throw new Error('D4 尚未登记计算端口');
       const reads = healthReadsDouble(),
         projectId = randomUUID();
-      // reviewReads 为 #282 已有登记位；依赖未合并时不修改当前 ports.ts 的契约。
+      // reviewReads 与 #282 登记位同形；仅替代来源 IO。
       const prior = Reflect.get(SUCCESSION_PORTS, 'reviewReads');
       Reflect.set(SUCCESSION_PORTS, 'reviewReads', reads);
       try {
