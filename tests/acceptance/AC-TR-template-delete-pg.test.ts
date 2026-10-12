@@ -3,6 +3,7 @@ import { sql, type Db } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it, vi } from 'vitest';
 import * as config from '../../apps/api/src/modules/talent-review/config-kit.js';
+import type { ConfigSpec } from '../../apps/api/src/modules/talent-review/config-kit.js';
 import * as structure from '../../apps/api/src/modules/talent-review/template-structure.js';
 import { SCORE_RULE } from '../../apps/api/src/modules/talent-review/score-rule-service.js';
 import { MODULE_GRADE } from '../../apps/api/src/modules/talent-review/module-grade-service.js';
@@ -39,10 +40,15 @@ function pauseVersion() {
 }
 
 /** deleteConfig 已 FOR UPDATE，再加载删除快照；按对象过滤，不截获模板的来源读取。 */
-function pauseConfigDelete(object: string, id: string) {
+function pauseConfigDelete(object: Kind, id: string) {
   const entered = barrier(),
     resume = barrier();
-  const spec = { scoreRule: SCORE_RULE, moduleGrade: MODULE_GRADE, field: FIELD, flow: FLOW }[object as Kind]!;
+  const spec: ConfigSpec<{ id: string }> = {
+    scoreRule: SCORE_RULE,
+    moduleGrade: MODULE_GRADE,
+    field: FIELD,
+    flow: FLOW,
+  }[object];
   const original = spec.load!;
   const spy = vi.spyOn(spec, 'load').mockImplementation(async (...args) => {
     const result = await original(...args);
@@ -70,7 +76,7 @@ function pauseTemplateDelete(id: string) {
   return { entered, resume, spy };
 }
 
-type Pause = ReturnType<typeof pauseVersion>;
+type Pause = Pick<ReturnType<typeof pauseVersion>, 'entered' | 'resume'> & { spy: { mockRestore(): void } };
 
 async function interleave(db: Db, pause: Pause, start: () => Promise<Response>, contend: () => Promise<Response>) {
   const first = start();
