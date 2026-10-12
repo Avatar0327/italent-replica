@@ -242,6 +242,11 @@ describe('DEC-453① 无计划终止', () => {
       FROM succession_sync_batches WHERE id=${id}::uuid`),
     );
     expect(rowsOf(local)).toEqual([{ status: 'terminated', has_plan: false, execution_no: 1, end_reason: 'aborted' }]);
+    const event = (await batchAudit(id, 'terminated'))[0]!;
+    expect(event.actor).toBe(w.user.id);
+    expect(event.before).toMatchObject({ status, hasPlan: false, executionNo: null });
+    expect(event.after).toMatchObject({ status: 'terminated', hasPlan: false, executionNo: 1 });
+    expect(Object.keys(event.before).sort()).toEqual(Object.keys(event.after).sort());
     const after = await w.asTenant((tx) => tx.execute(sql`SELECT id,revision FROM succession_records ORDER BY id`));
     expect(rowsOf(after)).toEqual(rowsOf(before));
     const plans = await w.asTenant((tx) =>
@@ -480,5 +485,115 @@ describe('AC-SC-03/04 D3 终止、重放与 SELF 边界', () => {
     );
     const seen = await w.asTenant((tx) => tx.execute(sql`SELECT ${predicate} AS visible`));
     expect(rowsOf(seen)).toEqual([{ visible: false }]);
+  });
+});
+
+interface BatchAudit {
+  actor: string | null;
+  before: Record<string, unknown>;
+  after: Record<string, unknown>;
+  changes: { field: string; from: unknown; to: unknown }[];
+}
+async function batchAudit(id: string, phase: string) {
+  return rowsOf<BatchAudit>(
+    await w.asTenant((tx) =>
+      tx.execute(sql`
+    SELECT actor_user_id AS actor,"before","after",changes FROM audit_events
+    WHERE tenant_id=${w.tenant.id}::uuid AND object_id=${id}
+      AND action=${`succession.sync-batch.${phase}`} ORDER BY occurred_at,id`),
+    ),
+  );
+}
+function sameExecution(event: BatchAudit, actor: string | null, execution: number) {
+  expect(event.actor).toBe(actor);
+  expect(event.before.executionNo).toBe(execution);
+  expect(event.after.executionNo).toBe(execution);
+  expect(Object.keys(event.before).sort()).toEqual(Object.keys(event.after).sort());
+  expect(event.changes.some((change) => change.field === 'executionNo')).toBe(false);
+}
+describe('第 1 轮审计正确性与明细 recovery 回归', () => {
+  it('人工 sync 驱动、计划、完成与通知保留实际操作人和真实前后值，同键不重复通知审计', async () => {
+    const h = await setup(false);
+    const options = { body: { runId: h.input.runId }, idempotencyKey: randomUUID() };
+    const response = await w.request('POST', '/sync', options);
+    expect(response.status).toBe(202);
+    const batch = (await response.json()) as { id: string };
+    const event = (await batchAudit(batch.id, 'sync'))[0]!;
+    expect(event.actor).toBe(w.user.id);
+    expect(event.before).toMatchObject({ status: 'waiting', executionNo: null, autoRetryCount: 0, nextRetryAt: null });
+    expect(event.after).toMatchObject({
+      status: 'waiting',
+      executionNo: null,
+      autoRetryCount: 0,
+      nextRetryAt: SC_NOW.toISOString(),
+    });
+    expect(Object.keys(event.before).sort()).toEqual(Object.keys(event.after).sort());
+    for (const phase of ['plan', 'execute', 'complete', 'sync_done'])
+      expect((await batchAudit(batch.id, phase))[0]!.actor, phase).toBe(w.user.id);
+    expect((await w.request('POST', '/sync', options)).status).toBe(202);
+    expect(await batchAudit(batch.id, 'sync_done')).toHaveLength(1);
+  });
+  it('人工 retry 记录原次数和阻塞原因，接管真实记录执行号 1→2', async () => {
+    const h = await setup();
+    await w.asTenant((tx) =>
+      tx.execute(sql`UPDATE succession_sync_batches
+      SET status='blocked',block_reason='STORAGE_UNAVAILABLE',auto_retry_count=2 WHERE id=${h.batch.id}::uuid`),
+    );
+    h.port.advance(121);
+    const response = await w.request('POST', `/sync-batches/${h.batch.id}/retry`, {
+      ifMatch: h.batch.revision,
+      body: {},
+    });
+    expect(response.status).toBe(202);
+    const event = (await batchAudit(h.batch.id, 'retry'))[0]!;
+    sameExecution(event, w.user.id, 1);
+    expect(event.before).toMatchObject({ autoRetryCount: 2, blockReason: 'STORAGE_UNAVAILABLE' });
+    expect(event.after).toMatchObject({ autoRetryCount: 0, blockReason: 'STORAGE_UNAVAILABLE' });
+    const claim = (await batchAudit(h.batch.id, 'claim'))[0]!;
+    expect(claim.actor).toBe(w.user.id);
+    expect(claim.before).toMatchObject({ status: 'blocked', executionNo: 1 });
+    expect(claim.after).toMatchObject({ status: 'executing', executionNo: 2 });
+  });
+  it('SA abort 已计划批次记本人操作，执行号保持 1，不制造空→1', async () => {
+    const h = await setup();
+    const response = await w.request('POST', `/sync-batches/${h.batch.id}/abort`, {
+      ifMatch: h.batch.revision,
+      body: {},
+    });
+    expect(response.status).toBe(200);
+    const event = (await batchAudit(h.batch.id, 'terminated'))[0]!;
+    sameExecution(event, w.user.id, 1);
+    expect(event.before).toMatchObject({ status: 'executing', endReason: null });
+    expect(event.after).toMatchObject({ status: 'terminated', endReason: 'aborted' });
+  });
+  it('自动恢复与项目重启清理仍记系统，执行号前后对称', async () => {
+    const h = await setup();
+    await h.port.supersede(h.input.runId);
+    await recoverSyncBatches(h.deps, w.tenant.id);
+    const event = (await batchAudit(h.batch.id, 'terminated'))[0]!;
+    sameExecution(event, null, 1);
+    expect(event.before.endReason).toBeNull();
+    expect(event.after.endReason).toBe('superseded');
+  });
+  it('items 与 targets 在投影层统一输出 recovery，不暴露内部 retryable', async () => {
+    const h = await setup();
+    for (const retryable of [true, false]) {
+      await w.asTenant(async (tx) => {
+        await tx.execute(
+          sql`UPDATE succession_sync_items SET retryable=${retryable} WHERE batch_id=${h.batch.id}::uuid`,
+        );
+        await tx.execute(
+          sql`UPDATE succession_sync_targets SET retryable=${retryable} WHERE batch_id=${h.batch.id}::uuid`,
+        );
+      });
+      for (const kind of ['items', 'targets']) {
+        const response = await w.request('GET', `/sync-batches/${h.batch.id}/${kind}`);
+        expect(response.status).toBe(200);
+        const body = (await response.json()) as { items: Record<string, unknown>[] };
+        expect(body.items).toHaveLength(1);
+        expect(body.items[0]).toHaveProperty('recovery', retryable ? 'retry_same_run' : 'none');
+        expect(body.items[0]).not.toHaveProperty('retryable');
+      }
+    }
   });
 });
