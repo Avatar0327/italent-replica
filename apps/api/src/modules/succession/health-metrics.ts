@@ -2,6 +2,7 @@
 import { type SuccessionLevelRow, type SyncNomination, type HealthMetric } from '@italent/domain';
 import type { TalentReviewSyncPort } from '../talent-review/sync-port.js';
 import { readOnDutyCount } from './org-stats.js';
+import { healthDependencies, type HealthDependencies } from './health-dependencies.js';
 import { orgHealthSourceStatus } from './health-source-access.js';
 import { healthPeople, customHealthPopulation } from './health-population.js';
 import type { healthPrincipal } from './health-principal.js';
@@ -14,10 +15,22 @@ export type HealthReads = Pick<
 >;
 type MetricContext = [CalcContext, CalcObject, Awaited<ReturnType<typeof healthPrincipal>>, HealthReads];
 export function healthMetricReader(...context: MetricContext): (row: SuccessionLevelRow) => Promise<HealthMetric> {
-  return async (row) =>
-    measureHealth(row, await readHealthSource(row, context), context[0].run.businessDate, context[2].timezone);
+  return async (row) => {
+    const dependencies = healthDependencies(row);
+    return measureHealth(
+      row,
+      await readHealthSource(row, dependencies, context),
+      context[0].run.businessDate,
+      context[2].timezone,
+      dependencies,
+    );
+  };
 }
-async function readHealthSource(row: SuccessionLevelRow, context: MetricContext): Promise<HealthSource> {
+async function readHealthSource(
+  row: SuccessionLevelRow,
+  dependencies: HealthDependencies,
+  context: MetricContext,
+): Promise<HealthSource> {
   const [ctx, object, principal, port] = context,
     { tx, run } = ctx;
   const base: HealthSource = {
@@ -28,7 +41,7 @@ async function readHealthSource(row: SuccessionLevelRow, context: MetricContext)
     incumbents: 0,
     field: { object: 'org', code: row.fieldCode ?? 'count', path: 'org.value', kind: 'number' },
   };
-  base.status = await orgHealthSourceStatus(tx, row, {
+  base.status = await orgHealthSourceStatus(tx, dependencies, {
     tenantId: run.tenantId,
     userId: principal.userId,
     orgId: object.objectId,
@@ -41,9 +54,8 @@ async function readHealthSource(row: SuccessionLevelRow, context: MetricContext)
     context: { asOf: run.businessDate },
     viewer: { kind: 'principal' as const, userId: principal.userId },
   };
-  if (row.measure === 'green_rate') return readGreenSource(port, tx, args, base, object.objectId);
-  const needSuccessors =
-    row.fieldSource === 'succession' || row.population === 'successors' || row.measure === 'count_over_successors';
+  if (dependencies.population === null) return readGreenSource(port, tx, args, base, object.objectId);
+  const needSuccessors = dependencies.reads.has('successors');
   const entries = needSuccessors ? await port.readSuccessionEntries(tx, args) : [];
   if (needSuccessors && !entries.length) return { ...base, status: 'unavailable' };
   for (const status of ['forbidden', 'unavailable', 'module_absent'] as const)
@@ -52,21 +64,22 @@ async function readHealthSource(row: SuccessionLevelRow, context: MetricContext)
     .flatMap((e) => e.nominations)
     .filter((n) => n.kind === 'org' && n.direction === 'successor' && n.orgId === object.objectId);
   const successors = [...new Set(nominations.map((n) => n.successorEmployeeId))];
-  const [org] = await loadOrgSnapshot(tx, run.tenantId, run.businessDate, undefined, {
-    id: object.objectId,
-    includeDisabled: false,
-  });
+  const [org] = dependencies.reads.has('incumbents')
+    ? await loadOrgSnapshot(tx, run.tenantId, run.businessDate, undefined, {
+        id: object.objectId,
+        includeDisabled: false,
+      })
+    : [];
   const incumbents = org?.personInChargeId ? [org.personInChargeId] : [];
-  const people = await selectPeople(row, context, successors, incumbents);
+  const people = await selectPeople(row, dependencies, context, successors, incumbents);
   Object.assign(base, { population: people.length, successors: successors.length, incumbents: incumbents.length });
-  if (row.fieldCode === null && row.measure !== 'successor_count')
-    return { ...base, samples: people.map((key) => ({ key, read: healthScalar(1) })) };
-  if (row.fieldSource === 'succession') return readSuccessionSource(row, nominations, people, base);
-  if (row.fieldSource === 'org') {
-    base.field = { ...base.field, kind: row.fieldCode === 'person_in_charge_id' ? 'text' : 'number' };
-    if (row.fieldCode === 'green_rate') return readGreenSource(port, tx, args, base, object.objectId);
+  if (dependencies.field === null) return { ...base, samples: people.map((key) => ({ key, read: healthScalar(1) })) };
+  if (dependencies.field === 'successors') return readSuccessionSource(row, nominations, people, base);
+  if (dependencies.field !== 'review') {
+    base.field = { ...base.field, kind: dependencies.field === 'incumbents' ? 'text' : 'number' };
+    if (dependencies.field === 'green_rate') return readGreenSource(port, tx, args, base, object.objectId);
     const value =
-      row.fieldCode === 'on_duty_count'
+      dependencies.field === 'on_duty_count'
         ? await readOnDutyCount(tx, {
             tenantId: run.tenantId,
             orgId: object.objectId,
@@ -81,14 +94,15 @@ async function readHealthSource(row: SuccessionLevelRow, context: MetricContext)
 }
 async function selectPeople(
   row: SuccessionLevelRow,
+  dependencies: HealthDependencies,
   [ctx, object, principal]: MetricContext,
   successors: string[],
   incumbents: string[],
 ) {
-  if (row.population === 'successors') return successors;
-  if (row.population === 'incumbents') return incumbents;
+  if (dependencies.population === 'successors') return successors;
+  if (dependencies.population === 'incumbents') return incumbents;
   const people = await healthPeople(ctx.tx, ctx.run.tenantId, object.objectId, ctx.run.businessDate);
-  if (row.population !== 'custom') return people.map((p) => p.id);
+  if (dependencies.population !== 'custom') return people.map((p) => p.id);
   return (
     await customHealthPopulation(
       ctx.tx,

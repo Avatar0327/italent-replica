@@ -9,6 +9,7 @@ import {
   type FieldRead,
   type HealthMetric,
 } from '@italent/domain';
+import { healthDependencies, type HealthDependencies } from './health-dependencies.js';
 import { CalcObjectFailure } from './calc-contract.js';
 export interface HealthSample {
   /** 人员键用于去重；来源零提名不伪造人员样本。 */
@@ -68,6 +69,7 @@ export function measureHealth(
   source: HealthSource,
   asOf: string,
   timezone: string,
+  dependencies: HealthDependencies = healthDependencies(row),
 ): HealthMetric {
   const statuses = [source.status, ...source.samples.map((s) => s.read.status)];
   for (const status of ['forbidden', 'unavailable', 'module_absent'] as const)
@@ -88,7 +90,7 @@ export function measureHealth(
   const selected = unique(
     samples.filter((s) => matches(row, s.read.value as PlainValue, source.field, asOf, timezone)),
   );
-  if (row.measure === 'green_rate' || row.measure === 'average') {
+  if (dependencies.measure.numerator === 'values') {
     const values = selected.filter((s) => s.read.status === 'value').map((s) => s.read.value);
     // 真正的零人数字段可参与平均值；不向样本集合补入合成的“第零名人员”。
     if (zeroFieldMatches) values.push(fieldValue);
@@ -97,11 +99,9 @@ export function measureHealth(
     return { status: 'value', value: (values as number[]).reduce((sum, n) => sum + n, 0) / values.length };
   }
   const count = selected.length;
-  if (row.measure === 'count' || row.measure === 'successor_count') return { status: 'value', value: count };
-  let denominator = source.population;
-  if (row.measure === 'count_over_successors') denominator = source.successors;
-  if (row.measure === 'count_over_incumbents') denominator = source.incumbents;
-  if (row.measure === 'review_result_ratio') denominator = nonempty.length;
+  const denominatorKey = dependencies.measure.denominator;
+  if (denominatorKey === null) return { status: 'value', value: count };
+  const denominator = denominatorKey === 'nonempty' ? nonempty.length : source[denominatorKey];
   if (!denominator) return { status: 'empty' };
   return { status: 'value', value: count / denominator };
 }
