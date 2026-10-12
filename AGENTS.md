@@ -44,7 +44,7 @@
 
    **生成物（DEC-430①）**：F-039 冻结基准 / 发现探测 / 证据登记、端点计数和迁移编号不要求 PR 内与最新 main 一致，PR 上只警告；合并队列在合并前跑 `pnpm merge:main` 重算，队首 PR 与 main 上按 `GENERATED_STRICT=1` 严格校验。需要 main 的新代码时用 `pnpm merge:main`，不要手工合生成物。说明见 `docs/08_设计/DEC-430_生成物合并后重算.md`。
 
-   **授权版本（DEC-439④）**：改了授权项编码时，`STANDARD_GRANT_DIGEST` 写测试提示的指纹，`STANDARD_GRANT_VERSION` 写占位（当时 main + 1），`AC-PLAT-F061-grants` 的 HISTORY 追加同号一行并写注释；与别的 PR 撞号不用管，`pnpm merge:main` 合并时统一定为 main + 1、重算指纹并改写 HISTORY。指纹与编码一致、HISTORY 自洽两条检查每个 PR 都判红。说明见同一文档第 6 节。
+   **授权版本（DEC-439④）**：改了授权项编码时，`STANDARD_GRANT_DIGEST` 写测试提示的指纹，`STANDARD_GRANT_VERSION` 写占位（当时 main + 1），`AC-PLAT-F061-grants` 的 HISTORY 追加同号一行并写注释，`packages/domain/src/platform/standard-grant-changes.json` 整份改写为本 PR 有意增删的编码（F-097，测试以分叉点编码为动态基线核对）；与别的 PR 撞号不用管，`pnpm merge:main` 合并时统一定为 main + 1、重算指纹并改写 HISTORY。指纹与编码一致、HISTORY 自洽两条检查每个 PR 都判红。说明见同一文档第 6 节。
 
 8. **交审前自检（必做，DEC-338）**：所有开发任务在贴“开发完成，待审”之前，按 `.claude/skills/dev-selfcheck/SKILL.md` 跑一遍自检（open-code-review 项目规则 + 对照设计与 DEC），结果写进“开发完成”评论。开发由 Claude 负责：Opus 负责规划、设计与契约 PR，Sonnet 负责实现；同类 P2 连续两轮没修好，在同一分支换 Opus 接手。审查由 Codex 负责（DEC-340①）：C 档设计审与代码首轮用 Astra Ultra；C 档代码第 2 轮起用 Sol xhigh + priority；B 档用 Sol high + priority。
 
@@ -100,7 +100,7 @@
   | 构建 | `pnpm build` |
   | 生成迁移（改 `packages/db/src/schema/` 后） / 手写 SQL 迁移 | `pnpm db:generate` / `pnpm --filter @italent/db exec drizzle-kit generate --custom --name=<名称>` |
   | 对 `DATABASE_URL` 执行迁移 | `pnpm db:migrate` |
-  | 合入 main：生成物冲突取 main 后重算、本分支迁移改号接在 main 之后、授权版本定为 main + 1 并重算指纹（DEC-430①、DEC-439④；`--check` 只预演） | `pnpm merge:main` |
+  | 合入 main：生成物冲突取 main 后重算、本分支迁移改号接在 main 之后、授权版本按合并结果定为 main + 1 并重算指纹（DEC-430①、DEC-439④；`--check` 只预演，定号按合并结果预告） | `pnpm merge:main` |
 - 目录结构（归属车道留待第 1 轮派发单填写）：
   | 目录 | 内容 |
   |---|---|

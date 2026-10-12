@@ -310,3 +310,92 @@ export function resolveGrantConflict(file, diff3Text) {
     return resolveHunks(diff3Text, (h, prefix) => (isGrantHistoryHunk(h, prefix) ? h.theirs : null));
   return null;
 }
+
+// ---------------------------------------------------------------------------------------------
+// F-097：授权项编码增删声明（动态基线）与 --check 定号预告
+
+/**
+ * 本 PR 声明的授权项编码增删：{ reason, add: [...], remove: [...] }。条目是完整编码，或以 * 结尾的前缀（前缀里至少有一个 /，
+ * 不允许裸 *）。守卫测试以分叉点（CI 上是测试合并提交的 base）的编码为基线，实际增删必须与声明一致。
+ */
+export const GRANT_CHANGES_PATH = 'packages/domain/src/platform/standard-grant-changes.json';
+
+export const EMPTY_GRANT_CHANGES = Object.freeze({ reason: '', add: Object.freeze([]), remove: Object.freeze([]) });
+
+export function parseGrantChanges(text) {
+  const value = JSON.parse(text);
+  const list = (key) => {
+    const items = value?.[key];
+    if (!Array.isArray(items) || items.some((i) => typeof i !== 'string' || !i))
+      throw new Error(`${GRANT_CHANGES_PATH} 的 ${key} 必须是非空字符串数组`);
+    for (const item of items)
+      if (item.endsWith('*') && !item.slice(0, -1).includes('/'))
+        throw new Error(`${GRANT_CHANGES_PATH} 的前缀条目至少要写到身份编码加 /：${item}`);
+    return items;
+  };
+  if (typeof value?.reason !== 'string') throw new Error(`${GRANT_CHANGES_PATH} 缺少 reason（写 PR / 任务与原因）`);
+  return { reason: value.reason, add: list('add'), remove: list('remove') };
+}
+
+/**
+ * 本 PR 生效的声明：声明文件与基线上的内容相同（从 main 继承来的上一个 PR 的声明）视为本 PR 没有声明；
+ * 本 PR 改写过（含新建）才生效。这样旧声明不必清空，也不会放过后来的 PR。
+ */
+export function activeGrantChanges(baseText, headText) {
+  if (headText === undefined || headText === baseText) return EMPTY_GRANT_CHANGES;
+  return parseGrantChanges(headText);
+}
+
+const matchesGrantEntry = (entry, code) => (entry.endsWith('*') ? code.startsWith(entry.slice(0, -1)) : code === entry);
+
+/**
+ * 动态基线比较：baseCodes 是基线（分叉点 / 测试合并提交的 base）的编码，headCodes 是当前编码。
+ * 失败项：实际新增 / 删除的编码不被任一声明条目覆盖；声明新增的条目在当前编码里一个都没有；声明删除的条目当前仍有。
+ * 声明新增的编码若基线已有（别的 PR 先加了同一编码）不算失败——当前编码里有即可。
+ */
+export function checkGrantChanges({ baseCodes, headCodes, declared }) {
+  const base = new Set(baseCodes);
+  const head = new Set(headCodes);
+  const added = [...head].filter((c) => !base.has(c)).sort();
+  const removed = [...base].filter((c) => !head.has(c)).sort();
+  const problems = [
+    ...added.filter((c) => !declared.add.some((e) => matchesGrantEntry(e, c))).map((c) => `未声明的新增编码：${c}`),
+    ...removed
+      .filter((c) => !declared.remove.some((e) => matchesGrantEntry(e, c)))
+      .map((c) => `未声明的删除编码：${c}`),
+    ...declared.add
+      .filter((e) => ![...head].some((c) => matchesGrantEntry(e, c)))
+      .map((e) => `声明新增但当前编码里没有：${e}`),
+    ...declared.remove.flatMap((e) => {
+      const left = [...head].filter((c) => matchesGrantEntry(e, c));
+      return left.length ? [`声明删除但当前编码里仍有：${e}（如 ${left[0]}）`] : [];
+    }),
+  ];
+  return { added, removed, problems };
+}
+
+/**
+ * 合并时声明文件取哪一边：本分支相对分叉点改过就整份取本分支（main 上那份是别的 PR 的旧声明），否则取 main。
+ * 不做逐行合并——两份声明拼在一起没有意义。返回 undefined 表示两边都没有这个文件。
+ */
+export function pickGrantChanges({ branch, fork, main }) {
+  return branch !== undefined && branch !== fork ? branch : main;
+}
+
+/**
+ * --check 的授权版本预告（P3-2）：mergedDigest 是“合并结果”的指纹（git merge-tree 算出的树），与实际定号同口径；
+ * 算不出（packages/domain/src 里有业务冲突等）时为 undefined，按本分支相对分叉点是否改了编码给出条件式提示。
+ */
+export function describeGrantPlan({ main, mergedDigest, branchDigest, forkDigest }) {
+  if (mergedDigest !== undefined)
+    return mergedDigest === main.digest
+      ? `授权版本：合并结果的编码与 main 相同（指纹 ${main.digest}），合并时取 main 的 version ${main.version}` +
+          (branchDigest !== forkDigest ? '（本分支的编码改动 main 上已有，如别的 PR 加了同一编码）' : '')
+      : `授权版本：合并结果的编码与 main 不同，合并时定为 main + 1 = ${main.version + 1}，指纹 ${mergedDigest}`;
+  if (branchDigest === forkDigest)
+    return `授权版本：本分支没改授权项编码（指纹同分叉点），合并时预计取 main 的 version ${main.version}（合并结果暂算不出，以实际合并为准）`;
+  return (
+    `授权版本：本分支改了授权项编码（指纹 ${branchDigest}，分叉点 ${forkDigest}）；合并结果暂算不出（有业务冲突），` +
+    `合并后若编码与 main 相同（如别的 PR 已加了同一编码）则取 main 的 version ${main.version}，否则定为 main + 1 = ${main.version + 1}`
+  );
+}

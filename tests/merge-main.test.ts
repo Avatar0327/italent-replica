@@ -3,13 +3,19 @@
  * 1. pnpm merge:main 的纯函数（scripts/merge-main-lib.mjs）：生成物白名单、迁移改号、快照三方合并、“只改计数”冲突识别；
  * 2. 生成物开关（generated-gate.ts）：PR 上只警告、GENERATED_STRICT=1 判红；
  * 3. 端点计数比较（endpoint-counts.ts）；
- * 4. 授权版本定号（planGrantVersion 等，DEC-439④）。
+ * 4. 授权版本定号（planGrantVersion 等，DEC-439④）；
+ * 5. 授权项编码增删声明与动态基线、--check 定号预告（F-097）。
  */
 import { readFileSync } from 'node:fs';
 import { STANDARD_GRANT_DIGEST, STANDARD_GRANT_VERSION } from '@italent/domain';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  activeGrantChanges,
+  checkGrantChanges,
   classifyConflict,
+  describeGrantPlan,
+  EMPTY_GRANT_CHANGES,
+  GRANT_CHANGES_PATH,
   GRANT_HISTORY_PATH,
   type GrantHistoryEntry,
   GRANTS_PATH,
@@ -18,7 +24,9 @@ import {
   isGeneratedPath,
   maskNumbers,
   merge3,
+  parseGrantChanges,
   parseGrantHistory,
+  pickGrantChanges,
   planGrantVersion,
   planRenumber,
   readGrantConstants,
@@ -410,5 +418,120 @@ describe('授权版本合并时定号（DEC-439④）', () => {
     expect(resolveGrantConflict(GRANT_HISTORY_PATH, outside)!.remaining).toBe(1);
     const afterHistory = `${historyTs(`      17: '${D(2)}',\n`)}${hunk('    // a\n', '', '    // b\n')}`;
     expect(resolveGrantConflict(GRANT_HISTORY_PATH, afterHistory)!.remaining).toBe(1);
+  });
+});
+
+describe('授权项编码增删声明与动态基线（F-097）', () => {
+  const declare = (add: string[] = [], remove: string[] = [], reason = 'B6b：模板复制按钮') =>
+    JSON.stringify({ reason, add, remove });
+  const base = ['p/app:A', 'p/O/op:view', 'p/O/field:f:view', 'q/app:A'];
+
+  it('声明文件：本 PR 改写过才生效；与基线相同（从 main 继承的上一个 PR 的声明）视为没有声明', () => {
+    const old = declare(['p/O/button:copy@list']);
+    expect(activeGrantChanges(old, old)).toEqual(EMPTY_GRANT_CHANGES);
+    expect(activeGrantChanges(old, undefined)).toEqual(EMPTY_GRANT_CHANGES);
+    expect(activeGrantChanges(undefined, old).add).toEqual(['p/O/button:copy@list']);
+    expect(activeGrantChanges(old, declare(['p/X*'])).add).toEqual(['p/X*']);
+  });
+
+  it('声明文件格式：reason 必填，add / remove 是非空字符串数组；不允许裸 * 或没有 / 的前缀', () => {
+    expect(parseGrantChanges(declare(['p/O*'], ['q/app:A']))).toEqual({
+      reason: 'B6b：模板复制按钮',
+      add: ['p/O*'],
+      remove: ['q/app:A'],
+    });
+    expect(() => parseGrantChanges('{"add":[],"remove":[]}')).toThrow(/reason/);
+    expect(() => parseGrantChanges(declare([''] as string[]))).toThrow(/非空字符串/);
+    expect(() => parseGrantChanges(declare(['*']))).toThrow(/前缀/);
+    expect(() => parseGrantChanges(declare(['standard*']))).toThrow(/前缀/);
+    expect(() => parseGrantChanges('{"reason":"","add":"x","remove":[]}')).toThrow(/add/);
+  });
+
+  it('实际增删与声明一致（含前缀条目）：通过', () => {
+    const head = [...base.filter((c) => c !== 'q/app:A'), 'p/O/button:copy@list', 'p/T/op:view', 'p/T/field:x:view'];
+    const result = checkGrantChanges({
+      baseCodes: base,
+      headCodes: head,
+      declared: { reason: 'r', add: ['p/O/button:copy@list', 'p/T/*'], remove: ['q/app:A'] },
+    });
+    expect(result).toEqual({
+      added: ['p/O/button:copy@list', 'p/T/field:x:view', 'p/T/op:view'],
+      removed: ['q/app:A'],
+      problems: [],
+    });
+  });
+
+  it('多出未声明的增删、声明的没发生：逐条列出', () => {
+    const head = [...base.filter((c) => c !== 'p/O/field:f:view'), 'p/O/button:copy@list', 'p/O/button:x@list'];
+    const { problems } = checkGrantChanges({
+      baseCodes: base,
+      headCodes: head,
+      declared: { reason: 'r', add: ['p/O/button:copy@list', 'p/Gone/op:view'], remove: ['q/app:A'] },
+    });
+    expect(problems).toEqual([
+      '未声明的新增编码：p/O/button:x@list',
+      '未声明的删除编码：p/O/field:f:view',
+      '声明新增但当前编码里没有：p/Gone/op:view',
+      '声明删除但当前编码里仍有：q/app:A（如 q/app:A）',
+    ]);
+  });
+
+  it('没有声明（或继承的旧声明）时，编码集合不许变', () => {
+    expect(checkGrantChanges({ baseCodes: base, headCodes: base, declared: EMPTY_GRANT_CHANGES }).problems).toEqual([]);
+    expect(
+      checkGrantChanges({ baseCodes: base, headCodes: [...base, 'p/O/op:delete'], declared: EMPTY_GRANT_CHANGES })
+        .problems,
+    ).toEqual(['未声明的新增编码：p/O/op:delete']);
+  });
+
+  it('别的 PR 先在 main 上加了同一编码：基线已有，本 PR 的声明不算失败（当前编码里有即可）', () => {
+    const head = [...base, 'p/O/button:copy@list'];
+    expect(
+      checkGrantChanges({
+        baseCodes: head,
+        headCodes: head,
+        declared: { reason: 'r', add: ['p/O/button:copy@list'], remove: [] },
+      }).problems,
+    ).toEqual([]);
+  });
+
+  it('合并时声明文件取哪边：本分支改过整份取本分支，否则取 main；不逐行拼接', () => {
+    const fork = declare(['a/x'], [], 'A');
+    const mine = declare(['b/y'], [], 'B');
+    const theirs = declare(['c/z'], [], 'C');
+    expect(pickGrantChanges({ branch: mine, fork, main: theirs })).toBe(mine);
+    expect(pickGrantChanges({ branch: fork, fork, main: theirs })).toBe(theirs);
+    expect(pickGrantChanges({ branch: mine, fork: undefined, main: undefined })).toBe(mine);
+    expect(pickGrantChanges({ branch: undefined, fork: undefined, main: theirs })).toBe(theirs);
+  });
+
+  it('仓库里的声明文件可解析', () => {
+    expect(() => parseGrantChanges(readFileSync(GRANT_CHANGES_PATH, 'utf8'))).not.toThrow();
+  });
+
+  const D = (n: number) => String(n).repeat(16).slice(0, 16);
+  const main = { version: 18, digest: D(2) };
+
+  it('--check 预告按合并结果：两个 PR 加了同一编码时合并结果与 main 相同，预告取 main 的 18（不再说 19）', () => {
+    const text = describeGrantPlan({ main, mergedDigest: D(2), branchDigest: D(3), forkDigest: D(1) });
+    expect(text).toContain('取 main 的 version 18');
+    expect(text).toContain('main 上已有');
+    expect(text).not.toContain('19');
+    expect(describeGrantPlan({ main, mergedDigest: D(2), branchDigest: D(1), forkDigest: D(1) })).not.toContain(
+      'main 上已有',
+    );
+  });
+
+  it('--check 预告按合并结果：与 main 不同则 main + 1 并给出合并结果指纹', () => {
+    const text = describeGrantPlan({ main, mergedDigest: D(4), branchDigest: D(3), forkDigest: D(1) });
+    expect(text).toContain('main + 1 = 19');
+    expect(text).toContain(D(4));
+  });
+
+  it('--check 合并结果算不出（有业务冲突）：本分支改了编码时给条件式提示，没改时预计取 main', () => {
+    const changed = describeGrantPlan({ main, mergedDigest: undefined, branchDigest: D(3), forkDigest: D(1) });
+    expect(changed).toMatch(/若编码与 main 相同.*取 main 的 version 18，否则定为 main \+ 1 = 19/);
+    const same = describeGrantPlan({ main, mergedDigest: undefined, branchDigest: D(1), forkDigest: D(1) });
+    expect(same).toContain('预计取 main 的 version 18');
   });
 });

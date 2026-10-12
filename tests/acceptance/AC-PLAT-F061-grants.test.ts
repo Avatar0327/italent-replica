@@ -44,6 +44,8 @@ import { objectCatalog } from '../../apps/api/src/modules/permission/catalog.js'
 import { installProfileRows } from '../../apps/api/src/modules/permission/standard-profiles.js';
 import { lockTenantSeeds, readLedger, recordLedger } from '../../apps/api/src/seeds/grant-ledger.js';
 import { sha256Hex } from '../../packages/domain/src/platform/sha256.js';
+import { activeGrantChanges, checkGrantChanges, GRANT_CHANGES_PATH } from '../../scripts/merge-main-lib.mjs';
+import { fileAt, fileNow, grantCodesAt, resolveGrantBase } from './support/grant-baseline.js';
 import { newUser, PLATFORM, provisioned, seedOperator } from './support/platform-api.js';
 import { cmd, seedTenantWithMember, tenantApi } from './support/tenant-api.js';
 
@@ -197,6 +199,25 @@ describe('AC-PLAT-F061 T-16 授权项编码与指纹守卫', () => {
       expect(HISTORY[versions[i]!], `version ${versions[i]} 与上一版指纹相同：编码没变就不该递增`).not.toBe(
         HISTORY[versions[i - 1]!],
       );
+  });
+
+  it('编码增删与本 PR 的声明一致：以分叉点的编码为动态基线（F-097）', async (context) => {
+    // 实际增删 = 当前编码 − 基线编码（CI 上基线是测试合并提交的 base，即合进最新 main 后本 PR 带来的增删；本地是 merge-base）。
+    // 改了授权项编码的 PR 在 standard-grant-changes.json 整份写本 PR 的 reason / add / remove（条目可用“前缀*”）；
+    // 文件与基线相同（从 main 继承的上一个 PR 的声明）视为没有声明。新增 / 删除了未声明的编码，或声明的没发生，都判红。
+    const base = resolveGrantBase();
+    if ('skip' in base) return context.skip(`F-097 动态基线：${base.skip}`);
+    const declared = activeGrantChanges(fileAt(base.sha, GRANT_CHANGES_PATH), fileNow(GRANT_CHANGES_PATH));
+    const { added, removed, problems } = checkGrantChanges({
+      baseCodes: await grantCodesAt(base.sha),
+      headCodes: STANDARD_GRANT_CODES,
+      declared,
+    });
+    expect(
+      problems,
+      `基线 ${base.how}（${base.sha.slice(0, 8)}）：实际新增 ${added.length} 项、删除 ${removed.length} 项；` +
+        `把本 PR 有意增删的编码写进 ${GRANT_CHANGES_PATH}`,
+    ).toEqual([]);
   });
 
   it('纯 TS 的 SHA-256 与 node:crypto 一致（含多块、中文、空串）', () => {

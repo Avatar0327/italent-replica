@@ -2,10 +2,11 @@
 // DEC-430①：把 origin/main 合进当前分支，并处理“生成物”与迁移编号，开发线程和合并队列共用。
 // 用法：pnpm merge:main [--check] [--continue] [--no-regen] [--no-fetch] [--take-ours-for-counts]
 //   （默认）fetch → merge origin/main → 只在生成物白名单内的冲突取 main 版本 → 本分支迁移改号接在 main 之后
-//           → 授权版本定号（DEC-439④：本分支改了授权项编码则 main + 1 并重算指纹，否则取 main）
+//           → 授权版本定号（DEC-439④：合并结果的授权项编码与 main 不同则 main + 1 并重算指纹，否则取 main；
+//             编码增删声明 standard-grant-changes.json 本分支改过就整份取本分支，F-097）
 //           → 重算 F-039 证据登记与冻结基准 / 端点计数 → 提交“merge: 合入 main 并重算生成物”
 //   --check     只预演：列出会冲突的文件（区分生成物 / 授权版本 / 业务文件）、迁移改号与授权版本定号计划，不改工作区；
-//               有业务冲突退出码 1
+//               定号按 git merge-tree 算出的合并结果预告（与实际同口径），算不出时给条件式提示；有业务冲突退出码 1
 //   --continue  业务冲突手工解决并 git add 之后，从改号那一步继续
 //   --no-regen  不跑重算命令（只合并、改号、提交）
 //   --take-ours-for-counts  业务冲突里 main 一侧只改了数字字面量（如端点计数）的文件，冲突处取本分支一侧并 git add；
@@ -18,13 +19,16 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   classifyConflict,
+  describeGrantPlan,
   drizzleJson,
   GENERATED_PATHS,
+  GRANT_CHANGES_PATH,
   GRANT_HISTORY_PATH,
   GRANTS_PATH,
   isGeneratedPath,
   JOURNAL_PATH,
   parseGrantHistory,
+  pickGrantChanges,
   planGrantVersion,
   planRenumber,
   readGrantConstants,
@@ -145,20 +149,31 @@ function resolveCountOnly(items) {
   return new Set(done.map((d) => d.file));
 }
 
-/** 授权版本冲突（DEC-439④）：standard-grants.ts 只在两行常量、F061 测试只在 HISTORY 内冲突的文件，可自动处理。 */
+/**
+ * 授权版本冲突（DEC-439④）：standard-grants.ts 只在两行常量、F061 测试只在 HISTORY 内冲突的文件，可自动处理；
+ * 编码增删声明（F-097）整份取一边（pickGrantChanges），冲突总能自动处理。
+ */
 function grantConflicts(files, revs) {
   return files.flatMap((file) => {
+    if (file === GRANT_CHANGES_PATH) {
+      const [branch, fork, main] = revs.map((rev) => show(rev, file));
+      const text = pickGrantChanges({ branch, fork, main });
+      return text === undefined ? [] : [{ file, text }];
+    }
     const text = [GRANTS_PATH, GRANT_HISTORY_PATH].includes(file) ? diff3Text(file, revs) : undefined;
     const resolved = text === undefined ? null : resolveGrantConflict(file, text);
     return resolved && resolved.remaining === 0 ? [{ file, text: resolved.text }] : [];
   });
 }
 
-/** 授权项编码指纹：用 vite 的 runnerImport 直接加载工作区的 TS 源码（不必先构建，不新增依赖）。 */
-async function grantDigest() {
+/**
+ * 授权项编码指纹：用 vite 的 runnerImport 直接加载 root 下的 TS 源码（不必先构建，不新增依赖）。
+ * root 默认是工作区；--check 传入从合并结果树里导出的临时目录（packages/domain/src 不依赖 npm 包）。
+ */
+async function grantDigest(root = ROOT) {
   const { runnerImport } = await import('vite');
-  const { module } = await runnerImport(path.join(ROOT, GRANTS_PATH), {
-    root: ROOT,
+  const { module } = await runnerImport(path.join(root, GRANTS_PATH), {
+    root,
     configFile: false,
     logLevel: 'silent',
   });
@@ -169,6 +184,7 @@ const grantLabel = () => `${git('rev-parse', '--abbrev-ref', 'HEAD').trim()}（m
 
 /** 授权版本定号（DEC-439④）：以合并结果的指纹与 main 比较，写回常量与 HISTORY 并 git add。 */
 async function assignGrantVersion() {
+  syncGrantChanges();
   const mainGrants = show(MAIN, GRANTS_PATH);
   const mainTest = show(MAIN, GRANT_HISTORY_PATH);
   if (mainGrants === undefined || mainTest === undefined) return console.log('授权版本：main 上没有授权版本文件，跳过');
@@ -196,18 +212,78 @@ async function assignGrantVersion() {
   );
 }
 
-/** --check：按本分支（HEAD 工作区）指纹与分叉点指纹预告定号；实际指纹在合并后重算。 */
-async function printGrantPlan(base) {
+/**
+ * 编码增删声明（F-097）：本分支相对分叉点改过就整份取本分支，否则取 main。git 自动合并成功（两边改了不同行）时也要改写，
+ * 否则会拼出两个 PR 的混合声明。合并进行中 HEAD 仍是合并前的提交。
+ */
+function syncGrantChanges() {
+  const fork = git('merge-base', 'HEAD', MAIN).trim();
+  const text = pickGrantChanges({
+    branch: show('HEAD', GRANT_CHANGES_PATH),
+    fork: show(fork, GRANT_CHANGES_PATH),
+    main: show(MAIN, GRANT_CHANGES_PATH),
+  });
+  if (text === undefined) return;
+  if (!existsSync(path.join(ROOT, GRANT_CHANGES_PATH)) || readRepo(GRANT_CHANGES_PATH) !== text)
+    writeRepo(GRANT_CHANGES_PATH, text);
+  git('add', '--', GRANT_CHANGES_PATH);
+}
+
+const CONFLICT_MARKER_RE = /^(?:<{7}|>{7}) /m;
+
+/**
+ * 合并结果的授权项编码指纹（P3-2，与实际定号同口径）：git merge-tree 写出合并结果树，导出 packages/domain/src 到临时目录加载。
+ * standard-grants.ts 只在两行常量冲突时按自动定号的规则处理；packages/domain/src 里还有其他冲突则算不出，返回 undefined。
+ */
+async function mergedGrantDigest(base) {
+  const run = spawnSync('git', ['merge-tree', '--write-tree', '--no-messages', 'HEAD', MAIN], {
+    cwd: ROOT,
+    encoding: 'utf8',
+  });
+  if (run.status !== 0 && run.status !== 1) return undefined;
+  const tree = run.stdout.split('\n')[0].trim();
+  const dir = mkdtempSync(path.join(tmpdir(), 'merge-main-grants-'));
+  try {
+    const tar = spawnSync(
+      'sh',
+      ['-c', `git archive --format=tar "$1" packages/domain/src | tar -x -C "$2"`, 'sh', tree, dir],
+      {
+        cwd: ROOT,
+        stdio: 'ignore',
+      },
+    );
+    if (tar.status !== 0) return undefined;
+    const files = git('ls-tree', '-r', '--name-only', tree, '--', 'packages/domain/src').split('\n').filter(Boolean);
+    for (const file of files) {
+      const text = readFileSync(path.join(dir, file), 'utf8');
+      if (!CONFLICT_MARKER_RE.test(text)) continue;
+      const diff3 = file === GRANTS_PATH ? diff3Text(file, ['HEAD', base, MAIN]) : undefined;
+      const resolved = diff3 === undefined ? null : resolveGrantConflict(file, diff3);
+      if (!resolved || resolved.remaining) return undefined;
+      writeFileSync(path.join(dir, file), resolved.text);
+    }
+    return await grantDigest(dir);
+  } catch {
+    return undefined;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/** --check：按合并结果的指纹预告定号（P3-2）；算不出时按本分支相对分叉点的指纹给条件式提示。 */
+async function printGrantPlan(base, upToDate) {
   const mainGrants = show(MAIN, GRANTS_PATH);
   const forkGrants = show(base, GRANTS_PATH);
   if (mainGrants === undefined || forkGrants === undefined) return;
-  const main = readGrantConstants(mainGrants);
-  const fork = readGrantConstants(forkGrants);
-  const digest = await grantDigest();
+  const branchDigest = await grantDigest();
+  const mergedDigest = upToDate ? branchDigest : await mergedGrantDigest(base);
   console.log(
-    digest === fork.digest
-      ? `授权版本：本分支没改授权项编码（指纹 ${digest} 同分叉点），合并时取 main 的 version ${main.version} / 指纹 ${main.digest}`
-      : `授权版本：本分支改了授权项编码（指纹 ${digest}，分叉点 ${fork.digest}），合并时定为 main + 1 = ${main.version + 1}，指纹按合并结果重算`,
+    describeGrantPlan({
+      main: readGrantConstants(mainGrants),
+      mergedDigest,
+      branchDigest,
+      forkDigest: readGrantConstants(forkGrants).digest,
+    }),
   );
 }
 
@@ -327,7 +403,7 @@ async function check() {
   if (grants.length) console.log(`授权版本冲突（合并时自动定号）：\n  ${grants.join('\n  ')}`);
   if (conflicts.other.length) printCountHint(countOnlyConflicts(conflicts.other, ['HEAD', base, MAIN]));
   printPlan(migrationPlan());
-  await printGrantPlan(base);
+  await printGrantPlan(base, upToDate);
   console.log(`生成物白名单：\n  ${GENERATED_PATHS.join('\n  ')}`);
   process.exit(conflicts.other.length ? 1 : 0);
 }
