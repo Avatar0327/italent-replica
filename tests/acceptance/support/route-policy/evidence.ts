@@ -215,10 +215,26 @@ function isRoute(node: ts.Node, method: string, routePath: string): boolean {
   );
 }
 
-/** 在文件里找单元节点：`a>b` 表示 a 内部的 b；末段 `route:GET /p` 表示该注册调用（路径按注册处求值）。 */
+/** 顶层安装证据只认直接语句，函数内的调用或具名 / 类型导入不能冒充模块加载边（F-081）。 */
+function isTopLevelEdge(node: ts.Statement, selector: string): boolean {
+  if (selector.startsWith('top-import:')) {
+    return (
+      ts.isImportDeclaration(node) &&
+      !node.importClause &&
+      ts.isStringLiteral(node.moduleSpecifier) &&
+      node.moduleSpecifier.text === selector.slice('top-import:'.length)
+    );
+  }
+  if (!ts.isExpressionStatement(node) || !ts.isCallExpression(node.expression)) return false;
+  const call = node.expression;
+  return ts.isIdentifier(call.expression) && call.expression.text === selector.slice('top-call:'.length);
+}
+
+/** 在文件里找单元节点：`a>b` 表示 a 内部的 b；`route:GET /p` 表示注册调用；`top-*` 表示顶层安装边。 */
 export function findUnitNode(sf: ts.SourceFile, unit: string, name: string): ts.Node {
-  let scopes: ts.Node[] = [sf];
-  for (const part of name.split('>')) {
+  const topLevel = name.startsWith('top-call:') || name.startsWith('top-import:');
+  let scopes: ts.Node[] = topLevel ? sf.statements.filter((node) => isTopLevelEdge(node, name)) : [sf];
+  for (const part of topLevel ? [] : name.split('>')) {
     const route = /^route:(\w+) (.+)$/.exec(part);
     const hits: ts.Node[] = [];
     for (const scope of scopes) {

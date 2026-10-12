@@ -4588,6 +4588,67 @@
         ]
       }
     },
+    "GET /api/tenant/evaluation/staff-evaluations": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "evaluation",
+      "primitives": {
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "guard": [
+          "ev.filterFieldVisible"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "requestScope",
+          "scopeSql"
+        ]
+      }
+    },
+    "GET /api/tenant/evaluation/staff-evaluations/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "evaluation",
+      "primitives": {
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "requestScope",
+          "scopeSql"
+        ]
+      }
+    },
     "GET /api/tenant/idp/approval-processes": {
       "edge": {
         "anonymous": {
@@ -7300,6 +7361,28 @@
         "button": [
           "button()"
         ],
+        "object": [
+          "objectContext"
+        ]
+      }
+    },
+    "GET /api/tenant/succession/maps/:kind/preferences": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "succession",
+      "primitives": {
         "object": [
           "objectContext"
         ]
@@ -14803,6 +14886,76 @@
         ]
       }
     },
+    "POST /api/tenant/evaluation/activities/:id/publish": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "evaluation",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "scopeSql"
+        ]
+      }
+    },
+    "POST /api/tenant/evaluation/activities/:id/unpublish": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "evaluation",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "scopeSql"
+        ]
+      }
+    },
     "POST /api/tenant/evaluation/activity-cycles": {
       "edge": {
         "anonymous": {
@@ -17273,6 +17426,39 @@
         ],
         "scope": [
           "scope.all"
+        ]
+      }
+    },
+    "POST /api/tenant/succession/maps/org/compute-stats": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "succession",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "creator scope",
+          "scopeSql"
         ]
       }
     },
@@ -20717,6 +20903,36 @@
         ],
         "scope": [
           "scope.all"
+        ]
+      }
+    },
+    "PUT /api/tenant/succession/maps/:kind/preferences": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "succession",
+      "primitives": {
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "creator scope",
+          "scopeSql"
         ]
       }
     },
