@@ -17,6 +17,29 @@ beforeAll(async () => {
 }, 300_000);
 afterAll(async () => handle?.close());
 
+it('AC-SC-06 地图范围锚点仍是节点组织，不把职位创建人的范围替代地图范围', async () => {
+  const w = await successionWorld(handle.db, 'sc-c3-creator-scope');
+  const org = await w.org('创建人范围组织');
+  await w.position(org.id, '本人创建职位');
+  const ids = await w.asTenant((tx) =>
+    readMapDisplayScope(
+      tx,
+      {
+        tenantId: w.tenant.id,
+        userId: w.user.id,
+        asOf: SC_TODAY,
+        scope: {
+          ...EMPTY_SCOPE,
+          hasDataPermission: true,
+          terms: [{ dimension: 'using_user', orgIds: [], personIds: [], creatorId: w.user.id }],
+        },
+      },
+      'position',
+    ),
+  );
+  expect(ids).toEqual([]);
+});
+
 interface Card {
   id: string;
   name: string;
