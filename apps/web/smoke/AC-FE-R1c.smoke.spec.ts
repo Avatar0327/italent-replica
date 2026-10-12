@@ -1,6 +1,8 @@
 import { test, expect, user, employee } from './fixtures.js';
 import type { Page } from '@playwright/test';
 
+test.use({ viewport: { width: 1440, height: 900 } });
+
 const instance = '40000000-0000-4000-8000-000000000001';
 const task = '50000000-0000-4000-8000-000000000001';
 test.beforeEach(async ({ page }) => {
@@ -71,9 +73,9 @@ test('AC-FE-R1c-03 调动列表、表单、我的申请与注释', async ({ page
     if (message.type() === 'error') errors.push(message.text());
   });
   await switchIdentity(page, '/transfer');
-  await expect(page.getByRole('heading', { name: '调动管理', exact: true })).toBeVisible();
-  await expect(page.getByText('演示数据', { exact: true }).first()).toBeVisible();
-  await page.screenshot({ path: testInfo.outputPath('transfer-list.png'), fullPage: true });
+  await expect(page.getByRole('heading', { name: '调动中员工', exact: true })).toBeVisible();
+  await expect(page.locator('.r1c-reference').getByText('演示数据', { exact: true }).first()).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('transfer-list.png'), fullPage: true, animations: 'disabled' });
   await page.getByRole('button', { name: '林晓（合成）', exact: true }).click();
   await expect(page.getByRole('dialog')).toContainText('企业服务事业部');
   await page.getByRole('button', { name: '关闭', exact: true }).click();
@@ -81,9 +83,10 @@ test('AC-FE-R1c-03 调动列表、表单、我的申请与注释', async ({ page
   await page.locator('select[name="employeeId"]').selectOption(employee);
   await expect(page.locator('input[name="place"]')).toBeVisible();
   await expect(page.getByRole('button', { name: /提\s*交/, exact: true })).toBeEnabled();
-  await page.screenshot({ path: testInfo.outputPath('transfer-form.png'), fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath('transfer-form.png'), fullPage: true, animations: 'disabled' });
   await page.getByRole('button', { name: '关闭', exact: true }).click();
-  await page.getByRole('tab', { name: '我的申请', exact: true }).click();
+  await page.getByRole('button', { name: '调动中员工', exact: true }).click();
+  await page.getByRole('menuitem', { name: '我的申请', exact: true }).click();
   await page.getByRole('button', { name: '合成员工的调动申请', exact: true }).click();
   await expect(page.getByText('合成工作地', { exact: true })).toBeVisible();
   expect(errors).toEqual([]);
@@ -96,24 +99,25 @@ test('AC-FE-R1c-04 审批中心三个页签、详情与操作弹窗', async ({ p
     if (message.type() === 'error') errors.push(message.text());
   });
   await switchIdentity(page, '/approval');
-  await expect(page.getByRole('heading', { name: '审批中心', exact: true })).toBeVisible();
-  await page.screenshot({ path: testInfo.outputPath('approval-list.png'), fullPage: true });
+  await expect(page.getByRole('heading', { name: '待处理', exact: true })).toBeVisible();
+  await expect(page.locator('.ant-spin-blur')).toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath('approval-list.png'), fullPage: true, animations: 'disabled' });
   await page.getByRole('button', { name: '合成员工的调动申请', exact: true }).click();
   await expect(page.getByText('原工作地', { exact: true })).toBeVisible();
-  await page.screenshot({ path: testInfo.outputPath('approval-detail.png'), fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath('approval-detail.png'), fullPage: true, animations: 'disabled' });
   for (const action of ['同意', '驳回', '转交', '撤销']) {
     await page.getByRole('button', { name: new RegExp(action.split('').join('\\s*')), exact: true }).click();
     await expect(page.getByRole('dialog').last()).toBeVisible();
     await page.getByRole('button', { name: /取\s*消/, exact: true }).click();
   }
   await page.getByRole('button', { name: '关闭', exact: true }).click();
-  await page.getByRole('tab', { name: '已办', exact: true }).click();
-  await expect(page.getByText('演示数据', { exact: true }).first()).toBeVisible();
+  await page.getByRole('tab', { name: '已处理', exact: true }).click();
+  await expect(page.locator('.r1c-reference').getByText('演示数据', { exact: true }).first()).toBeVisible();
   await page.getByRole('button', { name: '合成员工林晓的调动申请', exact: true }).click();
   await expect(page.getByText('审批已通过，业务是否生效以业务申请单为准。')).toBeVisible();
   await expect(page.getByRole('button', { name: /同\s*意/, exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: '关闭', exact: true }).click();
-  await page.getByRole('tab', { name: '我发起', exact: true }).click();
+  await page.getByRole('tab', { name: '已申请', exact: true }).click();
   await expect(page.getByRole('button', { name: '合成员工的调动申请', exact: true })).toBeVisible();
   await page.getByRole('switch', { name: '注释' }).click();
   await expect(page.getByText('DEC-057', { exact: true })).toBeVisible();
@@ -187,7 +191,7 @@ test('AC-FE-R1c-08 撤权隐藏发起按钮，审批字段与记录按返回值�
     }),
   );
   await switchIdentity(page, '/transfer');
-  await expect(page.getByRole('heading', { name: '调动管理', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '调动中员工', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '他人调动申请', exact: true })).toHaveCount(0);
   await page.route(`**/approval/instances/${instance}`, (route) =>
     route.fulfill({
@@ -274,7 +278,10 @@ test('AC-FE-R1c-10 参考包视图切换、主题密度与右侧详情抽屉', a
   await page.getByRole('button', { name: '林晓（合成）', exact: true }).click();
   await expect(page.locator('.ant-drawer-right')).toBeVisible();
   await page.getByRole('button', { name: '关闭', exact: true }).click();
-  const pending = page.waitForRequest((request) => request.url().includes('/approval/todos?'));
+  const pending = page.waitForRequest(
+    (request) =>
+      request.url().includes('/approval/todos?') && new URL(request.url()).searchParams.get('pageSize') !== '1',
+  );
   await page.goto('/approval');
   expect(new URL((await pending).url()).searchParams.get('pageSize')).toBe('15');
   await expect(page.locator('.ant-breadcrumb')).toBeHidden();

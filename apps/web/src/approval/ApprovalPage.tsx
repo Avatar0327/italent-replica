@@ -1,4 +1,4 @@
-import { Alert, Button, Input, Space, Tabs, Tag } from 'antd';
+import { Alert, Button, Input, Space, Tabs, Tag, type TableColumnsType } from 'antd';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { DecisionNote, ListPage, useApiClient, useSession, type PageRequest } from '../foundation/index.js';
@@ -6,6 +6,7 @@ import { approvalList } from './api.js';
 import { ApprovalDetail, formatInstant } from './ApprovalDetail.js';
 import { messages as m, statusLabels, typeLabels } from './messages.js';
 import type { ApprovalList, ApprovalRow, ApprovalView } from './types.js';
+import { ReferenceTheme, ReferenceView } from '../transfer/ReferenceView.js';
 import './approval.css';
 
 export function ApprovalPage() {
@@ -13,77 +14,108 @@ export function ApprovalPage() {
   const value = params.get('view');
   const view: ApprovalView = value === 'completed' || value === 'initiated' ? value : 'pending';
   return (
-    <section className="approval-page">
-      <header className="page-heading">
-        <h1>{m.title}</h1>
-      </header>
-      <Tabs
-        activeKey={view}
-        onChange={(key) => setParams({ view: key })}
-        items={(['pending', 'completed', 'initiated'] as const).map((key) => ({
-          key,
-          label: m[key],
-          children: key === view ? <ApprovalListPanel key={key} view={key} /> : null,
-        }))}
-      />
-    </section>
+    <ReferenceTheme>
+      <section className="approval-page">
+        <Tabs
+          tabPosition="left"
+          activeKey={view}
+          onChange={(key) => setParams({ view: key })}
+          items={(['pending', 'completed', 'initiated'] as const).map((key) => ({
+            key,
+            label: m[key],
+            children:
+              key === view ? (
+                <ApprovalListPanel key={key} view={key} onViewChange={(next) => setParams({ view: next })} />
+              ) : null,
+          }))}
+        />
+      </section>
+    </ReferenceTheme>
   );
 }
 
-export function ApprovalListPanel({ view = 'initiated' }: { view?: ApprovalView }) {
+export function ApprovalListPanel({
+  view = 'initiated',
+  onViewChange,
+}: {
+  view?: ApprovalView;
+  onViewChange?(view: string): void;
+}) {
   const state = useApprovalList(view);
   const { data, query, selected, page, loading, error, timezone, refresh, setPage, setQuery, setSelected } = state;
   return (
-    <div className="approval-list-panel">
+    <div className={onViewChange ? 'approval-list-panel' : 'approval-list-panel approval-applications'}>
+      {onViewChange && (
+        <ReferenceView
+          title={m[view]}
+          choices={(['pending', 'completed', 'initiated'] as const).map((key) => ({ key, label: m[key] }))}
+          onChange={onViewChange}
+          actions={
+            <Button onClick={refresh} loading={loading}>
+              {m.refresh}
+            </Button>
+          }
+        />
+      )}
       <DecisionNote id="approval" />
       {data.demo && <Alert showIcon type="info" message={m.demo} description={m.completedGap} />}
-      <ListPage
-        title={view === 'initiated' ? m.mine : m[view]}
-        data={{ ...data, items: data.items.filter((row) => row.title.includes(query.trim())) }}
-        columns={[
-          {
-            title: m.titleColumn,
-            key: 'content',
-            render: (_: unknown, row: ApprovalRow) => (
-              <ApprovalRecord row={row} timezone={timezone} onOpen={() => setSelected(row)} />
-            ),
-          },
-          {
-            title: m.operation,
-            key: 'action',
-            width: 110,
-            render: (_: unknown, row: ApprovalRow) => (
-              <Button onClick={() => setSelected(row)}>{view === 'pending' ? m.handle : m.view}</Button>
-            ),
-          },
-        ]}
-        rowKey={(row) => row.taskId ?? row.id}
-        page={page}
-        onPageChange={(next) => {
-          setPage(next);
-          setQuery('');
-        }}
-        loading={loading}
-        error={error}
-        retry={refresh}
-        filters={
-          <Space>
-            <Input
-              allowClear
-              aria-label={m.filter}
-              placeholder={m.filter}
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-            />
-            <span className="approval-muted">{m.filterHint}</span>
-          </Space>
-        }
-        actions={
-          <Button onClick={refresh} loading={loading}>
-            {m.refresh}
-          </Button>
-        }
-      />
+      <div className="r1c-list">
+        <ListPage
+          title={view === 'initiated' ? m.mine : m[view]}
+          data={{ ...data, items: data.items.filter((row) => row.title.includes(query.trim())) }}
+          columns={
+            !onViewChange
+              ? applicationColumns(setSelected, timezone)
+              : [
+                  {
+                    title: m.titleColumn,
+                    key: 'content',
+                    render: (_: unknown, row: ApprovalRow) => (
+                      <ApprovalRecord row={row} timezone={timezone} onOpen={() => setSelected(row)} />
+                    ),
+                  },
+                  {
+                    title: m.operation,
+                    key: 'action',
+                    width: 110,
+                    render: (_: unknown, row: ApprovalRow) => (
+                      <Button onClick={() => setSelected(row)}>{view === 'pending' ? m.handle : m.view}</Button>
+                    ),
+                  },
+                ]
+          }
+          rowKey={(row) => row.taskId ?? row.id}
+          page={page}
+          onPageChange={(next) => {
+            setPage(next);
+            setQuery('');
+          }}
+          loading={loading}
+          error={error}
+          retry={refresh}
+          filters={
+            <Space>
+              {!onViewChange && (
+                <Button onClick={refresh} loading={loading}>
+                  {m.refresh}
+                </Button>
+              )}
+              <Input
+                allowClear
+                aria-label={m.filter}
+                placeholder={m.filter}
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+              />
+              <span className="approval-muted">{m.filterHint}</span>
+              <span className="approval-muted">
+                {page.pageSize}
+                {m.perPage}
+              </span>
+            </Space>
+          }
+        />
+      </div>
       {selected && (
         <ApprovalDetail
           key={selected.id}
@@ -100,7 +132,7 @@ export function ApprovalListPanel({ view = 'initiated' }: { view?: ApprovalView 
 function useApprovalList(view: ApprovalView) {
   const api = useApiClient();
   const { timezone, tenantId, identityKey } = useSession();
-  const [page, setPage] = useState<PageRequest>({ page: 1, pageSize: 20 });
+  const [page, setPage] = useState<PageRequest>({ page: 1, pageSize: 15 });
   const [query, setQuery] = useState('');
   const [data, setData] = useState<ApprovalList>({ items: [] });
   const [selected, setSelected] = useState<ApprovalRow>();
@@ -147,4 +179,21 @@ function ApprovalRecord({ row, timezone, onOpen }: { row: ApprovalRow; timezone:
       </div>
     </div>
   );
+}
+
+function applicationColumns(onOpen: (row: ApprovalRow) => void, timezone: string): TableColumnsType<ApprovalRow> {
+  return [
+    {
+      title: m.titleColumn,
+      key: 'title',
+      render: (_: unknown, row: ApprovalRow) => (
+        <Button type="link" onClick={() => onOpen(row)}>
+          {row.title}
+        </Button>
+      ),
+    },
+    { title: m.type, dataIndex: 'approvalType', render: (type: string) => typeLabels[type] ?? type },
+    { title: m.status, dataIndex: 'status', render: (status: string) => statusLabels[status] ?? status },
+    { title: m.created, dataIndex: 'createdAt', render: (time: string) => formatInstant(time, timezone) },
+  ];
 }

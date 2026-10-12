@@ -110,7 +110,14 @@ function useApprovalDetail({ row, demo, onClose, onChanged }: DetailProps) {
 export function ApprovalDetail(props: DetailProps) {
   const state = useApprovalDetail(props);
   return (
-    <Drawer open title={m.detail} width={920} onClose={props.onClose} destroyOnHidden>
+    <Drawer
+      open
+      title={m.detail}
+      width={1040}
+      rootClassName="r1c-reference-drawer"
+      onClose={props.onClose}
+      destroyOnHidden
+    >
       <DecisionNote id="approval" />
       {props.demo && <Alert type="info" message={m.demo} description={m.demoDetail} showIcon />}
       {!!state.error && <PageState kind="error" error={state.error} retry={state.refresh} />}
