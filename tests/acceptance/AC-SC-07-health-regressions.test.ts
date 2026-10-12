@@ -89,37 +89,41 @@ async function metricWorld(label: string) {
     org = await w.org('度量回归组织');
   const person = await w.hire('合成度量员工', { departmentId: org.id });
   await enableHealthRunner(w);
+  const frozen = await w.asTenant(async (tx) => {
+    const runId = await enqueueCalcRun(
+      tx,
+      {
+        tenantId: w.tenant.id,
+        kind: 'org_health',
+        trigger: 'manual',
+        commandId: randomUUID(),
+        requestedBy: w.user.id,
+        businessDate: SC_TODAY,
+        objects: [{ objectType: 'org', objectId: org.id }],
+      },
+      SC_NOW,
+    );
+    const [run] = await tx.select().from(successionCalcRuns).where(eq(successionCalcRuns.id, runId)),
+      [object] = await tx.select().from(successionCalcRunObjects).where(eq(successionCalcRunObjects.runId, runId));
+    return { run: run!, object: object! };
+  });
   return {
     w,
     org,
     person,
     async measure(port: HealthReads, row: SuccessionLevelRow) {
-      return w.asTenant(async (tx) => {
-        const runId = await enqueueCalcRun(
-          tx,
-          {
-            tenantId: w.tenant.id,
-            kind: 'org_health',
-            trigger: 'manual',
-            commandId: randomUUID(),
-            requestedBy: w.user.id,
-            businessDate: SC_TODAY,
-            objects: [{ objectType: 'org', objectId: org.id }],
-          },
-          SC_NOW,
-        );
-        const [run] = await tx.select().from(successionCalcRuns).where(eq(successionCalcRuns.id, runId)),
-          [object] = await tx.select().from(successionCalcRunObjects).where(eq(successionCalcRunObjects.runId, runId));
-        return healthMetricReader(
-          { tx, run: run!, now: SC_NOW },
-          object!,
+      return w.asTenant(async (tx) =>
+        healthMetricReader(
+          { tx, run: frozen.run, now: SC_NOW },
+          frozen.object,
           await healthPrincipal(tx, w.tenant.id, false),
           port,
-        )(row);
-      });
+        )(row),
+      );
     },
   };
 }
+
 const metricRow = (extra: Partial<SuccessionLevelRow>): SuccessionLevelRow => ({
   rowNo: 1,
   population: 'all',
@@ -305,6 +309,7 @@ describe('AC-SC-07 P2-3 字段过滤与去重回归', () => {
   });
 });
 
+// 两组长矩阵各含数十次真实 PG 当前主体／人口读取；多窗口负载下超过 30s，仅这两组给 120s。
 describe('AC-SC-07 同类度量矩阵', () => {
   it('P2-2/3：盘点六度量共用五态、过滤与分母；真实零不变 empty', async () => {
     const { w, org, person, measure } = await metricWorld('health-review-matrix');
@@ -351,6 +356,18 @@ describe('AC-SC-07 同类度量矩阵', () => {
       }
       field = { status: 'value', value: 2 };
     }
+    expect(
+      await measure(
+        port,
+        metricRow({
+          fieldSource: 'review',
+          fieldCode: 'score',
+          measure: 'average',
+          filterOperator: 'is_empty',
+          filterValues: [],
+        }),
+      ),
+    ).toEqual({ status: 'empty' });
     field = { status: 'value', value: 0 };
     expect(await measure(port, metricRow({ fieldSource: 'review', fieldCode: 'score', measure: 'average' }))).toEqual({
       status: 'value',
@@ -379,7 +396,7 @@ describe('AC-SC-07 同类度量矩阵', () => {
         }),
       ),
     ).toEqual({ status: 'value', value: 1 });
-  });
+  }, 120_000);
   it('P2-2/3：绿化率直接度量与字段度量共用五态，缺来源与空率区分', async () => {
     const { w, org, measure } = await metricWorld('health-green-matrix');
     let rate: number | null = null,
@@ -444,5 +461,5 @@ describe('AC-SC-07 同类度量矩阵', () => {
         metricRow({ fieldSource: 'succession', fieldCode: 'successor_count', measure: 'count_over_incumbents' }),
       ),
     ).toEqual({ status: 'empty' });
-  });
+  }, 120_000);
 });
