@@ -587,3 +587,15 @@ it('AC-SC-03 步骤 7：对象分两页逐页授权，冻结的提名字段撤�
     }),
   );
 });
+
+it('AC-SC-03 原触发人与调用人为同一账号时，调用阶段撤权仍返回 403 并回滚', async () => {
+  const h = setup();
+  let scopes = 0;
+  h.deps.authorize = (request) => request.action !== 'data.scope.all' || ++scopes <= 4;
+  await expect(consumeRun(h.deps, { ...h.input, requesterUserId: w.user.id })).rejects.toMatchObject({
+    code: 'FORBIDDEN',
+    details: { reason: 'BATCH_SCOPE_EXCEEDS_REQUESTER' },
+  });
+  expect(await batch(h.input.runId)).toBeUndefined();
+  expect((await h.outcomes()).every((r) => r.status === 'pending')).toBe(true);
+});
