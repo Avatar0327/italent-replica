@@ -44,7 +44,7 @@
 
    **生成物（DEC-430①）**：F-039 冻结基准 / 发现探测 / 证据登记、端点计数和迁移编号不要求 PR 内与最新 main 一致，PR 上只警告；合并队列在合并前跑 `pnpm merge:main` 重算，队首 PR 与 main 上按 `GENERATED_STRICT=1` 严格校验。需要 main 的新代码时用 `pnpm merge:main`，不要手工合生成物。说明见 `docs/08_设计/DEC-430_生成物合并后重算.md`。
 
-   **在途 PR 只跑轻量检查（DEC-454①）**：pull_request 推送只跑 `light checks`（lint / typecheck / build / 纯函数单测，约 4 分钟），两个必需检查保持“等待中”；完整测试（PGlite 5 片 + PostgreSQL 5 片 + F-043）只在合并队列队首跑：队列用云端 `merge-main.yml`（`gh workflow run merge-main.yml -f pr=<编号>`）合入 main、推回分支并派发完整 CI，或给 PR 打 `queue-head` 标签。“CI 绿了再审”看 light checks。开发方不要自己打 `queue-head` 标签。说明见同一文件第 6 节。
+   **在途 PR 只跑轻量检查（DEC-454①）**：pull_request 推送只跑 `light checks`（lint / typecheck / build / 纯函数单测，约 4 分钟），两个必需检查保持“等待中”；完整测试（PGlite 5 片 + PostgreSQL 5 片 + F-043）只在合并队列队首跑：队列用云端 `merge-main.yml`（`gh workflow run merge-main.yml -f pr=<编号>`）合入 main、推回分支并派发完整 CI；或给 PR 打 `queue-head` 标签后再推送、或手动派发 `ci.yml`（单独打标签不触发 CI）。目标分支不是 main 的 PR 一律只跑轻量检查。“CI 绿了再审”看 light checks。开发方不要自己打 `queue-head` 标签。说明见同一文件第 6 节。
 
 8. **交审前自检（必做，DEC-338）**：所有开发任务在贴“开发完成，待审”之前，按 `.claude/skills/dev-selfcheck/SKILL.md` 跑一遍自检（open-code-review 项目规则 + 对照设计与 DEC），结果写进“开发完成”评论。开发由 Claude 负责：Opus 负责规划、设计与契约 PR，Sonnet 负责实现；同类 P2 连续两轮没修好，在同一分支换 Opus 接手。审查由 Codex 负责（DEC-340①）：C 档设计审与代码首轮用 Astra Ultra；C 档代码第 2 轮起用 Sol xhigh + priority；B 档用 Sol high + priority。
 

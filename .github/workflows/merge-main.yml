@@ -45,6 +45,7 @@ jobs:
     # 重算只跑 4 个 F-039 验收文件（PGlite），实测数分钟；安装与合并另计
     timeout-minutes: 30
     steps:
+      # 复核脚本写在本工作流里（取自 main 上的 merge-main.yml），不用 PR 分支里的文件：PR 分支的代码不能改写门禁
       - name: Resolve PR (same-repo, open, base main)
         id: pr
         env:
@@ -53,24 +54,51 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          gh pr view "$PR" --repo "$REPO" \
-            --json state,isCrossRepository,headRefName,headRefOid,baseRefName > "$RUNNER_TEMP/pr.json"
-          state=$(jq -r .state "$RUNNER_TEMP/pr.json")
-          cross=$(jq -r .isCrossRepository "$RUNNER_TEMP/pr.json")
-          branch=$(jq -r .headRefName "$RUNNER_TEMP/pr.json")
-          base=$(jq -r .baseRefName "$RUNNER_TEMP/pr.json")
-          if [ "$state" != OPEN ]; then echo "::error::PR #$PR 状态为 $state" && exit 1; fi
-          if [ "$cross" != false ]; then echo "::error::只处理本仓库分支，PR #$PR 来自 fork" && exit 1; fi
-          if [ "$base" != main ]; then echo "::error::PR #$PR 的 base 是 $base，不是 main" && exit 1; fi
-          if [ "$branch" = main ]; then echo "::error::PR 头分支不能是 main" && exit 1; fi
-          echo "branch=$branch" >> "$GITHUB_OUTPUT"
-          echo "head=$(jq -r .headRefOid "$RUNNER_TEMP/pr.json")" >> "$GITHUB_OUTPUT"
-          echo "PR #$PR：\`$branch\`（头 $(jq -r .headRefOid "$RUNNER_TEMP/pr.json" | cut -c1-8)）" >> "$GITHUB_STEP_SUMMARY"
+          guard="$RUNNER_TEMP/pr-guard.sh"
+          cat > "$guard" <<'GUARD'
+          # 用法：bash pr-guard.sh <预期头提交完整 SHA 或空>；环境变量 GH_TOKEN、REPO、PR。
+          # 复核 OPEN、本仓库分支、base main、头提交等于预期；推送后 GitHub 更新 PR 头有延迟，不一致时重试约 30 秒。
+          # 成功时 stdout 打印 branch=… 与 head=… 两行
+          set -euo pipefail
+          expected="${1:-}"
+          for attempt in 1 2 3 4 5 6; do
+            IFS=$'\t' read -r state cross base branch head < <(
+              gh pr view "$PR" --repo "$REPO" --json state,isCrossRepository,baseRefName,headRefName,headRefOid \
+                --jq '[.state, (.isCrossRepository | tostring), .baseRefName, .headRefName, .headRefOid] | @tsv'
+            )
+            if [ "$state" != OPEN ]; then echo "::error::PR #$PR 状态为 $state" >&2; exit 1; fi
+            if [ "$cross" != false ]; then echo "::error::只处理本仓库分支，PR #$PR 来自 fork" >&2; exit 1; fi
+            if [ "$base" != main ]; then echo "::error::PR #$PR 的 base 是 $base，不是 main" >&2; exit 1; fi
+            if [ "$branch" = main ]; then echo "::error::PR 头分支不能是 main" >&2; exit 1; fi
+            if [ -z "$expected" ] || [ "$head" = "$expected" ]; then
+              echo "branch=$branch"
+              echo "head=$head"
+              exit 0
+            fi
+            [ "$attempt" = 6 ] || sleep 5
+          done
+          echo "::error::PR #$PR 的头提交是 $head，预期 $expected（期间有人推送？请重新触发）" >&2
+          exit 1
+          GUARD
+          out=$(bash "$guard")
+          echo "$out" | tee -a "$GITHUB_OUTPUT"
+          echo "guard=$guard" >> "$GITHUB_OUTPUT"
+          echo "PR #$PR：解析时头 \`$(echo "$out" | sed -n 's/^head=//p')\`" >> "$GITHUB_STEP_SUMMARY"
+      # 检出解析时的头提交（不按分支名），锁定本次处理的对象；推送不强推，分支期间前进则被拒
       - uses: actions/checkout@v4
         with:
-          ref: ${{ steps.pr.outputs.branch }}
+          ref: ${{ steps.pr.outputs.head }}
           fetch-depth: 0 # merge:main 要算分叉点、读 main 的迁移与快照
           token: ${{ secrets.MERGE_BOT_TOKEN || github.token }}
+      - name: Switch to the PR branch at the resolved head
+        env:
+          BRANCH: ${{ steps.pr.outputs.branch }}
+          HEAD_SHA: ${{ steps.pr.outputs.head }}
+        run: |
+          set -euo pipefail
+          git switch -q -C "$BRANCH" "$HEAD_SHA"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
       - uses: pnpm/action-setup@v4 # 版本取自 package.json 的 packageManager
       - uses: actions/setup-node@v4
         with:
@@ -82,14 +110,10 @@ jobs:
           TAKE_OURS: ${{ inputs.take_ours_for_counts }}
         run: |
           set -uo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          args=()
-          if [ "$TAKE_OURS" = true ]; then args+=(--take-ours-for-counts); fi
           log="$RUNNER_TEMP/merge-main.log"
-          pnpm merge:main "${args[@]}" 2>&1 | tee "$log"
-          status=${PIPESTATUS[0]}
-          if [ "$status" != 0 ]; then
+          : > "$log"
+          report_failure() {
+            local status=$1
             {
               echo "### pnpm merge:main 失败（退出码 $status）"
               echo
@@ -109,12 +133,33 @@ jobs:
               fi
             } >> "$GITHUB_STEP_SUMMARY"
             exit "$status"
+          }
+          run_merge() {
+            pnpm merge:main "$@" 2>&1 | tee -a "$log"
+            local status=${PIPESTATUS[0]}
+            if [ "$status" != 0 ]; then report_failure "$status"; fi
+          }
+          args=()
+          if [ "$TAKE_OURS" = true ]; then args+=(--take-ours-for-counts); fi
+          git fetch -q origin main
+          # main 自分叉点以来改过依赖时，合并后的依赖与已安装的（本分支的）不同：
+          # 先只合并不重算，重新安装，再在已含 main 的分支上重算（merge:main 此时只改号检查与重算）
+          dep_files=(pnpm-lock.yaml pnpm-workspace.yaml ':(glob)**/package.json')
+          fork=$(git merge-base HEAD origin/main)
+          if git diff --quiet "$fork" origin/main -- "${dep_files[@]}"; then
+            run_merge "${args[@]}"
+          else
+            echo "main 改过依赖：合并后重新安装再重算" | tee -a "$log"
+            run_merge "${args[@]}" --no-regen --no-fetch
+            pnpm install --frozen-lockfile 2>&1 | tee -a "$log"
+            if [ "${PIPESTATUS[0]}" != 0 ]; then report_failure 1; fi
+            run_merge --no-fetch
           fi
           {
             echo '### pnpm merge:main 完成'
             echo
             echo '```'
-            grep -E '^(迁移|  |生成物冲突|已提交|已是最新|已包含|注意)' "$log" | head -60
+            grep -E '^(迁移|  |生成物冲突|已提交|已是最新|已包含|注意|main 改过依赖)' "$log" | head -60
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Mark queue head
@@ -134,17 +179,24 @@ jobs:
         env:
           BRANCH: ${{ steps.pr.outputs.branch }}
           HAS_BOT_TOKEN: ${{ secrets.MERGE_BOT_TOKEN != '' }}
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ inputs.pr }}
+          REPO: ${{ github.repository }}
+          GUARD: ${{ steps.pr.outputs.guard }}
+          HEAD0: ${{ steps.pr.outputs.head }}
         run: |
           set -euo pipefail
+          # 推送前复核：PR 仍 OPEN、base main、头仍是本次检出的提交
+          bash "$GUARD" "$HEAD0" > /dev/null
           head=$(git rev-parse HEAD)
           echo "sha=$head" >> "$GITHUB_OUTPUT"
-          if [ "$head" = "$(git rev-parse "origin/$BRANCH")" ]; then
+          if [ "$head" = "$HEAD0" ]; then
             echo "pushed=false" >> "$GITHUB_OUTPUT"
-            echo "无新提交，不推送（PR 头 ${head:0:8}）" >> "$GITHUB_STEP_SUMMARY"
+            echo "无新提交，不推送（PR 头 \`$head\`）" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           # GITHUB_TOKEN 没有 workflows 权限，推不了改动 .github/workflows/ 的提交
-          if [ "$HAS_BOT_TOKEN" != true ] && ! git diff --quiet "origin/$BRANCH" HEAD -- .github/workflows; then
+          if [ "$HAS_BOT_TOKEN" != true ] && ! git diff --quiet "$HEAD0" HEAD -- .github/workflows; then
             {
               echo "### 推送受限"
               echo "合并提交改动了 .github/workflows/，默认 GITHUB_TOKEN 无权推送。"
@@ -156,30 +208,45 @@ jobs:
           # 不强推：期间有人推了 PR 分支则被拒，重新触发本流程即可
           git push origin "HEAD:refs/heads/$BRANCH"
           echo "pushed=true" >> "$GITHUB_OUTPUT"
-          echo "已推送 ${head:0:8} 到 \`$BRANCH\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "已推送 \`$head\` 到 \`$BRANCH\`" >> "$GITHUB_STEP_SUMMARY"
       - name: Dispatch full CI on the PR branch
+        id: ci
         if: inputs.run_ci
         env:
           GH_TOKEN: ${{ github.token }}
+          PR: ${{ inputs.pr }}
+          REPO: ${{ github.repository }}
+          GUARD: ${{ steps.pr.outputs.guard }}
           BRANCH: ${{ steps.pr.outputs.branch }}
           SHA: ${{ steps.push.outputs.sha }}
           PUSHED: ${{ steps.push.outputs.pushed }}
           HAS_BOT_TOKEN: ${{ secrets.MERGE_BOT_TOKEN != '' }}
-          REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
+          # 派发前复核：PR 仍 OPEN、base main、头就是本次推送（或未推送时检出）的提交
+          bash "$GUARD" "$SHA" > /dev/null
           if [ "$PUSHED" = true ] && [ "$HAS_BOT_TOKEN" = true ]; then
-            echo "用 MERGE_BOT_TOKEN 推送，pull_request 运行已带 queue-head 标签走完整模式，不再派发" >> "$GITHUB_STEP_SUMMARY"
+            echo "用 MERGE_BOT_TOKEN 推送，pull_request 运行已带 queue-head 标签走完整模式，不再派发（头 \`$SHA\`）" \
+              >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           since=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           # node_22=false：只跑 Node 24，必需检查名称正好是 lint / typecheck / test (PGlite, Node 24)
           gh workflow run ci.yml --repo "$REPO" --ref "$BRANCH" -f node_22=false
-          url=""
+          run=""
           for _ in $(seq 1 12); do
             sleep 5
-            url=$(gh run list --repo "$REPO" --workflow ci.yml --branch "$BRANCH" --event workflow_dispatch \
-              --created ">=$since" --json headSha,url --jq "map(select(.headSha == \"$SHA\")) | .[0].url // empty")
-            [ -n "$url" ] && break
+            run=$(gh run list --repo "$REPO" --workflow ci.yml --branch "$BRANCH" --event workflow_dispatch \
+              --created ">=$since" --json databaseId,headSha,url \
+              --jq "map(select(.headSha == \"$SHA\")) | .[0] // empty | \"\(.databaseId) \(.url)\"")
+            [ -n "$run" ] && break
           done
-          echo "已派发完整 CI（${SHA:0:8}）：${url:-（未查到运行链接，请到 Actions 页查看）}" >> "$GITHUB_STEP_SUMMARY"
+          if [ -z "$run" ]; then
+            echo "::error::已派发 ci.yml，但 60 秒内没查到头为 $SHA 的运行（分支被推动？），请到 Actions 页核对"
+            echo "派发后未查到头为 \`$SHA\` 的 CI 运行，须人工核对" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          run_id=${run%% *}
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "已派发完整 CI：头 \`$SHA\`，运行 $run_id（${run#* }）" >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice title=完整 CI::head=$SHA run_id=$run_id"
