@@ -70,5 +70,5 @@ export async function riskWorld(db: Db) {
           ),
         )[0]!,
     );
-  return { ...w, org, position, levelId, assign, enqueue, run, result };
+  return { ...w, newPosition: w.position, org, position, levelId, assign, enqueue, run, result };
 }
