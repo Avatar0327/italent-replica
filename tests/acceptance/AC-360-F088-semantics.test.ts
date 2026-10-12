@@ -42,19 +42,22 @@ describe('AC-360-06 / F-088 保持静态语义', () => {
   }, 120_000);
 
   it('已有 500 个评价者再添加：仍返回 400 TOO_MANY_APPRAISERS，整条回滚，只锁一个超限候选', async () => {
-    const s = await boundedScene(testDb().db, 'f088overflow', 503);
-    await withTenant(testDb().db, s.w.tenantId, (tx) =>
-      tx.execute(sql`INSERT INTO survey360_relations(tenant_id,activity_id,object_id,appraiser_person_id,role_id,source)
+    const s = await boundedScene(testDb().db, 'f088overflow', 1);
+    await withTenant(testDb().db, s.w.tenantId, async (tx) => {
+      await tx.execute(sql`INSERT INTO survey360_people(tenant_id,name,email,source,created_by)
+        SELECT ${s.w.tenantId}::uuid,'已有评价者'||g,'existing-'||g||'@example.com','manual',${s.w.admin}::uuid
+        FROM generate_series(1,500) g`);
+      await tx.execute(sql`INSERT INTO survey360_relations(tenant_id,activity_id,object_id,appraiser_person_id,role_id,source)
         SELECT ${s.w.tenantId}::uuid,${s.activity.id}::uuid,${s.object.id}::uuid,p.id,
           ${s.w.role('subordinate')}::uuid,'manual' FROM survey360_people p
-        WHERE p.employee_id BETWEEN ${s.id(1)}::uuid AND ${s.id(500)}::uuid`),
-    );
+        WHERE p.tenant_id = ${s.w.tenantId}::uuid AND p.email LIKE 'existing-%@example.com'`);
+    });
     const before = await s.w.ok(s.w.request('GET', `/activities/${s.activity.id}/objects/${s.object.id}/appraisers`));
     s.observations.length = 0;
     const response = await s.auto({ roles: ['subordinate'] });
     expect(response.status).toBe(400);
     expect(JSON.stringify(await response.json())).toContain('TOO_MANY_APPRAISERS');
-    expect(s.locks().flatMap((o) => o.ids)).toEqual([s.id(501)]);
+    expect(s.locks().flatMap((o) => o.ids)).toEqual([s.id(1)]);
     expect(await s.w.ok(s.w.request('GET', `/activities/${s.activity.id}/objects/${s.object.id}/appraisers`))).toEqual(
       before,
     );

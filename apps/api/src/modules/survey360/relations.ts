@@ -76,12 +76,13 @@ import {
   fineEmployees,
   lockPlan,
   personForEmployee,
+  previewPerson,
   refreshFromOrg,
   restrictedSkips,
   routeEmployeeScope,
   syncAccess,
 } from './sync.js';
-import type { ModuleScope } from '../permission/module-access.js';
+import { type ModuleScope, scopeSql } from '../permission/module-access.js';
 import { loadQuestionnaire, lockQuestionnaires, markUsed } from './questionnaires.js';
 import { clearObjectAnswers, objectSheets } from './object-answers.js';
 import { clearObjectTimings } from './timings.js';
@@ -745,21 +746,54 @@ async function relationExists(tx: Tx, objectId: string, personId: string): Promi
   return !!existing;
 }
 
-/** 任职记录上当前直线经理为 managerId 的员工（同事 / 下级）。 */
-async function reportsOf(tx: Tx, tenantId: string, managerId: string, asOf: string): Promise<string[]> {
-  return rows<{ employee_id: string }>(
-    await tx.execute(sql`SELECT t.employee_id FROM employment_timeline t
+const AUTO_ADD_PAGE_SIZE = 100;
+
+/** 已挂接的按 360 人员范围（含创建人）判，未挂接的按员工范围判；与 fineEmployees 同一口径。 */
+function candidateFilter(admin: Admin): SQL {
+  const filter = personFilter(admin);
+  if (!filter) return sql`true`;
+  return sql`(EXISTS (SELECT 1 FROM survey360_people p
+      WHERE p.tenant_id = e.tenant_id AND p.employee_id = e.id AND ${filter})
+    OR (NOT EXISTS (SELECT 1 FROM survey360_people p WHERE p.tenant_id = e.tenant_id AND p.employee_id = e.id)
+      AND ${scopeSql(admin.people!, { person: sql`e.id` })}))`;
+}
+
+/** F-088：当前直线经理名下员工先按范围筛选，再按原（工号、ID）顺序分页；不截断总候选数。 */
+async function* reportsOf(
+  tx: Tx,
+  ctx: Survey360Context,
+  scope: ModuleScope,
+  objectId: string,
+  managerId: string,
+  exclude?: string,
+): AsyncGenerator<string> {
+  const asOf = tenantLocalDate(ctx.now, ctx.timezone);
+  let after: { employee_id: string; code: string } | undefined;
+  while (true) {
+    const page: { employee_id: string; code: string }[] = rows(
+      await tx.execute(sql`SELECT t.employee_id, e.code FROM employment_timeline t
       JOIN employment_records r ON r.tenant_id = t.tenant_id AND r.id = t.record_id
       JOIN employment_employees e ON e.tenant_id = t.tenant_id AND e.id = t.employee_id
       LEFT JOIN LATERAL (SELECT p.id, p.direct_manager_id FROM employment_payload_versions p
         WHERE p.tenant_id = r.tenant_id AND p.employee_id = r.employee_id AND p.business_id = r.id
           AND p.is_record_snapshot ORDER BY p.version_no DESC LIMIT 1) latest ON true
-      WHERE t.tenant_id = ${tenantId}::uuid AND t.valid_during @> ${asOf}::date
+      WHERE t.tenant_id = ${ctx.tenantId}::uuid AND t.valid_during @> ${asOf}::date
         AND r.kind NOT IN ('leave', 'retirement') AND r.service_type = 'primary'
         AND (CASE WHEN latest.id IS NULL THEN r.direct_manager_id ELSE latest.direct_manager_id END)
           = ${managerId}::uuid
-      ORDER BY e.code, e.id`),
-  ).map((r) => r.employee_id);
+        AND ${scopeSql(scope, { person: sql`e.id` })} AND ${candidateFilter(ctx.admin)}
+        AND NOT EXISTS (SELECT 1 FROM survey360_people p JOIN survey360_relations rel
+          ON rel.tenant_id = p.tenant_id AND rel.appraiser_person_id = p.id
+          WHERE p.tenant_id = e.tenant_id AND p.employee_id = e.id
+            AND rel.object_id = ${objectId}::uuid AND NOT rel.removed)
+        ${exclude ? sql`AND e.id <> ${exclude}::uuid` : sql``}
+        ${after ? sql`AND (e.code,e.id) > (${after.code},${after.employee_id}::uuid)` : sql``}
+      ORDER BY e.code, e.id LIMIT ${AUTO_ADD_PAGE_SIZE}`),
+    );
+    for (const row of page) yield row.employee_id;
+    if (page.length < AUTO_ADD_PAGE_SIZE) return;
+    after = page.at(-1)!;
+  }
 }
 
 /** 按组织架构添加以评价对象的员工为起点：该员工须在操作人当前员工范围内，否则按不存在处理（404）。 */
@@ -841,28 +875,19 @@ async function autoAdd(
   const record = await findCurrentRecord(tx, ctx.tenantId, target.employeeId, asOf);
   const managerId = (record?.fields as unknown as Record<string, unknown> | undefined)?.directManagerId;
   const manager = typeof managerId === 'string' ? managerId : null;
-  const candidates: Record<string, string[]> = {
-    superior: manager ? [manager] : [],
-    peer: manager ? (await reportsOf(tx, ctx.tenantId, manager, asOf)).filter((e) => e !== target.employeeId) : [],
-    subordinate: await reportsOf(tx, ctx.tenantId, target.employeeId, asOf),
-  };
-  // 数量为 0 的角色不处理、不取锁（F-043 第 4 轮 P3）
-  const roles = input.roles.filter((code) => input.limits?.[code] !== 0);
-  // 锁计划（F-043 第 3 轮，DEC-408①）：所选角色的候选员工先按全局顺序一次锁齐，再逐个按写入许可添加（不按角色分组
-  // 中途取锁）；锁计划按实际要处理的人数收窄留待 F-088
+  const plan = await autoAddPlan(tx, ctx, access, object.id, target.employeeId, manager, input);
+  // 一次取齐、UUID 升序的员工 → 360 人员锁序不变；只读预判不取任何行锁，写入时也不补锁。
   await lockPlan(
     tx,
     ctx.tenantId,
-    roles.flatMap((code) => candidates[code]!),
+    plan.filter((entry) => 'roleId' in entry).map((entry) => entry.employeeId),
   );
   const added: ReturnType<typeof relationView>[] = [];
   const skipped: { employeeId: string; reason: string }[] = [];
-  for (const code of roles) {
-    const roleId = await roleIdOf(tx, code);
-    let taken = 0;
-    const limit = input.limits?.[code];
-    for (const employeeId of candidates[code]!) {
-      if (limit !== undefined && taken >= limit) break;
+  for (const entry of plan) {
+    const { employeeId } = entry;
+    if ('reason' in entry) skipped.push(entry);
+    else {
       // 精细化权限下候选员工另须在 360 范围内：范围外不建人员、不加关系、不出现在结果里（DEC-289①）
       if (!(await candidateVisible(tx, ctx.admin, employeeId))) continue;
       const person = await personForEmployee(tx, ctx, access, employeeId);
@@ -872,11 +897,70 @@ async function autoAdd(
         continue;
       }
       if (await relationExists(tx, object.id, person.id)) continue;
-      added.push(relationView(await addRelation(tx, ctx, activity, object.id, person, roleId, 'org')));
-      taken += 1;
+      added.push(relationView(await addRelation(tx, ctx, activity, object.id, person, entry.roleId, 'org')));
     }
   }
   return { added, skipped };
+}
+
+type AutoAddEntry = { employeeId: string; roleId: string } | { employeeId: string; reason: string };
+
+function candidatesFor(
+  tx: Tx,
+  ctx: Survey360Context,
+  scope: ModuleScope,
+  objectId: string,
+  code: 'superior' | 'peer' | 'subordinate',
+  targetId: string,
+  managerId: string | null,
+) {
+  if (code === 'superior') return managerId ? [managerId] : [];
+  if (code === 'peer') return managerId ? reportsOf(tx, ctx, scope, objectId, managerId, targetId) : [];
+  return reportsOf(tx, ctx, scope, objectId, targetId);
+}
+
+/**
+ * E3-R17 / F-088：只选剩余名额 + 1 个可添加员工（最大 501）。保留一个超限候选，让 addRelation 按既有规则整条
+ * 拒绝，不能把超限请求静默裁成成功；跳过与已有关系不占人数，跨页 / 跨角色仍按原顺序继续查找。
+ */
+async function autoAddPlan(
+  tx: Tx,
+  ctx: Survey360Context,
+  access: Awaited<ReturnType<typeof syncAccess>>,
+  objectId: string,
+  targetId: string,
+  managerId: string | null,
+  input: { roles: ('superior' | 'peer' | 'subordinate')[]; limits?: Partial<Record<string, number>> | undefined },
+): Promise<AutoAddEntry[]> {
+  const current = await count(
+    tx,
+    sql`SELECT count(*)::int AS n FROM survey360_relations WHERE object_id = ${objectId}::uuid AND NOT removed`,
+  );
+  const room = LIMITS.appraisersPerObject - current + 1;
+  const selected = new Set<string>();
+  const plannedEmails = new Set<string>();
+  const plan: AutoAddEntry[] = [];
+  for (const code of input.roles) {
+    const limit = input.limits?.[code];
+    if (limit === 0 || selected.size >= room) continue;
+    const roleId = await roleIdOf(tx, code);
+    const candidates = candidatesFor(tx, ctx, access.scope, objectId, code, targetId, managerId);
+    let taken = 0;
+    for await (const employeeId of candidates) {
+      if (selected.has(employeeId) || !(await candidateVisible(tx, ctx.admin, employeeId))) continue;
+      const outcome = await previewPerson(tx, ctx, access, employeeId, plannedEmails);
+      if (typeof outcome === 'string') {
+        if (outcome !== 'OUT_OF_SCOPE') plan.push({ employeeId, reason: outcome });
+        continue;
+      }
+      if (outcome && (await relationExists(tx, objectId, outcome.id))) continue;
+      selected.add(employeeId);
+      plan.push({ employeeId, roleId });
+      taken += 1;
+      if ((limit !== undefined && taken >= limit) || selected.size >= room) break;
+    }
+  }
+  return plan;
 }
 
 const importRow = z.strictObject({
