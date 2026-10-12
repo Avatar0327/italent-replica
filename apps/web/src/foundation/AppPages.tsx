@@ -7,8 +7,8 @@ import { useSession } from './Session.js';
 import { ListPage } from './templates.js';
 import { ui } from './messages.js';
 
-const Org = lazy(() => import('../org/OrgChangePage.js').then((m) => ({ default: m.OrgChangePage })));
-const Job = lazy(() => import('../job/JobPage.js').then((m) => ({ default: m.JobPage })));
+const Org = lazy(() => import('../org/OrgPage.js').then((m) => ({ default: m.OrgPage })));
+const Job = lazy(() => import('../job/JobWorkspace.js').then((m) => ({ default: m.JobWorkspace })));
 const Transfer = lazy(() => import('../transfer/TransferPage.js').then((m) => ({ default: m.TransferPage })));
 const Self = lazy(() => import('../employee-self-service/EmployeePage.js').then((m) => ({ default: m.EmployeePage })));
 const Manager = lazy(() => import('../transfer/ManagerPage.js').then((m) => ({ default: m.ManagerPage })));

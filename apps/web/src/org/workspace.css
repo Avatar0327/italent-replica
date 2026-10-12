@@ -1,0 +1,51 @@
+.r1-workspace {
+  color: #303640;
+}
+.r1-workspace > .ant-alert {
+  margin-bottom: 16px;
+}
+.r1-workspace .ant-tabs-nav {
+  margin-bottom: 18px;
+}
+.r1-workspace .ant-table-cell {
+  white-space: nowrap;
+  font-size: 13px;
+}
+.r1-workspace .ant-table-cell .ant-btn-link {
+  padding-inline: 0;
+  height: auto;
+}
+.r1-workspace .page-heading h1 {
+  font-size: 18px;
+  font-weight: 600;
+}
+.r1-workspace .page-filters {
+  background: #fafbfc;
+  padding: 12px 14px;
+  border: 1px solid #edf0f4;
+}
+.r1-workspace .ant-input-search {
+  width: 230px;
+}
+.r1-tree-layout {
+  display: grid;
+  grid-template-columns: 230px minmax(0, 1fr);
+  gap: 20px;
+}
+.r1-tree-panel {
+  border-right: 1px solid #edf0f4;
+  padding-right: 16px;
+  overflow: auto;
+}
+.r1-tree-panel h2 {
+  font-size: 14px;
+  padding: 8px 0 12px;
+}
+.r1-main-panel {
+  min-width: 0;
+}
+@media (max-width: 1100px) {
+  .r1-tree-layout {
+    grid-template-columns: 180px minmax(0, 1fr);
+  }
+}

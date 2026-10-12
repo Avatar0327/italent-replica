@@ -8,6 +8,10 @@ import { Shell } from './foundation/Shell.js';
 import { theme } from './foundation/theme.js';
 import { demoSession } from './demo-stubs/session.js';
 
+import { orgNotes } from './annotations/org.js';
+import { jobNotes } from './annotations/job.js';
+import { establishmentNotes } from './annotations/establishment.js';
+
 const emptySession: Session = {
   tenantId: '',
   identityKey: '',
@@ -22,7 +26,7 @@ export function App({ session = import.meta.env.DEV ? demoSession() : emptySessi
       <AntApp>
         <SessionProvider session={session}>
           <PermissionsProvider key={`${session.tenantId}/${session.identityKey}`}>
-            <DecisionNotesProvider>
+            <DecisionNotesProvider notes={{ ...orgNotes, ...jobNotes, ...establishmentNotes }}>
               <BrowserRouter>
                 <Shell />
               </BrowserRouter>

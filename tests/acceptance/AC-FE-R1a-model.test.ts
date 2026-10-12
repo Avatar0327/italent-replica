@@ -70,3 +70,22 @@ describe('AC-FE-R1a-02 职务表单', () => {
     });
   });
 });
+
+describe('AC-FE-R1a-05 服务端权限契约', () => {
+  it('权限接口没有 read 开关；对象授权返回成功代表可进入，写操作还须按钮与操作开关', async () => {
+    const { pageAccess } = await org();
+    const permission = {
+      objectCode: 'TenantBase.Organization',
+      dataOperations: { create: false, update: true, delete: false },
+      viewableFields: ['name', 'remarks'],
+      editableFields: ['name'],
+      buttons: [{ buttonCode: 'update', level: 'detail' }],
+    };
+    expect(pageAccess(undefined).readable).toBe(false);
+    expect(pageAccess(permission).readable).toBe(true);
+    expect(pageAccess(permission).can('create', 'list')).toBe(false);
+    expect(pageAccess(permission).can('update')).toBe(true);
+    expect(pageAccess(permission).field('remarks')).toEqual({ visible: true, editable: false });
+    expect(pageAccess(permission).field('parents')).toEqual({ visible: false, editable: false });
+  });
+});
