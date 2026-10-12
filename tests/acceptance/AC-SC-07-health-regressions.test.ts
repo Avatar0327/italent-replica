@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { eq, successionCalcRuns, successionCalcRunObjects } from '@italent/db';
 import {
   type SuccessionLevelRow,
+  type SyncNomination,
   type FieldRead,
   compilePopulation,
   evaluateFormula,
@@ -180,5 +181,112 @@ describe('AC-SC-07 P2-2 五态聚合回归', () => {
     );
     const results = await (await w.request('GET', '/health-results')).json();
     expect(results.items.find((r: { orgId: string }) => r.orgId === org.id)).toMatchObject({ levelId: null });
+  });
+});
+
+function nomination(orgId: string, personId: string, readinessCode: string | null = null): SyncNomination {
+  return {
+    nominationId: randomUUID(),
+    objectId: randomUUID(),
+    employeeId: personId,
+    kind: 'org',
+    direction: 'successor',
+    orgId,
+    positionId: null,
+    successorEmployeeId: personId,
+    readinessId: null,
+    readinessCode,
+    sortNo: 1,
+    createdAt: SC_NOW,
+    syncEligible: true,
+    formValues: {},
+  };
+}
+describe('AC-SC-07 P2-3 字段过滤与去重回归', () => {
+  it('P2-3：继任人数已保存过滤条件在计算及所有聚合分支中生效', async () => {
+    const { w, org, person, measure } = await metricWorld('health-filter-number');
+    await w.setHead(org, person);
+    const entries = [nomination(org.id, person.id), nomination(org.id, person.id)];
+    const port = Object.assign(createInMemoryTalentReviewSyncPort({ tenantId: w.tenant.id }), {
+      readSuccessionEntries: async () => [
+        {
+          employeeId: null,
+          orgId: org.id,
+          positionId: null,
+          status: 'value' as const,
+          nominations: entries,
+          source: null,
+        },
+      ],
+    });
+    const row = metricRow({
+      fieldSource: 'succession',
+      fieldCode: 'successor_count',
+      measure: 'successor_count',
+      filterOperator: 'eq',
+      filterValues: [2],
+      threshold: 1,
+    });
+    const saved = await w.request('POST', '/health-levels', {
+      ifMatch: 0,
+      body: {
+        code: 'FILTER_TWO',
+        name: '过滤后不命中',
+        color: '#336699',
+        rules: { expression: '1', rows: [row] },
+      },
+    });
+    expect(saved.status, await saved.clone().text()).toBe(201);
+    expect(await measure(port, row)).toEqual({ status: 'value', value: 0 });
+    for (const kind of ['count', 'ratio', 'count_over_successors', 'count_over_incumbents'])
+      expect(await measure(port, { ...row, measure: kind }), kind).toEqual({ status: 'value', value: 0 });
+    expect(await measure(port, { ...row, measure: 'average' })).toEqual({ status: 'empty' });
+    expect(await measure(port, { ...row, filterValues: [1] })).toEqual({ status: 'value', value: 1 });
+    expect(await measure(port, { ...row, filterValues: [1], measure: 'count' })).toEqual({ status: 'value', value: 1 });
+    const queued = await w.request('POST', '/maps/org/compute-health', { ifMatch: 0, body: {} });
+    expect(queued.status).toBe(202);
+    const { runId } = await queued.json();
+    expect(await runCalcPage(w.db, w.tenant.id, runId, [createHealthHandler('org_health', port)], SC_NOW)).toBe(
+      'succeeded',
+    );
+    const results = await (await w.request('GET', '/health-results')).json();
+    expect(results.items.find((r: { orgId: string }) => r.orgId === org.id)).toMatchObject({ levelId: null });
+  });
+  it('P2-3：准备度过滤只执行一次，重复提名去重；空准备度与零提名区分', async () => {
+    const { w, org, person, measure } = await metricWorld('health-filter-readiness');
+    let entries = [
+      nomination(org.id, person.id, 'READY'),
+      nomination(org.id, person.id, 'READY'),
+      nomination(org.id, person.id, 'LATER'),
+    ];
+    const port = Object.assign(createInMemoryTalentReviewSyncPort({ tenantId: w.tenant.id }), {
+      readSuccessionEntries: async () => [
+        {
+          employeeId: null,
+          orgId: org.id,
+          positionId: null,
+          status: 'value' as const,
+          nominations: entries,
+          source: null,
+        },
+      ],
+    });
+    const row = metricRow({
+      fieldSource: 'succession',
+      fieldCode: 'readiness_code',
+      measure: 'successor_count',
+      filterOperator: 'eq',
+      filterValues: ['READY'],
+    });
+    expect(await measure(port, row)).toEqual({ status: 'value', value: 1 });
+    expect(await measure(port, { ...row, measure: 'count' })).toEqual({ status: 'value', value: 1 });
+    expect(await measure(port, { ...row, filterValues: ['NEVER'] })).toEqual({ status: 'value', value: 0 });
+    entries = [nomination(org.id, person.id)];
+    expect(await measure(port, row)).toEqual({ status: 'empty' });
+    entries = [];
+    expect(await measure(port, row)).toEqual({ status: 'value', value: 0 });
+    expect(
+      await measure(port, { ...row, fieldCode: 'successor_count', filterOperator: null, filterValues: [] }),
+    ).toEqual({ status: 'value', value: 0 });
   });
 });
