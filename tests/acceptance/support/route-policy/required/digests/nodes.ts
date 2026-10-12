@@ -2731,7 +2731,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/succession/map-card-reader.ts#readMapStats': ['fb20a1789c2c', '82fdca42f5cc'],
   'apps/api/src/modules/succession/map-card-reader.ts#readMapSuccessors': ['58bdb9f3c081', '9ac0aef2bb71'],
   'apps/api/src/modules/succession/map-display.ts#positionScope': ['315f39f390fd', 'd3f9921bbd6e'],
-  'apps/api/src/modules/succession/map-display.ts#readMapDisplayScope': ['7a713f087871', '16bff63549c0'],
+  'apps/api/src/modules/succession/map-display.ts#readMapDisplayScope': ['8d4fe622d7ed', 'b12d55999a06'],
   'apps/api/src/modules/succession/map-display.ts#resolveMapDisplayConditions': ['ae79200fc8cb', '1f93fb5a8650'],
   'apps/api/src/modules/succession/map-preferences.ts#mapDisplayBody': ['739139c91b54', '1e8e856aef0a'],
   'apps/api/src/modules/succession/map-preferences.ts#mapKind': ['65fca7c004fc', '583ee92c250c'],

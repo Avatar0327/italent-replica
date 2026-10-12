@@ -702,7 +702,7 @@ export const DIGESTS: Digests = {
     mapObjectAccess: '0740367e6056',
   },
   'apps/api/src/modules/succession/map-display.ts': {
-    readMapDisplayScope: '7a713f087871',
+    readMapDisplayScope: '8d4fe622d7ed',
     resolveMapDisplayConditions: 'ae79200fc8cb',
   },
   'apps/api/src/modules/succession/map-routes.ts': {
@@ -1765,7 +1765,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/succession/levels-routes.ts#registerLevelReads': '1c4dc4f4f005',
   'apps/api/src/modules/succession/map-card-reader.ts#hiddenMapTargets': 'f595ee2bed59',
   'apps/api/src/modules/succession/map-card-reader.ts#mapObjectAccess': '91034198c270',
-  'apps/api/src/modules/succession/map-display.ts#readMapDisplayScope': '16bff63549c0',
+  'apps/api/src/modules/succession/map-display.ts#readMapDisplayScope': 'b12d55999a06',
   'apps/api/src/modules/succession/map-display.ts#resolveMapDisplayConditions': '1f93fb5a8650',
   'apps/api/src/modules/succession/map-routes.ts#mapAccess': '208b27aa5d33',
   'apps/api/src/modules/succession/map-routes.ts#registerMapRoutes': '152728d4a1ca',
