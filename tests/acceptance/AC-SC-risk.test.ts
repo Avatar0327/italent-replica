@@ -1,5 +1,5 @@
 /** B4 首批红测：已确认的 #9 冻结 / 重放、#15 非空赋值、§4.2 定时登记。
- * TODO(需取证 #284)：清除后的 method 存在 §8.6 / Q04 口径冲突，待定后补清除与计算交错验收。
+ * DEC-449：清除保留行并恢复 computed，下一次计算可写。
  */
 import { randomUUID } from 'node:crypto';
 import { sql, type DbHandle } from '@italent/db';
@@ -141,6 +141,15 @@ it('AC-SC-risk #15：非空手动赋值可读、可重放，旧 revision 拒绝�
   const before = await read();
   expect((await w.request('PUT', path, { ...options, idempotencyKey: randomUUID() })).status).toBe(409);
   expect(await read()).toEqual(before);
+  const cleared = await w.request('PUT', path, { ifMatch: 1, body: { levelId: null } });
+  expect(cleared.status, await cleared.clone().text()).toBe(200);
+  expect(await cleared.json()).toMatchObject({
+    positionId: position.id,
+    levelId: null,
+    method: 'computed',
+    revision: 2,
+  });
+  expect(await read()).toHaveLength(1);
 });
 
 it('AC-SC-risk §4.2：生产者、worker、调度登记；同业务日幂等，次日新建 run', async () => {
