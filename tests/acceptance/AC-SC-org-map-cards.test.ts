@@ -49,6 +49,8 @@ it('AC-SC-org-map 根 / 默认层数 / 子树隐藏 / 虚拟设置直接复用 C
   for (const id of [third.id, fourth.id, virtual.id, virtualChild.id])
     expect(hidden.items.map((o) => o.id)).not.toContain(id);
   expect((await mapView(w, { root: root.id, hiddenOrgIds: [root.id] })).items).toEqual([]);
+  expect((await mapView(w, { root: third.id, hiddenOrgIds: [earlier.id] })).items).toEqual([]);
+  expect((await mapView(w, { root: virtualChild.id })).items).toEqual([]);
 });
 
 it('AC-SC-org-map 真实范围多同级选顺序号最小根、空范围 fail-closed、范围外与不存在同 404', async () => {
