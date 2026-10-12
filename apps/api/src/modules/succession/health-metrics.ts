@@ -6,7 +6,7 @@ import { healthPeople, customHealthPopulation } from './health-population.js';
 import type { healthPrincipal } from './health-principal.js';
 import { type CalcContext, type CalcObject, CalcObjectFailure } from './calc-contract.js';
 import { loadOrgSnapshot } from '../org/read-model.js';
-import { healthScalar, measureHealth, type HealthSource, type HealthSample } from './health-measure.js';
+import { healthScalar, measureHealth, type HealthSource } from './health-measure.js';
 export type HealthReads = Pick<
   TalentReviewSyncPort,
   'greenRate' | 'readReviewFields' | 'readSuccessionEntries' | 'listReviewFields'
@@ -51,10 +51,9 @@ async function readHealthSource(row: SuccessionLevelRow, context: MetricContext)
   const incumbents = org?.personInChargeId ? [org.personInChargeId] : [];
   const people = await selectPeople(row, context, successors, incumbents);
   Object.assign(base, { population: people.length, successors: successors.length, incumbents: incumbents.length });
-  const scoped = nominations.filter((n) => row.population === 'all' || people.includes(n.successorEmployeeId));
   if (row.fieldCode === null && row.measure !== 'successor_count')
     return { ...base, samples: people.map((key) => ({ key, read: healthScalar(1) })) };
-  if (row.fieldSource === 'succession') return readSuccessionSource(row, scoped, base);
+  if (row.fieldSource === 'succession') return readSuccessionSource(row, nominations, people, base);
   if (row.fieldSource === 'org') {
     base.field = { ...base.field, kind: row.fieldCode === 'person_in_charge_id' ? 'text' : 'number' };
     if (row.fieldCode === 'green_rate') return readGreenSource(port, tx, args, base, object.objectId);
@@ -109,25 +108,27 @@ async function readGreenSource(
 function readSuccessionSource(
   row: SuccessionLevelRow,
   nominations: readonly SyncNomination[],
+  people: readonly string[],
   base: HealthSource,
 ): HealthSource {
   const readiness = row.fieldCode === 'readiness_code';
-  const count = new Set(nominations.map((n) => n.successorEmployeeId)).size;
   return {
     ...base,
-    zeroNominations: nominations.length === 0,
+    succession: {
+      original: nominations.length === 0 ? 'zero' : 'present',
+      populationKeys: row.population === 'all' ? null : people,
+      numeric: !readiness,
+    },
     field: {
       object: 'successor',
       code: row.fieldCode ?? 'count',
       path: 'successor.value',
       kind: readiness ? 'text' : 'number',
     },
-    samples: nominations
-      .map<HealthSample>((n) => ({
-        key: n.successorEmployeeId,
-        read: healthScalar(readiness ? n.readinessCode : count),
-      }))
-      .concat(!readiness && !nominations.length ? [{ key: null, read: healthScalar(0) }] : []),
+    samples: nominations.map((n) => ({
+      key: n.successorEmployeeId,
+      read: healthScalar(readiness ? n.readinessCode : 1),
+    })),
   };
 }
 async function readReviewSource(
