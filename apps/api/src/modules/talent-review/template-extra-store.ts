@@ -180,3 +180,13 @@ registerConfigReferenceGuard('field', async (tx, tenantId, id) => {
   }
   return null;
 });
+
+// 任一历史版本的选用都保留引用；不能只查模板当前版本，外键 restrict 继续兜底。
+registerConfigReferenceGuard('form', async (tx, tenantId, id) => {
+  const rows = await tx
+    .select({ id: S.id })
+    .from(S)
+    .where(and(eq(S.tenantId, tenantId), eq(S.formId, id)))
+    .limit(1);
+  return rows.length ? 'TEMPLATE_STEP_FORM' : null;
+});

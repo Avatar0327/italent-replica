@@ -203,6 +203,7 @@ async function executePage(tx: Tx, run: CalcRun, handler: CalcHandler, now: Date
     .set({ status: 'running', startedAt: run.startedAt ?? now })
     .where(match(run.tenantId, run.id));
   const current = { ...run, status: 'running' as const, principalUserId: principal, ownerUserId: principal };
+  await handler.preparePage?.({ tx, run: current, now }, selected);
   for (const object of selected) {
     const where = and(
       objectMatch(run.tenantId, run.id),
