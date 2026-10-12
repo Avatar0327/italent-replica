@@ -23,6 +23,13 @@ const fieldMap: Record<string, [string, string]> = {
   employee_status: ['TenantBase.EmploymentRecord', 'employeeStatus'],
   readiness_id: ['Succession.Record', 'readinessId'],
 };
+function riskSources(fields: readonly string[], canRead: (object: string, field: string) => boolean) {
+  return Object.fromEntries(
+    fields
+      .filter((f) => !fieldMap[f] || !canRead(...fieldMap[f]!))
+      .map((field) => [field, { status: 'forbidden' as const }]),
+  );
+}
 export type RiskPartTimeReader = (ctx: SuccessionReadContext, positionId: string) => Promise<readonly string[]>;
 export async function riskPeople(
   tx: Tx,
@@ -67,6 +74,10 @@ export async function riskPeople(
       }),
     });
   }
+  const sources = riskSources(fields, (object, field) => {
+    const auth = permissions.get(object);
+    return !!auth?.view && auth.fields.has(field) && auth.scope.hasDataPermission;
+  });
   const people = new Map<string, RiskPerson>();
   const target = fields.includes('readiness_id')
     ? await loadJobObject(tx, input.tenantId, 'positions', input.positionId, input.today, true)
@@ -78,9 +89,8 @@ export async function riskPeople(
       const mapping = fieldMap[field];
       const auth = mapping && permissions.get(mapping[0]);
       if (
-        !auth?.view ||
-        !auth.fields.has(mapping![1]) ||
-        !scopeAllows(auth.scope, {
+        sources[field] ||
+        !scopeAllows(auth!.scope, {
           orgId: field === 'readiness_id' ? (target?.orgId ?? undefined) : (row?.currentOrgId ?? undefined),
           personId: field === 'readiness_id' ? undefined : id,
         })
@@ -97,6 +107,7 @@ export async function riskPeople(
   }
   const from = (values: readonly string[]) => values.map((id) => people.get(id)!);
   return {
+    sources,
     incumbents: riskIncumbents(from(primary), from(part), input.partTime),
     successors: from([...new Set(records.map((r) => r.successorEmployeeId))]),
   };
