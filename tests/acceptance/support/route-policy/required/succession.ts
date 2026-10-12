@@ -309,8 +309,8 @@ Object.assign(SUCCESSION, {
       at: [
         {
           role: 'call',
-          unit: `${S}/map-routes.ts#mapAccess`,
-          anchor: "await button(bound, ctx, codeOf('map'), 'computeStats', 'list')",
+          unit: `${S}/map-routes.ts#computeAccess`,
+          anchor: "await button(bound, access.ctx, codeOf('map'), 'computeStats', 'list')",
         },
         {
           role: 'impl',

@@ -693,8 +693,9 @@ export const DIGESTS: Digests = {
     resolveMapDisplayConditions: 'ae79200fc8cb',
   },
   'apps/api/src/modules/succession/map-routes.ts': {
-    mapAccess: '4c92488394ad',
-    registerMapRoutes: '8c1aa15b06b4',
+    computeAccess: '2575abea1e09',
+    mapAccess: '2ffd32f2bdd9',
+    registerMapRoutes: 'f02e9bfed922',
   },
   'apps/api/src/modules/succession/projection.ts': {
     GOVERNING_FIELD: 'fe154b4c6a8f',
@@ -1749,8 +1750,9 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/succession/levels-routes.ts#registerLevelReads': '1c4dc4f4f005',
   'apps/api/src/modules/succession/map-display.ts#readMapDisplayScope': 'affc54d2a8f0',
   'apps/api/src/modules/succession/map-display.ts#resolveMapDisplayConditions': '1f93fb5a8650',
-  'apps/api/src/modules/succession/map-routes.ts#mapAccess': '208b27aa5d33',
-  'apps/api/src/modules/succession/map-routes.ts#registerMapRoutes': '152728d4a1ca',
+  'apps/api/src/modules/succession/map-routes.ts#computeAccess': 'ac0053f8a39a',
+  'apps/api/src/modules/succession/map-routes.ts#mapAccess': '087aafaa7722',
+  'apps/api/src/modules/succession/map-routes.ts#registerMapRoutes': 'aa525288fc75',
   'apps/api/src/modules/succession/projection.ts#GOVERNING_FIELD': 'e3b0c44298fc',
   'apps/api/src/modules/succession/projection.ts#projectSuccession': '100b13723c09',
   'apps/api/src/modules/succession/read-sql.ts#selfRecordHiddenSql': 'eab3bde19b0f',
