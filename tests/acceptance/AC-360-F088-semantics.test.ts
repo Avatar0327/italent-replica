@@ -47,7 +47,8 @@ describe('AC-360-06 / F-088 保持静态语义', () => {
       await tx.execute(sql`INSERT INTO survey360_people(tenant_id,name,email,source,created_by)
         SELECT ${s.w.tenantId}::uuid,'已有评价者'||g,'existing-'||g||'@example.com','manual',${s.w.admin}::uuid
         FROM generate_series(1,500) g`);
-      await tx.execute(sql`INSERT INTO survey360_relations(tenant_id,activity_id,object_id,appraiser_person_id,role_id,source)
+      await tx.execute(sql`INSERT INTO survey360_relations
+        (tenant_id,activity_id,object_id,appraiser_person_id,role_id,source)
         SELECT ${s.w.tenantId}::uuid,${s.activity.id}::uuid,${s.object.id}::uuid,p.id,
           ${s.w.role('subordinate')}::uuid,'manual' FROM survey360_people p
         WHERE p.tenant_id = ${s.w.tenantId}::uuid AND p.email LIKE 'existing-%@example.com'`);
@@ -71,6 +72,22 @@ describe('AC-360-06 / F-088 保持静态语义', () => {
     });
     expect(s.pages()).toEqual([]);
     expect(s.locks()).toEqual([]);
+  }, 120_000);
+
+  it('预判跳过的无邮箱员工在取锁前被移出范围：不返回其 ID 或旧跳过原因', async () => {
+    const s = await boundedScene(testDb().db, 'f088skipScope', 1);
+    await withTenant(testDb().db, s.w.tenantId, (tx) =>
+      tx.execute(sql`DELETE FROM survey360_people WHERE employee_id = ${s.id(1)}::uuid`),
+    );
+    syncProbe.beforeLock = async () => {
+      s.access.scope = {
+        ...s.access.scope,
+        all: false,
+        personIds: [s.manager.id],
+        terms: [{ dimension: 'reporting', orgIds: [], personIds: [s.manager.id] }],
+      };
+    };
+    expect(await s.w.ok<Result>(s.auto())).toEqual({ added: [], skipped: [] });
   }, 120_000);
 });
 
