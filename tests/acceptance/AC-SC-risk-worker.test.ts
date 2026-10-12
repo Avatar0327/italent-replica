@@ -2,10 +2,12 @@ import { randomUUID } from 'node:crypto';
 import { sql, successionCalcRuns, type DbHandle } from '@italent/db';
 import { createTestDb } from '@italent/testkit';
 import { STANDARD_PROFILES } from '@italent/domain';
-import { afterAll, beforeAll, expect, it } from 'vitest';
+import { afterAll, beforeAll, expect, it, vi } from 'vitest';
 import { riskWorld } from './AC-SC-risk-support.js';
 import { SC_NOW } from './AC-SC-support.js';
-import { riskHandler } from '../../apps/api/src/modules/succession/risk-worker.js';
+import { createRiskHandler, riskHandler } from '../../apps/api/src/modules/succession/risk-worker.js';
+import { runCalcPage } from '../../apps/api/src/modules/succession/calc-worker.js';
+import { overrideSetting } from '../../apps/api/src/modules/tenant-settings/service.js';
 import { riskProducer } from '../../apps/api/src/modules/succession/risk-producer.js';
 import { installProfile } from '../../apps/api/src/modules/permission/standard-profiles.js';
 import { rowsOf } from '../../apps/api/src/modules/succession/read-sql.js';
@@ -119,4 +121,33 @@ it('AC-SC-risk DEC-452 work_years 不可用导致对象失败并保留原值，�
       ),
     ),
   ).toEqual([{ code: 'DATA_UNAVAILABLE', row_no: 1 }]);
+});
+it('AC-SC-risk 求值宿主遵守兼职设置：关闭不读端口，开启并入兼职并去重', async () => {
+  const w = await riskWorld(handle.db);
+  const employee = await w.hire('合成兼职人员', { departmentId: w.org.id });
+  const reader = vi.fn(async () => [employee.id, employee.id]);
+  await w.asTenant((tx) =>
+    tx.execute(sql`UPDATE succession_risk_level_rows SET subject='incumbent',
+    measure='count_over_incumbents' WHERE level_id=${w.levelId}::uuid`),
+  );
+  for (const [revision, enabled] of [false, true].entries()) {
+    await w.asTenant((tx) =>
+      overrideSetting(
+        tx,
+        {
+          tenantId: w.tenant.id,
+          userId: w.user.id,
+          key: 'succession.part_time_in_risk_calc',
+          expectedRevision: revision,
+          now: SC_NOW,
+          commandId: randomUUID(),
+        },
+        enabled,
+      ),
+    );
+    const runId = await w.enqueue();
+    expect(await runCalcPage(handle.db, w.tenant.id, runId, [createRiskHandler(reader)], SC_NOW)).toBe('succeeded');
+    expect((await w.result()).level_id).toBe(enabled ? w.levelId : null);
+    expect(reader).toHaveBeenCalledTimes(enabled ? 1 : 0);
+  }
 });

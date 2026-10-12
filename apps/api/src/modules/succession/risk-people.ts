@@ -87,7 +87,7 @@ export async function riskPeople(
       )
         person[field] = { status: 'forbidden' };
       else if (!row || field === 'work_years')
-        person[field] = { status: 'unavailable' }; // TODO(需取证 #288)：累计工龄权威读源，不能按入职日臆算。
+        person[field] = { status: 'unavailable' }; // DEC-452 / F-100：累计工龄等待权威读源，不能按入职日臆算。
       else if (field === 'age') person[field] = ageOn(row.values.birthday as string | null, input.asOf);
       else if (field === 'readiness_id')
         person[field] = records.find((r) => r.successorEmployeeId === id)?.readinessId ?? null;

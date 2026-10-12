@@ -10,9 +10,9 @@ import { registration, registrationGate } from './support/route-policy/registrat
  * ROUTE_POLICY_UPDATE_BASELINE=1 重新生成并随 PR 评审）；步骤二（按备选的最小对照）留给 PR-B4b。
  */
 import type { ManifestRoute, RoutePolicy } from '@italent/api';
-import { useTestDb } from '@italent/testkit';
+import { createTestDb } from '@italent/testkit';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { canonicalJson } from './support/route-policy/baseline.js';
 import {
   DISCOVERY_FACTS,
@@ -49,7 +49,13 @@ import { permClaims } from './support/route-policy/request-perms.js';
 import { REQUIRED } from './support/route-policy/required/index.js';
 import type { Obligation, RequiredTable } from './support/route-policy/required/types.js';
 
-const testDb = useTestDb();
+let handle: Awaited<ReturnType<typeof createTestDb>>;
+// DEC-452：完整迁移在多工作区并行时实测超过 60 秒，仅放宽本文件建库，不增加 CI 分片预算。
+beforeAll(async () => {
+  handle = await createTestDb();
+}, 300_000);
+afterAll(async () => handle?.close());
+const testDb = () => handle;
 
 let manifest: { declared: readonly ManifestRoute[] };
 let fresh: Record<string, EndpointDiscovery>;
@@ -451,21 +457,22 @@ describe('AC-PRM-FW-08 P3 非法标识：观测码与根节点 invalidId 相等'
     'PATCH /api/tenant/personnel/employees/:employeeId/subsets/:kind/:id',
   ];
 
-  it('第 3 轮：状态码相同、错误体不同的 53 个端点由实际行为证明适用（含 B2b 两种等级编辑）', () => {
+  it('第 3 轮：状态码相同、错误体不同的 54 个端点由实际行为证明适用（含 B4 风险赋值）', () => {
     const k48 = sameStatusOnly();
-    expect(k48).toHaveLength(53);
+    expect(k48).toHaveLength(54);
     expect(k48).toContain('POST /api/tenant/talent-review/matrices/:id/ratio-groups');
     expect(k48).toContain('GET /api/tenant/permission/profiles/:id');
     expect(k48).toContain('POST /api/tenant/idp/plans/:id/goals');
     expect(k48).toContain('PUT /api/tenant/succession/risk-levels/:id');
     expect(k48).toContain('PUT /api/tenant/succession/health-levels/:id');
+    expect(k48).toContain('PUT /api/tenant/succession/risk-results/:positionId');
     for (const k of k48) {
       expect(p3Applicable(k, fresh[k]!), k).toBe(true);
       expect(route(k).policy.invalidId, `${k} 真实声明有 invalidId`).toBeDefined();
     }
   });
 
-  it('53 个端点把 invalidId 改成另一个状态码、或删掉声明 → MISMATCH:invalidId', () => {
+  it('54 个端点把 invalidId 改成另一个状态码、或删掉声明 → MISMATCH:invalidId', () => {
     for (const k of sameStatusOnly()) {
       const r = route(k);
       const declared = r.policy.invalidId!;

@@ -83,15 +83,12 @@ it('AC-SC-risk C1 权限断层新根与冻结一致；撤范围后重放 404 且
     ).status,
   ).toBe(404);
   const before = await read();
-  expect(
-    (
-      await world.api.request('PUT', scopePath, {
-        ...world.asAdmin,
-        ifMatch: 1,
-        body: { kind: 'org_range', orgRanges: [] },
-      })
-    ).status,
-  ).toBe(200);
+  const revoked = await world.api.request('PUT', scopePath, {
+    ...world.asAdmin,
+    ifMatch: 1,
+    body: { kind: 'default' },
+  });
+  expect(revoked.status, await revoked.clone().text()).toBe(200);
   expect((await viewer.request('POST', '/maps/position/compute-risk', options)).status).toBe(404);
   expect(await read()).toEqual(before);
 });

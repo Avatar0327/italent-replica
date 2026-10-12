@@ -21,14 +21,14 @@ async function riskPrincipal(tx: Tx, tenantId: string) {
       SELECT 1 FROM permission_grants g JOIN permission_profiles p ON p.tenant_id=g.tenant_id AND p.id=g.profile_id
       WHERE g.tenant_id=${tenantId}::uuid AND g.user_id=${userId}::uuid AND g.status='active'
       AND p.code='standard_succession_runner') AS ok,succession_tenant_today(${tenantId}::uuid)::text AS today,
-      (SELECT timezone FROM tenants WHERE id=${tenantId}::uuid) AS timezone`),
+      current_tenant_timezone() AS timezone`),
   );
   if (!state?.ok) throw new CalcBlocked('PRINCIPAL_UNAVAILABLE');
   const object = codeOf('riskResult');
   const subject = await loadSubject(tx, userId, object, { tenantId, userId, asOf: state.today });
   const effective = resolveObjectPermission(object, subject.objectPermissions, objectCatalog)?.effective;
   if (
-    !decide(subject, { action: 'object.update', resource: object }, objectCatalog) ||
+    !decide(subject, { action: 'object.update', resource: object, fields: ['levelId'] }, objectCatalog) ||
     !decide(
       subject,
       { action: 'object.button', resource: buttonResource(object, 'assign', 'detail') },
