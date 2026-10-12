@@ -2,15 +2,17 @@
 // DEC-430①：把 origin/main 合进当前分支，并处理“生成物”与迁移编号，开发线程和合并队列共用。
 // 用法：pnpm merge:main [--check] [--continue] [--no-regen] [--no-fetch] [--take-ours-for-counts]
 //   （默认）fetch → merge origin/main → 只在生成物白名单内的冲突取 main 版本 → 本分支迁移改号接在 main 之后
+//           → 授权版本定号（DEC-439④：本分支改了授权项编码则 main + 1 并重算指纹，否则取 main）
 //           → 重算 F-039 证据登记与冻结基准 / 端点计数 → 提交“merge: 合入 main 并重算生成物”
-//   --check     只预演：列出会冲突的文件（区分生成物 / 业务文件）和迁移改号计划，不改工作区；有业务冲突退出码 1
+//   --check     只预演：列出会冲突的文件（区分生成物 / 授权版本 / 业务文件）、迁移改号与授权版本定号计划，不改工作区；
+//               有业务冲突退出码 1
 //   --continue  业务冲突手工解决并 git add 之后，从改号那一步继续
 //   --no-regen  不跑重算命令（只合并、改号、提交）
 //   --take-ours-for-counts  业务冲突里 main 一侧只改了数字字面量（如端点计数）的文件，冲突处取本分支一侧并 git add；
 //               默认不自动处理，只提示（DEC-430① 补充）
 // 白名单之外的冲突一律停下并列出，须人工处理。规则说明见 docs/08_设计/DEC-430_生成物合并后重算.md。
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -18,13 +20,21 @@ import {
   classifyConflict,
   drizzleJson,
   GENERATED_PATHS,
+  GRANT_HISTORY_PATH,
+  GRANTS_PATH,
   isGeneratedPath,
   JOURNAL_PATH,
+  parseGrantHistory,
+  planGrantVersion,
   planRenumber,
+  readGrantConstants,
+  resolveGrantConflict,
   rebaseSnapshots,
   snapshotPath,
   sqlPath,
   takeOursForCounts,
+  writeGrantConstants,
+  writeGrantHistory,
 } from './merge-main-lib.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -39,6 +49,7 @@ const json = (rev, file) => {
   const text = show(rev, file);
   return text === undefined ? undefined : JSON.parse(text);
 };
+const readRepo = (file) => readFileSync(path.join(ROOT, file), 'utf8');
 const writeRepo = (file, text) => {
   mkdirSync(path.dirname(path.join(ROOT, file)), { recursive: true });
   writeFileSync(path.join(ROOT, file), text);
@@ -132,6 +143,72 @@ function resolveCountOnly(items) {
   if (done.length)
     console.log(`只改计数的冲突取本分支一侧（--take-ours-for-counts）：\n  ${done.map((d) => d.file).join('\n  ')}`);
   return new Set(done.map((d) => d.file));
+}
+
+/** 授权版本冲突（DEC-439④）：standard-grants.ts 只在两行常量、F061 测试只在 HISTORY 内冲突的文件，可自动处理。 */
+function grantConflicts(files, revs) {
+  return files.flatMap((file) => {
+    const text = [GRANTS_PATH, GRANT_HISTORY_PATH].includes(file) ? diff3Text(file, revs) : undefined;
+    const resolved = text === undefined ? null : resolveGrantConflict(file, text);
+    return resolved && resolved.remaining === 0 ? [{ file, text: resolved.text }] : [];
+  });
+}
+
+/** 授权项编码指纹：用 vite 的 runnerImport 直接加载工作区的 TS 源码（不必先构建，不新增依赖）。 */
+async function grantDigest() {
+  const { runnerImport } = await import('vite');
+  const { module } = await runnerImport(path.join(ROOT, GRANTS_PATH), {
+    root: ROOT,
+    configFile: false,
+    logLevel: 'silent',
+  });
+  return module.grantCodesDigest(module.STANDARD_GRANT_CODES);
+}
+
+const grantLabel = () => `${git('rev-parse', '--abbrev-ref', 'HEAD').trim()}（merge:main 定号，DEC-439④）`;
+
+/** 授权版本定号（DEC-439④）：以合并结果的指纹与 main 比较，写回常量与 HISTORY 并 git add。 */
+async function assignGrantVersion() {
+  const mainGrants = show(MAIN, GRANTS_PATH);
+  const mainTest = show(MAIN, GRANT_HISTORY_PATH);
+  if (mainGrants === undefined || mainTest === undefined) return console.log('授权版本：main 上没有授权版本文件，跳过');
+  const branchGrants = show('HEAD', GRANTS_PATH);
+  const branchTest = show('HEAD', GRANT_HISTORY_PATH);
+  const plan = planGrantVersion({
+    main: readGrantConstants(mainGrants),
+    mainHistory: parseGrantHistory(mainTest),
+    branch: branchGrants === undefined ? undefined : readGrantConstants(branchGrants),
+    branchHistory: branchTest === undefined ? [] : parseGrantHistory(branchTest),
+    mergedDigest: await grantDigest(),
+    label: grantLabel(),
+  });
+  const grantsNow = readRepo(GRANTS_PATH);
+  const testNow = readRepo(GRANT_HISTORY_PATH);
+  const grantsNext = writeGrantConstants(grantsNow, plan);
+  const testNext = writeGrantHistory(testNow, plan.history);
+  if (grantsNext !== grantsNow) writeRepo(GRANTS_PATH, grantsNext);
+  if (testNext !== testNow) writeRepo(GRANT_HISTORY_PATH, testNext);
+  git('add', '--', GRANTS_PATH, GRANT_HISTORY_PATH);
+  console.log(
+    plan.bumped
+      ? `授权版本：本分支改了授权项编码，定为 main + 1 = ${plan.version}，指纹 ${plan.digest}（合并结果重算）`
+      : `授权版本：编码集合与 main 相同，取 main 的 version ${plan.version} / 指纹 ${plan.digest}`,
+  );
+}
+
+/** --check：按本分支（HEAD 工作区）指纹与分叉点指纹预告定号；实际指纹在合并后重算。 */
+async function printGrantPlan(base) {
+  const mainGrants = show(MAIN, GRANTS_PATH);
+  const forkGrants = show(base, GRANTS_PATH);
+  if (mainGrants === undefined || forkGrants === undefined) return;
+  const main = readGrantConstants(mainGrants);
+  const fork = readGrantConstants(forkGrants);
+  const digest = await grantDigest();
+  console.log(
+    digest === fork.digest
+      ? `授权版本：本分支没改授权项编码（指纹 ${digest} 同分叉点），合并时取 main 的 version ${main.version} / 指纹 ${main.digest}`
+      : `授权版本：本分支改了授权项编码（指纹 ${digest}，分叉点 ${fork.digest}），合并时定为 main + 1 = ${main.version + 1}，指纹按合并结果重算`,
+  );
 }
 
 /** 预演合并冲突：git merge-tree --write-tree 不碰工作区，冲突时退出码 1，第一行后是冲突文件。 */
@@ -239,16 +316,18 @@ function resolveGenerated(files) {
   }
 }
 
-function check() {
+async function check() {
   const upToDate = gitOk('merge-base', '--is-ancestor', MAIN, 'HEAD');
   console.log(upToDate ? `当前分支已包含 ${MAIN}。` : `需要合并 ${MAIN}。`);
+  const base = git('merge-base', 'HEAD', MAIN).trim();
   const conflicts = splitConflicts(upToDate ? [] : predictConflicts());
+  const grants = grantConflicts(conflicts.other, ['HEAD', base, MAIN]).map((g) => g.file);
+  conflicts.other = conflicts.other.filter((f) => !grants.includes(f));
   printConflicts(conflicts);
-  if (conflicts.other.length) {
-    const base = git('merge-base', 'HEAD', MAIN).trim();
-    printCountHint(countOnlyConflicts(conflicts.other, ['HEAD', base, MAIN]));
-  }
+  if (grants.length) console.log(`授权版本冲突（合并时自动定号）：\n  ${grants.join('\n  ')}`);
+  if (conflicts.other.length) printCountHint(countOnlyConflicts(conflicts.other, ['HEAD', base, MAIN]));
   printPlan(migrationPlan());
+  await printGrantPlan(base);
   console.log(`生成物白名单：\n  ${GENERATED_PATHS.join('\n  ')}`);
   process.exit(conflicts.other.length ? 1 : 0);
 }
@@ -260,14 +339,20 @@ function startMerge() {
   if (!mergeInProgress() && !gitOk('merge-base', '--is-ancestor', MAIN, 'HEAD')) fail('git merge 失败');
 }
 
-function main() {
+async function main() {
   if (git('rev-parse', '--abbrev-ref', 'HEAD').trim() === 'main') fail('不要在 main 上运行，请在自己的分支上运行');
   if (!args.has('--no-fetch')) git('fetch', '-q', 'origin', 'main');
   if (args.has('--check')) return check();
   if (!args.has('--continue')) startMerge();
   const conflicts = splitConflicts(unmerged());
   resolveGenerated(conflicts.generated);
-  let other = conflicts.other;
+  const grants = conflicts.other.length ? grantConflicts(conflicts.other, [':2', ':1', ':3']) : [];
+  for (const { file, text } of grants) {
+    writeRepo(file, text);
+    git('add', '--', file);
+  }
+  if (grants.length) console.log(`授权版本冲突取 main 一侧（随后定号）：\n  ${grants.map((g) => g.file).join('\n  ')}`);
+  let other = conflicts.other.filter((f) => !grants.some((g) => g.file === f));
   const countOnly = other.length ? countOnlyConflicts(other, [':2', ':1', ':3']) : [];
   if (args.has('--take-ours-for-counts') && countOnly.length) {
     const resolved = resolveCountOnly(countOnly);
@@ -281,6 +366,9 @@ function main() {
   const plan = migrationPlan();
   printPlan(plan);
   if (plan.changed) applyRenumber(plan);
+  await assignGrantVersion().catch((error) =>
+    fail(`授权版本定号失败：${error.message}\n请人工处理后运行 pnpm merge:main --continue`),
+  );
   if (!args.has('--no-regen')) regenerate();
   const staged = !gitOk('diff', '--cached', '--quiet');
   if (!mergeInProgress() && !staged) return console.log('已是最新，无需提交');
@@ -290,4 +378,4 @@ function main() {
   );
 }
 
-main();
+await main();

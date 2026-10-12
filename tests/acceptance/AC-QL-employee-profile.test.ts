@@ -594,23 +594,18 @@ describe('AC-QL-employee-profile 必测 9、10：CODE_TAKEN 保留计数另加�
   });
 });
 
-describe('AC-QL-employee-profile 必测 11：version / 指纹守卫（DEC-404）', () => {
-  // 合并前最后一次合 main 时，以合并进来的 main 版本和指纹为基线（DEC-404）
-  const MAIN = { version: 16, digest: 'b3f81d2ad41dd5ab' };
-
-  it('授权项编码含员工身份任职对象三个按钮与页面载体按钮；version 比 main 当前值至少 +1，指纹随编码变化（AC-QL-employee-profile）', () => {
+describe('AC-QL-employee-profile 必测 11：version / 指纹守卫（DEC-404、DEC-439④）', () => {
+  // DEC-439④：version 在合并时由 pnpm merge:main 统一定为 main + 1，不再在测试里钉“合并进来的 main 版本 / 指纹”快照
+  // （那份快照在下一个改授权项编码的 PR 合并后必然失效，正是串行队列反复撞号的来源）。递增与历史由 AC-PLAT-F061-grants 守。
+  it('授权项编码含员工身份任职对象三个按钮与页面载体按钮；指纹与编码一致，version 不低于含 B7b 的 17（AC-QL-employee-profile）', () => {
     for (const button of EMPLOYEE_SELF_SERVICE_BUTTONS)
       expect(STANDARD_GRANT_CODES).toContain(buttonCode(EMP, RECORD, button));
     expect(STANDARD_GRANT_CODES).toContain(pageButtonCode);
     expect(STANDARD_GRANT_CODES).toContain(`${EMP}/${PAGES}/op:view`);
     expect(STANDARD_GRANT_CODES).toContain(`${EMP}/app:Qualification`);
-    // 编码集合变了：指纹必须不同于 main 的指纹，version 必须严格大于 main 的 version（证明递增，而不只是“>= 某个下限”）
     expect(grantCodesDigest(STANDARD_GRANT_CODES)).toBe(STANDARD_GRANT_DIGEST);
-    expect(STANDARD_GRANT_DIGEST).not.toBe(MAIN.digest);
-    expect(STANDARD_GRANT_VERSION).toBeGreaterThan(MAIN.version);
-    // 去掉本 PR 新增的编码，应还原合并进来的 main 指纹，证明本次递增来自 B7b（DEC-404）。
-    const addedLater = (code: string) => code.includes('/TalentReview.Project/field:criterionId:');
-    const mainCodes = STANDARD_GRANT_CODES.filter((code) => !addedLater(code));
-    expect(grantCodesDigest(mainCodes)).toBe(MAIN.digest);
+    expect(STANDARD_GRANT_VERSION).toBeGreaterThanOrEqual(17);
+    // B7b 新增的项目人才标准引用字段授权项在编码集合里
+    expect(STANDARD_GRANT_CODES.some((code) => code.includes('/TalentReview.Project/field:criterionId:'))).toBe(true);
   });
 });
