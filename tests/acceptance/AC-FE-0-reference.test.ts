@@ -45,7 +45,7 @@ describe('AC-FE-0-09 原站参考包模板契约', () => {
     expect(host.querySelector('h1')?.textContent).toContain('启用的组织');
     expect(host.querySelector('.page-view-icon')).not.toBeNull();
     await act(() => host.querySelector<HTMLButtonElement>('[aria-label="切换视图"]')!.click());
-    const disabled = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((item) =>
+    const disabled = Array.from(document.querySelectorAll<HTMLElement>('[role="menuitem"]')).find((item) =>
       item.textContent?.includes('停用的组织'),
     );
     await act(() => disabled!.click());
@@ -78,7 +78,7 @@ describe('AC-FE-0-09 原站参考包模板契约', () => {
     expect(drawer).not.toBeNull();
     expect(drawer?.querySelector('[role="dialog"]')?.textContent).toContain('合成上级');
     expect(drawer?.textContent).toContain('组织摘要');
-    const tab = [...drawer!.querySelectorAll<HTMLElement>('[role="tab"]')].find((el) =>
+    const tab = Array.from(drawer!.querySelectorAll<HTMLElement>('[role="tab"]')).find((el) =>
       el.textContent?.includes('变更记录'),
     );
     await act(() => tab!.click());
@@ -98,7 +98,7 @@ describe('AC-FE-0-09 原站参考包模板契约', () => {
     await act(() =>
       root.render(h(FilterDrawer, { open: true, onClear: clear, onClose: close, onApply: apply }, '合成筛选项')),
     );
-    const buttons = () => [...document.querySelectorAll<HTMLButtonElement>('.ant-drawer-footer button')];
+    const buttons = () => Array.from(document.querySelectorAll<HTMLButtonElement>('.ant-drawer-footer button'));
     const click = (name: string) =>
       buttons()
         .find((button) => button.textContent?.replace(/\s/g, '') === name)!
