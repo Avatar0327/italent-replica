@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createApiClient } from '../../apps/web/src/foundation/client.js';
 import { approvalCommand, approvalList, visibleActions } from '../../apps/web/src/approval/api.js';
 import type { ApprovalDetail } from '../../apps/web/src/approval/types.js';
+import { transferRequest } from '../../apps/web/src/transfer/api.js';
 
 const api = createApiClient(() => ({ tenantId: 'synthetic-tenant', identityKey: 'synthetic-user' }));
 const detail: ApprovalDetail = {
@@ -72,5 +73,27 @@ describe('AC-FE-R1c-02 我的列表', () => {
     expect(result.demo).toBe(true);
     expect(result.items.length).toBeGreaterThan(0);
     expect(request).not.toHaveBeenCalled();
+  });
+});
+
+describe('AC-FE-R1c-05 调动复用底座客户端', () => {
+  it('网络结果未知仍返回既有调动错误类型和状态，供表单阻止盲重放', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('offline')));
+    await expect(transferRequest('synthetic-tenant', '/api/tenant/employment/transfers/catalog')).rejects.toMatchObject(
+      { code: 'NETWORK_ERROR', status: 0 },
+    );
+  });
+  it('既有调动写入保留幂等键和 revision，不改变请求体', async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ id: 'business-1' })));
+    vi.stubGlobal('fetch', fetcher);
+    await transferRequest('synthetic-tenant', '/api/tenant/employment/transfers/employees/employee-1', {
+      method: 'POST',
+      body: JSON.stringify({ fields: { place: '合成工作地' } }),
+      headers: { 'if-match': '8', 'idempotency-key': 'original-command' },
+    });
+    const init = fetcher.mock.calls[0]![1];
+    expect(init.headers.get('if-match')).toBe('8');
+    expect(init.headers.get('idempotency-key')).toBe('original-command');
+    expect(JSON.parse(init.body)).toEqual({ fields: { place: '合成工作地' } });
   });
 });
