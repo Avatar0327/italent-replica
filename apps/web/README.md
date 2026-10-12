@@ -34,6 +34,8 @@ FE0_BROWSER_CHANNEL=chrome pnpm --filter @italent/web test:smoke
 FE0_LIVE=1 FE0_BASE_URL=http://localhost:5173 FE0_BROWSER_CHANNEL=chrome pnpm --filter @italent/web test:smoke
 ```
 
+`FE0_PORT=4186` 可为并行工作区指定独立冒烟端口（默认 4179），不会复用其他工作区的服务。
+
 默认 17 项 Playwright 使用合成响应测试全部分区、旧路径、拒绝页面、中文分页与注释开关；live 测试验证真实身份切换及无权分区正常拒绝。产物只写到已忽略的 `.demo/fe0-smoke/`。不修改 `.github/`。
 
 Vitest 运行 `tests/acceptance/AC-FE-0-*.test.ts`，再运行受影响的旧页面测试；不跑本地全量。交审前跑根目录 `pnpm build`、`pnpm lint`、`pnpm typecheck`。F-039 只涉及已有后端接口消费，不新增 HTTP 路由。
