@@ -226,6 +226,25 @@ describe('AC-EV-flow-base', () => {
     expect((await ok(await op.request('GET', path))).total).toBe(0);
     expect((await audit.dataChanges(op.as, query)).items).toHaveLength(0);
   });
+  it('取消发布保留通知登记；无报名草稿仍可删除，删除快照保留通知历史', async () => {
+    const a = await fresh();
+    await ok(await action(a.id, 1, 'publish'));
+    await ok(await action(a.id, 2, 'unpublish'));
+    await withTenant(testDb().db, w.tenant.id, async (tx) => {
+      expect(rows(await tx.execute(sql`SELECT id FROM ev_notifications WHERE activity_id=${a.id}::uuid`))).toHaveLength(
+        1,
+      );
+    });
+    await ok(await w.setup.request('DELETE', `${BASE}/activities/${a.id}`, { ...w.asAdmin, ifMatch: 3 }));
+    await withTenant(testDb().db, w.tenant.id, async (tx) => {
+      const audit = rows<{ before: { notifications: unknown[] } }>(
+        await tx.execute(sql`SELECT before
+        FROM audit_events WHERE object_id=${a.id} AND action='evaluation.activity.delete'`),
+      )[0]!;
+      expect(audit.before.notifications).toHaveLength(1);
+    });
+  });
+
   it('复合外键拒绝错误周期/跨活动通知；租户 RLS 隔离；调用方回滚时终止、审计和通知一同回滚', async () => {
     const kernel = await import('../../apps/api/src/modules/evaluation/flow-service.js');
     const a = await fresh();
