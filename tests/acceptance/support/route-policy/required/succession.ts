@@ -130,6 +130,76 @@ const IMMUTABLE: Obligation = {
 };
 
 export const SUCCESSION: RequiredTable = {
+  [`GET ${BASE}/maps/org`]: [
+    {
+      perm: 'obj:Succession.Map:view',
+      facts: ['object:objectContext'],
+      need: { scope: 'list' },
+      at: [
+        {
+          role: 'call',
+          unit: `${S}/org-map-routes.ts#registerOrgMapRoutes`,
+          anchor: "await successionContext(c, deps, 'map')",
+        },
+        ...CONTEXT,
+        {
+          role: 'const',
+          unit: 'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>map',
+          anchor: "object( 'Map'",
+        },
+        {
+          role: 'scope',
+          unit: `${S}/org-map-routes.ts#registerOrgMapRoutes`,
+          anchor: "await readMapDisplayScope(tx, displayCtx, 'org', supplied, 'submitted')",
+        },
+      ],
+    },
+    {
+      perm: 'guard:succession.selfHidden',
+      note: '请求当日 SELF 谓词对组织与嵌套职位目标判定，空记录集合也按目标删除 successors / successorCount 键',
+      at: [
+        {
+          role: 'call',
+          unit: `${S}/org-map-routes.ts#registerOrgMapRoutes`,
+          anchor: 'await hiddenMapTargets(tx, ctx, targets, today)',
+        },
+        {
+          role: 'impl',
+          unit: `${S}/map-card-reader.ts#hiddenMapTargets`,
+          anchor: 'selfRecordHiddenSql(',
+        },
+      ],
+    },
+    ...(['record', 'healthResult'] as const).map((kind): Obligation => ({
+      perm: `obj:Succession.${kind === 'record' ? 'Record' : 'HealthResult'}:view`,
+      purpose: kind === 'record' ? 'disclosure:mapRecords' : 'disclosure:mapHealth',
+      need: {
+        scope: 'list',
+        predicate: kind === 'record' ? 'succession.recordScope(org ∪ creator)' : 'succession.healthScope',
+      },
+      at: [
+        {
+          role: 'call',
+          unit: `${S}/map-card-reader.ts#mapObjectAccess`,
+          anchor: "await deps.authorize({ ...ctx, action: 'object.view', resource: codeOf(kind), fields: [] })",
+        },
+        {
+          role: 'const',
+          unit: `packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>${kind}`,
+          anchor: kind === 'record' ? "object( 'Record'" : "object( 'HealthResult'",
+        },
+        {
+          role: 'scope',
+          unit:
+            kind === 'record' ? `${S}/record-read.ts#listMapRecordRows` : `${S}/health-results.ts#readHealthResults`,
+          anchor:
+            kind === 'record'
+              ? "conditions(visibility, { status: 'active' })"
+              : 'scopeSql(scope, { org: sql`v.org_id` })',
+        },
+      ],
+    })),
+  ],
   [`GET ${BASE}/readiness`]: [view(`router.get(\`\${SUCCESSION_BASE}/readiness\`, async (c) => { ${VIEW}`)],
   [`GET ${BASE}/records`]: [
     view(`router.get(RECORDS, async (c) => { ${VIEW}`),

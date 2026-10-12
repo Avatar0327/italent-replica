@@ -7,7 +7,7 @@ import type { Tx } from '@italent/db';
 import { SUCCESSION_OBJECTS } from '@italent/domain';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantContext } from '../../tenant-context.js';
-import { getModuleViewableFields } from '../permission/module-access.js';
+import { getModuleViewableFields, getModuleViewableFieldsInTransaction } from '../permission/module-access.js';
 import { isOpenEnded, type RecordRow } from './record-read.js';
 import { loadIncumbentIds, loadPeople, loadPersonInChargeIds, type PersonView } from './read-sql.js';
 
@@ -120,8 +120,11 @@ export async function projectSuccession<T extends object>(
   ctx: TenantContext,
   kind: ProjectionKind,
   items: readonly T[],
+  tx?: Tx,
 ): Promise<Partial<T>[]> {
-  const fields = await getModuleViewableFields(deps, ctx, OBJECT_OF[kind]);
+  const fields = tx
+    ? await getModuleViewableFieldsInTransaction(deps, ctx, OBJECT_OF[kind], tx)
+    : await getModuleViewableFields(deps, ctx, OBJECT_OF[kind]);
   if (fields === undefined) return [...items];
   return items.map(
     (item) =>

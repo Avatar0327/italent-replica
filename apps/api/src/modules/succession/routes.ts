@@ -40,6 +40,7 @@ import './settings.js';
 import { installSuccessionPorts } from './ports.js';
 import { registerSuccessionLevelRoutes } from './levels-routes.js';
 import { registerHealthRoutes } from './health-routes.js';
+import { registerOrgMapRoutes } from './org-map-routes.js';
 import { createRecord, deleteRecord, endRecords, updateRecord } from './record-write.js';
 import { recordResults } from './record-results.js';
 import {
@@ -54,6 +55,7 @@ const RECORDS = `${SUCCESSION_BASE}/records`;
 
 export function registerSuccessionRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   registerMapRoutes(router, deps);
+  registerOrgMapRoutes(router, deps);
   registerHealthRoutes(router, deps);
   installSuccessionPorts();
 

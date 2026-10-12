@@ -682,7 +682,7 @@ export const DIGESTS: Digests = {
     registerSuccessionConfigRoutes: 'a36c520ca622',
   },
   'apps/api/src/modules/succession/health-results.ts': {
-    readHealthResults: '00dc7ccf4e5d',
+    readHealthResults: 'c742e30e8d8f',
     requireHealthOrg: 'b8fcaf7715ce',
   },
   'apps/api/src/modules/succession/health-routes.ts': {
@@ -697,6 +697,10 @@ export const DIGESTS: Digests = {
     levelOptionAccess: '860821af3908',
     registerLevelReads: 'ba1d174232f9',
   },
+  'apps/api/src/modules/succession/map-card-reader.ts': {
+    hiddenMapTargets: '7d71fd852607',
+    mapObjectAccess: '0740367e6056',
+  },
   'apps/api/src/modules/succession/map-display.ts': {
     readMapDisplayScope: '7a713f087871',
     resolveMapDisplayConditions: 'ae79200fc8cb',
@@ -705,18 +709,22 @@ export const DIGESTS: Digests = {
     mapAccess: '4c92488394ad',
     registerMapRoutes: '8c1aa15b06b4',
   },
+  'apps/api/src/modules/succession/org-map-routes.ts': {
+    registerOrgMapRoutes: '8dabf8937e66',
+  },
   'apps/api/src/modules/succession/read-sql.ts': {
     selfRecordHiddenSql: '89628ea4a06a',
   },
   'apps/api/src/modules/succession/record-read.ts': {
     conditions: '026062f83713',
+    listMapRecordRows: 'a34aa59f9a34',
   },
   'apps/api/src/modules/succession/record-write.ts': {
     requireTarget: '10cb226379f1',
   },
   'apps/api/src/modules/succession/routes.ts': {
     recordFilter: '858f731477d8',
-    registerSuccessionRoutes: '4f866d35f812',
+    registerSuccessionRoutes: 'aad16424e385',
   },
   'apps/api/src/modules/succession/write-support.ts': {
     checkCandidateAccess: '7843395303d7',
@@ -1747,7 +1755,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/succession/calc-read.ts#whole': '14e9013be25c',
   'apps/api/src/modules/succession/calc-routes.ts#registerCalcRoutes': '315660ad65bf',
   'apps/api/src/modules/succession/config-routes.ts#registerSuccessionConfigRoutes': '3fb660443fbe',
-  'apps/api/src/modules/succession/health-results.ts#readHealthResults': 'e43e6c32caea',
+  'apps/api/src/modules/succession/health-results.ts#readHealthResults': 'db7f0738547b',
   'apps/api/src/modules/succession/health-results.ts#requireHealthOrg': '0b2408fb15b0',
   'apps/api/src/modules/succession/health-routes.ts#queueAccess': '4ba560c1b7ec',
   'apps/api/src/modules/succession/health-routes.ts#queueResults': '2333be2ad4d8',
@@ -1755,15 +1763,19 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/succession/input.ts#rejectImmutable': '99ce3a8d9998',
   'apps/api/src/modules/succession/levels-routes.ts#levelOptionAccess': '07e9bf4002f1',
   'apps/api/src/modules/succession/levels-routes.ts#registerLevelReads': '1c4dc4f4f005',
+  'apps/api/src/modules/succession/map-card-reader.ts#hiddenMapTargets': 'f595ee2bed59',
+  'apps/api/src/modules/succession/map-card-reader.ts#mapObjectAccess': '91034198c270',
   'apps/api/src/modules/succession/map-display.ts#readMapDisplayScope': '16bff63549c0',
   'apps/api/src/modules/succession/map-display.ts#resolveMapDisplayConditions': '1f93fb5a8650',
   'apps/api/src/modules/succession/map-routes.ts#mapAccess': '208b27aa5d33',
   'apps/api/src/modules/succession/map-routes.ts#registerMapRoutes': '152728d4a1ca',
+  'apps/api/src/modules/succession/org-map-routes.ts#registerOrgMapRoutes': '6932020b68f2',
   'apps/api/src/modules/succession/read-sql.ts#selfRecordHiddenSql': 'eab3bde19b0f',
   'apps/api/src/modules/succession/record-read.ts#conditions': '326371d4de4d',
+  'apps/api/src/modules/succession/record-read.ts#listMapRecordRows': '0a15b4f4a29b',
   'apps/api/src/modules/succession/record-write.ts#requireTarget': '8ff43faa6c04',
   'apps/api/src/modules/succession/routes.ts#recordFilter': '8c3cfb5b80b7',
-  'apps/api/src/modules/succession/routes.ts#registerSuccessionRoutes': '0311c813e724',
+  'apps/api/src/modules/succession/routes.ts#registerSuccessionRoutes': '07defacb1846',
   'apps/api/src/modules/succession/write-support.ts#checkCandidateAccess': 'ea8155f2a727',
   'apps/api/src/modules/succession/write-support.ts#checkWriteAccess': 'eac8ef9cc70b',
   'apps/api/src/modules/survey360/access.ts#activityVisibleSql': '11f326016f03',

@@ -1,5 +1,4 @@
-/** C2：先锁定已确认的 #7 入口；职位卡片配置与 B4 接线待总编排定口径后补全。 */
-// TODO(需取证 #289)：决定组织职位卡片开关与 B4 依赖后补齐卡片验收。
+/** C2 #7：入口校验；DEC-453② 固定关键职位卡片，风险接线待 #287 合并。 */
 import { beforeAll, describe, expect, it } from 'vitest';
 import { SUCCESSION_OBJECTS } from '@italent/domain';
 import { useHealthDb } from './AC-SC-07-health-support.js';
@@ -31,6 +30,19 @@ describe('AC-SC-org-map C2 已确认入口（设计 §2.2 #7、§5.5、§5.8、�
     expect(await response.json()).toMatchObject({
       error: { code: 'VALIDATION_FAILED', details: { reason: 'AS_OF_IN_FUTURE' } },
     });
+  });
+
+  it.each([
+    'root=invalid',
+    'asOf=2026-02-30',
+    'hiddenOrgIds=invalid',
+    'hiddenOrgIds=null',
+    'hideVirtual=false',
+    'showIncumbents=false',
+  ])('条件 %s 非法或试图覆盖租户开关，返回 400', async (query) => {
+    const response = await w.request('GET', `/maps/org?${query}`);
+    expect(response.status, await response.clone().text()).toBe(400);
+    expect(await response.json()).toMatchObject({ error: { code: 'VALIDATION_FAILED' } });
   });
 
   it('撤销 Map 查看权后返回 403', async () => {

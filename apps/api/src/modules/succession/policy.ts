@@ -112,6 +112,30 @@ function calcPolicy(retry = false) {
 }
 
 export const SUCCESSION_POLICIES = defineTable('succession', {
+  [`GET ${BASE}/maps/org`]: object({
+    object: SUCCESSION_OBJECTS.map.code,
+    operation: 'view',
+    button: noButton('组织地图查看'),
+    scope: listScope('succession.mapDisplay'),
+    fields: projector('succession.orgMap', 'succession.orgMap'),
+    guards: [SELF_HIDDEN],
+    optional: {
+      mapRecords: object({
+        object: RECORD,
+        operation: 'view',
+        button: noButton('卡片继任与现任披露'),
+        scope: listScope('succession.recordScope(org ∪ creator)'),
+        fields: OUT,
+      }),
+      mapHealth: object({
+        object: SUCCESSION_OBJECTS.healthResult.code,
+        operation: 'view',
+        button: noButton('卡片健康度披露'),
+        scope: listScope('succession.healthScope'),
+        fields: projector('succession.health', 'succession.health'),
+      }),
+    },
+  }),
   [`GET ${BASE}/health-results`]: object({
     object: SUCCESSION_OBJECTS.healthResult.code,
     operation: 'view',
