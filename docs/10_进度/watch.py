@@ -66,6 +66,9 @@ def snapshot():
                 done_at = c["createdAt"]
             elif done_at and any(w in b for w in ("审查已发起", "排队待审", "已发起", "审查原文", "修改清单", "清单补充", "可以合并")):
                 done_at = ""
+        # 10-12 #282：“开发完成”之后又有新推送 = 开发方仍在补（如清单补充），不算待审 / 衔接超时，等新的“开发完成”
+        if done_at and lc > done_at:
+            done_at = ""
         if done_at and handled:  # 审查发起与“开发完成”几乎同时贴（同一 head 已发起）时不再报
             done_at = ""
         # 10-12 用户同意减误报：等决定中 / 叠在别的 PR 上 / 标题写明红测或 WIP 的 Draft 不报“待送审”；
