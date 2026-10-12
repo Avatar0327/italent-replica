@@ -39,7 +39,7 @@ const list = (values: readonly string[]) => sql.raw(values.map((value) => `'${va
 /**
  * 继任记录（原站 `Map`，§1.1）。区间 [start_date, end_date) 半开；同目标同继任者任何两条未删除记录区间不得重叠
  * （排他约束 succession_records_no_overlap，在配套 SQL 迁移里）。软删除（deleted_at）后不参与任何列表 / 统计 / 查重，
- * 且同事务释放准备度引用（触发器）。source_batch_id / source_item_id 先建列、不建外键（同步批次表由 D1 建并补外键）。
+ * 且同事务释放准备度引用（触发器）。source_batch_id 的批次复合外键由 D1 补齐；source_item_id 保留来源快照 ID。
  */
 export const successionRecords = pgTable(
   'succession_records',
@@ -92,6 +92,11 @@ export const successionRecords = pgTable(
       name: 'succession_records_readiness_fk',
       columns: [t.tenantId, t.readinessId],
       foreignColumns: [talentReadinessLevels.tenantId, talentReadinessLevels.id],
+    }).onDelete('restrict'),
+    foreignKey({
+      name: 'succession_records_source_batch_fk',
+      columns: [t.tenantId, t.sourceBatchId],
+      foreignColumns: [successionSyncBatches.tenantId, successionSyncBatches.id],
     }).onDelete('restrict'),
     index('succession_records_org_target').on(t.tenantId, t.successionType, t.targetOrgId, t.endDate),
     index('succession_records_position_target').on(t.tenantId, t.successionType, t.targetPositionId, t.endDate),
@@ -444,7 +449,7 @@ export const successionNotifications = pgTable(
       .notNull()
       .references(() => tenants.id),
     runId: uuid('run_id'),
-    batchId: uuid('batch_id'), // D1 建批次表后补复合外键。
+    batchId: uuid('batch_id'),
     subjectId: uuid('subject_id')
       .generatedAlwaysAs(sql`COALESCE(run_id, batch_id)`)
       .notNull(),
@@ -467,6 +472,11 @@ export const successionNotifications = pgTable(
       columns: [t.tenantId, t.runId],
       foreignColumns: [successionCalcRuns.tenantId, successionCalcRuns.id],
     }),
+    foreignKey({
+      name: 'succession_notifications_batch_fk',
+      columns: [t.tenantId, t.batchId],
+      foreignColumns: [successionSyncBatches.tenantId, successionSyncBatches.id],
+    }).onDelete('restrict'),
     check('succession_notifications_subject', sql`num_nonnulls(${t.runId},${t.batchId}) = 1`),
     check(
       'succession_notifications_kind',
@@ -476,5 +486,178 @@ export const successionNotifications = pgTable(
     check('succession_notifications_state', sql`${t.state} IN ('pending','sent','failed','unknown')`),
     check('succession_notifications_attempt', sql`${t.attemptNo} >= 0`),
     index('succession_notifications_pending').on(t.tenantId, t.state, t.createdAt, t.id),
+  ],
+);
+
+/** D1 / §1.2：来源快照引用保留原 ID；T04 冻结表的真实接线随协议 PR-D 落地。 */
+export const successionSyncBatches = pgTable(
+  'succession_sync_batches',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
+    sourceRunId: uuid('source_run_id').notNull(),
+    projectId: uuid('project_id').notNull(),
+    meetingId: uuid('meeting_id'),
+    trigger: text('trigger').notNull(),
+    manualOverride: boolean('manual_override').notNull().default(false),
+    actorUserId: uuid('actor_user_id').notNull(),
+    actorScopeCheckedAt: timestamp('actor_scope_checked_at', { withTimezone: true }),
+    sourcePrincipalUserId: uuid('source_principal_user_id').notNull(),
+    writePrincipalUserId: uuid('write_principal_user_id'),
+    ownerUserId: uuid('owner_user_id').notNull(),
+    strategy: text('strategy').$type<'append' | 'overwrite' | 'overwrite_in_scope'>(),
+    scopeOrgIds: jsonb('scope_org_ids').$type<readonly string[]>().notNull().default([]),
+    scopeExplicit: boolean('scope_explicit').notNull().default(false),
+    businessDate: date('business_date', { mode: 'string' }).notNull(),
+    status: text('status')
+      .$type<'waiting' | 'executing' | 'blocked' | 'completed' | 'terminated' | 'rejected'>()
+      .notNull()
+      .default('waiting'),
+    hasPlan: boolean('has_plan').notNull().default(false),
+    result: text('result').$type<'succeeded' | 'partial'>(),
+    blockReason: text('block_reason'),
+    endReason: text('end_reason'),
+    executionNo: integer('execution_no'),
+    leaseOwner: text('lease_owner'),
+    nextPageNo: integer('next_page_no').notNull().default(1),
+    autoRetryCount: integer('auto_retry_count').notNull().default(0),
+    nextRetryAt: timestamp('next_retry_at', { withTimezone: true }),
+    plannedAt: timestamp('planned_at', { withTimezone: true }),
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    finishedAt: timestamp('finished_at', { withTimezone: true }),
+    revision: integer('revision').notNull().default(1),
+  },
+  (t) => [
+    unique('succession_sync_batches_tenant_id').on(t.tenantId, t.id),
+    unique('succession_sync_batches_run').on(t.tenantId, t.sourceRunId),
+    check(
+      'succession_sync_batches_status',
+      sql`${t.status} IN ('waiting','executing','blocked','completed','terminated','rejected')`,
+    ),
+    check('succession_sync_batches_strategy', sql`${t.strategy} IN ('append','overwrite','overwrite_in_scope')`),
+    check('succession_sync_batches_result', sql`${t.result} IN ('succeeded','partial')`),
+    check(
+      'succession_sync_batches_revision',
+      sql`${t.revision} > 0 AND ${t.nextPageNo} > 0
+      AND ${t.autoRetryCount} >= 0 AND (${t.executionNo} IS NULL OR ${t.executionNo} >= 0)`,
+    ),
+    index('succession_sync_batches_pending').on(t.tenantId, t.status, t.nextRetryAt),
+  ],
+);
+
+/** 提名快照含永久失败的未知 ID，不能用当前字典外键阻止保存错误回执（SP-14 R2～R4）。 */
+export const successionSyncItems = pgTable(
+  'succession_sync_items',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
+    batchId: uuid('batch_id').notNull(),
+    nominationId: uuid('nomination_id').notNull(),
+    objectId: uuid('object_id').notNull(),
+    subjectEmployeeId: uuid('subject_employee_id').notNull(),
+    kind: text('kind').$type<SuccessionType>().notNull(),
+    direction: text('direction').$type<'successor' | 'target'>().notNull(),
+    targetOrgId: uuid('target_org_id'),
+    targetPositionId: uuid('target_position_id'),
+    successorEmployeeId: uuid('successor_employee_id').notNull(),
+    readinessId: uuid('readiness_id'),
+    planOutcome: text('plan_outcome').$type<'planned' | 'failed' | 'skipped'>().notNull(),
+    execOutcome: text('exec_outcome').$type<'created' | 'updated' | 'exists' | 'failed' | 'aborted'>(),
+    recordId: uuid('record_id'),
+    errorCode: text('error_code'),
+    errorParams: jsonb('error_params').$type<Readonly<Record<string, unknown>>>(),
+    retryable: boolean('retryable').notNull().default(false),
+    executionNo: integer('execution_no').notNull(),
+    pageCommandId: text('page_command_id').notNull(),
+  },
+  (t) => [
+    unique('succession_sync_items_tenant_id').on(t.tenantId, t.id),
+    unique('succession_sync_items_nomination').on(t.tenantId, t.batchId, t.nominationId),
+    foreignKey({
+      name: 'succession_sync_items_batch_fk',
+      columns: [t.tenantId, t.batchId],
+      foreignColumns: [successionSyncBatches.tenantId, successionSyncBatches.id],
+    }).onDelete('restrict'),
+    check('succession_sync_items_kind', sql`${t.kind} IN ('org','position')`),
+    check('succession_sync_items_direction', sql`${t.direction} IN ('successor','target')`),
+    check('succession_sync_items_plan', sql`${t.planOutcome} IN ('planned','failed','skipped')`),
+    check('succession_sync_items_exec', sql`${t.execOutcome} IN ('created','updated','exists','failed','aborted')`),
+    check(
+      'succession_sync_items_target',
+      sql`(${t.kind}='org' AND ${t.targetOrgId} IS NOT NULL
+      AND ${t.targetPositionId} IS NULL) OR (${t.kind}='position' AND ${t.targetPositionId} IS NOT NULL
+      AND ${t.targetOrgId} IS NULL)`,
+    ),
+  ],
+);
+
+/** §7：与 A2 共用目标锁；pending / 可重试 failed 在已计划批次中形成持久屏障。 */
+export const successionSyncTargets = pgTable(
+  'succession_sync_targets',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
+    batchId: uuid('batch_id').notNull(),
+    targetKind: text('target_kind').$type<'org' | 'position' | 'org_health'>().notNull(),
+    targetId: uuid('target_id').notNull(),
+    action: text('action')
+      .$type<'append' | 'overwrite' | 'scope_overwrite' | 'delete_only' | 'health_write'>()
+      .notNull(),
+    plannedItemIds: jsonb('planned_item_ids').$type<readonly string[]>().notNull().default([]),
+    oldRecordIds: jsonb('old_record_ids').$type<readonly string[]>().notNull().default([]),
+    healthLevelId: uuid('health_level_id'),
+    healthManual: boolean('health_manual'),
+    healthStatus: text('health_status').$type<'value' | 'empty' | 'not_provided' | 'forbidden'>(),
+    status: text('status').$type<'pending' | 'done' | 'failed' | 'aborted'>().notNull().default('pending'),
+    retryable: boolean('retryable').notNull().default(false),
+    errorCode: text('error_code'),
+    errorParams: jsonb('error_params').$type<Readonly<Record<string, unknown>>>(),
+    endedRecordIds: jsonb('ended_record_ids').$type<readonly string[]>().notNull().default([]),
+    targetRowKey: text('target_row_key').notNull(),
+    executionNo: integer('execution_no').notNull(),
+    pageCommandId: text('page_command_id').notNull(),
+    doneAt: timestamp('done_at', { withTimezone: true }),
+  },
+  (t) => [
+    unique('succession_sync_targets_target').on(t.tenantId, t.batchId, t.targetKind, t.targetId),
+    foreignKey({
+      name: 'succession_sync_targets_batch_fk',
+      columns: [t.tenantId, t.batchId],
+      foreignColumns: [successionSyncBatches.tenantId, successionSyncBatches.id],
+    }).onDelete('restrict'),
+    check('succession_sync_targets_kind', sql`${t.targetKind} IN ('org','position','org_health')`),
+    check(
+      'succession_sync_targets_action',
+      sql`${t.action} IN ('append','overwrite','scope_overwrite','delete_only','health_write')`,
+    ),
+    check('succession_sync_targets_status', sql`${t.status} IN ('pending','done','failed','aborted')`),
+    check('succession_sync_targets_health', sql`${t.healthStatus} IN ('value','empty','not_provided','forbidden')`),
+    check('succession_sync_targets_health_action', sql`(${t.targetKind}='org_health') = (${t.action}='health_write')`),
+    index('succession_sync_targets_barrier').on(t.tenantId, t.targetKind, t.targetId, t.status),
+  ],
+);
+
+/** 批次持有、无过期时间；租约过期不能释放这把跨 run 互斥（SP-09）。 */
+export const successionSyncMutex = pgTable(
+  'succession_sync_mutex',
+  {
+    tenantId: uuid('tenant_id')
+      .primaryKey()
+      .references(() => tenants.id),
+    batchId: uuid('batch_id'),
+    acquiredAt: timestamp('acquired_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    foreignKey({
+      name: 'succession_sync_mutex_batch_fk',
+      columns: [t.tenantId, t.batchId],
+      foreignColumns: [successionSyncBatches.tenantId, successionSyncBatches.id],
+    }).onDelete('restrict'),
   ],
 );
