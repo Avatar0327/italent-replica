@@ -1,6 +1,6 @@
 /** DEC-080：三个组织类模块共用路由鉴权；数据范围仍由 permission 的单一解析器产生。 */
 import { type Tx } from '@italent/db';
-import { buttonResource, MODULE_OBJECTS } from '@italent/domain';
+import { type ButtonLevel, buttonResource, MODULE_OBJECTS } from '@italent/domain';
 import type { Context } from 'hono';
 import { requirePermission } from '../../authorization.js';
 import { AppError } from '../../errors.js';
@@ -63,7 +63,7 @@ export async function button(
   ctx: ScopeBusinessContext,
   objectCode: string,
   code: string,
-  level: 'list' | 'detail',
+  level: ButtonLevel,
 ) {
   await requirePermission(deps.authorize, {
     ...ctx,

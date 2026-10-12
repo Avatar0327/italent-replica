@@ -181,6 +181,8 @@ describe('AC-PLAT-F061 T-16 授权项编码与指纹守卫', () => {
       16: 'b3f81d2ad41dd5ab',
       // R3-T04 B7b：项目人才标准引用字段
       17: '02db592a85571f4f',
+      // R3-T04 B6b：盘点模板 copy 按钮
+      18: '1782e8b0f7923b5a',
     };
     expect(HISTORY[STANDARD_GRANT_VERSION], `version ${STANDARD_GRANT_VERSION} 没有登记指纹：追加一行`).toBe(
       STANDARD_GRANT_DIGEST,
