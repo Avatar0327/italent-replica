@@ -174,3 +174,39 @@ it('AC-SC-risk 求值宿主遵守兼职设置：关闭不读端口，开启并�
     expect(reader).toHaveBeenCalledTimes(enabled ? 1 : 0);
   }
 });
+it.each(['successor', 'incumbent'])('AC-SC-risk 无来源读权：%s 零分母 / 零人口失败并保留原值', async (subject) => {
+  const w = await riskWorld(handle.db);
+  expect(await w.run(await w.enqueue())).toBe('succeeded');
+  const before = await w.result();
+  const changed = await w.request('PUT', `/risk-levels/${w.levelId}`, {
+    ifMatch: 1,
+    body: {
+      rules: {
+        expression: '1',
+        rows: [
+          {
+            rowNo: 1,
+            subject,
+            fieldCode: 'age',
+            filterOperator: 'eq',
+            filterValues: [18],
+            measure: 'count_over_incumbents',
+            comparator: 'is_empty',
+          },
+        ],
+      },
+    },
+  });
+  expect(changed.status).toBe(200);
+  const runId = await w.enqueue();
+  expect(await w.run(runId)).toBe('partial');
+  expect(await w.result()).toEqual(before);
+  expect(
+    await w.asTenant(async (tx) =>
+      rowsOf(
+        await tx.execute(sql`
+    SELECT code,row_no FROM succession_calc_run_failures WHERE run_id=${runId}::uuid`),
+      ),
+    ),
+  ).toEqual([{ code: 'FIELD_FORBIDDEN', row_no: 1 }]);
+});

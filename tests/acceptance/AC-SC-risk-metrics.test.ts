@@ -1,3 +1,4 @@
+import { POPULATION_FIELDS } from '@italent/domain';
 import { expect, it } from 'vitest';
 import { compileSuccessionLevel, RULE_COMPILER_VERSION, type SuccessionLevelRow } from '@italent/domain';
 import { evaluateRisk, riskMeasure, riskIncumbents } from '../../packages/domain/src/succession/risk.js';
@@ -92,4 +93,19 @@ it('AC-SC-risk DEC-452 零人口或零分母不能把不可用的工龄降为 EM
       riskMeasure({ ...unavailable.rules.rows[0]!, measure: 'count_over_incumbents' }, population, calendar),
     ).toThrow('DATA_UNAVAILABLE');
   }
+});
+it('AC-SC-risk 来源失败优先于空人口及三种度量的零分母，覆盖全部过滤字段', () => {
+  const fields = [...POPULATION_FIELDS.map((f) => f.code), 'readiness_id'];
+  for (const fieldCode of fields)
+    for (const status of ['forbidden', 'unavailable'] as const)
+      for (const measure of ['count', 'count_over_incumbents', 'count_over_successors'] as const) {
+        const source = { status };
+        for (const successors of [[], [{ id: 'hidden', [fieldCode]: source }]]) {
+          const sources = successors.length ? undefined : { [fieldCode]: source };
+          const population = { incumbents: [], successors, sources };
+          expect(() => riskMeasure({ ...row, fieldCode, measure }, population, calendar)).toThrow(
+            status === 'forbidden' ? 'FIELD_FORBIDDEN' : 'DATA_UNAVAILABLE',
+          );
+        }
+      }
 });
