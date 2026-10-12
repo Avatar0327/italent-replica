@@ -985,6 +985,10 @@
 "log": [
 [
 "10-12",
+"FE-0 前端底座已派（Codex Astra max，codex/FE-0-frontend-base）；#294 第2轮增量复审中；D3 #293 第2轮可以合并（随 D2 链入队）；C1 #265 增量复审通过回队首；Codex 额度 86%"
+],
+[
+"10-12",
 "DEC-456：看板重排——新增前端与演示配套线（FE-0、8 个页面片、演示数据/路线/PRD 素材包），R3 加深线未开工步骤标暂停"
 ],
 [
@@ -3840,8 +3844,8 @@
 {
 "k": "FE-0",
 "n": "布局/路由/接口客户端/权限渲染/注释层",
-"s": "todo",
-"note": "Astra max 开发 · Sol xhigh 审"
+"s": "assigned",
+"note": "已派 Codex Astra max · codex/FE-0-frontend-base · Sol xhigh 审"
 }
 ]
 },
