@@ -2585,6 +2585,10 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/qualification/subset-policy.ts#assertRefs': ['7a7c08bbffc6', '5a1450363070'],
   'apps/api/src/modules/qualification/subset-policy.ts#assertScorePrecision': ['6dcd071fccf1', '32c149c96ae0'],
   'apps/api/src/modules/qualification/subset-policy.ts#canonicalRefs': ['3d71657d303d', '73ce27e06ee6'],
+  'apps/api/src/modules/qualification/subset-policy.ts#installQualificationSubsetPolicy': [
+    'afc59474d856',
+    'ade9cee7f798',
+  ],
   'apps/api/src/modules/qualification/subset-policy.ts#isHuman': ['b76c0132682e', 'e3b0c44298fc'],
   'apps/api/src/modules/qualification/subset-policy.ts#newRefs': ['c1692e1f30a6', '1a0d81625dde'],
   'apps/api/src/modules/qualification/subset-policy.ts#qualificationBeforeRequest': ['2f08d99c5ee8', '93ecfb7b9cce'],
