@@ -392,6 +392,7 @@ it('AC-SC-03 源对象撤权覆盖 R10 聚合；无计划提交前不留互斥',
   );
 });
 it('AC-SC-03 显式空范围不扩大 delete_only；范围覆盖保留旧集合快照', async () => {
+  const old = await w.insertRecord({ type: 'org', targetId: std.orgB.id, successorId: std.successor2.id });
   await setting('sync_strategy', 'overwrite_in_scope', revision++);
   const empty = setup({ empty: true, scopeExplicit: true });
   await consumeRun(empty.deps, empty.input);
@@ -401,7 +402,7 @@ it('AC-SC-03 显式空范围不扩大 delete_only；范围覆盖保留旧集合�
   const load = h.port.loadRun.bind(h.port);
   vi.spyOn(h.port, 'loadRun').mockImplementation(async (tx, key) => ({
     ...(await load(tx, key))!,
-    scopeOrgIds: [std.orgA.id],
+    scopeOrgIds: [std.orgB.id],
   }));
   await consumeRun(h.deps, h.input);
   const b = await batch(h.input.runId);
@@ -411,7 +412,7 @@ it('AC-SC-03 显式空范围不扩大 delete_only；范围覆盖保留旧集合�
     FROM succession_sync_targets WHERE batch_id=${String(b['id'])}::uuid`),
     ),
   );
-  expect(plans).toEqual([expect.objectContaining({ action: 'delete_only', old_record_ids: [expect.any(String)] })]);
+  expect(plans).toEqual([expect.objectContaining({ action: 'delete_only', old_record_ids: [old] })]);
 });
 it('AC-SC-03 已终止对象全跳过，应在首次计划内完成', async () => {
   const h = setup();

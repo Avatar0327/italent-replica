@@ -2755,7 +2755,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/succession/record-write.ts#keyOf': ['29dde3412ff2', 'e3b0c44298fc'],
   'apps/api/src/modules/succession/record-write.ts#lockActiveSuccessor': ['a1607529643d', '5fa5db0308f2'],
   'apps/api/src/modules/succession/record-write.ts#lockRows': ['f74a9c6c2882', '8f0a83981a3b'],
-  'apps/api/src/modules/succession/record-write.ts#lockTargets': ['498964c8b847', '305e85fc43ac'],
+  'apps/api/src/modules/succession/record-write.ts#lockTargets': ['7c11f26cc1bf', '305e85fc43ac'],
   'apps/api/src/modules/succession/record-write.ts#notFound': ['a8aa585881e8', '583ee92c250c'],
   'apps/api/src/modules/succession/record-write.ts#peekRows': ['9cb1fe18f610', '7c3fbc123c11'],
   'apps/api/src/modules/succession/record-write.ts#rejectSelfTarget': ['bcfc4f9b4a9d', '30afb9e0099f'],
