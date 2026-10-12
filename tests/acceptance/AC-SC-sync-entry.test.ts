@@ -5,7 +5,7 @@ import { createTestDb } from '@italent/testkit';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { consumeRun, planSyncRun, mutex } from '../../apps/api/src/modules/succession/sync-consume.js';
 import { createInMemoryTalentReviewSyncPort } from '../../apps/api/src/modules/talent-review/sync-port-memory.js';
-import { overrideSetting } from '../../apps/api/src/modules/tenant-settings/service.js';
+import { overrideSetting, readEffectiveSetting } from '../../apps/api/src/modules/tenant-settings/service.js';
 import { syncFixture } from './support/sync-port-contract.js';
 import { rowsOf } from './support/f048.js';
 import { successionWorld, SC_NOW, SC_TODAY, type SuccessionWorld } from './AC-SC-support.js';
@@ -60,7 +60,7 @@ afterAll(async () => {
   await handle?.close();
 });
 
-async function setup(plan = true) {
+async function setup(plan = true, targetOrgId = std.orgB.id, actorUserId = w.user.id) {
   await w.asTenant(async (tx) => {
     await tx.execute(sql`UPDATE succession_sync_mutex SET batch_id=NULL WHERE tenant_id=${w.tenant.id}::uuid`);
     await tx.execute(sql`UPDATE succession_sync_batches SET status='terminated' WHERE tenant_id=${w.tenant.id}::uuid`);
@@ -77,19 +77,19 @@ async function setup(plan = true) {
         header: {
           ...run.header,
           runId,
-          actorUserId: w.user.id,
+          actorUserId,
           ownerUserId: w.user.id,
           principalUserId: w.user.id,
           businessDate: SC_TODAY,
           scopeExplicit: true,
-          scopeOrgIds: [std.orgB.id],
+          scopeOrgIds: [targetOrgId],
         },
         nominations: [
           {
             ...run.nominations[0]!,
             kind: 'org',
             direction: 'successor',
-            orgId: std.orgB.id,
+            orgId: targetOrgId,
             positionId: null,
             successorEmployeeId: std.successor1.id,
             readinessId: null,
@@ -624,4 +624,72 @@ describe('AC-SC-03/04 第 1 轮审计正确性与明细 recovery 回归', () => 
       }
     }
   });
+});
+
+describe('AC-SC-03/04 P2-2 调用人 SELF 写授权', () => {
+  it.each(['首次 sync', 'retry', '已有计划 sync', '人工首次消费', '人工恢复消费'] as const)(
+    '%s 拒绝 SELF 写入，独立事务确认无新增继任记录与批次变更',
+    async (entry) => {
+      const org = await w.org(`SELF 写入 ${entry}`);
+      await w.setHead(org, std.head);
+      const caller = await w.userOf(std.head);
+      await w.asTenant(async (tx) => {
+        const key = 'succession.self_successors_visible';
+        const setting = await readEffectiveSetting(tx, w.tenant.id, key);
+        await overrideSetting(
+          tx,
+          {
+            tenantId: w.tenant.id,
+            userId: w.user.id,
+            key,
+            expectedRevision: setting.revision,
+            now: SC_NOW,
+            commandId: randomUUID(),
+          },
+          false,
+        );
+      });
+      const planned = !['首次 sync', '人工首次消费'].includes(entry);
+      // 原触发人可以查看批次头，确保 retry 的拒绝来自目标写授权而非详情可见门槛。
+      const h = await setup(planned, org.id, planned ? caller : w.user.id);
+      h.port.advance(121);
+      const snapshot = () =>
+        w.asTenant(async (tx) => ({
+          records: rowsOf(
+            await tx.execute(sql`SELECT id,revision FROM succession_records
+          WHERE tenant_id=${w.tenant.id}::uuid AND target_org_id=${org.id}::uuid ORDER BY id`),
+          ),
+          batches: rowsOf(
+            await tx.execute(sql`SELECT id,revision,status,execution_no FROM succession_sync_batches
+          WHERE tenant_id=${w.tenant.id}::uuid AND source_run_id=${h.input.runId}::uuid`),
+          ),
+        }));
+      const before = await snapshot();
+      expect(before.records).toEqual([]);
+      if (entry.startsWith('人工')) {
+        await expect
+          .soft(consumeRun(h.deps, { ...h.input, leaseOwner: randomUUID(), requesterUserId: caller }))
+          .rejects.toMatchObject({ code: 'NOT_FOUND' });
+      } else {
+        const api = tenantApi(w.db, { clock: () => SC_NOW });
+        const retry = entry === 'retry';
+        const response = await api.request(
+          'POST',
+          `/api/tenant/succession/${retry ? `sync-batches/${h.batch.id}/retry` : 'sync'}`,
+          {
+            tenant: w.tenant.id,
+            user: caller,
+            body: retry ? {} : { runId: h.input.runId },
+            ...(retry ? { ifMatch: h.batch.revision } : {}),
+          },
+        );
+        expect.soft(response.status).toBe(404);
+      }
+      // 请求及页事务已经结束；重新开启独立数据库事务，不能只相信 HTTP 拒绝码。
+      expect(await snapshot()).toEqual(before);
+      const allowed = await consumeRun(h.deps, { ...h.input, leaseOwner: randomUUID(), requesterUserId: w.user.id });
+      expect(allowed?.status).toBe('completed');
+      expect((await snapshot()).records).toHaveLength(1);
+    },
+  );
 });
