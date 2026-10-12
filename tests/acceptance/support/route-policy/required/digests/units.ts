@@ -708,7 +708,7 @@ export const DIGESTS: Digests = {
     syncRowsVisible: '400aee6db4a0',
   },
   'apps/api/src/modules/succession/sync-routes.ts': {
-    checkTargets: '46870e308cf2',
+    checkTargets: '4da705d6a3f5',
     writeSync: '9f4a97a41696',
   },
   'apps/api/src/modules/succession/write-support.ts': {
@@ -1751,7 +1751,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/succession/sync-read.ts#readSync': 'dbc3a3329a13',
   'apps/api/src/modules/succession/sync-read.ts#syncAdmin': 'bee0478d2055',
   'apps/api/src/modules/succession/sync-read.ts#syncRowsVisible': '9ec5d621e3ff',
-  'apps/api/src/modules/succession/sync-routes.ts#checkTargets': '89f78ee359dd',
+  'apps/api/src/modules/succession/sync-routes.ts#checkTargets': 'a5950b3fd38c',
   'apps/api/src/modules/succession/sync-routes.ts#writeSync': 'c5c4bf742342',
   'apps/api/src/modules/succession/write-support.ts#checkCandidateAccess': 'ea8155f2a727',
   'apps/api/src/modules/succession/write-support.ts#checkWriteAccess': 'eac8ef9cc70b',

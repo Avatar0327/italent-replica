@@ -3,7 +3,7 @@ import { and, eq, sql, withTenant, successionSyncBatches as batches, type Tx } f
 import { AppError } from '../../errors.js';
 import { SyncPortError } from '../talent-review/sync-port.js';
 import { mutex, release, save, type SyncDeps, type SyncInput } from './sync-consume.js';
-import { activeUser, targetAccess } from './sync-access.js';
+import { authorizeRequesterTargets } from './sync-access.js';
 import { rowsOf } from './read-sql.js';
 export type SyncBatch = typeof batches.$inferSelect;
 export const terminalBatch = (b: SyncBatch) => ['completed', 'terminated', 'rejected'].includes(b.status);
@@ -13,16 +13,18 @@ export const retryTime = (count: number, now: Date) =>
   count < 3 ? new Date(now.getTime() + [1, 5, 30][count]! * 60_000) : null;
 export async function requesterScope(tx: Tx, deps: SyncDeps, input: SyncInput, timezone: string, batch: SyncBatch) {
   if (!input.requesterUserId) return;
-  const access = await targetAccess(deps, tx, input.tenantId, timezone, input.requesterUserId);
   const targets = rowsOf<{ kind: 'org' | 'position' | 'org_health'; id: string }>(
     await tx.execute(sql`
     SELECT target_kind AS kind,target_id AS id FROM succession_sync_targets
     WHERE tenant_id=${input.tenantId}::uuid AND batch_id=${batch.id}::uuid
     AND (status='pending' OR (status='failed' AND retryable))`),
   );
-  let covered = await activeUser(tx, input.tenantId, input.requesterUserId);
-  for (const target of targets) if (!(await access.covers(target))) covered = false;
-  if (!covered) throw new AppError('FORBIDDEN', '执行集合超出当前范围', { reason: 'BATCH_SCOPE_EXCEEDS_REQUESTER' });
+  await authorizeRequesterTargets(
+    deps,
+    tx,
+    { tenantId: input.tenantId, timezone, userId: input.requesterUserId },
+    targets,
+  );
 }
 export async function terminateLocal(
   tx: Tx,

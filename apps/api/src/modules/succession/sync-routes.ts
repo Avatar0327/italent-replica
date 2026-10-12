@@ -14,7 +14,7 @@ import { authorizeSuccessionResult, checkWriteAccess, type StoredResult } from '
 import { readSync, readSyncRows, projectSync, syncResults, syncAdmin } from './sync-read.js';
 import { consumeRun, ensureBatch, mutex, save, type SyncDeps } from './sync-consume.js';
 import { abortSync, batchWhere, notRetryable, requesterScope, terminalBatch, type SyncBatch } from './sync-control.js';
-import { activeUser, targetAccess } from './sync-access.js';
+import { authorizeRequesterTargets } from './sync-access.js';
 import { collectTargets, readPlan } from './sync-plan.js';
 import { readEffectiveSetting } from '../tenant-settings/service.js';
 import { getSuccessionSync } from './ports.js';
@@ -36,10 +36,7 @@ async function checkTargets(tx: Tx, deps: SyncDeps, ctx: SuccessionContext, runI
     SyncBatch['strategy']
   >;
   const targets = await collectTargets(tx, ctx.tenantId, header, plan, strategy);
-  const access = await targetAccess(deps, tx, ctx.tenantId, ctx.timezone, ctx.userId);
-  let covered = await activeUser(tx, ctx.tenantId, ctx.userId);
-  for (const target of targets) if (!(await access.covers(target))) covered = false;
-  if (!covered) throw new AppError('FORBIDDEN', '执行集合超出当前范围', { reason: 'BATCH_SCOPE_EXCEEDS_REQUESTER' });
+  await authorizeRequesterTargets(deps, tx, ctx, targets);
 }
 function requireSyncPort(deps: TenantRouteDeps): SyncDeps {
   const provider = getSuccessionSync(deps);

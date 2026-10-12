@@ -15,7 +15,14 @@ import { AppError } from '../../errors.js';
 import type { SyncRunHeader, TalentReviewSyncPort } from '../talent-review/sync-port.js';
 import { SyncPortError } from '../talent-review/sync-port.js';
 import { readEffectiveSetting } from '../tenant-settings/service.js';
-import { PlanFailure, activeUser, targetAccess, writerAccess, type AccessDeps } from './sync-access.js';
+import {
+  PlanFailure,
+  activeUser,
+  targetAccess,
+  authorizeRequesterTargets,
+  writerAccess,
+  type AccessDeps,
+} from './sync-access.js';
 import { collectTargets, persistPlan, readPlan } from './sync-plan.js';
 import { rowsOf } from './read-sql.js';
 import { executeSyncBatch } from './sync-execute.js';
@@ -180,16 +187,17 @@ class FirstPlan {
       ...targets,
       ...plan.nominations.map((n) => ({ kind: n.kind, id: (n.orgId ?? n.positionId)! })),
     ];
-    const principals = [header.actorUserId, ...(input.requesterUserId ? [input.requesterUserId] : [])];
-    for (const [phase, userId] of principals.entries()) {
-      const access = await targetAccess(deps, tx, input.tenantId, timezone, userId);
-      let covered = await activeUser(tx, input.tenantId, userId);
-      for (const target of authorizationTargets) if (!(await access.covers(target))) covered = false;
-      if (!covered) {
-        if (phase === 0) throw new PlanFailure('ACTOR_SCOPE_EXCEEDED');
-        throw denied('BATCH_SCOPE_EXCEEDS_REQUESTER');
-      }
-    }
+    const access = await targetAccess(deps, tx, input.tenantId, timezone, header.actorUserId);
+    let covered = await activeUser(tx, input.tenantId, header.actorUserId);
+    for (const target of authorizationTargets) if (!(await access.covers(target))) covered = false;
+    if (!covered) throw new PlanFailure('ACTOR_SCOPE_EXCEEDED');
+    if (input.requesterUserId)
+      await authorizeRequesterTargets(
+        deps,
+        tx,
+        { tenantId: input.tenantId, timezone, userId: input.requesterUserId },
+        authorizationTargets,
+      );
     const planned = await persistPlan(tx, {
       tenantId: input.tenantId,
       batchId: batch.id,

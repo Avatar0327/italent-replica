@@ -584,6 +584,12 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/succession/write-support.ts#runSuccessionCommand',
   ],
   'apps/api/src/modules/succession/sync-access.ts#activeUser': ['apps/api/src/modules/succession/read-sql.ts#rowsOf'],
+  'apps/api/src/modules/succession/sync-access.ts#authorizeRequesterTargets': [
+    'apps/api/src/modules/succession/read-sql.ts#rowsOf',
+    'apps/api/src/modules/succession/read-sql.ts#selfTargetSql',
+    '#activeUser',
+    '#targetAccess',
+  ],
   'apps/api/src/modules/succession/sync-access.ts#targetAccess': [
     'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
     'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
@@ -608,6 +614,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/succession/sync-consume.ts#FirstPlan': [
     'apps/api/src/modules/succession/sync-access.ts#PlanFailure',
     'apps/api/src/modules/succession/sync-access.ts#activeUser',
+    'apps/api/src/modules/succession/sync-access.ts#authorizeRequesterTargets',
     'apps/api/src/modules/succession/sync-access.ts#targetAccess',
     'apps/api/src/modules/succession/sync-access.ts#writerAccess',
     '#C_CODES',
@@ -659,8 +666,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/succession/sync-control.ts#requesterScope': [
     'apps/api/src/modules/succession/read-sql.ts#rowsOf',
-    'apps/api/src/modules/succession/sync-access.ts#activeUser',
-    'apps/api/src/modules/succession/sync-access.ts#targetAccess',
+    'apps/api/src/modules/succession/sync-access.ts#authorizeRequesterTargets',
   ],
   'apps/api/src/modules/succession/sync-control.ts#terminateLocal': [
     'apps/api/src/modules/succession/sync-consume.ts#release',
@@ -773,8 +779,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/succession/sync-routes.ts#PATH': ['apps/api/src/modules/succession/access.ts#SUCCESSION_BASE'],
   'apps/api/src/modules/succession/sync-routes.ts#checkTargets': [
-    'apps/api/src/modules/succession/sync-access.ts#activeUser',
-    'apps/api/src/modules/succession/sync-access.ts#targetAccess',
+    'apps/api/src/modules/succession/sync-access.ts#authorizeRequesterTargets',
     'apps/api/src/modules/succession/sync-control.ts#requesterScope',
     'apps/api/src/modules/succession/sync-plan.ts#collectTargets',
     'apps/api/src/modules/succession/sync-plan.ts#readPlan',
