@@ -95,23 +95,11 @@ ALTER TABLE "ev_staff_evaluations" ADD CONSTRAINT "ev_staff_evaluations_tenant_i
 CREATE INDEX "ev_staff_evaluations_activity" ON "ev_staff_evaluations" USING btree ("tenant_id","activity_id","id");--> statement-breakpoint
 CREATE INDEX "ev_staff_evaluations_cycle" ON "ev_staff_evaluations" USING btree ("tenant_id","cycle_id");
 --> statement-breakpoint
-ALTER TABLE "ev_staff_evaluations" ENABLE ROW LEVEL SECURITY;
---> statement-breakpoint
-ALTER TABLE "ev_staff_evaluations" FORCE ROW LEVEL SECURITY;
---> statement-breakpoint
-CREATE POLICY tenant_isolation ON "ev_staff_evaluations" TO app_user
-USING (tenant_id = current_setting('app.tenant_id', true)::uuid)
-WITH CHECK (tenant_id = current_setting('app.tenant_id', true)::uuid);
+SELECT enable_tenant_isolation('ev_staff_evaluations');
 --> statement-breakpoint
 GRANT SELECT, INSERT, UPDATE, DELETE ON "ev_staff_evaluations" TO app_user;
 
 --> statement-breakpoint
-ALTER TABLE "ev_notifications" ENABLE ROW LEVEL SECURITY;
---> statement-breakpoint
-ALTER TABLE "ev_notifications" FORCE ROW LEVEL SECURITY;
---> statement-breakpoint
-CREATE POLICY tenant_isolation ON "ev_notifications" TO app_user
-USING (tenant_id = current_setting('app.tenant_id', true)::uuid)
-WITH CHECK (tenant_id = current_setting('app.tenant_id', true)::uuid);
+SELECT enable_tenant_isolation('ev_notifications');
 --> statement-breakpoint
 GRANT SELECT, INSERT, UPDATE, DELETE ON "ev_notifications" TO app_user;
