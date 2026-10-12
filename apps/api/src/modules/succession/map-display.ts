@@ -148,7 +148,11 @@ export async function readPositionMapStructure(tx: Tx, ctx: MapDisplayContext, p
 async function positionScope(tx: Tx, ctx: MapDisplayContext, prefs: MapPreferences, selected: ReadonlySet<string>) {
   const structure = await readPositionMapStructure(tx, ctx, prefs);
   // DEC-368① / 设计 §5.8：历史职位的展示归属取 asOf，准入按请求日所属组织在 SQL 中裁剪。
-  const allowed = new Set((await mapPositions(tx, ctx.tenantId, ctx.today ?? ctx.asOf, ctx.scope)).map((p) => p.id));
+  const allowed = new Set(
+    (await mapPositions(tx, ctx.tenantId, ctx.today ?? ctx.asOf, ctx.scope))
+      .filter((p) => scopeAllows(ctx.scope, { orgId: p.orgId }))
+      .map((p) => p.id),
+  );
   const ids = new Set(
     [...structure.nodes.values()].filter((p) => p.orgId && selected.has(p.orgId) && allowed.has(p.id)).map((p) => p.id),
   );
