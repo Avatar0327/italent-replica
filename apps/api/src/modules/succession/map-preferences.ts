@@ -1,5 +1,5 @@
 /** §1.5 / #8：本人偏好是 Map.view 的个人配置，不是 Map 数据编辑字段。 */
-import { isUuid, sql, type Tx, SUCCESSION_MAP_DISPLAY_DEFAULTS } from '@italent/db';
+import { isUuid, sql, type Tx, SUCCESSION_POSITION_PREFERENCES_DEFAULTS } from '@italent/db';
 import { z } from 'zod';
 import { AppError } from '../../errors.js';
 import { readEffectiveSetting } from '../tenant-settings/service.js';
@@ -21,10 +21,8 @@ export const preferenceBody = z.strictObject({
     .array(uuid)
     .max(200)
     .transform((ids) => [...new Set(ids)].sort()),
-  hideVirtual: z.boolean(),
   showKeyPositions: z.boolean(),
   showPositionsWithoutSuccessor: z.boolean(),
-  showIncumbents: z.boolean(),
 });
 export type MapPreferences = z.output<typeof preferenceBody>;
 export interface PreferenceView extends MapPreferences {
@@ -32,8 +30,16 @@ export interface PreferenceView extends MapPreferences {
   readonly revision: number;
 }
 export function mapKind(value: string | undefined): MapKind {
-  if (value !== 'org' && value !== 'position') throw new AppError('VALIDATION_FAILED', '地图类型不合法');
+  if (value !== 'position') throw new AppError('VALIDATION_FAILED', '个人筛选仅用于职位地图');
   return value;
+}
+/** DEC-443：可信读端口，地图调用方负责 Map 授权，管理员设置经租户配置入口修改。 */
+export async function readMapTenantSettings(tx: Tx, tenantId: string, kind: MapKind) {
+  return {
+    hideVirtual:
+      kind === 'org' && (await readEffectiveSetting(tx, tenantId, 'succession.hide_virtual_org')).value === true,
+    showIncumbents: (await readEffectiveSetting(tx, tenantId, 'succession.show_incumbents')).value === true,
+  };
 }
 export async function readPreferences(
   tx: Tx,
@@ -43,20 +49,20 @@ export async function readPreferences(
 ): Promise<PreferenceView> {
   const [stored] = rowsOf<Omit<PreferenceView, 'id'>>(
     await tx.execute(sql`SELECT root_org_id AS "rootOrgId",
-    depth,hidden_org_ids AS "hiddenOrgIds",hide_virtual AS "hideVirtual",show_key_positions AS "showKeyPositions",
-    show_positions_without_successor AS "showPositionsWithoutSuccessor",show_incumbents AS "showIncumbents",revision
+    depth,hidden_org_ids AS "hiddenOrgIds",show_key_positions AS "showKeyPositions",
+    show_positions_without_successor AS "showPositionsWithoutSuccessor",revision
     FROM succession_map_preferences WHERE tenant_id=${tenantId}::uuid
       AND user_id=${userId}::uuid AND map_kind=${kind}`),
   );
   const depth =
     stored?.depth ?? Number((await readEffectiveSetting(tx, tenantId, 'succession.map_default_depth')).value);
-  // DEC-439① 暂定，口径讨论中；未经原站证实，取证中（#263）。
+  // DEC-443：组织地图没有个人筛选；内部默认布局只读，不创建个人行。
   return {
     id: `${userId}:${kind}`,
     rootOrgId: null,
     depth,
     hiddenOrgIds: [],
-    ...SUCCESSION_MAP_DISPLAY_DEFAULTS,
+    ...SUCCESSION_POSITION_PREFERENCES_DEFAULTS,
     revision: 0,
     ...stored,
   };

@@ -89,9 +89,9 @@ async function savePreferences(
   if (actual !== expected) throw new AppError('REVISION_CONFLICT', '显示设置已变更，请刷新后重提');
   const next = actual + 1;
   await tx.execute(sql`UPDATE succession_map_preferences SET root_org_id=${body.rootOrgId}::uuid,depth=${body.depth},
-    hidden_org_ids=${JSON.stringify(body.hiddenOrgIds)}::jsonb,hide_virtual=${body.hideVirtual},
+    hidden_org_ids=${JSON.stringify(body.hiddenOrgIds)}::jsonb,
     show_key_positions=${body.showKeyPositions},show_positions_without_successor=${body.showPositionsWithoutSuccessor},
-    show_incumbents=${body.showIncumbents},revision=${next}
+    revision=${next}
     WHERE tenant_id=${ctx.tenantId}::uuid AND user_id=${ctx.userId}::uuid AND map_kind=${kind}`);
   const after = await readPreferences(tx, ctx.tenantId, ctx.userId, kind);
   await recordAudit(tx, {
@@ -106,18 +106,12 @@ async function savePreferences(
     after: { ...after, userId: ctx.userId },
   });
   if (
-    kind === 'org' &&
-    (actual === 0 ||
-      Object.entries(body).some(
-        ([key, value]) => JSON.stringify(before[key as keyof MapPreferences]) !== JSON.stringify(value),
-      ))
+    actual === 0 ||
+    Object.entries(body).some(
+      ([key, value]) => JSON.stringify(before[key as keyof MapPreferences]) !== JSON.stringify(value),
+    )
   ) {
-    const ids = await readMapDisplayScope(
-      tx,
-      { ...ctx, scope, asOf: tenantLocalDate(ctx.now, ctx.timezone) },
-      kind,
-      body,
-    );
+    const ids = await readMapDisplayScope(tx, { ...ctx, scope, asOf: tenantLocalDate(ctx.now, ctx.timezone) }, 'org');
     await enqueueCalcRun(
       tx,
       {

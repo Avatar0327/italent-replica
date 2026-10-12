@@ -178,7 +178,7 @@
   "GET /api/tenant/succession/maps/:kind/preferences": {
     "all": {
       "code": "VALIDATION_FAILED",
-      "error": "e4ce4954a9b9",
+      "error": "7845ea5392cf",
       "status": 400
     },
     "fieldQueries": [],
@@ -466,7 +466,7 @@
   "PUT /api/tenant/succession/maps/:kind/preferences": {
     "all": {
       "code": "VALIDATION_FAILED",
-      "error": "e4ce4954a9b9",
+      "error": "7845ea5392cf",
       "status": 400
     },
     "fieldQueries": [],

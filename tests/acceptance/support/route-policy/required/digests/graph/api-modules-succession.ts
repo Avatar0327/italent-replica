@@ -347,6 +347,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/org/read-model.ts#loadOrgSnapshot',
     'apps/api/src/modules/permission/module-access.ts#scopeAllows',
     '#positionScope',
+    'apps/api/src/modules/succession/map-preferences.ts#readMapTenantSettings',
     'apps/api/src/modules/succession/map-preferences.ts#readPreferences',
   ],
   'apps/api/src/modules/succession/map-preferences.ts#preferenceBody': ['#uuid'],
@@ -356,6 +357,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/succession/access.ts#codeOf',
     '#mapKind',
     '#readPreferences',
+  ],
+  'apps/api/src/modules/succession/map-preferences.ts#readMapTenantSettings': [
+    'apps/api/src/modules/tenant-settings/service.ts#readEffectiveSetting',
   ],
   'apps/api/src/modules/succession/map-preferences.ts#readPreferences': [
     'apps/api/src/modules/succession/read-sql.ts#rowsOf',

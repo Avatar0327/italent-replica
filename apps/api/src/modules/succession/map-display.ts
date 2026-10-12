@@ -4,7 +4,7 @@ import { AppError } from '../../errors.js';
 import { loadOrgSnapshot } from '../org/read-model.js';
 import { listJobObjects, type JobRecord } from '../job/read-model.js';
 import { scopeAllows, type ModuleScope } from '../permission/module-access.js';
-import { readPreferences, type MapKind, type MapPreferences } from './map-preferences.js';
+import { readPreferences, readMapTenantSettings, type MapKind, type MapPreferences } from './map-preferences.js';
 import { selfRecordHiddenSql, rowsOf } from './read-sql.js';
 
 export interface MapDisplayContext {
@@ -16,11 +16,12 @@ export interface MapDisplayContext {
 export async function readMapDisplayScope(tx: Tx, ctx: MapDisplayContext, kind: MapKind, supplied?: MapPreferences) {
   if (!ctx.scope.hasDataPermission) return [];
   const prefs = supplied ?? (await readPreferences(tx, ctx.tenantId, ctx.userId, kind));
+  const settings = await readMapTenantSettings(tx, ctx.tenantId, kind);
   const orgs = await loadOrgSnapshot(tx, ctx.tenantId, ctx.asOf, undefined, { includeDisabled: false });
   const byId = new Map(orgs.map((o) => [o.id, o]));
   const permitted = orgs.filter((o) => scopeAllows(ctx.scope, { orgId: o.id }));
   const hidden = new Set(prefs.hiddenOrgIds);
-  const excluded = (id: string) => hidden.has(id) || (prefs.hideVirtual && byId.get(id)?.isVirtual);
+  const excluded = (id: string) => hidden.has(id) || (settings.hideVirtual && byId.get(id)?.isVirtual);
   let root = prefs.rootOrgId;
   if (root && !permitted.some((o) => o.id === root)) throw new AppError('NOT_FOUND', '地图根组织不存在');
   if (!root && kind === 'org') {
@@ -74,18 +75,21 @@ async function positionScope(tx: Tx, ctx: MapDisplayContext, prefs: MapPreferenc
     positions.push(...page);
     if (page.length < 200) break;
   }
-  const keys = new Map(positions.filter((p) => p.enabled && p.isKey).map((p) => [p.id, p]));
+  // Q-M0-177 / DEC-443：默认不按关键职位过滤，打开个人筛选才跳过非关键祖先。
+  const nodes = new Map(
+    positions.filter((p) => p.enabled && (!prefs.showKeyPositions || p.isKey)).map((p) => [p.id, p]),
+  );
   const parent = (id: string) => {
     let p = positions.find((v) => v.id === id)?.directParentId;
     const seen = new Set([id]);
     while (p && !seen.has(p)) {
-      if (keys.has(p)) return p;
+      if (nodes.has(p)) return p;
       seen.add(p);
       p = positions.find((v) => v.id === p)?.directParentId;
     }
     return null;
   };
-  const visible = [...keys.values()].filter((p) => p.orgId && selected.has(p.orgId));
+  const visible = [...nodes.values()].filter((p) => p.orgId && selected.has(p.orgId));
   const ids = new Set(visible.map((p) => p.id));
   if (prefs.showPositionsWithoutSuccessor) return [...ids];
   const active = rowsOf<{ id: string }>(

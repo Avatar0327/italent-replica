@@ -37,15 +37,13 @@ export const SUCCESSION_OPEN_END = '9999-12-31';
 
 const list = (values: readonly string[]) => sql.raw(values.map((value) => `'${value}'`).join(', '));
 
-/** DEC-439① 暂定，口径讨论中；两种地图共用。未经原站证实，取证中（#263）。 */
-export const SUCCESSION_MAP_DISPLAY_DEFAULTS = Object.freeze({
-  hideVirtual: false,
+/** DEC-443：个人筛选仅用于职位地图，管理员显示开关不存于个人表。 */
+export const SUCCESSION_POSITION_PREFERENCES_DEFAULTS = Object.freeze({
   showKeyPositions: false,
   showPositionsWithoutSuccessor: true,
-  showIncumbents: true,
 });
 
-/** C1 / DEC-439① 暂定，口径讨论中；初值统一取具名常量，未经原站证实，取证中（#263）。 */
+/** C1 / DEC-443：root / depth / hidden 是位置筛选；两个布尔筛选按个人保存。 */
 export const successionMapPreferences = pgTable(
   'succession_map_preferences',
   {
@@ -53,16 +51,16 @@ export const successionMapPreferences = pgTable(
       .notNull()
       .references(() => tenants.id),
     userId: uuid('user_id').notNull(),
-    mapKind: text('map_kind').$type<'org' | 'position'>().notNull(),
+    mapKind: text('map_kind').$type<'position'>().notNull(),
     rootOrgId: uuid('root_org_id'),
     depth: integer('depth').notNull(),
     hiddenOrgIds: jsonb('hidden_org_ids').$type<string[]>().notNull().default([]),
-    hideVirtual: boolean('hide_virtual').notNull().default(SUCCESSION_MAP_DISPLAY_DEFAULTS.hideVirtual),
-    showKeyPositions: boolean('show_key_positions').notNull().default(SUCCESSION_MAP_DISPLAY_DEFAULTS.showKeyPositions),
+    showKeyPositions: boolean('show_key_positions')
+      .notNull()
+      .default(SUCCESSION_POSITION_PREFERENCES_DEFAULTS.showKeyPositions),
     showPositionsWithoutSuccessor: boolean('show_positions_without_successor')
       .notNull()
-      .default(SUCCESSION_MAP_DISPLAY_DEFAULTS.showPositionsWithoutSuccessor),
-    showIncumbents: boolean('show_incumbents').notNull().default(SUCCESSION_MAP_DISPLAY_DEFAULTS.showIncumbents),
+      .default(SUCCESSION_POSITION_PREFERENCES_DEFAULTS.showPositionsWithoutSuccessor),
     revision: integer('revision').notNull().default(1),
   },
   (t) => [
@@ -72,7 +70,7 @@ export const successionMapPreferences = pgTable(
       foreignColumns: [tenantMemberships.tenantId, tenantMemberships.userId],
     }),
     foreignKey({ columns: [t.tenantId, t.rootOrgId], foreignColumns: [orgObjects.tenantId, orgObjects.id] }),
-    check('succession_preferences_kind', sql`${t.mapKind} IN ('org','position')`),
+    check('succession_preferences_kind', sql`${t.mapKind} = 'position'`),
     check('succession_preferences_depth', sql`${t.depth} BETWEEN 2 AND 4`),
     check(
       'succession_preferences_hidden',
