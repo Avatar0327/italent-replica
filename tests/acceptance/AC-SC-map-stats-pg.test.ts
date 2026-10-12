@@ -16,12 +16,10 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-SC-map-stats çœŸ PG å
       rootOrgId: root.id,
       depth: 3,
       hiddenOrgIds: [],
-      hideVirtual: false,
       showKeyPositions: false,
       showPositionsWithoutSuccessor: true,
-      showIncumbents: true,
     };
-    expect((await w.request('PUT', '/maps/org/preferences', { ifMatch: 0, body })).status).toBe(200);
+    expect((await w.request('PUT', '/maps/position/preferences', { ifMatch: 0, body })).status).toBe(200);
     let ready!: () => void, release!: () => void;
     const entered = new Promise<void>((r) => {
       ready = r;
@@ -37,9 +35,9 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-SC-map-stats çœŸ PG å
     await entered;
     const key = randomUUID();
     const send = (idempotencyKey: string) =>
-      w.request('PUT', '/maps/org/preferences', {
+      w.request('PUT', '/maps/position/preferences', {
         ifMatch: 1,
-        body: { ...body, showIncumbents: false },
+        body: { ...body, showPositionsWithoutSuccessor: false },
         idempotencyKey,
       });
     const requests = [send(key), send(sameKey ? key : randomUUID())];
@@ -54,10 +52,10 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-SC-map-stats çœŸ PG å
     const rows = await w.asTenant(async (tx) =>
       rowsOf(
         await tx.execute(sql`SELECT revision,
-      show_incumbents FROM succession_map_preferences WHERE map_kind='org'`),
+      show_positions_without_successor FROM succession_map_preferences WHERE map_kind='position'`),
       ),
     );
-    expect(rows).toEqual([{ revision: 2, show_incumbents: false }]);
+    expect(rows).toEqual([{ revision: 2, show_positions_without_successor: false }]);
     const runs = await w.asTenant(async (tx) =>
       rowsOf(
         await tx.execute(sql`SELECT id

@@ -2,7 +2,10 @@ import { useTestDb } from '@italent/testkit';
 import { expect, it } from 'vitest';
 import { readMapDisplayScope } from '../../apps/api/src/modules/succession/map-display.js';
 import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.js';
-import { successionWorld, SC_TODAY } from './AC-SC-support.js';
+import { overrideSetting } from '../../apps/api/src/modules/tenant-settings/service.js';
+import { readMapTenantSettings } from '../../apps/api/src/modules/succession/map-preferences.js';
+import { randomUUID } from 'node:crypto';
+import { successionWorld, SC_TODAY, SC_NOW } from './AC-SC-support.js';
 
 const db = useTestDb();
 it('AC-SC-map-display 根、层数、隐藏子树、虚拟子树、权限断层与空范围', async () => {
@@ -16,10 +19,8 @@ it('AC-SC-map-display 根、层数、隐藏子树、虚拟子树、权限断层�
     rootOrgId: root.id,
     depth: 3,
     hiddenOrgIds: [],
-    hideVirtual: false,
     showKeyPositions: false,
     showPositionsWithoutSuccessor: true,
-    showIncumbents: true,
   };
   const all = { ...EMPTY_SCOPE, all: true, hasDataPermission: true };
   const read = (extra = {}, scope = all) =>
@@ -31,7 +32,25 @@ it('AC-SC-map-display 根、层数、隐藏子树、虚拟子树、权限断层�
     );
   expect((await read()).sort()).toEqual([root.id, a.id, b.id, virtual.id, leaf.id].sort());
   expect((await read({ depth: 2 })).sort()).toEqual([root.id, a.id, virtual.id].sort());
-  expect((await read({ hiddenOrgIds: [a.id], hideVirtual: true })).sort()).toEqual([root.id]);
+  await w.asTenant((tx) =>
+    overrideSetting(
+      tx,
+      {
+        tenantId: w.tenant.id,
+        userId: w.user.id,
+        key: 'succession.hide_virtual_org',
+        expectedRevision: 0,
+        commandId: randomUUID(),
+        now: SC_NOW,
+      },
+      true,
+    ),
+  );
+  expect((await read({ hiddenOrgIds: [a.id] })).sort()).toEqual([root.id]);
+  expect(await w.asTenant((tx) => readMapTenantSettings(tx, w.tenant.id, 'position'))).toEqual({
+    hideVirtual: false,
+    showIncumbents: true,
+  });
   expect(await read({}, EMPTY_SCOPE)).toEqual([]);
   const scoped = { ...EMPTY_SCOPE, orgIds: [root.id, b.id], terms: undefined, hasDataPermission: true };
   expect(await read({}, scoped)).toEqual([root.id]);
@@ -50,10 +69,8 @@ it('AC-SC-map-display 职位图保留有继任者的祖先；停用/非关键祖
     rootOrgId: null,
     depth: 3,
     hiddenOrgIds: [],
-    hideVirtual: false,
-    showKeyPositions: false,
+    showKeyPositions: true,
     showPositionsWithoutSuccessor: false,
-    showIncumbents: true,
   };
   const ctx = {
     tenantId: w.tenant.id,
@@ -64,4 +81,7 @@ it('AC-SC-map-display 职位图保留有继任者的祖先；停用/非关键祖
   const ids = await w.asTenant((tx) => readMapDisplayScope(tx, ctx, 'position', prefs));
   expect(ids.sort()).toEqual([parent.id, child.id].sort());
   expect(ids).not.toContain(empty.id);
+  expect(
+    (await w.asTenant((tx) => readMapDisplayScope(tx, ctx, 'position', { ...prefs, showKeyPositions: false }))).sort(),
+  ).toEqual([parent.id, skipped.id, child.id].sort());
 });
