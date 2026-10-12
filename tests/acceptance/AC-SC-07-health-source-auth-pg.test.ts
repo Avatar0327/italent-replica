@@ -14,6 +14,13 @@ const cases = [
   { name: '有组织查看权但负责人字段不可见', fieldCode: 'person_in_charge_id', hiddenField: true, cached: false },
   { name: '无组织查看权：在岗缓存命中 7', fieldCode: 'on_duty_count', hiddenField: false, cached: true },
   { name: '无组织查看权：在岗缓存未命中，现算 1', fieldCode: 'on_duty_count', hiddenField: false, cached: false },
+  {
+    name: '有组织查看权但源组织范围为空，缓存命中 7',
+    fieldCode: 'on_duty_count',
+    hiddenField: false,
+    cached: true,
+    emptyScope: true,
+  },
 ];
 describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-SC-07 P2-2 组织源授权真 PG 回归', () => {
   it.each(cases)(
@@ -58,7 +65,9 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-SC-07 P2-2 组织源�
         VALUES (${w.tenant.id}::uuid,${org.id}::uuid,${originalLevelId}::uuid,'computed',1)`);
         await tx.execute(sql`DELETE FROM permission_profile_fields WHERE object_code='TenantBase.Organization'`);
         await tx.execute(sql`DELETE FROM permission_profile_objects WHERE object_code='TenantBase.Organization'`);
-        if (test.hiddenField) {
+        await tx.execute(sql`UPDATE permission_identity_scopes SET see_all=false
+        WHERE app_code='TenantBase' AND target_code='TenantBase.Organization'`);
+        if (test.hiddenField || test.emptyScope) {
           await tx.execute(sql`INSERT INTO permission_profile_apps(tenant_id,profile_id,app_code)
           SELECT ${w.tenant.id}::uuid,id,'TenantBase' FROM permission_profiles
           WHERE code='standard_succession_runner' ON CONFLICT DO NOTHING`);
@@ -70,7 +79,8 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-SC-07 P2-2 组织源�
           (tenant_id,profile_id,object_code,field_code,can_view,can_edit)
           SELECT ${w.tenant.id}::uuid,id,'TenantBase.Organization','name',true,false
           FROM permission_profiles WHERE code='standard_succession_runner'`);
-          await tx.execute(sql`INSERT INTO permission_identity_scopes
+          if (!test.emptyScope)
+            await tx.execute(sql`INSERT INTO permission_identity_scopes
           (tenant_id,profile_id,app_code,target_kind,target_code,see_all)
           SELECT ${w.tenant.id}::uuid,id,'TenantBase','entity','TenantBase.Organization',true
           FROM permission_profiles WHERE code='standard_succession_runner'
@@ -85,7 +95,7 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-SC-07 P2-2 组织源�
           action: 'object.view',
           resource: 'TenantBase.Organization',
         }),
-      ).toBe(test.hiddenField);
+      ).toBe(Boolean(test.hiddenField || test.emptyScope));
       const api = tenantApi(w.db, { authorize, clock: () => SC_NOW });
       const queued = await api.request('POST', `${SC_BASE}/maps/org/compute-health`, {
         tenant: w.tenant.id,
