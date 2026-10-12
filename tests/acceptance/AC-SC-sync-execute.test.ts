@@ -470,7 +470,7 @@ describe('AC-SC-03-04-sync D2 执行与终结', () => {
       await h.port.supersede(h.input.runId);
     });
     const abort = vi.spyOn(h.port, 'abortConsumption');
-    expect(await consumeRun(h.deps, h.input)).toMatchObject({ status: 'terminated', endReason: 'RUN_SUPERSEDED' });
+    expect(await consumeRun(h.deps, h.input)).toMatchObject({ status: 'terminated', endReason: 'superseded' });
     expect(await h.records()).toHaveLength(1);
     expect(abort).not.toHaveBeenCalled();
     expect((await w.request('DELETE', `/records/${h.oldId}`, { ifMatch: 1 })).status).toBe(200);

@@ -19,6 +19,7 @@ import { PlanFailure, activeUser, targetAccess, writerAccess, type AccessDeps } 
 import { collectTargets, persistPlan, readPlan } from './sync-plan.js';
 import { rowsOf } from './read-sql.js';
 import { executeSyncBatch } from './sync-execute.js';
+import { claimSync, retryTime } from './sync-control.js';
 
 export interface SyncDeps extends AccessDeps {
   db: Db;
@@ -37,7 +38,7 @@ const terminal = (batch: Batch) => ['completed', 'terminated', 'rejected'].inclu
 const batchKey = (input: SyncInput) => and(eq(batches.tenantId, input.tenantId), eq(batches.sourceRunId, input.runId));
 const denied = (reason: string) => new AppError('FORBIDDEN', '同步批次不可操作', { reason });
 const C_CODES = ['SCOPE_REQUIRED', 'UNSUPPORTED_TRIGGER', 'ACTOR_SCOPE_EXCEEDED'];
-async function ensureBatch(tx: Tx, input: SyncInput, header: SyncRunHeader) {
+export async function ensureBatch(tx: Tx, input: SyncInput, header: SyncRunHeader) {
   await tx
     .insert(batches)
     .values({
@@ -72,7 +73,15 @@ export async function release(tx: Tx, batch: Batch) {
 export async function save(tx: Tx, batch: Batch, patch: Partial<Batch>, now: Date, commandId: string, phase = 'plan') {
   const [saved] = await tx
     .update(batches)
-    .set({ ...patch, revision: batch.revision + 1 })
+    .set({
+      ...(patch.status === 'blocked' || patch.status === 'waiting'
+        ? { nextRetryAt: retryTime(batch.autoRetryCount, now) }
+        : patch.status === 'completed'
+          ? { nextRetryAt: null }
+          : {}),
+      ...patch,
+      revision: batch.revision + 1,
+    })
     .where(and(eq(batches.tenantId, batch.tenantId), eq(batches.id, batch.id)))
     .returning();
   await recordAudit(tx, {
@@ -252,7 +261,7 @@ class FirstPlan {
       {
         status,
         blockReason: rejected || superseded ? null : failure.code,
-        endReason: rejected || superseded ? failure.code : null,
+        endReason: superseded ? 'superseded' : rejected ? failure.code : null,
         finishedAt: rejected || superseded ? now : null,
       },
       now,
@@ -295,8 +304,11 @@ export async function planSyncRun(deps: SyncDeps, input: SyncInput): Promise<Bat
   }
 }
 export async function consumeRun(deps: SyncDeps, input: SyncInput): Promise<Batch | undefined> {
-  const batch = await planSyncRun(deps, input);
-  return batch?.hasPlan && !terminal(batch) ? executeSyncBatch(deps, input, batch) : batch;
+  let batch = await planSyncRun(deps, input);
+  if (!batch?.hasPlan || terminal(batch)) return batch;
+  const tenant = await getTenant(deps.db, input.tenantId);
+  batch = await claimSync(deps, input, batch, tenant!.timezone);
+  return batch && !terminal(batch) ? executeSyncBatch(deps, input, batch) : batch;
 }
 /** SP-02：outbox 只提供租户和 run 定位；主体、日期、策略都在 consumeRun 重读，不能信任事件附带值。 */
 export const consumeSyncOutbox = (

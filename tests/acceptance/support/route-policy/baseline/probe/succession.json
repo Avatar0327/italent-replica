@@ -321,6 +321,77 @@
       "obj:Succession.Record:create"
     ]
   },
+  "GET /api/tenant/succession/sync-batches": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:Succession.SyncBatch"
+    ],
+    "scopeQueries": [
+      "scope:SuccessionAndDevelopment/Succession.SyncBatch/-"
+    ],
+    "trace": [
+      "obj:Succession.SyncBatch:view"
+    ]
+  },
+  "GET /api/tenant/succession/sync-batches/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "83bab2d69af7",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:SuccessionAndDevelopment/Succession.SyncBatch/-"
+    ],
+    "trace": [
+      "obj:Succession.SyncBatch:view"
+    ]
+  },
+  "GET /api/tenant/succession/sync-batches/:id/items": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "83bab2d69af7",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:SuccessionAndDevelopment/Succession.SyncBatch/-"
+    ],
+    "trace": [
+      "obj:Succession.SyncBatch:view"
+    ]
+  },
+  "GET /api/tenant/succession/sync-batches/:id/targets": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "83bab2d69af7",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:SuccessionAndDevelopment/Succession.SyncBatch/-"
+    ],
+    "trace": [
+      "obj:Succession.SyncBatch:view"
+    ]
+  },
   "POST /api/tenant/succession/calc-runs/:id/retry": {
     "all": {
       "code": "NOT_FOUND",
@@ -406,6 +477,61 @@
     },
     "scopeQueries": [],
     "trace": []
+  },
+  "POST /api/tenant/succession/sync": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "48d8892712ee",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/tenant/succession/sync-batches/:id/abort": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "83bab2d69af7",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:SuccessionAndDevelopment/Succession.SyncBatch/-"
+    ],
+    "trace": [
+      "btn:Succession.SyncBatch#abort@detail",
+      "obj:Succession.SyncBatch:update",
+      "obj:Succession.SyncBatch:view"
+    ]
+  },
+  "POST /api/tenant/succession/sync-batches/:id/retry": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "83bab2d69af7",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:SuccessionAndDevelopment/Succession.SyncBatch/-"
+    ],
+    "trace": [
+      "btn:Succession.SyncBatch#retry@detail",
+      "obj:Succession.SyncBatch:update",
+      "obj:Succession.SyncBatch:view"
+    ]
   },
   "PUT /api/tenant/succession/health-levels/:id": {
     "all": {

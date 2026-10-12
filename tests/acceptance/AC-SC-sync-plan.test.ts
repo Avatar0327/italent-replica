@@ -431,7 +431,7 @@ it('AC-SC-03 步骤 4/5：superseded 本地终止；持租约者退出且不改�
   await old.port.supersede(old.input.runId);
   const abort = vi.spyOn(old.port, 'abortConsumption');
   await consumeRun(old.deps, old.input);
-  expect(await batch(old.input.runId)).toMatchObject({ status: 'terminated', end_reason: 'RUN_SUPERSEDED' });
+  expect(await batch(old.input.runId)).toMatchObject({ status: 'terminated', end_reason: 'superseded' });
   expect(abort).not.toHaveBeenCalled();
   const h = setup();
   await h.deps.transaction((tx) =>

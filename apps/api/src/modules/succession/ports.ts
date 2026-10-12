@@ -4,7 +4,9 @@
  * “计算健康度”保持 400 HEALTH_COMPUTE_UNAVAILABLE（不登记占位实现，避免返回假结果）。
  * 实现必须是模块级单例：createApp 每装配一次都会调用本函数，T04 只接受同一实例的重复登记。
  */
-import { sql, type Tx } from '@italent/db';
+import type { TenantRouteDeps } from '../../routes.js';
+import type { SyncDeps } from './sync-consume.js';
+import { sql, type Tx, type Db } from '@italent/db';
 import type { SQL } from 'drizzle-orm';
 import { registerOrgHealthComputePort, type OrgHealthComputePort } from '../talent-review/health-port.js';
 import { loadIncumbentIds, loadPeople, rowsOf, type PersonView } from './read-sql.js';
@@ -94,4 +96,13 @@ export async function listIncumbents(
   const incumbents = await loadIncumbentIds(ctx.tx, ctx.tenantId, positionIds, ctx.asOf);
   const people = await loadPeople(ctx.tx, ctx.tenantId, [...incumbents.values()].flat());
   return new Map([...incumbents].map(([positionId, ids]) => [positionId, ids.flatMap((id) => people.get(id) ?? [])]));
+}
+
+/** D3：真实端口另行接线；不安装替身作为生产默认值。按 Db 隔离应用/测试实例。 */
+const syncProviders = new WeakMap<Db, (deps: TenantRouteDeps) => SyncDeps>();
+export function registerSuccessionSync(db: Db, factory: (deps: TenantRouteDeps) => SyncDeps) {
+  syncProviders.set(db, factory);
+}
+export function getSuccessionSync(deps: TenantRouteDeps) {
+  return syncProviders.get(deps.db)?.(deps);
 }

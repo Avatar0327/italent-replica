@@ -3,12 +3,19 @@ import { randomUUID } from 'node:crypto';
 import { sql, type DbHandle } from '@italent/db';
 import { createTestDb } from '@italent/testkit';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { consumeRun, planSyncRun } from '../../apps/api/src/modules/succession/sync-consume.js';
+import { consumeRun, planSyncRun, mutex } from '../../apps/api/src/modules/succession/sync-consume.js';
 import { createInMemoryTalentReviewSyncPort } from '../../apps/api/src/modules/talent-review/sync-port-memory.js';
 import { overrideSetting } from '../../apps/api/src/modules/tenant-settings/service.js';
 import { syncFixture } from './support/sync-port-contract.js';
 import { rowsOf } from './support/f048.js';
 import { successionWorld, SC_NOW, SC_TODAY, type SuccessionWorld } from './AC-SC-support.js';
+import { abortSync } from '../../apps/api/src/modules/succession/sync-control.js';
+import { SUCCESSION_AUDIT } from '../../apps/api/src/modules/succession/audit-scope.js';
+import * as audit from '../../apps/api/src/audit/record.js';
+import { recoverSyncBatches } from '../../apps/api/src/modules/succession/sync-recovery.js';
+import { tenantApi } from './support/tenant-api.js';
+import { registerScopeProvider } from '../../apps/api/src/modules/permission/module-access.js';
+import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.js';
 import { syncTestTransaction } from './AC-SC-sync-support.js';
 
 const binding = vi.hoisted(() => ({ current: null as unknown }));
@@ -38,6 +45,11 @@ beforeAll(async () => {
       w.user.id,
     );
     await tx.execute(sql`INSERT INTO permission_profiles (tenant_id,code,name,source)
+      VALUES (${w.tenant.id}::uuid,'standard_succession_admin','继任管理员','standard') ON CONFLICT DO NOTHING`);
+    await tx.execute(sql`INSERT INTO permission_grants (tenant_id,user_id,profile_id)
+      SELECT ${w.tenant.id}::uuid,${w.user.id}::uuid,id FROM permission_profiles
+      WHERE tenant_id=${w.tenant.id}::uuid AND code='standard_succession_admin' ON CONFLICT DO NOTHING`);
+    await tx.execute(sql`INSERT INTO permission_profiles (tenant_id,code,name,source)
       VALUES (${w.tenant.id}::uuid,'standard_succession_runner','继任执行身份','standard') ON CONFLICT DO NOTHING`);
     await tx.execute(sql`INSERT INTO permission_grants (tenant_id,user_id,profile_id)
       SELECT ${w.tenant.id}::uuid,${w.user.id}::uuid,id FROM permission_profiles
@@ -48,7 +60,7 @@ afterAll(async () => {
   await handle?.close();
 });
 
-async function setup() {
+async function setup(plan = true) {
   await w.asTenant(async (tx) => {
     await tx.execute(sql`UPDATE succession_sync_mutex SET batch_id=NULL WHERE tenant_id=${w.tenant.id}::uuid`);
     await tx.execute(sql`UPDATE succession_sync_batches SET status='terminated' WHERE tenant_id=${w.tenant.id}::uuid`);
@@ -97,8 +109,8 @@ async function setup() {
     transaction: syncTestTransaction(w.db, w.tenant.id, port),
   };
   binding.current = deps;
-  const batch = await planSyncRun(deps, input);
-  expect(batch?.status).toBe('executing');
+  const batch = plan ? await planSyncRun(deps, input) : undefined;
+  if (plan) expect(batch?.status).toBe('executing');
   return { input, deps, port, batch: batch! };
 }
 
@@ -236,5 +248,237 @@ describe('DEC-453① 无计划终止', () => {
       tx.execute(sql`SELECT id FROM succession_sync_targets WHERE batch_id=${id}::uuid`),
     );
     expect(rowsOf(plans)).toEqual([]);
+    const held = await w.asTenant((tx) =>
+      tx.execute(sql`SELECT batch_id FROM succession_sync_mutex
+      WHERE tenant_id=${w.tenant.id}::uuid`),
+    );
+    expect(rowsOf(held)).toEqual([{ batch_id: h.batch.id }]);
+    const page = await port.transaction((tx) =>
+      port.getOutcomes(tx, {
+        tenantId: w.tenant.id,
+        runId: freshId,
+        consumer: 'succession',
+      }),
+    );
+    expect(page.items.every((row) => row.status === 'aborted')).toBe(true);
+  });
+});
+
+describe('D3 入口命令与自动恢复', () => {
+  it('POST /sync 首次执行和同键重放：只通知一次，不重复业务写入', async () => {
+    const h = await setup(false),
+      command = randomUUID();
+    const call = () =>
+      w.request('POST', '/sync', { body: { runId: h.input.runId.toUpperCase() }, idempotencyKey: command });
+    const first = await call();
+    expect(first.status, await first.clone().text()).toBe(202);
+    const body = await first.json();
+    expect(body).toMatchObject({ status: 'completed', result: 'succeeded' });
+    const replay = await call();
+    expect(replay.status).toBe(202);
+    expect(await replay.json()).toEqual(body);
+    const notices = await w.asTenant((tx) =>
+      tx.execute(sql`SELECT id FROM succession_notifications
+      WHERE batch_id=${(body as { id: string }).id}::uuid AND kind='sync_done'`),
+    );
+    expect(rowsOf(notices)).toHaveLength(1);
+  });
+  it('调用人目标授权失败返回 403，不建批次或计划', async () => {
+    const h = await setup(false);
+    binding.current = { ...h.deps, authorize: () => false };
+    const result = await w.request('POST', '/sync', { body: { runId: h.input.runId } });
+    expect(result.status).toBe(403);
+    expect(await result.json()).toMatchObject({ error: { details: { reason: 'BATCH_SCOPE_EXCEEDS_REQUESTER' } } });
+    const rows = await w.asTenant((tx) =>
+      tx.execute(sql`SELECT id FROM succession_sync_batches
+      WHERE source_run_id=${h.input.runId}::uuid`),
+    );
+    expect(rowsOf(rows)).toEqual([]);
+  });
+  it('退避 1/5/30 分钟、最多三次；修复后手动 retry 可恢复并重置次数', async () => {
+    const h = await setup();
+    let now = SC_NOW;
+    const broken = { ...h.deps, authorize: () => false, clock: () => now };
+    const state = await consumeRun(broken, h.input);
+    expect(state?.nextRetryAt).toEqual(new Date(SC_NOW.getTime() + 60_000));
+    // 首次退避已到但租约未到期时不得消耗次数。
+    now = new Date(SC_NOW.getTime() + 60_000);
+    h.port.advance(60);
+    await recoverSyncBatches(broken, w.tenant.id);
+    const load = () =>
+      w.asTenant(
+        async (tx) =>
+          rowsOf<{ auto_retry_count: number; next_retry_at: Date | null; status: string }>(
+            await tx.execute(
+              sql`SELECT auto_retry_count,next_retry_at,status
+              FROM succession_sync_batches WHERE id=${h.batch.id}::uuid`,
+            ),
+          )[0]!,
+      );
+    expect((await load()).auto_retry_count).toBe(0);
+    now = new Date(SC_NOW.getTime() + 121_000);
+    h.port.advance(61);
+    for (const [attempt, delay] of [
+      [1, 5],
+      [2, 30],
+      [3, 0],
+    ]) {
+      await recoverSyncBatches(broken, w.tenant.id);
+      const row = await load();
+      expect(row.auto_retry_count).toBe(attempt);
+      expect(row.next_retry_at ? new Date(row.next_retry_at) : null).toEqual(
+        delay ? new Date(now.getTime() + delay! * 60_000) : null,
+      );
+      now = new Date(now.getTime() + (delay || 30) * 60_000);
+      h.port.advance((delay || 30) * 60);
+    }
+    await recoverSyncBatches(h.deps, w.tenant.id);
+    expect((await load()).status).toBe('blocked');
+    const detail = await w.request('GET', `/sync-batches/${h.batch.id}`);
+    const current = (await detail.json()) as { revision: number };
+    binding.current = h.deps;
+    const retry = await w.request('POST', `/sync-batches/${h.batch.id}/retry`, { ifMatch: current.revision, body: {} });
+    expect(retry.status, await retry.clone().text()).toBe(202);
+    expect(await retry.json()).toMatchObject({ status: 'completed' });
+    expect((await load()).auto_retry_count).toBe(0);
+  });
+  it('按当前范围重算计数；字段隐藏时明细键不返回', async () => {
+    const h = await setup();
+    const authorize = () => true;
+    registerScopeProvider(authorize, {
+      authorize: async () => true,
+      scope: async () => EMPTY_SCOPE,
+      fields: async () => new Set(['id', 'revision', 'status', 'visibleCounts']),
+    });
+    const api = tenantApi(w.db, { authorize, clock: () => SC_NOW });
+    const options = { tenant: w.tenant.id, user: w.user.id };
+    const detail = await api.request('GET', `/api/tenant/succession/sync-batches/${h.batch.id}`, options);
+    expect(detail.status).toBe(200); // 原触发人仍可看批次头，但不能获得目标行。
+    expect(await detail.json()).toMatchObject({ visibleCounts: { items: 0, targets: 0 } });
+    const rows = await api.request('GET', `/api/tenant/succession/sync-batches/${h.batch.id}/items`, options);
+    expect(await rows.json()).toEqual({ items: [] });
+  });
+});
+
+describe('AC-SC-03/04 D3 终止、重放与 SELF 边界', () => {
+  it('终止审计失败时本地状态、源回执与互斥全部回滚', async () => {
+    const h = await setup();
+    const fail = vi.spyOn(audit, 'recordAudit').mockRejectedValueOnce(new Error('测试审计故障'));
+    try {
+      await expect(
+        h.deps.transaction(async (tx) => {
+          await mutex(tx, w.tenant.id);
+          return abortSync(tx, h.deps, h.batch, randomUUID(), h.batch.revision);
+        }),
+      ).rejects.toThrow('测试审计故障');
+    } finally {
+      fail.mockRestore();
+    }
+    const state = await w.asTenant((tx) =>
+      tx.execute(sql`SELECT status,revision FROM succession_sync_batches
+      WHERE id=${h.batch.id}::uuid`),
+    );
+    expect(rowsOf(state)).toEqual([{ status: 'executing', revision: h.batch.revision }]);
+    const outcomes = await h.port.transaction((tx) =>
+      h.port.getOutcomes(tx, {
+        tenantId: w.tenant.id,
+        runId: h.input.runId,
+        consumer: 'succession',
+      }),
+    );
+    expect(outcomes.items.some((row) => row.status === 'aborted')).toBe(false);
+  });
+  it('自动重试耗尽后项目重启，恢复扫描仍清理屏障而不调用 abort', async () => {
+    const h = await setup();
+    await w.asTenant((tx) =>
+      tx.execute(sql`UPDATE succession_sync_batches
+      SET status='blocked',auto_retry_count=3,next_retry_at=NULL WHERE id=${h.batch.id}::uuid`),
+    );
+    const abort = vi.spyOn(h.port, 'abortConsumption');
+    await h.port.supersede(h.input.runId);
+    await recoverSyncBatches(h.deps, w.tenant.id);
+    const result = await w.request('GET', `/sync-batches/${h.batch.id}`);
+    expect(await result.json()).toMatchObject({ status: 'terminated', endReason: 'superseded' });
+    expect(abort).not.toHaveBeenCalled();
+  });
+  it('错误 revision 与撤按钮后的同键重放均拒绝且批次不变', async () => {
+    const h = await setup(),
+      command = randomUUID();
+    const denied = await w.request('POST', `/sync-batches/${h.batch.id}/retry`, { ifMatch: 0, body: {} });
+    expect(denied.status).toBe(409);
+    await consumeRun(h.deps, h.input);
+    // 同 run 的 POST /sync 必须是新命令 403；拒绝不产生台账成功项。
+    const terminal = await w.request('POST', '/sync', { body: { runId: h.input.runId }, idempotencyKey: command });
+    expect(terminal.status).toBe(403);
+    const fresh = await setup(false);
+    const first = await w.request('POST', '/sync', { body: { runId: fresh.input.runId }, idempotencyKey: command });
+    expect(first.status).toBe(202);
+    const api = tenantApi(w.db, { authorize: (req) => req.action !== 'object.button', clock: () => SC_NOW });
+    const replay = await api.request('POST', '/api/tenant/succession/sync', {
+      tenant: w.tenant.id,
+      user: w.user.id,
+      body: { runId: fresh.input.runId },
+      idempotencyKey: command,
+    });
+    expect(replay.status).toBe(403);
+  });
+  it('AC-SC-03 计划前来源暂不可用登记退避，恢复后重走首次计划', async () => {
+    const h = await setup(false);
+    const blocked = await consumeRun({ ...h.deps, authorize: () => false }, h.input);
+    expect(blocked).toMatchObject({ status: 'blocked', hasPlan: false });
+    let now = new Date(SC_NOW.getTime() + 61_000);
+    const deps = { ...h.deps, clock: () => now };
+    const unavailable = vi.spyOn(h.port, 'loadRun').mockRejectedValueOnce(new Error('测试来源暂不可用'));
+    await recoverSyncBatches(deps, w.tenant.id);
+    unavailable.mockRestore();
+    const state = await w.asTenant((tx) =>
+      tx.execute(sql`SELECT status,auto_retry_count,block_reason
+      FROM succession_sync_batches WHERE id=${blocked!.id}::uuid`),
+    );
+    expect(rowsOf(state)).toEqual([{ status: 'blocked', auto_retry_count: 1, block_reason: 'STORAGE_UNAVAILABLE' }]);
+    now = new Date(now.getTime() + 5 * 60_000);
+    await recoverSyncBatches(deps, w.tenant.id);
+    const detail = await w.request('GET', `/sync-batches/${blocked!.id}`);
+    expect(await detail.json()).toMatchObject({ status: 'completed', hasPlan: true });
+  });
+  it('SELF 目标在详情、计数、审计同样隐藏', async () => {
+    const h = await setup();
+    await w.setHead(std.orgB, std.head);
+    await w.asTenant((tx) =>
+      overrideSetting(
+        tx,
+        {
+          tenantId: w.tenant.id,
+          userId: w.user.id,
+          key: 'succession.self_successors_visible',
+          expectedRevision: 0,
+          now: SC_NOW,
+          commandId: randomUUID(),
+        },
+        false,
+      ),
+    );
+    const userId = await w.userOf(std.head),
+      api = tenantApi(w.db, { clock: () => SC_NOW });
+    const detail = await api.request('GET', `/api/tenant/succession/sync-batches/${h.batch.id}`, {
+      tenant: w.tenant.id,
+      user: userId,
+    });
+    expect(detail.status).toBe(404);
+    const spec = SUCCESSION_AUDIT.syncBatch!;
+    if (spec.kind !== 'rows') throw new Error('审计谓词缺失');
+    const predicate = spec.visible!(
+      { ...EMPTY_SCOPE, all: true, hasDataPermission: true },
+      {
+        objectId: sql`${h.batch.id}`,
+        org: sql`NULL`,
+        before: sql`NULL`,
+        after: sql`NULL`,
+        commandId: sql`NULL`,
+      },
+      { tenantId: w.tenant.id, userId },
+    );
+    const seen = await w.asTenant((tx) => tx.execute(sql`SELECT ${predicate} AS visible`));
+    expect(rowsOf(seen)).toEqual([{ visible: false }]);
   });
 });

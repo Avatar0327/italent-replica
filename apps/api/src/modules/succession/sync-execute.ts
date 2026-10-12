@@ -24,6 +24,7 @@ import {
   type SyncTarget,
   type TargetContext,
 } from './sync-execute-target.js';
+import { terminateLocal } from './sync-control.js';
 import { objectOutcomes, persistTarget } from './sync-execute-outcomes.js';
 
 const pending = sql`(status='pending' OR (status='failed' AND retryable))`;
@@ -273,30 +274,7 @@ class Execution {
       await mutex(tx, this.key.tenantId);
       const [batch] = await this.load(tx, true);
       if (['completed', 'terminated', 'rejected'].includes(batch!.status)) return batch!;
-      await tx
-        .update(targets)
-        .set({ status: 'aborted', retryable: false })
-        .where(and(eq(targets.tenantId, this.key.tenantId), eq(targets.batchId, batch!.id), pending));
-      await tx
-        .update(items)
-        .set({ execOutcome: 'aborted', retryable: false })
-        .where(
-          and(
-            eq(items.tenantId, this.key.tenantId),
-            eq(items.batchId, batch!.id),
-            eq(items.planOutcome, 'planned'),
-            sql`(${items.execOutcome} IS NULL OR (${items.execOutcome}='failed' AND ${items.retryable}))`,
-          ),
-        );
-      await release(tx, batch!);
-      return save(
-        tx,
-        batch!,
-        { status: 'terminated', endReason: 'RUN_SUPERSEDED', finishedAt: this.deps.clock() },
-        this.deps.clock(),
-        `${this.key.runId}:superseded`,
-        'terminated',
-      );
+      return terminateLocal(tx, batch!, 'superseded', this.deps.clock(), `${this.key.runId}:superseded`);
     }
     // 新执行接管或终止后，旧 worker 不得再以错误处理覆盖批次。
     try {
