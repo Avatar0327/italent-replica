@@ -13,6 +13,7 @@ import {
   foreignKey,
   index,
   integer,
+  jsonb,
   numeric,
   pgTable,
   smallint,
@@ -22,9 +23,11 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { employmentEmployees, employmentOutbox } from './employment.js';
+import { employmentCycles, employmentEmployees, employmentOutbox } from './employment.js';
 import { orgObjects } from './org.js';
-import { tenants } from './tenancy.js';
+import { tenantMemberships, tenants } from './tenancy.js';
+import { qlCategories, qlLevels, qlStandards } from './qualification.js';
+import { approvalInstances } from './approval.js';
 
 const id = () => uuid('id').primaryKey().defaultRandom();
 const tenantId = () =>
@@ -534,5 +537,142 @@ export const evSyncQueue = pgTable(
     }).onDelete('restrict'),
     check('ev_sync_queue_state', sql`${t.state} IN ('pending', 'done', 'skipped', 'failed')`),
     check('ev_sync_queue_attempts', sql`${t.attempts} >= 0`),
+  ],
+);
+
+/** C2-1a：申报基准与各阶段独立状态（设计 §3.3～3.5），同活动允许多次申报（DEC-378①）。 */
+export const evStaffEvaluations = pgTable(
+  'ev_staff_evaluations',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    activityId: uuid('activity_id').notNull(),
+    employeeId: uuid('employee_id').notNull(),
+    cycleId: uuid('cycle_id').notNull(),
+    targetVersion: integer('target_version').notNull().default(1),
+    source: text('source').notNull(),
+    initiatorUserId: uuid('initiator_user_id').notNull(),
+    nominatorEmployeeId: uuid('nominator_employee_id'),
+    appliedAt: timestamp('applied_at', { withTimezone: true }),
+    originalCategoryId: uuid('original_category_id'),
+    originalLevelId: uuid('original_level_id'),
+    lastResult: text('last_result'),
+    experience: numeric('experience'),
+    applyCategoryId: uuid('apply_category_id').notNull(),
+    applyLevelId: uuid('apply_level_id').notNull(),
+    standardId: uuid('standard_id'),
+    conditionResult: jsonb('condition_result'),
+    exception: boolean('exception').notNull().default(false),
+    exceptionReason: text('exception_reason'),
+    currentStage: text('current_stage').notNull().default('apply'),
+    applyStatus: text('apply_status').notNull().default('draft'),
+    materialStatus: text('material_status'),
+    defenseStatus: text('defense_status'),
+    resultStatus: text('result_status'),
+    qualificationInstanceId: uuid('qualification_instance_id'),
+    materialInstanceId: uuid('material_instance_id'),
+    selfEvaluation: text('self_evaluation'),
+    managerEvaluation: text('manager_evaluation'),
+    hrbpEvaluation: text('hrbp_evaluation'),
+    defenseMaterial: text('defense_material'),
+    defenseMaterialUpdatedBy: uuid('defense_material_updated_by'),
+    defenseMaterialUpdatedAt: timestamp('defense_material_updated_at', { withTimezone: true }),
+    finalScore: numeric('final_score', { precision: 18, scale: 2 }),
+    finalResult: text('final_result'),
+    passVotes: integer('pass_votes'),
+    strengths: text('strengths'),
+    suggestions: text('suggestions'),
+    effectiveDate: date('effective_date'),
+    terminatedAt: timestamp('terminated_at', { withTimezone: true }),
+    terminatedReason: text('terminated_reason'),
+    publishedAt: timestamp('published_at', { withTimezone: true }),
+    ...tracked(),
+  },
+  (t) => [
+    unique('ev_staff_evaluations_tenant_id').on(t.tenantId, t.id),
+    unique('ev_staff_evaluations_activity_id').on(t.tenantId, t.activityId, t.id),
+    foreignKey({
+      name: 'ev_staff_evaluations_cycle_fk',
+      columns: [t.tenantId, t.employeeId, t.cycleId],
+      foreignColumns: [employmentCycles.tenantId, employmentCycles.employeeId, employmentCycles.id],
+    }),
+    foreignKey({ columns: [t.tenantId, t.activityId], foreignColumns: [evActivities.tenantId, evActivities.id] }),
+    foreignKey({
+      columns: [t.tenantId, t.nominatorEmployeeId],
+      foreignColumns: [employmentEmployees.tenantId, employmentEmployees.id],
+    }),
+    foreignKey({
+      columns: [t.tenantId, t.initiatorUserId],
+      foreignColumns: [tenantMemberships.tenantId, tenantMemberships.userId],
+    }),
+    foreignKey({
+      columns: [t.tenantId, t.defenseMaterialUpdatedBy],
+      foreignColumns: [tenantMemberships.tenantId, tenantMemberships.userId],
+    }),
+    foreignKey({
+      columns: [t.tenantId, t.originalCategoryId],
+      foreignColumns: [qlCategories.tenantId, qlCategories.id],
+    }),
+    foreignKey({ columns: [t.tenantId, t.originalLevelId], foreignColumns: [qlLevels.tenantId, qlLevels.id] }),
+    foreignKey({ columns: [t.tenantId, t.applyCategoryId], foreignColumns: [qlCategories.tenantId, qlCategories.id] }),
+    foreignKey({ columns: [t.tenantId, t.applyLevelId], foreignColumns: [qlLevels.tenantId, qlLevels.id] }),
+    foreignKey({ columns: [t.tenantId, t.standardId], foreignColumns: [qlStandards.tenantId, qlStandards.id] }),
+    foreignKey({
+      columns: [t.tenantId, t.qualificationInstanceId],
+      foreignColumns: [approvalInstances.tenantId, approvalInstances.id],
+    }),
+    foreignKey({
+      columns: [t.tenantId, t.materialInstanceId],
+      foreignColumns: [approvalInstances.tenantId, approvalInstances.id],
+    }),
+    index('ev_staff_evaluations_activity').on(t.tenantId, t.activityId, t.id),
+    index('ev_staff_evaluations_cycle').on(t.tenantId, t.cycleId),
+    check('ev_staff_evaluations_source', sql`${t.source} IN ('self', 'nominated', 'batch')`),
+    check('ev_staff_evaluations_version', sql`${t.targetVersion}>0 AND ${t.revision}>0`),
+    check('ev_staff_evaluations_stage', sql`${t.currentStage} IN ('apply','material','defense','result')`),
+    check('ev_staff_evaluations_apply', sql`${t.applyStatus} IN ('draft','reviewing','passed','failed')`),
+    check('ev_staff_evaluations_material', sql`${t.materialStatus} IN ('pending','reviewing','passed','failed')`),
+    check(
+      'ev_staff_evaluations_defense',
+      sql`${t.defenseStatus} IN ('unscheduled','scheduled','reviewed','calibrated')`,
+    ),
+    check('ev_staff_evaluations_result', sql`${t.resultStatus} IN ('pending','published')`),
+    check(
+      'ev_staff_evaluations_termination',
+      sql`(${t.terminatedAt} IS NULL AND ${t.terminatedReason} IS NULL)
+    OR (${t.terminatedAt} IS NOT NULL AND ${t.terminatedReason} IS NOT NULL
+      AND ${t.terminatedReason} IN ('leave','activity_completed','revoked'))`,
+    ),
+  ],
+);
+
+/** 通知是事务内登记，后续投递端才消费；本片不发送外部消息（设计 §8）。 */
+export const evNotifications = pgTable(
+  'ev_notifications',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    activityId: uuid('activity_id').notNull(),
+    staffEvaluationId: uuid('staff_evaluation_id'),
+    recipientEmployeeId: uuid('recipient_employee_id'),
+    kind: text('kind').notNull(),
+    templateCode: text('template_code'),
+    dedupeKey: text('dedupe_key').notNull(),
+    state: text('state').notNull().default('pending'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('ev_notifications_tenant_id').on(t.tenantId, t.id),
+    unique('ev_notifications_dedupe').on(t.tenantId, t.dedupeKey),
+    foreignKey({ columns: [t.tenantId, t.activityId], foreignColumns: [evActivities.tenantId, evActivities.id] }),
+    foreignKey({
+      columns: [t.tenantId, t.activityId, t.staffEvaluationId],
+      foreignColumns: [evStaffEvaluations.tenantId, evStaffEvaluations.activityId, evStaffEvaluations.id],
+    }),
+    foreignKey({
+      columns: [t.tenantId, t.recipientEmployeeId],
+      foreignColumns: [employmentEmployees.tenantId, employmentEmployees.id],
+    }),
+    check('ev_notifications_state', sql`${t.state} IN ('pending','sent','failed','unknown')`),
   ],
 );

@@ -253,8 +253,19 @@ export const DIGESTS: Digests = {
     presentActivities: '7c4a389fcce8',
     updateActivity: '1bbcbe10a4e1',
   },
+  'apps/api/src/modules/evaluation/activity-state.ts': {
+    activityCommand: 'bfd06f5ea10f',
+    registerActivityStateRoutes: '602a8f075658',
+  },
   'apps/api/src/modules/evaluation/candidates.ts': {
     registerCandidates: 'ac543713e8c2',
+  },
+  'apps/api/src/modules/evaluation/flow-access.ts': {
+    activityPersonSql: 'ff380c097110',
+  },
+  'apps/api/src/modules/evaluation/flow-routes.ts': {
+    OBJECT: '0a5ac1058d8d',
+    registerFlowRoutes: '620614c8f9c4',
   },
   'apps/api/src/modules/evaluation/form-refs.ts': {
     assertNewFormRefs: '1c55c73b49e7',
@@ -293,7 +304,7 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/evaluation/routes.ts': {
     SPECS: 'a73d064dbefb',
-    registerEvaluationRoutes: '41f3c3fa2478',
+    registerEvaluationRoutes: 'ea4b2787dcb4',
     registerObject: '707afdebb88b',
     registerWrites: '38aa5eafeaf5',
   },
@@ -1411,7 +1422,12 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/evaluation/activity-service.ts#createActivity': '6cea1ae2d374',
   'apps/api/src/modules/evaluation/activity-service.ts#presentActivities': '4b436823458b',
   'apps/api/src/modules/evaluation/activity-service.ts#updateActivity': '1970287b39ae',
+  'apps/api/src/modules/evaluation/activity-state.ts#activityCommand': 'a93ee31d025b',
+  'apps/api/src/modules/evaluation/activity-state.ts#registerActivityStateRoutes': 'c1a7cc9061ab',
   'apps/api/src/modules/evaluation/candidates.ts#registerCandidates': 'c162fd500d1e',
+  'apps/api/src/modules/evaluation/flow-access.ts#activityPersonSql': '1cef62ba8084',
+  'apps/api/src/modules/evaluation/flow-routes.ts#OBJECT': '745bed55cfe9',
+  'apps/api/src/modules/evaluation/flow-routes.ts#registerFlowRoutes': '324c09666a43',
   'apps/api/src/modules/evaluation/form-refs.ts#assertNewFormRefs': 'a721fd2b0b1d',
   'apps/api/src/modules/evaluation/form-refs.ts#hasObjectView': 'e3b0c44298fc',
   'apps/api/src/modules/evaluation/form-refs.ts#referenceNames': '40492690eee7',
@@ -1434,7 +1450,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/evaluation/review-group-service.ts#presentGroups': '4b436823458b',
   'apps/api/src/modules/evaluation/review-group-service.ts#updateReviewGroup': '9afe1510f20d',
   'apps/api/src/modules/evaluation/routes.ts#SPECS': 'a716aea11db4',
-  'apps/api/src/modules/evaluation/routes.ts#registerEvaluationRoutes': 'f71caee004a1',
+  'apps/api/src/modules/evaluation/routes.ts#registerEvaluationRoutes': 'bcf963d7ac37',
   'apps/api/src/modules/evaluation/routes.ts#registerObject': 'a3bbb6a37375',
   'apps/api/src/modules/evaluation/routes.ts#registerWrites': '89281f061f66',
   'apps/api/src/modules/evaluation/store.ts#requireOwnerOrg': '45aed9d26b12',

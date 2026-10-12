@@ -1,6 +1,6 @@
 /** C2-1a：活动级命令、评定终态与当前范围（设计 §3.2～3.5、§5.1、§8）。 */
 import { randomUUID } from 'node:crypto';
-import { sql, withTenant } from '@italent/db';
+import { pgErrorCode, sql, withTenant } from '@italent/db';
 import { EVALUATION_FLOW_OBJECTS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -49,8 +49,9 @@ describe('AC-EV-flow-base', () => {
           apply_category_id, apply_level_id, created_by)
         VALUES (${id}, ${w.tenant.id}, ${activityId}, ${employeeId}, ${cycle.id}, 'self',
           ${w.asAdmin.user}, ${f.cat1.id}, ${f.lv1.id}, ${w.asAdmin.user})`);
-      for (const [key, value] of Object.entries(values)) {
-        await tx.execute(sql`UPDATE ev_staff_evaluations SET ${sql.identifier(key)}=${value}
+      if (Object.keys(values).length) {
+        const changes = Object.entries(values).map(([key, value]) => sql`${sql.identifier(key)}=${value}`);
+        await tx.execute(sql`UPDATE ev_staff_evaluations SET ${sql.join(changes, sql`, `)}
           WHERE tenant_id=${w.tenant.id}::uuid AND id=${id}::uuid`);
       }
       return id;
@@ -155,7 +156,7 @@ describe('AC-EV-flow-base', () => {
       ).toHaveLength(0);
       const logs = rows(
         await tx.execute(sql`SELECT id FROM audit_events WHERE tenant_id=${w.tenant.id}::uuid
-        AND action='evaluation.staff-evaluation.terminate' AND object_id=ANY(${ids}::text[])`),
+        AND action='evaluation.staff-evaluation.terminate' AND object_id=ANY(${`{${ids.join(',')}}`}::text[])`),
       );
       expect(logs).toHaveLength(3);
       const notices = rows<{ state: string }>(
@@ -189,8 +190,8 @@ describe('AC-EV-flow-base', () => {
         FLOW.code,
       ),
     );
-    await makeGrantable(w, profile.id);
-    await grant(w, profile.id, op.userId);
+    await makeGrantable(w, [profile.id]);
+    await ok(await grant(w, op.userId, profile.id), 201);
     const path = `/staff-evaluations?activityId=${a.id}&pageSize=1`;
     const page = await ok(await op.request('GET', path));
     expect(page.total).toBe(1);
@@ -217,10 +218,69 @@ describe('AC-EV-flow-base', () => {
     const audit = auditApi(testDb().db, () => EV_NOW, { authorize: undefined });
     const query = { objectType: FLOW.code, action: 'evaluation.staff-evaluation.terminate' };
     const logs = await audit.dataChanges(op.as, query);
-    expect(logs.items.map((row) => row.objectId)).toEqual([inside]);
+    expect(logs.items.filter((row) => [inside, outside].includes(row.objectId)).map((row) => row.objectId)).toEqual([
+      inside,
+    ]);
     expect(JSON.stringify(logs)).not.toContain('finalScore');
     await op.setEvOrgs([]);
     expect((await ok(await op.request('GET', path))).total).toBe(0);
     expect((await audit.dataChanges(op.as, query)).items).toHaveLength(0);
+  });
+  it('复合外键拒绝错误周期/跨活动通知；租户 RLS 隔离；调用方回滚时终止、审计和通知一同回滚', async () => {
+    const kernel = await import('../../apps/api/src/modules/evaluation/flow-service.js');
+    const a = await fresh();
+    const b = await fresh();
+    const id = await seed(a.id, f.mgrA.id);
+    const ctx = {
+      tenantId: w.tenant.id,
+      userId: w.asAdmin.user,
+      timezone: 'Asia/Shanghai',
+      now: EV_NOW,
+      commandId: randomUUID(),
+      expectedRevision: 0,
+    };
+    const before = await read(id);
+    const fail = async (work: () => Promise<unknown>, code: string) => {
+      let caught: unknown;
+      try {
+        await work();
+      } catch (error) {
+        caught = error;
+      }
+      expect(pgErrorCode(caught)).toBe(code);
+    };
+    await fail(() => seed(a.id, f.mgrA.id, { cycle_id: randomUUID() }), '23503');
+    await fail(
+      () =>
+        withTenant(testDb().db, w.tenant.id, (tx) =>
+          kernel.registerNotification(tx, ctx, {
+            activityId: b.id,
+            evaluationId: id,
+            employeeId: f.mgrA.id,
+            kind: 'test',
+            dedupeKey: randomUUID(),
+          }),
+        ),
+      '23503',
+    );
+    await withTenant(testDb().db, randomUUID(), async (tx) => {
+      expect(rows(await tx.execute(sql`SELECT id FROM ev_staff_evaluations WHERE id=${id}::uuid`))).toEqual([]);
+      expect(rows(await tx.execute(sql`SELECT id FROM ev_notifications`))).toEqual([]);
+    });
+    await expect(
+      withTenant(testDb().db, w.tenant.id, async (tx) => {
+        await kernel.terminateEvaluations(tx, ctx, [id], 'revoked');
+        throw new Error('模拟业务回滚');
+      }),
+    ).rejects.toThrow('模拟业务回滚');
+    expect(await read(id)).toEqual(before);
+    await withTenant(testDb().db, w.tenant.id, async (tx) => {
+      expect(
+        rows(await tx.execute(sql`SELECT id FROM ev_notifications WHERE staff_evaluation_id=${id}::uuid`)),
+      ).toHaveLength(0);
+      expect(rows(await tx.execute(sql`SELECT id FROM audit_events WHERE object_id=${id}`))).toHaveLength(0);
+      await kernel.terminateEvaluations(tx, ctx, [id], 'revoked');
+    });
+    expect(await read(id)).toMatchObject({ terminated_reason: 'revoked', revision: 2 });
   });
 });

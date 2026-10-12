@@ -561,7 +561,67 @@ function crud(key: Key): RequiredTable {
   };
 }
 
+// C2-1a：流程管理读取与活动整体命令。
+const FLOW_ROUTE = `${EV}/flow-routes.ts#registerFlowRoutes`;
+const STATE_ROUTE = `${EV}/activity-state.ts#activityCommand`;
+const flowView = (detail: boolean): Obligation => ({
+  perm: 'obj:TEvaluation.StaffEvaluationData:view',
+  facts: ['object:objectContext'],
+  need: detail
+    ? { scope: 'point', locator: 'ev.staffEvaluation.byId' }
+    : { scope: 'list', predicate: 'ev.activityPerson' },
+  at: [
+    call(FLOW_ROUTE, 'const ctx = await objectContext(c, deps, OBJECT)'),
+    { role: 'const', unit: `${EV}/flow-routes.ts#OBJECT`, anchor: 'EVALUATION_FLOW_OBJECTS.staffEvaluation.code' },
+    {
+      role: 'scope',
+      unit: FLOW_ROUTE,
+      anchor: detail
+        ? "if (!row) throw new AppError('NOT_FOUND', '评定数据不存在')"
+        : 'WHERE ${filter} ORDER BY e.id LIMIT ${page.pageSize}',
+    },
+    impl(`${EV}/flow-access.ts#activityPersonSql`, "scopeSql(scope, { person: col('employee_id')"),
+  ],
+});
+function flowBase(): RequiredTable {
+  const result: Record<string, readonly Obligation[]> = {
+    [`GET ${BASE}/staff-evaluations`]: [
+      flowView(false),
+      {
+        perm: 'guard:ev.filterFieldVisible',
+        at: [
+          call(FLOW_ROUTE, "requireFilterVisible(await getModuleViewableFields(deps, ctx, OBJECT), 'activityId')"),
+          impl(`${ACCESS}#requireFilterVisible`, 'if (fields !== undefined && !fields.has(field))'),
+        ],
+      },
+    ],
+    [`GET ${BASE}/staff-evaluations/:id`]: [flowView(true)],
+  };
+  for (const action of ['publish', 'unpublish']) {
+    const at = [
+      call(STATE_ROUTE, "await evaluationContext(c, deps, OBJECT, 'update', expectedRevision)"),
+      call(`${EV}/activity-state.ts#registerActivityStateRoutes`, `activityCommand(c, deps, '${action}')`),
+      ...CONTEXT,
+      objectConst('evaluationActivity'),
+    ];
+    result[`POST ${BASE}/activities/:id/${action}`] = [
+      { perm: 'obj:TEvaluation.EvaluationActivity:update', facts: ['object:objectContext'], at },
+      {
+        perm: `btn:TEvaluation.EvaluationActivity#${action}@list_row`,
+        facts: ['button:buttonResource', 'button:object.button'],
+        at: [
+          ...at,
+          call(STATE_ROUTE, "resource: buttonResource(codeOf(OBJECT), action, 'list_row')"),
+          impl('apps/api/src/authorization.ts#requirePermission', 'if (!(await authorizer(request)))'),
+        ],
+      },
+    ];
+  }
+  return result;
+}
+
 export const EVALUATION: RequiredTable = {
+  ...flowBase(),
   ...crud('activityType'),
   ...crud('activityCycle'),
   ...crud('generalScoreItem'),
