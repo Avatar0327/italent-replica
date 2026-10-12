@@ -3,6 +3,7 @@
  * 权限模块的每一次写都经 audit()，因此审计与 outbox 不会只写一边；消费者按游标拉取 permission_outbox。
  */
 import { permissionOutbox, type Tx } from '@italent/db';
+import { permissionSnapshot } from './sets.js';
 import { recordAudit } from '../../audit/record.js';
 
 export interface WriteContext {
@@ -36,6 +37,8 @@ export async function auditAs(tx: Tx, write: PlatformWriteContext, entry: AuditI
     occurredAt: write.now,
     commandId: write.commandId,
     ...entry,
+    before: permissionSnapshot(entry.objectType, entry.before),
+    after: permissionSnapshot(entry.objectType, entry.after),
   });
   await tx.insert(permissionOutbox).values({
     tenantId: write.tenantId,
