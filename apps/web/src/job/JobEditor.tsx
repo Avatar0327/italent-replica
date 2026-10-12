@@ -151,6 +151,7 @@ export function JobEditor(props: {
   ];
   return (
     <FormOverlay
+      mode="modal"
       recordKey={original ? `${original.id}:${original.revision}` : openKey}
       open
       title={`${original ? m.edit : m.create}${m[kind]}`}

@@ -1,23 +1,26 @@
 import type { ThemeConfig } from 'antd';
 
-// DEC-456④：按本机 Q-M0-149 与 Q-M0-176 截图复刻色彩、控件高度和密度，不引入原站资源。
+// DEC-456④：按本机 UI/INDEX.md 实测表与第 1 批截图复刻色彩、控件高度和密度，不引入原站资源。
 export const theme: ThemeConfig = {
   token: {
-    colorPrimary: '#1769ff',
-    colorInfo: '#1769ff',
-    colorText: '#30343b',
-    colorTextSecondary: '#838a94',
-    colorBgLayout: '#f5f7f9',
-    colorBorder: '#e2e5eb',
-    borderRadius: 4,
-    fontSize: 13,
+    colorPrimary: '#146EFF',
+    colorInfo: '#146EFF',
+    colorLink: '#0054F0',
+    colorLinkHover: '#146EFF',
+    colorText: '#33383D',
+    colorTextSecondary: '#868B8F',
+    colorBgLayout: '#F7F9FA',
+    colorBorder: '#E6E8EB',
+    borderRadius: 5,
+    fontSize: 12,
     controlHeight: 32,
-    fontFamily: '"PingFang SC", "Microsoft YaHei", sans-serif',
+    fontFamily: '-apple-system, system-ui, "Segoe UI", "PingFang SC", "Hiragino Sans GB", sans-serif',
   },
   components: {
     Layout: { headerBg: '#ffffff', siderBg: '#ffffff', headerHeight: 50 },
-    Menu: { itemSelectedBg: '#1769ff', itemSelectedColor: '#ffffff', itemBorderRadius: 7, itemHeight: 40 },
-    Table: { headerBg: '#f7f7f9', headerColor: '#30343b', cellPaddingBlock: 12 },
-    Tabs: { horizontalItemGutter: 32 },
+    Menu: { itemSelectedBg: '#146EFF', itemSelectedColor: '#ffffff', itemBorderRadius: 7, itemHeight: 40 },
+    Button: { paddingInline: 16, contentFontSize: 14, colorLink: '#0054F0' },
+    Table: { headerBg: '#F7F9FA', headerColor: '#33383D', cellPaddingBlock: 9, cellFontSize: 12 },
+    Tabs: { horizontalItemGutter: 40, itemSelectedColor: '#0054F0', inkBarColor: '#0054F0' },
   },
 };

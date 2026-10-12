@@ -261,7 +261,7 @@ test('AC-FE-R1a-12 列表序列同步保留选中对象 revision 和异步回执
   expect(writes).toEqual([{ items: [{ id, revision: 1 }] }]);
 });
 
-test('AC-FE-R1a-13 原站视图切换、主题尺寸与15条分页', async ({ page }) => {
+test('AC-FE-R1a-13 原站视图切换、主题尺寸与15条分页', async ({ page }, testInfo) => {
   const sizes: string[] = [];
   page.on('request', (request) => {
     const url = new URL(request.url());
@@ -280,7 +280,7 @@ test('AC-FE-R1a-13 原站视图切换、主题尺寸与15条分页', async ({ pa
   await expect(create).toHaveCSS('background-color', 'rgb(20, 110, 255)');
   await expect(create).toHaveCSS('height', '32px');
   await expect(create).toHaveCSS('border-radius', '5px');
-  await expect(page.locator('.ant-table-tbody > tr').first()).toHaveCSS('height', '40px');
+  await expect(page.locator('.ant-table-tbody > tr.ant-table-row').first()).toHaveCSS('height', '40px');
   await expect(page.locator('.ant-table-thead > tr').first()).toHaveCSS('height', '40px');
   await expect(page.locator('.ant-table-cell').first()).toHaveCSS('font-size', '12px');
   await expect(page.getByRole('button', { name: '合成条目', exact: true })).toHaveCSS('color', 'rgb(0, 84, 240)');
@@ -288,10 +288,11 @@ test('AC-FE-R1a-13 原站视图切换、主题尺寸与15条分页', async ({ pa
   await page.getByRole('button', { name: '切换视图：职位' }).click();
   await page.getByRole('menuitem', { name: '职等', exact: true }).click();
   await expect(page).toHaveURL(/kind=grades/);
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('职等');
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('职等');
+  await page.screenshot({ path: testInfo.outputPath('reference-list.png'), fullPage: true });
 });
 
-test('AC-FE-R1a-14 详情页签留在右侧抽屉，编辑使用双列弹窗', async ({ page }) => {
+test('AC-FE-R1a-14 详情页签留在右侧抽屉，编辑使用双列弹窗', async ({ page }, testInfo) => {
   await page.goto('/org');
   await page.getByLabel('切换演示身份').selectOption(user);
   await page.waitForURL('**/staff');
@@ -302,9 +303,12 @@ test('AC-FE-R1a-14 详情页签留在右侧抽屉，编辑使用双列弹窗', a
   await page.getByRole('button', { name: '合成组织', exact: true }).click();
   const drawer = page.getByRole('dialog');
   await expect(drawer.getByRole('tab', { name: '组织单元', exact: true })).toBeVisible();
-  await expect.poll(async () => Math.round((await drawer.boundingBox())?.x ?? -1)).toBeGreaterThan(0);
+  await expect.poll(async () => Math.round((await drawer.boundingBox())?.x ?? -1)).toBe(340);
+  await page.screenshot({ path: testInfo.outputPath('reference-detail.png'), fullPage: true });
   await drawer.getByRole('button', { name: /编\s*辑/, exact: true }).click();
   await expect(page.locator('.ant-modal')).toBeVisible();
   await expect(page.locator('.ant-modal')).toHaveCSS('width', '820px');
   await expect(page.locator('.reference-form-modal .ant-form section').first()).toHaveCSS('display', 'grid');
+  await expect(page.locator('.ant-modal')).toHaveCSS('transform', 'none');
+  await page.screenshot({ path: testInfo.outputPath('reference-form.png'), fullPage: true });
 });

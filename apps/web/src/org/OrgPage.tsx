@@ -1,4 +1,4 @@
-import { Alert, App, Button, Descriptions, Drawer, Empty, Input, Select, Space, Tabs, Tag, Tree } from 'antd';
+import { Alert, App, Button, Descriptions, Drawer, Empty, Input, Select, Space, Tag, Tree } from 'antd';
 import { useState } from 'react';
 import { useLocation, useSearchParams } from 'react-router';
 import {
@@ -16,6 +16,7 @@ import { OrgEditor, type OrgAction } from './OrgEditor.js';
 import { organizationTree, type Dimension, type OrgRow } from './page-model.js';
 import { usePagePermissions, useRemote, RemoteContent, type PageAccess } from './page-support.js';
 import { pageText as m } from './messages.js';
+import { ListViews } from '../foundation/ListViews.js';
 import './workspace.css';
 const object = 'TenantBase.Organization';
 export function OrgPage() {
@@ -35,16 +36,17 @@ export function OrgPage() {
   if (!permissions.access(object).readable) return <PageState kind="forbidden" />;
   return (
     <div className="r1-workspace">
-      <Tabs
-        activeKey={tab}
+      <ListViews
+        value={tab}
         items={tabs.map((key) => ({ key, label: m[key as 'list'] }))}
         onChange={(tab) => setParams({ tab })}
-      />
-      {tab === 'establishment' ? (
-        <EstablishmentOverview />
-      ) : (
-        <OrgCatalog key={tab} tab={tab} access={permissions.access(object)} />
-      )}
+      >
+        {tab === 'establishment' ? (
+          <EstablishmentOverview />
+        ) : (
+          <OrgCatalog key={tab} tab={tab} access={permissions.access(object)} />
+        )}
+      </ListViews>
     </div>
   );
 }
@@ -52,7 +54,7 @@ function useCatalog() {
   const session = useSession();
   const [date, setDate] = useState(() => tenantDate(new Date(), session.timezone));
   const [dimension, setDimension] = useState<Dimension>('admin');
-  const [page, setPage] = useState({ page: 1, pageSize: 20 });
+  const [page, setPage] = useState({ page: 1, pageSize: 15 });
   const [name, setName] = useState('');
   const [includeDisabled, setIncludeDisabled] = useState(false);
   const [selected, setSelected] = useState<string>();
@@ -118,7 +120,6 @@ function OrgCatalog({ tab, access }: { tab: string; access: PageAccess }) {
   return (
     <>
       <DecisionNote id={tab === 'changes' ? 'org-change' : 'org'} />
-      <Alert type="info" showIcon message={tab === 'tree' ? m.treeHint : m.changeHint} />
       <div className={tab === 'tree' ? 'r1-tree-layout' : undefined}>
         {tab === 'tree' && <OrgTree s={s} />}
         <div className="r1-main-panel">
@@ -221,7 +222,12 @@ function OrgList({ s, tab, access }: { s: Catalog; tab: string; access: PageAcce
       error={s.remote.error}
       retry={s.remote.refresh}
       actions={<Button onClick={s.remote.refresh}>{m.refresh}</Button>}
-      filters={<OrgFilters s={s} />}
+      filters={
+        <>
+          <Alert type="info" showIcon message={tab === 'tree' ? m.treeHint : m.changeHint} />
+          <OrgFilters s={s} />
+        </>
+      }
       columns={[
         ...fields
           .filter((field) => access.field(field).visible)
@@ -279,12 +285,19 @@ function OrgDetailActions({ s, access }: { s: Catalog; access: PageAccess }) {
 function OrgDetail({ s, access }: { s: Catalog; access: PageAccess }) {
   const { detail } = s;
   return (
-    <Drawer open={!!s.selected} width={740} title={m.detail} onClose={() => s.setSelected(undefined)}>
+    <Drawer
+      rootClassName="r1-detail"
+      open={!!s.selected}
+      width="min(940px, calc(100vw - 64px))"
+      title={m.detail}
+      onClose={() => s.setSelected(undefined)}
+    >
       <RemoteContent state={detail}>
         {detail.data && (
           <DetailPage
             title={access.field('name').visible ? (detail.data.name ?? m.detail) : m.detail}
             actions={<OrgDetailActions s={s} access={access} />}
+            tabs={[{ key: 'organization', label: m.organizationUnit }]}
             sections={[
               {
                 key: 'basic',
@@ -292,7 +305,6 @@ function OrgDetail({ s, access }: { s: Catalog; access: PageAccess }) {
                 children: (
                   <Descriptions
                     column={2}
-                    bordered
                     size="small"
                     items={[...fields, 'remarks']
                       .filter((field) => access.field(field).visible && detail.data?.[field] !== undefined)

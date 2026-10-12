@@ -1,7 +1,7 @@
 :root {
-  font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
-  color: #30343b;
-  background: #f5f7f9;
+  font-family: -apple-system, system-ui, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
+  color: #33383d;
+  background: #f7f9fa;
 }
 body {
   margin: 0;
@@ -38,7 +38,7 @@ body {
   flex: 1;
 }
 .shell-search {
-  max-width: 260px;
+  max-width: 274px;
 }
 .note-toggle {
   display: flex;
@@ -72,12 +72,13 @@ body {
 .shell-content {
   min-width: 0;
   padding: 0 16px 24px;
+  background: #f7f9fa;
 }
 .shell-context {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  min-height: 52px;
+  justify-content: flex-end;
+  min-height: 30px;
 }
 .shell-workspace {
   background: #fff;
@@ -103,8 +104,8 @@ body {
   margin-bottom: 24px;
 }
 .page-heading h1 {
-  font-size: 18px;
-  line-height: 26px;
+  font-size: 16px;
+  line-height: 24px;
   margin: 0;
   font-weight: 600;
 }
@@ -171,4 +172,56 @@ body {
 
 .full-width-selector {
   width: 100%;
+}
+
+/* DEC-456④⑧：本机 UI 第 1 批实测值，仅复刻样式，不携带原站资源。 */
+.list-view-title,
+.list-view-title .ant-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #0054f0;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 600;
+}
+.list-view-title .ant-btn {
+  padding-inline: 0;
+}
+.list-view-icon {
+  width: 24px;
+  height: 24px;
+  stroke: currentColor;
+  stroke-width: 1.5;
+}
+.list-pagination .ant-select {
+  min-width: 79px;
+}
+.list-pagination .ant-btn {
+  height: 26px;
+  padding-inline: 10px;
+  font-size: 12px;
+}
+.reference-form-modal .ant-modal-body {
+  max-height: calc(100vh - 230px);
+  overflow: auto;
+}
+.reference-form-modal .ant-form section {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 24px;
+}
+.reference-form-modal .form-group-title {
+  grid-column: 1 / -1;
+}
+.reference-form-modal .ant-form-item {
+  margin-bottom: 16px;
+}
+.reference-form-modal .ant-picker {
+  width: 100%;
+}
+@media (max-width: 800px) {
+  .reference-form-modal .ant-form section {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

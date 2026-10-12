@@ -1,6 +1,6 @@
 import { Alert, Button, Descriptions, Drawer, Tag } from 'antd';
 import { useState } from 'react';
-import { ListPage, PageState, DecisionNote, type PageResult } from '../foundation/index.js';
+import { ListPage, DetailPage, PageState, DecisionNote, type PageResult } from '../foundation/index.js';
 import { usePagePermissions, useRemote, RemoteContent } from '../org/page-support.js';
 import { messages as m } from './messages.js';
 interface Scheme {
@@ -12,7 +12,7 @@ export const establishmentObject = 'TenantBase.OrganizationEstablishment';
 export function EstablishmentOverview() {
   const permissions = usePagePermissions([establishmentObject]);
   const access = permissions.access(establishmentObject);
-  const [page, setPage] = useState({ page: 1, pageSize: 20 });
+  const [page, setPage] = useState({ page: 1, pageSize: 15 });
   const [selected, setSelected] = useState<string>();
   const remote = useRemote<PageResult<Scheme>>(
     access.readable ? `/api/tenant/establishment/schemes?page=${page.page}&pageSize=${page.pageSize}` : null,
@@ -73,14 +73,31 @@ export function EstablishmentOverview() {
           }))}
       />
       <Alert type="info" message={m.hint} showIcon />
-      <Drawer open={!!selected} onClose={() => setSelected(undefined)} width={640} title={m.detail}>
+      <Drawer
+        rootClassName="r1-detail"
+        open={!!selected}
+        onClose={() => setSelected(undefined)}
+        width={640}
+        title={m.detail}
+      >
         <RemoteContent state={detail}>
-          <Descriptions
-            column={1}
-            bordered
-            items={fields
-              .filter((field) => access.field(field).visible && detail.data?.[field] !== undefined)
-              .map((field) => ({ key: field, label: label(field), children: display(detail.data?.[field]) }))}
+          <DetailPage
+            title={m.detail}
+            tabs={[{ key: 'scheme', label: m.title }]}
+            sections={[
+              {
+                key: 'basic',
+                title: m.basic,
+                children: (
+                  <Descriptions
+                    column={1}
+                    items={fields
+                      .filter((field) => access.field(field).visible && detail.data?.[field] !== undefined)
+                      .map((field) => ({ key: field, label: label(field), children: display(detail.data?.[field]) }))}
+                  />
+                ),
+              },
+            ]}
           />
         </RemoteContent>
       </Drawer>

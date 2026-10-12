@@ -36,8 +36,9 @@ export const text = {
 export const pageText = {
   shortName: '机构简称',
   title: '组织管理',
-  list: '组织列表',
-  tree: '组织架构树',
+  list: '组织',
+  organizationUnit: '组织单元',
+  tree: '组织架构图',
   changes: '组织变更',
   establishment: '编制方案',
   name: '机构名称',

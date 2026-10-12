@@ -1,4 +1,4 @@
-import { Breadcrumb, Button, Input, Layout, Menu, Popover, Select, Tag } from 'antd';
+import { Button, Input, Layout, Menu, Popover, Select, Tag } from 'antd';
 import { lazy, Suspense } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { DecisionNote, DecisionNoteToggle } from './DecisionNote.js';
@@ -92,9 +92,6 @@ export function Shell() {
         </Layout.Sider>
         <Layout.Content className="shell-content">
           <div className="shell-context">
-            <Breadcrumb
-              items={[{ title: active ? ui.groups[active.group] : ui.brand }, { title: active?.label ?? ui.missing }]}
-            />
             <Tag color="blue">{ui.demo}</Tag>
           </div>
           <DecisionNote id="foundation" />

@@ -1,4 +1,4 @@
-import { Button, Descriptions, Drawer, Input, Select, Space, Tabs, Tag, App } from 'antd';
+import { Button, Descriptions, Drawer, Input, Select, Space, Tag, App } from 'antd';
 import { useState } from 'react';
 import { useSearchParams } from 'react-router';
 import {
@@ -16,6 +16,7 @@ import { useSequenceSelection } from './SequenceSync.js';
 import { JobEditor, JobHints, jobFields, label } from './JobEditor.js';
 import { jobKinds, jobObjects, jobInitialValues, jobPermissionField, type JobKind, type JobRow } from './page-model.js';
 import { pageText as m } from './messages.js';
+import { ListViews } from '../foundation/ListViews.js';
 import '../org/workspace.css';
 
 export function JobWorkspace() {
@@ -31,19 +32,20 @@ export function JobWorkspace() {
   return (
     <div className="r1-workspace">
       <DecisionNote id="job" />
-      <Tabs
-        activeKey={kind}
-        onChange={(kind) => setParams({ kind })}
+      <ListViews
+        value={kind}
         items={allowed.map((key) => ({ key, label: m[key] }))}
-      />
-      <JobCatalog key={kind} kind={kind} access={permissions.access(jobObjects[kind])} />
+        onChange={(kind) => setParams({ kind })}
+      >
+        <JobCatalog key={kind} kind={kind} access={permissions.access(jobObjects[kind])} />
+      </ListViews>
     </div>
   );
 }
 function useCatalog(kind: JobKind) {
   const session = useSession();
   const [date, setDate] = useState(() => tenantDate(new Date(), session.timezone));
-  const [page, setPage] = useState({ page: 1, pageSize: 20 });
+  const [page, setPage] = useState({ page: 1, pageSize: 15 });
   const [name, setName] = useState('');
   const [enabled, setEnabled] = useState('true');
   const [selected, setSelected] = useState<string>();
@@ -135,7 +137,7 @@ function JobCatalog({ kind, access }: { kind: JobKind; access: PageAccess }) {
   return (
     <>
       <ListPage
-        title={`${m.title} · ${m[kind]}`}
+        title={m[kind]}
         rowKey="id"
         selection={selection}
         page={s.page}
@@ -195,7 +197,13 @@ function JobDetail({ s, access }: { s: Catalog; access: PageAccess }) {
   const { detail, kind } = s;
   const values = jobInitialValues(detail.data);
   return (
-    <Drawer open={!!s.selected} width={700} title={`${m[kind]}${m.detail}`} onClose={() => s.setSelected(undefined)}>
+    <Drawer
+      rootClassName="r1-detail"
+      open={!!s.selected}
+      width="min(940px, calc(100vw - 64px))"
+      title={`${m[kind]}${m.detail}`}
+      onClose={() => s.setSelected(undefined)}
+    >
       <RemoteContent state={detail}>
         {detail.data && (
           <DetailPage
@@ -212,6 +220,7 @@ function JobDetail({ s, access }: { s: Catalog; access: PageAccess }) {
                 </Button>
               )
             }
+            tabs={[{ key: 'record', label: m[kind] }]}
             sections={[
               {
                 key: 'basic',
@@ -219,7 +228,7 @@ function JobDetail({ s, access }: { s: Catalog; access: PageAccess }) {
                 children: (
                   <Descriptions
                     column={2}
-                    bordered
+                    layout="vertical"
                     size="small"
                     items={[
                       'name',

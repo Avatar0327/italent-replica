@@ -1,4 +1,5 @@
 export const messages = {
+  basic: '基本信息',
   title: '编制方案',
   detail: '编制方案详情',
   readOnly: '只读概览',

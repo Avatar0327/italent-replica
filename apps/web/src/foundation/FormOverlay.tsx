@@ -105,6 +105,8 @@ function OpenForm(props: FormOverlayProps) {
   );
   return props.mode === 'modal' ? (
     <Modal
+      width={820}
+      rootClassName="reference-form-modal"
       open
       title={props.title}
       onCancel={props.onClose}

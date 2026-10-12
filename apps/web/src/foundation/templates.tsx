@@ -1,6 +1,18 @@
-import { Button, Empty, Pagination, Space, Table, Tabs, Tooltip, type TableColumnsType, type TabsProps } from 'antd';
+import {
+  Button,
+  Empty,
+  Pagination,
+  Select,
+  Space,
+  Table,
+  Tabs,
+  Tooltip,
+  type TableColumnsType,
+  type TabsProps,
+} from 'antd';
 import type { Key, ReactNode } from 'react';
 import type { PageRequest, PageResult } from './client.js';
+import { ListViewTitle } from './ListViews.js';
 import { ui } from './messages.js';
 import { PageState } from './PageState.js';
 
@@ -28,7 +40,7 @@ export function ListPage<T extends object>(props: ListPageProps<T>) {
   return (
     <section>
       <header className="page-heading">
-        <h1>{title}</h1>
+        <ListViewTitle title={title} />
         <Space>
           {actions}
           <Tooltip title={ui.exportPending}>
@@ -132,11 +144,20 @@ function ListPagination({
           pageSize={page.pageSize}
           total={data.total}
           showSizeChanger
-          pageSizeOptions={[20, 50, 100, 200]}
+          pageSizeOptions={[15, 20, 30, 50, 100, 200]}
           onChange={(next, size) => changePage({ page: size === page.pageSize ? next : 1, pageSize: size })}
         />
       ) : (
-        <Space>
+        <Space className="list-pagination">
+          <Select
+            aria-label={ui.pageSize}
+            size="small"
+            value={page.pageSize}
+            options={[...new Set([15, 30, 50, page.pageSize])]
+              .sort((a, b) => a - b)
+              .map((value) => ({ value, label: `${value}${ui.perPage}` }))}
+            onChange={(pageSize) => changePage({ page: 1, pageSize })}
+          />
           <Button disabled={page.page <= 1 || loading} onClick={() => changePage({ ...page, page: page.page - 1 })}>
             {ui.previous}
           </Button>
