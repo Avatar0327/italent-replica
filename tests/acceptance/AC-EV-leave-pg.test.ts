@@ -103,7 +103,8 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-EV-leave-pg：设计 §7.4 �
       try {
         const w = await evaluationLeaveWorld(handle.db);
         const leave = await w.leave('2026-12-20');
-        const other = await w.leave('2026-12-20', w.f.mgrB.id);
+        const other = order === 'writer_first' ? await w.leave('2026-12-20', w.f.mgrB.id) : null;
+        let otherId = other?.id;
         const insert = async (pause: boolean) =>
           withTenant(w.db, w.tenantId, async (tx) => {
             await tx.execute(sql`INSERT INTO employment_outbox
@@ -111,7 +112,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-EV-leave-pg：设计 §7.4 �
             state, command_id, payload_version_id, created_at)
           SELECT tenant_id, employee_id, business_id, object_type, object_id, event_type, payload,
             state, 'interleave-' || gen_random_uuid()::text, payload_version_id, created_at
-          FROM employment_outbox WHERE tenant_id=${w.tenantId} AND object_id=${other.id}::uuid
+          FROM employment_outbox WHERE tenant_id=${w.tenantId} AND object_id=${other!.id}::uuid
             AND event_type='employment.record.create' LIMIT 1`);
             if (pause) {
               held.resolve();
@@ -128,15 +129,24 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-EV-leave-pg：设计 §7.4 �
           });
         await held.promise;
         let finished = false;
-        second = (order === 'writer_first' ? handle.migrate() : insert(false)).finally(() => {
+        second = (
+          order === 'writer_first'
+            ? handle.migrate()
+            : w.leave('2026-12-20', w.f.mgrB.id).then((saved) => {
+                otherId = saved.id;
+              })
+        ).finally(() => {
           finished = true;
         });
         await waitForLock(w.db, () => finished);
         release.resolve();
         await Promise.all([first, second]);
+        expect(otherId).toBeTruthy();
+        expect(await w.queue(leave.id)).toHaveLength(1);
+        expect(await w.queue(otherId!)).toHaveLength(1);
         await replayLeaveMigration(handle.db);
         expect(await w.queue(leave.id)).toHaveLength(1);
-        expect(await w.queue(other.id)).toHaveLength(1);
+        expect(await w.queue(otherId!)).toHaveLength(1);
       } finally {
         release.resolve();
         await Promise.allSettled([first, second]);

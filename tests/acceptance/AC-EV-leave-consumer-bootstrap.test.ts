@@ -65,7 +65,8 @@ describe('AC-EV-leave-consumer-bootstrap 注册与独立开关', () => {
 describe('AC-EV-leave-consumer-bootstrap 按 kind 分派与协议复用', () => {
   it('各 kind 只处理自己的队列，未知 kind 保持原样；资格同步回执独立', async () => {
     const w = await leaveConsumerWorld(database().db, 'leaveboot-kinds');
-    const consumers = [testConsumer('evaluation_leave'), testConsumer('leave_test_second')];
+    // 生产 evaluation_leave 会为本文件其他租户自动入队；契约探针使用独立 kind 保持用例隔离。
+    const consumers = [testConsumer('leave_test_evaluation'), testConsumer('leave_test_second')];
     for (const consumer of consumers) {
       cleanups.push(registerLeaveConsumer(consumer));
       await w.enqueue(consumer.kind);
@@ -102,7 +103,7 @@ describe('AC-EV-leave-consumer-bootstrap 按 kind 分派与协议复用', () => 
       reason: 'KIND_NOT_SYNCED',
       recordId: w.recordId,
     });
-    expect(await w.queue('evaluation_leave')).toMatchObject([{ state: 'done', attempts: 1 }]);
+    expect(await w.queue('leave_test_evaluation')).toMatchObject([{ state: 'done', attempts: 1 }]);
   });
 
   it('失败保存点回滚、错误码与退避重试；同一事件重复入队与重复消费不重复回调', async () => {
