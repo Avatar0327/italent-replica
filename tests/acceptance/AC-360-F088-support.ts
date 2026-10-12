@@ -53,7 +53,7 @@ export async function boundedScene(db: Db, label: string, size: number) {
   const prefix = randomUUID().slice(0, 8);
   const id = (n: number) => `${prefix}-0000-4000-8000-${String(n).padStart(12, '0')}`;
   await withTenant(db, w.tenantId, async (tx) => {
-    for (const [table, prefix] of [
+    for (const [table, idPrefix] of [
       ['employment_employees', 'employee'],
       ['employment_cycles', 'staff'],
       ['employment_business_objects', 'business'],
@@ -63,9 +63,9 @@ export async function boundedScene(db: Db, label: string, size: number) {
     ] as const) {
       const name = sql.identifier(table);
       const ownKey = table === 'employment_employees' ? sql`id` : sql`employee_id`;
-      const patch = sql`jsonb_build_object('id',CASE WHEN ${prefix} = 'employee'
+      const patch = sql`jsonb_build_object('id',CASE WHEN ${idPrefix} = 'employee'
           THEN (${prefix} || '-0000-4000-8000-' || lpad(g::text,12,'0'))::uuid
-          ELSE md5(${w.tenantId}||${prefix}||g)::uuid END,
+          ELSE md5(${w.tenantId}||${idPrefix}||g)::uuid END,
         'employee_id',(${prefix} || '-0000-4000-8000-' || lpad(g::text,12,'0'))::uuid,
         'business_id',md5(${w.tenantId}||'business'||g)::uuid,
         'record_id',md5(${w.tenantId}||'business'||g)::uuid,
