@@ -62,7 +62,7 @@ export const GRAPH: Graph = {
   'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>role': ['#object'],
   'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>scoreRule': ['#object'],
   'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>settings': ['#object'],
-  'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>template': ['#object'],
+  'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>template': ['#crud', '#object'],
   'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_SEE_ALL_OBJECTS': [
     '#TALENT_REVIEW_CONFIG_OBJECTS',
     '#TALENT_REVIEW_SEE_ALL_UNAPPROVED',

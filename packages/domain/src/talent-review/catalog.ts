@@ -139,6 +139,7 @@ export const TALENT_REVIEW_OBJECTS = {
       'resultRules',
     ],
     ['currentVersionNo', 'versionNo', 'accessLevel', 'configErrors', 'versions', 'fieldCatalogVersion', 'hints'],
+    [...crud, { code: 'copy', level: 'list', requires: 'create' }],
   ),
   /** 项目定义与状态（设计 §2.4 / §3.1；B7b 再接公开 / 共享只读谓词）。 */
   project: object(
