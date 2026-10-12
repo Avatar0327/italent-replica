@@ -351,6 +351,18 @@ describe('AC-SC-07 同类度量矩阵', () => {
       }
       field = { status: 'value', value: 2 };
     }
+    expect(
+      await measure(
+        port,
+        metricRow({
+          fieldSource: 'review',
+          fieldCode: 'score',
+          measure: 'average',
+          filterOperator: 'is_empty',
+          filterValues: [],
+        }),
+      ),
+    ).toEqual({ status: 'empty' });
     field = { status: 'value', value: 0 };
     expect(await measure(port, metricRow({ fieldSource: 'review', fieldCode: 'score', measure: 'average' }))).toEqual({
       status: 'value',
