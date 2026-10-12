@@ -710,7 +710,7 @@ export const DIGESTS: Digests = {
     registerMapRoutes: '8c1aa15b06b4',
   },
   'apps/api/src/modules/succession/org-map-routes.ts': {
-    registerOrgMapRoutes: '8dabf8937e66',
+    registerOrgMapRoutes: '4169233d5835',
   },
   'apps/api/src/modules/succession/read-sql.ts': {
     selfRecordHiddenSql: '89628ea4a06a',
@@ -1769,7 +1769,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/succession/map-display.ts#resolveMapDisplayConditions': '1f93fb5a8650',
   'apps/api/src/modules/succession/map-routes.ts#mapAccess': '208b27aa5d33',
   'apps/api/src/modules/succession/map-routes.ts#registerMapRoutes': '152728d4a1ca',
-  'apps/api/src/modules/succession/org-map-routes.ts#registerOrgMapRoutes': '6932020b68f2',
+  'apps/api/src/modules/succession/org-map-routes.ts#registerOrgMapRoutes': '7684178d7888',
   'apps/api/src/modules/succession/read-sql.ts#selfRecordHiddenSql': 'eab3bde19b0f',
   'apps/api/src/modules/succession/record-read.ts#conditions': '326371d4de4d',
   'apps/api/src/modules/succession/record-read.ts#listMapRecordRows': '0a15b4f4a29b',

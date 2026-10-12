@@ -550,6 +550,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/org/read-model.ts#validIsoDate',
     'apps/api/src/modules/succession/map-preferences.ts#mapDisplayBody',
   ],
+  'apps/api/src/modules/succession/org-map-routes.ts#projectOrgMapCards': [
+    'apps/api/src/modules/succession/map-card-reader.ts#fieldVisible',
+  ],
   'apps/api/src/modules/succession/org-map-routes.ts#registerOrgMapRoutes': [
     'apps/api/src/modules/org/read-model.ts#loadOrgSnapshot',
     'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
@@ -571,6 +574,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/succession/map-preferences.ts#readMapTenantSettings',
     '#orderNodes',
     '#orgMapQuery',
+    '#projectOrgMapCards',
     'apps/api/src/modules/succession/read-sql.ts#loadPeople',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],

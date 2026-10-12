@@ -35,12 +35,13 @@ export async function loadMapPositions(
   today: string,
 ) {
   if (!orgIds.length) return [];
+  // 与 Record 当前范围锚点一致：无当前有效归属时，仅显式看全部可读历史节点。
   return rowsOf<MapPosition>(
     await tx.execute(sql`SELECT v.object_id AS id,v.name,v.org_id AS "orgId"
       FROM (SELECT DISTINCT ON (object_id) * FROM job_position_versions
         WHERE tenant_id=${tenantId}::uuid AND start_date<=${asOf}::date
         ORDER BY object_id,start_date DESC,version_no DESC) v
-      JOIN LATERAL (SELECT org_id,stop_date FROM job_position_versions p
+      LEFT JOIN LATERAL (SELECT org_id,stop_date FROM job_position_versions p
         WHERE p.tenant_id=v.tenant_id AND p.object_id=v.object_id AND p.start_date<=${today}::date
         ORDER BY p.start_date DESC,p.version_no DESC LIMIT 1) current ON current.stop_date>=${today}::date
       WHERE v.enabled AND v.is_key AND v.stop_date>=${asOf}::date
