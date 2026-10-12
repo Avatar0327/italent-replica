@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { sql, successionCalcRuns, successionCalcRunObjects } from '@italent/db';
-import type { SuccessionLevelRow } from '@italent/domain';
+import type { SuccessionLevelRow, SyncNomination } from '@italent/domain';
 import { describe, expect, it } from 'vitest';
 import { successionWorld, SC_TODAY, SC_NOW } from './AC-SC-support.js';
 import { enableHealthRunner, useHealthDb } from './AC-SC-07-health-support.js';
@@ -10,6 +10,7 @@ import { healthMetricReader } from '../../apps/api/src/modules/succession/health
 import { healthPrincipal } from '../../apps/api/src/modules/succession/health-principal.js';
 import { createInMemoryTalentReviewSyncPort } from '../../apps/api/src/modules/talent-review/sync-port-memory.js';
 import { dispatchCalcJobs } from '../../apps/api/src/modules/succession/calc-jobs.js';
+import { tenantApi } from './support/tenant-api.js';
 
 const testDb = useHealthDb();
 describe('AC-SC-07 组织健康度', () => {
@@ -36,6 +37,45 @@ describe('AC-SC-07 组织健康度', () => {
     const w = await successionWorld(testDb().db, 'health-principal');
     await enableHealthRunner(w);
     expect(await w.asTenant((tx) => healthPrincipal(tx, w.tenant.id, false))).toMatchObject({ userId: w.user.id });
+  });
+  it('当前范围为空时读不到结果，赋值和重置均 404 且不改原行', async () => {
+    const w = await successionWorld(testDb().db, 'health-scope'),
+      org = await w.org('范围外组织');
+    expect((await w.request('PUT', `/health-results/${org.id}`, { ifMatch: 0, body: { levelId: null } })).status).toBe(
+      200,
+    );
+    const before = await w.asTenant(async (tx) =>
+      rowsOf(
+        await tx.execute(sql`
+      SELECT level_id,method,revision FROM succession_health_results WHERE org_id=${org.id}::uuid`),
+      ),
+    );
+    const api = tenantApi(w.db, { authorize: async (q) => q.action !== 'data.scope.all', clock: () => SC_NOW });
+    const as = { user: w.user.id, tenant: w.tenant.id };
+    const read = await api.request('GET', '/api/tenant/succession/health-results', as);
+    expect(read.status).toBe(200);
+    expect(await read.json()).toMatchObject({ total: 0, items: [] });
+    const assign = await api.request('PUT', `/api/tenant/succession/health-results/${org.id}`, {
+      ...as,
+      ifMatch: 1,
+      body: { levelId: null },
+    });
+    const reset = await api.request('POST', '/api/tenant/succession/health-results/reset', {
+      ...as,
+      body: { items: [{ orgId: org.id, expectedRevision: 1 }] },
+    });
+    expect(assign.status).toBe(404);
+    expect(reset.status).toBe(404);
+    expect(await assign.json()).toMatchObject({ error: { code: 'NOT_FOUND' } });
+    expect(await reset.json()).toMatchObject({ error: { code: 'NOT_FOUND' } });
+    expect(
+      await w.asTenant(async (tx) =>
+        rowsOf(
+          await tx.execute(sql`
+      SELECT level_id,method,revision FROM succession_health_results WHERE org_id=${org.id}::uuid`),
+        ),
+      ),
+    ).toEqual(before);
   });
   it('T04 替身：盘点数值、module_absent 与逐字段撤权不混淆', async () => {
     const w = await successionWorld(testDb().db, 'health-source'),
@@ -113,6 +153,44 @@ describe('AC-SC-07 组织健康度', () => {
       expect(await read({ ...row, fieldSource: 'succession', fieldCode: null, measure: 'successor_count' })).toEqual({
         status: 'module_absent',
       });
+      const nominations: SyncNomination[] = [];
+      const present = Object.assign(Object.create(port) as typeof port, {
+        readSuccessionEntries: async () => [
+          {
+            employeeId: null,
+            orgId: org.id,
+            positionId: null,
+            status: 'value' as const,
+            nominations,
+            source: null,
+          },
+        ],
+      });
+      const mapped = healthMetricReader(
+        { tx, run: run!, now: SC_NOW },
+        object!,
+        await healthPrincipal(tx, w.tenant.id, false),
+        present,
+      );
+      const count = { ...row, fieldSource: 'succession' as const, fieldCode: null, measure: 'successor_count' };
+      expect(await mapped(count)).toEqual({ status: 'value', value: 0 });
+      nominations.push({
+        nominationId: randomUUID(),
+        objectId: randomUUID(),
+        employeeId: person.id,
+        kind: 'org',
+        direction: 'successor',
+        orgId: org.id,
+        positionId: null,
+        successorEmployeeId: person.id,
+        readinessId: null,
+        readinessCode: null,
+        sortNo: 1,
+        createdAt: SC_NOW,
+        syncEligible: true,
+        formValues: {},
+      });
+      expect(await mapped({ ...count, population: 'incumbents' })).toEqual({ status: 'value', value: 0 });
       port.denyViewer(w.user.id, { fieldCodes: ['score'] });
       expect(await read(row)).toEqual({ status: 'forbidden' });
     });
@@ -220,13 +298,22 @@ describe('AC-SC-07 组织健康度', () => {
     );
     expect(failures).toEqual([{ code: 'REVISION_CONFLICT' }]);
     const clearKey = randomUUID();
-    const clear = await w.request('PUT', `/health-results/${child.id}`, { ifMatch: 2, body: { levelId: null }, idempotencyKey: clearKey });
+    const clear = await w.request('PUT', `/health-results/${child.id}`, {
+      ifMatch: 2,
+      body: { levelId: null },
+      idempotencyKey: clearKey,
+    });
     expect(clear.status).toBe(200);
     expect(await clear.json()).toMatchObject({ levelId: null, method: 'computed', revision: 3 });
-    expect(await w.asTenant(async (tx) => rowsOf(await tx.execute(sql`
+    expect(
+      await w.asTenant(async (tx) =>
+        rowsOf(
+          await tx.execute(sql`
       SELECT "before"->>'levelId' AS old_level,"after"->>'method' AS method FROM audit_events
-      WHERE command_id=${clearKey} AND object_type='Succession.HealthResult'`))))
-      .toEqual([{ old_level: level.id, method: 'computed' }]);
+      WHERE command_id=${clearKey} AND object_type='Succession.HealthResult'`),
+        ),
+      ),
+    ).toEqual([{ old_level: level.id, method: 'computed' }]);
     const next = await w.request('POST', '/maps/org/compute-health', { ifMatch: 0, body: {} });
     expect(next.status).toBe(202);
     const nextId = ((await next.json()) as { runId: string }).runId;
