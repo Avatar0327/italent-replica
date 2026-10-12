@@ -39,7 +39,7 @@ const list = (values: readonly string[]) => sql.raw(values.map((value) => `'${va
 /**
  * 继任记录（原站 `Map`，§1.1）。区间 [start_date, end_date) 半开；同目标同继任者任何两条未删除记录区间不得重叠
  * （排他约束 succession_records_no_overlap，在配套 SQL 迁移里）。软删除（deleted_at）后不参与任何列表 / 统计 / 查重，
- * 且同事务释放准备度引用（触发器）。source_batch_id / source_item_id 先建列、不建外键（同步批次表由 D1 建并补外键）。
+ * 且同事务释放准备度引用（触发器）。source_batch_id 的批次复合外键由 D1 补齐；source_item_id 保留来源快照 ID。
  */
 export const successionRecords = pgTable(
   'succession_records',
@@ -92,6 +92,11 @@ export const successionRecords = pgTable(
       name: 'succession_records_readiness_fk',
       columns: [t.tenantId, t.readinessId],
       foreignColumns: [talentReadinessLevels.tenantId, talentReadinessLevels.id],
+    }).onDelete('restrict'),
+    foreignKey({
+      name: 'succession_records_source_batch_fk',
+      columns: [t.tenantId, t.sourceBatchId],
+      foreignColumns: [successionSyncBatches.tenantId, successionSyncBatches.id],
     }).onDelete('restrict'),
     index('succession_records_org_target').on(t.tenantId, t.successionType, t.targetOrgId, t.endDate),
     index('succession_records_position_target').on(t.tenantId, t.successionType, t.targetPositionId, t.endDate),
@@ -405,7 +410,7 @@ export const successionNotifications = pgTable(
       .notNull()
       .references(() => tenants.id),
     runId: uuid('run_id'),
-    batchId: uuid('batch_id'), // D1 建批次表后补复合外键。
+    batchId: uuid('batch_id'),
     subjectId: uuid('subject_id')
       .generatedAlwaysAs(sql`COALESCE(run_id, batch_id)`)
       .notNull(),
@@ -428,6 +433,11 @@ export const successionNotifications = pgTable(
       columns: [t.tenantId, t.runId],
       foreignColumns: [successionCalcRuns.tenantId, successionCalcRuns.id],
     }),
+    foreignKey({
+      name: 'succession_notifications_batch_fk',
+      columns: [t.tenantId, t.batchId],
+      foreignColumns: [successionSyncBatches.tenantId, successionSyncBatches.id],
+    }).onDelete('restrict'),
     check('succession_notifications_subject', sql`num_nonnulls(${t.runId},${t.batchId}) = 1`),
     check(
       'succession_notifications_kind',

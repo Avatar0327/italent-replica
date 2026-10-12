@@ -50569,6 +50569,21 @@
           ],
           "onUpdate": "no action",
           "onDelete": "no action"
+        },
+        "succession_notifications_batch_fk": {
+          "name": "succession_notifications_batch_fk",
+          "tableFrom": "succession_notifications",
+          "tableTo": "succession_sync_batches",
+          "columnsFrom": [
+            "tenant_id",
+            "batch_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -51167,6 +51182,21 @@
           ],
           "onUpdate": "no action",
           "onDelete": "restrict"
+        },
+        "succession_records_source_batch_fk": {
+          "name": "succession_records_source_batch_fk",
+          "tableFrom": "succession_records",
+          "tableTo": "succession_sync_batches",
+          "columnsFrom": [
+            "tenant_id",
+            "source_batch_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
