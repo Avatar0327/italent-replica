@@ -75,18 +75,24 @@ type Pause = ReturnType<typeof pauseVersion>;
 async function interleave(db: Db, pause: Pause, start: () => Promise<Response>, contend: () => Promise<Response>) {
   const first = start();
   let second: Promise<Response> | undefined;
+  let arrivalTimer: ReturnType<typeof setTimeout> | undefined;
   try {
     await Promise.race([
       pause.entered.promise,
+      new Promise<never>((_resolve, reject) => {
+        arrivalTimer = setTimeout(() => reject(new Error('等待请求到持锁边界超时')), 5_000);
+      }),
       first.then(async (response) => {
         throw new Error(`请求未到持锁边界即结束：${response.status} ${await response.clone().text()}`);
       }),
     ]);
+    clearTimeout(arrivalTimer);
     second = contend();
     await waitForBlocked(db, 1);
     pause.resume.resolve();
     return [await first, await second] as const;
   } finally {
+    clearTimeout(arrivalTimer);
     pause.resume.resolve();
     await Promise.allSettled([first, ...(second ? [second] : [])]);
     pause.spy.mockRestore();
@@ -226,7 +232,10 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-TR-template-delete �
       if (deleteFirst && !historical) {
         await status(deletion, 200);
         await status(addition, 404);
-        expect((await w.read(t.id)).body).toEqual(before);
+        const after = (await w.read(t.id)).body;
+        // 删除字段会推进实时目录版本；它不是模板业务修改，其他字段与版本链必须不变。
+        expect(after).toEqual({ ...before, fieldCatalogVersion: after.fieldCatalogVersion });
+        if (kind !== 'field') expect(after.fieldCatalogVersion).toBe(before.fieldCatalogVersion);
         await status(await w.trRequest('GET', `${path}/${ref.id}`), 404);
       } else {
         await status(deletion, 409);
@@ -265,6 +274,11 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-TR-template-delete �
 
   it('DEC-436：删除清理当前及历史全部 13 张模板表，保留同租户另一模板与来源配置', async () => {
     const db = testDb().db;
+    const tables = rowsOf<{ table_name: string }>(
+      await db.execute(sql`SELECT table_name FROM information_schema.tables
+        WHERE table_schema='public' AND left(table_name, length('talent_review_template'))='talent_review_template'`),
+    );
+    expect(tables.map((table) => table.table_name).sort()).toEqual([...TEMPLATE_TABLES].sort());
     const w = await templateWorld(db, 'f094-cleanup');
     const { flow } = await w.threeStepFlow();
     const rule = await w.gradeRule();
