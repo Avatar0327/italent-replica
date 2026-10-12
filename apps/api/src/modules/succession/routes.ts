@@ -2,6 +2,7 @@ import { registerRiskRoutes } from './risk-routes.js';
 import { registerCalcRoutes } from './calc-routes.js';
 import { registerSuccessionConfigRoutes } from './config-routes.js';
 import { registerMapRoutes } from './map-routes.js';
+import { registerPositionMapRoutes } from './position-map-routes.js';
 /**
  * R3-T05 继任管理接口（设计 §2.2；前缀 /api/tenant/succession）。装配位：登记权限对象、开关校验、准备度引用守卫与
  * 对外端口；路由随实现子 PR 追加，并按 F-039 格式在 policy.ts 登记声明、在
@@ -55,6 +56,7 @@ const RECORDS = `${SUCCESSION_BASE}/records`;
 export function registerSuccessionRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   registerRiskRoutes(router, deps);
   registerMapRoutes(router, deps);
+  registerPositionMapRoutes(router, deps);
   installSuccessionPorts();
 
   // #1 准备度选择器：启用项的 id / code / name / color / sort（HR 读字典契约，设计 §8.3；只需 Record 查看权）

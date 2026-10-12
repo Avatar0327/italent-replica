@@ -112,6 +112,22 @@ function calcPolicy(retry = false) {
 }
 
 export const SUCCESSION_POLICIES = defineTable('succession', {
+  [`GET ${BASE}/maps/position`]: object({
+    object: SUCCESSION_OBJECTS.map.code,
+    operation: 'view',
+    button: noButton('职位地图只读，显示条件应用本人保存偏好（DEC-453④）'),
+    scope: listScope('succession.positionMapScope'),
+    fields: projector('succession.positionMap', 'succession.positionMap'),
+    optional: {
+      risk: object({
+        object: SUCCESSION_OBJECTS.riskResult.code,
+        operation: 'view',
+        button: noButton('风险卡片只披露，不要求赋值按钮'),
+        scope: listScope('succession.riskScope'),
+        fields: projector('succession.risk', 'succession.risk'),
+      }),
+    },
+  }),
   [`GET ${BASE}/maps/:kind/preferences`]: object({
     object: SUCCESSION_OBJECTS.map.code,
     operation: 'view',
