@@ -47,13 +47,14 @@ export function AppPages() {
         <Routes>
           {APP_ROUTES.map((route) => {
             const Page = existing[route.id as keyof typeof existing];
+            const pageClass = ['org', 'job'].includes(route.id) ? undefined : 'legacy-page';
             return (
               <Route
                 key={route.id}
                 path={route.path}
                 element={
                   Page ? (
-                    <div className="legacy-page">
+                    <div className={pageClass}>
                       <Page />
                     </div>
                   ) : (
@@ -63,14 +64,7 @@ export function AppPages() {
               />
             );
           })}
-          <Route
-            path="/org/changes"
-            element={
-              <div className="legacy-page">
-                <Org />
-              </div>
-            }
-          />
+          <Route path="/org/changes" element={<Org />} />
           <Route
             path="/settings/account"
             element={

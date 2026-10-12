@@ -276,6 +276,9 @@ test('AC-FE-R1a-13 原站视图切换、主题尺寸与15条分页', async ({ pa
   await expect(page.getByText('15条/页', { exact: true })).toBeVisible();
   expect(sizes.length).toBeGreaterThan(0);
   expect(sizes.every((size) => size === '15')).toBe(true);
+  await page.getByRole('combobox', { name: '每页条数' }).click();
+  await page.getByRole('option', { name: '30条/页', exact: true }).click();
+  await expect.poll(() => sizes.at(-1)).toBe('30');
   const create = page.getByRole('button', { name: /新\s*建/, exact: true });
   await expect(create).toHaveCSS('background-color', 'rgb(20, 110, 255)');
   await expect(create).toHaveCSS('height', '32px');
@@ -289,6 +292,9 @@ test('AC-FE-R1a-13 原站视图切换、主题尺寸与15条分页', async ({ pa
   await page.getByRole('menuitem', { name: '职等', exact: true }).click();
   await expect(page).toHaveURL(/kind=grades/);
   await expect(page.getByRole('heading', { level: 1 })).toContainText('职等');
+  await expect(create).toBeEnabled();
+  await expect(page.locator('.ant-spin-spinning')).toHaveCount(0);
+  await page.waitForTimeout(500); // 仅等截图动画落稳，交互断言已完成。
   await page.screenshot({ path: testInfo.outputPath('reference-list.png'), fullPage: true });
 });
 
@@ -304,12 +310,14 @@ test('AC-FE-R1a-14 详情页签留在右侧抽屉，编辑使用双列弹窗', a
   const drawer = page.getByRole('dialog');
   await expect(drawer.getByRole('tab', { name: '组织单元', exact: true })).toBeVisible();
   await expect.poll(async () => Math.round((await drawer.boundingBox())?.x ?? -1)).toBe(320);
+  await page.waitForTimeout(500); // 仅等截图动画落稳，交互断言已完成。
   await page.screenshot({ path: testInfo.outputPath('reference-detail.png'), fullPage: true });
   await drawer.getByRole('button', { name: /编\s*辑/, exact: true }).click();
   await expect(page.locator('.ant-modal')).toBeVisible();
   await expect(page.locator('.ant-modal')).toHaveCSS('width', '800px');
   await expect(page.locator('.form-fields-modal').first()).toHaveCSS('display', 'grid');
   await expect(page.locator('.ant-modal')).toHaveCSS('transform', 'none');
+  await page.waitForTimeout(500); // 仅等截图动画落稳，交互断言已完成。
   await page.screenshot({ path: testInfo.outputPath('reference-form.png'), fullPage: true });
 });
 
@@ -338,7 +346,7 @@ for (const route of ['/org', '/job?kind=positions']) {
     await drawer.getByLabel('名称', { exact: true }).fill('合成');
     await drawer.getByRole('button', { name: /确\s*定/ }).click();
     await expect.poll(() => queries.at(-1)?.searchParams.get('name')).toBe('合成');
-    await expect(page.locator('.page-filters input[type="text"]').first()).toHaveValue('合成');
+    await expect(page.locator('.page-filters .ant-input-search input').first()).toHaveValue('合成');
     await open.click();
     await drawer.getByRole('button', { name: /清\s*空/ }).click();
     await expect(drawer.getByLabel('名称', { exact: true })).toHaveValue('');

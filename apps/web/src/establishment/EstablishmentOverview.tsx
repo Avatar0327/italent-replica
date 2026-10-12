@@ -8,6 +8,18 @@ interface Scheme {
   name?: string;
   [key: string]: unknown;
 }
+const fields = [
+  'name',
+  'code',
+  'periodType',
+  'maintenanceMode',
+  'startMonth',
+  'subdivision',
+  'unmatchedPolicy',
+  'enabled',
+  'startDate',
+  'stopDate',
+];
 export const establishmentObject = 'TenantBase.OrganizationEstablishment';
 export function EstablishmentOverview({ view }: { view: ListView }) {
   const permissions = usePagePermissions([establishmentObject]);
@@ -18,18 +30,6 @@ export function EstablishmentOverview({ view }: { view: ListView }) {
     access.readable ? `/api/tenant/establishment/schemes?page=${page.page}&pageSize=${page.pageSize}` : null,
   );
   const detail = useRemote<Scheme>(selected ? `/api/tenant/establishment/schemes/${selected}` : null);
-  const fields = [
-    'name',
-    'code',
-    'periodType',
-    'maintenanceMode',
-    'startMonth',
-    'subdivision',
-    'unmatchedPolicy',
-    'enabled',
-    'startDate',
-    'stopDate',
-  ];
   const label = (key: string) => m[key as keyof typeof m] ?? key;
   const display = (value: unknown) => {
     if (typeof value === 'boolean') return value ? m.active : m.inactive;
