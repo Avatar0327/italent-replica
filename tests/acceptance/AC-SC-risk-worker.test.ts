@@ -4,7 +4,8 @@ import { createTestDb } from '@italent/testkit';
 import { STANDARD_PROFILES } from '@italent/domain';
 import { afterAll, beforeAll, expect, it, vi } from 'vitest';
 import { riskWorld } from './AC-SC-risk-support.js';
-import { SC_NOW } from './AC-SC-support.js';
+import { SC_NOW, SC_TODAY } from './AC-SC-support.js';
+import { riskPeople } from '../../apps/api/src/modules/succession/risk-people.js';
 import { createRiskHandler, riskHandler } from '../../apps/api/src/modules/succession/risk-worker.js';
 import { runCalcPage } from '../../apps/api/src/modules/succession/calc-worker.js';
 import { overrideSetting } from '../../apps/api/src/modules/tenant-settings/service.js';
@@ -107,6 +108,28 @@ it('AC-SC-risk DEC-452 work_years 不可用导致对象失败并保留原值，�
       (tenant_id,profile_id,app_code,target_kind,target_code,see_all)
       SELECT ${w.tenant.id}::uuid,id,'TenantBase','entity','TenantBase.EmployeeInformation',true
       FROM permission_profiles WHERE code='standard_hr_admin'`);
+    // 模拟已更正任职的完整快照；入职日期属于任职周期，不在载荷快照列中。
+    await tx.execute(sql`INSERT INTO employment_payload_versions
+      SELECT (jsonb_populate_record(NULL::employment_payload_versions, to_jsonb(p) || jsonb_build_object(
+        'id',gen_random_uuid(),'version_no',p.version_no+1,'previous_version_id',p.id,
+        'is_record_snapshot',true,'command_id',${randomUUID()}::text,'trigger_business_id',p.business_id))).*
+      FROM employment_payload_versions p WHERE p.employee_id IN (
+        SELECT successor_employee_id FROM succession_records WHERE target_position_id=${w.position.id}::uuid)
+      ORDER BY p.version_no DESC LIMIT 1`);
+    const people = await riskPeople(
+      tx,
+      {
+        tenantId: w.tenant.id,
+        userId: w.user.id,
+        positionId: w.position.id,
+        asOf: SC_TODAY,
+        today: SC_TODAY,
+        partTime: false,
+      },
+      ['entry_date', 'work_years'],
+    );
+    expect(people.successors[0]?.entry_date).toBe(SC_TODAY);
+    expect(people.successors[0]?.work_years).toEqual({ status: 'unavailable' });
     await tx.execute(sql`UPDATE succession_risk_level_rows SET field_code='work_years',filter_operator='ge',
       filter_values='[1]'::jsonb WHERE level_id=${w.levelId}::uuid`);
   });
