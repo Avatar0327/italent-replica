@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   maybeStartLeaveConsumerScheduler,
   registerLeaveConsumer,
-} from '../../apps/api/src/modules/evaluation/leave-consumer.js';
+} from '../../apps/api/src/modules/evaluation/leave-consumer-registry.js';
 import { runEmploymentOutboxConsumer } from '../../apps/api/src/modules/employment/outbox-consumer.js';
 import { runQualificationSync } from '../../apps/api/src/modules/qualification/sync-worker.js';
 import { leaveConsumerWorld, testConsumer } from './AC-EV-leave-consumer-support.js';
