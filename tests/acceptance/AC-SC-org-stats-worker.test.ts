@@ -160,4 +160,41 @@ it('AC-SC-org-stats 绿化率取 SP-06；没有来源为 null，forbidden 不降
     ),
   );
   expect(row).toEqual([{ green_rate: null, green_source_project_id: null }]);
+  const forbidden = await w.asTenant((tx) =>
+    enqueueCalcRun(
+      tx,
+      {
+        tenantId: w.tenant.id,
+        kind: 'org_stats',
+        trigger: 'manual',
+        commandId: randomUUID(),
+        requestedBy: w.user.id,
+        businessDate: SC_TODAY,
+        objects: [{ objectType: 'org', objectId: org.id }],
+      },
+      SC_NOW,
+    ),
+  );
+  expect(
+    await runCalcPage(
+      w.db,
+      w.tenant.id,
+      forbidden,
+      [
+        createOrgStatsHandler({
+          greenRate: async () =>
+            new Map([[org.id, { status: 'forbidden', green: 0, placed: 0, rate: null, source: null }]]),
+        }),
+      ],
+      SC_NOW,
+    ),
+  ).toBe('partial');
+  expect(
+    await w.asTenant(async (tx) =>
+      rowsOf(
+        await tx.execute(sql`SELECT code FROM succession_calc_run_failures
+    WHERE run_id=${forbidden}::uuid`),
+      ),
+    ),
+  ).toEqual([{ code: 'SOURCE_FORBIDDEN' }]);
 });

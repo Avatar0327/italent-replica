@@ -5,6 +5,7 @@ import { useTestDb } from '@italent/testkit';
 import { expect, it } from 'vitest';
 import { rowsOf } from '../../apps/api/src/modules/succession/read-sql.js';
 import { SC_TODAY, successionWorld } from './AC-SC-support.js';
+import { tenantApi } from './support/tenant-api.js';
 
 const db = useTestDb();
 
@@ -36,4 +37,20 @@ it('AC-SC-org-stats compute-stats 返回 202 runId；同命令重放复用冻结
       idempotency_key: `org_stats:manual:${commandId}`,
     },
   ]);
+});
+
+it('AC-SC-org-stats 撤权后直接重放 403；新请求和重放均不新增统计任务', async () => {
+  const w = await successionWorld(db().db, 'sc-stats-revoked');
+  await w.org('撤权统计');
+  let allowed = true;
+  const api = tenantApi(w.db, { authorize: () => allowed });
+  const options = { user: w.user.id, tenant: w.tenant.id, ifMatch: 0, body: {}, idempotencyKey: randomUUID() };
+  const path = '/api/tenant/succession/maps/org/compute-stats';
+  expect((await api.request('POST', path, options)).status).toBe(202);
+  const read = () => w.asTenant(async (tx) => rowsOf(await tx.execute(sql`SELECT id FROM succession_calc_runs`)));
+  const before = await read();
+  allowed = false;
+  expect((await api.request('POST', path, options)).status).toBe(403);
+  expect((await api.request('POST', path, { ...options, idempotencyKey: randomUUID() })).status).toBe(403);
+  expect(await read()).toEqual(before);
 });

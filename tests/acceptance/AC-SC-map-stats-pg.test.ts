@@ -1,10 +1,11 @@
 import { randomUUID } from 'node:crypto';
-import { sql } from '@italent/db';
+import { sql, type Db } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { successionWorld } from './AC-SC-support.js';
 import { waitForBlocked } from './support/pg-interleave.js';
 import { rowsOf } from '../../apps/api/src/modules/succession/read-sql.js';
+import { tenantApi } from './support/tenant-api.js';
 
 const testDb = useTestDb();
 describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-SC-map-stats 真 PG 并发', () => {
@@ -78,5 +79,31 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-SC-map-stats 真 PG �
     expect(await responses[0]!.json()).toEqual(await responses[1]!.json());
     const runs = await w.asTenant(async (tx) => rowsOf(await tx.execute(sql`SELECT id FROM succession_calc_runs`)));
     expect(runs).toHaveLength(1);
+    let unknown = true;
+    const transaction: Db['transaction'] = async (callback, config) => {
+      const result = await w.db.transaction(callback, config);
+      if (unknown && result && typeof result === 'object' && 'status' in result && result.status === 202) {
+        unknown = false;
+        throw new Error('模拟已提交但连接回包丢失');
+      }
+      return result;
+    };
+    const wrapped = new Proxy(w.db, {
+      get(target, key, receiver) {
+        return key === 'transaction' ? transaction : Reflect.get(target, key, receiver);
+      },
+    });
+    const api = tenantApi(wrapped);
+    const recovered = await api.request('POST', '/api/tenant/succession/maps/org/compute-stats', {
+      ...options,
+      idempotencyKey: randomUUID(),
+      user: w.user.id,
+      tenant: w.tenant.id,
+    });
+    expect(unknown).toBe(false);
+    expect(recovered.status, await recovered.clone().text()).toBe(202);
+    expect(
+      await w.asTenant(async (tx) => rowsOf(await tx.execute(sql`SELECT id FROM succession_calc_runs`))),
+    ).toHaveLength(2);
   });
 });

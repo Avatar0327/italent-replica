@@ -175,6 +175,18 @@
       "obj:Succession.HealthResult:update"
     ]
   },
+  "GET /api/tenant/succession/maps/:kind/preferences": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "e4ce4954a9b9",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "obj:Succession.Map:view"
+    ]
+  },
   "GET /api/tenant/succession/populations": {
     "all": {
       "status": 200
@@ -355,6 +367,19 @@
     "scopeQueries": [],
     "trace": []
   },
+  "POST /api/tenant/succession/maps/org/compute-stats": {
+    "all": {
+      "code": "REVISION_CONFLICT",
+      "error": "f12e1e2b793f",
+      "status": 409
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:Succession.Map#computeStats@list",
+      "obj:Succession.Map:view"
+    ]
+  },
   "POST /api/tenant/succession/populations": {
     "all": {
       "code": "VALIDATION_FAILED",
@@ -437,6 +462,18 @@
     },
     "scopeQueries": [],
     "trace": []
+  },
+  "PUT /api/tenant/succession/maps/:kind/preferences": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "e4ce4954a9b9",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "obj:Succession.Map:view"
+    ]
   },
   "PUT /api/tenant/succession/populations/:id": {
     "all": {

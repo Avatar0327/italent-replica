@@ -33,7 +33,7 @@ it('AC-SC-map-display 根、层数、隐藏子树、虚拟子树、权限断层�
   expect((await read({ depth: 2 })).sort()).toEqual([root.id, a.id, virtual.id].sort());
   expect((await read({ hiddenOrgIds: [a.id], hideVirtual: true })).sort()).toEqual([root.id]);
   expect(await read({}, EMPTY_SCOPE)).toEqual([]);
-  const scoped = { ...EMPTY_SCOPE, orgIds: [root.id, b.id], hasDataPermission: true };
+  const scoped = { ...EMPTY_SCOPE, orgIds: [root.id, b.id], terms: undefined, hasDataPermission: true };
   expect(await read({}, scoped)).toEqual([root.id]);
 });
 
@@ -41,8 +41,8 @@ it('AC-SC-map-display 职位图保留有继任者的祖先；停用/非关键祖
   const w = await successionWorld(db().db, 'sc-display-position');
   const org = await w.org('职位所属');
   const parent = await w.position(org.id, '父');
-  const skipped = await w.position(org.id, '非关键', { isKey: false, directParentId: parent.id });
-  const child = await w.position(org.id, '子', { directParentId: skipped.id });
+  const skipped = await w.position(org.id, '非关键', { isKey: false, parents: { admin: { parentId: parent.id } } });
+  const child = await w.position(org.id, '子', { parents: { admin: { parentId: skipped.id } } });
   const empty = await w.position(org.id, '空树');
   const employee = await w.hire('继任者', { departmentId: org.id });
   await w.insertRecord({ type: 'position', targetId: child.id, successorId: employee.id });
