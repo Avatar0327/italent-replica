@@ -28,7 +28,8 @@ import {
   unitText,
   usesOf,
 } from './support/route-policy/evidence.js';
-import { EVIDENCE_STRICT_ENV, gateEvidence } from './support/route-policy/evidence-gate.js';
+import { EVIDENCE_STRICT_ENV } from './support/route-policy/evidence-gate.js';
+import { registrationGate } from './support/route-policy/registration.js';
 import { REQUIRED } from './support/route-policy/required/index.js';
 import { TENANT_SETTINGS } from './support/route-policy/required/tenant-settings.js';
 import type { RequiredTable } from './support/route-policy/required/types.js';
@@ -337,7 +338,8 @@ function expectedUnresolved(table: RequiredTable, read: SourceReader, branch: fa
 
 describe('AC-PRM-FW-02 集中报告：真实表（F-072 测试 8、14）', () => {
   // 根 = 有效单元集合：失效单元不进检测器基准，也不进 oracle，只由证据门禁按 EVIDENCE_UNIT 报（F-090）
-  const roots = () => effectiveUses();
+  let currentRoots: Roots | undefined;
+  const roots = () => (currentRoots ??= effectiveUses());
   /** 在函数体末尾加一个不改依赖 / 绑定的语句 → 只有摘要变化。 */
   const touch = (id: string) => {
     const text = unitText(repoSource, id);
@@ -345,8 +347,19 @@ describe('AC-PRM-FW-02 集中报告：真实表（F-072 测试 8、14）', () =>
     const file = fileOf(id);
     return { file, text: repoSource(file).replace(text, `${text.slice(0, end)}void 0; ${text.slice(end)}`) };
   };
-  const independentCount = (id: string) =>
-    [...roots().keys()].filter((r) => r === id || dist(curGraph(), r).has(id)).length;
+  let independentCounts: ReadonlyMap<string, number> | undefined;
+  const independentCount = (id: string) => {
+    if (!independentCounts) {
+      // 真实源码只通过 readerOf 的副本变异；当前图和根固定，按根遍历一次，避免候选排序反复重扫。
+      const graph = curGraph();
+      const counts = new Map<string, number>();
+      for (const root of roots().keys()) {
+        for (const reached of dist(graph, root).keys()) counts.set(reached, (counts.get(reached) ?? 0) + 1);
+      }
+      independentCounts = counts;
+    }
+    return independentCounts.get(id) ?? 0;
+  };
 
   it('改一个被多个根引用的依赖（domain/qualification/catalog.ts 的某函数）→ 恰好 1 条，impacts 数 = R_cur 实测，含每个根的全部 uses', () => {
     const rootIds = new Set(roots().keys());
@@ -371,8 +384,8 @@ describe('AC-PRM-FW-02 集中报告：真实表（F-072 测试 8、14）', () =>
     expect(found[0]!.detail).not.toMatch(/共 \d+ 处/);
     expect(found[0]!.route).toBe('*');
     assertOracle(REGISTRY, cur, roots(), [group]);
-    // 整张表要算三遍当前登记（基准、改动后、检测器各一次），慢机器上超过默认 30s（F-090 审查期间 CI 与本地均出现），放宽到 120s
-  }, 120_000);
+    // 整张表要算三遍当前登记（基准、改动后、检测器各一次）；随主干扩大且本机繁忙时超过 120s，保留断言并放宽到 180s。
+  }, 180_000);
 
   const safeText = (id: string) => {
     try {
@@ -923,11 +936,11 @@ describe('AC-PRM-FW-02 集中报告：证据单元一致改名、登记未更新
       show(unit),
     ).toBe(true);
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-    expect(gateEvidence(found, '改名回归', { strict: false }), '默认模式：全部是漂移类，只警告').toEqual([]);
+    expect(registrationGate(found, '改名回归', { strict: false }), '默认模式：全部是漂移类，只警告').toEqual([]);
     expect(warn.mock.calls.flat().join('\n')).toContain(`EVIDENCE_UNIT: `);
-    expect(gateEvidence(found, '改名回归', { strict: true }).map((f) => f.code)).toContain('EVIDENCE_UNIT');
+    expect(registrationGate(found, '改名回归', { strict: true }).map((f) => f.code)).toContain('EVIDENCE_UNIT');
     vi.stubEnv(EVIDENCE_STRICT_ENV, '1');
-    expect(gateEvidence(found, '改名回归').map((f) => f.code)).toContain('EVIDENCE_UNIT');
+    expect(registrationGate(found, '改名回归').map((f) => f.code)).toContain('EVIDENCE_UNIT');
   });
 
   it('集中报告的检测器在改名后的源码上照常工作：再改一个共享依赖 → 恰好 1 条，oracle 与检测器同以有效单元为根', () => {

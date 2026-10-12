@@ -596,7 +596,7 @@ describe('AC-QL-employee-profile 必测 9、10：CODE_TAKEN 保留计数另加�
 
 describe('AC-QL-employee-profile 必测 11：version / 指纹守卫（DEC-404）', () => {
   // 合并前最后一次合 main 时，以合并进来的 main 版本和指纹为基线（DEC-404）
-  const MAIN = { version: 16, digest: 'b3f81d2ad41dd5ab' };
+  const MAIN = { version: 17, digest: '02db592a85571f4f' };
 
   it('授权项编码含员工身份任职对象三个按钮与页面载体按钮；version 比 main 当前值至少 +1，指纹随编码变化（AC-QL-employee-profile）', () => {
     for (const button of EMPLOYEE_SELF_SERVICE_BUTTONS)
@@ -608,7 +608,7 @@ describe('AC-QL-employee-profile 必测 11：version / 指纹守卫（DEC-404）
     expect(grantCodesDigest(STANDARD_GRANT_CODES)).toBe(STANDARD_GRANT_DIGEST);
     expect(STANDARD_GRANT_DIGEST).not.toBe(MAIN.digest);
     expect(STANDARD_GRANT_VERSION).toBeGreaterThan(MAIN.version);
-    // 去掉本 PR 新增的模板 copy 按钮，还原已合入 B7a 的 main 指纹（DEC-404）。
+    // 去掉本 PR 新增的模板 copy 按钮，还原已合入 B7b 的 main 指纹（DEC-404）。
     const addedLater = (code: string) => code.endsWith('/TalentReview.Template/button:copy@list');
     expect(grantCodesDigest(STANDARD_GRANT_CODES.filter((code) => !addedLater(code)))).toBe(MAIN.digest);
   });

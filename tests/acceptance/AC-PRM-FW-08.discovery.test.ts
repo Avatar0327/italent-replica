@@ -1,3 +1,4 @@
+import { registration, registrationGate } from './support/route-policy/registration.js';
 /**
  * AC-PRM-FW-08（F-039 PR-B4a，docs/08_设计/F-039_PR-B_设计.md B-08 步骤一「发现探测」；DEC-356 / 359 / 362）：
  * Tier 0 发现探测。全允许的授权替身对全部已声明端点各发一次占位请求（路径参数占位、写请求体 `{}`），得到结果 O*
@@ -13,6 +14,12 @@ import { useTestDb } from '@italent/testkit';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { canonicalJson } from './support/route-policy/baseline.js';
+import {
+  DISCOVERY_FACTS,
+  DISCOVERY_GAPS,
+  DISCOVERY_ROUTES,
+  DISCOVERY_TABLE,
+} from './support/route-policy/discovery-fixture.js';
 import { createAuthorizerDouble } from './support/route-policy/double.js';
 import {
   checkDiscovery,
@@ -31,7 +38,6 @@ import {
 } from './support/route-policy/discovery.js';
 import type { Finding } from './support/route-policy/compare.js';
 import { countDrift, countEndpoints, readEndpointCounts } from './support/route-policy/endpoint-counts.js';
-import { gateEvidence } from './support/route-policy/evidence-gate.js';
 import { generatedGate, textDrift } from './support/route-policy/generated-gate.js';
 import { checkKnownGapEvidence, KNOWN_GAPS, type KnownGapGroup } from './support/route-policy/probe-known-gaps.js';
 import {
@@ -66,11 +72,14 @@ const route = (k: string): ManifestRoute => {
 const codes = (findings: readonly Finding[]) => findings.map((f) => f.code);
 const show = (findings: readonly Finding[]) => findings.map((f) => `${f.route} ${f.code}: ${f.detail}`).join('\n');
 const check = (routes: readonly ManifestRoute[], table: RequiredTable = REQUIRED, found = fresh) =>
-  checkDiscovery(found, table, routes);
+  registrationGate({ discoveries: found, table, routes }, '真实发现与两本台账');
 const ACCOUNT = { knownGaps: KNOWN_GAPS, redundant: REDUNDANT_OBSERVATIONS };
-const checkAll = () => checkDiscovery(fresh, REQUIRED, manifest.declared, ACCOUNT);
+const records = () => ({ discoveries: fresh, table: REQUIRED, routes: manifest.declared, accounting: ACCOUNT });
 const withPolicy = (base: ManifestRoute, policy: RoutePolicy): ManifestRoute => ({ ...base, policy });
-const withTable = (k: string, obligations: readonly Obligation[]): RequiredTable => ({ ...REQUIRED, [k]: obligations });
+const fixtureTable = (k: string, obligations: readonly Obligation[]): RequiredTable => ({
+  ...DISCOVERY_TABLE,
+  [k]: obligations,
+});
 
 describe('AC-PRM-FW-08 发现探测：冻结与覆盖', () => {
   // DEC-430①：冻结文件的总数、文件集合与逐字节新鲜度都是生成物检查，PR 上只警告，main / 队首 PR 判红
@@ -125,20 +134,18 @@ describe('AC-PRM-FW-08 发现探测：冻结与覆盖', () => {
 
 describe('AC-PRM-FW-08 P0 / P3：真实声明 + 显式表零发现', () => {
   it('全部端点零发现（P0 认领、P3 非法标识、映射）；未认领的请求只经精确的 KNOWN_GAPS 逐对登记', () => {
-    const findings = checkAll();
+    const findings = registrationGate(records(), '真实发现 × 静态义务登记（DEC-416③）');
     expect(findings, show(findings)).toEqual([]);
   });
 
-  it('不带登记检查：未认领的"端点 × 请求键"恰好等于两本账的登记对之并集：29 项有实际用途 + 0 项冗余观测（F-075 / F-075b 已清空冗余观测账本），互斥', () => {
-    const open = check(manifest.declared);
-    expect(codes(open).every((c) => c === 'PROBE_ADMISSION_UNCLAIMED')).toBe(true);
+  it('逐对对账：未认领的"端点 × 请求键"恰好等于两本账的登记对之并集：29 项有实际用途 + 0 项冗余观测（F-075 / F-075b 已清空冗余观测账本），互斥', () => {
+    expect(registrationGate(records(), '实际未认领记录与两本台账的差异（DEC-416③）')).toEqual([]);
     const gaps = KNOWN_GAPS.flatMap((g) => g.pairs);
     const redundant = REDUNDANT_OBSERVATIONS.flatMap((g) => g.pairs);
-    expect(gaps).toHaveLength(29);
-    expect(redundant).toHaveLength(0);
+    registration('已知缺口冻结数量', () => expect(gaps).toHaveLength(29));
+    registration('冗余观测冻结数量', () => expect(redundant).toHaveLength(0));
     const all = [...gaps, ...redundant].map(([r, k]) => `${r}\t${k}`);
     expect(new Set(all).size, '登记对不重复，两本账互斥').toBe(all.length);
-    expect(all).toHaveLength(open.length);
   });
 
   it('台账每组写明用途、归属与源码证据，证据锚点仍出现在所指文件里；冗余观测另写"为何不影响结果"', () => {
@@ -152,39 +159,51 @@ describe('AC-PRM-FW-08 P0 / P3：真实声明 + 显式表零发现', () => {
       expect(group.evidence.length, group.id).toBeGreaterThan(0);
     }
     // F-090：账本证据锚点与源码对不上默认只警告
-    expect(gateEvidence(checkKnownGapEvidence(KNOWN_GAPS), '已知缺口账本证据锚点')).toEqual([]);
-    expect(gateEvidence(checkRedundantEvidence(REDUNDANT_OBSERVATIONS), '冗余观测账本证据锚点')).toEqual([]);
-    const tampered: KnownGapGroup[] = KNOWN_GAPS.map((g, i) =>
-      i === 0 ? { ...g, evidence: [{ ...g.evidence[0]!, anchor: 'thisSnippetDoesNotExistAnywhere()' }] } : g,
-    );
+    expect(registrationGate(checkKnownGapEvidence(KNOWN_GAPS), '已知缺口账本证据锚点')).toEqual([]);
+    expect(registrationGate(checkRedundantEvidence(REDUNDANT_OBSERVATIONS), '冗余观测账本证据锚点')).toEqual([]);
+    const tampered: KnownGapGroup[] = [
+      {
+        ...DISCOVERY_GAPS[0]!,
+        evidence: [{ file: 'apps/api/src/app.ts', anchor: 'thisSnippetDoesNotExistAnywhere()' }],
+      },
+    ];
     expect(codes(checkKnownGapEvidence(tampered))).toEqual(['PROBE_KNOWN_GAP_EVIDENCE']);
   });
 
   it('DEC-367：冗余观测只是记录——不是显式表义务，也不能豁免账外的 P0；同一对不能同时登记在两本账', () => {
     // 真实冗余账已清空（F-075 / F-075b 去掉了全部冗余调用）；机制用夹具验证：把第一个已知缺口对挪到冗余账里
-    expect(REDUNDANT_OBSERVATIONS).toEqual([]);
-    const [first, ...rest] = KNOWN_GAPS;
+    registration('真实冗余观测台账已清空', () => expect(REDUNDANT_OBSERVATIONS).toEqual([]));
+    const [first, ...rest] = DISCOVERY_GAPS;
     const [route0, key0] = first!.pairs[0]!;
     const restPairs = first!.pairs.slice(1);
     const moved: RedundantGroup[] = [{ id: 'fixture#1', why: 'x'.repeat(30), evidence: [], pairs: [[route0, key0]] }];
     const gaps = [{ ...first!, pairs: restPairs }, ...rest];
     // 登记在冗余账里：只是记录，不再报 P0
-    expect(codes(checkDiscovery(fresh, REQUIRED, manifest.declared, { knownGaps: gaps, redundant: moved }))).toEqual(
-      [],
-    );
+    expect(
+      codes(checkDiscovery(DISCOVERY_FACTS, DISCOVERY_TABLE, DISCOVERY_ROUTES, { knownGaps: gaps, redundant: moved })),
+    ).toEqual([]);
     // 删掉冗余账后，这个请求立刻变成 P0（冗余账不是豁免，也不是义务）
-    const withoutRedundant = checkDiscovery(fresh, REQUIRED, manifest.declared, { knownGaps: gaps, redundant: [] });
+    const withoutRedundant = checkDiscovery(DISCOVERY_FACTS, DISCOVERY_TABLE, DISCOVERY_ROUTES, {
+      knownGaps: gaps,
+      redundant: [],
+    });
     expect(withoutRedundant.filter((f) => f.code === 'PROBE_ADMISSION_UNCLAIMED')).toHaveLength(1);
     expect(withoutRedundant.some((f) => f.route === route0 && f.detail.includes(key0))).toBe(true);
     // 同一对同时登记在两本账里 → 报重叠
-    const overlap = checkDiscovery(fresh, REQUIRED, manifest.declared, { knownGaps: KNOWN_GAPS, redundant: moved });
+    const overlap = checkDiscovery(DISCOVERY_FACTS, DISCOVERY_TABLE, DISCOVERY_ROUTES, {
+      knownGaps: DISCOVERY_GAPS,
+      redundant: moved,
+    });
     expect(codes(overlap)).toContain('PROBE_ACCOUNT_OVERLAP');
   });
 
   it('DEC-303：登记只能是已发现的精确对，不是模块级豁免——不在登记里的新漏登照常报 PROBE_ADMISSION_UNCLAIMED', () => {
     const k = 'GET /api/tenant/employment/transfers/manager';
-    const dropped = REQUIRED[k]!.filter((o) => !permClaims(o.perm, fresh[k]!.trace[0]!));
-    const findings = checkDiscovery(fresh, withTable(k, dropped), manifest.declared, ACCOUNT);
+    const dropped = DISCOVERY_TABLE[k]!.filter((o) => !permClaims(o.perm, DISCOVERY_FACTS[k]!.trace[0]!));
+    const findings = checkDiscovery(DISCOVERY_FACTS, fixtureTable(k, dropped), DISCOVERY_ROUTES, {
+      knownGaps: DISCOVERY_GAPS,
+      redundant: [],
+    });
     expect(codes(findings)).toEqual(['PROBE_ADMISSION_UNCLAIMED']);
     expect(findings[0]!.route).toBe(k);
   });
@@ -202,16 +221,19 @@ describe('AC-PRM-FW-08 P0 / P3：真实声明 + 显式表零发现', () => {
     const [fixedRoute, fixedKey] = fixed;
     const [brokenRoute, brokenKey] = broken;
     expect(
-      KNOWN_GAPS.flatMap((g) => g.pairs).some(([r, k]) => r === fixedRoute && k === fixedKey),
+      DISCOVERY_GAPS.flatMap((g) => g.pairs).some(([r, k]) => r === fixedRoute && k === fixedKey),
       '前提：旧缺口已登记',
     ).toBe(true);
-    expect(fresh[brokenRoute]!.trace, '前提：该键确被问到').toContain(brokenKey);
+    expect(DISCOVERY_FACTS[brokenRoute]!.trace, '前提：该键确被问到').toContain(brokenKey);
     const patched: RequiredTable = {
-      ...REQUIRED,
-      [fixedRoute]: [...REQUIRED[fixedRoute]!, { perm: fixedKey, at: [] }],
-      [brokenRoute]: REQUIRED[brokenRoute]!.filter((o) => !permClaims(o.perm, brokenKey)),
+      ...DISCOVERY_TABLE,
+      [fixedRoute]: [...DISCOVERY_TABLE[fixedRoute]!, { perm: fixedKey, at: [] }],
+      [brokenRoute]: DISCOVERY_TABLE[brokenRoute]!.filter((o) => !permClaims(o.perm, brokenKey)),
     };
-    const findings = checkDiscovery(fresh, patched, manifest.declared, ACCOUNT);
+    const findings = checkDiscovery(DISCOVERY_FACTS, patched, DISCOVERY_ROUTES, {
+      knownGaps: DISCOVERY_GAPS,
+      redundant: [],
+    });
     expect(codes(findings).sort()).toEqual(['PROBE_ADMISSION_UNCLAIMED', 'PROBE_KNOWN_GAP_STALE']);
     expect(findings.find((f) => f.code === 'PROBE_ADMISSION_UNCLAIMED')!.route).toBe(brokenRoute);
     expect(findings.find((f) => f.code === 'PROBE_KNOWN_GAP_STALE')!.detail).toContain(fixedRoute);
@@ -219,8 +241,14 @@ describe('AC-PRM-FW-08 P0 / P3：真实声明 + 显式表零发现', () => {
 
   it('精确集合：只补上旧缺口（表已认领）→ PROBE_KNOWN_GAP_STALE，必须同 PR 删登记对', () => {
     const k = 'GET /api/tenant/org/person-candidates';
-    const claimed = withTable(k, [...REQUIRED[k]!, { perm: 'obj:TenantBase.Organization:{create,update}', at: [] }]);
-    const findings = checkDiscovery(fresh, claimed, manifest.declared, ACCOUNT);
+    const claimed = fixtureTable(k, [
+      ...DISCOVERY_TABLE[k]!,
+      { perm: 'obj:TenantBase.Organization:{create,update}', at: [] },
+    ]);
+    const findings = checkDiscovery(DISCOVERY_FACTS, claimed, DISCOVERY_ROUTES, {
+      knownGaps: DISCOVERY_GAPS,
+      redundant: [],
+    });
     expect(codes(findings)).toEqual(['PROBE_KNOWN_GAP_STALE']);
   });
 
@@ -284,6 +312,13 @@ describe('AC-PRM-FW-08 P0 / P3：真实声明 + 显式表零发现', () => {
 });
 
 describe('AC-PRM-FW-08 P0 反例：表漏登 / 错登', () => {
+  const fresh = DISCOVERY_FACTS;
+  const REQUIRED = DISCOVERY_TABLE;
+  const manifest = { declared: DISCOVERY_ROUTES };
+  const route = (key: string) => DISCOVERY_ROUTES.find((r) => `${r.method} ${r.path}` === key)!;
+  const withTable = fixtureTable;
+  const check = (routes: readonly ManifestRoute[], table: RequiredTable = REQUIRED, found = fresh) =>
+    checkDiscovery(found, table, routes);
   /** 轨迹含 Transfer.Hr 按钮的端点（经理页 canViewReporting 的披露判定）。 */
   const HR = 'btn:TenantBase.EmploymentRecord#Transfer.Hr@detail';
   const MANAGER_BTN = 'btn:TenantBase.EmploymentRecord#Transfer.Manager@detail';
@@ -416,20 +451,22 @@ describe('AC-PRM-FW-08 P3 非法标识：观测码与根节点 invalidId 相等'
     'PATCH /api/tenant/personnel/employees/:employeeId/subsets/:kind/:id',
   ];
 
-  it('第 3 轮：状态码相同、错误体不同的 52 个端点由实际行为证明适用（不依赖证据表；含 R3-T04 PR-B4 新建规则组 1 个、R3-T05 A2 / B2a 编辑各 1 个）', () => {
+  it('第 3 轮：状态码相同、错误体不同的 54 个端点由实际行为证明适用（含 B2b 两种等级编辑与 B6b 模板复制）', () => {
     const k48 = sameStatusOnly();
-    expect(k48).toHaveLength(52);
+    expect(k48).toHaveLength(54);
     expect(k48).toContain('POST /api/tenant/talent-review/templates/:id/copy');
     expect(k48).toContain('POST /api/tenant/talent-review/matrices/:id/ratio-groups');
     expect(k48).toContain('GET /api/tenant/permission/profiles/:id');
     expect(k48).toContain('POST /api/tenant/idp/plans/:id/goals');
+    expect(k48).toContain('PUT /api/tenant/succession/risk-levels/:id');
+    expect(k48).toContain('PUT /api/tenant/succession/health-levels/:id');
     for (const k of k48) {
       expect(p3Applicable(k, fresh[k]!), k).toBe(true);
       expect(route(k).policy.invalidId, `${k} 真实声明有 invalidId`).toBeDefined();
     }
   });
 
-  it('52 个端点把 invalidId 改成另一个状态码、或删掉声明 → MISMATCH:invalidId', () => {
+  it('54 个端点把 invalidId 改成另一个状态码、或删掉声明 → MISMATCH:invalidId', () => {
     for (const k of sameStatusOnly()) {
       const r = route(k);
       const declared = r.policy.invalidId!;
@@ -446,7 +483,9 @@ describe('AC-PRM-FW-08 P3 非法标识：观测码与根节点 invalidId 相等'
   });
 
   it('适用性与冻结事实零漂移（PROBE_ID_APPLICABILITY_CHANGED 为空）；非法标识没有 5xx', () => {
-    expect(checkIdApplicabilityDrift(fresh, readFrozenProbes())).toEqual([]);
+    expect(
+      registrationGate(checkIdApplicabilityDrift(fresh, readFrozenProbes()), '非法标识适用性（DEC-416③）'),
+    ).toEqual([]);
     expect(Object.entries(fresh).filter(([, d]) => (d.invalidId?.status ?? 0) >= 500)).toEqual([]);
   });
 

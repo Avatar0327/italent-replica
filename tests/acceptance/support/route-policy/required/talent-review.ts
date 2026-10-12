@@ -861,6 +861,24 @@ const projectAction = (action: 'start' | 'end' | 'restart'): Obligation[] => {
     },
   ];
 };
+const PROJECT_READONLY: Obligation = {
+  perm: 'guard:talentReview.projectReadonly',
+  facts: ['guard:talentReview.projectReadonly'],
+  note: '公开 / 共享项目只读；首次写入及命令重放均复用 requireProjectEditable，403 PROJECT_READONLY',
+  at: [
+    {
+      role: 'call',
+      unit: `${T}/project-service.ts#lockProject`,
+      anchor: 'await requireProjectEditable(tx, ctx, ctx.scope, row)',
+    },
+    {
+      role: 'call',
+      unit: `${PR}#runWrite`,
+      anchor: 'await requireProjectEditable(tx, current, current.scope, anchor)',
+    },
+    { role: 'impl', unit: `${T}/project-access.ts#requireProjectEditable`, anchor: "reason: 'PROJECT_READONLY'" },
+  ],
+};
 const PROJECT_REQUIRED: RequiredTable = {
   [`GET ${BASE_ROOT}/projects`]: [
     cfgView(PROJECT, 'project', 'Project', 'projectList', "const ctx = await reviewContext(c, deps, 'project')", PR),
@@ -878,6 +896,7 @@ const PROJECT_REQUIRED: RequiredTable = {
   [`POST ${BASE_ROOT}/projects`]: [
     ...cfgChange(PROJECT, 'project', 'Project', 'registerProjectRoutes', 'create', PR),
     ...projectReference,
+    PROJECT_READONLY,
     {
       perm: 'guard:talentReview.projectCreatable',
       at: [
@@ -892,11 +911,15 @@ const PROJECT_REQUIRED: RequiredTable = {
   [`PATCH ${BASE_ROOT}/projects/:id`]: [
     ...cfgChange(PROJECT, 'project', 'Project', 'registerProjectRoutes', 'update', PR),
     ...projectReference,
+    PROJECT_READONLY,
   ],
-  [`DELETE ${BASE_ROOT}/projects/:id`]: cfgChange(PROJECT, 'project', 'Project', 'registerProjectRoutes', 'delete', PR),
-  [`POST ${BASE_ROOT}/projects/:id/start`]: projectAction('start'),
-  [`POST ${BASE_ROOT}/projects/:id/end`]: projectAction('end'),
-  [`POST ${BASE_ROOT}/projects/:id/restart`]: projectAction('restart'),
+  [`DELETE ${BASE_ROOT}/projects/:id`]: [
+    ...cfgChange(PROJECT, 'project', 'Project', 'registerProjectRoutes', 'delete', PR),
+    PROJECT_READONLY,
+  ],
+  [`POST ${BASE_ROOT}/projects/:id/start`]: [...projectAction('start'), PROJECT_READONLY],
+  [`POST ${BASE_ROOT}/projects/:id/end`]: [...projectAction('end'), PROJECT_READONLY],
+  [`POST ${BASE_ROOT}/projects/:id/restart`]: [...projectAction('restart'), PROJECT_READONLY],
 };
 
 export const TALENT_REVIEW: RequiredTable = {

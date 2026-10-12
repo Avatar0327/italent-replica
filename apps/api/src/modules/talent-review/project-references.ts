@@ -5,6 +5,7 @@ import {
   eq,
   inArray,
   orgObjects,
+  talentCriteria,
   talentReviewCategories as C,
   talentReviewCalcRules as R,
   talentReviewFields as F,
@@ -18,7 +19,13 @@ import {
 } from '@italent/db';
 import { AppError } from '../../errors.js';
 import { notFoundMessage, requireConfigVisible, type ModuleScope } from './access.js';
-import { registerConfigReferenceGuard, registerConfigUpdateConstraint, type WriteContext } from './config-kit.js';
+import {
+  configReferrer,
+  registerConfigReferenceGuard,
+  registerConfigUpdateConstraint,
+  type WriteContext,
+} from './config-kit.js';
+import { isTalentCriterionReferenceable, registerTalentCriterionReferenceGuard } from '../talent/port.js';
 import { registerRatioGroupReferenceGuard } from './matrix-service.js';
 import type { ProjectPatch } from './project-input.js';
 import type { ProjectView } from './project-store.js';
@@ -45,6 +52,20 @@ export async function checkProjectReferences(
   before?: ProjectView,
   replay = false,
 ) {
+  const criterionId = input.criterionId === undefined ? before?.criterionId : input.criterionId;
+  if (criterionId) {
+    // 与标准修改 / 删除的 FOR UPDATE 冲突；同事务内读当前启用状态后才能写项目。
+    await tx
+      .select({ id: talentCriteria.id })
+      .from(talentCriteria)
+      .where(and(eq(talentCriteria.tenantId, ctx.tenantId), eq(talentCriteria.id, criterionId)))
+      .for('share');
+    if (!replay && !(await isTalentCriterionReferenceable(tx, ctx.tenantId, criterionId))) {
+      throw new AppError('VALIDATION_FAILED', '人才标准不存在或已停用，不能引用', {
+        reason: 'CRITERION_NOT_REFERENCEABLE',
+      });
+    }
+  }
   const refs = projectReferences(input);
   const held = projectReferences(before ?? {});
   for (const key of referenceKinds(input)) {
@@ -172,4 +193,24 @@ registerRatioGroupReferenceGuard(async (tx, tenantId, groupId) => {
     .where(and(eq(PM.tenantId, tenantId), eq(PM.ratioGroupId, groupId)))
     .limit(1);
   return row ? 'PROJECT' : null;
+});
+
+// 人才模块端口仅作桥接；项目拒删仍登记在 B7a 的统一配置引用入口，锁序为项目 → 来源标准。
+registerConfigReferenceGuard('criterion', async (tx, tenantId, id) => {
+  const [row] = await tx
+    .select({ id: P.id })
+    .from(P)
+    .where(and(eq(P.tenantId, tenantId), eq(P.criterionId, id)))
+    .limit(1);
+  return row ? 'TALENT_REVIEW_PROJECT' : null;
+});
+registerTalentCriterionReferenceGuard((tx, tenantId, id) => configReferrer(tx, tenantId, 'criterion', id));
+// §5.1 / §7：项目保存须引用启用标准，禁止属性修改使已有项目配置失效；先持来源排他锁再询问引用。
+registerConfigUpdateConstraint('criterion', async (tx, tenantId, id, patch) => {
+  if (patch.enabled !== false) return;
+  if (await configReferrer(tx, tenantId, 'criterion', id)) {
+    throw new AppError('CONFLICT', '人才标准被盘点项目引用，停用会使项目配置失效', {
+      reason: 'CRITERION_DISABLE_BREAKS_PROJECT',
+    });
+  }
 });

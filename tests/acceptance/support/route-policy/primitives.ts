@@ -346,6 +346,7 @@ export const PRIMITIVES: readonly Primitive[] = [
     // 向下公开的模板只读（template-access.ts requireEditable）
     ['talentReview.templateCatalogReference', call('requireCatalogs'), { modules: ['talent-review'] }],
     ['talentReview.projectCatalogReference', call('requireProjectCatalogs'), { modules: ['talent-review'] }],
+    ['talentReview.projectReadonly', call('requireProjectEditable'), { modules: ['talent-review'] }],
     ['talentReview.templatePublicDownReadonly', /\bTEMPLATE_PUBLIC_DOWN_READONLY\b/, { modules: ['talent-review'] }],
     // 人才评定配置字典：按 enabled 筛选须有该字段查看权（R3-T02 B1a 路由声明）
     ['ev.filterFieldVisible', call('requireFilterVisible'), { modules: ['evaluation'] }],

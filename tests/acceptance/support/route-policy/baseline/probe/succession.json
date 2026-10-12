@@ -1,4 +1,24 @@
 {
+  "DELETE /api/tenant/succession/health-levels/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "eac22738b986",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:SuccessionAndDevelopment/Succession.HealthLevel/-"
+    ],
+    "trace": [
+      "btn:Succession.HealthLevel#delete@detail",
+      "obj:Succession.HealthLevel:delete"
+    ]
+  },
   "DELETE /api/tenant/succession/populations/:id": {
     "all": {
       "code": "NOT_FOUND",
@@ -37,6 +57,26 @@
     "trace": [
       "btn:Succession.Record#delete@detail",
       "obj:Succession.Record:delete"
+    ]
+  },
+  "DELETE /api/tenant/succession/risk-levels/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "eac22738b986",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:SuccessionAndDevelopment/Succession.RiskLevel/-"
+    ],
+    "trace": [
+      "btn:Succession.RiskLevel#delete@detail",
+      "obj:Succession.RiskLevel:delete"
     ]
   },
   "GET /api/tenant/succession/calc-runs": {
@@ -89,6 +129,50 @@
     ],
     "trace": [
       "obj:Succession.CalcRun:view"
+    ]
+  },
+  "GET /api/tenant/succession/health-levels": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:Succession.HealthLevel"
+    ],
+    "scopeQueries": [
+      "scope:SuccessionAndDevelopment/Succession.HealthLevel/-"
+    ],
+    "trace": [
+      "obj:Succession.HealthLevel:view"
+    ]
+  },
+  "GET /api/tenant/succession/health-levels/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "eac22738b986",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:SuccessionAndDevelopment/Succession.HealthLevel/-"
+    ],
+    "trace": [
+      "obj:Succession.HealthLevel:view"
+    ]
+  },
+  "GET /api/tenant/succession/health-levels/options": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:Succession.HealthResult#assign@detail",
+      "obj:Succession.HealthResult:update"
     ]
   },
   "GET /api/tenant/succession/populations": {
@@ -167,6 +251,50 @@
       "obj:Succession.Record:view"
     ]
   },
+  "GET /api/tenant/succession/risk-levels": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:Succession.RiskLevel"
+    ],
+    "scopeQueries": [
+      "scope:SuccessionAndDevelopment/Succession.RiskLevel/-"
+    ],
+    "trace": [
+      "obj:Succession.RiskLevel:view"
+    ]
+  },
+  "GET /api/tenant/succession/risk-levels/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "eac22738b986",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:SuccessionAndDevelopment/Succession.RiskLevel/-"
+    ],
+    "trace": [
+      "obj:Succession.RiskLevel:view"
+    ]
+  },
+  "GET /api/tenant/succession/risk-levels/options": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:Succession.RiskResult#assign@detail",
+      "obj:Succession.RiskResult:update"
+    ]
+  },
   "GET /api/tenant/succession/rule-settings/:kind": {
     "all": {
       "code": "VALIDATION_FAILED",
@@ -214,6 +342,19 @@
       "obj:Succession.CalcRun:view"
     ]
   },
+  "POST /api/tenant/succession/health-levels": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "0201f22d50a7",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
   "POST /api/tenant/succession/populations": {
     "all": {
       "code": "VALIDATION_FAILED",
@@ -244,6 +385,50 @@
     "all": {
       "code": "VALIDATION_FAILED",
       "error": "2572a6873102",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/tenant/succession/risk-levels": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "0201f22d50a7",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "PUT /api/tenant/succession/health-levels/:id": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "0125d9d3d6ed",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
+    },
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "PUT /api/tenant/succession/health-levels/order": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "abf34dc98ad8",
       "status": 400
     },
     "fieldQueries": [],
@@ -285,6 +470,37 @@
       "code": "VALIDATION_FAILED",
       "error": "17147722c2a8",
       "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "PUT /api/tenant/succession/risk-levels/:id": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "0125d9d3d6ed",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
+    },
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "PUT /api/tenant/succession/risk-levels/order": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "abf34dc98ad8",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
     },
     "scopeQueries": [],
     "trace": []
