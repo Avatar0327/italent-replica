@@ -13,6 +13,7 @@ import { rowsOf } from './support/f048.js';
 import { waitForBlocked } from './support/pg-interleave.js';
 import { successionWorld, SC_NOW, SC_TODAY, type SuccessionWorld } from './AC-SC-support.js';
 import { syncTestTransaction } from './AC-SC-sync-support.js';
+import { healthStorageDouble } from './AC-SC-health-storage-double.js';
 
 const testDb = useTestDb();
 let w: SuccessionWorld;
@@ -34,6 +35,7 @@ const setting = (key: string, value: unknown, expectedRevision = 0) =>
     ),
   );
 beforeAll(async () => {
+  await healthStorageDouble(testDb().db);
   w = await successionWorld(testDb().db, 'sc-sync-plan');
   std = await w.standard();
   await setting('system_principal_user_id', w.user.id);
