@@ -73,3 +73,22 @@ test('AC-FE-0-09 无面包屑、视图标题、紧凑主题与可收起侧栏对
   await page.getByRole('button', { name: '展开菜单' }).click();
   await expect(page.locator('.shell-sidebar')).toHaveCSS('width', '200px');
 });
+
+test('AC-FE-0-10 行内操作保持 40px，详情与筛选从右侧打开', async ({ page }) => {
+  await page.goto('/smoke/template-fixture.html');
+  await expect(page.locator('tr[data-row-key]')).toHaveCSS('height', '40px');
+  await expect(page.locator('.page-heading .ant-btn-primary')).toHaveCSS('background-color', 'rgb(20, 110, 255)');
+  await expect(page.locator('.page-heading .ant-btn-primary')).toHaveCSS('height', '32px');
+  await page.getByRole('button', { name: '合成示例组织', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: '合成示例组织' })).toBeVisible();
+  await expect(page.locator('.detail-drawer')).toHaveClass(/ant-drawer-right/);
+  await page.getByRole('tab', { name: '变更记录' }).click();
+  await expect(page.getByRole('tabpanel')).toHaveText('合成变更记录');
+  await page.getByRole('button', { name: '关闭' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.locator('tr[data-row-key]')).toBeVisible();
+  await page.getByRole('button', { name: '高级筛选', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: '高级筛选' })).toBeVisible();
+  await expect(page.locator('.filter-drawer .ant-drawer-content-wrapper')).toHaveCSS('width', '500px');
+  await expect(page.locator('.filter-footer button')).toHaveText(['清空', '取 消', '确 定']);
+});
