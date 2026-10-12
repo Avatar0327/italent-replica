@@ -1287,6 +1287,41 @@
         ]
       }
     },
+    "DELETE /api/tenant/succession/health-levels/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "succession",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "writeFields"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "scope.all"
+        ]
+      }
+    },
     "DELETE /api/tenant/succession/populations/:id": {
       "edge": {
         "anonymous": {
@@ -1354,6 +1389,41 @@
         ],
         "scope": [
           "scopeSql"
+        ]
+      }
+    },
+    "DELETE /api/tenant/succession/risk-levels/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "succession",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "writeFields"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "scope.all"
         ]
       }
     },
@@ -1918,10 +1988,15 @@
         "fieldsOut": [
           "trimModuleResponse"
         ],
+        "guard": [
+          "talentReview.projectReadonly"
+        ],
         "object": [
           "objectContext"
         ],
         "scope": [
+          "creator scope",
+          "scopeSql",
           "visible()"
         ]
       }
@@ -7155,6 +7230,81 @@
         ]
       }
     },
+    "GET /api/tenant/succession/health-levels": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "succession",
+      "primitives": {
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "scope.all"
+        ]
+      }
+    },
+    "GET /api/tenant/succession/health-levels/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "succession",
+      "primitives": {
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "scope.all"
+        ]
+      }
+    },
+    "GET /api/tenant/succession/health-levels/options": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "succession",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "object": [
+          "objectContext"
+        ]
+      }
+    },
     "GET /api/tenant/succession/populations": {
       "edge": {
         "anonymous": {
@@ -7276,6 +7426,81 @@
         "scope": [
           "requestScope",
           "scopeSql"
+        ]
+      }
+    },
+    "GET /api/tenant/succession/risk-levels": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "succession",
+      "primitives": {
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "scope.all"
+        ]
+      }
+    },
+    "GET /api/tenant/succession/risk-levels/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "succession",
+      "primitives": {
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "scope.all"
+        ]
+      }
+    },
+    "GET /api/tenant/succession/risk-levels/options": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "succession",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "object": [
+          "objectContext"
         ]
       }
     },
@@ -8658,6 +8883,7 @@
           "objectContext"
         ],
         "scope": [
+          "creator scope",
           "requestScope",
           "scope.all",
           "scopeSql"
@@ -8688,8 +8914,9 @@
           "objectContext"
         ],
         "scope": [
+          "creator scope",
           "requestScope",
-          "visible()"
+          "scopeSql"
         ]
       }
     },
@@ -11381,12 +11608,15 @@
           "trimModuleResponse"
         ],
         "guard": [
-          "talentReview.projectCatalogReference"
+          "talentReview.projectCatalogReference",
+          "talentReview.projectReadonly"
         ],
         "object": [
           "objectContext"
         ],
         "scope": [
+          "creator scope",
+          "scopeSql",
           "visible()"
         ]
       }
@@ -17011,6 +17241,41 @@
         ]
       }
     },
+    "POST /api/tenant/succession/health-levels": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "VALIDATION_FAILED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "succession",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "writeFields"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "scope.all"
+        ]
+      }
+    },
     "POST /api/tenant/succession/populations": {
       "edge": {
         "anonymous": {
@@ -17111,6 +17376,41 @@
         ],
         "scope": [
           "scopeSql"
+        ]
+      }
+    },
+    "POST /api/tenant/succession/risk-levels": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "VALIDATION_FAILED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "succession",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "writeFields"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "scope.all"
         ]
       }
     },
@@ -18648,12 +18948,15 @@
           "trimModuleResponse"
         ],
         "guard": [
-          "talentReview.projectCatalogReference"
+          "talentReview.projectCatalogReference",
+          "talentReview.projectReadonly"
         ],
         "object": [
           "objectContext"
         ],
         "scope": [
+          "creator scope",
+          "scopeSql",
           "visible()"
         ]
       }
@@ -18665,8 +18968,8 @@
           "status": 401
         },
         "member": {
-          "code": "REVISION_REQUIRED",
-          "status": 400
+          "code": "FORBIDDEN",
+          "status": 403
         },
         "nonMember": {
           "code": "TENANT_NOT_MEMBER",
@@ -18685,10 +18988,15 @@
         "fieldsOut": [
           "trimModuleResponse"
         ],
+        "guard": [
+          "talentReview.projectReadonly"
+        ],
         "object": [
           "objectContext"
         ],
         "scope": [
+          "creator scope",
+          "scopeSql",
           "visible()"
         ]
       }
@@ -18700,8 +19008,8 @@
           "status": 401
         },
         "member": {
-          "code": "REVISION_REQUIRED",
-          "status": 400
+          "code": "FORBIDDEN",
+          "status": 403
         },
         "nonMember": {
           "code": "TENANT_NOT_MEMBER",
@@ -18720,10 +19028,15 @@
         "fieldsOut": [
           "trimModuleResponse"
         ],
+        "guard": [
+          "talentReview.projectReadonly"
+        ],
         "object": [
           "objectContext"
         ],
         "scope": [
+          "creator scope",
+          "scopeSql",
           "visible()"
         ]
       }
@@ -18735,8 +19048,8 @@
           "status": 401
         },
         "member": {
-          "code": "REVISION_REQUIRED",
-          "status": 400
+          "code": "FORBIDDEN",
+          "status": 403
         },
         "nonMember": {
           "code": "TENANT_NOT_MEMBER",
@@ -18755,10 +19068,15 @@
         "fieldsOut": [
           "trimModuleResponse"
         ],
+        "guard": [
+          "talentReview.projectReadonly"
+        ],
         "object": [
           "objectContext"
         ],
         "scope": [
+          "creator scope",
+          "scopeSql",
           "visible()"
         ]
       }
@@ -20286,6 +20604,76 @@
         ]
       }
     },
+    "PUT /api/tenant/succession/health-levels/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "VALIDATION_FAILED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "succession",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "writeFields"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "scope.all"
+        ]
+      }
+    },
+    "PUT /api/tenant/succession/health-levels/order": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "VALIDATION_FAILED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "succession",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "writeFields"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "scope.all"
+        ]
+      }
+    },
     "PUT /api/tenant/succession/populations/:id": {
       "edge": {
         "anonymous": {
@@ -20354,6 +20742,76 @@
         "scope": [
           "creator scope",
           "scopeSql"
+        ]
+      }
+    },
+    "PUT /api/tenant/succession/risk-levels/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "VALIDATION_FAILED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "succession",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "writeFields"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "scope.all"
+        ]
+      }
+    },
+    "PUT /api/tenant/succession/risk-levels/order": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "VALIDATION_FAILED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "succession",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "writeFields"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "scope.all"
         ]
       }
     },
