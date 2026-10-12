@@ -6,7 +6,7 @@ name: CI
 #         目标分支不是 main 的 PR 一律 light（DEC-454① 第 2 轮 P2-1，判定在 scripts/ci-classify.sh）；
 #   light 在途 PR（DEC-454①）：只跑轻量检查 job（lint / typecheck / build / 纯函数单测，约 4 分钟），
 #         两个必需检查改名为“待队首运行”报告，必需检查本身保持“等待中”，PR 合不进去；
-#   full  队首 PR（带 queue-head 标签）、云端 merge:main 派发的 workflow_dispatch、push 到 main、每周定时：完整测试，
+#   full  队首 PR（带 queue-head 标签的 pull_request 运行，队列关闭再重开 PR 触发）、push 到 main、每周定时、手动触发：完整测试，
 #         两个汇总 job 以必需检查名报告，要求轻量检查与全部分片成功
 # - 纯文档判定：PR 相对 base 的完整改动文件必须全部是文档——任意目录的 *.md，或 docs/ reference/ .claude/ 下的
 #   图片（png jpg jpeg gif svg webp）与纯文本资料（txt tsv）；其余扩展名（py mjs js ts json yml sh html 等）
@@ -91,7 +91,8 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           # 目标分支不是 main 的 PR 永远 light（DEC-454① 第 2 轮 P2-1，见脚本注释）
           BASE_REF: ${{ github.base_ref }}
-          # DEC-454①：合并队列给队首 PR 打 queue-head 标签；推送时带着这个标签的 pull_request 运行跑完整测试
+          # DEC-454① / DEC-458：合并队列给队首 PR 打 queue-head 标签，再关闭、重开 PR；带这个标签的 pull_request 运行
+          # （reopened / synchronize 等）跑完整测试。workflow_dispatch 运行不关联 PR，分支保护不认，不用来放行合并
           QUEUE_HEAD: ${{ contains(github.event.pull_request.labels.*.name, 'queue-head') }}
         run: |
           set -euo pipefail
@@ -104,7 +105,7 @@ jobs:
           echo "mode=$mode" | tee -a "$GITHUB_OUTPUT"
           case "$mode" in
             docs) note="纯文档：必需检查快速通过" ;;
-            light) note="在途 PR：只跑轻量检查，必需检查保持等待，排到队首（queue-head 标签或云端 merge:main 派发）后跑完整测试" ;;
+            light) note="在途 PR：只跑轻量检查，必需检查保持等待，排到队首（queue-head 标签 + 关闭重开 PR）后跑完整测试" ;;
             full) note="完整测试" ;;
           esac
           echo "::notice title=CI 模式::$mode（$note）"
