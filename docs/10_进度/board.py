@@ -198,6 +198,9 @@ def live_prs():
             note = ""
         elif t_res and t_done <= t_res:
             st, why = f"rework", f"第 {rounds} 轮未过，返工中"
+        elif t_done and t_done > max(t_res, t_rev) and last_push > t_done:
+            # 10-12 #282：贴“开发完成”后仍有新推送（清单补充在补），记返工中，不记待审
+            st, why = "rework", f"第 {rounds + 1} 轮前补充修改中"
         elif t_done and t_done > max(t_res, t_rev) and p["mergeable"] == "CONFLICTING":
             st, why = "conflict", "开发完成，待合 main 后送审"
             note = ""

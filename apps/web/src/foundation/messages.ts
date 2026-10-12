@@ -9,6 +9,7 @@ export const ui = {
   account: '个人设置',
   notes: '注释',
   demo: '演示数据',
+  demoTenant: '演示科技有限公司',
   original: '原站做法',
   decision: '我们的取舍',
   level: '实现档位',

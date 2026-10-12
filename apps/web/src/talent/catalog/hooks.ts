@@ -3,9 +3,8 @@ import { candidates } from './api.js';
 import { useEffect, useState } from 'react';
 import { ApiError, type ApiClient } from '../../foundation/client.js';
 import { useApiClient, useSession } from '../../foundation/Session.js';
-import type { ObjectPermission } from '../../foundation/permission-model.js';
 
-/** FE-0 尚只加载首页对象；模块临时按同一接口补读，复用其 client 与 permission-model。 */
+/** 请求按会话和完整参数隔离，过时回包不覆盖当前页面。 */
 export function useRemote<T>(key: string, load: (api: ApiClient, signal: AbortSignal) => Promise<T>) {
   const api = useApiClient();
   const session = useSession();
@@ -28,17 +27,6 @@ export function useRemote<T>(key: string, load: (api: ApiClient, signal: AbortSi
   const current = state?.key === requestKey ? state : undefined;
   return { data: current?.data, error: current?.error, loading: !!key && !current };
 }
-export async function readPermission(api: ApiClient, object: string, signal: AbortSignal) {
-  try {
-    return await api.request<ObjectPermission>(`/api/tenant/permission/me/objects/${encodeURIComponent(object)}`, {
-      signal,
-    });
-  } catch (error) {
-    if (error instanceof ApiError && (error.status === 403 || error.status === 404)) return null;
-    throw error;
-  }
-}
-
 export function useReferenceNames(resource: Resource, generation = 0) {
   return useRemote(`names:${resource.object}:${generation}`, async (api, signal) => {
     const sources = [...new Set(resource.fields.map((field) => field.source).filter((path): path is string => !!path))];

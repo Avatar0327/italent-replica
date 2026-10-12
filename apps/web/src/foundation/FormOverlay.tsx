@@ -19,6 +19,8 @@ export interface FormGroup {
   fields: FormField[];
 }
 export interface FormOverlayProps {
+  /** 已有记录使用 id:revision；刷新后换 key，不能把旧表单值带入新版本。新建表单也应给本次打开的稳定键。 */
+  recordKey: string;
   title: string;
   open: boolean;
   mode?: 'drawer' | 'modal';
@@ -30,7 +32,9 @@ export interface FormOverlayProps {
 }
 export function FormOverlay(props: FormOverlayProps) {
   const session = useSession();
-  return props.open ? <OpenForm key={`${session.tenantId}/${session.identityKey}`} {...props} /> : null;
+  return props.open ? (
+    <OpenForm key={`${session.tenantId}/${session.identityKey}/${props.recordKey}`} {...props} />
+  ) : null;
 }
 function useSubmission(props: FormOverlayProps, form: FormInstance) {
   const [busy, setBusy] = useState(false);

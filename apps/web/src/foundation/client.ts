@@ -25,7 +25,24 @@ export interface FieldError {
 }
 type ErrorKind = 'forbidden' | 'not-found' | 'refresh' | 'fields' | 'conflict' | 'unknown' | 'rate-limit' | 'login';
 interface ErrorPayload {
-  error?: { code?: string; message?: string; details?: { fieldErrors?: Record<string, string[]> } };
+  error?: { code?: string; message?: string; details?: unknown };
+}
+function fieldErrors(details: unknown): FieldError[] {
+  if (Array.isArray(details))
+    return details.flatMap((issue: { path?: unknown[]; message?: unknown }) =>
+      Array.isArray(issue.path) &&
+      issue.path.length &&
+      typeof issue.message === 'string' &&
+      issue.path.every((part) => typeof part === 'string' || typeof part === 'number')
+        ? [{ name: issue.path as (string | number)[], errors: [issue.message] }]
+        : [],
+    );
+  const fields = (details as { fieldErrors?: Record<string, unknown> } | undefined)?.fieldErrors;
+  return Object.entries(fields ?? {}).flatMap(([name, errors]) =>
+    Array.isArray(errors) && errors.every((error) => typeof error === 'string')
+      ? [{ name: name.split('.'), errors }]
+      : [],
+  );
 }
 
 export class ApiError extends Error {
@@ -40,31 +57,24 @@ export class ApiError extends Error {
   ) {
     super(message);
     this.name = 'ApiError';
-    this.fieldErrors = Object.entries(details?.details?.fieldErrors ?? {}).map(([name, errors]) => ({
-      name: name.split('.'),
-      errors,
-    }));
+    this.fieldErrors = fieldErrors(details?.details);
   }
+}
+
+function errorKind(status: number, code: string): ErrorKind {
+  if (status === 401) return 'login';
+  if (status === 403) return 'forbidden';
+  if (status === 404) return 'not-found';
+  if (code === 'REVISION_CONFLICT' || code === 'CATALOG_CHANGED') return 'refresh';
+  if (status === 422 || code === 'VALIDATION_FAILED') return 'fields';
+  if (status === 409) return 'conflict';
+  if (status === 429) return 'rate-limit';
+  return 'unknown';
 }
 
 function responseError(response: Response, payload: ErrorPayload) {
   const code = payload.error?.code ?? 'REQUEST_FAILED';
-  const kind: ErrorKind =
-    response.status === 401
-      ? 'login'
-      : response.status === 403
-        ? 'forbidden'
-        : response.status === 404
-          ? 'not-found'
-          : code === 'REVISION_CONFLICT' || code === 'CATALOG_CHANGED'
-            ? 'refresh'
-            : response.status === 422 || code === 'VALIDATION_FAILED'
-              ? 'fields'
-              : response.status === 409
-                ? 'conflict'
-                : response.status === 429
-                  ? 'rate-limit'
-                  : 'unknown';
+  const kind = errorKind(response.status, code);
   const messages = {
     login: ui.login,
     forbidden: ui.denied,

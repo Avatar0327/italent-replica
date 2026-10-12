@@ -39,7 +39,7 @@ export function StandardCells({ cells, names }: { cells: unknown; names?: Map<st
         ['targetId', m.target],
         ['content', m.content],
         ['targetValue', m.targetValue],
-        ['weight', m.weight],
+        ['weight', m.weightPercent],
       ])}
     />
   );

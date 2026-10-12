@@ -20,13 +20,13 @@ export function PageState({
       </div>
     );
   if (kind === 'empty') return <Empty className="page-state" description={ui.empty} />;
+  const status = { 'not-found': '404', forbidden: '403', login: 'info', error: 'error' } as const;
+  const title = { 'not-found': ui.missing, forbidden: ui.denied, login: ui.login, error: ui.failed };
   return (
     <div role={kind === 'error' ? 'alert' : 'status'}>
       <Result
-        status={kind === 'not-found' ? '404' : kind === 'forbidden' ? '403' : kind === 'login' ? 'info' : 'error'}
-        title={
-          kind === 'not-found' ? ui.missing : kind === 'forbidden' ? ui.denied : kind === 'login' ? ui.login : ui.failed
-        }
+        status={status[kind]}
+        title={title[kind]}
         subTitle={error instanceof ApiError ? error.message : undefined}
         extra={retry && <Button onClick={retry}>{ui.retry}</Button>}
       />

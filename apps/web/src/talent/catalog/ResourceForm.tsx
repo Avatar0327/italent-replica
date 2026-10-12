@@ -119,6 +119,7 @@ export function ResourceForm({
     : fields;
   return (
     <FormOverlay
+      recordKey={original ? `${original.id}:${original.revision}` : `new:${resource.key}`}
       title={`${original ? m.edit : m.create} · ${resource.title}`}
       open
       onClose={onClose}

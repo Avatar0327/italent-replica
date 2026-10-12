@@ -1,5 +1,10 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import { emptyPermissions, loadPermissions, type PermissionSnapshot } from '../demo-stubs/navigation.js';
+import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react';
+import {
+  emptyPermissions,
+  loadPermissions,
+  loadObjectPermission,
+  type PermissionSnapshot,
+} from '../demo-stubs/navigation.js';
 import { canButton, fieldAccess, type FieldAccess } from './permission-model.js';
 import { useApiClient, useSession } from './Session.js';
 
@@ -8,11 +13,13 @@ interface PermissionState {
   loading: boolean;
   error?: unknown;
   refresh(): void;
+  ensure(object: string, signal: AbortSignal): Promise<void>;
 }
 const PermissionContext = createContext<PermissionState>({
   snapshot: emptyPermissions,
   loading: true,
   refresh() {},
+  async ensure() {},
 });
 const ObjectContext = createContext<string | undefined>(undefined);
 export function PermissionObject({ object, children }: { object?: string; children: ReactNode }) {
@@ -20,9 +27,16 @@ export function PermissionObject({ object, children }: { object?: string; childr
 }
 export function PermissionsProvider({ children }: { children: ReactNode }) {
   const session = useSession();
+  return <PermissionsLoader key={`${session.tenantId}/${session.identityKey}`}>{children}</PermissionsLoader>;
+}
+function PermissionsLoader({ children }: { children: ReactNode }) {
+  const session = useSession();
   const api = useApiClient();
   const [generation, refresh] = useState(0);
-  const [state, setState] = useState<Omit<PermissionState, 'refresh'>>({ snapshot: emptyPermissions, loading: true });
+  const [state, setState] = useState<Omit<PermissionState, 'refresh' | 'ensure'>>({
+    snapshot: emptyPermissions,
+    loading: true,
+  });
   useEffect(() => {
     const controller = new AbortController();
     setState({ snapshot: emptyPermissions, loading: true });
@@ -39,10 +53,24 @@ export function PermissionsProvider({ children }: { children: ReactNode }) {
       });
     return () => controller.abort();
   }, [api, session.tenantId, session.identityKey, generation]);
+  const ensure = useCallback(
+    async (object: string, signal: AbortSignal) => {
+      try {
+        const permission = await loadObjectPermission(api, object, signal);
+        if (!signal.aborted && permission)
+          setState((current) => ({
+            ...current,
+            snapshot: { ...current.snapshot, objects: { ...current.snapshot.objects, [object]: permission } },
+          }));
+      } catch (error) {
+        if (!signal.aborted) setState((current) => ({ ...current, error }));
+      }
+    },
+    [api],
+  );
+  const reload = useCallback(() => refresh((value) => value + 1), []);
   return (
-    <PermissionContext.Provider value={{ ...state, refresh: () => refresh((value) => value + 1) }}>
-      {children}
-    </PermissionContext.Provider>
+    <PermissionContext.Provider value={{ ...state, refresh: reload, ensure }}>{children}</PermissionContext.Provider>
   );
 }
 export function usePermissions(objectCode?: string) {
@@ -50,6 +78,12 @@ export function usePermissions(objectCode?: string) {
   const activeObject = useContext(ObjectContext);
   const code = objectCode ?? activeObject;
   const permission = code ? state.snapshot.objects[code] : undefined;
+  useEffect(() => {
+    if (!code || state.loading || permission) return;
+    const controller = new AbortController();
+    void state.ensure(code, controller.signal);
+    return () => controller.abort();
+  }, [code, permission, state.loading, state.ensure]);
   return {
     ...state,
     menus: state.snapshot.menus,
@@ -81,5 +115,6 @@ export function PermissionField({
   value: ReactNode;
   children: ReactNode;
 }) {
-  return !access.visible ? null : access.editable ? children : <span className="readonly-field">{value ?? '—'}</span>;
+  if (!access.visible) return null;
+  return access.editable ? children : <span className="readonly-field">{value ?? '—'}</span>;
 }
