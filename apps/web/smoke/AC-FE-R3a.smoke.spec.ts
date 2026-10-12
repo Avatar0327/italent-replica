@@ -80,7 +80,7 @@ test.beforeEach(async ({ page }) => {
             requiredFields: ['name'],
           },
         });
-      return route.fulfill({ json: path.endsWith(rows[0]!.id) ? rows[0] : { items: rows, hasDataPermission: true } });
+      return route.fulfill({ json: path.endsWith(rows[0]!.id) ? rows[0] : { items: rows, total: 1, hasDataPermission: true } });
     });
   }
 });
@@ -103,8 +103,16 @@ for (const [path, title] of [
     await page.getByLabel('切换演示身份').selectOption(user);
     await page.goto(path!);
     await expect(page.getByRole('heading', { name: title!, exact: true })).toBeVisible();
+    await expect(page.locator('.ant-breadcrumb')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '切换视图' })).toBeVisible();
+    await expect(page.locator('.ant-pagination-options')).toContainText('15条/页');
+    const cell = page.locator('.catalog-page .ant-table-tbody > tr > td').first();
+    await expect(cell).toHaveCSS('font-size', '12px');
+    await expect(cell).toHaveCSS('height', '40px');
     await page.getByRole('button', { name: '合成配置', exact: true }).first().click();
-    await expect(page.getByRole('dialog')).toBeVisible();
+    await expect(page.getByRole('dialog')).toHaveCount(1);
+    await expect(page.getByRole('dialog')).toContainText('合成配置');
+    await expect(page.locator('.detail-drawer')).toBeVisible();
     await page.getByRole('button', { name: '关闭详情' }).click();
     await page.getByRole('button', { name: /^新\s*建$/ }).click();
     await expect(page.getByRole('dialog')).toBeVisible();
