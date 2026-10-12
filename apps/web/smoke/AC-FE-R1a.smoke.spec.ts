@@ -312,3 +312,38 @@ test('AC-FE-R1a-14 详情页签留在右侧抽屉，编辑使用双列弹窗', a
   await expect(page.locator('.ant-modal')).toHaveCSS('transform', 'none');
   await page.screenshot({ path: testInfo.outputPath('reference-form.png'), fullPage: true });
 });
+
+for (const route of ['/org', '/job?kind=positions']) {
+  test(`AC-FE-R1a-15 ${route} 高级筛选仅确认后生效，取消丢弃草稿`, async ({ page }) => {
+    const queries: URL[] = [];
+    const endpoint = route === '/org' ? '/api/tenant/org/organizations' : '/api/tenant/job/positions';
+    page.on('request', (request) => {
+      const url = new URL(request.url());
+      if (url.pathname === endpoint) queries.push(url);
+    });
+    await page.goto(route);
+    await page.getByLabel('切换演示身份').selectOption(user);
+    await page.waitForURL('**/staff');
+    await page.goto(route);
+    const open = page.getByRole('button', { name: '高级筛选', exact: true });
+    await open.click();
+    const drawer = page.getByRole('dialog');
+    await expect(drawer).toHaveCSS('width', '500px');
+    const count = queries.length;
+    await drawer.getByLabel('名称', { exact: true }).fill('不应生效');
+    await drawer.getByRole('button', { name: /取\s*消/ }).click();
+    expect(queries).toHaveLength(count);
+    await open.click();
+    await expect(drawer.getByLabel('名称', { exact: true })).toHaveValue('');
+    await drawer.getByLabel('名称', { exact: true }).fill('合成');
+    await drawer.getByRole('button', { name: /确\s*定/ }).click();
+    await expect.poll(() => queries.at(-1)?.searchParams.get('name')).toBe('合成');
+    await open.click();
+    await drawer.getByRole('button', { name: /清\s*空/ }).click();
+    await expect(drawer.getByLabel('名称', { exact: true })).toHaveValue('');
+    await drawer.getByRole('button', { name: /确\s*定/ }).click();
+    await expect.poll(() => queries.at(-1)?.searchParams.get('name')).toBeNull();
+    expect(queries.at(-1)?.searchParams.get('includeDisabled')).toBe('true');
+    expect(queries.at(-1)?.searchParams.get('asOf')).toBe('2026-10-12');
+  });
+}
