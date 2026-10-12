@@ -886,8 +886,13 @@ async function autoAdd(
   const skipped: { employeeId: string; reason: string }[] = [];
   for (const entry of plan) {
     const { employeeId } = entry;
-    if ('reason' in entry) skipped.push(entry);
-    else {
+    if ('reason' in entry) {
+      // 跳过项不取员工锁；回执仍按当前权限与快照复核，不能沿用取锁前的范围或原因。
+      const current = { ...ctx, admin: await ctx.reauthorize() };
+      if (!(await candidateVisible(tx, current.admin, employeeId))) continue;
+      const reason = await previewPerson(tx, current, await access.refresh(), employeeId, new Set());
+      if (typeof reason === 'string' && reason !== 'OUT_OF_SCOPE') skipped.push({ employeeId, reason });
+    } else {
       // 精细化权限下候选员工另须在 360 范围内：范围外不建人员、不加关系、不出现在结果里（DEC-289①）
       if (!(await candidateVisible(tx, ctx.admin, employeeId))) continue;
       const person = await personForEmployee(tx, ctx, access, employeeId);

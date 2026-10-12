@@ -19,7 +19,7 @@ export function useBoundedDb(): () => DbHandle {
   }, 180_000);
   afterAll(async () => {
     await handle?.close();
-  });
+  }, 180_000);
   return () => {
     if (!handle) throw new Error('F-088 隔离测试库尚未初始化');
     return handle;
@@ -107,5 +107,20 @@ export async function boundedScene(db: Db, label: string, size: number) {
     w.request('POST', `/activities/${activity.id}/objects/${object.id}/appraisers/auto`, { ifMatch: 0, body });
   const locks = () => observations.filter((o) => o.query.includes('ORDER BY id FOR SHARE'));
   const pages = () => observations.filter((o) => o.query.includes('SELECT t.employee_id'));
-  return { w, access, manager, seed, seedPerson, activity, object, id, auto, locks, pages, observations };
+  return {
+    w,
+    access,
+    manager,
+    managerPerson,
+    seed,
+    seedPerson,
+    q,
+    activity,
+    object,
+    id,
+    auto,
+    locks,
+    pages,
+    observations,
+  };
 }
