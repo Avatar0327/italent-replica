@@ -87,8 +87,9 @@ async function inventory() {
       hires: grouped.filter((g) => g.kind === 'hire').map((g) => g.n),
       transferBusinesses: grouped.filter((g) => g.kind === 'transfer').reduce((sum, g) => sum + g.n, 0),
       seededBusinesses: rowsOf<{ n: number }>(
-        await tx.execute(sql`SELECT count(DISTINCT business_id)::int AS n FROM employment_payload_versions
-          WHERE remarks LIKE '演示场景 DEMO-TRF-%'`),
+        await tx.execute(
+          sql`SELECT count(*)::int AS n FROM command_ledger WHERE command_id LIKE 'demo-seed:%:DEMO-TRF-%'`,
+        ),
       )[0]!.n,
     };
   });
@@ -168,7 +169,7 @@ describe('F-025 演示种子', () => {
       inv.hires.every((n) => n === 1),
       '每名员工恰有一次入职',
     ).toBe(true);
-    // 15 张种子调动单（带场景标记）+ 续跑前用户自己提交的 1 张普通申请（不属于种子，也不被种子接管）
+    // 15 张种子调动单（命令台账里有各自的确定性命令 ID）+ 续跑前用户自己提交的 1 张普通申请（不属于种子，也不被种子接管）
     expect(inv.seededBusinesses).toBe(15);
     expect(inv.transferBusinesses).toBe(16);
     const orgs = await items('hr', `/api/tenant/org/organizations?asOf=${TODAY}`);
@@ -210,8 +211,7 @@ describe('F-025 演示种子', () => {
   it('调动单：在途 6 / 已完成 6 / 驳回 2 / 撤回 1，HR、经理、员工自助各至少 1 单', async () => {
     const ids = await withTenant(database().db, manifest.tenantId, async (tx) => {
       const result = await tx.execute(
-        sql`SELECT DISTINCT business_id AS id FROM employment_payload_versions
-          WHERE kind = 'transfer' AND remarks LIKE '演示场景 DEMO-TRF-%'`,
+        sql`SELECT response_body->>'id' AS id FROM command_ledger WHERE command_id LIKE 'demo-seed:%:DEMO-TRF-%'`,
       );
       return ((Array.isArray(result) ? result : (result as { rows: unknown[] }).rows) as { id: string }[]).map(
         (row) => row.id,
@@ -313,14 +313,14 @@ describe('F-025 演示种子', () => {
     }
   });
 
-  it('续跑不接管无标记的普通申请：员工甲自己提交的申请保持审批中，种子另发自己的驳回单', async () => {
+  it('续跑不接管不是种子发起的普通申请：员工甲自己提交的申请保持审批中，种子另发自己的驳回单', async () => {
     const ordinary = await json<{ status: string }>('hr', `/api/tenant/employment/businesses/${ordinaryBusinessId}`);
     expect(ordinary.status).toBe('in_review');
     const marked = rowsOf<{ id: string }>(
       await withTenant(database().db, manifest.tenantId, (tx) =>
-        tx.execute(sql`SELECT DISTINCT tr.business_id AS id FROM transfer_requests tr
-          JOIN employment_payload_versions pv ON pv.business_id = tr.business_id AND pv.remarks = '演示场景 DEMO-TRF-13'
-          WHERE tr.employee_id = pv.employee_id`),
+        tx.execute(
+          sql`SELECT response_body->>'id' AS id FROM command_ledger WHERE command_id LIKE 'demo-seed:%:DEMO-TRF-13'`,
+        ),
       ),
     );
     expect(marked).toHaveLength(1);
@@ -333,8 +333,9 @@ describe('F-025 演示种子', () => {
   it('已完成的种子场景被用户改动后再启动种子：不回退（无进度记录按状态推断，有进度记录整体跳过）', async () => {
     const [withdrawn] = rowsOf<{ id: string }>(
       await withTenant(database().db, manifest.tenantId, (tx) =>
-        tx.execute(sql`SELECT DISTINCT business_id AS id FROM employment_payload_versions
-          WHERE remarks = '演示场景 DEMO-TRF-15'`),
+        tx.execute(
+          sql`SELECT response_body->>'id' AS id FROM command_ledger WHERE command_id LIKE 'demo-seed:%:DEMO-TRF-15'`,
+        ),
       ),
     );
     const statusOf = async () =>

@@ -3,7 +3,7 @@
  * 以及在途 / 已完成 / 驳回 / 撤回的调动审批单，让 R1 各角色入口都有可看的数据。
  *
  * 分阶段、可恢复：租户开通 → 组织 → 职务体系 → 员工 → 授权 → 调动流程与调动单；每一阶段按自然键（组织编码、
- * 职务体系编码、工号、调动单业务标记）先查后建，重复运行只补缺失，半途失败后再运行从缺失处继续（world.ts / transfers.ts）。
+ * 职务体系编码、工号、调动单的确定性命令 ID）先查后建，重复运行只补缺失，半途失败后再运行从缺失处继续（world.ts / transfers.ts）。
  * 租户开通走平台开通命令（R1-T17，与 POST /api/platform/tenants 同一实现）；其余业务数据一律走公开租户接口，
  * 使用真实权限授权器与签名开发身份（不注入“全部允许”），因此业务规则、审计与 outbox 和真实操作一致。
  */
@@ -12,11 +12,13 @@ import { createUser, type Db, eq, inArray, tenants, users, withPlatform } from '
 import { provisionTenant } from '../modules/platform/provisioning.js';
 import { createDemoClient, DemoClock } from './client.js';
 import { DEMO_PEOPLE, DEMO_TENANT, ROLE_ENTRIES, ROLE_LABELS } from './data.js';
+import type { SeedProgress } from './progress.js';
 import { seedTransfers } from './transfers.js';
 import { DemoSeedIncompleteError, DemoWorld, type StepHook } from './world.js';
 
 export { DemoSeedIncompleteError } from './world.js';
 export type { SeedPhase, SeedStep } from './world.js';
+export { fileProgress, memoryProgress, type SeedProgress } from './progress.js';
 
 export interface DemoPersona {
   readonly userId: string;
@@ -38,6 +40,8 @@ export interface SeedOptions {
   readonly nodeEnv?: string;
   /** 每写入一个对象后回调（进度输出；测试用它在指定位置注入失败）。 */
   readonly onStep?: StepHook;
+  /** 调动场景“已初始化完成”的记录（cli 用 `.demo/seed-state.json`）；不提供时按业务单状态推断，同样不回退。 */
+  readonly progress?: SeedProgress;
 }
 
 export interface SeedResult {
@@ -54,7 +58,7 @@ export async function seedDemo(db: Db, options: SeedOptions = {}): Promise<SeedR
   const world = new DemoWorld(db, client(tenantId), tenantId, options.onStep);
   if (!existing) world.written += 1;
   await world.build();
-  await seedTransfers(world, clock);
+  await seedTransfers(world, clock, options.progress);
   return { created: world.written > 0, manifest: await buildManifest(db, tenantId) };
 }
 

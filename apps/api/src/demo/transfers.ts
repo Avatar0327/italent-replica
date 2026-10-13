@@ -8,6 +8,7 @@ import { TRANSFER_FORM_FIELDS } from '@italent/domain';
 import { type DemoClock, type Json, listAll } from './client.js';
 import { DEMO_TRANSFER_PROCESS_CODE, type OrgKey } from './data.js';
 import { transferSubjects } from './scale-data.js';
+import type { SeedProgress } from './progress.js';
 import type { DemoWorld } from './world.js';
 
 type End = 'pending' | 'effective' | 'reject' | 'withdraw';
@@ -88,22 +89,29 @@ interface InstanceView extends Json {
   readonly status: string;
   readonly revision: number;
   readonly tasks: readonly TaskView[];
+  readonly logs?: readonly { event: string }[];
 }
 
-export async function seedTransfers(world: DemoWorld, clock: DemoClock): Promise<void> {
+export async function seedTransfers(world: DemoWorld, clock: DemoClock, progress?: SeedProgress): Promise<void> {
+  const done = new Set(await progress?.completedTransfers(world.tenantId));
+  // 全部场景都已初始化完成：整体跳过，后续启动不碰用户已经在操作的调动单
+  if (DEMO_TRANSFERS.every((scenario) => done.has(scenario.id))) return;
   await publishTransferProcess(world);
   for (const scenario of DEMO_TRANSFERS) {
+    if (done.has(scenario.id)) continue;
     clock.setDay(null);
     const today = clock.now().toISOString().slice(0, 10);
     // 业务日期按租户时区：北京时间上午 10:00 的时钟与 UTC 同日
-    clock.setDay(dayOffset(today, -scenario.daysAgo));
+    const day = dayOffset(today, -scenario.daysAgo);
+    clock.setDay(day);
     try {
-      await runScenario(world, scenario, dayOffset(today, -scenario.daysAgo));
+      await runScenario(world, scenario, day);
     } catch (error) {
       throw new Error(`${scenario.id}：${error instanceof Error ? error.message : String(error)}`);
     } finally {
       clock.setDay(null);
     }
+    await progress?.markTransferCompleted(world.tenantId, scenario.id);
   }
 }
 
@@ -117,10 +125,18 @@ async function subjectOf(world: DemoWorld, scenario: Scenario) {
   return { employeeId: world.employees.get(staff.code)!, userId: await world.lookup(staff.email), email: staff.email };
 }
 
+const INITIATOR = { self: 'employee', manager: 'manager', hr: 'hr' } as const;
+/**
+ * 场景的确定性命令 ID（Idempotency-Key）：命令台账里持久、按租户唯一，是“这张单子由种子的本场景发起”的关联。
+ * 没有用备注当标记：员工本人入口不允许编辑备注（403），三种入口得用同一种办法。
+ */
+export const scenarioCommandId = (tenantId: string, scenario: Scenario): string =>
+  `demo-seed:${tenantId}:${scenario.id}`;
+
 async function runScenario(world: DemoWorld, scenario: Scenario, day: string): Promise<void> {
   const subject = await subjectOf(world, scenario);
   const actor = scenario.via === 'self' ? subject.userId : world.accounts.get(scenario.actor!)!;
-  let businessId = await existingTransfer(world.db, world.tenantId, subject.employeeId);
+  let businessId = await claimedTransfer(world.db, world.tenantId, subject.employeeId, scenario);
   if (!businessId) {
     businessId = await create(world, scenario, subject, actor, day);
     await world.wrote('transfers', scenario.id);
@@ -128,11 +144,16 @@ async function runScenario(world: DemoWorld, scenario: Scenario, day: string): P
   await advance(world, scenario, businessId, actor);
 }
 
-/** 被调动人名下的调动申请（transfer_requests，每人至多一张演示调动单，是调动单的自然键）。 */
-async function existingTransfer(db: Db, tenantId: string, employeeId: string): Promise<string | null> {
+/**
+ * 本场景已发起的调动单：命令台账里查本场景的确定性命令 ID，再核对被调动人与发起入口。用户自己提交的申请（随机命令 ID）
+ * 一律不认领，也不计入种子。
+ */
+async function claimedTransfer(db: Db, tenantId: string, employeeId: string, scenario: Scenario) {
   const rows = await withTenant(db, tenantId, async (tx) =>
-    tx.execute(sql`SELECT business_id AS id FROM transfer_requests
-      WHERE tenant_id = ${tenantId} AND employee_id = ${employeeId}::uuid ORDER BY created_at LIMIT 1`),
+    tx.execute(sql`SELECT tr.business_id AS id FROM command_ledger cl
+      JOIN transfer_requests tr ON tr.tenant_id = cl.tenant_id AND tr.business_id = (cl.response_body->>'id')::uuid
+      WHERE cl.tenant_id = ${tenantId} AND cl.command_id = ${scenarioCommandId(tenantId, scenario)}
+        AND tr.employee_id = ${employeeId}::uuid AND tr.initiator = ${INITIATOR[scenario.via]} LIMIT 1`),
   );
   const list = (Array.isArray(rows) ? rows : (rows as { rows: unknown[] }).rows) as { id: string }[];
   return list[0]?.id ?? null;
@@ -148,6 +169,7 @@ async function create(
   // 已完成的调动当天生效；其余单子的生效日都在以后
   const effectiveDate = scenario.end === 'effective' ? day : dayOffset(day, 14 + scenario.daysAgo);
   const fields = { departmentId: world.orgs.get(scenario.target)!.id };
+  const commandId = scenarioCommandId(world.tenantId, scenario);
   const base = '/api/tenant';
   if (scenario.via === 'self') {
     const profile = (await world.call(actor, 'GET', `${base}/self-service/profile`)) as { employee: Json };
@@ -157,6 +179,7 @@ async function create(
       `${base}/self-service/transfer`,
       { effectiveDate, fields },
       Number(profile.employee.revision),
+      commandId,
     );
     return String(saved.id);
   }
@@ -176,11 +199,15 @@ async function create(
       fields,
     },
     Number(employee.revision),
+    commandId,
   );
   return String(saved.id);
 }
 
-/** 按当前审批进度续做：同意 approvals 个节点后，按 end 收尾；已到目标状态则什么也不做。 */
+/**
+ * 按当前审批进度续做：同意 approvals 个节点后，按 end 收尾。只往前走：已经被驳回 / 撤回过的单子（含用户之后重提的）、
+ * 已经审批过头的单子都视为本场景已完成，不再推进或回退。
+ */
 async function advance(world: DemoWorld, scenario: Scenario, businessId: string, initiator: string) {
   const base = '/api/tenant';
   for (;;) {
@@ -189,11 +216,18 @@ async function advance(world: DemoWorld, scenario: Scenario, businessId: string,
       'GET',
       `${base}/approval/instances?role=initiated&businessId=${businessId}`,
     );
-    const found = (list.items as Json[])[0];
-    if (!found) return;
-    const view = (await world.call(initiator, 'GET', `${base}/approval/instances/${String(found.id)}`)) as InstanceView;
-    // 非“进行中”：已通过 / 已驳回退回 / 已撤回，都是终态
-    if (view.status !== 'running') return;
+    const views: InstanceView[] = [];
+    for (const found of list.items as Json[]) {
+      views.push(
+        (await world.call(initiator, 'GET', `${base}/approval/instances/${String(found.id)}`)) as InstanceView,
+      );
+    }
+    if (scenario.end === 'reject' || scenario.end === 'withdraw') {
+      // 驳回 / 撤回已经发生过（实例状态或日志里留有记录）：不论用户之后是否重提，都不再动
+      if (views.some(hasEnded)) return;
+    }
+    const view = views.find((item) => item.status === 'running');
+    if (!view) return;
     const pending = view.tasks.find((task) => task.status === 'pending');
     if (!pending) return;
     const approved = view.tasks.filter((task) => task.status === 'approved').length;
@@ -214,12 +248,17 @@ async function advance(world: DemoWorld, scenario: Scenario, businessId: string,
       const business = await world.call(initiator, 'GET', `${base}/employment/businesses/${businessId}`);
       const path = `${base}/employment/businesses/${businessId}/withdraw`;
       await world.call(initiator, 'POST', path, {}, Number(business.revision));
+      return;
     } else {
       return;
     }
     await world.wrote('transfers', `${scenario.id}:${approved + 1}`);
   }
 }
+
+const hasEnded = (view: InstanceView): boolean =>
+  ['returned', 'withdrawn'].includes(view.status) ||
+  (view.logs ?? []).some((log) => ['reject', 'withdraw'].includes(log.event));
 
 /**
  * 演示调动流程：直接上级审批 → 调入部门 HRBP 审核。复刻首版没有“直接上级”审批人表达式（REQ-APV-002），

@@ -9,7 +9,15 @@ import { createDevIdentityResolver, devIdentityHeaders } from '../identity.js';
 
 export type Json = Record<string, unknown>;
 
-export type Call = (userId: string, method: string, path: string, body?: unknown, ifMatch?: number) => Promise<Json>;
+export type Call = (
+  userId: string,
+  method: string,
+  path: string,
+  body?: unknown,
+  ifMatch?: number,
+  /** 指定命令 ID（Idempotency-Key）；缺省每次随机。调动场景用确定性的键，续跑时据此认领自己发起的单子。 */
+  commandId?: string,
+) => Promise<Json>;
 
 /** 可回拨的时钟：已完成的调动按历史日期提交与审批，之后拨回当前时间（后端一切“现在”都取这个时钟）。 */
 export class DemoClock {
@@ -34,9 +42,9 @@ export function createDemoClient(db: Db, clock: () => Date, nodeEnv?: string): (
   const secret = randomBytes(32).toString('hex');
   const identity = createDevIdentityResolver({ secret, nodeEnv });
   const app = createApp({ db, identity, clock });
-  return (tenantId) => async (userId, method, path, body, ifMatch) => {
+  return (tenantId) => async (userId, method, path, body, ifMatch, commandId) => {
     const headers: Record<string, string> = { ...devIdentityHeaders(secret, userId), 'x-tenant-id': tenantId };
-    if (method !== 'GET') headers['idempotency-key'] = randomUUID();
+    if (method !== 'GET') headers['idempotency-key'] = commandId ?? randomUUID();
     if (ifMatch !== undefined) headers['if-match'] = `"${ifMatch}"`;
     if (body !== undefined) headers['content-type'] = 'application/json';
     const init = { method, headers, ...(body === undefined ? {} : { body: JSON.stringify(body) }) };
