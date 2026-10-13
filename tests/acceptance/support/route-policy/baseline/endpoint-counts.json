@@ -16,7 +16,7 @@
     "qualification": 55,
     "root": 1,
     "self-service": 9,
-    "succession": 44,
+    "succession": 45,
     "succession-platform": 2,
     "survey360": 75,
     "survey360-link": 10,
@@ -27,5 +27,5 @@
     "talent-review-platform": 1,
     "tenant-settings": 3
   },
-  "total": 642
+  "total": 643
 }

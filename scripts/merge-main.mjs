@@ -18,9 +18,11 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  checkSnapshotIdentity,
   classifyConflict,
   describeGrantPlan,
   drizzleJson,
+  formatStale,
   GENERATED_PATHS,
   GRANT_CHANGES_PATH,
   GRANT_HISTORY_PATH,
@@ -35,6 +37,7 @@ import {
   resolveGrantConflict,
   rebaseSnapshots,
   snapshotPath,
+  sqlDigest,
   sqlPath,
   takeOursForCounts,
   writeGrantConstants,
@@ -302,11 +305,46 @@ function migrationPlan() {
   const mainJournal = json(MAIN, JOURNAL_PATH);
   const branchJournal = json('HEAD', JOURNAL_PATH);
   if (!mainJournal || !branchJournal) fail(`读不到 ${JOURNAL_PATH}`);
-  return planRenumber(mainJournal, branchJournal);
+  const sql = {
+    main: (tag) => show(MAIN, sqlPath(tag)),
+    branch: (tag) => show('HEAD', sqlPath(tag)),
+  };
+  try {
+    const plan = planRenumber(mainJournal, branchJournal, sql);
+    return { ...plan, identityProblems: identityProblems(plan, mainJournal, sql) };
+  } catch (error) {
+    return fail(`迁移改号计划失败：${error.message}`);
+  }
+}
+
+/** 保留（改号）的迁移的快照 id 不能与 main 或彼此重复（见 checkSnapshotIdentity）；读 main 全部快照 id 只在有改号时做。 */
+function identityProblems(plan, mainJournal, sql) {
+  if (!plan.renames.length) return [];
+  const idOf = (rev, idx) => json(rev, snapshotPath(idx))?.id;
+  return checkSnapshotIdentity({
+    main: mainJournal.entries.map((e) => ({ tag: e.tag, id: idOf(MAIN, e.idx) })),
+    kept: plan.renames.map(({ from }) => ({ tag: from.tag, id: idOf('HEAD', from.idx) })),
+    mainLastId: idOf(MAIN, mainJournal.entries.at(-1).idx),
+    digestOf: (side, tag) => sqlDigest(sql[side](tag)),
+  });
 }
 
 function printPlan(plan) {
-  if (!plan.renames.length) return console.log('迁移：本分支没有自己的迁移。');
+  if (plan.identityProblems.length)
+    console.log(
+      `迁移：以下保留项的快照身份与 main 或彼此重复（可能是格式漂移使 SQL 摘要不同的旧名迁移），须人工处理：\n${plan.identityProblems
+        .map((line) => `  ${line}`)
+        .join('\n')}`,
+    );
+  if (plan.stale.length)
+    console.log(
+      `迁移：以下旧名迁移的 SQL 与 main 上已改号的迁移相同（上游已合并），清理、不改号（旧名 → main 名 sha256=SQL 原始内容摘要）：\n${formatStale(
+        plan.stale,
+      )
+        .map((line) => `  ${line}`)
+        .join('\n')}`,
+    );
+  if (!plan.renames.length) return console.log('迁移：本分支没有自己新增的迁移。');
   const lines = plan.renames.map(({ from, to }) => `  ${from.tag} → ${to.tag}（when ${from.when} → ${to.when}）`);
   console.log(`迁移：本分支 ${plan.renames.length} 条${plan.changed ? '，改号如下' : '，编号已接在 main 之后'}：`);
   console.log(lines.join('\n'));
@@ -315,25 +353,28 @@ function printPlan(plan) {
 function rebasedSnapshots(plan) {
   const mainJournal = json(MAIN, JOURNAL_PATH);
   const mainLast = json(MAIN, snapshotPath(mainJournal.entries.at(-1).idx));
-  const fork = plan.forkIdx === undefined ? undefined : json('HEAD', snapshotPath(plan.forkIdx));
+  // 每条新增迁移的增量基准 = 它在本分支 journal 里的前一条（可能是已合并的旧名迁移）
+  const bases = plan.renames.map(({ baseIdx }) => baseIdx !== undefined && json('HEAD', snapshotPath(baseIdx)));
   const own = plan.renames.map(({ from }) => json('HEAD', snapshotPath(from.idx)));
-  if (!mainLast || !fork || own.some((s) => !s)) fail('迁移快照缺失，无法自动改号，请人工处理');
-  const { snapshots, conflicts } = rebaseSnapshots(fork, own, mainLast);
+  if (!mainLast || bases.some((s) => !s) || own.some((s) => !s)) fail('迁移快照缺失，无法自动改号，请人工处理');
+  const { snapshots, conflicts } = rebaseSnapshots(bases[0], own, mainLast, bases);
   if (conflicts.length) fail(`迁移快照与 main 改了同一处，须人工处理：\n  ${conflicts.join('\n  ')}`);
   return snapshots;
 }
 
-/** 写改号后的 SQL、快照与 journal；旧路径若是 main 的文件就恢复成 main 版本，否则删掉。 */
+/**
+ * 写改号后的 SQL、快照与 journal；旧路径（改号前的、已合并的旧名迁移）若是 main 的文件就恢复成 main 版本，否则删掉。
+ * 没有新增迁移（只有已合并的旧名迁移）时不需要重算快照。
+ */
 function applyRenumber(plan) {
-  if (!plan.renames.length) return;
-  const snapshots = rebasedSnapshots(plan);
+  const snapshots = plan.renames.length ? rebasedSnapshots(plan) : [];
   const written = new Set();
   plan.renames.forEach(({ from, to }, i) => {
     writeRepo(sqlPath(to.tag), show('HEAD', sqlPath(from.tag)) ?? fail(`缺少 ${sqlPath(from.tag)}`));
     writeRepo(snapshotPath(to.idx), drizzleJson(snapshots[i]));
     written.add(sqlPath(to.tag)).add(snapshotPath(to.idx));
   });
-  for (const { from } of plan.renames) {
+  for (const { from } of [...plan.renames, ...plan.stale]) {
     for (const old of [sqlPath(from.tag), snapshotPath(from.idx)]) {
       if (written.has(old)) continue;
       const onMain = show(MAIN, old);
@@ -347,7 +388,8 @@ function applyRenumber(plan) {
 }
 
 function warnTagReferences(plan) {
-  for (const { from, to } of plan.renames) {
+  const moved = [...plan.renames, ...plan.stale.map(({ from, mainEntry }) => ({ from, to: mainEntry }))];
+  for (const { from, to } of moved) {
     if (from.tag === to.tag) continue;
     const hits = spawnSync('git', ['grep', '-l', '-F', from.tag, '--', '.', ':!packages/db/migrations'], {
       cwd: ROOT,
@@ -402,10 +444,11 @@ async function check() {
   printConflicts(conflicts);
   if (grants.length) console.log(`授权版本冲突（合并时自动定号）：\n  ${grants.join('\n  ')}`);
   if (conflicts.other.length) printCountHint(countOnlyConflicts(conflicts.other, ['HEAD', base, MAIN]));
-  printPlan(migrationPlan());
+  const plan = migrationPlan();
+  printPlan(plan);
   await printGrantPlan(base, upToDate);
   console.log(`生成物白名单：\n  ${GENERATED_PATHS.join('\n  ')}`);
-  process.exit(conflicts.other.length ? 1 : 0);
+  process.exit(conflicts.other.length || plan.identityProblems.length ? 1 : 0);
 }
 
 function startMerge() {
@@ -441,6 +484,8 @@ async function main() {
   }
   const plan = migrationPlan();
   printPlan(plan);
+  if (plan.identityProblems.length)
+    fail('保留迁移的快照身份重复（见上），未改号；人工处理后运行 pnpm merge:main --continue');
   if (plan.changed) applyRenumber(plan);
   await assignGrantVersion().catch((error) =>
     fail(`授权版本定号失败：${error.message}\n请人工处理后运行 pnpm merge:main --continue`),

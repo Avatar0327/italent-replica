@@ -323,6 +323,63 @@ function configRequired(
   return obligations;
 }
 Object.assign(SUCCESSION, {
+  [`GET ${BASE}/maps/position`]: [
+    {
+      perm: 'obj:Succession.Map:view',
+      facts: ['object:objectContext'],
+      need: { scope: 'list', predicate: 'succession.positionMapScope' },
+      note: 'C3 显示集合由 C1 保存条件与当前范围决定；SELF 和字段权只裁剪卡片继任者披露',
+      at: [
+        {
+          role: 'call',
+          unit: `${S}/position-map-routes.ts#registerPositionMapRoutes`,
+          anchor: "await successionContext(c, bound, 'map')",
+        },
+        ...CONTEXT,
+        {
+          role: 'const',
+          unit: 'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>map',
+          anchor: "object( 'Map'",
+        },
+        {
+          role: 'scope',
+          unit: `${S}/position-map.ts#readPositionMap`,
+          anchor: "const ids = await readMapDisplayScope(tx, display, 'position')",
+        },
+        {
+          role: 'impl',
+          unit: `${S}/map-display.ts#positionScope`,
+          anchor: 'const allowed = new Set((await mapPositions(tx, ctx.tenantId, ctx.today ?? ctx.asOf, ctx.scope))',
+        },
+      ],
+    },
+    {
+      perm: 'obj:Succession.RiskResult:view',
+      purpose: 'disclosure:risk',
+      facts: ['object:object.* 动作'],
+      need: { scope: 'list', predicate: 'succession.riskScope' },
+      note: '风险结果和无结果默认颜色均须独立对象查看权、当前范围和风险字段权',
+      at: [
+        {
+          role: 'call',
+          unit: `${S}/position-map.ts#positionRiskCards`,
+          anchor:
+            "await bound.authorize({ ...ctx, action: 'object.view', resource: codeOf('riskResult'), fields: [] })",
+        },
+        {
+          role: 'const',
+          unit: 'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>riskResult',
+          anchor: "object( 'RiskResult'",
+        },
+        {
+          role: 'scope',
+          unit: `${S}/risk-store.ts#readRiskRows`,
+          anchor: 'scopeSql(scope, { org: sql`p.org_id`, creator: sql`r.assigned_by` })',
+        },
+        { role: 'scope', unit: `${S}/position-map.ts#positionRiskCards`, anchor: 'if (!permitted.has(id)) return []' },
+      ],
+    },
+  ],
   [`GET ${BASE}/maps/:kind/preferences`]: [
     {
       perm: 'obj:Succession.Map:view',
@@ -580,6 +637,20 @@ function healthRequired(mode: 'read' | 'assign' | 'reset' | 'compute'): Obligati
       at: [
         { role: 'call', unit, anchor },
         ...CONTEXT,
+        ...(mode === 'read'
+          ? [
+              {
+                role: 'call' as const,
+                unit: `${S}/health-results.ts#healthAccess`,
+                anchor: 'await requirePermission(bound.authorize',
+              },
+              {
+                role: 'impl' as const,
+                unit: `${S}/health-results.ts#healthAccess`,
+                anchor: "action: 'object.view'",
+              },
+            ]
+          : []),
         constant,
         ...(mode === 'read'
           ? [

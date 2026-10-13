@@ -427,7 +427,7 @@ describe('AC-PRM-FW-08 P3 非法标识：观测码与根节点 invalidId 相等'
     }
   });
 
-  it('54 个端点把 invalidId 改成另一个状态码、或删掉声明 → MISMATCH:invalidId', () => {
+  it('56 个端点把 invalidId 改成另一个状态码、或删掉声明 → MISMATCH:invalidId', () => {
     for (const k of sameStatusOnly()) {
       const r = route(k);
       const declared = r.policy.invalidId!;
