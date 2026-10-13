@@ -195,14 +195,22 @@ interface RefsInput {
 
 /**
  * 本次保存新增的环节评价表引用（DEC-455③）：按提交顺序，只有“同一稳定环节仍引用原表”才算保留（豁免重校）。新环节、
- * 改绑到别的表的已有环节都算新增，哪怕同一张表在活动里别的环节上仍被引用；环节的对应关系见 `matchChains`（带 ID 按 ID，
- * 没带的按同类型顺序）。新建没有对应关系，全部算新增。
+ * 改绑到别的表的已有环节都算新增，哪怕同一张表在活动里别的环节上仍被引用。
+ * 带 ID 的环节按 ID 对应；不带 ID 的环节只有同时满足两条才继承原环节的引用豁免，否则按新环节校验（第 4 条“删除后新增”）：
+ * ① 本次请求所有环节都不带 ID（纯无 ID 原样重提）——只要有任何环节带了 ID，不带 ID 的一律是新环节，不能顶替被删环节的豁免；
+ * ② 它被 `matchChains` 按同类型顺序对应到的原环节，名称也相同（类型必同，表相同才算没改）。
+ * `matchChains` 的对应契约不变（就地更新保留稳定 ID），这里只收窄豁免。新建没有对应关系，全部算新增。
  */
 function addedChainFormIds(
   submitted: readonly Submitted[],
   pairs: readonly (readonly [ChainRecord, Submitted])[] = [],
 ): string[] {
-  const previous = new Map(pairs.map(([existing, chain]) => [chain, existing.formId]));
+  const allUnnumbered = submitted.every((chain) => chain.id === undefined);
+  const inherits = (existing: ChainRecord, chain: Submitted) =>
+    chain.id !== undefined || (allUnnumbered && existing.name === chain.name);
+  const previous = new Map(
+    pairs.filter(([existing, chain]) => inherits(existing, chain)).map(([existing, chain]) => [chain, existing.formId]),
+  );
   return submitted.flatMap((chain) => (chain.formId && chain.formId !== previous.get(chain) ? [chain.formId] : []));
 }
 
