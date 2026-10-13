@@ -182,6 +182,14 @@
     "scopeQueries": [],
     "trace": []
   },
+  "GET /api/tenant/permission/me/snapshot": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": []
+  },
   "GET /api/tenant/permission/mous": {
     "all": {
       "status": 200
