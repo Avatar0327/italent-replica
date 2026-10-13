@@ -151,4 +151,18 @@ describe('AC-FE-F123 表单提交内核', () => {
     expect(store.get('a')).toMatchObject({ status: 'conflict', values: input().values });
     expect(store.get('a')?.readError).toBeInstanceOf(Error);
   });
+  it('连续重读不能把上次自动回填当成人工编辑；服务端改回原值也要回填', async () => {
+    const store = createFormStore();
+    await store.submit('a', {
+      ...input(),
+      values: { name: '我的名称', welcome: '原欢迎语' },
+      send: async () => {
+        throw rejected(409, 'REVISION_CONFLICT');
+      },
+    });
+    for (const welcome of ['第一次新欢迎语', '第二次新欢迎语', '原欢迎语']) {
+      await store.reread('a', async () => ({ id: 'original', revision: 4, values: { name: '他人名称', welcome } }));
+      expect(store.get('a')?.values).toEqual({ name: '我的名称', welcome });
+    }
+  });
 });

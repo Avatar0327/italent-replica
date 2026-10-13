@@ -17,6 +17,7 @@ export interface Submission {
   values: Values;
   baseline: Values;
   editableFields: readonly string[];
+  editedFields: readonly string[];
   revision: number;
   businessId?: string;
   command?: Command<Values>;
@@ -86,6 +87,7 @@ export function createFormStore() {
         values: structuredClone(input.values),
         baseline: structuredClone(baseline),
         editableFields: [...input.editableFields],
+        editedFields: input.editableFields.filter((field) => !equal(input.values[field], baseline[field])),
         revision,
         businessId: input.businessId,
         latest: prior?.latest,
@@ -121,12 +123,13 @@ export function createFormStore() {
             field,
             before: state.baseline[field],
             latest: latest.values[field],
-            mine: state.values[field],
+            mine: state.editedFields.includes(field) ? state.values[field] : state.baseline[field],
           }));
         const values = { ...state.values };
         if (state.status === 'conflict')
-          for (const diff of differences) {
-            if (equal(diff.mine, diff.before)) values[diff.field] = diff.latest;
+          for (const field of state.editableFields) {
+            // 重读产生的回填不是人工编辑；再次重读及服务端改回原值时也须跟随最新版本。
+            if (!state.editedFields.includes(field)) values[field] = latest.values[field];
           }
         put(key, { ...state, values, latest, differences, reading: false, readError: undefined });
       } catch (readError) {
