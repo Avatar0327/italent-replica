@@ -15,6 +15,7 @@ export interface MapCard {
   successorCount?: number;
   keyPositions?: MapCard[];
   health?: Record<string, unknown>;
+  risk?: Record<string, unknown>;
   stats?: { onDutyCount: number | null; greenRate: number | null; capacity: string; statDate: string };
 }
 export interface OrgMap {
@@ -36,12 +37,18 @@ export async function mapView(w: SuccessionWorld, input: Record<string, unknown>
 const permissionWorlds = new WeakMap<SuccessionWorld, ReturnType<typeof permissionWorldOf>>();
 export async function mapOperator(
   w: SuccessionWorld,
-  options: OperatorOptions & { mapHidden?: string[]; health?: boolean; healthHidden?: string[] } = {},
+  options: OperatorOptions & {
+    mapHidden?: string[];
+    health?: boolean;
+    healthHidden?: string[];
+    risk?: boolean;
+    riskHidden?: string[];
+  } = {},
 ) {
   if (!permissionWorlds.has(w)) permissionWorlds.set(w, permissionWorldOf(w));
   const world = await permissionWorlds.get(w)!;
   const viewer = await recordOperator(world, options);
-  async function permit(kind: 'map' | 'healthResult', hidden: readonly string[] = []) {
+  async function permit(kind: 'map' | 'healthResult' | 'riskResult', hidden: readonly string[] = []) {
     const object = SUCCESSION_OBJECTS[kind];
     const response = await setObjectPermission(
       world,
@@ -65,6 +72,7 @@ export async function mapOperator(
   }
   await permit('map', options.mapHidden);
   if (options.health) await permit('healthResult', options.healthHidden);
+  if (options.risk) await permit('riskResult', options.riskHidden);
   const read = async (input: Record<string, unknown>) => {
     const response = await viewer.request('GET', `/maps/org${queryOf(input)}`);
     expect(response.status, await response.clone().text()).toBe(200);
