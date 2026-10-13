@@ -196,7 +196,7 @@ test('AC-FE-R1d-2 经理草稿读取失败禁止续办，恢复读取后才能�
   );
   const drawer = await setup(page, true);
   await drawer.getByRole('button', { name: '暂存', exact: true }).click();
-  await expect(drawer).toContainText('无权读取草稿');
+  await expect(drawer).toContainText('暂无访问权限');
   await expect(drawer.getByRole('button', { name: '提交暂存申请', exact: true })).toHaveCount(0);
   unavailable = false;
   await drawer.getByRole('button', { name: '重新读取已暂存申请', exact: true }).click();

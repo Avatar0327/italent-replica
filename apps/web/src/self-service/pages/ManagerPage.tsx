@@ -10,7 +10,7 @@ import {
   useSession,
   type PageResult,
 } from '../../foundation/index.js';
-import { TransferApplication } from '../shared/TransferApplication.js';
+import { ApplicationDrawer } from './ApplicationDrawer.js';
 import { PersonAvatar } from '../../shared/PersonAvatar.js';
 import type { AvatarReference } from '../../account/avatar-api.js';
 import { selfServiceDemo } from '../../demo-stubs/self-service.js';
@@ -25,7 +25,7 @@ import {
   type TeamRow,
   type TodoRow,
 } from './model.js';
-import { FormDrawer, Notes, ReadState, Refresh, ServiceHeading, ServiceNav } from './parts.js';
+import { Notes, ReadState, Refresh, ServiceHeading, ServiceNav } from './parts.js';
 import { useRead } from './useRead.js';
 import { messages as m } from './messages.js';
 
@@ -331,7 +331,10 @@ function TodosPage({ compact = false }: { compact?: boolean }) {
       ),
     },
     { title: m.node, dataIndex: 'nodeName', render: (value?: string) => value ?? m.none },
-    { title: m.approval, dataIndex: 'status', render: statusText },
+    {
+      title: tab === 'pending' ? m.processingStatus : m.approval,
+      render: (_: unknown, row) => (tab === 'pending' ? m.manager.pending : statusText(row.status)),
+    },
     { title: m.submittedAt, dataIndex: 'createdAt', render: (value?: string) => instant(value, session.timezone) },
   ];
   return (
@@ -370,11 +373,11 @@ function TodosPage({ compact = false }: { compact?: boolean }) {
           />
         }
       />
-      <TodoDetail selected={selected} onClose={() => setSelected(null)} />
+      <TodoDetail selected={selected} pending={tab === 'pending'} onClose={() => setSelected(null)} />
     </section>
   );
 }
-function TodoDetail({ selected, onClose }: { selected: TodoRow | null; onClose(): void }) {
+function TodoDetail({ selected, pending, onClose }: { selected: TodoRow | null; pending: boolean; onClose(): void }) {
   const session = useSession();
   return (
     <DetailPage
@@ -396,7 +399,11 @@ function TodoDetail({ selected, onClose }: { selected: TodoRow | null; onClose()
               items={[
                 { key: 'title', label: m.titleLabel, children: selected.title },
                 { key: 'node', label: m.node, children: selected.nodeName ?? m.none },
-                { key: 'status', label: m.approval, children: statusText(selected.status) },
+                {
+                  key: 'status',
+                  label: pending ? m.processingStatus : m.approval,
+                  children: pending ? m.manager.pending : statusText(selected.status),
+                },
                 { key: 'time', label: m.submittedAt, children: instant(selected.createdAt, session.timezone) },
               ]}
             />
@@ -423,9 +430,7 @@ function ManagerApplications({ allowed }: { allowed: boolean }) {
         <p>{m.applyHint}</p>
         {!allowed && <PageState kind="forbidden" />}
       </div>
-      <FormDrawer open={open && allowed} onClose={() => setOpen(false)} title={m.manager.apply}>
-        <TransferApplication tenantId={tenantId} initiator="manager" />
-      </FormDrawer>
+      <ApplicationDrawer open={open && allowed} onClose={() => setOpen(false)} tenantId={tenantId} />
     </>
   );
 }

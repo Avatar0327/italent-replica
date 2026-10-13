@@ -9,9 +9,10 @@ export const selfServiceNotes: Record<string, DecisionAnnotation> = {
   },
   'self.applications': {
     original: '人事申请展示任职变动列表，顶部发起本人或他人调动；我的申请为只读七列表格。',
-    decision: '按钮读取现有权限，复用调动表单与提交逻辑。缺失的自助离职/兼职入口仅提示未接入，不伪造成功。',
-    decisions: ['DEC-456', 'DEC-205', 'DEC-402'],
-    level: 'L3',
+    decision:
+      '按钮读取现有权限。未确认命令在页面级只读锁定；经理暂存从原单完整读取续办，缺失字段标未读取。刷新由用户确认后主动执行。',
+    decisions: ['DEC-456', 'DEC-205', 'DEC-402', 'DEC-464'],
+    level: 'L2',
   },
   'manager.team': {
     original: '管理者工作台展示团队分类计数、下属档案搜索；分类打开只读成员抽屉。',

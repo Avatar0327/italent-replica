@@ -11,11 +11,11 @@ import {
   type PageResult,
 } from '../../foundation/index.js';
 import { PersonAvatar } from '../../shared/PersonAvatar.js';
-import { EmployeeTransfer } from '../../employee-self-service/EmployeeTransfer.js';
+import { ApplicationDrawer } from './ApplicationDrawer.js';
 import type { Profile, OwnRecord, Application } from '../../employee-self-service/types.js';
 import { selfServiceDemo } from '../../demo-stubs/self-service.js';
 import { canApplySelf, instant, recordItems, SELF, statusText, valueText } from './model.js';
-import { DemoSection, FormDrawer, Notes, ReadState, RecordInfo, Refresh, ServiceHeading, ServiceNav } from './parts.js';
+import { DemoSection, Notes, ReadState, RecordInfo, Refresh, ServiceHeading, ServiceNav } from './parts.js';
 import { useRead } from './useRead.js';
 import { messages as m } from './messages.js';
 
@@ -175,17 +175,17 @@ function ApplicationsPage({ profile, requests }: { profile: Profile; requests: b
           }
         />
       )}
-      <FormDrawer open={form && canApplySelf(permission.can)} onClose={() => setForm(false)} title={m.transfer}>
-        <EmployeeTransfer
-          tenantId={tenantId}
-          profile={profile}
-          onSaved={() => {
-            setForm(false);
-            setNotice(true);
-            rows.refresh();
-          }}
-        />
-      </FormDrawer>
+      <ApplicationDrawer
+        open={form && canApplySelf(permission.can)}
+        onClose={() => setForm(false)}
+        tenantId={tenantId}
+        profile={profile}
+        onSaved={() => {
+          setForm(false);
+          setNotice(true);
+          rows.refresh();
+        }}
+      />
       {selected && <ApplicationDetail item={selected} onClose={() => setSelected(null)} />}
     </>
   );

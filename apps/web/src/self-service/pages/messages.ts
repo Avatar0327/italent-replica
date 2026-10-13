@@ -3,6 +3,17 @@ import { managerText as manager } from '../../transfer/manager-messages.js';
 
 export const messages = {
   ...self,
+  processing: '处理中 / 结果待确认',
+  processingStatus: '处理状态',
+  businessId: '申请业务编号',
+  revision: '版本',
+  submissionSummary: '提交内容摘要',
+  unread: '未读取',
+  queryResult: '回查结果',
+  unknownHint: '请在“我的申请”核对。当前入口无法按操作编号精确查询，请勿重复提交。',
+  refreshAfterConfirm: '如确认未提交成功，请刷新后重新发起',
+  readDoesNotConfirm: '这里只读取原单当前状态；仍为草稿不代表原提交已失败，不能据此重新提交。',
+
   manager,
   personnel: '人员信息',
   employment: '任职记录',

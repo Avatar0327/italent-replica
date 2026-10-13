@@ -1,3 +1,4 @@
+import { applicationCommand, type ApplicationCommandRunner } from './application-command.js';
 import type { TransferFormAdapter } from './transfer-adapter.js';
 import { useEffect, useRef, useState } from 'react';
 import { missingTransferRequiredFields } from '@italent/domain';
@@ -46,6 +47,7 @@ export function useTransferForm(
   tenantId: string,
   initiator: 'hr' | 'employee' | 'manager' = 'hr',
   adapter?: TransferFormAdapter,
+  runCommand?: ApplicationCommandRunner,
 ) {
   const [model, setModel] = useState<TransferFormModel>({
     ...(adapter?.initialModel ?? initial),
@@ -58,7 +60,16 @@ export function useTransferForm(
   const [reload, setReload] = useState(0);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
-  const commands = useTransferCommand(tenantId, model, loadingPreview, setModel, setError, setNotice, adapter);
+  const commands = useTransferCommand(
+    tenantId,
+    model,
+    loadingPreview,
+    setModel,
+    setError,
+    setNotice,
+    adapter,
+    runCommand,
+  );
   useCatalog(tenantId, model.effectiveDate, setModel, setError, initiator, !adapter);
   useEmployees(tenantId, model.catalog.today, search, page, setModel, setError, initiator, !adapter);
   usePreview(tenantId, model, commands.saved, reload, setModel, setLoadingPreview, setError, setNotice, adapter);
@@ -130,6 +141,7 @@ function useTransferCommand(
   setError: SetText,
   setNotice: SetText,
   adapter?: TransferFormAdapter,
+  runCommand?: ApplicationCommandRunner,
 ) {
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState<TransferBusiness | null>(null);
@@ -153,9 +165,13 @@ function useTransferCommand(
     setError('');
     const commandId = crypto.randomUUID();
     try {
-      const result = saved
-        ? await submitSavedTransfer(tenantId, saved, commandId)
-        : await (adapter?.save ?? saveTransfer)(tenantId, model, action, commandId);
+      const execute = () =>
+        saved
+          ? submitSavedTransfer(tenantId, saved, commandId)
+          : (adapter?.save ?? saveTransfer)(tenantId, model, action, commandId);
+      const result = runCommand
+        ? await runCommand(applicationCommand(model, action, commandId, saved), execute)
+        : await execute();
       if (!result.id || !Number.isInteger(result.revision) || !result.status) throw new Error(text.unknown);
       setSaved(result);
       setNotice(savedNotice(result, action));
