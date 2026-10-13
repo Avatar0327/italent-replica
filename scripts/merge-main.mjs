@@ -316,7 +316,7 @@ function migrationPlan() {
 function printPlan(plan) {
   if (plan.stale.length)
     console.log(
-      `迁移：以下旧名迁移的 SQL 与 main 上已改号的迁移相同（上游已合并），清理、不改号（旧名 → main 名 sha256=规范化 SQL 摘要）：\n${formatStale(
+      `迁移：以下旧名迁移的 SQL 与 main 上已改号的迁移相同（上游已合并），清理、不改号（旧名 → main 名 sha256=SQL 原始内容摘要）：\n${formatStale(
         plan.stale,
       )
         .map((line) => `  ${line}`)
@@ -331,10 +331,11 @@ function printPlan(plan) {
 function rebasedSnapshots(plan) {
   const mainJournal = json(MAIN, JOURNAL_PATH);
   const mainLast = json(MAIN, snapshotPath(mainJournal.entries.at(-1).idx));
-  const fork = plan.forkIdx === undefined ? undefined : json('HEAD', snapshotPath(plan.forkIdx));
+  // 每条新增迁移的增量基准 = 它在本分支 journal 里的前一条（可能是已合并的旧名迁移）
+  const bases = plan.renames.map(({ baseIdx }) => baseIdx !== undefined && json('HEAD', snapshotPath(baseIdx)));
   const own = plan.renames.map(({ from }) => json('HEAD', snapshotPath(from.idx)));
-  if (!mainLast || !fork || own.some((s) => !s)) fail('迁移快照缺失，无法自动改号，请人工处理');
-  const { snapshots, conflicts } = rebaseSnapshots(fork, own, mainLast);
+  if (!mainLast || bases.some((s) => !s) || own.some((s) => !s)) fail('迁移快照缺失，无法自动改号，请人工处理');
+  const { snapshots, conflicts } = rebaseSnapshots(bases[0], own, mainLast, bases);
   if (conflicts.length) fail(`迁移快照与 main 改了同一处，须人工处理：\n  ${conflicts.join('\n  ')}`);
   return snapshots;
 }

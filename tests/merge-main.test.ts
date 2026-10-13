@@ -247,7 +247,7 @@ describe('叠放分支：上游已合并但改了号的迁移（planRenumber 按
 
   it('本分支已带着的 main 同名迁移不参与认领：旧名条目不能再认领它，照常当作新增', () => {
     const merged = journal(...base, entry(2, 'x', 300), entry(5, 'up_a', 700));
-    const kept = files({ '0002_x': 'CREATE TABLE up_a (id int);', '0005_up_a': 'CREATE TABLE up_a (id int);\n' });
+    const kept = files({ '0002_x': 'CREATE TABLE up_a (id int);\n', '0005_up_a': 'CREATE TABLE up_a (id int);\n' });
     const again = planRenumber(main, merged, { main: mainSql, branch: kept });
     expect(again.stale).toEqual([]);
     expect(again.renames.map((r) => r.from.tag)).toEqual(['0002_x']);
@@ -255,7 +255,10 @@ describe('叠放分支：上游已合并但改了号的迁移（planRenumber 按
 
   it('保护①多对一：多个旧名对应 main 上同一条：不清理，报错停下并列出涉及的名字', () => {
     const dup = journal(...base, entry(2, 'up_a', 300), entry(3, 'up_a_copy', 350));
-    const both = files({ '0002_up_a': 'CREATE TABLE up_a (id int);', '0003_up_a_copy': 'CREATE TABLE up_a (id int);' });
+    const both = files({
+      '0002_up_a': 'CREATE TABLE up_a (id int);\n',
+      '0003_up_a_copy': 'CREATE TABLE up_a (id int);\n',
+    });
     const run = () => planRenumber(main, dup, { main: mainSql, branch: both });
     expect(run).toThrow(/不是一一对应/);
     expect(run).toThrow(/0002_up_a/);
