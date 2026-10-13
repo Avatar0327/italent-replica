@@ -115,6 +115,59 @@ describe('AC-EV-activity-keep-form 环节评价表保留旧引用只豁免同一
     });
   });
 
+  describe('不带 ID 的环节：只有“纯无 ID 原样重提”才继承原引用豁免（DEC-455③ 第 4 条，#305 第 1 轮 P2）', () => {
+    /** 删除第一个答辩环节（A），其余环节保留 ID，再加入不带 ID 的新答辩环节引用 `formId`。 */
+    const deleteThenAdd = (activity: ActivityView, deletedId: string, formId: string) => {
+      const kept = withIds(activity).filter((chain) => chain.id !== deletedId);
+      return addDefense(kept, formId);
+    };
+    const stripIds = (chains: ChainBody[]) => chains.map(({ id: _id, ...rest }) => rest);
+
+    it('删除原环节 A、其他环节带 ID、新增无 ID 环节引用不可见的原表 → 403，不写入', async () => {
+      const { activity, first } = await seeded(f.form1);
+      const op = await operator({ noFormObject: true });
+      const chains = deleteThenAdd(activity, first.id, f.form1.id);
+      await expectError(await patch(op, activity, { chains }), 403);
+      await expectUntouched(activity);
+    });
+
+    it('删除原环节 A、其他环节带 ID、新增无 ID 环节引用已停用的原表 → 400 REFERENCE_DISABLED，不写入', async () => {
+      const spare = await w.form(w.orgA, `将停用评价表${suffix()}`);
+      const { activity, first } = await seeded(spare);
+      await w.forceDisable('ev_forms', spare.id);
+      const op = await operator();
+      const chains = deleteThenAdd(activity, first.id, spare.id);
+      await expectError(await patch(op, activity, { chains }), 400, 'REFERENCE_DISABLED');
+      await expectUntouched(activity);
+    });
+
+    it('纯无 ID 模式下改了名称的环节引用不可见的表 → 403；引用停用的表 → 400', async () => {
+      const hidden = await seeded(f.form1);
+      const rename = (activity: ActivityView, id: string) =>
+        stripIds(withIds(activity, (c) => (c.id === id ? { ...c, name: '改名答辩' } : c)));
+      const blind = await operator({ noFormObject: true });
+      await expectError(await patch(blind, hidden.activity, { chains: rename(hidden.activity, hidden.first.id) }), 403);
+      await expectUntouched(hidden.activity);
+      const spare = await w.form(w.orgA, `将停用评价表${suffix()}`);
+      const disabled = await seeded(spare);
+      await w.forceDisable('ev_forms', spare.id);
+      const op = await operator();
+      const response = await patch(op, disabled.activity, { chains: rename(disabled.activity, disabled.first.id) });
+      await expectError(response, 400, 'REFERENCE_DISABLED');
+      await expectUntouched(disabled.activity);
+    });
+
+    it('纯无 ID 模式下改的是不带评价表的环节名称 → 放行（引用的表未变，不重校）', async () => {
+      const spare = await w.form(w.orgA, `将停用评价表${suffix()}`);
+      const { activity, first } = await seeded(spare);
+      await w.forceDisable('ev_forms', spare.id);
+      const op = await operator();
+      const chains = stripIds(withIds(activity, (c) => (c.type === 'material' ? { ...c, name: '改名举证' } : c)));
+      const kept = await ok<ActivityView>(await patch(op, activity, { chains }));
+      expect(kept.chains.find((chain) => chain.id === first.id)?.formId).toBe(spare.id);
+    });
+  });
+
   describe('放行：同一稳定环节保留原引用', () => {
     it('表后来停用：只改名称 / 只调顺序（按环节 ID 对应）仍放行，各环节评价表不变', async () => {
       const spare = await w.form(w.orgA, `将停用评价表${suffix()}`);
