@@ -6,6 +6,7 @@
 import { APPROVAL } from './approval.js';
 import { AUDIT } from './audit.js';
 import { AVATAR } from './avatar.js';
+import { COMMAND_RESULT } from './command-result.js';
 import { CONTRACTS } from './contracts.js';
 import { EMPLOYMENT } from './employment.js';
 import { ESTABLISHMENT } from './establishment.js';
@@ -30,6 +31,7 @@ const PARTS: readonly RequiredTable[] = [
   TENANT_SETTINGS,
   AUDIT,
   AVATAR,
+  COMMAND_RESULT,
   SELF_SERVICE,
   ORG,
   JOB,

@@ -93,6 +93,12 @@ export const DIGESTS: Digests = {
     uploadAvatar: '787fc7d65f94',
     whereOwner: 'f9f20cb64429',
   },
+  'apps/api/src/modules/command-result/routes.ts': {
+    'route:GET /api/tenant/commands/:commandId/result': '4747db7abe44',
+  },
+  'apps/api/src/modules/command-result/service.ts': {
+    readOwnCommandResult: 'b72c8a100e43',
+  },
   'apps/api/src/modules/contracts/context.ts': {
     checkFields: 'a4706994f2b8',
     checkScope: '1bbda763cf46',
@@ -1340,6 +1346,8 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/avatar/service.ts#registeredAvatar': 'ecc6d797fed7',
   'apps/api/src/modules/avatar/service.ts#uploadAvatar': '7b148f1cfed9',
   'apps/api/src/modules/avatar/service.ts#whereOwner': '6ae738c83349',
+  'apps/api/src/modules/command-result/routes.ts#route:GET /api/tenant/commands/:commandId/result': '45e18aa050cf',
+  'apps/api/src/modules/command-result/service.ts#readOwnCommandResult': 'ce416aac33ff',
   'apps/api/src/modules/contracts/context.ts#checkFields': '670343aebdbc',
   'apps/api/src/modules/contracts/context.ts#checkScope': '38843b4c716f',
   'apps/api/src/modules/contracts/imports.ts#checkImportScope': '0564049c27e2',

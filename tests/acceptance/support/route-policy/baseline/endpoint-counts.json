@@ -3,6 +3,7 @@
     "approval": 34,
     "audit": 4,
     "avatar": 5,
+    "command-result": 1,
     "contracts": 23,
     "employment": 46,
     "establishment": 16,
@@ -27,5 +28,5 @@
     "talent-review-platform": 1,
     "tenant-settings": 3
   },
-  "total": 638
+  "total": 639
 }

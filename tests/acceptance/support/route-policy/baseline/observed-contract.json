@@ -3044,6 +3044,24 @@
       "module": "avatar",
       "primitives": {}
     },
+    "GET /api/tenant/commands/:commandId/result": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "NOT_FOUND",
+          "status": 404
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "command-result",
+      "primitives": {}
+    },
     "GET /api/tenant/contracts": {
       "edge": {
         "anonymous": {
