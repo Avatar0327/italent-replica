@@ -65,6 +65,11 @@ async function inventory() {
   const db = database().db;
   const [tenant] = await withPlatform(db, (tx) => tx.select().from(tenants).where(eq(tenants.code, 'demo-r1')));
   const tenantId = tenant!.id;
+  // 单连接的 PGlite 不能在租户事务里再开平台事务：平台侧的计数放在外面取
+  const global = {
+    tenants: (await withPlatform(db, (tx) => tx.select().from(tenants))).length,
+    users: (await withPlatform(db, (tx) => tx.select().from(users))).length,
+  };
   return withTenant(db, tenantId, async (tx) => {
     const employees = await tx.select().from(employmentEmployees);
     const orgs = await tx.select().from(orgObjects);
@@ -73,8 +78,7 @@ async function inventory() {
         FROM employment_payload_versions GROUP BY employee_id, kind`),
     );
     return {
-      tenants: (await withPlatform(db, (p) => p.select().from(tenants))).length,
-      users: (await withPlatform(db, (p) => p.select().from(users))).length,
+      ...global,
       processes: (await tx.select().from(approvalProcesses)).length,
       employeeCodes: employees.map((e) => e.code).sort(),
       employeeIds: employees.map((e) => e.id).sort(),
@@ -302,7 +306,7 @@ describe('F-025 演示种子', () => {
     const pending = await json<{ items: { id: string }[] }>(
       await api.request('GET', '/api/tenant/employment/transfers/manager/todos?tab=pending', manager),
     );
-    expect(pending.items.map((item) => item.id)).toContain(submitted.id);
+    expect(pending.items.map((item) => item.id)).toContain(instanceId);
 
     // 审批中心：直接上级（部门负责人）→ 调入部门 HRBP，各自只在自己的待办里看到本单
     for (const approver of [manager, hr]) {
