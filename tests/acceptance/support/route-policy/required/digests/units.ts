@@ -702,13 +702,21 @@ export const DIGESTS: Digests = {
     registerLevelReads: 'ba1d174232f9',
   },
   'apps/api/src/modules/succession/map-display.ts': {
-    readMapDisplayScope: 'c882955e941b',
+    positionScope: 'e63798bf6a16',
+    readMapDisplayScope: 'd1f1c1818b67',
     resolveMapDisplayConditions: 'ae79200fc8cb',
   },
   'apps/api/src/modules/succession/map-routes.ts': {
     computeAccess: '2575abea1e09',
     mapAccess: '2ffd32f2bdd9',
     registerMapRoutes: 'f02e9bfed922',
+  },
+  'apps/api/src/modules/succession/position-map-routes.ts': {
+    registerPositionMapRoutes: '0941cd405d87',
+  },
+  'apps/api/src/modules/succession/position-map.ts': {
+    positionRiskCards: '604c56fed2e4',
+    readPositionMap: 'fa81acc4ea7b',
   },
   'apps/api/src/modules/succession/projection.ts': {
     GOVERNING_FIELD: 'fe154b4c6a8f',
@@ -728,9 +736,12 @@ export const DIGESTS: Digests = {
     registerRiskResultRoutes: '98a51523719c',
     registerRiskRoutes: 'e7876b9f17bd',
   },
+  'apps/api/src/modules/succession/risk-store.ts': {
+    readRiskRows: '1ad9e1f8e88e',
+  },
   'apps/api/src/modules/succession/routes.ts': {
     recordFilter: '858f731477d8',
-    registerSuccessionRoutes: '92b2322ecdc9',
+    registerSuccessionRoutes: '87a9c368d97c',
   },
   'apps/api/src/modules/succession/write-support.ts': {
     checkCandidateAccess: '7843395303d7',
@@ -1774,11 +1785,15 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/succession/input.ts#rejectImmutable': '99ce3a8d9998',
   'apps/api/src/modules/succession/levels-routes.ts#levelOptionAccess': '07e9bf4002f1',
   'apps/api/src/modules/succession/levels-routes.ts#registerLevelReads': '1c4dc4f4f005',
+  'apps/api/src/modules/succession/map-display.ts#positionScope': '75b6f28f8e1d',
   'apps/api/src/modules/succession/map-display.ts#readMapDisplayScope': 'affc54d2a8f0',
   'apps/api/src/modules/succession/map-display.ts#resolveMapDisplayConditions': '1f93fb5a8650',
   'apps/api/src/modules/succession/map-routes.ts#computeAccess': 'ac0053f8a39a',
   'apps/api/src/modules/succession/map-routes.ts#mapAccess': '087aafaa7722',
   'apps/api/src/modules/succession/map-routes.ts#registerMapRoutes': 'aa525288fc75',
+  'apps/api/src/modules/succession/position-map-routes.ts#registerPositionMapRoutes': 'e6d3a7c0941d',
+  'apps/api/src/modules/succession/position-map.ts#positionRiskCards': 'd6fe2548b52f',
+  'apps/api/src/modules/succession/position-map.ts#readPositionMap': '1d00b7ee8dc7',
   'apps/api/src/modules/succession/projection.ts#GOVERNING_FIELD': 'e3b0c44298fc',
   'apps/api/src/modules/succession/projection.ts#projectSuccession': '100b13723c09',
   'apps/api/src/modules/succession/read-sql.ts#selfRecordHiddenSql': 'eab3bde19b0f',
@@ -1787,8 +1802,9 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/succession/risk-routes.ts#computeAccess': '208b27aa5d33',
   'apps/api/src/modules/succession/risk-routes.ts#registerRiskResultRoutes': '3cff362f655e',
   'apps/api/src/modules/succession/risk-routes.ts#registerRiskRoutes': 'aba1ffa0bcee',
+  'apps/api/src/modules/succession/risk-store.ts#readRiskRows': '0cb131fa9e0a',
   'apps/api/src/modules/succession/routes.ts#recordFilter': '8c3cfb5b80b7',
-  'apps/api/src/modules/succession/routes.ts#registerSuccessionRoutes': '15836e71bdb2',
+  'apps/api/src/modules/succession/routes.ts#registerSuccessionRoutes': '0de1cde63bdd',
   'apps/api/src/modules/succession/write-support.ts#checkCandidateAccess': 'ea8155f2a727',
   'apps/api/src/modules/succession/write-support.ts#checkWriteAccess': 'eac8ef9cc70b',
   'apps/api/src/modules/survey360/access.ts#activityVisibleSql': '11f326016f03',
