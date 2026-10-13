@@ -580,7 +580,7 @@ function syncRequired(action?: 'sync' | 'retry' | 'abort'): Obligation[] {
                 },
                 {
                   role: 'impl',
-                  unit: `${S}/sync-routes.ts#checkTargets`,
+                  unit: `${S}/sync-access.ts#authorizeRequesterTargets`,
                   anchor: "reason: 'BATCH_SCOPE_EXCEEDS_REQUESTER'",
                 },
               ],
