@@ -9,6 +9,7 @@ import {
   classifyConflict,
   type Journal,
   type JournalEntry,
+  formatStale,
   isGeneratedPath,
   maskNumbers,
   merge3,
@@ -184,18 +185,84 @@ describe('叠放分支：上游已合并但改了号的迁移（planRenumber 按
     ]);
   });
 
-  it('main 上的每条迁移只能认领一条旧名迁移；本分支已带着的 main 同名迁移不参与认领', () => {
-    const dup = journal(...base, entry(2, 'up_a', 300), entry(3, 'up_a_copy', 350));
-    const both = files({ '0002_up_a': 'CREATE TABLE up_a (id int);', '0003_up_a_copy': 'CREATE TABLE up_a (id int);' });
-    const plan = planRenumber(main, dup, { main: mainSql, branch: both });
-    expect(plan.stale.map((s) => s.from.tag)).toEqual(['0002_up_a']);
-    expect(plan.renames.map((r) => r.from.tag)).toEqual(['0003_up_a_copy']);
-    // 本分支已含 main 的 0005_up_a（同名）：旧名条目不能再认领它
+  it('本分支已带着的 main 同名迁移不参与认领：旧名条目不能再认领它，照常当作新增', () => {
     const merged = journal(...base, entry(2, 'x', 300), entry(5, 'up_a', 700));
     const kept = files({ '0002_x': 'CREATE TABLE up_a (id int);', '0005_up_a': 'CREATE TABLE up_a (id int);\n' });
     const again = planRenumber(main, merged, { main: mainSql, branch: kept });
     expect(again.stale).toEqual([]);
     expect(again.renames.map((r) => r.from.tag)).toEqual(['0002_x']);
+  });
+
+  it('保护①多对一：多个旧名对应 main 上同一条：不清理，报错停下并列出涉及的名字', () => {
+    const dup = journal(...base, entry(2, 'up_a', 300), entry(3, 'up_a_copy', 350));
+    const both = files({ '0002_up_a': 'CREATE TABLE up_a (id int);', '0003_up_a_copy': 'CREATE TABLE up_a (id int);' });
+    const run = () => planRenumber(main, dup, { main: mainSql, branch: both });
+    expect(run).toThrow(/不是一一对应/);
+    expect(run).toThrow(/0002_up_a/);
+    expect(run).toThrow(/0003_up_a_copy/);
+    expect(run).toThrow(/0005_up_a/);
+  });
+
+  it('保护①一对多：一个旧名对应 main 上多条相同内容的迁移：不清理，报错停下并列出涉及的名字', () => {
+    const twin = journal(...main.entries, entry(7, 'up_a_twin', 900));
+    const twinSql = (tag: string) => (tag === '0007_up_a_twin' ? 'CREATE TABLE up_a (id int);\r\n' : mainSql(tag));
+    const run = () => planRenumber(twin, branch, { main: twinSql, branch: branchSql });
+    expect(run).toThrow(/不是一一对应/);
+    expect(run).toThrow(/0002_up_a/);
+    expect(run).toThrow(/0005_up_a/);
+    expect(run).toThrow(/0007_up_a_twin/);
+  });
+
+  it('保护①：对应关系唯一时不受影响（内容不同的旧名与重复内容的 main 迁移互不牵连）', () => {
+    const plan = planRenumber(main, branch, { main: mainSql, branch: branchSql });
+    expect(plan.stale).toHaveLength(2);
+  });
+
+  it('保护②：空迁移或只有注释 / 空白 / 分隔符的 SQL 不参与去重，照常按新增处理', () => {
+    const empties = [
+      '',
+      '  \r\n\n',
+      '-- 占位\n',
+      '/* 说明\n多行 */\n',
+      '--> statement-breakpoint\n;\n',
+      '-- a\n/* b */ ;',
+    ];
+    for (const text of empties) {
+      const emptyMain = (tag: string) => (tag === '0005_up_a' ? text : mainSql(tag));
+      const only = journal(...base, entry(2, 'blank', 300));
+      const plan = planRenumber(main, only, { main: emptyMain, branch: () => text });
+      expect(plan.stale, JSON.stringify(text)).toEqual([]);
+      expect(
+        plan.renames.map((r) => r.from.tag),
+        JSON.stringify(text),
+      ).toEqual(['0002_blank']);
+    }
+    // 两边都是占位注释、且 main 上有多条这样的迁移：也不报一对多
+    const manyBlank = (tag: string) => (['0005_up_a', '0006_up_b'].includes(tag) ? '-- 占位\n' : mainSql(tag));
+    const plan = planRenumber(main, journal(...base, entry(2, 'blank', 300)), {
+      main: manyBlank,
+      branch: () => '-- 占位\n',
+    });
+    expect(plan.stale).toEqual([]);
+  });
+
+  it('保护②：注释之外有实际语句的 SQL 仍可识别（注释内容不同则摘要不同）', () => {
+    expect(sqlDigest('-- 说明\nCREATE TABLE a (id int);')).toMatch(/^[0-9a-f]{64}$/);
+    expect(sqlDigest('/* x */ ALTER TABLE a ADD y int;--> statement-breakpoint\n')).toMatch(/^[0-9a-f]{64}$/);
+    expect(sqlDigest('-- 说明一\nSELECT 1;')).not.toBe(sqlDigest('-- 说明二\nSELECT 1;'));
+  });
+
+  it('保护③：清理的每一对记下 sha256（规范化后），格式化成“旧名 → main 名 sha256=摘要”', () => {
+    const plan = planRenumber(main, branch, { main: mainSql, branch: branchSql });
+    expect(plan.stale.map((s) => s.digest)).toEqual([
+      sqlDigest('CREATE TABLE up_a (id int);'),
+      sqlDigest('ALTER TABLE up_a ADD COLUMN x int;\n--> statement-breakpoint\nALTER TABLE up_a ADD COLUMN y int;'),
+    ]);
+    expect(formatStale(plan.stale)).toEqual([
+      `0002_up_a → 0005_up_a  sha256=${sqlDigest('CREATE TABLE up_a (id int);')}`,
+      `0003_up_b → 0006_up_b  sha256=${plan.stale[1]!.digest}`,
+    ]);
+    expect(formatStale([])).toEqual([]);
   });
 
   it('读不到 SQL 或没传读取函数：不做内容识别（行为同按名字比对）', () => {

@@ -29,6 +29,9 @@ export interface SqlReaders {
   /** 本分支上该迁移 SQL 的文本（读不到返回 undefined） */
   branch?: (tag: string) => string | undefined;
 }
+export declare function formatStale(
+  stale: readonly { from: JournalEntry; mainEntry: JournalEntry; digest: string }[],
+): string[];
 export declare function planRenumber(
   mainJournal: Journal,
   branchJournal: Journal,
@@ -37,7 +40,7 @@ export declare function planRenumber(
   journal: Journal;
   renames: { from: JournalEntry; to: JournalEntry }[];
   /** 上游已合并但改了号的迁移：本分支旧名条目（from）与 main 上内容相同的条目（mainEntry），要清理、不改号 */
-  stale: { from: JournalEntry; mainEntry: JournalEntry }[];
+  stale: { from: JournalEntry; mainEntry: JournalEntry; digest: string }[];
   changed: boolean;
   forkIdx: number | undefined;
 };
