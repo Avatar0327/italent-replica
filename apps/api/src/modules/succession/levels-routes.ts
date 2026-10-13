@@ -1,6 +1,6 @@
 /** #11 / #12：规则正文与赋值选项使用各自的权限对象，所有写入口复用 A2 的命令与授权结果出口。 */
 import { randomUUID } from 'node:crypto';
-import { sql, withTenant } from '@italent/db';
+import { sql, withTenant, type Tx } from '@italent/db';
 import type { SuccessionLevelKind, SuccessionLevelRules } from '@italent/domain';
 import type { Context, Hono } from 'hono';
 import type { TenantRouteDeps } from '../../routes.js';
@@ -8,12 +8,12 @@ import type { TenantEnv } from '../../tenant-context.js';
 import { AppError } from '../../errors.js';
 import { button } from '../permission/module-route-access.js';
 import { pageQuery, parseBody, requireNew, revision, uuidParam } from '../talent/http.js';
-import { codeOf, successionContext, SUCCESSION_BASE } from './access.js';
+import { codeOf, successionContext, SUCCESSION_BASE, type SuccessionContext } from './access.js';
 import { configAccess, missing, projectConfig } from './config-store.js';
 import { levelOrder, levelSchemas } from './levels-input.js';
 import { levelResults, levelSpec, levelViews, listLevels, type LevelView } from './levels-store.js';
 import { mutateLevel, reorderLevels } from './levels-write.js';
-import { requireSupportedHealthRules } from './health-rule-support.js';
+import { requireSupportedHealthChange, type HealthLevelChange } from './health-rule-support.js';
 import { rowsOf } from './read-sql.js';
 import { authorizeSuccessionResult, checkWriteAccess, runSuccessionCommand, type WriteSpec } from './write-support.js';
 
@@ -21,14 +21,27 @@ async function writeLevels(
   c: Context<TenantEnv>,
   deps: TenantRouteDeps,
   spec: WriteSpec<LevelView>,
-  rules?: SuccessionLevelRules | null,
+  change?: { readonly id?: string; readonly body: HealthLevelChange },
 ) {
   const object = spec.results.object as 'riskLevel' | 'healthLevel';
   const ctx = await checkWriteAccess(c, deps, { ...spec, object });
-  await withTenant(deps.db, ctx.tenantId, (tx) => configAccess(tx, deps, ctx, object));
-  // DEC-460：静态支持边界先于台账读取，旧成功命令的重放也必须拒绝。
-  if (object === 'healthLevel') requireSupportedHealthRules(rules);
-  const { status, result } = await runSuccessionCommand(c, deps, ctx, spec);
+  const validate = async (tx: Tx, current: SuccessionContext) => {
+    await configAccess(tx, deps, current, object);
+    if (object !== 'healthLevel' || !change) return;
+    // DEC-466：入口和台账前各读当前规则；持锁更新仍须使用锁内版本再验。
+    let inheritedRules: SuccessionLevelRules | null | undefined;
+    if (change.id && change.body.enabled === true && change.body.rules === undefined) {
+      const [before] = await levelViews(tx, current.tenantId, 'health', [change.id]);
+      if (!before) throw missing();
+      inheritedRules = before.rules;
+    }
+    requireSupportedHealthChange(change.body, inheritedRules);
+  };
+  await withTenant(deps.db, ctx.tenantId, (tx) => validate(tx, ctx));
+  const { status, result } = await runSuccessionCommand(c, deps, ctx, {
+    ...spec,
+    beforeCommand: object === 'healthLevel' && change ? validate : undefined,
+  });
   const { items, revisions } = await authorizeSuccessionResult(deps, ctx, result, spec.results);
   if (result.kind === 'receipt') return c.json({ id: result.ids[0], deleted: true }, status);
   if (result.kind === 'records') return c.json({ items }, status);
@@ -109,7 +122,7 @@ export function registerSuccessionLevelRoutes(router: Hono<TenantEnv>, deps: Ten
           results: levelResults(kind),
           execute: (tx, ctx) => mutateLevel(tx, deps, ctx, kind, 'create', randomUUID(), body),
         },
-        body.rules,
+        { body },
       );
     });
     // 静态 order 路由先于 :id 写入口，不能把重排请求当作 UUID。
@@ -142,7 +155,7 @@ export function registerSuccessionLevelRoutes(router: Hono<TenantEnv>, deps: Ten
           results: levelResults(kind),
           execute: (tx, ctx) => mutateLevel(tx, deps, ctx, kind, 'update', id, body),
         },
-        body.rules,
+        { id, body },
       );
     });
     router.delete(`${SUCCESSION_BASE}/${kind}-levels/:id`, async (c) => {

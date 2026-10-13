@@ -9,7 +9,7 @@ import { applyLevelChanges } from './levels-changes.js';
 import { lockLevelReviewFields } from './levels-references.js';
 import { invalidRule } from './population-input.js';
 import { collectionRevisionSql, levelSpec, levelViews } from './levels-store.js';
-import { requireSupportedHealthRules } from './health-rule-support.js';
+import { requireSupportedHealthChange } from './health-rule-support.js';
 import { rowsOf } from './read-sql.js';
 
 interface LevelBody {
@@ -81,7 +81,7 @@ export async function mutateLevel(
     requireRevision(before, ctx.expectedRevision);
   }
   // 先校验再判断内容有无变化；旧禁用规则的原样保存也不能绕过 DEC-460。
-  if (kind === 'health') requireSupportedHealthRules(body?.rules);
+  if (kind === 'health') requireSupportedHealthChange(body, before?.rules);
   await applyLevelChanges(tx, ctx, kind, operation, [
     {
       id,

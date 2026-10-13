@@ -16,3 +16,18 @@ export function requireSupportedHealthRules(rules: SuccessionLevelRules | null |
       rowNo: unsupported.rowNo,
     });
 }
+
+export interface HealthLevelChange {
+  readonly enabled?: boolean;
+  readonly rules?: SuccessionLevelRules | null;
+}
+
+/** DEC-466：启用继承旧规则；显式 null 清空，不能被当作省略而回退到旧规则。 */
+export function requireSupportedHealthChange(
+  change: HealthLevelChange | undefined,
+  inheritedRules?: SuccessionLevelRules | null,
+): void {
+  let rules = change?.rules;
+  if (rules === undefined && change?.enabled === true) rules = inheritedRules;
+  requireSupportedHealthRules(rules);
+}
