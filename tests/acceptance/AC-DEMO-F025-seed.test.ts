@@ -18,10 +18,13 @@ import {
   withPlatform,
   withTenant,
 } from '@italent/db';
-import { useTestDb } from '@italent/testkit';
+import { createTestDb, useTestDb } from '@italent/testkit';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { DEMO_ORGS, DEMO_PEOPLE, DEMO_POSITIONS, ROLE_LABELS } from '../../apps/api/src/demo/data.js';
-import { type DemoManifest, memoryProgress, seedDemo } from '../../apps/api/src/demo/seed.js';
+import { fileProgress, type DemoManifest, memoryProgress, seedDemo } from '../../apps/api/src/demo/seed.js';
 import { DEMO_TRANSFERS } from '../../apps/api/src/demo/transfers.js';
 import { tenantApi } from './support/tenant-api.js';
 
@@ -359,6 +362,29 @@ describe('F-025 演示种子', () => {
     expect((await seedDemo(database().db, { ...options, progress })).created).toBe(false);
     expect(await statusOf()).toBe('in_review');
     expect(await progress.completedTransfers(manifest.tenantId)).toEqual(new Set(DEMO_TRANSFERS.map((s) => s.id)));
+    // 重提后又被经理审批通过第一节点：再跑种子（无进度记录推断）也不撤回
+    const todos = await json<{ items: { taskId: string; instanceId: string }[] }>(
+      'dataManager',
+      '/api/tenant/approval/todos',
+    );
+    const resubmittedInstance = await json<{ items: { id: string }[] }>(
+      'hr',
+      `/api/tenant/approval/instances?role=initiated&businessId=${withdrawn!.id}`,
+    );
+    const live = resubmittedInstance.items.map((item) => item.id);
+    const todo = todos.items.find((item) => live.includes(item.instanceId))!;
+    const instance = await json<{ revision: number }>(
+      'dataManager',
+      `/api/tenant/approval/instances/${todo.instanceId}`,
+    );
+    const approved = await api.request('POST', `/api/tenant/approval/tasks/${todo.taskId}/approve`, {
+      ...as('dataManager'),
+      ifMatch: instance.revision,
+      body: {},
+    });
+    expect(approved.status, await approved.clone().text()).toBeLessThan(300);
+    expect((await seedDemo(database().db, options)).created).toBe(false);
+    expect(await statusOf()).toBe('in_review');
     // 全部场景都已完成：调动阶段整体跳过
     let steps = 0;
     await seedDemo(database().db, { ...options, progress, onStep: () => void (steps += 1) });
@@ -459,5 +485,117 @@ describe('F-025 演示种子', () => {
     );
     expect(audit.items.length).toBeGreaterThan(0);
     expect((await api.request('GET', '/api/tenant/audit/data-changes', employee)).status).toBe(403);
+  });
+});
+
+type TestDb = ReturnType<typeof database>['db'];
+
+/** 第二个独立库上的公开接口调用（演示身份按邮箱取账号）。 */
+async function independentActors(db: TestDb) {
+  const [tenant] = await withPlatform(db, (tx) => tx.select().from(tenants).where(eq(tenants.code, 'demo-r1')));
+  const request = tenantApi(db, { authorize: undefined, clock });
+  const who = async (key: string) => {
+    const email = DEMO_PEOPLE.find((p) => p.key === key)!.email;
+    const [row] = await withPlatform(db, (tx) => tx.select().from(users).where(eq(users.email, email)));
+    return { user: row!.id, tenant: tenant!.id };
+  };
+  const get = async <T>(key: string, path: string): Promise<T> => {
+    const response = await request.request('GET', path, await who(key));
+    expect(response.status, `${key} ${path} ${await response.clone().text()}`).toBe(200);
+    return (await response.json()) as T;
+  };
+  /** 种子场景发起的业务单 ID（命令台账里的确定性命令 ID）。 */
+  const businessOf = async (scenario: string) => {
+    const [row] = rowsOf<{ id: string }>(
+      await withTenant(db, tenant!.id, (tx) =>
+        tx.execute(
+          sql`SELECT response_body->>'id' AS id FROM command_ledger WHERE command_id LIKE ${`demo-seed:%:${scenario}`}`,
+        ),
+      ),
+    );
+    return row!.id;
+  };
+  /** 审批人（演示经理）在审批中心同意某张种子单当前的待办节点。 */
+  const approveCurrentNode = async (scenario: string, approver: string) => {
+    const businessId = await businessOf(scenario);
+    const mine = await get<{ items: { id: string }[] }>(
+      approver,
+      `/api/tenant/approval/instances?role=participated&businessId=${businessId}`,
+    );
+    const instanceId = mine.items[0]!.id;
+    const todos = await get<{ items: { taskId: string; instanceId: string }[] }>(
+      approver,
+      '/api/tenant/approval/todos',
+    );
+    const todo = todos.items.find((item) => item.instanceId === instanceId)!;
+    const instance = await get<{ revision: number }>(approver, `/api/tenant/approval/instances/${instanceId}`);
+    const response = await request.request('POST', `/api/tenant/approval/tasks/${todo.taskId}/approve`, {
+      ...(await who(approver)),
+      ifMatch: instance.revision,
+      body: {},
+    });
+    expect(response.status, await response.clone().text()).toBeLessThan(300);
+  };
+  const statusOf = async (scenario: string) =>
+    (await get<{ status: string }>('hr', `/api/tenant/employment/businesses/${await businessOf(scenario)}`)).status;
+  return { approveCurrentNode, statusOf };
+}
+
+describe('F-025 演示种子：中断恢复时用户已经操作过的调动单，不被种子推进或回退', () => {
+  it('驳回 / 撤回场景创建后中断，用户已审批通过第一节点（进度超过预设）：续跑不驳回、不撤回', async () => {
+    const handle = await createTestDb();
+    try {
+      const stopAfter = (id: string) => ({
+        ...options,
+        onStep: ({ phase, key }: { phase: string; key: string }) => {
+          if (phase === 'transfers' && key === id) throw new Error(`注入的失败：${id} 创建后`);
+        },
+      });
+      // 第 1 次在 DEMO-TRF-14（驳回）创建后、驳回前中断；平台研发部经理已同意其第一节点
+      await expect(seedDemo(handle.db, stopAfter('DEMO-TRF-14'))).rejects.toThrow('DEMO-TRF-14 创建后');
+      const user = await independentActors(handle.db);
+      await user.approveCurrentNode('DEMO-TRF-14', 'platformManager');
+      // 第 2 次在 DEMO-TRF-15（撤回）创建后、撤回前中断；数据研发部经理已同意其第一节点
+      await expect(seedDemo(handle.db, stopAfter('DEMO-TRF-15'))).rejects.toThrow('DEMO-TRF-15 创建后');
+      await user.approveCurrentNode('DEMO-TRF-15', 'dataManager');
+      // 无进度记录续跑到底：两张单都保持用户推进后的状态
+      await seedDemo(handle.db, options);
+      expect(await user.statusOf('DEMO-TRF-14')).toBe('in_review');
+      expect(await user.statusOf('DEMO-TRF-15')).toBe('in_review');
+      expect(await user.statusOf('DEMO-TRF-13')).toBe('rejected');
+      // 再跑一遍仍不动
+      expect((await seedDemo(handle.db, options)).created).toBe(false);
+      expect(await user.statusOf('DEMO-TRF-14')).toBe('in_review');
+      expect(await user.statusOf('DEMO-TRF-15')).toBe('in_review');
+    } finally {
+      await handle.close();
+    }
+  }, 900_000);
+
+  it('状态文件内容结构异常（null / 非对象 / transfers 不是数组 / 含非字符串）：按缺失处理，不抛异常', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'italent-seed-state-'));
+    try {
+      const file = join(dir, 'seed-state.json');
+      const bad = [
+        'null',
+        '[]',
+        '3',
+        '"x"',
+        '{"t":null}',
+        '{"t":3}',
+        '{"t":{"transfers":3}}',
+        '{"t":{"transfers":"a"}}',
+      ];
+      for (const text of [...bad, '{"t":{"transfers":[1,null]}}', '{']) {
+        writeFileSync(file, text);
+        const progress = fileProgress(file);
+        expect([...progress.completedTransfers('t')], text).toEqual([]);
+        // 之后的写入仍可用，并把坏内容替换掉
+        progress.markTransferCompleted('t', 'DEMO-TRF-01');
+        expect([...fileProgress(file).completedTransfers('t')], text).toEqual(['DEMO-TRF-01']);
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
