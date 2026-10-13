@@ -289,3 +289,103 @@ test('AC-FE-R1c-10 参考包视图切换、主题密度与右侧详情抽屉', a
   await page.getByRole('tab', { name: '已处理', exact: true }).click();
   await expect(page.getByRole('heading', { name: '已处理', exact: true })).toBeVisible();
 });
+
+const draftId = '60000000-0000-4000-8000-000000000001';
+const draftResult = { id: draftId, revision: 1, employeeRevision: 4, status: 'draft' };
+async function hrRecoveryFixture(page: Page) {
+  await page.route('**/employment/businesses/' + draftId, (route) =>
+    route.fulfill({
+      json: {
+        ...draftResult,
+        effectiveDate: '2026-10-12',
+        fields: { place: '暂存工作地' },
+        customFields: {},
+      },
+    }),
+  );
+  await page.route('**/transfer-linkage/**', (route) => route.fulfill({ json: {} }));
+}
+async function openHr(page: Page) {
+  await page.getByRole('button', { name: '他人调动申请', exact: true }).click();
+}
+
+test('AC-FE-R1c-11 暂存关闭并刷新页面后恢复同单，不另建申请', async ({ page }) => {
+  await hrRecoveryFixture(page);
+  let creates = 0;
+  const submitted: string[] = [];
+  await page.route('**/transfers/employees/' + employee, (route) => {
+    creates++;
+    return route.fulfill({ json: draftResult });
+  });
+  await page.route('**/employment/businesses/*/submit', (route) => {
+    submitted.push(new URL(route.request().url()).pathname);
+    return route.fulfill({ json: { ...draftResult, revision: 2, status: 'in_review' } });
+  });
+  await switchIdentity(page, '/transfer');
+  await openHr(page);
+  await page.locator('select[name="employeeId"]').selectOption(employee);
+  await page.locator('input[name="place"]').fill('暂存工作地');
+  await page.getByRole('button', { name: '暂存', exact: true }).click();
+  await expect(page.getByRole('button', { name: '提交暂存申请', exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: '关闭', exact: true }).click();
+  await page.reload();
+  await openHr(page);
+  await expect(page.locator('input[name="place"]')).toHaveValue('暂存工作地');
+  await page.getByRole('button', { name: '提交暂存申请', exact: true }).click();
+  await expect.poll(() => submitted.length).toBe(1);
+  expect(submitted[0]).toBe('/api/tenant/employment/businesses/' + draftId + '/submit');
+  expect(creates).toBe(1);
+});
+
+test('AC-FE-R1c-12 创建结果未知跨关闭和刷新锁定，恢复保留原命令协议', async ({ page }) => {
+  await hrRecoveryFixture(page);
+  const requests: { command?: string; revision?: string; body: unknown }[] = [];
+  await page.route('**/transfers/employees/' + employee, (route) => {
+    requests.push({
+      command: route.request().headers()['idempotency-key'],
+      revision: route.request().headers()['if-match'],
+      body: route.request().postDataJSON(),
+    });
+    return requests.length === 1
+      ? route.fulfill({ status: 503, json: { error: { code: 'UNAVAILABLE' } } })
+      : route.fulfill({ json: draftResult });
+  });
+  await switchIdentity(page, '/transfer');
+  await openHr(page);
+  await page.locator('select[name="employeeId"]').selectOption(employee);
+  await page.locator('input[name="place"]').fill('暂存工作地');
+  await page.getByRole('button', { name: '暂存', exact: true }).click();
+  await expect(page.getByText('提交结果尚未确认。请先核对该员工的调动记录，勿重复发起。')).toBeVisible();
+  await page.getByRole('button', { name: '关闭', exact: true }).click();
+  await page.reload();
+  await openHr(page);
+  await expect(page.getByRole('button', { name: '暂存', exact: true })).toBeDisabled();
+  await expect(page.locator('code').filter({ hasText: requests[0]!.command! })).toBeVisible();
+  expect(requests).toHaveLength(1);
+  await page.getByRole('button', { name: '恢复原命令', exact: true }).click();
+  await expect(page.getByRole('button', { name: '提交暂存申请', exact: true })).toBeEnabled();
+  await expect(page.locator('input[name="place"]')).toHaveValue('暂存工作地');
+  expect(requests).toHaveLength(2);
+  expect(requests[1]).toEqual(requests[0]);
+});
+
+for (const status of [400, 422]) {
+  test(`AC-FE-R1c-13 驳回 ${status} 字段错误修正后可直接提交`, async ({ page }) => {
+    let writes = 0;
+    await page.route('**/approval/tasks/*/reject', (route) => {
+      writes++;
+      return writes === 1
+        ? route.fulfill({ status, json: { error: { code: 'VALIDATION_FAILED', message: '请补充驳回意见' } } })
+        : route.fulfill({ json: { instanceId: instance, status: 'rejected' } });
+    });
+    await switchIdentity(page, '/approval');
+    await page.getByRole('button', { name: '合成员工的调动申请', exact: true }).click();
+    await page.getByRole('button', { name: /驳\s*回/, exact: true }).click();
+    await page.getByRole('button', { name: /保\s*存/, exact: true }).click();
+    await expect.poll(() => writes).toBe(1);
+    await page.getByLabel('审批意见').fill('合成驳回说明');
+    await page.getByRole('button', { name: /保\s*存/, exact: true }).click();
+    await expect.poll(() => writes).toBe(2);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+  });
+}
