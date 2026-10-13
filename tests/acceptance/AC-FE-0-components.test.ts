@@ -224,4 +224,39 @@ describe('AC-FE-0-03 最小组件集', () => {
     );
     expect(host.textContent).toContain('当前没有可查看的数据范围');
   });
+  it.each([
+    { label: '后端满页且未声明尾页', items: [{ id: 'a' }, { id: 'b' }], disabled: false },
+    { label: '后端短页', items: [{ id: 'a' }], disabled: true },
+    { label: '后端空页', items: [], disabled: true },
+    { label: '显式 hasMore=false 优先于满页', items: [{ id: 'a' }, { id: 'b' }], hasMore: false, disabled: true },
+    { label: '显式 hasMore=true 优先于短页', items: [{ id: 'a' }], hasMore: true, disabled: false },
+    { label: '加载中禁止再次翻页', items: [{ id: 'a' }, { id: 'b' }], loading: true, disabled: true },
+  ])('无总数分页：$label', async ({ items, disabled, ...state }) => {
+    const { ListPage } = await import(resolve('apps/web/src/foundation/templates.tsx'));
+    const change = vi.fn();
+    const selected = vi.fn();
+    await act(() =>
+      root.render(
+        h(ListPage, {
+          title: '后端分页',
+          data: { items, hasMore: state.hasMore },
+          rowKey: 'id',
+          columns: [],
+          page: { page: 2, pageSize: 2 },
+          onPageChange: change,
+          loading: state.loading,
+          selection: { keys: ['a'], onChange: selected, actions: '批量操作' },
+        }),
+      ),
+    );
+    const buttons = Array.from(host.querySelectorAll('button'));
+    const next = buttons.find((button) => button.textContent === '下一页')!;
+    expect(next.disabled).toBe(disabled);
+    expect(host.querySelector('.page-total')).toBeNull();
+    if (!disabled) {
+      await act(() => next.click());
+      expect(change).toHaveBeenCalledWith({ page: 3, pageSize: 2 });
+      expect(selected).toHaveBeenCalledWith([], []);
+    }
+  });
 });

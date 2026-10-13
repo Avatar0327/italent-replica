@@ -474,6 +474,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/qualification/catalog.ts#QUALIFICATION_OBJECTS',
     'packages/domain/src/qualification/catalog.ts#QUALIFICATION_ORG_AUDITED',
   ],
+  'apps/api/src/audit/visibility.ts#registerEvaluationFlowAuditRule': ['#evaluationFlowRule'],
   'apps/api/src/audit/visibility.ts#resolveConfigFields': [
     '#CONFIG_FIELDS_BY_ACTION',
     '#CONFIG_FIELDS_BY_TYPE',

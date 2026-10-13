@@ -353,6 +353,39 @@
       "obj:TenantBase.EmployeeInformation:view"
     ]
   },
+  "GET /api/tenant/evaluation/staff-evaluations": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TEvaluation.StaffEvaluationData"
+    ],
+    "scopeQueries": [
+      "scope:TEvaluation/TEvaluation.StaffEvaluationData/TEvaluation.StaffEvaluationData.list"
+    ],
+    "trace": [
+      "obj:TEvaluation.StaffEvaluationData:view"
+    ]
+  },
+  "GET /api/tenant/evaluation/staff-evaluations/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "67822f733f15",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TEvaluation/TEvaluation.StaffEvaluationData/TEvaluation.StaffEvaluationData.detail"
+    ],
+    "trace": [
+      "obj:TEvaluation.StaffEvaluationData:view"
+    ]
+  },
   "PATCH /api/tenant/evaluation/activities/:id": {
     "all": {
       "code": "NOT_FOUND",
@@ -518,6 +551,50 @@
     "trace": [
       "btn:TEvaluation.EvaluationActivity#create@list",
       "obj:TEvaluation.EvaluationActivity:create"
+    ]
+  },
+  "POST /api/tenant/evaluation/activities/:id/publish": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "962b6f939652",
+      "status": 404
+    },
+    "fieldQueries": [
+      "fields:TEvaluation.EvaluationActivity"
+    ],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TEvaluation/TEvaluation.EvaluationActivity/-"
+    ],
+    "trace": [
+      "btn:TEvaluation.EvaluationActivity#publish@list_row",
+      "obj:TEvaluation.EvaluationActivity:update"
+    ]
+  },
+  "POST /api/tenant/evaluation/activities/:id/unpublish": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "962b6f939652",
+      "status": 404
+    },
+    "fieldQueries": [
+      "fields:TEvaluation.EvaluationActivity"
+    ],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TEvaluation/TEvaluation.EvaluationActivity/-"
+    ],
+    "trace": [
+      "btn:TEvaluation.EvaluationActivity#unpublish@list_row",
+      "obj:TEvaluation.EvaluationActivity:update"
     ]
   },
   "POST /api/tenant/evaluation/activity-cycles": {
