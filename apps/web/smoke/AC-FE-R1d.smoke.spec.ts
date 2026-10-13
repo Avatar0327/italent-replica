@@ -46,7 +46,19 @@ test.beforeEach(async ({ page }) => {
         counts: { active: 1, probation: 0, intern: 0, pending: 0, leaving: 0 },
       },
       '/api/tenant/employment/transfers/manager/todos': {
-        items: [{ id: recordId, taskId: recordId, title: '合成经理待办', status: 'running', nodeName: '经理审批' }],
+        items: [
+          {
+            taskId: recordId,
+            instanceId: recordId,
+            title: '合成经理待办',
+            nodeName: '经理审批',
+            approvalType: 'employment',
+            nodeKey: 'manager',
+            isExceptionAdmin: false,
+            origin: 'normal',
+            createdAt: '2026-10-13T01:00:00.000Z',
+          },
+        ],
       },
     };
     return Object.hasOwn(responses, path) ? route.fulfill({ json: responses[path] }) : route.fallback();
@@ -108,6 +120,7 @@ test('AC-FE-R1d-1 档案、申请、团队、待办详情均为右侧只读抽�
   await page.goto('/manager/todos');
   await page.getByRole('button', { name: '合成经理待办', exact: true }).click();
   await expect(page.getByRole('dialog')).toContainText('经理审批');
+  await expect(page.getByRole('dialog')).toContainText('待处理');
   await expect(page.getByRole('link', { name: '前往审批中心' })).toHaveAttribute('href', '/approval');
   expect(errors).toEqual([]);
 });
