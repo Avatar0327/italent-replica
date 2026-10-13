@@ -38,6 +38,12 @@ export interface SubmitInput {
 }
 const equal = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 export const isLocked = (state?: Submission) => !!state && ['submitting', 'unknown', 'conflict'].includes(state.status);
+function failureStatus(error: unknown): Submission['status'] {
+  const failure = error as { status?: number; code?: string } | null;
+  if (typeof failure?.status !== 'number' || failure.status < 400 || failure.status >= 500) return 'unknown';
+  if (failure.status === 409 && failure.code === 'REVISION_CONFLICT') return 'conflict';
+  return 'rejected';
+}
 /** DEC-464/473/475：状态由页面持有；没有解锁未知命令或自动重放的接口。 */
 export function createFormStore() {
   const entries = new Map<string, Submission>();
@@ -60,8 +66,9 @@ export function createFormStore() {
       listeners.forEach((listener) => listener());
     },
     async submit(key: string, input: SubmitInput) {
-      const prior = entries.get(key);
-      if (isLocked(prior)) return prior!;
+      const existing = entries.get(key);
+      if (isLocked(existing)) return existing!;
+      const prior = existing?.status === 'done' ? undefined : existing;
       const baseline = prior?.baseline ?? input.baseline;
       const revision = prior?.revision ?? input.revision;
       const body = Object.fromEntries(
@@ -86,21 +93,12 @@ export function createFormStore() {
       put(key, state);
       try {
         const result = await input.send(command);
-        if (!result?.id || (input.businessId && result.id !== input.businessId)) throw new Error(messages.unknown);
+        if (typeof result?.id !== 'string' || !result.id || (input.businessId && result.id !== input.businessId))
+          throw new Error(messages.unknown);
         put(key, { ...state, status: 'done', businessId: result.id });
       } catch (error) {
-        const failure = error as { status?: number; code?: string } | null;
-        const rejected = typeof failure?.status === 'number' && failure.status >= 400 && failure.status < 500;
-        put(key, {
-          ...state,
-          error,
-          ...(failure?.status === 409 && failure.code === 'REVISION_CONFLICT' ? { latest: undefined } : {}),
-          status: rejected
-            ? failure?.status === 409 && failure.code === 'REVISION_CONFLICT'
-              ? 'conflict'
-              : 'rejected'
-            : 'unknown',
-        });
+        const status = failureStatus(error);
+        put(key, { ...state, error, status, ...(status === 'conflict' ? { latest: undefined } : {}) });
       }
       return entries.get(key)!;
     },
@@ -109,8 +107,13 @@ export function createFormStore() {
       if (!state || state.reading || !['conflict', 'unknown'].includes(state.status)) return;
       put(key, { ...state, reading: true, readError: undefined });
       try {
-        const latest = await read(state.businessId);
-        if (!latest.id || latest.id !== state.businessId || !Number.isInteger(latest.revision))
+        const latest = structuredClone(await read(state.businessId));
+        if (
+          !latest.id ||
+          latest.id !== state.businessId ||
+          !Number.isSafeInteger(latest.revision) ||
+          latest.revision < 0
+        )
           throw new Error(messages.invalidReceipt);
         const differences = state.editableFields
           .filter((field) => !equal(state.baseline[field], latest.values[field]))

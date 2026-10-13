@@ -21,7 +21,7 @@ export interface FormGroup {
   fields: FormField[];
 }
 export interface FormOverlayProps {
-  /** 已有记录使用 id:revision；刷新后换 key，不能把旧表单值带入新版本。新建表单也应给本次打开的稳定键。 */
+  /** 旧入口使用 id:revision；接入内核时只用稳定业务 ID，由内核保留草稿并核对冲突。 */
   recordKey: string;
   submission?: CommandForm;
   title: string;

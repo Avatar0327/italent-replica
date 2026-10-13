@@ -36,7 +36,7 @@ export function QuestionnaireEditor({
       incomplete = true;
     }
   }
-  const fields = headerFields(permission, false, current);
+  const fields = headerFields(permission, current);
   if (row && content)
     fields.push({
       name: 'content',
@@ -163,11 +163,11 @@ export function QuestionnairePreview({ row }: { row: Row }) {
   );
 }
 
-function headerFields(permission: ReturnType<typeof usePermissions>, blocked: boolean, row?: Row) {
+function headerFields(permission: ReturnType<typeof usePermissions>, row?: Row) {
   const fields: FormField[] = ['name', ...(row ? [] : ['type']), 'scoreMethod', 'guide'].map((name) => ({
     name,
     label: m[name as 'name'],
-    access: { ...permission.field(name), editable: permission.field(name).editable && !blocked },
+    access: permission.field(name),
     rules: name === 'name' || name === 'type' ? [{ required: true, message: common.required }] : [],
     control: headerControl(name),
   }));

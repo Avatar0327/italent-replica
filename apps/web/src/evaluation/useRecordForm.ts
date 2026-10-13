@@ -1,5 +1,6 @@
 import { useApiClient } from '../foundation/Session.js';
 import { useCommandForm } from '../foundation/forms/useCommandForm.js';
+import { messages } from '../foundation/forms/messages.js';
 import type { Values } from '../foundation/forms/store.js';
 import type { Row } from './model.js';
 
@@ -36,7 +37,7 @@ export function useRecordForm(path: string, row?: Row, project: (row: Row) => Va
         send: (request) =>
           api.request<Row>(resource, { method, command: { ...request, body: normalize(request.body) } }),
       });
-      if (result.status !== 'done') throw result.error ?? new Error('Command is locked');
+      if (result.status !== 'done') throw result.error ?? new Error(messages.unknown);
     },
   };
 }

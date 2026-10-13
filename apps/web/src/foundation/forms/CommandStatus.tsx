@@ -11,14 +11,10 @@ export function CommandStatus({
 }) {
   const { state, reload, confirm } = submission;
   if (!state || ['idle', 'done'].includes(state.status)) return null;
-  const message =
-    state.status === 'rejected'
-      ? state.error instanceof Error
-        ? state.error.message
-        : m.rejected
-      : m[state.status as 'submitting' | 'unknown' | 'conflict'];
+  let message = m[state.status as 'submitting' | 'unknown' | 'conflict'];
+  if (state.status === 'rejected') message = state.error instanceof Error ? state.error.message : m.rejected;
   return (
-    <Space direction="vertical" style={{ width: '100%' }}>
+    <Space direction="vertical">
       <Alert
         type={state.status === 'rejected' ? 'error' : 'warning'}
         showIcon

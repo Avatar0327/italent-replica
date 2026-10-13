@@ -20,6 +20,11 @@ describe('AC-FE-F123 表单提交内核', () => {
       revision: 3,
       body: { name: '我的名称', welcome: '我的欢迎语', effectiveDate: '2026-10-13' },
     });
+    expect(send.mock.calls[0]?.[0]?.body).toEqual({
+      name: '我的名称',
+      welcome: '我的欢迎语',
+      effectiveDate: '2026-10-13',
+    });
     expect(store.get('a')).toMatchObject({ status: 'done', businessId: 'original' });
   });
   it('提交中连续点击只生成一个命令', async () => {

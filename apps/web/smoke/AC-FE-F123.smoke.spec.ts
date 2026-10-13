@@ -78,10 +78,11 @@ test('AC-FE-F123 提交中重复点击只发一次，只提交当前可编辑字
         dataOperations: { read: true },
         viewableFields: ['name', 'welcome', 'status'],
         editableFields: ['name'],
-        buttons: [{ buttonCode: 'update', level: 'object' }],
+        buttons: [{ buttonCode: 'update', level: 'detail' }],
       },
     }),
   );
+  await expect(page.getByRole('button', { name: activity.name, exact: true })).toBeVisible();
   await page.reload();
   await page.getByLabel('切换演示身份').selectOption('20000000-0000-4000-8000-000000000001');
   let release!: () => void;
