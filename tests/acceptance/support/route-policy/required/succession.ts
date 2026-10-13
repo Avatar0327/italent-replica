@@ -129,6 +129,15 @@ const IMMUTABLE: Obligation = {
   at: [{ role: 'call', unit: `${S}/input.ts#rejectImmutable`, anchor: "reason: 'FIELD_IMMUTABLE'" }],
 };
 
+/** A3 / DEC-343④：提示继承继任者字段权限，首次与重放仍共用 A2 的公共投影。 */
+const LEFT_PROJECTED: Obligation = {
+  perm: 'guard:succession.successorLeftProjected',
+  at: [
+    { role: 'call', unit: `${S}/projection.ts#projectSuccession`, anchor: 'fields.has(GOVERNING_FIELD[key] ?? key)' },
+    { role: 'const', unit: `${S}/projection.ts#GOVERNING_FIELD`, anchor: "successorLeft: 'successorEmployeeId'" },
+  ],
+};
+
 export const SUCCESSION: RequiredTable = {
   [`GET ${BASE}/maps/org`]: [
     {
@@ -220,11 +229,16 @@ export const SUCCESSION: RequiredTable = {
       ],
     },
     SELF_HIDDEN,
+    LEFT_PROJECTED,
   ],
-  [`GET ${BASE}/records/:id`]: [view(`router.get(\`\${RECORDS}/:id\`, async (c) => { ${VIEW}`), SELF_HIDDEN],
-  [`POST ${RECORDS_PATH}`]: [...change('create'), TARGET_IN_SCOPE],
-  [`PUT ${RECORDS_PATH}/:id`]: [...change('update'), IMMUTABLE, SELF_HIDDEN],
-  [`POST ${RECORDS_PATH}/end`]: [...change('update', 'end'), SELF_HIDDEN],
+  [`GET ${BASE}/records/:id`]: [
+    view(`router.get(\`\${RECORDS}/:id\`, async (c) => { ${VIEW}`),
+    SELF_HIDDEN,
+    LEFT_PROJECTED,
+  ],
+  [`POST ${RECORDS_PATH}`]: [...change('create'), TARGET_IN_SCOPE, LEFT_PROJECTED],
+  [`PUT ${RECORDS_PATH}/:id`]: [...change('update'), IMMUTABLE, SELF_HIDDEN, LEFT_PROJECTED],
+  [`POST ${RECORDS_PATH}/end`]: [...change('update', 'end'), SELF_HIDDEN, LEFT_PROJECTED],
   [`DELETE ${RECORDS_PATH}/:id`]: [...change('delete'), SELF_HIDDEN],
   [`GET ${BASE}/successor-candidates`]: [...candidates('create'), ...candidates('update')],
 };
@@ -365,8 +379,8 @@ Object.assign(SUCCESSION, {
       at: [
         {
           role: 'call',
-          unit: `${S}/map-routes.ts#mapAccess`,
-          anchor: "await button(bound, ctx, codeOf('map'), 'computeStats', 'list')",
+          unit: `${S}/map-routes.ts#computeAccess`,
+          anchor: "await button(bound, access.ctx, codeOf('map'), 'computeStats', 'list')",
         },
         {
           role: 'impl',
@@ -640,3 +654,102 @@ for (const kind of ['risk', 'health'] as const) {
   });
   Object.assign(SUCCESSION, { [`GET ${path}/options`]: options });
 }
+
+// B4：首次命令、重放共用 A2 包装器，冻结集合复用 C1。
+const RISK_ROUTES = `${S}/risk-routes.ts#registerRiskRoutes`;
+const riskConst: Evidence = {
+  role: 'const',
+  unit: 'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>riskResult',
+  anchor: "object( 'RiskResult'",
+};
+Object.assign(SUCCESSION, {
+  [`POST ${BASE}/maps/position/compute-risk`]: [
+    {
+      perm: 'obj:Succession.Map:view',
+      facts: ['object:objectContext'],
+      at: [
+        { role: 'call', unit: `${S}/risk-routes.ts#computeAccess`, anchor: "await successionContext(c, bound, 'map')" },
+        ...CONTEXT,
+        {
+          role: 'const',
+          unit: 'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>map',
+          anchor: "object( 'Map'",
+        },
+      ],
+    },
+    {
+      perm: 'btn:Succession.Map#computeRisk@list',
+      facts: ['button:button()'],
+      at: [
+        {
+          role: 'call',
+          unit: `${S}/risk-routes.ts#computeAccess`,
+          anchor: "await button(bound, ctx, codeOf('map'), 'computeRisk', 'list')",
+        },
+        {
+          role: 'impl',
+          unit: `${MRA}#button`,
+          anchor: "action: 'object.button', resource: buttonResource(objectCode, code, level)",
+        },
+      ],
+    },
+    {
+      perm: 'guard:succession.riskDisplay',
+      at: [
+        { role: 'call', unit: RISK_ROUTES, anchor: 'await readMapDisplayScope(' },
+        {
+          role: 'impl',
+          unit: `${S}/map-display.ts#readMapDisplayScope`,
+          anchor: 'if (!ctx.scope.hasDataPermission) return []',
+        },
+      ],
+    },
+  ],
+  [`GET ${BASE}/risk-results`]: [
+    {
+      perm: 'obj:Succession.RiskResult:view',
+      facts: ['object:objectContext'],
+      at: [
+        {
+          role: 'call',
+          unit: `${S}/risk-routes.ts#registerRiskResultRoutes`,
+          anchor: "await successionContext(c, deps, 'riskResult')",
+        },
+        ...CONTEXT,
+        riskConst,
+      ],
+    },
+  ],
+  [`PUT ${BASE}/risk-results/:positionId`]: [
+    {
+      perm: 'obj:Succession.RiskResult:update',
+      facts: ['object:objectContext'],
+      at: [
+        {
+          role: 'call',
+          unit: SUCCESSION_CONTEXT,
+          anchor: 'await successionContext(c, deps, spec.object, spec.operation, spec.expectedRevision)',
+        },
+        ...CONTEXT,
+        riskConst,
+      ],
+    },
+    {
+      perm: 'btn:Succession.RiskResult#assign@detail',
+      facts: ['button:button()'],
+      at: [
+        {
+          role: 'call',
+          unit: SUCCESSION_CONTEXT,
+          anchor: 'await button(deps, ctx, codeOf(spec.object), spec.button.code, spec.button.level)',
+        },
+        {
+          role: 'impl',
+          unit: `${MRA}#button`,
+          anchor: "action: 'object.button', resource: buttonResource(objectCode, code, level)",
+        },
+        riskConst,
+      ],
+    },
+  ],
+});

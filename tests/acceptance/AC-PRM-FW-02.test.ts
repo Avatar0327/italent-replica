@@ -1,4 +1,6 @@
-import { registrationGate, compareRegisteredDeclarations } from './support/route-policy/registration.js';
+import { REQUIRED } from './support/route-policy/required/index.js';
+import { fw02Checks } from './support/route-policy/local-checks/fw-02.js';
+
 /**
  * AC-PRM-FW-02（F-039 PR-A，docs/08_设计/F-039_权限框架强制_设计.md §4.2 / §4.4 限定版；DEC-300 / DEC-303）：
  * 现状必测基准与声明的反向比较。基准**不读声明**，由三部分生成并冻结在 support/route-policy/baseline/observed-contract.json：
@@ -9,9 +11,9 @@ import { registrationGate, compareRegisteredDeclarations } from './support/route
  * 依赖多维身份探测（范围外样本、字段探针、denied 码）与 recorded 事实防删减的部分按 DEC-303 移到 §10 PR-B。
  */
 import { createApp, defineTable, RoutePolicyError, routeManifest, type RouteManifest } from '@italent/api';
-import { useTestDb } from '@italent/testkit';
+import { createTestDb } from '@italent/testkit';
 import { readFileSync } from 'node:fs';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PROBE_POLICY_ENTRIES, probeRoutes } from './support/probe-routes.js';
 import {
   BASELINE_PATH,
@@ -29,7 +31,13 @@ import { compareMutants } from './support/route-policy/detector-fixtures.js';
 import { MUTATIONS, mutantsOf } from './support/route-policy/mutate.js';
 import { tenantApi } from './support/tenant-api.js';
 
-const testDb = useTestDb();
+let handle: Awaited<ReturnType<typeof createTestDb>>;
+// DEC-452：完整迁移在多工作区并行时实测超过 60 秒，仅放宽本文件建库，不增加 CI 分片预算。
+beforeAll(async () => {
+  handle = await createTestDb();
+}, 300_000);
+afterAll(async () => handle?.close());
+const testDb = () => handle;
 
 let manifest: RouteManifest;
 let fresh: ObservedContract;
@@ -44,7 +52,7 @@ beforeAll(async () => {
   if (!stored) throw new Error(`冻结基准不存在：先用 ROUTE_POLICY_UPDATE_BASELINE=1 生成 ${BASELINE_PATH}`);
   // DEC-430①：警告模式下冻结文件可能还没按最新源码重算，比较改用本次重新探测的现状（同一生成器，独立于声明）
   frozen = generatedStrict() ? stored : fresh;
-});
+}, 300_000);
 
 function codes(findings: readonly Finding[]): string[] {
   return findings.map((f) => f.code);
@@ -128,9 +136,9 @@ describe('AC-PRM-FW-02 现状必测基准（独立于声明）', () => {
 
 describe('AC-PRM-FW-02 声明 vs 基准比较', () => {
   it('真实声明不弱于基准，也不多于基准（双向零发现）', () => {
-    // F-090：过度声明（OVERDECLARED:*）属“登记与源码不一致”，默认只警告；弱化 / 身份不符照旧判红
-    const findings = registrationGate(compareRegisteredDeclarations(frozen, manifest.declared), '真实声明 × 基准');
-    expect(findings, findings.map((f) => `${f.route} ${f.code}: ${f.detail}`).join('\n')).toEqual([]);
+    fw02Checks({ table: REQUIRED, routes: manifest.declared, contract: frozen })
+      .find((check) => check.id === 'declarations')!
+      .verify();
   });
 
   it('过度声明：给没有守卫的路由加 guards → OVERDECLARED:guard；public 改成 member → 身份不符', () => {
@@ -212,6 +220,7 @@ describe('AC-PRM-FW-02 突变套件：第 5 轮列出的每类削弱都被报出
       0,
     );
     const mutants = manifest.declared.flatMap((route) => mutantsOf(route, frozen));
+
     const byName = Object.fromEntries(MUTATIONS.map((m) => [m.name, mutants.filter((x) => x.name === m.name).length]));
     const summary = { routes: manifest.declared.length, facts, domains: Object.keys(frozen.domains).length };
     console.info(JSON.stringify({ ...summary, mutants: mutants.length, byName }));

@@ -68,6 +68,7 @@ export const templateCreate = z.strictObject({
   resultRules: z.array(resultRuleInput).max(100).optional(),
   fieldCatalogVersion: z.int().min(0).optional(),
 });
+export const templateCopy = z.strictObject({ name });
 export const templatePatch = templateCreate.partial();
 
 export type TemplateCreate = z.output<typeof templateCreate>;

@@ -441,8 +441,17 @@ export async function deleteActivity(tx: Tx, ctx: WriteContext, id: string): Pro
     throw new AppError('CONFLICT', '活动已有报名人员，不能删除', { reason: 'ACTIVITY_HAS_APPLICANTS' });
   }
   const before = await loadActivity(tx, ctx.tenantId, id);
+  // 发布登记在取消发布后保留；删除无报名草稿时纳入删除快照（DEC-019）。
+  const notifications = rowsOf<Record<string, unknown>>(
+    await tx.execute(sql`DELETE FROM ev_notifications
+      WHERE tenant_id=${ctx.tenantId}::uuid AND activity_id=${id}::uuid RETURNING *`),
+  ).map(view);
   // 环节与组织范围随活动删除（外键 CASCADE）
   await tx.execute(sql`DELETE FROM ev_activities WHERE tenant_id = ${ctx.tenantId}::uuid AND id = ${id}::uuid`);
-  await audit(tx, ctx, 'evaluationActivity', 'delete', id, { before, after: null, orgId: before.ownerOrgId });
+  await audit(tx, ctx, 'evaluationActivity', 'delete', id, {
+    before: notifications.length ? { ...before, notifications } : before,
+    after: null,
+    orgId: before.ownerOrgId,
+  });
   return before;
 }
