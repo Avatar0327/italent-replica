@@ -1,3 +1,5 @@
+import { registerActivityStateRoutes } from './activity-state.js';
+import { registerFlowRoutes } from './flow-routes.js';
 /**
  * R3-T02 PR-B 人才评定配置接口（docs/02_业务建模/24；设计 §3.2、§5；路由声明见
  * docs/08_设计/R3-T02-B1a_评定底座与活动类型_路由声明.md）。挂在 /api/tenant/evaluation/ 之下。
@@ -84,6 +86,8 @@ const SPECS = {
 } as const;
 
 export function registerEvaluationRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
+  registerFlowRoutes(router, deps);
+  registerActivityStateRoutes(router, deps);
   registerReviewGroupExitHook();
   registerReviewGroupRoutes(router, deps);
   registerFormRoutes(router, deps);
