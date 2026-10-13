@@ -253,7 +253,7 @@ def progress(d, live):
         byk = {s["k"]: s for s in steps}
         isdone = lambda s: s and (s.get("s") == "done" or (s.get("pr") and str(s["pr"]) in merged))
         for st in steps:
-            if st.get("after") and not st.get("pr") and st.get("s") not in ("assigned", "paused") and all(isdone(byk.get(k)) for k in st["after"]):
+            if st.get("after") and not st.get("pr") and st.get("s") not in ("assigned", "paused", "done") and all(isdone(byk.get(k)) for k in st["after"]):
                 ready.append(f"{ln['id']} {st['k']} {st['n']}")
     print("ready " + ("；".join(ready) if ready else "无"))
     at = (live or {}).get("at", "")
