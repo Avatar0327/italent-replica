@@ -8,7 +8,7 @@ import type { buildPermissionSnapshot } from '../../apps/api/src/modules/permiss
 const requireWeb = createRequire(resolve('apps/web/package.json'));
 const { createElement: h, act, StrictMode } = requireWeb('react');
 const { createRoot } = requireWeb('react-dom/client');
-const { PermissionsProvider, PermissionObject, usePermissions } = await import(
+const { PermissionsProvider, PermissionObject, Can, usePermissions } = await import(
   resolve('apps/web/src/foundation/Permissions.tsx')
 );
 const { SessionProvider, useSession } = await import(resolve('apps/web/src/foundation/Session.tsx'));
@@ -44,7 +44,7 @@ function Probe() {
   latest = { permissions, session: useSession() };
   return h('button', { onClick: permissions.refresh }, '刷新');
 }
-async function render() {
+async function render(child = h(Probe)) {
   await act(async () => {
     root.render(
       h(
@@ -62,7 +62,7 @@ async function render() {
               source: 'server',
             },
           },
-          h(PermissionsProvider, {}, h(PermissionObject, { object: 'TenantBase.JobLayer' }, h(Probe))),
+          h(PermissionsProvider, {}, h(PermissionObject, { object: 'TenantBase.JobLayer' }, child)),
         ),
       ),
     );
@@ -194,5 +194,27 @@ describe('AC-FE-F114 当前用户快照', () => {
     });
     expect(latest.permissions.menus).toEqual([]);
     expect(latest.permissions.snapshot.objects).toEqual({});
+  });
+  it('AC-FE-F114 Can 仍可继承页面对象上下文并按需读取按钮明细', async () => {
+    const fetcher = vi.fn(async (path: string) =>
+      Response.json(
+        path.endsWith('/me/snapshot')
+          ? body
+          : {
+              objectCode: 'TenantBase.JobLayer',
+              dataOperations: {},
+              viewableFields: [],
+              editableFields: [],
+              buttons: [{ buttonCode: 'delete', level: 'detail' }],
+            },
+      ),
+    );
+    vi.stubGlobal('fetch', fetcher);
+    await render(h('div', {}, h(Probe), h(Can, { button: 'delete' }, '允许删除')));
+    expect(host.textContent).toContain('允许删除');
+    expect(fetcher.mock.calls.map(([path]) => path)).toEqual([
+      '/api/tenant/permission/me/snapshot',
+      '/api/tenant/permission/me/objects/TenantBase.JobLayer',
+    ]);
   });
 });
