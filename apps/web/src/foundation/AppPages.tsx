@@ -14,7 +14,18 @@ const Self = lazy(() => import('../employee-self-service/EmployeePage.js').then(
 const Manager = lazy(() => import('../transfer/ManagerPage.js').then((m) => ({ default: m.ManagerPage })));
 const Talent = lazy(() => import('../talent/TalentPage.js').then((m) => ({ default: m.TalentPage })));
 const Account = lazy(() => import('../account/AccountPage.js').then((m) => ({ default: m.AccountPage })));
-const existing = { org: Org, job: Job, transfer: Transfer, self: Self, manager: Manager, talent: Talent };
+const Evaluation = lazy(() => import('../evaluation/EvaluationPage.js').then((m) => ({ default: m.EvaluationPage })));
+const Survey = lazy(() => import('../survey360/SurveyPage.js').then((m) => ({ default: m.SurveyPage })));
+const existing = {
+  org: Org,
+  job: Job,
+  transfer: Transfer,
+  self: Self,
+  manager: Manager,
+  talent: Talent,
+  evaluation: Evaluation,
+  survey360: Survey,
+};
 
 function LandingPage({ title }: { title: string }) {
   return (
