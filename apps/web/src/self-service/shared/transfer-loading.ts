@@ -7,7 +7,13 @@ import {
   managerReferencePath,
 } from '../../transfer/api.js';
 import { text } from '../../transfer/messages.js';
-import type { Choice, TransferBusiness, TransferFormModel, TransferPreview } from '../../transfer/types.js';
+import type {
+  Choice,
+  TransferAction,
+  TransferBusiness,
+  TransferFormModel,
+  TransferPreview,
+} from '../../transfer/types.js';
 
 export async function loadPreview(tenantId: string, model: TransferFormModel, signal: AbortSignal) {
   const preview = await transferRequest<TransferPreview>(
@@ -50,4 +56,10 @@ export async function reloadSavedModel(tenantId: string, model: TransferFormMode
       preview: { ...loaded.preview, fields: latest.fields, customFields: latest.customFields ?? {} },
     },
   };
+}
+
+export function savedNotice(result: TransferBusiness, action: TransferAction) {
+  if (result.status === 'draft') return text.draftSaved;
+  if (action === 'direct') return result.status === 'effective' ? text.effective : text.scheduled;
+  return text.submitted;
 }

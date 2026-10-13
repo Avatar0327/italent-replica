@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { missingTransferRequiredFields } from '@italent/domain';
-import { reloadSavedModel } from '../self-service/shared/transfer-loading.js';
+import { reloadSavedModel, savedNotice } from '../self-service/shared/transfer-loading.js';
 import { requestError, TransferApiError } from './api.js';
 import { text } from './messages.js';
 import {
@@ -114,22 +114,14 @@ async function execute(context: Context, receipt: TransferReceipt, recovering: b
   context.running.current = true;
   context.update({ receipt, busy: true, needsReload: recovering, blocked: false });
   context.setError('');
+  context.setNotice('');
   try {
     const result = await sendOriginal(context.tenantId, receipt);
     const confirmed = confirmedReceipt(receipt, result);
     rememberRecovery(context.scope, confirmed);
     context.update({ receipt: confirmed, busy: true, needsReload: recovering, blocked: false });
     if (recovering) await readSaved(context, selectModel(context.model, receipt), confirmed);
-    else
-      context.setNotice(
-        result.status === 'draft'
-          ? text.draftSaved
-          : receipt.pending?.action === 'direct'
-            ? result.status === 'effective'
-              ? text.effective
-              : text.scheduled
-            : text.submitted,
-      );
+    else context.setNotice(savedNotice(result, receipt.pending!.action));
   } catch (cause) {
     try {
       handleFailure(context, receipt, cause, recovering);

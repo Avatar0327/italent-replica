@@ -1,4 +1,4 @@
-import { loadPreview, reloadSavedModel } from './transfer-loading.js';
+import { loadPreview, reloadSavedModel, savedNotice } from './transfer-loading.js';
 import { useRecoverableTransfer } from '../../transfer/useRecoverableTransfer.js';
 import type { TransferFormAdapter } from './transfer-adapter.js';
 import { useEffect, useRef, useState } from 'react';
@@ -344,12 +344,6 @@ function referenceQuery(
       setError(requestError(cause));
     }
   };
-}
-
-function savedNotice(result: TransferBusiness, action: TransferAction) {
-  if (result.status === 'draft') return text.draftSaved;
-  if (action === 'direct') return result.status === 'effective' ? text.effective : text.scheduled;
-  return text.submitted;
 }
 
 function editField(setModel: SetModel) {
