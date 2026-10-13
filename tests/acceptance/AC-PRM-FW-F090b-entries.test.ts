@@ -122,17 +122,22 @@ describe('AC-PRM-FW-F090b 单一真实登记入口（DEC-431①；#248 P2-1 / P3
       }),
     ).toThrow('未知读取错误');
   });
-  it.each([false, true])('完整登记：strict=%s 不把已知台账记录当差异', (strict) => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    try {
-      expect(check('complete', strict).failures).toEqual([]);
-      expect(warn).not.toHaveBeenCalled();
-    } finally {
-      warn.mockRestore();
-    }
-  });
+  // F-116：全表扫描在 PG 分片 / 高负载下超过全局 30 秒（#293 整个文件约 98 秒），仅这几条单独放宽到 120 秒。
+  it.each([false, true])(
+    '完整登记：strict=%s 不把已知台账记录当差异',
+    (strict) => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      try {
+        expect(check('complete', strict).failures).toEqual([]);
+        expect(warn).not.toHaveBeenCalled();
+      } finally {
+        warn.mockRestore();
+      }
+    },
+    120_000,
+  );
   // #270 队列 aab6fad：PG 分片曾耗时 35.915 / 35.140 秒；源码冷计算与并行负载需要单测余量。
-  // 已复用原始计算；仅这两条允许 60 秒，不调整 CI 作业预算，断言与模式分流全部重跑。
+  // 已复用原始计算；这两条同样允许 120 秒（F-116，原 60 秒），不调整 CI 作业预算，断言与模式分流全部重跑。
   it.each(['endpoints', 'guard-inner'])(
     '%s：默认通过只警告，严格模式判红',
     (name) => {
@@ -158,7 +163,7 @@ describe('AC-PRM-FW-F090b 单一真实登记入口（DEC-431①；#248 P2-1 / P3
         warn.mockRestore();
       }
     },
-    60_000,
+    120_000,
   );
 });
 
