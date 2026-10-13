@@ -695,6 +695,7 @@ export const DIGESTS: Digests = {
     registerSuccessionConfigRoutes: 'a36c520ca622',
   },
   'apps/api/src/modules/succession/health-results.ts': {
+    healthAccess: '60a0a82a480c',
     readHealthResults: '00dc7ccf4e5d',
     requireHealthOrg: 'b8fcaf7715ce',
   },
@@ -1792,6 +1793,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/succession/calc-read.ts#whole': '14e9013be25c',
   'apps/api/src/modules/succession/calc-routes.ts#registerCalcRoutes': '315660ad65bf',
   'apps/api/src/modules/succession/config-routes.ts#registerSuccessionConfigRoutes': '3fb660443fbe',
+  'apps/api/src/modules/succession/health-results.ts#healthAccess': 'c7bacfe6a69a',
   'apps/api/src/modules/succession/health-results.ts#readHealthResults': 'e43e6c32caea',
   'apps/api/src/modules/succession/health-results.ts#requireHealthOrg': '0b2408fb15b0',
   'apps/api/src/modules/succession/health-routes.ts#queueAccess': '4ba560c1b7ec',

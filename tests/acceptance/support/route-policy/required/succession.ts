@@ -544,7 +544,7 @@ function healthRequired(mode: 'read' | 'assign' | 'reset' | 'compute'): Obligati
   const obligations: Obligation[] = [
     {
       perm: `obj:Succession.${code}:${operation}`,
-      facts: ['object:objectContext'],
+      facts: mode === 'read' ? ['object:objectContext', 'object:object.* 动作'] : ['object:objectContext'],
       need:
         mode === 'read'
           ? { scope: 'list' }
@@ -552,6 +552,20 @@ function healthRequired(mode: 'read' | 'assign' | 'reset' | 'compute'): Obligati
       at: [
         { role: 'call', unit, anchor },
         ...CONTEXT,
+        ...(mode === 'read'
+          ? [
+              {
+                role: 'call' as const,
+                unit: `${S}/health-results.ts#healthAccess`,
+                anchor: 'await requirePermission(bound.authorize',
+              },
+              {
+                role: 'impl' as const,
+                unit: `${S}/health-results.ts#healthAccess`,
+                anchor: "action: 'object.view'",
+              },
+            ]
+          : []),
         constant,
         {
           role: 'scope',
