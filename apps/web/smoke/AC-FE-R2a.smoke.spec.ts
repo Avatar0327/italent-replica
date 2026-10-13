@@ -77,8 +77,11 @@ async function setup(page: Page) {
       },
     }),
   );
+  await page.setViewportSize({ width: 1512, height: 754 });
   await page.goto('/contracts');
   await page.getByLabel('切换演示身份').selectOption(user);
+  await page.waitForURL('**/staff');
+  await page.goto('/contracts');
 }
 test('AC-FE-R2a-03 六视图请求、详情、高级筛选与三设置页', async ({ page }) => {
   const errors: string[] = [];
@@ -100,16 +103,19 @@ test('AC-FE-R2a-03 六视图请求、详情、高级筛选与三设置页', asyn
     await page.getByRole('button', { name: label, exact: true }).click();
     await response;
   }
+  await expect(page.locator('.contract-card .ant-spin-spinning')).toHaveCount(0);
+  await page.screenshot({ path: '../../.demo/f127-list.png' });
   await page.getByRole('button', { name: '查看合同', exact: true }).first().click();
   await expect(page.getByRole('heading', { name: '合同详情' })).toBeVisible();
   await expect(page.getByText('签订次数', { exact: true })).toBeVisible();
-  await expect(page.locator('.contract-detail')).toContainText('7');
+  await expect(page.locator('.contract-detail').getByText('7', { exact: true })).toBeVisible();
   await expect(page.locator('.contract-detail')).toContainText(id);
   await expect(page.getByText('演示数据', { exact: true }).first()).toBeVisible();
   await page.getByRole('button', { name: '返回列表', exact: true }).click();
   await page.getByRole('button', { name: '高级筛选', exact: true }).click();
   const drawer = page.getByRole('dialog', { name: '高级筛选' });
   await expect(drawer).toBeVisible();
+  await page.screenshot({ path: '../../.demo/f127-filter.png' });
   await drawer.getByLabel('姓名', { exact: true }).fill('不存在');
   await drawer.getByRole('button', { name: '确定', exact: true }).click();
   await expect(page.getByText('演示数据', { exact: true }).first()).toBeVisible();
@@ -122,7 +128,12 @@ test('AC-FE-R2a-03 六视图请求、详情、高级筛选与三设置页', asyn
   ]) {
     await page.getByRole('link', { name: label, exact: true }).click();
     await expect(page.getByRole('heading', { name: label, exact: true })).toBeVisible();
-    await expect(page.getByText(content, { exact: true }).first()).toBeVisible();
+    await expect(page.getByText(content!, { exact: true }).first()).toBeVisible();
+    if (label === '自动续签规则') {
+      await page.getByRole('button', { name: '规则信息', exact: true }).click();
+      await expect(page.getByRole('dialog', { name: '规则信息' })).toContainText('流程发起规则');
+      await page.getByRole('dialog').getByRole('button', { name: '关闭' }).click();
+    }
   }
   expect(errors).toEqual([]);
   expect(writes).toEqual([]);

@@ -69,7 +69,7 @@ describe('AC-FE-0-07 公共对象目录与后端逐应用核对', () => {
     });
     const api = createApiClient(() => ({ tenantId: 'tenant', identityKey: 'user' }));
     const result = await loadPermissions(api, new AbortController().signal);
-    expect(result.menus.map((menu) => menu.key)).toEqual([app]);
+    expect(result.menus.map((menu) => menu.key)).toEqual([app, ...(code === M.contract.code ? ['contracts'] : [])]);
     expect(result.objects[code]?.objectCode).toBe(code);
     expect(result.scope.organizationIds).toEqual([]);
   });

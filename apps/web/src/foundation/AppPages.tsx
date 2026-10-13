@@ -17,6 +17,7 @@ const Account = lazy(() => import('../account/AccountPage.js').then((m) => ({ de
 const Staff = lazy(() => import('../personnel/StaffPage.js').then((m) => ({ default: m.StaffPage })));
 const Evaluation = lazy(() => import('../evaluation/EvaluationPage.js').then((m) => ({ default: m.EvaluationPage })));
 const Survey = lazy(() => import('../survey360/SurveyPage.js').then((m) => ({ default: m.SurveyPage })));
+const Contracts = lazy(() => import('../contracts/ContractsPage.js').then((m) => ({ default: m.ContractsPage })));
 const existing = {
   staff: Staff,
   org: Org,
@@ -58,6 +59,7 @@ export function AppPages() {
     <PageErrorBoundary key={`${session.tenantId}/${session.identityKey}/${location.pathname}`}>
       <Suspense fallback={<PageState kind="loading" />}>
         <Routes>
+          <Route path="/contracts/*" element={<Contracts />} />
           {APP_ROUTES.map((route) => {
             const Page = existing[route.id as keyof typeof existing];
             return (

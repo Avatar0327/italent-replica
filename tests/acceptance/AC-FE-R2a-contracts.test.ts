@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { APP_ROUTES } from '../../apps/web/src/foundation/routes.js';
+import { appRoute } from '../../apps/web/src/foundation/routes.js';
 import { loadPermissions } from '../../apps/web/src/demo-stubs/navigation.js';
-import { ApiClient, ApiError } from '../../apps/web/src/foundation/client.js';
+import { type ApiClient, ApiError } from '../../apps/web/src/foundation/client.js';
 
 describe('AC-FE-R2a-01 合同入口与权限', () => {
   it('登记合同入口并使用合同对象授权', () => {
-    expect(APP_ROUTES.find((route) => route.path === '/contracts')?.objectCode).toBe('TenantBase.EmploymentContract');
+    expect(appRoute('/contracts')?.objectCode).toBe('TenantBase.EmploymentContract');
   });
   it('合同对象无权限时菜单不出现，有权限时出现', async () => {
     for (const allowed of [false, true]) {
@@ -48,6 +48,7 @@ describe('AC-FE-R2a-02 只读请求与申请分流', () => {
     const { canOpenRecord } = await import('../../apps/web/src/contracts/model.js');
     expect(canOpenRecord({ id: 'record', rowType: 'contract' }, 'all')).toBe(true);
     expect(canOpenRecord({ id: 'request', rowType: 'request' }, 'all')).toBe(false);
+    expect(canOpenRecord({ id: 'unknown-kind' }, 'all')).toBe(false);
     expect(canOpenRecord({ id: 'request' }, 'in_review')).toBe(false);
     expect(canOpenRecord({ employeeId: 'employee' }, 'missing')).toBe(false);
   });

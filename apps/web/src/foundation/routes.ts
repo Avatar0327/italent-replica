@@ -1,3 +1,4 @@
+import { contractRoute } from '../contracts/route.js';
 import { ui } from './messages.js';
 
 export type AppId = keyof typeof ui.routes;
@@ -36,7 +37,7 @@ export const APP_ROUTES: readonly AppRoute[] = [
 ];
 
 export function appRoute(path: string) {
-  return APP_ROUTES.find((item) => path === item.path || path.startsWith(`${item.path}/`));
+  return [...APP_ROUTES, contractRoute].find((item) => path === item.path || path.startsWith(`${item.path}/`));
 }
 export function legacyTarget(path: string, search = '', hash = ''): string | null {
   const target = ({ '/': '/transfer', '/jobs': '/job', '/account': '/settings/account' } as Record<string, string>)[

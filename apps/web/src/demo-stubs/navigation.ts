@@ -1,3 +1,4 @@
+import { contractRoute } from '../contracts/route.js';
 import { ApiError, type ApiClient } from '../foundation/client.js';
 import type { ObjectPermission } from '../foundation/permission-model.js';
 import { APP_ROUTES } from '../foundation/routes.js';
@@ -80,5 +81,11 @@ export async function loadPermissions(api: ApiClient, signal: AbortSignal): Prom
         : undefined;
     }),
   );
+  // DEC-482：合同是 staff 应用下的页面入口，不新增后端应用 / 数据范围份额。
+  const contractPermission = await loadObjectPermission(api, contractRoute.objectCode, signal);
+  if (contractPermission) {
+    objects[contractRoute.objectCode] = contractPermission;
+    results.push({ ...contractRoute, key: contractRoute.id });
+  }
   return { ...emptyPermissions, objects, menus: results.filter((item) => item !== undefined) };
 }
