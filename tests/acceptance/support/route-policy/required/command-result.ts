@@ -20,8 +20,8 @@ export const COMMAND_RESULT: RequiredTable = {
         { role: 'impl', unit: `${SERVICE}#readOwnCommandResult`, anchor: 'entry.actorUserId !== ctx.userId' },
         {
           role: 'impl',
-          unit: `${SERVICE}#readOwnCommandResult`,
-          anchor: 'eq(auditCommandFailures.actorUserId, ctx.userId)',
+          unit: `${SERVICE}#latestFailureGroup`,
+          anchor: 'eq(f.actorUserId, ctx.userId)',
         },
       ],
     },
