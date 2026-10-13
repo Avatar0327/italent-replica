@@ -373,7 +373,7 @@ test('AC-FE-R1c-12 创建结果未知跨关闭和刷新锁定，恢复保留原�
   await page.reload();
   await openHr(page);
   await expect(page.getByRole('button', { name: '暂存', exact: true })).toBeDisabled();
-  await expect(page.locator('code').filter({ hasText: requests[0]!.command! })).toBeVisible();
+  await expect(page.locator('.transfer-content code').filter({ hasText: requests[0]!.command! })).toBeVisible();
   expect(requests).toHaveLength(1);
   await page.getByRole('button', { name: '恢复原命令', exact: true }).click();
   await expect(page.getByRole('button', { name: '提交暂存申请', exact: true })).toBeEnabled();
@@ -455,7 +455,7 @@ test('AC-FE-R1c-15 请求在途关闭也保留原编号，恢复失败仍禁止�
   await expect.poll(() => commands.length).toBe(1);
   await page.getByRole('button', { name: '关闭', exact: true }).click();
   await openHr(page);
-  await expect(page.locator('code')).toHaveText(commands[0]!);
+  await expect(page.locator('.transfer-content code')).toHaveText(commands[0]!);
   await expect(page.getByRole('button', { name: '暂存', exact: true })).toBeDisabled();
   release();
   await page.getByRole('button', { name: '恢复原命令', exact: true }).click();
@@ -490,11 +490,11 @@ test('AC-FE-R1c-16 已知单号提交未知先回查，再以原 revision 恢复
   await page.locator('select[name="employeeId"]').selectOption(employee);
   await page.getByRole('button', { name: '暂存', exact: true }).click();
   await page.getByRole('button', { name: '提交暂存申请', exact: true }).click();
-  await expect(page.locator('code')).toBeVisible();
+  await expect(page.locator('.transfer-content code')).toBeVisible();
   await page.getByRole('button', { name: '关闭', exact: true }).click();
   await page.reload();
   await openHr(page);
-  await expect(page.locator('code')).toHaveText(requests[0]!.command!);
+  await expect(page.locator('.transfer-content code')).toHaveText(requests[0]!.command!);
   calls.length = 0;
   await page.getByRole('button', { name: '恢复原命令', exact: true }).click();
   await expect(page.getByRole('button', { name: '提交暂存申请', exact: true })).toBeEnabled();
