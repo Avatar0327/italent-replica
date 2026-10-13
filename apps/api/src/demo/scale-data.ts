@@ -24,11 +24,12 @@ export const DEMO_LAYERS = [
   { key: 3, name: '高层', code: 'DEMO_LAYER_3' },
 ] as const;
 /** 职等 1–9：1–4 基层、5–7 中层、8–9 高层。 */
+const LAYER_OF_GRADE = [1, 1, 1, 1, 2, 2, 2, 3, 3] as const;
 export const DEMO_GRADES = Array.from({ length: 9 }, (_, index) => ({
   grade: index + 1,
   name: `${index + 1}职等`,
   code: `DEMO_GRADE_${String(index + 1).padStart(2, '0')}`,
-  layer: index < 4 ? 1 : index < 7 ? 2 : 3,
+  layer: LAYER_OF_GRADE[index]!,
 }));
 export const DEMO_LEVEL_TYPES = [
   { key: 'P', name: '专业类职级', code: 'DEMO_LT_P' },
@@ -75,11 +76,18 @@ const postDef = (key: PostKey): DemoPostDef => DEMO_POSTS.find((post) => post.ke
 const hasChildren = (key: OrgKey) => DEMO_ORGS.some((org) => org.parent === key);
 const isLeaf = (key: OrgKey) => !hasChildren(key);
 
-/** 组织负责人的职务：事业部总经理 / 部门经理 / 小组长。 */
-function headPostOf(key: OrgKey): PostKey {
-  const org = DEMO_ORGS.find((item) => item.key === key)!;
-  return org.parent === null ? 'buHead' : hasChildren(key) ? 'deptHead' : 'groupLead';
+type Tier = 'bu' | 'dept' | 'group';
+/** 组织层级：事业部（挂在租户根下）/ 部门（下面还有小组）/ 小组。 */
+function tierOf(key: OrgKey): Tier {
+  if (DEMO_ORGS.find((item) => item.key === key)!.parent === null) return 'bu';
+  return hasChildren(key) ? 'dept' : 'group';
 }
+const HEAD_POST: Readonly<Record<Tier, PostKey>> = { bu: 'buHead', dept: 'deptHead', group: 'groupLead' };
+/** 负责人职级：事业部 M3、部门 M2、小组 M1。 */
+const HEAD_LEVEL: Readonly<Record<Tier, number>> = { bu: 3, dept: 2, group: 1 };
+
+/** 组织负责人的职务：事业部总经理 / 部门经理 / 小组长。 */
+const headPostOf = (key: OrgKey): PostKey => HEAD_POST[tierOf(key)];
 
 export interface DemoPositionDef {
   readonly key: string;
@@ -159,13 +167,21 @@ const daysBetween = (from: string, to: string) => Math.round((Date.parse(to) - D
 const PERSONA_MANAGER_HIRED = '2024-01-01';
 
 /** 负责人的入职窗口：事业部 2019 年初、部门 2019 年春、小组 2019 年中–2020 年；演示经理之下的小组晚于经理入职。 */
+const HEAD_HIRE_WINDOW: Readonly<Record<Tier, readonly [string, string]>> = {
+  bu: ['2019-01-01', '2019-02-28'],
+  dept: ['2019-03-01', '2019-05-31'],
+  group: ['2019-06-01', '2020-12-31'],
+};
 function headHireWindow(key: OrgKey, underPersona: boolean): readonly [string, string] {
-  if (underPersona) return ['2024-02-01', '2024-06-30'];
-  if (DEMO_ORGS.find((org) => org.key === key)!.parent === null) return ['2019-01-01', '2019-02-28'];
-  return hasChildren(key) ? ['2019-03-01', '2019-05-31'] : ['2019-06-01', '2020-12-31'];
+  return underPersona ? ['2024-02-01', '2024-06-30'] : HEAD_HIRE_WINDOW[tierOf(key)];
 }
 
 type StaffExtras = Pick<DemoStaffDef, 'hired' | 'level' | 'isHead'> & Partial<DemoStaffDef>;
+
+function managerOf(parentHead: DemoStaffDef | undefined, persona: string | undefined): DemoStaffDef['manager'] {
+  if (parentHead) return { code: parentHead.code };
+  return persona ? { persona } : undefined;
+}
 
 class StaffBuilder {
   readonly staff: DemoStaffDef[] = [];
@@ -216,13 +232,13 @@ class StaffBuilder {
       const parentHead = org.parent ? this.heads.get(org.parent) : undefined;
       const personaParent = org.parent ? DEMO_PERSONA_HEADS[org.parent] : undefined;
       const [lo, hi] = headHireWindow(org.key, personaParent !== undefined);
-      const manager = parentHead ? { code: parentHead.code } : personaParent ? { persona: personaParent } : undefined;
+      const manager = managerOf(parentHead, personaParent);
       this.heads.set(
         org.key,
         this.add(org.key, post, {
           position: `${org.key}:head`,
           hired: this.between(lo, hi),
-          level: { track: postDef(post).track, level: org.parent === null ? 3 : hasChildren(org.key) ? 2 : 1 },
+          level: { track: postDef(post).track, level: HEAD_LEVEL[tierOf(org.key)] },
           isHead: true,
           ...(manager ? { manager } : {}),
         }),
