@@ -64,7 +64,7 @@ export function AppPages() {
                 path={route.path}
                 element={
                   Page ? (
-                    <div className="legacy-page">
+                    <div className={route.id === 'evaluation' || route.id === 'survey360' ? undefined : 'legacy-page'}>
                       <Page />
                     </div>
                   ) : (

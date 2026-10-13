@@ -92,7 +92,7 @@ export async function setupR3b(page: Page, path: string, readonly = false) {
       json: {
         objectCode: object?.code,
         dataOperations: { read: true },
-        viewableFields: object?.fields.map((f) => f.code) ?? ['name'],
+        viewableFields: object?.fields.filter((f) => !readonly || f.code !== 'year').map((f) => f.code) ?? ['name'],
         editableFields: readonly ? [] : (object?.fields.filter((f) => !f.system).map((f) => f.code) ?? []),
         buttons: readonly ? [] : (object?.buttons.map((b) => ({ buttonCode: b.code, level: b.level })) ?? []),
       },
@@ -100,33 +100,33 @@ export async function setupR3b(page: Page, path: string, readonly = false) {
   });
   await page.route('**/api/tenant/evaluation/**', (route) => {
     const pathname = new URL(route.request().url()).pathname;
-    const body = pathname.endsWith(`/activities/${id}`)
-      ? ev
-      : pathname.endsWith('/activities')
-        ? { items: [ev] }
-        : pathname.endsWith('/staff-evaluations')
-          ? { items: [{ id, revision: 1, employeeId: id, currentStage: 'apply' }], total: 1 }
-          : { items: [{ id, name: '合成候选', enabled: true }] };
+    const body = evaluationFixture(pathname);
     return route.fulfill({ json: body });
   });
   await page.route('**/api/tenant/survey360/**', (route) => {
     const pathname = new URL(route.request().url()).pathname;
-    const body = pathname.endsWith(`/activities/${id}`)
-      ? activity
-      : pathname.endsWith('/activities')
-        ? { items: [activity] }
-        : /\/(questionnaires|templates)$/.test(pathname)
-          ? { items: [questionnaire] }
-          : /\/(questionnaires|templates)\/[^/]+$/.test(pathname)
-            ? questionnaire
-            : pathname.endsWith('/objects')
-              ? { items: [{ id, revision: 1, person: { name: '合成参评人' }, questionnaireIds: [id] }] }
-              : pathname.endsWith('/appraisers')
-                ? { items: [{ id, appraiser: { name: '合成评价者' }, roleName: '同事' }] }
-                : { items: [{ id, name: '合成候选' }] };
+    const body = surveyFixture(pathname);
     return route.fulfill({ json: body });
   });
   await page.goto(path);
   await page.getByLabel('切换演示身份').selectOption(user);
   await page.waitForURL(`**${path}`);
+}
+
+function evaluationFixture(pathname: string) {
+  if (pathname.endsWith(`/activities/${id}`)) return ev;
+  if (pathname.endsWith('/activities')) return { items: [ev] };
+  if (pathname.endsWith('/staff-evaluations'))
+    return { items: [{ id, revision: 1, employeeId: id, currentStage: 'apply' }], total: 1 };
+  return { items: [{ id, name: '合成候选', enabled: true }] };
+}
+function surveyFixture(pathname: string) {
+  if (pathname.endsWith(`/activities/${id}`)) return activity;
+  if (pathname.endsWith('/activities')) return { items: [activity] };
+  if (/\/(questionnaires|templates)$/.test(pathname)) return { items: [questionnaire] };
+  if (/\/(questionnaires|templates)\/[^/]+$/.test(pathname)) return questionnaire;
+  if (pathname.endsWith('/objects'))
+    return { items: [{ id, revision: 1, person: { name: '合成参评人' }, questionnaireIds: [id] }] };
+  if (pathname.endsWith('/appraisers')) return { items: [{ id, appraiser: { name: '合成评价者' }, roleName: '同事' }] };
+  return { items: [{ id, name: '合成候选' }] };
 }

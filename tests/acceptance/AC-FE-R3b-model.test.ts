@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { evaluationActions, evaluationPatch, validateDates } from '../../apps/web/src/evaluation/model.js';
+import {
+  evaluationActions,
+  evaluationPatch,
+  validateDates,
+  insertActivityChain,
+} from '../../apps/web/src/evaluation/model.js';
 import { questionnaireContent, validateQuestionnaireSelection } from '../../apps/web/src/survey360/model.js';
 
 describe('AC-FE-R3b-01 活动配置与状态边界', () => {
@@ -58,4 +63,10 @@ describe('AC-FE-R3b-02 套卷与评价关系', () => {
       }),
     ).toThrow();
   });
+});
+
+it('AC-FE-R3b-07 新增材料环节插在结果发布之前，已有环节稳定标识不变', () => {
+  const apply = { id: 'first', type: 'apply' };
+  const result = { id: 'last', type: 'result' };
+  expect(insertActivityChain([apply, result], { type: 'material' })).toEqual([apply, { type: 'material' }, result]);
 });

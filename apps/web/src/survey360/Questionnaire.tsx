@@ -90,16 +90,15 @@ function ContentEditor({
 }) {
   const data = value ?? { roles: [], scales: [], dimensions: [], questions: [] };
   const update = (key: string, next: unknown) => onChange?.({ ...data, [key]: next });
-  const create = (kind: string) => ({
-    key: crypto.randomUUID(),
-    ...(kind === 'roles'
-      ? { weight: 1 }
-      : kind === 'scales'
-        ? { name: '', options: [] }
-        : kind === 'dimensions'
-          ? { name: '', weight: 100 }
-          : { text: '', weight: 1 }),
-  });
+  const create = (kind: string) => {
+    const defaults: Record<string, object> = {
+      roles: { weight: 1 },
+      scales: { name: '', options: [] },
+      dimensions: { name: '', weight: 100 },
+      questions: { text: '', weight: 1 },
+    };
+    return { key: crypto.randomUUID(), ...defaults[kind] };
+  };
   const selector = (source: string, selected: unknown, set: (v: unknown) => void) => (
     <Select
       allowClear
@@ -141,15 +140,12 @@ export function QuestionnairePreview({ row }: { row: Row }) {
             <h3 className="r3b-section">{m[key as 'roles']}</h3>
             <Table
               size="small"
-              rowKey={(r, index) => String(r.id ?? index)}
+              rowKey={(r) => String(r.id ?? r.key)}
               pagination={false}
               dataSource={records(row[key])}
-              columns={(key === 'roles'
-                ? ['roleId', 'weight']
-                : key === 'questions'
-                  ? ['text', 'weight']
-                  : ['name', 'weight']
-              ).map((field) => ({ title: m[field as 'name'], dataIndex: field, render: textValue }))}
+              columns={({ roles: ['roleId', 'weight'], questions: ['text', 'weight'] }[key] ?? ['name', 'weight']).map(
+                (field) => ({ title: m[field as 'name'], dataIndex: field, render: textValue }),
+              )}
               expandable={
                 key === 'scales'
                   ? {
@@ -178,18 +174,7 @@ function headerFields(permission: ReturnType<typeof usePermissions>, blocked: bo
     label: m[name as 'name'],
     access: { ...permission.field(name), editable: permission.field(name).editable && !blocked },
     rules: name === 'name' || name === 'type' ? [{ required: true, message: common.required }] : [],
-    control:
-      name === 'type' || name === 'scoreMethod' ? (
-        <Select
-          options={(name === 'type' ? ['key_behavior', 'rating'] : ['weighted_average', 'weighted_sum']).map(
-            (value) => ({ value, label: display(value) }),
-          )}
-        />
-      ) : name === 'guide' ? (
-        <Input.TextArea rows={3} maxLength={5000} />
-      ) : (
-        <Input maxLength={200} />
-      ),
+    control: headerControl(name),
   }));
   return fields;
 }
@@ -291,4 +276,18 @@ function ContentFields({
       {kind === 'scales' && <ScaleOptions item={item} set={set} used={used} />}
     </>
   );
+}
+
+function headerControl(name: string) {
+  if (name === 'type' || name === 'scoreMethod')
+    return (
+      <Select
+        options={(name === 'type' ? ['key_behavior', 'rating'] : ['weighted_average', 'weighted_sum']).map((value) => ({
+          value,
+          label: display(value),
+        }))}
+      />
+    );
+  if (name === 'guide') return <Input.TextArea rows={3} maxLength={5000} />;
+  return <Input maxLength={200} />;
 }

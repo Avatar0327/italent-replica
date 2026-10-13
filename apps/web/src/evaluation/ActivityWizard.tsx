@@ -170,7 +170,7 @@ function WizardFooter({ state, close }: { state: ReturnType<typeof useWizard>; c
 }
 
 function WizardFields({ state, row }: { state: ReturnType<typeof useWizard>; row?: Row }) {
-  const { step, field, writer, locked } = state;
+  const { step, field } = state;
   return (
     <>
       {' '}
@@ -183,7 +183,7 @@ function WizardFields({ state, row }: { state: ReturnType<typeof useWizard>; row
                 <Form.Item
                   key={key}
                   name={field(key).editable ? key : undefined}
-                  label={m[key as keyof typeof m]}
+                  label={m[key as 'name']}
                   rules={
                     field(key).editable && required.includes(key)
                       ? [
@@ -193,22 +193,7 @@ function WizardFields({ state, row }: { state: ReturnType<typeof useWizard>; row
                       : []
                   }
                 >
-                  {key === 'chains' ? (
-                    <Chains
-                      disabled={!field(key).editable || writer.blocked}
-                      locked={locked}
-                      {...(!field(key).editable ? { value: records(row?.chains) } : {})}
-                    />
-                  ) : key === 'conditions' ? (
-                    <Conditions
-                      disabled={!field(key).editable || writer.blocked}
-                      {...(!field(key).editable ? { value: records(row?.conditions) } : {})}
-                    />
-                  ) : field(key).editable ? (
-                    <ActivityControl name={key} disabled={writer.blocked} />
-                  ) : (
-                    <span>{textValue(row?.[key])}</span>
-                  )}
+                  {wizardControl(key, state, row)}
                 </Form.Item>
               ))}
           </div>
@@ -236,4 +221,17 @@ function validateChains(body: Record<string, unknown>, values: Record<string, un
     );
     if (issue) throw new Error(issue.named ?? issue.message);
   }
+}
+
+function wizardControl(key: string, state: ReturnType<typeof useWizard>, row?: Row) {
+  const { field, writer, locked } = state;
+  const disabled = !field(key).editable || writer.blocked;
+  if (key === 'chains')
+    return (
+      <Chains disabled={disabled} locked={locked} {...(!field(key).editable ? { value: records(row?.chains) } : {})} />
+    );
+  if (key === 'conditions')
+    return <Conditions disabled={disabled} {...(!field(key).editable ? { value: records(row?.conditions) } : {})} />;
+  if (field(key).editable) return <ActivityControl name={key} disabled={writer.blocked} />;
+  return <span>{textValue(row?.[key])}</span>;
 }

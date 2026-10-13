@@ -75,6 +75,7 @@ export function useWriter(done: () => void) {
 }
 export function RemoteSelect(props: {
   path: string;
+  id?: string;
   value?: string | string[];
   onChange?: (value: string | string[]) => void;
   multiple?: boolean;
@@ -100,6 +101,7 @@ export function RemoteSelect(props: {
   return (
     <Space direction="vertical" className="r3b-wide">
       <Select
+        id={props.id}
         aria-label={props.label}
         showSearch
         optionFilterProp="label"
@@ -113,7 +115,7 @@ export function RemoteSelect(props: {
         className="r3b-wide"
       />
       <Failure error={state.error} retry={state.reload} />
-      {state.data?.items.length === 200 && (
+      {!props.path.startsWith('/api/tenant/survey360/') && state.data?.items.length === 200 && (
         <Button type="link" onClick={() => setPage(page + 1)}>
           {m.more}
         </Button>

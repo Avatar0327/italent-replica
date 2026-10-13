@@ -18,3 +18,7 @@ export interface Row extends Record<string, unknown> {
 }
 export const records = (value: unknown): Record<string, unknown>[] =>
   Array.isArray(value) ? (value as Record<string, unknown>[]) : [];
+export function insertActivityChain<T extends { type?: unknown }>(current: T[], chain: T): T[] {
+  const end = current.findIndex((item) => item.type === 'result');
+  return end < 0 ? [...current, chain] : [...current.slice(0, end), chain, ...current.slice(end)];
+}

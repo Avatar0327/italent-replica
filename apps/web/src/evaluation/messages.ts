@@ -1,5 +1,18 @@
 export const m = {
   title: '活动设置',
+  moveUp: '上移',
+  moveDown: '下移',
+  operators: {
+    eq: '等于',
+    ne: '不等于',
+    gt: '大于',
+    lt: '小于',
+    ge: '大于等于',
+    le: '小于等于',
+    is_empty: '为空',
+    not_empty: '不为空',
+    between: '介于',
+  },
   process: '评定过程',
   roster: '参评名单',
   create: '新建评定活动',
@@ -99,7 +112,8 @@ export const m = {
   sourceHint: '字段来源与字段编码须使用已配置的业务元数据；保存时由服务端校验。',
 } as const;
 export function textValue(value: unknown): string {
-  return value === null || value === undefined ? m.noValue : typeof value === 'object' ? m.noValue : String(value);
+  if (value === null || value === undefined || typeof value === 'object') return m.noValue;
+  return String(value);
 }
 export function statusText(status: unknown): string {
   return (

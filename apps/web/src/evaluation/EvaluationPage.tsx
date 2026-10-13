@@ -95,7 +95,7 @@ function ActivityDetail({ id, close, saved }: { id: string; close(): void; saved
     modal.confirm({
       title: m.confirm,
       content: m.confirmBody,
-      onOk: () => writer.write(`${EV}/activities/${id}/${action}`, 'POST', {}, row!.revision),
+      onOk: () => writer.write(`${EV}/activities/${id}/${action}`, 'POST', {}, row!.revision).catch(() => undefined),
     });
 
   return (
@@ -195,16 +195,16 @@ function evaluationColumns(permission: ReturnType<typeof usePermissions>, select
     .map((key) => ({
       title: m[key as 'name'],
       dataIndex: key,
-      render: (value: unknown, row: Row) =>
-        key === 'name' ? (
-          <Button type="link" onClick={() => select(row.id)}>
-            {textValue(value)}
-          </Button>
-        ) : key === 'status' ? (
-          <Tag color={value === 'published' ? 'blue' : 'default'}>{statusText(value)}</Tag>
-        ) : (
-          textValue(key === 'manager' ? (value as { name?: string })?.name : value)
-        ),
+      render: (value: unknown, row: Row) => {
+        if (key === 'name')
+          return (
+            <Button type="link" onClick={() => select(row.id)}>
+              {textValue(value)}
+            </Button>
+          );
+        if (key === 'status') return <Tag color={value === 'published' ? 'blue' : 'default'}>{statusText(value)}</Tag>;
+        return textValue(key === 'manager' ? (value as { name?: string })?.name : value);
+      },
     }));
   return columns;
 }
@@ -246,8 +246,8 @@ function evaluationTabs({
           children: permission.field('conditions').visible ? (
             <Table
               pagination={false}
-              rowKey={(_, index) => String(index)}
-              dataSource={records(row.conditions)}
+              rowKey="_key"
+              dataSource={records(row.conditions).map((condition, index) => ({ ...condition, _key: index }))}
               columns={[
                 { title: m.conditions, dataIndex: 'kind', render: (v: string) => m[v as 'common'] ?? v },
                 { title: m.applicants, dataIndex: 'applicantKind', render: (v: string) => m[v as 'self'] ?? v },

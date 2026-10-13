@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { TenantDatePicker } from '../foundation/selectors.js';
 import { RemoteSelect } from './runtime.js';
 import { m, textValue } from './messages.js';
-import { records } from './model.js';
+import { records, insertActivityChain } from './model.js';
 
 export const EV = '/api/tenant/evaluation';
 const paths: Record<string, string> = {
@@ -63,7 +63,13 @@ export function ActivityControl({
     );
   if (name === 'orgRange') return <OrgRanges value={records(value)} onChange={onChange} disabled={disabled} />;
   return (
-    <Input value={value as string} onChange={(e) => onChange?.(e.target.value)} maxLength={200} disabled={disabled} />
+    <Input
+      aria-label={m[name as 'name']}
+      value={value as string}
+      onChange={(e) => onChange?.(e.target.value)}
+      maxLength={200}
+      disabled={disabled}
+    />
   );
 }
 function OrgRanges({
@@ -151,7 +157,14 @@ export function Chains({
   locked?: boolean;
   disabled?: boolean;
 }) {
-  const change = (next: Record<string, unknown>[]) => onChange?.(next);
+  const change = (next: Record<string, unknown>[]) =>
+    onChange?.(next.length > value.length ? insertActivityChain(value, next[next.length - 1]!) : next);
+  const move = (index: number, direction: number) => {
+    const next = [...value];
+    const target = index + direction;
+    [next[index], next[target]] = [next[target]!, next[index]!];
+    change(next);
+  };
   return (
     <Repeated
       value={value}
@@ -160,14 +173,26 @@ export function Chains({
       max={8}
       create={locked ? undefined : () => ({ type: 'material', name: m.material, transferMode: 'auto' })}
     >
-      {(row, set) => (
-        <ChainFields
-          row={row}
-          set={set}
-          disabled={disabled}
-          locked={locked}
-          replace={(next) => change(value.map((r) => (r === row ? next : r)))}
-        />
+      {(row, set, index) => (
+        <>
+          <ChainFields
+            row={row}
+            set={set}
+            disabled={disabled}
+            locked={locked}
+            replace={(next) => change(value.map((r) => (r === row ? next : r)))}
+          />
+          {!disabled && index > 0 && index < value.length - 1 && (
+            <Space>
+              <Button disabled={index <= 1} onClick={() => move(index, -1)}>
+                {m.moveUp}
+              </Button>
+              <Button disabled={index >= value.length - 2} onClick={() => move(index, 1)}>
+                {m.moveDown}
+              </Button>
+            </Space>
+          )}
+        </>
       )}
     </Repeated>
   );
@@ -313,24 +338,7 @@ function ConditionFields({ row, set, disabled }: RowEditorProps) {
           value1: '',
         })}
       >
-        {(detail, update) => (
-          <div className="r3b-form-grid">
-            <span>
-              {m.conditionDetails} #{String(detail.seq)}
-            </span>
-            <span />
-            {['source', 'field', 'operator', 'value1', 'value2'].map((key) => (
-              <label key={key}>
-                {m[key as 'source']}
-                <Input
-                  value={String(detail[key] ?? '')}
-                  disabled={disabled}
-                  onChange={(e) => update(key, e.target.value)}
-                />
-              </label>
-            ))}
-          </div>
-        )}
+        {(row, set) => <ConditionDetail row={row} set={set} disabled={disabled} />}
       </Repeated>
       <label>
         {m.expression}
@@ -372,5 +380,31 @@ function ChainOptions({ row, set, disabled, locked }: RowEditorProps & { locked?
         </Checkbox>
       )}
     </>
+  );
+}
+
+function ConditionDetail({ row, set, disabled }: RowEditorProps) {
+  return (
+    <div className="r3b-form-grid">
+      <span>
+        {m.conditionDetails} #{String(row.seq)}
+      </span>
+      <span />
+      <label>
+        {m.operator}
+        <Select
+          value={row.operator as string}
+          disabled={disabled}
+          options={Object.entries(m.operators).map(([value, label]) => ({ value, label }))}
+          onChange={(v) => set('operator', v)}
+        />
+      </label>
+      {['source', 'field', 'value1', 'value2'].map((key) => (
+        <label key={key}>
+          {m[key as 'source']}
+          <Input value={String(row[key] ?? '')} disabled={disabled} onChange={(e) => set(key, e.target.value)} />
+        </label>
+      ))}
+    </div>
   );
 }

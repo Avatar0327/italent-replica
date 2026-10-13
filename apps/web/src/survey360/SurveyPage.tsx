@@ -163,7 +163,8 @@ function SurveyDetail({ id, kind, close, saved }: { id: string; kind: Kind; clos
                 modal.confirm({
                   title: m.confirm,
                   content: m.confirmBody,
-                  onOk: () => writer.write(`${BASE}/${kind}/${id}/${action}`, 'POST', {}, row.revision),
+                  onOk: () =>
+                    writer.write(`${BASE}/${kind}/${id}/${action}`, 'POST', {}, row.revision).catch(() => undefined),
                 })
               }
             >
@@ -283,27 +284,26 @@ function ActivityEditor({ row, close, saved }: { row?: Row; close(): void; saved
 }
 
 function surveyTabs(row: Row | undefined, kind: Kind, basic: ReactNode, id: string) {
-  return row
-    ? kind === 'activities'
-      ? [
-          { key: 'basic', label: m.basic, children: basic },
-          { key: 'relations', label: m.relations, children: <Relations activityId={id} /> },
-          {
-            key: 'questionnaires',
-            label: m.questionnaires,
-            children: (
-              <>
-                <p className="r3b-note">{m.questionnaireLibrary}</p>
-                <SurveyList kind="questionnaires" />
-              </>
-            ),
-          },
-        ]
-      : [
-          { key: 'basic', label: m.basic, children: basic },
-          { key: 'preview', label: m.preview, children: <QuestionnairePreview row={row} /> },
-        ]
-    : [];
+  if (!row) return [];
+  if (kind === 'activities')
+    return [
+      { key: 'basic', label: m.basic, children: basic },
+      { key: 'relations', label: m.relations, children: <Relations activityId={id} /> },
+      {
+        key: 'questionnaires',
+        label: m.questionnaires,
+        children: (
+          <>
+            <p className="r3b-note">{m.questionnaireLibrary}</p>
+            <SurveyList kind="questionnaires" />
+          </>
+        ),
+      },
+    ];
+  return [
+    { key: 'basic', label: m.basic, children: basic },
+    { key: 'preview', label: m.preview, children: <QuestionnairePreview row={row} /> },
+  ];
 }
 
 function basicInfo(fields: string[], permission: ReturnType<typeof usePermissions>, row?: Row) {
@@ -315,19 +315,17 @@ function basicInfo(fields: string[], permission: ReturnType<typeof usePermission
         .map((key) => ({
           key,
           label: m[key as 'name'],
-          children:
-            key === 'showAppraiserName'
-              ? row?.[key] === undefined
-                ? common.noValue
-                : row[key]
-                  ? m.show
-                  : m.hide
-              : key === 'roleDisplay'
-                ? ({ name: m.nameMode, fixed_text: m.fixedMode, hidden: m.hiddenMode }[String(row?.[key])] ??
-                  common.noValue)
-                : display(row?.[key]),
+          children: basicValue(key, row?.[key]),
         }))}
     />
   );
   return basic;
+}
+
+function basicValue(key: string, value: unknown) {
+  if (value === undefined || value === null) return common.noValue;
+  if (key === 'showAppraiserName') return value ? m.show : m.hide;
+  if (key === 'roleDisplay')
+    return { name: m.nameMode, fixed_text: m.fixedMode, hidden: m.hiddenMode }[String(value)] ?? common.noValue;
+  return display(value);
 }
