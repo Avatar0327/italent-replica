@@ -80,6 +80,8 @@ export interface WriteSpec<V extends ResultView = ResultView> {
   readonly status: ContentfulStatusCode;
   /** 结果对象适配器：同时决定命令前 / 命令内权限判定所用的权限对象。 */
   readonly results: ResultAdapter<V>;
+  /** 命令入口的业务校验在每次 ledgerExit 前重验，不能以入口快照放行旧成功台账。 */
+  readonly beforeCommand?: (tx: Tx, ctx: WriteContext) => Promise<void>;
   readonly execute: (tx: Tx, ctx: WriteContext) => Promise<CommandResult>;
 }
 
@@ -173,6 +175,7 @@ export async function runSuccessionCommand(
     guard: {
       before: async (tx) => {
         current = await recheck(c, deps, tx, spec);
+        await spec.beforeCommand?.(tx, current);
       },
       replayed: async (tx, replay) => {
         await visibleViews(tx, deps, ctx, replay.body as StoredResult, spec.results);
