@@ -14,7 +14,10 @@ const MIN_HEX = 12;
 const SELF = 'tests/guard-unique-suffix.test.ts';
 
 /** 白名单：「文件:命中的原文」→ 理由。当前没有需要豁免的写法，新增必须逐条写明理由。 */
-const ALLOWED: Record<string, string> = {};
+const ALLOWED: Record<string, string> = {
+  'tests/acceptance/AC-360-F088-support.ts:randomUUID().slice(0, 8)':
+    '拼 UUID 首段：格式固定为 8 位十六进制，不是唯一约束后缀；每个场景在全新库里只取一次前缀，不会撞码',
+};
 
 function listSources(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
