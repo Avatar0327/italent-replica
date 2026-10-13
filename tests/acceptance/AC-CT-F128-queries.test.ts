@@ -79,8 +79,9 @@ describe('AC-CT F-128 A2 入职缺失按类型并带任职列', () => {
     const { w, second, child } = await populated('f128-missing-columns');
     const result = await query<Record<string, unknown>>(w, `view=missing&typeId=${w.type.id}`);
     const row = result.items.find((i) => i.employeeId === second.id)!;
-    expect(row).toMatchObject({ code: 'EMP_LISI', name: '李四合成', departmentId: child, entryDate: '2025-03-01' });
-    expect(Object.keys(row)).toEqual(expect.arrayContaining(['positionId', 'postId']));
+    expect(row).toMatchObject({ code: 'EMP_LISI', name: '李四合成' });
+    expect(row.employment).toMatchObject({ departmentId: child, entryDate: '2025-03-01' });
+    expect(Object.keys(row.employment as object)).toEqual(expect.arrayContaining(['positionId', 'postId']));
   });
 });
 
