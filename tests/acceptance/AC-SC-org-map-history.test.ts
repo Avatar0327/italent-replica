@@ -26,7 +26,9 @@ it('AC-SC-org-map 历史任职无缓存：返回人数并写入历史业务日�
     expect(response.status, await response.clone().text()).toBe(200);
     return (await response.json()) as OrgMap;
   };
-  expect((await read()).items.map((o) => [o.id, o.stats?.onDutyCount])).toEqual([
+  const [first, concurrent] = await Promise.all([read(), read()]);
+  expect(concurrent).toEqual(first);
+  expect(first.items.map((o) => [o.id, o.stats?.onDutyCount])).toEqual([
     [root.id, 2],
     [child.id, 1],
   ]);

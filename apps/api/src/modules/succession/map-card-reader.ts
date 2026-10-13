@@ -1,4 +1,5 @@
 /** #7 / §8.4：组织与嵌套职位共用卡片数据，记录、结果各自按当前授权裁剪。 */
+import { randomUUID } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
 import type { TenantRouteDeps } from '../../routes.js';
 import {
@@ -12,6 +13,8 @@ import { codeOf, type SuccessionContext } from './access.js';
 import { buildRecordViews, projectSuccession } from './projection.js';
 import { listMapRecordRows } from './record-read.js';
 import { loadIncumbentIds, loadPeople, rowsOf, selfRecordHiddenSql } from './read-sql.js';
+import { enqueueCalcRun } from './calc-worker.js';
+import { cacheHistoricalOnDutyCounts } from './org-stats.js';
 import { readRiskRows, projectRisk } from './risk-store.js';
 import { projectHealth, readHealthResults } from './health-results.js';
 
@@ -152,7 +155,29 @@ export async function readMapHealth(
   });
   return result;
 }
-export async function readMapStats(tx: Tx, tenantId: string, orgIds: readonly string[], asOf: string) {
+export async function readMapStats(
+  tx: Tx,
+  ctx: SuccessionContext,
+  scope: ModuleScope,
+  orgIds: readonly string[],
+  asOf: string,
+) {
+  await cacheHistoricalOnDutyCounts(tx, ctx, scope, orgIds, asOf, (missing) =>
+    enqueueCalcRun(
+      tx,
+      {
+        tenantId: ctx.tenantId,
+        kind: 'org_stats',
+        trigger: 'manual',
+        requestedBy: ctx.userId,
+        commandId: `history:${asOf}:${randomUUID()}`,
+        businessDate: asOf,
+        objects: missing.map((objectId) => ({ objectType: 'org', objectId })),
+      },
+      ctx.now,
+    ),
+  );
+  const tenantId = ctx.tenantId;
   const rows = orgIds.length
     ? rowsOf<{ orgId: string; onDutyCount: number; greenRate: string | null }>(
         await tx.execute(sql`SELECT org_id AS "orgId",on_duty_count AS "onDutyCount",green_rate AS "greenRate"
@@ -161,7 +186,7 @@ export async function readMapStats(tx: Tx, tenantId: string, orgIds: readonly st
       )
     : [];
   const cached = new Map(rows.map((row) => [row.orgId, row]));
-  // §4.5：GET 只读日缓存，计算由 C1 run 负责；编制方案 / 周期尚未定，按设计显示 --。
+  // §4.5：历史缺缓存由 C1 统一补齐；当前日沿用定时缓存，编制方案 / 周期尚未定，显示 --。
   return new Map(
     orgIds.map((orgId) => {
       const row = cached.get(orgId);

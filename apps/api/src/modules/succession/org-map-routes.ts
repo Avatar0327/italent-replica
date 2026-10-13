@@ -163,7 +163,7 @@ export function registerOrgMapRoutes(router: Hono<TenantEnv>, deps: TenantRouteD
           : null;
       const risk = await readMapRisk(tx, bound, ctx, positionIds);
       const health = await readMapHealth(tx, bound, ctx, ids, asOf);
-      const stats = fieldVisible(mapFields, 'stats') ? await readMapStats(tx, ctx.tenantId, ids, asOf) : null;
+      const stats = fieldVisible(mapFields, 'stats') ? await readMapStats(tx, ctx, scope, ids, asOf) : null;
       const succession = (id: string) =>
         hidden.has(id) || !recordAccess
           ? {}
