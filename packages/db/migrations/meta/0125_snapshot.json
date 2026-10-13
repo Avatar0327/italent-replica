@@ -1,6 +1,6 @@
 {
-  "id": "58e25d53-c085-4156-9dee-d098f78b146a",
-  "prevId": "c9a06f9e-9027-4162-8d4c-7a84728915a6",
+  "id": "c9a06f9e-9027-4162-8d4c-7a84728915a6",
+  "prevId": "efa50ba7-f8f6-421f-86df-645f8fa0800b",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -52744,45 +52744,45 @@
         "succession_map_preferences_tenant_id_tenants_id_fk": {
           "name": "succession_map_preferences_tenant_id_tenants_id_fk",
           "tableFrom": "succession_map_preferences",
+          "tableTo": "tenants",
           "columnsFrom": [
             "tenant_id"
           ],
-          "tableTo": "tenants",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "succession_map_preferences_tenant_id_user_id_tenant_memberships_tenant_id_user_id_fk": {
           "name": "succession_map_preferences_tenant_id_user_id_tenant_memberships_tenant_id_user_id_fk",
           "tableFrom": "succession_map_preferences",
+          "tableTo": "tenant_memberships",
           "columnsFrom": [
             "tenant_id",
             "user_id"
           ],
-          "tableTo": "tenant_memberships",
           "columnsTo": [
             "tenant_id",
             "user_id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "succession_map_preferences_tenant_id_root_org_id_org_objects_tenant_id_id_fk": {
           "name": "succession_map_preferences_tenant_id_root_org_id_org_objects_tenant_id_id_fk",
           "tableFrom": "succession_map_preferences",
+          "tableTo": "org_objects",
           "columnsFrom": [
             "tenant_id",
             "root_org_id"
           ],
-          "tableTo": "org_objects",
           "columnsTo": [
             "tenant_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -52881,45 +52881,45 @@
         "succession_org_stats_tenant_id_tenants_id_fk": {
           "name": "succession_org_stats_tenant_id_tenants_id_fk",
           "tableFrom": "succession_org_stats",
+          "tableTo": "tenants",
           "columnsFrom": [
             "tenant_id"
           ],
-          "tableTo": "tenants",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "succession_org_stats_tenant_id_org_id_org_objects_tenant_id_id_fk": {
           "name": "succession_org_stats_tenant_id_org_id_org_objects_tenant_id_id_fk",
           "tableFrom": "succession_org_stats",
+          "tableTo": "org_objects",
           "columnsFrom": [
             "tenant_id",
             "org_id"
           ],
-          "tableTo": "org_objects",
           "columnsTo": [
             "tenant_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "succession_org_stats_tenant_id_run_id_succession_calc_runs_tenant_id_id_fk": {
           "name": "succession_org_stats_tenant_id_run_id_succession_calc_runs_tenant_id_id_fk",
           "tableFrom": "succession_org_stats",
+          "tableTo": "succession_calc_runs",
           "columnsFrom": [
             "tenant_id",
             "run_id"
           ],
-          "tableTo": "succession_calc_runs",
           "columnsTo": [
             "tenant_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -53924,75 +53924,75 @@
         "succession_health_results_tenant_id_tenants_id_fk": {
           "name": "succession_health_results_tenant_id_tenants_id_fk",
           "tableFrom": "succession_health_results",
+          "tableTo": "tenants",
           "columnsFrom": [
             "tenant_id"
           ],
-          "tableTo": "tenants",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "succession_health_results_tenant_id_org_id_org_objects_tenant_id_id_fk": {
           "name": "succession_health_results_tenant_id_org_id_org_objects_tenant_id_id_fk",
           "tableFrom": "succession_health_results",
+          "tableTo": "org_objects",
           "columnsFrom": [
             "tenant_id",
             "org_id"
           ],
-          "tableTo": "org_objects",
           "columnsTo": [
             "tenant_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "succession_health_results_tenant_id_level_id_succession_health_levels_tenant_id_id_fk": {
           "name": "succession_health_results_tenant_id_level_id_succession_health_levels_tenant_id_id_fk",
           "tableFrom": "succession_health_results",
+          "tableTo": "succession_health_levels",
           "columnsFrom": [
             "tenant_id",
             "level_id"
           ],
-          "tableTo": "succession_health_levels",
           "columnsTo": [
             "tenant_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "succession_health_results_tenant_id_run_id_succession_calc_runs_tenant_id_id_fk": {
           "name": "succession_health_results_tenant_id_run_id_succession_calc_runs_tenant_id_id_fk",
           "tableFrom": "succession_health_results",
+          "tableTo": "succession_calc_runs",
           "columnsFrom": [
             "tenant_id",
             "run_id"
           ],
-          "tableTo": "succession_calc_runs",
           "columnsTo": [
             "tenant_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "succession_health_results_tenant_id_assigned_by_tenant_memberships_tenant_id_user_id_fk": {
           "name": "succession_health_results_tenant_id_assigned_by_tenant_memberships_tenant_id_user_id_fk",
           "tableFrom": "succession_health_results",
+          "tableTo": "tenant_memberships",
           "columnsFrom": [
             "tenant_id",
             "assigned_by"
           ],
-          "tableTo": "tenant_memberships",
           "columnsTo": [
             "tenant_id",
             "user_id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {

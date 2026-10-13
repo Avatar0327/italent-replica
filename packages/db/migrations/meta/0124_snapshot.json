@@ -1,5 +1,5 @@
 {
-  "id": "c9a06f9e-9027-4162-8d4c-7a84728915a6",
+  "id": "efa50ba7-f8f6-421f-86df-645f8fa0800b",
   "prevId": "2ab49ba8-0a0e-407a-a1b1-2e437acf61ca",
   "version": "7",
   "dialect": "postgresql",
@@ -51816,7 +51816,7 @@
       "checkConstraints": {
         "succession_target_locks_kind": {
           "name": "succession_target_locks_kind",
-          "value": "\"succession_target_locks\".\"target_kind\" IN ('org','position','org_health')"
+          "value": "\"succession_target_locks\".\"target_kind\" IN ('org', 'position')"
         }
       },
       "isRLSEnabled": false
@@ -53843,177 +53843,6 @@
         "succession_risk_results_revision": {
           "name": "succession_risk_results_revision",
           "value": "\"succession_risk_results\".\"revision\" > 0"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.succession_health_results": {
-      "name": "succession_health_results",
-      "schema": "",
-      "columns": {
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "org_id": {
-          "name": "org_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "level_id": {
-          "name": "level_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "method": {
-          "name": "method",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "run_id": {
-          "name": "run_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "source_batch_id": {
-          "name": "source_batch_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "source_project_id": {
-          "name": "source_project_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "source_meeting_id": {
-          "name": "source_meeting_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "computed_at": {
-          "name": "computed_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "assigned_by": {
-          "name": "assigned_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "revision": {
-          "name": "revision",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 1
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "succession_health_results_tenant_id_tenants_id_fk": {
-          "name": "succession_health_results_tenant_id_tenants_id_fk",
-          "tableFrom": "succession_health_results",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "succession_health_results_tenant_id_org_id_org_objects_tenant_id_id_fk": {
-          "name": "succession_health_results_tenant_id_org_id_org_objects_tenant_id_id_fk",
-          "tableFrom": "succession_health_results",
-          "tableTo": "org_objects",
-          "columnsFrom": [
-            "tenant_id",
-            "org_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "succession_health_results_tenant_id_level_id_succession_health_levels_tenant_id_id_fk": {
-          "name": "succession_health_results_tenant_id_level_id_succession_health_levels_tenant_id_id_fk",
-          "tableFrom": "succession_health_results",
-          "tableTo": "succession_health_levels",
-          "columnsFrom": [
-            "tenant_id",
-            "level_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "succession_health_results_tenant_id_run_id_succession_calc_runs_tenant_id_id_fk": {
-          "name": "succession_health_results_tenant_id_run_id_succession_calc_runs_tenant_id_id_fk",
-          "tableFrom": "succession_health_results",
-          "tableTo": "succession_calc_runs",
-          "columnsFrom": [
-            "tenant_id",
-            "run_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "succession_health_results_tenant_id_assigned_by_tenant_memberships_tenant_id_user_id_fk": {
-          "name": "succession_health_results_tenant_id_assigned_by_tenant_memberships_tenant_id_user_id_fk",
-          "tableFrom": "succession_health_results",
-          "tableTo": "tenant_memberships",
-          "columnsFrom": [
-            "tenant_id",
-            "assigned_by"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "user_id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "succession_health_results_tenant_id_org_id_pk": {
-          "name": "succession_health_results_tenant_id_org_id_pk",
-          "columns": [
-            "tenant_id",
-            "org_id"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "succession_health_method": {
-          "name": "succession_health_method",
-          "value": "\"succession_health_results\".\"method\" IN ('computed','manual','synced')"
-        },
-        "succession_health_revision": {
-          "name": "succession_health_revision",
-          "value": "\"succession_health_results\".\"revision\">0"
         }
       },
       "isRLSEnabled": false
