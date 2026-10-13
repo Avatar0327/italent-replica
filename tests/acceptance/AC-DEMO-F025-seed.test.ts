@@ -19,12 +19,14 @@ import {
   withTenant,
 } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { DEMO_ORGS, DEMO_PEOPLE, DEMO_POSITIONS, ROLE_LABELS } from '../../apps/api/src/demo/data.js';
 import { type DemoManifest, seedDemo } from '../../apps/api/src/demo/seed.js';
 import { tenantApi } from './support/tenant-api.js';
 
 const database = useTestDb();
+// 整份种子 200 名员工 + 15 张调动单，读取断言也要经完整授权，放宽单个用例的超时
+vi.setConfig({ testTimeout: 300_000 });
 const TODAY = '2026-10-07';
 const clock = () => new Date(`${TODAY}T02:00:00.000Z`);
 const options = { clock, nodeEnv: 'test' } as const;
