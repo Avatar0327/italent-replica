@@ -75,24 +75,7 @@ export function useTransferForm(
   usePreview(tenantId, model, commands.saved, reload, setModel, setLoadingPreview, setError, setNotice, adapter);
   // R1-T10 的联动仅接入 HR；经理自助本轮仍不提供跨对象联动。
   useContractChoices(tenantId, initiator === 'hr' ? model.employeeId : '', initiator, setModel);
-  const selection = (field: 'employeeId' | 'effectiveDate' | 'transferTypeCode' | 'reasonCode', value: string) => {
-    setError('');
-    setModel((current) =>
-      field === 'reasonCode'
-        ? { ...current, reasonCode: value }
-        : {
-            ...current,
-            [field]: value,
-            reasonCode: field === 'transferTypeCode' ? '' : current.reasonCode,
-            fields: {},
-            customFields: {},
-            preview: null,
-            ...(field === 'employeeId' ? { withEstablishment: false } : {}),
-            // 换人后清空原员工的联动草稿与合同候选。
-            ...(field === 'employeeId' && current.linkage ? { linkage: emptyLinkage, contracts: [] } : {}),
-          },
-    );
-  };
+  const selection = selectField(setModel, setError);
   const field = editField(setModel);
   const refresh = () => {
     setError('');
@@ -133,6 +116,27 @@ export function useTransferForm(
   };
 }
 
+function selectField(setModel: SetModel, setError: SetText) {
+  return (field: 'employeeId' | 'effectiveDate' | 'transferTypeCode' | 'reasonCode', value: string) => {
+    setError('');
+    setModel((current) =>
+      field === 'reasonCode'
+        ? { ...current, reasonCode: value }
+        : {
+            ...current,
+            [field]: value,
+            reasonCode: field === 'transferTypeCode' ? '' : current.reasonCode,
+            fields: {},
+            customFields: {},
+            preview: null,
+            ...(field === 'employeeId' ? { withEstablishment: false } : {}),
+            // 换人后清空原员工的联动草稿与合同候选。
+            ...(field === 'employeeId' && current.linkage ? { linkage: emptyLinkage, contracts: [] } : {}),
+          },
+    );
+  };
+}
+
 function useTransferCommand(
   tenantId: string,
   model: TransferFormModel,
@@ -165,13 +169,7 @@ function useTransferCommand(
     setError('');
     const commandId = crypto.randomUUID();
     try {
-      const execute = () =>
-        saved
-          ? submitSavedTransfer(tenantId, saved, commandId)
-          : (adapter?.save ?? saveTransfer)(tenantId, model, action, commandId);
-      const result = runCommand
-        ? await runCommand(applicationCommand(model, action, commandId, saved), execute)
-        : await execute();
+      const result = await executeTransfer(tenantId, { model, action, commandId, saved, adapter, runCommand });
       if (!result.id || !Number.isInteger(result.revision) || !result.status) throw new Error(text.unknown);
       setSaved(result);
       setNotice(savedNotice(result, action));
@@ -217,6 +215,25 @@ function useTransferCommand(
     reloadSaved,
     resetConflict: () => setNeedsReload(false),
   };
+}
+
+function executeTransfer(
+  tenantId: string,
+  input: {
+    model: TransferFormModel;
+    action: TransferAction;
+    commandId: string;
+    saved: TransferBusiness | null;
+    adapter?: TransferFormAdapter;
+    runCommand?: ApplicationCommandRunner;
+  },
+) {
+  const { model, action, commandId, saved, adapter, runCommand } = input;
+  const execute = () =>
+    saved
+      ? submitSavedTransfer(tenantId, saved, commandId)
+      : (adapter?.save ?? saveTransfer)(tenantId, model, action, commandId);
+  return runCommand ? runCommand(applicationCommand(model, action, commandId, saved), execute) : execute();
 }
 
 type SetModel = React.Dispatch<React.SetStateAction<TransferFormModel>>;

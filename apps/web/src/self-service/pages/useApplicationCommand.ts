@@ -33,5 +33,10 @@ export function useApplicationCommand(onSaved?: (result: TransferBusiness) => vo
       throw cause;
     }
   };
-  return { pending, saved, error, run };
+  const clearConfirmed = () => {
+    if (active.current || !saved || saved.status === 'draft') return;
+    setSaved(null);
+    setError('');
+  };
+  return { pending, saved, error, run, clearConfirmed };
 }

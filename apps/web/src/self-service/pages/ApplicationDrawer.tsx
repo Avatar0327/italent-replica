@@ -1,4 +1,4 @@
-import { Alert, Descriptions } from 'antd';
+import { Alert, Button, Descriptions } from 'antd';
 import { EmployeeTransfer } from '../../employee-self-service/EmployeeTransfer.js';
 import type { Profile } from '../../employee-self-service/types.js';
 import { TransferApplication } from '../shared/TransferApplication.js';
@@ -32,6 +32,9 @@ export function ApplicationDrawer(props: {
     <FormDrawer open={props.open} onClose={props.onClose} title={title}>
       {state.error && <Alert type="error" message={state.error} />}
       {content}
+      {!state.pending && state.saved && state.saved.status !== 'draft' && (
+        <Button onClick={state.clearConfirmed}>{t.newApplication}</Button>
+      )}
       {state.pending?.businessId && <SavedApplication id={state.pending.businessId} tenantId={tenantId} locked />}
     </FormDrawer>
   );
