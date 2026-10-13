@@ -1,4 +1,15 @@
+const licenseNames = new Map([
+  ['pa_user', 'PA用户'],
+  ['core_hr', '核心人力用户'],
+  ['digital_talent', '数字人才用户'],
+]);
 export const m = {
+  licenseOverageTitle: '授权已成功，但许可超额',
+  licenseOverageDetail(licenseType: string, balance: number) {
+    const name = licenseNames.get(licenseType);
+    const label = name ? `${name}（${licenseType}）` : licenseType;
+    return `许可类型：${label}；超出 ${-balance} 个，当前余额 ${balance}。请联系平台运营补发许可。`;
+  },
   title: '企业设置',
   demo: '演示数据',
   new: '新增',

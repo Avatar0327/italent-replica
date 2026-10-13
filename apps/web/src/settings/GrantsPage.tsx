@@ -1,6 +1,6 @@
 import { Button, Input, Select, Space } from 'antd';
 import { useState } from 'react';
-import { newCommand, type PageResult } from '../foundation/client.js';
+import type { PageResult } from '../foundation/client.js';
 import { FormOverlay } from '../foundation/FormOverlay.js';
 import { useApiClient } from '../foundation/Session.js';
 import { DetailPage, ListPage } from '../foundation/templates.js';
@@ -12,7 +12,9 @@ import type { SettingsProps } from './SettingsPage.js';
 import { useResource } from './useResource.js';
 import { useWrite } from './useWrite.js';
 import { m } from './messages.js';
+import { useGrantReceipt, type GrantReceipt } from './grant-receipt.js';
 export function GrantsPage({ title, editable, canScope }: SettingsProps & { canScope: boolean }) {
+  const receipt = useGrantReceipt();
   const list = useResource<PageResult<Grant>>(`${base}/grants`);
   const options = useResource<PageResult<Pick<Profile, 'id' | 'name' | 'code'>>>(
     editable ? `${base}/grantable-profiles` : null,
@@ -25,6 +27,7 @@ export function GrantsPage({ title, editable, canScope }: SettingsProps & { canS
   return (
     <>
       <Notice text={m.grantNotice} />
+      {receipt.notice}
       <ListPage
         title={title}
         rowKey="id"
@@ -68,6 +71,7 @@ export function GrantsPage({ title, editable, canScope }: SettingsProps & { canS
           form={form}
           selected={selected}
           editable={editable}
+          onGranted={receipt.accept}
           close={() => {
             setForm(undefined);
             setSelected(undefined);
@@ -85,12 +89,14 @@ function GrantForm({
   editable,
   close,
   refresh,
+  onGranted,
 }: {
   form: 'create' | 'revoke';
   selected?: Grant;
   editable: boolean;
   close(): void;
   refresh(): void;
+  onGranted(receipt: GrantReceipt): void;
 }) {
   const api = useApiClient();
   const writer = useWrite();
@@ -101,9 +107,7 @@ function GrantForm({
       open
       recordKey={form === 'revoke' ? `${selected?.id}/${selected?.revision}` : 'new-grant'}
       title={form === 'revoke' ? m.revokeTitle : m.new + m.grants}
-      onClose={() => {
-        close();
-      }}
+      onClose={close}
       onRefresh={() => {
         close();
         refresh();
@@ -152,7 +156,7 @@ function GrantForm({
       onSubmit={(values) =>
         writer.run(async () => {
           if (form === 'revoke' && selected) await settingsApi(api).revoke(selected);
-          else await api.request(`${base}/grants`, { method: 'POST', command: newCommand(values) });
+          else onGranted(await settingsApi(api).createGrant(values));
           refresh();
         })
       }

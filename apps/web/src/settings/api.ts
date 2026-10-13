@@ -1,7 +1,10 @@
 import { newCommand, type ApiClient } from '../foundation/client.js';
 import { base, scopeInput, userInput, type Scope } from './model.js';
+import type { GrantReceipt } from './grant-receipt.js';
 export function settingsApi(api: ApiClient) {
   return {
+    createGrant: (values: Record<string, unknown>) =>
+      api.request<GrantReceipt>(`${base}/grants`, { method: 'POST', command: newCommand(values) }),
     createUser: (values: Record<string, unknown>) =>
       api.request(`${base}/users`, {
         method: 'POST',
