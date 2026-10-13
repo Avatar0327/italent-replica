@@ -7,14 +7,23 @@ import { useSession } from './Session.js';
 import { ListPage } from './templates.js';
 import { ui } from './messages.js';
 
-const Org = lazy(() => import('../org/OrgChangePage.js').then((m) => ({ default: m.OrgChangePage })));
-const Job = lazy(() => import('../job/JobPage.js').then((m) => ({ default: m.JobPage })));
-const Transfer = lazy(() => import('../transfer/TransferPage.js').then((m) => ({ default: m.TransferPage })));
-const Self = lazy(() => import('../self-service/pages/SelfPage.js').then((m) => ({ default: m.SelfPage })));
-const Manager = lazy(() => import('../self-service/pages/ManagerPage.js').then((m) => ({ default: m.ManagerPage })));
-const Talent = lazy(() => import('../talent/TalentPage.js').then((m) => ({ default: m.TalentPage })));
 const Account = lazy(() => import('../account/AccountPage.js').then((m) => ({ default: m.AccountPage })));
-const existing = { org: Org, job: Job, transfer: Transfer, self: Self, manager: Manager, talent: Talent };
+const Job = lazy(() => import('../job/JobPage.js').then((m) => ({ default: m.JobPage })));
+const Manager = lazy(() => import('../self-service/pages/ManagerPage.js').then((m) => ({ default: m.ManagerPage })));
+const Org = lazy(() => import('../org/OrgChangePage.js').then((m) => ({ default: m.OrgChangePage })));
+const Self = lazy(() => import('../self-service/pages/SelfPage.js').then((m) => ({ default: m.SelfPage })));
+const Staff = lazy(() => import('../personnel/StaffPage.js').then((m) => ({ default: m.StaffPage })));
+const Talent = lazy(() => import('../talent/TalentPage.js').then((m) => ({ default: m.TalentPage })));
+const Transfer = lazy(() => import('../transfer/TransferPage.js').then((m) => ({ default: m.TransferPage })));
+const existing = {
+  job: Job,
+  manager: Manager,
+  org: Org,
+  self: Self,
+  staff: Staff,
+  talent: Talent,
+  transfer: Transfer,
+};
 
 function LandingPage({ title }: { title: string }) {
   return (
@@ -53,7 +62,7 @@ export function AppPages() {
                 path={route.path}
                 element={
                   Page ? (
-                    <div className={['self', 'manager'].includes(route.id) ? undefined : 'legacy-page'}>
+                    <div className={['manager', 'self', 'staff'].includes(route.id) ? undefined : 'legacy-page'}>
                       <Page />
                     </div>
                   ) : (
