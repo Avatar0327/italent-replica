@@ -14,6 +14,7 @@ import type { TalentReviewSyncPort } from '../talent-review/sync-port.js';
 import { createInMemoryTalentReviewSyncPort } from '../talent-review/sync-port-memory.js';
 
 export interface SuccessionPorts {
+  readonly riskPartTimeIncumbents?: (ctx: SuccessionReadContext, positionId: string) => Promise<readonly string[]>;
   readonly orgHealthCompute?: OrgHealthComputePort;
   readonly reviewReads?: Pick<TalentReviewSyncPort, 'greenRate'>;
 }
