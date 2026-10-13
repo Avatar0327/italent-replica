@@ -27,6 +27,11 @@ describe('AC-FE-R1d2 DEC-456 企业设置', () => {
     expect(scopeInput({ kind: 'org_range', orgRanges: [] })).toEqual({ kind: 'org_range', orgRanges: [] });
     expect(() => scopeInput({ kind: 'mou' })).toThrow();
   });
+  it('组织范围使用现有契约维度 product，不能提交臆造的 finance', () => {
+    const row = { orgId: '10000000-0000-4000-8000-000000000001', dimension: 'product', includeDescendants: false };
+    expect(scopeInput({ kind: 'org_range', orgRanges: [row] })).toEqual({ kind: 'org_range', orgRanges: [row] });
+    expect(() => scopeInput({ kind: 'org_range', orgRanges: [{ ...row, dimension: 'finance' }] })).toThrow();
+  });
   it('用户列表使用后端 offset，不把一页当作总数', () => {
     expect(listPath('users.internal', { page: 2, pageSize: 15 })).toBe(
       '/api/tenant/permission/users?type=internal&limit=15&offset=15',

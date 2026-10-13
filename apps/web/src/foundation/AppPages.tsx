@@ -14,7 +14,16 @@ const Self = lazy(() => import('../employee-self-service/EmployeePage.js').then(
 const Manager = lazy(() => import('../transfer/ManagerPage.js').then((m) => ({ default: m.ManagerPage })));
 const Talent = lazy(() => import('../talent/TalentPage.js').then((m) => ({ default: m.TalentPage })));
 const Account = lazy(() => import('../account/AccountPage.js').then((m) => ({ default: m.AccountPage })));
-const existing = { org: Org, job: Job, transfer: Transfer, self: Self, manager: Manager, talent: Talent };
+const Settings = lazy(() => import('../settings/SettingsPage.js').then((m) => ({ default: m.SettingsPage })));
+const existing = {
+  settings: Settings,
+  org: Org,
+  job: Job,
+  transfer: Transfer,
+  self: Self,
+  manager: Manager,
+  talent: Talent,
+};
 
 function LandingPage({ title }: { title: string }) {
   return (
@@ -79,7 +88,7 @@ export function AppPages() {
               </div>
             }
           />
-          <Route path="/settings/menu/:code" element={<LandingPage title={ui.routes.settings} />} />
+          <Route path="/settings/menu/:code" element={<Settings />} />
           <Route
             path="/self/*"
             element={
