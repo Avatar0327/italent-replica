@@ -168,8 +168,14 @@ for (const appraiser of [false, true]) {
       [appraiser ? '评价角色' : '选取套卷', appraiser ? '合成候选' : '合成协作套卷'],
     ]) {
       const item = form.locator('.ant-form-item').filter({ has: page.locator(`label[title="${label}"]`) });
-      await item.getByRole('combobox').click();
-      await page.locator(`.ant-select-dropdown:visible .ant-select-item-option[title="${candidate}"]`).click();
+      const select = item.getByRole('combobox');
+      await select.click();
+      const listbox = await select.getAttribute('aria-controls');
+      await page
+        .locator('.ant-select-dropdown')
+        .filter({ has: page.locator(`[id="${listbox}"]`) })
+        .locator(`.ant-select-item-option[title="${candidate}"]`)
+        .click();
       await form.getByText(title, { exact: true }).click();
     }
     await form.getByRole('button', saveButton).click();
@@ -190,3 +196,59 @@ for (const appraiser of [false, true]) {
     expect(writes).toBe(1);
   });
 }
+
+test('AC-FE-R3b-R2-01 评定新建共用结果未知保护', async ({ page }) => {
+  await setupR3b(page, '/evaluation');
+  await page.route('**/org/organizations?*', (route) => route.fulfill({ json: { items: [{ id, name: '合成候选' }] } }));
+  await page.route('**/qualification/*?*', (route) => route.fulfill({ json: { items: [{ id, name: '合成候选' }] } }));
+  let writes = 0;
+  await page.route('**/evaluation/activities', (route) => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    writes++;
+    return route.fulfill({ status: 503, json: { error: { code: 'RESULT_UNKNOWN' } } });
+  });
+  await page.getByRole('button', { name: '新建评定活动', exact: true }).click();
+  const form = page.getByRole('dialog', { name: '新建评定活动', exact: true });
+  await form.getByLabel('名称', { exact: true }).fill('合成未确认评定');
+  for (const label of ['活动类型', '所属组织', '周期', '负责人', '组织范围', '申请类别', '申请级别']) {
+    const item = form.locator('.ant-form-item').filter({ has: page.locator(`label[title="${label}"]`) });
+    const select = item.getByRole('combobox');
+    await select.click();
+    const listbox = await select.getAttribute('aria-controls');
+    await page
+      .locator('.ant-select-dropdown')
+      .filter({ has: page.locator(`[id="${listbox}"]`) })
+      .locator('.ant-select-item-option[title="合成候选"]')
+      .click();
+    await form.getByText('新建评定活动', { exact: true }).click();
+  }
+  await form
+    .locator('.ant-form-item')
+    .filter({ has: page.locator('label[title="年度"]') })
+    .getByRole('spinbutton')
+    .fill('2026');
+  const date = form
+    .locator('.ant-form-item')
+    .filter({ has: page.locator('label[title="评定生效日期"]') })
+    .locator('input');
+  await date.fill('2026-10-31');
+  await date.press('Enter');
+  await form.getByRole('checkbox', { name: '员工本人', exact: true }).check();
+  await form.getByRole('button', { name: '下一步' }).click();
+  await form.getByRole('button', { name: '下一步' }).click();
+  for (const section of await form.locator('.r3b-repeat').all()) {
+    for (const label of ['开始日期', '结束日期']) {
+      const input = section.getByText(label, { exact: true }).locator('input');
+      await input.fill('2026-10-31');
+      await input.press('Enter');
+    }
+  }
+  await form.getByLabel('审批流程编码', { exact: true }).fill('DEMO-APPLY');
+  await form.getByRole('button', saveButton).click();
+  await expect(form).toContainText('结果待确认');
+  await form.getByRole('button', cancelButton).click();
+  await page.getByRole('button', { name: '新建评定活动', exact: true }).click();
+  await expect(form).toContainText('合成未确认评定');
+  await expect(form.getByRole('button', saveButton)).toHaveCount(0);
+  expect(writes).toBe(1);
+});
