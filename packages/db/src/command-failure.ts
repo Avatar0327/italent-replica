@@ -61,9 +61,7 @@ export function classifyCommandFailure(error: unknown, phase: CommandPhase, rech
 }
 
 /** 应用错误：字符串 code + 数值 status（AppError、EmploymentError 等）；冲突错误类按名称识别（同包定义，避免循环引用）。 */
-function businessCode(
-  error: unknown,
-): { errorCode: string; reason: string | null; httpStatus: number } | undefined {
+function businessCode(error: unknown): { errorCode: string; reason: string | null; httpStatus: number } | undefined {
   const name = (error as { name?: unknown } | null)?.name;
   if (name === 'RevisionConflictError') return { errorCode: 'REVISION_CONFLICT', reason: null, httpStatus: 409 };
   if (name === 'IdempotencyConflictError') return { errorCode: 'IDEMPOTENCY_CONFLICT', reason: null, httpStatus: 409 };
