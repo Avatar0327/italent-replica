@@ -56,6 +56,7 @@ import { memberWithAdminRole } from './AC-PRM-users-support.js';
 import { newUser, provisioned, seedOperator } from './support/platform-api.js';
 import { moduleDirs } from './support/route-policy/scan.js';
 import { errorCode, seedTenantWithMember, tenantApi } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 const O = SUCCESSION_OBJECTS;
@@ -248,8 +249,8 @@ describe('审计（§8.4；DEC-197 / 216）', () => {
   }
 
   async function viewer(world: PermissionWorld, seeAll: readonly string[]) {
-    const user = await memberWithAdminRole(world, 'audit_admin', `sc-audit-${randomUUID().slice(0, 6)}`);
-    const profile = await createProfile(world, `sc-audit-${randomUUID().slice(0, 6)}`, { apps: [SUCCESSION_APP] });
+    const user = await memberWithAdminRole(world, 'audit_admin', `sc-audit-${uniqueSuffix()}`);
+    const profile = await createProfile(world, `sc-audit-${uniqueSuffix()}`, { apps: [SUCCESSION_APP] });
     for (const definition of [O.riskLevel, O.healthResult, O.record, O.calcRun]) {
       const response = await setObjectPermission(
         world,

@@ -28,6 +28,7 @@ import { memberWithAdminRole } from './AC-PRM-users-support.js';
 import { loginEmailOf } from './AC-EMP-support.js';
 import { auditApi } from './AC-AUD-support.js';
 import { cmd, tenantApi } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const database = useTestDb();
 const NOW = '2026-10-01T01:00:00.000Z';
@@ -38,7 +39,7 @@ const EDUCATION = { code: SUBSETS.education.objectCode };
 type Who = { user: string; tenant: string };
 
 async function profileFor(world: PermissionWorld, objects: { code: string; fields: readonly string[] }[]) {
-  const profile = await createProfile(world, `aud-r3-${randomUUID().slice(0, 8)}`);
+  const profile = await createProfile(world, `aud-r3-${uniqueSuffix()}`);
   for (const { code, fields } of objects) {
     const response = await setObjectPermission(
       world,

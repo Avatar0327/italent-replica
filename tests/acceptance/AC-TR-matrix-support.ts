@@ -2,7 +2,6 @@
  * R3-T04 PR-B4 九宫格验收夹具（设计 §2.2 matrices / position_fields / axis_levels / cells / ratio_rule_*；TR-R31～R35）。
  * 接口 /api/tenant/talent-review/matrices；缺省“全部允许”的授权钩子建数据，权限用例另用真实授权器（matrixOperator）。
  */
-import { randomUUID } from 'node:crypto';
 import type { Db } from '@italent/db';
 import { TALENT_REVIEW_APP, TALENT_REVIEW_OBJECTS } from '@italent/domain';
 import { expect } from 'vitest';
@@ -18,6 +17,7 @@ import {
 import { configBody, configWorld } from './AC-TR-config-support.js';
 import { TR_BASE } from './AC-TR-support.js';
 import type { RequestOptions } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 export const MATRICES = '/matrices';
 export const LEVEL_OPTIONS = [
@@ -88,7 +88,7 @@ export function matrixBody(refs: MatrixRefs, extra: Record<string, unknown> = {}
     })),
   );
   return {
-    code: `mx_${n}_${randomUUID().slice(0, 4)}`,
+    code: `mx_${n}_${uniqueSuffix()}`,
     name: `九宫格${n}`,
     xFieldId: refs.x,
     yFieldId: refs.y,
@@ -156,7 +156,7 @@ export interface MatrixOperatorOptions {
 export async function matrixOperator(world: PermissionWorld, options: MatrixOperatorOptions = {}) {
   const matrix = TALENT_REVIEW_OBJECTS.matrix;
   const field = TALENT_REVIEW_OBJECTS.field;
-  const profile = await createProfile(world, `trm-${randomUUID().slice(0, 8)}`, { apps: [TALENT_REVIEW_APP] });
+  const profile = await createProfile(world, `trm-${uniqueSuffix()}`, { apps: [TALENT_REVIEW_APP] });
   const hidden = new Set(options.hidden ?? []);
   const locked = new Set(options.readonly ?? []);
   const setButtons = async (buttons: boolean) => {
@@ -195,7 +195,7 @@ export async function matrixOperator(world: PermissionWorld, options: MatrixOper
     expect(response.status, await response.clone().text()).toBe(200);
   }
   await makeGrantable(world, [profile.id]);
-  const user = await addMember(world, `trm-operator-${randomUUID().slice(0, 4)}`);
+  const user = await addMember(world, `trm-operator-${uniqueSuffix()}`);
   expect((await grant(world, user.id, profile.id)).status).toBe(201);
   const as = { user: user.id, tenant: world.tenant.id };
   const revisions = new Map<string, number>();

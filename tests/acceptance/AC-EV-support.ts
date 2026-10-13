@@ -3,7 +3,6 @@
  * 接口挂在 /api/tenant/evaluation/ 之下；权限用例用真实授权器：身份只含 TEvaluation 应用，按选项授予各对象的数据操作、
  * 字段查看 / 编辑与按钮，数据范围按（用户 × TEvaluation）一份、缺省为空（DEC-043）。
  */
-import { randomUUID } from 'node:crypto';
 import { EVALUATION_OBJECTS } from '@italent/domain';
 import { expect } from 'vitest';
 import {
@@ -17,6 +16,7 @@ import {
 } from './AC-PRM-support.js';
 import { TC_NOW } from './AC-TC-support.js';
 import type { RequestOptions } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 export const EV_BASE = '/api/tenant/evaluation';
 export const EV_APP = 'TEvaluation';
@@ -80,7 +80,7 @@ export async function creatorOnly(world: PermissionWorld, key: EvaluationKey) {
 }
 
 export async function operator(world: PermissionWorld, options: OperatorOptions = {}) {
-  const profile = await createProfile(world, `ev-${randomUUID().slice(0, 8)}`, { apps: [EV_APP] });
+  const profile = await createProfile(world, `ev-${uniqueSuffix()}`, { apps: [EV_APP] });
   const apply = async (key: EvaluationKey, hiddenFields: readonly string[]) => {
     const definition = EVALUATION_OBJECTS[key];
     const hidden = new Set(hiddenFields);
@@ -112,7 +112,7 @@ export async function operator(world: PermissionWorld, options: OperatorOptions 
   }
   if (options.seeAll) await setSeeAll(world, profile.id, true);
   await makeGrantable(world, [profile.id]);
-  const user = await addMember(world, `ev-op-${randomUUID().slice(0, 4)}`);
+  const user = await addMember(world, `ev-op-${uniqueSuffix()}`);
   expect((await grant(world, user.id, profile.id)).status).toBe(201);
   if (options.auditor) {
     const response = await world.api.request('POST', `${BASE}/admins`, {

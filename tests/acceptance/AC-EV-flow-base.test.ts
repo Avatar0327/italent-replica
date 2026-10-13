@@ -8,6 +8,7 @@ import { activityFixtures, activityOperator, activityWorld } from './AC-EV-activ
 import { createProfile, grant, makeGrantable, setObjectPermission } from './AC-PRM-support.js';
 import { auditApi } from './AC-AUD-support.js';
 import { EV_NOW } from './AC-EV-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 const BASE = '/api/tenant/evaluation';
@@ -173,7 +174,7 @@ describe('AC-EV-flow-base', () => {
     const inside = await seed(a.id, f.mgrA.id, { final_score: '88.25', effective_date: '2026-11-01' });
     const outside = await seed(a.id, f.mgrB.id, { final_score: '99.50' });
     const op = await activityOperator(w, { evOrgs: [w.orgA], auditor: true });
-    const profile = await createProfile(w, `flow-${randomUUID().slice(0, 8)}`, { apps: ['TEvaluation'] });
+    const profile = await createProfile(w, `flow-${uniqueSuffix()}`, { apps: ['TEvaluation'] });
     await ok(
       await setObjectPermission(
         w,

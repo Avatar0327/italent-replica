@@ -7,6 +7,7 @@ import { exitWorld, rowsOf } from './AC-EV-F092-support.js';
 import { reviewOperator } from './AC-EV-review-support.js';
 import { errorOf, EV_BASE, ok } from './AC-EV-support.js';
 import type * as EmploymentStore from '../../apps/api/src/modules/employment/record-store.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const fault = vi.hoisted(() => ({ beforeLock: false }));
 vi.mock('../../apps/api/src/modules/employment/record-store.js', async (load) => {
@@ -263,14 +264,14 @@ describe('AC-EV-F092 离职生效自动退出评审组', () => {
     await ok<{ id: string; revision: number }>(
       await w.request('POST', '/api/tenant/employment/employees', {
         ifMatch: 0,
-        body: { name: '候选尚未任职', code: `P${randomUUID().slice(0, 6)}` },
+        body: { name: '候选尚未任职', code: `P${uniqueSuffix()}` },
       }),
       201,
     );
     const future = await ok<{ id: string; revision: number }>(
       await w.request('POST', '/api/tenant/employment/employees', {
         ifMatch: 0,
-        body: { name: '候选未来入职', code: `F${randomUUID().slice(0, 6)}` },
+        body: { name: '候选未来入职', code: `F${uniqueSuffix()}` },
       }),
       201,
     );

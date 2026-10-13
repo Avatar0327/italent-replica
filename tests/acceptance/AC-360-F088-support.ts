@@ -1,10 +1,10 @@
 /** F-088：只克隆合成任职种子，保留外键、不可变快照和时间线约束。 */
-import { randomUUID } from 'node:crypto';
 import { type Db, type DbHandle, type Tx, sql, withTenant } from '@italent/db';
 import { createTestDb } from '@italent/testkit';
 import { afterAll, beforeAll } from 'vitest';
 import { fullAccess, type PersonView, world360 } from './AC-360-support.js';
 import { hire } from './AC-360-F043-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 interface Observation {
   query: string;
@@ -67,7 +67,7 @@ export async function boundedScene(db: Db, label: string, size: number) {
   const people = (await w.ok<{ items: PersonView[] }>(w.request('GET', '/people?pageSize=200'))).items;
   const managerPerson = people.find((p) => p.employeeId === manager.id)!;
   const seedPerson = people.find((p) => p.employeeId === seed.id)!;
-  const prefix = randomUUID().slice(0, 8);
+  const prefix = uniqueSuffix();
   const id = (n: number) => `${prefix}-0000-4000-8000-${String(n).padStart(12, '0')}`;
   await withTenant(db, w.tenantId, async (tx) => {
     for (const [table, idPrefix] of [

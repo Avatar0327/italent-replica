@@ -20,6 +20,7 @@ import { boundUser, type ChannelWorld, channelWorld, ESS } from './AC-QL-08-supp
 import { QL_NOW } from './AC-QL-support.js';
 import { putObject } from './support/f061.js';
 import { cmd, tenantApi } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const database = useTestDb();
 const PAGES = 'Qualification.Pages';
@@ -161,7 +162,7 @@ describe('AC-QL-08 ESS：固定投影（不走对象字段权限，不含各级�
   /** 给员工另授一个 Qualification 身份：DevelopmentChannel / QualificationStandard 字段全可见或全隐藏。 */
   async function withQualificationIdentity(cw: ChannelWorld, userId: string, visible: boolean) {
     const admin = await adminOf(cw);
-    const profile = await createProfile(admin, `ql-card-${randomUUID().slice(0, 6)}`, { apps: ['Qualification'] });
+    const profile = await createProfile(admin, `ql-card-${uniqueSuffix()}`, { apps: ['Qualification'] });
     for (const object of [QUALIFICATION_OBJECTS.standard, QUALIFICATION_OBJECTS.developmentChannel]) {
       const response = await setObjectPermission(
         admin,

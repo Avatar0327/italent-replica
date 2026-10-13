@@ -2,7 +2,6 @@
  * R3-T07 PR-B 审计（DEC-216 / DEC-197；PR 描述矩阵“审计”行）：计划、目标、任务、关键信息、干预的写入与业务同事务记数据
  * 变更日志；查询按 IDP 对象权限、范围（计划员工 / 关键信息员工归属）与字段权限裁剪；删除计划留快照。
  */
-import { randomUUID } from 'node:crypto';
 import { IDP_OBJECTS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
@@ -10,6 +9,7 @@ import { auditApi } from './AC-AUD-support.js';
 import { idpOperator } from './AC-IDP-permission-support.js';
 import { permissionWorldOf, planWorld, PLAN_NOW } from './AC-IDP-plan-support.js';
 import { memberWithAdminRole } from './AC-PRM-users-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 
@@ -42,7 +42,7 @@ describe('计划侧审计', () => {
     }
 
     const audit = auditApi(w.db, PLAN_NOW, { authorize: undefined });
-    const viewer = await memberWithAdminRole(pw, 'audit_admin', `idp-paudit-${randomUUID().slice(0, 4)}`);
+    const viewer = await memberWithAdminRole(pw, 'audit_admin', `idp-paudit-${uniqueSuffix()}`);
     const query = { objectType: IDP_OBJECTS.plan.code, limit: '50' };
     const op = await idpOperator(pw, { hidden: { plan: ['tutorEmployeeId'] }, user: viewer.user });
     expect((await audit.dataChanges(op.as, query)).items).toEqual([]);
