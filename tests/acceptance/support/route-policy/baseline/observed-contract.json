@@ -1294,12 +1294,12 @@
           "status": 401
         },
         "member": {
-          "code": "REVISION_REQUIRED",
-          "status": 400
+          "code": "INTERNAL_ERROR",
+          "status": 500
         },
         "nonMember": {
-          "code": "TENANT_NOT_MEMBER",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         }
       },
       "module": "succession",
@@ -1329,12 +1329,12 @@
           "status": 401
         },
         "member": {
-          "code": "REVISION_REQUIRED",
-          "status": 400
+          "code": "INTERNAL_ERROR",
+          "status": 500
         },
         "nonMember": {
-          "code": "TENANT_NOT_MEMBER",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         }
       },
       "module": "succession",
@@ -1364,12 +1364,12 @@
           "status": 401
         },
         "member": {
-          "code": "REVISION_REQUIRED",
-          "status": 400
+          "code": "INTERNAL_ERROR",
+          "status": 500
         },
         "nonMember": {
-          "code": "TENANT_NOT_MEMBER",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         }
       },
       "module": "succession",
@@ -1399,12 +1399,12 @@
           "status": 401
         },
         "member": {
-          "code": "REVISION_REQUIRED",
-          "status": 400
+          "code": "INTERNAL_ERROR",
+          "status": 500
         },
         "nonMember": {
-          "code": "TENANT_NOT_MEMBER",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         }
       },
       "module": "succession",
@@ -2435,14 +2435,12 @@
           "status": 401
         },
         "member": {
-          "code": "FORBIDDEN",
-          "reason": "PLATFORM_OPERATOR_REQUIRED",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         },
         "nonMember": {
-          "code": "FORBIDDEN",
-          "reason": "PLATFORM_OPERATOR_REQUIRED",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         }
       },
       "module": "platform",
@@ -2455,14 +2453,12 @@
           "status": 401
         },
         "member": {
-          "code": "FORBIDDEN",
-          "reason": "PLATFORM_OPERATOR_REQUIRED",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         },
         "nonMember": {
-          "code": "FORBIDDEN",
-          "reason": "PLATFORM_OPERATOR_REQUIRED",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         }
       },
       "module": "platform",
@@ -2475,14 +2471,12 @@
           "status": 401
         },
         "member": {
-          "code": "FORBIDDEN",
-          "reason": "PLATFORM_OPERATOR_REQUIRED",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         },
         "nonMember": {
-          "code": "FORBIDDEN",
-          "reason": "PLATFORM_OPERATOR_REQUIRED",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         }
       },
       "module": "platform",
@@ -7217,8 +7211,8 @@
           "status": 401
         },
         "member": {
-          "code": "FORBIDDEN",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         },
         "nonMember": {
           "code": "TENANT_NOT_MEMBER",
@@ -7244,12 +7238,12 @@
           "status": 401
         },
         "member": {
-          "code": "FORBIDDEN",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         },
         "nonMember": {
-          "code": "TENANT_NOT_MEMBER",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         }
       },
       "module": "succession",
@@ -7271,12 +7265,12 @@
           "status": 401
         },
         "member": {
-          "code": "FORBIDDEN",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         },
         "nonMember": {
-          "code": "TENANT_NOT_MEMBER",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         }
       },
       "module": "succession",
@@ -7298,12 +7292,12 @@
           "status": 401
         },
         "member": {
-          "code": "FORBIDDEN",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         },
         "nonMember": {
-          "code": "TENANT_NOT_MEMBER",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         }
       },
       "module": "succession",
@@ -7323,12 +7317,12 @@
           "status": 401
         },
         "member": {
-          "code": "FORBIDDEN",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         },
         "nonMember": {
-          "code": "TENANT_NOT_MEMBER",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         }
       },
       "module": "succession",
@@ -7348,12 +7342,12 @@
           "status": 401
         },
         "member": {
-          "code": "FORBIDDEN",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         },
         "nonMember": {
-          "code": "TENANT_NOT_MEMBER",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         }
       },
       "module": "succession",
@@ -7421,12 +7415,12 @@
           "status": 401
         },
         "member": {
-          "code": "FORBIDDEN",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         },
         "nonMember": {
-          "code": "TENANT_NOT_MEMBER",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         }
       },
       "module": "succession",
@@ -7446,12 +7440,12 @@
           "status": 401
         },
         "member": {
-          "code": "FORBIDDEN",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         },
         "nonMember": {
-          "code": "TENANT_NOT_MEMBER",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         }
       },
       "module": "succession",
@@ -7545,12 +7539,12 @@
           "status": 401
         },
         "member": {
-          "code": "FORBIDDEN",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         },
         "nonMember": {
-          "code": "TENANT_NOT_MEMBER",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         }
       },
       "module": "succession",
@@ -7570,12 +7564,12 @@
           "status": 401
         },
         "member": {
-          "code": "FORBIDDEN",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         },
         "nonMember": {
-          "code": "TENANT_NOT_MEMBER",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         }
       },
       "module": "succession",
@@ -7595,12 +7589,12 @@
           "status": 401
         },
         "member": {
-          "code": "FORBIDDEN",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         },
         "nonMember": {
-          "code": "TENANT_NOT_MEMBER",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         }
       },
       "module": "succession",
@@ -7645,12 +7639,12 @@
           "status": 401
         },
         "member": {
-          "code": "VALIDATION_FAILED",
-          "status": 400
+          "code": "INTERNAL_ERROR",
+          "status": 500
         },
         "nonMember": {
-          "code": "TENANT_NOT_MEMBER",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         }
       },
       "module": "succession",
@@ -7670,12 +7664,12 @@
           "status": 401
         },
         "member": {
-          "code": "FORBIDDEN",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         },
         "nonMember": {
-          "code": "TENANT_NOT_MEMBER",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         }
       },
       "module": "succession",
@@ -12233,14 +12227,12 @@
           "status": 401
         },
         "member": {
-          "code": "FORBIDDEN",
-          "reason": "PLATFORM_OPERATOR_REQUIRED",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         },
         "nonMember": {
-          "code": "FORBIDDEN",
-          "reason": "PLATFORM_OPERATOR_REQUIRED",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         }
       },
       "module": "succession-platform",
@@ -12257,14 +12249,12 @@
           "status": 401
         },
         "member": {
-          "code": "FORBIDDEN",
-          "reason": "PLATFORM_OPERATOR_REQUIRED",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         },
         "nonMember": {
-          "code": "FORBIDDEN",
-          "reason": "PLATFORM_OPERATOR_REQUIRED",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         }
       },
       "module": "succession-platform",
@@ -12281,14 +12271,12 @@
           "status": 401
         },
         "member": {
-          "code": "FORBIDDEN",
-          "reason": "PLATFORM_OPERATOR_REQUIRED",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         },
         "nonMember": {
-          "code": "FORBIDDEN",
-          "reason": "PLATFORM_OPERATOR_REQUIRED",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         }
       },
       "module": "platform",
@@ -12307,14 +12295,12 @@
           "status": 401
         },
         "member": {
-          "code": "FORBIDDEN",
-          "reason": "PLATFORM_OPERATOR_REQUIRED",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         },
         "nonMember": {
-          "code": "FORBIDDEN",
-          "reason": "PLATFORM_OPERATOR_REQUIRED",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         }
       },
       "module": "platform",
@@ -12332,14 +12318,12 @@
           "status": 401
         },
         "member": {
-          "code": "FORBIDDEN",
-          "reason": "PLATFORM_OPERATOR_REQUIRED",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         },
         "nonMember": {
-          "code": "FORBIDDEN",
-          "reason": "PLATFORM_OPERATOR_REQUIRED",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         }
       },
       "module": "platform",
@@ -12357,14 +12341,12 @@
           "status": 401
         },
         "member": {
-          "code": "FORBIDDEN",
-          "reason": "PLATFORM_OPERATOR_REQUIRED",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         },
         "nonMember": {
-          "code": "FORBIDDEN",
-          "reason": "PLATFORM_OPERATOR_REQUIRED",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         }
       },
       "module": "platform",
@@ -12381,14 +12363,12 @@
           "status": 401
         },
         "member": {
-          "code": "FORBIDDEN",
-          "reason": "PLATFORM_OPERATOR_REQUIRED",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         },
         "nonMember": {
-          "code": "FORBIDDEN",
-          "reason": "PLATFORM_OPERATOR_REQUIRED",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         }
       },
       "module": "platform",
@@ -12405,14 +12385,12 @@
           "status": 401
         },
         "member": {
-          "code": "FORBIDDEN",
-          "reason": "PLATFORM_OPERATOR_REQUIRED",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         },
         "nonMember": {
-          "code": "FORBIDDEN",
-          "reason": "PLATFORM_OPERATOR_REQUIRED",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         }
       },
       "module": "platform",
@@ -17415,12 +17393,12 @@
           "status": 401
         },
         "member": {
-          "code": "REVISION_REQUIRED",
-          "status": 400
+          "code": "INTERNAL_ERROR",
+          "status": 500
         },
         "nonMember": {
-          "code": "TENANT_NOT_MEMBER",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         }
       },
       "module": "succession",
@@ -17452,12 +17430,12 @@
           "status": 401
         },
         "member": {
-          "code": "VALIDATION_FAILED",
-          "status": 400
+          "code": "INTERNAL_ERROR",
+          "status": 500
         },
         "nonMember": {
-          "code": "TENANT_NOT_MEMBER",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         }
       },
       "module": "succession",
@@ -17625,12 +17603,12 @@
           "status": 401
         },
         "member": {
-          "code": "VALIDATION_FAILED",
-          "status": 400
+          "code": "INTERNAL_ERROR",
+          "status": 500
         },
         "nonMember": {
-          "code": "TENANT_NOT_MEMBER",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         }
       },
       "module": "succession",
@@ -17660,12 +17638,12 @@
           "status": 401
         },
         "member": {
-          "code": "VALIDATION_FAILED",
-          "status": 400
+          "code": "INTERNAL_ERROR",
+          "status": 500
         },
         "nonMember": {
-          "code": "TENANT_NOT_MEMBER",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         }
       },
       "module": "succession",
@@ -17694,12 +17672,12 @@
           "status": 401
         },
         "member": {
-          "code": "VALIDATION_FAILED",
-          "status": 400
+          "code": "INTERNAL_ERROR",
+          "status": 500
         },
         "nonMember": {
-          "code": "TENANT_NOT_MEMBER",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         }
       },
       "module": "succession",
@@ -17728,12 +17706,12 @@
           "status": 401
         },
         "member": {
-          "code": "VALIDATION_FAILED",
-          "status": 400
+          "code": "INTERNAL_ERROR",
+          "status": 500
         },
         "nonMember": {
-          "code": "TENANT_NOT_MEMBER",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         }
       },
       "module": "succession",
@@ -20014,14 +19992,12 @@
           "status": 401
         },
         "member": {
-          "code": "FORBIDDEN",
-          "reason": "PLATFORM_OPERATOR_REQUIRED",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         },
         "nonMember": {
-          "code": "FORBIDDEN",
-          "reason": "PLATFORM_OPERATOR_REQUIRED",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         }
       },
       "module": "platform",
@@ -20999,12 +20975,12 @@
           "status": 401
         },
         "member": {
-          "code": "VALIDATION_FAILED",
-          "status": 400
+          "code": "INTERNAL_ERROR",
+          "status": 500
         },
         "nonMember": {
-          "code": "TENANT_NOT_MEMBER",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         }
       },
       "module": "succession",
@@ -21034,12 +21010,12 @@
           "status": 401
         },
         "member": {
-          "code": "VALIDATION_FAILED",
-          "status": 400
+          "code": "INTERNAL_ERROR",
+          "status": 500
         },
         "nonMember": {
-          "code": "TENANT_NOT_MEMBER",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         }
       },
       "module": "succession",
@@ -21134,12 +21110,12 @@
           "status": 401
         },
         "member": {
-          "code": "VALIDATION_FAILED",
-          "status": 400
+          "code": "INTERNAL_ERROR",
+          "status": 500
         },
         "nonMember": {
-          "code": "TENANT_NOT_MEMBER",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         }
       },
       "module": "succession",
@@ -21169,12 +21145,12 @@
           "status": 401
         },
         "member": {
-          "code": "REVISION_REQUIRED",
-          "status": 400
+          "code": "INTERNAL_ERROR",
+          "status": 500
         },
         "nonMember": {
-          "code": "TENANT_NOT_MEMBER",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         }
       },
       "module": "succession",
@@ -21205,12 +21181,12 @@
           "status": 401
         },
         "member": {
-          "code": "VALIDATION_FAILED",
-          "status": 400
+          "code": "INTERNAL_ERROR",
+          "status": 500
         },
         "nonMember": {
-          "code": "TENANT_NOT_MEMBER",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         }
       },
       "module": "succession",
@@ -21240,12 +21216,12 @@
           "status": 401
         },
         "member": {
-          "code": "VALIDATION_FAILED",
-          "status": 400
+          "code": "INTERNAL_ERROR",
+          "status": 500
         },
         "nonMember": {
-          "code": "TENANT_NOT_MEMBER",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         }
       },
       "module": "succession",
@@ -21313,12 +21289,12 @@
           "status": 401
         },
         "member": {
-          "code": "VALIDATION_FAILED",
-          "status": 400
+          "code": "INTERNAL_ERROR",
+          "status": 500
         },
         "nonMember": {
-          "code": "TENANT_NOT_MEMBER",
-          "status": 403
+          "code": "INTERNAL_ERROR",
+          "status": 500
         }
       },
       "module": "succession",
