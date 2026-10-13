@@ -47,3 +47,55 @@ export declare function maskNumbers(text: string): string;
 export declare function isCountOnlyHunk(hunk: Diff3Hunk): boolean;
 export declare function classifyConflict(diff3Text: string): { hunks: number; countOnly: boolean };
 export declare function takeOursForCounts(diff3Text: string): { text: string; remaining: number };
+export declare const GRANTS_PATH: string;
+export declare const GRANT_HISTORY_PATH: string;
+export interface GrantConstants {
+  version: number;
+  digest: string;
+}
+export interface GrantHistoryEntry extends GrantConstants {
+  comments: string[];
+}
+export declare function readGrantConstants(text: string): GrantConstants;
+export declare function writeGrantConstants(text: string, constants: GrantConstants): string;
+export declare function parseGrantHistory(text: string): GrantHistoryEntry[];
+export declare function writeGrantHistory(text: string, entries: readonly GrantHistoryEntry[]): string;
+export declare function planGrantVersion(input: {
+  main: GrantConstants;
+  mainHistory: readonly GrantHistoryEntry[];
+  branch: GrantConstants | undefined;
+  branchHistory: readonly GrantHistoryEntry[];
+  mergedDigest: string;
+  label: string;
+}): GrantConstants & { bumped: boolean; changed: boolean; history: GrantHistoryEntry[] };
+export declare function isGrantConstantHunk(hunk: Diff3Hunk): boolean;
+export declare function isGrantHistoryHunk(hunk: Diff3Hunk, prefix: string): boolean;
+export declare function resolveGrantConflict(
+  file: string,
+  diff3Text: string,
+): { text: string; remaining: number } | null;
+export declare const GRANT_CHANGES_PATH: string;
+export interface GrantChanges {
+  reason: string;
+  add: readonly string[];
+  remove: readonly string[];
+}
+export declare const EMPTY_GRANT_CHANGES: GrantChanges;
+export declare function parseGrantChanges(text: string): GrantChanges;
+export declare function activeGrantChanges(baseText: string | undefined, headText: string | undefined): GrantChanges;
+export declare function checkGrantChanges(input: {
+  baseCodes: readonly string[];
+  headCodes: readonly string[];
+  declared: GrantChanges;
+}): { added: string[]; removed: string[]; problems: string[] };
+export declare function pickGrantChanges(input: {
+  branch: string | undefined;
+  fork: string | undefined;
+  main: string | undefined;
+}): string | undefined;
+export declare function describeGrantPlan(input: {
+  main: GrantConstants;
+  mergedDigest: string | undefined;
+  branchDigest: string;
+  forkDigest: string;
+}): string;

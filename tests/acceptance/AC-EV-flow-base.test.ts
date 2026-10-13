@@ -1,6 +1,6 @@
 /** C2-1a：活动级命令、评定终态与当前范围（设计 §3.2～3.5、§5.1、§8）。 */
 import { randomUUID } from 'node:crypto';
-import { pgErrorCode, sql, withTenant } from '@italent/db';
+import { APP_ROLE, pgErrorCode, sql, withTenant } from '@italent/db';
 import { EVALUATION_FLOW_OBJECTS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -254,6 +254,25 @@ describe('AC-EV-flow-base', () => {
       expect(audit.before.notifications).toHaveLength(1);
     });
   });
+
+  it.each(['ev_staff_evaluations', 'ev_notifications'])(
+    '标准租户上下文：%s 在租户设置为空时读不到记录，不抛 UUID 转换错误',
+    async (table) => {
+      const activity = await fresh();
+      await seed(activity.id, f.mgrA.id);
+      await withTenant(testDb().db, w.tenant.id, (tx) =>
+        tx.execute(sql`INSERT INTO ev_notifications (tenant_id, activity_id, kind, dedupe_key)
+          VALUES (${w.tenant.id}::uuid, ${activity.id}::uuid, 'activity_published', ${randomUUID()})`),
+      );
+      // 连接的事务级租户设置清空后应沿用 current_tenant_id() 的 fail-closed 语义。
+      const found = await testDb().db.transaction(async (tx) => {
+        await tx.execute(sql`SELECT set_config('app.tenant_id', '', true)`);
+        await tx.execute(sql.raw(`SET LOCAL ROLE ${APP_ROLE.tenant}`));
+        return rows(await tx.execute(sql`SELECT id FROM ${sql.identifier(table)}`));
+      });
+      expect(found).toEqual([]);
+    },
+  );
 
   it('复合外键拒绝错误周期/跨活动通知；租户 RLS 隔离；调用方回滚时终止、审计和通知一同回滚', async () => {
     const kernel = await import('../../apps/api/src/modules/evaluation/flow-service.js');
