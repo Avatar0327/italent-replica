@@ -94,7 +94,10 @@ it('AC-FE-R1c-19 DEC-467 异动类型只读取 transferTypeCode，不使用系�
   });
 });
 
-it.each([null, 'position_adjustment'])('AC-FE-R1c-19 DEC-467 缺少异动类型时显示未读取（changeType=%s）', (changeType) => {
-  const business = { id: 'draft', revision: 1, employeeRevision: 4, status: 'draft', changeType };
-  expect(draftRows(business, {}).find((row) => row.label === '异动类型')?.value).toBe('未读取');
-});
+it.each([null, 'position_adjustment'])(
+  'AC-FE-R1c-19 DEC-467 缺少异动类型时显示未读取（changeType=%s）',
+  (changeType) => {
+    const business = { id: 'draft', revision: 1, employeeRevision: 4, status: 'draft', changeType };
+    expect(draftRows(business, {}).find((row) => row.label === '异动类型')?.value).toBe('未读取');
+  },
+);
