@@ -97,7 +97,7 @@ export const DIGESTS: Digests = {
     'route:GET /api/tenant/commands/:commandId/result': '4747db7abe44',
   },
   'apps/api/src/modules/command-result/service.ts': {
-    readOwnCommandResult: 'b72c8a100e43',
+    readOwnCommandResult: '4fc744c0c64b',
   },
   'apps/api/src/modules/contracts/context.ts': {
     checkFields: 'a4706994f2b8',
@@ -1347,7 +1347,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/avatar/service.ts#uploadAvatar': '7b148f1cfed9',
   'apps/api/src/modules/avatar/service.ts#whereOwner': '6ae738c83349',
   'apps/api/src/modules/command-result/routes.ts#route:GET /api/tenant/commands/:commandId/result': '45e18aa050cf',
-  'apps/api/src/modules/command-result/service.ts#readOwnCommandResult': 'ce416aac33ff',
+  'apps/api/src/modules/command-result/service.ts#readOwnCommandResult': 'f1071457cb1f',
   'apps/api/src/modules/contracts/context.ts#checkFields': '670343aebdbc',
   'apps/api/src/modules/contracts/context.ts#checkScope': '38843b4c716f',
   'apps/api/src/modules/contracts/imports.ts#checkImportScope': '0564049c27e2',

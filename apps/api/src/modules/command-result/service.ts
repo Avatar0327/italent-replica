@@ -9,15 +9,22 @@ export interface OwnCommandResult {
   readonly businessType: string | null;
   readonly businessId: string | null;
   readonly revision: number | null;
-  readonly httpStatus: number;
+  /** 写接口实际返回的状态；失败审计没有记录且不是公共错误码时为 null，不猜。 */
+  readonly httpStatus: number | null;
   readonly completedAt: string;
 }
 
+/** 同一命令 ID 的失败审计取最新的这几条判定；足够覆盖同一时刻的并列。 */
+const LATEST_WINDOW = 20;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * 当前用户自己发起的命令结果摘要（F-120）；不是本人的、不存在的、结果未知的一律返回 undefined（路由层映射 404）。
- * 先查命令台账（成功），再查失败命令审计（只认确定的业务失败）：同一命令 ID 先失败后重提成功时以台账为准。
+ * 1. 先按（租户，命令 ID）查台账，不带发起人条件：台账里有这个命令 ID 就已有权威归属，不是本人（含发起人为空的
+ *    历史 / 系统行）直接 undefined，不得再回退到失败审计——否则别人用同一命令 ID 碰撞留下的失败审计会被当成“本人失败”；
+ * 2. 台账没有，才看本人的失败命令审计：取**最新**一条先判类别，最新一条不是确定的业务失败（存储不可写 / 结果未知）
+ *    即视为结果未知；同一时刻有多条时，只要含未知类就按未知处理（时间戳无法区分先后，取保守）；
+ * 3. 本人台账成功结果始终优先于失败审计（同一命令 ID 先失败后原键重提成功）。
  * 摘要只取台账响应里的 id / revision / kind，不返回响应正文；整个查询只读。
  */
 export async function readOwnCommandResult(
@@ -28,26 +35,19 @@ export async function readOwnCommandResult(
   const [entry] = await tx
     .select()
     .from(commandLedger)
-    .where(
-      and(
-        eq(commandLedger.tenantId, ctx.tenantId),
-        eq(commandLedger.commandId, commandId),
-        eq(commandLedger.actorUserId, ctx.userId),
-      ),
-    );
+    .where(and(eq(commandLedger.tenantId, ctx.tenantId), eq(commandLedger.commandId, commandId)));
   if (entry) {
-    const body = summaryOf(entry.responseBody);
+    if (entry.actorUserId !== ctx.userId) return undefined;
     return {
       commandId,
       status: entry.responseStatus < 400 ? 'succeeded' : 'failed',
       commandType: entry.commandType,
-      ...body,
+      ...summaryOf(entry.responseBody),
       httpStatus: entry.responseStatus,
       completedAt: entry.createdAt.toISOString(),
     };
   }
-  // 存储不可写 / 结果未知不是确定结论，不在此返回：前端保持“结果待确认”，按原命令 ID 继续回查
-  const [failure] = await tx
+  const failures = await tx
     .select()
     .from(auditCommandFailures)
     .where(
@@ -55,21 +55,23 @@ export async function readOwnCommandResult(
         eq(auditCommandFailures.tenantId, ctx.tenantId),
         eq(auditCommandFailures.commandId, commandId),
         eq(auditCommandFailures.actorUserId, ctx.userId),
-        eq(auditCommandFailures.outcome, 'business_failed'),
       ),
     )
     .orderBy(desc(auditCommandFailures.occurredAt))
-    .limit(1);
-  if (!failure) return undefined;
+    .limit(LATEST_WINDOW);
+  const latest = failures[0];
+  if (!latest) return undefined;
+  const tied = failures.filter((row) => row.occurredAt.getTime() === latest.occurredAt.getTime());
+  if (tied.some((row) => row.outcome !== 'business_failed')) return undefined;
   return {
     commandId,
     status: 'failed',
-    commandType: commandTypeOf(failure.method, failure.path),
+    commandType: commandTypeOf(latest.method, latest.path),
     businessType: null,
     businessId: null,
     revision: null,
-    httpStatus: ERROR_STATUS[failure.errorCode as ErrorCode] ?? 500,
-    completedAt: failure.occurredAt.toISOString(),
+    httpStatus: latest.httpStatus ?? ERROR_STATUS[latest.errorCode as ErrorCode] ?? null,
+    completedAt: latest.occurredAt.toISOString(),
   };
 }
 

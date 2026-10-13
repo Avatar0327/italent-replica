@@ -12,6 +12,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/command-result/service.ts#readOwnCommandResult': [
     'apps/api/src/command-type.ts#commandTypeOf',
+    '#LATEST_WINDOW',
     '#summaryOf',
   ],
   'apps/api/src/modules/command-result/service.ts#summaryOf': ['#UUID'],
