@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   activeGrantChanges,
   checkGrantChanges,
+  checkSnapshotIdentity,
   classifyConflict,
   describeGrantPlan,
   EMPTY_GRANT_CHANGES,
@@ -395,6 +396,59 @@ describe('叠放分支：上游已合并但改了号的迁移（planRenumber 按
     const second = planRenumber(first.journal, first.journal, { main: mainSql, branch: branchSql });
     expect(second.changed).toBe(false);
     expect(second.stale).toEqual([]);
+  });
+});
+
+describe('保留迁移的快照身份检查（checkSnapshotIdentity）', () => {
+  const main = [
+    { tag: '0002_m', id: 'id-m' },
+    { tag: '0003_up_x', id: 'id-x' },
+  ];
+  const digests: Record<string, string | undefined> = { 'main:0003_up_x': 'aaa', 'branch:0002_up_x': 'bbb' };
+  const digestOf = (side: 'main' | 'branch', tag: string) => digests[`${side}:${tag}`];
+
+  it('保留项的快照 id 都是新的：没有问题', () => {
+    expect(
+      checkSnapshotIdentity({ main, kept: [{ tag: '0002_mine', id: 'id-mine' }], mainLastId: 'id-x', digestOf }),
+    ).toEqual([]);
+  });
+
+  it('保留项的快照 id 与 main 的某条重复：列出文件对与两边摘要；重复的是 main 最新一条时提示自环', () => {
+    const problems = checkSnapshotIdentity({
+      main,
+      kept: [{ tag: '0002_up_x', id: 'id-x' }],
+      mainLastId: 'id-x',
+      digestOf,
+    });
+    expect(problems).toHaveLength(1);
+    for (const part of ['0002_up_x.sql', 'sha256=bbb', '0003_up_x.sql', 'sha256=aaa', 'id-x', '自环'])
+      expect(problems[0], part).toContain(part);
+    const notLast = checkSnapshotIdentity({
+      main,
+      kept: [{ tag: '0002_dup', id: 'id-m' }],
+      mainLastId: 'id-x',
+      digestOf,
+    });
+    expect(notLast[0]).toContain('0002_m.sql');
+    expect(notLast[0]).not.toContain('自环');
+  });
+
+  it('保留项之间快照 id 重复、读不到摘要：也报告（摘要显示为“无”）', () => {
+    const problems = checkSnapshotIdentity({
+      main,
+      kept: [
+        { tag: '0004_p', id: 'id-p' },
+        { tag: '0005_q', id: 'id-p' },
+      ],
+      mainLastId: 'id-x',
+    });
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toContain('0004_p.sql');
+    expect(problems[0]).toContain('0005_q.sql');
+  });
+
+  it('没有快照 id（读不到）的条目跳过', () => {
+    expect(checkSnapshotIdentity({ main, kept: [{ tag: '0009_z', id: undefined }], mainLastId: 'id-x' })).toEqual([]);
   });
 });
 

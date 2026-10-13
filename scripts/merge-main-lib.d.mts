@@ -28,6 +28,16 @@ export interface SqlReaders {
   /** 本分支上该迁移 SQL 的文本（读不到返回 undefined） */
   branch?: (tag: string) => string | undefined;
 }
+export interface SnapshotIdentityInput {
+  /** main 上每条迁移的 tag 与快照 id */
+  main: readonly { tag: string; id: string | undefined }[];
+  /** 本分支要保留（改号）的迁移的 tag 与快照 id（改号前的） */
+  kept: readonly { tag: string; id: string | undefined }[];
+  /** main 最新一条迁移的快照 id：保留项与它重复就会形成 id = prevId 自环 */
+  mainLastId?: string;
+  digestOf?: (side: 'main' | 'branch', tag: string) => string | undefined;
+}
+export declare function checkSnapshotIdentity(input: SnapshotIdentityInput): string[];
 export declare function formatStale(
   stale: readonly { from: JournalEntry; mainEntry: JournalEntry; digest: string }[],
 ): string[];
