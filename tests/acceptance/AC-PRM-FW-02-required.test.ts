@@ -109,12 +109,13 @@ describe('AC-PRM-FW-02 显式必需项表：形状与完整性', () => {
     }
   });
 
+  // F-116：全表扫描是本文件最重的一条（合并队列高负载下实测近 60 秒），单独放宽到 120 秒；不改全局 testTimeout。
   it('全表证据校验零发现：每条义务都有强制调用点证据，锚点命中，摘要与源码一致', () => {
     if (process.env['ROUTE_POLICY_UPDATE_DIGESTS'] === '1') writeDigests(REQUIRED);
     requiredChecks({ table: REQUIRED, routes: manifest.declared, contract: frozen })
       .find((check) => check.id === 'storedEvidence')!
       .verify();
-  });
+  }, 120_000);
 
   it('真实声明 × 真实表：零发现', () => {
     requiredChecks({ table: REQUIRED, routes: manifest.declared, contract: frozen })
