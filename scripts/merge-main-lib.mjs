@@ -4,6 +4,8 @@
 // - 快照三方合并：本分支快照相对“分叉前快照”的改动叠到 main 最新快照上，并接上 prevId 链；
 // - “只改计数”的业务冲突识别：main 一侧相对分叉点只改了数字字面量（如端点计数 592→593）。
 
+import { createHash } from 'node:crypto';
+
 const MIGRATIONS = 'packages/db/migrations';
 const ROUTE_POLICY = 'tests/acceptance/support/route-policy';
 
@@ -35,12 +37,54 @@ export const sqlPath = (tag) => `${MIGRATIONS}/${tag}.sql`;
 const retag = (tag, idx) => `${pad4(idx)}${tag.replace(/^\d+/, '')}`;
 
 /**
- * 迁移重新编号：branchJournal 里 tag 不在 mainJournal 的条目是本分支自己的迁移，按原顺序接在 main 之后。
- * 返回新 journal（main 全部条目 + 改号后的本分支条目）和改号清单 renames。
+ * SQL 规范化（迁移“内容相同”的判定口径）：去 BOM；CRLF / CR 统一成 LF；每行去尾部空白（空格、制表符）；去文件尾部的空行。
+ * 行首缩进、行内空白、大小写、注释都保留：只要 SQL 实际写法有差别就不算同一条迁移。
  */
-export function planRenumber(mainJournal, branchJournal) {
+export function normalizeSql(text) {
+  return text
+    .replace(/^\uFEFF/, '')
+    .replace(/\r\n?/g, '\n')
+    .replace(/[ \t]+$/gm, '')
+    .replace(/\n+$/, '');
+}
+
+/** 规范化后 SQL 的 sha256（十六进制）；读不到或规范化后为空返回 undefined（空内容不能当“相同”）。 */
+export function sqlDigest(text) {
+  if (text === undefined) return undefined;
+  const normalized = normalizeSql(text);
+  return normalized === '' ? undefined : createHash('sha256').update(normalized).digest('hex');
+}
+
+/**
+ * 迁移重新编号：branchJournal 里 tag 不在 mainJournal 的条目是本分支自己的迁移，按原顺序接在 main 之后。
+ * 叠放 PR（base 是另一个未合并的 PR 分支）会带着上游合并前的旧名迁移：它们与 main 上改号后的迁移 SQL 规范化后相同，
+ * 这类条目记入 stale（清理旧名 SQL / 快照 / journal 条目、不改号），只有真正新增的才进 renames。
+ * sql.main / sql.branch 按 tag 读迁移 SQL 文本；不传或读不到则该条目只按名字比对。
+ * main 上的每条迁移最多认领一条旧名迁移；本分支已带着的 main 同名迁移不参与认领。
+ * 返回新 journal（main 全部条目 + 改号后的本分支条目）、改号清单 renames 和已合并清单 stale。
+ */
+export function planRenumber(mainJournal, branchJournal, sql = {}) {
   const mainTags = new Set(mainJournal.entries.map((e) => e.tag));
-  const own = branchJournal.entries.filter((e) => !mainTags.has(e.tag));
+  const branchTags = new Set(branchJournal.entries.map((e) => e.tag));
+  const added = branchJournal.entries.filter((e) => !mainTags.has(e.tag));
+  const claimable = new Map();
+  if (added.length && sql.main && sql.branch) {
+    for (const mainEntry of mainJournal.entries) {
+      if (branchTags.has(mainEntry.tag)) continue;
+      const digest = sqlDigest(sql.main(mainEntry.tag));
+      if (digest === undefined) continue;
+      if (!claimable.has(digest)) claimable.set(digest, []);
+      claimable.get(digest).push(mainEntry);
+    }
+  }
+  const stale = [];
+  const own = [];
+  for (const entry of added) {
+    const digest = claimable.size ? sqlDigest(sql.branch(entry.tag)) : undefined;
+    const mainEntry = digest === undefined ? undefined : claimable.get(digest)?.shift();
+    if (mainEntry) stale.push({ from: entry, mainEntry });
+    else own.push(entry);
+  }
   const last = mainJournal.entries.at(-1);
   let idx = last ? last.idx : -1;
   let when = last ? last.when : 0;
@@ -50,11 +94,11 @@ export function planRenumber(mainJournal, branchJournal) {
     return { from: entry, to: { ...entry, idx, when, tag: retag(entry.tag, idx) } };
   });
   const journal = { ...mainJournal, entries: [...mainJournal.entries, ...renames.map((r) => r.to)] };
-  const changed = renames.some((r) => r.from.idx !== r.to.idx || r.from.when !== r.to.when);
-  // 分叉点：本分支第一条自己的迁移之前那一条（它的快照是本分支快照改动的基准）
+  const changed = stale.length > 0 || renames.some((r) => r.from.idx !== r.to.idx || r.from.when !== r.to.when);
+  // 分叉点：本分支第一条自己的迁移之前那一条（它的快照是本分支快照改动的基准；可能是已合并的旧名条目，快照含上游改动）
   const firstOwn = own.length ? branchJournal.entries.indexOf(own[0]) : -1;
   const forkIdx = firstOwn > 0 ? branchJournal.entries[firstOwn - 1].idx : undefined;
-  return { journal, renames, changed, forkIdx };
+  return { journal, renames, stale, changed, forkIdx };
 }
 
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);

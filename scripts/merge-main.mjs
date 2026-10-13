@@ -149,11 +149,20 @@ function migrationPlan() {
   const mainJournal = json(MAIN, JOURNAL_PATH);
   const branchJournal = json('HEAD', JOURNAL_PATH);
   if (!mainJournal || !branchJournal) fail(`读不到 ${JOURNAL_PATH}`);
-  return planRenumber(mainJournal, branchJournal);
+  return planRenumber(mainJournal, branchJournal, {
+    main: (tag) => show(MAIN, sqlPath(tag)),
+    branch: (tag) => show('HEAD', sqlPath(tag)),
+  });
 }
 
 function printPlan(plan) {
-  if (!plan.renames.length) return console.log('迁移：本分支没有自己的迁移。');
+  if (plan.stale.length)
+    console.log(
+      `迁移：以下旧名迁移的 SQL 与 main 上已改号的迁移相同（上游已合并），清理、不改号：\n${plan.stale
+        .map(({ from, mainEntry }) => `  ${from.tag} = main 的 ${mainEntry.tag}`)
+        .join('\n')}`,
+    );
+  if (!plan.renames.length) return console.log('迁移：本分支没有自己新增的迁移。');
   const lines = plan.renames.map(({ from, to }) => `  ${from.tag} → ${to.tag}（when ${from.when} → ${to.when}）`);
   console.log(`迁移：本分支 ${plan.renames.length} 条${plan.changed ? '，改号如下' : '，编号已接在 main 之后'}：`);
   console.log(lines.join('\n'));
@@ -170,17 +179,19 @@ function rebasedSnapshots(plan) {
   return snapshots;
 }
 
-/** 写改号后的 SQL、快照与 journal；旧路径若是 main 的文件就恢复成 main 版本，否则删掉。 */
+/**
+ * 写改号后的 SQL、快照与 journal；旧路径（改号前的、已合并的旧名迁移）若是 main 的文件就恢复成 main 版本，否则删掉。
+ * 没有新增迁移（只有已合并的旧名迁移）时不需要重算快照。
+ */
 function applyRenumber(plan) {
-  if (!plan.renames.length) return;
-  const snapshots = rebasedSnapshots(plan);
+  const snapshots = plan.renames.length ? rebasedSnapshots(plan) : [];
   const written = new Set();
   plan.renames.forEach(({ from, to }, i) => {
     writeRepo(sqlPath(to.tag), show('HEAD', sqlPath(from.tag)) ?? fail(`缺少 ${sqlPath(from.tag)}`));
     writeRepo(snapshotPath(to.idx), drizzleJson(snapshots[i]));
     written.add(sqlPath(to.tag)).add(snapshotPath(to.idx));
   });
-  for (const { from } of plan.renames) {
+  for (const { from } of [...plan.renames, ...plan.stale]) {
     for (const old of [sqlPath(from.tag), snapshotPath(from.idx)]) {
       if (written.has(old)) continue;
       const onMain = show(MAIN, old);
@@ -194,7 +205,8 @@ function applyRenumber(plan) {
 }
 
 function warnTagReferences(plan) {
-  for (const { from, to } of plan.renames) {
+  const moved = [...plan.renames, ...plan.stale.map(({ from, mainEntry }) => ({ from, to: mainEntry }))];
+  for (const { from, to } of moved) {
     if (from.tag === to.tag) continue;
     const hits = spawnSync('git', ['grep', '-l', '-F', from.tag, '--', '.', ':!packages/db/migrations'], {
       cwd: ROOT,
