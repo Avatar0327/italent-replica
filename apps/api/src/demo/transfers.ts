@@ -12,7 +12,7 @@ import type { SeedProgress } from './progress.js';
 import type { DemoWorld } from './world.js';
 
 type End = 'pending' | 'effective' | 'reject' | 'withdraw';
-interface Scenario {
+export interface Scenario {
   /** DEMO-TRF-nn：仅用于日志与进度。 */
   readonly id: string;
   readonly via: 'self' | 'manager' | 'hr';
@@ -79,12 +79,12 @@ const dayOffset = (day: string, days: number): string => {
   return date.toISOString().slice(0, 10);
 };
 
-interface TaskView {
+export interface TaskView {
   readonly id: string;
   readonly status: string;
   readonly assigneeUserId: string;
 }
-interface InstanceView extends Json {
+export interface InstanceView extends Json {
   readonly id: string;
   readonly status: string;
   readonly revision: number;
@@ -204,10 +204,37 @@ async function create(
   return String(saved.id);
 }
 
+/** 种子会对调动单做的三种改变业务状态的动作（发起另见 create）。 */
+type SeedAction = 'approve' | 'reject' | 'withdraw';
+
+const hasEnded = (view: InstanceView): boolean =>
+  ['returned', 'withdrawn'].includes(view.status) ||
+  (view.logs ?? []).some((log) => ['reject', 'withdraw'].includes(log.event));
+
 /**
- * 按当前审批进度续做：同意 approvals 个节点后，按 end 收尾。只往前走：已经被驳回 / 撤回过的单子（含用户之后重提的）、
- * 已经审批过头的单子都视为本场景已完成，不再推进或回退。
+ * 场景推进的单一判定入口：读业务单当前的真实进度，决定种子下一步要做什么，没有则返回 null。
+ * 只有同时满足以下条件才返回动作，其余一律视为“已完成或已被用户接管”，种子不再动：
+ * ① 只有本场景发起的这一个审批实例（用户重提会产生新实例）；② 实例仍在进行中，没有被驳回 / 撤回过（含用户之后重提的）；
+ * ③ 有待办节点；④ 已通过节点数不超过场景预设——小于预设才审批，恰好等于预设才执行驳回 / 撤回，超过预设绝不动。
+ * 所有改变业务状态的种子动作（审批、驳回、撤回）都只能经这里决定。
  */
+export function nextSeedAction(
+  scenario: Pick<Scenario, 'approvals' | 'end'>,
+  views: readonly InstanceView[],
+): { action: SeedAction; task: TaskView; view: InstanceView } | null {
+  const [view, ...others] = views;
+  if (!view || others.length > 0 || view.status !== 'running' || hasEnded(view)) return null;
+  const task = view.tasks.find((item) => item.status === 'pending');
+  if (!task) return null;
+  const approved = view.tasks.filter((item) => item.status === 'approved').length;
+  if (approved > scenario.approvals) return null;
+  if (approved < scenario.approvals) return { action: 'approve', task, view };
+  if (scenario.end === 'reject') return { action: 'reject', task, view };
+  if (scenario.end === 'withdraw') return { action: 'withdraw', task, view };
+  return null;
+}
+
+/** 按当前审批进度续做，直到没有下一步（经 nextSeedAction 判定）。 */
 async function advance(world: DemoWorld, scenario: Scenario, businessId: string, initiator: string) {
   const base = '/api/tenant';
   for (;;) {
@@ -222,43 +249,24 @@ async function advance(world: DemoWorld, scenario: Scenario, businessId: string,
         (await world.call(initiator, 'GET', `${base}/approval/instances/${String(found.id)}`)) as InstanceView,
       );
     }
-    if (scenario.end === 'reject' || scenario.end === 'withdraw') {
-      // 驳回 / 撤回已经发生过（实例状态或日志里留有记录）：不论用户之后是否重提，都不再动
-      if (views.some(hasEnded)) return;
-    }
-    const view = views.find((item) => item.status === 'running');
-    if (!view) return;
-    const pending = view.tasks.find((task) => task.status === 'pending');
-    if (!pending) return;
-    const approved = view.tasks.filter((task) => task.status === 'approved').length;
-    const decide = (action: string, comment?: string) =>
-      world.call(
-        pending.assigneeUserId,
-        'POST',
-        `${base}/approval/tasks/${pending.id}/${action}`,
-        { comment },
-        view.revision,
-      );
-    if (approved < scenario.approvals) {
-      await decide('approve');
-    } else if (scenario.end === 'reject') {
-      await decide('reject', '演示：信息不全，请补充后重新提交');
-    } else if (scenario.end === 'withdraw') {
+    const next = nextSeedAction(scenario, views);
+    if (!next) return;
+    const { action, task, view } = next;
+    if (action === 'withdraw') {
       // 发起人（HR）撤回在途申请 → 业务单回到草稿（普通员工没有“撤回”按钮，所以撤回单由 HR 发起）
       const business = await world.call(initiator, 'GET', `${base}/employment/businesses/${businessId}`);
+      if (business.status !== 'in_review') return;
       const path = `${base}/employment/businesses/${businessId}/withdraw`;
       await world.call(initiator, 'POST', path, {}, Number(business.revision));
-      return;
     } else {
-      return;
+      const comment = action === 'reject' ? '演示：信息不全，请补充后重新提交' : undefined;
+      const path = `${base}/approval/tasks/${task.id}/${action}`;
+      await world.call(task.assigneeUserId, 'POST', path, { comment }, view.revision);
     }
-    await world.wrote('transfers', `${scenario.id}:${approved + 1}`);
+    await world.wrote('transfers', `${scenario.id}:${action}`);
+    if (action !== 'approve') return;
   }
 }
-
-const hasEnded = (view: InstanceView): boolean =>
-  ['returned', 'withdrawn'].includes(view.status) ||
-  (view.logs ?? []).some((log) => ['reject', 'withdraw'].includes(log.event));
 
 /**
  * 演示调动流程：直接上级审批 → 调入部门 HRBP 审核。复刻首版没有“直接上级”审批人表达式（REQ-APV-002），

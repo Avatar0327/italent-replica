@@ -24,11 +24,27 @@ export function memoryProgress(): SeedProgress {
 
 type FileShape = Record<string, { transfers: string[] }>;
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+/** 只保留结构正确的租户条目（对象，transfers 是字符串数组）；其余一律当作缺失。 */
+function validShape(parsed: unknown): FileShape {
+  if (!isRecord(parsed)) return {};
+  const result: FileShape = {};
+  for (const [tenantId, entry] of Object.entries(parsed)) {
+    const transfers = isRecord(entry) ? entry.transfers : undefined;
+    if (Array.isArray(transfers) && transfers.every((item) => typeof item === 'string')) {
+      result[tenantId] = { transfers: transfers as string[] };
+    }
+  }
+  return result;
+}
+
 export function fileProgress(path: string): SeedProgress {
   const read = (): FileShape => {
     if (!existsSync(path)) return {};
     try {
-      return JSON.parse(readFileSync(path, 'utf8')) as FileShape;
+      return validShape(JSON.parse(readFileSync(path, 'utf8')));
     } catch {
       // 记录损坏等同缺失：退回按业务单状态推断
       return {};
