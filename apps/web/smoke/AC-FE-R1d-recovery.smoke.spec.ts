@@ -202,3 +202,19 @@ test('AC-FE-R1d-2 经理草稿读取失败禁止续办，恢复读取后才能�
   await drawer.getByRole('button', { name: '重新读取已暂存申请', exact: true }).click();
   await expect(drawer.getByRole('button', { name: '提交暂存申请', exact: true })).toBeEnabled();
 });
+
+test('AC-FE-R1d-2 本人申请确认成功后可以显式新建，未确认保护不阻断下一笔', async ({ page }) => {
+  const commands: string[] = [];
+  await page.route('**/self-service/transfer', (route) => {
+    commands.push(route.request().headers()['idempotency-key']!);
+    return route.fulfill({ status: 201, json: { ...draft, status: 'in_review' } });
+  });
+  const drawer = await setup(page, false);
+  await drawer.getByRole('button', { name: '提交', exact: true }).click();
+  await expect(drawer).toHaveCount(0);
+  await openForm(page, false);
+  await drawer.getByRole('button', { name: '新建调动申请', exact: true }).click();
+  await drawer.getByRole('button', { name: '提交', exact: true }).click();
+  await expect.poll(() => commands.length).toBe(2);
+  expect(commands[0]).not.toBe(commands[1]);
+});
