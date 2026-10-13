@@ -8,7 +8,9 @@ import type { buildPermissionSnapshot } from '../../apps/api/src/modules/permiss
 const requireWeb = createRequire(resolve('apps/web/package.json'));
 const { createElement: h, act, StrictMode } = requireWeb('react');
 const { createRoot } = requireWeb('react-dom/client');
-const { PermissionsProvider, usePermissions } = await import(resolve('apps/web/src/foundation/Permissions.tsx'));
+const { PermissionsProvider, PermissionObject, usePermissions } = await import(
+  resolve('apps/web/src/foundation/Permissions.tsx')
+);
 const { SessionProvider, useSession } = await import(resolve('apps/web/src/foundation/Session.tsx'));
 type ResponseBody = Awaited<ReturnType<typeof buildPermissionSnapshot>>;
 const body: ResponseBody = {
@@ -60,7 +62,7 @@ async function render() {
               source: 'server',
             },
           },
-          h(PermissionsProvider, {}, h(Probe)),
+          h(PermissionsProvider, {}, h(PermissionObject, { object: 'TenantBase.JobLayer' }, h(Probe))),
         ),
       ),
     );

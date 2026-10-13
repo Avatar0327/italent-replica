@@ -21,7 +21,7 @@
 
 ## L2 缺口
 
-`foundation/permission-snapshot.ts` 通过一次 `GET /api/tenant/permission/me/snapshot` 读取会话、应用菜单、企业设置菜单和逐应用范围摘要，类型直接引用后端返回值，来源标为 `server`。应用对象目录使用 domain 的 `APP_OBJECT_DIRECTORY`。快照入口对象只代表可见性，不授予字段或按钮；需要明细的页面由 `usePermissions` 按对象懒加载并共用当前快照周期的缓存。
+`foundation/permission-snapshot.ts` 通过一次 `GET /api/tenant/permission/me/snapshot` 读取会话、应用菜单、企业设置菜单和逐应用范围摘要，类型直接引用后端返回值，来源标为 `server`。应用对象目录使用 domain 的 `APP_OBJECT_DIRECTORY`。快照入口对象只代表可见性，不授予字段或按钮；需要明细的页面由 `usePermissions(code)` 按对象懒加载并共用当前快照周期的缓存。`usePermissions()` 只消费快照，避免菜单读取触发对象探测；`Can` 可以沿用页面对象上下文。
 
 Session 的租户名称、时区、用户及员工绑定来自快照。开发 Cookie 仅提供首次请求的租户上下文，身份仍由服务端验证。快照网络或 5xx 失败显示可重试错误态，401 显示现有登录提示。范围读取成功为 ready，保留 all / limited / none、组织集合和 truncated；无范围概念的应用不补项，失败为 unavailable，不推断全部组织。
 

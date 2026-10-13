@@ -81,6 +81,12 @@ export function Shell() {
         })),
     }))
     .filter((group) => group.children.length > 0);
+  let content = <AppPages />;
+  if (loading) content = <PageState kind="loading" />;
+  else if (error) {
+    const kind = error instanceof ApiError && error.kind === 'login' ? 'login' : 'error';
+    content = <PageState kind={kind} error={error} retry={refresh} />;
+  }
   return (
     <Layout className="app-shell">
       <Header />
@@ -114,19 +120,7 @@ export function Shell() {
         <Layout.Content className="shell-content">
           <DecisionNote id="foundation" />
           <div className="shell-workspace">
-            <PermissionObject object={active?.objectCode}>
-              {loading ? (
-                <PageState kind="loading" />
-              ) : error ? (
-                <PageState
-                  kind={error instanceof ApiError && error.kind === 'login' ? 'login' : 'error'}
-                  error={error}
-                  retry={refresh}
-                />
-              ) : (
-                <AppPages />
-              )}
-            </PermissionObject>
+            <PermissionObject object={active?.objectCode}>{content}</PermissionObject>
           </div>
         </Layout.Content>
       </Layout>

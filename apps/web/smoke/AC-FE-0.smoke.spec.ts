@@ -49,9 +49,7 @@ test('AC-FE-0-06 旧路径保留参数与锚点，无权限页和未知页面均
   );
   await page.route('**/permission/me/snapshot', async (route) => {
     const body = structuredClone(snapshotFixture);
-    body.apps = body.apps.map((app) =>
-      app.app === 'org' ? { ...app, visible: false, entryObjects: [] } : app,
-    );
+    body.apps = body.apps.map((app) => (app.app === 'org' ? { ...app, visible: false, entryObjects: [] } : app));
     await route.fulfill({ json: body });
   });
   await page.goto('/org');

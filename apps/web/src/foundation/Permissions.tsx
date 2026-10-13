@@ -109,8 +109,8 @@ function PermissionsLoader({ children }: { children: ReactNode }) {
 }
 export function usePermissions(objectCode?: string) {
   const state = useContext(PermissionContext);
-  const activeObject = useContext(ObjectContext);
-  const code = objectCode ?? activeObject;
+  // 菜单消费者不加载页面对象；字段、按钮消费者显式指定对象，Can 可沿用页面上下文。
+  const code = objectCode;
   const permission = code ? state.snapshot.objects[code] : undefined;
   useEffect(() => {
     if (!code || state.loading || state.error || (permission && !permission.summary)) return;
@@ -137,7 +137,8 @@ export function Can({
   level?: string;
   children: ReactNode;
 }) {
-  const permissions = usePermissions(object);
+  const activeObject = useContext(ObjectContext);
+  const permissions = usePermissions(object ?? activeObject);
   return permissions.can(button, level) ? children : null;
 }
 export function PermissionField({
