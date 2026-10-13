@@ -18,6 +18,19 @@ it('AC-FE-R3a 生成级别与指标网格，去重且不推算能力标准', () 
 });
 
 describe('AC-FE-R3a 基础配置表单与接口契约', () => {
+  it('可清空引用显式发送 null；未填写、未授权与未变化字段不生成清空命令', () => {
+    const original = { id: 'a', revision: 3, layerId: 'layer', name: '原名称' };
+    expect(writablePatch({ layerId: undefined }, original, ['layerId'], ['layerId'])).toEqual({ layerId: null });
+    expect(writablePatch({ layerId: undefined, name: '新名称' }, original, ['layerId', 'name'], ['layerId'])).toEqual({
+      layerId: null,
+      name: '新名称',
+    });
+    expect(writablePatch({}, original, ['layerId'], ['layerId'])).toEqual({});
+    expect(writablePatch({ layerId: undefined }, null, ['layerId'], ['layerId'])).toEqual({});
+    expect(writablePatch({ layerId: undefined }, original, [], ['layerId'])).toEqual({});
+    expect(writablePatch({ layerId: undefined }, { id: 'a', revision: 1 }, ['layerId'], ['layerId'])).toEqual({});
+    expect(writablePatch({ layerId: undefined }, { ...original, layerId: null }, ['layerId'], ['layerId'])).toEqual({});
+  });
   it('编辑仅提交当前可编辑且实际改变的字段，不回填裁剪字段或覆盖明细', () => {
     expect(
       writablePatch(

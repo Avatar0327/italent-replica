@@ -35,6 +35,7 @@ test.beforeEach(async ({ page }) => {
           'dimensions',
           'libraryId',
           'definition',
+          'layerId',
         ],
         editableFields: [
           'details',
@@ -49,6 +50,7 @@ test.beforeEach(async ({ page }) => {
           'levelIds',
           'libraryId',
           'definition',
+          'layerId',
         ],
         buttons: [
           { buttonCode: 'create', level: 'list' },
@@ -298,4 +300,123 @@ test('AC-FE-R3a 已选员工无当前资格时显示真实空态', async ({ page
   await page.getByText('合成员工', { exact: true }).click();
   await expect(page.getByText('暂无发展通道信息', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '查看级别标准' })).toHaveCount(0);
+});
+
+for (const changeName of [false, true]) {
+  test(`AC-FE-R3a P2-1 清空层级${changeName ? '并改名' : '单独保存'}`, async ({ page }) => {
+    const body: unknown[] = [];
+    let saved = { ...rows[0], layerId: rows[0]!.id as string | null };
+    await page.route('**/api/tenant/qualification/levels/*', (route) => {
+      if (route.request().method() === 'PATCH') {
+        body.push(route.request().postDataJSON());
+        saved = { ...saved, ...route.request().postDataJSON() };
+      }
+      return route.fulfill({ json: saved });
+    });
+    await page.goto('/staff');
+    await page.getByLabel('切换演示身份').selectOption(user);
+    await page.goto('/qualification?view=levels');
+    await page.getByRole('button', { name: '编辑', exact: true }).click();
+    const layer = page.getByLabel('层级', { exact: true });
+    await expect(page.locator('.ant-form-item').filter({ has: layer })).toContainText('合成配置');
+    await page.locator('.ant-form-item').filter({ has: layer }).locator('.ant-select-clear').click();
+    if (changeName) await page.getByLabel('名称', { exact: true }).fill('改名后的级别');
+    await page.getByRole('button', { name: /^保\s*存$/ }).click();
+    await expect.poll(() => body).toEqual([changeName ? { name: '改名后的级别', layerId: null } : { layerId: null }]);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await page.getByRole('button', { name: '编辑', exact: true }).click();
+    await expect(page.getByLabel('层级', { exact: true })).toHaveValue('');
+  });
+}
+
+for (const channel of [false, true]) {
+  test(`AC-FE-R3a P2-2 P2-3 ${channel ? '员工通道' : '任职标准'}保留两层目标权重与目标等级`, async ({ page }) => {
+    const id = rows[0]!.id;
+    const grade = '30000000-0000-4000-8000-000000000021';
+    const cells = [
+      {
+        levelId: id,
+        targetId: id,
+        targetValue: '80',
+        weight: 45,
+        abilities: [
+          { content: '空值能力标准', targetValue: null, weight: null, targetGradeId: grade },
+          { content: '有值能力标准', targetValue: '60', weight: 25, targetGradeId: null },
+        ],
+      },
+    ];
+    await page.route('**/api/tenant/qualification/targets/*/grade-descriptions', (route) =>
+      route.fulfill({ json: { items: [{ gradeDetailId: grade, name: '优秀', grade: 3 }] } }),
+    );
+    await page.route('**/api/tenant/qualification/standards/*', (route) =>
+      route.fulfill({ json: { ...rows[0], levelIds: [id], details: cells } }),
+    );
+    await page.route('**/api/tenant/personnel/employees?*', (route) =>
+      route.fulfill({ json: { items: [{ id, name: '合成员工' }] } }),
+    );
+    await page.route('**/api/tenant/qualification/employees/**', (route) =>
+      route.fulfill({
+        json: route.request().url().includes('/levels/')
+          ? { level: { cells } }
+          : {
+              asOf: '2026-10-13',
+              current: { categoryId: id, levelId: id },
+              vertical: [{ levelId: id }],
+              horizontal: [],
+            },
+      }),
+    );
+    await page.goto('/staff');
+    await page.getByLabel('切换演示身份').selectOption(user);
+    await page.goto(`/qualification?view=${channel ? 'channels' : 'standards'}`);
+    if (channel) {
+      await page.getByRole('combobox', { name: '选择人员', exact: true }).click();
+      await page.getByText('合成员工', { exact: true }).click();
+      await page.getByRole('button', { name: '查看级别标准' }).click();
+    } else await page.getByRole('button', { name: '合成配置', exact: true }).first().click();
+    const dialog = page.getByRole('dialog');
+    for (const title of ['指标目标值', '指标权重（%）', '能力目标值', '能力权重（%）', '目标等级'])
+      await expect(dialog.getByRole('columnheader', { name: title, exact: true })).toBeVisible();
+    const empty = dialog.getByRole('row').filter({ hasText: '空值能力标准' });
+    await expect(empty).toContainText('80');
+    await expect(empty).toContainText('45');
+    await expect(empty).toContainText('优秀');
+    const filled = dialog.getByRole('row').filter({ hasText: '有值能力标准' });
+    for (const value of ['80', '45', '60', '25'])
+      await expect(filled.getByRole('cell', { name: value, exact: true })).toBeVisible();
+  });
+}
+
+test('AC-FE-R3a P2-4 仅人才标准有权时可进入完整维护，未授权页签不加载', async ({ page }) => {
+  const denied: string[] = [];
+  await page.route('**/api/tenant/permission/me/objects/TalentCenter.*', (route) => {
+    const objectCode = new URL(route.request().url()).pathname.split('/').at(-1)!;
+    if (objectCode !== 'TalentCenter.TalentCriterion')
+      return route.fulfill({ status: 403, json: { error: { code: 'FORBIDDEN' } } });
+    return route.fulfill({
+      json: {
+        objectCode,
+        dataOperations: { view: true, update: true },
+        viewableFields: ['name', 'categoryId', 'enabled', 'dimensions'],
+        editableFields: ['name', 'dimensions'],
+        buttons: [{ buttonCode: 'update', level: 'detail' }],
+      },
+    });
+  });
+  page.on('request', (request) => {
+    if (/\/talent\/(libraries|dimensions|dimension-categories|description-types)(\?|$)/.test(request.url()))
+      denied.push(request.url());
+  });
+  await page.goto('/staff');
+  await page.getByLabel('切换演示身份').selectOption(user);
+  await page.goto('/talent?view=criteria');
+  await expect(page.getByRole('menuitem', { name: '更多配置', exact: true })).toBeVisible();
+  await page.getByRole('menuitem', { name: '更多配置', exact: true }).click();
+  await expect(page.getByRole('tab', { name: '人才标准', exact: true })).toBeVisible();
+  await expect(page.getByRole('tab')).toHaveCount(1);
+  await page.goto('/talent?view=maintenance');
+  await expect(page.getByRole('tab', { name: '人才标准', exact: true })).toBeVisible();
+  await page.getByRole('tabpanel').getByRole('button', { name: '编辑', exact: true }).click();
+  await expect(page.getByRole('tabpanel').locator('form')).toBeVisible();
+  expect(denied).toEqual([]);
 });
