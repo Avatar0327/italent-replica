@@ -1,9 +1,13 @@
+import { randomUUID } from 'node:crypto';
 import { sql } from '@italent/db';
 import type { SuccessionLevelRow } from '@italent/domain';
 import { describe, expect, it } from 'vitest';
-import { successionWorld, type SuccessionWorld } from './AC-SC-support.js';
+import { successionWorld, SC_BASE, type SuccessionWorld } from './AC-SC-support.js';
 import { useHealthDb } from './AC-SC-07-health-support.js';
 import { rowsOf } from '../../apps/api/src/modules/succession/read-sql.js';
+
+import { commandHash } from '../../apps/api/src/commands.js';
+import { levelSchemas } from '../../apps/api/src/modules/succession/levels-input.js';
 
 const db = useHealthDb();
 const combinations = ['org', 'review', 'succession'].flatMap((fieldSource) =>
@@ -17,7 +21,7 @@ const supported = {
   measure: 'count',
   comparator: 'eq',
   threshold: 1,
-};
+} as const;
 function snapshot(w: SuccessionWorld) {
   return w.asTenant(async (tx) => ({
     levels: rowsOf(await tx.execute(sql`SELECT * FROM succession_health_levels ORDER BY id`)),
@@ -106,6 +110,52 @@ describe('AC-SC-07 DEC-460 L2 保存边界', () => {
     expect(cleared.status).toBe(200);
     expect((await cleared.json()).rules).toBeNull();
   }, 120_000);
+
+  it.each(['POST', 'PUT'] as const)(
+    '%s 旧成功台账重放也拒绝禁用组合',
+    async (method) => {
+      const w = await successionWorld(db().db, 'health-l2-replay');
+      const created = await w.request('POST', '/health-levels', {
+        ifMatch: 0,
+        body: {
+          code: 'LEGACY',
+          name: '旧台账等级',
+          color: '#336699',
+          rules: { expression: '1', rows: [supported] },
+        },
+      });
+      expect(created.status).toBe(201);
+      const { id } = await created.json();
+      const rules = { expression: '1', rows: [{ ...supported, population: 'all' }] };
+      const create = method === 'POST';
+      const body = create
+        ? levelSchemas('health').create.parse({ code: 'LEGACY', name: '旧台账等级', color: '#336699', rules })
+        : levelSchemas('health').patch.parse({ rules });
+      const path = create ? '/health-levels' : `/health-levels/${id}`;
+      const expectedRevision = create ? 0 : 1;
+      const commandId = randomUUID();
+      const hash = commandHash(w.user.id, {
+        method,
+        path: `${SC_BASE}${path}`,
+        expectedRevision,
+        input: create ? body : { id, body },
+      });
+      // 直接准备旧版本留下的合法成功台账；不在测试里绕过当前业务 guard 制造“成功”。
+      await w.asTenant(async (tx) => {
+        await tx.execute(sql`UPDATE succession_health_level_rows SET population='all' WHERE level_id=${id}::uuid`);
+        await tx.execute(sql`INSERT INTO command_ledger
+        (tenant_id,command_id,request_hash,response_status,response_body)
+        VALUES (${w.tenant.id}::uuid,${commandId},${hash},${create ? 201 : 200},
+          ${JSON.stringify({ kind: 'record', ids: [id], commandId })}::jsonb)`);
+      });
+      const before = await snapshot(w);
+      const response = await w.request(method, path, { ifMatch: expectedRevision, idempotencyKey: commandId, body });
+      expect(response.status).toBe(400);
+      expect((await response.json()).error.details.reason).toBe('HEALTH_RULE_COMBINATION_UNSUPPORTED');
+      expect(await snapshot(w)).toEqual(before);
+    },
+    120_000,
+  );
 
   it('已支持的负责人取值 / 人口 / 分母组合继续接受', async () => {
     const w = await successionWorld(db().db, 'health-l2-supported');
