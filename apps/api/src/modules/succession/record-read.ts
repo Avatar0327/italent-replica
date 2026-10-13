@@ -143,6 +143,23 @@ export async function loadRecordRow(
   return rows[0] ? toRow(rows[0]) : undefined;
 }
 
+/** #7 地图集合不按记录列表分页截断；仍共用日期、范围与 SELF 谓词，并先限制到可见卡片目标。 */
+export async function listMapRecordRows(
+  tx: Tx,
+  visibility: RecordVisibility,
+  targets: { readonly orgIds: readonly string[]; readonly positionIds: readonly string[] },
+): Promise<RecordRow[]> {
+  if (!targets.orgIds.length && !targets.positionIds.length) return [];
+  const selected = sql`(r.target_org_id=ANY(${`{${targets.orgIds.join(',')}}`}::uuid[])
+    OR r.target_position_id=ANY(${`{${targets.positionIds.join(',')}}`}::uuid[]))`;
+  const rows = rowsOf<Record<string, unknown>>(
+    await tx.execute(sql`SELECT ${selectColumns(visibility.asOf)} ${from(visibility.asOf, visibility.today)}
+      WHERE ${conditions(visibility, { status: 'active' })} AND ${selected}
+      ORDER BY r.start_date DESC,r.created_at DESC,r.id`),
+  );
+  return rows.map(toRow);
+}
+
 function selectColumns(asOf: string): SQL {
   return sql`r.id, r.revision, r.succession_type, r.target_org_id, r.target_position_id, r.successor_employee_id,
     r.readiness_id, r.backup_type, r.start_date::text AS start_date, r.end_date::text AS end_date, r.end_reason,
