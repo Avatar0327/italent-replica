@@ -1,3 +1,4 @@
+import { useSession } from '../../foundation/Session.js';
 import { useState, type ReactNode } from 'react';
 import { initialTenantId } from '../../demo/tenant.js';
 import { text } from '../../transfer/messages.js';
@@ -5,8 +6,10 @@ import '../../transfer/transfer.css';
 
 /** 员工 / 经理页面只提供租户内内容；会话租户选择与刷新生命周期共用。 */
 export function SelfServiceShell({ title, children }: { title: string; children: (tenantId: string) => ReactNode }) {
-  const [tenantId, setTenantId] = useState(initialTenantId);
-  const [activeTenant, setActiveTenant] = useState(initialTenantId);
+  const session = useSession();
+  const initialTenant = () => session.tenantId || initialTenantId();
+  const [tenantId, setTenantId] = useState(initialTenant);
+  const [activeTenant, setActiveTenant] = useState(initialTenant);
   return (
     <main className="transfer-page">
       <header className="transfer-header">
@@ -15,7 +18,12 @@ export function SelfServiceShell({ title, children }: { title: string; children:
       </header>
       {activeTenant ? (
         <>
-          <button type="button" className="transfer-tenant-change" onClick={() => setActiveTenant('')}>
+          <button
+            hidden={!!session.tenantId}
+            type="button"
+            className="transfer-tenant-change"
+            onClick={() => setActiveTenant('')}
+          >
             {text.tenantChange}
           </button>
           {children(activeTenant)}

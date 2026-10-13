@@ -1,30 +1,36 @@
-import { text as orgText } from './org/messages.js';
-import { OrgChangePage } from './org/OrgChangePage.js';
-import { ManagerPage } from './transfer/ManagerPage.js';
-import { text as jobText } from './job/messages.js';
-import { JobPage } from './job/JobPage.js';
-import { TransferPage } from './transfer/TransferPage.js';
-import { EmployeePage } from './employee-self-service/EmployeePage.js';
-import { text as talentText } from './talent/messages.js';
-import { TalentPage } from './talent/TalentPage.js';
-import { AccountPage } from './account/AccountPage.js';
-import { accountText } from './account/messages.js';
+import { App as AntApp, ConfigProvider } from 'antd';
+import zhCN from 'antd/es/locale/zh_CN.js';
+import { BrowserRouter } from 'react-router';
+import { DecisionNotesProvider } from './foundation/DecisionNote.js';
+import { PermissionsProvider } from './foundation/Permissions.js';
+import { SessionProvider, type Session } from './foundation/Session.js';
+import { Shell } from './foundation/Shell.js';
+import { annotations } from './annotations/index.js';
+import { theme } from './foundation/theme.js';
+import { demoSession } from './demo-stubs/session.js';
 
-export function App() {
-  if (window.location.pathname === '/account') return <AccountPage />;
-  if (window.location.pathname === '/org/changes') return <OrgChangePage />;
-  if (window.location.pathname.startsWith('/self')) return <EmployeePage />;
-  if (window.location.pathname.startsWith('/manager')) return <ManagerPage />;
-  if (window.location.pathname === '/jobs') return <JobPage />;
-  if (window.location.pathname === '/talent') return <TalentPage />;
+const emptySession: Session = {
+  tenantId: '',
+  identityKey: '',
+  tenantName: '',
+  timezone: '',
+  displayName: '',
+  source: 'server',
+};
+export function App({ session = import.meta.env.DEV ? demoSession() : emptySession }: { session?: Session }) {
   return (
-    <>
-      <nav>
-        <a href="/org/changes">{orgText.title}</a>
-        <a href="/jobs">{jobText.title}</a> <a href="/talent">{talentText.title}</a>
-        <a href="/account">{accountText.title}</a>
-      </nav>
-      <TransferPage />
-    </>
+    <ConfigProvider locale={zhCN} theme={theme}>
+      <AntApp>
+        <SessionProvider session={session}>
+          <PermissionsProvider key={`${session.tenantId}/${session.identityKey}`}>
+            <DecisionNotesProvider notes={annotations}>
+              <BrowserRouter>
+                <Shell />
+              </BrowserRouter>
+            </DecisionNotesProvider>
+          </PermissionsProvider>
+        </SessionProvider>
+      </AntApp>
+    </ConfigProvider>
   );
 }
