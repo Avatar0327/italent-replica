@@ -21,7 +21,8 @@ import {
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { DEMO_ORGS, DEMO_PEOPLE, DEMO_POSITIONS, ROLE_LABELS } from '../../apps/api/src/demo/data.js';
-import { type DemoManifest, seedDemo } from '../../apps/api/src/demo/seed.js';
+import { type DemoManifest, memoryProgress, seedDemo } from '../../apps/api/src/demo/seed.js';
+import { DEMO_TRANSFERS } from '../../apps/api/src/demo/transfers.js';
 import { tenantApi } from './support/tenant-api.js';
 
 const database = useTestDb();
@@ -84,14 +85,46 @@ async function inventory() {
       employeeIds: employees.map((e) => e.id).sort(),
       orgIds: orgs.map((o) => o.id).sort(),
       hires: grouped.filter((g) => g.kind === 'hire').map((g) => g.n),
-      transferEmployees: grouped.filter((g) => g.kind === 'transfer').length,
+      transferBusinesses: grouped.filter((g) => g.kind === 'transfer').reduce((sum, g) => sum + g.n, 0),
+      seededBusinesses: rowsOf<{ n: number }>(
+        await tx.execute(sql`SELECT count(DISTINCT business_id)::int AS n FROM employment_payload_versions
+          WHERE remarks LIKE '演示场景 DEMO-TRF-%'`),
+      )[0]!.n,
     };
   });
 }
 
+let ordinaryBusinessId = '';
+/** 员工甲用公开本人入口提交的普通调动申请（不是种子场景）：续跑和后续启动都不得接管它。 */
+async function submitOrdinaryApplication() {
+  const db = database().db;
+  const [tenant] = await withPlatform(db, (tx) => tx.select().from(tenants).where(eq(tenants.code, 'demo-r1')));
+  const userOf = async (key: string) => {
+    const email = DEMO_PEOPLE.find((p) => p.key === key)!.email;
+    const [row] = await withPlatform(db, (tx) => tx.select().from(users).where(eq(users.email, email)));
+    return { user: row!.id, tenant: tenant!.id };
+  };
+  const early = tenantApi(db, { authorize: undefined, clock });
+  const read = async (key: string, path: string) => {
+    const response = await early.request('GET', path, await userOf(key));
+    expect(response.status, await response.clone().text()).toBe(200);
+    return (await response.json()) as never as Record<string, any>;
+  };
+  const orgs = await read('hr', `/api/tenant/org/organizations?asOf=${TODAY}&pageSize=200`);
+  const frontend = orgs.items.find((org: Row) => org.name === '前端开发组');
+  const profile = await read('employeeA', '/api/tenant/self-service/profile');
+  const response = await early.request('POST', '/api/tenant/self-service/transfer', {
+    ...(await userOf('employeeA')),
+    ifMatch: profile.employee.revision,
+    body: { effectiveDate: '2026-11-06', fields: { departmentId: frontend.id } },
+  });
+  expect(response.status, await response.clone().text()).toBe(201);
+  ordinaryBusinessId = ((await response.json()) as { id: string }).id;
+}
+
 describe('F-025 演示种子', () => {
   beforeAll(async () => {
-    // 第 1 次：员工阶段写到第 57 个时失败；第 2 次：续做员工，调动阶段写完第 1 个节点后失败；第 3 次：补齐
+    // 第 1 次：员工阶段写到第 57 个时失败（续做见下）；最后一次补齐
     let employees = 0;
     await expect(
       seedDemo(database().db, {
@@ -101,6 +134,18 @@ describe('F-025 演示种子', () => {
         },
       }),
     ).rejects.toThrow('注入的员工阶段失败');
+    // 第 2 次：调动流程发布完、还没发起任何场景时中断；此时员工甲在公开本人入口自己提交了一张普通申请
+    let published = 0;
+    await expect(
+      seedDemo(database().db, {
+        ...options,
+        onStep: ({ phase }) => {
+          if (phase === 'transfers' && (published += 1) === 2) throw new Error('注入的流程发布后失败');
+        },
+      }),
+    ).rejects.toThrow('注入的流程发布后失败');
+    await submitOrdinaryApplication();
+    // 第 3 次：续做到第 5 步时再次失败
     let transfers = 0;
     await expect(
       seedDemo(database().db, {
@@ -123,7 +168,9 @@ describe('F-025 演示种子', () => {
       inv.hires.every((n) => n === 1),
       '每名员工恰有一次入职',
     ).toBe(true);
-    expect(inv.transferEmployees).toBe(15);
+    // 15 张种子调动单（带场景标记）+ 续跑前用户自己提交的 1 张普通申请（不属于种子，也不被种子接管）
+    expect(inv.seededBusinesses).toBe(15);
+    expect(inv.transferBusinesses).toBe(16);
     const orgs = await items('hr', `/api/tenant/org/organizations?asOf=${TODAY}`);
     expect(orgs.length).toBeGreaterThanOrEqual(30);
     const parentOf = new Map(
@@ -163,7 +210,8 @@ describe('F-025 演示种子', () => {
   it('调动单：在途 6 / 已完成 6 / 驳回 2 / 撤回 1，HR、经理、员工自助各至少 1 单', async () => {
     const ids = await withTenant(database().db, manifest.tenantId, async (tx) => {
       const result = await tx.execute(
-        sql`SELECT DISTINCT business_id AS id FROM employment_payload_versions WHERE kind = 'transfer'`,
+        sql`SELECT DISTINCT business_id AS id FROM employment_payload_versions
+          WHERE kind = 'transfer' AND remarks LIKE '演示场景 DEMO-TRF-%'`,
       );
       return ((Array.isArray(result) ? result : (result as { rows: unknown[] }).rows) as { id: string }[]).map(
         (row) => row.id,
@@ -263,6 +311,58 @@ describe('F-025 演示种子', () => {
       expect(person.email).toMatch(/^demo\.[a-z.]+@example\.com$/);
       expect(person.name).toContain('演示');
     }
+  });
+
+  it('续跑不接管无标记的普通申请：员工甲自己提交的申请保持审批中，种子另发自己的驳回单', async () => {
+    const ordinary = await json<{ status: string }>('hr', `/api/tenant/employment/businesses/${ordinaryBusinessId}`);
+    expect(ordinary.status).toBe('in_review');
+    const marked = rowsOf<{ id: string }>(
+      await withTenant(database().db, manifest.tenantId, (tx) =>
+        tx.execute(sql`SELECT DISTINCT tr.business_id AS id FROM transfer_requests tr
+          JOIN employment_payload_versions pv ON pv.business_id = tr.business_id AND pv.remarks = '演示场景 DEMO-TRF-13'
+          WHERE tr.employee_id = pv.employee_id`),
+      ),
+    );
+    expect(marked).toHaveLength(1);
+    expect(marked[0]!.id).not.toBe(ordinaryBusinessId);
+    expect((await json<{ status: string }>('hr', `/api/tenant/employment/businesses/${marked[0]!.id}`)).status).toBe(
+      'rejected',
+    );
+  });
+
+  it('已完成的种子场景被用户改动后再启动种子：不回退（无进度记录按状态推断，有进度记录整体跳过）', async () => {
+    const [withdrawn] = rowsOf<{ id: string }>(
+      await withTenant(database().db, manifest.tenantId, (tx) =>
+        tx.execute(sql`SELECT DISTINCT business_id AS id FROM employment_payload_versions
+          WHERE remarks = '演示场景 DEMO-TRF-15'`),
+      ),
+    );
+    const statusOf = async () =>
+      (await json<{ status: string }>('hr', `/api/tenant/employment/businesses/${withdrawn!.id}`)).status;
+    expect(await statusOf()).toBe('draft');
+    // HR 把种子里已撤回的草稿重新提交
+    const business = await json<{ revision: number }>('hr', `/api/tenant/employment/businesses/${withdrawn!.id}`);
+    const resubmitted = await api.request('POST', `/api/tenant/employment/businesses/${withdrawn!.id}/submit`, {
+      ...as('hr'),
+      ifMatch: business.revision,
+      body: {},
+    });
+    expect(resubmitted.status, await resubmitted.clone().text()).toBe(200);
+    expect(await statusOf()).toBe('in_review');
+
+    // 没有进度记录：按业务单状态推断，撤回已发生过，不再撤回
+    expect((await seedDemo(database().db, options)).created).toBe(false);
+    expect(await statusOf()).toBe('in_review');
+    // 有进度记录（未完成的场景会被推断补记）：同样不回退
+    const progress = memoryProgress();
+    expect((await seedDemo(database().db, { ...options, progress })).created).toBe(false);
+    expect(await statusOf()).toBe('in_review');
+    expect(await progress.completedTransfers(manifest.tenantId)).toEqual(new Set(DEMO_TRANSFERS.map((s) => s.id)));
+    // 全部场景都已完成：调动阶段整体跳过
+    let steps = 0;
+    await seedDemo(database().db, { ...options, progress, onStep: () => void (steps += 1) });
+    expect(steps).toBe(0);
+    expect(await statusOf()).toBe('in_review');
   });
 
   it('R1 主线：员工本人发起 → 经理审批 → HRBP 审核 → 当日生效，员工 / 经理 / HR / 审计侧可见', async () => {
