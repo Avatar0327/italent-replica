@@ -84,6 +84,23 @@ details summary{cursor:pointer;color:var(--muted);font-size:13px}
     <span class="sub" id="at"></span>
     <div class="kpis" id="kpis"></div>
   </header>
+<section class="flow" style="margin:14px 0"><details style="background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 16px">
+<summary style="cursor:pointer;font-weight:600;font-size:14px">当前开发流程（截至 10-13）</summary>
+<div style="font-size:13px;line-height:1.65;color:var(--ink2);margin-top:8px">
+<p style="margin:6px 0"><b>一、目标</b>　先做演示用标杆产品（DEC-456）。2～3 天出 R1+R3 可演示版，7 天出 R1+R2+R3，20 天覆盖绿 + 蓝两层模块（DEC-457）。契约按 L3 设计，实现先到 L2。</p>
+<p style="margin:6px 0 2px"><b>二、一条需求的流转</b></p>
+<ol style="margin:0;padding-left:22px">
+<li><b>取证</b>：本机 Claude 取证窗口截原站页面（只读，截图留本机）；远程 Codex Sol 补交互细节文字规格，产出经局域网拉回本机。</li>
+<li><b>规划 / 设计</b>：总编排（Claude Opus）写规划、拆片；契约级设计走重流程（Opus 设计、Codex Astra 审）。</li>
+<li><b>派发</b>：派发审查窗口（03，Opus）通读设计、写提示词，派给开发方——前端交 Codex Astra，后端 L2 / 演示数据 / 数据修复交 Claude Sonnet。</li>
+<li><b>开发</b>：开发方先交红测，再实现；交审前本地跑构建和受影响测试。</li>
+<li><b>审查</b>：Codex 审一轮，最多两轮（演示层轻流程）；只有 P0 / P1、功能错误、数据错误挡合并，其余记待办。Claude 写的 PR 必须经 Codex 独立审查。</li>
+<li><b>合并</b>：合并队列窗口（Sonnet）在云端合入 main → 关闭 / 重开 PR 触发完整 CI → 全绿后复核再合并。</li>
+<li><b>记录</b>：总编排补恢复点（RP）、登记决定（DEC）；看板窗口更新看板。</li>
+</ol>
+<p style="margin:8px 0 6px"><b>三、窗口分工</b>　00 总编排（Opus）——决策、规划、对用户；01 进度 &amp; 看板（Sonnet）；02 取证（Claude）；03 派发审查（Opus）；合并队列（Sonnet）；远程 Codex——取证补充。</p>
+<p style="margin:6px 0"><b>四、需要用户的地方</b>　拍板 DEC；Codex 到 99% 时决定是否用重置卡；远程 Codex 任务在 Codex 应用里发起；输入任何密码。</p>
+</div></details></section>
   <div class="banner" id="banner" hidden></div>
   <section><h2>卡点与待你决定</h2><div id="stuck"></div></section>
   <section>

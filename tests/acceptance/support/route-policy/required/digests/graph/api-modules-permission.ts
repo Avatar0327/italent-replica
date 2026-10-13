@@ -41,7 +41,11 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/permission/admins.ts#viewOf': ['packages/domain/src/permission/admin-roles.ts#isAdminRole'],
   'apps/api/src/modules/permission/audit.ts#audit': ['#auditAs'],
-  'apps/api/src/modules/permission/audit.ts#auditAs': ['apps/api/src/audit/record.ts#recordAudit', '#revisionOf'],
+  'apps/api/src/modules/permission/audit.ts#auditAs': [
+    'apps/api/src/audit/record.ts#recordAudit',
+    '#revisionOf',
+    'apps/api/src/modules/permission/sets.ts#permissionSnapshot',
+  ],
   'apps/api/src/modules/permission/auto-held.ts#AUTO_HELD_CODES': [
     'packages/domain/src/platform/standard-presets.ts#STANDARD_PROFILES',
   ],
@@ -74,6 +78,7 @@ export const GRAPH: Graph = {
     '#validateParent',
     '#validateRefs',
     'apps/api/src/modules/permission/http.ts#revisionConflict',
+    'apps/api/src/modules/permission/sets.ts#permissionSet',
   ],
   'apps/api/src/modules/permission/data-scope-admin.ts#getMou': ['#notFound', '#orgRefs'],
   'apps/api/src/modules/permission/data-scope-admin.ts#getUserAppScope': [
@@ -83,14 +88,19 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/permission/data-scope-admin.ts#grantScopePrefill': [
     'apps/api/src/modules/permission/members.ts#assertActiveMember',
     'apps/api/src/modules/permission/profiles.ts#loadProfile',
+    'apps/api/src/modules/permission/sets.ts#permissionSet',
   ],
   'apps/api/src/modules/permission/data-scope-admin.ts#lockMouHierarchy': ['#lockMouHierarchyOf'],
   'apps/api/src/modules/permission/data-scope-admin.ts#lockMouHierarchyOf': [
     'apps/api/src/advisory-lock.ts#advisoryLock',
     'apps/api/src/advisory-lock.ts#asUuid',
   ],
+  'apps/api/src/modules/permission/data-scope-admin.ts#orgRefs': [
+    'apps/api/src/modules/permission/sets.ts#permissionSet',
+  ],
   'apps/api/src/modules/permission/data-scope-admin.ts#recordScopeChange': [
     'apps/api/src/modules/permission/audit.ts#audit',
+    'apps/api/src/modules/permission/sets.ts#permissionSnapshot',
   ],
   'apps/api/src/modules/permission/data-scope-admin.ts#updateMou': [
     '#assertMouDeletable',
@@ -102,6 +112,7 @@ export const GRAPH: Graph = {
     '#validateParent',
     '#validateRefs',
     'apps/api/src/modules/permission/http.ts#revisionConflict',
+    'apps/api/src/modules/permission/sets.ts#permissionSet',
   ],
   'apps/api/src/modules/permission/data-scope-admin.ts#validateParent': ['#getMou', '#notFound'],
   'apps/api/src/modules/permission/data-scope-admin.ts#validateRefs': ['#notFound'],
@@ -423,7 +434,10 @@ export const GRAPH: Graph = {
     'packages/domain/src/permission/object-permission.ts#validateObjectPermission',
     'packages/domain/src/platform/standard-grants.ts#objectCatalogDigest',
   ],
-  'apps/api/src/modules/permission/profiles.ts#view': ['apps/api/src/modules/permission/auto-held.ts#isAutoHeld'],
+  'apps/api/src/modules/permission/profiles.ts#view': [
+    'apps/api/src/modules/permission/auto-held.ts#isAutoHeld',
+    'apps/api/src/modules/permission/sets.ts#permissionSet',
+  ],
   'apps/api/src/modules/permission/public-down.ts#publicDownSql': [
     '#scopeOrgIds',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
@@ -656,13 +670,25 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/scope-hierarchy.ts#scopeRows',
     '#linkedPerson',
   ],
+  'apps/api/src/modules/permission/sets.ts#PERMISSION_SETS': ['#ORG_SETS', '#PROFILE_SETS'],
+  'apps/api/src/modules/permission/sets.ts#objectPermissionSets': ['#PROFILE_SETS', '#permissionSet'],
+  'apps/api/src/modules/permission/sets.ts#permissionSet': ['#compare', '#isRecord'],
+  'apps/api/src/modules/permission/sets.ts#permissionSnapshot': ['#PERMISSION_SETS', '#isRecord', '#permissionSet'],
+  'apps/api/src/modules/permission/subject.ts#loadActiveProfileIds': [
+    'apps/api/src/modules/permission/sets.ts#permissionSet',
+  ],
   'apps/api/src/modules/permission/subject.ts#loadGrantedObjectPermissions': [
     'apps/api/src/modules/permission/manager-identity.ts#MANAGER_PROFILE_CODE',
     'apps/api/src/modules/permission/manager-identity.ts#defaultManagerPermissions',
     'apps/api/src/modules/permission/manager-identity.ts#managerIdentity',
     'apps/api/src/modules/permission/scope-hierarchy.ts#scopeRows',
+    'apps/api/src/modules/permission/sets.ts#objectPermissionSets',
+    'apps/api/src/modules/permission/sets.ts#permissionSet',
     '#loadActiveProfileIds',
     '#loadObjectPermissionRows',
+  ],
+  'apps/api/src/modules/permission/subject.ts#loadObjectPermissionRows': [
+    'apps/api/src/modules/permission/sets.ts#objectPermissionSets',
   ],
   'apps/api/src/modules/permission/subject.ts#loadObjectPermissions': ['#loadObjectPermissionRows'],
   'apps/api/src/modules/permission/tenant-catalog.ts#tenantObjectCatalog': [
