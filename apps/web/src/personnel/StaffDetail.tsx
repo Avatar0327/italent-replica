@@ -1,7 +1,7 @@
 import { Avatar, Space } from 'antd';
 import { PERSONNEL_OBJECT } from '@italent/domain';
 import { DetailPage } from '../foundation/templates.js';
-import { PageState } from '../foundation/PageState.js';
+import { ReadPanel } from './ReadPanel.js';
 import { DecisionNote } from '../foundation/DecisionNote.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { useRead } from './useRead.js';
@@ -22,11 +22,7 @@ export function StaffDetail({ employeeId, onClose }: { employeeId: string; onClo
       summary={
         <>
           <DecisionNote id="personnel-records" />
-          {result.loading ? (
-            <PageState kind="loading" />
-          ) : result.error ? (
-            <PageState kind="error" error={result.error} retry={result.refresh} />
-          ) : (
+          <ReadPanel {...result}>
             <div className="staff-profile-heading">
               <Avatar shape="square" size={64}>
                 {name.slice(0, 1)}
@@ -47,7 +43,7 @@ export function StaffDetail({ employeeId, onClose }: { employeeId: string; onClo
                 </Space>
               </div>
             </div>
-          )}
+          </ReadPanel>
         </>
       }
       tabs={

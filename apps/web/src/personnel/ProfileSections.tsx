@@ -5,7 +5,9 @@ import { usePermissions } from '../foundation/Permissions.js';
 import { PageState } from '../foundation/PageState.js';
 import { DecisionNote } from '../foundation/DecisionNote.js';
 import type { PageResult } from '../foundation/client.js';
+import { ReadPanel } from './ReadPanel.js';
 import { useRead } from './useRead.js';
+import { useSubsetAccess, type ProfileSubset } from './useSubsetAccess.js';
 import { displayValue, fieldValue, recordPeriod, type Row } from './model.js';
 import { m, subsetLabels } from './messages.js';
 
@@ -120,16 +122,10 @@ export function EmploymentRecords({ employeeId }: { employeeId: string }) {
     <>
       <DecisionNote id="personnel-records" />
       <p className="staff-muted">{m.chainHint}</p>
-      {result.loading ? (
-        <PageState kind="loading" />
-      ) : result.error ? (
-        <PageState kind="error" error={result.error} retry={result.refresh} />
-      ) : !result.data?.items.length ? (
-        <Empty description={m.noRecords} />
-      ) : (
+      <ReadPanel {...result} empty={!result.data?.items.length && m.noRecords}>
         <Timeline
           className="staff-timeline"
-          items={result.data.items.map((row) => ({
+          items={(result.data?.items ?? []).map((row) => ({
             color: allowed.includes('isCurrent') && row.isCurrent === true ? 'green' : 'blue',
             children: (
               <section className="staff-record" key={row.id}>
@@ -157,7 +153,7 @@ export function EmploymentRecords({ employeeId }: { employeeId: string }) {
             ),
           }))}
         />
-      )}
+      </ReadPanel>
       <p className="staff-muted">{m.referenceHint}</p>
       <PageButtons page={page} count={result.data?.items.length ?? 0} loading={result.loading} onChange={setPage} />
     </>
@@ -165,14 +161,25 @@ export function EmploymentRecords({ employeeId }: { employeeId: string }) {
 }
 
 export function PersonnelSubsets({ employeeId }: { employeeId: string }) {
-  const [kind, setKind] = useState<keyof typeof subsetLabels>('education');
+  const [selected, setKind] = useState<ProfileSubset>();
+  const access = useSubsetAccess();
+  if (access.loading) return <PageState kind="loading" />;
+  if (access.error) return <PageState kind="error" error={access.error} retry={access.refresh} />;
+  const kinds = Object.keys(access.data ?? {}) as ProfileSubset[];
+  const kind = selected && kinds.includes(selected) ? selected : kinds[0];
+  if (!kind) return <PageState kind="forbidden" />;
   return (
     <div className="staff-subsets">
       <div className="staff-subset-content">
-        <SubsetRows key={`${employeeId}/${kind}`} employeeId={employeeId} kind={kind} />
+        <SubsetRows
+          key={`${employeeId}/${kind}`}
+          employeeId={employeeId}
+          kind={kind}
+          allowed={access.data![kind]!.viewableFields}
+        />
       </div>
       <nav aria-label={m.subsets}>
-        {Object.entries(subsetLabels).map(([key, label]) => (
+        {kinds.map((key) => (
           <Button
             type="text"
             className={key === kind ? 'is-active' : ''}
@@ -180,18 +187,24 @@ export function PersonnelSubsets({ employeeId }: { employeeId: string }) {
             key={key}
             onClick={() => setKind(key as keyof typeof subsetLabels)}
           >
-            {label}
+            {subsetLabels[key]}
           </Button>
         ))}
       </nav>
     </div>
   );
 }
-function SubsetRows({ employeeId, kind }: { employeeId: string; kind: keyof typeof subsetLabels }) {
+function SubsetRows({
+  employeeId,
+  kind,
+  allowed,
+}: {
+  employeeId: string;
+  kind: ProfileSubset;
+  allowed: readonly string[];
+}) {
   const [page, setPage] = useState(1);
   const definition = SUBSETS[kind];
-  const permission = usePermissions(definition.objectCode);
-  const allowed = permission.snapshot.objects[definition.objectCode]?.viewableFields ?? [];
   const result = useRead<PageResult<Row>>(
     `/api/tenant/personnel/employees/${encodeURIComponent(employeeId)}` + `/subsets/${kind}?page=${page}&pageSize=15`,
   );
@@ -199,19 +212,13 @@ function SubsetRows({ employeeId, kind }: { employeeId: string; kind: keyof type
   return (
     <section className="staff-section">
       <h3 className="staff-section-title">{subsetLabels[kind]}</h3>
-      {result.loading ? (
-        <PageState kind="loading" />
-      ) : result.error ? (
-        <PageState kind="error" error={result.error} retry={result.refresh} />
-      ) : !result.data?.items.length ? (
-        <Empty description={m.noSubsets} />
-      ) : (
-        result.data.items.map((row) => (
+      <ReadPanel {...result} empty={!result.data?.items.length && m.noSubsets}>
+        {(result.data?.items ?? []).map((row) => (
           <div className="staff-subset-row" key={row.id}>
             <FieldGrid row={row} fields={fields} allowed={allowed} />
           </div>
-        ))
-      )}
+        ))}
+      </ReadPanel>
       <PageButtons page={page} count={result.data?.items.length ?? 0} loading={result.loading} onChange={setPage} />
     </section>
   );

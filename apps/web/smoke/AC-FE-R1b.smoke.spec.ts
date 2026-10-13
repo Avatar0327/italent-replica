@@ -94,6 +94,7 @@ test('AC-FE-R1b-03 切换身份，列表筛选、列设置、档案三个页签�
   await page.getByRole('button', { name: '合成林晓', exact: true }).click();
   await expect(page.getByRole('dialog', { name: '员工档案' })).toBeVisible();
   await expect(page.getByRole('dialog')).toContainText('lin@example.com');
+  await expect(page.locator('.detail-drawer .ant-drawer-content-wrapper')).toHaveCSS('transform', 'none');
   await page.screenshot({ path: '../../.demo/fe-r1b-detail.png' });
   await page.getByRole('tab', { name: '任职记录', exact: true }).click();
   await expect(page.getByText('当前生效', { exact: true })).toBeVisible();
@@ -193,4 +194,77 @@ test('AC-FE-R1b-07 子集导航按对象权限隐藏，不请求无权限子集'
   await page.getByRole('button', { name: '培训经历', exact: true }).click();
   await expect(page.getByRole('tabpanel', { name: '人员子集' })).toContainText('暂无子集记录');
   expect(educationRequests).toEqual([]);
+});
+
+test('AC-FE-R1b-08 翻页后应用筛选回到第一页，取消筛选保持原查询', async ({ page }) => {
+  await staffFixtures(page);
+  const queries: string[] = [];
+  await page.route('**/personnel/employees?*', (route) => {
+    const query = new URL(route.request().url()).searchParams;
+    queries.push(query.toString());
+    return route.fulfill({
+      json: {
+        items: Array.from({ length: 15 }, (_, i) => ({
+          id: `row-${query.get('page')}-${i}`,
+          name: `合成员工${query.get('page')}-${i}`,
+        })),
+      },
+    });
+  });
+  await page.goto('/staff');
+  await page.getByLabel('切换演示身份').selectOption(user);
+  await page.getByRole('button', { name: '下一页', exact: true }).click();
+  await expect(page.getByRole('button', { name: '合成员工2-0', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '高级筛选', exact: true }).click();
+  await page.getByRole('dialog').getByLabel('员工姓名（精确）').fill('未应用');
+  await page.getByRole('button', { name: /^取\s*消$/ }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(queries.at(-1)).toBe('page=2&pageSize=15');
+  await page.getByRole('button', { name: '高级筛选', exact: true }).click();
+  await expect(page.getByRole('dialog').getByLabel('员工姓名（精确）')).toHaveValue('');
+  await page.getByRole('dialog').getByLabel('员工姓名（精确）').fill('合成员工');
+  await page.getByRole('button', { name: /^确\s*定$/ }).click();
+  await expect(page.getByRole('button', { name: '合成员工1-0', exact: true })).toBeVisible();
+  expect(new URLSearchParams(queries.at(-1)).get('page')).toBe('1');
+  expect(new URLSearchParams(queries.at(-1)).get('employeeName')).toBe('合成员工');
+  await expect(page.locator('.page-total')).toHaveCount(0);
+});
+
+test('AC-FE-R1b-09 查看档案后切换演示身份清除旧档案，使用新身份字段权限', async ({ page }) => {
+  await staffFixtures(page);
+  const restricted = '20000000-0000-4000-8000-000000000002';
+  await page.route('**/__demo/personas', (route) =>
+    route.fulfill({
+      json: {
+        tenantId: '10000000-0000-4000-8000-000000000001',
+        current: route.request().headers().cookie?.includes(restricted) ? restricted : user,
+        personas: [
+          { userId: user, name: '合成演示用户', role: '演示身份', entry: '/staff' },
+          { userId: restricted, name: '合成受限用户', role: '演示身份', entry: '/staff' },
+        ],
+      },
+    }),
+  );
+  await page.route('**/permission/me/objects/TenantBase.EmployeeInformation', (route) =>
+    route.fulfill({
+      json: {
+        objectCode: 'TenantBase.EmployeeInformation',
+        dataOperations: { view: true },
+        viewableFields: route.request().headers().cookie?.includes(restricted) ? ['name'] : fields,
+        editableFields: [],
+        buttons: [],
+      },
+    }),
+  );
+  await page.goto('/staff');
+  await page.getByLabel('切换演示身份').selectOption(user);
+  await page.getByRole('button', { name: '合成林晓', exact: true }).click();
+  await expect(page.getByRole('dialog')).toContainText('lin@example.com');
+  await page.getByRole('button', { name: '关闭', exact: true }).click();
+  await page.getByLabel('切换演示身份').selectOption(restricted);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '合成林晓', exact: true })).toBeVisible();
+  await expect(page.getByText('DEMO-001', { exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: '合成林晓', exact: true }).click();
+  await expect(page.getByRole('dialog')).not.toContainText('lin@example.com');
 });

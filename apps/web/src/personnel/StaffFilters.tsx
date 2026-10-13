@@ -123,7 +123,6 @@ export function ColumnSettings({
 function DemoFilterPreview({ demo, onChange }: { demo: DemoFilters; onChange(value: DemoFilters): void }) {
   return (
     <>
-      {' '}
       <Alert type="info" showIcon message={m.missingFilters} />
       <h3 className="staff-section-title">
         {m.demoPreview}
