@@ -102,6 +102,10 @@ test('AC-FE-R1a-18 仅方案查看权可打开编制概览，不查询组织列�
   await expect(page.getByRole('button', { name: 'annual', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'annual', exact: true }).click();
   await expect(page.getByRole('dialog')).toBeVisible();
+  await page.goto('/org');
+  await expect(page.getByRole('button', { name: 'annual', exact: true })).toBeVisible();
+  await page.goto('/org?tab=list');
+  await expect(page.getByText('暂无访问权限', { exact: true })).toBeVisible();
   expect(orgRequests).toEqual([]);
   expect(errors).toEqual([]);
 });

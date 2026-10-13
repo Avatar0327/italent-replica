@@ -41,7 +41,7 @@ test('AC-FE-0-06 旧路径保留参数与锚点，无权限页和未知页面均
   await expect(page).toHaveURL(/\/job\?page=2#list$/);
   await page.goto('/account');
   await expect(page).toHaveURL(/\/settings\/account$/);
-  await page.route('**/permission/me/objects/TenantBase.Organization', (route) =>
+  await page.route('**/permission/me/objects/TenantBase.Organization*', (route) =>
     route.fulfill({
       status: 403,
       json: { error: { code: 'FORBIDDEN' } },
