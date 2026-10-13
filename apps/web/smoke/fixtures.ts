@@ -49,7 +49,7 @@ export const test = base.extend({
         };
       if (path.endsWith('/permission/admin-menus'))
         body = {
-          items: [{ code: 'users', path: '用户管理', implemented: true, editable: false }],
+          items: [{ code: 'users.all', path: '用户管理/全部用户', implemented: true, editable: false }],
         };
       if (path.endsWith('/self-service/profile'))
         body = {
