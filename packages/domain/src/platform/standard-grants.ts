@@ -38,6 +38,9 @@ export const STANDARD_GRANT_ENTRY = 'permission/standard-profile-grants';
  * 当前授权项编码集合的版本与指纹。目录增删授权项（改对象目录或 STANDARD_PROFILES）时 version +1 并更新指纹；
  * 守卫测试算出的指纹不一致即失败——任何改目录的 PR 都会撞到它，审查方一眼看到“这个 PR 会给存量标准身份补授权”。
  * version 只用于回补报告，不参与缺失判断。
+ * 合并时定号（DEC-439④）：开发中 version 写占位（当时 main + 1 即可），指纹写测试提示的值；合并前 `pnpm merge:main`
+ * 按合并结果统一定为 main + 1 并重算指纹、改写 AC-PLAT-F061-grants 的 HISTORY。这两行请保持单行字面量写法（脚本按行改写）。
+ * 本 PR 有意增删的编码写进同目录 standard-grant-changes.json（F-097），守卫测试以分叉点的编码为基线核对实际增删。
  */
 export const STANDARD_GRANT_VERSION = 18;
 export const STANDARD_GRANT_DIGEST = '1782e8b0f7923b5a';
