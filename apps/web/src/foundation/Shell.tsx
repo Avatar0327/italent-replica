@@ -4,6 +4,8 @@ import { Link, useLocation, useNavigate } from 'react-router';
 import { DecisionNote, DecisionNoteToggle } from './DecisionNote.js';
 import { PermissionObject, usePermissions } from './Permissions.js';
 import { useSession } from './Session.js';
+import { ApiError } from './client.js';
+import { PageState } from './PageState.js';
 import { AppPages } from './AppPages.js';
 import { appRoute } from './routes.js';
 import { ui } from './messages.js';
@@ -59,7 +61,7 @@ export function Shell() {
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
-  const { menus } = usePermissions();
+  const { menus, loading, error, refresh } = usePermissions();
   const active = appRoute(location.pathname);
   const groups = Object.entries(ui.groups)
     .map(([key, label]) => ({
@@ -113,7 +115,17 @@ export function Shell() {
           <DecisionNote id="foundation" />
           <div className="shell-workspace">
             <PermissionObject object={active?.objectCode}>
-              <AppPages />
+              {loading ? (
+                <PageState kind="loading" />
+              ) : error ? (
+                <PageState
+                  kind={error instanceof ApiError && error.kind === 'login' ? 'login' : 'error'}
+                  error={error}
+                  retry={refresh}
+                />
+              ) : (
+                <AppPages />
+              )}
             </PermissionObject>
           </div>
         </Layout.Content>
