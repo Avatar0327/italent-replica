@@ -134,7 +134,26 @@ function afterPlan(h: Harness, work: (tx: Tx) => Promise<void>) {
 
 describe('AC-SC-health-sync / AC-SC-07 D4', () => {
   async function mappedLevel() {
-    const created = await w.request('POST', '/health-levels', { ifMatch: 0, body: levelBody('health') });
+    const created = await w.request('POST', '/health-levels', {
+      ifMatch: 0,
+      body: {
+        ...levelBody('health'),
+        rules: {
+          expression: '1',
+          rows: [
+            {
+              rowNo: 1,
+              population: 'all',
+              fieldSource: 'org',
+              fieldCode: 'on_duty_count',
+              measure: 'average',
+              comparator: 'ge',
+              threshold: 0,
+            },
+          ],
+        },
+      },
+    });
     expect(created.status).toBe(201);
     return (await created.json()) as { id: string; revision: number; code: string };
   }

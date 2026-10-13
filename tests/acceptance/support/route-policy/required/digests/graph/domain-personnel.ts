@@ -16,6 +16,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/personnel/fields.ts#EMPLOYEE_FIELDS',
     'packages/domain/src/personnel/fields.ts#SUBSETS',
   ],
+  'packages/domain/src/personnel/catalog.ts#PERSONNEL_SCOPE_FIELDS': ['#PERSONNEL_OBJECT', '#PERSONNEL_OBJECTS'],
   'packages/domain/src/personnel/fields.ts#EMPLOYEE_FIELDS': [
     '#EMPLOYEE_EDITABLE_FIELDS',
     '#EMPLOYEE_REFLECTED_FIELDS',

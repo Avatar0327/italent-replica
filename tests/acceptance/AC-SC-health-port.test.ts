@@ -91,12 +91,14 @@ afterAll(async () => {
 
 describe('AC-SC-health-sync 计算端口装配', () => {
   it.each([true, false])('在岗人数缓存命中=%s：真实 B5 宿主有合法 run，计算结束没有待执行地图任务', async (hit) => {
+    const originalOrgId = orgId;
+    orgId = (await w.org('缓存独立组织')).id;
+    await w.hire('缓存合成员工', { departmentId: orgId });
     await setRules({
       expression: '1',
       rows: [{ ...greenRules.rows[0], fieldCode: 'on_duty_count', measure: 'average', threshold: 1 }],
     });
     try {
-      await w.asTenant((tx) => tx.execute(sql`DELETE FROM succession_org_stats WHERE tenant_id=${w.tenant.id}::uuid`));
       if (hit) await compute();
       const runs = () =>
         w.asTenant(async (tx) =>
@@ -120,6 +122,7 @@ describe('AC-SC-health-sync 计算端口装配', () => {
         ),
       ).toEqual([{ on_duty_count: 1, status: 'succeeded' }]);
     } finally {
+      orgId = originalOrgId;
       await setRules(greenRules);
     }
   });

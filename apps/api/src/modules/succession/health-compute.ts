@@ -1,14 +1,14 @@
 /** SP-15：端口只组装上下文和结果；健康度度量 / 等级求值复用 B5，不实现第二套计算器。 */
-import { isUuid, sql, type Tx } from '@italent/db';
+import { isUuid, sql } from '@italent/db';
 import { RULE_COMPILER_VERSION, evaluateHealthLevels } from '@italent/domain';
 import { validIsoDate } from '../org/read-model.js';
 import { AppError } from '../../errors.js';
 import type { OrgHealthComputePort } from '../talent-review/health-port.js';
 import { activeUser } from './sync-access.js';
-import { levelViews } from './levels-store.js';
+import { levelViews, type LevelView } from './levels-store.js';
 import { rowsOf } from './read-sql.js';
 import { successionReviewReads } from './ports.js';
-import type { HealthReads } from './health-metrics.js';
+import type { HealthReads, healthMetricReader as MetricReader } from './health-metrics.js';
 import { unsupportedHealthRule } from './health-rule-support.js';
 import { resolveDataScope } from '../permission/scope-resolver.js';
 import { CalcBlocked, CalcObjectFailure } from './calc-contract.js';
@@ -17,7 +17,43 @@ import { lockOrganizationSettings } from '../org/locks.js';
 import { lockHealthRules } from './health-references.js';
 
 export type { HealthReads } from './health-metrics.js';
-type Evaluation = Awaited<ReturnType<typeof evaluateHealthLevels>>;
+type Evaluation = { levelId: string | null; failure?: { code: string; levelId?: string; rowNo?: number } };
+async function evaluateProjectLevels(
+  levels: readonly LevelView[],
+  stale: boolean,
+  read: ReturnType<typeof MetricReader>,
+  calendar: { today: string; timeZone: string },
+): Promise<Evaluation> {
+  try {
+    if (stale) throw new CalcBlocked('RULE_CACHE_STALE');
+    // DEC-460：与 B5 worker 共用判定，未引用行与较后等级也不能绕过禁用组合。
+    for (const level of levels) {
+      const unsupported = level.rules?.rows.find(unsupportedHealthRule);
+      if (unsupported) throw new CalcObjectFailure('FIELD_FORBIDDEN', false, level.id, unsupported.rowNo);
+    }
+    return await evaluateHealthLevels(
+      levels.map((level) => ({ ...level, displayOrder: Number(level.displayOrder) })),
+      async (row, levelId) => {
+        try {
+          return await read(row);
+        } catch (error) {
+          if (!(error instanceof CalcObjectFailure)) throw error;
+          throw new CalcObjectFailure(error.code, false, levelId, error.rowNo ?? row.rowNo);
+        }
+      },
+      calendar,
+    );
+  } catch (error) {
+    if (!(error instanceof CalcBlocked) && !(error instanceof CalcObjectFailure)) throw error;
+    return {
+      levelId: null,
+      failure: {
+        code: error.code,
+        ...(error instanceof CalcObjectFailure ? { levelId: error.levelId, rowNo: error.rowNo } : {}),
+      },
+    };
+  }
+}
 type Input = Parameters<OrgHealthComputePort['compute']>[1];
 function contextReads(reads: HealthReads, input: Input): HealthReads {
   const context = {
@@ -82,39 +118,13 @@ export const healthComputePort: OrgHealthComputePort = {
     });
     return runProjectHealthCompute(tx, input, new Date(calendar!.now), async (ctx, object) => {
       const orgId = object.objectId;
-      let evaluated: Evaluation;
-      try {
-        // DEC-460：与 B5 worker 共用判定，未引用行与较后等级也不能绕过禁用组合。
-        for (const level of levels) {
-          const unsupported = level.rules?.rows.find(unsupportedHealthRule);
-          if (unsupported) throw new CalcObjectFailure('FIELD_FORBIDDEN', false, level.id, unsupported.rowNo);
-        }
-        const read = healthMetricReader(ctx, object, { userId: principalUserId, scope, ...calendar! }, reads);
-        evaluated = ids.some((l) => l.stale)
-          ? { levelId: null, skipped: [], failure: { code: 'RULE_CACHE_STALE' } }
-          : await evaluateHealthLevels(
-              levels.map((level) => ({ ...level, displayOrder: Number(level.displayOrder) })),
-              async (row, levelId) => {
-                try {
-                  return await read(row);
-                } catch (error) {
-                  if (!(error instanceof CalcObjectFailure)) throw error;
-                  throw new CalcObjectFailure(error.code, false, levelId, error.rowNo ?? row.rowNo);
-                }
-              },
-              { today: businessDate, timeZone: calendar!.timezone },
-            );
-      } catch (error) {
-        if (!(error instanceof CalcBlocked) && !(error instanceof CalcObjectFailure)) throw error;
-        evaluated = {
-          levelId: null,
-          skipped: [],
-          failure: {
-            code: error.code,
-            ...(error instanceof CalcObjectFailure ? { levelId: error.levelId, rowNo: error.rowNo } : {}),
-          },
-        };
-      }
+      const read = healthMetricReader(ctx, object, { userId: principalUserId, scope, ...calendar! }, reads);
+      const evaluated = await evaluateProjectLevels(
+        levels,
+        ids.some((l) => l.stale),
+        read,
+        { today: businessDate, timeZone: calendar!.timezone },
+      );
       const selected = levels.find((l) => l.id === evaluated.levelId);
       return {
         orgId,
