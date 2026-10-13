@@ -29,7 +29,21 @@ def gh(args):
 
 
 def snapshot():
-    prs = gh(["pr", "list", "--state", "open", "--json", "number,title,headRefOid,isDraft,statusCheckRollup,comments,commits,baseRefName,mergeable"])
+    # 10-13：一次性取 comments + commits 在在途 PR 多时超时（GitHub 约 50 秒断流，watch 静默失败了 5 小时）；
+    # 改为轻量列表 + 每个 PR 单独取评论 / 提交（并发 6 路），任一失败整轮跳过（避免误报“已关闭”）
+    prs = gh(["pr", "list", "--state", "open", "--limit", "100", "--json", "number,title,headRefOid,isDraft,statusCheckRollup,baseRefName,mergeable"])
+    from concurrent.futures import ThreadPoolExecutor
+
+    def extra(p):
+        for _ in range(2):
+            try:
+                return gh(["pr", "view", str(p["number"]), "--json", "comments,commits"])
+            except Exception:
+                time.sleep(2)
+        raise RuntimeError(f"取 #{p['number']} 评论 / 提交失败")
+    with ThreadPoolExecutor(6) as ex:
+        for p, x in zip(prs, ex.map(extra, prs)):
+            p["comments"], p["commits"] = x["comments"], x["commits"]
     try:  # 搁置中的 PR（每行一个号）不再报停摆 / 待送审
         paused = set(open(os.path.expanduser("~/.cache/italent-paused-prs")).read().split())
     except Exception:
