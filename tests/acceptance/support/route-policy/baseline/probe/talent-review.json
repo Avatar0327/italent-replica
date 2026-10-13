@@ -1273,5 +1273,24 @@
       "btn:TalentReview.Template#create@list",
       "obj:TalentReview.Template:create"
     ]
+  },
+  "POST /api/tenant/talent-review/templates/:id/copy": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "166561f2cc8d",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "btn:TalentReview.Template#copy@list",
+      "obj:TalentReview.Template:create",
+      "obj:TalentReview.Template:view"
+    ]
   }
 }

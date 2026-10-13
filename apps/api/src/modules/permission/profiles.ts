@@ -22,6 +22,7 @@ import {
   type ObjectPermission,
   validateObjectPermission,
 } from '@italent/domain';
+import { permissionSet } from './sets.js';
 import { objectCatalog } from './catalog.js';
 import { AppError } from '../../errors.js';
 import { recordTenantSave } from '../../seeds/grant-ledger.js';
@@ -223,7 +224,7 @@ function view(p: PermissionProfile, apps: string[]): ProfileView {
     description: p.description,
     source: p.source,
     licenseType: p.licenseType,
-    apps,
+    apps: permissionSet(apps),
     revision: p.revision,
     autoHeld: isAutoHeld(p),
   };

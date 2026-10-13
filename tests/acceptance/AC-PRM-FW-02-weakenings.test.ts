@@ -1,3 +1,4 @@
+import { structuralWeakeningCheck } from './support/route-policy/local-checks/weakenings.js';
 /**
  * AC-PRM-FW-02（续，F-039 PR-A 实现审第 1 轮 P2-1 / P2-2）：必须施加的弱化反例。
  * - 审查复现的四个弱化（人员子集列表删点范围分支、同一声明 all → any、职务 :kind 换成合同域、IDP 计划详情参与人
@@ -17,8 +18,7 @@ import { readFrozenContract } from './support/route-policy/baseline.js';
 import { compareDeclarations, type Finding } from './support/route-policy/compare.js';
 import type { ObservedContract } from './support/route-policy/contract.js';
 import { domainConstants, NO_SNAPSHOT_YET } from './support/route-policy/domains.js';
-import { compareMutants } from './support/route-policy/detector-fixtures.js';
-import { WEAKENING_KINDS, weakeningsOf } from './support/route-policy/weakenings.js';
+import { WEAKENING_KINDS } from './support/route-policy/weakenings.js';
 import { tenantApi } from './support/tenant-api.js';
 
 const testDb = useTestDb();
@@ -147,13 +147,7 @@ describe('AC-PRM-FW-02 必需准入分支不能移进 optional（实现审第 2 
 describe('AC-PRM-FW-02 独立登记的结构弱化：全部真实声明逐个施加，每个都被报出', () => {
   for (const kind of WEAKENING_KINDS) {
     it(`${kind}`, () => {
-      const weakenings = manifest.declared.flatMap((r) => weakeningsOf(r, frozen)).filter((w) => w.kind === kind);
-      expect(weakenings.length, `没有任何真实声明能施加 ${kind}`).toBeGreaterThan(0);
-      const missed = weakenings.filter((w) => !reported(compareMutants(frozen, [w.route])));
-      expect(
-        missed.map((w) => `${w.route.method} ${w.route.path} @${w.at}`),
-        `${kind} 未被报出`,
-      ).toEqual([]);
+      structuralWeakeningCheck(manifest.declared, frozen, kind);
     });
   }
 

@@ -11,6 +11,19 @@ export function rowsOf<T>(result: unknown): T[] {
 
 const uuidArray = (ids: readonly string[]) => sql`${`{${ids.join(',')}}`}::uuid[]`;
 
+/** DEC-343④：只提示 asOf 的离职状态；退休 / 调出、未来离职和已撤销时间轴都不算。 */
+export async function loadLeftSuccessors(tx: Tx, tenantId: string, ids: readonly string[], asOf: string) {
+  if (!ids.length) return new Set<string>();
+  const rows = rowsOf<{ employee_id: string }>(
+    await tx.execute(sql`
+    SELECT DISTINCT t.employee_id FROM employment_timeline t
+    JOIN LATERAL employment_record_status(t.tenant_id,t.record_id) s ON true
+    WHERE t.tenant_id=${tenantId}::uuid AND t.employee_id=ANY(${uuidArray([...new Set(ids)])})
+      AND t.valid_during @> ${asOf}::date AND s.employee_status=8`),
+  );
+  return new Set(rows.map((r) => r.employee_id));
+}
+
 /** 在职且算现任：不是待入职 1 / 调出 4 / 退休 6 / 离职 8（§4.1）。 */
 export const INCUMBENT_EXCLUDED_STATUSES = sql`1, 4, 6, 8`;
 

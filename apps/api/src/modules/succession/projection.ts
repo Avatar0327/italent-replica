@@ -9,7 +9,13 @@ import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { getModuleViewableFields } from '../permission/module-access.js';
 import { isOpenEnded, type RecordRow } from './record-read.js';
-import { loadIncumbentIds, loadPeople, loadPersonInChargeIds, type PersonView } from './read-sql.js';
+import {
+  loadIncumbentIds,
+  loadLeftSuccessors,
+  loadPeople,
+  loadPersonInChargeIds,
+  type PersonView,
+} from './read-sql.js';
 
 export interface RecordView {
   readonly id: string;
@@ -31,6 +37,7 @@ export interface RecordView {
   readonly sourceKind: string;
   readonly status: 'active' | 'ended';
   readonly successor: PersonView | null;
+  readonly successorLeft: boolean;
   readonly targetOrg?: { readonly id: string; readonly name: string | null };
   readonly targetPosition?: { readonly id: string; readonly name: string | null; readonly orgId: string | null };
   readonly readiness: {
@@ -54,9 +61,15 @@ export async function buildRecordViews(
 ): Promise<RecordView[]> {
   const positionIds = rows.flatMap((row) => (row.targetPositionId ? [row.targetPositionId] : []));
   const orgIds = rows.flatMap((row) => (row.targetOrgId ? [row.targetOrgId] : []));
-  const [incumbents, heads] = await Promise.all([
+  const [incumbents, heads, left] = await Promise.all([
     loadIncumbentIds(tx, tenantId, positionIds, asOf),
     loadPersonInChargeIds(tx, tenantId, orgIds, asOf),
+    loadLeftSuccessors(
+      tx,
+      tenantId,
+      rows.map((row) => row.successorEmployeeId),
+      asOf,
+    ),
   ]);
   const wanted = [
     ...rows.map((row) => row.successorEmployeeId),
@@ -85,6 +98,7 @@ export async function buildRecordViews(
     sourceKind: row.sourceKind,
     status: row.status,
     successor: person(row.successorEmployeeId),
+    successorLeft: row.status === 'active' && left.has(row.successorEmployeeId),
     readiness: row.readinessId
       ? { id: row.readinessId, code: row.readinessCode, name: row.readinessName, color: row.readinessColor }
       : null,
@@ -103,6 +117,7 @@ export async function buildRecordViews(
 /** 嵌套展示键 → 它所属的对象字段：字段不可查看时嵌套对象一起缺席。 */
 const GOVERNING_FIELD: Readonly<Record<string, string>> = {
   successor: 'successorEmployeeId',
+  successorLeft: 'successorEmployeeId',
   targetOrg: 'targetOrgId',
   targetPosition: 'targetPositionId',
   readiness: 'readinessId',
