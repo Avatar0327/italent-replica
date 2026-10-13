@@ -249,9 +249,9 @@ export const DIGESTS: Digests = {
     registerActivityRoutes: 'da156ca609ab',
   },
   'apps/api/src/modules/evaluation/activity-service.ts': {
-    createActivity: '1d01fa6953f3',
+    createActivity: '2c8a6e40895b',
     presentActivities: '7c4a389fcce8',
-    updateActivity: '1bbcbe10a4e1',
+    updateActivity: '4e44b523ab94',
   },
   'apps/api/src/modules/evaluation/activity-state.ts': {
     activityCommand: 'b512753ccb9e',
@@ -694,6 +694,16 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/succession/config-routes.ts': {
     registerSuccessionConfigRoutes: 'a36c520ca622',
   },
+  'apps/api/src/modules/succession/health-results.ts': {
+    healthAccess: '60a0a82a480c',
+    readHealthResults: '00dc7ccf4e5d',
+    requireHealthOrg: 'b8fcaf7715ce',
+  },
+  'apps/api/src/modules/succession/health-routes.ts': {
+    queueAccess: 'e1446e0dd6ec',
+    queueResults: '1e5340837aec',
+    registerHealthRoutes: '12951cd22652',
+  },
   'apps/api/src/modules/succession/input.ts': {
     rejectImmutable: '512c60b05ed6',
   },
@@ -703,7 +713,7 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/succession/map-display.ts': {
     positionScope: 'e63798bf6a16',
-    readMapDisplayScope: 'd1f1c1818b67',
+    readMapDisplayScope: '70b9d90e051a',
     resolveMapDisplayConditions: 'ae79200fc8cb',
   },
   'apps/api/src/modules/succession/map-routes.ts': {
@@ -741,7 +751,7 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/succession/routes.ts': {
     recordFilter: '858f731477d8',
-    registerSuccessionRoutes: '87a9c368d97c',
+    registerSuccessionRoutes: '345fbb34055d',
   },
   'apps/api/src/modules/succession/write-support.ts': {
     checkCandidateAccess: '7843395303d7',
@@ -1227,6 +1237,7 @@ export const DIGESTS: Digests = {
   'packages/domain/src/succession/catalog.ts': {
     'SUCCESSION_OBJECTS>calcRun': 'f6cb086838dd',
     'SUCCESSION_OBJECTS>healthLevel': '94ff5db43799',
+    'SUCCESSION_OBJECTS>healthResult': 'b0b062f5b496',
     'SUCCESSION_OBJECTS>map': 'd0adfb6296a3',
     'SUCCESSION_OBJECTS>population': 'dd9208c0947c',
     'SUCCESSION_OBJECTS>record': 'a17b8e7432d2',
@@ -1455,9 +1466,9 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/evaluation/activity-refs.ts#resolveActivityRefs': 'd2ec15c574ef',
   'apps/api/src/modules/evaluation/activity-routes.ts#PATH': '072f6ed3a951',
   'apps/api/src/modules/evaluation/activity-routes.ts#registerActivityRoutes': '02ba1c120f4c',
-  'apps/api/src/modules/evaluation/activity-service.ts#createActivity': '6cea1ae2d374',
+  'apps/api/src/modules/evaluation/activity-service.ts#createActivity': '4ec102d9c07d',
   'apps/api/src/modules/evaluation/activity-service.ts#presentActivities': '4b436823458b',
-  'apps/api/src/modules/evaluation/activity-service.ts#updateActivity': '1970287b39ae',
+  'apps/api/src/modules/evaluation/activity-service.ts#updateActivity': 'f30ee85988d5',
   'apps/api/src/modules/evaluation/activity-state.ts#activityCommand': 'c8e7d35e4b10',
   'apps/api/src/modules/evaluation/activity-state.ts#registerActivityStateRoutes': 'c1a7cc9061ab',
   'apps/api/src/modules/evaluation/candidates.ts#registerCandidates': 'c162fd500d1e',
@@ -1782,11 +1793,17 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/succession/calc-read.ts#whole': '14e9013be25c',
   'apps/api/src/modules/succession/calc-routes.ts#registerCalcRoutes': '315660ad65bf',
   'apps/api/src/modules/succession/config-routes.ts#registerSuccessionConfigRoutes': '3fb660443fbe',
+  'apps/api/src/modules/succession/health-results.ts#healthAccess': 'c7bacfe6a69a',
+  'apps/api/src/modules/succession/health-results.ts#readHealthResults': 'e43e6c32caea',
+  'apps/api/src/modules/succession/health-results.ts#requireHealthOrg': '0b2408fb15b0',
+  'apps/api/src/modules/succession/health-routes.ts#queueAccess': '4ba560c1b7ec',
+  'apps/api/src/modules/succession/health-routes.ts#queueResults': '2333be2ad4d8',
+  'apps/api/src/modules/succession/health-routes.ts#registerHealthRoutes': '169e30ca08be',
   'apps/api/src/modules/succession/input.ts#rejectImmutable': '99ce3a8d9998',
   'apps/api/src/modules/succession/levels-routes.ts#levelOptionAccess': '07e9bf4002f1',
   'apps/api/src/modules/succession/levels-routes.ts#registerLevelReads': '1c4dc4f4f005',
   'apps/api/src/modules/succession/map-display.ts#positionScope': '75b6f28f8e1d',
-  'apps/api/src/modules/succession/map-display.ts#readMapDisplayScope': 'affc54d2a8f0',
+  'apps/api/src/modules/succession/map-display.ts#readMapDisplayScope': '16bff63549c0',
   'apps/api/src/modules/succession/map-display.ts#resolveMapDisplayConditions': '1f93fb5a8650',
   'apps/api/src/modules/succession/map-routes.ts#computeAccess': 'ac0053f8a39a',
   'apps/api/src/modules/succession/map-routes.ts#mapAccess': '087aafaa7722',
@@ -1804,7 +1821,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/succession/risk-routes.ts#registerRiskRoutes': 'aba1ffa0bcee',
   'apps/api/src/modules/succession/risk-store.ts#readRiskRows': '0cb131fa9e0a',
   'apps/api/src/modules/succession/routes.ts#recordFilter': '8c3cfb5b80b7',
-  'apps/api/src/modules/succession/routes.ts#registerSuccessionRoutes': '0de1cde63bdd',
+  'apps/api/src/modules/succession/routes.ts#registerSuccessionRoutes': 'd6df329cb55b',
   'apps/api/src/modules/succession/write-support.ts#checkCandidateAccess': 'ea8155f2a727',
   'apps/api/src/modules/succession/write-support.ts#checkWriteAccess': 'eac8ef9cc70b',
   'apps/api/src/modules/survey360/access.ts#activityVisibleSql': '11f326016f03',
@@ -2167,6 +2184,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'packages/domain/src/qualification/catalog.ts#QUALIFICATION_PAGES': '7456b7e1794d',
   'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>calcRun': 'ddd5b264fc87',
   'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>healthLevel': '929ee4841589',
+  'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>healthResult': 'ddd5b264fc87',
   'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>map': 'ddd5b264fc87',
   'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>population': 'e6610430d922',
   'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>record': '11325ba861f5',

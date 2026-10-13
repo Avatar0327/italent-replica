@@ -201,12 +201,12 @@ export const successionTargetLocks = pgTable(
     tenantId: uuid('tenant_id')
       .notNull()
       .references(() => tenants.id),
-    targetKind: text('target_kind').$type<SuccessionType>().notNull(),
+    targetKind: text('target_kind').$type<SuccessionType | 'org_health'>().notNull(),
     targetId: uuid('target_id').notNull(),
   },
   (t) => [
     primaryKey({ columns: [t.tenantId, t.targetKind, t.targetId] }),
-    check('succession_target_locks_kind', sql`${t.targetKind} IN (${list(SUCCESSION_TYPES)})`),
+    check('succession_target_locks_kind', sql`${t.targetKind} IN ('org','position','org_health')`),
   ],
 );
 
@@ -349,6 +349,44 @@ function levelTable<N extends 'succession_risk_levels' | 'succession_health_leve
 }
 export const successionRiskLevels = levelTable('succession_risk_levels');
 export const successionHealthLevels = levelTable('succession_health_levels');
+
+/** B5 / §1.4：当前结果带 CAS；盘点来源列先建，批次外键交 D1 / D4。 */
+export const successionHealthResults = pgTable(
+  'succession_health_results',
+  {
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
+    orgId: uuid('org_id').notNull(),
+    levelId: uuid('level_id'),
+    method: text('method').$type<'computed' | 'manual' | 'synced'>().notNull(),
+    runId: uuid('run_id'),
+    sourceBatchId: uuid('source_batch_id'),
+    sourceProjectId: uuid('source_project_id'),
+    sourceMeetingId: uuid('source_meeting_id'),
+    computedAt: timestamp('computed_at', { withTimezone: true }),
+    assignedBy: uuid('assigned_by'),
+    revision: integer('revision').notNull().default(1),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.orgId] }),
+    foreignKey({ columns: [t.tenantId, t.orgId], foreignColumns: [orgObjects.tenantId, orgObjects.id] }),
+    foreignKey({
+      columns: [t.tenantId, t.levelId],
+      foreignColumns: [successionHealthLevels.tenantId, successionHealthLevels.id],
+    }),
+    foreignKey({
+      columns: [t.tenantId, t.runId],
+      foreignColumns: [successionCalcRuns.tenantId, successionCalcRuns.id],
+    }),
+    foreignKey({
+      columns: [t.tenantId, t.assignedBy],
+      foreignColumns: [tenantMemberships.tenantId, tenantMemberships.userId],
+    }),
+    check('succession_health_method', sql`${t.method} IN ('computed','manual','synced')`),
+    check('succession_health_revision', sql`${t.revision}>0`),
+  ],
+);
 const levelRowColumns = () => ({
   id: uuid('id').primaryKey().defaultRandom(),
   tenantId: uuid('tenant_id')

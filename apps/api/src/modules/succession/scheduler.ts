@@ -7,19 +7,19 @@
 import { runScheduledCalc, SUCCESSION_PRODUCERS } from './calc-jobs.js';
 import type { Db } from '@italent/db';
 
-export type SuccessionJobKind = 'exit_sweep' | 'position_risk' | 'org_stats';
+export type SuccessionJobKind = 'exit_sweep' | 'position_risk' | 'org_stats' | 'org_health' | 'org_health_reset';
 
 export interface SuccessionJob {
   readonly kind: SuccessionJobKind;
   run(db: Db, now: Date): Promise<void>;
 }
 
-export const SUCCESSION_JOBS: readonly SuccessionJob[] = (['exit_sweep', 'position_risk', 'org_stats'] as const).map(
-  (kind) => ({
-    kind,
-    run: (db, now) => runScheduledCalc(db, now, kind),
-  }),
-);
+export const SUCCESSION_JOBS: readonly SuccessionJob[] = (
+  ['exit_sweep', 'position_risk', 'org_stats', 'org_health', 'org_health_reset'] as const
+).map((kind) => ({
+  kind,
+  run: (db, now) => runScheduledCalc(db, now, kind),
+}));
 
 export interface SuccessionScheduler {
   stop(): Promise<void>;
