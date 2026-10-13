@@ -1,7 +1,7 @@
 /** #11 / #12：规则正文与赋值选项使用各自的权限对象，所有写入口复用 A2 的命令与授权结果出口。 */
 import { randomUUID } from 'node:crypto';
 import { sql, withTenant } from '@italent/db';
-import type { SuccessionLevelKind } from '@italent/domain';
+import type { SuccessionLevelKind, SuccessionLevelRules } from '@italent/domain';
 import type { Context, Hono } from 'hono';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
@@ -13,13 +13,21 @@ import { configAccess, missing, projectConfig } from './config-store.js';
 import { levelOrder, levelSchemas } from './levels-input.js';
 import { levelResults, levelSpec, levelViews, listLevels, type LevelView } from './levels-store.js';
 import { mutateLevel, reorderLevels } from './levels-write.js';
+import { requireSupportedHealthRules } from './health-rule-support.js';
 import { rowsOf } from './read-sql.js';
 import { authorizeSuccessionResult, checkWriteAccess, runSuccessionCommand, type WriteSpec } from './write-support.js';
 
-async function writeLevels(c: Context<TenantEnv>, deps: TenantRouteDeps, spec: WriteSpec<LevelView>) {
+async function writeLevels(
+  c: Context<TenantEnv>,
+  deps: TenantRouteDeps,
+  spec: WriteSpec<LevelView>,
+  rules?: SuccessionLevelRules | null,
+) {
   const object = spec.results.object as 'riskLevel' | 'healthLevel';
   const ctx = await checkWriteAccess(c, deps, { ...spec, object });
   await withTenant(deps.db, ctx.tenantId, (tx) => configAccess(tx, deps, ctx, object));
+  // DEC-460：静态支持边界先于台账读取，旧成功命令的重放也必须拒绝。
+  if (object === 'healthLevel') requireSupportedHealthRules(rules);
   const { status, result } = await runSuccessionCommand(c, deps, ctx, spec);
   const { items, revisions } = await authorizeSuccessionResult(deps, ctx, result, spec.results);
   if (result.kind === 'receipt') return c.json({ id: result.ids[0], deleted: true }, status);
@@ -88,16 +96,21 @@ export function registerSuccessionLevelRoutes(router: Hono<TenantEnv>, deps: Ten
       const body = await parseBody(c, levelSchemas(kind).create);
       const expectedRevision = revision(c);
       requireNew(expectedRevision);
-      return writeLevels(c, deps, {
-        operation: 'create',
-        button: { code: 'create', level: 'list' },
-        expectedRevision,
-        payload: body,
-        input: body,
-        status: 201,
-        results: levelResults(kind),
-        execute: (tx, ctx) => mutateLevel(tx, deps, ctx, kind, 'create', randomUUID(), body),
-      });
+      return writeLevels(
+        c,
+        deps,
+        {
+          operation: 'create',
+          button: { code: 'create', level: 'list' },
+          expectedRevision,
+          payload: body,
+          input: body,
+          status: 201,
+          results: levelResults(kind),
+          execute: (tx, ctx) => mutateLevel(tx, deps, ctx, kind, 'create', randomUUID(), body),
+        },
+        body.rules,
+      );
     });
     // 静态 order 路由先于 :id 写入口，不能把重排请求当作 UUID。
     router.put(`${SUCCESSION_BASE}/${kind}-levels/order`, async (c) => {
@@ -116,16 +129,21 @@ export function registerSuccessionLevelRoutes(router: Hono<TenantEnv>, deps: Ten
     router.put(`${SUCCESSION_BASE}/${kind}-levels/:id`, async (c) => {
       const id = uuidParam(c);
       const body = await parseBody(c, levelSchemas(kind).patch);
-      return writeLevels(c, deps, {
-        operation: 'update',
-        button: { code: 'update', level: 'detail' },
-        expectedRevision: revision(c),
-        payload: body,
-        input: { id, body },
-        status: 200,
-        results: levelResults(kind),
-        execute: (tx, ctx) => mutateLevel(tx, deps, ctx, kind, 'update', id, body),
-      });
+      return writeLevels(
+        c,
+        deps,
+        {
+          operation: 'update',
+          button: { code: 'update', level: 'detail' },
+          expectedRevision: revision(c),
+          payload: body,
+          input: { id, body },
+          status: 200,
+          results: levelResults(kind),
+          execute: (tx, ctx) => mutateLevel(tx, deps, ctx, kind, 'update', id, body),
+        },
+        body.rules,
+      );
     });
     router.delete(`${SUCCESSION_BASE}/${kind}-levels/:id`, async (c) => {
       const id = uuidParam(c);

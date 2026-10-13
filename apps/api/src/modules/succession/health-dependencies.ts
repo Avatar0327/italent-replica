@@ -1,5 +1,6 @@
 /** DEC-431① / DEC-455①：字段、人口、度量共用依赖计划，授权和取数不得分别猜测来源。 */
 import type { SuccessionLevelRow } from '@italent/domain';
+import { unsupportedHealthRule } from './health-rule-support.js';
 import { CalcObjectFailure } from './calc-contract.js';
 
 type Source = 'org' | 'incumbents' | 'successors' | 'on_duty_count' | 'green_rate' | 'review';
@@ -35,6 +36,7 @@ function fieldSource(row: SuccessionLevelRow): Source | null {
   throw new CalcObjectFailure('RULE_ROW_INVALID', false, undefined, row.rowNo);
 }
 export function healthDependencies(row: SuccessionLevelRow): HealthDependencies {
+  if (unsupportedHealthRule(row)) throw new CalcObjectFailure('FIELD_FORBIDDEN', true, undefined, row.rowNo);
   if (!Object.hasOwn(measures, row.measure))
     throw new CalcObjectFailure('RULE_ROW_INVALID', false, undefined, row.rowNo);
   const measure = measures[row.measure as keyof typeof measures];
