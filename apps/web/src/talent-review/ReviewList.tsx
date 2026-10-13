@@ -1,5 +1,5 @@
 import { Button, Input, type TableColumnsType } from 'antd';
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { ListPage } from '../foundation/templates.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import type { PageResult } from '../foundation/client.js';
@@ -34,6 +34,13 @@ export function ReviewList(props: ReviewListProps) {
   const rows = filterProjects(data.items, project ? actualView : 'all', '').filter((row) =>
     matchesFilters(row, filters, visible),
   );
+  const pageNumber = Math.min(page.page, Math.max(1, Math.ceil(rows.length / page.pageSize)));
+  const effectivePage = { ...page, page: pageNumber };
+  useEffect(() => {
+    // 刷新中的空数组不是最终结果；只在读取完成后记住校正页码，避免错误退回首页。
+    if (!loading && !error)
+      setPage((current) => (current.page === pageNumber ? current : { ...current, page: pageNumber }));
+  }, [pageNumber, loading, error]);
   const columns = listColumns(collection, actualView, permission, open, rowActions);
   return (
     <>
@@ -41,10 +48,13 @@ export function ReviewList(props: ReviewListProps) {
         title={tr[collection]}
         data={{
           ...data,
-          items: rows.slice((page.page - 1) * page.pageSize, page.page * page.pageSize),
+          items: rows.slice(
+            (effectivePage.page - 1) * effectivePage.pageSize,
+            effectivePage.page * effectivePage.pageSize,
+          ),
           total: rows.length,
         }}
-        page={page}
+        page={effectivePage}
         onPageChange={setPage}
         rowKey="id"
         columns={columns}
