@@ -1,7 +1,8 @@
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { expect, it } from 'vitest';
-import { StandardCells } from '../../apps/web/src/talent/catalog/ResourceDetail.js';
+
+const { StandardCells } = await import(resolve('apps/web/src/talent/catalog/ResourceDetail.tsx'));
 
 const requireWeb = createRequire(resolve('apps/web/package.json'));
 const { createElement } = requireWeb('react');
