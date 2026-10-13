@@ -29,9 +29,13 @@ function client(server: ReturnType<typeof tenantApi>, user: string, tenantId: st
   // 仅补测试身份签名；租户、原始 If-Match、幂等键和 JSON 均直接来自公共客户端。
   vi.stubGlobal('fetch', (path: string, init: RequestInit) => {
     const headers = new Headers(init.headers);
+    const requestHeaders: Record<string, string> = {};
+    headers.forEach((value, name) => {
+      requestHeaders[name] = value;
+    });
     return server.request(init.method ?? 'GET', path, {
       user,
-      headers: Object.fromEntries(headers.entries()),
+      headers: requestHeaders,
       idempotencyKey: headers.get('idempotency-key'),
       ...(init.body ? { body: JSON.parse(String(init.body)) } : {}),
     });
