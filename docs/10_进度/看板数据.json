@@ -985,6 +985,10 @@
 "log": [
 [
 "10-13",
+"DEC-469 新派前端 4 片（Codex Astra high）：FE-R1b、FE-R1d、FE-R3b、FE-R3c；队列 #278→#282→#299→#298→#296→#297；#290 / #293 合 main 后增量复审"
+],
+[
+"10-13",
 "DEC-469：新派前端 Codex Astra、后端 Claude（Opus 设计 / Sonnet 实现），审查仍 Codex；在途和返工由原 Codex 线程做完"
 ],
 [
@@ -3960,15 +3964,16 @@
 "FE-0"
 ],
 "pr": 296,
-"note": "Codex Astra · 叠在 FE-0 #295 上 · DEC-465 破例第 3 轮只修日期回退（有日期编辑权时提交所选生效日期）· 已改完并 Ready，审查已出 · F-111 界面对齐待合并后派"
+"note": "Codex Astra · DEC-465 破例第 3 轮只修日期回退 · 已 Ready，审查已出 · 已入合并队列 · F-111 界面对齐等合并后派"
 },
 {
 "k": "FE-R1b",
 "n": "人员与任职",
-"s": "wait",
+"s": "assigned",
 "after": [
 "FE-0"
-]
+],
+"note": "Codex Astra high · 新线程，base main（DEC-469）· 已派，开发中"
 },
 {
 "k": "FE-R1c",
@@ -3978,15 +3983,16 @@
 "FE-0"
 ],
 "pr": 297,
-"note": "Codex Astra · 叠在 FE-0 #295 上 · DEC-464 降到 L2；DEC-467 破例第 3 轮只改一行映射（暂存详情异动类型改用 transferTypeCode）后合并 · 已 Ready，审查已出 · F-110 补 L3 搁置"
+"note": "Codex Astra · DEC-464 降到 L2；DEC-467 改一行映射 · 已 Ready，审查已出 · 已入合并队列"
 },
 {
 "k": "FE-R1d",
 "n": "自助与企业设置",
-"s": "wait",
+"s": "assigned",
 "after": [
 "FE-0"
-]
+],
+"note": "Codex Astra high · 新线程，base main · 已派 · 若超 3000 行先贴【等决定】给拆法"
 },
 {
 "k": "FE-R3a",
@@ -3996,23 +4002,25 @@
 "FE-0"
 ],
 "pr": 298,
-"note": "Codex Astra · 叠在 FE-0 #295 上 · 开发完成（head 85d30350，按第 2 批 R3 参考包）· 待审（等 Codex 额度，Sol 一轮轻流程已备好自动发起）"
+"note": "Codex Astra · 开发完成（head 85d30350，按第 2 批 R3 参考包）· 已入合并队列"
 },
 {
 "k": "FE-R3b",
 "n": "人才评定与 360",
-"s": "wait",
+"s": "assigned",
 "after": [
 "FE-0"
-]
+],
+"note": "Codex Astra high · 新线程，base main · 已派，开发中"
 },
 {
 "k": "FE-R3c",
 "n": "人才盘点",
-"s": "wait",
+"s": "assigned",
 "after": [
 "FE-0"
-]
+],
+"note": "Codex Astra high · 新线程，base main · 已派 · 附 codex-pilot 规格包（远程 Codex 人才盘点试点）"
 },
 {
 "k": "FE-R3d",
@@ -4020,7 +4028,8 @@
 "s": "wait",
 "after": [
 "FE-0"
-]
+],
+"note": "等 C2 / C3 / D3 / D4 合并后再派"
 }
 ]
 },
@@ -4235,7 +4244,7 @@
 "C2-1a"
 ],
 "pr": 278,
-"note": "基于 C2-1a #271 先行开发 · 已改基到 main 并清理重复迁移（DEC-463）· 已 Ready，第 4 次审查已出 · DEC-467②：旧 0115 以 main 的 0121 为准（只差 RLS 写法，D2 已批准修复）"
+"note": "Codex Astra · 已 Ready，审查已出，已入合并队列（队首）· DEC-467②：旧 0115 以 main 的 0121 为准"
 },
 {
 "k": "C2-2",
@@ -4782,7 +4791,7 @@
 "B2b"
 ],
 "pr": 282,
-"note": "DEC-460 缩到 L2；DEC-466 破例第 6 轮只修“只启用旧停用等级”校验 · 已改完并 Ready，第 6 轮审查已出 · 仍不过则先合已通过部分 · DEC-448 / DEC-451",
+"note": "Codex Astra · DEC-466 破例第 6 轮已修 · 已入合并队列（#278 之后）",
 "s": "assigned"
 }
 ]
@@ -4820,7 +4829,7 @@
 "C1"
 ],
 "pr": 290,
-"note": "Codex Astra · B4 已合入，base 改 main；第 1 轮审查已过，原线程合 main 中，之后入队"
+"note": "Codex Astra · 已合 main（DEC-463 删 6 对重复迁移），做合并后增量复审，过了再入队"
 },
 {
 "k": "D1a",
@@ -4860,7 +4869,7 @@
 "D2"
 ],
 "pr": 293,
-"note": "Codex Astra · DEC-468：F-039 测试登记精确计数常量可在合 main 时按实际路由数同步 · 原线程续做，Draft"
+"note": "Codex Astra · DEC-468 计数 24→27 已同步并合 main，做合并后增量复审，过了再入队"
 },
 {
 "k": "D4",
