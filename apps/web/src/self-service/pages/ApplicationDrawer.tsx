@@ -24,8 +24,7 @@ export function ApplicationDrawer(props: {
   const state = useApplicationCommand(scope, profile ? props.onSaved : undefined);
   const title = profile ? m.transfer : m.manager.apply;
   let content;
-  if (state.saved && !profile)
-    content = <SavedApplication id={state.saved.id} tenantId={tenantId} run={state.run} />;
+  if (state.saved && !profile) content = <SavedApplication id={state.saved.id} tenantId={tenantId} run={state.run} />;
   else if (state.saved) content = <p role="status">{m.submitted}</p>;
   else if (profile)
     content = <EmployeeTransfer tenantId={tenantId} profile={profile} onSaved={() => {}} runCommand={state.run} />;
