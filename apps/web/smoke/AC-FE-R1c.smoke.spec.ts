@@ -512,3 +512,37 @@ test('AC-FE-R1c-16 DEC-464 暂存提交未知，重开与我的申请均不能�
   await expect(page.getByRole('button', { name: '提交暂存申请', exact: true })).toHaveCount(0);
   expect(writes).toBe(1);
 });
+
+for (const [status, message] of [
+  ['effective', '直接调动已保存并生效。'],
+  ['approved', '直接调动已保存，将按调动日期生效。'],
+]) {
+  test(`AC-FE-R1c-18 DEC-464 简化不改变直接调动 ${status} 回执`, async ({ page }) => {
+    await page.route('**/transfers/employees/*/preview', async (route) => {
+      const original = {
+        employeeRevision: 3,
+        form: {
+          id: 'hr',
+          isStandard: true,
+          excludedAutofillFields: [],
+          fieldModes: { 'preset:place': 'editable' },
+          customFields: [],
+        },
+        fields: { place: '合成工作地' },
+        customFields: {},
+        before: null,
+      };
+      await route.fulfill({
+        json: { ...original, allowDirectTransfer: true, allowedActions: { application: true, directList: true } },
+      });
+    });
+    await page.route('**/transfers/employees/' + employee, (route) =>
+      route.fulfill({ json: { ...draftResult, status } }),
+    );
+    await switchIdentity(page, '/transfer');
+    await openHr(page);
+    await page.locator('select[name="employeeId"]').selectOption(employee);
+    await page.getByRole('button', { name: '直接调动', exact: true }).click();
+    await expect(page.getByText(message!, { exact: true })).toBeVisible();
+  });
+}
