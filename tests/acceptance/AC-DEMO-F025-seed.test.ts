@@ -303,10 +303,10 @@ describe('F-025 演示种子', () => {
       await api.request('GET', `/api/tenant/approval/instances?role=initiated&businessId=${submitted.id}`, employee),
     );
     const instanceId = initiated.items[0]!.id;
-    const pending = await json<{ items: { id: string }[] }>(
+    const pending = await json<{ items: { instanceId: string }[] }>(
       await api.request('GET', '/api/tenant/employment/transfers/manager/todos?tab=pending', manager),
     );
-    expect(pending.items.map((item) => item.id)).toContain(instanceId);
+    expect(pending.items.map((item) => item.instanceId)).toContain(instanceId);
 
     // 审批中心：直接上级（部门负责人）→ 调入部门 HRBP，各自只在自己的待办里看到本单
     for (const approver of [manager, hr]) {
