@@ -1,11 +1,11 @@
+import { loadPreview, reloadSavedModel } from './transfer-loading.js';
+import { useRecoverableTransfer } from '../../transfer/useRecoverableTransfer.js';
 import type { TransferFormAdapter } from './transfer-adapter.js';
 import { useEffect, useRef, useState } from 'react';
 import { missingTransferRequiredFields } from '@italent/domain';
 import {
   EMPLOYMENT_API,
   TRANSFER_API,
-  loadReferences,
-  managerReferencePath,
   previewInput,
   queryReferences,
   requestError,
@@ -18,7 +18,6 @@ import { text } from '../../transfer/messages.js';
 import { emptyLinkage } from '../../transfer/linkage-api.js';
 import { useContractChoices } from '../../transfer/useLinkage.js';
 import type {
-  Choice,
   EmployeeChoice,
   FieldValue,
   LinkageDraft,
@@ -26,7 +25,6 @@ import type {
   TransferBusiness,
   TransferCatalog,
   TransferFormModel,
-  TransferPreview,
 } from '../../transfer/types.js';
 
 const initial: TransferFormModel = {
@@ -46,6 +44,7 @@ export function useTransferForm(
   tenantId: string,
   initiator: 'hr' | 'employee' | 'manager' = 'hr',
   adapter?: TransferFormAdapter,
+  recoveryScope?: string,
 ) {
   const [model, setModel] = useState<TransferFormModel>({
     ...(adapter?.initialModel ?? initial),
@@ -58,29 +57,21 @@ export function useTransferForm(
   const [reload, setReload] = useState(0);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
-  const commands = useTransferCommand(tenantId, model, loadingPreview, setModel, setError, setNotice, adapter);
+  const legacy = useTransferCommand(tenantId, model, loadingPreview, setModel, setError, setNotice, adapter);
+  const recovery = useRecoverableTransfer(
+    { tenantId, model, loadingPreview, setModel, setError, setNotice },
+    recoveryScope,
+  );
+  const commands = recoveryScope ? recovery : legacy;
   useCatalog(tenantId, model.effectiveDate, setModel, setError, initiator, !adapter);
   useEmployees(tenantId, model.catalog.today, search, page, setModel, setError, initiator, !adapter);
   usePreview(tenantId, model, commands.saved, reload, setModel, setLoadingPreview, setError, setNotice, adapter);
   // R1-T10 的联动仅接入 HR；经理自助本轮仍不提供跨对象联动。
   useContractChoices(tenantId, initiator === 'hr' ? model.employeeId : '', initiator, setModel);
   const selection = (field: 'employeeId' | 'effectiveDate' | 'transferTypeCode' | 'reasonCode', value: string) => {
+    if (recoveryScope && recovery.restoreSelection(field, value)) return;
     setError('');
-    setModel((current) =>
-      field === 'reasonCode'
-        ? { ...current, reasonCode: value }
-        : {
-            ...current,
-            [field]: value,
-            reasonCode: field === 'transferTypeCode' ? '' : current.reasonCode,
-            fields: {},
-            customFields: {},
-            preview: null,
-            ...(field === 'employeeId' ? { withEstablishment: false } : {}),
-            // 换人后清空原员工的联动草稿与合同候选。
-            ...(field === 'employeeId' && current.linkage ? { linkage: emptyLinkage, contracts: [] } : {}),
-          },
-    );
+    applySelection(setModel, field, value);
   };
   const field = editField(setModel);
   const refresh = () => {
@@ -89,9 +80,10 @@ export function useTransferForm(
     setReload((value) => value + 1);
   };
   const reset = () => {
-    commands.setSaved(null);
+    if (recoveryScope && !recovery.clearActive()) return;
+    legacy.setSaved(null);
     setModel((current) => ({ ...current, withEstablishment: false }));
-    commands.resetConflict();
+    legacy.resetConflict();
     setNotice('');
     refresh();
   };
@@ -100,6 +92,7 @@ export function useTransferForm(
     error,
     notice,
     ...commands,
+    recover: recoveryScope ? recovery.recover : undefined,
     loadingPreview,
     page,
     selection,
@@ -324,28 +317,6 @@ function usePreview(
     // input covers the scalar selection and explicit edits; returned defaults never trigger another request.
   }, [tenantId, model.employeeId, input, saved, reload, setModel, setBusy, setError, setNotice, adapter]);
 }
-async function loadPreview(tenantId: string, model: TransferFormModel, signal: AbortSignal) {
-  const preview = await transferRequest<TransferPreview>(
-    tenantId,
-    `${TRANSFER_API}/employees/${model.employeeId}/preview`,
-    { method: 'POST', body: JSON.stringify(previewInput(model)), signal },
-  );
-  const query = new URLSearchParams({ formId: preview.form.id, effectiveDate: model.effectiveDate, pageSize: '100' });
-  const [departments, references] = await Promise.all([
-    preview.form.fieldModes['preset:departmentId'] &&
-    !['hidden', 'absent'].includes(preview.form.fieldModes['preset:departmentId'])
-      ? transferRequest<{ items: Choice[] }>(
-          tenantId,
-          model.initiator === 'manager'
-            ? managerReferencePath(model, preview, 'departmentId')
-            : `${TRANSFER_API}/departments?${query}`,
-          { signal },
-        )
-      : Promise.resolve({ items: [] }),
-    loadReferences(tenantId, preview, model, signal),
-  ]);
-  return { preview, departments: departments.items, ...references };
-}
 
 function referenceQuery(
   tenantId: string,
@@ -375,26 +346,6 @@ function referenceQuery(
   };
 }
 
-async function reloadSavedModel(tenantId: string, model: TransferFormModel, saved: TransferBusiness) {
-  const latest = await transferRequest<TransferBusiness>(tenantId, `${EMPLOYMENT_API}/businesses/${saved.id}`);
-  if (latest.id !== saved.id || !Number.isInteger(latest.revision) || !latest.fields) throw new Error(text.failed);
-  const modelWithDate = {
-    ...model,
-    effectiveDate: latest.effectiveDate ?? model.effectiveDate,
-    fields: {},
-    customFields: {},
-  };
-  const loaded = await loadPreview(tenantId, modelWithDate, new AbortController().signal);
-  return {
-    latest,
-    refreshed: {
-      ...modelWithDate,
-      ...loaded,
-      preview: { ...loaded.preview, fields: latest.fields, customFields: latest.customFields ?? {} },
-    },
-  };
-}
-
 function savedNotice(result: TransferBusiness, action: TransferAction) {
   if (result.status === 'draft') return text.draftSaved;
   if (action === 'direct') return result.status === 'effective' ? text.effective : text.scheduled;
@@ -412,4 +363,22 @@ function editField(setModel: SetModel) {
       return { ...current, [key]: values };
     });
   };
+}
+
+function applySelection(setModel: SetModel, field: string, value: string) {
+  setModel((current) =>
+    field === 'reasonCode'
+      ? { ...current, reasonCode: value }
+      : {
+          ...current,
+          [field]: value,
+          reasonCode: field === 'transferTypeCode' ? '' : current.reasonCode,
+          fields: {},
+          customFields: {},
+          preview: null,
+          ...(field === 'employeeId' ? { withEstablishment: false } : {}),
+          // 换人后清空原员工的联动草稿与合同候选。
+          ...(field === 'employeeId' && current.linkage ? { linkage: emptyLinkage, contracts: [] } : {}),
+        },
+  );
 }

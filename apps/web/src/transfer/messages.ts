@@ -1,5 +1,7 @@
 /** DEC-045：首版简体中文文案集中到资源文件。 */
 export const text = {
+  recoverCommand: '恢复原命令',
+  recoveryUnavailable: '无法保存会话恢复信息，本次操作未发起。请检查浏览器存储后重试。',
   inProgress: '调动中员工',
   completed: '已完成的调动',
   allRecords: '全部调动记录',

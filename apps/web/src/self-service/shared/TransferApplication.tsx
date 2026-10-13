@@ -4,9 +4,9 @@ import { useLinkageDetail } from '../../transfer/useLinkage.js';
 import { TransferForm } from './TransferForm.js';
 import { text } from '../../transfer/messages.js';
 import { useTransferForm } from './useTransferForm.js';
-type TransferApplicationProps = { tenantId: string; initiator: 'hr' | 'employee' | 'manager' };
-export function TransferApplication({ tenantId, initiator }: TransferApplicationProps) {
-  const state = useTransferForm(tenantId, initiator);
+type TransferApplicationProps = { tenantId: string; initiator: 'hr' | 'employee' | 'manager'; recoveryScope?: string };
+export function TransferApplication({ tenantId, initiator, recoveryScope }: TransferApplicationProps) {
+  const state = useTransferForm(tenantId, initiator, undefined, recoveryScope);
   const locked = state.busy || !!state.saved || !!state.unknownCommand;
   return (
     <section className="transfer-content" aria-busy={state.busy || state.loadingPreview}>
@@ -41,11 +41,7 @@ export function TransferApplication({ tenantId, initiator }: TransferApplication
         }}
       />
       {state.saved && initiator === 'hr' && <LinkageDetail tenantId={tenantId} businessId={state.saved.id} />}
-      {state.unknownCommand && (
-        <p>
-          {text.requestReference}：<code>{state.unknownCommand}</code>
-        </p>
-      )}
+      <CommandRecovery state={state} />
       {!state.unknownCommand && (
         <div className="transfer-actions">
           {state.saved?.status === 'draft' && (
@@ -71,7 +67,7 @@ export function TransferApplication({ tenantId, initiator }: TransferApplication
             </button>
           )}
           {state.saved ? (
-            <button type="button" disabled={state.busy} onClick={state.reset}>
+            <button type="button" disabled={state.busy || state.needsReload} onClick={state.reset}>
               {text.newApplication}
             </button>
           ) : (
@@ -82,6 +78,32 @@ export function TransferApplication({ tenantId, initiator }: TransferApplication
         </div>
       )}
     </section>
+  );
+}
+
+function CommandRecovery({ state }: { state: ReturnType<typeof useTransferForm> }) {
+  return (
+    <>
+      {' '}
+      {state.unknownCommand && (
+        <p>
+          {state.error !== text.unknown && text.unknown}
+          <br />
+          {text.requestReference}：<code>{state.unknownCommand}</code>
+          {state.recover && (
+            <button
+              type="button"
+              disabled={state.busy}
+              onClick={() => {
+                void state.recover?.();
+              }}
+            >
+              {text.recoverCommand}
+            </button>
+          )}
+        </p>
+      )}
+    </>
   );
 }
 

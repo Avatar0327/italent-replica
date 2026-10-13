@@ -9,7 +9,8 @@ export const transferNotes: Record<string, DecisionAnnotation> = {
   },
   'transfer-form': {
     original: '调动前后字段成对展示，按类型带出任职信息，支持暂存、提交和直接调动。',
-    decision: '复用现有调动表单生命周期，以后端预览的字段权限与可用操作为准；审批通过与业务生效分开显示。',
+    decision:
+      '以服务端预览的字段权限和操作为准；暂存单在会话中保留定位信息，重开按当前权限回读。未知结果保留原命令，由用户显式恢复同一幂等请求；无独立命令查询接口。审批通过与业务生效分开显示。',
     decisions: ['DEC-456', 'DEC-125', 'DEC-067'],
     level: 'L3',
   },

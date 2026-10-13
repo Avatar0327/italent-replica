@@ -71,6 +71,7 @@ function TransferDrawer({ open, onClose }: { open: boolean; onClose(): void }) {
             key={`${session.tenantId}/${session.identityKey}`}
             tenantId={session.tenantId}
             initiator="hr"
+            recoveryScope={JSON.stringify([session.tenantId, session.identityKey])}
           />
         </div>
       )}

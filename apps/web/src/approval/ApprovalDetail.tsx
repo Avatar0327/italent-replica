@@ -98,7 +98,7 @@ function useApprovalDetail({ row, demo, onClose, onChanged }: DetailProps) {
       await api.request(request.path, { method: 'POST', command: request.command });
     } catch (cause) {
       // 结果未知 / 冲突后必须人工回查，不能从相同弹窗重复发新命令。
-      setMustReload(true);
+      if (!(cause instanceof ApiError && [400, 422].includes(cause.status))) setMustReload(true);
       throw cause;
     }
     onChanged();
