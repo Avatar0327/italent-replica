@@ -3,7 +3,7 @@ import type { TransferBusiness } from './types.js';
 
 export interface SavedDraft extends TransferBusiness {
   withEstablishment?: boolean;
-  changeType?: string;
+  transferTypeCode?: string;
   employeeId?: string;
 }
 export type DraftOptions = Readonly<Record<string, unknown>>;
@@ -60,7 +60,7 @@ export function draftRows(business: SavedDraft, options: DraftOptions): DraftRow
   };
   add('employeeId', m.employeeId, business.employeeId);
   add('effectiveDate', m.date, business.effectiveDate);
-  add('changeType', m.type, business.changeType);
+  add('transferTypeCode', m.type, business.transferTypeCode);
   add('withEstablishment', m.withEstablishment, business.withEstablishment);
   // 缺失字段绝不从新建表单的默认值或旧缓存补齐（DEC-464）。
   for (const code of new Set([...Object.keys(presetLabels), ...Object.keys(business.fields ?? {})])) {
