@@ -3,7 +3,6 @@ import type { buildPermissionSnapshot } from '../../../api/src/modules/permissio
 import { ApiError, type ApiClient } from './client.js';
 import type { ObjectPermission } from './permission-model.js';
 import { APP_ROUTES, type AppRoute } from './routes.js';
-import type { Session } from './Session.js';
 
 // 只引用后端推导类型，运行时不打包 API 或数据库代码。
 export type ServerSnapshot = Awaited<ReturnType<typeof buildPermissionSnapshot>>;
@@ -31,7 +30,7 @@ export const menuObjects = (route: AppRoute) => APP_OBJECT_DIRECTORY[route.id];
 
 export async function loadSnapshot(api: ApiClient, signal: AbortSignal) {
   const response = await api.request<ServerSnapshot>('/api/tenant/permission/me/snapshot', { signal });
-  const session: Session = { ...response.session, identityKey: response.session.userId, source: 'server' };
+  const session = { ...response.session, identityKey: response.session.userId, source: 'server' as const };
   const menus: MenuNode[] = APP_ROUTES.filter((route) =>
     response.apps.some((app) => app.app === route.id && app.visible),
   ).map((route) => ({
