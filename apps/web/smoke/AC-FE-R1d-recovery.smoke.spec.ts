@@ -218,3 +218,24 @@ test('AC-FE-R1d-2 本人申请确认成功后可以显式新建，未确认保�
   await expect.poll(() => commands.length).toBe(2);
   expect(commands[0]).not.toBe(commands[1]);
 });
+
+test('AC-FE-R1d-2 查看我的申请后返回不清除原命令，只有整页刷新才重新发起', async ({ page }) => {
+  let writes = 0;
+  await page.route('**/self-service/transfer', (route) => {
+    writes++;
+    return route.abort('failed');
+  });
+  const drawer = await setup(page, false);
+  await drawer.getByRole('button', { name: '提交', exact: true }).click();
+  await expect.poll(() => writes).toBe(1);
+  await page.getByRole('button', { name: '关闭', exact: true }).click();
+  await page.locator('.service-nav a[href="/self/requests"]').click();
+  await page.locator('.service-nav a[href="/self/applications"]').click();
+  await openForm(page, false);
+  await expect(drawer).toContainText('处理中 / 结果待确认');
+  await expect(drawer.getByRole('button', { name: '提交', exact: true })).toHaveCount(0);
+  expect(writes).toBe(1);
+  await page.reload();
+  await openForm(page, false);
+  await expect(drawer.getByRole('button', { name: '提交', exact: true })).toBeEnabled();
+});
