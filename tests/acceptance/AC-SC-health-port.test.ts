@@ -1,202 +1,126 @@
-/** D4 / SP-15：通过装配登记公开端口验收；不在测试中复制 B5 求值实现。 */
+/** D4 / SP-15：B5 真实求值与缓存；T04 来源使用协议规定的 SP-18 实现。 */
 import { randomUUID } from 'node:crypto';
 import { sql, type DbHandle } from '@italent/db';
-import { STANDARD_PROFILES } from '@italent/domain';
 import { createTestDb } from '@italent/testkit';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { SUCCESSION_PORTS, installSuccessionPorts } from '../../apps/api/src/modules/succession/ports.js';
 import { orgHealthComputePort } from '../../apps/api/src/modules/talent-review/health-port.js';
-import type { TalentReviewSyncPort } from '../../apps/api/src/modules/talent-review/sync-port.js';
-import { installProfile } from '../../apps/api/src/modules/permission/standard-profiles.js';
-import { overrideSetting } from '../../apps/api/src/modules/tenant-settings/service.js';
-import { successionWorld, SC_NOW, SC_TODAY, type SuccessionWorld } from './AC-SC-support.js';
+import { successionWorld, SC_TODAY, type SuccessionWorld } from './AC-SC-support.js';
 import { levelBody } from './AC-SC-levels-support.js';
-import type { HealthComputeHost } from '../../apps/api/src/modules/succession/health-compute.js';
 import { runProjectHealthCommand } from '../../apps/api/src/modules/succession/health-project.js';
 import { createInMemoryTalentReviewSyncPort } from '../../apps/api/src/modules/talent-review/sync-port-memory.js';
 import { AppError } from '../../apps/api/src/errors.js';
-import { enqueueCalcRun } from '../../apps/api/src/modules/succession/calc-worker.js';
 import { rowsOf } from './support/f048.js';
+import { enableHealthRunner } from './AC-SC-07-health-support.js';
 
-// B5 宿主仅作调用边界替身：记录取数调用并返回预定等级，不实现条件求值或人员人口算法。
-const host: HealthComputeHost = {
-  metricReader: (ctx, object, principal, reads) => async () => {
-    await reads.greenRate(ctx.tx, {
-      tenantId: ctx.run.tenantId,
-      orgIds: [object.objectId],
-      context: { asOf: ctx.run.businessDate },
-      viewer: { kind: 'principal', userId: principal.userId },
-    });
-    return { status: 'value', value: 0.75 };
-  },
-  evaluate: vi.fn<HealthComputeHost['evaluate']>().mockImplementation(async (levels, read) => {
-    const level = levels[0]!;
-    await read(level.rules!.rows[0]!, level.id);
-    return { levelId: level.id };
-  }),
-};
-
-// #282 health-metrics.ts 的 HealthReads 接口形状；只替代来源读取，不复制 B5 的计算实现。
-type HealthReads = Pick<
-  TalentReviewSyncPort,
-  'greenRate' | 'readReviewFields' | 'readSuccessionEntries' | 'listReviewFields'
->;
-function healthReadsDouble() {
-  return {
-    greenRate: vi
-      .fn<HealthReads['greenRate']>()
-      .mockImplementation(
-        async (_tx, input) =>
-          new Map(
-            input.orgIds.map((orgId) => [
-              orgId,
-              { status: 'value' as const, rate: 0.75, green: 3, placed: 4, source: null },
-            ]),
-          ),
-      ),
-    readReviewFields: vi.fn<HealthReads['readReviewFields']>().mockResolvedValue(new Map()),
-    readSuccessionEntries: vi.fn<HealthReads['readSuccessionEntries']>().mockResolvedValue([]),
-    listReviewFields: vi.fn<HealthReads['listReviewFields']>().mockResolvedValue([]),
-  } satisfies HealthReads;
-}
 let handle: DbHandle, w: SuccessionWorld, orgId: string;
 let level: { id: string; code: string; name: string; color: string; displayOrder: number };
-beforeAll(async () => {
-  Reflect.set(SUCCESSION_PORTS, 'healthComputeHost', host);
-  handle = await createTestDb();
-  // 仅模拟 B5 缓存对真实 run 的非空 / 同租户引用契约，不复制在岗人数计算。
-  await handle.db.execute(sql`CREATE TABLE sc_health_count_cache (
-    tenant_id uuid NOT NULL,org_id uuid NOT NULL,stat_date date NOT NULL,n integer NOT NULL,
-    run_id uuid NOT NULL,PRIMARY KEY(tenant_id,org_id,stat_date),
-    FOREIGN KEY(tenant_id,run_id) REFERENCES succession_calc_runs(tenant_id,id))`);
-  await handle.db.execute(sql`SELECT enable_tenant_isolation('sc_health_count_cache')`);
-  await handle.db.execute(sql`GRANT SELECT,INSERT,DELETE ON sc_health_count_cache TO app_user`);
-  w = await successionWorld(handle.db, 'sc-health-port');
-  orgId = (await w.org('端口计算组织')).id;
-  await w.asTenant(async (tx) => {
-    await installProfile(
-      tx,
-      { tenantId: w.tenant.id, actorUserId: null, now: SC_NOW, commandId: randomUUID() },
-      STANDARD_PROFILES.find((p) => p.code === 'standard_succession_runner')!,
-    );
-    await tx.execute(sql`INSERT INTO permission_grants(tenant_id,user_id,profile_id)
-      SELECT ${w.tenant.id}::uuid,${w.user.id}::uuid,id FROM permission_profiles
-      WHERE tenant_id=${w.tenant.id}::uuid AND code='standard_succession_runner' ON CONFLICT DO NOTHING`);
-    await tx.execute(sql`INSERT INTO permission_identity_scopes
-      (tenant_id,profile_id,app_code,target_kind,target_code,see_all)
-      SELECT ${w.tenant.id}::uuid,id,'SuccessionAndDevelopment','entity','Succession.HealthResult',true
-      FROM permission_profiles WHERE tenant_id=${w.tenant.id}::uuid AND code='standard_succession_runner'
-      ON CONFLICT (tenant_id,profile_id,app_code,target_kind,target_code) DO UPDATE SET see_all=true`);
-    await overrideSetting(
-      tx,
+const greenRules = {
+  expression: '1',
+  rows: [
+    {
+      rowNo: 1,
+      population: 'all',
+      fieldSource: 'org',
+      fieldCode: null,
+      measure: 'green_rate',
+      comparator: 'ge',
+      threshold: 0.5,
+    },
+  ],
+};
+function reviewSource(projectId: string, meetingId: string | null) {
+  return createInMemoryTalentReviewSyncPort({
+    tenantId: w.tenant.id,
+    sources: [
       {
-        tenantId: w.tenant.id,
-        userId: w.user.id,
-        key: 'succession.system_principal_user_id',
-        expectedRevision: 0,
-        now: SC_NOW,
-        commandId: randomUUID(),
-      },
-      w.user.id,
-    );
-  });
-  const response = await w.request('POST', '/health-levels', {
-    ifMatch: 0,
-    body: {
-      ...levelBody('health'),
-      rules: {
-        expression: '1',
-        rows: [
+        projectId,
+        meetingId,
+        code: 'D4_SOURCE',
+        status: 'in_progress',
+        periodStartDate: '2026-01-01',
+        periodEndDate: '2026-12-31',
+        businessDate: SC_TODAY,
+        objects: [
           {
-            rowNo: 1,
-            population: 'all',
-            fieldSource: 'org',
-            fieldCode: null,
-            measure: 'green_rate',
-            comparator: 'ge',
-            threshold: 0.5,
+            employeeId: randomUUID(),
+            orgId,
+            fields: {},
+            succession: [],
+            placement: { matrixId: randomUUID(), placement: 1, countsGreen: true },
           },
         ],
       },
-    },
+    ],
+  });
+}
+async function setRules(rules: object) {
+  const current = await (await w.request('GET', `/health-levels/${level.id}`)).json();
+  const changed = await w.request('PUT', `/health-levels/${level.id}`, {
+    ifMatch: current.revision,
+    body: { rules },
+  });
+  expect(changed.status, await changed.clone().text()).toBe(200);
+}
+const compute = (projectId = randomUUID(), meetingId: string | null = null) =>
+  w.asTenant((tx) =>
+    SUCCESSION_PORTS.orgHealthCompute!.compute(tx, {
+      tenantId: w.tenant.id,
+      principalUserId: w.user.id,
+      context: { projectId, meetingId },
+      orgIds: [orgId],
+      businessDate: SC_TODAY,
+    }),
+  );
+beforeAll(async () => {
+  handle = await createTestDb();
+  w = await successionWorld(handle.db, 'sc-health-port');
+  orgId = (await w.org('端口计算组织')).id;
+  await w.hire('端口统计员工', { departmentId: orgId });
+  await enableHealthRunner(w);
+  const response = await w.request('POST', '/health-levels', {
+    ifMatch: 0,
+    body: { ...levelBody('health'), rules: greenRules },
   });
   expect(response.status, await response.clone().text()).toBe(201);
-  level = (await response.json()) as typeof level;
+  level = await response.json();
 }, 180_000);
 afterAll(async () => {
-  Reflect.deleteProperty(SUCCESSION_PORTS, 'healthComputeHost');
   await handle?.close();
 });
 
 describe('AC-SC-health-sync 计算端口装配', () => {
-  it.each([true, false])('在岗人数缓存命中=%s：宿主有真实 run 来源，计算结束没有待执行地图任务', async (hit) => {
-    await w.asTenant(async (tx) => {
-      await tx.execute(sql`DELETE FROM sc_health_count_cache WHERE tenant_id=${w.tenant.id}::uuid`);
-      if (hit) {
-        const seed = await enqueueCalcRun(
-          tx,
-          {
-            tenantId: w.tenant.id,
-            kind: 'org_stats',
-            trigger: 'manual',
-            requestedBy: null,
-            commandId: randomUUID(),
-            businessDate: SC_TODAY,
-            objects: [],
-          },
-          SC_NOW,
-        );
-        await tx.execute(sql`INSERT INTO sc_health_count_cache VALUES
-          (${w.tenant.id}::uuid,${orgId}::uuid,${SC_TODAY}::date,17,${seed}::uuid)`);
-      }
+  it.each([true, false])('在岗人数缓存命中=%s：真实 B5 宿主有合法 run，计算结束没有待执行地图任务', async (hit) => {
+    await setRules({
+      expression: '1',
+      rows: [{ ...greenRules.rows[0], fieldCode: 'on_duty_count', measure: 'average', threshold: 1 }],
     });
-    let sourceRun: string | null = null;
-    const probe: HealthComputeHost = {
-      metricReader: (ctx, object) => async () => {
-        sourceRun = ctx.run.id;
-        const [cached] = rowsOf<{ n: number }>(
-          await ctx.tx.execute(sql`
-          SELECT n FROM sc_health_count_cache WHERE tenant_id=${ctx.run.tenantId}::uuid
-          AND org_id=${object.objectId}::uuid AND stat_date=${ctx.run.businessDate}::date`),
-        );
-        if (cached) return { status: 'value', value: cached.n };
-        await ctx.tx.execute(sql`INSERT INTO sc_health_count_cache VALUES
-          (${ctx.run.tenantId}::uuid,${object.objectId}::uuid,${ctx.run.businessDate}::date,17,${ctx.run.id}::uuid)`);
-        return { status: 'value', value: 17 };
-      },
-      evaluate: async (levels, read) => {
-        expect(await read({ ...levels[0]!.rules!.rows[0]!, fieldCode: 'on_duty_count' }, levels[0]!.id)).toEqual({
-          status: 'value',
-          value: 17,
-        });
-        return { levelId: levels[0]!.id };
-      },
-    };
-    Reflect.set(SUCCESSION_PORTS, 'healthComputeHost', probe);
     try {
-      expect(
-        await w.asTenant((tx) =>
-          SUCCESSION_PORTS.orgHealthCompute!.compute(tx, {
-            tenantId: w.tenant.id,
-            principalUserId: w.user.id,
-            context: { projectId: randomUUID(), meetingId: null },
-            orgIds: [orgId],
-            businessDate: SC_TODAY,
-          }),
-        ),
-      ).toEqual([{ orgId, levelId: level.id, levelCode: level.code, failures: [] }]);
-      expect(sourceRun).toBeTypeOf('string');
+      await w.asTenant((tx) => tx.execute(sql`DELETE FROM succession_org_stats WHERE tenant_id=${w.tenant.id}::uuid`));
+      if (hit) await compute();
+      const runs = () =>
+        w.asTenant(async (tx) =>
+          rowsOf<{ id: string; status: string; date: string }>(
+            await tx.execute(sql`SELECT id,status,business_date::text AS date FROM succession_calc_runs
+          WHERE tenant_id=${w.tenant.id}::uuid AND kind='org_health'`),
+          ),
+        );
+      const oldIds = new Set((await runs()).map((r) => r.id));
+      expect(await compute()).toEqual([{ orgId, levelId: level.id, levelCode: level.code, failures: [] }]);
+      expect((await runs()).filter((r) => !oldIds.has(r.id))).toEqual([
+        { id: expect.any(String), status: 'succeeded', date: SC_TODAY },
+      ]);
       expect(
         await w.asTenant(async (tx) =>
           rowsOf(
             await tx.execute(sql`
-        SELECT status,business_date::text AS date FROM succession_calc_runs
-        WHERE tenant_id=${w.tenant.id}::uuid AND id=${sourceRun}::uuid`),
+        SELECT s.on_duty_count,r.status FROM succession_org_stats s JOIN succession_calc_runs r
+        ON r.tenant_id=s.tenant_id AND r.id=s.run_id WHERE s.org_id=${orgId}::uuid`),
           ),
         ),
-      ).toEqual([{ status: 'succeeded', date: SC_TODAY }]);
+      ).toEqual([{ on_duty_count: 1, status: 'succeeded' }]);
     } finally {
-      Reflect.set(SUCCESSION_PORTS, 'healthComputeHost', host);
+      await setRules(greenRules);
     }
   });
   it('SP-16 命令台账重放不重读版本，撤权后先 guard 再出结果', async () => {
@@ -239,28 +163,32 @@ describe('AC-SC-health-sync 计算端口装配', () => {
     expect(write).toHaveBeenCalledTimes(1);
   });
   it('宿主失败只返回失败码和行定位，不带中文文案或内部异常', async () => {
-    vi.mocked(host.evaluate).mockResolvedValueOnce({
-      levelId: null,
-      failure: { code: 'FIELD_FORBIDDEN', levelId: level.id, rowNo: 1 },
-    });
-    expect(
-      await w.asTenant((tx) =>
-        SUCCESSION_PORTS.orgHealthCompute!.compute(tx, {
-          tenantId: w.tenant.id,
-          principalUserId: w.user.id,
-          context: { projectId: randomUUID(), meetingId: null },
-          orgIds: [orgId],
-          businessDate: SC_TODAY,
-        }),
-      ),
-    ).toEqual([
-      {
-        orgId,
-        levelId: null,
-        levelCode: null,
-        failures: [{ code: 'FIELD_FORBIDDEN', params: { levelId: level.id, rowNo: 1 } }],
-      },
-    ]);
+    const projectId = randomUUID();
+    const reads = reviewSource(projectId, null);
+    reads.denyViewer(w.user.id, { orgIds: [orgId] });
+    Reflect.set(SUCCESSION_PORTS, 'reviewReads', reads);
+    try {
+      expect(
+        await w.asTenant((tx) =>
+          SUCCESSION_PORTS.orgHealthCompute!.compute(tx, {
+            tenantId: w.tenant.id,
+            principalUserId: w.user.id,
+            context: { projectId, meetingId: null },
+            orgIds: [orgId],
+            businessDate: SC_TODAY,
+          }),
+        ),
+      ).toEqual([
+        {
+          orgId,
+          levelId: null,
+          levelCode: null,
+          failures: [{ code: 'FIELD_FORBIDDEN', params: { levelId: level.id, rowNo: 1 } }],
+        },
+      ]);
+    } finally {
+      Reflect.deleteProperty(SUCCESSION_PORTS, 'reviewReads');
+    }
   });
   it('SUCCESSION_PORTS 登记可重复装配的 compute + listLevels 模块单例', () => {
     expect(SUCCESSION_PORTS.orgHealthCompute).toBeDefined();
@@ -293,9 +221,9 @@ describe('AC-SC-health-sync 计算端口装配', () => {
       const port = SUCCESSION_PORTS.orgHealthCompute;
       expect(port).toBeDefined();
       if (!port) throw new Error('D4 尚未登记计算端口');
-      const reads = healthReadsDouble(),
-        projectId = randomUUID();
-      // reviewReads 与 #282 登记位同形；仅替代来源 IO。
+      const projectId = randomUUID();
+      const reads = reviewSource(projectId, meetingId);
+      const green = vi.spyOn(reads, 'greenRate');
       const prior = Reflect.get(SUCCESSION_PORTS, 'reviewReads');
       Reflect.set(SUCCESSION_PORTS, 'reviewReads', reads);
       try {
@@ -310,7 +238,7 @@ describe('AC-SC-health-sync 计算端口装配', () => {
             }),
           ),
         ).toEqual([{ orgId, levelId: level.id, levelCode: level.code, failures: [] }]);
-        expect(reads.greenRate).toHaveBeenCalledWith(
+        expect(green).toHaveBeenCalledWith(
           expect.anything(),
           expect.objectContaining({
             tenantId: w.tenant.id,

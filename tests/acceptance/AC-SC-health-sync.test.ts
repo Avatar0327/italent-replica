@@ -1,4 +1,4 @@
-/** D4 / §4.4：真实同步事务 + SP-18 替身。B5 合并前存储采用契约替身，不复制 B5 业务实现。 */
+/** D4 / §4.4：真实同步事务 + SP-18 替身。B5 健康度使用真实迁移、结果表和 worker。 */
 import { randomUUID } from 'node:crypto';
 import { sql, type DbHandle, type Tx } from '@italent/db';
 import type { SyncOrgHealth } from '@italent/domain';
@@ -6,16 +6,17 @@ import { createTestDb } from '@italent/testkit';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { consumeRun, planSyncRun } from '../../apps/api/src/modules/succession/sync-consume.js';
 import { createInMemoryTalentReviewSyncPort } from '../../apps/api/src/modules/talent-review/sync-port-memory.js';
-import { overrideSetting } from '../../apps/api/src/modules/tenant-settings/service.js';
 import { registerScopeProvider } from '../../apps/api/src/modules/permission/module-access.js';
 import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.js';
 import { syncFixture, FX } from './support/sync-port-contract.js';
 import { rowsOf } from './support/f048.js';
 import { successionWorld, SC_NOW, SC_TODAY, type SuccessionWorld } from './AC-SC-support.js';
 import { syncTestTransaction } from './AC-SC-sync-support.js';
-import { healthStorageDouble } from './AC-SC-health-storage-double.js';
 import { levelBody } from './AC-SC-levels-support.js';
 import { settledOrBlocked } from './support/pg-interleave.js';
+import { enableHealthRunner } from './AC-SC-07-health-support.js';
+import { waitHealthLock } from './AC-SC-07-health-lock-support.js';
+import { enqueueCalcRun, runCalcPage } from '../../apps/api/src/modules/succession/calc-worker.js';
 
 let handle: DbHandle;
 let w: SuccessionWorld;
@@ -24,27 +25,10 @@ const levelId = randomUUID();
 const disabledId = randomUUID();
 beforeAll(async () => {
   handle = await createTestDb();
-  await healthStorageDouble(handle.db);
   w = await successionWorld(handle.db, 'sc-health-sync');
   std = await w.standard();
+  await enableHealthRunner(w);
   await w.asTenant(async (tx) => {
-    await overrideSetting(
-      tx,
-      {
-        tenantId: w.tenant.id,
-        userId: w.user.id,
-        key: 'succession.system_principal_user_id',
-        expectedRevision: 0,
-        now: SC_NOW,
-        commandId: randomUUID(),
-      },
-      w.user.id,
-    );
-    await tx.execute(sql`INSERT INTO permission_profiles (tenant_id,code,name,source)
-      VALUES (${w.tenant.id}::uuid,'standard_succession_runner','继任执行身份','standard') ON CONFLICT DO NOTHING`);
-    await tx.execute(sql`INSERT INTO permission_grants (tenant_id,user_id,profile_id)
-      SELECT ${w.tenant.id}::uuid,${w.user.id}::uuid,id FROM permission_profiles
-      WHERE tenant_id=${w.tenant.id}::uuid AND code='standard_succession_runner' ON CONFLICT DO NOTHING`);
     await tx.execute(sql`INSERT INTO succession_health_levels
       (tenant_id,id,code,name,color,display_order,enabled) VALUES
       (${w.tenant.id}::uuid,${levelId}::uuid,'D4_OK','健康','#46CF84',1,true),
@@ -164,6 +148,128 @@ describe('AC-SC-health-sync / AC-SC-07 D4', () => {
     expect(await consumeRun(h.deps, h.input)).toMatchObject({ status: 'completed', result: 'succeeded' });
     expect(await h.local()).toEqual([expect.objectContaining({ level_id: level.id, method: 'synced' })]);
   });
+  it.each(['value', 'empty'] as const)(
+    'Q-SC-16：真实 HTTP 赋值后同步 %s 与 B5 后续计算都保持旧手工值',
+    async (status) => {
+      const h = await setup(status, false, false, {}, false);
+      const assigned = await w.request('PUT', `/health-results/${h.org.id}`, { ifMatch: 0, body: { levelId } });
+      expect(assigned.status, await assigned.clone().text()).toBe(200);
+      const before = await h.local();
+      const batch = await consumeRun(h.deps, h.input);
+      expect(batch).toMatchObject({ status: 'completed', result: 'succeeded' });
+      const [run] = await w.asTenant(async (tx) =>
+        rowsOf<{ id: string }>(
+          await tx.execute(sql`
+      SELECT id FROM succession_calc_runs WHERE idempotency_key=${`org_health:sync:${batch!.id}`}`),
+        ),
+      );
+      expect(await runCalcPage(w.db, w.tenant.id, run!.id, undefined, SC_NOW)).toBe('succeeded');
+      expect(await h.local()).toEqual(before);
+      expect((await h.outcomes()).find((r) => r.rowKind === 'org_health')).toMatchObject({
+        status: 'synced',
+        errorParams: { manualKept: true },
+      });
+    },
+  );
+  it('同步计算冻结 org 与 org_health 的并集，真实 B5 worker 只处理该集合', async () => {
+    const h = await setup('value', true);
+    const batch = await consumeRun(h.deps, h.input);
+    const [run] = await w.asTenant(async (tx) =>
+      rowsOf<{ id: string }>(
+        await tx.execute(sql`
+      SELECT id FROM succession_calc_runs WHERE idempotency_key=${`org_health:sync:${batch!.id}`}`),
+      ),
+    );
+    const before = await h.local();
+    expect(await runCalcPage(w.db, w.tenant.id, run!.id, undefined, SC_NOW)).toBe('succeeded');
+    expect(await h.local()).toEqual(before);
+    expect(
+      await w.asTenant(async (tx) =>
+        rowsOf(
+          await tx.execute(sql`
+      SELECT object_id,outcome FROM succession_calc_run_objects WHERE run_id=${run!.id}::uuid ORDER BY object_id`),
+        ),
+      ),
+    ).toEqual(
+      [
+        { object_id: h.org.id, outcome: 'manual_kept' },
+        { object_id: std.orgA.id, outcome: 'written' },
+      ].sort((a, b) => a.object_id.localeCompare(b.object_id)),
+    );
+  });
+  it.runIf(Boolean(process.env.TEST_DATABASE_URL)).each(['assign', 'org_health', 'org_health_reset'] as const)(
+    '真 PG：D4 执行持锁时 B5 %s 等待，随后 CAS 冲突或手工值保护',
+    async (action) => {
+      const h = await setup('value', true, false, {}, false);
+      const workerId =
+        action === 'assign'
+          ? null
+          : await w.asTenant((tx) =>
+              enqueueCalcRun(
+                tx,
+                {
+                  tenantId: w.tenant.id,
+                  kind: action,
+                  trigger: 'manual',
+                  commandId: randomUUID(),
+                  requestedBy: w.user.id,
+                  businessDate: SC_TODAY,
+                  objects: [{ objectType: 'org', objectId: h.org.id, expectedRevision: 0 }],
+                },
+                SC_NOW,
+              ),
+            );
+      await planSyncRun(h.deps, h.input);
+      let entered!: (pid: number) => void, release!: () => void;
+      const ready = new Promise<number>((r) => {
+        entered = r;
+      });
+      const gate = new Promise<void>((r) => {
+        release = r;
+      });
+      const record = h.port.recordOutcome.bind(h.port);
+      vi.spyOn(h.port, 'recordOutcome').mockImplementationOnce(async (tx, input) => {
+        const result = await record(tx, input);
+        const [backend] = rowsOf<{ pid: number }>(await tx.execute(sql`SELECT pg_backend_pid() AS pid`));
+        entered(backend!.pid);
+        await gate;
+        return result;
+      });
+      const consuming = consumeRun(h.deps, h.input);
+      const pid = await Promise.race([
+        ready,
+        consuming.then((r) => {
+          throw new Error(`同步提前结束 ${r?.status}`);
+        }),
+      ]);
+      const operation =
+        action === 'assign'
+          ? w.request('PUT', `/health-results/${h.org.id}`, { ifMatch: 0, body: { levelId } })
+          : runCalcPage(w.db, w.tenant.id, workerId!, undefined, SC_NOW);
+      try {
+        expect((await waitHealthLock(w.db, pid, 'org_settings')).query).toContain('org_settings');
+      } finally {
+        release();
+      }
+      expect(await consuming).toMatchObject({ status: 'completed', result: 'succeeded' });
+      const result = await operation;
+      if (typeof result !== 'string') {
+        expect(result.status).toBe(409);
+        expect(await result.json()).toMatchObject({ error: { code: 'REVISION_CONFLICT' } });
+      } else {
+        expect(result).toBe(action === 'org_health' ? 'succeeded' : 'partial');
+        expect(
+          await w.asTenant(async (tx) =>
+            rowsOf(
+              await tx.execute(sql`
+          SELECT outcome FROM succession_calc_run_objects WHERE run_id=${workerId}::uuid`),
+            ),
+          ),
+        ).toEqual([{ outcome: action === 'org_health' ? 'manual_kept' : 'revision_conflict' }]);
+      }
+      expect(await h.local()).toEqual([expect.objectContaining({ level_id: levelId, method: 'manual', revision: 1 })]);
+    },
+  );
   it.each(['blocked', 'terminated'] as const)('计划 %s 后等级删除只保护可恢复目标', async (status) => {
     const level = await mappedLevel();
     const h = await setup('value', false, false, { levelId: level.id, levelCode: level.code });

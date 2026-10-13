@@ -1,55 +1,23 @@
 /** SP-15：端口只组装上下文和结果；健康度度量 / 等级求值复用 B5，不实现第二套计算器。 */
 import { isUuid, sql, type Tx } from '@italent/db';
-import { RULE_COMPILER_VERSION, type SuccessionLevelRow } from '@italent/domain';
+import { RULE_COMPILER_VERSION, evaluateHealthLevels } from '@italent/domain';
 import { validIsoDate } from '../org/read-model.js';
 import { AppError } from '../../errors.js';
 import type { OrgHealthComputePort } from '../talent-review/health-port.js';
-import type { TalentReviewSyncPort } from '../talent-review/sync-port.js';
-import { createInMemoryTalentReviewSyncPort } from '../talent-review/sync-port-memory.js';
 import { activeUser } from './sync-access.js';
-import { levelViews, type LevelView } from './levels-store.js';
+import { levelViews } from './levels-store.js';
 import { rowsOf } from './read-sql.js';
-import { SUCCESSION_PORTS } from './ports.js';
+import { successionReviewReads } from './ports.js';
+import type { HealthReads } from './health-metrics.js';
+import { unsupportedHealthRule } from './health-rule-support.js';
+import { resolveDataScope } from '../permission/scope-resolver.js';
 import { CalcBlocked, CalcObjectFailure } from './calc-contract.js';
 import { runProjectHealthCompute } from './health-compute-run.js';
 import { lockOrganizationSettings } from '../org/locks.js';
 import { lockHealthRules } from './health-references.js';
 
-export type HealthReads = Pick<
-  TalentReviewSyncPort,
-  'greenRate' | 'readReviewFields' | 'readSuccessionEntries' | 'listReviewFields'
->;
-type Metric = { status: 'value'; value: number } | { status: 'empty' | 'forbidden' | 'unavailable' | 'module_absent' };
-type Evaluation = { levelId: string | null; failure?: { code: string; levelId?: string; rowNo?: number } };
-/** B5 函数的消费侧结构：只列 host 实际读取的上下文字段；run 来自当前事务内真实的计算任务。 */
-export interface HealthComputeHost {
-  metricReader(
-    ctx: { tx: Tx; run: { tenantId: string; businessDate: string; id: string }; now: Date },
-    object: { objectId: string },
-    principal: { userId: string; today: string; timezone: string },
-    reads: HealthReads,
-  ): (row: SuccessionLevelRow) => Promise<Metric>;
-  evaluate(
-    levels: readonly LevelView[],
-    read: (row: SuccessionLevelRow, levelId: string) => Promise<Metric>,
-    calendar: { today: string; timeZone: string },
-  ): Promise<Evaluation>;
-}
-async function host(): Promise<HealthComputeHost> {
-  if (SUCCESSION_PORTS.healthComputeHost) return SUCCESSION_PORTS.healthComputeHost;
-  // B5 未合并时保持装配可用、计算明确失败；测试注入同形 host，不复制 B5 实现。
-  const path: string = './health-metrics.js';
-  try {
-    const metrics: { healthMetricReader: HealthComputeHost['metricReader'] } = await import(path);
-    const domain = await import('@italent/domain');
-    const evaluate = Reflect.get(domain, 'evaluateHealthLevels') as HealthComputeHost['evaluate'] | undefined;
-    if (typeof metrics.healthMetricReader === 'function' && typeof evaluate === 'function')
-      return { metricReader: metrics.healthMetricReader, evaluate };
-  } catch (error) {
-    if (!(error instanceof Error) || !('code' in error) || error.code !== 'ERR_MODULE_NOT_FOUND') throw error;
-  }
-  throw new AppError('SERVICE_UNAVAILABLE', '健康度计算宿主尚未接入', { reason: 'HEALTH_COMPUTE_UNAVAILABLE' });
-}
+export type { HealthReads } from './health-metrics.js';
+type Evaluation = Awaited<ReturnType<typeof evaluateHealthLevels>>;
 type Input = Parameters<OrgHealthComputePort['compute']>[1];
 function contextReads(reads: HealthReads, input: Input): HealthReads {
   const context = {
@@ -102,24 +70,45 @@ export const healthComputePort: OrgHealthComputePort = {
       'health',
       ids.map((l) => l.id),
     );
-    const engine = await host();
-    const reads = contextReads(SUCCESSION_PORTS.reviewReads ?? createInMemoryTalentReviewSyncPort({ tenantId }), input);
-    return runProjectHealthCompute(tx, input, new Date(calendar!.now), async ({ tx, run }, orgId) => {
+    // 登记位与 B5 的 kind 注册互相引用，延迟加载宿主避免模块初始化环。
+    const { healthMetricReader } = await import('./health-metrics.js');
+    const reads = contextReads(successionReviewReads(tenantId), input);
+    const scope = await resolveDataScope(tx, {
+      tenantId,
+      userId: principalUserId,
+      appCode: 'SuccessionAndDevelopment',
+      objectCode: 'Succession.HealthResult',
+      asOf: calendar!.today,
+    });
+    return runProjectHealthCompute(tx, input, new Date(calendar!.now), async (ctx, object) => {
+      const orgId = object.objectId;
       let evaluated: Evaluation;
       try {
-        const read = engine.metricReader(
-          { tx, run, now: new Date(calendar!.now) },
-          { objectId: orgId },
-          { userId: principalUserId, ...calendar! },
-          reads,
-        );
+        // DEC-460：与 B5 worker 共用判定，未引用行与较后等级也不能绕过禁用组合。
+        for (const level of levels) {
+          const unsupported = level.rules?.rows.find(unsupportedHealthRule);
+          if (unsupported) throw new CalcObjectFailure('FIELD_FORBIDDEN', false, level.id, unsupported.rowNo);
+        }
+        const read = healthMetricReader(ctx, object, { userId: principalUserId, scope, ...calendar! }, reads);
         evaluated = ids.some((l) => l.stale)
-          ? { levelId: null, failure: { code: 'RULE_CACHE_STALE' } }
-          : await engine.evaluate(levels, read, { today: businessDate, timeZone: calendar!.timezone });
+          ? { levelId: null, skipped: [], failure: { code: 'RULE_CACHE_STALE' } }
+          : await evaluateHealthLevels(
+              levels.map((level) => ({ ...level, displayOrder: Number(level.displayOrder) })),
+              async (row, levelId) => {
+                try {
+                  return await read(row);
+                } catch (error) {
+                  if (!(error instanceof CalcObjectFailure)) throw error;
+                  throw new CalcObjectFailure(error.code, false, levelId, error.rowNo ?? row.rowNo);
+                }
+              },
+              { today: businessDate, timeZone: calendar!.timezone },
+            );
       } catch (error) {
         if (!(error instanceof CalcBlocked) && !(error instanceof CalcObjectFailure)) throw error;
         evaluated = {
           levelId: null,
+          skipped: [],
           failure: {
             code: error.code,
             ...(error instanceof CalcObjectFailure ? { levelId: error.levelId, rowNo: error.rowNo } : {}),

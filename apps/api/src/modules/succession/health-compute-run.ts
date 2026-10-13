@@ -2,7 +2,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Tx } from '@italent/db';
 import type { OrgHealthComputePort, OrgHealthComputeResult } from '../talent-review/health-port.js';
-import { CalcObjectFailure, type CalcContext } from './calc-contract.js';
+import { CalcObjectFailure, type CalcContext, type CalcObject } from './calc-contract.js';
 import { enqueueCalcRun, runCalcPageInTransaction } from './calc-worker.js';
 
 type Input = Parameters<OrgHealthComputePort['compute']>[1];
@@ -10,7 +10,7 @@ export async function runProjectHealthCompute(
   tx: Tx,
   input: Input,
   now: Date,
-  compute: (ctx: CalcContext, orgId: string) => Promise<OrgHealthComputeResult>,
+  compute: (ctx: CalcContext, object: CalcObject) => Promise<OrgHealthComputeResult>,
 ) {
   const orgIds = [...new Set(input.orgIds.map((id) => id.toLowerCase()))];
   const runId = await enqueueCalcRun(
@@ -36,7 +36,7 @@ export async function runProjectHealthCompute(
       objectType: 'org',
       authorizePage: async () => input.principalUserId,
       execute: async (ctx, object) => {
-        const result = await compute(ctx, object.objectId);
+        const result = await compute(ctx, object);
         results.set(object.objectId, result);
         const failure = result.failures[0];
         if (failure)

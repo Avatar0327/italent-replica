@@ -1,20 +1,19 @@
 /**
  * 继任对外端口的装配登记位（R3-T05 设计 §6.3；同步协议 SP-15）：createApp 装配本模块时调用 installSuccessionPorts，
- * D4 把健康度计算端口登记给 T04；计算复用 B5 宿主，宿主尚未接入时明确返回不可用。
+ * D4 把健康度计算端口登记给 T04；计算直接复用 B5 宿主。
  * 实现必须是模块级单例：createApp 每装配一次都会调用本函数，T04 只接受同一实例的重复登记。
  */
 import { sql, type Tx } from '@italent/db';
 import type { SQL } from 'drizzle-orm';
 import { registerOrgHealthComputePort, type OrgHealthComputePort } from '../talent-review/health-port.js';
 import { loadIncumbentIds, loadPeople, rowsOf, type PersonView } from './read-sql.js';
-import { healthComputePort, type HealthReads, type HealthComputeHost } from './health-compute.js';
+import { healthComputePort, type HealthReads } from './health-compute.js';
 import { createInMemoryTalentReviewSyncPort } from '../talent-review/sync-port-memory.js';
 
 export interface SuccessionPorts {
   readonly riskPartTimeIncumbents?: (ctx: SuccessionReadContext, positionId: string) => Promise<readonly string[]>;
   readonly orgHealthCompute?: OrgHealthComputePort;
   readonly reviewReads?: HealthReads;
-  readonly healthComputeHost?: HealthComputeHost;
 }
 
 export const SUCCESSION_PORTS: SuccessionPorts = { orgHealthCompute: healthComputePort };

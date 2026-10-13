@@ -1,12 +1,16 @@
 /** D4 × B5：真实求值、统计缓存和结果表；不注入计算宿主或 SQL 存储替身。 */
 import { randomUUID } from 'node:crypto';
 import { sql } from '@italent/db';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { healthComputePort } from '../../apps/api/src/modules/succession/health-compute.js';
 import { rowsOf } from '../../apps/api/src/modules/succession/read-sql.js';
 import { runCalcPage } from '../../apps/api/src/modules/succession/calc-worker.js';
 import { successionWorld, SC_TODAY, type SuccessionWorld } from './AC-SC-support.js';
 import { enableHealthRunner, useHealthDb } from './AC-SC-07-health-support.js';
+
+import { writeProjectHealth } from '../../apps/api/src/modules/succession/health-project.js';
+import { createInMemoryTalentReviewSyncPort } from '../../apps/api/src/modules/talent-review/sync-port-memory.js';
+import { syncTestTransaction } from './AC-SC-sync-support.js';
 
 const db = useHealthDb();
 async function level(w: SuccessionWorld, code: string, rows: object[]) {
@@ -67,6 +71,86 @@ describe('AC-SC-health-sync / SP-15 B5 真实集成', () => {
     }));
     expect(committed.runs).toEqual([{ status: 'succeeded' }, { status: 'succeeded' }]);
     expect(committed.results).toEqual([]);
+  });
+
+  it.each([false, true])('SP-16：真实 B5 计算接项目 CAS，并发赋值=%s 时保留当前行', async (concurrent) => {
+    const w = await successionWorld(db().db, 'd4-b5-project');
+    const org = await w.org('项目版本来源');
+    await w.hire('项目统计员工', { departmentId: org.id });
+    await enableHealthRunner(w);
+    const levelId = await level(w, 'PROJECT_COUNT', [countRow]);
+    const context = { projectId: randomUUID(), meetingId: randomUUID() };
+    const port = createInMemoryTalentReviewSyncPort({
+      tenantId: w.tenant.id,
+      healthRows: [
+        {
+          context,
+          orgId: org.id,
+          levelId: null,
+          levelCode: null,
+          status: 'empty',
+          manual: true,
+          method: 'manual',
+          revision: 23,
+        },
+      ],
+    });
+    const read = vi.spyOn(port, 'readOrgHealthRows'),
+      write = vi.spyOn(port, 'resetOrgHealth');
+    const transaction = syncTestTransaction(w.db, w.tenant.id, port);
+    const receipt = await transaction((tx) =>
+      writeProjectHealth(tx, port, {
+        tenantId: w.tenant.id,
+        context,
+        credential: { kind: 'reset', userId: w.user.id, commandId: randomUUID() },
+        rows: [{ orgId: org.id, levelId: null, levelCode: null, status: 'empty' }],
+        calculate: async (tx) => {
+          expect(read).toHaveBeenCalledTimes(1);
+          const computed = await healthComputePort.compute(tx, {
+            tenantId: w.tenant.id,
+            principalUserId: w.user.id,
+            context,
+            orgIds: [org.id],
+            businessDate: SC_TODAY,
+          });
+          expect(computed).toEqual([{ orgId: org.id, levelId, levelCode: 'PROJECT_COUNT', failures: [] }]);
+          if (concurrent)
+            await port.transaction((other) =>
+              port.recordOrgHealth(other, {
+                tenantId: w.tenant.id,
+                context,
+                credential: { kind: 'assign', userId: w.user.id, commandId: randomUUID() },
+                rows: [{ orgId: org.id, levelId, levelCode: 'PROJECT_COUNT', expectedRevision: 23, status: 'value' }],
+              }),
+            );
+          return computed.map((r) => ({
+            orgId: r.orgId,
+            levelId: r.levelId,
+            levelCode: r.levelCode,
+            status: r.levelId ? ('value' as const) : ('empty' as const),
+          }));
+        },
+      }),
+    );
+    expect(write.mock.calls[0]![1].rows).toEqual([
+      { orgId: org.id, levelId, levelCode: 'PROJECT_COUNT', expectedRevision: 23, status: 'value' },
+    ]);
+    expect(receipt.items[0]).toMatchObject({
+      outcome: concurrent ? 'REVISION_CONFLICT' : 'written',
+      currentRevision: 24,
+      currentLevelId: levelId,
+      currentManual: concurrent,
+    });
+    expect(
+      await port.transaction((tx) =>
+        port.readOrgHealthRows(tx, {
+          tenantId: w.tenant.id,
+          context,
+          orgIds: [org.id],
+          viewer: { kind: 'user', userId: w.user.id },
+        }),
+      ),
+    ).toEqual([expect.objectContaining({ revision: 24, levelId, manual: concurrent })]);
   });
 
   it.each(['unreferenced', 'later_level'])('DEC-460 项目计算与 B5 一致，拒绝 %s 的旧禁用组合', async (layout) => {
