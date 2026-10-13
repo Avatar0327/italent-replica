@@ -76,10 +76,11 @@ describe('当前用户权限快照（演示租户）', () => {
     const status = async (path: string) => (await api.request('GET', path, who)).status;
     const result = new Map<string, { visible: boolean; entryObjects: string[] }>();
     for (const route of APP_ROUTES) {
-      const entryObjects: string[] = [];
-      for (const code of menuObjects(route))
-        if ((await status(`/api/tenant/permission/me/objects/${encodeURIComponent(code)}`)) === 200)
-          entryObjects.push(code);
+      const codes = menuObjects(route);
+      const statuses = await Promise.all(
+        codes.map((code) => status(`/api/tenant/permission/me/objects/${encodeURIComponent(code)}`)),
+      );
+      const entryObjects = codes.filter((_, index) => statuses[index] === 200);
       let visible = entryObjects.length > 0;
       if (route.id === 'settings') {
         visible = (await json<{ items: unknown[] }>(who, '/api/tenant/permission/admin-menus')).items.length > 0;
@@ -112,9 +113,11 @@ describe('当前用户权限快照（演示租户）', () => {
     expect(body.adminMenus.length).toBeGreaterThan(0);
   });
 
-  it('六类演示身份：快照的 visible / entryObjects 与逐对象 /me/objects 推出的结论一致，且与授权器 object.view 一致', async () => {
-    const authorize = createPermissionAuthorizer(database().db, undefined, clock);
-    for (const key of ['admin', 'hr', 'platformManager', 'employeeA', 'auditor', 'nobody']) {
+  // 每类身份逐对象调用约 220 次接口 / 授权器，分成独立用例并放宽超时
+  it.each(['admin', 'hr', 'platformManager', 'employeeA', 'auditor', 'nobody'])(
+    '身份 %s：快照的 visible / entryObjects 与逐对象 /me/objects 推出的结论一致，且与授权器 object.view 一致',
+    async (key) => {
+      const authorize = createPermissionAuthorizer(database().db, undefined, clock);
       const who = people.get(key)!;
       const snapshot = await snapshotOf(who);
       const expected = await probed(who);
@@ -125,18 +128,19 @@ describe('当前用户权限快照（演示租户）', () => {
       }
       for (const route of APP_ROUTES) {
         const entries = snapshot.apps.find((a) => a.app === route.id)!.entryObjects;
-        for (const code of menuObjects(route)) {
-          const allowed = await authorize({
-            tenantId: who.tenant,
-            userId: who.user,
-            action: 'object.view',
-            resource: code,
-          });
-          expect(entries.includes(code), `${key} ${code} 授权器=${allowed}`).toBe(allowed);
-        }
+        const codes = menuObjects(route);
+        const allowed = await Promise.all(
+          codes.map((code) =>
+            authorize({ tenantId: who.tenant, userId: who.user, action: 'object.view', resource: code }),
+          ),
+        );
+        codes.forEach((code, index) =>
+          expect(entries.includes(code), `${key} ${code} 授权器=${allowed[index]}`).toBe(allowed[index]),
+        );
       }
-    }
-  });
+    },
+    300_000,
+  );
 
   it('无权限用户：只有“不依赖对象授权”的入口可能可见（审批中心），其余应用全部不可见且数据范围为 none', async () => {
     const snapshot = await snapshotOf(people.get('nobody')!);
