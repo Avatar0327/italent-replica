@@ -59,7 +59,7 @@ function control(field: Field, rows: Row[] = []) {
         showSearch
         optionFilterProp="label"
         mode={field.multiple ? 'multiple' : undefined}
-        allowClear={!field.required}
+        allowClear={field.nullable === true && !field.required}
         placeholder={m.choose}
         options={field.options ?? rows.map((row) => ({ value: row.id, label: row.name ?? row.id }))}
       />
@@ -205,6 +205,7 @@ function useSaveResource(
       values,
       original,
       fields.filter((field) => field.access.editable).map((field) => field.name),
+      resource.fields.filter((field) => field.nullable).map((field) => field.key),
     );
     if (!Object.keys(body).length) throw new ApiError(422, 'LOCAL_VALIDATION', 'fields', m.noChanges);
     // 标准的明细为整组替换；基础编辑绝不携带旧明细，创建空标准按已有契约提交空格集合。

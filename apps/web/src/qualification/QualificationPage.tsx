@@ -9,7 +9,7 @@ export function QualificationPage() {
       extra={{
         key: 'channels',
         title: q.channels,
-        object: 'Qualification.DevelopmentChannel',
+        objects: ['Qualification.DevelopmentChannel'],
         content: <DevelopmentChannel />,
       }}
     />

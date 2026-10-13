@@ -7,14 +7,25 @@ export async function listResource(api: ApiClient, resource: Resource, page: Pag
   const result = await api.request<PageResult<Row>>(`${resourcePath(resource)}?${pageQuery(page)}${query}`);
   return { ...result, hasMore: result.hasMore ?? result.items.length === page.pageSize };
 }
-export function writablePatch(values: Record<string, unknown>, original: Row | null, editable: readonly string[]) {
+export function writablePatch(
+  values: Record<string, unknown>,
+  original: Row | null,
+  editable: readonly string[],
+  nullable: readonly string[] = [],
+) {
   return Object.fromEntries(
-    Object.entries(values).filter(
-      ([key, value]) =>
-        editable.includes(key) &&
-        value !== undefined &&
-        (!original || (Object.hasOwn(original, key) && JSON.stringify(value) !== JSON.stringify(original[key]))),
-    ),
+    Object.entries(values)
+      // Select 清空产生 undefined；只把已有且允许清空的字段转换为后端明确的 null 命令。
+      .map(([key, value]): [string, unknown] => [
+        key,
+        value === undefined && original && nullable.includes(key) ? null : value,
+      ])
+      .filter(
+        ([key, value]) =>
+          editable.includes(key) &&
+          value !== undefined &&
+          (!original || (Object.hasOwn(original, key) && JSON.stringify(value) !== JSON.stringify(original[key]))),
+      ),
   );
 }
 export function validateValues(resource: Resource, values: Record<string, unknown>) {

@@ -38,7 +38,7 @@ export const qualificationResources: Resource[] = [
       { key: 'name', label: m.name, required: true },
       { key: 'code', label: m.code, max: 50 },
       { key: 'displayOrder', label: m.order, kind: 'number' },
-      { key: 'layerId', label: q.layer, kind: 'select', source: `${base}layers` },
+      { key: 'layerId', label: q.layer, kind: 'select', nullable: true, source: `${base}layers` },
       { key: 'enabled', label: m.status, kind: 'boolean' },
       { key: 'publicDown', label: q.publicDown, kind: 'boolean' },
     ],

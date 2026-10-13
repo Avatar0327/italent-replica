@@ -9,6 +9,7 @@ export interface Field {
   label: string;
   kind?: 'number' | 'text' | 'boolean' | 'select' | 'targets' | 'references';
   required?: boolean;
+  nullable?: boolean;
   createOnly?: boolean;
   multiple?: boolean;
   max?: number;

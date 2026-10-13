@@ -3,6 +3,8 @@ import { DetailPage } from '../../foundation/templates.js';
 import { PageState } from '../../foundation/PageState.js';
 import type { ObjectPermission } from '../../foundation/permission-model.js';
 import { fieldAccess } from '../../foundation/permission-model.js';
+import { StandardCells } from './StandardCells.js';
+export { StandardCells } from './StandardCells.js';
 import { resourcePath } from './api.js';
 import { useRemote, useReferenceNames } from './hooks.js';
 import { m } from './messages.js';
@@ -18,32 +20,6 @@ export function display(value: unknown): string {
 const array = (value: unknown): Record<string, unknown>[] => (Array.isArray(value) ? value : []);
 const columns = (fields: [string, string][]) =>
   fields.map(([dataIndex, title]) => ({ title, dataIndex, render: display }));
-export function StandardCells({ cells, names }: { cells: unknown; names?: Map<string, string> }) {
-  const rows = array(cells).flatMap((cell, i) => {
-    const abilities = array(cell.abilities);
-    return (abilities.length ? abilities : [{}]).map((ability, j) => ({
-      ...cell,
-      ...ability,
-      targetId: names?.get(String(cell.targetId)) ?? cell.targetId,
-      key: `${i}:${j}`,
-    }));
-  });
-  return (
-    <Table
-      size="small"
-      rowKey="key"
-      dataSource={rows}
-      pagination={false}
-      scroll={{ x: 'max-content' }}
-      columns={columns([
-        ['targetId', m.target],
-        ['content', m.content],
-        ['targetValue', m.targetValue],
-        ['weight', m.weightPercent],
-      ])}
-    />
-  );
-}
 function MoreDetails({ row, resource, names }: { row: Row; resource: Resource; names?: Map<string, string> }) {
   if (resource.module === 'qualification' && resource.key === 'standards') {
     const levels = Array.isArray(row.levelIds) ? (row.levelIds as string[]) : [];

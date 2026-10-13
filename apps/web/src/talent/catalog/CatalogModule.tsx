@@ -13,13 +13,13 @@ export function CatalogModule({
   extra,
 }: {
   resources: Resource[];
-  extra?: { key: string; title: string; object: string; content: ReactNode };
+  extra?: { key: string; title: string; objects: readonly string[]; content: ReactNode };
 }) {
   const [query, setQuery] = useSearchParams();
-  const entries = [...resources, ...(extra ? [extra] : [])];
+  const entries = [...resources.map((item) => ({ ...item, objects: [item.object] })), ...(extra ? [extra] : [])];
   const permissions = usePermissions();
   const [ready, setReady] = useState(false);
-  const objectKey = entries.map((item) => item.object).join(',');
+  const objectKey = [...new Set(entries.flatMap((item) => item.objects))].join(',');
   useEffect(() => {
     setReady(false);
     if (permissions.loading) return;
@@ -31,11 +31,10 @@ export function CatalogModule({
   }, [objectKey, permissions.loading, permissions.ensure]);
   if (permissions.error) return <PageState kind="error" error={permissions.error} />;
   if (!ready) return <PageState kind="loading" />;
-  const allowed = entries.filter((item) => permissions.snapshot.objects[item.object]);
+  const allowed = entries.filter((item) => item.objects.some((object) => permissions.snapshot.objects[object]));
   const key = query.get('view') ?? allowed[0]?.key;
   const active = resources.find((item) => item.key === key);
-  const object = entries.find((item) => item.key === key)?.object;
-  const access = object ? permissions.snapshot.objects[object] : undefined;
+  const access = active ? permissions.snapshot.objects[active.object] : undefined;
   return (
     <div className="catalog-layout">
       <aside className="catalog-navigation">
@@ -47,9 +46,9 @@ export function CatalogModule({
         />
       </aside>
       <div className="catalog-content" key={key}>
-        {!access ? (
+        {!allowed.some((item) => item.key === key) ? (
           <PageState kind="forbidden" />
-        ) : active ? (
+        ) : active && access ? (
           <ResourcePage resource={active} permission={access} />
         ) : extra && extra.key === key ? (
           extra.content
