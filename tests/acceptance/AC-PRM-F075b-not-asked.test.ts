@@ -6,6 +6,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { readFrozenProbes } from './support/route-policy/discovery.js';
+import { expectDeclared, knownGapPairIds } from './support/route-policy/module-declared.js';
 import { KNOWN_GAPS } from './support/route-policy/probe-known-gaps.js';
 import { REDUNDANT_OBSERVATIONS } from './support/route-policy/probe-redundant.js';
 
@@ -81,9 +82,9 @@ describe('AC-PRM-F075b 去掉的 18 项冗余授权调用不再发生', () => {
     }
   });
 
-  it('冗余观测账本精确清空（原 #125 套卷 / 报告模板 18 项），已知缺口账本不动（29 项）；18 对不在任何账里', () => {
+  it('冗余观测账本精确清空（原 #125 套卷 / 报告模板 18 项），已知缺口账本不动（逐项等于各模块声明）；18 对不在任何账里', () => {
     expect(REDUNDANT_OBSERVATIONS).toEqual([]);
-    expect(KNOWN_GAPS.flatMap((g) => g.pairs)).toHaveLength(29);
+    expectDeclared('已知缺口登记对', 'knownGapPairs', knownGapPairIds());
     const accounted = new Set(KNOWN_GAPS.flatMap((g) => g.pairs.map(([e, k]) => `${e}\t${k}`)));
     for (const [endpoint] of REMAINING)
       for (const key of [VIEW, VIEW_ALL])

@@ -8,6 +8,7 @@ import { type ManifestRoute } from '@italent/api';
 import { DETECTOR_REQUIRED, DETECTOR_CONTRACT, DETECTOR_SEMANTICS } from '../detector-fixtures.js';
 import { GUARD_INNER_ALTS } from '../required/guard-inner.js';
 import { checkStored } from '../evidence.js';
+import { expectDeclared, multiCarrierRoutes } from '../module-declared.js';
 import type { LocalCheckContext } from './types.js';
 
 // F-095：原局部用例与入口专项共用实际断言；登记副本从 context.table 注入。
@@ -81,22 +82,21 @@ export function disclosureChecks(context: LocalCheckContext) {
     {
       id: 'admissionNeed',
       label:
-        'R1c：含 ≥2 个承载节点的准入备选，其 obj: / admin: 准入义务缺 need → NEED_UNBOUND（20 + C1-6 两条 + B3b 重试 + B6b 模板复制 = 24）',
+        'R1c：含 ≥2 个承载节点的准入备选，其 obj: / admin: 准入义务缺 need → NEED_UNBOUND（端点集合按模块声明，DEC-475④）',
       wrapped: false,
       verify: () => {
         const stripped: RequiredTable = Object.fromEntries(
           Object.entries(REQUIRED).map(([key, os]) => [key, os.map(({ need: _need, ...rest }) => rest as Obligation)]),
         );
         const unbound = check(manifest.declared, stripped).filter((f) => f.code === 'NEED_UNBOUND');
-        const multi = manifest.declared.filter((r) =>
-          declaredPerms(r.policy).alternatives.some((alt) => {
-            const carriers = [...alt].flatMap(([perm, sources]) =>
-              /^(obj|admin):/.test(perm) ? sources.filter((s) => s.carrier).map((s) => s.path) : [],
-            );
-            return new Set(carriers).size >= 2;
-          }),
+        const multi = multiCarrierRoutes(manifest.declared);
+        registration('多个准入承载节点的按模块声明', () =>
+          expectDeclared(
+            '含 ≥2 个准入承载节点的端点',
+            'multiCarrierAdmission',
+            multi.map((r) => `${r.method} ${r.path}`),
+          ),
         );
-        registration('多个准入承载节点的静态统计', () => expect(multi).toHaveLength(24));
         // 对每个实际进入反例的完整表项验证检测器；未登记的端点由真实总入口报告，不能混入这个反例的 oracle。
         const registered = multi.filter((r) => REQUIRED[`${r.method} ${r.path}`]);
         expect(new Set(unbound.map((f) => f.route))).toEqual(new Set(registered.map((r) => `${r.method} ${r.path}`)));

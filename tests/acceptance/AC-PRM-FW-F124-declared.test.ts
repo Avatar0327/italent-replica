@@ -111,7 +111,7 @@ describe('真实声明 × 同样严格', () => {
         .flat()
         .filter((id) => id !== removed);
       const found = declarationDifferences(kind, actual, declared, DECLARED_KINDS[kind].ownerOf);
-      expect(found.join('\n'), `${module} ${removed}`).toContain(removed);
+      expect(found.join('\n'), `${module} ${removed}`).toContain(removed.replace('\t', ' '));
     }
   });
 
