@@ -14,7 +14,18 @@ const Self = lazy(() => import('../employee-self-service/EmployeePage.js').then(
 const Manager = lazy(() => import('../transfer/ManagerPage.js').then((m) => ({ default: m.ManagerPage })));
 const Talent = lazy(() => import('../talent/TalentPage.js').then((m) => ({ default: m.TalentPage })));
 const Account = lazy(() => import('../account/AccountPage.js').then((m) => ({ default: m.AccountPage })));
-const existing = { org: Org, job: Job, transfer: Transfer, self: Self, manager: Manager, talent: Talent };
+const TalentReview = lazy(() =>
+  import('../talent-review/TalentReviewPage.js').then((m) => ({ default: m.TalentReviewPage })),
+);
+const existing = {
+  org: Org,
+  job: Job,
+  transfer: Transfer,
+  self: Self,
+  manager: Manager,
+  talent: Talent,
+  'talent-review': TalentReview,
+};
 
 function LandingPage({ title }: { title: string }) {
   return (

@@ -68,6 +68,8 @@ test('AC-FE-R3c-01 切换演示身份，项目列表、八页签详情与配置�
   });
   await page.goto('/talent-review');
   await page.getByLabel('切换演示身份').selectOption(user);
+  await expect(page).toHaveURL(/\/staff$/);
+  await page.getByRole('menuitem', { name: '人才盘点', exact: true }).click();
   await page.getByRole('button', { name: '合成年度盘点', exact: true }).click();
   await expect(page.getByRole('dialog', { name: '合成年度盘点', exact: true })).toBeVisible();
   for (const tab of [
@@ -99,6 +101,8 @@ for (const section of ['盘点模板', '九宫格设置', '盘点校准会']) {
     });
     await page.goto('/talent-review');
     await page.getByLabel('切换演示身份').selectOption(user);
+    await expect(page).toHaveURL(/\/staff$/);
+    await page.getByRole('menuitem', { name: '人才盘点', exact: true }).click();
     await page.getByRole('tab', { name: section, exact: true }).click();
     await page.locator('.list-card tbody button').first().click();
     await expect(page.getByRole('dialog')).toBeVisible();
@@ -116,6 +120,8 @@ test('AC-FE-R3c-03 已结束与共享只读项目不提供编辑，真实接口�
   );
   await page.goto('/talent-review');
   await page.getByLabel('切换演示身份').selectOption(user);
+  await expect(page).toHaveURL(/\/staff$/);
+  await page.getByRole('menuitem', { name: '人才盘点', exact: true }).click();
   await expect(page.locator('.list-card')).toContainText('当前没有可查看的数据范围');
   await expect(page.getByRole('button', { name: '合成年度盘点', exact: true })).toHaveCount(0);
 });

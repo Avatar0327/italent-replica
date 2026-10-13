@@ -79,3 +79,19 @@ describe('AC-FE-R3c 已有接口契约', () => {
     ]);
   });
 });
+
+it('AC-FE-R3c-04 筛选按完整授权列表匹配年度、所属组织与业务日期，隐藏字段不参与筛选', async () => {
+  const { matchesFilters } = await import('../../apps/web/src/talent-review/model.js');
+  const row = { id: 'p', name: '年度项目', year: 2026, ownerOrgId: 'org-a', periodStartDate: '2026-10-01' };
+  const filters = { name: '年度', year: 2026, ownerOrgId: 'org-a', startFrom: '2026-10-01', startTo: '2026-10-31' };
+  expect(matchesFilters(row, filters, () => true)).toBe(true);
+  expect(matchesFilters(row, { ...filters, year: 2027 }, () => true)).toBe(false);
+  expect(matchesFilters(row, { ...filters, startFrom: '2026-10-02' }, () => true)).toBe(false);
+  expect(matchesFilters({ id: 'hidden' }, filters, () => false)).toBe(true);
+  expect(matchesFilters({ id: 'hidden' }, filters, () => true)).toBe(false);
+});
+
+it('AC-FE-R3c-05 权限回调的第二参数必须保持 detail，不能被数组下标覆盖', () => {
+  const can = (_button: string, level: unknown = 'detail') => level === 'detail';
+  expect(projectActions({ ...base, status: 'new' }, can)).toEqual(['update', 'start', 'end']);
+});
