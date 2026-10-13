@@ -727,6 +727,9 @@ export const DIGESTS: Digests = {
     recordFilter: '858f731477d8',
     registerSuccessionRoutes: '279e7a36cd0c',
   },
+  'apps/api/src/modules/succession/sync-access.ts': {
+    authorizeRequesterTargets: '39aaaee08e1f',
+  },
   'apps/api/src/modules/succession/sync-read.ts': {
     access: '58525d2bc28e',
     readSync: '03e70048d9a3',
@@ -734,7 +737,6 @@ export const DIGESTS: Digests = {
     syncRowsVisible: '400aee6db4a0',
   },
   'apps/api/src/modules/succession/sync-routes.ts': {
-    checkTargets: '4da705d6a3f5',
     writeSync: '9f4a97a41696',
   },
   'apps/api/src/modules/succession/write-support.ts': {
@@ -1791,11 +1793,11 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/succession/record-write.ts#requireTarget': '8ff43faa6c04',
   'apps/api/src/modules/succession/routes.ts#recordFilter': '8c3cfb5b80b7',
   'apps/api/src/modules/succession/routes.ts#registerSuccessionRoutes': '93abca805a7d',
+  'apps/api/src/modules/succession/sync-access.ts#authorizeRequesterTargets': 'e8666444e08f',
   'apps/api/src/modules/succession/sync-read.ts#access': 'c7bacfe6a69a',
   'apps/api/src/modules/succession/sync-read.ts#readSync': 'dbc3a3329a13',
   'apps/api/src/modules/succession/sync-read.ts#syncAdmin': 'bee0478d2055',
   'apps/api/src/modules/succession/sync-read.ts#syncRowsVisible': '9ec5d621e3ff',
-  'apps/api/src/modules/succession/sync-routes.ts#checkTargets': 'a5950b3fd38c',
   'apps/api/src/modules/succession/sync-routes.ts#writeSync': 'c5c4bf742342',
   'apps/api/src/modules/succession/write-support.ts#checkCandidateAccess': 'ea8155f2a727',
   'apps/api/src/modules/succession/write-support.ts#checkWriteAccess': 'eac8ef9cc70b',
