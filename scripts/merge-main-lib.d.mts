@@ -21,12 +21,35 @@ export declare function isGeneratedPath(file: string): boolean;
 export declare function pad4(idx: number): string;
 export declare function snapshotPath(idx: number): string;
 export declare function sqlPath(tag: string): string;
+export declare function sqlDigest(text: string | undefined): string | undefined;
+export interface SqlReaders {
+  /** main 上该迁移 SQL 的文本（读不到返回 undefined） */
+  main?: (tag: string) => string | undefined;
+  /** 本分支上该迁移 SQL 的文本（读不到返回 undefined） */
+  branch?: (tag: string) => string | undefined;
+}
+export interface SnapshotIdentityInput {
+  /** main 上每条迁移的 tag 与快照 id */
+  main: readonly { tag: string; id: string | undefined }[];
+  /** 本分支要保留（改号）的迁移的 tag 与快照 id（改号前的） */
+  kept: readonly { tag: string; id: string | undefined }[];
+  /** main 最新一条迁移的快照 id：保留项与它重复就会形成 id = prevId 自环 */
+  mainLastId?: string;
+  digestOf?: (side: 'main' | 'branch', tag: string) => string | undefined;
+}
+export declare function checkSnapshotIdentity(input: SnapshotIdentityInput): string[];
+export declare function formatStale(
+  stale: readonly { from: JournalEntry; mainEntry: JournalEntry; digest: string }[],
+): string[];
 export declare function planRenumber(
   mainJournal: Journal,
   branchJournal: Journal,
+  sql?: SqlReaders,
 ): {
   journal: Journal;
-  renames: { from: JournalEntry; to: JournalEntry }[];
+  renames: { from: JournalEntry; to: JournalEntry; baseIdx: number | undefined }[];
+  /** 上游已合并但改了号的迁移：本分支旧名条目（from）与 main 上内容相同的条目（mainEntry），要清理、不改号 */
+  stale: { from: JournalEntry; mainEntry: JournalEntry; digest: string }[];
   changed: boolean;
   forkIdx: number | undefined;
 };
@@ -35,6 +58,7 @@ export declare function rebaseSnapshots(
   forkSnapshot: Snapshot,
   ownSnapshots: readonly Snapshot[],
   mainLast: Snapshot,
+  bases?: readonly Snapshot[],
 ): { snapshots: Snapshot[]; conflicts: string[] };
 export declare function drizzleJson(value: unknown): string;
 export interface Diff3Hunk {
