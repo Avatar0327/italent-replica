@@ -41,7 +41,6 @@ export function ReviewList(props: ReviewListProps) {
     if (!loading && !error)
       setPage((current) => (current.page === pageNumber ? current : { ...current, page: pageNumber }));
   }, [pageNumber, loading, error]);
-  const columns = listColumns(collection, actualView, permission, open, rowActions);
   return (
     <>
       <ListPage
@@ -57,7 +56,7 @@ export function ReviewList(props: ReviewListProps) {
         page={effectivePage}
         onPageChange={setPage}
         rowKey="id"
-        columns={columns}
+        columns={listColumns(collection, actualView, permission, open, rowActions)}
         loading={loading}
         error={error}
         retry={retry}
