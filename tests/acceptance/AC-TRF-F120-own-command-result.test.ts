@@ -68,11 +68,12 @@ describe('F-120 员工本人调动：按命令 ID 回查', () => {
     expect(result).toMatchObject({
       commandId,
       status: 'succeeded',
+      commandType: 'POST /api/tenant/self-service/transfer',
+      businessType: 'transfer',
       businessId: body.id,
       revision: body.revision,
       httpStatus: 201,
     });
-    expect(typeof result.commandType).toBe('string');
     expect(Number.isNaN(Date.parse(result.completedAt as string))).toBe(false);
     // 不返回业务正文
     expect(JSON.stringify(result)).not.toMatch(/权限外地址|departmentId|effectiveDate/);
@@ -190,6 +191,8 @@ describe('F-120 经理调动他人：仅经理本人可查', () => {
     expect(await mine.json()).toMatchObject({
       commandId,
       status: 'succeeded',
+      commandType: 'POST /api/tenant/employment/transfers/employees/:id',
+      businessType: 'transfer',
       businessId: body.id,
       revision: body.revision,
       httpStatus: 201,
@@ -227,6 +230,7 @@ describe('F-120 经理调动他人：仅经理本人可查', () => {
     expect(result).toMatchObject({
       commandId,
       status: 'failed',
+      commandType: 'POST /api/tenant/employment/transfers/employees/:id',
       businessId: null,
       businessType: null,
       revision: null,
