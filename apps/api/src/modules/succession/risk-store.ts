@@ -8,6 +8,7 @@ import {
   authorizeInTransaction,
   resolveModuleScopeInTransaction,
   getModuleViewableFields,
+  getModuleViewableFieldsInTransaction,
   scopeSql,
 } from '../permission/module-access.js';
 import { visibleJob } from '../permission/module-route-access.js';
@@ -87,6 +88,20 @@ export const riskResults: ResultAdapter<RiskView> = {
   },
   project: projectRisk,
 };
+/** 结果列表与地图默认色共用字段投影；无结果卡片不伪造计算方式或 revision。 */
+export async function projectRiskViews<T extends object>(
+  deps: TenantRouteDeps,
+  ctx: SuccessionContext,
+  views: readonly T[],
+  tx?: Tx,
+) {
+  const fields = tx
+    ? await getModuleViewableFieldsInTransaction(deps, ctx, codeOf('riskResult'), tx)
+    : await getModuleViewableFields(deps, ctx, codeOf('riskResult'));
+  return views.map((v) =>
+    fields === undefined ? v : Object.fromEntries(Object.entries(v).filter(([k]) => fields.has(k))),
+  );
+}
 /** 与 A2 / A3 / D1 共用目标锁；锁后才读结果行与计划屏障，包含尚无结果的首次写入。 */
 export async function lockRisk(tx: Tx, tenantId: string, positionId: string) {
   await lockTargets(tx, tenantId, [{ kind: 'position', id: positionId }]);

@@ -40,6 +40,7 @@ export async function terminateEvaluations(
   ctx: EvaluationContext,
   ids: readonly string[],
   reason: TerminationReason,
+  terminatedAt: Date = ctx.now,
 ): Promise<string[]> {
   if (!ids.length) return [];
   const selected = rowsOf<Record<string, unknown>>(
@@ -51,7 +52,7 @@ export async function terminateEvaluations(
     // C2-3 在此补入在途审批 cancel；C2-1a 尚无审批创建入口。
     const after = rowsOf<Record<string, unknown>>(
       await tx.execute(sql`UPDATE ev_staff_evaluations
-      SET terminated_at=${ctx.now.toISOString()}::timestamptz, terminated_reason=${reason},
+      SET terminated_at=${terminatedAt.toISOString()}::timestamptz, terminated_reason=${reason},
         revision=revision+1, updated_at=${ctx.now.toISOString()}::timestamptz
       WHERE tenant_id=${ctx.tenantId}::uuid AND id=${row.id}::uuid RETURNING *`),
     )[0]!;
