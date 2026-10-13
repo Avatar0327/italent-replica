@@ -1,4 +1,9 @@
-import { registration, registrationGate } from './support/route-policy/registration.js';
+import {
+  bindingChecks,
+  BINDING_CONDITIONS,
+  bindingConditionCheck,
+} from './support/route-policy/local-checks/binding.js';
+
 /**
  * AC-PRM-FW-02（续，F-039 PR-B1 第 2 轮，#162 审查 P2-1 / P2-2 / P2-3 与 P3）：
  * - P2-1 范围按**实际对象**逐项选择，缺项即失败，不能借用其他对象的范围：byObject 没有该对象也没有 `*` → 范围缺失；
@@ -18,7 +23,6 @@ import type { ObservedContract } from './support/route-policy/contract.js';
 import { coverageStats, expectedMutationKeys, extraCoverage } from './support/route-policy/required-coverage.js';
 import { requiredMutants } from './support/route-policy/required-mutate.js';
 import { checkRequired } from './support/route-policy/required.js';
-import { INNER_CONDITIONS } from './support/route-policy/required/guard-inner.js';
 import { REQUIRED } from './support/route-policy/required/index.js';
 import type { Obligation, RequiredTable } from './support/route-policy/required/types.js';
 import { disclosureWeakeningsOf } from './support/route-policy/weakenings.js';
@@ -81,25 +85,15 @@ describe('AC-PRM-FW-02 P2-1 范围按实际对象逐项选择（审查 #162 第 
   });
 
   it('byObject 有 * 兜底时静态对象取兜底项；真实 byObject 声明（职务 :kind 等）仍零发现', () => {
-    const jobRoutes = manifest.declared.filter((r) => JSON.stringify(r.policy).includes('"byObject"'));
-    expect(jobRoutes.length).toBeGreaterThan(0);
-    expect(
-      registrationGate(checkRequired(REQUIRED, frozen, jobRoutes), '真实 byObject 声明 × 静态义务登记（DEC-416③）'),
-    ).toEqual([]);
+    bindingChecks({ table: REQUIRED, routes: manifest.declared, contract: frozen })
+      .find((check) => check.id === 'byObject')!
+      .verify();
   });
 
   it('生成弱化 scope→foreign-object（范围只登记给无关对象）：对每个“唯一满足 need 的来源节点”施加，全部报出', () => {
-    const all = manifest.declared.flatMap((r) => disclosureWeakeningsOf(r, REQUIRED));
-    const foreign = all.filter((w) => w.kind === 'scope→foreign-object');
-    registration('真实表的范围弱化端点统计', () =>
-      expect(new Set(foreign.map((w) => `${w.route.method} ${w.route.path}`)).size).toBeGreaterThanOrEqual(42),
-    );
-    registration('真实表的范围弱化数量', () => expect(foreign.length).toBeGreaterThanOrEqual(49));
-    const missed = foreign.filter((w) => !check([w.route], REQUIRED).some((f) => f.code === w.expected));
-    expect(
-      missed.map((w) => `${w.route.method} ${w.route.path} @${w.at}`),
-      '未报出',
-    ).toEqual([]);
+    bindingChecks({ table: REQUIRED, routes: manifest.declared, contract: frozen })
+      .find((check) => check.id === 'foreignScope')!
+      .verify();
   });
 
   // 第 3 轮（#162 第 2 轮审查 P2-1 残项）：对象型 mapper 的 domain 是**输入键**（子集名），真实路由按
@@ -178,59 +172,16 @@ describe('AC-PRM-FW-02 P2-1 范围按实际对象逐项选择（审查 #162 第 
 });
 
 describe('AC-PRM-FW-02 P2-2 守卫内部 when 条件：登记语义，与真实路由代码一致', () => {
-  const conditionOf = (key: string, perm: string, carrier: string): string | undefined => {
-    const inner = (REQUIRED[key] ?? []).find((o) => o.perm === perm && o.purpose === `guard:${carrier}`)?.inner;
-    return inner?.role === 'when' ? inner.condition : undefined;
-  };
-  const Q = '/api/tenant/qualification';
   const T = '/api/tenant/talent';
 
-  it.each([
-    [
-      `PUT ${Q}/standards/:id/channels`,
-      'obj:Qualification.EmploymentCategory:view',
-      'ql.referenced(category)',
-      'channels.nonEmpty',
-    ],
-    [
-      `PUT ${Q}/standards/:id/channels`,
-      'obj:Qualification.EmploymentLevel:view',
-      'ql.referenced(level)',
-      'channels.nonEmpty',
-    ],
-    [`PATCH ${Q}/targets/:id`, 'obj:Qualification.GradeScheme:view', 'ql.referenced(gradeScheme)', 'grade.changed'],
-    [`POST ${Q}/targets`, 'obj:Qualification.GradeScheme:view', 'ql.referenced(gradeScheme)', 'evalMode=grade'],
-    [`POST ${T}/criteria`, 'obj:TalentCenter.Dimension:view', 'talent.referenced(dimension)', 'dimensions.nonEmpty'],
-    [
-      `PATCH ${T}/criteria/:id`,
-      'obj:TalentCenter.Dimension:view',
-      'talent.referenced(dimension)',
-      'dimensions.newReference',
-    ],
-    [`POST ${Q}/standards`, 'obj:Qualification.Target:view', 'ql.referenced(target)', 'details.targetReference'],
-    [`PATCH ${Q}/standards/:id`, 'obj:Qualification.Target:view', 'ql.referenced(target)', 'details.targetReference'],
-  ])('%s %s 的条件是 %s', (key, perm, carrier, expected) => {
-    registration(`${key} ${perm} 内部条件登记`, () => expect(conditionOf(key, perm, carrier)).toBe(expected));
+  it.each(BINDING_CONDITIONS)('%s %s 的条件是 %s', (key, perm, carrier, expected) => {
+    bindingConditionCheck(REQUIRED, key, perm, carrier, expected);
   });
 
   it('每个 when 条件都登记了语义（含空数组 / 已有引用 / 新增引用的说明）；表里用到的条件都已登记', () => {
-    const used = new Set(
-      Object.values(REQUIRED)
-        .flat()
-        .flatMap((o) => (o.inner?.role === 'when' ? [o.inner.condition] : [])),
-    );
-    registration('真实表用到的内部条件登记', () =>
-      expect([...used].filter((name) => !INNER_CONDITIONS[name])).toEqual([]),
-    );
-    for (const name of ['channels.nonEmpty', 'grade.changed', 'dimensions.nonEmpty', 'dimensions.newReference']) {
-      registration(`${name} 条件语义`, () => expect(INNER_CONDITIONS[name], name).toMatch(/空数组|已有|新增|变更/));
-    }
-    registration('details.targetReference 条件语义', () =>
-      expect(INNER_CONDITIONS['details.targetReference']).toContain('空数组'),
-    );
-    registration('dimensions.newReference 条件语义', () =>
-      expect(INNER_CONDITIONS['dimensions.newReference']).toContain('weight'),
-    );
+    bindingChecks({ table: REQUIRED, routes: manifest.declared, contract: frozen })
+      .find((check) => check.id === 'conditionSemantics')!
+      .verify();
   });
 
   it('when 条件未登记 → GUARD_INNER_CONDITION_UNREGISTERED', () => {
@@ -250,15 +201,9 @@ describe('AC-PRM-FW-02 P2-3 内部“或”备选绑定：数据态备选不能�
   );
 
   it('现表的内部“或”义务：审批 canOpen 管理员按钮 6 条 + IDP 执行人计划查看权 9 条，全部登记', () => {
-    const actual = Object.values(REQUIRED)
-      .flat()
-      .filter((o) => o.inner?.role === 'or');
-    registration('审批 canOpen 内部或数量', () =>
-      expect(actual.filter((o) => o.purpose === 'guard:approval.canOpen')).toHaveLength(6),
-    );
-    registration('IDP 执行人内部或数量', () =>
-      expect(actual.filter((o) => o.purpose === 'guard:idp.executor')).toHaveLength(9),
-    );
+    bindingChecks({ table: REQUIRED, routes: manifest.declared, contract: frozen })
+      .find((check) => check.id === 'orCounts')!
+      .verify();
   });
 
   it('逐条把 inner.alt 改成同组的其他备选（含数据态 participant / initiator）→ 都报 GUARD_INNER_ALT_UNREGISTERED', () => {

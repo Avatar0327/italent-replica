@@ -1,4 +1,5 @@
-import { registration, registrationGate } from './support/route-policy/registration.js';
+import { discoveryChecks } from './support/route-policy/local-checks/discovery.js';
+import { registrationGate } from './support/route-policy/registration.js';
 /**
  * AC-PRM-FW-08（F-039 PR-B4a，docs/08_设计/F-039_PR-B_设计.md B-08 步骤一「发现探测」；DEC-356 / 359 / 362）：
  * Tier 0 发现探测。全允许的授权替身对全部已声明端点各发一次占位请求（路径参数占位、写请求体 `{}`），得到结果 O*
@@ -23,7 +24,6 @@ import {
 import { createAuthorizerDouble } from './support/route-policy/double.js';
 import {
   checkDiscovery,
-  checkIdApplicabilityDrift,
   createRig,
   discoverAll,
   discoverRoute,
@@ -32,19 +32,13 @@ import {
   p3Applicable,
   probeFilePath,
   PROBE_DIR,
-  readFrozenProbes,
   UNREACHED_REASONS,
   writeFrozenProbes,
 } from './support/route-policy/discovery.js';
 import type { Finding } from './support/route-policy/compare.js';
 import { countDrift, countEndpoints, readEndpointCounts } from './support/route-policy/endpoint-counts.js';
 import { generatedGate, textDrift } from './support/route-policy/generated-gate.js';
-import { checkKnownGapEvidence, KNOWN_GAPS, type KnownGapGroup } from './support/route-policy/probe-known-gaps.js';
-import {
-  checkRedundantEvidence,
-  type RedundantGroup,
-  REDUNDANT_OBSERVATIONS,
-} from './support/route-policy/probe-redundant.js';
+import { KNOWN_GAPS } from './support/route-policy/probe-known-gaps.js';
 import { permClaims } from './support/route-policy/request-perms.js';
 import { REQUIRED } from './support/route-policy/required/index.js';
 import type { Obligation, RequiredTable } from './support/route-policy/required/types.js';
@@ -70,11 +64,10 @@ const route = (k: string): ManifestRoute => {
   return found;
 };
 const codes = (findings: readonly Finding[]) => findings.map((f) => f.code);
-const show = (findings: readonly Finding[]) => findings.map((f) => `${f.route} ${f.code}: ${f.detail}`).join('\n');
+
 const check = (routes: readonly ManifestRoute[], table: RequiredTable = REQUIRED, found = fresh) =>
   registrationGate({ discoveries: found, table, routes }, '真实发现与两本台账');
-const ACCOUNT = { knownGaps: KNOWN_GAPS, redundant: REDUNDANT_OBSERVATIONS };
-const records = () => ({ discoveries: fresh, table: REQUIRED, routes: manifest.declared, accounting: ACCOUNT });
+
 const withPolicy = (base: ManifestRoute, policy: RoutePolicy): ManifestRoute => ({ ...base, policy });
 const fixtureTable = (k: string, obligations: readonly Obligation[]): RequiredTable => ({
   ...DISCOVERY_TABLE,
@@ -134,67 +127,27 @@ describe('AC-PRM-FW-08 发现探测：冻结与覆盖', () => {
 
 describe('AC-PRM-FW-08 P0 / P3：真实声明 + 显式表零发现', () => {
   it('全部端点零发现（P0 认领、P3 非法标识、映射）；未认领的请求只经精确的 KNOWN_GAPS 逐对登记', () => {
-    const findings = registrationGate(records(), '真实发现 × 静态义务登记（DEC-416③）');
-    expect(findings, show(findings)).toEqual([]);
+    discoveryChecks({ table: REQUIRED, routes: manifest.declared, discoveries: fresh })
+      .find((check) => check.id === 'declarations')!
+      .verify();
   });
 
   it('逐对对账：未认领的"端点 × 请求键"恰好等于两本账的登记对之并集：29 项有实际用途 + 0 项冗余观测（F-075 / F-075b 已清空冗余观测账本），互斥', () => {
-    expect(registrationGate(records(), '实际未认领记录与两本台账的差异（DEC-416③）')).toEqual([]);
-    const gaps = KNOWN_GAPS.flatMap((g) => g.pairs);
-    const redundant = REDUNDANT_OBSERVATIONS.flatMap((g) => g.pairs);
-    registration('已知缺口冻结数量', () => expect(gaps).toHaveLength(29));
-    registration('冗余观测冻结数量', () => expect(redundant).toHaveLength(0));
-    const all = [...gaps, ...redundant].map(([r, k]) => `${r}\t${k}`);
-    expect(new Set(all).size, '登记对不重复，两本账互斥').toBe(all.length);
+    discoveryChecks({ table: REQUIRED, routes: manifest.declared, discoveries: fresh })
+      .find((check) => check.id === 'accounting')!
+      .verify();
   });
 
   it('台账每组写明用途、归属与源码证据，证据锚点仍出现在所指文件里；冗余观测另写"为何不影响结果"', () => {
-    for (const group of KNOWN_GAPS) {
-      expect(group.owner.length, group.id).toBeGreaterThan(5);
-      expect(group.purpose.length, group.id).toBeGreaterThan(1);
-      expect(group.evidence.length, group.id).toBeGreaterThan(0);
-    }
-    for (const group of REDUNDANT_OBSERVATIONS) {
-      expect(group.why.length, group.id).toBeGreaterThan(20);
-      expect(group.evidence.length, group.id).toBeGreaterThan(0);
-    }
-    // F-090：账本证据锚点与源码对不上默认只警告
-    expect(registrationGate(checkKnownGapEvidence(KNOWN_GAPS), '已知缺口账本证据锚点')).toEqual([]);
-    expect(registrationGate(checkRedundantEvidence(REDUNDANT_OBSERVATIONS), '冗余观测账本证据锚点')).toEqual([]);
-    const tampered: KnownGapGroup[] = [
-      {
-        ...DISCOVERY_GAPS[0]!,
-        evidence: [{ file: 'apps/api/src/app.ts', anchor: 'thisSnippetDoesNotExistAnywhere()' }],
-      },
-    ];
-    expect(codes(checkKnownGapEvidence(tampered))).toEqual(['PROBE_KNOWN_GAP_EVIDENCE']);
+    discoveryChecks({ table: REQUIRED, routes: manifest.declared, discoveries: fresh })
+      .find((check) => check.id === 'accountEvidence')!
+      .verify();
   });
 
   it('DEC-367：冗余观测只是记录——不是显式表义务，也不能豁免账外的 P0；同一对不能同时登记在两本账', () => {
-    // 真实冗余账已清空（F-075 / F-075b 去掉了全部冗余调用）；机制用夹具验证：把第一个已知缺口对挪到冗余账里
-    registration('真实冗余观测台账已清空', () => expect(REDUNDANT_OBSERVATIONS).toEqual([]));
-    const [first, ...rest] = DISCOVERY_GAPS;
-    const [route0, key0] = first!.pairs[0]!;
-    const restPairs = first!.pairs.slice(1);
-    const moved: RedundantGroup[] = [{ id: 'fixture#1', why: 'x'.repeat(30), evidence: [], pairs: [[route0, key0]] }];
-    const gaps = [{ ...first!, pairs: restPairs }, ...rest];
-    // 登记在冗余账里：只是记录，不再报 P0
-    expect(
-      codes(checkDiscovery(DISCOVERY_FACTS, DISCOVERY_TABLE, DISCOVERY_ROUTES, { knownGaps: gaps, redundant: moved })),
-    ).toEqual([]);
-    // 删掉冗余账后，这个请求立刻变成 P0（冗余账不是豁免，也不是义务）
-    const withoutRedundant = checkDiscovery(DISCOVERY_FACTS, DISCOVERY_TABLE, DISCOVERY_ROUTES, {
-      knownGaps: gaps,
-      redundant: [],
-    });
-    expect(withoutRedundant.filter((f) => f.code === 'PROBE_ADMISSION_UNCLAIMED')).toHaveLength(1);
-    expect(withoutRedundant.some((f) => f.route === route0 && f.detail.includes(key0))).toBe(true);
-    // 同一对同时登记在两本账里 → 报重叠
-    const overlap = checkDiscovery(DISCOVERY_FACTS, DISCOVERY_TABLE, DISCOVERY_ROUTES, {
-      knownGaps: DISCOVERY_GAPS,
-      redundant: moved,
-    });
-    expect(codes(overlap)).toContain('PROBE_ACCOUNT_OVERLAP');
+    discoveryChecks({ table: REQUIRED, routes: manifest.declared, discoveries: fresh })
+      .find((check) => check.id === 'redundant')!
+      .verify();
   });
 
   it('DEC-303：登记只能是已发现的精确对，不是模块级豁免——不在登记里的新漏登照常报 PROBE_ADMISSION_UNCLAIMED', () => {
@@ -484,10 +437,9 @@ describe('AC-PRM-FW-08 P3 非法标识：观测码与根节点 invalidId 相等'
   });
 
   it('适用性与冻结事实零漂移（PROBE_ID_APPLICABILITY_CHANGED 为空）；非法标识没有 5xx', () => {
-    expect(
-      registrationGate(checkIdApplicabilityDrift(fresh, readFrozenProbes()), '非法标识适用性（DEC-416③）'),
-    ).toEqual([]);
-    expect(Object.entries(fresh).filter(([, d]) => (d.invalidId?.status ?? 0) >= 500)).toEqual([]);
+    discoveryChecks({ table: REQUIRED, routes: manifest.declared, discoveries: fresh })
+      .find((check) => check.id === 'invalidIds')!
+      .verify();
   });
 
   it('请求体先于标识校验的 9 个端点保持合理未达（不在证据表里，观测相同 → 不适用，不能凭状态码相同误报）', () => {

@@ -1,3 +1,4 @@
+import { permissionSet } from './sets.js';
 import type { ManagerQuery } from './manager-identity.js';
 /** 当前用户对某对象的有效功能权限（多身份并集，DEC-042；只认登记了对象所属应用的身份）；前台据此显示按钮、列与字段。 */
 import type { Tx } from '@italent/db';
@@ -28,6 +29,6 @@ export async function myObjectPermission(
     dataOperations: effective.dataOperations,
     viewableFields: [...effective.viewableFields].sort(),
     editableFields: [...effective.editableFields].sort(),
-    buttons: executableButtons(definition, effective),
+    buttons: permissionSet(executableButtons(definition, effective), ['buttonCode', 'level']),
   };
 }

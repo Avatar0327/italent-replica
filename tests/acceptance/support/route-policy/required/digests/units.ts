@@ -253,8 +253,19 @@ export const DIGESTS: Digests = {
     presentActivities: '7c4a389fcce8',
     updateActivity: '1bbcbe10a4e1',
   },
+  'apps/api/src/modules/evaluation/activity-state.ts': {
+    activityCommand: 'b512753ccb9e',
+    registerActivityStateRoutes: '602a8f075658',
+  },
   'apps/api/src/modules/evaluation/candidates.ts': {
     registerCandidates: 'ac543713e8c2',
+  },
+  'apps/api/src/modules/evaluation/flow-access.ts': {
+    activityPersonSql: 'ff380c097110',
+  },
+  'apps/api/src/modules/evaluation/flow-routes.ts': {
+    OBJECT: '0a5ac1058d8d',
+    registerFlowRoutes: 'ae364e96d737',
   },
   'apps/api/src/modules/evaluation/form-refs.ts': {
     assertNewFormRefs: '1c55c73b49e7',
@@ -293,7 +304,7 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/evaluation/routes.ts': {
     SPECS: 'a73d064dbefb',
-    registerEvaluationRoutes: '41f3c3fa2478',
+    registerEvaluationRoutes: 'ea4b2787dcb4',
     registerObject: '707afdebb88b',
     registerWrites: '38aa5eafeaf5',
   },
@@ -633,6 +644,7 @@ export const DIGESTS: Digests = {
     childDeleteRights: 'de08fd350c31',
     registerObject: '849fa6161898',
     registerQualificationRoutes: '1dbe1d63bc27',
+    'top-import:./subset-policy.js': 'b84e680c80f6',
   },
   'apps/api/src/modules/qualification/standard-service.ts': {
     createStandard: '8cd995eb08ed',
@@ -656,6 +668,7 @@ export const DIGESTS: Digests = {
     installQualificationSubsetPolicy: 'afc59474d856',
     qualificationBeforeRequest: '2f08d99c5ee8',
     qualificationBeforeSave: '1e4fcf11fe4b',
+    'top-call:installQualificationSubsetPolicy': 'e6c2a6483775',
   },
   'apps/api/src/modules/qualification/target-service.ts': {
     checkEvalMode: '6f57e66ebe1e',
@@ -1438,7 +1451,12 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/evaluation/activity-service.ts#createActivity': '6cea1ae2d374',
   'apps/api/src/modules/evaluation/activity-service.ts#presentActivities': '4b436823458b',
   'apps/api/src/modules/evaluation/activity-service.ts#updateActivity': '1970287b39ae',
+  'apps/api/src/modules/evaluation/activity-state.ts#activityCommand': 'c8e7d35e4b10',
+  'apps/api/src/modules/evaluation/activity-state.ts#registerActivityStateRoutes': 'c1a7cc9061ab',
   'apps/api/src/modules/evaluation/candidates.ts#registerCandidates': 'c162fd500d1e',
+  'apps/api/src/modules/evaluation/flow-access.ts#activityPersonSql': '1cef62ba8084',
+  'apps/api/src/modules/evaluation/flow-routes.ts#OBJECT': '745bed55cfe9',
+  'apps/api/src/modules/evaluation/flow-routes.ts#registerFlowRoutes': '5cbf3dfe6243',
   'apps/api/src/modules/evaluation/form-refs.ts#assertNewFormRefs': 'a721fd2b0b1d',
   'apps/api/src/modules/evaluation/form-refs.ts#hasObjectView': 'e3b0c44298fc',
   'apps/api/src/modules/evaluation/form-refs.ts#referenceNames': '40492690eee7',
@@ -1461,7 +1479,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/evaluation/review-group-service.ts#presentGroups': '4b436823458b',
   'apps/api/src/modules/evaluation/review-group-service.ts#updateReviewGroup': '9afe1510f20d',
   'apps/api/src/modules/evaluation/routes.ts#SPECS': 'a716aea11db4',
-  'apps/api/src/modules/evaluation/routes.ts#registerEvaluationRoutes': 'f71caee004a1',
+  'apps/api/src/modules/evaluation/routes.ts#registerEvaluationRoutes': 'bcf963d7ac37',
   'apps/api/src/modules/evaluation/routes.ts#registerObject': 'a3bbb6a37375',
   'apps/api/src/modules/evaluation/routes.ts#registerWrites': '89281f061f66',
   'apps/api/src/modules/evaluation/store.ts#requireOwnerOrg': '45aed9d26b12',
@@ -1726,6 +1744,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/qualification/routes.ts#childDeleteRights': '49251d263f86',
   'apps/api/src/modules/qualification/routes.ts#registerObject': '8c695efe87d8',
   'apps/api/src/modules/qualification/routes.ts#registerQualificationRoutes': '3a846c883f39',
+  'apps/api/src/modules/qualification/routes.ts#top-import:./subset-policy.js': 'e3b0c44298fc',
   'apps/api/src/modules/qualification/standard-service.ts#createStandard': '290968858093',
   'apps/api/src/modules/qualification/standard-service.ts#deleteStandard': '416432ace259',
   'apps/api/src/modules/qualification/standard-service.ts#putChannels': '4aa3ce6db911',
@@ -1741,6 +1760,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/qualification/subset-policy.ts#installQualificationSubsetPolicy': 'ade9cee7f798',
   'apps/api/src/modules/qualification/subset-policy.ts#qualificationBeforeRequest': '93ecfb7b9cce',
   'apps/api/src/modules/qualification/subset-policy.ts#qualificationBeforeSave': '44877e5900f6',
+  'apps/api/src/modules/qualification/subset-policy.ts#top-call:installQualificationSubsetPolicy': '2a80a42ad7d9',
   'apps/api/src/modules/qualification/target-service.ts#checkEvalMode': 'e38a2c49aadd',
   'apps/api/src/modules/qualification/target-service.ts#createTarget': 'd403e84954d3',
   'apps/api/src/modules/qualification/target-service.ts#deleteGradeScheme': '7abfdd820381',
