@@ -6,7 +6,7 @@
     "contracts": 23,
     "employment": 46,
     "establishment": 16,
-    "evaluation": 30,
+    "evaluation": 34,
     "idp": 57,
     "job": 14,
     "org": 14,
@@ -23,9 +23,9 @@
     "survey360-portal": 8,
     "survey360-report-link": 3,
     "talent": 40,
-    "talent-review": 73,
+    "talent-review": 74,
     "talent-review-platform": 1,
     "tenant-settings": 3
   },
-  "total": 633
+  "total": 638
 }

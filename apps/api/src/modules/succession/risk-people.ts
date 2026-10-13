@@ -1,35 +1,11 @@
 /** §4.1：人口取当日有效链；读取规则字段时复核执行主体的当前来源权限。 */
 import { sql, type Tx } from '@italent/db';
-import { ageOn, decide, resolveObjectPermission, PERSONNEL_OBJECT } from '@italent/domain';
+import { ageOn } from '@italent/domain';
 import type { RiskPerson, RiskValue } from '@italent/domain';
-import { loadSubject } from '../permission/subject.js';
-import { objectCatalog } from '../permission/catalog.js';
-import { resolveDataScope } from '../permission/scope-resolver.js';
-import { scopeAllows } from '../permission/module-access.js';
-import { loadJobObject } from '../job/read-model.js';
+import { loadRiskSources } from './risk-sources.js';
 import { rowsOf, loadIncumbentIds } from './read-sql.js';
 import { listActiveSuccessors, SUCCESSION_PORTS, type SuccessionReadContext } from './ports.js';
 import { riskIncumbents } from '@italent/domain';
-const fieldMap: Record<string, [string, string]> = {
-  name: [PERSONNEL_OBJECT, 'name'],
-  gender: [PERSONNEL_OBJECT, 'gender'],
-  age: [PERSONNEL_OBJECT, 'age'],
-  entry_date: [PERSONNEL_OBJECT, 'entryDate'],
-  work_years: [PERSONNEL_OBJECT, 'workDate'],
-  org_id: ['TenantBase.EmploymentRecord', 'departmentId'],
-  position_id: ['TenantBase.EmploymentRecord', 'positionId'],
-  job_level_id: ['TenantBase.EmploymentRecord', 'levelId'],
-  job_sequence_id: ['TenantBase.EmploymentRecord', 'sequenceId'],
-  employee_status: ['TenantBase.EmploymentRecord', 'employeeStatus'],
-  readiness_id: ['Succession.Record', 'readinessId'],
-};
-function riskSources(fields: readonly string[], canRead: (object: string, field: string) => boolean) {
-  return Object.fromEntries(
-    fields
-      .filter((f) => !fieldMap[f] || !canRead(...fieldMap[f]!))
-      .map((field) => [field, { status: 'forbidden' as const }]),
-  );
-}
 export type RiskPartTimeReader = (ctx: SuccessionReadContext, positionId: string) => Promise<readonly string[]>;
 export async function riskPeople(
   tx: Tx,
@@ -45,6 +21,7 @@ export async function riskPeople(
   partTimeReader?: RiskPartTimeReader,
 ) {
   const ctx = { tx, tenantId: input.tenantId, asOf: input.asOf };
+  const access = await loadRiskSources(tx, input, fields);
   const primary =
     (await loadIncumbentIds(tx, input.tenantId, [input.positionId], input.asOf)).get(input.positionId) ?? [];
   // R2-T05 前兼职端口为空；开关仅控制计算，不复用卡片 showIncumbents。
@@ -56,48 +33,15 @@ export async function riskPeople(
     targetPositionIds: [input.positionId],
   });
   const ids = [...new Set([...primary, ...part, ...records.map((r) => r.successorEmployeeId)])];
-  const permissions = new Map<
-    string,
-    { fields: ReadonlySet<string>; scope: Awaited<ReturnType<typeof resolveDataScope>>; view: boolean }
-  >();
-  for (const code of new Set(fields.map((f) => fieldMap[f]?.[0]).filter((c): c is string => !!c))) {
-    const subject = await loadSubject(tx, input.userId, code, { ...input, asOf: input.today });
-    permissions.set(code, {
-      fields:
-        resolveObjectPermission(code, subject.objectPermissions, objectCatalog)?.effective.viewableFields ?? new Set(),
-      view: decide(subject, { action: 'object.view', resource: code }, objectCatalog),
-      scope: await resolveDataScope(tx, {
-        ...input,
-        asOf: input.today,
-        appCode: objectCatalog.get(code)!.application!,
-        objectCode: code,
-      }),
-    });
-  }
-  const sources = riskSources(fields, (object, field) => {
-    const auth = permissions.get(object);
-    return !!auth?.view && auth.fields.has(field) && auth.scope.hasDataPermission;
-  });
   const people = new Map<string, RiskPerson>();
-  const target = fields.includes('readiness_id')
-    ? await loadJobObject(tx, input.tenantId, 'positions', input.positionId, input.today, true)
-    : undefined;
   for (const id of ids) {
     const [row] = await readRiskPerson(tx, input, id);
     const person: RiskPerson = { id };
+    const states = access.forPerson(row ? { personId: id, orgId: row.currentOrgId ?? undefined } : null);
     for (const field of fields) {
-      const mapping = fieldMap[field];
-      const auth = mapping && permissions.get(mapping[0]);
-      if (
-        sources[field] ||
-        !scopeAllows(auth!.scope, {
-          orgId: field === 'readiness_id' ? (target?.orgId ?? undefined) : (row?.currentOrgId ?? undefined),
-          personId: field === 'readiness_id' ? undefined : id,
-        })
-      )
-        person[field] = { status: 'forbidden' };
-      else if (!row || field === 'work_years')
-        person[field] = { status: 'unavailable' }; // DEC-452 / F-100：累计工龄等待权威读源，不能按入职日臆算。
+      const state = states[field] ?? { status: 'unavailable' as const };
+      if (state.status !== 'available') person[field] = state;
+      else if (!row) person[field] = { status: 'unavailable' };
       else if (field === 'age') person[field] = ageOn(row.values.birthday as string | null, input.asOf);
       else if (field === 'readiness_id')
         person[field] = records.find((r) => r.successorEmployeeId === id)?.readinessId ?? null;
@@ -107,7 +51,7 @@ export async function riskPeople(
   }
   const from = (values: readonly string[]) => values.map((id) => people.get(id)!);
   return {
-    sources,
+    sources: access.sources,
     incumbents: riskIncumbents(from(primary), from(part), input.partTime),
     successors: from([...new Set(records.map((r) => r.successorEmployeeId))]),
   };

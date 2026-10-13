@@ -17,7 +17,7 @@ import { readMapDisplayScope } from './map-display.js';
 import { enqueueCalcRun } from './calc-worker.js';
 import { calcObjectVisible } from './calc-read.js';
 import { rowsOf } from './read-sql.js';
-import { riskRead, riskResults, assignRisk } from './risk-store.js';
+import { readRiskRows, projectRisk, riskResults, assignRisk } from './risk-store.js';
 import {
   authorizeSuccessionResult,
   checkWriteAccess,
@@ -108,9 +108,13 @@ function registerRiskResultRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps
   router.get(`${SUCCESSION_BASE}/risk-results`, async (c) => {
     const ctx = await successionContext(c, deps, 'riskResult');
     const page = pageQuery(c);
-    const result = await withTenant(deps.db, ctx.tenantId, (tx) => riskRead(tx, deps, ctx, undefined, page));
+    const result = await withTenant(deps.db, ctx.tenantId, async (tx) => {
+      const bound = { ...deps, authorize: authorizeInTransaction(deps.authorize, tx) };
+      const current = await successionContext(c, bound, 'riskResult');
+      return readRiskRows(tx, bound, current, undefined, page);
+    });
     return c.json({
-      items: await riskResults.project(deps, ctx, result.views),
+      items: await projectRisk(deps, ctx, result.views),
       total: result.total,
       page: page.page,
       pageSize: page.pageSize,

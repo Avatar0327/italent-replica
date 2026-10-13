@@ -1,4 +1,5 @@
-import { registrationIt as test, registrationGate } from './support/route-policy/registration.js';
+import { qualificationSubsetChecks } from './support/route-policy/local-checks/qualification-subset.js';
+import { registrationIt as test } from './support/route-policy/registration.js';
 /**
  * AC-PRM-FW-02（续，R3-T02 C1-1 第 1 轮 P2-3）：任职资格子集策略的 F-039 登记。
  * 通用钩子证据（runSubsetSavePolicy / runSubsetRequestPolicy）只证明“钩子被调用”，qualification 策略里的拦截被删掉时它仍然成立。
@@ -22,10 +23,8 @@ import {
   subsetChainFixture,
 } from './support/route-policy/detector-fixtures.js';
 import type { ObservedContract } from './support/route-policy/contract.js';
-import { type SourceReader, checkStored, repoSource } from './support/route-policy/evidence.js';
-import { KNOWN_GAPS } from './support/route-policy/probe-known-gaps.js';
+import { type SourceReader, repoSource } from './support/route-policy/evidence.js';
 import { checkRequired } from './support/route-policy/required.js';
-import { INNER_CONDITIONS } from './support/route-policy/required/guard-inner.js';
 import { REQUIRED } from './support/route-policy/required/index.js';
 import type { Obligation, RequiredTable } from './support/route-policy/required/types.js';
 import { tenantApi } from './support/tenant-api.js';
@@ -50,8 +49,6 @@ const REQUEST_KEY = 'POST /api/tenant/personnel/change-requests';
 const RESUBMIT_KEY = 'POST /api/tenant/approval/instances/:id/resubmit';
 const CARRIER = 'personnel.subsetPolicy';
 
-const entry = (key: string): readonly Obligation[] => REQUIRED[key] ?? [];
-const inners = (key: string) => entry(key).filter((o) => o.purpose === `guard:${CARRIER}`);
 const codes = (findings: readonly { code: string }[]) => findings.map((f) => f.code);
 const route = (key: string): ManifestRoute => {
   const found = manifest.declared.find((r) => `${r.method} ${r.path}` === key);
@@ -68,28 +65,15 @@ const LEVEL = 'Qualification.EmploymentLevel';
 
 describe('AC-PRM-FW-02 C1-1 P2-3 守卫内部义务：qualification 的新引用校验 × 类别 / 级别查看权', () => {
   test('POST 新增、PATCH 更换引用：personnel.subsetPolicy 登记两条内部 when 义务；DELETE 不产生', () => {
-    for (const key of [POST_KEY, PATCH_KEY]) {
-      const found = inners(key);
-      expect(
-        found.map((o) => [o.perm, o.inner && 'condition' in o.inner ? o.inner.condition : '']),
-        key,
-      ).toEqual([
-        [`obj:${CATEGORY}:view`, 'qualification.newCategoryRef'],
-        [`obj:${LEVEL}:view`, 'qualification.newLevelRef'],
-      ]);
-      for (const o of found) expect(o.inner?.role, `${key} ${o.perm}`).toBe('when');
-    }
-    expect(inners(DELETE_KEY)).toEqual([]);
+    qualificationSubsetChecks({ table: REQUIRED, routes: manifest.declared, contract: frozen })
+      .find((check) => check.id === 'newReferences')!
+      .verify();
   });
 
   test('条件语义已登记：人工来源 + 新引用 + 规范化后才算变化；只改日期、同一 UUID 大小写不同、删除不判', () => {
-    for (const name of ['qualification.newCategoryRef', 'qualification.newLevelRef']) {
-      const text = INNER_CONDITIONS[name];
-      expect(text, name).toBeDefined();
-      for (const word of ['人工来源', '新引用', '规范化', '只改日期', '大小写', '删除']) {
-        expect(text, `${name} 缺“${word}”`).toContain(word);
-      }
-    }
+    qualificationSubsetChecks({ table: REQUIRED, routes: manifest.declared, contract: frozen })
+      .find((check) => check.id === 'conditionSemantics')!
+      .verify();
   });
 
   it('反例：内部条件写成未登记的名字 → GUARD_INNER_CONDITION_UNREGISTERED', () => {
@@ -101,23 +85,19 @@ describe('AC-PRM-FW-02 C1-1 P2-3 守卫内部义务：qualification 的新引用
   });
 
   test('不进已知缺口账本（这些是登记的义务，不是缺口）', () => {
-    const pairs = KNOWN_GAPS.flatMap((g) => g.pairs.map(([r, k]) => `${r} ${k}`));
-    expect(
-      pairs.filter((p) => p.includes('personnel/employees/:employeeId/subsets') && p.includes('Qualification.')),
-    ).toEqual([]);
-    expect(KNOWN_GAPS.filter((g) => g.id.includes('qualification-subset'))).toEqual([]);
+    qualificationSubsetChecks({ table: REQUIRED, routes: manifest.declared, contract: frozen })
+      .find((check) => check.id === 'knownGaps')!
+      .verify();
   });
 
   it('真实声明 × 真实表对这几个端点零发现', () => {
-    const routes = [POST_KEY, PATCH_KEY, DELETE_KEY, REQUEST_KEY].map(route);
-    const findings = registrationGate(checkRequired(REQUIRED, frozen, routes), '任职资格子集静态义务登记（DEC-416③）');
-    expect(findings.map((f) => `${f.route} ${f.code}: ${f.detail}`)).toEqual([]);
+    qualificationSubsetChecks({ table: REQUIRED, routes: manifest.declared, contract: frozen })
+      .find((check) => check.id === 'declarations')!
+      .verify();
   });
 });
 
 describe('AC-PRM-FW-02 C1-1 P2-3 有效载荷授权轨迹：真实请求问到的 Qualification 查看权 = 登记的内部义务', () => {
-  const declared = (key: string) => inners(key).map((o) => o.perm.replace(/^obj:/, '').replace(/:view$/, ''));
-
   async function traceWorld() {
     const scene = await subsetScene(database, 'fw-trace');
     const asked: string[] = [];
@@ -174,9 +154,9 @@ describe('AC-PRM-FW-02 C1-1 P2-3 有效载荷授权轨迹：真实请求问到�
   });
 
   test('问到的每一项都在登记里（不多）；登记的每一项在上面的载荷下都被问到过（不少）', () => {
-    expect(declared(POST_KEY).sort()).toEqual([CATEGORY, LEVEL]);
-    expect(declared(PATCH_KEY).sort()).toEqual([CATEGORY, LEVEL]);
-    expect(declared(DELETE_KEY)).toEqual([]);
+    qualificationSubsetChecks({ table: REQUIRED, routes: manifest.declared, contract: frozen })
+      .find((check) => check.id === 'traces')!
+      .verify();
   });
 });
 
@@ -201,9 +181,9 @@ describe(EVIDENCE_CHAIN, { timeout: 120_000 }, () => {
   const routesOf = (read: SourceReader) => new Set(found(read).map((f) => f.route));
 
   it('基线：真实源码零发现', () => {
-    expect(found(repoSource)).toEqual([]);
-    const drift = checkStored(REQUIRED, { read: repoSource }).filter((f) => KINDS.includes(f.code));
-    expect(registrationGate(drift, '任职资格子集证据')).toEqual([]);
+    qualificationSubsetChecks({ table: REQUIRED, routes: manifest.declared, contract: frozen })
+      .find((check) => check.id === 'evidenceChain')!
+      .verify();
   });
 
   it('删掉申请准入的自助拦截 → 首次提交与同单重提两处证据报错', () => {

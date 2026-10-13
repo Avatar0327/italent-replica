@@ -28,7 +28,8 @@ export interface RiskView {
   levelName: string | null;
   levelColor: string;
 }
-export async function riskRead(
+/** 只查询当前范围内的行；列表和写结果复核分别完成对象授权后共用。 */
+export async function readRiskRows(
   tx: Tx,
   deps: TenantRouteDeps,
   ctx: SuccessionContext,
@@ -36,12 +37,6 @@ export async function riskRead(
   page = { limit: 200, offset: 0 },
 ) {
   const bound = { ...deps, authorize: authorizeInTransaction(deps.authorize, tx) };
-  await requirePermission(bound.authorize, {
-    ...ctx,
-    action: 'object.view',
-    resource: codeOf('riskResult'),
-    fields: [],
-  });
   const scope = await resolveModuleScopeInTransaction(bound, ctx, tx, codeOf('riskResult'));
   const today = tenantLocalDate(ctx.now, ctx.timezone);
   const where = sql`r.tenant_id=${ctx.tenantId}::uuid
@@ -61,6 +56,29 @@ export async function riskRead(
   const [count] = rowsOf<{ n: number }>(await tx.execute(sql`SELECT count(*)::int AS n ${from} WHERE ${where}`));
   return { views, total: count!.n, hasDataPermission: scope.hasDataPermission };
 }
+/** 写结果复核没有 HTTP 查看上下文，必须在每次首次返回 / 重放时重新授权。 */
+export async function riskRead(
+  tx: Tx,
+  deps: TenantRouteDeps,
+  ctx: SuccessionContext,
+  ids?: readonly string[],
+  page = { limit: 200, offset: 0 },
+) {
+  const bound = { ...deps, authorize: authorizeInTransaction(deps.authorize, tx) };
+  await requirePermission(bound.authorize, {
+    ...ctx,
+    action: 'object.view',
+    resource: codeOf('riskResult'),
+    fields: [],
+  });
+  return readRiskRows(tx, bound, ctx, ids, page);
+}
+export async function projectRisk(deps: TenantRouteDeps, ctx: SuccessionContext, views: readonly RiskView[]) {
+  const fields = await getModuleViewableFields(deps, ctx, codeOf('riskResult'));
+  return views.map((v) =>
+    fields === undefined ? v : Object.fromEntries(Object.entries(v).filter(([k]) => fields.has(k))),
+  );
+}
 export const riskResults: ResultAdapter<RiskView> = {
   object: 'riskResult',
   async load(tx, deps, ctx, ids) {
@@ -68,7 +86,7 @@ export const riskResults: ResultAdapter<RiskView> = {
     if (views.length !== ids.length) throw new AppError('NOT_FOUND', '风险结果不存在');
     return { views, revisions: new Map(views.map((v) => [v.id, v.revision])) };
   },
-  project: projectRiskViews,
+  project: projectRisk,
 };
 /** 结果列表与地图默认色共用字段投影；无结果卡片不伪造计算方式或 revision。 */
 export async function projectRiskViews<T extends object>(

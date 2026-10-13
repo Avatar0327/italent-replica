@@ -1,6 +1,7 @@
 import { registerRiskRoutes } from './risk-routes.js';
 import { registerCalcRoutes } from './calc-routes.js';
 import { registerSuccessionConfigRoutes } from './config-routes.js';
+import { installSuccessionExitHooks } from './exit-store.js';
 import { registerMapRoutes } from './map-routes.js';
 import { registerPositionMapRoutes } from './position-map-routes.js';
 /**
@@ -58,6 +59,7 @@ export function registerSuccessionRoutes(router: Hono<TenantEnv>, deps: TenantRo
   registerMapRoutes(router, deps);
   registerPositionMapRoutes(router, deps);
   installSuccessionPorts();
+  installSuccessionExitHooks();
 
   // #1 准备度选择器：启用项的 id / code / name / color / sort（HR 读字典契约，设计 §8.3；只需 Record 查看权）
   router.get(`${SUCCESSION_BASE}/readiness`, async (c) => {

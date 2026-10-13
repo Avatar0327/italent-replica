@@ -1,9 +1,6 @@
-import {
-  registration,
-  compareRegisteredDeclarations,
-  registrationGate,
-  registrationDrift,
-} from './support/route-policy/registration.js';
+import { registrationGate, compareRegisteredDeclarations } from './support/route-policy/registration.js';
+import { requiredChecks } from './support/route-policy/local-checks/required.js';
+
 /**
  * AC-PRM-FW-02（续，F-039 PR-A 第 4 轮，DEC-348②）：必需项显式表与硬比对。
  * 表（support/route-policy/required/）逐端点登记审定过的义务：权限键 + 用途（准入 / 披露 / 守卫内部 / 条件准入）+
@@ -28,9 +25,7 @@ import {
 } from './support/route-policy/detector-fixtures.js';
 import { type Finding } from './support/route-policy/compare.js';
 import type { ObservedContract } from './support/route-policy/contract.js';
-import { checkStored, repoSource, type SourceReader, writeDigests } from './support/route-policy/evidence.js';
-import { countDrift, countEndpoints, readEndpointCounts } from './support/route-policy/endpoint-counts.js';
-import { generatedGate } from './support/route-policy/generated-gate.js';
+import { repoSource, type SourceReader, writeDigests } from './support/route-policy/evidence.js';
 import { admissionPrimitives, checkRequired } from './support/route-policy/required.js';
 import { expectedMutationKeys, missingCoverage } from './support/route-policy/required-coverage.js';
 import { REQUIRED_MUTATION_KINDS, requiredMutants } from './support/route-policy/required-mutate.js';
@@ -97,15 +92,9 @@ type ObjectNode = Extract<RoutePolicy, { kind: 'object' }>;
 
 describe('AC-PRM-FW-02 显式必需项表：形状与完整性', () => {
   it('表键与运行时 592 个端点相等：静态漏登 / 多登默认警告（DEC-416③）', () => {
-    const declared = manifest.declared.map((r) => `${r.method} ${r.path}`).sort();
-    const registered = Object.keys(REQUIRED);
-    const drift = [
-      ...declared.filter((key) => !registered.includes(key)).map((key) => `${key} 静态义务表漏登`),
-      ...registered.filter((key) => !declared.includes(key)).map((key) => `${key} 静态义务表多登`),
-    ];
-    expect(registrationDrift('静态义务表端点登记', drift)).toEqual([]);
-    const counts = countDrift(countEndpoints(manifest.declared), readEndpointCounts(), { totalOnly: true });
-    expect(generatedGate('端点计数（显式表）', counts)).toEqual([]);
+    requiredChecks({ table: REQUIRED, routes: manifest.declared, contract: frozen })
+      .find((check) => check.id === 'endpointKeys')!
+      .verify();
   });
 
   it('表文件只放字面量：不 import 声明、产品代码或探测器（不得从候选声明重新生成）', () => {
@@ -122,17 +111,15 @@ describe('AC-PRM-FW-02 显式必需项表：形状与完整性', () => {
 
   it('全表证据校验零发现：每条义务都有强制调用点证据，锚点命中，摘要与源码一致', () => {
     if (process.env['ROUTE_POLICY_UPDATE_DIGESTS'] === '1') writeDigests(REQUIRED);
-    // F-090：登记与源码不一致默认只警告；登记自身的错误仍判红；ROUTE_POLICY_EVIDENCE_STRICT=1 全部判红
-    const findings = registrationGate(checkStored(REQUIRED, { unused: true }), '全表证据校验');
-    expect(findings, show(findings)).toEqual([]);
+    requiredChecks({ table: REQUIRED, routes: manifest.declared, contract: frozen })
+      .find((check) => check.id === 'storedEvidence')!
+      .verify();
   });
 
   it('真实声明 × 真实表：零发现', () => {
-    const findings = registrationGate(
-      checkRequired(REQUIRED, frozen, manifest.declared),
-      '真实声明 × 静态义务表（DEC-416③）',
-    );
-    expect(findings, show(findings)).toEqual([]);
+    requiredChecks({ table: REQUIRED, routes: manifest.declared, contract: frozen })
+      .find((check) => check.id === 'declarations')!
+      .verify();
   });
 
   it('漏掉整组义务但保留端点键：只报告静态缺项，不把披露原语误判成 WEAKER；严格恢复判红', () => {
@@ -204,13 +191,9 @@ describe('AC-PRM-FW-02 显式表反例：准入 / 披露 / optional', () => {
   });
 
   it('经理入口：真实声明零发现；canApply / canViewReporting 在表里是披露义务', () => {
-    expect(registrationGate(checkRequired(REQUIRED, frozen, [route(MANAGER)]), '经理入口静态义务登记')).toEqual([]);
-    expect(check([route(MANAGER)])).toEqual([]);
-    const purposes = Object.fromEntries((REQUIRED[MANAGER] ?? []).map((o) => [o.perm, o.purpose]));
-    registration('经理入口 canViewReporting 用途', () =>
-      expect(purposes[HR_BUTTON]).toBe('disclosure:canViewReporting'),
-    );
-    registration('经理入口 canApply 用途', () => expect(purposes[MANAGER_BUTTON]).toBe('disclosure:canApply'));
+    requiredChecks({ table: REQUIRED, routes: manifest.declared, contract: frozen })
+      .find((check) => check.id === 'manager')!
+      .verify();
   });
 
   it('经理入口：删掉 optional 里的合法披露 canViewReporting → DISCLOSURE_MISSING', () => {
@@ -230,12 +213,9 @@ describe('AC-PRM-FW-02 显式表反例：准入 / 披露 / optional', () => {
   });
 
   it('模型图：准入与 optional.canEdit 共用同一个 point 范围，零发现（按 对象 + 操作 + 用途 匹配，不按范围字符串）', () => {
-    expect(registrationGate(checkRequired(REQUIRED, frozen, [route(MODEL_IMAGE)]), '模型图静态义务登记')).toEqual([]);
-    expect(check([route(MODEL_IMAGE)])).toEqual([]);
-    const findings = registrationGate(compareRegisteredDeclarations(frozen, [route(MODEL_IMAGE)]), '模型图冻结基准');
-    expect(findings, show(findings)).toEqual([]);
-    const canEdit = entry(MODEL_IMAGE).filter((o) => o.purpose === 'disclosure:canEdit');
-    expect(canEdit.map((o) => o.perm)).toContain('obj:TalentCenter.TalentCriterion:update');
+    requiredChecks({ table: REQUIRED, routes: manifest.declared, contract: frozen })
+      .find((check) => check.id === 'modelImage')!
+      .verify();
   });
 
   it('optional 里出现表外的分支 → OPTIONAL_UNCLASSIFIED；准入里出现表外的权限 → ADMISSION_UNCLASSIFIED', () => {

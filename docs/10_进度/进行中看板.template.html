@@ -84,6 +84,30 @@ details summary{cursor:pointer;color:var(--muted);font-size:13px}
     <span class="sub" id="at"></span>
     <div class="kpis" id="kpis"></div>
   </header>
+<section class="flow" style="margin:14px 0"><details style="background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 16px">
+<summary style="cursor:pointer;font-weight:600;font-size:14px">当前开发流程（截至 10-13 09:30Z）</summary>
+<div style="font-size:13px;line-height:1.65;color:var(--ink2);margin-top:8px">
+<p style="margin:6px 0"><b>一、目标</b>　先做演示用标杆产品（DEC-456）。2～3 天出 R1+R3 可演示版，7 天出 R1+R2+R3，20 天覆盖绿 + 蓝两层模块（DEC-457）。契约按 L3 设计，实现先到 L2。</p>
+<p style="margin:6px 0 2px"><b>二、一条需求的流转</b></p>
+<ol style="margin:0;padding-left:22px">
+<li><b>取证</b>：本机 Claude 取证窗口截原站页面（只读，截图留本机）；远程 Codex Sol 补交互细节文字规格，产出经局域网拉回本机。</li>
+<li><b>规划 / 设计</b>：总编排（Claude Opus）写规划、拆片；契约级设计走重流程（Opus 设计、Codex Astra 审）。</li>
+<li><b>派发</b>：派发审查窗口（03，Opus）通读设计、写提示词，派给开发方——前端交 Codex Astra，后端 L2 / 演示数据 / 数据修复交 Claude Sonnet。</li>
+<li><b>开发</b>：开发方先交红测，再实现；交审前本地跑构建和受影响测试。</li>
+<li><b>审查</b>：Codex 审一轮，最多两轮（演示层轻流程）；只有 P0 / P1、功能错误、数据错误挡合并，其余记待办。Claude 写的 PR 必须经 Codex 独立审查。</li>
+<li><b>合并</b>：合并队列窗口（Sonnet）在云端合入 main → 关闭 / 重开 PR 触发完整 CI → 全绿后复核再合并。</li>
+<li><b>记录</b>：总编排补恢复点（RP）、登记决定（DEC）；看板窗口更新看板。</li>
+</ol>
+<p style="margin:8px 0 4px"><b>三、当前谁负责什么</b>（截至 10-13 09:30Z，依据 PR 与提交记录）</p>
+<ul style="margin:0 0 6px;padding-left:22px">
+<li><b>开发</b>：Codex Astra（各 PR 原线程）——后端 R3：#278 C2-1b、#282 B5、#290 C3、#291 D4、#292 C2、#293 D3；前端：#295 FE-0、#296 FE-R1a、#297 FE-R1c、#298 FE-R3a。Claude Sonnet 子代理——#299 F-109（merge:main 迁移识别）；F-110 / F-111 待派。</li>
+<li><b>审查</b>：03 派发审查窗口（Opus）派活并发起独立 Codex 审查——后端 Astra high，前端与增量 Sol。Claude 写的 PR（如 #299）必须经 Codex 审（DEC-441）。超轮次破例由总编排 / 用户定。</li>
+<li><b>合并</b>：05 合并队列窗口（Sonnet）——队首完整 CI、锁内复核、合并；CI 红由它判断后派回开发。</li>
+<li><b>取证</b>：02 取证窗口（Claude）当前待命，最近一次取证提交 10-12 00:16Z（Q-M0-178）；本机 R3 参考图 98 张已截完；远程 Codex Sol 已完成人才盘点试点（10-13 02:50）和 R1a 参考包。目前没有进行中的取证任务，新取证待总编排派。</li>
+<li><b>其他</b>：00 总编排（决策、规划、DEC / RP、对用户）；01 进度 &amp; 看板（本窗口，转发事件、更新看板）。</li>
+</ul>
+<p style="margin:6px 0"><b>四、需要用户的地方</b>　拍板 DEC；Codex 到 99% 时决定是否用重置卡；远程 Codex 任务在 Codex 应用里发起；输入任何密码。</p>
+</div></details></section>
   <div class="banner" id="banner" hidden></div>
   <section><h2>卡点与待你决定</h2><div id="stuck"></div></section>
   <section>

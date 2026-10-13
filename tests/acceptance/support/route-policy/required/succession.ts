@@ -129,6 +129,15 @@ const IMMUTABLE: Obligation = {
   at: [{ role: 'call', unit: `${S}/input.ts#rejectImmutable`, anchor: "reason: 'FIELD_IMMUTABLE'" }],
 };
 
+/** A3 / DEC-343④：提示继承继任者字段权限，首次与重放仍共用 A2 的公共投影。 */
+const LEFT_PROJECTED: Obligation = {
+  perm: 'guard:succession.successorLeftProjected',
+  at: [
+    { role: 'call', unit: `${S}/projection.ts#projectSuccession`, anchor: 'fields.has(GOVERNING_FIELD[key] ?? key)' },
+    { role: 'const', unit: `${S}/projection.ts#GOVERNING_FIELD`, anchor: "successorLeft: 'successorEmployeeId'" },
+  ],
+};
+
 export const SUCCESSION: RequiredTable = {
   [`GET ${BASE}/readiness`]: [view(`router.get(\`\${SUCCESSION_BASE}/readiness\`, async (c) => { ${VIEW}`)],
   [`GET ${BASE}/records`]: [
@@ -150,11 +159,16 @@ export const SUCCESSION: RequiredTable = {
       ],
     },
     SELF_HIDDEN,
+    LEFT_PROJECTED,
   ],
-  [`GET ${BASE}/records/:id`]: [view(`router.get(\`\${RECORDS}/:id\`, async (c) => { ${VIEW}`), SELF_HIDDEN],
-  [`POST ${RECORDS_PATH}`]: [...change('create'), TARGET_IN_SCOPE],
-  [`PUT ${RECORDS_PATH}/:id`]: [...change('update'), IMMUTABLE, SELF_HIDDEN],
-  [`POST ${RECORDS_PATH}/end`]: [...change('update', 'end'), SELF_HIDDEN],
+  [`GET ${BASE}/records/:id`]: [
+    view(`router.get(\`\${RECORDS}/:id\`, async (c) => { ${VIEW}`),
+    SELF_HIDDEN,
+    LEFT_PROJECTED,
+  ],
+  [`POST ${RECORDS_PATH}`]: [...change('create'), TARGET_IN_SCOPE, LEFT_PROJECTED],
+  [`PUT ${RECORDS_PATH}/:id`]: [...change('update'), IMMUTABLE, SELF_HIDDEN, LEFT_PROJECTED],
+  [`POST ${RECORDS_PATH}/end`]: [...change('update', 'end'), SELF_HIDDEN, LEFT_PROJECTED],
   [`DELETE ${RECORDS_PATH}/:id`]: [...change('delete'), SELF_HIDDEN],
   [`GET ${BASE}/successor-candidates`]: [...candidates('create'), ...candidates('update')],
 };
@@ -274,7 +288,7 @@ Object.assign(SUCCESSION, {
         },
         {
           role: 'scope',
-          unit: `${S}/risk-store.ts#riskRead`,
+          unit: `${S}/risk-store.ts#readRiskRows`,
           anchor: 'scopeSql(scope, { org: sql`p.org_id`, creator: sql`r.assigned_by` })',
         },
         { role: 'scope', unit: `${S}/position-map.ts#positionRiskCards`, anchor: 'if (!permitted.has(id)) return []' },
@@ -352,8 +366,8 @@ Object.assign(SUCCESSION, {
       at: [
         {
           role: 'call',
-          unit: `${S}/map-routes.ts#mapAccess`,
-          anchor: "await button(bound, ctx, codeOf('map'), 'computeStats', 'list')",
+          unit: `${S}/map-routes.ts#computeAccess`,
+          anchor: "await button(bound, access.ctx, codeOf('map'), 'computeStats', 'list')",
         },
         {
           role: 'impl',

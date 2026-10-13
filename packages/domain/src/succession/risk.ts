@@ -10,8 +10,9 @@ export interface RiskPerson {
   id: string;
   [field: string]: RiskValue;
 }
+export type RiskSourceState = { status: 'available' } | { status: 'forbidden' | 'unavailable' };
 export interface RiskPopulation {
-  sources?: Readonly<Record<string, RiskValue>>;
+  sources?: Readonly<Record<string, RiskSourceState>>;
   incumbents: readonly RiskPerson[];
   successors: readonly RiskPerson[];
 }
@@ -38,10 +39,12 @@ export function riskMeasure(row: SuccessionLevelRow, population: RiskPopulation,
   const people = row.subject === 'incumbent' ? population.incumbents : population.successors;
   // §4.1：来源状态独立于人口；先统一验权 / 验源，再允许空人口和零分母成为 EMPTY。
   if (row.fieldCode) {
-    for (const value of [population.sources?.[row.fieldCode], ...people.map((p) => p[row.fieldCode!])])
+    const source = population.sources?.[row.fieldCode];
+    if (source?.status !== 'available')
+      throw new RiskFailure(source?.status === 'forbidden' ? 'FIELD_FORBIDDEN' : 'DATA_UNAVAILABLE', row.rowNo);
+    for (const value of people.map((p) => p[row.fieldCode!]))
       if (value && typeof value === 'object' && 'status' in value)
         throw new RiskFailure(value.status === 'forbidden' ? 'FIELD_FORBIDDEN' : 'DATA_UNAVAILABLE', row.rowNo);
-    if (row.fieldCode === 'work_years') throw new RiskFailure('DATA_UNAVAILABLE', row.rowNo); // DEC-452 / F-100
   }
   let denominator = 1;
   if (row.measure === 'count_over_incumbents') denominator = population.incumbents.length;

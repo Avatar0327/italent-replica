@@ -1,4 +1,6 @@
-import { registrationGate, compareRegisteredDeclarations } from './support/route-policy/registration.js';
+import { REQUIRED } from './support/route-policy/required/index.js';
+import { fw02Checks } from './support/route-policy/local-checks/fw-02.js';
+
 /**
  * AC-PRM-FW-02（F-039 PR-A，docs/08_设计/F-039_权限框架强制_设计.md §4.2 / §4.4 限定版；DEC-300 / DEC-303）：
  * 现状必测基准与声明的反向比较。基准**不读声明**，由三部分生成并冻结在 support/route-policy/baseline/observed-contract.json：
@@ -134,9 +136,9 @@ describe('AC-PRM-FW-02 现状必测基准（独立于声明）', () => {
 
 describe('AC-PRM-FW-02 声明 vs 基准比较', () => {
   it('真实声明不弱于基准，也不多于基准（双向零发现）', () => {
-    // F-090：过度声明（OVERDECLARED:*）属“登记与源码不一致”，默认只警告；弱化 / 身份不符照旧判红
-    const findings = registrationGate(compareRegisteredDeclarations(frozen, manifest.declared), '真实声明 × 基准');
-    expect(findings, findings.map((f) => `${f.route} ${f.code}: ${f.detail}`).join('\n')).toEqual([]);
+    fw02Checks({ table: REQUIRED, routes: manifest.declared, contract: frozen })
+      .find((check) => check.id === 'declarations')!
+      .verify();
   });
 
   it('过度声明：给没有守卫的路由加 guards → OVERDECLARED:guard；public 改成 member → 身份不符', () => {
@@ -218,6 +220,7 @@ describe('AC-PRM-FW-02 突变套件：第 5 轮列出的每类削弱都被报出
       0,
     );
     const mutants = manifest.declared.flatMap((route) => mutantsOf(route, frozen));
+
     const byName = Object.fromEntries(MUTATIONS.map((m) => [m.name, mutants.filter((x) => x.name === m.name).length]));
     const summary = { routes: manifest.declared.length, facts, domains: Object.keys(frozen.domains).length };
     console.info(JSON.stringify({ ...summary, mutants: mutants.length, byName }));

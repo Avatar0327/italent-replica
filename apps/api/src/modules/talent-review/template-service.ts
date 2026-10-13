@@ -27,6 +27,7 @@ import { requireCreatable, requireEditable, type TemplateAnchor } from './templa
 import { buildPlan, checkTemplateReferences, type TemplateWriteContext, writeVersion } from './template-structure.js';
 import { loadTemplate, type TemplateView } from './template-view.js';
 
+import { copyPlan } from './template-copy.js';
 import { loadFullCatalog } from './calc-rule-catalog.js';
 
 const invalid = (reason: string, message: string) => new AppError('VALIDATION_FAILED', message, { reason });
@@ -121,6 +122,36 @@ export async function createTemplate(tx: Tx, ctx: TemplateWriteContext, input: T
         downwardPublic: input.downwardPublic ?? false,
         flowId: plan.flowId,
         enabled: input.enabled ?? false,
+        currentVersionNo: 1,
+        createdBy: ctx.userId,
+        updatedBy: ctx.userId,
+        createdAt: ctx.now,
+        updatedAt: ctx.now,
+      })
+      .returning({ id: T.id }),
+  );
+  await writeVersion(tx, ctx, created!.id, 1, plan);
+  const after = (await loadTemplate(tx, ctx.tenantId, created!.id))!;
+  await audit(tx, ctx, 'create', after.id, null, after);
+  return after;
+}
+
+/** 复制持有原件行锁，revision 校验与冻结结构读取在同一事务，不与原件编辑混读。 */
+export async function copyTemplate(tx: Tx, ctx: TemplateWriteContext, id: string, name: string): Promise<TemplateView> {
+  await lockTemplate(tx, ctx, id);
+  const source = (await loadTemplate(tx, ctx.tenantId, id))!;
+  requireCreatable(ctx.scope, source.ownerOrgId);
+  const plan = await copyPlan(tx, ctx, source);
+  const [created] = await uniqueOr('TEMPLATE_DUPLICATE', '盘点模板', () =>
+    tx
+      .insert(T)
+      .values({
+        tenantId: ctx.tenantId,
+        name,
+        ownerOrgId: source.ownerOrgId,
+        downwardPublic: source.downwardPublic,
+        flowId: null,
+        enabled: false,
         currentVersionNo: 1,
         createdBy: ctx.userId,
         updatedBy: ctx.userId,
