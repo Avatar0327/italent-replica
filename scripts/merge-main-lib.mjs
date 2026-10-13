@@ -6,6 +6,8 @@
 // - 授权版本合并时定号（DEC-439④）：STANDARD_GRANT_VERSION / DIGEST 与版本历史 HISTORY 由合并结果决定，
 //   本分支改了授权项编码就定为 main + 1 并用合并后的指纹，没改就取 main 的值。
 
+import { createHash } from 'node:crypto';
+
 const MIGRATIONS = 'packages/db/migrations';
 const ROUTE_POLICY = 'tests/acceptance/support/route-policy';
 
@@ -37,26 +39,138 @@ export const sqlPath = (tag) => `${MIGRATIONS}/${tag}.sql`;
 const retag = (tag, idx) => `${pad4(idx)}${tag.replace(/^\d+/, '')}`;
 
 /**
- * 迁移重新编号：branchJournal 里 tag 不在 mainJournal 的条目是本分支自己的迁移，按原顺序接在 main 之后。
- * 返回新 journal（main 全部条目 + 改号后的本分支条目）和改号清单 renames。
+ * SQL 是不是“空迁移”：只有空白、分号、行注释（`--` 到行尾）和块注释（斜杠星号开头、星号斜杠结尾，PostgreSQL 允许嵌套）。
+ * 词法扫描，不用正则剥注释：双横线之后的内容属行注释，其中的斜杠星号不会开启块注释，所以被“-- 斜杠星号”和“-- 星号斜杠”两行包住的语句仍是语句；
+ * 块注释按嵌套深度配对。遇到任何其他字符（语句、引号、dollar quote、单个 `/` 等）立即判定有内容，不需要解析引号内部。
+ * drizzle 的 `--> statement-breakpoint` 以 `--` 开头，按行注释处理（是语句分隔标记，不是语句）。
+ * 没有结尾的块注释按空处理（保守：不参与去重，不会被误删）。
  */
-export function planRenumber(mainJournal, branchJournal) {
+export function isBlankSql(text) {
+  let i = 0;
+  while (i < text.length) {
+    const two = text.slice(i, i + 2);
+    if (/\s/.test(text[i]) || text[i] === ';') i += 1;
+    else if (two === '--') {
+      const end = text.slice(i).search(/[\r\n]/);
+      if (end < 0) return true;
+      i += end + 1;
+    } else if (two === '/*') {
+      let depth = 1;
+      i += 2;
+      while (i < text.length && depth > 0) {
+        const pair = text.slice(i, i + 2);
+        if (pair === '/*') depth += 1;
+        else if (pair === '*/') depth -= 1;
+        i += pair === '/*' || pair === '*/' ? 2 : 1;
+      }
+    } else return false;
+  }
+  return true;
+}
+
+/**
+ * SQL 内容摘要：原始内容（不做规范化）的 sha256 十六进制。引号、dollar quote 内部的空白与换行是内容，
+ * 任何规范化都可能把不同的迁移抹成相同；改号只改文件名，内容逐字节不变，所以直接比原始内容。
+ * 读不到或是空迁移（isBlankSql）返回 undefined：不能拿“没内容”当“相同”。
+ */
+export function sqlDigest(text) {
+  if (text === undefined || isBlankSql(text)) return undefined;
+  return createHash('sha256').update(text).digest('hex');
+}
+
+/** 清理清单的输出行：旧名 → main 名 + sha256，便于在 PR 评论留证（--check 与正式运行都输出）。 */
+export const formatStale = (stale) =>
+  stale.map(({ from, mainEntry, digest }) => `${from.tag} → ${mainEntry.tag}  sha256=${digest}`);
+
+/**
+ * 保留（改号）的迁移与 main 之间的快照身份检查：快照 id 是迁移的身份，改号不改 id。保留项的快照 id 若与 main 上某条、
+ * 或与其他保留项重复，说明它其实是同一条迁移（例如叠放分支带着的上游旧名迁移，SQL 摘要因已提交的格式漂移与 main 不同而没被识别），
+ * 保留会让同一条迁移执行两遍，并让快照链出现重复 id（与 main 最新一条重复时是 id = prevId 自环）。
+ * 返回问题清单（空 = 通过）：每条列出文件对与 SQL 摘要，脚本据此停下交人工；不放宽摘要口径。
+ * digestOf(side, tag) 读对应 SQL 的摘要（可不传）。
+ */
+export function checkSnapshotIdentity({ main, kept, mainLastId, digestOf = () => undefined }) {
+  const show = (side, tag) => `${tag}.sql（sha256=${digestOf(side, tag) ?? '无：空迁移或读不到'}）`;
+  const problems = [];
+  const mainById = new Map(main.filter((e) => e.id !== undefined).map((e) => [e.id, e]));
+  const seen = new Map();
+  for (const entry of kept) {
+    if (entry.id === undefined) continue;
+    const other = mainById.get(entry.id);
+    const earlier = seen.get(entry.id);
+    if (other) {
+      const loop = entry.id === mainLastId ? '；保留它会让新快照 id = prevId 形成自环' : '';
+      problems.push(
+        `快照 id ${entry.id} 重复：本分支 ${show('branch', entry.tag)} 与 main 的 ${show('main', other.tag)}，` +
+          `SQL 摘要${digestOf('branch', entry.tag) === digestOf('main', other.tag) ? '相同' : '不同'}${loop}`,
+      );
+    } else if (earlier) {
+      problems.push(`快照 id ${entry.id} 重复：本分支 ${show('branch', earlier.tag)} 与 ${show('branch', entry.tag)}`);
+    }
+    if (!earlier) seen.set(entry.id, entry);
+  }
+  return problems;
+}
+
+/**
+ * 迁移重新编号：branchJournal 里 tag 不在 mainJournal 的条目是本分支自己的迁移，按原顺序接在 main 之后。
+ * 叠放 PR（base 是另一个未合并的 PR 分支）会带着上游合并前的旧名迁移：它们与 main 上改号后的迁移 SQL 逐字节相同，
+ * 这类条目记入 stale（清理旧名 SQL / 快照 / journal 条目，不改号），只有真正新增的才进 renames。
+ * sql.main / sql.branch 按 tag 读迁移 SQL 文本；不传或读不到则该条目只按名字比对。
+ * 必须一一对应：同一份内容在旧名一侧或 main 一侧出现多次（一对多 / 多对一）时抛错，不清理；
+ * 本分支已带着的 main 同名迁移不参与匹配；空迁移 / 只有注释的迁移不参与去重（见 sqlDigest）。
+ * 返回新 journal（main 全部条目 + 改号后的本分支条目）、改号清单 renames 和已合并清单 stale（带 sha256）。
+ */
+export function planRenumber(mainJournal, branchJournal, sql = {}) {
   const mainTags = new Set(mainJournal.entries.map((e) => e.tag));
-  const own = branchJournal.entries.filter((e) => !mainTags.has(e.tag));
+  const branchTags = new Set(branchJournal.entries.map((e) => e.tag));
+  const added = branchJournal.entries.filter((e) => !mainTags.has(e.tag));
+  const byDigest = (entries, read) => {
+    const groups = new Map();
+    for (const entry of entries) {
+      const digest = sqlDigest(read(entry.tag));
+      if (digest !== undefined) groups.set(digest, [...(groups.get(digest) ?? []), entry]);
+    }
+    return groups;
+  };
+  const addedGroups = added.length && sql.main && sql.branch ? byDigest(added, sql.branch) : new Map();
+  const mainGroups = addedGroups.size
+    ? byDigest(
+        mainJournal.entries.filter((e) => !branchTags.has(e.tag)),
+        sql.main,
+      )
+    : new Map();
+  const stale = [];
+  for (const [digest, olds] of addedGroups) {
+    const mains = mainGroups.get(digest);
+    if (!mains) continue;
+    if (olds.length > 1 || mains.length > 1)
+      throw new Error(
+        `旧名迁移 ${olds.map((e) => e.tag).join('、')} 与 main 上的 ${mains.map((e) => e.tag).join('、')} ` +
+          `的 SQL 内容相同（sha256=${digest}），但不是一一对应（一对多或多对一），不自动清理，须人工处理`,
+      );
+    stale.push({ from: olds[0], mainEntry: mains[0], digest });
+  }
+  const staleTags = new Set(stale.map((s) => s.from.tag));
+  stale.sort((a, b) => a.from.idx - b.from.idx);
+  const own = added.filter((e) => !staleTags.has(e.tag));
   const last = mainJournal.entries.at(-1);
   let idx = last ? last.idx : -1;
   let when = last ? last.when : 0;
   const renames = own.map((entry) => {
     idx += 1;
     when = Math.max(entry.when, when + 1);
-    return { from: entry, to: { ...entry, idx, when, tag: retag(entry.tag, idx) } };
+    // baseIdx：本分支 journal 里它的前一条（已合并的旧名条目也算），快照增量以它为基准
+    const at = branchJournal.entries.indexOf(entry);
+    const baseIdx = at > 0 ? branchJournal.entries[at - 1].idx : undefined;
+    return { from: entry, to: { ...entry, idx, when, tag: retag(entry.tag, idx) }, baseIdx };
   });
   const journal = { ...mainJournal, entries: [...mainJournal.entries, ...renames.map((r) => r.to)] };
-  const changed = renames.some((r) => r.from.idx !== r.to.idx || r.from.when !== r.to.when);
-  // 分叉点：本分支第一条自己的迁移之前那一条（它的快照是本分支快照改动的基准）
+  const changed = stale.length > 0 || renames.some((r) => r.from.idx !== r.to.idx || r.from.when !== r.to.when);
+  // 分叉点：本分支第一条自己的迁移之前那一条（它的快照是本分支快照改动的基准；可能是已合并的旧名条目，快照含上游改动）
   const firstOwn = own.length ? branchJournal.entries.indexOf(own[0]) : -1;
   const forkIdx = firstOwn > 0 ? branchJournal.entries[firstOwn - 1].idx : undefined;
-  return { journal, renames, changed, forkIdx };
+  return { journal, renames, stale, changed, forkIdx };
 }
 
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -80,16 +194,21 @@ export function merge3(base, ours, theirs, at = '') {
 }
 
 /**
- * 本分支快照改接到 main 最新快照：每个快照的结构 = merge3(分叉前快照, 本分支快照, main 最新快照)；
+ * 本分支快照改接到 main 最新快照：逐条把“该迁移相对本分支 journal 里前一条的增量”叠到当前结果上，
+ * 第一条叠在 main 最新快照上，之后每条叠在上一条的结果上：结构 = merge3(前一条快照, 本分支快照, 当前结果)。
+ * bases[i] 是第 i 条新增迁移在本分支 journal 里的前一条的快照；不传则认为新增迁移连续（bases = [分叉前快照, own[0], own[1], …]）。
+ * 新增迁移之间夹着已合并的旧名迁移（U1→N1→U2→N2）时必须传，否则已合并的上游变化会被当成本分支的改动重算。
  * id 保留本分支的，prevId 第一个指向 main 最新快照，其余沿本分支链。
  */
-export function rebaseSnapshots(forkSnapshot, ownSnapshots, mainLast) {
+export function rebaseSnapshots(forkSnapshot, ownSnapshots, mainLast, bases = [forkSnapshot, ...ownSnapshots]) {
   const strip = ({ id: _id, prevId: _prev, ...rest }) => rest;
   const conflicts = [];
   let prevId = mainLast.id;
-  const snapshots = ownSnapshots.map((snapshot) => {
-    const merged = merge3(strip(forkSnapshot), strip(snapshot), strip(mainLast));
+  let current = strip(mainLast);
+  const snapshots = ownSnapshots.map((snapshot, i) => {
+    const merged = merge3(strip(bases[i]), strip(snapshot), current);
     conflicts.push(...merged.conflicts.map((c) => `${snapshot.id}: ${c}`));
+    current = merged.value;
     const out = { id: snapshot.id, prevId, ...merged.value };
     prevId = snapshot.id;
     return out;

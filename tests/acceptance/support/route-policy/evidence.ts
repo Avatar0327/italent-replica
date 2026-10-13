@@ -112,10 +112,18 @@ export const REGISTRY: Registry = evidenceStrict() ? STORED_REGISTRY : syncedReg
 
 /** 锚点是否出现在单元里：按词法记号序列比较；锚点落在字符串 / 模板（如 SQL）里时，按该字面量空白折叠后的文本比较。 */
 export function containsAnchor(unit: string, anchor: string): boolean {
-  if (normalize(unit).includes(normalize(anchor))) return true;
+  if (normalizedUnit(unit).includes(normalize(anchor))) return true;
   const collapse = (s: string) => s.replace(/\s+/g, ' ').trim();
   const wanted = collapse(anchor);
   return tokens(unit).some((token) => /^['"`}]/.test(token) && collapse(token).includes(wanted));
+}
+
+const normalizedUnits = new Map<string, string>();
+/** 单元文本的规范化结果（按文本缓存：同一单元要和它名下的每个锚点比对，全表校验里重复扫描是主要耗时之一）。 */
+function normalizedUnit(unit: string): string {
+  let out = normalizedUnits.get(unit);
+  if (out === undefined) normalizedUnits.set(unit, (out = normalize(unit)));
+  return out;
 }
 
 /** 词法记号序列（跳过空白与注释；模板字符串按片段重扫），用空格连接。 */
@@ -265,7 +273,18 @@ const isUnitProblem = (error: unknown): error is EvidenceUnitError | EvidenceUni
 /** 证据单元写法错误（格式不对、指向登记表文件）：登记自身的错误，不是漂移，两种模式都判红（F-090）。 */
 export class EvidenceUnitInvalidError extends Error {}
 
+const unitTexts = new WeakMap<SourceReader, Map<string, string>>();
+
+/** 单元源码文本（按读取器缓存：登记解析与证据校验会对同一单元各查一遍，每次都要遍历整个文件的语法树）。 */
 export function unitText(read: SourceReader, unit: string): string {
+  let byUnit = unitTexts.get(read);
+  if (!byUnit) unitTexts.set(read, (byUnit = new Map()));
+  let text = byUnit.get(unit);
+  if (text === undefined) byUnit.set(unit, (text = locateUnitText(read, unit)));
+  return text;
+}
+
+function locateUnitText(read: SourceReader, unit: string): string {
   const [file = '', name = ''] = unit.split('#');
   if (!file || !name) throw new EvidenceUnitInvalidError(`证据单元格式应为 文件#名字：${unit}`);
   if (/(^|\/)(app-)?policy\.ts$/.test(file)) throw new EvidenceUnitInvalidError(`证据不得指向登记表文件：${unit}`);
