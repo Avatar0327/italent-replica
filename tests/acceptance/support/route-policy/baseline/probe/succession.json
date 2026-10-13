@@ -208,17 +208,20 @@
     "fieldQueries": [
       "fields:Succession.HealthResult",
       "fields:Succession.Map",
-      "fields:Succession.Record"
+      "fields:Succession.Record",
+      "fields:Succession.RiskResult"
     ],
     "scopeQueries": [
       "scope:SuccessionAndDevelopment/Succession.HealthResult/-",
       "scope:SuccessionAndDevelopment/Succession.Map/Succession.Map.list",
-      "scope:SuccessionAndDevelopment/Succession.Record/-"
+      "scope:SuccessionAndDevelopment/Succession.Record/-",
+      "scope:SuccessionAndDevelopment/Succession.RiskResult/-"
     ],
     "trace": [
       "obj:Succession.HealthResult:view",
       "obj:Succession.Map:view",
-      "obj:Succession.Record:view"
+      "obj:Succession.Record:view",
+      "obj:Succession.RiskResult:view"
     ]
   },
   "GET /api/tenant/succession/populations": {

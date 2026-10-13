@@ -207,6 +207,7 @@ export const SUCCESSION: RequiredTable = {
     ].map((item): Obligation => ({
       perm: `obj:Succession.${item.object}:view`,
       purpose: `disclosure:${item.branch}`,
+      facts: ['object:object.* 动作'],
       need: { scope: 'list', predicate: item.predicate },
       at: [
         {
@@ -571,7 +572,7 @@ function healthRequired(mode: 'read' | 'assign' | 'reset' | 'compute'): Obligati
   const obligations: Obligation[] = [
     {
       perm: `obj:Succession.${code}:${operation}`,
-      facts: ['object:objectContext'],
+      facts: mode === 'read' ? ['object:objectContext', 'object:object.* 动作'] : ['object:objectContext'],
       need:
         mode === 'read'
           ? { scope: 'list' }
@@ -580,6 +581,15 @@ function healthRequired(mode: 'read' | 'assign' | 'reset' | 'compute'): Obligati
         { role: 'call', unit, anchor },
         ...CONTEXT,
         constant,
+        ...(mode === 'read'
+          ? [
+              {
+                role: 'impl' as const,
+                unit: `${S}/health-results.ts#healthAccess`,
+                anchor: "action: 'object.view', resource: codeOf('healthResult')",
+              },
+            ]
+          : []),
         {
           role: 'scope',
           unit: queue ? `${S}/health-routes.ts#queueResults` : `${S}/health-results.ts#readHealthResults`,
