@@ -83,6 +83,36 @@ export const formatStale = (stale) =>
   stale.map(({ from, mainEntry, digest }) => `${from.tag} → ${mainEntry.tag}  sha256=${digest}`);
 
 /**
+ * 保留（改号）的迁移与 main 之间的快照身份检查：快照 id 是迁移的身份，改号不改 id。保留项的快照 id 若与 main 上某条、
+ * 或与其他保留项重复，说明它其实是同一条迁移（例如叠放分支带着的上游旧名迁移，SQL 摘要因已提交的格式漂移与 main 不同而没被识别），
+ * 保留会让同一条迁移执行两遍，并让快照链出现重复 id（与 main 最新一条重复时是 id = prevId 自环）。
+ * 返回问题清单（空 = 通过）：每条列出文件对与 SQL 摘要，脚本据此停下交人工；不放宽摘要口径。
+ * digestOf(side, tag) 读对应 SQL 的摘要（可不传）。
+ */
+export function checkSnapshotIdentity({ main, kept, mainLastId, digestOf = () => undefined }) {
+  const show = (side, tag) => `${tag}.sql（sha256=${digestOf(side, tag) ?? '无：空迁移或读不到'}）`;
+  const problems = [];
+  const mainById = new Map(main.filter((e) => e.id !== undefined).map((e) => [e.id, e]));
+  const seen = new Map();
+  for (const entry of kept) {
+    if (entry.id === undefined) continue;
+    const other = mainById.get(entry.id);
+    const earlier = seen.get(entry.id);
+    if (other) {
+      const loop = entry.id === mainLastId ? '；保留它会让新快照 id = prevId 形成自环' : '';
+      problems.push(
+        `快照 id ${entry.id} 重复：本分支 ${show('branch', entry.tag)} 与 main 的 ${show('main', other.tag)}，` +
+          `SQL 摘要${digestOf('branch', entry.tag) === digestOf('main', other.tag) ? '相同' : '不同'}${loop}`,
+      );
+    } else if (earlier) {
+      problems.push(`快照 id ${entry.id} 重复：本分支 ${show('branch', earlier.tag)} 与 ${show('branch', entry.tag)}`);
+    }
+    if (!earlier) seen.set(entry.id, entry);
+  }
+  return problems;
+}
+
+/**
  * 迁移重新编号：branchJournal 里 tag 不在 mainJournal 的条目是本分支自己的迁移，按原顺序接在 main 之后。
  * 叠放 PR（base 是另一个未合并的 PR 分支）会带着上游合并前的旧名迁移：它们与 main 上改号后的迁移 SQL 逐字节相同，
  * 这类条目记入 stale（清理旧名 SQL / 快照 / journal 条目，不改号），只有真正新增的才进 renames。

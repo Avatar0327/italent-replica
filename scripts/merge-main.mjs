@@ -18,6 +18,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  checkSnapshotIdentity,
   classifyConflict,
   describeGrantPlan,
   drizzleJson,
@@ -36,6 +37,7 @@ import {
   resolveGrantConflict,
   rebaseSnapshots,
   snapshotPath,
+  sqlDigest,
   sqlPath,
   takeOursForCounts,
   writeGrantConstants,
@@ -303,17 +305,37 @@ function migrationPlan() {
   const mainJournal = json(MAIN, JOURNAL_PATH);
   const branchJournal = json('HEAD', JOURNAL_PATH);
   if (!mainJournal || !branchJournal) fail(`读不到 ${JOURNAL_PATH}`);
+  const sql = {
+    main: (tag) => show(MAIN, sqlPath(tag)),
+    branch: (tag) => show('HEAD', sqlPath(tag)),
+  };
   try {
-    return planRenumber(mainJournal, branchJournal, {
-      main: (tag) => show(MAIN, sqlPath(tag)),
-      branch: (tag) => show('HEAD', sqlPath(tag)),
-    });
+    const plan = planRenumber(mainJournal, branchJournal, sql);
+    return { ...plan, identityProblems: identityProblems(plan, mainJournal, sql) };
   } catch (error) {
     return fail(`迁移改号计划失败：${error.message}`);
   }
 }
 
+/** 保留（改号）的迁移的快照 id 不能与 main 或彼此重复（见 checkSnapshotIdentity）；读 main 全部快照 id 只在有改号时做。 */
+function identityProblems(plan, mainJournal, sql) {
+  if (!plan.renames.length) return [];
+  const idOf = (rev, idx) => json(rev, snapshotPath(idx))?.id;
+  return checkSnapshotIdentity({
+    main: mainJournal.entries.map((e) => ({ tag: e.tag, id: idOf(MAIN, e.idx) })),
+    kept: plan.renames.map(({ from }) => ({ tag: from.tag, id: idOf('HEAD', from.idx) })),
+    mainLastId: idOf(MAIN, mainJournal.entries.at(-1).idx),
+    digestOf: (side, tag) => sqlDigest(sql[side](tag)),
+  });
+}
+
 function printPlan(plan) {
+  if (plan.identityProblems.length)
+    console.log(
+      `迁移：以下保留项的快照身份与 main 或彼此重复（可能是格式漂移使 SQL 摘要不同的旧名迁移），须人工处理：\n${plan.identityProblems
+        .map((line) => `  ${line}`)
+        .join('\n')}`,
+    );
   if (plan.stale.length)
     console.log(
       `迁移：以下旧名迁移的 SQL 与 main 上已改号的迁移相同（上游已合并），清理、不改号（旧名 → main 名 sha256=SQL 原始内容摘要）：\n${formatStale(
@@ -422,10 +444,11 @@ async function check() {
   printConflicts(conflicts);
   if (grants.length) console.log(`授权版本冲突（合并时自动定号）：\n  ${grants.join('\n  ')}`);
   if (conflicts.other.length) printCountHint(countOnlyConflicts(conflicts.other, ['HEAD', base, MAIN]));
-  printPlan(migrationPlan());
+  const plan = migrationPlan();
+  printPlan(plan);
   await printGrantPlan(base, upToDate);
   console.log(`生成物白名单：\n  ${GENERATED_PATHS.join('\n  ')}`);
-  process.exit(conflicts.other.length ? 1 : 0);
+  process.exit(conflicts.other.length || plan.identityProblems.length ? 1 : 0);
 }
 
 function startMerge() {
@@ -461,6 +484,8 @@ async function main() {
   }
   const plan = migrationPlan();
   printPlan(plan);
+  if (plan.identityProblems.length)
+    fail('保留迁移的快照身份重复（见上），未改号；人工处理后运行 pnpm merge:main --continue');
   if (plan.changed) applyRenumber(plan);
   await assignGrantVersion().catch((error) =>
     fail(`授权版本定号失败：${error.message}\n请人工处理后运行 pnpm merge:main --continue`),
