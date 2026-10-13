@@ -1,5 +1,5 @@
 import { ORG_DIMENSIONS, type OrgDimension } from '@italent/domain';
-import type { PageRequest } from '../foundation/client.js';
+import { ApiError, type PageRequest } from '../foundation/client.js';
 import { m } from './messages.js';
 export interface AdminMenu {
   code: string;
@@ -45,7 +45,7 @@ export function userInput(values: Record<string, unknown>) {
     email.length > 320 ||
     values.userType === 'internal'
   )
-    throw new Error(m.invalid);
+    throw new ApiError(400, 'VALIDATION_ERROR', 'fields', m.invalid);
   return { displayName, email, businessIdentity, userType: 'external' };
 }
 export interface OrgRange {
@@ -74,7 +74,7 @@ export function scopeInput(values: Record<string, unknown>) {
     )
   )
     return { kind: 'org_range', orgRanges: values.orgRanges as OrgRange[] };
-  throw new Error(m.invalid);
+  throw new ApiError(400, 'VALIDATION_ERROR', 'fields', m.invalid);
 }
 export interface User {
   userId: string;
