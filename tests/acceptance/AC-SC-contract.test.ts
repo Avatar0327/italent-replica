@@ -217,9 +217,8 @@ describe('审计（§8.4；DEC-197 / 216）', () => {
     for (const definition of Object.values(O)) expect(auditObjectMeta(definition.code).app).toBe('继任与发展');
   });
 
-  it('会写审计的对象类型都已登记查看规则；不写审计的地图不登记（fail-closed）', () => {
-    for (const key of Object.keys(O) as (keyof typeof O)[])
-      expect(auditObjectRegistered(O[key].code), key).toBe(key !== 'map');
+  it('会写审计的对象类型都已登记查看规则，包含 C1 个人筛选与组织统计', () => {
+    for (const key of Object.keys(O) as (keyof typeof O)[]) expect(auditObjectRegistered(O[key].code), key).toBe(true);
   });
 
   async function auditWorld() {

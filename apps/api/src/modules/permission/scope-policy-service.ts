@@ -1,3 +1,4 @@
+import { permissionSet } from './sets.js';
 import { PERSONNEL_SCOPE_FIELDS } from '@italent/domain';
 /** 显式范围配置；身份绕过必须由租户管理员授予，空配置始终 fail-closed。 */
 import {
@@ -167,14 +168,13 @@ export const scopeAppBody = z.strictObject({
 
 export async function getScopeApp(tx: Tx, appCode: string) {
   const [row] = await tx.select().from(permissionScopeApps).where(eq(permissionScopeApps.appCode, appCode));
-  return (
-    row ?? {
-      appCode,
-      family: appCode === 'TenantBase' ? 'hr' : 'other',
-      allowedKinds: appCode === 'TenantBase' ? ['default', 'mou', 'org_range'] : ['default', 'mou'],
-      revision: 0,
-    }
-  );
+  const scope = row ?? {
+    appCode,
+    family: appCode === 'TenantBase' ? 'hr' : 'other',
+    allowedKinds: appCode === 'TenantBase' ? ['default', 'mou', 'org_range'] : ['default', 'mou'],
+    revision: 0,
+  };
+  return { ...scope, allowedKinds: permissionSet(scope.allowedKinds) };
 }
 
 export async function setScopeApp(
@@ -203,7 +203,7 @@ export async function setScopeApp(
     before,
     after,
   });
-  return after!;
+  return { ...after!, allowedKinds: permissionSet(after!.allowedKinds) };
 }
 
 /** 删除关系也保留版本号，防止旧 If-Match:0 在重建后再次生效（ABA）。 */
@@ -367,7 +367,7 @@ export async function getScopePolicy(tx: Tx, key: PolicyKey) {
     .where(eq(permissionScopePolicyRules.policyId, policy.id))
     .orderBy(permissionScopePolicyRules.id)
     .limit(21);
-  return { ...policy, configured: true, rules };
+  return { ...policy, configured: true, rules: permissionSet(rules, ['dimension', 'roleCode', 'relationMode']) };
 }
 
 export async function setScopePolicy(

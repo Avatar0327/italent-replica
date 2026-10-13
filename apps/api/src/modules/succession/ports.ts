@@ -8,14 +8,21 @@ import type { SQL } from 'drizzle-orm';
 import { registerOrgHealthComputePort, type OrgHealthComputePort } from '../talent-review/health-port.js';
 import { loadIncumbentIds, loadPeople, rowsOf, type PersonView } from './read-sql.js';
 import { healthComputePort, type HealthReads, type HealthComputeHost } from './health-compute.js';
+import { createInMemoryTalentReviewSyncPort } from '../talent-review/sync-port-memory.js';
 
 export interface SuccessionPorts {
+  readonly riskPartTimeIncumbents?: (ctx: SuccessionReadContext, positionId: string) => Promise<readonly string[]>;
   readonly orgHealthCompute?: OrgHealthComputePort;
   readonly reviewReads?: HealthReads;
   readonly healthComputeHost?: HealthComputeHost;
 }
 
 export const SUCCESSION_PORTS: SuccessionPorts = { orgHealthCompute: healthComputePort };
+
+/** T04 PR-D 真实端口接线前按 SP-18 替身取数，无来源返回 unavailable / null，不伪造 0%。 */
+export function successionReviewReads(tenantId: string) {
+  return SUCCESSION_PORTS.reviewReads ?? createInMemoryTalentReviewSyncPort({ tenantId });
+}
 
 export function installSuccessionPorts(ports: SuccessionPorts = SUCCESSION_PORTS): void {
   if (ports.orgHealthCompute) registerOrgHealthComputePort(ports.orgHealthCompute);

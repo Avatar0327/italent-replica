@@ -1,3 +1,4 @@
+import { useSession } from '../foundation/Session.js';
 import { TransferApplication } from '../self-service/shared/TransferApplication.js';
 import { useState } from 'react';
 import { initialTenantId } from '../demo/tenant.js';
@@ -5,8 +6,10 @@ import { text } from './messages.js';
 import './transfer.css';
 
 export function TransferPage({ initiator = 'hr' }: { initiator?: 'hr' | 'employee' | 'manager' }) {
-  const [tenantId, setTenantId] = useState(initialTenantId);
-  const [activeTenant, setActiveTenant] = useState(initialTenantId);
+  const session = useSession();
+  const initialTenant = () => session.tenantId || initialTenantId();
+  const [tenantId, setTenantId] = useState(initialTenant);
+  const [activeTenant, setActiveTenant] = useState(initialTenant);
   return (
     <main className="transfer-page">
       <header className="transfer-header">
@@ -18,7 +21,12 @@ export function TransferPage({ initiator = 'hr' }: { initiator?: 'hr' | 'employe
       </header>
       {activeTenant ? (
         <>
-          <button className="transfer-tenant-change" type="button" onClick={() => setActiveTenant('')}>
+          <button
+            hidden={!!session.tenantId}
+            className="transfer-tenant-change"
+            type="button"
+            onClick={() => setActiveTenant('')}
+          >
             {text.tenantChange}
           </button>
           <TransferApplication key={activeTenant} tenantId={activeTenant} initiator={initiator} />

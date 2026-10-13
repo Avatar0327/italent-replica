@@ -62,7 +62,7 @@ export const GRAPH: Graph = {
   'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>role': ['#object'],
   'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>scoreRule': ['#object'],
   'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>settings': ['#object'],
-  'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>template': ['#object'],
+  'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>template': ['#crud', '#object'],
   'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_SEE_ALL_OBJECTS': [
     '#TALENT_REVIEW_CONFIG_OBJECTS',
     '#TALENT_REVIEW_SEE_ALL_UNAPPROVED',
@@ -177,6 +177,15 @@ export const GRAPH: Graph = {
   'packages/domain/src/talent-review/matrix.ts#checkExportOrder': ['#violation'],
   'packages/domain/src/talent-review/matrix.ts#checkOptionLevels': ['#violation'],
   'packages/domain/src/talent-review/matrix.ts#checkRatioRule': ['#violation'],
+  'packages/domain/src/talent-review/sync-outcomes.ts#FAILED_RULES': ['#BOTH', '#NONE', '#PLAN', '#param', '#scopeIn'],
+  'packages/domain/src/talent-review/sync-outcomes.ts#outcomeAllowed': [
+    '#ABORT_CODES',
+    '#FAILED_RULES',
+    '#SKIP_REASONS',
+    '#param',
+  ],
+  'packages/domain/src/talent-review/sync-outcomes.ts#outcomeTransition': ['#rowFinal', '#sameOutcome'],
+  'packages/domain/src/talent-review/sync-outcomes.ts#scopeIn': ['#param'],
   'packages/domain/src/talent-review/template.ts#checkByCount': ['#violation'],
   'packages/domain/src/talent-review/template.ts#checkFinalPermissions': ['#violation'],
   'packages/domain/src/talent-review/template.ts#checkModules': [

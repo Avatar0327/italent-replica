@@ -43,6 +43,19 @@ export function revoked(denied: SourceReadAuthorization['forbidden'], item: Sync
   const source = denied.sources.find((s) => s.objectId === item.objectId);
   return source ? { scope: 'source', ref: source.source } : undefined;
 }
+const TARGET_LEVEL_CODES = new Set(['TARGET_NOT_FOUND', 'TARGET_NOT_KEY_POSITION', 'TARGET_OUT_OF_SCOPE']);
+/**
+ * 整目标保存点回滚后的提名回执（设计 §5.7 回执映射，SP-14 R6）：目标级原因对全部 planned 提名同码，
+ * 但源撤权涉及的提名仍写 SOURCE_REVOKED，与对象行对同一撤权给出一致原因。
+ * 基础设施错误（可重试）不改写：撤权判定留待重试时的 validateItem。
+ */
+export function failedTarget(ctx: TargetContext, items: SyncItem[], failure: PlanFailure) {
+  const results: ItemResult[] = items.map((item) => {
+    const denied = TARGET_LEVEL_CODES.has(failure.code) ? revoked(ctx.denied, item) : undefined;
+    return { item, outcome: 'failed', failure: denied ? new PlanFailure('SOURCE_REVOKED', denied) : failure };
+  });
+  return { failure, ended: [] as string[], results };
+}
 async function validateItem(tx: Tx, ctx: TargetContext, item: SyncItem) {
   const denied = revoked(ctx.denied, item);
   if (denied) return new PlanFailure('SOURCE_REVOKED', denied);
