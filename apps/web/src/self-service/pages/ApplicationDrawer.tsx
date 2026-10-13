@@ -4,12 +4,13 @@ import type { Profile } from '../../employee-self-service/types.js';
 import { TransferApplication } from '../shared/TransferApplication.js';
 import type { ApplicationCommand } from '../shared/application-command.js';
 import { text as t } from '../../transfer/messages.js';
+import { useSession } from '../../foundation/Session.js';
 import { FormDrawer } from './parts.js';
 import { messages as m } from './messages.js';
 import { useApplicationCommand } from './useApplicationCommand.js';
 import { SavedApplication } from './SavedApplication.js';
 
-/** 必须在页面内常驻，不能放入随关闭卸载的 FormDrawer children。 */
+/** 抽屉只展示页面会话状态；关闭或切换路由都不能解锁未确认命令。 */
 export function ApplicationDrawer(props: {
   open: boolean;
   onClose(): void;
@@ -18,7 +19,9 @@ export function ApplicationDrawer(props: {
   onSaved?(): void;
 }) {
   const { profile, tenantId } = props;
-  const state = useApplicationCommand(profile ? props.onSaved : undefined);
+  const { identityKey } = useSession();
+  const scope = JSON.stringify([tenantId, identityKey, profile ? 'employee' : 'manager']);
+  const state = useApplicationCommand(scope, profile ? props.onSaved : undefined);
   const title = profile ? m.transfer : m.manager.apply;
   let content;
   if (state.pending) content = <PendingApplication command={state.pending} />;

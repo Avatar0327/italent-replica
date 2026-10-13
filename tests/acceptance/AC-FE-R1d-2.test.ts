@@ -20,13 +20,13 @@ const command: ApplicationCommand = {
   summary: { fields: { departmentId: 'synthetic-department' } },
 };
 const result: TransferBusiness = { id: 'synthetic-business', status: 'draft', revision: 3, employeeRevision: 7 };
-async function withState(check: (state: () => ReturnType<typeof Hook>) => Promise<void>) {
+async function withState(check: (state: () => ReturnType<typeof Hook>) => Promise<void>, scope = crypto.randomUUID()) {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   const host = document.createElement('div');
   const root = createRoot(host);
   let state: ReturnType<typeof Hook>;
   function Probe() {
-    state = useApplicationCommand();
+    state = useApplicationCommand(scope);
     return null;
   }
   try {
@@ -101,6 +101,27 @@ describe('AC-FE-R1d-2 页面级统一命令入口', () => {
         await expect(state().run(command, async () => ({ ...result, id: '' }))).rejects.toThrow();
       });
       expect(state().pending).toEqual(command);
+      expect(state().saved).toBeNull();
+    });
+  });
+  it('路由重挂载保留只读命令标记，其他租户身份入口作用域不继承', async () => {
+    const scope = crypto.randomUUID();
+    await withState(async (state) => {
+      await act(async () => {
+        await expect(
+          state().run(command, async () => {
+            throw new TypeError('network');
+          }),
+        ).rejects.toThrow();
+        state().clearConfirmed();
+      });
+      expect(state().pending).toEqual(command);
+    }, scope);
+    await withState(async (state) => {
+      expect(state().pending).toEqual(command);
+    }, scope);
+    await withState(async (state) => {
+      expect(state().pending).toBeNull();
       expect(state().saved).toBeNull();
     });
   });

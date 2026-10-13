@@ -144,6 +144,8 @@ test('AC-FE-R1d-2 经理暂存关闭重开读取完整原单，刷新草稿后�
   await expect(drawer).toContainText('提交暂存申请');
   const before = reads;
   await page.getByRole('button', { name: '关闭', exact: true }).click();
+  await page.locator('.service-nav a[href="/manager/todos"]').click();
+  await page.locator('.service-nav a[href="/manager/applications"]').click();
   await openForm(page, true);
   await expect.poll(() => reads).toBeGreaterThan(before);
   await expect(drawer).toContainText('合成草稿备注');
