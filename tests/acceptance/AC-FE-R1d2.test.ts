@@ -1,8 +1,19 @@
 import { describe, expect, it, vi } from 'vitest';
 import { settingsAccess, userInput, scopeInput, listPath } from '../../apps/web/src/settings/model.js';
 import { settingsApi } from '../../apps/web/src/settings/api.js';
+import { ApiError } from '../../apps/web/src/foundation/client.js';
 
 describe('AC-FE-R1d2 DEC-456 企业设置', () => {
+  it('本地校验失败能显示输入错误，不误报结果未知', () => {
+    for (const validate of [() => userInput({}), () => scopeInput({ kind: 'mou', mouId: 'invalid' })]) {
+      expect(validate).toThrow(ApiError);
+      try {
+        validate();
+      } catch (error) {
+        expect(error).toMatchObject({ kind: 'fields', code: 'VALIDATION_ERROR' });
+      }
+    }
+  });
   it('AC-PRM-01 菜单缺失默认拒绝，只读菜单不能写', () => {
     expect(settingsAccess([], 'users.all')).toEqual({ visible: false, editable: false });
     expect(settingsAccess([{ code: 'users.all', editable: false }], 'users.all')).toEqual({
