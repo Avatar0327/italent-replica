@@ -1,0 +1,79 @@
+/**
+ * F-120 第 2 轮返工（Codex 第 1 轮审查 3 项 P2，真实 HTTP 序列）：
+ * ① 同键重试结果未知时不得返回旧的确定失败；② 模块自有错误码按写接口实际状态返回，找不到映射为 null；
+ * ③ 命令 ID 在台账中属于他人（含 actor 为空的历史 / 系统行）一律 404，不回退到失败审计。
+ * 设计：docs/08_设计/F-120_本人命令结果查询_路由声明.md。
+ */
+import { randomUUID } from 'node:crypto';
+import { commandLedger, type Db } from '@italent/db';
+import { useTestDb } from '@italent/testkit';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { transferWorld } from './AC-TRF-manager-support.js';
+import { tenantApi } from './support/tenant-api.js';
+
+const database = useTestDb();
+const resultPath = (commandId: string) => `/api/tenant/commands/${commandId}/result`;
+const LOST = new Error('test rollback');
+
+/** 事务回调返回后若本命令的台账行已写入，就回滚并报告连接中断：模拟“提交请求已发出、结果没有回来”（提交阶段 unknown）。 */
+function lostCommitFor(db: Db, commandId: string): Db {
+  const wrapper = Object.create(db) as Db;
+  wrapper.transaction = (async (fn: Parameters<Db['transaction']>[0]) => {
+    try {
+      return await db.transaction(async (tx) => {
+        const value = await fn(tx);
+        // 非租户事务（无 app_user 角色）读台账会被拒：用保存点隔离，只在租户命令事务里判断
+        const written = await tx
+          .transaction(async (probe) => probe.select({ id: commandLedger.commandId }).from(commandLedger))
+          .catch(() => []);
+        if (written.some((row) => row.id === commandId)) throw LOST;
+        return value;
+      });
+    } catch (error) {
+      if (error !== LOST) throw error;
+      throw Object.assign(new Error('Connection terminated unexpectedly'), { code: 'ECONNRESET' });
+    }
+  }) as Db['transaction'];
+  return wrapper;
+}
+
+describe('F-120 第 2 轮：本人命令结果的归属与结果未知', () => {
+  let world: Awaited<ReturnType<typeof transferWorld>>;
+  const at = (iso: string) => () => new Date(iso);
+  const query = (commandId: string, as: { user: string; tenant: string }) =>
+    world.api.request('GET', resultPath(commandId), as);
+  const org = (api: ReturnType<typeof tenantApi>, commandId: string, body: object, as = world.asAdmin) =>
+    api.request('POST', '/api/tenant/org/organizations', { ...as, ifMatch: 0, idempotencyKey: commandId, body });
+  const validOrg = () => ({
+    name: `F-120 部门 ${randomUUID().slice(0, 8)}`,
+    establishedOn: '2025-01-01',
+    parents: { admin: { parentId: world.inside.id } },
+  });
+
+  beforeAll(async () => {
+    world = await transferWorld(database().db);
+  });
+
+  it('P2-1 同键重试结果未知：最新记录是 unknown 时返回 404，不返回旧的 failed；之后再确定失败则以最新为准', async () => {
+    const db = database().db;
+    const commandId = `f120-r2-unknown-${randomUUID()}`;
+    const first = await org(world.setup, commandId, {});
+    expect(first.status).toBe(400);
+    expect((await (await query(commandId, world.asAdmin)).json()) as object).toMatchObject({ status: 'failed' });
+
+    const lost = tenantApi(lostCommitFor(db, commandId), { clock: at('2026-10-01T02:00:00.000Z') });
+    const retry = await org(lost, commandId, validOrg());
+    expect(retry.status, await retry.clone().text()).toBe(503);
+    expect(((await retry.json()) as { error: { details?: { reason?: string } } }).error.details?.reason).toBe(
+      'RESULT_UNKNOWN',
+    );
+    const unknown = await query(commandId, world.asAdmin);
+    expect(unknown.status, await unknown.clone().text()).toBe(404);
+
+    const later = tenantApi(db, { clock: at('2026-10-01T03:00:00.000Z') });
+    expect((await org(later, commandId, {})).status).toBe(400);
+    const failed = await query(commandId, world.asAdmin);
+    expect(failed.status).toBe(200);
+    expect(await failed.json()).toMatchObject({ status: 'failed', httpStatus: 400 });
+  });
+});
