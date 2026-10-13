@@ -144,11 +144,13 @@ function ListPagination({
   changePage,
   loading,
 }: {
-  data: Pick<PageResult<unknown>, 'total' | 'hasMore'>;
+  data: Pick<PageResult<unknown>, 'total' | 'hasMore' | 'items'>;
   page: PageRequest;
   changePage(page: PageRequest): void;
   loading?: boolean;
 }) {
+  // 现有后端常只返回 items/page/pageSize：满页表示可能还有下一页，不据此捏造总数。
+  const hasNext = data.hasMore ?? data.items.length >= page.pageSize;
   return (
     <>
       {data.total !== undefined ? (
@@ -181,7 +183,7 @@ function ListPagination({
             {ui.previous}
           </Button>
           <span>{page.page}</span>
-          <Button disabled={!data.hasMore || loading} onClick={() => changePage({ ...page, page: page.page + 1 })}>
+          <Button disabled={!hasNext || loading} onClick={() => changePage({ ...page, page: page.page + 1 })}>
             {ui.next}
           </Button>
         </Space>

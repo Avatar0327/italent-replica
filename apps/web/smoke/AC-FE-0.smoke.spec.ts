@@ -53,6 +53,46 @@ test('AC-FE-0-06 旧路径保留参数与锚点，无权限页和未知页面均
   await expect(page.getByRole('status').getByText('页面或记录不存在', { exact: true })).toBeVisible();
 });
 
+for (const path of ['/job', '/jobs?page=2#list']) {
+  test(`AC-FE-0-07 只有职位权限仍能经 ${path} 进入职务体系`, async ({ page, baseURL }) => {
+    await page.context().addCookies([
+      { name: 'italent_demo_tenant', value: tenant, url: baseURL! },
+      { name: 'italent_demo_user', value: user, url: baseURL! },
+    ]);
+    await page.route('**/permission/me/objects/*', (route) => {
+      if (route.request().url().endsWith('/TenantBase.Position'))
+        return route.fulfill({
+          json: {
+            objectCode: 'TenantBase.Position',
+            dataOperations: {},
+            viewableFields: ['name'],
+            editableFields: [],
+            buttons: [],
+          },
+        });
+      return route.fulfill({ status: 403, json: { error: { code: 'FORBIDDEN' } } });
+    });
+    await page.route('**/job/positions?*', (route) =>
+      route.fulfill({
+        json: {
+          items: [{ id: 'position-example', name: '职位单权示例', revision: 1 }],
+          page: 1,
+          pageSize: 50,
+          hasDataPermission: true,
+          today: '2026-10-01',
+        },
+      }),
+    );
+    await page.goto(path);
+    await expect(page.getByRole('menuitem', { name: '职务体系', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '职务与职位', exact: true })).toBeVisible();
+    await expect(page.locator('.shell-workspace')).not.toContainText('暂无访问权限');
+    await page.getByRole('button', { name: '职位', exact: true }).click();
+    await expect(page.getByText('职位单权示例', { exact: true })).toBeVisible();
+    if (path.startsWith('/jobs')) await expect(page).toHaveURL(/\/job\?page=2#list$/);
+  });
+}
+
 test('AC-FE-0-09 无面包屑、视图标题、紧凑主题与可收起侧栏对齐原站', async ({ page }) => {
   await page.goto('/staff');
   await page.getByLabel('切换演示身份').selectOption(user);

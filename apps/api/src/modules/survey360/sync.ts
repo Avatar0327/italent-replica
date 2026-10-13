@@ -820,6 +820,27 @@ async function personOutcome(tx: Tx, admin: Admin, snapshot: EmployeeSnapshot): 
 }
 
 /**
+ * F-088 / DEC-408①：取锁前只读预判，沿用实际写入的快照与同步判定。plannedEmails 模拟本命令较早候选新建人员后的
+ * 邮箱占用，否则前几人共用邮箱时会提前耗尽名额、漏掉后面的合法候选。取锁后仍须取得当前写入许可。
+ */
+export async function previewPerson(
+  tx: Tx,
+  ctx: Survey360Context,
+  access: SyncAccess,
+  employeeId: string,
+  plannedEmails: Set<string>,
+): Promise<PersonRow | string | null> {
+  const snapshot = await snapshotIn(tx, ctx, access, employeeId);
+  if (!snapshot) return OUT_OF_SCOPE;
+  const outcome = await personOutcome(tx, ctx.admin, snapshot);
+  if (outcome !== null) return outcome;
+  const email = snapshot.values.email!.toLowerCase();
+  if (plannedEmails.has(email)) return 'SYNC_CONFLICT';
+  plannedEmails.add(email);
+  return null;
+}
+
+/**
  * 按组织架构自动添加时取员工对应的 360 人员：先取写入许可（员工须在调用方的锁计划内，按操作人的当前权限与员工范围，
  * F-043 第 3、4 轮），再按 personOutcome 判定；可新建的按许可新建。员工已不在当前范围内返回 OUT_OF_SCOPE。
  */
