@@ -75,6 +75,8 @@ for (const item of pages) {
     await expect(page.locator('.shell-workspace')).not.toContainText('正在加载');
     await expect(page.locator('.ant-breadcrumb')).toHaveCount(0);
     if (item.path !== '/self') await expect(page.locator('.shell-workspace .ant-table')).toBeVisible();
+    if (item.path === '/manager/team')
+      await expect(page.locator('.ant-table-tbody > tr[data-row-key]').first()).toHaveCSS('height', '40px');
     await page.screenshot({ path: testInfo.outputPath('page.png'), fullPage: true });
     expect(errors).toEqual([]);
   });
