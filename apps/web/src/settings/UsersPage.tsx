@@ -1,3 +1,4 @@
+import { userColumns } from './user-columns.js';
 import { Button, Input } from 'antd';
 import { useRef, useState } from 'react';
 import { ApiError, type PageResult } from '../foundation/client.js';
@@ -42,21 +43,7 @@ export function UsersPage({ code, title, editable }: SettingsProps) {
             )}
           </>
         }
-        columns={[
-          {
-            title: m.displayName,
-            dataIndex: 'displayName',
-            render: (name: string, row: User) => (
-              <Button type="link" onClick={() => setDetail(row.userId)}>
-                {name}
-              </Button>
-            ),
-          },
-          { title: m.email, dataIndex: 'email' },
-          { title: m.businessIdentity, dataIndex: 'businessIdentity' },
-          { title: m.status, dataIndex: 'membershipStatus', render: (value: string) => <Status value={value} /> },
-          { title: m.userId, dataIndex: 'userId', ellipsis: true },
-        ]}
+        columns={userColumns(code === 'users.internal', setDetail)}
       />
       {detail && (
         <RemoteDetail<User> path={`${base}/users/${detail}`} title={m.detail} close={() => setDetail(undefined)}>

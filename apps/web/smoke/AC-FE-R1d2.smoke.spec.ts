@@ -96,7 +96,10 @@ test('AC-PRM-03/14 共享范围从空值读取，保存携带当前 revision', a
   await page.getByRole('button', { name: '查询数据范围', exact: true }).click();
   await expect(page.getByText('默认管理单元（空范围）', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: /^编\s*辑$/ }).click();
-  await page.getByRole('dialog').getByRole('button', { name: /^保\s*存$/ }).click();
+  await page
+    .getByRole('dialog')
+    .getByRole('button', { name: /^保\s*存$/ })
+    .click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(writes).toEqual([{ body: { kind: 'default' }, revision: '6' }]);
 });
