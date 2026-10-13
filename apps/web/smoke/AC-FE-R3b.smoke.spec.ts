@@ -177,7 +177,9 @@ test('AC-FE-R3b-08 360 新建发送真实契约；评定版本冲突不自动重
   await page.getByRole('button', { name: '发布活动', exact: true }).click();
   await page.getByRole('button', { name: /确\s*定/, exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('刷新');
-  await expect(page.getByRole('button', { name: '发布活动', exact: true })).toBeDisabled();
+  const publish = page.getByRole('button', { name: /发布活动$/ });
+  await expect(publish).toBeDisabled();
+  await expect(publish).not.toHaveClass(/ant-btn-loading/);
   expect(writes).toBe(1);
   expect(errors).toEqual([]);
 });
