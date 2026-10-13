@@ -179,13 +179,35 @@ export const SUCCESSION: RequiredTable = {
         },
       ],
     },
-    ...(['record', 'healthResult'] as const).map((kind): Obligation => ({
-      perm: `obj:Succession.${kind === 'record' ? 'Record' : 'HealthResult'}:view`,
-      purpose: kind === 'record' ? 'disclosure:mapRecords' : 'disclosure:mapHealth',
-      need: {
-        scope: 'list',
-        predicate: kind === 'record' ? 'succession.recordScope(org ∪ creator)' : 'succession.healthScope',
+    ...[
+      {
+        kind: 'record',
+        object: 'Record',
+        branch: 'mapRecords',
+        predicate: 'succession.recordScope(org ∪ creator)',
+        unit: 'record-read.ts#listMapRecordRows',
+        anchor: "conditions(visibility, { status: 'active' })",
       },
+      {
+        kind: 'healthResult',
+        object: 'HealthResult',
+        branch: 'mapHealth',
+        predicate: 'succession.healthScope',
+        unit: 'health-results.ts#readHealthResults',
+        anchor: 'scopeSql(scope, { org: sql`v.org_id` })',
+      },
+      {
+        kind: 'riskResult',
+        object: 'RiskResult',
+        branch: 'mapRisk',
+        predicate: 'succession.riskScope',
+        unit: 'risk-store.ts#readRiskRows',
+        anchor: 'scopeSql(scope, { org: sql`p.org_id`, creator: sql`r.assigned_by` })',
+      },
+    ].map((item): Obligation => ({
+      perm: `obj:Succession.${item.object}:view`,
+      purpose: `disclosure:${item.branch}`,
+      need: { scope: 'list', predicate: item.predicate },
       at: [
         {
           role: 'call',
@@ -194,18 +216,10 @@ export const SUCCESSION: RequiredTable = {
         },
         {
           role: 'const',
-          unit: `packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>${kind}`,
-          anchor: kind === 'record' ? "object( 'Record'" : "object( 'HealthResult'",
+          unit: `packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>${item.kind}`,
+          anchor: `object( '${item.object}'`,
         },
-        {
-          role: 'scope',
-          unit:
-            kind === 'record' ? `${S}/record-read.ts#listMapRecordRows` : `${S}/health-results.ts#readHealthResults`,
-          anchor:
-            kind === 'record'
-              ? "conditions(visibility, { status: 'active' })"
-              : 'scopeSql(scope, { org: sql`v.org_id` })',
-        },
+        { role: 'scope', unit: `${S}/${item.unit}`, anchor: item.anchor },
       ],
     })),
   ],

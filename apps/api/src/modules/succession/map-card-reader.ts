@@ -12,6 +12,7 @@ import { codeOf, type SuccessionContext } from './access.js';
 import { buildRecordViews, projectSuccession } from './projection.js';
 import { listMapRecordRows } from './record-read.js';
 import { loadIncumbentIds, loadPeople, rowsOf, selfRecordHiddenSql } from './read-sql.js';
+import { readRiskRows, projectRisk } from './risk-store.js';
 import { projectHealth, readHealthResults } from './health-results.js';
 
 export const fieldVisible = (fields: ReadonlySet<string> | undefined, key: string) =>
@@ -54,7 +55,7 @@ export async function mapObjectAccess(
   tx: Tx,
   deps: TenantRouteDeps,
   ctx: SuccessionContext,
-  kind: 'record' | 'healthResult',
+  kind: 'record' | 'healthResult' | 'riskResult',
 ) {
   if (!(await deps.authorize({ ...ctx, action: 'object.view', resource: codeOf(kind), fields: [] }))) return null;
   return {
@@ -175,4 +176,21 @@ export async function readMapStats(tx: Tx, tenantId: string, orgIds: readonly st
       ];
     }),
   );
+}
+
+export async function readMapRisk(tx: Tx, deps: TenantRouteDeps, ctx: SuccessionContext, ids: readonly string[]) {
+  const access = await mapObjectAccess(tx, deps, ctx, 'riskResult');
+  const result = new Map<string, object>();
+  if (!access || !ids.length) return result;
+  const { views } = await readRiskRows(tx, deps, ctx, ids, { limit: ids.length, offset: 0 }, true);
+  const projected = await projectRisk(deps, ctx, views, tx);
+  views.forEach((view, index) =>
+    result.set(view.positionId, {
+      ...projected[index],
+      ...(fieldVisible(access.fields, 'computedAt')
+        ? { resultAsOf: view.computedAt ? new Date(view.computedAt).toISOString() : null }
+        : {}),
+    }),
+  );
+  return result;
 }

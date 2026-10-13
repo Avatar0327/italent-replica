@@ -1,6 +1,8 @@
 /** DEC-453③：组织卡片复用 B4 当前结果，权限与业务 asOf 分离。 */
 import { expect, it } from 'vitest';
 import { sql } from '@italent/db';
+import { rowsOf } from '../../apps/api/src/modules/succession/read-sql.js';
+import { tenantApi } from './support/tenant-api.js';
 import { useHealthDb } from './AC-SC-07-health-support.js';
 import { successionWorld } from './AC-SC-support.js';
 import { mapOperator, mapView } from './AC-SC-org-map-support.js';
@@ -33,6 +35,14 @@ it('AC-SC-org-map 有风险结果按 B4 投影展示，历史地图仍标当前�
     levelName: '高风险',
     levelColor: '#123456',
   });
+  const futureApi = tenantApi(w.db, { authorize: undefined, clock: () => new Date('2026-10-03T01:00:00Z') });
+  const history = await futureApi.request(
+    'GET',
+    `/api/tenant/succession/maps/org?root=${s.orgA.id}&asOf=2026-10-01`,
+    viewer.as,
+  );
+  expect(history.status).toBe(200);
+  expect((await history.json()).items[0].keyPositions[0].risk).toEqual(card.risk);
   await viewer.permit('riskResult', ['levelId', 'levelName', 'levelColor', 'computedAt']);
   const hidden = (await viewer.read({ root: s.orgA.id })).items[0]!.keyPositions![0]!.risk!;
   for (const key of ['levelId', 'levelName', 'levelColor', 'computedAt', 'resultAsOf'])
@@ -43,8 +53,9 @@ it('AC-SC-org-map 无风险结果展示默认颜色，读取不建结果行', as
   const w = await successionWorld(db().db, 'c2-risk-empty');
   const s = await w.standard();
   await w.asTenant((tx) =>
-    tx.execute(sql`UPDATE succession_rule_settings SET default_color='#abcdef'
-    WHERE tenant_id=${w.tenant.id}::uuid AND kind='position_risk'`),
+    tx.execute(sql`INSERT INTO succession_rule_settings (tenant_id,kind,default_color)
+    VALUES (${w.tenant.id}::uuid,'position_risk','#abcdef')
+    ON CONFLICT (tenant_id,kind) DO UPDATE SET default_color=excluded.default_color`),
   );
   const card = (await mapView(w, { root: s.orgA.id })).items[0]!.keyPositions![0]!;
   expect(card.risk).toMatchObject({
@@ -58,7 +69,7 @@ it('AC-SC-org-map 无风险结果展示默认颜色，读取不建结果行', as
     tx.execute(sql`SELECT count(*)::int AS n FROM succession_risk_results
     WHERE tenant_id=${w.tenant.id}::uuid`),
   );
-  expect((count as unknown as { rows: { n: number }[] }).rows[0]!.n).toBe(0);
+  expect(rowsOf<{ n: number }>(count)[0]!.n).toBe(0);
 });
 
 it('AC-SC-org-map 无风险查看权或范围时风险键缺席，关键职位与继任卡片仍展示', async () => {

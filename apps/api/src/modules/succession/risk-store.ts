@@ -8,6 +8,7 @@ import {
   authorizeInTransaction,
   resolveModuleScopeInTransaction,
   getModuleViewableFields,
+  getModuleViewableFieldsInTransaction,
   scopeSql,
 } from '../permission/module-access.js';
 import { visibleJob } from '../permission/module-route-access.js';
@@ -34,23 +35,31 @@ export async function readRiskRows(
   ctx: SuccessionContext,
   ids?: readonly string[],
   page = { limit: 200, offset: 0 },
+  includeMissing = false,
 ) {
   const bound = { ...deps, authorize: authorizeInTransaction(deps.authorize, tx) };
   const scope = await resolveModuleScopeInTransaction(bound, ctx, tx, codeOf('riskResult'));
   const today = tenantLocalDate(ctx.now, ctx.timezone);
-  const where = sql`r.tenant_id=${ctx.tenantId}::uuid
+  // 组织卡片的缺结果默认色仍走同一当前范围谓词，不补写结果行。
+  const position = includeMissing ? sql`requested.id` : sql`r.position_id`;
+  const source = includeMissing
+    ? sql`FROM unnest(${`{${(ids ?? []).join(',')}}`}::uuid[]) requested(id)
+        LEFT JOIN succession_risk_results r ON r.tenant_id=${ctx.tenantId}::uuid AND r.position_id=requested.id`
+    : sql`FROM succession_risk_results r`;
+  const where = sql`(r.tenant_id=${ctx.tenantId}::uuid OR (${includeMissing} AND r.tenant_id IS NULL))
     AND ${scopeSql(scope, { org: sql`p.org_id`, creator: sql`r.assigned_by` })}
-    ${ids ? sql`AND r.position_id=ANY(${`{${ids.join(',')}}`}::uuid[])` : sql``}`;
-  const from = sql`FROM succession_risk_results r LEFT JOIN LATERAL (
-    SELECT org_id,stop_date FROM job_position_versions WHERE tenant_id=r.tenant_id AND object_id=r.position_id
+    ${ids ? sql`AND ${position}=ANY(${`{${ids.join(',')}}`}::uuid[])` : sql``}`;
+  const from = sql`${source} LEFT JOIN LATERAL (
+    SELECT org_id,stop_date FROM job_position_versions WHERE tenant_id=${ctx.tenantId}::uuid AND object_id=${position}
     AND start_date<=${today}::date ORDER BY start_date DESC,version_no DESC LIMIT 1) p ON p.stop_date>=${today}::date
     LEFT JOIN succession_risk_levels l ON l.tenant_id=r.tenant_id AND l.id=r.level_id
-    LEFT JOIN succession_rule_settings s ON s.tenant_id=r.tenant_id AND s.kind='position_risk'`;
+    LEFT JOIN succession_rule_settings s ON s.tenant_id=${ctx.tenantId}::uuid AND s.kind='position_risk'`;
   const views = rowsOf<RiskView>(
-    await tx.execute(sql`SELECT r.position_id AS id,r.position_id AS "positionId",
-    r.level_id AS "levelId",r.method,r.revision,r.computed_at::text AS "computedAt",l.name AS "levelName",
+    await tx.execute(sql`SELECT ${position} AS id,${position} AS "positionId",
+    r.level_id AS "levelId",COALESCE(r.method,'computed') AS method,COALESCE(r.revision,0) AS revision,
+    r.computed_at::text AS "computedAt",l.name AS "levelName",
     COALESCE(l.color,s.default_color,${SUCCESSION_DEFAULT_COLORS.position_risk}) AS "levelColor"
-    ${from} WHERE ${where} ORDER BY r.position_id LIMIT ${page.limit} OFFSET ${page.offset}`),
+    ${from} WHERE ${where} ORDER BY ${position} LIMIT ${page.limit} OFFSET ${page.offset}`),
   );
   const [count] = rowsOf<{ n: number }>(await tx.execute(sql`SELECT count(*)::int AS n ${from} WHERE ${where}`));
   return { views, total: count!.n, hasDataPermission: scope.hasDataPermission };
@@ -72,8 +81,10 @@ export async function riskRead(
   });
   return readRiskRows(tx, bound, ctx, ids, page);
 }
-export async function projectRisk(deps: TenantRouteDeps, ctx: SuccessionContext, views: readonly RiskView[]) {
-  const fields = await getModuleViewableFields(deps, ctx, codeOf('riskResult'));
+export async function projectRisk(deps: TenantRouteDeps, ctx: SuccessionContext, views: readonly RiskView[], tx?: Tx) {
+  const fields = tx
+    ? await getModuleViewableFieldsInTransaction(deps, ctx, codeOf('riskResult'), tx)
+    : await getModuleViewableFields(deps, ctx, codeOf('riskResult'));
   return views.map((v) =>
     fields === undefined ? v : Object.fromEntries(Object.entries(v).filter(([k]) => fields.has(k))),
   );

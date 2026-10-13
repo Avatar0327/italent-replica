@@ -22,6 +22,7 @@ import {
   mapIncumbents,
   mapObjectAccess,
   readMapHealth,
+  readMapRisk,
   readMapStats,
   readMapSuccessors,
   type CardTarget,
@@ -89,11 +90,12 @@ function projectOrgMapCards(
     heads: ReadonlyMap<string, PersonView> | null;
     incumbents: ReadonlyMap<string, readonly PersonView[]> | null;
     health: ReadonlyMap<string, object>;
+    risk: ReadonlyMap<string, object>;
     stats: ReadonlyMap<string, object> | null;
     succession: (id: string) => object;
   },
 ) {
-  const { selected, mapFields, positions, heads, incumbents, health, stats, succession } = data;
+  const { selected, mapFields, positions, heads, incumbents, health, risk, stats, succession } = data;
   return orgs.map((org) => ({
     id: org.id,
     name: org.name,
@@ -112,7 +114,7 @@ function projectOrgMapCards(
               parentId: org.id,
               ...(incumbents ? { incumbents: incumbents.get(p.id) ?? [] } : {}),
               ...succession(p.id),
-              // TODO(#287)：DEC-453③，B4 合并后复用风险结果投影接线。
+              ...(risk.has(p.id) ? { risk: risk.get(p.id) } : {}),
             })),
         }
       : {}),
@@ -149,23 +151,17 @@ export function registerOrgMapRoutes(router: Hono<TenantEnv>, deps: TenantRouteD
       const recordAccess = await mapObjectAccess(tx, bound, ctx, 'record');
       const hidden = await hiddenMapTargets(tx, ctx, targets, today);
       const successors = await readMapSuccessors(tx, bound, ctx, targets, asOf, today, recordAccess);
+      const headIds = orgs.flatMap((o) => o.personInChargeId ?? []);
+      const positionIds = positions.map((p) => p.id);
       const heads =
         settings.showIncumbents && recordAccess && fieldVisible(recordAccess.fields, 'personInCharge')
-          ? await loadPeople(
-              tx,
-              ctx.tenantId,
-              orgs.flatMap((o) => o.personInChargeId ?? []),
-            )
+          ? await loadPeople(tx, ctx.tenantId, headIds)
           : null;
       const incumbents =
         settings.showIncumbents && recordAccess && fieldVisible(recordAccess.fields, 'incumbents')
-          ? await mapIncumbents(
-              tx,
-              ctx.tenantId,
-              positions.map((p) => p.id),
-              asOf,
-            )
+          ? await mapIncumbents(tx, ctx.tenantId, positionIds, asOf)
           : null;
+      const risk = await readMapRisk(tx, bound, ctx, positionIds);
       const health = await readMapHealth(tx, bound, ctx, ids, asOf);
       const stats = fieldVisible(mapFields, 'stats') ? await readMapStats(tx, ctx.tenantId, ids, asOf) : null;
       const succession = (id: string) =>
@@ -187,6 +183,7 @@ export function registerOrgMapRoutes(router: Hono<TenantEnv>, deps: TenantRouteD
           heads,
           incumbents,
           health,
+          risk,
           stats,
           succession,
         }),

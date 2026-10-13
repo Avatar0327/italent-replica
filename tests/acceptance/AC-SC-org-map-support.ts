@@ -48,6 +48,7 @@ export async function mapOperator(
   if (!permissionWorlds.has(w)) permissionWorlds.set(w, permissionWorldOf(w));
   const world = await permissionWorlds.get(w)!;
   const viewer = await recordOperator(world, options);
+  const scoped = new Set<string>();
   async function permit(kind: 'map' | 'healthResult' | 'riskResult', hidden: readonly string[] = []) {
     const object = SUCCESSION_OBJECTS[kind];
     const response = await setObjectPermission(
@@ -61,13 +62,14 @@ export async function mapOperator(
       object.code,
     );
     expect(response.status, await response.clone().text()).toBe(200);
-    if (options.seeAll) {
+    if (options.seeAll && !scoped.has(kind)) {
       const scope = await world.api.request(
         'PUT',
         `${BASE}/profiles/${viewer.profile.id}/data-scopes/SuccessionAndDevelopment`,
         { ...world.asAdmin, ifMatch: 0, body: { targetKind: 'entity', targetCode: object.code, seeAll: true } },
       );
       expect(scope.status, await scope.clone().text()).toBe(200);
+      scoped.add(kind);
     }
   }
   await permit('map', options.mapHidden);

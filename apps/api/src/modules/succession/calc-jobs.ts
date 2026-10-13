@@ -23,7 +23,10 @@ export interface CalcProducer {
 }
 /** A3/C1/B4 追加生产者；没有生产者时平台明确返回 KIND_UNAVAILABLE。 */
 export const SUCCESSION_PRODUCERS: readonly CalcProducer[] = [
-  EXIT_SWEEP_PRODUCER, orgStatsProducer, riskProducer, ...healthProducers,
+  EXIT_SWEEP_PRODUCER,
+  orgStatsProducer,
+  riskProducer,
+  ...healthProducers,
 ];
 export interface JobInput {
   readonly kind: SuccessionJobKind;

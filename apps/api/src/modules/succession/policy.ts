@@ -128,6 +128,13 @@ export const SUCCESSION_POLICIES = defineTable('succession', {
         scope: listScope('succession.recordScope(org ∪ creator)'),
         fields: OUT,
       }),
+      mapRisk: object({
+        object: SUCCESSION_OBJECTS.riskResult.code,
+        operation: 'view',
+        button: noButton('卡片风险披露'),
+        scope: listScope('succession.riskScope'),
+        fields: projector('succession.risk', 'succession.risk'),
+      }),
       mapHealth: object({
         object: SUCCESSION_OBJECTS.healthResult.code,
         operation: 'view',
