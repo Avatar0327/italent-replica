@@ -5,9 +5,10 @@
  * 设计：docs/08_设计/F-120_本人命令结果查询_路由声明.md。
  */
 import { randomUUID } from 'node:crypto';
-import { commandLedger, type Db } from '@italent/db';
+import { commandLedger, type Db, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { addMember } from './AC-PRM-support.js';
 import { transferWorld } from './AC-TRF-manager-support.js';
 import { tenantApi } from './support/tenant-api.js';
 
@@ -101,5 +102,35 @@ describe('F-120 第 2 轮：本人命令结果的归属与结果未知', () => {
     const result = await query(commandId, hr);
     expect(result.status, await result.clone().text()).toBe(200);
     expect(await result.json()).toMatchObject({ status: 'failed', httpStatus: 409 });
+  });
+
+  it('P2-3 命令 ID 已属于他人：碰撞失败审计、actor 为空的历史行都不得让非本人查到 200', async () => {
+    const db = database().db;
+    const other = await addMember(world, 'f120-round2-other');
+    const stranger = { user: other.id, tenant: world.tenant.id };
+    const commandId = `f120-r2-owned-${randomUUID()}`;
+    const created = await org(world.setup, commandId, validOrg());
+    expect(created.status, await created.clone().text()).toBe(201);
+    // B 用 A 的命令 ID 提交写请求：409 IDEMPOTENCY_CONFLICT，并留下 B 自己的失败审计
+    const collided = await org(world.setup, commandId, validOrg(), stranger);
+    expect(collided.status).toBe(409);
+    expect((await query(commandId, world.asAdmin)).status).toBe(200);
+    const foreign = await query(commandId, stranger);
+    expect(foreign.status, await foreign.clone().text()).toBe(404);
+
+    // 历史 / 系统行（actor 为空）：同样视为已归属，不回退到失败审计
+    const legacyId = `f120-r2-legacy-${randomUUID()}`;
+    await withTenant(db, world.tenant.id, (tx) =>
+      tx.insert(commandLedger).values({
+        tenantId: world.tenant.id,
+        commandId: legacyId,
+        requestHash: 'legacy',
+        responseStatus: 201,
+        responseBody: {},
+      }),
+    );
+    expect((await org(world.setup, legacyId, validOrg(), stranger)).status).toBe(409);
+    expect((await query(legacyId, stranger)).status).toBe(404);
+    expect((await query(legacyId, world.asAdmin)).status).toBe(404);
   });
 });
