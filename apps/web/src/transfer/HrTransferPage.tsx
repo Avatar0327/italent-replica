@@ -6,6 +6,7 @@ import { Can, DecisionNote, DetailPage, ListPage, useSession, type PageRequest }
 import { TransferApplication } from '../self-service/shared/TransferApplication.js';
 import { text as m } from './messages.js';
 import { ReferenceFrame, ReferenceView } from './ReferenceView.js';
+import { TransferDrafts } from './TransferDrafts.js';
 import './transfer.css';
 import './hr-transfer.css';
 
@@ -47,7 +48,14 @@ function HrTransferContent() {
         }
       />
       <DecisionNote id="transfer" />
-      {tab === 'mine' ? <ApprovalListPanel /> : <TransferList key={tab} tab={tab} />}
+      {tab === 'mine' ? (
+        <>
+          <TransferDrafts />
+          <ApprovalListPanel />
+        </>
+      ) : (
+        <TransferList key={tab} tab={tab} />
+      )}
       <TransferDrawer open={open} onClose={() => setOpen(false)} />
     </section>
   );
@@ -71,7 +79,7 @@ function TransferDrawer({ open, onClose }: { open: boolean; onClose(): void }) {
             key={`${session.tenantId}/${session.identityKey}`}
             tenantId={session.tenantId}
             initiator="hr"
-            recoveryScope={JSON.stringify([session.tenantId, session.identityKey])}
+            hrScope={JSON.stringify([session.tenantId, session.identityKey])}
           />
         </div>
       )}

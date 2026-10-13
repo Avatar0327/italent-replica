@@ -5,8 +5,8 @@ import { beginHrWrite, finishHrWrite, readHrSession } from '../../apps/web/src/t
 import { draftRows } from '../../apps/web/src/transfer/draft-fields.js';
 
 afterEach(() => {
-  sessionStorage.clear();
   vi.unstubAllGlobals();
+  sessionStorage.clear();
 });
 
 it('AC-FE-R1c-11 DEC-464 暂存目录只存单号，按租户 / 身份隔离且保留其他暂存单', () => {

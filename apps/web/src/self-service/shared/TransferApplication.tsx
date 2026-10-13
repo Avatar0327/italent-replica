@@ -4,9 +4,12 @@ import { useLinkageDetail } from '../../transfer/useLinkage.js';
 import { TransferForm } from './TransferForm.js';
 import { text } from '../../transfer/messages.js';
 import { useTransferForm } from './useTransferForm.js';
-type TransferApplicationProps = { tenantId: string; initiator: 'hr' | 'employee' | 'manager'; recoveryScope?: string };
-export function TransferApplication({ tenantId, initiator, recoveryScope }: TransferApplicationProps) {
-  const state = useTransferForm(tenantId, initiator, undefined, recoveryScope);
+type TransferApplicationProps = { tenantId: string; initiator: 'hr' | 'employee' | 'manager'; hrScope?: string };
+export function TransferApplication({ tenantId, initiator, hrScope }: TransferApplicationProps) {
+  const state = useTransferForm(tenantId, initiator, undefined, hrScope);
+  if (hrScope && state.processing) return <p role="status">{text.processing}</p>;
+  if (hrScope && state.saved)
+    return <p role="status">{state.saved.status === 'draft' ? text.hrDraftSaved : text.submitted}</p>;
   const locked = state.busy || !!state.saved || !!state.unknownCommand;
   return (
     <section className="transfer-content" aria-busy={state.busy || state.loadingPreview}>
@@ -15,9 +18,9 @@ export function TransferApplication({ tenantId, initiator, recoveryScope }: Tran
       ) : (
         <PersonalScenarios state={state} locked={locked} />
       )}
-      {state.error && (
+      {(state.commandError || state.error) && (
         <p role="alert" className="transfer-error">
-          {state.error}
+          {state.commandError || state.error}
         </p>
       )}
       {state.notice && (
@@ -90,17 +93,6 @@ function CommandRecovery({ state }: { state: ReturnType<typeof useTransferForm> 
           {state.error !== text.unknown && text.unknown}
           <br />
           {text.requestReference}：<code>{state.unknownCommand}</code>
-          {state.recover && (
-            <button
-              type="button"
-              disabled={state.busy}
-              onClick={() => {
-                void state.recover?.();
-              }}
-            >
-              {text.recoverCommand}
-            </button>
-          )}
         </p>
       )}
     </>

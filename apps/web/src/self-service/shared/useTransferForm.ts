@@ -1,5 +1,5 @@
 import { loadPreview, reloadSavedModel, savedNotice } from './transfer-loading.js';
-import { useRecoverableTransfer } from '../../transfer/useRecoverableTransfer.js';
+import { useHrTransferCommand } from '../../transfer/useHrTransferCommand.js';
 import type { TransferFormAdapter } from './transfer-adapter.js';
 import { useEffect, useRef, useState } from 'react';
 import { missingTransferRequiredFields } from '@italent/domain';
@@ -44,7 +44,7 @@ export function useTransferForm(
   tenantId: string,
   initiator: 'hr' | 'employee' | 'manager' = 'hr',
   adapter?: TransferFormAdapter,
-  recoveryScope?: string,
+  hrScope?: string,
 ) {
   const [model, setModel] = useState<TransferFormModel>({
     ...(adapter?.initialModel ?? initial),
@@ -58,18 +58,14 @@ export function useTransferForm(
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const legacy = useTransferCommand(tenantId, model, loadingPreview, setModel, setError, setNotice, adapter);
-  const recovery = useRecoverableTransfer(
-    { tenantId, model, loadingPreview, setModel, setError, setNotice },
-    recoveryScope,
-  );
-  const commands = recoveryScope ? recovery : legacy;
+  const hr = useHrTransferCommand(tenantId, model, loadingPreview, hrScope);
+  const commands = hrScope ? hr : legacy;
   useCatalog(tenantId, model.effectiveDate, setModel, setError, initiator, !adapter);
   useEmployees(tenantId, model.catalog.today, search, page, setModel, setError, initiator, !adapter);
   usePreview(tenantId, model, commands.saved, reload, setModel, setLoadingPreview, setError, setNotice, adapter);
   // R1-T10 的联动仅接入 HR；经理自助本轮仍不提供跨对象联动。
   useContractChoices(tenantId, initiator === 'hr' ? model.employeeId : '', initiator, setModel);
   const selection = (field: 'employeeId' | 'effectiveDate' | 'transferTypeCode' | 'reasonCode', value: string) => {
-    if (recoveryScope && recovery.restoreSelection(field, value)) return;
     setError('');
     applySelection(setModel, field, value);
   };
@@ -80,7 +76,6 @@ export function useTransferForm(
     setReload((value) => value + 1);
   };
   const reset = () => {
-    if (recoveryScope && !recovery.clearActive()) return;
     legacy.setSaved(null);
     setModel((current) => ({ ...current, withEstablishment: false }));
     legacy.resetConflict();
@@ -92,7 +87,8 @@ export function useTransferForm(
     error,
     notice,
     ...commands,
-    recover: recoveryScope ? recovery.recover : undefined,
+    processing: !!hrScope && hr.processing,
+    commandError: hrScope ? hr.commandError : '',
     loadingPreview,
     page,
     selection,
