@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url';
 import {
   classifyConflict,
   drizzleJson,
+  formatStale,
   GENERATED_PATHS,
   isGeneratedPath,
   JOURNAL_PATH,
@@ -149,17 +150,23 @@ function migrationPlan() {
   const mainJournal = json(MAIN, JOURNAL_PATH);
   const branchJournal = json('HEAD', JOURNAL_PATH);
   if (!mainJournal || !branchJournal) fail(`读不到 ${JOURNAL_PATH}`);
-  return planRenumber(mainJournal, branchJournal, {
-    main: (tag) => show(MAIN, sqlPath(tag)),
-    branch: (tag) => show('HEAD', sqlPath(tag)),
-  });
+  try {
+    return planRenumber(mainJournal, branchJournal, {
+      main: (tag) => show(MAIN, sqlPath(tag)),
+      branch: (tag) => show('HEAD', sqlPath(tag)),
+    });
+  } catch (error) {
+    return fail(`迁移改号计划失败：${error.message}`);
+  }
 }
 
 function printPlan(plan) {
   if (plan.stale.length)
     console.log(
-      `迁移：以下旧名迁移的 SQL 与 main 上已改号的迁移相同（上游已合并），清理、不改号：\n${plan.stale
-        .map(({ from, mainEntry }) => `  ${from.tag} = main 的 ${mainEntry.tag}`)
+      `迁移：以下旧名迁移的 SQL 与 main 上已改号的迁移相同（上游已合并），清理、不改号（旧名 → main 名 sha256=规范化 SQL 摘要）：\n${formatStale(
+        plan.stale,
+      )
+        .map((line) => `  ${line}`)
         .join('\n')}`,
     );
   if (!plan.renames.length) return console.log('迁移：本分支没有自己新增的迁移。');

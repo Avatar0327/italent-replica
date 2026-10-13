@@ -48,43 +48,72 @@ export function normalizeSql(text) {
     .replace(/\n+$/, '');
 }
 
-/** 规范化后 SQL 的 sha256（十六进制）；读不到或规范化后为空返回 undefined（空内容不能当“相同”）。 */
-export function sqlDigest(text) {
-  if (text === undefined) return undefined;
-  const normalized = normalizeSql(text);
-  return normalized === '' ? undefined : createHash('sha256').update(normalized).digest('hex');
+/**
+ * SQL 里有没有实际语句：去掉 /* *\/ 块注释、-- 行注释、分号和空白后还有内容。
+ * drizzle 的 `--> statement-breakpoint` 以 `--` 开头，是语句之间的分隔标记，按注释处理（现有迁移文件都写在语句末尾或独占一行）。
+ * 只用来判断“是不是空迁移”，不解析引号：字符串里的 `--` 会让判断偏向“有语句”，只会少去重，不会误删。
+ */
+function hasStatements(text) {
+  return (
+    text
+      .replace(/\/\*[\s\S]*?(?:\*\/|$)/g, '')
+      .replace(/--[^\n]*/g, '')
+      .replace(/[;\s]+/g, '') !== ''
+  );
 }
+
+/** 规范化后 SQL 的 sha256（十六进制）；读不到、空迁移或只有注释 / 空白 / 分隔符返回 undefined（不能拿“没内容”当“相同”）。 */
+export function sqlDigest(text) {
+  if (text === undefined || !hasStatements(text)) return undefined;
+  return createHash('sha256').update(normalizeSql(text)).digest('hex');
+}
+
+/** 清理清单的输出行：旧名 → main 名 + sha256，便于在 PR 评论留证（--check 与正式运行都输出）。 */
+export const formatStale = (stale) =>
+  stale.map(({ from, mainEntry, digest }) => `${from.tag} → ${mainEntry.tag}  sha256=${digest}`);
 
 /**
  * 迁移重新编号：branchJournal 里 tag 不在 mainJournal 的条目是本分支自己的迁移，按原顺序接在 main 之后。
  * 叠放 PR（base 是另一个未合并的 PR 分支）会带着上游合并前的旧名迁移：它们与 main 上改号后的迁移 SQL 规范化后相同，
- * 这类条目记入 stale（清理旧名 SQL / 快照 / journal 条目、不改号），只有真正新增的才进 renames。
+ * 这类条目记入 stale（清理旧名 SQL / 快照 / journal 条目，不改号），只有真正新增的才进 renames。
  * sql.main / sql.branch 按 tag 读迁移 SQL 文本；不传或读不到则该条目只按名字比对。
- * main 上的每条迁移最多认领一条旧名迁移；本分支已带着的 main 同名迁移不参与认领。
- * 返回新 journal（main 全部条目 + 改号后的本分支条目）、改号清单 renames 和已合并清单 stale。
+ * 必须一一对应：同一份内容在旧名一侧或 main 一侧出现多次（一对多 / 多对一）时抛错，不清理；
+ * 本分支已带着的 main 同名迁移不参与匹配；空迁移 / 只有注释的迁移不参与去重（见 sqlDigest）。
+ * 返回新 journal（main 全部条目 + 改号后的本分支条目）、改号清单 renames 和已合并清单 stale（带 sha256）。
  */
 export function planRenumber(mainJournal, branchJournal, sql = {}) {
   const mainTags = new Set(mainJournal.entries.map((e) => e.tag));
   const branchTags = new Set(branchJournal.entries.map((e) => e.tag));
   const added = branchJournal.entries.filter((e) => !mainTags.has(e.tag));
-  const claimable = new Map();
-  if (added.length && sql.main && sql.branch) {
-    for (const mainEntry of mainJournal.entries) {
-      if (branchTags.has(mainEntry.tag)) continue;
-      const digest = sqlDigest(sql.main(mainEntry.tag));
-      if (digest === undefined) continue;
-      if (!claimable.has(digest)) claimable.set(digest, []);
-      claimable.get(digest).push(mainEntry);
+  const byDigest = (entries, read) => {
+    const groups = new Map();
+    for (const entry of entries) {
+      const digest = sqlDigest(read(entry.tag));
+      if (digest !== undefined) groups.set(digest, [...(groups.get(digest) ?? []), entry]);
     }
-  }
+    return groups;
+  };
+  const addedGroups = added.length && sql.main && sql.branch ? byDigest(added, sql.branch) : new Map();
+  const mainGroups = addedGroups.size
+    ? byDigest(
+        mainJournal.entries.filter((e) => !branchTags.has(e.tag)),
+        sql.main,
+      )
+    : new Map();
   const stale = [];
-  const own = [];
-  for (const entry of added) {
-    const digest = claimable.size ? sqlDigest(sql.branch(entry.tag)) : undefined;
-    const mainEntry = digest === undefined ? undefined : claimable.get(digest)?.shift();
-    if (mainEntry) stale.push({ from: entry, mainEntry });
-    else own.push(entry);
+  for (const [digest, olds] of addedGroups) {
+    const mains = mainGroups.get(digest);
+    if (!mains) continue;
+    if (olds.length > 1 || mains.length > 1)
+      throw new Error(
+        `旧名迁移 ${olds.map((e) => e.tag).join('、')} 与 main 上的 ${mains.map((e) => e.tag).join('、')} ` +
+          `的 SQL 内容相同（sha256=${digest}），但不是一一对应（一对多或多对一），不自动清理，须人工处理`,
+      );
+    stale.push({ from: olds[0], mainEntry: mains[0], digest });
   }
+  const staleTags = new Set(stale.map((s) => s.from.tag));
+  stale.sort((a, b) => a.from.idx - b.from.idx);
+  const own = added.filter((e) => !staleTags.has(e.tag));
   const last = mainJournal.entries.at(-1);
   let idx = last ? last.idx : -1;
   let when = last ? last.when : 0;
