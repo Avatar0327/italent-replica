@@ -201,6 +201,18 @@
       "obj:Succession.Map:view"
     ]
   },
+  "GET /api/tenant/succession/maps/position": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:SuccessionAndDevelopment/Succession.Map/-"
+    ],
+    "trace": [
+      "obj:Succession.Map:view"
+    ]
+  },
   "GET /api/tenant/succession/populations": {
     "all": {
       "status": 200
