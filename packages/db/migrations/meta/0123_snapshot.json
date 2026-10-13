@@ -1,6 +1,6 @@
 {
-  "id": "58e25d53-c085-4156-9dee-d098f78b146a",
-  "prevId": "c9a06f9e-9027-4162-8d4c-7a84728915a6",
+  "id": "2ab49ba8-0a0e-407a-a1b1-2e437acf61ca",
+  "prevId": "909628fa-628c-411b-b963-ad5afd25e5c3",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -51816,7 +51816,7 @@
       "checkConstraints": {
         "succession_target_locks_kind": {
           "name": "succession_target_locks_kind",
-          "value": "\"succession_target_locks\".\"target_kind\" IN ('org','position','org_health')"
+          "value": "\"succession_target_locks\".\"target_kind\" IN ('org', 'position')"
         }
       },
       "isRLSEnabled": false
@@ -53694,8 +53694,8 @@
       },
       "isRLSEnabled": false
     },
-    "public.succession_health_results": {
-      "name": "succession_health_results",
+    "public.succession_risk_results": {
+      "name": "succession_risk_results",
       "schema": "",
       "columns": {
         "tenant_id": {
@@ -53704,8 +53704,8 @@
           "primaryKey": false,
           "notNull": true
         },
-        "org_id": {
-          "name": "org_id",
+        "position_id": {
+          "name": "position_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
@@ -53724,24 +53724,6 @@
         },
         "run_id": {
           "name": "run_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "source_batch_id": {
-          "name": "source_batch_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "source_project_id": {
-          "name": "source_project_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "source_meeting_id": {
-          "name": "source_meeting_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
@@ -53768,9 +53750,9 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "succession_health_results_tenant_id_tenants_id_fk": {
-          "name": "succession_health_results_tenant_id_tenants_id_fk",
-          "tableFrom": "succession_health_results",
+        "succession_risk_results_tenant_id_tenants_id_fk": {
+          "name": "succession_risk_results_tenant_id_tenants_id_fk",
+          "tableFrom": "succession_risk_results",
           "columnsFrom": [
             "tenant_id"
           ],
@@ -53781,14 +53763,14 @@
           "onUpdate": "no action",
           "onDelete": "no action"
         },
-        "succession_health_results_tenant_id_org_id_org_objects_tenant_id_id_fk": {
-          "name": "succession_health_results_tenant_id_org_id_org_objects_tenant_id_id_fk",
-          "tableFrom": "succession_health_results",
+        "succession_risk_results_tenant_id_position_id_job_position_objects_tenant_id_id_fk": {
+          "name": "succession_risk_results_tenant_id_position_id_job_position_objects_tenant_id_id_fk",
+          "tableFrom": "succession_risk_results",
           "columnsFrom": [
             "tenant_id",
-            "org_id"
+            "position_id"
           ],
-          "tableTo": "org_objects",
+          "tableTo": "job_position_objects",
           "columnsTo": [
             "tenant_id",
             "id"
@@ -53796,14 +53778,14 @@
           "onUpdate": "no action",
           "onDelete": "no action"
         },
-        "succession_health_results_tenant_id_level_id_succession_health_levels_tenant_id_id_fk": {
-          "name": "succession_health_results_tenant_id_level_id_succession_health_levels_tenant_id_id_fk",
-          "tableFrom": "succession_health_results",
+        "succession_risk_results_tenant_id_level_id_succession_risk_levels_tenant_id_id_fk": {
+          "name": "succession_risk_results_tenant_id_level_id_succession_risk_levels_tenant_id_id_fk",
+          "tableFrom": "succession_risk_results",
           "columnsFrom": [
             "tenant_id",
             "level_id"
           ],
-          "tableTo": "succession_health_levels",
+          "tableTo": "succession_risk_levels",
           "columnsTo": [
             "tenant_id",
             "id"
@@ -53811,9 +53793,9 @@
           "onUpdate": "no action",
           "onDelete": "no action"
         },
-        "succession_health_results_tenant_id_run_id_succession_calc_runs_tenant_id_id_fk": {
-          "name": "succession_health_results_tenant_id_run_id_succession_calc_runs_tenant_id_id_fk",
-          "tableFrom": "succession_health_results",
+        "succession_risk_results_tenant_id_run_id_succession_calc_runs_tenant_id_id_fk": {
+          "name": "succession_risk_results_tenant_id_run_id_succession_calc_runs_tenant_id_id_fk",
+          "tableFrom": "succession_risk_results",
           "columnsFrom": [
             "tenant_id",
             "run_id"
@@ -53826,9 +53808,9 @@
           "onUpdate": "no action",
           "onDelete": "no action"
         },
-        "succession_health_results_tenant_id_assigned_by_tenant_memberships_tenant_id_user_id_fk": {
-          "name": "succession_health_results_tenant_id_assigned_by_tenant_memberships_tenant_id_user_id_fk",
-          "tableFrom": "succession_health_results",
+        "succession_risk_results_tenant_id_assigned_by_tenant_memberships_tenant_id_user_id_fk": {
+          "name": "succession_risk_results_tenant_id_assigned_by_tenant_memberships_tenant_id_user_id_fk",
+          "tableFrom": "succession_risk_results",
           "columnsFrom": [
             "tenant_id",
             "assigned_by"
@@ -53843,24 +53825,24 @@
         }
       },
       "compositePrimaryKeys": {
-        "succession_health_results_tenant_id_org_id_pk": {
-          "name": "succession_health_results_tenant_id_org_id_pk",
+        "succession_risk_results_tenant_id_position_id_pk": {
+          "name": "succession_risk_results_tenant_id_position_id_pk",
           "columns": [
             "tenant_id",
-            "org_id"
+            "position_id"
           ]
         }
       },
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
-        "succession_health_method": {
-          "name": "succession_health_method",
-          "value": "\"succession_health_results\".\"method\" IN ('computed','manual','synced')"
+        "succession_risk_results_method": {
+          "name": "succession_risk_results_method",
+          "value": "\"succession_risk_results\".\"method\" IN ('manual','computed')"
         },
-        "succession_health_revision": {
-          "name": "succession_health_revision",
-          "value": "\"succession_health_results\".\"revision\">0"
+        "succession_risk_results_revision": {
+          "name": "succession_risk_results_revision",
+          "value": "\"succession_risk_results\".\"revision\" > 0"
         }
       },
       "isRLSEnabled": false

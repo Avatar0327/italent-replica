@@ -694,15 +694,6 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/succession/config-routes.ts': {
     registerSuccessionConfigRoutes: 'a36c520ca622',
   },
-  'apps/api/src/modules/succession/health-results.ts': {
-    readHealthResults: '00dc7ccf4e5d',
-    requireHealthOrg: 'b8fcaf7715ce',
-  },
-  'apps/api/src/modules/succession/health-routes.ts': {
-    queueAccess: 'e1446e0dd6ec',
-    queueResults: '1e5340837aec',
-    registerHealthRoutes: '12951cd22652',
-  },
   'apps/api/src/modules/succession/input.ts': {
     rejectImmutable: '512c60b05ed6',
   },
@@ -711,7 +702,7 @@ export const DIGESTS: Digests = {
     registerLevelReads: 'ba1d174232f9',
   },
   'apps/api/src/modules/succession/map-display.ts': {
-    readMapDisplayScope: '7a713f087871',
+    readMapDisplayScope: 'c882955e941b',
     resolveMapDisplayConditions: 'ae79200fc8cb',
   },
   'apps/api/src/modules/succession/map-routes.ts': {
@@ -732,9 +723,14 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/succession/record-write.ts': {
     requireTarget: '10cb226379f1',
   },
+  'apps/api/src/modules/succession/risk-routes.ts': {
+    computeAccess: 'fdb2a0d66d95',
+    registerRiskResultRoutes: '98a51523719c',
+    registerRiskRoutes: 'e7876b9f17bd',
+  },
   'apps/api/src/modules/succession/routes.ts': {
     recordFilter: '858f731477d8',
-    registerSuccessionRoutes: 'a3fb3962839e',
+    registerSuccessionRoutes: '92b2322ecdc9',
   },
   'apps/api/src/modules/succession/write-support.ts': {
     checkCandidateAccess: '7843395303d7',
@@ -1220,11 +1216,11 @@ export const DIGESTS: Digests = {
   'packages/domain/src/succession/catalog.ts': {
     'SUCCESSION_OBJECTS>calcRun': 'f6cb086838dd',
     'SUCCESSION_OBJECTS>healthLevel': '94ff5db43799',
-    'SUCCESSION_OBJECTS>healthResult': 'b0b062f5b496',
     'SUCCESSION_OBJECTS>map': 'd0adfb6296a3',
     'SUCCESSION_OBJECTS>population': 'dd9208c0947c',
     'SUCCESSION_OBJECTS>record': 'a17b8e7432d2',
     'SUCCESSION_OBJECTS>riskLevel': 'ad0584cc6f9f',
+    'SUCCESSION_OBJECTS>riskResult': '0335378cb8d4',
     'SUCCESSION_OBJECTS>ruleSettings': 'a8e71b2fb2b9',
   },
   'packages/domain/src/survey360/catalog.ts': {
@@ -1775,15 +1771,10 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/succession/calc-read.ts#whole': '14e9013be25c',
   'apps/api/src/modules/succession/calc-routes.ts#registerCalcRoutes': '315660ad65bf',
   'apps/api/src/modules/succession/config-routes.ts#registerSuccessionConfigRoutes': '3fb660443fbe',
-  'apps/api/src/modules/succession/health-results.ts#readHealthResults': 'e43e6c32caea',
-  'apps/api/src/modules/succession/health-results.ts#requireHealthOrg': '0b2408fb15b0',
-  'apps/api/src/modules/succession/health-routes.ts#queueAccess': '4ba560c1b7ec',
-  'apps/api/src/modules/succession/health-routes.ts#queueResults': '2333be2ad4d8',
-  'apps/api/src/modules/succession/health-routes.ts#registerHealthRoutes': '169e30ca08be',
   'apps/api/src/modules/succession/input.ts#rejectImmutable': '99ce3a8d9998',
   'apps/api/src/modules/succession/levels-routes.ts#levelOptionAccess': '07e9bf4002f1',
   'apps/api/src/modules/succession/levels-routes.ts#registerLevelReads': '1c4dc4f4f005',
-  'apps/api/src/modules/succession/map-display.ts#readMapDisplayScope': '16bff63549c0',
+  'apps/api/src/modules/succession/map-display.ts#readMapDisplayScope': 'affc54d2a8f0',
   'apps/api/src/modules/succession/map-display.ts#resolveMapDisplayConditions': '1f93fb5a8650',
   'apps/api/src/modules/succession/map-routes.ts#computeAccess': 'ac0053f8a39a',
   'apps/api/src/modules/succession/map-routes.ts#mapAccess': '087aafaa7722',
@@ -1793,8 +1784,11 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/succession/read-sql.ts#selfRecordHiddenSql': 'eab3bde19b0f',
   'apps/api/src/modules/succession/record-read.ts#conditions': '326371d4de4d',
   'apps/api/src/modules/succession/record-write.ts#requireTarget': '8ff43faa6c04',
+  'apps/api/src/modules/succession/risk-routes.ts#computeAccess': '208b27aa5d33',
+  'apps/api/src/modules/succession/risk-routes.ts#registerRiskResultRoutes': '3cff362f655e',
+  'apps/api/src/modules/succession/risk-routes.ts#registerRiskRoutes': 'aba1ffa0bcee',
   'apps/api/src/modules/succession/routes.ts#recordFilter': '8c3cfb5b80b7',
-  'apps/api/src/modules/succession/routes.ts#registerSuccessionRoutes': '8bc75165b78d',
+  'apps/api/src/modules/succession/routes.ts#registerSuccessionRoutes': '15836e71bdb2',
   'apps/api/src/modules/succession/write-support.ts#checkCandidateAccess': 'ea8155f2a727',
   'apps/api/src/modules/succession/write-support.ts#checkWriteAccess': 'eac8ef9cc70b',
   'apps/api/src/modules/survey360/access.ts#activityVisibleSql': '11f326016f03',
@@ -2157,11 +2151,11 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'packages/domain/src/qualification/catalog.ts#QUALIFICATION_PAGES': '7456b7e1794d',
   'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>calcRun': 'ddd5b264fc87',
   'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>healthLevel': '929ee4841589',
-  'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>healthResult': 'ddd5b264fc87',
   'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>map': 'ddd5b264fc87',
   'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>population': 'e6610430d922',
   'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>record': '11325ba861f5',
   'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>riskLevel': '929ee4841589',
+  'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>riskResult': 'ddd5b264fc87',
   'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>ruleSettings': 'ddd5b264fc87',
   'packages/domain/src/survey360/catalog.ts#SURVEY360_BUTTONS': 'e3b0c44298fc',
   'packages/domain/src/survey360/catalog.ts#SURVEY360_OBJECTS>activity': 'a9beadd495ef',

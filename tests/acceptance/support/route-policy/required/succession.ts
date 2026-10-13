@@ -584,3 +584,102 @@ for (const kind of ['risk', 'health'] as const) {
   });
   Object.assign(SUCCESSION, { [`GET ${path}/options`]: options });
 }
+
+// B4：首次命令、重放共用 A2 包装器，冻结集合复用 C1。
+const RISK_ROUTES = `${S}/risk-routes.ts#registerRiskRoutes`;
+const riskConst: Evidence = {
+  role: 'const',
+  unit: 'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>riskResult',
+  anchor: "object( 'RiskResult'",
+};
+Object.assign(SUCCESSION, {
+  [`POST ${BASE}/maps/position/compute-risk`]: [
+    {
+      perm: 'obj:Succession.Map:view',
+      facts: ['object:objectContext'],
+      at: [
+        { role: 'call', unit: `${S}/risk-routes.ts#computeAccess`, anchor: "await successionContext(c, bound, 'map')" },
+        ...CONTEXT,
+        {
+          role: 'const',
+          unit: 'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>map',
+          anchor: "object( 'Map'",
+        },
+      ],
+    },
+    {
+      perm: 'btn:Succession.Map#computeRisk@list',
+      facts: ['button:button()'],
+      at: [
+        {
+          role: 'call',
+          unit: `${S}/risk-routes.ts#computeAccess`,
+          anchor: "await button(bound, ctx, codeOf('map'), 'computeRisk', 'list')",
+        },
+        {
+          role: 'impl',
+          unit: `${MRA}#button`,
+          anchor: "action: 'object.button', resource: buttonResource(objectCode, code, level)",
+        },
+      ],
+    },
+    {
+      perm: 'guard:succession.riskDisplay',
+      at: [
+        { role: 'call', unit: RISK_ROUTES, anchor: 'await readMapDisplayScope(' },
+        {
+          role: 'impl',
+          unit: `${S}/map-display.ts#readMapDisplayScope`,
+          anchor: 'if (!ctx.scope.hasDataPermission) return []',
+        },
+      ],
+    },
+  ],
+  [`GET ${BASE}/risk-results`]: [
+    {
+      perm: 'obj:Succession.RiskResult:view',
+      facts: ['object:objectContext'],
+      at: [
+        {
+          role: 'call',
+          unit: `${S}/risk-routes.ts#registerRiskResultRoutes`,
+          anchor: "await successionContext(c, deps, 'riskResult')",
+        },
+        ...CONTEXT,
+        riskConst,
+      ],
+    },
+  ],
+  [`PUT ${BASE}/risk-results/:positionId`]: [
+    {
+      perm: 'obj:Succession.RiskResult:update',
+      facts: ['object:objectContext'],
+      at: [
+        {
+          role: 'call',
+          unit: SUCCESSION_CONTEXT,
+          anchor: 'await successionContext(c, deps, spec.object, spec.operation, spec.expectedRevision)',
+        },
+        ...CONTEXT,
+        riskConst,
+      ],
+    },
+    {
+      perm: 'btn:Succession.RiskResult#assign@detail',
+      facts: ['button:button()'],
+      at: [
+        {
+          role: 'call',
+          unit: SUCCESSION_CONTEXT,
+          anchor: 'await button(deps, ctx, codeOf(spec.object), spec.button.code, spec.button.level)',
+        },
+        {
+          role: 'impl',
+          unit: `${MRA}#button`,
+          anchor: "action: 'object.button', resource: buttonResource(objectCode, code, level)",
+        },
+        riskConst,
+      ],
+    },
+  ],
+});

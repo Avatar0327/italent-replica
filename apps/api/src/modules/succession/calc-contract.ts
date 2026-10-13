@@ -1,3 +1,4 @@
+import { riskHandler } from './risk-worker.js';
 /** B3a / DEC-427：可信的模块内端口，不是 HTTP 授权入口。A3/C1/B4/B5 只追加 kind 实例。 */
 import { CALC_KINDS, type Tx, type successionCalcRuns, type successionCalcRunObjects } from '@italent/db';
 import { calcScheduleSlot } from './calc-time.js';
@@ -64,6 +65,7 @@ export function defineCalcKinds(handlers: readonly CalcHandler[]): readonly Calc
 export const SUCCESSION_CALC_KINDS = defineCalcKinds([
   EXIT_SWEEP_HANDLER,
   orgStatsHandler,
+  riskHandler,
   createHealthHandler('org_health'),
   createHealthHandler('org_health_reset'),
 ]);

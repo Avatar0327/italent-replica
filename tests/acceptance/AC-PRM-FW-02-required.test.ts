@@ -13,9 +13,9 @@ import { requiredChecks } from './support/route-policy/local-checks/required.js'
  * 锚点存在不是语义证明：只改权限键、保留真实锚点和摘要，证据校验发现不了，靠人工审定（下文专门一例说明）。
  */
 import { type ManifestRoute, routeManifest, type RouteManifest, type RoutePolicy } from '@italent/api';
-import { useTestDb } from '@italent/testkit';
+import { createTestDb } from '@italent/testkit';
 import { readdirSync, readFileSync } from 'node:fs';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { readFrozenContract } from './support/route-policy/baseline.js';
 import {
   DETECTOR_CONTRACT,
@@ -33,7 +33,13 @@ import { REQUIRED } from './support/route-policy/required/index.js';
 import type { Obligation, RequiredTable } from './support/route-policy/required/types.js';
 import { tenantApi } from './support/tenant-api.js';
 
-const testDb = useTestDb();
+let handle: Awaited<ReturnType<typeof createTestDb>>;
+// DEC-452：完整迁移在多工作区并行时实测超过 60 秒，仅放宽本文件建库，不增加 CI 分片预算。
+beforeAll(async () => {
+  handle = await createTestDb();
+}, 300_000);
+afterAll(async () => handle?.close());
+const testDb = () => handle;
 
 let manifest: RouteManifest;
 let frozen: ObservedContract;

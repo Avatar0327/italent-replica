@@ -1,3 +1,4 @@
+import { riskProducer } from './risk-producer.js';
 /** DEC-429：按租户生产者只冻结本期候选；状态转换、逐页执行与幂等键全部交 B3a。 */
 import { APP_ROLE, runPlatformCommand, sql, withPlatform, withTenant, type Db, type Tx } from '@italent/db';
 import { runCommand } from '../../commands.js';
@@ -24,6 +25,7 @@ export interface CalcProducer {
 export const SUCCESSION_PRODUCERS: readonly CalcProducer[] = [
   EXIT_SWEEP_PRODUCER,
   orgStatsProducer,
+  riskProducer,
   ...healthProducers,
 ];
 export interface JobInput {

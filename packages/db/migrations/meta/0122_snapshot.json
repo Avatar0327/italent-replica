@@ -1,5 +1,5 @@
 {
-  "id": "c9a06f9e-9027-4162-8d4c-7a84728915a6",
+  "id": "909628fa-628c-411b-b963-ad5afd25e5c3",
   "prevId": "32d15fc5-f03a-405b-bcfc-15abac8b34a5",
   "version": "7",
   "dialect": "postgresql",
@@ -51816,7 +51816,7 @@
       "checkConstraints": {
         "succession_target_locks_kind": {
           "name": "succession_target_locks_kind",
-          "value": "\"succession_target_locks\".\"target_kind\" IN ('org','position','org_health')"
+          "value": "\"succession_target_locks\".\"target_kind\" IN ('org', 'position')"
         }
       },
       "isRLSEnabled": false
@@ -52744,45 +52744,45 @@
         "succession_map_preferences_tenant_id_tenants_id_fk": {
           "name": "succession_map_preferences_tenant_id_tenants_id_fk",
           "tableFrom": "succession_map_preferences",
-          "tableTo": "tenants",
           "columnsFrom": [
             "tenant_id"
           ],
+          "tableTo": "tenants",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "succession_map_preferences_tenant_id_user_id_tenant_memberships_tenant_id_user_id_fk": {
           "name": "succession_map_preferences_tenant_id_user_id_tenant_memberships_tenant_id_user_id_fk",
           "tableFrom": "succession_map_preferences",
-          "tableTo": "tenant_memberships",
           "columnsFrom": [
             "tenant_id",
             "user_id"
           ],
+          "tableTo": "tenant_memberships",
           "columnsTo": [
             "tenant_id",
             "user_id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "succession_map_preferences_tenant_id_root_org_id_org_objects_tenant_id_id_fk": {
           "name": "succession_map_preferences_tenant_id_root_org_id_org_objects_tenant_id_id_fk",
           "tableFrom": "succession_map_preferences",
-          "tableTo": "org_objects",
           "columnsFrom": [
             "tenant_id",
             "root_org_id"
           ],
+          "tableTo": "org_objects",
           "columnsTo": [
             "tenant_id",
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -52881,45 +52881,45 @@
         "succession_org_stats_tenant_id_tenants_id_fk": {
           "name": "succession_org_stats_tenant_id_tenants_id_fk",
           "tableFrom": "succession_org_stats",
-          "tableTo": "tenants",
           "columnsFrom": [
             "tenant_id"
           ],
+          "tableTo": "tenants",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "succession_org_stats_tenant_id_org_id_org_objects_tenant_id_id_fk": {
           "name": "succession_org_stats_tenant_id_org_id_org_objects_tenant_id_id_fk",
           "tableFrom": "succession_org_stats",
-          "tableTo": "org_objects",
           "columnsFrom": [
             "tenant_id",
             "org_id"
           ],
+          "tableTo": "org_objects",
           "columnsTo": [
             "tenant_id",
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "succession_org_stats_tenant_id_run_id_succession_calc_runs_tenant_id_id_fk": {
           "name": "succession_org_stats_tenant_id_run_id_succession_calc_runs_tenant_id_id_fk",
           "tableFrom": "succession_org_stats",
-          "tableTo": "succession_calc_runs",
           "columnsFrom": [
             "tenant_id",
             "run_id"
           ],
+          "tableTo": "succession_calc_runs",
           "columnsTo": [
             "tenant_id",
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -53694,8 +53694,8 @@
       },
       "isRLSEnabled": false
     },
-    "public.succession_health_results": {
-      "name": "succession_health_results",
+    "public.succession_risk_results": {
+      "name": "succession_risk_results",
       "schema": "",
       "columns": {
         "tenant_id": {
@@ -53704,8 +53704,8 @@
           "primaryKey": false,
           "notNull": true
         },
-        "org_id": {
-          "name": "org_id",
+        "position_id": {
+          "name": "position_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
@@ -53724,24 +53724,6 @@
         },
         "run_id": {
           "name": "run_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "source_batch_id": {
-          "name": "source_batch_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "source_project_id": {
-          "name": "source_project_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "source_meeting_id": {
-          "name": "source_meeting_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
@@ -53768,9 +53750,9 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "succession_health_results_tenant_id_tenants_id_fk": {
-          "name": "succession_health_results_tenant_id_tenants_id_fk",
-          "tableFrom": "succession_health_results",
+        "succession_risk_results_tenant_id_tenants_id_fk": {
+          "name": "succession_risk_results_tenant_id_tenants_id_fk",
+          "tableFrom": "succession_risk_results",
           "tableTo": "tenants",
           "columnsFrom": [
             "tenant_id"
@@ -53781,13 +53763,13 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "succession_health_results_tenant_id_org_id_org_objects_tenant_id_id_fk": {
-          "name": "succession_health_results_tenant_id_org_id_org_objects_tenant_id_id_fk",
-          "tableFrom": "succession_health_results",
-          "tableTo": "org_objects",
+        "succession_risk_results_tenant_id_position_id_job_position_objects_tenant_id_id_fk": {
+          "name": "succession_risk_results_tenant_id_position_id_job_position_objects_tenant_id_id_fk",
+          "tableFrom": "succession_risk_results",
+          "tableTo": "job_position_objects",
           "columnsFrom": [
             "tenant_id",
-            "org_id"
+            "position_id"
           ],
           "columnsTo": [
             "tenant_id",
@@ -53796,10 +53778,10 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "succession_health_results_tenant_id_level_id_succession_health_levels_tenant_id_id_fk": {
-          "name": "succession_health_results_tenant_id_level_id_succession_health_levels_tenant_id_id_fk",
-          "tableFrom": "succession_health_results",
-          "tableTo": "succession_health_levels",
+        "succession_risk_results_tenant_id_level_id_succession_risk_levels_tenant_id_id_fk": {
+          "name": "succession_risk_results_tenant_id_level_id_succession_risk_levels_tenant_id_id_fk",
+          "tableFrom": "succession_risk_results",
+          "tableTo": "succession_risk_levels",
           "columnsFrom": [
             "tenant_id",
             "level_id"
@@ -53811,9 +53793,9 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "succession_health_results_tenant_id_run_id_succession_calc_runs_tenant_id_id_fk": {
-          "name": "succession_health_results_tenant_id_run_id_succession_calc_runs_tenant_id_id_fk",
-          "tableFrom": "succession_health_results",
+        "succession_risk_results_tenant_id_run_id_succession_calc_runs_tenant_id_id_fk": {
+          "name": "succession_risk_results_tenant_id_run_id_succession_calc_runs_tenant_id_id_fk",
+          "tableFrom": "succession_risk_results",
           "tableTo": "succession_calc_runs",
           "columnsFrom": [
             "tenant_id",
@@ -53826,9 +53808,9 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "succession_health_results_tenant_id_assigned_by_tenant_memberships_tenant_id_user_id_fk": {
-          "name": "succession_health_results_tenant_id_assigned_by_tenant_memberships_tenant_id_user_id_fk",
-          "tableFrom": "succession_health_results",
+        "succession_risk_results_tenant_id_assigned_by_tenant_memberships_tenant_id_user_id_fk": {
+          "name": "succession_risk_results_tenant_id_assigned_by_tenant_memberships_tenant_id_user_id_fk",
+          "tableFrom": "succession_risk_results",
           "tableTo": "tenant_memberships",
           "columnsFrom": [
             "tenant_id",
@@ -53843,24 +53825,24 @@
         }
       },
       "compositePrimaryKeys": {
-        "succession_health_results_tenant_id_org_id_pk": {
-          "name": "succession_health_results_tenant_id_org_id_pk",
+        "succession_risk_results_tenant_id_position_id_pk": {
+          "name": "succession_risk_results_tenant_id_position_id_pk",
           "columns": [
             "tenant_id",
-            "org_id"
+            "position_id"
           ]
         }
       },
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
-        "succession_health_method": {
-          "name": "succession_health_method",
-          "value": "\"succession_health_results\".\"method\" IN ('computed','manual','synced')"
+        "succession_risk_results_method": {
+          "name": "succession_risk_results_method",
+          "value": "\"succession_risk_results\".\"method\" IN ('manual','computed')"
         },
-        "succession_health_revision": {
-          "name": "succession_health_revision",
-          "value": "\"succession_health_results\".\"revision\">0"
+        "succession_risk_results_revision": {
+          "name": "succession_risk_results_revision",
+          "value": "\"succession_risk_results\".\"revision\" > 0"
         }
       },
       "isRLSEnabled": false

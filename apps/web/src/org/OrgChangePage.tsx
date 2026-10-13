@@ -1,3 +1,5 @@
+import { useSession } from '../foundation/Session.js';
+import { tenantDate } from '../foundation/dates.js';
 import { useState } from 'react';
 import { BASE, orgRequest } from './api.js';
 import { editableFields, OrgChangeForm, type Organization } from './OrgChangeForm.js';
@@ -6,8 +8,9 @@ import { text } from './messages.js';
 import './org.css';
 
 export function OrgChangePage() {
-  const [tenant, setTenant] = useState('');
-  const [date, setDate] = useState('');
+  const session = useSession();
+  const [tenant, setTenant] = useState(session.tenantId);
+  const [date, setDate] = useState(() => (session.timezone ? tenantDate(new Date(), session.timezone) : ''));
   const [active, setActive] = useState<{ tenant: string; date: string } | null>(null);
   return (
     <main className="org-page">
@@ -23,7 +26,12 @@ export function OrgChangePage() {
       >
         <label>
           {text.tenant}
-          <input required value={tenant} onChange={(event) => setTenant(event.target.value)} />
+          <input
+            readOnly={!!session.tenantId}
+            required
+            value={tenant}
+            onChange={(event) => setTenant(event.target.value)}
+          />
         </label>
         <label>
           {text.date}
