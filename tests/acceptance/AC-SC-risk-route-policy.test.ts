@@ -15,7 +15,7 @@ import {
   scanRegistrations,
 } from './support/route-policy/scan.js';
 
-it('风险列表的源码闭包只承载查看入口，不展开写结果适配器的授权分支', () => {
+it('AC-SC-risk-route-policy：风险列表的源码闭包只承载查看入口，不展开写结果适配器的授权分支', () => {
   const path = `${SC_BASE}/risk-results`;
   const index = indexSources();
   const { module, dirs } = moduleDirs(path);
@@ -41,7 +41,7 @@ beforeAll(async () => {
 }, 300_000);
 afterAll(async () => handle?.close());
 
-it('仅查看权可读风险结果；无按钮时赋值、清除与计算均拒绝', async () => {
+it('AC-SC-risk-route-policy：仅查看权可读风险结果；无按钮时赋值、清除与计算均拒绝', async () => {
   const w = await riskWorld(handle.db);
   expect((await w.assign(0)).status).toBe(200);
   const api = tenantApi(w.db, { clock: () => SC_NOW, authorize: (q) => q.action !== 'object.button' });
@@ -71,7 +71,7 @@ it('仅查看权可读风险结果；无按钮时赋值、清除与计算均拒�
   expect(await w.result()).toMatchObject({ level_id: w.levelId, method: 'manual', revision: 1 });
 });
 
-it('撤销风险查看权后，列表与赋值命令重放均拒绝且不改变原值', async () => {
+it('AC-SC-risk-route-policy：撤销风险查看权后，列表与赋值命令重放均拒绝且不改变原值', async () => {
   const w = await riskWorld(handle.db);
   const options = { ifMatch: 0, idempotencyKey: randomUUID(), body: { levelId: w.levelId } };
   expect((await w.request('PUT', `/risk-results/${w.position.id}`, options)).status).toBe(200);

@@ -725,7 +725,7 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/succession/risk-routes.ts': {
     computeAccess: 'fdb2a0d66d95',
-    registerRiskResultRoutes: '9b8d71164bfe',
+    registerRiskResultRoutes: '98a51523719c',
     registerRiskRoutes: 'e7876b9f17bd',
   },
   'apps/api/src/modules/succession/routes.ts': {
@@ -1785,7 +1785,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/succession/record-read.ts#conditions': '326371d4de4d',
   'apps/api/src/modules/succession/record-write.ts#requireTarget': '8ff43faa6c04',
   'apps/api/src/modules/succession/risk-routes.ts#computeAccess': '208b27aa5d33',
-  'apps/api/src/modules/succession/risk-routes.ts#registerRiskResultRoutes': '0807522767b4',
+  'apps/api/src/modules/succession/risk-routes.ts#registerRiskResultRoutes': '3cff362f655e',
   'apps/api/src/modules/succession/risk-routes.ts#registerRiskRoutes': 'aba1ffa0bcee',
   'apps/api/src/modules/succession/routes.ts#recordFilter': '8c3cfb5b80b7',
   'apps/api/src/modules/succession/routes.ts#registerSuccessionRoutes': '15836e71bdb2',

@@ -656,11 +656,13 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/succession/access.ts#successionContext',
   ],
   'apps/api/src/modules/succession/risk-routes.ts#registerRiskResultRoutes': [
+    'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
     'apps/api/src/modules/succession/access.ts#SUCCESSION_BASE',
     'apps/api/src/modules/succession/access.ts#successionContext',
     'apps/api/src/modules/succession/calc-worker.ts#enqueueCalcRun',
     'apps/api/src/modules/succession/risk-store.ts#assignRisk',
-    'apps/api/src/modules/succession/risk-store.ts#riskRead',
+    'apps/api/src/modules/succession/risk-store.ts#projectRisk',
+    'apps/api/src/modules/succession/risk-store.ts#readRiskRows',
     'apps/api/src/modules/succession/risk-store.ts#riskResults',
     'apps/api/src/modules/succession/write-support.ts#authorizeSuccessionResult',
     'apps/api/src/modules/succession/write-support.ts#checkWriteAccess',
@@ -710,8 +712,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/succession/record-write.ts#lockTargets',
     'apps/api/src/modules/succession/sync-barrier.ts#assertNoSyncBarrier',
   ],
-  'apps/api/src/modules/succession/risk-store.ts#riskRead': [
-    'apps/api/src/authorization.ts#requirePermission',
+  'apps/api/src/modules/succession/risk-store.ts#projectRisk': [
+    'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
+    'apps/api/src/modules/succession/access.ts#codeOf',
+  ],
+  'apps/api/src/modules/succession/risk-store.ts#readRiskRows': [
     'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
     'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
     'apps/api/src/modules/permission/module-access.ts#scopeSql',
@@ -720,11 +725,13 @@ export const GRAPH: Graph = {
     'packages/domain/src/succession/populations.ts#SUCCESSION_DEFAULT_COLORS',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
-  'apps/api/src/modules/succession/risk-store.ts#riskResults': [
-    'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
+  'apps/api/src/modules/succession/risk-store.ts#riskRead': [
+    'apps/api/src/authorization.ts#requirePermission',
+    'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
     'apps/api/src/modules/succession/access.ts#codeOf',
-    '#riskRead',
+    '#readRiskRows',
   ],
+  'apps/api/src/modules/succession/risk-store.ts#riskResults': ['#projectRisk', '#riskRead'],
   'apps/api/src/modules/succession/risk-store.ts#storeRisk': [
     'apps/api/src/audit/record.ts#recordAudit',
     'apps/api/src/modules/succession/access.ts#codeOf',

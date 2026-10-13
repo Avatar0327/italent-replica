@@ -7605,7 +7605,6 @@
       "module": "succession",
       "primitives": {
         "object": [
-          "object.* 动作",
           "objectContext"
         ],
         "scope": [
