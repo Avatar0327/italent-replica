@@ -342,6 +342,10 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/talent/http.ts#revision',
     'apps/api/src/modules/talent/http.ts#uuidParam',
   ],
+  'apps/api/src/modules/succession/health-rule-support.ts#requireSupportedHealthRules': [
+    'apps/api/src/modules/succession/health-rule-messages.ts#healthRuleMessages',
+    '#unsupportedHealthRule',
+  ],
   'apps/api/src/modules/succession/input.ts#date': ['apps/api/src/modules/org/read-model.ts#validIsoDate'],
   'apps/api/src/modules/succession/input.ts#recordCreate': ['#backupType', '#date', '#reason', '#uuid'],
   'apps/api/src/modules/succession/input.ts#recordEnd': ['#MAX_END_ITEMS', '#date', '#reason', '#uuid'],
@@ -400,6 +404,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/succession/levels-routes.ts#writeLevels': [
     'apps/api/src/modules/succession/config-store.ts#configAccess',
+    'apps/api/src/modules/succession/health-rule-support.ts#requireSupportedHealthRules',
     'apps/api/src/modules/succession/write-support.ts#authorizeSuccessionResult',
     'apps/api/src/modules/succession/write-support.ts#checkWriteAccess',
     'apps/api/src/modules/succession/write-support.ts#runSuccessionCommand',
@@ -437,6 +442,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/succession/config-store.ts#lockRuleSettings',
     'apps/api/src/modules/succession/config-store.ts#missing',
     'apps/api/src/modules/succession/config-store.ts#requireRevision',
+    'apps/api/src/modules/succession/health-rule-support.ts#requireSupportedHealthRules',
     'apps/api/src/modules/succession/levels-changes.ts#applyLevelChanges',
     'apps/api/src/modules/succession/levels-store.ts#levelSpec',
     'apps/api/src/modules/succession/levels-store.ts#levelViews',
