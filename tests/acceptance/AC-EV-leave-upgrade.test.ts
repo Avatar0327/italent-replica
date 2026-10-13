@@ -1,0 +1,46 @@
+/** C2-1b：真实旧结构升级，时间轴删除排除、跨多日补入与迁移幂等。 */
+import { sql } from '@italent/db';
+import { createTestDb } from '@italent/testkit';
+import { expect, it } from 'vitest';
+import { evaluationLeaveWorld, rowsOf, LEAVE_MIGRATION, replayLeaveMigration } from './AC-EV-leave-support.js';
+import { runEvaluationLeave } from '../../apps/api/src/modules/evaluation/leave-handler.js';
+
+it('AC-EV-leave-upgrade：C1 未来离职、三天前已生效且有评定的周期补入；已删除与无评定旧周期排除，重跑不重复', async () => {
+  const handle = await createTestDb({ migrateBefore: LEAVE_MIGRATION });
+  try {
+    const w = await evaluationLeaveWorld(handle.db);
+    const [date] = rowsOf<{ old: string; future: string; later: string }>(
+      await handle.db.execute(sql`
+      SELECT (CURRENT_DATE-4)::text AS old, (CURRENT_DATE+3)::text AS future, (CURRENT_DATE+5)::text AS later`),
+    );
+    const oldId = await w.seed();
+    const oldLeave = await w.leave(date!.old);
+    const futurePerson = await w.hire('迁移未来离职', w.orgA);
+    const futureId = await w.seed({}, futurePerson.id);
+    const futureLeave = await w.leave(date!.future, futurePerson.id);
+    const removedPerson = await w.hire('迁移已删除离职', w.orgA);
+    const removed = await w.leave(date!.future, removedPerson.id);
+    await w.remove(removed);
+    const noEvaluation = await w.hire('迁移旧周期无评定', w.orgA);
+    const ignored = await w.leave(date!.old, noEvaluation.id);
+    expect(await w.queue(oldLeave.id)).toEqual([]);
+    expect(await w.queue(futureLeave.id)).toEqual([]);
+    await handle.migrate();
+    expect(await w.queue(oldLeave.id)).toHaveLength(1);
+    expect(await w.queue(futureLeave.id)).toHaveLength(1);
+    expect(await w.queue(removed.id)).toEqual([]);
+    expect(await w.queue(ignored.id)).toEqual([]);
+    await replayLeaveMigration(handle.db);
+    expect(await w.queue(oldLeave.id)).toHaveLength(1);
+    expect(await w.queue(futureLeave.id)).toHaveLength(1);
+    expect(
+      await runEvaluationLeave(handle.db, w.tenantId, {
+        clock: () => new Date(`${date!.later}T08:00:00Z`),
+      }),
+    ).toMatchObject({ done: 2, failed: 0 });
+    expect(await w.read(oldId)).toMatchObject({ terminated_reason: 'leave' });
+    expect(await w.read(futureId)).toMatchObject({ terminated_reason: 'leave' });
+  } finally {
+    await handle.close();
+  }
+});
