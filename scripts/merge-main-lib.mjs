@@ -2,7 +2,9 @@
 // - 哪些路径算“生成物”（合并冲突时直接取 main 的版本，之后重算）；
 // - 迁移编号在合并时分配：本分支自己的迁移接在 main 最后一条之后，journal 的 when 严格递增；
 // - 快照三方合并：本分支快照相对“分叉前快照”的改动叠到 main 最新快照上，并接上 prevId 链；
-// - “只改计数”的业务冲突识别：main 一侧相对分叉点只改了数字字面量（如端点计数 592→593）。
+// - “只改计数”的业务冲突识别：main 一侧相对分叉点只改了数字字面量（如端点计数 592→593）；
+// - 授权版本合并时定号（DEC-439④）：STANDARD_GRANT_VERSION / DIGEST 与版本历史 HISTORY 由合并结果决定，
+//   本分支改了授权项编码就定为 main + 1 并用合并后的指纹，没改就取 main 的值。
 
 import { createHash } from 'node:crypto';
 
@@ -216,13 +218,22 @@ export function classifyConflict(diff3Text) {
   return { hunks: hunks.length, countOnly: hunks.length > 0 && hunks.every(isCountOnlyHunk) };
 }
 
-/** 把“只改计数”的冲突处取本分支一侧，其余冲突原样保留（含标记）；返回新文本与剩余冲突处数。 */
-export function takeOursForCounts(diff3Text) {
+/**
+ * 逐处处理冲突：decide(hunk, prefix) 返回替换文本则解决该处，返回 null 则原样保留冲突标记。
+ * prefix 是这一处之前的文本（之前未解决的冲突按 main 一侧计），用来判断冲突处在文件里的位置。
+ */
+function resolveHunks(diff3Text, decide) {
   let remaining = 0;
+  let prefix = '';
   const text = parseDiff3(diff3Text)
     .map((s) => {
-      if (typeof s === 'string') return s;
-      if (isCountOnlyHunk(s)) return s.ours;
+      if (typeof s === 'string') {
+        prefix += s;
+        return s;
+      }
+      const resolved = decide(s, prefix);
+      prefix += resolved ?? s.theirs;
+      if (resolved !== null) return resolved;
       remaining += 1;
       const base = s.base === null ? '' : `||||||| merge-base\n${s.base}`;
       return `<<<<<<< HEAD\n${s.ours}${base}=======\n${s.theirs}>>>>>>> origin/main\n`;
@@ -231,5 +242,233 @@ export function takeOursForCounts(diff3Text) {
   return { text, remaining };
 }
 
+/** 把“只改计数”的冲突处取本分支一侧，其余冲突原样保留（含标记）；返回新文本与剩余冲突处数。 */
+export const takeOursForCounts = (diff3Text) => resolveHunks(diff3Text, (h) => (isCountOnlyHunk(h) ? h.ours : null));
+
 /** drizzle 的写法：两空格缩进、末尾无换行。 */
 export const drizzleJson = (value) => JSON.stringify(value, null, 2);
+
+// ---------------------------------------------------------------------------------------------
+// DEC-439④ 授权版本合并时定号（同迁移号，DEC-385① / DEC-404）
+
+export const GRANTS_PATH = 'packages/domain/src/platform/standard-grants.ts';
+export const GRANT_HISTORY_PATH = 'tests/acceptance/AC-PLAT-F061-grants.test.ts';
+
+const VERSION_RE = /^export const STANDARD_GRANT_VERSION = (\d+);$/m;
+const DIGEST_RE = /^export const STANDARD_GRANT_DIGEST = '([0-9a-f]{16})';$/m;
+const CONSTANT_LINE_RE = /^export const STANDARD_GRANT_(?:VERSION = \d+|DIGEST = '[0-9a-f]{16}');$/;
+const HISTORY_OPEN_RE = /^([ \t]*)const HISTORY: Record<number, string> = \{$/m;
+const HISTORY_ENTRY_RE = /^\s*(\d+): '([0-9a-f]{16})',$/;
+const HISTORY_COMMENT_RE = /^\s*\/\/ ?(.*)$/;
+const HISTORY_CLOSE_RE = /^\s*\};$/;
+
+/** standard-grants.ts 里的 version 与指纹常量。 */
+export function readGrantConstants(text) {
+  const version = VERSION_RE.exec(text);
+  const digest = DIGEST_RE.exec(text);
+  if (!version || !digest) throw new Error(`${GRANTS_PATH} 里找不到 STANDARD_GRANT_VERSION / STANDARD_GRANT_DIGEST`);
+  return { version: Number(version[1]), digest: digest[1] };
+}
+
+export function writeGrantConstants(text, { version, digest }) {
+  readGrantConstants(text);
+  return text
+    .replace(VERSION_RE, `export const STANDARD_GRANT_VERSION = ${version};`)
+    .replace(DIGEST_RE, `export const STANDARD_GRANT_DIGEST = '${digest}';`);
+}
+
+/** 版本历史 HISTORY 的位置与条目：每条 { version, digest, comments }，comments 是条目上方的注释行（不含 //）。 */
+function locateHistory(text) {
+  const open = HISTORY_OPEN_RE.exec(text);
+  if (!open) throw new Error(`${GRANT_HISTORY_PATH} 里找不到 const HISTORY`);
+  const start = open.index + open[0].length + 1;
+  const entries = [];
+  let comments = [];
+  let at = start;
+  for (;;) {
+    const nl = text.indexOf('\n', at);
+    if (nl < 0) throw new Error('HISTORY 没有闭合');
+    const line = text.slice(at, nl);
+    if (HISTORY_CLOSE_RE.test(line)) {
+      if (comments.length) throw new Error('HISTORY 末尾有不属于任何条目的注释');
+      return { start, end: at, indent: `${open[1]}  `, entries };
+    }
+    const entry = HISTORY_ENTRY_RE.exec(line);
+    const comment = HISTORY_COMMENT_RE.exec(line);
+    if (entry) {
+      entries.push({ version: Number(entry[1]), digest: entry[2], comments });
+      comments = [];
+    } else if (comment) comments.push(comment[1]);
+    else throw new Error(`HISTORY 里有无法识别的行：${line.trim()}`);
+    at = nl + 1;
+  }
+}
+
+export const parseGrantHistory = (text) => locateHistory(text).entries;
+
+export function writeGrantHistory(text, entries) {
+  const { start, end, indent } = locateHistory(text);
+  const body = entries
+    .map(({ version, digest, comments }) =>
+      [...comments.map((c) => `${indent}// ${c}`), `${indent}${version}: '${digest}',`].join('\n'),
+    )
+    .join('\n');
+  return `${text.slice(0, start)}${body}\n${text.slice(end)}`;
+}
+
+/**
+ * 合并时定号：mergedDigest 是合并结果的 grantCodesDigest(STANDARD_GRANT_CODES)。
+ * - 与 main 的指纹相同（本分支没改授权项编码，或改动与 main 相同）：version / 指纹 / 历史全部取 main；
+ * - 不同：version = main + 1、指纹 = mergedDigest，历史 = main 的历史 + 一行；这一行的注释取本分支历史里 main 没有的条目的注释
+ *   （本分支自己递增过几次都并成一行），本分支没写就用 label。
+ * changed 表示结果与本分支合并前（branch）的常量或历史不同。
+ */
+export function planGrantVersion({ main, mainHistory, branch, branchHistory, mergedDigest, label }) {
+  const last = mainHistory.at(-1);
+  if (!last || last.version !== main.version || last.digest !== main.digest)
+    throw new Error(`main 的授权版本历史最后一行与 STANDARD_GRANT_VERSION ${main.version} / 指纹对不上，先修 main`);
+  let result;
+  if (mergedDigest === main.digest) result = { bumped: false, ...main, history: mainHistory };
+  else {
+    const onMain = new Set(mainHistory.map((e) => `${e.version}:${e.digest}`));
+    const own = branchHistory.filter((e) => !onMain.has(`${e.version}:${e.digest}`));
+    const comments = [...new Set(own.flatMap((e) => e.comments))];
+    const version = main.version + 1;
+    result = {
+      bumped: true,
+      version,
+      digest: mergedDigest,
+      history: [...mainHistory, { version, digest: mergedDigest, comments: comments.length ? comments : [label] }],
+    };
+  }
+  const changed =
+    !branch ||
+    branch.version !== result.version ||
+    branch.digest !== result.digest ||
+    JSON.stringify(branchHistory) !== JSON.stringify(result.history);
+  return { ...result, changed };
+}
+
+const nonBlankLines = (text) => (text ?? '').split('\n').filter((l) => l.trim());
+
+/** 冲突处只涉及 version / 指纹两行常量。 */
+export const isGrantConstantHunk = (h) => {
+  const lines = [h.ours, h.base, h.theirs].flatMap(nonBlankLines);
+  return lines.length > 0 && lines.every((l) => CONSTANT_LINE_RE.test(l));
+};
+
+/** 冲突处在 HISTORY 内部，且只有“version: 指纹”条目与注释行。 */
+export const isGrantHistoryHunk = (h, prefix) => {
+  const open = prefix.lastIndexOf('const HISTORY: Record<number, string> = {');
+  if (
+    open < 0 ||
+    prefix
+      .slice(open)
+      .split('\n')
+      .slice(1)
+      .some((l) => HISTORY_CLOSE_RE.test(l))
+  )
+    return false;
+  const lines = [h.ours, h.base, h.theirs].flatMap(nonBlankLines);
+  return lines.length > 0 && lines.every((l) => HISTORY_ENTRY_RE.test(l) || HISTORY_COMMENT_RE.test(l));
+};
+
+/**
+ * 授权版本冲突自动处理：standard-grants.ts 里只涉及两行常量、AC-PLAT-F061-grants.test.ts 里只在 HISTORY 内的冲突处取 main 一侧
+ * （随后由 planGrantVersion 统一改写），其余冲突原样保留；不是这两个文件返回 null。
+ */
+export function resolveGrantConflict(file, diff3Text) {
+  if (file === GRANTS_PATH) return resolveHunks(diff3Text, (h) => (isGrantConstantHunk(h) ? h.theirs : null));
+  if (file === GRANT_HISTORY_PATH)
+    return resolveHunks(diff3Text, (h, prefix) => (isGrantHistoryHunk(h, prefix) ? h.theirs : null));
+  return null;
+}
+
+// ---------------------------------------------------------------------------------------------
+// F-097：授权项编码增删声明（动态基线）与 --check 定号预告
+
+/**
+ * 本 PR 声明的授权项编码增删：{ reason, add: [...], remove: [...] }。条目是完整编码，或以 * 结尾的前缀（前缀里至少有一个 /，
+ * 不允许裸 *）。守卫测试以分叉点（CI 上是测试合并提交的 base）的编码为基线，实际增删必须与声明一致。
+ */
+export const GRANT_CHANGES_PATH = 'packages/domain/src/platform/standard-grant-changes.json';
+
+export const EMPTY_GRANT_CHANGES = Object.freeze({ reason: '', add: Object.freeze([]), remove: Object.freeze([]) });
+
+export function parseGrantChanges(text) {
+  const value = JSON.parse(text);
+  const list = (key) => {
+    const items = value?.[key];
+    if (!Array.isArray(items) || items.some((i) => typeof i !== 'string' || !i))
+      throw new Error(`${GRANT_CHANGES_PATH} 的 ${key} 必须是非空字符串数组`);
+    for (const item of items)
+      if (item.endsWith('*') && !item.slice(0, -1).includes('/'))
+        throw new Error(`${GRANT_CHANGES_PATH} 的前缀条目至少要写到身份编码加 /：${item}`);
+    return items;
+  };
+  if (typeof value?.reason !== 'string') throw new Error(`${GRANT_CHANGES_PATH} 缺少 reason（写 PR / 任务与原因）`);
+  return { reason: value.reason, add: list('add'), remove: list('remove') };
+}
+
+/**
+ * 本 PR 生效的声明：声明文件与基线上的内容相同（从 main 继承来的上一个 PR 的声明）视为本 PR 没有声明；
+ * 本 PR 改写过（含新建）才生效。这样旧声明不必清空，也不会放过后来的 PR。
+ */
+export function activeGrantChanges(baseText, headText) {
+  if (headText === undefined || headText === baseText) return EMPTY_GRANT_CHANGES;
+  return parseGrantChanges(headText);
+}
+
+const matchesGrantEntry = (entry, code) => (entry.endsWith('*') ? code.startsWith(entry.slice(0, -1)) : code === entry);
+
+/**
+ * 动态基线比较：baseCodes 是基线（分叉点 / 测试合并提交的 base）的编码，headCodes 是当前编码。
+ * 失败项：实际新增 / 删除的编码不被任一声明条目覆盖；声明新增的条目在当前编码里一个都没有；声明删除的条目当前仍有。
+ * 声明新增的编码若基线已有（别的 PR 先加了同一编码）不算失败——当前编码里有即可。
+ */
+export function checkGrantChanges({ baseCodes, headCodes, declared }) {
+  const base = new Set(baseCodes);
+  const head = new Set(headCodes);
+  const added = [...head].filter((c) => !base.has(c)).sort();
+  const removed = [...base].filter((c) => !head.has(c)).sort();
+  const problems = [
+    ...added.filter((c) => !declared.add.some((e) => matchesGrantEntry(e, c))).map((c) => `未声明的新增编码：${c}`),
+    ...removed
+      .filter((c) => !declared.remove.some((e) => matchesGrantEntry(e, c)))
+      .map((c) => `未声明的删除编码：${c}`),
+    ...declared.add
+      .filter((e) => ![...head].some((c) => matchesGrantEntry(e, c)))
+      .map((e) => `声明新增但当前编码里没有：${e}`),
+    ...declared.remove.flatMap((e) => {
+      const left = [...head].filter((c) => matchesGrantEntry(e, c));
+      return left.length ? [`声明删除但当前编码里仍有：${e}（如 ${left[0]}）`] : [];
+    }),
+  ];
+  return { added, removed, problems };
+}
+
+/**
+ * 合并时声明文件取哪一边：本分支相对分叉点改过就整份取本分支（main 上那份是别的 PR 的旧声明），否则取 main。
+ * 不做逐行合并——两份声明拼在一起没有意义。返回 undefined 表示两边都没有这个文件。
+ */
+export function pickGrantChanges({ branch, fork, main }) {
+  return branch !== undefined && branch !== fork ? branch : main;
+}
+
+/**
+ * --check 的授权版本预告（P3-2）：mergedDigest 是“合并结果”的指纹（git merge-tree 算出的树），与实际定号同口径；
+ * 算不出（packages/domain/src 里有业务冲突等）时为 undefined，按本分支相对分叉点是否改了编码给出条件式提示。
+ */
+export function describeGrantPlan({ main, mergedDigest, branchDigest, forkDigest }) {
+  if (mergedDigest !== undefined)
+    return mergedDigest === main.digest
+      ? `授权版本：合并结果的编码与 main 相同（指纹 ${main.digest}），合并时取 main 的 version ${main.version}` +
+          (branchDigest !== forkDigest ? '（本分支的编码改动 main 上已有，如别的 PR 加了同一编码）' : '')
+      : `授权版本：合并结果的编码与 main 不同，合并时定为 main + 1 = ${main.version + 1}，指纹 ${mergedDigest}`;
+  if (branchDigest === forkDigest)
+    return `授权版本：本分支没改授权项编码（指纹同分叉点），合并时预计取 main 的 version ${main.version}（合并结果暂算不出，以实际合并为准）`;
+  return (
+    `授权版本：本分支改了授权项编码（指纹 ${branchDigest}，分叉点 ${forkDigest}）；合并结果暂算不出（有业务冲突），` +
+    `合并后若编码与 main 相同（如别的 PR 已加了同一编码）则取 main 的 version ${main.version}，否则定为 main + 1 = ${main.version + 1}`
+  );
+}
