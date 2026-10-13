@@ -193,3 +193,99 @@ test('AC-FE-R3c-07 保存传 revision、命令ID，冲突展示且禁止旧表�
   await expect(form.getByRole('alert')).toContainText('回查');
   expect(writes).toHaveLength(1);
 });
+
+for (const count of [16, 31]) {
+  test(`AC-FE-R3c-08 ${count} 个项目的末页唯一项目结束后回到最后有效页`, async ({ page }) => {
+    const items = Array.from({ length: count }, (_, i) => ({
+      id: `project-${i + 1}`,
+      name: `分页项目${i + 1}`,
+      status: 'in_progress',
+      accessLevel: 'manage',
+      revision: 1,
+    }));
+    await page.route('**/talent-review/projects?*', (route) => route.fulfill({ json: { items } }));
+    await page.route(`**/talent-review/projects/project-${count}/end`, (route) => {
+      items[count - 1]!.status = 'ended';
+      return route.fulfill({ json: { ...items[count - 1], revision: 2 } });
+    });
+    await page.goto('/talent-review');
+    await page.getByLabel('切换演示身份').selectOption(user);
+    await expect(page).toHaveURL(/\/staff$/);
+    await page.getByRole('menuitem', { name: '人才盘点', exact: true }).click();
+    await page.locator(`.ant-pagination-item[title="${Math.ceil(count / 15)}"]`).click();
+    await expect(page.locator('.list-card tbody .ant-table-row')).toHaveCount(1);
+    await page.getByRole('button', { name: /^结\s*束$/ }).click();
+    await page
+      .locator('.ant-popconfirm')
+      .getByRole('button', { name: /确\s*定/ })
+      .click();
+    await expect(page.locator('.page-total')).toHaveText(`共${count - 1}条`);
+    await expect(page.locator('.ant-pagination-item-active')).toHaveAttribute('title', String((count - 1) / 15));
+    await expect(page.locator('.list-card tbody .ant-table-row')).toHaveCount(15);
+    await expect(page.getByRole('button', { name: `分页项目${count - 1}`, exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: `分页项目${count}`, exact: true })).toHaveCount(0);
+  });
+}
+
+for (const [collection, label] of [
+  ['templates', '盘点模板'],
+  ['matrices', '九宫格设置'],
+] as const) {
+  test(`AC-FE-R3c-08 ${label} 刷新缩页使用同一有效页码`, async ({ page }) => {
+    let items = Array.from({ length: 16 }, (_, i) => ({ id: `item-${i}`, name: `分页记录${i + 1}` }));
+    await page.route(`**/talent-review/${collection}?*`, (route) => route.fulfill({ json: { items } }));
+    await page.goto('/talent-review');
+    await page.getByLabel('切换演示身份').selectOption(user);
+    await expect(page).toHaveURL(/\/staff$/);
+    await page.getByRole('menuitem', { name: '人才盘点', exact: true }).click();
+    await page.getByRole('tab', { name: label, exact: true }).click();
+    await page.locator('.ant-pagination-item[title="2"]').click();
+    await expect(page.getByRole('button', { name: '分页记录16', exact: true })).toBeVisible();
+    items = items.slice(0, 15);
+    await page.getByRole('button', { name: /刷\s*新/, exact: true }).click();
+    await expect(page.locator('.page-total')).toHaveText('共15条');
+    await expect(page.locator('.ant-pagination-item-active')).toHaveAttribute('title', '1');
+    await expect(page.locator('.list-card tbody .ant-table-row')).toHaveCount(15);
+  });
+}
+
+for (const [xCount, yCount] of [
+  [2, 2],
+  [2, 3],
+  [3, 2],
+  [3, 3],
+] as const) {
+  test(`AC-FE-R3c-09 X${xCount}档 Y${yCount}档配置按坐标展示`, async ({ page }) => {
+    const cells = Array.from({ length: xCount * yCount }, (_, i) => ({
+      cellNo: i + 1,
+      xLevelNo: (i % xCount) + 1,
+      yLevelNo: Math.floor(i / xCount) + 1,
+      name: `X${(i % xCount) + 1}Y${Math.floor(i / xCount) + 1}`,
+    })).reverse();
+    await page.route(`**/talent-review/matrices/${id}`, (route) =>
+      route.fulfill({ json: { id, name: '合成年度盘点', cells } }),
+    );
+    await page.goto('/talent-review');
+    await page.getByLabel('切换演示身份').selectOption(user);
+    await expect(page).toHaveURL(/\/staff$/);
+    await page.getByRole('menuitem', { name: '人才盘点', exact: true }).click();
+    await page.getByRole('tab', { name: '九宫格设置', exact: true }).click();
+    await page.getByRole('button', { name: '合成年度盘点', exact: true }).click();
+    const grid = page.getByRole('dialog').locator('.review-grid');
+    await expect(grid.locator('.review-cell')).toHaveCount(xCount * yCount);
+    const boxes = await grid.locator('.review-cell').evaluateAll((nodes) =>
+      nodes.map((node) => {
+        const { x, y } = node.getBoundingClientRect();
+        return { name: node.textContent, x: Math.round(x), y: Math.round(y) };
+      }),
+    );
+    const columns = [...new Set(boxes.map((box) => box.x))].sort((a, b) => a - b);
+    const rows = [...new Set(boxes.map((box) => box.y))].sort((a, b) => b - a);
+    expect(columns).toHaveLength(xCount);
+    expect(rows).toHaveLength(yCount);
+    for (const cell of cells) {
+      const box = boxes.find((candidate) => candidate.name === cell.name)!;
+      expect([columns.indexOf(box.x) + 1, rows.indexOf(box.y) + 1]).toEqual([cell.xLevelNo, cell.yLevelNo]);
+    }
+  });
+}
