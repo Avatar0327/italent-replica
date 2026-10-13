@@ -193,8 +193,30 @@ interface RefsInput {
   readonly conditions: readonly ConditionRecord[];
 }
 
-/** 新增的引用：类型 / 周期 / 评价表 / 类别 / 级别 / 组织 / 负责人里原有集合之外的（原有的原样保留，不重校）。 */
-async function assertAddedRefs(tx: Tx, ctx: WriteContext, next: RefsInput, before: ActivityRecord | undefined) {
+/**
+ * 本次保存新增的环节评价表引用（DEC-455③）：按提交顺序，只有“同一稳定环节仍引用原表”才算保留（豁免重校）。新环节、
+ * 改绑到别的表的已有环节都算新增，哪怕同一张表在活动里别的环节上仍被引用；环节的对应关系见 `matchChains`（带 ID 按 ID，
+ * 没带的按同类型顺序）。新建没有对应关系，全部算新增。
+ */
+function addedChainFormIds(
+  submitted: readonly Submitted[],
+  pairs: readonly (readonly [ChainRecord, Submitted])[] = [],
+): string[] {
+  const previous = new Map(pairs.map(([existing, chain]) => [chain, existing.formId]));
+  return submitted.flatMap((chain) => (chain.formId && chain.formId !== previous.get(chain) ? [chain.formId] : []));
+}
+
+/**
+ * 新增的引用：类型 / 周期 / 评价表 / 类别 / 级别 / 组织 / 负责人里原有集合之外的（原有的原样保留，不重校）。
+ * 评价表按环节判（`addedFormIds`），其余按整份活动里的集合判。
+ */
+async function assertAddedRefs(
+  tx: Tx,
+  ctx: WriteContext,
+  next: RefsInput,
+  before: ActivityRecord | undefined,
+  addedFormIds: readonly string[],
+) {
   const { refs, persons } = activityAccess(ctx);
   const added = (had: readonly string[] | undefined, now: readonly string[]) =>
     now.filter((item) => !(had ?? []).includes(item));
@@ -205,14 +227,12 @@ async function assertAddedRefs(tx: Tx, ctx: WriteContext, next: RefsInput, befor
     ),
     ...added(before?.noticeOrgRange, next.noticeOrgRange),
   ]);
-  const formIds = (chains: readonly ChainDraft[] | undefined) =>
-    (chains ?? []).flatMap((chain) => (chain.formId ? [chain.formId] : []));
   const conditionRefs = (conditions: readonly ConditionRecord[] | undefined, field: 'categoryIds' | 'levelIds') =>
     (conditions ?? []).flatMap((condition) => condition[field]);
   await assertNewActivityRefs(tx, ctx, refs, {
     ...(before?.typeId === next.typeId ? {} : { typeId: next.typeId }),
     ...(before?.cycleId === next.cycleId ? {} : { cycleId: next.cycleId }),
-    formIds: added(formIds(before?.chains), formIds(next.chains)),
+    formIds: addedFormIds,
     categoryIds: added(
       [...(before?.categoryIds ?? []), ...conditionRefs(before?.conditions, 'categoryIds')],
       [...next.categoryIds, ...conditionRefs(next.conditions, 'categoryIds')],
@@ -300,7 +320,7 @@ export async function createActivity(tx: Tx, ctx: WriteContext, body: input.Acti
     conditions,
   };
   await requireOwnerOrg(tx, ctx, body.ownerOrgId);
-  await assertAddedRefs(tx, ctx, next, undefined);
+  await assertAddedRefs(tx, ctx, next, undefined, addedChainFormIds(chains));
   await assertScopeUnique(tx, {
     tenantId: ctx.tenantId,
     timezone: ctx.timezone,
@@ -395,7 +415,7 @@ export async function updateActivity(
     }
   }
   if (merged.ownerOrgId !== before.ownerOrgId) await requireOwnerOrg(tx, ctx, merged.ownerOrgId);
-  await assertAddedRefs(tx, ctx, merged, before);
+  await assertAddedRefs(tx, ctx, merged, before, submitted ? addedChainFormIds(submitted, match?.pairs) : []);
   // 改适用组织范围（含“包含下级”）/ 申请类别才重新检查重复（值没变不重判，历史数据里已有的冲突不挡改名等）
   if (!sameSet(orgKey(orgRange), orgKey(before.orgRange)) || !sameSet(merged.categoryIds, before.categoryIds)) {
     await assertScopeUnique(tx, {

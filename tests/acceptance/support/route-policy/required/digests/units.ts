@@ -249,9 +249,9 @@ export const DIGESTS: Digests = {
     registerActivityRoutes: 'da156ca609ab',
   },
   'apps/api/src/modules/evaluation/activity-service.ts': {
-    createActivity: '1d01fa6953f3',
+    createActivity: '2c8a6e40895b',
     presentActivities: '7c4a389fcce8',
-    updateActivity: '1bbcbe10a4e1',
+    updateActivity: '4e44b523ab94',
   },
   'apps/api/src/modules/evaluation/activity-state.ts': {
     activityCommand: 'b512753ccb9e',
@@ -1444,9 +1444,9 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/evaluation/activity-refs.ts#resolveActivityRefs': 'd2ec15c574ef',
   'apps/api/src/modules/evaluation/activity-routes.ts#PATH': '072f6ed3a951',
   'apps/api/src/modules/evaluation/activity-routes.ts#registerActivityRoutes': '02ba1c120f4c',
-  'apps/api/src/modules/evaluation/activity-service.ts#createActivity': '6cea1ae2d374',
+  'apps/api/src/modules/evaluation/activity-service.ts#createActivity': '4ec102d9c07d',
   'apps/api/src/modules/evaluation/activity-service.ts#presentActivities': '4b436823458b',
-  'apps/api/src/modules/evaluation/activity-service.ts#updateActivity': '1970287b39ae',
+  'apps/api/src/modules/evaluation/activity-service.ts#updateActivity': 'f30ee85988d5',
   'apps/api/src/modules/evaluation/activity-state.ts#activityCommand': 'c8e7d35e4b10',
   'apps/api/src/modules/evaluation/activity-state.ts#registerActivityStateRoutes': 'c1a7cc9061ab',
   'apps/api/src/modules/evaluation/candidates.ts#registerCandidates': 'c162fd500d1e',
