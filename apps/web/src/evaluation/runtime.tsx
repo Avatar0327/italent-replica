@@ -60,17 +60,19 @@ export function useWriter(done: () => void) {
     lock.current = true;
     setBusy(true);
     setError(undefined);
+    const createEntry = creation && path === creation.path && method === 'POST' ? creation : undefined;
     try {
-      if (creation && path === creation.path && method === 'POST') {
-        await creation.store.run(creation.key, path, body, (command) => api.request(path, { method, command }));
+      if (createEntry) {
+        await createEntry.store.run(createEntry.key, path, body, (command) => api.request(path, { method, command }));
       } else {
         await api.request(path, { method, command: newCommand(body, revision) });
       }
       done();
     } catch (cause) {
       setError(cause);
-      // 409 / 网络未知必须先回查，不能以新命令 ID 再次提交原表单。
-      if (cause instanceof ApiError && ['unknown', 'refresh', 'conflict'].includes(cause.kind)) setBlocked(true);
+      // DEC-473：创建统一按页面登记判断；明确拒绝已释放登记，保留输入供改正，未知结果继续锁定。
+      if (createEntry) setBlocked(!!createEntry.store.get(createEntry.key));
+      else if (cause instanceof ApiError && ['unknown', 'refresh', 'conflict'].includes(cause.kind)) setBlocked(true);
       throw cause;
     } finally {
       lock.current = false;
