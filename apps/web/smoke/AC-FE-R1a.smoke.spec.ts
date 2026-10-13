@@ -176,7 +176,8 @@ test('AC-FE-R1a-07 新建职层校验必填项并携带租户、命令键和 rev
   await page.getByRole('button', { name: /保\s*存/ }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(writes).toHaveLength(1);
-  expect(writes[0]!.body).toMatchObject({ name: '合成新职层', enabled: true, startDate: '2026-10-12' });
+  expect(writes[0]!.body).toMatchObject({ name: '合成新职层', enabled: true });
+  expect(writes[0]!.body).not.toHaveProperty('startDate');
   expect(writes[0]!.headers['if-match']).toBe('0');
   expect(writes[0]!.headers['idempotency-key']).toMatch(/^[\da-f-]{36}$/);
   expect(writes[0]!.headers['x-tenant-id']).toBe('10000000-0000-4000-8000-000000000001');
