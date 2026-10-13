@@ -11,9 +11,9 @@ import { fw02Checks } from './support/route-policy/local-checks/fw-02.js';
  * 依赖多维身份探测（范围外样本、字段探针、denied 码）与 recorded 事实防删减的部分按 DEC-303 移到 §10 PR-B。
  */
 import { createApp, defineTable, RoutePolicyError, routeManifest, type RouteManifest } from '@italent/api';
-import { useTestDb } from '@italent/testkit';
+import { createTestDb } from '@italent/testkit';
 import { readFileSync } from 'node:fs';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PROBE_POLICY_ENTRIES, probeRoutes } from './support/probe-routes.js';
 import {
   BASELINE_PATH,
@@ -31,7 +31,13 @@ import { compareMutants } from './support/route-policy/detector-fixtures.js';
 import { MUTATIONS, mutantsOf } from './support/route-policy/mutate.js';
 import { tenantApi } from './support/tenant-api.js';
 
-const testDb = useTestDb();
+let handle: Awaited<ReturnType<typeof createTestDb>>;
+// DEC-452：完整迁移在多工作区并行时实测超过 60 秒，仅放宽本文件建库，不增加 CI 分片预算。
+beforeAll(async () => {
+  handle = await createTestDb();
+}, 300_000);
+afterAll(async () => handle?.close());
+const testDb = () => handle;
 
 let manifest: RouteManifest;
 let fresh: ObservedContract;
@@ -46,7 +52,7 @@ beforeAll(async () => {
   if (!stored) throw new Error(`冻结基准不存在：先用 ROUTE_POLICY_UPDATE_BASELINE=1 生成 ${BASELINE_PATH}`);
   // DEC-430①：警告模式下冻结文件可能还没按最新源码重算，比较改用本次重新探测的现状（同一生成器，独立于声明）
   frozen = generatedStrict() ? stored : fresh;
-});
+}, 300_000);
 
 function codes(findings: readonly Finding[]): string[] {
   return findings.map((f) => f.code);
