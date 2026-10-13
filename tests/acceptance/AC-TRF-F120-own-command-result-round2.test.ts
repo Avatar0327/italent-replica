@@ -133,4 +133,48 @@ describe('F-120 第 2 轮：本人命令结果的归属与结果未知', () => {
     expect((await query(legacyId, stranger)).status).toBe(404);
     expect((await query(legacyId, world.asAdmin)).status).toBe(404);
   });
+
+  // 第 3 轮：最新时间整组判定，不受固定窗口限制（Codex 第 2 轮审查 P2，与第 1 轮 P2-1 同类）
+  async function unknownThen(commandId: string, unknownAt: string) {
+    const lost = tenantApi(lostCommitFor(database().db, commandId), { clock: at(unknownAt) });
+    const retry = await org(lost, commandId, validOrg());
+    expect(retry.status, await retry.clone().text()).toBe(503);
+  }
+  async function businessFailures(commandId: string, count: number, failedAt: string) {
+    const api = tenantApi(database().db, { clock: at(failedAt) });
+    for (let i = 0; i < count; i += 1) expect((await org(api, commandId, {})).status).toBe(400);
+  }
+
+  it('P2-R3 最新时间同刻 1 条 unknown + 21 条业务失败（超过任何固定窗口）：返回 404', async () => {
+    const commandId = `f120-r3-tie-${randomUUID()}`;
+    await unknownThen(commandId, '2026-10-02T02:00:00.000Z');
+    await businessFailures(commandId, 21, '2026-10-02T02:00:00.000Z');
+    const result = await query(commandId, world.asAdmin);
+    expect(result.status, await result.clone().text()).toBe(404);
+  });
+
+  it('P2-R3 对照：最新时间整组都是确定失败（21 条）→ 200 failed / 400', async () => {
+    const commandId = `f120-r3-allfail-${randomUUID()}`;
+    await businessFailures(commandId, 21, '2026-10-03T02:00:00.000Z');
+    const result = await query(commandId, world.asAdmin);
+    expect(result.status, await result.clone().text()).toBe(200);
+    expect(await result.json()).toMatchObject({
+      status: 'failed',
+      httpStatus: 400,
+      completedAt: '2026-10-03T02:00:00.000Z',
+    });
+  });
+
+  it('P2-R3 对照：unknown 早于最新一组确定失败（21 条）→ 以最新组为准，200 failed / 400', async () => {
+    const commandId = `f120-r3-older-${randomUUID()}`;
+    await unknownThen(commandId, '2026-10-04T01:00:00.000Z');
+    await businessFailures(commandId, 21, '2026-10-04T02:00:00.000Z');
+    const result = await query(commandId, world.asAdmin);
+    expect(result.status, await result.clone().text()).toBe(200);
+    expect(await result.json()).toMatchObject({
+      status: 'failed',
+      httpStatus: 400,
+      completedAt: '2026-10-04T02:00:00.000Z',
+    });
+  });
 });
