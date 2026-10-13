@@ -46,3 +46,12 @@ describe('AC-FE-R1b-02 任职日期和字段值', () => {
     expect(displayValue({ secret: 'value' })).toBe('—');
   });
 });
+
+describe('AC-FE-R1b-06 缺失筛选契约使用独立样例', () => {
+  it('组合筛选只匹配合成样例，不复用真实列表；清空恢复样例', async () => {
+    const { previewFilters, filterExamples } = await import('../../apps/web/src/demo-stubs/personnel.js');
+    expect(previewFilters({ gender: '女', department: '示例人事部' }).map((row) => row.id)).toEqual(['sample-c']);
+    expect(previewFilters({ company: '不匹配' })).toEqual([]);
+    expect(previewFilters({})).toEqual(filterExamples);
+  });
+});
