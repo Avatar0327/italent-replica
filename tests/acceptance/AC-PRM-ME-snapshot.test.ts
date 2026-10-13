@@ -103,7 +103,7 @@ describe('当前用户权限快照（演示租户）', () => {
     const response = await api.request('GET', SNAPSHOT, who);
     expect(response.status).toBe(200);
     const text = await response.text();
-    expect(text.length).toBeLessThan(32 * 1024);
+    expect(Buffer.byteLength(text, 'utf8')).toBeLessThanOrEqual(32 * 1024);
     const body = JSON.parse(text) as Snapshot;
     expect(Object.keys(body).sort()).toEqual(['adminMenus', 'apps', 'scope', 'session']);
     expect(body.apps.map((a) => a.app)).toEqual(APP_ROUTES.map((r) => r.id));

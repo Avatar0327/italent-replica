@@ -52,6 +52,36 @@ export function summarizeScope(app: AppId, scope: ModuleScope): ScopeSummary {
   };
 }
 
+/** 整个响应体（UTF-8 字节）的上限 = 请求 / 响应的默认 32KB 约定（AGENTS.md §10「请求」）。 */
+export const SNAPSHOT_BODY_LIMIT = 32 * 1024;
+
+/**
+ * 整包字节预算：各应用的组织集合共用 `budgetBytes`（同一组织在多个应用重复出现时重复计入）。
+ * 轮流给每个应用补一个组织，直到预算用完或都给完，因此小范围应用总是完整，大范围应用平分剩余预算；
+ * 任何应用被省略或截短都置 truncated=true，status 不变（仍是 limited，前台不得当作完整范围）。
+ */
+export function fitScopeToBudget(scope: readonly ScopeSummary[], budgetBytes: number): ScopeSummary[] {
+  const kept = scope.map(() => 0);
+  let remaining = budgetBytes;
+  for (let progressed = true; progressed;) {
+    progressed = false;
+    scope.forEach((item, index) => {
+      const id = item.organizationIds[kept[index]!];
+      // 每个元素的字节数 = JSON 字符串本身 + 一个逗号分隔符（多算一个逗号，偏保守）
+      const cost = id === undefined ? 0 : Buffer.byteLength(JSON.stringify(id), 'utf8') + 1;
+      if (id === undefined || cost > remaining) return;
+      remaining -= cost;
+      kept[index]! += 1;
+      progressed = true;
+    });
+  }
+  return scope.map((item, index) => ({
+    ...item,
+    organizationIds: item.organizationIds.slice(0, kept[index]),
+    truncated: item.truncated || kept[index]! < item.organizationIds.length,
+  }));
+}
+
 type Deps = Pick<TenantRouteDeps, 'db' | 'authorize' | 'clock'>;
 
 export async function buildPermissionSnapshot(deps: Deps, ctx: TenantContext, catalog: ObjectCatalog) {
@@ -103,7 +133,7 @@ export async function buildPermissionSnapshot(deps: Deps, ctx: TenantContext, ca
           : summarizeScope(app, { orgIds: [], personIds: [], all: false, hasDataPermission: false }),
       );
     }
-    return {
+    const response = {
       session: {
         tenantId: ctx.tenantId,
         tenantName: tenant.name,
@@ -117,6 +147,12 @@ export async function buildPermissionSnapshot(deps: Deps, ctx: TenantContext, ca
       scope,
       adminMenus,
     };
+    // 先按“组织集合全空”算出其余部分占用的字节，剩余预算再分给各应用的组织集合
+    const base = Buffer.byteLength(
+      JSON.stringify({ ...response, scope: scope.map((item) => ({ ...item, organizationIds: [] })) }),
+      'utf8',
+    );
+    return { ...response, scope: fitScopeToBudget(scope, SNAPSHOT_BODY_LIMIT - base) };
   });
 }
 

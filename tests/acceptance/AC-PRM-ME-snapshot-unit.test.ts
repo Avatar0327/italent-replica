@@ -3,7 +3,12 @@ import '@italent/api'; // 各模块在加载时登记自己的对象
 import { APP_IDS, APP_OBJECT_DIRECTORY } from '@italent/domain';
 import { describe, expect, it } from 'vitest';
 import { objectCatalog } from '../../apps/api/src/modules/permission/catalog.js';
-import { SNAPSHOT_ORG_LIMIT, summarizeScope } from '../../apps/api/src/modules/permission/me-snapshot.js';
+import {
+  fitScopeToBudget,
+  SNAPSHOT_ORG_LIMIT,
+  summarizeScope,
+  type ScopeSummary,
+} from '../../apps/api/src/modules/permission/me-snapshot.js';
 import { menuObjects } from '../../apps/web/src/demo-stubs/object-directory.js';
 import { APP_ROUTES } from '../../apps/web/src/foundation/routes.js';
 
@@ -72,5 +77,51 @@ describe('summarizeScope 数据范围摘要', () => {
     const over = summarizeScope('org', { ...base, orgIds: ids(SNAPSHOT_ORG_LIMIT + 1) });
     expect(over.truncated).toBe(true);
     expect(over.organizationIds).toEqual(ids(SNAPSHOT_ORG_LIMIT));
+  });
+});
+
+describe('fitScopeToBudget 整包字节预算', () => {
+  const ID_BYTES = JSON.stringify(ids(1)[0]).length + 1;
+  const limited = (app: ScopeSummary['app'], n: number, truncated = false): ScopeSummary => ({
+    app,
+    status: 'limited',
+    organizationIds: ids(n),
+    truncated,
+  });
+
+  it('预算充足时原样返回；all / none 不受影响', () => {
+    const input: ScopeSummary[] = [
+      limited('org', 5),
+      { app: 'job', status: 'all', organizationIds: [], truncated: false },
+      { app: 'staff', status: 'none', organizationIds: [], truncated: false },
+    ];
+    expect(fitScopeToBudget(input, 5 * ID_BYTES)).toEqual(input);
+  });
+
+  it('预算不足：轮流分配、同一组织在各应用重复计入，被截短的应用 truncated=true 且仍是 limited', () => {
+    const input = [limited('org', 10), limited('job', 10), limited('staff', 2)];
+    const result = fitScopeToBudget(input, 8 * ID_BYTES);
+    expect(result.map((r) => r.organizationIds.length)).toEqual([3, 3, 2]);
+    expect(result.map((r) => r.truncated)).toEqual([true, true, false]);
+    expect(result.every((r) => r.status === 'limited')).toBe(true);
+    expect(result[0]!.organizationIds).toEqual(ids(3));
+    expect(result[1]!.organizationIds).toEqual(ids(3));
+  });
+
+  it('预算为 0 或为负：全部省略并置 truncated；已有 truncated 保持', () => {
+    for (const budget of [0, -10]) {
+      const result = fitScopeToBudget([limited('org', 3), limited('job', 0), limited('idp', 4, true)], budget);
+      expect(result.map((r) => [r.organizationIds.length, r.truncated])).toEqual([
+        [0, true],
+        [0, false],
+        [0, true],
+      ]);
+    }
+  });
+
+  it('已被单项 200 上限截断的应用，即使预算足够也保持 truncated=true', () => {
+    const [result] = fitScopeToBudget([limited('org', SNAPSHOT_ORG_LIMIT, true)], 1_000_000);
+    expect(result).toMatchObject({ truncated: true });
+    expect(result!.organizationIds).toHaveLength(SNAPSHOT_ORG_LIMIT);
   });
 });
