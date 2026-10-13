@@ -21,12 +21,23 @@ export declare function isGeneratedPath(file: string): boolean;
 export declare function pad4(idx: number): string;
 export declare function snapshotPath(idx: number): string;
 export declare function sqlPath(tag: string): string;
+export declare function normalizeSql(text: string): string;
+export declare function sqlDigest(text: string | undefined): string | undefined;
+export interface SqlReaders {
+  /** main 上该迁移 SQL 的文本（读不到返回 undefined） */
+  main?: (tag: string) => string | undefined;
+  /** 本分支上该迁移 SQL 的文本（读不到返回 undefined） */
+  branch?: (tag: string) => string | undefined;
+}
 export declare function planRenumber(
   mainJournal: Journal,
   branchJournal: Journal,
+  sql?: SqlReaders,
 ): {
   journal: Journal;
   renames: { from: JournalEntry; to: JournalEntry }[];
+  /** 上游已合并但改了号的迁移：本分支旧名条目（from）与 main 上内容相同的条目（mainEntry），要清理、不改号 */
+  stale: { from: JournalEntry; mainEntry: JournalEntry }[];
   changed: boolean;
   forkIdx: number | undefined;
 };
