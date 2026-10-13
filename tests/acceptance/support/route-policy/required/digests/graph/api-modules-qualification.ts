@@ -1018,6 +1018,9 @@ export const GRAPH: Graph = {
     '#newRefs',
     '#requireText',
   ],
+  'apps/api/src/modules/qualification/subset-policy.ts#top-call:installQualificationSubsetPolicy': [
+    '#installQualificationSubsetPolicy',
+  ],
   'apps/api/src/modules/qualification/sync-mapping.ts#enabledCategoryFor': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
