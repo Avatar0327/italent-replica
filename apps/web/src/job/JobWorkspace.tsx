@@ -53,7 +53,7 @@ function useCatalog(kind: JobKind) {
   const [name, setName] = useState('');
   const [enabled, setEnabled] = useState('true');
   const [selected, setSelected] = useState<string>();
-  const [editor, setEditor] = useState<{ original?: JobRow }>();
+  const [editor, setEditor] = useState<{ original?: JobRow; today: string }>();
   const query = new URLSearchParams({
     asOf: date,
     page: String(page.page),
@@ -61,7 +61,7 @@ function useCatalog(kind: JobKind) {
     ...(name ? { name } : {}),
     ...(enabled ? { enabled } : { includeDisabled: 'true' }),
   });
-  const remote = useRemote<PageResult<JobRow>>(`/api/tenant/job/${kind}?${query}`);
+  const remote = useRemote<PageResult<JobRow> & { today: string }>(`/api/tenant/job/${kind}?${query}`);
   const detail = useRemote<JobRow>(selected ? `/api/tenant/job/${kind}/${selected}?asOf=${date}` : null);
   const reset = () => {
     setPage({ ...page, page: 1 });
@@ -174,7 +174,11 @@ function JobCatalog({ kind, access, view }: { kind: JobKind; access: PageAccess;
           <>
             <Button onClick={s.remote.refresh}>{m.refresh}</Button>
             {access.can('create', 'list') && (
-              <Button type="primary" disabled={s.remote.loading || !!s.remote.error} onClick={() => s.setEditor({})}>
+              <Button
+                type="primary"
+                disabled={s.remote.loading || !!s.remote.error}
+                onClick={() => s.remote.data && s.setEditor({ today: s.remote.data.today })}
+              >
                 {m.create}
               </Button>
             )}
@@ -200,6 +204,7 @@ function JobCatalog({ kind, access, view }: { kind: JobKind; access: PageAccess;
           kind={kind}
           original={s.editor.original}
           date={s.date}
+          today={s.editor.today}
           access={access}
           onClose={() => {
             s.setEditor(undefined);
@@ -228,7 +233,7 @@ function JobDetail({ s, access }: { s: Catalog; access: PageAccess }) {
         access.can('update') && (
           <Button
             onClick={() => {
-              s.setEditor({ original: detail.data });
+              s.setEditor({ original: detail.data, today: s.remote.data?.today ?? s.date });
               s.setSelected(undefined);
             }}
           >

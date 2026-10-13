@@ -1,3 +1,4 @@
+import type { FieldAccess } from '../foundation/permission-model.js';
 import { pageText as m } from './messages.js';
 export const jobKinds = [
   'layers',
@@ -27,6 +28,13 @@ export interface JobRow {
   parents?: Partial<Record<'admin' | 'dotted', { parentId: string | null; sequence?: number | null }>>;
   [field: string]: unknown;
 }
+/** DEC-465：候选与写入共用时点；无日期编辑权时使用后端默认的租户当天。 */
+export function jobTiming(original: JobRow | undefined, selectedDate: string, today: string, access: FieldAccess) {
+  if (original) return { asOf: selectedDate, createFields: {} };
+  if (access.visible && access.editable) return { asOf: selectedDate, createFields: { startDate: selectedDate } };
+  return { asOf: today, createFields: {} };
+}
+
 export function jobBody(kind: JobKind, values: Record<string, unknown>, original: JobRow | undefined, date: string) {
   const { adminParent, adminSequence, dottedParent, dottedSequence, ...fields } = values;
   const body: Record<string, unknown> = {};
@@ -50,7 +58,7 @@ export function jobBody(kind: JobKind, values: Record<string, unknown>, original
     body.sequenceId !== original.sequenceId
   )
     body.syncSequenceToAssignments = true;
-  // 新建日期由后端按租户时区默认；不能绕过 FormOverlay 的字段权限补写 startDate。
+  // startDate 只由 jobTiming 按字段编辑权提供；省略时由后端按租户当天默认。
   return original ? { ...body, effectiveDate: date } : body;
 }
 

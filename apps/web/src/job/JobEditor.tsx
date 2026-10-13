@@ -2,7 +2,7 @@ import { Alert, Input, InputNumber, Select } from 'antd';
 import { useState } from 'react';
 import { FormOverlay, TenantDatePicker, type FormField } from '../foundation/index.js';
 import { usePageWrite, useRemote, type PageAccess } from '../org/page-support.js';
-import { jobBody, jobInitialValues, jobPermissionField, type JobKind, type JobRow } from './page-model.js';
+import { jobBody, jobInitialValues, jobPermissionField, jobTiming, type JobKind, type JobRow } from './page-model.js';
 import { pageText as m } from './messages.js';
 
 const numbers = new Set([
@@ -123,11 +123,13 @@ export function JobEditor(props: {
   kind: JobKind;
   original?: JobRow;
   date: string;
+  today: string;
   access: PageAccess;
   onClose(): void;
   onSaved(): void;
 }) {
   const { kind, original, access, date } = props;
+  const timing = jobTiming(original, date, props.today, access.field('startDate'));
   const write = usePageWrite();
   const [openKey] = useState(() => crypto.randomUUID());
   const fields = ['name', 'code', ...jobFields[kind], 'displayOrder', 'establishedOn', 'stopDate', 'enabled'];
@@ -135,7 +137,7 @@ export function JobEditor(props: {
     {
       title: m.basic,
       fields: fields.map((name): FormField => {
-        const control = jobControl(name, kind, date, original?.id);
+        const control = jobControl(name, kind, timing.asOf, original?.id);
         return {
           name,
           label: label(name),
@@ -162,7 +164,7 @@ export function JobEditor(props: {
       onSubmit={async (values) => {
         await write(
           `/api/tenant/job/${kind}${original ? `/${original.id}` : ''}`,
-          jobBody(kind, values, original, date),
+          jobBody(kind, { ...values, ...timing.createFields }, original, timing.asOf),
           original?.revision ?? 0,
           original ? 'PATCH' : 'POST',
         );
