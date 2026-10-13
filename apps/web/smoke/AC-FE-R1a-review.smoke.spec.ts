@@ -38,7 +38,7 @@ async function setup(page: Page, options: { hiddenName?: boolean; schemeOnly?: b
       }),
     );
   }
-  await page.goto('/staff');
+  await page.goto('/self');
   await page.getByLabel('切换演示身份').selectOption(user);
   await page.waitForURL('**/staff');
   return errors;
@@ -47,7 +47,7 @@ async function setup(page: Page, options: { hiddenName?: boolean; schemeOnly?: b
 test('AC-FE-R1a-16 编制自由文本原样显示，只有枚举翻译，列表与详情一致', async ({ page }) => {
   const errors = await setup(page);
   await page.goto('/org?tab=establishment');
-  const row = page.locator('tbody tr').first();
+  const row = page.locator('tr[data-row-key]').first();
   await expect(row.getByRole('cell', { name: 'local', exact: true })).toBeVisible();
   await expect(row.getByRole('cell', { name: '年度', exact: true })).toBeVisible();
   await row.getByRole('button', { name: 'annual', exact: true }).click();
@@ -78,8 +78,18 @@ for (const kind of kinds) {
     await dialog.getByLabel('名称', { exact: true }).fill('合成新对象');
     if (kind === 'positions') {
       for (const label of ['所属组织', '对应职务']) {
-        await dialog.getByLabel(label, { exact: true }).click();
-        await page.getByTitle('annual', { exact: true }).click();
+        const select = dialog
+          .locator('.ant-form-item')
+          .filter({
+            has: page.locator('label').filter({ hasText: label }),
+          })
+          .getByRole('combobox');
+        await select.focus();
+        await select.press('ArrowDown');
+        await expect(
+          page.locator('.ant-select-dropdown:visible').getByTitle('annual', { exact: true }).last(),
+        ).toBeVisible();
+        await select.press('Enter');
       }
     }
     await dialog.getByRole('button', { name: /保\s*存/, exact: true }).click();
@@ -122,7 +132,7 @@ for (const path of [
     await page.goto(path);
     await expect(page.getByRole('button', { name: 'annual', exact: true })).toHaveCount(0);
     await page
-      .locator('tbody tr')
+      .locator('tr[data-row-key]')
       .first()
       .getByRole('button', { name: /详\s*情/, exact: true })
       .click();
