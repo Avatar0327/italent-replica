@@ -24,14 +24,13 @@ export function OrgPage() {
   const [params, setParams] = useSearchParams();
   const location = useLocation();
   const permissions = usePagePermissions([object, establishmentObject]);
-  const requested = params.get('tab') ?? (location.pathname.endsWith('/changes') ? 'changes' : 'list');
+  const organizationReadable = permissions.access(object).readable;
   const tabs = [
-    'list',
-    'tree',
-    'changes',
+    ...(organizationReadable ? ['list', 'tree', 'changes'] : []),
     ...(permissions.access(establishmentObject).readable ? ['establishment'] : []),
   ];
-  const tab = tabs.includes(requested) ? requested : 'list';
+  const requested = params.get('tab') ?? (location.pathname.endsWith('/changes') ? 'changes' : tabs[0]);
+  const tab = requested ?? 'list';
   const view: ListView = {
     value: tab,
     options: tabs.map((key) => ({ key, label: m[key as 'list'] })),
@@ -39,7 +38,7 @@ export function OrgPage() {
   };
   if (permissions.loading) return <PageState kind="loading" />;
   if (permissions.error) return <PageState kind="error" error={permissions.error} />;
-  if (!permissions.access(object).readable) return <PageState kind="forbidden" />;
+  if (!tabs.includes(tab)) return <PageState kind="forbidden" />;
   return (
     <div className="r1-workspace">
       {tab === 'establishment' ? (

@@ -37,7 +37,9 @@ export function jobBody(kind: JobKind, values: Record<string, unknown>, original
   }
   for (const [key, value] of Object.entries(fields)) {
     if (value === undefined) continue;
-    body[key] = normalizeField(key, value);
+    const normalized = normalizeField(key, value);
+    if (original && normalized === original[key]) continue;
+    body[key] = normalized;
   }
   if (!original && (typeof body.name !== 'string' || !body.name)) throw new Error(m.required);
   if (!original && kind === 'positions' && (!body.orgId || !body.postId)) throw new Error(m.positionRequired);
@@ -48,7 +50,8 @@ export function jobBody(kind: JobKind, values: Record<string, unknown>, original
     body.sequenceId !== original.sequenceId
   )
     body.syncSequenceToAssignments = true;
-  return { ...body, [original ? 'effectiveDate' : 'startDate']: date };
+  // 新建日期由后端按租户时区默认；不能绕过 FormOverlay 的字段权限补写 startDate。
+  return original ? { ...body, effectiveDate: date } : body;
 }
 
 function positionParents(values: Record<string, unknown>, original?: JobRow) {

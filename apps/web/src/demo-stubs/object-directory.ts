@@ -13,6 +13,7 @@ import type { AppRoute } from '../foundation/routes.js';
 
 /** 缺少应用菜单接口时复用后端共享目录的应用归属，不用“拥有首个对象”推断整个应用。 */
 const directory: Record<string, readonly { code: string }[]> = {
+  org: [MODULE_OBJECTS.establishment],
   job: Object.values(MODULE_OBJECTS).filter((object) => object.code.startsWith('TenantBase.Job')),
   talent: Object.values(TALENT_OBJECTS),
   qualification: Object.values(QUALIFICATION_OBJECTS),
