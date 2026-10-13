@@ -54,7 +54,6 @@ describe('AC-FE-R1a-02 职务表单', () => {
     expect(jobBody('posts', { name: ' 合成职务 ', sequenceId: '' }, undefined, '2026-10-12')).toEqual({
       name: '合成职务',
       sequenceId: null,
-      startDate: '2026-10-12',
     });
   });
   it('编辑换非空序列必须同步，清空不触发，revision 留给命令头', async () => {
@@ -114,4 +113,25 @@ it('AC-FE-R1a-11 服务端已计算的业务按钮不依赖不存在的同名数
       buttons: [{ buttonCode: 'syncSequence', level: 'list' }],
     }).can('syncSequence', 'list'),
   ).toBe(true);
+});
+
+describe('AC-FE-R1a-17 职务写入只包含授权表单输入', () => {
+  it('八类新建均不补写 startDate，允许服务端按租户当天默认', async () => {
+    const { jobBody, jobKinds } = await job();
+    for (const kind of jobKinds) {
+      const values = kind === 'positions' ? { name: '合成', orgId: 'A', postId: 'B' } : { name: '合成' };
+      expect(jobBody(kind, values, undefined, '2026-10-13')).not.toHaveProperty('startDate');
+      expect(jobBody(kind, { ...values, startDate: '2026-10-14' }, undefined, '2026-10-13')).toHaveProperty(
+        'startDate',
+        '2026-10-14',
+      );
+    }
+  });
+  it('编辑不重发未改字段，保留变更生效日期', async () => {
+    const { jobBody } = await job();
+    expect(jobBody('posts', { name: ' 合成部门 ', code: 'new' }, original, '2026-10-13')).toEqual({
+      code: 'new',
+      effectiveDate: '2026-10-13',
+    });
+  });
 });
