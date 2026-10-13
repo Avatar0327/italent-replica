@@ -572,7 +572,7 @@ describe('F-025 演示种子：中断恢复时用户已经操作过的调动单�
     }
   }, 900_000);
 
-  it('状态文件内容结构异常（null / 非对象 / transfers 不是数组 / 含非字符串）：按缺失处理，不抛异常', () => {
+  it('状态文件内容结构异常（null / 非对象 / transfers 不是数组 / 含非字符串）：按缺失处理，不抛异常', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'italent-seed-state-'));
     try {
       const file = join(dir, 'seed-state.json');
@@ -589,10 +589,10 @@ describe('F-025 演示种子：中断恢复时用户已经操作过的调动单�
       for (const text of [...bad, '{"t":{"transfers":[1,null]}}', '{']) {
         writeFileSync(file, text);
         const progress = fileProgress(file);
-        expect([...progress.completedTransfers('t')], text).toEqual([]);
+        expect([...(await progress.completedTransfers('t'))], text).toEqual([]);
         // 之后的写入仍可用，并把坏内容替换掉
-        progress.markTransferCompleted('t', 'DEMO-TRF-01');
-        expect([...fileProgress(file).completedTransfers('t')], text).toEqual(['DEMO-TRF-01']);
+        await progress.markTransferCompleted('t', 'DEMO-TRF-01');
+        expect([...(await fileProgress(file).completedTransfers('t'))], text).toEqual(['DEMO-TRF-01']);
       }
     } finally {
       rmSync(dir, { recursive: true, force: true });
