@@ -109,16 +109,7 @@ function ScopeResult({ path }: { path: string }) {
         items={[
           [m.userId, scope.userId],
           [m.appCode, scope.appCode],
-          [
-            m.scope,
-            scope.kind === 'default'
-              ? m.defaultScope
-              : scope.kind === 'mou'
-                ? scope.mouId
-                : scope.orgRanges
-                    .map((r) => `${r.orgId} (${r.dimension}, ${r.includeDescendants ? m.descendants : m.no})`)
-                    .join('、'),
-          ],
+          [m.scope, scopeDescription(scope)],
           [m.revision, scope.revision],
         ]}
       />
@@ -133,6 +124,14 @@ function ScopeResult({ path }: { path: string }) {
       {edit && <ScopeForm scope={scope} close={() => setEdit(false)} refresh={resource.refresh} />}
     </>
   );
+}
+
+function scopeDescription(scope: Scope) {
+  if (scope.kind === 'default') return m.defaultScope;
+  if (scope.kind === 'mou') return scope.mouId;
+  return scope.orgRanges
+    .map((r) => `${r.orgId} (${r.dimension}, ${r.includeDescendants ? m.descendants : m.no})`)
+    .join('、');
 }
 
 function ScopeForm({ scope, close, refresh }: { scope: Scope; close(): void; refresh(): void }) {

@@ -41,6 +41,9 @@ export function RemoteDetail<T>({
   children(data: T): ReactNode;
 }) {
   const resource = useResource<T>(path);
+  let content: ReactNode = <PageState kind="loading" />;
+  if (resource.error) content = <PageState kind="error" error={resource.error} retry={resource.refresh} />;
+  else if (resource.data) content = children(resource.data);
   return (
     <DetailPage
       open
@@ -50,13 +53,7 @@ export function RemoteDetail<T>({
         {
           key: 'detail',
           title: m.basic,
-          children: resource.error ? (
-            <PageState kind="error" error={resource.error} retry={resource.refresh} />
-          ) : resource.data ? (
-            children(resource.data)
-          ) : (
-            <PageState kind="loading" />
-          ),
+          children: content,
         },
       ]}
     />
