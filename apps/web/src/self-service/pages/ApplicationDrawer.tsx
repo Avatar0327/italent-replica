@@ -24,8 +24,7 @@ export function ApplicationDrawer(props: {
   const state = useApplicationCommand(scope, profile ? props.onSaved : undefined);
   const title = profile ? m.transfer : m.manager.apply;
   let content;
-  if (state.pending) content = <PendingApplication command={state.pending} />;
-  else if (state.saved && !profile)
+  if (state.saved && !profile)
     content = <SavedApplication id={state.saved.id} tenantId={tenantId} run={state.run} />;
   else if (state.saved) content = <p role="status">{m.submitted}</p>;
   else if (profile)
@@ -34,7 +33,11 @@ export function ApplicationDrawer(props: {
   return (
     <FormDrawer open={props.open} onClose={props.onClose} title={title}>
       {state.error && <Alert type="error" message={state.error} />}
-      {content}
+      {/* DEC-473：提交期间保留原表单实例，明确拒绝后恢复输入；未知结果仍不可操作。 */}
+      <div hidden={!!state.pending} inert={!!state.pending}>
+        {content}
+      </div>
+      {state.pending && <PendingApplication command={state.pending} />}
       {!state.pending && state.saved && state.saved.status !== 'draft' && (
         <Button onClick={state.clearConfirmed}>{t.newApplication}</Button>
       )}
