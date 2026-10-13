@@ -322,64 +322,100 @@ async function openHr(page: Page) {
   await page.getByRole('button', { name: '他人调动申请', exact: true }).click();
 }
 
-test('AC-FE-R1c-11 暂存关闭并刷新页面后恢复同单，不另建申请', async ({ page }) => {
+// DEC-464 取消原命令恢复；保留原有防重与同单提交断言，改从“我的申请”进入。
+async function openMyDraft(page: Page) {
+  await page.getByRole('button', { name: '切换视图', exact: true }).click();
+  await page.getByRole('menuitem', { name: '我的申请', exact: true }).click();
+  await page.getByRole('button', { name: '查看暂存申请 1', exact: true }).click();
+}
+async function saveDraft(page: Page) {
+  await switchIdentity(page, '/transfer');
+  await openHr(page);
+  await page.locator('select[name="employeeId"]').selectOption(employee);
+  await page.getByRole('button', { name: '暂存', exact: true }).click();
+  await expect(page.getByText('暂存成功，请在我的申请中查看')).toBeVisible();
+  await page.getByRole('button', { name: '关闭', exact: true }).click();
+}
+const processing = '处理中，请在我的申请中查看';
+async function expectReadonly(page: Page) {
+  await expect(page.getByText(processing, { exact: true }).last()).toBeVisible();
+  await expect(page.getByRole('button', { name: '恢复原命令', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('dialog').locator('input, select, button[type="submit"]')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '暂存', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '提交暂存申请', exact: true })).toHaveCount(0);
+}
+
+test('AC-FE-R1c-11 DEC-464 我的申请打开暂存单，读取完整选项后提交同单', async ({ page }) => {
   await hrRecoveryFixture(page);
+  await page.route('**/employment/businesses/' + draftId, (route) =>
+    route.fulfill({
+      json: {
+        ...draftResult,
+        withEstablishment: true,
+        fields: { place: '暂存工作地' },
+        customFields: {},
+      },
+    }),
+  );
+  await page.route('**/transfers/*/linkage', (route) =>
+    route.fulfill({
+      json: {
+        businessId: draftId,
+        revision: 1,
+        options: { adjustSalary: true, contract: null, onTrial: { months: 3 } },
+      },
+    }),
+  );
   let creates = 0;
-  const submitted: string[] = [];
+  const submitted: { path: string; body: unknown; revision?: string }[] = [];
   await page.route('**/transfers/employees/' + employee, (route) => {
     creates++;
     return route.fulfill({ json: draftResult });
   });
   await page.route('**/employment/businesses/*/submit', (route) => {
-    submitted.push(new URL(route.request().url()).pathname);
+    submitted.push({
+      path: new URL(route.request().url()).pathname,
+      body: route.request().postDataJSON(),
+      revision: route.request().headers()['if-match'],
+    });
     return route.fulfill({ json: { ...draftResult, revision: 2, status: 'in_review' } });
   });
-  await switchIdentity(page, '/transfer');
-  await openHr(page);
-  await page.locator('select[name="employeeId"]').selectOption(employee);
-  await page.locator('input[name="place"]').fill('暂存工作地');
-  await page.getByRole('button', { name: '暂存', exact: true }).click();
-  await expect(page.getByRole('button', { name: '提交暂存申请', exact: true })).toBeEnabled();
-  await page.getByRole('button', { name: '关闭', exact: true }).click();
+  await saveDraft(page);
   await page.reload();
-  await openHr(page);
-  await expect(page.locator('input[name="place"]')).toHaveValue('暂存工作地');
+  await openMyDraft(page);
+  await expect(page.getByTestId('draft-field-withEstablishment')).toContainText('是');
+  await expect(page.getByTestId('draft-field-adjustSalary')).toContainText('是');
+  await expect(page.getByTestId('draft-field-onTrial.startDate')).toContainText('未读取');
+  await expect(page.getByText('暂存工作地', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: '提交暂存申请', exact: true }).click();
   await expect.poll(() => submitted.length).toBe(1);
-  expect(submitted[0]).toBe('/api/tenant/employment/businesses/' + draftId + '/submit');
+  expect(submitted[0]).toEqual({
+    path: '/api/tenant/employment/businesses/' + draftId + '/submit',
+    body: {},
+    revision: '1',
+  });
   expect(creates).toBe(1);
 });
 
-test('AC-FE-R1c-12 创建结果未知跨关闭和刷新锁定，恢复保留原命令协议', async ({ page }) => {
-  await hrRecoveryFixture(page);
-  const requests: { command?: string; revision?: string; body: unknown }[] = [];
+test('AC-FE-R1c-12 DEC-464 创建未知关闭刷新后只读，不再保存命令编号', async ({ page }) => {
+  let writes = 0;
+  let command = '';
   await page.route('**/transfers/employees/' + employee, (route) => {
-    requests.push({
-      command: route.request().headers()['idempotency-key'],
-      revision: route.request().headers()['if-match'],
-      body: route.request().postDataJSON(),
-    });
-    return requests.length === 1
-      ? route.fulfill({ status: 503, json: { error: { code: 'UNAVAILABLE' } } })
-      : route.fulfill({ json: draftResult });
+    writes++;
+    command = route.request().headers()['idempotency-key']!;
+    return route.fulfill({ status: 503, json: { error: { code: 'UNAVAILABLE' } } });
   });
   await switchIdentity(page, '/transfer');
   await openHr(page);
   await page.locator('select[name="employeeId"]').selectOption(employee);
-  await page.locator('input[name="place"]').fill('暂存工作地');
   await page.getByRole('button', { name: '暂存', exact: true }).click();
-  await expect(page.getByText('提交结果尚未确认。请先核对该员工的调动记录，勿重复发起。')).toBeVisible();
+  await expectReadonly(page);
   await page.getByRole('button', { name: '关闭', exact: true }).click();
   await page.reload();
   await openHr(page);
-  await expect(page.getByRole('button', { name: '暂存', exact: true })).toBeDisabled();
-  await expect(page.locator('.transfer-content code').filter({ hasText: requests[0]!.command! })).toBeVisible();
-  expect(requests).toHaveLength(1);
-  await page.getByRole('button', { name: '恢复原命令', exact: true }).click();
-  await expect(page.getByRole('button', { name: '提交暂存申请', exact: true })).toBeEnabled();
-  await expect(page.locator('input[name="place"]')).toHaveValue('暂存工作地');
-  expect(requests).toHaveLength(2);
-  expect(requests[1]).toEqual(requests[0]);
+  await expectReadonly(page);
+  expect(await page.evaluate(() => JSON.stringify(sessionStorage))).not.toContain(command);
+  expect(writes).toBe(1);
 });
 
 for (const status of [400, 422]) {
@@ -403,102 +439,76 @@ for (const status of [400, 422]) {
   });
 }
 
-test('AC-FE-R1c-14 切换员工后可找回暂存单，回读失败不能提交或另建', async ({ page }) => {
+test('AC-FE-R1c-14 DEC-464 暂存读取失败不能提交，缺失选项显示未读取而非否', async ({ page }) => {
   await hrRecoveryFixture(page);
-  let readsFail = false;
+  let readsFail = true;
   await page.route('**/employment/businesses/' + draftId, (route) =>
     readsFail
       ? route.fulfill({ status: 403, json: { error: { code: 'FORBIDDEN' } } })
-      : route.fulfill({ json: { ...draftResult, fields: { place: '暂存工作地' }, customFields: {} } }),
+      : route.fulfill({ json: { ...draftResult, fields: { place: '当前权限值' } } }),
   );
-  let creates = 0;
-  await page.route('**/transfers/employees/' + employee, (route) => {
-    creates++;
-    return route.fulfill({ json: draftResult });
-  });
-  await switchIdentity(page, '/transfer');
-  await openHr(page);
-  await page.locator('select[name="employeeId"]').selectOption(employee);
-  await page.getByRole('button', { name: '暂存', exact: true }).click();
-  await page.getByRole('button', { name: '新建调动申请', exact: true }).click();
-  await expect(page.locator('select[name="employeeId"]')).toHaveValue('');
-  await page.locator('select[name="employeeId"]').selectOption(employee);
-  await expect(page.locator('input[name="place"]')).toHaveValue('暂存工作地');
-  await page.getByRole('button', { name: '关闭', exact: true }).click();
-  readsFail = true;
-  await openHr(page);
+  await page.route('**/transfers/employees/' + employee, (route) => route.fulfill({ json: draftResult }));
+  await saveDraft(page);
+  await openMyDraft(page);
   await expect(page.getByRole('alert').last()).toBeVisible();
-  await expect(page.getByRole('button', { name: '提交暂存申请', exact: true })).toBeDisabled();
-  await expect(page.getByRole('button', { name: '新建调动申请', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: '提交暂存申请', exact: true })).toHaveCount(0);
   readsFail = false;
   await page.getByRole('button', { name: '重新读取已暂存申请', exact: true }).click();
-  await expect(page.getByRole('button', { name: '提交暂存申请', exact: true })).toBeEnabled();
-  expect(creates).toBe(1);
+  await expect(page.getByTestId('draft-field-withEstablishment')).toContainText('未读取');
+  await expect(page.getByTestId('draft-field-adjustSalary')).toContainText('未读取');
+  await expect(page.getByText('当前权限值', { exact: true })).toBeVisible();
 });
 
-test('AC-FE-R1c-15 请求在途关闭也保留原编号，恢复失败仍禁止新建', async ({ page }) => {
-  await hrRecoveryFixture(page);
+test('AC-FE-R1c-15 DEC-464 在途关闭后迟到成功回执不能解除只读保护', async ({ page }) => {
   let release: () => void = () => {};
   const gate = new Promise<void>((resolve) => {
     release = resolve;
   });
-  const commands: string[] = [];
+  let writes = 0;
   await page.route('**/transfers/employees/' + employee, async (route) => {
-    commands.push(route.request().headers()['idempotency-key']!);
-    if (commands.length === 1) await gate;
-    await route.fulfill({ status: 503, json: { error: { code: 'UNAVAILABLE' } } });
+    writes++;
+    await gate;
+    await route.fulfill({ json: draftResult });
   });
   await switchIdentity(page, '/transfer');
   await openHr(page);
   await page.locator('select[name="employeeId"]').selectOption(employee);
   await page.getByRole('button', { name: '暂存', exact: true }).click();
-  await expect.poll(() => commands.length).toBe(1);
-  await page.getByRole('button', { name: '关闭', exact: true }).click();
-  await openHr(page);
-  await expect(page.locator('.transfer-content code')).toHaveText(commands[0]!);
-  await expect(page.getByRole('button', { name: '暂存', exact: true })).toBeDisabled();
-  release();
-  await page.getByRole('button', { name: '恢复原命令', exact: true }).click();
-  await expect.poll(() => commands.length).toBe(2);
-  await expect(page.getByRole('button', { name: '恢复原命令', exact: true })).toBeEnabled();
-  await expect(page.getByRole('button', { name: '暂存', exact: true })).toBeDisabled();
-  expect(commands[1]).toBe(commands[0]);
+  await expect.poll(() => writes).toBe(1);
+  try {
+    await page.getByRole('button', { name: '关闭', exact: true }).click();
+    await openHr(page);
+    await expectReadonly(page);
+    const response = page.waitForResponse((item) => item.url().endsWith('/transfers/employees/' + employee));
+    release();
+    await response;
+    await page.getByRole('button', { name: '关闭', exact: true }).click();
+    await openHr(page);
+    await expectReadonly(page);
+    expect(writes).toBe(1);
+  } finally {
+    release();
+  }
 });
 
-test('AC-FE-R1c-16 已知单号提交未知先回查，再以原 revision 恢复', async ({ page }) => {
+test('AC-FE-R1c-16 DEC-464 暂存提交未知，重开与我的申请均不能再次发命令', async ({ page }) => {
   await hrRecoveryFixture(page);
-  const calls: string[] = [];
-  const requests: { command?: string; revision?: string; body: unknown }[] = [];
-  await page.route('**/employment/businesses/' + draftId, (route) => {
-    calls.push('read');
-    return route.fulfill({ json: { ...draftResult, fields: { place: '暂存工作地' }, customFields: {} } });
-  });
   await page.route('**/transfers/employees/' + employee, (route) => route.fulfill({ json: draftResult }));
+  let writes = 0;
   await page.route('**/employment/businesses/*/submit', (route) => {
-    calls.push('submit');
-    requests.push({
-      command: route.request().headers()['idempotency-key'],
-      revision: route.request().headers()['if-match'],
-      body: route.request().postDataJSON(),
-    });
-    return requests.length === 1
-      ? route.fulfill({ status: 503, json: { error: { code: 'UNAVAILABLE' } } })
-      : route.fulfill({ json: draftResult });
+    writes++;
+    return route.fulfill({ status: 503, json: { error: { code: 'UNAVAILABLE' } } });
   });
-  await switchIdentity(page, '/transfer');
-  await openHr(page);
-  await page.locator('select[name="employeeId"]').selectOption(employee);
-  await page.getByRole('button', { name: '暂存', exact: true }).click();
+  await saveDraft(page);
+  await openMyDraft(page);
   await page.getByRole('button', { name: '提交暂存申请', exact: true }).click();
-  await expect(page.locator('.transfer-content code')).toBeVisible();
+  await expect(page.getByText(processing, { exact: true }).last()).toBeVisible();
   await page.getByRole('button', { name: '关闭', exact: true }).click();
-  await page.reload();
   await openHr(page);
-  await expect(page.locator('.transfer-content code')).toHaveText(requests[0]!.command!);
-  calls.length = 0;
-  await page.getByRole('button', { name: '恢复原命令', exact: true }).click();
-  await expect(page.getByRole('button', { name: '提交暂存申请', exact: true })).toBeEnabled();
-  expect(calls).toEqual(['read', 'submit', 'read']);
-  expect(requests).toHaveLength(2);
-  expect(requests[1]).toEqual(requests[0]);
+  await expectReadonly(page);
+  await page.getByRole('button', { name: '关闭', exact: true }).click();
+  await page.getByRole('button', { name: '查看暂存申请 1', exact: true }).click();
+  await expect(page.getByText(processing, { exact: true }).last()).toBeVisible();
+  await expect(page.getByRole('button', { name: '提交暂存申请', exact: true })).toHaveCount(0);
+  expect(writes).toBe(1);
 });
