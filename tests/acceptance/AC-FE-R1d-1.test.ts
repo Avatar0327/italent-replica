@@ -26,12 +26,14 @@ describe('AC-FE-R1d-1 页面数据与权限规则', () => {
     const items = recordItems({
       id: 'record',
       effectiveDate: '2026-10-13',
+      approvalStatus: 'approved',
       fields: { departmentId: 'department', onTrialMonths: 0 },
       fieldLabels: { departmentId: '合成部门', postId: '隐藏职务' },
     });
     expect(items).toContainEqual({ key: 'departmentId', label: '部门', children: '合成部门' });
     expect(items.some((item: { children: unknown }) => item.children === '隐藏职务')).toBe(false);
     expect(items.find((item: { key: string }) => item.key === 'effectiveDate')?.children).toBe('2026-10-13');
+    expect(items.find((item: { key: string }) => item.key === 'approvalStatus')?.children).toBe('通过');
   });
   it('AC-TRF-42：经理列表按原始字段缺席裁剪列，不从 display 或其他员工补字段', async () => {
     const { teamKeys, teamValue } = await import(modelPath);
