@@ -42,21 +42,23 @@ export function ManagerPage() {
   return (
     <div className="service-page" key={`${session.tenantId}/${session.identityKey}`}>
       <ServiceNav manager />
-      {!entry.data ? (
-        <ReadState state={entry} />
-      ) : path === '/manager' ? (
-        <Dashboard />
-      ) : path === '/manager/team' ? (
-        <TeamPage />
-      ) : path === '/manager/todos' ? (
-        <TodosPage />
-      ) : path === '/manager/applications' ? (
-        <ManagerApplications allowed={entry.data.canApply} />
-      ) : (
-        <PageState kind="not-found" />
-      )}
+      {entry.data ? <ManagerWorkspace path={path} entry={entry.data} /> : <ReadState state={entry} />}
     </div>
   );
+}
+function ManagerWorkspace({ path, entry }: { path: string; entry: Entry }) {
+  switch (path) {
+    case '/manager':
+      return <Dashboard />;
+    case '/manager/team':
+      return <TeamPage />;
+    case '/manager/todos':
+      return <TodosPage />;
+    case '/manager/applications':
+      return <ManagerApplications allowed={entry.canApply} />;
+    default:
+      return <PageState kind="not-found" />;
+  }
 }
 function Dashboard() {
   const session = useSession();
@@ -165,7 +167,7 @@ function useTeam(initialCategory: string, initialSearch: string) {
             tenantId={tenantId}
             name={teamValue(row, key)}
             avatar={row.avatar as AvatarReference | null}
-            size={28}
+            size={20}
           />
           <Button type="link" onClick={() => setSelected(row)}>
             {teamValue(row, key)}
@@ -265,7 +267,7 @@ function TeamFilters({ state }: { state: ReturnType<typeof useTeam> }) {
         value={category}
         options={[{ value: '', label: m.all }, ...categories]}
         onChange={(value) => apply(value, search)}
-        style={{ width: 130 }}
+        className="service-category-filter"
       />
       <Input.Search
         aria-label={m.manager.query}
@@ -274,7 +276,7 @@ function TeamFilters({ state }: { state: ReturnType<typeof useTeam> }) {
         onChange={(event) => setInput(event.target.value)}
         onSearch={(value) => apply(category, value)}
         allowClear
-        style={{ width: 260 }}
+        className="service-search-filter"
       />
       <Button
         type="link"

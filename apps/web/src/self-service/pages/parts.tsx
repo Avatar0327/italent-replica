@@ -44,11 +44,8 @@ export function RecordInfo({ record }: { record: OwnRecord | null }) {
   return record ? <Descriptions column={2} items={recordItems(record)} /> : <Empty description={m.noProfile} />;
 }
 export function ReadState({ state }: { state: { loading: boolean; error?: unknown; refresh(): void } }) {
-  return state.error ? (
-    <PageState kind="error" error={state.error} retry={state.refresh} />
-  ) : state.loading ? (
-    <PageState kind="loading" />
-  ) : null;
+  if (state.error) return <PageState kind="error" error={state.error} retry={state.refresh} />;
+  return state.loading ? <PageState kind="loading" /> : null;
 }
 export function DemoSection({ section }: { section: (typeof selfServiceDemo.sections)[number] }) {
   return (

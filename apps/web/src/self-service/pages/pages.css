@@ -224,3 +224,10 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+.service-category-filter {
+  width: 130px;
+}
+.service-search-filter {
+  width: 260px;
+}

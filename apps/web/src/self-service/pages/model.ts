@@ -57,14 +57,14 @@ export function teamValue(row: TeamRow, key: string) {
   if (!Object.hasOwn(row, key)) return m.none;
   const value = row.display?.[key] ?? row[key];
   const labels =
-    key === 'employeeStatus'
-      ? m.manager.employeeStatuses
-      : key === 'entryStatus'
-        ? m.manager.entryStatuses
-        : key === 'employType'
-          ? m.manager.employTypes
-          : {};
-  return (labels as Record<string, string>)[String(value)] ?? valueText(value);
+    (
+      {
+        employeeStatus: m.manager.employeeStatuses,
+        entryStatus: m.manager.entryStatuses,
+        employType: m.manager.employTypes,
+      } as Record<string, Record<string, string>>
+    )[key] ?? {};
+  return labels[String(value)] ?? valueText(value);
 }
 export function managerListPath(kind: 'team' | 'todos', page: PageRequest, category: string, search = '') {
   const query = pageQuery(page);
