@@ -399,6 +399,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/succession/health-results.ts#projectHealth': [
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
+    'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
     'apps/api/src/modules/succession/access.ts#codeOf',
   ],
   'apps/api/src/modules/succession/health-results.ts#readHealthResults': [
@@ -610,6 +611,46 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/succession/read-sql.ts#rowsOf',
     'packages/domain/src/succession/levels.ts#compileSuccessionLevel',
   ],
+  'apps/api/src/modules/succession/map-card-reader.ts#hiddenMapTargets': [
+    'apps/api/src/modules/succession/read-sql.ts#rowsOf',
+    'apps/api/src/modules/succession/read-sql.ts#selfRecordHiddenSql',
+  ],
+  'apps/api/src/modules/succession/map-card-reader.ts#loadMapPositions': [
+    'apps/api/src/modules/permission/module-access.ts#scopeSql',
+    'apps/api/src/modules/succession/read-sql.ts#rowsOf',
+  ],
+  'apps/api/src/modules/succession/map-card-reader.ts#mapIncumbents': [
+    'apps/api/src/modules/succession/read-sql.ts#loadIncumbentIds',
+    'apps/api/src/modules/succession/read-sql.ts#loadPeople',
+  ],
+  'apps/api/src/modules/succession/map-card-reader.ts#mapObjectAccess': [
+    'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
+    'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
+    'apps/api/src/modules/succession/access.ts#codeOf',
+  ],
+  'apps/api/src/modules/succession/map-card-reader.ts#readMapHealth': [
+    'apps/api/src/modules/permission/module-access.ts#scopeAllows',
+    'apps/api/src/modules/succession/health-results.ts#projectHealth',
+    'apps/api/src/modules/succession/health-results.ts#readHealthResults',
+    '#fieldVisible',
+    '#mapObjectAccess',
+  ],
+  'apps/api/src/modules/succession/map-card-reader.ts#readMapRisk': [
+    '#fieldVisible',
+    '#mapObjectAccess',
+    'apps/api/src/modules/succession/risk-store.ts#projectRisk',
+    'apps/api/src/modules/succession/risk-store.ts#readRiskRows',
+  ],
+  'apps/api/src/modules/succession/map-card-reader.ts#readMapStats': [
+    'apps/api/src/modules/succession/calc-worker.ts#enqueueCalcRun',
+    'apps/api/src/modules/succession/org-stats.ts#cacheHistoricalOnDutyCounts',
+    'apps/api/src/modules/succession/read-sql.ts#rowsOf',
+  ],
+  'apps/api/src/modules/succession/map-card-reader.ts#readMapSuccessors': [
+    'apps/api/src/modules/succession/projection.ts#buildRecordViews',
+    'apps/api/src/modules/succession/projection.ts#projectSuccession',
+    'apps/api/src/modules/succession/record-read.ts#listMapRecordRows',
+  ],
   'apps/api/src/modules/succession/map-display.ts#mapPositions': [
     'apps/api/src/modules/job/read-model.ts#listJobObjects',
   ],
@@ -709,6 +750,46 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/succession/access.ts#codeOf',
     'apps/api/src/modules/succession/read-sql.ts#rowsOf',
   ],
+  'apps/api/src/modules/succession/org-map-routes.ts#orgMapQuery': [
+    'apps/api/src/modules/org/read-model.ts#validIsoDate',
+    'apps/api/src/modules/succession/map-preferences.ts#mapDisplayBody',
+  ],
+  'apps/api/src/modules/succession/org-map-routes.ts#projectOrgMapCards': [
+    'apps/api/src/modules/succession/map-card-reader.ts#fieldVisible',
+  ],
+  'apps/api/src/modules/succession/org-map-routes.ts#registerOrgMapRoutes': [
+    'apps/api/src/modules/org/read-model.ts#loadOrgSnapshot',
+    'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
+    'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
+    'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
+    'apps/api/src/modules/succession/access.ts#SUCCESSION_BASE',
+    'apps/api/src/modules/succession/access.ts#codeOf',
+    'apps/api/src/modules/succession/access.ts#successionContext',
+    'apps/api/src/modules/succession/map-card-reader.ts#fieldVisible',
+    'apps/api/src/modules/succession/map-card-reader.ts#hiddenMapTargets',
+    'apps/api/src/modules/succession/map-card-reader.ts#loadMapPositions',
+    'apps/api/src/modules/succession/map-card-reader.ts#mapIncumbents',
+    'apps/api/src/modules/succession/map-card-reader.ts#mapObjectAccess',
+    'apps/api/src/modules/succession/map-card-reader.ts#readMapHealth',
+    'apps/api/src/modules/succession/map-card-reader.ts#readMapRisk',
+    'apps/api/src/modules/succession/map-card-reader.ts#readMapStats',
+    'apps/api/src/modules/succession/map-card-reader.ts#readMapSuccessors',
+    'apps/api/src/modules/succession/map-display.ts#readMapDisplayScope',
+    'apps/api/src/modules/succession/map-display.ts#resolveMapDisplayConditions',
+    'apps/api/src/modules/succession/map-preferences.ts#readMapTenantSettings',
+    '#orderNodes',
+    '#orgMapQuery',
+    '#projectOrgMapCards',
+    'apps/api/src/modules/succession/read-sql.ts#loadPeople',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/succession/org-stats.ts#cacheHistoricalOnDutyCounts': [
+    'apps/api/src/modules/org/locks.ts#lockOrganizationSettings',
+    'apps/api/src/modules/permission/module-access.ts#scopeAllows',
+    '#readOnDutyCount',
+    'apps/api/src/modules/succession/read-sql.ts#rowsOf',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
   'apps/api/src/modules/succession/org-stats.ts#countOnDuty': [
     'apps/api/src/modules/org/hierarchy-reader.ts#listOrgDescendantsInTransaction',
     'apps/api/src/modules/succession/read-sql.ts#INCUMBENT_EXCLUDED_STATUSES',
@@ -796,6 +877,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/succession/projection.ts#projectSuccession': [
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
+    'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
     '#GOVERNING_FIELD',
     '#OBJECT_OF',
   ],
@@ -814,6 +896,13 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-access.ts#scopeSql',
     'apps/api/src/modules/succession/read-sql.ts#selfRecordHiddenSql',
     '#statusPredicate',
+  ],
+  'apps/api/src/modules/succession/record-read.ts#listMapRecordRows': [
+    'apps/api/src/modules/succession/read-sql.ts#rowsOf',
+    '#conditions',
+    '#from',
+    '#selectColumns',
+    '#toRow',
   ],
   'apps/api/src/modules/succession/record-read.ts#listRecordRows': [
     'apps/api/src/modules/succession/read-sql.ts#rowsOf',
@@ -1023,6 +1112,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/succession/risk-store.ts#projectRisk': [
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
+    'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
     'apps/api/src/modules/succession/access.ts#codeOf',
   ],
   'apps/api/src/modules/succession/risk-store.ts#projectRiskViews': [
@@ -1096,6 +1186,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/succession/health-routes.ts#registerHealthRoutes',
     'apps/api/src/modules/succession/levels-routes.ts#registerSuccessionLevelRoutes',
     'apps/api/src/modules/succession/map-routes.ts#registerMapRoutes',
+    'apps/api/src/modules/succession/org-map-routes.ts#registerOrgMapRoutes',
     'apps/api/src/modules/succession/ports.ts#installSuccessionPorts',
     'apps/api/src/modules/succession/position-map-routes.ts#registerPositionMapRoutes',
     'apps/api/src/modules/succession/projection.ts#buildRecordViews',

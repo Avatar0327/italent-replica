@@ -179,6 +179,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/evaluation/access.ts#rowsOf',
     'apps/api/src/modules/evaluation/activity-scope.ts#assertScopeUnique',
     '#activityAccess',
+    '#addedChainFormIds',
     '#arrayLiteral',
     '#assertAddedRefs',
     '#checkOrgRange',
@@ -222,6 +223,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/evaluation/activity-service.ts#updateActivity': [
     'apps/api/src/modules/evaluation/activity-scope.ts#assertScopeUnique',
     '#activityAccess',
+    '#addedChainFormIds',
     '#arrayLiteral',
     '#assertAddedRefs',
     '#checkOrgRange',
