@@ -4,7 +4,7 @@ import { sql } from '@italent/db';
 import type { AuthorizationRequest } from '../../apps/api/src/authorization.js';
 import { useTestDb } from '@italent/testkit';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { consumeRun, consumeSyncOutbox } from '../../apps/api/src/modules/succession/sync-consume.js';
+import { planSyncRun as consumeRun } from '../../apps/api/src/modules/succession/sync-consume.js';
 import { createInMemoryTalentReviewSyncPort } from '../../apps/api/src/modules/talent-review/sync-port-memory.js';
 import { createPermissionAuthorizer } from '../../apps/api/src/modules/permission/authorizer.js';
 import { overrideSetting } from '../../apps/api/src/modules/tenant-settings/service.js';
@@ -121,7 +121,7 @@ describe('AC-SC-03-04-sync D1b 首次计划', () => {
     const register = vi.spyOn(h.port, 'registerTargets');
     const begin = vi.spyOn(h.port, 'beginConsumption');
     const record = vi.spyOn(h.port, 'recordOutcome');
-    await consumeSyncOutbox(h.deps, { tenantId: w.tenant.id, payload: { runId: h.input.runId } }, h.input.leaseOwner);
+    await consumeRun(h.deps, h.input);
     const b = await batch(h.input.runId);
     expect(b).toMatchObject({ status: 'executing', has_plan: true, business_date: SC_TODAY, execution_no: 1 });
     expect(await count('succession_sync_items', b['id'])).toBe(3);

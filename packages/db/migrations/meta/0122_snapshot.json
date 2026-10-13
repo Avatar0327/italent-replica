@@ -1,5 +1,5 @@
 {
-  "id": "efa50ba7-f8f6-421f-86df-645f8fa0800b",
+  "id": "909628fa-628c-411b-b963-ad5afd25e5c3",
   "prevId": "32d15fc5-f03a-405b-bcfc-15abac8b34a5",
   "version": "7",
   "dialect": "postgresql",
@@ -53690,6 +53690,159 @@
         "ev_staff_evaluations_termination": {
           "name": "ev_staff_evaluations_termination",
           "value": "(\"ev_staff_evaluations\".\"terminated_at\" IS NULL AND \"ev_staff_evaluations\".\"terminated_reason\" IS NULL)\n    OR (\"ev_staff_evaluations\".\"terminated_at\" IS NOT NULL AND \"ev_staff_evaluations\".\"terminated_reason\" IS NOT NULL\n      AND \"ev_staff_evaluations\".\"terminated_reason\" IN ('leave','activity_completed','revoked'))"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.succession_risk_results": {
+      "name": "succession_risk_results",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "position_id": {
+          "name": "position_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "level_id": {
+          "name": "level_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "method": {
+          "name": "method",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "run_id": {
+          "name": "run_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "computed_at": {
+          "name": "computed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "assigned_by": {
+          "name": "assigned_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "succession_risk_results_tenant_id_tenants_id_fk": {
+          "name": "succession_risk_results_tenant_id_tenants_id_fk",
+          "tableFrom": "succession_risk_results",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "succession_risk_results_tenant_id_position_id_job_position_objects_tenant_id_id_fk": {
+          "name": "succession_risk_results_tenant_id_position_id_job_position_objects_tenant_id_id_fk",
+          "tableFrom": "succession_risk_results",
+          "tableTo": "job_position_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "position_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "succession_risk_results_tenant_id_level_id_succession_risk_levels_tenant_id_id_fk": {
+          "name": "succession_risk_results_tenant_id_level_id_succession_risk_levels_tenant_id_id_fk",
+          "tableFrom": "succession_risk_results",
+          "tableTo": "succession_risk_levels",
+          "columnsFrom": [
+            "tenant_id",
+            "level_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "succession_risk_results_tenant_id_run_id_succession_calc_runs_tenant_id_id_fk": {
+          "name": "succession_risk_results_tenant_id_run_id_succession_calc_runs_tenant_id_id_fk",
+          "tableFrom": "succession_risk_results",
+          "tableTo": "succession_calc_runs",
+          "columnsFrom": [
+            "tenant_id",
+            "run_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "succession_risk_results_tenant_id_assigned_by_tenant_memberships_tenant_id_user_id_fk": {
+          "name": "succession_risk_results_tenant_id_assigned_by_tenant_memberships_tenant_id_user_id_fk",
+          "tableFrom": "succession_risk_results",
+          "tableTo": "tenant_memberships",
+          "columnsFrom": [
+            "tenant_id",
+            "assigned_by"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "user_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "succession_risk_results_tenant_id_position_id_pk": {
+          "name": "succession_risk_results_tenant_id_position_id_pk",
+          "columns": [
+            "tenant_id",
+            "position_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "succession_risk_results_method": {
+          "name": "succession_risk_results_method",
+          "value": "\"succession_risk_results\".\"method\" IN ('manual','computed')"
+        },
+        "succession_risk_results_revision": {
+          "name": "succession_risk_results_revision",
+          "value": "\"succession_risk_results\".\"revision\" > 0"
         }
       },
       "isRLSEnabled": false

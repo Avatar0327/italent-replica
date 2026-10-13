@@ -1,3 +1,4 @@
+import { useSession } from '../foundation/Session.js';
 import { useRef, useState } from 'react';
 import { initialTenantId } from '../demo/tenant.js';
 import { CategoryPanel } from './CategoryPanel.js';
@@ -22,8 +23,10 @@ const TABS: readonly Tab[] = [
 
 /** 人才标准管理端（R3-T01）：指标库、指标库分类、发展建议类型、指标、人才标准分类、人才标准。 */
 export function TalentPage() {
-  const [tenant, setTenant] = useState(initialTenantId);
-  const [active, setActive] = useState(initialTenantId);
+  const session = useSession();
+  const initialTenant = () => session.tenantId || initialTenantId();
+  const [tenant, setTenant] = useState(initialTenant);
+  const [active, setActive] = useState(initialTenant);
   const [tab, setTab] = useState<Tab>('libraries');
   const modelImageCommands = useRef(new Map<string, ModelImageCommand>());
   return (
