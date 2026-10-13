@@ -42,6 +42,10 @@ describe('AC-FE-R1d-1 页面数据与权限规则', () => {
     expect(teamKeys([row])).not.toContain('email');
     expect(teamValue(row, 'email')).toBe('—');
     expect(teamValue(row, 'tenure')).toBe('0');
+    const code = '30000000-0000-4000-8000-000000000002';
+    expect(teamValue({ code }, 'code')).toBe(code);
+    expect(teamValue({ departmentId: code }, 'departmentId')).toBe('—');
+    expect(teamValue({ departmentId: code, display: { departmentId: '合成部门' } }, 'departmentId')).toBe('合成部门');
   });
   it('AC-TRF-45：审批通过与已生效明确区分，未知状态不自行推算', async () => {
     const { statusText } = await import(modelPath);
