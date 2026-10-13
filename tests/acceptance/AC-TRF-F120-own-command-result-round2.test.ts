@@ -76,4 +76,30 @@ describe('F-120 第 2 轮：本人命令结果的归属与结果未知', () => {
     expect(failed.status).toBe(200);
     expect(await failed.json()).toMatchObject({ status: 'failed', httpStatus: 400 });
   });
+
+  it('P2-2 模块自有错误码：HR 提交早于入职周期的调动，回查 httpStatus 与写接口实际返回的 409 一致', async () => {
+    const person = await world.person(world.inside.id, undefined, undefined, { effectiveDate: '2026-09-01' });
+    const hr = await world.actor('f120-hr');
+    await world.settings(true);
+    const commandId = `f120-r2-module-${randomUUID()}`;
+    const rejected = await world.api.request('POST', `/api/tenant/employment/transfers/employees/${person.id}`, {
+      ...hr,
+      ifMatch: person.revision,
+      idempotencyKey: commandId,
+      body: {
+        initiator: 'hr',
+        transferTypeCode: 'cross_department',
+        formId: 'TenantBase.CrossDepartmentTransferMultiFormView',
+        effectiveDate: '2026-08-01',
+        mode: 'application',
+        fields: { departmentId: world.outside.id },
+      },
+    });
+    expect(rejected.status, await rejected.clone().text()).toBe(409);
+    expect(((await rejected.json()) as { error: { code: string } }).error.code).toBe('EMPLOYMENT_BEFORE_CYCLE_ENTRY');
+
+    const result = await query(commandId, hr);
+    expect(result.status, await result.clone().text()).toBe(200);
+    expect(await result.json()).toMatchObject({ status: 'failed', httpStatus: 409 });
+  });
 });
