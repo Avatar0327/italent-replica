@@ -58,20 +58,9 @@ it.each([
   vi.stubEnv('LEAVE_CONSUMER_SCHEDULER', leave);
   vi.stubEnv('LEAVE_CONSUMER_INTERVAL_MS', interval);
   vi.stubEnv('QUALIFICATION_SYNC_SCHEDULER', qualification);
-  const { registerLeaveConsumer } = await import('../../apps/api/src/modules/evaluation/leave-consumer.js');
-  const consumer = {
-    kind: 'evaluation_leave',
-    commandPrefix: 'evaluation-leave',
-    label: '测试离职消费',
-    handle: async () => ({ state: 'done' as const, reason: null }),
-  };
-  const dispose = registerLeaveConsumer(consumer);
-  try {
-    await import('../../apps/api/src/server.js');
-    expect(startup.serve).toHaveBeenCalledTimes(1);
-    expect(startup.start).toHaveBeenCalledTimes(starts);
-    if (starts) expect(startup.start).toHaveBeenCalledWith(startup.db, consumer, Number(interval ?? 5000));
-  } finally {
-    dispose();
-  }
+  const { evaluationLeaveConsumer } = await import('../../apps/api/src/modules/evaluation/leave-handler.js');
+  await import('../../apps/api/src/server.js');
+  expect(startup.serve).toHaveBeenCalledTimes(1);
+  expect(startup.start).toHaveBeenCalledTimes(starts);
+  if (starts) expect(startup.start).toHaveBeenCalledWith(startup.db, evaluationLeaveConsumer, Number(interval ?? 5000));
 });
