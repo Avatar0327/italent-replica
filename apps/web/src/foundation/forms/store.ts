@@ -108,33 +108,7 @@ export function createFormStore() {
       const state = entries.get(key);
       if (!state || state.reading || !['conflict', 'unknown'].includes(state.status)) return;
       put(key, { ...state, reading: true, readError: undefined });
-      try {
-        const latest = structuredClone(await read(state.businessId));
-        if (
-          !latest.id ||
-          latest.id !== state.businessId ||
-          !Number.isSafeInteger(latest.revision) ||
-          latest.revision < 0
-        )
-          throw new Error(messages.invalidReceipt);
-        const differences = state.editableFields
-          .filter((field) => !equal(state.baseline[field], latest.values[field]))
-          .map((field) => ({
-            field,
-            before: state.baseline[field],
-            latest: latest.values[field],
-            mine: state.editedFields.includes(field) ? state.values[field] : state.baseline[field],
-          }));
-        const values = { ...state.values };
-        if (state.status === 'conflict')
-          for (const field of state.editableFields) {
-            // 重读产生的回填不是人工编辑；再次重读及服务端改回原值时也须跟随最新版本。
-            if (!state.editedFields.includes(field)) values[field] = latest.values[field];
-          }
-        put(key, { ...state, values, latest, differences, reading: false, readError: undefined });
-      } catch (readError) {
-        put(key, { ...state, reading: false, readError });
-      }
+      put(key, await rereadState(state, read));
     },
     confirm(key: string) {
       const state = entries.get(key);
@@ -150,3 +124,28 @@ export function createFormStore() {
   };
 }
 export type FormStore = ReturnType<typeof createFormStore>;
+
+async function rereadState(state: Submission, read: (id?: string) => Promise<Latest>): Promise<Submission> {
+  try {
+    const latest = structuredClone(await read(state.businessId));
+    if (!latest.id || latest.id !== state.businessId || !Number.isSafeInteger(latest.revision) || latest.revision < 0)
+      throw new Error(messages.invalidReceipt);
+    const differences = state.editableFields
+      .filter((field) => !equal(state.baseline[field], latest.values[field]))
+      .map((field) => ({
+        field,
+        before: state.baseline[field],
+        latest: latest.values[field],
+        mine: state.editedFields.includes(field) ? state.values[field] : state.baseline[field],
+      }));
+    const values = { ...state.values };
+    if (state.status === 'conflict')
+      for (const field of state.editableFields) {
+        // 重读产生的回填不是人工编辑；再次重读及服务端改回原值时也须跟随最新版本。
+        if (!state.editedFields.includes(field)) values[field] = latest.values[field];
+      }
+    return { ...state, values, latest, differences, reading: false, readError: undefined };
+  } catch (readError) {
+    return { ...state, reading: false, readError };
+  }
+}
