@@ -11,9 +11,17 @@ import { Failure, useRead, useWriter } from './runtime.js';
 import { evaluationActions, records, type Row } from './model.js';
 import { m, statusText, textValue } from './messages.js';
 import { evaluationDemoStages } from '../demo-stubs/evaluation.js';
+import { CreateCommands, CreateEntry } from './CreateEntry.js';
 import './pages.css';
 
 export function EvaluationPage() {
+  return (
+    <CreateCommands>
+      <EvaluationContent />
+    </CreateCommands>
+  );
+}
+function EvaluationContent() {
   const permission = usePermissions(EVALUATION);
   const [page, setPage] = useState({ page: 1, pageSize: 15 });
   const [status, setStatus] = useState('');
@@ -75,7 +83,11 @@ export function EvaluationPage() {
           )
         }
       />
-      {create && <ActivityWizard close={() => setCreate(false)} saved={list.reload} />}
+      {create && (
+        <CreateEntry path={`${EV}/activities`} title={m.create} close={() => setCreate(false)}>
+          <ActivityWizard close={() => setCreate(false)} saved={list.reload} />
+        </CreateEntry>
+      )}
       {selected && <ActivityDetail key={selected} id={selected} close={() => select(undefined)} saved={list.reload} />}
     </>
   );

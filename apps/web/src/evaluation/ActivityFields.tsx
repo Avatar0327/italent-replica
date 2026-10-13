@@ -1,5 +1,5 @@
 import { Button, Checkbox, Input, InputNumber, Select, Space } from 'antd';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { TenantDatePicker } from '../foundation/selectors.js';
 import { RemoteSelect } from './runtime.js';
 import { m, textValue } from './messages.js';
@@ -90,9 +90,7 @@ function OrgRanges({
         value={value.map((r) => String(r.orgId))}
         onChange={(ids) =>
           onChange?.(
-            (ids as string[]).map(
-              (id) => value.find((r) => r.orgId === id) ?? { orgId: id, includeDescendants: false },
-            ),
+            (ids as string[]).map((id) => value.find((r) => r.orgId === id) ?? { orgId: id, includeDescendants: true }),
           )
         }
       />
@@ -338,7 +336,9 @@ function ConditionFields({ row, set, disabled }: RowEditorProps) {
           value1: '',
         })}
       >
-        {(row, set) => <ConditionDetail row={row} set={set} disabled={disabled} />}
+        {(row, set) => (
+          <ConditionDetail key={`${row.seq}/${row.source}/${row.field}`} row={row} set={set} disabled={disabled} />
+        )}
       </Repeated>
       <label>
         {m.expression}
@@ -384,6 +384,7 @@ function ChainOptions({ row, set, disabled, locked }: RowEditorProps & { locked?
 }
 
 function ConditionDetail({ row, set, disabled }: RowEditorProps) {
+  const [numeric] = useState(() => typeof row.value1 === 'number' || typeof row.value2 === 'number');
   return (
     <div className="r3b-form-grid">
       <span>
@@ -402,7 +403,11 @@ function ConditionDetail({ row, set, disabled }: RowEditorProps) {
       {['source', 'field', 'value1', 'value2'].map((key) => (
         <label key={key}>
           {m[key as 'source']}
-          <Input value={String(row[key] ?? '')} disabled={disabled} onChange={(e) => set(key, e.target.value)} />
+          {numeric && ['value1', 'value2'].includes(key) ? (
+            <InputNumber value={row[key] as number | null} disabled={disabled} onChange={(value) => set(key, value)} />
+          ) : (
+            <Input value={String(row[key] ?? '')} disabled={disabled} onChange={(e) => set(key, e.target.value)} />
+          )}
         </label>
       ))}
     </div>

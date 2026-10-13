@@ -111,3 +111,82 @@ test('AC-FE-R3b-R2-04 已有报名锁申请级别等后端锁定字段，可跨�
   await form.getByRole('button', saveButton).click();
   expect((await request).postDataJSON()).toEqual({ name: '合成报名后改名', maxLevelJump: 2 });
 });
+
+for (const entry of [
+  { tab: '套卷', title: '新建套卷', path: 'questionnaires' },
+  { tab: '题库 · 企业自定义', title: '新增套卷模板', path: 'templates' },
+]) {
+  test(`AC-FE-R3b-R2-01 ${entry.title} 共用结果未知保护`, async ({ page }) => {
+    await setupR3b(page, '/survey360');
+    let writes = 0;
+    await page.route(`**/survey360/${entry.path}`, (route) => {
+      if (route.request().method() !== 'POST') return route.fallback();
+      writes++;
+      return route.fulfill({ status: 503, json: { error: { code: 'RESULT_UNKNOWN' } } });
+    });
+    await page.getByRole('tab', { name: entry.tab, exact: true }).click();
+    await page.getByRole('button', { name: entry.title, exact: true }).click();
+    const form = page.getByRole('dialog', { name: entry.title, exact: true });
+    await form.getByLabel('名称', { exact: true }).fill('合成未确认套卷');
+    await form.getByRole('button', saveButton).click();
+    await expect(form).toContainText('结果待确认');
+    await form.getByRole('button', cancelButton).click();
+    // 套卷从活动详情再次进入，与独立套卷页共用同一个页面状态。
+    if (entry.path === 'questionnaires') {
+      await page.getByRole('tab', { name: '评估活动', exact: true }).click();
+      await page.getByRole('button', { name: '合成领导力评估', exact: true }).click();
+      await page.getByRole('dialog').getByRole('tab', { name: '套卷', exact: true }).click();
+    }
+    await page.getByRole('button', { name: entry.title, exact: true }).click();
+    await expect(form).toContainText('结果待确认');
+    await expect(form.getByRole('button', saveButton)).toHaveCount(0);
+    expect(writes).toBe(1);
+  });
+}
+
+for (const appraiser of [false, true]) {
+  test(`AC-FE-R3b-R2-01 ${appraiser ? '评价者' : '评价对象'} 关闭详情重开仍保护原命令`, async ({ page }) => {
+    await setupR3b(page, '/survey360');
+    const path = `/activities/${id}/objects${appraiser ? `/${id}/appraisers` : ''}`;
+    let writes = 0;
+    await page.route(`**/survey360${path}`, (route) => {
+      if (route.request().method() !== 'POST') return route.fallback();
+      writes++;
+      return route.fulfill({ status: 503, json: { error: { code: 'RESULT_UNKNOWN' } } });
+    });
+    const title = appraiser ? '添加评价者' : '添加评价对象';
+    const open = async () => {
+      await page.getByRole('button', { name: '合成领导力评估', exact: true }).click();
+      await page.getByRole('dialog').getByRole('tab', { name: '评价关系', exact: true }).click();
+      if (appraiser) await page.getByRole('button', { name: '设置评价者', exact: true }).click();
+      await page.getByRole('button', { name: title, exact: true }).click();
+    };
+    await open();
+    const form = page.getByRole('dialog', { name: title, exact: true });
+    for (const [label, candidate] of [
+      ['选择人员', '合成候选'],
+      [appraiser ? '评价角色' : '选取套卷', appraiser ? '合成候选' : '合成协作套卷'],
+    ]) {
+      const item = form.locator('.ant-form-item').filter({ has: page.locator(`label[title="${label}"]`) });
+      await item.getByRole('combobox').click();
+      await page.locator(`.ant-select-dropdown:visible .ant-select-item-option[title="${candidate}"]`).click();
+      await form.getByText(title, { exact: true }).click();
+    }
+    await form.getByRole('button', saveButton).click();
+    await expect(form).toContainText('结果待确认');
+    await form.getByRole('button', cancelButton).click();
+    if (appraiser)
+      await page
+        .getByRole('dialog', { name: '设置评价者', exact: true })
+        .getByRole('button', { name: '关闭', exact: true })
+        .click();
+    await page
+      .getByRole('dialog', { name: '合成领导力评估', exact: true })
+      .getByRole('button', { name: '关闭', exact: true })
+      .click();
+    await open();
+    await expect(form).toContainText('结果待确认');
+    await expect(form.getByRole('button', saveButton)).toHaveCount(0);
+    expect(writes).toBe(1);
+  });
+}

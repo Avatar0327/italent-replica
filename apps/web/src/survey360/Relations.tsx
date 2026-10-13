@@ -1,3 +1,4 @@
+import { CreateEntry } from '../evaluation/CreateEntry.js';
 import { Button, Descriptions, Space, Table } from 'antd';
 import { useState } from 'react';
 import { usePermissions } from '../foundation/Permissions.js';
@@ -63,7 +64,11 @@ export function Relations({ activityId }: { activityId: string }) {
           },
         ]}
       />
-      {creating && <RelationEditor path={path} close={() => create(false)} saved={list.reload} />}
+      {creating && (
+        <CreateEntry path={path} title={m.addObject} close={() => create(false)}>
+          <RelationEditor path={path} close={() => create(false)} saved={list.reload} />
+        </CreateEntry>
+      )}
       {selected && (
         <Appraisers key={selected.id} row={selected} path={`${path}/${selected.id}`} close={() => select(undefined)} />
       )}
@@ -129,7 +134,14 @@ function Appraisers({ row, path, close }: { row: Row; path: string; close(): voi
                 ]}
               />
               {creating && (
-                <RelationEditor appraiser path={`${path}/appraisers`} close={() => create(false)} saved={list.reload} />
+                <CreateEntry path={`${path}/appraisers`} title={m.addAppraiser} close={() => create(false)}>
+                  <RelationEditor
+                    appraiser
+                    path={`${path}/appraisers`}
+                    close={() => create(false)}
+                    saved={list.reload}
+                  />
+                </CreateEntry>
               )}
             </>
           ),

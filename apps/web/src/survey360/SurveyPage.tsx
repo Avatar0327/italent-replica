@@ -1,3 +1,4 @@
+import { CreateCommands, CreateEntry } from '../evaluation/CreateEntry.js';
 import type { ReactNode } from 'react';
 import { App, Button, Descriptions, Input, Select, Space, Tabs } from 'antd';
 import { useState } from 'react';
@@ -22,6 +23,13 @@ type Kind = 'activities' | 'questionnaires' | 'templates';
 const titles = { activities: m.title, questionnaires: m.questionnaires, templates: m.templates };
 const createTitles = { activities: m.create, questionnaires: m.createQuestionnaire, templates: m.createTemplate };
 export function SurveyPage() {
+  return (
+    <CreateCommands>
+      <SurveyContent />
+    </CreateCommands>
+  );
+}
+function SurveyContent() {
   const activity = usePermissions(ACTIVITY);
   const questionnaire = usePermissions(QUESTIONNAIRE);
   const available = (['activities', 'questionnaires', 'templates'] as Kind[]).filter(
@@ -198,10 +206,18 @@ function SurveyDetail({ id, kind, close, saved }: { id: string; kind: Kind; clos
   );
 }
 function Editor({ kind, row, close, saved }: { kind: Kind; row?: Row; close(): void; saved(): void }) {
-  return kind === 'activities' ? (
-    <ActivityEditor row={row} close={close} saved={saved} />
+  const form =
+    kind === 'activities' ? (
+      <ActivityEditor row={row} close={close} saved={saved} />
+    ) : (
+      <QuestionnaireEditor path={`${BASE}/${kind}`} title={createTitles[kind]} row={row} close={close} saved={saved} />
+    );
+  return row ? (
+    form
   ) : (
-    <QuestionnaireEditor path={`${BASE}/${kind}`} title={createTitles[kind]} row={row} close={close} saved={saved} />
+    <CreateEntry path={`${BASE}/${kind}`} title={createTitles[kind]} close={close}>
+      {form}
+    </CreateEntry>
   );
 }
 function ActivityEditor({ row, close, saved }: { row?: Row; close(): void; saved(): void }) {

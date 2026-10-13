@@ -5,7 +5,7 @@ import { usePermissions } from '../foundation/Permissions.js';
 import { ApiError } from '../foundation/client.js';
 import { ActivityControl, Chains, Conditions, EV } from './ActivityFields.js';
 import { Failure, useWriter } from './runtime.js';
-import { evaluationPatch, records, validateDates, type Row } from './model.js';
+import { evaluationPatch, records, validateDates, validateConditions, type Row } from './model.js';
 import { m, textValue } from './messages.js';
 export const EVALUATION = 'TEvaluation.EvaluationActivity';
 const groups = [
@@ -64,10 +64,7 @@ function useWizard({ row, close, saved }: WizardProps) {
       editable:
         access.editable &&
         row?.status !== 'completed' &&
-        !(
-          locked &&
-          ['typeId', 'orgRange', 'categoryIds', 'maxLevelJump', 'effectiveDate', 'noticeOrgRange'].includes(key)
-        ),
+        !(locked && ['typeId', 'orgRange', 'categoryIds', 'levelIds', 'effectiveDate', 'noticeOrgRange'].includes(key)),
     };
   };
   const initial = row ?? {
@@ -89,6 +86,7 @@ function useWizard({ row, close, saved }: WizardProps) {
       const editable = groups.flat().filter((key) => field(key).editable);
       const body = evaluationPatch(row ?? {}, values, editable);
       validateChains(body, values);
+      if ('conditions' in body) validateConditions(body.conditions);
       await writer.write(
         row ? `${EV}/activities/${row.id}` : `${EV}/activities`,
         row ? 'PATCH' : 'POST',

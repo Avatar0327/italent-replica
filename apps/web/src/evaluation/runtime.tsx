@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ApiError, newCommand, type PageResult } from '../foundation/client.js';
 import { useApiClient, useSession } from '../foundation/Session.js';
 import { m, textValue } from './messages.js';
+import { useCreateEntry } from './CreateEntry.js';
 import type { Row } from './model.js';
 
 /** 页面片内最小读取适配；路径、身份或代次变化时不展示上一次结果。候选与业务接口的失败不回退为演示数据。 */
@@ -43,6 +44,7 @@ export function Failure({ error, retry }: { error: unknown; retry?: () => void }
   ) : null;
 }
 export function useWriter(done: () => void) {
+  const creation = useCreateEntry();
   const api = useApiClient();
   const lock = useRef(false);
   const [busy, setBusy] = useState(false);
@@ -59,7 +61,11 @@ export function useWriter(done: () => void) {
     setBusy(true);
     setError(undefined);
     try {
-      await api.request(path, { method, command: newCommand(body, revision) });
+      if (creation && path === creation.path && method === 'POST') {
+        await creation.store.run(creation.key, path, body, (command) => api.request(path, { method, command }));
+      } else {
+        await api.request(path, { method, command: newCommand(body, revision) });
+      }
       done();
     } catch (cause) {
       setError(cause);
