@@ -106,14 +106,14 @@ async function submitOrdinaryApplication() {
     return { user: row!.id, tenant: tenant!.id };
   };
   const early = tenantApi(db, { authorize: undefined, clock });
-  const read = async (key: string, path: string) => {
+  const read = async <T>(key: string, path: string): Promise<T> => {
     const response = await early.request('GET', path, await userOf(key));
     expect(response.status, await response.clone().text()).toBe(200);
-    return (await response.json()) as never as Record<string, any>;
+    return (await response.json()) as T;
   };
-  const orgs = await read('hr', `/api/tenant/org/organizations?asOf=${TODAY}&pageSize=200`);
-  const frontend = orgs.items.find((org: Row) => org.name === '前端开发组');
-  const profile = await read('employeeA', '/api/tenant/self-service/profile');
+  const orgs = await read<{ items: Row[] }>('hr', `/api/tenant/org/organizations?asOf=${TODAY}&pageSize=200`);
+  const frontend = orgs.items.find((org) => org.name === '前端开发组')!;
+  const profile = await read<{ employee: { revision: number } }>('employeeA', '/api/tenant/self-service/profile');
   const response = await early.request('POST', '/api/tenant/self-service/transfer', {
     ...(await userOf('employeeA')),
     ifMatch: profile.employee.revision,
