@@ -77,3 +77,24 @@ it('AC-FE-R1c-17 DEC-464 草稿选项区分 true / false / null / 未读取，�
     ).find((row) => row.label === '是否调整薪资')?.value,
   ).toBe('否');
 });
+
+it('AC-FE-R1c-19 DEC-467 异动类型只读取 transferTypeCode，不使用系统变动类型', () => {
+  const business = {
+    id: 'draft',
+    revision: 1,
+    employeeRevision: 4,
+    status: 'draft',
+    transferTypeCode: 'transfer',
+    changeType: 'position_adjustment',
+  };
+  expect(draftRows(business, {}).find((row) => row.label === '异动类型')).toEqual({
+    key: 'transferTypeCode',
+    label: '异动类型',
+    value: 'transfer',
+  });
+});
+
+it.each([null, 'position_adjustment'])('AC-FE-R1c-19 DEC-467 缺少异动类型时显示未读取（changeType=%s）', (changeType) => {
+  const business = { id: 'draft', revision: 1, employeeRevision: 4, status: 'draft', changeType };
+  expect(draftRows(business, {}).find((row) => row.label === '异动类型')?.value).toBe('未读取');
+});

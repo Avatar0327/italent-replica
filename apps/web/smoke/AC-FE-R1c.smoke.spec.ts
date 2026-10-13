@@ -546,3 +546,27 @@ for (const [status, message] of [
     await expect(page.getByText(message!, { exact: true })).toBeVisible();
   });
 }
+
+for (const returned of [true, false]) {
+  test(`AC-FE-R1c-19 DEC-467 部门间调动暂存详情${returned ? '显示返回的异动类型' : '字段缺失显示未读取'}`, async ({
+    page,
+  }) => {
+    await hrRecoveryFixture(page);
+    let savedType: unknown;
+    await page.route('**/transfers/employees/' + employee, (route) => {
+      savedType = route.request().postDataJSON().transferTypeCode;
+      return route.fulfill({ json: draftResult });
+    });
+    await page.route('**/employment/businesses/' + draftId, (route) =>
+      route.fulfill({
+        json: { ...draftResult, changeType: null, ...(returned ? { transferTypeCode: savedType } : {}) },
+      }),
+    );
+    await saveDraft(page);
+    expect(savedType).toBe('transfer'); // catalog 中“部门间调动”的编码。
+    await openMyDraft(page);
+    const row = page.getByRole('row').filter({ has: page.getByText('异动类型', { exact: true }) });
+    await expect(row).toContainText(returned ? 'transfer' : '未读取');
+    await expect(row).not.toContainText('无');
+  });
+}
