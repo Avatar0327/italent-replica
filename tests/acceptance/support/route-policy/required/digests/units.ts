@@ -725,7 +725,7 @@ export const DIGESTS: Digests = {
     registerMapRoutes: 'f02e9bfed922',
   },
   'apps/api/src/modules/succession/org-map-routes.ts': {
-    registerOrgMapRoutes: '326a335e4909',
+    registerOrgMapRoutes: '208062cada4a',
   },
   'apps/api/src/modules/succession/projection.ts': {
     GOVERNING_FIELD: 'fe154b4c6a8f',

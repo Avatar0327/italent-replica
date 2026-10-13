@@ -503,6 +503,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/succession/risk-store.ts#readRiskRows',
   ],
   'apps/api/src/modules/succession/map-card-reader.ts#readMapStats': [
+    'apps/api/src/modules/succession/calc-worker.ts#enqueueCalcRun',
+    'apps/api/src/modules/succession/org-stats.ts#cacheHistoricalOnDutyCounts',
     'apps/api/src/modules/succession/read-sql.ts#rowsOf',
   ],
   'apps/api/src/modules/succession/map-card-reader.ts#readMapSuccessors': [
@@ -635,6 +637,30 @@ export const GRAPH: Graph = {
     '#projectOrgMapCards',
     'apps/api/src/modules/succession/read-sql.ts#loadPeople',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/succession/org-stats.ts#cacheHistoricalOnDutyCounts': [
+    'apps/api/src/modules/org/locks.ts#lockOrganizationSettings',
+    'apps/api/src/modules/permission/module-access.ts#scopeAllows',
+    '#readOnDutyCount',
+    'apps/api/src/modules/succession/read-sql.ts#rowsOf',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/succession/org-stats.ts#countOnDuty': [
+    'apps/api/src/modules/org/hierarchy-reader.ts#listOrgDescendantsInTransaction',
+    'apps/api/src/modules/succession/read-sql.ts#INCUMBENT_EXCLUDED_STATUSES',
+    'apps/api/src/modules/succession/read-sql.ts#rowsOf',
+  ],
+  'apps/api/src/modules/succession/org-stats.ts#readOnDutyCount': [
+    'apps/api/src/modules/org/locks.ts#lockOrganizationSettings',
+    'apps/api/src/modules/org/read-model.ts#validIsoDate',
+    '#countOnDuty',
+    '#store',
+    'apps/api/src/modules/succession/read-sql.ts#rowsOf',
+  ],
+  'apps/api/src/modules/succession/org-stats.ts#store': [
+    'apps/api/src/audit/record.ts#recordAudit',
+    'apps/api/src/modules/succession/access.ts#codeOf',
+    'apps/api/src/modules/succession/read-sql.ts#rowsOf',
   ],
   'apps/api/src/modules/succession/population-input.ts#invalidRule': ['#ruleErrors'],
   'apps/api/src/modules/succession/population-input.ts#populationBody': ['#populationRules'],
