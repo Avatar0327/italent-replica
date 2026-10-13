@@ -10,6 +10,7 @@ import { sql } from '@italent/db';
 import type { SuccessionObject } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import type { ModuleScope } from '../permission/module-access.js';
+import { scopeSql } from '../permission/module-access.js';
 import { syncRowsVisible } from './sync-read.js';
 import { calcRowsVisible } from './calc-read.js';
 import { selfRecordHiddenSql } from './read-sql.js';
@@ -64,6 +65,12 @@ function recordSelfRestrict(row: SuccessionAuditRow, viewer: SuccessionAuditView
 }
 
 export const SUCCESSION_AUDIT: Readonly<Partial<Record<SuccessionObject, SuccessionAuditSpec>>> = {
+  map: {
+    kind: 'rows',
+    visible: (scope, row, viewer) => sql`CASE
+    WHEN ${row.after}->>'userId' IS NOT NULL THEN ${row.after}->>'userId'=${viewer.userId}
+    ELSE ${scopeSql(scope, { org: row.org })} END`,
+  },
   record: { kind: 'org', restrict: recordSelfRestrict },
   riskResult: { kind: 'org' },
   healthResult: { kind: 'org' },

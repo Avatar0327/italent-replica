@@ -13,6 +13,7 @@ import {
   index,
   integer,
   jsonb,
+  numeric,
   pgTable,
   primaryKey,
   text,
@@ -20,7 +21,7 @@ import {
   uuid,
   unique,
 } from 'drizzle-orm/pg-core';
-import { employmentEmployees } from './employment.js';
+import { employmentEmployees, employmentRecords } from './employment.js';
 import { jobPositionObjects } from './job.js';
 import { orgObjects } from './org.js';
 import { talentReadinessLevels } from './talent-review.js';
@@ -36,10 +37,81 @@ export const SUCCESSION_OPEN_END = '9999-12-31';
 
 const list = (values: readonly string[]) => sql.raw(values.map((value) => `'${value}'`).join(', '));
 
+/** DEC-443：个人筛选仅用于职位地图，管理员显示开关不存于个人表。 */
+export const SUCCESSION_POSITION_PREFERENCES_DEFAULTS = Object.freeze({
+  showKeyPositions: false,
+  showPositionsWithoutSuccessor: true,
+});
+
+/** C1 / DEC-443：root / depth / hidden 是位置筛选；两个布尔筛选按个人保存。 */
+export const successionMapPreferences = pgTable(
+  'succession_map_preferences',
+  {
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
+    userId: uuid('user_id').notNull(),
+    mapKind: text('map_kind').$type<'position'>().notNull(),
+    rootOrgId: uuid('root_org_id'),
+    depth: integer('depth').notNull(),
+    hiddenOrgIds: jsonb('hidden_org_ids').$type<string[]>().notNull().default([]),
+    showKeyPositions: boolean('show_key_positions')
+      .notNull()
+      .default(SUCCESSION_POSITION_PREFERENCES_DEFAULTS.showKeyPositions),
+    showPositionsWithoutSuccessor: boolean('show_positions_without_successor')
+      .notNull()
+      .default(SUCCESSION_POSITION_PREFERENCES_DEFAULTS.showPositionsWithoutSuccessor),
+    revision: integer('revision').notNull().default(1),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.userId, t.mapKind] }),
+    foreignKey({
+      columns: [t.tenantId, t.userId],
+      foreignColumns: [tenantMemberships.tenantId, tenantMemberships.userId],
+    }),
+    foreignKey({ columns: [t.tenantId, t.rootOrgId], foreignColumns: [orgObjects.tenantId, orgObjects.id] }),
+    check('succession_preferences_kind', sql`${t.mapKind} = 'position'`),
+    check('succession_preferences_depth', sql`${t.depth} BETWEEN 2 AND 4`),
+    check(
+      'succession_preferences_hidden',
+      sql`jsonb_typeof(${t.hiddenOrgIds})='array'
+    AND jsonb_array_length(${t.hiddenOrgIds})<=200`,
+    ),
+    check('succession_preferences_revision', sql`${t.revision}>0`),
+  ],
+);
+
+/** §4.5：同一组织各业务日独立缓存，run 与来源项目只存引用。 */
+export const successionOrgStats = pgTable(
+  'succession_org_stats',
+  {
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
+    orgId: uuid('org_id').notNull(),
+    statDate: date('stat_date', { mode: 'string' }).notNull(),
+    onDutyCount: integer('on_duty_count').notNull(),
+    greenRate: numeric('green_rate'),
+    greenSourceProjectId: uuid('green_source_project_id'),
+    slotKey: text('slot_key').notNull(),
+    computedAt: timestamp('computed_at', { withTimezone: true }).notNull(),
+    runId: uuid('run_id').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.orgId, t.statDate] }),
+    foreignKey({ columns: [t.tenantId, t.orgId], foreignColumns: [orgObjects.tenantId, orgObjects.id] }),
+    foreignKey({
+      columns: [t.tenantId, t.runId],
+      foreignColumns: [successionCalcRuns.tenantId, successionCalcRuns.id],
+    }),
+    check('succession_stats_count', sql`${t.onDutyCount}>=0`),
+  ],
+);
+
 /**
  * 继任记录（原站 `Map`，§1.1）。区间 [start_date, end_date) 半开；同目标同继任者任何两条未删除记录区间不得重叠
  * （排他约束 succession_records_no_overlap，在配套 SQL 迁移里）。软删除（deleted_at）后不参与任何列表 / 统计 / 查重，
- * 且同事务释放准备度引用（触发器）。source_batch_id / source_item_id 先建列、不建外键（同步批次表由 D1 建并补外键）。
+ * 且同事务释放准备度引用（触发器）。source_batch_id 的批次复合外键由 D1 补齐；source_item_id 保留来源快照 ID。
  */
 export const successionRecords = pgTable(
   'succession_records',
@@ -93,6 +165,11 @@ export const successionRecords = pgTable(
       columns: [t.tenantId, t.readinessId],
       foreignColumns: [talentReadinessLevels.tenantId, talentReadinessLevels.id],
     }).onDelete('restrict'),
+    foreignKey({
+      name: 'succession_records_source_batch_fk',
+      columns: [t.tenantId, t.sourceBatchId],
+      foreignColumns: [successionSyncBatches.tenantId, successionSyncBatches.id],
+    }).onDelete('restrict'),
     index('succession_records_org_target').on(t.tenantId, t.successionType, t.targetOrgId, t.endDate),
     index('succession_records_position_target').on(t.tenantId, t.successionType, t.targetPositionId, t.endDate),
     index('succession_records_successor').on(t.tenantId, t.successorEmployeeId, t.endDate),
@@ -130,6 +207,45 @@ export const successionTargetLocks = pgTable(
   (t) => [
     primaryKey({ columns: [t.tenantId, t.targetKind, t.targetId] }),
     check('succession_target_locks_kind', sql`${t.targetKind} IN (${list(SUCCESSION_TYPES)})`),
+  ],
+);
+
+/** A3 / §5.4：事件时冻结候选，逐类型消费；不扫描补处理事件之后新增的继任记录。 */
+export const successionExitApplications = pgTable(
+  'succession_exit_applications',
+  {
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
+    employeeId: uuid('employee_id').notNull(),
+    employmentRecordId: uuid('employment_record_id').notNull(),
+    leaveDate: date('leave_date', { mode: 'string' }).notNull(),
+    appliedAt: timestamp('applied_at', { withTimezone: true }).notNull(),
+    source: text('source').$type<'record_write' | 'sweep' | 'delete_revert'>().notNull(),
+    /** 只含本事件尚未判定的候选 ID；已结束 / 已删除也消费，不能因以后手工恢复而重放本次离职。 */
+    candidateRecordIds: jsonb('candidate_record_ids').$type<string[]>().notNull().default([]),
+    endedRecordIds: jsonb('ended_record_ids').$type<string[]>().notNull().default([]),
+    commandId: text('command_id').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.employmentRecordId] }),
+    foreignKey({
+      name: 'succession_exit_employee_fk',
+      columns: [t.tenantId, t.employeeId],
+      foreignColumns: [employmentEmployees.tenantId, employmentEmployees.id],
+    }),
+    foreignKey({
+      name: 'succession_exit_record_fk',
+      columns: [t.tenantId, t.employmentRecordId],
+      foreignColumns: [employmentRecords.tenantId, employmentRecords.id],
+    }),
+    index('succession_exit_employee').on(t.tenantId, t.employeeId),
+    check('succession_exit_source', sql`${t.source} IN ('record_write','sweep','delete_revert')`),
+    check(
+      'succession_exit_arrays',
+      sql`jsonb_typeof(${t.candidateRecordIds})='array'
+      AND jsonb_typeof(${t.endedRecordIds})='array'`,
+    ),
   ],
 );
 
@@ -405,7 +521,7 @@ export const successionNotifications = pgTable(
       .notNull()
       .references(() => tenants.id),
     runId: uuid('run_id'),
-    batchId: uuid('batch_id'), // D1 建批次表后补复合外键。
+    batchId: uuid('batch_id'),
     subjectId: uuid('subject_id')
       .generatedAlwaysAs(sql`COALESCE(run_id, batch_id)`)
       .notNull(),
@@ -428,6 +544,11 @@ export const successionNotifications = pgTable(
       columns: [t.tenantId, t.runId],
       foreignColumns: [successionCalcRuns.tenantId, successionCalcRuns.id],
     }),
+    foreignKey({
+      name: 'succession_notifications_batch_fk',
+      columns: [t.tenantId, t.batchId],
+      foreignColumns: [successionSyncBatches.tenantId, successionSyncBatches.id],
+    }).onDelete('restrict'),
     check('succession_notifications_subject', sql`num_nonnulls(${t.runId},${t.batchId}) = 1`),
     check(
       'succession_notifications_kind',

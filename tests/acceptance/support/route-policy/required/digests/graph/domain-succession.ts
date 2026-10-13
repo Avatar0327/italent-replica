@@ -8,6 +8,7 @@ export const GRAPH: Graph = {
   'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS': ['#crud', '#levelObject', '#object', '#reorder'],
   'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>calcRun': ['#object'],
   'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>healthLevel': ['#levelObject'],
+  'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>map': ['#object'],
   'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>population': ['#crud', '#object', '#reorder'],
   'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>record': ['#crud', '#object'],
   'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>riskLevel': ['#levelObject'],

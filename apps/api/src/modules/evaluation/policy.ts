@@ -5,7 +5,7 @@
  * TEvaluation 没有向下公开，读写同一谓词，范围外读写都是 404。
  * 写入共性：If-Match 必带、Idempotency-Key 必带、ledger single；write.fields = 'body'。
  */
-import { EVALUATION_OBJECTS, PERSONNEL_OBJECT, QUALIFICATION_OBJECTS } from '@italent/domain';
+import { EVALUATION_FLOW_OBJECTS, EVALUATION_OBJECTS, PERSONNEL_OBJECT, QUALIFICATION_OBJECTS } from '@italent/domain';
 import { defineTable, type RoutePolicy } from '../../route-policy/index.js';
 import {
   BAD_REQUEST,
@@ -203,7 +203,37 @@ function crud(key: Key): Record<string, RoutePolicy> {
   };
 }
 
+function activityState(action: 'publish' | 'unpublish'): RoutePolicy {
+  return object({
+    object: E.evaluationActivity.code,
+    operation: 'update',
+    button: button(action, 'list_row'),
+    scope: pointScope({ param: 'id' }, 'ev.evaluationActivity.byId', NF),
+    fields: shape('ev.evaluationActivity'),
+    invalidId: BAD_REQUEST,
+    write: evWrite('evaluationActivity', 'none'),
+  });
+}
+
 export const EVALUATION_POLICIES = defineTable('evaluation', {
+  [`POST ${BASE}/activities/:id/publish`]: activityState('publish'),
+  [`POST ${BASE}/activities/:id/unpublish`]: activityState('unpublish'),
+  [`GET ${BASE}/staff-evaluations`]: object({
+    object: EVALUATION_FLOW_OBJECTS.staffEvaluation.code,
+    operation: 'view',
+    button: noButton('管理读取按对象查看权'),
+    scope: listScope('ev.activityPerson'),
+    guards: ['ev.filterFieldVisible'],
+    fields: shape('ev.staffEvaluation'),
+  }),
+  [`GET ${BASE}/staff-evaluations/:id`]: object({
+    object: EVALUATION_FLOW_OBJECTS.staffEvaluation.code,
+    operation: 'view',
+    button: noButton('管理读取按对象查看权'),
+    scope: pointScope({ param: 'id' }, 'ev.staffEvaluation.byId', NF),
+    invalidId: BAD_REQUEST,
+    fields: shape('ev.staffEvaluation'),
+  }),
   // 评审组成员候选：员工信息查看权 + 人员范围（统一人员范围，分页前过滤）；字段按员工信息字段权，关键字只匹配可见字段
   [`GET ${BASE}/candidates/review-members`]: object({
     object: PERSONNEL_OBJECT,
