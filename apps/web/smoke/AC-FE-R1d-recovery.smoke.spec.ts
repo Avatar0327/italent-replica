@@ -241,3 +241,65 @@ test('AC-FE-R1d-2 查看我的申请后返回不清除原命令，只有整页�
   await openForm(page, false);
   await expect(drawer.getByRole('button', { name: '提交', exact: true })).toBeEnabled();
 });
+
+for (const manager of [false, true]) {
+  test(`AC-FE-R1d-3 ${manager ? '经理' : '员工'}明确拒绝保留输入，可改正重提且未知结果仍锁定`, async ({ page }) => {
+    const drawer = await setup(page, manager);
+    const target = '60000000-0000-4000-8000-000000000003';
+    const custom = '70000000-0000-4000-8000-000000000001';
+    await page.route('**/preview', (route) =>
+      route.fulfill({
+        json: {
+          ...preview,
+          customFields: { [custom]: '' },
+          form: {
+            ...preview.form,
+            customFields: [{ id: custom, name: '合成备注', valueType: 'string' }],
+            fieldModes: { ...preview.form.fieldModes, [`custom:${custom}`]: 'editable' },
+          },
+        },
+      }),
+    );
+    await page.route('**/references/departmentId**', (route) =>
+      route.fulfill({ json: { items: [{ id: target, name: '合成另一部门' }] } }),
+    );
+    const commands: string[] = [];
+    const bodies: Record<string, unknown>[] = [];
+    const refusal = '合成业务拒绝，请修改后重提';
+    await page.route(manager ? `**/transfers/employees/${employee}` : '**/self-service/transfer', (route) => {
+      commands.push(route.request().headers()['idempotency-key']!);
+      bodies.push(route.request().postDataJSON());
+      if (commands.length === 1)
+        return route.fulfill({
+          status: manager ? 422 : 409,
+          json: { error: { code: 'VALIDATION_FAILED', message: refusal } },
+        });
+      return route.abort('failed');
+    });
+    await drawer.locator('input[name="effectiveDate"]').fill('2026-11-02');
+    await drawer.locator(`input[name="${custom}"]`).fill('合成原输入');
+    await drawer.locator('select[name="departmentId"]').selectOption(target);
+    await drawer.getByRole('button', { name: '提交', exact: true }).click();
+    await expect(drawer).toContainText(refusal);
+    await expect(drawer.locator('input[name="effectiveDate"]')).toHaveValue('2026-11-02');
+    await expect(drawer.locator('select[name="departmentId"]')).toHaveValue(target);
+    await expect(drawer.locator(`input[name="${custom}"]`)).toHaveValue('合成原输入');
+    if (manager) await expect(drawer.locator('select[name="employeeId"]')).toHaveValue(employee);
+    await drawer.locator(`input[name="${custom}"]`).fill('合成改正输入');
+    await drawer.getByRole('button', { name: '提交', exact: true }).click();
+    await expect.poll(() => commands.length).toBe(2);
+    expect(commands[1]).not.toBe(commands[0]);
+    expect(bodies[1]).toMatchObject({
+      effectiveDate: '2026-11-02',
+      fields: { departmentId: target },
+      customFields: { [custom]: '合成改正输入' },
+    });
+    await expect(drawer).toContainText('处理中 / 结果待确认');
+    await expect(drawer.getByRole('button', { name: '提交', exact: true })).toHaveCount(0);
+    await page.getByRole('button', { name: '关闭', exact: true }).click();
+    await openForm(page, manager);
+    await expect(drawer).toContainText(commands[1]!);
+    await expect(drawer.getByRole('button', { name: '提交', exact: true })).toHaveCount(0);
+    expect(commands).toHaveLength(2);
+  });
+}
