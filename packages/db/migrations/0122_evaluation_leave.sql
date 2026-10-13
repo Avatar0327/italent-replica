@@ -29,12 +29,12 @@ BEGIN
     -- 仍在时间轴上且近期或周期已有评定，覆盖未来离职及跨多日升级。
     INSERT INTO ev_sync_queue
       (tenant_id, handler, dedupe_key, outbox_id, employee_id, record_id, next_attempt_at)
-    SELECT r.tenant_id, 'evaluation_leave', r.id::text, event.id, r.employee_id, r.id,
-      r.start_date::timestamp AT TIME ZONE tenant_row.timezone
+    -- 与实时入队相同：日期准入交给 F-055，不能用未来 next_attempt_at 挡住已删除事件。
+    SELECT r.tenant_id, 'evaluation_leave', r.id::text, event.id, r.employee_id, r.id, event.created_at
     FROM employment_records r
     JOIN employment_timeline t ON t.tenant_id=r.tenant_id AND t.record_id=r.id
     JOIN LATERAL (
-      SELECT e.id FROM employment_outbox e
+      SELECT e.id, e.created_at FROM employment_outbox e
       WHERE e.tenant_id=r.tenant_id AND e.business_id=r.id AND e.object_id=r.id
         AND e.event_type='employment.record.create' ORDER BY e.created_at, e.id LIMIT 1
     ) event ON true
