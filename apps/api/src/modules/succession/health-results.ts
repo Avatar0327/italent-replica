@@ -7,6 +7,7 @@ import { AppError } from '../../errors.js';
 import {
   authorizeInTransaction,
   getModuleViewableFields,
+  getModuleViewableFieldsInTransaction,
   resolveModuleScopeInTransaction,
   scopeSql,
   scopeAllows,
@@ -67,14 +68,15 @@ export async function readHealthResults(
   ctx: SuccessionContext,
   page: { limit: number; offset: number },
   ids?: readonly string[],
+  asOf = tenantLocalDate(ctx.now, ctx.timezone),
 ) {
-  const scope = await healthAccess(tx, deps, ctx),
-    today = tenantLocalDate(ctx.now, ctx.timezone);
-  const where = sql`v.tenant_id=${ctx.tenantId}::uuid AND v.enabled AND v.stop_date>=${today}::date
+  const scope = await healthAccess(tx, deps, ctx);
+  // 历史卡片用业务日选组织，结果仍是当前值；healthAccess 的权限范围始终按请求当日。
+  const where = sql`v.tenant_id=${ctx.tenantId}::uuid AND v.enabled AND v.stop_date>=${asOf}::date
     AND ${scopeSql(scope, { org: sql`v.org_id` })}
     ${ids ? sql`AND v.org_id=ANY(${`{${ids.join(',')}}`}::uuid[])` : sql``}`;
   const latest = sql`(SELECT DISTINCT ON (org_id) * FROM org_versions
-    WHERE tenant_id=${ctx.tenantId}::uuid AND start_date<=${today}::date
+    WHERE tenant_id=${ctx.tenantId}::uuid AND start_date<=${asOf}::date
     ORDER BY org_id,start_date DESC,version_no DESC)`;
   const views = rowsOf<HealthView>(
     await tx.execute(sql`SELECT v.org_id AS id,v.org_id AS "orgId",
@@ -93,8 +95,15 @@ export async function readHealthResults(
   if (ids && views.length !== ids.length) throw healthMissing();
   return { views, total: count!.total, revisions: new Map(views.map((v) => [v.id, v.revision])) };
 }
-export async function projectHealth(deps: TenantRouteDeps, ctx: SuccessionContext, views: readonly HealthView[]) {
-  const fields = await getModuleViewableFields(deps, ctx, codeOf('healthResult'));
+export async function projectHealth(
+  deps: TenantRouteDeps,
+  ctx: SuccessionContext,
+  views: readonly HealthView[],
+  tx?: Tx,
+) {
+  const fields = tx
+    ? await getModuleViewableFieldsInTransaction(deps, ctx, codeOf('healthResult'), tx)
+    : await getModuleViewableFields(deps, ctx, codeOf('healthResult'));
   return views.map((v) =>
     fields === undefined ? v : Object.fromEntries(Object.entries(v).filter(([k]) => fields.has(k))),
   );

@@ -5680,6 +5680,23 @@
       "module": "permission",
       "primitives": {}
     },
+    "GET /api/tenant/permission/me/snapshot": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "status": 200
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "permission",
+      "primitives": {}
+    },
     "GET /api/tenant/permission/mous": {
       "edge": {
         "anonymous": {
@@ -7411,6 +7428,33 @@
       "primitives": {
         "object": [
           "objectContext"
+        ]
+      }
+    },
+    "GET /api/tenant/succession/maps/org": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "succession",
+      "primitives": {
+        "object": [
+          "object.* 动作",
+          "objectContext"
+        ],
+        "scope": [
+          "creator scope",
+          "scopeSql"
         ]
       }
     },
