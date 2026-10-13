@@ -184,7 +184,10 @@ jobs:
           (github.event_name == 'workflow_dispatch' && inputs.node_22)) && '[22, 24]' || '[24]') }}
         shard: [1, 2, 3, 4, 5]
     steps:
+      # fetch-depth 2：F-097 授权项编码动态基线要读测试合并提交的 base（HEAD^1）
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
       - uses: pnpm/action-setup@v4 # 版本取自 package.json 的 packageManager
       - uses: actions/setup-node@v4
         with:
@@ -194,6 +197,8 @@ jobs:
       - run: pnpm test --shard=${{ matrix.shard }}/5
         env:
           GENERATED_STRICT: ${{ needs.changes.outputs.generated_strict }}
+          # F-097：PR 上以 base 分支当前提交为授权项编码基线；其余事件为空，测试改用 merge-base origin/main HEAD
+          GRANT_BASE_REV: ${{ github.event_name == 'pull_request' && 'HEAD^1' || '' }}
 
   # 必需检查 1（分支保护按名称匹配）。DEC-454① 的安全性在于名称：
   # - 完整 / 纯文档模式，以及分类失败（mode 为空）时，用必需检查名报告，并按下面的规则判定成败；
@@ -266,7 +271,10 @@ jobs:
       # CI 一次性容器内的测试口令，非机密
       TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/italent_test
     steps:
+      # fetch-depth 2：F-097 授权项编码动态基线要读测试合并提交的 base（HEAD^1）
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
       # 不用 services（拉取失败不能换源）：脚本先拉 ghcr 镜像，失败再落到 AWS 公共镜像源 / Docker Hub 并退避重试，
       # 启动参数直接带 max_locks_per_transaction=256（#250），健康检查通过后打印并校验生效值（DEC-431④）
       - name: Log in to ghcr.io (failure falls back to public registries)
@@ -287,6 +295,7 @@ jobs:
       - run: pnpm test:pg --shard=${{ matrix.shard }}/5 --exclude=tests/acceptance/AC-360-F043-race-pg.test.ts
         env:
           GENERATED_STRICT: ${{ needs.changes.outputs.generated_strict }}
+          GRANT_BASE_REV: ${{ github.event_name == 'pull_request' && 'HEAD^1' || '' }}
 
   test-pg-race:
     name: test (PostgreSQL 16, F-043 race)
