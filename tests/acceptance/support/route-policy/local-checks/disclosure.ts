@@ -81,7 +81,7 @@ export function disclosureChecks(context: LocalCheckContext) {
     {
       id: 'admissionNeed',
       label:
-        'R1c：含 ≥2 个承载节点的准入备选，其 obj: / admin: 准入义务缺 need → NEED_UNBOUND（20 + C1-6 两条 + B3b 重试 + B6b 模板复制 = 24）',
+        'R1c：含 ≥2 个承载节点的准入备选，其 obj: / admin: 准入义务缺 need → NEED_UNBOUND（原 24 条 + D3 三条同步写入口 = 27）',
       wrapped: false,
       verify: () => {
         const stripped: RequiredTable = Object.fromEntries(
@@ -96,7 +96,7 @@ export function disclosureChecks(context: LocalCheckContext) {
             return new Set(carriers).size >= 2;
           }),
         );
-        registration('多个准入承载节点的静态统计', () => expect(multi).toHaveLength(24));
+        registration('多个准入承载节点的静态统计', () => expect(multi).toHaveLength(27));
         // 对每个实际进入反例的完整表项验证检测器；未登记的端点由真实总入口报告，不能混入这个反例的 oracle。
         const registered = multi.filter((r) => REQUIRED[`${r.method} ${r.path}`]);
         expect(new Set(unbound.map((f) => f.route))).toEqual(new Set(registered.map((r) => `${r.method} ${r.path}`)));
