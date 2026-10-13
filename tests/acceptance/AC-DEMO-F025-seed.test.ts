@@ -333,7 +333,7 @@ describe('F-025 演示种子', () => {
     );
   });
 
-  it('已完成的种子场景被用户改动后再启动种子：不回退（无进度记录按状态推断，有进度记录整体跳过）', async () => {
+  it('已完成的种子场景被用户改动后再启动种子：判定为用户接管、不回退（无进度记录每次判定，有进度记录整体跳过）', async () => {
     const [withdrawn] = rowsOf<{ id: string }>(
       await withTenant(database().db, manifest.tenantId, (tx) =>
         tx.execute(
@@ -354,15 +354,19 @@ describe('F-025 演示种子', () => {
     expect(resubmitted.status, await resubmitted.clone().text()).toBe(200);
     expect(await statusOf()).toBe('in_review');
 
-    // 没有进度记录：按业务单状态推断，撤回已发生过，不再撤回
+    // 没有进度记录：HR 重提是种子台账外的操作，判定为用户接管，不再撤回（DEC-477）
     expect((await seedDemo(database().db, options)).created).toBe(false);
     expect(await statusOf()).toBe('in_review');
-    // 有进度记录（未完成的场景会被推断补记）：同样不回退
+    // 有进度记录：同样不回退；其余场景记为已完成，DEMO-TRF-15 记为已接管
     const progress = memoryProgress();
     expect((await seedDemo(database().db, { ...options, progress })).created).toBe(false);
     expect(await statusOf()).toBe('in_review');
-    expect(await progress.completedTransfers(manifest.tenantId)).toEqual(new Set(DEMO_TRANSFERS.map((s) => s.id)));
-    // 重提后又被经理审批通过第一节点：再跑种子（无进度记录推断）也不撤回
+    const takenOver = await progress.takenOverTransfers(manifest.tenantId);
+    expect(takenOver).toEqual(new Set(['DEMO-TRF-15']));
+    expect(new Set([...(await progress.completedTransfers(manifest.tenantId)), ...takenOver])).toEqual(
+      new Set(DEMO_TRANSFERS.map((s) => s.id)),
+    );
+    // 重提后又被经理审批通过第一节点：再跑种子（无进度记录，重新判定）也不撤回
     const todos = await json<{ items: { taskId: string; instanceId: string }[] }>(
       'dataManager',
       '/api/tenant/approval/todos',
@@ -385,7 +389,7 @@ describe('F-025 演示种子', () => {
     expect(approved.status, await approved.clone().text()).toBeLessThan(300);
     expect((await seedDemo(database().db, options)).created).toBe(false);
     expect(await statusOf()).toBe('in_review');
-    // 全部场景都已完成：调动阶段整体跳过
+    // 全部场景都已完成或被接管：调动阶段整体跳过
     let steps = 0;
     await seedDemo(database().db, { ...options, progress, onStep: () => void (steps += 1) });
     expect(steps).toBe(0);

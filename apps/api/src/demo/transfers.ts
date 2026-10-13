@@ -1,7 +1,8 @@
 /**
  * 演示调动流程与调动单：在途 6、已完成 6、驳回 2、撤回 1，分别由员工自助、经理、HR 按真实流程发起，
- * 由演示身份（经理、HR、异常管理员）逐节点审批。调动单的自然键 = 被调动人（每人至多一张演示调动单），
- * 重复运行时按被调动人已有的调动业务单续做到目标状态，不重复发起。
+ * 由演示身份（经理、HR、异常管理员）逐节点审批。每个场景用确定性命令 ID 发起、逐步推进，全部记入种子台账（takeover.ts）；
+ * 重复运行时按台账认领本场景的单子并续做到目标状态，不重复发起。单据上一旦出现种子台账外的操作，即视为用户接管，
+ * 种子此后永不再动这张单（DEC-477）；要回到干净的演示数据用 pnpm demo:reset，重跑种子不复原被接管的单据。
  */
 import { type Db, sql, withTenant } from '@italent/db';
 import { TRANSFER_FORM_FIELDS } from '@italent/domain';
@@ -9,6 +10,14 @@ import { type DemoClock, type Json, listAll } from './client.js';
 import { DEMO_TRANSFER_PROCESS_CODE, type OrgKey } from './data.js';
 import { transferSubjects } from './scale-data.js';
 import type { SeedProgress } from './progress.js';
+import {
+  type Observed,
+  type ObservedInstance,
+  observe,
+  type SeedAction,
+  stepCommandId,
+  takeoverReason,
+} from './takeover.js';
 import type { DemoWorld } from './world.js';
 
 type End = 'pending' | 'effective' | 'reject' | 'withdraw';
@@ -79,22 +88,15 @@ const dayOffset = (day: string, days: number): string => {
   return date.toISOString().slice(0, 10);
 };
 
-export interface TaskView {
-  readonly id: string;
-  readonly status: string;
-  readonly assigneeUserId: string;
-}
-export interface InstanceView extends Json {
-  readonly id: string;
-  readonly status: string;
-  readonly revision: number;
-  readonly tasks: readonly TaskView[];
-  readonly logs?: readonly { event: string }[];
-}
+/** 场景的结果：走到了目标状态，或被用户接管（DEC-477，此后永久跳过）。 */
+type Outcome = { readonly kind: 'completed' } | { readonly kind: 'takenOver'; readonly reason: string };
 
 export async function seedTransfers(world: DemoWorld, clock: DemoClock, progress?: SeedProgress): Promise<void> {
-  const done = new Set(await progress?.completedTransfers(world.tenantId));
-  // 全部场景都已初始化完成：整体跳过，后续启动不碰用户已经在操作的调动单
+  const done = new Set([
+    ...((await progress?.completedTransfers(world.tenantId)) ?? []),
+    ...((await progress?.takenOverTransfers(world.tenantId)) ?? []),
+  ]);
+  // 全部场景都已完成或被用户接管：整体跳过，后续启动不碰用户已经在操作的调动单
   if (DEMO_TRANSFERS.every((scenario) => done.has(scenario.id))) return;
   await publishTransferProcess(world);
   for (const scenario of DEMO_TRANSFERS) {
@@ -104,14 +106,16 @@ export async function seedTransfers(world: DemoWorld, clock: DemoClock, progress
     // 业务日期按租户时区：北京时间上午 10:00 的时钟与 UTC 同日
     const day = dayOffset(today, -scenario.daysAgo);
     clock.setDay(day);
+    let outcome: Outcome;
     try {
-      await runScenario(world, scenario, day);
+      outcome = await runScenario(world, scenario, day);
     } catch (error) {
       throw new Error(`${scenario.id}：${error instanceof Error ? error.message : String(error)}`);
     } finally {
       clock.setDay(null);
     }
-    await progress?.markTransferCompleted(world.tenantId, scenario.id);
+    if (outcome.kind === 'completed') await progress?.markTransferCompleted(world.tenantId, scenario.id);
+    else await progress?.markTransferTakenOver(world.tenantId, scenario.id);
   }
 }
 
@@ -133,7 +137,7 @@ const INITIATOR = { self: 'employee', manager: 'manager', hr: 'hr' } as const;
 export const scenarioCommandId = (tenantId: string, scenario: Scenario): string =>
   `demo-seed:${tenantId}:${scenario.id}`;
 
-async function runScenario(world: DemoWorld, scenario: Scenario, day: string): Promise<void> {
+async function runScenario(world: DemoWorld, scenario: Scenario, day: string): Promise<Outcome> {
   const subject = await subjectOf(world, scenario);
   const actor = scenario.via === 'self' ? subject.userId : world.accounts.get(scenario.actor!)!;
   let businessId = await claimedTransfer(world.db, world.tenantId, subject.employeeId, scenario);
@@ -141,7 +145,7 @@ async function runScenario(world: DemoWorld, scenario: Scenario, day: string): P
     businessId = await create(world, scenario, subject, actor, day);
     await world.wrote('transfers', scenario.id);
   }
-  await advance(world, scenario, businessId, actor);
+  return advance(world, scenario, businessId, actor);
 }
 
 /**
@@ -204,67 +208,66 @@ async function create(
   return String(saved.id);
 }
 
-/** 种子会对调动单做的三种改变业务状态的动作（发起另见 create）。 */
-type SeedAction = 'approve' | 'reject' | 'withdraw';
-
-const hasEnded = (view: InstanceView): boolean =>
-  ['returned', 'withdrawn'].includes(view.status) ||
-  (view.logs ?? []).some((log) => ['reject', 'withdraw'].includes(log.event));
+type Decision =
+  | { readonly kind: 'takeover'; readonly reason: string }
+  | { readonly kind: 'done' }
+  | { readonly kind: 'act'; readonly action: SeedAction; readonly taskId: string; readonly instance: ObservedInstance };
 
 /**
- * 场景推进的单一判定入口：读业务单当前的真实进度，决定种子下一步要做什么，没有则返回 null。
- * 只有同时满足以下条件才返回动作，其余一律视为“已完成或已被用户接管”，种子不再动：
- * ① 只有本场景发起的这一个审批实例（用户重提会产生新实例）；② 实例仍在进行中，没有被驳回 / 撤回过（含用户之后重提的）；
- * ③ 有待办节点；④ 已通过节点数不超过场景预设——小于预设才审批，恰好等于预设才执行驳回 / 撤回，超过预设绝不动。
- * 所有改变业务状态的种子动作（审批、驳回、撤回）都只能经这里决定。
+ * 种子推进的唯一入口（DEC-477）：先做接管判定——实例上有任何对不上种子台账的操作或任务结构变化，就返回 takeover，
+ * 种子此后永不再动这张单；对得上才按台账里种子已走的步数决定下一步：审批数不足预设就审批当前待办，恰好达到预设就按收尾
+ * 驳回 / 撤回，其余（流程已结束、业务单不在审批中、没有唯一待办）都是 done。审批、驳回、撤回三类动作只能经这里决定。
  */
 export function nextSeedAction(
   scenario: Pick<Scenario, 'approvals' | 'end'>,
-  views: readonly InstanceView[],
-): { action: SeedAction; task: TaskView; view: InstanceView } | null {
-  const [view, ...others] = views;
-  if (!view || others.length > 0 || view.status !== 'running' || hasEnded(view)) return null;
-  const task = view.tasks.find((item) => item.status === 'pending');
-  if (!task) return null;
-  const approved = view.tasks.filter((item) => item.status === 'approved').length;
-  if (approved > scenario.approvals) return null;
-  if (approved < scenario.approvals) return { action: 'approve', task, view };
-  if (scenario.end === 'reject') return { action: 'reject', task, view };
-  if (scenario.end === 'withdraw') return { action: 'withdraw', task, view };
-  return null;
+  observed: Observed,
+  businessStatus: string,
+): Decision {
+  const reason = takeoverReason(observed);
+  if (reason) return { kind: 'takeover', reason };
+  const instance = observed.instances[0]!;
+  const steps = observed.ledger.steps;
+  if (instance.status !== 'running' || businessStatus !== 'in_review') return { kind: 'done' };
+  if (steps.some((step) => step.action !== 'approve')) return { kind: 'done' };
+  const pending = observed.tasks.filter((task) => task.status === 'pending');
+  if (pending.length !== 1) return { kind: 'done' };
+  const approved = steps.length;
+  const act = (action: SeedAction): Decision => ({ kind: 'act', action, taskId: pending[0]!.id, instance });
+  if (approved < scenario.approvals) return act('approve');
+  if (approved > scenario.approvals) return { kind: 'done' };
+  if (scenario.end === 'reject') return act('reject');
+  if (scenario.end === 'withdraw') return act('withdraw');
+  return { kind: 'done' };
 }
 
-/** 按当前审批进度续做，直到没有下一步（经 nextSeedAction 判定）。 */
-async function advance(world: DemoWorld, scenario: Scenario, businessId: string, initiator: string) {
+/**
+ * 按种子台账续做，直到 nextSeedAction 给出 done / takeover。每一步都用确定性命令 ID（takeover.stepCommandId）提交，
+ * 与业务写入同事务记入种子台账；中途被打断时这一步要么整体没发生、要么连同台账一起落库，续跑据此接着判定。
+ */
+async function advance(world: DemoWorld, scenario: Scenario, businessId: string, initiator: string): Promise<Outcome> {
   const base = '/api/tenant';
+  const createId = scenarioCommandId(world.tenantId, scenario);
   for (;;) {
-    const list = await world.call(
-      initiator,
-      'GET',
-      `${base}/approval/instances?role=initiated&businessId=${businessId}`,
-    );
-    const views: InstanceView[] = [];
-    for (const found of list.items as Json[]) {
-      views.push(
-        (await world.call(initiator, 'GET', `${base}/approval/instances/${String(found.id)}`)) as InstanceView,
-      );
-    }
-    const next = nextSeedAction(scenario, views);
-    if (!next) return;
-    const { action, task, view } = next;
+    const observed = await observe(world.db, world.tenantId, scenario.id, createId, businessId);
+    // 员工本人入口的发起人读不到业务单，读取用系统管理员（演示里看全部）
+    const business = await world.call(world.admin, 'GET', `${base}/employment/businesses/${businessId}`);
+    const next = nextSeedAction(scenario, observed, String(business.status));
+    if (next.kind === 'takeover') return { kind: 'takenOver', reason: next.reason };
+    if (next.kind === 'done') return { kind: 'completed' };
+    const { action, taskId, instance } = next;
+    const targetId = action === 'withdraw' ? instance.id : taskId;
+    const commandId = stepCommandId(scenario.id, { action, round: instance.round, targetId });
     if (action === 'withdraw') {
       // 发起人（HR）撤回在途申请 → 业务单回到草稿（普通员工没有“撤回”按钮，所以撤回单由 HR 发起）
-      const business = await world.call(initiator, 'GET', `${base}/employment/businesses/${businessId}`);
-      if (business.status !== 'in_review') return;
       const path = `${base}/employment/businesses/${businessId}/withdraw`;
-      await world.call(initiator, 'POST', path, {}, Number(business.revision));
+      await world.call(initiator, 'POST', path, {}, Number(business.revision), commandId);
     } else {
+      const assignee = observed.tasks.find((task) => task.id === taskId)!.assigneeUserId!;
       const comment = action === 'reject' ? '演示：信息不全，请补充后重新提交' : undefined;
-      const path = `${base}/approval/tasks/${task.id}/${action}`;
-      await world.call(task.assigneeUserId, 'POST', path, { comment }, view.revision);
+      const path = `${base}/approval/tasks/${taskId}/${action}`;
+      await world.call(assignee, 'POST', path, { comment }, instance.revision, commandId);
     }
     await world.wrote('transfers', `${scenario.id}:${action}`);
-    if (action !== 'approve') return;
   }
 }
 

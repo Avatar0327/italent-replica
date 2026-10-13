@@ -40,7 +40,7 @@ export interface SeedOptions {
   readonly nodeEnv?: string;
   /** 每写入一个对象后回调（进度输出；测试用它在指定位置注入失败）。 */
   readonly onStep?: StepHook;
-  /** 调动场景“已初始化完成”的记录（cli 用 `.demo/seed-state.json`）；不提供时按业务单状态推断，同样不回退。 */
+  /** 调动场景“已完成 / 已被用户接管”的记录（cli 用 `.demo/seed-state.json`）；不提供时每次重新做接管判定（DEC-477）。 */
   readonly progress?: SeedProgress;
 }
 
