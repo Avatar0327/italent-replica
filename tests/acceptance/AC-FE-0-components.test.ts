@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const requireWeb = createRequire(resolve('apps/web/package.json'));
 const { createElement: h, act } = requireWeb('react');
 const { createRoot } = requireWeb('react-dom/client');
+const { FormOverlay } = await import(resolve('apps/web/src/foundation/FormOverlay.tsx'));
 let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 beforeEach(() => {
@@ -23,7 +24,6 @@ afterEach(async () => {
 
 describe('AC-FE-0-03 最小组件集', () => {
   it('切换记录或刷新 revision 后重建表单，不能把上一条记录的值提交给下一条', async () => {
-    const { FormOverlay } = await import(resolve('apps/web/src/foundation/FormOverlay.tsx'));
     const { Input } = requireWeb('antd');
     const render = (recordKey: string, name: string) =>
       h(FormOverlay, {
@@ -132,7 +132,6 @@ describe('AC-FE-0-03 最小组件集', () => {
     expect(host.textContent).toBe('');
   });
   it('表单跳过隐藏与只读字段校验，服务端字段错误落到对应控件，提交中不会重入', async () => {
-    const { FormOverlay } = await import(resolve('apps/web/src/foundation/FormOverlay.tsx'));
     const { ApiError } = await import(resolve('apps/web/src/foundation/client.ts'));
     const { Input } = requireWeb('antd');
     let reject!: (reason: unknown) => void;
