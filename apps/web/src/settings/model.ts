@@ -109,6 +109,16 @@ export interface Grant {
   status: string;
   revision: number;
 }
+export interface LicenseOverage {
+  code: 'LICENSE_OVERAGE';
+  licenseType: string;
+  quota: number;
+  used: number;
+  balance: number;
+}
+export interface GrantReceipt {
+  licenseOverage: LicenseOverage | null;
+}
 export interface Mou {
   id: string;
   name: string;

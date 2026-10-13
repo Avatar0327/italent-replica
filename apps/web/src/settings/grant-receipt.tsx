@@ -1,17 +1,7 @@
 import { Alert } from 'antd';
 import { useState } from 'react';
 import { m } from './messages.js';
-
-interface LicenseOverage {
-  code: 'LICENSE_OVERAGE';
-  licenseType: string;
-  quota: number;
-  used: number;
-  balance: number;
-}
-export interface GrantReceipt {
-  licenseOverage: LicenseOverage | null;
-}
+import type { GrantReceipt, LicenseOverage } from './model.js';
 
 /** DEC-143：超额是成功回执，提醒放在页面层，不能随授权表单关闭而丢失。 */
 export function useGrantReceipt() {

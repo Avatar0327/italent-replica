@@ -5,14 +5,14 @@ import { FormOverlay } from '../foundation/FormOverlay.js';
 import { useApiClient } from '../foundation/Session.js';
 import { DetailPage, ListPage } from '../foundation/templates.js';
 import { settingsApi } from './api.js';
-import { base, validId, type Grant, type Profile } from './model.js';
+import { base, validId, type Grant, type Profile, type GrantReceipt } from './model.js';
 import { Facts, Notice, Status } from './parts.js';
 import { ScopeEditor } from './ScopeEditor.js';
 import type { SettingsProps } from './SettingsPage.js';
 import { useResource } from './useResource.js';
 import { useWrite } from './useWrite.js';
 import { m } from './messages.js';
-import { useGrantReceipt, type GrantReceipt } from './grant-receipt.js';
+import { useGrantReceipt } from './grant-receipt.js';
 export function GrantsPage({ title, editable, canScope }: SettingsProps & { canScope: boolean }) {
   const receipt = useGrantReceipt();
   const list = useResource<PageResult<Grant>>(`${base}/grants`);
