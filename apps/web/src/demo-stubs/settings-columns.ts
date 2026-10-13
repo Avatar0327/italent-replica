@@ -9,3 +9,8 @@ export const internalUserGaps = [
   { key: 'hireDate', title: m.hireDate, width: 120 },
   { key: 'manager', title: m.manager, width: 130 },
 ];
+export const allUserGaps = [
+  { key: 'accountSource', title: m.accountSource, width: 110 },
+  { key: 'createdBy', title: m.createdBy, width: 120 },
+  { key: 'createdAt', title: m.createdAt, width: 170 },
+];
