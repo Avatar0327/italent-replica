@@ -8,8 +8,7 @@ type TransferApplicationProps = { tenantId: string; initiator: 'hr' | 'employee'
 export function TransferApplication({ tenantId, initiator, hrScope }: TransferApplicationProps) {
   const state = useTransferForm(tenantId, initiator, undefined, hrScope);
   if (hrScope && state.processing) return <p role="status">{text.processing}</p>;
-  if (hrScope && state.saved)
-    return <p role="status">{state.saved.status === 'draft' ? text.hrDraftSaved : text.submitted}</p>;
+  if (hrScope && state.saved) return <p role="status">{state.commandNotice}</p>;
   const locked = state.busy || !!state.saved || !!state.unknownCommand;
   return (
     <section className="transfer-content" aria-busy={state.busy || state.loadingPreview}>

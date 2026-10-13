@@ -89,6 +89,7 @@ export function useTransferForm(
     ...commands,
     processing: !!hrScope && hr.processing,
     commandError: hrScope ? hr.commandError : '',
+    commandNotice: hrScope ? hr.commandNotice : '',
     loadingPreview,
     page,
     selection,
