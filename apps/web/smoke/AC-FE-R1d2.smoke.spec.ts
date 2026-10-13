@@ -2,6 +2,8 @@ import { test, expect, user } from './fixtures.js';
 
 import { menus, settingsFixtures } from './settings-fixtures.js';
 
+test.use({ viewport: { width: 1440, height: 900 } });
+
 for (const [code, title] of menus) {
   test(`AC-FE-R1d2 ${title} 切换身份后列表、抽屉与注释可用`, async ({ page }) => {
     const errors: string[] = [];
@@ -12,16 +14,19 @@ for (const [code, title] of menus) {
     await settingsFixtures(page);
     await page.goto(`/settings/menu/${code}`);
     await page.getByLabel('切换演示身份').selectOption(user);
+    await page.waitForURL('**/staff');
+    await page.goto(`/settings/menu/${code}`);
     await expect(page.getByRole('heading', { name: title, exact: true })).toBeVisible();
     await expect(page.locator('.ant-table')).toBeVisible();
+    if (code === 'users.internal') await page.screenshot({ path: '/tmp/fe-r1d2-users.png', fullPage: true });
     await page.locator('.ant-table-tbody .ant-btn-link').first().click();
     await expect(page.getByRole('dialog')).toBeVisible();
-    await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click();
-    const create = page.getByRole('button', { name: '新增', exact: true });
-    if (await create.count()) {
+    await page.getByRole('dialog').getByRole('button', { name: '关闭', exact: true }).click();
+    const create = page.getByRole('button', { name: /^新\s*增$/ });
+    if (!['users.internal', 'audit.business'].includes(code!)) {
       await create.click();
       await expect(page.getByRole('dialog')).toBeVisible();
-      await page.getByRole('button', { name: '取消', exact: true }).click();
+      await page.getByRole('button', { name: /^取\s*消$/ }).click();
     }
     await page.getByRole('switch', { name: '注释' }).click();
     await expect(page.getByText('DEC-043', { exact: true }).first()).toBeVisible();
@@ -33,7 +38,7 @@ test('AC-FE-R1d2 只读菜单隐藏写按钮，缺失菜单直达拒绝', async 
   await settingsFixtures(page, false);
   await page.goto('/settings/menu/users.all');
   await expect(page.getByRole('heading', { name: '全部用户', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: '新增', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^新\s*增$/ })).toHaveCount(0);
   await page.goto('/settings/menu/permission.mous');
   await expect(page.getByRole('tab', { name: '数据范围', exact: true })).toHaveCount(0);
   await page.route('**/permission/admin-menus', (route) =>
@@ -56,15 +61,15 @@ test('AC-FE-R1d2 新用户校验后保存，409 不盲重试', async ({ page }) 
     return route.fulfill({ status: 409, json: { error: { code: 'REVISION_CONFLICT' } } });
   });
   await page.goto('/settings/menu/users.external');
-  await page.getByRole('button', { name: '新增', exact: true }).click();
+  await page.getByRole('button', { name: /^新\s*增$/ }).click();
   const dialog = page.getByRole('dialog');
-  await dialog.getByRole('button', { name: '保存', exact: true }).click();
+  await dialog.getByRole('button', { name: /^保\s*存$/ }).click();
   await expect(dialog.getByText('请填写此项').first()).toBeVisible();
   expect(writes).toHaveLength(0);
   await dialog.getByLabel('姓名', { exact: true }).fill('合成用户乙');
   await dialog.getByLabel('联系邮箱').fill('user-b@example.com');
   await dialog.getByLabel('业务身份').fill('顾问');
-  await dialog.getByRole('button', { name: '保存', exact: true }).click();
+  await dialog.getByRole('button', { name: /^保\s*存$/ }).click();
   await expect(dialog.getByRole('alert')).toBeVisible();
   expect(writes).toHaveLength(1);
   expect(writes[0]!.body).toEqual({
@@ -90,8 +95,8 @@ test('AC-PRM-03/14 共享范围从空值读取，保存携带当前 revision', a
   await page.getByRole('textbox', { name: '应用编码', exact: true }).fill('TenantBase');
   await page.getByRole('button', { name: '查询数据范围', exact: true }).click();
   await expect(page.getByText('默认管理单元（空范围）', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: '编辑', exact: true }).click();
-  await page.getByRole('dialog').getByRole('button', { name: '保存', exact: true }).click();
+  await page.getByRole('button', { name: /^编\s*辑$/ }).click();
+  await page.getByRole('dialog').getByRole('button', { name: /^保\s*存$/ }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(writes).toEqual([{ body: { kind: 'default' }, revision: '6' }]);
 });
@@ -117,7 +122,7 @@ test('AC-AUD-01/02 审计游标翻页、详情和筛选重置', async ({ page })
   expect(queries.at(-1)!.get('cursor')).toBe(ids.audit);
   await page.getByRole('button', { name: '高级筛选', exact: true }).click();
   await page.getByRole('dialog').getByLabel('对象', { exact: true }).fill('employee');
-  await page.getByRole('button', { name: '确定', exact: true }).click();
+  await page.getByRole('button', { name: /^确\s*定$/ }).click();
   await expect(page.getByRole('button', { name: '第一页', exact: true })).toBeVisible();
   expect(queries.at(-1)!.get('objectType')).toBe('employee');
   expect(queries.at(-1)!.has('cursor')).toBe(false);

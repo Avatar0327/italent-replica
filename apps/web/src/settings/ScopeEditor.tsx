@@ -99,14 +99,10 @@ export function ScopeEditor({ initialUser = '' }: { initialUser?: string }) {
 }
 function ScopeResult({ path }: { path: string }) {
   const resource = useResource<Scope>(path);
-  const api = useApiClient();
   const [edit, setEdit] = useState(false);
-  const [kind, setKind] = useState<Scope['kind']>('default');
-  const writer = useWrite();
   if (resource.error) return <PageState kind="error" error={resource.error} retry={resource.refresh} />;
   const scope = resource.data;
   if (!scope) return <PageState kind="loading" />;
-  const access = { visible: true, editable: true };
   return (
     <>
       <Facts
@@ -128,74 +124,80 @@ function ScopeResult({ path }: { path: string }) {
       />
       <Button
         onClick={() => {
-          writer.reset();
-          setKind(scope.kind);
           setEdit(true);
         }}
       >
         {m.edit}
       </Button>
       <Button onClick={resource.refresh}>{m.refresh}</Button>
-      <FormOverlay
-        open={edit}
-        recordKey={`${scope.userId}/${scope.appCode}/${scope.revision}`}
-        title={m.scope}
-        initialValues={{ ...scope }}
-        onClose={() => setEdit(false)}
-        onRefresh={() => {
-          setEdit(false);
-          resource.refresh();
-        }}
-        groups={[
-          {
-            title: m.scopeNotice,
-            fields: [
-              {
-                name: 'kind',
-                label: m.scope,
-                access,
-                control: (
-                  <Select
-                    onChange={setKind}
-                    options={[
-                      { value: 'default', label: m.defaultScope },
-                      { value: 'mou', label: m.mouScope },
-                      { value: 'org_range', label: m.orgScope },
-                    ]}
-                  />
-                ),
-              },
-              ...(kind === 'mou'
-                ? [
-                    {
-                      name: 'mouId',
-                      label: m.mouId,
-                      access,
-                      control: <Input />,
-                      rules: [
-                        {
-                          required: true,
-                          validator: async (_: unknown, value: unknown) => {
-                            if (!validId(value)) throw new Error(m.invalid);
-                          },
-                        },
-                      ],
-                    },
-                  ]
-                : []),
-              ...(kind === 'org_range'
-                ? [{ name: 'orgRanges', label: m.ranges, access, control: <RangeInput /> }]
-                : []),
-            ],
-          },
-        ]}
-        onSubmit={(values) =>
-          writer.run(async () => {
-            await settingsApi(api).saveScope(scope, values);
-            resource.refresh();
-          })
-        }
-      />
+      {edit && <ScopeForm scope={scope} close={() => setEdit(false)} refresh={resource.refresh} />}
     </>
+  );
+}
+
+function ScopeForm({ scope, close, refresh }: { scope: Scope; close(): void; refresh(): void }) {
+  const api = useApiClient();
+  const writer = useWrite();
+  const [kind, setKind] = useState<Scope['kind']>(scope.kind);
+  const access = { visible: true, editable: true };
+  return (
+    <FormOverlay
+      open
+      recordKey={`${scope.userId}/${scope.appCode}/${scope.revision}`}
+      title={m.scope}
+      initialValues={{ ...scope }}
+      onClose={() => close()}
+      onRefresh={() => {
+        close();
+        refresh();
+      }}
+      groups={[
+        {
+          title: m.scopeNotice,
+          fields: [
+            {
+              name: 'kind',
+              label: m.scope,
+              access,
+              control: (
+                <Select
+                  onChange={setKind}
+                  options={[
+                    { value: 'default', label: m.defaultScope },
+                    { value: 'mou', label: m.mouScope },
+                    { value: 'org_range', label: m.orgScope },
+                  ]}
+                />
+              ),
+            },
+            ...(kind === 'mou'
+              ? [
+                  {
+                    name: 'mouId',
+                    label: m.mouId,
+                    access,
+                    control: <Input />,
+                    rules: [
+                      {
+                        required: true,
+                        validator: async (_: unknown, value: unknown) => {
+                          if (!validId(value)) throw new Error(m.invalid);
+                        },
+                      },
+                    ],
+                  },
+                ]
+              : []),
+            ...(kind === 'org_range' ? [{ name: 'orgRanges', label: m.ranges, access, control: <RangeInput /> }] : []),
+          ],
+        },
+      ]}
+      onSubmit={(values) =>
+        writer.run(async () => {
+          await settingsApi(api).saveScope(scope, values);
+          refresh();
+        })
+      }
+    />
   );
 }

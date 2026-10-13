@@ -13,11 +13,8 @@ import { m } from './messages.js';
 export function UsersPage({ code, title, editable }: SettingsProps) {
   const [page, setPage] = useState({ page: 1, pageSize: 15 });
   const list = useResource<PageResult<User>>(listPath(code, page));
-  const api = useApiClient();
   const [detail, setDetail] = useState<string>();
   const [create, setCreate] = useState(false);
-  const uncertain = useRef(false);
-  const access = { visible: true, editable };
   return (
     <>
       <Notice text={m.internalNotice} />
@@ -37,7 +34,6 @@ export function UsersPage({ code, title, editable }: SettingsProps) {
               <Button
                 type="primary"
                 onClick={() => {
-                  uncertain.current = false;
                   setCreate(true);
                 }}
               >
@@ -78,53 +74,62 @@ export function UsersPage({ code, title, editable }: SettingsProps) {
           )}
         </RemoteDetail>
       )}
-      <FormOverlay
-        open={create}
-        recordKey="new-user"
-        title={m.new + m.external}
-        onClose={() => setCreate(false)}
-        groups={[
-          {
-            title: m.basic,
-            fields: [
-              {
-                name: 'displayName',
-                label: m.displayName,
-                access,
-                control: <Input maxLength={100} />,
-                rules: [{ required: true, whitespace: true, message: m.required }],
-              },
-              {
-                name: 'email',
-                label: m.email,
-                access,
-                control: <Input maxLength={320} />,
-                rules: [
-                  { required: true, message: m.required },
-                  { type: 'email', message: m.invalid },
-                ],
-              },
-              {
-                name: 'businessIdentity',
-                label: m.businessIdentity,
-                access,
-                control: <Input maxLength={50} />,
-                rules: [{ required: true, whitespace: true, message: m.required }],
-              },
-            ],
-          },
-        ]}
-        onSubmit={async (values) => {
-          if (uncertain.current) throw new ApiError(0, 'UNKNOWN_RESULT', 'unknown', m.unknown);
-          try {
-            await settingsApi(api).createUser(values);
-            list.refresh();
-          } catch (error) {
-            if (error instanceof ApiError && error.kind === 'unknown') uncertain.current = true;
-            throw error;
-          }
-        }}
-      />
+      {create && <UserForm close={() => setCreate(false)} refresh={list.refresh} editable={editable} />}
     </>
+  );
+}
+
+function UserForm({ close, refresh, editable }: { close(): void; refresh(): void; editable: boolean }) {
+  const api = useApiClient();
+  const uncertain = useRef(false);
+  const access = { visible: true, editable };
+  return (
+    <FormOverlay
+      open
+      recordKey="new-user"
+      title={m.new + m.external}
+      onClose={close}
+      groups={[
+        {
+          title: m.basic,
+          fields: [
+            {
+              name: 'displayName',
+              label: m.displayName,
+              access,
+              control: <Input maxLength={100} />,
+              rules: [{ required: true, whitespace: true, message: m.required }],
+            },
+            {
+              name: 'email',
+              label: m.email,
+              access,
+              control: <Input maxLength={320} />,
+              rules: [
+                { required: true, message: m.required },
+                { type: 'email', message: m.invalid },
+              ],
+            },
+            {
+              name: 'businessIdentity',
+              label: m.businessIdentity,
+              access,
+              control: <Input maxLength={50} />,
+              rules: [{ required: true, whitespace: true, message: m.required }],
+            },
+          ],
+        },
+      ]}
+      onSubmit={async (values) => {
+        if (uncertain.current) throw new ApiError(0, 'UNKNOWN_RESULT', 'unknown', m.unknown);
+        try {
+          await settingsApi(api).createUser(values);
+          refresh();
+        } catch (error) {
+          if (error instanceof ApiError && error.kind === 'unknown') uncertain.current = true;
+          throw error;
+        }
+      }}
+    />
   );
 }
