@@ -7,24 +7,27 @@ import { useSession } from './Session.js';
 import { ListPage } from './templates.js';
 import { ui } from './messages.js';
 
-const Org = lazy(() => import('../org/OrgChangePage.js').then((m) => ({ default: m.OrgChangePage })));
-const Job = lazy(() => import('../job/JobPage.js').then((m) => ({ default: m.JobPage })));
-const Transfer = lazy(() => import('../transfer/TransferPage.js').then((m) => ({ default: m.TransferPage })));
-const Self = lazy(() => import('../employee-self-service/EmployeePage.js').then((m) => ({ default: m.EmployeePage })));
-const Manager = lazy(() => import('../transfer/ManagerPage.js').then((m) => ({ default: m.ManagerPage })));
-const Talent = lazy(() => import('../talent/TalentPage.js').then((m) => ({ default: m.TalentPage })));
 const Account = lazy(() => import('../account/AccountPage.js').then((m) => ({ default: m.AccountPage })));
+const Job = lazy(() => import('../job/JobPage.js').then((m) => ({ default: m.JobPage })));
+const Manager = lazy(() => import('../transfer/ManagerPage.js').then((m) => ({ default: m.ManagerPage })));
+const Org = lazy(() => import('../org/OrgChangePage.js').then((m) => ({ default: m.OrgChangePage })));
+const Self = lazy(() => import('../employee-self-service/EmployeePage.js').then((m) => ({ default: m.EmployeePage })));
+const Staff = lazy(() => import('../personnel/StaffPage.js').then((m) => ({ default: m.StaffPage })));
+const Talent = lazy(() => import('../talent/TalentPage.js').then((m) => ({ default: m.TalentPage })));
 const TalentReview = lazy(() =>
   import('../talent-review/TalentReviewPage.js').then((m) => ({ default: m.TalentReviewPage })),
 );
+const Transfer = lazy(() => import('../transfer/TransferPage.js').then((m) => ({ default: m.TransferPage })));
+// 按路由键逐行登记，避免页面片反复改写同一长行。
 const existing = {
-  org: Org,
   job: Job,
-  transfer: Transfer,
-  self: Self,
   manager: Manager,
+  org: Org,
+  self: Self,
+  staff: Staff,
   talent: Talent,
   'talent-review': TalentReview,
+  transfer: Transfer,
 };
 
 function LandingPage({ title }: { title: string }) {
@@ -64,7 +67,7 @@ export function AppPages() {
                 path={route.path}
                 element={
                   Page ? (
-                    <div className="legacy-page">
+                    <div className={route.id === 'staff' ? undefined : 'legacy-page'}>
                       <Page />
                     </div>
                   ) : (

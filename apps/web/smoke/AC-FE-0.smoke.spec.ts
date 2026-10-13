@@ -7,12 +7,12 @@ test('AC-FE-0-04 通过现有演示身份选择器进入应用，注释可切换
   await expect(page.getByRole('heading', { name: '员工', exact: true })).toBeVisible();
   await expect(page.locator('.ant-pagination-options')).toContainText('条/页');
   expect((await page.context().cookies()).find((cookie) => cookie.name === 'italent_demo_tenant')?.value).toBe(tenant);
-  await expect(page.getByText('DEC-456', { exact: true })).toHaveCount(0);
+  await expect(page.locator('.shell-content > .decision-note').getByText('DEC-456', { exact: true })).toHaveCount(0);
   await page.getByRole('switch', { name: '注释' }).click();
-  await expect(page.getByText('DEC-456', { exact: true })).toBeVisible();
+  await expect(page.locator('.shell-content > .decision-note').getByText('DEC-456', { exact: true })).toBeVisible();
   await page.getByRole('menuitem', { name: '人才盘点', exact: true }).click();
   await expect(page).toHaveURL(/\/talent-review$/);
-  await expect(page.getByText('DEC-456', { exact: true })).toBeVisible();
+  await expect(page.locator('.shell-content > .decision-note').getByText('DEC-456', { exact: true })).toBeVisible();
 });
 
 for (const app of APP_ROUTES) {
