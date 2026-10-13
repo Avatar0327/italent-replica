@@ -278,6 +278,45 @@ describe('AC-SC-03-04-sync D2 执行与终结', () => {
       (await h.outcomes()).filter((r) => r.rowKind === 'nomination').every((r) => r.errorCode === 'TARGET_NOT_FOUND'),
     ).toBe(true);
   });
+  // F-102：计划提交后源对象撤权与目标组织停用同时发生，提名与对象对同一撤权给出同一原因（SP-14 R6，设计 §5.7）。
+  it.each(['append', 'overwrite'])('%s：撤源权与目标停用交错，提名与对象回执同为 SOURCE_REVOKED', async (strategy) => {
+    const h = await setup(strategy);
+    const before = await h.records();
+    afterPlanCommit(h, async () => {
+      h.port.revoke({ objectIds: [FX.o1] });
+      expect((await w.patchOrg(h.org, { enabled: false, effectiveDate: SC_TODAY })).status).toBe(200);
+    });
+    expect(await consumeRun(h.deps, h.input)).toMatchObject({ status: 'completed', result: 'partial' });
+    expect(await h.records()).toEqual(before);
+    const rows = await h.outcomes();
+    const revoked = { errorCode: 'SOURCE_REVOKED', errorParams: { scope: 'object', ref: FX.o1 }, recovery: 'none' };
+    expect(rows.find((r) => r.rowId === FX.n1)).toMatchObject(revoked);
+    expect(rows.find((r) => r.rowId === FX.o1)).toMatchObject(revoked);
+    // 目标行仍是目标级原因；未撤权的提名随目标同码。
+    expect(rows.find((r) => r.rowKind === 'target')).toMatchObject({ errorCode: 'TARGET_NOT_FOUND' });
+    expect(rows.find((r) => r.rowId === FX.n2)).toMatchObject({ errorCode: 'TARGET_NOT_FOUND', recovery: 'none' });
+    expect(rows.find((r) => r.rowId === FX.o2)).toMatchObject({ errorCode: 'NOMINATIONS_FAILED' });
+    // 错误报告（逐行失败明细）：同一对象下的提名与对象行原因一致。
+    const report = rows
+      .filter((r) => r.status === 'failed' && [FX.n1, FX.o1].includes(r.rowId))
+      .map((r) => r.errorCode);
+    expect(report).toEqual(['SOURCE_REVOKED', 'SOURCE_REVOKED']);
+  });
+  it('对照：仅目标停用时提名与对象回执按 TARGET_NOT_FOUND / R10 聚合', async () => {
+    const h = await setup('overwrite');
+    afterPlanCommit(h, async () => {
+      expect((await w.patchOrg(h.org, { enabled: false, effectiveDate: SC_TODAY })).status).toBe(200);
+    });
+    expect(await consumeRun(h.deps, h.input)).toMatchObject({ status: 'completed', result: 'partial' });
+    const rows = await h.outcomes();
+    for (const id of [FX.n1, FX.n2])
+      expect(rows.find((r) => r.rowId === id)).toMatchObject({ errorCode: 'TARGET_NOT_FOUND', recovery: 'none' });
+    for (const id of [FX.o1, FX.o2])
+      expect(rows.find((r) => r.rowId === id)).toMatchObject({
+        errorCode: 'NOMINATIONS_FAILED',
+        errorParams: { codes: ['TARGET_NOT_FOUND'] },
+      });
+  });
   it.each(['source', 'write'])('页级 %s 授权失效整页回滚，保留计划与屏障，不 abort', async (kind) => {
     const h = await setup('overwrite');
     const before = await h.records();

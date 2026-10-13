@@ -8,7 +8,7 @@ import { runSyncRecovery } from './sync-recovery.js';
 import { runScheduledCalc, SUCCESSION_PRODUCERS } from './calc-jobs.js';
 import type { Db } from '@italent/db';
 
-export type SuccessionJobKind = 'exit_sweep' | 'position_risk' | 'org_stats';
+export type SuccessionJobKind = 'exit_sweep' | 'position_risk' | 'org_stats' | 'org_health' | 'org_health_reset';
 
 export interface SuccessionJob {
   readonly kind: SuccessionJobKind | 'sync_recovery';
@@ -16,7 +16,7 @@ export interface SuccessionJob {
 }
 
 export const SUCCESSION_JOBS: readonly SuccessionJob[] = [
-  ...(['exit_sweep', 'position_risk', 'org_stats'] as const).map((kind) => ({
+  ...(['exit_sweep', 'position_risk', 'org_stats', 'org_health', 'org_health_reset'] as const).map((kind) => ({
     kind,
     run: (db: Db, now: Date) => runScheduledCalc(db, now, kind),
   })),

@@ -71,7 +71,7 @@ export function registerSuccessionPlatformRoutes(router: Hono<PlatformEnv>, deps
   router.post('/api/platform/succession/jobs/run', async (c) => {
     const parsed = z
       .strictObject({
-        kind: z.enum(['exit_sweep', 'position_risk', 'org_stats']),
+        kind: z.enum(['exit_sweep', 'position_risk', 'org_stats', 'org_health', 'org_health_reset']),
         tenantId: z
           .uuid()
           .transform((id) => id.toLowerCase())

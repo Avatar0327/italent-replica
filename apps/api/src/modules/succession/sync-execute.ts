@@ -18,6 +18,7 @@ import { enqueueCalcRun } from './calc-worker.js';
 import { mutex, release, save, notify, type SyncDeps, type SyncInput } from './sync-consume.js';
 import {
   executeTarget,
+  failedTarget,
   openItem,
   openTarget,
   type SyncBatch,
@@ -192,11 +193,7 @@ class Execution {
         .transaction((sp) => executeTarget(sp, ctx, target, nominations))
         .catch((error: unknown) => {
           const failure = error instanceof PlanFailure ? error : new PlanFailure('STORAGE_UNAVAILABLE');
-          return {
-            failure,
-            ended: [],
-            results: nominations.map((item) => ({ item, outcome: 'failed' as const, failure })),
-          };
+          return failedTarget(ctx, nominations, failure);
         });
       rows.push(...(await persistTarget(tx, ctx, target, result)));
       objectIds.push(...nominations.map((n) => n.objectId));

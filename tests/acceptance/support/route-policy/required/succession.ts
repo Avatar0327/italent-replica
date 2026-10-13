@@ -238,6 +238,63 @@ function configRequired(
   return obligations;
 }
 Object.assign(SUCCESSION, {
+  [`GET ${BASE}/maps/position`]: [
+    {
+      perm: 'obj:Succession.Map:view',
+      facts: ['object:objectContext'],
+      need: { scope: 'list', predicate: 'succession.positionMapScope' },
+      note: 'C3 显示集合由 C1 保存条件与当前范围决定；SELF 和字段权只裁剪卡片继任者披露',
+      at: [
+        {
+          role: 'call',
+          unit: `${S}/position-map-routes.ts#registerPositionMapRoutes`,
+          anchor: "await successionContext(c, bound, 'map')",
+        },
+        ...CONTEXT,
+        {
+          role: 'const',
+          unit: 'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>map',
+          anchor: "object( 'Map'",
+        },
+        {
+          role: 'scope',
+          unit: `${S}/position-map.ts#readPositionMap`,
+          anchor: "const ids = await readMapDisplayScope(tx, display, 'position')",
+        },
+        {
+          role: 'impl',
+          unit: `${S}/map-display.ts#positionScope`,
+          anchor: 'const allowed = new Set((await mapPositions(tx, ctx.tenantId, ctx.today ?? ctx.asOf, ctx.scope))',
+        },
+      ],
+    },
+    {
+      perm: 'obj:Succession.RiskResult:view',
+      purpose: 'disclosure:risk',
+      facts: ['object:object.* 动作'],
+      need: { scope: 'list', predicate: 'succession.riskScope' },
+      note: '风险结果和无结果默认颜色均须独立对象查看权、当前范围和风险字段权',
+      at: [
+        {
+          role: 'call',
+          unit: `${S}/position-map.ts#positionRiskCards`,
+          anchor:
+            "await bound.authorize({ ...ctx, action: 'object.view', resource: codeOf('riskResult'), fields: [] })",
+        },
+        {
+          role: 'const',
+          unit: 'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>riskResult',
+          anchor: "object( 'RiskResult'",
+        },
+        {
+          role: 'scope',
+          unit: `${S}/risk-store.ts#readRiskRows`,
+          anchor: 'scopeSql(scope, { org: sql`p.org_id`, creator: sql`r.assigned_by` })',
+        },
+        { role: 'scope', unit: `${S}/position-map.ts#positionRiskCards`, anchor: 'if (!permitted.has(id)) return []' },
+      ],
+    },
+  ],
   [`GET ${BASE}/maps/:kind/preferences`]: [
     {
       perm: 'obj:Succession.Map:view',
@@ -458,6 +515,104 @@ Object.assign(SUCCESSION, {
   [`GET ${BASE}/calc-runs/:id/failures`]: calcRequired(),
   [`POST ${BASE}/calc-runs/:id/retry`]: calcRequired(true),
   'POST /api/platform/succession/jobs/run': [],
+});
+
+/** B5：读结果按 SQL 范围；赋值与队列按当前授权，重放保留原集合。 */
+function healthRequired(mode: 'read' | 'assign' | 'reset' | 'compute'): Obligation[] {
+  const queue = mode === 'reset' || mode === 'compute',
+    map = mode === 'compute';
+  const key = map ? 'map' : 'healthResult',
+    code = map ? 'Map' : 'HealthResult';
+  const operation = mode === 'read' || map ? 'view' : 'update';
+  const unit = queue
+    ? `${S}/health-routes.ts#queueAccess`
+    : mode === 'assign'
+      ? `${WS}#checkWriteAccess`
+      : `${S}/health-routes.ts#registerHealthRoutes`;
+  const anchor = queue
+    ? map
+      ? "await successionContext(c, bound, 'map')"
+      : "object: 'healthResult', operation: 'update'"
+    : mode === 'assign'
+      ? 'const ctx = await successionContext(c, deps, spec.object, spec.operation, spec.expectedRevision)'
+      : "await successionContext(c, deps, 'healthResult')";
+  const constant: Evidence = {
+    role: 'const',
+    unit: `packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>${key}`,
+    anchor: `object( '${code}'`,
+  };
+  const obligations: Obligation[] = [
+    {
+      perm: `obj:Succession.${code}:${operation}`,
+      facts: mode === 'read' ? ['object:objectContext', 'object:object.* 动作'] : ['object:objectContext'],
+      need:
+        mode === 'read'
+          ? { scope: 'list' }
+          : { scope: 'guard', guard: queue ? 'succession.healthQueue' : 'succession.healthOrg' },
+      at: [
+        { role: 'call', unit, anchor },
+        ...CONTEXT,
+        ...(mode === 'read'
+          ? [
+              {
+                role: 'call' as const,
+                unit: `${S}/health-results.ts#healthAccess`,
+                anchor: 'await requirePermission(bound.authorize',
+              },
+              {
+                role: 'impl' as const,
+                unit: `${S}/health-results.ts#healthAccess`,
+                anchor: "action: 'object.view'",
+              },
+            ]
+          : []),
+        constant,
+        {
+          role: 'scope',
+          unit: queue ? `${S}/health-routes.ts#queueResults` : `${S}/health-results.ts#readHealthResults`,
+          anchor: queue ? 'AND NOT EXISTS' : 'scopeSql(scope, { org: sql`v.org_id` })',
+        },
+      ],
+    },
+  ];
+  if (mode !== 'read')
+    obligations.push({
+      perm: `btn:Succession.${code}#${map ? 'computeHealth' : mode}@${mode === 'assign' ? 'detail' : 'list'}`,
+      facts: ['button:button()'],
+      at: [
+        {
+          role: 'call',
+          unit: map ? unit : SUCCESSION_CONTEXT,
+          anchor: map
+            ? "await button(bound, ctx, codeOf('map'), 'computeHealth', 'list')"
+            : 'await button(deps, ctx, codeOf(spec.object), spec.button.code, spec.button.level)',
+        },
+        {
+          role: 'impl',
+          unit: `${MRA}#button`,
+          anchor: "action: 'object.button', resource: buttonResource(objectCode, code, level)",
+        },
+        constant,
+      ],
+    });
+  if (mode !== 'read')
+    obligations.push({
+      perm: `guard:${queue ? 'succession.healthQueue' : 'succession.healthOrg'}`,
+      at: [
+        {
+          role: 'call',
+          unit: queue ? `${S}/health-routes.ts#queueResults` : `${S}/health-results.ts#requireHealthOrg`,
+          anchor: queue ? 'if (views.length !== ids.length) throw healthMissing()' : 'throw healthMissing()',
+        },
+      ],
+    });
+  return obligations;
+}
+Object.assign(SUCCESSION, {
+  [`GET ${BASE}/health-results`]: healthRequired('read'),
+  [`PUT ${BASE}/health-results/:orgId`]: healthRequired('assign'),
+  [`POST ${BASE}/health-results/reset`]: healthRequired('reset'),
+  [`POST ${BASE}/maps/org/compute-health`]: healthRequired('compute'),
 });
 
 for (const kind of ['risk', 'health'] as const) {

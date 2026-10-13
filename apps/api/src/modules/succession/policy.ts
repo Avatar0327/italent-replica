@@ -134,6 +134,54 @@ function syncPolicy(action?: 'sync' | 'retry' | 'abort') {
 }
 
 export const SUCCESSION_POLICIES = defineTable('succession', {
+  [`GET ${BASE}/health-results`]: object({
+    object: SUCCESSION_OBJECTS.healthResult.code,
+    operation: 'view',
+    button: noButton('健康度读取'),
+    scope: listScope('succession.healthScope'),
+    fields: projector('succession.health', 'succession.health'),
+  }),
+  [`PUT ${BASE}/health-results/:orgId`]: object({
+    invalidId: BAD_REQUEST,
+    object: SUCCESSION_OBJECTS.healthResult.code,
+    operation: 'update',
+    button: button('assign', 'detail'),
+    scope: guardScope('succession.healthOrg', NOT_FOUND),
+    fields: projector('succession.health', 'succession.health'),
+    write: write('body', RECHECK, AUTHORIZE_RESULT, { ledger: 'single' }),
+  }),
+  [`POST ${BASE}/health-results/reset`]: object({
+    object: SUCCESSION_OBJECTS.healthResult.code,
+    operation: 'update',
+    button: button('reset', 'list'),
+    scope: guardScope('succession.healthQueue', NOT_FOUND),
+    fields: fixed(['runId'], '设计 #15a 202 回执'),
+    write: write('body', 'succession.healthQueueRecheck', AUTHORIZE_RESULT, { ledger: 'single' }),
+  }),
+  [`POST ${BASE}/maps/org/compute-health`]: object({
+    object: SUCCESSION_OBJECTS.map.code,
+    operation: 'view',
+    button: button('computeHealth', 'list'),
+    scope: guardScope('succession.healthQueue', NOT_FOUND),
+    fields: fixed(['runId'], '设计 #9a 202 回执'),
+    write: write('body', 'succession.healthQueueRecheck', AUTHORIZE_RESULT, { ledger: 'single' }),
+  }),
+  [`GET ${BASE}/maps/position`]: object({
+    object: SUCCESSION_OBJECTS.map.code,
+    operation: 'view',
+    button: noButton('职位地图只读，显示条件应用本人保存偏好（DEC-453④）'),
+    scope: listScope('succession.positionMapScope'),
+    fields: projector('succession.positionMap', 'succession.positionMap'),
+    optional: {
+      risk: object({
+        object: SUCCESSION_OBJECTS.riskResult.code,
+        operation: 'view',
+        button: noButton('风险卡片只披露，不要求赋值按钮'),
+        scope: listScope('succession.riskScope'),
+        fields: projector('succession.risk', 'succession.risk'),
+      }),
+    },
+  }),
   [`GET ${BASE}/maps/:kind/preferences`]: object({
     object: SUCCESSION_OBJECTS.map.code,
     operation: 'view',

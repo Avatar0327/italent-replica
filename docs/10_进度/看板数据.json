@@ -1,9 +1,9 @@
 {
 "updated": "2026-10-13",
 "stats": {
-"merged": 212,
-"open": 15,
-"dec": 469,
+"merged": 218,
+"open": 20,
+"dec": 474,
 "ev": "43/177"
 },
 "tasks": {
@@ -983,6 +983,14 @@
 }
 },
 "log": [
+[
+"10-13",
+"前端与演示配套线命名为 R0 演示产品，任务编号 R0-T01~T18（原 FE-xxx 名保留）"
+],
+[
+"10-13",
+"已合并 #278 #290 #299 FE-R1b#302；DEC-470 FE-R1d 拆两片 #303 / #306；DEC-471 证据用例仅超时可交审；DEC-472 Claude 开发改由 03 开云端会话；DEC-473；新开 #300 #301 #305~#310"
+],
 [
 "10-13",
 "FE-0 #295 已合并（前端底座落地）；前端新派 4 片基于 main"
@@ -3931,7 +3939,7 @@
 "lines": [
 {
 "id": "FE",
-"name": "演示产品 · 前端与演示配套（DEC-456）",
+"name": "R0 演示产品 · 前端与演示配套（DEC-456）",
 "pre": "规划 docs/08_设计/演示产品_前端底座与R1R3页面_规划.md · 里程碑：10-14/15 R1+R3 MVP · 10-19 R1+R2+R3 MVP · 10-31 全模块（DEC-457 绿+蓝）",
 "groups": [
 {
@@ -3939,7 +3947,7 @@
 "steps": [
 {
 "k": "UI-ref",
-"n": "原站界面参考包（取证·只读·本机）",
+"n": "R0-T01 原站界面参考包（取证·只读·本机）",
 "s": "assigned",
 "note": "第 1 批已到位（本机）· 本机取证窗口已截完 R3 共 98 张参考图 · 远程 Codex 试点（人才盘点→盘点项目）已完成：文字规格，全文待用户存到本机 UI/talent-review/codex-pilot-spec.md，不进仓库 · 第二批：按需、待定（只补交互细节类文字规格，派发前总编排先和用户定）"
 }
@@ -3950,7 +3958,7 @@
 "steps": [
 {
 "k": "FE-0",
-"n": "布局/路由/接口客户端/权限渲染/注释层",
+"n": "R0-T02 布局/路由/接口客户端/权限渲染/注释层",
 "s": "assigned",
 "note": "Codex Astra max · 第 2 轮审查已过（DEC-456）· 已合并 · 前端各页面片可基于 main 开发",
 "pr": 295
@@ -3962,73 +3970,77 @@
 "steps": [
 {
 "k": "FE-R1a",
-"n": "组织与职务",
+"n": "R0-T03 组织与职务",
 "s": "assigned",
 "after": [
 "FE-0"
 ],
 "pr": 296,
-"note": "Codex Astra · DEC-465 破例第 3 轮只修日期回退 · 已 Ready，审查已出 · 已入合并队列 · F-111 界面对齐等合并后派"
+"note": "Codex Astra · DEC-465 已修 · 审查已出 · 在合并队列，被 F-116（F-039 全表证据用例超时）挡住，等 #308"
 },
 {
 "k": "FE-R1b",
-"n": "人员与任职",
+"n": "R0-T04 人员与任职",
 "s": "assigned",
 "after": [
 "FE-0"
 ],
-"note": "Codex Astra high · 新线程，base main（DEC-469）· 已派，开发中"
+"note": "Codex Astra high · 已合并（10-13）· 基于 main 新线程",
+"pr": 302
 },
 {
 "k": "FE-R1c",
-"n": "调动与审批",
+"n": "R0-T05 调动与审批",
 "s": "assigned",
 "after": [
 "FE-0"
 ],
 "pr": 297,
-"note": "Codex Astra · DEC-464 降到 L2；DEC-467 改一行映射 · 已 Ready，审查已出 · 已入合并队列"
+"note": "Codex Astra · DEC-464 降 L2；DEC-467 改一行 · 审查已出 · 在合并队列，被 F-116 挡住"
 },
 {
 "k": "FE-R1d",
-"n": "自助与企业设置",
+"n": "R0-T06 自助与企业设置",
 "s": "assigned",
 "after": [
 "FE-0"
 ],
-"note": "Codex Astra high · 新线程，base main · 已派 · 若超 3000 行先贴【等决定】给拆法"
+"note": "DEC-470 拆两片：FE-R1d-1 员工自助与经理工作台 #303（第 2 轮 P2 回退，DEC-473 破例第 3 轮只修“明确拒绝后保留输入”，Sol 快速复核后入队）；FE-R1d-2 企业设置 #306 已开 · F-120 后端查自身命令结果 #310（Claude）",
+"pr": 303
 },
 {
 "k": "FE-R3a",
-"n": "人才标准与任职资格",
+"n": "R0-T07 人才标准与任职资格",
 "s": "assigned",
 "after": [
 "FE-0"
 ],
 "pr": 298,
-"note": "Codex Astra · 开发完成（head 85d30350，按第 2 批 R3 参考包）· 已入合并队列"
+"note": "Codex Astra · 第 2 轮 Sol 已过（可合并）· 在合并队列，被 F-116 挡住（等 #308），不是卡人"
 },
 {
 "k": "FE-R3b",
-"n": "人才评定与 360",
+"n": "R0-T08 人才评定与 360",
 "s": "assigned",
 "after": [
 "FE-0"
 ],
-"note": "Codex Astra high · 新线程，base main · 已派，开发中"
+"note": "Codex Astra high · Draft 开发中 · F-121 界面对齐待补",
+"pr": 300
 },
 {
 "k": "FE-R3c",
-"n": "人才盘点",
+"n": "R0-T09 人才盘点",
 "s": "assigned",
 "after": [
 "FE-0"
 ],
-"note": "Codex Astra high · 新线程，base main · 已派 · 附 codex-pilot 规格包（远程 Codex 人才盘点试点）"
+"note": "Codex Astra high · 已开 PR，待审 · 附远程 codex-pilot 规格包",
+"pr": 301
 },
 {
 "k": "FE-R3d",
-"n": "继任与 IDP",
+"n": "R0-T10 继任与 IDP",
 "s": "wait",
 "after": [
 "FE-0"
@@ -4042,18 +4054,19 @@
 "steps": [
 {
 "k": "DEMO-data",
-"n": "演示租户与数据种子",
-"s": "todo",
-"note": "15:00Z 起 Claude Sonnet"
+"n": "R0-T11 演示租户与数据种子",
+"s": "assigned",
+"note": "Claude（03 开云端会话，DEC-472）· 演示数据种子第 1 段（组织 / 员工 / 职务 / 调动）已开 PR #309 · 权限快照接口 #307",
+"pr": 309
 },
 {
 "k": "DEMO-route",
-"n": "每模块演示路线",
+"n": "R0-T12 每模块演示路线",
 "s": "todo"
 },
 {
 "k": "PRD-kit",
-"n": "PRD 素材包",
+"n": "R0-T13 PRD 素材包",
 "s": "todo"
 }
 ]
@@ -4063,31 +4076,31 @@
 "steps": [
 {
 "k": "M-perf",
-"n": "绩效管理（OKR/目标）",
+"n": "R0-T14 绩效管理（OKR/目标）",
 "s": "todo",
 "note": "取证→契约→页面"
 },
 {
 "k": "M-att",
-"n": "假勤管理",
+"n": "R0-T15 假勤管理",
 "s": "todo",
 "note": "取证→契约→页面"
 },
 {
 "k": "M-pay",
-"n": "薪酬社保",
+"n": "R0-T16 薪酬社保",
 "s": "todo",
 "note": "取证→契约→页面"
 },
 {
 "k": "M-rec",
-"n": "招聘管理+面试官工作台",
+"n": "R0-T17 招聘管理+面试官工作台",
 "s": "todo",
 "note": "取证→契约→页面"
 },
 {
 "k": "M-ana",
-"n": "人事数据分析/经理团队分析",
+"n": "R0-T18 人事数据分析/经理团队分析",
 "s": "todo",
 "note": "取证→契约→页面"
 }
@@ -4248,7 +4261,7 @@
 "C2-1a"
 ],
 "pr": 278,
-"note": "Codex Astra · 已 Ready，审查已出，已入合并队列（队首）· DEC-467②：旧 0115 以 main 的 0121 为准"
+"note": "已合并（10-13）· Codex Astra · DEC-467②旧 0115 以 main 的 0121 为准"
 },
 {
 "k": "C2-2",
@@ -4795,7 +4808,7 @@
 "B2b"
 ],
 "pr": 282,
-"note": "Codex Astra · DEC-466 破例第 6 轮已修 · 已入合并队列（#278 之后）",
+"note": "Codex Astra · DEC-466 破例第 6 轮 · 合 main 后增量复审已发起（head 165398a2，Astra high）· 队首",
 "s": "assigned"
 }
 ]
@@ -4822,7 +4835,7 @@
 "C1"
 ],
 "pr": 292,
-"note": "Codex Astra · DEC-453：本轮固定展示关键职位卡片（管理员开关 F-105）· B4 已合入，原线程接风险键、合 main 中；base 仍是 B5 分支，随 #282 排队"
+"note": "Codex Astra · DEC-453 / DEC-471：接 B4 风险键；F090b 证据用例只因超时按 DEC-454② 停 Draft 已改口径 · 已转 Ready"
 },
 {
 "k": "C3",
@@ -4833,7 +4846,7 @@
 "C1"
 ],
 "pr": 290,
-"note": "Codex Astra · 已合 main（DEC-463 删 6 对重复迁移），做合并后增量复审，过了再入队"
+"note": "已合并（10-13）· Codex Astra · DEC-463 删 6 对重复迁移"
 },
 {
 "k": "D1a",
@@ -4873,7 +4886,7 @@
 "D2"
 ],
 "pr": 293,
-"note": "Codex Astra · DEC-468 计数 24→27 已同步并合 main，做合并后增量复审，过了再入队"
+"note": "Codex Astra · DEC-468 计数同步、合 main 后增量复审 · 待入队"
 },
 {
 "k": "D4",
@@ -4883,7 +4896,7 @@
 "B5"
 ],
 "pr": 291,
-"note": "Codex Astra · 第 2 轮增量已过审（Sol xhigh），等 D2 合并后合 main 入队"
+"note": "Codex Astra · 第 2 轮增量已过 · 与 main 冲突（DIRTY），等 D3 / D4 链合 main 后再入队"
 },
 {
 "k": "D5",
