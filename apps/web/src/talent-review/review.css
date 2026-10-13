@@ -117,3 +117,23 @@
     grid-template-columns: 1fr;
   }
 }
+
+.review-reference-popover {
+  width: 240px;
+}
+.review-reference-popover .ant-select {
+  width: 100%;
+}
+
+/* 新页面已使用 FE-0 模板，不叠加旧页面适配容器的内边距。 */
+.legacy-page:has(> .talent-review-page) {
+  margin-top: 0;
+  padding: 0;
+  background: transparent;
+}
+.talent-review-page .list-page {
+  min-height: calc(100vh - 144px);
+}
+.talent-review-page .ant-table-cell {
+  max-width: 190px;
+}

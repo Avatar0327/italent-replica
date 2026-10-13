@@ -74,7 +74,7 @@ export interface ReviewFilters {
 export function matchesFilters(row: ReviewRecord, filters: ReviewFilters, visible: (field: string) => boolean) {
   if (visible('name') && filters.name && !row.name?.includes(filters.name.trim())) return false;
   if (visible('ownerOrgId') && filters.ownerOrgId && row.ownerOrgId !== filters.ownerOrgId) return false;
-  if (visible('year') && filters.year != null && row.year !== filters.year) return false;
+  if (visible('year') && filters.year !== null && filters.year !== undefined && row.year !== filters.year) return false;
   for (const [field, from, to] of [
     ['periodStartDate', filters.startFrom, filters.startTo],
     ['periodEndDate', filters.endFrom, filters.endTo],

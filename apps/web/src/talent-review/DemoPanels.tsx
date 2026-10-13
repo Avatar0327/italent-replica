@@ -82,13 +82,7 @@ function DemoContent({
   if (tab === 0)
     content = (
       <>
-        <Space className="review-demo-toolbar">
-          {tr.demoActions.map((label) => (
-            <Button key={label} disabled>
-              {label}
-            </Button>
-          ))}
-        </Space>
+        <DemoToolbar labels={tr.demoActions} />
         <Table
           size="small"
           rowKey="id"
@@ -134,20 +128,31 @@ function DemoContent({
   else if (tab === 3)
     content = (
       <>
-        <Space className="review-demo-toolbar">
-          {tr.matrixActions.map((label) => (
-            <Button disabled key={label}>
-              {label}
-            </Button>
-          ))}
-        </Space>
+        <DemoToolbar labels={tr.matrixActions} />
         <DemoGrid />
       </>
     );
-  else content = <Empty description={tab === 6 ? tr.dashboardNotice : tab === 7 ? tr.pending : tr.mappingNotice} />;
+  else
+    content = (
+      <Empty
+        description={({ 6: tr.dashboardNotice, 7: tr.pending } as Record<number, string>)[tab] ?? tr.mappingNotice}
+      />
+    );
   return content;
 }
 
 function Relations({ columns }: { columns: { title: string | undefined; dataIndex: string; width: number }[] }) {
   return <Table rowKey="id" pagination={false} dataSource={[]} columns={columns} locale={{ emptyText: tr.empty }} />;
+}
+
+function DemoToolbar({ labels }: { labels: string[] }) {
+  return (
+    <Space className="review-demo-toolbar">
+      {labels.map((label) => (
+        <Button key={label} disabled>
+          {label}
+        </Button>
+      ))}
+    </Space>
+  );
 }

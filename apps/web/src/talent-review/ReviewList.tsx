@@ -133,7 +133,7 @@ function listColumns(
             </Button>
           );
         if (key === 'status') return tr.states[value as keyof typeof tr.states] ?? tr.missing;
-        if (key === 'enabled') return typeof value === 'boolean' ? (value ? tr.enabled : tr.disabled) : tr.missing;
+        if (key === 'enabled' && typeof value === 'boolean') return value ? tr.enabled : tr.disabled;
         return presentationOnly.includes(key) ? tr.missing : display(value);
       },
     }));

@@ -1,4 +1,5 @@
 import { test, expect, user } from './fixtures.js';
+test.use({ viewport: { width: 1440, height: 1000 } });
 const id = 'a0000000-0000-4000-8000-000000000001';
 const fields = [
   'code',
@@ -51,16 +52,16 @@ test.beforeEach(async ({ page }) => {
       periodStartDate: '2026-10-01',
       periodEndDate: '2026-10-31',
       enabled: true,
-      modules: [],
-      steps: [],
-      permissions: [],
+      modules: [{ id: 'module-one', name: '合成指标模块', kind: 'indicator', scoring: 'weighted_sum' }],
+      steps: [{ nodeKey: 'review', name: '上级评价', stepType: 'evaluate', mode: 'single' }],
+      permissions: [{ nodeKey: 'review', roleId: null, moduleName: '合成指标模块', visible: true, weight: 100 }],
       cells: [],
     };
     return route.fulfill({ json: url.pathname.endsWith(id) ? item : { items: [item], hasDataPermission: true } });
   });
 });
 
-test('AC-FE-R3c-01 切换演示身份，项目列表、八页签详情与配置抽屉可渲染', async ({ page }) => {
+test('AC-FE-R3c-01 切换演示身份，项目列表、八页签详情与配置抽屉可渲染', async ({ page }, testInfo) => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => {
@@ -70,6 +71,12 @@ test('AC-FE-R3c-01 切换演示身份，项目列表、八页签详情与配置�
   await page.getByLabel('切换演示身份').selectOption(user);
   await expect(page).toHaveURL(/\/staff$/);
   await page.getByRole('menuitem', { name: '人才盘点', exact: true }).click();
+  await expect(page.getByRole('button', { name: '合成年度盘点', exact: true })).toBeVisible();
+  await expect(page.locator('.page-total')).toBeInViewport();
+  await page.getByRole('switch', { name: '注释' }).click();
+  await expect(page.locator('.talent-review-page .decision-note')).toContainText('DEC-456');
+  await page.getByRole('switch', { name: '注释' }).click();
+  await page.screenshot({ path: testInfo.outputPath('list.png'), fullPage: true, animations: 'disabled' });
   await page.getByRole('button', { name: '合成年度盘点', exact: true }).click();
   await expect(page.getByRole('dialog', { name: '合成年度盘点', exact: true })).toBeVisible();
   for (const tab of [
@@ -84,11 +91,17 @@ test('AC-FE-R3c-01 切换演示身份，项目列表、八页签详情与配置�
   ]) {
     await page.getByRole('tab', { name: tab, exact: true }).click();
     await expect(page.getByRole('tabpanel', { name: tab, exact: true })).toContainText('演示数据');
+    if (tab === '九宫格')
+      await page.screenshot({ path: testInfo.outputPath('grid.png'), fullPage: true, animations: 'disabled' });
   }
   await page.getByRole('button', { name: '编辑项目', exact: true }).click();
   await expect(page.getByRole('dialog', { name: '编辑项目', exact: true })).toBeVisible();
   await expect(page.getByLabel('名称', { exact: true })).toHaveValue('合成年度盘点');
-  await page.getByRole('button', { name: '取消', exact: true }).last().click();
+  await page.screenshot({ path: testInfo.outputPath('form.png'), fullPage: true, animations: 'disabled' });
+  await page
+    .getByRole('button', { name: /取\s*消/ })
+    .last()
+    .click();
   expect(errors).toEqual([]);
 });
 
@@ -114,7 +127,7 @@ for (const section of ['盘点模板', '九宫格设置', '盘点校准会']) {
   });
 }
 
-test('AC-FE-R3c-03 已结束与共享只读项目不提供编辑，真实接口失败不混入演示数据', async ({ page }) => {
+test('AC-FE-R3c-03 无范围时空列表不混入演示项目', async ({ page }) => {
   await page.route('**/talent-review/projects*', (route) =>
     route.fulfill({ json: { items: [], hasDataPermission: false } }),
   );
@@ -124,4 +137,59 @@ test('AC-FE-R3c-03 已结束与共享只读项目不提供编辑，真实接口�
   await page.getByRole('menuitem', { name: '人才盘点', exact: true }).click();
   await expect(page.locator('.list-card')).toContainText('当前没有可查看的数据范围');
   await expect(page.getByRole('button', { name: '合成年度盘点', exact: true })).toHaveCount(0);
+});
+
+for (const state of [
+  { status: 'new', accessLevel: 'readonly' },
+  { status: 'ended', accessLevel: 'manage' },
+]) {
+  test(`AC-FE-R3c-06 ${state.status}/${state.accessLevel} 详情没有编辑按钮`, async ({ page }) => {
+    await page.route(`**/talent-review/projects/${id}`, (route) =>
+      route.fulfill({
+        json: {
+          id,
+          name: '合成年度盘点',
+          revision: 1,
+          ...state,
+        },
+      }),
+    );
+    await page.goto('/talent-review');
+    await page.getByLabel('切换演示身份').selectOption(user);
+    await expect(page).toHaveURL(/\/staff$/);
+    await page.getByRole('menuitem', { name: '人才盘点', exact: true }).click();
+    await page.getByRole('button', { name: '合成年度盘点', exact: true }).click();
+    const detail = page.getByRole('dialog', { name: '合成年度盘点' });
+    await expect(detail).toBeVisible();
+    await expect(detail.getByRole('button', { name: '编辑项目' })).toHaveCount(0);
+    if (state.status === 'ended') await expect(detail.getByRole('button', { name: /重\s*启/ })).toBeVisible();
+  });
+}
+
+test('AC-FE-R3c-07 保存传 revision、命令ID，冲突展示且禁止旧表单盲重提', async ({ page }) => {
+  const writes: { headers: Record<string, string>; body: Record<string, unknown> }[] = [];
+  await page.route(`**/talent-review/projects/${id}`, async (route) => {
+    if (route.request().method() !== 'PATCH') return route.fallback();
+    writes.push({ headers: route.request().headers(), body: route.request().postDataJSON() });
+    return route.fulfill({ status: 409, json: { error: { code: 'REVISION_CONFLICT' } } });
+  });
+  await page.goto('/talent-review');
+  await page.getByLabel('切换演示身份').selectOption(user);
+  await expect(page).toHaveURL(/\/staff$/);
+  await page.getByRole('menuitem', { name: '人才盘点', exact: true }).click();
+  await page.getByRole('button', { name: /编\s*辑/, exact: true }).click();
+  const form = page.getByRole('dialog', { name: '编辑项目' });
+  await expect(form).toBeVisible();
+  await page.getByLabel('名称', { exact: true }).fill('  修改后盘点  ');
+  await form.getByRole('button', { name: /保\s*存/ }).click();
+  await expect(form.getByRole('alert')).toBeVisible();
+  expect(writes).toHaveLength(1);
+  expect(writes[0]?.headers['if-match']).toBe('1');
+  expect(writes[0]?.headers['idempotency-key']).toMatch(/^[0-9a-f-]{36}$/);
+  expect(writes[0]?.body.name).toBe('修改后盘点');
+  expect(writes[0]?.body).not.toHaveProperty('status');
+  expect(writes[0]?.body).not.toHaveProperty('code');
+  await form.getByRole('button', { name: /保\s*存/ }).click();
+  await expect(form.getByRole('alert')).toContainText('回查');
+  expect(writes).toHaveLength(1);
 });

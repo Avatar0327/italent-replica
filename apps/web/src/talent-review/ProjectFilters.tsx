@@ -37,7 +37,7 @@ export function ProjectFilters({ value, change, visible }: Props) {
         <Popover
           trigger="click"
           content={
-            <div style={{ width: 240 }}>
+            <div className="review-reference-popover">
               <ReferenceSelect
                 path="/api/tenant/org/organizations"
                 value={value.ownerOrgId}

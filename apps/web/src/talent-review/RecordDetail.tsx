@@ -1,4 +1,4 @@
-import { Alert, Descriptions, Empty, Table, Tag } from 'antd';
+import { Alert, Collapse, Descriptions, Empty, Table, Tag } from 'antd';
 import type { ReactNode } from 'react';
 import { DetailPage } from '../foundation/templates.js';
 import { DecisionNote } from '../foundation/DecisionNote.js';
@@ -54,10 +54,14 @@ function StructureTable({
   const rows = (record[field] ?? []) as Record<string, unknown>[];
   return (
     <Table
-      rowKey={(_, index) => String(index)}
+      rowKey={(row) => String(row.id ?? JSON.stringify([row.nodeKey, row.roleId, row.moduleName]))}
       pagination={false}
       dataSource={rows}
-      columns={columns.map(([dataIndex, title]) => ({ dataIndex, title, render: (value: unknown) => display(value) }))}
+      columns={columns.map(([dataIndex, title]) => ({
+        dataIndex,
+        title,
+        render: (value: unknown) => (tr.values as Record<string, string>)[String(value)] ?? display(value),
+      }))}
       locale={{ emptyText: tr.empty }}
     />
   );
@@ -106,14 +110,28 @@ function RecordSummary({ collection, record }: { collection: Collection; record:
     <>
       <DecisionNote id={`talent-review-${collection}`} />
       {record.accessLevel === 'readonly' && <Tag>{tr.readonly}</Tag>}
-      <Descriptions
-        size="small"
-        column={3}
-        items={fields.map((key) => ({
-          key,
-          label: tr.fields[key as keyof typeof tr.fields],
-          children: display(record[key]),
-        }))}
+      <Collapse
+        ghost
+        items={[
+          {
+            key: 'config',
+            label: tr.settings,
+            children: (
+              <Descriptions
+                size="small"
+                column={3}
+                items={fields.map((key) => ({
+                  key,
+                  label: tr.fields[key as keyof typeof tr.fields],
+                  children:
+                    key === 'enabled' && typeof record[key] === 'boolean'
+                      ? [tr.disabled, tr.enabled][Number(record[key])]
+                      : display(record[key]),
+                }))}
+              />
+            ),
+          },
+        ]}
       />
       {collection === 'projects' && (
         <div className="review-summary">

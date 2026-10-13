@@ -36,7 +36,8 @@ export function RecordForm({
   const permission = usePermissions(objects[collection]);
   const uncertain = useRef(false);
   const project = collection === 'projects';
-  const title = project ? (record ? tr.editProject : tr.newProject) : record ? tr.editTemplate : tr.newTemplate;
+  const titles = project ? [tr.newProject, tr.editProject] : [tr.newTemplate, tr.editTemplate];
+  const title = titles[record ? 1 : 0]!;
   const fields = formFields(project, !!record, permission);
   return (
     <FormOverlay
@@ -50,16 +51,7 @@ export function RecordForm({
       onSubmit={async (values) => {
         if (uncertain.current) throw new ApiError(0, 'NETWORK_ERROR', 'unknown', tr.unknown);
         const editable = fields.filter((field) => field.access.editable).map((field) => field.name);
-        const body = project
-          ? projectInput(values, editable, record)
-          : Object.fromEntries(
-              Object.entries(values)
-                .filter(([name]) => editable.includes(name))
-                .map(([name, value]) => [
-                  name,
-                  name === 'flowId' && !value ? null : typeof value === 'string' ? value.trim() : value,
-                ]),
-            );
+        const body = project ? projectInput(values, editable, record) : templateInput(values, editable);
         try {
           await saveRecord(api, collection, body, record);
           saved();
@@ -115,4 +107,15 @@ function formFields(project: boolean, editing: boolean, permission: ReturnType<t
       if (['downwardPublic', 'carryLastResult', 'enabled'].includes(name)) control = boolean;
       return { name, label: tr.fields[name as keyof typeof tr.fields], access: permission.field(name), control, rules };
     });
+}
+
+function templateInput(values: Record<string, unknown>, editable: string[]) {
+  return Object.fromEntries(
+    Object.entries(values)
+      .filter(([name]) => editable.includes(name))
+      .map(([name, value]) => {
+        if (name === 'flowId' && !value) return [name, null];
+        return [name, typeof value === 'string' ? value.trim() : value];
+      }),
+  );
 }

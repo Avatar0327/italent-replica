@@ -106,8 +106,9 @@ function RowActions({
   collection: Collection;
   state: ReturnType<typeof useReviewController>;
 }) {
+  const editLabel = collection === 'projects' ? tr.editProject : tr.editTemplate;
   return (
-    <Space size={0}>
+    <Space size={8}>
       {state.actionsFor(row).map((action) =>
         action === 'update' ? (
           <Button
@@ -116,7 +117,7 @@ function RowActions({
             disabled={state.busy}
             onClick={() => state.select({ id: row.id, editing: true })}
           >
-            {inDetail ? (collection === 'projects' ? tr.editProject : tr.editTemplate) : tr.update}
+            {inDetail ? editLabel : tr.update}
           </Button>
         ) : (
           <Popconfirm
