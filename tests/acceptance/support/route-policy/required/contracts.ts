@@ -153,6 +153,7 @@ export const CONTRACTS: RequiredTable = {
   'GET /api/tenant/contracts': [view('/')],
   'GET /api/tenant/contracts/employees/:id/revision': [view('/employees/:id/revision')],
   'GET /api/tenant/contracts/records/:id': [view('/records/:id')],
+  'GET /api/tenant/contracts/employees/:id/contracts': [view('/employees/:id/contracts')],
   'POST /api/tenant/contracts/commands': command('/commands'),
   'POST /api/tenant/contracts/batch': command('/batch'),
   'GET /api/tenant/contracts/settings': [
@@ -199,6 +200,15 @@ export const CONTRACTS: RequiredTable = {
         },
       ],
     },
+  ],
+  'DELETE /api/tenant/contracts/rules/:id': [
+    write(
+      'DELETE',
+      '/rules/:id',
+      'TenantBase.ContractRenewalRule',
+      'update',
+      "await requireObjectWrite(deps.authorize, ctx, { objectCode: object, operation: 'update', payload: {} })",
+    ),
   ],
   ...Object.fromEntries(
     (

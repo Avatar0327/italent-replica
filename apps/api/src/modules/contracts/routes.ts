@@ -95,7 +95,8 @@ export async function trimEmployment<T extends Record<string, unknown> | null>(
   if (!value) return value;
   const fields = await getModuleViewableFields(deps, ctx, EMPLOYMENT_OBJECT);
   if (fields === undefined) return value;
-  return Object.fromEntries(Object.entries(value).filter(([key]) => fields.has(key))) as T;
+  const visible = Object.entries(value).filter(([key]) => fields.has(key));
+  return (visible.length ? Object.fromEntries(visible) : null) as T;
 }
 function requireMasterScope(ctx: ContractContext, object: string) {
   if (['TenantBase.ContractType', 'TenantBase.ContractCompany'].includes(object) && !ctx.scope?.all)

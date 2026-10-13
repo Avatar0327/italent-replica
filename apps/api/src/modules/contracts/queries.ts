@@ -155,17 +155,9 @@ async function missingContracts(tx: Tx, { ctx, query, limit, offset, today, orgI
   return { items, total: count?.total ?? 0 };
 }
 
-/** 有效 / 即将到期 / 过期未续签三个只看合同记录的视图。 */
-async function recordViews(tx: Tx, { ctx, query, limit, offset, today, orgIds }: Shared): Promise<ListResult> {
-  const config = await settings(tx, ctx.tenantId);
+/** 三个合同记录视图各自的基础条件。 */
+function viewPredicate(query: ListQuery, config: { renewalTypeIds: string[] }, today: string): SQL {
   const c = contractRecords;
-  const scope = ctx.scope
-    ? employmentVisibilitySql(ctx.scope, {
-        department: sql`NULL::uuid`,
-        employee: sql`${c.employeeId}`,
-        creator: sql`${c.createdBy}`,
-      })
-    : sql`true`;
   let view = sql`true`;
   if (query.view === 'valid')
     view = sql`${c.status}='valid' AND ${c.effectiveDate}<=${today}::date
@@ -202,6 +194,21 @@ async function recordViews(tx: Tx, { ctx, query, limit, offset, today, orgIds }:
         config.renewalTypeIds,
       )}`;
   }
+  return view;
+}
+
+/** 有效 / 即将到期 / 过期未续签三个只看合同记录的视图。 */
+async function recordViews(tx: Tx, { ctx, query, limit, offset, today, orgIds }: Shared): Promise<ListResult> {
+  const config = await settings(tx, ctx.tenantId);
+  const c = contractRecords;
+  const scope = ctx.scope
+    ? employmentVisibilitySql(ctx.scope, {
+        department: sql`NULL::uuid`,
+        employee: sql`${c.employeeId}`,
+        creator: sql`${c.createdBy}`,
+      })
+    : sql`true`;
+  const view = viewPredicate(query, config, today);
   const filter = filterPredicate(
     query,
     {
@@ -277,7 +284,8 @@ async function allContracts(tx: Tx, { ctx, query, limit, offset, today, orgIds }
   const combined = sql`
     SELECT to_jsonb(c)||jsonb_build_object('row_type','contract') AS value,c.employee_id,c.effective_date,
       c.end_date,c.signing_date,c.number,c.id
-      FROM contract_records c WHERE c.tenant_id=${ctx.tenantId} AND NOT c.deleted AND ${record.scope} AND ${record.filter}
+      FROM contract_records c WHERE c.tenant_id=${ctx.tenantId} AND NOT c.deleted
+        AND ${record.scope} AND ${record.filter}
     UNION ALL
     SELECT to_jsonb(r)||jsonb_build_object('row_type','request','approval_status',r.status),r.employee_id,
       r.effective_date,r.end_date,r.signing_date,r.number,r.id

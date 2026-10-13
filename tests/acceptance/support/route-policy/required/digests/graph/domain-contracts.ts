@@ -5,5 +5,7 @@
 import type { Graph } from '../../../evidence-graph.js';
 
 export const GRAPH: Graph = {
+  'packages/domain/src/contracts/rules.ts#isIndefiniteTerm': ['#INDEFINITE_FROM_SIGNING'],
   'packages/domain/src/contracts/rules.ts#termEnd': ['#addDays'],
+  'packages/domain/src/contracts/rules.ts#wholeTermMonths': ['#termEnd'],
 };
