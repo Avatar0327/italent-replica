@@ -19,6 +19,8 @@ import { PlanFailure, activeUser, targetAccess, writerAccess, type AccessDeps } 
 import { collectTargets, persistPlan, readPlan } from './sync-plan.js';
 import { rowsOf } from './read-sql.js';
 import { executeSyncBatch } from './sync-execute.js';
+import { enqueueSyncHealth } from './sync-health.js';
+import { lockOrganizationSettings } from '../org/locks.js';
 
 export interface SyncDeps extends AccessDeps {
   db: Db;
@@ -174,6 +176,7 @@ class FirstPlan {
         throw denied('BATCH_SCOPE_EXCEEDS_REQUESTER');
       }
     }
+    if (targets.some((t) => t.kind === 'org_health')) await lockOrganizationSettings(tx, input.tenantId);
     const planned = await persistPlan(tx, {
       tenantId: input.tenantId,
       batchId: batch.id,
@@ -217,6 +220,7 @@ class FirstPlan {
     if (!planned.pending) {
       await release(tx, batch);
       await notify(tx, batch, now);
+      await enqueueSyncHealth(tx, batch, now);
     }
     return batch;
   }
