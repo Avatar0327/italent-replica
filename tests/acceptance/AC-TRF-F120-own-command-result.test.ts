@@ -199,13 +199,17 @@ describe('F-120 经理调动他人：仅经理本人可查', () => {
     expect((await query(commandId, world.asAdmin)).status).toBe(404);
     // 经理看不到别人的命令
     const adminCommand = `f120-adm-${randomUUID()}`;
-    const adminSaved = await world.api.request('PATCH', `/api/tenant/org/organizations/${child.id}`, {
+    const adminSaved = await world.setup.request('POST', '/api/tenant/org/organizations', {
       ...world.asAdmin,
-      ifMatch: child.revision,
+      ifMatch: 0,
       idempotencyKey: adminCommand,
-      body: { effectiveDate: '2026-01-03', name: 'F-120 下级部门改名' },
+      body: {
+        name: 'F-120 管理员建部门',
+        establishedOn: '2025-01-01',
+        parents: { admin: { parentId: world.inside.id } },
+      },
     });
-    expect(adminSaved.status, await adminSaved.clone().text()).toBe(200);
+    expect(adminSaved.status, await adminSaved.clone().text()).toBe(201);
     expect((await query(adminCommand, world.asAdmin)).status).toBe(200);
     expect((await query(adminCommand, manager)).status).toBe(404);
   });
