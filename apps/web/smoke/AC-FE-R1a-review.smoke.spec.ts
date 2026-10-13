@@ -73,6 +73,12 @@ for (const kind of kinds) {
       });
     });
     await page.goto(`/job?kind=${kind}`);
+    await chooseFutureDate(page);
+    const candidateDates: string[] = [];
+    page.on('request', (request) => {
+      const url = new URL(request.url());
+      if (url.searchParams.get('pageSize') === '50') candidateDates.push(url.searchParams.get('asOf') ?? '');
+    });
     await page.getByRole('button', { name: /新\s*建/, exact: true }).click();
     const dialog = page.getByRole('dialog');
     await dialog.getByLabel('名称', { exact: true }).fill('合成新对象');
@@ -98,6 +104,10 @@ for (const kind of kinds) {
       kind === 'positions' ? { name: '合成新对象', orgId: id, postId: id } : { name: '合成新对象' },
     );
     await expect(dialog).toHaveCount(0);
+    if (kind === 'positions') {
+      expect(candidateDates.length).toBeGreaterThan(0);
+      expect(new Set(candidateDates)).toEqual(new Set(['2026-10-13']));
+    }
     expect(errors).toEqual([]);
   });
 }
@@ -138,6 +148,60 @@ for (const path of [
       .click();
     await expect(page.getByRole('dialog')).toBeVisible();
     await expect(page.getByRole('dialog').getByText('annual', { exact: true })).toHaveCount(0);
+    expect(errors).toEqual([]);
+  });
+}
+
+async function chooseFutureDate(page: Page) {
+  const date = page.locator('.page-filters .ant-picker input');
+  await date.fill('2026-10-20');
+  await date.press('Enter');
+  await expect(date).toHaveValue('2026-10-20');
+}
+
+for (const kind of kinds) {
+  test(`AC-FE-R1a-20 ${kind} 有日期编辑权的新建提交所选日期，候选使用相同时点`, async ({ page }) => {
+    const errors = await setup(page);
+    const bodies: Record<string, unknown>[] = [];
+    const candidateDates: string[] = [];
+    await page.route(`**/api/tenant/job/${kind}`, async (route) => {
+      if (route.request().method() !== 'POST') return route.fallback();
+      const body = route.request().postDataJSON() as Record<string, unknown>;
+      bodies.push(body);
+      await route.fulfill({ status: 201, json: { id, revision: 1, ...body } });
+    });
+    await page.goto(`/job?kind=${kind}`);
+    await chooseFutureDate(page);
+    page.on('request', (request) => {
+      const url = new URL(request.url());
+      if (url.searchParams.get('pageSize') === '50') candidateDates.push(url.searchParams.get('asOf') ?? '');
+    });
+    await page.getByRole('button', { name: /新\s*建/, exact: true }).click();
+    const dialog = page.getByRole('dialog');
+    await dialog.getByLabel('名称', { exact: true }).fill('未来合成对象');
+    if (kind === 'positions') {
+      for (const label of ['所属组织', '对应职务']) {
+        const select = dialog
+          .locator('.ant-form-item')
+          .filter({ has: page.locator('label').filter({ hasText: label }) })
+          .getByRole('combobox');
+        await select.focus();
+        await select.press('ArrowDown');
+        await expect(
+          page.locator('.ant-select-dropdown:visible').getByTitle('annual', { exact: true }).last(),
+        ).toBeVisible();
+        await select.press('Enter');
+      }
+    }
+    await dialog.getByRole('button', { name: /保\s*存/, exact: true }).click();
+    await expect.poll(() => bodies.length).toBe(1);
+    expect(bodies[0]).toMatchObject({ name: '未来合成对象', startDate: '2026-10-20' });
+    if (kind === 'positions') {
+      expect(bodies[0]).toMatchObject({ orgId: id, postId: id });
+      expect(candidateDates.length).toBeGreaterThan(0);
+    }
+    expect(candidateDates.every((date) => date === '2026-10-20')).toBe(true);
+    await expect(dialog).toHaveCount(0);
     expect(errors).toEqual([]);
   });
 }

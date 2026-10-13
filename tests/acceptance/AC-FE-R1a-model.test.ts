@@ -135,3 +135,32 @@ describe('AC-FE-R1a-17 职务写入只包含授权表单输入', () => {
     });
   });
 });
+
+describe('AC-FE-R1a-20 新建日期与候选共用时点（DEC-465）', () => {
+  it('有日期编辑权用所选未来日期，只读或隐藏时用后端租户当天且省略日期', async () => {
+    const { jobTiming, jobBody, jobKinds } = await job();
+    for (const kind of jobKinds) {
+      for (const access of [
+        { visible: true, editable: true },
+        { visible: true, editable: false },
+        { visible: false, editable: false },
+      ]) {
+        const timing = jobTiming(undefined, '2026-10-20', '2026-10-13', access);
+        const values = kind === 'positions' ? { name: '合成', orgId: 'A', postId: 'B' } : { name: '合成' };
+        const body = jobBody(kind, { ...values, ...timing.createFields }, undefined, timing.asOf);
+        expect(timing.asOf).toBe(access.editable ? '2026-10-20' : '2026-10-13');
+        if (access.editable) expect(body).toHaveProperty('startDate', '2026-10-20');
+        else expect(body).not.toHaveProperty('startDate');
+      }
+    }
+  });
+  it('编辑继续使用所选变更日期，不补写新建日期', async () => {
+    const { jobTiming, jobBody } = await job();
+    const timing = jobTiming(original, '2026-10-20', '2026-10-13', { visible: true, editable: false });
+    expect(timing).toEqual({ asOf: '2026-10-20', createFields: {} });
+    expect(jobBody('posts', { name: '改名', ...timing.createFields }, original, timing.asOf)).toEqual({
+      name: '改名',
+      effectiveDate: '2026-10-20',
+    });
+  });
+});
