@@ -1,12 +1,18 @@
 /**
- * F-025 演示种子：可重复执行（幂等）、全部合成数据，且种子配置足以让 R1 调动主线各角色入口真实可用
- * （真实授权器，不注入“全部允许”）：员工本人发起 → 直接上级审批 → HRBP 审核 → 生效 → 员工 / 经理 / HR / 审计可见。
+ * F-025 演示种子（含演示数据种子第 1 段：R1 规模化，规划 §5）：
+ * - 规模：约 30 个组织（4 层）、约 200 名员工、职务体系、在途 / 已完成 / 驳回 / 撤回的调动审批单；
+ * - 幂等、可恢复：先在员工阶段、再在调动阶段中途注入失败，之后重复运行补齐缺失、不重复；跑完后再运行不写数据；
+ * - 原有 9 名演示身份及其组织 / 职位 / 角色不变，各身份的“我的申请 / 待办”有数据；
+ * - 种子配置足以让 R1 调动主线各角色入口真实可用（真实授权器，不注入“全部允许”）：
+ *   员工本人发起 → 直接上级审批 → HRBP 审核 → 生效 → 员工 / 经理 / HR / 审计可见（本文件最后一个用例，会改动员工甲）。
+ * 整个文件只种一次租户（含两次注入失败后的续做），以控制耗时。
  */
 import {
   approvalProcesses,
   employmentEmployees,
   eq,
   orgObjects,
+  sql,
   tenants,
   users,
   withPlatform,
@@ -14,43 +20,232 @@ import {
 } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { DEMO_PEOPLE, DEMO_TRANSFER_PROCESS_CODE } from '../../apps/api/src/demo/data.js';
-import { type DemoManifest, DemoSeedIncompleteError, seedDemo } from '../../apps/api/src/demo/seed.js';
+import { DEMO_ORGS, DEMO_PEOPLE, DEMO_POSITIONS, ROLE_LABELS } from '../../apps/api/src/demo/data.js';
+import { type DemoManifest, seedDemo } from '../../apps/api/src/demo/seed.js';
 import { tenantApi } from './support/tenant-api.js';
 
 const database = useTestDb();
 const TODAY = '2026-10-07';
 const clock = () => new Date(`${TODAY}T02:00:00.000Z`);
+const options = { clock, nodeEnv: 'test' } as const;
 
-async function counts() {
+type Row = Record<string, unknown> & { id: string };
+
+let manifest: DemoManifest;
+let api: ReturnType<typeof tenantApi>;
+const personaId = (key: string) => {
+  const name = DEMO_PEOPLE.find((p) => p.key === key)!.name;
+  return manifest.personas.find((p) => p.name === name)!.userId;
+};
+const as = (key: string) => ({ user: personaId(key), tenant: manifest.tenantId });
+
+async function json<T = Record<string, unknown>>(key: string, path: string): Promise<T> {
+  const response = await api.request('GET', path, as(key));
+  expect(response.status, `${key} ${path} ${await response.clone().text()}`).toBe(200);
+  return (await response.json()) as T;
+}
+
+async function items(key: string, path: string): Promise<Row[]> {
+  const rows: Row[] = [];
+  for (let page = 1; ; page += 1) {
+    const separator = path.includes('?') ? '&' : '?';
+    const body = await json<{ items: Row[] }>(key, `${path}${separator}page=${page}&pageSize=200`);
+    rows.push(...body.items);
+    if (body.items.length < 200) return rows;
+  }
+}
+
+const rowsOf = <T>(result: unknown): T[] =>
+  (Array.isArray(result) ? result : (result as { rows: unknown[] }).rows) as T[];
+
+/** 库内的原始计数与自然键（只读观测，不经权限）：用于幂等 / 恢复的比较。 */
+async function inventory() {
   const db = database().db;
   const [tenant] = await withPlatform(db, (tx) => tx.select().from(tenants).where(eq(tenants.code, 'demo-r1')));
   const tenantId = tenant!.id;
-  return {
-    tenants: (await withPlatform(db, (tx) => tx.select().from(tenants))).length,
-    users: (await withPlatform(db, (tx) => tx.select().from(users))).length,
-    employees: (await withTenant(db, tenantId, (tx) => tx.select().from(employmentEmployees))).length,
-    orgs: (await withTenant(db, tenantId, (tx) => tx.select().from(orgObjects))).length,
-    processes: (await withTenant(db, tenantId, (tx) => tx.select().from(approvalProcesses))).length,
-  };
+  return withTenant(db, tenantId, async (tx) => {
+    const employees = await tx.select().from(employmentEmployees);
+    const orgs = await tx.select().from(orgObjects);
+    const grouped = rowsOf<{ employeeId: string; kind: string; n: number }>(
+      await tx.execute(sql`SELECT employee_id AS "employeeId", kind, count(DISTINCT business_id)::int AS n
+        FROM employment_payload_versions GROUP BY employee_id, kind`),
+    );
+    return {
+      tenants: (await withPlatform(db, (p) => p.select().from(tenants))).length,
+      users: (await withPlatform(db, (p) => p.select().from(users))).length,
+      processes: (await tx.select().from(approvalProcesses)).length,
+      employeeCodes: employees.map((e) => e.code).sort(),
+      employeeIds: employees.map((e) => e.id).sort(),
+      orgIds: orgs.map((o) => o.id).sort(),
+      hires: grouped.filter((g) => g.kind === 'hire').map((g) => g.n),
+      transferEmployees: grouped.filter((g) => g.kind === 'transfer').length,
+    };
+  });
 }
 
 describe('F-025 演示种子', () => {
-  let manifest: DemoManifest;
   beforeAll(async () => {
-    const first = await seedDemo(database().db, { clock, nodeEnv: 'test' });
-    expect(first.created).toBe(true);
-    manifest = first.manifest;
-  }, 120_000);
+    // 第 1 次：员工阶段写到第 57 个时失败；第 2 次：续做员工，调动阶段写完第 1 个节点后失败；第 3 次：补齐
+    let employees = 0;
+    await expect(
+      seedDemo(database().db, {
+        ...options,
+        onStep: ({ phase }) => {
+          if (phase === 'employees' && (employees += 1) === 57) throw new Error('注入的员工阶段失败');
+        },
+      }),
+    ).rejects.toThrow('注入的员工阶段失败');
+    let transfers = 0;
+    await expect(
+      seedDemo(database().db, {
+        ...options,
+        onStep: ({ phase }) => {
+          if (phase === 'transfers' && (transfers += 1) === 5) throw new Error('注入的调动阶段失败');
+        },
+      }),
+    ).rejects.toThrow('注入的调动阶段失败');
+    const resumed = await seedDemo(database().db, options);
+    expect(resumed.created).toBe(true);
+    manifest = resumed.manifest;
+    api = tenantApi(database().db, { authorize: undefined, clock });
+  }, 900_000);
 
-  it('重复执行幂等：第二次不写数据、清单不变', async () => {
-    const before = await counts();
-    const again = await seedDemo(database().db, { clock, nodeEnv: 'test' });
+  it('组织 ≥30 个且 4 层、职务体系条目齐全、员工约 200 名，中途失败续做后无重复', async () => {
+    const inv = await inventory();
+    expect(inv.employeeCodes).toHaveLength(new Set(inv.employeeCodes).size);
+    expect(
+      inv.hires.every((n) => n === 1),
+      '每名员工恰有一次入职',
+    ).toBe(true);
+    expect(inv.transferEmployees).toBe(15);
+    const orgs = await items('hr', `/api/tenant/org/organizations?asOf=${TODAY}`);
+    expect(orgs.length).toBeGreaterThanOrEqual(30);
+    const parentOf = new Map(
+      orgs.map((org) => [org.id, (org.parents as { admin: { parentId: string } }).admin.parentId] as const),
+    );
+    const depth = (id: string): number => (id === manifest.tenantId ? 0 : 1 + depth(parentOf.get(id)!));
+    // 租户根（集团）→ 事业部 → 部门 → 小组：含根共 4 层
+    expect(Math.max(...orgs.map((org) => depth(org.id)))).toBe(3);
+    for (const org of orgs) {
+      expect(org.code).toMatch(/^DEMO-ORG-\d{3}$/);
+      expect(String(org.establishedOn) <= '2025-10-07', '设立日期早于演示当天至少一年').toBe(true);
+      expect(org.personInChargeId, `${org.name} 应有负责人`).toBeTruthy();
+    }
+
+    const count = async (kind: string) => (await items('admin', `/api/tenant/job/${kind}`)).length;
+    expect(await count('layers')).toBeGreaterThanOrEqual(3);
+    expect(await count('grades')).toBeGreaterThanOrEqual(9);
+    expect(await count('level-types')).toBeGreaterThanOrEqual(2);
+    expect(await count('levels')).toBeGreaterThanOrEqual(9);
+    expect(await count('sequences')).toBeGreaterThanOrEqual(4);
+    expect(await count('sequences')).toBeLessThanOrEqual(6);
+    expect(await count('posts')).toBeGreaterThanOrEqual(20);
+    const positions = await items('admin', '/api/tenant/job/positions');
+    const leaves = orgs.filter((org) => !orgs.some((other) => parentOf.get(other.id) === org.id));
+    for (const leaf of leaves) {
+      const own = positions.filter((position) => position.orgId === leaf.id).length;
+      expect(own, `${leaf.name} 的职位数`).toBeGreaterThanOrEqual(1);
+      expect(own, `${leaf.name} 的职位数`).toBeLessThanOrEqual(3);
+    }
+
+    const employees = await items('admin', '/api/tenant/employment/employees');
+    expect(employees.length).toBeGreaterThanOrEqual(190);
+    expect(employees.length).toBeLessThanOrEqual(210);
+    expect(employees.every((employee) => employee.status === 'employed')).toBe(true);
+  });
+
+  it('调动单：在途 6 / 已完成 6 / 驳回 2 / 撤回 1，HR、经理、员工自助各至少 1 单', async () => {
+    const ids = await withTenant(database().db, manifest.tenantId, async (tx) => {
+      const result = await tx.execute(
+        sql`SELECT DISTINCT business_id AS id FROM employment_payload_versions WHERE kind = 'transfer'`,
+      );
+      return ((Array.isArray(result) ? result : (result as { rows: unknown[] }).rows) as { id: string }[]).map(
+        (row) => row.id,
+      );
+    });
+    const states: Record<string, number> = {};
+    for (const id of ids) {
+      const business = await json<{ status: string }>('hr', `/api/tenant/employment/businesses/${id}`);
+      states[business.status] = (states[business.status] ?? 0) + 1;
+    }
+    expect(states).toEqual({ in_review: 6, effective: 6, rejected: 2, draft: 1 });
+
+    // 三种发起方都有单：HR（hr）、经理（platformManager）、员工自助（employeeB）
+    for (const key of ['hr', 'platformManager', 'employeeB']) {
+      const mine = await items(key, '/api/tenant/approval/instances?role=initiated');
+      expect(mine.length, `${key} 发起的单`).toBeGreaterThan(0);
+    }
+    // 在途单停在不同审批步：经理待办是第一节点，HR 待办是第二节点
+    const nodes = new Set<string>();
+    for (const key of ['platformManager', 'dataManager', 'hr', 'exception']) {
+      for (const todo of await items(key, '/api/tenant/approval/todos')) nodes.add(String(todo.nodeKey));
+    }
+    expect([...nodes].sort()).toEqual(['direct_head', 'in_hrbp']);
+  });
+
+  it('9 名演示身份及其组织 / 职位 / 角色不变', async () => {
+    expect(manifest.personas.map((p) => [p.name, p.role])).toEqual(
+      DEMO_PEOPLE.map((p) => [p.name, ROLE_LABELS[p.role]]),
+    );
+    const orgs = await items('hr', `/api/tenant/org/organizations?asOf=${TODAY}`);
+    const positions = await items('admin', '/api/tenant/job/positions');
+    const index = DEMO_PEOPLE.filter((p) => p.job);
+    for (const [i, person] of index.entries()) {
+      const code = `DEMO${String(i + 1).padStart(3, '0')}`;
+      const [employee] = await items('hr', `/api/tenant/employment/employees?code=${code}`);
+      const records = await json<{ items: { isCurrent: boolean; fields: Record<string, string | null> }[] }>(
+        'hr',
+        `/api/tenant/employment/employees/${employee!.id}/records?asOf=${TODAY}`,
+      );
+      const current = records.items.find((record) => record.isCurrent)!;
+      const expectedOrg = DEMO_ORGS.find((org) => org.key === person.job!.org)!;
+      expect(orgs.find((org) => org.id === current.fields.departmentId)?.name, person.name).toBe(expectedOrg.name);
+      const expectedPosition = DEMO_POSITIONS.find((position) => position.key === person.job!.position);
+      const positionName = positions.find((position) => position.id === current.fields.positionId)?.name;
+      expect(positionName ?? null, person.name).toBe(expectedPosition?.name ?? null);
+    }
+  });
+
+  it('各演示身份的“我的申请 / 待办”非空', async () => {
+    // 员工自助与审计管理员：我发起的
+    for (const key of ['employeeA', 'employeeB', 'employeeC', 'auditor']) {
+      expect((await items(key, '/api/tenant/approval/instances?role=initiated')).length, key).toBeGreaterThan(0);
+    }
+    // 经理、HR：待办（审批中心）与已办 / 我发起
+    for (const key of ['platformManager', 'dataManager', 'hr']) {
+      expect((await items(key, '/api/tenant/approval/todos')).length, `${key} 待办`).toBeGreaterThan(0);
+      expect(
+        (await items(key, '/api/tenant/approval/instances?role=participated')).length,
+        `${key} 已办`,
+      ).toBeGreaterThan(0);
+      expect(
+        (await items(key, '/api/tenant/approval/instances?role=initiated')).length,
+        `${key} 我发起`,
+      ).toBeGreaterThan(0);
+    }
+    // 异常管理员接收审批人为空 / 自审回避转来的节点
+    expect((await items('exception', '/api/tenant/approval/todos')).length, 'exception 待办').toBeGreaterThan(0);
+    // 经理工作台：待处理 / 已处理 / 我发起
+    for (const tab of ['pending', 'processed', 'initiated']) {
+      const tabs = await json<{ items: unknown[] }>(
+        'platformManager',
+        `/api/tenant/employment/transfers/manager/todos?tab=${tab}`,
+      );
+      expect(tabs.items.length, `经理工作台 ${tab}`).toBeGreaterThan(0);
+    }
+  });
+
+  it('连续运行：不写数据，计数与关键对象 ID 稳定', async () => {
+    const before = await inventory();
+    const orgsBefore = (await items('hr', `/api/tenant/org/organizations?asOf=${TODAY}`)).map((o) => [o.code, o.id]);
+    const again = await seedDemo(database().db, options);
     expect(again.created).toBe(false);
     expect(again.manifest).toEqual(manifest);
-    expect(await counts()).toEqual(before);
-    expect(before.employees).toBe(DEMO_PEOPLE.filter((p) => p.job).length);
-    expect(before.orgs).toBeGreaterThanOrEqual(6);
+    expect(await inventory()).toEqual(before);
+    expect((await items('hr', `/api/tenant/org/organizations?asOf=${TODAY}`)).map((o) => [o.code, o.id])).toEqual(
+      orgsBefore,
+    );
+    expect(before.employeeCodes).toHaveLength(200);
   });
 
   it('角色齐全，且全部是合成数据（example.com 邮箱、带“演示”字样）', () => {
@@ -97,22 +292,28 @@ describe('F-025 演示种子', () => {
     );
     expect(submitted.status).toBe('in_review');
 
-    const pending = await json<{ items: unknown[] }>(
+    // 种子里已有若干在途调动：待办里按本单对应的实例找，不假设待办只有一条
+    const initiated = await json<{ items: { id: string }[] }>(
+      await api.request('GET', `/api/tenant/approval/instances?role=initiated&businessId=${submitted.id}`, employee),
+    );
+    const instanceId = initiated.items[0]!.id;
+    const pending = await json<{ items: { id: string }[] }>(
       await api.request('GET', '/api/tenant/employment/transfers/manager/todos?tab=pending', manager),
     );
-    expect(pending.items).toHaveLength(1);
+    expect(pending.items.map((item) => item.id)).toContain(submitted.id);
 
-    // 审批中心：直接上级（部门负责人）→ 调入部门 HRBP，各自只在自己的待办里看到
+    // 审批中心：直接上级（部门负责人）→ 调入部门 HRBP，各自只在自己的待办里看到本单
     for (const approver of [manager, hr]) {
       const todos = await json<{ items: { taskId: string; instanceId: string }[] }>(
         await api.request('GET', '/api/tenant/approval/todos', approver),
       );
-      expect(todos.items).toHaveLength(1);
+      const todo = todos.items.filter((item) => item.instanceId === instanceId);
+      expect(todo).toHaveLength(1);
       const instance = await json<{ revision: number }>(
-        await api.request('GET', `/api/tenant/approval/instances/${todos.items[0]!.instanceId}`, approver),
+        await api.request('GET', `/api/tenant/approval/instances/${instanceId}`, approver),
       );
       await json(
-        await api.request('POST', `/api/tenant/approval/tasks/${todos.items[0]!.taskId}/approve`, {
+        await api.request('POST', `/api/tenant/approval/tasks/${todo[0]!.taskId}/approve`, {
           ...approver,
           ifMatch: instance.revision,
           body: {},
@@ -151,17 +352,5 @@ describe('F-025 演示种子', () => {
     );
     expect(audit.items.length).toBeGreaterThan(0);
     expect((await api.request('GET', '/api/tenant/audit/data-changes', employee)).status).toBe(403);
-  });
-
-  // P3（#92 第二轮）：演示流程已建但未发布（发布前中断）时，重跑不能误报完成
-  it('演示流程未发布视为不完整：重跑报错并提示重置，而不是返回已完成', async () => {
-    const db = database().db;
-    await withTenant(db, manifest.tenantId, (tx) =>
-      tx
-        .update(approvalProcesses)
-        .set({ currentVersionId: null })
-        .where(eq(approvalProcesses.code, DEMO_TRANSFER_PROCESS_CODE)),
-    );
-    await expect(seedDemo(db, { clock, nodeEnv: 'test' })).rejects.toBeInstanceOf(DemoSeedIncompleteError);
   });
 });
