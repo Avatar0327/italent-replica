@@ -55,6 +55,16 @@ async function prepare(editDate: boolean) {
       definition.code,
     );
     expect(permission.status, await permission.clone().text()).toBe(200);
+    const scope = await world.api.request(
+      'PUT',
+      `/api/tenant/permission/profiles/${profile.id}/data-scopes/TenantBase`,
+      {
+        ...world.asAdmin,
+        ifMatch: 0,
+        body: { targetKind: 'entity', targetCode: definition.code, seeAll: true },
+      },
+    );
+    expect(scope.status).toBe(200);
   }
   await makeGrantable(world, [profile.id]);
   expect((await grant(world, member.id, profile.id)).status).toBe(201);
@@ -89,7 +99,8 @@ for (const editDate of [true, false]) {
       const postId = editDate ? s.futurePost.id : s.post.id;
       const values = { name: `日期回归${kind}`, ...(kind === 'positions' ? { orgId: s.org.id, postId } : {}) };
       if (kind === 'positions') {
-        const candidates = await s.api.request('GET', `/api/tenant/job/posts?asOf=${timing.asOf}`, s.world.asAdmin);
+        const candidates = await s.api.request('GET', `/api/tenant/job/posts?asOf=${timing.asOf}`, s.actor);
+        expect(candidates.status, await candidates.clone().text()).toBe(200);
         const ids = ((await candidates.json()) as { items: { id: string }[] }).items.map((item) => item.id);
         expect(ids).toContain(postId);
         if (!editDate) expect(ids).not.toContain(s.futurePost.id);
