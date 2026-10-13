@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createFormStore } from '../../apps/web/src/foundation/forms/store.js';
-import { ApiError } from '../../apps/web/src/foundation/client.js';
+import { ApiError, type Command } from '../../apps/web/src/foundation/client.js';
 
 const rejected = (status: number, code = 'VALIDATION_FAILED') => new ApiError(status, code, 'fields', '合成拒绝');
 const input = () => ({
@@ -14,7 +14,7 @@ const input = () => ({
 describe('AC-FE-F123 表单提交内核', () => {
   it('只提交有编辑权的字段，携带生效日期与原 revision', async () => {
     const store = createFormStore();
-    const send = vi.fn(async () => ({ id: 'original' }));
+    const send = vi.fn<(command: Command) => Promise<{ id: string }>>(async () => ({ id: 'original' }));
     await store.submit('a', { ...input(), effectiveDate: '2026-10-13', send });
     expect(send.mock.calls[0]?.[0]).toMatchObject({
       revision: 3,
@@ -77,7 +77,7 @@ describe('AC-FE-F123 表单提交内核', () => {
         throw rejected(409, 'REVISION_CONFLICT');
       },
     });
-    const send = vi.fn(async () => ({ id: 'original' }));
+    const send = vi.fn<(command: Command) => Promise<{ id: string }>>(async () => ({ id: 'original' }));
     await store.submit('a', { ...input(), send });
     expect(send).not.toHaveBeenCalled();
     await store.reread('a', async () => ({
@@ -109,5 +109,41 @@ describe('AC-FE-F123 表单提交内核', () => {
     await store.reread('tenant/a', async () => ({ id: 'wrong', revision: 4, values: {} }));
     expect(store.get('tenant/a')?.latest).toBeUndefined();
     expect(store.get('tenant/a')?.status).toBe('unknown');
+  });
+  it('连续冲突必须重新读；冲突确认后的 422 改正仍带最新 revision', async () => {
+    const store = createFormStore();
+    const conflict = async () => {
+      throw rejected(409, 'REVISION_CONFLICT');
+    };
+    await store.submit('a', { ...input(), send: conflict });
+    await store.reread('a', async () => ({ id: 'original', revision: 4, values: input().baseline }));
+    store.confirm('a');
+    await store.submit('a', {
+      ...input(),
+      send: async () => {
+        throw rejected(422);
+      },
+    });
+    const send = vi.fn<(command: Command) => Promise<{ id: string }>>(conflict);
+    await store.submit('a', { ...input(), send });
+    expect(send.mock.calls[0]?.[0].revision).toBe(4);
+    store.confirm('a');
+    expect(store.get('a')?.status).toBe('conflict');
+    expect(store.get('a')?.latest).toBeUndefined();
+  });
+  it('冲突重读失败不丢草稿，也不能确认重提', async () => {
+    const store = createFormStore();
+    await store.submit('a', {
+      ...input(),
+      send: async () => {
+        throw rejected(409, 'REVISION_CONFLICT');
+      },
+    });
+    await store.reread('a', async () => {
+      throw new Error('读取失败');
+    });
+    store.confirm('a');
+    expect(store.get('a')).toMatchObject({ status: 'conflict', values: input().values });
+    expect(store.get('a')?.readError).toBeInstanceOf(Error);
   });
 });

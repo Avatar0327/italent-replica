@@ -1,10 +1,11 @@
 import { Alert, Button, Drawer, Form, Space, Steps } from 'antd';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { checkActivityChains, type ChainDraft } from '@italent/domain';
 import { usePermissions } from '../foundation/Permissions.js';
 import { ApiError } from '../foundation/client.js';
 import { ActivityControl, Chains, Conditions, EV } from './ActivityFields.js';
-import { Failure, useWriter } from './runtime.js';
+import { useRecordForm } from './useRecordForm.js';
+import { CommandStatus } from '../foundation/forms/CommandStatus.js';
 import { evaluationPatch, records, validateDates, validateConditions, type Row } from './model.js';
 import { m, textValue } from './messages.js';
 export const EVALUATION = 'TEvaluation.EvaluationActivity';
@@ -52,18 +53,19 @@ function useWizard({ row, close, saved }: WizardProps) {
   const permission = usePermissions(EVALUATION);
   const [step, setStep] = useState(0);
   const [form] = Form.useForm();
-  const writer = useWriter(() => {
-    saved();
-    close();
-  });
-  const locked = !!row && row.applyCount !== 0;
+  const writer = useRecordForm(`${EV}/activities`, row);
+  const current = writer.current;
+  useEffect(() => {
+    if (writer.state?.values) form.setFieldsValue(writer.state.values);
+  }, [form, writer.state?.values]);
+  const locked = !!current && current.applyCount !== 0;
   const field = (key: string) => {
     const access = permission.field(key);
     return {
       ...access,
       editable:
         access.editable &&
-        row?.status !== 'completed' &&
+        current?.status !== 'completed' &&
         !(locked && ['typeId', 'orgRange', 'categoryIds', 'levelIds', 'effectiveDate', 'noticeOrgRange'].includes(key)),
     };
   };
@@ -80,19 +82,19 @@ function useWizard({ row, close, saved }: WizardProps) {
   const canCreate = !!row || required.every((key) => field(key).editable);
   const save = async () => {
     try {
+      if (writer.locked) return;
+      setLocalError('');
       await form.validateFields();
       const values = form.getFieldsValue(true) as Record<string, unknown>;
       if (!validateDates(values.startDate as string, values.endDate as string)) throw new Error(m.dateInvalid);
       const editable = groups.flat().filter((key) => field(key).editable);
-      const body = evaluationPatch(row ?? {}, values, editable);
+      const body = evaluationPatch(current ?? {}, values, editable);
       validateChains(body, values);
       if ('conditions' in body) validateConditions(body.conditions);
-      await writer.write(
-        row ? `${EV}/activities/${row.id}` : `${EV}/activities`,
-        row ? 'PATCH' : 'POST',
-        body,
-        row?.revision ?? 0,
-      );
+      await writer.save(values, editable, row ? 'PATCH' : 'POST');
+      writer.clear();
+      saved();
+      close();
     } catch (error) {
       if (error instanceof ApiError) form.setFields(error.fieldErrors);
       if (error instanceof Error) setLocalError(error.message);
@@ -123,8 +125,8 @@ export function ActivityWizard(props: WizardProps) {
       />
       {!canCreate && <Alert type="warning" message={m.restricted} />}
       {localError && <Alert type="error" message={localError} />}
-      <Failure error={writer.error} retry={writer.reset} />
-      <Form form={form} layout="vertical" initialValues={initial} disabled={writer.busy || writer.blocked}>
+      <CommandStatus submission={writer} labels={m} />
+      <Form form={form} layout="vertical" initialValues={initial} disabled={writer.busy || writer.locked}>
         <WizardFields state={state} row={row} />
       </Form>
     </Drawer>
@@ -154,12 +156,7 @@ function WizardFooter({ state, close }: { state: ReturnType<typeof useWizard>; c
           {m.next}
         </Button>
       ) : (
-        <Button
-          type="primary"
-          onClick={() => void save()}
-          loading={writer.busy}
-          disabled={writer.blocked || !canCreate}
-        >
+        <Button type="primary" onClick={() => void save()} loading={writer.busy} disabled={writer.locked || !canCreate}>
           {m.save}
         </Button>
       )}
@@ -223,13 +220,13 @@ function validateChains(body: Record<string, unknown>, values: Record<string, un
 
 function wizardControl(key: string, state: ReturnType<typeof useWizard>, row?: Row) {
   const { field, writer, locked } = state;
-  const disabled = !field(key).editable || writer.blocked;
+  const disabled = !field(key).editable || writer.locked;
   if (key === 'chains')
     return (
       <Chains disabled={disabled} locked={locked} {...(!field(key).editable ? { value: records(row?.chains) } : {})} />
     );
   if (key === 'conditions')
     return <Conditions disabled={disabled} {...(!field(key).editable ? { value: records(row?.conditions) } : {})} />;
-  if (field(key).editable) return <ActivityControl name={key} disabled={writer.blocked} />;
+  if (field(key).editable) return <ActivityControl name={key} disabled={writer.locked} />;
   return <span>{textValue(row?.[key])}</span>;
 }

@@ -4,6 +4,8 @@ import { ApiError } from './client.js';
 import { ui } from './messages.js';
 import { PermissionField } from './Permissions.js';
 import type { FieldAccess } from './permission-model.js';
+import { CommandStatus } from './forms/CommandStatus.js';
+import type { CommandForm } from './forms/useCommandForm.js';
 import { useSession } from './Session.js';
 
 export interface FormField {
@@ -21,6 +23,7 @@ export interface FormGroup {
 export interface FormOverlayProps {
   /** 已有记录使用 id:revision；刷新后换 key，不能把旧表单值带入新版本。新建表单也应给本次打开的稳定键。 */
   recordKey: string;
+  submission?: CommandForm;
   title: string;
   open: boolean;
   mode?: 'drawer' | 'modal';
@@ -48,7 +51,7 @@ function useSubmission(props: FormOverlayProps, form: FormInstance) {
     };
   }, []);
   const submit = async (values: Record<string, unknown>) => {
-    if (submitting.current) return;
+    if (submitting.current || props.submission?.locked) return;
     submitting.current = true;
     setBusy(true);
     setError(undefined);
@@ -74,19 +77,35 @@ function useSubmission(props: FormOverlayProps, form: FormInstance) {
 function OpenForm(props: FormOverlayProps) {
   const [form] = Form.useForm();
   const { busy, error, submit } = useSubmission(props, form);
+  const submission = props.submission;
+  const locked = busy || submission?.locked;
+  useEffect(() => {
+    if (submission?.state?.values) form.setFieldsValue(submission.state.values);
+  }, [form, submission?.state?.values]);
   const footer = (
     <Space>
       <Button onClick={props.onClose} disabled={busy}>
         {ui.cancel}
       </Button>
-      <Button type="primary" loading={busy} onClick={() => form.submit()}>
+      <Button type="primary" disabled={locked} loading={busy} onClick={() => form.submit()}>
         {ui.save}
       </Button>
     </Space>
   );
   const content = (
     <>
-      {!!error && (
+      {submission && (
+        <CommandStatus
+          submission={submission}
+          labels={Object.fromEntries(
+            props.groups
+              .flatMap((g) => g.fields)
+              .filter((f) => f.access.visible)
+              .map((f) => [f.name, f.label]),
+          )}
+        />
+      )}
+      {!!error && (!submission || !submission.state?.error) && (
         <Alert
           type="error"
           showIcon
@@ -98,7 +117,7 @@ function OpenForm(props: FormOverlayProps) {
           }
         />
       )}
-      <Form form={form} layout="vertical" initialValues={props.initialValues} onFinish={submit} disabled={busy}>
+      <Form form={form} layout="vertical" initialValues={props.initialValues} onFinish={submit} disabled={locked}>
         <FormGroups groups={props.groups} initialValues={props.initialValues} mode={props.mode} />
       </Form>
     </>
