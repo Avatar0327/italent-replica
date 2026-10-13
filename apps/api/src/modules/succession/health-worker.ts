@@ -7,6 +7,7 @@ import { CalcBlocked, CalcObjectFailure, type CalcHandler } from './calc-contrac
 import { healthPrincipal } from './health-principal.js';
 import { healthMetricReader, type HealthReads } from './health-metrics.js';
 import { lockHealthTarget, requireHealthOrg, storeHealth } from './health-results.js';
+import { unsupportedHealthRule } from './health-rule-support.js';
 import { levelViews } from './levels-store.js';
 import { rowsOf } from './read-sql.js';
 import { successionReviewReads } from './ports.js';
@@ -36,6 +37,11 @@ export function createHealthHandler(kind: 'org_health' | 'org_health_reset', por
         throw new CalcObjectFailure('REVISION_CONFLICT', false);
       if (!reset && before?.method === 'manual') return 'manual_kept';
       const levels = await healthLevels(tx, run.tenantId);
+      // DEC-460：执行前拒绝存量禁用配置，不能被未引用行或更早命中等级掩盖。
+      for (const level of levels) {
+        const unsupported = level.rules?.rows.find(unsupportedHealthRule);
+        if (unsupported) throw new CalcObjectFailure('FIELD_FORBIDDEN', true, level.id, unsupported.rowNo);
+      }
       const read = healthMetricReader(ctx, object, principal, port ?? successionReviewReads(run.tenantId));
       const result = await evaluateHealthLevels(
         levels.map((l) => ({ ...l, displayOrder: Number(l.displayOrder) })),

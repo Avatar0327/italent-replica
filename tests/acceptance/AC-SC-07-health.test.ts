@@ -190,7 +190,7 @@ describe('AC-SC-07 组织健康度', () => {
         syncEligible: true,
         formValues: {},
       });
-      expect(await mapped({ ...count, population: 'incumbents' })).toEqual({ status: 'value', value: 0 });
+      expect(await mapped({ ...count, population: 'incumbents' })).toEqual({ status: 'empty' });
       port.denyViewer(w.user.id, { fieldCodes: ['score'] });
       expect(await read(row)).toEqual({ status: 'forbidden' });
     });
