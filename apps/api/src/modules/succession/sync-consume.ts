@@ -27,6 +27,8 @@ import { collectTargets, persistPlan, readPlan } from './sync-plan.js';
 import { rowsOf } from './read-sql.js';
 import { executeSyncBatch } from './sync-execute.js';
 import { claimSync, retryTime } from './sync-control.js';
+import { enqueueSyncHealth } from './sync-health.js';
+import { lockOrganizationSettings } from '../org/locks.js';
 
 export interface SyncDeps extends AccessDeps {
   db: Db;
@@ -198,6 +200,7 @@ class FirstPlan {
         { tenantId: input.tenantId, timezone, userId: input.requesterUserId },
         authorizationTargets,
       );
+    if (targets.some((t) => t.kind === 'org_health')) await lockOrganizationSettings(tx, input.tenantId);
     const planned = await persistPlan(tx, {
       tenantId: input.tenantId,
       batchId: batch.id,
@@ -243,6 +246,7 @@ class FirstPlan {
     if (!planned.pending) {
       await release(tx, batch);
       await notify(tx, batch, now, input.requesterUserId ?? null);
+      await enqueueSyncHealth(tx, batch, now);
     }
     return batch;
   }

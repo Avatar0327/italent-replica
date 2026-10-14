@@ -139,6 +139,91 @@ const LEFT_PROJECTED: Obligation = {
 };
 
 export const SUCCESSION: RequiredTable = {
+  [`GET ${BASE}/maps/org`]: [
+    {
+      perm: 'obj:Succession.Map:view',
+      facts: ['object:objectContext'],
+      need: { scope: 'list' },
+      at: [
+        {
+          role: 'call',
+          unit: `${S}/org-map-routes.ts#registerOrgMapRoutes`,
+          anchor: "await successionContext(c, deps, 'map')",
+        },
+        ...CONTEXT,
+        {
+          role: 'const',
+          unit: 'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>map',
+          anchor: "object( 'Map'",
+        },
+        {
+          role: 'scope',
+          unit: `${S}/org-map-routes.ts#registerOrgMapRoutes`,
+          anchor: "await readMapDisplayScope(tx, displayCtx, 'org', supplied, 'submitted')",
+        },
+      ],
+    },
+    {
+      perm: 'guard:succession.selfHidden',
+      note: '请求当日 SELF 谓词对组织与嵌套职位目标判定，空记录集合也按目标删除 successors / successorCount 键',
+      at: [
+        {
+          role: 'call',
+          unit: `${S}/org-map-routes.ts#registerOrgMapRoutes`,
+          anchor: 'await hiddenMapTargets(tx, ctx, targets, today)',
+        },
+        {
+          role: 'impl',
+          unit: `${S}/map-card-reader.ts#hiddenMapTargets`,
+          anchor: 'selfRecordHiddenSql(',
+        },
+      ],
+    },
+    ...[
+      {
+        kind: 'record',
+        object: 'Record',
+        branch: 'mapRecords',
+        predicate: 'succession.recordScope(org ∪ creator)',
+        unit: 'record-read.ts#listMapRecordRows',
+        anchor: "conditions(visibility, { status: 'active' })",
+      },
+      {
+        kind: 'healthResult',
+        object: 'HealthResult',
+        branch: 'mapHealth',
+        predicate: 'succession.healthScope',
+        unit: 'health-results.ts#readHealthResults',
+        anchor: 'scopeSql(scope, { org: sql`v.org_id` })',
+      },
+      {
+        kind: 'riskResult',
+        object: 'RiskResult',
+        branch: 'mapRisk',
+        predicate: 'succession.riskScope',
+        unit: 'risk-store.ts#readRiskRows',
+        anchor: 'scopeSql(scope, { org: sql`p.org_id`, creator: sql`r.assigned_by` })',
+      },
+    ].map((item): Obligation => ({
+      perm: `obj:Succession.${item.object}:view`,
+      purpose: `disclosure:${item.branch}`,
+      facts: ['object:object.* 动作'],
+      need: { scope: 'list', predicate: item.predicate },
+      at: [
+        {
+          role: 'call',
+          unit: `${S}/map-card-reader.ts#mapObjectAccess`,
+          anchor: "await deps.authorize({ ...ctx, action: 'object.view', resource: codeOf(kind), fields: [] })",
+        },
+        {
+          role: 'const',
+          unit: `packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>${item.kind}`,
+          anchor: `object( '${item.object}'`,
+        },
+        { role: 'scope', unit: `${S}/${item.unit}`, anchor: item.anchor },
+      ],
+    })),
+  ],
   [`GET ${BASE}/readiness`]: [view(`router.get(\`\${SUCCESSION_BASE}/readiness\`, async (c) => { ${VIEW}`)],
   [`GET ${BASE}/records`]: [
     view(`router.get(RECORDS, async (c) => { ${VIEW}`),
@@ -567,6 +652,15 @@ function healthRequired(mode: 'read' | 'assign' | 'reset' | 'compute'): Obligati
             ]
           : []),
         constant,
+        ...(mode === 'read'
+          ? [
+              {
+                role: 'impl' as const,
+                unit: `${S}/health-results.ts#healthAccess`,
+                anchor: "action: 'object.view', resource: codeOf('healthResult')",
+              },
+            ]
+          : []),
         {
           role: 'scope',
           unit: queue ? `${S}/health-routes.ts#queueResults` : `${S}/health-results.ts#readHealthResults`,

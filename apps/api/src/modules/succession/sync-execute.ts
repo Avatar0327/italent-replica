@@ -14,7 +14,6 @@ import { inArray } from 'drizzle-orm';
 import { SyncPortError } from '../talent-review/sync-port.js';
 import { PlanFailure, writerAccess } from './sync-access.js';
 import { lockTargets } from './record-write.js';
-import { enqueueCalcRun } from './calc-worker.js';
 import { mutex, release, save, notify, type SyncDeps, type SyncInput } from './sync-consume.js';
 import {
   executeTarget,
@@ -27,6 +26,9 @@ import {
 } from './sync-execute-target.js';
 import { terminateLocal } from './sync-control.js';
 import { objectOutcomes, persistTarget } from './sync-execute-outcomes.js';
+import { executeHealthTarget, enqueueSyncHealth } from './sync-health.js';
+import { lockOrganizationSettings } from '../org/locks.js';
+import { lockHealthRules } from './health-references.js';
 
 const pending = sql`(status='pending' OR (status='failed' AND retryable))`;
 class Execution {
@@ -127,7 +129,6 @@ class Execution {
       page: {
         objectIds: [...new Set(nominations.map((n) => n.objectId))],
         nominationIds: nominations.map((n) => n.nominationId),
-        orgIds: page.filter((t) => t.targetKind === 'org_health').map((t) => t.targetId),
         fieldCodes: [
           'kind',
           'direction',
@@ -142,23 +143,41 @@ class Execution {
     });
     if (source.runStatus === 'superseded') throw new PlanFailure('RUN_SUPERSEDED');
     if (!source.ok) throw new PlanFailure(source.reason ?? 'SOURCE_UNAVAILABLE');
+    let denied = source.forbidden;
+    const healthIds = page.filter((t) => t.targetKind === 'org_health').map((t) => t.targetId);
+    if (healthIds.length) {
+      const health = await this.deps.port.authorizeSourceRead(tx, {
+        ...this.key,
+        page: { orgIds: healthIds, fieldCodes: ['levelId', 'levelCode', 'manual'] },
+      });
+      if (health.runStatus === 'superseded') throw new PlanFailure('RUN_SUPERSEDED');
+      if (!health.ok) throw new PlanFailure(health.reason ?? 'SOURCE_UNAVAILABLE');
+      denied = { ...denied, orgIds: health.forbidden.orgIds, orgFields: health.forbidden.orgFields };
+    }
     await writerAccess(this.deps, tx, this.key.tenantId, this.timezone);
     // 与 A2 / A3 同序；不能在前一目标写完后才取后一目标的员工锁或目标锁。
     const employees = [...new Set(nominations.filter(openItem).map((n) => n.successorEmployeeId))].sort();
     for (const id of employees)
       await tx.execute(sql`SELECT id FROM employment_employees
       WHERE tenant_id=${this.key.tenantId}::uuid AND id=${id}::uuid FOR SHARE`);
+    if (healthIds.length) {
+      await lockOrganizationSettings(tx, this.key.tenantId);
+      await lockHealthRules(tx, this.key.tenantId);
+    }
     await lockTargets(
       tx,
       this.key.tenantId,
       page.map((t) => ({
-        kind: t.targetKind === 'position' ? 'position' : 'org',
+        kind: t.targetKind,
         id: t.targetId,
       })),
     );
     // 等锁期间可能撤权，不能复用锁前 targetAccess 的范围缓存。
     const writer = await writerAccess(this.deps, tx, this.key.tenantId, this.timezone);
-    return { batch: this.batch, writer, denied: source.forbidden, now: this.deps.clock(), commandId };
+    const healthMeetings = healthIds.length
+      ? new Map((await this.deps.port.listRunOrgHealth(tx, this.key)).map((row) => [row.orgId, row.meetingId]))
+      : undefined;
+    return { batch: this.batch, writer, denied, now: this.deps.clock(), commandId, healthMeetings };
   }
   async page(tx: Tx, page: SyncTarget[], pageNo: number, commandId: string) {
     await this.deps.port.assertExecutionActive(tx, this.key); // 必须为页事务第一步。
@@ -179,8 +198,6 @@ class Execution {
         .where(and(eq(targets.tenantId, this.key.tenantId), eq(targets.id, peek.id)))
         .for('update');
       if (!target || !openTarget(target)) continue;
-      // D4 接实际健康度写回；未接通时整页 A 类失败，不制造成功回执。
-      if (target.targetKind === 'org_health') throw new PlanFailure('SOURCE_UNAVAILABLE');
       const nominations = (
         await tx
           .select()
@@ -190,7 +207,11 @@ class Execution {
           .for('update')
       ).filter(openItem);
       const result = await tx
-        .transaction((sp) => executeTarget(sp, ctx, target, nominations))
+        .transaction((sp) =>
+          target.targetKind === 'org_health'
+            ? executeHealthTarget(sp, ctx, target)
+            : executeTarget(sp, ctx, target, nominations),
+        )
         .catch((error: unknown) => {
           const failure = error instanceof PlanFailure ? error : new PlanFailure('STORAGE_UNAVAILABLE');
           return failedTarget(ctx, nominations, failure);
@@ -245,27 +266,7 @@ class Execution {
     );
     await release(tx, completed);
     await notify(tx, completed, now, this.input.requesterUserId ?? null);
-    const orgs = await tx
-      .select({ id: targets.targetId })
-      .from(targets)
-      .where(
-        and(eq(targets.tenantId, this.key.tenantId), eq(targets.batchId, batch!.id), eq(targets.targetKind, 'org')),
-      );
-    await enqueueCalcRun(
-      tx,
-      {
-        tenantId: this.key.tenantId,
-        kind: 'org_health',
-        trigger: 'review_sync',
-        commandId: `${batch!.id}:org_health`,
-        batchId: batch!.id,
-        requestedBy: null,
-        businessDate: batch!.businessDate,
-        objects: orgs.map((o) => ({ objectType: 'org', objectId: o.id })),
-        scope: { sourceBatchId: batch!.id },
-      },
-      now,
-    );
+    await enqueueSyncHealth(tx, completed, now);
     return completed;
   }
   async fail(tx: Tx, error: unknown) {
