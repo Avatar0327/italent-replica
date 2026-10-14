@@ -318,6 +318,7 @@ function editableContent(latest: Record<string, unknown>, draft: Record<string, 
   const rows = (key: string, fields: string[]) =>
     editableRows(records(latest[key]), records(draft[key]), 'key', fields);
   return {
+    ...latest,
     roles: rows('roles', ['weight']),
     dimensions: rows('dimensions', ['name', 'definition', 'weight']),
     questions: rows('questions', ['text', 'weight']),
