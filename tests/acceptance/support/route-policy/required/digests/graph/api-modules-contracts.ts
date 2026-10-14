@@ -191,6 +191,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/visibility.ts#employmentVisibilitySql',
   ],
   'apps/api/src/modules/contracts/queries.ts#listContracts': [
+    'apps/api/src/modules/contracts/list-query.ts#applicableQuery',
     'apps/api/src/modules/contracts/list-query.ts#resolveOrgIds',
     '#allContracts',
     '#inReviewRequests',
@@ -449,6 +450,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/contracts/rules.ts#CONTRACT_OBJECT',
   ],
   'apps/api/src/modules/contracts/routes.ts#trim': [
+    '#isReceipt',
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
   ],
   'apps/api/src/modules/contracts/routes.ts#trimEmployment': [
