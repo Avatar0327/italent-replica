@@ -361,6 +361,8 @@ function DictionaryForm({ kind, row, close, saved }: { kind: Kind; row?: Row; cl
       : [field('enabled', s.settings.enabled, <Switch aria-label={s.settings.enabled} />)]),
   ];
   const verb = row ? s.edit : s.settings.create;
+  // 新建继任等级默认启用；准备度不带启用项（见上）。
+  const blank = kind === 'readiness' ? {} : { enabled: true };
   return (
     <FormOverlay
       open
@@ -368,7 +370,7 @@ function DictionaryForm({ kind, row, close, saved }: { kind: Kind; row?: Row; cl
       recordKey={row?.id ?? `new-${kind}`}
       submission={writer}
       title={`${verb}${title(kind)}`}
-      initialValues={row ? { ...row } : kind === 'readiness' ? {} : { enabled: true }}
+      initialValues={row ? { ...row } : blank}
       groups={[{ title: s.basic, fields }]}
       onClose={close}
       onSubmit={async (values) => {
