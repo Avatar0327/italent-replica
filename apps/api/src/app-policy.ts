@@ -5,6 +5,7 @@
  */
 import { AUDIT_POLICIES } from './audit/policy.js';
 import { AVATAR_POLICIES } from './modules/avatar/policy.js';
+import { COMMAND_RESULT_POLICIES } from './modules/command-result/policy.js';
 import { EVALUATION_POLICIES } from './modules/evaluation/policy.js';
 import { ESTABLISHMENT_POLICIES } from './modules/establishment/policy.js';
 import { IDP_POLICIES } from './modules/idp/policy.js';
@@ -38,6 +39,7 @@ export function tenantPolicyTable(extra: readonly PolicyTable[] = []): PolicyTab
     TALENT_POLICIES,
     IDP_POLICIES,
     AVATAR_POLICIES,
+    COMMAND_RESULT_POLICIES,
     TALENT_REVIEW_POLICIES,
     QUALIFICATION_POLICIES,
     EVALUATION_POLICIES,

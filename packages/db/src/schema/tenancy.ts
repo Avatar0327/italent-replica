@@ -216,6 +216,9 @@ export const commandLedger = pgTable(
     responseStatus: integer('response_status').notNull(),
     responseBody: jsonb('response_body').notNull(),
     createdAt: utc('created_at'),
+    // F-120：发起人与命令类型（“方法 路径模板”），供发起人按命令 ID 只读回查自身结果；非 HTTP 入口写入的行为空
+    actorUserId: uuid('actor_user_id'),
+    commandType: text('command_type'),
   },
   (t) => [primaryKey({ columns: [t.tenantId, t.commandId] })],
 );

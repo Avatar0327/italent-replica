@@ -33,6 +33,7 @@ import { registerIdpRoutes } from './modules/idp/routes.js';
 import { registerQualificationRoutes } from './modules/qualification/routes.js';
 import { registerEvaluationRoutes } from './modules/evaluation/routes.js';
 import { registerAvatarRoutes } from './modules/avatar/routes.js';
+import { registerCommandResultRoutes } from './modules/command-result/routes.js';
 import { registerTalentReviewRoutes } from './modules/talent-review/routes.js';
 import { registerSuccessionRoutes } from './modules/succession/routes.js';
 import { assertFormulaBindingCapabilities } from './modules/talent-review/formula-binding-capabilities.js';
@@ -56,6 +57,7 @@ const TENANT_MODULES: readonly TenantRouteModule[] = [
   registerQualificationRoutes, // R3-T02 任职资格配置（Qualification）
   registerEvaluationRoutes, // R3-T02 人才评定配置（TEvaluation；B1a 活动类型）
   registerAvatarRoutes, // F-058 账号头像与人员只读引用
+  registerCommandResultRoutes, // F-120 本人命令结果只读回查
   registerTalentReviewRoutes, // R3-T04 人才盘点（TalentReview；PR-A 准备度字典）
   registerSuccessionRoutes, // R3-T05 继任管理（SuccessionAndDevelopment；契约 PR 只占装配位）
 ];
