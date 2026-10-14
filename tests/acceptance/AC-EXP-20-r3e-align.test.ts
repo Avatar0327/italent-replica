@@ -294,3 +294,54 @@ describe('#89-4 名称文本的引用判定（不依赖字段目录）：两种�
     });
   });
 });
+
+describe('R3e 改动的函数：逐人求值与批量求值两条路径结果一致（#105）', () => {
+  const ports: InMemoryPortData = {
+    personnelSubset: {
+      'emp-1': {
+        教育经历: [
+          { fields: { 学校: '甲大学', 毕业日期: '2010/07/01' } },
+          { fields: { 学校: '乙大学', 毕业日期: '2014/07/01' } },
+        ],
+      },
+    },
+    performance: {
+      'emp-1': [
+        { modifiedAt: new Date('2026-01-01T00:00:00Z'), fields: { 得分: 70, 截止日期: '2025/12/31' } },
+        { modifiedAt: new Date('2026-01-02T00:00:00Z'), fields: { 得分: 80, 截止日期: '2026/03/31' } },
+      ],
+    },
+  };
+  const fields = { '盘点对象.学历': { optionValue: '03', label: '本科' }, '盘点对象.能力得分': -3 };
+  const batchOf = (formula: string) => {
+    const items = [{ field: '盘点对象.结果', priority: 1, formula }];
+    const context = contextFor(fields, { ports });
+    const batch = evaluateBatch(items, [context.subject], {
+      calendar: CALENDAR,
+      project: PROJECT,
+      ports: context.ports,
+    });
+    if (!batch.ok) return batch.failure;
+    const result = batch.results['emp-1']?.['盘点对象.结果'];
+    return result && valueOf(result);
+  };
+
+  it.each([
+    ['WeekDay("2026/10/11")', num(7)],
+    ['Mod(-7, 3)', num(-1)],
+    ['DateFormat(NextMonth("2026/01/31"), "yyyy-MM-dd")', text('2026-02-28')],
+    ['Years("2020/06/30", "2026/06/29")', num(6)],
+    ['Floor(7, 5) + Ceiling(7, 5)', num(15)],
+    ['RoundUP(1.21, 1)', num(1.3)],
+    ['DateFormat(Time("2026/10/07", "08:05"), "HH:mm")', text('08:05')],
+    ['有效时长("2026/10/07 08:00", "2026/10/07 09:00", 1)', num(60)],
+    ['IN("A", "B", "A")', bool(true)],
+    ['ShowText(盘点对象.学历)', text('本科')],
+    ['获取人事子集的指定字段数据(教育经历.学校, 教育经历.毕业日期, "降序")', text('乙大学')],
+    ['获取最近第N次绩效考核得分(1, 考核结果.截止日期)', num(80)],
+    ['// 注释\n盘点对象.能力得分-1', num(-4)],
+  ] as const)('%s', (formula, expected) => {
+    expect(run(formula, fields, ports)).toEqual(expected);
+    expect(batchOf(formula)).toEqual(expected);
+  });
+});
