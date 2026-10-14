@@ -640,3 +640,162 @@ describe('第 1 轮审查 P2-4：应核对的登记文件缺失判失败', () =>
     expect(done.out).toContain('缺失');
   }, 60_000);
 });
+
+// ---------------------------------------------------------------------------------------------
+// 第 2 轮审查返工（DEC-431①，同类第 2 次）：提交前核对必须是无条件的最终不变式——对每个登记文件，
+// 应有身份集合 = 分叉点保留项 ∪ 本分支新增 ∪ main 新增，结果里每个身份都必须存在且恰好一份；
+// 人工决定的同键异值只放宽“值等于哪一边”，不放宽“必须存在”；应有集合非空而文件缺失判失败。
+// 下面每条对应脚本里一个“读取结果之前就判通过 / 跳过”的出口。
+
+describe('第 2 轮审查 P2-1：人工决定同键异值，只放宽值，不放宽存在', () => {
+  const idxOnly = (entries: string[]) =>
+    ['export const DECLARED: Readonly<Record<string, unknown>> = {', ...entries, '};', ''].join('\n');
+  const withTalent = (value?: string) =>
+    idxOnly(['  approval: APPROVAL_DECLARED,', ...(value ? [`  talent: ${value},`] : [])]);
+
+  it('两边各加 talent: A / talent: B，人工把 DECLARED 恢复成没有 talent → --continue 失败、不提交', () => {
+    const { root, head } = stopAtBusinessConflict({
+      base: { [INDEX]: withTalent() },
+      branch: { [INDEX]: withTalent('A_DECLARED') },
+      main: { [INDEX]: withTalent('B_DECLARED') },
+    });
+    put(root, { [INDEX]: withTalent() });
+    sh(root, 'add', INDEX);
+    const done = resolveBusinessAndContinue(root);
+    expectRefused(root, head, done);
+    expect(done.out).toContain('登记项丢失');
+    expect(done.out).toContain('talent');
+  }, 60_000);
+
+  it('人工在两个值里选一个保留：通过并提交（值可自由决定，存在且恰好一份）', () => {
+    const { root } = stopAtBusinessConflict({
+      base: { [INDEX]: withTalent() },
+      branch: { [INDEX]: withTalent('A_DECLARED') },
+      main: { [INDEX]: withTalent('B_DECLARED') },
+    });
+    put(root, { [INDEX]: withTalent('B_DECLARED') });
+    sh(root, 'add', INDEX);
+    const done = resolveBusinessAndContinue(root);
+    expect(done.status, done.out).toBe(0);
+    expect(mergeInProgress(root)).toBe(false);
+  }, 60_000);
+
+  it('人工写成别的值（两个值之外）也可以；写成两份则重复失败', () => {
+    const mk = () =>
+      stopAtBusinessConflict({
+        base: { [INDEX]: withTalent() },
+        branch: { [INDEX]: withTalent('A_DECLARED') },
+        main: { [INDEX]: withTalent('B_DECLARED') },
+      });
+    const dup = mk();
+    put(dup.root, {
+      [INDEX]: idxOnly(['  approval: APPROVAL_DECLARED,', '  talent: A_DECLARED,', '  talent: B_DECLARED,']),
+    });
+    sh(dup.root, 'add', INDEX);
+    const refused = resolveBusinessAndContinue(dup.root);
+    expectRefused(dup.root, dup.head, refused);
+    expect(refused.out).toContain('登记项重复');
+  }, 60_000);
+});
+
+describe('第 2 轮审查 P2-2：两边新增相同文件也要核对实际结果', () => {
+  const FRESH = `${DECLARED}/fresh.ts`;
+  const fresh = (items: string[]) => declaredFile({ sameStatusInvalidId: items });
+
+  it('git rm 该文件 → --continue 失败、不提交', () => {
+    const { root, head } = stopAtBusinessConflict({
+      base: {},
+      branch: { [FRESH]: fresh([A, B]) },
+      main: { [FRESH]: fresh([A, B]) },
+    });
+    sh(root, 'rm', '-qf', FRESH);
+    const done = resolveBusinessAndContinue(root);
+    expectRefused(root, head, done);
+    expect(done.out).toContain(FRESH);
+    expect(done.out).toContain('缺失');
+  }, 60_000);
+
+  it('保留文件但清空其声明 → --continue 失败、不提交', () => {
+    const { root, head } = stopAtBusinessConflict({
+      base: {},
+      branch: { [FRESH]: fresh([A, B]) },
+      main: { [FRESH]: fresh([A, B]) },
+    });
+    put(root, { [FRESH]: declaredFile({}) });
+    sh(root, 'add', FRESH);
+    const done = resolveBusinessAndContinue(root);
+    expectRefused(root, head, done);
+    expect(done.out).toContain('登记项丢失');
+  }, 60_000);
+
+  it('文件原样保留：通过并提交', () => {
+    const { root } = stopAtBusinessConflict({
+      base: {},
+      branch: { [FRESH]: fresh([A, B]) },
+      main: { [FRESH]: fresh([A, B]) },
+    });
+    const done = resolveBusinessAndContinue(root);
+    expect(done.status, done.out).toBe(0);
+  }, 60_000);
+});
+
+describe('第 2 轮审查：出口清单——不再有“读取结果之前就判通过”的分支', () => {
+  it('出口：只有一边改过的登记文件不核对（旧：必须两边都改过才核对）——本分支新增的导出被人工删掉', () => {
+    const { root, head } = stopAtBusinessConflict({
+      base: { [SCHEMA]: schemaIndex(['tenancy']) },
+      branch: { [SCHEMA]: schemaIndex(['tenancy', 'alpha']) },
+      main: {},
+    });
+    put(root, { [SCHEMA]: schemaIndex(['tenancy']) });
+    sh(root, 'add', SCHEMA);
+    const done = resolveBusinessAndContinue(root);
+    expectRefused(root, head, done);
+    expect(done.out).toContain('登记项丢失');
+    expect(done.out).toContain('alpha');
+  }, 60_000);
+
+  it('出口：只有 main 一边改过的登记文件，人工 git rm → 失败', () => {
+    const { root, head } = stopAtBusinessConflict({
+      base: { [SCHEMA]: schemaIndex(['tenancy']) },
+      branch: {},
+      main: { [SCHEMA]: schemaIndex(['tenancy', 'beta']) },
+    });
+    sh(root, 'rm', '-qf', SCHEMA);
+    const done = resolveBusinessAndContinue(root);
+    expectRefused(root, head, done);
+    expect(done.out).toContain('缺失');
+  }, 60_000);
+
+  it('出口：分支已包含 main 时只检查迁移与重算——登记文件里已有的重复挂载也要被查出', () => {
+    const app = (lines: string[]) =>
+      [
+        "import { registerTenantRoutes } from './modules/tenant/routes.js';",
+        '',
+        'const TENANT_MODULES = [',
+        ...lines,
+        '];',
+        '',
+      ].join('\n');
+    const root = buildRepo({
+      base: { 'apps/api/src/app.ts': app(['  registerTenantRoutes, // 甲']) },
+      main: { 'docs/note.md': '更新\n' },
+      branch: { 'apps/api/src/app.ts': app(['  registerTenantRoutes, // 甲', '  registerTenantRoutes, // 乙']) },
+    });
+    sh(root, 'merge', '-q', '--no-edit', 'origin/main');
+    const head = sh(root, 'rev-parse', 'HEAD');
+    const result = run(root);
+    expect(result.status, result.out).not.toBe(0);
+    expect(result.out).toContain('登记项重复');
+    expect(sh(root, 'rev-parse', 'HEAD')).toBe(head);
+  }, 60_000);
+
+  it('出口：没有任何登记类文件（四侧都不存在）时核对不需要 typescript，也不拦合并', () => {
+    const root = buildRepo({
+      base: {},
+      main: { 'apps/api/src/modules/org/service.ts': service(20) },
+      branch: { 'apps/api/src/modules/org/other.ts': 'export const X = 1;\n' },
+    });
+    const result = run(root);
+    expect(result.status, result.out).toBe(0);
+  }, 60_000);
+});
