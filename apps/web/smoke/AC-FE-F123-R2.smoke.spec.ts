@@ -182,3 +182,22 @@ test('AC-FE-F123-R2 套卷重读变为已使用，只读分值用最新值且可
   await expect(form).toHaveCount(0);
   expect(writes[1]?.content?.scales[0]?.options[0]).toMatchObject({ value: 7, label: '我的选项草稿' });
 });
+
+test('AC-FE-F123-R2 已使用套卷只改名称，不把只读投影误判为内容修改', async ({ page }) => {
+  await setupR3b(page, '/survey360');
+  const writes: unknown[] = [];
+  const original = { ...questionnaire, status: 'used' };
+  await page.route(`**/survey360/questionnaires/${id}`, (route) => {
+    if (route.request().method() === 'GET') return route.fulfill({ json: original });
+    writes.push(route.request().postDataJSON());
+    return route.fulfill({ json: { ...original, revision: 3 } });
+  });
+  await page.getByRole('tab', { name: '套卷', exact: true }).click();
+  await page.getByRole('button', { name: questionnaire.name, exact: true }).click();
+  await page.getByRole('button', edit).click();
+  const form = page.getByRole('dialog', { name: '编辑', exact: true });
+  await field(form, '名称').getByRole('textbox').fill('只改名称');
+  await form.getByRole('button', save).click();
+  await expect(form).toHaveCount(0);
+  expect(writes).toEqual([{ name: '只改名称' }]);
+});
