@@ -91,13 +91,24 @@ details summary{cursor:pointer;color:var(--muted);font-size:13px}
 .mbig{font-size:22px;font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums}.mbig small{font-size:12px;font-weight:400;color:var(--muted);margin-left:6px}
 .mtag.m{border:1px solid var(--line)}
 .mcol details{margin-top:8px}.mcol summary{cursor:pointer;font-size:12px;color:var(--muted)}
+
+.chip{position:relative;padding-bottom:8px}
+.stg{position:absolute;left:5px;right:5px;bottom:2px;display:flex;gap:2px}
+.stg i{flex:1;height:3px;border-radius:2px;background:var(--faint);opacity:.35}
+.stg i.d{background:var(--ok);opacity:1}
+.stg i.a{background:var(--work);opacity:.7}
+.stg i.b{background:var(--bad);opacity:1}
+.dtag{font-size:9px;font-family:var(--mono);padding:0 3px;border-radius:3px;border:1px solid var(--line);opacity:.8}
+body[data-ms="D1"] .chip:not([data-ms="D1"]),body[data-ms="D2"] .chip:not([data-ms="D2"]),body[data-ms="D3"] .chip:not([data-ms="D3"]){opacity:.18}
+.dcard:hover{border-color:var(--ink2)}
 </style>
 <div class="wrap">
   <header>
-    <h1>R3 进行中</h1>
+    <h1>iTalent 进行中</h1>
     <span class="sub" id="at"></span>
     <div class="kpis" id="kpis"></div>
   </header>
+<div id="ms" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;margin:12px 0"></div>
 <section class="flow" style="margin:14px 0"><details style="background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 16px">
 <summary style="cursor:pointer;font-weight:600;font-size:14px">当前开发流程（截至 10-13 09:30Z）</summary>
 <div style="font-size:13px;line-height:1.65;color:var(--ink2);margin-top:8px">
@@ -159,10 +170,12 @@ function stepState(st){
   }
   return {s: st.s || "todo"};
 }
+const STG = {done:"ddd", merge:"dda", conflict:"ddb", cired:"ddb", review:"dap", queue:"dpp", ci:"dpp", rework:"app", dev:"app", decide:"abp", assigned:"app"};
 function chip(st){
-  const x = stepState(st), o = x.o;
-  const tip = [st.k + " " + st.n, NAME[x.s] || x.s, st.pr ? "#" + st.pr : "", x.left ? "等 " + x.left.join(" / ") : "", x.s === "ready" ? "前置已全部合并，可派" : "", o ? o.why + (o.idle < 1e5 ? " · " + dur(o.idle) + "无动静" : "") : "", st.note || ""].filter(Boolean).join(" · ");
-  return `<span class="chip ${x.s}${o && o.stuck ? " stuck" : ""}" title="${esc(tip)}"><span class="k">${esc(st.k)}</span>${esc(st.n)}${st.pr ? `<span class="p">#${st.pr}</span>` : ""}</span>`;
+  const x = stepState(st), o = x.o, dsx = (DATA.msof || {})[st.k];
+  const tip = [st.k + " " + st.n, NAME[x.s] || x.s, st.pr ? "#" + st.pr : "", dsx ? dsx : "", x.left ? "等 " + x.left.join(" / ") : "", x.s === "ready" ? "前置已全部合并，可派" : "", o ? o.why + (o.idle < 1e5 ? " · " + dur(o.idle) + "无动静" : "") : "", st.note].filter(Boolean).join(" · ");
+  const g = (STG[x.s] || "ppp").split("").map(c => `<i class="${c}"></i>`).join("");
+  return `<span class="chip ${x.s}${o && o.stuck ? " stuck" : ""}"${dsx ? ` data-ms="${dsx}"` : ""} title="${esc(tip)}"><span class="k">${esc(st.k)}</span>${esc(st.n)}${st.pr ? `<span class="p">#${st.pr}</span>` : ""}${dsx ? `<span class="dtag">${dsx}</span>` : ""}<span class="stg" title="开发 → 审查 → 合并">${g}</span></span>`;
 }
 function block(l){
   const gs = l.groups || (l.steps ? [{n:"", steps:l.steps}] : []);
@@ -181,26 +194,19 @@ function block(l){
     (l.why ? `<span class="pre">${esc(l.why)}</span>` : "") + `</div>` +
     (focus ? `<div class="focus">${focus}</div>` : "") + (l.pre ? `<div class="pre">前置：${esc(l.pre)}</div>` : "") + groups + `</div>`;
 }
+document.getElementById("lines").innerHTML = (M.lines || []).map(block).join("");
 const MILE = DATA.mile, MSX = DATA.prog && DATA.prog.ms;
 if (MILE && MSX) {
-  LKEYS = {}; MILE.forEach(r => LKEYS[r.st.k] = r.st);
+  MILE.forEach(r => { if (!LKEYS[r.st.k]) LKEYS[r.st.k] = r.st; });
   const dd = dl => Math.ceil((Date.parse(dl + "T23:59:59+08:00") - Date.now()) / 864e5);
-  const depH = st => { if (!st.after || !st.after.length || stepState(st).s === "done") return ""; return `<div class="dep">前置：` + st.after.map(k => { const d = LKEYS[k], ok = d && stepDone(d); return `<i class="${ok ? "ok" : "wait"}">${esc(k)}${ok ? " ✓" : ""}</i>`; }).join("") + `</div>`; };
-  const rowH = r => `<div><div class="mrow"><span class="mtag m">${esc(r.mod)}</span><span class="mtag">${esc(r.kind)}</span>${chip(r.st)}</div>${depH(r.st)}</div>`;
-  const ORDER = ["R1", "R2", "R3", "蓝", "底座", "支撑"];
-  document.getElementById("lines").innerHTML = `<div class="mcols">` + ["D1", "D2", "D3"].map(k => {
-    const m = MSX[k], n = dd(m.dl), rows = MILE.filter(r => r.ms === k);
-    const done = rows.filter(r => stepState(r.st).s === "done"), open = rows.filter(r => stepState(r.st).s !== "done");
-    open.sort((a, b) => ORDER.indexOf(a.mod) - ORDER.indexOf(b.mod));
-    const pct = m.tot ? Math.round(m.done * 100 / m.tot) : 0;
-    const byMod = {}; done.forEach(r => byMod[r.mod] = (byMod[r.mod] || 0) + 1);
-    const modTot = {}, modDone = byMod; ORDER.forEach(o => { const c = rows.filter(r => r.mod === o).length; if (c) modTot[o] = c; });
-    return `<div class="mcol"><div class="mh">${esc(m.t)}</div><div class="mbig">${m.done}/${m.tot}<small>已合并 / 计划（${pct}%）</small></div><div class="ms2">${Object.entries(modTot).map(e => e[0] + " " + (modDone[e[0]] || 0) + "/" + e[1]).join(" · ")}<br><b>${m.act}</b> 在审 / 返工　<b>${m.todo}</b> 未开工<br>${esc(m.dl.slice(5))} 截止　<b style="color:${n <= 1 ? "var(--bad)" : "var(--ink)"}">${n >= 0 ? "还有 " + n + " 天" : "已逾期 " + (-n) + " 天"}</b></div>` +
-      (open.length ? open.map(rowH).join("") : `<div class="pre">没有未完成的任务。</div>`) +
-      (done.length ? `<details><summary>已合并 / 完成 ${done.length} 项（${Object.entries(byMod).map(e => e[0] + " " + e[1]).join(" · ")}）</summary>${done.map(rowH).join("")}</details>` : "") + `</div>`;
-  }).join("") + `</div><div class="pre">不计入：暂停老 PR ${(MSX.paused || []).length} 个${(MSX.paused || []).length ? "（" + MSX.paused.map(x => "#" + x).join(" ") + "）" : ""}；黄色模块。标签：模块 R1 / R2 / R3 / 蓝 / 底座 / 支撑 + 类型 前端 / 后端 / 取证 / 规划 / 演示配套。人事分析（M-ana = FE-R2f）算一项，归 D3。</div>`;
-} else {
-  document.getElementById("lines").innerHTML = (M.lines || []).map(block).join("");
+  const ORDER = ["R1", "R2", "R3", "蓝", "底座"];
+  document.getElementById("ms").innerHTML = ["D1", "D2", "D3"].map(k => {
+    const m = MSX[k], n = dd(m.dl), rows = MILE.filter(r => r.ms === k), pct = m.tot ? Math.round(m.done * 100 / m.tot) : 0;
+    const modTot = {}, modDone = {};
+    rows.forEach(r => { modTot[r.mod] = (modTot[r.mod] || 0) + 1; if (stepState(r.st).s === "done") modDone[r.mod] = (modDone[r.mod] || 0) + 1; });
+    const mods = ORDER.filter(o => modTot[o]).map(o => o + " " + (modDone[o] || 0) + "/" + modTot[o]).join(" · ");
+    return `<div class="kpi dcard" onclick="var b=document.body;b.dataset.ms=b.dataset.ms==='${k}'?'':'${k}'" title="点一下只高亮 ${k} 的任务，再点取消" style="cursor:pointer;padding:8px 12px"><div style="color:var(--ink);font-weight:600;font-size:13px">${esc(m.t)}</div><div class="mbig">${m.done}/${m.tot}<small>已合并 / 计划（${pct}%）</small></div><div>${esc(mods)}</div><div><b>${m.act}</b> 在审 / 返工　<b>${m.todo}</b> 未开工</div><div>${esc(m.dl.slice(5))} 截止　<b style="color:${n <= 1 ? "var(--bad)" : "var(--ink)"}">${n >= 0 ? "还有 " + n + " 天" : "已逾期 " + (-n) + " 天"}</b></div></div>`;
+  }).join("");
 }
 document.getElementById("support").innerHTML = (M.support || []).map(block).join("");
 const legendKeys = ["done","review","merge","queue","dev","rework","decide","conflict","cired","assigned","ready","todo","wait","paused"];
