@@ -43,7 +43,7 @@ async function setup(page: Page) {
       },
     }),
   );
-  await page.route('**/contracts?*', (route) => {
+  await page.route('**/api/tenant/contracts?*', (route) => {
     const view = new URL(route.request().url()).searchParams.get('view');
     return route.fulfill({
       json: {
@@ -56,16 +56,16 @@ async function setup(page: Page) {
       },
     });
   });
-  await page.route('**/contracts/records/*', (route) => route.fulfill({ json: record }));
-  await page.route('**/contracts/master-data/types?*', (route) =>
+  await page.route('**/api/tenant/contracts/records/*', (route) => route.fulfill({ json: record }));
+  await page.route('**/api/tenant/contracts/master-data/types?*', (route) =>
     route.fulfill({ json: { items: [{ id: 'type', code: 'DEMO-T', name: '合成合同类型', enabled: true }] } }),
   );
-  await page.route('**/contracts/rules', (route) =>
+  await page.route('**/api/tenant/contracts/rules', (route) =>
     route.fulfill({
       json: { items: [{ id: 'rule', name: '合成续签规则', priority: 1, orgIds: [], personIds: [], details: [] }] },
     }),
   );
-  await page.route('**/contracts/settings', (route) =>
+  await page.route('**/api/tenant/contracts/settings', (route) =>
     route.fulfill({
       json: {
         autoRenew: false,
@@ -147,7 +147,7 @@ test('AC-FE-R2a-03 六视图请求、详情、高级筛选与三设置页', asyn
 });
 test('AC-FE-R2a-04 无权限入口隐藏，直达拒绝；详情错误不接桩', async ({ page }) => {
   await setup(page);
-  await page.route('**/contracts/records/*', (route) =>
+  await page.route('**/api/tenant/contracts/records/*', (route) =>
     route.fulfill({ status: 404, json: { error: { code: 'NOT_FOUND' } } }),
   );
   await page.getByRole('button', { name: '查看合同', exact: true }).first().click();
@@ -180,8 +180,8 @@ for (const action of ['刷新', '返回接口数据', '清空已选']) {
 test('AC-FE-R2a-08 列表、详情、类型、设置及规则只翻译枚举字段', async ({ page }) => {
   await setup(page);
   const collision = { ...record, number: 'fixed', companyId: 'task', typeId: 'valid' };
-  await page.route('**/contracts?*', (route) => route.fulfill({ json: { items: [collision] } }));
-  await page.route('**/contracts/records/*', (route) => route.fulfill({ json: collision }));
+  await page.route('**/api/tenant/contracts?*', (route) => route.fulfill({ json: { items: [collision] } }));
+  await page.route('**/api/tenant/contracts/records/*', (route) => route.fulfill({ json: collision }));
   await page.goto('/contracts?view=valid');
   for (const text of ['fixed', 'task', 'valid', '固定期限']) {
     await expect(page.locator('.contract-card').getByRole('cell', { name: text, exact: true })).toBeVisible();
@@ -191,19 +191,19 @@ test('AC-FE-R2a-08 列表、详情、类型、设置及规则只翻译枚举字�
   for (const text of ['fixed', 'task', 'valid', '固定期限', '有效', '生效']) {
     await expect(detail.getByText(text, { exact: true })).toBeVisible();
   }
-  await page.route('**/contracts/master-data/types?*', (route) =>
+  await page.route('**/api/tenant/contracts/master-data/types?*', (route) =>
     route.fulfill({ json: { items: [{ id: 'type', code: 'fixed', name: 'task', enabled: true }] } }),
   );
   await page.getByRole('link', { name: '合同类型', exact: true }).click();
   for (const text of ['fixed', 'task', '启用']) {
     await expect(page.locator('.contract-card').getByRole('cell', { name: text, exact: true })).toBeVisible();
   }
-  await page.route('**/contracts/settings', (route) =>
+  await page.route('**/api/tenant/contracts/settings', (route) =>
     route.fulfill({ json: { autoRenew: false, postExitTypeIds: ['fixed', 'task'] } }),
   );
   await page.getByRole('link', { name: '合同管理设置', exact: true }).click();
   await expect(page.locator('.contract-card').getByText('fixed、task', { exact: true })).toBeVisible();
-  await page.route('**/contracts/rules', (route) =>
+  await page.route('**/api/tenant/contracts/rules', (route) =>
     route.fulfill({
       json: {
         items: [
