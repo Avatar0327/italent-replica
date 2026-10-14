@@ -226,7 +226,7 @@ describe('AC-PRM-FW-02 B-03 范围绑定（need）：与“或”满足合并、
     expect(codes(check([base], table))).toContain('REQUIRED_MISSING');
   });
 
-  it('R1c：含 ≥2 个承载节点的准入备选，其 obj: / admin: 准入义务缺 need → NEED_UNBOUND（20 + C1-6 两条 + B3b 重试 + B6b 模板复制 = 24）', () => {
+  it('R1c：含 ≥2 个承载节点的准入备选，其 obj: / admin: 准入义务缺 need → NEED_UNBOUND（端点集合按模块声明，DEC-475④）', () => {
     disclosureChecks({ table: REQUIRED, routes: manifest.declared, contract: frozen })
       .find((check) => check.id === 'admissionNeed')!
       .verify();
