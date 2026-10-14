@@ -1,0 +1,15 @@
+/* 公共主题、无面包屑外壳、视图标题与抽屉均复用 FE-0；这里只保留业务区排版。 */
+.r1c-list > section > .page-heading {
+  display: none;
+}
+.r1c-list > .list-page {
+  min-height: 620px;
+}
+.r1c-reference-drawer .ant-drawer-body {
+  background: #f7f9fa;
+}
+.r1c-reference-drawer .ant-drawer-body > .legacy-page {
+  background: white;
+  padding: 20px;
+  border-radius: 8px;
+}

@@ -24,6 +24,7 @@ import {
   type SyncTarget,
   type TargetContext,
 } from './sync-execute-target.js';
+import { terminateLocal } from './sync-control.js';
 import { objectOutcomes, persistTarget } from './sync-execute-outcomes.js';
 import { executeHealthTarget, enqueueSyncHealth } from './sync-health.js';
 import { lockOrganizationSettings } from '../org/locks.js';
@@ -227,6 +228,7 @@ class Execution {
       ctx.now,
       commandId,
       'execute',
+      this.input.requesterUserId ?? null,
     );
   }
   async finish(tx: Tx) {
@@ -241,6 +243,7 @@ class Execution {
         this.deps.clock(),
         `${this.key.runId}:succession:${this.key.executionNo}:blocked`,
         'blocked',
+        this.input.requesterUserId ?? null,
       );
     }
     const state = await this.deps.port.completeConsumption(tx, this.key);
@@ -259,9 +262,10 @@ class Execution {
       now,
       `${this.key.runId}:succession:${this.key.executionNo}:complete`,
       'complete',
+      this.input.requesterUserId ?? null,
     );
     await release(tx, completed);
-    await notify(tx, completed, now);
+    await notify(tx, completed, now, this.input.requesterUserId ?? null);
     await enqueueSyncHealth(tx, completed, now);
     return completed;
   }
@@ -271,29 +275,13 @@ class Execution {
       await mutex(tx, this.key.tenantId);
       const [batch] = await this.load(tx, true);
       if (['completed', 'terminated', 'rejected'].includes(batch!.status)) return batch!;
-      await tx
-        .update(targets)
-        .set({ status: 'aborted', retryable: false })
-        .where(and(eq(targets.tenantId, this.key.tenantId), eq(targets.batchId, batch!.id), pending));
-      await tx
-        .update(items)
-        .set({ execOutcome: 'aborted', retryable: false })
-        .where(
-          and(
-            eq(items.tenantId, this.key.tenantId),
-            eq(items.batchId, batch!.id),
-            eq(items.planOutcome, 'planned'),
-            sql`(${items.execOutcome} IS NULL OR (${items.execOutcome}='failed' AND ${items.retryable}))`,
-          ),
-        );
-      await release(tx, batch!);
-      return save(
+      return terminateLocal(
         tx,
         batch!,
-        { status: 'terminated', endReason: 'RUN_SUPERSEDED', finishedAt: this.deps.clock() },
+        'superseded',
         this.deps.clock(),
         `${this.key.runId}:superseded`,
-        'terminated',
+        this.input.requesterUserId ?? null,
       );
     }
     // 新执行接管或终止后，旧 worker 不得再以错误处理覆盖批次。
@@ -311,6 +299,7 @@ class Execution {
       this.deps.clock(),
       `${this.key.runId}:succession:${this.key.executionNo}:blocked`,
       'blocked',
+      this.input.requesterUserId ?? null,
     );
   }
 }

@@ -99,9 +99,8 @@ for (const path of ['/job', '/jobs?page=2#list']) {
     );
     await page.goto(path);
     await expect(page.getByRole('menuitem', { name: '职务体系', exact: true })).toBeVisible();
-    await expect(page.getByRole('heading', { name: '职务与职位', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '职位', exact: true })).toBeVisible();
     await expect(page.locator('.shell-workspace')).not.toContainText('暂无访问权限');
-    await page.getByRole('button', { name: '职位', exact: true }).click();
     await expect(page.getByText('职位单权示例', { exact: true })).toBeVisible();
     if (path.startsWith('/jobs')) await expect(page).toHaveURL(/\/job\?page=2#list$/);
   });

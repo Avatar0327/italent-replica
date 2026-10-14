@@ -9,5 +9,6 @@ export const GRAPH: Graph = {
   'apps/api/src/advisory-lock.ts#advisoryLock32': ['#lockKey32'],
   'apps/api/src/advisory-lock.ts#lockKey': ['#joined'],
   'apps/api/src/advisory-lock.ts#lockKey32': ['#joined'],
+  'apps/api/src/command-type.ts#commandTypeOf': ['#UUID_SEGMENT'],
   'apps/api/src/system-actor.ts#auditActor': ['#SYSTEM_USER_ID'],
 };

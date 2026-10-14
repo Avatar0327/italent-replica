@@ -1,0 +1,233 @@
+.service-page {
+  color: #33383d;
+  font-size: 12px;
+}
+.service-nav {
+  display: flex;
+  gap: 32px;
+  border-bottom: 1px solid #e6e8eb;
+  margin-bottom: 16px;
+}
+.service-nav a {
+  padding: 12px 4px;
+  color: #33383d;
+}
+.service-nav a.active {
+  color: #0054f0;
+  border-bottom: 2px solid #0054f0;
+  font-weight: 600;
+}
+.service-profile-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 24px 32px;
+  background: white;
+}
+.service-profile-header h2 {
+  margin: 0 0 8px;
+  font-size: 24px;
+}
+.service-profile-header p,
+.service-profile-header > div > span,
+.service-muted {
+  color: #868b8f;
+}
+.service-profile-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 10px;
+  align-self: flex-start;
+}
+.service-profile-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 170px;
+  gap: 12px;
+}
+.service-section {
+  background: white;
+  border-radius: 8px;
+  padding: 24px;
+  margin-bottom: 12px;
+}
+.service-section h2 {
+  font-size: 14px;
+  border-left: 3px solid #146eff;
+  padding-left: 10px;
+  margin: 0 0 28px;
+}
+.service-outline {
+  background: white;
+  padding: 26px 20px;
+  align-self: start;
+  position: sticky;
+  top: 12px;
+}
+.service-outline a {
+  display: block;
+  border-left: 2px solid #e6e8eb;
+  padding: 10px 14px;
+  color: #5e6266;
+}
+.service-outline a:hover {
+  color: #0054f0;
+  border-color: #0054f0;
+}
+.service-demo-fields {
+  margin-top: 24px;
+}
+.service-hint {
+  margin-bottom: 12px;
+}
+.service-welcome {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #fff1e9;
+  border-left: 4px solid #f07956;
+  border-radius: 8px;
+  padding: 24px 32px;
+  margin-bottom: 16px;
+}
+.service-welcome strong {
+  font-size: 24px;
+}
+.service-dashboard {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(270px, 1fr);
+  gap: 16px;
+}
+.service-dashboard .ant-card {
+  margin-bottom: 16px;
+}
+.service-counts {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+.service-counts .ant-btn {
+  height: auto;
+  min-height: 76px;
+  display: flex;
+  flex-direction: column;
+  border: 0;
+}
+.service-counts strong {
+  font-size: 24px;
+  color: #0054f0;
+}
+.service-todo-card {
+  margin-top: 16px;
+}
+.service-page .ant-descriptions-item-label {
+  color: #868b8f;
+  min-width: 110px;
+}
+.service-form {
+  color: #33383d;
+  font-size: 12px;
+}
+.service-form .transfer-content {
+  padding: 0;
+  border: 0;
+}
+.service-form fieldset {
+  border: 0;
+  border-bottom: 1px solid #e6e8eb;
+  margin: 0 0 20px;
+  padding: 0 0 20px;
+}
+.service-form legend {
+  border-left: 3px solid #146eff;
+  padding-left: 10px;
+  margin-bottom: 20px;
+  font-weight: 600;
+}
+.service-form .transfer-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+.service-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.service-form input,
+.service-form select,
+.service-form button {
+  font: inherit;
+  min-height: 32px;
+  border: 1px solid #e6e8eb;
+  border-radius: 5px;
+  padding: 4px 12px;
+  color: #33383d;
+  background: white;
+}
+.service-form button {
+  cursor: pointer;
+}
+.service-form input:focus-visible,
+.service-form select:focus-visible,
+.service-form button:focus-visible {
+  outline: 2px solid #146eff;
+  outline-offset: 2px;
+}
+.service-form button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.service-form .transfer-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 20px;
+}
+.service-form .transfer-actions button:first-child {
+  background: #146eff;
+  color: white;
+}
+.service-form .transfer-field-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.service-form .transfer-before {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: #868b8f;
+}
+.service-form .transfer-reference-search {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.service-form [role='alert'] {
+  background: #fff1f0;
+  padding: 12px;
+  color: #ad2929;
+}
+.service-form .transfer-search {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+@media (max-width: 1100px) {
+  .service-profile-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .service-outline {
+    display: none;
+  }
+  .service-dashboard {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.service-category-filter {
+  width: 130px;
+}
+.service-search-filter {
+  width: 260px;
+}

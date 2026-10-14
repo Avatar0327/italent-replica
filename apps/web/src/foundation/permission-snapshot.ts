@@ -1,3 +1,4 @@
+import { contractRoute } from '../contracts/route.js';
 import { APP_OBJECT_DIRECTORY } from '@italent/domain';
 import type { buildPermissionSnapshot } from '../../../api/src/modules/permission/me-snapshot.js';
 import { ApiError, type ApiClient } from './client.js';
@@ -50,6 +51,13 @@ export async function loadSnapshot(api: ApiClient, signal: AbortSignal) {
         }
       : {}),
   }));
+  // 合同仍属于 staff，仅将服务端已授权的合同对象映射为本模块入口。
+  if (
+    response.apps.some(
+      (app) => app.app === 'staff' && app.visible && app.entryObjects.includes(contractRoute.objectCode),
+    )
+  )
+    menus.push({ ...contractRoute, key: contractRoute.id });
   // 入口摘要不授予字段或按钮权限；需要明细的页面用同一个按需读取入口补齐。
   const objects: Record<string, ObjectPermission> = Object.fromEntries(
     response.apps.flatMap((app) =>

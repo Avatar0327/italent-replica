@@ -93,6 +93,13 @@ export const DIGESTS: Digests = {
     uploadAvatar: '787fc7d65f94',
     whereOwner: 'f9f20cb64429',
   },
+  'apps/api/src/modules/command-result/routes.ts': {
+    'route:GET /api/tenant/commands/:commandId/result': '4747db7abe44',
+  },
+  'apps/api/src/modules/command-result/service.ts': {
+    latestFailureGroup: '3a1806588594',
+    readOwnCommandResult: '08b04e8eaed5',
+  },
   'apps/api/src/modules/contracts/context.ts': {
     checkFields: 'a4706994f2b8',
     checkScope: '1bbda763cf46',
@@ -761,7 +768,19 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/succession/routes.ts': {
     recordFilter: '858f731477d8',
-    registerSuccessionRoutes: 'a5487fbba562',
+    registerSuccessionRoutes: 'a19c4261dd44',
+  },
+  'apps/api/src/modules/succession/sync-access.ts': {
+    authorizeRequesterTargets: '39aaaee08e1f',
+  },
+  'apps/api/src/modules/succession/sync-read.ts': {
+    access: '58525d2bc28e',
+    readSync: '03e70048d9a3',
+    syncAdmin: '7b456134cffc',
+    syncRowsVisible: '400aee6db4a0',
+  },
+  'apps/api/src/modules/succession/sync-routes.ts': {
+    writeSync: '9f4a97a41696',
   },
   'apps/api/src/modules/succession/write-support.ts': {
     checkCandidateAccess: '7843395303d7',
@@ -1254,6 +1273,7 @@ export const DIGESTS: Digests = {
     'SUCCESSION_OBJECTS>riskLevel': 'ad0584cc6f9f',
     'SUCCESSION_OBJECTS>riskResult': '0335378cb8d4',
     'SUCCESSION_OBJECTS>ruleSettings': 'a8e71b2fb2b9',
+    'SUCCESSION_OBJECTS>syncBatch': '874964f22844',
   },
   'packages/domain/src/survey360/catalog.ts': {
     SURVEY360_BUTTONS: '864363f22e8b',
@@ -1361,6 +1381,9 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/avatar/service.ts#registeredAvatar': 'ecc6d797fed7',
   'apps/api/src/modules/avatar/service.ts#uploadAvatar': '7b148f1cfed9',
   'apps/api/src/modules/avatar/service.ts#whereOwner': '6ae738c83349',
+  'apps/api/src/modules/command-result/routes.ts#route:GET /api/tenant/commands/:commandId/result': '45e18aa050cf',
+  'apps/api/src/modules/command-result/service.ts#latestFailureGroup': '4bca3a38775a',
+  'apps/api/src/modules/command-result/service.ts#readOwnCommandResult': 'c5d3d2b133e8',
   'apps/api/src/modules/contracts/context.ts#checkFields': '670343aebdbc',
   'apps/api/src/modules/contracts/context.ts#checkScope': '38843b4c716f',
   'apps/api/src/modules/contracts/imports.ts#checkImportScope': '0564049c27e2',
@@ -1837,7 +1860,13 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/succession/risk-routes.ts#registerRiskRoutes': 'aba1ffa0bcee',
   'apps/api/src/modules/succession/risk-store.ts#readRiskRows': 'c8e4755c4215',
   'apps/api/src/modules/succession/routes.ts#recordFilter': '8c3cfb5b80b7',
-  'apps/api/src/modules/succession/routes.ts#registerSuccessionRoutes': 'a5d4527f318c',
+  'apps/api/src/modules/succession/routes.ts#registerSuccessionRoutes': '5d9445292c73',
+  'apps/api/src/modules/succession/sync-access.ts#authorizeRequesterTargets': 'e8666444e08f',
+  'apps/api/src/modules/succession/sync-read.ts#access': 'c7bacfe6a69a',
+  'apps/api/src/modules/succession/sync-read.ts#readSync': 'dbc3a3329a13',
+  'apps/api/src/modules/succession/sync-read.ts#syncAdmin': 'bee0478d2055',
+  'apps/api/src/modules/succession/sync-read.ts#syncRowsVisible': '9ec5d621e3ff',
+  'apps/api/src/modules/succession/sync-routes.ts#writeSync': 'c5c4bf742342',
   'apps/api/src/modules/succession/write-support.ts#checkCandidateAccess': 'ea8155f2a727',
   'apps/api/src/modules/succession/write-support.ts#checkWriteAccess': 'eac8ef9cc70b',
   'apps/api/src/modules/survey360/access.ts#activityVisibleSql': '11f326016f03',
@@ -2207,6 +2236,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>riskLevel': '929ee4841589',
   'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>riskResult': 'ddd5b264fc87',
   'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>ruleSettings': 'ddd5b264fc87',
+  'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>syncBatch': 'ddd5b264fc87',
   'packages/domain/src/survey360/catalog.ts#SURVEY360_BUTTONS': 'e3b0c44298fc',
   'packages/domain/src/survey360/catalog.ts#SURVEY360_OBJECTS>activity': 'a9beadd495ef',
   'packages/domain/src/survey360/catalog.ts#SURVEY360_OBJECTS>answer': 'cd05b5ecea0d',

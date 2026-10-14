@@ -11,7 +11,10 @@ import { createHash } from 'node:crypto';
 import { commandLedger, type Db, eq, IdempotencyConflictError, type Tx, withTenant } from '@italent/db';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { classifyCommandFailure, type CommandPhase, failureResponse, recordCommandFailure } from './audit/failures.js';
+import { currentAuditRequest } from './audit/request-context.js';
+import { commandTypeOf } from './command-type.js';
 import { AppError } from './errors.js';
+import { auditActor } from './system-actor.js';
 import type { TenantContext } from './tenant-context.js';
 
 export interface CommandResult {
@@ -51,6 +54,7 @@ export async function runCommand(db: Db, ctx: TenantContext, command: Command): 
   const requestHash = commandHash(ctx.userId, command.fingerprint);
 
   const key = { commandId, requestHash };
+  const request = currentAuditRequest();
   let phase: CommandPhase = 'execute';
   try {
     return await withTenant(db, ctx.tenantId, async (tx) => {
@@ -63,6 +67,9 @@ export async function runCommand(db: Db, ctx: TenantContext, command: Command): 
         requestHash,
         responseStatus: result.status,
         responseBody: result.body,
+        // F-120：记下发起人与命令类型，供发起人按命令 ID 只读回查；只加列，不改写入顺序与事务边界
+        actorUserId: auditActor(ctx.userId),
+        commandType: commandTypeOf(request?.method, request?.path),
       });
       // 回调返回后由驱动提交：此后的错误可能发生在提交请求已发出之后
       phase = 'commit';
