@@ -15,7 +15,7 @@ export const qualificationResources: Resource[] = [
     columns: ['name', 'code', 'parentId', 'displayOrder', 'enabled'],
     fields: [
       { key: 'name', label: m.name, required: true },
-      { key: 'code', label: m.code, max: 50 },
+      { key: 'code', label: m.code, max: 50, required: true },
       {
         key: 'parentId',
         label: q.parentClass,

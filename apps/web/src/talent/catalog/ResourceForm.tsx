@@ -1,11 +1,12 @@
 import { Alert, Input, InputNumber, Select } from 'antd';
-import { useRef } from 'react';
 import { ApiError, type ApiClient } from '../../foundation/client.js';
 import { FormOverlay, type FormField } from '../../foundation/FormOverlay.js';
+import { messages as commandMessages } from '../../foundation/forms/messages.js';
+import { useCommandForm } from '../../foundation/forms/useCommandForm.js';
 import { PageState } from '../../foundation/PageState.js';
 import { fieldAccess, type ObjectPermission } from '../../foundation/permission-model.js';
 import { useApiClient } from '../../foundation/Session.js';
-import { candidates, saveResource, validateValues, writablePatch } from './api.js';
+import { candidates, resourcePath, saveResource, validateValues, writablePatch } from './api.js';
 import { useRemote } from './hooks.js';
 import { ReferencedDimensions } from './ReferencedDimensions.js';
 import { StandardTargets } from './StandardTargets.js';
@@ -100,7 +101,7 @@ export function ResourceForm({
     (!original && !!resource.owner && !owners.length) ||
     !fields.some((field) => field.access.editable);
   const initialValues = original ? { ...original } : {};
-  const submit = useSaveResource(resource, original, fields, blocked, onSaved);
+  const { submit, submission } = useSaveResource(resource, original, fields, blocked, onSaved);
   const notice = data.error ? (
     <PageState kind="error" error={data.error} />
   ) : (
@@ -121,6 +122,7 @@ export function ResourceForm({
     <FormOverlay
       mode={resource.module === 'qualification' && resource.key === 'categories' ? 'modal' : 'drawer'}
       recordKey={original ? `${original.id}:${original.revision}` : `new:${resource.key}`}
+      submission={submission}
       title={`${original ? m.edit : m.create} · ${resource.title}`}
       open
       onClose={onClose}
@@ -184,6 +186,11 @@ function validationType(field: Field) {
   return { type: 'string' as const, whitespace: true };
 }
 
+/**
+ * 保存走页面级表单提交内核（F-123，DEC-464 / 473）：未知结果的命令保存在页面的 FormCommands 里，关闭重开、切换页签都不会
+ * 换命令 ID 再发；服务器明确拒绝时保留输入、改正后新命令重提。命令体已由 writablePatch 算好（含显式 null 清空），
+ * 以它作为内核的提交值，不让内核再按编辑差异重算一遍。
+ */
 function useSaveResource(
   resource: Resource,
   original: Row | null,
@@ -192,10 +199,20 @@ function useSaveResource(
   onSaved: () => void,
 ) {
   const api = useApiClient();
-  const uncertain = useRef(false);
-  return async (values: Record<string, unknown>) => {
+  const path = original ? `${resourcePath(resource)}/${original.id}` : resourcePath(resource);
+  const command = useCommandForm(path);
+  const submission = {
+    ...command,
+    reload: original
+      ? () =>
+          command.reread(async (id) => {
+            const latest = await api.request<Row>(`${resourcePath(resource)}/${id}`);
+            return { id: latest.id, revision: latest.revision, values: latest };
+          })
+      : undefined,
+  };
+  const submit = async (values: Record<string, unknown>) => {
     if (blocked) throw new Error(m.unavailable);
-    if (uncertain.current) throw new ApiError(0, 'RESULT_UNKNOWN', 'unknown', m.uncertain);
     try {
       validateValues(resource, values);
     } catch (error) {
@@ -210,12 +227,17 @@ function useSaveResource(
     if (!Object.keys(body).length) throw new ApiError(422, 'LOCAL_VALIDATION', 'fields', m.noChanges);
     // 标准的明细为整组替换；基础编辑绝不携带旧明细，创建空标准按已有契约提交空格集合。
     if (!original && resource.module === 'qualification' && resource.key === 'standards') body.details ??= [];
-    try {
-      await saveResource(api, resource, body, original);
-      onSaved();
-    } catch (error) {
-      if (error instanceof ApiError && error.kind === 'unknown') uncertain.current = true;
-      throw error;
-    }
+    const result = await command.submit({
+      values: body,
+      baseline: {},
+      editableFields: Object.keys(body),
+      revision: original?.revision ?? 0,
+      businessId: original?.id,
+      send: (request) => saveResource(api, resource, request.body, original, request),
+    });
+    if (result.status !== 'done') throw result.error ?? new Error(commandMessages.unknown);
+    command.clear();
+    onSaved();
   };
+  return { submit, submission };
 }

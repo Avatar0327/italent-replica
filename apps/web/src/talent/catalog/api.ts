@@ -1,4 +1,11 @@
-import { newCommand, pageQuery, type ApiClient, type PageRequest, type PageResult } from '../../foundation/client.js';
+import {
+  newCommand,
+  pageQuery,
+  type ApiClient,
+  type Command,
+  type PageRequest,
+  type PageResult,
+} from '../../foundation/client.js';
 import type { Resource, Row } from './types.js';
 import { m } from './messages.js';
 
@@ -54,10 +61,12 @@ export async function saveResource(
   resource: Resource,
   body: Record<string, unknown>,
   original: Pick<Row, 'id' | 'revision'> | null,
+  /** 表单提交内核（F-123）固定的命令：幂等键不变；没传时才新建（目录页以外的调用方）。 */
+  command?: Command,
 ) {
   return api.request<Row>(`${resourcePath(resource)}${original ? `/${original.id.toLowerCase()}` : ''}`, {
     method: original ? 'PATCH' : 'POST',
-    command: newCommand(body, original?.revision ?? 0),
+    command: command ?? newCommand(body, original?.revision ?? 0),
   });
 }
 /** 候选逐页读取，不把未加载的尾页伪装成完整集合。 */
