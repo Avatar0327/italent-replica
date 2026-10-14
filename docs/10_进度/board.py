@@ -313,17 +313,32 @@ def resolve(ln, st):
 
 
 def mile_rows(d):
-    """进行中看板 按演示节点分栏用的平铺任务表（暂停项不进；dup 标记的重复项不进）。"""
+    """演示节点用的平铺任务表：只含主线（支撑任务不计，在页 2），暂停项、dup 重复项不进。"""
     rows = []
-    for ln in (d.get("main") or {}).get("lines", []) + [dict(x, id=x.get("id", "SUP")) for x in (d.get("main") or {}).get("support", [])]:
-        groups = ln.get("groups") or ([{"n": "", "steps": ln.get("steps", [])}] if ln.get("steps") else [])
-        for g in groups:
+    for ln in (d.get("main") or {}).get("lines", []):
+        for g in ln.get("groups", []):
             for st in g["steps"]:
                 if st.get("s") == "paused" or st.get("dup"):
                     continue
                 ms, mod, kind = resolve(ln, st)
                 rows.append({"st": st, "ms": ms, "mod": mod, "kind": kind})
     return rows
+
+
+def ms_of(d):
+    """步骤键 → 演示节点（含 dup 项，供任务格上的 D 标签）。"""
+    out = {}
+    for ln in (d.get("main") or {}).get("lines", []):
+        for g in ln.get("groups", []):
+            for st in g["steps"]:
+                if st.get("s") != "paused":
+                    out[st["k"]] = resolve(ln, st)[0] if not st.get("dup") else None
+    for ln in (d.get("main") or {}).get("lines", []):
+        for g in ln.get("groups", []):
+            for st in g["steps"]:
+                if st.get("dup"):
+                    out[st["k"]] = out.get(st["dup"])
+    return out
 
 
 def milestones(d, merged):
@@ -341,6 +356,30 @@ def milestones(d, merged):
     return out
 
 
+L3_LINES = ("T02", "T03", "T04", "T05", "T07")
+
+
+def build_l3(d, lv):
+    """页 2：L3 深度线 + 支撑任务的任务级明细（新页面，不动复刻进度看板）。同一模板，只换数据并隐藏全局 PR 列表。"""
+    main = d.get("main") or {}
+    data = {"main": {"lines": [l for l in main.get("lines", []) if l.get("id") in L3_LINES], "support": main.get("support", []), "asks": []},
+            "items": d.get("items"), "log": [], "live": lv, "prog": None, "page": "l3"}
+    h = open(os.path.join(HERE, "进行中看板.template.html"), encoding="utf8").read().replace("__DATA__", json.dumps(data, ensure_ascii=False))
+    h = h.replace("<title>iTalent 进行中</title>", "<title>iTalent L3 深度线</title>", 1).replace("<h1>iTalent 进行中</h1>", "<h1>iTalent L3 深度线与支撑</h1>", 1)
+    a = h.index('<section class="flow"')
+    h = h[:a] + h[h.index("</details></section>", a) + len("</details></section>"):]
+    for head in ("<section><h2>卡点与待你决定</h2>", "<section><h2>其他在途（修正任务等）</h2>", "<section><h2>今日已合并</h2>", "<section><details><summary>最近动态</summary>"):
+        h = h.replace(head, head.replace("<section>", "<section hidden>", 1), 1)
+    h = h.replace("</style>", "#kpis,#ms{display:none}</style>", 1)
+    with open(os.path.join(HERE, "L3深度线看板.html"), "w", encoding="utf8") as f:
+        f.write(h)
+    js = h[h.index("const DATA"):h.rindex("</script>")]
+    stub = """const els={};const mk=()=>({innerHTML:"",textContent:""});global.document={getElementById:id=>els[id]||(els[id]=mk())};
+""" + js + "\nconsole.log('l3 lines',(els.lines.innerHTML.match(/class=\"line\"/g)||[]).length,'chips',(els.lines.innerHTML.match(/class=\"chip/g)||[]).length,'support chips',(els.support.innerHTML.match(/class=\"chip/g)||[]).length)"
+    r = subprocess.run(["node", "-e", stub], capture_output=True, text=True)
+    print(r.stdout.strip() or r.stderr.strip()[:600])
+
+
 def build(d, nosync):
     if not nosync:
         sync(d)
@@ -348,9 +387,11 @@ def build(d, nosync):
     lv = live_prs() if not nosync else d.get("_live")
     live = open(os.path.join(HERE, "进行中看板.template.html"), encoding="utf8").read().replace(
         "__DATA__", json.dumps({"main": d.get("main"), "items": d.get("items"), "log": d.get("log", [])[:12],
-                                "live": lv, "prog": progress(d, lv), "mile": mile_rows(d)}, ensure_ascii=False))
+                                "live": lv, "prog": progress(d, lv), "mile": mile_rows(d), "msof": ms_of(d)}, ensure_ascii=False))
+    live = live.replace("<section><h2>支撑任务</h2>", "<section hidden><h2>支撑任务</h2>", 1)   # 支撑任务在页 2（L3 深度线），页 1 不显示
     with open(os.path.join(HERE, "进行中看板.html"), "w", encoding="utf8") as f:
         f.write(live)
+    build_l3(d, lv)
     ljs = live[live.index("const DATA"):live.rindex("</script>")]
     lstub = """const els={};const mk=()=>({innerHTML:"",textContent:""});global.document={getElementById:id=>els[id]||(els[id]=mk())};
 """ + ljs + "\nconsole.log('live lines',(els.lines.innerHTML.match(/class=\"line\"/g)||[]).length,'chips',(els.lines.innerHTML.match(/class=\"chip/g)||[]).length,'stuck',(els.stuck.innerHTML.match(/class=\"sk/g)||[]).length);"
