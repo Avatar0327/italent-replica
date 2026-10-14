@@ -15,6 +15,8 @@ export interface CommandFailure {
   readonly outcome: CommandFailureOutcome;
   readonly errorCode: string;
   readonly reason: string | null;
+  /** 写接口对该错误实际返回的 HTTP 状态（F-120）；只在错误本身带状态时记录，其余不猜（回查时为 null）。 */
+  readonly httpStatus?: number | null;
 }
 
 /** SQLSTATE 类别：08 连接异常、53 资源不足（磁盘满、内存不足）、57 运维干预（关库、崩溃恢复）、58 系统 / I/O 错误。 */
@@ -59,16 +61,16 @@ export function classifyCommandFailure(error: unknown, phase: CommandPhase, rech
 }
 
 /** 应用错误：字符串 code + 数值 status（AppError、EmploymentError 等）；冲突错误类按名称识别（同包定义，避免循环引用）。 */
-function businessCode(error: unknown): { errorCode: string; reason: string | null } | undefined {
+function businessCode(error: unknown): { errorCode: string; reason: string | null; httpStatus: number } | undefined {
   const name = (error as { name?: unknown } | null)?.name;
-  if (name === 'RevisionConflictError') return { errorCode: 'REVISION_CONFLICT', reason: null };
-  if (name === 'IdempotencyConflictError') return { errorCode: 'IDEMPOTENCY_CONFLICT', reason: null };
+  if (name === 'RevisionConflictError') return { errorCode: 'REVISION_CONFLICT', reason: null, httpStatus: 409 };
+  if (name === 'IdempotencyConflictError') return { errorCode: 'IDEMPOTENCY_CONFLICT', reason: null, httpStatus: 409 };
   const shaped = error as { code?: unknown; status?: unknown; details?: unknown } | null;
   if (!(error instanceof Error) || typeof shaped?.status !== 'number' || typeof shaped.code !== 'string') {
     return undefined;
   }
   const reason = (shaped.details as { reason?: unknown } | undefined)?.reason;
-  return { errorCode: shaped.code, reason: typeof reason === 'string' ? reason : null };
+  return { errorCode: shaped.code, reason: typeof reason === 'string' ? reason : null, httpStatus: shaped.status };
 }
 
 export function connectionCode(error: unknown): string | undefined {

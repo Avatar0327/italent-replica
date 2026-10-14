@@ -160,6 +160,7 @@ export interface CommandFailureInput {
   readonly outcome: CommandFailureOutcome;
   readonly errorCode: string;
   readonly reason?: string | null;
+  readonly httpStatus?: number | null;
   readonly method?: string | null;
   readonly path?: string | null;
   readonly occurredAt?: Date;
@@ -175,6 +176,7 @@ export async function insertCommandFailure(tx: Tx, entry: CommandFailureInput): 
     outcome: entry.outcome,
     errorCode: entry.errorCode,
     reason: entry.reason ?? null,
+    httpStatus: entry.httpStatus ?? null,
     method: entry.method ?? null,
     path: entry.path ?? null,
     ...(entry.occurredAt ? { occurredAt: entry.occurredAt } : {}),

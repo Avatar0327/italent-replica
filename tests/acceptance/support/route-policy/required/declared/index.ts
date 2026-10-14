@@ -2,6 +2,7 @@ import type { ModuleDeclared } from '../../module-declared.js';
 import { APPROVAL_DECLARED } from './approval.js';
 import { AUDIT_DECLARED } from './audit.js';
 import { AVATAR_DECLARED } from './avatar.js';
+import { COMMAND_RESULT_DECLARED } from './command-result.js';
 import { CONTRACTS_DECLARED } from './contracts.js';
 import { EMPLOYMENT_DECLARED } from './employment.js';
 import { ESTABLISHMENT_DECLARED } from './establishment.js';
@@ -25,6 +26,7 @@ export const DECLARED: Readonly<Record<string, ModuleDeclared>> = {
   approval: APPROVAL_DECLARED,
   audit: AUDIT_DECLARED,
   avatar: AVATAR_DECLARED,
+  'command-result': COMMAND_RESULT_DECLARED,
   contracts: CONTRACTS_DECLARED,
   employment: EMPLOYMENT_DECLARED,
   establishment: ESTABLISHMENT_DECLARED,
