@@ -106,11 +106,14 @@ describe('AC-EV-01 Q-T02-06 边界（原级别为空照原站 DEC-497；其余�
     });
   });
 
-  it.each([null, undefined, 0, 6, 1.5])('原级别为空、N = %s 非法 → 仍先返回 MAX_LEVEL_JUMP_INVALID（配置校验不放松）', (bad) => {
-    expect(
-      checkLevelJump({ levels, originalLevelId: null, applyLevelId: 'P3', maxLevelJump: bad as unknown as number }),
-    ).toEqual({ ok: false, code: 'MAX_LEVEL_JUMP_INVALID' });
-  });
+  it.each([null, undefined, 0, 6, 1.5])(
+    '原级别为空、N = %s 非法 → 仍先返回 MAX_LEVEL_JUMP_INVALID（配置校验不放松）',
+    (bad) => {
+      expect(
+        checkLevelJump({ levels, originalLevelId: null, applyLevelId: 'P3', maxLevelJump: bad as unknown as number }),
+      ).toEqual({ ok: false, code: 'MAX_LEVEL_JUMP_INVALID' });
+    },
+  );
 
   it('原级别不在序列里 → LEVEL_JUMP_UNDETERMINED（不猜）', () => {
     const result = checkLevelJump({ levels, originalLevelId: 'X9', applyLevelId: 'P4', maxLevelJump: 5 });
