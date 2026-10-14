@@ -63,19 +63,21 @@ describe('AC-EXP-16 绩效：最近第 N 年 / 第 N 次（周期按名称文本
     expect(run('PerformanceNthCent(3, 考核结果.周期名称="第三季度", 考核结果.考核结束日期)')).toEqual(EMPTY_NUMBER);
   });
 
-  it('第 N 次：参数顺序待取证（#105），按参数形态识别 N、过滤条件与日期字段', () => {
+  it('第 N 次：按参数形态识别 N、过滤条件与排序日期（R3e 原文顺序为 N、排序日期、可选条件）', () => {
     expect(run('PerformanceNthGrade(考核结果.周期名称="第三季度", 考核结果.考核结束日期, 1)')).toEqual(text('C'));
   });
 
-  it('第 N 次：日期字段为空的记录不参与；不写日期字段时按最后修改时间倒序（🟡 #105）', () => {
+  it('第 N 次：日期字段为空的记录不参与；排序日期是必填参数，不写时参数错误（R3e，`26` 末节 W-864）', () => {
     expect(run('PerformanceNthCent(2, 考核结果.周期名称="年度", 考核结果.考核结束日期)')).toEqual(num(80));
     expect(run('PerformanceNthCent(3, 考核结果.周期名称="年度", 考核结果.考核结束日期)')).toEqual(EMPTY_NUMBER);
-    // 不写日期字段：最后修改 2026-01-01（90）→ 2025-03-01（60）→ 2025-01-05（80）
-    expect(run('PerformanceNthCent(2, 考核结果.周期名称="年度")')).toEqual(num(60));
+    // 旧口径：不写日期字段按最后修改时间倒序得 60；R3e 起排序日期必填
+    expect(run('PerformanceNthCent(2, 考核结果.周期名称="年度")')).toMatchObject({ code: 'ARGUMENT_TYPE' });
+    // 周期条件可省：全部记录按考核结束日期倒序
+    expect(run('PerformanceNthCent(1, 考核结果.考核结束日期)')).toEqual(num(70));
   });
 
   it('N 不合法、N 写了两个都是参数错误', () => {
-    expect(run('PerformanceNthCent(0, 考核结果.周期名称="年度")')).toMatchObject({ code: 'ARGUMENT_TYPE' });
+    expect(run('PerformanceNthCent(0, 考核结果.考核结束日期)')).toMatchObject({ code: 'ARGUMENT_TYPE' });
     expect(run('PerformanceNthCent(1, 2)')).toMatchObject({ code: 'ARGUMENT_TYPE' });
   });
 });
@@ -240,35 +242,49 @@ describe('AC-EXP-16 获取最近一次人才评定数据：只取已通过的评
   });
 });
 
-describe('AC-EXP-16 获取人事子集的指定字段数据：须取到唯一值（数据源后续任务接线）', () => {
+describe('AC-EXP-16 获取人事子集的指定字段数据：排序后取第一条（R3e，`26` 末节 W-864；数据源后续任务接线）', () => {
   const ports: InMemoryPortData = {
     personnelSubset: {
       'emp-1': {
         教育经历: [
-          { fields: { 学历: '本科', 是否最高学历: '是', 学校: '甲大学' } },
-          { fields: { 学历: '高中', 是否最高学历: '否', 学校: '乙中学' } },
+          { fields: { 学历: '本科', 是否最高学历: '是', 学校: '甲大学', 毕业日期: '2014/07/01' } },
+          { fields: { 学历: '高中', 是否最高学历: '否', 学校: '乙中学', 毕业日期: '2010/07/01' } },
+          { fields: { 学历: '初中', 是否最高学历: '否', 学校: '丙中学' } },
         ],
       },
     },
   };
   const run = runWith(ports);
 
-  it('中英文名；按过滤取到唯一一行', () => {
-    expect(run('获取人事子集的指定字段数据(教育经历.学校, 教育经历.是否最高学历="是")')).toEqual(text('甲大学'));
-    expect(run('PersonnelSubsetField(教育经历.学历, 教育经历.学校="乙中学")')).toEqual(text('高中'));
+  it('中英文名；按过滤、排序取第一条', () => {
+    const highest = '获取人事子集的指定字段数据(教育经历.学校, 教育经历.毕业日期, "降序", 教育经历.是否最高学历="是")';
+    expect(run(highest)).toEqual(text('甲大学'));
+    expect(run('PersonnelSubsetField(教育经历.学历, 教育经历.毕业日期, "升序", 教育经历.学校="乙中学")')).toEqual(
+      text('高中'),
+    );
   });
 
-  it('取不到返回空；取到多行 → AMBIGUOUS_DATA', () => {
-    expect(run('获取人事子集的指定字段数据(教育经历.学校, 教育经历.学历="博士")')).toEqual(EMPTY);
-    expect(run('获取人事子集的指定字段数据(教育经历.学校)')).toMatchObject({ code: 'AMBIGUOUS_DATA' });
+  it('取不到返回空；多行不再报错（旧口径 AMBIGUOUS_DATA），取排序后的第一条，排序字段为空的排最后', () => {
+    expect(run('获取人事子集的指定字段数据(教育经历.学校, 教育经历.毕业日期, "降序", 教育经历.学历="博士")')).toEqual(
+      EMPTY,
+    );
+    expect(run('获取人事子集的指定字段数据(教育经历.学校, 教育经历.毕业日期, "降序")')).toEqual(text('甲大学'));
+    expect(run('获取人事子集的指定字段数据(教育经历.学校, 教育经历.毕业日期, "升序")')).toEqual(text('乙中学'));
   });
 
   it('数据源未接入 → DATA_UNAVAILABLE', () => {
-    expect(runWith({})('获取人事子集的指定字段数据(教育经历.学校)')).toMatchObject({ code: 'DATA_UNAVAILABLE' });
+    expect(runWith({})('获取人事子集的指定字段数据(教育经历.学校, 教育经历.毕业日期, "降序")')).toMatchObject({
+      code: 'DATA_UNAVAILABLE',
+    });
   });
 
-  it('第一个参数须是 子集.字段', () => {
-    expect(run('获取人事子集的指定字段数据("学校")')).toMatchObject({ code: 'ARGUMENT_TYPE' });
+  it('第一个参数、排序字段须是 子集.字段', () => {
+    expect(run('获取人事子集的指定字段数据("学校", 教育经历.毕业日期, "降序")')).toMatchObject({
+      code: 'ARGUMENT_TYPE',
+    });
+    expect(run('获取人事子集的指定字段数据(教育经历.学校, "毕业日期", "降序")')).toMatchObject({
+      code: 'ARGUMENT_TYPE',
+    });
   });
 });
 

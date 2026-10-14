@@ -5,7 +5,7 @@ import { ReadPanel } from './ReadPanel.js';
 import { DecisionNote } from '../foundation/DecisionNote.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { useRead } from './useRead.js';
-import { BasicInfo, EmploymentRecords, PersonnelSubsets } from './ProfileSections.js';
+import { EmploymentRecords, PersonnelProfile } from './ProfileSections.js';
 import { displayValue, type Row } from './model.js';
 import { m } from './messages.js';
 
@@ -32,7 +32,7 @@ export function StaffDetail({ employeeId, onClose }: { employeeId: string; onClo
                 <Space>
                   {permission.field('code').visible && (
                     <span>
-                      {m.labels.code}：{displayValue(row?.code)}
+                      {m.jobNumber}：{displayValue(row?.code)}
                     </span>
                   )}
                   {permission.field('email').visible && (
@@ -49,9 +49,8 @@ export function StaffDetail({ employeeId, onClose }: { employeeId: string; onClo
       tabs={
         row
           ? [
-              { key: 'basic', label: m.basic, children: <BasicInfo row={row} /> },
+              { key: 'profile', label: m.profile, children: <PersonnelProfile row={row} employeeId={employeeId} /> },
               { key: 'records', label: m.records, children: <EmploymentRecords employeeId={employeeId} /> },
-              { key: 'subsets', label: m.subsets, children: <PersonnelSubsets employeeId={employeeId} /> },
             ]
           : undefined
       }

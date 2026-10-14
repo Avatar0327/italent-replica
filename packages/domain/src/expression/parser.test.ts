@@ -14,15 +14,22 @@ const fail = (source: string) => {
 };
 
 describe('词法：字段引用、数字、字符串、全角符号', () => {
-  it('以数字开头的中文对象名与含连字符的字段名是一个标识符', () => {
+  it('以数字开头的中文对象名是一个标识符；连字符在词法里一律切成减号（#89-4，由语法分析按字段目录并回）', () => {
     const kinds = tokenize('360结果.问卷-他评总分').map((token) => `${token.kind}:${token.text}`);
-    expect(kinds).toEqual(['identifier:360结果', 'dot:.', 'identifier:问卷-他评总分', 'eof:']);
+    expect(kinds).toEqual([
+      'identifier:360结果',
+      'dot:.',
+      'identifier:问卷',
+      'operator:-',
+      'identifier:他评总分',
+      'eof:',
+    ]);
   });
 
-  it('DEC-228：成员位置的连字符一律并入字段名（后接数字、对象名也一样）；不在成员位置时是减号', () => {
+  it('#89-4：成员位置的连字符也是减号（旧口径 DEC-228 一律并入字段名）', () => {
     const texts = (source: string) => tokenize(source).map((token) => token.text);
-    expect(texts('考核结果.年度-1')).toEqual(['考核结果', '.', '年度-1', '']);
-    expect(texts('盘点对象.得分-盘点对象.基准')).toEqual(['盘点对象', '.', '得分-盘点对象', '.', '基准', '']);
+    expect(texts('考核结果.年度-1')).toEqual(['考核结果', '.', '年度', '-', '1', '']);
+    expect(texts('盘点对象.得分-盘点对象.基准')).toEqual(['盘点对象', '.', '得分', '-', '盘点对象', '.', '基准', '']);
     expect(texts('考核结果.年度 - 1')).toEqual(['考核结果', '.', '年度', '-', '1', '']);
     expect(texts('考核结果.年度- 1')).toEqual(['考核结果', '.', '年度', '-', '1', '']);
     expect(texts('a-b')).toEqual(['a', '-', 'b', '']);
@@ -97,14 +104,24 @@ describe('语法错误：位置与原因', () => {
   it('缺少 那么', () => {
     expect(fail('如果 a 1 否则 2')).toMatchObject({ code: 'SYNTAX_ERROR', column: 6 });
   });
-  it('DEC-228：连字符并入字段名后紧跟的语法错误提示“如需相减，请在减号两侧加空格”', () => {
-    expect(fail('盘点对象.得分-转换为数字("2")')).toMatchObject({
-      code: 'SYNTAX_ERROR',
-      column: 14,
-      message: expect.stringContaining('如需相减，请在减号两侧加空格'),
+  it('#89-4：连字符字段名按字段目录并回；不再提示“如需相减，请在减号两侧加空格”', () => {
+    expect(ok('盘点对象.得分-转换为数字("2")').body).toMatchObject({ type: 'binary', operator: '-' });
+    expect(ok('360结果.问卷-他评总分').body).toMatchObject({ type: 'field', text: '360结果.问卷-他评总分' });
+    const known = parseFormula('盘点对象.甲-乙-丙', { fieldExists: (path) => path === '盘点对象.甲-乙' });
+    expect(known.ok && known.program.body).toMatchObject({
+      type: 'binary',
+      left: { type: 'field', text: '盘点对象.甲-乙', end: 8 },
+      right: { type: 'identifier', name: '丙' },
     });
-    expect(fail('1 2').message).not.toContain('减号');
+    const longest = parseFormula('盘点对象.甲-乙-丙', { fieldExists: () => true });
+    expect(longest.ok && longest.program.body).toMatchObject({ type: 'field', text: '盘点对象.甲-乙-丙' });
+    const spaced = parseFormula('盘点对象.甲 -乙', { fieldExists: () => true });
+    expect(spaced.ok && spaced.program.body).toMatchObject({ type: 'binary', operator: '-' });
     expect(fail('Lastest360Cent(360结果.问卷-他评总分').message).not.toContain('减号');
+  });
+  it('#105-15：// 只能写在行首作整行注释', () => {
+    expect(ok('// 注释 Def(\n1').body).toMatchObject({ type: 'number', value: 1 });
+    expect(fail('1 // 2')).toMatchObject({ code: 'SYNTAX_ERROR', line: 1, column: 3 });
   });
   it('空公式', () => {
     expect(fail('   ')).toMatchObject({ code: 'SYNTAX_ERROR' });

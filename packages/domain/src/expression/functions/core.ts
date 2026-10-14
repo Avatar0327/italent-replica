@@ -30,7 +30,8 @@ function aggregate(name: string, aliases: string[], reduce: (numbers: number[]) 
 
 /**
  * Sum：原站遇文本按字符串拼接，Sum(1, "5") = "15"（`26` §8.8，DEC-270，原站怪异行为照搬）。
- * 从左到右累加，累加值或当前参数是文本时改为拼接（TODO(需取证 #105)：原站是否从 0 起算，只实测了 Sum(1, "5")）；
+ * 从左到右累加，累加值或当前参数是文本时改为拼接（R3e 已核实（`26` 末节，W-862）：Sum("5", 1) = "51"，从第一个参数起拼；
+ * TODO(需取证 #105)：内部返回类型、Max / Min 遇文本仍未验证）；
  * 空值仍按 emptyInAggregate 失败。semantics.textInSum = coerce 时数字文本按数值相加。
  */
 function sum(call: FunctionCall): ExprValue {
@@ -67,6 +68,11 @@ function toNumberFunction(call: FunctionCall): ExprValue {
   }
 }
 
+/** 选项 / 字典值取显示名；没有显示名时按编码文本。 */
+function displayName(call: FunctionCall, value: ExprValue): string {
+  return value.kind === 'option' && value.label !== undefined ? value.label : call.toText(value);
+}
+
 export const CORE_FUNCTIONS: readonly FunctionSpec[] = [
   {
     name: 'ToNumber',
@@ -95,7 +101,8 @@ export const CORE_FUNCTIONS: readonly FunctionSpec[] = [
   aggregate('Max', ['最大值'], (numbers) => (numbers.length ? { kind: 'number', value: Math.max(...numbers) } : EMPTY)),
   aggregate('Min', ['最小值'], (numbers) => (numbers.length ? { kind: 'number', value: Math.min(...numbers) } : EMPTY)),
   {
-    // DEC-265：Count(1, "", 3) = 3，空串计数；TODO(需取证 #105)：空值是否计数，暂按计数
+    // DEC-265：Count(1, "", 3) = 3，空串计数；TODO(需取证 #105)：空值是否计数仍未验证（R3e 实测 Count(空字段) 保存成功、
+    // 计算失败且原因为空），暂按计数
     name: 'Count',
     aliases: ['计数'],
     params: [param('值', true, true)],
@@ -125,11 +132,12 @@ export const CORE_FUNCTIONS: readonly FunctionSpec[] = [
     implement: (call) => ({ kind: 'text', value: call.args.map((value) => call.toText(value)).join('') }),
   },
   {
-    // TODO(需取证 #105)：ShowText 的用途原站未说明，暂把参数原样转成文本
+    // R3e 已核实（`26` 末节，W-864 说明原文）：取字段值对应的中文名称（选项 / 字典的显示名）。原站说明写“限薪酬使用”，
+    // 但盘点计算规则面板列出了它（其它函数 2 个），所以盘点里照常可用；没有显示名的值按文本返回
     name: 'ShowText',
     aliases: ['显示文本'],
     params: [param('值')],
     returns: 'text',
-    implement: (call) => ({ kind: 'text', value: call.toText(call.args[0] ?? EMPTY) }),
+    implement: (call) => ({ kind: 'text', value: displayName(call, call.args[0] ?? EMPTY) }),
   },
 ];
