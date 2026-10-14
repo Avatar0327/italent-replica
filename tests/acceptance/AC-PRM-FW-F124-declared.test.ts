@@ -69,7 +69,24 @@ describe('declarationDifferences：逐模块逐项相等', () => {
 });
 
 describe('真实声明 × 同样严格', () => {
-  const kinds = Object.keys(DECLARED_KINDS) as DeclaredKind[];
+  // 第 2 轮：除多承载节点 / 同状态码异错误体 / 已知缺口外，再纳入“活动键授权请求”（F075b 的 48 个入口）、
+  // “选择器位置”（31）与“输入来源端点”（23）——这些原先也是跨模块的全局精确数。
+  const kinds: DeclaredKind[] = [
+    'multiCarrierAdmission',
+    'sameStatusInvalidId',
+    'knownGapPairs',
+    'activityKeyRequests',
+    'selectorSites',
+    'branchInputEndpoints',
+  ];
+
+  it('声明种类与实现登记的种类完全一致（新增种类必须同步补反例）', () => {
+    expect(Object.keys(DECLARED_KINDS).sort()).toEqual([...kinds].sort());
+  });
+
+  it('每个 required/<模块>.ts 都有声明文件接入（兑现“只改本模块声明文件”，含暂无条目的空声明）', () => {
+    expect(Object.keys(DECLARED).sort()).toEqual(Object.keys(REQUIRED_BY_MODULE).sort());
+  });
 
   it('每个声明模块都是 required/ 里真实存在的模块', () => {
     for (const module of Object.keys(DECLARED)) expect(Object.keys(REQUIRED_BY_MODULE), module).toContain(module);
@@ -125,5 +142,30 @@ describe('真实声明 × 同样严格', () => {
       DECLARED_KINDS[kind].ownerOf,
     );
     expect(found.join('\n')).toContain('无主');
+  });
+
+  it.each(kinds)('%s：只更新所属模块的声明即可通过（不必改共享测试）', (kind) => {
+    const declared = declaredItems(kind);
+    const [module, items] = Object.entries(declared)[0]!;
+    const extra = Object.keys(REQUIRED_BY_MODULE[module]!).find((key) => !items.some((id) => id.startsWith(key)))!;
+    const forged = DECLARED_KINDS[kind].forge(extra);
+    const actual = [...Object.values(declared).flat(), forged];
+    const updated = { ...declared, [module]: [...items, forged] };
+    expect(declarationDifferences(kind, actual, updated, DECLARED_KINDS[kind].ownerOf)).toEqual([]);
+  });
+
+  it.each(kinds)('%s：条目重复声明 / 声明挂在别的模块名下 → 判红', (kind) => {
+    const declared = declaredItems(kind);
+    const [module, items] = Object.entries(declared)[0]!;
+    const actual = Object.values(declared).flat();
+    const duplicated = { ...declared, [module]: [...items, items[0]!] };
+    expect(declarationDifferences(kind, actual, duplicated, DECLARED_KINDS[kind].ownerOf).join('\n')).toContain(
+      '重复声明',
+    );
+    const other = Object.keys(REQUIRED_BY_MODULE).find((m) => m !== module)!;
+    const moved = { ...declared, [module]: items.slice(1), [other]: [...(declared[other] ?? []), items[0]!] };
+    const found = declarationDifferences(kind, actual, moved, DECLARED_KINDS[kind].ownerOf).join('\n');
+    expect(found).toContain(`${module} 多出`);
+    expect(found).toContain(`${other} 声明已失效`);
   });
 });
