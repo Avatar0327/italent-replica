@@ -4,128 +4,16 @@
  * 每条序列都是：种子在某场景创建后中断（没有完成记录）→ 用户经公开接口操作 → 续跑种子 → 单据与审批实例保持用户操作后的样子。
  * 节点转交 / 加签需要流程开关：在种子发布演示流程后中断，经公开流程配置接口发新版本打开开关，再继续。
  */
-import { sql, tenants, users, eq, withPlatform, withTenant } from '@italent/db';
-import { TRANSFER_FORM_FIELDS } from '@italent/domain';
 import { createTestDb } from '@italent/testkit';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { DEMO_PEOPLE, DEMO_TRANSFER_PROCESS_CODE } from '../../apps/api/src/demo/data.js';
+import { DEMO_TRANSFER_PROCESS_CODE } from '../../apps/api/src/demo/data.js';
 import { fileProgress, seedDemo } from '../../apps/api/src/demo/seed.js';
-import { tenantApi } from './support/tenant-api.js';
+import { actors, enableTransferAndAddSign, options, stopAfter } from './support/demo-seed.js';
 
 vi.setConfig({ testTimeout: 900_000 });
-const TODAY = '2026-10-07';
-const clock = () => new Date(`${TODAY}T02:00:00.000Z`);
-const options = { clock, nodeEnv: 'test' } as const;
-
-type TestDb = Awaited<ReturnType<typeof createTestDb>>['db'];
-type Json = Record<string, unknown>;
-
-const rowsOf = <T>(result: unknown): T[] =>
-  (Array.isArray(result) ? result : (result as { rows: unknown[] }).rows) as T[];
-
-/** 在指定步骤之后注入失败（模拟种子中断）。 */
-const stopAfter = (key: string) => ({
-  ...options,
-  onStep: (step: { phase: string; key: string }) => {
-    if (step.phase === 'transfers' && step.key === key) throw new Error(`注入的失败：${key} 之后`);
-  },
-});
-
-/** 独立库上的公开接口调用与只读观测。 */
-async function actors(db: TestDb) {
-  const [tenant] = await withPlatform(db, (tx) => tx.select().from(tenants).where(eq(tenants.code, 'demo-r1')));
-  const tenantId = tenant!.id;
-  const api = tenantApi(db, { authorize: undefined, clock });
-  const userIdOf = async (email: string) => {
-    const [row] = await withPlatform(db, (tx) => tx.select().from(users).where(eq(users.email, email)));
-    return row!.id;
-  };
-  const persona = (key: string) => userIdOf(DEMO_PEOPLE.find((p) => p.key === key)!.email);
-  const send = async (userId: string, method: string, path: string, body?: unknown, ifMatch?: number) => {
-    const response = await api.request(method, path, { user: userId, tenant: tenantId, body, ifMatch });
-    expect(response.status, `${method} ${path} ${await response.clone().text()}`).toBeLessThan(300);
-    return (await response.json()) as Json;
-  };
-  const query = <T>(statement: ReturnType<typeof sql>) =>
-    withTenant(db, tenantId, async (tx) => rowsOf<T>(await tx.execute(statement)));
-  const businessOf = async (scenario: string) => {
-    const commandId = `demo-seed:${tenantId}:${scenario}`;
-    const [row] = await query<{ id: string }>(
-      sql`SELECT response_body->>'id' AS id FROM command_ledger WHERE command_id = ${commandId}`,
-    );
-    return row!.id;
-  };
-  const instanceOf = async (scenario: string) => {
-    const [row] = await query<{ id: string; revision: number }>(
-      sql`SELECT id, revision FROM approval_instances WHERE business_id = ${await businessOf(scenario)}::uuid`,
-    );
-    return row!;
-  };
-  const pendingTask = async (scenario: string) => {
-    const instance = await instanceOf(scenario);
-    const [task] = await query<{ id: string; assignee: string }>(
-      sql`SELECT id, assignee_user_id AS assignee FROM approval_tasks
-        WHERE instance_id = ${instance.id}::uuid AND status = 'pending' ORDER BY seq LIMIT 1`,
-    );
-    return { instance, task: task! };
-  };
-  /** 单据与审批实例的完整可观测状态：业务单状态、实例状态 / 轮次 / revision、全部日志与任务。 */
-  const snapshot = async (scenario: string) => {
-    const businessId = await businessOf(scenario);
-    const hr = await persona('hr');
-    const business = await send(hr, 'GET', `/api/tenant/employment/businesses/${businessId}`);
-    const instances = await query<Json>(
-      sql`SELECT id, status, round, revision FROM approval_instances WHERE business_id = ${businessId}::uuid
-        ORDER BY created_at`,
-    );
-    const ids = instances.map((row) => String(row.id));
-    const logs = await query<Json>(
-      sql`SELECT instance_id, seq, round, event, task_id, actor_user_id FROM approval_instance_logs
-        WHERE instance_id = ANY(${`{${ids.join(',')}}`}::uuid[]) ORDER BY instance_id, seq`,
-    );
-    const tasks = await query<Json>(
-      sql`SELECT id, seq, round, status, assignee_user_id, origin FROM approval_tasks
-        WHERE instance_id = ANY(${`{${ids.join(',')}}`}::uuid[]) ORDER BY instance_id, seq`,
-    );
-    return { status: business.status, instances, logs, tasks };
-  };
-  return { tenantId, persona, userIdOf, send, businessOf, instanceOf, pendingTask, snapshot };
-}
-
-/** 经公开流程配置接口给演示调动流程发新版本：两个节点都打开转交与加签。 */
-async function enableTransferAndAddSign(user: Awaited<ReturnType<typeof actors>>) {
-  const admin = await user.persona('admin');
-  const base = '/api/tenant/approval/processes';
-  const list = await user.send(admin, 'GET', `${base}?pageSize=200`);
-  const found = (list.items as Json[]).find((row) => row.code === DEMO_TRANSFER_PROCESS_CODE)!;
-  const read = async () => user.send(admin, 'GET', `${base}/${String(found.id)}`);
-  await user.send(admin, 'POST', `${base}/${String(found.id)}/versions`, undefined, Number((await read()).revision));
-  const node = (key: string, name: string, approver: string) => ({
-    key,
-    name,
-    approver,
-    formFields: TRANSFER_FORM_FIELDS,
-    actions: { avoidSelf: true, transfer: true, addSign: true },
-  });
-  const definition = {
-    name: '演示调动流程',
-    priority: -1,
-    exceptionAdminUserId: await user.persona('exception'),
-    conditions: {
-      items: [{ no: 1, field: 'processCode', operator: 'eq', value: 'TransferProcessNew' }],
-      expression: '1',
-    },
-    nodes: [
-      node('direct_head', '直接上级审批', 'latest_record_department_head'),
-      node('in_hrbp', '调入部门HRBP审核', 'record_department_hrbp'),
-    ],
-  };
-  await user.send(admin, 'PUT', `${base}/${String(found.id)}/draft`, definition, Number((await read()).revision));
-  await user.send(admin, 'POST', `${base}/${String(found.id)}/publish`, undefined, Number((await read()).revision));
-}
 
 describe('F-025 演示种子：默认流程上用户接管后，续跑不再动这张单（DEC-477）', () => {
   it('催办（发起人）/ 驳回后重提 / 管理员转交后续跑：保持用户操作后的状态，无新增日志；记入接管后永久跳过', async () => {
