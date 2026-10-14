@@ -1,10 +1,10 @@
 /** C2 的历史读取按今天授权；真实范围断层与结果对象范围分别校验。 */
-import { randomUUID } from 'node:crypto';
 import { expect, it } from 'vitest';
 import { useHealthDb } from './AC-SC-07-health-support.js';
 import { successionWorld } from './AC-SC-support.js';
 import { mapOperator, mapSetting, queryOf, type OrgMap } from './AC-SC-org-map-support.js';
 import { tenantApi } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 const db = useHealthDb();
 
 it('AC-SC-org-map 组织范围 A/C、不可见 B 时从 A 截断，不把 C 暴露成新根', async () => {
@@ -17,7 +17,7 @@ it('AC-SC-org-map 组织范围 A/C、不可见 B 时从 A 截断，不把 C 暴�
     ...viewer.world.asAdmin,
     ifMatch: 0,
     body: {
-      code: `gap-${randomUUID().slice(0, 8)}`,
+      code: `gap-${uniqueSuffix()}`,
       name: '只含 A C',
       orgRanges: [a.id, c.id].map((orgId) => ({ orgId, includeDescendants: false })),
     },

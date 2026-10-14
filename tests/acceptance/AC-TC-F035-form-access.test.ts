@@ -10,6 +10,7 @@ import { seedPermissionWorld, setObjectPermission, type PermissionWorld } from '
 import { clock, seedTalentData, talentOperator, type TalentPermissionData } from './AC-TC-permission-support.js';
 import { TC_BASE } from './AC-TC-support.js';
 import { errorCode, tenantApi } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 interface FormAccess {
   readonly editableFields: string[];
@@ -205,7 +206,7 @@ describe('AC-TC-F035 人才标准表单权限契约与部分字段保存', () =>
     expect(dimensionAccess).not.toHaveProperty('blockedReason');
     const created = await op.request('POST', '/dimensions', {
       ifMatch: 0,
-      body: { libraryId: data.inside.library.id, code: `F035${randomUUID().slice(0, 6)}`, name: '字段裁剪新指标' },
+      body: { libraryId: data.inside.library.id, code: `F035${uniqueSuffix()}`, name: '字段裁剪新指标' },
     });
     expect(created.status, await created.clone().text()).toBe(201);
     expect((await created.json()) as object).not.toHaveProperty('definition');

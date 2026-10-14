@@ -5,7 +5,6 @@
  *   它的授权就是撤销字典查看权；对象级看全部）、任职资格指标对象（只放开查看，DEC-352；单独一个身份，同理）。
  * 测试数据一律合成，邮箱用 example.com。
  */
-import { randomUUID } from 'node:crypto';
 import { EVALUATION_OBJECTS, QUALIFICATION_OBJECTS } from '@italent/domain';
 import { expect } from 'vitest';
 import { EV_APP, EV_BASE } from './AC-EV-support.js';
@@ -15,6 +14,7 @@ import { assignQualificationMou } from './AC-QL-support.js';
 import { createMou } from './AC-TC-support.js';
 import type { RequestOptions } from './support/tenant-api.js';
 import { type Db, sql } from '@italent/db';
+import { uniqueSuffix } from './support/unique.js';
 
 export const FORMS = '/evaluation-forms';
 export const GENERAL_ITEMS = '/general-score-items';
@@ -54,7 +54,7 @@ export interface TargetRef {
   readonly name: string;
 }
 
-const suffix = () => randomUUID().slice(0, 6);
+const suffix = () => uniqueSuffix();
 
 export async function formWorld(db: Db) {
   const base = await reviewWorld(db);

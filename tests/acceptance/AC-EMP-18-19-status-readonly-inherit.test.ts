@@ -10,6 +10,7 @@ import { transitionEmployment } from '../../apps/api/src/modules/employment/tran
 import type { EmploymentContext } from '../../apps/api/src/modules/employment/types.js';
 import { createEmploymentBusiness } from '../../apps/api/src/modules/employment/write-service.js';
 import { employmentSession, type EmploymentSession } from './AC-EMP-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 const rows = <T>(r: unknown) => (Array.isArray(r) ? r : (r as { rows: T[] }).rows) as T[];
@@ -27,7 +28,7 @@ function context(session: EmploymentSession, expectedRevision: number, at = '202
 
 /** 试用期员工：入职端口带“有试用期”（R2-T01 接线前由可信调用方传入）。 */
 async function probationer(session: EmploymentSession) {
-  const org = await session.org(`继承部门${randomUUID().slice(0, 6)}`, { establishedOn: '2026-01-01' });
+  const org = await session.org(`继承部门${uniqueSuffix()}`, { establishedOn: '2026-01-01' });
   const employee = await session.employee();
   const hire = await withTenant(testDb().db, session.tenant.id, (tx) =>
     createEmploymentBusiness(

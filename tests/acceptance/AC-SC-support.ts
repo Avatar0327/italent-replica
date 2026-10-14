@@ -15,6 +15,7 @@ import {
   TODAY,
 } from './AC-ORG-people-support.js';
 import { loginEmailOf } from './AC-EMP-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 export const SC_TODAY = TODAY;
 export const SC_BASE = '/api/tenant/succession';
@@ -95,7 +96,7 @@ export async function successionWorld(db: Db, label: string) {
   }
 
   async function readiness(name: string, extra: Record<string, unknown> = {}): Promise<ReadinessSeed> {
-    const code = `RN${randomUUID().slice(0, 6)}`;
+    const code = `RN${uniqueSuffix()}`;
     const response = await world.call('POST', 'talent-review/readiness-levels', {
       ifMatch: 0,
       body: { code, name, color: '#3366FF', ...extra },

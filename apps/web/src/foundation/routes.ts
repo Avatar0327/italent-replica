@@ -16,7 +16,7 @@ const route = (id: AppId, group: AppRoute['group'], objectCode?: string): AppRou
   objectCode,
 });
 
-// 页面契约注册点。菜单层级的 L2 适配在 demo-stubs/navigation.ts；这里不授予权限。
+// 页面契约注册点。菜单层级的 L2 适配在 foundation/permission-snapshot.ts；这里不授予权限。
 export const APP_ROUTES: readonly AppRoute[] = [
   route('org', 'people', 'TenantBase.Organization'),
   route('job', 'people', 'TenantBase.JobPost'),

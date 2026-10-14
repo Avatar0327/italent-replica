@@ -17,6 +17,9 @@ const Settings = lazy(() => import('../settings/SettingsPage.js').then((m) => ({
 const Staff = lazy(() => import('../personnel/StaffPage.js').then((m) => ({ default: m.StaffPage })));
 const Survey = lazy(() => import('../survey360/SurveyPage.js').then((m) => ({ default: m.SurveyPage })));
 const Talent = lazy(() => import('../talent/TalentPage.js').then((m) => ({ default: m.TalentPage })));
+const TalentReview = lazy(() =>
+  import('../talent-review/TalentReviewPage.js').then((m) => ({ default: m.TalentReviewPage })),
+);
 const Transfer = lazy(() => import('../transfer/TransferPage.js').then((m) => ({ default: m.TransferPage })));
 const existing = {
   evaluation: Evaluation,
@@ -28,6 +31,7 @@ const existing = {
   staff: Staff,
   survey360: Survey,
   talent: Talent,
+  'talent-review': TalentReview,
   transfer: Transfer,
 };
 

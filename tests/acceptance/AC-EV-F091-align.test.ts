@@ -7,6 +7,7 @@ import { registerFormLock } from '../../apps/api/src/modules/evaluation/form-loc
 import { registerInUse } from '../../apps/api/src/modules/evaluation/usage.js';
 import { formOperator, FORMS, formWorld, type FormWorld, type FormView } from './AC-EV-form-support.js';
 import { errorOf, ok } from './AC-EV-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 type AlignedForm = Omit<FormView, 'scoreMode' | 'fullScore' | 'passScore'> & {
   scoreMode: 'by_indicator' | 'by_total' | 'by_vote';
@@ -43,7 +44,7 @@ describe('AC-EV-F091-align 评价表原站口径（DEC-413）', () => {
   afterEach(() => registerFormLock(null));
 
   const body = (extra: Record<string, unknown> = {}) => ({
-    name: `F091评价表${randomUUID().slice(0, 6)}`,
+    name: `F091评价表${uniqueSuffix()}`,
     ownerOrgId: w.orgA,
     scoreMode: 'by_indicator',
     fullScore: 100,

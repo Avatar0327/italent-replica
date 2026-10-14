@@ -24,6 +24,7 @@ import {
   type DimensionView,
   talentWorld,
 } from './AC-TC-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 
@@ -112,7 +113,7 @@ describe('R3-T01 人才标准权限（真实授权器）', () => {
     const op = await talentOperator(world, { seeAll: true, mouId: data.bothMouId });
     const command = {
       ifMatch: 0,
-      idempotencyKey: `tc-replay-${randomUUID().slice(0, 8)}`,
+      idempotencyKey: `tc-replay-${uniqueSuffix()}`,
       body: { name: '重放分类', ownerOrgId: data.outside.orgId },
     };
     const first = await op.request('POST', '/criterion-categories', command);
@@ -152,7 +153,7 @@ describe('R3-T01 人才标准权限（真实授权器）', () => {
       [
         'dimensions',
         inside.dimension.id,
-        { libraryId: inside.library.id, code: `NB${randomUUID().slice(0, 6)}`, name: '无按钮' },
+        { libraryId: inside.library.id, code: `NB${uniqueSuffix()}`, name: '无按钮' },
       ],
       ['description-types', data.type.id, { name: '无按钮类型' }],
       ['criterion-categories', inside.criterionCategory.id, { name: '无按钮分类', ownerOrgId: inside.orgId }],
@@ -183,7 +184,7 @@ describe('R3-T01 人才标准权限（真实授权器）', () => {
     const categories = await adminRead<{ items: unknown[] }>('/criterion-categories');
     const command = {
       ifMatch: 0,
-      idempotencyKey: `tc-button-replay-${randomUUID().slice(0, 8)}`,
+      idempotencyKey: `tc-button-replay-${uniqueSuffix()}`,
       body: { name: '按钮重放分类', ownerOrgId: data.inside.orgId },
     };
     const first = await op.request('POST', '/criterion-categories', command);
@@ -214,7 +215,7 @@ describe('R3-T01 人才标准权限（真实授权器）', () => {
   });
 
   it('应用边界：只带组织员工应用的身份不能配置人才标准对象', async () => {
-    const profile = await createProfile(world, `tc-core-${randomUUID().slice(0, 6)}`, { apps: ['TenantBase'] });
+    const profile = await createProfile(world, `tc-core-${uniqueSuffix()}`, { apps: ['TenantBase'] });
     const definition = TALENT_OBJECTS.dimension;
     const response = await setObjectPermission(
       world,

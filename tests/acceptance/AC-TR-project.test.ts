@@ -14,6 +14,7 @@ import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.j
 import { updateField } from '../../apps/api/src/modules/talent-review/field-service.js';
 import { projectCreate } from '../../apps/api/src/modules/talent-review/project-input.js';
 import { createProject } from '../../apps/api/src/modules/talent-review/project-service.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 const PATH = '/projects';
@@ -26,7 +27,7 @@ type Project = {
   [key: string]: unknown;
 };
 const body = (org: string, extra: Record<string, unknown> = {}) => ({
-  code: `prj_${randomUUID().slice(0, 8)}`,
+  code: `prj_${uniqueSuffix()}`,
   name: '合成盘点项目',
   ownerOrgId: org,
   year: 2026,

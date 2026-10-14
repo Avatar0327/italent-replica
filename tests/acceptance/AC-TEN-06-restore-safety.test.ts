@@ -31,6 +31,7 @@ import { createTestDb, useTestDb } from '@italent/testkit';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { newUser, provisioned, type ProvisionResult, seedOperator } from './support/platform-api.js';
 import { cmd, tenantApi } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 const TODAY = '2026-10-01';
@@ -85,7 +86,7 @@ describe('AC-TEN-06 恢复安全与对账（astra 复审回归）', RESTORE_TIME
       const res = await fixture.request('POST', '/api/tenant/job/posts', {
         ...asAdmin,
         ifMatch: 0,
-        body: { name, code: `P${randomUUID().slice(0, 8)}`, startDate: '2026-01-01' },
+        body: { name, code: `P${uniqueSuffix()}`, startDate: '2026-01-01' },
       });
       expect(res.status, await res.clone().text()).toBe(201);
     }

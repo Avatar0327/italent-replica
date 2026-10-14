@@ -16,6 +16,7 @@ import { createEmploymentBusiness } from '../../apps/api/src/modules/employment/
 import { activationWorld } from './AC-TRF-activation-support.js';
 import { employmentSession, type EmploymentSession } from './AC-EMP-support.js';
 import { tenantApi } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 const rows = <T>(r: unknown) => (Array.isArray(r) ? r : (r as { rows: T[] }).rows) as T[];
@@ -289,7 +290,7 @@ describe('AC-PER-01（第二轮）人员信息列表的状态筛选校验编码'
 
 describe('AC-EMP-17（DEC-234）实习转正按入职处理', () => {
   async function intern(session: EmploymentSession, entry: { probation?: boolean } = {}) {
-    const org = await session.org(`实习部门${randomUUID().slice(0, 6)}`, { establishedOn: '2026-01-01' });
+    const org = await session.org(`实习部门${uniqueSuffix()}`, { establishedOn: '2026-01-01' });
     const employee = await session.employee();
     await withTenant(testDb().db, session.tenant.id, (tx) =>
       createEmploymentBusiness(

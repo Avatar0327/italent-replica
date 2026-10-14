@@ -6,7 +6,6 @@
  * - 冲突活动是草稿时放行；部分重叠（交集）也拦 🟡；
  * - 检查与写入同一事务，按“租户 + 申请类别”取事务级咨询锁后判断（并发见 AC-EV-activity-recheck-pg）。
  */
-import { randomUUID } from 'node:crypto';
 import { sql } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -22,6 +21,7 @@ import {
   activityWorld,
   type ActivityWorld,
 } from './AC-EV-activity-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 
@@ -100,14 +100,14 @@ describe('AC-EV-activity-scope-dup 适用范围重复拦截', () => {
     const spare = await w.qlCategory();
     const mine = await ok<ActivityView>(await post(op, body({ categoryIds: [spare.id] })), 201);
     await duplicate(await patch(op, mine, { categoryIds: [category.id] }));
-    const renamed = await ok<ActivityView>(await patch(op, mine, { name: `改名${randomUUID().slice(0, 6)}` }));
+    const renamed = await ok<ActivityView>(await patch(op, mine, { name: `改名${uniqueSuffix()}` }));
     expect(renamed.categoryIds).toEqual([spare.id]);
     // 历史数据里已经冲突（草稿的类别被置成与进行中活动相同）：值没变的提交、只改名称都不被拦，改适用组织范围才被拦
     await w.asOwner(async (run) => {
       await run(sql`UPDATE ev_activities SET category_ids = ARRAY[${category.id}::uuid] WHERE id = ${mine.id}::uuid`);
     });
     const legacy = await w.adminRead(mine.id);
-    const same = await patch(op, legacy, { name: `历史${randomUUID().slice(0, 6)}`, categoryIds: [category.id] });
+    const same = await patch(op, legacy, { name: `历史${uniqueSuffix()}`, categoryIds: [category.id] });
     expect(same.status, await same.clone().text()).toBe(200);
     await duplicate(await patch(op, await w.adminRead(mine.id), { orgRange: f.orgs(w.orgA, w.orgC) }));
     // 进行中的活动自己改适用组织范围：排除自身，不被自己拦

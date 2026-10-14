@@ -29,6 +29,7 @@ import {
 import { scoreRuleBody } from './AC-TR-scoring-support.js';
 import { tenantApi } from './support/tenant-api.js';
 import type * as RunCommands from '../../apps/api/src/commands.js';
+import { uniqueSuffix } from './support/unique.js';
 
 type RunCommandModule = typeof RunCommands;
 interface Loser {
@@ -88,7 +89,7 @@ function loserDb(db: Db, tenantId: string, commandId: string, loser: Loser): Db 
 
 const testDb = useTestDb();
 const clock = () => TR_NOW;
-const unique = (label: string) => `${label}${randomUUID().slice(0, 6)}`;
+const unique = (label: string) => `${label}${uniqueSuffix()}`;
 
 let world: PermissionWorld;
 let setup: ReturnType<typeof tenantApi>;

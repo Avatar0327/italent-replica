@@ -139,7 +139,7 @@ describe('AC-PRM-F075 任职资格编辑类：去掉引用对象预取前后返�
     expectGolden('qualification-all-allow', allowed);
   }, 240_000);
 
-  const scrub = (text: string) => text.replace(/\b[A-Z][0-9a-f]{6}\b/g, '<code>');
+  const scrub = (text: string) => text.replace(/\b[A-Z][0-9a-f]{12}\b/g, '<code>');
 
   /** 真实授权器：被引用对象完全没有授权的操作人，与有授权的操作人 PATCH 返回相同。 */
   const real = async (label: string, options: OperatorOptions, which: 'category-target' | 'standard') => {

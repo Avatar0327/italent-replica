@@ -3,7 +3,6 @@
  * 接口 /api/tenant/talent-review/calc-rules；缺省“全部允许”的授权钩子建数据，权限用例另用真实授权器（calcRuleOperator）。
  * 公式按字段名引用盘点字段：盘点对象.<字段名>（26 §8）。
  */
-import { randomUUID } from 'node:crypto';
 import type { Db } from '@italent/db';
 import { TALENT_REVIEW_APP, TALENT_REVIEW_OBJECTS } from '@italent/domain';
 import { expect } from 'vitest';
@@ -19,6 +18,7 @@ import {
 import { configBody, configWorld } from './AC-TR-config-support.js';
 import { TR_BASE } from './AC-TR-support.js';
 import type { RequestOptions } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 export const CALC_RULES = '/calc-rules';
 
@@ -127,7 +127,7 @@ export interface CalcOperatorOptions {
 export async function calcRuleOperator(world: PermissionWorld, options: CalcOperatorOptions = {}) {
   const rule = TALENT_REVIEW_OBJECTS.calcRule;
   const field = TALENT_REVIEW_OBJECTS.field;
-  const profile = await createProfile(world, `trk-${randomUUID().slice(0, 8)}`, { apps: [TALENT_REVIEW_APP] });
+  const profile = await createProfile(world, `trk-${uniqueSuffix()}`, { apps: [TALENT_REVIEW_APP] });
   const hidden = new Set(options.hidden ?? []);
   const locked = new Set(options.readonly ?? []);
   const setButtons = async (buttons: boolean) => {
@@ -166,7 +166,7 @@ export async function calcRuleOperator(world: PermissionWorld, options: CalcOper
     expect(response.status, await response.clone().text()).toBe(200);
   }
   await makeGrantable(world, [profile.id]);
-  const user = await addMember(world, `trk-operator-${randomUUID().slice(0, 4)}`);
+  const user = await addMember(world, `trk-operator-${uniqueSuffix()}`);
   expect((await grant(world, user.id, profile.id)).status).toBe(201);
   const as = { user: user.id, tenant: world.tenant.id };
   const revisions = new Map<string, number>();

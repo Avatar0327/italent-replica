@@ -11,7 +11,7 @@ export const m = {
     return `许可类型：${label}；超出 ${-balance} 个，当前余额 ${balance}。请联系平台运营补发许可。`;
   },
   title: '企业设置',
-  demo: '演示数据',
+  serverPermissions: '当前用户权限',
   new: '新增',
   edit: '编辑',
   detail: '查看详情',
@@ -116,7 +116,7 @@ export const m = {
   empty: '—',
   success: '保存成功',
   unknown: '结果未知，请先刷新列表或详情核实；本次提交已锁定，请勿重复保存。',
-  sourceNotice: '当前租户资料与范围摘要为演示适配；业务列表和保存使用服务端接口。',
+  sourceNotice: '租户资料、菜单与范围摘要来自当前用户权限快照；业务列表和保存使用服务端接口。',
   noPermission: '暂无访问权限',
   noMatch: '没有匹配的数据',
   search: '筛选当前已加载记录',
