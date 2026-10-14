@@ -407,7 +407,7 @@ describe('AC-PRM-FW-08 P3 非法标识：观测码与根节点 invalidId 相等'
     'PATCH /api/tenant/personnel/employees/:employeeId/subsets/:kind/:id',
   ];
 
-  it('第 3 轮：状态码相同、错误体不同的端点由实际行为证明适用（集合按模块声明，DEC-475④；含 B4 风险、B5 健康度与 B6b 模板复制）', () => {
+  it('第 3 轮：状态码相同、错误体不同的端点由实际行为证明适用（集合按模块声明，DEC-475④；含 B4 / B5 赋值与 B6b 复制）', () => {
     const k48 = sameStatusOnly();
     expectDeclared('状态码相同、错误体不同的端点', 'sameStatusInvalidId', k48);
     expect(k48).toContain('POST /api/tenant/talent-review/templates/:id/copy');
@@ -416,8 +416,8 @@ describe('AC-PRM-FW-08 P3 非法标识：观测码与根节点 invalidId 相等'
     expect(k48).toContain('POST /api/tenant/idp/plans/:id/goals');
     expect(k48).toContain('PUT /api/tenant/succession/risk-levels/:id');
     expect(k48).toContain('PUT /api/tenant/succession/health-levels/:id');
-    expect(k48).toContain('PUT /api/tenant/succession/health-results/:orgId');
     expect(k48).toContain('PUT /api/tenant/succession/risk-results/:positionId');
+    expect(k48).toContain('PUT /api/tenant/succession/health-results/:orgId');
     for (const k of k48) {
       expect(p3Applicable(k, fresh[k]!), k).toBe(true);
       expect(route(k).policy.invalidId, `${k} 真实声明有 invalidId`).toBeDefined();

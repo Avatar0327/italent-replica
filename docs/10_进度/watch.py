@@ -6,6 +6,7 @@ Opus 审查待收：PR 上有“审查已发起”（Opus / claude.ai/code）评
 待送审：最新提交 READY 分钟后 CI 绿（或无 CI）、提交后无送审类评论 → 提醒（覆盖云端开发会话完成看不到的问题）。
 单实例：pid 文件，新实例结束旧实例；事件同时追加到 ~/.cache/italent-progress-watch.events。
 停摆：CI 全绿 + 最新提交与最新评论都早于 STALL 分钟 → 视为“开发方已停、没人送审或没人处理结论”。
+红灯 / 冲突挂起：CI 红或与 main 冲突，最新提交超 180 分钟且 90 分钟无评论 → 报一次（10-13 补漏）。
 状态存在 STATE 文件里，重启不丢基线；已报过的停摆同一 head 只报一次。
 """
 import json, os, subprocess, sys, time, datetime
@@ -28,7 +29,21 @@ def gh(args):
 
 
 def snapshot():
-    prs = gh(["pr", "list", "--state", "open", "--json", "number,title,headRefOid,isDraft,statusCheckRollup,comments,commits,baseRefName"])
+    # 10-13：一次性取 comments + commits 在在途 PR 多时超时（GitHub 约 50 秒断流，watch 静默失败了 5 小时）；
+    # 改为轻量列表 + 每个 PR 单独取评论 / 提交（并发 6 路），任一失败整轮跳过（避免误报“已关闭”）
+    prs = gh(["pr", "list", "--state", "open", "--limit", "100", "--json", "number,title,headRefOid,isDraft,statusCheckRollup,baseRefName,mergeable"])
+    from concurrent.futures import ThreadPoolExecutor
+
+    def extra(p):
+        for _ in range(2):
+            try:
+                return gh(["pr", "view", str(p["number"]), "--json", "comments,commits"])
+            except Exception:
+                time.sleep(2)
+        raise RuntimeError(f"取 #{p['number']} 评论 / 提交失败")
+    with ThreadPoolExecutor(6) as ex:
+        for p, x in zip(prs, ex.map(extra, prs)):
+            p["comments"], p["commits"] = x["comments"], x["commits"]
     try:  # 搁置中的 PR（每行一个号）不再报停摆 / 待送审
         paused = set(open(os.path.expanduser("~/.cache/italent-paused-prs")).read().split())
     except Exception:
@@ -81,7 +96,7 @@ def snapshot():
         approved = ("可以合并" in res and "暂不能合并" not in res) or "代码复审通过" in res or "代码审查通过" in res
         quiet_draft = p["isDraft"] and (waiting or p.get("baseRefName", "main") != "main" or any(w in p["title"] for w in ("红测", "WIP", "待", "开发中")))
         out[str(p["number"])] = {"waiting": waiting, "approved": approved, "quiet": quiet_draft, "opus": opus, "handled": handled, "done": done_at, "t": p["title"][:40], "head": p["headRefOid"][:7], "draft": p["isDraft"], "ci": ci,
-                                 "commit": last_commit, "comment": last_comment, "nc": len(p["comments"])}
+                                 "commit": last_commit, "comment": last_comment, "nc": len(p["comments"]), "conflict": p.get("mergeable") == "CONFLICTING"}
     return out
 
 
@@ -290,6 +305,12 @@ def main():
             if not hold and p["ci"] == "green" and not p["draft"] and mins_since(p["commit"]) > (180 if p.get("approved") else STALL) and mins_since(p["comment"]) > STALL and key not in stalled:
                 ev.append(f"停摆 #{n} {p['t']}：CI 绿，最新提交 {int(mins_since(p['commit']))} 分钟前，{STALL} 分钟内无评论")
                 stalled.add(key)
+            # 10-13 补漏（#291 自 10-12 起 CI 红 + 与 main 冲突，红灯只报过一次、停摆规则只认 CI 绿，一直没人再提）：
+            # CI 红或与 main 冲突、非 Draft、最新提交超 180 分钟、90 分钟内无评论 → 报一次“红灯 / 冲突挂起”
+            kr = f"{n}@{p['head']}@{p['nc']}@redhold"
+            if not hold and not p["draft"] and (p["ci"] == "red" or p.get("conflict")) and mins_since(p["commit"]) > 180 and mins_since(p["comment"]) > STALL and kr not in stalled:
+                ev.append(f"红灯 / 冲突挂起 #{n} {p['t']}：{'CI 红' if p['ci'] == 'red' else '与 main 冲突'}，最新提交 {int(mins_since(p['commit']))} 分钟前，{STALL} 分钟内无评论，请确认谁在处理（等前置合并？还是漏派？）")
+                stalled.add(kr)
             if hold:
                 continue
             if p.get("done") and f"{n}@done@{p['done']}" not in stalled:
