@@ -1,4 +1,4 @@
-import { Alert, Button, Descriptions, Space, Table } from 'antd';
+import { Button, Descriptions, Space } from 'antd';
 import { useNavigate, useParams, useSearchParams } from 'react-router';
 import { usePermissions } from '../foundation/Permissions.js';
 import { PageState } from '../foundation/PageState.js';
@@ -21,17 +21,6 @@ const contractKeys = [
   'signingCount',
   'rootContractId',
   'versionNo',
-  'status',
-  'approvalStatus',
-];
-const versionKeys = [
-  'versionNo',
-  'number',
-  'typeId',
-  'termType',
-  'effectiveDate',
-  'endDate',
-  'actualTerminationDate',
   'status',
   'approvalStatus',
 ];
@@ -63,84 +52,52 @@ export function ContractDetail() {
       {!!result.error && <PageState kind="error" error={result.error} retry={result.refresh} />}
       {!result.error && result.loading && <PageState kind="loading" />}
       {!result.error && !result.loading && data && (
-        <>
-          <section className="contract-card">
-            <h2>{m.contract}</h2>
-            <Descriptions
-              column={2}
-              size="small"
-              items={contractKeys
-                .filter((key) => allowed.includes(key))
-                .map((key) => ({ key, label: m.fields[key] ?? key, children: cell(data, key) }))}
-            />
-          </section>
+        // 原站详情只有一个“合同协议”分区：先任职信息，再合同信息；没有版本链 / 历史入口。
+        <section className="contract-card">
+          <h2>{m.agreement}</h2>
           <Employment data={data} />
-          <Versions data={data} />
-        </>
+          <h3>{m.contract}</h3>
+          <Descriptions
+            column={2}
+            size="small"
+            items={contractKeys
+              .filter((key) => allowed.includes(key))
+              .map((key) => ({ key, label: m.fields[key] ?? key, children: cell(data, key) }))}
+          />
+        </section>
       )}
     </div>
   );
 }
-/** 任职摘要来自详情接口（按任职对象字段裁剪）；名称按业务日向组织 / 职务 / 职位接口解析。 */
+/** 任职摘要来自详情接口（按任职对象字段裁剪）；字段按原站六项，机构 / 直线经理 / 虚线经理后端未提供显示“--”。 */
 function Employment({ data }: { data: Row }) {
-  const today = useToday();
-  const employment = data.employment && typeof data.employment === 'object' ? (data.employment as Row) : undefined;
   // 任职名称按今天（租户时区）解析：详情展示的是当前任职，不是合同签订时的任职。
-  const asOf = today;
+  const asOf = useToday();
+  const employment = data.employment && typeof data.employment === 'object' ? (data.employment as Row) : undefined;
+  const missing = '--';
   return (
-    <section className="contract-card">
-      <h2>{m.employment}</h2>
+    <>
+      <h3>{m.employment}</h3>
       {!employment ? (
         <p>{m.noEmployment}</p>
       ) : (
-        <>
-          {asOf && <Alert type="info" showIcon message={m.employmentAsOf(asOf)} />}
-          <Descriptions
-            column={2}
-            size="small"
-            items={[
-              { key: 'entryDate', label: m.fields.entryDate, children: value(employment.entryDate, 'entryDate') },
-              {
-                key: 'department',
-                label: m.fields.department,
-                children: <NameOf path={refPaths.departmentId} id={employment.departmentId} asOf={asOf} />,
-              },
-              {
-                key: 'job',
-                label: m.fields.job,
-                children: <NameOf path={refPaths.postId} id={employment.postId} />,
-              },
-              {
-                key: 'post',
-                label: m.fields.post,
-                children: <NameOf path={refPaths.positionId} id={employment.positionId} />,
-              },
-              { key: 'location', label: m.fields.location, children: value(employment.place, 'place') },
-            ]}
-          />
-        </>
+        <Descriptions
+          column={2}
+          size="small"
+          items={[
+            { key: 'entryDate', label: m.fields.entryDate, children: value(employment.entryDate, 'entryDate') },
+            { key: 'organization', label: m.fields.organization, children: missing },
+            {
+              key: 'department',
+              label: m.fields.department,
+              children: <NameOf path={refPaths.departmentId} id={employment.departmentId} asOf={asOf} />,
+            },
+            { key: 'job', label: m.fields.job, children: <NameOf path={refPaths.postId} id={employment.postId} /> },
+            { key: 'manager', label: m.fields.manager, children: missing },
+            { key: 'dottedManager', label: m.fields.dottedManager, children: missing },
+          ]}
+        />
       )}
-    </section>
-  );
-}
-function Versions({ data }: { data: Row }) {
-  const versions = Array.isArray(data.versions) ? (data.versions as Row[]) : [];
-  const permission = usePermissions(object);
-  const allowed = permission.snapshot.objects[object]?.viewableFields ?? [];
-  return (
-    <section className="contract-card">
-      <h2>{m.history}</h2>
-      <Table<Row>
-        size="small"
-        pagination={false}
-        scroll={{ x: 'max-content' }}
-        rowKey={(row) => String(row.id)}
-        dataSource={versions}
-        locale={{ emptyText: m.noVersions }}
-        columns={versionKeys
-          .filter((key) => allowed.includes(key))
-          .map((key) => ({ key, title: m.fields[key] ?? key, render: (_: unknown, row: Row) => cell(row, key) }))}
-      />
-    </section>
+    </>
   );
 }

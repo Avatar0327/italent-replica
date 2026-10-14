@@ -58,9 +58,15 @@ function useListState() {
     setGeneration((n) => n + 1);
     result.refresh();
   };
+  // 各视图可用的筛选项不同（入职缺失只认部分参数），切换视图时清空筛选并回到第 1 页。
+  const switchView = (next: View) => {
+    setParams({ view: next });
+    setFilters({});
+    setPage(1);
+  };
   return {
     view,
-    setParams,
+    switchView,
     page,
     setPage,
     pageSize,
@@ -107,7 +113,7 @@ function ViewCount({ view, days }: { view: View; days: number }) {
   return <strong>{typeof result.data?.total === 'number' ? result.data.total : '--'}</strong>;
 }
 function ListHeading({ state }: { state: State }) {
-  const { view, setParams, days, generation, reload } = state;
+  const { view, switchView, days, generation, reload } = state;
   return (
     <>
       <header className="contract-heading">
@@ -118,12 +124,7 @@ function ListHeading({ state }: { state: State }) {
       </header>
       <nav className="contract-views" aria-label={m.title}>
         {views.map((v) => (
-          <button
-            key={v.key}
-            aria-label={v.label}
-            aria-pressed={v.key === view}
-            onClick={() => setParams({ view: v.key })}
-          >
+          <button key={v.key} aria-label={v.label} aria-pressed={v.key === view} onClick={() => switchView(v.key)}>
             <span>{v.label}</span>
             <ViewCount key={`${v.key}-${generation}`} view={v.key} days={days} />
           </button>

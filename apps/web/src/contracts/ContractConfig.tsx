@@ -8,7 +8,7 @@ import { configObjects, value, type Config, type Row } from './model.js';
 import { useRead } from './useRead.js';
 import { m } from './messages.js';
 import { Fields } from './parts.js';
-import { ConfigForm, DeleteRule } from './ConfigForms.js';
+import { ConfigForm, RowCommand } from './ConfigForms.js';
 import { RefLabel, RefLabels, refPaths } from './references.js';
 
 const pageSize = 15;
@@ -67,6 +67,7 @@ export function ContractConfig({ kind }: { kind: Config }) {
             setRule={setRule}
             edit={canEdit ? (row) => setEditing({ row }) : undefined}
             removable={kind === 'rules' && canEdit && permission.can('delete', 'detail')}
+            toggle={kind === 'types' && canEdit && canToggle(permission.field)}
             reload={result.refresh}
           />
           <ConfigPagination kind={kind} page={page} rows={rows.length} total={result.data?.total} setPage={setPage} />
@@ -175,6 +176,7 @@ function ConfigTable({
   setRule,
   edit,
   removable,
+  toggle,
   reload,
 }: {
   kind: Config;
@@ -183,6 +185,7 @@ function ConfigTable({
   setRule(row: Row): void;
   edit?: (row: Row) => void;
   removable: boolean;
+  toggle: boolean;
   reload(): void;
 }) {
   const keys =
@@ -224,7 +227,8 @@ function ConfigTable({
                   {m.edit}
                 </Button>
               )}
-              {removable && <DeleteRule row={row} onDeleted={reload} />}
+              {toggle && typeof row.enabled === 'boolean' && <RowCommand kind="toggle" row={row} onDone={reload} />}
+              {removable && <RowCommand kind="delete" row={row} onDone={reload} />}
             </Space>
           ),
         },
@@ -247,35 +251,38 @@ function RuleDrawer({ rule, allowed, close }: { rule?: Row; allowed: readonly st
     <Drawer title={m.ruleInfo} open={!!rule} onClose={close} width={600}>
       {rule && (
         <>
-          <Fields row={rule} allowed={allowed} keys={['name', 'priority', 'enabled']} />
-          {allowed.includes('orgIds') && (
-            <p>
-              {m.fields.orgIds}：<RefLabels path={refPaths.orgId} ids={rule.orgIds} />
-            </p>
-          )}
-          {allowed.includes('personIds') && (
-            <p>
-              {m.fields.personIds}：{value(rule.personIds, 'personIds')}
-            </p>
-          )}
+          <Fields
+            row={rule}
+            allowed={allowed}
+            keys={['name', 'priority', 'enabled', 'orgIds', 'personIds']}
+            labels={{ name: m.ruleName }}
+            render={(key) => configValue(rule, key)}
+          />
           <h2>{m.flowRule}</h2>
           {allowed.includes('details') &&
             Array.isArray(rule.details) &&
             rule.details.map((detail: Row, index: number) => (
               <section className="contract-card" key={index}>
-                <p>
-                  {m.fields.typeId}：<RefLabel path={refPaths.typeId} id={detail.typeId} />
-                </p>
-                <Fields row={detail} keys={['daysBefore', 'months', 'initiatorId']} />
-                <p>
-                  {m.fields.skipTypeIds}：<RefLabels path={refPaths.typeId} ids={detail.skipTypeIds} />
-                </p>
+                <Fields
+                  row={detail}
+                  keys={['typeId', 'daysBefore', 'months', 'initiatorId', 'skipTypeIds']}
+                  render={(key) => detailValue(detail, key)}
+                />
               </section>
             ))}
         </>
       )}
     </Drawer>
   );
+}
+/** 行内启停发完整请求体，编码 / 名称须可读、启用须可写，否则不提供入口。 */
+function canToggle(field: (name: string) => { visible: boolean; editable: boolean }) {
+  return ['code', 'name'].every((name) => field(name).visible) && field('enabled').editable;
+}
+function detailValue(detail: Row, key: string) {
+  if (key === 'typeId') return <RefLabel path={refPaths.typeId} id={detail.typeId} />;
+  if (key === 'skipTypeIds') return <RefLabels path={refPaths.typeId} ids={detail.skipTypeIds} />;
+  return value(detail[key], key);
 }
 function configValue(row: Row, key: string) {
   if (key === 'enabled' && typeof row[key] === 'boolean') return row[key] ? m.enabled : m.disabled;

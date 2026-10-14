@@ -61,8 +61,12 @@ export function ConfigForm({
   const keys = configFields[kind];
   const baseline = pick(row, keys, defaults[kind]);
   const revision = Number(row?.revision ?? 0);
-  const fields = keys.map((name) => configField(kind, name, permission.field(name), baseline[name]));
+  const fields = formKeys(kind, keys).map((name) =>
+    configField(kind, name, lockIf(permission.field(name), name === 'code' && !!id), baseline[name]),
+  );
   const editable = fields.filter((field) => field.access.visible && field.access.editable).map((field) => field.name);
+  // 类型 PUT 需完整请求体：编码（编辑时只读）与启用（原站在行内启停）不在表单里改，按当前基线原样带上。
+  const carried = kind === 'types' ? ['code', 'enabled'].filter((name) => !editable.includes(name)) : [];
   const read = async () => {
     const latest =
       kind === 'settings'
@@ -78,18 +82,20 @@ export function ConfigForm({
   return (
     <FormOverlay
       open
+      mode={kind === 'types' ? 'modal' : undefined}
       recordKey={resource}
       submission={{ ...submission, reload: id ? () => submission.reread(read) : undefined }}
-      title={`${row || kind === 'settings' ? m.edit : m.create}${kind === 'settings' ? m.settings : m[kind]}`}
-      groups={[{ title: m[kind], fields }]}
+      title={configTitle(kind, !!row)}
+      groups={configGroups(kind, fields)}
       initialValues={baseline}
       onClose={onClose}
       onRefresh={onSaved}
       onSubmit={async (values) => {
+        const current = submission.state && submission.state.status !== 'done' ? submission.state.baseline : baseline;
         const result = await submission.submit({
-          values,
+          values: { ...pick(current, carried, {}), ...values },
           baseline,
-          editableFields: editable,
+          editableFields: [...editable, ...carried],
           revision,
           businessId: id,
           patchOnly: kind === 'settings',
@@ -108,6 +114,23 @@ export function ConfigForm({
       }}
     />
   );
+}
+
+const lockIf = (field: { visible: boolean; editable: boolean }, readonly: boolean) =>
+  readonly ? { ...field, editable: false } : field;
+const formKeys = (kind: Config, keys: string[]) => (kind === 'types' ? keys.filter((key) => key !== 'enabled') : keys);
+/** 标题与分组按原站：类型为居中弹窗“新建 / 编辑”，规则新增为“添加规则”，分“规则信息 / 流程发起规则”。 */
+function configTitle(kind: Config, editing: boolean) {
+  if (kind === 'types') return editing ? m.edit : m.create;
+  if (kind === 'rules' && !editing) return m.addRule;
+  return `${m.edit}${m[kind]}`;
+}
+function configGroups(kind: Config, fields: FormField[]) {
+  if (kind !== 'rules') return [{ title: m[kind], fields }];
+  return [
+    { title: m.ruleInfo, fields: fields.filter((field) => field.name !== 'details') },
+    { title: m.flowRule, fields: fields.filter((field) => field.name === 'details') },
+  ];
 }
 
 function configField(
@@ -304,37 +327,47 @@ function DetailInputs({
   );
 }
 
-/** 规则删除也是写命令：带 revision 与命令 ID，回执须为 {id, deleted:true}；结果未知时保持锁定。 */
-export function DeleteRule({ row, onDeleted }: { row: Row; onDeleted(): void }) {
+/** 行内写命令（规则删除 / 类型启停）：带 revision 与命令 ID，回执按本行核对；结果未知时保持锁定。 */
+export function RowCommand({ kind, row, onDone }: { kind: 'delete' | 'toggle'; row: Row; onDone(): void }) {
   const api = useApiClient();
   const id = String(row.id);
-  const submission = useCommandForm(`${paths.rules}/${id}/delete`);
+  const path = `${kind === 'delete' ? paths.rules : paths.types}/${encodeURIComponent(id)}`;
+  const submission = useCommandForm(`${path}/${kind}`);
   const [error, setError] = useState<unknown>();
-  const remove = async () => {
+  // 原站类型启停在行内，不在编辑表单里；类型 PUT 需完整请求体，只翻转启用状态，其余取本行。
+  const body = kind === 'toggle' ? { code: row.code, name: row.name, enabled: !row.enabled } : {};
+  const run = async () => {
     setError(undefined);
     const revision = Number(row.revision);
     const result = await submission.submit({
-      values: {} as Values,
+      values: body as Values,
       baseline: {},
-      editableFields: [],
+      editableFields: Object.keys(body),
       revision,
       businessId: id,
       send: async (command) =>
-        parseSavedReceipt(
-          await api.request<unknown>(`${paths.rules}/${encodeURIComponent(id)}`, { method: 'DELETE', command }),
-          { id, revision, deleted: true },
-        ),
+        parseSavedReceipt(await api.request<unknown>(path, { method: kind === 'delete' ? 'DELETE' : 'PUT', command }), {
+          id,
+          revision,
+          deleted: kind === 'delete',
+        }),
     });
     if (result.status === 'done') {
       submission.clear();
-      onDeleted();
+      onDone();
     } else setError(result.error);
   };
+  const label = kind === 'delete' ? m.delete : row.enabled ? m.disabled : m.enabled;
   return (
     <Space direction="vertical">
-      <Popconfirm title={m.deleteConfirm} okText={m.confirm} cancelText={m.cancel} onConfirm={() => void remove()}>
-        <Button type="link" danger disabled={submission.locked} loading={submission.busy}>
-          {m.delete}
+      <Popconfirm
+        title={kind === 'delete' ? m.deleteConfirm : m.toggleConfirm(label)}
+        okText={m.confirm}
+        cancelText={m.cancel}
+        onConfirm={() => void run()}
+      >
+        <Button type="link" danger={kind === 'delete'} disabled={submission.locked} loading={submission.busy}>
+          {label}
         </Button>
       </Popconfirm>
       {submission.state && submission.state.status !== 'done' && <CommandStatus submission={submission} />}

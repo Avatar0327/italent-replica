@@ -22,7 +22,7 @@ import {
   type Operation,
 } from './forms.js';
 import { m } from './messages.js';
-import { object, type Row } from './model.js';
+import { object, value, type Row } from './model.js';
 import { RefLabel, RefSelect, refPaths, usePeople } from './references.js';
 import { useRead } from './useRead.js';
 
@@ -102,7 +102,11 @@ export function ContractForm(props: Props) {
               })
           : undefined,
       }}
-      title={`${modeLabel(op, mode)}${m.contractSuffix}`}
+      title={
+        mode === 'direct'
+          ? `${m.operations[op]}${m.contractSuffix}`
+          : m.applyFor(`${m.contractSuffix}${m.operations[op]}`)
+      }
       groups={groups}
       initialValues={{ ...initialValues(op, source), ...(op === 'create' ? { employee } : {}) }}
       onClose={onClose}
@@ -154,9 +158,26 @@ function useFormFields(op: Operation, source?: Row, employee?: Choice) {
       ? [{ title: m.contract, fields: [field('actualTerminationDate', <TenantDatePicker />)] }]
       : [
           ...(op === 'create' ? [{ title: m.fields.employeeId!, fields: [employeeField(employee)] }] : []),
-          { title: m.contract, fields: contractFields },
+          { title: m.formGroups[op], fields: contractFields },
+          ...(source ? [{ title: m.originalContract, fields: originalFields(source, permission.field) }] : []),
         ];
   return { groups, fields: editable.filter((name) => access(name).visible) };
+}
+/** 变更 / 续签下方的原合同信息（原站灰底只读分区），只展示、不提交。 */
+const originalKeys = ['number', 'companyId', 'typeId', 'termType', 'signingDate', 'effectiveDate', 'endDate'];
+function originalFields(source: Row, access: (field: string) => { visible: boolean }): FormField[] {
+  return [...originalKeys, 'signingCount'].map((name) => ({
+    name: `original.${name}`,
+    label: m.fields[name] ?? name,
+    control: null,
+    access: { visible: access(name).visible, editable: false },
+    display:
+      name === 'companyId' || name === 'typeId' ? (
+        <RefLabel path={refPaths[name]} id={source[name]} />
+      ) : (
+        value(source[name], name)
+      ),
+  }));
 }
 /** 提交经 F-123 内核；回执按实际形态分流（合同 / 申请），不按 mode 推断。 */
 function useSubmit(props: Props, submission: ReturnType<typeof useCommandForm>, fields: string[]) {
