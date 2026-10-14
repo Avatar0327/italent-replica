@@ -10,9 +10,9 @@ import { ui } from './messages.js';
 const Account = lazy(() => import('../account/AccountPage.js').then((m) => ({ default: m.AccountPage })));
 const Evaluation = lazy(() => import('../evaluation/EvaluationPage.js').then((m) => ({ default: m.EvaluationPage })));
 const Job = lazy(() => import('../job/JobPage.js').then((m) => ({ default: m.JobPage })));
-const Manager = lazy(() => import('../transfer/ManagerPage.js').then((m) => ({ default: m.ManagerPage })));
+const Manager = lazy(() => import('../self-service/pages/ManagerPage.js').then((m) => ({ default: m.ManagerPage })));
 const Org = lazy(() => import('../org/OrgChangePage.js').then((m) => ({ default: m.OrgChangePage })));
-const Self = lazy(() => import('../employee-self-service/EmployeePage.js').then((m) => ({ default: m.EmployeePage })));
+const Self = lazy(() => import('../self-service/pages/SelfPage.js').then((m) => ({ default: m.SelfPage })));
 const Settings = lazy(() => import('../settings/SettingsPage.js').then((m) => ({ default: m.SettingsPage })));
 const Staff = lazy(() => import('../personnel/StaffPage.js').then((m) => ({ default: m.StaffPage })));
 const Survey = lazy(() => import('../survey360/SurveyPage.js').then((m) => ({ default: m.SurveyPage })));
@@ -73,7 +73,11 @@ export function AppPages() {
                 element={
                   Page ? (
                     <div
-                      className={['staff', 'evaluation', 'survey360'].includes(route.id) ? undefined : 'legacy-page'}
+                      className={
+                        ['evaluation', 'manager', 'self', 'staff', 'survey360'].includes(route.id)
+                          ? undefined
+                          : 'legacy-page'
+                      }
                     >
                       <Page />
                     </div>
@@ -101,22 +105,8 @@ export function AppPages() {
             }
           />
           <Route path="/settings/menu/:code" element={<Settings />} />
-          <Route
-            path="/self/*"
-            element={
-              <div className="legacy-page">
-                <Self />
-              </div>
-            }
-          />
-          <Route
-            path="/manager/*"
-            element={
-              <div className="legacy-page">
-                <Manager />
-              </div>
-            }
-          />
+          <Route path="/self/*" element={<Self />} />
+          <Route path="/manager/*" element={<Manager />} />
           <Route path="*" element={<PageState kind="not-found" />} />
         </Routes>
       </Suspense>
