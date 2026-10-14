@@ -76,11 +76,11 @@ export function lazyPage<K extends string, M extends Record<K, ComponentType>>(
 
 /** glob 键形如 `../<模块>/pages.ts`，取模块目录名 */
 export const moduleName = (key: string) => key.split('/').at(-2) ?? key;
-// 按码点比较，不受运行环境区域设置影响
-const compare = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+/** 按码点比较，不受运行环境区域设置影响；页面与注释汇总共用 */
+export const compareText = (a: string, b: string) => Number(a > b) - Number(a < b);
 const byKey = <T>(modules: Record<string, T>) =>
   Object.keys(modules)
-    .sort(compare)
+    .sort(compareText)
     .map((key) => [moduleName(key), modules[key]] as const);
 
 function declarations(modules: Record<string, unknown>) {
@@ -120,7 +120,7 @@ export function collectPages(modules: Record<string, unknown>, appIds: readonly 
         legacy: legacy ?? false,
       })),
     )
-    .sort((a, b) => compare(a.id, b.id));
+    .sort((a, b) => compareText(a.id, b.id));
   for (const entry of entries) {
     claim(ids, '菜单键', entry.id, entry.module);
     claim(paths, '路径', entry.path, entry.module);
@@ -129,7 +129,7 @@ export function collectPages(modules: Record<string, unknown>, appIds: readonly 
     .flatMap(({ module, pages }) =>
       (pages.routes ?? []).map(({ legacy, ...route }) => ({ ...route, module, legacy: legacy ?? false })),
     )
-    .sort((a, b) => compare(a.path, b.path));
+    .sort((a, b) => compareText(a.path, b.path));
   for (const route of routes) claim(paths, '路径', route.path, route.module);
   return {
     apps: appRoutes,

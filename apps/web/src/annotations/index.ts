@@ -1,5 +1,5 @@
 /// <reference types="vite/client" />
-import { moduleName } from '../foundation/page-registry.js';
+import { compareText, moduleName } from '../foundation/page-registry.js';
 
 export interface DecisionAnnotation {
   original: string;
@@ -17,7 +17,7 @@ export function collectAnnotations(modules: Record<string, unknown>) {
   const notes: Notes = {};
   const owners: Record<string, string> = {};
   const found = Object.keys(modules)
-    .sort()
+    .sort(compareText)
     .flatMap((key) => {
       const module = moduleName(key);
       const items = (modules[key] as { notes?: Notes } | undefined)?.notes;
@@ -25,7 +25,7 @@ export function collectAnnotations(modules: Record<string, unknown>) {
         throw new Error(`注释登记缺少导出：${module}/annotations.ts 须导出 notes`);
       return Object.entries(items).map(([id, note]) => ({ id, note, module }));
     })
-    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    .sort((a, b) => compareText(a.id, b.id));
   for (const { id, note, module } of found) {
     if (owners[id] !== undefined) throw new Error(`注释登记重复：${id}（${owners[id]} 与 ${module}）`);
     notes[id] = note;
