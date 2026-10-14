@@ -80,3 +80,18 @@ it('AC-FE-F123 表单入口保护普通子控件，显式 disabled=false 不能�
   props.onChange('解锁');
   expect(change).toHaveBeenCalledWith('解锁');
 });
+
+it('AC-FE-F123 共用控件仍继承旧 Form 的业务禁用，不能被默认 false 解锁', async () => {
+  const { Form } = requireWeb('antd');
+  const change = vi.fn();
+  let callback!: () => void;
+  function Control() {
+    const lock = useFormLock(false);
+    callback = lock.guard(change);
+    return h('input', { disabled: lock.disabled });
+  }
+  await act(() => root.render(h(Form, { disabled: true }, h(Control))));
+  expect(host.querySelector('input')!.disabled).toBe(true);
+  callback();
+  expect(change).not.toHaveBeenCalled();
+});
