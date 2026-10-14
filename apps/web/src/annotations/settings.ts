@@ -9,7 +9,7 @@ export const settingsNotes: Record<string, DecisionAnnotation> = {
   },
   'settings.snapshot': {
     original: '企业设置入口随管理员能力变化。',
-    decision: 'F-113 尚未合入，快照由现有权限菜单转接，范围摘要保持未知且不授予数据范围。',
+    decision: '菜单及只读状态来自当前用户权限快照；租户资料与范围摘要共用前端底座，读取失败可重试。',
     decisions: ['DEC-456', 'DEC-469'],
     level: 'L2',
   },

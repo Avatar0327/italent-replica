@@ -9,6 +9,7 @@ import { approvalWorld, transferScene } from './AC-APV-support.js';
 import { assignQualificationMou, type CategoryView, QL_BASE, type LevelView } from './AC-QL-support.js';
 import { createMou, createOrg } from './AC-TC-support.js';
 import type { useTestDb } from '@italent/testkit';
+import { uniqueSuffix } from './support/unique.js';
 
 export const rowsOf = <T>(value: unknown): T[] => (Array.isArray(value) ? value : (value as { rows: T[] }).rows) as T[];
 export const REQUESTS = '/api/tenant/personnel/change-requests';
@@ -26,7 +27,7 @@ export async function subsetScene(database: ReturnType<typeof useTestDb>, label:
   await assignQualificationMou(w.api, who, w.hr.id, mouId, 0);
   const create = async <T>(path: string, body: unknown): Promise<T> =>
     w.json<T>(await w.request(w.hr.id, 'POST', `${QL_BASE}${path}`, { ifMatch: 0, body }), 201);
-  const suffix = () => randomUUID().slice(0, 6);
+  const suffix = () => uniqueSuffix();
   const klass = await create<{ id: string }>('/category-classes', { code: `K${suffix()}`, name: '管理类' });
   const category = (extra: Record<string, unknown> = {}) =>
     create<CategoryView>('/categories', { code: `C${suffix()}`, name: `类别${suffix()}`, classId: klass.id, ...extra });

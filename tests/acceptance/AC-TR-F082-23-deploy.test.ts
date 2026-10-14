@@ -24,6 +24,7 @@ import {
 import { makeBound } from './AC-TR-F082-support.js';
 import { rebindWorld, type RebindWorld } from './AC-TR-F082-rebind-support.js';
 import { TR_NOW } from './AC-TR-config-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 const pg = describe.runIf(Boolean(process.env.TEST_DATABASE_URL));
@@ -324,7 +325,7 @@ pg('AC-23 真实连接（真 PG）：按前缀与按应用角色识别连接', (
  * 需要能建角色的测试账号（CI 的 postgres 超级用户）；没有建角色权限时跳过。
  */
 pg('AC-23 检查账号的可见性前置判定（真 PG，检查角色 ≠ 应用角色）', () => {
-  const suffix = Math.random().toString(36).slice(2, 10);
+  const suffix = uniqueSuffix();
   const checker = `f082_chk_${suffix}`;
   const appRole = `f082_app_${suffix}`;
   // 临时角色的口令每次随机生成，测试结束连同角色一起删除

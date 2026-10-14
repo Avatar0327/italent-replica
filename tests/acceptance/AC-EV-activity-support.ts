@@ -7,7 +7,6 @@
  * - 员工信息身份：负责人的人员范围与姓名 / 工号字段权（TenantBase）。
  * 租户管理员（缺省授权钩子）搭数据。测试数据一律合成，邮箱用 example.com。
  */
-import { randomUUID } from 'node:crypto';
 import { EVALUATION_OBJECTS, PERSONNEL_OBJECT, PERSONNEL_OBJECTS, QUALIFICATION_OBJECTS } from '@italent/domain';
 import { sql, type Db } from '@italent/db';
 import { expect } from 'vitest';
@@ -17,6 +16,7 @@ import { createProfile, grant, makeGrantable, setObjectPermission, BASE, addMemb
 import { assignQualificationMou } from './AC-QL-support.js';
 import { createMou } from './AC-TC-support.js';
 import type { RequestOptions } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 export const ACTIVITIES = '/activities';
 const QL_BASE = '/api/tenant/qualification';
@@ -75,7 +75,7 @@ export interface Ref {
   readonly revision: number;
 }
 
-const suffix = () => randomUUID().slice(0, 6);
+const suffix = () => uniqueSuffix();
 
 export async function activityWorld(db: Db) {
   const base = await reviewWorld(db);

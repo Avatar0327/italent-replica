@@ -9,7 +9,8 @@ import { DecisionNote } from '../foundation/DecisionNote.js';
 import { PageState } from '../foundation/PageState.js';
 import type { PageResult } from '../foundation/client.js';
 import { Failure, useRead, useWriter } from '../evaluation/runtime.js';
-import { evaluationPatch, type Row } from '../evaluation/model.js';
+import { useRecordForm } from '../evaluation/useRecordForm.js';
+import { type Row } from '../evaluation/model.js';
 import { textValue, m as common } from '../evaluation/messages.js';
 import { m, display } from './messages.js';
 import { QuestionnaireEditor, QuestionnairePreview } from './Questionnaire.js';
@@ -189,7 +190,7 @@ function SurveyDetail({ id, kind, close, saved }: { id: string; kind: Kind; clos
           {detail.loading && <PageState kind="loading" />}
           {editing && row && (
             <Editor
-              key={`${id}:${row.revision}`}
+              key={id}
               kind={kind}
               row={row}
               close={() => edit(false)}
@@ -222,7 +223,8 @@ function Editor({ kind, row, close, saved }: { kind: Kind; row?: Row; close(): v
 }
 function ActivityEditor({ row, close, saved }: { row?: Row; close(): void; saved(): void }) {
   const permission = usePermissions(ACTIVITY);
-  const writer = useWriter(saved);
+  const writer = useRecordForm(`${BASE}/activities`, row, activityValues);
+  const current = writer.current;
   const select = (keys: string[]) => <Select options={keys.map((value) => ({ value, label: display(value) }))} />;
   const controls = {
     name: <Input maxLength={200} />,
@@ -253,8 +255,7 @@ function ActivityEditor({ row, close, saved }: { row?: Row; close(): void; saved
     control,
     access: {
       ...permission.field(name),
-      editable:
-        permission.field(name).editable && !writer.blocked && !(name === 'form' && !!row && row.status !== 'draft'),
+      editable: permission.field(name).editable && !(name === 'form' && !!current && current.status !== 'draft'),
     },
     rules: ['name', 'form'].includes(name) ? [{ required: true, message: common.required }] : [],
   }));
@@ -262,7 +263,8 @@ function ActivityEditor({ row, close, saved }: { row?: Row; close(): void; saved
     <FormOverlay
       open
       mode="modal"
-      recordKey={row ? `${row.id}:${row.revision}` : 'new'}
+      recordKey={row?.id ?? 'new'}
+      submission={writer}
       title={row ? m.edit : m.create}
       initialValues={
         row
@@ -277,23 +279,19 @@ function ActivityEditor({ row, close, saved }: { row?: Row; close(): void; saved
         { title: m.answering, fields: fields.slice(3) },
       ]}
       onClose={close}
-      onRefresh={() => {
+      onSubmit={async (values) => {
+        await writer.save(
+          values,
+          fields.filter((f) => f.access.visible && f.access.editable).map((f) => f.name),
+          row ? 'PUT' : 'POST',
+          (body) => ({
+            ...body,
+            ...('showAppraiserName' in body ? { showAppraiserName: body.showAppraiserName === 'true' } : {}),
+          }),
+        );
+        writer.clear();
         saved();
         close();
-      }}
-      onSubmit={async (values) => {
-        if (writer.blocked) throw new Error(common.uncertain);
-        if ('showAppraiserName' in values) values.showAppraiserName = values.showAppraiserName === 'true';
-        await writer.write(
-          row ? `${BASE}/activities/${row.id}` : `${BASE}/activities`,
-          row ? 'PUT' : 'POST',
-          evaluationPatch(
-            row ?? {},
-            values,
-            fields.filter((field) => field.access.editable).map((field) => field.name),
-          ),
-          row?.revision ?? 0,
-        );
       }}
     />
   );
@@ -344,4 +342,8 @@ function basicValue(key: string, value: unknown) {
   if (key === 'roleDisplay')
     return { name: m.nameMode, fixed_text: m.fixedMode, hidden: m.hiddenMode }[String(value)] ?? common.noValue;
   return display(value);
+}
+
+function activityValues(row: Row) {
+  return { ...row, showAppraiserName: row.showAppraiserName === undefined ? undefined : String(row.showAppraiserName) };
 }

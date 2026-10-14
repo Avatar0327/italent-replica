@@ -14,6 +14,7 @@ import {
 } from '../../apps/api/src/modules/qualification/access.js';
 import { EMPTY_SCOPE, type ModuleScope } from '../../apps/api/src/modules/permission/scope-types.js';
 import { createOrg, talentWorld, TC_NOW } from './AC-TC-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 
@@ -28,7 +29,7 @@ async function fixture(label: string) {
     tx(async (t) => {
       const classId = randomUUID();
       const categoryId = randomUUID();
-      const code = `C${randomUUID().slice(0, 8)}`;
+      const code = `C${uniqueSuffix()}`;
       await t.execute(sql`INSERT INTO ql_category_classes (id, tenant_id, code, name, level, owner_id, owner_org_id,
         created_by) VALUES (${classId}, ${w.tenant.id}, ${`K${code}`}, '分类', 1, ${owner}, ${orgId}, ${owner})`);
       await t.execute(sql`INSERT INTO ql_categories (id, tenant_id, code, name, class_id, enabled, public_down,

@@ -19,6 +19,7 @@ import {
   syntheticEmail,
 } from './AC-PRM-users-support.js';
 import { cmd, seedTenantWithMember } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 
@@ -106,7 +107,7 @@ describe('AC-PRM-31 建档 / 入职自动创建并绑定租户用户', () => {
       ...world.asAdmin,
       ifMatch: 0,
       idempotencyKey: `prm31-${randomUUID()}`,
-      body: { code: `P_${randomUUID().slice(0, 8)}`, name: '待入职', loginEmail: email },
+      body: { code: `P_${uniqueSuffix()}`, name: '待入职', loginEmail: email },
     };
     const first = await hr.api.request('POST', '/api/tenant/employment/employees', options);
     const replay = await hr.api.request('POST', '/api/tenant/employment/employees', options);
@@ -170,7 +171,7 @@ describe('AC-PRM-32 不提供内部员工的手工绑定 / 改绑入口', () => 
   });
 
   it('同一登录邮箱再建一份档案、入职改用另一邮箱 → 409，档案不建、绑定不变', async () => {
-    const code = `DUP_${randomUUID().slice(0, 8)}`;
+    const code = `DUP_${uniqueSuffix()}`;
     const duplicate = await hr.createEmployee({ name: '王五重复', code, loginEmail: wangEmail });
     expect(await reasonOf(duplicate)).toMatchObject({ status: 409, reason: 'ACCOUNT_BOUND_TO_OTHER_PERSON' });
     const listed = await hr.api.request('GET', `/api/tenant/employment/employees?code=${code}`, world.asAdmin);

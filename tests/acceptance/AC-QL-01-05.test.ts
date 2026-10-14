@@ -19,6 +19,7 @@ import {
   type StandardView,
   type TargetView,
 } from './AC-QL-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 
@@ -236,7 +237,7 @@ describe('AC-QL-04 等级方案新增明细 → 评级指标多一条等级描�
     for (const body of [{ evalMode: 'score', gradeSchemeId: scheme.id }, { evalMode: 'grade' }]) {
       const response = await w.request('POST', '/targets', {
         ifMatch: 0,
-        body: { code: `Z${Math.random().toString(36).slice(2, 8)}`, name: '指标', typeId: type.id, ...body },
+        body: { code: `Z${uniqueSuffix()}`, name: '指标', typeId: type.id, ...body },
       });
       expect(response.status, JSON.stringify(body)).toBe(400);
     }
