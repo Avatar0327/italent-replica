@@ -28,9 +28,10 @@ import {
   sendableChain,
   sendableChainWithId,
 } from './AC-EV-activity-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
-const suffix = () => randomUUID().slice(0, 6);
+const suffix = () => uniqueSuffix();
 
 describe('AC-EV-activity 评定活动主体与环节', () => {
   let w: ActivityWorld;

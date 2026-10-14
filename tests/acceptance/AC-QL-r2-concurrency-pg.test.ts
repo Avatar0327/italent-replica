@@ -5,11 +5,11 @@
  *   等级、指标等级描述 PUT、等级方案删明细（反向：明细刚被引用）；
  * - P3 并发唯一冲突一律 409（不是 500）：同类别建标准、同岗职务关联、等级方案改成同名。
  */
-import { randomUUID } from 'node:crypto';
 import { type Db, sql, type Tx, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { type GradeSchemeView, qualificationWorld, type StandardView } from './AC-QL-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 const realPostgres = Boolean(process.env.TEST_DATABASE_URL);
@@ -273,7 +273,7 @@ describe.runIf(realPostgres)('P3 并发唯一冲突一律 409（DEC-067，真 PG
         w.request('POST', '/categories', {
           ifMatch: 0,
           body: {
-            code: `C${randomUUID().slice(0, 5)}`,
+            code: `C${uniqueSuffix()}`,
             name: '后到类别',
             classId: klass.id,
             jobLinkType: 'sequence',
@@ -286,7 +286,7 @@ describe.runIf(realPostgres)('P3 并发唯一冲突一律 409（DEC-067，真 PG
 
   it('等级方案改成并发新建的同名：409，不是 500', async () => {
     const { w, scheme } = await gradeWorld('ql-pg-scheme-name');
-    const name = `同名${randomUUID().slice(0, 5)}`;
+    const name = `同名${uniqueSuffix()}`;
     const response = await interleave(
       testDb().db,
       w.tenant.id,

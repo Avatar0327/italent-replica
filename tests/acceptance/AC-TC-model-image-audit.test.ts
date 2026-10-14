@@ -1,5 +1,4 @@
 /** F-038：模型图审计必须复用标准查看权与当前管理单元范围，删除快照无图片字节。 */
-import { randomUUID } from 'node:crypto';
 import { TALENT_APP, TALENT_OBJECTS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
@@ -18,6 +17,7 @@ import {
   uploadImage,
   type ImageRequest,
 } from './AC-TC-model-image-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 
@@ -41,7 +41,7 @@ describe('AC-TC（补）F-038 模型图审计真实查看权限', () => {
     const query = { objectType: MODEL_IMAGE_AUDIT_TYPE, limit: '50' };
     expect((await audit.dataChanges(viewer.as, query)).items).toEqual([]);
 
-    const profile = await createProfile(world, `model-audit-${randomUUID().slice(0, 8)}`, { apps: [TALENT_APP] });
+    const profile = await createProfile(world, `model-audit-${uniqueSuffix()}`, { apps: [TALENT_APP] });
     const definition = TALENT_OBJECTS.criterion;
     const permission = await setObjectPermission(
       world,

@@ -14,6 +14,7 @@ import {
   replaceDraft,
 } from '../../apps/api/src/modules/approval/definitions.js';
 import { type RequestOptions, seedTenantWithMember, tenantApi } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 export const IDP_NOW = new Date('2026-10-08T02:00:00.000Z');
 export const IDP_BASE = '/api/tenant/idp';
@@ -168,7 +169,7 @@ export async function idpApprovalProcess(
     const created = await createProcess(
       tx,
       approvalCtx(who, 0),
-      { code: `IDP_${randomUUID().slice(0, 8)}`, approvalType },
+      { code: `IDP_${uniqueSuffix()}`, approvalType },
       approvalDefinition(approvalType, nodes, who.user),
     );
     if (options.publish !== false) await publishProcess(tx, approvalCtx(who, created.revision), created.id);
@@ -269,11 +270,7 @@ export async function idpWorld(db: Db, label: string, deps: Parameters<typeof te
     created<ProcessView>('/processes', { name: '年度发展流程', orgId, subProcesses: threeStages(), ...extra }, who);
 
   const template = (processId: string, extra: Record<string, unknown> = {}, who: Identity = as) =>
-    created<TemplateView>(
-      '/templates',
-      { name: `发展计划模板${randomUUID().slice(0, 6)}`, orgId, processId, ...extra },
-      who,
-    );
+    created<TemplateView>('/templates', { name: `发展计划模板${uniqueSuffix()}`, orgId, processId, ...extra }, who);
 
   /** 在模板上加一个模块（If-Match = 模板 revision），返回新的模板视图。 */
   const addModule = async (template: TemplateView, body: Record<string, unknown>, who: Identity = as) =>

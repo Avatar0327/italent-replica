@@ -113,6 +113,69 @@ function calcPolicy(retry = false) {
 }
 
 export const SUCCESSION_POLICIES = defineTable('succession', {
+  [`GET ${BASE}/maps/org`]: object({
+    object: SUCCESSION_OBJECTS.map.code,
+    operation: 'view',
+    button: noButton('组织地图查看'),
+    scope: listScope('succession.mapDisplay'),
+    fields: projector('succession.orgMap', 'succession.orgMap'),
+    guards: [SELF_HIDDEN],
+    optional: {
+      mapRecords: object({
+        object: RECORD,
+        operation: 'view',
+        button: noButton('卡片继任与现任披露'),
+        scope: listScope('succession.recordScope(org ∪ creator)'),
+        fields: OUT,
+      }),
+      mapRisk: object({
+        object: SUCCESSION_OBJECTS.riskResult.code,
+        operation: 'view',
+        button: noButton('卡片风险披露'),
+        scope: listScope('succession.riskScope'),
+        fields: projector('succession.risk', 'succession.risk'),
+      }),
+      mapHealth: object({
+        object: SUCCESSION_OBJECTS.healthResult.code,
+        operation: 'view',
+        button: noButton('卡片健康度披露'),
+        scope: listScope('succession.healthScope'),
+        fields: projector('succession.health', 'succession.health'),
+      }),
+    },
+  }),
+  [`GET ${BASE}/health-results`]: object({
+    object: SUCCESSION_OBJECTS.healthResult.code,
+    operation: 'view',
+    button: noButton('健康度读取'),
+    scope: listScope('succession.healthScope'),
+    fields: projector('succession.health', 'succession.health'),
+  }),
+  [`PUT ${BASE}/health-results/:orgId`]: object({
+    invalidId: BAD_REQUEST,
+    object: SUCCESSION_OBJECTS.healthResult.code,
+    operation: 'update',
+    button: button('assign', 'detail'),
+    scope: guardScope('succession.healthOrg', NOT_FOUND),
+    fields: projector('succession.health', 'succession.health'),
+    write: write('body', RECHECK, AUTHORIZE_RESULT, { ledger: 'single' }),
+  }),
+  [`POST ${BASE}/health-results/reset`]: object({
+    object: SUCCESSION_OBJECTS.healthResult.code,
+    operation: 'update',
+    button: button('reset', 'list'),
+    scope: guardScope('succession.healthQueue', NOT_FOUND),
+    fields: fixed(['runId'], '设计 #15a 202 回执'),
+    write: write('body', 'succession.healthQueueRecheck', AUTHORIZE_RESULT, { ledger: 'single' }),
+  }),
+  [`POST ${BASE}/maps/org/compute-health`]: object({
+    object: SUCCESSION_OBJECTS.map.code,
+    operation: 'view',
+    button: button('computeHealth', 'list'),
+    scope: guardScope('succession.healthQueue', NOT_FOUND),
+    fields: fixed(['runId'], '设计 #9a 202 回执'),
+    write: write('body', 'succession.healthQueueRecheck', AUTHORIZE_RESULT, { ledger: 'single' }),
+  }),
   [`GET ${BASE}/maps/position`]: object({
     object: SUCCESSION_OBJECTS.map.code,
     operation: 'view',

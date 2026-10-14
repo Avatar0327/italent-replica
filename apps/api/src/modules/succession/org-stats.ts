@@ -1,19 +1,19 @@
 /** §4.5 / §4.6：缓存按业务日；授权始终按当前日，历史缓存不是权限入口。 */
 import { isUuid, sql, type Tx } from '@italent/db';
-import { decide, buttonResource, type OrgId, resolveObjectPermission } from '@italent/domain';
+import { decide, buttonResource, type OrgId, resolveObjectPermission, tenantLocalDate } from '@italent/domain';
 import { recordAudit } from '../../audit/record.js';
 import { AppError } from '../../errors.js';
 import { loadSubject } from '../permission/subject.js';
 import { objectCatalog } from '../permission/catalog.js';
 import { resolveDataScope } from '../permission/scope-resolver.js';
-import { scopeAllows } from '../permission/module-access.js';
+import { scopeAllows, type ModuleScope } from '../permission/module-access.js';
 import { readEffectiveSetting } from '../tenant-settings/service.js';
 import { listOrgDescendantsInTransaction } from '../org/hierarchy-reader.js';
 import { loadOrgSnapshot, validIsoDate } from '../org/read-model.js';
 import { lockOrganizationSettings } from '../org/locks.js';
 import type { TalentReviewSyncPort } from '../talent-review/sync-port.js';
 import { CalcBlocked, CalcObjectFailure, type CalcHandler } from './calc-contract.js';
-import { codeOf } from './access.js';
+import { codeOf, type SuccessionContext } from './access.js';
 import { INCUMBENT_EXCLUDED_STATUSES, rowsOf } from './read-sql.js';
 import { successionReviewReads } from './ports.js';
 
@@ -124,6 +124,31 @@ export async function readOnDutyCount(tx: Tx, input: CountContext): Promise<numb
   const count = await countOnDuty(tx, input);
   await store(tx, input, count, `history:${input.asOf}`, null, null, null);
   return count;
+}
+/** §4.5：地图的历史缺缓存同样经 C1 取数；只登记本次确实缺缓存且当前授权的目标来源。 */
+export async function cacheHistoricalOnDutyCounts(
+  tx: Tx,
+  ctx: SuccessionContext,
+  scope: ModuleScope,
+  orgIds: readonly string[],
+  asOf: string,
+  createSource: (orgIds: readonly string[]) => Promise<string>,
+) {
+  if (asOf >= tenantLocalDate(ctx.now, ctx.timezone) || !orgIds.length) return;
+  if (orgIds.some((orgId) => !scopeAllows(scope, { orgId }))) throw new AppError('NOT_FOUND', '组织不存在');
+  // 与 C1 计数 / worker 共用组织设置锁；并发读取只让首次缺缓存的请求登记来源。
+  await lockOrganizationSettings(tx, ctx.tenantId);
+  const cached = new Set(
+    rowsOf<{ orgId: string }>(
+      await tx.execute(sql`SELECT org_id AS "orgId"
+    FROM succession_org_stats WHERE tenant_id=${ctx.tenantId}::uuid AND stat_date=${asOf}::date
+    AND org_id=ANY(${`{${orgIds.join(',')}}`}::uuid[])`),
+    ).map((r) => r.orgId),
+  );
+  const missing = orgIds.filter((id) => !cached.has(id));
+  if (!missing.length) return;
+  const runId = await createSource(missing);
+  for (const orgId of missing) await readOnDutyCount(tx, { tenantId: ctx.tenantId, orgId, asOf, runId, now: ctx.now });
 }
 export function createOrgStatsHandler(port?: Pick<TalentReviewSyncPort, 'greenRate'>): CalcHandler {
   return {

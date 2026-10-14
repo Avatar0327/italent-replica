@@ -104,4 +104,6 @@ export const PERMISSION_POLICIES = defineTable('permission', {
   ),
   // 本人对某对象的有效功能权限；objectCode 非法 → 404
   [`GET ${BASE}/me/objects/:objectCode`]: member('本人对某对象的有效权限', noFields('权限结构，不是业务字段'), byId),
+  // 本人权限快照（演示配套）：会话资料、应用可见性与入口对象、数据范围摘要、企业设置菜单；只读，不含字段 / 按钮清单
+  [`GET ${BASE}/me/snapshot`]: member('本人权限快照', noFields('权限结构，不是业务字段')),
 });

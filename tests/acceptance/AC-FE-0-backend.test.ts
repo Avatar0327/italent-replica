@@ -7,7 +7,7 @@ import { Window } from 'happy-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createApiClient, newCommand, pageQuery, type PageResult } from '../../apps/web/src/foundation/client.js';
 import { canButton, fieldAccess } from '../../apps/web/src/foundation/permission-model.js';
-import { loadPermissions } from '../../apps/web/src/demo-stubs/navigation.js';
+import { loadSnapshot, fetchObjectPermission } from '../../apps/web/src/foundation/permission-snapshot.js';
 import {
   addMember,
   createProfile,
@@ -92,9 +92,10 @@ describe('AC-FE-0-11 真实后端回执接入公共层', () => {
       status: 403,
       code: 'FORBIDDEN',
     });
-    const snapshot = await loadPermissions(api, new AbortController().signal);
+    const { snapshot } = await loadSnapshot(api, new AbortController().signal);
     expect(snapshot.menus.map((menu) => menu.key)).toContain('job');
-    const actual = snapshot.objects[MODULE_OBJECTS.jobPosition.code];
+    expect(snapshot.objects[MODULE_OBJECTS.jobPosition.code]?.summary).toBe(true);
+    const actual = await fetchObjectPermission(api, MODULE_OBJECTS.jobPosition.code, new AbortController().signal);
     expect(canButton(actual, 'validate', 'detail')).toBe(true);
     expect(canButton(actual, 'validate', 'list')).toBe(false);
     expect(fieldAccess(actual, 'name')).toEqual({ visible: true, editable: false });

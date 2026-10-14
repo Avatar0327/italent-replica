@@ -26,29 +26,32 @@ import { TALENT_REVIEW } from './talent-review.js';
 import { TENANT_SETTINGS } from './tenant-settings.js';
 import type { Obligation, RequiredTable } from './types.js';
 
-const PARTS: readonly RequiredTable[] = [
-  ROOT,
-  TENANT_SETTINGS,
-  AUDIT,
-  AVATAR,
-  COMMAND_RESULT,
-  SELF_SERVICE,
-  ORG,
-  JOB,
-  ESTABLISHMENT,
-  PERSONNEL,
-  CONTRACTS,
-  PERMISSION,
-  EMPLOYMENT,
-  APPROVAL,
-  TALENT,
-  SURVEY360,
-  IDP,
-  TALENT_REVIEW,
-  QUALIFICATION,
-  EVALUATION,
-  SUCCESSION,
-];
+/** 按模块拆开的必需项表（键 = `required/<模块>.ts` 的文件名）；F-124 起共享测试按它判断条目归属哪个模块。 */
+export const REQUIRED_BY_MODULE: Readonly<Record<string, RequiredTable>> = {
+  root: ROOT,
+  'tenant-settings': TENANT_SETTINGS,
+  audit: AUDIT,
+  avatar: AVATAR,
+  'command-result': COMMAND_RESULT,
+  'self-service': SELF_SERVICE,
+  org: ORG,
+  job: JOB,
+  establishment: ESTABLISHMENT,
+  personnel: PERSONNEL,
+  contracts: CONTRACTS,
+  permission: PERMISSION,
+  employment: EMPLOYMENT,
+  approval: APPROVAL,
+  talent: TALENT,
+  survey360: SURVEY360,
+  idp: IDP,
+  'talent-review': TALENT_REVIEW,
+  qualification: QUALIFICATION,
+  evaluation: EVALUATION,
+  succession: SUCCESSION,
+};
+
+const PARTS: readonly RequiredTable[] = Object.values(REQUIRED_BY_MODULE);
 
 function mergeParts(parts: readonly RequiredTable[]): RequiredTable {
   const out: Record<string, readonly Obligation[]> = {};

@@ -84,6 +84,7 @@ details summary{cursor:pointer;color:var(--muted);font-size:13px}
     <span class="sub" id="at"></span>
     <div class="kpis" id="kpis"></div>
   </header>
+<div id="ms" style="display:flex;flex-wrap:wrap;gap:10px;margin:12px 0"></div>
 <section class="flow" style="margin:14px 0"><details style="background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 16px">
 <summary style="cursor:pointer;font-weight:600;font-size:14px">当前开发流程（截至 10-13 09:30Z）</summary>
 <div style="font-size:13px;line-height:1.65;color:var(--ink2);margin-top:8px">
@@ -93,14 +94,14 @@ details summary{cursor:pointer;color:var(--muted);font-size:13px}
 <li><b>取证</b>：本机 Claude 取证窗口截原站页面（只读，截图留本机）；远程 Codex Sol 补交互细节文字规格，产出经局域网拉回本机。</li>
 <li><b>规划 / 设计</b>：总编排（Claude Opus）写规划、拆片；契约级设计走重流程（Opus 设计、Codex Astra 审）。</li>
 <li><b>派发</b>：派发审查窗口（03，Opus）通读设计、写提示词，派给开发方——前端交 Codex Astra；后端交 Claude（Opus 设计、Sonnet 实现，DEC-469）。</li>
-<li><b>开发</b>（DEC-469）：新派任务——前端 Codex Astra，后端 Claude（Opus 设计、Sonnet 实现）。在途和返工由原 Codex 线程做完：后端 R3 的 #278、#282、#290、#291、#292、#293，前端 #295~#298。Claude Sonnet 子代理在做 #299 F-109；F-110 / F-111 待派。</li>
+<li><b>开发</b>（DEC-469 / 472）：前端——Codex Astra，新线程；后端新任务——Claude，由 03 开云端会话承接（Opus 设计、Sonnet 实现），不用子代理。在途和返工的 Codex 后端 PR 由原线程做完。Claude 在做：#305 F-106、#307 权限快照、#308 F-116、#309 演示数据、#310 F-120。</li>
 <li><b>审查</b>：Codex 审一轮，最多两轮（演示层轻流程）；只有 P0 / P1、功能错误、数据错误挡合并，其余记待办。Claude 写的 PR 必须经 Codex 独立审查。</li>
 <li><b>合并</b>：合并队列窗口（Sonnet）在云端合入 main → 关闭 / 重开 PR 触发完整 CI → 全绿后复核再合并。</li>
 <li><b>记录</b>：总编排补恢复点（RP）、登记决定（DEC）；看板窗口更新看板。</li>
 </ol>
 <p style="margin:8px 0 4px"><b>三、当前谁负责什么</b>（截至 10-13 09:30Z，依据 PR 与提交记录）</p>
 <ul style="margin:0 0 6px;padding-left:22px">
-<li><b>开发</b>（DEC-469）：新派任务——前端 Codex Astra，后端 Claude（Opus 设计、Sonnet 实现）。在途和返工由原 Codex 线程做完：后端 R3 的 #278、#282、#290、#291、#292、#293，前端 #295~#298。Claude Sonnet 子代理在做 #299 F-109；F-110 / F-111 待派。</li>
+<li><b>开发</b>（DEC-469 / 472）：前端——Codex Astra，新线程；后端新任务——Claude，由 03 开云端会话承接（Opus 设计、Sonnet 实现），不用子代理。在途和返工的 Codex 后端 PR 由原线程做完。Claude 在做：#305 F-106、#307 权限快照、#308 F-116、#309 演示数据、#310 F-120。</li>
 <li><b>审查</b>：03 派发审查窗口（Opus）派活并发起独立 Codex 审查——后端 Astra high，前端与增量 Sol。Claude 写的 PR（如 #299）必须经 Codex 审（DEC-441）。超轮次破例由总编排 / 用户定。</li>
 <li><b>合并</b>：05 合并队列窗口（Sonnet）——队首完整 CI、锁内复核、合并；CI 红由它判断后派回开发。</li>
 <li><b>取证</b>：02 取证窗口（Claude）当前待命，最近一次取证提交 10-12 00:16Z（Q-M0-178）；本机 R3 参考图 98 张已截完；远程 Codex Sol 已完成人才盘点试点（10-13 02:50）和 R1a 参考包。目前没有进行中的取证任务，新取证待总编排派。</li>
@@ -185,5 +186,12 @@ const nStuck = stuck.length + (M.asks || []).length, nRev = (L.open || []).filte
 const PG = DATA.prog, pgd = PG && PG.prev ? [PG.done - PG.prev[0], PG.tot - PG.prev[1]] : null;
 const sg = n => (n > 0 ? "+" : "") + n;
 document.getElementById("kpis").innerHTML = (PG ? `<span class="kpi" title="主线 + 支撑任务的计划 PR（不含暂停项）；分子 = 已合并${pgd ? `；${esc(PG.since)} 起较上次读数（${PG.prev[0]}/${PG.prev[1]}）：已完成 ${sg(pgd[0])}，总数 ${sg(pgd[1])}` : ""}"><b>${PG.done}/${PG.tot}</b>已完成 / 计划 PR${pgd ? `<em class="dl">${pgd[0] ? "完成 " + sg(pgd[0]) : ""}${pgd[0] && pgd[1] ? " · " : ""}${pgd[1] ? "总数 " + sg(pgd[1]) : ""}</em>` : ""}</span>` : "") + `<span class="kpi${nStuck ? " bad" : ""}"><b>${nStuck}</b>卡点</span><span class="kpi"><b>${nRev}</b>审查中</span><span class="kpi"><b>${nWork}</b>返工</span><span class="kpi"><b>${(L.open || []).length}</b>在途 PR</span><span class="kpi"><b>${td.length}</b>今日合并</span>`;
+const MSX = PG && PG.ms;
+if (MSX) {
+  const dd = dl => Math.ceil((Date.parse(dl + "T23:59:59+08:00") - Date.now()) / 864e5);
+  document.getElementById("ms").innerHTML = ["M1", "M2"].map(k => { const m = MSX[k], n = dd(m.dl), pct = m.tot ? Math.round(m.done * 100 / m.tot) : 0;
+    return `<div class="kpi" style="flex:1;min-width:260px;padding:8px 12px" title="已合并 = 步骤对应 PR 已合并；在审 / 返工 = 已派或有 PR 未合并；未开工 = 待办 / 等前序；暂停项不计"><div style="color:var(--ink);font-weight:600;font-size:13px;margin-bottom:4px">${esc(m.t)}</div><div><b>${m.done}</b>已合并　<b>${m.act}</b>在审 / 返工　<b>${m.todo}</b>未开工　共 ${m.tot}（${pct}%）</div><div style="margin-top:2px">${esc(m.dl.slice(5))} 截止　<b style="color:${n <= 1 ? "var(--bad)" : "var(--ink)"}">${n >= 0 ? "还有 " + n + " 天" : "已逾期 " + (-n) + " 天"}</b></div></div>`; }).join("") +
+    `<div class="kpi" style="min-width:160px;padding:8px 12px"><div style="color:var(--ink);font-weight:600;font-size:13px;margin-bottom:4px">不计入里程碑</div><div>暂停老 PR ${(MSX.paused || []).length} 个${(MSX.paused || []).length ? "（" + MSX.paused.map(x => "#" + x).join(" ") + "）" : ""}；20 天蓝色模块、黄色模块</div></div>`;
+}
 document.getElementById("at").textContent = "GitHub 状态取自 " + (L.at || "—") + "（发布时刷新）";
 </script>

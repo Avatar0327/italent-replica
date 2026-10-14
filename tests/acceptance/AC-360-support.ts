@@ -20,6 +20,7 @@ import {
 import { objectCatalog } from '../../apps/api/src/modules/permission/catalog.js';
 import { resolveDataScope } from '../../apps/api/src/modules/permission/scope-resolver.js';
 import { EMPTY_SCOPE, type ModuleScope } from '../../apps/api/src/modules/permission/scope-types.js';
+import { uniqueSuffix } from './support/unique.js';
 
 export const BASE = '/api/tenant/survey360';
 export const LINK = '/api/survey360/link';
@@ -254,7 +255,7 @@ export async function world360(db: Db, label: string, options: { access?: Employ
     return ok<PersonView>(
       request('POST', '/people', {
         ifMatch: 0,
-        body: { name, email: `p-${randomUUID().slice(0, 8)}@example.com`, ...extra },
+        body: { name, email: `p-${uniqueSuffix()}@example.com`, ...extra },
       }),
       201,
     );
@@ -268,7 +269,7 @@ export async function world360(db: Db, label: string, options: { access?: Employ
     const created = await ok<QuestionnaireView>(
       request('POST', '/questionnaires', {
         ifMatch: 0,
-        body: { name: `套卷${randomUUID().slice(0, 6)}`, type: 'key_behavior' },
+        body: { name: `套卷${uniqueSuffix()}`, type: 'key_behavior' },
       }),
       201,
     );
@@ -311,7 +312,7 @@ export async function world360(db: Db, label: string, options: { access?: Employ
       as(by)('POST', '/activities', {
         ifMatch: 0,
         body: {
-          name: `活动${randomUUID().slice(0, 6)}`,
+          name: `活动${uniqueSuffix()}`,
           form: 'single',
           showAppraiserName: true,
           roleDisplay: 'name',

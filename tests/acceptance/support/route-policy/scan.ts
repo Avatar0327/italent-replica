@@ -32,6 +32,8 @@ const LEAF_FILES = new Set(
     'modules/permission/scope-audit.ts',
     'modules/permission/org-result-scope.ts',
     'modules/permission/me.ts',
+    // 权限快照：本人只读，对象判定走 object-access.ts 的唯一入口，不是路由级原语（演示配套）
+    'modules/permission/me-snapshot.ts',
     'modules/permission/admin-http.ts',
     'modules/permission/http.ts',
     // 各模块的多态上下文 / 访问枢纽：按调用点与实参匹配原语，不展开内部分支（否则 GET 也会带上写分支的原语）

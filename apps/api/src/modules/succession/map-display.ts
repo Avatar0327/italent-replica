@@ -55,7 +55,15 @@ export async function readMapDisplayScope(
   kind: MapKind,
   supplied?: unknown,
   origin: MapConditionOrigin = 'saved',
+  purpose: 'display' | 'health' = 'display',
 ) {
+  // DEC-448 / DEC-305④：共用范围与时点入口，健康度不应用地图筛选。
+  if (purpose === 'health') {
+    if (!ctx.scope.hasDataPermission) return [];
+    return (
+      await loadOrgSnapshot(tx, ctx.tenantId, ctx.asOf, undefined, { includeDisabled: false, scope: ctx.scope })
+    ).map((o) => o.id);
+  }
   if (!ctx.scope.hasDataPermission && origin === 'saved') return [];
   const prefs = await resolveMapDisplayConditions(tx, ctx, kind, supplied, origin);
   if (!ctx.scope.hasDataPermission) return [];
@@ -65,6 +73,16 @@ export async function readMapDisplayScope(
   const permitted = orgs.filter((o) => scopeAllows(ctx.scope, { orgId: o.id }));
   const hidden = new Set(prefs.hiddenOrgIds);
   const excluded = (id: string) => hidden.has(id) || (settings.hideVirtual && byId.get(id)?.isVirtual);
+  // SC-R5 隐藏组织及其下级；换根不能绕过隐藏祖先，显示与冻结统一按整支子树裁剪。
+  const excludedSubtree = (id: string) => {
+    const seen = new Set<string>();
+    while (byId.has(id) && !seen.has(id)) {
+      seen.add(id);
+      if (excluded(id)) return true;
+      id = byId.get(id)!.parents.admin?.parentId ?? '';
+    }
+    return false;
+  };
   let root = prefs.rootOrgId;
   if (!root && kind === 'org') {
     const depth = (id: string) => {
@@ -100,18 +118,11 @@ export async function readMapDisplayScope(
     if (!visible && kind === 'org') return;
     for (const child of children.get(id) ?? []) walk(child, level + 1);
   };
-  if (root) walk(root, 1);
-  else
+  if (root) {
+    if (!excludedSubtree(root)) walk(root, 1);
+  } else
     for (const o of kind === 'position' ? orgs : permitted) {
-      let id = o.id,
-        blocked = false;
-      const seen = new Set<string>();
-      while (byId.has(id) && !seen.has(id)) {
-        seen.add(id);
-        if (excluded(id)) blocked = true;
-        id = byId.get(id)!.parents.admin?.parentId ?? '';
-      }
-      if (!blocked) selected.add(o.id);
+      if (!excludedSubtree(o.id)) selected.add(o.id);
     }
   if (kind === 'org') return [...selected];
   return positionScope(tx, ctx, prefs, selected);
