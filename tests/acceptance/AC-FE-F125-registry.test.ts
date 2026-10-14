@@ -1,7 +1,8 @@
 /**
  * F-125（DEC-476 / DEC-492①）：页面、路由、菜单与注释改为各模块自带登记文件，底座自动汇总。
- * 迁移前快照逐项写在下面（从迁移前的 AppPages.tsx / routes.ts / messages.ts / annotations/*.ts 生成），
- * 迁移后逐项比对；应用是后端固定集合，逐行全等；子路由与注释只校验“迁移前条目仍在且不变”，新片追加不用改本文件。
+ * 迁移前快照逐项写在下面，基线取合入 main 3e8dd11（含 #298 #296 #315 #318）后、迁移前的 AppPages.tsx / routes.ts /
+ * messages.ts / permission-snapshot.ts / annotations/*.ts 汇总结果，
+ * 迁移后逐项比对；应用是后端固定集合，逐行全等；入口、子路由与注释只校验“迁移前条目仍在且不变”，新片追加不用改本文件。
  * 有意改动已有条目（如把旧页面换成新页面、去掉 legacy 布局）时，改对应一行即可。
  */
 import { APP_IDS } from '@italent/domain';
