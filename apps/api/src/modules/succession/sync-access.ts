@@ -1,12 +1,13 @@
 /** §4.0 / SP-01：身份与范围每次从当前租户事务重验，不把源读取授权当作目标写授权。 */
 import { isUuid, sql, type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
+import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import { authorizeInTransaction, resolveModuleScopeInTransaction, scopeAllows } from '../permission/module-access.js';
 import { readEffectiveSetting } from '../tenant-settings/service.js';
 import type { SyncErrorCode } from '../talent-review/sync-port.js';
 import { codeOf } from './access.js';
-import { rowsOf } from './read-sql.js';
+import { rowsOf, selfTargetSql } from './read-sql.js';
 
 export class PlanFailure extends Error {
   constructor(
@@ -71,6 +72,36 @@ export async function targetAccess(deps: AccessDeps, tx: Tx, tenantId: string, t
       return scopeAllows(scopes.get(codeOf(object))!, { orgId });
     },
   };
+}
+/** §8.3/8.4：人工驱动共用目标写授权；SELF 继任记录沿用命令前 404 的保守口径。 */
+export async function authorizeRequesterTargets(
+  deps: AccessDeps,
+  tx: Tx,
+  ctx: { tenantId: string; timezone: string; userId: string },
+  targets: readonly PlanTarget[],
+) {
+  const access = await targetAccess(deps, tx, ctx.tenantId, ctx.timezone, ctx.userId);
+  let covered = await activeUser(tx, ctx.tenantId, ctx.userId);
+  for (const target of targets) if (!(await access.covers(target))) covered = false;
+  if (!covered) throw new AppError('FORBIDDEN', '执行集合超出当前范围', { reason: 'BATCH_SCOPE_EXCEEDS_REQUESTER' });
+  for (const target of targets) {
+    // SELF 写限制作用于继任记录；健康度结果仍按自身对象范围授权（§8.3）。
+    if (target.kind === 'org_health') continue;
+    const [row] = rowsOf<{ self: boolean }>(
+      await tx.execute(
+        sql`SELECT ${selfTargetSql(
+          ctx,
+          {
+            type: sql`${target.kind}`,
+            org: sql`${target.kind === 'org' ? target.id : null}`,
+            position: sql`${target.kind === 'position' ? target.id : null}`,
+          },
+          access.today,
+        )} AS self`,
+      ),
+    );
+    if (row?.self) throw new AppError('NOT_FOUND', '继任记录不存在');
+  }
 }
 export async function writerAccess(deps: AccessDeps, tx: Tx, tenantId: string, timezone: string) {
   const value = (await readEffectiveSetting(tx, tenantId, 'succession.system_principal_user_id')).value;
