@@ -5,7 +5,6 @@
  * 同一次同步里任一员工写入失败时整单回滚，已追加的任职版本一并撤销。
  */
 import type * as NodeCrypto from 'node:crypto';
-import { randomUUID } from 'node:crypto';
 import { permissionUserPersonLinks, withTenant } from '@italent/db';
 import { MODULE_OBJECTS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
@@ -22,6 +21,7 @@ import {
 import { withLoginEmail } from './AC-EMP-support.js';
 import { TODAY } from './AC-ORG-people-support.js';
 import { tenantApi } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 /** 确定在岗员工的处理顺序（按员工 ID）：设了前缀时服务端生成的 UUID 以它开头，其余位仍随机。 */
 const uuidPrefix = vi.hoisted(() => ({ value: null as string | null }));
@@ -65,13 +65,13 @@ async function scenario(label: string) {
   });
   const post = await create('job/posts', {
     name: `${label}职务`,
-    code: `P${randomUUID().slice(0, 8)}`,
+    code: `P${uniqueSuffix()}`,
     startDate: TODAY,
   });
   const position = (name: string) =>
     create('job/positions', {
       name,
-      code: `S${randomUUID().slice(0, 8)}`,
+      code: `S${uniqueSuffix()}`,
       orgId: department.id,
       postId: post.id,
       startDate: TODAY,
@@ -80,7 +80,7 @@ async function scenario(label: string) {
   const hire = async (name: string, fields: object = {}, prefix?: string, boundUser?: string) => {
     uuidPrefix.value = prefix ?? null;
     try {
-      const employee = await create('employment/employees', { code: `E${randomUUID().slice(0, 8)}`, name });
+      const employee = await create('employment/employees', { code: `E${uniqueSuffix()}`, name });
       if (boundUser) {
         const link = { tenantId: world.tenant.id, userId: boundUser, employeeId: employee.id };
         await withTenant(db, world.tenant.id, (tx) => tx.insert(permissionUserPersonLinks).values(link));
@@ -111,7 +111,7 @@ type Scenario = Awaited<ReturnType<typeof scenario>>;
 /** 有职位变更权、“新增任职”的经理字段编辑权；任职实体的范围按 rules 配置，其他对象按本部门。 */
 async function operator(s: Scenario, rules: readonly Rule[]) {
   const { world } = s;
-  const profile = await createProfile(world, `oos-${randomUUID().slice(0, 8)}`);
+  const profile = await createProfile(world, `oos-${uniqueSuffix()}`);
   const positionPermission = await setObjectPermission(
     world,
     profile,
@@ -259,7 +259,7 @@ describe('AC-JOB-05 “仅本人创建”下源任职创建者与员工创建者
     // ② 操作人建档，管理员办入职：员工创建者是操作人，但源任职（入职）读不到。
     const profiledByOperator = await s.create(
       'employment/employees',
-      { code: `E${randomUUID().slice(0, 8)}`, name: '操作人建档员工' },
+      { code: `E${uniqueSuffix()}`, name: '操作人建档员工' },
       0,
       actor,
     );
@@ -271,7 +271,7 @@ describe('AC-JOB-05 “仅本人创建”下源任职创建者与员工创建者
     // ③ 建档与入职都是操作人：范围内，照常同步。
     const own = await s.create(
       'employment/employees',
-      { code: `E${randomUUID().slice(0, 8)}`, name: '操作人自己的员工' },
+      { code: `E${uniqueSuffix()}`, name: '操作人自己的员工' },
       0,
       actor,
     );

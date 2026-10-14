@@ -17,6 +17,7 @@ import { EMPTY_SCOPE, type ModuleScope } from '../../apps/api/src/modules/permis
 import { CALC_RULES, calcBody, calcItem, calcWorld, type CalcRuleView, pathOf } from './AC-TR-calc-rule-support.js';
 import { TR_BASE, TR_NOW } from './AC-TR-config-support.js';
 import { tenantApi } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 import './support/b5-path.js';
 
 const testDb = useTestDb();
@@ -26,7 +27,7 @@ const TYPE_UNCERTAIN = 'Year(IF(真,Today(),1))';
 
 /** 一个租户 + 受控授权的请求入口：字段目录范围可在“看全部”与“创建人范围”之间切换。 */
 async function world(label: string) {
-  const w = await calcWorld(testDb().db, `${label}-${randomUUID().slice(0, 4)}`);
+  const w = await calcWorld(testDb().db, `${label}-${uniqueSuffix()}`);
   let fieldScope: ModuleScope = SEE_ALL;
   const authorize: Authorizer = () => true;
   registerScopeProvider(authorize, {
@@ -70,7 +71,7 @@ describe('AC-TR-calc-rule P2-08a 按完整字段路径判断可见性（不做�
     ['看不到的字段名在可见字段名中间', '效得', '绩效得分'],
   ])('%s（%s / %s）：完全可见的循环路径与类型不确定提示原样保留', async (_label, hiddenName, visibleName) => {
     const { request, named, hide } = await world('trk-r4-prefix');
-    const suffix = randomUUID().slice(0, 4);
+    const suffix = uniqueSuffix();
     const a = await named(`${visibleName}${suffix}`);
     const b = await named(`另一个${suffix}`);
     const c = await named(`${visibleName}${suffix}等级`);
@@ -101,7 +102,7 @@ describe('AC-TR-calc-rule P2-08b 提示类别来自结构化诊断（不从文�
     '看不到的目标字段名含诊断关键词“%s”、没有任何循环：启用与重放都只给“非循环提示未显示”，不说存在循环依赖',
     async (keyword) => {
       const { request, named, hide } = await world('trk-r4-keyword');
-      const target = await named(`${keyword}${randomUUID().slice(0, 4)}`);
+      const target = await named(`${keyword}${uniqueSuffix()}`);
       const created = await request('POST', CALC_RULES, {
         ifMatch: 0,
         body: calcBody([calcItem(target, TYPE_UNCERTAIN)], { enabled: false }),
@@ -126,7 +127,7 @@ describe('AC-TR-calc-rule P2-08b 提示类别来自结构化诊断（不从文�
 
   it('看不到的字段确实成环时仍给出循环提示（结构化类别，不受字段名影响）', async () => {
     const { request, named, hide } = await world('trk-r4-cycle');
-    const [a, b] = [await named(`普通甲${randomUUID().slice(0, 4)}`), await named(`普通乙${randomUUID().slice(0, 4)}`)];
+    const [a, b] = [await named(`普通甲${uniqueSuffix()}`), await named(`普通乙${uniqueSuffix()}`)];
     const created = await request('POST', CALC_RULES, {
       ifMatch: 0,
       body: calcBody([calcItem(a, `${pathOf(b)} + 1`), calcItem(b, `${pathOf(a)} + 1`)], { enabled: false }),

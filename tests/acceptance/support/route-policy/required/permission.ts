@@ -2,7 +2,7 @@
  * 必需项表：权限管理（modules/permission/routes.ts、user-routes.ts、data-scope-routes.ts、scope-policy-routes.ts）。
  * 管理员能力经 adminGuard（requirePermission admin.<能力>）、scopeAdminGuard（admin.other_settings，REQ-PRM-002
  * 首版只租户管理员配置范围）、mouViewGuard（admin.mou_manage）；人员绑定的写入口固定拒绝；授权带范围时另要
- * other_settings（条件守卫）。admin-menus / me/objects 只按成员读取本人数据，无管理员能力。
+ * other_settings（条件守卫）。admin-menus / me/objects / me/snapshot 只按成员读取本人数据，无管理员能力。
  */
 import type { Evidence, Obligation, RequiredTable } from './types.js';
 
@@ -168,4 +168,5 @@ export const PERMISSION: RequiredTable = {
   'GET /api/tenant/permission/admin-roles': [guarded('admin_manage', 'GET', '/admin-roles')],
   'GET /api/tenant/permission/admin-menus': [],
   'GET /api/tenant/permission/me/objects/:objectCode': [],
+  'GET /api/tenant/permission/me/snapshot': [],
 };

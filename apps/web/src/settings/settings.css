@@ -1,0 +1,46 @@
+.settings-page {
+  font-size: 12px;
+  color: #33383d;
+}
+.settings-navigation {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.settings-notice {
+  margin-bottom: 10px;
+  border-color: #cfddff;
+  background: #edf3fc;
+}
+.settings-page .ant-table-cell {
+  padding-top: 8px !important;
+  padding-bottom: 8px !important;
+}
+.settings-page .ant-btn-link {
+  padding: 0;
+  height: auto;
+  font-size: 12px;
+}
+.settings-page .page-filters .ant-input-search {
+  width: 260px;
+}
+.settings-range {
+  display: grid;
+  grid-template-columns: 1fr 100px 100px 50px;
+  gap: 8px;
+  margin: 8px 0;
+}
+.settings-scope-query {
+  padding: 16px;
+  background: #fff;
+  border: 1px solid #e6e8eb;
+  border-radius: 8px;
+}
+.settings-scope-query .ant-input {
+  width: 290px;
+}
+.settings-page pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

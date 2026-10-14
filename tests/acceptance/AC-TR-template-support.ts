@@ -3,7 +3,6 @@
  * 流程（三个节点：本人单人 / 同事会签两角色 / 校准）、评价规则、模块等级、字段与人才标准。缺省“全部允许”的授权钩子；
  * 权限用例另用真实授权器（templateOperator，AC-TR-template-permissions）。
  */
-import { randomUUID } from 'node:crypto';
 import type { Db } from '@italent/db';
 import { expect } from 'vitest';
 import { TALENT_REVIEW_APP, TALENT_REVIEW_OBJECTS, type TalentReviewObject } from '@italent/domain';
@@ -22,6 +21,7 @@ import { flowBody, nodeBody } from './AC-TR-form-flow-support.js';
 import { gradeRuleBody, moduleGradeBody, scoreRuleBody } from './AC-TR-scoring-support.js';
 import { TR_BASE, TR_NOW } from './AC-TR-support.js';
 import type { RequestOptions } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 export const TEMPLATES = '/templates';
 export { TR_BASE, TR_NOW };
@@ -86,7 +86,7 @@ export interface TemplateView {
 let counter = 0;
 const next = () => {
   counter += 1;
-  return `${counter}_${randomUUID().slice(0, 4)}`;
+  return `${counter}_${uniqueSuffix()}`;
 };
 export const reasonOf = async (response: Response) =>
   ((await response.json()) as { error: { details: { reason: string } } }).error.details.reason;
@@ -191,7 +191,7 @@ export interface TemplateOperatorOptions {
 
 export async function templateOperator(world: PermissionWorld, options: TemplateOperatorOptions = {}) {
   const target = TALENT_REVIEW_OBJECTS.template;
-  const profile = await createProfile(world, `trt-${randomUUID().slice(0, 8)}`, { apps: [TALENT_REVIEW_APP] });
+  const profile = await createProfile(world, `trt-${uniqueSuffix()}`, { apps: [TALENT_REVIEW_APP] });
   const hidden = new Set(options.hidden ?? []);
   const locked = new Set(options.readonly ?? []);
   const setButtons = async (buttons: boolean, omit: readonly string[] | undefined = options.omitButtons) => {
@@ -244,7 +244,7 @@ export async function templateOperator(world: PermissionWorld, options: Template
   }
   if (options.references === 'seeAll') for (const object of REFERENCED_OBJECTS) await setSeeAll(object, true);
   await makeGrantable(world, [profile.id]);
-  const user = await addMember(world, `trt-operator-${randomUUID().slice(0, 4)}`);
+  const user = await addMember(world, `trt-operator-${uniqueSuffix()}`);
   expect((await grant(world, user.id, profile.id)).status).toBe(201);
   const as = { user: user.id, tenant: world.tenant.id };
   let scopeRevision = 0;
@@ -256,7 +256,7 @@ export async function templateOperator(world: PermissionWorld, options: Template
         ...world.asAdmin,
         ifMatch: 0,
         body: {
-          code: `trt-mou-${randomUUID().slice(0, 6)}`,
+          code: `trt-mou-${uniqueSuffix()}`,
           name: '盘点管理单元',
           orgRanges: [{ orgId, includeDescendants: true }],
         },

@@ -10,13 +10,13 @@
     "idp": 57,
     "job": 14,
     "org": 14,
-    "permission": 43,
+    "permission": 44,
     "personnel": 18,
     "platform": 9,
     "qualification": 55,
     "root": 1,
     "self-service": 9,
-    "succession": 36,
+    "succession": 52,
     "succession-platform": 2,
     "survey360": 75,
     "survey360-link": 10,
@@ -27,5 +27,5 @@
     "talent-review-platform": 1,
     "tenant-settings": 3
   },
-  "total": 634
+  "total": 651
 }

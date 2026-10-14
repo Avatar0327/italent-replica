@@ -1,7 +1,10 @@
+import { registerSyncRoutes } from './sync-routes.js';
+import { registerRiskRoutes } from './risk-routes.js';
 import { registerCalcRoutes } from './calc-routes.js';
 import { registerSuccessionConfigRoutes } from './config-routes.js';
-import { installSuccessionExitHooks } from './exit-store.js';
 import { registerMapRoutes } from './map-routes.js';
+import { installSuccessionExitHooks } from './exit-store.js';
+import { registerPositionMapRoutes } from './position-map-routes.js';
 /**
  * R3-T05 继任管理接口（设计 §2.2；前缀 /api/tenant/succession）。装配位：登记权限对象、开关校验、准备度引用守卫与
  * 对外端口；路由随实现子 PR 追加，并按 F-039 格式在 policy.ts 登记声明、在
@@ -40,6 +43,8 @@ import {
 import './settings.js';
 import { installSuccessionPorts } from './ports.js';
 import { registerSuccessionLevelRoutes } from './levels-routes.js';
+import { registerHealthRoutes } from './health-routes.js';
+import { registerOrgMapRoutes } from './org-map-routes.js';
 import { createRecord, deleteRecord, endRecords, updateRecord } from './record-write.js';
 import { recordResults } from './record-results.js';
 import {
@@ -53,7 +58,11 @@ import {
 const RECORDS = `${SUCCESSION_BASE}/records`;
 
 export function registerSuccessionRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
+  registerRiskRoutes(router, deps);
   registerMapRoutes(router, deps);
+  registerOrgMapRoutes(router, deps);
+  registerHealthRoutes(router, deps);
+  registerPositionMapRoutes(router, deps);
   installSuccessionPorts();
   installSuccessionExitHooks();
 
@@ -104,6 +113,7 @@ export function registerSuccessionRoutes(router: Hono<TenantEnv>, deps: TenantRo
     return c.json((await projectSuccession(deps, ctx, 'record', [found.view]))[0]);
   });
 
+  registerSyncRoutes(router, deps);
   registerCalcRoutes(router, deps);
   registerRecordWrites(router, deps);
   registerSuccessionConfigRoutes(router, deps);

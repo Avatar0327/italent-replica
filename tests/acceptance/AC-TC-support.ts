@@ -4,10 +4,10 @@
  * 所属人 / 所属管理单元由系统自动填写（DEC-294③）：所属管理单元取创建人在人才标准应用里的授权管理单元（复刻以组织
  * 表达，DEC-281⑨），夹具先建一个组织，并把只含该组织的管理单元授权给成员（用户 × TalentCenter，DEC-043）。
  */
-import { randomUUID } from 'node:crypto';
 import type { Db } from '@italent/db';
 import { expect } from 'vitest';
 import { type RequestOptions, seedTenantWithMember, tenantApi } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 export const TC_NOW = new Date('2026-10-07T02:00:00.000Z');
 export const TC_BASE = '/api/tenant/talent';
@@ -129,7 +129,7 @@ export async function createMou(
     ...who,
     ifMatch: 0,
     body: {
-      code: `tc-${randomUUID().slice(0, 8)}`,
+      code: `tc-${uniqueSuffix()}`,
       name: `${label}管理单元`,
       orgRanges: orgIds.map((orgId) => ({ orgId, includeDescendants: true })),
     },
@@ -195,8 +195,8 @@ export async function talentWorld(db: Db, label: string, deps: Parameters<typeof
   const dimension = (libraryId: string, extra: Record<string, unknown> = {}) =>
     created<DimensionView>('/dimensions', {
       libraryId,
-      code: `D${randomUUID().slice(0, 8)}`,
-      name: `客户导向${randomUUID().slice(0, 4)}`,
+      code: `D${uniqueSuffix()}`,
+      name: `客户导向${uniqueSuffix()}`,
       definition: '以客户为中心',
       ...extra,
     });

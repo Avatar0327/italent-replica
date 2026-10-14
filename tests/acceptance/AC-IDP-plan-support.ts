@@ -4,7 +4,6 @@
  * 指导人，K-09）、三段发展计划流程、带节点按钮的模板，再建计划、开始、按待办办理。缺省授权器为“全部允许”，
  * 权限用例另用真实授权器（AC-IDP-plan-visibility）。
  */
-import { randomUUID } from 'node:crypto';
 import { bootstrapTenantAdmin } from '@italent/api';
 import { MODULE_OBJECTS } from '@italent/domain';
 import type { Db } from '@italent/db';
@@ -13,6 +12,7 @@ import { approvalWorld, type InstanceView, type Person } from './AC-APV-support.
 import type { ProcessView, TemplateView } from './AC-IDP-support.js';
 import { createProfile, grant, makeGrantable, type PermissionWorld, setObjectPermission } from './AC-PRM-support.js';
 import { cmd, type RequestOptions, tenantApi } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 export const IDP = '/api/tenant/idp';
 const APV = '/api/tenant/approval';
@@ -127,7 +127,7 @@ function approvalBody(
   overrides: Partial<Record<NodeExpr, NodeOverride>> = {},
 ) {
   return {
-    code: `IDP_${randomUUID().slice(0, 8)}`,
+    code: `IDP_${uniqueSuffix()}`,
     name: `IDP ${approvalType}`,
     approvalType,
     priority: 0,
@@ -249,7 +249,7 @@ export async function planWorld(db: Db, label: string, options: PlanWorldOptions
   let template = await ok<TemplateView>(
     await http(hr, 'POST', `${IDP}/templates`, {
       ifMatch: 0,
-      body: { name: `${label}模板${randomUUID().slice(0, 6)}`, orgId: dept, processId: process.id },
+      body: { name: `${label}模板${uniqueSuffix()}`, orgId: dept, processId: process.id },
     }),
     201,
   );

@@ -7,14 +7,36 @@ import { useSession } from './Session.js';
 import { ListPage } from './templates.js';
 import { ui } from './messages.js';
 
-const Org = lazy(() => import('../org/OrgPage.js').then((m) => ({ default: m.OrgPage })));
-const Job = lazy(() => import('../job/JobWorkspace.js').then((m) => ({ default: m.JobWorkspace })));
-const Transfer = lazy(() => import('../transfer/TransferPage.js').then((m) => ({ default: m.TransferPage })));
-const Self = lazy(() => import('../employee-self-service/EmployeePage.js').then((m) => ({ default: m.EmployeePage })));
-const Manager = lazy(() => import('../transfer/ManagerPage.js').then((m) => ({ default: m.ManagerPage })));
-const Talent = lazy(() => import('../talent/TalentPage.js').then((m) => ({ default: m.TalentPage })));
 const Account = lazy(() => import('../account/AccountPage.js').then((m) => ({ default: m.AccountPage })));
-const existing = { org: Org, job: Job, transfer: Transfer, self: Self, manager: Manager, talent: Talent };
+const Approval = lazy(() => import('../approval/ApprovalPage.js').then((m) => ({ default: m.ApprovalPage })));
+const Evaluation = lazy(() => import('../evaluation/EvaluationPage.js').then((m) => ({ default: m.EvaluationPage })));
+const Job = lazy(() => import('../job/JobWorkspace.js').then((m) => ({ default: m.JobWorkspace })));
+const Manager = lazy(() => import('../self-service/pages/ManagerPage.js').then((m) => ({ default: m.ManagerPage })));
+const Org = lazy(() => import('../org/OrgPage.js').then((m) => ({ default: m.OrgPage })));
+const Self = lazy(() => import('../self-service/pages/SelfPage.js').then((m) => ({ default: m.SelfPage })));
+const Settings = lazy(() => import('../settings/SettingsPage.js').then((m) => ({ default: m.SettingsPage })));
+const Staff = lazy(() => import('../personnel/StaffPage.js').then((m) => ({ default: m.StaffPage })));
+const Survey = lazy(() => import('../survey360/SurveyPage.js').then((m) => ({ default: m.SurveyPage })));
+const Talent = lazy(() => import('../talent/TalentPage.js').then((m) => ({ default: m.TalentPage })));
+const TalentReview = lazy(() =>
+  import('../talent-review/TalentReviewPage.js').then((m) => ({ default: m.TalentReviewPage })),
+);
+const Transfer = lazy(() => import('../transfer/TransferPage.js').then((m) => ({ default: m.TransferPage })));
+// 页面与布局同行登记，合并页面片时不再维护另一处路由条件。
+const existing = {
+  approval: { Page: Approval, legacy: false },
+  evaluation: { Page: Evaluation, legacy: false },
+  job: { Page: Job, legacy: false },
+  manager: { Page: Manager, legacy: false },
+  org: { Page: Org, legacy: false },
+  self: { Page: Self, legacy: false },
+  settings: { Page: Settings, legacy: true },
+  staff: { Page: Staff, legacy: false },
+  survey360: { Page: Survey, legacy: false },
+  talent: { Page: Talent, legacy: true },
+  'talent-review': { Page: TalentReview, legacy: true },
+  transfer: { Page: Transfer, legacy: false },
+};
 
 function LandingPage({ title }: { title: string }) {
   return (
@@ -46,15 +68,15 @@ export function AppPages() {
       <Suspense fallback={<PageState kind="loading" />}>
         <Routes>
           {APP_ROUTES.map((route) => {
-            const Page = existing[route.id as keyof typeof existing];
-            const pageClass = ['org', 'job'].includes(route.id) ? undefined : 'legacy-page';
+            const page = existing[route.id as keyof typeof existing];
+            const Page = page?.Page;
             return (
               <Route
                 key={route.id}
                 path={route.path}
                 element={
                   Page ? (
-                    <div className={pageClass}>
+                    <div className={page.legacy ? 'legacy-page' : undefined}>
                       <Page />
                     </div>
                   ) : (
@@ -73,23 +95,9 @@ export function AppPages() {
               </div>
             }
           />
-          <Route path="/settings/menu/:code" element={<LandingPage title={ui.routes.settings} />} />
-          <Route
-            path="/self/*"
-            element={
-              <div className="legacy-page">
-                <Self />
-              </div>
-            }
-          />
-          <Route
-            path="/manager/*"
-            element={
-              <div className="legacy-page">
-                <Manager />
-              </div>
-            }
-          />
+          <Route path="/settings/menu/:code" element={<Settings />} />
+          <Route path="/self/*" element={<Self />} />
+          <Route path="/manager/*" element={<Manager />} />
           <Route path="*" element={<PageState kind="not-found" />} />
         </Routes>
       </Suspense>
