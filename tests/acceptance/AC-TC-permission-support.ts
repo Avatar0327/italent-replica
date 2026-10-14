@@ -2,7 +2,6 @@
  * R3-T01 权限用例夹具（真实授权器）：两个组织（管理单元内 / 外）各一套人才标准数据，一个只含“内”组织的管理单元，
  * 以及按需配置对象权限、按钮、看全部与管理单元范围的操作人（DEC-043：范围按 用户 × TalentCenter 存一份）。
  */
-import { randomUUID } from 'node:crypto';
 import { MODULE_OBJECTS, ORG_EMPLOYEE_APP, TALENT_APP, TALENT_OBJECTS } from '@italent/domain';
 import { expect } from 'vitest';
 import {
@@ -28,6 +27,7 @@ import {
   TC_BASE,
   TC_NOW,
 } from './AC-TC-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 export type ObjectKey = keyof typeof TALENT_OBJECTS;
 export const clock = () => TC_NOW;
@@ -78,7 +78,7 @@ export async function seedTalentData(world: PermissionWorld): Promise<TalentPerm
     });
     const dimension = await create<DimensionView>('/dimensions', {
       libraryId: library.id,
-      code: `P${randomUUID().slice(0, 8)}`,
+      code: `P${uniqueSuffix()}`,
       ownerOrgId: orgId,
       name: `${label}战略思维`,
       definition: '保密定义',
@@ -107,7 +107,7 @@ export async function seedTalentData(world: PermissionWorld): Promise<TalentPerm
     ...world.asAdmin,
     ifMatch: 0,
     body: {
-      code: `tc-mou-${randomUUID().slice(0, 6)}`,
+      code: `tc-mou-${uniqueSuffix()}`,
       name: '人才标准管理单元',
       orgRanges: [{ orgId: insideOrg, includeDescendants: true }],
     },
@@ -137,7 +137,7 @@ export interface OperatorOptions {
 }
 
 export async function talentOperator(world: PermissionWorld, options: OperatorOptions = {}) {
-  const profile: ProfileBody = await createProfile(world, `tc-${randomUUID().slice(0, 8)}`, { apps: [TALENT_APP] });
+  const profile: ProfileBody = await createProfile(world, `tc-${uniqueSuffix()}`, { apps: [TALENT_APP] });
   const setButtons = async (buttons: boolean) => {
     for (const key of options.objects ?? (Object.keys(TALENT_OBJECTS) as ObjectKey[])) {
       const definition = TALENT_OBJECTS[key];
@@ -164,7 +164,7 @@ export async function talentOperator(world: PermissionWorld, options: OperatorOp
   };
   await setButtons(options.buttons ?? true);
   await makeGrantable(world, [profile.id]);
-  const user = await addMember(world, `tc-operator-${randomUUID().slice(0, 4)}`);
+  const user = await addMember(world, `tc-operator-${uniqueSuffix()}`);
   expect((await grant(world, user.id, profile.id)).status).toBe(201);
   const as = { user: user.id, tenant: world.tenant.id };
   let seeAllRevision = 0;
@@ -211,7 +211,7 @@ export function ownedTargets(set: OwnedSet) {
  * 用于验证“TalentCenter 的授权管理单元不能替代组织应用的数据范围”（DEC-316②）。
  */
 export async function grantOrganizationView(world: PermissionWorld, userId: string, mouId: string) {
-  const profile = await createProfile(world, `tc-org-${randomUUID().slice(0, 8)}`, { apps: [ORG_EMPLOYEE_APP] });
+  const profile = await createProfile(world, `tc-org-${uniqueSuffix()}`, { apps: [ORG_EMPLOYEE_APP] });
   const definition = MODULE_OBJECTS.organization;
   const response = await setObjectPermission(
     world,

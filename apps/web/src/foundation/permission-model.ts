@@ -1,5 +1,7 @@
 export interface ObjectPermission {
   objectCode: string;
+  /** 快照仅含入口摘要；字段和按钮须懒加载明细后使用。 */
+  summary?: true;
   dataOperations: Readonly<Record<string, boolean>>;
   viewableFields: readonly string[];
   editableFields: readonly string[];

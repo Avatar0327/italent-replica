@@ -3,7 +3,6 @@
  * 带教看带教人与被带教人，轮岗看员工与轮岗部门：任一方在范围外，直接读取、列表、计划详情（HR 分支与参与人分支）、
  * 审计列表与详情都不可见；都在范围内的对照记录照常可见。
  */
-import { randomUUID } from 'node:crypto';
 import { IDP_OBJECTS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
@@ -11,6 +10,7 @@ import { auditApi } from './AC-AUD-support.js';
 import { idpOperator } from './AC-IDP-permission-support.js';
 import { permissionWorldOf, planWorld, PLAN_NOW, type PlanView } from './AC-IDP-plan-support.js';
 import { memberWithAdminRole } from './AC-PRM-users-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 const IDP = '/api/tenant/idp';
@@ -83,7 +83,7 @@ describe('P2-1：关键信息的完整范围条件', () => {
     const { w, pw, ids } = await scene('idp-kis-audit');
     const all = auditApi(w.db, PLAN_NOW);
     const audit = auditApi(w.db, PLAN_NOW, { authorize: undefined });
-    const viewer = await memberWithAdminRole(pw, 'audit_admin', `idp-kis-${randomUUID().slice(0, 4)}`);
+    const viewer = await memberWithAdminRole(pw, 'audit_admin', `idp-kis-${uniqueSuffix()}`);
     const op = await idpOperator(pw, { orgId: w.dept, user: viewer.user });
     for (const [code, inside, outside] of [
       [IDP_OBJECTS.tutorship.code, ids.tutorIn, ids.tutorOut],

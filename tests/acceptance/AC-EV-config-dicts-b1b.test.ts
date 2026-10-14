@@ -28,9 +28,10 @@ import {
 } from './AC-EV-support.js';
 import { seedPermissionWorld, type PermissionWorld } from './AC-PRM-support.js';
 import { seedTenantWithMember, tenantApi } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
-const name = (label = '字典') => `${label}${randomUUID().slice(0, 6)}`;
+const name = (label = '字典') => `${label}${uniqueSuffix()}`;
 
 interface Row {
   readonly id: string;

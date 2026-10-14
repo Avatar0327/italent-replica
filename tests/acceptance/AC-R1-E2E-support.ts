@@ -7,7 +7,6 @@
  * 组织、人员入职、流程发布等**前置数据**仍经 R1-T07 夹具（可信装配）建立；被验收的每一步都走真实权限。
  * 定时生效经平台入口 runEmploymentActivations 运行，时钟由测试注入（DEC-056）。
  */
-import { randomUUID } from 'node:crypto';
 import { runEmploymentActivations, type EmploymentActivationRun } from '@italent/api';
 import { sql, withTenant, type Db } from '@italent/db';
 import { MODULE_OBJECTS } from '@italent/domain';
@@ -31,6 +30,7 @@ import {
 } from './AC-PRM-support.js';
 import { memberWithAdminRole } from './AC-PRM-users-support.js';
 import { cmd, tenantApi, type RequestOptions } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 export const E2E_TODAY = '2026-10-01';
 /** 本租户调动流程的前三个节点（`14` §2）：调出负责人 → 调入 HRBP → 调入负责人。 */
@@ -89,7 +89,7 @@ async function setScope(admin: PermissionWorld, userId: string, orgIds: readonly
  */
 export async function hrActor(admin: PermissionWorld, label: string, orgIds: readonly string[]): Promise<Actor> {
   const user = await addMember(admin, label);
-  const profile = await createProfile(admin, `e2e-hr-${randomUUID().slice(0, 8)}`);
+  const profile = await createProfile(admin, `e2e-hr-${uniqueSuffix()}`);
   const record = MODULE_OBJECTS.employmentRecord;
   const buttons = record.buttons
     .filter((button) => ![...INITIATOR_BUTTONS, ...DIRECT_BUTTONS].includes(button.code))

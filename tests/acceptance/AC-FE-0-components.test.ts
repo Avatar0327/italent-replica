@@ -53,6 +53,13 @@ describe('AC-FE-0-03 最小组件集', () => {
       vi.fn(async (path: string, init: RequestInit) => {
         if (new Headers(init.headers).get('x-tenant-id') === 'tenant-b')
           return Response.json({ error: { code: 'FORBIDDEN' } }, { status: 403 });
+        if (path.endsWith('/me/snapshot'))
+          return Response.json({
+            session: { tenantId: 'tenant-a', userId: 'user' },
+            apps: [],
+            scope: [],
+            adminMenus: [],
+          });
         if (path.includes('/permission/me/objects/'))
           return Response.json({
             objectCode: path.split('/').at(-1),
