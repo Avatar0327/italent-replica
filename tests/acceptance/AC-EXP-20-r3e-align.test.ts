@@ -11,6 +11,7 @@ import {
   formulaReferences,
   FUNCTION_PANEL,
   inMemorySubject,
+  nameTextReferences,
   orderComputationItems,
   rebindLegacyFormula,
   textMentionsField,
@@ -49,6 +50,13 @@ describe('“开始计算”实测值（`26` 末节表格）', () => {
     expect(run('DateFormat(NextMonth("2026/01/31"), "yyyy-MM-dd")')).toEqual(text('2026-02-28'));
     expect(run('DateFormat(NextMonth("2026/03/15"), "yyyy-MM-dd")')).toEqual(text('2026-04-15'));
     expect(run('DateFormat(NextMonth("2026/12/31"), "yyyy-MM-dd")')).toEqual(text('2027-01-31'));
+  });
+
+  it('NextMonth 的原始公式文本直接断言日期值（点号写法，不经 DateFormat 包装）', () => {
+    expect(run('NextMonth("2026.01.31")')).toEqual({
+      kind: 'date',
+      value: { year: 2026, month: 2, day: 28, hour: 0, minute: 0, second: 0, precision: 'date' },
+    });
   });
 
   it('Years 按年份相减：Years("2020/06/30", "2026/06/29") = 6（#105-5）', () => {
@@ -277,21 +285,22 @@ describe('#89-4 名称文本的引用判定（第 2 轮 P2-2 / P3）：只认实
 
   it('字段 a、a-b 同时存在：`Def(b,3); 盘点对象.a-b` 只引用 a-b，不引用 a（删除 a 不应被拦）', () => {
     const formula = 'Def(b,3); 盘点对象.a-b';
-    expect(formulaReferences(formula, NAMES)).toEqual(['盘点对象.a-b']);
+    expect(nameTextReferences(formula, NAMES)).toEqual(['盘点对象.a-b']);
     expect(textMentionsField(formula, 'a', NAMES)).toBe(false);
     expect(textMentionsField(formula, 'a-b', NAMES)).toBe(true);
   });
 
-  it('`Def(b,3); Def(c,1); 盘点对象.a-b-c` 实际引用 a-b（第 1 轮两端读法的并集漏了它）', () => {
+  it('`Def(b,3); Def(c,1); 盘点对象.a-b-c` 新存的写法实际引用 a-b；已存公式再加上旧词法的整段 a-b-c（第 3 轮取并集）', () => {
     const formula = 'Def(b,3); Def(c,1); 盘点对象.a-b-c';
-    expect(formulaReferences(formula, NAMES)).toEqual(['盘点对象.a-b']);
+    expect(nameTextReferences(formula, NAMES)).toEqual(['盘点对象.a-b']);
+    expect(formulaReferences(formula, NAMES)).toEqual(['盘点对象.a-b', '盘点对象.a-b-c']);
     expect(textMentionsField(formula, 'a-b', NAMES)).toBe(true);
     expect(textMentionsField(formula, 'a', NAMES)).toBe(false);
   });
 
   it('目录里没有带连字符的字段时按减法：盘点对象.能力得分-1 引用 能力得分', () => {
     expect(textMentionsField('盘点对象.能力得分-1', '能力得分', ['能力得分'])).toBe(true);
-    expect(formulaReferences('盘点对象.能力得分-盘点对象.绩效得分', ['能力得分', '绩效得分'])).toEqual([
+    expect(nameTextReferences('盘点对象.能力得分-盘点对象.绩效得分', ['能力得分', '绩效得分'])).toEqual([
       '盘点对象.能力得分',
       '盘点对象.绩效得分',
     ]);

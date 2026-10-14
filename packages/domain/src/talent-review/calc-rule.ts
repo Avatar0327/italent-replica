@@ -94,7 +94,8 @@ export const formulaFieldKind = (kind: TalentReviewFieldKind): ExpressionFieldKi
 /**
  * 名称文本公式里的路径是否为已存在字段（#89-4 的单一判定，DEC-431①）：`盘点对象.<名>` 按给定字段名（含重名字段）、
  * 项目 / 方案固定字段、模板版本字段判断。`盘点对象.甲-乙` 是一个字段名还是减法由它在语法分析时定型（已存在字段优先）；
- * 保存分析、授权复核、引用判定（删除 / 改名守卫、停用字段的已有引用）、改绑、新输入绑定都经过它，不各写一套。
+ * 新保存的文本：保存分析、授权复核、新输入绑定、改绑的当前解释都经过它，不各写一套。存量 legacy 文本的历史解释不走它，
+ * 只走冻结的旧成员词法（legacyTextReferences；引用判定见 storedTextReferences，改绑见 formula-rebind），不用它加开关去近似。
  */
 export function formulaFieldExists(
   names: Iterable<string>,
@@ -105,17 +106,38 @@ export function formulaFieldExists(
 }
 
 /**
- * 名称文本公式的实际引用（单一入口）：在给定字段目录上按 formulaFieldExists 解析，返回引用到的字段路径；
- * 语法不合法时为 undefined（由调用方决定是否宁可多保护）。引用只认这一种解释，不把减法读法也算成引用。
+ * 新保存的名称文本公式的实际引用（单一入口）：在给定字段目录上按 formulaFieldExists 解析，返回引用到的字段路径；
+ * 语法不合法时为 undefined（由调用方决定是否宁可多保护）。只认这一种解释，不把减法读法也算成引用。
  */
 export function nameTextReferences(formula: string, names: Iterable<string>): string[] | undefined {
   const parsed = validateFormula(formula, { isKnownField: () => true, fieldExists: formulaFieldExists(names) });
   return parsed.ok ? [...parsed.fields] : undefined;
 }
 
-/** 公式里引用的字段路径（语法不合法时为空）；已存公式的引用判定共用，字段目录用于定型带连字符的写法。 */
+/**
+ * 存量 legacy 名称文本的历史引用（DEC-228）：词法整个走冻结的旧成员词法（5aa1d1ad，legacy-member-lexer），成员位置的
+ * 连字符一律并入字段名，与字段目录无关。旧词法读不出来（或函数、参数不合法）时为 undefined。
+ */
+export function legacyTextReferences(formula: string): string[] | undefined {
+  const parsed = validateFormula(formula, { isKnownField: () => true, legacyMembers: true });
+  return parsed.ok ? [...parsed.fields] : undefined;
+}
+
+/**
+ * 已存名称文本公式引用了哪些字段（删除 / 改名守卫、停用字段的已有引用共用，不各写一套）：库里的名称文本可能是升级前按
+ * 旧词法存下的，也可能是之后按“已存在字段优先”存下的，两者无法区分，所以取两种解释的并集——旧词法的引用集合保证存量文本不漏
+ * 保护，当前解释保证新存的文本不漏保护；宁可多保护，不能漏保护。两种都读不出来时为 undefined。
+ */
+export function storedTextReferences(formula: string, names: Iterable<string>): string[] | undefined {
+  const current = nameTextReferences(formula, names);
+  const legacy = legacyTextReferences(formula);
+  if (current === undefined && legacy === undefined) return undefined;
+  return [...new Set([...(current ?? []), ...(legacy ?? [])])];
+}
+
+/** 已存公式里引用的字段路径（两种解释都读不出来时为空）；字段目录用于定型新存的带连字符写法。 */
 export function formulaReferences(formula: string, names: Iterable<string>): string[] {
-  return nameTextReferences(formula, names) ?? [];
+  return storedTextReferences(formula, names) ?? [];
 }
 
 /**
@@ -131,11 +153,11 @@ export function fieldNameTerms(fieldName: string): string[] {
  * 非 bound 公式的文本兜底（F-082 契约 §3.2 第 3 条，长期保留）：公式按名称引用了该字段的**当前**名称。
  * 先文本粗筛（每段名称都出现）、再解析精确判定（`盘点对象 . 来源` 等空白写法算，字符串里的、其他字段名的前缀 / 子串不算）；
  * 解析失败的公式只要粗筛命中就算引用（不能解析时宁可多保护）。`names` 是租户的全部字段名（含被判定的字段），
- * 带连字符的写法按它定型（nameTextReferences）。
+ * 新存的带连字符写法按它定型；存量写法按旧词法（storedTextReferences 取两种解释的并集）。
  */
 export function textMentionsField(formula: string, fieldName: string, names: Iterable<string>): boolean {
   if (!fieldNameTerms(fieldName).every((term) => formula.includes(term))) return false;
-  const paths = nameTextReferences(formula, names);
+  const paths = storedTextReferences(formula, names);
   return paths === undefined || paths.includes(formulaPath(fieldName));
 }
 
@@ -226,18 +248,16 @@ export function analyzeCalcItems(
  * 授权复核用（与业务分析分开）：逐个项目、逐个引用检查公式里的字段是否都在调用方给出的可见字段里——只认可见字段的完整路径
  * 与项目 / 方案固定字段，不做类型、重名、停用等业务判断，也不在第一个业务错误处停下（PR #184 第 2 轮：分析器先报重名就返回，
  * 后面项目里已撤出范围的字段会漏检）。返回第一个含不可见 / 不存在字段引用的项目及其 UNKNOWN_FIELD 问题；全部可见返回 null。
- * `all`：租户全部字段（定型带连字符的写法用，不传时按可见字段）。
+ * 带连字符的写法（#89-4）只按**可见字段**定型，与保存分析（analyzeOnce 也只用可见目录）同一解释：结果不能取决于提交人看不到
+ * 的字段是否存在，否则 `盘点对象.甲-1` 报“未知字段 / 保存成功”的差异会披露隐藏字段 甲-1（#327 第 3 轮）。
  */
 export function unreferenceableItem(
   items: readonly Pick<CalcItemInput, 'formula'>[],
   visible: readonly Pick<FormulaField, 'name'>[],
-  all: readonly Pick<FormulaField, 'name'>[] = visible,
 ): { readonly item: number; readonly issues: CalcIssue[] } | null {
   const paths = new Set(visible.map((field) => formulaPath(field.name)));
   const isKnownField = (path: string) => paths.has(path) || path in FORMULA_CONTEXT_FIELDS;
-  // 带连字符的写法按全部字段定型（与保存分析同一解释，#89-4）：否则 `盘点对象.甲-1` 在这里按“甲 减 1”放行，
-  // 保存分析却绑定到看不到的字段“甲-1”
-  const fieldExists = formulaFieldExists(all.map((field) => field.name));
+  const fieldExists = formulaFieldExists(visible.map((field) => field.name));
   const registry = createDefaultRegistry();
   for (const [index, item] of items.entries()) {
     const checked = validateFormula(item.formula, { isKnownField, fieldExists, registry });

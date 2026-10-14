@@ -63,6 +63,8 @@ export interface ValidationOptions {
    * 只想放过未知字段检查、不想把连字符都并进字段名的调用方（isKnownField 恒真）应另传本项。
    */
   readonly fieldExists?: (path: string) => boolean;
+  /** 存量 legacy 名称文本的历史解释：按冻结的旧成员词法解析（ParseOptions.legacyMembers），字段目录不参与定型。 */
+  readonly legacyMembers?: boolean;
   /**
    * 字段类型目录：完整字段路径或短字段名的静态类型，不知道时返回 undefined。统一类型推导据此给字段定类型
    * （DEC-287①）：日期参数确定非日期时报错、不确定时提示；第 N 年 / 第 N 次据此区分过滤条件与 N。
@@ -218,6 +220,7 @@ export function validateFormula(source: string, options: ValidationOptions = {})
     stored: options.storage === true,
     placeholders: options.placeholders === true,
     fieldExists: options.fieldExists ?? options.isKnownField,
+    legacyMembers: options.legacyMembers === true,
   });
   if (!parsed.ok) return parsed;
   const registry = options.registry ?? createDefaultRegistry();

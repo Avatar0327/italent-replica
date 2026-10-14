@@ -218,9 +218,9 @@ const Z = '66666666-6666-4666-8666-666666666666';
 const field = (id: string, name: string) => ({ id, name, kind: 'number' as const });
 
 describe('P2-1：历史比较走旧词法（小数写法 a-1.5）', () => {
-  it('字段 a、a-1.5 都在：旧词法读成整段字段 a-1.5，当前解释一致 → 绑定 a-1.5，不绑定到 a', () => {
+  it('字段 a、a-1.5 都在：两种解释一致（整段字段 a-1.5），但 bound 路径不支持名字里带“.”的字段 → unresolved，不绑定到 a', () => {
     const result = rebindLegacyFormula('盘点对象.a-1.5', [field(A, 'a'), field(A15, 'a-1.5')]);
-    expect(result).toMatchObject({ ok: true, fieldIds: [A15] });
+    expect(result).toMatchObject({ ok: false, issue: 'UNKNOWN_FIELD', candidates: [A15] });
   });
 
   it('a-1.5 已改名为 z：旧词法的整段 a-1.5 与当前的 a 减 1.5 不一致 → unresolved，原文不动，a 与 z 都不换义', () => {
@@ -330,7 +330,7 @@ describe('新保存的写法：已存在字段优先，小数与多段连字符�
     expect(checked).toMatchObject({ ok: true, fields: ['盘点对象.a'] });
   });
 
-  it('提交人可见的字段里有 a-1.5：bindFormula 绑成一个句柄；只可见 a 时绑成 a 减 1.5', () => {
+  it('bound 路径不支持名字里带“.”的字段：可见字段里有 a-1.5 时报找不到字段，不悄悄读成 a 减 1.5；只可见 a 时仍是 a 减 1.5', () => {
     const catalogVersion = { current: 1, submitted: 1 };
     const both = bindFormula('盘点对象.a-1.5 + 1', {
       visibleFields: [
@@ -339,7 +339,7 @@ describe('新保存的写法：已存在字段优先，小数与多段连字符�
       ],
       catalogVersion,
     });
-    expect(both).toMatchObject({ ok: true, fieldIds: [A15] });
+    expect(both).toMatchObject({ ok: false, failure: { code: 'FORMULA_INVALID' } });
     const only = bindFormula('盘点对象.a-1.5', { visibleFields: [{ id: A, name: 'a' }], catalogVersion });
     expect(only).toMatchObject({ ok: true, fieldIds: [A] });
   });

@@ -1,6 +1,6 @@
 /**
  * #327 第 3 轮（DEC-485）：存量 legacy 名称文本的历史解释走冻结的旧词法（AC-EXP-21 是它与 5aa1d1ad 的差分）：
- * - P2-1：字段 a、a-1.5 并存，存量公式 `盘点对象.a-1.5` 旧词法读成整段字段 a-1.5，不能被改绑成 a 减 1.5；
+ * - P2-1：字段 a、a-1.5 并存，存量公式 `盘点对象.a-1.5` 旧词法读成整段字段 a-1.5，不能被改绑成 a 减 1.5（原字段保护保留）；
  * - P2-2：字段 `a-b.c-d`，存量公式 `盘点对象.a-b.c-d` 的删除保护不能漏。
  * 存量文本用 setFormulaText 写库，模拟升级前 B5 存下的公式（新规则下的保存接口不一定写得进去）。
  *
@@ -68,22 +68,22 @@ describe('#89-4 删除守卫只认实际解释（第 2 轮 P2-2）', () => {
 });
 
 describe('#89-4 历史解释走旧词法（第 3 轮 P2-1）：小数写法 a-1.5', () => {
-  it('a=10、a-1.5=99，存量公式 `盘点对象.a-1.5`：改绑后引用 a-1.5，不绑定到 a；删除 a-1.5 → 409，删除 a → 200', async () => {
-    const w = await world('r3-decimal-bound');
+  it('a=10、a-1.5=99，存量公式 `盘点对象.a-1.5`：改绑不绑定到 a（unresolved、原文不动），删除 a-1.5 → 409，删除 a → 200', async () => {
+    const w = await world('r3-decimal-kept');
     const target = await w.numberField();
     const a = await w.field('number', { name: 'a' });
     const decimal = await w.field('number', { name: 'a-1.5' });
+    const formula = '盘点对象.a-1.5';
     const { itemOf } = await legacyRule(w, [{ target, formula: '盘点对象.a' }]);
-    await setFormulaText(w, itemOf(target), '盘点对象.a-1.5');
+    await setFormulaText(w, itemOf(target), formula);
 
     const report = await w.runRebind();
-    expect(report).toMatchObject({ bound: 1, unresolved: [] });
-    const raw = await rawItemOf(w, itemOf(target));
-    expect(raw.formula_binding).toBe('bound');
-    expect(raw.formula).toContain(decimal.id.toLowerCase());
-    expect(raw.formula).not.toContain(a.id.toLowerCase());
+    expect(report.bound).toBe(0);
+    expect(report.unresolved).toEqual([expect.objectContaining({ targetFieldId: target.id })]);
+    expect(await rawItemOf(w, itemOf(target))).toMatchObject({ formula, formula_binding: 'unresolved' });
     const refs = await refsFor(w, itemOf(target));
-    expect(refs).toEqual([{ kind: 'bound', field_id: decimal.id.toLowerCase() }]);
+    expect(refs.filter((ref) => ref.kind === 'bound')).toEqual([]);
+    expect(refs.map((ref) => ref.field_id)).toEqual([decimal.id.toLowerCase()]);
 
     const blocked = await deleteField(w, decimal);
     expect(blocked.status).toBe(409);

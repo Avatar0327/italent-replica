@@ -344,8 +344,9 @@ function renderBound(stored: string, options: RenderFormulaOptions): RenderResul
 }
 
 function renderLegacy(stored: string, options: RenderFormulaOptions): RenderResult {
-  // 连字符一律并进字段名（#89-4 之前的读法）：渲染时宁可多遮，不把看不到的字段名拆出一截原样显示
-  const parsed = parseFormula(stored, { fieldExists: () => true });
+  // 存量名称文本按冻结的旧成员词法读（#89-4 之前的读法，连字符一律并进字段名）：渲染时宁可多遮，
+  // 不把看不到的字段名拆出一截原样显示（小数 a-1.5、深路径 a-b.c-d 也整段判断）
+  const parsed = parseFormula(stored, { legacyMembers: true });
   if (!parsed.ok) {
     const text = options.allFieldsVisible === true ? stored : FORMULA_REPAIR_NOTICE;
     return { ok: true, text, bindings: [], repairNeeded: true };

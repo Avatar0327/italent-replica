@@ -167,8 +167,7 @@ export async function requireItemsReferenceable(
   const catalog = await loadVisibleCatalog(tx, tenantId, access);
   const ids = new Set(catalog.map((field) => field.id));
   if (items.some((item) => !ids.has(item.targetFieldId))) throw new AppError('NOT_FOUND', notFoundMessage('field'));
-  // 带连字符的写法按全部字段定型（与保存分析同一解释，#89-4）
-  const blocked = unreferenceableItem(items, catalog, await loadFullCatalog(tx, tenantId));
+  const blocked = unreferenceableItem(items, catalog);
   if (blocked) throw reject('FORMULA_INVALID', '公式不合法', blocked);
 }
 

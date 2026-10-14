@@ -62,6 +62,8 @@ export {
 } from './functions/index.js';
 /** C-02：定点舍入（R3-T04 指标 / 模块算分精度与 Round 系列函数同一实现）。 */
 export { roundDecimal, type Rounding } from './functions/math.js';
+/** 冻结的旧成员词法（5aa1d1ad，DEC-228）：存量 legacy 名称文本的历史解释；差分测试直接比较它与旧实现。 */
+export { legacyMemberRun, legacyTokenize } from './legacy-member-lexer.js';
 export {
   fieldHandle,
   HIDDEN_FIELD_OWNER,
