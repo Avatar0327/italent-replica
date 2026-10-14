@@ -10,9 +10,9 @@ import { ui } from './messages.js';
 const Account = lazy(() => import('../account/AccountPage.js').then((m) => ({ default: m.AccountPage })));
 const Approval = lazy(() => import('../approval/ApprovalPage.js').then((m) => ({ default: m.ApprovalPage })));
 const Evaluation = lazy(() => import('../evaluation/EvaluationPage.js').then((m) => ({ default: m.EvaluationPage })));
-const Job = lazy(() => import('../job/JobPage.js').then((m) => ({ default: m.JobPage })));
+const Job = lazy(() => import('../job/JobWorkspace.js').then((m) => ({ default: m.JobWorkspace })));
 const Manager = lazy(() => import('../self-service/pages/ManagerPage.js').then((m) => ({ default: m.ManagerPage })));
-const Org = lazy(() => import('../org/OrgChangePage.js').then((m) => ({ default: m.OrgChangePage })));
+const Org = lazy(() => import('../org/OrgPage.js').then((m) => ({ default: m.OrgPage })));
 const Qualification = lazy(() =>
   import('../qualification/QualificationPage.js').then((m) => ({ default: m.QualificationPage })),
 );
@@ -29,9 +29,9 @@ const Transfer = lazy(() => import('../transfer/TransferPage.js').then((m) => ({
 const existing = {
   approval: { Page: Approval, legacy: false },
   evaluation: { Page: Evaluation, legacy: false },
-  job: { Page: Job, legacy: true },
+  job: { Page: Job, legacy: false },
   manager: { Page: Manager, legacy: false },
-  org: { Page: Org, legacy: true },
+  org: { Page: Org, legacy: false },
   qualification: { Page: Qualification, legacy: true },
   self: { Page: Self, legacy: false },
   settings: { Page: Settings, legacy: true },
@@ -90,14 +90,7 @@ export function AppPages() {
               />
             );
           })}
-          <Route
-            path="/org/changes"
-            element={
-              <div className="legacy-page">
-                <Org />
-              </div>
-            }
-          />
+          <Route path="/org/changes" element={<Org />} />
           <Route
             path="/settings/account"
             element={

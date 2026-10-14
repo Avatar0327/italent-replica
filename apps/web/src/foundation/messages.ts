@@ -1,4 +1,5 @@
 export const ui = {
+  pageSize: '每页条数',
   brand: 'iTalent',
   tenant: '租户',
   apps: '应用导航',
