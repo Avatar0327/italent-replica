@@ -6,7 +6,7 @@ import { useCommandForm } from '../../foundation/forms/useCommandForm.js';
 import { PageState } from '../../foundation/PageState.js';
 import { fieldAccess, type ObjectPermission } from '../../foundation/permission-model.js';
 import { useApiClient } from '../../foundation/Session.js';
-import { candidates, resourcePath, saveResource, validateValues, writablePatch } from './api.js';
+import { candidates, commandRequestBody, resourcePath, saveResource, validateValues, writablePatch } from './api.js';
 import { useRemote } from './hooks.js';
 import { ReferencedDimensions } from './ReferencedDimensions.js';
 import { StandardTargets } from './StandardTargets.js';
@@ -188,8 +188,8 @@ function validationType(field: Field) {
 
 /**
  * 保存走页面级表单提交内核（F-123，DEC-464 / 473）：未知结果的命令保存在页面的 FormCommands 里，关闭重开、切换页签都不会
- * 换命令 ID 再发；服务器明确拒绝时保留输入、改正后新命令重提。命令体由 writablePatch 算好（含显式 null 清空）作为内核的提交值；
- * 内核的基线是打开表单时读到的真实记录，409 重读确认后内核把基线与版本更新为最新记录，“有没有修改”也按它比较。
+ * 换命令 ID 再发；服务器明确拒绝时保留输入、改正后新命令重提。内核拿到完整字段投影（打开时的记录、表单草稿、重读的最新记录），
+ * 命令体由内核按“草稿 vs 基线”逐字段裁剪；409 重读确认后内核把基线与版本更新为最新记录、没改过的字段回填最新值。
  */
 function useSaveResource(
   resource: Resource,
@@ -218,26 +218,25 @@ function useSaveResource(
     } catch (error) {
       throw new ApiError(422, 'LOCAL_VALIDATION', 'fields', (error as Error).message);
     }
-    // 比较基线：冲突重读并确认后是最新记录，其余时候是打开表单时读到的记录（内核在冲突后保留并更新自己的基线 / 版本）。
+    const editable = fields.filter((field) => field.access.editable).map((field) => field.name);
+    const nullable = resource.fields.filter((field) => field.nullable).map((field) => field.key);
+    // “有没有修改”：与内核的当前基线比较——冲突重读并确认后是最新记录，其余时候是打开表单时读到的记录。
     const state = command.state;
     const compareWith = original && state && state.status !== 'done' ? (state.baseline as Row) : original;
-    const body = writablePatch(
-      values,
-      compareWith,
-      fields.filter((field) => field.access.editable).map((field) => field.name),
-      resource.fields.filter((field) => field.nullable).map((field) => field.key),
-    );
-    if (!Object.keys(body).length) throw new ApiError(422, 'LOCAL_VALIDATION', 'fields', m.noChanges);
-    // 标准的明细为整组替换；基础编辑绝不携带旧明细，创建空标准按已有契约提交空格集合。
-    if (!original && resource.module === 'qualification' && resource.key === 'standards') body.details ??= [];
+    if (!Object.keys(writablePatch(values, compareWith, editable, nullable)).length)
+      throw new ApiError(422, 'LOCAL_VALIDATION', 'fields', m.noChanges);
+    // 内核持有完整字段投影：基线（打开时的记录）、草稿（表单全部可编辑字段）、重读得到的最新记录三者字段集合一致。
+    // 用户改过的字段只按“草稿 vs 基线”逐字段算；409 重读后没改过的字段回填最新值（不会把表单里残留的旧值当成新修改），
+    // PATCH 只发改过的字段（内核 patchOnly）。命令体里的清空（undefined）在这里转成显式 null。
     const result = await command.submit({
-      values: body,
-      // 打开表单时读到的真实记录：差异表的“原值”与冲突后的比较都以它为起点，不能传空对象
+      values,
       baseline: original ?? {},
-      editableFields: Object.keys(body),
+      editableFields: editable,
       revision: original?.revision ?? 0,
       businessId: original?.id,
-      send: (request) => saveResource(api, resource, request.body, original, request),
+      patchOnly: !!original,
+      send: (request) =>
+        saveResource(api, resource, commandRequestBody(resource, original, nullable, request.body), original, request),
     });
     if (result.status !== 'done') throw result.error ?? new Error(commandMessages.unknown);
     command.clear();

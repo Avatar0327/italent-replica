@@ -56,6 +56,23 @@ export function validateValues(resource: Resource, values: Record<string, unknow
   )
     throw new Error(m.invalidOrder);
 }
+/** 内核算出的命令体 → 请求体：清空（undefined）只对可清空且已有值的字段发 null；创建空标准按契约提交空格集合。 */
+export function commandRequestBody(
+  resource: Resource,
+  original: Row | null,
+  nullable: string[],
+  body: Record<string, unknown>,
+) {
+  const sent = Object.fromEntries(
+    Object.entries(body).flatMap(([key, value]): [string, unknown][] =>
+      value !== undefined ? [[key, value]] : original && nullable.includes(key) ? [[key, null]] : [],
+    ),
+  );
+  // 标准的明细为整组替换；基础编辑绝不携带旧明细，创建空标准按已有契约提交空格集合。
+  if (!original && resource.module === 'qualification' && resource.key === 'standards') sent.details ??= [];
+  return sent;
+}
+
 export async function saveResource(
   api: ApiClient,
   resource: Resource,
