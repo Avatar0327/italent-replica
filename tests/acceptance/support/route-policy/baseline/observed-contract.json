@@ -177,6 +177,34 @@
         ]
       }
     },
+    "DELETE /api/tenant/contracts/rules/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "contracts",
+      "primitives": {
+        "command": [
+          "write() / command()"
+        ],
+        "fieldsOut": [
+          "org write()"
+        ],
+        "object": [
+          "requireObjectWrite（对象写操作权）"
+        ]
+      }
+    },
     "DELETE /api/tenant/employment/businesses/:id": {
       "edge": {
         "anonymous": {
@@ -3092,6 +3120,37 @@
         ]
       }
     },
+    "GET /api/tenant/contracts/employees/:id/contracts": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "contracts",
+      "primitives": {
+        "fieldsOut": [
+          "trim()"
+        ],
+        "object": [
+          "routeContext"
+        ],
+        "scope": [
+          "employment visibility",
+          "scope.all",
+          "scopeSql",
+          "visible()"
+        ]
+      }
+    },
     "GET /api/tenant/contracts/employees/:id/revision": {
       "edge": {
         "anonymous": {
@@ -3222,7 +3281,11 @@
           "routeContext"
         ],
         "scope": [
-          "checkScope"
+          "checkScope",
+          "employment visibility",
+          "scope.all",
+          "scopeSql",
+          "visible()"
         ]
       }
     },

@@ -9,7 +9,7 @@ import {
   type Db,
   type Tx,
 } from '@italent/db';
-import { automaticRenewalPlans, termEnd, tenantLocalDate, type OrgId } from '@italent/domain';
+import { automaticRenewalPlans, isIndefiniteTerm, termEnd, tenantLocalDate, type OrgId } from '@italent/domain';
 import { commandHash } from '../../commands.js';
 import { AppError } from '../../errors.js';
 import type { Authorizer } from '../../authorization.js';
@@ -181,6 +181,7 @@ async function renewCandidate(
         candidate.employeeId,
         employment?.fields.departmentId ?? null,
         today,
+        config.indefiniteTypeIds,
       )
     : [];
   const plan = plans.find((p) => p.targetId === candidate.id);
@@ -193,7 +194,8 @@ async function renewCandidate(
     if (pending) return false;
     const current = contracts.find((c) => c.id === plan.targetId)!;
     const count = await nextSigningCount(tx, ctx, current.employeeId, current.typeId, config.accumulateRehire);
-    const termType = count > 2 ? 'indefinite' : 'fixed';
+    // F-128 A16：与手工续签同一判定函数
+    const termType = isIndefiniteTerm(config.indefiniteTypeIds, current.typeId, count) ? 'indefinite' : 'fixed';
     const detail = enabledRules.find((r) => r.id === plan.ruleId)!.details.find((d) => d.typeId === current.typeId)!;
     await createCommand(
       tx,
