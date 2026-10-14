@@ -101,6 +101,10 @@ details summary{cursor:pointer;color:var(--muted);font-size:13px}
 .dtag{font-size:9px;font-family:var(--mono);padding:0 3px;border-radius:3px;border:1px solid var(--line);opacity:.8}
 body[data-ms="D1"] .chip:not([data-ms="D1"]),body[data-ms="D2"] .chip:not([data-ms="D2"]),body[data-ms="D3"] .chip:not([data-ms="D3"]){opacity:.18}
 .dcard:hover{border-color:var(--ink2)}
+
+.dsec{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin:14px 0;display:flex;flex-direction:column;gap:10px;background:var(--sunk)}
+.dh{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 14px;border-bottom:1px solid var(--line);padding-bottom:6px}
+.dn{font-weight:700;font-size:15px;color:var(--ink)}.dp{font-variant-numeric:tabular-nums;color:var(--ink2)}.dd{color:var(--muted);font-size:12px}
 </style>
 <div class="wrap">
   <header>
@@ -177,10 +181,10 @@ function chip(st){
   const g = (STG[x.s] || "ppp").split("").map(c => `<i class="${c}"></i>`).join("");
   return `<span class="chip ${x.s}${o && o.stuck ? " stuck" : ""}"${dsx ? ` data-ms="${dsx}"` : ""} title="${esc(tip)}"><span class="k">${esc(st.k)}</span>${esc(st.n)}${st.pr ? `<span class="p">#${st.pr}</span>` : ""}${dsx ? `<span class="dtag">${dsx}</span>` : ""}<span class="stg" title="开发 → 审查 → 合并">${g}</span></span>`;
 }
-function block(l){
+function block(l, summaryOnly){
   const gs = l.groups || (l.steps ? [{n:"", steps:l.steps}] : []);
   const all = [].concat(...gs.map(g => g.steps));
-  LKEYS = {}; all.forEach(st => LKEYS[st.k] = st);
+  all.forEach(st => LKEYS[st.k] = st);
   const ss = all.map(stepState);
   const done = ss.filter(x => x.s === "done").length, act = ss.filter(x => !["done","todo","wait","paused","assigned","ready"].includes(x.s)).length;
   const tot = all.length;
@@ -188,13 +192,25 @@ function block(l){
   const nextTodo = all.find((st,i) => ["ready","todo","assigned","wait"].includes(ss[i].s));
   const idleLine = tot && !act && done < tot;
   const focus = tot === 0 ? "已完成" : hot ? "在途：" + hot : idleLine ? "<b>当前没有在途 PR</b>" + (nextTodo ? "，下一步 " + esc(nextTodo.k + " " + nextTodo.n) + (nextTodo.note ? "（" + esc(nextTodo.note) + "）" : "") : "") : "";
-  const groups = gs.map(g => `<div class="grp"><div class="gn">${esc(g.n)}</div><div class="chips">${g.steps.map(chip).join("")}</div></div>`).join("");
+  const groups = summaryOnly ? `<div class="pre">明细见「iTalent L3 深度线」页</div>` : gs.map(g => `<div class="grp"><div class="gn">${esc(g.n)}</div><div class="chips">${g.steps.map(chip).join("")}</div></div>`).join("");
   return `<div class="line"><div class="lh"><span class="nm">${esc(l.name)}</span>` +
     (tot ? `<span class="bar"><i class="d" style="width:${100*done/tot}%"></i><i class="a" style="width:${100*act/tot}%"></i></span><span class="pct">${done}/${tot} 已合并${act ? " · " + act + " 在途" : ""}</span>` : "") +
     (l.why ? `<span class="pre">${esc(l.why)}</span>` : "") + `</div>` +
     (focus ? `<div class="focus">${focus}</div>` : "") + (l.pre ? `<div class="pre">前置：${esc(l.pre)}</div>` : "") + groups + `</div>`;
 }
-document.getElementById("lines").innerHTML = (M.lines || []).map(block).join("");
+(M.lines || []).concat(M.support || []).forEach(l => (l.groups || (l.steps ? [{steps: l.steps}] : [])).forEach(g => g.steps.forEach(st => LKEYS[st.k] = st)));
+const MSOF = DATA.msof || {}, MSX0 = DATA.prog && DATA.prog.ms, L3IDS = ["T02", "T03", "T04", "T05", "T07"];
+const filt = (l, D) => Object.assign({}, l, {groups: (l.groups || []).map(g => ({n: g.n, steps: g.steps.filter(s => MSOF[s.k] === D)})).filter(g => g.steps.length)});
+if (MSX0 && DATA.page !== "l3") {
+  const dd0 = dl => Math.ceil((Date.parse(dl + "T23:59:59+08:00") - Date.now()) / 864e5);
+  document.getElementById("lines").innerHTML = ["D1", "D2", "D3"].map(D => {
+    const m = MSX0[D], n = dd0(m.dl);
+    const parts = (M.lines || []).map(l => { const f = filt(l, D); if (!f.groups.length) return ""; return L3IDS.includes(l.id) ? block(f, true) : block(f); }).join("");
+    return `<div class="dsec" id="sec-${D}"><div class="dh"><span class="dn">${esc(m.t)}</span><span class="dp">${m.done}/${m.tot} 已合并</span><span class="dd">${esc(m.dl.slice(5))} 截止 · ${n >= 0 ? "还有 " + n + " 天" : "已逾期 " + (-n) + " 天"}</span></div>${parts || `<div class="pre">没有任务。</div>`}</div>`;
+  }).join("");
+} else {
+  document.getElementById("lines").innerHTML = (M.lines || []).map(b => block(b)).join("");
+}
 const MILE = DATA.mile, MSX = DATA.prog && DATA.prog.ms;
 if (MILE && MSX) {
   MILE.forEach(r => { if (!LKEYS[r.st.k]) LKEYS[r.st.k] = r.st; });
@@ -205,7 +221,7 @@ if (MILE && MSX) {
     const modTot = {}, modDone = {};
     rows.forEach(r => { modTot[r.mod] = (modTot[r.mod] || 0) + 1; if (stepState(r.st).s === "done") modDone[r.mod] = (modDone[r.mod] || 0) + 1; });
     const mods = ORDER.filter(o => modTot[o]).map(o => o + " " + (modDone[o] || 0) + "/" + modTot[o]).join(" · ");
-    return `<div class="kpi dcard" onclick="var b=document.body;b.dataset.ms=b.dataset.ms==='${k}'?'':'${k}'" title="点一下只高亮 ${k} 的任务，再点取消" style="cursor:pointer;padding:8px 12px"><div style="color:var(--ink);font-weight:600;font-size:13px">${esc(m.t)}</div><div class="mbig">${m.done}/${m.tot}<small>已合并 / 计划（${pct}%）</small></div><div>${esc(mods)}</div><div><b>${m.act}</b> 在审 / 返工　<b>${m.todo}</b> 未开工</div><div>${esc(m.dl.slice(5))} 截止　<b style="color:${n <= 1 ? "var(--bad)" : "var(--ink)"}">${n >= 0 ? "还有 " + n + " 天" : "已逾期 " + (-n) + " 天"}</b></div></div>`;
+    return `<div class="kpi dcard" onclick="var e=document.getElementById('sec-${k}');if(e)e.scrollIntoView({behavior:'smooth'})" title="点一下跳到 ${k} 分区" style="cursor:pointer;padding:8px 12px"><div style="color:var(--ink);font-weight:600;font-size:13px">${esc(m.t)}</div><div class="mbig">${m.done}/${m.tot}<small>已合并 / 计划（${pct}%）</small></div><div>${esc(mods)}</div><div><b>${m.act}</b> 在审 / 返工　<b>${m.todo}</b> 未开工</div><div>${esc(m.dl.slice(5))} 截止　<b style="color:${n <= 1 ? "var(--bad)" : "var(--ink)"}">${n >= 0 ? "还有 " + n + " 天" : "已逾期 " + (-n) + " 天"}</b></div></div>`;
   }).join("");
 }
 document.getElementById("support").innerHTML = (M.support || []).map(block).join("");
