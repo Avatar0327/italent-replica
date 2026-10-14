@@ -10,6 +10,7 @@ import {
   DEMO_ORGS,
   DEMO_PEOPLE,
   DEMO_PERSONA_HEADS,
+  DEMO_QUALIFICATION_LAYERS,
   DEMO_POSTS,
   DEMO_SEQUENCES,
   type DemoPersonDef,
@@ -26,7 +27,7 @@ import {
   gradeOfLevel,
 } from './scale-data.js';
 
-export type SeedPhase = 'orgs' | 'jobs' | 'employees' | 'access' | 'transfers';
+export type SeedPhase = 'orgs' | 'jobs' | 'employees' | 'access' | 'qualification' | 'transfers';
 export interface SeedStep {
   readonly phase: SeedPhase;
   /** 刚写入的对象的自然键（组织 / 职务体系编码、工号…）。 */
@@ -100,6 +101,7 @@ export class DemoWorld {
     await this.assignOrgRoles();
     await this.setupHr();
     await this.setupAuditor();
+    await this.seedQualificationLayers();
   }
 
   private async loadAdmin(): Promise<void> {
@@ -381,5 +383,29 @@ export class DemoWorld {
     }
     await this.grant(auditor, 'standard_manager');
     await this.scopeAll(auditor);
+  }
+
+  /**
+   * 任职资格“层级”候选（F-141，DEC-500）：层级是没有组织字段的字典，新建只认看全部（DEC-121）。与 grantAdminSeeAll 同法，
+   * 演示管理员先持有任职资格系统管理员身份，并在演示租户里给该身份的层级实体授看全部，再经真实接口建候选；已有同名的不重建。
+   */
+  private async seedQualificationLayers(): Promise<void> {
+    await this.grant(this.admin, 'standard_qualification_admin');
+    const profileId = this.profiles.get('standard_qualification_admin')!;
+    const layer = 'targetKind=entity&targetCode=Qualification.Layer';
+    const scopePath = `permission/profiles/${profileId}/data-scopes/Qualification`;
+    const current = await this.as(`${scopePath}?${layer}`, 'GET');
+    if (current.seeAll !== true) {
+      const body = { targetKind: 'entity', targetCode: 'Qualification.Layer', seeAll: true };
+      await this.as(scopePath, 'PUT', body, Number(current.revision ?? 0));
+      await this.wrote('qualification', 'layer-see-all');
+    }
+    const existing = await listAll(this.call, this.admin, '/api/tenant/qualification/layers');
+    const names = new Set(existing.map((row) => str(row, 'name')));
+    for (const item of DEMO_QUALIFICATION_LAYERS) {
+      if (names.has(item.name)) continue;
+      await this.as('qualification/layers', 'POST', { name: item.name, displayOrder: item.displayOrder }, 0);
+      await this.wrote('qualification', `layer:${item.name}`);
+    }
   }
 }

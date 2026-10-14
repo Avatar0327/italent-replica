@@ -16,8 +16,9 @@ import {
 } from './employee-self-service.js';
 import { MODULE_OBJECTS, ORG_EMPLOYEE_APP } from '../permission/module-actions.js';
 import type { ButtonGrant, ObjectDefinition, ObjectPermission } from '../permission/object-permission.js';
-import { EVALUATION_APP, EVALUATION_OBJECTS } from '../evaluation/catalog.js';
+import { EVALUATION_APP, EVALUATION_OBJECTS, EVALUATION_SEE_ALL_OBJECTS } from '../evaluation/catalog.js';
 import { EVALUATION_FLOW_OBJECTS } from '../evaluation/flow-catalog.js';
+import { IDP_APP, IDP_OBJECTS, type IdpObject } from '../idp/catalog.js';
 import { PERSONNEL_OBJECTS } from '../personnel/catalog.js';
 import { QUALIFICATION_APP, QUALIFICATION_OBJECTS, QUALIFICATION_PAGES } from '../qualification/catalog.js';
 import { SURVEY360_APP, SURVEY360_PROFILES } from '../survey360/catalog.js';
@@ -211,7 +212,8 @@ const SUCCESSION_PROFILES: readonly StandardProfile[] = [
 
 /**
  * R3-T02 的三个预置身份（Q-T02-02，DEC-331②，规格 23 §14；设计 §1.3）。数据范围一律不预置（硬规则：默认空）：
- * 与继任 / 盘点不同，这里**不**对没有组织字段的字典（层级、等级方案、编码规则；活动类型、周期、通用评分项）预置看全部，
+ * 与继任 / 盘点不同，这里**不**对没有组织字段的字典（层级、等级方案、编码规则）预置看全部（活动类型、周期、通用评分项
+ * 三个评定字典自 DEC-500 起例外，只给评定管理员预置），
  * 由租户管理员按（用户 × 应用）授予；原站说明评定管理员授权时人才评定、任职资格两个应用各设管理单元。
  * 各身份的功能明细原站未逐项展开（🟡）。许可归属未取证，与人才标准管理员同口径不占名额。
  * 员工身份的发展通道页面权限见 EMPLOYEE_PROFILE（C1-2b，DEC-399）。
@@ -240,6 +242,12 @@ const QUALIFICATION_PROFILES: readonly StandardProfile[] = [
       ...(['category', 'level', 'target', 'standard'] as const).map((key) => readOnly(QUALIFICATION_OBJECTS[key])),
     ],
     hr: false,
+    // DEC-500：只有评定管理员预置三个字典的看全部（其他身份、其他对象照旧不预置），否则评定向导第一步下拉为空
+    seeAll: EVALUATION_SEE_ALL_OBJECTS.map((key) => ({
+      appCode: EVALUATION_APP,
+      targetKind: 'entity' as const,
+      targetCode: EVALUATION_OBJECTS[key].code,
+    })),
   },
   {
     // 只含流程对象：评定过程 / 评定记录（不含活动设置与基础设置）
@@ -249,6 +257,47 @@ const QUALIFICATION_PROFILES: readonly StandardProfile[] = [
     licenseType: null,
     apps: [EVALUATION_APP],
     objects: Object.values(EVALUATION_FLOW_OBJECTS).map(full),
+    hr: false,
+  },
+];
+
+/**
+ * 个人发展计划 IDP 的三个预置身份（F-141，DEC-500；对象目录见 idp/catalog.ts）。原站有 IDP 管理员 / 员工 / 经理三种身份，
+ * 但证据只到对象与按钮目录，各身份的功能明细未逐项取证（🟡），所以按最小权限预置：
+ * - 管理员：IDP 应用全部对象的全部功能；
+ * - 员工：只读计划内容（计划、目标、任务、目标回顾、综述、回顾），没有数据操作和按钮——员工填写目标、回顾靠流程节点
+ *   的按钮权限（DEC-296④，不按角色）；
+ * - 经理：员工的权限，另可只读关键信息三类对象（带教、职业发展、轮岗）。
+ * 数据范围一律不预置（硬规则：默认空；DEC-500 只对字典预置看全部），由租户管理员按（用户 × IDP）授予；不占许可名额。
+ */
+const IDP_PLAN_CONTENT: readonly IdpObject[] = ['plan', 'goal', 'task', 'goalReview', 'analysis', 'review'];
+const IDP_KEY_INFO: readonly IdpObject[] = ['tutorship', 'career', 'workShift'];
+const IDP_PROFILES: readonly StandardProfile[] = [
+  {
+    code: 'standard_idp_admin',
+    name: 'IDP管理员（个人发展计划）',
+    description: '拥有个人发展计划的全部功能，可见数据按数据范围控制',
+    licenseType: null,
+    apps: [IDP_APP],
+    objects: Object.values(IDP_OBJECTS).map(full),
+    hr: false,
+  },
+  {
+    code: 'standard_idp_employee',
+    name: 'IDP员工（个人发展计划）',
+    description: '查看个人发展计划的内容，可见数据按数据范围控制',
+    licenseType: null,
+    apps: [IDP_APP],
+    objects: IDP_PLAN_CONTENT.map((key) => readOnly(IDP_OBJECTS[key])),
+    hr: false,
+  },
+  {
+    code: 'standard_idp_manager',
+    name: 'IDP经理（个人发展计划）',
+    description: '查看下属的个人发展计划与关键信息，可见数据按数据范围控制',
+    licenseType: null,
+    apps: [IDP_APP],
+    objects: [...IDP_PLAN_CONTENT, ...IDP_KEY_INFO].map((key) => readOnly(IDP_OBJECTS[key])),
     hr: false,
   },
 ];
@@ -355,6 +404,7 @@ export const STANDARD_PROFILES: readonly StandardProfile[] = [
   },
   ...SUCCESSION_PROFILES,
   ...QUALIFICATION_PROFILES,
+  ...IDP_PROFILES,
   {
     // 经理自助须显式授权（C-003 复核，06 §8）；数据范围由汇报关系规则给出，不预置看全部
     code: 'standard_manager',

@@ -112,6 +112,16 @@ export const EVALUATION_ORG_OBJECTS: readonly EvaluationObject[] = [
   'evaluationActivity',
 ];
 
+/**
+ * 评定管理员预置“看全部”的字典（F-141，DEC-500）：活动类型、周期、通用评分项没有组织字段，
+ * 只按管理单元裁剪的人新建不了，评定向导第一步下拉为空，所以给预置的评定管理员开箱就有（其他身份仍不预置）。
+ */
+export const EVALUATION_SEE_ALL_OBJECTS: readonly EvaluationObject[] = [
+  'activityType',
+  'activityCycle',
+  'generalScoreItem',
+];
+
 /** 审计动作前缀（`<前缀>.create|update|delete`）。 */
 export const EVALUATION_AUDIT_ACTIONS: Readonly<Record<EvaluationObject, string>> = {
   activityType: 'evaluation.activity-type',
