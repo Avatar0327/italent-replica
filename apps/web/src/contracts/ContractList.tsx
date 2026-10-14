@@ -9,7 +9,7 @@ import { useRead } from './useRead.js';
 import {
   canOpenRecord,
   columnTitle,
-  columnKeys,
+  visibleColumnKeys,
   listPath,
   object,
   value,
@@ -182,9 +182,7 @@ function ListFilters({ state }: { state: State }) {
 }
 function ContractTable({ state }: { state: State }) {
   const { view, rows, demo, allowed, navigate, result, page, setPage } = state;
-  const columns = columnKeys(view)
-    .filter((key) => demo || allowed.includes(key))
-    .map((key) => ({
+  const columns = visibleColumnKeys(view, allowed, demo).map((key) => ({
       key,
       title: columnTitle(key, view),
       width: width(key, view),

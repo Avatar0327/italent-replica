@@ -78,6 +78,13 @@ export function columnKeys(view: View) {
     ...(view === 'valid' ? ['attachment'] : []),
   ];
 }
+/**
+ * 列表实际显示的列：按合同对象的可见字段裁剪；“入职缺失”视图的行是人员，列是人员字段，不属于合同对象字段清单，
+ * 不受这个过滤影响（F-141 ⑥，DEC-500）。演示数据不裁剪。
+ */
+export function visibleColumnKeys(view: View, allowed: readonly string[], demo: boolean) {
+  return columnKeys(view).filter((key) => demo || view === 'missing' || allowed.includes(key));
+}
 export function columnTitle(key: string, view: View) {
   if (key === 'companyId' && ['valid', 'expired_unrenewed', 'expiring'].includes(view)) return m.legalCompany;
   return m.columnTitles[view]?.[key] ?? m.fields[key];
