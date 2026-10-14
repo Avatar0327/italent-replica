@@ -92,6 +92,29 @@ test('AC-FE-R3b-R2-03 新选组织默认包含下级并提交，允许取消', a
   expect((await request).postDataJSON().orgRange).toEqual([{ orgId: id, includeDescendants: true }]);
 });
 
+test('AC-FE-R3b-F134 申请人类型勾选在点击事件内同步生效，同一帧连续点击不丢操作', async ({ page }) => {
+  const form = await editEvaluation(page, { applicants: ['self'] });
+  const self = form.getByRole('checkbox', { name: '员工本人', exact: true });
+  const others = form.getByRole('checkbox', { name: '非员工本人', exact: true });
+  await expect(self).toBeChecked();
+  await expect(others).not.toBeChecked();
+  // 同一个任务里连点两项、立刻读状态：不能等到下一轮调度才反映，也不能用旧状态覆盖前一次点击。
+  const states = await page.evaluate(() => {
+    const input = (value: string) =>
+      document.querySelector<HTMLInputElement>(`input[type="checkbox"][value="${value}"]`)!;
+    input('self').click();
+    const afterFirst = input('self').checked;
+    input('others').click();
+    return { afterFirst, self: input('self').checked, others: input('others').checked };
+  });
+  expect(states).toEqual({ afterFirst: false, self: false, others: true });
+  await form.getByRole('button', { name: '下一步' }).click();
+  await form.getByRole('button', { name: '下一步' }).click();
+  const request = page.waitForRequest((r) => r.method() === 'PATCH');
+  await form.getByRole('button', saveButton).click();
+  expect((await request).postDataJSON()).toEqual({ applicants: ['others'] });
+});
+
 test('AC-FE-R3b-R2-04 已有报名锁申请级别等后端锁定字段，可跨级数仍允许修改', async ({ page }) => {
   const form = await editEvaluation(page, { applyCount: 1 });
   for (const label of ['活动类型', '组织范围', '申请类别', '申请级别', '评定生效日期', '活动通知范围']) {
