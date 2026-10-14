@@ -87,6 +87,8 @@ export function GoalTasks({ goal, writer, actions }: { goal: PlanGoal; writer: T
 /** 任务名称（回车发布，原站提示语）与任务描述；原站描述为富文本编辑器，此处用多行文本（已列缺口）。 */
 function TaskEditor(props: { task?: GoalTask; locked: boolean; submit(draft: Draft): void; cancel(): void }) {
   const { task, locked, submit, cancel } = props;
+  // 已有任务的描述被裁剪（接口没返回该键）时只读：描述框空着提交不会改它，填写却会覆盖看不到的原值
+  const hidden = !!task && task.description === undefined;
   const [draft, setDraft] = useState<Draft>({ name: task?.name ?? '', description: task?.description ?? '' });
   const escape = (event: KeyboardEvent) => {
     if (event.key === 'Escape') cancel();
@@ -110,7 +112,7 @@ function TaskEditor(props: { task?: GoalTask; locked: boolean; submit(draft: Dra
         autoSize={{ minRows: 2, maxRows: 6 }}
         value={draft.description}
         placeholder={t.task.descriptionHint}
-        disabled={locked}
+        disabled={locked || hidden}
         onChange={(event) => setDraft({ ...draft, description: event.target.value })}
         onKeyDown={escape}
       />
@@ -134,7 +136,8 @@ function TaskLine(props: { task: GoalTask; actions: TaskAction[]; locked: boolea
       <Typography.Text type="secondary">
         {period(task.startDate ?? undefined, task.endDate ?? undefined)}
       </Typography.Text>
-      {actions.includes('edit') && (
+      {/* 名称被裁剪时编辑框只能空着重填，会覆盖看不到的原值，不开放编辑（失败即拒绝） */}
+      {actions.includes('edit') && task.name !== undefined && (
         <Button type="link" size="small" aria-label={t.task.edit(name)} disabled={locked} onClick={edit}>
           {t.actions.edit}
         </Button>

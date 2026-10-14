@@ -339,3 +339,31 @@ test('AC-FE-R3d2-15 冲突后重读缺 revision：不解锁、不发 If-Match: 0
   expect(calls.filter((call) => call.revision === '0')).toEqual([]);
   expect(errors.filter((text) => !text.includes('409'))).toEqual([]);
 });
+
+test('AC-FE-R3d2-16 任务名称被裁剪时不开放编辑，描述被裁剪时描述框禁用，不覆盖看不到的原值', async ({ page }) => {
+  const errors = watchErrors(page);
+  const calls = await mockIdp(page, {
+    fields: {
+      'IDP.Task': { viewable: IDP_OBJECTS.task.fields.map((field) => field.code).filter((code) => code !== 'name') },
+    },
+  });
+  await asUser(page);
+  await page.goto(`/idp/plans?plan=${planId}`);
+  const detail = page.getByRole('region', { name: '合成发展计划' });
+  await expect(detail.getByText('合成任务描述')).toBeVisible();
+  await expect(detail.getByRole('button', { name: /编辑任务/ })).toHaveCount(0);
+
+  await page.unrouteAll({ behavior: 'ignoreErrors' });
+  await mockIdp(page, {
+    fields: {
+      'IDP.Task': {
+        viewable: IDP_OBJECTS.task.fields.map((field) => field.code).filter((code) => code !== 'description'),
+      },
+    },
+  });
+  await page.reload();
+  await detail.getByRole('button', { name: '编辑任务：合成任务' }).click();
+  await expect(detail.getByLabel('任务描述')).toBeDisabled();
+  expect(writes(calls, 'PATCH', `/plans/${planId}/goals/${goalId}/tasks/${taskId}`)).toEqual([]);
+  expect(errors).toEqual([]);
+});
