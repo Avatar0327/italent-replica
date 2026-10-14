@@ -58,10 +58,12 @@ export const LOGIC_FUNCTIONS: readonly FunctionSpec[] = [
     },
   },
   {
-    // TODO(需取证 #105)：IN / NOTIN 的参数形式，暂定 IN(值, 候选1, 候选2, …)，按 = 的口径比较
+    // R3e 已核实（`26` 末节，W-864 说明原文）：IN(值, 候选1, 候选2, …)，候选值至少 1 个、不支持变量（保存报错）；
+    // 按 = 的口径比较
     name: 'IN',
     aliases: ['属于'],
     params: [param('值'), param('候选值', true, true)],
+    variablesForbiddenFrom: 1,
     returns: 'boolean',
     implement: (call) => bool(memberOf(call)),
   },
@@ -69,6 +71,7 @@ export const LOGIC_FUNCTIONS: readonly FunctionSpec[] = [
     name: 'NOTIN',
     aliases: ['不属于'],
     params: [param('值'), param('候选值', true, true)],
+    variablesForbiddenFrom: 1,
     returns: 'boolean',
     implement: (call) => bool(!memberOf(call)),
   },

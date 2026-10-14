@@ -33,9 +33,18 @@ const catalog =
 const PERF_PORTS: InMemoryPortData = {
   performance: {
     'emp-1': [
-      { fields: { 年度: 2026, 周期名称: '年度', 得分: 90, 等级: 'A' }, modifiedAt: new Date('2026-01-01T00:00:00Z') },
-      { fields: { 年度: 2024, 周期名称: '年度', 得分: 80, 等级: 'B' }, modifiedAt: new Date('2025-01-01T00:00:00Z') },
-      { fields: { 年度: 2023, 周期名称: '年度', 得分: 70, 等级: 'C' }, modifiedAt: new Date('2024-01-01T00:00:00Z') },
+      {
+        fields: { 年度: 2026, 周期名称: '年度', 得分: 90, 等级: 'A', 截止日期: '2026/12/31' },
+        modifiedAt: new Date('2026-01-01T00:00:00Z'),
+      },
+      {
+        fields: { 年度: 2024, 周期名称: '年度', 得分: 80, 等级: 'B', 截止日期: '2024/12/31' },
+        modifiedAt: new Date('2025-01-01T00:00:00Z'),
+      },
+      {
+        fields: { 年度: 2023, 周期名称: '年度', 得分: 70, 等级: 'C', 截止日期: '2023/12/31' },
+        modifiedAt: new Date('2024-01-01T00:00:00Z'),
+      },
     ],
   },
 };
@@ -137,15 +146,21 @@ describe('P2-2 类型不确定的参数按 N 处理时，保存也给提示（DE
   it.each([
     ['PerformanceLastCent(IF(假, 2, Today()))', { code: 'TYPE_CONVERSION' }],
     ['PerformanceLastGrade(IF(假, 2, Today()))', { code: 'TYPE_CONVERSION' }],
-    ['PerformanceNthCent(IF(假, 2, Today()), 考核结果.周期名称="年度")', { code: 'TYPE_CONVERSION' }],
-    ['PerformanceNthGrade(IF(假, 2, Today()), 考核结果.周期名称="年度")', { code: 'TYPE_CONVERSION' }],
+    [
+      'PerformanceNthCent(IF(假, 2, Today()), 考核结果.截止日期, 考核结果.周期名称="年度")',
+      { code: 'TYPE_CONVERSION' },
+    ],
+    [
+      'PerformanceNthGrade(IF(假, 2, Today()), 考核结果.截止日期, 考核结果.周期名称="年度")',
+      { code: 'TYPE_CONVERSION' },
+    ],
     ['PerformanceLastCent(IF(真, 2, Today()))', num(80)],
     ['PerformanceLastCent(IF(真, 1, "2"))', num(90)],
     ['PerformanceLastGrade(IF(假, 1, "2"))', text('B')],
-    ['Def(k, IF(真, 1, "2")); PerformanceNthCent(k, 考核结果.周期名称="年度")', num(90)],
+    ['Def(k, IF(真, 1, "2")); PerformanceNthCent(k, 考核结果.截止日期, 考核结果.周期名称="年度")', num(90)],
     ['Def(k, IF(假, 2, Today())); Def(m, k); PerformanceLastCent(m)', { code: 'TYPE_CONVERSION' }],
     ['PerformanceLastCent(Sum(1, 1))', num(80)],
-    ['PerformanceNthGrade(Sum(1, 1), 考核结果.周期名称="年度")', text('B')],
+    ['PerformanceNthGrade(Sum(1, 1), 考核结果.截止日期, 考核结果.周期名称="年度")', text('B')],
   ] as const)('%s：保存提示“类型不确定，按 N 处理”；三条入口一致', (formula, result) => {
     const warnings = warningsOf(formula);
     expect(warnings.map((warning) => warning.code)).toEqual(['TYPE_UNCERTAIN']);

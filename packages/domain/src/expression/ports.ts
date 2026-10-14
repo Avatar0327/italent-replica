@@ -62,10 +62,12 @@ export interface AssessmentRecord {
 
 /**
  * 人才评定结果的一行（R3-T02）：字段键如 活动名称、得分、等级。
- * “最近一次”只取已通过的评定，按通过时间倒序（DEC-260；🟡 “已通过”的含义待取证 #105）。
+ * “最近一次”只取已通过的评定，按通过时间倒序（DEC-260）。R3e 已核实（`26` 末节，W-864）：“已通过”指评定活动通过，
+ * 不是认证结果。
  */
 export interface TalentReviewRecord {
   readonly fields: Readonly<Record<string, PlainValue>>;
+  /** 评定活动已通过（不是认证结果）。 */
   readonly passed: boolean;
   readonly passedAt: Date;
 }

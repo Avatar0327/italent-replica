@@ -23,21 +23,15 @@ const num = (value: number) => ({ kind: 'number', value });
 const bool = (value: boolean) => ({ kind: 'boolean', value });
 const item = (field: string, priority: number, formula: string): ComputationItem => ({ field, priority, formula });
 
-describe('P2-1 无空格减法是减号；原站带连字符的字段名仍可用（字段相减按 DEC-228 须加空格）', () => {
-  const HINT = '如需相减，请在减号两侧加空格';
-
-  it('Def 变量、数字之间的“-”是减号；字段引用之间不加空格是一个字段名（DEC-228）', () => {
+describe('P2-1 无空格减法是减号；原站带连字符的字段名仍可用（#89-4：已存在字段优先，否则按减法）', () => {
+  it('Def 变量、数字之间的“-”是减号；字段引用之间不加空格也按减法（R3e 实测，旧口径 DEC-228 报未知字段）', () => {
     const fields = { '盘点对象.得分': 5, '盘点对象.a': 5, '盘点对象.b': 2 };
     expect(valueOf(evaluateFormula('Def(a,10); Def(b,3); a-b', contextFor({})))).toEqual(num(7));
     expect(valueOf(evaluateFormula('Def(总分, 10); Def(上级分, 4); 总分-上级分', contextFor({})))).toEqual(num(6));
     expect(valueOf(evaluateFormula('盘点对象.得分 - 1', contextFor(fields)))).toEqual(num(4));
     expect(valueOf(evaluateFormula('盘点对象.a - 盘点对象.b', contextFor(fields)))).toEqual(num(3));
-    for (const formula of ['盘点对象.得分-1', '盘点对象.a-盘点对象.b']) {
-      expect(valueOf(evaluateFormula(formula, contextFor(fields)))).toMatchObject({
-        code: 'UNKNOWN_FIELD',
-        message: expect.stringContaining(HINT),
-      });
-    }
+    expect(valueOf(evaluateFormula('盘点对象.得分-1', contextFor(fields)))).toEqual(num(4));
+    expect(valueOf(evaluateFormula('盘点对象.a-盘点对象.b', contextFor(fields)))).toEqual(num(3));
   });
 
   it('对象成员位置、两侧都是汉字的“-”仍是字段名的一部分（360结果.问卷-他评总分）', () => {
@@ -49,12 +43,9 @@ describe('P2-1 无空格减法是减号；原站带连字符的字段名仍可�
     );
   });
 
-  it('汉字完整字段之间不加空格是一个字段名，加空格才相减（DEC-228 取代第三轮“期望 3”）', () => {
+  it('汉字完整字段之间不加空格也相减（R3e 实测 -2 / -4；DEC-228 时报未知字段）', () => {
     const fields = { '盘点对象.得分': 5, '盘点对象.基准': 2 };
-    expect(valueOf(evaluateFormula('盘点对象.得分-盘点对象.基准', contextFor(fields)))).toMatchObject({
-      code: 'UNKNOWN_FIELD',
-      message: expect.stringContaining(HINT),
-    });
+    expect(valueOf(evaluateFormula('盘点对象.得分-盘点对象.基准', contextFor(fields)))).toEqual(num(3));
     expect(valueOf(evaluateFormula('盘点对象.得分 - 盘点对象.基准', contextFor(fields)))).toEqual(num(3));
   });
 });

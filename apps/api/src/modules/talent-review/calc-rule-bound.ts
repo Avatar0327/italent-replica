@@ -50,7 +50,7 @@ interface ExistingItem {
   readonly targetFieldId: string;
   readonly formula: string;
   readonly binding: FormulaBindingState;
-  /** 停用判定的“已有引用”：bound 取 bound 引用；unresolved 取候选；legacy 取按当前名称解析出的字段（契约 §3.3）。 */
+  /** 停用判定的“已有引用”：bound 取 bound 引用；unresolved 取候选；legacy 取按当前名称解析出的字段（契约 §3.3，旧词法与当前解释的并集）。 */
   readonly held: ReadonlySet<string>;
 }
 
@@ -78,7 +78,12 @@ async function loadExisting(tx: Tx, tenantId: string, ruleId: string, full: read
       ),
     );
   const byName = (formula: string) => {
-    const paths = new Set(formulaReferences(formula));
+    const paths = new Set(
+      formulaReferences(
+        formula,
+        full.map((field) => field.name),
+      ),
+    );
     return new Set(full.filter((field) => paths.has(formulaPath(field.name))).map((field) => field.id));
   };
   return new Map(

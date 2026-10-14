@@ -46,9 +46,18 @@ const EMPTY_PERF = '获取指定年度指定周期的绩效得分(考核结果.�
 const PERF_PORTS: InMemoryPortData = {
   performance: {
     'emp-1': [
-      { fields: { 年度: 2026, 周期名称: '年度', 得分: 90, 等级: 'A' }, modifiedAt: new Date('2026-01-01T00:00:00Z') },
-      { fields: { 年度: 2024, 周期名称: '年度', 得分: 80, 等级: 'B' }, modifiedAt: new Date('2025-01-01T00:00:00Z') },
-      { fields: { 年度: 2023, 周期名称: '年度', 得分: 70, 等级: 'C' }, modifiedAt: new Date('2024-01-01T00:00:00Z') },
+      {
+        fields: { 年度: 2026, 周期名称: '年度', 得分: 90, 等级: 'A', 截止日期: '2026/12/31' },
+        modifiedAt: new Date('2026-01-01T00:00:00Z'),
+      },
+      {
+        fields: { 年度: 2024, 周期名称: '年度', 得分: 80, 等级: 'B', 截止日期: '2024/12/31' },
+        modifiedAt: new Date('2025-01-01T00:00:00Z'),
+      },
+      {
+        fields: { 年度: 2023, 周期名称: '年度', 得分: 70, 等级: 'C', 截止日期: '2023/12/31' },
+        modifiedAt: new Date('2024-01-01T00:00:00Z'),
+      },
     ],
   },
 };
@@ -97,7 +106,7 @@ describe('P2-1 日期参数：不确定 → 保存提示（不阻断），不静
     'Year(IF(真, Today(), 1))',
     'Year(员工信息.出生日期)',
     'Def(d, 员工信息.出生日期); AddDays(d, 1)',
-    'Year(获取人事子集的指定字段数据(教育经历.毕业日期))',
+    'Year(获取人事子集的指定字段数据(教育经历.毕业日期, 教育经历.毕业日期, "降序"))',
   ])('%s → 能保存，带 TYPE_UNCERTAIN 提示', (formula) => {
     const warnings = warningsOf(formula);
     expect(warnings.map((warning) => warning.code)).toEqual(['TYPE_UNCERTAIN']);
@@ -166,8 +175,11 @@ describe('P2-2 过滤条件与 N 只认推导类型：四个最近 N 函数', ()
     ['返回是否的 IF', (fn: string) => `${fn}(1, 考核结果.周期名称="年度", IF(盘点对象.是否参与, 真, 假))`],
     ['是否型 Def 变量', (fn: string) => `Def(f, 盘点对象.是否参与 = 真); ${fn}(1, 考核结果.周期名称="年度", f)`],
   ] as const;
+  // 第 N 次的排序日期是必填参数（R3e，`26` 末节 W-864），写在 N 之后
+  const withDate = (fn: string, formula: string) =>
+    fn.includes('Nth') ? formula.replace(`${fn}(1, `, `${fn}(1, 考核结果.截止日期, `) : formula;
   const cases = FUNCTIONS.flatMap(([fn, hit, kind]) =>
-    FILTERS.map(([label, build]) => [fn, label, build(fn), hit, kind] as const),
+    FILTERS.map(([label, build]) => [fn, label, withDate(fn, build(fn)), hit, kind] as const),
   );
 
   it.each(cases)('%s × %s：为真 → 取到，为假 → 空，无权 → FIELD_FORBIDDEN', (_fn, _label, formula, hit, kind) => {
@@ -217,11 +229,14 @@ describe('P2-2 过滤条件与 N 只认推导类型：四个最近 N 函数', ()
     const fields = { '盘点对象.N': 2 };
     expect(run('PerformanceLastCent(盘点对象.N)', fields)).toEqual(num(80));
     expect(run('PerformanceLastCent(盘点对象.N + 0, 考核结果.周期名称="年度")', fields)).toEqual(num(80));
-    expect(run('Def(k, 盘点对象.N); PerformanceNthGrade(k, 考核结果.周期名称="年度")', fields)).toEqual(text('B'));
+    expect(
+      run('Def(k, 盘点对象.N); PerformanceNthGrade(k, 考核结果.截止日期, 考核结果.周期名称="年度")', fields),
+    ).toEqual(text('B'));
   });
 
   it.each([
-    ['两个确定为数值的参数', 'PerformanceNthCent(1, 2)'],
+    ['两个确定为数值的参数', 'PerformanceNthCent(1, 2, 考核结果.截止日期)'],
+    ['第 N 次缺排序日期（R3e 起必填）', 'PerformanceNthCent(1, 考核结果.周期名称="年度")'],
     ['没有能当作 N 的参数', 'PerformanceLastCent(考核结果.周期名称="年度")'],
     ['日期不能当作 N', 'PerformanceLastCent(Today())'],
   ])('%s：保存即报 ARGUMENT_TYPE', (_label, formula) => {

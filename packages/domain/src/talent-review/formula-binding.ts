@@ -17,7 +17,7 @@ import {
   type SyntaxIssue,
   type SyntaxIssueCode,
 } from '../expression/index.js';
-import { FORMULA_CONTEXT_FIELDS, FORMULA_OBJECT } from './calc-rule.js';
+import { FORMULA_CONTEXT_FIELDS, FORMULA_OBJECT, formulaFieldExists } from './calc-rule.js';
 
 /** 逐处绑定里“项目上下文”的记号（`盘点对象.盘点方案` 指项目 / 方案，不是字段）。 */
 export const CONTEXT_BINDING = 'context';
@@ -149,10 +149,14 @@ const PRECHECK_CODES: ReadonlySet<string> = new Set([
 
 /** 把输入文本里的字段引用绑定成 ID（契约 §1.5）。第一个失败即返回；语法正确时 HIDDEN_FIELD 优先于其他语义问题（§1.6）。 */
 export function bindFormula(source: string, options: BindFormulaOptions): BindResult {
-  const parsed = parseFormula(source, { placeholders: true });
+  // 带连字符的写法按提交人可见的字段定型（#89-4，同一判定 formulaFieldExists）：看不到的字段不算，避免借此探测字段是否存在
+  const visibleNames = options.visibleFields.map((field) => field.name);
+  const fieldExists = formulaFieldExists(visibleNames, options.versionField);
+  const parsed = parseFormula(source, { placeholders: true, fieldExists });
   if (!parsed.ok) return invalid(fromSyntax(parsed.errors[0]!));
   const checked = validateFormula(source, {
     isKnownField: (path) => acceptedByEngine(path) || options.versionField?.(path) === true,
+    fieldExists,
     placeholders: true,
   });
   const engineErrors = checked.ok ? [] : checked.errors;
@@ -340,7 +344,9 @@ function renderBound(stored: string, options: RenderFormulaOptions): RenderResul
 }
 
 function renderLegacy(stored: string, options: RenderFormulaOptions): RenderResult {
-  const parsed = parseFormula(stored);
+  // 存量名称文本按冻结的旧成员词法读（#89-4 之前的读法，连字符一律并进字段名）：渲染时宁可多遮，
+  // 不把看不到的字段名拆出一截原样显示（小数 a-1.5、深路径 a-b.c-d 也整段判断）
+  const parsed = parseFormula(stored, { legacyMembers: true });
   if (!parsed.ok) {
     const text = options.allFieldsVisible === true ? stored : FORMULA_REPAIR_NOTICE;
     return { ok: true, text, bindings: [], repairNeeded: true };

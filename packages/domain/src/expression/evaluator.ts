@@ -5,14 +5,7 @@
 import type { CallNode, ExprNode, FieldNode, IdentifierNode, Program } from './ast.js';
 import type { EvaluationContext } from './context.js';
 import { instantToParts } from './dates.js';
-import {
-  ComputationError,
-  CONVERSION_MESSAGE,
-  fail,
-  failMultiOption,
-  hyphenHint,
-  type FailureCode,
-} from './failures.js';
+import { ComputationError, CONVERSION_MESSAGE, fail, failMultiOption, type FailureCode } from './failures.js';
 import { arithmetic, compare, operandNumber, toCondition, toDate, toNumber, toText } from './operators.js';
 import { plainToValue, type FieldLookup, type SubjectReader } from './ports.js';
 import {
@@ -201,7 +194,7 @@ export class Evaluator {
       return value.kind === 'empty' && found.emptyOf ? emptyOf(found.emptyOf) : value;
     }
     if (found.status === 'forbidden') return fail('FIELD_FORBIDDEN', `当前查看人无权读取字段 ${path}`);
-    return fail('UNKNOWN_FIELD', `找不到字段或变量 ${path}${hyphenHint(path)}`);
+    return fail('UNKNOWN_FIELD', `找不到字段或变量 ${path}`);
   }
 
   /** 对象读取器是使用方代码：抛出的异常转成不透出内容的失败原因（astra 首审 P2-5）。 */
