@@ -9,7 +9,15 @@ import {
   sql,
   type Tx,
 } from '@italent/db';
-import { CONTRACT_FIELDS, CONTRACT_OBJECT, tenantLocalDate, addDays } from '@italent/domain';
+import {
+  CONTRACT_FIELDS,
+  CONTRACT_OBJECT,
+  tenantLocalDate,
+  addDays,
+  isIndefiniteTerm,
+  termEnd,
+  wholeTermMonths,
+} from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { validateCustomValue } from '../employment/fields.js';
 import {
@@ -24,7 +32,7 @@ import {
   type ContractContext,
 } from './context.js';
 import { assertNotQuarantined } from './quarantine.js';
-import { settings, verifyIds } from './configuration.js';
+import { assertTypeEnabled, settings, verifyIds } from './configuration.js';
 import { commandSchema, parse, type ContractCommand, type ContractFields } from './input.js';
 import { recordOperationLog } from '../../audit/record.js';
 import { auditActor } from '../../system-actor.js';
@@ -159,6 +167,54 @@ async function bumpPortfolio(tx: Tx, ctx: ContractContext, employeeId: string) {
 export function businessFields(value: Contract | ContractRequest) {
   return { ...Object.fromEntries(CONTRACT_FIELDS.map((key) => [key, value[key]])), customFields: value.customFields };
 }
+/** 继承目标合同的字段并叠加调用方输入；续签是新的一次签订，不沿用上一次的签订日、试用期与终止日。 */
+function mergedPayload(input: ContractCommand, before: Contract | null) {
+  const inherited = before ? businessFields(before) : {};
+  if (input.operation === 'renew')
+    Object.assign(inherited, { signingDate: null, probationStartDate: null, probationEndDate: null, endDate: null });
+  const merged = {
+    ...inherited,
+    ...input.fields,
+    customFields: { ...(before?.customFields ?? {}), ...input.fields.customFields },
+  };
+  // F-128 A11：手工续签没传生效日时默认原合同终止日次日；原合同无终止日（无固定期限）则仍须填写。
+  if (input.operation === 'renew' && !input.fields.effectiveDate) {
+    if (!before!.endDate) throw new AppError('VALIDATION_FAILED', '续签必须填写新的生效日期');
+    merged.effectiveDate = addDays(before!.endDate, 1);
+  }
+  return merged;
+}
+/**
+ * 期限类型、终止日与期限月数。无固定期限统一走 isIndefiniteTerm（手工与自动续签同一口径，F-128 A16）；
+ * 续签没传终止日时按原合同期限月数（没有则按原生效日到终止日的整月数）顺延，算不出仍由调用方报必填（A11）。
+ */
+function resolveTerm(
+  input: ContractCommand,
+  before: Contract | null,
+  normalized: ContractFields,
+  config: { indefiniteTypeIds: readonly string[]; signingCount: number },
+) {
+  const typeId = normalized.typeId!;
+  const termType =
+    input.fields.termType ??
+    (['create', 'renew'].includes(input.operation) &&
+    isIndefiniteTerm(config.indefiniteTypeIds, typeId, config.signingCount)
+      ? 'indefinite'
+      : (normalized.termType ?? 'fixed'));
+  const renewalMonths =
+    input.operation === 'renew' && termType === 'fixed' && !input.fields.endDate
+      ? (input.fields.termMonths ??
+        before!.termMonths ??
+        (before!.endDate ? wholeTermMonths(before!.effectiveDate, before!.endDate) : null))
+      : null;
+  const endDate =
+    termType === 'indefinite'
+      ? null
+      : renewalMonths
+        ? termEnd(normalized.effectiveDate!, renewalMonths)
+        : (normalized.endDate ?? null);
+  return { termType, endDate, termMonths: renewalMonths ?? normalized.termMonths ?? null };
+}
 export async function prepare(tx: Tx, ctx: ContractContext, raw: unknown, correction = false) {
   const input = parse(commandSchema, raw);
   await lockEmployee(tx, ctx, input.employeeId);
@@ -182,19 +238,7 @@ export async function prepare(tx: Tx, ctx: ContractContext, raw: unknown, correc
     throw new AppError('VALIDATION_FAILED', '实际终止时间不能早于合同生效日期');
   }
   const config = await settings(tx, ctx.tenantId);
-  const inherited = before ? businessFields(before) : {};
-  // 新的一次签订不沿用上一次的签订日与试用期，调用方明确填写的值仍保留。
-  if (input.operation === 'renew')
-    Object.assign(inherited, {
-      signingDate: null,
-      probationStartDate: null,
-      probationEndDate: null,
-    });
-  const merged = {
-    ...inherited,
-    ...input.fields,
-    customFields: { ...(before?.customFields ?? {}), ...input.fields.customFields },
-  };
+  const merged = mergedPayload(input, before);
   if (!merged.typeId || !merged.companyId || !merged.effectiveDate) {
     throw new AppError('VALIDATION_FAILED', '合同类型、法人公司、生效日期必填');
   }
@@ -206,13 +250,11 @@ export async function prepare(tx: Tx, ctx: ContractContext, raw: unknown, correc
     input.operation === 'change' || input.operation === 'terminate'
       ? before!.signingCount
       : await nextSigningCount(tx, ctx, input.employeeId, typeId, config.accumulateRehire);
-  const termType =
-    input.fields.termType ??
-    (['create', 'renew'].includes(input.operation) && config.indefiniteTypeIds.includes(typeId) && signingCount >= 3
-      ? 'indefinite'
-      : (normalized.termType ?? 'fixed'));
   const effectiveDate = normalized.effectiveDate!;
-  const endDate = termType === 'indefinite' ? null : (normalized.endDate ?? null);
+  const { termType, endDate, termMonths } = resolveTerm(input, before, normalized, {
+    indefiniteTypeIds: config.indefiniteTypeIds,
+    signingCount,
+  });
   if ((termType === 'fixed' && !endDate) || (endDate && endDate <= effectiveDate)) {
     throw new AppError('VALIDATION_FAILED', '合同终止日期必须晚于生效日期');
   }
@@ -223,9 +265,6 @@ export async function prepare(tx: Tx, ctx: ContractContext, raw: unknown, correc
   ) {
     throw new AppError('VALIDATION_FAILED', '试用期结束日期不能早于开始日期');
   }
-  if (input.operation === 'renew' && !input.fields.effectiveDate) {
-    throw new AppError('VALIDATION_FAILED', '续签必须填写新的生效日期');
-  }
   let number = input.fields.number;
   if (input.operation === 'terminate') number = before!.number;
   else if (config.autoNumber) {
@@ -235,7 +274,15 @@ export async function prepare(tx: Tx, ctx: ContractContext, raw: unknown, correc
         : (number ?? `CT-${randomUUID()}`);
   }
   if (!number) throw new AppError('VALIDATION_FAILED', '合同编号必填');
-  const data = preparedFields(input, normalized, { number, typeId, termType, effectiveDate, endDate, signingCount });
+  const data = preparedFields(input, normalized, {
+    number,
+    typeId,
+    termType,
+    termMonths,
+    effectiveDate,
+    endDate,
+    signingCount,
+  });
   // CT-R18a：用租户日期处理新建、续签及变更；编辑更正由 DEC-167 的状态护栏决定。
   if (!correction && input.operation !== 'terminate') {
     data.actualTerminationDate = normalizedActualDate(data, tenantLocalDate(ctx.now, ctx.timezone));
@@ -256,18 +303,19 @@ function preparedFields(
     number: string;
     typeId: string;
     termType: string;
+    termMonths: number | null;
     effectiveDate: string;
     endDate: string | null;
     signingCount: number;
   },
 ) {
-  const { number, typeId, termType, effectiveDate, endDate, signingCount } = values;
+  const { number, typeId, termType, termMonths, effectiveDate, endDate, signingCount } = values;
   const data = {
     number,
     typeId,
     companyId: normalized.companyId!,
     termType,
-    termMonths: termType === 'fixed' ? (normalized.termMonths ?? null) : null,
+    termMonths: termType === 'fixed' ? termMonths : null,
     signingDate: normalized.signingDate ?? null,
     effectiveDate,
     endDate,
@@ -297,7 +345,10 @@ async function validateReferences(
   before: Contract | null,
 ) {
   const typeId = normalized.typeId!;
-  await verifyIds(tx, ctx.tenantId, 'contract_types', [typeId]);
+  // F-128 A15：只拦新选用——新建、续签（沿用原类型也算再次选用）、变更改了类型；终止与不改类型的变更不查。
+  if (input.operation === 'create' || input.operation === 'renew' || (before && before.typeId !== typeId))
+    await assertTypeEnabled(tx, ctx.tenantId, typeId);
+  else await verifyIds(tx, ctx.tenantId, 'contract_types', [typeId]);
   await verifyIds(tx, ctx.tenantId, 'contract_companies', [normalized.companyId!]);
   for (const [id, value] of Object.entries(normalized.customFields ?? {})) {
     const [definition] = rowsOf<{ value_type: string }>(

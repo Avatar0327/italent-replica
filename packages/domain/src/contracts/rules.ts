@@ -41,6 +41,24 @@ export function termEnd(start: string, months: number): string {
   date.setUTCDate(Math.min(day, max));
   return addDays(date.toISOString().slice(0, 10), -1);
 }
+/** 第几次签订起为无固定期限（CT-R16）。 */
+export const INDEFINITE_FROM_SIGNING = 3;
+/**
+ * 无固定期限的唯一判定：类型列入设置的 indefiniteTypeIds 且已是第 3 次及以后签订。
+ * 手工续签 / 新建与自动续签都调它，不各写一份（F-128 A16）。
+ */
+export function isIndefiniteTerm(indefiniteTypeIds: readonly string[], typeId: string, signingCount: number): boolean {
+  return indefiniteTypeIds.includes(typeId) && signingCount >= INDEFINITE_FROM_SIGNING;
+}
+/** 原合同整月数：生效日起算、终止日前不超过终止日的最大月数；不足一个月返回 null。 */
+export function wholeTermMonths(start: string, end: string): number | null {
+  const [sy, sm] = start.split('-').map(Number) as [number, number];
+  const [ey, em] = end.split('-').map(Number) as [number, number];
+  for (let months = (ey - sy) * 12 + (em - sm) + 1; months >= 1; months--) {
+    if (termEnd(start, months) <= end) return months;
+  }
+  return null;
+}
 export interface RenewalContract {
   readonly id: string;
   readonly employeeId: string;
@@ -72,6 +90,7 @@ export function automaticRenewalPlans(
   employeeId: string,
   orgId: string | null,
   today: string,
+  indefiniteTypeIds: readonly string[],
 ) {
   // CT-R5：先选整个人的一条规则，再匹配明细，绝不按合同类型回退到低优先级规则。
   const rule = [...rules]
@@ -105,7 +124,7 @@ export function automaticRenewalPlans(
       return [];
     const signingCount = latest.signingCount + 1;
     const effectiveDate = addDays(latest.endDate, 1);
-    const termType = signingCount > 2 ? 'indefinite' : 'fixed';
+    const termType = isIndefiniteTerm(indefiniteTypeIds, latest.typeId, signingCount) ? 'indefinite' : 'fixed';
     return [
       {
         targetId: latest.id,
