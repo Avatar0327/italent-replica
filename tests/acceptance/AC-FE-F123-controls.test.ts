@@ -53,6 +53,7 @@ it('AC-FE-F123 提交锁与业务 disabled/readOnly 取并集，锁定时旧回�
 
 it('AC-FE-F123 表单入口保护普通子控件，显式 disabled=false 不能覆盖提交锁', async () => {
   const change = vi.fn();
+  const ownChange = vi.fn();
   let props!: { disabled: boolean; onChange(value: string): void; value: string };
   function Control(value: typeof props) {
     props = value;
@@ -64,7 +65,7 @@ it('AC-FE-F123 表单入口保护普通子控件，显式 disabled=false 不能�
         h(
           FormLock,
           { locked },
-          h(LockedField, { value: '用户草稿', onChange: change }, h(Control, { disabled: false })),
+          h(LockedField, { value: '用户草稿', onChange: change }, h(Control, { disabled: false, onChange: ownChange })),
         ),
       ),
     );
@@ -76,9 +77,12 @@ it('AC-FE-F123 表单入口保护普通子控件，显式 disabled=false 不能�
   props.onChange('锁内');
   before('旧回调');
   expect(change).not.toHaveBeenCalled();
+  expect(ownChange).not.toHaveBeenCalled();
   await render(false);
   props.onChange('解锁');
   expect(change).toHaveBeenCalledWith('解锁');
+  expect(ownChange).toHaveBeenCalledWith('解锁');
+  expect(ownChange).toHaveBeenCalledTimes(1);
 });
 
 it('AC-FE-F123 共用控件仍继承旧 Form 的业务禁用，不能被默认 false 解锁', async () => {
