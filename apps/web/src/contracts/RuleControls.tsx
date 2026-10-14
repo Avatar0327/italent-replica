@@ -1,22 +1,16 @@
-// F-127b 第 2 轮：规则页的自动续签开关与规则单条移序，都走 F-123 内核（带 revision、命令 ID，冲突可重读）。
-import { Button, Space, Switch, message } from 'antd';
+// F-127b 第 2 轮：规则页的自动续签开关与规则单条移序，都走 F-123 内核；第 3 轮起冲突恢复统一走 recovery.tsx。
+import { Button, Switch, message } from 'antd';
 import { usePermissions } from '../foundation/Permissions.js';
 import { PageState } from '../foundation/PageState.js';
 import { useApiClient } from '../foundation/Session.js';
-import { CommandStatus } from '../foundation/forms/CommandStatus.js';
-import { messages as kernel } from '../foundation/forms/messages.js';
-import { useCommandForm } from '../foundation/forms/useCommandForm.js';
-import { configFields } from './ConfigForms.js';
+import { configFields, configLabels } from './ConfigForms.js';
 import { parseSavedReceipt, parseSettingsReceipt } from './forms.js';
 import { m } from './messages.js';
 import { configAccess, configObjects, contractApi, type Row } from './model.js';
+import { RecoveryStatus, useConfigCommand } from './recovery.js';
 import { useRead } from './useRead.js';
 
 type Read = ReturnType<typeof useRead<Row>>;
-const labels = Object.fromEntries(
-  configFields.rules.map((key) => [key, key === 'name' ? m.ruleName : (m.fields[key] ?? key)]),
-);
-const pick = (row: Row, keys: string[]) => Object.fromEntries(keys.map((key) => [key, row[key] ?? null]));
 
 /** 规则页顶部的自动续签开关：读写的是合同设置对象，按该对象的数据操作与字段权限判断。 */
 export function RenewalSection() {
@@ -36,43 +30,33 @@ export function RenewalSection() {
     </>
   );
 }
-/** 原站自动续签开关在规则页：按差异 PUT 合同设置 {autoRenew}，回执按实际提交的版本核对。 */
+/** 原站自动续签开关在规则页：按差异 PUT 合同设置 {autoRenew}，确认基线、重读与 If-Match 走 useConfigCommand。 */
 function RenewalSwitch({ settings, visible, editable }: { settings: Read; visible: boolean; editable: boolean }) {
   const api = useApiClient();
-  const submission = useCommandForm(`${contractApi.settings}/autoRenew`);
   const data = settings.data;
-  // 冲突核对后以重读到的最新值为准（DEC-464）。
-  const confirmed = submission.state?.status === 'idle' ? submission.state.baseline : {};
-  const current = { autoRenew: data?.autoRenew, ...confirmed }.autoRenew;
   const tenantId = String(data?.tenantId ?? '');
+  const { form, baseline, submit } = useConfigCommand(`${contractApi.settings}/autoRenew`, {
+    kind: 'settings',
+    id: tenantId || undefined,
+    row: data,
+    keys: ['autoRenew'],
+  });
+  const current = baseline.autoRenew;
   const toggle = async (next: boolean) => {
-    const revision = Number(data?.revision);
-    const result = await submission.submit({
+    const result = await submit({
       values: { autoRenew: next },
-      baseline: { autoRenew: current },
       editableFields: ['autoRenew'],
-      revision,
-      businessId: tenantId,
       patchOnly: true,
-      send: async (command) =>
+      send: async (command, sent) =>
         parseSettingsReceipt(await api.request<unknown>(contractApi.settings, { method: 'PUT', command }), {
           tenantId,
-          revision: command.revision ?? revision,
+          revision: sent,
         }),
     });
     if (result.status !== 'done') return;
-    submission.clear();
+    form.clear();
     settings.refresh();
   };
-  const reload = () =>
-    submission.reread(async () => {
-      const latest = await api.request<Row>(contractApi.settings);
-      return {
-        id: String(latest.tenantId),
-        revision: Number(latest.revision),
-        values: { autoRenew: latest.autoRenew },
-      };
-    });
   if (settings.error) return <PageState kind="error" error={settings.error} retry={settings.refresh} />;
   if (!visible || typeof current !== 'boolean') return null;
   return (
@@ -80,13 +64,11 @@ function RenewalSwitch({ settings, visible, editable }: { settings: Read; visibl
       <Switch
         aria-label={m.fields.autoRenew}
         checked={current}
-        loading={submission.busy}
-        disabled={!editable || !tenantId || submission.locked}
+        loading={form.busy}
+        disabled={!editable || !tenantId || form.locked}
         onChange={(next) => void toggle(next)}
       />
-      {submission.state && submission.state.status !== 'done' && (
-        <CommandStatus submission={{ ...submission, reload }} labels={{ autoRenew: m.fields.autoRenew }} />
-      )}
+      <RecoveryStatus form={form} labels={{ autoRenew: m.fields.autoRenew }} />
     </div>
   );
 }
@@ -130,43 +112,28 @@ export function RuleMove({
   const api = useApiClient();
   const id = String(row.id);
   const path = `${contractApi.rules}/${encodeURIComponent(id)}`;
-  const submission = useCommandForm(`${path}/move`);
   const keys = configFields.rules;
-  const confirmed = submission.state?.status === 'idle' ? submission.state.baseline : {};
-  const source = { ...row, ...confirmed };
+  const { form, baseline, submit } = useConfigCommand(`${path}/move`, { kind: 'rules', id, row, keys });
   const run = async (priority: number | null) => {
     if (priority === null) return void message.warning(m.reorderGap);
-    const revision = Number(row.revision);
-    const result = await submission.submit({
-      values: { ...pick(source, keys), priority },
-      baseline: pick(row, keys),
+    const result = await submit({
+      values: { ...baseline, priority },
       editableFields: keys,
-      revision,
-      businessId: id,
-      send: async (command) =>
-        parseSavedReceipt(await api.request<unknown>(path, { method: 'PUT', command }), {
-          id,
-          revision: command.revision ?? revision,
-        }),
+      send: async (command, sent) =>
+        parseSavedReceipt(await api.request<unknown>(path, { method: 'PUT', command }), { id, revision: sent }),
     });
     if (result.status !== 'done') return;
-    submission.clear();
+    form.clear();
     onDone();
   };
-  const reload = () =>
-    submission.reread(async () => {
-      const list = await api.request<{ items: Row[] }>(`${contractApi.rules}?page=1&pageSize=200`);
-      const latest = list.items.find((item) => item.id === id);
-      if (!latest) throw new Error(kernel.invalidReceipt);
-      return { id, revision: Number(latest.revision), values: pick(latest, keys) };
-    });
+  // 核对后按最新列表重算相邻位置（移序目标值依赖整页顺序）。
   const confirm = () => {
-    submission.confirm();
+    form.confirm();
     onDone();
   };
   const button = (target: number | null | undefined, label: string) =>
     target !== undefined && (
-      <Button type="link" disabled={submission.locked} loading={submission.busy} onClick={() => void run(target)}>
+      <Button type="link" disabled={form.locked} onClick={() => void run(target)}>
         {label}
       </Button>
     );
@@ -174,11 +141,7 @@ export function RuleMove({
     <>
       {button(up, m.moveUp)}
       {button(down, m.moveDown)}
-      {submission.state && submission.state.status !== 'done' && (
-        <Space direction="vertical">
-          <CommandStatus submission={{ ...submission, reload, confirm }} labels={labels} />
-        </Space>
-      )}
+      <RecoveryStatus form={{ ...form, confirm }} labels={configLabels.rules} onRefresh={onDone} />
     </>
   );
 }

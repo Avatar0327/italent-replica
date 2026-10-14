@@ -4,13 +4,11 @@ import { FormOverlay, type FormField } from '../foundation/FormOverlay.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { useApiClient } from '../foundation/Session.js';
 import { useFormLock } from '../foundation/forms/FormLock.js';
-import { CommandStatus } from '../foundation/forms/CommandStatus.js';
 import { messages as kernel } from '../foundation/forms/messages.js';
-import { useCommandForm } from '../foundation/forms/useCommandForm.js';
-import type { Values } from '../foundation/forms/store.js';
 import { parseSavedReceipt, parseSettingsReceipt } from './forms.js';
 import { m } from './messages.js';
 import { configObjects, contractApi, value, type Config, type Row } from './model.js';
+import { RecoveryStatus, pick, useConfigCommand } from './recovery.js';
 import { PeopleSelect, RefLabels, RefSelect, refPaths } from './references.js';
 
 const paths = { types: contractApi.types, rules: contractApi.rules, settings: contractApi.settings };
@@ -34,8 +32,6 @@ const defaults: Record<Config, Row> = {
   rules: { name: null, priority: 0, enabled: true, orgIds: [], personIds: [], details: [] },
   settings: {},
 };
-const pick = (row: Row | undefined, keys: string[], fallback: Row) =>
-  Object.fromEntries(keys.map((key) => [key, row?.[key] ?? fallback[key] ?? null]));
 
 /** 新建 / 编辑：类型与规则 PUT 需完整请求体（configuration.ts），设置按差异提交。 */
 export function ConfigForm({
@@ -55,67 +51,55 @@ export function ConfigForm({
   const permission = usePermissions(configObjects[kind]);
   const id = kind === 'settings' ? tenantId : typeof row?.id === 'string' ? row.id : undefined;
   const resource = kind === 'settings' ? paths.settings : `${paths[kind]}/${id ?? 'new'}`;
-  const submission = useCommandForm(resource);
   const keys = configFields[kind];
-  const baseline = pick(row, keys, defaults[kind]);
-  const revision = Number(row?.revision ?? 0);
+  // 冲突恢复统一走 useConfigCommand：展示值、携带字段与 If-Match 都取同一份确认后的基线。
+  const { form, baseline, submit } = useConfigCommand(resource, { kind, id, row, keys, fallback: defaults[kind] });
   const fields = formKeys(kind, keys).map((name) =>
     configField(kind, name, lockIf(permission.field(name), name === 'code' && !!id), baseline[name]),
   );
   const editable = fields.filter((field) => field.access.visible && field.access.editable).map((field) => field.name);
-  // 类型 PUT 需完整请求体：编码（编辑时只读）与启用（原站在行内启停）不在表单里改，按当前基线原样带上。
+  // 类型 PUT 需完整请求体：编码（编辑时只读）与启用（原站在行内启停）不在表单里改，按确认后的基线原样带上。
   const carried = kind === 'types' ? ['code', 'enabled'].filter((name) => !editable.includes(name)) : [];
-  const read = async () => {
-    const latest =
-      kind === 'settings'
-        ? await api.request<Row>(paths.settings)
-        : (await api.request<{ items: Row[] }>(`${paths[kind]}?page=1&pageSize=200`)).items.find((r) => r.id === id);
-    if (!latest) throw new Error(kernel.invalidReceipt);
-    return {
-      id: String(kind === 'settings' ? latest.tenantId : latest.id),
-      revision: Number(latest.revision),
-      values: pick(latest, keys, {}),
-    };
-  };
   return (
     <FormOverlay
       open
       mode={kind === 'types' ? 'modal' : undefined}
       recordKey={resource}
-      submission={{ ...submission, reload: id ? () => submission.reread(read) : undefined }}
+      submission={form}
       title={configTitle(kind, !!row)}
       groups={configGroups(kind, fields)}
       initialValues={baseline}
       onClose={onClose}
       onRefresh={onSaved}
       onSubmit={async (values) => {
-        const current = submission.state && submission.state.status !== 'done' ? submission.state.baseline : baseline;
-        const result = await submission.submit({
-          values: { ...pick(current, carried, {}), ...values },
-          baseline,
+        const result = await submit({
+          values: { ...pick(baseline, carried), ...values },
           editableFields: [...editable, ...carried],
-          revision,
-          businessId: id,
           patchOnly: kind === 'settings',
-          send: async (command) => {
+          send: async (command, sent) => {
             const method = kind === 'settings' || id ? 'PUT' : 'POST';
             const path = kind === 'settings' || !id ? paths[kind] : `${paths[kind]}/${encodeURIComponent(id)}`;
             const raw = await api.request<unknown>(path, { method, command });
-            // 冲突核对后重提的命令带最新版本，回执按实际提交的版本核对。
-            const sent = command.revision ?? revision;
             return kind === 'settings'
               ? parseSettingsReceipt(raw, { tenantId: id ?? '', revision: sent })
               : parseSavedReceipt(raw, { id, revision: sent });
           },
         });
         if (result.status !== 'done') throw result.error ?? new Error(kernel.unknown);
-        submission.clear();
+        form.clear();
         onSaved();
       }}
     />
   );
 }
 
+/** 差异区字段名：与列表、表单用同一套标签。 */
+export const configLabels: Record<'types' | 'rules', Record<string, string>> = {
+  types: { code: m.typeCode, name: m.typeName, enabled: m.fields.enabled! },
+  rules: Object.fromEntries(
+    configFields.rules.map((key) => [key, key === 'name' ? m.ruleName : (m.fields[key] ?? key)]),
+  ),
+};
 const lockIf = (field: { visible: boolean; editable: boolean }, readonly: boolean) =>
   readonly ? { ...field, editable: false } : field;
 const formKeys = (kind: Config, keys: string[]) => (kind === 'types' ? keys.filter((key) => key !== 'enabled') : keys);
@@ -327,62 +311,52 @@ function DetailInputs({
   );
 }
 
-/** 行内写命令（规则删除 / 类型启停）：带 revision 与命令 ID，回执按实际提交的版本核对；结果未知时保持锁定。 */
+/**
+ * 行内写命令（规则删除 / 类型启停）：带 revision 与命令 ID，回执按实际提交的版本核对；结果未知时保持锁定。
+ * 删除也按规则业务字段比较：重读后展示他人改了什么，核对前不删除。
+ */
 export function RowCommand({ kind, row, onDone }: { kind: 'delete' | 'toggle'; row: Row; onDone(): void }) {
   const api = useApiClient();
   const id = String(row.id);
-  const list = kind === 'delete' ? paths.rules : paths.types;
-  const path = `${list}/${encodeURIComponent(id)}`;
-  const submission = useCommandForm(`${path}/${kind}`);
-  const keys = kind === 'toggle' ? ['code', 'name', 'enabled'] : [];
-  // 冲突时“重读 → 核对差异 → 重提”：核对后以最新版本为准重新构造请求体与按钮文案。
-  const confirmed = submission.state?.status === 'idle' ? submission.state.baseline : {};
-  const source = { ...row, ...confirmed };
-  // 原站类型启停在行内，不在编辑表单里；类型 PUT 需完整请求体，只翻转启用状态，其余取本行。
-  const body = kind === 'toggle' ? { code: source.code, name: source.name, enabled: !source.enabled } : {};
-  const read = async () => {
-    const latest = (await api.request<{ items: Row[] }>(`${list}?page=1&pageSize=200`)).items.find((r) => r.id === id);
-    if (!latest) throw new Error(kernel.invalidReceipt);
-    return { id, revision: Number(latest.revision), values: pick(latest, keys, {}) };
-  };
+  const config = kind === 'delete' ? 'rules' : 'types';
+  const path = `${paths[config]}/${encodeURIComponent(id)}`;
+  const keys = configFields[config];
+  const { form, baseline, submit } = useConfigCommand(`${path}/${kind}`, { kind: config, id, row, keys });
   const run = async () => {
-    const revision = Number(row.revision);
-    const result = await submission.submit({
-      values: body as Values,
-      baseline: pick(row, keys, {}),
+    const result = await submit({
+      // 启停：类型 PUT 需完整请求体，只翻转启用；删除：按基线原样比较、不带请求字段（patchOnly 后为空）。
+      values: kind === 'toggle' ? { ...baseline, enabled: !baseline.enabled } : baseline,
       editableFields: keys,
-      revision,
-      businessId: id,
-      send: async (command) =>
+      patchOnly: kind === 'delete',
+      send: async (command, sent) =>
         parseSavedReceipt(await api.request<unknown>(path, { method: kind === 'delete' ? 'DELETE' : 'PUT', command }), {
           id,
-          revision: command.revision ?? revision,
+          revision: sent,
           deleted: kind === 'delete',
         }),
     });
-    // 拒绝 / 冲突 / 未知由 CommandStatus 按内核状态展示。
+    // 拒绝 / 冲突 / 未知由状态区按内核状态展示。
     if (result.status !== 'done') return;
-    submission.clear();
+    form.clear();
     onDone();
   };
-  const toggleLabel = source.enabled ? m.disabled : m.enabled;
+  const toggleLabel = baseline.enabled ? m.disabled : m.enabled;
   const label = kind === 'delete' ? m.delete : toggleLabel;
-  const labels = { code: m.typeCode, name: m.typeName, enabled: m.fields.enabled };
   return (
     <Space direction="vertical">
+      {/* 不用 loading：antd 加载图标的离场动画没有超时兜底，提交很快返回时可能停在离场态；
+          提交中由 locked 禁用、状态区显示“提交中”。 */}
       <Popconfirm
         title={kind === 'delete' ? m.deleteConfirm : m.toggleConfirm(label)}
         okText={m.confirm}
         cancelText={m.cancel}
         onConfirm={() => void run()}
       >
-        <Button type="link" danger={kind === 'delete'} disabled={submission.locked} loading={submission.busy}>
+        <Button type="link" danger={kind === 'delete'} disabled={form.locked}>
           {label}
         </Button>
       </Popconfirm>
-      {submission.state && submission.state.status !== 'done' && (
-        <CommandStatus submission={{ ...submission, reload: () => submission.reread(read) }} labels={labels} />
-      )}
+      <RecoveryStatus form={form} labels={configLabels[config]} onRefresh={onDone} />
     </Space>
   );
 }

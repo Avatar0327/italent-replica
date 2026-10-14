@@ -120,6 +120,7 @@ export function RowActions({ row, onChanged }: { row: Row; onChanged(): void }) 
   const actions = order.filter(
     (action) => current?.detail.actions.includes(action) && (action !== 'withdraw' || permission.can('withdraw')),
   );
+  // 不用 loading：antd 加载图标的离场动画没有超时兜底，请求很快返回时可能停在离场态；进行中一律禁用。
   return (
     <Space size={4} wrap>
       {actions.map((action) => (
@@ -127,8 +128,7 @@ export function RowActions({ row, onChanged }: { row: Row; onChanged(): void }) 
           key={action}
           type="link"
           size="small"
-          loading={busy === action || (action === 'urge' && urge.form.busy)}
-          disabled={(!!busy && busy !== action) || (action === 'urge' && urge.form.locked)}
+          disabled={!!busy || (action === 'urge' && urge.form.locked)}
           onClick={() => void run(action)}
         >
           {m.approvalActions[action]}
