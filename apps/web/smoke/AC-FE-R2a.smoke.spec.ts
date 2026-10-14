@@ -164,7 +164,9 @@ test('AC-FE-R2a-04 无权限入口隐藏，直达拒绝；详情错误不接桩'
 for (const action of ['刷新', '返回接口数据', '清空已选']) {
   test(`AC-FE-R2a-07 ${action} 同时退出演示并清除筛选`, async ({ page }) => {
     await setup(page);
-    await page.getByRole('button', { name: '全部合同协议', exact: true }).click();
+    const tab = page.getByRole('button', { name: '全部合同协议', exact: true });
+    await tab.click();
+    await expect(tab).toHaveAttribute('aria-pressed', 'true');
     const list = page.locator('.contract-card');
     await list.getByLabel('姓名', { exact: true }).fill('合成甲');
     await expect(list.getByRole('cell', { name: '合成甲', exact: true })).toBeVisible();
@@ -238,7 +240,9 @@ test('AC-FE-R2a-09 缺失视图人员筛选及参考列名', async ({ page }) =>
   await expect(list.getByRole('cell', { name: '合成甲', exact: true })).toBeVisible();
   await expect(list.getByText('演示数据', { exact: true })).toBeVisible();
   for (const label of ['即将到期', '有效合同协议', '过期未续签', '全部合同协议']) {
-    await page.getByRole('button', { name: label, exact: true }).click();
+    const tab = page.getByRole('button', { name: label, exact: true });
+    await tab.click();
+    await expect(tab).toHaveAttribute('aria-pressed', 'true');
     await expect(list.getByLabel('姓名', { exact: true })).toHaveValue('');
     await expect(list.getByText('演示数据', { exact: true })).toHaveCount(0);
     await list.getByRole('button', { name: '演示筛选 / 排序', exact: true }).click();
