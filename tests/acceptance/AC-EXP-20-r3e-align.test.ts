@@ -272,26 +272,78 @@ it('单个求值：字段类型目录里的连字符字段按一个字段名', (
   expect(valueOf(evaluateFormula('盘点对象.问卷-他评总分 + 1', context))).toEqual(num(5));
 });
 
-describe('#89-4 名称文本的引用判定（不依赖字段目录）：两种读法都算，宁可多认', () => {
-  it('formulaReferences / textMentionsField 同时认“并成字段名”和“按减法”两种读法', () => {
-    const references = formulaReferences('盘点对象.能力得分-盘点对象.绩效得分');
-    expect(references).toEqual(expect.arrayContaining(['盘点对象.能力得分', '盘点对象.绩效得分']));
-    expect(textMentionsField('盘点对象.能力得分-1', '能力得分')).toBe(true);
-    expect(textMentionsField('盘点对象.能力得分-1', '能力得分-1')).toBe(true);
-    expect(textMentionsField('盘点对象.能力得分 + 1', '能力得分-1')).toBe(false);
+describe('#89-4 名称文本的引用判定（第 2 轮 P2-2 / P3）：只认实际解释，按字段目录“已存在字段优先”', () => {
+  const NAMES = ['a', 'a-b'];
+
+  it('字段 a、a-b 同时存在：`Def(b,3); 盘点对象.a-b` 只引用 a-b，不引用 a（删除 a 不应被拦）', () => {
+    const formula = 'Def(b,3); 盘点对象.a-b';
+    expect(formulaReferences(formula, NAMES)).toEqual(['盘点对象.a-b']);
+    expect(textMentionsField(formula, 'a', NAMES)).toBe(false);
+    expect(textMentionsField(formula, 'a-b', NAMES)).toBe(true);
   });
 
-  it('存量公式改绑与 bindFormula 同一判定：带连字符的字段绑定成一个，其余按减法', () => {
-    const A = '44444444-4444-4444-8444-444444444444';
-    const B = '55555555-5555-4555-8555-555555555555';
-    const fields = [
-      { id: A, name: '得分-上级分', kind: 'number' as const },
-      { id: B, name: '基准', kind: 'number' as const },
-    ];
-    expect(rebindLegacyFormula('盘点对象.得分-上级分-盘点对象.基准', fields)).toMatchObject({
-      ok: true,
-      fieldIds: [A, B],
-    });
+  it('`Def(b,3); Def(c,1); 盘点对象.a-b-c` 实际引用 a-b（第 1 轮两端读法的并集漏了它）', () => {
+    const formula = 'Def(b,3); Def(c,1); 盘点对象.a-b-c';
+    expect(formulaReferences(formula, NAMES)).toEqual(['盘点对象.a-b']);
+    expect(textMentionsField(formula, 'a-b', NAMES)).toBe(true);
+    expect(textMentionsField(formula, 'a', NAMES)).toBe(false);
+  });
+
+  it('目录里没有带连字符的字段时按减法：盘点对象.能力得分-1 引用 能力得分', () => {
+    expect(textMentionsField('盘点对象.能力得分-1', '能力得分', ['能力得分'])).toBe(true);
+    expect(formulaReferences('盘点对象.能力得分-盘点对象.绩效得分', ['能力得分', '绩效得分'])).toEqual([
+      '盘点对象.能力得分',
+      '盘点对象.绩效得分',
+    ]);
+  });
+});
+
+describe('#89-4 存量改绑（第 2 轮 P2-1）：保留历史解释，不能确认时进入 unresolved', () => {
+  const A = '44444444-4444-4444-8444-444444444444';
+  const AB = '55555555-5555-4555-8555-555555555555';
+  const Z = '66666666-6666-4666-8666-666666666666';
+  const field = (id: string, name: string) => ({ id, name, kind: 'number' as const });
+
+  it('a-b 已改名为 z：历史解释（整段字段 a-b）与当前目录的解释（a 减变量 b）不一致 → unresolved，不改绑到 a', () => {
+    const result = rebindLegacyFormula('Def(a,10); Def(b,3); 盘点对象.a-b', [field(A, 'a'), field(Z, 'z')]);
+    expect(result).toMatchObject({ ok: false, issue: 'AMBIGUOUS_FIELD' });
+  });
+
+  it('字段 a、a-b 都在：两种解释一致（整段字段 a-b）→ 绑定 a-b', () => {
+    const result = rebindLegacyFormula('Def(a,10); Def(b,3); 盘点对象.a-b', [field(A, 'a'), field(AB, 'a-b')]);
+    expect(result).toMatchObject({ ok: true, fieldIds: [AB] });
+  });
+
+  it('只有 a：历史解释是未知字段 a-b，当前解释是减法 → unresolved，不换义', () => {
+    expect(rebindLegacyFormula('Def(b,3); 盘点对象.a-b', [field(A, 'a')])).toMatchObject({ ok: false });
+  });
+
+  it('没有连字符的公式照常改绑', () => {
+    expect(rebindLegacyFormula('盘点对象.a - 1', [field(A, 'a')])).toMatchObject({ ok: true, fieldIds: [A] });
+  });
+});
+
+describe('R3e 原始公式文本（第 2 轮 P2-3）：日期用原站的点号写法 yyyy.MM.dd', () => {
+  it.each([
+    ['WeekDay("2026.10.11")', num(7)],
+    ['DateFormat(NextMonth("2026.01.31"), "yyyy-MM-dd")', text('2026-02-28')],
+    ['Years("2020.06.30","2026.06.29")', num(6)],
+    ['Mod(-7,3)', num(-1)],
+    ['INT(-2.5)', num(-3)],
+    ['Sum("5",1)', text('51')],
+  ] as const)('%s', (formula, expected) => {
+    expect(run(formula)).toEqual(expected);
+  });
+
+  it('“2026.10” 这类年月点号写法仍是数字文本，不当日期', () => {
+    expect(run('Year("2026.10")')).toMatchObject({ code: 'ARGUMENT_TYPE' });
+  });
+});
+
+describe('#89-4 深路径（第 2 轮可选 P3）：目录里有 盘点对象.a-b.c 时整段是一个字段', () => {
+  it('并入时也看后续的“.段”', () => {
+    const validated = validateFormula('盘点对象.a-b.c + 1', { isKnownField: (path) => path === '盘点对象.a-b.c' });
+    expect(validated).toMatchObject({ ok: true, fields: ['盘点对象.a-b.c'] });
   });
 });
 
@@ -327,9 +379,11 @@ describe('R3e 改动的函数：逐人求值与批量求值两条路径结果一
   };
 
   it.each([
+    ['WeekDay("2026.10.11")', num(7)],
     ['WeekDay("2026/10/11")', num(7)],
-    ['Mod(-7, 3)', num(-1)],
-    ['DateFormat(NextMonth("2026/01/31"), "yyyy-MM-dd")', text('2026-02-28')],
+    ['Mod(-7,3)', num(-1)],
+    ['DateFormat(NextMonth("2026.01.31"), "yyyy-MM-dd")', text('2026-02-28')],
+    ['Years("2020.06.30","2026.06.29")', num(6)],
     ['Years("2020/06/30", "2026/06/29")', num(6)],
     ['Floor(7, 5) + Ceiling(7, 5)', num(15)],
     ['RoundUP(1.21, 1)', num(1.3)],
