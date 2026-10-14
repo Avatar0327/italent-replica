@@ -1,6 +1,8 @@
 import { Button, Checkbox, Input, InputNumber, Select, Space } from 'antd';
 import { useState, type ReactNode } from 'react';
 import { TenantDatePicker } from '../foundation/selectors.js';
+import { editableRows } from '../foundation/forms/values.js';
+import { useFormLock } from '../foundation/forms/FormLock.js';
 import { RemoteSelect } from './runtime.js';
 import { m, textValue } from './messages.js';
 import { records, insertActivityChain } from './model.js';
@@ -26,6 +28,9 @@ export function ActivityControl({
   onChange?: (value: unknown) => void;
   disabled?: boolean;
 }) {
+  const lock = useFormLock(disabled);
+  disabled = lock.disabled;
+  onChange = lock.guard(onChange);
   if (paths[name])
     return (
       <RemoteSelect
@@ -81,6 +86,9 @@ function OrgRanges({
   onChange?: (value: unknown) => void;
   disabled?: boolean;
 }) {
+  const lock = useFormLock(disabled);
+  disabled = lock.disabled;
+  onChange = lock.guard(onChange);
   return (
     <Space direction="vertical" className="r3b-wide">
       <RemoteSelect
@@ -124,20 +132,24 @@ export function Repeated({
   max?: number;
   children(row: Record<string, unknown>, set: (key: string, value: unknown) => void, index: number): ReactNode;
 }) {
+  const lock = useFormLock(disabled);
+  const actions = useFormLock(disabled || !create);
+  disabled = lock.disabled;
+  onChange = lock.guard(onChange);
   return (
     <div>
       {value.map((row, index) => (
         <section className="r3b-repeat" key={index}>
           {children(row, (key, v) => onChange(value.map((r, i) => (i === index ? { ...r, [key]: v } : r))), index)}
           {create && !disabled && (
-            <Button type="link" danger onClick={() => onChange(value.filter((_, i) => i !== index))}>
+            <Button type="link" danger onClick={actions.guard(() => onChange(value.filter((_, i) => i !== index)))}>
               {m.remove}
             </Button>
           )}
         </section>
       ))}
       {create && !disabled && (
-        <Button onClick={() => onChange([...value, create()])} disabled={value.length >= max}>
+        <Button onClick={actions.guard(() => onChange([...value, create()]))} disabled={value.length >= max}>
           {m.add}
         </Button>
       )}
@@ -148,13 +160,19 @@ export function Chains({
   value = [],
   onChange,
   locked,
+  latest,
   disabled,
 }: {
   value?: Record<string, unknown>[];
   onChange?: (value: unknown) => void;
   locked?: boolean;
+  latest?: unknown;
   disabled?: boolean;
 }) {
+  const lock = useFormLock(disabled);
+  disabled = lock.disabled;
+  onChange = lock.guard(onChange);
+  if (locked && latest) value = editableChains(latest, value);
   const change = (next: Record<string, unknown>[]) =>
     onChange?.(next.length > value.length ? insertActivityChain(value, next[next.length - 1]!) : next);
   const move = (index: number, direction: number) => {
@@ -204,6 +222,9 @@ export function Conditions({
   onChange?: (value: unknown) => void;
   disabled?: boolean;
 }) {
+  const lock = useFormLock(disabled);
+  disabled = lock.disabled;
+  onChange = lock.guard(onChange);
   return (
     <Repeated
       value={value}
@@ -231,6 +252,7 @@ function ChainFields({
   locked?: boolean;
   replace(row: Record<string, unknown>): void;
 }) {
+  const fixed = useFormLock(disabled || locked);
   return (
     <div className="r3b-form-grid">
       <label>
@@ -243,7 +265,7 @@ function ChainFields({
             value: key,
             label: m[key as 'apply'],
           }))}
-          onChange={(type) =>
+          onChange={fixed.guard((type) =>
             replace({
               ...(row.id ? { id: row.id } : {}),
               type,
@@ -251,8 +273,8 @@ function ChainFields({
               startDate: row.startDate,
               endDate: row.endDate,
               transferMode: ['apply', 'material'].includes(type) ? 'auto' : 'manual',
-            })
-          }
+            }),
+          )}
         />
       </label>
       <label>
@@ -282,7 +304,7 @@ function ChainFields({
             path={`${EV}/evaluation-forms`}
             value={row.formId as string}
             disabled={disabled || locked}
-            onChange={(v) => set('formId', v)}
+            onChange={fixed.guard((v) => set('formId', v))}
           />
         </label>
       )}
@@ -353,6 +375,7 @@ function ConditionFields({ row, set, disabled }: RowEditorProps) {
 }
 
 function ChainOptions({ row, set, disabled, locked }: RowEditorProps & { locked?: boolean }) {
+  const fixed = useFormLock(disabled || locked);
   return (
     <>
       {' '}
@@ -374,7 +397,7 @@ function ChainOptions({ row, set, disabled, locked }: RowEditorProps & { locked?
         <Checkbox
           checked={row.hardDeadline === true}
           disabled={disabled || locked}
-          onChange={(e) => set('hardDeadline', e.target.checked)}
+          onChange={fixed.guard((e) => set('hardDeadline', e.target.checked))}
         >
           {m.hardDeadline}
         </Checkbox>
@@ -412,4 +435,14 @@ function ConditionDetail({ row, set, disabled }: RowEditorProps) {
       ))}
     </div>
   );
+}
+
+export function editableChains(latest: unknown, draft: unknown) {
+  return editableRows(records(latest), records(draft), 'id', [
+    'name',
+    'startDate',
+    'endDate',
+    'approvalProcessCode',
+    'transferMode',
+  ]);
 }

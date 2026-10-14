@@ -4,7 +4,6 @@
  * 不出现，隐藏的子字段不出现。列表的 content / changes、详情的 content / changes / before / snapshot 都裁剪。
  * 覆盖“删除目标 / 删除计划”ד无子对象查看权 / 隐藏子字段”四种组合。
  */
-import { randomUUID } from 'node:crypto';
 import { IDP_OBJECTS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
@@ -12,6 +11,7 @@ import { auditApi } from './AC-AUD-support.js';
 import { idpOperator, type OperatorOptions } from './AC-IDP-permission-support.js';
 import { permissionWorldOf, planWorld, PLAN_NOW, type PlanWorld } from './AC-IDP-plan-support.js';
 import { memberWithAdminRole } from './AC-PRM-users-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 const GOAL = IDP_OBJECTS.goal.code;
@@ -54,7 +54,7 @@ async function goalDeleteLog(label: string, removal: 'goal' | 'plan', options: O
     await w.ok(await w.http(w.hrUser, 'DELETE', `/api/tenant/idp/plans/${plan.id}`, { ifMatch: plan.revision }));
   }
   const audit = auditApi(w.db, PLAN_NOW, { authorize: undefined });
-  const viewer = await memberWithAdminRole(pw, 'audit_admin', `idp-cas-${randomUUID().slice(0, 4)}`);
+  const viewer = await memberWithAdminRole(pw, 'audit_admin', `idp-cas-${uniqueSuffix()}`);
   const op = await idpOperator(pw, { ...options, orgId: w.dept, user: viewer.user });
   const list = await audit.dataChanges(op.as, { objectType: GOAL, limit: '50' });
   const item = list.items.find((i) => i.objectId === goalId && i.operation === 'delete');

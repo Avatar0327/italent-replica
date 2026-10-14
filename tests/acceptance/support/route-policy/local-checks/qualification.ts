@@ -7,6 +7,7 @@ import { declaredPerms } from '../perms.js';
 import { registrationGate } from '../registration.js';
 import { checkRequired } from '../required.js';
 import { type Finding } from '../compare.js';
+import { expectDeclared, knownGapPairIds } from '../module-declared.js';
 import type { LocalCheckContext } from './types.js';
 
 // F-095：原局部用例与入口专项共用实际断言；登记副本从 context.table 注入。
@@ -47,7 +48,7 @@ export function qualificationChecks(context: LocalCheckContext) {
   return [
     {
       id: 'knownGaps',
-      label: '账本里不再有 qualification 组，也不再含这 9 对；org 与 idp 两类不变',
+      label: '账本里不再有 qualification 组，也不再含这 9 对；其余模块的缺口对与各自声明逐项相等',
       wrapped: true,
       verify: () => {
         expect(KNOWN_GAPS.filter((g) => g.id.startsWith('qualification'))).toEqual([]);
@@ -62,8 +63,7 @@ export function qualificationChecks(context: LocalCheckContext) {
           expect(pairs, key).not.toContain(key);
         }
         expect(pairs.filter((p) => p.includes('/qualification/'))).toEqual([]);
-        expect(KNOWN_GAPS.filter((g) => g.id.startsWith('org')).flatMap((g) => g.pairs)).toHaveLength(1);
-        expect(KNOWN_GAPS.filter((g) => g.id.startsWith('idp')).flatMap((g) => g.pairs)).toHaveLength(28);
+        expectDeclared('已知缺口登记对', 'knownGapPairs', knownGapPairIds());
       },
     },
     {

@@ -12,6 +12,7 @@ import { createInMemoryTalentReviewSyncPort } from '../../apps/api/src/modules/t
 import { rowsOf } from '../../apps/api/src/modules/succession/read-sql.js';
 import { successionWorld, SC_NOW, SC_TODAY } from './AC-SC-support.js';
 import { enableStatsRunner } from './AC-SC-stats-support.js';
+import { uniqueSuffix } from './support/unique.js';
 const testDb = useTestDb();
 
 it('AC-SC-org-stats worker 登记、在岗缓存包含行政下级、历史日零人数；主体撤权 blocked', async () => {
@@ -101,7 +102,7 @@ it.each([
   ['America/Chicago', '2026-11-01T06:30Z', '2026-11-01T07:30Z'],
   ['America/Santiago', '2026-09-06T04:30Z', '2026-09-07T03:00Z'],
 ])('AC-SC-org-stats %s：真实生产者复用槽键，重复调用、回拨/缺午夜与跨日', async (timezone, a, b) => {
-  const w = await successionWorld(testDb().db, `sc-stats-slot-${randomUUID().slice(0, 4)}`);
+  const w = await successionWorld(testDb().db, `sc-stats-slot-${uniqueSuffix()}`);
   await w.org('定时组织');
   const producer = SUCCESSION_PRODUCERS.find((p) => p.kind === 'org_stats');
   expect(producer).toBeDefined();

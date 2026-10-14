@@ -14,6 +14,7 @@ import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { auditApi } from './AC-AUD-support.js';
 import { fullAccess, type PersonView, world360, type World360 } from './AC-360-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 const APP = survey360.SURVEY360_APP;
@@ -31,7 +32,7 @@ interface AutoAddResult {
   skipped: { employeeId: string; reason: string }[];
 }
 
-const mail = (label: string) => `${label}-${randomUUID().slice(0, 8)}@example.com`;
+const mail = (label: string) => `${label}-${uniqueSuffix()}@example.com`;
 
 async function hire(w: World360, name: string, orgId: string, managerId?: string) {
   const employee = await w.session.employee(name);

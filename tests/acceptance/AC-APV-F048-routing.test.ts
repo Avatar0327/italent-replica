@@ -9,6 +9,7 @@ import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { approvalWorld, transferScene, type ApprovalWorld, type InstanceView } from './AC-APV-support.js';
 import { NODES, pendingOf, reasonOf, useSubjectMapping } from './support/f048.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const database = useTestDb();
 const mapSubjects = useSubjectMapping();
@@ -139,7 +140,7 @@ describe('T3 / 定义校验：会签或无「同意」出口的节点不能开�
     w.request(w.hr.id, 'POST', `${BASE}/processes`, {
       ifMatch: 0,
       body: {
-        code: `F048_V_${Math.random().toString(36).slice(2, 8)}`,
+        code: `F048_V_${uniqueSuffix()}`,
         name: 'F-048 校验',
         approvalType: 'transfer',
         exceptionAdminUserId: w.exceptionAdmin,

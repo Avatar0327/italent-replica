@@ -22,6 +22,7 @@ import {
   type GeneralItem,
 } from './AC-EV-form-support.js';
 import type * as RunCommands from '../../apps/api/src/commands.js';
+import { uniqueSuffix } from './support/unique.js';
 
 type RunCommandModule = typeof RunCommands;
 const race = vi.hoisted(() => ({
@@ -65,7 +66,7 @@ vi.mock('../../apps/api/src/commands.js', async (importOriginal) => {
 });
 
 const testDb = useTestDb();
-const suffix = () => randomUUID().slice(0, 6);
+const suffix = () => uniqueSuffix();
 
 describe.skipIf(!process.env['TEST_DATABASE_URL'])('AC-EV-form-recheck-pg 真 PG 并发：失败后回查', () => {
   let w: FormWorld;

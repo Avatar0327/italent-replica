@@ -4,7 +4,6 @@
  * 与标准的指标引用）。发展建议子表的增删改记在指标的修改日志里（字段 suggestions）。
  * 审计查询按查看人当前的人才标准对象权限、管理单元范围与字段权限裁剪（audit/visibility.ts 登记的查看规则）。
  */
-import { randomUUID } from 'node:crypto';
 import { TALENT_APP, TALENT_OBJECTS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
@@ -21,6 +20,7 @@ import { memberWithAdminRole } from './AC-PRM-users-support.js';
 import { tenantApi } from './support/tenant-api.js';
 import { clock, seedTalentData } from './AC-TC-permission-support.js';
 import { TC_NOW, type DimensionView, talentWorld } from './AC-TC-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 const NOW = TC_NOW.toISOString();
@@ -173,7 +173,7 @@ describe('R3-T01 审计', () => {
     const query = { objectType: TALENT_OBJECTS.dimension.code, limit: '50' };
     expect((await audit.dataChanges(viewer.as, query)).items).toEqual([]);
 
-    const profile = await createProfile(world, `tc-audit-${randomUUID().slice(0, 6)}`, { apps: [TALENT_APP] });
+    const profile = await createProfile(world, `tc-audit-${uniqueSuffix()}`, { apps: [TALENT_APP] });
     const definition = TALENT_OBJECTS.dimension;
     const permission = await setObjectPermission(
       world,

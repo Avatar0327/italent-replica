@@ -24,6 +24,7 @@ import {
   type ReviewWorld,
 } from './AC-EV-review-support.js';
 import type * as RunCommands from '../../apps/api/src/commands.js';
+import { uniqueSuffix } from './support/unique.js';
 
 type RunCommandModule = typeof RunCommands;
 interface Loser {
@@ -94,7 +95,7 @@ function loserDb(db: Db, tenantId: string, commandId: string, loser: Loser): Db 
 }
 
 const testDb = useTestDb();
-const suffix = () => randomUUID().slice(0, 6);
+const suffix = () => uniqueSuffix();
 
 describe('AC-EV-review-group-recheck 评审组命令事务内权限复核', () => {
   let w: ReviewWorld;

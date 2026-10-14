@@ -14,6 +14,7 @@ import {
   type PermissionWorld,
 } from './AC-PRM-support.js';
 import { tenantApi } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 const TODAY = '2026-10-01';
@@ -59,7 +60,7 @@ describe('DEC-080 组织 / 职务 / 编制真实路由权限', () => {
     });
     post = await create(paths.jobPost, {
       name: '测试职务',
-      code: `P${randomUUID().slice(0, 8)}`,
+      code: `P${uniqueSuffix()}`,
       responsibilities: '隐藏职责',
       startDate: '2026-01-01',
     });
@@ -103,7 +104,7 @@ describe('DEC-080 组织 / 职务 / 编制真实路由权限', () => {
     } = {},
   ) {
     const definition = MODULE_OBJECTS[key];
-    const profile = await createProfile(world, `scope-${randomUUID().slice(0, 8)}`);
+    const profile = await createProfile(world, `scope-${uniqueSuffix()}`);
     const permission = await setObjectPermission(
       world,
       profile,
@@ -158,7 +159,7 @@ describe('DEC-080 组织 / 职务 / 编制真实路由权限', () => {
         key === 'organization'
           ? { name: '不能创建', parents: { admin: { parentId: org.id } } }
           : key === 'jobPost'
-            ? { name: '不能创建', code: `P${randomUUID().slice(0, 8)}` }
+            ? { name: '不能创建', code: `P${uniqueSuffix()}` }
             : { name: '不能创建', periodType: 'annual', maintenanceMode: 'local' };
       const response = await world.api.request('POST', paths[key], { ...as, ifMatch: 0, body });
       expect(response.status).toBe(403);
@@ -823,7 +824,7 @@ describe('DEC-080 组织 / 职务 / 编制真实路由权限', () => {
       key === 'organization'
         ? { name: '本人创建组织', parents: { admin: { parentId: world.tenant.id } } }
         : key === 'jobPost'
-          ? { name: '本人创建职务', code: `P${randomUUID().slice(0, 8)}` }
+          ? { name: '本人创建职务', code: `P${uniqueSuffix()}` }
           : { name: '本人创建方案', periodType: 'annual', maintenanceMode: 'local' };
     const made = await fixture.request('POST', paths[key], { ...as, ifMatch: 0, body });
     expect(made.status).toBe(201);
