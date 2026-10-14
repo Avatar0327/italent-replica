@@ -10,6 +10,8 @@
 //   登记类冲突（F-133，DEC-491④）：两边都往同一清单加条目的文件自动取并集，不再人工逐个解——
 //           F-039 登记 required/declared/<模块>.ts（结构化合并）、required/declared/index.ts、required/index.ts，
 //           路由登记 apps/api/src/app.ts、packages/db/src/schema/index.ts；只处理“两边都是纯新增”，处理后核对两边新增项都在结果里
+//   核对对象 = 提交对象（F-133 第 4 轮）：开始前、冲突处理后、重算前、提交前都要求工作区 = 索引（含未跟踪文件，不一致就停下），
+//           登记核对读 git write-tree 写出的待提交树
 //   --continue  业务冲突手工解决并 git add 之后，从改号那一步继续
 //   --no-regen  不跑重算命令（只合并、改号、提交）
 //   --take-ours-for-counts  业务冲突里 main 一侧只改了数字字面量（如端点计数）的文件，冲突处取本分支一侧并 git add；
@@ -209,26 +211,64 @@ function printRegistryManual(manual) {
 }
 
 /**
- * 登记类文件合并结果的最终不变式（F-133 第 3 轮，DEC-431①）：**无条件**——不看哪一边改过、不因“两边一致”“已包含 main”提前通过，
- * 对分叉点 / 本分支 / main 任一侧存在的每个登记类文件，都读工作区的结果核对：应有身份（分叉点保留项 ∪ 本分支新增 ∪ main 新增）
+ * 工作区与索引的差异：已跟踪文件改了没暂存（含删除）、未跟踪且未被忽略的文件。
+ * 重算（pnpm test）与授权指纹读工作区，git commit 提交索引；两者不同，核对 / 重算的就不是提交的（F-133 第 4 轮）。
+ */
+function worktreeDrift() {
+  const list = (...argv) =>
+    git(...argv, '-z')
+      .split('\0')
+      .filter(Boolean);
+  return [
+    ...list('diff', '--name-only').map((file) => `修改未暂存：${file}`),
+    ...list('ls-files', '--others', '--exclude-standard').map((file) => `未跟踪：${file}`),
+  ];
+}
+
+/**
+ * 工作区必须与索引一致，否则停下。不替人 git add：暂存版与工作区版哪份是想提交的只有人知道
+ * （第 3 轮反例就是“暂存了丢项版、工作区是完整版”），以任何一边为准都可能提交错的那份。
+ */
+function requireWorktreeIsIndex(when) {
+  const drift = worktreeDrift();
+  if (drift.length)
+    fail(
+      `${when}：工作区与索引不一致（重算读工作区、git commit 提交索引，两者必须是同一份；不提交）：\n  ${drift.join('\n  ')}\n` +
+        '请 git add 要提交的版本，或 git restore 丢掉工作区改动、移走未跟踪文件，然后运行 pnpm merge:main --continue',
+    );
+}
+
+/**
+ * 最终核对的对象 = 即将提交的树（F-133 第 4 轮，DEC-431① / DEC-434）：先要求工作区 = 索引，再 git write-tree 写出索引的树，
+ * 登记核对只读这棵树。重算前、提交前各调一次；提交前这次之后直接 git commit，中间不再改索引。
+ */
+async function verifyCommitTree(when) {
+  requireWorktreeIsIndex(when);
+  await verifyRegistries(git('write-tree').trim(), when);
+}
+
+/**
+ * 登记类文件合并结果的最终不变式（F-133 第 3 轮起，DEC-431①）：**无条件**——不看哪一边改过、不因“两边一致”“已包含 main”提前通过。
+ * 读的是待提交树 tree（不是工作区）；文件枚举 = 本分支 ∪ main ∪ 分叉点 ∪ 待提交树，任一侧没有的文件按“没有条目”算，
+ * 所以待提交树里独有的登记文件也要核对（里面的条目都是多出的）。应有身份（分叉点保留项 ∪ 本分支新增 ∪ main 新增）
  * 每个必须存在且恰好一份，应有集合非空而文件缺失判失败，登记区有无法识别的形状判失败。
  * 含 Git 无冲突自动合并的、脚本自动取并集的、人工解决过的文件。合并进行中 HEAD 仍是合并前的提交。有问题就停下，不提交。
  */
-async function verifyRegistries() {
+async function verifyRegistries(tree, when) {
   const fork = git('merge-base', 'HEAD', MAIN).trim();
   const listed = (rev) => git('ls-tree', '-r', '--name-only', '-z', rev).split('\0').filter(isRegistryPath);
-  const files = [...new Set([...listed('HEAD'), ...listed(MAIN), ...listed(fork)])].sort();
+  const files = [...new Set([tree, 'HEAD', MAIN, fork].flatMap(listed))].sort();
   const tools = await loadTools();
   const problems = files.flatMap((file) => {
     const versions = { ours: show('HEAD', file), base: show(fork, file), theirs: show(MAIN, file) };
-    const text = existsSync(path.join(ROOT, file)) ? readRepo(file) : undefined;
-    return registryProblems(tools, file, text, versions).map((problem) => `${file}：${problem}`);
+    return registryProblems(tools, file, show(tree, file), versions).map((problem) => `${file}：${problem}`);
   });
   if (problems.length)
     fail(
-      `登记类文件合并后核对失败（不提交，请人工补齐后运行 pnpm merge:main --continue）：\n  ${problems.join('\n  ')}`,
+      `${when}：登记类文件合并后核对失败（不提交，请人工补齐并 git add 后运行 pnpm merge:main --continue）：\n  ${problems.join('\n  ')}`,
     );
-  if (files.length) console.log(`登记核对通过（${files.length} 个登记类文件，按条目身份，应有项都在且各一份）`);
+  if (files.length)
+    console.log(`${when}登记核对通过（待提交树，${files.length} 个登记类文件，按条目身份，应有项都在且各一份）`);
 }
 
 /**
@@ -534,7 +574,9 @@ async function check() {
 }
 
 function startMerge() {
-  if (git('status', '--porcelain', '--untracked-files=no').trim()) fail('工作区有未提交的改动，先提交或暂存');
+  // 未跟踪文件也算：重算会读到、提交不含（F-133 第 4 轮），在开始合并前拦下，免得停在合并中途
+  const dirty = git('status', '--porcelain').trimEnd();
+  if (dirty) fail(`工作区有未提交的改动或未跟踪的文件，先提交、暂存或移走：\n${dirty}`);
   if (gitOk('merge-base', '--is-ancestor', MAIN, 'HEAD')) return console.log(`已包含 ${MAIN}，只检查迁移编号与重算`);
   spawnSync('git', ['merge', '--no-ff', '--no-commit', MAIN], { cwd: ROOT, stdio: 'inherit' });
   if (!mergeInProgress() && !gitOk('merge-base', '--is-ancestor', MAIN, 'HEAD')) fail('git merge 失败');
@@ -573,16 +615,19 @@ async function main() {
     printCountHint(countOnly.filter(({ file }) => other.includes(file)));
     fail('请手工解决上面的业务冲突并 git add，然后运行 pnpm merge:main --continue');
   }
+  // 此后脚本自己写的文件都随即 git add；先确认人工留下的工作区就是索引，重算与授权指纹读到的才是要提交的
+  requireWorktreeIsIndex('冲突处理后');
   const plan = migrationPlan();
   printPlan(plan);
   if (plan.identityProblems.length)
     fail('保留迁移的快照身份重复（见上），未改号；人工处理后运行 pnpm merge:main --continue');
   if (plan.changed) applyRenumber(plan);
-  await verifyRegistries();
+  await verifyCommitTree('重算前');
   await assignGrantVersion().catch((error) =>
     fail(`授权版本定号失败：${error.message}\n请人工处理后运行 pnpm merge:main --continue`),
   );
   if (!args.has('--no-regen')) regenerate();
+  await verifyCommitTree('提交前');
   const staged = !gitOk('diff', '--cached', '--quiet');
   if (!mergeInProgress() && !staged) return console.log('已是最新，无需提交');
   git('commit', '-q', '-m', COMMIT_MESSAGE);
