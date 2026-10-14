@@ -218,7 +218,17 @@ describe('声明文件结构化合并：mergeDeclared', () => {
     expect(check([A, B, C])).toEqual([]);
     expect(check([A, B, C], true)).toEqual([]);
     expect(registryProblems(undefined, FILE, '', versions)).toEqual(['缺少 typescript / prettier，无法核对登记项']);
-    expect(registryProblems(tools, FILE, undefined, versions)[0]).toContain('有一侧没有该文件');
+    // 文件缺失：应有身份非空 → 失败；四侧都没有 → 无可核对，通过（不需要工具）
+    expect(registryProblems(tools, FILE, undefined, versions)[0]).toContain('登记文件缺失');
+    const none = { ours: undefined, base: undefined, theirs: undefined };
+    expect(registryProblems(tools, FILE, undefined, none)).toEqual([]);
+    expect(registryProblems(undefined, FILE, undefined, none)).toEqual([]);
+    // 两边新增相同的新文件（分叉点没有）：结果必须保留全部登记项
+    const same = declared({ sameStatusInvalidId: [A, B] });
+    const added = { ours: same, base: undefined, theirs: same };
+    expect(registryProblems(tools, FILE, same, added)).toEqual([]);
+    expect(registryProblems(tools, FILE, declared({}), added)).toHaveLength(2);
+    expect(registryProblems(tools, FILE, undefined, added)[0]).toContain('登记文件缺失');
   });
 
   it('resolveRegistryFile：一侧缺文件 / 非登记文件 / 缺工具时返回 error 留给人工', async () => {
@@ -332,7 +342,6 @@ describe('登记区解析器与按条目身份的比较（第 2 轮，DEC-431①
       'const TENANT_MODULES: readonly X[] = [',
       '  registerA, // 注释甲',
       '  b,',
-      '  mount(  c ),',
       '] as const;',
     ].join('\n');
     expect(ids(APP, text)).toEqual([
@@ -343,7 +352,6 @@ describe('登记区解析器与按条目身份的比较（第 2 轮，DEC-431①
       'import-side-effect:./side.js=./side.js',
       'array:TENANT_MODULES:registerA=registerA',
       'array:TENANT_MODULES:b=b',
-      'array:TENANT_MODULES:mount( c )=mount( c )',
     ]);
     expect(ids(APP, text.replace('// 注释甲', '// 注释乙'))).toEqual(ids(APP, text));
   });
@@ -389,6 +397,8 @@ describe('登记区解析器与按条目身份的比较（第 2 轮，DEC-431①
     expect(() => parseEntries(tools, SCHEMA, 'export const x = 1;\n')).toThrow('登记区里只许有 export');
     expect(() => parseEntries(tools, APP, 'const OTHER = [];\n')).toThrow('找不到 TENANT_MODULES');
     expect(() => parseEntries(tools, APP, 'const TENANT_MODULES = make();\n')).toThrow('不是数组字面量');
+    expect(() => parseEntries(tools, APP, 'const TENANT_MODULES = [mount(c)];\n')).toThrow('不是直接标识符');
+    expect(() => parseEntries(tools, APP, 'const TENANT_MODULES = [...more];\n')).toThrow('不是直接标识符');
     expect(() => parseEntries(tools, REQUIRED, 'const REQUIRED_BY_MODULE = { ...X };\n')).toThrow('无法识别的属性');
     expect(() => parseEntries(tools, 'apps/api/src/x.ts', '')).toThrow('不是登记类文件');
     const unknown = registryProblems(tools, SCHEMA, 'const x = 1;\n', { ours: '', base: '', theirs: '' });
@@ -443,6 +453,9 @@ describe('登记区解析器与按条目身份的比较（第 2 轮，DEC-431①
     expect(one([], '旧', '旧', '旧')[0]).toContain('登记项丢失'); // 都没动却丢了
     expect(one(['乙'], '甲', '旧', '乙')).toEqual([]);
     expect(one(['丙'], '甲', '旧', '乙')).toEqual([]); // 两边改成不同的值：人决定
+    expect(one([], '甲', undefined, '乙')[0]).toContain('不能删除'); // 两边新增不同的值：人决定值，但必须保留一份
+    expect(one(['丙'], '甲', undefined, '乙')).toEqual([]);
+    expect(one([], undefined, '旧', '乙')).toEqual([]); // 一边删、一边改：人可以决定删掉
     expect(one(['甲', '甲'], '甲', undefined, '甲')[0]).toContain('登记项重复');
   });
 });

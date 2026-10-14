@@ -209,30 +209,26 @@ function printRegistryManual(manual) {
 }
 
 /**
- * 合并结果里的登记类文件再核对一遍（含 git 没冲突、自动合并成功的，和人工解决过的）：按条目身份比较，见 registryProblems。
- * 只看两边都改过的文件；应核对的文件在工作区缺失、登记区有无法识别的形状、有重复或丢项，都停下、不提交。
- * 合并进行中 HEAD 仍是合并前的提交。
+ * 登记类文件合并结果的最终不变式（F-133 第 3 轮，DEC-431①）：**无条件**——不看哪一边改过、不因“两边一致”“已包含 main”提前通过，
+ * 对分叉点 / 本分支 / main 任一侧存在的每个登记类文件，都读工作区的结果核对：应有身份（分叉点保留项 ∪ 本分支新增 ∪ main 新增）
+ * 每个必须存在且恰好一份，应有集合非空而文件缺失判失败，登记区有无法识别的形状判失败。
+ * 含 Git 无冲突自动合并的、脚本自动取并集的、人工解决过的文件。合并进行中 HEAD 仍是合并前的提交。有问题就停下，不提交。
  */
 async function verifyRegistries() {
   const fork = git('merge-base', 'HEAD', MAIN).trim();
-  const changed = (rev) => new Set(git('diff', '--name-only', '-z', fork, rev).split('\0').filter(Boolean));
-  const [mine, theirs] = [changed('HEAD'), changed(MAIN)];
-  const files = [...mine].filter((f) => theirs.has(f) && isRegistryPath(f));
-  if (!files.length) return;
+  const listed = (rev) => git('ls-tree', '-r', '--name-only', '-z', rev).split('\0').filter(isRegistryPath);
+  const files = [...new Set([...listed('HEAD'), ...listed(MAIN), ...listed(fork)])].sort();
   const tools = await loadTools();
   const problems = files.flatMap((file) => {
     const versions = { ours: show('HEAD', file), base: show(fork, file), theirs: show(MAIN, file) };
-    if (versions.base === undefined && versions.ours === versions.theirs) return []; // 两边新增了同一份新文件
     const text = existsSync(path.join(ROOT, file)) ? readRepo(file) : undefined;
-    const found =
-      text === undefined ? ['登记文件缺失（两边都改过它，不能删掉）'] : registryProblems(tools, file, text, versions);
-    return found.map((problem) => `${file}：${problem}`);
+    return registryProblems(tools, file, text, versions).map((problem) => `${file}：${problem}`);
   });
   if (problems.length)
     fail(
       `登记类文件合并后核对失败（不提交，请人工补齐后运行 pnpm merge:main --continue）：\n  ${problems.join('\n  ')}`,
     );
-  console.log(`登记核对通过（按条目身份：本分支新增 ∪ main 新增都在，无重复）：\n  ${files.join('\n  ')}`);
+  if (files.length) console.log(`登记核对通过（${files.length} 个登记类文件，按条目身份，应有项都在且各一份）`);
 }
 
 /**

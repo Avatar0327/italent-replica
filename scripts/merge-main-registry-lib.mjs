@@ -149,13 +149,15 @@ function findInitializer(ts, sf, name) {
   return unsupported(`找不到 ${name}`);
 }
 
+/** 数组元素只认直接标识符（挂载函数名）：`mount(c)` / `mount( c )` / 展开等文本身份不稳定，一律拒绝，不猜。 */
 function arrayEntries(ts, sf, name) {
   const literal = findInitializer(ts, sf, name);
   if (!literal || !ts.isArrayLiteralExpression(literal)) return unsupported(`${name} 不是数组字面量`);
-  return literal.elements.map((el) => ({
-    id: `array:${name}:${squash(el.getText(sf))}`,
-    value: squash(el.getText(sf)),
-  }));
+  return literal.elements.map((el) => {
+    if (!ts.isIdentifier(el))
+      return unsupported(`${name} 里有不是直接标识符的元素：${squash(el.getText(sf)).slice(0, 60)}`);
+    return { id: `array:${name}:${el.text}`, value: el.text };
+  });
 }
 
 function objectEntries(ts, sf, name) {
@@ -268,7 +270,14 @@ export function compareEntries({ result, ours, base, theirs }, { strict = false 
       problems.push(`同一登记项两边值不同，须人工：${id}（本分支 ${show(vo)}／main ${show(vt)}）`);
       continue;
     }
-    if (!strict && vo !== vb && vt !== vb && vo !== vt) continue; // 两边都改成不同的值：由人决定
+    if (!strict && vo !== vb && vt !== vb && vo !== vt) {
+      // 两边都改成不同的值：由人决定“值”，但两边都还保留着的身份必须仍然存在（不能借“人工决定”把它删掉）
+      if (vo !== undefined && vt !== undefined && vr === undefined)
+        problems.push(
+          `登记项丢失：${id}（两边都有，值不同可由人选择，但不能删除；本分支 ${show(vo)}／main ${show(vt)}）`,
+        );
+      continue;
+    }
     const expected = vo === vt || vt === vb ? vo : vo === vb ? vt : (vo ?? vt);
     if (vr === expected) continue;
     if (vr === undefined) problems.push(`登记项丢失：${id}（应为 ${show(expected)}）`);
@@ -279,18 +288,26 @@ export function compareEntries({ result, ours, base, theirs }, { strict = false 
 }
 
 /**
- * 登记类文件合并结果的核对：三侧与结果都按 parseEntries 解析，再 compareEntries。
- * 缺工具、任一侧（含分叉点）缺文件或登记区里有无法识别的形状，都返回问题（无法核对 = 失败）。
+ * 登记类文件合并结果的**最终不变式**（无条件，提交前对每个登记文件都算，不看哪一边改过）：
+ * 应有身份集合 = 分叉点保留项（两边都还在）∪ 本分支新增 ∪ main 新增，结果里每个身份必须存在且恰好一份；
+ * 人工决定的同键异值只放宽“值等于哪一边”，不放宽“必须存在”；应有集合非空而文件缺失 = 失败。
+ * 某一侧没有这个文件按“没有任何条目”算（新增 / 删除都走同一套比较）；四侧都没有则没有可核对的内容，通过。
+ * 缺工具、结果里有无法识别的形状，都返回问题（无法核对 = 失败）。
  */
 export function registryProblems(tools, file, text, versions, options) {
+  const sources = { result: text, ours: versions.ours, base: versions.base, theirs: versions.theirs };
+  if (Object.values(sources).every((source) => source === undefined)) return [];
   if (!tools) return ['缺少 typescript / prettier，无法核对登记项'];
-  if ([text, versions.ours, versions.base, versions.theirs].some((source) => source === undefined))
-    return ['有一侧没有该文件（新增 / 删除），无法核对'];
   try {
-    const [result, ours, base, theirs] = [text, versions.ours, versions.base, versions.theirs].map((source) =>
-      parseEntries(tools, file, source),
+    const entries = Object.fromEntries(
+      Object.entries(sources).map(([side, source]) => [
+        side,
+        source === undefined ? [] : parseEntries(tools, file, source),
+      ]),
     );
-    return compareEntries({ result, ours, base, theirs }, options);
+    const problems = compareEntries(entries, options);
+    if (text === undefined && problems.length) problems.unshift('登记文件缺失（两边应有的登记项见下）');
+    return problems;
   } catch (error) {
     if (error instanceof Unsupported) return [`登记区里有无法识别的形状，不能核对：${error.message}`];
     throw error;
