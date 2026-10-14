@@ -1,8 +1,37 @@
-import { test, expect, user } from './fixtures.js';
+import { test, expect, snapshotFixture, user } from './fixtures.js';
 
 import { menus, settingsFixtures } from './settings-fixtures.js';
 
 test.use({ viewport: { width: 1440, height: 900 } });
+
+for (const failure of ['network', '503'] as const) {
+  test(`AC-FE-F114 企业设置快照 ${failure} 失败可重试，不提前读取业务列表`, async ({ page }) => {
+    await settingsFixtures(page, false);
+    const calls: string[] = [];
+    page.on('request', (request) => {
+      const path = new URL(request.url()).pathname;
+      if (path.startsWith('/api/tenant/')) calls.push(path);
+    });
+    let failed = true;
+    await page.route('**/permission/me/snapshot', (route) => {
+      if (!failed) return route.fallback();
+      if (failure === 'network') return route.abort();
+      return route.fulfill({ status: 503, json: { error: { code: 'FAILED' } } });
+    });
+    await page.goto('/settings/menu/users.all');
+    await expect(page.getByRole('alert')).toContainText('加载失败');
+    await expect(page.locator('.shell-sidebar [role="menuitem"]')).toHaveCount(0);
+    await expect(page.locator('.settings-navigation')).toHaveCount(0);
+    expect(calls).toEqual(['/api/tenant/permission/me/snapshot']);
+    failed = false;
+    await page.getByRole('button', { name: '重新加载', exact: true }).click();
+    await expect(page.getByRole('heading', { name: '全部用户', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: /^新\s*增$/ })).toHaveCount(0);
+    await expect(page.locator('.settings-navigation')).toContainText('当前用户权限');
+    expect(calls.filter((path) => path.endsWith('/me/snapshot'))).toHaveLength(2);
+    expect(calls.some((path) => path.includes('/me/objects/') || path.endsWith('/admin-menus'))).toBe(false);
+  });
+}
 
 for (const [code, title] of menus) {
   test(`AC-FE-R1d2 ${title} 切换身份后列表、抽屉与注释可用`, async ({ page }) => {
@@ -41,10 +70,11 @@ test('AC-FE-R1d2 只读菜单隐藏写按钮，缺失菜单直达拒绝', async 
   await expect(page.getByRole('button', { name: /^新\s*增$/ })).toHaveCount(0);
   await page.goto('/settings/menu/permission.mous');
   await expect(page.getByRole('tab', { name: '数据范围', exact: true })).toHaveCount(0);
-  await page.route('**/permission/admin-menus', (route) =>
+  await page.route('**/permission/me/snapshot', (route) =>
     route.fulfill({
       json: {
-        items: [{ code: 'users.all', path: '全部用户', editable: false }],
+        ...snapshotFixture,
+        adminMenus: [{ code: 'users.all', path: '全部用户', editable: false }],
       },
     }),
   );

@@ -4,7 +4,6 @@ import { DecisionNote } from '../foundation/DecisionNote.js';
 import { PageState } from '../foundation/PageState.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { useSession } from '../foundation/Session.js';
-import { settingsSnapshot } from '../demo-stubs/settings-snapshot.js';
 import { settingsAccess, settingsPages } from './model.js';
 import { UsersPage } from './UsersPage.js';
 import { ProfilesPage } from './ProfilesPage.js';
@@ -18,11 +17,14 @@ export function SettingsPage() {
   const permissions = usePermissions();
   const session = useSession();
   const navigate = useNavigate();
-  const snapshot = settingsSnapshot(session, permissions.menus);
-  const pages = settingsPages.filter((item) => settingsAccess(snapshot.adminMenus, item.code).visible);
+  const adminMenus = (permissions.menus.find((menu) => menu.key === 'settings')?.children ?? []).map((menu) => ({
+    code: menu.key,
+    editable: menu.editable === true,
+  }));
+  const pages = settingsPages.filter((item) => settingsAccess(adminMenus, item.code).visible);
   if (!code)
     return pages.length ? <Navigate replace to={`/settings/menu/${pages[0]!.code}`} /> : <PageState kind="forbidden" />;
-  const access = settingsAccess(snapshot.adminMenus, code);
+  const access = settingsAccess(adminMenus, code);
   if (!access.visible) return <PageState kind="forbidden" />;
   const page = settingsPages.find((item) => item.code === code);
   if (!page) return <PageState kind="not-found" />;
@@ -43,12 +45,12 @@ export function SettingsPage() {
             </Button>
           ))}
         </Space>
-        <Tag title={m.sourceNotice}>{m.demo}</Tag>
+        <Tag title={m.sourceNotice}>{m.serverPermissions}</Tag>
       </div>
       {code.startsWith('users.') && <UsersPage {...props} />}
       {code === 'permission.profiles' && <ProfilesPage {...props} />}
       {code === 'permission.user_grant' && (
-        <GrantsPage {...props} canScope={settingsAccess(snapshot.adminMenus, 'other.mou_settings').editable} />
+        <GrantsPage {...props} canScope={settingsAccess(adminMenus, 'other.mou_settings').editable} />
       )}
       {code === 'permission.mous' && <MousPage {...props} />}
       {code === 'audit.business' && <AuditPage />}

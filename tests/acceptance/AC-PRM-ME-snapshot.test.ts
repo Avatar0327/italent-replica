@@ -11,7 +11,7 @@ import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { DEMO_PEOPLE, DEMO_TENANT } from '../../apps/api/src/demo/data.js';
 import { type DemoManifest, seedDemo } from '../../apps/api/src/demo/seed.js';
-import { menuObjects } from '../../apps/web/src/demo-stubs/object-directory.js';
+import { menuObjects } from '../../apps/web/src/foundation/permission-snapshot.js';
 import { APP_ROUTES } from '../../apps/web/src/foundation/routes.js';
 import { addMember, seedPermissionWorld } from './AC-PRM-support.js';
 import { cmd, tenantApi } from './support/tenant-api.js';
