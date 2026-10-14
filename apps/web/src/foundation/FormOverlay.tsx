@@ -109,7 +109,13 @@ function OpenForm(props: FormOverlayProps) {
         />
       )}
       <FormLock locked={locked}>
-        <Form form={form} layout="vertical" initialValues={props.initialValues} onFinish={submit} disabled={locked}>
+        <Form
+          form={form}
+          layout="vertical"
+          initialValues={props.initialValues}
+          onFinish={submit}
+          disabled={locked || undefined}
+        >
           <FormGroups
             groups={props.groups}
             values={submission?.state?.latest?.values ?? props.initialValues}

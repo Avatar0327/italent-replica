@@ -34,7 +34,9 @@ export function LockedField({ children, ...injected }: ControlProps & { children
   const child = isValidElement<ControlProps>(children) ? children : undefined;
   const props = { ...child?.props, ...injected };
   const lock = useFormLock(child?.props.disabled || injected.disabled, child?.props.readOnly || injected.readOnly);
-  return child
-    ? cloneElement(child, { ...props, disabled: lock.disabled, onChange: lock.guard(props.onChange) })
-    : children;
+  const change = lock.guard((...args: unknown[]) => {
+    injected.onChange?.(...args);
+    if (child?.props.onChange !== injected.onChange) child?.props.onChange?.(...args);
+  });
+  return child ? cloneElement(child, { ...props, disabled: lock.disabled, onChange: change }) : children;
 }
