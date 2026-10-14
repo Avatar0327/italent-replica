@@ -1,5 +1,5 @@
 import { Select } from 'antd';
-import { useCallback } from 'react';
+import { useCallback, type AriaAttributes } from 'react';
 import type { PageResult } from '../foundation/client.js';
 import { PersonSelect } from '../foundation/selectors.js';
 import { useApiClient } from '../foundation/Session.js';
@@ -7,13 +7,17 @@ import { useCollection } from './api.js';
 import { t } from './messages.js';
 import { useNames } from './useNames.js';
 
+/** 表单项注入的 id 与 aria-* 要透传到真实输入，标签才能关联到控件（LockedField 同口径）。 */
+type Labelled = { id?: string } & Pick<AriaAttributes, 'aria-label' | 'aria-describedby' | 'aria-invalid'>;
+
 /** 候选按服务端权限返回；失败时显示错误而不是合成候选（DEC-494）。名称缺失回显 ID。 */
 export function CatalogSelect({
   path,
   value,
   onChange,
   disabled,
-}: {
+  ...labelled
+}: Labelled & {
   path: string;
   value?: string | null;
   onChange?: (value: string | undefined) => void;
@@ -22,6 +26,7 @@ export function CatalogSelect({
   const catalog = useCollection<{ id: string; name?: string }>(path);
   return (
     <Select
+      {...labelled}
       showSearch
       allowClear
       optionFilterProp="label"
@@ -45,7 +50,9 @@ export function EmployeeSelect({
   value,
   onChange,
   disabled,
-}: {
+  id,
+  ...aria
+}: Labelled & {
   value?: string | null;
   onChange?: (value: string | null) => void;
   disabled?: boolean;
@@ -63,12 +70,15 @@ export function EmployeeSelect({
     },
     [api],
   );
+  // PersonSelect（底座）不透传 id，外包一层承接表单项的 id，标签点击与读屏仍能定位到该字段
   return (
-    <PersonSelect
-      load={load}
-      disabled={disabled}
-      value={value ? { value, label: name(value) } : undefined}
-      onChange={(choice) => onChange?.(choice?.value ?? null)}
-    />
+    <span id={id} {...aria} className="idp-person-select">
+      <PersonSelect
+        load={load}
+        disabled={disabled}
+        value={value ? { value, label: name(value) } : undefined}
+        onChange={(choice) => onChange?.(choice?.value ?? null)}
+      />
+    </span>
   );
 }

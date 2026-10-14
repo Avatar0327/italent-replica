@@ -1,7 +1,8 @@
 import { Alert, Button, Form, Input, Modal, Radio, Select, Space } from 'antd';
-import { useState, type ReactNode } from 'react';
-import { IDP_API, useAction } from './api.js';
-import { ActionError } from './listing.js';
+import { useState } from 'react';
+import { useApiClient } from '../foundation/Session.js';
+import { BATCH, IDP_API, useCommand, type Command } from './api.js';
+import { CommandNotice } from './listing.js';
 import { t } from './messages.js';
 import { batchSplit, receiptSummary, type BatchAction } from './model.js';
 import { useRead } from '../evaluation/runtime.js';
@@ -25,13 +26,27 @@ const TITLES: Record<InterventionKind, string> = {
   delete: t.actions.delete,
 };
 
-/** 计划状态动作与流程干预的统一弹窗；一次只提交一次，结果未知时锁定并要求刷新（AGENTS.md §10）。 */
+const SINGLE: readonly InterventionKind[] = ['start', 'jump', 'transfer', 'delete'];
+
+/**
+ * 单条动作按计划存一条命令（原单 = 计划，可回查）；批量按“动作 + 所选计划”存一条命令，以逐条回执为结论。
+ * 命令在页面根部（F-123），弹窗关闭再打开仍是同一条：结果未知时锁住并显示命令 ID，不发第二次请求。
+ */
+function useInterventionCommand(kind: InterventionKind, rows: PlanSummary[]) {
+  const api = useApiClient();
+  const single = SINGLE.includes(kind) ? rows[0] : undefined;
+  const ids = rows.map((row) => row.id).sort();
+  const resource = single ? `${IDP_API}/plans/${single.id}:action` : `${IDP_API}/plans/${kind}:${ids.join(',')}`;
+  return useCommand(resource, single?.id, async (id) => {
+    const latest = await api.request<PlanSummary>(`${IDP_API}/plans/${id}`);
+    return { id: latest.id, revision: latest.revision ?? 0 };
+  });
+}
+
+/** 计划状态动作与流程干预的统一弹窗；一次只提交一次，结果未知时锁定并要求回查原单（AGENTS.md §10）。 */
 export function Intervention({ kind, rows, onClose, done }: Props) {
-  const action = useAction(done);
+  const command = useInterventionCommand(kind, rows);
   const [receipts, setReceipts] = useState<Receipt[]>();
-  const failure = action.error ? (
-    <ActionError error={action.error} reset={action.blocked ? action.reset : undefined} />
-  ) : null;
   if (receipts) {
     const summary = receiptSummary(receipts);
     return (
@@ -44,7 +59,13 @@ export function Intervention({ kind, rows, onClose, done }: Props) {
       </Modal>
     );
   }
-  const props = { rows, onClose, action, failure, finish: setReceipts };
+  const finished = (result?: Receipt[]) => {
+    command.clear();
+    done();
+    if (result) setReceipts(result);
+    else onClose();
+  };
+  const props = { rows, onClose, command, finished };
   if (kind === 'jump') return <JumpDialog {...props} />;
   if (kind === 'transfer') return <TransferDialog {...props} />;
   if (kind === 'start' || kind === 'delete') return <SingleConfirm kind={kind} {...props} />;
@@ -54,9 +75,9 @@ export function Intervention({ kind, rows, onClose, done }: Props) {
 interface DialogProps {
   rows: PlanSummary[];
   onClose(): void;
-  action: ReturnType<typeof useAction>;
-  failure: ReactNode;
-  finish(receipts: Receipt[]): void;
+  command: Command;
+  /** 已完成：单条直接关闭；批量带回逐条回执。 */
+  finished(receipts?: Receipt[]): void;
 }
 function footer(onClose: () => void, ok: () => void, disabled: boolean, busy: boolean) {
   return (
@@ -71,28 +92,27 @@ function footer(onClose: () => void, ok: () => void, disabled: boolean, busy: bo
   );
 }
 
-function SingleConfirm({ kind, rows, onClose, action, failure }: DialogProps & { kind: 'start' | 'delete' }) {
+function SingleConfirm({ kind, rows, onClose, command, finished }: DialogProps & { kind: 'start' | 'delete' }) {
   const plan = rows.length === 1 ? rows[0] : undefined;
   const ok = async () => {
     if (!plan || plan.revision === undefined) return;
     const path = kind === 'start' ? `${IDP_API}/plans/${plan.id}/start` : `${IDP_API}/plans/${plan.id}`;
-    const result = await action.run(path, kind === 'start' ? 'POST' : 'DELETE', {}, plan.revision);
-    if (result !== undefined) onClose();
+    if (await command.run(path, kind === 'start' ? 'POST' : 'DELETE', {}, plan.revision)) finished();
   };
   return (
     <Modal
       open
       title={TITLES[kind]}
       onCancel={onClose}
-      footer={footer(onClose, () => void ok(), !plan || action.blocked, action.busy)}
+      footer={footer(onClose, () => void ok(), !plan || command.locked, command.busy)}
     >
-      {failure}
+      <CommandNotice command={command} />
       <p>{plan ? t.confirm[kind] : t.selectOne}</p>
     </Modal>
   );
 }
 
-function BatchDialog({ kind, rows, onClose, action, failure, finish }: DialogProps & { kind: BatchAction }) {
+function BatchDialog({ kind, rows, onClose, command, finished }: DialogProps & { kind: BatchAction }) {
   const { eligible, skipped } = batchSplit(rows, kind);
   const [reason, setReason] = useState('');
   const [runningMode, setRunningMode] = useState<'skipRunning' | 'endRunning'>('skipRunning');
@@ -101,17 +121,18 @@ function BatchDialog({ kind, rows, onClose, action, failure, finish }: DialogPro
     const note = kind === 'terminate' && reason.trim() ? { reason: reason.trim() } : {};
     const body = kind === 'startNext' ? { items, runningMode } : { items, ...note };
     const path = { urge: 'urge', startNext: 'start-next', terminate: 'terminate' }[kind];
-    const result = await action.batch(`${IDP_API}/plans/${path}`, body);
-    if (result) finish(result.receipts);
+    // 批量没有单一原单，命令按 revision 0 提交（契约要求），以回执逐条判定
+    const outcome = await command.run<{ receipts: Receipt[] }>(`${IDP_API}/plans/${path}`, 'POST', body, 0, BATCH);
+    if (outcome) finished(outcome.response?.receipts ?? []);
   };
   return (
     <Modal
       open
       title={TITLES[kind]}
       onCancel={onClose}
-      footer={footer(onClose, () => void ok(), !eligible.length || action.blocked, action.busy)}
+      footer={footer(onClose, () => void ok(), !eligible.length || command.locked, command.busy)}
     >
-      {failure}
+      <CommandNotice command={command} />
       {skipped.length > 0 && <Alert type="warning" showIcon message={t.skipped(skipped.length)} />}
       {!eligible.length ? (
         <p>{t.noneEligible}</p>
@@ -147,7 +168,7 @@ function BatchDialog({ kind, rows, onClose, action, failure, finish }: DialogPro
 }
 
 /** 跳转节点来自当前阶段子流程关联的审批流程；任一环节读不到就不给提交，不猜节点。 */
-function JumpDialog({ rows, onClose, action, failure }: DialogProps) {
+function JumpDialog({ rows, onClose, command, finished }: DialogProps) {
   const plan = rows.length === 1 ? rows[0] : undefined;
   const stage = plan?.stages?.find((item) => item.status === 'running');
   const process = useRead<Process>(plan?.processId && stage ? `${IDP_API}/processes/${plan.processId}` : undefined);
@@ -163,22 +184,17 @@ function JumpDialog({ rows, onClose, action, failure }: DialogProps) {
   const failed = !plan || !stage || !plan.processId || !!process.error || !!catalog.error || (!!process.data && !sub);
   const ok = async () => {
     const values = await form.validateFields();
-    const result = await action.run(
-      `${IDP_API}/plans/${plan!.id}/jump`,
-      'POST',
-      { toNodeKey: values.toNodeKey, stageId: stage!.id, reason: values.reason.trim() },
-      plan!.revision!,
-    );
-    if (result !== undefined) onClose();
+    const body = { toNodeKey: values.toNodeKey, stageId: stage!.id, reason: values.reason.trim() };
+    if (await command.run(`${IDP_API}/plans/${plan!.id}/jump`, 'POST', body, plan!.revision!)) finished();
   };
   return (
     <Modal
       open
       title={TITLES.jump}
       onCancel={onClose}
-      footer={footer(onClose, () => void ok(), failed || loading || !nodes.length || action.blocked, action.busy)}
+      footer={footer(onClose, () => void ok(), failed || loading || !nodes.length || command.locked, command.busy)}
     >
-      {failure}
+      <CommandNotice command={command} />
       {!plan ? (
         <p>{t.selectOne}</p>
       ) : failed ? (
@@ -211,28 +227,23 @@ function JumpDialog({ rows, onClose, action, failure }: DialogProps) {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** 转交对象是用户 ID（后端契约 toUserId）；用户选择器接口未提供，暂以 ID 输入（后端缺口清单）。 */
-function TransferDialog({ rows, onClose, action, failure }: DialogProps) {
+function TransferDialog({ rows, onClose, command, finished }: DialogProps) {
   const plan = rows.length === 1 ? rows[0] : undefined;
   const [form] = Form.useForm<{ toUserId: string; reason?: string }>();
   const ok = async () => {
     const values = await form.validateFields();
     const reason = values.reason?.trim();
-    const result = await action.run(
-      `${IDP_API}/plans/${plan!.id}/transfer`,
-      'POST',
-      { toUserId: values.toUserId.trim(), ...(reason ? { reason } : {}) },
-      plan!.revision!,
-    );
-    if (result !== undefined) onClose();
+    const body = { toUserId: values.toUserId.trim(), ...(reason ? { reason } : {}) };
+    if (await command.run(`${IDP_API}/plans/${plan!.id}/transfer`, 'POST', body, plan!.revision!)) finished();
   };
   return (
     <Modal
       open
       title={TITLES.transfer}
       onCancel={onClose}
-      footer={footer(onClose, () => void ok(), !plan || action.blocked, action.busy)}
+      footer={footer(onClose, () => void ok(), !plan || command.locked, command.busy)}
     >
-      {failure}
+      <CommandNotice command={command} />
       {!plan ? (
         <p>{t.selectOne}</p>
       ) : (

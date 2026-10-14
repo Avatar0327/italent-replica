@@ -1,6 +1,7 @@
-import { Alert, Button, Input } from 'antd';
+import { Button, Input, Modal, Typography } from 'antd';
 import { useEffect, useState, type ReactNode } from 'react';
-import { ApiError } from '../foundation/client.js';
+import { CommandStatus } from '../foundation/forms/CommandStatus.js';
+import type { Command } from './api.js';
 import { t } from './messages.js';
 
 /**
@@ -19,18 +20,6 @@ export function useLocalPage<T>(rows: readonly T[], loading: boolean) {
     change: setPage,
     first: () => setPage((value) => ({ ...value, page: 1 })),
   };
-}
-
-/** 写动作失败提示；冲突 / 结果未知时给“刷新”，刷新后才允许显式重提（AGENTS.md §10）。 */
-export function ActionError({ error, reset }: { error: unknown; reset?: (() => void) | false }) {
-  return (
-    <Alert
-      type="error"
-      showIcon
-      message={error instanceof ApiError ? error.message : t.actionFailed}
-      action={reset && <Button onClick={reset}>{t.actions.refresh}</Button>}
-    />
-  );
 }
 
 export function NameSearch({ value, change }: { value?: string; change(value: string): void }) {
@@ -70,5 +59,46 @@ export function HeaderActions({
       {children}
       <Button onClick={refresh}>{t.actions.refresh}</Button>
     </>
+  );
+}
+
+/** 命令状态 + 命令 ID：锁住时显示命令 ID，便于按原单核对，不再发起新命令（F-123 内核口径）。 */
+export function CommandNotice({ command }: { command: Command }) {
+  return (
+    <>
+      <CommandStatus submission={command} />
+      {command.locked && command.state?.command && (
+        <Typography.Paragraph type="secondary" className="idp-command-id">
+          {t.commandId}：{command.state.command.id}
+        </Typography.Paragraph>
+      )}
+    </>
+  );
+}
+
+/** 确认类写入的弹窗：命令锁住时“确定”禁用，关闭再打开仍显示同一条命令的状态。 */
+export function CommandDialog(props: {
+  title: string;
+  command: Command;
+  ok(): void;
+  close(): void;
+  disabled?: boolean;
+  children?: ReactNode;
+}) {
+  const { title, command, ok, close, disabled, children } = props;
+  return (
+    <Modal
+      open
+      title={title}
+      onCancel={close}
+      okText={t.actions.ok}
+      cancelText={t.actions.back}
+      onOk={ok}
+      okButtonProps={{ disabled: disabled || command.locked, loading: command.busy }}
+      destroyOnHidden
+    >
+      <CommandNotice command={command} />
+      {children}
+    </Modal>
   );
 }

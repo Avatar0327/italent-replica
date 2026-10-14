@@ -34,10 +34,14 @@ export interface PlanModule {
   name: string;
   description?: string | null;
   displayOrder?: number;
+  /** 参与人视图才返回当前节点授予本模块的按钮；HR 视图不返回。 */
+  buttons?: string[];
 }
 export interface GoalTask {
   id: string;
   name?: string;
+  description?: string | null;
+  ownerEmployeeId?: string | null;
   startDate?: string | null;
   endDate?: string | null;
 }
@@ -63,6 +67,8 @@ export interface PlanDetail extends PlanSummary {
   modules?: PlanModule[];
   goals?: PlanGoal[];
   keyInfo?: { tutorships?: KeyInfoRow[]; careers?: KeyInfoRow[]; workShifts?: KeyInfoRow[] };
+  analyses?: { moduleId?: string; currentAnalysis?: string | null; developmentItems?: string | null }[];
+  reviews?: { moduleId?: string; stageId?: string; summary?: string | null; improvement?: string | null }[];
 }
 export interface SubProcess {
   id?: string;

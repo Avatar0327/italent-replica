@@ -1,5 +1,6 @@
 import { Alert, Button, Dropdown, Form, Select, Space, Tooltip, type TableColumnsType } from 'antd';
 import { useMemo, useState, type Key, type ReactNode } from 'react';
+import { useSearchParams } from 'react-router';
 import { DecisionNote } from '../foundation/DecisionNote.js';
 import { FilterDrawer } from '../foundation/FilterDrawer.js';
 import { usePermissions } from '../foundation/Permissions.js';
@@ -16,12 +17,14 @@ import {
   nextStage,
   period,
   PLAN_VIEWS,
+  statusText,
   type PlanAction,
   type PlanFilters,
   type PlanView,
 } from './model.js';
-import { PlanDetailDrawer } from './PlanDetail.js';
+import { PlanDetailPage } from './PlanDetail.js';
 import { PlanForm } from './PlanForm.js';
+import { EmployeeSelect } from './selects.js';
 import type { PlanSummary } from './types.js';
 import { useNames } from './useNames.js';
 
@@ -31,29 +34,80 @@ const VIEW_LABELS: Record<PlanView, string> = {
   terminated: t.views.terminated,
 };
 type Editing = { plan?: PlanSummary } | undefined;
+const DETAIL = 'plan';
+
+type Selection = { keys: Key[]; rows: PlanSummary[] };
+const NONE: Selection = { keys: [], rows: [] };
 
 export function PlanList() {
   const permission = usePermissions(OBJECTS.plan);
   const list = useCollection<PlanSummary>(`${IDP_API}/plans`);
+  const [selected, setSelected] = useState<Selection>(NONE);
+  const can = (action: PlanAction) => permission.can(action, BUTTON_LEVEL[action]);
+  const [params, setParams] = useSearchParams();
+  const openId = params.get(DETAIL);
+  const open = (id?: string) => setParams(id ? { [DETAIL]: id } : {});
+  const overlays = usePlanOverlays(
+    () => {
+      setSelected(NONE);
+      list.reload();
+    },
+    (ids) => {
+      if (openId && ids.includes(openId)) open();
+    },
+  );
+  return (
+    <>
+      {openId ? (
+        <PlanDetailPage
+          key={`${openId}/${overlays.version}`}
+          id={openId}
+          onBack={() => open()}
+          can={can}
+          edit={overlays.edit}
+          intervene={(kind, plan) => overlays.intervene(kind, [plan])}
+        />
+      ) : (
+        <PlanTable
+          list={list}
+          permission={permission}
+          can={can}
+          open={open}
+          selection={{ value: selected, change: setSelected }}
+          overlays={overlays}
+        />
+      )}
+      {overlays.element}
+    </>
+  );
+}
+
+interface TableProps {
+  list: ReturnType<typeof useCollection<PlanSummary>>;
+  permission: ReturnType<typeof usePermissions>;
+  can(action: PlanAction): boolean;
+  open(id: string): void;
+  selection: { value: Selection; change(value: Selection): void };
+  overlays: ReturnType<typeof usePlanOverlays>;
+}
+function PlanTable({ list, permission, can, open, selection, overlays }: TableProps) {
   const [view, setView] = useState<PlanView>('active');
   const [filters, setFilters] = useState<PlanFilters>({});
-  const [selected, setSelected] = useState<{ keys: Key[]; rows: PlanSummary[] }>({ keys: [], rows: [] });
-  const can = (action: PlanAction) => permission.can(action, BUTTON_LEVEL[action]);
   const rows = useMemo(() => filterPlans(list.items ?? [], view, filters), [list.items, view, filters]);
   const paging = useLocalPage(rows, list.loading);
   const employees = useNames(
     'employee',
     paging.shown.flatMap((row) => [row.employeeId, row.tutorEmployeeId]),
   );
-  const clearSelection = () => setSelected({ keys: [], rows: [] });
-  const overlays = usePlanOverlays(can, () => {
-    clearSelection();
-    list.reload();
-  });
   const restart = () => {
     paging.first();
-    clearSelection();
+    selection.change(NONE);
   };
+  const stageOptions = useMemo(
+    () => [...new Set((list.items ?? []).map((row) => row.currentStageName).filter((name) => !!name))] as string[],
+    [list.items],
+  );
+  const selected = selection.value;
   return (
     <>
       <DecisionNote id="idp-plans" />
@@ -68,7 +122,7 @@ export function PlanList() {
           },
         }}
         data={{ items: paging.shown, total: rows.length, hasDataPermission: list.hasDataPermission }}
-        columns={columns(permission.field, employees, overlays.open)}
+        columns={columns(permission.field, employees, open)}
         rowKey="id"
         page={paging.page}
         onPageChange={paging.change}
@@ -83,6 +137,7 @@ export function PlanList() {
               restart();
             }}
             visible={(key) => permission.field(key).visible}
+            stages={stageOptions}
           />
         }
         actions={
@@ -94,7 +149,7 @@ export function PlanList() {
         }
         selection={{
           keys: selected.keys,
-          onChange: (keys, picked) => setSelected({ keys, rows: picked }),
+          onChange: (keys, picked) => selection.change({ keys, rows: picked }),
           actions: (
             <SelectionActions
               view={view}
@@ -105,14 +160,12 @@ export function PlanList() {
           ),
         }}
       />
-      {overlays.element}
     </>
   );
 }
 
-/** 详情抽屉、新增 / 编辑表单与干预弹窗；写入后详情按新代次重读，避免抽屉继续展示旧 revision。 */
-function usePlanOverlays(can: (action: PlanAction) => boolean, reload: () => void) {
-  const [openId, setOpenId] = useState<string>();
+/** 新增 / 编辑弹窗与干预弹窗；写入后详情按新代次重读，避免继续展示旧 revision。 */
+function usePlanOverlays(reload: () => void, deleted: (ids: string[]) => void) {
   const [version, setVersion] = useState(0);
   const [editing, setEditing] = useState<Editing>();
   const [intervention, setIntervention] = useState<{ kind: InterventionKind; rows: PlanSummary[] }>();
@@ -123,16 +176,6 @@ function usePlanOverlays(can: (action: PlanAction) => boolean, reload: () => voi
   const intervene = (kind: InterventionKind, rows: PlanSummary[]) => setIntervention({ kind, rows });
   const element = (
     <>
-      {openId && (
-        <PlanDetailDrawer
-          key={`${openId}/${version}`}
-          id={openId}
-          onClose={() => setOpenId(undefined)}
-          can={can}
-          edit={(plan) => setEditing({ plan })}
-          intervene={(kind, plan) => intervene(kind, [plan])}
-        />
-      )}
       {editing && <PlanForm plan={editing.plan} close={() => setEditing(undefined)} saved={refresh} />}
       {intervention && (
         <Intervention
@@ -141,13 +184,20 @@ function usePlanOverlays(can: (action: PlanAction) => boolean, reload: () => voi
           onClose={() => setIntervention(undefined)}
           done={() => {
             refresh();
-            if (intervention.kind === 'delete') setOpenId(undefined);
+            if (intervention.kind === 'delete') deleted(intervention.rows.map((row) => row.id));
           }}
         />
       )}
     </>
   );
-  return { open: setOpenId, create: () => setEditing({}), intervene, refresh, element };
+  return {
+    version,
+    edit: (plan: PlanSummary) => setEditing({ plan }),
+    create: () => setEditing({}),
+    intervene,
+    refresh,
+    element,
+  };
 }
 
 function SelectionActions({
@@ -230,7 +280,8 @@ function columns(
       cell('tutorRole', t.fields.tutorRole, (row) => t.tutorRoles[row.tutorRole ?? ''] ?? t.noValue),
     field('tutorEmployeeId').visible &&
       cell('tutorEmployeeId', t.fields.tutorEmployeeId, (row) => employees(row.tutorEmployeeId)),
-    field('status').visible && cell('status', t.fields.status, (row) => t.status[row.status ?? ''] ?? t.noValue, 90),
+    // 状态列始终保留：字段被裁剪时按“无权查看”展示，记录不因此消失（DEC-431①）
+    cell('status', t.fields.status, (row) => statusText(t.status, row.status), 90),
     cell('currentStageName', t.fields.currentStageName, (row) => display(row.currentStageName)),
     cell('currentNodeName', t.fields.currentNodeName, (row) => display(row.currentNodeName)),
     cell('nextStage', t.fields.nextStage, (row) => display(nextStage(row.stages ?? [])?.name)),
@@ -241,8 +292,8 @@ function columns(
   return all.filter((column) => !!column) as TableColumnsType<PlanSummary>;
 }
 
-/** 名称快速搜索 + 500 宽高级筛选抽屉（状态、指导人角色、起止日期）；日期是租户业务日期字符串。 */
-function PlanFilterBar({ value, change, visible }: FilterProps) {
+/** 名称快速搜索 + 500 宽高级筛选抽屉（姓名、指导人、当前阶段、状态、指导人角色、起止日期）；日期是租户业务日期字符串。 */
+function PlanFilterBar({ value, change, visible, stages }: FilterProps) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(value);
   const [error, setError] = useState(false);
@@ -271,7 +322,7 @@ function PlanFilterBar({ value, change, visible }: FilterProps) {
         onApply={apply}
       >
         {error && <Alert type="error" showIcon message={t.dateOrder} />}
-        <PlanFilterFields value={draft} change={setDraft} visible={visible} />
+        <PlanFilterFields value={draft} change={setDraft} visible={visible} stages={stages} />
       </FilterDrawer>
     </Space>
   );
@@ -281,13 +332,43 @@ interface FilterProps {
   value: PlanFilters;
   change(value: PlanFilters): void;
   visible(field: string): boolean;
+  /** 当前阶段候选：取自已读取的授权结果（后端没有阶段目录接口）。 */
+  stages: string[];
 }
 const options = (labels: Record<string, string>) =>
   Object.entries(labels).map(([key, label]) => ({ value: key, label }));
 
-function PlanFilterFields({ value: draft, change: setDraft, visible }: FilterProps) {
+function PlanFilterFields({ value: draft, change: setDraft, visible, stages }: FilterProps) {
   return (
     <Form layout="vertical">
+      {visible('employeeId') && (
+        <Form.Item label={t.fields.employeeId} htmlFor="idp-filter-employee">
+          <EmployeeSelect
+            id="idp-filter-employee"
+            value={draft.employeeId}
+            onChange={(employeeId) => setDraft({ ...draft, employeeId: employeeId ?? undefined })}
+          />
+        </Form.Item>
+      )}
+      {visible('tutorEmployeeId') && (
+        <Form.Item label={t.fields.tutorEmployeeId} htmlFor="idp-filter-tutor">
+          <EmployeeSelect
+            id="idp-filter-tutor"
+            value={draft.tutorEmployeeId}
+            onChange={(tutorEmployeeId) => setDraft({ ...draft, tutorEmployeeId: tutorEmployeeId ?? undefined })}
+          />
+        </Form.Item>
+      )}
+      {visible('currentStageName') && (
+        <Form.Item label={t.fields.currentStageName}>
+          <Select
+            allowClear
+            value={draft.currentStageName}
+            options={stages.map((name) => ({ value: name, label: name }))}
+            onChange={(currentStageName) => setDraft({ ...draft, currentStageName })}
+          />
+        </Form.Item>
+      )}
       {visible('status') && (
         <Form.Item label={t.fields.status}>
           <Select

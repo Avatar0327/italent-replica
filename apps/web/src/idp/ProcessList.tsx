@@ -1,31 +1,28 @@
-import { Button, Popconfirm, Space, type TableColumnsType } from 'antd';
+import { Button, Space, type TableColumnsType } from 'antd';
 import { useMemo, useState, type ReactNode } from 'react';
 import { DecisionNote } from '../foundation/DecisionNote.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { ListPage } from '../foundation/templates.js';
-import { IDP_API, OBJECTS, useAction, useCollection } from './api.js';
-import { ActionError, HeaderActions, NameSearch, useLocalPage, yesNo } from './listing.js';
+import { useApiClient } from '../foundation/Session.js';
+import { IDP_API, OBJECTS, useCollection, useCommand } from './api.js';
+import { CommandDialog, HeaderActions, NameSearch, useLocalPage, yesNo } from './listing.js';
 import { t } from './messages.js';
-import { display } from './model.js';
+import { display, processInView, type ProcessView } from './model.js';
 import { ProcessForm } from './ProcessForm.js';
 import type { Process } from './types.js';
 import { useNames } from './useNames.js';
-
-type View = 'enabled' | 'disabled';
 
 /** 发展计划流程：按启用状态分两个视图；编辑在弹窗内完成（含子流程），删除走对象 revision。 */
 export function ProcessList() {
   const permission = usePermissions(OBJECTS.process);
   const list = useCollection<Process>(`${IDP_API}/processes`);
-  const [view, setView] = useState<View>('enabled');
+  const [view, setView] = useState<ProcessView>('enabled');
   const [name, setName] = useState('');
   const [editing, setEditing] = useState<{ id?: string }>();
-  const action = useAction(list.reload);
+  const [removing, setRemoving] = useState<Process>();
+  // 启用字段被裁剪的记录在两个视图都保留（DEC-431①）
   const rows = useMemo(
-    () =>
-      (list.items ?? []).filter(
-        (row) => (row.enabled !== false) === (view === 'enabled') && (row.name ?? '').includes(name.trim()),
-      ),
+    () => (list.items ?? []).filter((row) => processInView(row, view) && (row.name ?? '').includes(name.trim())),
     [list.items, view, name],
   );
   const paging = useLocalPage(rows, list.loading);
@@ -33,27 +30,23 @@ export function ProcessList() {
     'org',
     paging.shown.map((row) => row.orgId),
   );
-  const remove = (row: Process) => void action.run(`${IDP_API}/processes/${row.id}`, 'DELETE', {}, row.revision!);
   const operations = (row: Process) => (
     <Space size={4}>
       {permission.can('update', 'detail') && (
-        <Button type="link" disabled={action.busy} onClick={() => setEditing({ id: row.id })}>
+        <Button type="link" onClick={() => setEditing({ id: row.id })}>
           {t.actions.edit}
         </Button>
       )}
       {permission.can('delete', 'detail') && row.revision !== undefined && (
-        <Popconfirm title={t.confirm.delete} onConfirm={() => remove(row)}>
-          <Button type="link" danger disabled={action.busy || action.blocked}>
-            {t.actions.delete}
-          </Button>
-        </Popconfirm>
+        <Button type="link" danger onClick={() => setRemoving(row)}>
+          {t.actions.delete}
+        </Button>
       )}
     </Space>
   );
   return (
     <>
       <DecisionNote id="idp-processes" />
-      {!!action.error && <ActionError error={action.error} reset={action.blocked && action.reset} />}
       <ListPage<Process>
         title={t.processes}
         view={{
@@ -63,7 +56,7 @@ export function ProcessList() {
             { key: 'disabled', label: t.views.disabledProcesses },
           ],
           onChange: (value) => {
-            setView(value as View);
+            setView(value as ProcessView);
             paging.first();
           },
         }}
@@ -91,6 +84,9 @@ export function ProcessList() {
         }
       />
       {editing && <ProcessForm id={editing.id} close={() => setEditing(undefined)} saved={list.reload} />}
+      {removing && (
+        <RemoveDialog key={removing.id} row={removing} close={() => setRemoving(undefined)} done={list.reload} />
+      )}
     </>
   );
 }
@@ -120,7 +116,7 @@ function columns(
       key: 'enabled',
       title: t.fields.enabled,
       width: 90,
-      render: (_, row) => yesNo(row.enabled),
+      render: (_, row) => (row.enabled === undefined ? t.noAccess : yesNo(row.enabled)),
     },
     field('subProcesses').visible && {
       key: 'subProcesses',
@@ -131,4 +127,25 @@ function columns(
     { key: 'operations', title: t.fields.operations, fixed: 'right', width: 140, render: (_, row) => operations(row) },
   ];
   return all.filter((column) => !!column) as TableColumnsType<Process>;
+}
+
+/** 删除走页面级命令：结果未知时关闭再打开仍锁住，按原单回查，不重复发送（F-123 内核）。 */
+function RemoveDialog({ row, close, done }: { row: Process; close(): void; done(): void }) {
+  const api = useApiClient();
+  const command = useCommand(`${IDP_API}/processes/${row.id}:action`, row.id, async (id) => {
+    const latest = await api.request<Process>(`${IDP_API}/processes/${id}`);
+    return { id: latest.id, revision: latest.revision ?? 0 };
+  });
+  const ok = async () => {
+    const outcome = await command.run(`${IDP_API}/processes/${row.id}`, 'DELETE', {}, row.revision!);
+    if (!outcome) return;
+    command.clear();
+    done();
+    close();
+  };
+  return (
+    <CommandDialog title={t.actions.delete} command={command} ok={() => void ok()} close={close}>
+      <p>{t.confirm.delete}</p>
+    </CommandDialog>
+  );
 }

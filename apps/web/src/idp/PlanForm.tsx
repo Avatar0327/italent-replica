@@ -55,6 +55,7 @@ function PlanEditor({ plan, close, saved }: { plan?: PlanSummary; close(): void;
   return (
     <FormOverlay
       open
+      mode="modal"
       recordKey={plan?.id ?? 'new'}
       submission={writer}
       title={plan ? t.editPlan : t.newPlan}

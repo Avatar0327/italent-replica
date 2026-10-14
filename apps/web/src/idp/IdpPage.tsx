@@ -15,7 +15,7 @@ const SECTIONS = [
   { key: 'processes', object: OBJECTS.process, page: ProcessList },
 ] as const;
 
-/** 人才发展计划：/idp/plans | templates | processes 三张列表，无面包屑，详情走右侧抽屉。 */
+/** 人才发展计划：/idp/plans | templates | processes 三张列表，无面包屑；计划与模板详情为整页（?plan= / ?template=）。 */
 export function IdpPage() {
   return (
     <CreateCommands>

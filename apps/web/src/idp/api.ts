@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { ApiError, newCommand, type ApiClient } from '../foundation/client.js';
+import { useCallback, useEffect, useState } from 'react';
+import { ApiError, type ApiClient } from '../foundation/client.js';
+import type { Values } from '../foundation/forms/store.js';
+import { useCommandForm } from '../foundation/forms/useCommandForm.js';
 import { useApiClient, useSession } from '../foundation/Session.js';
 import { t } from './messages.js';
-import type { Receipt } from './types.js';
 
 export const IDP_API = '/api/tenant/idp';
 const PAGE_SIZE = 200;
@@ -59,52 +60,59 @@ export function useCollection<T>(path: string | undefined) {
   };
 }
 
+type Method = 'POST' | 'PATCH' | 'DELETE';
 /**
- * 干预与状态动作：单条带对象 revision，批量带 revision 0（契约要求）；同一时刻只允许一次提交。
- * 结果未知或冲突时锁住，要求先刷新再显式重提，不自动盲重试（AGENTS.md §10 并发 / 幂等）。
+ * 干预、状态动作、复制与任务写入统一走 F-123 页面级提交内核（DEC-464/473/475）：
+ * 命令状态按“租户 × 身份 × 资源”存在页面根部，弹窗关闭再打开仍是同一条命令；
+ * 处理中 / 结果未知 / 冲突时锁住且不发新请求，不自动盲重试（AGENTS.md §10 并发 / 幂等）。
+ * 只有已明确拒绝或已完成的命令才清掉，开始下一条新命令。
+ * `businessId` 是原单 ID：有它才能“回查原单”；单条写入的回执必须是同一条记录。
+ * 返回 undefined 表示未完成（被锁、被拒绝或结果未知），状态与命令 ID 由 CommandNotice 展示。
  */
-export function useAction(done: () => void) {
+export function useCommand(
+  resource: string,
+  businessId?: string,
+  read?: (id: string) => Promise<{ id: string; revision: number }>,
+) {
   const api = useApiClient();
-  const lock = useRef(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<unknown>();
-  const [blocked, setBlocked] = useState(false);
-  const run = async <T>(path: string, method: 'POST' | 'DELETE', body: unknown, revision: number) => {
-    if (lock.current || blocked) return undefined;
-    lock.current = true;
-    setBusy(true);
-    setError(undefined);
-    try {
-      const result = await api.request<T>(path, { method, command: newCommand(body ?? {}, revision) });
-      done();
-      return result;
-    } catch (cause) {
-      setError(cause);
-      if (cause instanceof ApiError && ['unknown', 'refresh', 'conflict'].includes(cause.kind)) setBlocked(true);
-      return undefined;
-    } finally {
-      lock.current = false;
-      setBusy(false);
-    }
+  const command = useCommandForm(resource);
+  const run = async <T>(path: string, method: Method, body: Values, revision: number, idOf?: (result: T) => string) => {
+    if (command.locked) return undefined;
+    if (command.status === 'rejected' || command.status === 'done') command.clear();
+    let response: T | undefined;
+    const result = await command.submit({
+      values: body,
+      baseline: {},
+      editableFields: Object.keys(body),
+      revision,
+      businessId,
+      send: async (request) => {
+        response = await api.request<T>(path, { method, command: request });
+        const id = idOf ? idOf(response) : (response as { id?: unknown } | undefined)?.id;
+        return { id: typeof id === 'string' ? id : (businessId ?? '') };
+      },
+    });
+    // 删除等写入可能没有响应体，用 { response } 表示“已完成”，与“未完成”区分开
+    return result.status === 'done' ? { response } : undefined;
   };
-  const reset = () => {
-    setError(undefined);
-    setBlocked(false);
-    done();
-  };
-  return {
-    run,
-    batch: (path: string, body: { items: { id: string; revision: number }[] } & Record<string, unknown>) =>
-      run<{ receipts: Receipt[] }>(path, 'POST', body, 0),
-    busy,
-    error,
-    blocked,
-    reset,
-  };
+  const reload =
+    read && businessId
+      ? () =>
+          command.reread(async (id) => {
+            const latest = await read(id ?? businessId);
+            return { id: latest.id, revision: latest.revision, values: {} };
+          })
+      : undefined;
+  return { ...command, run, reload };
 }
+export type Command = ReturnType<typeof useCommand>;
+
+/** 批量命令没有单一原单，回执里的逐条结果才是结论；命令台账仍按命令 ID 去重。 */
+export const BATCH = () => 'batch';
 
 export const OBJECTS = {
   plan: 'IDP.Idp',
   template: 'IDP.IDPTemplate',
   process: 'IDP.IDPProcess',
+  subProcess: 'IDP.SubProcess',
 } as const;

@@ -14,32 +14,6 @@
   color: #868b8f;
   margin: 8px 0 0;
 }
-.idp-card-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 12px;
-  margin-top: 12px;
-}
-.idp-plan-card {
-  border-color: #e6e8eb;
-}
-.idp-plan-card .idp-card-title {
-  padding: 0;
-  margin-right: 8px;
-  font-weight: 600;
-}
-.idp-plan-card dl {
-  display: grid;
-  grid-template-columns: 96px 1fr;
-  gap: 6px 8px;
-  margin: 12px 0 0;
-}
-.idp-plan-card dt {
-  color: #868b8f;
-}
-.idp-plan-card dd {
-  margin: 0;
-}
 .idp-goal {
   border: 1px solid #e6e8eb;
   border-radius: 5px;
@@ -91,4 +65,67 @@
   align-items: center;
   margin-bottom: 8px;
   font-weight: 600;
+}
+.idp-detail {
+  background: #fff;
+  border: 1px solid #e6e8eb;
+  border-radius: 5px;
+  padding: 16px 20px;
+}
+.idp-detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+.idp-detail-header h1 {
+  font-size: 18px;
+  margin: 0;
+}
+.idp-plan-line span + span::before {
+  content: '|';
+  margin: 0 8px;
+  color: #e6e8eb;
+}
+.idp-detail-summary,
+.idp-stage-steps {
+  margin-bottom: 16px;
+}
+.idp-section-title {
+  font-size: 14px;
+  margin: 20px 0 8px;
+}
+.idp-module-settings h3 {
+  font-size: 13px;
+  margin: 12px 0 6px;
+}
+.idp-inline-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 12px 0;
+}
+.idp-inline-filters .ant-select {
+  min-width: 160px;
+}
+.idp-person-select {
+  display: block;
+}
+.idp-tasks {
+  margin-top: 8px;
+}
+.idp-task {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 0;
+}
+.idp-task .ant-input {
+  max-width: 360px;
+}
+.idp-task-add,
+.idp-link {
+  padding: 0;
 }
