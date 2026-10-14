@@ -477,6 +477,22 @@ export const GRAPH: Graph = {
     '#latestFirst',
     'packages/domain/src/expression/values.ts#EMPTY',
   ],
+  'packages/domain/src/expression/legacy-member-lexer.ts#Scanner': [
+    '#CHINESE_QUOTES',
+    '#KEYWORDS',
+    '#OPERATORS',
+    '#PUNCTUATION',
+    '#SLASH_FUNCTION_NAMES',
+    '#isDigit',
+    '#isIdentPart',
+    '#isIdentStart',
+    '#isSpace',
+    'packages/domain/src/expression/lexer.ts#SyntaxIssueError',
+  ],
+  'packages/domain/src/expression/legacy-member-lexer.ts#isIdentPart': ['#isDigit', '#isIdentStart'],
+  'packages/domain/src/expression/legacy-member-lexer.ts#isIdentStart': ['#isCjk', '#isLetter'],
+  'packages/domain/src/expression/legacy-member-lexer.ts#legacyMemberRun': ['#isIdentPart'],
+  'packages/domain/src/expression/legacy-member-lexer.ts#legacyTokenize': ['#Scanner'],
   'packages/domain/src/expression/lexer.ts#HANDLE_AT': ['#UUID_SOURCE'],
   'packages/domain/src/expression/lexer.ts#HANDLE_WHOLE': ['#UUID_SOURCE'],
   'packages/domain/src/expression/lexer.ts#Scanner': [
@@ -571,6 +587,7 @@ export const GRAPH: Graph = {
     '#unwrapOption',
   ],
   'packages/domain/src/expression/parser.ts#Parser': [
+    'packages/domain/src/expression/legacy-member-lexer.ts#legacyMemberRun',
     'packages/domain/src/expression/lexer.ts#HIDDEN_FIELD_OWNER',
     'packages/domain/src/expression/lexer.ts#HIDDEN_FIELD_PLACEHOLDER',
     'packages/domain/src/expression/lexer.ts#SyntaxIssueError',
@@ -579,9 +596,7 @@ export const GRAPH: Graph = {
     '#DEF_NAMES',
     '#KEYWORD_FUNCTIONS',
     '#MAX_NESTING_DEPTH',
-    '#adjacent',
     '#hyphenResolver',
-    '#isNamePiece',
   ],
   'packages/domain/src/expression/parser.ts#checkInputLimits': ['#scan'],
   'packages/domain/src/expression/parser.ts#hyphenResolver': [
@@ -597,6 +612,7 @@ export const GRAPH: Graph = {
   ],
   'packages/domain/src/expression/parser.ts#parseStoredFormula': ['#parseFormula'],
   'packages/domain/src/expression/parser.ts#scan': [
+    'packages/domain/src/expression/legacy-member-lexer.ts#legacyTokenize',
     'packages/domain/src/expression/lexer.ts#SyntaxIssueError',
     'packages/domain/src/expression/lexer.ts#tokenize',
     '#MAX_FORMULA_LENGTH',

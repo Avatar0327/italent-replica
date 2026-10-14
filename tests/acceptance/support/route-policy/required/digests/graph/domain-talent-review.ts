@@ -35,15 +35,22 @@ export const GRAPH: Graph = {
   ],
   'packages/domain/src/talent-review/calc-rule.ts#formulaFieldExists': ['#FORMULA_CONTEXT_FIELDS', '#formulaPath'],
   'packages/domain/src/talent-review/calc-rule.ts#formulaPath': ['#FORMULA_OBJECT'],
-  'packages/domain/src/talent-review/calc-rule.ts#formulaReferences': ['#nameTextReferences'],
+  'packages/domain/src/talent-review/calc-rule.ts#formulaReferences': ['#storedTextReferences'],
+  'packages/domain/src/talent-review/calc-rule.ts#legacyTextReferences': [
+    'packages/domain/src/expression/engine.ts#validateFormula',
+  ],
   'packages/domain/src/talent-review/calc-rule.ts#nameTextReferences': [
     'packages/domain/src/expression/engine.ts#validateFormula',
     '#formulaFieldExists',
   ],
+  'packages/domain/src/talent-review/calc-rule.ts#storedTextReferences': [
+    '#legacyTextReferences',
+    '#nameTextReferences',
+  ],
   'packages/domain/src/talent-review/calc-rule.ts#textMentionsField': [
     '#fieldNameTerms',
     '#formulaPath',
-    '#nameTextReferences',
+    '#storedTextReferences',
   ],
   'packages/domain/src/talent-review/calc-rule.ts#unreferenceableItem': [
     'packages/domain/src/expression/engine.ts#validateFormula',
