@@ -49,7 +49,8 @@ export function ConfigForm({
 }) {
   const api = useApiClient();
   const permission = usePermissions(configObjects[kind]);
-  const id = kind === 'settings' ? tenantId : typeof row?.id === 'string' ? row.id : undefined;
+  const rowId = typeof row?.id === 'string' ? row.id : undefined;
+  const id = kind === 'settings' ? tenantId : rowId;
   const resource = kind === 'settings' ? paths.settings : `${paths[kind]}/${id ?? 'new'}`;
   const keys = configFields[kind];
   // 冲突恢复统一走 useConfigCommand：展示值、携带字段与 If-Match 都取同一份确认后的基线。
