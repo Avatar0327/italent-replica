@@ -152,7 +152,7 @@ function ActivityDetail({ id, close, saved }: { id: string; close(): void; saved
           {detail.loading && <PageState kind="loading" />}
           {editing && row && (
             <ActivityWizard
-              key={`${row.id}:${row.revision}`}
+              key={row.id}
               row={row}
               close={() => edit(false)}
               saved={() => {
