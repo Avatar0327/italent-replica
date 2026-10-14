@@ -8,9 +8,12 @@ import {
   bindFormula,
   evaluateBatch,
   evaluateFormula,
+  formulaReferences,
   FUNCTION_PANEL,
   inMemorySubject,
   orderComputationItems,
+  rebindLegacyFormula,
+  textMentionsField,
   validateFormula,
   type EvaluationContext,
   type EvaluationResult,
@@ -267,4 +270,27 @@ it('单个求值：字段类型目录里的连字符字段按一个字段名', (
     fieldKind: (path) => (path === '盘点对象.问卷-他评总分' ? 'number' : undefined),
   };
   expect(valueOf(evaluateFormula('盘点对象.问卷-他评总分 + 1', context))).toEqual(num(5));
+});
+
+describe('#89-4 名称文本的引用判定（不依赖字段目录）：两种读法都算，宁可多认', () => {
+  it('formulaReferences / textMentionsField 同时认“并成字段名”和“按减法”两种读法', () => {
+    const references = formulaReferences('盘点对象.能力得分-盘点对象.绩效得分');
+    expect(references).toEqual(expect.arrayContaining(['盘点对象.能力得分', '盘点对象.绩效得分']));
+    expect(textMentionsField('盘点对象.能力得分-1', '能力得分')).toBe(true);
+    expect(textMentionsField('盘点对象.能力得分-1', '能力得分-1')).toBe(true);
+    expect(textMentionsField('盘点对象.能力得分 + 1', '能力得分-1')).toBe(false);
+  });
+
+  it('存量公式改绑与 bindFormula 同一判定：带连字符的字段绑定成一个，其余按减法', () => {
+    const A = '44444444-4444-4444-8444-444444444444';
+    const B = '55555555-5555-4555-8555-555555555555';
+    const fields = [
+      { id: A, name: '得分-上级分', kind: 'number' as const },
+      { id: B, name: '基准', kind: 'number' as const },
+    ];
+    expect(rebindLegacyFormula('盘点对象.得分-上级分-盘点对象.基准', fields)).toMatchObject({
+      ok: true,
+      fieldIds: [A, B],
+    });
+  });
 });

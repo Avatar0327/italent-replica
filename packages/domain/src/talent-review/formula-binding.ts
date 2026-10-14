@@ -143,7 +143,9 @@ const normalizeId = (id: string) => id.toLowerCase();
  * 带连字符的字段名按提交人可见的字段判断（#89-4）：`盘点对象.能力得分-盘点对象.绩效得分` 在“能力得分-盘点对象”不是
  * 可见字段时按减法，`盘点对象.问卷-他评总分` 是可见字段时按一个字段名。看不到的字段不算，避免借此探测字段是否存在。
  */
-function existingFields(options: BindFormulaOptions): (path: string) => boolean {
+export function formulaFieldExists(
+  options: Pick<BindFormulaOptions, 'visibleFields' | 'versionField'>,
+): (path: string) => boolean {
   const names = new Set(options.visibleFields.map((field) => `${FORMULA_OBJECT}.${field.name}`));
   return (path) => names.has(path) || path in FORMULA_CONTEXT_FIELDS || options.versionField?.(path) === true;
 }
@@ -158,7 +160,7 @@ const PRECHECK_CODES: ReadonlySet<string> = new Set([
 
 /** 把输入文本里的字段引用绑定成 ID（契约 §1.5）。第一个失败即返回；语法正确时 HIDDEN_FIELD 优先于其他语义问题（§1.6）。 */
 export function bindFormula(source: string, options: BindFormulaOptions): BindResult {
-  const fieldExists = existingFields(options);
+  const fieldExists = formulaFieldExists(options);
   const parsed = parseFormula(source, { placeholders: true, fieldExists });
   if (!parsed.ok) return invalid(fromSyntax(parsed.errors[0]!));
   const checked = validateFormula(source, {

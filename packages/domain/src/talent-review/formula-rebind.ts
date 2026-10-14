@@ -12,6 +12,7 @@ import { type FormulaField, textMentionsField } from './calc-rule.js';
 import {
   bindFormula,
   CONTEXT_BINDING,
+  formulaFieldExists,
   fieldNodes,
   isObjectReference,
   RESERVED_NAME,
@@ -38,7 +39,8 @@ export type RebindField = Pick<FormulaField, 'id' | 'name' | 'kind'>;
 const unique = (ids: readonly string[]) => [...new Set(ids)];
 
 export function rebindLegacyFormula(source: string, fields: readonly RebindField[]): RebindResult {
-  const parsed = parseFormula(source);
+  // 带连字符的字段名与 bindFormula 同一判定（全部字段），否则两边的引用处数对不上（#89-4）
+  const parsed = parseFormula(source, { fieldExists: formulaFieldExists({ visibleFields: fields }) });
   if (!parsed.ok) {
     // 整段解析失败：不能按结构判断，名称粗筛命中的全部字段都算候选（与删除守卫的文本兜底同一口径）
     const candidates = fields.filter((field) => textMentionsField(source, field.name)).map((field) => field.id);

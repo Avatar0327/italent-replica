@@ -1,6 +1,7 @@
 /**
- * AC-EXP 第四轮回归（astra 第三轮审查 → DEC-228，PR #90）：
- * `对象.字段` 形式的字段引用里，连字符一律属于字段名；两个字段相减须在减号两侧加空格；Def 变量、数字之间的 a-b 仍是减法。
+ * AC-EXP 第四轮回归（astra 第三轮审查 → DEC-228，PR #90；R3e 按 #89-4 改）：
+ * `对象.字段` 后紧挨着的 `-名字`，合并后的完整名是已存在字段才是一个字段名，否则按减法（原站实测不加空格也相减）；
+ * 不再提示“如需相减，请在减号两侧加空格”。Def 变量、数字之间的 a-b 仍是减法。
  * 保存校验（传入字段目录）、单公式求值、批量求值三条入口对同一公式同一解释、同一结果。
  */
 import {
@@ -65,36 +66,33 @@ function expectValueInAllEntries(formula: string, value: unknown): void {
   expect(viaBatch(formula)).toEqual({ ok: true, value });
 }
 
-/** 三条入口失败码相同、位置相同；withHint 时文案都含“如需相减，请在减号两侧加空格”。返回保存校验的结果。 */
-function expectFailureInAllEntries(formula: string, code: string, withHint: boolean): Entry {
+/** 三条入口失败码相同、位置相同，文案都不再含“如需相减，请在减号两侧加空格”（#89-4）。返回保存校验的结果。 */
+function expectFailureInAllEntries(formula: string, code: string): Entry {
   const [validation, ...others] = [viaValidation(formula), viaSingle(formula), viaBatch(formula)];
   expect(validation).toMatchObject({ ok: false, code });
   for (const entry of others) {
     expect(entry).toMatchObject({ ok: false, code, line: validation!.line, column: validation!.column });
   }
-  for (const entry of [validation!, ...others]) {
-    if (withHint) expect(entry.message).toContain(HINT);
-    else expect(entry.message).not.toContain(HINT);
-  }
+  for (const entry of [validation!, ...others]) expect(entry.message).not.toContain(HINT);
   return validation!;
 }
 
-describe('DEC-228 词法：字段引用里的连字符一律属于字段名', () => {
-  it('两个字段相减加空格得 3；不加空格是一个字段名，三条入口都报带提示的 UNKNOWN_FIELD 并给出位置', () => {
+describe('#89-4 词法 / 语法：字段引用后的连字符按字段目录定型，否则是减号', () => {
+  it('两个字段相减加不加空格都得 3（旧口径 DEC-228：不加空格报带提示的 UNKNOWN_FIELD）', () => {
     expectValueInAllEntries('盘点对象.得分 - 盘点对象.基准', num(3));
-    const failure = expectFailureInAllEntries('盘点对象.得分-盘点对象.基准', 'UNKNOWN_FIELD', true);
-    expect(failure).toMatchObject({
-      line: 1,
-      column: 1,
-      message: expect.stringContaining('盘点对象.得分-盘点对象.基准'),
-    });
+    expectValueInAllEntries('盘点对象.得分-盘点对象.基准', num(3));
   });
 
-  it('A 为字段引用时整体按字段名解析：字段减数字、字段减 Def 变量同样须加空格', () => {
-    expectFailureInAllEntries('盘点对象.得分-1', 'UNKNOWN_FIELD', true);
+  it('字段减数字、字段减 Def 变量不加空格也是减法', () => {
+    expectValueInAllEntries('盘点对象.得分-1', num(4));
     expectValueInAllEntries('盘点对象.得分 - 1', num(4));
-    expectFailureInAllEntries('Def(基准值, 2); 盘点对象.得分-基准值', 'UNKNOWN_FIELD', true);
+    expectValueInAllEntries('Def(基准值, 2); 盘点对象.得分-基准值', num(3));
     expectValueInAllEntries('Def(基准值, 2); 盘点对象.得分 - 基准值', num(3));
+  });
+
+  it('右侧不存在时按减法报右侧的未知字段，三条入口位置一致', () => {
+    const failure = expectFailureInAllEntries('盘点对象.得分-盘点对象.不存在', 'UNKNOWN_FIELD');
+    expect(failure).toMatchObject({ line: 1, column: 9, message: expect.stringContaining('盘点对象.不存在') });
   });
 
   it('Def 变量、数字之间的 a-b 仍是减法', () => {
@@ -170,37 +168,34 @@ describe('读取器抛异常：结构化 DATA_UNAVAILABLE，不改成别的解�
 });
 
 describe('带空白、全角括号的写法三条入口结果一致', () => {
-  it.each(['盘点对象.得分-转换为数字("2")', '盘点对象.得分-转换为数字 ("2")', '盘点对象.得分-转换为数字（"2"）'])(
-    '%s：连字符并入字段名，后面的括号是语法错误并提示加空格',
-    (formula) => {
-      expectFailureInAllEntries(formula, 'SYNTAX_ERROR', true);
-    },
-  );
+  it.each([
+    '盘点对象.得分-转换为数字("2")',
+    '盘点对象.得分-转换为数字 ("2")',
+    '盘点对象.得分-转换为数字（"2"）',
+    '盘点对象.得分 - 转换为数字("2")',
+    '盘点对象.得分 - 转换为数字 ("2")',
+    '盘点对象.得分 - 转换为数字（"2"）',
+  ])('%s → 3（旧口径 DEC-228：不加空格时括号处报语法错误）', (formula) => {
+    expectValueInAllEntries(formula, num(3));
+  });
 
-  it.each(['盘点对象.得分 - 转换为数字("2")', '盘点对象.得分 - 转换为数字 ("2")', '盘点对象.得分 - 转换为数字（"2"）'])(
-    '%s → 3',
-    (formula) => {
-      expectValueInAllEntries(formula, num(3));
-    },
-  );
-
-  it('对象名与“.”之间有空白：不加空格仍是一个字段名，加空格是减法', () => {
-    expectFailureInAllEntries('盘点对象.得分-盘点对象 .基准', 'UNKNOWN_FIELD', true);
+  it('对象名与“.”之间有空白：加不加空格都是减法', () => {
+    expectValueInAllEntries('盘点对象.得分-盘点对象 .基准', num(3));
     expectValueInAllEntries('盘点对象.得分 - 盘点对象 .基准', num(3));
     expectValueInAllEntries('盘点对象 . 得分 - 盘点对象 . 基准', num(3));
   });
 });
 
 describe('保存校验：传入字段目录时报未知字段；三条入口对静态错误一致', () => {
-  it('计算规则保存（orderComputationItems）同样报带提示的 UNKNOWN_FIELD，计算项目的目标字段视为已知', () => {
-    const rejected = orderComputationItems([{ field: TARGET, priority: 1, formula: '盘点对象.得分-盘点对象.基准' }], {
+  it('计算规则保存（orderComputationItems）同样报 UNKNOWN_FIELD（不再提示加空格），计算项目的目标字段视为已知', () => {
+    const rejected = orderComputationItems([{ field: TARGET, priority: 1, formula: '盘点对象.得分-盘点对象.不存在' }], {
       isKnownField,
     });
     expect(rejected).toMatchObject({
       ok: false,
-      failure: { code: 'UNKNOWN_FIELD', field: TARGET, line: 1, column: 1 },
+      failure: { code: 'UNKNOWN_FIELD', field: TARGET, line: 1, column: 9 },
     });
-    if (!rejected.ok) expect(rejected.failure.message).toContain(HINT);
+    if (!rejected.ok) expect(rejected.failure.message).not.toContain(HINT);
     const items = [
       { field: '盘点对象.甲', priority: 1, formula: '1' },
       { field: '盘点对象.乙', priority: 2, formula: '盘点对象.甲 + 甲' },
@@ -223,22 +218,22 @@ describe('保存校验：传入字段目录时报未知字段；三条入口对�
   });
 
   it('Def 变量只在定义之后可用：先引用后定义按字段处理，三条入口一致', () => {
-    const failure = expectFailureInAllEntries('Def(x, y); Def(y, 1); x', 'UNKNOWN_FIELD', false);
+    const failure = expectFailureInAllEntries('Def(x, y); Def(y, 1); x', 'UNKNOWN_FIELD');
     expect(failure).toMatchObject({ line: 1, column: 8 });
   });
 
-  it('不传字段目录时只查语法、函数名、参数个数，并返回引用到的字段供调用方自查', () => {
+  it('不传字段目录时只查语法、函数名、参数个数，并返回引用到的字段供调用方自查（连字符按减法）', () => {
     expect(validateFormula('盘点对象.得分-盘点对象.基准')).toMatchObject({
       ok: true,
-      fields: ['盘点对象.得分-盘点对象.基准'],
+      fields: ['盘点对象.得分', '盘点对象.基准'],
     });
   });
 
   it('中文引号、未走到的分支里的未知函数与参数个数错误：三条入口失败码与位置相同', () => {
-    expect(expectFailureInAllEntries('盘点对象.得分 = “高”', 'CHINESE_QUOTE', false)).toMatchObject({ column: 11 });
-    expect(expectFailureInAllEntries('如果 真 那么 1 否则 不存在的函数(1)', 'UNKNOWN_FUNCTION', false)).toMatchObject({
+    expect(expectFailureInAllEntries('盘点对象.得分 = “高”', 'CHINESE_QUOTE')).toMatchObject({ column: 11 });
+    expect(expectFailureInAllEntries('如果 真 那么 1 否则 不存在的函数(1)', 'UNKNOWN_FUNCTION')).toMatchObject({
       column: 14,
     });
-    expectFailureInAllEntries('如果 真 那么 1 否则 ToNumber(1, 2)', 'ARGUMENT_COUNT', false);
+    expectFailureInAllEntries('如果 真 那么 1 否则 ToNumber(1, 2)', 'ARGUMENT_COUNT');
   });
 });

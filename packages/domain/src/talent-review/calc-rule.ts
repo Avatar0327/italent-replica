@@ -91,10 +91,21 @@ export type CalcAnalysis =
 export const formulaFieldKind = (kind: TalentReviewFieldKind): ExpressionFieldKind =>
   kind === 'option' ? 'text' : kind;
 
+/**
+ * 不依赖字段目录读名称文本的引用：`盘点对象.甲-乙` 是一个字段名还是减法要看字段目录（#89-4），这里两种读法都算
+ * （并成字段名 / 按减法），取能解析的读法的并集，宁可多认；两种读法都不合法时为 undefined。
+ */
+function referencesEitherWay(formula: string): Set<string> | undefined {
+  const readings = [() => true, () => false].map((fieldExists) =>
+    validateFormula(formula, { isKnownField: () => true, fieldExists }),
+  );
+  if (readings.every((reading) => !reading.ok)) return undefined;
+  return new Set(readings.flatMap((reading) => (reading.ok ? reading.fields : [])));
+}
+
 /** 公式里引用的字段路径（语法不合法时为空）；已存公式的引用判定共用，不依赖字段目录。 */
 export function formulaReferences(formula: string): string[] {
-  const parsed = validateFormula(formula, { isKnownField: () => true });
-  return parsed.ok ? [...parsed.fields] : [];
+  return [...(referencesEitherWay(formula) ?? [])];
 }
 
 /**
@@ -113,8 +124,8 @@ export function fieldNameTerms(fieldName: string): string[] {
  */
 export function textMentionsField(formula: string, fieldName: string): boolean {
   if (!fieldNameTerms(fieldName).every((term) => formula.includes(term))) return false;
-  const parsed = validateFormula(formula, { isKnownField: () => true });
-  return !parsed.ok || parsed.fields.includes(formulaPath(fieldName));
+  const paths = referencesEitherWay(formula);
+  return paths === undefined || paths.has(formulaPath(fieldName));
 }
 
 /**
