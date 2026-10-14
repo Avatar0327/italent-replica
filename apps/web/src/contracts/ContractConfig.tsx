@@ -1,124 +1,189 @@
-import { Alert, Button, Drawer, Space, Switch, Table } from 'antd';
+import { Alert, Button, Drawer, Pagination, Space, Table } from 'antd';
 import { useState } from 'react';
 import { usePermissions } from '../foundation/Permissions.js';
 import { PageState } from '../foundation/PageState.js';
-import { contractTypes } from '../demo-stubs/contracts.js';
-import { configObjects, value, type Config, type Row } from './model.js';
+import type { PageResult } from '../foundation/client.js';
+import { ui } from '../foundation/messages.js';
+import { configAccess, configObjects, contractApi, value, type Config, type Row } from './model.js';
 import { useRead } from './useRead.js';
 import { m } from './messages.js';
-import { Coming, DemoNote, Fields } from './parts.js';
+import { Fields } from './parts.js';
+import { ConfigForm, RowCommand, configFields } from './ConfigForms.js';
+import { RenewalSection, RuleMove, movePriority } from './RuleControls.js';
+import { RefLabel, RefLabels, refPaths } from './references.js';
+
+const pageSize = 15;
 export function ContractConfig({ kind }: { kind: Config }) {
   const permission = usePermissions(configObjects[kind]);
   const allowed = permission.snapshot.objects[configObjects[kind]]?.viewableFields ?? [];
   const [page, setPage] = useState(1);
-  const [demo, setDemo] = useState(false);
   const [rule, setRule] = useState<Row>();
-  const path = kind === 'types' ? `/master-data/types?page=${page}&pageSize=15` : `/${kind}`;
-  const result = useRead<Row & { items?: Row[] }>(`/api/tenant/contracts${path}`);
-  const settingPermission = usePermissions(configObjects.settings);
-  const settings = useRead<Row>(
-    kind === 'rules' && settingPermission.snapshot.objects[configObjects.settings]
-      ? '/api/tenant/contracts/settings'
-      : null,
-  );
-  const rows = kind === 'types' && demo ? contractTypes : (result.data?.items ?? []);
+  const [editing, setEditing] = useState<{ row?: Row }>();
+  const path = kind === 'settings' ? contractApi.settings : `${contractApi[kind]}?page=${page}&pageSize=${pageSize}`;
+  const result = useRead<Row & Partial<PageResult<Row>>>(path);
+  const rows = result.data?.items ?? [];
+  const access = configAccess(permission.snapshot.objects[configObjects[kind]]);
+  const canCreate = kind !== 'settings' && access.create;
+  const canEdit = access.update;
+  // 移序发完整请求体：规则字段须全部可读、优先级可写。
+  const movable =
+    kind === 'rules' &&
+    canEdit &&
+    configFields.rules.every((key) => permission.field(key).visible) &&
+    permission.field('priority').editable;
   return (
     <section className="contract-card">
       <header className="contract-heading">
         <h1>{m[kind]}</h1>
-        <Coming labels={[kind === 'settings' ? m.save : m.create]} />
+        <Space>
+          {canCreate && (
+            <Button type="primary" onClick={() => setEditing({})}>
+              {m.create}
+            </Button>
+          )}
+          {kind === 'settings' && canEdit && result.data && (
+            <Button type="primary" onClick={() => setEditing({ row: result.data })}>
+              {m.edit}
+            </Button>
+          )}
+        </Space>
       </header>
       {!!result.error && <PageState kind="error" error={result.error} retry={result.refresh} />}
       {!result.error && result.loading && <PageState kind="loading" />}
-      {!result.error && !result.loading && (
+      {!result.error && !result.loading && kind === 'settings' && (
+        <SettingsFields row={result.data ?? {}} allowed={allowed} />
+      )}
+      {!result.error && !result.loading && kind !== 'settings' && (
         <>
-          {kind === 'settings' ? (
-            <SettingsFields row={result.data ?? {}} allowed={allowed} />
-          ) : (
-            <>
-              {kind === 'rules' && (
-                <RenewalSwitch settings={settings} visible={settingPermission.field('autoRenew').visible} />
-              )}
-              {kind === 'types' && (
-                <Space>
-                  <p>{m.orderHint}</p>
-                  <Button onClick={() => setDemo((v) => !v)}>{demo ? m.live : m.sample}</Button>
-                </Space>
-              )}
-              {demo && <DemoNote />}
-              <ConfigTable kind={kind} rows={rows} demo={demo} allowed={allowed} setRule={setRule} />
-              {kind === 'types' && (
-                <Space>
-                  <Button disabled={demo || page === 1} onClick={() => setPage((n) => n - 1)}>
-                    {m.previous}
-                  </Button>
-                  <span>{page}</span>
-                  <Button disabled={demo || rows.length < 15} onClick={() => setPage((n) => n + 1)}>
-                    {m.next}
-                  </Button>
-                </Space>
-              )}
-            </>
-          )}
+          {kind === 'rules' && <RenewalSection />}
+          {kind === 'types' && <p>{m.displayOrderGap}</p>}
+          <ConfigTable
+            kind={kind}
+            rows={rows}
+            allowed={allowed}
+            setRule={setRule}
+            edit={canEdit ? (row) => setEditing({ row }) : undefined}
+            removable={kind === 'rules' && canEdit}
+            moves={movable ? ruleMoves(rows, page, result.data?.total) : undefined}
+            toggle={kind === 'types' && canEdit && canToggle(permission.field)}
+            reload={result.refresh}
+          />
+          <ConfigPagination kind={kind} page={page} rows={rows.length} total={result.data?.total} setPage={setPage} />
         </>
       )}
       <RuleDrawer rule={rule} allowed={allowed} close={() => setRule(undefined)} />
+      {editing && (
+        <ConfigForm
+          kind={kind}
+          row={editing.row}
+          tenantId={kind === 'settings' ? String(result.data?.tenantId ?? '') : undefined}
+          onClose={() => setEditing(undefined)}
+          onSaved={() => {
+            setEditing(undefined);
+            result.refresh();
+          }}
+        />
+      )}
     </section>
   );
 }
+/** 上移只在第一页能确认前面没有别的规则，下移只在最后一页能确认后面没有。 */
+function ruleMoves(rows: Row[], page: number, total?: number) {
+  const lastPage = typeof total === 'number' && (page - 1) * pageSize + rows.length >= total;
+  return (index: number) => ({
+    up: movePriority(rows, index, -1, page === 1),
+    down: movePriority(rows, index, 1, lastPage),
+  });
+}
+/** 规则列表有 total；类型列表接口不返回 total（后端缺口），按“本页满 15 条即可能有下一页”翻页。 */
+function ConfigPagination({
+  kind,
+  page,
+  rows,
+  total,
+  setPage,
+}: {
+  kind: Config;
+  page: number;
+  rows: number;
+  total?: number;
+  setPage(page: number): void;
+}) {
+  const known = kind === 'rules' && typeof total === 'number';
+  const estimate = (page - 1) * pageSize + rows + (rows === pageSize ? 1 : 0);
+  return (
+    <div className="contract-toolbar contract-pagination">
+      {known && <span>{m.total(total)}</span>}
+      <Pagination
+        current={page}
+        pageSize={pageSize}
+        total={known ? total : estimate}
+        showSizeChanger={false}
+        showTotal={() => `${pageSize}${ui.perPage}`}
+        onChange={setPage}
+      />
+    </div>
+  );
+}
 function SettingsFields({ row, allowed }: { row: Row; allowed: readonly string[] }) {
+  const typeKeys = ['postExitTypeIds', 'indefiniteTypeIds', 'renewalTypeIds'];
+  const keys = [
+    'autoRenew',
+    'autoTerminate',
+    'postExitTypeIds',
+    'indefiniteTypeIds',
+    'accumulateRehire',
+    'renewalTypeIds',
+    'autoNumber',
+    'uniqueFields',
+  ].filter((key) => allowed.includes(key));
   return (
     <>
       <Alert type="info" message={m.settingHint} />
-      <Fields
-        row={row}
-        allowed={allowed}
-        keys={[
-          'autoTerminate',
-          'postExitTypeIds',
-          'indefiniteTypeIds',
-          'accumulateRehire',
-          'renewalTypeIds',
-          'autoNumber',
-          'uniqueFields',
-        ]}
-      />
-    </>
-  );
-}
-function RenewalSwitch({ settings, visible }: { settings: ReturnType<typeof useRead<Row>>; visible: boolean }) {
-  return (
-    <>
-      <h2>{m.fields.autoRenew}</h2>
-      <p>{m.renewalHint}</p>
-      {settings.error ? (
-        <PageState kind="error" error={settings.error} retry={settings.refresh} />
-      ) : (
-        visible &&
-        typeof settings.data?.autoRenew === 'boolean' && (
-          <Switch aria-label={m.fields.autoRenew} disabled checked={settings.data.autoRenew} />
-        )
-      )}
+      <dl className="contract-settings">
+        {keys.map((key) => (
+          <div key={key}>
+            <dt>{m.fields[key]}</dt>
+            <dd>
+              {typeKeys.includes(key) ? (
+                <RefLabels path={refPaths.typeId} ids={row[key]} />
+              ) : key === 'uniqueFields' && Array.isArray(row[key]) ? (
+                (row[key] as string[]).map((field) => m.fields[field] ?? field).join('、') || '--'
+              ) : (
+                value(row[key], key)
+              )}
+            </dd>
+          </div>
+        ))}
+      </dl>
     </>
   );
 }
 function ConfigTable({
   kind,
   rows,
-  demo,
   allowed,
   setRule,
+  edit,
+  removable,
+  toggle,
+  moves,
+  reload,
 }: {
   kind: Config;
   rows: Row[];
-  demo: boolean;
   allowed: readonly string[];
   setRule(row: Row): void;
+  edit?: (row: Row) => void;
+  removable: boolean;
+  toggle: boolean;
+  moves?: (index: number) => { up?: number | null; down?: number | null };
+  reload(): void;
 }) {
   const keys =
     kind === 'types'
       ? ['code', 'name', 'enabled', 'displayOrder']
-      : ['priority', 'name', 'orgIds', 'personIds', 'details'];
+      : ['priority', 'name', 'enabled', 'orgIds', 'personIds', 'details'];
   return (
     <Table<Row>
       size="small"
@@ -129,29 +194,37 @@ function ConfigTable({
       locale={{ emptyText: m.empty }}
       columns={[
         ...keys
-          .filter((key) => demo || allowed.includes(key) || key === 'displayOrder')
+          .filter((key) => allowed.includes(key))
           .map((key) => ({
             key,
             title:
               ({ name: kind === 'types' ? m.typeName : m.ruleName, code: m.typeCode } as Record<string, string>)[key] ??
               m.fields[key],
             width: kind === 'types' ? 254 : (({ priority: 132 } as Record<string, number>)[key] ?? 222),
-            render: (_: unknown, row: Row) => (key === 'details' ? <RuleSummary row={row} /> : configValue(row, key)),
+            render: (_: unknown, row: Row) => configValue(row, key),
           })),
-        ...(kind === 'rules'
-          ? [
-              {
-                key: 'open',
-                title: m.ruleInfo,
-                width: 152,
-                render: (_: unknown, row: Row) => (
-                  <Button type="link" onClick={() => setRule(row)}>
-                    {m.ruleInfo}
-                  </Button>
-                ),
-              },
-            ]
-          : []),
+        {
+          key: 'open',
+          title: m.operation,
+          width: 200,
+          render: (_: unknown, row: Row, index: number) => (
+            <Space size={4}>
+              {kind === 'rules' && (
+                <Button type="link" onClick={() => setRule(row)}>
+                  {m.ruleInfo}
+                </Button>
+              )}
+              {edit && (
+                <Button type="link" onClick={() => edit(row)}>
+                  {m.edit}
+                </Button>
+              )}
+              {toggle && typeof row.enabled === 'boolean' && <RowCommand kind="toggle" row={row} onDone={reload} />}
+              {removable && <RowCommand kind="delete" row={row} onDone={reload} />}
+              {moves && <RuleMove row={row} {...moves(index)} onDone={reload} />}
+            </Space>
+          ),
+        },
       ]}
     />
   );
@@ -160,8 +233,8 @@ function RuleSummary({ row }: { row: Row }) {
   return Array.isArray(row.details)
     ? row.details.map((detail: Row, index: number) => (
         <p key={index}>
-          {value(detail.typeId, 'typeId')} · {m.fields.daysBefore} {value(detail.daysBefore, 'daysBefore')} ·{' '}
-          {m.fields.months} {value(detail.months, 'months')}
+          <RefLabel path={refPaths.typeId} id={detail.typeId} /> · {m.fields.daysBefore}{' '}
+          {value(detail.daysBefore, 'daysBefore')} · {m.fields.months} {value(detail.months, 'months')}
         </p>
       ))
     : '--';
@@ -171,23 +244,42 @@ function RuleDrawer({ rule, allowed, close }: { rule?: Row; allowed: readonly st
     <Drawer title={m.ruleInfo} open={!!rule} onClose={close} width={600}>
       {rule && (
         <>
-          <Fields row={rule} allowed={allowed} keys={['name', 'priority', 'orgIds', 'personIds', 'enabled']} />
+          <Fields
+            row={rule}
+            allowed={allowed}
+            keys={['name', 'priority', 'enabled', 'orgIds', 'personIds']}
+            labels={{ name: m.ruleName }}
+            render={(key) => configValue(rule, key)}
+          />
           <h2>{m.flowRule}</h2>
           {allowed.includes('details') &&
             Array.isArray(rule.details) &&
             rule.details.map((detail: Row, index: number) => (
               <section className="contract-card" key={index}>
-                <Fields row={detail} keys={['typeId', 'daysBefore', 'months', 'initiatorId', 'skipTypeIds']} />
+                <Fields
+                  row={detail}
+                  keys={['typeId', 'daysBefore', 'months', 'initiatorId', 'skipTypeIds']}
+                  render={(key) => detailValue(detail, key)}
+                />
               </section>
             ))}
-          <Coming labels={[m.save]} />
         </>
       )}
     </Drawer>
   );
 }
-
+/** 行内启停发完整请求体，编码 / 名称须可读、启用须可写，否则不提供入口。 */
+function canToggle(field: (name: string) => { visible: boolean; editable: boolean }) {
+  return ['code', 'name'].every((name) => field(name).visible) && field('enabled').editable;
+}
+function detailValue(detail: Row, key: string) {
+  if (key === 'typeId') return <RefLabel path={refPaths.typeId} id={detail.typeId} />;
+  if (key === 'skipTypeIds') return <RefLabels path={refPaths.typeId} ids={detail.skipTypeIds} />;
+  return value(detail[key], key);
+}
 function configValue(row: Row, key: string) {
   if (key === 'enabled' && typeof row[key] === 'boolean') return row[key] ? m.enabled : m.disabled;
+  if (key === 'details') return <RuleSummary row={row} />;
+  if (key === 'orgIds') return <RefLabels path={refPaths.orgId} ids={row.orgIds} />;
   return value(row[key], key);
 }

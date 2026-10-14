@@ -14,6 +14,7 @@ export function ContractsPage() {
   const rules = usePermissions(configObjects.rules);
   const settings = usePermissions(configObjects.settings);
   const access = { types, rules, settings };
+  // 命令存储在模块级（commands.ts），不放页面根部：AppPages 按 pathname 重建页面，切子页会连同存储一起销毁。
   return (
     <div className="contracts-page">
       <nav className="contract-toolbar" aria-label={m.settings}>
