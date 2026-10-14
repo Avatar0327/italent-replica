@@ -7,6 +7,9 @@
 //           → 重算 F-039 证据登记与冻结基准 / 端点计数 → 提交“merge: 合入 main 并重算生成物”
 //   --check     只预演：列出会冲突的文件（区分生成物 / 授权版本 / 业务文件）、迁移改号与授权版本定号计划，不改工作区；
 //               定号按 git merge-tree 算出的合并结果预告（与实际同口径），算不出时给条件式提示；有业务冲突退出码 1
+//   登记类冲突（F-133，DEC-491④）：两边都往同一清单加条目的文件自动取并集，不再人工逐个解——
+//           F-039 登记 required/declared/<模块>.ts（结构化合并）、required/declared/index.ts、required/index.ts，
+//           路由登记 apps/api/src/app.ts、packages/db/src/schema/index.ts；只处理“两边都是纯新增”，处理后核对两边新增项都在结果里
 //   --continue  业务冲突手工解决并 git add 之后，从改号那一步继续
 //   --no-regen  不跑重算命令（只合并、改号、提交）
 //   --take-ours-for-counts  业务冲突里 main 一侧只改了数字字面量（如端点计数）的文件，冲突处取本分支一侧并 git add；
@@ -43,6 +46,13 @@ import {
   writeGrantConstants,
   writeGrantHistory,
 } from './merge-main-lib.mjs';
+import {
+  isRegistryPath,
+  loadTools,
+  REGISTRY_PATHS,
+  registryProblems,
+  resolveRegistryFile,
+} from './merge-main-registry-lib.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const MAIN = 'origin/main';
@@ -167,6 +177,60 @@ function grantConflicts(files, revs) {
     const resolved = text === undefined ? null : resolveGrantConflict(file, text);
     return resolved && resolved.remaining === 0 ? [{ file, text: resolved.text }] : [];
   });
+}
+
+/**
+ * 登记类冲突（F-133）：两边都往同一清单加条目的文件取并集（纯新增才处理，见 merge-main-registry-lib.mjs）。
+ * 返回 { resolved: [{ file, text }], manual: [{ file, reason }] }；manual 里的文件原样留给人工，reason 说明为什么没自动处理。
+ */
+async function registryConflicts(files, revs) {
+  const candidates = files.filter(isRegistryPath);
+  if (!candidates.length) return { resolved: [], manual: [] };
+  const tools = await loadTools();
+  const resolved = [];
+  const manual = [];
+  for (const file of candidates) {
+    const [ours, base, theirs] = revs.map((rev) => show(rev, file));
+    const result = await resolveRegistryFile(tools, file, {
+      versions: { ours, base, theirs },
+      diff3: diff3Text(file, revs),
+    });
+    if (result.error === undefined) resolved.push({ file, text: result.text });
+    else manual.push({ file, reason: result.error });
+  }
+  return { resolved, manual };
+}
+
+function printRegistryManual(manual) {
+  if (manual.length)
+    console.log(
+      `登记类文件的冲突不是“两边纯新增”，没有自动处理：\n  ${manual.map((m) => `${m.file}（${m.reason}）`).join('\n  ')}`,
+    );
+}
+
+/**
+ * 合并结果里的登记类文件再核对一遍（含 git 没冲突、自动合并成功的）：本分支新增 ∪ main 新增都在结果里、没有重复。
+ * 只看两边都改过的文件；合并进行中 HEAD 仍是合并前的提交。有问题就停下，不提交。
+ */
+async function verifyRegistries() {
+  const fork = git('merge-base', 'HEAD', MAIN).trim();
+  const changed = (rev) => new Set(git('diff', '--name-only', '-z', fork, rev).split('\0').filter(Boolean));
+  const [mine, theirs] = [changed('HEAD'), changed(MAIN)];
+  const files = [...mine].filter((f) => theirs.has(f) && isRegistryPath(f) && existsSync(path.join(ROOT, f)));
+  if (!files.length) return;
+  const tools = await loadTools();
+  const problems = files.flatMap((file) =>
+    registryProblems(tools, file, readRepo(file), {
+      ours: show('HEAD', file) ?? '',
+      base: show(fork, file) ?? '',
+      theirs: show(MAIN, file) ?? '',
+    }).map((problem) => `${file}：${problem}`),
+  );
+  if (problems.length)
+    fail(
+      `登记类文件合并后核对失败（不提交，请人工补齐后运行 pnpm merge:main --continue）：\n  ${problems.join('\n  ')}`,
+    );
+  console.log(`登记核对通过（本分支新增 ∪ main 新增都在，无重复）：\n  ${files.join('\n  ')}`);
 }
 
 /**
@@ -434,6 +498,20 @@ function resolveGenerated(files) {
   }
 }
 
+/** 提交之后汇总“证据登记差异说明”（#197）：只提示，不改退出码；待说明项要在 PR 描述里逐条说明。 */
+function explainGraphDiff() {
+  const run = spawnSync(process.execPath, ['scripts/explain-graph-diff.mjs'], { cwd: ROOT, encoding: 'utf8' });
+  const lines = `${run.stdout}${run.stderr}`.split('\n');
+  const summary = lines.findLast((line) => /^可解释 \d+ 项，待说明 \d+ 项/.test(line));
+  const pending = lines.filter((line) => line.startsWith('待说明 '));
+  if (!summary)
+    return console.log(
+      `证据登记差异说明没有给出汇总（退出码 ${run.status}），请手工运行 node scripts/explain-graph-diff.mjs`,
+    );
+  console.log(`证据登记差异说明（node scripts/explain-graph-diff.mjs）：${summary}`);
+  if (pending.length) console.log(`  待说明项（须在 PR 描述里逐条说明）：\n    ${pending.join('\n    ')}`);
+}
+
 async function check() {
   const upToDate = gitOk('merge-base', '--is-ancestor', MAIN, 'HEAD');
   console.log(upToDate ? `当前分支已包含 ${MAIN}。` : `需要合并 ${MAIN}。`);
@@ -441,13 +519,19 @@ async function check() {
   const conflicts = splitConflicts(upToDate ? [] : predictConflicts());
   const grants = grantConflicts(conflicts.other, ['HEAD', base, MAIN]).map((g) => g.file);
   conflicts.other = conflicts.other.filter((f) => !grants.includes(f));
+  const registry = await registryConflicts(conflicts.other, ['HEAD', base, MAIN]);
+  const registryFiles = registry.resolved.map((r) => r.file);
+  conflicts.other = conflicts.other.filter((f) => !registryFiles.includes(f));
   printConflicts(conflicts);
   if (grants.length) console.log(`授权版本冲突（合并时自动定号）：\n  ${grants.join('\n  ')}`);
+  if (registryFiles.length) console.log(`登记类冲突（合并时自动取并集）：\n  ${registryFiles.join('\n  ')}`);
+  printRegistryManual(registry.manual);
   if (conflicts.other.length) printCountHint(countOnlyConflicts(conflicts.other, ['HEAD', base, MAIN]));
   const plan = migrationPlan();
   printPlan(plan);
   await printGrantPlan(base, upToDate);
   console.log(`生成物白名单：\n  ${GENERATED_PATHS.join('\n  ')}`);
+  console.log(`登记类（两边纯新增时自动取并集）：\n  ${REGISTRY_PATHS.join('\n  ')}`);
   process.exit(conflicts.other.length || plan.identityProblems.length ? 1 : 0);
 }
 
@@ -472,6 +556,15 @@ async function main() {
   }
   if (grants.length) console.log(`授权版本冲突取 main 一侧（随后定号）：\n  ${grants.map((g) => g.file).join('\n  ')}`);
   let other = conflicts.other.filter((f) => !grants.some((g) => g.file === f));
+  const registry = await registryConflicts(other, [':2', ':1', ':3']);
+  for (const { file, text } of registry.resolved) {
+    writeRepo(file, text);
+    git('add', '--', file);
+  }
+  if (registry.resolved.length)
+    console.log(`登记类冲突取并集（两边新增项都保留）：\n  ${registry.resolved.map((r) => r.file).join('\n  ')}`);
+  printRegistryManual(registry.manual);
+  other = other.filter((f) => !registry.resolved.some((r) => r.file === f));
   const countOnly = other.length ? countOnlyConflicts(other, [':2', ':1', ':3']) : [];
   if (args.has('--take-ours-for-counts') && countOnly.length) {
     const resolved = resolveCountOnly(countOnly);
@@ -487,6 +580,7 @@ async function main() {
   if (plan.identityProblems.length)
     fail('保留迁移的快照身份重复（见上），未改号；人工处理后运行 pnpm merge:main --continue');
   if (plan.changed) applyRenumber(plan);
+  await verifyRegistries();
   await assignGrantVersion().catch((error) =>
     fail(`授权版本定号失败：${error.message}\n请人工处理后运行 pnpm merge:main --continue`),
   );
@@ -497,6 +591,7 @@ async function main() {
   console.log(
     `已提交：${COMMIT_MESSAGE}（${git('rev-parse', '--short', 'HEAD').trim()}）；推送后 CI 按严格模式校验生成物`,
   );
+  if (!args.has('--no-regen')) explainGraphDiff();
 }
 
 await main();
