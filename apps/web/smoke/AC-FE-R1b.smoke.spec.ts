@@ -89,7 +89,10 @@ test('AC-FE-R1b-03 切换身份，列表筛选、列设置、档案三个页签�
   await page.getByRole('button', { name: '重置筛选', exact: true }).click();
   await openColumnSettings(page);
   await page.getByRole('checkbox', { name: '性别', exact: true }).uncheck();
-  await page.getByRole('dialog', { name: '设置显示字段' }).getByRole('button', { name: /^确\s*定$/ }).click();
+  await page
+    .getByRole('dialog', { name: '设置显示字段' })
+    .getByRole('button', { name: /^确\s*定$/ })
+    .click();
   await expect(page.getByRole('columnheader', { name: '性别', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: '合成林晓', exact: true }).click();
   await expect(page.getByRole('dialog', { name: '员工档案' })).toBeVisible();
@@ -127,7 +130,10 @@ test('AC-FE-R1b-03b 列设置勾选在点击事件内同步生效，同一帧连
     return { afterFirst, gender: input('gender').checked, email: input('email').checked };
   });
   expect(states).toEqual({ afterFirst: false, gender: false, email: false });
-  await page.getByRole('dialog', { name: '设置显示字段' }).getByRole('button', { name: /^确\s*定$/ }).click();
+  await page
+    .getByRole('dialog', { name: '设置显示字段' })
+    .getByRole('button', { name: /^确\s*定$/ })
+    .click();
   await expect(page.getByRole('columnheader', { name: '性别', exact: true })).toHaveCount(0);
   await expect(page.getByRole('columnheader', { name: '电子邮件', exact: true })).toHaveCount(0);
 });
@@ -178,20 +184,48 @@ test('AC-FE-R1b-03c 设置显示字段：居中双栏、姓名锁定、拖拽排
   await expect(dialog.getByRole('checkbox', { name: '员工姓名', exact: true })).toBeDisabled();
   const selected = dialog.getByRole('list', { name: '已选字段' });
   await expect(dialog.getByText('已选字段 6/7', { exact: true })).toBeVisible();
-  await expect(selected.getByRole('listitem')).toHaveText(['员工姓名', '员工ID', '性别', '人员状态', '入职日期', '电子邮件']);
+  await expect(selected.getByRole('listitem')).toHaveText([
+    '员工姓名',
+    '员工ID',
+    '性别',
+    '人员状态',
+    '入职日期',
+    '电子邮件',
+  ]);
   await expect(selected.getByRole('listitem').first()).toHaveAttribute('draggable', 'false');
   await selected.getByRole('listitem', { name: '入职日期' }).dragTo(selected.getByRole('listitem', { name: '员工ID' }));
-  await expect(selected.getByRole('listitem')).toHaveText(['员工姓名', '入职日期', '员工ID', '性别', '人员状态', '电子邮件']);
+  await expect(selected.getByRole('listitem')).toHaveText([
+    '员工姓名',
+    '入职日期',
+    '员工ID',
+    '性别',
+    '人员状态',
+    '电子邮件',
+  ]);
   await dialog.getByRole('checkbox', { name: '性别', exact: true }).uncheck();
   await expect(dialog.getByText('已选字段 5/7', { exact: true })).toBeVisible();
   await dialog.getByRole('searchbox', { name: '搜索字段' }).fill('日期');
   await expect(dialog.getByRole('checkbox', { name: '员工ID', exact: true })).toHaveCount(0);
   await dialog.getByRole('searchbox', { name: '搜索字段' }).fill('');
   await dialog.getByRole('button', { name: /^确\s*定$/ }).click();
-  await expect(page.getByRole('columnheader')).toHaveText(['员工姓名', '入职日期', '员工ID', '人员状态', '电子邮件', '']);
+  await expect(page.getByRole('columnheader')).toHaveText([
+    '员工姓名',
+    '入职日期',
+    '员工ID',
+    '人员状态',
+    '电子邮件',
+    '',
+  ]);
   await openColumnSettings(page);
   await dialog.getByRole('button', { name: '恢复默认', exact: true }).click();
-  await expect(selected.getByRole('listitem')).toHaveText(['员工姓名', '员工ID', '性别', '人员状态', '入职日期', '电子邮件']);
+  await expect(selected.getByRole('listitem')).toHaveText([
+    '员工姓名',
+    '员工ID',
+    '性别',
+    '人员状态',
+    '入职日期',
+    '电子邮件',
+  ]);
   await dialog.getByRole('button', { name: /^取\s*消$/ }).click();
   await expect(page.getByRole('columnheader', { name: '性别', exact: true })).toHaveCount(0);
 });

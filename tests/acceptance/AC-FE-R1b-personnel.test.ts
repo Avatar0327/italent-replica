@@ -35,9 +35,9 @@ describe('AC-FE-R1b-01 员工筛选与字段可见性', () => {
 
 describe('AC-FE-R1b-02 任职日期和字段值', () => {
   it('不使用浏览器日期、不把同日短区间改写为当前，不把已生效等同当前', () => {
-    expect(recordPeriod({ effectiveDate: '2026-10-01', stopDate: '2026-09-30' })).toBe('2026-10-01 → 2026-09-30');
-    expect(recordPeriod({ effectiveDate: '2026-10-01', stopDate: '9999-12-31' })).toBe('2026-10-01 → 无截止日期');
-    expect(recordPeriod({})).toBe('— → —');
+    expect(recordPeriod({ effectiveDate: '2026-10-01', stopDate: '2026-09-30' })).toBe('2026-10-01 至 2026-09-30');
+    expect(recordPeriod({ effectiveDate: '2026-10-01', stopDate: '9999-12-31' })).toBe('2026-10-01 至今');
+    expect(recordPeriod({})).toBe('— 至 —');
   });
   it('false 和 0 不当作空值；不把未知对象串为业务文本', () => {
     expect(displayValue(false)).toBe('否');

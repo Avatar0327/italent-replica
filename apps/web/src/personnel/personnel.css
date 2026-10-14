@@ -84,9 +84,6 @@
 .staff-record .ant-descriptions {
   margin-top: 12px;
 }
-.staff-timeline {
-  padding: 16px 8px;
-}
 .staff-pagination {
   display: flex;
   justify-content: space-between;
@@ -94,26 +91,38 @@
   margin-top: 16px;
   color: #868b8f;
 }
-.staff-subsets {
+.staff-profile {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 145px;
   gap: 16px;
+  align-items: start;
 }
-.staff-subsets nav {
+.staff-profile-content {
+  min-width: 0;
+}
+.staff-profile nav {
+  position: sticky;
+  top: 0;
   display: flex;
   flex-direction: column;
   border-left: 1px solid #e6e8eb;
   padding-left: 8px;
 }
-.staff-subsets nav .ant-btn {
-  text-align: left;
+.staff-profile nav .ant-btn {
+  justify-content: flex-start;
   padding-inline: 8px;
   margin-bottom: 6px;
   font-size: 12px;
 }
-.staff-subsets nav .is-active {
+.staff-profile nav .is-active {
   color: #0054f0;
   background: #edf3ff;
+}
+.staff-records {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
 }
 .staff-subset-row {
   padding: 16px;
@@ -121,6 +130,87 @@
   border-radius: 5px;
   margin-bottom: 12px;
 }
-.staff-subset-content {
-  min-width: 0;
+.staff-gear.ant-btn {
+  color: #868b8f;
+}
+.staff-gear-item.ant-btn {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  width: 160px;
+  font-size: 12px;
+}
+.staff-gear-chevron::after {
+  content: '›';
+  color: #868b8f;
+}
+.staff-columns-modal .ant-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.staff-columns-panes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  height: 360px;
+  border: 1px solid #e6e8eb;
+  border-radius: 5px;
+}
+.staff-columns-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  padding: 12px 16px;
+  overflow: auto;
+}
+.staff-columns-pane + .staff-columns-pane {
+  border-left: 1px solid #e6e8eb;
+}
+.staff-columns-pane header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: #868b8f;
+}
+.staff-columns-pane .staff-column-options {
+  gap: 12px;
+  padding-left: 24px;
+}
+.staff-columns-selected {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.staff-columns-selected li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 8px;
+  border-radius: 5px;
+  cursor: move;
+}
+.staff-columns-selected li:hover {
+  background: #f7f9fa;
+}
+.staff-columns-selected li.is-locked {
+  color: #868b8f;
+  cursor: not-allowed;
+}
+.staff-columns-selected li.is-dragging {
+  opacity: 0.4;
+}
+.staff-columns-icon {
+  flex: none;
+  color: #868b8f;
+}
+.staff-columns-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.staff-columns-footer .staff-muted {
+  margin-right: auto;
 }
