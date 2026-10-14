@@ -5,6 +5,7 @@ import { DecisionNote } from '../foundation/DecisionNote.js';
 import { PageState } from '../foundation/PageState.js';
 import { DetailPage } from '../foundation/templates.js';
 import { IDP_API } from './api.js';
+import { yesNo } from './listing.js';
 import { t } from './messages.js';
 import { display } from './model.js';
 import type { Template, TemplateModule } from './types.js';
@@ -32,7 +33,6 @@ export function TemplateDetailDrawer({ id, processName, orgName, actions, onClos
         summary={detail.error ? <Failure error={detail.error} retry={detail.reload} /> : <PageState kind="loading" />}
       />
     );
-  const yesNo = (value?: boolean) => (value === undefined ? t.noValue : value ? t.yes : t.no);
   return (
     <DetailPage
       open

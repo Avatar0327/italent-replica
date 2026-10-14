@@ -45,7 +45,10 @@ export function NameSearch({ value, change }: { value?: string; change(value: st
   );
 }
 
-export const yesNo = (value?: boolean) => (value === undefined ? t.noValue : value ? t.yes : t.no);
+export function yesNo(value?: boolean) {
+  if (value === undefined) return t.noValue;
+  return value ? t.yes : t.no;
+}
 
 /** 列表头部按钮：有新增权限时给“新增”，其余按钮放中间，“刷新”固定在最后。 */
 export function HeaderActions({

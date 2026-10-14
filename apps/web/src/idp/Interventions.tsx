@@ -98,10 +98,8 @@ function BatchDialog({ kind, rows, onClose, action, failure, finish }: DialogPro
   const [runningMode, setRunningMode] = useState<'skipRunning' | 'endRunning'>('skipRunning');
   const ok = async () => {
     const items = eligible.map((row) => ({ id: row.id, revision: row.revision! }));
-    const body =
-      kind === 'startNext'
-        ? { items, runningMode }
-        : { items, ...(kind === 'terminate' && reason.trim() ? { reason: reason.trim() } : {}) };
+    const note = kind === 'terminate' && reason.trim() ? { reason: reason.trim() } : {};
+    const body = kind === 'startNext' ? { items, runningMode } : { items, ...note };
     const path = { urge: 'urge', startNext: 'start-next', terminate: 'terminate' }[kind];
     const result = await action.batch(`${IDP_API}/plans/${path}`, body);
     if (result) finish(result.receipts);

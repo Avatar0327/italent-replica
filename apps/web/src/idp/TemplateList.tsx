@@ -25,8 +25,8 @@ const CONFIRMS: Partial<Record<RowAction, string>> = {
   unpublish: t.confirm.unpublish,
   delete: t.confirm.delete,
 };
-const applies = (row: Template, key: RowAction) =>
-  key === 'publish' ? row.status === 'draft' : key === 'unpublish' ? row.status === 'published' : true;
+const REQUIRED_STATUS: Partial<Record<RowAction, Template['status']>> = { publish: 'draft', unpublish: 'published' };
+const applies = (row: Template, key: RowAction) => !REQUIRED_STATUS[key] || row.status === REQUIRED_STATUS[key];
 
 export function TemplateList() {
   const permission = usePermissions(OBJECTS.template);

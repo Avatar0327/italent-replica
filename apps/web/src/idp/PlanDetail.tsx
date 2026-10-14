@@ -202,8 +202,10 @@ function KeyInfoTable({ rows }: { rows: KeyInfoRow[] }) {
     'employee',
     rows.flatMap((row) => keys.filter((key) => key.endsWith('EmployeeId')).map((key) => row[key] as string)),
   );
-  const render = (key: string, value: unknown): ReactNode =>
-    key.endsWith('EmployeeId') ? people(value as string) : display(Array.isArray(value) ? value.join('、') : value);
+  const render = (key: string, value: unknown): ReactNode => {
+    if (key.endsWith('EmployeeId')) return people(value as string);
+    return display(Array.isArray(value) ? value.join('、') : value);
+  };
   return (
     <Table
       size="small"
