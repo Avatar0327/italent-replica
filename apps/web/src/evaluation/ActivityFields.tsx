@@ -54,18 +54,7 @@ export function ActivityControl({
         disabled={disabled}
       />
     );
-  if (name === 'applicants')
-    return (
-      <Checkbox.Group
-        value={value as string[]}
-        onChange={onChange}
-        disabled={disabled}
-        options={[
-          { value: 'self', label: m.self },
-          { value: 'others', label: m.others },
-        ]}
-      />
-    );
+  if (name === 'applicants') return <ApplicantTypes value={value} onChange={onChange} disabled={disabled} />;
   if (name === 'orgRange') return <OrgRanges value={records(value)} onChange={onChange} disabled={disabled} />;
   return (
     <Input
@@ -75,6 +64,37 @@ export function ActivityControl({
       maxLength={200}
       disabled={disabled}
     />
+  );
+}
+const applicantTypes = ['self', 'others'] as const;
+// 不用 Checkbox.Group：它把受控 value 镜像进内部 state，点击后要等 effect 再渲染一轮，
+// 这一轮之前界面仍是旧勾选，连续点击会拿旧 value 覆盖前一次操作。逐项受控在点击事件内即时反映，提交值保持选项顺序。
+function ApplicantTypes({
+  value,
+  onChange,
+  disabled,
+}: {
+  value?: unknown;
+  onChange?: (value: unknown) => void;
+  disabled?: boolean;
+}) {
+  const selected = Array.isArray(value) ? (value as string[]) : [];
+  return (
+    <div className="r3b-applicant-types">
+      {applicantTypes.map((type) => (
+        <Checkbox
+          key={type}
+          value={type}
+          checked={selected.includes(type)}
+          disabled={disabled}
+          onChange={(e) =>
+            onChange?.(applicantTypes.filter((t) => (t === type ? e.target.checked : selected.includes(t))))
+          }
+        >
+          {m[type]}
+        </Checkbox>
+      ))}
+    </div>
   );
 }
 function OrgRanges({
