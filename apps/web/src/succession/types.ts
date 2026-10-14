@@ -18,7 +18,8 @@ export interface RecordView {
   createdBy?: string;
   createdAt?: string;
   updatedAt?: string;
-  successionType: SuccessionType;
+  /** 继任类型字段隐藏时缺省（列表为两类混合，见 rules.ts recordKind）。 */
+  successionType?: SuccessionType;
   targetOrgId?: string;
   targetPositionId?: string;
   successorEmployeeId?: string;
@@ -97,6 +98,12 @@ export interface RuleRow {
   fieldCode?: string | null;
   field?: { code?: string; label?: string } | null;
   values?: unknown[] | null;
+  /** 限定条件：先按字段筛人，再算指标（docs/02_业务建模/27 §5.9，B2_12 / B2_17）。 */
+  filterOperator?: string | null;
+  filterValues?: unknown[] | null;
+  /** 健康度规则：字段来源与自定义人员范围。 */
+  fieldSource?: string | null;
+  populationId?: string | null;
 }
 export interface LevelRules {
   expression?: string | null;

@@ -1,18 +1,17 @@
-import { Alert, Button, Input, InputNumber, Popconfirm, Switch, Table, Tabs, Tag } from 'antd';
+import { Alert, Button, Input, InputNumber, Switch, Table, Tabs, Tag } from 'antd';
 import { useState, type ReactNode } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { successionDemo } from '../demo-stubs/succession.js';
 import { CreateCommands } from '../evaluation/CreateEntry.js';
 import { Failure, useRead } from '../evaluation/runtime.js';
-import { useRecordForm } from '../evaluation/useRecordForm.js';
 import type { Row } from '../evaluation/model.js';
-import { newCommand } from '../foundation/client.js';
 import { DecisionNote } from '../foundation/DecisionNote.js';
 import { FormOverlay, type FormField } from '../foundation/FormOverlay.js';
 import { PageState } from '../foundation/PageState.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { useApiClient } from '../foundation/Session.js';
 import { ListPage } from '../foundation/templates.js';
+import { DeleteButton, useConflictCommand } from './conflict.js';
 import { s } from './messages.js';
 import { BASE, READINESS_PATH, ruleLines } from './rules.js';
 import './succession.css';
@@ -165,26 +164,19 @@ const title = (kind: Kind) => s.settings.titles[kind]!;
 function DictionaryList({ kind }: { kind: Kind }) {
   const dictionary = dictionaries[kind];
   const permission = usePermissions(dictionary.object);
-  const api = useApiClient();
   const [page, setPage] = useState({ page: 1, pageSize: 15 });
   const list = useRead<{ items: Row[]; total?: number }>(
     `${dictionary.path}?page=${page.page}&pageSize=${page.pageSize}`,
   );
   const [editing, setEditing] = useState<Row | 'new'>();
   const [error, setError] = useState<unknown>();
-  const remove = async (row: Row) => {
-    setError(undefined);
-    try {
-      await api.request(`${dictionary.path}/${row.id}`, {
-        method: 'DELETE',
-        command: newCommand(undefined, row.revision),
-      });
-      list.reload();
-    } catch (cause) {
-      setError(cause);
-    }
+  // 删除冲突（别处改过）：报错并刷新列表，行带上新版本，再点删除即按新版本发（conflict.tsx DeleteButton）。
+  const settled = (cause?: unknown) => {
+    setError(cause);
+    list.reload();
   };
-  const columns = dictionaryColumns(kind, permission, setEditing, remove);
+  const populations = usePopulationNames(kind === 'health');
+  const columns = dictionaryColumns(kind, permission, { edit: setEditing, settled, populations });
   const readonly = kind === 'population';
   return (
     <>
@@ -223,7 +215,13 @@ function DictionaryList({ kind }: { kind: Kind }) {
 }
 
 type Access = ReturnType<typeof usePermissions>;
-function dictionaryColumns(kind: Kind, permission: Access, edit: (row: Row) => void, remove: (row: Row) => void) {
+interface ColumnContext {
+  edit(row: Row): void;
+  settled(error?: unknown): void;
+  /** 健康度规则引用的自定义人员范围：id → 名称。 */
+  populations: Record<string, string>;
+}
+function dictionaryColumns(kind: Kind, permission: Access, { edit, settled, populations }: ColumnContext) {
   const order = dictionaries[kind].order;
   const columns = [
     {
@@ -256,7 +254,7 @@ function dictionaryColumns(kind: Kind, permission: Access, edit: (row: Row) => v
       key: 'rules',
       field: 'rules',
       title: s.settings.rules,
-      render: (row: Row) => <RulesView rules={row.rules as LevelRules | null | undefined} />,
+      render: (row: Row) => <RulesView rules={row.rules as LevelRules | null | undefined} populations={populations} />,
     },
   ]
     .filter((column) => columnKeys[kind].includes(column.key))
@@ -278,11 +276,13 @@ function dictionaryColumns(kind: Kind, permission: Access, edit: (row: Row) => v
                   </Button>
                 )}
                 {canDelete && (
-                  <Popconfirm title={s.settings.deleteConfirm} onConfirm={() => remove(row)}>
-                    <Button type="link" danger>
-                      {s.delete}
-                    </Button>
-                  </Popconfirm>
+                  <DeleteButton
+                    path={`${dictionaries[kind].path}/${row.id}`}
+                    row={row}
+                    settled={settled}
+                    button={{ type: 'link', danger: true }}
+                    title={s.settings.deleteConfirm}
+                  />
                 )}
               </>
             ),
@@ -302,8 +302,8 @@ const columnKeys: Record<Kind, string[]> = {
 };
 
 /** 规则只读也要显示内容：表达式 + 条件行（接口 rules 原样，枚举换成原站用语）。 */
-function RulesView({ rules }: { rules: LevelRules | null | undefined }) {
-  const lines = ruleLines(rules);
+function RulesView(props: { rules: LevelRules | null | undefined; populations: Record<string, string> }) {
+  const lines = ruleLines(props.rules, props.populations);
   if (!lines) return <span className="succession-rules succession-muted">{s.settings.noRules}</span>;
   return (
     <div className="succession-rules">
@@ -313,6 +313,19 @@ function RulesView({ rules }: { rules: LevelRules | null | undefined }) {
       ))}
     </div>
   );
+}
+
+/**
+ * 健康度规则里的自定义人员范围只给 populationId：能读人员范围时取名称（上限 200 条，接口分页上限）；
+ * 读不到或不在这一页的，规则行退回显示编号（rules.ts ruleLines）。
+ */
+function usePopulationNames(needed: boolean) {
+  const { snapshot } = usePermissions();
+  const readable = needed && !!snapshot.objects[dictionaries.population.object];
+  const list = useRead<{ items: Row[] }>(readable ? `${dictionaries.population.path}?page=1&pageSize=200` : undefined);
+  // 名称字段被权限裁掉时不进映射，规则行同样退回编号。
+  const named = (list.data?.items ?? []).filter((row) => typeof row.name === 'string');
+  return Object.fromEntries(named.map((row) => [row.id, row.name!]));
 }
 
 const ColorSwatch = ({ color }: { color: unknown }) =>
@@ -328,7 +341,15 @@ const ColorSwatch = ({ color }: { color: unknown }) =>
 function DictionaryForm({ kind, row, close, saved }: { kind: Kind; row?: Row; close(): void; saved(): void }) {
   const dictionary = dictionaries[kind];
   const permission = usePermissions(dictionary.object);
-  const writer = useRecordForm(dictionary.path, row);
+  const api = useApiClient();
+  const writer = useConflictCommand(
+    dictionary.path,
+    row ? { id: row.id, revision: row.revision, values: { ...row } } : { revision: 0, values: {} },
+    async () => {
+      const latest = await api.request<Row>(`${dictionary.path}/${row!.id}`);
+      return { id: latest.id, revision: latest.revision, values: { ...latest } };
+    },
+  );
   const access = (name: string) => {
     const field = permission.field(name);
     // 编码建后不可改（PATCH / PUT 体都不收 code）。
@@ -368,17 +389,29 @@ function DictionaryForm({ kind, row, close, saved }: { kind: Kind; row?: Row; cl
       open
       mode="modal"
       recordKey={row?.id ?? `new-${kind}`}
-      submission={writer}
+      submission={writer.form}
       title={`${verb}${title(kind)}`}
       initialValues={row ? { ...row } : blank}
       groups={[{ title: s.basic, fields }]}
-      onClose={close}
+      onClose={() => {
+        // 冲突或结果未知时关掉：刷新列表回查，重开即按新版本解锁。
+        if (writer.stale) saved();
+        close();
+      }}
       onSubmit={async (values) => {
-        const editable = fields.filter((f) => f.access.visible && f.access.editable).map((f) => f.name);
-        await writer.save(values, editable, row ? dictionary.update : 'POST', (body) =>
-          'description' in body && !body.description ? { ...body, description: null } : body,
-        );
-        writer.clear();
+        await writer.run({
+          values,
+          editableFields: fields.filter((f) => f.access.visible && f.access.editable).map((f) => f.name),
+          // 只发改过的字段（编辑是补丁语义）；清空的描述显式发 null。
+          send: ({ edited, command }) =>
+            api.request<Row>(row ? `${dictionary.path}/${row.id}` : dictionary.path, {
+              method: row ? dictionary.update : 'POST',
+              command: {
+                ...command,
+                body: 'description' in edited && !edited.description ? { ...edited, description: null } : edited,
+              },
+            }),
+        });
         saved();
       }}
     />

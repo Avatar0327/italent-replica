@@ -33,6 +33,12 @@ export const s = {
     belongOrg: '所属组织',
   },
   backupTypes: { principal: '正职', deputy: '副职' } as Record<string, string>,
+  // 继任类型字段隐藏时接口回两类混合记录（后端缺口：无类型字段时只能按目标字段推断）。
+  unknownKind: '无法区分',
+  mixedHint: (kind: string) =>
+    `无权查看继任类型：接口返回职位、组织两类记录，本页只显示${kind}继任和无法区分类型的记录（标为“无法区分”），` +
+    '分页总数为两类合计。',
+  kindLabels: { position: '职位', org: '组织' } as Record<string, string>,
   untilNow: '至今',
   left: '已离职',
   onDuty: '在职',
@@ -143,6 +149,8 @@ export const s = {
   // 规则条件的枚举文案（接口枚举值 → 原站用语）；未知值原样显示。
   rules: {
     population: { all: '全部人员', successors: '继任者', incumbents: '现任人员', custom: '自定义人员范围' },
+    fieldSource: { review: '盘点字段', org: '组织字段', succession: '继任字段' },
+    text: { of: '的', namedPopulation: '自定义人员范围「{name}」', unnamedPopulation: '自定义人员范围（编号 {id}）' },
     subject: { incumbent: '现任人员', successor: '继任者' },
     measure: {
       count: '人数',

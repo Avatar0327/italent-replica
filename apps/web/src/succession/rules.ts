@@ -4,7 +4,7 @@
  */
 import type { MenuNode, ServerSnapshot } from '../foundation/permission-snapshot.js';
 import { s } from './messages.js';
-import type { LevelRules, MapItem, MapResult, Preferences, RuleRow, SuccessionType } from './types.js';
+import type { LevelRules, MapItem, MapResult, Preferences, RecordView, RuleRow, SuccessionType } from './types.js';
 
 export const BASE = '/api/tenant/succession';
 export const READINESS_PATH = '/api/tenant/talent-review/readiness-levels';
@@ -74,25 +74,55 @@ export const END_RECEIPT = 'records/end';
 export function endReceipt(response: unknown, submitted: readonly { id: string }[]) {
   const items = (response as { items?: unknown } | null)?.items;
   const ids = new Set(submitted.map((item) => item.id));
-  const ended = Array.isArray(items) ? (items as { id?: unknown }[]) : undefined;
-  if (!ended || ended.length !== ids.size || !ended.every((item) => typeof item?.id === 'string' && ids.has(item.id)))
-    throw new Error('endReceipt');
+  const ended = Array.isArray(items) ? (items as { id?: unknown }[]).map((item) => item?.id) : undefined;
+  // 逐条核对且去重：重复的 id 不能顶替漏掉的记录。
+  const covered = new Set(ended?.filter((id): id is string => typeof id === 'string' && ids.has(id)));
+  if (!ended || ended.length !== ids.size || covered.size !== ids.size) throw new Error('endReceipt');
   return { id: END_RECEIPT };
 }
+/** 删除的真实回执是 {id, deleted: true}，按形状核对，不符判为结果未知。 */
+export function deleteReceipt(response: unknown) {
+  const view = response as { id?: unknown; deleted?: unknown } | null;
+  if (typeof view?.id !== 'string' || view.deleted !== true) throw new Error('deleteReceipt');
+  return { id: view.id };
+}
 export const PREFS_RECEIPT = 'preferences';
-const preferenceKeys = ['depth', 'showPositionsWithoutSuccessor', 'rootOrgId'] as const;
+const isStrings = (value: unknown) => Array.isArray(value) && value.every((item) => typeof item === 'string');
+/** 偏好回执按真实 DTO 逐项核对（map-routes.ts PUT /maps/:kind/preferences）；层级只有二到四级。 */
 export function preferenceReceipt(response: unknown) {
-  const view = response as Partial<Preferences> | null;
-  if (!Number.isSafeInteger(view?.revision) || !Number.isSafeInteger(view?.depth)) throw new Error('preferenceReceipt');
+  const view = response as Partial<Record<keyof Preferences, unknown>> | null;
+  const valid =
+    !!view &&
+    (view.rootOrgId === null || typeof view.rootOrgId === 'string') &&
+    Number.isInteger(view.depth) &&
+    (view.depth as number) >= 2 &&
+    (view.depth as number) <= 4 &&
+    isStrings(view.hiddenOrgIds) &&
+    typeof view.showKeyPositions === 'boolean' &&
+    typeof view.showPositionsWithoutSuccessor === 'boolean' &&
+    Number.isSafeInteger(view.revision) &&
+    (view.revision as number) >= 0;
+  if (!valid) throw new Error('preferenceReceipt');
   return { id: PREFS_RECEIPT };
 }
-/** 偏好重读：只比较抽屉里能改的三项；未选组织根（null）与表单空值同为 undefined，避免误报差异。 */
+/**
+ * 偏好重读带回全量：抽屉外的隐藏组织、只看关键岗位也在里面，提交时未改项取这份最新值（preferenceBody）。
+ * 差异只比较抽屉里能改的项（表单内核按 editableFields 比较）；未选组织根（null）与表单空值同为 undefined。
+ */
 export function preferenceLatest(view: Preferences) {
   preferenceReceipt(view);
+  const { revision, rootOrgId, ...rest } = view;
+  return { id: PREFS_RECEIPT, revision, values: { rootOrgId: rootOrgId ?? undefined, ...rest } };
+}
+/** 接口要整份偏好：用户改过的项取表单值，其余取最新读回的全量，不替用户改。 */
+export function preferenceBody(full: Record<string, unknown>, edited: Record<string, unknown>) {
+  const merged = { ...full, ...edited };
   return {
-    id: PREFS_RECEIPT,
-    revision: view.revision,
-    values: Object.fromEntries(preferenceKeys.map((key) => [key, view[key] ?? undefined])),
+    rootOrgId: (merged.rootOrgId as string | undefined) ?? null,
+    hiddenOrgIds: merged.hiddenOrgIds,
+    showKeyPositions: merged.showKeyPositions,
+    depth: Number(merged.depth),
+    showPositionsWithoutSuccessor: !!merged.showPositionsWithoutSuccessor,
   };
 }
 /** 赋值没有单条读取接口：重读整张地图，按节点 ID 取结果行；未评定时版本为 0。 */
@@ -116,8 +146,14 @@ export function orgMapItems(items: readonly MapItem[]): MapItem[] {
   ]);
 }
 
-/** 规则只读展示：表达式原样，条件行拼成一句话（docs/02_业务建模/27 §5.9）。 */
-export function ruleLines(rules: LevelRules | null | undefined): { expression: string; rows: string[] } | undefined {
+/**
+ * 规则只读展示：表达式原样，条件行拼成一句话（docs/02_业务建模/27 §5.9）。
+ * 有限定条件时显示“字段 运算 值 的 指标”，健康度规则另显示字段来源与自定义人员范围（B2_12 / B2_17）。
+ */
+export function ruleLines(
+  rules: LevelRules | null | undefined,
+  populations: Record<string, string> = {},
+): { expression: string; rows: string[] } | undefined {
   if (!rules?.rows?.length) return undefined;
   const labels = s.rules;
   const text = (map: Record<string, string> | undefined, key?: string | null) => (key ? (map?.[key] ?? key) : '');
@@ -128,12 +164,23 @@ export function ruleLines(rules: LevelRules | null | undefined): { expression: s
       ? `${low}${unit} ~ ${row.thresholdHigh}${unit}`
       : `${low}${unit}`;
   };
+  const scope = (row: RuleRow) => {
+    if (row.population !== 'custom' || !row.populationId) return text(labels.population, row.population);
+    const name = populations[row.populationId];
+    return name
+      ? labels.text!.namedPopulation!.replace('{name}', name)
+      : labels.text!.unnamedPopulation!.replace('{id}', row.populationId);
+  };
   const rows = rules.rows.map((row) =>
     [
       `${row.rowNo}.`,
-      text(labels.population, row.population),
+      scope(row),
       text(labels.subject, row.subject),
+      text(labels.fieldSource, row.fieldSource),
       row.field?.label ?? row.field?.code ?? row.fieldCode ?? '',
+      text(labels.comparator, row.filterOperator),
+      row.filterValues?.join('、') ?? '',
+      row.filterOperator ? labels.text!.of! : '',
       text(labels.measure, row.measure),
       text(labels.comparator, row.comparator ?? row.operator),
       value(row),
@@ -142,6 +189,17 @@ export function ruleLines(rules: LevelRules | null | undefined): { expression: s
       .join(' '),
   );
   return { expression: rules.expression ?? '', rows };
+}
+
+/**
+ * 继任类型字段隐藏时列表是两类混合（recordQuery 不带类型参数）：按目标字段推断记录自身的类型，
+ * 目标字段也缺省时返回 undefined，页面标“无法区分”，不猜（后端缺口清单）。
+ */
+export function recordKind(row: RecordView): SuccessionType | undefined {
+  if (row.successionType) return row.successionType;
+  if (['targetPosition', 'targetPositionId', 'incumbents'].some((key) => key in row)) return 'position';
+  if (['targetOrg', 'targetOrgId', 'personInCharge'].some((key) => key in row)) return 'org';
+  return undefined;
 }
 
 export interface MapNode<T> {

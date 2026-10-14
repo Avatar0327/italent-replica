@@ -1,14 +1,20 @@
-import type { Locator, Page, Request } from '@playwright/test';
+import type { Page } from '@playwright/test';
 import { test, expect } from './fixtures.js';
 import {
   button,
+  choose,
+  conflict,
   ids,
+  ifMatch,
   mockSuccession,
   objectAccess,
   objectFields,
   openMenu,
   positionMap,
   preferences,
+  saveAgain,
+  settledConflict,
+  unexpected,
   watchErrors,
 } from './r3d1-fixtures.js';
 
@@ -16,32 +22,6 @@ import {
 test.use({ viewport: { width: 1440, height: 1000 } });
 test.beforeEach(async ({ page }) => mockSuccession(page));
 
-const conflict = { status: 409, json: { error: { code: 'REVISION_CONFLICT' } } };
-const ifMatch = (request: Request) => request.headers()['if-match'];
-// 冲突用例里浏览器会把预期的 409 记成资源加载错误，其余控制台错误照常判失败。
-const unexpected = (errors: string[]) => errors.filter((error) => !error.includes('status of 409'));
-/** 已有选中值时选中项会盖住输入框，点选择器本体打开，再在展开的下拉里选。 */
-async function choose(page: Page, scope: Locator, label: string, option: string) {
-  const combobox = page.getByRole('combobox', { name: label, exact: true });
-  await scope.locator('.ant-form-item').filter({ has: combobox }).locator('.ant-select-selector').click();
-  await page.locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden)').getByTitle(option).click();
-}
-/**
- * 保存按钮：antd 的 loading 图标离场动画在无头浏览器里可能停住，图标名“loading”会留在可访问名里，
- * 所以按“以保存结尾”定位，是否仍在提交看 ant-btn-loading 类。
- */
-const save = (scope: Locator) => scope.getByRole('button', { name: /保\s*存$/ });
-/** 冲突提示出现后，等提交收尾（不再转圈、被冲突锁住）再操作，避免抢在提交状态落定之前点击。 */
-async function settledConflict(scope: Locator) {
-  await expect(scope.getByRole('button', { name: '重读最新版本' })).toBeVisible();
-  await expect(save(scope)).not.toHaveClass(/(^|\s)ant-btn-loading(\s|$)/);
-  await expect(save(scope)).toBeDisabled();
-}
-/** 核对差异后解锁：再次可点才提交。 */
-async function saveAgain(scope: Locator) {
-  await expect(save(scope)).toBeEnabled();
-  await save(scope).click();
-}
 async function openMap(page: Page, tab: string) {
   await openMenu(page, '继任地图与列表');
   await page.getByRole('tab', { name: tab, exact: true }).click();

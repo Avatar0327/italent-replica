@@ -1,14 +1,14 @@
-import { Button, Dropdown, Popconfirm, Space, Tag, Tooltip, type TableColumnsType } from 'antd';
+import { Alert, Button, Dropdown, Space, Tag, Tooltip, type TableColumnsType } from 'antd';
 import { useState, type Key, type ReactNode } from 'react';
 import { RemoteSelect, Failure, useRead } from '../evaluation/runtime.js';
-import { newCommand } from '../foundation/client.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { PersonSelect, type Choice } from '../foundation/selectors.js';
-import { useApiClient, useSession } from '../foundation/Session.js';
+import { useSession } from '../foundation/Session.js';
 import { ListPage } from '../foundation/templates.js';
+import { DeleteButton } from './conflict.js';
 import { s } from './messages.js';
-import { EndForm, RECORD, RecordForm, targetName, targetPaths, useCandidateLoader } from './RecordForm.js';
-import { BASE, recordQuery } from './rules.js';
+import { EndForm, RECORD, RecordForm, targetPaths, useCandidateLoader } from './RecordForm.js';
+import { BASE, recordKind, recordQuery } from './rules.js';
 import type { ListResult, PersonView, ReadinessRef, RecordView, SuccessionType } from './types.js';
 
 const PAGE_SIZE = 15;
@@ -42,7 +42,6 @@ interface Filters {
  */
 export function RecordList({ type, title }: { type: SuccessionType; title: string }) {
   const permission = usePermissions(RECORD);
-  const api = useApiClient();
   const visible = (field: string) => permission.field(field).visible;
   const [page, setPage] = useState({ page: 1, pageSize: PAGE_SIZE });
   const [filters, setFilters] = useState<Filters>({});
@@ -60,30 +59,23 @@ export function RecordList({ type, title }: { type: SuccessionType; title: strin
     list.reload();
   };
   const filter = (next: Filters) => (setFilters(next), setPage({ ...page, page: 1 }));
-  // 删除只对单条：后端是逐条删除，多选删除做不到整体成功或整体失败（DEC-067 批量）。
-  const remove = async () => {
-    if (!one) return;
-    setError(undefined);
-    try {
-      await api.request(`${BASE}/records/${one.id}`, {
-        method: 'DELETE',
-        command: newCommand(undefined, one.revision),
-      });
-      refresh();
-    } catch (cause) {
-      setError(cause);
-    }
+  // 删除冲突（别处改过）：报错并刷新列表、清空勾选，重选后按新版本删除（conflict.tsx DeleteButton）。
+  const settled = (cause?: unknown) => {
+    setError(cause);
+    refresh();
   };
   const selectable = permission.can('update') || permission.can('delete') || permission.can('end', 'list');
-  const actions = <RecordActions one={one} count={selected.rows.length} open={setForm} remove={remove} />;
+  const actions = <RecordActions one={one} count={selected.rows.length} open={setForm} settled={settled} />;
+  const typed = visible('successionType');
   return (
     <div className="succession-records">
+      {!typed && <Alert type="info" showIcon message={s.mixedHint(s.kindLabels[type]!)} />}
       <Failure error={error} />
       <ListPage<RecordView>
         title={title}
         rowKey="id"
         data={{
-          items: list.data?.items ?? [],
+          items: ofKind(list.data?.items ?? [], type, typed),
           total: list.data?.total ?? 0,
           hasDataPermission: list.data?.hasDataPermission,
         }}
@@ -108,15 +100,27 @@ export function RecordList({ type, title }: { type: SuccessionType; title: strin
   );
 }
 
+/**
+ * 无权查看继任类型时服务端不按类型过滤（rules.ts recordQuery），两张表拿到的是混合列表：
+ * 前端按记录自身的目标字段判断类型，只留本页类型和无法区分的记录；分页总数仍是两类合计（页面提示里说明）。
+ */
+function ofKind(rows: RecordView[], type: SuccessionType, typed: boolean) {
+  if (typed) return rows;
+  return rows.filter((row) => {
+    const kind = recordKind(row);
+    return kind === undefined || kind === type;
+  });
+}
+
 /** 列表右上角按钮：编辑、删除作用于唯一勾选行，更多操作里的结束作用于全部勾选行。 */
 function RecordActions(props: {
   one?: RecordView;
   count: number;
   open(form: 'create' | 'edit' | 'end'): void;
-  remove(): void;
+  settled(error?: unknown): void;
 }) {
   const permission = usePermissions(RECORD);
-  const { one, count, open, remove } = props;
+  const { one, count, open, settled } = props;
   return (
     <>
       {permission.can('create', 'list') && (
@@ -129,12 +133,9 @@ function RecordActions(props: {
           {s.edit}
         </Button>
       )}
+      {/* 删除只对单条：后端是逐条删除，多选删除做不到整体成功或整体失败（DEC-067 批量）。 */}
       {permission.can('delete') && (
-        <Popconfirm title={s.deleteConfirm} disabled={!one} onConfirm={remove}>
-          <Button type="primary" disabled={!one}>
-            {s.delete}
-          </Button>
-        </Popconfirm>
+        <DeleteButton path={`${BASE}/records/${one?.id}`} row={one} settled={settled} button={{ type: 'primary' }} />
       )}
       <Tooltip title={s.importPending}>
         <Button disabled>{s.import}</Button>
@@ -156,6 +157,9 @@ function useColumns(type: SuccessionType, visible: (field: string) => boolean): 
   const { timezone } = useSession();
   const column = (key: string, field: string, title: string, render: (row: RecordView) => ReactNode) =>
     visible(field) ? [{ key, title, render: (_: unknown, row: RecordView) => render(row) }] : [];
+  // 目标、现任人员、负责人这几列按记录自身的类型取值；类型对不上或无法区分时明确标出，绝不错列。
+  const own = (render: (row: RecordView) => ReactNode) => (row: RecordView) =>
+    recordKind(row) === type ? render(row) : s.unknownKind;
   const common = (row: RecordView) => ({
     successor: row.successor?.name ?? s.none,
     readiness: <ReadinessTag value={row.readiness} />,
@@ -171,8 +175,18 @@ function useColumns(type: SuccessionType, visible: (field: string) => boolean): 
   // 两张表的列按原站各自的列序（UI2 对照）：组织列表有后备类型、没有修改 / 创建列。
   if (type === 'org')
     return [
-      ...column('target', 'targetOrgId', s.fields.orgName, (row) => targetName(row) ?? s.none),
-      ...column('owner', 'personInCharge', s.fields.deptHead, (row) => row.personInCharge?.name ?? s.none),
+      ...column(
+        'target',
+        'targetOrgId',
+        s.fields.orgName,
+        own((row) => row.targetOrg?.name ?? s.none),
+      ),
+      ...column(
+        'owner',
+        'personInCharge',
+        s.fields.deptHead,
+        own((row) => row.personInCharge?.name ?? s.none),
+      ),
       ...successor,
       ...column('backup', 'backupType', s.fields.backupType, (row) => s.backupTypes[row.backupType ?? ''] ?? s.none),
       ...readiness,
@@ -180,8 +194,18 @@ function useColumns(type: SuccessionType, visible: (field: string) => boolean): 
       ...period,
     ];
   return [
-    ...column('target', 'targetPositionId', s.fields.targetPosition, (row) => targetName(row) ?? s.none),
-    ...column('incumbents', 'incumbents', s.fields.incumbents, (row) => people(row.incumbents)),
+    ...column(
+      'target',
+      'targetPositionId',
+      s.fields.targetPosition,
+      own((row) => row.targetPosition?.name ?? s.none),
+    ),
+    ...column(
+      'incumbents',
+      'incumbents',
+      s.fields.incumbents,
+      own((row) => people(row.incumbents)),
+    ),
     ...successor,
     ...readiness,
     ...state,

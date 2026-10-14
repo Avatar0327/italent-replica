@@ -176,14 +176,10 @@ describe('AC-FE-R3d1 真实回执形状（第 2 轮）', () => {
     showPositionsWithoutSuccessor: true,
     revision: 4,
   };
-  it('偏好回执没有 id：按版本与层级核对，重读只比较抽屉里的三项', () => {
+  it('偏好回执没有 id：按真实形状核对后给出固定键，版本取回执', () => {
     expect(preferenceReceipt(view)).toEqual({ id: PREFS_RECEIPT });
     expect(() => preferenceReceipt({ ...view, revision: undefined })).toThrow();
-    expect(preferenceLatest(view)).toEqual({
-      id: PREFS_RECEIPT,
-      revision: 4,
-      values: { depth: 3, showPositionsWithoutSuccessor: true, rootOrgId: undefined },
-    });
+    expect(preferenceLatest(view)).toMatchObject({ id: PREFS_RECEIPT, revision: 4 });
   });
   it('赋值重读按节点取结果行，含组织下的关键职位；未评定时版本为 0', () => {
     const map = {
@@ -237,6 +233,89 @@ describe('AC-FE-R3d1 地图数据与规则展示（第 2 轮）', () => {
     });
     expect(ruleLines(null)).toBeUndefined();
     expect(ruleLines({ expression: '', rows: [] })).toBeUndefined();
+  });
+});
+
+describe('AC-FE-R3d1 第 3 轮：回执严格性、偏好全量与规则限定条件', () => {
+  const view = {
+    rootOrgId: null,
+    depth: 3,
+    hiddenOrgIds: ['org-9'],
+    showKeyPositions: true,
+    showPositionsWithoutSuccessor: true,
+    revision: 4,
+  };
+  it('批量结束回执里重复的 id 不能当作覆盖全部记录', () => {
+    expect(() => endReceipt({ items: [{ id: 'a' }, { id: 'a' }] }, [{ id: 'a' }, { id: 'b' }])).toThrow();
+  });
+  it('偏好回执按真实 DTO 逐项核对：缺项、类型不符、层级越界都判无效', () => {
+    expect(preferenceReceipt(view)).toEqual({ id: PREFS_RECEIPT });
+    const { hiddenOrgIds: _hidden, ...withoutHidden } = view;
+    for (const broken of [
+      withoutHidden,
+      { ...view, hiddenOrgIds: [1] },
+      { ...view, showKeyPositions: 'yes' },
+      { ...view, showPositionsWithoutSuccessor: undefined },
+      { ...view, rootOrgId: 7 },
+      { ...view, depth: 9 },
+      { ...view, revision: -1 },
+    ])
+      expect(() => preferenceReceipt(broken)).toThrow();
+  });
+  it('偏好重读带回全量（含抽屉外的隐藏组织与只看关键岗位），提交时未改项取这份最新值', () => {
+    expect(preferenceLatest(view).values).toEqual({
+      rootOrgId: undefined,
+      depth: 3,
+      hiddenOrgIds: ['org-9'],
+      showKeyPositions: true,
+      showPositionsWithoutSuccessor: true,
+    });
+  });
+  it('等级规则显示可选条件与值（eq + 指定人员），健康度还显示字段来源与自定义人员范围', () => {
+    const lines = ruleLines(
+      {
+        expression: '1 and 2',
+        rows: [
+          {
+            rowNo: 1,
+            subject: 'incumbent',
+            fieldCode: 'employee_id',
+            filterOperator: 'eq',
+            filterValues: ['合成甲', '合成乙'],
+            measure: 'count',
+            comparator: 'ge',
+            threshold: 1,
+          },
+          {
+            rowNo: 2,
+            population: 'custom',
+            populationId: 'pop-1',
+            fieldSource: 'review',
+            fieldCode: 'calibrated_perf',
+            filterOperator: 'not_empty',
+            filterValues: [],
+            measure: 'review_result_ratio',
+            comparator: 'ge',
+            threshold: 20,
+            isPercent: true,
+          },
+        ],
+      },
+      { 'pop-1': '合成青年人才' },
+    );
+    expect(lines?.rows).toEqual([
+      '1. 现任人员 employee_id 等于 合成甲、合成乙 的 人数 大于等于 1',
+      '2. 自定义人员范围「合成青年人才」 盘点字段 calibrated_perf 不为空 的 盘点结果占比 大于等于 20%',
+    ]);
+  });
+  it('自定义人员范围查不到名称时显示编号，不留空', () => {
+    const lines = ruleLines({
+      expression: '1',
+      rows: [
+        { rowNo: 1, population: 'custom', populationId: 'pop-x', measure: 'count', comparator: 'gt', threshold: 0 },
+      ],
+    });
+    expect(lines?.rows).toEqual(['1. 自定义人员范围（编号 pop-x） 人数 大于 0']);
   });
 });
 
