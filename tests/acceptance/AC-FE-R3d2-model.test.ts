@@ -341,10 +341,15 @@ describe('AC-FE-R3d2 第 4 轮：整组 / 逐条写入完整性（DEC-385③）'
     expect(subProcessAccess(true, visibleAll, ops, [missing])).toMatchObject({ ...none, reason: t.integrity.fields });
     // 开启规则字段缺省会被服务端补成 null 并要求可见，被裁剪同样整组只读
     const ruleHidden = (name: string) => ({ visible: name !== 'days', editable: true });
-    expect(subProcessAccess(true, ruleHidden, ops, [])).toMatchObject(none);
+    expect(subProcessAccess(true, ruleHidden, ops, [])).toMatchObject({ ...none, complete: false });
   });
   it('整组完整时照常按操作权判定；父字段只读时不提示原因', () => {
-    expect(subProcessAccess(true, visibleAll, ops, [sub()])).toMatchObject({ add: true, edit: true, remove: true });
+    expect(subProcessAccess(true, visibleAll, ops, [sub()])).toMatchObject({
+      add: true,
+      edit: true,
+      remove: true,
+      complete: true,
+    });
     const { id: _id, ...noId } = sub();
     expect(subProcessAccess(false, visibleAll, ops, [noId]).reason).toBeUndefined();
   });

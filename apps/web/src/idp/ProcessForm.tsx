@@ -124,7 +124,7 @@ function ProcessEditor({ process, close, saved }: { process?: Process; close(): 
     label: LABELS[name] ?? name,
     control: controls[name],
     access: permission.field(name),
-    rules: rulesOf(name),
+    rules: rulesOf(name, subAccess.complete),
     display: name === 'subProcesses' ? <SubProcessEditor access={subDisplay} value={shownSubs} /> : undefined,
   }));
   return (
@@ -151,12 +151,14 @@ function ProcessEditor({ process, close, saved }: { process?: Process; close(): 
   );
 }
 
-function rulesOf(name: string): FormField['rules'] {
+/** complete：子流程整组完整（writeIntegrity）；不完整时整组只读、不会提交，缺字段的开启规则不再校验。 */
+function rulesOf(name: string, complete: boolean): FormField['rules'] {
   if (name === 'subProcesses')
     return [
       {
         validator: (_, value: SubProcess[] | undefined) => {
           if (!value?.length) return Promise.reject(new Error(t.subProcessRequired));
+          if (!complete) return Promise.resolve();
           const broken = value.map((item, index) => startRuleViolation(ruleOf(item), index)).find(Boolean);
           return broken ? Promise.reject(new Error(broken)) : Promise.resolve();
         },

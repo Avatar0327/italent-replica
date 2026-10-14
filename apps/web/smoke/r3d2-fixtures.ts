@@ -191,6 +191,8 @@ export interface IdpMockOptions {
   operations?: Record<string, Record<string, boolean>>;
   /** 写接口的响应状态（如 500 模拟结果未知、409 模拟版本冲突）。 */
   writeStatus?: number;
+  /** 覆盖流程夹具里子流程的字段值（如改成相对时间开启），再按字段权限裁剪。 */
+  subProcess?: Record<string, unknown>;
   /** 发生过写请求后，详情读取不再返回 revision（模拟冲突后重读得到无效回执）。 */
   rereadWithoutRevision?: boolean;
 }
@@ -240,7 +242,8 @@ function trimDetail<T extends ReturnType<typeof planDetail>>(detail: T, options:
 function trimProcess(row: typeof process, options: IdpMockOptions) {
   const { subProcesses, ...rest } = trim('IDP.IDPProcess', row, options);
   if (hides('IDP.IDPProcess', 'subProcesses', options)) return rest;
-  return { ...rest, subProcesses: subProcesses.map((sub) => trim('IDP.SubProcess', sub, options)) };
+  const subs = subProcesses.map((sub) => ({ ...sub, ...options.subProcess }));
+  return { ...rest, subProcesses: subs.map((sub) => trim('IDP.SubProcess', sub, options)) };
 }
 
 /** 让演示身份看到 IDP 全部对象并按目录给出字段与按钮；返回记录到的 IDP 请求，供断言写请求次数与幂等键。 */

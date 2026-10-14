@@ -420,3 +420,22 @@ test('AC-FE-R3d2-19 任务 id 被裁剪时不开放编辑与删除，不向缺 i
   expect(calls.filter((call) => call.path.includes('undefined'))).toEqual([]);
   expect(errors).toEqual([]);
 });
+
+test('AC-FE-R3d2-20 子流程规则字段被裁剪、整组只读时，只改流程名称仍可保存，不按缺字段校验开启规则', async ({
+  page,
+}) => {
+  const errors = watchErrors(page);
+  const calls = await mockIdp(page, {
+    subProcess: { startTimeType: 'relative', referencePoint: 'plan_start', startFrom: 'same_day' },
+    fields: { 'IDP.SubProcess': { viewable: SUB_FIELDS.filter((code) => code !== 'referencePoint') } },
+  });
+  await openMenu(page, '发展计划流程');
+  await page.getByRole('button', { name: /编\s*辑/, exact: true }).click();
+  const form = page.getByRole('dialog', { name: '编辑发展计划流程' });
+  await expect(form.getByText(FIELDS_HIDDEN)).toBeVisible();
+  await form.getByLabel('流程名称').fill('合成发展计划流程（改）');
+  await form.getByRole('button', { name: /保\s*存/ }).click();
+  await expect.poll(() => writes(calls, 'PATCH', `/processes/${processId}`).length).toBe(1);
+  expect(writes(calls, 'PATCH', `/processes/${processId}`)[0]!.body).not.toHaveProperty('subProcesses');
+  expect(errors).toEqual([]);
+});
