@@ -101,10 +101,21 @@ test('AC-FE-R1b-03 切换身份，列表筛选、列设置、档案三个页签�
   await page.screenshot({ path: '../../.demo/fe-r1b-detail.png' });
   await expect(page.getByRole('tab', { name: '人员信息', exact: true })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByText('合成示例大学', { exact: true })).toBeVisible();
+  // 原站“员工信息”与各子集分区右上角都有“收起”（#326 第 2 轮 P2-4）
+  const info = page.getByRole('region', { name: '员工信息' });
+  await expect(info).toContainText('lin@example.com');
+  await info.getByRole('button', { name: '收起' }).click();
+  await expect(info.getByText('lin@example.com')).toHaveCount(0);
+  await expect(info.getByRole('button', { name: '展开' })).toHaveAttribute('aria-expanded', 'false');
+  const education = page.getByRole('region', { name: '教育经历' });
+  await education.getByRole('button', { name: '收起' }).click();
+  await expect(education.getByText('合成示例大学', { exact: true })).toHaveCount(0);
   await page.getByRole('tab', { name: '任职记录', exact: true }).click();
+  // 原站任职卡片写“年月日”，“生效中”为青绿色标签（#326 第 2 轮 P2-6）
   await expect(page.getByText('生效中', { exact: true })).toBeVisible();
-  await expect(page.getByText('2024-01-01 至 2026-09-30', { exact: true })).toBeVisible();
-  await expect(page.getByText('2026-10-01 至今', { exact: true })).toBeVisible();
+  await expect(page.getByText('生效中', { exact: true })).toHaveCSS('color', 'rgb(0, 168, 112)');
+  await expect(page.getByText('2024年1月1日 至 2026年9月30日', { exact: true })).toBeVisible();
+  await expect(page.getByText('2026年10月1日 至今', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: '关闭', exact: true }).click();
   await page.getByRole('switch', { name: '注释' }).click();
   await expect(page.getByText('DEC-108', { exact: true }).first()).toBeVisible();
@@ -193,6 +204,12 @@ test('AC-FE-R1b-03c 设置显示字段：居中双栏、姓名锁定、拖拽排
     '电子邮件',
   ]);
   await expect(selected.getByRole('listitem').first()).toHaveAttribute('draggable', 'false');
+  // 原站左栏分组名“当前列表字段”；右栏已选字段逐行浅底带边框（#326 第 2 轮 P2-5）
+  await expect(dialog.getByRole('checkbox', { name: '当前列表字段', exact: true })).toBeVisible();
+  const row = selected.getByRole('listitem', { name: '员工ID' });
+  await expect(row).toHaveCSS('background-color', 'rgb(245, 246, 247)');
+  await expect(row).toHaveCSS('border-top-width', '1px');
+  await expect(row).toHaveCSS('margin-bottom', '8px');
   await selected.getByRole('listitem', { name: '入职日期' }).dragTo(selected.getByRole('listitem', { name: '员工ID' }));
   await expect(selected.getByRole('listitem')).toHaveText([
     '员工姓名',
