@@ -257,7 +257,11 @@ test('AC-FE-R1a-30 组织新建与新建下级：按权限出入口，请求体�
   });
   await page.goto('/org');
   await page.getByRole('button', { name: /^新\s*建$/ }).click();
-  await expect(page.getByRole('dialog').getByLabel('生效日期')).toHaveValue('2026-10-12');
+  const effective = page
+    .getByRole('dialog')
+    .locator('.ant-form-item')
+    .filter({ has: page.locator('label').filter({ hasText: '生效日期' }) });
+  await expect(effective.locator('input')).toHaveValue('2026-10-12');
   await createOrganization(page);
   await expect(page.getByRole('dialog')).toHaveCount(0);
   const row = page.locator('tr[data-row-key]').first();
@@ -283,17 +287,20 @@ test('AC-FE-R1a-30 无新建权不出新建、新建下级（反向）', async (
   await expect(page.getByRole('button', { name: '新建下级' })).toHaveCount(0);
 });
 
-test('AC-FE-R1a-31 组织详情展示负责人姓名；无负责人查看权时不出该字段', async ({ page, baseURL }) => {
+test('AC-FE-R1a-31 组织详情展示负责人姓名', async ({ page, baseURL }) => {
   await setup(page, baseURL!);
   await page.goto('/org');
   await page.getByRole('button', { name: '合成组织', exact: true }).click();
   const drawer = page.getByRole('dialog');
   await expect(drawer.getByText('负责人', { exact: true })).toBeVisible();
   await expect(drawer.getByText('合成负责人', { exact: true })).toBeVisible();
-  await page.unrouteAll({ behavior: 'ignoreErrors' });
+});
+
+test('AC-FE-R1a-31 无负责人查看权时详情不出该字段（反向）', async ({ page, baseURL }) => {
   await setup(page, baseURL!, { viewable: ALL.filter((field) => field !== 'personInChargeId') });
   await page.goto('/org');
   await page.getByRole('button', { name: '合成组织', exact: true }).click();
+  const drawer = page.getByRole('dialog');
   await expect(drawer.getByText('机构ID', { exact: true })).toBeVisible();
   await expect(drawer.getByText('负责人', { exact: true })).toHaveCount(0);
 });
@@ -318,9 +325,7 @@ test('AC-FE-R1a-34 引用对象名称被裁剪时显示不在可见范围', asyn
   await page.route(`**/api/tenant/job/positions/${id}**`, (route) =>
     route.fulfill({ json: { id, revision: 1, name: '合成职位', orgId: id } }),
   );
-  await page.route(`**/api/tenant/org/organizations/${id}**`, (route) =>
-    route.fulfill({ json: { id, revision: 1 } }),
-  );
+  await page.route(`**/api/tenant/org/organizations/${id}**`, (route) => route.fulfill({ json: { id, revision: 1 } }));
   await page.goto('/job?kind=positions');
   await page.getByRole('button', { name: '合成条目', exact: true }).click();
   await expect(page.getByRole('dialog').getByText('（不在可见范围）')).toBeVisible();

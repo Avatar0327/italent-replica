@@ -1,5 +1,5 @@
 import type { FieldAccess } from '../foundation/permission-model.js';
-import { kindText, pageText as m } from './messages.js';
+import { formText, kindText, pageText as m } from './messages.js';
 export const jobKinds = [
   'layers',
   'grades',
@@ -138,8 +138,10 @@ const layouts: Partial<Record<JobKind, JobLayout>> = {
     extra: { key: 'reporting', fields: ['adminParent', 'adminSequence', 'dottedParent', 'dottedSequence'] },
   },
 };
-export function jobLabel(kind: JobKind, field: string) {
-  const own: Record<string, string> = kindText[kind];
+// 原站职位表单：上级职位、虚线上级穿插在基本信息里；职位汇报关系只是详情分区。
+const positionForm = ['adminParent', 'isKey', 'dottedParent', 'isConfidential', 'displayOrder'];
+export function jobLabel(kind: JobKind, field: string, place?: 'form') {
+  const own: Record<string, string> = { ...kindText[kind], ...(place === 'form' ? formText[kind] : {}) };
   return own[field] ?? m[field as keyof typeof m] ?? field;
 }
 export function jobListFields(kind: JobKind, access: FieldGate) {
@@ -160,6 +162,10 @@ export function jobFormGroups(kind: JobKind) {
     return [{ key: 'basic', fields }];
   }
   const { head, traits, others, extra } = layout;
+  if (kind === 'positions') {
+    const tail = ['adminSequence', 'dottedSequence', 'stopDate', 'enabled'];
+    return [{ key: 'basic', fields: [...head, ...positionForm, ...others, ...tail] }];
+  }
   return [{ key: 'basic', fields: [...head, ...traits, ...others, 'stopDate', 'enabled'] }, extra];
 }
 export function jobDetailSections(kind: JobKind, access: FieldGate, values: Record<string, unknown>) {
@@ -202,12 +208,13 @@ export interface JobCatalogFilters {
   enabled: string;
   orgId?: string;
 }
-export function jobCatalogQuery(kind: JobKind, filters: JobCatalogFilters) {
+/** 无名称查看权时不按名称筛选，避免借筛选结果探测被裁剪的名称。 */
+export function jobCatalogQuery(kind: JobKind, filters: JobCatalogFilters, nameVisible = true) {
   const query = new URLSearchParams({
     asOf: filters.asOf,
     page: String(filters.page),
     pageSize: String(filters.pageSize),
-    ...(filters.name ? { name: filters.name } : {}),
+    ...(nameVisible && filters.name ? { name: filters.name } : {}),
     ...(filters.enabled ? { enabled: filters.enabled } : { includeDisabled: 'true' }),
     // 接口只有职位支持按所属组织筛选。
     ...(kind === 'positions' && filters.orgId ? { orgId: filters.orgId } : {}),

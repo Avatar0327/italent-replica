@@ -1,7 +1,8 @@
 import { Alert, Input, InputNumber, Select } from 'antd';
 import { useState } from 'react';
 import { FormOverlay, TenantDatePicker, type FormField } from '../foundation/index.js';
-import { usePageWrite, useRemote, type PageAccess } from '../org/page-support.js';
+import { useRemote, type PageAccess } from '../org/page-support.js';
+import { useRecordCommand } from '../org/record-command.js';
 import {
   jobBody,
   jobFormGroups,
@@ -78,7 +79,7 @@ export function ReferenceSelect({
   );
 }
 
-export function JobEditor(props: {
+interface EditorProps {
   kind: JobKind;
   original?: JobRow;
   date: string;
@@ -86,18 +87,27 @@ export function JobEditor(props: {
   access: PageAccess;
   onClose(): void;
   onSaved(): void;
-}) {
+}
+function useJobCommand({ kind, original, date }: EditorProps) {
+  const base = `/api/tenant/job/${kind}`;
+  return useRecordCommand({
+    resource: original ? `${base}/${original.id}@${date}` : `${base}#new`,
+    original,
+    readPath: original ? (id) => `${base}/${id}?asOf=${date}` : undefined,
+    project: jobInitialValues,
+  });
+}
+export function JobEditor(props: EditorProps) {
   const { kind, original, access, date } = props;
   const timing = jobTiming(original, date, props.today, access.field('startDate'));
-  const write = usePageWrite();
-  const [openKey] = useState(() => crypto.randomUUID());
+  const record = useJobCommand(props);
   const groups = jobFormGroups(kind).map((group) => ({
     title: m[group.key as 'basic'],
     fields: group.fields.map((name): FormField => {
       const control = jobControl(name, kind, timing.asOf, original?.id);
       return {
         name,
-        label: jobLabel(kind, name),
+        label: jobLabel(kind, name, 'form'),
         control,
         access: access.field(jobPermissionField(name)),
         rules:
@@ -107,23 +117,29 @@ export function JobEditor(props: {
       };
     }),
   }));
+  const build = (body: Record<string, unknown>, current?: JobRow) =>
+    jobBody(kind, { ...body, ...timing.createFields }, current, timing.asOf);
   return (
     <FormOverlay
       mode="modal"
-      recordKey={original ? `${original.id}:${original.revision}` : openKey}
+      recordKey={original ? `${original.id}@${date}` : 'new'}
+      submission={record.command}
       open
       title={original ? m.edit : m.create}
       groups={groups}
       initialValues={jobInitialValues(original)}
-      onClose={props.onClose}
-      onRefresh={props.onClose}
+      onClose={() => {
+        record.command.clear();
+        props.onClose();
+      }}
       onSubmit={async (values) => {
-        await write(
-          `/api/tenant/job/${kind}${original ? `/${original.id}` : ''}`,
-          jobBody(kind, { ...values, ...timing.createFields }, original, timing.asOf),
-          original?.revision ?? 0,
-          original ? 'PATCH' : 'POST',
-        );
+        // 必填等本地校验在发命令前抛出，不让内核把它记成结果未知。
+        build(values, record.current);
+        await record.save(values, {
+          path: `/api/tenant/job/${kind}${original ? `/${original.id}` : ''}`,
+          method: original ? 'PATCH' : 'POST',
+          build,
+        });
         props.onSaved();
       }}
     />

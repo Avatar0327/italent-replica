@@ -10,9 +10,12 @@ export function CatalogFilters({
   value,
   statuses,
   clearStatus,
+  showName = true,
   onApply,
 }: {
   value: Filters;
+  /** 无名称查看权时不出名称条件（AC-FE-R1a-33）。 */
+  showName?: boolean;
   statuses: { value: string; label: string }[];
   clearStatus: string;
   onApply(value: Filters): void;
@@ -36,10 +39,12 @@ export function CatalogFilters({
         {draft && (
           <>
             <h2 className="form-group-title">{m.customSearch}</h2>
-            <label className="r1-filter-field">
-              <span>{m.filterName}</span>
-              <Input value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
-            </label>
+            {showName && (
+              <label className="r1-filter-field">
+                <span>{m.filterName}</span>
+                <Input value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
+              </label>
+            )}
             <label className="r1-filter-field">
               <span>{m.status}</span>
               <Select

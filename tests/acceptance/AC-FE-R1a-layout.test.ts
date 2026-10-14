@@ -175,7 +175,9 @@ describe('AC-FE-R1a-23 职务、职位表单按原站分组与排序', () => {
       'isConfidential',
       'displayOrder',
     ]);
-    expect(groups[0].fields).toEqual(expect.arrayContaining(['adminSequence', 'dottedSequence', 'stopDate', 'enabled']));
+    expect(groups[0].fields).toEqual(
+      expect.arrayContaining(['adminSequence', 'dottedSequence', 'stopDate', 'enabled']),
+    );
     const formLabels = groups[0].fields.map((field: string) => jobLabel('positions', field, 'form'));
     expect(formLabels).toEqual(expect.arrayContaining(['上级职位', '虚线上级']));
     expect(formLabels).not.toContain('直线上级');
@@ -267,7 +269,7 @@ describe('AC-FE-R1a-25 组织列表与详情字段按原站', () => {
       'startDate',
       'stopDate',
     ]);
-    expect(orgDetailFields(access)).toEqual([
+    expect(orgDetailFields(pageAccess(permission([...ALL, 'personInChargeId'])))).toEqual([
       'code',
       'name',
       'location',

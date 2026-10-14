@@ -111,7 +111,7 @@ export const pageText = {
   no: '否',
   isKey: '关键',
   isConfidential: '涉密',
-  duty: '职责说明',
+  duty: '职位说明',
   reporting: '职位汇报关系',
   orgFilter: '所属组织',
   hiddenReference: '（不在可见范围）',
@@ -132,5 +132,14 @@ export const kindText = {
     isConfidential: '是否涉密职位',
     adminParent: '直线上级',
     dottedParent: '虚线上级',
+  },
+};
+/** 原站职位表单把上级写成「上级职位」，详情汇报关系分区才叫「直线上级」。 */
+export const formText: Partial<Record<keyof typeof kindText, Record<string, string>>> = {
+  positions: {
+    adminParent: '上级职位',
+    adminSequence: '上级职位顺序号',
+    dottedParent: '虚线上级',
+    dottedSequence: '虚线上级顺序号',
   },
 };

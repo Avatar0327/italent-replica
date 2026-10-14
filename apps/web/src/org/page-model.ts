@@ -93,6 +93,7 @@ const detailFields = [
   'startDate',
   'stopDate',
   'enabled',
+  'personInChargeId',
   'fullName',
   'remarks',
 ];
@@ -106,6 +107,41 @@ export function orgDetailFields(access: FieldGate) {
 export function orgLabel(field: string, place: 'list' | 'detail') {
   const own: Record<string, string> = place === 'list' ? listText : detailText;
   return own[field] ?? m[field as keyof typeof m] ?? field;
+}
+/** 新建与新建下级共用：须有新建数据权、列表「新建」按钮，且名称与上级可编辑（接口要求行政维度上级）。 */
+export function orgCreatable(access: ReturnType<typeof pageAccess>) {
+  return access.can('create', 'list') && access.field('name').editable && access.field('parents').editable;
+}
+/** 新建请求体：只发有值的字段，ID 统一小写，上级放进 parents.admin（apps/api 新建组织契约）。 */
+export function orgCreateBody(values: Record<string, unknown>) {
+  const { adminParent, ...fields } = values;
+  const body: Record<string, unknown> = {};
+  for (const [key, raw] of Object.entries(fields)) {
+    const value = typeof raw === 'string' ? raw.trim() : raw;
+    if (value === undefined || value === null || value === '') continue;
+    body[key] = key.endsWith('Id') && typeof value === 'string' ? value.toLowerCase() : value;
+  }
+  if (typeof adminParent === 'string' && adminParent) body.parents = { admin: { parentId: adminParent.toLowerCase() } };
+  return body;
+}
+export interface OrgCatalogFilters {
+  asOf: string;
+  dimension: string;
+  page: number;
+  pageSize: number;
+  includeDisabled: boolean;
+  name: string;
+}
+/** 无名称查看权时不按名称筛选，避免借筛选结果探测被裁剪的名称。 */
+export function orgCatalogQuery(filters: OrgCatalogFilters, nameVisible: boolean) {
+  return new URLSearchParams({
+    asOf: filters.asOf,
+    dimension: filters.dimension,
+    page: String(filters.page),
+    pageSize: String(filters.pageSize),
+    includeDisabled: String(filters.includeDisabled),
+    ...(nameVisible && filters.name ? { name: filters.name } : {}),
+  }).toString();
 }
 export type OrgAction = 'edit' | 'change' | 'disable';
 /** 行操作与详情按钮共用：编辑只更正设立日期（DEC-147），变更 / 停用须能填生效日期。 */

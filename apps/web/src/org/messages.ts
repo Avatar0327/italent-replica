@@ -93,6 +93,13 @@ export const pageText = {
   recovery: '请关闭抽屉，刷新并核对保存结果后重新打开。',
   permissionTitle: '权限加载失败',
   linked: '任职联动',
+  create: '新建',
+  createChild: '新建下级',
+  personInChargeId: '负责人',
+  hrbpId: 'HRBP',
+  personHint: '输入姓名搜索',
+  personFailed: '候选人员加载失败或无权限',
+  hiddenPerson: '（不在可见范围）',
 };
 
 /** 原站「启用的组织」列表列名。 */
@@ -107,6 +114,7 @@ export const detailText = {
   location: '所在地点',
   fullName: '组织全称',
   enabled: '状态',
+  personInChargeId: '负责人',
   admin: '行政维度上级',
   business: '业务维度上级',
   product: '产品维度上级',

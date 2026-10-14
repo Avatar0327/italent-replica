@@ -13,6 +13,7 @@ import {
   type ListView,
 } from '../foundation/index.js';
 import { usePagePermissions, useRemote, RemoteContent, type PageAccess } from '../org/page-support.js';
+import { FormCommands } from '../foundation/forms/useCommandForm.js';
 import { useSequenceSelection } from './SequenceSync.js';
 import { JobEditor, JobHints, ReferenceSelect } from './JobEditor.js';
 import { ReferenceName } from './ReferenceName.js';
@@ -43,22 +44,24 @@ export function JobWorkspace() {
   const fallback = allowed.includes('posts') ? 'posts' : allowed[0]!;
   const kind = allowed.includes(requested) ? requested : fallback;
   return (
-    <div className="r1-workspace">
-      <DecisionNote id="job" />
-      <JobCatalog
-        key={kind}
-        kind={kind}
-        access={permissions.access(jobObjects[kind])}
-        view={{
-          value: kind,
-          options: allowed.map((key) => ({ key, label: m[key] })),
-          onChange: (kind) => setParams({ kind }),
-        }}
-      />
-    </div>
+    <FormCommands>
+      <div className="r1-workspace">
+        <DecisionNote id="job" />
+        <JobCatalog
+          key={kind}
+          kind={kind}
+          access={permissions.access(jobObjects[kind])}
+          view={{
+            value: kind,
+            options: allowed.map((key) => ({ key, label: m[key] })),
+            onChange: (kind) => setParams({ kind }),
+          }}
+        />
+      </div>
+    </FormCommands>
   );
 }
-function useCatalog(kind: JobKind) {
+function useCatalog(kind: JobKind, access: PageAccess) {
   const session = useSession();
   const [date, setDate] = useState(() => tenantDate(new Date(), session.timezone));
   const [page, setPage] = useState({ page: 1, pageSize: 15 });
@@ -67,7 +70,7 @@ function useCatalog(kind: JobKind) {
   const [orgId, setOrgId] = useState<string>();
   const [selected, setSelected] = useState<string>();
   const [editor, setEditor] = useState<{ original?: JobRow; today: string }>();
-  const query = jobCatalogQuery(kind, { asOf: date, ...page, name, enabled, orgId });
+  const query = jobCatalogQuery(kind, { asOf: date, ...page, name, enabled, orgId }, access.field('name').visible);
   const remote = useRemote<PageResult<JobRow> & { today: string }>(`/api/tenant/job/${kind}?${query}`);
   const detail = useRemote<JobRow>(selected ? `/api/tenant/job/${kind}/${selected}?asOf=${date}` : null);
   const reset = () => {
@@ -125,17 +128,19 @@ function JobFilters({ s, access }: { s: Catalog; access: PageAccess }) {
             }}
           />
         )}
-        <Input.Search
-          key={s.name}
-          defaultValue={s.name}
-          aria-label={m.search}
-          placeholder={m.search}
-          allowClear
-          onSearch={(value) => {
-            s.setName(value);
-            s.reset();
-          }}
-        />
+        {access.field('name').visible && (
+          <Input.Search
+            key={s.name}
+            defaultValue={s.name}
+            aria-label={m.search}
+            placeholder={m.search}
+            allowClear
+            onSearch={(value) => {
+              s.setName(value);
+              s.reset();
+            }}
+          />
+        )}
         <Select
           aria-label={m.enabled}
           value={s.enabled}
@@ -157,6 +162,7 @@ function JobFilters({ s, access }: { s: Catalog; access: PageAccess }) {
             { value: '', label: m.all },
           ]}
           clearStatus=""
+          showName={access.field('name').visible}
           onApply={({ name, status }) => {
             s.setName(name);
             s.setEnabled(status);
@@ -179,7 +185,7 @@ function JobFilters({ s, access }: { s: Catalog; access: PageAccess }) {
 }
 function JobCatalog({ kind, access, view }: { kind: JobKind; access: PageAccess; view: ListView }) {
   const { message } = App.useApp();
-  const s = useCatalog(kind);
+  const s = useCatalog(kind, access);
   const selection = useSequenceSelection(kind, s.remote.data, access, s.remote.refresh);
   const columns = jobColumns(kind, access, s.setSelected);
   return (
