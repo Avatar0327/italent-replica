@@ -24,7 +24,7 @@ import {
   type View,
 } from './model.js';
 import { m } from './messages.js';
-import { DemoNote } from './parts.js';
+import { DemoNote, employmentOf } from './parts.js';
 import { KeywordFilter, ListFilterDrawer } from './Filters.js';
 import { ContractButtons } from './ContractForm.js';
 import { NameOf, refPaths, useOptions, useToday } from './references.js';
@@ -178,7 +178,7 @@ function ListFilters({ state }: { state: State }) {
 }
 function EmploymentCell({ row, column }: { row: Row; column: string }) {
   const today = useToday();
-  const employment = row.employment && typeof row.employment === 'object' ? (row.employment as Row) : {};
+  const employment = employmentOf(row) ?? {};
   const key = employmentColumns[column]!;
   if (key === 'entryDate') return <>{value(employment.entryDate, 'entryDate')}</>;
   return <NameOf path={refPaths[key as keyof typeof refPaths]} id={employment[key]} asOf={today} />;
@@ -198,6 +198,7 @@ function RowOperation({ row, view, reload }: { row: Row; view: View; reload(): v
       <ContractButtons
         ops={['create']}
         employee={{ value: row.employeeId, label: String(row.name ?? row.employeeId) }}
+        employment={employmentOf(row)}
         onDone={reload}
       />
     );

@@ -23,7 +23,8 @@ import {
 } from './forms.js';
 import { m } from './messages.js';
 import { contractApi, object, value, type Row } from './model.js';
-import { RefLabel, RefSelect, refPaths, usePeople } from './references.js';
+import { employmentItems, employmentOf } from './parts.js';
+import { NameOf, RefLabel, RefSelect, refPaths, usePeople, useToday } from './references.js';
 import { useRead } from './useRead.js';
 
 const { commands, records } = contractApi;
@@ -35,11 +36,14 @@ export function ContractButtons({
   ops,
   source,
   employee,
+  employment,
   onDone,
 }: {
   ops: Operation[];
   source?: Row;
   employee?: Choice;
+  /** 新签时所选人员的任职摘要（入职缺失行带入）；变更 / 续签取源合同详情里的摘要。 */
+  employment?: Row;
   onDone(): void;
 }) {
   const permission = usePermissions(object);
@@ -64,6 +68,7 @@ export function ContractButtons({
           {...open}
           source={source}
           employee={employee}
+          employment={employment}
           onClose={() => setOpen(undefined)}
           onDone={onDone}
         />
@@ -75,7 +80,15 @@ export function ContractButtons({
 const project = (row: Row, op: Operation) =>
   Object.fromEntries(formFieldNames(op).map((field) => [field, row[field] ?? null]));
 
-type Props = { op: Operation; mode: Mode; source?: Row; employee?: Choice; onClose(): void; onDone(): void };
+type Props = {
+  op: Operation;
+  mode: Mode;
+  source?: Row;
+  employee?: Choice;
+  employment?: Row;
+  onClose(): void;
+  onDone(): void;
+};
 export function ContractForm(props: Props) {
   const { op, mode, source, employee, onClose, onDone } = props;
   const api = useApiClient();
@@ -84,7 +97,7 @@ export function ContractForm(props: Props) {
     ? `${records}/${sourceId}/${op}/${mode}`
     : `${commands}/create/${mode}/${employee?.value ?? ''}`;
   const submission = useCommandForm(resource);
-  const { groups, fields } = useFormFields(op, source, employee);
+  const { groups, fields } = useFormFields(op, source, employee, source ? employmentOf(source) : props.employment);
   const submit = useSubmit(props, submission, fields);
   return (
     <FormOverlay
@@ -115,8 +128,9 @@ export function ContractForm(props: Props) {
   );
 }
 /** 字段分组与可提交字段：按字段权限渲染，续签不改类型（editableFormFields）。 */
-function useFormFields(op: Operation, source?: Row, employee?: Choice) {
+function useFormFields(op: Operation, source?: Row, employee?: Choice, employment?: Row) {
   const permission = usePermissions(object);
+  const asOf = useToday();
   // 自动编号只在设置明确开启时放过编号必填；读不到设置时保守按必填。
   const settings = useRead<Row>(op === 'create' ? contractApi.settings : null);
   const context = { source, autoNumber: settings.data?.autoNumber === true };
@@ -152,20 +166,53 @@ function useFormFields(op: Operation, source?: Row, employee?: Choice) {
     field('termMonths', <Linked name="termMonths" kind="months" />),
     field('endDate', <TenantDatePicker />),
   ];
+  // 原站表单：任职信息（只读）→ 合同信息（人员在首位）→ 原合同信息；终止只有实际终止时间一项。
+  const person =
+    op === 'create' ? employeeField(employee) : targetField(source, permission.field('employeeId').visible);
   const groups =
     op === 'terminate'
       ? [{ title: m.contract, fields: [field('actualTerminationDate', <TenantDatePicker />)] }]
       : [
-          ...(op === 'create' ? [{ title: m.fields.employeeId!, fields: [employeeField(employee)] }] : []),
-          { title: m.formGroups[op], fields: contractFields },
-          ...(source ? [{ title: m.originalContract, fields: originalFields(source, permission.field) }] : []),
+          { title: m.employment, fields: employmentFields(employment, asOf) },
+          { title: m.formGroups[op], fields: [person, ...contractFields] },
+          ...(source ? [{ title: m.originalContract, fields: originalFields(op, source, permission.field) }] : []),
         ];
   return { groups, fields: editable.filter((name) => access(name).visible) };
 }
-/** 变更 / 续签下方的原合同信息（原站灰底只读分区），只展示、不提交。 */
-const originalKeys = ['number', 'companyId', 'typeId', 'termType', 'signingDate', 'effectiveDate', 'endDate'];
-function originalFields(source: Row, access: (field: string) => { visible: boolean }): FormField[] {
-  return [...originalKeys, 'signingCount'].map((name) => ({
+/** 只读展示项：不进提交集合（editableFields 只取合同字段）。 */
+const shown = (name: string, label: string, display: FormField['display'], visible = true): FormField => ({
+  name,
+  label,
+  control: null,
+  access: { visible, editable: false },
+  display,
+});
+/** 任职信息（原站只读分区）：顶部新签选人后后端未提供该人员的任职摘要，各项显示“--”（后端缺口）。 */
+function employmentFields(employment: Row | undefined, asOf?: string): FormField[] {
+  return employmentItems(employment, asOf).map((item) => shown(`employment.${item.key}`, item.label, item.children));
+}
+/** 变更 / 续签的新合同区首位是固定人员（命令目标，不可改）。 */
+function targetField(source: Row | undefined, visible: boolean): FormField {
+  return shown(
+    'target.employeeId',
+    m.fields.employeeId!,
+    <NameOf path={refPaths.employeeId} id={source?.employeeId} />,
+    visible,
+  );
+}
+/** 变更 / 续签下方的原合同信息（原站灰底只读分区），只展示、不提交；签订次数只在续签时显示。 */
+const originalKeys = [
+  'number',
+  'companyId',
+  'typeId',
+  'termType',
+  'signingDate',
+  'effectiveDate',
+  'termMonths',
+  'endDate',
+];
+function originalFields(op: Operation, source: Row, access: (field: string) => { visible: boolean }): FormField[] {
+  return [...originalKeys, ...(op === 'renew' ? ['signingCount'] : [])].map((name) => ({
     name: `original.${name}`,
     label: m.fields[name] ?? name,
     control: null,
@@ -227,7 +274,8 @@ function employeeField(employee?: Choice): FormField {
     // 从“入职缺失”行带入时人员固定；人员是命令目标，不属于合同字段权限。
     access: { visible: true, editable: !employee },
     control: <EmployeePicker />,
-    display: employee?.label,
+    // 姓名按人员详情解析：入职缺失行的姓名会被列表按合同对象字段裁掉（后端缺口）。
+    display: employee ? <NameOf path={refPaths.employeeId} id={employee.value} /> : undefined,
     rules: [{ required: true, message: m.required }],
   };
 }

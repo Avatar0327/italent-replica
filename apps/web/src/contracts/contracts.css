@@ -129,3 +129,11 @@
   gap: 4px;
   margin-bottom: 8px;
 }
+.contract-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.contract-section-title h2 {
+  margin: 0 0 12px;
+}

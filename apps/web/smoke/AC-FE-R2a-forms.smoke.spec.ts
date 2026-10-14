@@ -46,7 +46,7 @@ const cases: Record<Op, { button: string; title: string; receipt: object; fields
     },
     fields: { number: 'DEMO-CT-002', effectiveDate: '2026-11-01' },
   },
-  renew: { button: '续签', title: '续签合同', receipt: contract(), fields: { termMonths: 12 } },
+  renew: { button: '续签', title: '续签合同', receipt: contract(), fields: { termMonths: 24 } },
   terminate: {
     button: '终止',
     title: '终止合同',
@@ -61,7 +61,7 @@ async function open(page: Page, op: Op) {
     await page.locator('.ant-table').getByRole('button', named('新签')).click();
   } else {
     await page.getByRole('button', { name: '查看合同', exact: true }).first().click();
-    await expect(page.getByRole('heading', { name: '合同详情' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: '2020-03-01' })).toBeVisible();
     await page.getByRole('button', named(cases[op].button)).click();
   }
   const form = page.getByRole('dialog', { name: cases[op].title, exact: true });
@@ -69,7 +69,11 @@ async function open(page: Page, op: Op) {
   return form;
 }
 async function fill(form: Locator, op: Op) {
-  const months = () => item(form, '合同期限（月）').getByRole('spinbutton').fill('12');
+  // 原合同期限为 12 个月，续签填 24 才触发期限联动。
+  const months = () =>
+    item(form, '合同期限（月）')
+      .getByRole('spinbutton')
+      .fill(op === 'renew' ? '24' : '12');
   if (op === 'create') {
     await choose(form, '公司', '合成公司');
     await choose(form, '合同类型', '合成合同类型');
@@ -158,5 +162,49 @@ for (const op of ['change', 'renew', 'terminate'] as const) {
     await form.getByRole('button', save).click();
     await expect(form).toHaveCount(0);
     expect(writes.map((write) => write.revision)).toEqual([String(record.revision), String(record.revision + 1)]);
+  });
+}
+// 第 2 轮：变更 / 续签 / 终止三种入口各按自己的状态规则判断（规格 32 CT-R3，后端 assertOperationState）。
+const entries = ['变更', '发起变更申请', '续签', '终止'];
+for (const [status, approvalStatus, shown] of [
+  ['valid', 'effective', entries],
+  ['terminated', 'effective', ['续签']],
+  ['terminated', 'in_review', []],
+  ['void', 'effective', []],
+] as const) {
+  test(`AC-FE-R2a-22 ${status} / ${approvalStatus} 合同的业务入口按各自状态规则显示`, async ({ page }) => {
+    await setupContracts(page);
+    await page.route('**/api/tenant/contracts/records/*', (route) =>
+      route.fulfill({ json: { ...record, status, approvalStatus } }),
+    );
+    await page.getByRole('button', { name: '查看合同', exact: true }).first().click();
+    const heading = page.locator('.contract-heading');
+    await expect(page.locator('.contract-detail .contract-card')).toContainText('DEMO-CT-001');
+    for (const label of entries)
+      await expect(heading.getByRole('button', named(label))).toHaveCount(
+        (shown as readonly string[]).includes(label) ? 1 : 0,
+      );
+    if (!shown.length) return;
+    await heading.getByRole('button', named('续签')).click();
+    await expect(page.getByRole('dialog', { name: '续签合同', exact: true })).toBeVisible();
+  });
+}
+const section = (form: Locator, title: string) =>
+  form.locator('section').filter({ has: form.page().getByRole('heading', { name: title, exact: true }) });
+// 第 2 轮：表单按原站先任职信息分区；新合同区首位是人员；原合同信息带期限月数。
+for (const op of ['create', 'change', 'renew'] as const) {
+  test(`AC-FE-R2a-23 ${cases[op].title}：任职信息分区、人员在合同区首位、原合同期限月数`, async ({ page }) => {
+    const form = await open(page, op);
+    const titles = { create: '合同信息', change: '变更后合同信息', renew: '续签合同信息' };
+    await expect(form.locator('h2.form-group-title').first()).toHaveText('任职信息');
+    const employment = section(form, '任职信息');
+    await expect(item(employment, '入职日期')).toContainText(op === 'create' ? '2021-05-01' : '2020-03-01');
+    await expect(item(employment, '部门')).toContainText('合成部门');
+    await expect(item(employment, '职务')).toContainText('合成职务');
+    const first = section(form, titles[op]).locator('.ant-form-item').first();
+    await expect(first.locator('.ant-form-item-label')).toHaveText(/人员/);
+    await expect(first).toContainText('合成甲');
+    if (op === 'create') return;
+    await expect(item(section(form, '原合同信息'), '合同期限（月）')).toContainText('12');
   });
 }

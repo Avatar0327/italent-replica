@@ -16,12 +16,14 @@ export const record = {
   termType: 'fixed',
   effectiveDate: '2026-01-01',
   endDate: '2027-01-01',
+  termMonths: 12,
   signingCount: 7,
   status: 'valid',
   approvalStatus: 'effective',
   rootContractId: id,
   versionNo: 2,
   revision: 3,
+  employment: { entryDate: '2020-03-01', departmentId: 'dept', postId: 'post' },
 };
 export const pending = {
   id: requestId,
@@ -56,7 +58,13 @@ export const settingsRow = {
   uniqueFields: ['number'],
 };
 function listRow(view: string | null) {
-  if (view === 'missing') return { employeeId: 'employee', name: '合成甲', code: 'DEMO-001' };
+  if (view === 'missing')
+    return {
+      employeeId: 'employee',
+      name: '合成甲',
+      code: 'DEMO-001',
+      employment: { entryDate: '2021-05-01', departmentId: 'dept', postId: 'post' },
+    };
   if (view === 'in_review') return pending;
   return { ...record, ...(view === 'all' ? { rowType: 'contract' } : {}) };
 }
@@ -77,6 +85,16 @@ async function contractRoutes(page: Page) {
     route.fulfill({ json: { items: [ruleRow], total: 1, page: 1, pageSize: 15 } }),
   );
   await page.route('**/api/tenant/contracts/settings', (route) => route.fulfill({ json: settingsRow }));
+  // 任职摘要与人员只给 ID，名称按组织 / 岗位 / 人员详情接口解析（references.tsx NameOf）。
+  for (const [path, name] of [
+    ['org/organizations/dept', '合成部门'],
+    ['job/posts/post', '合成职务'],
+    ['personnel/employees/employee', '合成甲'],
+  ])
+    await page.route(
+      (url) => url.pathname === `/api/tenant/${path}`,
+      (route) => route.fulfill({ json: { id: path, name } }),
+    );
 }
 /** overrides 按对象编码替换权限夹具；未登记的对象按无权限 403 返回。 */
 export async function setupContracts(page: Page, overrides: Record<string, ObjectPermissionFixture> = {}) {

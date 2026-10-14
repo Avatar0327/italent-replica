@@ -24,11 +24,15 @@ test('AC-FE-R2a-03 六视图请求、详情、高级筛选与三设置页', asyn
   await expect(page.locator('.contract-card .ant-spin-spinning')).toHaveCount(0);
   await expect(page.locator('.contract-pagination')).toContainText('共 1 条');
   await page.screenshot({ path: '../../.demo/f127-list.png' });
+  // 原断言“详情含合同 ID”随原站没有的“原合同 ID”字段移除，改为核对按该 ID 读取详情。
+  const detailRead = page.waitForRequest(
+    (r) => new URL(r.url()).pathname === `/api/tenant/contracts/records/${encodeURIComponent(id)}`,
+  );
   await page.getByRole('button', { name: '查看合同', exact: true }).first().click();
-  await expect(page.getByRole('heading', { name: '合同详情' })).toBeVisible();
+  await detailRead;
+  await expect(page.getByRole('heading', { level: 1, name: '2020-03-01' })).toBeVisible();
   await expect(page.getByText('签订次数', { exact: true })).toBeVisible();
   await expect(page.locator('.contract-detail').getByText('7', { exact: true })).toBeVisible();
-  await expect(page.locator('.contract-detail')).toContainText(id);
   // 原断言“详情末卡为演示数据”：任职已直连接口；按原站只有“合同协议”一个分区，先任职后合同，无版本链。
   await expect(page.locator('.contract-detail .contract-card')).toHaveCount(1);
   await expect(page.getByRole('heading', { name: '合同协议', exact: true })).toBeVisible();
@@ -120,8 +124,13 @@ test('AC-FE-R2a-08 列表、详情、类型、设置及规则只翻译枚举字�
   }
   await page.getByRole('button', { name: '查看合同', exact: true }).click();
   const detail = page.locator('.contract-detail .contract-card').first();
-  for (const text of ['fixed', 'task', 'valid', '固定期限', '有效', '生效']) {
+  for (const text of ['fixed', 'task', 'valid', '固定期限']) {
     await expect(detail.getByText(text, { exact: true })).toBeVisible();
+  }
+  // 详情按原站不展示状态 / 审批状态（DEC-489），两者的枚举翻译改在“全部合同协议”列表核对。
+  await page.goto('/contracts?view=all');
+  for (const text of ['有效', '生效']) {
+    await expect(page.locator('.contract-card').getByRole('cell', { name: text, exact: true })).toBeVisible();
   }
   await page.route('**/api/tenant/contracts/master-data/types?*', (route) =>
     route.fulfill({ json: { items: [{ id: 'type', code: 'fixed', name: 'task', enabled: true }] } }),
@@ -176,7 +185,8 @@ test('AC-FE-R2a-09 缺失视图关键字筛选及参考列名', async ({ page })
   await list.getByLabel('姓名', { exact: true }).fill('合成甲');
   await list.getByLabel('姓名', { exact: true }).press('Enter');
   await filtered;
-  await expect(list.getByRole('cell', { name: '合成甲', exact: true })).toBeVisible();
+  // 姓名 / 工号不是合同对象字段，后端列表按合同对象字段裁掉（后端缺口），列随之隐藏；改为核对该行的任职摘要已展示。
+  await expect(list.getByRole('cell', { name: '2021-05-01', exact: true })).toBeVisible();
   for (const label of ['即将到期', '有效合同协议', '过期未续签', '全部合同协议']) {
     const tab = page.getByRole('button', { name: label, exact: true });
     await tab.click();
@@ -188,4 +198,20 @@ test('AC-FE-R2a-09 缺失视图关键字筛选及参考列名', async ({ page })
         : ['法人公司'];
     for (const name of columns) await expect(list.getByRole('columnheader', { name, exact: true })).toBeVisible();
   }
+});
+test('AC-FE-R2a-24 详情按原站：入职日期为标题，只列原站字段，“合同协议”分区可收起', async ({ page }) => {
+  await setup(page);
+  await page.getByRole('button', { name: '查看合同', exact: true }).first().click();
+  await expect(page.getByRole('heading', { level: 1, name: '2020-03-01' })).toBeVisible();
+  const card = page.locator('.contract-detail .contract-card');
+  for (const label of ['终止日期', '原合同 ID', '版本号', '状态', '审批状态'])
+    await expect(card.getByText(label, { exact: true })).toHaveCount(0);
+  const labels = ['人员', '编号', '公司', '合同类型', '期限类型', '签订日期', '生效日期', '实际终止时间', '签订次数'];
+  await expect(card.locator('.contract-info .ant-descriptions-item-label')).toHaveText(labels);
+  await expect(card.getByText('合成甲', { exact: true })).toBeVisible();
+  await card.getByRole('button', { name: '收起', exact: true }).click();
+  await expect(card.getByText('任职信息', { exact: true })).toBeHidden();
+  await expect(card.getByText('DEMO-CT-001', { exact: true })).toBeHidden();
+  await card.getByRole('button', { name: '展开', exact: true }).click();
+  await expect(card.getByText('DEMO-CT-001', { exact: true })).toBeVisible();
 });

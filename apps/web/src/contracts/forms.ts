@@ -23,6 +23,19 @@ export const buttonLevel = (op: Operation) => (op === 'create' ? 'list' : 'detai
 export function availableModes(can: (button: string, level: string) => boolean, op: Operation): Mode[] {
   return (['direct', 'application'] as const).filter((mode) => can(contractAction(op, mode), buttonLevel(op)));
 }
+/**
+ * 详情上三种入口各按自己的状态规则（规格 32 CT-R3；后端 service.ts assertOperationState）：都要求审批状态为生效；
+ * 变更 / 终止只对有效合同，续签对有效或已终止合同。最终以服务端拒绝为准。
+ */
+const sourceStatuses: Record<Exclude<Operation, 'create'>, string[]> = {
+  change: ['valid'],
+  renew: ['valid', 'terminated'],
+  terminate: ['valid'],
+};
+export function sourceOperations(source: Row): Operation[] {
+  if (source.approvalStatus !== 'effective') return [];
+  return (['change', 'renew', 'terminate'] as const).filter((op) => sourceStatuses[op].includes(String(source.status)));
+}
 export function formFieldNames(op: Operation) {
   return op === 'terminate' ? ['actualTerminationDate'] : contractFields;
 }

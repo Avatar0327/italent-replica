@@ -164,6 +164,8 @@ export const m = {
   contract: '合同信息',
   originalContract: '原合同信息',
   agreement: '合同协议',
+  collapse: '收起',
+  expand: '展开',
   formGroups: { create: '合同信息', change: '变更后合同信息', renew: '续签合同信息', terminate: '合同信息' },
   refresh: '刷新',
   create: '新建',
