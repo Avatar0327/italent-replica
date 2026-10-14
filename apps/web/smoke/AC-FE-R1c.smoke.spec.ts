@@ -570,3 +570,32 @@ for (const returned of [true, false]) {
     await expect(row).not.toContainText('无');
   });
 }
+
+for (const status of [409, 422]) {
+  test(`AC-FE-R1c-21 HR ${status} 拒绝显示原原因、保留输入并允许改正重提`, async ({ page }) => {
+    const commands: string[] = [];
+    const bodies: Record<string, unknown>[] = [];
+    const reason = '该调动日期没有可用流程，请修改后重提';
+    await page.route(`**/transfers/employees/${employee}`, (route) => {
+      commands.push(route.request().headers()['idempotency-key']!);
+      bodies.push(route.request().postDataJSON());
+      return commands.length === 1
+        ? route.fulfill({ status, json: { error: { code: 'VALIDATION_FAILED', message: reason } } })
+        : route.fulfill({ json: draftResult });
+    });
+    await switchIdentity(page, '/transfer');
+    await openHr(page);
+    await page.locator('select[name="employeeId"]').selectOption(employee);
+    await page.locator('input[name="place"]').fill('合成原工作地');
+    await page.getByRole('button', { name: '暂存', exact: true }).click();
+    await expect(page.getByRole('dialog').locator('p[role="alert"]')).toContainText(reason);
+    await expect(page.locator('input[name="place"]')).toHaveValue('合成原工作地');
+    await expect(page.locator('select[name="employeeId"]')).toHaveValue(employee);
+    await page.locator('input[name="place"]').fill('合成改正工作地');
+    await page.getByRole('button', { name: '暂存', exact: true }).click();
+    await expect(page.getByText('暂存成功，请在我的申请中查看')).toBeVisible();
+    expect(commands).toHaveLength(2);
+    expect(commands[1]).not.toBe(commands[0]);
+    expect(bodies[1]).toMatchObject({ fields: { place: '合成改正工作地' } });
+  });
+}
