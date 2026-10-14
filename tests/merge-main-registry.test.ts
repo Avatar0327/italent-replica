@@ -12,13 +12,15 @@ import { isGeneratedPath } from '../scripts/merge-main-lib.mjs';
 import {
   DECLARED_DIR,
   DECLARED_INDEX_PATH,
-  declaredProblems,
+  compareEntries,
+  parseEntries,
   isDeclaredModulePath,
   isRegistryPath,
   loadTools,
   mergeDeclared,
   parseDeclared,
   REGISTRY_LINE_FILES,
+  REGISTRY_REGIONS,
   registryProblems,
   resolveLineRegistry,
   resolveRegistryFile,
@@ -116,19 +118,20 @@ describe('声明文件结构化合并：mergeDeclared', () => {
     expect(parseDeclared(tools.ts, result.text!).keys[0]!.items).toEqual([D, A, B, C]);
   });
 
-  it('两边都加同一条：只留一条；一侧删除、另一侧没动：删除', async () => {
+  it('两边都加同一条：只留一条；一侧删除分叉点已有条目：转人工', async () => {
     const dup = await merge(
       declared({ sameStatusInvalidId: [A, B] }),
       declared({ sameStatusInvalidId: [A] }),
       declared({ sameStatusInvalidId: [A, B] }),
     );
     expect(parseDeclared(tools.ts, dup.text!).keys[0]!.items).toEqual([A, B]);
+    // 一侧删除分叉点已有的条目：不是纯新增，转人工（第 2 轮 P2-1）
     const removed = await merge(
       declared({ sameStatusInvalidId: [A, B, C] }),
       declared({ sameStatusInvalidId: [A, B] }),
       declared({ sameStatusInvalidId: [B] }),
     );
-    expect(parseDeclared(tools.ts, removed.text!).keys[0]!.items).toEqual([B, C]);
+    expect(removed.error).toContain('分叉点已有登记项被一侧删除或改动');
   });
 
   it('不同种类各加、元组条目、新种类追加在后；本分支种类顺序在前', async () => {
@@ -145,11 +148,17 @@ describe('声明文件结构化合并：mergeDeclared', () => {
       [B, 'of[0].button'],
     ]);
     expect(
-      declaredProblems(tools, result.text!, {
-        ours: declared({ multiCarrierAdmission: [A], selectorSites: [[A, 'of[0].object']] }),
-        base: declared({}),
-        theirs: declared({ branchInputEndpoints: [B], selectorSites: [[B, 'of[0].button']] }),
-      }),
+      registryProblems(
+        tools,
+        FILE,
+        result.text,
+        {
+          ours: declared({ multiCarrierAdmission: [A], selectorSites: [[A, 'of[0].object']] }),
+          base: declared({}),
+          theirs: declared({ branchInputEndpoints: [B], selectorSites: [[B, 'of[0].button']] }),
+        },
+        { strict: true },
+      ),
     ).toEqual([]);
   });
 
@@ -193,19 +202,23 @@ describe('声明文件结构化合并：mergeDeclared', () => {
     ).toContain('带注释');
   });
 
-  it('并集校验：结果丢了任一侧的新增项、或出现重复，都报问题', () => {
+  it('核对：结果丢了任一侧的新增项、出现重复、多出条目都报问题；正确的结果通过', () => {
     const versions = {
       ours: declared({ sameStatusInvalidId: [A, C] }),
       base: declared({ sameStatusInvalidId: [A] }),
       theirs: declared({ sameStatusInvalidId: [A, B] }),
     };
-    expect(declaredProblems(tools, declared({ sameStatusInvalidId: [A, B] }), versions)).toEqual([
-      `本分支新增的登记项丢失：sameStatusInvalidId ${JSON.stringify(C)}`,
+    const check = (items: string[], strict = false) =>
+      registryProblems(tools, FILE, declared({ sameStatusInvalidId: items }), versions, { strict });
+    expect(check([A, B])).toEqual([`登记项丢失：declared:sameStatusInvalidId:${JSON.stringify(C)}（应为 1）`]);
+    expect(check([A, B, C, C])).toEqual([
+      `登记项重复：declared:sameStatusInvalidId:${JSON.stringify(C)}（需要只留一份；同一身份的值两边不一致时由人选择）`,
     ]);
-    expect(declaredProblems(tools, declared({ sameStatusInvalidId: [A, B, C, C] }), versions)).toEqual([
-      `登记项重复：sameStatusInvalidId ${JSON.stringify(C)}`,
-    ]);
-    expect(registryProblems(tools, FILE, declared({ sameStatusInvalidId: [A, B, C] }), versions)).toEqual([]);
+    expect(check([A, B, C, D])).toEqual([`多出的登记项：declared:sameStatusInvalidId:${JSON.stringify(D)}（值 1）`]);
+    expect(check([A, B, C])).toEqual([]);
+    expect(check([A, B, C], true)).toEqual([]);
+    expect(registryProblems(undefined, FILE, '', versions)).toEqual(['缺少 typescript / prettier，无法核对登记项']);
+    expect(registryProblems(tools, FILE, undefined, versions)[0]).toContain('有一侧没有该文件');
   });
 
   it('resolveRegistryFile：一侧缺文件 / 非登记文件 / 缺工具时返回 error 留给人工', async () => {
@@ -254,6 +267,20 @@ describe('守卫：登记文件的写法没有漂出脚本认识的形状', () =
     }
   });
 
+  it('登记区解析器能解析每个真实登记文件（改了写法导致解析不了会在这里报红，而不是合并时静默漏检）', () => {
+    expect(Object.keys(REGISTRY_REGIONS).sort()).toEqual(Object.keys(REGISTRY_LINE_FILES).sort());
+    for (const file of Object.keys(REGISTRY_REGIONS)) {
+      const entries = parseEntries(tools, file, read(file));
+      expect(entries.length, `${file} 解析出的条目太少`).toBeGreaterThan(5);
+      const ids = entries.map((e) => e.id);
+      expect(new Set(ids).size, `${file} 里有重复的登记身份`).toBe(ids.length);
+    }
+    const mounts = parseEntries(tools, 'apps/api/src/app.ts', read('apps/api/src/app.ts')).filter((e) =>
+      e.id.startsWith('array:TENANT_MODULES:'),
+    );
+    expect(mounts.length).toBeGreaterThan(15);
+  });
+
   it('每个 required/declared/<模块>.ts 都能解析并原样往返，且都登记在 declared/index.ts', async () => {
     const dir = path.join(REPO, DECLARED_DIR);
     const modules = readdirSync(dir).filter((f) => f.endsWith('.ts') && f !== 'index.ts');
@@ -287,5 +314,135 @@ describe('守卫：登记文件的写法没有漂出脚本认识的形状', () =
       unclassified,
       '这些文件既不在 merge:main 的生成物白名单（scripts/merge-main-lib.mjs GENERATED_PATHS）也不是登记的人工账本',
     ).toEqual([]);
+  });
+});
+
+describe('登记区解析器与按条目身份的比较（第 2 轮，DEC-431① 单一入口）', () => {
+  const APP = 'apps/api/src/app.ts';
+  const SCHEMA = 'packages/db/src/schema/index.ts';
+  const REQUIRED = 'tests/acceptance/support/route-policy/required/index.ts';
+  const ids = (file: string, text: string) => parseEntries(tools, file, text).map((e) => `${e.id}=${e.value}`);
+
+  it('app.ts：导入按绑定、挂载按元素文本，尾注释与空白不影响身份', () => {
+    const text = [
+      "import { registerA, registerB as b } from './a.js';",
+      "import type { T } from './t.js';",
+      "import def from './d.js';",
+      "import './side.js';",
+      'const TENANT_MODULES: readonly X[] = [',
+      '  registerA, // 注释甲',
+      '  b,',
+      '  mount(  c ),',
+      '] as const;',
+    ].join('\n');
+    expect(ids(APP, text)).toEqual([
+      'import:registerA=./a.js#registerA',
+      'import:b=./a.js#registerB',
+      'import:T=type ./t.js#T',
+      'import:def=./d.js#default',
+      'import-side-effect:./side.js=./side.js',
+      'array:TENANT_MODULES:registerA=registerA',
+      'array:TENANT_MODULES:b=b',
+      'array:TENANT_MODULES:mount( c )=mount( c )',
+    ]);
+    expect(ids(APP, text.replace('// 注释甲', '// 注释乙'))).toEqual(ids(APP, text));
+  });
+
+  it('schema/index.ts：单行、多行、命名空间导出都按导出名取条目', () => {
+    const text = [
+      "export * from './a.js';",
+      'export {',
+      '  one,',
+      '  two as second,',
+      "} from './b.js';",
+      "export * as ns from './c.js';",
+    ].join('\n');
+    expect(ids(SCHEMA, text)).toEqual([
+      'export*:./a.js=./a.js',
+      'export:one=./b.js#one',
+      'export:second=./b.js#two',
+      'export:ns=./c.js#*',
+    ]);
+  });
+
+  it('required/index.ts：对象属性按键（标识符或字符串键），同键多次出现就是重复', () => {
+    const text = [
+      "import { A } from './a.js';",
+      'export const REQUIRED_BY_MODULE = {',
+      '  root: A,',
+      "  'tenant-settings': B,",
+      '  other,',
+      '};',
+    ].join('\n');
+    expect(ids(REQUIRED, text)).toEqual([
+      'import:A=./a.js#A',
+      'object:REQUIRED_BY_MODULE:root=A',
+      'object:REQUIRED_BY_MODULE:tenant-settings=B',
+      'object:REQUIRED_BY_MODULE:other=other',
+    ]);
+  });
+
+  it('无法识别的形状一律抛出（不静默忽略）：登记区里的其他语句、找不到变量、不是字面量、属性不是键值', () => {
+    expect(() => parseEntries(tools, SCHEMA, "export * from './a.js';\nconst x = 1;\n")).toThrow(
+      '登记区里只许有 export',
+    );
+    expect(() => parseEntries(tools, SCHEMA, 'export const x = 1;\n')).toThrow('登记区里只许有 export');
+    expect(() => parseEntries(tools, APP, 'const OTHER = [];\n')).toThrow('找不到 TENANT_MODULES');
+    expect(() => parseEntries(tools, APP, 'const TENANT_MODULES = make();\n')).toThrow('不是数组字面量');
+    expect(() => parseEntries(tools, REQUIRED, 'const REQUIRED_BY_MODULE = { ...X };\n')).toThrow('无法识别的属性');
+    expect(() => parseEntries(tools, 'apps/api/src/x.ts', '')).toThrow('不是登记类文件');
+    const unknown = registryProblems(tools, SCHEMA, 'const x = 1;\n', { ours: '', base: '', theirs: '' });
+    expect(unknown[0]).toContain('无法识别的形状');
+  });
+
+  const e = (id: string, value = '1') => ({ id, value });
+  const compare = (r: string[], o: string[], b: string[], t: string[], strict: boolean) =>
+    compareEntries(
+      { result: r.map((x) => e(x)), ours: o.map((x) => e(x)), base: b.map((x) => e(x)), theirs: t.map((x) => e(x)) },
+      { strict },
+    );
+
+  it('strict：分叉点已有条目被任一边删除或改动 → 须人工；两边纯新增的并集通过', () => {
+    expect(compare(['A', 'C', 'D'], ['B', 'C'], ['A', 'B'], ['A', 'B', 'D'], true)[0]).toContain(
+      '分叉点已有登记项被一侧删除或改动',
+    );
+    expect(compare(['B', 'C'], ['B'], ['A'], ['C'], true)).toHaveLength(1);
+    expect(compare(['A', 'B', 'C'], ['A', 'B'], ['A'], ['A', 'C'], true)).toEqual([]);
+  });
+
+  it('strict：同一身份两边都新增但值不同 → 冲突；值相同 → 通过且只留一份', () => {
+    const both = (ours: string, theirs: string, result: string[]) =>
+      compareEntries(
+        {
+          result: result.map((v) => ({ id: 'k', value: v })),
+          ours: [{ id: 'k', value: ours }],
+          base: [],
+          theirs: [{ id: 'k', value: theirs }],
+        },
+        { strict: true },
+      );
+    expect(both('甲', '乙', ['甲'])[0]).toContain('同一登记项两边值不同');
+    expect(both('甲', '甲', ['甲'])).toEqual([]);
+    expect(both('甲', '甲', ['甲', '甲'])[0]).toContain('登记项重复');
+  });
+
+  it('非 strict（提交前核对）：谁改了听谁的；两边改成不同的值由人决定；重复、丢失、多出都报', () => {
+    const one = (r: (string | undefined)[], o?: string, b?: string, t?: string) => {
+      const list = (v?: string) => (v === undefined ? [] : [{ id: 'k', value: v }]);
+      return compareEntries({
+        result: r.filter((v): v is string => v !== undefined).map((v) => ({ id: 'k', value: v })),
+        ours: list(o),
+        base: list(b),
+        theirs: list(t),
+      });
+    };
+    expect(one(['新'], '新', '旧', '旧')).toEqual([]); // 只有本分支改
+    expect(one(['旧'], '新', '旧', '旧')[0]).toContain('登记项的值不符');
+    expect(one([], undefined, '旧', '旧')).toEqual([]); // 本分支删，main 没动
+    expect(one(['旧'], undefined, '旧', '旧')[0]).toContain('多出的登记项');
+    expect(one([], '旧', '旧', '旧')[0]).toContain('登记项丢失'); // 都没动却丢了
+    expect(one(['乙'], '甲', '旧', '乙')).toEqual([]);
+    expect(one(['丙'], '甲', '旧', '乙')).toEqual([]); // 两边改成不同的值：人决定
+    expect(one(['甲', '甲'], '甲', undefined, '甲')[0]).toContain('登记项重复');
   });
 });

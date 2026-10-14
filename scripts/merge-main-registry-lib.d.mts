@@ -32,7 +32,18 @@ export declare function mergeDeclared(
   file: string,
   versions: RegistryVersions,
 ): Promise<{ text: string; error?: undefined } | { error: string; text?: undefined }>;
-export declare function declaredProblems(tools: RegistryTools, text: string, versions: RegistryVersions): string[];
+export interface RegistryEntry {
+  id: string;
+  value: string;
+}
+export declare const REGISTRY_REGIONS: Readonly<
+  Record<string, { imports?: boolean; exports?: boolean; arrays?: string[]; objects?: string[] }>
+>;
+export declare function parseEntries(tools: RegistryTools, file: string, text: string): RegistryEntry[];
+export declare function compareEntries(
+  input: { result: RegistryEntry[]; ours: RegistryEntry[]; base: RegistryEntry[]; theirs: RegistryEntry[] },
+  options?: { strict?: boolean },
+): string[];
 export declare function resolveRegistryFile(
   tools: RegistryTools | undefined,
   file: string,
@@ -41,6 +52,7 @@ export declare function resolveRegistryFile(
 export declare function registryProblems(
   tools: RegistryTools | undefined,
   file: string,
-  text: string,
-  versions: RegistryVersions,
+  text: string | undefined,
+  versions: Partial<Record<keyof RegistryVersions, string | undefined>>,
+  options?: { strict?: boolean },
 ): string[];

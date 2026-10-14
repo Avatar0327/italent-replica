@@ -209,28 +209,30 @@ function printRegistryManual(manual) {
 }
 
 /**
- * 合并结果里的登记类文件再核对一遍（含 git 没冲突、自动合并成功的）：本分支新增 ∪ main 新增都在结果里、没有重复。
- * 只看两边都改过的文件；合并进行中 HEAD 仍是合并前的提交。有问题就停下，不提交。
+ * 合并结果里的登记类文件再核对一遍（含 git 没冲突、自动合并成功的，和人工解决过的）：按条目身份比较，见 registryProblems。
+ * 只看两边都改过的文件；应核对的文件在工作区缺失、登记区有无法识别的形状、有重复或丢项，都停下、不提交。
+ * 合并进行中 HEAD 仍是合并前的提交。
  */
 async function verifyRegistries() {
   const fork = git('merge-base', 'HEAD', MAIN).trim();
   const changed = (rev) => new Set(git('diff', '--name-only', '-z', fork, rev).split('\0').filter(Boolean));
   const [mine, theirs] = [changed('HEAD'), changed(MAIN)];
-  const files = [...mine].filter((f) => theirs.has(f) && isRegistryPath(f) && existsSync(path.join(ROOT, f)));
+  const files = [...mine].filter((f) => theirs.has(f) && isRegistryPath(f));
   if (!files.length) return;
   const tools = await loadTools();
-  const problems = files.flatMap((file) =>
-    registryProblems(tools, file, readRepo(file), {
-      ours: show('HEAD', file) ?? '',
-      base: show(fork, file) ?? '',
-      theirs: show(MAIN, file) ?? '',
-    }).map((problem) => `${file}：${problem}`),
-  );
+  const problems = files.flatMap((file) => {
+    const versions = { ours: show('HEAD', file), base: show(fork, file), theirs: show(MAIN, file) };
+    if (versions.base === undefined && versions.ours === versions.theirs) return []; // 两边新增了同一份新文件
+    const text = existsSync(path.join(ROOT, file)) ? readRepo(file) : undefined;
+    const found =
+      text === undefined ? ['登记文件缺失（两边都改过它，不能删掉）'] : registryProblems(tools, file, text, versions);
+    return found.map((problem) => `${file}：${problem}`);
+  });
   if (problems.length)
     fail(
       `登记类文件合并后核对失败（不提交，请人工补齐后运行 pnpm merge:main --continue）：\n  ${problems.join('\n  ')}`,
     );
-  console.log(`登记核对通过（本分支新增 ∪ main 新增都在，无重复）：\n  ${files.join('\n  ')}`);
+  console.log(`登记核对通过（按条目身份：本分支新增 ∪ main 新增都在，无重复）：\n  ${files.join('\n  ')}`);
 }
 
 /**
