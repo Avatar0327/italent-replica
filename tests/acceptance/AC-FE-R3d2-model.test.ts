@@ -27,6 +27,7 @@ import {
   operationAccess,
   RereadError,
   rereadReceipt,
+  submitAccess,
   writeIntegrity,
 } from '../../apps/web/src/idp/access.js';
 import { moduleSettingSections, nodeLabeler } from '../../apps/web/src/idp/template-settings.js';
@@ -341,14 +342,14 @@ describe('AC-FE-R3d2 第 4 轮：整组 / 逐条写入完整性（DEC-385③）'
     expect(subProcessAccess(true, visibleAll, ops, [missing])).toMatchObject({ ...none, reason: t.integrity.fields });
     // 开启规则字段缺省会被服务端补成 null 并要求可见，被裁剪同样整组只读
     const ruleHidden = (name: string) => ({ visible: name !== 'days', editable: true });
-    expect(subProcessAccess(true, ruleHidden, ops, [])).toMatchObject({ ...none, complete: false });
+    expect(subProcessAccess(true, ruleHidden, ops, [])).toMatchObject({ ...none, integrity: { ok: false } });
   });
   it('整组完整时照常按操作权判定；父字段只读时不提示原因', () => {
     expect(subProcessAccess(true, visibleAll, ops, [sub()])).toMatchObject({
       add: true,
       edit: true,
       remove: true,
-      complete: true,
+      integrity: { ok: true },
     });
     const { id: _id, ...noId } = sub();
     expect(subProcessAccess(false, visibleAll, ops, [noId]).reason).toBeUndefined();
@@ -381,6 +382,22 @@ describe('AC-FE-R3d2 第 4 轮：整组 / 逐条写入完整性（DEC-385③）'
       }).actions,
     ).toEqual([]);
     expect(writeIntegrity({ rows: [noStageId], fields: ['subProcessId'] }).ok).toBe(false);
+  });
+});
+
+describe('AC-FE-R3d2 第 5 轮：完整性约束提交字段（submitAccess）', () => {
+  const open = { visible: true, editable: true };
+  it('不完整时字段按只读处理，不进提交字段；完整或未判定时原样', () => {
+    const broken = writeIntegrity({ rows: [{ name: 'x' }] });
+    expect(submitAccess(open, broken)).toEqual({ visible: true, editable: false });
+    expect(submitAccess(open, writeIntegrity({ rows: [{ id: 'a' }] }))).toBe(open);
+    expect(submitAccess(open)).toBe(open);
+  });
+  it('子流程整组不完整时，subProcessAccess 交出的完整性让 subProcesses 不可编辑', () => {
+    const rows = [{ id: 's1', name: '阶段' }] as unknown as SubProcess[];
+    const sub = subProcessAccess(true, () => open, undefined, rows);
+    expect(sub.integrity.ok).toBe(false);
+    expect(submitAccess(open, sub.integrity).editable).toBe(false);
   });
 });
 

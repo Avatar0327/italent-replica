@@ -31,6 +31,7 @@ import { usePermissions } from '../foundation/Permissions.js';
 import { TenantDatePicker } from '../foundation/selectors.js';
 import { IDP_API, OBJECTS } from './api.js';
 import { t } from './messages.js';
+import { submitAccess, type Integrity } from './access.js';
 import { display, subProcessAccess } from './model.js';
 import { CatalogSelect, ORG_PATH } from './selects.js';
 import type { Process, SubProcess } from './types.js';
@@ -111,7 +112,10 @@ function ProcessEditor({ process, close, saved }: { process?: Process; close(): 
   // 只读展示与整组完整性都跟随冲突重读后的最新版本，与表单其他字段同源；新增时没有已有子流程
   const shownSubs = writer.current?.subProcesses as SubProcess[] | undefined;
   const subAccess = subProcessAccess(parent.visible && parent.editable, subPermission.field, subOperations, shownSubs);
-  const subDisplay = subProcessAccess(false, subPermission.field, subOperations);
+  // 只读展示沿用编辑态的原因：整组因完整性只读时，用户能看到为什么不能改
+  const subDisplay = { ...subProcessAccess(false, subPermission.field, subOperations), reason: subAccess.reason };
+  // 写入完整性约束提交字段（submitAccess）：不完整的字段不渲染编辑控件、不进提交，展示回到最新记录
+  const integrity: Record<string, Integrity> = { subProcesses: subAccess.integrity };
   const controls: Record<string, ReactNode> = {
     name: <Input maxLength={100} />,
     orgId: <CatalogSelect path={ORG_PATH} />,
@@ -123,8 +127,8 @@ function ProcessEditor({ process, close, saved }: { process?: Process; close(): 
     name,
     label: LABELS[name] ?? name,
     control: controls[name],
-    access: permission.field(name),
-    rules: rulesOf(name, subAccess.complete),
+    access: submitAccess(permission.field(name), integrity[name]),
+    rules: rulesOf(name),
     display: name === 'subProcesses' ? <SubProcessEditor access={subDisplay} value={shownSubs} /> : undefined,
   }));
   return (
@@ -151,14 +155,12 @@ function ProcessEditor({ process, close, saved }: { process?: Process; close(): 
   );
 }
 
-/** complete：子流程整组完整（writeIntegrity）；不完整时整组只读、不会提交，缺字段的开启规则不再校验。 */
-function rulesOf(name: string, complete: boolean): FormField['rules'] {
+function rulesOf(name: string): FormField['rules'] {
   if (name === 'subProcesses')
     return [
       {
         validator: (_, value: SubProcess[] | undefined) => {
           if (!value?.length) return Promise.reject(new Error(t.subProcessRequired));
-          if (!complete) return Promise.resolve();
           const broken = value.map((item, index) => startRuleViolation(ruleOf(item), index)).find(Boolean);
           return broken ? Promise.reject(new Error(broken)) : Promise.resolve();
         },

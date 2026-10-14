@@ -195,6 +195,10 @@ export interface IdpMockOptions {
   subProcess?: Record<string, unknown>;
   /** 发生过写请求后，详情读取不再返回 revision（模拟冲突后重读得到无效回执）。 */
   rereadWithoutRevision?: boolean;
+  /** 只有第一次写请求返回 409，之后正常写入。 */
+  conflictOnce?: boolean;
+  /** 发生过写请求后，流程详情里每个子流程去掉这些键（模拟冲突后重读到被裁剪的子流程）。 */
+  rereadSubProcessOmit?: string[];
 }
 
 function objectPermission(code: string, options: IdpMockOptions) {
@@ -293,10 +297,12 @@ export async function mockIdp(page: Page, options: IdpMockOptions = {}) {
     },
   };
   const write = (route: Route, path: string) => {
-    const code = options.writeStatus === 409 ? 'REVISION_CONFLICT' : 'INTERNAL';
-    if (options.writeStatus) return route.fulfill({ status: options.writeStatus, json: { error: { code } } });
+    const status = options.conflictOnce && calls.length === 1 ? 409 : options.writeStatus;
+    const code = status === 409 ? 'REVISION_CONFLICT' : 'INTERNAL';
+    if (status) return route.fulfill({ status, json: { error: { code } } });
     if (path.includes('/tasks')) return route.fulfill({ status: path.endsWith('/tasks') ? 201 : 200, json: detail });
     if (path.endsWith('/copy')) return route.fulfill({ status: 201, json: { ...template, id: approvalId } });
+    if (path.startsWith('/processes')) return route.fulfill({ json: { ...process, revision: process.revision + 1 } });
     return route.fulfill({ json: path.startsWith('/plans') ? detail : template });
   };
   await page.route('**/api/tenant/idp/**', (route) => {
@@ -313,14 +319,25 @@ export async function mockIdp(page: Page, options: IdpMockOptions = {}) {
       return write(route, path);
     }
     const json = reads[path] ?? list([]);
-    if (options.rereadWithoutRevision && calls.length && /^\/(plans|templates|processes)\/[^/]+$/.test(path)) {
-      const { revision: _revision, ...rest } = json as { revision?: number };
-      return route.fulfill({ json: rest });
-    }
-    return route.fulfill({ json });
+    return route.fulfill({ json: calls.length ? reread(path, json, options) : json });
   });
   await mockNames(page);
   return calls;
+}
+
+/** 发生过写请求后的详情重读：按选项去掉 revision，或把子流程裁掉指定键（模拟冲突后重读到的被裁剪版本）。 */
+function reread(path: string, json: unknown, options: IdpMockOptions) {
+  if (options.rereadWithoutRevision && /^\/(plans|templates|processes)\/[^/]+$/.test(path)) {
+    const { revision: _revision, ...rest } = json as { revision?: number };
+    return rest;
+  }
+  const omit = options.rereadSubProcessOmit;
+  if (!omit || path !== `/processes/${processId}`) return json;
+  const { subProcesses = [], ...rest } = json as { subProcesses?: Record<string, unknown>[] };
+  const subs = subProcesses.map((sub) =>
+    Object.fromEntries(Object.entries(sub).filter(([key]) => !omit.includes(key))),
+  );
+  return { ...rest, revision: process.revision + 1, subProcesses: subs };
 }
 
 /** 名称回查与候选列表：员工 / 组织模块的读接口，返回合成名称。 */

@@ -249,6 +249,6 @@ export function subProcessAccess(
     switches: [parentEditable, visible.length > 0, integrity.ok],
   });
   const reason = parentEditable && !integrity.ok ? integrity.reason : undefined;
-  // complete 为 false 时整组只读、原样不提交，页面不再按缺字段的数据校验开启规则
-  return { ...access, visible: visible as string[], editable: editable as string[], reason, complete: integrity.ok };
+  // integrity 交给表单经 submitAccess 约束 subProcesses 的提交字段
+  return { ...access, visible: visible as string[], editable: editable as string[], reason, integrity };
 }

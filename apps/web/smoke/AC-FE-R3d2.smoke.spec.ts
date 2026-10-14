@@ -443,3 +443,36 @@ test('AC-FE-R3d2-20 子流程规则字段被裁剪、整组只读时，只改流
   expect(writes(calls, 'PATCH', `/processes/${processId}`)[0]!.body).not.toHaveProperty('subProcesses');
   expect(errors).toEqual([]);
 });
+
+test('AC-FE-R3d2-21 冲突重读后子流程缺字段、整组只读：冲突前的子流程草稿不再提交，改流程名称可保存', async ({
+  page,
+}) => {
+  const errors = watchErrors(page);
+  const calls = await mockIdp(page, { conflictOnce: true, rereadSubProcessOmit: ['days'] });
+  await openMenu(page, '发展计划流程');
+  await page.getByRole('button', { name: /编\s*辑/, exact: true }).click();
+  const form = page.getByRole('dialog', { name: '编辑发展计划流程' });
+  await form
+    .getByRole('row', { name: /合成制定阶段/ })
+    .getByRole('button', { name: /编\s*辑/ })
+    .click();
+  const sub = page.getByRole('dialog', { name: '子流程' });
+  await sub.getByLabel('名称').fill('合成制定阶段（草稿）');
+  await sub.getByRole('button', { name: /确\s*定/ }).click();
+  await form.getByRole('button', { name: /保\s*存/ }).click();
+  await expect(form.getByRole('button', { name: '重读最新版本', exact: true })).toBeVisible();
+  await form.getByRole('button', { name: '重读最新版本', exact: true }).click();
+  await expect(form.getByText(FIELDS_HIDDEN)).toBeVisible();
+  // 整组只读后子流程表格回到最新记录；内核差异表仍列出“我的修改”供核对，那是 JSON 单元格，不计入
+  await expect(form.getByRole('cell', { name: '合成制定阶段', exact: true })).toBeVisible();
+  await expect(form.getByRole('cell', { name: '合成制定阶段（草稿）', exact: true })).toHaveCount(0);
+  await form.getByRole('button', { name: '已核对差异，继续编辑', exact: true }).click();
+  await form.getByLabel('流程名称').fill('合成发展计划流程（改）');
+  await form.getByRole('button', { name: /保\s*存/ }).click();
+  await expect.poll(() => writes(calls, 'PATCH', `/processes/${processId}`).length).toBe(2);
+  const body = writes(calls, 'PATCH', `/processes/${processId}`)[1]!.body;
+  expect(body).toMatchObject({ name: '合成发展计划流程（改）' });
+  expect(body).not.toHaveProperty('subProcesses');
+  await expect(form).toHaveCount(0);
+  expect(errors.filter((text) => !text.includes('409'))).toEqual([]);
+});

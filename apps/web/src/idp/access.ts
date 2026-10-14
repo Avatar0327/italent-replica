@@ -59,6 +59,15 @@ export function writeIntegrity<T extends object>(input: IntegrityInput<T>): Inte
 }
 
 /**
+ * 一之三、完整性约束提交字段：不完整时该字段一律按只读处理。表单不渲染编辑控件、改为展示最新记录，
+ * 字段不进 editableFields，patchOnly 也就不会把冲突前的草稿或缺字段的原值带回服务端（DEC-385③）。
+ * 只约束按钮和校验不够：草稿可能在完整时编辑、冲突重读后才变得不完整。
+ */
+export function submitAccess<A extends { visible: boolean; editable: boolean }>(access: A, integrity?: Integrity): A {
+  return !integrity || integrity.ok ? access : { ...access, editable: false };
+}
+
+/**
  * 二、裁剪字段归属：按可能被裁剪的归属字段（如 moduleId）分组。字段缺失或指向不在场的归属时，
  * 记录归入 unassigned 由页面放在“未归属”位置展示，不能因字段无权查看而整条消失（DEC-431①）。
  */
