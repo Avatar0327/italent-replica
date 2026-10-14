@@ -11,6 +11,7 @@ import { invalidRule } from './population-input.js';
 import { collectionRevisionSql, levelSpec, levelViews } from './levels-store.js';
 import { requireSupportedHealthChange } from './health-rule-support.js';
 import { rowsOf } from './read-sql.js';
+import { lockHealthRules, requireHealthLevelUnplanned } from './health-references.js';
 
 interface LevelBody {
   code?: string;
@@ -70,7 +71,8 @@ export async function mutateLevel(
   body?: LevelBody,
 ) {
   const spec = levelSpec(kind);
-  await lockRuleSettings(tx, ctx.tenantId, spec.ruleKind);
+  if (kind === 'health') await lockHealthRules(tx, ctx.tenantId);
+  else await lockRuleSettings(tx, ctx.tenantId, spec.ruleKind);
   await configAccess(tx, deps, ctx, spec.object);
   await tx.execute(
     sql`SELECT id FROM ${spec.table} WHERE tenant_id = ${ctx.tenantId}::uuid AND id = ${id}::uuid FOR UPDATE`,
@@ -90,6 +92,7 @@ export async function mutateLevel(
       write: async () => {
         try {
           if (operation === 'delete') {
+            if (kind === 'health') await requireHealthLevelUnplanned(tx, ctx.tenantId, id);
             await tx.execute(
               sql`DELETE FROM ${spec.table} WHERE tenant_id = ${ctx.tenantId}::uuid AND id = ${id}::uuid`,
             );
@@ -128,7 +131,8 @@ export async function reorderLevels(
   ids: readonly string[],
 ) {
   const spec = levelSpec(kind);
-  await lockRuleSettings(tx, ctx.tenantId, spec.ruleKind);
+  if (kind === 'health') await lockHealthRules(tx, ctx.tenantId);
+  else await lockRuleSettings(tx, ctx.tenantId, spec.ruleKind);
   await configAccess(tx, deps, ctx, spec.object);
   const [collection] = rowsOf<{ revision: number }>(
     await tx.execute(sql`SELECT ${collectionRevisionSql(ctx.tenantId, kind)} AS revision`),

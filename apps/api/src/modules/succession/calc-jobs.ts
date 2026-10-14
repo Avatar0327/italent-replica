@@ -8,9 +8,9 @@ import { runCalcPage } from './calc-worker.js';
 import { rowsOf } from './read-sql.js';
 import { recheckPlatform } from './platform-routes.js';
 import type { SuccessionJobKind } from './scheduler.js';
+import { EXIT_SWEEP_PRODUCER } from './exit-sweep.js';
 import { orgStatsProducer } from './org-stats-producer.js';
 import { healthProducers } from './health-worker.js';
-import { EXIT_SWEEP_PRODUCER } from './exit-sweep.js';
 
 export interface CalcTenant {
   readonly id: string;
