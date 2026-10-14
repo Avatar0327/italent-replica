@@ -1,4 +1,4 @@
-import { test, expect, user } from './fixtures.js';
+import { test, expect, user, snapshotFixture } from './fixtures.js';
 
 const rows = [
   {
@@ -389,6 +389,17 @@ for (const channel of [false, true]) {
 
 test('AC-FE-R3a P2-4 仅人才标准有权时可进入完整维护，未授权页签不加载', async ({ page }) => {
   const denied: string[] = [];
+  // F-114 改为服务端权限快照；入口摘要必须与本场景的对象明细授权一致。
+  await page.route('**/api/tenant/permission/me/snapshot', (route) =>
+    route.fulfill({
+      json: {
+        ...snapshotFixture,
+        apps: snapshotFixture.apps.map((app) =>
+          app.app === 'talent' ? { ...app, entryObjects: ['TalentCenter.TalentCriterion'] } : app,
+        ),
+      },
+    }),
+  );
   await page.route('**/api/tenant/permission/me/objects/TalentCenter.*', (route) => {
     const objectCode = new URL(route.request().url()).pathname.split('/').at(-1)!;
     if (objectCode !== 'TalentCenter.TalentCriterion')
