@@ -1,6 +1,7 @@
 // F-132 第 1 段第 2 轮：组织、职务写入口接 F-123 表单内核（冲突重读保留草稿、回执按形状校验），
 // 组织新建 / 新建下级与负责人展示，名称无查看权时不出名称筛选。
 // 第 3 轮：新建共用集合路径恢复槽、新建表单单一业务时点、候选搜索按目标对象名称查看权裁剪。
+// 第 4 轮：编辑恢复槽只用原单路径，结果未知后换列表日期、换动作仍锁定。
 import type { Page, Request } from '@playwright/test';
 import { test, expect, user } from './fixtures.js';
 
@@ -471,3 +472,68 @@ for (const viewable of [ALL, ALL.filter((field) => field !== 'name')]) {
     }
   });
 }
+
+async function closeDialog(page: Page) {
+  const dialog = page.getByRole('dialog');
+  await dialog.getByRole('button', { name: 'Close' }).click();
+  await expect(dialog).toHaveCount(0);
+}
+
+test('AC-FE-R1a-37 职务编辑结果未知后换列表日期重开，仍锁定且只发 1 次 PATCH', async ({ page, baseURL }) => {
+  await setup(page, baseURL!);
+  const patches: Request[] = [];
+  await page.route(`**/api/tenant/job/layers/${id}`, (route) => {
+    if (route.request().method() === 'GET') return route.fallback();
+    patches.push(route.request());
+    return route.fulfill({ json: {} });
+  });
+  await page.goto('/job?kind=layers');
+  const openEditor = async () => {
+    await page.getByRole('button', { name: '合成条目', exact: true }).click();
+    await page
+      .getByRole('button', { name: /编\s*辑/, exact: true })
+      .last()
+      .click();
+  };
+  await openEditor();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('名称', { exact: true }).fill('合成条目二');
+  await save(page).click();
+  await expect(dialog.getByText(pending)).toBeVisible();
+  await closeDialog(page);
+  await page.keyboard.press('Escape');
+  await chooseListDate(page, '2026-11-02');
+  await openEditor();
+  await expect(dialog.getByText(pending)).toBeVisible();
+  await expect(save(page)).toBeDisabled();
+  expect(patches).toHaveLength(1);
+});
+
+test('AC-FE-R1a-37 组织变更结果未知后换列表日期、换动作重开，仍锁定且只发 1 次 PATCH', async ({ page, baseURL }) => {
+  await setup(page, baseURL!);
+  const patches: Request[] = [];
+  await page.route(`**/api/tenant/org/organizations/${id}**`, (route) => {
+    if (route.request().method() === 'GET') return route.fallback();
+    patches.push(route.request());
+    return route.fulfill({ json: {} });
+  });
+  await page.goto('/org');
+  const row = page.locator('tr[data-row-key]').first();
+  await row.getByRole('button', { name: /更\s*多/ }).click();
+  await page.getByRole('menuitem', { name: '变更' }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('备注').fill('我的备注');
+  await save(page).click();
+  await expect(dialog.getByText(pending)).toBeVisible();
+  await closeDialog(page);
+  await chooseListDate(page, '2026-11-02');
+  await row.getByRole('button', { name: /更\s*多/ }).click();
+  await page.getByRole('menuitem', { name: '变更' }).click();
+  await expect(dialog.getByText(pending)).toBeVisible();
+  await expect(save(page)).toBeDisabled();
+  await closeDialog(page);
+  await row.getByRole('button', { name: /编\s*辑/, exact: true }).click();
+  await expect(dialog.getByText(pending)).toBeVisible();
+  await expect(save(page)).toBeDisabled();
+  expect(patches).toHaveLength(1);
+});
