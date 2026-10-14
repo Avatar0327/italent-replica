@@ -289,6 +289,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/talent-review/calc-rule-service.ts#requireItemsReferenceable': [
     'apps/api/src/modules/talent-review/access.ts#notFoundMessage',
+    'apps/api/src/modules/talent-review/calc-rule-catalog.ts#loadFullCatalog',
     'apps/api/src/modules/talent-review/calc-rule-catalog.ts#loadVisibleCatalog',
     '#reject',
     'packages/domain/src/talent-review/calc-rule.ts#unreferenceableItem',
