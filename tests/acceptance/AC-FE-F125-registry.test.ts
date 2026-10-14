@@ -10,7 +10,12 @@ import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { annotationOwners, annotations, collectAnnotations } from '../../apps/web/src/annotations/index.js';
-import { collectPages, type EntryRoute, type ModulePage } from '../../apps/web/src/foundation/page-registry.js';
+import {
+  collectPages,
+  mountPath,
+  type EntryRoute,
+  type ModulePage,
+} from '../../apps/web/src/foundation/page-registry.js';
 import { menuNodes, type ServerSnapshot } from '../../apps/web/src/foundation/permission-snapshot.js';
 import { APP_ROUTES, MENU_ROUTES, PAGES, SUB_ROUTES, appRoute } from '../../apps/web/src/foundation/routes.js';
 
@@ -42,9 +47,14 @@ const ROUTES_BEFORE = [
   '/settings/account|account:AccountPage|legacy|ungated',
   '/settings/menu/:code|settings:SettingsPage|-|gated',
 ];
+// 应用内入口：id | 菜单名 | 分组 | 对象 | 模块:页面导出名 | 布局 | 所属应用 | 挂载路径
+const ENTRIES_BEFORE = [
+  'contracts|合同协议|people|TenantBase.EmploymentContract|contracts:ContractsPage|-|staff|/contracts/*',
+];
 // 注释键 → 所属模块
 const NOTES_BEFORE: Record<string, string> = {
   approval: 'approval',
+  contracts: 'contracts',
   establishment: 'establishment',
   evaluation: 'evaluation',
   'evaluation-paused': 'evaluation',
@@ -93,6 +103,14 @@ describe('AC-FE-F125-01 汇总结果与迁移前逐项一致', () => {
     expect(APP_ROUTES.map(appRow)).toEqual(APPS_BEFORE);
     expect(APP_ROUTES.map((route) => route.id)).toEqual([...APP_IDS]);
     expect(APP_ROUTES.map((route) => route.path)).toEqual(APP_IDS.map((id) => `/${id}`));
+  });
+  it.each(ENTRIES_BEFORE)('应用内入口 %s 仍在且不变', (row) => {
+    const rows = PAGES.entries.map((route) =>
+      [route.id, route.label, route.group, route.objectCode, page(route.module, route.page)]
+        .concat(route.legacy ? 'legacy' : '-', route.app, mountPath(route))
+        .join('|'),
+    );
+    expect(rows).toContain(row);
   });
   it.each(ROUTES_BEFORE)('子路由 %s 仍在且不变', (row) => {
     expect(SUB_ROUTES.map(subRow)).toContain(row);

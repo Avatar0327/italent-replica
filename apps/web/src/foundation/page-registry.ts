@@ -26,7 +26,7 @@ export interface AppPageDeclaration {
   /** 菜单下一层的 L2 结构适配；可见性仍来自服务端快照，这里不授予权限 */
   readonly children?: (snapshot: ServerSnapshot, route: AppRoute) => MenuNode[];
 }
-/** 应用内单独的菜单入口（不新增后端应用）：所属应用的入口对象含 objectCode 时才显示 */
+/** 应用内单独的菜单入口（不新增后端应用）：所属应用的入口对象含 objectCode 时才显示；路由挂在 /<id>/*，子路径由入口页自管 */
 export interface EntryPageDeclaration {
   readonly id: string;
   readonly app: AppId;
@@ -65,6 +65,10 @@ export interface PageRegistry {
   readonly routes: readonly SubRoute[];
   readonly ungated: ReadonlySet<string>;
 }
+
+export const isEntry = (route: MenuRoute): route is EntryRoute => route.id !== route.app;
+/** 菜单路由的挂载路径：应用页精确匹配，应用内入口带 /* */
+export const mountPath = (route: MenuRoute) => (isEntry(route) ? `${route.path}/*` : route.path);
 
 /** 模块页面懒加载：导出名受类型检查，代码拆分与原先逐页 lazy 相同 */
 export function lazyPage<K extends string, M extends Record<K, ComponentType>>(
@@ -124,6 +128,7 @@ export function collectPages(modules: Record<string, unknown>, appIds: readonly 
   for (const entry of entries) {
     claim(ids, '菜单键', entry.id, entry.module);
     claim(paths, '路径', entry.path, entry.module);
+    claim(paths, '路径', mountPath(entry), entry.module);
   }
   const routes = found
     .flatMap(({ module, pages }) =>

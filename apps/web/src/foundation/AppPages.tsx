@@ -1,6 +1,6 @@
 import { Suspense } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router';
-import type { ModulePage } from './page-registry.js';
+import { mountPath, type ModulePage } from './page-registry.js';
 import { MENU_ROUTES, PAGES, SUB_ROUTES, appRoute, legacyTarget } from './routes.js';
 import { PageErrorBoundary, PageState } from './PageState.js';
 import { usePermissions } from './Permissions.js';
@@ -50,7 +50,7 @@ export function AppPages() {
           {MENU_ROUTES.map((route) => (
             <Route
               key={route.id}
-              path={route.path}
+              path={mountPath(route)}
               element={
                 route.page ? (
                   <div className={route.legacy ? 'legacy-page' : undefined}>

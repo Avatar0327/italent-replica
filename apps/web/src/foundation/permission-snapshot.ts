@@ -2,7 +2,8 @@ import { APP_OBJECT_DIRECTORY } from '@italent/domain';
 import type { buildPermissionSnapshot } from '../../../api/src/modules/permission/me-snapshot.js';
 import { ApiError, type ApiClient } from './client.js';
 import type { ObjectPermission } from './permission-model.js';
-import { MENU_ROUTES, type AppRoute, type EntryRoute, type MenuRoute } from './routes.js';
+import { isEntry } from './page-registry.js';
+import { MENU_ROUTES, type AppRoute, type MenuRoute } from './routes.js';
 
 // 只引用后端推导类型，运行时不打包 API 或数据库代码。
 export type ServerSnapshot = Awaited<ReturnType<typeof buildPermissionSnapshot>>;
@@ -28,7 +29,6 @@ export const emptyPermissions: PermissionSnapshot = {
 };
 export const menuObjects = (route: AppRoute) => APP_OBJECT_DIRECTORY[route.id];
 
-const isEntry = (route: MenuRoute): route is EntryRoute => route.id !== route.app;
 /** 应用按服务端可见性显示；应用内入口还要求所属应用的入口对象含其对象。下一层结构由模块登记的 children 适配。 */
 export function menuNodes(routes: readonly MenuRoute[], response: ServerSnapshot): MenuNode[] {
   const visible = (route: MenuRoute) =>
