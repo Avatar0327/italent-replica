@@ -24,6 +24,7 @@ import {
   talentWorld,
   type TalentWorld,
 } from './AC-TC-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 
@@ -96,7 +97,7 @@ describe('DEC-294③ 所属人 / 所属管理单元由系统填写', () => {
     const before = await snapshot(w);
     const posts = [
       ['/libraries', { name: '无单元库', type: 'ability' }],
-      ['/dimensions', { libraryId: library.id, code: `N${randomUUID().slice(0, 6)}`, name: '无单元指标' }],
+      ['/dimensions', { libraryId: library.id, code: `N${uniqueSuffix()}`, name: '无单元指标' }],
       ['/criterion-categories', { name: '无单元分类' }],
       ['/criteria', { categoryId: category.id, name: '无单元标准' }],
     ] as const;
@@ -341,7 +342,7 @@ describe('DEC-294 补充二：新增的关联记录跟添加人走（所属人 =
     };
     const dimension = await created('/dimensions', {
       libraryId: data.inside.library.id,
-      code: `R${randomUUID().slice(0, 6)}`,
+      code: `R${uniqueSuffix()}`,
       name: '多单元操作人的指标',
     });
     expect(dimension).toMatchObject({ ownerId: op.user.id, ownerOrgId: data.outside.orgId });

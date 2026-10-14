@@ -7,6 +7,7 @@ import { CANDIDATES, GROUPS, reviewWorld, type Employee, type GroupView } from '
 import { EV_BASE, ok } from './AC-EV-support.js';
 import { tenantApi } from './support/tenant-api.js';
 import { runReviewGroupExits } from '../../apps/api/src/modules/evaluation/review-group-exit-worker.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const EMP_BASE = '/api/tenant/employment';
 export const EXIT_HANDLER = 'review_group_exit';
@@ -31,7 +32,7 @@ export async function exitWorld(db: Db) {
   const createGroup = (people: Employee[], enabled = true, ownerOrgId = w.orgA) =>
     request('POST', `${EV_BASE}${GROUPS}`, {
       ifMatch: 0,
-      body: { name: `离职评审组${randomUUID().slice(0, 6)}`, ownerOrgId, enabled, members: members(...people) },
+      body: { name: `离职评审组${uniqueSuffix()}`, ownerOrgId, enabled, members: members(...people) },
     }).then((r) => ok<GroupView>(r, 201));
   const edit = (g: GroupView, body: Record<string, unknown>, key: string = randomUUID()) =>
     request('PATCH', `${EV_BASE}${GROUPS}/${g.id}`, { ifMatch: g.revision, body, idempotencyKey: key });

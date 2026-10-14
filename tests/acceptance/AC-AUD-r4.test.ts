@@ -24,6 +24,7 @@ import { loginEmailOf } from './AC-EMP-support.js';
 import { auditApi } from './AC-AUD-support.js';
 import { tenantApi } from './support/tenant-api.js';
 import { PLATFORM, seedOperator } from './support/platform-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const database = useTestDb();
 const NOW = '2026-10-01T01:00:00.000Z';
@@ -42,7 +43,7 @@ async function viewer(
 ) {
   const member = await memberWithAdminRole(world, 'audit_admin', label);
   if (!grants.length) return member;
-  const profile = await createProfile(world, `aud-r4-${randomUUID().slice(0, 8)}`);
+  const profile = await createProfile(world, `aud-r4-${uniqueSuffix()}`);
   for (const { code, fields } of grants) {
     const response = await setObjectPermission(
       world,

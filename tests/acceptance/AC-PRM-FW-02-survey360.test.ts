@@ -60,7 +60,7 @@ const withEntry = (key: string, obligations: readonly Obligation[]): RequiredTab
 });
 
 describe('AC-PRM-FW-02 F-073 已知缺口账本：survey360 的 87 项精确删除，其余账不动', () => {
-  test('账本里不再有 survey360 组；org / idp 共 29 项（任职资格由 F-074 补完）；冗余观测账本已清空（F-075 / F-075b）', () => {
+  test('账本里不再有 survey360 组；其余模块的缺口对与各自声明逐项相等（任职资格由 F-074 补完）；冗余观测账本已清空（F-075 / F-075b）', () => {
     survey360Checks({ table: REQUIRED, routes: manifest.declared, contract: frozen })
       .find((check) => check.id === 'knownGaps')!
       .verify();

@@ -1,12 +1,15 @@
 import { createContext, useContext, useMemo, useRef, type ReactNode } from 'react';
 import { createApiClient, type RequestContext } from './client.js';
+import type { ServerSnapshot } from './permission-snapshot.js';
 
-export interface Session extends RequestContext {
-  readonly tenantName: string;
-  readonly timezone: string;
-  readonly displayName: string;
-  readonly source: 'server' | 'demo';
+export interface Session
+  extends
+    RequestContext,
+    Pick<ServerSnapshot['session'], 'tenantName' | 'timezone' | 'displayName'>,
+    Partial<Pick<ServerSnapshot['session'], 'userId' | 'employeeId' | 'today'>> {
+  readonly source: 'server';
 }
+
 const empty: Session = {
   tenantId: '',
   identityKey: '',

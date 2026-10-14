@@ -25,9 +25,10 @@ import {
   type ActivityWorld,
   sendableChain,
 } from './AC-EV-activity-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
-const suffix = () => randomUUID().slice(0, 6);
+const suffix = () => uniqueSuffix();
 
 interface Page {
   readonly hasDataPermission: boolean;

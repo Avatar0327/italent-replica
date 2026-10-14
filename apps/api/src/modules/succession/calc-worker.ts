@@ -276,6 +276,20 @@ async function finishPage(tx: Tx, run: CalcRun, principal: string, now: Date): P
   return after!;
 }
 
+/** 可信同步调用：复用 worker 状态机，但使用调用方事务；错误向外抛出，run / 缓存随命令一起回滚。 */
+export async function runCalcPageInTransaction(
+  tx: Tx,
+  tenant: string,
+  id: string,
+  handler: CalcHandler,
+  now: Date,
+): Promise<CalcRun['status']> {
+  const run = await locked(tx, tenant, id);
+  if (run.status !== 'pending' && run.status !== 'running') return run.status;
+  if (handler.kind !== run.kind) throw new CalcBlocked('KIND_UNAVAILABLE');
+  return (await executePage(tx, run, handler, now)).status;
+}
+
 /** 一次调用最多提交一页；返回 running 时调用方继续调本函数。崩溃回滚当前页，已提交对象不再执行。
  * 页事务结果未知时，独立事务重新取 run 锁并检查 revision；已提交/另一 worker 已推进时不覆盖结果。 */
 export async function runCalcPage(

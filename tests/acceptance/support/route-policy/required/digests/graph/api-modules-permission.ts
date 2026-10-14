@@ -654,6 +654,10 @@ export const GRAPH: Graph = {
     '#getIdentityScope',
     '#lockIdentityScope',
   ],
+  'apps/api/src/modules/permission/scope-resolver.ts#addBoundedIds': ['#MAX_SCOPE_IDS'],
+  'apps/api/src/modules/permission/scope-resolver.ts#identityAll': [
+    'apps/api/src/modules/permission/scope-hierarchy.ts#scopeRows',
+  ],
   'apps/api/src/modules/permission/scope-resolver.ts#linkedPerson': [
     'apps/api/src/modules/permission/scope-hierarchy.ts#scopeRows',
   ],
@@ -666,9 +670,26 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/scope-hierarchy.ts#expandScopeRoots',
     '#managementRoots',
   ],
+  'apps/api/src/modules/permission/scope-resolver.ts#resolveDataScope': [
+    'apps/api/src/modules/permission/scope-hierarchy.ts#expandScopeRoots',
+    '#addBoundedIds',
+    '#identityAll',
+    '#linkedPerson',
+    '#managementRoots',
+    '#personScopedObjects',
+    '#roleRoots',
+    '#ruleKey',
+    '#rulesFor',
+    'apps/api/src/modules/permission/scope-types.ts#EMPTY_SCOPE',
+    'packages/domain/src/personnel/catalog.ts#PERSONNEL_SCOPE_FIELDS',
+  ],
   'apps/api/src/modules/permission/scope-resolver.ts#roleRoots': [
     'apps/api/src/modules/permission/scope-hierarchy.ts#scopeRows',
     '#linkedPerson',
+  ],
+  'apps/api/src/modules/permission/scope-resolver.ts#rulesFor': [
+    'apps/api/src/modules/permission/scope-hierarchy.ts#scopeRows',
+    '#MAX_SCOPE_RULES',
   ],
   'apps/api/src/modules/permission/sets.ts#PERMISSION_SETS': ['#ORG_SETS', '#PROFILE_SETS'],
   'apps/api/src/modules/permission/sets.ts#objectPermissionSets': ['#PROFILE_SETS', '#permissionSet'],
@@ -676,6 +697,10 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/permission/sets.ts#permissionSnapshot': ['#PERMISSION_SETS', '#isRecord', '#permissionSet'],
   'apps/api/src/modules/permission/subject.ts#loadActiveProfileIds': [
     'apps/api/src/modules/permission/sets.ts#permissionSet',
+  ],
+  'apps/api/src/modules/permission/subject.ts#loadAdminRoles': [
+    'apps/api/src/modules/permission/sets.ts#permissionSet',
+    'packages/domain/src/permission/admin-roles.ts#isAdminRole',
   ],
   'apps/api/src/modules/permission/subject.ts#loadGrantedObjectPermissions': [
     'apps/api/src/modules/permission/manager-identity.ts#MANAGER_PROFILE_CODE',
@@ -691,6 +716,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/sets.ts#objectPermissionSets',
   ],
   'apps/api/src/modules/permission/subject.ts#loadObjectPermissions': ['#loadObjectPermissionRows'],
+  'apps/api/src/modules/permission/subject.ts#loadSubject': ['#loadAdminRoles', '#loadGrantedObjectPermissions'],
   'apps/api/src/modules/permission/tenant-catalog.ts#tenantObjectCatalog': [
     '#TENANT_FIELD_LIMIT',
     '#sources',
