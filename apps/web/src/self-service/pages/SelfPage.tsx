@@ -6,7 +6,6 @@ import {
   ListPage,
   PageState,
   pageQuery,
-  usePermissions,
   useSession,
   type PageResult,
 } from '../../foundation/index.js';
@@ -119,7 +118,10 @@ function ProfilePage({ profile, refresh }: { profile: Profile; refresh(): void }
   );
 }
 function ApplicationsPage({ profile, requests }: { profile: Profile; requests: boolean }) {
-  const permission = usePermissions('TenantBase.EmploymentRecord');
+  // 员工自动身份只作用于本人入口：本人调动按钮由本人入口随档案返回，不走通用权限查询（F-141 第 2 轮）
+  const canApply = canApplySelf((code, level) =>
+    (profile.selfServiceButtons ?? []).some((b) => b.buttonCode === code && b.level === level),
+  );
   const { tenantId } = useSession();
   const [page, setPage] = useState({ page: 1, pageSize: 15 });
   const [form, setForm] = useState(false);
@@ -160,7 +162,7 @@ function ApplicationsPage({ profile, requests }: { profile: Profile; requests: b
           columns={recordColumns(records, profile.employee.name)}
           actions={
             <Space>
-              {canApplySelf(permission.can) && (
+              {canApply && (
                 <Button type="primary" onClick={() => setForm(true)}>
                   {m.transfer}
                 </Button>
@@ -176,7 +178,7 @@ function ApplicationsPage({ profile, requests }: { profile: Profile; requests: b
         />
       )}
       <ApplicationDrawer
-        open={form && canApplySelf(permission.can)}
+        open={form && canApply}
         onClose={() => setForm(false)}
         tenantId={tenantId}
         profile={profile}

@@ -1,7 +1,6 @@
 import { objectPermissionSets, permissionSet } from './sets.js';
 import { sql } from '@italent/db';
 import { scopeRows } from './scope-hierarchy.js';
-import { employeeIdentityProfileId } from './employee-identity.js';
 import {
   managerIdentity,
   defaultManagerPermissions,
@@ -100,12 +99,6 @@ export async function loadGrantedObjectPermissions(
   managerQuery?: ManagerQuery,
 ): Promise<GrantedObjectPermission[]> {
   const profileIds = await loadActiveProfileIds(tx, userId);
-  // F-141 ①（DEC-500）：与经理自动身份同法叠加员工自动身份。/me/objects、/me/snapshot 与授权器共用这一份主体（DEC-469），
-  // 所以三处口径一致；这里只给功能权限，数据范围仍由（用户 × 应用）的授权决定，员工没有授权就是空范围，不会因此看到他人。
-  if (managerQuery) {
-    const employeeProfile = await employeeIdentityProfileId(tx, managerQuery.tenantId, userId);
-    if (employeeProfile && !profileIds.includes(employeeProfile)) profileIds.push(employeeProfile);
-  }
   let defaults: GrantedObjectPermission[] = [];
   if (managerQuery && (await managerIdentity(tx, managerQuery)).active) {
     const [profile] = scopeRows<{ id: string }>(

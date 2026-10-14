@@ -8,7 +8,12 @@ import { jsonBody, pageQuery, revision, runWrite, uuidParam } from '../employmen
 import { EmploymentError } from '../employment/errors.js';
 import { createTransfer } from '../transfer/service.js';
 import type { CommandGuard } from '../../commands.js';
-import { requireSelfServiceButtons, type SelfAccess, selfAccess, transferFieldAccess } from './access.js';
+import {
+  grantedSelfServiceButtons,
+  requireSelfServiceButtons,
+  type SelfAccess, selfAccess,
+  transferFieldAccess,
+} from './access.js';
 import { applicationStatus, currentRecord, ownApplication, ownApplications, ownRecords } from './queries.js';
 import { ownDevelopmentChannel } from './development-channel.js';
 import { ownTransferInput, ownTransferPreview } from './transfer.js';
@@ -38,11 +43,15 @@ export const registerEmployeeSelfServiceRoutes: TenantRouteModule = (router, dep
 function registerProfileRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
   module.get('/profile', async (c) => {
     const self = await selfAccess(c, deps);
-    const record = await withTenant(deps.db, self.ctx.tenantId, async (tx) => {
+    const { record, selfServiceButtons } = await withTenant(deps.db, self.ctx.tenantId, async (tx) => {
       await self.check(tx);
-      return currentRecord(tx, self.ctx, self.employee.id);
+      return {
+        record: await currentRecord(tx, self.ctx, self.employee.id),
+        selfServiceButtons: await grantedSelfServiceButtons(tx, self.ctx),
+      };
     });
     return c.json({
+      selfServiceButtons,
       employee: self.employee,
       timezone: self.ctx.timezone,
       today: tenantLocalDate(self.ctx.now, self.ctx.timezone),

@@ -14,6 +14,8 @@ export interface Profile {
   employee: EmployeeChoice & { readonly avatar?: AvatarReference | null };
   today: string;
   record: OwnRecord | null;
+  /** 本人入口判定的本人调动按钮（员工自动身份只作用于本人入口，不走通用权限查询）。 */
+  selfServiceButtons?: readonly { buttonCode: string; level: string }[];
 }
 export interface Application {
   id: string;
