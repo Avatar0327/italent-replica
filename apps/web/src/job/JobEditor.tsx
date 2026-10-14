@@ -94,7 +94,7 @@ interface EditorProps {
 function useJobCommand({ kind, original, date }: EditorProps) {
   const base = `/api/tenant/job/${kind}`;
   return useRecordCommand({
-    // 编辑用原单路径、新建用集合路径作键，不带列表日期；日期作为命令上下文存在槽里（DEC-431①）。
+    // 编辑用原单路径、新建用集合路径作键，不带列表日期；日期作为命令上下文存在槽里（F-123 页面片接入 2）。
     resource: original ? `${base}/${original.id}` : base,
     context: { date },
     original,
@@ -102,9 +102,17 @@ function useJobCommand({ kind, original, date }: EditorProps) {
     project: jobInitialValues,
   });
 }
-function resumedField(date: string): FormField {
+/** 首组顶部提示：槽里有未确认的命令，表单按它保存的业务日期打开。 */
+function withResumed<G extends { fields: FormField[] }>([first, ...rest]: G[], date: string): G[] {
   const access = { visible: true, editable: false };
-  return { name: '__resumed', label: m.resumedLabel, display: `${m.resumed}${date}`, control: null, access };
+  const notice: FormField = {
+    name: '__resumed',
+    label: m.resumedLabel,
+    display: `${m.resumed}${date}`,
+    control: null,
+    access,
+  };
+  return first ? [{ ...first, fields: [notice, ...first.fields] }, ...rest] : rest;
 }
 export function JobEditor(props: EditorProps) {
   const { kind, original, access } = props;
@@ -128,9 +136,7 @@ export function JobEditor(props: EditorProps) {
       };
     }),
   }));
-  const groups = record.resumed
-    ? sections.map((group, index) => (index ? group : { ...group, fields: [resumedField(date), ...group.fields] }))
-    : sections;
+  const groups = record.resumed ? withResumed(sections, date) : sections;
   const build = (body: Record<string, unknown>, current?: JobRow) =>
     jobBody(kind, { ...body, ...timing.createFields }, current, timing.asOf);
   return (

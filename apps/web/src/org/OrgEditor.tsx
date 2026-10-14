@@ -157,7 +157,7 @@ function useSubmit(props: Props, record: ReturnType<typeof useOrgCommand>) {
 }
 function useOrgCommand({ original, action, date }: Props) {
   return useRecordCommand({
-    // 原单路径作键：行内、详情、换日期或换动作重开都进同一个槽；动作与日期作为命令上下文存在槽里（DEC-431①）。
+    // 原单路径作键：行内、详情、换日期或换动作重开都进同一个槽；动作与日期作为命令上下文存在槽里（F-123 页面片接入 2）。
     resource: `/api/tenant/org/organizations/${original.id}`,
     context: { action, date },
     original,

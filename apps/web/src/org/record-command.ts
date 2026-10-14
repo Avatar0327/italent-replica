@@ -12,8 +12,8 @@ interface RecordRow {
 const contextField = '__context';
 interface Options<T extends RecordRow, C extends Values> {
   /**
-   * 内核按此键保存草稿与命令状态：编辑用原单路径、新建用集合路径（F-123 §2），
-   * 不带日期、视图、动作或入口，所有入口共用一个槽（DEC-431①）。
+   * 内核按此键保存草稿与命令状态：编辑用原单路径、新建用集合路径，
+   * 不带日期、视图、动作或入口，所有入口共用一个槽（docs/08_设计/F-123 页面片接入 2）。
    */
   resource: string;
   /** 本次打开时的命令上下文；槽里有未完成的命令时以槽里保存的为准。 */
