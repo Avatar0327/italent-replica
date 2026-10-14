@@ -4,11 +4,11 @@
  * 资源集合（所属管理单元）由系统按创建人在 Qualification 应用里的授权管理单元填写（DEC-324②）：夹具先建一个组织，
  * 并把只含该组织的管理单元授权给成员（用户 × Qualification，DEC-043）。
  */
-import { randomUUID } from 'node:crypto';
 import type { Db } from '@italent/db';
 import { expect } from 'vitest';
 import { createMou, createOrg, type Identity, TC_NOW, TC_PERMISSION_PATH } from './AC-TC-support.js';
 import { type RequestOptions, seedTenantWithMember, tenantApi } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 export const QL_BASE = '/api/tenant/qualification';
 export const QL_APP = 'Qualification';
@@ -87,7 +87,7 @@ export async function assignQualificationMou(
   return ((await response.json()) as { revision: number }).revision;
 }
 
-const suffix = () => randomUUID().slice(0, 6);
+const suffix = () => uniqueSuffix();
 
 /** 一个租户 + 一名成员 + 一个组织（授权给成员的 Qualification 管理单元只含它），带建各对象的快捷方法。 */
 export async function qualificationWorld(db: Db, label: string, deps: Parameters<typeof tenantApi>[1] = {}) {

@@ -19,6 +19,7 @@ import { EV_NOW, type EvaluationKey, ok, operator, type Operator } from './AC-EV
 import { seedPermissionWorld, type PermissionWorld } from './AC-PRM-support.js';
 import { tenantApi } from './support/tenant-api.js';
 import type * as RunCommands from '../../apps/api/src/commands.js';
+import { uniqueSuffix } from './support/unique.js';
 
 type RunCommandModule = typeof RunCommands;
 interface Loser {
@@ -81,7 +82,7 @@ function loserDb(db: Db, tenantId: string, commandId: string, loser: Loser): Db 
 }
 
 const testDb = useTestDb();
-const name = (label = '复核') => `${label}${randomUUID().slice(0, 6)}`;
+const name = (label = '复核') => `${label}${uniqueSuffix()}`;
 
 interface Row {
   readonly id: string;

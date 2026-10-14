@@ -5,7 +5,6 @@
  * ACTIVITY_HAS_APPLICANTS，数据不变。原样提交不算改动；校验类错误（如清空资格审批流程）仍是 400。`apply_count` 只读，
  * 测试直接置数（真实维护在 C2）。未报名时可改全部内容、增删环节。删除活动：只有草稿且没有报名的才能删（保守默认，需取证）。
  */
-import { randomUUID } from 'node:crypto';
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { errorOf, ok } from './AC-EV-support.js';
@@ -22,9 +21,10 @@ import {
   type ChainView,
   sendableChain,
 } from './AC-EV-activity-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
-const suffix = () => randomUUID().slice(0, 6);
+const suffix = () => uniqueSuffix();
 
 describe('AC-EV-05 编辑锁（已有报名的活动）', () => {
   let w: ActivityWorld;

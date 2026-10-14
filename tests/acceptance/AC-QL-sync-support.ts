@@ -22,6 +22,7 @@ import { overrideSetting } from '../../apps/api/src/modules/tenant-settings/serv
 import { runQualificationSync } from '../../apps/api/src/modules/qualification/sync-worker.js';
 import { f055World, rowsOf, type F055World } from './AC-EMP-F055-support.js';
 import { tenantApi } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 export { rowsOf };
 export const SYNC_SETTING = 'qualification.sync_enabled';
@@ -68,7 +69,7 @@ export async function syncWorld(db: Db, label: string, options: { timezone?: str
     const response = await api.request('POST', '/api/tenant/job/sequences', {
       ...as,
       ifMatch: 0,
-      body: { name, code: `S${randomUUID().slice(0, 6)}`, startDate: '2020-01-01' },
+      body: { name, code: `S${uniqueSuffix()}`, startDate: '2020-01-01' },
     });
     expect(response.status, await response.clone().text()).toBe(201);
     return ((await response.json()) as { id: string }).id;
@@ -79,7 +80,7 @@ export async function syncWorld(db: Db, label: string, options: { timezone?: str
     const type = await api.request('POST', '/api/tenant/job/level-types', {
       ...as,
       ifMatch: 0,
-      body: { name: '同步职级体系', code: `LT${randomUUID().slice(0, 6)}`, startDate: '2020-01-01' },
+      body: { name: '同步职级体系', code: `LT${uniqueSuffix()}`, startDate: '2020-01-01' },
     });
     expect(type.status, await type.clone().text()).toBe(201);
     const created = await api.request('POST', '/api/tenant/job/levels', {
@@ -87,7 +88,7 @@ export async function syncWorld(db: Db, label: string, options: { timezone?: str
       ifMatch: 0,
       body: {
         name: '同步职级',
-        code: `JL${randomUUID().slice(0, 6)}`,
+        code: `JL${uniqueSuffix()}`,
         level: 5,
         levelTypeId: ((await type.json()) as { id: string }).id,
         startDate: '2020-01-01',
@@ -102,7 +103,7 @@ export async function syncWorld(db: Db, label: string, options: { timezone?: str
     const layer = await api.request('POST', '/api/tenant/job/layers', {
       ...as,
       ifMatch: 0,
-      body: { name: '同步职层', code: `LY${randomUUID().slice(0, 6)}`, layerLevel: 1, startDate: '2020-01-01' },
+      body: { name: '同步职层', code: `LY${uniqueSuffix()}`, layerLevel: 1, startDate: '2020-01-01' },
     });
     expect(layer.status, await layer.clone().text()).toBe(201);
     const created = await api.request('POST', '/api/tenant/job/grades', {
@@ -110,7 +111,7 @@ export async function syncWorld(db: Db, label: string, options: { timezone?: str
       ifMatch: 0,
       body: {
         name: '同步职等',
-        code: `JG${randomUUID().slice(0, 6)}`,
+        code: `JG${uniqueSuffix()}`,
         grade: 1,
         layerId: ((await layer.json()) as { id: string }).id,
         startDate: '2020-01-01',
@@ -143,7 +144,7 @@ export async function syncWorld(db: Db, label: string, options: { timezone?: str
   ): Promise<string> {
     return withTenant(db, tenantId, async (tx) => {
       const classId = await classRow(tx);
-      const code = `C${randomUUID().replaceAll('-', '').slice(0, 10)}`;
+      const code = `C${uniqueSuffix()}`;
       const [row] = await tx
         .insert(qlCategories)
         .values({
@@ -172,7 +173,7 @@ export async function syncWorld(db: Db, label: string, options: { timezone?: str
   ): Promise<string> {
     order += 10;
     return withTenant(db, tenantId, async (tx) => {
-      const code = `L${randomUUID().replaceAll('-', '').slice(0, 10)}`;
+      const code = `L${uniqueSuffix()}`;
       const [row] = await tx
         .insert(qlLevels)
         .values({
@@ -201,7 +202,7 @@ export async function syncWorld(db: Db, label: string, options: { timezone?: str
       .insert(qlCategoryClasses)
       .values({
         tenantId,
-        code: `K${randomUUID().replaceAll('-', '').slice(0, 10)}`,
+        code: `K${uniqueSuffix()}`,
         name: '同步测试分类',
         level: 1,
         ownerId: userId,

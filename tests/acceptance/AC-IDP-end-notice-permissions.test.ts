@@ -12,6 +12,7 @@ import { IDP_BASE, IDP_NOW, type ProcessView, subProcessBody } from './AC-IDP-su
 import { seedPermissionWorld } from './AC-PRM-support.js';
 import { memberWithAdminRole } from './AC-PRM-users-support.js';
 import { tenantApi } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 const TEMPLATE = 'IDP_STAGE_END_NOTICE';
@@ -420,7 +421,7 @@ describe('AC-IDP（补）F-047：结束通知模板配置权限', () => {
     expect(detail.before).toMatchObject({ endNoticeTemplate: null });
     expect(detail.after).toMatchObject({ endNoticeTemplate: TEMPLATE, name: STAGE_NAME });
 
-    const viewer = await memberWithAdminRole(env.w, 'audit_admin', `idp-end-audit-${randomUUID().slice(0, 8)}`);
+    const viewer = await memberWithAdminRole(env.w, 'audit_admin', `idp-end-audit-${uniqueSuffix()}`);
     const op = await idpOperator(env.w, {
       user: viewer.user,
       orgId: env.data.insideOrg,

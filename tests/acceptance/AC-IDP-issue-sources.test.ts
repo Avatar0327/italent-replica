@@ -9,6 +9,7 @@ import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { idpOperator, type OperatorOptions } from './AC-IDP-permission-support.js';
 import { permissionWorldOf, planWorld, type PlanView, type PlanWorld } from './AC-IDP-plan-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 const task = { name: '统一下发的任务', description: '说明', endDate: '2026-06-30' };
@@ -36,7 +37,7 @@ const CASES: [string, OperatorOptions][] = [
 describe('R2-5：统一下发先查实际用到的源字段', () => {
   for (const [label, options] of CASES) {
     it(`${label}：与“通用目标不存在”同一个 404，不建任务、不回 goalId`, async () => {
-      const w = await planWorld(testDb().db, `idp-iss-${randomUUID().slice(0, 6)}`);
+      const w = await planWorld(testDb().db, `idp-iss-${uniqueSuffix()}`);
       const plan = await w.createPlan();
       const op = await idpOperator(await permissionWorldOf(w), { ...options, orgId: w.dept });
       const hidden = await issueWith(op, w.firstCommonGoal.id, plan);

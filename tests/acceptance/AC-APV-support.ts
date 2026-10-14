@@ -24,6 +24,7 @@ import { createProcess, publishProcess } from '../../apps/api/src/modules/approv
 import { withLoginEmail } from './AC-EMP-support.js';
 import { createProfile, grant, makeGrantable, setObjectPermission, type PermissionWorld } from './AC-PRM-support.js';
 import { cmd, seedTenantWithMember, tenantApi, type RequestOptions } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 export const APV_TODAY = '2026-10-01';
 const BASE = '/api/tenant/approval';
@@ -394,7 +395,7 @@ export async function approvalWorld(db: Db, label: string, fixed: FixedIds = {})
       await request(actor, 'POST', `${BASE}/processes`, {
         ifMatch: 0,
         body: {
-          code: input.code ?? `P_${randomUUID().slice(0, 8)}`,
+          code: input.code ?? `P_${uniqueSuffix()}`,
           name: input.name ?? '合成调动流程',
           approvalType: input.approvalType ?? 'transfer',
           priority: input.priority ?? 0,
@@ -543,7 +544,7 @@ export async function grantFieldAccess(
   definition: ObjectDefinition = MODULE_OBJECTS.employmentRecord,
 ) {
   const edit = access.edit ?? [];
-  const profile = await createProfile(world, `apv${randomUUID().slice(0, 8)}`);
+  const profile = await createProfile(world, `apv${uniqueSuffix()}`);
   const response = await setObjectPermission(
     world,
     profile,
@@ -572,7 +573,7 @@ export async function grantVisibleFields(
   visible: readonly string[],
   definition: ObjectDefinition = MODULE_OBJECTS.employmentRecord,
 ) {
-  const profile = await createProfile(world, `apv${randomUUID().slice(0, 8)}`);
+  const profile = await createProfile(world, `apv${uniqueSuffix()}`);
   const response = await setObjectPermission(
     world,
     profile,

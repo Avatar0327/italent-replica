@@ -9,10 +9,11 @@ import { projectCreate } from '../../apps/api/src/modules/talent-review/project-
 import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.js';
 import { TR_NOW, TR_BASE } from './AC-TR-support.js';
 import { waitForBlocked } from './support/pg-interleave.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 const body = (ownerOrgId: string, criterionId: string) => ({
-  code: `prj_${randomUUID().slice(0, 8)}`,
+  code: `prj_${uniqueSuffix()}`,
   name: '合成标准引用项目',
   ownerOrgId,
   criterionId,

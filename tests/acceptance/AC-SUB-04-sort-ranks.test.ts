@@ -8,6 +8,7 @@ import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { seedTenantWithMember, tenantApi } from './support/tenant-api.js';
 import { loginEmailOf } from './AC-EMP-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const database = useTestDb();
 const TODAY = '2026-10-01';
@@ -99,7 +100,7 @@ async function world(db: Db, label: string) {
     });
   async function employee(name: string, fields: Record<string, unknown>) {
     const created = await ok<Ref>(
-      await call('POST', 'employment/employees', { name, code: `SR_${randomUUID().slice(0, 8)}` }, 0),
+      await call('POST', 'employment/employees', { name, code: `SR_${uniqueSuffix()}` }, 0),
       201,
     );
     await ok(

@@ -67,6 +67,7 @@ export async function boundedScene(db: Db, label: string, size: number) {
   const people = (await w.ok<{ items: PersonView[] }>(w.request('GET', '/people?pageSize=200'))).items;
   const managerPerson = people.find((p) => p.employeeId === manager.id)!;
   const seedPerson = people.find((p) => p.employeeId === seed.id)!;
+  // UUID 首段，格式固定 8 位十六进制；不是唯一约束后缀（见 guard-unique-suffix 白名单）
   const prefix = randomUUID().slice(0, 8);
   const id = (n: number) => `${prefix}-0000-4000-8000-${String(n).padStart(12, '0')}`;
   await withTenant(db, w.tenantId, async (tx) => {
