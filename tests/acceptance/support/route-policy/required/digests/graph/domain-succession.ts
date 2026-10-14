@@ -17,6 +17,11 @@ export const GRAPH: Graph = {
   'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>ruleSettings': ['#object'],
   'packages/domain/src/succession/catalog.ts#levelObject': ['#crud', '#object', '#reorder'],
   'packages/domain/src/succession/catalog.ts#object': ['#SUCCESSION_APP', '#SYSTEM_FIELDS'],
+  'packages/domain/src/succession/health.ts#evaluateHealthLevels': [
+    'packages/domain/src/expression/engine.ts#evaluateFormula',
+    'packages/domain/src/expression/ports.ts#inMemorySubject',
+    'packages/domain/src/succession/levels.ts#compileLevelComparisons',
+  ],
   'packages/domain/src/succession/levels.ts#compileLevelComparisons': [
     'packages/domain/src/expression/rules/compile.ts#compileRuleSet',
   ],
