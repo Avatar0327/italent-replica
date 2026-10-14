@@ -5,9 +5,11 @@ import { foundationNotes } from './foundation.js';
 import { jobNotes } from './job.js';
 import { orgNotes } from './org.js';
 import { personnelNotes } from './personnel.js';
+import { qualificationNotes } from './qualification.js';
 import { selfServiceNotes } from './self-service.js';
 import { settingsNotes } from './settings.js';
 import { survey360Notes } from './survey360.js';
+import { talentNotes } from './talent.js';
 import { talentReviewNotes } from './talent-review.js';
 import { transferNotes } from './transfer.js';
 
@@ -20,9 +22,11 @@ export const annotations = {
   ...jobNotes,
   ...orgNotes,
   ...personnelNotes,
+  ...qualificationNotes,
   ...selfServiceNotes,
   ...settingsNotes,
   ...survey360Notes,
+  ...talentNotes,
   ...talentReviewNotes,
   ...transferNotes,
 };

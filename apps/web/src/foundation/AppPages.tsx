@@ -13,6 +13,9 @@ const Evaluation = lazy(() => import('../evaluation/EvaluationPage.js').then((m)
 const Job = lazy(() => import('../job/JobWorkspace.js').then((m) => ({ default: m.JobWorkspace })));
 const Manager = lazy(() => import('../self-service/pages/ManagerPage.js').then((m) => ({ default: m.ManagerPage })));
 const Org = lazy(() => import('../org/OrgPage.js').then((m) => ({ default: m.OrgPage })));
+const Qualification = lazy(() =>
+  import('../qualification/QualificationPage.js').then((m) => ({ default: m.QualificationPage })),
+);
 const Self = lazy(() => import('../self-service/pages/SelfPage.js').then((m) => ({ default: m.SelfPage })));
 const Settings = lazy(() => import('../settings/SettingsPage.js').then((m) => ({ default: m.SettingsPage })));
 const Staff = lazy(() => import('../personnel/StaffPage.js').then((m) => ({ default: m.StaffPage })));
@@ -29,6 +32,7 @@ const existing = {
   job: { Page: Job, legacy: false },
   manager: { Page: Manager, legacy: false },
   org: { Page: Org, legacy: false },
+  qualification: { Page: Qualification, legacy: true },
   self: { Page: Self, legacy: false },
   settings: { Page: Settings, legacy: true },
   staff: { Page: Staff, legacy: false },
