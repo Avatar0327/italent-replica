@@ -22,9 +22,13 @@ async function asUser(page: Page) {
 }
 async function openMenu(page: Page, name: string) {
   await asUser(page);
-  await page.getByRole('menuitem', { name: '人才发展计划', exact: true }).click();
+  // 左侧只列当前应用菜单，跨应用经顶栏全部菜单面板进入（main F-132 布局壳）
+  await page.getByRole('button', { name: '应用导航' }).click();
+  await page.getByRole('dialog', { name: '全部菜单' }).getByRole('link', { name: '人才发展计划', exact: true }).click();
   // 应用入口先落到第一张有权限的列表，再点下一层菜单，避免与入口重定向竞争
   await expect(page).toHaveURL(/\/idp\/plans$/);
+  // 左侧是人才应用菜单，本片分组默认收起，先展开再点下一层
+  await page.getByRole('menuitem', { name: '人才发展计划', exact: true }).click();
   await page.getByRole('menuitem', { name, exact: true }).click();
 }
 const writes = (calls: IdpCall[], method: string, path: string | RegExp) =>
