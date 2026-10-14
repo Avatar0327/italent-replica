@@ -91,6 +91,8 @@ export const pageText = {
   saved: '保存成功，请刷新查看所选日期的数据。',
   noChange: '请至少修改一个字段',
   recovery: '请关闭抽屉，刷新并核对保存结果后重新打开。',
+  resumedLabel: '未确认命令',
+  resumed: '该组织有一条结果尚未确认的命令，已按原命令的操作与生效日期打开；核对结果后再发起其他操作。',
   permissionTitle: '权限加载失败',
   linked: '任职联动',
   create: '新建',

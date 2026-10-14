@@ -94,17 +94,25 @@ interface EditorProps {
 function useJobCommand({ kind, original, date }: EditorProps) {
   const base = `/api/tenant/job/${kind}`;
   return useRecordCommand({
-    resource: original ? `${base}/${original.id}@${date}` : `${base}#new`,
+    // 编辑用原单路径、新建用集合路径作键，不带列表日期；日期作为命令上下文存在槽里（DEC-431①）。
+    resource: original ? `${base}/${original.id}` : base,
+    context: { date },
     original,
-    readPath: original ? (id) => `${base}/${id}?asOf=${date}` : undefined,
+    readPath: original ? (id, context) => `${base}/${id}?asOf=${context.date}` : undefined,
     project: jobInitialValues,
   });
 }
+function resumedField(date: string): FormField {
+  const access = { visible: true, editable: false };
+  return { name: '__resumed', label: m.resumedLabel, display: `${m.resumed}${date}`, control: null, access };
+}
 export function JobEditor(props: EditorProps) {
-  const { kind, original, access, date } = props;
-  const timing = jobTiming(original, date, props.today, access.field('startDate'));
+  const { kind, original, access } = props;
   const record = useJobCommand(props);
-  const groups = jobFormGroups(kind).map((group) => ({
+  // 槽里有未确认的命令时按它保存的业务日期打开，换列表日期不另起命令。
+  const { date } = record.context;
+  const timing = jobTiming(original, date, props.today, access.field('startDate'));
+  const sections = jobFormGroups(kind).map((group) => ({
     title: m[group.key as 'basic'],
     fields: group.fields.map((name): FormField => {
       const control = jobControl(name, kind, timing.asOf, original?.id);
@@ -120,12 +128,15 @@ export function JobEditor(props: EditorProps) {
       };
     }),
   }));
+  const groups = record.resumed
+    ? sections.map((group, index) => (index ? group : { ...group, fields: [resumedField(date), ...group.fields] }))
+    : sections;
   const build = (body: Record<string, unknown>, current?: JobRow) =>
     jobBody(kind, { ...body, ...timing.createFields }, current, timing.asOf);
   return (
     <FormOverlay
       mode="modal"
-      recordKey={original ? `${original.id}@${date}` : 'new'}
+      recordKey={original?.id ?? 'new'}
       submission={record.command}
       open
       title={original ? m.edit : m.create}

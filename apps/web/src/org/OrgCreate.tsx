@@ -62,7 +62,8 @@ export function OrgCreate(props: Props) {
   const asOf = orgCreateDate(date, tenantDate(new Date(), session.timezone), access.field('establishedOn'));
   const key = parentId ? `child:${parentId}` : 'new';
   // 新建没有原单可回查：所有新建入口共用集合路径这一个恢复槽，结果未知时都保持锁定，待刷新列表核对（F-123 §2）。
-  const record = useRecordCommand({ resource: orgCreateResource, project: (row: OrgRow) => row });
+  // 业务时点就是表单里的设立日期，随草稿存在槽里，不另存命令上下文。
+  const record = useRecordCommand({ resource: orgCreateResource, context: {}, project: (row: OrgRow) => row });
   return (
     <FormOverlay
       mode="modal"

@@ -506,6 +506,10 @@ test('AC-FE-R1a-37 职务编辑结果未知后换列表日期重开，仍锁定�
   await openEditor();
   await expect(dialog.getByText(pending)).toBeVisible();
   await expect(save(page)).toBeDisabled();
+  // 按原命令保存的业务日期打开，不按新列表日期另起命令。
+  const resumed = dialog.getByText(/已按原命令的业务日期打开：/);
+  await expect(resumed).toBeVisible();
+  await expect(resumed).not.toContainText('2026-11-02');
   expect(patches).toHaveLength(1);
 });
 
@@ -535,5 +539,8 @@ test('AC-FE-R1a-37 组织变更结果未知后换列表日期、换动作重开�
   await row.getByRole('button', { name: /编\s*辑/, exact: true }).click();
   await expect(dialog.getByText(pending)).toBeVisible();
   await expect(save(page)).toBeDisabled();
+  // 换动作重开时仍按原命令的「变更」打开，并提示有未确认命令。
+  await expect(dialog.getByText(/^变更 · /)).toBeVisible();
+  await expect(dialog.getByText('未确认命令')).toBeVisible();
   expect(patches).toHaveLength(1);
 });

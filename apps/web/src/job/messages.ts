@@ -106,6 +106,8 @@ export const pageText = {
   cancel: '取消',
   candidateFailed: '候选加载失败，请重新搜索。',
   candidateHint: '输入名称搜索候选',
+  resumedLabel: '未确认命令',
+  resumed: '结果尚未确认，已按原命令的业务日期打开：',
   candidateMore: '当前显示前 50 条，请输入名称缩小范围。',
   yes: '是',
   no: '否',

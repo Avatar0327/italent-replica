@@ -157,16 +157,20 @@ function useSubmit(props: Props, record: ReturnType<typeof useOrgCommand>) {
 }
 function useOrgCommand({ original, action, date }: Props) {
   return useRecordCommand({
-    // 行内「更多」与详情按钮打开同一键，草稿与冲突状态共用（DEC-431①）。
-    resource: `/api/tenant/org/organizations/${original.id}#${action}@${date}`,
+    // 原单路径作键：行内、详情、换日期或换动作重开都进同一个槽；动作与日期作为命令上下文存在槽里（DEC-431①）。
+    resource: `/api/tenant/org/organizations/${original.id}`,
+    context: { action, date },
     original,
-    readPath: (id) => `/api/tenant/org/organizations/${id}?asOf=${date}`,
+    readPath: (id, context) => `/api/tenant/org/organizations/${id}?asOf=${context.date}`,
     project,
   });
 }
-export function OrgEditor(props: Props) {
+const readOnly = { visible: true, editable: false };
+export function OrgEditor(opened: Props) {
+  const record = useOrgCommand(opened);
+  // 槽里有未确认的命令时按它的动作与日期打开，不按本次入口另起命令。
+  const props: Props = { ...opened, ...record.context };
   const { original, action, date } = props;
-  const record = useOrgCommand(props);
   const current = record.current ?? original;
   const fields = useFields(props, current, record.command.state?.values);
   const onSubmit = useSubmit(props, record);
@@ -178,7 +182,7 @@ export function OrgEditor(props: Props) {
   return (
     <FormOverlay
       mode="modal"
-      recordKey={`${original.id}#${action}@${date}`}
+      recordKey={original.id}
       submission={record.command}
       open
       title={`${m[action]} · ${original.name ?? m.detail}`}
@@ -189,23 +193,12 @@ export function OrgEditor(props: Props) {
         {
           title: m.basic,
           fields: [
-            {
-              name: '__hint',
-              label: m.operation,
-              display: hint,
-              control: null,
-              access: { visible: true, editable: false },
-            },
+            { name: '__hint', label: m.operation, display: hint, control: null, access: readOnly },
+            ...(record.resumed
+              ? [{ name: '__resumed', label: m.resumedLabel, display: m.resumed, control: null, access: readOnly }]
+              : []),
             ...(action !== 'edit'
-              ? [
-                  {
-                    name: '__date',
-                    label: m.date,
-                    display: date,
-                    control: null,
-                    access: { visible: true, editable: false },
-                  },
-                ]
+              ? [{ name: '__date', label: m.date, display: date, control: null, access: readOnly }]
               : []),
             ...fields,
           ],
