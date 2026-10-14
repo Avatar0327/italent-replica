@@ -378,11 +378,25 @@ class Parser {
         .slice(start, end + 1)
         .map((token) => token.text)
         .join('');
-      if (!this.isField([...path, text].join('.'))) continue;
+      if (!this.knownFrom([...path, text], end + 1)) continue;
       this.index = end + 1;
       return { ...name, text, value: text };
     }
     return name;
+  }
+
+  /**
+   * 并入后的路径是已存在字段，或接上后面的 `.段`（不再拆连字符）后是已存在字段（目录里有 盘点对象.a-b.c 时，
+   * `盘点对象.a-b.c` 也整段并入，#327 第 2 轮 P3）。
+   */
+  private knownFrom(path: readonly string[], next: number): boolean {
+    const deeper = [...path];
+    const candidates = [path.join('.')];
+    for (let at = next; this.tokens[at]?.kind === 'dot' && this.tokens[at + 1]?.kind === 'identifier'; at += 2) {
+      deeper.push(this.tokens[at + 1]!.text);
+      candidates.push(deeper.join('.'));
+    }
+    return candidates.some((candidate) => this.isField(candidate));
   }
 
   /** 存储模式的字段句柄：一个完整的字段引用，text 等于句柄原文，用作依赖排序、诊断和类型目录里的字段键。 */

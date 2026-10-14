@@ -4,7 +4,11 @@
  */
 import type { DateParts, DatePrecision } from './values.js';
 
-const DATE_TIME = /^(\d{4})[/-](\d{1,2})[/-](\d{1,2})(?:[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$/;
+/**
+ * 年月日之间可用“/”“-”或“.”（R3e 已核实，`26` 末节 W-862：原站实测公式写作 "2026.10.11"）。年月只认“/”“-”：
+ * "2026.10" 是数字文本，不当日期。
+ */
+const DATE_TIME = /^(\d{4})[/.-](\d{1,2})[/.-](\d{1,2})(?:[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$/;
 const YEAR_MONTH = /^(\d{4})[/-](\d{1,2})$/;
 const TIME_ONLY = /^(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?$/;
 
@@ -33,7 +37,7 @@ function isValidDate(year: number, month: number, day: number): boolean {
   return probe.getUTCFullYear() === year && probe.getUTCMonth() === month - 1 && probe.getUTCDate() === day;
 }
 
-/** 支持 "2020/01/01"、"2020/01/01 00:00:00"、"2020/01/01 00:00"、"2020/01"、"00:00"，以及对应的 "-" 写法。 */
+/** 支持 "2020/01/01"、"2020/01/01 00:00:00"、"2020/01/01 00:00"、"2020/01"、"00:00"，以及对应的 "-" 写法与 "2020.01.01"。 */
 export function parseDateText(raw: string): DateParts | undefined {
   const value = raw.trim();
   const full = DATE_TIME.exec(value);

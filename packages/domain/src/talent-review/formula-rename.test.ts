@@ -54,28 +54,28 @@ describe('checkRenameRoundTrip（契约 §3.1 第 4 步）', () => {
 
 describe('textMentionsField（文本兜底，契约 §3.2 第 3 条）', () => {
   it('解析判定：引用了该字段当前名称才算；含空白写法算；字符串里的、名称是其他字段名前缀 / 子串的不算', () => {
-    expect(textMentionsField('盘点对象.绩效 + 1', '绩效')).toBe(true);
-    expect(textMentionsField('盘点对象 .\n 绩效 + 1', '绩效')).toBe(true);
-    expect(textMentionsField('盘点对象.绩效得分 + 1', '绩效')).toBe(false);
-    expect(textMentionsField('Len("盘点对象.绩效")', '绩效')).toBe(false);
-    expect(textMentionsField('1 + 2', '绩效')).toBe(false);
+    expect(textMentionsField('盘点对象.绩效 + 1', '绩效', ['绩效'])).toBe(true);
+    expect(textMentionsField('盘点对象 .\n 绩效 + 1', '绩效', ['绩效'])).toBe(true);
+    expect(textMentionsField('盘点对象.绩效得分 + 1', '绩效', ['绩效'])).toBe(false);
+    expect(textMentionsField('Len("盘点对象.绩效")', '绩效', ['绩效'])).toBe(false);
+    expect(textMentionsField('1 + 2', '绩效', ['绩效'])).toBe(false);
   });
 
   it('解析失败的公式只要文本粗筛命中名称就算引用（宁可多保护）', () => {
-    expect(textMentionsField('盘点对象.绩效 +', '绩效')).toBe(true);
-    expect(textMentionsField('盘点对象.绩效得分 +', '绩效')).toBe(true);
-    expect(textMentionsField('盘点对象.其他 +', '绩效')).toBe(false);
+    expect(textMentionsField('盘点对象.绩效 +', '绩效', ['绩效'])).toBe(true);
+    expect(textMentionsField('盘点对象.绩效得分 +', '绩效', ['绩效'])).toBe(true);
+    expect(textMentionsField('盘点对象.其他 +', '绩效', ['绩效'])).toBe(false);
   });
 });
 
 describe('R1-P2-1：含点号的字段名（任意深度），空白 / 换行 / 制表符写法也算引用', () => {
   it('textMentionsField：按路径判定，点号两侧的空白不影响', () => {
     for (const formula of ['盘点对象.甲.乙 + 1', '盘点对象 . 甲 . 乙 + 1', '盘点对象 .\n甲\t.\r\n乙 + 1']) {
-      expect(textMentionsField(formula, '甲.乙'), formula).toBe(true);
+      expect(textMentionsField(formula, '甲.乙', ['甲.乙']), formula).toBe(true);
     }
-    expect(textMentionsField('盘点对象 . 甲 . 乙 . 丙 + 1', '甲.乙.丙')).toBe(true);
-    expect(textMentionsField('盘点对象 . 甲 . 乙 . 丙 + 1', '甲.乙')).toBe(false);
-    expect(textMentionsField('Len("盘点对象 . 甲 . 乙")', '甲.乙')).toBe(false);
+    expect(textMentionsField('盘点对象 . 甲 . 乙 . 丙 + 1', '甲.乙.丙', ['甲.乙.丙'])).toBe(true);
+    expect(textMentionsField('盘点对象 . 甲 . 乙 . 丙 + 1', '甲.乙', ['甲.乙'])).toBe(false);
+    expect(textMentionsField('Len("盘点对象 . 甲 . 乙")', '甲.乙', ['甲.乙'])).toBe(false);
   });
 
   it('粗筛词 fieldNameTerms：按“.”拆成各段（去空段），SQL 粗筛要求每段都出现，不漏空白写法', () => {
@@ -87,7 +87,7 @@ describe('R1-P2-1：含点号的字段名（任意深度），空白 / 换行 / 
   });
 
   it('解析失败时：各段都命中才算（宁可多保护）', () => {
-    expect(textMentionsField('盘点对象 . 甲 . 乙 +', '甲.乙')).toBe(true);
-    expect(textMentionsField('盘点对象 . 甲 +', '甲.乙')).toBe(false);
+    expect(textMentionsField('盘点对象 . 甲 . 乙 +', '甲.乙', ['甲.乙'])).toBe(true);
+    expect(textMentionsField('盘点对象 . 甲 +', '甲.乙', ['甲.乙'])).toBe(false);
   });
 });

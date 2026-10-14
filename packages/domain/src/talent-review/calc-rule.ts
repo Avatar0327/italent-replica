@@ -92,20 +92,30 @@ export const formulaFieldKind = (kind: TalentReviewFieldKind): ExpressionFieldKi
   kind === 'option' ? 'text' : kind;
 
 /**
- * 不依赖字段目录读名称文本的引用：`盘点对象.甲-乙` 是一个字段名还是减法要看字段目录（#89-4），这里两种读法都算
- * （并成字段名 / 按减法），取能解析的读法的并集，宁可多认；两种读法都不合法时为 undefined。
+ * 名称文本公式里的路径是否为已存在字段（#89-4 的单一判定，DEC-431①）：`盘点对象.<名>` 按给定字段名（含重名字段）、
+ * 项目 / 方案固定字段、模板版本字段判断。`盘点对象.甲-乙` 是一个字段名还是减法由它在语法分析时定型（已存在字段优先）；
+ * 保存分析、授权复核、引用判定（删除 / 改名守卫、停用字段的已有引用）、改绑、新输入绑定都经过它，不各写一套。
  */
-function referencesEitherWay(formula: string): Set<string> | undefined {
-  const readings = [() => true, () => false].map((fieldExists) =>
-    validateFormula(formula, { isKnownField: () => true, fieldExists }),
-  );
-  if (readings.every((reading) => !reading.ok)) return undefined;
-  return new Set(readings.flatMap((reading) => (reading.ok ? reading.fields : [])));
+export function formulaFieldExists(
+  names: Iterable<string>,
+  versionField?: (path: string) => boolean,
+): (path: string) => boolean {
+  const paths = new Set([...names].map(formulaPath));
+  return (path) => paths.has(path) || path in FORMULA_CONTEXT_FIELDS || versionField?.(path) === true;
 }
 
-/** 公式里引用的字段路径（语法不合法时为空）；已存公式的引用判定共用，不依赖字段目录。 */
-export function formulaReferences(formula: string): string[] {
-  return [...(referencesEitherWay(formula) ?? [])];
+/**
+ * 名称文本公式的实际引用（单一入口）：在给定字段目录上按 formulaFieldExists 解析，返回引用到的字段路径；
+ * 语法不合法时为 undefined（由调用方决定是否宁可多保护）。引用只认这一种解释，不把减法读法也算成引用。
+ */
+export function nameTextReferences(formula: string, names: Iterable<string>): string[] | undefined {
+  const parsed = validateFormula(formula, { isKnownField: () => true, fieldExists: formulaFieldExists(names) });
+  return parsed.ok ? [...parsed.fields] : undefined;
+}
+
+/** 公式里引用的字段路径（语法不合法时为空）；已存公式的引用判定共用，字段目录用于定型带连字符的写法。 */
+export function formulaReferences(formula: string, names: Iterable<string>): string[] {
+  return nameTextReferences(formula, names) ?? [];
 }
 
 /**
@@ -120,12 +130,13 @@ export function fieldNameTerms(fieldName: string): string[] {
 /**
  * 非 bound 公式的文本兜底（F-082 契约 §3.2 第 3 条，长期保留）：公式按名称引用了该字段的**当前**名称。
  * 先文本粗筛（每段名称都出现）、再解析精确判定（`盘点对象 . 来源` 等空白写法算，字符串里的、其他字段名的前缀 / 子串不算）；
- * 解析失败的公式只要粗筛命中就算引用（不能解析时宁可多保护）。
+ * 解析失败的公式只要粗筛命中就算引用（不能解析时宁可多保护）。`names` 是租户的全部字段名（含被判定的字段），
+ * 带连字符的写法按它定型（nameTextReferences）。
  */
-export function textMentionsField(formula: string, fieldName: string): boolean {
+export function textMentionsField(formula: string, fieldName: string, names: Iterable<string>): boolean {
   if (!fieldNameTerms(fieldName).every((term) => formula.includes(term))) return false;
-  const paths = referencesEitherWay(formula);
-  return paths === undefined || paths.has(formulaPath(fieldName));
+  const paths = nameTextReferences(formula, names);
+  return paths === undefined || paths.includes(formulaPath(fieldName));
 }
 
 /**
@@ -146,6 +157,9 @@ export function analyzeCalcItems(
   );
   const byId = new Map(catalog.map((field) => [field.id, field]));
   const isKnownField = (path: string) => byPath.has(path) || path in FORMULA_CONTEXT_FIELDS;
+  // 带连字符的写法按全部字段（含重名）定型，与引用判定同一入口（#89-4）
+  const names = catalog.map((field) => field.name);
+  const fieldExists = formulaFieldExists(names);
   const fieldKind = (path: string): ExpressionFieldKind | undefined => {
     const field = byPath.get(path);
     return field ? formulaFieldKind(field.kind) : FORMULA_CONTEXT_FIELDS[path];
@@ -172,14 +186,14 @@ export function analyzeCalcItems(
     }
     const formula = compItems[index]!.formula;
     // 先不带类型，按名称找出多选字段的引用并给出专用错误码（带类型时引擎报笼统的参数类型错误）
-    const untyped = validateFormula(formula, { isKnownField, registry });
+    const untyped = validateFormula(formula, { isKnownField, fieldExists, registry });
     if (!untyped.ok) return fail('FORMULA_INVALID', index, '公式不合法', { issues: untyped.errors.map(toIssue) });
     const multi = untyped.fields.filter((path) => byPath.get(path)?.kind === 'multi_option');
     if (multi.length > 0) return fail('MULTI_OPTION_IN_FORMULA', index, '公式不能引用多选字段', { fields: multi });
     // 原站不拦“文本字段与数字比较”（Q-M0-160，DEC-389④）：D-15 不扩展到计算规则（③），此处不加保存期拦截
-    const typed = validateFormula(formula, { isKnownField, fieldKind, registry });
+    const typed = validateFormula(formula, { isKnownField, fieldExists, fieldKind, registry });
     if (!typed.ok) return fail('FORMULA_INVALID', index, '公式不合法', { issues: typed.errors.map(toIssue) });
-    const kept = new Set(formulaReferences(held.get(item.targetFieldId) ?? ''));
+    const kept = new Set(formulaReferences(held.get(item.targetFieldId) ?? '', names));
     for (const path of typed.fields) {
       const field = byPath.get(path);
       if (!field) continue;
@@ -190,7 +204,7 @@ export function analyzeCalcItems(
     }
     usesRanking.push(typed.functions.some((name) => registry.resolve(name)?.skipInTodoTrigger === true));
   }
-  const ordering = orderComputationItems(compItems, { isKnownField, fieldKind, registry });
+  const ordering = orderComputationItems(compItems, { isKnownField, fieldExists, fieldKind, registry });
   if (!ordering.ok) return fail('FORMULA_INVALID', 0, ordering.failure.message);
   const idOfPath = new Map(compItems.map((item, index) => [item.field, items[index]!.targetFieldId]));
   const ids = (paths: readonly string[]) => paths.map((path) => idOfPath.get(path)!);
@@ -212,16 +226,21 @@ export function analyzeCalcItems(
  * 授权复核用（与业务分析分开）：逐个项目、逐个引用检查公式里的字段是否都在调用方给出的可见字段里——只认可见字段的完整路径
  * 与项目 / 方案固定字段，不做类型、重名、停用等业务判断，也不在第一个业务错误处停下（PR #184 第 2 轮：分析器先报重名就返回，
  * 后面项目里已撤出范围的字段会漏检）。返回第一个含不可见 / 不存在字段引用的项目及其 UNKNOWN_FIELD 问题；全部可见返回 null。
+ * `all`：租户全部字段（定型带连字符的写法用，不传时按可见字段）。
  */
 export function unreferenceableItem(
   items: readonly Pick<CalcItemInput, 'formula'>[],
   visible: readonly Pick<FormulaField, 'name'>[],
+  all: readonly Pick<FormulaField, 'name'>[] = visible,
 ): { readonly item: number; readonly issues: CalcIssue[] } | null {
   const paths = new Set(visible.map((field) => formulaPath(field.name)));
   const isKnownField = (path: string) => paths.has(path) || path in FORMULA_CONTEXT_FIELDS;
+  // 带连字符的写法按全部字段定型（与保存分析同一解释，#89-4）：否则 `盘点对象.甲-1` 在这里按“甲 减 1”放行，
+  // 保存分析却绑定到看不到的字段“甲-1”
+  const fieldExists = formulaFieldExists(all.map((field) => field.name));
   const registry = createDefaultRegistry();
   for (const [index, item] of items.entries()) {
-    const checked = validateFormula(item.formula, { isKnownField, registry });
+    const checked = validateFormula(item.formula, { isKnownField, fieldExists, registry });
     if (checked.ok) continue;
     const unknown = checked.errors.filter((error) => error.code === 'UNKNOWN_FIELD');
     if (unknown.length > 0) return { item: index, issues: unknown.map(toIssue) };

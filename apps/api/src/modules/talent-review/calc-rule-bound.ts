@@ -78,7 +78,12 @@ async function loadExisting(tx: Tx, tenantId: string, ruleId: string, full: read
       ),
     );
   const byName = (formula: string) => {
-    const paths = new Set(formulaReferences(formula));
+    const paths = new Set(
+      formulaReferences(
+        formula,
+        full.map((field) => field.name),
+      ),
+    );
     return new Set(full.filter((field) => paths.has(formulaPath(field.name))).map((field) => field.id));
   };
   return new Map(
