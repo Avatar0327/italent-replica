@@ -8,7 +8,7 @@ import { messages as kernel } from '../foundation/forms/messages.js';
 import { parseSavedReceipt, parseSettingsReceipt } from './forms.js';
 import { m } from './messages.js';
 import { configObjects, contractApi, value, type Config, type Row } from './model.js';
-import { RecoveryStatus, pick, useConfigCommand } from './recovery.js';
+import { RecoveryStatus, pick, recoveryGroups, useConfigCommand } from './recovery.js';
 import { PeopleSelect, RefLabels, RefSelect, refPaths } from './references.js';
 
 const paths = { types: contractApi.types, rules: contractApi.rules, settings: contractApi.settings };
@@ -68,7 +68,7 @@ export function ConfigForm({
       recordKey={resource}
       submission={form}
       title={configTitle(kind, !!row)}
-      groups={configGroups(kind, fields)}
+      groups={recoveryGroups(configGroups(kind, fields), form, onSaved)}
       initialValues={baseline}
       onClose={onClose}
       onRefresh={onSaved}

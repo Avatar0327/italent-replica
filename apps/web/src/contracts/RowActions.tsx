@@ -5,7 +5,7 @@ import { ApiError } from '../foundation/client.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { useApiClient, useSession } from '../foundation/Session.js';
 import { CommandStatus } from '../foundation/forms/CommandStatus.js';
-import { useCommandForm } from '../foundation/forms/useCommandForm.js';
+import { useContractCommand } from './commands.js';
 import { ApprovalDetail } from '../approval/ApprovalDetail.js';
 import { readApproval } from '../approval/api.js';
 import type { ApprovalDetail as Detail, ApprovalRow } from '../approval/types.js';
@@ -52,11 +52,11 @@ function useRowApproval(api: Api, businessId?: string) {
   return { current: state, failed, retry: () => setGeneration((n) => n + 1) };
 }
 /**
- * 催办走表单内核：未确认命令按业务行存放在页面层 FormCommands（ContractsPage），
- * 切换视图重挂载列表后仍锁定，不生成新的幂等键（DEC-464/475）。
+ * 催办走表单内核：未确认命令按业务行存放在合同模块级存储（commands.ts），
+ * 切换视图 / 子页重挂载后仍锁定，不生成新的幂等键（DEC-464/475）。
  */
 function useUrge(api: Api, businessId: string) {
-  const urge = useCommandForm(`contracts/requests/${businessId}/urge`);
+  const urge = useContractCommand(`contracts/requests/${businessId}/urge`);
   const send = async (target: Approval) => {
     const result = await urge.submit({
       values: {},

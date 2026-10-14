@@ -1,7 +1,17 @@
-// F-127b 第 3 轮：配置对象行内命令的冲突恢复（确认后的基线、按 ID 重读本行、业务字段差异、下一次 If-Match）。
+// F-127b 第 3～4 轮：配置对象写命令的冲突恢复（确认后的基线、按 ID 重读本行、业务字段差异、下一次 If-Match、模块级命令存储）。
 import { test, expect } from './fixtures.js';
 import type { Locator, Page } from '@playwright/test';
-import { capture, named, ruleRow, setupContracts, typeRow, type Write } from './contracts-fixtures.js';
+import {
+  capture,
+  item,
+  named,
+  requestId,
+  ruleRow,
+  save,
+  setupContracts,
+  typeRow,
+  type Write,
+} from './contracts-fixtures.js';
 
 const tab = (page: Page, label: string) => page.getByRole('link', { name: label, exact: true }).click();
 const conflict = { status: 409, json: { error: { code: 'REVISION_CONFLICT', message: '版本冲突' } } };
@@ -176,5 +186,66 @@ test('AC-FE-R2a-29b 重读时本行已被删除：提示已删除，保持锁定
   await table.getByRole('button', { name: '重读最新版本', exact: true }).click();
   await expect(table.getByText('该记录已被删除', { exact: false })).toBeVisible();
   await expect(table.getByRole('button', named('停用'))).toBeDisabled();
+  expect(writes).toHaveLength(1);
+});
+
+const ruleList = '**/api/tenant/contracts/rules?*';
+test('AC-FE-R2a-30 新建规则结果未知后切换子页再回来：仍锁定，同内容不再发第二次 POST', async ({ page }) => {
+  await setupContracts(page);
+  const writes: Write[] = [];
+  await page.route('**/api/tenant/contracts/rules', (route) => {
+    capture(writes, route.request());
+    return route.abort('connectionreset');
+  });
+  const openCreate = async () => {
+    await page.getByRole('button', named('新建')).click();
+    return page.getByRole('dialog', { name: '添加规则', exact: true });
+  };
+  await tab(page, '自动续签规则');
+  let drawer = await openCreate();
+  await item(drawer, '规则名称').getByRole('textbox').fill('合成新规则');
+  await drawer.getByRole('button', named('添加明细')).click();
+  const detail = drawer.getByRole('region', { name: '续签规则明细 1' });
+  await detail.getByRole('combobox', { name: '合同类型', exact: true }).click();
+  await page.locator('.ant-select-dropdown:visible .ant-select-item-option').filter({ hasText: typeRow.name }).click();
+  await detail.getByRole('textbox', { name: '发起人' }).fill(requestId);
+  await drawer.getByRole('button', save).click();
+  await expect(drawer.getByText('结果待确认', { exact: false })).toBeVisible();
+  await drawer.getByRole('button', named('取消')).click();
+  await expect(drawer).toHaveCount(0);
+  await tab(page, '合同类型');
+  await expect(page.locator('.ant-table')).toContainText(typeRow.name);
+  await tab(page, '自动续签规则');
+  await expect(page.locator('.ant-table').first()).toContainText(ruleRow.name);
+  drawer = await openCreate();
+  await expect(drawer.getByText('结果待确认', { exact: false })).toBeVisible();
+  await expect(drawer.getByRole('button', save)).toBeDisabled();
+  await expect(item(drawer, '规则名称').getByRole('textbox')).toHaveValue('合成新规则');
+  expect(writes.map(({ method, path }) => [method, path])).toEqual([['POST', '/api/tenant/contracts/rules']]);
+});
+
+test('AC-FE-R2a-31 规则编辑冲突后被他人删除：表单内提示已删除并给出可用的“刷新列表”', async ({ page }) => {
+  await setupContracts(page);
+  let rows: object[] = [ruleRow];
+  const { writes } = await stub(page, ruleList, '**/api/tenant/contracts/rules/rule', () => rows, [
+    () => {
+      rows = [];
+      return conflict;
+    },
+  ]);
+  await tab(page, '自动续签规则');
+  await page.locator('.ant-table').getByRole('button', named('编辑')).click();
+  const edit = page.getByRole('dialog', { name: '编辑自动续签规则', exact: true });
+  await item(edit, '规则名称').getByRole('textbox').fill('合成改名规则');
+  await edit.getByRole('button', save).click();
+  await edit.getByRole('button', { name: '重读最新版本', exact: true }).click();
+  const gone = edit.getByRole('alert').filter({ hasText: '该记录已被删除' });
+  await expect(gone).toBeVisible();
+  await expect(edit.getByRole('button', save)).toBeDisabled();
+  const refresh = gone.getByRole('button', named('刷新列表'));
+  await expect(refresh).toBeEnabled();
+  await refresh.click();
+  await expect(edit).toHaveCount(0);
+  await expect(page.locator('.ant-table').first()).not.toContainText(ruleRow.name);
   expect(writes).toHaveLength(1);
 });

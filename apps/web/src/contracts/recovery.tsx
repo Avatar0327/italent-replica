@@ -2,9 +2,11 @@
 // 业务字段差异与下一次 If-Match 同源，配置表单、行内启停 / 删除、自动续签开关、规则移序都调用它。
 import { Alert, Button, Space, message } from 'antd';
 import type { Command } from '../foundation/client.js';
+import type { FormField, FormGroup } from '../foundation/FormOverlay.js';
 import { useApiClient } from '../foundation/Session.js';
 import { CommandStatus } from '../foundation/forms/CommandStatus.js';
-import { useCommandForm, type CommandForm } from '../foundation/forms/useCommandForm.js';
+import type { CommandForm } from '../foundation/forms/useCommandForm.js';
+import { useContractCommand } from './commands.js';
 import type { Values } from '../foundation/forms/store.js';
 import { m } from './messages.js';
 import { contractApi, type Config, type Row } from './model.js';
@@ -47,7 +49,7 @@ type Send = (command: Command<Values>, sent: number) => Promise<{ id: string }>;
  */
 export function useConfigCommand(resource: string, { kind, id, row, keys, fallback }: Target) {
   const api = useApiClient();
-  const submission = useCommandForm(resource);
+  const submission = useContractCommand(resource);
   const pending = submission.state && submission.state.status !== 'done' ? submission.state : undefined;
   const baseline = pending ? pending.baseline : pick(row, keys, fallback);
   const revision = pending ? pending.revision : Number(row?.revision ?? 0);
@@ -79,6 +81,26 @@ export function useConfigCommand(resource: string, { kind, id, row, keys, fallba
   return { form, baseline, revision, submit };
 }
 
+/** “本行已删除”的提示与刷新入口：行内状态区与表单都从这里取，不各自实现。 */
+function GoneNotice({ form, onRefresh }: { form: CommandForm; onRefresh?: () => void }) {
+  if (!(form.state?.readError instanceof RowGone)) return null;
+  return (
+    <Alert
+      type="warning"
+      showIcon
+      message={m.rowGone}
+      action={
+        onRefresh && (
+          // 表单锁定时 antd Form 会禁用其中的按钮；刷新列表只读不写，显式保持可用。
+          <Button disabled={false} onClick={onRefresh}>
+            {m.refreshList}
+          </Button>
+        )
+      }
+    />
+  );
+}
+
 /** 行内命令的状态区：内核差异 / 拒绝 / 未知，加上“本行已删除”的提示与刷新入口。 */
 export function RecoveryStatus({
   form,
@@ -93,14 +115,25 @@ export function RecoveryStatus({
   return (
     <Space direction="vertical">
       <CommandStatus submission={form} labels={labels} />
-      {form.state.readError instanceof RowGone && (
-        <Alert
-          type="warning"
-          showIcon
-          message={m.rowGone}
-          action={onRefresh && <Button onClick={onRefresh}>{m.refreshList}</Button>}
-        />
-      )}
+      <GoneNotice form={form} onRefresh={onRefresh} />
     </Space>
   );
+}
+
+const goneField = 'recovery.rowGone';
+/**
+ * 表单的状态区由 FormOverlay 自带（内核 CommandStatus），没有附加插槽：
+ * 本行已删除时，把同一个 GoneNotice 作为首组的只读项放进表单顶部。
+ */
+export function recoveryGroups(groups: FormGroup[], form: CommandForm, onRefresh?: () => void): FormGroup[] {
+  const [first, ...rest] = groups;
+  if (!first || !(form.state?.readError instanceof RowGone)) return groups;
+  const notice: FormField = {
+    name: goneField,
+    label: '',
+    control: null,
+    access: { visible: true, editable: false },
+    display: <GoneNotice form={form} onRefresh={onRefresh} />,
+  };
+  return [{ ...first, fields: [notice, ...first.fields] }, ...rest];
 }

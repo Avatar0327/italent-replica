@@ -6,7 +6,7 @@ import { FormOverlay, type FormField } from '../foundation/FormOverlay.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { PersonSelect, TenantDatePicker, type Choice } from '../foundation/selectors.js';
 import { useApiClient } from '../foundation/Session.js';
-import { useCommandForm } from '../foundation/forms/useCommandForm.js';
+import { useContractCommand } from './commands.js';
 import { messages as kernel } from '../foundation/forms/messages.js';
 import {
   availableModes,
@@ -96,7 +96,7 @@ export function ContractForm(props: Props) {
   const resource = sourceId
     ? `${records}/${sourceId}/${op}/${mode}`
     : `${commands}/create/${mode}/${employee?.value ?? ''}`;
-  const submission = useCommandForm(resource);
+  const submission = useContractCommand(resource);
   const { groups, fields } = useFormFields(op, source, employee, source ? employmentOf(source) : props.employment);
   const submit = useSubmit(props, submission, fields);
   return (
@@ -226,7 +226,7 @@ function originalFields(op: Operation, source: Row, access: (field: string) => {
   }));
 }
 /** 提交经 F-123 内核；回执按实际形态分流（合同 / 申请），不按 mode 推断。 */
-function useSubmit(props: Props, submission: ReturnType<typeof useCommandForm>, fields: string[]) {
+function useSubmit(props: Props, submission: ReturnType<typeof useContractCommand>, fields: string[]) {
   const { op, mode, source, employee, onDone } = props;
   const api = useApiClient();
   const navigate = useNavigate();
