@@ -87,7 +87,7 @@ export const process = {
     {
       id: subProcessId,
       seq: 1,
-      name: '制定计划',
+      name: '合成制定阶段',
       category: 'plan',
       approvalType: 'idp_plan',
       approvalProcessId: orgId,
@@ -137,7 +137,12 @@ export async function mockIdp(page: Page, options: { hasDataPermission?: boolean
     });
   });
   const scoped = options.hasDataPermission ?? true;
-  const list = (items: unknown[]) => ({ page: 1, pageSize: 200, hasDataPermission: scoped, items: scoped ? items : [] });
+  const list = (items: unknown[]) => ({
+    page: 1,
+    pageSize: 200,
+    hasDataPermission: scoped,
+    items: scoped ? items : [],
+  });
   await page.route('**/api/tenant/idp/**', (route) => {
     const path = new URL(route.request().url()).pathname.replace(/^.*\/api\/tenant\/idp/, '');
     const bodies: Record<string, unknown> = {
@@ -152,5 +157,11 @@ export async function mockIdp(page: Page, options: { hasDataPermission?: boolean
       '/approval-processes': { items: [{ id: orgId, name: '合成审批流程', nodes: [] }] },
     };
     return route.fulfill({ json: bodies[path] ?? list([]) });
+  });
+  // 名称回查：员工 / 组织模块的读接口，返回合成名称
+  const names: Record<string, string> = { [employee]: '合成员工甲', [orgId]: '合成研发部' };
+  await page.route(/\/api\/tenant\/(employment\/employees|org\/organizations)\/[^/?]+$/, (route) => {
+    const id = new URL(route.request().url()).pathname.split('/').at(-1)!;
+    return names[id] ? route.fulfill({ json: { id, name: names[id] } }) : route.fulfill({ status: 404, json: {} });
   });
 }

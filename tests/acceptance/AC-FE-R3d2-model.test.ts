@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { IDP_OBJECTS } from '@italent/domain';
 import { annotations } from '../../apps/web/src/annotations/index.js';
-import { pages } from '../../apps/web/src/idp/pages.js';
+import { PAGES } from '../../apps/web/src/foundation/routes.js';
 import {
   batchSplit,
   filterPlans,
@@ -124,18 +124,21 @@ describe('AC-FE-R3d2 页面与注释登记', () => {
   const codes = Object.values(IDP_OBJECTS).map((object) => object.code);
   const snapshot = (entryObjects: string[]) =>
     ({ apps: [{ app: 'idp', visible: true, entryObjects }], adminMenus: [] }) as never;
-  const app = pages.apps!.find((item) => item.app === 'idp')!;
+  const app = PAGES.apps.find((item) => item.app === 'idp')!;
   it('应用登记为人才发展计划，下一层按入口对象给出三张列表', () => {
     expect(app.label).toBe('人才发展计划');
     expect(app.page?.name).toBe('IdpPage');
-    const route = { ...app, id: 'idp', path: '/idp', module: 'idp', legacy: false } as never;
+    const route = app as never;
     expect(app.children!(snapshot(codes), route).map((node) => node.label)).toEqual([
       '发展计划',
       '发展计划模板',
       '发展计划流程',
     ]);
     expect(app.children!(snapshot(['IDP.IDPTemplate']), route).map((node) => node.path)).toEqual(['/idp/templates']);
-    expect(pages.routes?.map((item) => item.path)).toEqual(['/idp/*', '/self/idp']);
+    expect(PAGES.routes.filter((item) => item.module === 'idp').map((item) => item.path)).toEqual([
+      '/idp/*',
+      '/self/idp',
+    ]);
   });
   it.each(['idp-plans', 'idp-plan-detail', 'idp-my-plans', 'idp-templates', 'idp-processes', 'idp-demo'])(
     '注释 %s 已登记且写明原站与决策',

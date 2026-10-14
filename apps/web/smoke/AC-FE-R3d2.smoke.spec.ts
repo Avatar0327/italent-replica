@@ -16,6 +16,8 @@ async function openMenu(page: Page, name: string) {
   await page.getByLabel('切换演示身份').selectOption(user);
   await expect(page).toHaveURL(/\/staff$/);
   await page.getByRole('menuitem', { name: '人才发展计划', exact: true }).click();
+  // 应用入口先落到第一张有权限的列表，再点下一层菜单，避免与入口重定向竞争
+  await expect(page).toHaveURL(/\/idp\/plans$/);
   await page.getByRole('menuitem', { name, exact: true }).click();
 }
 
@@ -33,7 +35,10 @@ test('AC-FE-R3d2-01 发展计划：列表、流程干预菜单、详情抽屉与
   await page.getByRole('switch', { name: '注释' }).click();
   await page.screenshot({ path: testInfo.outputPath('plans.png'), fullPage: true, animations: 'disabled' });
 
-  await page.getByRole('row', { name: /合成发展计划/ }).getByRole('checkbox').check();
+  await page
+    .getByRole('row', { name: /合成发展计划/ })
+    .getByRole('checkbox')
+    .check();
   await page.getByRole('button', { name: '流程干预' }).click();
   for (const name of ['催办', '跳转', '开启下个阶段', '终止计划'])
     await expect(page.getByRole('menuitem', { name, exact: true })).toBeVisible();
@@ -42,14 +47,14 @@ test('AC-FE-R3d2-01 发展计划：列表、流程干预菜单、详情抽屉与
   await page.getByRole('button', { name: '合成发展计划', exact: true }).click();
   const detail = page.getByRole('dialog', { name: '合成发展计划' });
   await expect(detail).toBeVisible();
-  await expect(detail.getByRole('heading', { name: '发展目标' })).toBeVisible();
+  await expect(detail.getByRole('heading', { name: '发展目标', exact: true })).toBeVisible();
   await expect(detail.getByText('合成发展目标')).toBeVisible();
   await expect(detail.getByText('演示数据').first()).toBeVisible();
-  await expect(detail.getByRole('button', { name: '转交' })).toBeVisible();
+  await expect(detail.getByRole('button', { name: /转\s*交/ })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('plan-detail.png'), fullPage: true, animations: 'disabled' });
-  await detail.getByRole('button', { name: 'Close' }).click();
+  await detail.getByRole('button', { name: '关闭', exact: true }).click();
 
-  await page.getByRole('button', { name: '新增', exact: true }).click();
+  await page.getByRole('button', { name: /新\s*增/, exact: true }).click();
   const form = page.getByRole('dialog', { name: '新增发展计划' });
   await expect(form.getByLabel('计划名称')).toBeVisible();
   await expect(form.getByLabel('指导人角色')).toBeVisible();
@@ -81,8 +86,8 @@ test('AC-FE-R3d2-03 发展计划模板：列表、只读详情与新增表单可
   await expect(detail.getByText('当前模板已被引用')).toBeVisible();
   await expect(detail.getByText('基本信息').first()).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('template.png'), fullPage: true, animations: 'disabled' });
-  await detail.getByRole('button', { name: 'Close' }).click();
-  await page.getByRole('button', { name: '新增', exact: true }).click();
+  await detail.getByRole('button', { name: '关闭', exact: true }).click();
+  await page.getByRole('button', { name: /新\s*增/, exact: true }).click();
   await expect(page.getByRole('dialog', { name: '新增发展计划模板' }).getByLabel('模板名称')).toBeVisible();
   expect(errors).toEqual([]);
 });
@@ -94,10 +99,11 @@ test('AC-FE-R3d2-04 发展计划流程：列表与编辑表单（含子流程）
   await expect(page).toHaveURL(/\/idp\/processes$/);
   await expect(page.getByRole('heading', { name: '启用的流程' })).toBeVisible();
   await expect(page.getByRole('cell', { name: '合成发展计划流程' })).toBeVisible();
-  await page.getByRole('button', { name: '编辑', exact: true }).click();
+  await page.getByRole('button', { name: /编\s*辑/, exact: true }).click();
   const form = page.getByRole('dialog', { name: '编辑发展计划流程' });
   await expect(form.getByLabel('流程名称')).toHaveValue('合成发展计划流程');
-  await expect(form.getByText('制定计划')).toBeVisible();
+  await expect(form.getByRole('cell', { name: '合成制定阶段' })).toBeVisible();
+  await expect(form.getByRole('cell', { name: '制定计划' })).toBeVisible();
   expect(errors).toEqual([]);
 });
 
