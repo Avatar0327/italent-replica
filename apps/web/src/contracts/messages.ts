@@ -5,6 +5,11 @@ const approvalStates = {
   returned: '已驳回',
 };
 export const m = {
+  required: '请填写',
+  endAfterStart: '终止日期须晚于生效日期',
+  termMonthsRange: '期限月数须为 1～1200 的整数',
+  terminateBeforeStart: '实际终止日期不能早于原合同生效日期',
+  invalidReceipt: '服务端回执无法核对，结果未知',
   enabled: '启用',
   disabled: '停用',
   exportDemo: '导出演示数据',

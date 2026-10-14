@@ -17,9 +17,12 @@ export const configObjects = {
 };
 export type Config = keyof typeof configObjects;
 export type Filters = Record<string, string | string[] | undefined>;
-export function listPath(view: View, page: number, days: number) {
-  const query = new URLSearchParams({ view, page: String(page), pageSize: '15' });
+export type ListQuery = Record<string, string | undefined>;
+/** 筛选与排序参数见 apps/api/src/modules/contracts/list-query.ts；空值不发送。 */
+export function listPath(view: View, page: number, days: number, filters: ListQuery = {}, pageSize = 15) {
+  const query = new URLSearchParams({ view, page: String(page), pageSize: String(pageSize) });
   if (view === 'expiring') query.set('days', String(days));
+  for (const [key, input] of Object.entries(filters)) if (input) query.set(key, input);
   return `/api/tenant/contracts?${query}`;
 }
 export function canOpenRecord(row: Row, view: View) {
