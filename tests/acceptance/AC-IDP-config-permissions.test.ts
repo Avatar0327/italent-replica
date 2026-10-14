@@ -6,7 +6,6 @@
  * - 字段裁剪：顶层（流程 / 模板）与嵌套层（子流程 / 模块 / 通用目标）各按本对象字段权限；
  * - 审计：写入同事务记数据变更日志，审计查询按 IDP 对象权限、范围与字段权限裁剪。
  */
-import { randomUUID } from 'node:crypto';
 import { IDP_OBJECTS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
@@ -17,6 +16,7 @@ import { addMember } from './AC-PRM-support.js';
 import { tenantApi } from './support/tenant-api.js';
 import { IDP_NOW, type ProcessView, subProcessBody, type TemplateView } from './AC-IDP-support.js';
 import { clock, idpOperator, seedIdpData } from './AC-IDP-permission-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 
@@ -254,7 +254,7 @@ describe('审计（DEC-216）', () => {
       for (const item of items) expect(item.app).toBe('个人发展计划');
     }
 
-    const viewer = await memberWithAdminRole(w, 'audit_admin', `idp-audit-${randomUUID().slice(0, 4)}`);
+    const viewer = await memberWithAdminRole(w, 'audit_admin', `idp-audit-${uniqueSuffix()}`);
     const query = { objectType: IDP_OBJECTS.template.code, limit: '50' };
     expect((await audit.dataChanges(viewer.as, query)).items).toEqual([]);
     // 授予 IDP 身份但范围缺省为空：仍看不到

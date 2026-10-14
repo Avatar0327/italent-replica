@@ -18,6 +18,7 @@ import { configBody, configWorld, TR_BASE, TR_NOW } from './AC-TR-config-support
 import { MATRICES, matrixBody, matrixOperator, type MatrixView } from './AC-TR-matrix-support.js';
 import { readinessBody, readinessWorld } from './AC-TR-support.js';
 import { errorCode, tenantApi } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 const clock = () => TR_NOW;
@@ -94,7 +95,7 @@ describe('AC-TR-08 首次 PATCH 在业务事务内复核显式提交的字段引
     const response = await operator.request('PATCH', `${MATRICES}/${matrix.id}`, {
       ifMatch: 1,
       idempotencyKey: commandId,
-      body: { name: `改名${randomUUID().slice(0, 6)}`, ...carry(matrix) },
+      body: { name: `改名${uniqueSuffix()}`, ...carry(matrix) },
     });
     expect([response.status, await errorCode(response)]).toEqual([404, 'NOT_FOUND']);
     expect(await stored(operator.as.tenant, matrix.id)).toEqual({ name: matrix.name, revision: 1, updates: 0 });
@@ -190,12 +191,12 @@ describe('AC-TR-08 / AC-TR-config 配置列表不按看不到的排序字段排�
     const w = await listWorld(list.object, `trm-r3-sort2-${list.object}`);
     const mine: string[] = [];
     for (const letter of 'zyxwvu') {
-      const extra = list.secondary === 'name' ? { name: `${letter}名称${randomUUID().slice(0, 4)}` } : {};
+      const extra = list.secondary === 'name' ? { name: `${letter}名称${uniqueSuffix()}` } : {};
       const code =
         list.object === 'readiness'
-          ? { code: `${letter.toUpperCase()}${randomUUID().slice(0, 4)}` }
+          ? { code: `${letter.toUpperCase()}${uniqueSuffix()}` }
           : list.secondary === 'code'
-            ? { code: `${letter}_${randomUUID().slice(0, 4)}` }
+            ? { code: `${letter}_${uniqueSuffix()}` }
             : {};
       mine.push((await w.create({ sortNo: 5, ...extra, ...code })).id);
     }

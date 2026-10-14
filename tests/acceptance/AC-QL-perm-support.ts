@@ -6,7 +6,6 @@
  *   看全部，日志审计管理员；返回请求函数与撤销范围等操作；
  * - creatorOnly：某对象的企业范围策略只认“使用用户”维度（创建人 / 所属人）。
  */
-import { randomUUID } from 'node:crypto';
 import { MODULE_OBJECTS, QUALIFICATION_OBJECTS } from '@italent/domain';
 import { expect } from 'vitest';
 import {
@@ -28,6 +27,7 @@ import {
 } from './AC-QL-support.js';
 import { createMou, createOrg } from './AC-TC-support.js';
 import { type RequestOptions, tenantApi } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 export type ObjectKey = keyof typeof QUALIFICATION_OBJECTS;
 
@@ -56,7 +56,7 @@ export interface Data {
   readonly admin: (method: string, path: string, options?: RequestOptions) => Promise<Response>;
 }
 
-export const code = (prefix = 'Q') => `${prefix}${randomUUID().slice(0, 6)}`;
+export const code = (prefix = 'Q') => `${prefix}${uniqueSuffix()}`;
 
 export async function seed(world: PermissionWorld): Promise<Data> {
   const setup = tenantApi(world.db, { clock: () => QL_NOW });
@@ -201,7 +201,7 @@ const JOB_OBJECTS = [
 export async function operator(world: PermissionWorld, options: OperatorOptions) {
   const jobs = options.sequenceHidden !== undefined;
   const apps = jobs ? [QL_APP, 'TenantBase'] : [QL_APP];
-  const profile = await createProfile(world, `ql-${randomUUID().slice(0, 8)}`, { apps });
+  const profile = await createProfile(world, `ql-${uniqueSuffix()}`, { apps });
   const apply = async (key: ObjectKey, hiddenFields: readonly string[]) => {
     const definition = QUALIFICATION_OBJECTS[key];
     const hidden = new Set(hiddenFields);
@@ -228,7 +228,7 @@ export async function operator(world: PermissionWorld, options: OperatorOptions)
   if (jobs) await allowJobs(world, profile, options.sequenceHidden!);
   if (options.seeAll) await seeAll(world, profile.id, QL_APP);
   await makeGrantable(world, [profile.id]);
-  const user = await addMember(world, `ql-op-${randomUUID().slice(0, 4)}`);
+  const user = await addMember(world, `ql-op-${uniqueSuffix()}`);
   expect((await grant(world, user.id, profile.id)).status).toBe(201);
   if (options.auditor) {
     const response = await world.api.request('POST', `${BASE}/admins`, {

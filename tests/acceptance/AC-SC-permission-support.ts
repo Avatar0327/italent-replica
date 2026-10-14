@@ -2,7 +2,6 @@
  * R3-T05 权限用例夹具（真实授权器；设计 §8、DEC-043）：在 successionWorld 的租户上开通租户管理员，按需建
  * “继任记录”身份——应用 SuccessionAndDevelopment、对象 Succession.Record 的字段 / 按钮、看全部或管理单元范围。
  */
-import { randomUUID } from 'node:crypto';
 import { bootstrapTenantAdmin } from '@italent/api';
 import { SUCCESSION_APP, SUCCESSION_OBJECTS } from '@italent/domain';
 import { expect } from 'vitest';
@@ -17,6 +16,7 @@ import {
 } from './AC-PRM-support.js';
 import { SC_BASE, SC_NOW, type SuccessionWorld } from './AC-SC-support.js';
 import { cmd, type RequestOptions, tenantApi } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 export const RECORD = SUCCESSION_OBJECTS.record;
 const PERMISSION = '/api/tenant/permission';
@@ -54,7 +54,7 @@ export interface OperatorOptions {
 
 /** 继任记录查看人：对象查看权 + 字段 +（可选）看全部 / 管理单元；所有字段都可查看，除 hidden 外。 */
 export async function recordOperator(world: PermissionWorld, options: OperatorOptions = {}) {
-  const profile = await createProfile(world, `sc-${randomUUID().slice(0, 8)}`, { apps: [SUCCESSION_APP] });
+  const profile = await createProfile(world, `sc-${uniqueSuffix()}`, { apps: [SUCCESSION_APP] });
   const hidden = new Set(options.hidden ?? []);
   if (options.view !== false) {
     const response = await setObjectPermission(
@@ -76,7 +76,7 @@ export async function recordOperator(world: PermissionWorld, options: OperatorOp
     expect(response.status, await response.clone().text()).toBe(200);
   }
   await makeGrantable(world, [profile.id]);
-  const userId = options.userId ?? (await addMember(world, `sc-op-${randomUUID().slice(0, 4)}`)).id;
+  const userId = options.userId ?? (await addMember(world, `sc-op-${uniqueSuffix()}`)).id;
   expect((await grant(world, userId, profile.id)).status).toBe(201);
   const as = { user: userId, tenant: world.tenant.id };
   if (options.seeAll) {
@@ -92,7 +92,7 @@ export async function recordOperator(world: PermissionWorld, options: OperatorOp
       ...world.asAdmin,
       ifMatch: 0,
       body: {
-        code: `sc-${randomUUID().slice(0, 8)}`,
+        code: `sc-${uniqueSuffix()}`,
         name: '继任管理单元',
         orgRanges: options.orgIds.map((orgId) => ({ orgId, includeDescendants: true })),
       },
