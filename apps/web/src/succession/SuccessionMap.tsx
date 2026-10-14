@@ -20,7 +20,7 @@ const levelOf = (item: MapItem, kind: Kind) => (kind === 'position' ? item.risk 
 const percent = (value?: number | null) => (typeof value === 'number' ? `${Math.round(value * 100)}%` : s.none);
 
 /** 地图只读服务端结果：层级、风险 / 健康度、统计都不在前端推算（docs/02_业务建模/27 §5.7、§5.8）。 */
-export function SuccessionMap({ kind }: { kind: Kind }) {
+export function SuccessionMap({ kind, title }: { kind: Kind; title: string }) {
   const [depth, setDepth] = useState(3);
   const [expanded, setExpanded] = useState(false);
   const [info, setInfo] = useState(true);
@@ -31,6 +31,7 @@ export function SuccessionMap({ kind }: { kind: Kind }) {
   const toolbar = (
     <div className="succession-toolbar">
       <Space wrap>
+        <h1 className="succession-title">{title}</h1>
         <Legend items={items} kind={kind} />
         <Button onClick={() => setExpanded(!expanded)}>{expanded ? s.map.collapse : s.map.expand}</Button>
         <label className="succession-switch">
@@ -120,7 +121,8 @@ function MapCard({
 }) {
   const permission = usePermissions(result[kind]);
   const level = levelOf(item, kind);
-  const count = item.successorCount ?? item.successors?.length;
+  // 人数只取服务端字段：successorCount 被隐藏时不能用名单长度补算（字段权限）。
+  const count = item.successorCount;
   const showSuccessors = (expanded || kind === 'org') && !!item.successors?.length;
   return (
     <article
@@ -231,11 +233,14 @@ function ComputeMenu({ kind, done }: { kind: Kind; done(): void }) {
   const run = async () => {
     if (!action) return;
     setStarted(false);
-    await writer.write(action.path, 'POST', {}, 0).then(
-      () => setStarted(true),
-      () => undefined,
-    );
-    setAction(undefined);
+    try {
+      await writer.write(action.path, 'POST', {}, 0);
+      setStarted(true);
+    } catch {
+      // 失败由 writer.error 在下方 Failure 中提示。
+    } finally {
+      setAction(undefined);
+    }
   };
   return (
     <>

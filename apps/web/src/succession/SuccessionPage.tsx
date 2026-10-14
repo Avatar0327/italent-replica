@@ -19,6 +19,17 @@ const tabs = [
 ] as const;
 
 /** 四个页签：职位 / 组织 × 列表 / 地图；页签按权限快照里的对象显示，不写死角色。 */
+function renderTab(active: string | undefined, scope: string, loading: boolean) {
+  if (!active) return <PageState kind={loading ? 'loading' : 'forbidden'} />;
+  const title = s.tabs[active as keyof typeof s.tabs];
+  const kind = active.startsWith('org') ? 'org' : 'position';
+  return active.endsWith('List') ? (
+    <RecordList key={scope} type={kind} title={title} />
+  ) : (
+    <SuccessionMap key={scope} kind={kind} title={title} />
+  );
+}
+
 export function SuccessionPage() {
   const session = useSession();
   const { snapshot, loading } = usePermissions();
@@ -34,17 +45,7 @@ export function SuccessionPage() {
         <Tabs activeKey={active} onChange={setSelected} items={items} />
         {active?.endsWith('List') && <DecisionNote id="succession-lists" />}
         {active?.endsWith('Map') && <DecisionNote id="succession-maps" />}
-        {!active ? (
-          <PageState kind={loading ? 'loading' : 'forbidden'} />
-        ) : active.endsWith('List') ? (
-          <RecordList
-            key={scope}
-            type={active === 'orgList' ? 'org' : 'position'}
-            title={s.tabs[active as 'orgList']}
-          />
-        ) : (
-          <SuccessionMap key={scope} kind={active === 'orgMap' ? 'org' : 'position'} />
-        )}
+        {renderTab(active, scope, loading)}
       </div>
     </CreateCommands>
   );

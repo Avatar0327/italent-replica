@@ -7,7 +7,7 @@ import { usePermissions } from '../foundation/Permissions.js';
 import { useApiClient } from '../foundation/Session.js';
 import { DetailPage, ListPage } from '../foundation/templates.js';
 import { s } from './messages.js';
-import { EndForm, RECORD, RecordForm, targetName } from './RecordForm.js';
+import { EndForm, RECORD, RecordForm, targetName, targetPaths } from './RecordForm.js';
 import { BASE, recordQuery } from './rules.js';
 import type { ListResult, PersonView, ReadinessRef, RecordView, SuccessionType } from './types.js';
 
@@ -156,7 +156,6 @@ function RecordFilters({
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(value);
   const targetField = type === 'position' ? 'targetPositionId' : 'targetOrgId';
-  const targetPath = type === 'position' ? '/api/tenant/job/positions' : '/api/tenant/org/organizations';
   const label = type === 'position' ? s.fields.targetPosition : s.fields.targetOrg;
   return (
     <>
@@ -179,7 +178,7 @@ function RecordFilters({
           {permission.field(targetField).visible && (
             <Form.Item label={label}>
               <RemoteSelect
-                path={targetPath}
+                path={targetPaths[type]}
                 label={label}
                 value={draft.targetId}
                 onChange={(targetId) => setDraft({ ...draft, targetId: targetId as string | undefined })}

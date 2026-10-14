@@ -16,7 +16,7 @@ import type { ListResult, ReadinessRef, RecordView, SuccessionType } from './typ
 export const RECORD = 'Succession.Record';
 const RECORDS = `${BASE}/records`;
 const EDITABLE = ['readinessId', 'backupType', 'startDate', 'endDate', 'endReason'];
-const targetPaths = { position: '/api/tenant/job/positions', org: '/api/tenant/org/organizations' };
+export const targetPaths = { position: '/api/tenant/job/positions', org: '/api/tenant/org/organizations' };
 
 function dateRule(
   field: 'startDate' | 'endDate',
@@ -130,13 +130,15 @@ function RecordEditor({
     startDate: [required, dateRule('startDate', today)],
     endDate: [dateRule('endDate', today)],
   };
+  // 建后不可改的两个关系字段只读时回显名称。
+  const display: Record<string, string | undefined> = { successor: row?.successor?.name, targetId: targetName(row) };
   const fields = Object.entries(controls).map(([name, control]): FormField => ({
     name,
     label: labels[name]!,
     control,
     access: access(name),
     rules: rules[name],
-    display: name === 'successor' ? row?.successor?.name : name === 'targetId' ? targetName(row) : undefined,
+    display: display[name],
   }));
   return (
     <FormOverlay

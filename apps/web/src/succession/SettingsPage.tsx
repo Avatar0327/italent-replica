@@ -31,6 +31,17 @@ const dictionaries: Record<Kind, Dictionary> = {
   readiness: { path: READINESS_PATH, object: 'TalentReview.Readiness', order: 'sortNo', update: 'PATCH' },
 };
 
+const sections: Record<string, ReactNode> = {
+  map: <MapSettings />,
+  'key-positions': <KeyPositions />,
+  readiness: (
+    <>
+      <DecisionNote id="succession-readiness" />
+      <DictionaryList kind="readiness" />
+    </>
+  ),
+};
+
 export function SuccessionSettingsPage() {
   const { section } = useParams();
   const navigate = useNavigate();
@@ -43,18 +54,7 @@ export function SuccessionSettingsPage() {
     <CreateCommands>
       <div className="succession-page">
         {back}
-        {section === 'map' ? (
-          <MapSettings />
-        ) : section === 'key-positions' ? (
-          <KeyPositions />
-        ) : section === 'readiness' ? (
-          <>
-            <DecisionNote id="succession-readiness" />
-            <DictionaryList kind="readiness" />
-          </>
-        ) : (
-          <PageState kind="not-found" />
-        )}
+        {sections[section ?? ''] ?? <PageState kind="not-found" />}
       </div>
     </CreateCommands>
   );

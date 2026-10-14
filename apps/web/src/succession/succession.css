@@ -82,3 +82,10 @@
   height: 14px;
   border-radius: 2px;
 }
+
+.succession-title {
+  margin: 0 8px 0 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #33383d;
+}
