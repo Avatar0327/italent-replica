@@ -15,12 +15,20 @@ import {
   receiptSummary,
   statusText,
   processActions,
+  SUB_PROCESS_FIELDS,
   subProcessAccess,
   taskActions,
+  taskRowActions,
   templateActions,
   templateInView,
 } from '../../apps/web/src/idp/model.js';
-import { groupByOwner, operationAccess, RereadError, rereadReceipt } from '../../apps/web/src/idp/access.js';
+import {
+  groupByOwner,
+  operationAccess,
+  RereadError,
+  rereadReceipt,
+  writeIntegrity,
+} from '../../apps/web/src/idp/access.js';
 import { moduleSettingSections, nodeLabeler } from '../../apps/web/src/idp/template-settings.js';
 import type {
   ApprovalCandidate,
@@ -163,15 +171,15 @@ describe('AC-FE-R3d2 第 2 轮：字段裁剪不丢记录（DEC-431①）', () =
   });
   it('模板状态未知时不给启用 / 停用，其余按钮照常；revision 缺失时不给写操作', () => {
     const all = () => true;
-    expect(templateActions({ revision: 1 }, all)).toEqual(['update', 'copy', 'delete']);
-    expect(templateActions({ revision: 1, status: 'published' }, all)).toEqual([
+    expect(templateActions({ id: 't1', revision: 1 }, all)).toEqual(['update', 'copy', 'delete']);
+    expect(templateActions({ id: 't1', revision: 1, status: 'published' }, all)).toEqual([
       'update',
       'copy',
       'unpublish',
       'delete',
     ]);
-    expect(templateActions({ revision: 1, status: 'draft' }, all)).toContain('publish');
-    expect(templateActions({ status: 'draft' }, all)).toEqual([]);
+    expect(templateActions({ id: 't1', revision: 1, status: 'draft' }, all)).toContain('publish');
+    expect(templateActions({ id: 't1', status: 'draft' }, all)).toEqual([]);
   });
 });
 
@@ -205,7 +213,7 @@ describe('AC-FE-R3d2 第 2 轮：子流程按 IDP.SubProcess 自身权限', () =
     visible: visible.includes(name),
     editable: editable.includes(name),
   });
-  const all = ['name', 'category', 'approvalType', 'approvalProcessId', 'startMode', 'startTimeType'];
+  const all = [...SUB_PROCESS_FIELDS];
   const ops = { create: true, update: true, delete: true };
   it('父字段可编辑、子流程字段全可编辑且有增删改操作权时可增删改', () => {
     const access = subProcessAccess(true, field(all, all), ops);
@@ -215,7 +223,7 @@ describe('AC-FE-R3d2 第 2 轮：子流程按 IDP.SubProcess 自身权限', () =
     expect(subProcessAccess(false, field(all, all), ops)).toMatchObject({ add: false, edit: false, remove: false });
   });
   it('子流程字段不可编辑时不能编辑；必填字段不可编辑时不能新增', () => {
-    expect(subProcessAccess(true, field([], []), ops)).toMatchObject({ add: false, edit: false });
+    expect(subProcessAccess(true, field([], []), ops)).toMatchObject({ add: false, edit: false, remove: false });
     const partial = subProcessAccess(true, field(all, ['name']), ops);
     expect(partial).toMatchObject({ add: false, edit: true });
   });
@@ -255,10 +263,10 @@ describe('AC-FE-R3d2 第 3 轮：统一操作权限判定（失败即拒绝）',
   });
   it('流程行操作经 processActions 判定：删除缺 revision 不给，无按钮权限不给', () => {
     const all = () => true;
-    expect(processActions({ revision: 2 }, all)).toEqual(['update', 'delete']);
-    expect(processActions({}, all)).toEqual(['update']);
-    expect(processActions({ revision: 2 }, (action) => action === 'update')).toEqual(['update']);
-    expect(processActions({ revision: 2 }, () => false)).toEqual([]);
+    expect(processActions({ id: 'r1', revision: 2 }, all)).toEqual(['update', 'delete']);
+    expect(processActions({ id: 'r1' }, all)).toEqual(['update']);
+    expect(processActions({ id: 'r1', revision: 2 }, (action) => action === 'update')).toEqual(['update']);
+    expect(processActions({ id: 'r1', revision: 2 }, () => false)).toEqual([]);
   });
   it('目标可编辑但模块未开启制定任务时不开放添加；开关缺失时拒绝并给出原因', () => {
     const module = { id: 'm', moduleType: 'goal', name: '发展目标', buttons: ['RowEditIdpGoal'] };
@@ -284,6 +292,90 @@ describe('AC-FE-R3d2 第 3 轮：裁剪字段归属与冲突重读回执', () =>
     expect(() => rereadReceipt({ id: 'p2', revision: 4 }, 'p1')).toThrow(RereadError);
     expect(() => rereadReceipt({ id: 'p1', revision: 1.5 }, 'p1')).toThrow(RereadError);
     expect(() => rereadReceipt(undefined, 'p1')).toThrow(RereadError);
+  });
+});
+
+describe('AC-FE-R3d2 第 4 轮：整组 / 逐条写入完整性（DEC-385③）', () => {
+  const sub = (extra: Partial<SubProcess> = {}): SubProcess => ({
+    id: 'sp1',
+    name: '制定阶段',
+    category: 'plan',
+    approvalType: 'idp_plan',
+    approvalProcessId: 'ap1',
+    startMode: 'auto',
+    startTimeType: null,
+    fixedDate: null,
+    referencePoint: null,
+    startFrom: null,
+    days: null,
+    ...extra,
+  });
+  const visibleAll = (name: string) => ({ visible: true, editable: name !== '' });
+  const ops = { create: true, update: true, delete: true };
+  const none = { add: false, edit: false, remove: false, reorder: false };
+  it('已有记录缺标识或缺提交必需字段时判为不完整并给出原因，不补造 id 或默认值', () => {
+    expect(writeIntegrity({ rows: [{ id: 'a', name: 'x' }], fields: ['name'] })).toEqual({ ok: true });
+    expect(writeIntegrity({ rows: [] })).toEqual({ ok: true });
+    expect(writeIntegrity({ rows: undefined })).toEqual({ ok: true });
+    expect(writeIntegrity({ rows: [{ id: 'a' }, { name: 'x' }] })).toEqual({ ok: false, reason: t.integrity.identity });
+    expect(writeIntegrity({ rows: [{ id: 'a' }], fields: ['name'] })).toEqual({
+      ok: false,
+      reason: t.integrity.fields,
+    });
+    expect(writeIntegrity({ rows: [{ id: 'a', name: null }], fields: ['name'] })).toEqual({ ok: true });
+    expect(writeIntegrity({ rows: [], fields: ['name'], visible: [] })).toEqual({
+      ok: false,
+      reason: t.integrity.fields,
+    });
+  });
+  it('已有子流程的 id 被裁剪时整组关闭新增、编辑、移除、排序，并给出原因', () => {
+    const { id: _id, ...noId } = sub();
+    const access = subProcessAccess(true, visibleAll, ops, [noId]);
+    expect(access).toMatchObject(none);
+    expect(access.reason).toBe(t.integrity.identity);
+  });
+  it('子流程提交必需字段被裁剪（不可见或记录里缺失）时整组只读，不出编辑', () => {
+    const hidden = (name: string) => ({ visible: name !== 'approvalType', editable: true });
+    expect(subProcessAccess(true, hidden, ops, [sub()])).toMatchObject({ ...none, reason: t.integrity.fields });
+    const { approvalType: _type, ...missing } = sub();
+    expect(subProcessAccess(true, visibleAll, ops, [missing])).toMatchObject({ ...none, reason: t.integrity.fields });
+    // 开启规则字段缺省会被服务端补成 null 并要求可见，被裁剪同样整组只读
+    const ruleHidden = (name: string) => ({ visible: name !== 'days', editable: true });
+    expect(subProcessAccess(true, ruleHidden, ops, [])).toMatchObject(none);
+  });
+  it('整组完整时照常按操作权判定；父字段只读时不提示原因', () => {
+    expect(subProcessAccess(true, visibleAll, ops, [sub()])).toMatchObject({ add: true, edit: true, remove: true });
+    const { id: _id, ...noId } = sub();
+    expect(subProcessAccess(false, visibleAll, ops, [noId]).reason).toBeUndefined();
+  });
+  it('任务逐条提交：目标或任务缺 id 时不开放该写操作，名称缺失时不开放编辑', () => {
+    const actions = ['add', 'edit', 'delete'] as const;
+    const task = { id: 'k1', name: '任务' };
+    expect(taskRowActions(actions, { id: 'g1' })).toEqual(['add']);
+    expect(taskRowActions(actions, { id: 'g1' }, task)).toEqual(['edit', 'delete']);
+    expect(taskRowActions(actions, { id: 'g1' }, { name: '任务' })).toEqual([]);
+    expect(taskRowActions(actions, { id: 'g1' }, { id: 'k1' })).toEqual(['delete']);
+    expect(taskRowActions(actions, {}, task)).toEqual([]);
+    expect(taskRowActions(actions, {})).toEqual([]);
+  });
+  it('计划、模板、流程行与批量干预：缺 id 时不给写操作', () => {
+    const all = () => true;
+    expect(planActions(plan('running', { id: undefined }), all)).toEqual([]);
+    expect(templateActions({ revision: 1, status: 'draft' }, all)).toEqual([]);
+    expect(processActions({ revision: 2 }, all)).toEqual([]);
+    const rows = [plan('running', { id: undefined }), plan('running', { id: 'a' })];
+    expect(batchSplit(rows, 'terminate').eligible.map((row) => row.id)).toEqual(['a']);
+    const noStageId = { ...stage(1, 'running'), id: undefined } as unknown as Stage;
+    expect(
+      taskActions(plan('running', { id: undefined }), {
+        id: 'm',
+        moduleType: 'goal',
+        name: '发展目标',
+        buttons: ['RowEditIdpGoal'],
+        taskEnabled: true,
+      }).actions,
+    ).toEqual([]);
+    expect(writeIntegrity({ rows: [noStageId], fields: ['subProcessId'] }).ok).toBe(false);
   });
 });
 

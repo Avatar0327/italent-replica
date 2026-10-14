@@ -1,7 +1,17 @@
 import type { PlanStatus } from '@italent/domain';
-import { operationAccess } from './access.js';
+import { operationAccess, writeIntegrity } from './access.js';
 import { t } from './messages.js';
-import type { PlanModule, PlanSummary, Process, Receipt, Stage, Template } from './types.js';
+import type {
+  GoalTask,
+  PlanGoal,
+  PlanModule,
+  PlanSummary,
+  Process,
+  Receipt,
+  Stage,
+  SubProcess,
+  Template,
+} from './types.js';
 
 export type PlanView = 'active' | 'ended' | 'terminated';
 export const PLAN_VIEWS: Record<PlanView, readonly PlanStatus[]> = {
@@ -64,9 +74,12 @@ export const BUTTON_LEVEL: Record<PlanAction, 'list' | 'detail'> = {
   startNext: 'list',
   terminate: 'list',
 };
-/** 只显示“状态允许 ∩ 后端授予按钮”的操作；revision 缺失时无法带并发版本，不给写操作。 */
+/** 行命令路径带 id、请求带 revision：任一被裁剪就无法定位或带并发版本（写入完整性统一判定）。 */
+const commandable = (row: { id?: string; revision?: number }) =>
+  writeIntegrity({ rows: [row], fields: ['revision'] }).ok;
+/** 只显示“状态允许 ∩ 后端授予按钮”的操作；id 或 revision 缺失时不给写操作。 */
 export function planActions(plan: PlanSummary, can: (button: PlanAction) => boolean): PlanAction[] {
-  if (plan.revision === undefined || !plan.status) return [];
+  if (!commandable(plan) || !plan.status) return [];
   return ALLOWED[plan.status].filter(can);
 }
 
@@ -79,7 +92,7 @@ const ELIGIBLE: Record<BatchAction, (plan: PlanSummary) => boolean> = {
 };
 /** 批量干预前先在前端剔除明显不可执行的计划；服务端仍逐条判定并返回回执。 */
 export function batchSplit(rows: readonly PlanSummary[], action: BatchAction) {
-  const eligible = rows.filter((row) => row.revision !== undefined && ELIGIBLE[action](row));
+  const eligible = rows.filter((row) => commandable(row) && ELIGIBLE[action](row));
   return { eligible, skipped: rows.filter((row) => !eligible.includes(row)) };
 }
 
@@ -139,18 +152,27 @@ export const processInView = (row: Pick<Process, 'enabled'>, view: ProcessView) 
 
 export type TemplateAction = 'update' | 'copy' | 'publish' | 'unpublish' | 'delete';
 const TOGGLE: Record<string, TemplateAction[]> = { published: ['unpublish'], draft: ['publish'] };
-/** 模板行操作：状态未知时不给启用 / 停用（无法判断方向）；revision 缺失时不给任何写操作。 */
-export function templateActions(row: Pick<Template, 'revision' | 'status'>, can: (action: TemplateAction) => boolean) {
-  if (row.revision === undefined) return [];
+/** 模板行操作：状态未知时不给启用 / 停用（无法判断方向）；id 或 revision 缺失时不给任何写操作。 */
+export function templateActions(
+  row: Partial<Pick<Template, 'id' | 'revision' | 'status'>>,
+  can: (action: TemplateAction) => boolean,
+) {
+  if (!commandable(row)) return [];
   const toggle = TOGGLE[row.status ?? ''] ?? [];
   return (['update', 'copy', ...toggle, 'delete'] as TemplateAction[]).filter(can);
 }
 
 export type ProcessAction = 'update' | 'delete';
-/** 流程行操作：编辑先读详情拿 revision，只看按钮权限；删除直接用行 revision，缺失时不给（失败即拒绝）。 */
-export function processActions(row: Pick<Process, 'revision'>, can: (action: ProcessAction) => boolean) {
+/**
+ * 流程行操作：编辑按行 id 读详情拿 revision，只要 id；删除直接用行 id 与 revision，缺失时不给（失败即拒绝）。
+ */
+export function processActions(
+  row: Partial<Pick<Process, 'id' | 'revision'>>,
+  can: (action: ProcessAction) => boolean,
+) {
+  const fields = { update: [], delete: ['revision'] };
   return (['update', 'delete'] as const).filter(
-    (action) => can(action) && (action === 'update' || row.revision !== undefined),
+    (action) => can(action) && writeIntegrity({ rows: [row], fields: fields[action] }).ok,
   );
 }
 
@@ -167,13 +189,29 @@ export function taskActions(plan: PlanSummary, module: PlanModule): { actions: T
     operations: { create: executor, update: executor, delete: executor },
     editable: ['name', 'description'],
     required: ['name'],
-    switches: [plan.status === 'running', plan.revision !== undefined, module.taskEnabled],
+    switches: [plan.status === 'running', commandable(plan), module.taskEnabled],
   });
   const actions = (['add', 'edit', 'delete'] as const).filter((action) =>
     action === 'delete' ? access.remove : access[action],
   );
   if (executor && module.taskEnabled == null) return { actions, reason: t.task.switchUnknown };
   return { actions };
+}
+
+/**
+ * 任务逐条写入，路径带目标 id 与任务 id（plan-routes 任务接口）：目标 id 缺失时全部不开放；
+ * 任务 id 缺失时该行不能编辑、删除；名称被裁剪时编辑框只能空着重填、会覆盖看不到的原值，不开放编辑。
+ * 不传任务时给目标级操作（添加）。判定走统一入口 writeIntegrity。
+ */
+export function taskRowActions(
+  actions: readonly TaskAction[],
+  goal: Partial<Pick<PlanGoal, 'id'>>,
+  task?: Partial<Pick<GoalTask, 'id' | 'name'>>,
+): TaskAction[] {
+  if (!writeIntegrity({ rows: [goal] }).ok) return [];
+  if (!task) return actions.filter((action) => action === 'add');
+  const fields: Record<TaskAction, string[]> = { add: [], edit: ['name'], delete: [] };
+  return actions.filter((action) => action !== 'add' && writeIntegrity({ rows: [task], fields: fields[action] }).ok);
 }
 
 /** 新增子流程必须能填写的字段（process-service 子流程必填项）。 */
@@ -191,19 +229,25 @@ type FieldAccess = (field: string) => { visible: boolean; editable: boolean };
  * 子流程按 IDP.SubProcess 自身字段权限与操作权（dataOperations）渲染，并以父对象的 subProcesses 字段可编辑为前提；
  * 判定走统一入口 operationAccess：移除要 delete，排序 / 编辑要 update，新增要 create（process-service 同口径），
  * 任一条件不满足即只读（失败即拒绝），隐藏字段不出现在可见字段里。
+ * 子流程整组提交：已有元素缺 id 会被当成新建（原记录被删），必填字段缺省 400、开启规则字段缺省被补成 null
+ * 且要求可见（routes requireSubProcessInputVisible）。所以 rows（已有子流程）经 writeIntegrity 判为不完整时整组只读，
+ * 父字段可编辑时给出原因。
  */
 export function subProcessAccess(
   parentEditable: boolean,
   field: FieldAccess,
   operations: Readonly<Record<string, boolean>> | undefined,
+  rows?: readonly SubProcess[],
 ) {
   const visible = SUB_PROCESS_FIELDS.filter((name) => field(name).visible);
   const editable = parentEditable ? visible.filter((name) => field(name).editable) : [];
+  const integrity = writeIntegrity({ rows, fields: SUB_PROCESS_FIELDS, visible });
   const access = operationAccess({
     operations,
     editable,
     required: SUB_PROCESS_REQUIRED,
-    switches: [parentEditable, visible.length > 0],
+    switches: [parentEditable, visible.length > 0, integrity.ok],
   });
-  return { ...access, visible: visible as string[], editable: editable as string[] };
+  const reason = parentEditable && !integrity.ok ? integrity.reason : undefined;
+  return { ...access, visible: visible as string[], editable: editable as string[], reason };
 }

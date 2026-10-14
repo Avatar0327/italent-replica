@@ -219,22 +219,29 @@ function trim<T extends object>(code: string, row: T, options: IdpMockOptions): 
   return Object.fromEntries(Object.entries(row).filter(([key]) => !known.includes(key) || viewable.includes(key))) as T;
 }
 
+/** 父字段不可见时，服务端 presenter 整个省略嵌套数组（plan-view 的 tasks、processPresenter 的 subProcesses）。 */
+const hides = (code: string, field: string, options: IdpMockOptions) => {
+  const viewable = options.fields?.[code]?.viewable;
+  return !!viewable && !viewable.includes(field);
+};
 /** 详情里的嵌套记录同样按各自对象的字段权限裁剪（目标、任务、综述、回顾、子流程）。 */
 function trimDetail<T extends ReturnType<typeof planDetail>>(detail: T, options: IdpMockOptions): T {
   return {
     ...detail,
-    goals: detail.goals.map((goal) => ({
-      ...trim('IDP.IdpGoal', goal, options),
-      tasks: goal.tasks.map((task) => trim('IDP.Task', task, options)),
-    })),
+    goals: detail.goals.map((goal) => {
+      const { tasks, ...rest } = trim('IDP.IdpGoal', goal, options);
+      if (hides('IDP.IdpGoal', 'tasks', options)) return rest;
+      return { ...rest, tasks: tasks.map((task) => trim('IDP.Task', task, options)) };
+    }),
     analyses: detail.analyses.map((row) => trim('IDP.Analysis', row, options)),
     reviews: detail.reviews.map((row) => trim('IDP.Review', row, options)),
   };
 }
-const trimProcess = (row: typeof process, options: IdpMockOptions) => ({
-  ...trim('IDP.IDPProcess', row, options),
-  subProcesses: row.subProcesses.map((sub) => trim('IDP.SubProcess', sub, options)),
-});
+function trimProcess(row: typeof process, options: IdpMockOptions) {
+  const { subProcesses, ...rest } = trim('IDP.IDPProcess', row, options);
+  if (hides('IDP.IDPProcess', 'subProcesses', options)) return rest;
+  return { ...rest, subProcesses: subProcesses.map((sub) => trim('IDP.SubProcess', sub, options)) };
+}
 
 /** 让演示身份看到 IDP 全部对象并按目录给出字段与按钮；返回记录到的 IDP 请求，供断言写请求次数与幂等键。 */
 export async function mockIdp(page: Page, options: IdpMockOptions = {}) {

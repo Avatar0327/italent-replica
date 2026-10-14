@@ -1,6 +1,7 @@
 import { Alert, Button, Form, Input, Modal, Radio, Select, Space } from 'antd';
 import { useState } from 'react';
 import { useApiClient } from '../foundation/Session.js';
+import { writeIntegrity } from './access.js';
 import { BATCH, IDP_API, useCommand, type Command } from './api.js';
 import { CommandNotice } from './listing.js';
 import { t } from './messages.js';
@@ -167,9 +168,11 @@ function BatchDialog({ kind, rows, onClose, command, finished }: DialogProps & {
 /** 跳转节点来自当前阶段子流程关联的审批流程；任一环节读不到就不给提交，不猜节点。 */
 function JumpDialog({ rows, onClose, command, finished }: DialogProps) {
   const plan = rows.length === 1 ? rows[0] : undefined;
-  const stage = plan?.stages?.find((item) => item.status === 'running');
+  // 请求体带阶段 id、按阶段的子流程 id 找节点：任一被裁剪就无法定位，按加载失败处理（写入完整性统一判定）
+  const running = plan?.stages?.find((item) => item.status === 'running');
+  const stage = running && writeIntegrity({ rows: [running], fields: ['subProcessId'] }).ok ? running : undefined;
   const process = useRead<Process>(plan?.processId && stage ? `${IDP_API}/processes/${plan.processId}` : undefined);
-  const sub = process.data?.subProcesses?.find((item) => item.id === stage?.subProcessId);
+  const sub = process.data?.subProcesses?.find((item) => !!item.id && item.id === stage?.subProcessId);
   const catalog = useRead<{ items: ApprovalCandidate[] }>(
     sub?.approvalType
       ? `${IDP_API}/approval-processes?approvalType=${encodeURIComponent(sub.approvalType)}`

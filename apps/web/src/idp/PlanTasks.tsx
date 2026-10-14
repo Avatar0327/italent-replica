@@ -2,7 +2,7 @@ import { Button, Input, Popconfirm, Space, Typography } from 'antd';
 import { useState, type KeyboardEvent } from 'react';
 import { IDP_API, type Command } from './api.js';
 import { t } from './messages.js';
-import { period, type TaskAction } from './model.js';
+import { period, taskRowActions, type TaskAction } from './model.js';
 import type { GoalTask, PlanDetail, PlanGoal } from './types.js';
 
 export interface TaskWriter {
@@ -27,7 +27,8 @@ function taskBody(draft: Draft, task?: GoalTask): Record<string, unknown> {
 
 /**
  * 目标下的任务（原站 B2_05 / B2_06）：“添加任务”后行内输入任务名称与任务描述，名称框回车保存、Esc 取消；
- * 编辑 / 删除同样行内完成。按钮只在 actions 给出时出现（taskActions 经统一入口 operationAccess 判定）。
+ * 编辑 / 删除同样行内完成。按钮只在 actions 给出时出现（taskActions 经统一入口 operationAccess 判定），
+ * 并逐条经 taskRowActions（写入完整性）去掉路径缺 id、名称被裁剪的操作。
  */
 export function GoalTasks({ goal, writer, actions }: { goal: PlanGoal; writer: TaskWriter; actions: TaskAction[] }) {
   const [editing, setEditing] = useState<Editing>();
@@ -51,17 +52,19 @@ export function GoalTasks({ goal, writer, actions }: { goal: PlanGoal; writer: T
     <TaskEditor task={task} locked={command.locked} submit={submit} cancel={() => setEditing(undefined)} />
   );
   const tasks = goal.tasks ?? [];
+  const goalActions = taskRowActions(actions, goal);
   return (
     <div className="idp-tasks">
       {tasks.map((task, index) => (
-        <div key={task.id} className="idp-task">
+        // id 被裁剪时退回序号作键：此时该行只读，不会被编辑或移动
+        <div key={task.id ?? `#${index}`} className="idp-task">
           <Typography.Text type="secondary">{t.task.item(index + 1)}</Typography.Text>
           {editing?.kind === 'edit' && editing.task.id === task.id ? (
             editor(task)
           ) : (
             <TaskLine
               task={task}
-              actions={actions}
+              actions={taskRowActions(actions, goal, task)}
               locked={command.locked}
               edit={() => setEditing({ kind: 'edit', task })}
               remove={() => void write(`${base}/${task.id}`, 'DELETE', {})}
@@ -70,7 +73,7 @@ export function GoalTasks({ goal, writer, actions }: { goal: PlanGoal; writer: T
         </div>
       ))}
       {editing?.kind === 'add' && <div className="idp-task">{editor()}</div>}
-      {actions.includes('add') && editing?.kind !== 'add' && (
+      {goalActions.includes('add') && editing?.kind !== 'add' && (
         <Button
           type="link"
           className="idp-task-add"
@@ -136,8 +139,7 @@ function TaskLine(props: { task: GoalTask; actions: TaskAction[]; locked: boolea
       <Typography.Text type="secondary">
         {period(task.startDate ?? undefined, task.endDate ?? undefined)}
       </Typography.Text>
-      {/* 名称被裁剪时编辑框只能空着重填，会覆盖看不到的原值，不开放编辑（失败即拒绝） */}
-      {actions.includes('edit') && task.name !== undefined && (
+      {actions.includes('edit') && (
         <Button type="link" size="small" aria-label={t.task.edit(name)} disabled={locked} onClick={edit}>
           {t.actions.edit}
         </Button>

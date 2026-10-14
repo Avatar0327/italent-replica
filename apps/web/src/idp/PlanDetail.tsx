@@ -266,8 +266,9 @@ function Goals({ goals, writer, actions }: { goals: PlanGoal[]; writer: TaskWrit
   if (!goals.length) return <Empty description={t.noGoals} />;
   return (
     <div className="idp-goals">
-      {goals.map((goal) => (
-        <article key={goal.id} className="idp-goal">
+      {goals.map((goal, index) => (
+        // id 被裁剪时退回序号作键；任务操作由 taskRowActions 按目标 id 关闭
+        <article key={goal.id ?? `#${index}`} className="idp-goal">
           <h3>{display(goal.name)}</h3>
           <Descriptions
             size="small"

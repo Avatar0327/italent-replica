@@ -1,8 +1,11 @@
 import type { Page } from '@playwright/test';
 import { IDP_OBJECTS } from '../../../packages/domain/src/idp/catalog.js';
 import { test, expect, user } from './fixtures.js';
-import { goalId, mockIdp, planId, taskId, templateId, type IdpCall } from './r3d2-fixtures.js';
+import { goalId, mockIdp, planId, processId, taskId, templateId, type IdpCall } from './r3d2-fixtures.js';
 test.use({ viewport: { width: 1440, height: 1000 } });
+const SUB_FIELDS = IDP_OBJECTS.subProcess.fields.map((field) => field.code);
+const IDENTITY_HIDDEN = '已有记录的标识无权查看，保存会被当成删除后重建，暂不开放新增、编辑、移除和排序';
+const FIELDS_HIDDEN = '提交必需的字段无权查看，保存无法带回原值，暂不开放新增、编辑、移除和排序';
 
 function watchErrors(page: Page) {
   const errors: string[] = [];
@@ -232,16 +235,13 @@ test('AC-FE-R3d2-09 模板复制：结果未知后关闭再打开不发第二次
   expect(copies[0]!.revision).toBe('0');
 });
 
-test('AC-FE-R3d2-10 子流程按自身字段权限渲染：隐藏字段不出控件，只读字段禁用', async ({ page }) => {
+test('AC-FE-R3d2-10 子流程按自身字段权限渲染：只读字段禁用，必填字段不可编辑时不能新增', async ({ page }) => {
   const errors = watchErrors(page);
-  await mockIdp(page, {
-    fields: { 'IDP.SubProcess': { viewable: ['name', 'category', 'startMode'], editable: ['name'] } },
-  });
+  await mockIdp(page, { fields: { 'IDP.SubProcess': { viewable: SUB_FIELDS, editable: ['name'] } } });
   await openMenu(page, '发展计划流程');
   await page.getByRole('button', { name: /编\s*辑/, exact: true }).click();
   const form = page.getByRole('dialog', { name: '编辑发展计划流程' });
   await expect(form.getByRole('cell', { name: '合成制定阶段' })).toBeVisible();
-  await expect(form.getByRole('columnheader', { name: '审批类型' })).toHaveCount(0);
   await expect(form.getByRole('button', { name: '添加子流程' })).toHaveCount(0);
   await form
     .getByRole('row', { name: /合成制定阶段/ })
@@ -250,8 +250,7 @@ test('AC-FE-R3d2-10 子流程按自身字段权限渲染：隐藏字段不出控
   const sub = page.getByRole('dialog', { name: '子流程' });
   await expect(sub.getByLabel('名称')).toBeEnabled();
   await expect(sub.getByLabel('阶段类型')).toBeDisabled();
-  await expect(sub.getByLabel('审批类型')).toHaveCount(0);
-  await expect(sub.getByLabel('审批流程')).toHaveCount(0);
+  await expect(sub.getByLabel('审批类型')).toBeDisabled();
   expect(errors).toEqual([]);
 });
 
@@ -365,5 +364,59 @@ test('AC-FE-R3d2-16 任务名称被裁剪时不开放编辑，描述被裁剪时
   await detail.getByRole('button', { name: '编辑任务：合成任务' }).click();
   await expect(detail.getByLabel('任务描述')).toBeDisabled();
   expect(writes(calls, 'PATCH', `/plans/${planId}/goals/${goalId}/tasks/${taskId}`)).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
+test('AC-FE-R3d2-17 子流程 id 被裁剪时整组只读并说明原因，改流程名称不提交子流程', async ({ page }) => {
+  const errors = watchErrors(page);
+  const calls = await mockIdp(page, {
+    fields: { 'IDP.SubProcess': { viewable: SUB_FIELDS.filter((code) => code !== 'id') } },
+  });
+  await openMenu(page, '发展计划流程');
+  await page.getByRole('button', { name: /编\s*辑/, exact: true }).click();
+  const form = page.getByRole('dialog', { name: '编辑发展计划流程' });
+  const row = form.getByRole('row', { name: /合成制定阶段/ });
+  await expect(row).toBeVisible();
+  await expect(row.getByRole('button', { name: /^(移\s*除|上\s*移|编\s*辑)$/ })).toHaveCount(0);
+  await expect(form.getByText(IDENTITY_HIDDEN)).toBeVisible();
+  await expect(form.getByRole('button', { name: '添加子流程' })).toHaveCount(0);
+  await form.getByLabel('流程名称').fill('合成发展计划流程（改）');
+  await form.getByRole('button', { name: /保\s*存/ }).click();
+  await expect.poll(() => writes(calls, 'PATCH', `/processes/${processId}`).length).toBe(1);
+  const body = writes(calls, 'PATCH', `/processes/${processId}`)[0]!.body;
+  expect(body).toMatchObject({ name: '合成发展计划流程（改）' });
+  expect(body).not.toHaveProperty('subProcesses');
+  expect(errors).toEqual([]);
+});
+
+test('AC-FE-R3d2-18 子流程必填字段被裁剪时整组只读，不出编辑按钮，并说明原因', async ({ page }) => {
+  const errors = watchErrors(page);
+  await mockIdp(page, { fields: { 'IDP.SubProcess': { viewable: ['id', 'name', 'category'] } } });
+  await openMenu(page, '发展计划流程');
+  await page.getByRole('button', { name: /编\s*辑/, exact: true }).click();
+  const form = page.getByRole('dialog', { name: '编辑发展计划流程' });
+  const row = form.getByRole('row', { name: /合成制定阶段/ });
+  await expect(row).toBeVisible();
+  await expect(form.getByRole('columnheader', { name: '审批类型' })).toHaveCount(0);
+  await expect(row.getByRole('button', { name: /^(移\s*除|上\s*移|编\s*辑)$/ })).toHaveCount(0);
+  await expect(form.getByText(FIELDS_HIDDEN)).toBeVisible();
+  await expect(form.getByRole('button', { name: '添加子流程' })).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test('AC-FE-R3d2-19 任务 id 被裁剪时不开放编辑与删除，不向缺 id 的路径发请求', async ({ page }) => {
+  const errors = watchErrors(page);
+  const calls = await mockIdp(page, {
+    fields: {
+      'IDP.Task': { viewable: IDP_OBJECTS.task.fields.map((field) => field.code).filter((code) => code !== 'id') },
+    },
+  });
+  await asUser(page);
+  await page.goto(`/idp/plans?plan=${planId}`);
+  const detail = page.getByRole('region', { name: '合成发展计划' });
+  await expect(detail.getByText('合成任务', { exact: true })).toBeVisible();
+  await expect(detail.getByRole('button', { name: /编辑任务|删除任务/ })).toHaveCount(0);
+  await expect(detail.getByRole('button', { name: '添加任务' })).toBeVisible();
+  expect(calls.filter((call) => call.path.includes('undefined'))).toEqual([]);
   expect(errors).toEqual([]);
 });

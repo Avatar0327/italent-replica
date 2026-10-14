@@ -264,6 +264,10 @@ export const t = {
     title: '未归属',
     note: '以下内容的所属模块无权查看或不在当前计划中，单独列出',
   },
+  integrity: {
+    identity: '已有记录的标识无权查看，保存会被当成删除后重建，暂不开放新增、编辑、移除和排序',
+    fields: '提交必需的字段无权查看，保存无法带回原值，暂不开放新增、编辑、移除和排序',
+  },
   rereadFailed: '重读失败，请刷新',
   enableNoRevision: '模板已创建，但创建结果没有返回版本号，无法接着启用，请刷新列表后再启用',
   processLine: (name: string) => `流程：${name}`,

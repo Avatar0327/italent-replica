@@ -108,10 +108,10 @@ function ProcessEditor({ process, close, saved }: { process?: Process; close(): 
   const subPermission = usePermissions(OBJECTS.subProcess);
   const subOperations = subPermission.snapshot.objects[OBJECTS.subProcess]?.dataOperations;
   const parent = permission.field('subProcesses');
-  const subAccess = subProcessAccess(parent.visible && parent.editable, subPermission.field, subOperations);
-  const subDisplay = subProcessAccess(false, subPermission.field, subOperations);
-  // 只读展示跟随冲突重读后的最新版本，与表单其他字段同源
+  // 只读展示与整组完整性都跟随冲突重读后的最新版本，与表单其他字段同源；新增时没有已有子流程
   const shownSubs = writer.current?.subProcesses as SubProcess[] | undefined;
+  const subAccess = subProcessAccess(parent.visible && parent.editable, subPermission.field, subOperations, shownSubs);
+  const subDisplay = subProcessAccess(false, subPermission.field, subOperations);
   const controls: Record<string, ReactNode> = {
     name: <Input maxLength={100} />,
     orgId: <CatalogSelect path={ORG_PATH} />,
@@ -214,6 +214,7 @@ function SubProcessEditor({
   };
   return (
     <div className="idp-sub-process">
+      {access.reason && <Alert type="warning" showIcon message={access.reason} />}
       <Table<IndexedSub>
         size="small"
         rowKey="index"
