@@ -107,6 +107,30 @@ test('AC-FE-R1b-03 切换身份，列表筛选、列设置、档案三个页签�
   expect(errors).toEqual([]);
 });
 
+test('AC-FE-R1b-03b 列设置勾选在点击事件内同步生效，同一帧连续点击不丢操作', async ({ page }) => {
+  await staffFixtures(page);
+  await page.goto('/staff');
+  await page.getByLabel('切换演示身份').selectOption(user);
+  await expect(page.getByRole('button', { name: '合成林晓', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '列设置', exact: true }).click();
+  const gender = page.getByRole('checkbox', { name: '性别', exact: true });
+  const email = page.getByRole('checkbox', { name: '电子邮件', exact: true });
+  await expect(gender).toBeChecked();
+  await expect(email).toBeChecked();
+  // 同一个任务里连点两项、立刻读状态：不能等到下一轮调度才反映，也不能用旧状态覆盖前一次点击。
+  const states = await page.evaluate(() => {
+    const input = (value: string) => document.querySelector<HTMLInputElement>(`input[value="${value}"]`)!;
+    input('gender').click();
+    const afterFirst = input('gender').checked;
+    input('email').click();
+    return { afterFirst, gender: input('gender').checked, email: input('email').checked };
+  });
+  expect(states).toEqual({ afterFirst: false, gender: false, email: false });
+  await page.getByRole('button', { name: /^确\s*定$/ }).click();
+  await expect(page.getByRole('columnheader', { name: '性别', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('columnheader', { name: '电子邮件', exact: true })).toHaveCount(0);
+});
+
 test('AC-FE-R1b-04 隐藏字段不显示，详情失败不回退列表快照', async ({ page }) => {
   await staffFixtures(page);
   await page.route('**/permission/me/objects/TenantBase.EmployeeInformation', (route) =>
