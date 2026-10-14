@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
 import { test, expect, user } from './fixtures.js';
-import { mockSuccession } from './r3d1-fixtures.js';
+import { mockSuccession, orgMap } from './r3d1-fixtures.js';
 
 test.use({ viewport: { width: 1440, height: 1000 } });
 
@@ -141,4 +141,16 @@ test('AC-FE-R3d1-07 无数据范围时列表与地图都不混入演示数据', 
   await page.getByRole('tab', { name: '职位继任地图', exact: true }).click();
   await expect(page.locator('.succession-page')).toContainText('当前没有可查看的数据范围');
   await expect(page.locator('.succession-page')).not.toContainText('演示数据');
+});
+
+test('AC-FE-R3d1-08 继任人数字段隐藏时，卡片不按继任者名单补算人数', async ({ page }) => {
+  const items = orgMap.items.map(({ successorCount: _hidden, ...item }) => item);
+  await page.route(/\/api\/tenant\/succession\/maps\/org(\?|$)/, (route) =>
+    route.fulfill({ json: { ...orgMap, items } }),
+  );
+  await openMenu(page, '继任地图与列表');
+  await page.getByRole('tab', { name: '组织继任地图', exact: true }).click();
+  const card = page.locator('.succession-card', { hasText: '合成研发中心' });
+  await expect(card).toContainText('合成继任者');
+  await expect(card).not.toContainText('继任者 1人');
 });

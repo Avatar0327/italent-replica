@@ -72,7 +72,7 @@ const positionMap = {
     { id: ids.childPosition, name: '合成架构师', orgId: ids.org, parentId: ids.position, incumbents: [] },
   ],
 };
-const orgMap = {
+export const orgMap = {
   asOf: '2026-10-13',
   rootId: ids.org,
   depth: 3,
