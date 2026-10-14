@@ -178,6 +178,8 @@ export interface IdpCall {
   body: unknown;
   key: string | null;
   revision: string | null;
+  /** 写入成功后服务端保存的流程记录（仅 processVersions 模式），代表“库里”的结果。 */
+  stored?: Record<string, unknown>;
 }
 export interface IdpMockOptions {
   hasDataPermission?: boolean;
@@ -195,8 +197,13 @@ export interface IdpMockOptions {
   subProcess?: Record<string, unknown>;
   /** 发生过写请求后，详情读取不再返回 revision（模拟冲突后重读得到无效回执）。 */
   rereadWithoutRevision?: boolean;
-  /** 只有第一次写请求返回 409，之后正常写入。 */
-  conflictOnce?: boolean;
+  /** 前几次写请求返回 409，之后正常写入。 */
+  conflictTimes?: number;
+  /**
+   * 每次写请求返回 409 时，流程先被别人改成下一个版本（依次取用），之后的详情重读返回该版本；
+   * 写入成功时把请求体合并进当前版本，模拟库里的记录。
+   */
+  processVersions?: Record<string, unknown>[];
   /** 发生过写请求后，流程详情里每个子流程去掉这些键（模拟冲突后重读到被裁剪的子流程）。 */
   rereadSubProcessOmit?: string[];
 }
@@ -296,33 +303,57 @@ export async function mockIdp(page: Page, options: IdpMockOptions = {}) {
       ],
     },
   };
-  const write = (route: Route, path: string) => {
-    const status = options.conflictOnce && calls.length === 1 ? 409 : options.writeStatus;
+  const server = processServer(options);
+  const write = (route: Route, path: string, call: IdpCall) => {
+    const status = calls.length <= (options.conflictTimes ?? 0) ? 409 : options.writeStatus;
     const code = status === 409 ? 'REVISION_CONFLICT' : 'INTERNAL';
+    if (status === 409) server.conflict();
     if (status) return route.fulfill({ status, json: { error: { code } } });
     if (path.includes('/tasks')) return route.fulfill({ status: path.endsWith('/tasks') ? 201 : 200, json: detail });
     if (path.endsWith('/copy')) return route.fulfill({ status: 201, json: { ...template, id: approvalId } });
-    if (path.startsWith('/processes')) return route.fulfill({ json: { ...process, revision: process.revision + 1 } });
+    if (path.startsWith('/processes')) return route.fulfill({ json: server.save(call) });
     return route.fulfill({ json: path.startsWith('/plans') ? detail : template });
   };
   await page.route('**/api/tenant/idp/**', (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname.replace(/^.*\/api\/tenant\/idp/, '');
     if (request.method() !== 'GET') {
-      calls.push({
+      const call: IdpCall = {
         method: request.method(),
         path,
         body: request.postData() ? request.postDataJSON() : null,
         key: request.headers()['idempotency-key'] ?? null,
         revision: request.headers()['if-match'] ?? null,
-      });
-      return write(route, path);
+      };
+      calls.push(call);
+      return write(route, path, call);
     }
-    const json = reads[path] ?? list([]);
+    const json = server.read(path) ?? reads[path] ?? list([]);
     return route.fulfill({ json: calls.length ? reread(path, json, options) : json });
   });
   await mockNames(page);
   return calls;
+}
+
+/** 流程的服务端记录：只在 processVersions 模式下随冲突换版本、随成功写入合并请求体，其余情况沿用静态夹具。 */
+function processServer(options: IdpMockOptions) {
+  const versions = options.processVersions;
+  let stored: Record<string, unknown> = process;
+  let conflicts = 0;
+  const next = (values: Record<string, unknown>) => ({ ...values, revision: (stored.revision as number) + 1 });
+  return {
+    conflict() {
+      const version = versions?.[conflicts++];
+      if (version) stored = next(version);
+    },
+    save(call: IdpCall) {
+      if (!versions) return { ...process, revision: process.revision + 1 };
+      stored = next({ ...stored, ...(call.body as Record<string, unknown>) });
+      call.stored = stored;
+      return stored;
+    },
+    read: (path: string) => (versions && path === `/processes/${processId}` ? stored : undefined),
+  };
 }
 
 /** 发生过写请求后的详情重读：按选项去掉 revision，或把子流程裁掉指定键（模拟冲突后重读到的被裁剪版本）。 */

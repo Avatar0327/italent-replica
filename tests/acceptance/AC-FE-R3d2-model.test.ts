@@ -23,9 +23,11 @@ import {
   templateInView,
 } from '../../apps/web/src/idp/model.js';
 import {
+  createBlocked,
   groupByOwner,
   operationAccess,
   RereadError,
+  rereadDraft,
   rereadReceipt,
   submitAccess,
   writeIntegrity,
@@ -398,6 +400,36 @@ describe('AC-FE-R3d2 第 5 轮：完整性约束提交字段（submitAccess）',
     const sub = subProcessAccess(true, () => open, undefined, rows);
     expect(sub.integrity.ok).toBe(false);
     expect(submitAccess(open, sub.integrity).editable).toBe(false);
+  });
+});
+
+describe('AC-FE-R3d2 第 6 轮：冲突重读后的表单值（rereadDraft）与新增保存锁定', () => {
+  const latest = { name: '最新名称', subProcesses: [{ id: 's1' }, { id: 's2' }] };
+  it('没有重读结果时原样返回同一引用', () => {
+    const values = { name: '草稿' };
+    expect(rereadDraft({ values, latest: undefined, edited: ['name'], submittable: ['name'] })).toBe(values);
+  });
+  it('本人改过且当前可提交的字段保留草稿，其余字段取最新记录', () => {
+    const values = { name: '草稿', subProcesses: [{ id: 's1', name: '旧草稿' }] };
+    const edited = ['name', 'subProcesses'];
+    expect(rereadDraft({ values, latest, edited, submittable: ['name', 'subProcesses'] })).toEqual(values);
+    // 子流程整组只读（不可提交）：即使改过，也回到最新记录
+    expect(rereadDraft({ values, latest, edited, submittable: ['name'] })).toEqual({
+      name: '草稿',
+      subProcesses: latest.subProcesses,
+    });
+  });
+  it('上次提交时不可编辑、内核没回填的字段也取最新记录，恢复可编辑时初值是最新版本', () => {
+    // 第二次提交时 subProcesses 不在可编辑字段里，内核保存的值不含该键，只改过名称
+    const values = { name: '草稿' };
+    expect(rereadDraft({ values, latest, edited: ['name'], submittable: ['name', 'subProcesses'] })).toEqual({
+      name: '草稿',
+      subProcesses: latest.subProcesses,
+    });
+  });
+  it('新增时必填字段不可提交则锁定保存', () => {
+    expect(createBlocked(['name', 'subProcesses'], ['name'])).toBe(true);
+    expect(createBlocked(['name', 'subProcesses'], ['name', 'subProcesses', 'orgId'])).toBe(false);
   });
 });
 

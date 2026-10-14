@@ -34,6 +34,7 @@ import { t } from './messages.js';
 import { submitAccess, type Integrity } from './access.js';
 import { display, subProcessAccess } from './model.js';
 import { CatalogSelect, ORG_PATH } from './selects.js';
+import { useGuardedSubmission } from './submission.js';
 import type { Process, SubProcess } from './types.js';
 
 const PATH = `${IDP_API}/processes`;
@@ -131,12 +132,13 @@ function ProcessEditor({ process, close, saved }: { process?: Process; close(): 
     rules: rulesOf(name),
     display: name === 'subProcesses' ? <SubProcessEditor access={subDisplay} value={shownSubs} /> : undefined,
   }));
+  const submission = useGuardedSubmission(writer, fields, { creating: !process, required: REQUIRED });
   return (
     <FormOverlay
       open
       mode="modal"
       recordKey={process?.id ?? 'new'}
-      submission={writer}
+      submission={submission}
       title={process ? t.editProcess : t.newProcess}
       initialValues={process ? project(process as Row) : { publicDown: true, enabled: true, subProcesses: [] }}
       groups={[{ title: t.sections.processInfo, fields }]}

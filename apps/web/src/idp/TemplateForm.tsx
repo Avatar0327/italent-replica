@@ -10,6 +10,7 @@ import { IDP_API, OBJECTS } from './api.js';
 import { t } from './messages.js';
 import { statusText } from './model.js';
 import { CatalogSelect, ORG_PATH } from './selects.js';
+import { useGuardedSubmission } from './submission.js';
 import type { Template } from './types.js';
 
 const PATH = `${IDP_API}/templates`;
@@ -91,6 +92,7 @@ function TemplateEditor({ template, close, saved }: Props) {
     rules: REQUIRED.includes(name) ? [{ required: true, whitespace: name === 'name', message: t.required }] : [],
   }));
   const editable = fields.filter((f) => f.access.visible && f.access.editable).map((f) => f.name);
+  const submission = useGuardedSubmission(writer, fields, { creating: !template, required: REQUIRED });
   const create = async (values: Record<string, unknown>) => {
     let created: Template | undefined;
     const result = await writer.submit({
@@ -115,7 +117,7 @@ function TemplateEditor({ template, close, saved }: Props) {
       open
       mode="modal"
       recordKey={template?.id ?? 'new'}
-      submission={writer}
+      submission={submission}
       title={template ? t.editTemplate : t.newTemplate}
       // 原站新增模板“向下公开”默认否、“状态”默认开启（B2_09）
       initialValues={

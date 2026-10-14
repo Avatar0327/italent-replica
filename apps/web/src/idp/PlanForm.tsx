@@ -9,6 +9,7 @@ import { TenantDatePicker } from '../foundation/selectors.js';
 import { IDP_API, OBJECTS } from './api.js';
 import { t } from './messages.js';
 import { planInput } from './model.js';
+import { useGuardedSubmission } from './submission.js';
 import { CatalogSelect, EmployeeSelect } from './selects.js';
 import type { PlanSummary } from './types.js';
 
@@ -52,12 +53,13 @@ function PlanEditor({ plan, close, saved }: { plan?: PlanSummary; close(): void;
     access: permission.field(name),
     rules: rulesOf(name),
   }));
+  const submission = useGuardedSubmission(writer, fields, { creating: !plan, required: REQUIRED });
   return (
     <FormOverlay
       open
       mode="modal"
       recordKey={plan?.id ?? 'new'}
-      submission={writer}
+      submission={submission}
       title={plan ? t.editPlan : t.newPlan}
       initialValues={plan ? project(plan as Row) : { tutorRole: 'direct_manager' }}
       groups={[{ title: t.sections.basic, fields }]}

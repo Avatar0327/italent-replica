@@ -1,7 +1,7 @@
 import { t } from './messages.js';
 
 /**
- * 本片四个统一入口（DEC-431① / DEC-385③）：操作权限、写入完整性、裁剪字段归属、冲突重读回执。
+ * 本片五个统一入口（DEC-431① / DEC-385③）：操作权限、写入完整性、裁剪字段归属、冲突重读回执、重读后的表单值。
  * 页面与组件只调用这里，不在各自位置推算权限、按可能缺失的字段过滤或补造版本号。
  */
 
@@ -102,4 +102,32 @@ export function rereadReceipt(row: { id?: unknown; revision?: unknown } | null |
   if (row?.id !== id || typeof revision !== 'number' || !Number.isSafeInteger(revision) || revision < 0)
     throw new RereadError();
   return { id, revision };
+}
+
+export interface DraftInput {
+  /** 内核保存的表单值（只含上次提交时可编辑的字段）。 */
+  values: Readonly<Record<string, unknown>>;
+  /** 冲突重读到的最新记录；没有重读结果时为 undefined。 */
+  latest: Readonly<Record<string, unknown>> | undefined;
+  /** 上次提交时本人改过的字段。 */
+  edited: readonly string[];
+  /** 当前可提交的字段（可见、可编辑，且通过 submitAccess 的完整性约束）。 */
+  submittable: readonly string[];
+}
+/**
+ * 四、冲突重读后的表单值：内核只给上次可编辑、本人没改过的字段回填最新记录，不可提交的字段（只读、完整性不足）
+ * 留着旧草稿，字段恢复可编辑时就把旧草稿当初值带回提交。这里凡是本人没改过、或当前不可提交的字段，
+ * 一律取最新记录；确认差异时内核把基线整份换成最新记录，表单值与基线因此一致（DEC-385③）。
+ * 没有重读结果时原样返回，保持引用不变（表单按引用决定是否回填）。
+ */
+export function rereadDraft({ values, latest, edited, submittable }: DraftInput) {
+  if (!latest) return values;
+  const mine = (field: string) => edited.includes(field) && submittable.includes(field);
+  const refill = Object.keys(latest).filter((field) => !mine(field));
+  return { ...values, ...Object.fromEntries(refill.map((field) => [field, latest[field]])) };
+}
+
+/** 五、新增时必填字段不可提交（无编辑权或完整性不足），创建请求必然被服务端拒绝，保存直接禁用。 */
+export function createBlocked(required: readonly string[], submittable: readonly string[]) {
+  return required.some((field) => !submittable.includes(field));
 }

@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test';
 import { IDP_OBJECTS } from '../../../packages/domain/src/idp/catalog.js';
 import { test, expect, user } from './fixtures.js';
-import { goalId, mockIdp, planId, processId, taskId, templateId, type IdpCall } from './r3d2-fixtures.js';
+import { goalId, mockIdp, planId, process, processId, taskId, templateId, type IdpCall } from './r3d2-fixtures.js';
 test.use({ viewport: { width: 1440, height: 1000 } });
 const SUB_FIELDS = IDP_OBJECTS.subProcess.fields.map((field) => field.code);
 const IDENTITY_HIDDEN = '已有记录的标识无权查看，保存会被当成删除后重建，暂不开放新增、编辑、移除和排序';
@@ -448,7 +448,7 @@ test('AC-FE-R3d2-21 冲突重读后子流程缺字段、整组只读：冲突前
   page,
 }) => {
   const errors = watchErrors(page);
-  const calls = await mockIdp(page, { conflictOnce: true, rereadSubProcessOmit: ['days'] });
+  const calls = await mockIdp(page, { conflictTimes: 1, rereadSubProcessOmit: ['days'] });
   await openMenu(page, '发展计划流程');
   await page.getByRole('button', { name: /编\s*辑/, exact: true }).click();
   const form = page.getByRole('dialog', { name: '编辑发展计划流程' });
@@ -475,4 +475,68 @@ test('AC-FE-R3d2-21 冲突重读后子流程缺字段、整组只读：冲突前
   expect(body).not.toHaveProperty('subProcesses');
   await expect(form).toHaveCount(0);
   expect(errors.filter((text) => !text.includes('409'))).toEqual([]);
+});
+
+test('AC-FE-R3d2-22 两次冲突、子流程先缺字段后恢复且服务端新增阶段：确认后显示最新两条，只改名称不提交子流程', async ({
+  page,
+}) => {
+  const errors = watchErrors(page);
+  const [stage] = process.subProcesses;
+  const { days: _days, ...trimmedStage } = stage!;
+  const added = { ...stage!, id: 'b0000000-0000-4000-8000-000000000301', seq: 2, name: '合成回顾阶段' };
+  const latest = [stage!, added];
+  const calls = await mockIdp(page, {
+    conflictTimes: 2,
+    processVersions: [
+      { ...process, subProcesses: [trimmedStage] },
+      { ...process, subProcesses: latest },
+    ],
+  });
+  await openMenu(page, '发展计划流程');
+  await page.getByRole('button', { name: /编\s*辑/, exact: true }).click();
+  const form = page.getByRole('dialog', { name: '编辑发展计划流程' });
+  await form
+    .getByRole('row', { name: /合成制定阶段/ })
+    .getByRole('button', { name: /编\s*辑/ })
+    .click();
+  const sub = page.getByRole('dialog', { name: '子流程' });
+  await sub.getByLabel('名称').fill('合成制定阶段（草稿）');
+  await sub.getByRole('button', { name: /确\s*定/ }).click();
+  const reread = form.getByRole('button', { name: '重读最新版本', exact: true });
+  const confirm = form.getByRole('button', { name: '已核对差异，继续编辑', exact: true });
+  await form.getByRole('button', { name: /保\s*存/ }).click();
+  await reread.click();
+  await expect(form.getByText(FIELDS_HIDDEN)).toBeVisible();
+  await confirm.click();
+  await form.getByLabel('流程名称').fill('合成发展计划流程（改）');
+  await form.getByRole('button', { name: /保\s*存/ }).click();
+  await reread.click();
+  await expect(form.getByText(FIELDS_HIDDEN)).toHaveCount(0);
+  await confirm.click();
+  // 子流程恢复可编辑时初值是最新记录：两条最新阶段，不是第一次冲突前的一条草稿
+  await expect(form.getByRole('cell', { name: '合成制定阶段', exact: true })).toBeVisible();
+  await expect(form.getByRole('cell', { name: '合成回顾阶段', exact: true })).toBeVisible();
+  await expect(form.getByRole('cell', { name: '合成制定阶段（草稿）', exact: true })).toHaveCount(0);
+  await form.getByRole('button', { name: /保\s*存/ }).click();
+  await expect.poll(() => writes(calls, 'PATCH', `/processes/${processId}`).length).toBe(3);
+  const saved = writes(calls, 'PATCH', `/processes/${processId}`)[2]!;
+  expect(saved.body).toMatchObject({ name: '合成发展计划流程（改）' });
+  expect(saved.body).not.toHaveProperty('subProcesses');
+  expect(saved.stored?.subProcesses).toEqual(latest);
+  await expect(form).toHaveCount(0);
+  expect(errors.filter((text) => !text.includes('409'))).toEqual([]);
+});
+
+test('AC-FE-R3d2-23 新增流程时子流程必需字段不可见：整组只读、保存禁用，不发必然失败的创建请求', async ({ page }) => {
+  const errors = watchErrors(page);
+  const calls = await mockIdp(page, {
+    fields: { 'IDP.SubProcess': { viewable: SUB_FIELDS.filter((code) => code !== 'days') } },
+  });
+  await openMenu(page, '发展计划流程');
+  await page.getByRole('button', { name: /新\s*增/, exact: true }).click();
+  const form = page.getByRole('dialog', { name: '新增发展计划流程' });
+  await expect(form.getByText(FIELDS_HIDDEN)).toBeVisible();
+  await expect(form.getByRole('button', { name: /保\s*存/ })).toBeDisabled();
+  expect(writes(calls, 'POST', '/processes')).toEqual([]);
+  expect(errors).toEqual([]);
 });
