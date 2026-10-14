@@ -21,7 +21,7 @@ export const snapshotFixture = {
     entryObjects: objectCode ? [objectCode] : [],
   })),
   scope: [],
-  adminMenus: [{ code: 'users', path: '用户管理', implemented: true, editable: false }],
+  adminMenus: [{ code: 'users.all', path: '用户管理/全部用户', implemented: true, editable: false }],
 };
 
 export const test = base.extend({
