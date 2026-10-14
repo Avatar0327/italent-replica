@@ -26,9 +26,10 @@ import {
   type TargetRef,
 } from './AC-EV-form-support.js';
 import { registerFormLock } from '../../apps/api/src/modules/evaluation/form-lock.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
-const suffix = () => randomUUID().slice(0, 6);
+const suffix = () => uniqueSuffix();
 
 interface Page {
   readonly hasDataPermission: boolean;

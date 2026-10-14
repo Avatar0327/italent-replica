@@ -19,6 +19,7 @@ import {
   world360,
   type World360,
 } from './AC-360-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 const APP = survey360.SURVEY360_APP;
@@ -67,7 +68,7 @@ async function finePermissionOn(w: World360) {
 const sync = (w: World360, body: Record<string, unknown>, user?: string) =>
   w.ok<SyncPage>((user ? w.as(user) : w.request)('POST', '/people/sync', { body }));
 
-const mail = (label: string) => `${label}-${randomUUID().slice(0, 8)}@example.com`;
+const mail = (label: string) => `${label}-${uniqueSuffix()}@example.com`;
 
 describe('R4-P2-1 邮箱改归属后，原键重放不返回范围外人员的历史结果', () => {
   it('范围甲 + 乙时用乙的邮箱新增评价对象、评价者并导入关系；乙的旧邮箱转给甲、范围收窄到甲后，三条原键重放都不带乙的数据', async () => {

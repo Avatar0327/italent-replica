@@ -21,6 +21,7 @@ import {
   type TalentPermissionData,
 } from './AC-TC-permission-support.js';
 import { TC_BASE } from './AC-TC-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 const LISTS = ['/libraries', '/dimension-categories', '/dimensions', '/criterion-categories', '/criteria'] as const;
@@ -140,7 +141,7 @@ describe('DEC-281⑨ 按管理单元控制人才标准数据', () => {
       ['/libraries', { name: '建到范围外', type: 'ability', ownerOrgId: outside.orgId }],
       ['/criterion-categories', { name: '建到范围外', ownerOrgId: outside.orgId }],
       ['/criteria', { categoryId: inside.criterionCategory.id, name: '建到范围外', ownerOrgId: outside.orgId }],
-      ['/dimensions', { libraryId: outside.library.id, code: `OUT${randomUUID().slice(0, 4)}`, name: '外库指标' }],
+      ['/dimensions', { libraryId: outside.library.id, code: `OUT${uniqueSuffix()}`, name: '外库指标' }],
       ['/dimension-categories', { libraryId: outside.library.id, name: '外库分类', displayOrder: 1 }],
       [
         '/criteria',
@@ -156,7 +157,7 @@ describe('DEC-281⑨ 按管理单元控制人才标准数据', () => {
         '/dimensions',
         {
           libraryId: inside.library.id,
-          code: `CAT${randomUUID().slice(0, 4)}`,
+          code: `CAT${uniqueSuffix()}`,
           name: '引用外部库分类',
           categoryId: outside.dimensionCategory.id,
         },
@@ -200,7 +201,7 @@ describe('DEC-281⑨ 按管理单元控制人才标准数据', () => {
     const op = await talentOperator(world, { mouId: data.mouId });
     const command = {
       ifMatch: 0,
-      idempotencyKey: `tc-mou-replay-${randomUUID().slice(0, 8)}`,
+      idempotencyKey: `tc-mou-replay-${uniqueSuffix()}`,
       body: { name: '重放分类', ownerOrgId: data.inside.orgId },
     };
     const first = await op.request('POST', '/criterion-categories', command);
@@ -265,7 +266,7 @@ describe('DEC-281⑨ 按管理单元控制人才标准数据', () => {
       ['/criterion-categories', { name: 'B 的新分类', ownerOrgId: outside.orgId }],
       ['/criteria', { categoryId: inside.criterionCategory.id, name: 'B 的新标准', ownerOrgId: outside.orgId }],
       ['/dimension-categories', { libraryId: ownLibrary.id, name: 'B 库下分类', displayOrder: 1 }],
-      ['/dimensions', { libraryId: ownLibrary.id, code: `B${randomUUID().slice(0, 4)}`, name: 'B 库下指标' }],
+      ['/dimensions', { libraryId: ownLibrary.id, code: `B${uniqueSuffix()}`, name: 'B 库下指标' }],
     ] as const;
     for (const [path, body] of posts) {
       const response = await op.request('POST', path, { ifMatch: 0, body });

@@ -32,6 +32,7 @@ import {
 
 import { PORTAL_GUARD_CASES } from './AC-360-F076-guard-support.js';
 import { resetCredentialConfig } from './AC-360-F076-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 afterAll(resetCredentialConfig);
@@ -447,7 +448,7 @@ const sa = (env: Env) => env.w.request;
 const confirmRevision = async (env: Env) =>
   (await json(await expectStatus(env.w.link(env.L.tc)('GET', ''), 200))).revision as number;
 const freshActivity = async (env: Env, grantees: string[] = []) => {
-  const activity = await env.w.activity({ name: `临时${randomUUID().slice(0, 4)}`, welcome: 'WELCOME_TMP' });
+  const activity = await env.w.activity({ name: `临时${uniqueSuffix()}`, welcome: 'WELCOME_TMP' });
   if (grantees.length) await grantTo(env.w, activity.id, grantees);
   return activity;
 };
@@ -1835,7 +1836,7 @@ const ROUTE_CASES: Record<string, RouteCases> = {
           env.w.link(env.L.tc)('POST', '/confirmation/appraisers', {
             ifMatch: await confirmRevision(env),
             body: {
-              person: { name: '待删客户', email: `del-${randomUUID().slice(0, 6)}@example.com` },
+              person: { name: '待删客户', email: `del-${uniqueSuffix()}@example.com` },
               roleId: env.w.role('customer'),
             },
           }),
@@ -1949,7 +1950,7 @@ function prb(env: Env): Promise<PrB> {
 /** 新建、计分并停用的活动（答卷一份），授权给 grantees：屏蔽 / 重新作答的字段裁剪用，不动共用的计分活动。 */
 async function freshScored(env: Env, grantees: string[]) {
   const { w, q } = env;
-  const activity = await w.activity({ name: `计分${randomUUID().slice(0, 4)}` });
+  const activity = await w.activity({ name: `计分${uniqueSuffix()}` });
   const object = await w.object(activity.id, (await w.person('裁剪对象')).id, [q.id]);
   const rater = await w.person('裁剪评价者');
   const relation = await w.appraiser(activity.id, object.id, rater.id, 'peer');

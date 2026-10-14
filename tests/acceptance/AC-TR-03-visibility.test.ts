@@ -7,11 +7,12 @@ import { configOperator } from './AC-TR-config-support.js';
 import { createOrg, createMou } from './AC-TC-support.js';
 import { tenantApi } from './support/tenant-api.js';
 import { TR_BASE, TR_NOW } from './AC-TR-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 const PATH = '/projects';
 const projectBody = (ownerOrgId: string, extra: Record<string, unknown> = {}) => ({
-  code: `prj_${randomUUID().slice(0, 8)}`,
+  code: `prj_${uniqueSuffix()}`,
   name: '合成可见性项目',
   ownerOrgId,
   year: 2026,

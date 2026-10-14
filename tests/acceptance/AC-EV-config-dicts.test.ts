@@ -27,10 +27,11 @@ import {
 } from './AC-EV-support.js';
 import { seedPermissionWorld, type PermissionWorld } from './AC-PRM-support.js';
 import { seedTenantWithMember, tenantApi } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 const PATH = '/activity-types';
-const name = (label = '类型') => `${label}${randomUUID().slice(0, 6)}`;
+const name = (label = '类型') => `${label}${uniqueSuffix()}`;
 
 interface Page {
   readonly page: number;
@@ -565,7 +566,7 @@ describe('AC-EV-config-dicts 活动类型', () => {
 
     it('大小写按现有字典口径区分（精确比较）；不同租户可重名', async () => {
       const op = await admin();
-      const label = `Case${randomUUID().slice(0, 6)}`;
+      const label = `Case${uniqueSuffix()}`;
       await created(op, { name: label });
       await created(op, { name: label.toLowerCase() });
       const other = await operator(creatorWorld, { seeAll: true });

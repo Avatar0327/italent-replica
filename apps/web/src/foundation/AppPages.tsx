@@ -8,20 +8,30 @@ import { ListPage } from './templates.js';
 import { ui } from './messages.js';
 
 const Account = lazy(() => import('../account/AccountPage.js').then((m) => ({ default: m.AccountPage })));
+const Evaluation = lazy(() => import('../evaluation/EvaluationPage.js').then((m) => ({ default: m.EvaluationPage })));
 const Job = lazy(() => import('../job/JobPage.js').then((m) => ({ default: m.JobPage })));
 const Manager = lazy(() => import('../self-service/pages/ManagerPage.js').then((m) => ({ default: m.ManagerPage })));
 const Org = lazy(() => import('../org/OrgChangePage.js').then((m) => ({ default: m.OrgChangePage })));
 const Self = lazy(() => import('../self-service/pages/SelfPage.js').then((m) => ({ default: m.SelfPage })));
+const Settings = lazy(() => import('../settings/SettingsPage.js').then((m) => ({ default: m.SettingsPage })));
 const Staff = lazy(() => import('../personnel/StaffPage.js').then((m) => ({ default: m.StaffPage })));
+const Survey = lazy(() => import('../survey360/SurveyPage.js').then((m) => ({ default: m.SurveyPage })));
 const Talent = lazy(() => import('../talent/TalentPage.js').then((m) => ({ default: m.TalentPage })));
+const TalentReview = lazy(() =>
+  import('../talent-review/TalentReviewPage.js').then((m) => ({ default: m.TalentReviewPage })),
+);
 const Transfer = lazy(() => import('../transfer/TransferPage.js').then((m) => ({ default: m.TransferPage })));
 const existing = {
+  evaluation: Evaluation,
   job: Job,
   manager: Manager,
   org: Org,
   self: Self,
+  settings: Settings,
   staff: Staff,
+  survey360: Survey,
   talent: Talent,
+  'talent-review': TalentReview,
   transfer: Transfer,
 };
 
@@ -62,7 +72,13 @@ export function AppPages() {
                 path={route.path}
                 element={
                   Page ? (
-                    <div className={['manager', 'self', 'staff'].includes(route.id) ? undefined : 'legacy-page'}>
+                    <div
+                      className={
+                        ['evaluation', 'manager', 'self', 'staff', 'survey360'].includes(route.id)
+                          ? undefined
+                          : 'legacy-page'
+                      }
+                    >
                       <Page />
                     </div>
                   ) : (
@@ -88,7 +104,7 @@ export function AppPages() {
               </div>
             }
           />
-          <Route path="/settings/menu/:code" element={<LandingPage title={ui.routes.settings} />} />
+          <Route path="/settings/menu/:code" element={<Settings />} />
           <Route path="/self/*" element={<Self />} />
           <Route path="/manager/*" element={<Manager />} />
           <Route path="*" element={<PageState kind="not-found" />} />

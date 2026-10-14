@@ -26,6 +26,7 @@ import {
 } from './AC-TR-calc-rule-support.js';
 import { configBody, TR_BASE, TR_NOW } from './AC-TR-config-support.js';
 import { errorCode, tenantApi } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 import './support/b5-path.js';
 
 const testDb = useTestDb();
@@ -79,7 +80,7 @@ describe('AC-TR-calc-rule 重放与启用提示按当前授权（真实授权器
   /** 启用 Year(IF(真,Today(),1)) 的项目：首次响应的 hints 带目标字段名（前置条件）。 */
   async function enabledWithHint() {
     const operator = await calcRuleOperator(world, { seeAll: true, fields: 'seeAll' });
-    const target = await adminField({ name: `目标${randomUUID().slice(0, 6)}` });
+    const target = await adminField({ name: `目标${uniqueSuffix()}` });
     const created = await operator.request('POST', CALC_RULES, {
       ifMatch: 0,
       body: calcBody([calcItem(target, 'Year(IF(真,Today(),1))')], { enabled: false }),
@@ -119,8 +120,8 @@ describe('AC-TR-calc-rule 重放与启用提示按当前授权（真实授权器
   /** 管理员保存的停用循环规则（两个字段互相引用）。 */
   async function cyclicRule() {
     const [a, b] = [
-      await adminField({ name: `甲${randomUUID().slice(0, 6)}` }),
-      await adminField({ name: `乙${randomUUID().slice(0, 6)}` }),
+      await adminField({ name: `甲${uniqueSuffix()}` }),
+      await adminField({ name: `乙${uniqueSuffix()}` }),
     ];
     const created = await setup.request('POST', `${TR_BASE}${CALC_RULES}`, {
       ...world.asAdmin,
@@ -170,7 +171,7 @@ describe('AC-TR-calc-rule P2-06（已实现部分）删除守卫按解析后的�
     ['换行', (p: string) => p.replace('.', '\n.')],
     ['制表符', (p: string) => p.replace('.', '.\t')],
   ])('公式里的路径带%s：可保存，被引用的来源字段删除 409 FIELD_IN_USE', async (_label, spaced) => {
-    const w = await calcWorld(testDb().db, `trk-r3-guard-${randomUUID().slice(0, 4)}`);
+    const w = await calcWorld(testDb().db, `trk-r3-guard-${uniqueSuffix()}`);
     const [target, source] = [await w.numberField(), await w.numberField()];
     await w.create(calcBody([calcItem(target, `${spaced(pathOf(source))} + 1`)]));
     const blocked = await w.request('DELETE', `/fields/${source.id}`, { ifMatch: 1 });
@@ -181,7 +182,7 @@ describe('AC-TR-calc-rule P2-06（已实现部分）删除守卫按解析后的�
 
 describe('AC-TR-calc-rule P2-02 残留：重放的引用复核独立遍历全部公式引用', () => {
   it('首项目目标出现同名字段（业务分析先报重名）时，后续项目里已撤出范围的来源字段仍被复核：POST / items PATCH 重放 400', async () => {
-    const w = await calcWorld(testDb().db, `trk-r3-replay-${randomUUID().slice(0, 4)}`);
+    const w = await calcWorld(testDb().db, `trk-r3-replay-${uniqueSuffix()}`);
     // 受控授权：功能权限全开；字段目录的范围可从“看全部”切到“只看自己建的”（创建人范围），其余对象看全部
     let fieldScope: ModuleScope = { ...EMPTY_SCOPE, all: true, hasDataPermission: true, source: 'identity' };
     const authorize: Authorizer = () => true;
