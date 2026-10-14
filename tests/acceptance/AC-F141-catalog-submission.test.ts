@@ -23,6 +23,10 @@ let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 const posts: { key: string | null; body: string }[] = [];
 let postMode: 'network-error' | 'rejected' = 'network-error';
+/** 编辑场景：服务端当前记录（读详情返回它）与收到的 PATCH。 */
+let stored: Record<string, unknown> | undefined;
+const patches: { ifMatch: string | null; body: Record<string, unknown> }[] = [];
+const patchReplies: Response[] = [];
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
@@ -30,6 +34,9 @@ const json = (body: unknown, status = 200) =>
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   posts.length = 0;
+  patches.length = 0;
+  patchReplies.length = 0;
+  stored = undefined;
   postMode = 'network-error';
   host = document.createElement('div');
   document.body.append(host);
@@ -43,6 +50,16 @@ beforeEach(() => {
         if (postMode === 'network-error') throw new TypeError('断网');
         return json({ error: { code: 'VALIDATION_FAILED', message: '分类编码已存在' } }, 422);
       }
+      if (init.method === 'PATCH') {
+        patches.push({
+          ifMatch: new Headers(init.headers).get('if-match'),
+          body: JSON.parse(String(init.body)) as Record<string, unknown>,
+        });
+        return patchReplies.shift() ?? json({ ...stored, revision: Number(stored?.revision ?? 0) + 1 });
+      }
+      if (stored && /\/category-classes\/c1$/.test(url)) return json(stored);
+      if (stored && /\/category-classes\?/.test(url) && url.includes('pageSize=15'))
+        return json({ items: [stored], page: 1, pageSize: 15, hasDataPermission: true });
       if (url.endsWith('/me/snapshot'))
         return json({ session: { tenantId: 't', userId: 'u' }, apps: [], scope: [], adminMenus: [] });
       if (url.includes('/permission/me/objects/')) {
@@ -166,4 +183,36 @@ it('AC-F141 服务器明确拒绝：保留输入并显示原因，改正后可�
   await click(buttonOf('保存'));
   await vi.waitFor(() => expect(posts).toHaveLength(2));
   expect(posts[1]!.key).not.toBe(posts[0]!.key);
+});
+
+it('AC-F141 编辑遇 409：重读确认后改回原值也要重提（按最新记录比较、If-Match 为新版本），差异表原值是打开时读到的记录', async () => {
+  stored = { id: 'c1', revision: 1, name: 'A', code: 'K1', enabled: true };
+  patchReplies.push(json({ error: { code: 'REVISION_CONFLICT', message: '版本已变化' } }, 409));
+  await openPage();
+  await vi.waitFor(() => expect(buttonOf('编辑')).toBeDefined());
+  await click(buttonOf('编辑'));
+  await vi.waitFor(() => expect(document.body.querySelector('.ant-drawer input[type="text"]')).not.toBeNull());
+  const nameInput = () => document.body.querySelector<HTMLInputElement>('.ant-drawer input[type="text"]')!;
+  expect(nameInput().value).toBe('A');
+
+  await type(nameInput(), 'B');
+  await click(buttonOf('保存'));
+  await vi.waitFor(() => expect(patches).toHaveLength(1));
+  expect(patches[0]).toMatchObject({ ifMatch: '1', body: { name: 'B' } });
+
+  // 另一位管理员已把名称改成 C（版本 2）
+  stored = { ...stored, revision: 2, name: 'C' };
+  await vi.waitFor(() => expect(buttonOf('重读最新版本')).toBeDefined());
+  await click(buttonOf('重读最新版本'));
+  await vi.waitFor(() => expect(buttonOf('已核对差异，继续编辑')).toBeDefined());
+  const row = Array.from(document.body.querySelectorAll('tbody tr')).find((tr) => tr.textContent?.includes('"C"'));
+  expect(row?.textContent).toContain('"A"');
+  expect(row?.textContent).toContain('"C"');
+  expect(row?.textContent).toContain('"B"');
+
+  await click(buttonOf('已核对差异，继续编辑'));
+  await type(nameInput(), 'A');
+  await click(buttonOf('保存'));
+  await vi.waitFor(() => expect(patches).toHaveLength(2));
+  expect(patches[1]).toMatchObject({ ifMatch: '2', body: { name: 'A' } });
 });
