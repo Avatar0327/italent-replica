@@ -3,7 +3,6 @@
  * 对象的字段查看权、范围内的用户，在数据变更日志列表与详情里看到批量催办、单计划跳转、批量终止三类记录，含动作与
  * 原因；范围外的审计查看人仍看不到（列表不含、详情 404）。
  */
-import { randomUUID } from 'node:crypto';
 import { IDP_OBJECTS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
@@ -11,6 +10,7 @@ import { auditApi } from './AC-AUD-support.js';
 import { idpOperator } from './AC-IDP-permission-support.js';
 import { permissionWorldOf, planWorld, PLAN_NOW, type PlanView, type Receipt } from './AC-IDP-plan-support.js';
 import { memberWithAdminRole } from './AC-PRM-users-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 const IDP = '/api/tenant/idp';
@@ -41,7 +41,7 @@ describe('R3-2：干预审计经审计查询接口可读', () => {
     expect(ended.receipts).toEqual([expect.objectContaining({ status: 200 })]);
 
     const audit = auditApi(w.db, PLAN_NOW, { authorize: undefined });
-    const viewer = await memberWithAdminRole(pw, 'audit_admin', `idp-iva-${randomUUID().slice(0, 4)}`);
+    const viewer = await memberWithAdminRole(pw, 'audit_admin', `idp-iva-${uniqueSuffix()}`);
     const inside = await idpOperator(pw, { orgId: w.dept, user: viewer.user });
     const list = await audit.dataChanges(inside.as, { objectType: PLAN, limit: '50' });
     const interventions = list.items.filter(
@@ -69,7 +69,7 @@ describe('R3-2：干预审计经审计查询接口可读', () => {
     }
 
     // 范围外：另一名审计管理员的 IDP 范围在别的组织
-    const outsiderViewer = await memberWithAdminRole(pw, 'audit_admin', `idp-ivo-${randomUUID().slice(0, 4)}`);
+    const outsiderViewer = await memberWithAdminRole(pw, 'audit_admin', `idp-ivo-${uniqueSuffix()}`);
     const outside = await idpOperator(pw, { orgId: await w.org('范围外组织'), user: outsiderViewer.user });
     const hiddenList = await audit.dataChanges(outside.as, { objectType: PLAN, limit: '50' });
     expect(hiddenList.items.filter((i) => i.objectId === plan.id)).toEqual([]);

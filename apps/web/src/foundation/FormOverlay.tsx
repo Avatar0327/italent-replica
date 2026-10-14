@@ -4,6 +4,9 @@ import { ApiError } from './client.js';
 import { ui } from './messages.js';
 import { PermissionField } from './Permissions.js';
 import type { FieldAccess } from './permission-model.js';
+import { FormLock, LockedField } from './forms/FormLock.js';
+import { CommandStatus } from './forms/CommandStatus.js';
+import type { CommandForm } from './forms/useCommandForm.js';
 import { useSession } from './Session.js';
 
 export interface FormField {
@@ -19,8 +22,9 @@ export interface FormGroup {
   fields: FormField[];
 }
 export interface FormOverlayProps {
-  /** 已有记录使用 id:revision；刷新后换 key，不能把旧表单值带入新版本。新建表单也应给本次打开的稳定键。 */
+  /** 旧入口使用 id:revision；接入内核时只用稳定业务 ID，由内核保留草稿并核对冲突。 */
   recordKey: string;
+  submission?: CommandForm;
   title: string;
   open: boolean;
   mode?: 'drawer' | 'modal';
@@ -48,7 +52,7 @@ function useSubmission(props: FormOverlayProps, form: FormInstance) {
     };
   }, []);
   const submit = async (values: Record<string, unknown>) => {
-    if (submitting.current) return;
+    if (submitting.current || props.submission?.locked) return;
     submitting.current = true;
     setBusy(true);
     setError(undefined);
@@ -74,19 +78,25 @@ function useSubmission(props: FormOverlayProps, form: FormInstance) {
 function OpenForm(props: FormOverlayProps) {
   const [form] = Form.useForm();
   const { busy, error, submit } = useSubmission(props, form);
+  const submission = props.submission;
+  const locked = busy || !!submission?.locked;
+  useEffect(() => {
+    if (submission?.state?.values) form.setFieldsValue(submission.state.values);
+  }, [form, submission?.state?.values]);
   const footer = (
     <Space>
       <Button onClick={props.onClose} disabled={busy}>
         {ui.cancel}
       </Button>
-      <Button type="primary" loading={busy} onClick={() => form.submit()}>
+      <Button type="primary" disabled={locked} loading={busy} onClick={() => form.submit()}>
         {ui.save}
       </Button>
     </Space>
   );
   const content = (
     <>
-      {!!error && (
+      {submission && <CommandStatus submission={submission} labels={formLabels(props.groups)} />}
+      {!!error && (!submission || !submission.state?.error) && (
         <Alert
           type="error"
           showIcon
@@ -98,9 +108,21 @@ function OpenForm(props: FormOverlayProps) {
           }
         />
       )}
-      <Form form={form} layout="vertical" initialValues={props.initialValues} onFinish={submit} disabled={busy}>
-        <FormGroups groups={props.groups} initialValues={props.initialValues} mode={props.mode} />
-      </Form>
+      <FormLock locked={locked}>
+        <Form
+          form={form}
+          layout="vertical"
+          initialValues={props.initialValues}
+          onFinish={submit}
+          disabled={locked || undefined}
+        >
+          <FormGroups
+            groups={props.groups}
+            values={submission?.state?.latest?.values ?? props.initialValues}
+            mode={props.mode}
+          />
+        </Form>
+      </FormLock>
     </>
   );
   return props.mode === 'modal' ? (
@@ -133,7 +155,7 @@ function OpenForm(props: FormOverlayProps) {
   );
 }
 
-function FormGroups(props: Pick<FormOverlayProps, 'groups' | 'initialValues' | 'mode'>) {
+function FormGroups(props: Pick<FormOverlayProps, 'groups' | 'mode'> & { values?: Record<string, unknown> }) {
   return (
     <>
       {props.groups.map((group) => (
@@ -145,13 +167,13 @@ function FormGroups(props: Pick<FormOverlayProps, 'groups' | 'initialValues' | '
               .map((field) =>
                 field.access.editable ? (
                   <Form.Item key={field.name} name={field.name} label={field.label} rules={field.rules}>
-                    {field.control}
+                    <LockedField>{field.control}</LockedField>
                   </Form.Item>
                 ) : (
                   <Form.Item key={field.name} label={field.label}>
                     <PermissionField
                       access={field.access}
-                      value={field.display ?? String(props.initialValues?.[field.name] ?? '—')}
+                      value={field.display ?? String(props.values?.[field.name] ?? '—')}
                     >
                       {field.control}
                     </PermissionField>
@@ -162,5 +184,14 @@ function FormGroups(props: Pick<FormOverlayProps, 'groups' | 'initialValues' | '
         </section>
       ))}
     </>
+  );
+}
+
+function formLabels(groups: FormGroup[]) {
+  return Object.fromEntries(
+    groups
+      .flatMap((g) => g.fields)
+      .filter((f) => f.access.visible)
+      .map((f) => [f.name, f.label]),
   );
 }

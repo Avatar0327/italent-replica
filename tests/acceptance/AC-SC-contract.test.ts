@@ -34,7 +34,7 @@ import {
   registerSuccessionPlatformRoutes,
   SUCCESSION_PLATFORM_POLICIES,
 } from '../../apps/api/src/modules/succession/platform-routes.js';
-import { installSuccessionPorts } from '../../apps/api/src/modules/succession/ports.js';
+import { installSuccessionPorts, SUCCESSION_PORTS } from '../../apps/api/src/modules/succession/ports.js';
 import { startSuccessionScheduler, type SuccessionJob } from '../../apps/api/src/modules/succession/scheduler.js';
 import {
   orgHealthComputePort,
@@ -56,6 +56,7 @@ import { memberWithAdminRole } from './AC-PRM-users-support.js';
 import { newUser, provisioned, seedOperator } from './support/platform-api.js';
 import { moduleDirs } from './support/route-policy/scan.js';
 import { errorCode, seedTenantWithMember, tenantApi } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 const O = SUCCESSION_OBJECTS;
@@ -248,8 +249,8 @@ describe('审计（§8.4；DEC-197 / 216）', () => {
   }
 
   async function viewer(world: PermissionWorld, seeAll: readonly string[]) {
-    const user = await memberWithAdminRole(world, 'audit_admin', `sc-audit-${randomUUID().slice(0, 6)}`);
-    const profile = await createProfile(world, `sc-audit-${randomUUID().slice(0, 6)}`, { apps: [SUCCESSION_APP] });
+    const user = await memberWithAdminRole(world, 'audit_admin', `sc-audit-${uniqueSuffix()}`);
+    const profile = await createProfile(world, `sc-audit-${uniqueSuffix()}`, { apps: [SUCCESSION_APP] });
     for (const definition of [O.riskLevel, O.healthResult, O.record, O.calcRun]) {
       const response = await setObjectPermission(
         world,
@@ -525,11 +526,12 @@ describe('任职状态钩子端口（§5.4；DEC-343）', () => {
 describe('对外端口与定时任务登记位（SP-15 / DEC-330、§4.6 / DEC-343）', () => {
   afterEach(() => resetOrgHealthComputePortForTest());
 
-  it('契约 PR 不登记健康度实现（T04 仍 400）；装配位登记的实现可重复安装', () => {
+  it('D4 登记健康度模块单例；装配位实现可重复安装且不能被另一实例替换', () => {
     resetOrgHealthComputePortForTest();
     tenantApi(testDb().db);
     installSuccessionPorts();
-    expect(orgHealthComputePort()).toBeNull();
+    expect(orgHealthComputePort()).toBe(SUCCESSION_PORTS.orgHealthCompute);
+    resetOrgHealthComputePortForTest();
     const port: OrgHealthComputePort = { compute: async () => [], listLevels: async () => [] };
     installSuccessionPorts({ orgHealthCompute: port });
     installSuccessionPorts({ orgHealthCompute: port });

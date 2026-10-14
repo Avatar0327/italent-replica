@@ -11,9 +11,9 @@ import { registrationGate } from './support/route-policy/registration.js';
  * ROUTE_POLICY_UPDATE_BASELINE=1 重新生成并随 PR 评审）；步骤二（按备选的最小对照）留给 PR-B4b。
  */
 import type { ManifestRoute, RoutePolicy } from '@italent/api';
-import { useTestDb } from '@italent/testkit';
+import { createTestDb } from '@italent/testkit';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { canonicalJson } from './support/route-policy/baseline.js';
 import {
   DISCOVERY_FACTS,
@@ -38,12 +38,19 @@ import {
 import type { Finding } from './support/route-policy/compare.js';
 import { countDrift, countEndpoints, readEndpointCounts } from './support/route-policy/endpoint-counts.js';
 import { generatedGate, textDrift } from './support/route-policy/generated-gate.js';
+import { expectDeclared, sameStatusInvalidIdRoutes } from './support/route-policy/module-declared.js';
 import { KNOWN_GAPS } from './support/route-policy/probe-known-gaps.js';
 import { permClaims } from './support/route-policy/request-perms.js';
 import { REQUIRED } from './support/route-policy/required/index.js';
 import type { Obligation, RequiredTable } from './support/route-policy/required/types.js';
 
-const testDb = useTestDb();
+let handle: Awaited<ReturnType<typeof createTestDb>>;
+// DEC-452：完整迁移在多工作区并行时实测超过 60 秒，仅放宽本文件建库，不增加 CI 分片预算。
+beforeAll(async () => {
+  handle = await createTestDb();
+}, 300_000);
+afterAll(async () => handle?.close());
+const testDb = () => handle;
 
 let manifest: { declared: readonly ManifestRoute[] };
 let fresh: Record<string, EndpointDiscovery>;
@@ -132,7 +139,7 @@ describe('AC-PRM-FW-08 P0 / P3：真实声明 + 显式表零发现', () => {
       .verify();
   });
 
-  it('逐对对账：未认领的"端点 × 请求键"恰好等于两本账的登记对之并集：29 项有实际用途 + 0 项冗余观测（F-075 / F-075b 已清空冗余观测账本），互斥', () => {
+  it('逐对对账：未认领的"端点 × 请求键"恰好等于两本账的登记对之并集：各模块声明的有实际用途的缺口对（DEC-475④）+ 0 项冗余观测（F-075 / F-075b 已清空冗余观测账本），互斥', () => {
     discoveryChecks({ table: REQUIRED, routes: manifest.declared, discoveries: fresh })
       .find((check) => check.id === 'accounting')!
       .verify();
@@ -386,11 +393,7 @@ describe('AC-PRM-FW-08 P3 非法标识：观测码与根节点 invalidId 相等'
    * 状态码与错误码相同、只有错误体指纹不同的端点（第 2 轮靠证据表豁免的 48 个：37 条同为 400 + permission 11 条同为 404）。
    * 第 3 轮起由实际行为证明适用：占位请求在请求体 / 加载处失败，非法标识请求在标识校验处失败。
    */
-  const sameStatusOnly = () =>
-    Object.entries(fresh)
-      .filter(([, d]) => d.invalidId && d.invalidId.status === d.all.status && d.invalidId.code === d.all.code)
-      .filter(([, d]) => d.invalidId!.reason === d.all.reason && d.invalidId!.error !== d.all.error)
-      .map(([k]) => k);
+  const sameStatusOnly = () => sameStatusInvalidIdRoutes(fresh);
   /** 审查附录 B 1.3：请求体校验先于标识校验，占位请求与非法标识请求都在请求体处失败，合理未达。 */
   const BODY_FIRST = [
     'PUT /api/tenant/employment/transfers/forms/:formId',
@@ -404,22 +407,24 @@ describe('AC-PRM-FW-08 P3 非法标识：观测码与根节点 invalidId 相等'
     'PATCH /api/tenant/personnel/employees/:employeeId/subsets/:kind/:id',
   ];
 
-  it('第 3 轮：状态码相同、错误体不同的 54 个端点由实际行为证明适用（含 B2b 两种等级编辑与 B6b 模板复制）', () => {
+  it('第 3 轮：状态码相同、错误体不同的端点由实际行为证明适用（集合按模块声明，DEC-475④；含 B4 / B5 赋值与 B6b 复制）', () => {
     const k48 = sameStatusOnly();
-    expect(k48).toHaveLength(54);
+    expectDeclared('状态码相同、错误体不同的端点', 'sameStatusInvalidId', k48);
     expect(k48).toContain('POST /api/tenant/talent-review/templates/:id/copy');
     expect(k48).toContain('POST /api/tenant/talent-review/matrices/:id/ratio-groups');
     expect(k48).toContain('GET /api/tenant/permission/profiles/:id');
     expect(k48).toContain('POST /api/tenant/idp/plans/:id/goals');
     expect(k48).toContain('PUT /api/tenant/succession/risk-levels/:id');
     expect(k48).toContain('PUT /api/tenant/succession/health-levels/:id');
+    expect(k48).toContain('PUT /api/tenant/succession/risk-results/:positionId');
+    expect(k48).toContain('PUT /api/tenant/succession/health-results/:orgId');
     for (const k of k48) {
       expect(p3Applicable(k, fresh[k]!), k).toBe(true);
       expect(route(k).policy.invalidId, `${k} 真实声明有 invalidId`).toBeDefined();
     }
   });
 
-  it('54 个端点把 invalidId 改成另一个状态码、或删掉声明 → MISMATCH:invalidId', () => {
+  it('这些端点把 invalidId 改成另一个状态码、或删掉声明 → MISMATCH:invalidId', () => {
     for (const k of sameStatusOnly()) {
       const r = route(k);
       const declared = r.policy.invalidId!;

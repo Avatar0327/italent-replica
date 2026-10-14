@@ -2,7 +2,6 @@
  * R3-T07 权限用例夹具（真实授权器）：两个组织（范围内 / 外）+ 范围内组织的下级组织，以及按需配置对象权限、按钮、
  * 字段可见 / 可编辑与组织范围的操作人。DEC-043：数据范围按 用户 × IDP 应用存一份，缺省为空（fail-closed）。
  */
-import { randomUUID } from 'node:crypto';
 import { IDP_APP, IDP_OBJECTS } from '@italent/domain';
 import { expect } from 'vitest';
 import {
@@ -25,6 +24,7 @@ import {
   subProcessBody,
   type TemplateView,
 } from './AC-IDP-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 export type IdpObjectKey = keyof typeof IDP_OBJECTS;
 export const clock = () => IDP_NOW;
@@ -98,7 +98,7 @@ export interface OperatorOptions {
 }
 
 export async function idpOperator(world: PermissionWorld, options: OperatorOptions = {}) {
-  const profile: ProfileBody = await createProfile(world, `idp-${randomUUID().slice(0, 8)}`, { apps: [IDP_APP] });
+  const profile: ProfileBody = await createProfile(world, `idp-${uniqueSuffix()}`, { apps: [IDP_APP] });
   const setButtons = async (buttons: boolean) => {
     for (const key of options.objects ?? (Object.keys(IDP_OBJECTS) as IdpObjectKey[])) {
       const definition = IDP_OBJECTS[key];
@@ -125,7 +125,7 @@ export async function idpOperator(world: PermissionWorld, options: OperatorOptio
   };
   await setButtons(options.buttons ?? true);
   await makeGrantable(world, [profile.id]);
-  const user = options.user ?? (await addMember(world, `idp-operator-${randomUUID().slice(0, 4)}`));
+  const user = options.user ?? (await addMember(world, `idp-operator-${uniqueSuffix()}`));
   expect((await grant(world, user.id, profile.id)).status).toBe(201);
   const as = { user: user.id, tenant: world.tenant.id };
   let scopeRevision = 0;
@@ -140,7 +140,7 @@ export async function idpOperator(world: PermissionWorld, options: OperatorOptio
         ...world.asAdmin,
         ifMatch: 0,
         body: {
-          code: `idp-mou-${randomUUID().slice(0, 6)}`,
+          code: `idp-mou-${uniqueSuffix()}`,
           name: 'IDP 管理单元',
           orgRanges: [{ orgId, includeDescendants: true }],
         },

@@ -19,7 +19,7 @@ const testDb = useTestDb();
 
 const KEPT: readonly IdpObjectKey[] = ['process', 'subProcess', 'template', 'plan'];
 const ALL = Object.keys(IDP_OBJECTS) as IdpObjectKey[];
-const scrub = (text: string) => text.replace(/模板[0-9a-f]{6}/g, '模板<x>');
+const scrub = (text: string) => text.replace(/模板[0-9a-f]{12}/g, '模板<x>');
 
 type Send = (method: string, path: string) => Promise<Response>;
 

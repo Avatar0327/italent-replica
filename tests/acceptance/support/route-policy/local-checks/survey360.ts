@@ -9,6 +9,7 @@ import { GUARD_INNER_ALTS } from '../required/guard-inner.js';
 import { checkStored } from '../evidence.js';
 import { type Finding } from '../compare.js';
 import { checkRequired } from '../required.js';
+import { expectDeclared, knownGapPairIds } from '../module-declared.js';
 import type { LocalCheckContext } from './types.js';
 
 // F-095：原局部用例与入口专项共用实际断言；登记副本从 context.table 注入。
@@ -43,11 +44,11 @@ export function survey360Checks(context: LocalCheckContext) {
     {
       id: 'knownGaps',
       label:
-        '账本里不再有 survey360 组；org / idp 共 29 项（任职资格由 F-074 补完）；冗余观测账本已清空（F-075 / F-075b）',
+        '账本里不再有 survey360 组；其余模块的缺口对与各自声明逐项相等（任职资格由 F-074 补完）；冗余观测账本已清空（F-075 / F-075b）',
       wrapped: true,
       verify: () => {
         expect(KNOWN_GAPS.filter((g) => g.id.startsWith('survey360'))).toEqual([]);
-        expect(KNOWN_GAPS.flatMap((g) => g.pairs)).toHaveLength(29);
+        expectDeclared('已知缺口登记对', 'knownGapPairs', knownGapPairIds());
         expect(REDUNDANT_OBSERVATIONS.flatMap((g) => g.pairs)).toHaveLength(0);
       },
     },

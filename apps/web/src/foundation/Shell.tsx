@@ -4,6 +4,8 @@ import { Link, useLocation, useNavigate } from 'react-router';
 import { DecisionNote, DecisionNoteToggle } from './DecisionNote.js';
 import { PermissionObject, usePermissions } from './Permissions.js';
 import { useSession } from './Session.js';
+import { ApiError } from './client.js';
+import { PageState } from './PageState.js';
 import { AppPages } from './AppPages.js';
 import { appRoute } from './routes.js';
 import { ui } from './messages.js';
@@ -59,7 +61,7 @@ export function Shell() {
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
-  const { menus } = usePermissions();
+  const { menus, loading, error, refresh } = usePermissions();
   const active = appRoute(location.pathname);
   const groups = Object.entries(ui.groups)
     .map(([key, label]) => ({
@@ -79,6 +81,12 @@ export function Shell() {
         })),
     }))
     .filter((group) => group.children.length > 0);
+  let content = <AppPages />;
+  if (loading) content = <PageState kind="loading" />;
+  else if (error) {
+    const kind = error instanceof ApiError && error.kind === 'login' ? 'login' : 'error';
+    content = <PageState kind={kind} error={error} retry={refresh} />;
+  }
   return (
     <Layout className="app-shell">
       <Header />
@@ -112,9 +120,7 @@ export function Shell() {
         <Layout.Content className="shell-content">
           <DecisionNote id="foundation" />
           <div className="shell-workspace">
-            <PermissionObject object={active?.objectCode}>
-              <AppPages />
-            </PermissionObject>
+            <PermissionObject object={active?.objectCode}>{content}</PermissionObject>
           </div>
         </Layout.Content>
       </Layout>

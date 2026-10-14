@@ -5,6 +5,7 @@ import { expect } from 'vitest';
 import { type Finding } from '../compare.js';
 import { DISCOVERY_GAPS, DISCOVERY_FACTS, DISCOVERY_TABLE, DISCOVERY_ROUTES } from '../discovery-fixture.js';
 import { checkDiscovery, checkIdApplicabilityDrift, readFrozenProbes } from '../discovery.js';
+import { expectDeclared, knownGapPairIds } from '../module-declared.js';
 import type { DiscoveryCheckContext } from './types.js';
 
 // F-095：原局部用例与入口专项共用实际断言；登记副本从 context.table 注入。
@@ -31,13 +32,13 @@ export function discoveryChecks(context: DiscoveryCheckContext) {
     {
       id: 'accounting',
       label:
-        '逐对对账：未认领的"端点 × 请求键"恰好等于两本账的登记对之并集：29 项有实际用途 + 0 项冗余观测（F-075 / F-075b 已清空冗余观测账本），互斥',
+        '逐对对账：未认领的"端点 × 请求键"恰好等于两本账的登记对之并集：各模块声明的有实际用途的缺口对（DEC-475④）+ 0 项冗余观测（F-075 / F-075b 已清空冗余观测账本），互斥',
       wrapped: false,
       verify: () => {
         expect(registrationGate(records(), '实际未认领记录与两本台账的差异（DEC-416③）')).toEqual([]);
         const gaps = KNOWN_GAPS.flatMap((g) => g.pairs);
         const redundant = REDUNDANT_OBSERVATIONS.flatMap((g) => g.pairs);
-        registration('已知缺口冻结数量', () => expect(gaps).toHaveLength(29));
+        registration('已知缺口按模块声明', () => expectDeclared('已知缺口登记对', 'knownGapPairs', knownGapPairIds()));
         registration('冗余观测冻结数量', () => expect(redundant).toHaveLength(0));
         const all = [...gaps, ...redundant].map(([r, k]) => `${r}\t${k}`);
         expect(new Set(all).size, '登记对不重复，两本账互斥').toBe(all.length);

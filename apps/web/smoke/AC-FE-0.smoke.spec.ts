@@ -1,4 +1,4 @@
-import { test, expect, tenant, user } from './fixtures.js';
+import { test, expect, tenant, user, snapshotFixture } from './fixtures.js';
 import { APP_ROUTES } from '../src/foundation/routes.js';
 
 test('AC-FE-0-04 通过现有演示身份选择器进入应用，注释可切换', async ({ page }) => {
@@ -7,12 +7,12 @@ test('AC-FE-0-04 通过现有演示身份选择器进入应用，注释可切换
   await expect(page.getByRole('heading', { name: '员工', exact: true })).toBeVisible();
   await expect(page.locator('.ant-pagination-options')).toContainText('条/页');
   expect((await page.context().cookies()).find((cookie) => cookie.name === 'italent_demo_tenant')?.value).toBe(tenant);
-  await expect(page.getByText('DEC-456', { exact: true })).toHaveCount(0);
+  await expect(page.locator('.shell-content > .decision-note').getByText('DEC-456', { exact: true })).toHaveCount(0);
   await page.getByRole('switch', { name: '注释' }).click();
-  await expect(page.getByText('DEC-456', { exact: true })).toBeVisible();
+  await expect(page.locator('.shell-content > .decision-note').getByText('DEC-456', { exact: true })).toBeVisible();
   await page.getByRole('menuitem', { name: '人才盘点', exact: true }).click();
   await expect(page).toHaveURL(/\/talent-review$/);
-  await expect(page.getByText('DEC-456', { exact: true })).toBeVisible();
+  await expect(page.locator('.shell-content > .decision-note').getByText('DEC-456', { exact: true })).toBeVisible();
 });
 
 for (const app of APP_ROUTES) {
@@ -47,6 +47,11 @@ test('AC-FE-0-06 旧路径保留参数与锚点，无权限页和未知页面均
       json: { error: { code: 'FORBIDDEN' } },
     }),
   );
+  await page.route('**/permission/me/snapshot', async (route) => {
+    const body = structuredClone(snapshotFixture);
+    body.apps = body.apps.map((app) => (app.app === 'org' ? { ...app, visible: false, entryObjects: [] } : app));
+    await route.fulfill({ json: body });
+  });
   await page.goto('/org');
   await expect(page.getByText('暂无访问权限', { exact: true })).toBeVisible();
   await page.goto('/not-a-page');
@@ -59,6 +64,15 @@ for (const path of ['/job', '/jobs?page=2#list']) {
       { name: 'italent_demo_tenant', value: tenant, url: baseURL! },
       { name: 'italent_demo_user', value: user, url: baseURL! },
     ]);
+    await page.route('**/permission/me/snapshot', (route) =>
+      route.fulfill({
+        json: {
+          ...snapshotFixture,
+          adminMenus: [],
+          apps: [{ app: 'job', visible: true, entryObjects: ['TenantBase.Position'] }],
+        },
+      }),
+    );
     await page.route('**/permission/me/objects/*', (route) => {
       if (route.request().url().endsWith('/TenantBase.Position'))
         return route.fulfill({

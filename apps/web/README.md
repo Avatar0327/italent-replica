@@ -21,11 +21,9 @@
 
 ## L2 缺口
 
-`demo-stubs/navigation.ts` 适配缺失的全应用菜单接口：归属目录来自共享对象定义，任何已授权对象都可让应用入口可见；按钮与字段只认后端响应。企业设置菜单直接使用 `admin-menus`。菜单元数据标为演示数据，不能作为服务端授权依据。
+`foundation/permission-snapshot.ts` 通过一次 `GET /api/tenant/permission/me/snapshot` 读取会话、应用菜单、企业设置菜单和逐应用范围摘要，类型直接引用后端返回值，来源标为 `server`。应用对象目录使用 domain 的 `APP_OBJECT_DIRECTORY`。快照入口对象只代表可见性，不授予字段或按钮；需要明细的页面由 `usePermissions(code)` 按对象懒加载并共用当前快照周期的缓存。`usePermissions()` 只消费快照，避免菜单读取触发对象探测；`Can` 可以沿用页面对象上下文。
 
-`demo-stubs/object-directory.ts` 显式登记全部 15 个分区，避免按名称前缀遗漏实际编码。组织含编制；职务体系使用后端 8 类对象（职位为 `TenantBase.Position`）；员工含主表、档案、子集与合同业务对象；调动使用任职记录；R3 各应用引用各自完整目录，任职资格另含 `Qualification.Pages`。审批、自助、经理、企业设置仍以专用读取接口判定入口，目录登记不替代本人关系或管理能力检查。具体业务页须向 `usePermissions` / `Can` 显式传入当前操作的对象，不能用应用默认对象替代其下所有对象。
-
-缺少通用的本人数据范围摘要接口，当前 `scope.status = unavailable`、组织范围为空，业务查询继续由已有后端接口裁剪。缺少当前会话的租户展示资料接口，本地 `demo-stubs/session.ts` 使用演示种子的合成名称和时区；生产由会话宿主注入。升级时替换适配器，不改变页面组件。
+Session 的租户名称、时区、用户及员工绑定来自快照。开发 Cookie 仅提供首次请求的租户上下文，身份仍由服务端验证。快照网络或 5xx 失败显示可重试错误态，401 显示现有登录提示。范围读取成功为 ready，保留 all / limited / none、组织集合和 truncated；无范围概念的应用不补项，失败为 unavailable，不推断全部组织。
 
 ## 验证命令
 
@@ -40,7 +38,7 @@ FE0_LIVE=1 FE0_BASE_URL=http://localhost:5173 FE0_BROWSER_CHANNEL=chrome pnpm --
 
 `FE0_PORT=4186` 可为并行工作区指定独立冒烟端口（默认 4179），不会复用其他工作区的服务。
 
-默认 21 项 Playwright 使用合成响应测试全部分区、旧路径、只有职位权限的两种入口、拒绝页面、中文分页与注释开关，并检查无面包屑、视图标题、12px 表格、40px 表头与行内操作行、50px 顶栏、200/72px 侧栏及右侧抽屉；live 测试验证真实身份切换及无权分区正常拒绝。产物只写到已忽略的 `.demo/fe0-smoke/`。不修改 `.github/`。
+默认 21 项 Playwright 使用合成响应测试全部分区、旧路径、只有职位权限的两种入口、拒绝页面、中文分页与注释开关，并检查无面包屑、视图标题、12px 表格、40px 表头与行内操作行、50px 顶栏、200/72px 侧栏及右侧抽屉；live 的 16 项独立用例验证真实身份切换、15 个首页及无权分区正常拒绝，各页独立计时。产物只写到已忽略的 `.demo/fe0-smoke/`。不修改 `.github/`。
 
 主题与尺寸依据本机 `~/Documents/italent-evidence-raw/UI/INDEX.md` 第 1 批实测，正文 12px、按钮 32px、内容背景 #F7F9FA；原始截图、菜单树、样式数据不入库。原规划的独立面包屑已按总编排 10-12 补充修订移除。
 

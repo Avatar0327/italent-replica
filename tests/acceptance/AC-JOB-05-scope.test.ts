@@ -23,6 +23,7 @@ import {
 import { withLoginEmail } from './AC-EMP-support.js';
 import { TODAY } from './AC-ORG-people-support.js';
 import { tenantApi } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 const D = '2026-10-02';
@@ -77,13 +78,13 @@ describe('AC-JOB-05 同步直线经理的人员权限与范围（真实授权器
     const outside = await create('org/organizations', { name: '同步范围外部门', parents });
     const post = await create('job/posts', {
       name: '同步职务',
-      code: `P${randomUUID().slice(0, 8)}`,
+      code: `P${uniqueSuffix()}`,
       startDate: TODAY,
     });
     const position = (name: string, extra: object = {}) =>
       create('job/positions', {
         name,
-        code: `S${randomUUID().slice(0, 8)}`,
+        code: `S${uniqueSuffix()}`,
         orgId: inside.id,
         postId: post.id,
         startDate: TODAY,
@@ -91,7 +92,7 @@ describe('AC-JOB-05 同步直线经理的人员权限与范围（真实授权器
       });
     const newParent = await position('同步新上级');
     const hire = async (name: string, fields: object) => {
-      const employee = await create('employment/employees', { code: `E${randomUUID().slice(0, 8)}`, name });
+      const employee = await create('employment/employees', { code: `E${uniqueSuffix()}`, name });
       const hired = await create(
         `employment/employees/${employee.id}/businesses`,
         withLoginEmail(employee.id, {
@@ -110,7 +111,7 @@ describe('AC-JOB-05 同步直线经理的人员权限与范围（真实授权器
   }
 
   async function operator(options: { employmentCreate: boolean; employmentView?: readonly string[] }) {
-    const profile = await createProfile(world, `sync-${randomUUID().slice(0, 8)}`);
+    const profile = await createProfile(world, `sync-${uniqueSuffix()}`);
     const positionPermission = await setObjectPermission(
       world,
       profile,

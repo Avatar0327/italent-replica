@@ -18,6 +18,9 @@ import { readEffectiveSetting } from '../tenant-settings/service.js';
 import { PlanFailure, activeUser, targetAccess, writerAccess, type AccessDeps } from './sync-access.js';
 import { collectTargets, persistPlan, readPlan } from './sync-plan.js';
 import { rowsOf } from './read-sql.js';
+import { executeSyncBatch } from './sync-execute.js';
+import { enqueueSyncHealth } from './sync-health.js';
+import { lockOrganizationSettings } from '../org/locks.js';
 
 export interface SyncDeps extends AccessDeps {
   db: Db;
@@ -55,7 +58,7 @@ async function ensureBatch(tx: Tx, input: SyncInput, header: SyncRunHeader) {
     .onConflictDoNothing({ target: [batches.tenantId, batches.sourceRunId] });
   return (await tx.select().from(batches).where(batchKey(input)))[0]!;
 }
-async function mutex(tx: Tx, tenantId: string) {
+export async function mutex(tx: Tx, tenantId: string) {
   await tx.execute(
     sql`INSERT INTO succession_sync_mutex (tenant_id) VALUES (${tenantId}::uuid) ON CONFLICT DO NOTHING`,
   );
@@ -64,11 +67,11 @@ async function mutex(tx: Tx, tenantId: string) {
     WHERE tenant_id=${tenantId}::uuid FOR UPDATE`),
   )[0]!.batch_id;
 }
-async function release(tx: Tx, batch: Batch) {
+export async function release(tx: Tx, batch: Batch) {
   await tx.execute(sql`UPDATE succession_sync_mutex SET batch_id=NULL
     WHERE tenant_id=${batch.tenantId}::uuid AND batch_id=${batch.id}::uuid`);
 }
-async function save(tx: Tx, batch: Batch, patch: Partial<Batch>, now: Date, commandId: string) {
+export async function save(tx: Tx, batch: Batch, patch: Partial<Batch>, now: Date, commandId: string, phase = 'plan') {
   const [saved] = await tx
     .update(batches)
     .set({ ...patch, revision: batch.revision + 1 })
@@ -79,7 +82,7 @@ async function save(tx: Tx, batch: Batch, patch: Partial<Batch>, now: Date, comm
     actorUserId: null,
     objectType: 'Succession.SyncBatch',
     objectId: batch.id,
-    action: 'succession.sync-batch.plan',
+    action: `succession.sync-batch.${phase}`,
     commandId,
     occurredAt: now,
     before: { status: batch.status, hasPlan: batch.hasPlan },
@@ -93,7 +96,7 @@ async function save(tx: Tx, batch: Batch, patch: Partial<Batch>, now: Date, comm
   });
   return saved!;
 }
-async function notify(tx: Tx, batch: Batch, now: Date) {
+export async function notify(tx: Tx, batch: Batch, now: Date) {
   await tx.execute(sql`INSERT INTO succession_notifications
     (tenant_id,batch_id,recipient_user_id,kind,command_id,created_at)
     SELECT ${batch.tenantId}::uuid,${batch.id}::uuid,${batch.actorUserId}::uuid,'sync_done',
@@ -173,6 +176,7 @@ class FirstPlan {
         throw denied('BATCH_SCOPE_EXCEEDS_REQUESTER');
       }
     }
+    if (targets.some((t) => t.kind === 'org_health')) await lockOrganizationSettings(tx, input.tenantId);
     const planned = await persistPlan(tx, {
       tenantId: input.tenantId,
       batchId: batch.id,
@@ -216,6 +220,7 @@ class FirstPlan {
     if (!planned.pending) {
       await release(tx, batch);
       await notify(tx, batch, now);
+      await enqueueSyncHealth(tx, batch, now);
     }
     return batch;
   }
@@ -263,7 +268,7 @@ class FirstPlan {
   }
 }
 /** 可信后台入口；HTTP /sync 与 retry 后续由 D3 的 commands.ts / authorizeSuccessionResult 包装。 */
-export async function consumeRun(deps: SyncDeps, input: SyncInput): Promise<Batch | undefined> {
+export async function planSyncRun(deps: SyncDeps, input: SyncInput): Promise<Batch | undefined> {
   if (!isUuid(input.tenantId) || !isUuid(input.runId) || !input.leaseOwner) throw new TypeError('同步输入非法');
   input = { ...input, tenantId: input.tenantId.toLowerCase(), runId: input.runId.toLowerCase() };
   const tenant = await getTenant(deps.db, input.tenantId);
@@ -292,6 +297,10 @@ export async function consumeRun(deps: SyncDeps, input: SyncInput): Promise<Batc
       return batch;
     }
   }
+}
+export async function consumeRun(deps: SyncDeps, input: SyncInput): Promise<Batch | undefined> {
+  const batch = await planSyncRun(deps, input);
+  return batch?.hasPlan && !terminal(batch) ? executeSyncBatch(deps, input, batch) : batch;
 }
 /** SP-02：outbox 只提供租户和 run 定位；主体、日期、策略都在 consumeRun 重读，不能信任事件附带值。 */
 export const consumeSyncOutbox = (
