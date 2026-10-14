@@ -1,13 +1,13 @@
-import { Button, Descriptions, Form, Popconfirm, Select, Tag, type TableColumnsType } from 'antd';
+import { Button, Dropdown, Popconfirm, Space, Tag, Tooltip, type TableColumnsType } from 'antd';
 import { useState, type Key, type ReactNode } from 'react';
 import { RemoteSelect, Failure, useRead } from '../evaluation/runtime.js';
 import { newCommand } from '../foundation/client.js';
-import { FilterDrawer } from '../foundation/FilterDrawer.js';
 import { usePermissions } from '../foundation/Permissions.js';
-import { useApiClient } from '../foundation/Session.js';
-import { DetailPage, ListPage } from '../foundation/templates.js';
+import { PersonSelect, type Choice } from '../foundation/selectors.js';
+import { useApiClient, useSession } from '../foundation/Session.js';
+import { ListPage } from '../foundation/templates.js';
 import { s } from './messages.js';
-import { EndForm, RECORD, RecordForm, targetName, targetPaths } from './RecordForm.js';
+import { EndForm, RECORD, RecordForm, targetName, targetPaths, useCandidateLoader } from './RecordForm.js';
 import { BASE, recordQuery } from './rules.js';
 import type { ListResult, PersonView, ReadinessRef, RecordView, SuccessionType } from './types.js';
 
@@ -15,30 +15,70 @@ const PAGE_SIZE = 15;
 const people = (list?: PersonView[]) => (list?.length ? list.map((person) => person.name).join('、') : s.none);
 export const ReadinessTag = ({ value }: { value?: ReadinessRef | null }) =>
   value ? <Tag color={value.color}>{value.name}</Tag> : <>{s.none}</>;
-const dateTime = (value?: string) => value?.slice(0, 16).replace('T', ' ') ?? s.none;
+// 修改 / 创建时间是 UTC 事件时间，按租户时区显示（DEC-056）；时区未就绪时不猜，显示空。
+function dateTime(value: string | undefined, timezone: string) {
+  const instant = value ? new Date(value) : undefined;
+  if (!instant || !timezone || Number.isNaN(instant.getTime())) return s.none;
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(instant);
+  const part = (type: string) => parts.find((item) => item.type === type)?.value;
+  return `${part('year')}-${part('month')}-${part('day')} ${part('hour')}:${part('minute')}`;
+}
 
 interface Filters {
-  status: string;
   targetId?: string;
+  successor?: Choice;
 }
-/** 一个页签一张列表：目标、继任者等关系字段按服务端回显；隐藏字段不出列、不进筛选（docs/02_业务建模/27 §5.2）。 */
+/**
+ * 一个页签一张列表：按钮作用于勾选行，原站没有行详情与视图名下拉（UI2 对照）；
+ * 关系字段按服务端回显，隐藏字段不出列、不进筛选（docs/02_业务建模/27 §5.2）。
+ */
 export function RecordList({ type, title }: { type: SuccessionType; title: string }) {
   const permission = usePermissions(RECORD);
+  const api = useApiClient();
   const visible = (field: string) => permission.field(field).visible;
   const [page, setPage] = useState({ page: 1, pageSize: PAGE_SIZE });
-  const [filters, setFilters] = useState<Filters>({ status: 'active' });
-  const query = recordQuery({ type, ...page, ...filters }, visible);
+  const [filters, setFilters] = useState<Filters>({});
+  const query = recordQuery(
+    { type, ...page, targetId: filters.targetId, successorEmployeeId: filters.successor?.value },
+    visible,
+  );
   const list = useRead<ListResult<RecordView>>(permission.loading ? undefined : `${BASE}/records?${query}`);
   const [selected, setSelected] = useState<{ keys: Key[]; rows: RecordView[] }>({ keys: [], rows: [] });
-  const [detail, setDetail] = useState<RecordView>();
   const [form, setForm] = useState<'create' | 'edit' | 'end'>();
+  const [error, setError] = useState<unknown>();
+  const one = selected.rows.length === 1 ? selected.rows[0] : undefined;
   const refresh = () => {
     setSelected({ keys: [], rows: [] });
     list.reload();
   };
-  const columns = useColumns(type, visible, setDetail);
+  const filter = (next: Filters) => (setFilters(next), setPage({ ...page, page: 1 }));
+  // 删除只对单条：后端是逐条删除，多选删除做不到整体成功或整体失败（DEC-067 批量）。
+  const remove = async () => {
+    if (!one) return;
+    setError(undefined);
+    try {
+      await api.request(`${BASE}/records/${one.id}`, {
+        method: 'DELETE',
+        command: newCommand(undefined, one.revision),
+      });
+      refresh();
+    } catch (cause) {
+      setError(cause);
+    }
+  };
+  const selectable = permission.can('update') || permission.can('delete') || permission.can('end', 'list');
+  const actions = <RecordActions one={one} count={selected.rows.length} open={setForm} remove={remove} />;
   return (
-    <>
+    <div className="succession-records">
+      <Failure error={error} />
       <ListPage<RecordView>
         title={title}
         rowKey="id"
@@ -47,102 +87,113 @@ export function RecordList({ type, title }: { type: SuccessionType; title: strin
           total: list.data?.total ?? 0,
           hasDataPermission: list.data?.hasDataPermission,
         }}
-        columns={columns}
+        columns={useColumns(type, visible)}
         page={page}
         onPageChange={setPage}
         loading={list.loading}
         error={list.error}
         retry={list.reload}
-        actions={
-          <>
-            <Button onClick={refresh}>{s.refresh}</Button>
-            <RecordFilters
-              type={type}
-              value={filters}
-              onChange={(next) => (setFilters(next), setPage({ ...page, page: 1 }))}
-            />
-            {permission.can('create', 'list') && (
-              <Button type="primary" onClick={() => setForm('create')}>
-                {s.create}
-              </Button>
-            )}
-          </>
-        }
+        filters={<RecordFilters type={type} value={filters} onChange={filter} />}
+        actions={actions}
         selection={
-          permission.can('end', 'list')
-            ? {
-                keys: selected.keys,
-                onChange: (keys, rows) => setSelected({ keys, rows }),
-                actions: <Button onClick={() => setForm('end')}>{s.end}</Button>,
-              }
+          selectable
+            ? { keys: selected.keys, onChange: (keys, rows) => setSelected({ keys, rows }), actions: null }
             : undefined
         }
       />
-      {detail && (
-        <RecordDetail
-          row={detail}
-          type={type}
-          onEdit={() => setForm('edit')}
-          onClose={() => setDetail(undefined)}
-          onDeleted={() => (setDetail(undefined), refresh())}
-        />
-      )}
       {form === 'create' && <RecordForm type={type} close={() => setForm(undefined)} saved={refresh} />}
-      {form === 'edit' && detail && (
-        <RecordForm
-          type={type}
-          row={detail}
-          close={() => setForm(undefined)}
-          saved={() => (setDetail(undefined), refresh())}
-        />
-      )}
+      {form === 'edit' && one && <RecordForm type={type} row={one} close={() => setForm(undefined)} saved={refresh} />}
       {form === 'end' && <EndForm rows={selected.rows} close={() => setForm(undefined)} saved={refresh} />}
+    </div>
+  );
+}
+
+/** 列表右上角按钮：编辑、删除作用于唯一勾选行，更多操作里的结束作用于全部勾选行。 */
+function RecordActions(props: {
+  one?: RecordView;
+  count: number;
+  open(form: 'create' | 'edit' | 'end'): void;
+  remove(): void;
+}) {
+  const permission = usePermissions(RECORD);
+  const { one, count, open, remove } = props;
+  return (
+    <>
+      {permission.can('create', 'list') && (
+        <Button type="primary" onClick={() => open('create')}>
+          {s.create}
+        </Button>
+      )}
+      {permission.can('update') && (
+        <Button type="primary" disabled={!one || one.status === 'ended'} onClick={() => open('edit')}>
+          {s.edit}
+        </Button>
+      )}
+      {permission.can('delete') && (
+        <Popconfirm title={s.deleteConfirm} disabled={!one} onConfirm={remove}>
+          <Button type="primary" disabled={!one}>
+            {s.delete}
+          </Button>
+        </Popconfirm>
+      )}
+      <Tooltip title={s.importPending}>
+        <Button disabled>{s.import}</Button>
+      </Tooltip>
+      {permission.can('end', 'list') && (
+        <Dropdown
+          trigger={['click']}
+          disabled={!count}
+          menu={{ items: [{ key: 'end', label: s.end }], onClick: () => open('end') }}
+        >
+          <Button type="primary">{s.more}</Button>
+        </Dropdown>
+      )}
     </>
   );
 }
 
-function useColumns(
-  type: SuccessionType,
-  visible: (field: string) => boolean,
-  open: (row: RecordView) => void,
-): TableColumnsType<RecordView> {
+function useColumns(type: SuccessionType, visible: (field: string) => boolean): TableColumnsType<RecordView> {
+  const { timezone } = useSession();
   const column = (key: string, field: string, title: string, render: (row: RecordView) => ReactNode) =>
     visible(field) ? [{ key, title, render: (_: unknown, row: RecordView) => render(row) }] : [];
-  const target =
-    type === 'position'
-      ? [
-          ...column('target', 'targetPositionId', s.fields.targetPosition, (row) => (
-            <Button type="link" onClick={() => open(row)}>
-              {targetName(row) ?? s.none}
-            </Button>
-          )),
-          ...column('incumbents', 'incumbents', s.fields.incumbents, (row) => people(row.incumbents)),
-        ]
-      : [
-          ...column('target', 'targetOrgId', s.fields.targetOrg, (row) => (
-            <Button type="link" onClick={() => open(row)}>
-              {targetName(row) ?? s.none}
-            </Button>
-          )),
-          ...column('owner', 'personInCharge', s.fields.personInCharge, (row) => row.personInCharge?.name ?? s.none),
-        ];
-  return [
-    ...target,
-    ...column('successor', 'successorEmployeeId', s.fields.successor, (row) => row.successor?.name ?? s.none),
-    ...column('readiness', 'readinessId', s.fields.readiness, (row) => <ReadinessTag value={row.readiness} />),
-    ...column('state', 'successorEmployeeId', s.fields.successorStatus, (row) =>
-      row.successorLeft ? s.left : s.onDuty,
-    ),
-    ...column('backup', 'backupType', s.fields.backupType, (row) => s.backupTypes[row.backupType ?? ''] ?? s.none),
+  const common = (row: RecordView) => ({
+    successor: row.successor?.name ?? s.none,
+    readiness: <ReadinessTag value={row.readiness} />,
+    state: row.successorLeft ? s.left : s.onDuty,
+  });
+  const successor = column('successor', 'successorEmployeeId', s.fields.successor, (row) => common(row).successor);
+  const readiness = column('readiness', 'readinessId', s.fields.readiness, (row) => common(row).readiness);
+  const state = column('state', 'successorEmployeeId', s.fields.successorStatus, (row) => common(row).state);
+  const period = [
     ...column('start', 'startDate', s.fields.startDate, (row) => row.startDate ?? s.none),
     ...column('end', 'endDate', s.fields.endDate, (row) => row.endDate ?? s.untilNow),
-    ...column('updated', 'updatedAt', s.fields.updatedAt, (row) => dateTime(row.updatedAt)),
-    ...column('created', 'createdAt', s.fields.createdAt, (row) => dateTime(row.createdAt)),
+  ];
+  // 两张表的列按原站各自的列序（UI2 对照）：组织列表有后备类型、没有修改 / 创建列。
+  if (type === 'org')
+    return [
+      ...column('target', 'targetOrgId', s.fields.orgName, (row) => targetName(row) ?? s.none),
+      ...column('owner', 'personInCharge', s.fields.deptHead, (row) => row.personInCharge?.name ?? s.none),
+      ...successor,
+      ...column('backup', 'backupType', s.fields.backupType, (row) => s.backupTypes[row.backupType ?? ''] ?? s.none),
+      ...readiness,
+      ...state,
+      ...period,
+    ];
+  return [
+    ...column('target', 'targetPositionId', s.fields.targetPosition, (row) => targetName(row) ?? s.none),
+    ...column('incumbents', 'incumbents', s.fields.incumbents, (row) => people(row.incumbents)),
+    ...successor,
+    ...readiness,
+    ...state,
+    ...period,
+    ...column('updated', 'updatedAt', s.fields.updatedAt, (row) => dateTime(row.updatedAt, timezone)),
+    ...column('created', 'createdAt', s.fields.createdAt, (row) => dateTime(row.createdAt, timezone)),
     // 后端只回创建人 ID（后端缺口清单），先原样展示。
     ...column('creator', 'createdBy', s.fields.createdBy, (row) => row.createdBy ?? s.none),
   ];
 }
 
+/** 原站列表上方是一排字段筛选；只放后端能查的目标与继任者，其余见后端缺口清单。 */
 function RecordFilters({
   type,
   value,
@@ -153,116 +204,32 @@ function RecordFilters({
   onChange(next: Filters): void;
 }) {
   const permission = usePermissions(RECORD);
-  const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState(value);
+  const loadCandidates = useCandidateLoader();
   const targetField = type === 'position' ? 'targetPositionId' : 'targetOrgId';
   const label = type === 'position' ? s.fields.targetPosition : s.fields.targetOrg;
   return (
-    <>
-      <Button onClick={() => (setDraft(value), setOpen(true))}>{s.filter}</Button>
-      <FilterDrawer
-        open={open}
-        onClose={() => setOpen(false)}
-        onClear={() => setDraft({ status: 'active' })}
-        onApply={() => (onChange(draft), setOpen(false))}
-      >
-        <Form layout="vertical">
-          <Form.Item label={s.fields.status}>
-            <Select
-              aria-label={s.fields.status}
-              value={draft.status}
-              onChange={(status) => setDraft({ ...draft, status })}
-              options={Object.entries(s.statuses).map(([key, text]) => ({ value: key, label: text }))}
-            />
-          </Form.Item>
-          {permission.field(targetField).visible && (
-            <Form.Item label={label}>
-              <RemoteSelect
-                path={targetPaths[type]}
-                label={label}
-                value={draft.targetId}
-                onChange={(targetId) => setDraft({ ...draft, targetId: targetId as string | undefined })}
-              />
-            </Form.Item>
-          )}
-        </Form>
-      </FilterDrawer>
-    </>
-  );
-}
-
-function RecordDetail(props: {
-  row: RecordView;
-  type: SuccessionType;
-  onEdit(): void;
-  onClose(): void;
-  onDeleted(): void;
-}) {
-  const { row, type } = props;
-  const permission = usePermissions(RECORD);
-  const api = useApiClient();
-  const [error, setError] = useState<unknown>();
-  const current = useRead<RecordView>(`${BASE}/records/${row.id}`);
-  const view = current.data ?? row;
-  const visible = (field: string) => permission.field(field).visible;
-  const remove = async () => {
-    setError(undefined);
-    try {
-      await api.request(`${BASE}/records/${view.id}`, {
-        method: 'DELETE',
-        command: newCommand(undefined, view.revision),
-      });
-      props.onDeleted();
-    } catch (cause) {
-      setError(cause);
-    }
-  };
-  const items: { key: string; field: string; label: string; children: ReactNode }[] = [
-    type === 'position'
-      ? { key: 'target', field: 'targetPositionId', label: s.fields.targetPosition, children: targetName(view) }
-      : { key: 'target', field: 'targetOrgId', label: s.fields.targetOrg, children: targetName(view) },
-    type === 'position'
-      ? { key: 'incumbents', field: 'incumbents', label: s.fields.incumbents, children: people(view.incumbents) }
-      : { key: 'owner', field: 'personInCharge', label: s.fields.personInCharge, children: view.personInCharge?.name },
-    { key: 'successor', field: 'successorEmployeeId', label: s.fields.successor, children: view.successor?.name },
-    {
-      key: 'readiness',
-      field: 'readinessId',
-      label: s.fields.readiness,
-      children: <ReadinessTag value={view.readiness} />,
-    },
-    { key: 'backup', field: 'backupType', label: s.fields.backupType, children: s.backupTypes[view.backupType ?? ''] },
-    { key: 'start', field: 'startDate', label: s.fields.startDate, children: view.startDate },
-    { key: 'end', field: 'endDate', label: s.fields.endDate, children: view.endDate ?? s.untilNow },
-    { key: 'reason', field: 'endReason', label: s.fields.endReason, children: view.endReason },
-    { key: 'status', field: 'status', label: s.fields.status, children: s.statuses[view.status ?? ''] },
-  ];
-  return (
-    <DetailPage
-      open
-      onClose={props.onClose}
-      title={targetName(view) ?? s.none}
-      actions={
-        <>
-          {permission.can('update') && view.status !== 'ended' && <Button onClick={props.onEdit}>{s.edit}</Button>}
-          {permission.can('delete') && (
-            <Popconfirm title={s.deleteConfirm} onConfirm={remove}>
-              <Button danger>{s.delete}</Button>
-            </Popconfirm>
-          )}
-        </>
-      }
-      summary={
-        <>
-          <Failure error={error ?? current.error} retry={current.error ? current.reload : undefined} />
-          <Descriptions
-            column={2}
-            items={items
-              .filter((item) => visible(item.field))
-              .map(({ key, label, children }) => ({ key, label, children: children ?? s.none }))}
+    <Space wrap>
+      {permission.field(targetField).visible && (
+        <label className="succession-filter">
+          <span>{label}</span>
+          <RemoteSelect
+            path={targetPaths[type]}
+            label={label}
+            value={value.targetId}
+            onChange={(targetId) => onChange({ ...value, targetId: (targetId as string | undefined) || undefined })}
           />
-        </>
-      }
-    />
+        </label>
+      )}
+      {permission.field('successorEmployeeId').visible && (
+        <label className="succession-filter">
+          <span>{s.fields.successor}</span>
+          <PersonSelect
+            load={loadCandidates}
+            value={value.successor}
+            onChange={(successor) => onChange({ ...value, successor })}
+          />
+        </label>
+      )}
+    </Space>
   );
 }

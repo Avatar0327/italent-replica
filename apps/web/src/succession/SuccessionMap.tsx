@@ -1,4 +1,4 @@
-import { Alert, Button, Dropdown, Empty, Popconfirm, Popover, Radio, Select, Space, Switch, Tag } from 'antd';
+import { Button, Dropdown, Empty, Popconfirm, Popover, Radio, Select, Space, Switch, Tag } from 'antd';
 import { useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 import { Failure, useRead, useWriter } from '../evaluation/runtime.js';
@@ -17,10 +17,11 @@ export const MAP = 'Succession.Map';
 type Kind = 'position' | 'org';
 const result = { position: 'Succession.RiskResult', org: 'Succession.HealthResult' } as const;
 const levelOf = (item: MapItem, kind: Kind) => (kind === 'position' ? item.risk : item.health);
+const depthOptions = [2, 3, 4].map((value) => ({ value, label: s.map.depthLabels[value] }));
 const percent = (value?: number | null) => (typeof value === 'number' ? `${Math.round(value * 100)}%` : s.none);
 
 /** 地图只读服务端结果：层级、风险 / 健康度、统计都不在前端推算（docs/02_业务建模/27 §5.7、§5.8）。 */
-export function SuccessionMap({ kind, title }: { kind: Kind; title: string }) {
+export function SuccessionMap({ kind }: { kind: Kind }) {
   const [depth, setDepth] = useState(3);
   const [expanded, setExpanded] = useState(false);
   const [info, setInfo] = useState(true);
@@ -28,28 +29,27 @@ export function SuccessionMap({ kind, title }: { kind: Kind; title: string }) {
   const path = kind === 'position' ? `${BASE}/maps/position` : `${BASE}/maps/org?depth=${depth}`;
   const map = useRead<MapResult>(path);
   const items = map.data?.items ?? [];
+  // 原站左侧是筛选，右侧是图例 / 展开 / 显示信息 / 设置 / 更多操作（UI2 对照）。
   const toolbar = (
     <div className="succession-toolbar">
       <Space wrap>
-        <h1 className="succession-title">{title}</h1>
+        {kind === 'position' ? (
+          <PositionFilter saved={map.reload} />
+        ) : (
+          <label className="succession-filter">
+            <span>{s.map.orgDepth}</span>
+            <Select aria-label={s.map.orgDepth} value={depth} onChange={setDepth} options={depthOptions} />
+          </label>
+        )}
+      </Space>
+      <Space wrap>
+        {map.data?.asOf && <span className="succession-muted">{s.map.asOf(map.data.asOf)}</span>}
         <Legend items={items} kind={kind} />
         <Button onClick={() => setExpanded(!expanded)}>{expanded ? s.map.collapse : s.map.expand}</Button>
         <label className="succession-switch">
           <Switch size="small" checked={info} onChange={setInfo} aria-label={s.map.showInfo} />
           {s.map.showInfo}
         </label>
-        {kind === 'org' && (
-          <Select
-            aria-label={s.map.depth}
-            value={depth}
-            onChange={setDepth}
-            options={[2, 3, 4].map((value) => ({ value, label: `${s.map.depth} ${value}` }))}
-          />
-        )}
-      </Space>
-      <Space wrap>
-        {map.data?.asOf && <span className="succession-muted">{s.map.asOf(map.data.asOf)}</span>}
-        {kind === 'position' && <PositionFilter saved={map.reload} />}
         <SettingsMenu />
         <ComputeMenu kind={kind} done={map.reload} />
       </Space>
@@ -323,64 +323,74 @@ function AssignDialog({ kind, item, close, saved }: { kind: Kind; item: MapItem;
   );
 }
 
-/** 职位地图筛选是个人偏好（PUT 整份 + 版本）；保存后服务端按偏好裁剪地图。 */
+/** 职位地图筛选是个人偏好（PUT 整份 + 版本）：原站左侧显示当前条件，“高级筛选”在右侧抽屉里改。 */
 function PositionFilter({ saved }: { saved(): void }) {
   const api = useApiClient();
   const [open, setOpen] = useState(false);
   const prefsPath = `${BASE}/maps/position/preferences`;
-  const prefs = useRead<Preferences>(open ? prefsPath : undefined);
+  const prefs = useRead<Preferences>(prefsPath);
   const submission = useCommandForm(prefsPath);
   const access = { visible: true, editable: true };
-  const toggle = (name: keyof Preferences, label: string): FormField => ({
-    name,
-    label,
-    access,
-    control: <Switch aria-label={label} />,
-  });
+  const yesNo = (value?: boolean) => (value ? s.settings.yes : s.settings.no);
+  const fields: FormField[] = [
+    {
+      name: 'depth',
+      label: s.map.positionDepth,
+      access,
+      control: <Select aria-label={s.map.positionDepth} options={depthOptions} />,
+    },
+    {
+      name: 'showPositionsWithoutSuccessor',
+      label: s.map.showWithoutSuccessor,
+      access,
+      control: <Radio.Group options={[true, false].map((value) => ({ value, label: yesNo(value) }))} />,
+    },
+  ];
+  if (!prefs.data) return <Failure error={prefs.error} retry={prefs.reload} />;
+  const base = prefs.data;
   return (
     <>
-      <Button onClick={() => setOpen(true)}>{s.filter}</Button>
-      {open && !prefs.data && <Failure error={prefs.error} retry={prefs.reload} />}
+      <Button type="text" onClick={() => setOpen(true)}>
+        {`${s.map.positionDepth}：${s.map.depthLabels[base.depth] ?? base.depth}`}
+      </Button>
+      <Button type="text" onClick={() => setOpen(true)}>
+        {`${s.map.showWithoutSuccessor}：${yesNo(base.showPositionsWithoutSuccessor)}`}
+      </Button>
+      <Button type="link" onClick={() => setOpen(true)}>
+        {s.map.advancedFilter}
+      </Button>
       <FormOverlay
-        open={open && !!prefs.data}
-        mode="modal"
+        open={open}
+        mode="drawer"
         recordKey={prefsPath}
         submission={submission}
-        title={s.map.positionFilter}
-        initialValues={prefs.data ? { ...prefs.data } : {}}
-        groups={[
-          {
-            title: s.map.positionFilter,
-            fields: [
-              toggle('showPositionsWithoutSuccessor', s.map.showWithoutSuccessor),
-              toggle('showKeyPositions', s.map.showKeyPositions),
-            ],
-          },
-        ]}
+        title={s.map.advancedFilter}
+        initialValues={{ ...base }}
+        groups={[{ title: s.map.advancedFilter, fields }]}
         onClose={() => setOpen(false)}
         onSubmit={async (values) => {
-          const base = prefs.data!;
-          const { rootOrgId, depth, hiddenOrgIds } = base;
+          // 原站抽屉里没有“只看关键岗位”，按读回值原样回写，不替用户改。
+          const { rootOrgId, hiddenOrgIds, showKeyPositions } = base;
           const body = {
             rootOrgId,
-            depth,
             hiddenOrgIds,
-            showKeyPositions: !!values.showKeyPositions,
+            showKeyPositions,
+            depth: Number(values.depth),
             showPositionsWithoutSuccessor: !!values.showPositionsWithoutSuccessor,
           };
           const outcome = await submission.submit({
             values,
             baseline: {},
-            editableFields: ['showKeyPositions', 'showPositionsWithoutSuccessor'],
+            editableFields: ['depth', 'showPositionsWithoutSuccessor'],
             revision: base.revision,
             send: (request) => api.request(prefsPath, { method: 'PUT', command: { ...request, body } }),
           });
           if (outcome.status !== 'done') throw outcome.error ?? new Error(ui.failed);
           submission.clear();
+          prefs.reload();
           saved();
         }}
       />
-      {open && prefs.loading && <Alert type="info" message={ui.loading} />}
     </>
   );
 }

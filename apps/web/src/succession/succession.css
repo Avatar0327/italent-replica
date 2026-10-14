@@ -83,9 +83,22 @@
   border-radius: 2px;
 }
 
-.succession-title {
-  margin: 0 8px 0 0;
-  font-size: 14px;
-  font-weight: 600;
-  color: #33383d;
+/* 原站继任列表没有视图名下拉，页签即标题（UI2 对照）：隐藏模板的视图标题，按钮靠右。 */
+.succession-records .page-view-heading {
+  display: none;
+}
+.succession-records .page-heading {
+  justify-content: flex-end;
+}
+.succession-heading {
+  margin: 0 16px 0 0;
+}
+.succession-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.succession-filter .ant-select,
+.succession-filter .r3b-wide {
+  width: 180px;
 }

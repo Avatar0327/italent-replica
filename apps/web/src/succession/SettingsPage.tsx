@@ -210,14 +210,7 @@ function dictionaryColumns(kind: Kind, permission: Access, edit: (row: Row) => v
       key: 'name',
       field: 'name',
       title: kind === 'readiness' ? s.settings.stage : s.settings.name,
-      render: (row: Row) =>
-        permission.can('update') ? (
-          <Button type="link" onClick={() => edit(row)}>
-            {row.name}
-          </Button>
-        ) : (
-          row.name
-        ),
+      render: (row: Row) => String(row.name ?? s.none),
     },
     { key: 'code', field: 'code', title: s.settings.code, render: (row: Row) => String(row.code ?? s.none) },
     {
@@ -234,23 +227,37 @@ function dictionaryColumns(kind: Kind, permission: Access, edit: (row: Row) => v
       render: (row: Row) => (row.enabled ? s.settings.yes : s.settings.no),
     },
   ]
+    // 原站准备度列表只有排序、阶段、描述、颜色与操作（UI2 对照）；编码、启用仍在表单里，因为后端必填。
+    .filter((column) => kind !== 'readiness' || !['code', 'enabled'].includes(column.key))
     .filter((column) => permission.field(column.field).visible)
     .map(({ key, title: text, render }) => ({ key, title: text, render: (_: unknown, row: Row) => render(row) }));
-  const actions = permission.can('delete')
-    ? [
-        {
-          key: 'actions',
-          title: s.settings.actions,
-          render: (_: unknown, row: Row) => (
-            <Popconfirm title={s.deleteConfirm} onConfirm={() => remove(row)}>
-              <Button type="link" danger>
-                {s.delete}
-              </Button>
-            </Popconfirm>
-          ),
-        },
-      ]
-    : [];
+  const canEdit = permission.can('update');
+  const canDelete = permission.can('delete');
+  const actions =
+    canEdit || canDelete
+      ? [
+          {
+            key: 'actions',
+            title: s.settings.actions,
+            render: (_: unknown, row: Row) => (
+              <>
+                {canEdit && (
+                  <Button type="link" onClick={() => edit(row)}>
+                    {s.edit}
+                  </Button>
+                )}
+                {canDelete && (
+                  <Popconfirm title={s.settings.deleteConfirm} onConfirm={() => remove(row)}>
+                    <Button type="link" danger>
+                      {s.delete}
+                    </Button>
+                  </Popconfirm>
+                )}
+              </>
+            ),
+          },
+        ]
+      : [];
   return [...columns, ...actions];
 }
 

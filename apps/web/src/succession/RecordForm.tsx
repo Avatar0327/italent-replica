@@ -15,7 +15,7 @@ import type { ListResult, ReadinessRef, RecordView, SuccessionType } from './typ
 
 export const RECORD = 'Succession.Record';
 const RECORDS = `${BASE}/records`;
-const EDITABLE = ['readinessId', 'backupType', 'startDate', 'endDate', 'endReason'];
+const EDITABLE = ['readinessId', 'startDate', 'endDate'];
 export const targetPaths = { position: '/api/tenant/job/positions', org: '/api/tenant/org/organizations' };
 
 function dateRule(
@@ -34,7 +34,7 @@ function dateRule(
 const required = { required: true, message: s.required };
 const blank = (value: unknown) => (value === undefined || value === '' ? null : value);
 // 清空的可空字段要显式发 null，否则 JSON 会丢掉 undefined，服务端以为没改。
-const NULLABLE = ['readinessId', 'endDate', 'endReason'];
+const NULLABLE = ['readinessId', 'endDate'];
 const trimmed = (body: Record<string, unknown>) =>
   Object.fromEntries(
     Object.entries(body).map(([key, value]) => [
@@ -43,10 +43,10 @@ const trimmed = (body: Record<string, unknown>) =>
     ]),
   );
 
-function useControls(type: SuccessionType) {
+/** 继任者候选人搜索：表单与列表筛选共用。 */
+export function useCandidateLoader() {
   const api = useApiClient();
-  const readiness = useRead<ListResult<ReadinessRef>>(`${BASE}/readiness`);
-  const loadCandidates = useCallback(
+  return useCallback(
     async (query: string, signal: AbortSignal) => {
       const q = encodeURIComponent(query.trim().slice(0, 50));
       const result = await api.request<{ items: { employeeId: string; name: string }[] }>(
@@ -57,6 +57,15 @@ function useControls(type: SuccessionType) {
     },
     [api],
   );
+}
+
+/**
+ * 原站新增表单没有后备类型和结束原因（UI2 对照，docs/02_业务建模/27 新增组织继任字段）：
+ * 后备类型取服务端默认，结束原因只在批量结束里填。
+ */
+function useControls(type: SuccessionType): Record<string, ReactNode> {
+  const readiness = useRead<ListResult<ReadinessRef>>(`${BASE}/readiness`);
+  const loadCandidates = useCandidateLoader();
   return {
     targetId: <RemoteSelect path={targetPaths[type]} label={target(type)} />,
     successor: <PersonSelect load={loadCandidates} />,
@@ -68,18 +77,11 @@ function useControls(type: SuccessionType) {
         options={(readiness.data?.items ?? []).map((item) => ({ value: item.id, label: item.name }))}
       />
     ),
-    backupType: (
-      <Select
-        aria-label={s.fields.backupType}
-        options={Object.entries(s.backupTypes).map(([value, label]) => ({ value, label }))}
-      />
-    ),
     startDate: <TenantDatePicker />,
     endDate: <TenantDatePicker />,
-    endReason: <Input maxLength={200} />,
   };
 }
-const target = (type: SuccessionType) => (type === 'position' ? s.fields.targetPosition : s.fields.targetOrg);
+const target = (type: SuccessionType) => (type === 'position' ? s.fields.targetPosition : s.fields.orgName);
 
 export function RecordForm(props: { type: SuccessionType; row?: RecordView; close(): void; saved(): void }) {
   const form = <RecordEditor {...props} />;
@@ -119,10 +121,8 @@ function RecordEditor({
     targetId: target(type),
     successor: s.fields.successor,
     readinessId: s.fields.readiness,
-    backupType: s.fields.backupType,
     startDate: s.fields.startDate,
     endDate: s.fields.endDate,
-    endReason: s.fields.endReason,
   };
   const rules: Record<string, FormField['rules']> = {
     targetId: [required],
@@ -147,7 +147,7 @@ function RecordEditor({
       recordKey={row?.id ?? `new-${type}`}
       submission={writer}
       title={row ? s.editTitle : s.createTitle[type]!}
-      initialValues={row ? { ...row } : { backupType: 'principal', startDate: today }}
+      initialValues={row ? { ...row } : { startDate: today }}
       groups={[{ title: s.basic, fields }]}
       onClose={close}
       onSubmit={async (values) => {
