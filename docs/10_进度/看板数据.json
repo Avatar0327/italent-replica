@@ -2,8 +2,8 @@
 "updated": "2026-10-14",
 "stats": {
 "merged": 242,
-"open": 6,
-"dec": 495,
+"open": 8,
+"dec": 496,
 "ev": "43/177"
 },
 "tasks": {
@@ -983,6 +983,10 @@
 }
 },
 "log": [
+[
+"10-14",
+"D1 剩余项开工：#321 R0-T13 PRD 素材包、#322 FE-R3d-1 继任管理页面（均 Draft）；#320 F-133 合 main 冲突自动重生成"
+],
 [
 "10-14",
 "DEC-495：FE-R3d / 演示路线 / PRD 素材包 / 界面参考包第二批仍属 D1，现在派发（FE-R3d 本机 Claude 开发，DEC-494）"
@@ -4121,11 +4125,12 @@
 {
 "k": "FE-R3d",
 "n": "R0-T10 继任与 IDP",
-"s": "wait",
+"s": "assigned",
 "after": [
 "FE-0"
 ],
-"note": "继任与 IDP 页面片 · DEC-494：本机 Claude 开发、本机 Codex 审 · 03 正在写提示词（DEC-495：仍属 D1）"
+"note": "FE-R3d-1 继任管理页面 #322 · 本机 Claude 开发（DEC-494），Draft 进度 1/4 · IDP 部分另片待排 · 仍属 D1",
+"pr": 322
 }
 ]
 },
@@ -4148,8 +4153,9 @@
 {
 "k": "PRD-kit",
 "n": "R0-T13 PRD 素材包",
-"s": "todo",
-"note": "PRD 素材包 · DEC-495：仍属 D1，03 现在派发"
+"s": "assigned",
+"note": "每模块 PRD 素材包 #321 · Claude · Draft 起草 13 份模块素材包中 · 仍属 D1",
+"pr": 321
 }
 ]
 },
