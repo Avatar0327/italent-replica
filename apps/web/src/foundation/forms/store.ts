@@ -37,7 +37,14 @@ export interface SubmitInput {
   patchOnly?: boolean;
   send(command: Command<Values>): Promise<{ id: string }>;
 }
-const equal = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+/**
+ * 空值只有一种表示：undefined、null、空字符串、空数组都是“没有值”，互相等价（表单控件清空得 undefined / 空串 / 空数组，
+ * 服务端记录里是 null）。0 与 false 是有效值，不算空。“改过的字段”、重读差异、回填判定都用这套比较，
+ * 发送阶段不再做第二次转换（序列化只决定空值怎么写进请求，不改变哪些字段算改过）。
+ */
+const isEmpty = (value: unknown) =>
+  value === undefined || value === null || value === '' || (Array.isArray(value) && value.length === 0);
+export const equal = (a: unknown, b: unknown) => (isEmpty(a) && isEmpty(b)) || JSON.stringify(a) === JSON.stringify(b);
 export const isLocked = (state?: Submission) => !!state && ['submitting', 'unknown', 'conflict'].includes(state.status);
 function failureStatus(error: unknown): Submission['status'] {
   const failure = error as { status?: number; code?: string } | null;

@@ -2,11 +2,12 @@ import { Alert, Input, InputNumber, Select } from 'antd';
 import { ApiError, type ApiClient } from '../../foundation/client.js';
 import { FormOverlay, type FormField } from '../../foundation/FormOverlay.js';
 import { messages as commandMessages } from '../../foundation/forms/messages.js';
+import { equal } from '../../foundation/forms/store.js';
 import { useCommandForm } from '../../foundation/forms/useCommandForm.js';
 import { PageState } from '../../foundation/PageState.js';
 import { fieldAccess, type ObjectPermission } from '../../foundation/permission-model.js';
 import { useApiClient } from '../../foundation/Session.js';
-import { candidates, commandRequestBody, resourcePath, saveResource, validateValues, writablePatch } from './api.js';
+import { candidates, commandRequestBody, resourcePath, saveResource, validateValues } from './api.js';
 import { useRemote } from './hooks.js';
 import { ReferencedDimensions } from './ReferencedDimensions.js';
 import { StandardTargets } from './StandardTargets.js';
@@ -220,14 +221,14 @@ function useSaveResource(
     }
     const editable = fields.filter((field) => field.access.editable).map((field) => field.name);
     const nullable = resource.fields.filter((field) => field.nullable).map((field) => field.key);
-    // “有没有修改”：与内核的当前基线比较——冲突重读并确认后是最新记录，其余时候是打开表单时读到的记录。
+    // “有没有修改”：与内核同一套比较（含空值等价），基线是内核的当前基线——冲突重读并确认后是最新记录，其余时候是打开时的记录。
     const state = command.state;
-    const compareWith = original && state && state.status !== 'done' ? (state.baseline as Row) : original;
-    if (!Object.keys(writablePatch(values, compareWith, editable, nullable)).length)
+    const base = (original && state && state.status !== 'done' ? state.baseline : original) ?? {};
+    if (!editable.some((field) => !equal(values[field], base[field])))
       throw new ApiError(422, 'LOCAL_VALIDATION', 'fields', m.noChanges);
     // 内核持有完整字段投影：基线（打开时的记录）、草稿（表单全部可编辑字段）、重读得到的最新记录三者字段集合一致。
     // 用户改过的字段只按“草稿 vs 基线”逐字段算；409 重读后没改过的字段回填最新值（不会把表单里残留的旧值当成新修改），
-    // PATCH 只发改过的字段（内核 patchOnly）。命令体里的清空（undefined）在这里转成显式 null。
+    // PATCH 只发改过的字段（内核 patchOnly）。发送前只做序列化（空值写成 null / 省略），不改变“哪些字段算改过”。
     const result = await command.submit({
       values,
       baseline: original ?? {},

@@ -6,7 +6,9 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 import { ApiError, type Command } from '../../apps/web/src/foundation/client.js';
-import { createFormStore, type Values } from '../../apps/web/src/foundation/forms/store.js';
+import { createFormStore, equal, type Values } from '../../apps/web/src/foundation/forms/store.js';
+import { qualificationResources } from '../../apps/web/src/qualification/resources.js';
+import { commandRequestBody } from '../../apps/web/src/talent/catalog/api.js';
 
 const conflict = () => new ApiError(409, 'REVISION_CONFLICT', 'refresh', '版本已变化');
 const open: Values = { id: 'r1', name: 'A', code: 'K1', note: '备注' };
@@ -136,5 +138,56 @@ describe('AC-F141-form-kernel-recovery 空值表示统一（第 5 轮）', () =>
       },
     );
     expect(Object.keys(firstBody).sort()).toEqual(['flag', 'layerId', 'order', 'tags']);
+  });
+});
+
+describe('AC-F141-form-kernel-recovery 字段类型逐项：清回原值 / 原本就为空 = 未改', () => {
+  // [字段类型, 基线, 草稿, 是否算改过]
+  const cases: [string, unknown, unknown, boolean][] = [
+    ['单选引用：原为空，选了又清回', null, undefined, false],
+    ['单选引用：原为空，空串', null, '', false],
+    ['单选引用：原有值，清回同值', 'L1', 'L1', false],
+    ['单选引用：原有值，清空', 'L1', undefined, true],
+    ['单选引用：换成别的值', 'L1', 'L2', true],
+    ['多选：原为空数组，草稿 undefined', [], undefined, false],
+    ['多选：原为 null，草稿空数组', null, [], false],
+    ['多选：原有值，清空', ['a'], [], true],
+    ['多选：顺序变化算改', ['a', 'b'], ['b', 'a'], true],
+    ['文本：原为 null，输入后清回空串', null, '', false],
+    ['文本：原为空串，草稿 undefined', '', undefined, false],
+    ['文本：原有值，清空', '甲', '', true],
+    ['数字：原为 null，草稿 undefined', null, undefined, false],
+    ['数字：0 是有效值，不等于空', 0, undefined, true],
+    ['数字：原为空，填 0', null, 0, true],
+    ['开关：false 是有效值，不等于空', false, undefined, true],
+    ['开关：原为空，选 false', null, false, true],
+    ['开关：同值', true, true, false],
+    ['日期（字符串）：原为 null，草稿空串', null, '', false],
+    ['日期（字符串）：改日期', '2026-10-01', '2026-10-02', true],
+  ];
+  it.each(cases)('%s', (_label, baseline, draft, edited) => {
+    expect(!equal(draft, baseline)).toBe(edited);
+  });
+
+  it('序列化只决定空值怎么写进请求，不改变哪些字段算改过：命令体的键集合与“改过的字段”一致', async () => {
+    const levels = qualificationResources.find((r) => r.key === 'levels')!;
+    const store = createFormStore();
+    const send = vi.fn<(command: Command) => Promise<{ id: string }>>(async () => ({ id: 'r1' }));
+    await store.submit('k', {
+      values: { name: 'B', code: '', layerId: undefined, displayOrder: undefined, enabled: true },
+      baseline: { id: 'r1', name: 'A', code: null, layerId: 'L1', displayOrder: null, enabled: true },
+      editableFields: ['name', 'code', 'layerId', 'displayOrder', 'enabled'],
+      revision: 1,
+      businessId: 'r1',
+      patchOnly: true,
+      send,
+    });
+    const body = send.mock.calls[0]![0].body as Values;
+    // 改过的：名称、层级（清空）；没改的：编码（空串 = null）、顺序号（空）、启用（同值）
+    expect(Object.keys(body).sort()).toEqual(['layerId', 'name']);
+    const nullable = levels.fields.filter((f) => f.nullable).map((f) => f.key);
+    const sent = commandRequestBody(levels, { id: 'r1', revision: 1 }, nullable, body);
+    expect(Object.keys(sent).sort()).toEqual(['layerId', 'name']);
+    expect(sent.layerId).toBeNull();
   });
 });
