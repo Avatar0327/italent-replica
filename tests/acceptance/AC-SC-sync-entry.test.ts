@@ -779,7 +779,9 @@ describe('AC-SC-03/04 D3-M05 健康度调用人字段授权', () => {
   );
 
   it.each(['org', 'position'] as const)('%s 继任记录仍可写，不额外要求健康度 levelId 编辑权', async (kind) => {
-    const h = await setup(false, kind === 'position' ? std.orgA.id : std.orgB.id, w.user.id, { kind });
+    // 组织目标不能复用此前已同步的记录，否则 append 的 exists 回执无法证明本次写入。
+    const org = kind === 'org' ? await w.org('D3-M05 独立继任目标') : std.orgA;
+    const h = await setup(false, org.id, w.user.id, { kind });
     const caller = await w.userOf(std.successor2);
     const authorize = callerWithoutHealthField(caller);
     binding.current = { ...h.deps, authorize };
