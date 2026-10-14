@@ -69,3 +69,10 @@
     grid-template-columns: 1fr;
   }
 }
+.r3b-applicant-types {
+  display: inline-flex;
+  gap: 8px;
+}
+.r3b-applicant-types .ant-checkbox-wrapper {
+  margin-inline-start: 0;
+}
