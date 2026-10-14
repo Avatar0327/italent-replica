@@ -41,8 +41,108 @@ body {
   padding-left: 16px;
   color: var(--shell-muted);
 }
-.app-switch {
-  width: 155px;
+.app-switch.ant-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 200px;
+  padding-inline: 10px;
+  color: var(--shell-text);
+  font-size: 14px;
+}
+.app-switch.is-open.ant-btn {
+  color: #fff;
+  background: var(--shell-primary);
+}
+.app-switch-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.app-switch-caret::after {
+  content: '';
+  display: inline-block;
+  border: 4px solid transparent;
+  border-top-color: currentColor;
+  border-bottom-width: 0;
+  vertical-align: middle;
+}
+.all-menus {
+  position: fixed;
+  inset: 50px 0 0;
+  z-index: 900;
+  overflow: auto;
+  padding: 24px max(40px, calc((100vw - 1200px) / 2));
+  background: #fff;
+}
+.all-menus-search.ant-input-affix-wrapper,
+.all-menus-search.ant-input {
+  display: flex;
+  width: 360px;
+  margin: 0 auto 24px;
+}
+.all-menus-group h2 {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 16px;
+  font-size: 14px;
+}
+.all-menus-group h2::after {
+  content: '';
+  flex: 1;
+  border-top: 1px dashed var(--shell-border);
+}
+.all-menus-group h2 button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--shell-text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.all-menus-group h2 button::after {
+  content: '';
+  display: inline-block;
+  margin-left: 8px;
+  border: 4px solid transparent;
+  border-top-color: var(--shell-muted);
+  border-bottom-width: 0;
+  vertical-align: middle;
+}
+.all-menus-group h2 button[aria-expanded='false']::after {
+  transform: rotate(-90deg);
+}
+.all-menus-items {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px 16px;
+  margin-bottom: 24px;
+}
+.all-menus-items a {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 5px;
+  color: var(--shell-text);
+}
+.all-menus-items a:hover {
+  color: var(--shell-link);
+  background: var(--shell-background);
+}
+.header-icon.ant-btn {
+  color: var(--shell-muted);
+}
+.personal-menu.ant-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding-inline: 6px;
+}
+.personal-menu .ant-avatar {
+  background: #edf3ff;
+  color: var(--shell-link);
 }
 .header-spacer {
   flex: 1;
@@ -80,11 +180,6 @@ body {
 }
 .shell-sidebar.ant-layout-sider-collapsed .ant-menu-item-group-title {
   display: none;
-}
-.account-link {
-  display: block;
-  padding: 20px 24px;
-  color: var(--shell-muted);
 }
 .menu-collapse {
   position: absolute;

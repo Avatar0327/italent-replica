@@ -1,5 +1,6 @@
 import { Button, Empty, Result, Spin } from 'antd';
 import { Component, type ReactNode } from 'react';
+import { Link } from 'react-router';
 import { ApiError } from './client.js';
 import { ui } from './messages.js';
 
@@ -27,8 +28,10 @@ export function PageState({
       <Result
         status={status[kind]}
         title={title[kind]}
-        subTitle={error instanceof ApiError ? error.message : undefined}
-        extra={retry && <Button onClick={retry}>{ui.retry}</Button>}
+        subTitle={error instanceof ApiError ? error.message : kind === 'forbidden' ? ui.deniedHint : undefined}
+        extra={
+          kind === 'not-found' ? <Link to="/">{ui.home}</Link> : retry && <Button onClick={retry}>{ui.retry}</Button>
+        }
       />
     </div>
   );

@@ -25,7 +25,7 @@ for (const app of APP_ROUTES) {
     ]);
     await page.goto(app.path);
     await expect(page.locator('.shell-workspace h1').first()).toBeVisible();
-    await expect(page.getByRole('combobox', { name: '应用导航' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '应用导航' })).toBeVisible();
     await expect(page.locator('.app-switch')).toContainText(app.label);
     await expect(page.locator('.shell-workspace')).not.toContainText('正在加载');
     expect(errors).toEqual([]);
@@ -117,9 +117,9 @@ test('AC-FE-0-09 无面包屑、视图标题、紧凑主题与可收起侧栏对
   await expect(page.locator('.shell-header')).toHaveCSS('height', '50px');
   await expect(page.locator('.shell-content')).toHaveCSS('background-color', 'rgb(247, 249, 250)');
   await expect(page.locator('.page-view-trigger')).toHaveCSS('color', 'rgb(0, 84, 240)');
-  await expect(page.locator('.ant-table-thead th')).toHaveCSS('height', '40px');
-  await expect(page.locator('.ant-table-thead th')).toHaveCSS('font-size', '12px');
-  await expect(page.locator('.ant-table-thead th')).toHaveCSS('color', 'rgb(51, 56, 61)');
+  await expect(page.locator('.ant-table-thead th').first()).toHaveCSS('height', '40px');
+  await expect(page.locator('.ant-table-thead th').first()).toHaveCSS('font-size', '12px');
+  await expect(page.locator('.ant-table-thead th').first()).toHaveCSS('color', 'rgb(51, 56, 61)');
   await expect(page.locator('.shell-sidebar')).toHaveCSS('width', '200px');
   await page.getByRole('button', { name: '收起菜单' }).click();
   await expect(page.locator('.shell-sidebar')).toHaveCSS('width', '72px');
@@ -144,4 +144,29 @@ test('AC-FE-0-10 行内操作保持 40px，详情与筛选从右侧打开', asyn
   await expect(page.getByRole('dialog', { name: '高级筛选' })).toBeVisible();
   await expect(page.locator('.filter-drawer .ant-drawer-content-wrapper')).toHaveCSS('width', '500px');
   await expect(page.locator('.filter-footer button')).toHaveText(['清空', '取 消', '确 定']);
+});
+
+test('AC-FE-0-11 顶栏全部菜单面板、消息抽屉与个人菜单按原站交互', async ({ page }) => {
+  await page.goto('/staff');
+  await page.getByLabel('切换演示身份').selectOption(user);
+  const apps = page.getByRole('button', { name: '应用导航' });
+  await expect(apps).toContainText('员工');
+  await apps.click();
+  const panel = page.getByRole('dialog', { name: '全部菜单' });
+  await expect(apps).toContainText('关闭菜单');
+  await expect(panel.getByRole('region', { name: '人才管理' }).getByRole('link', { name: '人才盘点' })).toBeVisible();
+  await panel.getByRole('searchbox', { name: '搜索菜单' }).fill('职务');
+  await expect(panel.getByRole('link', { name: '人才盘点' })).toHaveCount(0);
+  await panel.getByRole('link', { name: '职务体系' }).click();
+  await expect(page).toHaveURL(/\/job/);
+  await expect(panel).toHaveCount(0);
+  await page.getByRole('button', { name: '消息', exact: true }).click();
+  const messages = page.getByRole('dialog', { name: '消息' });
+  await expect(messages.getByRole('tab', { name: '@和回复我的' })).toBeVisible();
+  await expect(messages).toContainText('暂无新消息');
+  await expect(page.locator('.message-drawer .ant-drawer-content-wrapper')).toHaveCSS('width', '500px');
+  await messages.getByRole('button', { name: '关闭' }).click();
+  await page.getByRole('button', { name: '个人菜单' }).click();
+  await page.getByRole('menuitem', { name: '个人设置' }).click();
+  await expect(page).toHaveURL(/\/settings\/account$/);
 });

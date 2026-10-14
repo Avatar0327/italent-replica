@@ -1,4 +1,4 @@
-import { Button, Input, Layout, Menu, Popover, Select, Tag } from 'antd';
+import { Button, Input, Layout, Menu, Tag } from 'antd';
 import { lazy, Suspense, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { DecisionNote, DecisionNoteToggle } from './DecisionNote.js';
@@ -10,6 +10,7 @@ import { AppPages } from './AppPages.js';
 import { appRoute } from './routes.js';
 import { ui } from './messages.js';
 import { MenuIcon } from './ViewHeading.js';
+import { AppSwitch, MessageCenter, PersonalMenu } from './HeaderParts.js';
 import './shell.css';
 
 const DemoSwitcher = import.meta.env.DEV
@@ -18,9 +19,6 @@ const DemoSwitcher = import.meta.env.DEV
 
 function Header() {
   const session = useSession();
-  const { menus } = usePermissions();
-  const location = useLocation();
-  const navigate = useNavigate();
   return (
     <Layout.Header className="shell-header">
       <Link className="shell-brand" to="/">
@@ -29,30 +27,18 @@ function Header() {
       <span className="shell-tenant" title={session.tenantId}>
         {session.tenantName || ui.tenant}
       </span>
-      <Select
-        className="app-switch"
-        variant="borderless"
-        aria-label={ui.apps}
-        placeholder={ui.apps}
-        value={menus.find((menu) => menu.path === appRoute(location.pathname)?.path)?.path}
-        onChange={(path: string) => navigate(path)}
-        options={menus.map((menu) => ({ value: menu.path, label: menu.label }))}
-      />
+      <AppSwitch />
       <Tag color="blue">{ui.demo}</Tag>
       <div className="header-spacer" />
+      {/* 原站可搜菜单与同事；复刻暂无全局搜索接口，保持禁用（见后端缺口）。 */}
       <Input className="shell-search" aria-label={ui.search} placeholder={ui.search} disabled prefix="⌕" />
-      <Popover content={ui.noMessages} trigger="click">
-        <Button type="text" aria-label={ui.messages}>
-          {ui.messages}
-        </Button>
-      </Popover>
-      {DemoSwitcher ? (
+      <MessageCenter />
+      {DemoSwitcher && (
         <Suspense fallback={null}>
           <DemoSwitcher />
         </Suspense>
-      ) : (
-        <Link to="/settings/account">{session.displayName || ui.identity}</Link>
       )}
+      <PersonalMenu />
       <DecisionNoteToggle />
     </Layout.Header>
   );
@@ -105,9 +91,6 @@ export function Shell() {
             items={groups}
             onClick={({ key }) => navigate(key)}
           />
-          <Link className="account-link" to="/settings/account" aria-label={ui.account}>
-            {collapsed ? <MenuIcon /> : ui.account}
-          </Link>
           <Button
             className="menu-collapse"
             type="text"
