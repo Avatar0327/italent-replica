@@ -8,6 +8,7 @@ import { ListPage } from './templates.js';
 import { ui } from './messages.js';
 
 const Account = lazy(() => import('../account/AccountPage.js').then((m) => ({ default: m.AccountPage })));
+const Approval = lazy(() => import('../approval/ApprovalPage.js').then((m) => ({ default: m.ApprovalPage })));
 const Evaluation = lazy(() => import('../evaluation/EvaluationPage.js').then((m) => ({ default: m.EvaluationPage })));
 const Job = lazy(() => import('../job/JobPage.js').then((m) => ({ default: m.JobPage })));
 const Manager = lazy(() => import('../self-service/pages/ManagerPage.js').then((m) => ({ default: m.ManagerPage })));
@@ -21,18 +22,20 @@ const TalentReview = lazy(() =>
   import('../talent-review/TalentReviewPage.js').then((m) => ({ default: m.TalentReviewPage })),
 );
 const Transfer = lazy(() => import('../transfer/TransferPage.js').then((m) => ({ default: m.TransferPage })));
+// 页面与布局同行登记，合并页面片时不再维护另一处路由条件。
 const existing = {
-  evaluation: Evaluation,
-  job: Job,
-  manager: Manager,
-  org: Org,
-  self: Self,
-  settings: Settings,
-  staff: Staff,
-  survey360: Survey,
-  talent: Talent,
-  'talent-review': TalentReview,
-  transfer: Transfer,
+  approval: { Page: Approval, legacy: false },
+  evaluation: { Page: Evaluation, legacy: false },
+  job: { Page: Job, legacy: true },
+  manager: { Page: Manager, legacy: false },
+  org: { Page: Org, legacy: true },
+  self: { Page: Self, legacy: false },
+  settings: { Page: Settings, legacy: true },
+  staff: { Page: Staff, legacy: false },
+  survey360: { Page: Survey, legacy: false },
+  talent: { Page: Talent, legacy: true },
+  'talent-review': { Page: TalentReview, legacy: true },
+  transfer: { Page: Transfer, legacy: false },
 };
 
 function LandingPage({ title }: { title: string }) {
@@ -65,20 +68,15 @@ export function AppPages() {
       <Suspense fallback={<PageState kind="loading" />}>
         <Routes>
           {APP_ROUTES.map((route) => {
-            const Page = existing[route.id as keyof typeof existing];
+            const page = existing[route.id as keyof typeof existing];
+            const Page = page?.Page;
             return (
               <Route
                 key={route.id}
                 path={route.path}
                 element={
                   Page ? (
-                    <div
-                      className={
-                        ['evaluation', 'manager', 'self', 'staff', 'survey360'].includes(route.id)
-                          ? undefined
-                          : 'legacy-page'
-                      }
-                    >
+                    <div className={page.legacy ? 'legacy-page' : undefined}>
                       <Page />
                     </div>
                   ) : (
