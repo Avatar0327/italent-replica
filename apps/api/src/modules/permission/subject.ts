@@ -1,6 +1,7 @@
 import { objectPermissionSets, permissionSet } from './sets.js';
 import { sql } from '@italent/db';
 import { scopeRows } from './scope-hierarchy.js';
+import { employeeIdentityProfileId } from './employee-identity.js';
 import {
   managerIdentity,
   defaultManagerPermissions,
@@ -91,14 +92,26 @@ async function loadObjectPermissionRows(
   );
 }
 
+export interface SubjectOptions {
+  /** 叠加员工自动身份（employee_self_service）的对象权限；需要同时传 managerQuery 以带上租户。 */
+  employeeIdentity?: boolean;
+}
+
 /** 用户有效授权带来的对象权限，各自带上所属身份登记的应用（判定应用边界用）。 */
 export async function loadGrantedObjectPermissions(
   tx: Tx,
   userId: string,
   objectCode?: string,
   managerQuery?: ManagerQuery,
+  options: SubjectOptions = {},
 ): Promise<GrantedObjectPermission[]> {
   const profileIds = await loadActiveProfileIds(tx, userId);
+  // F-141 ①（DEC-500）：员工自动身份只在调用方明确要求时叠加（功能权限查询 /me/objects）。授权器与快照不叠加，
+  // 以免员工因此获得 HR 接口的功能通过或多出应用入口；员工的本人范围始终只在本人入口里。
+  if (options.employeeIdentity && managerQuery) {
+    const employeeProfile = await employeeIdentityProfileId(tx, managerQuery.tenantId, userId);
+    if (employeeProfile && !profileIds.includes(employeeProfile)) profileIds.push(employeeProfile);
+  }
   let defaults: GrantedObjectPermission[] = [];
   if (managerQuery && (await managerIdentity(tx, managerQuery)).active) {
     const [profile] = scopeRows<{ id: string }>(
@@ -129,8 +142,9 @@ export async function loadSubject(
   userId: string,
   objectCode?: string,
   managerQuery?: ManagerQuery,
+  options: SubjectOptions = {},
 ): Promise<PermissionSubject> {
   const adminRoles = await loadAdminRoles(tx, userId);
-  const objectPermissions = await loadGrantedObjectPermissions(tx, userId, objectCode, managerQuery);
+  const objectPermissions = await loadGrantedObjectPermissions(tx, userId, objectCode, managerQuery, options);
   return { adminRoles, objectPermissions };
 }
