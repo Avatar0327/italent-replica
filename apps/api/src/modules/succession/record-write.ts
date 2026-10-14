@@ -30,10 +30,11 @@ interface Target {
   readonly kind: SuccessionType;
   readonly id: string;
 }
-const keyOf = (target: Target) => `${target.kind}:${target.id}`;
+type LockTarget = { readonly kind: SuccessionType | 'org_health'; readonly id: string };
+const keyOf = (target: LockTarget) => `${target.kind}:${target.id}`;
 
 /** 目标级序列化锁行：首次 INSERT … ON CONFLICT DO NOTHING 再 FOR UPDATE，按 (kind, id) 升序逐个取（§7）。 */
-export async function lockTargets(tx: Tx, tenantId: string, targets: readonly Target[]): Promise<void> {
+export async function lockTargets(tx: Tx, tenantId: string, targets: readonly LockTarget[]): Promise<void> {
   const unique = [...new Map(targets.map((target) => [keyOf(target), target])).values()].sort((a, b) =>
     keyOf(a) < keyOf(b) ? -1 : 1,
   );
