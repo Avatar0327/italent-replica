@@ -74,14 +74,14 @@ HR 可以催办、跳转、转交、开启下个阶段或终止。IDP 在原站�
 
 | 能力 | 档位 | 依据（代码 / 注释键） | 相关 DEC | 说明 |
 |---|---|---|---|---|
-| 发展计划流程列表 / 详情（子流程顺序、开启方式与规则、关联审批流、结束通知模板） | 待 FE-R3d 合入后核对 | 后端 L3：`routes.ts`（`/processes`、`/approval-processes`）、`process-service.ts` | DEC-296⑤ | 无演示桩；`demo-stubs/` 下没有 IDP 文件 |
+| 发展计划流程列表 / 详情（子流程顺序、开启方式与规则、关联审批流、结束通知模板） | 待 FE-R3d 合入后核对 | 后端 L3：`routes.ts`（`/processes`、`/approval-processes`）、`process-service.ts` | DEC-296⑤、DEC-309④ | 无演示桩；`demo-stubs/` 下没有 IDP 文件 |
 | 计划模板列表 / 详情（模块、通用目标、节点按钮、复制、发布 / 取消发布） | 待 FE-R3d 合入后核对 | 后端 L3：`routes.ts`（`/templates*`）、`template-service.ts` | DEC-296④ | |
 | 发展计划列表（三页签）、新建、开始、删除 | 待 FE-R3d 合入后核对 | 后端 L3：`plan-routes.ts`、`plan-service.ts` | — | |
-| 计划详情（阶段、当前节点 / 努力提升中、目标 / 任务 / 回顾、综述、关键信息） | 待 FE-R3d 合入后核对 | 后端 L3：`plan-view.ts`、`read-model.ts` | DEC-309 | 储备人才区块为空（R3-T06 未做） |
+| 计划详情（阶段、当前节点 / 努力提升中、目标 / 任务 / 回顾、综述、关键信息） | 待 FE-R3d 合入后核对 | 后端 L3：`plan-view.ts`、`read-model.ts` | — | 储备人才区块为空（R3-T06 未做） |
 | 流程干预：催办、跳转、转交、开启下个阶段、终止；统一下发任务 | 待 FE-R3d 合入后核对 | 后端 L3：`intervention-service.ts`、`plan-routes.ts#registerInterventions` | DEC-321、DEC-354、DEC-358 | |
 | 我的发展计划（员工 / 指导人列表、节点内编辑目标与回顾） | 待 FE-R3d 合入后核对 | 后端 L3：`/my-plans`、`execution-service.ts` | DEC-307、DEC-318 | 节点提交走审批中心（`approval-adapter.ts`，FE-R1c 页面） |
 | 阶段定时开启（租户时区凌晨 2 点，失败记 failed，HR 手动开启） | L3 | `scheduler.ts`（只经平台路径触发） | DEC-296⑤、DEC-052、DEC-056 | |
-| 关键信息维护：带教、职业发展、轮岗（判重、管理范围） | L3 | `key-info-routes.ts`、`key-info-service.ts`、`key-info-scope.ts` | DEC-309 | FE-R3d 规划未列这三类维护页，可能未做 |
+| 关键信息维护：带教、职业发展、轮岗（判重、管理范围） | L3 | `key-info-routes.ts`、`key-info-service.ts`、`key-info-scope.ts` | — | FE-R3d 规划未列这三类维护页，可能未做 |
 | 子流程结束通知模板配置 | L3 | #131（F-047） | — | 只有配置；发送消费者未做（F-059） |
 | 胜任力库目标候选 | L2 | `competency.ts#registerIdpCompetencyProvider` | DEC-307 | 端口已留，生产未登记提供方，候选为空；只在 `AC-IDP-K14` 测试中登记 |
 | 盘点结果模块 | L2 | `read-model.ts`（talent_review 配置项） | — | 模板可配时间基准与盘点分类；计划详情不取盘点结果 |
