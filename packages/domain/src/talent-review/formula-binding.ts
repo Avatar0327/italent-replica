@@ -139,6 +139,15 @@ const acceptedByEngine = (path: string) =>
 
 const normalizeId = (id: string) => id.toLowerCase();
 
+/**
+ * 带连字符的字段名按提交人可见的字段判断（#89-4）：`盘点对象.能力得分-盘点对象.绩效得分` 在“能力得分-盘点对象”不是
+ * 可见字段时按减法，`盘点对象.问卷-他评总分` 是可见字段时按一个字段名。看不到的字段不算，避免借此探测字段是否存在。
+ */
+function existingFields(options: BindFormulaOptions): (path: string) => boolean {
+  const names = new Set(options.visibleFields.map((field) => `${FORMULA_OBJECT}.${field.name}`));
+  return (path) => names.has(path) || path in FORMULA_CONTEXT_FIELDS || options.versionField?.(path) === true;
+}
+
 /** 先于 HIDDEN_FIELD 报告的前置检查：语法、函数是否存在、参数个数（契约 §1.5）；参数类型等语义问题排在它之后（§1.6）。 */
 const PRECHECK_CODES: ReadonlySet<string> = new Set([
   'SYNTAX_ERROR',
@@ -149,10 +158,12 @@ const PRECHECK_CODES: ReadonlySet<string> = new Set([
 
 /** 把输入文本里的字段引用绑定成 ID（契约 §1.5）。第一个失败即返回；语法正确时 HIDDEN_FIELD 优先于其他语义问题（§1.6）。 */
 export function bindFormula(source: string, options: BindFormulaOptions): BindResult {
-  const parsed = parseFormula(source, { placeholders: true });
+  const fieldExists = existingFields(options);
+  const parsed = parseFormula(source, { placeholders: true, fieldExists });
   if (!parsed.ok) return invalid(fromSyntax(parsed.errors[0]!));
   const checked = validateFormula(source, {
     isKnownField: (path) => acceptedByEngine(path) || options.versionField?.(path) === true,
+    fieldExists,
     placeholders: true,
   });
   const engineErrors = checked.ok ? [] : checked.errors;
@@ -340,7 +351,8 @@ function renderBound(stored: string, options: RenderFormulaOptions): RenderResul
 }
 
 function renderLegacy(stored: string, options: RenderFormulaOptions): RenderResult {
-  const parsed = parseFormula(stored);
+  // 连字符一律并进字段名（#89-4 之前的读法）：渲染时宁可多遮，不把看不到的字段名拆出一截原样显示
+  const parsed = parseFormula(stored, { fieldExists: () => true });
   if (!parsed.ok) {
     const text = options.allFieldsVisible === true ? stored : FORMULA_REPAIR_NOTICE;
     return { ok: true, text, bindings: [], repairNeeded: true };

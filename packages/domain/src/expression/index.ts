@@ -45,7 +45,6 @@ export {
   CONVERSION_MESSAGE,
   FAILURE_CODES,
   FAILURE_PREFIX,
-  HYPHEN_SUBTRACTION_HINT,
   PARSER_MESSAGE,
   type ComputationFailure,
   type FailureCode,

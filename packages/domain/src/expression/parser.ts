@@ -10,9 +10,13 @@
  *   primary := 数字 | 字符串 | 真 | 假 | '(' expr ')' | 调用 | 字段引用 | 标识符
  * 面板逻辑函数 AND / OR / IF（`26` §8.6）与关键字同名：在操作数位置、后跟左括号的 AND( / OR( 是函数调用；
  * IF( 在括号内有顶层逗号时是函数调用（IF(条件, 值1, 值2)），否则仍是 if … then … else。
+ * 字段相减不加空格（#89-4，R3e 实测原站按减法）：`对象.字段` 之后紧挨着的 `-名字`，只有并起来的完整路径是已存在字段
+ * （调用方的字段目录或数据源固定字段，如 360结果.问卷-他评总分）时才并成一个字段名，否则是减号；在这里解析定型，
+ * 求值时不再猜。两种解释同时成立时已存在字段优先（原站怎么消歧未验证）。
  */
 import type { BinaryOperator, CallNode, Definition, ExprNode, IfBranch, Program } from './ast.js';
-import { HYPHEN_SUBTRACTION_HINT, type SourcePosition } from './failures.js';
+import type { SourcePosition } from './failures.js';
+import { isDataSourceField } from './source-fields.js';
 import {
   HIDDEN_FIELD_OWNER,
   HIDDEN_FIELD_PLACEHOLDER,
@@ -31,7 +35,33 @@ export interface ParseOptions {
   readonly stored?: boolean;
   /** 输入模式识别占位符 `〔不可见字段〕`（F-082 新路径才开；缺省不识别，B5 路径逐字不变）。 */
   readonly placeholders?: boolean;
+  /**
+   * 字段目录（#89-4）：带连字符的完整路径是否为已存在字段，决定 `对象.甲-乙` 是一个字段名还是减法。
+   * 数据源固定字段（360结果.问卷-他评总分 等）总是已存在；不传时其余一律按减法。
+   */
+  readonly fieldExists?: (path: string) => boolean;
 }
+
+/** 连字符字段的判定：数据源固定字段 + 调用方的字段目录；目录是使用方代码，出错时按已存在（不改成减法，留给未知字段检查）。 */
+function hyphenResolver(fieldExists: ((path: string) => boolean) | undefined): (path: string) => boolean {
+  return (path) => {
+    if (isDataSourceField(path)) return true;
+    try {
+      return fieldExists?.(path) === true;
+    } catch {
+      return true;
+    }
+  };
+}
+
+/** 能接在连字符后面、并回字段名的词：名字（含与关键字同形的名字）和不带小数点、百分号的整数。 */
+const isNamePiece = (token: Token) =>
+  token.kind === 'identifier' ||
+  (token.kind === 'keyword' && !/[&|!]/.test(token.text)) ||
+  (token.kind === 'number' && /^\d+$/.test(token.text));
+
+/** 两个词在源码里紧挨着（中间没有空白）。 */
+const adjacent = (left: Token, right: Token) => left.offset + left.text.length === right.offset;
 
 const DEF_NAMES = new Set(['def', '定义']);
 const COMPARISONS = new Set(['=', '!=', '<', '>', '<=', '>=']);
@@ -47,7 +77,10 @@ class Parser {
   private index = 0;
   private depth = 0;
 
-  constructor(private readonly tokens: readonly Token[]) {}
+  constructor(
+    private readonly tokens: readonly Token[],
+    private readonly isField: (path: string) => boolean = hyphenResolver(undefined),
+  ) {}
 
   parseProgram(): Program {
     const definitions: Definition[] = [];
@@ -84,17 +117,7 @@ class Parser {
   private error(message: string, token: Token = this.peek()): never {
     const length = Math.max(token.text.length, 1);
     const position: SourcePosition = { line: token.line, column: token.column, offset: token.offset };
-    const detail = this.callAfterHyphenatedField(token) ? `${message}${HYPHEN_SUBTRACTION_HINT}` : message;
-    throw new SyntaxIssueError({ code: 'SYNTAX_ERROR', message: detail, length, ...position });
-  }
-
-  /**
-   * 报错处是紧跟在含“-”字段名后面的括号（只有成员位置的名字会带连字符，DEC-228）：
-   * 多半是想减去一个函数调用却没加空格，如 盘点对象.得分-转换为数字("2")。
-   */
-  private callAfterHyphenatedField(token: Token): boolean {
-    const previous = this.tokens[this.index - 1];
-    return token.kind === 'lparen' && previous?.kind === 'identifier' && previous.text.includes('-');
+    throw new SyntaxIssueError({ code: 'SYNTAX_ERROR', message, length, ...position });
   }
 
   private expect(kind: Token['kind'], message: string): Token {
@@ -325,12 +348,41 @@ class Parser {
         hidden = true;
         break;
       }
-      last = this.expect('identifier', '“.”后面缺少字段名');
+      last = this.memberName(path, this.expect('identifier', '“.”后面缺少字段名'));
       path.push(String(last.value));
     }
     if (path.length === 1) return { type: 'identifier', name: path[0]!, pos: this.pos(first) };
     const node = { type: 'field' as const, path, text: path.join('.'), end: last.offset + last.text.length };
     return hidden ? { ...node, hidden: true, pos: this.pos(first) } : { ...node, pos: this.pos(first) };
+  }
+
+  /**
+   * 成员名后紧挨着的 `-名字-名字…`：从最长的一段起试，并起来的完整路径是已存在字段就并成一个名字（#89-4），
+   * 都不是则原样返回，“-”留给加减法。返回的词覆盖并入的全部原文（起点不变），供字段引用的 end 使用。
+   */
+  private memberName(path: readonly string[], name: Token): Token {
+    const ends: number[] = [];
+    let previous = name;
+    for (let at = this.index; ; at += 2) {
+      const dash = this.tokens[at];
+      const piece = this.tokens[at + 1];
+      if (dash?.kind !== 'operator' || dash.text !== '-' || !piece || !isNamePiece(piece)) break;
+      if (!adjacent(previous, dash) || !adjacent(dash, piece)) break;
+      ends.push(at + 1);
+      previous = piece;
+    }
+    // 并入的词在源码里紧挨着，原文就是各词原文直接拼接
+    const start = this.index - 1;
+    for (const end of ends.reverse()) {
+      const text = this.tokens
+        .slice(start, end + 1)
+        .map((token) => token.text)
+        .join('');
+      if (!this.isField([...path, text].join('.'))) continue;
+      this.index = end + 1;
+      return { ...name, text, value: text };
+    }
+    return name;
   }
 
   /** 存储模式的字段句柄：一个完整的字段引用，text 等于句柄原文，用作依赖排序、诊断和类型目录里的字段键。 */
@@ -398,7 +450,7 @@ export function parseFormula(source: string, options: ParseOptions = {}): ParseR
   const scanned = scan(source, options.stored === true, options.placeholders === true);
   if (!scanned.ok) return { ok: false, errors: [scanned.error] };
   try {
-    return { ok: true, program: new Parser(scanned.tokens).parseProgram() };
+    return { ok: true, program: new Parser(scanned.tokens, hyphenResolver(options.fieldExists)).parseProgram() };
   } catch (error) {
     if (error instanceof SyntaxIssueError) return { ok: false, errors: [error.issue] };
     // 兜底（astra 首审 P2-5）：解析器不应再抛其他异常；万一出现也只给结构化结果，不透出内容

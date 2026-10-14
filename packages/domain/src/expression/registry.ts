@@ -101,6 +101,8 @@ export interface FunctionSpec {
    * 计算时非日期值与非日期来源的空值计算失败。
    */
   readonly dateParams?: readonly number[];
+  /** 从这个下标起的参数不允许引用 Def 变量（IN / NOTIN 的候选值，R3e），保存时报参数错误。 */
+  readonly variablesForbiddenFrom?: number;
   /** 函数自己的保存检查（参数下标之外的规则），按统一类型推导的结果判断。 */
   readonly checkArgs?: (args: readonly ExprNode[], infer: (node: ExprNode) => InferredType) => readonly ArgumentIssue[];
   readonly implement: (call: FunctionCall) => ExprValue;
