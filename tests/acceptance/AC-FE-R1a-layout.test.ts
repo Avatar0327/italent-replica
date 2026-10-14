@@ -154,10 +154,11 @@ describe('AC-FE-R1a-23 职务、职位表单按原站分组与排序', () => {
       { key: 'duty', fields: ['responsibilities', 'requirements'] },
     ]);
   });
-  it('职位：汇报关系单独成组；未截到表单的对象保持原顺序', async () => {
-    const { jobFormGroups } = await job();
-    const [basic, reporting] = jobFormGroups('positions');
-    expect(basic.fields.slice(0, 12)).toEqual([
+  it('职位表单：上级职位、虚线上级排在基本信息里，汇报关系只在详情分区；未截到表单的对象保持原顺序', async () => {
+    const { jobFormGroups, jobLabel } = await job();
+    const groups = jobFormGroups('positions');
+    expect(groups.map((group: { key: string }) => group.key)).toEqual(['basic']);
+    expect(groups[0].fields.slice(0, 15)).toEqual([
       'code',
       'name',
       'establishedOn',
@@ -168,13 +169,17 @@ describe('AC-FE-R1a-23 职务、职位表单按原站分组与排序', () => {
       'levelTypeId',
       'minLevelId',
       'maxLevelId',
+      'adminParent',
       'isKey',
+      'dottedParent',
       'isConfidential',
+      'displayOrder',
     ]);
-    expect(reporting).toEqual({
-      key: 'reporting',
-      fields: ['adminParent', 'adminSequence', 'dottedParent', 'dottedSequence'],
-    });
+    expect(groups[0].fields).toEqual(expect.arrayContaining(['adminSequence', 'dottedSequence', 'stopDate', 'enabled']));
+    const formLabels = groups[0].fields.map((field: string) => jobLabel('positions', field, 'form'));
+    expect(formLabels).toEqual(expect.arrayContaining(['上级职位', '虚线上级']));
+    expect(formLabels).not.toContain('直线上级');
+    expect(jobLabel('positions', 'adminParent')).toBe('直线上级');
     expect(jobFormGroups('grades')).toEqual([
       {
         key: 'basic',
@@ -238,7 +243,9 @@ describe('AC-FE-R1a-24 职务、职位详情按原站分区', () => {
     const sections = jobDetailSections('positions', pageAccess(permission(hidden)), { name: '合成职位' });
     expect(sections).toEqual([{ key: 'basic', fields: ['name'] }]);
   });
-  it('职务详情的职责描述与任职要求放在职责说明分区', async () => {
+  it('职务详情的职责描述与任职要求放在「职位说明」分区（原站叫法）', async () => {
+    const { pageText } = await import(resolve('apps/web/src/job/messages.ts'));
+    expect(pageText.duty).toBe('职位说明');
     const { jobDetailSections } = await job();
     const { pageAccess } = await org();
     const sections = jobDetailSections('posts', pageAccess(permission(ALL)), position);
@@ -269,6 +276,7 @@ describe('AC-FE-R1a-25 组织列表与详情字段按原站', () => {
       'startDate',
       'stopDate',
       'enabled',
+      'personInChargeId',
       'fullName',
       'remarks',
     ]);
@@ -286,6 +294,7 @@ describe('AC-FE-R1a-25 组织列表与详情字段按原站', () => {
     expect(orgLabel('location', 'detail')).toBe('所在地点');
     expect(orgLabel('fullName', 'detail')).toBe('组织全称');
     expect(orgLabel('enabled', 'detail')).toBe('状态');
+    expect(orgLabel('personInChargeId', 'detail')).toBe('负责人');
   });
 });
 
@@ -304,5 +313,84 @@ describe('AC-FE-R1a-26 组织行操作与详情按钮共用权限判定', () => 
     expect(orgActions(pageAccess(permission(ALL, noEffective)), row)).toEqual(['edit']);
     const noEstablished = ALL.filter((field) => field !== 'establishedOn');
     expect(orgActions(pageAccess(permission(ALL, noEstablished)), row)).toEqual(['change', 'disable']);
+  });
+});
+
+describe('AC-FE-R1a-31 组织详情展示负责人，按字段查看权裁剪', () => {
+  it('无负责人查看权时详情不出该字段（反向）', async () => {
+    const { orgDetailFields, pageAccess } = await org();
+    const hidden = ALL.filter((field) => field !== 'personInChargeId');
+    expect(orgDetailFields(pageAccess(permission([...ALL, 'personInChargeId'])))).toContain('personInChargeId');
+    expect(orgDetailFields(pageAccess(permission(hidden)))).not.toContain('personInChargeId');
+  });
+});
+
+describe('AC-FE-R1a-30 组织新建、新建下级按权限出入口，请求体带行政维度上级', () => {
+  const fields = [...ALL, 'shortName', 'personInChargeId', 'hrbpId'];
+  function access(editable = fields, create = true, buttons = [{ buttonCode: 'create', level: 'list' }]) {
+    return {
+      objectCode: 'TenantBase.Organization',
+      dataOperations: { create },
+      viewableFields: fields,
+      editableFields: editable,
+      buttons,
+    };
+  }
+  it('有新建权、列表新建按钮且名称与上级可编辑时才出新建 / 新建下级', async () => {
+    const { orgCreatable, pageAccess } = await org();
+    expect(orgCreatable(pageAccess(access()))).toBe(true);
+    expect(orgCreatable(pageAccess(access(fields, false)))).toBe(false);
+    expect(orgCreatable(pageAccess(access(fields, true, [])))).toBe(false);
+    expect(orgCreatable(pageAccess(access(fields.filter((field) => field !== 'parents'))))).toBe(false);
+    expect(orgCreatable(pageAccess(access(fields.filter((field) => field !== 'name'))))).toBe(false);
+    expect(orgCreatable(pageAccess(undefined))).toBe(false);
+  });
+  it('请求体按接口字段组装：名称去空格、ID 小写、空值不发、上级放进 parents.admin', async () => {
+    const { orgCreateBody } = await org();
+    const parent = 'AAAAAAAA-0000-4000-8000-000000000001';
+    expect(
+      orgCreateBody({
+        name: ' 合成新组织 ',
+        shortName: '合成',
+        code: '',
+        establishedOn: '2026-10-12',
+        adminParent: parent,
+        personInChargeId: 'BBBBBBBB-0000-4000-8000-000000000002',
+        hrbpId: undefined,
+        location: null,
+      }),
+    ).toEqual({
+      name: '合成新组织',
+      shortName: '合成',
+      establishedOn: '2026-10-12',
+      personInChargeId: 'bbbbbbbb-0000-4000-8000-000000000002',
+      parents: { admin: { parentId: parent.toLowerCase() } },
+    });
+  });
+});
+
+describe('AC-FE-R1a-33 无名称查看权时不按名称筛选', () => {
+  it('职务体系查询不带 name', async () => {
+    const { jobCatalogQuery } = await job();
+    const filters = { asOf: '2026-10-14', page: 1, pageSize: 15, name: '合成', enabled: 'true' };
+    expect(jobCatalogQuery('posts', filters, false)).toBe('asOf=2026-10-14&page=1&pageSize=15&enabled=true');
+    expect(jobCatalogQuery('posts', filters)).toContain('name=');
+  });
+  it('组织查询不带 name', async () => {
+    const { orgCatalogQuery } = await org();
+    const filters = {
+      asOf: '2026-10-14',
+      dimension: 'admin',
+      page: 1,
+      pageSize: 15,
+      includeDisabled: false,
+      name: '合成',
+    };
+    expect(orgCatalogQuery(filters, false)).toBe(
+      'asOf=2026-10-14&dimension=admin&page=1&pageSize=15&includeDisabled=false',
+    );
+    expect(orgCatalogQuery(filters, true)).toBe(
+      'asOf=2026-10-14&dimension=admin&page=1&pageSize=15&includeDisabled=false&name=%E5%90%88%E6%88%90',
+    );
   });
 });
