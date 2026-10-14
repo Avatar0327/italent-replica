@@ -21,7 +21,7 @@ export async function persistTarget(
   tx: Tx,
   ctx: TargetContext,
   target: SyncTarget,
-  result: { results: ItemResult[]; ended: string[]; failure?: PlanFailure },
+  result: { results: ItemResult[]; ended: string[]; failure?: PlanFailure; manualKept?: boolean },
 ) {
   const rows: OutcomeItem[] = [];
   for (const r of result.results) {
@@ -40,7 +40,11 @@ export async function persistTarget(
       })
       .where(and(eq(items.tenantId, ctx.batch.tenantId), eq(items.id, r.item.id)));
   }
-  const row = outcome(ctx, 'target', target.targetRowKey, result.failure);
+  const health = target.targetKind === 'org_health';
+  const row = {
+    ...outcome(ctx, health ? 'org_health' : 'target', health ? target.targetId : target.targetRowKey, result.failure),
+    ...(result.manualKept ? { errorParams: { manualKept: true } } : {}),
+  };
   rows.push(row);
   await tx
     .update(targets)
@@ -48,7 +52,7 @@ export async function persistTarget(
       status: result.failure ? 'failed' : 'done',
       retryable: row.recovery === 'retry_same_run',
       errorCode: result.failure?.code ?? null,
-      errorParams: result.failure?.params ?? null,
+      errorParams: row.errorParams ?? null,
       endedRecordIds: result.ended,
       executionNo: ctx.batch.executionNo!,
       pageCommandId: ctx.commandId,
