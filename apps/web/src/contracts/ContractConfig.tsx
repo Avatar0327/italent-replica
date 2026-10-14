@@ -1,4 +1,4 @@
-import { Alert, Button, Drawer, Pagination, Space, Switch, Table } from 'antd';
+import { Alert, Button, Drawer, Pagination, Space, Table } from 'antd';
 import { useState } from 'react';
 import { usePermissions } from '../foundation/Permissions.js';
 import { PageState } from '../foundation/PageState.js';
@@ -8,7 +8,8 @@ import { configAccess, configObjects, contractApi, value, type Config, type Row 
 import { useRead } from './useRead.js';
 import { m } from './messages.js';
 import { Fields } from './parts.js';
-import { ConfigForm, RowCommand } from './ConfigForms.js';
+import { ConfigForm, RowCommand, configFields } from './ConfigForms.js';
+import { RenewalSection, RuleMove, movePriority } from './RuleControls.js';
 import { RefLabel, RefLabels, refPaths } from './references.js';
 
 const pageSize = 15;
@@ -20,14 +21,16 @@ export function ContractConfig({ kind }: { kind: Config }) {
   const [editing, setEditing] = useState<{ row?: Row }>();
   const path = kind === 'settings' ? contractApi.settings : `${contractApi[kind]}?page=${page}&pageSize=${pageSize}`;
   const result = useRead<Row & Partial<PageResult<Row>>>(path);
-  const settingPermission = usePermissions(configObjects.settings);
-  const settings = useRead<Row>(
-    kind === 'rules' && settingPermission.snapshot.objects[configObjects.settings] ? contractApi.settings : null,
-  );
   const rows = result.data?.items ?? [];
   const access = configAccess(permission.snapshot.objects[configObjects[kind]]);
   const canCreate = kind !== 'settings' && access.create;
   const canEdit = access.update;
+  // 移序发完整请求体：规则字段须全部可读、优先级可写。
+  const movable =
+    kind === 'rules' &&
+    canEdit &&
+    configFields.rules.every((key) => permission.field(key).visible) &&
+    permission.field('priority').editable;
   return (
     <section className="contract-card">
       <header className="contract-heading">
@@ -52,9 +55,7 @@ export function ContractConfig({ kind }: { kind: Config }) {
       )}
       {!result.error && !result.loading && kind !== 'settings' && (
         <>
-          {kind === 'rules' && (
-            <RenewalSwitch settings={settings} visible={settingPermission.field('autoRenew').visible} />
-          )}
+          {kind === 'rules' && <RenewalSection />}
           {kind === 'types' && <p>{m.displayOrderGap}</p>}
           <ConfigTable
             kind={kind}
@@ -63,6 +64,7 @@ export function ContractConfig({ kind }: { kind: Config }) {
             setRule={setRule}
             edit={canEdit ? (row) => setEditing({ row }) : undefined}
             removable={kind === 'rules' && canEdit}
+            moves={movable ? ruleMoves(rows, page, result.data?.total) : undefined}
             toggle={kind === 'types' && canEdit && canToggle(permission.field)}
             reload={result.refresh}
           />
@@ -84,6 +86,14 @@ export function ContractConfig({ kind }: { kind: Config }) {
       )}
     </section>
   );
+}
+/** 上移只在第一页能确认前面没有别的规则，下移只在最后一页能确认后面没有。 */
+function ruleMoves(rows: Row[], page: number, total?: number) {
+  const lastPage = typeof total === 'number' && (page - 1) * pageSize + rows.length >= total;
+  return (index: number) => ({
+    up: movePriority(rows, index, -1, page === 1),
+    down: movePriority(rows, index, 1, lastPage),
+  });
 }
 /** 规则列表有 total；类型列表接口不返回 total（后端缺口），按“本页满 15 条即可能有下一页”翻页。 */
 function ConfigPagination({
@@ -149,22 +159,6 @@ function SettingsFields({ row, allowed }: { row: Row; allowed: readonly string[]
     </>
   );
 }
-function RenewalSwitch({ settings, visible }: { settings: ReturnType<typeof useRead<Row>>; visible: boolean }) {
-  return (
-    <>
-      <h2>{m.fields.autoRenew}</h2>
-      <p>{m.renewalHint}</p>
-      {settings.error ? (
-        <PageState kind="error" error={settings.error} retry={settings.refresh} />
-      ) : (
-        visible &&
-        typeof settings.data?.autoRenew === 'boolean' && (
-          <Switch aria-label={m.fields.autoRenew} disabled checked={settings.data.autoRenew} />
-        )
-      )}
-    </>
-  );
-}
 function ConfigTable({
   kind,
   rows,
@@ -173,6 +167,7 @@ function ConfigTable({
   edit,
   removable,
   toggle,
+  moves,
   reload,
 }: {
   kind: Config;
@@ -182,6 +177,7 @@ function ConfigTable({
   edit?: (row: Row) => void;
   removable: boolean;
   toggle: boolean;
+  moves?: (index: number) => { up?: number | null; down?: number | null };
   reload(): void;
 }) {
   const keys =
@@ -211,7 +207,7 @@ function ConfigTable({
           key: 'open',
           title: m.operation,
           width: 200,
-          render: (_: unknown, row: Row) => (
+          render: (_: unknown, row: Row, index: number) => (
             <Space size={4}>
               {kind === 'rules' && (
                 <Button type="link" onClick={() => setRule(row)}>
@@ -225,6 +221,7 @@ function ConfigTable({
               )}
               {toggle && typeof row.enabled === 'boolean' && <RowCommand kind="toggle" row={row} onDone={reload} />}
               {removable && <RowCommand kind="delete" row={row} onDone={reload} />}
+              {moves && <RuleMove row={row} {...moves(index)} onDone={reload} />}
             </Space>
           ),
         },

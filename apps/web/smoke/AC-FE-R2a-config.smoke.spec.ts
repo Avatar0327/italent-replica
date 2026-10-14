@@ -345,3 +345,97 @@ test('AC-FE-R2a-21 规则删除冲突后可重读、核对、重提', async ({ p
     ['DELETE', String(ruleRow.revision + 1)],
   ]);
 });
+
+const renewal = (page: Page) => page.getByRole('switch', { name: '合同到期自动续签', exact: true });
+test('AC-FE-R2a-25 规则页自动续签开关按差异保存，带设置版本，回执按提交版本核对', async ({ page }) => {
+  await setupContracts(page);
+  let current = { ...settingsRow };
+  const writes = await writesTo(page, '**/api/tenant/contracts/settings', (write) => {
+    current = { ...current, ...(write.body as object), revision: current.revision + 1 };
+    return { json: current };
+  });
+  await page.route('**/api/tenant/contracts/settings', (route) =>
+    route.request().method() === 'GET' ? route.fulfill({ json: current }) : route.fallback(),
+  );
+  await tab(page, '自动续签规则');
+  await expect(renewal(page)).not.toBeChecked();
+  await renewal(page).click();
+  await expect(renewal(page)).toBeChecked();
+  expect(writes).toEqual([expect.objectContaining({ method: 'PUT', revision: '2', body: { autoRenew: true } })]);
+});
+
+test('AC-FE-R2a-25b 自动续签开关冲突后可重读、核对、重提', async ({ page }) => {
+  await setupContracts(page);
+  const writes = await staleOnce(
+    page,
+    '**/api/tenant/contracts/settings',
+    '**/api/tenant/contracts/settings',
+    settingsRow,
+    false,
+  );
+  await tab(page, '自动续签规则');
+  await renewal(page).click();
+  await resolve(page.locator('.contract-renewal'));
+  await renewal(page).click();
+  await expect.poll(() => writes.length).toBe(2);
+  expect(writes.map(({ revision, body }) => [revision, body])).toEqual([
+    [String(settingsRow.revision), { autoRenew: true }],
+    [String(settingsRow.revision + 1), { autoRenew: true }],
+  ]);
+});
+
+test('AC-FE-R2a-25c 合同设置无更新权限时规则页开关只读', async ({ page }) => {
+  const settings = objectPermissions.settings;
+  await setupContracts(page, {
+    [settings.objectCode]: { ...settings, dataOperations: { ...settings.dataOperations, update: false } },
+  });
+  await tab(page, '自动续签规则');
+  await expect(renewal(page)).toBeDisabled();
+});
+
+const ordered = [
+  { ...ruleRow, id: 'rule-a', name: '合成规则甲', priority: 1 },
+  { ...ruleRow, id: 'rule-b', name: '合成规则乙', priority: 2 },
+  { ...ruleRow, id: 'rule-c', name: '合成规则丙', priority: 3 },
+];
+async function ruleList(page: Page, items: (typeof ordered)[number][]) {
+  await setupContracts(page);
+  await page.route('**/api/tenant/contracts/rules?*', (route) =>
+    route.fulfill({ json: { items, total: items.length, page: 1, pageSize: 15 } }),
+  );
+  const writes = await writesTo(page, '**/api/tenant/contracts/rules/*', (write) => ({
+    json: { id: write.path.split('/').at(-1), revision: ruleRow.revision + 1 },
+  }));
+  await tab(page, '自动续签规则');
+  return writes;
+}
+const ruleLine = (page: Page, name: string) => page.locator('.ant-table-row').filter({ hasText: name });
+test('AC-FE-R2a-26 规则单条上移 / 下移：只改本条 priority，PUT 完整请求体并带本条版本', async ({ page }) => {
+  const writes = await ruleList(page, ordered);
+  await expect(ruleLine(page, '合成规则甲').getByRole('button', named('上移'))).toHaveCount(0);
+  await expect(ruleLine(page, '合成规则丙').getByRole('button', named('下移'))).toHaveCount(0);
+  await ruleLine(page, '合成规则甲').getByRole('button', named('下移')).click();
+  await expect.poll(() => writes.length).toBe(1);
+  await ruleLine(page, '合成规则丙').getByRole('button', named('上移')).click();
+  await expect.poll(() => writes.length).toBe(2);
+  const body = (rule: (typeof ordered)[number], priority: number) => {
+    const { id: _id, revision: _revision, ...rest } = rule;
+    return { ...rest, priority };
+  };
+  // 甲（1）越过乙（2）、仍在丙（3）之前：取 3，同优先级按 ID 排在丙前；丙越过乙、仍在甲之后：取 1。
+  expect(writes).toEqual([
+    expect.objectContaining({ method: 'PUT', path: '/api/tenant/contracts/rules/rule-a', revision: '5' }),
+    expect.objectContaining({ method: 'PUT', path: '/api/tenant/contracts/rules/rule-c', revision: '5' }),
+  ]);
+  expect(writes.map((write) => write.body)).toEqual([body(ordered[0]!, 3), body(ordered[2]!, 1)]);
+});
+
+test('AC-FE-R2a-26b 单条改优先级无法排到目标位置时不发请求，提示需批量重排', async ({ page }) => {
+  const writes = await ruleList(page, [
+    { ...ordered[0]!, priority: 0 },
+    { ...ordered[1]!, priority: 0 },
+  ]);
+  await ruleLine(page, '合成规则乙').getByRole('button', named('上移')).click();
+  await expect(page.getByText('需要批量重排', { exact: false })).toBeVisible();
+  expect(writes).toEqual([]);
+});
