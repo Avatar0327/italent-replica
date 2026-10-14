@@ -1,12 +1,18 @@
+import type { ApplicationCommandRunner } from './application-command.js';
 import { useState } from 'react';
 import { LinkagePanel } from '../../transfer/LinkagePanel.js';
 import { useLinkageDetail } from '../../transfer/useLinkage.js';
 import { TransferForm } from './TransferForm.js';
 import { text } from '../../transfer/messages.js';
 import { useTransferForm } from './useTransferForm.js';
-type TransferApplicationProps = { tenantId: string; initiator: 'hr' | 'employee' | 'manager'; hrScope?: string };
-export function TransferApplication({ tenantId, initiator, hrScope }: TransferApplicationProps) {
-  const state = useTransferForm(tenantId, initiator, undefined, hrScope);
+type TransferApplicationProps = {
+  tenantId: string;
+  initiator: 'hr' | 'employee' | 'manager';
+  hrScope?: string;
+  runCommand?: ApplicationCommandRunner;
+};
+export function TransferApplication({ tenantId, initiator, runCommand, hrScope }: TransferApplicationProps) {
+  const state = useTransferForm(tenantId, initiator, undefined, runCommand, hrScope);
   if (hrScope && state.processing) return <p role="status">{text.processing}</p>;
   if (hrScope && state.saved) return <p role="status">{state.commandNotice}</p>;
   const locked = state.busy || !!state.saved || !!state.unknownCommand;

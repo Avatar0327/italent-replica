@@ -1,5 +1,6 @@
 import { loadPreview, reloadSavedModel, savedNotice } from './transfer-loading.js';
 import { useHrTransferCommand } from '../../transfer/useHrTransferCommand.js';
+import { applicationCommand, type ApplicationCommandRunner } from './application-command.js';
 import type { TransferFormAdapter } from './transfer-adapter.js';
 import { useEffect, useRef, useState } from 'react';
 import { missingTransferRequiredFields } from '@italent/domain';
@@ -44,6 +45,7 @@ export function useTransferForm(
   tenantId: string,
   initiator: 'hr' | 'employee' | 'manager' = 'hr',
   adapter?: TransferFormAdapter,
+  runCommand?: ApplicationCommandRunner,
   hrScope?: string,
 ) {
   const [model, setModel] = useState<TransferFormModel>({
@@ -57,7 +59,16 @@ export function useTransferForm(
   const [reload, setReload] = useState(0);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
-  const legacy = useTransferCommand(tenantId, model, loadingPreview, setModel, setError, setNotice, adapter);
+  const legacy = useTransferCommand(
+    tenantId,
+    model,
+    loadingPreview,
+    setModel,
+    setError,
+    setNotice,
+    adapter,
+    runCommand,
+  );
   const hr = useHrTransferCommand(tenantId, model, loadingPreview, hrScope);
   const commands = hrScope ? hr : legacy;
   useCatalog(tenantId, model.effectiveDate, setModel, setError, initiator, !adapter);
@@ -65,10 +76,7 @@ export function useTransferForm(
   usePreview(tenantId, model, commands.saved, reload, setModel, setLoadingPreview, setError, setNotice, adapter);
   // R1-T10 的联动仅接入 HR；经理自助本轮仍不提供跨对象联动。
   useContractChoices(tenantId, initiator === 'hr' ? model.employeeId : '', initiator, setModel);
-  const selection = (field: 'employeeId' | 'effectiveDate' | 'transferTypeCode' | 'reasonCode', value: string) => {
-    setError('');
-    applySelection(setModel, field, value);
-  };
+  const selection = selectField(setModel, setError);
   const field = editField(setModel);
   const refresh = () => {
     setError('');
@@ -112,6 +120,27 @@ export function useTransferForm(
   };
 }
 
+function selectField(setModel: SetModel, setError: SetText) {
+  return (field: 'employeeId' | 'effectiveDate' | 'transferTypeCode' | 'reasonCode', value: string) => {
+    setError('');
+    setModel((current) =>
+      field === 'reasonCode'
+        ? { ...current, reasonCode: value }
+        : {
+            ...current,
+            [field]: value,
+            reasonCode: field === 'transferTypeCode' ? '' : current.reasonCode,
+            fields: {},
+            customFields: {},
+            preview: null,
+            ...(field === 'employeeId' ? { withEstablishment: false } : {}),
+            // 换人后清空原员工的联动草稿与合同候选。
+            ...(field === 'employeeId' && current.linkage ? { linkage: emptyLinkage, contracts: [] } : {}),
+          },
+    );
+  };
+}
+
 function useTransferCommand(
   tenantId: string,
   model: TransferFormModel,
@@ -120,6 +149,7 @@ function useTransferCommand(
   setError: SetText,
   setNotice: SetText,
   adapter?: TransferFormAdapter,
+  runCommand?: ApplicationCommandRunner,
 ) {
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState<TransferBusiness | null>(null);
@@ -143,9 +173,7 @@ function useTransferCommand(
     setError('');
     const commandId = crypto.randomUUID();
     try {
-      const result = saved
-        ? await submitSavedTransfer(tenantId, saved, commandId)
-        : await (adapter?.save ?? saveTransfer)(tenantId, model, action, commandId);
+      const result = await executeTransfer(tenantId, { model, action, commandId, saved, adapter, runCommand });
       if (!result.id || !Number.isInteger(result.revision) || !result.status) throw new Error(text.unknown);
       setSaved(result);
       setNotice(savedNotice(result, action));
@@ -191,6 +219,25 @@ function useTransferCommand(
     reloadSaved,
     resetConflict: () => setNeedsReload(false),
   };
+}
+
+function executeTransfer(
+  tenantId: string,
+  input: {
+    model: TransferFormModel;
+    action: TransferAction;
+    commandId: string;
+    saved: TransferBusiness | null;
+    adapter?: TransferFormAdapter;
+    runCommand?: ApplicationCommandRunner;
+  },
+) {
+  const { model, action, commandId, saved, adapter, runCommand } = input;
+  const execute = () =>
+    saved
+      ? submitSavedTransfer(tenantId, saved, commandId)
+      : (adapter?.save ?? saveTransfer)(tenantId, model, action, commandId);
+  return runCommand ? runCommand(applicationCommand(model, action, commandId, saved), execute) : execute();
 }
 
 type SetModel = React.Dispatch<React.SetStateAction<TransferFormModel>>;
@@ -354,22 +401,4 @@ function editField(setModel: SetModel) {
       return { ...current, [key]: values };
     });
   };
-}
-
-function applySelection(setModel: SetModel, field: string, value: string) {
-  setModel((current) =>
-    field === 'reasonCode'
-      ? { ...current, reasonCode: value }
-      : {
-          ...current,
-          [field]: value,
-          reasonCode: field === 'transferTypeCode' ? '' : current.reasonCode,
-          fields: {},
-          customFields: {},
-          preview: null,
-          ...(field === 'employeeId' ? { withEstablishment: false } : {}),
-          // 换人后清空原员工的联动草稿与合同候选。
-          ...(field === 'employeeId' && current.linkage ? { linkage: emptyLinkage, contracts: [] } : {}),
-        },
-  );
 }

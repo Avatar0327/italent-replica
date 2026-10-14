@@ -11,9 +11,9 @@ const Account = lazy(() => import('../account/AccountPage.js').then((m) => ({ de
 const Approval = lazy(() => import('../approval/ApprovalPage.js').then((m) => ({ default: m.ApprovalPage })));
 const Evaluation = lazy(() => import('../evaluation/EvaluationPage.js').then((m) => ({ default: m.EvaluationPage })));
 const Job = lazy(() => import('../job/JobPage.js').then((m) => ({ default: m.JobPage })));
-const Manager = lazy(() => import('../transfer/ManagerPage.js').then((m) => ({ default: m.ManagerPage })));
+const Manager = lazy(() => import('../self-service/pages/ManagerPage.js').then((m) => ({ default: m.ManagerPage })));
 const Org = lazy(() => import('../org/OrgChangePage.js').then((m) => ({ default: m.OrgChangePage })));
-const Self = lazy(() => import('../employee-self-service/EmployeePage.js').then((m) => ({ default: m.EmployeePage })));
+const Self = lazy(() => import('../self-service/pages/SelfPage.js').then((m) => ({ default: m.SelfPage })));
 const Settings = lazy(() => import('../settings/SettingsPage.js').then((m) => ({ default: m.SettingsPage })));
 const Staff = lazy(() => import('../personnel/StaffPage.js').then((m) => ({ default: m.StaffPage })));
 const Survey = lazy(() => import('../survey360/SurveyPage.js').then((m) => ({ default: m.SurveyPage })));
@@ -27,9 +27,9 @@ const existing = {
   approval: { Page: Approval, legacy: false },
   evaluation: { Page: Evaluation, legacy: false },
   job: { Page: Job, legacy: true },
-  manager: { Page: Manager, legacy: true },
+  manager: { Page: Manager, legacy: false },
   org: { Page: Org, legacy: true },
-  self: { Page: Self, legacy: true },
+  self: { Page: Self, legacy: false },
   settings: { Page: Settings, legacy: true },
   staff: { Page: Staff, legacy: false },
   survey360: { Page: Survey, legacy: false },
@@ -103,22 +103,8 @@ export function AppPages() {
             }
           />
           <Route path="/settings/menu/:code" element={<Settings />} />
-          <Route
-            path="/self/*"
-            element={
-              <div className="legacy-page">
-                <Self />
-              </div>
-            }
-          />
-          <Route
-            path="/manager/*"
-            element={
-              <div className="legacy-page">
-                <Manager />
-              </div>
-            }
-          />
+          <Route path="/self/*" element={<Self />} />
+          <Route path="/manager/*" element={<Manager />} />
           <Route path="*" element={<PageState kind="not-found" />} />
         </Routes>
       </Suspense>
