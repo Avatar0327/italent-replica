@@ -1,0 +1,84 @@
+/* 继任页面样式：颜色与尺寸取主题令牌（主色 #146EFF、文字 #33383D、边框 #E6E8EB、底色 #F7F9FA）。 */
+.succession-page {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.succession-back {
+  align-self: flex-start;
+}
+.succession-toolbar {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.succession-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.succession-muted {
+  color: #868b8f;
+  margin: 4px 0;
+}
+.succession-tree,
+.succession-tree ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.succession-tree ul {
+  margin-left: 24px;
+  padding-left: 16px;
+  border-left: 1px dashed #e6e8eb;
+}
+.succession-tree li {
+  padding-top: 12px;
+}
+.succession-card {
+  width: 260px;
+  padding: 10px 12px;
+  border: 1px solid #e6e8eb;
+  border-top: 4px solid #c5c9cc;
+  border-radius: 4px;
+  background: #fff;
+  color: #33383d;
+}
+.succession-card header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.succession-card p {
+  margin: 4px 0;
+}
+.succession-stats {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 8px;
+  margin: 6px 0;
+}
+.succession-stats dt {
+  color: #868b8f;
+}
+.succession-stats dd {
+  margin: 0;
+}
+.succession-successors {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 6px 0 0;
+  border-top: 1px solid #e6e8eb;
+}
+.succession-color {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.succession-color i {
+  width: 14px;
+  height: 14px;
+  border-radius: 2px;
+}
