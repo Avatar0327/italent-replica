@@ -143,7 +143,7 @@ function mismatchesOf(sources: readonly string[], same: (source: string) => bool
 const contextual = (members: readonly string[], contexts = CONTEXTS) =>
   members.flatMap((member) => contexts.map((context) => context(member)));
 
-describe('冻结的旧成员词法 = 5aa1d1ad 的实现（差分）', () => {
+describe('AC-EXP-21 冻结的旧成员词法 = 5aa1d1ad 的实现（差分，DEC-485 / DEC-228）', () => {
   const sources = [...FIRST_ROUND.map((member) => CONTEXTS[0]!(member)), ...contextual(RANDOM_MEMBERS)];
 
   it(`词法：${sources.length} 条生成文本，词（种类、原文、值、行列、偏移）与错误位置逐一相同`, () => {
@@ -217,7 +217,7 @@ const A15 = '55555555-5555-4555-8555-555555555555';
 const Z = '66666666-6666-4666-8666-666666666666';
 const field = (id: string, name: string) => ({ id, name, kind: 'number' as const });
 
-describe('P2-1：历史比较走旧词法（小数写法 a-1.5）', () => {
+describe('AC-EXP-21 P2-1：历史比较走旧词法（小数写法 a-1.5，DEC-485）', () => {
   it('字段 a、a-1.5 都在：两种解释一致（整段字段 a-1.5），但 bound 路径不支持名字里带“.”的字段 → unresolved，不绑定到 a', () => {
     const result = rebindLegacyFormula('盘点对象.a-1.5', [field(A, 'a'), field(A15, 'a-1.5')]);
     expect(result).toMatchObject({ ok: false, issue: 'UNKNOWN_FIELD', candidates: [A15] });
@@ -240,7 +240,7 @@ describe('P2-1：历史比较走旧词法（小数写法 a-1.5）', () => {
   });
 });
 
-describe('P2-2：删除 / 改名守卫对 legacy 文本以旧词法的引用集合为准', () => {
+describe('AC-EXP-21 P2-2：删除 / 改名守卫对 legacy 文本以旧词法的引用集合为准（DEC-485 / DEC-431①）', () => {
   const DEEP = 'a-b.c-d';
 
   it('深路径、多段连字符：字段 a-b.c-d 被 `盘点对象.a-b.c-d` 引用', () => {
@@ -268,7 +268,7 @@ describe('P2-2：删除 / 改名守卫对 legacy 文本以旧词法的引用集�
   });
 });
 
-describe('legacy 渲染走旧词法：隐藏字段 a-1.5、只可见 a', () => {
+describe('AC-EXP-21 legacy 渲染走旧词法：隐藏字段 a-1.5、只可见 a（DEC-485 / DEC-406）', () => {
   const visibleFields = [{ id: A, name: 'a' }];
 
   it('`盘点对象.a-1.5` 整段是不可见字段，不露出一截', () => {
@@ -294,7 +294,7 @@ describe('legacy 渲染走旧词法：隐藏字段 a-1.5、只可见 a', () => {
   });
 });
 
-describe('新保存的写法：已存在字段优先，小数与多段连字符不再被切开', () => {
+describe('AC-EXP-21 新保存的写法：已存在字段优先，小数与多段连字符不再被切开（#89-4）', () => {
   const exists =
     (...paths: string[]) =>
     (path: string) =>

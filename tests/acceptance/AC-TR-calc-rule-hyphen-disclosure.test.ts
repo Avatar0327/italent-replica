@@ -38,7 +38,7 @@ function creatorScopedFields(userId: string) {
   return tenantApi(testDb().db, { authorize, clock, formulaIdBinding: false });
 }
 
-describe('B5 授权复核不借隐藏字段披露存在性', () => {
+describe('AC-TR-calc-rule · B5 授权复核不借隐藏字段披露存在性（#89-4，DEC-406）', () => {
   it.each([
     ['隐藏字段 a-1 存在', true],
     ['隐藏字段 a-1 不存在', false],

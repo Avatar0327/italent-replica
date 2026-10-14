@@ -67,7 +67,7 @@ describe('#89-4 删除守卫只认实际解释（第 2 轮 P2-2）', () => {
   });
 });
 
-describe('#89-4 历史解释走旧词法（第 3 轮 P2-1）：小数写法 a-1.5', () => {
+describe('AC-TR-F082-18 · #89-4 历史解释走旧词法（第 3 轮 P2-1，DEC-485）：小数写法 a-1.5', () => {
   it('a=10、a-1.5=99，存量公式 `盘点对象.a-1.5`：改绑不绑定到 a（unresolved、原文不动），删除 a-1.5 → 409，删除 a → 200', async () => {
     const w = await world('r3-decimal-kept');
     const target = await w.numberField();
@@ -115,7 +115,7 @@ describe('#89-4 历史解释走旧词法（第 3 轮 P2-1）：小数写法 a-1.
   });
 });
 
-describe('#89-4 删除守卫对 legacy 文本以旧词法的引用集合为准（第 3 轮 P2-2）：深路径里的多段连字符', () => {
+describe('AC-TR-F082-18 · #89-4 删除守卫对 legacy 文本以旧词法的引用集合为准（第 3 轮 P2-2，DEC-485）：深路径里的多段连字符', () => {
   async function deepWorld(label: string) {
     const w = await world(label);
     const target = await w.numberField();
