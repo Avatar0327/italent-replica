@@ -31,7 +31,10 @@ for (const [tab, path] of [
         if (route.request().method() === 'GET')
           return route.fulfill({ json: { ...questionnaire, revision: writes.length ? 3 : 2 } });
         writes.push(route.request().postDataJSON());
-        if (outcome === 'slow') await gate;
+        if (outcome === 'slow') {
+          await gate;
+          return route.fulfill({ json: { ...questionnaire, revision: 3 } });
+        }
         return route.fulfill({ status: 409, json: { error: { code: 'REVISION_CONFLICT' } } });
       });
       await page.getByRole('tab', { name: tab, exact: true }).click();
@@ -46,6 +49,11 @@ for (const [tab, path] of [
         await expectContentLocked(form);
       } finally {
         release();
+      }
+      if (outcome === 'slow') {
+        await expect(form).toHaveCount(0);
+        expect(writes).toEqual([{ name: '待保存名称' }]);
+        return;
       }
       await form.getByRole('button', { name: '重读最新版本', exact: true }).click();
       await expect(form.getByRole('button', { name: '已核对差异，继续编辑', exact: true })).toBeEnabled();
@@ -112,9 +120,18 @@ for (const completed of [false, true]) {
     await form.getByRole('textbox', { name: /名称$/, exact: true }).fill('我的名称草稿');
     await form.getByRole('button', { name: '下一步', exact: true }).click();
     await form.getByRole('button', { name: '下一步', exact: true }).click();
+    if (!completed) {
+      await form.getByRole('textbox', { name: '环节名称', exact: true }).first().fill('我的链路草稿');
+      await form.getByRole('checkbox').check();
+    }
     await form.getByRole('button', save).click();
     await form.getByRole('button', { name: '重读最新版本', exact: true }).click();
     await form.getByRole('button', { name: '已核对差异，继续编辑', exact: true }).click();
+    if (!completed) {
+      await expect(form.getByRole('checkbox')).not.toBeChecked();
+      await expect(form.getByRole('checkbox')).toBeDisabled();
+      await expect(form.getByRole('textbox', { name: '环节名称', exact: true }).first()).toHaveValue('我的链路草稿');
+    }
     if (completed) {
       await expect(form.getByRole('textbox', { name: '环节名称', exact: true }).first()).toHaveValue('最新资格申报');
       await expect(form.getByRole('textbox', { name: '环节名称', exact: true }).first()).toBeDisabled();
@@ -132,3 +149,36 @@ for (const completed of [false, true]) {
     expect(writes).toBe(1);
   });
 }
+
+test('AC-FE-F123-R2 套卷重读变为已使用，只读分值用最新值且可编辑标签保留草稿', async ({ page }) => {
+  await setupR3b(page, '/survey360');
+  const writes: { content?: { scales: { options: { value: number; label: string }[] }[] } }[] = [];
+  const latest = {
+    ...questionnaire,
+    status: 'used',
+    revision: 3,
+    scales: [{ ...questionnaire.scales[0], options: [{ key: 'yes', label: '服务端标签', value: 7 }] }],
+  };
+  await page.route(`**/survey360/questionnaires/${id}`, (route) => {
+    if (route.request().method() === 'GET') return route.fulfill({ json: writes.length ? latest : questionnaire });
+    writes.push(route.request().postDataJSON());
+    return writes.length === 1
+      ? route.fulfill({ status: 409, json: { error: { code: 'REVISION_CONFLICT' } } })
+      : route.fulfill({ json: { ...latest, revision: 4 } });
+  });
+  await page.getByRole('tab', { name: '套卷', exact: true }).click();
+  await page.getByRole('button', { name: questionnaire.name, exact: true }).click();
+  await page.getByRole('button', edit).click();
+  const form = page.getByRole('dialog', { name: '编辑', exact: true });
+  await form.getByRole('spinbutton', { name: /^分值/ }).fill('9');
+  await form.getByRole('textbox', { name: '选项文字', exact: true }).fill('我的选项草稿');
+  await form.getByRole('button', save).click();
+  await form.getByRole('button', { name: '重读最新版本', exact: true }).click();
+  await form.getByRole('button', { name: '已核对差异，继续编辑', exact: true }).click();
+  await expect(form.getByRole('spinbutton', { name: /^分值/ })).toHaveValue('7');
+  await expect(form.getByRole('spinbutton', { name: /^分值/ })).toBeDisabled();
+  await expect(form.getByRole('textbox', { name: '选项文字', exact: true })).toHaveValue('我的选项草稿');
+  await form.getByRole('button', save).click();
+  await expect(form).toHaveCount(0);
+  expect(writes[1]?.content?.scales[0]?.options[0]).toMatchObject({ value: 7, label: '我的选项草稿' });
+});
