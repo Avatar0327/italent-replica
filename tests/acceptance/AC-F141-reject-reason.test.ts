@@ -6,7 +6,7 @@
  * 表单提交内核（F-123）的状态条和表单浮层都用它，不绕开内核。
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, createApiClient, rejectionMessage } from '../../apps/web/src/foundation/client.js';
+import { type ApiError, createApiClient, rejectionMessage } from '../../apps/web/src/foundation/client.js';
 import { ui } from '../../apps/web/src/foundation/messages.js';
 
 afterEach(() => vi.unstubAllGlobals());
