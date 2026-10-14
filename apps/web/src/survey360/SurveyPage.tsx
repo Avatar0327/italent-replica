@@ -13,6 +13,7 @@ import { useRecordForm } from '../evaluation/useRecordForm.js';
 import { type Row } from '../evaluation/model.js';
 import { textValue, m as common } from '../evaluation/messages.js';
 import { m, display } from './messages.js';
+import { surveyPath, type SurveyKind } from './model.js';
 import { QuestionnaireEditor, QuestionnairePreview } from './Questionnaire.js';
 import { Relations } from './Relations.js';
 import '../evaluation/pages.css';
@@ -20,7 +21,7 @@ import '../evaluation/pages.css';
 export const BASE = '/api/tenant/survey360';
 export const ACTIVITY = 'Survey360.Activity';
 export const QUESTIONNAIRE = 'Survey360.Questionnaire';
-type Kind = 'activities' | 'questionnaires' | 'templates';
+type Kind = SurveyKind;
 const titles = { activities: m.title, questionnaires: m.questionnaires, templates: m.templates };
 const createTitles = { activities: m.create, questionnaires: m.createQuestionnaire, templates: m.createTemplate };
 export function SurveyPage() {
@@ -57,7 +58,7 @@ function SurveyContent() {
 export function SurveyList({ kind }: { kind: Kind }) {
   const object = kind === 'activities' ? ACTIVITY : QUESTIONNAIRE;
   const permission = usePermissions(object);
-  const list = useRead<PageResult<Row>>(`${BASE}/${kind}`);
+  const list = useRead<PageResult<Row>>(`${BASE}${surveyPath(kind)}`);
   const [page, setPage] = useState({ page: 1, pageSize: 15 });
   const [status, setStatus] = useState('');
   const [selected, select] = useState<string>();
@@ -135,7 +136,7 @@ export function SurveyList({ kind }: { kind: Kind }) {
 }
 function SurveyDetail({ id, kind, close, saved }: { id: string; kind: Kind; close(): void; saved(): void }) {
   const permission = usePermissions(kind === 'activities' ? ACTIVITY : QUESTIONNAIRE);
-  const detail = useRead<Row>(`${BASE}/${kind}/${id}`);
+  const detail = useRead<Row>(`${BASE}${surveyPath(kind)}/${id}`);
   const [editing, edit] = useState(false);
   const writer = useWriter(() => {
     detail.reload();
@@ -173,7 +174,7 @@ function SurveyDetail({ id, kind, close, saved }: { id: string; kind: Kind; clos
                   title: m.confirm,
                   content: m.confirmBody,
                   onOk: () =>
-                    writer.write(`${BASE}/${kind}/${id}/${action}`, 'POST', {}, row.revision).catch(() => undefined),
+                    writer.write(`${BASE}${surveyPath(kind)}/${id}/${action}`, 'POST', {}, row.revision).catch(() => undefined),
                 })
               }
             >
@@ -211,12 +212,12 @@ function Editor({ kind, row, close, saved }: { kind: Kind; row?: Row; close(): v
     kind === 'activities' ? (
       <ActivityEditor row={row} close={close} saved={saved} />
     ) : (
-      <QuestionnaireEditor path={`${BASE}/${kind}`} title={createTitles[kind]} row={row} close={close} saved={saved} />
+      <QuestionnaireEditor path={`${BASE}${surveyPath(kind)}`} title={createTitles[kind]} row={row} close={close} saved={saved} />
     );
   return row ? (
     form
   ) : (
-    <CreateEntry path={`${BASE}/${kind}`} title={createTitles[kind]} close={close}>
+    <CreateEntry path={`${BASE}${surveyPath(kind)}`} title={createTitles[kind]} close={close}>
       {form}
     </CreateEntry>
   );
