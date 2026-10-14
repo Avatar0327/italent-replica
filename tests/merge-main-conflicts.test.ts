@@ -359,3 +359,284 @@ describe('merge:main 不可自动处理的冲突保持人工', () => {
     expect(result.out).toContain(`${DECLARED}/talent.ts`);
   }, 60_000);
 });
+
+// ---------------------------------------------------------------------------------------------
+// 第 1 轮审查返工（DEC-431①）：自动合并 / 提交前核对不能被绕过。四个 P2 是同一类问题——
+// 按整行比较、只看单行形状、文件缺失被排除——统一改成按条目身份核对，下面每个反例都走真实入口。
+
+const SERVICE = 'apps/api/src/modules/org/service.ts';
+const SCHEMA = 'packages/db/src/schema/index.ts';
+const INDEX = `${DECLARED}/index.ts`;
+const service = (limit: number) => `export const LIMIT = ${limit};\nexport const NAME = 'org';\n`;
+
+/** 登记冲突与一个业务冲突同时存在：先停在业务冲突上，再由测试模拟人工的各种“解决”方式。 */
+function stopAtBusinessConflict(opts: { base: Files; main: Files; branch: Files }) {
+  const withService = (files: Files, limit: number): Files => ({ ...files, [SERVICE]: service(limit) });
+  const root = buildRepo({
+    base: withService(opts.base, 10),
+    main: withService(opts.main, 20),
+    branch: withService(opts.branch, 30),
+  });
+  const head = sh(root, 'rev-parse', 'HEAD');
+  const first = run(root);
+  expect(first.status, first.out).not.toBe(0);
+  expect(mergeInProgress(root)).toBe(true);
+  return { root, head, first };
+}
+
+function resolveBusinessAndContinue(root: string) {
+  put(root, { [SERVICE]: service(30) });
+  sh(root, 'add', SERVICE);
+  return run(root, '--continue');
+}
+
+const expectRefused = (root: string, head: string, result: { status: number | null; out: string }) => {
+  expect(result.status, result.out).not.toBe(0);
+  expect(sh(root, 'rev-parse', 'HEAD')).toBe(head);
+  expect(mergeInProgress(root)).toBe(true);
+};
+
+describe('第 1 轮审查 P2-1：只处理纯新增，删除或改动分叉点已有条目转人工', () => {
+  const baseDeclared = (items: string[]) => ({
+    [`${DECLARED}/talent.ts`]: declaredFile({ sameStatusInvalidId: items }),
+  });
+
+  it('分叉点 [A,B]：本分支删 A 加 C、main 加 D → 非零退出、不提交、冲突留给人工', () => {
+    const root = buildRepo({
+      base: baseDeclared([A, B]),
+      branch: baseDeclared([B, C]),
+      main: baseDeclared([A, B, D]),
+    });
+    const head = sh(root, 'rev-parse', 'HEAD');
+    const result = run(root);
+    expect(result.status, result.out).not.toBe(0);
+    expect(sh(root, 'rev-parse', 'HEAD')).toBe(head);
+    expect(mergeInProgress(root)).toBe(true);
+    expect(result.out).toContain(`${DECLARED}/talent.ts`);
+    expect(result.out).toContain('分叉点已有登记项');
+  }, 60_000);
+
+  it('两边分别把原有 A 改成 B、C → 非零退出、不提交', () => {
+    const root = buildRepo({ base: baseDeclared([A]), branch: baseDeclared([B]), main: baseDeclared([C]) });
+    const head = sh(root, 'rev-parse', 'HEAD');
+    const result = run(root);
+    expect(result.status, result.out).not.toBe(0);
+    expect(sh(root, 'rev-parse', 'HEAD')).toBe(head);
+    expect(result.out).toContain(`${DECLARED}/talent.ts`);
+  }, 60_000);
+
+  it('预演 --check 同样把这类文件列为须人工并以非零退出', () => {
+    const root = buildRepo({ base: baseDeclared([A, B]), branch: baseDeclared([B, C]), main: baseDeclared([A, B, D]) });
+    const check = run(root, '--check');
+    expect(check.status, check.out).not.toBe(0);
+    expect(check.out).toContain(`${DECLARED}/talent.ts`);
+  }, 60_000);
+});
+
+describe('第 1 轮审查 P2-2：按条目身份识别同名异值与重复挂载', () => {
+  const idx = (entries: string[], imports: string[]) =>
+    [
+      "import type { ModuleDeclared } from '../../module-declared.js';",
+      ...imports,
+      '',
+      'export const DECLARED: Readonly<Record<string, ModuleDeclared>> = {',
+      ...entries,
+      '};',
+      '',
+    ].join('\n');
+  const imp = (name: string, file: string) => `import { ${name} } from './${file}.js';`;
+  const baseIdx = idx(
+    ['  approval: APPROVAL_DECLARED,', '  audit: AUDIT_DECLARED,', '  avatar: AVATAR_DECLARED,'],
+    [imp('APPROVAL_DECLARED', 'approval'), imp('AUDIT_DECLARED', 'audit'), imp('AVATAR_DECLARED', 'avatar')],
+  );
+
+  it('同一注册键两边加不同的值（同一位置，冲突处）→ 非零退出、不提交', () => {
+    const withTalent = (value: string, file: string, at: 'top' | 'bottom') =>
+      idx(
+        at === 'top'
+          ? [
+              `  talent: ${value},`,
+              '  approval: APPROVAL_DECLARED,',
+              '  audit: AUDIT_DECLARED,',
+              '  avatar: AVATAR_DECLARED,',
+            ]
+          : [
+              '  approval: APPROVAL_DECLARED,',
+              '  audit: AUDIT_DECLARED,',
+              '  avatar: AVATAR_DECLARED,',
+              `  talent: ${value},`,
+            ],
+        [
+          imp('APPROVAL_DECLARED', 'approval'),
+          imp('AUDIT_DECLARED', 'audit'),
+          imp('AVATAR_DECLARED', 'avatar'),
+          imp(value, file),
+        ],
+      );
+    const root = buildRepo({
+      base: { [INDEX]: baseIdx },
+      branch: { [INDEX]: withTalent('TALENT_DECLARED', 'talent', 'bottom') },
+      main: { [INDEX]: withTalent('TALENT_V2_DECLARED', 'talent-v2', 'bottom') },
+    });
+    const head = sh(root, 'rev-parse', 'HEAD');
+    const result = run(root);
+    expect(result.status, result.out).not.toBe(0);
+    expect(sh(root, 'rev-parse', 'HEAD')).toBe(head);
+    expect(result.out).toContain(INDEX);
+  }, 60_000);
+
+  it('同一注册键两边加不同的值，放在不同位置使 Git 无冲突自动合并 → 提交前核对非零退出、不提交', () => {
+    const mk = (value: string, file: string, at: 'top' | 'bottom') =>
+      idx(
+        at === 'top'
+          ? [
+              `  talent: ${value},`,
+              '  approval: APPROVAL_DECLARED,',
+              '  audit: AUDIT_DECLARED,',
+              '  avatar: AVATAR_DECLARED,',
+            ]
+          : [
+              '  approval: APPROVAL_DECLARED,',
+              '  audit: AUDIT_DECLARED,',
+              '  avatar: AVATAR_DECLARED,',
+              `  talent: ${value},`,
+            ],
+        [
+          imp('APPROVAL_DECLARED', 'approval'),
+          imp('AUDIT_DECLARED', 'audit'),
+          imp('AVATAR_DECLARED', 'avatar'),
+          imp(value, file),
+        ],
+      );
+    const root = buildRepo({
+      base: { [INDEX]: baseIdx },
+      branch: { [INDEX]: mk('TALENT_DECLARED', 'talent', 'top') },
+      main: { [INDEX]: mk('TALENT_V2_DECLARED', 'talent-v2', 'bottom') },
+    });
+    const head = sh(root, 'rev-parse', 'HEAD');
+    const result = run(root);
+    expect(result.status, result.out).not.toBe(0);
+    expect(sh(root, 'rev-parse', 'HEAD')).toBe(head);
+    expect(result.out).toContain('登记项重复');
+    expect(result.out).toContain('talent');
+  }, 60_000);
+
+  const appWith = (comment: string, at: 'top' | 'bottom') => {
+    const entries = ['  registerTenantRoutes, // Tenant 路由', '  registerIdpRoutes, // Idp 路由'];
+    const avatar = `  registerAvatarRoutes, // ${comment}`;
+    return [
+      "import { registerTenantRoutes } from './modules/tenant/routes.js';",
+      "import { registerIdpRoutes } from './modules/idp/routes.js';",
+      "import { registerAvatarRoutes } from './modules/avatar/routes.js';",
+      '',
+      'const TENANT_MODULES = [',
+      ...(at === 'top' ? [avatar, ...entries] : [...entries, avatar]),
+      '];',
+      '',
+    ].join('\n');
+  };
+  const appBase = appWith('', 'top')
+    .split('\n')
+    .filter((l) => !l.includes('registerAvatarRoutes'))
+    .join('\n');
+
+  it('同一个挂载函数只是尾注释不同（同一位置，冲突处）→ 不保留两份，非零退出', () => {
+    const root = buildRepo({
+      base: { 'apps/api/src/app.ts': appBase },
+      branch: { 'apps/api/src/app.ts': appWith('甲', 'bottom') },
+      main: { 'apps/api/src/app.ts': appWith('乙', 'bottom') },
+    });
+    const head = sh(root, 'rev-parse', 'HEAD');
+    const result = run(root);
+    expect(result.status, result.out).not.toBe(0);
+    expect(sh(root, 'rev-parse', 'HEAD')).toBe(head);
+    expect(result.out).toContain('apps/api/src/app.ts');
+  }, 60_000);
+
+  it('同一个挂载函数只是尾注释不同，放在不同位置使 Git 无冲突自动合并 → 提交前核对非零退出、不提交', () => {
+    const root = buildRepo({
+      base: { 'apps/api/src/app.ts': appBase },
+      branch: { 'apps/api/src/app.ts': appWith('甲', 'top') },
+      main: { 'apps/api/src/app.ts': appWith('乙', 'bottom') },
+    });
+    const head = sh(root, 'rev-parse', 'HEAD');
+    const result = run(root);
+    expect(result.status, result.out).not.toBe(0);
+    expect(sh(root, 'rev-parse', 'HEAD')).toBe(head);
+    expect(result.out).toContain('登记项重复');
+    expect(result.out).toContain('registerAvatarRoutes');
+  }, 60_000);
+});
+
+describe('第 1 轮审查 P2-3：登记区里无法识别的形状不能被静默忽略', () => {
+  const multiLine = (name: string, file: string) => `export {\n  ${name}One,\n  ${name}Two,\n} from './${file}.js';\n`;
+  const schemaWith = (extra: string) => `export * from './tenancy.js';\n${extra}`;
+
+  it('两边各加多行 export { … } from：自动处理不了，人工只删掉两边新增后 --continue 必须失败', () => {
+    const { root, head } = stopAtBusinessConflict({
+      base: { [SCHEMA]: schemaWith('') },
+      branch: { [SCHEMA]: schemaWith(multiLine('alpha', 'alpha')) },
+      main: { [SCHEMA]: schemaWith(multiLine('beta', 'beta')) },
+    });
+    put(root, { [SCHEMA]: schemaWith('') });
+    sh(root, 'add', SCHEMA);
+    const done = resolveBusinessAndContinue(root);
+    expectRefused(root, head, done);
+    expect(done.out).toContain('登记项丢失');
+    expect(done.out).toMatch(/alphaOne|alphaTwo/);
+  }, 60_000);
+
+  it('多行 export 两边都在、人工也保留了：核对通过并提交（解析而不是一概拒绝）', () => {
+    const { root } = stopAtBusinessConflict({
+      base: { [SCHEMA]: schemaWith('') },
+      branch: { [SCHEMA]: schemaWith(multiLine('alpha', 'alpha')) },
+      main: { [SCHEMA]: schemaWith(multiLine('beta', 'beta')) },
+    });
+    put(root, { [SCHEMA]: schemaWith(multiLine('alpha', 'alpha') + multiLine('beta', 'beta')) });
+    sh(root, 'add', SCHEMA);
+    const done = resolveBusinessAndContinue(root);
+    expect(done.status, done.out).toBe(0);
+    expect(mergeInProgress(root)).toBe(false);
+  }, 60_000);
+
+  it('登记区里混进无法识别的语句（不是 export … from）：提交前核对失败', () => {
+    const { root, head } = stopAtBusinessConflict({
+      base: { [SCHEMA]: schemaWith('') },
+      branch: { [SCHEMA]: schemaWith("export * from './alpha.js';\n") },
+      main: { [SCHEMA]: schemaWith("export * from './beta.js';\n") },
+    });
+    put(root, { [SCHEMA]: `${schemaWith("export * from './alpha.js';\nexport * from './beta.js';\n")}const x = 1;\n` });
+    sh(root, 'add', SCHEMA);
+    const done = resolveBusinessAndContinue(root);
+    expectRefused(root, head, done);
+    expect(done.out).toContain(SCHEMA);
+  }, 60_000);
+});
+
+describe('第 1 轮审查 P2-4：应核对的登记文件缺失判失败', () => {
+  it('两边都新增 schema 导出，业务冲突停下后 git rm 该文件再 --continue → 非零退出、不提交', () => {
+    const { root, head } = stopAtBusinessConflict({
+      base: { [SCHEMA]: schemaIndex(['tenancy']) },
+      branch: { [SCHEMA]: schemaIndex(['tenancy', 'alpha']) },
+      main: { [SCHEMA]: schemaIndex(['tenancy', 'beta']) },
+    });
+    sh(root, 'rm', '-qf', SCHEMA);
+    const done = resolveBusinessAndContinue(root);
+    expectRefused(root, head, done);
+    expect(done.out).toContain(SCHEMA);
+    expect(done.out).toContain('缺失');
+  }, 60_000);
+
+  it('声明文件被删同样失败', () => {
+    const talent = (items: string[]) => ({ [`${DECLARED}/talent.ts`]: declaredFile({ sameStatusInvalidId: items }) });
+    const { root, head } = stopAtBusinessConflict({
+      base: talent([A]),
+      branch: talent([A, C]),
+      main: talent([A, B]),
+    });
+    sh(root, 'rm', '-qf', `${DECLARED}/talent.ts`);
+    const done = resolveBusinessAndContinue(root);
+    expectRefused(root, head, done);
+    expect(done.out).toContain('缺失');
+  }, 60_000);
+});
