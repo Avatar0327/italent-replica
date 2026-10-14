@@ -84,6 +84,9 @@ export const GRAPH: Graph = {
     'packages/domain/src/platform/employee-self-service.ts#EMPLOYEE_DEFAULT_CREATE',
     'packages/domain/src/platform/employee-self-service.ts#EMPLOYEE_DEFAULT_EDIT_FIELDS',
   ],
+  'apps/api/src/modules/employee-self-service/queries.ts#applicationStatus': [
+    'packages/domain/src/approval/application-status.ts#applicationStateLabel',
+  ],
   'apps/api/src/modules/employee-self-service/queries.ts#currentRecord': [
     'apps/api/src/modules/employment/read-model.ts#findCurrentRecord',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',

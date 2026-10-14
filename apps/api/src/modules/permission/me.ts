@@ -37,7 +37,10 @@ export async function myObjectPermission(
     viewableFields: [...effective.viewableFields].sort(),
     editableFields: [...effective.editableFields].sort(),
     buttons: permissionSet(
-      [...executableButtons(definition, effective), ...(await selfServiceButtons(tx, userId, objectCode, managerQuery))],
+      [
+        ...executableButtons(definition, effective),
+        ...(await selfServiceButtons(tx, userId, objectCode, managerQuery)),
+      ],
       ['buttonCode', 'level'],
     ),
   };

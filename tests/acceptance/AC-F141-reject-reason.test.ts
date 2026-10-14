@@ -11,13 +11,22 @@ import { ui } from '../../apps/web/src/foundation/messages.js';
 afterEach(() => vi.unstubAllGlobals());
 const context = { tenantId: 'tenant-a', identityKey: 'person-a' };
 const reply = (status: number, error: Record<string, unknown>) =>
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
-    new Response(JSON.stringify({ error }), { status, headers: { 'content-type': 'application/json' } }),
-  ));
-const failure = async () =>
-  createApiClient(() => context)
-    .request('/api/tenant/example')
-    .catch((cause: unknown) => cause as Error);
+  vi.stubGlobal(
+    'fetch',
+    vi
+      .fn()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ error }), { status, headers: { 'content-type': 'application/json' } }),
+      ),
+  );
+const failure = async (): Promise<Error> => {
+  try {
+    await createApiClient(() => context).request('/api/tenant/example');
+  } catch (cause) {
+    return cause as Error;
+  }
+  throw new Error('请求应当失败');
+};
 
 describe('AC-F141-reject-reason 字段校验类拒绝显示具体原因（DEC-500④）', () => {
   it.each([400, 422])('%s 无字段明细：显示服务端原因', async (status) => {

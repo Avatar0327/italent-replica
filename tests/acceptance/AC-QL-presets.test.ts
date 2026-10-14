@@ -161,7 +161,9 @@ describe('AC-QL-presets 新租户开通即有三个预置身份（DEC-331②）'
         .map((row) => `${row.appCode}/${row.targetKind}/${row.targetCode}/${row.seeAll}`)
         .sort(),
     ).toEqual(
-      ['ActivityCycle', 'ActivityType', 'GeneralScoreItem'].map((name) => `TEvaluation/entity/TEvaluation.${name}/true`),
+      ['ActivityCycle', 'ActivityType', 'GeneralScoreItem'].map(
+        (name) => `TEvaluation/entity/TEvaluation.${name}/true`,
+      ),
     );
   });
 });

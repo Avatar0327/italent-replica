@@ -3,6 +3,7 @@
  * 重复运行只补缺失，半途失败后再运行从缺失处继续，不需要重置。写入一律走公开租户接口（见 client.ts）。
  */
 import { type Db, eq, users, withPlatform } from '@italent/db';
+import { QUALIFICATION_OBJECTS } from '@italent/domain';
 import { type Call, type Guarded, type Json, listAll } from './client.js';
 import {
   DEMO_DATES,
@@ -392,11 +393,12 @@ export class DemoWorld {
   private async seedQualificationLayers(): Promise<void> {
     await this.grant(this.admin, 'standard_qualification_admin');
     const profileId = this.profiles.get('standard_qualification_admin')!;
-    const layer = 'targetKind=entity&targetCode=Qualification.Layer';
+    const layerCode = QUALIFICATION_OBJECTS.layer.code;
+    const layer = `targetKind=entity&targetCode=${layerCode}`;
     const scopePath = `permission/profiles/${profileId}/data-scopes/Qualification`;
     const current = await this.as(`${scopePath}?${layer}`, 'GET');
     if (current.seeAll !== true) {
-      const body = { targetKind: 'entity', targetCode: 'Qualification.Layer', seeAll: true };
+      const body = { targetKind: 'entity', targetCode: layerCode, seeAll: true };
       await this.as(scopePath, 'PUT', body, Number(current.revision ?? 0));
       await this.wrote('qualification', 'layer-see-all');
     }

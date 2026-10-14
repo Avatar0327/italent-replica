@@ -183,15 +183,15 @@ function ListFilters({ state }: { state: State }) {
 function ContractTable({ state }: { state: State }) {
   const { view, rows, demo, allowed, navigate, result, page, setPage } = state;
   const columns = visibleColumnKeys(view, allowed, demo).map((key) => ({
-      key,
-      title: columnTitle(key, view),
-      width: width(key, view),
-      dataIndex: key,
-      ellipsis: true,
-      sorter: demo ? (a: Row, b: Row) => value(a[key], key).localeCompare(value(b[key], key), 'zh-CN') : undefined,
-      render: (input: unknown) =>
-        demo && key === 'typeId' ? (contractTypes.find((t) => t.id === input)?.name ?? '--') : value(input, key),
-    }));
+    key,
+    title: columnTitle(key, view),
+    width: width(key, view),
+    dataIndex: key,
+    ellipsis: true,
+    sorter: demo ? (a: Row, b: Row) => value(a[key], key).localeCompare(value(b[key], key), 'zh-CN') : undefined,
+    render: (input: unknown) =>
+      demo && key === 'typeId' ? (contractTypes.find((t) => t.id === input)?.name ?? '--') : value(input, key),
+  }));
   return !demo && result.error ? (
     <PageState kind="error" error={result.error} retry={result.refresh} />
   ) : (

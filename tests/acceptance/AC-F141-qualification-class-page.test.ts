@@ -24,7 +24,8 @@ describe('AC-F141-qualification-class-page 任职分类维护页登记（DEC-500
   it('列与表单字段都是该对象目录里的字段；名称必填，上级分类只能在新建时选', () => {
     const resource = classes()!;
     const known = new Set(QUALIFICATION_OBJECTS.categoryClass.fields.map((f) => f.code));
-    for (const key of [...resource.columns, ...resource.fields.map((f) => f.key)]) expect(known.has(key), key).toBe(true);
+    for (const key of [...resource.columns, ...resource.fields.map((f) => f.key)])
+      expect(known.has(key), key).toBe(true);
     expect(resource.fields.find((f) => f.key === 'name')?.required).toBe(true);
     const parent = resource.fields.find((f) => f.key === 'parentId')!;
     expect(parent).toMatchObject({ kind: 'select', createOnly: true, nullable: true });

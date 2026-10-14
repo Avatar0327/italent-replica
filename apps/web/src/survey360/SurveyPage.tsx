@@ -174,7 +174,9 @@ function SurveyDetail({ id, kind, close, saved }: { id: string; kind: Kind; clos
                   title: m.confirm,
                   content: m.confirmBody,
                   onOk: () =>
-                    writer.write(`${BASE}${surveyPath(kind)}/${id}/${action}`, 'POST', {}, row.revision).catch(() => undefined),
+                    writer
+                      .write(`${BASE}${surveyPath(kind)}/${id}/${action}`, 'POST', {}, row.revision)
+                      .catch(() => undefined),
                 })
               }
             >
@@ -212,7 +214,13 @@ function Editor({ kind, row, close, saved }: { kind: Kind; row?: Row; close(): v
     kind === 'activities' ? (
       <ActivityEditor row={row} close={close} saved={saved} />
     ) : (
-      <QuestionnaireEditor path={`${BASE}${surveyPath(kind)}`} title={createTitles[kind]} row={row} close={close} saved={saved} />
+      <QuestionnaireEditor
+        path={`${BASE}${surveyPath(kind)}`}
+        title={createTitles[kind]}
+        row={row}
+        close={close}
+        saved={saved}
+      />
     );
   return row ? (
     form

@@ -2,7 +2,8 @@ import type { DecisionAnnotation } from '../annotations/index.js';
 export const notes: Record<string, DecisionAnnotation> = {
   'qualification-category-class': {
     original: 'UI/R3_任职资格/01：类别按分类组织；分类维护页的列与操作原站证据不足（未验证）。',
-    decision: '按后端分类契约补维护入口：列表、新建、编辑，复用同套目录页与表单弹窗；上级分类建后不可改，层级由服务端推出。',
+    decision:
+      '按后端分类契约补维护入口：列表、新建、编辑，复用同套目录页与表单弹窗；上级分类建后不可改，层级由服务端推出。',
     decisions: ['DEC-500', 'DEC-456'],
     level: 'L3',
   },

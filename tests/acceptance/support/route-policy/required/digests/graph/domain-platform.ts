@@ -40,6 +40,14 @@ export const GRAPH: Graph = {
   'packages/domain/src/platform/standard-presets.ts#ESTABLISHMENT_SCHEME_DATASOURCE': [
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
   ],
+  'packages/domain/src/platform/standard-presets.ts#IDP_PROFILES': [
+    'packages/domain/src/idp/catalog.ts#IDP_APP',
+    'packages/domain/src/idp/catalog.ts#IDP_OBJECTS',
+    '#IDP_KEY_INFO',
+    '#IDP_PLAN_CONTENT',
+    '#full',
+    '#readOnly',
+  ],
   'packages/domain/src/platform/standard-presets.ts#MANAGER_OBJECTS': [
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
     'packages/domain/src/personnel/catalog.ts#PERSONNEL_OBJECTS',
@@ -47,6 +55,7 @@ export const GRAPH: Graph = {
   'packages/domain/src/platform/standard-presets.ts#QUALIFICATION_PROFILES': [
     'packages/domain/src/evaluation/catalog.ts#EVALUATION_APP',
     'packages/domain/src/evaluation/catalog.ts#EVALUATION_OBJECTS',
+    'packages/domain/src/evaluation/catalog.ts#EVALUATION_SEE_ALL_OBJECTS',
     'packages/domain/src/evaluation/flow-catalog.ts#EVALUATION_FLOW_OBJECTS',
     '#full',
     '#readOnly',
@@ -59,6 +68,7 @@ export const GRAPH: Graph = {
     '#BUSINESS_OBJECTS',
     '#CORE_HR',
     '#EMPLOYEE_PROFILE',
+    '#IDP_PROFILES',
     '#MANAGER_OBJECTS',
     '#QUALIFICATION_PROFILES',
     '#SUCCESSION_PROFILES',

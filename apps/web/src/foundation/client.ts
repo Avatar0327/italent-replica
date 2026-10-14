@@ -77,7 +77,7 @@ function errorKind(status: number, code: string): ErrorKind {
 function responseError(response: Response, payload: ErrorPayload) {
   const code = payload.error?.code ?? 'REQUEST_FAILED';
   const kind = errorKind(response.status, code);
-  const messages = {
+  const messages: Record<ErrorKind, string> = {
     login: ui.login,
     forbidden: ui.denied,
     'not-found': ui.missing,
