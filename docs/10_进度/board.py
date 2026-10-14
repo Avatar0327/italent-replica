@@ -270,30 +270,73 @@ def progress(d, live):
     return {"done": done, "tot": tot, "prev": rec.get("prev"), "since": rec["cur"][2], "ms": milestones(d, merged)}
 
 
-MS_DEF = {"M1": {"t": "M1 · R1+R3 可演示", "dl": "2026-10-15"}, "M2": {"t": "M2 · R1+R2+R3 完整演示版（在 M1 上加 R2）", "dl": "2026-10-19"}}
+MS_DEF = {"D1": {"t": "D1 · R1+R3 可演示", "dl": "2026-10-15"},
+          "D2": {"t": "D2 · R1+R2+R3 完整演示版（在 D1 上加 R2）", "dl": "2026-10-19"},
+          "D3": {"t": "D3 · 绿 + 蓝全模块（DEC-456 / 457）", "dl": "2026-10-31"}}
+D3_R2 = {"BE-12", "BE-13", "FE-R2f"}   # 人事分析：蓝色、可先接桩，不影响演示 → D3（用户 10-14 决定）
+
+
+def resolve(ln, st):
+    """每个步骤的 演示节点(D1/D2/D3)、模块标签、类型。st['ms'] 优先；R2E 线归 D2（人事分析 D3）；蓝色模块 D3；其余 D1。"""
+    k, lid = str(st.get("k", "")), ln.get("id", "")
+    if st.get("ms"):
+        ms = st["ms"]
+    elif k in D3_R2 or k.startswith("M-"):
+        ms = "D3"
+    elif lid == "R2E":
+        ms = "D2"
+    else:
+        ms = "D1"
+    if lid == "R2E" or k in ("REM-R2a", "REM-R2b", "GAP-R2", "SPLIT-R2", "PRIO-R2"):
+        mod = "R2"
+    elif k.startswith("M-"):
+        mod = "蓝"
+    elif k.startswith("FE-R1") or k == "REM-R1":
+        mod = "R1"
+    elif k.startswith("FE-R3") or k == "REM-R3" or lid in ("T02", "T03", "T04", "T05", "T07"):
+        mod = "R3"
+    elif lid in ("FE",):
+        mod = "底座"
+    else:
+        mod = "支撑"
+    if k.startswith("REM-") or k.startswith("F-129") or k.startswith("F-131") or k == "UI-ref":
+        kind = "取证"
+    elif k in ("GAP-R2", "SPLIT-R2", "PRIO-R2"):
+        kind = "规划"
+    elif k.startswith("DEMO-") or k == "PRD-kit":
+        kind = "演示配套"
+    elif k.startswith("FE-") or k.startswith("M-"):
+        kind = "前端" if k.startswith("FE-") else "蓝色模块"
+    else:
+        kind = "后端"
+    return ms, mod, kind
+
+
+def mile_rows(d):
+    """进行中看板 按演示节点分栏用的平铺任务表（暂停项不进；dup 标记的重复项不进）。"""
+    rows = []
+    for ln in (d.get("main") or {}).get("lines", []) + [dict(x, id=x.get("id", "SUP")) for x in (d.get("main") or {}).get("support", [])]:
+        groups = ln.get("groups") or ([{"n": "", "steps": ln.get("steps", [])}] if ln.get("steps") else [])
+        for g in groups:
+            for st in g["steps"]:
+                if st.get("s") == "paused" or st.get("dup"):
+                    continue
+                ms, mod, kind = resolve(ln, st)
+                rows.append({"st": st, "ms": ms, "mod": mod, "kind": kind})
+    return rows
 
 
 def milestones(d, merged):
-    """用户 10-14 起要求按两个里程碑分开统计（04 转达）：步骤的 ms 字段优先；否则 R2E 线归 M2，20 天蓝色模块（M-xxx）不计，其余归 M1。
-    已合并 = 步骤 done 或其 PR 已合并；在审 / 返工 = 有 PR 未合并或已派（assigned / ready）；未开工 = 其余（todo / wait）。暂停项不计。"""
     out = {k: {"t": v["t"], "dl": v["dl"], "done": 0, "act": 0, "todo": 0, "tot": 0} for k, v in MS_DEF.items()}
-    for ln in (d.get("main") or {}).get("lines", []):
-        for g in ln.get("groups", []):
-            for st in g["steps"]:
-                if st.get("s") == "paused":
-                    continue
-                k = st.get("ms") or ("M2" if ln.get("id") == "R2E" else None if str(st.get("k", "")).startswith("M-") else "M1")
-                if k not in out:
-                    continue
-                isdone = st.get("s") == "done" or (st.get("pr") and str(st["pr"]) in merged)
-                m = out[k]
-                m["tot"] += 1
-                if isdone:
-                    m["done"] += 1
-                elif st.get("pr") or st.get("s") in ("assigned", "ready"):
-                    m["act"] += 1
-                else:
-                    m["todo"] += 1
+    for r in mile_rows(d):
+        st, m = r["st"], out[r["ms"]]
+        m["tot"] += 1
+        if st.get("s") == "done" or (st.get("pr") and str(st["pr"]) in merged):
+            m["done"] += 1
+        elif st.get("pr") or st.get("s") in ("assigned", "ready"):
+            m["act"] += 1
+        else:
+            m["todo"] += 1
     out["paused"] = sorted(i.get("pr") for i in d.get("items", []) if "DEC-475" in str(i.get("now", "")) and i.get("pr") and i.get("pr") != 100)
     return out
 
@@ -305,7 +348,7 @@ def build(d, nosync):
     lv = live_prs() if not nosync else d.get("_live")
     live = open(os.path.join(HERE, "进行中看板.template.html"), encoding="utf8").read().replace(
         "__DATA__", json.dumps({"main": d.get("main"), "items": d.get("items"), "log": d.get("log", [])[:12],
-                                "live": lv, "prog": progress(d, lv)}, ensure_ascii=False))
+                                "live": lv, "prog": progress(d, lv), "mile": mile_rows(d)}, ensure_ascii=False))
     with open(os.path.join(HERE, "进行中看板.html"), "w", encoding="utf8") as f:
         f.write(live)
     ljs = live[live.index("const DATA"):live.rindex("</script>")]
