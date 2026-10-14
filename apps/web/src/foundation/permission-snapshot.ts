@@ -1,9 +1,9 @@
-import { contractRoute } from '../contracts/route.js';
 import { APP_OBJECT_DIRECTORY } from '@italent/domain';
 import type { buildPermissionSnapshot } from '../../../api/src/modules/permission/me-snapshot.js';
 import { ApiError, type ApiClient } from './client.js';
 import type { ObjectPermission } from './permission-model.js';
-import { APP_ROUTES, type AppRoute } from './routes.js';
+import { isEntry } from './page-registry.js';
+import { MENU_ROUTES, type AppRoute, type MenuRoute } from './routes.js';
 
 // 只引用后端推导类型，运行时不打包 API 或数据库代码。
 export type ServerSnapshot = Awaited<ReturnType<typeof buildPermissionSnapshot>>;
@@ -29,35 +29,25 @@ export const emptyPermissions: PermissionSnapshot = {
 };
 export const menuObjects = (route: AppRoute) => APP_OBJECT_DIRECTORY[route.id];
 
-export async function loadSnapshot(api: ApiClient, signal: AbortSignal) {
-  const response = await api.request<ServerSnapshot>('/api/tenant/permission/me/snapshot', { signal });
-  const session = { ...response.session, identityKey: response.session.userId, source: 'server' as const };
-  const menus: MenuNode[] = APP_ROUTES.filter((route) =>
-    response.apps.some((app) => app.app === route.id && app.visible),
-  ).map((route) => ({
+/** 应用按服务端可见性显示；应用内入口还要求所属应用的入口对象含其对象。下一层结构由模块登记的 children 适配。 */
+export function menuNodes(routes: readonly MenuRoute[], response: ServerSnapshot): MenuNode[] {
+  const visible = (route: MenuRoute) =>
+    response.apps.some(
+      (app) => app.app === route.app && app.visible && (!isEntry(route) || app.entryObjects.includes(route.objectCode)),
+    );
+  return routes.filter(visible).map((route) => ({
     key: route.id,
     label: route.label,
     path: route.path,
     group: route.group,
-    ...(route.id === 'settings'
-      ? {
-          children: response.adminMenus.map((menu) => ({
-            key: menu.code,
-            label: menu.path,
-            path: `/settings/menu/${encodeURIComponent(menu.code)}`,
-            group: route.group,
-            editable: menu.editable,
-          })),
-        }
-      : {}),
+    ...(!isEntry(route) && route.children ? { children: route.children(response, route) } : {}),
   }));
-  // 合同仍属于 staff，仅将服务端已授权的合同对象映射为本模块入口。
-  if (
-    response.apps.some(
-      (app) => app.app === 'staff' && app.visible && app.entryObjects.includes(contractRoute.objectCode),
-    )
-  )
-    menus.push({ ...contractRoute, key: contractRoute.id });
+}
+
+export async function loadSnapshot(api: ApiClient, signal: AbortSignal) {
+  const response = await api.request<ServerSnapshot>('/api/tenant/permission/me/snapshot', { signal });
+  const session = { ...response.session, identityKey: response.session.userId, source: 'server' as const };
+  const menus = menuNodes(MENU_ROUTES, response);
   // 入口摘要不授予字段或按钮权限；需要明细的页面用同一个按需读取入口补齐。
   const objects: Record<string, ObjectPermission> = Object.fromEntries(
     response.apps.flatMap((app) =>

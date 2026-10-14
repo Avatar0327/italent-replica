@@ -1,5 +1,5 @@
-import type { DecisionAnnotation } from './foundation.js';
-export const survey360Notes: Record<string, DecisionAnnotation> = {
+import type { DecisionAnnotation } from '../annotations/index.js';
+export const notes: Record<string, DecisionAnnotation> = {
   survey360: {
     original:
       '活动以全部、草稿、已启用、已停用页签区分；详情包含基本信息、套卷、评价关系。题库以企业自定义套卷模板列表呈现。',

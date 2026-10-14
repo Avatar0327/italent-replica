@@ -1,4 +1,4 @@
-import { APP_ROUTES } from '../src/foundation/routes.js';
+import { APP_ROUTES } from './page-registry.js';
 import { test as base, expect } from '@playwright/test';
 
 export const tenant = '10000000-0000-4000-8000-000000000001';

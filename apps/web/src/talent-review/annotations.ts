@@ -1,5 +1,5 @@
-import type { DecisionAnnotation } from './foundation.js';
-export const talentReviewNotes: Record<string, DecisionAnnotation> = {
+import type { DecisionAnnotation } from '../annotations/index.js';
+export const notes: Record<string, DecisionAnnotation> = {
   'talent-review-projects': {
     original: '盘点项目分进行中与已结束视图，内容页有四张看板与八个页签，无独立面包屑。',
     decision:

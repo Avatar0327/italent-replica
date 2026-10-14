@@ -1,5 +1,5 @@
-import type { DecisionAnnotation } from './foundation.js';
-export const qualificationNotes: Record<string, DecisionAnnotation> = {
+import type { DecisionAnnotation } from '../annotations/index.js';
+export const notes: Record<string, DecisionAnnotation> = {
   'qualification-category': {
     original: 'UI/R3_任职资格/01、08：类别按分类组织，编辑为双列居中弹窗，可以新建或从岗职务引入。',
     decision: '复用 FE-0 双列表单弹窗与同套实测主题；按所属管理单元与向下公开管理，批量引入后续接入。',

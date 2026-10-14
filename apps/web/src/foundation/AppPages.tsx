@@ -1,49 +1,23 @@
-import { contractRoute } from '../contracts/route.js';
-import { lazy, Suspense } from 'react';
+import { Suspense } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router';
-import { APP_ROUTES, appRoute, legacyTarget } from './routes.js';
+import { mountPath, type ModulePage } from './page-registry.js';
+import { MENU_ROUTES, PAGES, SUB_ROUTES, appRoute, legacyTarget } from './routes.js';
 import { PageErrorBoundary, PageState } from './PageState.js';
 import { usePermissions } from './Permissions.js';
 import { useSession } from './Session.js';
 import { ListPage } from './templates.js';
 import { ui } from './messages.js';
 
-const Account = lazy(() => import('../account/AccountPage.js').then((m) => ({ default: m.AccountPage })));
-const Approval = lazy(() => import('../approval/ApprovalPage.js').then((m) => ({ default: m.ApprovalPage })));
-const Evaluation = lazy(() => import('../evaluation/EvaluationPage.js').then((m) => ({ default: m.EvaluationPage })));
-const Job = lazy(() => import('../job/JobWorkspace.js').then((m) => ({ default: m.JobWorkspace })));
-const Manager = lazy(() => import('../self-service/pages/ManagerPage.js').then((m) => ({ default: m.ManagerPage })));
-const Org = lazy(() => import('../org/OrgPage.js').then((m) => ({ default: m.OrgPage })));
-const Qualification = lazy(() =>
-  import('../qualification/QualificationPage.js').then((m) => ({ default: m.QualificationPage })),
-);
-const Self = lazy(() => import('../self-service/pages/SelfPage.js').then((m) => ({ default: m.SelfPage })));
-const Settings = lazy(() => import('../settings/SettingsPage.js').then((m) => ({ default: m.SettingsPage })));
-const Staff = lazy(() => import('../personnel/StaffPage.js').then((m) => ({ default: m.StaffPage })));
-const Survey = lazy(() => import('../survey360/SurveyPage.js').then((m) => ({ default: m.SurveyPage })));
-const Talent = lazy(() => import('../talent/TalentPage.js').then((m) => ({ default: m.TalentPage })));
-const TalentReview = lazy(() =>
-  import('../talent-review/TalentReviewPage.js').then((m) => ({ default: m.TalentReviewPage })),
-);
-const Transfer = lazy(() => import('../transfer/TransferPage.js').then((m) => ({ default: m.TransferPage })));
-const Contracts = lazy(() => import('../contracts/ContractsPage.js').then((m) => ({ default: m.ContractsPage })));
-// 页面与布局同行登记，合并页面片时不再维护另一处路由条件。
-const existing = {
-  approval: { Page: Approval, legacy: false },
-  evaluation: { Page: Evaluation, legacy: false },
-  job: { Page: Job, legacy: false },
-  manager: { Page: Manager, legacy: false },
-  org: { Page: Org, legacy: false },
-  qualification: { Page: Qualification, legacy: true },
-  self: { Page: Self, legacy: false },
-  settings: { Page: Settings, legacy: true },
-  staff: { Page: Staff, legacy: false },
-  survey360: { Page: Survey, legacy: false },
-  talent: { Page: Talent, legacy: true },
-  'talent-review': { Page: TalentReview, legacy: true },
-  transfer: { Page: Transfer, legacy: false },
-  contracts: { Page: Contracts, legacy: false },
-};
+// 页面由各模块 pages.ts 自带登记（F-125），这里只装配；应用页一律包一层 div，子路由仅 legacy 时包。
+function Mounted({ page, legacy }: { page: ModulePage; legacy: boolean }) {
+  return legacy ? (
+    <div className="legacy-page">
+      <page.Component />
+    </div>
+  ) : (
+    <page.Component />
+  );
+}
 
 function LandingPage({ title }: { title: string }) {
   return (
@@ -67,44 +41,30 @@ export function AppPages() {
   if (permission.loading) return <PageState kind="loading" />;
   if (permission.error) return <PageState kind="error" error={permission.error} retry={permission.refresh} />;
   const active = appRoute(location.pathname);
-  const isAccount = location.pathname === '/settings/account';
-  if (active && !isAccount && !permission.menus.some((menu) => menu.key === active.id))
+  if (active && !PAGES.ungated.has(location.pathname) && !permission.menus.some((menu) => menu.key === active.id))
     return <PageState kind="forbidden" />;
   return (
     <PageErrorBoundary key={`${session.tenantId}/${session.identityKey}/${location.pathname}`}>
       <Suspense fallback={<PageState kind="loading" />}>
         <Routes>
-          {[...APP_ROUTES, { ...contractRoute, path: '/contracts/*' }].map((route) => {
-            const page = existing[route.id as keyof typeof existing];
-            const Page = page?.Page;
-            return (
-              <Route
-                key={route.id}
-                path={route.path}
-                element={
-                  Page ? (
-                    <div className={page.legacy ? 'legacy-page' : undefined}>
-                      <Page />
-                    </div>
-                  ) : (
-                    <LandingPage title={route.label} />
-                  )
-                }
-              />
-            );
-          })}
-          <Route path="/org/changes" element={<Org />} />
-          <Route
-            path="/settings/account"
-            element={
-              <div className="legacy-page">
-                <Account />
-              </div>
-            }
-          />
-          <Route path="/settings/menu/:code" element={<Settings />} />
-          <Route path="/self/*" element={<Self />} />
-          <Route path="/manager/*" element={<Manager />} />
+          {MENU_ROUTES.map((route) => (
+            <Route
+              key={route.id}
+              path={mountPath(route)}
+              element={
+                route.page ? (
+                  <div className={route.legacy ? 'legacy-page' : undefined}>
+                    <route.page.Component />
+                  </div>
+                ) : (
+                  <LandingPage title={route.label} />
+                )
+              }
+            />
+          ))}
+          {SUB_ROUTES.map((route) => (
+            <Route key={route.path} path={route.path} element={<Mounted page={route.page} legacy={route.legacy} />} />
+          ))}
           <Route path="*" element={<PageState kind="not-found" />} />
         </Routes>
       </Suspense>

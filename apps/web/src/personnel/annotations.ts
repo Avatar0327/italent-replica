@@ -1,5 +1,5 @@
-import type { DecisionAnnotation } from './foundation.js';
-export const personnelNotes: Record<string, DecisionAnnotation> = {
+import type { DecisionAnnotation } from '../annotations/index.js';
+export const notes: Record<string, DecisionAnnotation> = {
   personnel: {
     original: '员工列表使用紧凑表格、筛选和列设置；点击姓名打开档案，任职记录与人员信息分区展示。',
     decision: '复用 FE-0 外壳和右侧抽屉；读取已有人员接口，字段按对象权限显示，不推算总数。',

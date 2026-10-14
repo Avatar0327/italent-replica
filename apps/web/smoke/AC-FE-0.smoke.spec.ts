@@ -1,5 +1,5 @@
 import { test, expect, tenant, user, snapshotFixture } from './fixtures.js';
-import { APP_ROUTES } from '../src/foundation/routes.js';
+import { APP_ROUTES } from './page-registry.js';
 
 test('AC-FE-0-04 通过现有演示身份选择器进入应用，注释可切换', async ({ page }) => {
   await page.goto('/staff');

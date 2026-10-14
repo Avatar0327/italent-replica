@@ -1,5 +1,5 @@
-import type { DecisionAnnotation } from './foundation.js';
-export const orgNotes: Record<string, DecisionAnnotation> = {
+import type { DecisionAnnotation } from '../annotations/index.js';
+export const notes: Record<string, DecisionAnnotation> = {
   org: {
     original: '第 1 批截图：无独立面包屑；左上图标与视图下拉、40px 表格；详情在右侧抽屉内分页签，编辑用双列弹窗。',
     decision:

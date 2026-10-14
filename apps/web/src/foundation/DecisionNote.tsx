@@ -1,6 +1,7 @@
 import { Alert, Switch, Tag } from 'antd';
 import { createContext, useContext, useState, type ReactNode } from 'react';
-import { foundationNotes, type DecisionAnnotation } from '../annotations/foundation.js';
+import type { DecisionAnnotation } from '../annotations/index.js';
+import { notes as foundationNotes } from './annotations.js';
 import { ui } from './messages.js';
 
 const NotesContext = createContext({ enabled: false, toggle() {}, notes: foundationNotes });

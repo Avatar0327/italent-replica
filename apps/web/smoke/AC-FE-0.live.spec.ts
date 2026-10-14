@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { APP_ROUTES } from '../src/foundation/routes.js';
+import { APP_ROUTES } from './page-registry.js';
 
 const expectLive = expect.configure({ timeout: 15_000 });
 // 先在本 worktree 运行 pnpm demo；本测试不拦截 API、不改业务数据，只切换演示身份与打开页面。

@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { test, expect } from '@playwright/test';
-import { APP_ROUTES } from '../src/foundation/routes.js';
+import { APP_ROUTES } from './page-registry.js';
 
 const roles = ['系统管理员', 'HR（HRBP）', '部门负责人（经理）', '普通员工', '审计管理员', '无权限用户'];
 // 同一演示库分别在改造前后执行；基线只保存合成身份的菜单标签，不保存 Cookie。

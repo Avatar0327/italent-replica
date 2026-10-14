@@ -1,5 +1,5 @@
-import type { DecisionAnnotation } from './foundation.js';
-export const talentNotes: Record<string, DecisionAnnotation> = {
+import type { DecisionAnnotation } from '../annotations/index.js';
+export const notes: Record<string, DecisionAnnotation> = {
   'talent-maintenance': {
     original: '人才标准可维护分类、完整指标描述、引用关系和潜力模型图。',
     decision: '保留已有维护组件和业务校验；新列表与基础抽屉使用统一底座，完整子表维护仍通过本入口。',

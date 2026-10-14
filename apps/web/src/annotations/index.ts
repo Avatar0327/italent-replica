@@ -1,35 +1,39 @@
-import { contractNotes } from '../contracts/annotations.js';
-import { approvalNotes } from './approval.js';
-import { establishmentNotes } from './establishment.js';
-import { evaluationNotes } from './evaluation.js';
-import { foundationNotes } from './foundation.js';
-import { jobNotes } from './job.js';
-import { orgNotes } from './org.js';
-import { personnelNotes } from './personnel.js';
-import { qualificationNotes } from './qualification.js';
-import { selfServiceNotes } from './self-service.js';
-import { settingsNotes } from './settings.js';
-import { survey360Notes } from './survey360.js';
-import { talentNotes } from './talent.js';
-import { talentReviewNotes } from './talent-review.js';
-import { transferNotes } from './transfer.js';
+/// <reference types="vite/client" />
+import { compareText, moduleName } from '../foundation/page-registry.js';
 
-// 页面片在这里合并各模块注释，所有页面共用根 Provider 的全局开关。
-export const annotations = {
-  ...approvalNotes,
-  ...establishmentNotes,
-  ...evaluationNotes,
-  ...foundationNotes,
-  ...jobNotes,
-  ...orgNotes,
-  ...personnelNotes,
-  ...qualificationNotes,
-  ...selfServiceNotes,
-  ...settingsNotes,
-  ...survey360Notes,
-  ...talentNotes,
-  ...talentReviewNotes,
-  ...transferNotes,
-  ...contractNotes,
-};
-export type { DecisionAnnotation } from './foundation.js';
+export interface DecisionAnnotation {
+  original: string;
+  decision: string;
+  decisions: readonly string[];
+  level: 'L1' | 'L2' | 'L3';
+}
+type Notes = Record<string, DecisionAnnotation>;
+
+/**
+ * 注释自注册（F-125 / DEC-476）：各模块在 `src/<模块>/annotations.ts` 导出 `notes`，这里汇总给根 Provider。
+ * 键重复直接报错，不再靠展开顺序静默覆盖；结果按键排序，与文件遍历顺序无关。
+ */
+export function collectAnnotations(modules: Record<string, unknown>) {
+  const notes: Notes = {};
+  const owners: Record<string, string> = {};
+  const found = Object.keys(modules)
+    .sort(compareText)
+    .flatMap((key) => {
+      const module = moduleName(key);
+      const items = (modules[key] as { notes?: Notes } | undefined)?.notes;
+      if (!items || typeof items !== 'object')
+        throw new Error(`注释登记缺少导出：${module}/annotations.ts 须导出 notes`);
+      return Object.entries(items).map(([id, note]) => ({ id, note, module }));
+    })
+    .sort((a, b) => compareText(a.id, b.id));
+  for (const { id, note, module } of found) {
+    if (owners[id] !== undefined) throw new Error(`注释登记重复：${id}（${owners[id]} 与 ${module}）`);
+    notes[id] = note;
+    owners[id] = module;
+  }
+  return { notes, owners };
+}
+
+const collected = collectAnnotations(import.meta.glob('../*/annotations.ts', { eager: true }));
+export const annotations: Notes = collected.notes;
+export const annotationOwners: Readonly<Record<string, string>> = collected.owners;

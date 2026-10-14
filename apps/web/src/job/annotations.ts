@@ -1,5 +1,5 @@
-import type { DecisionAnnotation } from './foundation.js';
-export const jobNotes: Record<string, DecisionAnnotation> = {
+import type { DecisionAnnotation } from '../annotations/index.js';
+export const notes: Record<string, DecisionAnnotation> = {
   job: {
     original: '第 1 批截图：列表用图标与视图下拉，无面包屑；详情为右侧抽屉内的页签与分区，新建用双列弹窗。',
     decision:
