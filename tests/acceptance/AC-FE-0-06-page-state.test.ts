@@ -24,7 +24,8 @@ afterEach(async () => {
 });
 const render = (props: Record<string, unknown>) =>
   act(() => root.render(h(MemoryRouter, null, h(PageState, { kind: 'forbidden', ...props }))));
-const buttons = () => [...host.querySelectorAll('button')].map((button) => button.textContent?.replace(/\s/g, ''));
+const buttons = () =>
+  Array.from(host.querySelectorAll('button')).map((button) => button.textContent?.replace(/\s/g, ''));
 
 describe('AC-FE-0-06 整页无权限可刷新', () => {
   it('传入 refresh 时显示“刷新页面”，点击重新获取权限', async () => {

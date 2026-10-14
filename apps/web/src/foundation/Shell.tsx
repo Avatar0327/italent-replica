@@ -8,6 +8,8 @@ import { ApiError } from './client.js';
 import { PageState } from './PageState.js';
 import { AppPages } from './AppPages.js';
 import { appRoute } from './routes.js';
+import { currentApp } from './menu-nav.js';
+import type { MenuNode } from './permission-snapshot.js';
 import { ui } from './messages.js';
 import { MenuIcon } from './ViewHeading.js';
 import { AppSwitch, MessageCenter, PersonalMenu } from './HeaderParts.js';
@@ -43,30 +45,40 @@ function Header() {
     </Layout.Header>
   );
 }
+function menuItem(menu: MenuNode, navigate: (path: string) => void) {
+  return {
+    key: menu.path,
+    icon: <MenuIcon />,
+    label: menu.label,
+    onTitleClick: () => navigate(menu.path),
+    children: menu.children?.length
+      ? menu.children.map((child) => ({ key: child.path, label: child.label }))
+      : undefined,
+  };
+}
+/**
+ * 原站左侧导航只列当前应用的菜单，切换应用走顶栏全部菜单面板。
+ * 当前页不属于任何有权菜单（首页、个人设置、无权限页）时复刻仍按应用分组列出全部有权菜单（假设，原站未取证）。
+ */
+function sidebarItems(menus: MenuNode[], activePath: string | undefined, navigate: (path: string) => void) {
+  const app = currentApp(menus, activePath, ui.groups);
+  if (app) return app.menus.map((menu) => menuItem(menu, navigate));
+  return Object.entries(ui.groups)
+    .map(([key, label]) => ({
+      type: 'group' as const,
+      key,
+      label,
+      children: menus.filter((menu) => menu.group === key).map((menu) => menuItem(menu, navigate)),
+    }))
+    .filter((group) => group.children.length > 0);
+}
 export function Shell() {
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
   const { menus, loading, error, refresh } = usePermissions();
   const active = appRoute(location.pathname);
-  const groups = Object.entries(ui.groups)
-    .map(([key, label]) => ({
-      type: 'group' as const,
-      key,
-      label,
-      children: menus
-        .filter((menu) => menu.group === key)
-        .map((menu) => ({
-          key: menu.path,
-          icon: <MenuIcon />,
-          label: menu.label,
-          onTitleClick: () => navigate(menu.path),
-          children: menu.children?.length
-            ? menu.children.map((child) => ({ key: child.path, label: child.label }))
-            : undefined,
-        })),
-    }))
-    .filter((group) => group.children.length > 0);
+  const items = sidebarItems(menus, active?.path, navigate);
   let content = <AppPages />;
   if (loading) content = <PageState kind="loading" />;
   else if (error) {
@@ -88,7 +100,7 @@ export function Shell() {
             mode="inline"
             selectedKeys={[location.pathname]}
             defaultOpenKeys={active ? [active.path] : []}
-            items={groups}
+            items={items}
             onClick={({ key }) => navigate(key)}
           />
           <Button

@@ -1,5 +1,6 @@
 import { test, expect, tenant, user, snapshotFixture } from './fixtures.js';
 import { APP_ROUTES } from './page-registry.js';
+import { ui } from '../src/foundation/messages.js';
 
 test('AC-FE-0-04 通过现有演示身份选择器进入应用，注释可切换', async ({ page }) => {
   await page.goto('/staff');
@@ -10,7 +11,9 @@ test('AC-FE-0-04 通过现有演示身份选择器进入应用，注释可切换
   await expect(page.locator('.shell-content > .decision-note').getByText('DEC-456', { exact: true })).toHaveCount(0);
   await page.getByRole('switch', { name: '注释' }).click();
   await expect(page.locator('.shell-content > .decision-note').getByText('DEC-456', { exact: true })).toBeVisible();
-  await page.getByRole('menuitem', { name: '人才盘点', exact: true }).click();
+  // 左侧只列当前应用菜单，跨应用经顶栏全部菜单面板进入（#326 第 2 轮 P2-2）
+  await page.getByRole('button', { name: '应用导航' }).click();
+  await page.getByRole('dialog', { name: '全部菜单' }).getByRole('link', { name: '人才盘点', exact: true }).click();
   await expect(page).toHaveURL(/\/talent-review$/);
   await expect(page.locator('.shell-content > .decision-note').getByText('DEC-456', { exact: true })).toBeVisible();
 });
@@ -26,7 +29,9 @@ for (const app of APP_ROUTES) {
     await page.goto(app.path);
     await expect(page.locator('.shell-workspace h1').first()).toBeVisible();
     await expect(page.getByRole('button', { name: '应用导航' })).toBeVisible();
-    await expect(page.locator('.app-switch')).toContainText(app.label);
+    // 顶栏显示当前应用（原站“应用”即本系统分组）名，左侧列出本页菜单（#326 第 2 轮 P2-2）
+    await expect(page.locator('.app-switch')).toContainText(ui.groups[app.group]);
+    await expect(page.locator('.shell-sidebar').getByRole('menuitem', { name: app.label, exact: true })).toBeVisible();
     await expect(page.locator('.shell-workspace')).not.toContainText('正在加载');
     expect(errors).toEqual([]);
   });

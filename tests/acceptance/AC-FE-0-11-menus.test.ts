@@ -25,7 +25,12 @@ const menus = [
 describe('AC-FE-0-11 全部菜单搜索', () => {
   it('递归搜索下级菜单，命中“全部用户”并给出应用 > 上级 > 目录路径', () => {
     expect(searchMenus(menus, '全部用户', groups)).toEqual([
-      { key: 'users.all', label: '全部用户', path: '/settings/menu/users.all', trail: ['设置', '企业设置', '用户管理'] },
+      {
+        key: 'users.all',
+        label: '全部用户',
+        path: '/settings/menu/users.all',
+        trail: ['设置', '企业设置', '用户管理'],
+      },
     ]);
   });
 

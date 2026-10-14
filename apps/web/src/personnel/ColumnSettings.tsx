@@ -2,6 +2,7 @@ import { Button, Checkbox, Input, Modal, Popover } from 'antd';
 import { useState } from 'react';
 import {
   columnChoices,
+  columnLabel,
   columnGroupState,
   lockedColumn,
   matchColumns,
@@ -140,7 +141,7 @@ function AllFields({
             checked={draft.includes(key)}
             onChange={(event) => setDraft((previous) => toggleColumn(previous, key, event.target.checked))}
           >
-            {m.labels[key]}
+            {columnLabel(key)}
           </Checkbox>
         ))}
       </div>
@@ -156,7 +157,7 @@ function SelectedFields({ keys, onMove }: { keys: string[]; onMove(key: string, 
       {keys.map((key) => (
         <li
           key={key}
-          aria-label={m.labels[key]}
+          aria-label={columnLabel(key)}
           draggable={key !== lockedColumn}
           className={[key === lockedColumn && 'is-locked', key === dragging && 'is-dragging'].filter(Boolean).join(' ')}
           onDragStart={(event) => {
@@ -175,7 +176,7 @@ function SelectedFields({ keys, onMove }: { keys: string[]; onMove(key: string, 
           onDragEnd={() => setDragging(undefined)}
         >
           {key === lockedColumn ? <LockIcon /> : <HandleIcon />}
-          {m.labels[key]}
+          {columnLabel(key)}
         </li>
       ))}
     </ul>

@@ -4,6 +4,7 @@ import { test, expect, user, employee } from './fixtures.js';
 const fields = [
   'name',
   'code',
+  'workDate',
   'gender',
   'entryDate',
   'employeeStatus',
@@ -46,6 +47,7 @@ async function staffFixtures(page: Page) {
                   gender: '女',
                   employeeStatus: 3,
                   entryDate: '2024-01-01',
+                  workDate: '2020-07-01',
                 },
               ],
         hasDataPermission: true,
@@ -194,13 +196,14 @@ test('AC-FE-R1b-03c 设置显示字段：居中双栏、姓名锁定、拖拽排
   await expect(page.locator('.staff-columns-modal .ant-modal')).toBeVisible();
   await expect(dialog.getByRole('checkbox', { name: '员工姓名', exact: true })).toBeDisabled();
   const selected = dialog.getByRole('list', { name: '已选字段' });
-  await expect(dialog.getByText('已选字段 6/7', { exact: true })).toBeVisible();
+  await expect(dialog.getByText('已选字段 7/8', { exact: true })).toBeVisible();
   await expect(selected.getByRole('listitem')).toHaveText([
     '员工姓名',
     '员工ID',
+    '首次参加工作日期',
     '性别',
-    '人员状态',
     '入职日期',
+    '人员状态',
     '电子邮件',
   ]);
   await expect(selected.getByRole('listitem').first()).toHaveAttribute('draggable', 'false');
@@ -215,12 +218,13 @@ test('AC-FE-R1b-03c 设置显示字段：居中双栏、姓名锁定、拖拽排
     '员工姓名',
     '入职日期',
     '员工ID',
+    '首次参加工作日期',
     '性别',
     '人员状态',
     '电子邮件',
   ]);
   await dialog.getByRole('checkbox', { name: '性别', exact: true }).uncheck();
-  await expect(dialog.getByText('已选字段 5/7', { exact: true })).toBeVisible();
+  await expect(dialog.getByText('已选字段 6/8', { exact: true })).toBeVisible();
   await dialog.getByRole('searchbox', { name: '搜索字段' }).fill('日期');
   await expect(dialog.getByRole('checkbox', { name: '员工ID', exact: true })).toHaveCount(0);
   await dialog.getByRole('searchbox', { name: '搜索字段' }).fill('');
@@ -229,6 +233,7 @@ test('AC-FE-R1b-03c 设置显示字段：居中双栏、姓名锁定、拖拽排
     '员工姓名',
     '入职日期',
     '员工ID',
+    '首次参加工作日期',
     '人员状态',
     '电子邮件',
     '',
@@ -238,9 +243,10 @@ test('AC-FE-R1b-03c 设置显示字段：居中双栏、姓名锁定、拖拽排
   await expect(selected.getByRole('listitem')).toHaveText([
     '员工姓名',
     '员工ID',
+    '首次参加工作日期',
     '性别',
-    '人员状态',
     '入职日期',
+    '人员状态',
     '电子邮件',
   ]);
   await dialog.getByRole('button', { name: /^取\s*消$/ }).click();

@@ -15,6 +15,7 @@ import {
   employeeQuery,
   fieldValue,
   visibleColumns,
+  columnLabel,
   type Filters,
   type Row,
 } from './model.js';
@@ -87,7 +88,7 @@ export function StaffPage() {
 function staffColumns(selectedColumns: string[], allowed: readonly string[], setEmployeeId: (id: string) => void) {
   const columns: TableColumnsType<Row> = visibleColumns(selectedColumns, allowed).map((key) => ({
     key,
-    title: m.labels[key],
+    title: columnLabel(key),
     dataIndex: key,
     width: key === 'name' ? 150 : 155,
     ellipsis: true,

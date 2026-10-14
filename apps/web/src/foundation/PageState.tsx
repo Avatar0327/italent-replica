@@ -8,10 +8,13 @@ export function PageState({
   kind,
   error,
   retry,
+  refresh,
 }: {
   kind: 'loading' | 'empty' | 'forbidden' | 'not-found' | 'error' | 'login';
   error?: unknown;
   retry?: () => void;
+  /** 整页无权限时重新获取权限；抽屉等局部无权限不传。 */
+  refresh?: () => void;
 }) {
   if (kind === 'loading')
     return (
@@ -31,12 +34,21 @@ export function PageState({
         status={status[kind]}
         title={title[kind]}
         subTitle={error instanceof ApiError ? error.message : hint}
-        extra={
-          kind === 'not-found' ? <Link to="/">{ui.home}</Link> : retry && <Button onClick={retry}>{ui.retry}</Button>
-        }
+        extra={stateAction(kind, retry, refresh)}
       />
     </div>
   );
+}
+// 原站整页无权限在提示下给“刷新页面”主按钮（12_无权限页）；未找到页回首页；加载失败可重试。
+function stateAction(kind: string, retry?: () => void, refresh?: () => void) {
+  if (kind === 'not-found') return <Link to="/">{ui.home}</Link>;
+  if (kind === 'forbidden' && refresh)
+    return (
+      <Button type="primary" onClick={refresh}>
+        {ui.refreshPage}
+      </Button>
+    );
+  return retry && <Button onClick={retry}>{ui.retry}</Button>;
 }
 export class PageErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   override state = { failed: false };

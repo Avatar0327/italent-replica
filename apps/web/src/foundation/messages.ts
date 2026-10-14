@@ -8,6 +8,8 @@ export const ui = {
   closeMenus: '关闭菜单',
   searchMenus: '搜索菜单',
   noMenus: '没有匹配的菜单',
+  searchResults: (count: number) => `搜索结果 ${count}`,
+  refreshPage: '刷新页面',
   notices: '通知',
   mentions: '@和回复我的',
   personalMenu: '个人菜单',
