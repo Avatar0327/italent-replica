@@ -33,13 +33,14 @@ export const GRAPH: Graph = {
     '#toIssue',
   ],
   'packages/domain/src/talent-review/calc-rule.ts#formulaPath': ['#FORMULA_OBJECT'],
-  'packages/domain/src/talent-review/calc-rule.ts#formulaReferences': [
+  'packages/domain/src/talent-review/calc-rule.ts#formulaReferences': ['#referencesEitherWay'],
+  'packages/domain/src/talent-review/calc-rule.ts#referencesEitherWay': [
     'packages/domain/src/expression/engine.ts#validateFormula',
   ],
   'packages/domain/src/talent-review/calc-rule.ts#textMentionsField': [
-    'packages/domain/src/expression/engine.ts#validateFormula',
     '#fieldNameTerms',
     '#formulaPath',
+    '#referencesEitherWay',
   ],
   'packages/domain/src/talent-review/calc-rule.ts#unreferenceableItem': [
     'packages/domain/src/expression/engine.ts#validateFormula',
@@ -112,6 +113,7 @@ export const GRAPH: Graph = {
     '#acceptedByEngine',
     '#at',
     '#fieldNodes',
+    '#formulaFieldExists',
     '#fromSyntax',
     '#invalid',
     '#isObjectReference',
@@ -124,6 +126,10 @@ export const GRAPH: Graph = {
     '#RESERVED_PATH',
   ],
   'packages/domain/src/talent-review/formula-binding.ts#fieldNodes': ['packages/domain/src/expression/ast.ts#walk'],
+  'packages/domain/src/talent-review/formula-binding.ts#formulaFieldExists': [
+    'packages/domain/src/talent-review/calc-rule.ts#FORMULA_CONTEXT_FIELDS',
+    'packages/domain/src/talent-review/calc-rule.ts#FORMULA_OBJECT',
+  ],
   'packages/domain/src/talent-review/formula-binding.ts#isObjectReference': [
     'packages/domain/src/talent-review/calc-rule.ts#FORMULA_OBJECT',
   ],
