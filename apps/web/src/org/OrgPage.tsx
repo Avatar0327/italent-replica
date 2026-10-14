@@ -24,6 +24,7 @@ import {
   orgDetailFields,
   orgLabel,
   orgListFields,
+  orgObject,
   organizationTree,
   type Dimension,
   type OrgAction,
@@ -33,12 +34,11 @@ import { usePagePermissions, useRemote, RemoteContent, type PageAccess } from '.
 import { detailText, pageText as m, text } from './messages.js';
 import { CatalogFilters } from './CatalogFilters.js';
 import './workspace.css';
-const object = 'TenantBase.Organization';
 export function OrgPage() {
   const [params, setParams] = useSearchParams();
   const location = useLocation();
-  const permissions = usePagePermissions([object, establishmentObject]);
-  const organizationReadable = permissions.access(object).readable;
+  const permissions = usePagePermissions([orgObject, establishmentObject]);
+  const organizationReadable = permissions.access(orgObject).readable;
   const tabs = [
     ...(organizationReadable ? ['list', 'tree', 'changes'] : []),
     ...(permissions.access(establishmentObject).readable ? ['establishment'] : []),
@@ -59,7 +59,7 @@ export function OrgPage() {
         {tab === 'establishment' ? (
           <EstablishmentOverview view={view} />
         ) : (
-          <OrgCatalog key={tab} tab={tab} access={permissions.access(object)} view={view} />
+          <OrgCatalog key={tab} tab={tab} access={permissions.access(orgObject)} view={view} />
         )}
       </div>
     </FormCommands>

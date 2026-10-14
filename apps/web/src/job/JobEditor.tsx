@@ -1,7 +1,7 @@
 import { Alert, Input, InputNumber, Select } from 'antd';
 import { useState } from 'react';
 import { FormOverlay, TenantDatePicker, type FormField } from '../foundation/index.js';
-import { useRemote, type PageAccess } from '../org/page-support.js';
+import { usePagePermissions, useRemote, type PageAccess } from '../org/page-support.js';
 import { useRecordCommand } from '../org/record-command.js';
 import {
   jobBody,
@@ -11,6 +11,8 @@ import {
   jobPermissionField,
   jobTiming,
   referenceKind,
+  referenceObject,
+  referenceQuery,
   type JobKind,
   type JobRow,
 } from './page-model.js';
@@ -27,6 +29,12 @@ const numbers = new Set([
   'adminSequence',
   'dottedSequence',
 ]);
+/** 候选搜索按目标对象的名称查看权裁剪：看不到名称就不能按名称搜（否则可借命中与否推断名称），权限未就绪时也不开搜索。 */
+function useNameSearchable(kind: string) {
+  const code = referenceObject(kind);
+  const permissions = usePagePermissions([code]);
+  return !permissions.loading && permissions.access(code).field('name').visible;
+}
 export function ReferenceSelect({
   kind,
   date,
@@ -43,27 +51,22 @@ export function ReferenceSelect({
   placeholder?: string;
 }) {
   const [query, setQuery] = useState('');
-  const parameters = new URLSearchParams({
-    asOf: date,
-    pageSize: '50',
-    enabled: 'true',
-    ...(query ? { name: query } : {}),
-  });
+  const searchable = useNameSearchable(kind);
   const base = kind === 'org' ? '/api/tenant/org/organizations' : `/api/tenant/job/${kind}`;
-  const remote = useRemote<{ items: JobRow[] }>(`${base}?${parameters}`);
+  const remote = useRemote<{ items: JobRow[] }>(`${base}?${referenceQuery(date, query, searchable)}`);
   const choices = (remote.data?.items ?? [])
     .filter((item) => item.id !== exclude)
     .map((item) => ({ value: item.id, label: item.name ?? m.missing }));
   if (value && !choices.some((item) => item.value === value)) choices.push({ value, label: value });
   return (
     <Select
-      showSearch
+      showSearch={searchable}
       allowClear
       filterOption={false}
       className="r1-wide-control"
       value={value}
       onChange={(value) => onChange?.(value ?? null)}
-      onSearch={setQuery}
+      onSearch={searchable ? setQuery : undefined}
       options={choices}
       loading={remote.loading}
       aria-label={placeholder}

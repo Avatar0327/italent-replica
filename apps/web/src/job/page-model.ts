@@ -1,4 +1,5 @@
 import type { FieldAccess } from '../foundation/permission-model.js';
+import { orgObject } from '../org/page-model.js';
 import { formText, kindText, pageText as m } from './messages.js';
 export const jobKinds = [
   'layers',
@@ -220,6 +221,19 @@ export function jobCatalogQuery(kind: JobKind, filters: JobCatalogFilters, nameV
     ...(kind === 'positions' && filters.orgId ? { orgId: filters.orgId } : {}),
   });
   return query.toString();
+}
+/** 候选目标对象的权限对象：名称搜索按目标对象（而非当前表单对象）的名称查看权裁剪。 */
+export function referenceObject(kind: string) {
+  return kind === 'org' ? orgObject : jobObjects[kind as JobKind];
+}
+/** 无名称查看权时不发 name：否则可按匹配结果推断被裁剪的名称；接口无按编码搜索，故不提供搜索。 */
+export function referenceQuery(date: string, name: string, nameSearchable: boolean) {
+  return new URLSearchParams({
+    asOf: date,
+    pageSize: '50',
+    enabled: 'true',
+    ...(nameSearchable && name ? { name } : {}),
+  }).toString();
 }
 /** DEC-465：候选与写入共用时点；无日期编辑权时使用后端默认的租户当天。 */
 export function jobTiming(original: JobRow | undefined, selectedDate: string, today: string, access: FieldAccess) {

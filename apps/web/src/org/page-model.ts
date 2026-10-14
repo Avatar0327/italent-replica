@@ -1,4 +1,4 @@
-import { canButton, fieldAccess, type ObjectPermission } from '../foundation/permission-model.js';
+import { canButton, fieldAccess, type FieldAccess, type ObjectPermission } from '../foundation/permission-model.js';
 import { detailText, listText, pageText as m } from './messages.js';
 export interface OrgRow {
   id: string;
@@ -10,6 +10,13 @@ export interface OrgRow {
   [field: string]: unknown;
 }
 export type Dimension = 'admin' | 'business' | 'product';
+export const orgObject = 'TenantBase.Organization';
+/** F-123：新建用集合路径作恢复槽，不随入口、上级或日期变化；未确认的新建命令锁住所有新建入口。 */
+export const orgCreateResource = '/api/tenant/org/organizations';
+/** 新建表单只用一个业务时点：有日期编辑权取所选日期，否则取服务端默认的租户当天，不提交无权字段（DEC-130）。 */
+export function orgCreateDate(selected: string, today: string, access: FieldAccess) {
+  return access.visible && access.editable ? selected : today;
+}
 export interface OrgNode {
   key: string;
   value: string;
