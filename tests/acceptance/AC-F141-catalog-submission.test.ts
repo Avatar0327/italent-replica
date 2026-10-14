@@ -55,7 +55,11 @@ beforeEach(() => {
           ifMatch: new Headers(init.headers).get('if-match'),
           body: JSON.parse(String(init.body)) as Record<string, unknown>,
         });
-        return patchReplies.shift() ?? json({ ...stored, revision: Number(stored?.revision ?? 0) + 1 });
+        const queued = patchReplies.shift();
+        if (queued) return queued;
+        // 与真实后端一致：PATCH 只改请求里带的字段
+        stored = { ...stored, ...patches.at(-1)!.body, revision: Number(stored?.revision ?? 0) + 1 };
+        return json(stored);
       }
       if (stored && /\/category-classes\/c1$/.test(url)) return json(stored);
       if (stored && /\/category-classes\?/.test(url) && url.includes('pageSize=15'))
@@ -215,4 +219,38 @@ it('AC-F141 编辑遇 409：重读确认后改回原值也要重提（按最新�
   await click(buttonOf('保存'));
   await vi.waitFor(() => expect(patches).toHaveLength(2));
   expect(patches[1]).toMatchObject({ ifMatch: '2', body: { name: 'A' } });
+});
+
+it('AC-F141 冲突重读不覆盖没编辑的字段：他人改了编码，重读后编码回填最新值，PATCH 只带本人改过的名称', async () => {
+  stored = { id: 'c1', revision: 1, name: 'A', code: 'K1', enabled: true };
+  patchReplies.push(json({ error: { code: 'REVISION_CONFLICT', message: '版本已变化' } }, 409));
+  await openPage();
+  await vi.waitFor(() => expect(buttonOf('编辑')).toBeDefined());
+  await click(buttonOf('编辑'));
+  await vi.waitFor(() => expect(document.body.querySelector('.ant-drawer input[type="text"]')).not.toBeNull());
+  const inputs = () => Array.from(document.body.querySelectorAll<HTMLInputElement>('.ant-drawer input[type="text"]'));
+  expect([inputs()[0]!.value, inputs()[1]!.value]).toEqual(['A', 'K1']);
+
+  // 本人只改名称；另一位管理员同时把编码改成 K2（版本 2）
+  await type(inputs()[0]!, 'B');
+  await click(buttonOf('保存'));
+  await vi.waitFor(() => expect(patches).toHaveLength(1));
+  expect(patches[0]).toMatchObject({ ifMatch: '1', body: { name: 'B' } });
+  stored = { ...stored, revision: 2, code: 'K2' };
+
+  await vi.waitFor(() => expect(buttonOf('重读最新版本')).toBeDefined());
+  await click(buttonOf('重读最新版本'));
+  await vi.waitFor(() => expect(buttonOf('已核对差异，继续编辑')).toBeDefined());
+  // 差异表按三列展示：编码 原值 K1、最新 K2（本人没改，我的输入 = 原值）
+  const codeRow = Array.from(document.body.querySelectorAll('tbody tr')).find((tr) => tr.textContent?.includes('"K2"'));
+  expect(codeRow?.textContent).toContain('"K1"');
+  await click(buttonOf('已核对差异，继续编辑'));
+  // 没改过的字段回填最新值，改过的保留草稿
+  await vi.waitFor(() => expect(inputs()[1]!.value).toBe('K2'));
+  expect(inputs()[0]!.value).toBe('B');
+
+  await click(buttonOf('保存'));
+  await vi.waitFor(() => expect(patches).toHaveLength(2));
+  expect(patches[1]).toEqual({ ifMatch: '2', body: { name: 'B' } });
+  expect(stored).toMatchObject({ name: 'B', code: 'K2' });
 });
