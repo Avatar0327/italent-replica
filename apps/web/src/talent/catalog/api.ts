@@ -41,7 +41,8 @@ export function validateValues(resource: Resource, values: Record<string, unknow
     if (!pattern.test(values.code)) throw new Error(m.invalidCode);
   }
   if (
-    'displayOrder' in values &&
+    values.displayOrder !== undefined &&
+    values.displayOrder !== null &&
     (!Number.isInteger(values.displayOrder) ||
       Number(values.displayOrder) < 0 ||
       Number(values.displayOrder) > 1_000_000)
