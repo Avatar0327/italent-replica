@@ -144,6 +144,13 @@ export function parseSavedReceipt(raw: unknown, expected: { id?: string; revisio
   if (expected.deleted ? row.deleted !== true : row.revision !== expected.revision + 1) throw invalid();
   return { id: row.id };
 }
+/** 催办成功返回流程详情：须是本流程，版本不低于提交时的版本（催办只记日志，可能不升版）。 */
+export function parseUrgeReceipt(raw: unknown, expected: { instanceId: string; revision: number }) {
+  const row = record(raw);
+  if (row.id !== expected.instanceId || !validRevision(row.revision) || Number(row.revision) < expected.revision)
+    throw invalid();
+  return { id: expected.instanceId };
+}
 export function parseSettingsReceipt(raw: unknown, expected: { tenantId: string; revision: number }) {
   const row = record(raw);
   if (!expected.tenantId || row.tenantId !== expected.tenantId || row.revision !== expected.revision + 1)

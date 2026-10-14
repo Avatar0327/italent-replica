@@ -9,7 +9,7 @@ import { useCommandForm } from '../foundation/forms/useCommandForm.js';
 import { ApprovalDetail } from '../approval/ApprovalDetail.js';
 import { readApproval } from '../approval/api.js';
 import type { ApprovalDetail as Detail, ApprovalRow } from '../approval/types.js';
-import { myPendingTask } from './forms.js';
+import { myPendingTask, parseUrgeReceipt } from './forms.js';
 import { m } from './messages.js';
 import { object, type Row } from './model.js';
 
@@ -54,10 +54,14 @@ function useUrge(api: Api, businessId: string) {
       editableFields: [],
       revision: target.detail.revision,
       businessId: target.instance.id,
-      send: async (command) => {
-        await api.request(`${approval}/${encodeURIComponent(target.instance.id)}/urge`, { method: 'POST', command });
-        return { id: target.instance.id };
-      },
+      send: async (command) =>
+        parseUrgeReceipt(
+          await api.request<unknown>(`${approval}/${encodeURIComponent(target.instance.id)}/urge`, {
+            method: 'POST',
+            command,
+          }),
+          { instanceId: target.instance.id, revision: command.revision ?? target.detail.revision },
+        ),
     });
     if (result.status === 'done' || result.status === 'rejected') urge.clear();
     if (result.status === 'done') void message.success(m.urged);

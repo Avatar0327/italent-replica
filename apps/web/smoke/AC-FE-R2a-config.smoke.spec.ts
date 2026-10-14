@@ -107,7 +107,8 @@ test('AC-FE-R2a-15 合同设置按差异保存，回执须为本租户下一版�
 
 async function approvals(
   page: Page,
-  urge: () => object = () => ({ json: {} }),
+  // 催办成功返回流程详情（respondOutcome → respondDetail）。
+  urge: () => object = () => ({ json: { id: instance, revision: 4, status: 'running' } }),
   actions: string[] = ['urge', 'transfer', 'withdraw'],
 ) {
   const writes: Write[] = [];
@@ -178,6 +179,15 @@ test('AC-FE-R2a-17 催办结果未知锁定本行催办，不自动重发', asyn
   await row(page, '催办').click();
   await expect(row(page, '催办')).toBeDisabled();
   await expect(row(page, '转交')).toBeEnabled();
+  expect(writes).toHaveLength(1);
+});
+
+test('AC-FE-R2a-17c 催办回执不是本流程时按结果未知锁定，不提示成功', async ({ page }) => {
+  const writes = await approvals(page, () => ({ json: { id: requestId, revision: 4 } }));
+  await row(page, '催办').click();
+  await expect(page.getByRole('button', { name: '回查原单', exact: true })).toBeVisible();
+  await expect(row(page, '催办')).toBeDisabled();
+  await expect(page.getByText('已催办', { exact: true })).toHaveCount(0);
   expect(writes).toHaveLength(1);
 });
 
