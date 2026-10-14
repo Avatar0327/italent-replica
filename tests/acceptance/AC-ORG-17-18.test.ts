@@ -19,6 +19,7 @@ import {
 import { withLoginEmail } from './AC-EMP-support.js';
 import { orgPeopleWorld, TODAY } from './AC-ORG-people-support.js';
 import { tenantApi } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 const PEOPLE_FIELDS = ['personInChargeId', 'hrbpId', 'shopOwnerId'] as const;
@@ -147,7 +148,7 @@ describe('AC-ORG-18 负责人等字段的人员选择器（DEC-135、DEC-057）'
 
 describe('AC-ORG-17/18 不按操作人数据范围过滤（真实授权器）', () => {
   async function scopedOperator(world: PermissionWorld, orgId: string, editable: readonly string[]) {
-    const profile = await createProfile(world, `org-people-${randomUUID().slice(0, 8)}`);
+    const profile = await createProfile(world, `org-people-${uniqueSuffix()}`);
     const definition = MODULE_OBJECTS.organization;
     const permission = await setObjectPermission(
       world,
@@ -192,7 +193,7 @@ describe('AC-ORG-17/18 不按操作人数据范围过滤（真实授权器）', 
     const managed = await create('org/organizations', { name: '操作人管理部门', parents });
     const outside = await create('org/organizations', { name: '范围外部门', parents });
     const employee = await create('employment/employees', {
-      code: `OUT_${randomUUID().slice(0, 8)}`,
+      code: `OUT_${uniqueSuffix()}`,
       name: '范围外员工',
     });
     await create(

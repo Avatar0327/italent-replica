@@ -5,7 +5,6 @@
  *   TenantBase 数据范围 = 若干组织（员工信息的人员范围，决定成员是范围内还是范围外）。
  * 测试数据一律合成，邮箱用 example.com。
  */
-import { randomUUID } from 'node:crypto';
 import { EVALUATION_OBJECTS, PERSONNEL_OBJECT, PERSONNEL_OBJECTS } from '@italent/domain';
 import type { Db } from '@italent/db';
 import { expect } from 'vitest';
@@ -22,6 +21,7 @@ import {
 } from './AC-PRM-support.js';
 import { createMou } from './AC-TC-support.js';
 import { type RequestOptions, tenantApi } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 export const GROUPS = '/review-groups';
 export const CANDIDATES = '/candidates/review-members';
@@ -72,7 +72,7 @@ export async function reviewWorld(db: Db) {
     ).id;
   /** 建档 + 入职到某个组织（人员范围按任职所在组织判定）。 */
   async function hire(name: string, orgId: string): Promise<Employee> {
-    const code = `E${randomUUID().replaceAll('-', '').slice(0, 10)}`;
+    const code = `E${uniqueSuffix()}`;
     const employee = await create<{ id: string; revision: number }>('employment/employees', { code, name });
     await create(
       `employment/employees/${employee.id}/businesses`,
@@ -146,9 +146,9 @@ export interface ReviewOperatorOptions {
 }
 
 export async function reviewOperator(world: ReviewWorld, options: ReviewOperatorOptions = {}) {
-  const profile = await createProfile(world, `evr-${randomUUID().slice(0, 8)}`, { apps: [EV_APP] });
+  const profile = await createProfile(world, `evr-${uniqueSuffix()}`, { apps: [EV_APP] });
   // 员工信息单独一个身份：撤销它的授权就是“撤销员工信息对象查看权”（字段全隐藏仍然有对象查看权）
-  const employeeProfile = await createProfile(world, `evr-emp-${randomUUID().slice(0, 8)}`, { apps: ['TenantBase'] });
+  const employeeProfile = await createProfile(world, `evr-emp-${uniqueSuffix()}`, { apps: ['TenantBase'] });
   const group = EVALUATION_OBJECTS.reviewGroup;
   const hidden = new Set(options.hidden ?? []);
   const readonly = new Set(options.readonly ?? []);
@@ -187,7 +187,7 @@ export async function reviewOperator(world: ReviewWorld, options: ReviewOperator
     );
   if (!options.noEmployeeObject) await grantEmployees(options.hiddenEmployeeFields ?? []);
   await makeGrantable(world, [profile.id, employeeProfile.id]);
-  const user = await addMember(world, `evr-op-${randomUUID().slice(0, 4)}`);
+  const user = await addMember(world, `evr-op-${uniqueSuffix()}`);
   expect((await grant(world, user.id, profile.id)).status).toBe(201);
   const employeeGrant = await grant(world, user.id, employeeProfile.id);
   expect(employeeGrant.status).toBe(201);

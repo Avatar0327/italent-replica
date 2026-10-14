@@ -10,11 +10,12 @@ import type { EmploymentContext } from '../../apps/api/src/modules/employment/ty
 import { createEmploymentBusiness } from '../../apps/api/src/modules/employment/write-service.js';
 import { employmentSession, type EmploymentSession } from './AC-EMP-support.js';
 import { tenantApi } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 
 async function hired(session: EmploymentSession, entry: { pendingEntry?: boolean; probation?: boolean }) {
-  const org = await session.org(`筛选部门${randomUUID().slice(0, 6)}`, { establishedOn: '2026-01-01' });
+  const org = await session.org(`筛选部门${uniqueSuffix()}`, { establishedOn: '2026-01-01' });
   const employee = await session.employee();
   await withTenant(testDb().db, session.tenant.id, (tx) =>
     createEmploymentBusiness(

@@ -7,6 +7,7 @@ import { type sql, withTenant } from '@italent/db';
 import { expect } from 'vitest';
 import type { useTestDb } from '@italent/testkit';
 import { QL_NOW, qualificationWorld } from './AC-QL-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 export const rowsOf = <T>(value: unknown): T[] => (Array.isArray(value) ? value : (value as { rows: T[] }).rows) as T[];
 
@@ -26,7 +27,7 @@ export async function currentWorld(database: ReturnType<typeof useTestDb>, label
   const p3 = await w.level(30);
   const tx = <T>(work: Parameters<typeof withTenant<T>>[2]) => withTenant(db, w.tenant.id, work);
 
-  const employee = async (name = `员工${randomUUID().slice(0, 4)}`) => {
+  const employee = async (name = `员工${uniqueSuffix()}`) => {
     const response = await w.api.request('POST', '/api/tenant/employment/employees', {
       ...w.as,
       ifMatch: 0,

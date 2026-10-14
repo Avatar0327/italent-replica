@@ -1,10 +1,13 @@
 import type { ReactNode } from 'react';
+import { editableRows } from '../foundation/forms/values.js';
+import { useFormLock } from '../foundation/forms/FormLock.js';
 import { Alert, Checkbox, Input, InputNumber, Select, Table } from 'antd';
 import { usePermissions } from '../foundation/Permissions.js';
 import { FormOverlay, type FormField } from '../foundation/FormOverlay.js';
-import { RemoteSelect, useWriter } from '../evaluation/runtime.js';
+import { useRecordForm } from '../evaluation/useRecordForm.js';
+import { RemoteSelect } from '../evaluation/runtime.js';
 import { Repeated } from '../evaluation/ActivityFields.js';
-import { evaluationPatch, records, type Row } from '../evaluation/model.js';
+import { records, type Row } from '../evaluation/model.js';
 import { m as common, textValue } from '../evaluation/messages.js';
 import { questionnaireContent } from './model.js';
 import { m, display } from './messages.js';
@@ -23,27 +26,28 @@ export function QuestionnaireEditor({
   saved(): void;
 }) {
   const permission = usePermissions(OBJECT);
-  const writer = useWriter(saved);
+  const writer = useRecordForm(path, row, questionnaireValues);
+  const current = writer.current;
   const contentFields = ['roles', 'scales', 'dimensions', 'questions'];
   let content: ReturnType<typeof questionnaireContent> | undefined;
   let incomplete = false;
-  if (row && contentFields.every((key) => permission.field(key).visible)) {
+  if (current && contentFields.every((key) => permission.field(key).visible)) {
     try {
-      content = questionnaireContent(row);
+      content = questionnaireContent(current);
     } catch {
       incomplete = true;
     }
   }
-  const fields = headerFields(permission, writer.blocked, row);
+  const fields = headerFields(permission, current);
   if (row && content)
     fields.push({
       name: 'content',
       label: m.content,
       access: {
         visible: true,
-        editable: contentFields.every((key) => permission.field(key).editable) && !writer.blocked,
+        editable: contentFields.every((key) => permission.field(key).editable),
       },
-      control: <ContentEditor used={row.status === 'used'} />,
+      control: <ContentEditor used={current?.status === 'used'} latest={content} />,
       display: common.readOnly,
     });
   return (
@@ -52,28 +56,25 @@ export function QuestionnaireEditor({
       <FormOverlay
         open
         mode="drawer"
-        recordKey={row ? `${row.id}:${row.revision}` : 'new'}
+        recordKey={row?.id ?? 'new'}
+        submission={writer}
         title={row ? m.edit : title}
         initialValues={row ? { ...row, content } : { type: 'key_behavior', scoreMethod: 'weighted_average' }}
         groups={[{ title: m.basic, fields }]}
         onClose={close}
-        onRefresh={() => {
+        onSubmit={async (values) => {
+          const draft =
+            current?.status === 'used' && content && values.content
+              ? { ...values, content: editableContent(content, values.content as Record<string, unknown>) }
+              : values;
+          await writer.save(
+            draft,
+            fields.filter((f) => f.access.visible && f.access.editable).map((f) => f.name),
+            row ? 'PUT' : 'POST',
+          );
+          writer.clear();
           saved();
           close();
-        }}
-        onSubmit={async (values) => {
-          if (writer.blocked) throw new Error(common.uncertain);
-          const before = { ...(row ?? {}), ...(content ? { content } : {}) };
-          await writer.write(
-            row ? `${path}/${row.id}` : path,
-            row ? 'PUT' : 'POST',
-            evaluationPatch(
-              before,
-              values,
-              fields.filter((f) => f.access.editable).map((f) => f.name),
-            ),
-            row?.revision ?? 0,
-          );
         }}
       />
     </>
@@ -83,12 +84,18 @@ function ContentEditor({
   value,
   onChange,
   used,
+  latest,
 }: {
+  latest?: Record<string, unknown>;
   value?: Record<string, unknown>;
   onChange?: (value: unknown) => void;
   used: boolean;
 }) {
-  const data = value ?? { roles: [], scales: [], dimensions: [], questions: [] };
+  const lock = useFormLock();
+  onChange = lock.guard(onChange);
+  const fixed = useFormLock(used);
+  const draft = value ?? { roles: [], scales: [], dimensions: [], questions: [] };
+  const data: Record<string, unknown> = used && latest ? editableContent(latest, draft) : draft;
   const update = (key: string, next: unknown) => onChange?.({ ...data, [key]: next });
   const create = (kind: string) => {
     const defaults: Record<string, object> = {
@@ -103,9 +110,9 @@ function ContentEditor({
     <Select
       allowClear
       value={selected as string}
-      disabled={used}
+      disabled={fixed.disabled}
       className="r3b-wide"
-      onChange={(v) => set(v ?? null)}
+      onChange={fixed.guard((v) => set(v ?? null))}
       options={records(data[source]).map((item) => ({ value: String(item.key), label: textValue(item.name) }))}
     />
   );
@@ -168,11 +175,11 @@ export function QuestionnairePreview({ row }: { row: Row }) {
   );
 }
 
-function headerFields(permission: ReturnType<typeof usePermissions>, blocked: boolean, row?: Row) {
+function headerFields(permission: ReturnType<typeof usePermissions>, row?: Row) {
   const fields: FormField[] = ['name', ...(row ? [] : ['type']), 'scoreMethod', 'guide'].map((name) => ({
     name,
     label: m[name as 'name'],
-    access: { ...permission.field(name), editable: permission.field(name).editable && !blocked },
+    access: permission.field(name),
     rules: name === 'name' || name === 'type' ? [{ required: true, message: common.required }] : [],
     control: headerControl(name),
   }));
@@ -185,6 +192,7 @@ interface ItemProps {
   used: boolean;
 }
 function ScaleOptions({ item, set, used }: ItemProps) {
+  const fixed = useFormLock(used);
   return (
     <Repeated
       value={records(item.options)}
@@ -200,14 +208,18 @@ function ScaleOptions({ item, set, used }: ItemProps) {
           </label>
           <label>
             {m.value}
-            <InputNumber value={option.value as number} onChange={(v) => setOption('value', v)} disabled={used} />
+            <InputNumber
+              value={option.value as number}
+              onChange={fixed.guard((v) => setOption('value', v))}
+              disabled={fixed.disabled}
+            />
           </label>
           {['notScored', 'remarkRequired'].map((key) => (
             <Checkbox
               key={key}
               checked={option[key] === true}
-              disabled={used}
-              onChange={(e) => setOption(key, e.target.checked)}
+              disabled={fixed.disabled}
+              onChange={fixed.guard((e) => setOption(key, e.target.checked))}
             >
               {m[key as 'notScored']}
             </Checkbox>
@@ -228,6 +240,7 @@ function ContentFields({
   kind: string;
   selector(source: string, selected: unknown, set: (v: unknown) => void): ReactNode;
 }) {
+  const fixed = useFormLock(used);
   return (
     <>
       {kind === 'roles' ? (
@@ -236,8 +249,8 @@ function ContentFields({
           <RemoteSelect
             path="/api/tenant/survey360/roles"
             value={item.roleId as string}
-            onChange={(v) => set('roleId', v)}
-            disabled={used}
+            onChange={fixed.guard((v) => set('roleId', v))}
+            disabled={fixed.disabled}
           />
         </label>
       ) : (
@@ -290,4 +303,33 @@ function headerControl(name: string) {
     );
   if (name === 'guide') return <Input.TextArea rows={3} maxLength={5000} />;
   return <Input maxLength={200} />;
+}
+
+function questionnaireValues(row: Row) {
+  try {
+    return { ...row, content: questionnaireContent(row) };
+  } catch {
+    // 内容不完整时仍允许改有权编辑的头部字段；不凭空补出内容。
+    return row;
+  }
+}
+
+function editableContent(latest: Record<string, unknown>, draft: Record<string, unknown>) {
+  const rows = (key: string, fields: string[]) =>
+    editableRows(records(latest[key]), records(draft[key]), 'key', fields);
+  return {
+    ...latest,
+    roles: rows('roles', ['weight']),
+    dimensions: rows('dimensions', ['name', 'definition', 'weight']),
+    questions: rows('questions', ['text', 'weight']),
+    scales: rows('scales', ['name', 'options']).map((scale) => ({
+      ...scale,
+      options: editableRows(
+        records(records(latest.scales).find((s) => s.key === scale.key)?.options),
+        records(scale.options),
+        'key',
+        ['label'],
+      ),
+    })),
+  };
 }

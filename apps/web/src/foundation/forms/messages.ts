@@ -1,0 +1,17 @@
+export const messages = {
+  submitting: '处理中，请勿重复提交',
+  unknown: '处理中 / 结果待确认。当前表单已锁定，请勿重新创建命令。',
+  conflict: '版本冲突：输入已保留，请重读最新版本并核对差异后重提。',
+  reload: '重读最新版本',
+  confirm: '已核对差异，继续编辑',
+  original: '回查原单',
+  originalHint: '原单当前值（仅供核对，不能据此确认本次命令结果）',
+  field: '字段',
+  before: '原值',
+  latest: '最新值',
+  mine: '我的输入',
+  none: '字段值无变化，请核对最新版本后继续。',
+  invalidReceipt: '原单回执无效，请重新查询。',
+  rejected: '服务器已拒绝，请修改后重提。',
+  failedRead: '读取失败，输入已保留，请重新读取。',
+};

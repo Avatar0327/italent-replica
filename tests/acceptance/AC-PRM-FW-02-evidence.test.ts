@@ -17,6 +17,7 @@ import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { readFrozenContract } from './support/route-policy/baseline.js';
 import { BRANCH_INPUTS, type BranchInput } from './support/route-policy/branch-inputs.js';
+import { branchInputEndpointIds, expectDeclared, selectorSiteIds } from './support/route-policy/module-declared.js';
 import { compareDeclarations, type Finding } from './support/route-policy/compare.js';
 import type { ObservedContract } from './support/route-policy/contract.js';
 import { BRANCH_BINDINGS, BRANCH_VALUES, type BranchBindings } from './support/route-policy/domains.js';
@@ -402,10 +403,12 @@ describe('AC-PRM-FW-02 选择器绑定（B-07）：登记完整性', () => {
       ...declaredSites.filter((site) => !registered.includes(site)).map((site) => `${site} 未绑定输入来源`),
       ...registered.filter((site) => !declaredSites.includes(site)).map((site) => `${site} 声明中已不存在`),
     ];
-    if (declaredSites.length !== 31) drift.push(`选择器位置 ${declaredSites.length}，冻结计数 31`);
-    if (Object.keys(BRANCH_INPUTS).length !== 23)
-      drift.push(`输入来源端点 ${Object.keys(BRANCH_INPUTS).length}，冻结计数 23`);
     expect(registrationDrift('选择器绑定登记完整性（DEC-416③）', drift)).toEqual([]);
+    // 冻结计数 31 / 23 改为按模块声明逐项相等（DEC-475④）：新增选择器只改所属模块的声明文件
+    registration('选择器位置与输入来源端点的按模块声明', () => {
+      expectDeclared('选择器位置', 'selectorSites', selectorSiteIds(manifest.declared));
+      expectDeclared('输入来源端点', 'branchInputEndpoints', branchInputEndpointIds());
+    });
     expect(new Set(registered).size).toBe(registered.length);
   });
 
@@ -424,7 +427,7 @@ describe('AC-PRM-FW-02 选择器绑定（B-07）：登记完整性', () => {
     }
   });
 
-  it('真实声明 × 真实登记：31 个 map 选择器位置（23 条端点；设计估算 29 个，另含 failureAudit.objectType 与任职资格 owner-orgs）零发现', () => {
+  it('真实声明 × 真实登记：全部 map 选择器位置零发现（含 failureAudit.objectType 与任职资格 owner-orgs；设计估算 29 个，实际按模块声明）', () => {
     const findings = registrationGate(
       compareRegisteredDeclarations(frozen, manifest.declared),
       '真实声明 × 真实登记（选择器）',

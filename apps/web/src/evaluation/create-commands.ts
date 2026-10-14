@@ -1,48 +1,42 @@
-import { ApiError, newCommand, type Command } from '../foundation/client.js';
+import type { Command } from '../foundation/client.js';
+import { createFormStore, type Values, type Submission } from '../foundation/forms/store.js';
 import { m } from './messages.js';
 
-export interface PendingCreate {
-  command: Command;
-  object: string;
-  summary: string;
-  status: 'pending' | 'unknown';
-}
-/** DEC-464：页面持有未确认命令；只展示回执状态，不恢复或重发在途表单。 */
+/** 旧创建入口兼容层；错误分类与命令生命周期只由 F-123 内核负责。 */
 export function createCommandStore() {
-  const entries = new Map<string, PendingCreate>();
-  const listeners = new Set<() => void>();
-  const notify = () => listeners.forEach((listener) => listener());
+  const store = createFormStore();
+  const cache = new WeakMap<Submission, { command: Command; object: string; summary: string; status: string }>();
+  const objects = new Map<string, string>();
   return {
-    get: (key: string) => entries.get(key),
-    subscribe(listener: () => void) {
-      listeners.add(listener);
-      return () => {
-        listeners.delete(listener);
-      };
+    subscribe: store.subscribe,
+    get(key: string) {
+      const state = store.get(key);
+      if (!state || !['submitting', 'unknown'].includes(state.status)) return undefined;
+      if (!cache.has(state))
+        cache.set(state, {
+          command: state.command!,
+          object: objects.get(key)!,
+          summary: String(state.values.name ?? state.values.personId ?? m.noValue),
+          status: state.status === 'submitting' ? 'pending' : 'unknown',
+        });
+      return cache.get(state);
     },
     async run(key: string, object: string, body: unknown, send: (command: Command) => Promise<unknown>) {
-      if (entries.has(key)) throw new Error(m.createUnknown);
-      const command = newCommand(body, 0);
-      const values = body as Record<string, unknown>;
-      const entry: PendingCreate = {
-        command,
-        object,
-        status: 'pending',
-        summary: String(values.name ?? values.personId ?? m.noValue),
-      };
-      entries.set(key, entry);
-      notify();
-      try {
-        await send(command);
-        entries.delete(key);
-      } catch (error) {
-        // 明确拒绝可修正后重提；网络、5xx、无有效回执及身份切换中断都不能判作未创建。
-        if (error instanceof ApiError && error.kind !== 'unknown') entries.delete(key);
-        else entries.set(key, { ...entry, status: 'unknown' });
-        throw error;
-      } finally {
-        notify();
+      if (['submitting', 'unknown'].includes(store.get(key)?.status ?? '')) throw new Error(m.createUnknown);
+      objects.set(key, object);
+      const values = body as Values;
+      const state = await store.submit(key, {
+        values,
+        baseline: {},
+        editableFields: Object.keys(values),
+        revision: 0,
+        send: async (command) => (await send(command)) as { id: string },
+      });
+      if (state.status !== 'done') {
+        store.clear(key);
+        throw state.error;
       }
+      store.clear(key);
     },
   };
 }

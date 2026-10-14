@@ -17,6 +17,7 @@ import { settledOrBlocked } from './support/pg-interleave.js';
 import { enableHealthRunner } from './AC-SC-07-health-support.js';
 import { waitHealthLock } from './AC-SC-07-health-lock-support.js';
 import { enqueueCalcRun, runCalcPage } from '../../apps/api/src/modules/succession/calc-worker.js';
+import { uniqueSuffix } from './support/unique.js';
 
 let handle: DbHandle;
 let w: SuccessionWorld;
@@ -51,7 +52,7 @@ async function setup(
     await tx.execute(sql`UPDATE succession_sync_batches SET status='terminated'
       WHERE tenant_id=${w.tenant.id}::uuid AND status NOT IN ('completed','terminated','rejected')`);
   });
-  const org = await w.org(`健康度${randomUUID().slice(0, 8)}`);
+  const org = await w.org(`健康度${uniqueSuffix()}`);
   const source = syncFixture(),
     original = source.runs![0]!,
     runId = randomUUID();

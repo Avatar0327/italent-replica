@@ -9,7 +9,7 @@ import {
   summarizeScope,
   type ScopeSummary,
 } from '../../apps/api/src/modules/permission/me-snapshot.js';
-import { menuObjects } from '../../apps/web/src/demo-stubs/object-directory.js';
+import { menuObjects } from '../../apps/web/src/foundation/permission-snapshot.js';
 import { APP_ROUTES } from '../../apps/web/src/foundation/routes.js';
 
 const base = { personIds: [], all: false, hasDataPermission: true } as const;

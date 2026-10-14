@@ -18,8 +18,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { JOB_OBJECT_CODES } from '../../apps/api/src/modules/permission/module-route-access.js';
 import { createApiClient } from '../../apps/web/src/foundation/client.js';
 import { APP_ROUTES } from '../../apps/web/src/foundation/routes.js';
-import { menuObjects } from '../../apps/web/src/demo-stubs/object-directory.js';
-import { loadPermissions } from '../../apps/web/src/demo-stubs/navigation.js';
+import { menuObjects } from '../../apps/web/src/foundation/permission-snapshot.js';
+import { loadSnapshot } from '../../apps/web/src/foundation/permission-snapshot.js';
 
 // 对照 API 的 catalog/access 登记及 JOB_OBJECT_CODES；自助、经理、企业设置继续用专用入口判定。
 const expected = {
@@ -49,13 +49,20 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe('AC-FE-0-07 公共对象目录与后端逐应用核对', () => {
   it.each(APP_ROUTES)('$id 完整登记实际对象，不依赖编码前缀', (route) => {
-    expect(menuObjects(route).sort()).toEqual([...expected[route.id]].sort());
+    expect([...menuObjects(route)].sort()).toEqual([...expected[route.id]].sort());
   });
   const singleGrants = APP_ROUTES.filter((route) => route.objectCode).flatMap((route) =>
     expected[route.id].map((code) => ({ app: route.id, code })),
   );
   it.each(singleGrants)('只授予 $code 时仍可进入 $app', async ({ app, code }) => {
     vi.stubGlobal('fetch', async (path: string) => {
+      if (path.endsWith('/me/snapshot'))
+        return Response.json({
+          session: { tenantId: 'tenant', userId: 'user' },
+          apps: [{ app, visible: true, entryObjects: [code] }],
+          scope: [],
+          adminMenus: [],
+        });
       if (path.endsWith(`/objects/${code}`))
         return Response.json({
           objectCode: code,
@@ -68,9 +75,9 @@ describe('AC-FE-0-07 公共对象目录与后端逐应用核对', () => {
       return Response.json({ error: { code: 'FORBIDDEN' } }, { status: 403 });
     });
     const api = createApiClient(() => ({ tenantId: 'tenant', identityKey: 'user' }));
-    const result = await loadPermissions(api, new AbortController().signal);
+    const { snapshot: result } = await loadSnapshot(api, new AbortController().signal);
     expect(result.menus.map((menu) => menu.key)).toEqual([app]);
     expect(result.objects[code]?.objectCode).toBe(code);
-    expect(result.scope.organizationIds).toEqual([]);
+    expect(result.scope.items).toEqual([]);
   });
 });

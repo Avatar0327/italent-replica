@@ -5,7 +5,6 @@
  * - 读：任一个看不到，两个都不输出（隐藏 sources 时不能从 blocks[].block 还原）。模板详情、模块写响应、计划详情的
  *   modules、模板模块审计一律如此。
  */
-import { randomUUID } from 'node:crypto';
 import { IDP_OBJECTS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
@@ -14,6 +13,7 @@ import { idpOperator, type OperatorOptions } from './AC-IDP-permission-support.j
 import { permissionWorldOf, planWorld, PLAN_NOW, type PlanWorld } from './AC-IDP-plan-support.js';
 import type { TemplateView } from './AC-IDP-support.js';
 import { memberWithAdminRole } from './AC-PRM-users-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 const IDP = '/api/tenant/idp';
@@ -59,7 +59,7 @@ describe('R2-3：keyInfoSources 与 keyInfoBlocks 的权限一起满足', () => 
     const w = await planWorld(testDb().db, 'idp-kil-hidden');
     const plan = await w.startedPlan();
     const pw = await permissionWorldOf(w);
-    const viewer = await memberWithAdminRole(pw, 'audit_admin', `idp-kil-${randomUUID().slice(0, 4)}`);
+    const viewer = await memberWithAdminRole(pw, 'audit_admin', `idp-kil-${uniqueSuffix()}`);
     const op = await idpOperator(pw, {
       orgId: w.dept,
       user: viewer.user,

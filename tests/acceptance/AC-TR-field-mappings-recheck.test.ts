@@ -15,6 +15,7 @@ import { seedPermissionWorld, type PermissionWorld } from './AC-PRM-support.js';
 import { configOperator, mappingBody, TR_BASE, TR_NOW, type ConfigView } from './AC-TR-scoring-support.js';
 import { tenantApi } from './support/tenant-api.js';
 import type * as RunCommands from '../../apps/api/src/commands.js';
+import { uniqueSuffix } from './support/unique.js';
 
 type RunCommandModule = typeof RunCommands;
 interface Loser {
@@ -74,7 +75,7 @@ function loserDb(db: Db, tenantId: string, commandId: string, loser: Loser): Db 
 
 const testDb = useTestDb();
 const clock = () => TR_NOW;
-const uniq = (label: string) => `${label}${randomUUID().slice(0, 6)}`;
+const uniq = (label: string) => `${label}${uniqueSuffix()}`;
 
 const OBJECT_TYPE = 'TalentReview.FieldMapping';
 
