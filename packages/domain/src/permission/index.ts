@@ -1,3 +1,4 @@
+export { APP_IDS, APP_OBJECT_DIRECTORY, type AppId } from './app-directory.js';
 export {
   ADMIN_CAPABILITIES,
   ADMIN_ROLE_NAMES,

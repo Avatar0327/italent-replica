@@ -5,10 +5,16 @@
  * DEC-128）；不提供手工绑定或改绑入口，数据库层也收回了应用角色的 UPDATE 权限（迁移 0032）。
  * 账号启用状态（users.status）与在职状态（任职记录）相互独立：这里不看在职状态，也不改账号状态。
  */
-import { eq, permissionUserPersonLinks, pgErrorCode, sql, tenantMemberships, type Tx } from '@italent/db';
+import { eq, permissionUserPersonLinks, pgErrorCode, tenantMemberships, type Tx } from '@italent/db';
+import { advisoryLock, asUuid } from '../../advisory-lock.js';
 import { AppError } from '../../errors.js';
 import { audit, type WriteContext } from './audit.js';
 import { getTenantUser, insertMembership, memberSnapshot, provisionAccount, updateMembership } from './tenant-users.js';
+
+/** 同一账号的并发建档串行化（租户 × 账号）。 */
+export async function lockPersonLink(tx: Tx, tenantId: string, userId: string): Promise<void> {
+  await advisoryLock(tx, asUuid(tenantId), ':person-link:', asUuid(userId));
+}
 
 export interface EmployeeUserRequest {
   readonly employeeId: string;
@@ -54,9 +60,7 @@ export async function provisionEmployeeUser(
 
   const account = await provisionAccount(tx, write, request.loginEmail, request.displayName);
   // 同一账号的并发建档串行化：后到者看到已有绑定，按“账号已绑定另一人员”拒绝，而不是撞唯一键
-  await tx.execute(
-    sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${write.tenantId}:person-link:${account.userId}`}, 0))`,
-  );
+  await lockPersonLink(tx, write.tenantId, account.userId);
   const [other] = await tx
     .select()
     .from(permissionUserPersonLinks)

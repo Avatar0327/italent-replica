@@ -54,6 +54,7 @@ export function registerManagerRoutes(router: Hono<TenantEnv>, deps: TenantRoute
       const items = result.items.map((item) =>
         Object.fromEntries(
           Object.entries(item).filter(([key]) => {
+            if (key === 'avatar') return employeeFields === undefined || employeeFields.has('name');
             if (kind === 'employees' && !['id', 'name', 'code', 'revision'].includes(key)) return false;
             const permissions = ['name', 'code', 'id', 'revision'].includes(key)
               ? employeeFields

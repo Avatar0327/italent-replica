@@ -145,16 +145,42 @@ describe('AC-TEN-04 平台开通租户：标准预置下发', () => {
     expect(await errorCode(own)).toBe('TENANT_NOT_MEMBER');
   });
 
-  it('标准业务身份已下发（source=standard），且在首位租户管理员的可授权范围内', async () => {
+  it('标准业务身份已下发（source=standard），除员工身份（autoHeld）外都在首位租户管理员的可授权范围内', async () => {
     const res = await api.request('GET', '/api/tenant/permission/profiles', asAdmin);
     expect(res.status).toBe(200);
     const { items } = (await res.json()) as { items: { code: string; source: string; licenseType: string | null }[] };
+    // DEC-281⑩：另预置“人才标准管理员（人才标准）”（R3-T01）
     expect(items.map((p) => p.code).sort()).toEqual(
-      ['standard_hr_admin', 'standard_hr_specialist', 'standard_manager', 'standard_org_system_admin'].sort(),
+      [
+        'standard_hr_admin',
+        'standard_hr_specialist',
+        'standard_manager',
+        'standard_org_system_admin',
+        // DEC-280：三类内置 360 身份（应用 Survey360）
+        'standard_360_system_admin',
+        'standard_360_advanced_admin',
+        'standard_360_general_admin',
+        'standard_talent_admin',
+        // R3-T04 设计 §6.1（C-06）：盘点管理员（人才盘点）
+        'standard_talent_review_admin',
+        // R3-T05 设计 §8.1：继任管理员 / 继任 HR / 继任计算主体（继任与发展）
+        'standard_succession_admin',
+        'standard_succession_hr',
+        'standard_succession_runner',
+        // R3-T02 C1-2（DEC-331②）：任职资格系统管理员 / 评定管理员 / 评定专员
+        'standard_qualification_admin',
+        'standard_evaluation_admin',
+        'standard_evaluation_specialist',
+        // R3-T02 C1-2b（DEC-399）：预置“员工”自助身份（autoHeld，自动适用于全体员工）
+        'employee_self_service',
+      ].sort(),
     );
     expect(items.every((p) => p.source === 'standard')).toBe(true);
     const grantable = await api.request('GET', '/api/tenant/permission/grantable-profiles', asAdmin);
-    expect(((await grantable.json()) as { items: unknown[] }).items).toHaveLength(items.length);
+    // DEC-402③：员工身份 autoHeld，不进租户管理员的可授权业务身份，授权选择器不列它
+    const grantableItems = ((await grantable.json()) as { items: { code: string }[] }).items;
+    expect(grantableItems).toHaveLength(items.length - 1);
+    expect(grantableItems.map((p) => p.code)).not.toContain('employee_self_service');
   });
 
   it('标准流程覆盖全部审批类型、已发布、带发起条件（或显式兜底），异常管理员为开通时指定的人', async () => {

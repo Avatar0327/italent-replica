@@ -4,10 +4,12 @@ import { useTestDb } from '@italent/testkit';
 import { expect, it } from 'vitest';
 import { legacyContractWorld } from './AC-CT-upgrade-support.js';
 import { rowsOf } from '../../apps/api/src/modules/contracts/context.js';
+import { skipUnlessMigratorBypassesRls } from './support/migrator-role.js';
 
 const testDb = useTestDb({ migrateBefore: '_contract_import_guard' });
-it('AC-CT-11 升级压缩历史尝试、保留累计次数与成功终态，旧终止原因保守回填', async () => {
+it('AC-CT-11 升级压缩历史尝试、保留累计次数与成功终态，旧终止原因保守回填', async (context) => {
   const handle = testDb();
+  await skipUnlessMigratorBypassesRls(context, handle.db);
   const w = await legacyContractWorld(handle.db);
   const objects = [randomUUID(), randomUUID(), randomUUID()];
   await withTenant(handle.db, w.session.tenant.id, async (tx) => {

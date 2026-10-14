@@ -1,3 +1,4 @@
+import { getTableColumns } from 'drizzle-orm';
 import { isActiveAccount } from '../approval/resolver.js';
 import {
   and,
@@ -10,6 +11,7 @@ import {
   sql,
   type Tx,
 } from '@italent/db';
+import { advisoryLock, asUuid } from '../../advisory-lock.js';
 import { AppError } from '../../errors.js';
 import { audit, revision, rowsOf, type ContractContext } from './context.js';
 import { parse, settingsSchema, ruleSchema } from './input.js';
@@ -39,9 +41,25 @@ export async function verifyIds(tx: Tx, tenantId: string, table: string, ids: re
   );
   if (rows.length !== new Set(ids).size) throw new AppError('VALIDATION_FAILED', '引用不存在或不属于当前租户');
 }
+/**
+ * F-128 A15：业务侧新选用合同类型时，类型必须存在且启用。设置里的 postExit / renewal / indefinite 类型只是配置，
+ * 仍走 verifyIds；已引用该类型的历史合同不受影响（调用方只对新选用的类型调用本函数）。
+ */
+export async function assertTypeEnabled(tx: Tx, tenantId: string, typeId: string) {
+  const [type] = await tx
+    .select({ enabled: contractTypes.enabled })
+    .from(contractTypes)
+    .where(and(eq(contractTypes.tenantId, tenantId), eq(contractTypes.id, typeId)));
+  if (!type) throw new AppError('VALIDATION_FAILED', '引用不存在或不属于当前租户');
+  if (!type.enabled) throw new AppError('VALIDATION_FAILED', '合同类型已停用');
+}
+/** 合同配置（设置、类型、规则）的写入串行化（租户级）。 */
+export async function lockContractConfig(tx: Tx, tenantId: string): Promise<void> {
+  await advisoryLock(tx, asUuid(tenantId), ':contract-config');
+}
 export async function saveSettings(tx: Tx, ctx: ContractContext, raw: unknown) {
   const input = parse(settingsSchema, raw);
-  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':contract-config'},0))`);
+  await lockContractConfig(tx, ctx.tenantId);
   const before = await settings(tx, ctx.tenantId);
   revision(ctx.expectedRevision, before.revision);
   for (const key of ['postExitTypeIds', 'renewalTypeIds', 'indefiniteTypeIds'] as const) {
@@ -51,6 +69,27 @@ export async function saveSettings(tx: Tx, ctx: ContractContext, raw: unknown) {
   await tx.insert(contractSettings).values(after).onConflictDoUpdate({ target: contractSettings.tenantId, set: after });
   await audit(tx, ctx, 'contract.settings.update', ctx.tenantId, before, after);
   return after;
+}
+/** 规则列表的分页读取：优先级小的在前，同优先级按 ID；total 为全部规则数。 */
+export async function rulesPage(tx: Tx, tenantId: string, limit: number, offset: number) {
+  const all = await rules(tx, tenantId);
+  const ordered = all.toSorted((a, b) => a.priority - b.priority || a.id.localeCompare(b.id));
+  return { items: ordered.slice(offset, offset + limit), total: ordered.length };
+}
+/** F-128 A16：删除规则（含明细）；与保存共用租户级配置锁，按规则 revision 乐观锁。 */
+export async function deleteRule(tx: Tx, ctx: ContractContext, id: string) {
+  await lockContractConfig(tx, ctx.tenantId);
+  const before = (await rules(tx, ctx.tenantId)).find((r) => r.id === id);
+  if (!before) throw new AppError('NOT_FOUND', '续签规则不存在');
+  revision(ctx.expectedRevision, before.revision);
+  await tx
+    .delete(contractRenewalDetails)
+    .where(and(eq(contractRenewalDetails.tenantId, ctx.tenantId), eq(contractRenewalDetails.ruleId, id)));
+  await tx
+    .delete(contractRenewalRules)
+    .where(and(eq(contractRenewalRules.tenantId, ctx.tenantId), eq(contractRenewalRules.id, id)));
+  await audit(tx, ctx, 'contract.rules.delete', id, before, null);
+  return { id, deleted: true as const };
 }
 export async function rules(tx: Tx, tenantId: string) {
   const headers = await tx
@@ -70,7 +109,7 @@ export async function rules(tx: Tx, tenantId: string) {
 }
 export async function saveRule(tx: Tx, ctx: ContractContext, raw: unknown, id?: string) {
   const input = parse(ruleSchema, raw);
-  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':contract-config'},0))`);
+  await lockContractConfig(tx, ctx.tenantId);
   const existing = await rules(tx, ctx.tenantId);
   if (!id && existing.length >= 200) throw new AppError('PAYLOAD_TOO_LARGE', '最多配置 200 条合同续签规则');
   const before = id ? existing.find((r) => r.id === id) : null;
@@ -110,19 +149,23 @@ export async function saveRule(tx: Tx, ctx: ContractContext, raw: unknown, id?: 
 export async function saveMaster(tx: Tx, ctx: ContractContext, kind: 'types' | 'companies', raw: unknown, id?: string) {
   if (ctx.scope && !ctx.scope.all) throw new AppError('FORBIDDEN', '主数据无组织范围字段，须显式授予全部范围');
   const { z } = await import('zod');
+  const base = {
+    code: z.string().trim().min(1).max(100),
+    name: z.string().trim().min(1).max(200),
+    enabled: z.boolean().default(true),
+  };
+  // 显示顺序只属于合同类型；不传时更新保持原值，新建为 0
   const input = parse(
-    z.strictObject({
-      code: z.string().trim().min(1).max(100),
-      name: z.string().trim().min(1).max(200),
-      enabled: z.boolean().default(true),
-    }),
+    z.strictObject(kind === 'types' ? { ...base, displayOrder: z.int().min(0).max(100000).optional() } : base),
     raw,
   );
-  const table = kind === 'types' ? contractTypes : contractCompanies;
-  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':contract-config'},0))`);
+  // 两张主数据表同构，只有合同类型多显示顺序；列集合按各自的表取，避免 returning 引用对方没有的列
+  const table = (kind === 'types' ? contractTypes : contractCompanies) as typeof contractTypes;
+  const columns = getTableColumns(table);
+  await lockContractConfig(tx, ctx.tenantId);
   const [before] = id
     ? await tx
-        .select()
+        .select(columns)
         .from(table)
         .where(and(eq(table.tenantId, ctx.tenantId), eq(table.id, id)))
     : [];
@@ -133,11 +176,11 @@ export async function saveMaster(tx: Tx, ctx: ContractContext, kind: 'types' | '
         .update(table)
         .set({ ...input, revision: ctx.expectedRevision + 1 })
         .where(and(eq(table.tenantId, ctx.tenantId), eq(table.id, id)))
-        .returning()
+        .returning(columns)
     : await tx
         .insert(table)
         .values({ ...input, tenantId: ctx.tenantId })
-        .returning();
+        .returning(columns);
   await audit(tx, ctx, `contract.${kind}.save`, after!.id, before ?? null, after);
   return after!;
 }

@@ -33,6 +33,7 @@ import type { Context, Hono } from 'hono';
 import { requirePermission } from '../authorization.js';
 import { AppError } from '../errors.js';
 import type { TenantRouteDeps } from '../routes.js';
+import { survey360FailureVisibility } from '../modules/survey360/access.js';
 import { type TenantContext, type TenantEnv, tenantOf } from '../tenant-context.js';
 import {
   afterCursor,
@@ -55,7 +56,12 @@ const BASE = '/api/tenant/audit';
 const CODE = /^[A-Za-z0-9_.:#-]{1,200}$/;
 const FIELD = /^[A-Za-z0-9_.:-]{1,100}$/;
 
-type AuditEventRow = typeof auditEvents.$inferSelect & { visibleCount: number | null; linkagePaths: string[] | null };
+type AuditEventRow = typeof auditEvents.$inferSelect & {
+  visibleCount: number | null;
+  linkagePaths: string[] | null;
+  withheld: boolean | null;
+  answersWithheld: boolean | null;
+};
 
 export function registerAuditRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   registerDataChanges(router, deps);
@@ -65,8 +71,8 @@ export function registerAuditRoutes(router: Hono<TenantEnv>, deps: TenantRouteDe
 function registerDataChanges(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   router.get(`${BASE}/data-changes`, async (c) => {
     const ctx = await auditContext(c, deps);
-    const filters = dataChangeFilters(c);
     const viewer = await auditViewer(deps, ctx, c.req.query('field') || undefined);
+    const filters = dataChangeFilters(c, viewer.withheld);
     return c.json(
       await withTenant(deps.db, ctx.tenantId, async (tx) => {
         const window = queryWindow(c, deps.clock(), ctx.timezone, await tenantRetention(tx, ctx.tenantId));
@@ -79,12 +85,11 @@ function registerDataChanges(router: Hono<TenantEnv>, deps: TenantRouteDeps): vo
           .limit(limit + 1);
         const page = paginate(rows, limit);
         const operator = await operatorNames(tx, page.items);
+        const redacted = await viewer.redact(tx, page.items.map(recounted));
         return {
-          items: page.items
-            .map(recounted)
-            .map((row) =>
-              dataChangeView(row, operator(row), viewer.fieldsOf(row.objectType, row.action, row.linkagePaths)),
-            ),
+          items: redacted.map((row) =>
+            dataChangeView(row, operator(row), viewer.fieldsOf(row.objectType, row.action, row.linkagePaths, row)),
+          ),
           nextCursor: page.nextCursor,
           window,
         };
@@ -112,8 +117,8 @@ function registerDataChanges(router: Hono<TenantEnv>, deps: TenantRouteDeps): vo
           );
         // 超出保留期、范围外或只涉及隐藏字段的日志与不存在同样处理（原站“最远只能查 6 个月内”；DEC-197）
         if (!found) throw new AppError('NOT_FOUND', '日志不存在或已超出保留期');
-        const row = recounted(found);
-        const fields = viewer.fieldsOf(row.objectType, row.action, row.linkagePaths);
+        const row = (await viewer.redact(tx, [recounted(found)]))[0]!;
+        const fields = viewer.fieldsOf(row.objectType, row.action, row.linkagePaths, row);
         const view = dataChangeView(row, (await operatorNames(tx, [row]))(row), fields);
         return {
           ...view,
@@ -156,6 +161,8 @@ function registerTaskLogs(router: Hono<TenantEnv>, deps: TenantRouteDeps): void 
   router.get(`${BASE}/command-failures`, async (c) => {
     const ctx = await auditContext(c, deps);
     const filters = failureFilters(c);
+    // R3-T03：360 相关命令的失败按 360 身份裁剪（匿名作答的请求来源不对无 360 权限者公开）
+    filters.push(await survey360FailureVisibility(deps, ctx, sql`${auditCommandFailures.path}`));
     return c.json(
       await withTenant(deps.db, ctx.tenantId, async (tx) => {
         const window = queryWindow(c, deps.clock(), ctx.timezone, await tenantRetention(tx, ctx.tenantId));
@@ -189,7 +196,7 @@ function pageConditions(c: Context, table: AuditTable, window: AuditWindowBounds
 
 type AuditTable = typeof auditEvents | typeof auditOperationLogs | typeof auditCommandFailures;
 
-function dataChangeFilters(c: Context): SQL[] {
+function dataChangeFilters(c: Context, withheld: SQL): SQL[] {
   const t = auditEvents;
   const conditions: SQL[] = [];
   const objectType = optionalQuery(c, 'objectType', CODE);
@@ -206,6 +213,9 @@ function dataChangeFilters(c: Context): SQL[] {
   if (actor) conditions.push(sql`${t.actorUserId} = ${actor}::uuid`);
   if (commandId) conditions.push(sql`${t.commandId} = ${commandId}`);
   if (sourceAction) conditions.push(sql`${t.sourceAction} = ${sourceAction.slice(0, 100)}`);
+  // DEC-340③：脱敏行不展示对象编号、命令 ID 与来源，按它们筛选也不能命中（否则凭条数即可关联匿名答卷）；
+  // DEC-355② 能看完整版的行照常可筛
+  if (objectId || commandId || sourceAction) conditions.push(sql`NOT ${withheld}`);
   // 升级前的历史行已在迁移 0058 回填 operation / changes（P2-3），筛选与展示口径一致
   if (operation) conditions.push(sql`${t.operation} = ${operation}`);
   // 字段可以是展开后的 a.b 形式，按末段匹配；联动由 viewer 对展开后的可见变化筛选。
@@ -270,6 +280,17 @@ function sourceView(row: {
   };
 }
 
+const WITHHELD_SOURCE = {
+  sourceAction: null,
+  sourcePage: null,
+  sourcePageType: null,
+  terminal: null,
+  clientVersion: null,
+  ip: null,
+  traceId: null,
+  commandId: null,
+} as const;
+
 function eventColumns(viewer: Awaited<ReturnType<typeof auditViewer>>) {
   return {
     ...getTableColumns(auditEvents),
@@ -277,17 +298,20 @@ function eventColumns(viewer: Awaited<ReturnType<typeof auditViewer>>) {
     after: linkageSnapshot(sql`${auditEvents.after}`),
     visibleCount: sql<number | null>`${viewer.visibleCount}`,
     linkagePaths: sql<string[] | null>`${viewer.linkagePaths}`,
+    withheld: sql<boolean | null>`${viewer.withheld}`,
+    answersWithheld: sql<boolean | null>`${viewer.answersWithheld}`,
     changes: sql<AuditFieldChange[] | null>`${viewer.eventChanges}`,
   };
 }
 
 /**
- * 人员派生计数按可见行重算（第四轮 N4）：序码重算汇总的变化人数换成查看人可见的逐人序码日志条数，
- * 差异按重算后的值重新计算（看全部的查看人 visibleCount 为空，保持原值）。
+ * 序码重算和组织调整的汇总人数按可见逐人日志重算，差异也使用裁剪后的值。
+ * 无需重算的记录由查看规则返回空 visibleCount，保持原值。
  */
 function recounted(row: AuditEventRow): AuditEventRow {
-  if (row.visibleCount === null || row.objectType !== 'personnel-order-run') return row;
-  const after = { ...(row.after as Record<string, unknown>), changed: row.visibleCount };
+  if (row.visibleCount === null) return row;
+  const field = row.objectType === 'org-adjustment-run' ? 'employeeCount' : 'changed';
+  const after = { ...(row.after as Record<string, unknown>), [field]: row.visibleCount };
   return { ...row, after, changes: diffAuditFields(row.before, after) };
 }
 
@@ -298,6 +322,7 @@ function dataChangeView(
 ) {
   const operation = (row.operation ?? auditOperationOf(row.action, row.before, row.after)) as AuditOperation;
   const stored = (row.changes as AuditFieldChange[] | null) ?? diffAuditFields(row.before, row.after);
+  const desensitized = row.withheld === true;
   const changes = renderAuditChanges(visibleChanges(stored, fields));
   const meta = auditObjectMeta(row.objectType);
   return {
@@ -309,12 +334,12 @@ function dataChangeView(
     app: meta.app,
     objectType: row.objectType,
     objectLabel: meta.label,
-    objectId: row.objectId,
+    // DEC-340③：脱敏行不展示对象编号、命令 ID 与请求来源（能把匿名答卷关联到具名评价关系；DEC-355② 完整版照常展示）
+    objectId: desensitized ? null : row.objectId,
     action: row.action,
     content: auditContent(changes),
     changes,
-    ...sourceView(row),
-    commandId: row.commandId,
+    ...(desensitized ? WITHHELD_SOURCE : { ...sourceView(row), commandId: row.commandId }),
   };
 }
 

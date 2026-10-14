@@ -9,6 +9,7 @@ import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { createMou, updateMou } from '../../apps/api/src/modules/permission/data-scope-admin.js';
 import { BASE, seedPermissionWorld } from './AC-PRM-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 const realPostgres = Boolean(process.env.TEST_DATABASE_URL);
@@ -37,7 +38,7 @@ describe.skipIf(!realPostgres)('管理单元：删除父级 × 新建下级（�
     const created = await world.api.request('POST', `${BASE}/mous`, {
       ...world.asAdmin,
       ifMatch: 0,
-      body: { code: `P_${randomUUID().slice(0, 8)}`, name: '父级', orgRanges: [] },
+      body: { code: `P_${uniqueSuffix()}`, name: '父级', orgRanges: [] },
     });
     expect(created.status).toBe(201);
     const parent = (await created.json()) as { id: string; revision: number };
@@ -59,7 +60,7 @@ describe.skipIf(!realPostgres)('管理单元：删除父级 × 新建下级（�
     });
     await deletedSignal;
 
-    const child = { code: `C_${randomUUID().slice(0, 8)}`, name: '下级', parentId: parent.id, description: '' };
+    const child = { code: `C_${uniqueSuffix()}`, name: '下级', parentId: parent.id, description: '' };
     const creating = withTenant(db, world.tenant.id, (tx) =>
       createMou(tx, write(), { ...child, status: 'active', orgRanges: [] }, 0),
     ).then(

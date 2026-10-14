@@ -17,6 +17,7 @@ import { type AdminRole, isAdminRole } from '@italent/domain';
 import { inArray } from 'drizzle-orm';
 import { AppError } from '../../errors.js';
 import { audit, type WriteContext } from './audit.js';
+import { assertNotAutoHeld } from './auto-held.js';
 import { revisionConflict } from './http.js';
 import { assertActiveMember } from './members.js';
 
@@ -164,6 +165,8 @@ async function assertCanDelegate(tx: Tx, actorUserId: string, role: AdminRole, s
     throw new AppError('FORBIDDEN', '只能授予可授权范围内的管理员身份', { reason: 'ADMIN_ROLE_NOT_GRANTABLE' });
   }
   await assertProfilesExist(tx, sets.grantableProfileIds);
+  // DEC-402③：自动持有的身份不进任何管理员的可授权集合，租户管理员也一样
+  await assertNotAutoHeld(tx, sets.grantableProfileIds);
   if (actor.heldRoles.has('tenant_admin')) return;
   const extra = outside(sets.grantableProfileIds, actor.profiles);
   if (extra.length > 0) {

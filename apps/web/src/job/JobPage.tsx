@@ -1,11 +1,14 @@
+import { useSession } from '../foundation/Session.js';
 import { useState } from 'react';
 import { initialTenantId } from '../demo/tenant.js';
 import { JobForm } from './JobForm.js';
 import { text } from './messages.js';
 import { useJobManager, useMessages, type JobManagerState } from './useJobManager.js';
 export function JobPage() {
-  const [tenant, setTenant] = useState(initialTenantId);
-  const [active, setActive] = useState(initialTenantId);
+  const session = useSession();
+  const initialTenant = () => session.tenantId || initialTenantId();
+  const [tenant, setTenant] = useState(initialTenant);
+  const [active, setActive] = useState(initialTenant);
   return (
     <main>
       <h1>{text.title}</h1>

@@ -133,7 +133,11 @@ describe('OrgHierarchyReader 真实实现契约（AC-ORG-07、组织有效期、
     const former = await f.create('原上级');
     const next = await f.create('新上级');
     const child = await f.create('调动组织', { admin: { parentId: former.id } });
-    await f.update(child, { effectiveDate: '2026-11-01', parents: { admin: { parentId: next.id } } });
+    await f.update(child, {
+      addEmployment: false,
+      effectiveDate: '2026-11-01',
+      parents: { admin: { parentId: next.id } },
+    });
 
     expect(await hierarchy.listDescendantIds(query(f.tenant.id, former.id), { includeDisabled: false })).toEqual([
       child.id,

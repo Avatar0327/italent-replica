@@ -357,23 +357,21 @@ describe('N8（P3）：详情的管理员动作按两个按钮各自的权限生
     return { w, view, admin };
   }
 
-  for (const [label, denied, shown, hidden] of [
+  it.each([
     ['只有转交权限', 'adminIntervene', 'adminTransfer', 'adminIntervene'],
     ['只有干预权限', 'adminTransfer', 'adminIntervene', 'adminTransfer'],
-  ] as const) {
-    it(label, async () => {
-      const { w, view, admin } = await scene(`apv-n8-${denied}`);
-      const api = tenantApi(w.db, {
-        authorize: denying((resource) => resource.includes(`#${denied}@`)),
-        clock: w.clock,
-      });
-      const detail = (await (
-        await api.request('GET', `${BASE}/instances/${view.id}`, w.as(admin))
-      ).json()) as InstanceView;
-      expect(detail.actions).toContain(shown);
-      expect(detail.actions).not.toContain(hidden);
+  ] as const)('%s', async (_label, denied, shown, hidden) => {
+    const { w, view, admin } = await scene(`apv-n8-${denied}`);
+    const api = tenantApi(w.db, {
+      authorize: denying((resource) => resource.includes(`#${denied}@`)),
+      clock: w.clock,
     });
-  }
+    const detail = (await (
+      await api.request('GET', `${BASE}/instances/${view.id}`, w.as(admin))
+    ).json()) as InstanceView;
+    expect(detail.actions).toContain(shown);
+    expect(detail.actions).not.toContain(hidden);
+  });
 });
 
 describe('DEC-123：异常管理员停用时剩余在途异常待办自动转派', () => {

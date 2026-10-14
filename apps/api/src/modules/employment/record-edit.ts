@@ -84,6 +84,8 @@ export async function editEmploymentRecord(
     )
     .map(([field, value]) => ({ field, before: beforeAudit[field as keyof typeof beforeAudit] ?? null, after: value }));
   if (!changes.length) return requireSavedBusiness(tx, ctx, id);
+  // REQ-EMP-003 / 07 A7：历史、兼职、批量编辑只改本记录不传播；控编投影按同一判断，不模拟不会发生的传播（S1-P2-04）。
+  const propagates = options.forwardUpdate !== false && isForwardEditSupported({ ...record, entry, today });
   if (await affectsEstablishmentOccupancy(tx, ctx, record.fields, after.fields, record.effectiveDate))
     await assertEstablishmentCapacity(
       tx,
@@ -96,12 +98,13 @@ export async function editEmploymentRecord(
         fields: after.fields,
         departmentId: after.fields.departmentId,
         positionId: after.fields.positionId,
+        propagates,
       },
       entry === 'import' ? (options.establishmentWarnings ?? []) : undefined,
     );
   business.payload = await appendForwardPayload(tx, ctx, business.payload, after, id, true, changes);
   await auditEmployment(tx, ctx, 'employment.record.edit', 'employment-record', id, beforeAudit, afterAudit);
-  if (options.forwardUpdate !== false && isForwardEditSupported({ ...record, entry, today })) {
+  if (propagates) {
     await forwardUpdateEmployment(tx, ctx, {
       employeeId: business.employeeId,
       businessId: id,

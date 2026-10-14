@@ -23,7 +23,21 @@ import { registerApprovalRoutes } from './modules/approval/routes.js';
 import { createPlatformRouter } from './modules/platform/routes.js';
 import { auditRequestContext } from './audit/request-context.js';
 import { registerAuditRoutes } from './audit/routes.js';
+import { registerSurvey360Routes } from './modules/survey360/routes.js';
 import { captureCommandFailures } from './audit/capture.js';
+import { ROOT_POLICIES, tenantPolicyTable } from './app-policy.js';
+import { policed, type PolicyTable, useMiddleware, verifyRouteDeclarations } from './route-policy/index.js';
+import { registerTalentRoutes } from './modules/talent/routes.js';
+import { MODEL_IMAGE_BODY_LIMIT } from './modules/talent/model-image-format.js';
+import { registerIdpRoutes } from './modules/idp/routes.js';
+import { registerQualificationRoutes } from './modules/qualification/routes.js';
+import { registerEvaluationRoutes } from './modules/evaluation/routes.js';
+import { registerAvatarRoutes } from './modules/avatar/routes.js';
+import { registerCommandResultRoutes } from './modules/command-result/routes.js';
+import { registerTalentReviewRoutes } from './modules/talent-review/routes.js';
+import { registerSuccessionRoutes } from './modules/succession/routes.js';
+import { assertFormulaBindingCapabilities } from './modules/talent-review/formula-binding-capabilities.js';
+import { resolveFormulaIdBinding } from './modules/talent-review/formula-binding-switch.js';
 
 /** 租户业务模块：新模块只在此追加一行注册，不改其他装配逻辑。 */
 const TENANT_MODULES: readonly TenantRouteModule[] = [
@@ -37,6 +51,15 @@ const TENANT_MODULES: readonly TenantRouteModule[] = [
   registerContractRoutes, // R2-T06 合同协议
   registerEmployeeSelfServiceRoutes, // R1-T13 员工自助，仅本人
   registerAuditRoutes, // R1-T16 审计日志
+  registerSurvey360Routes, // R3-T03 360 度评估（含 /api/survey360/link 链接作答）
+  registerTalentRoutes, // R3-T01 人才标准与指标库（TalentCenter）
+  registerIdpRoutes, // R3-T07 个人发展计划（IDP）
+  registerQualificationRoutes, // R3-T02 任职资格配置（Qualification）
+  registerEvaluationRoutes, // R3-T02 人才评定配置（TEvaluation；B1a 活动类型）
+  registerAvatarRoutes, // F-058 账号头像与人员只读引用
+  registerCommandResultRoutes, // F-120 本人命令结果只读回查
+  registerTalentReviewRoutes, // R3-T04 人才盘点（TalentReview；PR-A 准备度字典）
+  registerSuccessionRoutes, // R3-T05 继任管理（SuccessionAndDevelopment；契约 PR 只占装配位）
 ];
 
 export interface AppDeps {
@@ -49,19 +72,47 @@ export interface AppDeps {
   readonly clock?: () => Date;
   /** 额外的租户路由模块（后续业务模块、测试夹具）。 */
   readonly tenantRoutes?: readonly TenantRouteModule[];
+  /** 额外租户路由模块的声明登记表（F-039）：每条注册都必须在表里有声明，否则 createApp 抛错。 */
+  readonly routePolicies?: readonly PolicyTable[];
+  /**
+   * F-082 总开关覆盖（契约 §10）：缺省取 FORMULA_ID_BINDING_DEFAULT。只允许测试通过依赖注入覆盖，且只能作用于
+   * useTestDb() 建的隔离测试库，否则 createApp 抛错。
+   */
+  readonly formulaIdBinding?: boolean;
 }
 
 export function createApp(deps: AppDeps = {}): Hono {
+  const formulaIdBinding = resolveFormulaIdBinding(deps);
+  // F-082 契约 §10：开关打开时前置能力（items 投影、响应 / 重放投影、审计裁剪）任一未登记即拒绝启动
+  if (formulaIdBinding) assertFormulaBindingCapabilities();
   const app = new Hono();
+  // F-039：根路由器套登记表，每条注册与中间件都登记，createApp 末尾校验「缺失即失败」并封闭
+  const root = policed(app, ROOT_POLICIES);
 
   // 审计的请求来源（IP、终端、来源页面、TraceID，R1-T16）：最先挂载，失败的请求同样带 TraceID
-  app.use('*', auditRequestContext(deps.clock ?? (() => new Date())));
-  app.use('*', requireJson);
+  useMiddleware(root, '*', auditRequestContext(deps.clock ?? (() => new Date())), 'auditRequestContext');
+  useMiddleware(root, '*', requireJson, 'requireJson');
   // 默认 32KB；只有登记的个别接口放宽且仍有上限（身份对象权限整对象替换，见 permission/routes.ts）
-  app.use(
+  useMiddleware(
+    root,
     '*',
     limitBody(DEFAULT_BODY_LIMIT, [
       ...PERMISSION_BODY_LIMITS,
+      // DEC-422：继任规则保存放宽到 64KB；B2b 等级复用同一例外，其余接口仍为 32KB。
+      { method: 'POST', path: /^\/api\/tenant\/succession\/populations$/, maxSize: 64 * 1024 },
+      { method: 'PUT', path: /^\/api\/tenant\/succession\/populations\/[^/]+$/, maxSize: 64 * 1024 },
+      { method: 'POST', path: /^\/api\/tenant\/succession\/(risk|health)-levels$/, maxSize: 64 * 1024 },
+      { method: 'PUT', path: /^\/api\/tenant\/succession\/(risk|health)-levels\/(?!order$)[^/]+$/, maxSize: 64 * 1024 },
+      {
+        method: 'POST',
+        path: /^\/api\/tenant\/account\/avatar\/attachments\/[^/]+\/upload$/,
+        maxSize: MODEL_IMAGE_BODY_LIMIT,
+      },
+      {
+        method: 'POST',
+        path: /^\/api\/tenant\/talent\/criteria\/[^/]+\/model-image\/attachments\/[^/]+\/upload$/,
+        maxSize: MODEL_IMAGE_BODY_LIMIT,
+      },
       {
         method: 'POST',
         path: /^\/api\/tenant\/contracts\/imports(?:\/(?:preview|errors))?$/,
@@ -69,9 +120,10 @@ export function createApp(deps: AppDeps = {}): Hono {
       },
       { method: 'POST', path: /^\/api\/tenant\/contracts\/batch$/, maxSize: 1024 * 1024 },
     ]),
+    'limitBody',
   );
 
-  app.get('/healthz', async (c) => {
+  root.get('/healthz', async (c) => {
     if (deps.db) {
       try {
         await deps.db.execute(sql`SELECT 1`);
@@ -83,27 +135,35 @@ export function createApp(deps: AppDeps = {}): Hono {
   });
 
   if (deps.db) {
-    app.route('/', createTenantRouter(deps.db, deps));
+    root.route('/', createTenantRouter(deps.db, deps, formulaIdBinding));
     // 平台运营层（R1-T17）：只认平台运营身份，与租户上下文和租户内权限互不相通
-    app.route('/', createPlatformRouter(deps.db, deps.identity ?? denyAllIdentity, deps.clock ?? (() => new Date())));
+    root.route(
+      '/',
+      createPlatformRouter(deps.db, deps.identity ?? denyAllIdentity, deps.clock ?? (() => new Date()), {
+        formulaIdBinding,
+      }),
+    );
   }
 
   app.notFound((c) => errorResponse(c, 'NOT_FOUND', '接口不存在'));
   app.onError(handleError);
+  // 缺失声明即失败（DEC-300 / DEC-303）：任何未声明、别名或未登记中间件都在这里抛错，应用无法启动
+  verifyRouteDeclarations(app);
   return app;
 }
 
-function createTenantRouter(db: Db, deps: AppDeps): Hono<TenantEnv> {
+function createTenantRouter(db: Db, deps: AppDeps, formulaIdBinding: boolean): Hono<TenantEnv> {
   const routeDeps: TenantRouteDeps = {
     db,
     authorize: deps.authorize ?? createPermissionAuthorizer(db, undefined, deps.clock),
     clock: deps.clock ?? (() => new Date()),
+    formulaIdBinding,
   };
-  const router = new Hono<TenantEnv>();
+  const router = policed(new Hono<TenantEnv>(), tenantPolicyTable(deps.routePolicies));
   // 所有租户接口都在 /api/tenant/ 之下，每次请求都重验身份、成员关系与租户状态
-  router.use('/api/tenant/*', tenantContext(db, deps.identity ?? denyAllIdentity));
+  useMiddleware(router, '/api/tenant/*', tenantContext(db, deps.identity ?? denyAllIdentity), 'tenantContext');
   // 身份与租户确认后，兜底记录执行器之前被拒绝的写命令（R1-T16 第二轮 P2-7）
-  router.use('/api/tenant/*', captureCommandFailures(db));
+  useMiddleware(router, '/api/tenant/*', captureCommandFailures(db), 'captureCommandFailures');
   for (const register of [...TENANT_MODULES, ...(deps.tenantRoutes ?? [])]) register(router, routeDeps);
   return router;
 }

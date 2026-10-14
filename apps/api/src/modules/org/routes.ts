@@ -1,3 +1,9 @@
+import { normalizedUuid } from '../employment/fields.js';
+import {
+  authorizeOrgEmploymentReplay,
+  hasPendingOrgEmployment,
+  validateEmploymentChoice,
+} from './employment-linkage.js';
 import { authorizeOrgResult, originalOrgImportRows } from '../permission/org-result-scope.js';
 import { authorizeInTransaction } from '../permission/module-access.js';
 import { getTenant, isUuid, type Tx, withTenant } from '@italent/db';
@@ -40,7 +46,7 @@ const BASE = '/api/tenant/org';
 const OBJECT = MODULE_OBJECTS.organization.code;
 const date = z.string().refine(validIsoDate, '日期必须为合法 YYYY-MM-DD');
 const order = z.number().int().min(-2_147_483_648).max(2_147_483_647).nullable().optional();
-const parent = z.strictObject({ parentId: z.uuid(), sequence: order });
+const parent = z.strictObject({ parentId: normalizedUuid, sequence: order });
 const parents = z.strictObject({
   admin: parent,
   business: parent.optional(),
@@ -53,10 +59,10 @@ const fields = {
   shortName: z.string().max(100).nullable().optional(),
   broadType: z.string().min(1).max(100).optional(),
   establishedOn: date.nullable().optional(),
-  personInChargeId: z.uuid().nullable().optional(),
-  hrbpId: z.uuid().nullable().optional(),
-  shopOwnerId: z.uuid().nullable().optional(),
-  costCenterId: z.uuid().nullable().optional(),
+  personInChargeId: normalizedUuid.nullable().optional(),
+  hrbpId: normalizedUuid.nullable().optional(),
+  shopOwnerId: normalizedUuid.nullable().optional(),
+  costCenterId: normalizedUuid.nullable().optional(),
   location: z.string().max(500).nullable().optional(),
   remarks: z.string().max(4000).nullable().optional(),
   displayOrder: order,
@@ -69,13 +75,13 @@ const fields = {
 const creation = z.strictObject({
   ...fields,
   parents,
-  reservationId: z.uuid().optional(),
+  reservationId: normalizedUuid.optional(),
   confirmed: z.boolean().optional(),
 });
 const update = z
   .strictObject({ ...fields, parents: parents.partial().optional() })
   .partial()
-  .extend({ effectiveDate: date });
+  .extend({ effectiveDate: date, addEmployment: z.boolean().optional() });
 // DEC-147：「编辑」（更正、不产生新版本）目前只开放设立日期，首版生效日随之变化。
 const correction = z.strictObject({ establishedOn: date });
 const settings = z.strictObject({
@@ -86,10 +92,11 @@ const importRow = z.strictObject({
   sourceCode: z.string().min(1).max(100),
   code: z.string().min(1).max(64),
   name: fields.name,
-  parentId: z.uuid(),
-  orgId: z.uuid().optional(),
+  parentId: normalizedUuid,
+  orgId: normalizedUuid.optional(),
   expectedRevision: z.number().int().min(0).optional(),
   startDate: date.optional(),
+  addEmployment: z.boolean().optional(),
 });
 
 export function registerOrgRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
@@ -97,6 +104,7 @@ export function registerOrgRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps
   registerPersonCandidates(router, deps);
   registerReservations(router, deps);
   registerWrites(router, deps);
+  registerEmploymentPreview(router, deps);
   registerCorrection(router, deps);
   registerOrgImport(router, deps);
 }
@@ -301,38 +309,7 @@ function registerWrites(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
       scope,
     );
   });
-  router.patch(`${BASE}/organizations/:id`, async (c) => {
-    const ctx = await context(c, deps, 'update', revision(c));
-    const id = orgId(c);
-    const input = await body(c, update);
-    await writeFields(deps, ctx, OBJECT, 'update', input);
-    const scope = await requestScope(c, deps, ctx, OBJECT);
-    await withTenant(deps.db, ctx.tenantId, async (tx) =>
-      visible(
-        scope,
-        id,
-        '组织不存在',
-        hasCreatorScope(scope) ? await creatorOf(tx, ctx.tenantId, id, 'org.create', 'organization') : undefined,
-      ),
-    );
-    if (input.parents) await visibleParents(deps, ctx, input.parents, scope);
-    return write(
-      c,
-      deps,
-      ctx,
-      input,
-      async (tx, writeCtx) => {
-        // DEC-129：级联停用的每个下级都须在操作人当前数据范围内；范围外按不存在处理，不列名称。
-        const authorizeCascade = async (cascadeTx: Tx, ids: readonly string[]) => {
-          for (const descendant of ids) await authorizeOrgResult(cascadeTx, ctx, scope, descendant, false);
-        };
-        const saved = await updateOrganization(tx, writeCtx, id, input, { authorizeCascade });
-        return { status: 200, body: await organizationResponse(tx, writeCtx, saved) };
-      },
-      true,
-      scope,
-    );
-  });
+  registerUpdate(router, deps);
   router.put(`${BASE}/settings`, async (c) => {
     const ctx = await context(c, deps, 'configuration', revision(c));
     const input = await body(c, settings);
@@ -371,6 +348,9 @@ async function importOrgRows(c: Context<TenantEnv>, deps: TenantRouteDeps, ctx: 
   const input = await body(c, z.strictObject({ rows: z.array(importRow).min(1).max(100) }));
   await button(deps, ctx, OBJECT, 'import', 'list');
   const scope = await requestScope(c, deps, ctx, OBJECT);
+  const employmentScope = input.rows.some((row) => row.addEmployment === true)
+    ? await resolveModuleScope(deps, ctx, undefined, 'TenantBase.EmploymentRecord')
+    : undefined;
   const originalRows = await withTenant(deps.db, ctx.tenantId, (tx) =>
     originalOrgImportRows(tx, ctx.tenantId, c.req.header('idempotency-key') ?? ''),
   );
@@ -381,7 +361,7 @@ async function importOrgRows(c: Context<TenantEnv>, deps: TenantRouteDeps, ctx: 
         (original) =>
           original.orgId === targetId && original.sourceCode === row.sourceCode && original.status === 'created',
       );
-    const { orgId: _id, expectedRevision: _revision, ...payload } = row;
+    const { orgId: _id, expectedRevision: _revision, addEmployment: _choice, ...payload } = row;
     await writeFields(
       { ...deps, authorize: authorizeInTransaction(deps.authorize, tx) },
       ctx,
@@ -409,7 +389,9 @@ async function importOrgRows(c: Context<TenantEnv>, deps: TenantRouteDeps, ctx: 
     input,
     async (tx, writeCtx) => ({
       status: 200,
-      body: await importOrganizations(tx, writeCtx, input.rows, (row, target) => guard(tx, row, target)),
+      body: await importOrganizations(tx, writeCtx, input.rows, (row, target) => guard(tx, row, target), {
+        employmentScope,
+      }),
     }),
     true,
     scope,
@@ -443,7 +425,18 @@ async function write(
   const scope = checksOrgResult
     ? (resolvedScope ?? (await resolveModuleScope(deps, ctx, undefined, OBJECT)))
     : undefined;
+  const linkedScope =
+    (input as { addEmployment?: boolean }).addEmployment === true ||
+    (input as { rows?: OrgImportRow[] }).rows?.some((row) => row.addEmployment === true)
+      ? await resolveModuleScope(deps, ctx, undefined, 'TenantBase.EmploymentRecord')
+      : undefined;
   const checkResult = async (tx: Tx, value: Record<string, unknown>, status: number) => {
+    if (linkedScope)
+      await authorizeOrgEmploymentReplay(tx, {
+        ...ctx,
+        commandId: c.req.header('idempotency-key') ?? '',
+        scope: linkedScope,
+      });
     if (!scope) return;
     if (Array.isArray(value.results)) {
       for (const row of value.results as { orgId?: string; status: string }[]) {
@@ -522,5 +515,76 @@ async function visibleParents(
             ? await creatorOf(tx, ctx.tenantId, parent.parentId, 'org.create', 'organization')
             : undefined,
         );
+  });
+}
+
+/** 在途提醒不产生写入；使用与保存相同的对象、按钮、字段和任职可见性授权。 */
+function registerEmploymentPreview(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
+  router.post(`${BASE}/organizations/:id/employment-preview`, async (c) => {
+    const ctx = await context(c, deps, 'update');
+    // DEC-080：数据操作权限与按钮权限独立判定；变更与预检都要求组织对象的 update@detail 按钮（S1-P2-03）。
+    await button(deps, ctx, OBJECT, 'update', 'detail');
+    const id = orgId(c);
+    const input = await body(c, update);
+    const { addEmployment: _choice, ...changedFields } = input;
+    await writeFields(deps, ctx, OBJECT, 'update', changedFields);
+    const scope = await requestScope(c, deps, ctx, OBJECT);
+    const employmentScope = await resolveModuleScope(
+      deps,
+      ctx,
+      tenantLocalDate(ctx.now, ctx.timezone),
+      'TenantBase.EmploymentRecord',
+    );
+    const hasPendingEmployment = await withTenant(deps.db, ctx.tenantId, async (tx) => {
+      await authorizeOrgResult(tx, ctx, scope, id, false);
+      const [current] = await loadOrgSnapshot(tx, ctx.tenantId, input.effectiveDate, undefined, { id });
+      if (!current) throw new AppError('NOT_FOUND', '组织不存在');
+      return validateEmploymentChoice(current, input)
+        ? hasPendingOrgEmployment(tx, { ...ctx, scope: employmentScope }, id, input.effectiveDate)
+        : false;
+    });
+    return c.json({ hasPendingEmployment });
+  });
+}
+
+function registerUpdate(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
+  router.patch(`${BASE}/organizations/:id`, async (c) => {
+    const ctx = await context(c, deps, 'update', revision(c));
+    // 首发与同键重放都先过按钮检查（重放也经本处理器），与导入入口的 import@list 同一口径。
+    await button(deps, ctx, OBJECT, 'update', 'detail');
+    const id = orgId(c);
+    const input = await body(c, update);
+    const { addEmployment: _choice, ...changedFields } = input;
+    await writeFields(deps, ctx, OBJECT, 'update', changedFields);
+    const scope = await requestScope(c, deps, ctx, OBJECT);
+    await withTenant(deps.db, ctx.tenantId, async (tx) =>
+      visible(
+        scope,
+        id,
+        '组织不存在',
+        hasCreatorScope(scope) ? await creatorOf(tx, ctx.tenantId, id, 'org.create', 'organization') : undefined,
+      ),
+    );
+    if (input.parents) await visibleParents(deps, ctx, input.parents, scope);
+    const employmentScope =
+      input.addEmployment === true
+        ? await resolveModuleScope(deps, ctx, tenantLocalDate(ctx.now, ctx.timezone), 'TenantBase.EmploymentRecord')
+        : undefined;
+    return write(
+      c,
+      deps,
+      ctx,
+      input,
+      async (tx, writeCtx) => {
+        // DEC-129：级联停用的每个下级都须在操作人当前数据范围内；范围外按不存在处理，不列名称。
+        const authorizeCascade = async (cascadeTx: Tx, ids: readonly string[]) => {
+          for (const descendant of ids) await authorizeOrgResult(cascadeTx, ctx, scope, descendant, false);
+        };
+        const saved = await updateOrganization(tx, writeCtx, id, input, { authorizeCascade, employmentScope });
+        return { status: 200, body: await organizationResponse(tx, writeCtx, saved) };
+      },
+      true,
+      scope,
+    );
   });
 }

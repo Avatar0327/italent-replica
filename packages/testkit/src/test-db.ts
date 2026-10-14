@@ -4,8 +4,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
 import { btree_gist } from '@electric-sql/pglite/contrib/btree_gist';
-import { createPgDb, createPgliteDb, type DbHandle, migrationsFolder } from '@italent/db';
+import { createPgDb, createPgliteDb, type DbHandle, markIsolatedTestDb, migrationsFolder } from '@italent/db';
 import postgres from 'postgres';
+import { withPreUpgradeShims } from './pre-upgrade-shims.js';
 
 /**
  * 测试库模式：设置了 TEST_DATABASE_URL 就用真 PG，否则用进程内 PGlite（离线）。
@@ -27,6 +28,8 @@ export interface TestDbOptions {
 export async function createTestDb(options: TestDbOptions = {}): Promise<DbHandle> {
   const url = process.env.TEST_DATABASE_URL;
   const handle = url ? await createFreshPgDatabase(url) : createPgliteDb(new PGlite({ extensions: { btree_gist } }));
+  // F-082：总开关的依赖注入覆盖只允许作用于这里建出来的隔离库
+  markIsolatedTestDb(handle.db);
   if (options.migrateBefore === undefined) {
     await handle.migrate();
     return handle;
@@ -37,7 +40,8 @@ export async function createTestDb(options: TestDbOptions = {}): Promise<DbHandl
   } finally {
     rmSync(folder, { recursive: true, force: true });
   }
-  return handle;
+  // 升级前夹具用当前代码写数据：临时补上当前代码需要、旧结构还没有的列，第一次 migrate 前撤掉（pre-upgrade-shims.ts）
+  return withPreUpgradeShims(handle);
 }
 
 /** 复制出只含目标迁移之前那些迁移的临时目录（SQL 文件 + 截断的 journal）。 */

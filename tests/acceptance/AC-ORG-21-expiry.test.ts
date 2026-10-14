@@ -199,7 +199,7 @@ describe('AC-ORG-21 失效日期版本边界', () => {
     const w = await world('continuous');
     await w.expire();
     await w.change({ enabled: false, stopDate: '9999-12-31', effectiveDate: '2026-10-11' });
-    await w.change({ name: '连续不可用部门', effectiveDate: '2026-10-12' });
+    await w.change({ name: '连续不可用部门', effectiveDate: '2026-10-12', addEmployment: false });
     expect(await w.unavailable('2026-10-13')).toEqual({ name: '连续不可用部门', disabledOn: '2026-10-10' });
   });
 });

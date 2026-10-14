@@ -9,6 +9,8 @@ export interface TenantRouteDeps {
   readonly authorize: Authorizer;
   /** 注入时钟，便于测试跨日与时区（DEC-056）；写入的事件时间是 UTC 瞬时。 */
   readonly clock: () => Date;
+  /** F-082 总开关（契约 §10）：计算公式字段引用按 ID 绑定的新写入路径 / 响应形状 / 审计格式 / 改绑路由。缺省按关闭处理（B5 路径）。 */
+  readonly formulaIdBinding?: boolean;
 }
 
 /** 业务模块（及测试夹具）向租户路由器注册接口的方式。 */

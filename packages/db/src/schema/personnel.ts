@@ -18,6 +18,7 @@ import {
   type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 import { employmentEmployees, employmentRecords } from './employment.js';
+import { qlCategories, qlLevels } from './qualification.js';
 import { tenants } from './tenancy.js';
 
 const id = () =>
@@ -929,6 +930,88 @@ export const personnelVocationalQualificationVersions = pgTable(
         personnelVocationalQualification.employeeId,
         personnelVocationalQualification.id,
       ],
+    }),
+  ],
+);
+
+/**
+ * 任职资格子集 TenantBase.Qualification（R3-T02 C1-1，规格 23 §10，设计 §3.3）。来源类型比其他子集多三种系统写入：
+ * 任职同步 employment_sync（C1-4）、子集初始化 initialization（C1-5）、评定发布 evaluation（C2-8）；这三种与 info_collection
+ * 一样必须带来源单据。类别 / 级别用复合外键指向 ql_* 配置（删除受限，被引用时配置侧先拦下成 409）；版本表只追加，
+ * 不对配置设外键（历史版本里的类别 / 级别在记录改引用后允许被删）。当前资格按日期计算，不存“是否当前生效”标记（DEC-335①）。
+ */
+const QUALIFICATION_SOURCES = sql.raw(
+  "'hr_direct','self_service','info_collection','employment_sync','initialization','evaluation'",
+);
+function qualificationFields() {
+  return {
+    categoryId: uuid('category_id').notNull(),
+    levelId: uuid('level_id').notNull(),
+    startDate: date('start_date', { mode: 'string' }).notNull(),
+    endDate: date('end_date', { mode: 'string' }),
+    finalScore: numeric('final_score'),
+    isAutoSync: boolean('is_auto_sync').notNull().default(false),
+    employmentRecordId: uuid('employment_record_id'),
+    activityTypeId: uuid('activity_type_id'),
+    evaluationId: uuid('evaluation_id'),
+    result: text('result'),
+  };
+}
+function qualificationSourceCheck(name: string, t: { sourceType: AnyPgColumn; sourceId: AnyPgColumn }) {
+  return check(
+    name,
+    sql`${t.sourceType} IN (${QUALIFICATION_SOURCES})
+    AND ((${t.sourceType} = 'hr_direct' AND ${t.sourceId} IS NULL)
+      OR (${t.sourceType} <> 'hr_direct' AND ${t.sourceId} IS NOT NULL))`,
+  );
+}
+export const personnelQualification = pgTable(
+  'personnel_qualification',
+  {
+    ...subsetMeta(),
+    ...qualificationFields(),
+  },
+  (t) => [
+    unique('personnel_qualification_tenant_id').on(t.tenantId, t.id),
+    unique('personnel_qualification_owner_id').on(t.tenantId, t.employeeId, t.id),
+    employeeFk('personnel_qualification_employee_fk', t),
+    foreignKey({
+      name: 'personnel_qualification_category_fk',
+      columns: [t.tenantId, t.categoryId],
+      foreignColumns: [qlCategories.tenantId, qlCategories.id],
+    }).onDelete('restrict'),
+    foreignKey({
+      name: 'personnel_qualification_level_fk',
+      columns: [t.tenantId, t.levelId],
+      foreignColumns: [qlLevels.tenantId, qlLevels.id],
+    }).onDelete('restrict'),
+    index('personnel_qualification_employee').on(t.tenantId, t.employeeId, t.startDate),
+    index('personnel_qualification_category').on(t.tenantId, t.categoryId),
+    index('personnel_qualification_level').on(t.tenantId, t.levelId),
+    check('personnel_qualification_revision_positive', sql`${t.revision} > 0`),
+    check('personnel_qualification_dates', sql`${t.endDate} IS NULL OR ${t.endDate} >= ${t.startDate}`),
+    qualificationSourceCheck('personnel_qualification_source', t),
+    // 同一次评定只写一次（设计 §4.5）
+    uniqueIndex('personnel_qualification_evaluation_one')
+      .on(t.tenantId, t.evaluationId)
+      .where(sql`${t.evaluationId} IS NOT NULL`),
+  ],
+);
+export const personnelQualificationVersions = pgTable(
+  'personnel_qualification_versions',
+  {
+    ...subsetMeta(),
+    recordId: uuid('record_id').notNull(),
+    ...qualificationFields(),
+  },
+  (t) => [
+    unique('personnel_qualification_versions_revision').on(t.tenantId, t.recordId, t.revision),
+    qualificationSourceCheck('personnel_qualification_versions_source', t),
+    employeeFk('personnel_qualification_versions_employee_fk', t),
+    foreignKey({
+      name: 'personnel_qualification_versions_record_fk',
+      columns: [t.tenantId, t.employeeId, t.recordId],
+      foreignColumns: [personnelQualification.tenantId, personnelQualification.employeeId, personnelQualification.id],
     }),
   ],
 );

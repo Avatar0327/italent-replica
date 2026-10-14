@@ -1,0 +1,611 @@
+[
+  {
+    "body": {
+      "items": [
+        {
+          "id": "<id:1>",
+          "revision": 2,
+          "status": "draft",
+          "type": "key_behavior"
+        }
+      ]
+    },
+    "name": "op GET 模板列表",
+    "status": 200
+  },
+  {
+    "body": {
+      "error": {
+        "code": "FORBIDDEN",
+        "message": "无权执行该操作"
+      }
+    },
+    "name": "op POST 模板",
+    "status": 403
+  },
+  {
+    "body": {
+      "error": {
+        "code": "FORBIDDEN",
+        "message": "无权执行该操作"
+      }
+    },
+    "name": "op POST 模板 重放同键同内容",
+    "status": 403
+  },
+  {
+    "body": {
+      "error": {
+        "code": "FORBIDDEN",
+        "message": "无权执行该操作"
+      }
+    },
+    "name": "op POST 模板 重放",
+    "status": 403
+  },
+  {
+    "body": {
+      "error": {
+        "code": "FORBIDDEN",
+        "message": "无权执行该操作"
+      }
+    },
+    "name": "op POST 模板 同键异内容",
+    "status": 403
+  },
+  {
+    "body": {
+      "error": {
+        "code": "VALIDATION_FAILED",
+        "details": [
+          {
+            "code": "invalid_type",
+            "expected": "string",
+            "message": "Invalid input: expected string, received undefined",
+            "path": [
+              "name"
+            ]
+          },
+          {
+            "code": "invalid_value",
+            "message": "Invalid option: expected one of \"key_behavior\"|\"rating\"",
+            "path": [
+              "type"
+            ],
+            "values": [
+              "key_behavior",
+              "rating"
+            ]
+          }
+        ],
+        "message": "请求字段不合法"
+      }
+    },
+    "name": "op POST 模板 非法体",
+    "status": 400
+  },
+  {
+    "body": {
+      "error": {
+        "code": "FORBIDDEN",
+        "message": "无权执行该操作"
+      }
+    },
+    "name": "op POST 模板 非 0 revision",
+    "status": 403
+  },
+  {
+    "body": {
+      "items": [
+        {
+          "id": "<id:1>",
+          "revision": 2,
+          "status": "draft",
+          "type": "key_behavior"
+        }
+      ]
+    },
+    "name": "op GET 模板列表 之后",
+    "status": 200
+  },
+  {
+    "body": {
+      "dimensions": [
+        {
+          "definition": null,
+          "id": "<id:19>",
+          "key": "d",
+          "name": "沟通协作",
+          "parentId": null,
+          "roleIds": [],
+          "scaleId": null,
+          "weight": 100
+        }
+      ],
+      "excellence": null,
+      "id": "<id:1>",
+      "questions": [
+        {
+          "allowRemark": false,
+          "dimensionId": "<id:19>",
+          "id": "<id:20>",
+          "key": "q1",
+          "roleIds": [],
+          "scaleId": "<id:10>",
+          "text": "主动沟通",
+          "weight": 1
+        },
+        {
+          "allowRemark": false,
+          "dimensionId": "<id:19>",
+          "id": "<id:21>",
+          "key": "q2",
+          "roleIds": [],
+          "scaleId": "<id:10>",
+          "text": "协作支持",
+          "weight": 1
+        }
+      ],
+      "revision": 2,
+      "roles": [
+        {
+          "id": "<id:2>",
+          "key": "self",
+          "roleId": "<id:3>",
+          "weight": 0
+        },
+        {
+          "id": "<id:4>",
+          "key": "superior",
+          "roleId": "<id:5>",
+          "weight": 5
+        },
+        {
+          "id": "<id:6>",
+          "key": "peer",
+          "roleId": "<id:7>",
+          "weight": 3
+        },
+        {
+          "id": "<id:8>",
+          "key": "subordinate",
+          "roleId": "<id:9>",
+          "weight": 2
+        }
+      ],
+      "scales": [
+        {
+          "id": "<id:10>",
+          "key": "s",
+          "name": "分值",
+          "options": [
+            {
+              "id": "<id:11>",
+              "key": "v1",
+              "label": "1",
+              "notScored": false,
+              "remarkRequired": false,
+              "value": 1
+            },
+            {
+              "id": "<id:12>",
+              "key": "v2",
+              "label": "2",
+              "notScored": false,
+              "remarkRequired": false,
+              "value": 2
+            },
+            {
+              "id": "<id:13>",
+              "key": "v3",
+              "label": "3",
+              "notScored": false,
+              "remarkRequired": false,
+              "value": 3
+            },
+            {
+              "id": "<id:14>",
+              "key": "v3.5",
+              "label": "3.5",
+              "notScored": false,
+              "remarkRequired": false,
+              "value": 3.5
+            },
+            {
+              "id": "<id:15>",
+              "key": "v4",
+              "label": "4",
+              "notScored": false,
+              "remarkRequired": false,
+              "value": 4
+            },
+            {
+              "id": "<id:16>",
+              "key": "v4.3",
+              "label": "4.3",
+              "notScored": false,
+              "remarkRequired": false,
+              "value": 4.3
+            },
+            {
+              "id": "<id:17>",
+              "key": "v5",
+              "label": "5",
+              "notScored": false,
+              "remarkRequired": false,
+              "value": 5
+            },
+            {
+              "id": "<id:18>",
+              "key": "none",
+              "label": "不做评价",
+              "notScored": true,
+              "remarkRequired": false,
+              "value": null
+            }
+          ]
+        }
+      ],
+      "scoreMethod": "weighted_average",
+      "status": "draft",
+      "type": "key_behavior"
+    },
+    "name": "op GET 模板详情 他人",
+    "status": 200
+  },
+  {
+    "body": {
+      "error": {
+        "code": "NOT_FOUND",
+        "message": "套卷模板不存在"
+      }
+    },
+    "name": "op GET 模板详情 普通套卷 ID",
+    "status": 404
+  },
+  {
+    "body": {
+      "error": {
+        "code": "NOT_FOUND",
+        "message": "套卷模板不存在"
+      }
+    },
+    "name": "op GET 模板详情 不存在",
+    "status": 404
+  },
+  {
+    "body": {
+      "error": {
+        "code": "VALIDATION_FAILED",
+        "message": "对象标识必须为 UUID"
+      }
+    },
+    "name": "op GET 模板详情 非法标识",
+    "status": 400
+  },
+  {
+    "body": {
+      "error": {
+        "code": "FORBIDDEN",
+        "message": "无权执行该操作"
+      }
+    },
+    "name": "op PUT 模板 他人",
+    "status": 403
+  },
+  {
+    "body": {
+      "error": {
+        "code": "NOT_FOUND",
+        "message": "套卷模板不存在"
+      }
+    },
+    "name": "op PUT 模板 普通套卷 ID",
+    "status": 404
+  },
+  {
+    "body": {
+      "error": {
+        "code": "NOT_FOUND",
+        "message": "套卷模板不存在"
+      }
+    },
+    "name": "op PUT 模板 不存在",
+    "status": 404
+  },
+  {
+    "body": {
+      "error": {
+        "code": "VALIDATION_FAILED",
+        "message": "对象标识必须为 UUID"
+      }
+    },
+    "name": "op PUT 模板 非法标识",
+    "status": 400
+  },
+  {
+    "body": {
+      "error": {
+        "code": "FORBIDDEN",
+        "message": "无权执行该操作"
+      }
+    },
+    "name": "op POST instantiate",
+    "status": 403
+  },
+  {
+    "body": {
+      "error": {
+        "code": "FORBIDDEN",
+        "message": "无权执行该操作"
+      }
+    },
+    "name": "op POST instantiate 重放",
+    "status": 403
+  },
+  {
+    "body": {
+      "error": {
+        "code": "FORBIDDEN",
+        "message": "无权执行该操作"
+      }
+    },
+    "name": "op POST instantiate 重放 再发",
+    "status": 403
+  },
+  {
+    "body": {
+      "error": {
+        "code": "VALIDATION_FAILED",
+        "details": [
+          {
+            "code": "invalid_type",
+            "expected": "string",
+            "message": "Invalid input: expected string, received undefined",
+            "path": [
+              "name"
+            ]
+          }
+        ],
+        "message": "请求字段不合法"
+      }
+    },
+    "name": "op POST instantiate 非法体",
+    "status": 400
+  },
+  {
+    "body": {
+      "error": {
+        "code": "NOT_FOUND",
+        "message": "套卷模板不存在"
+      }
+    },
+    "name": "op POST instantiate 普通套卷 ID",
+    "status": 404
+  },
+  {
+    "body": {
+      "error": {
+        "code": "NOT_FOUND",
+        "message": "套卷模板不存在"
+      }
+    },
+    "name": "op POST instantiate 不存在",
+    "status": 404
+  },
+  {
+    "body": {
+      "error": {
+        "code": "FORBIDDEN",
+        "message": "无权执行该操作"
+      }
+    },
+    "name": "op POST save-as-template",
+    "status": 403
+  },
+  {
+    "body": {
+      "error": {
+        "code": "FORBIDDEN",
+        "message": "无权执行该操作"
+      }
+    },
+    "name": "op POST save-as-template 重放",
+    "status": 403
+  },
+  {
+    "body": {
+      "error": {
+        "code": "FORBIDDEN",
+        "message": "无权执行该操作"
+      }
+    },
+    "name": "op POST save-as-template 重放 再发",
+    "status": 403
+  },
+  {
+    "body": {
+      "error": {
+        "code": "NOT_FOUND",
+        "message": "套卷不存在"
+      }
+    },
+    "name": "op POST save-as-template 模板 ID",
+    "status": 404
+  },
+  {
+    "body": {
+      "error": {
+        "code": "NOT_FOUND",
+        "message": "套卷不存在"
+      }
+    },
+    "name": "op POST save-as-template 不存在",
+    "status": 404
+  },
+  {
+    "body": {
+      "error": {
+        "code": "VALIDATION_FAILED",
+        "details": [
+          {
+            "code": "invalid_type",
+            "expected": "string",
+            "message": "Invalid input: expected string, received undefined",
+            "path": [
+              "name"
+            ]
+          }
+        ],
+        "message": "请求字段不合法"
+      }
+    },
+    "name": "op POST save-as-template 非法体",
+    "status": 400
+  },
+  {
+    "body": {
+      "error": {
+        "code": "FORBIDDEN",
+        "message": "无权执行该操作"
+      }
+    },
+    "name": "op POST 模板 待删甲",
+    "status": 403
+  },
+  {
+    "body": {
+      "deleted": true,
+      "id": "<id:1>"
+    },
+    "name": "op DELETE 模板 他人",
+    "status": 200
+  },
+  {
+    "body": {
+      "error": {
+        "code": "NOT_FOUND",
+        "message": "套卷模板不存在"
+      }
+    },
+    "name": "op DELETE 模板 普通套卷 ID",
+    "status": 404
+  },
+  {
+    "body": {
+      "error": {
+        "code": "NOT_FOUND",
+        "message": "套卷模板不存在"
+      }
+    },
+    "name": "op DELETE 模板 不存在",
+    "status": 404
+  },
+  {
+    "body": {
+      "items": []
+    },
+    "name": "op GET 模板列表 最后",
+    "status": 200
+  },
+  {
+    "body": {
+      "code": "standard",
+      "id": "<id:22>",
+      "revision": 1
+    },
+    "name": "op GET 报告模板",
+    "status": 200
+  },
+  {
+    "body": {
+      "error": {
+        "code": "FORBIDDEN",
+        "message": "无权执行该操作"
+      }
+    },
+    "name": "op PUT 报告模板",
+    "status": 403
+  },
+  {
+    "body": {
+      "error": {
+        "code": "FORBIDDEN",
+        "message": "无权执行该操作"
+      }
+    },
+    "name": "op PUT 报告模板 过期",
+    "status": 403
+  },
+  {
+    "body": {
+      "error": {
+        "code": "VALIDATION_FAILED",
+        "details": [
+          {
+            "code": "too_small",
+            "inclusive": true,
+            "message": "Too small: expected string to have >=1 characters",
+            "minimum": 1,
+            "origin": "string",
+            "path": [
+              "name"
+            ]
+          }
+        ],
+        "message": "请求字段不合法"
+      }
+    },
+    "name": "op PUT 报告模板 非法体",
+    "status": 400
+  },
+  {
+    "body": {
+      "error": {
+        "code": "VALIDATION_FAILED",
+        "details": [
+          {
+            "code": "unrecognized_keys",
+            "keys": [
+              "extra"
+            ],
+            "message": "Unrecognized key: \"extra\"",
+            "path": []
+          }
+        ],
+        "message": "请求字段不合法"
+      }
+    },
+    "name": "op PUT 报告模板 多余字段",
+    "status": 400
+  },
+  {
+    "body": {
+      "error": {
+        "code": "FORBIDDEN",
+        "message": "无权执行该操作"
+      }
+    },
+    "name": "op PUT 报告模板 重放",
+    "status": 403
+  },
+  {
+    "body": {
+      "error": {
+        "code": "FORBIDDEN",
+        "message": "无权执行该操作"
+      }
+    },
+    "name": "op PUT 报告模板 同键异内容",
+    "status": 403
+  },
+  {
+    "body": {
+      "code": "standard",
+      "id": "<id:22>",
+      "revision": 1
+    },
+    "name": "op GET 报告模板 之后",
+    "status": 200
+  }
+]

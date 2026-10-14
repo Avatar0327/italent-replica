@@ -108,7 +108,7 @@ describe('AC-TRF 保存校验 DEC-150 / DEC-154', () => {
     if (scenario.restored) {
       changes.push({ enabled: true, effectiveDate: '2026-10-02' }, { enabled: false, effectiveDate: '2026-10-03' });
     }
-    changes.push({ name: '停用后更名部门', effectiveDate: '2026-10-04' });
+    changes.push({ addEmployment: false, name: '停用后更名部门', effectiveDate: '2026-10-04' });
     let revision = w.to.revision;
     for (const body of changes) {
       const changed = await tenantApi(w.db).request('PATCH', `/api/tenant/org/organizations/${w.to.id}`, {

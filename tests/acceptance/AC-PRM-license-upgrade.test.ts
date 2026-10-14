@@ -30,7 +30,7 @@ function tenant(db: Db, code: string) {
 
 async function user(db: Db, name: string) {
   const id = randomUUID();
-  const email = `${name}-${id.slice(0, 8)}@example.com`;
+  const email = `${name}-${id}@example.com`;
   await db.execute(sql`INSERT INTO users (id, email, display_name) VALUES (${id}, ${email}, ${name})`);
   return id;
 }
@@ -60,8 +60,8 @@ const seat = (tenantId: string, licenseType: string, userId: string, grantId: st
 describe('DEC-141 升级对账：旧版撤销不归还留下的许可占用', () => {
   it('无同类有效授权的占用释放；仍持有的改记到最早的有效授权；按租户逐个对账并留审计与 outbox', async () => {
     const { db } = testDb();
-    const a = await tenant(db, `legacy-a-${randomUUID().slice(0, 8)}`);
-    const b = await tenant(db, `legacy-b-${randomUUID().slice(0, 8)}`);
+    const a = await tenant(db, `legacy-a-${randomUUID()}`);
+    const b = await tenant(db, `legacy-b-${randomUUID()}`);
     const [released, moved, kept] = [await user(db, 'released'), await user(db, 'moved'), await user(db, 'kept')];
     const [admin, viewer, paUser] = [randomUUID(), randomUUID(), randomUUID()];
     const g = {

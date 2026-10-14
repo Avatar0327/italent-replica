@@ -1,0 +1,115 @@
+/**
+ * 种子补装登记表（DEC-361）：各模块登记自己的预置数据，新租户开通与平台回补命令走同一个 installMissingSeeds，
+ * 避免两套安装逻辑。登记项只回答三件事：这个数据集有哪些预置编码（codes）、租户里已经有哪些（existing）、
+ * 缺的怎么装（install）。规则由 installMissingSeeds 统一保证：
+ * - 只补缺失的编码；已有编码（包括租户改名、停用、定制过的）不动，重复执行无副作用；
+ * - 安装在调用方的租户事务里执行，登记项自己同事务写业务数据与审计（DEC-216，actor 为开通 / 回补命令的操作人）；
+ * - 预置清单变化时登记项的 version +1，只用于回补报告，不触发覆盖；
+ * - 读取已有编码之前先取租户级事务锁（开通与回补共用）：并发的回补 / 开通排队，后到者等前者提交后读到“已存在”，
+ *   不会两边都读到缺失再撞唯一约束（DEC-361 R2-01）。
+ * 接入方式见 docs/08_设计/DEC-361_种子补装登记表.md；各模块在 seeds/index.ts 加一行 import 即可被收录。
+ */
+import type { Tx } from '@italent/db';
+import { bumpFieldCatalog } from '../modules/talent-review/field-catalog.js';
+import { lockTenantSeeds } from './grant-ledger.js';
+
+export interface SeedWriteContext {
+  readonly tenantId: string;
+  readonly actorUserId: string | null;
+  readonly now: Date;
+  readonly commandId: string;
+}
+
+export interface SeedEntry {
+  /** 登记模块（平台回补可按模块筛选），如 'talent-review'。 */
+  readonly module: string;
+  /** 数据集编码，模块内唯一，如 'preset-fields'。 */
+  readonly key: string;
+  readonly version: number;
+  /** 该数据集的全部预置项编码（稳定、不随租户改名变化）。 */
+  readonly codes: readonly string[];
+  /** 当前租户里已经存在的预置项编码（含被定制 / 停用的）。 */
+  readonly existing: (tx: Tx, tenantId: string) => Promise<ReadonlySet<string>>;
+  /**
+   * 可选：计入 existing 的编码里需要向运维说明原因的那些（如租户手工建过同编码身份：CODE_TAKEN，DEC-402⑤）。只加报告明细，
+   * 不改 existing 的计数，也不改 install 的行为；没实现的登记项报告形状不变。
+   */
+  readonly existingDetails?: (tx: Tx, tenantId: string) => Promise<readonly SeedSkip[]>;
+  /**
+   * 只构造并写入 missing 里的编码（含它们的子数据与审计）。依赖的租户数据不可用（如被停用 / 改了属性的字段）时，
+   * 不装该编码并在返回值的 skipped 里给出受控原因，不报错、不覆盖租户定制；其余编码照常安装。
+   */
+  readonly install: (tx: Tx, write: SeedWriteContext, missing: readonly string[]) => Promise<SeedInstallResult | void>;
+}
+
+export interface SeedSkip {
+  readonly code: string;
+  readonly reason: string;
+}
+export interface SeedInstallResult {
+  readonly skipped?: readonly SeedSkip[];
+  /**
+   * 本次安装新增了盘点字段（字段目录的名称 → ID 映射变了，F-082 契约 §1.3）。登记项自己**不推进**版本，
+   * 由 installMissingSeeds 在全部登记项（含其后的预置九宫格）都装完之后统一推进一次：版本行是事务里最后取的锁（锁序 V）。
+   */
+  readonly catalogChanged?: true;
+}
+
+export interface SeedReportItem {
+  readonly module: string;
+  readonly key: string;
+  readonly version: number;
+  readonly installed: readonly string[];
+  /** 预置编码里租户已有的个数（不论是否被定制）。 */
+  readonly existing: number;
+  /** 依赖不可用而没有安装的编码与原因（没有时不出现）。 */
+  readonly skipped?: readonly SeedSkip[];
+  /** 计入 existing 但需要说明原因的编码（登记项实现 existingDetails 且非空时才出现）。 */
+  readonly existingDetails?: readonly SeedSkip[];
+}
+
+const entries: SeedEntry[] = [];
+
+export function registerSeed(entry: SeedEntry): void {
+  if (entries.some((e) => e.module === entry.module && e.key === entry.key)) {
+    throw new Error(`种子 ${entry.module}/${entry.key} 已登记`);
+  }
+  entries.push(entry);
+}
+
+export const registeredSeeds = (): readonly SeedEntry[] => entries;
+export const seedModules = (): readonly string[] => [...new Set(entries.map((e) => e.module))];
+
+/** 逐个登记项补装缺失的预置编码，返回每个登记项的补装报告；modules 缺省 = 全部。 */
+export async function installMissingSeeds(
+  tx: Tx,
+  write: SeedWriteContext,
+  filter: { readonly modules?: readonly string[] } = {},
+): Promise<SeedReportItem[]> {
+  // 租户级互斥：不同模块筛选、不同命令 ID 的回补与开通都在同一把锁上排队（锁键说明见 grant-ledger.ts）
+  await lockTenantSeeds(tx, write.tenantId);
+  const report: SeedReportItem[] = [];
+  let catalogChanged = false;
+  for (const entry of entries) {
+    if (filter.modules && !filter.modules.includes(entry.module)) continue;
+    const have = await entry.existing(tx, write.tenantId);
+    const details = (await entry.existingDetails?.(tx, write.tenantId)) ?? [];
+    const missing = entry.codes.filter((code) => !have.has(code));
+    const result = missing.length > 0 ? await entry.install(tx, write, missing) : undefined;
+    if (result?.catalogChanged) catalogChanged = true;
+    const skipped = result?.skipped ?? [];
+    const skippedCodes = new Set(skipped.map((item) => item.code));
+    report.push({
+      module: entry.module,
+      key: entry.key,
+      version: entry.version,
+      installed: missing.filter((code) => !skippedCodes.has(code)),
+      existing: entry.codes.length - missing.length,
+      ...(skipped.length > 0 ? { skipped } : {}),
+      ...(details.length > 0 ? { existingDetails: details } : {}),
+    });
+  }
+  // 字段目录版本：所有登记项（含预置九宫格的位置字段锁与字段行 KEY SHARE）都已取完锁，最后统一推进一次
+  if (catalogChanged) await bumpFieldCatalog(tx, write.tenantId);
+  return report;
+}

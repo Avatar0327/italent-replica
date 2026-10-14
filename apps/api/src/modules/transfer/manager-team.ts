@@ -6,6 +6,7 @@ import { managerIdentity } from '../permission/manager-identity.js';
 import { scopeSql } from '../permission/module-access.js';
 import { tenantLocalDate } from '@italent/domain';
 import type { EmploymentContext, PageQuery } from '../employment/types.js';
+import { employeeAvatars } from '../avatar/references.js';
 
 export async function managerTeamQuery(tx: Tx, ctx: EmploymentContext): Promise<SQL> {
   const asOf = tenantLocalDate(ctx.now, ctx.timezone);
@@ -124,8 +125,13 @@ export async function readManagerTeam(
     ${filter} ORDER BY id,(source='pending')) people ORDER BY code,id LIMIT ${page.limit} OFFSET ${page.offset}
   `),
         );
+  const avatars = await employeeAvatars(
+    tx,
+    ctx.tenantId,
+    items.map((item) => String(item.id)),
+  );
   return {
-    items,
+    items: items.map((item) => ({ ...item, avatar: avatars.get(String(item.id)) ?? null })),
     counts: {
       active: 0,
       probation: 0,

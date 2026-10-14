@@ -78,7 +78,13 @@ it.each(['direct', 'application'] as const)('DEC-195 %s 迟到同日按原计划
         );
   const b = await save('2026-10-06', 'B');
   const a = await save('2026-10-05', 'A');
-  expect(await w.runScheduler('2026-10-08T01:00:00Z')).toMatchObject({ failed: [], errors: [] });
+  // DEC-278③（第 2 轮起已落地与未落地同一口径）：A 的区间 [10-05, 10-08) 内另有 B（已落地 / 已批准未落地）→ A 先记
+  // 需重建待 HR，B 是 A 的 blocker、不被前序失败挂起，区间为空照常顺延；B 离开区间后 HR 重试 A，同日仍按原计划日排序。
+  expect(await w.runScheduler('2026-10-08T01:00:00Z')).toMatchObject({ failed: [a.id], errors: [] });
+  expect((await w.business(a.id)).activation).toMatchObject({ status: 'failed', failureReason: 'REBUILD_REQUIRED' });
+  expect((await w.business(b.id)).activation).toMatchObject({ status: 'effective' });
+  const retried = await w.retry(a, '2026-10-08T02:00:00Z');
+  expect(retried.status, await retried.clone().text()).toBe(200);
   const records = await w.session.records(person.employee.id, '2026-10-08');
   expect(records.map((r) => r.id)).toEqual([person.hire.id, a.id, b.id]);
   expect(records.find((r) => r.isCurrent)?.id).toBe(b.id);

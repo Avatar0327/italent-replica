@@ -254,10 +254,18 @@ describe('AC-TRF-35 DEC-112 前序业务生效失败时其后业务挂起', () =
     expect(jump.status).toBe(409);
 
     fullDepartments.delete(w.to.id);
+    // DEC-278（第 2 轮，不豁免未落地申请）：A 迟到重试时区间 [10-05, 10-07) 内另有同日在后的 B 与已改到批准日的 C →
+    // A、B 依次记需重建；C 是 B 的 blocker，不再被挂起、先落地。HR 再重试 B、A，三者仍按原计划日 / 操作序号排序。
     expect((await w.retry(a, '2026-10-07T04:00:00Z')).status).toBe(200);
+    expect((await w.business(a.id)).activation).toMatchObject({ status: 'failed', failureReason: 'REBUILD_REQUIRED' });
+    expect((await w.business(b.id)).activation).toMatchObject({ status: 'failed', failureReason: 'REBUILD_REQUIRED' });
+    expect((await w.business(c.id)).activation).toMatchObject({ status: 'effective' });
+    expect((await w.retry(b, '2026-10-07T05:00:00Z')).status).toBe(200);
+    expect((await w.retry(a, '2026-10-07T06:00:00Z')).status).toBe(200);
     const chain = await w.session.records(employee.id, '2026-10-07');
     expect(chain.map((record) => record.id).slice(-3)).toEqual([a.id, b.id, c.id]);
     expect(chain.filter((record) => record.isCurrent)).toEqual([expect.objectContaining({ id: c.id })]);
+    expect(await w.todos()).toEqual([]);
   });
 
   it('前序业务改为删除：被挂起的业务在下一次运行时按顺序生效', async () => {

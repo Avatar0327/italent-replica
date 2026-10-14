@@ -105,38 +105,45 @@ it.each(['from', 'to'] as const)('AC-EST-17 %s 范围外新增方案前后，同
   expect(await w.history()).toEqual([]);
 });
 
-const paths = ['subdivision', 'missing', 'scheme', 'period', 'no-capacity'] as const;
-it.each(['from', 'to'].flatMap((hidden) => paths.map((path) => ({ hidden: hidden as 'from' | 'to', path }))))(
-  'AC-EST-17 $hidden 范围外时不暴露 $path 提前校验结果',
-  async ({ hidden, path }) => {
-    const w = await carriedWorld(database().db, `scope-${hidden}-${path}`);
-    const person = await w.hired();
-    if (path !== 'subdivision' && path !== 'no-capacity') await exclude(w, w[hidden].id);
-    if (path === 'scheme' || path === 'period')
-      await anotherScheme(w, w[hidden].id, path === 'period' ? 'monthly' : 'annual');
-    const extra =
-      path === 'subdivision'
-        ? { fields: { departmentId: w.to.id, positionId: null } }
-        : path === 'no-capacity'
-          ? { effectiveDate: '2027-10-05' }
-          : {};
-    const before = await w.capacities();
-    const control = await w.save(person, extra);
-    expect(control.status, await control.clone().text()).toBe(409);
-    expect(await control.json()).toMatchObject({
-      error: {
-        details: {
-          reason: path === 'subdivision' ? 'ESTABLISHMENT_TARGET_SUBDIVISION_REQUIRED' : 'ESTABLISHMENT_PAIR_REQUIRED',
-        },
+it.each([
+  { hidden: 'from', path: 'subdivision' },
+  { hidden: 'from', path: 'missing' },
+  { hidden: 'from', path: 'scheme' },
+  { hidden: 'from', path: 'period' },
+  { hidden: 'from', path: 'no-capacity' },
+  { hidden: 'to', path: 'subdivision' },
+  { hidden: 'to', path: 'missing' },
+  { hidden: 'to', path: 'scheme' },
+  { hidden: 'to', path: 'period' },
+  { hidden: 'to', path: 'no-capacity' },
+] as const)('AC-EST-17 $hidden 范围外时不暴露 $path 提前校验结果', async ({ hidden, path }) => {
+  const w = await carriedWorld(database().db, `scope-${hidden}-${path}`);
+  const person = await w.hired();
+  if (path !== 'subdivision' && path !== 'no-capacity') await exclude(w, w[hidden].id);
+  if (path === 'scheme' || path === 'period')
+    await anotherScheme(w, w[hidden].id, path === 'period' ? 'monthly' : 'annual');
+  const extra =
+    path === 'subdivision'
+      ? { fields: { departmentId: w.to.id, positionId: null } }
+      : path === 'no-capacity'
+        ? { effectiveDate: '2027-10-05' }
+        : {};
+  const before = await w.capacities();
+  const control = await w.save(person, extra);
+  expect(control.status, await control.clone().text()).toBe(409);
+  expect(await control.json()).toMatchObject({
+    error: {
+      details: {
+        reason: path === 'subdivision' ? 'ESTABLISHMENT_TARGET_SUBDIVISION_REQUIRED' : 'ESTABLISHMENT_PAIR_REQUIRED',
       },
-    });
-    const response = await restrictedSave(w, person, hidden)(extra);
-    expect(response.status, await response.clone().text()).toBe(404);
-    expect(await response.json()).toEqual(absent);
-    expect(await w.capacities()).toEqual(before);
-    expect(await w.history()).toEqual([]);
-  },
-);
+    },
+  });
+  const response = await restrictedSave(w, person, hidden)(extra);
+  expect(response.status, await response.clone().text()).toBe(404);
+  expect(await response.json()).toEqual(absent);
+  expect(await w.capacities()).toEqual(before);
+  expect(await w.history()).toEqual([]);
+});
 
 it('AC-EST-17 前置编制范围校验保留对象创建人授权', async () => {
   const w = await carriedWorld(database().db, 'scope-carried-creator');

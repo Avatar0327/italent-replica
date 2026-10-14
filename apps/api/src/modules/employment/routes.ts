@@ -69,9 +69,12 @@ import { recordOperationLog } from '../../audit/record.js';
 import { auditActor } from '../../system-actor.js';
 import { rawImportRows, withFailedImportLog } from '../../audit/record.js';
 import { failedImportAnchors, importedItems } from './import-audit.js';
+import { policedSub } from '../../route-policy/index.js';
+import { EMPLOYMENT_POLICIES } from './policy.js';
 
 export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
-  const module = new Hono<TenantEnv>();
+  // F-039：子应用套本模块登记表（EMPLOYMENT_POLICIES），注册行不变、处理函数不变
+  const module = policedSub(router, EMPLOYMENT_POLICIES, () => new Hono<TenantEnv>());
   module.onError((error, c) => {
     if (error instanceof EmploymentError) {
       return c.json({ error: { code: error.code, message: error.message, details: error.details } }, error.status);

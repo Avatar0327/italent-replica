@@ -1,0 +1,165 @@
+/**
+ * 人才评定配置各接口的请求结构（只做结构校验，不读库）。严格对象：未登记的键（活动类型没有“同步任职记录”，DEC-025；
+ * 所属人、创建人由系统填写）一律 400。名称长度同任职资格配置（≤100）。
+ */
+import {
+  APPLICANTS,
+  CHAIN_TYPES,
+  MAX_ACTIVITY_ORG_RANGE,
+  MAX_REPEATABLE_CHAINS,
+  TRANSFER_MODES,
+} from '@italent/domain';
+import { z } from 'zod';
+import { roundDecimal } from '@italent/domain';
+import { activityConditions } from './condition-input.js';
+
+// 名称租户内唯一由库内约束 + service 转 409（Q-M0-152）；这里 trim，所以首尾空白不构成不同名称
+const name = z.string().trim().min(1).max(100);
+const order = z.int().min(0).max(1_000_000);
+
+export const activityTypeCreate = z.strictObject({
+  name,
+  displayOrder: order.optional(),
+  enabled: z.boolean().optional(),
+  syncQualification: z.boolean().optional(),
+});
+export const activityTypePatch = activityTypeCreate.partial();
+export type ActivityTypeCreate = z.infer<typeof activityTypeCreate>;
+export type ActivityTypePatch = z.infer<typeof activityTypePatch>;
+
+// 活动周期：只有名称（没有描述字段，DEC-380①）；名称长度按系统统一上限（D-069），租户内唯一由库内约束 + 服务转 409
+export const activityCycleCreate = z.strictObject({ name, enabled: z.boolean().optional() });
+export const activityCyclePatch = activityCycleCreate.partial();
+export type ActivityCycleCreate = z.infer<typeof activityCycleCreate>;
+export type ActivityCyclePatch = z.infer<typeof activityCyclePatch>;
+
+export const generalScoreItemCreate = z.strictObject({
+  name,
+  // “评价标准”最多 500 字，超出提示原站原文（DEC-380②）
+  description: z.string().trim().max(500, '最多输入500个字').nullable().optional(),
+  enabled: z.boolean().optional(),
+});
+export const generalScoreItemPatch = generalScoreItemCreate.partial();
+export type GeneralScoreItemCreate = z.infer<typeof generalScoreItemCreate>;
+export type GeneralScoreItemPatch = z.infer<typeof generalScoreItemPatch>;
+// ── 评审组（B3，照原站 DEC-393）──────────────────────────────────────────
+// 没有编码字段；名称必填（多语言字段首版只做简体中文，DEC-045）、不要求唯一；允许零成员；成员上限 200 是系统保护（🟡，差异 D-071，
+// 原站未标示，待取证可推翻），超出提示分批。
+export const MAX_REVIEW_MEMBERS = 200;
+const uuid = z.uuid().transform((value) => value.toLowerCase());
+/** 成员整组提交；组长至多 1 个（DEC-400②）、成员不重复由写入服务校验（带 reason）。 */
+const memberList = z.array(z.strictObject({ employeeId: uuid, isLeader: z.boolean() })).max(MAX_REVIEW_MEMBERS, {
+  error: `一个评审组最多 ${MAX_REVIEW_MEMBERS} 人，请分批添加`,
+});
+
+// 所属人由系统填创建人，所属组织必填手选（DEC-324②）
+export const reviewGroupCreate = z.strictObject({
+  name,
+  ownerOrgId: uuid,
+  enabled: z.boolean().optional(),
+  members: memberList,
+});
+export const reviewGroupPatch = reviewGroupCreate.partial();
+export type ReviewGroupCreate = z.infer<typeof reviewGroupCreate>;
+export type ReviewGroupPatch = z.infer<typeof reviewGroupPatch>;
+
+// DEC-413 / 规格 24 Q-M0-175：无编码、不校验名称唯一；通用项是多选集合、不设数量上限。
+export const FORM_SCORE_MODES = ['by_indicator', 'by_total', 'by_vote'] as const;
+const twoDecimals = (value: number) => Math.abs(value * 100 - Math.round(value * 100)) < 1e-6;
+// 按十进制截位，不用乘 100 的浮点运算；15 位数字包括整数与保留的小数（小数点不计位数）。
+const score = z
+  .number()
+  .transform((value) => roundDecimal(value, 2, 'down'))
+  .refine((value) => value > 0, '请设置大于0的数字')
+  .refine((value) => value < 1e15 && String(value).replace('.', '').length <= 15, '最多输入15位数字');
+const weight = z.number().refine(twoDecimals, '最多 2 位小数').nullable().optional();
+const standardItem = z.strictObject({
+  kind: z.literal('standard'),
+  weight,
+  hiddenTargetIds: z.array(uuid).max(500).optional(),
+});
+const generalItem = z.strictObject({ kind: z.literal('general'), generalItemId: uuid, weight });
+const formItems = z.array(z.discriminatedUnion('kind', [standardItem, generalItem]));
+export const formCreate = z.strictObject({
+  name,
+  ownerOrgId: uuid,
+  enabled: z.boolean().optional(),
+  scoreMode: z.enum(FORM_SCORE_MODES),
+  fullScore: score.nullable().optional(),
+  passScore: score.nullable().optional(),
+  totalRule: z.enum(['average', 'weighted', 'sum']).nullable().optional(),
+  votePassRatio: z.number().min(0).max(100).nullable().optional(),
+  indicatorReference: z.boolean().optional(),
+  items: formItems,
+});
+export const formPatch = formCreate.partial();
+export type FormCreate = z.infer<typeof formCreate>;
+export type FormPatch = z.infer<typeof formPatch>;
+export type FormItemInput = FormCreate['items'][number];
+
+// ── 评定活动（B5，设计 §3.2；Q-M0-174 / DEC-412）────────────────────────────
+// 没有活动编码；必填：名称、类型、所属组织、年度、周期、负责人、评定生效日期、申请人、组织范围、类别 / 级别范围（总落到具体级别）、
+// 跨级数（缺省 1）；非必填：起止日期、通知范围、通知模板。列表上限（类别 100 / 级别 500 / 通知范围 200）是系统保护 🟡。
+export const MAX_ACTIVITY_CATEGORIES = 100;
+export const MAX_ACTIVITY_LEVELS = 500;
+export const MAX_ACTIVITY_NOTICE_ORGS = 200;
+const date = z.iso.date();
+/** 组织范围的一项：组织 + “包含下级”（缺省勾上，Q-M0-174 第 4 点）。 */
+const orgRangeItem = z.strictObject({ orgId: uuid, includeDescendants: z.boolean().default(true) });
+const orgRange = z
+  .array(orgRangeItem)
+  .min(1)
+  .max(MAX_ACTIVITY_ORG_RANGE, {
+    error: `适用组织范围最多 ${MAX_ACTIVITY_ORG_RANGE} 个`,
+  });
+/** 可空短文本：空串当作未设置（资格审批流程清空走“必填”规则，不是格式错误）。 */
+const shortText = z
+  .string()
+  .trim()
+  .max(100)
+  .nullable()
+  .optional()
+  .transform((value) => (value ? value : null));
+const chainInput = z.strictObject({
+  /** 带 id 的按 ID 对应库里已有的环节（保留稳定 ID）；没带的按同类型顺序对应，对不上的是新增。 */
+  id: uuid.optional(),
+  type: z.enum(CHAIN_TYPES),
+  name,
+  startDate: date,
+  endDate: date,
+  formId: uuid.nullable().optional(),
+  approvalProcessCode: shortText,
+  materialTemplate: shortText,
+  hardDeadline: z.boolean().optional(),
+  allowException: z.boolean().optional(),
+  exceptionRoles: z.array(z.string().trim().min(1).max(100)).max(20).optional(),
+  transferMode: z.enum(TRANSFER_MODES).optional(),
+  noticeTemplateCode: shortText,
+});
+export type ChainInput = z.infer<typeof chainInput>;
+export const activityCreate = z.strictObject({
+  name,
+  typeId: uuid,
+  cycleId: uuid,
+  year: z.int().min(2000).max(2100),
+  startDate: date.nullable().optional(),
+  endDate: date.nullable().optional(),
+  ownerOrgId: uuid,
+  orgRange,
+  managerEmployeeId: uuid,
+  applicants: z
+    .array(z.enum(APPLICANTS))
+    .min(1)
+    .refine((list) => new Set(list).size === list.length, '申请人不能重复'),
+  categoryIds: z.array(uuid).min(1).max(MAX_ACTIVITY_CATEGORIES),
+  levelIds: z.array(uuid).min(1).max(MAX_ACTIVITY_LEVELS),
+  // 必填 1～5 的整数，新建未传取 1；显式 null / 0 / 6 / 小数一律 400，没有“不限”（DEC-372②）
+  maxLevelJump: z.int().min(1).max(5).optional(),
+  effectiveDate: date,
+  noticeOrgRange: z.array(uuid).max(MAX_ACTIVITY_NOTICE_ORGS).optional(),
+  conditions: activityConditions.optional(),
+  chains: z.array(chainInput).max(CHAIN_TYPES.length + 2 * (MAX_REPEATABLE_CHAINS - 1)),
+});
+export const activityPatch = activityCreate.partial();
+export type ActivityCreate = z.infer<typeof activityCreate>;
+export type ActivityPatch = z.infer<typeof activityPatch>;

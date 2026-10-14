@@ -2,7 +2,7 @@
  * AC-PRM-* 验收测试的公共装配：不注入“全部允许”，走真实的权限授权器（R1-T01）。
  * 租户的第一位租户管理员由平台方开通（L0，runPlatformCommand）；业务对象用合成元数据登记。
  */
-import { randomBytes } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { bootstrapTenantAdmin, type PermissionAdminView, registerObjectDefinition } from '@italent/api';
 import { createUser, type Db, grantMembership, type Tenant, type User } from '@italent/db';
 import type { ObjectDefinition } from '@italent/domain';
@@ -66,7 +66,7 @@ export async function seedPermissionWorld(db: Db): Promise<PermissionWorld> {
 }
 
 export async function addMember(world: PermissionWorld, label: string): Promise<User> {
-  const suffix = randomBytes(3).toString('hex');
+  const suffix = randomUUID();
   const user = await createUser(world.db, { email: `${label}-${suffix}@example.com`, displayName: label }, cmd());
   await grantMembership(world.db, { tenantId: world.tenant.id, userId: user.id, expectedRevision: 0 }, cmd());
   return user;

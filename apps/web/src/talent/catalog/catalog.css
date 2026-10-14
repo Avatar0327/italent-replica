@@ -1,0 +1,87 @@
+.catalog-layout {
+  display: flex;
+  min-height: 620px;
+  margin: -24px;
+  background: var(--shell-background);
+}
+.catalog-navigation {
+  width: 200px;
+  flex: 0 0 200px;
+  border-right: 1px solid var(--shell-border);
+  padding-top: 6px;
+  background: #fff;
+}
+.catalog-navigation .ant-menu {
+  border: 0 !important;
+}
+.catalog-navigation .ant-menu-item {
+  margin: 10px 8px;
+  width: calc(100% - 16px);
+}
+.catalog-content {
+  flex: 1;
+  min-width: 0;
+  padding: 0 16px 16px;
+}
+.catalog-name {
+  padding-left: 0;
+}
+.catalog-hint {
+  margin-top: 24px;
+}
+.channel-path {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 24px 0;
+}
+.channel-node {
+  min-width: 160px;
+  border: 1px solid var(--shell-border);
+  border-radius: 8px;
+  padding: 20px;
+  background: #fff;
+}
+.channel-node.current {
+  border-color: var(--shell-primary);
+  background: #f0f6ff;
+}
+.channel-node h3 {
+  margin: 8px 0;
+  font-size: 15px;
+}
+.channel-date {
+  color: var(--shell-muted);
+  font-size: 12px;
+  margin-left: auto;
+}
+.catalog-maintenance table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 16px 0;
+}
+.catalog-maintenance th,
+.catalog-maintenance td {
+  padding: 12px;
+  border-bottom: 1px solid var(--shell-border);
+  text-align: left;
+}
+.catalog-maintenance th {
+  background: var(--shell-background);
+  font-weight: 500;
+}
+.catalog-maintenance button,
+.catalog-maintenance input,
+.catalog-maintenance select {
+  margin: 4px;
+}
+.catalog-maintenance form {
+  padding: 20px;
+  border: 1px solid var(--shell-border);
+  border-radius: 6px;
+}
+
+.legacy-page:has(> .catalog-layout) {
+  margin-top: 0;
+}

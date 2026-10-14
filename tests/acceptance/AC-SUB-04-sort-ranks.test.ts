@@ -8,6 +8,7 @@ import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { seedTenantWithMember, tenantApi } from './support/tenant-api.js';
 import { loginEmailOf } from './AC-EMP-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const database = useTestDb();
 const TODAY = '2026-10-01';
@@ -99,7 +100,7 @@ async function world(db: Db, label: string) {
     });
   async function employee(name: string, fields: Record<string, unknown>) {
     const created = await ok<Ref>(
-      await call('POST', 'employment/employees', { name, code: `SR_${randomUUID().slice(0, 8)}` }, 0),
+      await call('POST', 'employment/employees', { name, code: `SR_${uniqueSuffix()}` }, 0),
       201,
     );
     await ok(
@@ -202,7 +203,7 @@ describe('DEC-089 组织排序号预计算', () => {
     await w.updateOrg(b, { effectiveDate: TODAY, parents: { admin: { parentId: w.tenant.id, sequence: 3 } } });
     await w.assertRanks();
     expect(order(await w.list('&sortBy=organizationSortNumber'), ids)).toEqual([ids[0], ids[2], ids[1]]);
-    await w.updateOrg(c, { effectiveDate: TODAY, parents: { admin: { parentId: b.id } } });
+    await w.updateOrg(c, { addEmployment: false, effectiveDate: TODAY, parents: { admin: { parentId: b.id } } });
     await w.assertRanks();
     expect(order(await w.list('&sortBy=organizationSortNumber'), ids)).toEqual([ids[0], ids[1], ids[2]]);
     await w.assertMatchesFullRecompute();

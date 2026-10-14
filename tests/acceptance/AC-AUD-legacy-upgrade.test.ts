@@ -24,7 +24,7 @@ it('升级前的日志：字段 / 操作类型 / 对象 ID 筛选与展示一致
     await tx.execute(sql`INSERT INTO tenants (id,code,name) VALUES (${tenantId},${`legacy-${tenantId.slice(0, 8)}`},
       '升级前租户')`);
     await tx.execute(sql`INSERT INTO users (id,email,display_name)
-      VALUES (${userId},${`legacy-${userId.slice(0, 8)}@example.com`},'升级前管理员')`);
+      VALUES (${userId},${`legacy-${userId}@example.com`},'升级前管理员')`);
   });
   await withTenant(db, tenantId, async (tx) => {
     await tx.execute(sql`INSERT INTO tenant_memberships (tenant_id,user_id) VALUES (${tenantId},${userId})`);

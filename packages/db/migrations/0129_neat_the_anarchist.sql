@@ -1,0 +1,1 @@
+ALTER TABLE "contract_types" ADD COLUMN "display_order" integer DEFAULT 0 NOT NULL;

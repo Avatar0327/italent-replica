@@ -3,13 +3,13 @@
  * 开箱效果与原站一致（`11` §17）；新建的自定义身份默认看不到（数据范围默认空）。有组织字段的对象仍按组织范围裁剪：
  * 职位按所属组织，组织编制按组织（预置只放开编制方案，不连带放开组织编制）。
  */
-import { randomUUID } from 'node:crypto';
 import { grantMembership } from '@italent/db';
 import { ESTABLISHMENT_SCHEME_DATASOURCE, MODULE_OBJECTS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { newUser, provisioned, type ProvisionResult, seedOperator } from './support/platform-api.js';
 import { cmd, tenantApi } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 const TODAY = '2026-10-01';
@@ -57,7 +57,7 @@ describe('AC-PRM-30 标准 HR 身份预置无组织字段对象的看全部', ()
     for (const name of ['职务甲', '职务乙']) {
       ids[name] = await create('/api/tenant/job/posts', {
         name,
-        code: `P${randomUUID().slice(0, 8)}`,
+        code: `P${uniqueSuffix()}`,
         startDate: '2026-01-01',
       });
     }

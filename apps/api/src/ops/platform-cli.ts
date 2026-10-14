@@ -5,6 +5,9 @@
  *   restore         --in <文件> --target-url <隔离库> [--hashes <json>] [--command-id <ID>]
  *                   导入隔离环境、隔离校验、授权对账（不开放）
  *   open            --in <文件> --target-url <隔离库> [--command-id <ID>]  开放前再次对账现网，通过后开放访问
+ *   rebind-calc-formulas --tenant <租户ID> [--retry-unresolved] [--command-id <ID>]
+ *                   F-082：把该租户的存量计算公式改绑为按字段 ID（契约 §6.1；开关打开后对每个租户执行一次，报告里
+ *                   unresolved 的租户通知其管理员修公式）。报告只有 ID 与原因码
  * 恢复与开放可带 --command-id：结果未知时用同一 ID 重试，已完成的阶段直接返回首次结果（不重复执行）。
  * 连接角色必须是迁移角色（表属主），非超级用户、不带 BYPASSRLS（受 FORCE RLS 约束），否则拒绝执行。
  * 环境变量：DATABASE_URL（现网，迁移角色）、BACKUP_ENCRYPTION_KEY（base64 的 32 字节密钥）、APP_VERSION（代码版本）。
@@ -25,7 +28,9 @@ import {
   users,
   withPlatform,
 } from '@italent/db';
+import { applicationNameFromEnv } from '../database.js';
 import { openRestoredTenant, restoreTenant } from '../modules/platform/restore.js';
+import { rebindCalcFormulas } from '../modules/talent-review/calc-rebind-command.js';
 
 const meta = (commandId?: string) => ({ actorUserId: null, commandId: commandId ?? `cli-${randomUUID()}` });
 
@@ -50,7 +55,8 @@ async function assertRestrictedRole(handle: DbHandle) {
 }
 
 async function withDb<T>(url: string, fn: (handle: DbHandle) => Promise<T>): Promise<T> {
-  const handle = createPgDb(url, { max: 2 });
+  // 带 italent-api: 前缀：F-082 的部署检查脚本把它也算作应用连接（运维命令没跑完就不能首次启用）
+  const handle = createPgDb(url, { max: 2, applicationName: applicationNameFromEnv() });
   try {
     await assertRestrictedRole(handle);
     return await fn(handle);
@@ -77,6 +83,7 @@ async function main(argv: string[]) {
       'target-url': { type: 'string' },
       hashes: { type: 'string' },
       'command-id': { type: 'string' },
+      'retry-unresolved': { type: 'boolean' },
     },
   });
   const live = () => required('DATABASE_URL', process.env.DATABASE_URL);
@@ -124,9 +131,18 @@ async function main(argv: string[]) {
         ),
       );
     }
+    case 'rebind-calc-formulas':
+      return withDb(live(), ({ db }) =>
+        rebindCalcFormulas(
+          db,
+          required('--tenant', values.tenant),
+          { retryUnresolved: values['retry-unresolved'] === true },
+          meta(values['command-id']),
+        ),
+      );
     default:
       throw new Error(
-        '用法：platform-cli <grant-operator|export|restore|open> [参数]，见 docs/06_部署/01_部署运行手册.md',
+        '用法：platform-cli <grant-operator|export|restore|open|rebind-calc-formulas> [参数]，见 docs/06_部署/01_部署运行手册.md',
       );
   }
 }

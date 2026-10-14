@@ -1,19 +1,36 @@
-import { ManagerPage } from './transfer/ManagerPage.js';
-import { text as jobText } from './job/messages.js';
-import { JobPage } from './job/JobPage.js';
-import { TransferPage } from './transfer/TransferPage.js';
-import { EmployeePage } from './employee-self-service/EmployeePage.js';
+import { App as AntApp, ConfigProvider } from 'antd';
+import zhCN from 'antd/es/locale/zh_CN.js';
+import { BrowserRouter } from 'react-router';
+import { DecisionNotesProvider } from './foundation/DecisionNote.js';
+import { PermissionsProvider } from './foundation/Permissions.js';
+import { SessionProvider, type Session } from './foundation/Session.js';
+import { Shell } from './foundation/Shell.js';
+import { annotations } from './annotations/index.js';
+import { theme } from './foundation/theme.js';
+import { initialTenantId } from './demo/tenant.js';
 
-export function App() {
-  if (window.location.pathname.startsWith('/self')) return <EmployeePage />;
-  if (window.location.pathname.startsWith('/manager')) return <ManagerPage />;
-  if (window.location.pathname === '/jobs') return <JobPage />;
+const emptySession: Session = {
+  tenantId: '',
+  identityKey: '',
+  tenantName: '',
+  timezone: '',
+  displayName: '',
+  source: 'server',
+};
+export function App({ session = { ...emptySession, tenantId: initialTenantId() } }: { session?: Session }) {
   return (
-    <>
-      <nav>
-        <a href="/jobs">{jobText.title}</a>
-      </nav>
-      <TransferPage />
-    </>
+    <ConfigProvider locale={zhCN} theme={theme}>
+      <AntApp>
+        <SessionProvider session={session}>
+          <PermissionsProvider key={`${session.tenantId}/${session.identityKey}`}>
+            <DecisionNotesProvider notes={annotations}>
+              <BrowserRouter>
+                <Shell />
+              </BrowserRouter>
+            </DecisionNotesProvider>
+          </PermissionsProvider>
+        </SessionProvider>
+      </AntApp>
+    </ConfigProvider>
   );
 }

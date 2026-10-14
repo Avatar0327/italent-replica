@@ -114,3 +114,45 @@ describe('AC-APV-31 仿真支持会签节点', () => {
     ]);
   });
 });
+
+describe('F-048 T10 仿真支持多主体回避（DEC-329①）', () => {
+  const MULTI: NodeInput = { ...TRANSFER_NODES[0]!, actions: { avoidSelf: false, avoidSubjects: true } };
+
+  it('subjectUserIds（虚拟，作为 U(S)）命中节点审批人 → 标「多主体回避跳过」，不产生待办与消息；未命中照常', async () => {
+    const w = await approvalWorld(database().db, 'apv-multi-sim');
+    const draft = await w.createProcess({ nodes: [MULTI, TRANSFER_NODES[1]!] });
+    const [outHead, hrbp, other] = [randomUUID(), randomUUID(), randomUUID()];
+    const before = await tasksAndNotices(w);
+    const simulate = async (subjectUserIds: string[]) =>
+      w.json<SimResult>(
+        await w.request(w.hr.id, 'POST', `${BASE}/processes/${draft.id}/simulate`, {
+          body: {
+            scope: 'latest',
+            data: {
+              values: { processCode: 'TransferProcessNew' },
+              relations: { latest_record_department_head: outHead, record_department_hrbp: hrbp },
+              subjectUserIds,
+            },
+          },
+        }),
+      );
+    const hit = await simulate([outHead.toUpperCase(), other]);
+    expect(hit.nodes[0]).toMatchObject({ key: 'out_head', status: 'pass', approverUserId: null });
+    expect(hit.nodes[0]).toMatchObject({ resolution: 'subject_skip' });
+    expect(hit.nodes[1]).toMatchObject({ resolution: 'resolved', approverUserId: hrbp });
+    const miss = await simulate([other]);
+    expect(miss.nodes[0]).toMatchObject({ resolution: 'resolved', approverUserId: outHead });
+    expect(await tasksAndNotices(w)).toEqual(before);
+  });
+
+  it('subjectUserIds 超过 50 个或格式不合法 → 400', async () => {
+    const w = await approvalWorld(database().db, 'apv-multi-sim-invalid');
+    const draft = await w.createProcess({ nodes: [MULTI] });
+    for (const subjectUserIds of [Array.from({ length: 51 }, () => randomUUID()), ['not-a-uuid']]) {
+      const response = await w.request(w.hr.id, 'POST', `${BASE}/processes/${draft.id}/simulate`, {
+        body: { scope: 'latest', data: { values: { processCode: 'TransferProcessNew' }, subjectUserIds } },
+      });
+      expect(response.status).toBe(400);
+    }
+  });
+});

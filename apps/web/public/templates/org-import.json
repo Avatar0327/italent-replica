@@ -1,0 +1,14 @@
+{
+  "rows": [
+    {
+      "sourceCode": "SOURCE-001",
+      "orgId": "00000000-0000-4000-8000-000000000001",
+      "code": "ORG-001",
+      "name": "组织新名称",
+      "parentId": "00000000-0000-4000-8000-000000000002",
+      "expectedRevision": 1,
+      "startDate": "2026-10-09",
+      "addEmployment": true
+    }
+  ]
+}

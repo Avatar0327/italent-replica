@@ -1,0 +1,87 @@
+/**
+ * “被引用拒删 / 拒停用”的钩子位（拆分方案 B1a；原站 W-755～756：被活动引用的类型“停用”置灰，Q-M0-152）：配置对象被别的
+ * 对象引用时不能删除、也不能停用，引用方在各自的子 PR 里登记，本 PR 只留位置：
+ * - B4（评价表）已登记通用评分项被评价表评分项引用（form-usage.ts）；
+ * - B5（评定活动）已登记活动类型 / 周期被活动引用、评价表被环节引用（activity-usage.ts）；评审组照原站被引用也能停用，不拦；
+ * - C2 有评定数据表后按需补充。
+ * 登记的是“引用查询”（命中任意一行即在用），删除 / 停用命令在同一事务里依次执行，命中即 409 CONFLICT 并带引用方给出的
+ * reason。删除与停用分开登记（`phase`），互不串用。
+ * 两类“被引用”各自照原站（DEC-380③）：活动类型 / 活动周期事先置灰（服务端拒绝停用，提示由引用方给出）；通用评分项点击后拒绝并
+ * 列出引用它的评价表——规则带 `references`（返回引用方的 id / name / visible），只列操作人看得到的，看不到的计为“其他 N 个”
+ * （DEC-374⑥），响应 details.referrers / details.otherCount。
+ * B4 已登记 generalScoreItem 被评价表评分项引用的 delete 与 disable 规则（form-usage.ts；disable 带 `references`，visible 取评价表的
+ * 范围谓词，范围由路由层在命令事务内解析进写命令上下文 formVisibility）。
+ * F-091（DEC-413）已接通评价表停用的 disable 检查；B5 登记实际活动环节引用的 delete 与 disable 规则。
+ * disable 提示固定“已在活动中使用此评价表，无法停用”；活动新增引用须先 FOR SHARE 评价表并重新检查 enabled。
+ */
+import { sql, type Tx } from '@italent/db';
+import type { SQL } from 'drizzle-orm';
+import { AppError } from '../../errors.js';
+import { rowsOf, type EvaluationObject } from './access.js';
+import type { FormVisibility } from './form-refs.js';
+
+/** 引用检查的上下文：租户，以及（通用评分项写命令里）引用方评价表的可见范围。 */
+export interface UsageContext {
+  readonly tenantId: string;
+  readonly formVisibility?: FormVisibility;
+}
+
+export interface UsageRule {
+  /** 返回命中行即表示在用的查询（`SELECT 1 …`）；须带租户条件。 */
+  readonly sql: (ctx: UsageContext, id: string) => SQL;
+  /** 没有 `references` 时的提示；有则由引擎按下面的格式生成。 */
+  readonly message: string;
+  readonly reason: string;
+  /** 列出引用方：返回行 { id, name, visible }，visible = 操作人看得到该引用方（其余计入“其他 N 个”）。 */
+  readonly references?: (ctx: UsageContext, id: string) => SQL;
+  /** 提示里的被引用对象与引用方称呼：“此评分项” “评价表”。 */
+  readonly subject?: string;
+  readonly referrerKind?: string;
+}
+
+export interface Referrer {
+  readonly id: string;
+  readonly name: string;
+}
+
+/** 此评分项被评价表【甲、乙】及其他 N 个引用，无法停用（原站格式 + 只列看得到的）。 */
+export function referrersMessage(subject: string, kind: string, names: readonly string[], other: number): string {
+  const listed = names.length ? `${kind}【${names.join('、')}】` : '';
+  const rest = other ? (names.length ? `及其他 ${other} 个` : `其他 ${other} 个${kind}`) : '';
+  return `${subject}被${listed}${rest}引用，无法停用`;
+}
+
+export type UsagePhase = 'delete' | 'disable';
+
+const RULES = new Map<string, UsageRule[]>();
+const keyOf = (object: EvaluationObject, phase: UsagePhase) => `${object}:${phase}`;
+
+export function registerInUse(object: EvaluationObject, rule: UsageRule, phase: UsagePhase = 'delete'): void {
+  RULES.set(keyOf(object, phase), [...(RULES.get(keyOf(object, phase)) ?? []), rule]);
+}
+
+/** 删除 / 停用前的“还在使用”检查：有引用即 409，数据不变。 */
+export async function rejectInUse(
+  tx: Tx,
+  ctx: UsageContext,
+  object: EvaluationObject,
+  id: string,
+  phase: UsagePhase = 'delete',
+) {
+  for (const rule of RULES.get(keyOf(object, phase)) ?? []) {
+    const result = await tx.execute(sql`SELECT EXISTS (${rule.sql(ctx, id)}) AS used`);
+    if (rowsOf<{ used: boolean }>(result)[0]?.used) {
+      if (!rule.references) throw new AppError('CONFLICT', rule.message, { reason: rule.reason });
+      const rows = rowsOf<{ id: string; name: string; visible: boolean }>(await tx.execute(rule.references(ctx, id)));
+      const referrers: Referrer[] = rows.filter((row) => row.visible).map(({ id: rid, name }) => ({ id: rid, name }));
+      const otherCount = rows.length - referrers.length;
+      const message = referrersMessage(
+        rule.subject ?? '此对象',
+        rule.referrerKind ?? '对象',
+        referrers.map((referrer) => referrer.name),
+        otherCount,
+      );
+      throw new AppError('CONFLICT', message, { reason: rule.reason, referrers, otherCount });
+    }
+  }
+}

@@ -1,0 +1,714 @@
+[
+  {
+    "body": {
+      "code": "KA",
+      "createdAt": "<ts>",
+      "createdBy": "<id:2>",
+      "displayOrder": 0,
+      "enabled": true,
+      "id": "<id:1>",
+      "level": 1,
+      "name": "分类A改",
+      "ownerId": "<id:2>",
+      "ownerOrgId": "<id:3>",
+      "parentId": null,
+      "publicDown": false,
+      "revision": 2,
+      "updatedAt": "<ts>"
+    },
+    "etag": "\"2\"",
+    "name": "PATCH category-classes 改名",
+    "status": 200
+  },
+  {
+    "body": {
+      "error": {
+        "code": "REVISION_CONFLICT",
+        "details": {
+          "actual": 2,
+          "expected": 1
+        },
+        "message": "任职类别分类已变更，请刷新后显式重提"
+      }
+    },
+    "name": "PATCH category-classes 过期",
+    "status": 409
+  },
+  {
+    "body": {
+      "code": "KA",
+      "createdAt": "<ts>",
+      "createdBy": "<id:2>",
+      "displayOrder": 0,
+      "enabled": false,
+      "id": "<id:1>",
+      "level": 1,
+      "name": "分类A改",
+      "ownerId": "<id:2>",
+      "ownerOrgId": "<id:3>",
+      "parentId": null,
+      "publicDown": false,
+      "revision": 3,
+      "updatedAt": "<ts>"
+    },
+    "etag": "\"3\"",
+    "name": "PATCH category-classes 停用",
+    "status": 200
+  },
+  {
+    "body": {
+      "error": {
+        "code": "NOT_FOUND",
+        "message": "任职类别分类不存在"
+      }
+    },
+    "name": "PATCH category-classes 不存在",
+    "status": 404
+  },
+  {
+    "body": {
+      "error": {
+        "code": "VALIDATION_FAILED",
+        "message": "对象标识必须为 UUID"
+      }
+    },
+    "name": "PATCH category-classes 非法标识",
+    "status": 400
+  },
+  {
+    "body": {
+      "error": {
+        "code": "VALIDATION_FAILED",
+        "details": [
+          {
+            "code": "too_small",
+            "inclusive": true,
+            "message": "Too small: expected string to have >=1 characters",
+            "minimum": 1,
+            "origin": "string",
+            "path": [
+              "name"
+            ]
+          }
+        ],
+        "message": "请求字段不合法"
+      }
+    },
+    "name": "PATCH category-classes 非法体",
+    "status": 400
+  },
+  {
+    "body": {
+      "error": {
+        "code": "VALIDATION_FAILED",
+        "details": [
+          {
+            "code": "unrecognized_keys",
+            "keys": [
+              "parentId"
+            ],
+            "message": "Unrecognized key: \"parentId\"",
+            "path": []
+          }
+        ],
+        "message": "请求字段不合法"
+      }
+    },
+    "name": "PATCH category-classes 多余字段",
+    "status": 400
+  },
+  {
+    "body": {
+      "hasDataPermission": true,
+      "items": [
+        {
+          "code": "KA",
+          "createdAt": "<ts>",
+          "createdBy": "<id:2>",
+          "displayOrder": 0,
+          "enabled": false,
+          "id": "<id:1>",
+          "level": 1,
+          "name": "分类A改",
+          "ownerId": "<id:2>",
+          "ownerOrgId": "<id:3>",
+          "parentId": null,
+          "publicDown": false,
+          "revision": 3,
+          "updatedAt": "<ts>"
+        }
+      ],
+      "page": 1,
+      "pageSize": 50
+    },
+    "name": "GET category-classes",
+    "status": 200
+  },
+  {
+    "body": {
+      "classId": "<id:5>",
+      "code": "CA",
+      "createdAt": "<ts>",
+      "createdBy": "<id:2>",
+      "enabled": true,
+      "id": "<id:4>",
+      "jobLinkType": null,
+      "jobLinks": [],
+      "name": "类别A改",
+      "ownerId": "<id:2>",
+      "ownerOrgId": "<id:3>",
+      "publicDown": false,
+      "revision": 2,
+      "updatedAt": "<ts>"
+    },
+    "etag": "\"2\"",
+    "name": "PATCH categories 改名",
+    "status": 200
+  },
+  {
+    "body": {
+      "error": {
+        "code": "REVISION_CONFLICT",
+        "details": {
+          "actual": 2,
+          "expected": 1
+        },
+        "message": "任职类别已变更，请刷新后显式重提"
+      }
+    },
+    "name": "PATCH categories 过期",
+    "status": 409
+  },
+  {
+    "body": {
+      "classId": "<id:5>",
+      "code": "CA",
+      "createdAt": "<ts>",
+      "createdBy": "<id:2>",
+      "enabled": false,
+      "id": "<id:4>",
+      "jobLinkType": null,
+      "jobLinks": [],
+      "name": "类别A改",
+      "ownerId": "<id:2>",
+      "ownerOrgId": "<id:3>",
+      "publicDown": false,
+      "revision": 3,
+      "updatedAt": "<ts>"
+    },
+    "etag": "\"3\"",
+    "name": "PATCH categories 停用",
+    "status": 200
+  },
+  {
+    "body": {
+      "error": {
+        "code": "NOT_FOUND",
+        "message": "任职类别不存在"
+      }
+    },
+    "name": "PATCH categories 不存在",
+    "status": 404
+  },
+  {
+    "body": {
+      "error": {
+        "code": "VALIDATION_FAILED",
+        "details": [
+          {
+            "code": "too_small",
+            "inclusive": true,
+            "message": "Too small: expected string to have >=1 characters",
+            "minimum": 1,
+            "origin": "string",
+            "path": [
+              "name"
+            ]
+          }
+        ],
+        "message": "请求字段不合法"
+      }
+    },
+    "name": "PATCH categories 非法体",
+    "status": 400
+  },
+  {
+    "body": {
+      "error": {
+        "code": "VALIDATION_FAILED",
+        "details": [
+          {
+            "code": "unrecognized_keys",
+            "keys": [
+              "classId"
+            ],
+            "message": "Unrecognized key: \"classId\"",
+            "path": []
+          }
+        ],
+        "message": "请求字段不合法"
+      }
+    },
+    "name": "PATCH categories 多余字段 classId",
+    "status": 400
+  },
+  {
+    "body": {
+      "classId": "<id:5>",
+      "code": "CA",
+      "createdAt": "<ts>",
+      "createdBy": "<id:2>",
+      "enabled": false,
+      "id": "<id:4>",
+      "jobLinkType": "sequence",
+      "jobLinks": [
+        {
+          "jobObjectId": "<id:6>"
+        }
+      ],
+      "name": "类别A改",
+      "ownerId": "<id:2>",
+      "ownerOrgId": "<id:3>",
+      "publicDown": false,
+      "revision": 4,
+      "updatedAt": "<ts>"
+    },
+    "etag": "\"4\"",
+    "name": "PATCH categories 关联岗职务",
+    "status": 200
+  },
+  {
+    "body": {
+      "classId": "<id:5>",
+      "code": "CA",
+      "createdAt": "<ts>",
+      "createdBy": "<id:2>",
+      "enabled": false,
+      "id": "<id:4>",
+      "jobLinkType": "sequence",
+      "jobLinks": [
+        {
+          "jobObjectId": "<id:6>"
+        }
+      ],
+      "name": "类别A改",
+      "ownerId": "<id:2>",
+      "ownerOrgId": "<id:3>",
+      "publicDown": false,
+      "revision": 4,
+      "updatedAt": "<ts>"
+    },
+    "etag": "\"4\"",
+    "name": "GET categories/:id",
+    "status": 200
+  },
+  {
+    "body": {
+      "code": "TA",
+      "createdAt": "<ts>",
+      "createdBy": "<id:2>",
+      "displayOrder": 0,
+      "enabled": true,
+      "id": "<id:7>",
+      "name": "类型A改",
+      "ownerId": "<id:2>",
+      "ownerOrgId": "<id:3>",
+      "parentId": null,
+      "publicDown": false,
+      "revision": 2,
+      "updatedAt": "<ts>"
+    },
+    "etag": "\"2\"",
+    "name": "PATCH target-types 改名",
+    "status": 200
+  },
+  {
+    "body": {
+      "error": {
+        "code": "REVISION_CONFLICT",
+        "details": {
+          "actual": 2,
+          "expected": 1
+        },
+        "message": "指标类型已变更，请刷新后显式重提"
+      }
+    },
+    "name": "PATCH target-types 过期",
+    "status": 409
+  },
+  {
+    "body": {
+      "error": {
+        "code": "NOT_FOUND",
+        "message": "指标类型不存在"
+      }
+    },
+    "name": "PATCH target-types 不存在",
+    "status": 404
+  },
+  {
+    "body": {
+      "error": {
+        "code": "VALIDATION_FAILED",
+        "details": [
+          {
+            "code": "unrecognized_keys",
+            "keys": [
+              "parentId"
+            ],
+            "message": "Unrecognized key: \"parentId\"",
+            "path": []
+          }
+        ],
+        "message": "请求字段不合法"
+      }
+    },
+    "name": "PATCH target-types 多余字段",
+    "status": 400
+  },
+  {
+    "body": {
+      "hasDataPermission": true,
+      "items": [
+        {
+          "code": "TA",
+          "createdAt": "<ts>",
+          "createdBy": "<id:2>",
+          "displayOrder": 0,
+          "enabled": true,
+          "id": "<id:7>",
+          "name": "类型A改",
+          "ownerId": "<id:2>",
+          "ownerOrgId": "<id:3>",
+          "parentId": null,
+          "publicDown": false,
+          "revision": 2,
+          "updatedAt": "<ts>"
+        }
+      ],
+      "page": 1,
+      "pageSize": 50
+    },
+    "name": "GET target-types",
+    "status": 200
+  },
+  {
+    "body": {
+      "code": "ZA",
+      "createdAt": "<ts>",
+      "createdBy": "<id:2>",
+      "description": "说明B",
+      "displayOrder": 0,
+      "enabled": true,
+      "evalMode": "score",
+      "gradeSchemeId": null,
+      "id": "<id:8>",
+      "isCommon": false,
+      "name": "指标A改",
+      "ownerId": "<id:2>",
+      "ownerOrgId": "<id:3>",
+      "publicDown": false,
+      "revision": 2,
+      "typeId": "<id:7>",
+      "updatedAt": "<ts>"
+    },
+    "etag": "\"2\"",
+    "name": "PATCH targets 改名",
+    "status": 200
+  },
+  {
+    "body": {
+      "error": {
+        "code": "REVISION_CONFLICT",
+        "details": {
+          "actual": 2,
+          "expected": 1
+        },
+        "message": "指标已变更，请刷新后显式重提"
+      }
+    },
+    "name": "PATCH targets 过期",
+    "status": 409
+  },
+  {
+    "body": {
+      "error": {
+        "code": "VALIDATION_FAILED",
+        "details": {
+          "reason": "GRADE_SCHEME_REQUIRED"
+        },
+        "message": "评级指标必须选择等级方案"
+      }
+    },
+    "name": "PATCH targets 评级缺方案",
+    "status": 400
+  },
+  {
+    "body": {
+      "code": "ZA",
+      "createdAt": "<ts>",
+      "createdBy": "<id:2>",
+      "description": "说明B",
+      "displayOrder": 0,
+      "enabled": true,
+      "evalMode": "grade",
+      "gradeSchemeId": "<id:9>",
+      "id": "<id:8>",
+      "isCommon": false,
+      "name": "指标A改",
+      "ownerId": "<id:2>",
+      "ownerOrgId": "<id:3>",
+      "publicDown": false,
+      "revision": 3,
+      "typeId": "<id:7>",
+      "updatedAt": "<ts>"
+    },
+    "etag": "\"3\"",
+    "name": "PATCH targets 评级方案",
+    "status": 200
+  },
+  {
+    "body": {
+      "error": {
+        "code": "NOT_FOUND",
+        "message": "等级方案不存在"
+      }
+    },
+    "name": "PATCH targets 方案不存在",
+    "status": 404
+  },
+  {
+    "body": {
+      "error": {
+        "code": "NOT_FOUND",
+        "message": "指标不存在"
+      }
+    },
+    "name": "PATCH targets 不存在",
+    "status": 404
+  },
+  {
+    "body": {
+      "error": {
+        "code": "VALIDATION_FAILED",
+        "details": [
+          {
+            "code": "unrecognized_keys",
+            "keys": [
+              "typeId"
+            ],
+            "message": "Unrecognized key: \"typeId\"",
+            "path": []
+          }
+        ],
+        "message": "请求字段不合法"
+      }
+    },
+    "name": "PATCH targets 多余字段 typeId",
+    "status": 400
+  },
+  {
+    "body": {
+      "code": "ZA",
+      "createdAt": "<ts>",
+      "createdBy": "<id:2>",
+      "description": "说明B",
+      "displayOrder": 0,
+      "enabled": true,
+      "evalMode": "grade",
+      "gradeSchemeId": "<id:9>",
+      "id": "<id:8>",
+      "isCommon": false,
+      "name": "指标A改",
+      "ownerId": "<id:2>",
+      "ownerOrgId": "<id:3>",
+      "publicDown": false,
+      "revision": 3,
+      "typeId": "<id:7>",
+      "updatedAt": "<ts>"
+    },
+    "etag": "\"3\"",
+    "name": "GET targets/:id",
+    "status": 200
+  },
+  {
+    "body": {
+      "categoryId": "<id:11>",
+      "createdAt": "<ts>",
+      "createdBy": "<id:2>",
+      "details": [
+        {
+          "abilities": [
+            {
+              "content": "说明",
+              "id": "<id:15>",
+              "source": "copied",
+              "sourceTargetId": "<id:14>",
+              "targetGradeId": null,
+              "targetValue": null,
+              "weight": null
+            }
+          ],
+          "id": "<id:13>",
+          "levelId": "<id:12>",
+          "locked": false,
+          "targetId": "<id:14>",
+          "targetValue": null,
+          "weight": null
+        }
+      ],
+      "enabled": true,
+      "id": "<id:10>",
+      "levelDescriptions": [],
+      "levelIds": [
+        "<id:12>"
+      ],
+      "name": "标准A改",
+      "ownerId": "<id:2>",
+      "ownerOrgId": "<id:3>",
+      "revision": 2,
+      "updatedAt": "<ts>"
+    },
+    "etag": "\"2\"",
+    "name": "PATCH standards 改名",
+    "status": 200
+  },
+  {
+    "body": {
+      "error": {
+        "code": "REVISION_CONFLICT",
+        "details": {
+          "actual": 2,
+          "expected": 1
+        },
+        "message": "任职资格标准已变更，请刷新后显式重提"
+      }
+    },
+    "name": "PATCH standards 过期",
+    "status": 409
+  },
+  {
+    "body": {
+      "categoryId": "<id:11>",
+      "createdAt": "<ts>",
+      "createdBy": "<id:2>",
+      "details": [
+        {
+          "abilities": [
+            {
+              "content": "能力说明",
+              "id": "<id:16>",
+              "source": "manual",
+              "sourceTargetId": null,
+              "targetGradeId": null,
+              "targetValue": null,
+              "weight": null
+            }
+          ],
+          "id": "<id:13>",
+          "levelId": "<id:12>",
+          "locked": false,
+          "targetId": "<id:14>",
+          "targetValue": null,
+          "weight": null
+        }
+      ],
+      "enabled": true,
+      "id": "<id:10>",
+      "levelDescriptions": [],
+      "levelIds": [
+        "<id:12>"
+      ],
+      "name": "标准A改",
+      "ownerId": "<id:2>",
+      "ownerOrgId": "<id:3>",
+      "revision": 3,
+      "updatedAt": "<ts>"
+    },
+    "etag": "\"3\"",
+    "name": "PATCH standards 明细",
+    "status": 200
+  },
+  {
+    "body": {
+      "error": {
+        "code": "NOT_FOUND",
+        "message": "指标不存在"
+      }
+    },
+    "name": "PATCH standards 明细指标不存在",
+    "status": 404
+  },
+  {
+    "body": {
+      "error": {
+        "code": "NOT_FOUND",
+        "message": "任职资格标准不存在"
+      }
+    },
+    "name": "PATCH standards 不存在",
+    "status": 404
+  },
+  {
+    "body": {
+      "error": {
+        "code": "VALIDATION_FAILED",
+        "details": [
+          {
+            "code": "unrecognized_keys",
+            "keys": [
+              "categoryId"
+            ],
+            "message": "Unrecognized key: \"categoryId\"",
+            "path": []
+          }
+        ],
+        "message": "请求字段不合法"
+      }
+    },
+    "name": "PATCH standards 多余字段",
+    "status": 400
+  },
+  {
+    "body": {
+      "categoryId": "<id:11>",
+      "createdAt": "<ts>",
+      "createdBy": "<id:2>",
+      "details": [
+        {
+          "abilities": [
+            {
+              "content": "能力说明",
+              "id": "<id:16>",
+              "source": "manual",
+              "sourceTargetId": null,
+              "targetGradeId": null,
+              "targetValue": null,
+              "weight": null
+            }
+          ],
+          "id": "<id:13>",
+          "levelId": "<id:12>",
+          "locked": false,
+          "targetId": "<id:14>",
+          "targetValue": null,
+          "weight": null
+        }
+      ],
+      "enabled": true,
+      "id": "<id:10>",
+      "levelDescriptions": [],
+      "levelIds": [
+        "<id:12>"
+      ],
+      "name": "标准A改",
+      "ownerId": "<id:2>",
+      "ownerOrgId": "<id:3>",
+      "revision": 3,
+      "updatedAt": "<ts>"
+    },
+    "etag": "\"3\"",
+    "name": "GET standards/:id",
+    "status": 200
+  }
+]

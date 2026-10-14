@@ -1,0 +1,244 @@
+[
+  {
+    "id": "org.personCandidates#1",
+    "purpose": "守卫内部 OR",
+    "owner": "B1（#162）：承载者 / 内部“或”备选语义合并后补 org 表（create / update × 三个人员字段）",
+    "evidence": [
+      {
+        "file": "apps/api/src/modules/org/routes.ts",
+        "anchor": "const allowed = await anyPersonFieldEditable(deps, ctx);"
+      },
+      {
+        "file": "apps/api/src/modules/org/routes.ts",
+        "anchor": "async function anyPersonFieldEditable(deps: TenantRouteDeps, ctx: ReturnType<typeof tenantOf>): Promise<boolean> {"
+      }
+    ],
+    "pairs": [
+      [
+        "GET /api/tenant/org/person-candidates",
+        "obj:TenantBase.Organization:create"
+      ]
+    ]
+  },
+  {
+    "id": "idp.nestedContent#1",
+    "purpose": "嵌套与来源披露",
+    "owner": "PR-B3（B-06 逐对象披露分支）",
+    "evidence": [
+      {
+        "file": "apps/api/src/modules/idp/plan-routes.ts",
+        "anchor": "const id = uuidParam(c); const hr = await idpScope(c, deps, ctx, 'plan');"
+      },
+      {
+        "file": "apps/api/src/modules/idp/plan-view.ts",
+        "anchor": "KEY_INFO_KINDS.map(async (kind) => { const code = codeOf(kind);"
+      },
+      {
+        "file": "apps/api/src/modules/idp/plan-view.ts",
+        "anchor": "export async function presentPlan( tx: Tx,"
+      }
+    ],
+    "pairs": [
+      [
+        "DELETE /api/tenant/idp/plans/:id",
+        "obj:IDP.Analysis:view"
+      ],
+      [
+        "DELETE /api/tenant/idp/plans/:id",
+        "obj:IDP.Career:view"
+      ],
+      [
+        "DELETE /api/tenant/idp/plans/:id",
+        "obj:IDP.GoalReview:view"
+      ],
+      [
+        "DELETE /api/tenant/idp/plans/:id",
+        "obj:IDP.IDPTemplateModule:view"
+      ],
+      [
+        "DELETE /api/tenant/idp/plans/:id",
+        "obj:IDP.Idp:view"
+      ],
+      [
+        "DELETE /api/tenant/idp/plans/:id",
+        "obj:IDP.IdpGoal:view"
+      ],
+      [
+        "DELETE /api/tenant/idp/plans/:id",
+        "obj:IDP.Review:view"
+      ],
+      [
+        "DELETE /api/tenant/idp/plans/:id",
+        "obj:IDP.SubProcess:view"
+      ],
+      [
+        "DELETE /api/tenant/idp/plans/:id",
+        "obj:IDP.Task:view"
+      ],
+      [
+        "DELETE /api/tenant/idp/plans/:id",
+        "obj:IDP.TutorShip:view"
+      ],
+      [
+        "DELETE /api/tenant/idp/plans/:id",
+        "obj:IDP.WorkShift:view"
+      ],
+      [
+        "DELETE /api/tenant/idp/plans/:id",
+        "obj:TenantBase.EmploymentRecord:view"
+      ]
+    ]
+  },
+  {
+    "id": "idp.nestedContent#2",
+    "purpose": "阶段来源披露",
+    "owner": "PR-B3（B-06 逐对象披露分支）",
+    "evidence": [
+      {
+        "file": "apps/api/src/modules/idp/plan-routes.ts",
+        "anchor": "tx, tenantId, rows.map((r) => r.id), ); return Promise.all("
+      },
+      {
+        "file": "apps/api/src/modules/idp/plan-view.ts",
+        "anchor": "export async function stagesShown( tx: Tx,"
+      },
+      {
+        "file": "apps/api/src/modules/idp/plan-view.ts",
+        "anchor": "async function employmentVisible( tx: Tx,"
+      }
+    ],
+    "pairs": [
+      [
+        "GET /api/tenant/idp/plans",
+        "obj:IDP.SubProcess:view"
+      ],
+      [
+        "GET /api/tenant/idp/plans",
+        "obj:TenantBase.EmploymentRecord:view"
+      ]
+    ]
+  },
+  {
+    "id": "idp.nestedContent#3",
+    "purpose": "嵌套与来源披露",
+    "owner": "PR-B3（B-06 逐对象披露分支）",
+    "evidence": [
+      {
+        "file": "apps/api/src/modules/idp/plan-routes.ts",
+        "anchor": "async function showPlan(deps: TenantRouteDeps, ctx: IdpContext, hr: HrScope, planId: string) { const projections = await planProjections(deps, ctx);"
+      },
+      {
+        "file": "apps/api/src/modules/idp/plan-view.ts",
+        "anchor": "KEY_INFO_KINDS.map(async (kind) => { const code = codeOf(kind);"
+      },
+      {
+        "file": "apps/api/src/modules/idp/plan-view.ts",
+        "anchor": "export async function presentPlan( tx: Tx,"
+      }
+    ],
+    "pairs": [
+      [
+        "GET /api/tenant/idp/plans/:id",
+        "obj:IDP.Analysis:view"
+      ],
+      [
+        "GET /api/tenant/idp/plans/:id",
+        "obj:IDP.Career:view"
+      ],
+      [
+        "GET /api/tenant/idp/plans/:id",
+        "obj:IDP.GoalReview:view"
+      ],
+      [
+        "GET /api/tenant/idp/plans/:id",
+        "obj:IDP.IDPTemplateModule:view"
+      ],
+      [
+        "GET /api/tenant/idp/plans/:id",
+        "obj:IDP.IdpGoal:view"
+      ],
+      [
+        "GET /api/tenant/idp/plans/:id",
+        "obj:IDP.Review:view"
+      ],
+      [
+        "GET /api/tenant/idp/plans/:id",
+        "obj:IDP.SubProcess:view"
+      ],
+      [
+        "GET /api/tenant/idp/plans/:id",
+        "obj:IDP.Task:view"
+      ],
+      [
+        "GET /api/tenant/idp/plans/:id",
+        "obj:IDP.TutorShip:view"
+      ],
+      [
+        "GET /api/tenant/idp/plans/:id",
+        "obj:IDP.WorkShift:view"
+      ],
+      [
+        "GET /api/tenant/idp/plans/:id",
+        "obj:TenantBase.EmploymentRecord:view"
+      ]
+    ]
+  },
+  {
+    "id": "idp.nestedContent#4",
+    "purpose": "嵌套披露",
+    "owner": "PR-B3（B-06 逐对象披露分支）",
+    "evidence": [
+      {
+        "file": "apps/api/src/modules/idp/routes.ts",
+        "anchor": "async function processPresenter(deps: TenantRouteDeps, ctx: IdpContext) { const top = await projectionOf(deps, ctx, 'process'); const sub = await projectionOf(deps, ctx, 'subProcess');"
+      },
+      {
+        "file": "apps/api/src/modules/idp/routes.ts",
+        "anchor": "function registerProcessRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {"
+      }
+    ],
+    "pairs": [
+      [
+        "GET /api/tenant/idp/processes",
+        "obj:IDP.SubProcess:view"
+      ]
+    ]
+  },
+  {
+    "id": "idp.nestedContent#5",
+    "purpose": "指导人条件带出源",
+    "owner": "B1 语义补 IDP 表（B3 之后）",
+    "evidence": [
+      {
+        "file": "apps/api/src/modules/idp/access.ts",
+        "anchor": "export async function replayChecks(deps: TenantRouteDeps, ctx: IdpContext, checks: readonly PermissionCheck[]) {"
+      },
+      {
+        "file": "apps/api/src/modules/idp/plan-routes.ts",
+        "anchor": "const id = uuidParam(c); const body = await parseBody(c, input.planPatch);"
+      },
+      {
+        "file": "apps/api/src/modules/idp/plan-service.ts",
+        "anchor": "async function objectProjection(deps: TenantRouteDeps, ctx: IdpContext, objectCode: string): Promise<Projection> {"
+      },
+      {
+        "file": "apps/api/src/modules/idp/plan-service.ts",
+        "anchor": "async function resolveTutor( tx: Tx, ctx: PlanWriteContext,"
+      },
+      {
+        "file": "apps/api/src/modules/idp/plan-service.ts",
+        "anchor": "export async function updatePlan(tx: Tx, ctx: PlanWriteContext, sources: CarrySources, id: string, patch: PlanPatch) {"
+      }
+    ],
+    "pairs": [
+      [
+        "PATCH /api/tenant/idp/plans/:id",
+        "obj:TenantBase.EmploymentRecord:view"
+      ],
+      [
+        "PATCH /api/tenant/idp/plans/:id",
+        "obj:TenantBase.Organization:view"
+      ]
+    ]
+  }
+]

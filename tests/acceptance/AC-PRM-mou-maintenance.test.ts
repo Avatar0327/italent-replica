@@ -6,10 +6,10 @@
  */
 import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
-import { randomUUID } from 'node:crypto';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { addMember, BASE, type PermissionWorld, seedPermissionWorld } from './AC-PRM-support.js';
 import { memberWithAdminRole, reasonOf } from './AC-PRM-users-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 
@@ -35,7 +35,7 @@ describe('管理单元维护：可见与可操作、引用检查', () => {
     const res = await world.api.request('POST', `${BASE}/mous`, {
       ...world.asAdmin,
       ifMatch: 0,
-      body: { code: `MOU_${randomUUID().slice(0, 8)}`, name: '华东管理单元', parentId, orgRanges: [] },
+      body: { code: `MOU_${uniqueSuffix()}`, name: '华东管理单元', parentId, orgRanges: [] },
     });
     expect(res.status, await res.clone().text()).toBe(201);
     return (await res.json()) as MouBody;
@@ -60,7 +60,7 @@ describe('管理单元维护：可见与可操作、引用检查', () => {
       const created = await world.api.request('POST', `${BASE}/mous`, {
         ...admin.as,
         ifMatch: 0,
-        body: { code: `X_${randomUUID().slice(0, 6)}`, name: '越权新增', orgRanges: [] },
+        body: { code: `X_${uniqueSuffix()}`, name: '越权新增', orgRanges: [] },
       });
       expect(created.status).toBe(403);
       const updated = await world.api.request('PUT', `${BASE}/mous/${mou.id}`, {

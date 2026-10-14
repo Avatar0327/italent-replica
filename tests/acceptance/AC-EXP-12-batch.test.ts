@@ -36,7 +36,7 @@ describe('AC-EXP-12 计算优先级与依赖顺序', () => {
     expect(ordered.warnings).toHaveLength(1);
   });
 
-  it('循环依赖：CYCLIC_DEPENDENCY 并列出环上的字段', () => {
+  it('循环依赖（DEC-274）：保存不拦截，排序结果列出环上的字段并给出提示', () => {
     const items = [
       item('盘点对象.a', 1, '盘点对象.b + 1'),
       item('盘点对象.b', 1, '盘点对象.c + 1'),
@@ -44,11 +44,10 @@ describe('AC-EXP-12 计算优先级与依赖顺序', () => {
       item('盘点对象.d', 1, '1'),
     ];
     const ordered = orderComputationItems(items);
-    expect(ordered.ok).toBe(false);
-    if (ordered.ok) return;
-    expect(ordered.failure.code).toBe('CYCLIC_DEPENDENCY');
-    if (ordered.failure.code !== 'CYCLIC_DEPENDENCY') return;
-    expect(ordered.failure.cycle).toEqual(['盘点对象.a', '盘点对象.b', '盘点对象.c', '盘点对象.a']);
+    expect(ordered.ok).toBe(true);
+    if (!ordered.ok) return;
+    expect(ordered.cycles).toEqual([['盘点对象.a', '盘点对象.b', '盘点对象.c', '盘点对象.a']]);
+    expect(ordered.warnings.join('\n')).toContain('盘点对象.a→盘点对象.b→盘点对象.c→盘点对象.a');
   });
 
   it('公式有语法错误的项目在排序阶段就报错并给出位置', () => {
@@ -68,7 +67,8 @@ describe('AC-EXP-12 批量求值：每个对象得到值或失败原因，后算
   const subjects = [
     inMemorySubject('e1', { '盘点对象.绩效得分': 90, '盘点对象.潜力得分': 80 }),
     inMemorySubject('e2', { '盘点对象.绩效得分': 60, '盘点对象.潜力得分': 70 }),
-    inMemorySubject('e3', { '盘点对象.绩效得分': null, '盘点对象.潜力得分': 70 }),
+    // DEC-257 后空值按 0 参与四则不再失败，改用非数字文本制造计算失败
+    inMemorySubject('e3', { '盘点对象.绩效得分': '缺考', '盘点对象.潜力得分': 70 }),
   ];
 
   it('失败对象只影响自身，依赖失败项目的后续项目标 DEPENDENCY_FAILED', () => {
@@ -85,7 +85,7 @@ describe('AC-EXP-12 批量求值：每个对象得到值或失败原因，后算
       '盘点对象.名次': { ok: true, value: { value: 2 } },
     });
     expect(batch.results.e3).toMatchObject({
-      '盘点对象.综合得分': { ok: false, failure: { code: 'EMPTY_IN_ARITHMETIC' } },
+      '盘点对象.综合得分': { ok: false, failure: { code: 'TEXT_IN_ARITHMETIC' } },
       '盘点对象.等级': { ok: false, failure: { code: 'DEPENDENCY_FAILED' } },
     });
   });
@@ -97,7 +97,22 @@ describe('AC-EXP-12 批量求值：每个对象得到值或失败原因，后算
     expect(batch.results.e2?.['盘点对象.名次']).toMatchObject({ ok: true, value: { value: 2 } });
   });
 
-  it('循环依赖时整批不执行，返回排序失败', () => {
+  it('空值按 0 参与四则（DEC-257）：对象照常算出值并参与排名', () => {
+    const withEmpty = [
+      ...subjects.slice(0, 2),
+      inMemorySubject('e4', { '盘点对象.绩效得分': null, '盘点对象.潜力得分': 70 }),
+    ];
+    const batch = evaluateBatch(items, withEmpty, { calendar: CALENDAR, project: PROJECT });
+    expect(batch.ok).toBe(true);
+    if (!batch.ok) return;
+    expect(batch.results.e4).toMatchObject({
+      '盘点对象.综合得分': { ok: true, value: { value: 35 } },
+      '盘点对象.等级': { ok: true, value: { value: 'B' } },
+      '盘点对象.名次': { ok: true, value: { value: 3 } },
+    });
+  });
+
+  it('循环依赖时整批不执行，返回计算失败（DEC-274）', () => {
     const cyclic = [item('盘点对象.a', 1, '盘点对象.b'), item('盘点对象.b', 1, '盘点对象.a')];
     const batch = evaluateBatch(cyclic, subjects, { calendar: CALENDAR });
     expect(batch).toMatchObject({ ok: false, failure: { code: 'CYCLIC_DEPENDENCY' } });

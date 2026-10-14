@@ -1,0 +1,2 @@
+ALTER TABLE "talent_review_projects" ADD COLUMN "criterion_id" uuid;--> statement-breakpoint
+ALTER TABLE "talent_review_projects" ADD CONSTRAINT "talent_review_projects_tenant_id_criterion_id_talent_criteria_tenant_id_id_fk" FOREIGN KEY ("tenant_id","criterion_id") REFERENCES "public"."talent_criteria"("tenant_id","id") ON DELETE restrict ON UPDATE no action;

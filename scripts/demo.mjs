@@ -1,6 +1,8 @@
 #!/usr/bin/env node
-// 本地演示（F-025）：pnpm demo = 准备 .env.local → 种子（幂等）→ 同时起后端（:3000）与前端（vite :5173）。
-// pnpm demo:seed 只跑种子；pnpm demo:reset 删除本地 PGlite 与演示清单后重新种子（须先停掉 pnpm demo）。
+// 本地演示（F-025）：pnpm demo = 准备 .env.local → 种子（分阶段、幂等、可恢复）→
+// 同时起后端（:3000）与前端（vite :5173）。
+// pnpm demo:seed 只跑种子（中途失败后再运行即从缺失处续做；不复原被用户接管的种子单据，DEC-477）；
+// pnpm demo:reset 删除本地 PGlite 与演示清单后重新种子（须先停掉 pnpm demo）。
 // 只用于开发机：强制 NODE_ENV=development；密钥写在被 .gitignore 忽略的 .env.local，不入库。
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';

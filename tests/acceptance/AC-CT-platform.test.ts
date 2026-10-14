@@ -66,7 +66,7 @@ describe('R2-T06 合同平台、审批与调度', () => {
     const w = await contractWorld(testDb().db, 'ctauto');
     await w.create({ effectiveDate: '2025-01-01', endDate: '2025-09-30' });
     const latest = await w.create({ effectiveDate: '2025-10-01', endDate: '2026-10-05' });
-    await w.settings({ autoRenew: true });
+    await w.settings({ autoRenew: true, indefiniteTypeIds: [w.type.id] });
     const rule = await w.request('POST', '/rules', {
       ifMatch: 0,
       body: {

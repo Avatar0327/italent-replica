@@ -94,7 +94,7 @@ describe('AC-ORG-07/11 组织历史版本与结构化引用安全', () => {
     ).toBe(200);
     const rename = await session.request('PATCH', `/organizations/${child.id}`, {
       ifMatch: child.revision,
-      body: { effectiveDate: '2026-10-02', name: '关闭后部门' },
+      body: { addEmployment: false, effectiveDate: '2026-10-02', name: '关闭后部门' },
     });
     expect(rename.status).toBe(200);
     expect(await rename.json()).toMatchObject({
@@ -148,7 +148,7 @@ describe('AC-ORG-07/11 组织历史版本与结构化引用安全', () => {
     expect(future.status).toBe(200);
     const rename = await session.request('PATCH', `/organizations/${child.id}`, {
       ifMatch: 2,
-      body: { effectiveDate: '2026-10-02', name: '不得插入的名称' },
+      body: { addEmployment: false, effectiveDate: '2026-10-02', name: '不得插入的名称' },
     });
     expect(rename.status).toBe(409);
     expect(await rename.json()).toMatchObject({ error: { code: 'ORG_FUTURE_VERSION_EXISTS' } });

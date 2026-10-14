@@ -15,6 +15,7 @@ import {
   type Row,
 } from './store.js';
 import { loadSubset, saveSubset } from './subsets.js';
+import { runSubsetRequestPolicy } from './subset-policy.js';
 import { subsetInput } from './validation.js';
 import { readEffectiveSetting } from '../tenant-settings/service.js';
 
@@ -40,6 +41,12 @@ export async function createChange(tx: Tx, ctx: PersonnelContext, input: ChangeI
     const record = await loadSubset(tx, ctx, input.employeeId, input.subset, input.recordId);
     assertRevision(input.targetRevision ?? 0, Number(record.revision));
   } else assertRevision(input.targetRevision ?? 0, 0);
+  // P0 契约：按子集登记的自助申请准入，写申请行之前拦；拒绝时审批实例（同事务随后创建）也不会产生
+  await runSubsetRequestPolicy(tx, ctx, input.subset, {
+    employeeId: input.employeeId,
+    recordId: input.recordId ?? null,
+    values: input.values,
+  });
   const row = {
     id: randomUUID(),
     tenantId: ctx.tenantId,
@@ -102,6 +109,12 @@ export async function resubmitChangeInTransaction(tx: Tx, ctx: PersonnelContext,
     ...(corrected ? subsetInput(kind, corrections, true) : {}),
   };
   await assertSelfServiceFields(tx, ctx.tenantId, kind, Object.keys(values));
+  // 准入放在空修正的提前返回之前：否则以 {} 重提一张待审批申请就绕过了准入（P0 契约）
+  await runSubsetRequestPolicy(tx, ctx, kind, {
+    employeeId: String(before.employeeId),
+    recordId: before.recordId ? String(before.recordId) : null,
+    values,
+  });
   if (!corrected && before.status === 'pending_approval') return before;
   const after = { ...before, status: 'pending_approval', values, revision: Number(before.revision) + 1 };
   await update(

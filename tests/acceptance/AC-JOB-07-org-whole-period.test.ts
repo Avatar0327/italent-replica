@@ -58,7 +58,7 @@ async function expectDisabled(response: Response, name: string, date: string) {
 }
 
 describe.each(['create', 'change'] as const)('AC-JOB-07 %s 职位整段组织校验', (mode) => {
-  it.each(['2026-10-10', START, '2026-10-01'])(
+  it.each(['2026-10-10', '2026-10-05', '2026-10-01'])(
     '开始日之后、当天或之前（%s）停用均拒绝，提示实际停用日，失败不写职位版本',
     async (disabledOn) => {
       const s = await scenario(mode);
@@ -79,7 +79,7 @@ describe.each(['create', 'change'] as const)('AC-JOB-07 %s 职位整段组织校
   it('停用后更名显示连续停用段的起日', async () => {
     const s = await scenario(mode);
     const disabled = await changeOrg(s.session, s.target, { enabled: false, effectiveDate: '2026-10-01' });
-    await changeOrg(s.session, disabled, { name: '停用后更名组织', effectiveDate: '2026-10-03' });
+    await changeOrg(s.session, disabled, { addEmployment: false, name: '停用后更名组织', effectiveDate: '2026-10-03' });
     await expectDisabled(await s.save(), '停用后更名组织', '2026-10-01');
     await s.unchanged();
   });

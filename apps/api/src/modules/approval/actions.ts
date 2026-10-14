@@ -6,6 +6,10 @@
 import { sql, type Tx } from '@italent/db';
 import {
   APPROVAL_TYPES,
+  instanceRecusal,
+  jumpAllowed,
+  rejectToPreviousAllowed,
+  revokeAllowed,
   blindReviewFields,
   EXIT_LABELS,
   hasExit,
@@ -13,7 +17,6 @@ import {
   NODE_ADD_SIGN_TYPES,
   nodeKindOf,
   rejectAllowed,
-  tenantLocalDate,
   type AddSignType,
   type ApprovalNode,
   type NodeExit,
@@ -23,6 +26,7 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import type { ErrorBody } from '../../errors.js';
 import { assertNotAddSigner, continueAfterApproval } from './add-sign.js';
 import { mergeSeat, mergesSeat, resettle, settleCountersign } from './countersign.js';
+import type { TargetScope } from './access.js';
 import { ADAPTERS } from './adapters.js';
 import {
   approvalError,
@@ -46,9 +50,11 @@ import {
   startOrResume,
   type Run,
 } from './engine.js';
+import { foldMentorFailure, type TargetAdmission } from '../idp/plan-mentor.js';
 import { applyMessageRules, notifyTodo, notifyUrge } from './notifications.js';
-import { addSignAllowed, isOwnRequest, nodeParticipantsOf, urgeOpen, votesInTransition } from './rules.js';
-import { isEligibleApprover, userOfPerson } from './resolver.js';
+import { assertNotRecused, eligibilityScope, recusalFactsOf } from './recusal.js';
+import { addSignAllowed, nodeParticipantsOf, urgeOpen, votesInTransition } from './rules.js';
+import { isEligibleApprover, personOfUser } from './resolver.js';
 import { appendLog, cancelPending, closeTask, insertTask, instanceOfTask, loadTasks, type TaskRow } from './store.js';
 
 export interface Outcome {
@@ -70,7 +76,10 @@ export async function openTask(tx: Tx, ctx: ApprovalContext, taskId: string): Pr
   // DEC-063：只有被分配任务的人能处理；管理员须先转交（DEC-070），不能以他人名义审批。
   if (task.assigneeUserId !== ctx.userId)
     throw approvalError('FORBIDDEN', 'APPROVAL_NOT_ASSIGNEE', '只有当前审批人可以处理该任务');
-  return { run, task, node: run.version.nodes[nodeIndex(run, task.nodeKey)]! };
+  const node = run.version.nodes[nodeIndex(run, task.nodeKey)]!;
+  // F-048 §6 #10：办理人的全部任务动作统一在此按冻结值判定（防御：冻结后路由不会把任务派给命中者）
+  await assertNotRecused(tx, run, node, ctx.userId, 'actor', task);
+  return { run, task, node };
 }
 
 export function assertOpen(scene: TaskScene, ctx: ApprovalContext): void {
@@ -236,8 +245,8 @@ export async function approveTask(
   assertExit(scene.node, 'approve');
   const blocked = await blindReview(tx, scene, viewable);
   if (blocked) return blocked;
-  await assertNotSelf(tx, scene.run, ctx.userId);
   const { run, task, node } = scene;
+  await ADAPTERS[run.instance.businessType].beforeApprove?.(tx, ctx, run.instance.businessId, task.nodeKey);
   if (input.fields && Object.keys(input.fields).length) {
     assertApprovalEdit(run);
     if (node.editMode !== 'with_approve')
@@ -300,8 +309,8 @@ export async function disagreeTask(
   }
   const blocked = await blindReview(tx, scene, viewable);
   if (blocked) return blocked;
-  await assertNotSelf(tx, scene.run, ctx.userId);
   const { run, task, node } = scene;
+  await ADAPTERS[run.instance.businessType].beforeApprove?.(tx, ctx, run.instance.businessId, task.nodeKey);
   await closeTask(tx, ctx, task.id, 'disagreed', input.comment);
   await appendLog(tx, ctx, run.instance, {
     event: 'disagree',
@@ -336,8 +345,8 @@ export async function rejectTask(
   assertRejectEnabled(scene.node);
   const blocked = await blindReview(tx, scene, viewable);
   if (blocked) return blocked;
-  await assertNotSelf(tx, scene.run, ctx.userId);
   const { run, task, node } = scene;
+  await ADAPTERS[run.instance.businessType].beforeApprove?.(tx, ctx, run.instance.businessId, task.nodeKey);
   // DEC-059：节点开关「驳回意见必填」，出厂关闭。
   if (node.rejectCommentRequired && !input.comment?.trim()) {
     throw approvalError('VALIDATION_FAILED', 'APPROVAL_COMMENT_REQUIRED', '本节点驳回时必须填写意见');
@@ -364,23 +373,109 @@ export async function rejectTask(
   return ok(run);
 }
 
-/** DEC-058：发起人或异动本人不得审批自己的单据；异常任务按 DEC-091 回避，不会落到本人名下。 */
-async function assertNotSelf(tx: Tx, run: Run, userId: string): Promise<void> {
-  const subjectUser = await userOfPerson(tx, run.ctx.tenantId, run.snapshot.subjectEmployeeId);
-  if (userId === run.instance.initiatorUserId || userId === subjectUser) {
-    throw approvalError('CONFLICT', 'APPROVAL_SELF_REVIEW', '发起人或异动本人不能审批自己的单据');
+/**
+ * 驳回到上一步（DEC-318 K-39，原站 isRejectToPrevious）：节点开关开启的单人节点，回到上一个节点重新办理；上一节点
+ * 再提交后按正常顺序往后走（isResubmitThisActivity = false）。意见与驳回同规则；不进流转规则，其余在办任务取消。
+ */
+export async function rejectToPreviousTask(
+  tx: Tx,
+  ctx: ApprovalContext,
+  input: DecisionInput,
+  viewable: ReadonlySet<string> | undefined,
+): Promise<Outcome> {
+  const scene = await openTask(tx, ctx, input.taskId);
+  assertOpen(scene, ctx);
+  const { run, task, node } = scene;
+  if (!rejectToPreviousAllowed(node) || isCountersign(node)) {
+    throw approvalError('CONFLICT', 'APPROVAL_ACTION_DISABLED', '本节点未开启驳回到上一步');
   }
+  const index = nodeIndex(run, node.key);
+  if (index === 0) throw approvalError('CONFLICT', 'APPROVAL_NO_PREVIOUS_NODE', '第一个节点没有上一步');
+  const blocked = await blindReview(tx, scene, viewable);
+  if (blocked) return blocked;
+  const tasks = await loadTasks(tx, ctx.tenantId, run.instance.id);
+  assertNotAddSigner(tasks, task);
+  if (node.rejectCommentRequired && !input.comment?.trim()) {
+    throw approvalError('VALIDATION_FAILED', 'APPROVAL_COMMENT_REQUIRED', '本节点驳回时必须填写意见');
+  }
+  const previous = run.version.nodes[index - 1]!;
+  await closeTask(tx, ctx, task.id, 'rejected', input.comment);
+  await cancelPending(tx, ctx, run.instance.id);
+  // DEC-124：与跳转一样重置有效历史边界，上一步的办理人重新办理，不沿用驳回前的同意（第 3 轮 R2-6）
+  startHistoryAfter(run, tasks);
+  await appendLog(tx, ctx, run.instance, {
+    event: 'reject_previous',
+    nodeKey: node.key,
+    taskId: task.id,
+    detail: { comment: input.comment, toNodeKey: previous.key },
+  });
+  await auditTask(
+    tx,
+    run,
+    'approval.task.reject_previous',
+    { status: 'pending', comment: null },
+    { status: 'rejected', comment: input.comment, toNodeKey: previous.key },
+  );
+  await applyMessageRules(tx, ctx, run.instance, node, 'reject', task);
+  await advanceFrom(tx, run, index - 1);
+  run.events.push('approval.task.rejected_previous');
+  await persistRun(tx, run, outcomeAction(run));
+  return ok(run);
+}
+
+export interface JumpInput {
+  readonly taskId: string;
+  readonly toNodeKey: string;
+  readonly comment: string | null;
 }
 
 /**
- * 转交 / 加签 / 管理员转交改派的对象：具备审批资格（有效成员且离职未生效，第四轮 N2），且不是发起人或异动本人。
+ * 审批人跳转（DEC-318 K-39，原站节点系统动作“跳转”）：节点开关开启时，当前审批人把流程跳到本流程的另一个节点
+ * （IDP：员工节点只能跳到指导人节点，指导人节点只能跳到员工节点——两节点流程里即“其他节点”）。本节点在办任务取消，
+ * 从目标节点重新路由；审批历史从此重新计算（同管理员跳转）。
  */
-async function assertReviewer(tx: Tx, run: Run, userId: string): Promise<void> {
-  const scope = { tenantId: run.ctx.tenantId, asOf: tenantLocalDate(run.ctx.now, run.ctx.timezone) };
-  if (!(await isEligibleApprover(tx, scope, userId))) {
+export async function jumpTask(tx: Tx, ctx: ApprovalContext, input: JumpInput): Promise<Outcome> {
+  const scene = await openTask(tx, ctx, input.taskId);
+  assertOpen(scene, ctx);
+  const { run, task, node } = scene;
+  if (!jumpAllowed(node)) throw approvalError('CONFLICT', 'APPROVAL_ACTION_DISABLED', '本节点未开启跳转');
+  if (input.toNodeKey === node.key) {
+    throw approvalError('VALIDATION_FAILED', 'APPROVAL_JUMP_SAME_NODE', '只能跳到其他节点');
+  }
+  const target = nodeIndex(run, input.toNodeKey);
+  const tasks = await loadTasks(tx, ctx.tenantId, run.instance.id);
+  assertNotAddSigner(tasks, task);
+  await closeTask(tx, ctx, task.id, 'cancelled', input.comment);
+  await cancelPending(tx, ctx, run.instance.id);
+  startHistoryAfter(run, tasks);
+  await appendLog(tx, ctx, run.instance, {
+    event: 'jump',
+    nodeKey: node.key,
+    taskId: task.id,
+    detail: { comment: input.comment, toNodeKey: input.toNodeKey },
+  });
+  await auditTask(
+    tx,
+    run,
+    'approval.task.jump',
+    { currentNodeKey: node.key },
+    { currentNodeKey: input.toNodeKey, comment: input.comment },
+  );
+  await advanceFrom(tx, run, target);
+  run.events.push('approval.instance.jumped');
+  await persistRun(tx, run, outcomeAction(run));
+  return ok(run);
+}
+
+/**
+ * 转交 / 加签 / 管理员转交改派的对象：具备审批资格（有效成员且离职未生效，第四轮 N2），且不被节点回避（发起人 / 异动本人
+ * 受 avoidSelf 管，本单涵盖的主体受 avoidSubjects 管，F-048 §6 #11、#12、#18）。
+ */
+async function assertReviewer(tx: Tx, run: Run, userId: string, node: ApprovalNode): Promise<void> {
+  if (!(await isEligibleApprover(tx, eligibilityScope(run), userId))) {
     throw approvalError('VALIDATION_FAILED', 'APPROVAL_USER_INVALID', '目标用户已离职或不是本租户有效成员');
   }
-  await assertNotSelf(tx, run, userId);
+  await assertNotRecused(tx, run, node, userId, 'target');
 }
 
 export interface DelegateInput {
@@ -398,7 +493,7 @@ export async function transferTask(tx: Tx, ctx: ApprovalContext, input: Delegate
     throw approvalError('CONFLICT', 'APPROVAL_ACTION_DISABLED', '本节点未开启转交');
   }
   if (input.userId === ctx.userId) throw approvalError('VALIDATION_FAILED', 'APPROVAL_USER_INVALID', '不能转交给自己');
-  await assertReviewer(tx, run, input.userId);
+  await assertReviewer(tx, run, input.userId, node);
   await assertNotNodeAssignee(tx, run, node, task, [input.userId]);
   await closeTask(tx, ctx, task.id, 'transferred', input.comment);
   const next = await delegate(tx, run, task, input.userId, 'transfer', { comment: input.comment });
@@ -416,11 +511,17 @@ export interface AddSignInput {
   readonly comment: string | null;
 }
 
-async function assertAddSigners(tx: Tx, run: Run, userIds: readonly string[], self: string): Promise<void> {
+async function assertAddSigners(
+  tx: Tx,
+  run: Run,
+  node: ApprovalNode,
+  userIds: readonly string[],
+  self: string,
+): Promise<void> {
   if (new Set(userIds).size !== userIds.length)
     throw approvalError('VALIDATION_FAILED', 'APPROVAL_USER_INVALID', '加签人不能重复');
   if (userIds.includes(self)) throw approvalError('VALIDATION_FAILED', 'APPROVAL_USER_INVALID', '不能加签给自己');
-  for (const userId of userIds) await assertReviewer(tx, run, userId);
+  for (const userId of userIds) await assertReviewer(tx, run, userId, node);
 }
 
 /** 加签类型按节点类型（`14` §11.4）：单人节点前 / 后加签（DEC-095），会签节点前加签（DEC-152）与并加签（F-003）。 */
@@ -452,14 +553,13 @@ export async function addSign(
     throw approvalError('CONFLICT', 'APPROVAL_ADD_SIGN_NESTED', '加签人不能再加签，请同意或驳回后由原审批人处理');
   }
   assertAddSignType(node, input.type);
-  await assertAddSigners(tx, run, input.userIds, ctx.userId);
+  await assertAddSigners(tx, run, node, input.userIds, ctx.userId);
   await assertNotNodeAssignee(tx, run, node, task, input.userIds);
   if (input.type === 'parallel') return parallelAddSign(tx, scene, input);
   if (input.type === 'after') {
     // 后加签包含本人的同意：照常做盲审与自审校验。
     const blocked = await blindReview(tx, scene, viewable);
     if (blocked) return blocked;
-    await assertNotSelf(tx, run, ctx.userId);
   }
   const status = input.type === 'after' ? 'approved' : 'add_signed';
   await closeTask(tx, ctx, task.id, status, input.comment);
@@ -603,7 +703,21 @@ async function openOwn(tx: Tx, ctx: ApprovalContext, instanceId: string): Promis
 
 /** 催办：通知当前节点未审批的人（`14` §9.2）；不改变流程状态，不推进 revision。 */
 export async function urge(tx: Tx, ctx: ApprovalContext, instanceId: string): Promise<Outcome> {
-  const run = await openOwn(tx, ctx, instanceId);
+  return urgeRun(tx, await openOwn(tx, ctx, instanceId));
+}
+
+/**
+ * 业务管理员催办（R3-T07 IDP 流程干预“催办”，IDP-R16）：权限与范围由业务模块按其按钮与数据范围判定，这里不要求发起人；
+ * 频率限制与通知同发起人催办。
+ */
+export async function urgeAsAdmin(tx: Tx, ctx: ApprovalContext, instanceId: string): Promise<Outcome> {
+  return urgeRun(tx, await openRun(tx, ctx, instanceId));
+}
+
+async function urgeRun(tx: Tx, run: Run): Promise<Outcome> {
+  const { ctx } = run;
+  const instanceId = run.instance.id;
+  if (run.instance.status !== 'running') throw approvalError('CONFLICT', 'APPROVAL_CLOSED', '流程不在审批中');
   const node = run.version.nodes.find((candidate) => candidate.key === run.instance.currentNodeKey);
   if (!node || !urgeOpen(run.instance, run.version)) {
     throw approvalError('CONFLICT', 'APPROVAL_ACTION_DISABLED', '当前节点不允许催办');
@@ -661,6 +775,11 @@ export async function withdraw(
     throw approvalError('FORBIDDEN', 'APPROVAL_NOT_INITIATOR', '只有发起人可以撤回');
   if (!['running', 'returned'].includes(run.instance.status))
     throw approvalError('CONFLICT', 'APPROVAL_CLOSED', '流程已结束');
+  // DEC-318 K-39：撤回是节点开关（原站 isRevoke，缺省开启），按当前节点判断
+  const current = run.version.nodes.find((node) => node.key === run.instance.currentNodeKey);
+  if (!fromBusiness && current && !revokeAllowed(current)) {
+    throw approvalError('CONFLICT', 'APPROVAL_ACTION_DISABLED', '当前节点未开启撤回');
+  }
   await cancelPending(tx, ctx, instanceId);
   run.instance = { ...run.instance, status: 'withdrawn', currentNodeKey: null };
   if (!fromBusiness) await ADAPTERS[run.instance.businessType].withdrawn(tx, ctx, run.instance.businessId);
@@ -686,11 +805,14 @@ export async function cancel(tx: Tx, ctx: ApprovalContext, instanceId: string): 
  */
 export async function resubmit(tx: Tx, ctx: ApprovalContext, instanceId: string, corrections?: Row): Promise<Outcome> {
   const run = await openOwn(tx, ctx, instanceId);
+  // 员工子集变更（F9）与发展计划（DEC-318 K-39，所有者撤回后沿原实例重提）撤回后也可重提
   const reopenable =
     run.instance.status === 'returned' ||
-    (run.instance.status === 'withdrawn' && run.instance.businessType === 'personnel_change');
+    (run.instance.status === 'withdrawn' && ['personnel_change', 'idp'].includes(run.instance.businessType));
   if (!reopenable) throw approvalError('CONFLICT', 'APPROVAL_NOT_RETURNED', '只有被驳回或已撤回的申请可以重提');
-  if (run.instance.businessType === 'contract') await ctx.recheckContractResubmit?.(tx, instanceId, corrections ?? {});
+  if (['contract', 'idp'].includes(run.instance.businessType)) {
+    await ctx.recheckContractResubmit?.(tx, instanceId, corrections ?? {});
+  }
   // 业务单回到待审批、修正追加为新版本，并按完整载荷复核当前自助字段白名单（DEC-099 / DEC-113 / N1）。
   await ADAPTERS[run.instance.businessType].resubmit(tx, ctx, run.instance.businessId, corrections ?? {});
   // DEC-103：重提沿用原实例与原流程版本，不重新匹配。
@@ -710,20 +832,85 @@ export interface AdminInput {
   readonly reason: string | null;
 }
 
-/** 管理员转交 / 干预（DEC-063 / DEC-070）：每次操作单独写审计，原审批人、新审批人、原因齐全。 */
-export async function adminAct(tx: Tx, ctx: ApprovalContext, input: AdminInput, scope: SQL): Promise<Outcome> {
+export interface AdminOptions {
+  readonly ownerIntervention?: boolean;
+  readonly targetScope?: TargetScope;
+  readonly targetChecked?: boolean;
+}
+
+const targetNotFound = () => approvalError('NOT_FOUND', 'APPROVAL_TARGET_NOT_FOUND', '转交目标不存在');
+
+/**
+ * F-067：转交 / 改派目标须是已绑定员工、且在操作人对该实例业务对象的管理范围内，否则目标会因成为待办人而获得业务对象
+ * 的可见性。账号不存在、未绑定员工的纯账号（待产品确认，先按拒绝）、范围外三种情况同一个 404，不暴露存在性。
+ * 转给操作人自己也一样校验：“审批实例可见”与业务对象的参与权（如 IDP 计划按待办认定参与人）是不同的授权边界，
+ * 自转交同样会因成为待办人扩大业务对象可见性（仍须填理由，DEC-070）。其余目标校验（有效成员、节点回避、
+ * 会签重复办理人）仍由后面的 adminAct 判定。
+ * 返回放行方式：`mentor` = 靠范围外例外（DEC-358①：IDP 计划当前的指导人 / 带教人，判定与 IDP 入口共用 idp/plan-mentor.ts）放行，
+ * 后续任何失败都要经共享的 `foldMentorFailure` 折成同一个 404。
+ */
+async function assertTargetInScope(
+  tx: Tx,
+  ctx: ApprovalContext,
+  input: AdminInput,
+  options: AdminOptions,
+  instance: Run['instance'],
+): Promise<TargetAdmission> {
+  if (input.kind === 'jump' || options.targetChecked) return 'scope';
+  if (!options.targetScope) throw new Error('adminAct：转交 / 改派必须提供目标范围校验');
+  const employeeId = input.toUserId ? await personOfUser(tx, ctx.tenantId, input.toUserId) : null;
+  if (!employeeId) throw targetNotFound();
+  const [hit] = rowsOf(
+    await tx.execute(sql`SELECT 1 FROM approval_instances i WHERE i.tenant_id=${ctx.tenantId}
+      AND i.id=${input.instanceId}::uuid AND ${options.targetScope.inScope(employeeId)}`),
+  );
+  if (hit) return 'scope';
+  if (!(await options.targetScope.exception(tx, instance, employeeId))) throw targetNotFound();
+  return 'mentor';
+}
+
+/**
+ * 管理员转交 / 干预（DEC-063 / DEC-070）：每次操作单独写审计，原审批人、新审批人、原因齐全。
+ * @param options.ownerIntervention 业务模块内流程所有者的流程干预（IDP 计划所有者的阶段内跳转，DEC-318 K-38 / DEC-321）：发起人
+ *   就是所有者本人，不按 DEC-092 的“本人发起”回避；“本人为异动对象”仍回避。审批中心的管理员入口不传。
+ * @param options.targetScope 转交 / 改派目标须在操作人对业务对象的管理范围内（F-067，IDP-R16）：非跳转的动作必须给出，
+ *   或由调用方声明 `targetChecked`（调用方已按自己的范围校验过目标，如 IDP 计划转交，F-066）；两者都没有按编程错误拒绝，不默认放行。
+ */
+export async function adminAct(
+  tx: Tx,
+  ctx: ApprovalContext,
+  input: AdminInput,
+  scope: SQL,
+  options: AdminOptions = {},
+): Promise<Outcome> {
   const run = await openRun(tx, ctx, input.instanceId);
   const [covered] = rowsOf(
     await tx.execute(sql`SELECT 1 FROM approval_instances i WHERE i.tenant_id=${ctx.tenantId}
       AND i.id=${input.instanceId}::uuid AND ${scope}`),
   );
   if (!covered) throw approvalError('NOT_FOUND', 'APPROVAL_NOT_FOUND', '审批实例不存在');
+  const admission = await assertTargetInScope(tx, ctx, input, options, run.instance);
+  // 靠例外放行的目标（范围外的指导人 / 带教人）：后续任何业务失败（版本冲突、流程已结束、待办已关闭、回避……）都折成
+  // 与普通范围外拒绝完全相同的 404，否则失败响应的差异会泄露“目标是该计划的指导人 / 带教人”（DEC-358①，F-068 审查）。
+  return foldMentorFailure(admission, targetNotFound, () => performAdmin(tx, ctx, run, input, options));
+}
+
+async function performAdmin(
+  tx: Tx,
+  ctx: ApprovalContext,
+  run: Run,
+  input: AdminInput,
+  options: AdminOptions,
+): Promise<Outcome> {
   assertRevision(ctx.expectedRevision, run.instance.revision);
   if (run.instance.status !== 'running') throw approvalError('CONFLICT', 'APPROVAL_CLOSED', '流程不在审批中');
   assertBusinessUnchanged(run);
-  // DEC-092：管理员不得干预本人发起或本人为异动对象的实例，须由其他管理员处理。
-  const subjectUser = await userOfPerson(tx, ctx.tenantId, run.snapshot.subjectEmployeeId);
-  if (isOwnRequest(run.instance, subjectUser, ctx.userId)) {
+  // DEC-092 / DEC-329②：管理员不得干预本人发起或本人为本单涵盖主体的实例，须由其他管理员处理（实例级，不受节点开关影响）；
+  // 流程所有者的干预（IDP，DEC-321①）发起人就是所有者本人，只回避主体
+  const own = instanceRecusal({ userId: ctx.userId }, await recusalFactsOf(tx, run), {
+    exemptInitiator: options.ownerIntervention === true,
+  });
+  if (own) {
     throw approvalError(
       'FORBIDDEN',
       'APPROVAL_ADMIN_SELF',
@@ -739,8 +926,9 @@ export async function adminAct(tx: Tx, ctx: ApprovalContext, input: AdminInput, 
   const task = tasks.find((t) => t.id === input.taskId);
   if (!task || task.status !== 'pending')
     throw approvalError('CONFLICT', 'APPROVAL_TASK_CLOSED', '只能转交待处理的任务');
-  await assertReviewer(tx, run, input.toUserId!);
-  await assertNotNodeAssignee(tx, run, run.version.nodes[nodeIndex(run, task.nodeKey)]!, task, [input.toUserId!]);
+  const taskNode = run.version.nodes[nodeIndex(run, task.nodeKey)]!;
+  await assertReviewer(tx, run, input.toUserId!, taskNode);
+  await assertNotNodeAssignee(tx, run, taskNode, task, [input.toUserId!]);
   if (intervene) startHistoryAfter(run, tasks);
   const self = input.toUserId === ctx.userId;
   await closeTask(tx, ctx, task.id, 'transferred', input.reason);

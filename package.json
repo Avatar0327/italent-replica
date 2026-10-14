@@ -15,6 +15,7 @@
     "build": "pnpm -r run build",
     "db:generate": "pnpm --filter @italent/db run db:generate",
     "db:migrate": "pnpm --filter @italent/db run db:migrate",
+    "merge:main": "node scripts/merge-main.mjs",
     "demo": "node scripts/demo.mjs",
     "demo:seed": "node scripts/demo.mjs seed",
     "demo:reset": "node scripts/demo.mjs reset"

@@ -17,6 +17,7 @@ import {
 } from './AC-PRM-support.js';
 import { tenantApi } from './support/tenant-api.js';
 import { loginEmailOf } from './AC-EMP-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const database = useTestDb();
 const clock = () => new Date('2026-10-01T01:00:00.000Z');
@@ -37,7 +38,7 @@ async function fixture() {
     send('org/organizations', { name, establishedOn: '2025-01-01', parents: { admin: { parentId: seed.tenant.id } } });
   const inside = await org('联动范围内部门');
   const outside = await org('联动范围外部门');
-  const profile = await createProfile(seed, `linked-writer-${randomUUID().slice(0, 8)}`);
+  const profile = await createProfile(seed, `linked-writer-${uniqueSuffix()}`);
   for (const definition of [MODULE_OBJECTS.employee, MODULE_OBJECTS.employmentRecord]) {
     const response = await setObjectPermission(
       seed,

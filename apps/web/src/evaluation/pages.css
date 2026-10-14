@@ -1,0 +1,78 @@
+.r3b-tabs {
+  margin-bottom: 8px;
+}
+.r3b-wide {
+  width: 100%;
+}
+.r3b-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 24px;
+}
+.r3b-form-grid .ant-select,
+.r3b-form-grid .ant-picker,
+.r3b-form-grid .ant-input-number {
+  width: 100%;
+}
+.r3b-section {
+  border-left: 3px solid #146eff;
+  padding-left: 9px;
+  font-size: 14px;
+  margin: 24px 0 18px;
+}
+.r3b-steps {
+  padding: 16px 0 24px;
+}
+.r3b-note {
+  color: #868b8f;
+  padding: 8px 0;
+}
+.r3b-repeat {
+  border: 1px solid #e6e8eb;
+  border-radius: 5px;
+  padding: 16px;
+  margin: 12px 0;
+  background: #fff;
+}
+.r3b-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.r3b-flow {
+  display: flex;
+  gap: 12px;
+  padding: 16px 0;
+}
+.r3b-stage {
+  flex: 1;
+  border: 1px solid #e6e8eb;
+  border-radius: 5px;
+  padding: 16px;
+  background: #f7f9fa;
+}
+.r3b-stage strong {
+  color: #0054f0;
+  display: block;
+  margin-bottom: 8px;
+}
+.r3b-detail .ant-descriptions {
+  margin: 16px 0;
+}
+.r3b-question {
+  padding: 16px;
+  border-bottom: 1px solid #e6e8eb;
+}
+@media (max-width: 850px) {
+  .r3b-form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.r3b-applicant-types {
+  display: inline-flex;
+  gap: 8px;
+}
+.r3b-applicant-types .ant-checkbox-wrapper {
+  margin-inline-start: 0;
+}

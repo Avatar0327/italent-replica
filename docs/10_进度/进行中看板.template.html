@@ -1,0 +1,246 @@
+<title>iTalent 进行中</title>
+<style>
+/* 由 board.py 生成（build 时自动抓 GitHub 在途 PR 状态）。手工维护的只有 看板数据.json 的 main（主线与子 PR 计划）。
+   从上到下：① 卡点与待你决定 ② 主线逐个子 PR ③ 支撑任务 ④ 其他在途（修正任务） ⑤ 今日合并 */
+:root{
+  --bg:#f5f6f8;--panel:#fff;--sunk:#eef1f5;--ink:#051c2c;--ink2:#2b3a4a;--muted:#5f6b7a;--faint:#9aa5b1;--line:#e1e5ea;
+  --done:#051c2c;--done-ink:#fff;--rev:#2251ff;--rev-bg:#e6ecff;--q:#00a9f4;--q-bg:#e1f5fd;
+  --work:#b26a00;--work-bg:#fff2dc;--bad:#d0453a;--bad-bg:#fbe9e7;--ok:#1f7a4d;--ok-bg:#e3f4ea;
+  --f:"PingFang SC","Noto Sans SC","Helvetica Neue",Arial,system-ui,sans-serif;--mono:ui-monospace,Menlo,"SF Mono",monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#071722;--panel:#0d2231;--sunk:#12293a;--ink:#e8eef4;--ink2:#c3cfdb;--muted:#8a9bab;--faint:#5b6d7e;--line:#1d3446;
+  --done:#c9d6e3;--done-ink:#071722;--rev:#6f8dff;--rev-bg:#16264a;--q:#3cc4ff;--q-bg:#0f2f40;
+  --work:#f0a640;--work-bg:#3a2a10;--bad:#f0796c;--bad-bg:#3a1c1a;--ok:#5fcf95;--ok-bg:#12321f;color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#071722;--panel:#0d2231;--sunk:#12293a;--ink:#e8eef4;--ink2:#c3cfdb;--muted:#8a9bab;--faint:#5b6d7e;--line:#1d3446;
+  --done:#c9d6e3;--done-ink:#071722;--rev:#6f8dff;--rev-bg:#16264a;--q:#3cc4ff;--q-bg:#0f2f40;
+  --work:#f0a640;--work-bg:#3a2a10;--bad:#f0796c;--bad-bg:#3a1c1a;--ok:#5fcf95;--ok-bg:#12321f;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 var(--f);padding:20px 16px 40px}
+.wrap{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:22px}
+header{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 18px}
+h1{font-size:22px;margin:0;letter-spacing:.02em}
+.sub{color:var(--muted);font-size:12px}
+.kpis{display:flex;flex-wrap:wrap;gap:8px;margin-left:auto}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:4px 10px;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.kpi b{font-size:16px;color:var(--ink);margin-right:3px}
+.kpi.bad b{color:var(--bad)}
+h2{font-size:13px;letter-spacing:.08em;color:var(--muted);margin:0 0 8px;font-weight:600}
+section{min-width:0}
+.sks{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px}
+.sk{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--work);border-radius:8px;padding:8px 10px;min-width:0}
+.sk.decide,.sk.ask{border-left-color:var(--bad);background:var(--bad-bg)}
+.sk .h{display:flex;gap:6px;align-items:baseline;font-size:12px;color:var(--muted)}
+.sk .h b{color:var(--ink);font-family:var(--mono)}
+.sk .w{font-weight:600;margin:2px 0}
+.sk .t{font-size:12px;color:var(--ink2);overflow-wrap:anywhere}
+.none{color:var(--ok);background:var(--ok-bg);border-radius:8px;padding:8px 12px;font-size:13px}
+.line{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.lh{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px}
+.lh .nm{font-weight:700;font-size:15px}
+.bar{flex:1 1 160px;max-width:260px;height:8px;background:var(--sunk);border-radius:4px;overflow:hidden;display:flex}
+.bar i{display:block;height:100%}
+.bar .d{background:var(--done)}.bar .a{background:var(--rev)}
+.pct{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.focus{font-size:12px;color:var(--ink2)}
+.focus b{color:var(--bad)}
+.pre{font-size:12px;color:var(--faint)}
+.grp{display:grid;grid-template-columns:110px 1fr;gap:8px;align-items:start}
+.grp .gn{font-size:12px;color:var(--muted);padding-top:4px}
+.chips{display:flex;flex-wrap:wrap;gap:5px;min-width:0}
+.chip{display:inline-flex;align-items:baseline;gap:4px;border-radius:6px;padding:2px 7px;font-size:12px;border:1px solid var(--line);background:var(--panel);color:var(--ink2);white-space:nowrap}
+.chip .k{font-family:var(--mono);font-weight:700;font-size:11px}
+.chip .p{font-family:var(--mono);font-size:10px;opacity:.75}
+.chip.done{background:var(--done);border-color:var(--done);color:var(--done-ink)}
+.chip.review{background:var(--rev-bg);border-color:var(--rev);color:var(--rev)}
+.chip.queue,.chip.ci{background:var(--q-bg);border-color:var(--q);color:var(--ink)}
+.chip.merge{border-color:var(--ok);background:var(--ok-bg);color:var(--ink)}
+.chip.dev{background:var(--rev-bg);border-style:dashed;border-color:var(--rev);color:var(--ink)}
+.chip.rework{background:var(--work-bg);border-color:var(--work);color:var(--ink)}
+.chip.decide,.chip.conflict,.chip.cired{background:var(--bad-bg);border-color:var(--bad);color:var(--bad);font-weight:600}
+.chip.assigned{border-style:dashed;color:var(--ink2)}
+.kpi .dl{font-style:normal;margin-left:6px;color:var(--ok);font-size:.85em}
+.banner{background:var(--work-bg);color:var(--work);border:1px solid var(--work);border-radius:8px;padding:8px 12px;font-weight:600}
+.chip.ready{color:var(--ok);background:var(--ok-bg);border:1px dashed var(--ok);font-weight:600}
+.chip.todo{color:var(--faint);border-style:dotted}
+.chip.wait{color:var(--faint);background:var(--sunk)}
+.chip.paused{color:var(--faint);background:repeating-linear-gradient(135deg,var(--sunk) 0 5px,var(--panel) 5px 10px)}
+.chip.stuck{box-shadow:0 0 0 2px var(--bad)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 10px;font-size:11px;color:var(--muted);align-items:center}
+.tbl{width:100%;border-collapse:collapse;font-size:12px}
+.tblw{overflow-x:auto;background:var(--panel);border:1px solid var(--line);border-radius:10px}
+.tbl td,.tbl th{padding:6px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+.tbl th{color:var(--muted);font-weight:600;font-size:11px}
+.tbl tr:last-child td{border-bottom:0}
+.mono{font-family:var(--mono)}
+details summary{cursor:pointer;color:var(--muted);font-size:13px}
+.log li{font-size:12px;color:var(--ink2);margin:2px 0}
+@media (max-width:560px){.grp{grid-template-columns:1fr}.grp .gn{padding-top:0}.kpis{margin-left:0}}
+
+.mcols{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:12px 0}
+@media(max-width:1000px){.mcols{grid-template-columns:1fr}}
+.mcol{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-width:0}
+.mcol .mh{font-weight:600;font-size:14px;color:var(--ink)}
+.mcol .ms2{font-size:12px;color:var(--muted);margin:3px 0 8px;font-variant-numeric:tabular-nums}
+.mcol .ms2 b{color:var(--ink);font-size:14px}
+.mrow{display:flex;gap:5px;align-items:flex-start;margin:4px 0}
+.mrow .chip{white-space:normal;flex:1;min-width:0}
+.mtag{font-size:10px;padding:1px 5px;border-radius:4px;background:var(--sunk);color:var(--muted);white-space:nowrap;margin-top:3px}
+.dep{font-size:11px;color:var(--muted);margin:1px 0 0 0}.dep i{font-style:normal;padding:0 4px;border-radius:3px;background:var(--sunk);margin-right:3px}.dep i.ok{color:var(--ok)}.dep i.wait{color:var(--work)}
+.mbig{font-size:22px;font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums}.mbig small{font-size:12px;font-weight:400;color:var(--muted);margin-left:6px}
+.mtag.m{border:1px solid var(--line)}
+.mcol details{margin-top:8px}.mcol summary{cursor:pointer;font-size:12px;color:var(--muted)}
+
+.chip{position:relative;padding-bottom:8px}
+.stg{position:absolute;left:5px;right:5px;bottom:2px;display:flex;gap:2px}
+.stg i{flex:1;height:3px;border-radius:2px;background:var(--faint);opacity:.35}
+.stg i.d{background:var(--ok);opacity:1}
+.stg i.a{background:var(--work);opacity:.7}
+.stg i.b{background:var(--bad);opacity:1}
+.dtag{font-size:9px;font-family:var(--mono);padding:0 3px;border-radius:3px;border:1px solid var(--line);opacity:.8}
+body[data-ms="D1"] .chip:not([data-ms="D1"]),body[data-ms="D2"] .chip:not([data-ms="D2"]),body[data-ms="D3"] .chip:not([data-ms="D3"]){opacity:.18}
+.dcard:hover{border-color:var(--ink2)}
+
+.dsec{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin:14px 0;display:flex;flex-direction:column;gap:10px;background:var(--sunk)}
+.dh{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 14px;border-bottom:1px solid var(--line);padding-bottom:6px}
+.dn{font-weight:700;font-size:15px;color:var(--ink)}.dp{font-variant-numeric:tabular-nums;color:var(--ink2)}.dd{color:var(--muted);font-size:12px}
+</style>
+<div class="wrap">
+  <header>
+    <h1>iTalent 进行中</h1>
+    <span class="sub" id="at"></span>
+    <div class="kpis" id="kpis"></div>
+  </header>
+<div id="ms" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;margin:12px 0"></div>
+<section class="flow" style="margin:14px 0"><details style="background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 16px">
+<summary style="cursor:pointer;font-weight:600;font-size:14px">当前开发流程（截至 10-13 09:30Z）</summary>
+<div style="font-size:13px;line-height:1.65;color:var(--ink2);margin-top:8px">
+<p style="margin:6px 0"><b>一、目标</b>　先做演示用标杆产品（DEC-456）。2～3 天出 R1+R3 可演示版，7 天出 R1+R2+R3，20 天覆盖绿 + 蓝两层模块（DEC-457）。契约按 L3 设计，实现先到 L2。</p>
+<p style="margin:6px 0 2px"><b>二、一条需求的流转</b></p>
+<ol style="margin:0;padding-left:22px">
+<li><b>取证</b>：本机 Claude 取证窗口截原站页面（只读，截图留本机）；远程 Codex Sol 补交互细节文字规格，产出经局域网拉回本机。</li>
+<li><b>规划 / 设计</b>：总编排（Claude Opus）写规划、拆片；契约级设计走重流程（Opus 设计、Codex Astra 审）。</li>
+<li><b>派发</b>：派发审查窗口（03，Opus）通读设计、写提示词，派给开发方——前端交 Codex Astra；后端交 Claude（Opus 设计、Sonnet 实现，DEC-469）。</li>
+<li><b>开发</b>（DEC-469 / 472）：前端——Codex Astra，新线程；后端新任务——Claude，由 03 开云端会话承接（Opus 设计、Sonnet 实现），不用子代理。在途和返工的 Codex 后端 PR 由原线程做完。Claude 在做：#305 F-106、#307 权限快照、#308 F-116、#309 演示数据、#310 F-120。</li>
+<li><b>审查</b>：Codex 审一轮，最多两轮（演示层轻流程）；只有 P0 / P1、功能错误、数据错误挡合并，其余记待办。Claude 写的 PR 必须经 Codex 独立审查。</li>
+<li><b>合并</b>：合并队列窗口（Sonnet）在云端合入 main → 关闭 / 重开 PR 触发完整 CI → 全绿后复核再合并。</li>
+<li><b>记录</b>：总编排补恢复点（RP）、登记决定（DEC）；看板窗口更新看板。</li>
+</ol>
+<p style="margin:8px 0 4px"><b>三、当前谁负责什么</b>（截至 10-13 09:30Z，依据 PR 与提交记录）</p>
+<ul style="margin:0 0 6px;padding-left:22px">
+<li><b>开发</b>（DEC-469 / 472）：前端——Codex Astra，新线程；后端新任务——Claude，由 03 开云端会话承接（Opus 设计、Sonnet 实现），不用子代理。在途和返工的 Codex 后端 PR 由原线程做完。Claude 在做：#305 F-106、#307 权限快照、#308 F-116、#309 演示数据、#310 F-120。</li>
+<li><b>审查</b>：03 派发审查窗口（Opus）派活并发起独立 Codex 审查——后端 Astra high，前端与增量 Sol。Claude 写的 PR（如 #299）必须经 Codex 审（DEC-441）。超轮次破例由总编排 / 用户定。</li>
+<li><b>合并</b>：05 合并队列窗口（Sonnet）——队首完整 CI、锁内复核、合并；CI 红由它判断后派回开发。</li>
+<li><b>取证</b>：02 取证窗口（Claude）当前待命，最近一次取证提交 10-12 00:16Z（Q-M0-178）；本机 R3 参考图 98 张已截完；远程 Codex Sol 已完成人才盘点试点（10-13 02:50）和 R1a 参考包。目前没有进行中的取证任务，新取证待总编排派。</li>
+<li><b>其他</b>：00 总编排（决策、规划、DEC / RP、对用户）；01 进度 &amp; 看板（本窗口，转发事件、更新看板）。</li>
+</ul>
+<p style="margin:6px 0"><b>四、需要用户的地方</b>　拍板 DEC；Codex 到 99% 时决定是否用重置卡；远程 Codex 任务在 Codex 应用里发起；输入任何密码。</p>
+</div></details></section>
+  <div class="banner" id="banner" hidden></div>
+  <section><h2>卡点与待你决定</h2><div id="stuck"></div></section>
+  <section>
+    <h2>主线</h2>
+    <div class="legend" id="legend"></div>
+    <div id="lines" style="display:flex;flex-direction:column;gap:10px;margin-top:8px"></div>
+  </section>
+  <section><h2>支撑任务</h2><div id="support" style="display:flex;flex-direction:column;gap:10px"></div></section>
+  <section><h2>其他在途（修正任务等）</h2><div id="others"></div></section>
+  <section><h2>今日已合并</h2><div id="today"></div></section>
+  <section><details><summary>最近动态</summary><ul class="log" id="log"></ul></details></section>
+</div>
+<script>
+const DATA = __DATA__;
+const L = DATA.live || {open: [], merged: {}, today: [], at: "—"};
+const M = DATA.main || {lines: [], support: [], asks: []};
+const OPEN = {}; (L.open || []).forEach(p => OPEN[p.n] = p);
+const NAME = {done:"已合并",review:"审查中",rework:"返工中",merge:"待合并",queue:"待发起审查",ci:"等 CI",dev:"开发中",decide:"待你决定",conflict:"与 main 冲突",cired:"CI 红",assigned:"已派",ready:"可派（前置已满足）",todo:"待派",wait:"等前置",paused:"暂停"};
+const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const dur = m => m == null ? "" : m >= 1440 ? Math.floor(m/1440) + " 天" : m >= 60 ? Math.floor(m/60) + " 小时" + (m%60 ? (m%60) + " 分" : "") : m + " 分";
+const used = new Set();
+let LKEYS = {};  // 当前任务线 k → 步骤，供 after 依赖判定
+function stepDone(st){ return st && (st.s === "done" || (st.pr && L.merged && L.merged[st.pr])); }
+function stepState(st){
+  if (st.s === "done") return {s:"done"};
+  if (!st.pr && st.after && st.s !== "paused" && st.s !== "assigned"){
+    const left = st.after.filter(k => !stepDone(LKEYS[k]));
+    return left.length ? {s:"wait", left} : {s:"ready"};
+  }
+  if (st.pr){
+    used.add(st.pr);
+    if (L.merged && L.merged[st.pr]) return {s:"done"};
+    const o = OPEN[st.pr];
+    if (o) return {s:o.s, o};
+  }
+  return {s: st.s || "todo"};
+}
+const STG = {done:"ddd", merge:"dda", conflict:"ddb", cired:"ddb", review:"dap", queue:"dpp", ci:"dpp", rework:"app", dev:"app", decide:"abp", assigned:"app"};
+function chip(st){
+  const x = stepState(st), o = x.o, dsx = (DATA.msof || {})[st.k];
+  const tip = [st.k + " " + st.n, NAME[x.s] || x.s, st.pr ? "#" + st.pr : "", dsx ? dsx : "", x.left ? "等 " + x.left.join(" / ") : "", x.s === "ready" ? "前置已全部合并，可派" : "", o ? o.why + (o.idle < 1e5 ? " · " + dur(o.idle) + "无动静" : "") : "", st.note].filter(Boolean).join(" · ");
+  const g = (STG[x.s] || "ppp").split("").map(c => `<i class="${c}"></i>`).join("");
+  return `<span class="chip ${x.s}${o && o.stuck ? " stuck" : ""}"${dsx ? ` data-ms="${dsx}"` : ""} title="${esc(tip)}"><span class="k">${esc(st.k)}</span>${esc(st.n)}${st.pr ? `<span class="p">#${st.pr}</span>` : ""}${dsx ? `<span class="dtag">${dsx}</span>` : ""}<span class="stg" title="开发 → 审查 → 合并">${g}</span></span>`;
+}
+function block(l, summaryOnly){
+  const gs = l.groups || (l.steps ? [{n:"", steps:l.steps}] : []);
+  const all = [].concat(...gs.map(g => g.steps));
+  all.forEach(st => LKEYS[st.k] = st);
+  const ss = all.map(stepState);
+  const done = ss.filter(x => x.s === "done").length, act = ss.filter(x => !["done","todo","wait","paused","assigned","ready"].includes(x.s)).length;
+  const tot = all.length;
+  const hot = all.map((st,i) => [st, ss[i]]).filter(p => p[1].o).map(p => (p[1].o.stuck ? "<b>" : "") + esc(p[0].k) + " " + (NAME[p[1].s]||p[1].s) + (p[1].o.stuck ? "</b>" : "")).join("；");
+  const nextTodo = all.find((st,i) => ["ready","todo","assigned","wait"].includes(ss[i].s));
+  const idleLine = tot && !act && done < tot;
+  const focus = tot === 0 ? "已完成" : hot ? "在途：" + hot : idleLine ? "<b>当前没有在途 PR</b>" + (nextTodo ? "，下一步 " + esc(nextTodo.k + " " + nextTodo.n) + (nextTodo.note ? "（" + esc(nextTodo.note) + "）" : "") : "") : "";
+  const groups = summaryOnly ? `<div class="pre">明细见「iTalent L3 深度线」页</div>` : gs.map(g => `<div class="grp"><div class="gn">${esc(g.n)}</div><div class="chips">${g.steps.map(chip).join("")}</div></div>`).join("");
+  return `<div class="line"><div class="lh"><span class="nm">${esc(l.name)}</span>` +
+    (tot ? `<span class="bar"><i class="d" style="width:${100*done/tot}%"></i><i class="a" style="width:${100*act/tot}%"></i></span><span class="pct">${done}/${tot} 已合并${act ? " · " + act + " 在途" : ""}</span>` : "") +
+    (l.why ? `<span class="pre">${esc(l.why)}</span>` : "") + `</div>` +
+    (focus ? `<div class="focus">${focus}</div>` : "") + (l.pre ? `<div class="pre">前置：${esc(l.pre)}</div>` : "") + groups + `</div>`;
+}
+(M.lines || []).concat(M.support || []).forEach(l => (l.groups || (l.steps ? [{steps: l.steps}] : [])).forEach(g => g.steps.forEach(st => LKEYS[st.k] = st)));
+const MSOF = DATA.msof || {}, MSX0 = DATA.prog && DATA.prog.ms, L3IDS = ["T02", "T03", "T04", "T05", "T07"];
+const filt = (l, D) => Object.assign({}, l, {groups: (l.groups || []).map(g => ({n: g.n, steps: g.steps.filter(s => MSOF[s.k] === D)})).filter(g => g.steps.length)});
+if (MSX0 && DATA.page !== "l3") {
+  const dd0 = dl => Math.ceil((Date.parse(dl + "T23:59:59+08:00") - Date.now()) / 864e5);
+  document.getElementById("lines").innerHTML = ["D1", "D2", "D3"].map(D => {
+    const m = MSX0[D], n = dd0(m.dl);
+    const parts = (M.lines || []).map(l => { const f = filt(l, D); if (!f.groups.length) return ""; return L3IDS.includes(l.id) ? block(f, true) : block(f); }).join("");
+    return `<div class="dsec" id="sec-${D}"><div class="dh"><span class="dn">${esc(m.t)}</span><span class="dp">${m.done}/${m.tot} 已合并</span><span class="dd">${esc(m.dl.slice(5))} 截止 · ${n >= 0 ? "还有 " + n + " 天" : "已逾期 " + (-n) + " 天"}</span></div>${parts || `<div class="pre">没有任务。</div>`}</div>`;
+  }).join("");
+} else {
+  document.getElementById("lines").innerHTML = (M.lines || []).map(b => block(b)).join("");
+}
+const MILE = DATA.mile, MSX = DATA.prog && DATA.prog.ms;
+if (MILE && MSX) {
+  MILE.forEach(r => { if (!LKEYS[r.st.k]) LKEYS[r.st.k] = r.st; });
+  const dd = dl => Math.ceil((Date.parse(dl + "T23:59:59+08:00") - Date.now()) / 864e5);
+  const ORDER = ["R1", "R2", "R3", "蓝", "底座"];
+  document.getElementById("ms").innerHTML = ["D1", "D2", "D3"].map(k => {
+    const m = MSX[k], n = dd(m.dl), rows = MILE.filter(r => r.ms === k), pct = m.tot ? Math.round(m.done * 100 / m.tot) : 0;
+    const modTot = {}, modDone = {};
+    rows.forEach(r => { modTot[r.mod] = (modTot[r.mod] || 0) + 1; if (stepState(r.st).s === "done") modDone[r.mod] = (modDone[r.mod] || 0) + 1; });
+    const mods = ORDER.filter(o => modTot[o]).map(o => o + " " + (modDone[o] || 0) + "/" + modTot[o]).join(" · ");
+    return `<div class="kpi dcard" onclick="var e=document.getElementById('sec-${k}');if(e)e.scrollIntoView({behavior:'smooth'})" title="点一下跳到 ${k} 分区" style="cursor:pointer;padding:8px 12px"><div style="color:var(--ink);font-weight:600;font-size:13px">${esc(m.t)}</div><div class="mbig">${m.done}/${m.tot}<small>已合并 / 计划（${pct}%）</small></div><div>${esc(mods)}</div><div><b>${m.act}</b> 在审 / 返工　<b>${m.todo}</b> 未开工</div><div>${esc(m.dl.slice(5))} 截止　<b style="color:${n <= 1 ? "var(--bad)" : "var(--ink)"}">${n >= 0 ? "还有 " + n + " 天" : "已逾期 " + (-n) + " 天"}</b></div></div>`;
+  }).join("");
+}
+document.getElementById("support").innerHTML = (M.support || []).map(block).join("");
+const legendKeys = ["done","review","merge","queue","dev","rework","decide","conflict","cired","assigned","ready","todo","wait","paused"];
+document.getElementById("legend").innerHTML = legendKeys.map(k => `<span class="chip ${k}">${NAME[k]}</span>`).join("") + `<span>红框 = 卡住（冲突 / CI 红 / 待决定 / 超时无动静）；把鼠标停在格子上看详情</span>`;
+const stuck = (L.open || []).filter(p => p.stuck).sort((a,b) => (b.s === "decide") - (a.s === "decide") || b.idle - a.idle);
+const asks = (M.asks || []).map(a => `<div class="sk ask"><div class="h"><b>待你</b><span>${esc(a.where)}</span></div><div class="w">${esc(a.t)}</div><div class="t">${esc(a.note || "")}</div></div>`);
+const sks = stuck.map(p => `<div class="sk ${p.s}"><div class="h"><b>#${p.n}</b><span>${esc(NAME[p.s] || p.s)}${p.idle < 1e5 ? " · " + dur(p.idle) + "无动静" : ""}</span></div><div class="w">${esc(p.why)}</div><div class="t">${esc(p.t)}</div></div>`);
+document.getElementById("stuck").innerHTML = (asks.length + sks.length) ? `<div class="sks">${asks.concat(sks).join("")}</div>` : `<div class="none">当前没有卡住的 PR，也没有待你决定的事项。</div>`;
+const others = (L.open || []).filter(p => !used.has(p.n));
+document.getElementById("others").innerHTML = others.length ? `<div class="tblw"><table class="tbl"><tr><th>PR</th><th>内容</th><th>状态</th><th>轮次</th><th>无动静</th></tr>` +
+  others.map(p => `<tr><td class="mono">#${p.n}</td><td>${esc(p.t)}</td><td><span class="chip ${p.s}${p.stuck ? " stuck" : ""}">${esc(NAME[p.s] || p.s)}</span> ${esc(p.why)}</td><td>${p.r}</td><td>${dur(p.idle)}</td></tr>`).join("") + `</table></div>` : `<div class="none">没有主线外的在途 PR。</div>`;
+const td = L.today || [];
+document.getElementById("today").innerHTML = td.length ? `<div class="tblw"><table class="tbl">` + td.map(m => `<tr><td class="mono">${esc(m.at)}Z</td><td class="mono">#${m.n}</td><td>${esc(m.t)}</td></tr>`).join("") + `</table></div>` : `<div class="pre">今天还没有合并。</div>`;
+if (M.banner) { const b = document.getElementById("banner"); b.textContent = M.banner; b.hidden = false; }
+document.getElementById("log").innerHTML = (DATA.log || []).map(x => `<li>${esc(x[0])}　${esc(x[1])}</li>`).join("");
+const nStuck = stuck.length + (M.asks || []).length, nRev = (L.open || []).filter(p => p.s === "review").length, nWork = (L.open || []).filter(p => p.s === "rework").length;
+const PG = DATA.prog, pgd = PG && PG.prev ? [PG.done - PG.prev[0], PG.tot - PG.prev[1]] : null;
+const sg = n => (n > 0 ? "+" : "") + n;
+document.getElementById("kpis").innerHTML = (PG ? `<span class="kpi" title="主线 + 支撑任务的计划 PR（不含暂停项）；分子 = 已合并${pgd ? `；${esc(PG.since)} 起较上次读数（${PG.prev[0]}/${PG.prev[1]}）：已完成 ${sg(pgd[0])}，总数 ${sg(pgd[1])}` : ""}"><b>${PG.done}/${PG.tot}</b>已完成 / 计划 PR${pgd ? `<em class="dl">${pgd[0] ? "完成 " + sg(pgd[0]) : ""}${pgd[0] && pgd[1] ? " · " : ""}${pgd[1] ? "总数 " + sg(pgd[1]) : ""}</em>` : ""}</span>` : "") + `<span class="kpi${nStuck ? " bad" : ""}"><b>${nStuck}</b>卡点</span><span class="kpi"><b>${nRev}</b>审查中</span><span class="kpi"><b>${nWork}</b>返工</span><span class="kpi"><b>${(L.open || []).length}</b>在途 PR</span><span class="kpi"><b>${td.length}</b>今日合并</span>`;
+document.getElementById("at").textContent = "GitHub 状态取自 " + (L.at || "—") + "（发布时刷新）";
+</script>

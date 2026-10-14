@@ -1,3 +1,6 @@
+import { planImportEmployment } from './import-employment.js';
+import type { OrgUpdateOptions } from './write-service.js';
+import { requiresEmploymentChoice } from './employment-linkage.js';
 import {
   and,
   eq,
@@ -27,6 +30,7 @@ export interface OrgImportRow {
   readonly orgId?: string;
   readonly expectedRevision?: number;
   readonly startDate?: string;
+  readonly addEmployment?: boolean;
 }
 
 export interface OrgImportReceipt {
@@ -50,8 +54,16 @@ export async function importOrganizations(
   ctx: OrgWriteContext,
   rows: readonly OrgImportRow[],
   authorizeRow?: (row: OrgImportRow, targetId: string | undefined, rowIndex: number) => Promise<void>,
+  options: OrgUpdateOptions = {},
 ) {
   assertBatch(rows);
+  const initial = await importSnapshot(tx, ctx);
+  const employmentBatch = await planImportEmployment(
+    tx,
+    { ...ctx, scope: options.employmentScope },
+    rows,
+    initial.mappings,
+  );
   await ensureOrgSetup(tx, ctx);
   const snapshot = await importSnapshot(tx, ctx);
   assertRequiredRevisions(rows, snapshot);
@@ -64,9 +76,16 @@ export async function importOrganizations(
     const reason = preflightConflict(row, targetId, snapshot, seenSources, seenCodes);
     seenSources.add(row.sourceCode);
     seenCodes.add(row.code);
-    const result = reason
-      ? conflict(row, reason)
-      : await importRow(tx, ctx, row, targetId, snapshot.mappings.has(row.sourceCode));
+    if (reason) throw rowError(new AppError('CONFLICT', '导入行冲突，整批未保存', { reason }), row, rowIndex);
+    let result: OrgImportReceipt;
+    try {
+      result = await importRow(tx, ctx, row, targetId, snapshot.mappings.has(row.sourceCode), {
+        ...options,
+        employmentBatch,
+      });
+    } catch (error) {
+      throw rowError(error, row, rowIndex);
+    }
     await saveReceipt(tx, ctx, rowIndex, result, result.orgId ?? targetId ?? row.parentId);
     results.push(result);
     if (result.orgId && result.status !== 'conflict') {
@@ -153,67 +172,65 @@ async function importRow(
   row: OrgImportRow,
   targetId: string | undefined,
   mapped: boolean,
+  options: OrgUpdateOptions,
 ): Promise<OrgImportReceipt> {
-  try {
-    // 一行失败须撤销该行的版本、层级、审计和映射，随后仍可在同一命令事务内继续其它行。
-    return await tx.transaction(async (savepoint) => {
-      const input = { name: row.name, code: row.code, parents: { admin: { parentId: row.parentId } } };
-      const organization = targetId
-        ? await updateOrganization(savepoint, { ...ctx, expectedRevision: row.expectedRevision! }, targetId, {
-            ...input,
-            effectiveDate: row.startDate ?? tenantLocalDate(ctx.now, ctx.timezone),
-          })
-        : await createOrganization(
-            savepoint,
-            { ...ctx, expectedRevision: 0 },
-            // DEC-130：新建行的 startDate 即原站首版生效日，也就是设立日期；不填时设立日期缺省为租户当天。
-            {
-              ...input,
-              ...(row.startDate === undefined ? {} : { establishedOn: row.startDate }),
-            },
-          );
-      if (!mapped) {
-        await savepoint.insert(orgImportMappings).values({
-          tenantId: ctx.tenantId,
-          sourceCode: row.sourceCode,
-          orgId: organization.id,
-        });
-      }
-      return {
-        sourceCode: row.sourceCode,
-        code: organization.code,
-        status: targetId ? 'updated' : 'created',
-        orgId: organization.id,
-      };
+  const input = { name: row.name, code: row.code, parents: { admin: { parentId: row.parentId } } };
+  const effectiveDate = row.startDate ?? tenantLocalDate(ctx.now, ctx.timezone);
+  const [current] = targetId ? await loadOrgSnapshot(tx, ctx.tenantId, effectiveDate, undefined, { id: targetId }) : [];
+  // DEC-207（更正）：改名/行政上级须显式选择；非触发行忽略控制项。校验及写入复用单条变更。
+  const choice =
+    current && requiresEmploymentChoice(current, { ...input, effectiveDate })
+      ? { addEmployment: row.addEmployment }
+      : {};
+  const organization = targetId
+    ? await updateOrganization(
+        tx,
+        { ...ctx, expectedRevision: row.expectedRevision! },
+        targetId,
+        {
+          ...input,
+          ...choice,
+          effectiveDate,
+        },
+        options,
+      )
+    : await createOrganization(
+        tx,
+        { ...ctx, expectedRevision: 0 },
+        {
+          ...input,
+          // DEC-130：新建行的 startDate 是设立日期，不填缺省为租户当天。
+          ...(row.startDate === undefined ? {} : { establishedOn: row.startDate }),
+        },
+      );
+  if (!mapped)
+    await tx.insert(orgImportMappings).values({
+      tenantId: ctx.tenantId,
+      sourceCode: row.sourceCode,
+      orgId: organization.id,
     });
-  } catch (error) {
-    const reason = businessConflict(error);
-    if (!reason) throw error;
-    return conflict(row, reason);
-  }
+  return {
+    sourceCode: row.sourceCode,
+    code: organization.code,
+    status: targetId ? 'updated' : 'created',
+    orgId: organization.id,
+  };
 }
 
-function businessConflict(error: unknown): string | undefined {
-  if (
-    error instanceof AppError &&
-    ['VALIDATION_FAILED', 'CONFLICT', 'REVISION_CONFLICT', 'NOT_FOUND', 'FORBIDDEN'].includes(error.code)
-  ) {
-    return error.code;
-  }
-  switch (pgErrorCode(error)) {
-    case '23505':
-      return 'CODE_OR_MAPPING_CONFLICT';
-    case '23503':
-      return 'INVALID_REFERENCE';
-    case '23514':
-      return 'VALIDATION_FAILED';
-    default:
-      return undefined;
-  }
-}
-
-function conflict(row: OrgImportRow, reason: string): OrgImportReceipt {
-  return { sourceCode: row.sourceCode, code: row.code, status: 'conflict', reason };
+/** 不吞掉行内错误：命令事务撤销整批写入，行号从 0 起，保留原业务码与字段错误。 */
+function rowError(error: unknown, row: OrgImportRow, rowIndex: number): unknown {
+  const details = { rowIndex, sourceCode: row.sourceCode };
+  if (error instanceof AppError)
+    return new AppError(error.code, error.message, {
+      ...(typeof error.details === 'object' && error.details !== null ? error.details : {}),
+      ...details,
+      // 审计任务沿用统一导入错误契约（row 从 1 起）；API 同时保留原来的 0 起 rowIndex。
+      errors: [{ row: rowIndex + 1, code: error.code, details: error.details }],
+    });
+  const code = pgErrorCode(error);
+  if (code === '23505') return new AppError('CONFLICT', '导入编码或映射冲突', details);
+  if (code === '23503' || code === '23514') return new AppError('VALIDATION_FAILED', '导入行数据不合法', details);
+  return error;
 }
 
 /** 逐行回执的归属：导入的组织；冲突行还没有组织时取上级组织（与导入时按上级授权一致，PR #75 第三轮 P1-2）。 */

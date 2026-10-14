@@ -29,7 +29,7 @@ describe('AC-ORG-10~11 DEC-021 组织全称与生效日期', () => {
     const grandchild = await session.create('团队B', { parents: { admin: { parentId: child.id } } });
     const response = await session.request('PATCH', `/organizations/${group.id}`, {
       ifMatch: group.revision,
-      body: { name: '集团X', effectiveDate: '2026-10-02' },
+      body: { addEmployment: false, name: '集团X', effectiveDate: '2026-10-02' },
     });
     expect(response.status).toBe(200);
     const renamed = (await response.json()) as Organization;
@@ -47,7 +47,7 @@ describe('AC-ORG-10~11 DEC-021 组织全称与生效日期', () => {
     const child = await session.create('未来改名部门', { parents: { admin: { parentId: group.id } } });
     const rename = await session.request('PATCH', `/organizations/${group.id}`, {
       ifMatch: group.revision,
-      body: { name: '未来改名集团V2', effectiveDate: '2026-10-20' },
+      body: { addEmployment: false, name: '未来改名集团V2', effectiveDate: '2026-10-20' },
     });
     expect(rename.status).toBe(200);
     const changed = await session.request('PATCH', `/organizations/${child.id}`, {
@@ -84,7 +84,7 @@ describe('AC-ORG-10~11 DEC-021 组织全称与生效日期', () => {
 
     const response = await session.request('PATCH', `/organizations/${child.id}`, {
       ifMatch: child.revision,
-      body: { name: '部门X', effectiveDate: '2026-10-02' },
+      body: { addEmployment: false, name: '部门X', effectiveDate: '2026-10-02' },
     });
     expect(response.status).toBe(200);
     const updated = (await response.json()) as Organization;
@@ -115,7 +115,11 @@ describe('AC-ORG-11 上级失效后已停用下级的全称（PR #54 第三轮�
     const parent = await world.org('失效上级');
     const child = await world.org('失效下级', parent.id);
     const root = String(parent.fullName).split('/')[0];
-    const renamed = await world.patchOrg(parent, { name: '失效上级V2', effectiveDate: '2026-10-02' });
+    const renamed = await world.patchOrg(parent, {
+      addEmployment: false,
+      name: '失效上级V2',
+      effectiveDate: '2026-10-02',
+    });
     expect(renamed.status, await renamed.clone().text()).toBe(200);
     const expired = await world.patchOrg(
       { id: parent.id, revision: 2 },
@@ -155,7 +159,11 @@ describe('AC-ORG-10/11 人员经历快照的部门全称与组织列表同一口
     );
     const parent = await world.org('经历上级', world.tenant.id, { establishedOn: '2026-09-01' });
     const department = await world.org('经历部门', parent.id, { establishedOn: '2026-09-01' });
-    const renamed = await world.patchOrg(parent, { name: '经历上级V2', effectiveDate: '2026-09-20' });
+    const renamed = await world.patchOrg(parent, {
+      addEmployment: false,
+      name: '经历上级V2',
+      effectiveDate: '2026-09-20',
+    });
     expect(renamed.status, await renamed.clone().text()).toBe(200);
     for (const [name, date] of [
       ['改名前入职', '2026-09-10'],

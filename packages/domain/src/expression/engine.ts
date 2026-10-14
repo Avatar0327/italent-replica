@@ -5,7 +5,7 @@
 import { childrenOf, type CallNode, type ExprNode, type Program } from './ast.js';
 import { isValidTimeZone } from '../tenant-time.js';
 import type { BatchContext, EvaluationCalendar, EvaluationContext } from './context.js';
-import { parseDateText } from './dates.js';
+import { instantToParts, parseDateText } from './dates.js';
 import { Evaluator } from './evaluator.js';
 import {
   ComputationError,
@@ -17,9 +17,17 @@ import {
 } from './failures.js';
 import { parseFormula } from './parser.js';
 import type { SyntaxIssue } from './lexer.js';
-import type { SubjectReader } from './ports.js';
-import { arityOf, createDefaultRegistry, type FunctionRegistry } from './registry.js';
-import { formatIsoLike, type ExprValue, type PlainValue } from './values.js';
+import type { RankingTables } from './functions/ranking.js';
+import type { RankingPort, SubjectReader } from './ports.js';
+import { arityOf, createDefaultRegistry, type FunctionRegistry, type FunctionSpec } from './registry.js';
+import { NO_RECORDS, TypeInference, verdictFor, withRecordObjects } from './typing.js';
+import {
+  formatIsoLike,
+  isMultiOptionField,
+  type ExprValue,
+  type ExpressionFieldKind,
+  type PlainValue,
+} from './values.js';
 
 export type ValidationResult =
   | {
@@ -29,8 +37,20 @@ export type ValidationResult =
       readonly fields: readonly string[];
       /** 用到的函数规范名，去重。 */
       readonly functions: readonly string[];
+      /** 不阻断保存的提示（类型不确定等，DEC-287），按出现位置排序。 */
+      readonly warnings: readonly ValidationWarning[];
     }
   | { readonly ok: false; readonly errors: readonly SyntaxIssue[] };
+
+/**
+ * 保存提示：统一类型推导得不出确定类型、而该位置要求特定类型时给出（DEC-287①），能保存，计算时按实际值判断，
+ * 不符合时明确计算失败（不静默放行）。
+ */
+export interface ValidationWarning extends SourcePosition {
+  readonly code: 'TYPE_UNCERTAIN';
+  readonly message: string;
+  readonly length: number;
+}
 
 export interface ValidationOptions {
   readonly registry?: FunctionRegistry;
@@ -39,28 +59,49 @@ export interface ValidationOptions {
    * “如需相减，请在减号两侧加空格”，DEC-228）；不传时只查语法、函数名、参数个数，引用到的字段在结果的 fields 里。
    */
   readonly isKnownField?: (path: string) => boolean;
+  /**
+   * 字段类型目录：完整字段路径或短字段名的静态类型，不知道时返回 undefined。统一类型推导据此给字段定类型
+   * （DEC-287①）：日期参数确定非日期时报错、不确定时提示；第 N 年 / 第 N 次据此区分过滤条件与 N。
+   * 取数函数参数里的记录字段（考核结果.* 等）不按它推导。
+   */
+  readonly fieldKind?: (path: string) => ExpressionFieldKind | undefined;
+  /** 存储模式（F-082）：公式是带字段句柄的规范文本；句柄就是字段目录里的字段路径。 */
+  readonly storage?: boolean;
+  /** 输入模式识别占位符 `〔不可见字段〕`（F-082 新路径才开；缺省不识别，B5 路径逐字不变）。 */
+  readonly placeholders?: boolean;
+  /**
+   * 排序诊断的显示名称：计算项目的字段键（存储模式下是句柄）→ 对外文案里的名称。只影响文案，
+   * 结构化诊断的 fields 仍是字段键（F-082 契约 §4）。缺省原样显示字段键。
+   */
+  readonly display?: (key: string) => string;
 }
 
-const NO_RECORDS: ReadonlySet<string> = new Set();
-
 /**
- * 保存时的静态检查：函数名、参数个数；传入字段目录时再查未知字段。Def 变量只在定义之后可用；
- * 取数函数参数里的记录对象字段（如 考核结果.年度）按端口记录求值，不按对象字段目录检查（FunctionSpec.recordObjects）。
+ * 保存时的静态检查：函数名、参数个数；传入字段目录时再查未知字段；参数类型只认统一类型推导（DEC-287①）。
+ * Def 变量只在定义之后可用；取数函数参数里的记录对象字段（如 考核结果.年度）按端口记录求值，不按对象字段目录检查
+ * （FunctionSpec.recordObjects）。
  */
 class ReferenceCollector {
   readonly fields = new Set<string>();
   readonly functions = new Set<string>();
   readonly issues: SyntaxIssue[] = [];
+  readonly warnings: ValidationWarning[] = [];
   private readonly defined = new Set<string>();
+  private readonly typing: TypeInference;
 
   constructor(
     private readonly registry: FunctionRegistry,
     private readonly isKnownField?: (path: string) => boolean,
-  ) {}
+    private readonly fieldKind?: (path: string) => ExpressionFieldKind | undefined,
+    private readonly multiOptionOnly = false,
+  ) {
+    this.typing = new TypeInference({ registry, fieldKind });
+  }
 
   collect(program: Program): this {
     for (const definition of program.definitions) {
       this.visit(definition.value, NO_RECORDS);
+      if (!this.multiOptionOnly) this.typing.define(definition.name, definition.value);
       this.defined.add(definition.name);
     }
     this.visit(program.body, NO_RECORDS);
@@ -77,7 +118,12 @@ class ReferenceCollector {
 
   private reference(path: string, pos: SourcePosition, fromRecord = false): void {
     this.fields.add(path);
-    if (fromRecord || !this.isKnownField) return;
+    // DEC-314②：连未执行分支也拒绝；取数记录字段不使用对象字段目录（DEC-287）。
+    if (!fromRecord && isMultiOptionField(this.fieldKind, path)) {
+      const message = `多选字段 ${path} 暂不允许参与公式（🟡 待取证，DEC-314）`;
+      return void this.issues.push({ code: 'ARGUMENT_TYPE', message, length: path.length, ...pos });
+    }
+    if (this.multiOptionOnly || fromRecord || !this.isKnownField) return;
     let known: boolean;
     try {
       known = this.isKnownField(path);
@@ -93,6 +139,11 @@ class ReferenceCollector {
 
   private call(node: CallNode, records: ReadonlySet<string>): void {
     const spec = this.registry.resolve(node.name);
+    if (this.multiOptionOnly) {
+      const inner = withRecordObjects(records, spec);
+      for (const arg of node.args) this.visit(arg, inner);
+      return;
+    }
     const length = node.name.length;
     if (!spec) {
       this.issues.push({ code: 'UNKNOWN_FUNCTION', message: `未知函数 ${node.name}`, length, ...node.pos });
@@ -103,25 +154,85 @@ class ReferenceCollector {
         const expected = max === Number.POSITIVE_INFINITY ? ' 个以上' : `～${max} 个`;
         const message = `函数 ${node.name} 的参数个数不对：需要 ${min}${expected}`;
         this.issues.push({ code: 'ARGUMENT_COUNT', message, length, ...node.pos });
+      } else {
+        this.checkArguments(node, spec, records);
       }
     }
-    const inner = spec?.recordObjects?.length ? new Set([...records, ...spec.recordObjects]) : records;
+    const inner = withRecordObjects(records, spec);
     for (const arg of node.args) this.visit(arg, inner);
+  }
+
+  /**
+   * 参数类型检查只认统一类型推导（DEC-287①）：
+   * - 日期参数（dateParams，DEC-270②）：确定不是日期（含 IF 各分支都不是日期）→ 报错，原站【检查】的原文
+   *   “AddDays(,)函数的第1个参数应为日期或日期时间字段或常量”；不确定 → 提示，计算时不是日期则计算失败。
+   * - 函数自己的规则（checkArgs，如第 N 年 / 第 N 次的参数角色）：error 报错，warning 提示。
+   */
+  private checkArguments(node: CallNode, spec: FunctionSpec, records: ReadonlySet<string>): void {
+    const at = { length: node.name.length, ...node.pos };
+    for (const index of spec.dateParams ?? []) {
+      const arg = node.args[index];
+      if (!arg) continue;
+      const verdict = verdictFor(this.typing.infer(arg, records), 'date');
+      if (verdict === 'mismatch') {
+        const message = `${node.name}函数的第${index + 1}个参数应为日期或日期时间字段或常量`;
+        this.issues.push({ code: 'ARGUMENT_TYPE', message, ...at });
+      } else if (verdict === 'uncertain') {
+        const message = `${node.name}函数的第${index + 1}个参数类型不确定（应为日期），计算时不是日期将计算失败`;
+        this.warnings.push({ code: 'TYPE_UNCERTAIN', message, ...at });
+      }
+    }
+    const inner = withRecordObjects(records, spec);
+    for (const issue of spec.checkArgs?.(node.args, (arg) => this.typing.infer(arg, inner)) ?? []) {
+      const message = `${node.name}：${issue.message}`;
+      if (issue.severity === 'error') this.issues.push({ code: 'ARGUMENT_TYPE', message, ...at });
+      else this.warnings.push({ code: 'TYPE_UNCERTAIN', message, ...at });
+    }
   }
 }
 
-/** 保存时校验：语法 + 函数名 + 参数个数（+ 传入字段目录时的未知字段），返回报错行 / 列（复刻改进，`26` §8.1）。 */
+const byOffset = (a: SourcePosition, b: SourcePosition) => a.offset - b.offset;
+
+/**
+ * 保存时校验：语法 + 函数名 + 参数个数 + 参数类型（统一类型推导，DEC-287）（+ 传入字段目录时的未知字段），
+ * 返回报错行 / 列（复刻改进，`26` §8.1）；类型不确定的只给提示（warnings），不阻断保存。
+ */
 export function validateFormula(source: string, options: ValidationOptions = {}): ValidationResult {
-  const parsed = parseFormula(source);
+  const parsed = parseFormula(source, {
+    stored: options.storage === true,
+    placeholders: options.placeholders === true,
+  });
   if (!parsed.ok) return parsed;
   const registry = options.registry ?? createDefaultRegistry();
-  const collected = new ReferenceCollector(registry, options.isKnownField).collect(parsed.program);
-  if (collected.issues.length) return { ok: false, errors: collected.issues.sort((a, b) => a.offset - b.offset) };
-  return { ok: true, program: parsed.program, fields: [...collected.fields], functions: [...collected.functions] };
+  const collected = new ReferenceCollector(registry, options.isKnownField, options.fieldKind).collect(parsed.program);
+  if (collected.issues.length) return { ok: false, errors: collected.issues.sort(byOffset) };
+  return {
+    ok: true,
+    program: parsed.program,
+    fields: [...collected.fields],
+    functions: [...collected.functions],
+    warnings: collected.warnings.sort(byOffset),
+  };
 }
 
 export type EvaluationResult =
   { readonly ok: true; readonly value: ExprValue } | { readonly ok: false; readonly failure: ComputationFailure };
+
+/** R3-T04 C-07（DEC-309③）：使用方决定目标字段适配与预先授权的排名总体；不传时保留旧行为。 */
+export interface BatchEvaluationHooks {
+  /**
+   * 成功求值后、进入 computed 前调用。使用方按目标字段类型完成精度、选项、日期等适配；
+   * 返回失败阻断该对象的下游依赖，返回成功则下游和排名读取适配值。抛错按 INTERNAL_ERROR 处理。
+   * 只适配本次 subjects 的输出，不写库；使用方仍须重新验权、审计并发布成功结果。
+   */
+  readonly adapt?: (item: ComputationItem, subjectId: string, value: ExprValue) => EvaluationResult;
+  /**
+   * 预先确定的总体额外成员。与 subjects 按 ID 去重，subjects 优先并叠加同轮新值（DEC-312）；
+   * 额外成员只读旧值、不求值也不返回输出。显式 context.ports.ranking 优先，忽略本选项。
+   * 成员可见性、租户、删除状态由调用方预先校验（与 RankingPort 一致）。
+   */
+  readonly population?: readonly SubjectReader[];
+}
 
 function syntaxFailure(issue: SyntaxIssue): ComputationFailure {
   return {
@@ -135,19 +246,28 @@ function syntaxFailure(issue: SyntaxIssue): ComputationFailure {
 
 /**
  * 对一个对象求值；传入公式文本或已校验的语法树。公式文本先走与保存校验、批量求值相同的静态检查
- * （语法、函数名、参数个数），三条入口对同一公式同一解释（DEC-228）。
+ * （语法、函数名、参数个数、参数类型，含上下文里的字段类型目录），三条入口对同一公式同一解释（DEC-228）。
  */
 export function evaluateFormula(formula: string | Program, context: EvaluationContext): EvaluationResult {
   let program: Program;
   if (typeof formula === 'string') {
-    const validated = validateFormula(formula, { registry: context.registry });
+    const validated = validateFormula(formula, { registry: context.registry, fieldKind: context.fieldKind });
     if (!validated.ok) return { ok: false, failure: syntaxFailure(validated.errors[0]!) };
     program = validated.program;
   } else {
     program = formula;
+    // DEC-314：已解析 Program 也检查整棵树；旧 Program 的其他参数校验例外保持不变。
+    const registry = context.registry ?? createDefaultRegistry();
+    const collected = new ReferenceCollector(registry, undefined, context.fieldKind, true).collect(program);
+    if (collected.issues.length) return { ok: false, failure: syntaxFailure(collected.issues.sort(byOffset)[0]!) };
   }
   const invalidContext = validateContext(context.calendar);
   if (invalidContext) return { ok: false, failure: invalidContext };
+  return runProgram(program, context);
+}
+
+/** 已校验的语法树在已校验的上下文里求值（批量求值只校验一次上下文，不按对象重复构造时区格式器）。 */
+function runProgram(program: Program, context: EvaluationContext): EvaluationResult {
   try {
     return { ok: true, value: new Evaluator(context).run(program) };
   } catch (error) {
@@ -165,6 +285,15 @@ export function validateContext(calendar: EvaluationCalendar): ComputationFailur
   if (parseDateText(calendar.today)?.precision !== 'date') {
     return { code: 'CONTEXT_INVALID', message: `${FAILURE_PREFIX}：计算上下文的“今天”不是合法日期` };
   }
+  const { now } = calendar;
+  if (now === undefined) return undefined;
+  // “现在”与“今天”须在租户时区下是同一天（DEC-265），否则 Now() 与 Today() 自相矛盾
+  const nowDay = Number.isNaN(now.getTime())
+    ? undefined
+    : formatIsoLike({ ...instantToParts(now, calendar.timeZone), precision: 'date' });
+  if (nowDay !== calendar.today) {
+    return { code: 'CONTEXT_INVALID', message: `${FAILURE_PREFIX}：计算上下文的“现在”与“今天”不是同一天` };
+  }
   return undefined;
 }
 
@@ -180,7 +309,18 @@ export interface ComputationItem {
 }
 
 export type OrderingFailure =
-  | { readonly code: 'CYCLIC_DEPENDENCY'; readonly message: string; readonly cycle: readonly string[] }
+  | {
+      readonly code: 'CYCLIC_DEPENDENCY';
+      readonly message: string;
+      /** 第一组循环依赖的代表环。 */
+      readonly cycle: readonly string[];
+      /** 列出的代表环：每组（强连通分量）一条，最多 20 组。 */
+      readonly cycles: readonly (readonly string[])[];
+      /** 全部成环项目（按原顺序），不受列出组数的限制。 */
+      readonly members: readonly string[];
+      /** 循环依赖超过 20 组、没有逐组列出。 */
+      readonly truncated: boolean;
+    }
   | ({ readonly code: SyntaxIssue['code']; readonly message: string; readonly field: string } & Pick<
       SyntaxIssue,
       'line' | 'column' | 'offset'
@@ -203,8 +343,41 @@ export type OrderingResult =
       readonly entries: readonly OrderedItem[];
       readonly bindings: FieldBindings;
       readonly warnings: readonly string[];
+      /**
+       * 与 warnings 一一对应的结构化诊断（同序、message 即该条 warning）：类别与这条提示提到的全部字段路径。
+       * 调用方按类别汇总、按路径判定可见性，不必从含字段名的文案里推断（PR #184 第 3 轮）。
+       */
+      readonly diagnostics: readonly OrderingDiagnostic[];
+      /**
+       * 循环依赖的代表环（如 [A, B, A]）：每组（强连通分量）一条，最多 20 组（DEC-274 / DEC-287②）。
+       * 保存时只提示、不拦截；计算时整次失败。
+       */
+      readonly cycles: readonly (readonly string[])[];
+      /** 全部成环项目（按原顺序），不受列出组数的限制。 */
+      readonly cycleMembers: readonly string[];
+      /** 循环依赖超过 20 组、没有逐组列出（warnings 里有说明）。 */
+      readonly cyclesTruncated: boolean;
+      /** 成环或依赖成环项目、因而无法计算的项目（按原顺序），排在 order 末尾。 */
+      readonly blocked: readonly string[];
     }
   | { readonly ok: false; readonly failure: OrderingFailure };
+
+/**
+ * 排序提示的结构化形式：kind 是类别（类型不确定 / 优先级与依赖矛盾 / 循环依赖组 / 循环组被截断的汇总 / 依赖成环项目），
+ * fields 是这条提示文案里出现的全部字段路径（完整路径或计算项目的目标字段），message 是对外的提示文案。
+ */
+export type OrderingDiagnosticKind =
+  'typeUncertain' | 'priorityConflict' | 'cycle' | 'cyclesTruncated' | 'blockedByCycle';
+export interface OrderingDiagnostic {
+  readonly kind: OrderingDiagnosticKind;
+  readonly fields: readonly string[];
+  readonly message: string;
+}
+const diagnostic = (kind: OrderingDiagnosticKind, fields: readonly string[], message: string): OrderingDiagnostic => ({
+  kind,
+  fields: [...new Set(fields)],
+  message,
+});
 
 const lastSegment = (path: string) => path.slice(path.lastIndexOf('.') + 1);
 
@@ -223,30 +396,58 @@ export function resolveComputedField(ref: string, targets: Iterable<string>): st
 interface ParsedItems {
   readonly entries: OrderedItem[];
   readonly bindings: FieldBindings;
+  /** 各项目公式的保存提示（类型不确定等），带项目字段。 */
+  readonly warnings: readonly OrderingDiagnostic[];
 }
 
+const identityDisplay = (key: string) => key;
+
 interface ItemValidation {
+  readonly storage?: boolean;
+  readonly display?: (key: string) => string;
   readonly registry: FunctionRegistry;
   readonly isKnownField?: (path: string) => boolean;
+  readonly fieldKind?: (path: string) => ExpressionFieldKind | undefined;
 }
 
 /** 解析全部公式，再用全部目标字段一次性确定每个引用的绑定，依赖关系由绑定推出。 */
 function parseItems(items: readonly ComputationItem[], options: ItemValidation): ParsedItems | OrderingFailure {
   const targets = items.map((item) => item.field);
   const catalog = options.isKnownField;
+  const typeCatalog = options.fieldKind;
+  const fieldKind = typeCatalog
+    ? (path: string): ExpressionFieldKind | undefined => {
+        const target = resolveComputedField(path, targets);
+        // 唯一短名按既有绑定查完整目标的多选标记；不改变旧标量推导，也不猜测有歧义的绑定。
+        if (target !== undefined && target !== path && isMultiOptionField(typeCatalog, target)) return 'multi_option';
+        return typeCatalog(path);
+      }
+    : undefined;
   // 传入字段目录时，计算项目的目标字段（含唯一短名）也视为已知：后算项目可以引用先算项目的结果
   const isKnownField = catalog
     ? (path: string) => resolveComputedField(path, targets) !== undefined || catalog(path)
     : undefined;
   const parsed: { item: ComputationItem; program: Program; refs: readonly string[] }[] = [];
+  const warnings: OrderingDiagnostic[] = [];
+  const show = options.display ?? identityDisplay;
   for (const item of items) {
-    const validated = validateFormula(item.formula, { registry: options.registry, isKnownField });
+    const validated = validateFormula(item.formula, {
+      registry: options.registry,
+      isKnownField,
+      fieldKind,
+      storage: options.storage,
+    });
     if (!validated.ok) {
       const issue = validated.errors[0]!;
       const { line, column, offset } = issue;
       return { code: issue.code, message: issue.message, field: item.field, line, column, offset };
     }
     parsed.push({ item, program: validated.program, refs: validated.fields });
+    for (const warning of validated.warnings) {
+      const message = `${show(item.field)}：${warning.message}（第 ${warning.line} 行第 ${warning.column} 列）`;
+      // 文案可能提到这条公式引用的任何字段：fields 取项目字段 + 公式的全部引用
+      warnings.push(diagnostic('typeUncertain', [item.field, ...validated.fields], message));
+    }
   }
   const bindings: Record<string, string> = {};
   for (const ref of new Set(parsed.flatMap((entry) => entry.refs))) {
@@ -258,81 +459,220 @@ function parseItems(items: readonly ComputationItem[], options: ItemValidation):
     const dependsOn = refs.map((ref) => bindings[ref]).filter((target): target is string => target !== undefined);
     return { item, program, dependsOn: [...new Set(dependsOn)] };
   });
-  return { entries, bindings };
+  return { entries, bindings, warnings };
 }
 
-function findCycle(entries: readonly OrderedItem[], remaining: ReadonlySet<string>): string[] {
-  const byField = new Map(entries.map((entry) => [entry.item.field, entry]));
-  const path: string[] = [];
-  const visit = (field: string): string[] | undefined => {
-    const seen = path.indexOf(field);
-    if (seen >= 0) return [...path.slice(seen), field];
-    path.push(field);
-    for (const dependency of byField.get(field)?.dependsOn ?? []) {
-      if (!remaining.has(dependency)) continue;
-      const cycle = visit(dependency);
-      if (cycle) return cycle;
+/** 一组循环依赖（一个成环的强连通分量）：全部项目（原顺序）与一条代表环。 */
+interface CycleGroup {
+  readonly members: readonly string[];
+  readonly path: readonly string[];
+}
+
+/** 循环依赖提示与失败信息最多列出的组数；超出时说明已截断，成环项目仍全部标出。 */
+const MAX_REPORTED_CYCLES = 20;
+
+/**
+ * 成环的强连通分量（Tarjan，线性时间，DEC-287②）：只在 fields 范围内沿依赖建图；多于一个项目或自引用的分量成环。
+ * 分量内项目与分量之间都按原顺序排列。
+ */
+function cyclicComponents(byField: ReadonlyMap<string, OrderedItem>, fields: readonly string[]): string[][] {
+  const within = new Set(fields);
+  const rank = new Map(fields.map((field, i) => [field, i]));
+  const byRank = (a: string, b: string) => rank.get(a)! - rank.get(b)!;
+  const successors = (field: string) => (byField.get(field)?.dependsOn ?? []).filter((next) => within.has(next));
+  const visitIndex = new Map<string, number>();
+  const lowLink = new Map<string, number>();
+  const stack: string[] = [];
+  const onStack = new Set<string>();
+  const components: string[][] = [];
+  const connect = (field: string): void => {
+    visitIndex.set(field, visitIndex.size);
+    lowLink.set(field, visitIndex.get(field)!);
+    stack.push(field);
+    onStack.add(field);
+    for (const next of successors(field)) {
+      if (!visitIndex.has(next)) {
+        connect(next);
+        lowLink.set(field, Math.min(lowLink.get(field)!, lowLink.get(next)!));
+      } else if (onStack.has(next)) {
+        lowLink.set(field, Math.min(lowLink.get(field)!, visitIndex.get(next)!));
+      }
     }
-    path.pop();
-    return undefined;
+    if (lowLink.get(field) !== visitIndex.get(field)) return;
+    const component: string[] = [];
+    let member: string;
+    do {
+      member = stack.pop()!;
+      onStack.delete(member);
+      component.push(member);
+    } while (member !== field);
+    if (component.length > 1 || successors(field).includes(field)) components.push(component.sort(byRank));
   };
-  for (const entry of entries) {
-    if (!remaining.has(entry.item.field)) continue;
-    const cycle = visit(entry.item.field);
-    if (cycle) return cycle;
+  for (const field of fields) if (!visitIndex.has(field)) connect(field);
+  return components.sort((a, b) => byRank(a[0]!, b[0]!));
+}
+
+/** 分量的代表环：从原顺序最靠前的项目出发、沿依赖回到它的最短路径（广度优先，线性时间）。 */
+function representativeCycle(byField: ReadonlyMap<string, OrderedItem>, members: readonly string[]): string[] {
+  const start = members[0]!;
+  const inside = new Set(members);
+  const parent = new Map<string, string>();
+  const queue = [start];
+  for (let i = 0; i < queue.length; i++) {
+    const field = queue[i]!;
+    for (const next of byField.get(field)?.dependsOn ?? []) {
+      if (next === start) {
+        const path = [start];
+        for (let at = field; at !== start; at = parent.get(at)!) path.splice(1, 0, at);
+        return [...path, start];
+      }
+      if (!inside.has(next) || parent.has(next)) continue;
+      parent.set(next, field);
+      queue.push(next);
+    }
   }
-  return [];
+  return [start, start];
+}
+
+function cycleGroups(entries: readonly OrderedItem[], blocked: readonly string[]): CycleGroup[] {
+  const byField = new Map(entries.map((entry) => [entry.item.field, entry]));
+  return cyclicComponents(byField, blocked).map((members) => ({
+    members,
+    path: representativeCycle(byField, members),
+  }));
+}
+
+/** 代表环，及同组里不在代表环上的成环项目。 */
+function describeGroup(group: CycleGroup, show: (key: string) => string = identityDisplay): string {
+  const onPath = new Set(group.path);
+  const others = group.members.filter((member) => !onPath.has(member));
+  const path = group.path.map(show).join('→');
+  return others.length ? `${path}（同组成环项目还有 ${others.map(show).join('、')}）` : path;
+}
+
+interface Topology {
+  readonly order: OrderedItem[];
+  readonly warnings: OrderingDiagnostic[];
+  /** 成环或依赖成环项目、排不出顺序的项目（按原顺序）。 */
+  readonly blocked: OrderedItem[];
 }
 
 /** Kahn 拓扑排序：可算的项目里先取优先级小、再取原顺序靠前的；有依赖矛盾时以依赖为准并给出提示。 */
-function topologicalOrder(entries: readonly OrderedItem[]): { order: OrderedItem[]; warnings: string[] } | string[] {
+function topologicalOrder(entries: readonly OrderedItem[], show: (key: string) => string): Topology {
   const byField = new Map(entries.map((entry) => [entry.item.field, entry]));
   const index = new Map(entries.map((entry, i) => [entry.item.field, i]));
   const remaining = new Set(entries.map((entry) => entry.item.field));
   const order: OrderedItem[] = [];
-  const warnings: string[] = [];
+  const warnings: OrderingDiagnostic[] = [];
   while (remaining.size) {
     const ready = [...remaining]
       .map((field) => byField.get(field)!)
       .filter((entry) => entry.dependsOn.every((dependency) => !remaining.has(dependency)))
       .sort((a, b) => a.item.priority - b.item.priority || index.get(a.item.field)! - index.get(b.item.field)!);
     const next = ready[0];
-    if (!next) return findCycle(entries, remaining);
+    if (!next) break;
     for (const dependency of next.dependsOn) {
       const upstream = byField.get(dependency)!.item;
       if (upstream.priority > next.item.priority) {
-        const detail = `引用了 ${dependency}（优先级 ${upstream.priority}），按依赖先算 ${dependency}`;
-        warnings.push(`${next.item.field}（优先级 ${next.item.priority}）${detail}`);
+        const detail = `引用了 ${show(dependency)}（优先级 ${upstream.priority}），按依赖先算 ${show(dependency)}`;
+        const message = `${show(next.item.field)}（优先级 ${next.item.priority}）${detail}`;
+        warnings.push(diagnostic('priorityConflict', [next.item.field, dependency], message));
       }
     }
     remaining.delete(next.item.field);
     order.push(next);
   }
-  return { order, warnings };
+  return { order, warnings, blocked: entries.filter((entry) => remaining.has(entry.item.field)) };
+}
+
+interface Ordering {
+  readonly result: OrderingResult;
+  /** 全部循环依赖组（不截断），供批量求值组织失败信息。 */
+  readonly groups: readonly CycleGroup[];
+}
+
+function orderItems(items: readonly ComputationItem[], options: ValidationOptions): Ordering {
+  const registry = options.registry ?? createDefaultRegistry();
+  const show = options.display ?? identityDisplay;
+  const parsed = parseItems(items, {
+    registry,
+    isKnownField: options.isKnownField,
+    fieldKind: options.fieldKind,
+    storage: options.storage,
+    display: options.display,
+  });
+  if (!('entries' in parsed)) return { result: { ok: false, failure: parsed }, groups: [] };
+  const sorted = topologicalOrder(parsed.entries, show);
+  const blocked = sorted.blocked.map((entry) => entry.item.field);
+  const groups = cycleGroups(parsed.entries, blocked);
+  const inCycle = new Set(groups.flatMap((group) => group.members));
+  const cycleMembers = blocked.filter((field) => inCycle.has(field));
+  const reported = groups.slice(0, MAX_REPORTED_CYCLES);
+  const truncated = groups.length > reported.length;
+  const cycleWarnings: OrderingDiagnostic[] = [
+    ...reported.map((group) =>
+      diagnostic(
+        'cycle',
+        [...group.path, ...group.members],
+        `检测到循环依赖：${describeGroup(group, show)}（允许保存，计算时将整次失败、不写入任何值）`,
+      ),
+    ),
+    ...(truncated
+      ? [
+          diagnostic(
+            'cyclesTruncated',
+            cycleMembers,
+            `循环依赖共 ${groups.length} 组，以上只列出前 ${reported.length} 组（已截断）；` +
+              `全部成环项目：${cycleMembers.map(show).join('、')}`,
+          ),
+        ]
+      : []),
+    ...blocked
+      .filter((field) => !inCycle.has(field))
+      .map((field) => diagnostic('blockedByCycle', [field], `${show(field)} 依赖成环的项目，计算时同样无法计算`)),
+  ];
+  const diagnostics = [...parsed.warnings, ...sorted.warnings, ...cycleWarnings];
+  const entries = [...sorted.order, ...sorted.blocked];
+  const result: OrderingResult = {
+    ok: true,
+    order: entries.map((entry) => entry.item),
+    entries,
+    bindings: parsed.bindings,
+    warnings: diagnostics.map((item) => item.message),
+    diagnostics,
+    cycles: reported.map((group) => group.path),
+    cycleMembers,
+    cyclesTruncated: truncated,
+    blocked,
+  };
+  return { result, groups };
 }
 
 /**
- * 计算项目排序（计算规则保存时调用）：先优先级，再按引用依赖拓扑；循环依赖报错并列出环；
- * 传入字段目录时同保存校验报未知字段（TODO(需取证 Q-M0-84)：原站同优先级 / 循环时的处理）。
+ * 计算项目排序（计算规则保存 / 启用时调用）：先优先级，同优先级内按引用依赖拓扑（`26` §8.9 原站实测）；
+ * 传入字段目录 / 字段类型目录时同保存校验报未知字段与参数类型，类型不确定的提示汇总在 warnings。
+ * 循环依赖不拦截保存（DEC-274）：按强连通分量（线性时间，DEC-287②）每组列出一条代表环与同组的成环项目，
+ * 超过 20 组时说明已截断；成环与受牵连的项目排在 order 末尾；计算时由 evaluateBatch 整次失败。
  */
 export function orderComputationItems(
   items: readonly ComputationItem[],
   options: ValidationOptions = {},
 ): OrderingResult {
-  const registry = options.registry ?? createDefaultRegistry();
-  const parsed = parseItems(items, { registry, isKnownField: options.isKnownField });
-  if (!('entries' in parsed)) return { ok: false, failure: parsed };
-  const sorted = topologicalOrder(parsed.entries);
-  if (Array.isArray(sorted)) {
-    const message = `计算项目之间存在循环依赖：${sorted.join(' → ')}`;
-    return { ok: false, failure: { code: 'CYCLIC_DEPENDENCY', message, cycle: sorted } };
-  }
+  return orderItems(items, options).result;
+}
+
+/** DEC-274：存在循环时整次计算不写入任何值（原站同样整次跳过），但明确报失败而不是“计算成功”。 */
+function cyclicFailure(groups: readonly CycleGroup[], members: readonly string[]): OrderingFailure {
+  const reported = groups.slice(0, MAX_REPORTED_CYCLES);
+  const truncated = groups.length > reported.length;
+  const suffix = truncated ? `；……（已截断，共 ${groups.length} 组循环依赖、${members.length} 个成环项目）` : '';
   return {
-    ok: true,
-    order: sorted.order.map((entry) => entry.item),
-    entries: sorted.order,
-    bindings: parsed.bindings,
-    warnings: sorted.warnings,
+    code: 'CYCLIC_DEPENDENCY',
+    message: `计算失败：循环依赖 ${reported.map((group) => describeGroup(group)).join('；')}${suffix}`,
+    cycle: reported[0]!.path,
+    cycles: reported.map((group) => group.path),
+    members,
+    truncated,
   };
 }
 
@@ -368,15 +708,21 @@ function withComputed(
   subject: SubjectReader,
   computed: Readonly<Record<string, ExprValue>>,
   bindings: FieldBindings,
+  options: { readonly readBoundFields?: boolean; readonly preserveTypes?: boolean } = {},
 ): SubjectReader {
   return {
     id: subject.id,
     resolveField: (path) => {
       const target = bindings[path];
       if (target !== undefined && Object.hasOwn(computed, target)) {
-        return { status: 'found', value: toPlain(computed[target]!) };
+        const value = computed[target]!;
+        // F-049 P2-01：适配结果已是领域值，日期不能经字符串往返；未传 adapt 保留旧叠加行为。
+        if (options.preserveTypes) return { status: 'computed', value };
+        if (value.kind === 'empty' && value.of) return { status: 'found', value: null, emptyOf: value.of };
+        return { status: 'found', value: toPlain(value) };
       }
-      return subject.resolveField(path);
+      // DEC-312：额外总体成员没有同轮结果，短名仍须按固定绑定读取库中完整目标字段。
+      return subject.resolveField(options.readBoundFields ? (target ?? path) : path);
     },
   };
 }
@@ -386,15 +732,70 @@ const dependencyFailure = (field: string, dependency: string): EvaluationResult 
   failure: { code: 'DEPENDENCY_FAILED', message: `计算失败：${field} 依赖的 ${dependency} 未能算出` },
 });
 
-/** 对一组对象按计算项目批量求值：每个对象得到每个字段的值或失败原因；一个对象失败不影响其他对象。 */
+/** 端口只调一次、结果（含抛出的异常）复用：同一计算项目内各对象看到同一个总体数组，排名表按它缓存。 */
+function readOnce(port: RankingPort): RankingPort {
+  let read: { readonly outcome: ReturnType<RankingPort['population']> } | { readonly error: unknown } | undefined;
+  return {
+    population: () => {
+      if (!read) {
+        try {
+          read = { outcome: port.population() };
+        } catch (error) {
+          read = { error };
+        }
+      }
+      if ('error' in read) throw read.error;
+      return read.outcome;
+    },
+  };
+}
+
+/** 只在注入新总体时去重；不传钩子的旧对象列表与显式 RankingPort 均保持原样。 */
+function mergePopulation(
+  subjects: readonly SubjectReader[],
+  population?: readonly SubjectReader[],
+): readonly SubjectReader[] {
+  if (population === undefined) return subjects;
+  const members = new Map<string, SubjectReader>();
+  for (const subject of [...subjects, ...population]) {
+    if (!members.has(subject.id)) members.set(subject.id, subject);
+  }
+  return [...members.values()];
+}
+
+function adaptOutput(
+  result: EvaluationResult,
+  item: ComputationItem,
+  subjectId: string,
+  adapt: BatchEvaluationHooks['adapt'],
+): EvaluationResult {
+  if (!result.ok || !adapt) return result;
+  try {
+    return adapt(item, subjectId, result.value);
+  } catch {
+    return { ok: false, failure: { code: 'INTERNAL_ERROR', message: `${FAILURE_PREFIX}：内部错误` } };
+  }
+}
+
+/**
+ * 对一组对象按计算项目批量求值：每个对象得到每个字段的值或失败原因；一个对象失败不影响其他对象。
+ * 排名总体默认 = 本次全部计算对象（叠加先算项目的值，依赖失败的对象不参与该项目）；分批计算时调用方须经
+ * 第四参 population 或 ports.ranking 注入全体计算对象（DEC-301②）。population 与本次对象并集：本次对象读
+ * 同轮适配后的新值、其他对象读旧值（DEC-312）；显式排名端口仍按原契约取值，不叠加、不裁剪。
+ */
 export function evaluateBatch(
   items: readonly ComputationItem[],
   subjects: readonly SubjectReader[],
   context: BatchContext,
+  hooks: BatchEvaluationHooks = {},
 ): BatchResult {
   const registry = context.registry ?? createDefaultRegistry();
-  const ordered = orderComputationItems(items, { registry });
+  const { result: ordered, groups } = orderItems(items, { registry, fieldKind: context.fieldKind });
   if (!ordered.ok) return ordered;
+  if (groups.length) return { ok: false, failure: cyclicFailure(groups, ordered.cycleMembers) };
+  const invalidContext = validateContext(context.calendar);
+  const preserveTypes = hooks.adapt !== undefined;
+  const population = context.ports?.ranking ? subjects : mergePopulation(subjects, hooks.population);
   const computed = new Map(subjects.map((subject) => [subject.id, {} as Record<string, ExprValue>]));
   const results: Record<string, Record<string, EvaluationResult>> = Object.fromEntries(
     subjects.map((subject) => [subject.id, {}]),
@@ -403,26 +804,35 @@ export function evaluateBatch(
     const field = entry.item.field;
     const failedDependency = (id: string) =>
       entry.dependsOn.find((dependency) => !Object.hasOwn(computed.get(id)!, dependency));
-    const population = subjects.filter((subject) => failedDependency(subject.id) === undefined);
-    const ranking = context.ports?.ranking ?? {
-      population: () => ({
-        ok: true as const,
-        data: population.map((subject) => withComputed(subject, computed.get(subject.id)!, ordered.bindings)),
-      }),
-    };
+    // 排名总体按计算项目只读一次（DEC-301②）：本项目所有对象共用同一总体与排名表
+    const ranking = readOnce(
+      context.ports?.ranking ?? {
+        population: () => ({
+          ok: true as const,
+          data: population
+            .filter((subject) => !computed.has(subject.id) || failedDependency(subject.id) === undefined)
+            .map((subject) => {
+              const values = computed.get(subject.id);
+              return values
+                ? withComputed(subject, values, ordered.bindings, { preserveTypes })
+                : withComputed(subject, {}, ordered.bindings, { readBoundFields: true });
+            }),
+        }),
+      },
+    );
+    const ports = { ...context.ports, ranking };
+    const rankingTables: RankingTables = new Map();
     for (const subject of subjects) {
       const dependency = failedDependency(subject.id);
       if (dependency !== undefined) {
         results[subject.id]![field] = dependencyFailure(field, dependency);
         continue;
       }
-      const reader = withComputed(subject, computed.get(subject.id)!, ordered.bindings);
-      const result = evaluateFormula(entry.program, {
-        ...context,
-        registry,
-        subject: reader,
-        ports: { ...context.ports, ranking },
-      });
+      const reader = withComputed(subject, computed.get(subject.id)!, ordered.bindings, { preserveTypes });
+      const evaluated: EvaluationResult = invalidContext
+        ? { ok: false, failure: invalidContext }
+        : runProgram(entry.program, { ...context, registry, subject: reader, ports, rankingTables });
+      const result = adaptOutput(evaluated, entry.item, subject.id, hooks.adapt);
       results[subject.id]![field] = result;
       if (result.ok) computed.get(subject.id)![field] = result.value;
     }

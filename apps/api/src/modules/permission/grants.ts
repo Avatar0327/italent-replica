@@ -17,6 +17,7 @@ import {
 } from '@italent/db';
 import { AppError } from '../../errors.js';
 import { grantableSetsOf } from './admins.js';
+import { assertNotAutoHeld } from './auto-held.js';
 import { audit, type WriteContext } from './audit.js';
 import { applyGrantScopes } from './data-scope-admin.js';
 import type { GrantScopeInput } from './data-scope-schemas.js';
@@ -70,6 +71,8 @@ export async function createGrant(
   write: WriteContext,
   input: { readonly userId: string; readonly profileId: string; readonly scopes?: readonly GrantScopeInput[] },
 ): Promise<GrantView & { readonly licenseOverage: LicenseOverage | null }> {
+  // DEC-402③：自动持有的身份（员工）不发授权行，先于可授权集合判断
+  await assertNotAutoHeld(tx, [input.profileId]);
   await assertGrantable(tx, write.userId, input.profileId);
   await assertActiveMember(tx, input.userId);
   const profile = await loadProfile(tx, input.profileId);

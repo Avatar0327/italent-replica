@@ -4,7 +4,11 @@
 import { conditionViolations } from './conditions.js';
 import { transitionRuleViolations } from './countersign.js';
 import {
+  approverExpressionsOf,
+  avoidsSubjects,
+  ENABLED_AVOID_SUBJECTS_RESULTS,
   hasExit,
+  IDP_ONLY_APPROVERS,
   isCountersign,
   nodeExits,
   type ApprovalNode,
@@ -47,6 +51,10 @@ export function definitionViolations(definition: ProcessDefinition, type: Approv
       violations.push(`节点 ${node.key}：${type.name}审批不支持审批中编辑（DEC-105）`);
     }
     violations.push(...nodeShapeViolations(node));
+    const idpOnly = approverExpressionsOf(node).filter((expression) => IDP_ONLY_APPROVERS.has(expression));
+    if (type.adapter !== 'idp' && idpOnly.length) {
+      violations.push(`节点 ${node.key} 的审批人“发展计划 - 员工本人 / 指导人”只能用于发展计划审批（K-09）`);
+    }
   }
   return violations;
 }
@@ -73,7 +81,7 @@ function nodeShapeViolations(node: ApprovalNode): string[] {
  * 相同 / 历史相同审批人自动处理时，必须有「同意」出口动作（`14` §11.4 CustomerKB 109710739，§11.6 自动处理沿同意线走）。
  */
 export function publishViolations(definition: ProcessDefinition): DefinitionViolation[] {
-  const violations: DefinitionViolation[] = [];
+  const violations: DefinitionViolation[] = definition.nodes.flatMap(avoidSubjectsViolations);
   if (!definition.conditions.items.length && !definition.isFallback) {
     violations.push({
       reason: 'APPROVAL_CONDITION_REQUIRED',
@@ -95,6 +103,29 @@ export function publishViolations(definition: ProcessDefinition): DefinitionViol
       const message = `开启相同 / 历史相同审批人自动处理的${node.name}节点必须配置同意出口线`;
       violations.push({ reason: 'APPROVAL_AUTO_APPROVE_EXIT_REQUIRED', message });
     }
+  }
+  return violations;
+}
+
+/**
+ * F-048 多主体回避开关的定义校验（设计 §3.1、§14）。保存、草稿与发布共用。
+ * - 与 DEC-106 的“跳过”相同：只有单人审批节点、且有「同意」出口时可开启（会签节点是否可用待 Q-M0-138）；
+ * - DEC-331⑤：命中动作只启用「跳过」，其余预留取值（同意 / 不同意 / 自定义出口）待 Q-M0-138 取证后另行放开。
+ */
+export function avoidSubjectsViolations(node: ApprovalNode): DefinitionViolation[] {
+  const violations: DefinitionViolation[] = [];
+  if (avoidsSubjects(node) && (isCountersign(node) || !hasExit(node, 'approve'))) {
+    violations.push({
+      reason: 'APPROVAL_AVOID_SUBJECTS_UNSUPPORTED',
+      message: `节点 ${node.name}：多主体回避只能用于有「同意」出口的单人审批节点`,
+    });
+  }
+  const result = node.avoidSubjectsResult;
+  if (result !== undefined && !ENABLED_AVOID_SUBJECTS_RESULTS.includes(result)) {
+    violations.push({
+      reason: 'APPROVAL_AVOID_SUBJECTS_RESULT_UNSUPPORTED',
+      message: `节点 ${node.name}：多主体回避命中后目前只支持「跳过」`,
+    });
   }
   return violations;
 }

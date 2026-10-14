@@ -59,7 +59,9 @@ describe('AC-ORG-13 停用组织时级联停用整支下级（DEC-129）', () =>
     const world = await orgPeopleWorld(testDb().db, 'org13future');
     const a = await world.org('有未来下级的上级');
     const b = await world.org('有未来变更的下级', a.id);
-    expect((await world.patchOrg(b, { name: '下级未来改名', effectiveDate: '2026-10-10' })).status).toBe(200);
+    expect(
+      (await world.patchOrg(b, { addEmployment: false, name: '下级未来改名', effectiveDate: '2026-10-10' })).status,
+    ).toBe(200);
     const response = await world.patchOrg(a, { enabled: false, effectiveDate: '2026-10-02' });
     expect(response.status).toBe(409);
     expect(await response.json()).toMatchObject({ error: { code: 'ORG_FUTURE_VERSION_EXISTS' } });

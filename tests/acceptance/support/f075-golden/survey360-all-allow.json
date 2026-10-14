@@ -1,0 +1,1515 @@
+[
+  {
+    "body": {
+      "finePermission": false,
+      "revision": 0
+    },
+    "name": "admin GET /settings",
+    "status": 200
+  },
+  {
+    "body": {
+      "finePermission": true,
+      "revision": 1
+    },
+    "name": "admin PUT /settings 开精细化",
+    "status": 200
+  },
+  {
+    "body": {
+      "error": {
+        "code": "REVISION_CONFLICT",
+        "details": {
+          "current": 1,
+          "expected": 0
+        },
+        "message": "数据已被修改，请刷新后显式重提"
+      }
+    },
+    "name": "admin PUT /settings 过期 revision",
+    "status": 409
+  },
+  {
+    "body": {
+      "error": {
+        "code": "VALIDATION_FAILED",
+        "details": [
+          {
+            "code": "invalid_type",
+            "expected": "boolean",
+            "message": "Invalid input: expected boolean, received string",
+            "path": [
+              "finePermission"
+            ]
+          }
+        ],
+        "message": "请求字段不合法"
+      }
+    },
+    "name": "admin PUT /settings 非法体",
+    "status": 400
+  },
+  {
+    "body": {
+      "finePermission": true,
+      "revision": 1
+    },
+    "name": "general GET /settings",
+    "status": 200
+  },
+  {
+    "body": {
+      "finePermission": false,
+      "revision": 2
+    },
+    "name": "general PUT /settings",
+    "status": 200
+  },
+  {
+    "body": {
+      "finePermission": false,
+      "revision": 2
+    },
+    "name": "plain GET /settings",
+    "status": 200
+  },
+  {
+    "body": {
+      "items": [
+        {
+          "builtin": true,
+          "code": "self",
+          "displayText": null,
+          "id": "<id:1>",
+          "name": "自评",
+          "revision": 1,
+          "sort": 0
+        },
+        {
+          "builtin": true,
+          "code": "superior",
+          "displayText": null,
+          "id": "<id:2>",
+          "name": "上级",
+          "revision": 1,
+          "sort": 1
+        },
+        {
+          "builtin": true,
+          "code": "peer",
+          "displayText": null,
+          "id": "<id:3>",
+          "name": "同事",
+          "revision": 1,
+          "sort": 2
+        },
+        {
+          "builtin": true,
+          "code": "subordinate",
+          "displayText": null,
+          "id": "<id:4>",
+          "name": "下级",
+          "revision": 1,
+          "sort": 3
+        },
+        {
+          "builtin": true,
+          "code": "customer",
+          "displayText": null,
+          "id": "<id:5>",
+          "name": "客户",
+          "revision": 1,
+          "sort": 4
+        },
+        {
+          "builtin": true,
+          "code": "other",
+          "displayText": null,
+          "id": "<id:6>",
+          "name": "其他",
+          "revision": 1,
+          "sort": 5
+        }
+      ]
+    },
+    "name": "admin GET /roles",
+    "status": 200
+  },
+  {
+    "body": {
+      "items": [
+        {
+          "builtin": true,
+          "code": "self",
+          "displayText": null,
+          "id": "<id:1>",
+          "name": "自评",
+          "revision": 1,
+          "sort": 0
+        },
+        {
+          "builtin": true,
+          "code": "superior",
+          "displayText": null,
+          "id": "<id:2>",
+          "name": "上级",
+          "revision": 1,
+          "sort": 1
+        },
+        {
+          "builtin": true,
+          "code": "peer",
+          "displayText": null,
+          "id": "<id:3>",
+          "name": "同事",
+          "revision": 1,
+          "sort": 2
+        },
+        {
+          "builtin": true,
+          "code": "subordinate",
+          "displayText": null,
+          "id": "<id:4>",
+          "name": "下级",
+          "revision": 1,
+          "sort": 3
+        },
+        {
+          "builtin": true,
+          "code": "customer",
+          "displayText": null,
+          "id": "<id:5>",
+          "name": "客户",
+          "revision": 1,
+          "sort": 4
+        },
+        {
+          "builtin": true,
+          "code": "other",
+          "displayText": null,
+          "id": "<id:6>",
+          "name": "其他",
+          "revision": 1,
+          "sort": 5
+        }
+      ]
+    },
+    "name": "general GET /roles",
+    "status": 200
+  },
+  {
+    "body": {
+      "items": [
+        {
+          "builtin": true,
+          "code": "self",
+          "displayText": null,
+          "id": "<id:1>",
+          "name": "自评",
+          "revision": 1,
+          "sort": 0
+        },
+        {
+          "builtin": true,
+          "code": "superior",
+          "displayText": null,
+          "id": "<id:2>",
+          "name": "上级",
+          "revision": 1,
+          "sort": 1
+        },
+        {
+          "builtin": true,
+          "code": "peer",
+          "displayText": null,
+          "id": "<id:3>",
+          "name": "同事",
+          "revision": 1,
+          "sort": 2
+        },
+        {
+          "builtin": true,
+          "code": "subordinate",
+          "displayText": null,
+          "id": "<id:4>",
+          "name": "下级",
+          "revision": 1,
+          "sort": 3
+        },
+        {
+          "builtin": true,
+          "code": "customer",
+          "displayText": null,
+          "id": "<id:5>",
+          "name": "客户",
+          "revision": 1,
+          "sort": 4
+        },
+        {
+          "builtin": true,
+          "code": "other",
+          "displayText": null,
+          "id": "<id:6>",
+          "name": "其他",
+          "revision": 1,
+          "sort": 5
+        }
+      ]
+    },
+    "name": "plain GET /roles",
+    "status": 200
+  },
+  {
+    "body": {
+      "builtin": false,
+      "code": null,
+      "displayText": "甲",
+      "id": "<id:7>",
+      "name": "角色甲",
+      "revision": 1,
+      "sort": 6
+    },
+    "name": "admin POST /roles",
+    "status": 201
+  },
+  {
+    "body": {
+      "error": {
+        "code": "VALIDATION_FAILED",
+        "details": [
+          {
+            "code": "invalid_type",
+            "expected": "string",
+            "message": "Invalid input: expected string, received undefined",
+            "path": [
+              "name"
+            ]
+          }
+        ],
+        "message": "请求字段不合法"
+      }
+    },
+    "name": "admin POST /roles 非法体",
+    "status": 400
+  },
+  {
+    "body": {
+      "builtin": false,
+      "code": null,
+      "displayText": null,
+      "id": "<id:8>",
+      "name": "角色乙",
+      "revision": 1,
+      "sort": 7
+    },
+    "name": "general POST /roles",
+    "status": 201
+  },
+  {
+    "body": {
+      "builtin": false,
+      "code": null,
+      "displayText": null,
+      "id": "<id:9>",
+      "name": "角色丙",
+      "revision": 1,
+      "sort": 8
+    },
+    "name": "plain POST /roles",
+    "status": 201
+  },
+  {
+    "body": {
+      "builtin": false,
+      "code": null,
+      "displayText": "改",
+      "id": "<id:7>",
+      "name": "角色甲",
+      "revision": 2,
+      "sort": 6
+    },
+    "name": "admin PUT /roles/:id",
+    "status": 200
+  },
+  {
+    "body": {
+      "error": {
+        "code": "REVISION_CONFLICT",
+        "details": {
+          "current": 2,
+          "expected": 0
+        },
+        "message": "数据已被修改，请刷新后显式重提"
+      }
+    },
+    "name": "admin PUT /roles/:id 过期",
+    "status": 409
+  },
+  {
+    "body": {
+      "error": {
+        "code": "VALIDATION_FAILED",
+        "details": {
+          "reason": "BUILTIN_ROLE"
+        },
+        "message": "内置角色不能改名"
+      }
+    },
+    "name": "admin PUT /roles/:id 内置改名",
+    "status": 400
+  },
+  {
+    "body": {
+      "error": {
+        "code": "NOT_FOUND",
+        "message": "评价角色不存在"
+      }
+    },
+    "name": "admin PUT /roles/:id 不存在",
+    "status": 404
+  },
+  {
+    "body": {
+      "error": {
+        "code": "VALIDATION_FAILED",
+        "message": "对象标识必须为 UUID"
+      }
+    },
+    "name": "admin PUT /roles/:id 非法标识",
+    "status": 400
+  },
+  {
+    "body": {
+      "builtin": false,
+      "code": null,
+      "displayText": "丙",
+      "id": "<id:7>",
+      "name": "角色甲",
+      "revision": 3,
+      "sort": 6
+    },
+    "name": "general PUT /roles/:id",
+    "status": 200
+  },
+  {
+    "body": {
+      "createdBy": "<id:11>",
+      "dimensions": [],
+      "excellence": null,
+      "guide": null,
+      "id": "<id:10>",
+      "name": "套卷A",
+      "questions": [],
+      "revision": 1,
+      "roles": [],
+      "scales": [],
+      "scoreMethod": "weighted_average",
+      "status": "draft",
+      "type": "key_behavior"
+    },
+    "name": "admin POST /questionnaires",
+    "status": 201
+  },
+  {
+    "body": {
+      "error": {
+        "code": "VALIDATION_FAILED",
+        "details": [
+          {
+            "code": "invalid_type",
+            "expected": "string",
+            "message": "Invalid input: expected string, received undefined",
+            "path": [
+              "name"
+            ]
+          },
+          {
+            "code": "invalid_value",
+            "message": "Invalid option: expected one of \"key_behavior\"|\"rating\"",
+            "path": [
+              "type"
+            ],
+            "values": [
+              "key_behavior",
+              "rating"
+            ]
+          }
+        ],
+        "message": "请求字段不合法"
+      }
+    },
+    "name": "admin POST /questionnaires 非法体",
+    "status": 400
+  },
+  {
+    "body": {
+      "createdBy": "<id:13>",
+      "dimensions": [],
+      "excellence": null,
+      "guide": null,
+      "id": "<id:12>",
+      "name": "套卷G",
+      "questions": [],
+      "revision": 1,
+      "roles": [],
+      "scales": [],
+      "scoreMethod": "weighted_average",
+      "status": "draft",
+      "type": "key_behavior"
+    },
+    "name": "general POST /questionnaires",
+    "status": 201
+  },
+  {
+    "body": {
+      "createdBy": "<id:15>",
+      "dimensions": [],
+      "excellence": null,
+      "guide": null,
+      "id": "<id:14>",
+      "name": "套卷P",
+      "questions": [],
+      "revision": 1,
+      "roles": [],
+      "scales": [],
+      "scoreMethod": "weighted_average",
+      "status": "draft",
+      "type": "key_behavior"
+    },
+    "name": "plain POST /questionnaires",
+    "status": 201
+  },
+  {
+    "body": {
+      "items": [
+        {
+          "createdBy": "<id:11>",
+          "id": "<id:10>",
+          "name": "套卷A",
+          "revision": 1,
+          "status": "draft",
+          "type": "key_behavior"
+        },
+        {
+          "createdBy": "<id:13>",
+          "id": "<id:12>",
+          "name": "套卷G",
+          "revision": 1,
+          "status": "draft",
+          "type": "key_behavior"
+        },
+        {
+          "createdBy": "<id:15>",
+          "id": "<id:14>",
+          "name": "套卷P",
+          "revision": 1,
+          "status": "draft",
+          "type": "key_behavior"
+        }
+      ]
+    },
+    "name": "admin GET /questionnaires",
+    "status": 200
+  },
+  {
+    "body": {
+      "items": [
+        {
+          "createdBy": "<id:11>",
+          "id": "<id:10>",
+          "name": "套卷A",
+          "revision": 1,
+          "status": "draft",
+          "type": "key_behavior"
+        },
+        {
+          "createdBy": "<id:13>",
+          "id": "<id:12>",
+          "name": "套卷G",
+          "revision": 1,
+          "status": "draft",
+          "type": "key_behavior"
+        },
+        {
+          "createdBy": "<id:15>",
+          "id": "<id:14>",
+          "name": "套卷P",
+          "revision": 1,
+          "status": "draft",
+          "type": "key_behavior"
+        }
+      ]
+    },
+    "name": "general GET /questionnaires",
+    "status": 200
+  },
+  {
+    "body": {
+      "items": [
+        {
+          "createdBy": "<id:11>",
+          "id": "<id:10>",
+          "name": "套卷A",
+          "revision": 1,
+          "status": "draft",
+          "type": "key_behavior"
+        },
+        {
+          "createdBy": "<id:13>",
+          "id": "<id:12>",
+          "name": "套卷G",
+          "revision": 1,
+          "status": "draft",
+          "type": "key_behavior"
+        },
+        {
+          "createdBy": "<id:15>",
+          "id": "<id:14>",
+          "name": "套卷P",
+          "revision": 1,
+          "status": "draft",
+          "type": "key_behavior"
+        }
+      ]
+    },
+    "name": "plain GET /questionnaires",
+    "status": 200
+  },
+  {
+    "body": {
+      "createdBy": "<id:11>",
+      "dimensions": [],
+      "excellence": null,
+      "guide": null,
+      "id": "<id:10>",
+      "name": "套卷A",
+      "questions": [],
+      "revision": 1,
+      "roles": [],
+      "scales": [],
+      "scoreMethod": "weighted_average",
+      "status": "draft",
+      "type": "key_behavior"
+    },
+    "name": "admin GET /questionnaires/:id",
+    "status": 200
+  },
+  {
+    "body": {
+      "error": {
+        "code": "NOT_FOUND",
+        "message": "套卷不存在"
+      }
+    },
+    "name": "admin GET /questionnaires/:id 不存在",
+    "status": 404
+  },
+  {
+    "body": {
+      "error": {
+        "code": "VALIDATION_FAILED",
+        "message": "对象标识必须为 UUID"
+      }
+    },
+    "name": "admin GET /questionnaires/:id 非法标识",
+    "status": 400
+  },
+  {
+    "body": {
+      "createdBy": "<id:11>",
+      "dimensions": [],
+      "excellence": null,
+      "guide": null,
+      "id": "<id:10>",
+      "name": "套卷A",
+      "questions": [],
+      "revision": 1,
+      "roles": [],
+      "scales": [],
+      "scoreMethod": "weighted_average",
+      "status": "draft",
+      "type": "key_behavior"
+    },
+    "name": "general GET /questionnaires/:id",
+    "status": 200
+  },
+  {
+    "body": {
+      "createdBy": "<id:11>",
+      "dimensions": [],
+      "excellence": null,
+      "guide": null,
+      "id": "<id:10>",
+      "name": "套卷A",
+      "questions": [],
+      "revision": 1,
+      "roles": [],
+      "scales": [],
+      "scoreMethod": "weighted_average",
+      "status": "draft",
+      "type": "key_behavior"
+    },
+    "name": "plain GET /questionnaires/:id",
+    "status": 200
+  },
+  {
+    "body": {
+      "createdBy": "<id:11>",
+      "dimensions": [
+        {
+          "definition": null,
+          "id": "<id:29>",
+          "key": "d",
+          "name": "沟通协作",
+          "parentId": null,
+          "roleIds": [],
+          "scaleId": null,
+          "weight": 100
+        }
+      ],
+      "excellence": null,
+      "guide": null,
+      "id": "<id:10>",
+      "name": "套卷A改",
+      "questions": [
+        {
+          "allowRemark": false,
+          "dimensionId": "<id:29>",
+          "id": "<id:30>",
+          "key": "q1",
+          "roleIds": [],
+          "scaleId": "<id:20>",
+          "text": "主动沟通",
+          "weight": 1
+        },
+        {
+          "allowRemark": false,
+          "dimensionId": "<id:29>",
+          "id": "<id:31>",
+          "key": "q2",
+          "roleIds": [],
+          "scaleId": "<id:20>",
+          "text": "协作支持",
+          "weight": 1
+        }
+      ],
+      "revision": 2,
+      "roles": [
+        {
+          "id": "<id:16>",
+          "key": "self",
+          "roleId": "<id:1>",
+          "weight": 0
+        },
+        {
+          "id": "<id:17>",
+          "key": "superior",
+          "roleId": "<id:2>",
+          "weight": 5
+        },
+        {
+          "id": "<id:18>",
+          "key": "peer",
+          "roleId": "<id:3>",
+          "weight": 3
+        },
+        {
+          "id": "<id:19>",
+          "key": "subordinate",
+          "roleId": "<id:4>",
+          "weight": 2
+        }
+      ],
+      "scales": [
+        {
+          "id": "<id:20>",
+          "key": "s",
+          "name": "分值",
+          "options": [
+            {
+              "id": "<id:21>",
+              "key": "v1",
+              "label": "1",
+              "notScored": false,
+              "remarkRequired": false,
+              "value": 1
+            },
+            {
+              "id": "<id:22>",
+              "key": "v2",
+              "label": "2",
+              "notScored": false,
+              "remarkRequired": false,
+              "value": 2
+            },
+            {
+              "id": "<id:23>",
+              "key": "v3",
+              "label": "3",
+              "notScored": false,
+              "remarkRequired": false,
+              "value": 3
+            },
+            {
+              "id": "<id:24>",
+              "key": "v3.5",
+              "label": "3.5",
+              "notScored": false,
+              "remarkRequired": false,
+              "value": 3.5
+            },
+            {
+              "id": "<id:25>",
+              "key": "v4",
+              "label": "4",
+              "notScored": false,
+              "remarkRequired": false,
+              "value": 4
+            },
+            {
+              "id": "<id:26>",
+              "key": "v4.3",
+              "label": "4.3",
+              "notScored": false,
+              "remarkRequired": false,
+              "value": 4.3
+            },
+            {
+              "id": "<id:27>",
+              "key": "v5",
+              "label": "5",
+              "notScored": false,
+              "remarkRequired": false,
+              "value": 5
+            },
+            {
+              "id": "<id:28>",
+              "key": "none",
+              "label": "不做评价",
+              "notScored": true,
+              "remarkRequired": false,
+              "value": null
+            }
+          ]
+        }
+      ],
+      "scoreMethod": "weighted_average",
+      "status": "draft",
+      "type": "key_behavior"
+    },
+    "name": "admin PUT /questionnaires/:id 整卷",
+    "status": 200
+  },
+  {
+    "body": {
+      "error": {
+        "code": "REVISION_CONFLICT",
+        "details": {
+          "current": 2,
+          "expected": 1
+        },
+        "message": "数据已被修改，请刷新后显式重提"
+      }
+    },
+    "name": "admin PUT /questionnaires/:id 过期",
+    "status": 409
+  },
+  {
+    "body": {
+      "error": {
+        "code": "NOT_FOUND",
+        "message": "套卷不存在"
+      }
+    },
+    "name": "admin PUT /questionnaires/:id 不存在",
+    "status": 404
+  },
+  {
+    "body": {
+      "createdBy": "<id:11>",
+      "dimensions": [
+        {
+          "definition": null,
+          "id": "<id:29>",
+          "key": "d",
+          "name": "沟通协作",
+          "parentId": null,
+          "roleIds": [],
+          "scaleId": null,
+          "weight": 100
+        }
+      ],
+      "excellence": null,
+      "guide": null,
+      "id": "<id:10>",
+      "name": "非本人改",
+      "questions": [
+        {
+          "allowRemark": false,
+          "dimensionId": "<id:29>",
+          "id": "<id:30>",
+          "key": "q1",
+          "roleIds": [],
+          "scaleId": "<id:20>",
+          "text": "主动沟通",
+          "weight": 1
+        },
+        {
+          "allowRemark": false,
+          "dimensionId": "<id:29>",
+          "id": "<id:31>",
+          "key": "q2",
+          "roleIds": [],
+          "scaleId": "<id:20>",
+          "text": "协作支持",
+          "weight": 1
+        }
+      ],
+      "revision": 3,
+      "roles": [
+        {
+          "id": "<id:16>",
+          "key": "self",
+          "roleId": "<id:1>",
+          "weight": 0
+        },
+        {
+          "id": "<id:17>",
+          "key": "superior",
+          "roleId": "<id:2>",
+          "weight": 5
+        },
+        {
+          "id": "<id:18>",
+          "key": "peer",
+          "roleId": "<id:3>",
+          "weight": 3
+        },
+        {
+          "id": "<id:19>",
+          "key": "subordinate",
+          "roleId": "<id:4>",
+          "weight": 2
+        }
+      ],
+      "scales": [
+        {
+          "id": "<id:20>",
+          "key": "s",
+          "name": "分值",
+          "options": [
+            {
+              "id": "<id:21>",
+              "key": "v1",
+              "label": "1",
+              "notScored": false,
+              "remarkRequired": false,
+              "value": 1
+            },
+            {
+              "id": "<id:22>",
+              "key": "v2",
+              "label": "2",
+              "notScored": false,
+              "remarkRequired": false,
+              "value": 2
+            },
+            {
+              "id": "<id:23>",
+              "key": "v3",
+              "label": "3",
+              "notScored": false,
+              "remarkRequired": false,
+              "value": 3
+            },
+            {
+              "id": "<id:24>",
+              "key": "v3.5",
+              "label": "3.5",
+              "notScored": false,
+              "remarkRequired": false,
+              "value": 3.5
+            },
+            {
+              "id": "<id:25>",
+              "key": "v4",
+              "label": "4",
+              "notScored": false,
+              "remarkRequired": false,
+              "value": 4
+            },
+            {
+              "id": "<id:26>",
+              "key": "v4.3",
+              "label": "4.3",
+              "notScored": false,
+              "remarkRequired": false,
+              "value": 4.3
+            },
+            {
+              "id": "<id:27>",
+              "key": "v5",
+              "label": "5",
+              "notScored": false,
+              "remarkRequired": false,
+              "value": 5
+            },
+            {
+              "id": "<id:28>",
+              "key": "none",
+              "label": "不做评价",
+              "notScored": true,
+              "remarkRequired": false,
+              "value": null
+            }
+          ]
+        }
+      ],
+      "scoreMethod": "weighted_average",
+      "status": "draft",
+      "type": "key_behavior"
+    },
+    "name": "general PUT /questionnaires/:id 非本人",
+    "status": 200
+  },
+  {
+    "body": {
+      "createdBy": "<id:11>",
+      "dimensions": [
+        {
+          "definition": null,
+          "id": "<id:29>",
+          "key": "d",
+          "name": "沟通协作",
+          "parentId": null,
+          "roleIds": [],
+          "scaleId": null,
+          "weight": 100
+        }
+      ],
+      "excellence": null,
+      "guide": null,
+      "id": "<id:10>",
+      "name": "无权改",
+      "questions": [
+        {
+          "allowRemark": false,
+          "dimensionId": "<id:29>",
+          "id": "<id:30>",
+          "key": "q1",
+          "roleIds": [],
+          "scaleId": "<id:20>",
+          "text": "主动沟通",
+          "weight": 1
+        },
+        {
+          "allowRemark": false,
+          "dimensionId": "<id:29>",
+          "id": "<id:31>",
+          "key": "q2",
+          "roleIds": [],
+          "scaleId": "<id:20>",
+          "text": "协作支持",
+          "weight": 1
+        }
+      ],
+      "revision": 4,
+      "roles": [
+        {
+          "id": "<id:16>",
+          "key": "self",
+          "roleId": "<id:1>",
+          "weight": 0
+        },
+        {
+          "id": "<id:17>",
+          "key": "superior",
+          "roleId": "<id:2>",
+          "weight": 5
+        },
+        {
+          "id": "<id:18>",
+          "key": "peer",
+          "roleId": "<id:3>",
+          "weight": 3
+        },
+        {
+          "id": "<id:19>",
+          "key": "subordinate",
+          "roleId": "<id:4>",
+          "weight": 2
+        }
+      ],
+      "scales": [
+        {
+          "id": "<id:20>",
+          "key": "s",
+          "name": "分值",
+          "options": [
+            {
+              "id": "<id:21>",
+              "key": "v1",
+              "label": "1",
+              "notScored": false,
+              "remarkRequired": false,
+              "value": 1
+            },
+            {
+              "id": "<id:22>",
+              "key": "v2",
+              "label": "2",
+              "notScored": false,
+              "remarkRequired": false,
+              "value": 2
+            },
+            {
+              "id": "<id:23>",
+              "key": "v3",
+              "label": "3",
+              "notScored": false,
+              "remarkRequired": false,
+              "value": 3
+            },
+            {
+              "id": "<id:24>",
+              "key": "v3.5",
+              "label": "3.5",
+              "notScored": false,
+              "remarkRequired": false,
+              "value": 3.5
+            },
+            {
+              "id": "<id:25>",
+              "key": "v4",
+              "label": "4",
+              "notScored": false,
+              "remarkRequired": false,
+              "value": 4
+            },
+            {
+              "id": "<id:26>",
+              "key": "v4.3",
+              "label": "4.3",
+              "notScored": false,
+              "remarkRequired": false,
+              "value": 4.3
+            },
+            {
+              "id": "<id:27>",
+              "key": "v5",
+              "label": "5",
+              "notScored": false,
+              "remarkRequired": false,
+              "value": 5
+            },
+            {
+              "id": "<id:28>",
+              "key": "none",
+              "label": "不做评价",
+              "notScored": true,
+              "remarkRequired": false,
+              "value": null
+            }
+          ]
+        }
+      ],
+      "scoreMethod": "weighted_average",
+      "status": "draft",
+      "type": "key_behavior"
+    },
+    "name": "plain PUT /questionnaires/:id",
+    "status": 200
+  },
+  {
+    "body": {
+      "createdBy": "<id:11>",
+      "dimensions": [
+        {
+          "definition": null,
+          "id": "<id:29>",
+          "key": "d",
+          "name": "沟通协作",
+          "parentId": null,
+          "roleIds": [],
+          "scaleId": null,
+          "weight": 100
+        }
+      ],
+      "excellence": null,
+      "guide": null,
+      "id": "<id:10>",
+      "name": "无权改",
+      "questions": [
+        {
+          "allowRemark": false,
+          "dimensionId": "<id:29>",
+          "id": "<id:30>",
+          "key": "q1",
+          "roleIds": [],
+          "scaleId": "<id:20>",
+          "text": "主动沟通",
+          "weight": 1
+        },
+        {
+          "allowRemark": false,
+          "dimensionId": "<id:29>",
+          "id": "<id:31>",
+          "key": "q2",
+          "roleIds": [],
+          "scaleId": "<id:20>",
+          "text": "协作支持",
+          "weight": 1
+        }
+      ],
+      "revision": 5,
+      "roles": [
+        {
+          "id": "<id:16>",
+          "key": "self",
+          "roleId": "<id:1>",
+          "weight": 0
+        },
+        {
+          "id": "<id:17>",
+          "key": "superior",
+          "roleId": "<id:2>",
+          "weight": 5
+        },
+        {
+          "id": "<id:18>",
+          "key": "peer",
+          "roleId": "<id:3>",
+          "weight": 3
+        },
+        {
+          "id": "<id:19>",
+          "key": "subordinate",
+          "roleId": "<id:4>",
+          "weight": 2
+        }
+      ],
+      "scales": [
+        {
+          "id": "<id:20>",
+          "key": "s",
+          "name": "分值",
+          "options": [
+            {
+              "id": "<id:21>",
+              "key": "v1",
+              "label": "1",
+              "notScored": false,
+              "remarkRequired": false,
+              "value": 1
+            },
+            {
+              "id": "<id:22>",
+              "key": "v2",
+              "label": "2",
+              "notScored": false,
+              "remarkRequired": false,
+              "value": 2
+            },
+            {
+              "id": "<id:23>",
+              "key": "v3",
+              "label": "3",
+              "notScored": false,
+              "remarkRequired": false,
+              "value": 3
+            },
+            {
+              "id": "<id:24>",
+              "key": "v3.5",
+              "label": "3.5",
+              "notScored": false,
+              "remarkRequired": false,
+              "value": 3.5
+            },
+            {
+              "id": "<id:25>",
+              "key": "v4",
+              "label": "4",
+              "notScored": false,
+              "remarkRequired": false,
+              "value": 4
+            },
+            {
+              "id": "<id:26>",
+              "key": "v4.3",
+              "label": "4.3",
+              "notScored": false,
+              "remarkRequired": false,
+              "value": 4.3
+            },
+            {
+              "id": "<id:27>",
+              "key": "v5",
+              "label": "5",
+              "notScored": false,
+              "remarkRequired": false,
+              "value": 5
+            },
+            {
+              "id": "<id:28>",
+              "key": "none",
+              "label": "不做评价",
+              "notScored": true,
+              "remarkRequired": false,
+              "value": null
+            }
+          ]
+        }
+      ],
+      "scoreMethod": "weighted_average",
+      "status": "enabled",
+      "type": "key_behavior"
+    },
+    "name": "general POST /:id/enable 非本人",
+    "status": 200
+  },
+  {
+    "body": {
+      "error": {
+        "code": "CONFLICT",
+        "details": {
+          "reason": "NOT_DRAFT"
+        },
+        "message": "只有草稿套卷可以启用"
+      }
+    },
+    "name": "admin POST /:id/enable",
+    "status": 409
+  },
+  {
+    "body": {
+      "error": {
+        "code": "CONFLICT",
+        "details": {
+          "reason": "NOT_DRAFT"
+        },
+        "message": "只有草稿套卷可以启用"
+      }
+    },
+    "name": "admin POST /:id/enable 重复",
+    "status": 409
+  },
+  {
+    "body": {
+      "error": {
+        "code": "NOT_FOUND",
+        "message": "套卷不存在"
+      }
+    },
+    "name": "admin POST /:id/enable 不存在",
+    "status": 404
+  },
+  {
+    "body": {
+      "createdBy": "<id:11>",
+      "dimensions": [],
+      "excellence": null,
+      "guide": null,
+      "id": "<id:32>",
+      "name": "套卷D",
+      "questions": [],
+      "revision": 1,
+      "roles": [],
+      "scales": [],
+      "scoreMethod": "weighted_average",
+      "status": "draft",
+      "type": "key_behavior"
+    },
+    "name": "admin 删除用甲 POST /questionnaires",
+    "status": 201
+  },
+  {
+    "body": {
+      "deleted": true,
+      "id": "<id:32>"
+    },
+    "name": "general DELETE /questionnaires/:id 非本人",
+    "status": 200
+  },
+  {
+    "body": {
+      "createdBy": "<id:11>",
+      "dimensions": [],
+      "excellence": null,
+      "guide": null,
+      "id": "<id:33>",
+      "name": "套卷E",
+      "questions": [],
+      "revision": 1,
+      "roles": [],
+      "scales": [],
+      "scoreMethod": "weighted_average",
+      "status": "draft",
+      "type": "key_behavior"
+    },
+    "name": "admin 删除用乙 POST /questionnaires",
+    "status": 201
+  },
+  {
+    "body": {
+      "error": {
+        "code": "REVISION_CONFLICT",
+        "details": {
+          "current": 1,
+          "expected": 9
+        },
+        "message": "数据已被修改，请刷新后显式重提"
+      }
+    },
+    "name": "admin DELETE /questionnaires/:id 过期",
+    "status": 409
+  },
+  {
+    "body": {
+      "deleted": true,
+      "id": "<id:33>"
+    },
+    "name": "admin DELETE /questionnaires/:id",
+    "status": 200
+  },
+  {
+    "body": {
+      "error": {
+        "code": "NOT_FOUND",
+        "message": "套卷不存在"
+      }
+    },
+    "name": "admin DELETE /questionnaires/:id 重复",
+    "status": 404
+  },
+  {
+    "body": {
+      "items": [
+        {
+          "createdBy": "<id:11>",
+          "id": "<id:10>",
+          "name": "无权改",
+          "revision": 5,
+          "status": "enabled",
+          "type": "key_behavior"
+        },
+        {
+          "createdBy": "<id:13>",
+          "id": "<id:12>",
+          "name": "套卷G",
+          "revision": 1,
+          "status": "draft",
+          "type": "key_behavior"
+        },
+        {
+          "createdBy": "<id:15>",
+          "id": "<id:14>",
+          "name": "套卷P",
+          "revision": 1,
+          "status": "draft",
+          "type": "key_behavior"
+        }
+      ]
+    },
+    "name": "admin GET /questionnaires 之后",
+    "status": 200
+  },
+  {
+    "body": {
+      "endedAt": null,
+      "form": "single",
+      "id": "<id:34>",
+      "name": "活动甲",
+      "ownerUserId": "<id:11>",
+      "revision": 1,
+      "roleDisplay": "name",
+      "scene": null,
+      "scoredAt": null,
+      "showAppraiserName": true,
+      "startedAt": null,
+      "status": "draft",
+      "welcome": null
+    },
+    "name": "admin POST /activities",
+    "status": 201
+  },
+  {
+    "body": {
+      "error": {
+        "code": "VALIDATION_FAILED",
+        "details": [
+          {
+            "code": "invalid_type",
+            "expected": "string",
+            "message": "Invalid input: expected string, received undefined",
+            "path": [
+              "name"
+            ]
+          },
+          {
+            "code": "invalid_value",
+            "message": "Invalid option: expected one of \"single\"|\"multiple\"",
+            "path": [
+              "form"
+            ],
+            "values": [
+              "single",
+              "multiple"
+            ]
+          }
+        ],
+        "message": "请求字段不合法"
+      }
+    },
+    "name": "admin POST /activities 非法体",
+    "status": 400
+  },
+  {
+    "body": {
+      "error": {
+        "code": "REVISION_CONFLICT",
+        "message": "新建对象的 revision 必须为 0"
+      }
+    },
+    "name": "admin POST /activities 非 0 revision",
+    "status": 409
+  },
+  {
+    "body": {
+      "endedAt": null,
+      "form": "single",
+      "id": "<id:35>",
+      "name": "活动甲",
+      "ownerUserId": "<id:13>",
+      "revision": 1,
+      "roleDisplay": "name",
+      "scene": null,
+      "scoredAt": null,
+      "showAppraiserName": true,
+      "startedAt": null,
+      "status": "draft",
+      "welcome": null
+    },
+    "name": "general POST /activities",
+    "status": 201
+  },
+  {
+    "body": {
+      "endedAt": null,
+      "form": "single",
+      "id": "<id:36>",
+      "name": "活动甲",
+      "ownerUserId": "<id:15>",
+      "revision": 1,
+      "roleDisplay": "name",
+      "scene": null,
+      "scoredAt": null,
+      "showAppraiserName": true,
+      "startedAt": null,
+      "status": "draft",
+      "welcome": null
+    },
+    "name": "plain POST /activities",
+    "status": 201
+  }
+]

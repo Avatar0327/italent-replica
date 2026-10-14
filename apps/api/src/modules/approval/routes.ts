@@ -3,7 +3,13 @@
  * 字段权限与数据范围在事务外解析（授权器自带事务），命令内只做有界读写。
  */
 import { foreignVisibility, viewableWithForeign } from './foreign-fields.js';
-import { pgErrorCode, registerMembershipRevokeHook, type Tx, withTenant } from '@italent/db';
+import {
+  pgErrorCode,
+  registerMembershipPrelockHook,
+  registerMembershipRevokeHook,
+  type Tx,
+  withTenant,
+} from '@italent/db';
 import {
   ADD_SIGN_TYPES,
   APPROVAL_PROCESS_OBJECT,
@@ -29,6 +35,7 @@ import { requireObjectWrite } from '../permission/object-write.js';
 import { registerPersonnelApprovalHooks } from '../personnel/approval-hooks.js';
 import {
   adminScope,
+  adminTargetScope,
   isProcessAdmin,
   requireProcessButton,
   requireProcessView,
@@ -42,7 +49,9 @@ import {
   cancel,
   disagreeTask,
   editTask,
+  jumpTask,
   rejectTask,
+  rejectToPreviousTask,
   resubmit,
   transferTask,
   urge,
@@ -74,7 +83,13 @@ import {
 } from './disclosure.js';
 import { copySend, retrieveTask } from './node-actions.js';
 import { startOrResume } from './engine.js';
-import { discloseHandover, handoverExceptionAdmin, takeOverOnDeactivation, type HandoverResult } from './handover.js';
+import {
+  discloseHandover,
+  handoverExceptionAdmin,
+  prelockOnDeactivation,
+  takeOverOnDeactivation,
+  type HandoverResult,
+} from './handover.js';
 import { listAdminLogs, listInstances, listNotifications, listTodos } from './queries.js';
 import { simulateByObject, simulateProcess } from './simulation.js';
 import {
@@ -86,6 +101,8 @@ import {
   type LogView,
   type TaskRow,
 } from './store.js';
+import { policedSub } from '../../route-policy/index.js';
+import { APPROVAL_POLICIES } from './policy.js';
 
 type C = Context<TenantEnv>;
 
@@ -227,7 +244,8 @@ async function processResponse(c: C, deps: TenantRouteDeps, result: CommandResul
 
 export const registerApprovalRoutes: TenantRouteModule = (router, deps) => {
   registerHooks(deps);
-  const module = new Hono<TenantEnv>();
+  // F-039：子应用套本模块登记表（APPROVAL_POLICIES），注册行不变、处理函数不变
+  const module = policedSub(router, APPROVAL_POLICIES, () => new Hono<TenantEnv>());
   module.onError(handleError);
   registerProcessRoutes(module, deps);
   registerTenantConfigRoutes(module, deps);
@@ -243,6 +261,8 @@ function registerHooks(deps: TenantRouteDeps) {
   const withFields = <T extends ApprovalContext>(ctx: T): T => ({ ...ctx, fields: fieldAccess(deps, ctx) });
   // DEC-123：成员停用（平台撤销成员关系）的同一事务内，自动转派其剩余在途异常待办。
   registerMembershipRevokeHook((tx, revocation) => takeOverOnDeactivation(tx, deps, revocation));
+  // F-069：全局停用在锁账号行之前按全局锁序预取接管要用的员工 / 业务 / 组织锁。
+  registerMembershipPrelockHook((tx, revocation) => prelockOnDeactivation(tx, deps, revocation));
   registerEmploymentApprovalHooks({
     submitted: async (tx, ctx, businessId) => {
       await startOrResume(tx, withFields(ctx), { businessType: 'employment', businessId });
@@ -380,6 +400,8 @@ const simulationData = z.strictObject({
   orgAncestors: z.record(z.uuid(), z.array(z.uuid()).max(100)).optional(),
   initiatorUserId: userIdInput.nullable().optional(),
   subjectUserId: userIdInput.nullable().optional(),
+  /** F-048：虚拟的主体账号集合（多主体回避仿真）。 */
+  subjectUserIds: z.array(userIdInput).max(50).optional(),
 });
 const scope = z.enum(['published', 'latest']).default('published');
 
@@ -476,6 +498,7 @@ function registerTaskRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     ['approve', approveTask],
     ['disagree', disagreeTask],
     ['reject', rejectTask],
+    ['reject-previous', rejectToPreviousTask],
   ] as const) {
     router.post(`/tasks/:id/${path}`, async (c) => {
       const ctx = writeCtx(c, deps);
@@ -487,6 +510,13 @@ function registerTaskRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       return respondOutcome(c, deps, result);
     });
   }
+  router.post('/tasks/:id/jump', async (c) => {
+    const ctx = writeCtx(c, deps);
+    const input = await parseBody(c, z.strictObject({ toNodeKey: z.string().min(1).max(40), comment }));
+    const request = { taskId: uuidParam(c), toNodeKey: input.toNodeKey, comment: input.comment ?? null };
+    const result = await command(c, deps, ctx, request, (tx, context) => jumpTask(tx, context, request));
+    return respondOutcome(c, deps, result);
+  });
   router.post('/tasks/:id/transfer', async (c) => {
     const ctx = writeCtx(c, deps);
     const input = await parseBody(c, z.strictObject({ toUserId: userIdInput, comment }));
@@ -591,7 +621,11 @@ function registerInstanceRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
         ...(body.toUserId ? { toUserId: body.toUserId } : {}),
         ...(body.toNodeKey ? { toNodeKey: body.toNodeKey } : {}),
       } as const;
-      const result = await command(c, deps, ctx, input, (tx, context) => adminAct(tx, context, input, scopeSql));
+      // F-067：转交 / 改派目标须在操作人对该业务对象的管理范围内（事务外解析范围，事务内按实例业务类型判断）
+      const targetScope = await adminTargetScope(deps, ctx);
+      const result = await command(c, deps, ctx, input, (tx, context) =>
+        adminAct(tx, context, input, scopeSql, { targetScope }),
+      );
       return respondOutcome(c, deps, result);
     });
   }

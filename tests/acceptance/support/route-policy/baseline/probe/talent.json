@@ -1,0 +1,689 @@
+{
+  "DELETE /api/tenant/talent/criteria/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "f590b0d12bc6",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TalentCenter/TalentCenter.TalentCriterion/-"
+    ],
+    "trace": [
+      "btn:TalentCenter.TalentCriterion#delete@detail",
+      "obj:TalentCenter.TalentCriterion:delete"
+    ]
+  },
+  "DELETE /api/tenant/talent/criteria/:id/model-image": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "f590b0d12bc6",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TalentCenter/TalentCenter.TalentCriterion/-",
+      "scope:TalentCenter/TalentCenter.TalentCriterion/TalentCenter.TalentCriterion.detail"
+    ],
+    "trace": [
+      "btn:TalentCenter.TalentCriterion#update@detail",
+      "obj:TalentCenter.TalentCriterion:update",
+      "obj:TalentCenter.TalentCriterion:view"
+    ]
+  },
+  "DELETE /api/tenant/talent/criterion-categories/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "e5d69ce81256",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TalentCenter/TalentCenter.TalentCriterionCategory/-"
+    ],
+    "trace": [
+      "btn:TalentCenter.TalentCriterionCategory#delete@detail",
+      "obj:TalentCenter.TalentCriterionCategory:delete"
+    ]
+  },
+  "DELETE /api/tenant/talent/description-types/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "cd554f3ca8bb",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TalentCenter/TalentCenter.DescriptionType/-"
+    ],
+    "trace": [
+      "btn:TalentCenter.DescriptionType#delete@detail",
+      "obj:TalentCenter.DescriptionType:delete"
+    ]
+  },
+  "DELETE /api/tenant/talent/dimension-categories/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "72e6715e288b",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TalentCenter/TalentCenter.Category/-"
+    ],
+    "trace": [
+      "btn:TalentCenter.Category#delete@detail",
+      "obj:TalentCenter.Category:delete"
+    ]
+  },
+  "DELETE /api/tenant/talent/dimensions/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "68fd0a5c67f1",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TalentCenter/TalentCenter.Dimension/-"
+    ],
+    "trace": [
+      "btn:TalentCenter.Dimension#delete@detail",
+      "obj:TalentCenter.Dimension:delete"
+    ]
+  },
+  "DELETE /api/tenant/talent/libraries/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "42dd5f1ec54c",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TalentCenter/TalentCenter.DimensionLibrary/-"
+    ],
+    "trace": [
+      "btn:TalentCenter.DimensionLibrary#delete@detail",
+      "obj:TalentCenter.DimensionLibrary:delete"
+    ]
+  },
+  "GET /api/tenant/talent/candidates/description-types": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TalentCenter.Dimension"
+    ],
+    "scopeQueries": [],
+    "trace": [
+      "obj:TalentCenter.Dimension:view"
+    ]
+  },
+  "GET /api/tenant/talent/candidates/dimensions": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TalentCenter.Dimension"
+    ],
+    "scopeQueries": [
+      "scope:TalentCenter/TalentCenter.Dimension/TalentCenter.Dimension.list"
+    ],
+    "trace": [
+      "obj:TalentCenter.Dimension:view"
+    ]
+  },
+  "GET /api/tenant/talent/candidates/owner-orgs": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "ad515d75dd28",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "GET /api/tenant/talent/criteria": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TalentCenter.Dimension",
+      "fields:TalentCenter.TalentCriterion"
+    ],
+    "scopeQueries": [
+      "scope:TalentCenter/TalentCenter.Dimension/TalentCenter.Dimension.list",
+      "scope:TalentCenter/TalentCenter.TalentCriterion/TalentCenter.TalentCriterion.list"
+    ],
+    "trace": [
+      "obj:TalentCenter.Dimension:view",
+      "obj:TalentCenter.TalentCriterion:view"
+    ]
+  },
+  "GET /api/tenant/talent/criteria/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "f590b0d12bc6",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TalentCenter/TalentCenter.TalentCriterion/TalentCenter.TalentCriterion.detail"
+    ],
+    "trace": [
+      "obj:TalentCenter.TalentCriterion:view"
+    ]
+  },
+  "GET /api/tenant/talent/criteria/:id/model-image": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "f590b0d12bc6",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TalentCenter/TalentCenter.TalentCriterion/TalentCenter.TalentCriterion.detail"
+    ],
+    "trace": [
+      "obj:TalentCenter.TalentCriterion:view"
+    ]
+  },
+  "GET /api/tenant/talent/criteria/:id/model-image/attachments/:attachmentId/content": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "f590b0d12bc6",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TalentCenter/TalentCenter.TalentCriterion/TalentCenter.TalentCriterion.detail"
+    ],
+    "trace": [
+      "obj:TalentCenter.TalentCriterion:view"
+    ]
+  },
+  "GET /api/tenant/talent/criterion-categories": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TalentCenter.TalentCriterionCategory"
+    ],
+    "scopeQueries": [
+      "scope:TalentCenter/TalentCenter.TalentCriterionCategory/TalentCenter.TalentCriterionCategory.list"
+    ],
+    "trace": [
+      "obj:TalentCenter.TalentCriterionCategory:view"
+    ]
+  },
+  "GET /api/tenant/talent/criterion-categories/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "e5d69ce81256",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TalentCenter/TalentCenter.TalentCriterionCategory/TalentCenter.TalentCriterionCategory.detail"
+    ],
+    "trace": [
+      "obj:TalentCenter.TalentCriterionCategory:view"
+    ]
+  },
+  "GET /api/tenant/talent/description-types": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TalentCenter.DescriptionType"
+    ],
+    "scopeQueries": [
+      "scope:TalentCenter/TalentCenter.DescriptionType/TalentCenter.DescriptionType.list"
+    ],
+    "trace": [
+      "obj:TalentCenter.DescriptionType:view"
+    ]
+  },
+  "GET /api/tenant/talent/description-types/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "cd554f3ca8bb",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TalentCenter/TalentCenter.DescriptionType/TalentCenter.DescriptionType.detail"
+    ],
+    "trace": [
+      "obj:TalentCenter.DescriptionType:view"
+    ]
+  },
+  "GET /api/tenant/talent/dimension-categories": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TalentCenter.Category"
+    ],
+    "scopeQueries": [
+      "scope:TalentCenter/TalentCenter.Category/TalentCenter.Category.list"
+    ],
+    "trace": [
+      "obj:TalentCenter.Category:view"
+    ]
+  },
+  "GET /api/tenant/talent/dimension-categories/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "72e6715e288b",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TalentCenter/TalentCenter.Category/TalentCenter.Category.detail"
+    ],
+    "trace": [
+      "obj:TalentCenter.Category:view"
+    ]
+  },
+  "GET /api/tenant/talent/dimensions": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TalentCenter.Dimension"
+    ],
+    "scopeQueries": [
+      "scope:TalentCenter/TalentCenter.Dimension/TalentCenter.Dimension.list"
+    ],
+    "trace": [
+      "obj:TalentCenter.Dimension:view"
+    ]
+  },
+  "GET /api/tenant/talent/dimensions/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "68fd0a5c67f1",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TalentCenter/TalentCenter.Dimension/TalentCenter.Dimension.detail"
+    ],
+    "trace": [
+      "obj:TalentCenter.Dimension:view"
+    ]
+  },
+  "GET /api/tenant/talent/forms/:object": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "b1c3243b4e41",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "GET /api/tenant/talent/libraries": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TalentCenter.DimensionLibrary"
+    ],
+    "scopeQueries": [
+      "scope:TalentCenter/TalentCenter.DimensionLibrary/TalentCenter.DimensionLibrary.list"
+    ],
+    "trace": [
+      "obj:TalentCenter.DimensionLibrary:view"
+    ]
+  },
+  "GET /api/tenant/talent/libraries/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "42dd5f1ec54c",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TalentCenter/TalentCenter.DimensionLibrary/TalentCenter.DimensionLibrary.detail"
+    ],
+    "trace": [
+      "obj:TalentCenter.DimensionLibrary:view"
+    ]
+  },
+  "PATCH /api/tenant/talent/criteria/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "f590b0d12bc6",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TalentCenter/TalentCenter.TalentCriterion/-"
+    ],
+    "trace": [
+      "btn:TalentCenter.TalentCriterion#update@detail",
+      "obj:TalentCenter.TalentCriterion:update"
+    ]
+  },
+  "PATCH /api/tenant/talent/criterion-categories/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "e5d69ce81256",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TalentCenter/TalentCenter.TalentCriterionCategory/-"
+    ],
+    "trace": [
+      "btn:TalentCenter.TalentCriterionCategory#update@detail",
+      "obj:TalentCenter.TalentCriterionCategory:update"
+    ]
+  },
+  "PATCH /api/tenant/talent/description-types/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "cd554f3ca8bb",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TalentCenter/TalentCenter.DescriptionType/-"
+    ],
+    "trace": [
+      "btn:TalentCenter.DescriptionType#update@detail",
+      "obj:TalentCenter.DescriptionType:update"
+    ]
+  },
+  "PATCH /api/tenant/talent/dimension-categories/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "72e6715e288b",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TalentCenter/TalentCenter.Category/-"
+    ],
+    "trace": [
+      "btn:TalentCenter.Category#update@detail",
+      "obj:TalentCenter.Category:update"
+    ]
+  },
+  "PATCH /api/tenant/talent/dimensions/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "68fd0a5c67f1",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TalentCenter/TalentCenter.Dimension/-"
+    ],
+    "trace": [
+      "btn:TalentCenter.Dimension#update@detail",
+      "obj:TalentCenter.Dimension:update"
+    ]
+  },
+  "PATCH /api/tenant/talent/libraries/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "42dd5f1ec54c",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TalentCenter/TalentCenter.DimensionLibrary/-"
+    ],
+    "trace": [
+      "btn:TalentCenter.DimensionLibrary#update@detail",
+      "obj:TalentCenter.DimensionLibrary:update"
+    ]
+  },
+  "POST /api/tenant/talent/criteria": {
+    "all": {
+      "code": "REVISION_CONFLICT",
+      "error": "f12e1e2b793f",
+      "status": 409
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:TalentCenter.TalentCriterion#create@list",
+      "obj:TalentCenter.TalentCriterion:create"
+    ]
+  },
+  "POST /api/tenant/talent/criteria/:id/dimension-category": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "1b3fa5fc3444",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "btn:TalentCenter.TalentCriterion#setDimensionCategory@detail",
+      "obj:TalentCenter.TalentCriterion:update"
+    ]
+  },
+  "POST /api/tenant/talent/criteria/:id/model-image/attachments": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "ea0db8703a12",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "btn:TalentCenter.TalentCriterion#update@detail",
+      "obj:TalentCenter.TalentCriterion:update",
+      "obj:TalentCenter.TalentCriterion:view"
+    ]
+  },
+  "POST /api/tenant/talent/criteria/:id/model-image/attachments/:attachmentId/upload": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "505add1ab501",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "btn:TalentCenter.TalentCriterion#update@detail",
+      "obj:TalentCenter.TalentCriterion:update",
+      "obj:TalentCenter.TalentCriterion:view"
+    ]
+  },
+  "POST /api/tenant/talent/criterion-categories": {
+    "all": {
+      "code": "REVISION_CONFLICT",
+      "error": "f12e1e2b793f",
+      "status": 409
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:TalentCenter.TalentCriterionCategory#create@list",
+      "obj:TalentCenter.TalentCriterionCategory:create"
+    ]
+  },
+  "POST /api/tenant/talent/description-types": {
+    "all": {
+      "code": "REVISION_CONFLICT",
+      "error": "f12e1e2b793f",
+      "status": 409
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:TalentCenter.DescriptionType#create@list",
+      "obj:TalentCenter.DescriptionType:create"
+    ]
+  },
+  "POST /api/tenant/talent/dimension-categories": {
+    "all": {
+      "code": "REVISION_CONFLICT",
+      "error": "f12e1e2b793f",
+      "status": 409
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:TalentCenter.Category#create@list",
+      "obj:TalentCenter.Category:create"
+    ]
+  },
+  "POST /api/tenant/talent/dimensions": {
+    "all": {
+      "code": "REVISION_CONFLICT",
+      "error": "f12e1e2b793f",
+      "status": 409
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:TalentCenter.Dimension#create@list",
+      "obj:TalentCenter.Dimension:create"
+    ]
+  },
+  "POST /api/tenant/talent/libraries": {
+    "all": {
+      "code": "REVISION_CONFLICT",
+      "error": "f12e1e2b793f",
+      "status": 409
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:TalentCenter.DimensionLibrary#create@list",
+      "obj:TalentCenter.DimensionLibrary:create"
+    ]
+  }
+}

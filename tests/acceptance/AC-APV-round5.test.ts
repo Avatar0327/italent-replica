@@ -381,19 +381,17 @@ describe('覆盖补充：N6 真实角色下性别、年龄分别授权', () => {
     return { w, s, view, world };
   }
 
-  for (const [granted, hidden] of [
+  it.each([
     ['gender', 'age'],
     ['age', 'gender'],
-  ] as const) {
-    it(`只授权员工信息的「${granted}」查看权：详情只给 ${granted}`, async () => {
-      const { w, s, view, world } = await scene(`apv-n6-${granted}`);
-      await grantFieldAccess(world, s.outHead.userId, { view: [granted] }, personnelObject);
-      const detail = (await (
-        await world.api.request('GET', `${BASE}/instances/${view.id}`, w.as(s.outHead.userId))
-      ).json()) as InstanceView;
-      expect(detail.form.values).toHaveProperty(granted);
-      expect(detail.form.values).not.toHaveProperty(hidden);
-      expect(detail.form.values).toHaveProperty('departmentId', s.to);
-    });
-  }
+  ] as const)('只授权员工信息的「$0」查看权：详情只给 $0', async (granted, hidden) => {
+    const { w, s, view, world } = await scene(`apv-n6-${granted}`);
+    await grantFieldAccess(world, s.outHead.userId, { view: [granted] }, personnelObject);
+    const detail = (await (
+      await world.api.request('GET', `${BASE}/instances/${view.id}`, w.as(s.outHead.userId))
+    ).json()) as InstanceView;
+    expect(detail.form.values).toHaveProperty(granted);
+    expect(detail.form.values).not.toHaveProperty(hidden);
+    expect(detail.form.values).toHaveProperty('departmentId', s.to);
+  });
 });

@@ -66,11 +66,11 @@ describe('AC-EXP-02 缺“否则”的多段 if', () => {
     expect(evaluateFormula(formula, contextFor({ '盘点对象.得分': 70 }))).toMatchObject({ value: { value: 1 } });
   });
 
-  it('没有任何分支命中且没有 否则 时结果为空', () => {
+  it('没有任何分支命中且没有 否则 时结果为空（空值带来源类型：最后一段的数值，PR #108 第 4 轮 P2-3）', () => {
     const noElse = '如果 盘点对象.得分 > 90 那么 3 如果 盘点对象.得分 > 80 那么 2';
     expect(evaluateFormula(noElse, contextFor({ '盘点对象.得分': 70 }))).toEqual({
       ok: true,
-      value: { kind: 'empty' },
+      value: { kind: 'empty', of: 'number' },
     });
   });
 });

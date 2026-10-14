@@ -46,7 +46,11 @@ const configure = async (dateMode: 'editable' | 'readonly' | 'hidden', extra: st
             edit: !extra.includes(fieldCode),
           })),
         ],
-        buttons: [],
+        // DEC-402②：三个本人调动按钮由身份校验，自建同编码身份须带上它们（本文件测字段披露，不测按钮）
+        buttons: ['Transfer.Self', 'Employment.Create', 'Employment.Submit'].map((buttonCode) => ({
+          buttonCode,
+          level: 'detail',
+        })),
       },
       'TenantBase.EmploymentRecord',
     ),
@@ -115,7 +119,8 @@ describe('AC-TRF-37/39/45 第二轮：DEC-209 与响应披露', () => {
     );
     expect(result.items.map((item) => item.id).sort()).toEqual([head.employeeId, ancestor.employeeId].sort());
     expect(result.items.every((item) => item.orgPath.includes('合成'))).toBe(true);
-    expect(result.items.every((item) => Object.keys(item).sort().join() === 'id,name,orgPath')).toBe(true);
+    expect(result.items.every((item) => Object.keys(item).sort().join() === 'avatar,id,name,orgPath')).toBe(true);
+    expect(result.items.every((item) => (item as { avatar?: unknown }).avatar === null)).toBe(true);
     expect(await world.json(await request('/transfer/references/directManagerId'))).toEqual({ items: [] });
     const foreign = await approvalWorld(database().db, 'self-candidate-foreign');
     const org = await foreign.org('外租户部门');

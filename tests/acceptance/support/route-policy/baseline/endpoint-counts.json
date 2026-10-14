@@ -1,0 +1,32 @@
+{
+  "byModule": {
+    "approval": 34,
+    "audit": 4,
+    "avatar": 5,
+    "command-result": 1,
+    "contracts": 25,
+    "employment": 46,
+    "establishment": 16,
+    "evaluation": 34,
+    "idp": 57,
+    "job": 14,
+    "org": 14,
+    "permission": 44,
+    "personnel": 18,
+    "platform": 9,
+    "qualification": 55,
+    "root": 1,
+    "self-service": 9,
+    "succession": 52,
+    "succession-platform": 2,
+    "survey360": 75,
+    "survey360-link": 10,
+    "survey360-portal": 8,
+    "survey360-report-link": 3,
+    "talent": 40,
+    "talent-review": 74,
+    "talent-review-platform": 1,
+    "tenant-settings": 3
+  },
+  "total": 654
+}

@@ -6,7 +6,6 @@
  * 自动结束（暂定，Q-M0-57 / #56）；AC-APV-26 审批人解析、审批人为空（DEC-054 / 098）、自审（DEC-068）、相同 / 历史
  * 相同审批人自动处理（`14` §11.6）对会签节点逐人生效。
  */
-import { randomUUID } from 'node:crypto';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import {
@@ -18,6 +17,7 @@ import {
   type NodeInput,
   type TaskView,
 } from './AC-APV-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const database = useTestDb();
 const BASE = '/api/tenant/approval';
@@ -162,7 +162,7 @@ describe('AC-APV-21 会签节点的配置、版本与发布', () => {
       const response = await w.request(w.hr.id, 'POST', `${BASE}/processes`, {
         ifMatch: 0,
         body: {
-          code: `P_${randomUUID().slice(0, 8)}`,
+          code: `P_${uniqueSuffix()}`,
           name: '非法会签',
           approvalType: 'transfer',
           exceptionAdminUserId: w.exceptionAdmin,

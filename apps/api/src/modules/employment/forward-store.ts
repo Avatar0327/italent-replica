@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
 import { auditEmployment } from './context.js';
-import { insertEmploymentRow, type EmploymentPayloadRow } from './record-store.js';
+import { insertEmploymentRow, rowsOf, type EmploymentPayloadRow } from './record-store.js';
 import type { ForwardFieldChange, ForwardValues } from './forward-rules.js';
 import type { EmploymentContext } from './types.js';
 
@@ -43,6 +43,12 @@ export async function auditForwardTarget(
   next: EmploymentPayloadRow,
   changes: readonly ForwardFieldChange[],
 ): Promise<void> {
+  // 锁内固定本次传播的来源版本；来源后来的人工编辑或同步不应倒灌这次传播。
+  const [source] = rowsOf<{ versionNo: number }>(
+    await tx.execute(sql`SELECT version_no AS "versionNo" FROM employment_payload_versions
+      WHERE tenant_id=${ctx.tenantId} AND business_id=${next.triggerBusinessId ?? null}::uuid
+      ORDER BY version_no DESC LIMIT 1`),
+  );
   await tx.execute(sql`
     UPDATE employment_business_objects SET revision=revision+1
     WHERE tenant_id=${ctx.tenantId} AND employee_id=${next.employeeId}::uuid AND id=${next.businessId}::uuid
@@ -56,5 +62,6 @@ export async function auditForwardTarget(
     Object.fromEntries(changes.map((change) => [change.field, change.before])),
     Object.fromEntries(changes.map((change) => [change.field, change.after])),
     next.id,
+    { sourceVersionNo: source?.versionNo ?? null },
   );
 }

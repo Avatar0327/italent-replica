@@ -44,57 +44,59 @@ function scopedApi(w: World, scope: 'from' | 'to' | 'creator') {
   return tenantApi(w.db, { authorize, clock });
 }
 
-it.each(['delete', 'revoke'].flatMap((action) => ['from', 'to'].map((scope) => ({ action, scope }))))(
-  'AC-EST-18 $action 仅有 $scope 侧范围时，回退额度变化前后返回一致 404',
-  async ({ action, scope }) => {
-    const w = await carriedWorld(database().db, `reverse-errors-${action}-${scope}`);
-    const saved = await w.save(await w.hired(), action === 'revoke' ? { mode: 'application', submit: true } : {});
-    expect(saved.status).toBe(201);
-    const business = (await saved.json()) as { id: string; revision: number };
-    const api = scopedApi(w, scope as 'from' | 'to');
-    const request = () =>
-      api.request(
-        action === 'delete' ? 'DELETE' : 'POST',
-        `/api/tenant/employment/businesses/${business.id}${action === 'delete' ? '' : '/revoke'}`,
-        { user: w.session.user.id, tenant: w.session.tenant.id, ifMatch: business.revision, body: {} },
-      );
-    const first = await request();
-    expect(first.status).toBe(404);
-    expect(await first.json()).toEqual(absent);
-    const [, target] = await w.capacities();
-    const changed = await tenantApi(w.db, { clock }).request(
-      'PATCH',
-      `/api/tenant/establishment/capacities/${target!.id}`,
-      {
-        user: w.session.user.id,
-        tenant: w.session.tenant.id,
-        ifMatch: target!.revision,
-        body: {
-          effectiveDate: '2026-10-01',
-          strictControl: false,
-          subdivisions: [{ positionId: w.targetPosition, localCapacity: 0, inclusiveCapacity: null }],
-        },
-      },
-    );
-    expect(changed.status, await changed.clone().text()).toBe(200);
-    const before = await w.capacities();
-    const history = await w.history();
-    const control = await w.session.request(
+it.each([
+  { action: 'delete', scope: 'from' },
+  { action: 'delete', scope: 'to' },
+  { action: 'revoke', scope: 'from' },
+  { action: 'revoke', scope: 'to' },
+] as const)('AC-EST-18 $action 仅有 $scope 侧范围时，回退额度变化前后返回一致 404', async ({ action, scope }) => {
+  const w = await carriedWorld(database().db, `reverse-errors-${action}-${scope}`);
+  const saved = await w.save(await w.hired(), action === 'revoke' ? { mode: 'application', submit: true } : {});
+  expect(saved.status).toBe(201);
+  const business = (await saved.json()) as { id: string; revision: number };
+  const api = scopedApi(w, scope as 'from' | 'to');
+  const request = () =>
+    api.request(
       action === 'delete' ? 'DELETE' : 'POST',
-      `/businesses/${business.id}${action === 'delete' ? '' : '/revoke'}`,
-      { ifMatch: business.revision, body: {} },
+      `/api/tenant/employment/businesses/${business.id}${action === 'delete' ? '' : '/revoke'}`,
+      { user: w.session.user.id, tenant: w.session.tenant.id, ifMatch: business.revision, body: {} },
     );
-    expect(control.status).toBe(409);
-    expect(await control.json()).toMatchObject({
-      error: { details: { reason: 'ESTABLISHMENT_CAPACITY_INSUFFICIENT' } },
-    });
-    const second = await request();
-    expect(second.status, await second.clone().text()).toBe(404);
-    expect(await second.json()).toEqual(absent);
-    expect(await w.capacities()).toEqual(before);
-    expect(await w.history()).toEqual(history);
-  },
-);
+  const first = await request();
+  expect(first.status).toBe(404);
+  expect(await first.json()).toEqual(absent);
+  const [, target] = await w.capacities();
+  const changed = await tenantApi(w.db, { clock }).request(
+    'PATCH',
+    `/api/tenant/establishment/capacities/${target!.id}`,
+    {
+      user: w.session.user.id,
+      tenant: w.session.tenant.id,
+      ifMatch: target!.revision,
+      body: {
+        effectiveDate: '2026-10-01',
+        strictControl: false,
+        subdivisions: [{ positionId: w.targetPosition, localCapacity: 0, inclusiveCapacity: null }],
+      },
+    },
+  );
+  expect(changed.status, await changed.clone().text()).toBe(200);
+  const before = await w.capacities();
+  const history = await w.history();
+  const control = await w.session.request(
+    action === 'delete' ? 'DELETE' : 'POST',
+    `/businesses/${business.id}${action === 'delete' ? '' : '/revoke'}`,
+    { ifMatch: business.revision, body: {} },
+  );
+  expect(control.status).toBe(409);
+  expect(await control.json()).toMatchObject({
+    error: { details: { reason: 'ESTABLISHMENT_CAPACITY_INSUFFICIENT' } },
+  });
+  const second = await request();
+  expect(second.status, await second.clone().text()).toBe(404);
+  expect(await second.json()).toEqual(absent);
+  expect(await w.capacities()).toEqual(before);
+  expect(await w.history()).toEqual(history);
+});
 
 async function otherOwnedCapacity(w: World, variant: 'scheme' | 'capacity' | 'active') {
   const user = await createUser(

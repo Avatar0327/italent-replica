@@ -8,7 +8,7 @@ import { runCommand, type CommandResult } from '../../commands.js';
 import type { TenantRouteDeps, TenantRouteModule } from '../../routes.js';
 import { tenantOf, type TenantEnv } from '../../tenant-context.js';
 import { pageQuery, revision, uuidParam } from '../job/context.js';
-import { jsonBody } from '../employment/context.js';
+import { EMPLOYMENT_OBJECT, jsonBody } from '../employment/context.js';
 import {
   resolveModuleScope,
   resolveModuleScopeInTransaction,
@@ -18,10 +18,12 @@ import {
 } from '../permission/module-access.js';
 import { requireObjectWrite } from '../permission/object-write.js';
 import { checkFields, checkOperationScope, checkScope, rowsOf, type ContractContext } from './context.js';
-import { rules, saveMaster, saveRule, saveSettings, settings } from './configuration.js';
+import { deleteRule, rulesPage, saveMaster, saveRule, saveSettings, settings } from './configuration.js';
 import { commandSchema, parse } from './input.js';
 import { batchCommands, createCommand, loadContract, loadRequest, portfolioRevision } from './service.js';
 import { listContracts } from './queries.js';
+import { parseListQuery } from './list-query.js';
+import { contractDetail, employeeContracts } from './detail.js';
 import {
   checkImportScope,
   errorsCsv,
@@ -34,6 +36,8 @@ import { cancelFailedRequest } from './recovery.js';
 import { registerMergedTodos } from './todos.js';
 import { auditActor } from '../../system-actor.js';
 import { rawImportRows, rawUuid, recordOperationLog, withFailedImportLog } from '../../audit/record.js';
+import { policedSub } from '../../route-policy/index.js';
+import { CONTRACT_POLICIES } from './policy.js';
 
 type C = Context<TenantEnv>;
 export async function routeContext(c: C, deps: TenantRouteDeps, object = CONTRACT_OBJECT, write = false) {
@@ -59,25 +63,48 @@ export async function routeContext(c: C, deps: TenantRouteDeps, object = CONTRAC
     });
   return ctx;
 }
+/** 删除类回执 { id, deleted: true } 只回显调用方已给出的对象 ID，不属于对象字段，不参与字段裁剪。 */
+function isReceipt(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false;
+  const keys = Object.keys(value).sort();
+  return (
+    keys.length === 2 && keys[0] === 'deleted' && keys[1] === 'id' && (value as { deleted: unknown }).deleted === true
+  );
+}
 async function trim(deps: TenantRouteDeps, ctx: ContractContext, object: string, value: unknown): Promise<unknown> {
   const fields = await getModuleViewableFields(deps, ctx, object);
-  if (fields === undefined) return value;
+  if (fields === undefined || isReceipt(value)) return value;
   function project(value: unknown): unknown {
     if (Array.isArray(value)) return value.map(project);
     if (!value || typeof value !== 'object') return value;
     return Object.fromEntries(
       Object.entries(value).flatMap(([key, item]) => {
-        if (key === 'items') return [[key, project(item)]];
+        if (['items', 'versions'].includes(key)) return [[key, project(item)]];
+        // 任职摘要在生成处已按任职对象的查看字段裁剪（trimEmployment），这里原样带出
+        if (key === 'employment') return [[key, item]];
         if (key === 'customFields')
           return [
             [key, Object.fromEntries(Object.entries(item as object).filter(([id]) => fields!.has(`custom:${id}`)))],
           ];
-        if (['page', 'pageSize', 'hasDataPermission', 'count'].includes(key) || fields!.has(key)) return [[key, item]];
+        if (['page', 'pageSize', 'hasDataPermission', 'count', 'total'].includes(key) || fields!.has(key))
+          return [[key, item]];
         return [];
       }),
     );
   }
   return project(value);
+}
+/** 任职摘要按任职对象的查看字段裁剪；没有字段限制时原样返回。 */
+export async function trimEmployment<T extends Record<string, unknown> | null>(
+  deps: TenantRouteDeps,
+  ctx: ContractContext,
+  value: T,
+): Promise<T> {
+  if (!value) return value;
+  const fields = await getModuleViewableFields(deps, ctx, EMPLOYMENT_OBJECT);
+  if (fields === undefined) return value;
+  const visible = Object.entries(value).filter(([key]) => fields.has(key));
+  return (visible.length ? Object.fromEntries(visible) : null) as T;
 }
 function requireMasterScope(ctx: ContractContext, object: string) {
   if (['TenantBase.ContractType', 'TenantBase.ContractCompany'].includes(object) && !ctx.scope?.all)
@@ -127,7 +154,8 @@ export async function write(
   return c.json(await trim(deps, ctx, object, result.body), result.status);
 }
 export const registerContractRoutes: TenantRouteModule = (router, deps) => {
-  const module = new Hono<TenantEnv>();
+  // F-039：子应用套本模块登记表（CONTRACT_POLICIES），注册行不变、处理函数不变
+  const module = policedSub(router, CONTRACT_POLICIES, () => new Hono<TenantEnv>());
   module.onError((error, c) => {
     const code = pgErrorCode(error);
     if (code === '23505') return handleError(new AppError('CONFLICT', '合同编号或主数据编码已存在'), c);
@@ -139,17 +167,23 @@ export const registerContractRoutes: TenantRouteModule = (router, deps) => {
   module.get('/', async (c) => {
     const ctx = await routeContext(c, deps);
     const page = pageQuery(c);
-    const view = parse(
-      z.enum(['all', 'valid', 'expiring', 'expired_unrenewed', 'missing', 'in_review']),
-      c.req.query('view') ?? 'all',
+    const query = parseListQuery(c.req.query());
+    const { items, total } = await withTenant(deps.db, ctx.tenantId, (tx) =>
+      listContracts(tx, ctx, query, page.limit, page.offset),
     );
-    const days = view === 'expiring' ? parse(z.coerce.number().int().min(1).max(3660), c.req.query('days')) : 0;
-    const items = await withTenant(deps.db, ctx.tenantId, (tx) =>
-      listContracts(tx, ctx, view, page.limit, page.offset, days),
-    );
+    const rows =
+      query.view === 'missing'
+        ? await Promise.all(
+            (items as { employment: Record<string, unknown> | null }[]).map(async (row) => ({
+              ...row,
+              employment: await trimEmployment(deps, ctx, row.employment),
+            })),
+          )
+        : items;
     return c.json(
       await trim(deps, ctx, CONTRACT_OBJECT, {
-        items,
+        items: rows,
+        total,
         page: page.page,
         pageSize: page.pageSize,
         hasDataPermission: ctx.scope?.hasDataPermission ?? false,
@@ -168,12 +202,19 @@ export const registerContractRoutes: TenantRouteModule = (router, deps) => {
   });
   module.get('/records/:id', async (c) => {
     const ctx = await routeContext(c, deps);
-    const value = await withTenant(deps.db, ctx.tenantId, async (tx) => {
-      const row = await loadContract(tx, ctx.tenantId, uuidParam(c));
-      await checkScope(tx, ctx, row.employeeId, row.createdBy);
-      return row;
-    });
-    return c.json(await trim(deps, ctx, CONTRACT_OBJECT, value));
+    const value = await withTenant(deps.db, ctx.tenantId, (tx) => contractDetail(tx, ctx, uuidParam(c)));
+    return c.json(
+      await trim(deps, ctx, CONTRACT_OBJECT, {
+        ...value,
+        employment: await trimEmployment(deps, ctx, value.employment),
+      }),
+    );
+  });
+  // F-128 A8：某员工全部合同摘要；权限与 records/:id 相同（逐条按员工 + 创建人判可见）
+  module.get('/employees/:id/contracts', async (c) => {
+    const ctx = await routeContext(c, deps);
+    const items = await withTenant(deps.db, ctx.tenantId, (tx) => employeeContracts(tx, ctx, uuidParam(c)));
+    return c.json(await trim(deps, ctx, CONTRACT_OBJECT, { items }));
   });
   registerCommands(module, deps);
   registerConfiguration(module, deps);
@@ -269,10 +310,25 @@ function registerConfiguration(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
   module.get('/rules', async (c) => {
     const object = 'TenantBase.ContractRenewalRule';
     const ctx = await routeContext(c, deps, object);
-    return c.json(
-      await trim(deps, ctx, object, {
-        items: await withTenant(deps.db, ctx.tenantId, (tx) => rules(tx, ctx.tenantId)),
-      }),
+    const page = pageQuery(c);
+    const { items, total } = await withTenant(deps.db, ctx.tenantId, (tx) =>
+      rulesPage(tx, ctx.tenantId, page.limit, page.offset),
+    );
+    return c.json(await trim(deps, ctx, object, { items, total, page: page.page, pageSize: page.pageSize }));
+  });
+  // F-128 A16：删除规则；配置对象没有“删除”数据操作，沿用 update 判定（与保存同一把配置锁、同一 revision 口径）
+  module.delete('/rules/:id', async (c) => {
+    const object = 'TenantBase.ContractRenewalRule';
+    const ctx = await routeContext(c, deps, object, true);
+    const id = uuidParam(c);
+    await requireObjectWrite(deps.authorize, ctx, { objectCode: object, operation: 'update', payload: {} });
+    return write(
+      c,
+      deps,
+      ctx,
+      { id },
+      async (tx, ctx) => ({ status: 200, body: await deleteRule(tx, ctx, id) }),
+      object,
     );
   });
   for (const path of ['/rules', '/rules/:id'])
@@ -309,7 +365,7 @@ function registerMasters(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
           .select()
           .from(table)
           .where(sql`${table.tenantId}=${ctx.tenantId} AND ${ctx.scope?.all ?? false}`)
-          .orderBy(table.id)
+          .orderBy(...(kind === 'types' ? [contractTypes.displayOrder, contractTypes.code] : [table.id]))
           .limit(page.limit)
           .offset(page.offset),
       );

@@ -1,5 +1,6 @@
 import { postponeLateTransfer } from './late-transfer.js';
-import { tenantLocalDate } from '@italent/domain';
+import { assertPredecessorsSettled } from './linkage-dependency.js';
+import { resolveLateExecution, tenantLocalDate } from '@italent/domain';
 import { employmentDepartmentDisable } from '../org/employment-validity.js';
 import { bumpEmploymentBusiness, lockEmploymentBusiness } from './record-store.js';
 import { loadEmploymentRecord } from './read-model.js';
@@ -24,13 +25,24 @@ import { transitionEmployment } from './transitions.js';
 import type { BusinessKind, EmploymentContext, PresetFields } from './types.js';
 
 export interface ActivationFailure {
-  readonly reason: 'TARGET_ORG_DISABLED' | 'TARGET_POSITION_DISABLED' | 'ESTABLISHMENT_EXCEEDED' | 'RULE_REJECTED';
+  readonly reason:
+    | 'TARGET_ORG_DISABLED'
+    | 'TARGET_POSITION_DISABLED'
+    | 'ESTABLISHMENT_EXCEEDED'
+    | 'RULE_REJECTED'
+    /** DEC-278③：迟到执行区间内另有记录，需重建、待 HR 处理（late-transfer.ts）。 */
+    | 'REBUILD_REQUIRED';
   readonly detail: Record<string, unknown>;
 }
 
 export interface ActivationTarget {
   /** 回退调编时只验证剩余占用，不把被删除业务再次投影为调入。 */
   readonly occupancyOnly?: boolean;
+  /**
+   * 这次写入是否真的会向后更新其后的记录（设计 §4，S1-P2-04）：false 时容量判定不模拟其后组织调整随之传播——
+   * 历史任职的编辑（单条 / 批量 / 导入编辑）与新增导入选“不向后更新”都不传播，占编只到下一条记录。缺省视为会传播。
+   */
+  readonly propagates?: boolean;
   readonly reconcileCarried?: boolean;
   readonly fields?: Partial<PresetFields>;
   readonly businessId: string;
@@ -102,7 +114,14 @@ export function ruleRejection(error: unknown): ActivationFailure | null {
 
 async function precheck(tx: Tx, ctx: EmploymentContext, item: PendingActivation): Promise<ActivationFailure | null> {
   const { id: businessId, employeeId, kind } = item;
-  const effectiveDate = kind === 'transfer' ? tenantLocalDate(ctx.now, ctx.timezone) : item.effectiveDate;
+  // DEC-186 / DEC-272：调动按实际执行日对齐（共用判定函数）；其他业务按原生效日。
+  const effectiveDate =
+    kind === 'transfer'
+      ? resolveLateExecution({
+          plannedEffectiveDate: item.effectiveDate,
+          executionDate: tenantLocalDate(ctx.now, ctx.timezone),
+        }).effectiveDate
+      : item.effectiveDate;
   const record = item.materialized ? await loadEmploymentRecord(tx, ctx.tenantId, businessId, effectiveDate) : null;
   const departmentId = record ? record.fields.departmentId : item.departmentId;
   const positionId = record ? record.fields.positionId : item.positionId;
@@ -137,6 +156,9 @@ export async function activateWithJudgement(
     return await tx.transaction(async (savepoint) => {
       // org/locks.ts：预检可能取组织 / 编制锁，先锁已有业务；员工闭包已由调度 / 重试入口锁定。
       const business = await lockEmploymentBusiness(savepoint, { ...ctx, expectedRevision: item.revision }, item.id);
+      // 已落地直接调动与申请的 activate 端口同一套前序复核（S3-P2-01）；只提醒的复查不受前序约束（DEC-173）。
+      if (item.materialized && !item.reminderOnly)
+        await assertPredecessorsSettled(savepoint, ctx, item.employeeId, item.id);
       if (item.materialized && item.kind === 'transfer') {
         await postponeLateTransfer(savepoint, ctx, business);
         if (item.reminderOnly && item.effectiveDate < tenantLocalDate(ctx.now, ctx.timezone))
@@ -155,17 +177,22 @@ export async function activateWithJudgement(
       return null;
     });
   } catch (error) {
-    if (
-      error instanceof AppError &&
-      error.details &&
-      typeof error.details === 'object' &&
-      'activationFailure' in error.details
-    )
-      return error.details.activationFailure as ActivationFailure;
-    const rejected = ruleRejection(error);
-    if (!rejected) throw error;
-    return rejected;
+    const failure = activationFailureOf(error) ?? ruleRejection(error);
+    if (!failure) throw error;
+    return failure;
   }
+}
+
+/** 预检与迟到判定以 activationFailure 细节抛出的业务失败（late-transfer.ts、precheck）；其他错误返回 null。 */
+export function activationFailureOf(error: unknown): ActivationFailure | null {
+  if (
+    error instanceof AppError &&
+    error.details &&
+    typeof error.details === 'object' &&
+    'activationFailure' in error.details
+  )
+    return error.details.activationFailure as ActivationFailure;
+  return null;
 }
 
 /** 直接未来调动已有任职记录：联动完成同样推进业务/员工 revision，旧页面不能沿用生效前版本提交。 */

@@ -1,0 +1,57 @@
+/**
+ * 直接依赖图：区域 domain-evaluation（节点 → 直接依赖，字典序；同文件的依赖写作 #名字；没有依赖的叶子不登记）。
+ * 生成文件（F-072）：改源码后用 `ROUTE_POLICY_UPDATE_DIGESTS=1` 重算，不要手改；冲突时取任一侧后重算。
+ */
+import type { Graph } from '../../../evidence-graph.js';
+
+export const GRAPH: Graph = {
+  'packages/domain/src/evaluation/activity-rules.ts#activityLockedChange': ['#lockedChainFields', '#sorted'],
+  'packages/domain/src/evaluation/activity-rules.ts#checkActivityChains': [
+    '#MAX_REPEATABLE_CHAINS',
+    '#inapplicable',
+    '#violation',
+  ],
+  'packages/domain/src/evaluation/activity-rules.ts#checkActivityDates': ['#violation'],
+  'packages/domain/src/evaluation/activity-rules.ts#lockedChainFields': ['#sorted'],
+  'packages/domain/src/evaluation/catalog.ts#EVALUATION_OBJECTS': [
+    '#ACTIVITY_FLOW_BUTTONS',
+    '#object',
+    '#withButtons',
+    '#withoutDelete',
+  ],
+  'packages/domain/src/evaluation/catalog.ts#object': ['#EVALUATION_APP', '#SYSTEM_FIELDS', '#crud'],
+  'packages/domain/src/evaluation/conditions.ts#activityConditionField': ['#FIELD_PREFIX'],
+  'packages/domain/src/evaluation/conditions.ts#notAllowed': ['#COMBINATION_FUNCTIONS', '#registry'],
+  'packages/domain/src/evaluation/conditions.ts#rangeInverted': [
+    'packages/domain/src/expression/dates.ts#parseDateText',
+    'packages/domain/src/expression/dates.ts#utcMs',
+  ],
+  'packages/domain/src/evaluation/conditions.ts#registry': [
+    'packages/domain/src/expression/registry.ts#createDefaultRegistry',
+  ],
+  'packages/domain/src/evaluation/conditions.ts#validateActivityConditionDetails': [
+    '#ACTIVITY_CONDITION_OPERATORS',
+    '#valueIssue',
+  ],
+  'packages/domain/src/evaluation/conditions.ts#validateActivityConditionExpression': [
+    '#CONDITION_KIND',
+    '#activityConditionField',
+    '#notAllowed',
+    '#registry',
+    'packages/domain/src/expression/engine.ts#validateFormula',
+  ],
+  'packages/domain/src/evaluation/conditions.ts#valueIssue': ['#COMPARISONS', '#hasValue', '#rangeInverted'],
+  'packages/domain/src/evaluation/flow-catalog.ts#EVALUATION_FLOW_OBJECTS': ['#STAFF_EVALUATION_BUTTONS', '#object'],
+  'packages/domain/src/evaluation/flow-catalog.ts#object': [
+    'packages/domain/src/evaluation/catalog.ts#EVALUATION_APP',
+    '#SYSTEM_FIELDS',
+  ],
+  'packages/domain/src/evaluation/score-weights.ts#computeScoreWeights': [
+    '#WEIGHT_DIGITS',
+    '#firstInvalidWeight',
+    '#participants',
+    'packages/domain/src/expression/functions/math.ts#roundDecimal',
+  ],
+  'packages/domain/src/evaluation/score-weights.ts#firstInvalidWeight': ['#isValidWeight'],
+  'packages/domain/src/evaluation/score-weights.ts#participants': ['#participates'],
+};

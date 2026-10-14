@@ -10,6 +10,39 @@ export {
   identityResolverFromEnv,
 } from './identity.js';
 export type { TenantRouteDeps, TenantRouteModule } from './routes.js';
+// F-039 路由权限声明框架（PR-A：登记与缺失即失败）；Hono 及其类型一并导出，供测试与扩展构造路由器
+export { Hono, type Context, type Next } from 'hono';
+export {
+  accessOf,
+  type CheckArgs,
+  type DeferredStage,
+  type EnforcePrimitives,
+  implement,
+  type ModuleImplementations,
+  RouteAccess,
+  TAKEN_OVER_MODULES,
+  type T1Check,
+  type VerifyOptions,
+  declare,
+  declareEach,
+  defineTable,
+  type ManifestRoute,
+  mergeTables,
+  mount,
+  policed,
+  policedSub,
+  type PolicyTable,
+  rawRouter,
+  type RouteManifest,
+  routeManifest,
+  RoutePolicyError,
+  type RoutePolicyErrorCode,
+  useMiddleware,
+  verifyRouteDeclarations,
+} from './route-policy/index.js';
+export type * from './route-policy/types.js';
+// 路由层的职务对象分支域（:kind → 对象编码），供声明的分支清单与现状基准核对
+export { JOB_OBJECT_CODES } from './modules/permission/module-route-access.js';
 export { TENANT_HEADER, type TenantContext, tenantContext, type TenantEnv, tenantOf } from './tenant-context.js';
 export {
   bootstrapTenantAdmin,
@@ -66,3 +99,19 @@ export {
   startAuditRetentionScheduler,
 } from './audit/retention.js';
 export { type AuditFallbackRecord, setAuditFallbackSink } from './audit/failures.js';
+// R3-T03：Lastest360Cent 的 360 数据源（盘点、继任等使用方按查看人范围预读）
+export { loadSurvey360Port, type Survey360PortInput } from './modules/survey360/port.js';
+// R3-T05 设计 §5.4：任职状态钩子端口（继任离职自动结束、R3-T06 自动出池在装配时按名称登记）
+export {
+  type EmployeeStatusHookContext,
+  type EmployeeStatusHooks,
+  type EmploymentRecordEvent,
+  registerEmployeeStatusHooks,
+} from './modules/employment/status-hooks.js';
+// R3-T05 设计 §4.6：继任定时任务（server.ts 启动；任务随 PR-A / PR-B 登记）
+export {
+  type SuccessionJob,
+  type SuccessionJobKind,
+  type SuccessionScheduler,
+  startSuccessionScheduler,
+} from './modules/succession/scheduler.js';

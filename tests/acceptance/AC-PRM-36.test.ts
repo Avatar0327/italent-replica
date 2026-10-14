@@ -24,6 +24,7 @@ import {
 import { installApprovalFallbacks } from './AC-APV-support.js';
 import { tenantApi } from './support/tenant-api.js';
 import { loginEmailOf } from './AC-EMP-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const database = useTestDb();
 const clock = () => new Date('2026-10-01T01:00:00.000Z');
@@ -71,7 +72,7 @@ async function tenantFixture(label: string) {
     }
     return { id: person.id, businesses: created };
   }
-  const profile = await createProfile(seed, `visibility-${randomUUID().slice(0, 8)}`);
+  const profile = await createProfile(seed, `visibility-${uniqueSuffix()}`);
   for (const definition of [MODULE_OBJECTS.employee, MODULE_OBJECTS.employmentRecord]) {
     const response = await setObjectPermission(
       seed,

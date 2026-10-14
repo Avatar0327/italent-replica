@@ -57,11 +57,16 @@ function realDemoRoot(options: LocalDatabaseOptions): string {
   return join(realpathSync(dirname(root)), basename(root));
 }
 
+/** 应用连接的 application_name（F-082 部署检查脚本按这个前缀数连接，契约 §6.5）：`italent-api:<版本>`。 */
+export function applicationNameFromEnv(env: Env = process.env): string {
+  return `italent-api:${env.APP_VERSION?.trim() || 'dev'}`;
+}
+
 export async function databaseFromEnv(
   env: Env = process.env,
   options: LocalDatabaseOptions = {},
 ): Promise<DbHandle | undefined> {
-  if (env.DATABASE_URL) return createPgDb(env.DATABASE_URL);
+  if (env.DATABASE_URL) return createPgDb(env.DATABASE_URL, { applicationName: applicationNameFromEnv(env) });
   if (!isDevelopment(env)) return undefined;
   const dir = localPgliteDir(env, options);
   realDemoRoot(options);

@@ -23,6 +23,11 @@ export const objectPermissionBody = z.strictObject({
   dataOperations: z.strictObject({ create: z.boolean(), update: z.boolean(), delete: z.boolean() }),
   fields: z.array(z.strictObject({ fieldCode: code(ITEM_CODE), view: z.boolean(), edit: z.boolean() })).max(MAX_ITEMS),
   buttons: z.array(z.strictObject({ buttonCode: code(ITEM_CODE), level: z.enum(BUTTON_LEVELS) })).max(MAX_ITEMS),
+  // F-061 D2 = A：GET 详情里该对象的 catalogDigest（16 位十六进制）；可选，旧客户端不带
+  catalogDigest: z
+    .string()
+    .regex(/^[0-9a-f]{16}$/)
+    .optional(),
 });
 
 export const grantBody = z.strictObject({

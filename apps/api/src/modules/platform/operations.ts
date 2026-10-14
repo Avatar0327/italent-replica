@@ -12,8 +12,11 @@ import {
   withTenant,
 } from '@italent/db';
 import { AppError } from '../../errors.js';
+import type { PlatformWriteContext } from '../permission/audit.js';
 import { listBalances, type LicenseBalance } from '../permission/licenses.js';
 import { type LicenseQuotaChange, setLicenseQuotaIn } from '../permission/platform.js';
+import { installMissingStandardProfiles, type StandardBackfill } from '../permission/standard-profiles.js';
+import { installMissingSeeds, seedModules, type SeedReportItem, type SeedWriteContext } from '../../seeds/index.js';
 
 export async function requireTenant(db: Db, tenantId: string): Promise<Tenant> {
   const tenant = await getTenant(db, tenantId);
@@ -64,4 +67,65 @@ export async function issueLicense(
 export async function tenantBalances(db: Db, tenantId: string): Promise<LicenseBalance[]> {
   await requireTenant(db, tenantId);
   return withTenant(db, tenantId, listBalances);
+}
+
+/**
+ * 存量租户回补标准身份（DEC-289③）：平台命令（只认平台运营身份，命令台账幂等——同一命令 ID 重放返回原结果）；
+ * 回补本身也幂等，重复执行不新建任何行（permission/standard-profiles.ts）。租户审计逐个记身份安装，平台审计留一条汇总。
+ */
+export async function backfillStandardProfiles(
+  db: Db,
+  tenantId: string,
+  meta: PlatformCommandMeta,
+  now: Date,
+): Promise<StandardBackfill> {
+  await requireTenant(db, tenantId);
+  return runPlatformCommand(db, meta, 'tenant.standard_profiles.backfill', { tenantId }, async (ctx) => {
+    const write: PlatformWriteContext = { tenantId, actorUserId: meta.actorUserId, now, commandId: meta.commandId };
+    const result = await ctx.inTenant(tenantId, (tx) => installMissingStandardProfiles(tx, write));
+    await ctx.auditPlatform(
+      {
+        action: 'tenant.standard_profiles.backfill',
+        objectType: 'tenant',
+        objectId: tenantId,
+        before: null,
+        after: result,
+      },
+      tenantId,
+    );
+    return result;
+  });
+}
+
+/**
+ * 存量租户回补预置数据（DEC-361）：平台命令（只认平台运营身份、显式指定租户、命令台账幂等）；按种子登记表逐项
+ * 补装缺失的预置编码，不覆盖租户定制，重复执行无副作用；租户审计由各登记项同事务写，平台审计留一条汇总。
+ */
+export async function backfillSeeds(
+  db: Db,
+  tenantId: string,
+  input: { readonly modules?: readonly string[] },
+  meta: PlatformCommandMeta,
+  now: Date,
+): Promise<{ items: SeedReportItem[] }> {
+  await requireTenant(db, tenantId);
+  const unknown = (input.modules ?? []).filter((module) => !seedModules().includes(module));
+  if (unknown.length > 0) {
+    throw new AppError('VALIDATION_FAILED', '未知的预置数据模块', { reason: 'SEED_MODULE_UNKNOWN', unknown });
+  }
+  return runPlatformCommand(
+    db,
+    meta,
+    'tenant.seeds.backfill',
+    { tenantId, modules: input.modules ?? null },
+    async (ctx) => {
+      const write: SeedWriteContext = { tenantId, actorUserId: meta.actorUserId, now, commandId: meta.commandId };
+      const items = await ctx.inTenant(tenantId, (tx) => installMissingSeeds(tx, write, input));
+      await ctx.auditPlatform(
+        { action: 'tenant.seeds.backfill', objectType: 'tenant', objectId: tenantId, before: null, after: { items } },
+        tenantId,
+      );
+      return { items };
+    },
+  );
 }

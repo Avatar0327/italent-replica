@@ -11,6 +11,7 @@ import { tenantLocalDate } from '@italent/domain';
  *             GET /licenses/:licenseType/seats（使用明细）                                   license_usage
  *   菜单      GET /admin-menus  当前用户可见的企业设置菜单及可操作性（06 §7.1 矩阵）
  *   本人      GET /me/objects/:objectCode  当前用户对某对象的有效功能权限（前台按它显示按钮、列与字段）
+ *             GET /me/snapshot  当前用户权限快照（会话、应用可见性与入口对象、数据范围摘要、企业设置菜单）
  * TODO(需取证 #4)：菜单上下文是否参与后端鉴权（AC-PRM-02 与 AC-PRM-24 冲突）；当前只按身份与管理员能力判定。
  */
 import { withTenant } from '@italent/db';
@@ -30,6 +31,7 @@ import { createGrant, grantableProfiles, listGrants, revokeGrant } from './grant
 import { etag, idParam, ifMatch, objectCodeParam, parseBody } from './http.js';
 import { listBalances, listSeats } from './licenses.js';
 import { myObjectPermission } from './me.js';
+import { buildPermissionSnapshot } from './me-snapshot.js';
 import { createProfile, getProfileDetail, listProfiles, setObjectPermission } from './profiles.js';
 import { adminBody, adminSetsBody, grantBody, grantQuery, objectPermissionBody, profileBody } from './schemas.js';
 import { loadAdminRoles } from './subject.js';
@@ -71,6 +73,10 @@ export function registerPermissionRoutes(router: Router, deps: TenantRouteDeps):
     const roles = await withTenant(deps.db, tenantId, (tx) => loadAdminRoles(tx, userId));
     return c.json({ items: visibleEnterpriseMenus(roles) });
   });
+  // 前台首屏一次取全：会话资料、各应用可见性与入口对象、数据范围摘要、企业设置菜单（不含字段 / 按钮清单）
+  router.get(`${BASE}/me/snapshot`, async (c) =>
+    c.json(await buildPermissionSnapshot(deps, tenantOf(c), objectCatalog)),
+  );
   router.get(`${BASE}/me/objects/:objectCode`, async (c) => {
     const { tenantId, userId } = tenantOf(c);
     const objectCode = objectCodeParam(c);
@@ -135,7 +141,13 @@ function profileRoutes(router: Router, deps: TenantRouteDeps): void {
     const objectCode = objectCodeParam(c);
     const expectedRevision = ifMatch(c);
     const body = await parseBody(c, objectPermissionBody);
-    const change = { profileId, expectedRevision, permission: { objectCode, ...body } };
+    const { catalogDigest, ...permission } = body;
+    const change = {
+      profileId,
+      expectedRevision,
+      permission: { objectCode, ...permission },
+      ...(catalogDigest === undefined ? {} : { catalogDigest }),
+    };
     const result = await command(c, deps, ctx, { op: 'profile.set_object', change }, (tx, w) =>
       setObjectPermission(tx, w, objectCatalog, change),
     );

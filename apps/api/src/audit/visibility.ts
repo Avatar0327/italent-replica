@@ -1,11 +1,12 @@
 import { CapacityAuditFields, capacityAuditChanges, visibleCapacityParts } from './establishment-capacity.js';
+import { NestedAuditFields, type NestedChildren, visibleNested, visibleNestedChanges } from './nested-fields.js';
 /**
  * DEC-197 / DEC-203（PR #75 第二、三轮）：审计查询按查看人**当前**的数据范围与字段权限裁剪，不设全量读取特权。
  * 「日志审计」能力只决定能不能进入查询；每条日志能否返回，按它的对象类型复用**该业务对象自己的查看规则**：
  * - 每种写入审计的对象类型都在下方逐个登记（RULES / 配置对象），未登记的对象类型一律不返回（fail-closed）；
  * - 业务对象先要有该对象的查看权限（与业务接口 objectContext 同一 object.view），再按业务列表 / 详情的同一 SQL 谓词
  *   判断范围：任职 DEC-177、人员与合同按所属人员、组织 / 编制 / 职位按所属组织、全局职务体系对象与编制方案只认
- *   看全部或“使用用户（创建人）”、编制复制任务 / 通知 / 占编按其业务规则、组织编码预占只认看全部、审批实例按
+ *   看全部或“使用用户（创建人）”、人才标准对象（R3-T01，DEC-281⑨）按所属管理单元（字典只认看全部或创建人）、编制复制任务 / 通知 / 占编按其业务规则、组织编码预占只认看全部、审批实例按
  *   审批管理员按钮与任职 / 合同范围；
  * - 需要归属的对象推导不出所属人员 / 组织时不返回（第三轮 P1-1：“推导失败”不等于“无归属”）；
  * - “使用用户”维度按保留的创建人元数据（DEC-198，audit_object_creators）或模块真实的创建人列判断（第三轮 P2-1）；
@@ -23,10 +24,26 @@ import {
   type AuditFieldChange,
   CONTRACT_OBJECT,
   ESTABLISHMENT_SCHEME_DATASOURCE,
+  EVALUATION_AUDIT_ACTIONS,
+  EVALUATION_FLOW_OBJECTS,
+  EVALUATION_OBJECTS,
+  EVALUATION_ORG_OBJECTS,
+  IDP_OBJECTS,
+  linkedViewable,
   MODULE_OBJECTS,
   PERSONNEL_OBJECT,
   PERSONNEL_REQUEST_OBJECT,
+  QUALIFICATION_AUDIT_ACTIONS,
+  QUALIFICATION_OBJECTS,
+  QUALIFICATION_ORG_AUDITED,
   SUBSETS,
+  survey360,
+  TALENT_OBJECTS,
+  SUCCESSION_OBJECTS,
+  type SuccessionObject,
+  TALENT_REVIEW_CONFIG_OBJECTS,
+  TALENT_REVIEW_ORG_OBJECTS,
+  TALENT_REVIEW_OBJECTS,
 } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import type { TenantRouteDeps } from '../routes.js';
@@ -42,6 +59,22 @@ import {
 } from '../modules/permission/module-access.js';
 import { JOB_OBJECT_CODES } from '../modules/permission/module-route-access.js';
 import { creatorSql } from '../modules/permission/scope-audit.js';
+import { survey360AuditScope } from '../modules/survey360/access.js';
+import { OPEN_READ } from '../modules/qualification/access.js';
+import { type SourceRedactor } from './qualification-sources.js';
+import { auditRedactors } from './source-registry.js';
+import { survey360PersonAuditFields } from './survey360-person.js';
+import { IDP_AUDIT_ACTIONS, IDP_ORG_OBJECTS, IDP_PERSON_OBJECTS } from '../modules/idp/access.js';
+import { KEY_INFO, keyInfoScopeSql, keyInfoSnapshot, type KeyInfoSpec } from '../modules/idp/key-info-scope.js';
+import {
+  isDictionary as isTalentDictionary,
+  TALENT_AUDIT_ACTIONS,
+  type TalentObject,
+} from '../modules/talent/access.js';
+import { MODEL_IMAGE_AUDIT_TYPE } from '../modules/talent/model-image-service.js';
+import { TALENT_REVIEW_AUDIT_ACTIONS } from '../modules/talent-review/access.js';
+import { SUCCESSION_AUDIT_ACTIONS } from '../modules/succession/access.js';
+import { SUCCESSION_AUDIT, type SuccessionAuditSpec } from '../modules/succession/audit-scope.js';
 import {
   ExactAuditFields,
   resolveLinkageAudit,
@@ -58,6 +91,7 @@ interface Row {
   readonly objectId: SQL;
   readonly employee: SQL;
   readonly org: SQL;
+  readonly before: SQL;
   readonly after: SQL;
   readonly commandId: SQL;
   readonly actor: SQL | null;
@@ -82,6 +116,28 @@ interface Rule {
   readonly visible: (scope: ModuleScope, row: Row, viewer: Viewer, resolved: RuleInputs) => SQL;
   /** 规则需要的额外谓词（如审批管理员范围，对 approval_instances 别名 i）；返回 null 表示没有权限。 */
   readonly resolve?: (deps: Deps, ctx: TenantContext) => Promise<SQL | null>;
+  /**
+   * 带 resolve 的规则同样先要 objectCode 的查看权，再按该对象的查看字段裁剪（R3-T03 第 3 轮 R2-P2-4：360 日志按
+   * 真实对象判定）；不设时保持原样（审批实例等只按 resolve 与固定字段）。
+   */
+  readonly objectPermission?: boolean;
+  /** 不是对象字段的协议键（删除 / 移除标记、活动授权名单等），随对象字段一起展示。 */
+  readonly protocol?: readonly string[];
+  /**
+   * 逐行脱敏（DEC-340③ / DEC-355② 答卷日志）：脱敏行去掉 hidden 字段，按动作再去掉 byAction 的字段；列表与详情不展示
+   * 命令 ID、请求来源与对象编号，按这些条件筛选也查不到（AuditViewer.withheld）。fullResolve 返回查看人能看完整版
+   * 的活动编号子查询（null = 全部脱敏）。数据库里的快照照常保存。answers 是逐份答案（DEC-358②）：与身份脱敏分别判断，
+   * resolve 返回查看人能看答案的活动编号子查询，其他行去掉 fields（展示与字段筛选都去掉）。
+   */
+  readonly desensitize?: {
+    readonly hidden: readonly string[];
+    readonly byAction?: Readonly<Record<string, readonly string[]>>;
+    readonly fullResolve?: (deps: Deps, ctx: TenantContext) => Promise<SQL | null>;
+    readonly answers?: {
+      readonly fields: readonly string[];
+      readonly resolve: (deps: Deps, ctx: TenantContext) => Promise<SQL | null>;
+    };
+  };
 }
 
 type Deps = TenantRouteDeps;
@@ -149,6 +205,70 @@ function orgRule(types: readonly string[], objectCode: string, creator: (row: Ro
   };
 }
 
+/** 配置对象的审计查看规则：按所属组织裁剪的对象用 orgRule，其余按字典（看全部或创建人）。 */
+function appConfigRules<K extends string>(
+  objects: Readonly<Record<K, { readonly code: string }>>,
+  actions: Readonly<Record<K, string>>,
+  orgObjects: readonly K[],
+): Rule[] {
+  return (Object.keys(objects) as K[]).map((object): Rule => {
+    const code = objects[object].code;
+    const creator = (row: Row, viewer: Viewer) =>
+      creatorSql(viewer.tenantId, row.objectId, `${actions[object]}.create`, code);
+    if (orgObjects.includes(object)) return orgRule([code], code, creator);
+    return {
+      types: [code],
+      objectCode: code,
+      visible: (scope, row, viewer) => scopeSql(scope, { creator: ownedBy(row, creator(row, viewer)) }),
+    };
+  });
+}
+
+/**
+ * R3-T02 任职资格（设计 §8）：DEC-352 只放开查看的对象（类别、级别、指标、指标等级描述、编码规则、标准、发展通道）
+ * 的日志与业务同口径——有日志审计与该对象的查看权即可见，不按管理单元 / 创建人裁剪（字段与带出值照常按查看人当前
+ * 权限裁剪）；其余（分类、指标类型按所属组织，层级、等级方案按字典）仍按 appConfigRules。
+ */
+function qualificationRules(): Rule[] {
+  const keys = Object.keys(QUALIFICATION_OBJECTS) as (keyof typeof QUALIFICATION_OBJECTS)[];
+  const rest = Object.fromEntries(
+    keys.filter((key) => !OPEN_READ.has(key)).map((key) => [key, QUALIFICATION_OBJECTS[key]]),
+  );
+  const open = keys
+    .filter((key) => OPEN_READ.has(key))
+    .map((key): Rule => {
+      const code = QUALIFICATION_OBJECTS[key].code;
+      return { types: [code], objectCode: code, visible: () => sql`true` };
+    });
+  return [
+    ...appConfigRules(rest as typeof QUALIFICATION_OBJECTS, QUALIFICATION_AUDIT_ACTIONS, QUALIFICATION_ORG_AUDITED),
+    ...open,
+  ];
+}
+
+/**
+ * 人才评定流程对象（员工评定数据及下级）的审计查看谓词：设计 §5.1 activityPersonRule（活动谓词 ∧ 人员范围），
+ * 规则体随评定数据表由 C2-1a 注入。P0 契约先登记对象类型与这个注入位，C2 不再改本文件。
+ */
+export type EvaluationFlowAuditRule = (scope: ModuleScope, row: AuditRuleRow, viewer: AuditRuleViewer) => SQL;
+export type AuditRuleRow = Row;
+export type AuditRuleViewer = Viewer;
+
+let evaluationFlowRule: EvaluationFlowAuditRule | null = null;
+
+/** 注入（或以 null 撤销）流程对象的审计查看谓词；未注入时这些日志一律不返回（fail-closed），看全部也不例外。 */
+export function registerEvaluationFlowAuditRule(rule: EvaluationFlowAuditRule | null): void {
+  evaluationFlowRule = rule;
+}
+
+function evaluationFlowRules(): Rule[] {
+  return Object.values(EVALUATION_FLOW_OBJECTS).map(({ code }): Rule => ({
+    types: [code],
+    objectCode: code,
+    visible: (scope, row, viewer) => (evaluationFlowRule ? evaluationFlowRule(scope, row, viewer) : sql`false`),
+  }));
+}
+
 /** DEC-197：业务编号解析到当前员工范围；创建人仍取调动业务，不取联动日志执行人。 */
 function transferLinkageRule(): Rule {
   const person = personRule([TRANSFER_LINKAGE], EMPLOYMENT, (row, viewer) =>
@@ -161,6 +281,36 @@ function transferLinkageRule(): Rule {
       return sql`(${employee} IS NOT NULL AND ${person.visible(scope, { ...row, employee }, viewer, inputs)})`;
     },
   };
+}
+
+/**
+ * R3-T05 继任（设计 §8.4）：规则种类与对象自己的谓词登记在 modules/succession/audit-scope.ts，这里只套用通用谓词，
+ * 后续 PR 不再改本文件。org 按写入时的所属组织（“使用用户”按保留的创建元数据，DEC-198）；seeAll 只认看全部；
+ * rows 由任务对象提供逐行归属谓词，未提供时不返回。
+ */
+function successionRules(): Rule[] {
+  return (Object.entries(SUCCESSION_AUDIT) as [SuccessionObject, SuccessionAuditSpec][]).map(([object, spec]) => {
+    const code = SUCCESSION_OBJECTS[object].code;
+    if (spec.kind === 'seeAll') return { types: [code], objectCode: code, visible: (scope) => seeAllOnly(scope) };
+    if (spec.kind === 'rows') {
+      const rows = spec.visible;
+      return {
+        types: [code],
+        objectCode: code,
+        visible: (scope, row, viewer) => rows?.(scope, row, viewer) ?? sql`false`,
+      };
+    }
+    const base = orgRule([code], code, (row, viewer) =>
+      creatorSql(viewer.tenantId, row.objectId, `${SUCCESSION_AUDIT_ACTIONS[object]}.create`, code),
+    );
+    const restrict = spec.restrict;
+    if (!restrict) return base;
+    return {
+      ...base,
+      visible: (scope, row, viewer, inputs) =>
+        sql`(${base.visible(scope, row, viewer, inputs)} AND ${restrict(row, viewer)})`,
+    };
+  });
 }
 
 /** 审批日志的流程字段白名单（状态、节点、任务、审批人、意见等）；不含被隐藏字段清单等其他键。 */
@@ -194,7 +344,140 @@ export const APPROVAL_FLOW_FIELDS = [
   'origin',
 ];
 
+/**
+ * R3-T03：360 日志按真实对象判定（第 3 轮 R2-P2-4）——先要该 360 对象的查看权，再按该对象的查看字段裁剪；可见条件
+ * 与接口同一判定（survey360/access.ts）：活动按活动可见；评价对象 / 评价关系 / 确认单按评价关系对象、答卷按答卷
+ * 对象，且活动可见、精细化权限生效时一律不可见；答卷类日志同此可见，只展示脱敏版本（DEC-340③）；待办按评价关系对象、
+ * 报告生成与转发按结果对象，同评价关系的可见条件；人员按人员对象（精细化生效时不可见）；同步冲突另须同步按钮与员工
+ * 信息查看权、冲突员工在查看人当前员工范围内（第 4 轮 R3-P2-2），只展示冲突协议字段；评价角色 / 设置、套卷有对象
+ * 查看权即可见。活动内对象的写入一律在 after 里带 activityId，同步冲突的 after 带 employeeId。
+ */
+const S360 = survey360.SURVEY360_OBJECTS;
+const OBJECT_FIELDS = new Map<string, string[]>(
+  Object.values(S360).map((object) => [object.code, object.fields.map((field) => field.code)]),
+);
+
+/**
+ * DEC-340③：答卷日志（保存、提交、屏蔽、恢复、清除、替换套卷清空）默认只给脱敏版本：去掉评价关系 ID；不展示命令 ID、
+ * 作答请求的来源（IP、终端、来源页、TraceID）与答卷编号——管理员可凭自己的命令 ID 或匿名卡片编号把答卷对到具名评价
+ * 关系（第 3 轮 P2-2）；清除是对具名评价关系做的，清除事件再去掉答案与评语。链接 / 待办作答的操作人本就记为“系统”。
+ * DEC-355②（批准例外）：持“全部活动”且在该活动里不兼任被评价人 / 评价者的人看完整版（answerFull）。
+ * DEC-358②（第 4 轮审查 P2-1）：逐份答案（逐题选项 / 文本、发展建议）另按卡片资格判断（answerCards）——其他活动管理员
+ * 与兼任者在任何答卷日志里都看不到答案，活动创建者不兼任时看得到答案、身份仍脱敏。
+ */
+const SURVEY360_SHEET_DESENSITIZE = {
+  hidden: ['relationId'],
+  byAction: { 'survey360.sheet.clear': ['answers', 'suggestion'] },
+  fullResolve: survey360AuditScope('answerFull'),
+  answers: { fields: ['answers', 'suggestion'], resolve: survey360AuditScope('answerCards') },
+} as const;
+const inVisibleActivity: Rule['visible'] = (_scope, row, _viewer, { extra }) =>
+  extra ? sql`COALESCE(${row.after}->>'activityId', '') IN (${extra})` : sql`false`;
+const byResolve: Rule['visible'] = (_scope, _row, _viewer, { extra }) => extra ?? sql`false`;
+const byConflictEmployee: Rule['visible'] = (_scope, row, _viewer, { extra }) =>
+  extra ? sql`COALESCE(${row.after}->>'employeeId', '') IN (${extra})` : sql`false`;
+const survey360Rules: readonly Rule[] = [
+  {
+    types: ['survey360-activity'],
+    objectCode: S360.activity.code,
+    objectPermission: true,
+    protocol: ['activityId', 'userIds', 'deleted'],
+    resolve: survey360AuditScope('activity'),
+    visible: inVisibleActivity,
+  },
+  {
+    types: ['survey360-object', 'survey360-relation', 'survey360-confirmation'],
+    objectCode: S360.relation.code,
+    objectPermission: true,
+    protocol: ['removed'],
+    resolve: survey360AuditScope('relation'),
+    visible: inVisibleActivity,
+  },
+  {
+    types: ['survey360-sheet'],
+    objectCode: S360.answer.code,
+    objectPermission: true,
+    resolve: survey360AuditScope('answer'),
+    desensitize: SURVEY360_SHEET_DESENSITIZE,
+    visible: inVisibleActivity,
+  },
+  {
+    types: ['survey360-todo'],
+    objectCode: S360.relation.code,
+    objectPermission: true,
+    // 第 2 轮 P2-6：不用固定字段清单绕过字段权限，人员 ID、状态按评价关系对象的查看字段裁剪
+    protocol: ['activityId'],
+    resolve: survey360AuditScope('relation'),
+    visible: inVisibleActivity,
+  },
+  {
+    types: ['survey360-report'],
+    objectCode: S360.result.code,
+    objectPermission: true,
+    // 第 2 轮 P2-6：生成时间、模板、收件人邮箱按结果对象的查看字段裁剪；人数是转发回执的协议字段
+    protocol: ['activityId', 'reportCount', 'recipientCount', 'unresolvedReports'],
+    resolve: survey360AuditScope('relation'),
+    visible: inVisibleActivity,
+  },
+  {
+    types: ['survey360-person'],
+    objectCode: S360.person.code,
+    objectPermission: true,
+    resolve: survey360AuditScope('person'),
+    visible: byResolve,
+  },
+  {
+    types: ['survey360-sync-conflict'],
+    objectCode: S360.person.code,
+    objectPermission: true,
+    fixedFields: [
+      'id',
+      'employeeId',
+      'candidatePersonIds',
+      'matchedBy',
+      'status',
+      'resolution',
+      'resolvedPersonId',
+      'revision',
+    ],
+    resolve: survey360AuditScope('sync'),
+    visible: byConflictEmployee,
+  },
+  { types: ['survey360-role', 'survey360-settings'], objectCode: S360.settings.code, visible: () => sql`true` },
+  {
+    types: ['survey360-questionnaire'],
+    objectCode: S360.questionnaire.code,
+    protocol: ['deleted'],
+    visible: () => sql`true`,
+  },
+];
+
 const RULES: readonly Rule[] = [
+  {
+    types: ['Account.Avatar'],
+    objectCode: 'Account.Avatar',
+    fixedFields: [
+      'revision',
+      'avatar',
+      'avatar.id',
+      'avatar.filename',
+      'avatar.contentType',
+      'avatar.byteSize',
+      'avatar.sha256',
+      'avatar.status',
+    ],
+    resolve: async () => sql`true`,
+    visible: (_scope, row, viewer) => sql`${row.objectId}=${viewer.userId} AND ${row.actor}=${viewer.userId}::uuid`,
+  },
+  ...survey360Rules,
+  {
+    // DEC-216 / F-007：联动汇总按任职查看规则判定，人数按本组织本次联动的可见逐条审计重算。
+    types: ['org-adjustment-run'],
+    objectCode: EMPLOYMENT,
+    fixedFields: ['effectiveDate', 'employeeCount'],
+    visible: (scope, row, viewer, inputs) =>
+      sql`EXISTS (${orgAdjustmentChildren(scope, row, viewer, inputs.objectFields)})`,
+  },
   {
     // DEC-216 / F-021：任务回执只走逐条归属的操作日志，不公开 outbox 请求/完成载荷里的全量目标数组。
     types: ['job-sequence-sync'],
@@ -290,6 +573,64 @@ const RULES: readonly Rule[] = [
     visible: (scope, row, viewer) =>
       scopeSql(scope, { creator: ownedBy(row, creatorSql(viewer.tenantId, jobObject(row), 'job.create', kind)) }),
   })),
+  // R3-T01 人才标准（TalentCenter，DEC-281⑨）：与业务接口一致按所属管理单元（日志写入时的所属组织）裁剪，“使用用户”
+  // 按保留的创建元数据（DEC-198，对象删除后仍可判断）；发展建议类型是字典，只认看全部或创建人（DEC-121）
+  ...(Object.keys(TALENT_OBJECTS) as TalentObject[]).map((object): Rule => {
+    const code = TALENT_OBJECTS[object].code;
+    const creator = (row: Row, viewer: Viewer) =>
+      creatorSql(viewer.tenantId, row.objectId, `${TALENT_AUDIT_ACTIONS[object]}.create`, code);
+    if (!isTalentDictionary(object)) return orgRule([code], code, creator);
+    return {
+      types: [code],
+      objectCode: code,
+      visible: (scope, row, viewer) => scopeSql(scope, { creator: ownedBy(row, creator(row, viewer)) }),
+    };
+  }),
+  // R3-T04 人才盘点设置类对象（准备度等，设计 §6.1 configRule）：没有组织字段，只认看全部或创建人（DEC-121），
+  // 创建人按保留的创建元数据判断（DEC-198，删除后仍可判断）；字段按对象当前字段权限裁剪
+  ...TALENT_REVIEW_CONFIG_OBJECTS.map((object): Rule => {
+    const code = TALENT_REVIEW_OBJECTS[object].code;
+    return {
+      types: [code],
+      objectCode: code,
+      visible: (scope, row, viewer) =>
+        scopeSql(scope, {
+          creator: ownedBy(
+            row,
+            creatorSql(viewer.tenantId, row.objectId, `${TALENT_REVIEW_AUDIT_ACTIONS[object]}.create`, code),
+          ),
+        }),
+    };
+  }),
+  // R3-T04 盘点模板（设计 §6.1）：按所属组织（日志写入时的所属组织）裁剪，“创建人”按保留的创建元数据（DEC-198）；
+  // 向下公开只放开业务查看与选用，不放开审计（同 IDP 🟡 K-23）
+  ...TALENT_REVIEW_ORG_OBJECTS.map((object) =>
+    orgRule([TALENT_REVIEW_OBJECTS[object].code], TALENT_REVIEW_OBJECTS[object].code, (row, viewer) =>
+      creatorSql(
+        viewer.tenantId,
+        row.objectId,
+        `${TALENT_REVIEW_AUDIT_ACTIONS[object]}.create`,
+        TALENT_REVIEW_OBJECTS[object].code,
+      ),
+    ),
+  ),
+  ...successionRules(),
+  {
+    // Q-M0-126：模型图没有独立可见性设置，日志同样随标准对象查看权与当前管理单元范围。
+    ...orgRule([MODEL_IMAGE_AUDIT_TYPE], TALENT_OBJECTS.criterion.code, (row, viewer) =>
+      creatorSql(viewer.tenantId, row.objectId, 'talent.criterion.create', TALENT_OBJECTS.criterion.code),
+    ),
+    fixedFields: [
+      'modelImage',
+      'revision',
+      'modelImage.id',
+      'modelImage.filename',
+      'modelImage.contentType',
+      'modelImage.byteSize',
+      'modelImage.sha256',
+      'modelImage.status',
+    ],
+  },
   {
     // 审批实例 / 任务：审批管理员按钮（转交 / 干预 / 查看流程日志）+ 任职或合同范围（与审批中心管理员视图一致）
     types: ['approval-instance', 'approval-task'],
@@ -306,6 +647,38 @@ const RULES: readonly Rule[] = [
             AND ${admin})`
         : sql`false`,
   },
+  // R3-T07 个人发展计划配置（IDP 应用，PR 描述矩阵 A）：与业务接口一致按所属组织（日志写入时流程 / 模板的所属组织）
+  // 裁剪，“使用用户”按保留的创建元数据（DEC-198）；向下公开只放开业务查看与选用，不放开审计（🟡 K-23）
+  ...IDP_ORG_OBJECTS.map((object): Rule => {
+    const code = IDP_OBJECTS[object].code;
+    return orgRule([code], code, (row, viewer) =>
+      creatorSql(viewer.tenantId, row.objectId, `${IDP_AUDIT_ACTIONS[object]}.create`, code),
+    );
+  }),
+  // R3-T02 任职资格（Qualification）与人才评定配置（TEvaluation），设计 §8：带资源集合 / 所属组织的对象按日志写入时的
+  // 所属组织裁剪，不因向下公开放宽；字典只认看全部或创建人（DEC-121）。流程对象（员工评定数据等）按注入的
+  // activityPersonRule，未注入前不返回（P0 契约）。
+  ...qualificationRules(),
+  ...appConfigRules(EVALUATION_OBJECTS, EVALUATION_AUDIT_ACTIONS, EVALUATION_ORG_OBJECTS),
+  ...evaluationFlowRules(),
+  // R3-T07 PR-B：计划及其组成部分按计划员工、关键信息按员工（带教按被带教人）归属，与业务接口的范围一致（K-50）；
+  // 关键信息另要求日志前后快照涉及的全部员工 / 组织都在范围内（带教双方、轮岗部门，第 2 轮 P2-1）
+  ...IDP_PERSON_OBJECTS.map((object): Rule => {
+    const code = IDP_OBJECTS[object].code;
+    const rule = personRule([code], code, (row, viewer) =>
+      creatorSql(viewer.tenantId, row.objectId, `${IDP_AUDIT_ACTIONS[object]}.create`, code),
+    );
+    const spec = (KEY_INFO as Partial<Record<string, KeyInfoSpec>>)[object];
+    if (!spec) return rule;
+    const snapshot = (scope: ModuleScope, value: SQL) =>
+      sql`(${value} IS NULL OR ${keyInfoScopeSql(scope, spec, keyInfoSnapshot(value))})`;
+    return {
+      ...rule,
+      visible: (scope, row, viewer, inputs) =>
+        sql`(${rule.visible(scope, row, viewer, inputs)} AND ${snapshot(scope, row.before)}
+          AND ${snapshot(scope, row.after)})`,
+    };
+  }),
 ];
 
 /** 同一次序码重算命令写下的、查看人可见的逐人序码日志（别名 p）。 */
@@ -314,6 +687,7 @@ function orderCodeChildren(scope: ModuleScope, row: Row, viewer: Viewer, fields?
     objectId: sql`p.object_id`,
     employee: sql`p.scope_employee_id`,
     org: sql`p.scope_org_id`,
+    before: sql`p.before`,
     after: sql`p.after`,
     commandId: sql`p.command_id`,
     actor: null,
@@ -325,6 +699,21 @@ function orderCodeChildren(scope: ModuleScope, row: Row, viewer: Viewer, fields?
   return sql`SELECT 1 FROM audit_events p WHERE p.tenant_id = ${viewer.tenantId}
     AND p.object_type = 'personnel-order-code' AND p.command_id = ${row.commandId}
     AND ${anchored(scope, child.employee, person)} AND ${changedVisible('p', fields)}`;
+}
+
+/** 通过同事务 outbox 的组织归属区分同一导入命令里的多行，不能把整批人数算给每个组织。 */
+function orgAdjustmentChildren(scope: ModuleScope, row: Row, viewer: Viewer, fields?: ReadonlySet<string>): SQL {
+  const visible = employmentVisibilitySql(scope, {
+    employee: sql`p.scope_employee_id`,
+    department: sql`p.scope_org_id`,
+    creator: employmentCreator(viewer.tenantId, sql`p.object_id`, true),
+  });
+  return sql`SELECT 1 FROM audit_events p WHERE p.tenant_id=${viewer.tenantId}
+    AND p.command_id=${row.commandId} AND p.object_type='employment-record' AND p.action='employment.record.create'
+    AND EXISTS (SELECT 1 FROM employment_outbox o WHERE o.tenant_id=p.tenant_id AND o.command_id=p.command_id
+      AND o.object_id=${uuidOf(sql`p.object_id`)} AND o.event_type=p.action
+      AND o.payload->'meta'->>'organizationId'=${row.objectId})
+    AND p.scope_employee_id IS NOT NULL AND ${visible} AND ${changedVisible('p', fields)}`;
 }
 
 /** 复制任务：所有编制都在范围内（或任务由本人创建），与 visibleCopyJob 一致。 */
@@ -364,6 +753,12 @@ export function auditObjectRegistered(objectType: string): boolean {
 }
 
 interface ResolvedRule {
+  /** 逐行脱敏（DEC-340③ / DEC-355②）：该行展示脱敏版本的谓词；fullFields 给能看完整版的行。 */
+  readonly withheld?: SQL;
+  readonly fullFields?: ReadonlySet<string> | undefined;
+  /** 该行不展示逐份答案的谓词（DEC-358②）；allFields 是不限字段时的对象全部字段。 */
+  readonly answersWithheld?: SQL;
+  readonly allFields?: ReadonlySet<string>;
   readonly linkage?: LinkageAudit;
   readonly rule: Rule;
   readonly scope: ModuleScope;
@@ -424,12 +819,25 @@ export interface AuditViewer {
   /** 联动逐条解析的完整可见路径与展开差异；其他对象保持原始 changes。 */
   readonly linkagePaths: SQL;
   readonly eventChanges: SQL;
-  /** 该日志适用的查看字段；undefined = 不限字段。 */
+  /** 该行只展示脱敏版本（DEC-340③ / DEC-355②）：不展示对象编号、命令 ID 与来源，按它们筛选时排除。 */
+  readonly withheld: SQL;
+  /** 该行不展示逐份答案（DEC-358②），与 withheld 分别判断。 */
+  readonly answersWithheld: SQL;
+  /** 查询出口按查看人当前的源对象范围与源字段权裁剪“带出值”（任职资格，qualification-sources.ts）。 */
+  readonly redact: SourceRedactor['redact'];
+  /** 该日志适用的查看字段；undefined = 不限字段。row = 该行的 withheld / answersWithheld 列（不传按脱敏处理）。 */
   fieldsOf(
     objectType: string,
     action?: string | null,
     paths?: readonly string[] | null,
+    row?: RowMasks,
   ): ReadonlySet<string> | undefined;
+}
+
+/** 逐行脱敏列（DEC-340③ / DEC-355② / DEC-358②）：false = 该行可看完整身份 / 逐份答案。 */
+interface RowMasks {
+  readonly withheld?: boolean | null;
+  readonly answersWithheld?: boolean | null;
 }
 
 const EVENT = 'audit_events';
@@ -447,11 +855,12 @@ export async function auditViewer(deps: Deps, ctx: TenantContext, field?: string
   }
   const config = await resolveConfigFields(deps, ctx, present);
   const viewer = { tenantId: ctx.tenantId, userId: ctx.userId };
+  const redact = await auditRedactors(deps, ctx, present);
   const events = [...resolved.values()].map(
     (entry) => sql`(${eventTypes(entry.rule)}
       AND ${entry.rule.visible(entry.scope, rowOf(EVENT), viewer, entry.inputs)}
       AND ${entry.linkage?.visible ?? sql`true`}
-      AND ${entry.linkage?.matches(field) ?? fieldScope(entry.fields, field)})`,
+      AND ${entry.linkage?.matches(field) ?? entryFieldScope(entry, field)})`,
   );
   const item = itemRow();
   // transfer-linkage 目前只写数据变更事件；未来新增任务写入须单独登记逐行字段规则。
@@ -475,6 +884,7 @@ export async function auditViewer(deps: Deps, ctx: TenantContext, field?: string
     : sql`false`;
   const orderRun = RULE_BY_TYPE.get('personnel-order-run')!;
   const run = resolved.get(orderRun);
+  const orgRun = resolved.get(RULE_BY_TYPE.get('org-adjustment-run')!);
   const linkage = [...resolved.values()].find((entry) => entry.linkage)?.linkage;
   const capacityFields = resolved.get(RULE_BY_TYPE.get('establishment-capacity')!)?.fields;
   const normalChanges =
@@ -494,16 +904,78 @@ export async function auditViewer(deps: Deps, ctx: TenantContext, field?: string
     operationLogs: sql`(${sql.join([...tasks.map((task) => task.whole), configTypes(TASK)], sql` OR `)})`,
     visibleRows: sql`(CASE WHEN ${hasItems()} THEN (SELECT COALESCE(jsonb_agg(item->'rowIndex'), '[]'::jsonb)
       FROM jsonb_array_elements(${sql.identifier(TASK)}.items) item WHERE ${rowsCase}) END)`,
-    visibleCount: run && !run.scope.all ? orderRunCount(run, viewer) : sql`NULL::int`,
-    fieldsOf: (objectType, action, paths) => {
+    visibleCount: sql`COALESCE(${run && !run.scope.all ? orderRunCount(run, viewer) : sql`NULL::int`},
+      ${orgRun ? orgAdjustmentCount(orgRun, viewer) : sql`NULL::int`})`,
+    withheld: maskColumn([...resolved.values()], 'withheld'),
+    answersWithheld: maskColumn([...resolved.values()], 'answersWithheld'),
+    redact,
+    fieldsOf: (objectType, action, paths, row) => {
       if (objectType === TRANSFER_LINKAGE) return new ExactAuditFields(paths ?? []);
       const configured = config.get(configKey(objectType, action));
       if (configured) return configured.fields;
       if (isConfigLog(objectType, action)) return undefined;
       const rule = RULE_BY_TYPE.get(objectType);
-      return rule ? resolved.get(rule)?.fields : undefined;
+      const entry = rule ? resolved.get(rule) : undefined;
+      return entry?.withheld ? maskedFields(entry, action, row) : entry?.fields;
     },
   };
+}
+
+/** 逐行脱敏列（DEC-340③ / DEC-355② / DEC-358②）：脱敏规则的行按其谓词，其他行 false。 */
+function maskColumn(entries: readonly ResolvedRule[], mask: 'withheld' | 'answersWithheld'): SQL {
+  const rows = entries.filter((entry) => entry[mask]);
+  return rows.length
+    ? sql`(CASE ${sql.join(
+        rows.map((entry) => sql`WHEN ${eventTypes(entry.rule)} THEN ${entry[mask]!}`),
+        sql` `,
+      )} ELSE false END)`
+    : sql`false`;
+}
+
+/**
+ * 脱敏规则的行实际展示的字段：身份完整版用 fullFields，脱敏版用 fields 再去掉 byAction；看不到逐份答案的行
+ * （DEC-358②）再去掉答案字段。两项列缺省按脱敏处理。
+ */
+function maskedFields(entry: ResolvedRule, action: string | null | undefined, row: RowMasks | undefined) {
+  const rule = entry.rule.desensitize!;
+  const full = row?.withheld === false;
+  const drop = new Set([
+    ...((!full && action && rule.byAction?.[action]) || []),
+    ...(row?.answersWithheld === false ? [] : (rule.answers?.fields ?? [])),
+  ]);
+  const base = full ? entry.fullFields : entry.fields;
+  if (!drop.size) return base;
+  return new Set([...(base ?? entry.allFields ?? [])].filter((field) => !drop.has(field)));
+}
+
+/**
+ * 脱敏规则的字段筛选与“至少一个可见字段变化”按行取同一字段集合（第 4 轮审查 P3-1：完整版行按 fullFields 筛）：
+ * 按身份完整 / 脱敏 × 答案可见 / 不可见 × byAction 动作逐支展开。
+ */
+function entryFieldScope(entry: ResolvedRule, field: string | undefined): SQL {
+  return entry.withheld ? maskedFieldScope(entry, field) : fieldScope(entry.fields, field);
+}
+
+function maskedFieldScope(entry: ResolvedRule, field: string | undefined): SQL {
+  const scope = (action: string | undefined, withheld: boolean, answersWithheld: boolean) =>
+    fieldScope(maskedFields(entry, action, { withheld, answersWithheld }), field);
+  const answers = entry.answersWithheld ?? sql`true`;
+  const action = sql`${sql.identifier(EVENT)}.action`;
+  const byAction = Object.keys(entry.rule.desensitize!.byAction ?? {}).flatMap((name) => [
+    sql`WHEN ${action} = ${name} AND ${answers} THEN ${scope(name, true, true)}`,
+    sql`WHEN ${action} = ${name} THEN ${scope(name, true, false)}`,
+  ]);
+  return sql`(CASE WHEN NOT ${entry.withheld!} AND NOT ${answers} THEN ${scope(undefined, false, false)}
+    WHEN NOT ${entry.withheld!} THEN ${scope(undefined, false, true)}
+    ${sql.join(byAction, sql` `)}
+    WHEN ${answers} THEN ${scope(undefined, true, true)}
+    ELSE ${scope(undefined, true, false)} END)`;
+}
+
+function orgAdjustmentCount(run: ResolvedRule, viewer: Viewer): SQL {
+  const children = orgAdjustmentChildren(run.scope, rowOf(EVENT), viewer, run.inputs.objectFields);
+  return sql`(CASE WHEN audit_events.object_type='org-adjustment-run'
+    THEN (SELECT count(*)::int FROM (${children}) visible_child) END)`;
 }
 
 /** 序码重算汇总里查看人可见的逐人序码日志条数（第四轮 N4）。 */
@@ -513,19 +985,51 @@ function orderRunCount(run: ResolvedRule, viewer: Viewer): SQL {
     THEN (SELECT count(*)::int FROM (${children}) visible_child) END)`;
 }
 
+/** 对象查看字段加上规则的协议键；undefined（不限）保持不限。 */
+function withProtocol(fields: ReadonlySet<string> | undefined, protocol: readonly string[] | undefined) {
+  return fields === undefined || !protocol?.length ? fields : new Set([...fields, ...protocol]);
+}
+
+/**
+ * 逐行脱敏的规则（DEC-340③ / DEC-355②）：fields（筛选与脱敏行的展示）去掉 hidden，不限字段时以对象全部字段为底；
+ * fullFields 给能看完整版的行；withheld 是逐行谓词（行所在活动不在 fullResolve 的活动里）；answersWithheld 同理按
+ * answers.resolve（DEC-358②），没有 answers 规则时一律 true（maskedFields 不去掉任何字段）。
+ */
+async function desensitized(deps: Deps, ctx: TenantContext, rule: Rule, fields: ReadonlySet<string> | undefined) {
+  if (!rule.desensitize) return { fields };
+  const hidden = new Set(rule.desensitize.hidden);
+  const all = fields ?? new Set(OBJECT_FIELDS.get(rule.objectCode) ?? []);
+  const full = rule.desensitize.fullResolve ? await rule.desensitize.fullResolve(deps, ctx) : null;
+  const cards = rule.desensitize.answers ? await rule.desensitize.answers.resolve(deps, ctx) : null;
+  const activity = sql`COALESCE(${sql.identifier(EVENT)}.after->>'activityId', '')`;
+  return {
+    fields: new Set([...all].filter((field) => !hidden.has(field))),
+    fullFields: fields,
+    allFields: all,
+    withheld: full ? sql`(${activity} NOT IN (${full}))` : sql`true`,
+    answersWithheld: cards ? sql`(${activity} NOT IN (${cards}))` : sql`true`,
+  };
+}
+
 async function resolveRule(deps: Deps, ctx: TenantContext, rule: Rule): Promise<ResolvedRule | undefined> {
   const fixed = rule.fixedFields ? new Set(rule.fixedFields) : undefined;
+  // 与业务接口 objectContext 同一开关：没有该对象的查看权限，审计里也看不到（第三轮 P1-3）
+  const canView = () => deps.authorize({ ...ctx, action: 'object.view', resource: rule.objectCode, fields: [] });
   if (rule.resolve) {
+    if (rule.objectPermission && !(await canView())) return undefined;
     const extra = await rule.resolve(deps, ctx);
     if (!extra) return undefined;
     const scope = { all: false, hasDataPermission: true } as ModuleScope;
-    return { rule, scope, inputs: { extra, objectFields: undefined }, fields: fixed };
+    const objectFields = rule.objectPermission ? await getModuleViewableFields(deps, ctx, rule.objectCode) : undefined;
+    const fields = fixed ?? withProtocol(objectFields, rule.protocol);
+    const inputs = { extra, objectFields };
+    if (rule.types.includes('survey360-person'))
+      return { rule, scope, inputs, fields: survey360PersonAuditFields(fields) };
+    return { rule, scope, inputs, ...(await desensitized(deps, ctx, rule, fields)) };
   }
-  // 与业务接口 objectContext 同一开关：没有该对象的查看权限，审计里也看不到（第三轮 P1-3）
-  const canView = await deps.authorize({ ...ctx, action: 'object.view', resource: rule.objectCode, fields: [] });
-  if (!canView) return undefined;
+  if (!(await canView())) return undefined;
   const scope = await resolveModuleScope(deps, ctx, undefined, rule.objectCode, undefined, rule.view);
-  const objectFields = await getModuleViewableFields(deps, ctx, rule.objectCode);
+  const objectFields = linkedViewable(rule.objectCode, await getModuleViewableFields(deps, ctx, rule.objectCode));
   const linkage = rule.types.includes(TRANSFER_LINKAGE)
     ? await resolveLinkageAudit(deps, ctx, scope, objectFields)
     : undefined;
@@ -536,9 +1040,58 @@ async function resolveRule(deps: Deps, ctx: TenantContext, rule: Rule): Promise<
     fields:
       rule.types.includes('establishment-capacity') && objectFields
         ? new CapacityAuditFields(objectFields)
-        : (fixed ?? objectFields),
+        : rule.objectCode === IDP_OBJECTS.goal.code
+          ? await idpGoalFields(deps, ctx, objectFields)
+          : rule.objectCode === EVALUATION_OBJECTS.reviewGroup.code
+            ? await reviewGroupFields(deps, ctx, objectFields)
+            : (fixed ?? withProtocol(objectFields, rule.protocol)),
     ...(linkage ? { linkage } : {}),
   };
+}
+
+/**
+ * 发展目标快照嵌套的任务与目标回顾按各自对象的查看权与字段裁剪（R2-2）；全部字段可见且子对象不受限时不包装。
+ */
+async function idpGoalFields(
+  deps: Deps,
+  ctx: TenantContext,
+  goalFields: ReadonlySet<string> | undefined,
+): Promise<ReadonlySet<string> | undefined> {
+  const children: Record<string, ReadonlySet<string> | undefined | null> = {};
+  for (const [key, object] of [
+    ['tasks', IDP_OBJECTS.task],
+    ['reviews', IDP_OBJECTS.goalReview],
+  ] as const) {
+    const canView = await deps.authorize({ ...ctx, action: 'object.view', resource: object.code, fields: [] });
+    children[key] = canView ? await getModuleViewableFields(deps, ctx, object.code) : null;
+  }
+  if (goalFields === undefined && Object.values(children).every((child) => child === undefined)) return undefined;
+  const all = IDP_OBJECTS.goal.fields.map((field) => field.code);
+  return new NestedAuditFields(goalFields ?? all, children as NestedChildren);
+}
+
+/**
+ * 评审组快照嵌套的成员（R3-T02 B3，设计 §8、§5.1）：成员条目只含员工 ID、当时姓名（业务事务内冻结）与组长标记。读取时
+ * 姓名按查看人**当前**的员工信息对象查看权与姓名字段权裁剪（DEC-197）：DEC-331① / DEC-339② 允许范围外成员显示姓名，
+ * 但不豁免姓名字段权限，与业务详情的成员呈现（person-refs.ts）同口径；列表差异、详情前后值、快照共用这一份可见集合。
+ */
+async function reviewGroupFields(
+  deps: Deps,
+  ctx: TenantContext,
+  groupFields: ReadonlySet<string> | undefined,
+): Promise<ReadonlySet<string> | undefined> {
+  const canViewEmployees = await deps.authorize({
+    ...ctx,
+    action: 'object.view',
+    resource: PERSONNEL_OBJECT,
+    fields: [],
+  });
+  const employeeFields = canViewEmployees ? await getModuleViewableFields(deps, ctx, PERSONNEL_OBJECT) : undefined;
+  const showsName = canViewEmployees && (employeeFields === undefined || employeeFields.has('name'));
+  if (showsName && groupFields === undefined) return undefined;
+  const member = ['employeeId', 'isLeader', ...(showsName ? ['employeeName'] : [])];
+  const all = EVALUATION_OBJECTS.reviewGroup.fields.map((field) => field.code);
+  return new NestedAuditFields(groupFields ?? all, { members: new Set(member) } as NestedChildren);
 }
 
 interface ResolvedConfig {
@@ -587,6 +1140,7 @@ function rowOf(table: string): Row {
     objectId: sql`COALESCE(${column('object_id')}, '')`,
     employee: column('scope_employee_id'),
     org: column('scope_org_id'),
+    before: table === EVENT ? column('before') : sql`NULL::jsonb`,
     after: table === EVENT ? column('after') : sql`NULL::jsonb`,
     commandId: column('command_id'),
     actor: table === TASK ? column('actor_user_id') : null,
@@ -600,6 +1154,7 @@ function itemRow(): Row {
     objectId: sql`COALESCE(item->>'objectId', '')`,
     employee: sql`COALESCE(NULLIF(item->>'employeeId', '')::uuid, ${task('scope_employee_id')})`,
     org: sql`COALESCE(NULLIF(item->>'orgId', '')::uuid, ${task('scope_org_id')})`,
+    before: sql`NULL::jsonb`,
     after: sql`NULL::jsonb`,
     commandId: sql`${sql.identifier(TASK)}.command_id`,
     actor: sql`${sql.identifier(TASK)}.actor_user_id`,
@@ -644,6 +1199,11 @@ function configPredicate(config: ReadonlyMap<string, ResolvedConfig>, field: str
 function fieldScope(fields: ReadonlySet<string> | undefined, field: string | undefined): SQL {
   if (fields === undefined) return sql`true`;
   if (field !== undefined && !fieldVisible(fields, field)) return sql`false`;
+  // 派生引用字段须对同一条差异联合校验精确路径与筛选字段，不能借隐藏的 superior.name 匹配顶层 name。
+  if (field !== undefined && fields instanceof ExactAuditFields)
+    return sql`EXISTS (SELECT 1 FROM jsonb_array_elements(audit_events.changes) c
+      WHERE c->>'field' = ANY(${textArray([...fields])})
+        AND (c->>'field'=${field} OR right(c->>'field',${field.length + 1})=${`.${field}`}))`;
   if (field !== undefined && fields instanceof CapacityAuditFields)
     return sql`EXISTS (SELECT 1 FROM jsonb_array_elements(${capacityAuditChanges(fields, sql`audit_events.changes`)}) c
       WHERE c->>'field'=${field} OR right(c->>'field',${field.length + 1})=${`.${field}`})`;
@@ -653,6 +1213,9 @@ function fieldScope(fields: ReadonlySet<string> | undefined, field: string | und
 /** 该日志（表或别名）至少有一个字段变化在可见字段内。 */
 function changedVisible(table: string, fields: ReadonlySet<string> | undefined): SQL {
   if (fields === undefined) return sql`true`;
+  if (fields instanceof ExactAuditFields)
+    return sql`EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(${sql.identifier(table)}.changes, '[]'::jsonb)) c
+      WHERE c->>'field' = ANY(${textArray([...fields])}))`;
   const changes =
     fields instanceof CapacityAuditFields
       ? capacityAuditChanges(fields, sql`${sql.identifier(table)}.changes`)
@@ -701,7 +1264,9 @@ export function visibleChanges(
   changes: readonly AuditFieldChange[],
   fields: ReadonlySet<string> | undefined,
 ): AuditFieldChange[] {
-  return fields === undefined ? [...changes] : changes.filter((change) => fieldVisible(fields, change.field));
+  if (fields === undefined) return [...changes];
+  const visible = changes.filter((change) => fieldVisible(fields, change.field));
+  return fields instanceof NestedAuditFields ? visibleNestedChanges(visible, fields) : visible;
 }
 
 /** 前后值 / 快照只留可见字段；嵌套的 fields / customFields 等容器逐层裁剪，空容器去掉。 */
@@ -710,6 +1275,12 @@ export function visibleValue(value: unknown, fields: ReadonlySet<string> | undef
   const kept: Record<string, unknown> = {};
   for (const [key, inner] of Object.entries(value)) {
     const path = prefix ? `${prefix}.${key}` : key;
+    // 计算规则的 hints 是结构固定的协议值（order / blocked / cycles / warnings / others），已在来源裁剪里按查看人投影过
+    // （calcRuleSources，契约 §5.2）；它随 hints 列的查看权整体保留或去掉，不能当普通嵌套对象逐键按字段裁剪
+    if (!prefix && key === 'hints' && inner !== null && typeof inner === 'object' && !Array.isArray(inner)) {
+      if (fieldVisible(fields, path)) kept[key] = inner;
+      continue;
+    }
     if (
       inner !== null &&
       typeof inner === 'object' &&
@@ -718,6 +1289,9 @@ export function visibleValue(value: unknown, fields: ReadonlySet<string> | undef
     ) {
       const nested = visibleValue(inner, fields, path) as Record<string, unknown>;
       if (Object.keys(nested).length) kept[key] = nested;
+    } else if (fields instanceof NestedAuditFields && !prefix && key in fields.children) {
+      const nested = fieldVisible(fields, path) ? visibleNested(fields, key, inner) : undefined;
+      if (nested !== undefined) kept[key] = nested;
     } else if (fieldVisible(fields, path)) {
       kept[key] =
         fields instanceof CapacityAuditFields && key === 'subdivisions' ? visibleCapacityParts(inner, fields) : inner;

@@ -7,17 +7,22 @@ import type { TenantEnv } from '../../tenant-context.js';
 import { jsonBody, pageQuery, revision, runWrite, uuidParam } from '../employment/context.js';
 import { EmploymentError } from '../employment/errors.js';
 import { createTransfer } from '../transfer/service.js';
-import { selfAccess, transferFieldAccess } from './access.js';
+import type { CommandGuard } from '../../commands.js';
+import { requireSelfServiceButtons, type SelfAccess, selfAccess, transferFieldAccess } from './access.js';
 import { applicationStatus, currentRecord, ownApplication, ownApplications, ownRecords } from './queries.js';
+import { ownDevelopmentChannel } from './development-channel.js';
 import { ownTransferInput, ownTransferPreview } from './transfer.js';
 import { readTransferCatalog } from '../transfer/configuration.js';
 import { discloseOwnRecord } from './disclosure.js';
 import { visibleFields } from './field-disclosure.js';
 import { referenceChoices } from './references.js';
 import { loadEmploymentBusiness } from '../employment/read-model.js';
+import { policedSub } from '../../route-policy/index.js';
+import { SELF_SERVICE_POLICIES } from './policy.js';
 
 export const registerEmployeeSelfServiceRoutes: TenantRouteModule = (router, deps) => {
-  const module = new Hono<TenantEnv>();
+  // F-039：子应用套本模块登记表（SELF_SERVICE_POLICIES），注册行不变、处理函数不变
+  const module = policedSub(router, SELF_SERVICE_POLICIES, () => new Hono<TenantEnv>());
   module.onError((error, c) =>
     error instanceof EmploymentError
       ? c.json({ error: { code: error.code, message: error.message, details: error.details } }, error.status)
@@ -26,6 +31,7 @@ export const registerEmployeeSelfServiceRoutes: TenantRouteModule = (router, dep
   registerProfileRoutes(module, deps);
   registerTransferRoutes(module, deps);
   registerApplicationRoutes(module, deps);
+  registerDevelopmentChannelRoutes(module, deps);
   router.route('/api/tenant/self-service', module);
 };
 
@@ -95,12 +101,28 @@ function registerTransferRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps) 
     // 首次与幂等重放都按当前字段权限检查，事务中再次检查本人绑定。
     await withTenant(deps.db, self.ctx.tenantId, (tx) => ownTransferInput(tx, self.ctx, raw, deps));
     const commandInput = { employeeId: self.employee.id, input: raw };
-    return runWrite(c, self.deps, self.ctx, commandInput, async (tx, ctx) => {
-      await self.check(tx);
-      const input = await ownTransferInput(tx, ctx, raw, deps);
-      return { status: 201, body: await createTransfer(tx, ctx, self.employee.id, input) };
-    });
+    return runWrite(
+      c,
+      self.deps,
+      self.ctx,
+      commandInput,
+      async (tx, ctx) => {
+        await self.check(tx);
+        const input = await ownTransferInput(tx, ctx, raw, deps);
+        return { status: 201, body: await createTransfer(tx, ctx, self.employee.id, input) };
+      },
+      { guard: selfTransferGuard(self) },
+    );
   });
+}
+
+/**
+ * 三个本人调动按钮的命令内复核（契约 §2.3.1）：接 CommandGuard.before，runCommand 的三个出口（首次执行、直接重放、失败后回查）
+ * 都经 ledgerExit 先过它，所以撤权后重放拿不到原 201。只设 before：结果可见性仍由 runWrite 返回后的 authorizeEmploymentResult 复核。
+ * 工厂放在这里而不是 access.ts：检查函数留在 access.ts，才能让 F-039 的 delete-precondition 变异体生成。
+ */
+function selfTransferGuard(self: SelfAccess): CommandGuard {
+  return { before: (tx) => requireSelfServiceButtons(tx, self.ctx) };
 }
 
 function registerApplicationRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
@@ -160,5 +182,26 @@ function registerApplicationRoutes(module: Hono<TenantEnv>, deps: TenantRouteDep
       status: applicationStatus(result.item.state),
       record: await discloseOwnRecord(self, { ...result.business }),
     });
+  });
+}
+
+/**
+ * 员工通道卡片（C1-6）：selfAccess（未绑定 → 403）→ 事务内复核绑定 → 页面权限（ownDevelopmentChannel 内）→ 按本人直接取数。
+ * 第二条带 :id 的路径只接受绑定本人（同 /employees/:id/records），别人的员工 ID 403，查询参数不能换人。
+ */
+function registerDevelopmentChannelRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  const card = (self: SelfAccess) =>
+    withTenant(deps.db, self.ctx.tenantId, async (tx) => {
+      await self.check(tx);
+      return ownDevelopmentChannel(tx, self, tenantLocalDate(self.ctx.now, self.ctx.timezone));
+    });
+  module.get('/development-channel', async (c) => {
+    const self = await selfAccess(c, deps);
+    return c.json(await card(self));
+  });
+  module.get('/employees/:id/development-channel', async (c) => {
+    const self = await selfAccess(c, deps);
+    if (uuidParam(c) !== self.employee.id) throw new AppError('FORBIDDEN', '只能查看本人发展通道');
+    return c.json(await card(self));
   });
 }

@@ -1,4 +1,5 @@
 /** 管理单元与用户×应用范围：同事务写业务、不可变版本和审计；撤身份不回滚共享范围（DEC-043）。 */
+import { permissionSet, permissionSnapshot } from './sets.js';
 import { randomUUID } from 'node:crypto';
 import {
   and,
@@ -17,6 +18,7 @@ import {
   tenantMemberships,
   type Tx,
 } from '@italent/db';
+import { advisoryLock, asUuid } from '../../advisory-lock.js';
 import { AppError } from '../../errors.js';
 import { audit, type WriteContext } from './audit.js';
 import type { GrantScopeInput, MouInput, OrgRangeInput, ScopeAssignment } from './data-scope-schemas.js';
@@ -40,13 +42,18 @@ export async function recordScopeChange(
   write: WriteContext,
   change: { objectType: string; objectId: string; revision: number; before: unknown; after: unknown },
 ): Promise<void> {
-  await tx.insert(permissionScopeVersions).values({
+  const normalized = {
     ...change,
+    before: permissionSnapshot(change.objectType, change.before),
+    after: permissionSnapshot(change.objectType, change.after),
+  };
+  await tx.insert(permissionScopeVersions).values({
+    ...normalized,
     tenantId: write.tenantId,
     commandId: write.commandId,
     createdAt: write.now,
   });
-  await audit(tx, write, { ...change, action: `${change.objectType}.change` });
+  await audit(tx, write, { ...normalized, action: `${change.objectType}.change` });
 }
 
 async function orgRefs(tx: Tx, mouId: string): Promise<OrgRangeInput[]> {
@@ -59,7 +66,7 @@ async function orgRefs(tx: Tx, mouId: string): Promise<OrgRangeInput[]> {
     .from(permissionMouOrgRefs)
     .where(eq(permissionMouOrgRefs.mouId, mouId))
     .orderBy(asc(permissionMouOrgRefs.orgId));
-  return refs as OrgRangeInput[];
+  return permissionSet(refs as OrgRangeInput[], ['orgId', 'dimension']);
 }
 
 /**
@@ -133,9 +140,10 @@ async function validateParent(tx: Tx, parentId: string | null, id?: string) {
 }
 
 /** 管理单元层级的写入（新建、改上级、删除）串行化：A→B / B→A 并发改上级、删除父级与新建下级都不能各自通过检查。 */
-async function lockMouHierarchy(tx: Tx, write: WriteContext) {
-  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${write.tenantId + ':mou-hierarchy'},0))`);
+export async function lockMouHierarchyOf(tx: Tx, tenantId: string) {
+  await advisoryLock(tx, asUuid(tenantId), ':mou-hierarchy');
 }
+const lockMouHierarchy = (tx: Tx, write: WriteContext) => lockMouHierarchyOf(tx, write.tenantId);
 
 export async function createMou(tx: Tx, write: WriteContext, input: MouInput, expectedRevision: number) {
   if (expectedRevision !== 0) throw revisionConflict(expectedRevision, 0);
@@ -156,7 +164,7 @@ export async function createMou(tx: Tx, write: WriteContext, input: MouInput, ex
     throw error;
   }
   await replaceRefs(tx, write.tenantId, saved.id, orgRanges);
-  const after = { ...saved, orgRanges };
+  const after = { ...saved, orgRanges: permissionSet(orgRanges, ['orgId', 'dimension']) };
   await recordScopeChange(tx, write, {
     objectType: 'permission_mou',
     objectId: saved.id,
@@ -208,7 +216,7 @@ export async function updateMou(
     throw error;
   }
   if (input) await replaceRefs(tx, write.tenantId, id, input.orgRanges);
-  const after = { ...saved, orgRanges: input?.orgRanges ?? before.orgRanges };
+  const after = { ...saved, orgRanges: permissionSet(input?.orgRanges ?? before.orgRanges, ['orgId', 'dimension']) };
   await recordScopeChange(tx, write, { objectType: 'permission_mou', objectId: id, revision, before, after });
   return after;
 }
@@ -381,9 +389,12 @@ export async function grantScopePrefill(tx: Tx, userId: string, profileId: strin
       kind: row?.kind ?? 'default',
       mouId: row?.mouId ?? null,
       revision: row?.revision ?? 0,
-      orgRanges: refs
-        .filter((ref) => ref.mouId === row?.mouId)
-        .map(({ orgId, dimension, includeDescendants }) => ({ orgId, dimension, includeDescendants })),
+      orgRanges: permissionSet(
+        refs
+          .filter((ref) => ref.mouId === row?.mouId)
+          .map(({ orgId, dimension, includeDescendants }) => ({ orgId, dimension, includeDescendants })),
+        ['orgId', 'dimension'],
+      ),
     };
   });
   return { sharedScopeNotice: '此范围由该用户在应用下的所有身份共享', scopes };

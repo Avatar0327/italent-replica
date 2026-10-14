@@ -1,0 +1,24 @@
+{
+  "POST /api/platform/succession/jobs/run": {
+    "all": {
+      "code": "FORBIDDEN",
+      "error": "3631e071c213",
+      "reason": "PLATFORM_OPERATOR_REQUIRED",
+      "status": 403
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/platform/succession/rules/recompile": {
+    "all": {
+      "code": "FORBIDDEN",
+      "error": "3631e071c213",
+      "reason": "PLATFORM_OPERATOR_REQUIRED",
+      "status": 403
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": []
+  }
+}

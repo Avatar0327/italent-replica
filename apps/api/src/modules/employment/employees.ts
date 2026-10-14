@@ -13,6 +13,7 @@ import { assertRevision, auditEmployment, employmentScopePredicate, employmentCr
 import { businessDate } from './fields.js';
 import { checkPage, rowsOf } from './read-model.js';
 import type { EmploymentContext, EmploymentScope, PageQuery } from './types.js';
+import { employeeAvatarSql, type AvatarReference } from '../avatar/references.js';
 
 /**
  * 员工概要状态（R1 既有口径），F-022 起由当前生效主职版本的人员状态派生（同一口径，不另判业务类型）：
@@ -20,6 +21,7 @@ import type { EmploymentContext, EmploymentScope, PageQuery } from './types.js';
  */
 export type EmployeeStatus = 'pending' | 'employed' | 'left' | 'retired';
 export interface Employee {
+  readonly avatar?: AvatarReference | null;
   readonly id: string;
   readonly code: string;
   readonly name: string;
@@ -97,7 +99,8 @@ function employeeQuery(tenantId: string, asOf: string, scope?: EmploymentScope) 
     SELECT e.id,e.code,${personnelHooks.currentName(tenantId, sql`e.id`, sql`e.name`)} AS name,e.revision,
       CASE WHEN r.id IS NULL OR s.employee_status=1 THEN 'pending' WHEN s.employee_status=8 THEN 'left'
         WHEN s.employee_status=6 THEN 'retired' ELSE 'employed' END AS status,
-      s.employee_status::integer AS "employeeStatus",s.entry_status::integer AS "entryStatus"
+      s.employee_status::integer AS "employeeStatus",s.entry_status::integer AS "entryStatus",
+      ${employeeAvatarSql(tenantId, sql`e.id`)} AS avatar
     FROM employment_employees e
     LEFT JOIN employment_timeline t ON t.tenant_id=e.tenant_id AND t.employee_id=e.id
       AND t.valid_during @> ${asOf}::date

@@ -154,7 +154,7 @@ describe('P2-5 引用名称按审计时点（租户时区）取有效版本，�
       const renamed = await api.request('PATCH', `/api/tenant/org/organizations/${w.departmentB.id}`, {
         ...as,
         ifMatch: revision,
-        body: { name, effectiveDate },
+        body: { name, effectiveDate, addEmployment: false },
       });
       expect(renamed.status, await renamed.clone().text()).toBe(200);
       revision = ((await renamed.json()) as { revision: number }).revision;

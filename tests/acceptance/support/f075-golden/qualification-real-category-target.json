@@ -1,0 +1,98 @@
+[
+  {
+    "body": {
+      "classId": "<id:2>",
+      "code": "<code>",
+      "createdAt": "<ts>",
+      "createdBy": "<id:3>",
+      "enabled": true,
+      "id": "<id:1>",
+      "jobLinkType": null,
+      "jobLinks": [],
+      "name": "公开类改",
+      "ownerId": "<id:3>",
+      "ownerOrgId": "<id:4>",
+      "publicDown": true,
+      "revision": 2,
+      "updatedAt": "<ts>"
+    },
+    "etag": "\"2\"",
+    "name": "操作人 categories 改名",
+    "status": 200
+  },
+  {
+    "body": {
+      "error": {
+        "code": "REVISION_CONFLICT",
+        "details": {
+          "actual": 2,
+          "expected": 0
+        },
+        "message": "任职类别已变更，请刷新后显式重提"
+      }
+    },
+    "name": "操作人 categories 过期",
+    "status": 409
+  },
+  {
+    "body": {
+      "error": {
+        "code": "FORBIDDEN",
+        "details": {
+          "reason": "QL_OUT_OF_SCOPE_READONLY"
+        },
+        "message": "任职类别不在你的管理范围内，只能查看"
+      }
+    },
+    "name": "操作人 categories 范围外",
+    "status": 403
+  },
+  {
+    "body": {
+      "code": "<code>",
+      "createdAt": "<ts>",
+      "createdBy": "<id:3>",
+      "description": "保密说明",
+      "displayOrder": 0,
+      "enabled": true,
+      "evalMode": "score",
+      "gradeSchemeId": null,
+      "id": "<id:5>",
+      "isCommon": false,
+      "name": "普通指标改",
+      "ownerId": "<id:3>",
+      "ownerOrgId": "<id:4>",
+      "publicDown": true,
+      "revision": 2,
+      "typeId": "<id:6>",
+      "updatedAt": "<ts>"
+    },
+    "etag": "\"2\"",
+    "name": "操作人 targets 改名",
+    "status": 200
+  },
+  {
+    "body": {
+      "error": {
+        "code": "REVISION_CONFLICT",
+        "details": {
+          "actual": 2,
+          "expected": 0
+        },
+        "message": "指标已变更，请刷新后显式重提"
+      }
+    },
+    "name": "操作人 targets 过期",
+    "status": 409
+  },
+  {
+    "body": {
+      "error": {
+        "code": "NOT_FOUND",
+        "message": "指标不存在"
+      }
+    },
+    "name": "操作人 targets 不存在",
+    "status": 404
+  }
+]

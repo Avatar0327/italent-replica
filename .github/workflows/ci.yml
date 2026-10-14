@@ -1,20 +1,67 @@
 name: CI
 
 # Actions 分钟按 job 向上取整计费，以下配置均为控制消耗：
-# - 纯文档改动（*.md / docs / reference，均已被 prettier 忽略、测试不读取）不触发
+# - 三种模式（changes job 判定，输出 mode）：
+#   docs  目标分支为 main 的纯文档 PR（DEC-344）：必需检查照常触发但快速通过、不跑分片；
+#         目标分支不是 main 的 PR 一律 light（DEC-454① 第 2 轮 P2-1，判定在 scripts/ci-classify.sh）；
+#   light 在途 PR（DEC-454①）：只跑轻量检查 job（lint / typecheck / build / 纯函数单测，约 4 分钟），
+#         两个必需检查改名为“待队首运行”报告，必需检查本身保持“等待中”，PR 合不进去；
+#   full  队首 PR（带 queue-head 标签的 pull_request 运行，队列关闭再重开 PR 触发）、push 到 main、每周定时、手动触发：完整测试，
+#         两个汇总 job 以必需检查名报告，要求轻量检查与全部分片成功
+# - 纯文档判定：PR 相对 base 的完整改动文件必须全部是文档——任意目录的 *.md，或 docs/ reference/ .claude/ 下的
+#   图片（png jpg jpeg gif svg webp）与纯文本资料（txt tsv）；其余扩展名（py mjs js ts json yml sh html 等）
+#   不论在哪个目录都不算文档，.github/ 下任何文件也不算
+# - push 到 main 的纯文档提交仍不触发（没有必需检查在等它，省分钟），口径与上面一致
 # - 同一分支/PR 连续推送时取消旧运行，只验证最新提交
 # - Draft PR 不跑，转 Ready 后再跑
 # - Node 22（engines 下限）只在每周定时与手动触发时补跑，日常只跑 Node 24
+# - 两种数据库各拆 5 片（DEC-454①）；lint/typecheck/build 在轻量检查 job 里跑，与分片并行
+# - 必需检查名称由汇总 job 保留：纯文档时要求分片被跳过，完整模式要求分片全部成功；
+#   分片失败/取消、或分类 job 失败（导致分片被连带跳过）都不放行；轻量模式不以必需检查名报告（见 check job 注释）
 on:
   push:
     branches: [main]
-    paths-ignore: ['**.md', 'docs/**', 'reference/**']
+    # paths 按顺序求值：先全选，再排除文档，最后把 .github/ 加回来（改 CI 必须跑）。
+    # 与 changes job 的纯文档口径保持一致；GitHub 的 paths 过滤不支持花括号，故逐项列出。
+    paths:
+      - '**'
+      - '!**.md'
+      - '!docs/**.png'
+      - '!docs/**.jpg'
+      - '!docs/**.jpeg'
+      - '!docs/**.gif'
+      - '!docs/**.svg'
+      - '!docs/**.webp'
+      - '!docs/**.txt'
+      - '!docs/**.tsv'
+      - '!reference/**.png'
+      - '!reference/**.jpg'
+      - '!reference/**.jpeg'
+      - '!reference/**.gif'
+      - '!reference/**.svg'
+      - '!reference/**.webp'
+      - '!reference/**.txt'
+      - '!reference/**.tsv'
+      - '!.claude/**.png'
+      - '!.claude/**.jpg'
+      - '!.claude/**.jpeg'
+      - '!.claude/**.gif'
+      - '!.claude/**.svg'
+      - '!.claude/**.webp'
+      - '!.claude/**.txt'
+      - '!.claude/**.tsv'
+      - '.github/**'
   pull_request:
+    # 不能加 paths-ignore：整条流程不触发会让必需检查永远挂起（DEC-344）
     types: [opened, synchronize, reopened, ready_for_review]
-    paths-ignore: ['**.md', 'docs/**', 'reference/**']
   schedule:
     - cron: '0 1 * * 1' # 每周一 09:00（北京时间）
   workflow_dispatch:
+    inputs:
+      node_22:
+        description: 同时验证 Node 22（关闭可只校准 Node 24 分片耗时）
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -24,15 +71,87 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  check:
-    name: lint / typecheck / test (PGlite, Node ${{ matrix.node }})
+  changes:
+    name: classify changes
     if: github.event.pull_request.draft != true
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: 2
+    outputs:
+      mode: ${{ steps.classify.outputs.mode }}
+      generated_strict: ${{ steps.generated.outputs.strict }}
+    steps:
+      # 取 PR 合并提交及其两个父提交：HEAD^1 是 base，diff 即本 PR 相对 base 的完整改动
+      - uses: actions/checkout@v4
+        if: github.event_name == 'pull_request'
+        with:
+          fetch-depth: 2
+      # 判定逻辑在脚本里（有回归测试）；非 pull_request 不检出代码，直接完整
+      - id: classify
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          # 目标分支不是 main 的 PR 永远 light（DEC-454① 第 2 轮 P2-1，见脚本注释）
+          BASE_REF: ${{ github.base_ref }}
+          # DEC-454① / DEC-458：合并队列给队首 PR 打 queue-head 标签，再关闭、重开 PR；带这个标签的 pull_request 运行
+          # （reopened / synchronize 等）跑完整测试。workflow_dispatch 运行不关联 PR，分支保护不认，不用来放行合并
+          QUEUE_HEAD: ${{ contains(github.event.pull_request.labels.*.name, 'queue-head') }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = pull_request ]; then
+            result=$(bash scripts/ci-classify.sh)
+          else
+            result=mode=full
+          fi
+          mode=${result##*=}
+          echo "mode=$mode" | tee -a "$GITHUB_OUTPUT"
+          case "$mode" in
+            docs) note="纯文档：必需检查快速通过" ;;
+            light) note="在途 PR：只跑轻量检查，必需检查保持等待，排到队首（queue-head 标签 + 关闭重开 PR）后跑完整测试" ;;
+            full) note="完整测试" ;;
+          esac
+          echo "::notice title=CI 模式::$mode（$note）"
+          echo "CI 模式（DEC-454①）：$mode，$note" >> "$GITHUB_STEP_SUMMARY"
+      # DEC-430①：生成物（F-039 冻结基准 / 发现探测 / 证据登记、端点计数）的新鲜度只在 main、定时 / 手动运行
+      # 和“PR 头已包含最新 main”时判红（GENERATED_STRICT=1），其余 PR 只警告。
+      # PR 检出的是 GitHub 的测试合并提交：HEAD^1 = base、HEAD^2 = PR 头。合并结果与 PR 头树相同，
+      # 说明 base 的改动 PR 头都已含有（合并队列用 pnpm merge:main 准备好的队首 PR 就是这样），测的正是 PR 提交的生成物；
+      # 用树比较而不是 merge-base --is-ancestor，fetch-depth 2 就够，不用拉全历史
+      - id: generated
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          strict=1
+          reason="$EVENT_NAME 运行"
+          if [ "$EVENT_NAME" = pull_request ]; then
+            if ! git rev-parse -q --verify 'HEAD^2' > /dev/null; then
+              strict=0
+              reason="取不到 PR 头提交，按未包含最新 main 处理"
+            elif git diff --quiet 'HEAD^2' HEAD; then
+              reason="PR 头已包含最新 main"
+            else
+              strict=0
+              reason="PR 头未包含最新 main（合并前由队列 pnpm merge:main 重算）"
+            fi
+          fi
+          mode=$([ "$strict" = 1 ] && echo "严格（不一致判红）" || echo "仅警告")
+          echo "strict=$strict" | tee -a "$GITHUB_OUTPUT"
+          echo "::notice title=生成物新鲜度::GENERATED_STRICT=$strict，$mode：$reason"
+          echo "生成物新鲜度（DEC-430①）：GENERATED_STRICT=$strict，$mode；$reason" >> "$GITHUB_STEP_SUMMARY"
+  # 轻量检查：在途 PR 的唯一测试 job，完整模式下也跑（承担原第 1 片的 lint / typecheck / build，与分片并行）。
+  # 单测只挑不碰数据库、秒级的部分：packages/domain（lint 禁止 IO 的纯业务规则）与 merge:main 纯函数，本地约 15 秒
+  light:
+    name: light checks (lint / typecheck / build / unit, Node ${{ matrix.node }})
+    needs: changes
+    if: github.event.pull_request.draft != true && needs.changes.outputs.mode != 'docs'
+    runs-on: ubuntu-24.04
+    # 10-12 实测 lint 39s、typecheck 65s、build 25s，安装与单测约 1 分钟
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
-        node: ${{ fromJSON((github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '[22, 24]' || '[24]') }}
+        node: >-
+          ${{ fromJSON((github.event_name == 'schedule' ||
+          (github.event_name == 'workflow_dispatch' && inputs.node_22)) && '[22, 24]' || '[24]') }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4 # 版本取自 package.json 的 packageManager
@@ -43,37 +162,202 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm typecheck
-      - run: pnpm test
       - run: pnpm build
+      # 完整模式下这些单测已在分片里，不重复跑
+      - run: pnpm test packages/domain/ tests/merge-main.test.ts tests/ci-classify.test.ts
+        if: needs.changes.outputs.mode == 'light'
 
-  test-pg:
-    name: test (PostgreSQL 16)
-    if: github.event.pull_request.draft != true
+  check-shards:
+    name: test (PGlite, Node ${{ matrix.node }}, shard ${{ matrix.shard }}/5)
+    needs: changes
+    if: github.event.pull_request.draft != true && needs.changes.outputs.mode == 'full'
     runs-on: ubuntu-24.04
+    # F-056 两轮实测最慢片 14m33s（含 quality/安装/收尾），25 分钟约为 1.72 倍；
+    # 10-11 main 上第 1 片已到 21m44s（测试持续增长 + 第 1 片兼跑 lint/typecheck/build），改 4 片；
+    # 10-12 4 片最慢 20～22 分钟、是整次 CI 的关键路径（DEC-454①），改 5 片并把 lint/typecheck/build 移到 light job
     timeout-minutes: 25
-    services:
-      postgres:
-        image: postgres:16
+    strategy:
+      fail-fast: false
+      matrix:
+        node: >-
+          ${{ fromJSON((github.event_name == 'schedule' ||
+          (github.event_name == 'workflow_dispatch' && inputs.node_22)) && '[22, 24]' || '[24]') }}
+        shard: [1, 2, 3, 4, 5]
+    steps:
+      # fetch-depth 2：F-097 授权项编码动态基线要读测试合并提交的 base（HEAD^1）
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - uses: pnpm/action-setup@v4 # 版本取自 package.json 的 packageManager
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test --shard=${{ matrix.shard }}/5
         env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: italent_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
+          GENERATED_STRICT: ${{ needs.changes.outputs.generated_strict }}
+          # F-097：PR 上以 base 分支当前提交为授权项编码基线；其余事件为空，测试改用 merge-base origin/main HEAD
+          GRANT_BASE_REV: ${{ github.event_name == 'pull_request' && 'HEAD^1' || '' }}
+
+  # 必需检查 1（分支保护按名称匹配）。DEC-454① 的安全性在于名称：
+  # - 完整 / 纯文档模式，以及分类失败（mode 为空）时，用必需检查名报告，并按下面的规则判定成败；
+  # - 只有分类成功判为 light 时才换成“待队首运行”的名称：PR 头提交上就没有这个名称的检查结果，
+  #   分支保护显示“等待中”，PR 合不进去，直到队首的完整运行在同一提交上以必需名称报告成功。
+  # 不能用 if 跳过本 job 代替改名：被 if 跳过的 job 报 skipped，分支保护会当作通过。
+  check:
+    name: >-
+      ${{ needs.changes.outputs.mode == 'light'
+      && format('PGlite 完整测试待队首运行（Node {0}，DEC-454）', matrix.node)
+      || format('lint / typecheck / test (PGlite, Node {0})', matrix.node) }}
+    needs: [changes, light, check-shards]
+    if: always() && github.event.pull_request.draft != true
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    strategy:
+      matrix:
+        node: >-
+          ${{ fromJSON((github.event_name == 'schedule' ||
+          (github.event_name == 'workflow_dispatch' && inputs.node_22)) && '[22, 24]' || '[24]') }}
+    steps:
+      - name: Require light checks and every PGlite shard to succeed (docs-only skips both; light mode skips shards)
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          MODE: ${{ needs.changes.outputs.mode }}
+          LIGHT_RESULT: ${{ needs.light.result }}
+          SHARDS_RESULT: ${{ needs.check-shards.result }}
+        run: |
+          set -eu
+          test "$CHANGES_RESULT" = success
+          case "$MODE" in
+            # 每个 test 单独一行：set -e 不会因 && 链中间的失败退出
+            docs)
+              test "$LIGHT_RESULT" = skipped
+              test "$SHARDS_RESULT" = skipped
+              ;;
+            full)
+              test "$LIGHT_RESULT" = success
+              test "$SHARDS_RESULT" = success
+              ;;
+            light)
+              test "$LIGHT_RESULT" = success
+              test "$SHARDS_RESULT" = skipped
+              echo "::notice::轻量模式：本检查不是必需检查，必需检查等队首完整运行（DEC-454①）"
+              ;;
+            *)
+              echo "::error::未知 CI 模式：$MODE"
+              exit 1
+              ;;
+          esac
+
+  test-pg-shards:
+    name: test (PostgreSQL 16, shard ${{ matrix.shard }}/5)
+    needs: changes
+    if: github.event.pull_request.draft != true && needs.changes.outputs.mode == 'full'
+    runs-on: ubuntu-24.04
+    # F-056 首测最慢片 9m34s（含容器启动/安装/收尾），原 18 分钟约为 1.88 倍
+    # 10-11 测试量增长后第 2 片在 #255 / #262 / #268 上连续跑满 18 分钟被取消（其余三片 14～15 分钟），
+    # 先与 PGlite 分片对齐到 25 分钟止血；10-12 4 片最慢 16～18 分钟，随 PGlite 一起改 5 片（DEC-454①）
+    timeout-minutes: 25
+    # packages: read 用于拉本仓库 ghcr 上的 PostgreSQL 镜像（DEC-431④）；job 级权限会覆盖顶层，故补写 contents
+    permissions:
+      contents: read
+      packages: read
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5]
     env:
       # CI 一次性容器内的测试口令，非机密
       TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/italent_test
     steps:
+      # fetch-depth 2：F-097 授权项编码动态基线要读测试合并提交的 base（HEAD^1）
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      # 不用 services（拉取失败不能换源）：脚本先拉 ghcr 镜像，失败再落到 AWS 公共镜像源 / Docker Hub 并退避重试，
+      # 启动参数直接带 max_locks_per_transaction=256（#250），健康检查通过后打印并校验生效值（DEC-431④）
+      - name: Log in to ghcr.io (failure falls back to public registries)
+        continue-on-error: true
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
+        run: echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+      - name: Start PostgreSQL 16 (max_locks_per_transaction = 256)
+        run: bash scripts/ci-postgres.sh
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm test:pg
+      # F-043 真 PG 并发用例偶发 30 秒超时，单独在 test-pg-race 跑并允许重试一次（DEC-431④）
+      - run: pnpm test:pg --shard=${{ matrix.shard }}/5 --exclude=tests/acceptance/AC-360-F043-race-pg.test.ts
+        env:
+          GENERATED_STRICT: ${{ needs.changes.outputs.generated_strict }}
+          GRANT_BASE_REV: ${{ github.event_name == 'pull_request' && 'HEAD^1' || '' }}
+
+  test-pg-race:
+    name: test (PostgreSQL 16, F-043 race)
+    needs: changes
+    if: github.event.pull_request.draft != true && needs.changes.outputs.mode == 'full'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    permissions:
+      contents: read
+      packages: read
+    env:
+      TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/italent_test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Log in to ghcr.io (failure falls back to public registries)
+        continue-on-error: true
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
+        run: echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+      - name: Start PostgreSQL 16 (max_locks_per_transaction = 256)
+        run: bash scripts/ci-postgres.sh
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # 只跑这一个文件；失败的用例自动重跑一次，仍失败才判红
+      - run: pnpm test:pg --retry=1 tests/acceptance/AC-360-F043-race-pg.test.ts
+
+  # 必需检查 2；改名规则与 check job 相同（轻量模式不以必需名称报告）
+  test-pg:
+    name: >-
+      ${{ needs.changes.outputs.mode == 'light'
+      && 'PostgreSQL 完整测试待队首运行（DEC-454）'
+      || 'test (PostgreSQL 16)' }}
+    needs: [changes, test-pg-shards, test-pg-race]
+    if: always() && github.event.pull_request.draft != true
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Require every PostgreSQL shard and the F-043 race job to succeed (skipped for docs-only and light mode)
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          MODE: ${{ needs.changes.outputs.mode }}
+          SHARDS_RESULT: ${{ needs.test-pg-shards.result }}
+          RACE_RESULT: ${{ needs.test-pg-race.result }}
+        run: |
+          set -eu
+          test "$CHANGES_RESULT" = success
+          case "$MODE" in
+            docs | light)
+              test "$SHARDS_RESULT" = skipped
+              test "$RACE_RESULT" = skipped
+              ;;
+            full)
+              test "$SHARDS_RESULT" = success
+              test "$RACE_RESULT" = success
+              ;;
+            *)
+              echo "::error::未知 CI 模式：$MODE"
+              exit 1
+              ;;
+          esac

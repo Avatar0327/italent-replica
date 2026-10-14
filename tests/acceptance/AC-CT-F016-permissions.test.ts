@@ -298,11 +298,16 @@ describe('AC-CT F-016 真实权限接入', () => {
       ).status,
     ).toBe(404);
   });
-  it.each(
-    (['create', 'renew', 'change', 'terminate'] as const).flatMap((operation) =>
-      ['approval', 'todos'].map((entry) => ({ operation, entry })),
-    ),
-  )('DEC-202 $operation / $entry 重提复核人员范围或目标真实创建人', async ({ operation, entry }) => {
+  it.each([
+    { operation: 'create', entry: 'approval' },
+    { operation: 'create', entry: 'todos' },
+    { operation: 'renew', entry: 'approval' },
+    { operation: 'renew', entry: 'todos' },
+    { operation: 'change', entry: 'approval' },
+    { operation: 'change', entry: 'todos' },
+    { operation: 'terminate', entry: 'approval' },
+    { operation: 'terminate', entry: 'todos' },
+  ] as const)('DEC-202 $operation / $entry 重提复核人员范围或目标真实创建人', async ({ operation, entry }) => {
     const w = await fixture(`resubmit-${operation}-${entry}`, 'mixed');
     const target = operation === 'create' ? null : await w.create({ endDate: '2027-09-30' });
     await installApprovalFallbacks(w.db, w.seed.tenant.id, w.seed.admin.id);

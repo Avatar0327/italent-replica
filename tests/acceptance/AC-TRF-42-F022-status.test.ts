@@ -14,6 +14,7 @@ import { createEmploymentBusiness } from '../../apps/api/src/modules/employment/
 import { MODULE_OBJECTS } from '@italent/domain';
 import { addMember, createProfile, setObjectPermission } from './AC-PRM-support.js';
 import { transferWorld } from './AC-TRF-manager-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const database = useTestDb();
 const BASE = '/api/tenant/employment/transfers';
@@ -24,7 +25,7 @@ interface TeamDto {
 }
 
 async function managed(world: World) {
-  const user = await addMember(world, `f022-manager-${randomUUID().slice(0, 6)}`);
+  const user = await addMember(world, `f022-manager-${uniqueSuffix()}`);
   const manager = { user: user.id, tenant: world.tenant.id };
   const self = await world.person(world.outside.id, manager);
   const updated = await world.setup.request('PATCH', `/api/tenant/org/organizations/${world.inside.id}`, {

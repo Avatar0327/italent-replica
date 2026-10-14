@@ -10,10 +10,17 @@ import { lockTransferParticipants } from '../employment/transfer-locks.js';
  * F-008 / R6-3：一个事务里处理多张单（停用接管、手动交接的一批）时按全局取锁顺序逐单处理，见 LOCK_ORDER。
  */
 import { sql, type MembershipRevocation, type Tx } from '@italent/db';
-import { avoidSelfExceptionAdmin, isSelf, tenantLocalDate, type Candidate } from '@italent/domain';
+import {
+  adminRecused,
+  avoidSelfExceptionAdmin,
+  instanceRecusal,
+  tenantLocalDate,
+  type Candidate,
+} from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import type { TenantRouteDeps } from '../../routes.js';
 import { memberInstanceScope } from './access.js';
+import { ADAPTERS, type BusinessType } from './adapters.js';
 import { approvalError, assertRevision, auditApproval, rowsOf, type ApprovalContext } from './context.js';
 import { mergeSeat, mergesSeat, resettle } from './countersign.js';
 import { assertExceptionAdminMember, republishWithExceptionAdmin } from './definitions.js';
@@ -25,9 +32,8 @@ import {
   isEligibleApprover,
   personOfUser,
   tenantAdminTakeover,
-  userOfPerson,
 } from './resolver.js';
-import { isOwnRequest } from './rules.js';
+import { loadRecusalFacts } from './subjects.js';
 import { appendLog, closeTask, insertTask, loadInstance, loadTasks, type TaskRow } from './store.js';
 
 /** 单次交接的规模上限（DEC-101：只限制单次操作规模），超出时返回 remaining 与游标，由管理员再次提交。 */
@@ -104,11 +110,13 @@ export async function handoverExceptionAdmin(
   if (!(await isEligibleApprover(tx, { tenantId: ctx.tenantId, asOf }, input.toUserId))) {
     throw approvalError('VALIDATION_FAILED', 'APPROVAL_USER_INVALID', '替代人已离职或不是本租户有效成员');
   }
-  await designateSuccessor(tx, ctx, input);
-  const processes = await republishProcesses(tx, ctx, input);
   const instances = scope ? await transferableInstances(tx, ctx, input, scope) : [];
   const batch = instances.slice(0, BATCH);
-  await lockHandoverParticipants(tx, ctx, batch);
+  // F-065：员工 → 业务 → 组织的锁必须先于登记替代人 / 重发流程（二者的外键对来源账号与替代人的成员行取 KEY SHARE）。
+  // 入职绑定账号的顺序是组织锁 → 成员行 FOR UPDATE，反过来先持成员行再等组织锁会与它成环（org/locks.ts 全局锁序）。
+  await lockHandoverParticipants(tx, ctx, batch, { organization: true, reassignFrom: input.fromUserId });
+  await designateSuccessor(tx, ctx, input);
+  const processes = await republishProcesses(tx, ctx, input);
   let tasks = 0;
   const skipped: SkippedInstance[] = [];
   // R6-3：选批与游标仍按实例编号（对外不变）；批内按全局取锁顺序逐单处理（一批一个事务，批与批之间锁已释放）。
@@ -241,11 +249,11 @@ async function unlistedCount(tx: Tx, ctx: ApprovalContext, input: HandoverInput,
   return Number(row?.n ?? 0);
 }
 
-/** DEC-092：本人发起或本人为异动对象的实例，操作人不能改派（与管理员转交入口同一判断）。 */
+/** DEC-092 / DEC-329②：本人发起或本人为本单涵盖主体的实例，操作人不能改派（与管理员转交入口同一判断，实例级）。 */
 async function ownRequestBlocker(tx: Tx, ctx: ApprovalContext, instanceId: string) {
   const instance = await loadInstance(tx, ctx.tenantId, instanceId);
-  const subjectUserId = await userOfPerson(tx, ctx.tenantId, instance.subjectEmployeeId);
-  return isOwnRequest(instance, subjectUserId, ctx.userId) ? 'APPROVAL_ADMIN_SELF' : null;
+  const facts = await loadRecusalFacts(tx, ctx.tenantId, instance);
+  return instanceRecusal({ userId: ctx.userId }, facts) ? 'APPROVAL_ADMIN_SELF' : null;
 }
 
 interface Step {
@@ -269,8 +277,8 @@ async function handoverInstance(tx: Tx, ctx: ApprovalContext, instanceId: string
       userId: input.toUserId,
       personId: await personOfUser(tx, ctx.tenantId, input.toUserId),
     };
-    // DEC-091：替代人恰为本单发起人或异动本人时同样回避给其直线经理。
-    const manager = isSelf(successor, routing.facts)
+    // DEC-091 / DEC-329②：替代人恰为本单发起人或任一主体时同样回避给其直线经理。
+    const manager = adminRecused(successor, routing.facts)
       ? await directManagerOf(tx, routing.subject, successor)
       : undefined;
     const choice = avoidSelfExceptionAdmin(successor, routing.facts, manager);
@@ -352,11 +360,41 @@ export async function takeOverOnDeactivation(
   revocation: MembershipRevocation,
   options: { readonly settle?: boolean } = {},
 ) {
-  const { tenantId, userId, timezone, actorUserId, commandId } = revocation;
+  const { tenantId, userId } = revocation;
   // 先关派单闸（排他，可以等）：此后的派单拿不到闸、不会再派给他；已拿到闸的派单提交后，下面的扫描能看到。
   await closeAssigneeGate(tx, tenantId, userId);
   await assertNotActiveExceptionAdmin(tx, tenantId, userId);
-  const ctx: ApprovalContext = {
+  const ctx = deactivationContext(deps, revocation);
+  const successor = await designatedSuccessor(tx, tenantId, userId);
+  const successorScope = successor
+    ? await memberInstanceScope(deps, { tenantId, userId: successor, timezone: revocation.timezone }, tx)
+    : null;
+  // F-017：会签合席可能推进业务。跨页先收齐参与闭包，不能在持实例锁后追加较小员工锁。
+  const instances = await allPendingInLockOrder(tx, tenantId, userId);
+  // F-065：撤销成员关系不预取组织锁（入职首次绑定是组织锁 → 成员行 FOR UPDATE，会成环），调动实例在 openRun 时按既有顺序取得。
+  // F-069：全局停用的组织锁已由 prelockOnDeactivation 在锁账号行之前取齐，这里只是重入；已关闸，待转集合不会再增加。
+  await lockHandoverParticipants(tx, ctx, instances, { organization: false });
+  for (const { id } of instances)
+    await takeOverInstance(tx, ctx, id, userId, successor, successorScope, options.settle ?? true);
+}
+
+/**
+ * F-069：全局停用账号在锁 users 行（NO KEY UPDATE）之前的预取。入职首次绑定的锁序是“员工 → 组织 → users 行 FOR SHARE”
+ * （org/locks.ts 全局锁序，账号行排在组织锁之后）；停用若已持账号行锁、再因调动接管（openRun → lockEstablishment）等组织锁，
+ * 就与持组织锁等账号行的入职成环（40P01）。所以先按手动交接的同一顺序取齐：派单闸 → 员工闭包 → 业务 → 组织（organization: true）；
+ * 之后的 takeOverOnDeactivation 重入这些锁。闸一关，待转的在途实例集合只会减少、不会增加，预取覆盖接管将要锁的全部实例。
+ * 撤销成员关系不走这里：它不锁 users 行，也不持成员行锁进入接管（F-065）。
+ */
+export async function prelockOnDeactivation(tx: Tx, deps: TenantRouteDeps, revocation: MembershipRevocation) {
+  const { tenantId, userId } = revocation;
+  await closeAssigneeGate(tx, tenantId, userId);
+  const instances = await allPendingInLockOrder(tx, tenantId, userId);
+  await lockHandoverParticipants(tx, deactivationContext(deps, revocation), instances, { organization: true });
+}
+
+function deactivationContext(deps: TenantRouteDeps, revocation: MembershipRevocation): ApprovalContext {
+  const { tenantId, userId, timezone, actorUserId, commandId } = revocation;
+  return {
     tenantId,
     userId: actorUserId ?? userId,
     actorUserId,
@@ -365,22 +403,18 @@ export async function takeOverOnDeactivation(
     commandId,
     expectedRevision: 0,
   };
-  const successor = await designatedSuccessor(tx, tenantId, userId);
-  const successorScope = successor
-    ? await memberInstanceScope(deps, { tenantId, userId: successor, timezone }, tx)
-    : null;
-  // F-017：会签合席可能推进业务。跨页先收齐参与闭包，不能在持实例锁后追加较小员工锁。
+}
+
+/** 停用者名下全部待转的在途实例（跨页收齐，沿全局取锁顺序）。 */
+async function allPendingInLockOrder(tx: Tx, tenantId: string, userId: string): Promise<LockKey[]> {
   let after: LockKey | null = null;
   const instances: LockKey[] = [];
   for (;;) {
     const page = await pendingInLockOrder(tx, tenantId, userId, after);
     instances.push(...page);
-    if (page.length < BATCH) break;
+    if (page.length < BATCH) return instances;
     after = page.at(-1)!;
   }
-  await lockHandoverParticipants(tx, ctx, instances);
-  for (const { id } of instances)
-    await takeOverInstance(tx, ctx, id, userId, successor, successorScope, options.settle ?? true);
 }
 
 /**
@@ -465,7 +499,7 @@ async function takeoverTarget(
         WHERE i.tenant_id=${tenantId} AND i.id=${run.instance.id}::uuid AND ${successorScope}`),
     );
     const eligible = await isEligibleApprover(tx, routing.subject, successor);
-    if (covered && eligible && !isSelf(candidate, routing.facts)) {
+    if (covered && eligible && !adminRecused(candidate, routing.facts)) {
       return { userId: successor, reason: '原异常管理员停用，转交接时指定的替代人' };
     }
   }
@@ -478,9 +512,30 @@ async function takeoverTarget(
   return { userId: takeover.userId, reason: `原异常管理员停用，替代人不能接手，转租户管理员；${takeover.reason}` };
 }
 
-async function lockHandoverParticipants(tx: Tx, ctx: ApprovalContext, batch: readonly LockKey[]) {
+/**
+ * 交接前统一取锁：员工（任职业务的参与闭包）→ 各业务的业务行与资源锁（适配器 lockMany，按业务自己的规范顺序）→ 之后逐单锁
+ * 实例。组织锁按路径区分（见适配器 lockMany 的 options）：手动交接（organization: true）在登记替代人（成员行 KEY SHARE）
+ * 之前取（F-065），但批里没有调动、也不可能会签合席时不取（reassignFrom，F-070）；全局停用在锁账号行之前同样以 true
+ * 预取（F-069）；撤销成员关系的接管没有账号锁前缀，不预取。
+ * 发展计划的批量干预按计划 ID 升序锁计划再锁实例，这里同样先按计划 ID 升序锁齐本批的计划，两边锁序一致，
+ * 不会交错互等（PR #115 第 2 轮 P3-2）。
+ */
+async function lockHandoverParticipants(
+  tx: Tx,
+  ctx: ApprovalContext,
+  batch: readonly LockKey[],
+  options: { readonly organization: boolean; readonly reassignFrom?: string },
+) {
   const employees = [...new Set(batch.map((item) => item.employee_id))]
     .filter((id) => id !== '00000000-0000-0000-0000-000000000000')
     .sort();
   if (employees.length) await lockTransferParticipants(tx, ctx, employees[0]!, employees.slice(1));
+  if (!batch.length) return;
+  const rows = rowsOf<{ business_type: BusinessType; business_id: string }>(
+    await tx.execute(sql`SELECT business_type, business_id::text FROM approval_instances
+      WHERE tenant_id=${ctx.tenantId} AND id = ANY(${`{${batch.map((item) => item.id).join(',')}}`}::uuid[])`),
+  );
+  const byType = new Map<BusinessType, string[]>();
+  for (const row of rows) byType.set(row.business_type, [...(byType.get(row.business_type) ?? []), row.business_id]);
+  for (const [type, ids] of byType) await ADAPTERS[type].lockMany?.(tx, ctx, ids, options);
 }

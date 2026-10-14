@@ -14,6 +14,7 @@ import { transitionEmployment } from '../../apps/api/src/modules/employment/tran
 import type { EmploymentContext } from '../../apps/api/src/modules/employment/types.js';
 import { createEmploymentBusiness } from '../../apps/api/src/modules/employment/write-service.js';
 import { employmentSession, type EmploymentSession } from './AC-EMP-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 const rows = <T>(r: unknown) => (Array.isArray(r) ? r : (r as { rows: T[] }).rows) as T[];
@@ -55,7 +56,7 @@ async function hireThroughPort(
   entry: { pendingEntry?: boolean; probation?: boolean },
   effectiveDate = '2026-09-01',
 ) {
-  const org = await session.org(`状态部门${randomUUID().slice(0, 6)}`, { establishedOn: '2026-01-01' });
+  const org = await session.org(`状态部门${uniqueSuffix()}`, { establishedOn: '2026-01-01' });
   const employee = await session.employee();
   const business = await withTenant(testDb().db, session.tenant.id, (tx) =>
     createEmploymentBusiness(

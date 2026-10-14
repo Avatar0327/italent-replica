@@ -25,11 +25,21 @@ export const ERROR_STATUS = {
   JOB_FUTURE_VERSION_EXISTS: 409,
   EST_FUTURE_VERSION_EXISTS: 409,
   IDEMPOTENCY_CONFLICT: 409,
+  // F-061：保存对象权限时带的对象目录指纹与服务端当前不一致（目录或租户扩展字段变了），刷新后重提
+  CATALOG_CHANGED: 409,
   PAYLOAD_TOO_LARGE: 413,
   UNSUPPORTED_MEDIA_TYPE: 415,
   SERVICE_UNAVAILABLE: 503,
+  // 429（AGENTS.md §10，DEC-377②）只用于请求频率限制与认证失败锁定，响应带 Retry-After；
+  // 业务冷却（360 生成报告等）仍是 409 CONFLICT + details.reason = RATE_LIMITED，不在此列
+  REQUEST_RATE_LIMITED: 429,
+  AUTH_LOCKED: 429,
   LINKED_RECORD_OUT_OF_SCOPE: 404,
   NOT_FOUND: 404,
+  // F-039：路由声明的运行时自检失败（注册实例与声明的 method / 路径不一致），fail-closed
+  ROUTE_POLICY_MISMATCH: 500,
+  // F-039 接管 T1：shared 点校验未完成就返回，丢弃响应（DEC-363④，fail-closed）
+  ROUTE_POLICY_UNCHECKED: 500,
   INTERNAL_ERROR: 500,
 } as const satisfies Record<string, ContentfulStatusCode>;
 

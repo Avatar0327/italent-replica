@@ -214,7 +214,7 @@ describe('AC-CT-03 F-016 计数与在途', () => {
     await installApprovalFallbacks(w.db, w.session.tenant.id, w.session.user.id);
     await w.create({ effectiveDate: '2026-01-01', endDate: '2026-10-02' });
     await w.create({ effectiveDate: '2025-01-01', endDate: '2025-12-31' });
-    await w.settings({ autoRenew: true });
+    await w.settings({ autoRenew: true, indefiniteTypeIds: [w.type.id] });
     expect(
       (
         await w.request('POST', '/rules', {

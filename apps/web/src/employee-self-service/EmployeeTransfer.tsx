@@ -1,3 +1,4 @@
+import type { ApplicationCommandRunner } from '../self-service/shared/application-command.js';
 import { useEffect, useMemo } from 'react';
 import { TransferForm, useTransferForm } from '../self-service/shared/index.js';
 import { employeeTransferAdapter } from './transfer-adapter.js';
@@ -8,13 +9,15 @@ export function EmployeeTransfer({
   tenantId,
   profile,
   onSaved,
+  runCommand,
 }: {
   tenantId: string;
   profile: Profile;
   onSaved: () => void;
+  runCommand?: ApplicationCommandRunner;
 }) {
   const adapter = useMemo(() => employeeTransferAdapter(profile), [profile]);
-  const state = useTransferForm(tenantId, 'employee', adapter);
+  const state = useTransferForm(tenantId, 'employee', adapter, runCommand);
   useEffect(() => {
     if (state.saved) onSaved();
   }, [state.saved, onSaved]);

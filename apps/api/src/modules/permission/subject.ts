@@ -1,3 +1,4 @@
+import { objectPermissionSets, permissionSet } from './sets.js';
 import { sql } from '@italent/db';
 import { scopeRows } from './scope-hierarchy.js';
 import {
@@ -38,7 +39,7 @@ export async function loadAdminRoles(tx: Tx, userId: string): Promise<AdminRole[
     .select({ role: permissionAdmins.role })
     .from(permissionAdmins)
     .where(and(eq(permissionAdmins.userId, userId), eq(permissionAdmins.status, 'active')));
-  return rows.map((r) => r.role).filter(isAdminRole);
+  return permissionSet(rows.map((r) => r.role).filter(isAdminRole));
 }
 
 export async function loadActiveProfileIds(tx: Tx, userId: string): Promise<string[]> {
@@ -46,7 +47,7 @@ export async function loadActiveProfileIds(tx: Tx, userId: string): Promise<stri
     .select({ profileId: permissionGrants.profileId })
     .from(permissionGrants)
     .where(and(eq(permissionGrants.userId, userId), eq(permissionGrants.status, 'active')));
-  return rows.map((r) => r.profileId);
+  return permissionSet(rows.map((r) => r.profileId));
 }
 
 /** 身份对象权限（按 身份 × 对象 一条，未合并）；objectCode 给定时只取该对象。 */
@@ -70,18 +71,24 @@ async function loadObjectPermissionRows(
       inArray(table.profileId, [...profileIds]),
       objectCode === undefined ? undefined : eq(table.objectCode, objectCode),
     );
-  const objects = await tx.select().from(permissionProfileObjects).where(byObject(permissionProfileObjects));
+  const objects = await tx
+    .select()
+    .from(permissionProfileObjects)
+    .where(byObject(permissionProfileObjects))
+    .orderBy(permissionProfileObjects.profileId, permissionProfileObjects.objectCode);
   const fields = await tx.select().from(permissionProfileFields).where(byObject(permissionProfileFields));
   const buttons = await tx.select().from(permissionProfileButtons).where(byObject(permissionProfileButtons));
   const same = (o: (typeof objects)[number]) => (r: { profileId: string; objectCode: string }) =>
     r.profileId === o.profileId && r.objectCode === o.objectCode;
-  return objects.map((o) => ({
-    profileId: o.profileId,
-    objectCode: o.objectCode,
-    dataOperations: { create: o.canCreate, update: o.canUpdate, delete: o.canDelete },
-    fields: fields.filter(same(o)).map((f) => ({ fieldCode: f.fieldCode, view: f.canView, edit: f.canEdit })),
-    buttons: buttons.filter(same(o)).map((b) => ({ buttonCode: b.buttonCode, level: b.level as ButtonLevel })),
-  }));
+  return objects.map((o) =>
+    objectPermissionSets({
+      profileId: o.profileId,
+      objectCode: o.objectCode,
+      dataOperations: { create: o.canCreate, update: o.canUpdate, delete: o.canDelete },
+      fields: fields.filter(same(o)).map((f) => ({ fieldCode: f.fieldCode, view: f.canView, edit: f.canEdit })),
+      buttons: buttons.filter(same(o)).map((b) => ({ buttonCode: b.buttonCode, level: b.level as ButtonLevel })),
+    }),
+  );
 }
 
 /** 用户有效授权带来的对象权限，各自带上所属身份登记的应用（判定应用边界用）。 */
@@ -102,17 +109,17 @@ export async function loadGrantedObjectPermissions(
     if (profile) profileIds.push(profile.id);
     else defaults = defaultManagerPermissions().filter((p) => !objectCode || p.objectCode === objectCode);
   }
-  if (profileIds.length === 0) return defaults;
+  if (profileIds.length === 0) return defaults.map((permission) => objectPermissionSets(permission));
   const permissions = await loadObjectPermissionRows(tx, profileIds, objectCode);
   const apps = await tx
     .select({ profileId: permissionProfileApps.profileId, appCode: permissionProfileApps.appCode })
     .from(permissionProfileApps)
     .where(inArray(permissionProfileApps.profileId, profileIds));
   return [
-    ...defaults,
+    ...defaults.map((permission) => objectPermissionSets(permission)),
     ...permissions.map(({ profileId, ...permission }) => ({
       ...permission,
-      profileApps: apps.filter((a) => a.profileId === profileId).map((a) => a.appCode),
+      profileApps: permissionSet(apps.filter((a) => a.profileId === profileId).map((a) => a.appCode)),
     })),
   ];
 }

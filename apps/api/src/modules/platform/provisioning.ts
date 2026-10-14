@@ -3,7 +3,7 @@
  * 顺序：建租户（时区缺省 Asia/Shanghai，DEC-056）→ 首位租户管理员与异常管理员的成员关系 → 标准业务身份
  * （DEC-121 预置看全部）→ 首位租户管理员（8 类管理员身份可授，标准身份可授）→ 许可发放 → 标准开关
  * （允许直接调动 = 开 DEC-051；同一部门下职位允许重复 = 关 DEC-062a）→ 预置流程（出厂带发起条件 DEC-018）
- * 配置异常管理员后发布。任何一步失败整笔回滚，不留下半个租户。
+ * 配置异常管理员后发布 → 人才标准预置（发展建议类型样本，DEC-281④）。任何一步失败整笔回滚，不留下半个租户。
  */
 import {
   type Db,
@@ -26,6 +26,7 @@ import { installPresets, publishProcess, replaceDraft } from '../approval/defini
 import { updateSettings } from '../employment/configuration.js';
 import { writeJobSettings } from '../job/settings.js';
 import type { PlatformWriteContext } from '../permission/audit.js';
+import { isAutoHeld } from '../permission/auto-held.js';
 import { listBalances, type LicenseBalance } from '../permission/licenses.js';
 import { bootstrapTenantAdminIn, setLicenseQuotaIn } from '../permission/platform.js';
 import {
@@ -33,6 +34,8 @@ import {
   installStandardProfiles,
   type InstalledProfile,
 } from '../permission/standard-profiles.js';
+import { installTalentPresets } from '../talent/presets.js';
+import { installMissingSeeds } from '../../seeds/index.js';
 
 /** 开通时登记的外部用户业务身份（DEC-158，符合 DEC-128）。 */
 export const FIRST_ADMIN_IDENTITY = '租户管理员';
@@ -100,7 +103,8 @@ export async function provisionTenant(
       ctx,
       { tenantId, userId: input.firstAdminUserId },
       meta,
-      profiles.map((p) => p.id),
+      // DEC-402③：autoHeld 身份（员工）不进首位租户管理员的可授权业务身份
+      profiles.filter((p) => !isAutoHeld({ source: 'standard', code: p.code })).map((p) => p.id),
     );
     for (const license of input.licenses ?? []) {
       await setLicenseQuotaIn(ctx, { tenantId, ...license, expectedRevision: 0 });
@@ -111,6 +115,9 @@ export async function provisionTenant(
       const scoped = { tenant, input, now, meta };
       const settings = await installSwitches(tx, scoped);
       const processes = await publishPresetProcesses(tx, scoped);
+      await installTalentPresets(tx, write);
+      // DEC-361：登记表里的预置数据（与平台回补命令同一套安装逻辑）
+      await installMissingSeeds(tx, write);
       return { settings, processes, licenses: await listBalances(tx) };
     });
     const summary: ProvisionResult = {

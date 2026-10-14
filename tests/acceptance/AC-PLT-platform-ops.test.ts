@@ -116,7 +116,11 @@ describe('平台运营层：接口边界、停用 / 启用、许可发放', () =
       expect(((await processes.json()) as { items: unknown[] }).items).toHaveLength(a.processes.length);
 
       const events = await withPlatform(db, (tx) =>
-        tx.select().from(platformAuditEvents).where(eq(platformAuditEvents.objectId, a.tenant.id)),
+        tx
+          .select()
+          .from(platformAuditEvents)
+          .where(eq(platformAuditEvents.objectId, a.tenant.id))
+          .orderBy(platformAuditEvents.occurredAt),
       );
       const actions = events.filter((e) => e.action === 'tenant.set_status');
       expect(actions.map((e) => (e.after as { status: string }).status)).toEqual(['suspended', 'active']);

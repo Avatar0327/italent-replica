@@ -1,3 +1,4 @@
+import { soleOtherPositionManager } from '../employment/field-derivations.js';
 import { isUuid, type Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
 import type { JobRecord } from './read-model.js';
@@ -73,7 +74,12 @@ async function synchronizeManagers(
   for (const assignment of targets) {
     // DEC-131：员工本人就是唯一在岗人时跳过（不新增、不自任经理），并在保存结果逐人告知。原站未实测。
     // R1 只有主职任职，同一员工不能同时在本职位和新上级职位，真实端口下此分支要到兼职（R2）后才会出现。
-    if (assignment.employeeId === directManagerId) {
+    if (
+      !soleOtherPositionManager(
+        source.map((item) => item.employeeId),
+        assignment.employeeId,
+      )
+    ) {
       skipped.push({
         employeeId: assignment.employeeId,
         assignmentId: assignment.assignmentId,

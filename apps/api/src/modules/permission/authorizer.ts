@@ -1,26 +1,14 @@
 /** Real functional authorizer plus its data-scope/field provider (DEC-080). No implicit admin data bypass. */
-import { type Db, type Tx, withTenant, getTenant, permissionAdmins, and, eq } from '@italent/db';
-import {
-  tenantLocalDate,
-  decide,
-  MODULE_ACTIONS,
-  MODULE_OBJECTS,
-  type ObjectCatalog,
-  resolveObjectPermission,
-} from '@italent/domain';
+import { type Db, type Tx, withTenant, getTenant } from '@italent/db';
+import { type ObjectCatalog, tenantLocalDate, decide, MODULE_ACTIONS, resolveObjectPermission } from '@italent/domain';
 import type { Authorizer } from '../../authorization.js';
 import { objectCatalog } from './catalog.js';
+import { CONFIG_OBJECTS, configAllowed } from './object-access.js';
 import { registerScopeProvider } from './module-access.js';
 import { resolveDataScope } from './scope-resolver.js';
 import { loadSubject } from './subject.js';
 import { tenantObjectCatalog } from './tenant-catalog.js';
 
-const CONFIG_OBJECTS = new Set<string>([
-  MODULE_OBJECTS.employmentSettings.code,
-  MODULE_OBJECTS.employmentCustomField.code,
-  MODULE_OBJECTS.contractSettings.code,
-  MODULE_OBJECTS.contractRules.code,
-]);
 export function createPermissionAuthorizer(
   db: Db,
   catalog: ObjectCatalog = objectCatalog,
@@ -98,28 +86,4 @@ function objectOf(action: string, resource: string | undefined): string | undefi
   if (action.startsWith('object.')) return resource?.split('#')[0];
   const mapped = MODULE_ACTIONS[action];
   return mapped?.kind === 'object' ? mapped.objectCode : undefined;
-}
-
-async function configAllowed(
-  tx: Tx,
-  userId: string,
-  objectCode: string,
-  subject: Awaited<ReturnType<typeof loadSubject>>,
-  catalog: ObjectCatalog,
-) {
-  if (![MODULE_OBJECTS.contractSettings.code, MODULE_OBJECTS.contractRules.code].includes(objectCode))
-    return decide(subject, { action: 'admin.other_settings' }, catalog);
-  if (subject.adminRoles.includes('tenant_admin')) return true;
-  const records = await tx
-    .select({ id: permissionAdmins.id })
-    .from(permissionAdmins)
-    .where(
-      and(
-        eq(permissionAdmins.userId, userId),
-        eq(permissionAdmins.status, 'active'),
-        eq(permissionAdmins.contractConfiguration, true),
-      ),
-    )
-    .limit(1);
-  return records.length > 0;
 }

@@ -137,8 +137,13 @@ describe('R2-T06 合同验收 AC-CT-01～10', () => {
       { id: 'low', priority: 2, orgIds: ['dept'], personIds: [], details: [{ ...detail, typeId: 'other' }] },
       { id: 'high', priority: 1, orgIds: ['dept'], personIds: [], details: [detail] },
     ];
-    const plans = automaticRenewalPlans(rows, rules, 'p', 'dept', '2026-09-25');
+    const plans = automaticRenewalPlans(rows, rules, 'p', 'dept', '2026-09-25', ['labor']);
     expect(plans).toHaveLength(1);
     expect(plans[0]).toMatchObject({ targetId: 'latest', termType: 'indefinite', endDate: null, signingCount: 3 });
+    // F-128 A16：类型没列入 indefiniteTypeIds 时第 3 次仍是固定期限
+    expect(automaticRenewalPlans(rows, rules, 'p', 'dept', '2026-09-25', [])[0]).toMatchObject({
+      termType: 'fixed',
+      endDate: '2027-10-01',
+    });
   });
 });

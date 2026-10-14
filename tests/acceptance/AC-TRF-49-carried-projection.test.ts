@@ -37,7 +37,16 @@ it.each([false, true])('DEC-195 两笔迟到带编调动按原计划日、操作
   }
   for (const business of saved) await w.approve(business, '2026-10-02T01:00:00Z');
   const expected = (sameDay ? saved : [...saved].reverse()).map((row) => row.id);
-  expect(await w.runScheduler('2026-10-08T01:00:00Z')).toMatchObject({ activated: expected, failed: [], errors: [] });
+  const [earlier, later] = expected as [string, string];
+  // DEC-278（第 2 轮，不豁免未落地申请）：排在前的那笔区间内含排在后的那笔 → 先记需重建，后者区间为空先落地；
+  // HR 重试前者后两者仍按原计划日 / 操作序号排序。
+  expect(await w.runScheduler('2026-10-08T01:00:00Z')).toMatchObject({
+    activated: [later],
+    failed: [earlier],
+    errors: [],
+  });
+  const retried = await w.retry({ id: earlier }, '2026-10-08T01:30:00Z');
+  expect(retried.status, await retried.clone().text()).toBe(200);
   const records = await w.session.records(person.employee.id, '2026-10-08');
   expect(records.filter((row) => row.kind === 'transfer').map((row) => row.id)).toEqual(expected);
   expect(await w.runScheduler('2026-10-08T02:00:00Z')).toMatchObject({ activated: [] });

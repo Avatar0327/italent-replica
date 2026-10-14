@@ -1,0 +1,981 @@
+/**
+ * 必需项表：人才盘点准备度字典（modules/talent-review/routes.ts，R3-T04 PR-A）。对象操作经 access.reviewContext →
+ * module-route-access.objectContext（对象 TALENT_REVIEW_OBJECTS.readiness）；写入口 reviewWriteContext 叠加 WRITE_BUTTONS
+ * 按钮。路径由 TALENT_REVIEW_BASE 拼出（跨文件常量），证据绑注册函数 registerTalentReviewRoutes。
+ */
+import { guardScope, list, point, SCOPE_AT } from './scopes.js';
+import type { Evidence, Obligation, RequiredTable } from './types.js';
+
+const BASE = '/api/tenant/talent-review/readiness-levels';
+const T = 'apps/api/src/modules/talent-review';
+const ROUTES = `${T}/routes.ts#registerTalentReviewRoutes`;
+const ACCESS = `${T}/access.ts`;
+const MRA = 'apps/api/src/modules/permission/module-route-access.ts';
+const RDY = 'TalentReview.Readiness';
+type Operation = 'view' | 'create' | 'update' | 'delete';
+
+const OBJECT_CONST: Evidence = {
+  role: 'const',
+  unit: 'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS>readiness',
+  anchor: "object('Readiness'",
+};
+const CONTEXT: Evidence[] = [
+  {
+    role: 'impl',
+    unit: `${ACCESS}#reviewContext`,
+    anchor: 'return objectContext(c, deps, codeOf(object), operation, expectedRevision)',
+  },
+  {
+    role: 'impl',
+    unit: `${MRA}#objectContext`,
+    anchor:
+      'await requirePermission(deps.authorize, { ...ctx, action: `object.${operation}`, ' +
+      'resource: objectCode, fields: [] })',
+  },
+];
+const BUTTON: Evidence[] = [
+  {
+    role: 'impl',
+    unit: `${ACCESS}#reviewWriteContext`,
+    anchor: 'await button(deps, ctx, codeOf(object), code, level)',
+  },
+  {
+    role: 'impl',
+    unit: `${MRA}#button`,
+    anchor: "action: 'object.button', resource: buttonResource(objectCode, code, level)",
+  },
+];
+const call = (anchor: string): Evidence => ({ role: 'call', unit: ROUTES, anchor });
+const VIEW = "const ctx = await reviewContext(c, deps, 'readiness')";
+const write = (operation: Exclude<Operation, 'view'>) =>
+  `const ctx = await reviewWriteContext(c, deps, 'readiness', '${operation}', revision(c))`;
+const LEVEL = { create: 'list', update: 'detail', delete: 'detail' } as const;
+
+function view(anchor: string): Obligation {
+  return { perm: `obj:${RDY}:view`, facts: ['object:objectContext'], at: [call(anchor), ...CONTEXT, OBJECT_CONST] };
+}
+function change(operation: Exclude<Operation, 'view'>): Obligation[] {
+  const entry = call(write(operation));
+  return [
+    { perm: `obj:${RDY}:${operation}`, facts: ['object:objectContext'], at: [entry, ...CONTEXT, OBJECT_CONST] },
+    {
+      perm: `btn:${RDY}#${operation}@${LEVEL[operation]}`,
+      facts: ['button:button()'],
+      at: [
+        entry,
+        ...BUTTON,
+        {
+          role: 'const',
+          unit: `${ACCESS}#WRITE_BUTTONS`,
+          anchor: `${operation}: ['${operation}', '${LEVEL[operation]}']`,
+        },
+      ],
+    },
+  ];
+}
+
+// ---- R3-T04 PR-B1：设置 / 分类 / 角色 / 字段目录（modules/talent-review/config-routes.ts） ----------------------------
+const CFG = `${T}/config-routes.ts`;
+const SCORING = `${T}/scoring-routes.ts`;
+const CATALOG = 'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS';
+const cfgView = (
+  object: string,
+  constKey: string,
+  label: string,
+  register: string,
+  anchor: string,
+  file = CFG,
+): Obligation => ({
+  perm: `obj:${object}:view`,
+  facts: ['object:objectContext'],
+  at: [
+    { role: 'call', unit: `${file}#${register}`, anchor },
+    ...CONTEXT,
+    { role: 'const', unit: `${CATALOG}>${constKey}`, anchor: `object('${label}'` },
+  ],
+});
+function cfgChange(
+  object: string,
+  constKey: string,
+  label: string,
+  register: string,
+  operation: Exclude<Operation, 'view'>,
+  file = CFG,
+): Obligation[] {
+  const entry: Evidence = {
+    role: 'call',
+    unit: `${file}#${register}`,
+    anchor: `const ctx = await reviewWriteContext(c, deps, '${constKey}', '${operation}', revision(c))`,
+  };
+  const objectConst: Evidence = { role: 'const', unit: `${CATALOG}>${constKey}`, anchor: `object('${label}'` };
+  const level = operation === 'create' ? 'list' : 'detail';
+  return [
+    { perm: `obj:${object}:${operation}`, facts: ['object:objectContext'], at: [entry, ...CONTEXT, objectConst] },
+    {
+      perm: `btn:${object}#${operation}@${level}`,
+      facts: ['button:button()'],
+      at: [
+        entry,
+        ...BUTTON,
+        { role: 'const', unit: `${ACCESS}#WRITE_BUTTONS`, anchor: `${operation}: ['${operation}', '${level}']` },
+      ],
+    },
+  ];
+}
+const FILTER_GUARD: Obligation = {
+  perm: 'guard:talentReview.filterFieldVisible',
+  facts: ['guard:talentReview.filterFieldVisible'],
+  note: '带 enabled 筛选而无 enabled 字段查看权 → 403 FILTER_FIELD_HIDDEN（字段级，只在带筛选时判定）',
+  at: [
+    {
+      role: 'call',
+      unit: `${CFG}#listResponse`,
+      anchor: "if (enabled !== undefined) await requireFilterVisible(deps, ctx, object, 'enabled')",
+    },
+    {
+      role: 'impl',
+      unit: `${ACCESS}#requireFilterVisible`,
+      anchor: "throw new AppError('FORBIDDEN', '无权按该字段筛选', { reason: 'FILTER_FIELD_HIDDEN', field })",
+    },
+  ],
+};
+const RENAME_GUARD: Obligation = {
+  perm: 'guard:talentReview.configRenameRequiresSeeAll',
+  facts: ['guard:talentReview.configRenameRequiresSeeAll'],
+  note: '名称实际变化且不是看全部 → 403 NAME_REQUIRES_SEE_ALL（在查重之前判定，不暴露隐藏记录）',
+  at: [
+    {
+      role: 'call',
+      unit: `${T}/config-kit.ts#requireSeeAllToRename`,
+      anchor: 'if (name !== undefined && name !== before.name && !ctx.scope.all) {',
+    },
+  ],
+};
+
+/** 新建字段时指定成对字段 = 同时修改另一端：条件守卫 + 条件准入（更新权、update 按钮；pairFieldId 编辑权随字段元数据）。 */
+const PAIR_UPDATE = 'talentReview.pairRequiresUpdate';
+const pairEntry: Evidence = {
+  role: 'call',
+  unit: `${CFG}#registerFields`,
+  anchor: 'if (body.pairFieldId !== undefined) await requirePairUpdate(c, deps, body.pairFieldId)',
+};
+const pairCall: Evidence = {
+  role: 'call',
+  unit: `${CFG}#requirePairUpdate`,
+  anchor: "const ctx = await reviewWriteContext(c, deps, 'field', 'update', 0)",
+};
+const FIELD_OBJECT_CONST: Evidence = {
+  role: 'const',
+  unit: `${CATALOG}>field`,
+  anchor: "object('Field'",
+};
+const PAIR_OBLIGATIONS: Obligation[] = [
+  {
+    perm: `guard:${PAIR_UPDATE}`,
+    facts: [`guard:${PAIR_UPDATE}`],
+    note: '条件守卫：请求体带 pairFieldId 时，另需字段更新权与 update 按钮（先于读取另一端）',
+    at: [pairEntry],
+  },
+  {
+    perm: 'obj:TalentReview.Field:update',
+    purpose: `when:${PAIR_UPDATE}`,
+    at: [pairCall, ...CONTEXT, FIELD_OBJECT_CONST],
+  },
+  {
+    perm: 'btn:TalentReview.Field#update@detail',
+    purpose: `when:${PAIR_UPDATE}`,
+    at: [
+      pairCall,
+      ...BUTTON,
+      { role: 'const', unit: `${ACCESS}#WRITE_BUTTONS`, anchor: "update: ['update', 'detail']" },
+    ],
+  },
+];
+
+/**
+ * 字段改名失败时的定位披露（F-082 契约 §3.1）：可选分支，操作人的计算规则查看权 / 范围 / items 列只决定错误载荷里披露什么，
+ * 没有时也不拒绝改名（resolveCalcDisclosure 吞掉 403 / 404）。
+ */
+const RENAME_DISCLOSURE: Obligation = {
+  perm: 'obj:TalentReview.CalcRule:view',
+  purpose: 'disclosure:renameBreaksDisclosure',
+  need: list('talentReview.configScope(talent_review_calc_rules)'),
+  facts: ['object:objectContext'],
+  at: [
+    {
+      role: 'call',
+      // 披露权限在命令事务内解析（recheckFieldWrite，#224 第 1 轮 P2-1）
+      unit: `${T}/field-write.ts#recheckFieldWrite`,
+      anchor: 'calcDisclosure: await resolveCalcDisclosure(c, checked.txDeps, tx)',
+    },
+    {
+      role: 'impl',
+      unit: `${T}/rename-disclosure.ts#resolveCalcDisclosure`,
+      anchor: "const ctx = await reviewContext(c, deps, 'calcRule')",
+    },
+    ...CONTEXT,
+    { role: 'const', unit: `${CATALOG}>calcRule`, anchor: "object( 'CalcRule'" },
+    ...SCOPE_AT['talentReview.configScope(talent_review_calc_rules)'],
+  ],
+};
+
+/** 分类 / 角色 / 字段目录（B1）与评价规则 / 模块等级（B2a，scoring-routes.ts）五条路由；settings 另列（单例，只有读与改）。 */
+function cfgObject(
+  key: string,
+  label: string,
+  register: string,
+  base: string,
+  constName: string,
+  file = CFG,
+): RequiredTable {
+  const object = `TalentReview.${label}`;
+  const get = (anchor: string) => cfgView(object, key, label, register, anchor, file);
+  const ctx = `const ctx = await reviewContext(c, deps, '${key}')`;
+  return {
+    [`GET ${BASE_ROOT}/${base}`]: [get(`router.get(${constName}, async (c) => { ${ctx}`), FILTER_GUARD],
+    [`GET ${BASE_ROOT}/${base}/:id`]: [get(`router.get(\`\${${constName}}/:id\`, async (c) => { ${ctx}`)],
+    [`POST ${BASE_ROOT}/${base}`]: [
+      ...cfgChange(object, key, label, register, 'create', file),
+      ...(key === 'field' ? PAIR_OBLIGATIONS : []),
+    ],
+    [`PATCH ${BASE_ROOT}/${base}/:id`]: [
+      ...cfgChange(object, key, label, register, 'update', file),
+      RENAME_GUARD,
+      ...(key === 'field' ? [RENAME_DISCLOSURE] : []),
+    ],
+    [`DELETE ${BASE_ROOT}/${base}/:id`]: cfgChange(object, key, label, register, 'delete', file),
+  };
+}
+
+/**
+ * 字段映射（B2）：无名称（无改名守卫）；列表自己写 scene 筛选守卫；新建 / 改来源或目标字段 = 读取字段对象，
+ * 另需字段对象的查看权（条件准入，随守卫 talentReview.mappingFieldVisible）。
+ */
+const MAPPING_GUARD = 'talentReview.mappingFieldVisible';
+const mappingFieldsCall: Evidence = {
+  role: 'call',
+  unit: `${SCORING}#requireMappingFields`,
+  anchor: "const ctx = await reviewContext(c, txDeps, 'field')",
+};
+const MAPPING_FIELD_OBLIGATIONS = (entry: string): Obligation[] => [
+  {
+    perm: `guard:${MAPPING_GUARD}`,
+    facts: [`guard:${MAPPING_GUARD}`],
+    note: '引用来源 / 目标字段 = 读取字段对象：另需字段对象查看权与范围（先于读取字段；不存在与范围外同一个 404）',
+    at: [{ role: 'call', unit: `${SCORING}#registerMappings`, anchor: entry }],
+  },
+  {
+    perm: 'obj:TalentReview.Field:view',
+    purpose: `when:${MAPPING_GUARD}`,
+    at: [mappingFieldsCall, ...CONTEXT, FIELD_OBJECT_CONST],
+  },
+];
+function mappingTable(): RequiredTable {
+  const object = 'TalentReview.FieldMapping';
+  const reg = 'registerMappings';
+  const reads = 'registerMappingReads';
+  const list = "router.get(MAPPINGS, async (c) => { const ctx = await reviewContext(c, deps, 'mapping')";
+  const detail = "router.get(`${MAPPINGS}/:id`, async (c) => { const ctx = await reviewContext(c, deps, 'mapping')";
+  return {
+    [`GET ${BASE_ROOT}/field-mappings`]: [
+      cfgView(object, 'mapping', 'FieldMapping', reads, list, SCORING),
+      {
+        perm: 'guard:talentReview.filterFieldVisible',
+        facts: ['guard:talentReview.filterFieldVisible'],
+        note: '带 scene 筛选而无 scene 字段查看权 → 403 FILTER_FIELD_HIDDEN（字段级，只在带筛选时判定）',
+        at: [
+          {
+            role: 'call',
+            unit: `${SCORING}#${reads}`,
+            anchor: "if (scene !== undefined) await requireFilterVisible(deps, ctx, 'mapping', 'scene')",
+          },
+          FILTER_GUARD.at[1]!,
+        ],
+      },
+    ],
+    [`GET ${BASE_ROOT}/field-mappings/:id`]: [cfgView(object, 'mapping', 'FieldMapping', reads, detail, SCORING)],
+    [`POST ${BASE_ROOT}/field-mappings`]: [
+      ...cfgChange(object, 'mapping', 'FieldMapping', reg, 'create', SCORING),
+      ...MAPPING_FIELD_OBLIGATIONS('await requireMappingFields(c, deps);'),
+    ],
+    [`PATCH ${BASE_ROOT}/field-mappings/:id`]: [
+      ...cfgChange(object, 'mapping', 'FieldMapping', reg, 'update', SCORING),
+      ...MAPPING_FIELD_OBLIGATIONS('if (touched) await requireMappingFields(c, deps);'),
+    ],
+    [`DELETE ${BASE_ROOT}/field-mappings/:id`]: cfgChange(object, 'mapping', 'FieldMapping', reg, 'delete', SCORING),
+  };
+}
+const BASE_ROOT = '/api/tenant/talent-review';
+const SETTINGS_OBJECT = 'TalentReview.Settings';
+
+// ---- R3-T04 PR-B4：九宫格（modules/talent-review/matrix-routes.ts） -----------------------------------------------
+const MTX = `${T}/matrix-routes.ts`;
+const MATRIX_OBJECT = 'TalentReview.Matrix';
+const matrixConst = (key: string, label: string): Evidence => ({
+  role: 'const',
+  unit: `${CATALOG}>${key}`,
+  anchor: `object('${label}'`,
+});
+const matrixCall = (register: string, anchor: string): Evidence => ({
+  role: 'call',
+  unit: `${MTX}#${register}`,
+  anchor,
+});
+const matrixView = (anchor: string): Obligation => ({
+  perm: `obj:${MATRIX_OBJECT}:view`,
+  facts: ['object:objectContext'],
+  at: [matrixCall('registerMatrixRoutes', anchor), ...CONTEXT, matrixConst('matrix', 'Matrix')],
+});
+/** 九宫格写入口：操作权 + 按钮（规则组写入也是九宫格的 update）。 */
+function matrixChange(register: string, operation: Exclude<Operation, 'view'>): Obligation[] {
+  const entry = matrixCall(
+    register,
+    `const ctx = await reviewWriteContext(c, deps, 'matrix', '${operation}', revision(c))`,
+  );
+  const level = operation === 'create' ? 'list' : 'detail';
+  return [
+    {
+      perm: `obj:${MATRIX_OBJECT}:${operation}`,
+      facts: ['object:objectContext'],
+      at: [entry, ...CONTEXT, matrixConst('matrix', 'Matrix')],
+    },
+    {
+      perm: `btn:${MATRIX_OBJECT}#${operation}@${level}`,
+      facts: ['button:button()'],
+      at: [
+        entry,
+        ...BUTTON,
+        { role: 'const', unit: `${ACCESS}#WRITE_BUTTONS`, anchor: `${operation}: ['${operation}', '${level}']` },
+      ],
+    },
+  ];
+}
+const MATRIX_FIELD_REFERENCE = 'talentReview.matrixFieldReference';
+/** 引用盘点字段 = 读取字段目录：请求带字段引用时另需字段目录的对象查看权（requireFieldReference）。 */
+const matrixReference = (anchor: string): Obligation[] => [
+  {
+    perm: `guard:${MATRIX_FIELD_REFERENCE}`,
+    facts: [`guard:${MATRIX_FIELD_REFERENCE}`],
+    note: '条件守卫：请求体带轴 / 第三维度 / 位置字段引用时，另需字段目录的对象查看权，字段可见性在命令内按字段目录范围判定',
+    at: [matrixCall('registerMatrixRoutes', anchor)],
+  },
+  {
+    perm: 'obj:TalentReview.Field:view',
+    purpose: `when:${MATRIX_FIELD_REFERENCE}`,
+    at: [
+      {
+        role: 'call',
+        unit: `${MTX}#requireFieldReference`,
+        anchor: "const ctx = await reviewContext(c, deps, 'field')",
+      },
+      ...CONTEXT,
+      FIELD_OBJECT_CONST,
+    ],
+  },
+];
+const MATRIX_POSITION_GUARD: Obligation = {
+  perm: 'guard:talentReview.matrixPositionRequiresSeeAll',
+  facts: ['guard:talentReview.matrixPositionRequiresSeeAll'],
+  note: '改位置字段且不是看全部 → 403 MATRIX_POSITION_REQUIRES_SEE_ALL（在查重之前判定，不暴露隐藏九宫格占用）',
+  at: [
+    {
+      role: 'call',
+      unit: `${T}/matrix-service.ts#updateMatrix`,
+      anchor:
+        "if (repoint && !ctx.scope.all) { throw new AppError('FORBIDDEN', '只有能查看全部的人可以修改位置字段', {",
+    },
+  ],
+};
+const MATRIX_FILTER_GUARD: Obligation = {
+  ...FILTER_GUARD,
+  at: [
+    {
+      role: 'call',
+      unit: `${MTX}#registerMatrixRoutes`,
+      anchor: "if (enabled !== undefined) await requireFilterVisible(deps, ctx, 'matrix', 'enabled')",
+    },
+    ...FILTER_GUARD.at.slice(1),
+  ],
+};
+const MTX_BASE = `${BASE_ROOT}/matrices`;
+const MATRIX_REQUIRED: RequiredTable = {
+  [`GET ${MTX_BASE}`]: [
+    matrixView("router.get(MATRICES, async (c) => { const ctx = await reviewContext(c, deps, 'matrix')"),
+    MATRIX_FILTER_GUARD,
+  ],
+  [`GET ${MTX_BASE}/:id`]: [
+    matrixView("router.get(`${MATRICES}/:id`, async (c) => { const ctx = await reviewContext(c, deps, 'matrix')"),
+  ],
+  [`POST ${MTX_BASE}`]: [
+    ...matrixChange('registerMatrixRoutes', 'create'),
+    ...matrixReference('await requireFieldReference(c, deps)'),
+  ],
+  [`PATCH ${MTX_BASE}/:id`]: [
+    ...matrixChange('registerMatrixRoutes', 'update'),
+    RENAME_GUARD,
+    MATRIX_POSITION_GUARD,
+    ...matrixReference('if (references.length > 0) await requireFieldReference(c, deps)'),
+  ],
+  [`DELETE ${MTX_BASE}/:id`]: matrixChange('registerMatrixRoutes', 'delete'),
+  [`POST ${MTX_BASE}/:id/ratio-groups`]: matrixChange('registerRatioGroupRoutes', 'update'),
+  [`PATCH ${MTX_BASE}/:id/ratio-groups/:groupId`]: matrixChange('registerRatioGroupRoutes', 'update'),
+  [`DELETE ${MTX_BASE}/:id/ratio-groups/:groupId`]: matrixChange('registerRatioGroupRoutes', 'update'),
+};
+
+// ---- R3-T04 PR-B5：计算规则（modules/talent-review/calc-rule-routes.ts） ------------------------------------------------
+const CRR = `${T}/calc-rule-routes.ts`;
+const CALC_OBJECT = 'TalentReview.CalcRule';
+const calcConst: Evidence = { role: 'const', unit: `${CATALOG}>calcRule`, anchor: "object( 'CalcRule'" };
+// 路由登记拆成读（registerReads）与写（registerWrites）两个函数：开关打开时读写各有一条 bound 分支（F-082）
+const calcCall = (
+  anchor: string,
+  unit: 'registerReads' | 'registerWrites' | 'recheckCalcRuleWrite' = 'registerWrites',
+): Evidence => ({
+  role: 'call',
+  unit: `${CRR}#${unit}`,
+  anchor,
+});
+const calcView = (anchor: string): Obligation => ({
+  perm: `obj:${CALC_OBJECT}:view`,
+  facts: ['object:objectContext'],
+  at: [calcCall(anchor, 'registerReads'), ...CONTEXT, calcConst],
+});
+function calcChange(operation: Exclude<Operation, 'view'>): Obligation[] {
+  const entry = calcCall(`const ctx = await reviewWriteContext(c, deps, 'calcRule', '${operation}', revision(c))`);
+  const level = operation === 'create' ? 'list' : 'detail';
+  return [
+    { perm: `obj:${CALC_OBJECT}:${operation}`, facts: ['object:objectContext'], at: [entry, ...CONTEXT, calcConst] },
+    {
+      perm: `btn:${CALC_OBJECT}#${operation}@${level}`,
+      facts: ['button:button()'],
+      at: [
+        entry,
+        ...BUTTON,
+        { role: 'const', unit: `${ACCESS}#WRITE_BUTTONS`, anchor: `${operation}: ['${operation}', '${level}']` },
+      ],
+    },
+  ];
+}
+const CALC_CATALOG = 'talentReview.calcRuleFieldCatalog';
+/** 提交计算项目 = 读取字段目录：公式与目标字段只在字段目录范围内可见的字段里解析（requireCatalogAccess）。 */
+const calcCatalog = (anchor: string): Obligation[] => [
+  {
+    perm: `guard:${CALC_CATALOG}`,
+    facts: [`guard:${CALC_CATALOG}`],
+    note:
+      '条件守卫：提交计算项目（POST；PATCH 带 items）时另需字段目录的对象查看权，' +
+      '公式与目标字段只在其范围与 name / kind / enabled / systemWritten 列权限内可引用的字段里解析',
+    at: [calcCall(anchor)],
+  },
+  {
+    perm: 'obj:TalentReview.Field:view',
+    purpose: `when:${CALC_CATALOG}`,
+    at: [
+      {
+        role: 'call',
+        unit: `${CRR}#requireCatalogAccess`,
+        anchor: "const ctx = await reviewContext(c, deps, 'field')",
+      },
+      ...CONTEXT,
+      FIELD_OBJECT_CONST,
+    ],
+  },
+];
+/**
+ * 开关打开（F-082）时响应按查看人渲染公式引用：读取字段目录的范围与列权限决定哪些引用显示名称，其余是占位符。
+ * 只影响显示，不影响准入——没有字段目录访问时不拒绝，引用一律渲染为占位符（optionalCatalogAccess 吞掉 403）。
+ */
+const calcRender = (anchor: string, unit: 'registerReads' | 'recheckCalcRuleWrite'): Obligation[] => [
+  {
+    perm: `guard:${CALC_CATALOG}`,
+    facts: [`guard:${CALC_CATALOG}`],
+    note: '渲染用的可选守卫：开关打开时按字段目录范围与列权限渲染公式引用，没有访问也不拒绝（引用显示为占位符）',
+    at: [calcCall(anchor, unit)],
+  },
+  {
+    perm: 'obj:TalentReview.Field:view',
+    purpose: `when:${CALC_CATALOG}`,
+    at: [
+      {
+        role: 'call',
+        unit: `${CRR}#requireCatalogAccess`,
+        anchor: "const ctx = await reviewContext(c, deps, 'field')",
+      },
+      ...CONTEXT,
+      FIELD_OBJECT_CONST,
+    ],
+  },
+];
+const RENDER_READ = 'const access = await optionalCatalogAccess(c, deps)';
+const RENDER_WRITE = '? await optionalCatalogAccess(c, txDeps, tx)';
+const CALC_FILTER_GUARD: Obligation = {
+  ...FILTER_GUARD,
+  at: [
+    calcCall(
+      "if (enabled !== undefined) await requireFilterVisible(deps, ctx, 'calcRule', 'enabled')",
+      'registerReads',
+    ),
+    ...FILTER_GUARD.at.slice(1),
+  ],
+};
+const CALC_BASE = `${BASE_ROOT}/calc-rules`;
+const CALC_REQUIRED: RequiredTable = {
+  [`GET ${CALC_BASE}`]: [
+    calcView("router.get(CALC_RULES, async (c) => { const ctx = await reviewContext(c, deps, 'calcRule')"),
+    CALC_FILTER_GUARD,
+    ...calcRender(RENDER_READ, 'registerReads'),
+  ],
+  [`GET ${CALC_BASE}/:id`]: [
+    calcView("router.get(`${CALC_RULES}/:id`, async (c) => { const ctx = await reviewContext(c, deps, 'calcRule')"),
+    ...calcRender(RENDER_READ, 'registerReads'),
+  ],
+  [`POST ${CALC_BASE}`]: [...calcChange('create'), ...calcCatalog('await requireCatalogAccess(c, deps)')],
+  [`PATCH ${CALC_BASE}/:id`]: [
+    ...calcChange('update'),
+    RENAME_GUARD,
+    ...calcCatalog('await patchCatalogAccess(c, deps, body)'),
+  ],
+  [`DELETE ${CALC_BASE}/:id`]: [...calcChange('delete'), ...calcRender(RENDER_WRITE, 'recheckCalcRuleWrite')],
+};
+
+// ---- R3-T04 PR-B3：盘点内容表单 / 流程定义（modules/talent-review/form-flow-routes.ts） ------------------------------
+const FFR = `${T}/form-flow-routes.ts`;
+const ROLE_OBJECT_CONST: Evidence = { role: 'const', unit: `${CATALOG}>role`, anchor: "object('Role'" };
+/**
+ * 引用目录对象 = 读取目录：请求带引用时另需目录对象的查看权（表单 → 字段目录 requireFieldCatalog，流程 → 角色 requireRoleCatalog），
+ * 引用的可见性在命令内按目录范围判定。
+ */
+const ffReference = (register: string, guard: string, catalog: string, catalogKey: 'field' | 'role', note: string) => {
+  const target = catalogKey === 'field' ? 'TalentReview.Field' : 'TalentReview.Role';
+  return (anchor: string): Obligation[] => [
+    {
+      perm: `guard:${guard}`,
+      facts: [`guard:${guard}`],
+      note,
+      at: [{ role: 'call', unit: `${FFR}#${register}`, anchor }],
+    },
+    {
+      perm: `obj:${target}:view`,
+      purpose: `when:${guard}`,
+      at: [
+        { role: 'call', unit: `${FFR}#${catalog}`, anchor: `const ctx = await reviewContext(c, deps, referenced)` },
+        ...CONTEXT,
+        catalogKey === 'field' ? FIELD_OBJECT_CONST : ROLE_OBJECT_CONST,
+      ],
+    },
+  ];
+};
+const formReference = ffReference(
+  'registerForms',
+  'talentReview.formFieldReference',
+  'requireCatalog',
+  'field',
+  '条件守卫：请求体带字段引用时，另需字段目录的对象查看权，字段可见性在命令内按字段目录范围判定',
+);
+const flowReference = ffReference(
+  'registerFlows',
+  'talentReview.flowRoleReference',
+  'requireCatalog',
+  'role',
+  '条件守卫：请求体带角色引用时，另需盘点角色的对象查看权，角色可见性在命令内按角色范围判定',
+);
+const FORMS_REQUIRED = cfgObject('form', 'Form', 'registerForms', 'forms', 'FORMS', FFR);
+const FLOWS_REQUIRED = cfgObject('flow', 'Flow', 'registerFlows', 'flows', 'FLOWS', FFR);
+const FORM_ANCHOR = 'if (references.length > 0) await requireFieldCatalog(c, deps)';
+const FLOW_ANCHOR = 'if (references.length > 0) await requireRoleCatalog(c, deps)';
+const FORM_FLOW_REQUIRED: RequiredTable = {
+  ...FORMS_REQUIRED,
+  ...FLOWS_REQUIRED,
+  [`POST ${BASE_ROOT}/forms`]: [...FORMS_REQUIRED[`POST ${BASE_ROOT}/forms`]!, ...formReference(FORM_ANCHOR)],
+  [`PATCH ${BASE_ROOT}/forms/:id`]: [...FORMS_REQUIRED[`PATCH ${BASE_ROOT}/forms/:id`]!, ...formReference(FORM_ANCHOR)],
+  [`POST ${BASE_ROOT}/flows`]: [...FLOWS_REQUIRED[`POST ${BASE_ROOT}/flows`]!, ...flowReference(FLOW_ANCHOR)],
+  [`PATCH ${BASE_ROOT}/flows/:id`]: [...FLOWS_REQUIRED[`PATCH ${BASE_ROOT}/flows/:id`]!, ...flowReference(FLOW_ANCHOR)],
+};
+
+// ---- R3-T04 PR-B6a：盘点模板（modules/talent-review/template-routes.ts） ----------------------------------------------
+const TPR = `${T}/template-routes.ts`;
+const TPL_OBJECT = 'TalentReview.Template';
+const TPL_CONST: Evidence = { role: 'const', unit: `${CATALOG}>template`, anchor: "object( 'Template'" };
+const tplEntry = (anchor: string): Evidence => ({ role: 'call', unit: `${TPR}#registerTemplateRoutes`, anchor });
+const tplView = (anchor: string): Obligation => ({
+  perm: `obj:${TPL_OBJECT}:view`,
+  facts: ['object:objectContext'],
+  at: [tplEntry(anchor), ...CONTEXT, TPL_CONST],
+});
+function tplChange(operation: Exclude<Operation, 'view'>): Obligation[] {
+  const entry = tplEntry(`const ctx = await reviewWriteContext(c, deps, 'template', '${operation}', revision(c))`);
+  const level = operation === 'create' ? 'list' : 'detail';
+  return [
+    { perm: `obj:${TPL_OBJECT}:${operation}`, facts: ['object:objectContext'], at: [entry, ...CONTEXT, TPL_CONST] },
+    {
+      perm: `btn:${TPL_OBJECT}#${operation}@${level}`,
+      facts: ['button:button()'],
+      at: [
+        entry,
+        ...BUTTON,
+        { role: 'const', unit: `${ACCESS}#WRITE_BUTTONS`, anchor: `${operation}: ['${operation}', '${level}']` },
+      ],
+    },
+  ];
+}
+const TPL_FILTER_GUARD: Obligation = {
+  perm: 'guard:talentReview.filterFieldVisible',
+  facts: ['guard:talentReview.filterFieldVisible'],
+  note: '带 enabled 筛选而无 enabled 字段查看权 → 403 FILTER_FIELD_HIDDEN（字段级，只在带筛选时判定）',
+  at: [
+    tplEntry("if (enabled !== undefined) await requireFilterVisible(deps, ctx, 'template', 'enabled')"),
+    FILTER_GUARD.at[1]!,
+  ],
+};
+const TPL_CREATABLE: Obligation = {
+  perm: 'guard:talentReview.templateCreatable',
+  note: '新建 / 改所属组织：目标组织须在范围内（不因创建人或向下公开放行），范围外 404',
+  at: [
+    {
+      role: 'call',
+      unit: `${T}/template-service.ts#createTemplate`,
+      anchor: 'requireCreatable(ctx.scope, input.ownerOrgId)',
+    },
+    {
+      role: 'impl',
+      unit: `${T}/template-access.ts#requireCreatable`,
+      anchor: "visible(scope, ownerOrgId, notFoundMessage('template'))",
+    },
+  ],
+};
+const TPL_READONLY: Obligation = {
+  perm: 'guard:talentReview.templatePublicDownReadonly',
+  facts: ['guard:talentReview.templatePublicDownReadonly'],
+  note: '仅因向下公开可见的模板只读：修改 / 删除 403 TEMPLATE_PUBLIC_DOWN_READONLY（行锁后判定）',
+  at: [
+    {
+      role: 'call',
+      unit: `${T}/template-service.ts#lockTemplate`,
+      anchor: 'await requireEditable(tx, ctx, ctx.scope, row)',
+    },
+    {
+      role: 'impl',
+      unit: `${T}/template-access.ts#requireEditable`,
+      anchor: "reason: 'TEMPLATE_PUBLIC_DOWN_READONLY'",
+    },
+  ],
+};
+const TPL_CATALOG_LABEL = {
+  form: 'Form',
+  flow: 'Flow',
+  scoreRule: 'ScoreRule',
+  moduleGrade: 'ModuleGrade',
+  field: 'Field',
+} as const;
+const TPL_REPLAY_READONLY: Obligation = {
+  perm: 'guard:talentReview.templatePublicDownReadonly',
+  facts: ['guard:talentReview.templatePublicDownReadonly'],
+  note: '新建的幂等重放：返回台账结果前按模板当前归属复核可编辑性，已变为仅向下公开可见时 403 TEMPLATE_PUBLIC_DOWN_READONLY',
+  at: [
+    { role: 'call', unit: `${TPR}#runGuarded`, anchor: 'await requireEditable(tx, ctx, scope, anchor)' },
+    TPL_READONLY.at[1]!,
+  ],
+};
+/** 引用流程 / 评价规则 / 模块等级 / 盘点字段 = 读取目录：请求带引用时另需目录对象的查看权，可见性在命令内按目录范围判定。 */
+const TPL_REFERENCE = (entry = 'await requireCatalogs(c, deps, references)', copying = false): Obligation[] => [
+  {
+    perm: 'guard:talentReview.templateCatalogReference',
+    facts: ['guard:talentReview.templateCatalogReference'],
+    note: '条件守卫：请求体带流程 / 评价规则 / 模块等级 / 字段 / 表单引用时，另需对应目录的对象查看权，引用的可见性在命令内按目录范围判定',
+    at: [{ ...tplEntry(entry), ...(copying ? { unit: `${TPR}#registerTemplateCopyRoute` } : {}) }],
+  },
+  ...(['flow', 'scoreRule', 'moduleGrade', 'field', 'form'] as const).map((key): Obligation => ({
+    perm: `obj:TalentReview.${TPL_CATALOG_LABEL[key]}:view`,
+    purpose: 'when:talentReview.templateCatalogReference',
+    at: [
+      { role: 'call', unit: `${TPR}#requireCatalogs`, anchor: 'const ctx = await reviewContext(c, deps, kind)' },
+      ...CONTEXT,
+      {
+        role: 'const',
+        unit: `${CATALOG}>${key}`,
+        anchor: `object('${TPL_CATALOG_LABEL[key]}'`,
+      },
+    ],
+  })),
+];
+
+/** 公式引用的可选披露：字段目录对象权、四列查看权和目录范围决定名称 / ID 是否可见。 */
+const TPL_RESULT_FIELDS: Obligation = {
+  perm: 'obj:TalentReview.Field:view',
+  purpose: 'disclosure:resultFields',
+  facts: ['object:object.* 动作'],
+  need: list('talentReview.configScope(talent_review_fields)'),
+  at: [
+    { role: 'call', unit: `${TPR}#trimmed`, anchor: 'await projectTemplateResults(deps, ctx, view)' },
+    {
+      role: 'impl',
+      unit: `${T}/template-extra-present.ts#resultCatalogAccess`,
+      anchor: "await deps.authorize({ ...ctx, action: 'object.view', resource, fields: [] })",
+    },
+    FIELD_OBJECT_CONST,
+    {
+      role: 'scope',
+      unit: `${T}/calc-rule-catalog.ts#visibleOf`,
+      anchor: "requireConfigVisible(access.scope, 'field', createdBy)",
+    },
+  ],
+};
+const COPY_ENTRY: Evidence = {
+  role: 'call',
+  unit: `${TPR}#registerTemplateCopyRoute`,
+  anchor: 'const ctx = await copyContext(c, deps, revision(c))',
+};
+const COPY_REQUIRED: Obligation[] = [
+  ...(['create', 'view'] as const).map((op): Obligation => ({
+    perm: `obj:${TPL_OBJECT}:${op}`,
+    need: op === 'create' ? guardScope('talentReview.templateCreatable') : point('talentReview.template.byId'),
+    facts: ['object:objectContext'],
+    at: [
+      COPY_ENTRY,
+      {
+        role: 'impl',
+        unit: `${TPR}#copyContext`,
+        anchor:
+          op === 'create'
+            ? "await reviewContext(c, deps, 'template', 'create', expectedRevision)"
+            : "await reviewContext(c, deps, 'template')",
+      },
+      ...CONTEXT,
+      TPL_CONST,
+      {
+        role: 'scope',
+        unit: `${TPR}#registerTemplateCopyRoute`,
+        anchor:
+          op === 'create'
+            ? 'requireCreatable(checked.scope, source.ownerOrgId)'
+            : 'await requireEditable(tx, checked.ctx, checked.scope, source)',
+      },
+    ],
+  })),
+  {
+    perm: `btn:${TPL_OBJECT}#copy@list`,
+    facts: ['button:button()'],
+    at: [
+      COPY_ENTRY,
+      {
+        role: 'impl',
+        unit: `${TPR}#copyContext`,
+        anchor: "await button(deps, ctx, codeOf('template'), 'copy', 'list')",
+      },
+      BUTTON[1]!,
+      TPL_CONST,
+    ],
+  },
+  {
+    ...TPL_CREATABLE,
+    at: [
+      {
+        role: 'call',
+        unit: `${T}/template-service.ts#copyTemplate`,
+        anchor: 'requireCreatable(ctx.scope, source.ownerOrgId)',
+      },
+      TPL_CREATABLE.at[1]!,
+    ],
+  },
+  TPL_READONLY,
+  ...TPL_REFERENCE('await requireCatalogs(c, checked.txDeps, references, tx)', true),
+  TPL_RESULT_FIELDS,
+];
+const TEMPLATE_REQUIRED: RequiredTable = {
+  [`POST ${BASE_ROOT}/templates/:id/copy`]: COPY_REQUIRED,
+  [`GET ${BASE_ROOT}/templates`]: [
+    tplView("router.get(TEMPLATES, async (c) => { const ctx = await reviewContext(c, deps, 'template')"),
+    TPL_FILTER_GUARD,
+  ],
+  [`GET ${BASE_ROOT}/templates/:id`]: [
+    tplView("router.get(`${TEMPLATES}/:id`, async (c) => { const ctx = await reviewContext(c, deps, 'template')"),
+    TPL_RESULT_FIELDS,
+  ],
+  [`POST ${BASE_ROOT}/templates`]: [
+    ...tplChange('create'),
+    TPL_CREATABLE,
+    TPL_REPLAY_READONLY,
+    ...TPL_REFERENCE(),
+    TPL_RESULT_FIELDS,
+  ],
+  [`PATCH ${BASE_ROOT}/templates/:id`]: [...tplChange('update'), TPL_READONLY, ...TPL_REFERENCE(), TPL_RESULT_FIELDS],
+  [`DELETE ${BASE_ROOT}/templates/:id`]: [...tplChange('delete'), TPL_READONLY, TPL_RESULT_FIELDS],
+};
+
+// B7a：项目 CRUD 与状态按钮；目录引用仅在请求显式带引用时准入。
+const PR = `${T}/project-routes.ts`;
+const PROJECT = 'TalentReview.Project';
+const PROJECT_LABELS = { category: 'Category', calcRule: 'CalcRule', matrix: 'Matrix', field: 'Field' };
+const projectConst: Evidence = { role: 'const', unit: `${CATALOG}>project`, anchor: "'Project'" };
+const projectCall = (anchor: string): Evidence => ({ role: 'call', unit: `${PR}#registerProjectRoutes`, anchor });
+const projectReference: Obligation[] = [
+  {
+    perm: 'guard:talentReview.projectCatalogReference',
+    facts: ['guard:talentReview.projectCatalogReference'],
+    at: [projectCall('await requireProjectCatalogs(c, deps, input)')],
+  },
+  ...(['category', 'calcRule', 'matrix', 'field'] as const).map((key): Obligation => ({
+    perm: `obj:TalentReview.${PROJECT_LABELS[key]}:view`,
+    purpose: 'when:talentReview.projectCatalogReference',
+    at: [
+      { role: 'call', unit: `${PR}#requireProjectCatalogs`, anchor: 'await reviewContext(c, deps, key)' },
+      ...CONTEXT,
+      {
+        role: 'const',
+        unit: `${CATALOG}>${key}`,
+        anchor: `object('${PROJECT_LABELS[key]}'`,
+      },
+    ],
+  })),
+];
+const projectAction = (action: 'start' | 'end' | 'restart'): Obligation[] => {
+  const entry = projectCall('const ctx = await projectWriteContext(c, deps, action, revision(c))');
+  return [
+    {
+      perm: `obj:${PROJECT}:update`,
+      facts: ['object:objectContext'],
+      at: [
+        entry,
+        {
+          role: 'impl',
+          unit: `${PR}#projectWriteContext`,
+          anchor: "await reviewContext(c, deps, 'project', 'update', expectedRevision)",
+        },
+        ...CONTEXT,
+        projectConst,
+      ],
+    },
+    {
+      perm: `btn:${PROJECT}#${action}@detail`,
+      facts: ['button:button()'],
+      at: [
+        entry,
+        {
+          role: 'impl',
+          unit: `${PR}#projectWriteContext`,
+          anchor: "await button(deps, ctx, codeOf('project'), action, 'detail')",
+        },
+        BUTTON[1]!,
+        projectConst,
+      ],
+    },
+  ];
+};
+const PROJECT_READONLY: Obligation = {
+  perm: 'guard:talentReview.projectReadonly',
+  facts: ['guard:talentReview.projectReadonly'],
+  note: '公开 / 共享项目只读；首次写入及命令重放均复用 requireProjectEditable，403 PROJECT_READONLY',
+  at: [
+    {
+      role: 'call',
+      unit: `${T}/project-service.ts#lockProject`,
+      anchor: 'await requireProjectEditable(tx, ctx, ctx.scope, row)',
+    },
+    {
+      role: 'call',
+      unit: `${PR}#runWrite`,
+      anchor: 'await requireProjectEditable(tx, current, current.scope, anchor)',
+    },
+    { role: 'impl', unit: `${T}/project-access.ts#requireProjectEditable`, anchor: "reason: 'PROJECT_READONLY'" },
+  ],
+};
+const PROJECT_REQUIRED: RequiredTable = {
+  [`GET ${BASE_ROOT}/projects`]: [
+    cfgView(PROJECT, 'project', 'Project', 'projectList', "const ctx = await reviewContext(c, deps, 'project')", PR),
+  ],
+  [`GET ${BASE_ROOT}/projects/:id`]: [
+    cfgView(
+      PROJECT,
+      'project',
+      'Project',
+      'registerProjectRoutes',
+      "router.get(`${PATH}/:id`, async (c) => { const ctx = await reviewContext(c, deps, 'project')",
+      PR,
+    ),
+  ],
+  [`POST ${BASE_ROOT}/projects`]: [
+    ...cfgChange(PROJECT, 'project', 'Project', 'registerProjectRoutes', 'create', PR),
+    ...projectReference,
+    PROJECT_READONLY,
+    {
+      perm: 'guard:talentReview.projectCreatable',
+      at: [
+        {
+          role: 'call',
+          unit: `${T}/project-service.ts#createProject`,
+          anchor: "visible(ctx.scope, input.ownerOrgId, notFoundMessage('project'))",
+        },
+      ],
+    },
+  ],
+  [`PATCH ${BASE_ROOT}/projects/:id`]: [
+    ...cfgChange(PROJECT, 'project', 'Project', 'registerProjectRoutes', 'update', PR),
+    ...projectReference,
+    PROJECT_READONLY,
+  ],
+  [`DELETE ${BASE_ROOT}/projects/:id`]: [
+    ...cfgChange(PROJECT, 'project', 'Project', 'registerProjectRoutes', 'delete', PR),
+    PROJECT_READONLY,
+  ],
+  [`POST ${BASE_ROOT}/projects/:id/start`]: [...projectAction('start'), PROJECT_READONLY],
+  [`POST ${BASE_ROOT}/projects/:id/end`]: [...projectAction('end'), PROJECT_READONLY],
+  [`POST ${BASE_ROOT}/projects/:id/restart`]: [...projectAction('restart'), PROJECT_READONLY],
+};
+
+export const TALENT_REVIEW: RequiredTable = {
+  ...PROJECT_REQUIRED,
+  ...TEMPLATE_REQUIRED,
+  ...FORM_FLOW_REQUIRED,
+  ...CALC_REQUIRED,
+  ...MATRIX_REQUIRED,
+  ...cfgObject('category', 'Category', 'registerCategories', 'categories', 'CATEGORIES'),
+  ...cfgObject('role', 'Role', 'registerRoles', 'roles', 'ROLES'),
+  ...cfgObject('field', 'Field', 'registerFields', 'fields', 'FIELDS'),
+  ...cfgObject('scoreRule', 'ScoreRule', 'registerScoreRules', 'score-rules', 'SCORE_RULES', SCORING),
+  ...cfgObject('moduleGrade', 'ModuleGrade', 'registerModuleGrades', 'module-grades', 'MODULE_GRADES', SCORING),
+  ...mappingTable(),
+  [`GET ${BASE_ROOT}/settings`]: [
+    cfgView(
+      SETTINGS_OBJECT,
+      'settings',
+      'Settings',
+      'registerSettings',
+      "router.get(SETTINGS, async (c) => { const ctx = await reviewContext(c, deps, 'settings')",
+    ),
+  ],
+  [`PATCH ${BASE_ROOT}/settings`]: cfgChange(SETTINGS_OBJECT, 'settings', 'Settings', 'registerSettings', 'update'),
+  [`GET ${BASE}`]: [
+    view(`router.get(PATH, async (c) => { ${VIEW}`),
+    {
+      perm: 'guard:talentReview.filterFieldVisible',
+      facts: ['guard:talentReview.filterFieldVisible'],
+      note: '带 enabled 筛选而无 enabled 字段查看权 → 403 FILTER_FIELD_HIDDEN（字段级，只在带筛选时判定）',
+      at: [
+        call("if (enabled !== undefined) await requireFilterVisible(deps, ctx, 'readiness', 'enabled')"),
+        {
+          role: 'impl',
+          unit: `${ACCESS}#requireFilterVisible`,
+          anchor: "throw new AppError('FORBIDDEN', '无权按该字段筛选', { reason: 'FILTER_FIELD_HIDDEN', field })",
+        },
+      ],
+    },
+  ],
+  [`GET ${BASE}/:id`]: [view(`router.get(\`\${PATH}/:id\`, async (c) => { ${VIEW}`)],
+  [`POST ${BASE}`]: change('create'),
+  [`PATCH ${BASE}/:id`]: [
+    ...change('update'),
+    {
+      perm: 'guard:talentReview.renameRequiresSeeAll',
+      facts: ['guard:talentReview.renameRequiresSeeAll'],
+      note: '名称实际变化且不是看全部 → 403 READINESS_NAME_REQUIRES_SEE_ALL（在查重之前判定，不暴露隐藏记录）',
+      at: [
+        {
+          role: 'call',
+          unit: `${T}/readiness-service.ts#updateReadiness`,
+          anchor: 'if (patch.name !== undefined && patch.name !== before.name && !ctx.scope.all) {',
+        },
+      ],
+    },
+  ],
+  [`DELETE ${BASE}/:id`]: change('delete'),
+};

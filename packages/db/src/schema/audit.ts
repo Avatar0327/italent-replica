@@ -75,6 +75,8 @@ export const auditCommandFailures = pgTable(
     // 业务失败为统一错误码（AGENTS.md §10「错误」），存储不可写 / 结果未知为 SQLSTATE 或连接错误码
     errorCode: text('error_code').notNull(),
     reason: text('reason'),
+    // F-120：写接口对该失败实际返回的状态；错误本身不带状态时为空
+    httpStatus: integer('http_status'),
     method: text('method'),
     path: text('path'),
     occurredAt: utc('occurred_at'),

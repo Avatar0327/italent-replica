@@ -4,6 +4,10 @@
  * 身份定义在 @italent/domain 的 STANDARD_PROFILES；这里只负责按对象目录校验后落库，并与业务写同事务写审计与 outbox。
  */
 import {
+  and,
+  eq,
+  permissionAdminGrantableProfiles,
+  permissionAdmins,
   permissionGrants,
   permissionIdentityScopes,
   permissionProfileApps,
@@ -15,13 +19,18 @@ import {
   type Tx,
 } from '@italent/db';
 import {
-  NO_ORG_FIELD_SEE_ALL,
-  ORG_EMPLOYEE_APP,
   type ObjectPermission,
+  type PresetSeeAllTarget,
+  presetSeeAllTargets,
+  profileLedgerMarker,
+  STANDARD_GRANT_ENTRY,
   STANDARD_PROFILES,
   type StandardProfile,
+  standardGrantItems,
   validateObjectPermission,
 } from '@italent/domain';
+import { lockTenantSeeds, recordLedger } from '../../seeds/grant-ledger.js';
+import { viewOf } from './admins.js';
 import { auditAs, type PlatformWriteContext } from './audit.js';
 import { objectCatalog } from './catalog.js';
 import { consumeSeat, type LicenseOverage } from './licenses.js';
@@ -40,26 +49,165 @@ export async function installStandardProfiles(tx: Tx, write: PlatformWriteContex
   return installed;
 }
 
-async function installProfile(tx: Tx, write: PlatformWriteContext, profile: StandardProfile) {
+export interface StandardBackfill {
+  readonly installed: string[];
+  readonly skipped: { readonly code: string; readonly reason: 'ALREADY_INSTALLED' | 'CODE_TAKEN' }[];
+}
+
+/**
+ * 存量租户回补标准身份（DEC-289③）：开通早于新增标准身份（如 360 三类身份）的租户，按 STANDARD_PROFILES 只补租户里
+ * 还没有该编码的（与开通同一安装函数，同样按对象目录校验、逐个写身份审计）。同编码已是标准身份跳过
+ * （ALREADY_INSTALLED）；租户手工建过同编码身份不覆盖、不合并、不改其对象权限（CODE_TAKEN）。身份编码建后不能改、
+ * 身份也不能删，所以这个标准身份不会再由回补装入，租户身份管理员可二选一：在身份管理里按标准身份
+ * （STANDARD_PROFILES）的对象权限调整这条自定义身份后继续使用；或另建一个其他编码的自定义身份按同样配置，在用户
+ * 授权里改授并撤销旧授权。新装身份加入有效租户管理员的可授权业务身份。重复执行不新建任何行。
+ */
+export async function installMissingStandardProfiles(tx: Tx, write: PlatformWriteContext): Promise<StandardBackfill> {
+  // 与 seeds/backfill 共用补装锁：两条路径同时装同一身份会撞（租户，编码）唯一约束返回 500（方案 §4.1）
+  await lockTenantSeeds(tx, write.tenantId);
+  const existing = await tx
+    .select({ code: permissionProfiles.code, source: permissionProfiles.source })
+    .from(permissionProfiles);
+  const sources = new Map(existing.map((p) => [p.code, p.source]));
+  const missing: StandardProfile[] = [];
+  const skipped: StandardBackfill['skipped'][number][] = [];
+  for (const profile of STANDARD_PROFILES) {
+    const source = sources.get(profile.code);
+    if (source === undefined) missing.push(profile);
+    else skipped.push({ code: profile.code, reason: source === 'standard' ? 'ALREADY_INSTALLED' : 'CODE_TAKEN' });
+  }
+  const installed = await installProfilesForTenantAdmins(tx, write, missing);
+  // F-052：读已有编码与插入之间，租户可能已提交同编码自定义身份（创建身份不取补装锁）：该编码没装上，按 CODE_TAKEN 跳过
+  const done = new Set(installed.map((p) => p.code));
+  for (const profile of missing)
+    if (!done.has(profile.code)) skipped.push({ code: profile.code, reason: 'CODE_TAKEN' });
+  return { installed: installed.map((p) => p.code), skipped };
+}
+
+/**
+ * 装一批标准身份并加入有效租户管理员的可授权业务身份（旧回补路由与 standard-profiles 登记项共用）。
+ * F-052：某编码在安装时已被并发提交的自定义身份占用，则不装、不覆盖，返回值里没有它（调用方按 CODE_TAKEN 报告）。
+ */
+export async function installProfilesForTenantAdmins(
+  tx: Tx,
+  write: PlatformWriteContext,
+  profiles: readonly StandardProfile[],
+): Promise<InstalledProfile[]> {
+  const installed: InstalledProfile[] = [];
+  for (const profile of profiles) {
+    const row = await installProfileIfFree(tx, write, profile);
+    if (row) installed.push(row);
+  }
+  // DEC-402③：autoHeld 身份（员工）不进可授权集合；过滤后为空（如存量租户只缺员工身份）就不碰管理员记录
+  const held = new Set(profiles.filter((p) => p.autoHeld).map((p) => p.code));
+  const grantable = installed.filter((p) => !held.has(p.code)).map((p) => p.id);
+  if (grantable.length) await grantableToTenantAdmins(tx, write, grantable);
+  return installed;
+}
+
+/** 新装身份加入有效租户管理员的可授权业务身份：推进管理员记录 revision（防并发整体覆盖丢失）、写审计。 */
+async function grantableToTenantAdmins(tx: Tx, write: PlatformWriteContext, profileIds: readonly string[]) {
+  const admins = await tx
+    .select()
+    .from(permissionAdmins)
+    .where(and(eq(permissionAdmins.role, 'tenant_admin'), eq(permissionAdmins.status, 'active')))
+    .for('update');
+  for (const admin of admins) {
+    const before = await viewOf(tx, admin);
+    await tx
+      .insert(permissionAdminGrantableProfiles)
+      .values(profileIds.map((profileId) => ({ tenantId: write.tenantId, adminId: admin.id, profileId })))
+      .onConflictDoNothing();
+    const [saved] = await tx
+      .update(permissionAdmins)
+      .set({ revision: admin.revision + 1, updatedAt: write.now })
+      .where(eq(permissionAdmins.id, admin.id))
+      .returning();
+    await auditAs(tx, write, {
+      action: 'permission_admin.update',
+      objectType: 'permission_admin',
+      objectId: admin.id,
+      before,
+      after: await viewOf(tx, saved!),
+    });
+  }
+}
+
+/**
+ * 装一个标准身份并**装入即记账**（F-061 §3.3）：权限行与审计之外，把身份定义授予的全部授权项编码和该身份的
+ * @ledger 标记以 install 登记进补装台账，以后“当前没有、台账有”即视为租户撤销，回补不再补回。
+ * 开通、旧回补路由、standard-profiles 登记项都走这里。
+ */
+export async function installProfile(tx: Tx, write: PlatformWriteContext, profile: StandardProfile) {
+  const installed = await installProfileRows(tx, write, profile);
+  await recordProfileInstall(tx, write, profile);
+  return installed;
+}
+
+/**
+ * 回补用：同 installProfile，但该（租户，编码）已被并发提交的身份占用时不报唯一约束错，返回 null（什么都不写、不记账）。
+ * 读已有编码之后到插入之前，租户可能刚创建了同编码自定义身份；ON CONFLICT DO NOTHING 在对方未提交时会等它提交，
+ * 之后不覆盖对方（F-052）。
+ */
+export async function installProfileIfFree(
+  tx: Tx,
+  write: PlatformWriteContext,
+  profile: StandardProfile,
+): Promise<InstalledProfile | null> {
+  const installed = await installProfileRows(tx, write, profile, { ifFree: true });
+  if (installed) await recordProfileInstall(tx, write, profile);
+  return installed;
+}
+
+async function recordProfileInstall(tx: Tx, write: PlatformWriteContext, profile: StandardProfile) {
+  await recordLedger(tx, {
+    entry: STANDARD_GRANT_ENTRY,
+    codes: [...standardGrantItems([profile]).map((item) => item.code), profileLedgerMarker(profile.code)],
+    source: 'install',
+    commandId: write.commandId,
+    now: write.now,
+  });
+}
+
+/**
+ * 只写身份与权限行、预置看全部和审计，不写台账。给“F-061 上线前开通的租户”测试夹具用（按注入的旧定义装身份、
+ * 不留台账）；产品路径一律走 installProfile。
+ */
+export async function installProfileRows(
+  tx: Tx,
+  write: PlatformWriteContext,
+  profile: StandardProfile,
+): Promise<InstalledProfile>;
+export async function installProfileRows(
+  tx: Tx,
+  write: PlatformWriteContext,
+  profile: StandardProfile,
+  options: { readonly ifFree: true },
+): Promise<InstalledProfile | null>;
+export async function installProfileRows(
+  tx: Tx,
+  write: PlatformWriteContext,
+  profile: StandardProfile,
+  options?: { readonly ifFree: true },
+): Promise<InstalledProfile | null> {
   const { tenantId } = write;
-  const [row] = await tx
-    .insert(permissionProfiles)
-    .values({
-      tenantId,
-      code: profile.code,
-      name: profile.name,
-      description: profile.description,
-      source: 'standard',
-      licenseType: profile.licenseType,
-      createdBy: write.actorUserId,
-      createdAt: write.now,
-      updatedAt: write.now,
-    })
-    .returning();
-  const profileId = row!.id;
+  const insert = tx.insert(permissionProfiles).values({
+    tenantId,
+    code: profile.code,
+    name: profile.name,
+    description: profile.description,
+    source: 'standard',
+    licenseType: profile.licenseType,
+    createdBy: write.actorUserId,
+    createdAt: write.now,
+    updatedAt: write.now,
+  });
+  const [row] = await (options?.ifFree ? insert.onConflictDoNothing().returning() : insert.returning());
+  if (!row) return null;
+  const profileId = row.id;
   await tx.insert(permissionProfileApps).values(profile.apps.map((appCode) => ({ tenantId, profileId, appCode })));
   for (const permission of profile.objects) await insertObject(tx, tenantId, profileId, permission);
-  const seeAll = profile.hr ? await presetSeeAll(tx, write, profileId) : [];
+  const seeAll = await presetSeeAll(tx, write, profileId, presetSeeAllTargets(profile));
   await auditAs(tx, write, {
     action: 'permission_profile.provision',
     objectType: 'permission_profile',
@@ -73,7 +221,7 @@ async function installProfile(tx: Tx, write: PlatformWriteContext, profile: Stan
       apps: profile.apps,
       objects: profile.objects.map((o) => o.objectCode),
       seeAll,
-      revision: row!.revision,
+      revision: row.revision,
     },
   });
   return { id: profileId, code: profile.code, name: profile.name, licenseType: profile.licenseType };
@@ -102,22 +250,23 @@ async function insertObject(tx: Tx, tenantId: string, profileId: string, permiss
 }
 
 /**
- * DEC-121：标准 HR 身份对无组织字段对象预置“看全部”（与租户管理员在数据权限里手工配置的结果完全相同：同表、
+ * DEC-121：标准身份对无组织字段对象预置“看全部”（与租户管理员在数据权限里手工配置的结果完全相同：同表、
  * revision 1、留范围版本与审计），租户管理员可在数据权限中查看与关闭。新建的自定义身份不受影响（默认空）。
  */
-async function presetSeeAll(tx: Tx, write: PlatformWriteContext, profileId: string): Promise<string[]> {
-  const targets = [
-    ...NO_ORG_FIELD_SEE_ALL.entities.map((code) => ({ targetKind: 'entity' as const, targetCode: code })),
-    ...NO_ORG_FIELD_SEE_ALL.dataSources.map((code) => ({ targetKind: 'datasource' as const, targetCode: code })),
-  ];
+export async function presetSeeAll(
+  tx: Tx,
+  write: PlatformWriteContext,
+  profileId: string,
+  targets: readonly PresetSeeAllTarget[],
+): Promise<string[]> {
   const keys: string[] = [];
-  for (const target of targets) {
-    const scope = { tenantId: write.tenantId, profileId, appCode: ORG_EMPLOYEE_APP, ...target };
+  for (const { appCode, ...target } of targets) {
+    const scope = { tenantId: write.tenantId, profileId, appCode, ...target };
     const [after] = await tx
       .insert(permissionIdentityScopes)
       .values({ ...scope, seeAll: true, revision: 1 })
       .returning();
-    const objectId = `${profileId}:${ORG_EMPLOYEE_APP}:${target.targetKind}:${target.targetCode}`;
+    const objectId = `${profileId}:${appCode}:${target.targetKind}:${target.targetCode}`;
     const before = { ...scope, seeAll: false, revision: 0 };
     await tx.insert(permissionScopeVersions).values({
       tenantId: write.tenantId,

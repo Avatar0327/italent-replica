@@ -19,6 +19,7 @@ import {
 import { withLoginEmail } from './AC-EMP-support.js';
 import { orgPeopleWorld, TODAY } from './AC-ORG-people-support.js';
 import { tenantApi } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 const PEOPLE_FIELDS = ['personInChargeId', 'hrbpId', 'shopOwnerId'] as const;
@@ -100,14 +101,14 @@ describe('AC-ORG-17 负责人 / HRBP / 店长保存校验（DEC-135）', () => {
     expect((await world.patchOrg(org, { personInChargeId: leaver.id, effectiveDate: TODAY })).status).toBe(200);
     const renamed = await world.patchOrg(
       { id: org.id, revision: 2 },
-      { name: '改名部门', effectiveDate: '2026-10-05' },
+      { addEmployment: false, name: '改名部门', effectiveDate: '2026-10-05' },
     );
     expect(renamed.status, await renamed.clone().text()).toBe(200);
     expect(await renamed.json()).toMatchObject({ name: '改名部门', personInChargeId: leaver.id });
     // 整表提交的客户端会原样带上沿用的值：与原值相同视为沿用，同样不重新校验；改成别的离职人员仍被拒。
     const resubmitted = await world.patchOrg(
       { id: org.id, revision: 3 },
-      { name: '整表提交部门', personInChargeId: leaver.id, effectiveDate: '2026-10-06' },
+      { addEmployment: false, name: '整表提交部门', personInChargeId: leaver.id, effectiveDate: '2026-10-06' },
     );
     expect(resubmitted.status, await resubmitted.clone().text()).toBe(200);
     await expectIneligible(
@@ -147,7 +148,7 @@ describe('AC-ORG-18 负责人等字段的人员选择器（DEC-135、DEC-057）'
 
 describe('AC-ORG-17/18 不按操作人数据范围过滤（真实授权器）', () => {
   async function scopedOperator(world: PermissionWorld, orgId: string, editable: readonly string[]) {
-    const profile = await createProfile(world, `org-people-${randomUUID().slice(0, 8)}`);
+    const profile = await createProfile(world, `org-people-${uniqueSuffix()}`);
     const definition = MODULE_OBJECTS.organization;
     const permission = await setObjectPermission(
       world,
@@ -159,7 +160,8 @@ describe('AC-ORG-17/18 不按操作人数据范围过滤（真实授权器）', 
           view: true,
           edit: !field.system && editable.includes(field.code),
         })),
-        buttons: [],
+        // 组织变更 PATCH 要求 update@detail 按钮（S1-P2-03）；本组只验证人员选择器与字段权限。
+        buttons: [{ buttonCode: 'update', level: 'detail' }],
       },
       definition.code,
     );
@@ -191,7 +193,7 @@ describe('AC-ORG-17/18 不按操作人数据范围过滤（真实授权器）', 
     const managed = await create('org/organizations', { name: '操作人管理部门', parents });
     const outside = await create('org/organizations', { name: '范围外部门', parents });
     const employee = await create('employment/employees', {
-      code: `OUT_${randomUUID().slice(0, 8)}`,
+      code: `OUT_${uniqueSuffix()}`,
       name: '范围外员工',
     });
     await create(

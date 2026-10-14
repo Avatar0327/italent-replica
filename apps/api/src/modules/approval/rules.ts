@@ -4,7 +4,7 @@ import type { VersionView } from './definitions.js';
 import { OPEN_STATUSES, type InstanceRow, type TaskRow } from './store.js';
 
 /** 系统自动处理的任务（自动同意 / 自动跳过 / 自审跳过），不算人工处理。 */
-const AUTO_ORIGINS = new Set(['same_skip', 'history_skip', 'self_skip']);
+const AUTO_ORIGINS = new Set(['same_skip', 'history_skip', 'self_skip', 'subject_skip']);
 /**
  * 系统结束的任务也不算人工处理（P2-3）：会签节点流转后其余待办自动结束（ended）、同一人承接多席时多出的一席
  * （merged）。
@@ -158,13 +158,4 @@ function startedAddSign(tasks: readonly TaskRow[], task: TaskRow): boolean {
  */
 export function addSignAllowed(tasks: readonly TaskRow[], task: TaskRow): boolean {
   return addSignLink(tasks, task) === null;
-}
-
-/** DEC-092：本人发起或本人为异动对象的申请，管理员不能转交或干预（详情展示与执行共用）。 */
-export function isOwnRequest(
-  instance: Pick<InstanceRow, 'initiatorUserId'>,
-  subjectUserId: string | null,
-  userId: string,
-) {
-  return userId === instance.initiatorUserId || userId === subjectUserId;
 }

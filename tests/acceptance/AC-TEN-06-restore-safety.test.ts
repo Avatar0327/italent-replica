@@ -31,6 +31,7 @@ import { createTestDb, useTestDb } from '@italent/testkit';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { newUser, provisioned, type ProvisionResult, seedOperator } from './support/platform-api.js';
 import { cmd, tenantApi } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 const TODAY = '2026-10-01';
@@ -39,7 +40,10 @@ function rowsOf<T>(result: unknown): T[] {
   return (Array.isArray(result) ? result : (result as { rows: T[] }).rows) as T[];
 }
 
-describe('AC-TEN-06 恢复安全与对账（astra 复审回归）', () => {
+// 整库备份 / 恢复按全部租户表逐表进行，耗时随表数增长（R3-T03 新增 23 张表后逼近默认 30s），单独放宽且仍有上限
+const RESTORE_TIMEOUT = { timeout: 90_000 };
+
+describe('AC-TEN-06 恢复安全与对账（astra 复审回归）', RESTORE_TIMEOUT, () => {
   let api: ReturnType<typeof tenantApi>;
   let operator: Awaited<ReturnType<typeof seedOperator>>;
   let a: ProvisionResult;
@@ -82,7 +86,7 @@ describe('AC-TEN-06 恢复安全与对账（astra 复审回归）', () => {
       const res = await fixture.request('POST', '/api/tenant/job/posts', {
         ...asAdmin,
         ifMatch: 0,
-        body: { name, code: `P${randomUUID().slice(0, 8)}`, startDate: '2026-01-01' },
+        body: { name, code: `P${uniqueSuffix()}`, startDate: '2026-01-01' },
       });
       expect(res.status, await res.clone().text()).toBe(201);
     }
@@ -199,7 +203,7 @@ describe('AC-TEN-06 恢复安全与对账（astra 复审回归）', () => {
     expect(await withPlatform(isolated, (tx) => tx.select().from(tenants))).toEqual([]);
 
     const occupied = await target();
-    await createTenant(occupied, { code: `occupied-${randomUUID().slice(0, 6)}`, name: '已有租户' }, cmd());
+    await createTenant(occupied, { code: `occupied-${randomUUID()}`, name: '已有租户' }, cmd());
     await expect(run(backup, occupied)).rejects.toEqual(
       expect.objectContaining({ name: 'BackupIntegrityError', reason: 'TARGET_NOT_EMPTY' }),
     );

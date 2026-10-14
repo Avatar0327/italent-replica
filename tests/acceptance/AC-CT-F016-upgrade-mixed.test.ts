@@ -8,10 +8,12 @@ import { installApprovalFallbacks } from './AC-APV-support.js';
 import { tenantApi } from './support/tenant-api.js';
 import { rowsOf } from '../../apps/api/src/modules/contracts/context.js';
 import { applyRequest, loadRequest } from '../../apps/api/src/modules/contracts/service.js';
+import { skipUnlessMigratorBypassesRls } from './support/migrator-role.js';
 
 const database = useTestDb({ migrateBefore: '_contract_calibration' });
-it('DEC-190 混合审批中/未来编辑全组隔离，越权不可撤销，关闭待办且保存审批轨迹', async () => {
+it('DEC-190 混合审批中/未来编辑全组隔离，越权不可撤销，关闭待办且保存审批轨迹', async (context) => {
   const handle = database();
+  await skipUnlessMigratorBypassesRls(context, handle.db);
   const w = await legacyContractWorld(handle.db);
   const tenantId = w.session.tenant.id;
   const ids = [randomUUID(), randomUUID()];

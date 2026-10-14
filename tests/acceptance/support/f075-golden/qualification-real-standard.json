@@ -1,0 +1,108 @@
+[
+  {
+    "body": {
+      "categoryId": "<id:2>",
+      "createdAt": "<ts>",
+      "createdBy": "<id:4>",
+      "details": [
+        {
+          "abilities": [
+            {
+              "content": "通用保密说明",
+              "id": "<id:8>",
+              "source": "common_overwrite",
+              "targetGradeId": null,
+              "targetValue": null,
+              "weight": null
+            }
+          ],
+          "id": "<id:6>",
+          "levelId": "<id:3>",
+          "locked": true,
+          "targetId": "<id:7>",
+          "targetValue": null,
+          "weight": null
+        }
+      ],
+      "enabled": true,
+      "id": "<id:1>",
+      "levelDescriptions": [],
+      "levelIds": [
+        "<id:3>"
+      ],
+      "name": "公开标准改",
+      "ownerId": "<id:4>",
+      "ownerOrgId": "<id:5>",
+      "revision": 2,
+      "updatedAt": "<ts>"
+    },
+    "etag": "\"2\"",
+    "name": "操作人 standards 改名",
+    "status": 200
+  },
+  {
+    "body": {
+      "error": {
+        "code": "REVISION_CONFLICT",
+        "details": {
+          "actual": 2,
+          "expected": 0
+        },
+        "message": "任职资格标准已变更，请刷新后显式重提"
+      }
+    },
+    "name": "操作人 standards 过期",
+    "status": 409
+  },
+  {
+    "body": {
+      "categoryId": "<id:2>",
+      "createdAt": "<ts>",
+      "createdBy": "<id:4>",
+      "details": [
+        {
+          "abilities": [
+            {
+              "content": "通用保密说明",
+              "id": "<id:8>",
+              "source": "common_overwrite",
+              "targetGradeId": null,
+              "targetValue": null,
+              "weight": null
+            }
+          ],
+          "id": "<id:6>",
+          "levelId": "<id:3>",
+          "locked": true,
+          "targetId": "<id:7>",
+          "targetValue": null,
+          "weight": null
+        }
+      ],
+      "enabled": true,
+      "id": "<id:1>",
+      "levelDescriptions": [],
+      "levelIds": [
+        "<id:3>"
+      ],
+      "name": "公开标准改",
+      "ownerId": "<id:4>",
+      "ownerOrgId": "<id:5>",
+      "revision": 3,
+      "updatedAt": "<ts>"
+    },
+    "etag": "\"3\"",
+    "name": "操作人 standards 明细",
+    "status": 200
+  },
+  {
+    "body": {
+      "error": {
+        "code": "NOT_FOUND",
+        "message": "任职资格标准不存在"
+      }
+    },
+    "name": "操作人 standards 不存在",
+    "status": 404
+  }
+]

@@ -25,8 +25,43 @@ import type { IdentityResolver } from '../../identity.js';
 import { etag, ifMatch, parseBody } from '../permission/http.js';
 import { LICENSE_TYPE } from '../permission/licenses.js';
 import { operatorOf, platformContext, type PlatformEnv } from './context.js';
-import { changeTenantLifecycle, issueLicense, requireTenant, tenantBalances } from './operations.js';
+import {
+  backfillSeeds,
+  backfillStandardProfiles,
+  changeTenantLifecycle,
+  issueLicense,
+  requireTenant,
+  tenantBalances,
+} from './operations.js';
 import { provisionTenant, tenantView } from './provisioning.js';
+import { mergeTables, policed, useMiddleware } from '../../route-policy/index.js';
+import { PLATFORM_POLICIES } from './policy.js';
+import {
+  REBIND_PATH,
+  rebindBody,
+  rebindCalcFormulas,
+  TALENT_REVIEW_PLATFORM_POLICIES,
+} from '../talent-review/calc-rebind-command.js';
+import {
+  registerSuccessionPlatformRoutes,
+  SUCCESSION_PLATFORM_POLICIES,
+  type PlatformRouteDeps,
+} from '../succession/platform-routes.js';
+
+/**
+ * 业务模块的平台接口（各模块自己的 platform-routes.ts，路径在 /api/platform/<模块>/ 之下）：新模块在这里追加一行，
+ * 声明表并入 PLATFORM_TABLE；平台运营身份中间件对它们同样生效。
+ */
+export const PLATFORM_MODULES: readonly ((router: Hono<PlatformEnv>, deps: PlatformRouteDeps) => void)[] = [
+  registerSuccessionPlatformRoutes, // R3-T05 继任：调度与规则重新编译（设计 §2.2 #19）
+];
+const PLATFORM_TABLE = mergeTables('platform', [PLATFORM_POLICIES, SUCCESSION_PLATFORM_POLICIES]);
+/** F-082：改绑路由只在总开关打开时注册，声明随之并入（关闭时既无路由也无声明，404）。 */
+const PLATFORM_TABLE_BOUND = mergeTables('platform', [
+  PLATFORM_POLICIES,
+  SUCCESSION_PLATFORM_POLICIES,
+  TALENT_REVIEW_PLATFORM_POLICIES,
+]);
 
 const COMMAND_ID = /^[A-Za-z0-9:_-]{1,100}$/;
 const userId = z.uuid();
@@ -90,10 +125,16 @@ function tenantParam(c: Context): string {
   return id;
 }
 
-export function createPlatformRouter(db: Db, identity: IdentityResolver, clock: () => Date): Hono<PlatformEnv> {
-  const router = new Hono<PlatformEnv>();
-  router.use('/api/platform/*', platformContext(db, identity));
-  router.use('/api/platform/*', capturePlatformFailures(db));
+export function createPlatformRouter(
+  db: Db,
+  identity: IdentityResolver,
+  clock: () => Date,
+  options: { readonly formulaIdBinding?: boolean } = {},
+): Hono<PlatformEnv> {
+  // F-039：平台路由器套登记表（平台与业务模块平台表的合并），中间件经 useMiddleware 登记
+  const router = policed(new Hono<PlatformEnv>(), options.formulaIdBinding ? PLATFORM_TABLE_BOUND : PLATFORM_TABLE);
+  useMiddleware(router, '/api/platform/*', platformContext(db, identity), 'platformContext');
+  useMiddleware(router, '/api/platform/*', capturePlatformFailures(db), 'capturePlatformFailures');
 
   router.post('/api/platform/users', async (c) => {
     const body = await parseBody(c, userBody);
@@ -127,6 +168,34 @@ export function createPlatformRouter(db: Db, identity: IdentityResolver, clock: 
     return c.json(tenant);
   });
 
+  // DEC-289③：存量租户回补开通后新增的标准身份（只补缺失编码，手工同编码保留，见 permission/standard-profiles.ts）
+  router.post('/api/platform/tenants/:tenantId/standard-profiles/backfill', async (c) => {
+    const tenantId = tenantParam(c);
+    await parseBody(c, z.strictObject({}));
+    return c.json(await backfillStandardProfiles(db, tenantId, meta(c), clock()));
+  });
+
+  // DEC-361：存量租户按种子登记表回补缺失的预置数据（不覆盖租户定制；可按模块筛选）
+  router.post('/api/platform/tenants/:tenantId/seeds/backfill', async (c) => {
+    const tenantId = tenantParam(c);
+    const input = await parseBody(
+      c,
+      z.strictObject({ modules: z.array(z.string().min(1).max(64)).max(50).optional() }),
+    );
+    return c.json(await backfillSeeds(db, tenantId, input, meta(c), clock()));
+  });
+
+  // F-082：存量计算公式改绑（契约 §6.1）；路由与声明只在总开关打开时存在
+  if (options.formulaIdBinding) {
+    router.post(REBIND_PATH, async (c) => {
+      const tenantId = tenantParam(c);
+      const body = await parseBody(c, rebindBody);
+      return c.json(
+        await rebindCalcFormulas(db, tenantId, { retryUnresolved: body.retryUnresolved === true }, meta(c)),
+      );
+    });
+  }
+
   router.get('/api/platform/tenants/:tenantId/licenses', async (c) =>
     c.json({ items: await tenantBalances(db, tenantParam(c)) }),
   );
@@ -142,6 +211,7 @@ export function createPlatformRouter(db: Db, identity: IdentityResolver, clock: 
     return c.json(balance);
   });
 
+  for (const register of PLATFORM_MODULES) register(router, { db, clock });
   return router;
 }
 

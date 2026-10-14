@@ -1,0 +1,126 @@
+.staff-page {
+  color: #33383d;
+  font-size: 12px;
+}
+.staff-filter-bar {
+  width: 100%;
+}
+.staff-filter-bar .ant-input-search {
+  width: 220px;
+}
+.staff-filter-bar .ant-select {
+  min-width: 120px;
+}
+.staff-help {
+  margin-bottom: 16px;
+  background: #edf3ff;
+  border-color: #cfdfff;
+}
+.staff-muted {
+  color: #868b8f;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.staff-name.ant-btn {
+  padding-inline: 0;
+}
+.staff-column-options {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.staff-column-options .ant-checkbox-wrapper {
+  margin-inline-start: 0;
+}
+.staff-profile-heading {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 0 0 24px;
+}
+.staff-profile-heading h2 {
+  margin: 0 0 10px;
+  font-size: 20px;
+}
+.staff-profile-heading .ant-avatar {
+  background: #edf3ff;
+  color: #0054f0;
+}
+.staff-profile-heading .ant-space {
+  color: #868b8f;
+}
+.staff-section {
+  padding: 20px;
+  background: white;
+  border: 1px solid #e6e8eb;
+  border-radius: 5px;
+  margin-bottom: 16px;
+}
+.staff-section-title {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  font-size: 14px;
+  margin: 12px 0 24px;
+}
+.staff-section-title::before {
+  content: '';
+  width: 3px;
+  height: 14px;
+  background: #4794ff;
+}
+.staff-record {
+  border: 1px solid #e6e8eb;
+  border-radius: 5px;
+  padding: 18px 24px;
+}
+.staff-record header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.staff-record .ant-descriptions {
+  margin-top: 12px;
+}
+.staff-timeline {
+  padding: 16px 8px;
+}
+.staff-pagination {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+  color: #868b8f;
+}
+.staff-subsets {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 145px;
+  gap: 16px;
+}
+.staff-subsets nav {
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid #e6e8eb;
+  padding-left: 8px;
+}
+.staff-subsets nav .ant-btn {
+  text-align: left;
+  padding-inline: 8px;
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+.staff-subsets nav .is-active {
+  color: #0054f0;
+  background: #edf3ff;
+}
+.staff-subset-row {
+  padding: 16px;
+  border: 1px solid #e6e8eb;
+  border-radius: 5px;
+  margin-bottom: 12px;
+}
+.staff-subset-content {
+  min-width: 0;
+}

@@ -35,76 +35,74 @@ async function position(db: Db, session: EstablishmentSession, orgId: string, la
 }
 
 describe('AC-EST-05 选定周期同步职位细分和预留差值（18§4）', () => {
-  for (const through of ['2026-01-01', '2026-04-01']) {
-    it(`新增与调整的职位细分、预留只传播至${through}，范围外保持原值`, async () => {
-      const { db } = testDb();
-      const session = await establishmentSession(db, `est-part-period-${through}`);
-      const parent = await session.create('周期细分上级');
-      const department = await session.create('周期细分部门', { parents: { admin: { parentId: parent.id } } });
-      const firstPosition = await position(db, session, department.id, '原有');
-      const addedPosition = await position(db, session, department.id, '新增');
-      const scheme = await session.scheme({
-        periodType: 'quarterly',
-        subdivision: 'position',
-        maintenanceMode: 'both',
-      });
-      const create = (
-        periodStart: string,
-        local: number,
-        inclusive: number,
-        reserveLocal: number,
-        reserveInclusive: number,
-      ) =>
-        session.capacity(department.id, scheme.id, {
-          periodStart,
-          localCapacity: undefined,
-          subdivisions: [{ positionId: firstPosition, localCapacity: local, inclusiveCapacity: inclusive }],
-          reservedLocal: reserveLocal,
-          reservedInclusive: reserveInclusive,
-        });
-      for (const periodStart of ['2026-01-01', '2026-04-01', '2026-07-01'])
-        await session.capacity(parent.id, scheme.id, {
-          periodStart,
-          localCapacity: undefined,
-          reservedInclusive: 20,
-          subdivisions: [{ positionId: firstPosition, localCapacity: 0, inclusiveCapacity: 50 }],
-        });
-      await create('2026-07-01', 9, 15, 6, 7);
-      await create('2026-04-01', 8, 12, 4, 5);
-      const first = await create('2026-01-01', 7, 9, 2, 3);
-      const response = await session.request('PATCH', `/capacities/${first.id}`, {
-        ifMatch: first.revision,
-        body: {
-          effectiveDate: '2026-01-01',
-          adjustmentThrough: through,
-          syncParents: true,
-          reservedLocal: 3,
-          reservedInclusive: 5,
-          subdivisions: [
-            { positionId: firstPosition, localCapacity: 8, inclusiveCapacity: 11 },
-            { positionId: addedPosition, localCapacity: 2, inclusiveCapacity: 3 },
-          ],
-        },
-      });
-      expect(response.status).toBe(200);
-      const capacities = (await session.capacities({ orgId: department.id })) as SubdividedCapacity[];
-      verifyChild(capacities, through, firstPosition, addedPosition);
-      const ancestors = (await session.capacities({ orgId: parent.id })) as SubdividedCapacity[];
-      expect(ancestors.map((row) => [row.periodStart, row.inclusiveCapacity])).toEqual([
-        ['2026-01-01', 77],
-        ['2026-04-01', through === '2026-04-01' ? 77 : 70],
-        ['2026-07-01', 70],
-      ]);
-      const changedParent = ancestors.find((row) => row.periodStart === '2026-01-01')!;
-      expect(changedParent).toMatchObject({ localCapacity: 0, reservedLocal: 0, reservedInclusive: 22 });
-      expect(changedParent.subdivisions).toEqual(
-        expect.arrayContaining([
-          { positionId: firstPosition, localCapacity: 0, inclusiveCapacity: 52 },
-          { positionId: addedPosition, localCapacity: 0, inclusiveCapacity: 3 },
-        ]),
-      );
+  it.each(['2026-01-01', '2026-04-01'])('新增与调整的职位细分、预留只传播至%s，范围外保持原值', async (through) => {
+    const { db } = testDb();
+    const session = await establishmentSession(db, `est-part-period-${through}`);
+    const parent = await session.create('周期细分上级');
+    const department = await session.create('周期细分部门', { parents: { admin: { parentId: parent.id } } });
+    const firstPosition = await position(db, session, department.id, '原有');
+    const addedPosition = await position(db, session, department.id, '新增');
+    const scheme = await session.scheme({
+      periodType: 'quarterly',
+      subdivision: 'position',
+      maintenanceMode: 'both',
     });
-  }
+    const create = (
+      periodStart: string,
+      local: number,
+      inclusive: number,
+      reserveLocal: number,
+      reserveInclusive: number,
+    ) =>
+      session.capacity(department.id, scheme.id, {
+        periodStart,
+        localCapacity: undefined,
+        subdivisions: [{ positionId: firstPosition, localCapacity: local, inclusiveCapacity: inclusive }],
+        reservedLocal: reserveLocal,
+        reservedInclusive: reserveInclusive,
+      });
+    for (const periodStart of ['2026-01-01', '2026-04-01', '2026-07-01'])
+      await session.capacity(parent.id, scheme.id, {
+        periodStart,
+        localCapacity: undefined,
+        reservedInclusive: 20,
+        subdivisions: [{ positionId: firstPosition, localCapacity: 0, inclusiveCapacity: 50 }],
+      });
+    await create('2026-07-01', 9, 15, 6, 7);
+    await create('2026-04-01', 8, 12, 4, 5);
+    const first = await create('2026-01-01', 7, 9, 2, 3);
+    const response = await session.request('PATCH', `/capacities/${first.id}`, {
+      ifMatch: first.revision,
+      body: {
+        effectiveDate: '2026-01-01',
+        adjustmentThrough: through,
+        syncParents: true,
+        reservedLocal: 3,
+        reservedInclusive: 5,
+        subdivisions: [
+          { positionId: firstPosition, localCapacity: 8, inclusiveCapacity: 11 },
+          { positionId: addedPosition, localCapacity: 2, inclusiveCapacity: 3 },
+        ],
+      },
+    });
+    expect(response.status).toBe(200);
+    const capacities = (await session.capacities({ orgId: department.id })) as SubdividedCapacity[];
+    verifyChild(capacities, through, firstPosition, addedPosition);
+    const ancestors = (await session.capacities({ orgId: parent.id })) as SubdividedCapacity[];
+    expect(ancestors.map((row) => [row.periodStart, row.inclusiveCapacity])).toEqual([
+      ['2026-01-01', 77],
+      ['2026-04-01', through === '2026-04-01' ? 77 : 70],
+      ['2026-07-01', 70],
+    ]);
+    const changedParent = ancestors.find((row) => row.periodStart === '2026-01-01')!;
+    expect(changedParent).toMatchObject({ localCapacity: 0, reservedLocal: 0, reservedInclusive: 22 });
+    expect(changedParent.subdivisions).toEqual(
+      expect.arrayContaining([
+        { positionId: firstPosition, localCapacity: 0, inclusiveCapacity: 52 },
+        { positionId: addedPosition, localCapacity: 0, inclusiveCapacity: 3 },
+      ]),
+    );
+  });
 });
 
 function verifyChild(

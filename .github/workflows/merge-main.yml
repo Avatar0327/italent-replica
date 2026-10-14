@@ -1,0 +1,203 @@
+name: merge main (cloud)
+
+# DEC-454①：合并队列的 pnpm merge:main 改在 GitHub Actions 上跑，避开本机负载导致的超时。
+# 合并队列（审查合并窗口）对队首 PR 手动触发：gh workflow run merge-main.yml -f pr=<编号>
+#  1. 只接受本仓库分支、base 为 main、未关闭的 PR；
+#  2. 按解析时的头提交检出全历史，跑 pnpm merge:main（合入 origin/main、生成物冲突取 main 后重算、迁移改号）；
+#     业务冲突时 job 判红，冲突清单写进运行摘要，须人工处理（本机 pnpm merge:main / --continue）；
+#  3. 给 PR 打 queue-head 标签（标明队首），复核后有新提交就推回 PR 分支（不强推）。
+# 本流程不触发完整 CI（DEC-458）：默认 GITHUB_TOKEN 的推送、打标签、关闭 / 重开都不触发工作流（GitHub 防递归）；
+# workflow_dispatch 派发的 ci.yml 运行不关联 PR，分支保护不认其结果。完整 CI 由队列脚本用自己的 gh 身份
+# 关闭再重开 PR，触发带 queue-head 标签的 pull_request（reopened）运行，见 docs/08_设计/DEC-430_生成物合并后重算.md §6。
+# GITHUB_TOKEN 没有 workflows 权限：合并提交改动 .github/workflows/ 时推送前判红，改在本机合并（兜底路径）。
+on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: PR 编号
+        required: true
+        type: number
+      take_ours_for_counts:
+        description: 业务冲突中 main 一侧只改数字字面量的文件取本分支一侧（pnpm merge:main --take-ours-for-counts）
+        type: boolean
+        default: false
+
+permissions:
+  contents: write # 推送合并提交
+  pull-requests: write # 打 queue-head 标签
+  issues: write # 首次运行时创建 queue-head 标签（标签接口归 issues）
+
+concurrency:
+  group: merge-main-${{ inputs.pr }}
+  cancel-in-progress: false
+
+jobs:
+  merge-main:
+    name: 'merge:main (PR #${{ inputs.pr }})'
+    runs-on: ubuntu-24.04
+    # 重算只跑 4 个 F-039 验收文件（PGlite），实测数分钟；安装与合并另计
+    timeout-minutes: 30
+    steps:
+      # 复核脚本写在本工作流里（取自 main 上的 merge-main.yml），不用 PR 分支里的文件：PR 分支的代码不能改写门禁
+      - name: Resolve PR (same-repo, open, base main)
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ inputs.pr }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          guard="$RUNNER_TEMP/pr-guard.sh"
+          cat > "$guard" <<'GUARD'
+          # 用法：bash pr-guard.sh <预期头提交完整 SHA 或空>；环境变量 GH_TOKEN、REPO、PR。
+          # 复核 OPEN、本仓库分支、base main、头提交等于预期；推送后 GitHub 更新 PR 头有延迟，不一致时重试约 30 秒。
+          # 成功时 stdout 打印 branch=… 与 head=… 两行
+          set -euo pipefail
+          expected="${1:-}"
+          for attempt in 1 2 3 4 5 6; do
+            IFS=$'\t' read -r state cross base branch head < <(
+              gh pr view "$PR" --repo "$REPO" --json state,isCrossRepository,baseRefName,headRefName,headRefOid \
+                --jq '[.state, (.isCrossRepository | tostring), .baseRefName, .headRefName, .headRefOid] | @tsv'
+            )
+            if [ "$state" != OPEN ]; then echo "::error::PR #$PR 状态为 $state" >&2; exit 1; fi
+            if [ "$cross" != false ]; then echo "::error::只处理本仓库分支，PR #$PR 来自 fork" >&2; exit 1; fi
+            if [ "$base" != main ]; then echo "::error::PR #$PR 的 base 是 $base，不是 main" >&2; exit 1; fi
+            if [ "$branch" = main ]; then echo "::error::PR 头分支不能是 main" >&2; exit 1; fi
+            if [ -z "$expected" ] || [ "$head" = "$expected" ]; then
+              echo "branch=$branch"
+              echo "head=$head"
+              exit 0
+            fi
+            [ "$attempt" = 6 ] || sleep 5
+          done
+          echo "::error::PR #$PR 的头提交是 $head，预期 $expected（期间有人推送？请重新触发）" >&2
+          exit 1
+          GUARD
+          out=$(bash "$guard")
+          echo "$out" | tee -a "$GITHUB_OUTPUT"
+          echo "guard=$guard" >> "$GITHUB_OUTPUT"
+          echo "PR #$PR：解析时头 \`$(echo "$out" | sed -n 's/^head=//p')\`" >> "$GITHUB_STEP_SUMMARY"
+      # 检出解析时的头提交（不按分支名），锁定本次处理的对象；推送不强推，分支期间前进则被拒
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.pr.outputs.head }}
+          fetch-depth: 0 # merge:main 要算分叉点、读 main 的迁移与快照
+      - name: Switch to the PR branch at the resolved head
+        env:
+          BRANCH: ${{ steps.pr.outputs.branch }}
+          HEAD_SHA: ${{ steps.pr.outputs.head }}
+        run: |
+          set -euo pipefail
+          git switch -q -C "$BRANCH" "$HEAD_SHA"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+      - uses: pnpm/action-setup@v4 # 版本取自 package.json 的 packageManager
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: pnpm merge:main
+        env:
+          TAKE_OURS: ${{ inputs.take_ours_for_counts }}
+        run: |
+          set -uo pipefail
+          log="$RUNNER_TEMP/merge-main.log"
+          : > "$log"
+          report_failure() {
+            local status=$1
+            {
+              echo "### pnpm merge:main 失败（退出码 $status）"
+              echo
+              if grep -q '业务文件冲突' "$log"; then
+                echo "业务冲突须人工处理：在本机该分支上运行 \`pnpm merge:main\`，解决冲突并 \`git add\` 后 \`pnpm merge:main --continue\`，推送后再触发本流程。"
+                echo
+                echo '```'
+                # 冲突清单与“只改计数”提示：从“业务文件冲突”起到日志末尾
+                sed -n '/业务文件冲突/,$p' "$log" | head -80
+                echo '```'
+              else
+                echo '日志末尾：'
+                echo
+                echo '```'
+                tail -60 "$log"
+                echo '```'
+              fi
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit "$status"
+          }
+          run_merge() {
+            pnpm merge:main "$@" 2>&1 | tee -a "$log"
+            local status=${PIPESTATUS[0]}
+            if [ "$status" != 0 ]; then report_failure "$status"; fi
+          }
+          args=()
+          if [ "$TAKE_OURS" = true ]; then args+=(--take-ours-for-counts); fi
+          git fetch -q origin main
+          # main 自分叉点以来改过依赖时，合并后的依赖与已安装的（本分支的）不同：
+          # 先只合并不重算，重新安装，再在已含 main 的分支上重算（merge:main 此时只改号检查与重算）
+          dep_files=(pnpm-lock.yaml pnpm-workspace.yaml ':(glob)**/package.json')
+          fork=$(git merge-base HEAD origin/main)
+          if git diff --quiet "$fork" origin/main -- "${dep_files[@]}"; then
+            run_merge "${args[@]}"
+          else
+            echo "main 改过依赖：合并后重新安装再重算" | tee -a "$log"
+            run_merge "${args[@]}" --no-regen --no-fetch
+            pnpm install --frozen-lockfile 2>&1 | tee -a "$log"
+            if [ "${PIPESTATUS[0]}" != 0 ]; then report_failure 1; fi
+            run_merge --no-fetch
+          fi
+          {
+            echo '### pnpm merge:main 完成'
+            echo
+            echo '```'
+            grep -E '^(迁移|  |生成物冲突|已提交|已是最新|已包含|注意|main 改过依赖)' "$log" | head -60
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Mark queue head
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ inputs.pr }}
+          REPO: ${{ github.repository }}
+        # 队列随后关闭 / 重开 PR 时，reopened 事件带着这个标签，ci.yml 判为完整模式
+        run: |
+          set -euo pipefail
+          gh label create queue-head --repo "$REPO" --force --color B60205 \
+            --description '合并队列队首：推送跑完整 CI（DEC-454①）'
+          gh pr edit "$PR" --repo "$REPO" --add-label queue-head
+      - name: Push to PR branch
+        id: push
+        env:
+          BRANCH: ${{ steps.pr.outputs.branch }}
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ inputs.pr }}
+          REPO: ${{ github.repository }}
+          GUARD: ${{ steps.pr.outputs.guard }}
+          HEAD0: ${{ steps.pr.outputs.head }}
+        run: |
+          set -euo pipefail
+          # 推送前复核：PR 仍 OPEN、base main、头仍是本次检出的提交
+          bash "$GUARD" "$HEAD0" > /dev/null
+          head=$(git rev-parse HEAD)
+          echo "sha=$head" >> "$GITHUB_OUTPUT"
+          if [ "$head" = "$HEAD0" ]; then
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
+            echo "无新提交，不推送（PR 头 \`$head\`）" >> "$GITHUB_STEP_SUMMARY"
+            echo "下一步（队列脚本）：确认 PR 头为 \`$head\` 后关闭再重开 PR，触发完整 CI" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          # GITHUB_TOKEN 没有 workflows 权限，推不了改动 .github/workflows/ 的提交
+          if ! git diff --quiet "$HEAD0" HEAD -- .github/workflows; then
+            {
+              echo "### 推送受限"
+              echo "合并提交改动了 .github/workflows/，默认 GITHUB_TOKEN 无权推送。"
+              echo "请在本机该分支运行 \`pnpm merge:main\` 后推送。"
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::合并提交改动了 .github/workflows/，GITHUB_TOKEN 无权推送"
+            exit 1
+          fi
+          # 不强推：期间有人推了 PR 分支则被拒，重新触发本流程即可
+          git push origin "HEAD:refs/heads/$BRANCH"
+          echo "pushed=true" >> "$GITHUB_OUTPUT"
+          echo "已推送 \`$head\` 到 \`$BRANCH\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "下一步（队列脚本）：确认 PR 头为 \`$head\` 后关闭再重开 PR，触发完整 CI" >> "$GITHUB_STEP_SUMMARY"

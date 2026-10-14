@@ -1,0 +1,96 @@
+.hr-transfer-page {
+  min-height: 620px;
+}
+.transfer-list-search {
+  width: 260px;
+}
+.r1c-transfer-form input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  min-height: 0;
+  accent-color: #146eff;
+}
+.hr-demo-notice {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  color: #687385;
+  font-size: 12px;
+  padding: 10px 0;
+}
+.r1c-transfer-form {
+  background: white;
+  color: #33383d;
+}
+.r1c-transfer-form .transfer-content {
+  border: 0;
+  border-radius: 0;
+  padding: 24px 0;
+}
+.r1c-transfer-form input,
+.r1c-transfer-form select {
+  border-color: #e6e8eb;
+  border-radius: 5px;
+  min-height: 32px;
+  padding: 5px 10px;
+}
+.r1c-transfer-form button {
+  border-color: #e6e8eb;
+  padding: 5px 16px;
+  border-radius: 5px;
+}
+.r1c-transfer-form legend {
+  border-left: 3px solid #146eff;
+  padding-left: 10px;
+  font-size: 14px;
+}
+.r1c-transfer-form .transfer-linkage-field {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.r1c-transfer-form .transfer-values {
+  grid-template-columns: 1fr;
+}
+.r1c-transfer-form .transfer-field-pair {
+  padding: 4px 0;
+  background: white;
+  border-bottom: 0;
+  gap: 32px;
+}
+.r1c-transfer-form .transfer-field-pair label {
+  min-width: 0;
+}
+.r1c-transfer-form .transfer-actions button:first-child {
+  background: #146eff;
+  border-color: #146eff;
+}
+
+.r1c-transfer-form label {
+  font-size: 12px;
+}
+.r1c-transfer-form .transfer-field-pair label,
+.r1c-transfer-form .transfer-before {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 12px;
+}
+.r1c-transfer-form .transfer-before output {
+  border: 1px solid #e6e8eb;
+  border-radius: 5px;
+  min-height: 32px;
+  padding: 5px 10px;
+  background: #f7f9fa;
+}
+.r1c-transfer-form .transfer-actions {
+  justify-content: flex-end;
+  border-top: 1px solid #e6e8eb;
+  padding-top: 16px;
+}
+
+.r1c-transfer-form .transfer-before {
+  font-size: 12px;
+  color: #5e6266;
+}

@@ -1,4 +1,4 @@
-:root {
+.legacy-page {
   font-family:
     system-ui,
     -apple-system,
@@ -12,12 +12,12 @@
 body {
   margin: 0;
 }
-button,
-input,
-select {
+.legacy-page button,
+.legacy-page input,
+.legacy-page select {
   font: inherit;
 }
-button {
+.legacy-page button {
   cursor: pointer;
   border: 1px solid #bac8d8;
   border-radius: 6px;
@@ -25,21 +25,21 @@ button {
   background: #fff;
   color: #173c66;
 }
-button:disabled {
+.legacy-page button:disabled {
   cursor: default;
   opacity: 0.5;
 }
-button:hover:enabled {
+.legacy-page button:hover:enabled {
   background: #edf4fb;
 }
-button:focus-visible,
-input:focus-visible,
-select:focus-visible {
+.legacy-page button:focus-visible,
+.legacy-page input:focus-visible,
+.legacy-page select:focus-visible {
   outline: 2px solid #2574c5;
   outline-offset: 2px;
 }
-input,
-select {
+.legacy-page input,
+.legacy-page select {
   box-sizing: border-box;
   padding: 9px 11px;
   border: 1px solid #bac8d8;
@@ -49,11 +49,11 @@ select {
   min-height: 40px;
   width: 100%;
 }
-input[readonly] {
+.legacy-page input[readonly] {
   background: #f3f5f8;
   color: #65768b;
 }
-label {
+.legacy-page label {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -76,7 +76,7 @@ label {
   font-size: 24px;
   font-weight: 750;
 }
-h1 {
+.legacy-page h1 {
   font-size: 23px;
   font-weight: 600;
 }
@@ -103,14 +103,14 @@ h1 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 24px;
 }
-fieldset {
+.legacy-page fieldset {
   border: 0;
   border-bottom: 1px solid #e3e8ef;
   padding: 20px 0 28px;
   margin: 0 0 20px;
   min-width: 0;
 }
-legend {
+.legacy-page legend {
   padding: 0;
   font-size: 18px;
   font-weight: 600;

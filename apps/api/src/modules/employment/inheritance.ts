@@ -2,9 +2,7 @@ import { applyInitiatorFieldModes } from '../transfer/initiator-fields.js';
 import { sql, type Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
 import { authorizeInTransaction } from '../permission/module-access.js';
-import { loadJobObject } from '../job/read-model.js';
 import { resolveTransferForm } from '../transfer/configuration.js';
-import { managerForTransferDepartment } from '../transfer/preview-defaults.js';
 import { EMPLOYEE_READONLY_FIELDS } from '../transfer/employee-policy.js';
 import { getCustomFieldsForInheritance, type CustomFieldDefinition } from './configuration.js';
 import {
@@ -27,6 +25,9 @@ import type {
   PresetFields,
 } from './types.js';
 
+import { derivePresetFields, derivationFields, type FieldDerivation } from './field-derivations.js';
+export { sequenceForNewPost } from './field-derivations.js';
+
 type CustomMode = 'editable' | 'readonly' | 'hidden' | 'absent';
 interface TrustedFormSnapshot {
   readonly id: FormId;
@@ -37,6 +38,9 @@ interface TrustedFormSnapshot {
   readonly fieldModes: Readonly<Record<string, CustomMode>>;
   readonly autoPopulate?: boolean;
   readonly excludedAutofillFields?: readonly string[];
+  readonly fieldDerivations?: readonly FieldDerivation[];
+  /** F-007 复制插入点快照（DEC-137 / `10` §17）：不应用表单矩阵，整条复制自前驱；只作来源标记。 */
+  readonly copiesPredecessor?: boolean;
 }
 export interface PreparedInheritance {
   readonly effectiveDate: string;
@@ -68,22 +72,6 @@ function resolveForm(formId: FormId): { grouped: boolean; customMode: CustomMode
 }
 const NEW_CYCLES: readonly BusinessKind[] = ['hire', 'rehire', 'retire_rehire'];
 
-/**
- * DEC-107（照搬原站 W-240、W-425）：选了新职务而未传职务序列时，由服务端按该职务在生效日的序列带出；
- * 页面、接口、导入与编辑任职一致，随后按特殊规则③与职务一并向后更新。显式传入序列（含清空）时以传入为准。
- * 返回 null 表示不带出。
- * TODO(需取证 #42)：新职务未配置序列时原站是否清空序列未实测，暂保留原有序列。
- */
-export async function sequenceForNewPost(
-  tx: Tx,
-  tenantId: string,
-  fields: Partial<PresetFields>,
-  effectiveDate: string,
-): Promise<string | null> {
-  if (!fields.postId || Object.hasOwn(fields, 'sequenceId')) return null;
-  const post = await loadJobObject(tx, tenantId, 'posts', fields.postId, effectiveDate);
-  return typeof post?.sequenceId === 'string' ? post.sequenceId : null;
-}
 const owns = (object: object, key: string) => Object.prototype.hasOwnProperty.call(object, key);
 function setField(target: PresetFields, key: PresetField, value: PresetFields[PresetField]): void {
   Object.assign(target, { [key]: value });
@@ -126,7 +114,7 @@ async function applyExplicitPresetFields(
   metadata: TrustedFormSnapshot,
   fields: PresetFields,
   explicitFieldCodes: string[],
-  derivedFieldCodes: string[],
+  derivedOrigins: FieldDerivation[],
   employeeCode: string,
 ): Promise<void> {
   const fieldMode = (code: string): CustomMode => metadata.fieldModes[code] ?? 'absent';
@@ -137,28 +125,9 @@ async function applyExplicitPresetFields(
     explicitFieldCodes.push(`preset:${field}`);
   }
   // DEC-187：只读/隐藏限制人工输入，不限制系统派生。
-  const derivedSequence =
-    input.kind !== 'transfer' || fieldMode('preset:sequenceId') !== 'absent'
-      ? await sequenceForNewPost(tx, ctx.tenantId, parsedFields, input.effectiveDate)
-      : null;
-  if (derivedSequence) {
-    setField(fields, 'sequenceId', derivedSequence);
-    derivedFieldCodes.push('preset:sequenceId');
-  }
-  if (
-    input.kind === 'transfer' &&
-    // 通用任职接口保留版本链继承；选部门带负责人只属于真实调动场景表单，不能改变既有申请的变化字段。
-    input.formId !== 'standard' &&
-    metadata.group !== null &&
-    metadata.autoPopulate &&
-    fieldMode('preset:directManagerId') === 'editable'
-  ) {
-    const manager = await managerForTransferDepartment(tx, ctx.tenantId, parsedFields, input.effectiveDate);
-    if (manager !== undefined) {
-      setField(fields, 'directManagerId', manager);
-      derivedFieldCodes.push('preset:directManagerId');
-    }
-  }
+  const derived = await derivePresetFields(tx, ctx.tenantId, input, parsedFields, metadata);
+  Object.assign(fields, derived.values);
+  derivedOrigins.push(...derived.origins);
   if (owns(parsedFields, 'jobNumber') && parsedFields.jobNumber !== null) {
     if (parsedFields.jobNumber!.toLowerCase() !== employeeCode.toLowerCase()) {
       throw new AppError('VALIDATION_FAILED', '任职工号必须等于员工主档工号');
@@ -264,7 +233,7 @@ export async function prepareInheritance(
   }));
   const customFields: Record<string, CustomValue> = Object.fromEntries(definitions.map((field) => [field.id, null]));
   const explicitFieldCodes: string[] = [];
-  const derivedFieldCodes: string[] = [];
+  const derivedOrigins: FieldDerivation[] = [];
   const deferredFieldCodes: string[] = [];
   const startsNewCycle = NEW_CYCLES.includes(input.kind);
   const previous = startsNewCycle
@@ -291,16 +260,17 @@ export async function prepareInheritance(
     metadata,
     fields,
     explicitFieldCodes,
-    derivedFieldCodes,
+    derivedOrigins,
     employee.code,
   );
   applyCustomInheritance(input, metadata, definitions, eligible, customFields, explicitFieldCodes, deferredFieldCodes);
-  const explicit = new Set([...explicitFieldCodes, ...derivedFieldCodes]);
+  const explicit = new Set(explicitFieldCodes);
+  for (const origin of derivedOrigins) explicit.add(`preset:${derivationFields(origin).field}`);
   return {
     effectiveDate: input.effectiveDate,
     fields,
     customFields,
-    formSnapshot: metadata,
+    formSnapshot: { ...metadata, fieldDerivations: derivedOrigins },
     deferredFieldCodes: deferredFieldCodes.filter((field) => !explicit.has(field)),
     explicitFieldCodes,
     sourceRecordId: eligible?.id ?? null,
@@ -342,7 +312,7 @@ export async function prepareEmploymentPatch(
     ...prepared,
     fields,
     customFields,
-    formSnapshot: previous.formSnapshot,
+    formSnapshot: { ...previous.formSnapshot, fieldDerivations: prepared.formSnapshot.fieldDerivations },
     sourceRecordId: previous.sourceRecordId,
     sourceStaffId: previous.sourceStaffId,
     deferredFieldCodes: prepared.deferredFieldCodes,

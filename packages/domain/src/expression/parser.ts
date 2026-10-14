@@ -8,16 +8,35 @@
  *   cmp     := add (比较符 add)? ；add := mul (('+'|'-') mul)* ；mul := unary (('*'|'/') unary)*
  *   unary   := ('-'|'+') unary | primary
  *   primary := 数字 | 字符串 | 真 | 假 | '(' expr ')' | 调用 | 字段引用 | 标识符
+ * 面板逻辑函数 AND / OR / IF（`26` §8.6）与关键字同名：在操作数位置、后跟左括号的 AND( / OR( 是函数调用；
+ * IF( 在括号内有顶层逗号时是函数调用（IF(条件, 值1, 值2)），否则仍是 if … then … else。
  */
 import type { BinaryOperator, CallNode, Definition, ExprNode, IfBranch, Program } from './ast.js';
 import { HYPHEN_SUBTRACTION_HINT, type SourcePosition } from './failures.js';
-import { SyntaxIssueError, tokenize, type Keyword, type SyntaxIssue, type Token } from './lexer.js';
+import {
+  HIDDEN_FIELD_OWNER,
+  HIDDEN_FIELD_PLACEHOLDER,
+  SyntaxIssueError,
+  tokenize,
+  type Keyword,
+  type SyntaxIssue,
+  type Token,
+} from './lexer.js';
 
 export type ParseResult =
   { readonly ok: true; readonly program: Program } | { readonly ok: false; readonly errors: SyntaxIssue[] };
 
+export interface ParseOptions {
+  /** 存储模式（F-082 契约 §1.2）：识别字段句柄，不设 4000 字上限，只保留 800 词上限。 */
+  readonly stored?: boolean;
+  /** 输入模式识别占位符 `〔不可见字段〕`（F-082 新路径才开；缺省不识别，B5 路径逐字不变）。 */
+  readonly placeholders?: boolean;
+}
+
 const DEF_NAMES = new Set(['def', '定义']);
 const COMPARISONS = new Set(['=', '!=', '<', '>', '<=', '>=']);
+const KEYWORD_FUNCTIONS = new Set(['and', 'or', 'if']);
+const ASCII_WORD = /^[A-Za-z]+$/;
 
 /** 公式规模上限（astra 首审 P2-5）：超出直接报语法错误，避免解析 / 求值递归栈溢出。 */
 export const MAX_FORMULA_LENGTH = 4000;
@@ -119,7 +138,7 @@ class Parser {
   }
 
   private parseExpr(): ExprNode {
-    return this.nested(() => (this.atKeyword('if') ? this.parseIf() : this.parseOr()));
+    return this.nested(() => (this.atIfExpression() ? this.parseIf() : this.parseOr()));
   }
 
   private parseIf(): ExprNode {
@@ -130,13 +149,13 @@ class Parser {
       const condition = this.parseOr();
       this.expectKeyword('then', '如果 后面缺少 那么');
       branches.push({ condition, then: this.parseExpr() });
-      if (this.atKeyword('if')) {
+      if (this.atIfExpression()) {
         this.next();
         continue;
       }
       if (!this.atKeyword('else')) break;
       this.next();
-      if (this.atKeyword('if')) {
+      if (this.atIfExpression()) {
         this.next();
         continue;
       }
@@ -146,6 +165,31 @@ class Parser {
     return otherwise
       ? { type: 'if', branches, otherwise, pos: this.pos(start) }
       : { type: 'if', branches, pos: this.pos(start) };
+  }
+
+  private atIfExpression(): boolean {
+    return this.atKeyword('if') && !this.atKeywordFunction();
+  }
+
+  /** 当前词是写成函数调用的 AND / OR / IF（见文件头）。只在操作数位置调用。 */
+  private atKeywordFunction(): boolean {
+    const token = this.peek();
+    if (token.kind !== 'keyword' || !KEYWORD_FUNCTIONS.has(String(token.value))) return false;
+    if (!ASCII_WORD.test(token.text) || this.peek(1).kind !== 'lparen') return false;
+    return token.value !== 'if' || this.hasTopLevelComma(this.index + 1);
+  }
+
+  /** 从左括号起到配对的右括号之间，是否有不在内层括号里的逗号。 */
+  private hasTopLevelComma(open: number): boolean {
+    let depth = 0;
+    for (let i = open; i < this.tokens.length; i++) {
+      const kind = this.tokens[i]!.kind;
+      if (kind === 'lparen') depth++;
+      else if (kind === 'rparen' && --depth === 0) return false;
+      else if (kind === 'comma' && depth === 1) return true;
+      else if (kind === 'eof') return false;
+    }
+    return false;
   }
 
   private parseOr(): ExprNode {
@@ -228,6 +272,10 @@ class Parser {
       }
       case 'identifier':
         return this.peek(1).kind === 'lparen' ? this.parseCall() : this.parseReference();
+      case 'handle':
+        return this.parseHandle();
+      case 'placeholder':
+        return this.error(`“${HIDDEN_FIELD_PLACEHOLDER}”只能出现在 ${HIDDEN_FIELD_OWNER}. 之后`);
       case 'eof':
         return this.error('公式不完整，缺少表达式');
       default:
@@ -236,6 +284,7 @@ class Parser {
   }
 
   private parseKeywordPrimary(token: Token): ExprNode {
+    if (this.atKeywordFunction()) return this.parseCall();
     if (token.value === 'true' || token.value === 'false') {
       this.next();
       return { type: 'boolean', value: token.value === 'true', pos: this.pos(token) };
@@ -256,42 +305,119 @@ class Parser {
       }
     }
     this.expect('rparen', '函数调用缺少右括号');
-    return { type: 'call', name: String(nameToken.value), args, pos: this.pos(nameToken) };
+    // 用原文：AND / OR / IF 的 value 是归一化后的关键字
+    return { type: 'call', name: nameToken.text, args, pos: this.pos(nameToken) };
   }
 
   private parseReference(): ExprNode {
     const first = this.next();
     const path = [String(first.value)];
+    let last = first;
+    let hidden = false;
     while (this.at('dot')) {
       this.next();
-      path.push(String(this.expect('identifier', '“.”后面缺少字段名').value));
+      if (this.at('placeholder')) {
+        if (path.length !== 1 || first.value !== HIDDEN_FIELD_OWNER) {
+          this.error(`“${HIDDEN_FIELD_PLACEHOLDER}”只能出现在 ${HIDDEN_FIELD_OWNER}. 之后`);
+        }
+        last = this.next();
+        path.push(HIDDEN_FIELD_PLACEHOLDER);
+        hidden = true;
+        break;
+      }
+      last = this.expect('identifier', '“.”后面缺少字段名');
+      path.push(String(last.value));
     }
     if (path.length === 1) return { type: 'identifier', name: path[0]!, pos: this.pos(first) };
-    return { type: 'field', path, text: path.join('.'), pos: this.pos(first) };
+    const node = { type: 'field' as const, path, text: path.join('.'), end: last.offset + last.text.length };
+    return hidden ? { ...node, hidden: true, pos: this.pos(first) } : { ...node, pos: this.pos(first) };
+  }
+
+  /** 存储模式的字段句柄：一个完整的字段引用，text 等于句柄原文，用作依赖排序、诊断和类型目录里的字段键。 */
+  private parseHandle(): ExprNode {
+    const token = this.next();
+    const end = token.offset + token.text.length;
+    return {
+      type: 'field',
+      path: [token.text],
+      text: token.text,
+      end,
+      fieldId: String(token.value),
+      pos: this.pos(token),
+    };
   }
 }
 
-/** 解析公式文本；语法错误以结构化结果返回（含行 / 列），不抛异常。 */
-export function parseFormula(source: string): ParseResult {
-  const origin = { line: 1, column: 1, offset: 0, length: 1 } as const;
-  if (source.length > MAX_FORMULA_LENGTH) {
-    return {
-      ok: false,
-      errors: [{ code: 'SYNTAX_ERROR', message: `公式过长（超过 ${MAX_FORMULA_LENGTH} 字符）`, ...origin }],
-    };
+export type InputLimitReason = 'TOO_LONG' | 'TOO_MANY_TOKENS';
+export type InputLimitResult =
+  { readonly ok: true } | { readonly ok: false; readonly reason: InputLimitReason; readonly message: string };
+
+const ORIGIN = { line: 1, column: 1, offset: 0, length: 1 } as const;
+const limitIssue = (reason: InputLimitReason): SyntaxIssue => ({
+  code: 'SYNTAX_ERROR',
+  message:
+    reason === 'TOO_LONG'
+      ? `公式过长（超过 ${MAX_FORMULA_LENGTH} 字符）`
+      : `公式过长（超过 ${MAX_FORMULA_TOKENS} 个词）`,
+  ...ORIGIN,
+});
+
+type Scanned =
+  | { readonly ok: true; readonly tokens: Token[] }
+  | { readonly ok: false; readonly limit?: InputLimitReason; readonly error: SyntaxIssue };
+
+/** 长度 / 词数限制与词法扫描：parseFormula 与 checkInputLimits 同源。存储模式不设字数上限。 */
+function scan(source: string, stored: boolean, placeholders: boolean): Scanned {
+  if (!stored && source.length > MAX_FORMULA_LENGTH) {
+    return { ok: false, limit: 'TOO_LONG', error: limitIssue('TOO_LONG') };
   }
   try {
-    const tokens = tokenize(source);
+    const tokens = tokenize(source, { handles: stored, placeholders });
     if (tokens.length > MAX_FORMULA_TOKENS) {
-      return {
-        ok: false,
-        errors: [{ code: 'SYNTAX_ERROR', message: `公式过长（超过 ${MAX_FORMULA_TOKENS} 个词）`, ...origin }],
-      };
+      return { ok: false, limit: 'TOO_MANY_TOKENS', error: limitIssue('TOO_MANY_TOKENS') };
     }
-    return { ok: true, program: new Parser(tokens).parseProgram() };
+    return { ok: true, tokens };
+  } catch (error) {
+    if (error instanceof SyntaxIssueError) return { ok: false, error: error.issue };
+    return { ok: false, error: { code: 'SYNTAX_ERROR', message: '公式无法解析', ...ORIGIN } };
+  }
+}
+
+/**
+ * 输入限制（4000 字、800 词）：保存与改名往返校验共用（F-082 契约 §1.2、§3.1）。
+ * 词法错误不在这里报（返回 ok），交给后续的语法检查。
+ */
+export function checkInputLimits(source: string, options: { readonly placeholders?: boolean } = {}): InputLimitResult {
+  const scanned = scan(source, false, options.placeholders === true);
+  if (scanned.ok || !scanned.limit) return { ok: true };
+  return { ok: false, reason: scanned.limit, message: scanned.error.message };
+}
+
+/** 解析公式文本；语法错误以结构化结果返回（含行 / 列），不抛异常。 */
+export function parseFormula(source: string, options: ParseOptions = {}): ParseResult {
+  const scanned = scan(source, options.stored === true, options.placeholders === true);
+  if (!scanned.ok) return { ok: false, errors: [scanned.error] };
+  try {
+    return { ok: true, program: new Parser(scanned.tokens).parseProgram() };
   } catch (error) {
     if (error instanceof SyntaxIssueError) return { ok: false, errors: [error.issue] };
     // 兜底（astra 首审 P2-5）：解析器不应再抛其他异常；万一出现也只给结构化结果，不透出内容
-    return { ok: false, errors: [{ code: 'SYNTAX_ERROR', message: '公式无法解析', ...origin }] };
+    return { ok: false, errors: [{ code: 'SYNTAX_ERROR', message: '公式无法解析', ...ORIGIN }] };
+  }
+}
+
+/** 解析规范文本（存储模式，F-082）：句柄解析成带 fieldId 的字段引用。 */
+export function parseStoredFormula(text: string): ParseResult {
+  return parseFormula(text, { stored: true });
+}
+
+/** 规范文本里引用的字段 ID（按出现顺序去重）；只看词法，与字段目录无关。词法不合法时为空。 */
+export function formulaFieldIds(stored: string): string[] {
+  try {
+    const handles = tokenize(stored, { handles: true }).filter((token) => token.kind === 'handle');
+    return [...new Set(handles.map((token) => String(token.value)))];
+  } catch (error) {
+    if (error instanceof SyntaxIssueError) return [];
+    throw error;
   }
 }

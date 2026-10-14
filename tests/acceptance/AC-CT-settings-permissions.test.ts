@@ -82,7 +82,10 @@ describe('R2-T06 期限联动、重聘计数和权限', () => {
     const value = (await detail.json()) as Record<string, unknown>;
     expect(value.customFields).toEqual({});
     expect(JSON.stringify(value)).not.toContain('受限值');
-    expect(Object.keys(value).sort()).toEqual(['customFields', 'id', 'number', 'revision']);
+    // F-128：详情另带 employment（按任职对象查看字段裁剪，无可见字段时为 null）与 versions（按合同查看字段裁剪）
+    expect(Object.keys(value).sort()).toEqual(['customFields', 'employment', 'id', 'number', 'revision', 'versions']);
+    expect(value.employment).toBeNull();
+    expect(value.versions).toEqual([{ id: original.id, number: original.number, revision: original.revision }]);
     const denied = await api.request('POST', '/api/tenant/contracts/commands', {
       ...identity,
       ifMatch: 1,

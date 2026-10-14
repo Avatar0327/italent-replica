@@ -1,0 +1,105 @@
+{
+  "GET /api/survey360/portal": {
+    "all": {
+      "code": "UNAUTHENTICATED",
+      "error": "b9583abfca58",
+      "status": 401
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": []
+  },
+  "GET /api/survey360/portal/avatars/:attachmentId/content": {
+    "all": {
+      "code": "UNAUTHENTICATED",
+      "error": "b9583abfca58",
+      "status": 401
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "UNAUTHENTICATED",
+      "error": "b9583abfca58",
+      "status": 401
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "GET /api/survey360/portal/tasks/:relationId/questionnaires/:questionnaireId": {
+    "all": {
+      "code": "UNAUTHENTICATED",
+      "error": "b9583abfca58",
+      "status": 401
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "UNAUTHENTICATED",
+      "error": "b9583abfca58",
+      "status": 401
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/survey360/portal/login": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "6a490b523adf",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/survey360/portal/logout": {
+    "all": {
+      "status": 204
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/survey360/portal/tasks/:relationId/questionnaires/:questionnaireId/page-check": {
+    "all": {
+      "code": "UNAUTHENTICATED",
+      "error": "b9583abfca58",
+      "status": 401
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/survey360/portal/tasks/:relationId/questionnaires/:questionnaireId/submit": {
+    "all": {
+      "code": "UNAUTHENTICATED",
+      "error": "b9583abfca58",
+      "status": 401
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "PUT /api/survey360/portal/tasks/:relationId/questionnaires/:questionnaireId": {
+    "all": {
+      "code": "UNAUTHENTICATED",
+      "error": "b9583abfca58",
+      "status": 401
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  }
+}

@@ -21,21 +21,25 @@ export type {
   EvaluationContext,
   ProjectWindow,
 } from './context.js';
-export { dateAdd, dateDiff, formatDate, instantToParts, parseDateText, type DateUnit } from './dates.js';
+export { addMinutes, dateAdd, dateDiff, formatDate, instantToParts, parseDateText, type DateUnit } from './dates.js';
 export {
   evaluateBatch,
   evaluateFormula,
   orderComputationItems,
   validateFormula,
+  type BatchEvaluationHooks,
   type BatchResult,
   type ComputationItem,
   type EvaluationResult,
   type FieldBindings,
   type OrderedItem,
+  type OrderingDiagnostic,
+  type OrderingDiagnosticKind,
   type OrderingFailure,
   type OrderingResult,
   type ValidationOptions,
   type ValidationResult,
+  type ValidationWarning,
 } from './engine.js';
 export {
   CONVERSION_MESSAGE,
@@ -47,9 +51,40 @@ export {
   type FailureCode,
   type SourcePosition,
 } from './failures.js';
-export { ASSESSMENT_OBJECTS, BUILTIN_FUNCTIONS, PERFORMANCE_FIELDS, SURVEY360_OBJECT } from './functions/index.js';
-export { tokenize, type SyntaxIssue, type SyntaxIssueCode, type Token, type TokenKind } from './lexer.js';
-export { parseFormula, type ParseResult } from './parser.js';
+export {
+  ASSESSMENT_OBJECTS,
+  BUILTIN_FUNCTIONS,
+  FUNCTION_PANEL,
+  PERFORMANCE_FIELDS,
+  SURVEY360_OBJECT,
+  TALENT_REVIEW_OBJECT,
+  type PanelCategory,
+  type PanelEntry,
+} from './functions/index.js';
+/** C-02：定点舍入（R3-T04 指标 / 模块算分精度与 Round 系列函数同一实现）。 */
+export { roundDecimal, type Rounding } from './functions/math.js';
+export {
+  fieldHandle,
+  HIDDEN_FIELD_OWNER,
+  HIDDEN_FIELD_PLACEHOLDER,
+  parseFieldHandle,
+  tokenize,
+  type SyntaxIssue,
+  type SyntaxIssueCode,
+  type TokenizeOptions,
+  type Token,
+  type TokenKind,
+} from './lexer.js';
+export {
+  checkInputLimits,
+  formulaFieldIds,
+  parseFormula,
+  parseStoredFormula,
+  type InputLimitReason,
+  type InputLimitResult,
+  type ParseOptions,
+  type ParseResult,
+} from './parser.js';
 export {
   createInMemoryPorts,
   inMemorySubject,
@@ -61,8 +96,11 @@ export {
   type InMemoryPortData,
   type InMemoryRankingMember,
   type InMemorySubjectOptions,
+  type ParameterRulePort,
   type PerformancePort,
   type PerformanceRecord,
+  type PersonnelSubsetPort,
+  type PersonnelSubsetRecord,
   type PortName,
   type PortOutcome,
   type RankingPort,
@@ -72,20 +110,35 @@ export {
   type SubjectReader,
   type Survey360Port,
   type Survey360Record,
+  type TalentReviewPort,
+  type TalentReviewRecord,
 } from './ports.js';
 export {
   arityOf,
   createDefaultRegistry,
   FunctionRegistry,
+  type ArgumentIssue,
   type FunctionCall,
   type FunctionEnvironment,
   type FunctionParam,
   type FunctionSpec,
+  type StaticKind,
 } from './registry.js';
 export { DEFAULT_SEMANTICS, type ExpressionSemantics } from './semantics.js';
 export {
+  declaredType,
+  isDefinitely,
+  mayBe,
+  mergeTypes,
+  TypeInference,
+  verdictFor,
+  type InferredType,
+  type TypeInferenceOptions,
+} from './typing.js';
+export {
   describeValue,
   EMPTY,
+  emptyOf,
   formatIsoLike,
   isOptionValue,
   KIND_LABELS,
@@ -93,6 +146,9 @@ export {
   type DatePrecision,
   type ExprValue,
   type ExprValueKind,
+  type ExpressionFieldKind,
   type OptionValue,
   type PlainValue,
 } from './values.js';
+/** R3-T05 结构化条件行（DEC-261）：风险 / 健康度 / 人员范围与 R3-T06 入池规则共用。 */
+export * from './rules/index.js';

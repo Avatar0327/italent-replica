@@ -42,6 +42,8 @@ export function registerMergedTodos(module: Hono<TenantEnv>, deps: TenantRouteDe
     const receipts = [];
     for (let i = 0; i < input.items.length; i++) {
       const item = input.items[i]!;
+      // 当前审批人 / 原发起人的授权检查通过之后才算“有权办理”，此前的失败不带 recusal（F-048 设计 §4.2）。
+      let entitled = false;
       try {
         const instanceId =
           input.action === 'resubmit'
@@ -60,6 +62,7 @@ export function registerMergedTodos(module: Hono<TenantEnv>, deps: TenantRouteDe
           );
           if (!task) throw new AppError('FORBIDDEN', '只有当前审批人可以处理该任务');
         }
+        entitled = true;
         const result = await runCommand(deps.db, ctx, {
           id: `${key}:${i}`,
           fingerprint: { input, index: i },
@@ -89,15 +92,26 @@ export function registerMergedTodos(module: Hono<TenantEnv>, deps: TenantRouteDe
         receipts.push({ id: item.id, status: result.status, result: result.body });
       } catch (error) {
         if (!(error instanceof AppError)) throw error;
-        receipts.push({ id: item.id, status: error.status, error: receiptError(error) });
+        receipts.push({ id: item.id, status: error.status, error: receiptError(error, entitled) });
       }
     }
     return c.json({ items: receipts });
   });
 }
 
-/** 结果未知 / 存储不可写也逐条回执，但带机器可读原因，客户端按原命令 ID 回查（PR #75 第二轮 P2-8）。 */
-function receiptError(error: AppError) {
-  const reason = (error.details as { reason?: string } | undefined)?.reason;
-  return { code: error.code, message: error.message, ...(isDefiniteFailure(error) ? {} : { reason }) };
+/**
+ * 逐条失败回执，错误码口径与单条办理一致（F-048 PR-2 路由声明 #30，F-063）：
+ * - 确定失败带 reason（如 APPROVAL_SELF_REVIEW）；有权办理的人另带 details.recusal（self | subjects，设计 §4.2 的披露口径），
+ *   授权检查之前的失败不带；
+ * - 结果未知 / 存储不可写也逐条回执，只带机器可读原因，客户端按原命令 ID 回查（PR #75 第二轮 P2-8）。
+ */
+export function receiptError(error: AppError, entitled: boolean) {
+  const details = error.details as { reason?: string; recusal?: string } | undefined;
+  const definite = isDefiniteFailure(error);
+  return {
+    code: error.code,
+    message: error.message,
+    reason: details?.reason,
+    ...(definite && entitled && details?.recusal ? { recusal: details.recusal } : {}),
+  };
 }

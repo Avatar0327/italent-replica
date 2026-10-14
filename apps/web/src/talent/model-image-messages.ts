@@ -1,0 +1,22 @@
+/** F-038 潜力模型图文案（DEC-045）。 */
+export const modelImageText = {
+  overview: '潜力概览',
+  explanation: '影响未来发展的底层素质，如个性、认知能力等',
+  settings: '模型图设置',
+  replace: '替换模型图',
+  delete: '删除模型图',
+  label: '模型图（支持jpeg,jpg,gif,png,bmp格式，5M以内）',
+  empty: '尚未设置潜力模型图。',
+  alt: '潜力模型图',
+  save: '保存',
+  cancel: '取消',
+  refresh: '刷新',
+  retry: '重试原请求',
+  readOnly: '没有人才标准编辑权，只能查看模型图。',
+  invalidFormat: '图片格式不支持，请选择 jpeg、jpg、gif、png 或 bmp 静态图片。',
+  tooLarge: '图片大小不能超过 5M。',
+  failed: '操作失败，请刷新后核对。',
+  uncertain: '尚未确认保存结果。请先刷新核对，再重试原请求。',
+  saved: '模型图已保存。',
+  deleted: '模型图已删除。',
+};

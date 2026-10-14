@@ -25,7 +25,7 @@ describe('AC-TEN-01 R1-T03 真实组织表的租户隔离', () => {
       expect(listed.map((item) => [item.id, item.tenantId])).toEqual([[own.id, session.tenant.id]]);
       const forbiddenWrite = await session.request('PATCH', `/organizations/${foreign.id}`, {
         ifMatch: foreign.revision,
-        body: { name: '不得跨租户修改', effectiveDate: '2026-10-01' },
+        body: { addEmployment: false, name: '不得跨租户修改', effectiveDate: '2026-10-01' },
       });
       expect([403, 404]).toContain(forbiddenWrite.status);
       const forbiddenRead = await session.request('GET', `/organizations/${foreign.id}`);

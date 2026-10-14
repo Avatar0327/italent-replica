@@ -1,0 +1,99 @@
+.approval-page {
+  min-height: 620px;
+}
+.approval-title-link.ant-btn {
+  padding: 0;
+  height: auto;
+  white-space: normal;
+  text-align: left;
+  color: #20252d;
+  font-weight: 500;
+}
+.approval-list-panel .ant-table-thead {
+  display: none;
+}
+.approval-list-panel .ant-table-cell {
+  padding: 22px 16px;
+}
+.approval-record {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.approval-record-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  color: #fff;
+  border-radius: 50%;
+  background: #fd6b9d;
+}
+.approval-record-meta {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin: 10px 0 12px;
+  color: #5e6266;
+  font-size: 12px;
+}
+.approval-summary {
+  padding-bottom: 20px;
+}
+.approval-muted {
+  color: #868b8f;
+  font-size: 12px;
+}
+.approval-action-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 0;
+  margin-top: 28px;
+  border-top: 1px solid #e6e8eb;
+}
+.approval-page > .ant-tabs-left > .ant-tabs-nav {
+  width: 180px;
+  padding: 16px 12px;
+  background: white;
+}
+.approval-page > .ant-tabs-left > .ant-tabs-nav .ant-tabs-tab {
+  margin: 0 0 10px;
+  padding: 10px 16px;
+  border-radius: 5px;
+  text-align: left;
+}
+.approval-page > .ant-tabs-left > .ant-tabs-nav .ant-tabs-tab-active {
+  background: #146eff;
+}
+.approval-page > .ant-tabs-left > .ant-tabs-nav .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: white;
+}
+.approval-page > .ant-tabs-left > .ant-tabs-nav .ant-tabs-ink-bar {
+  display: none;
+}
+.approval-page > .ant-tabs-left > .ant-tabs-content-holder {
+  border: 0;
+  min-width: 0;
+}
+.approval-page > .ant-tabs-left > .ant-tabs-content-holder > .ant-tabs-content > .ant-tabs-tabpane {
+  padding-left: 16px;
+}
+.approval-list-panel .r1c-list {
+  min-height: 620px;
+}
+.approval-list-panel .r1c-list .ant-table-cell {
+  padding: 20px 12px;
+}
+.approval-list-panel .r1c-list .approval-title-link {
+  color: #33383d;
+  font-size: 14px;
+  height: auto;
+}
+.approval-applications .ant-table-thead {
+  display: table-header-group;
+}
+.approval-applications .r1c-list .ant-table-cell {
+  padding: 9px 12px;
+}

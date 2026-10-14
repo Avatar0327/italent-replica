@@ -49,6 +49,9 @@ export const AUTHORIZATION_TABLES = [
   'permission_scope_policy_rules',
   'permission_dynamic_org_grants',
   'permission_user_person_links',
+  // R3-T03：360 活动授权与“精细化权限”开关同属授权子图（DEC-280），恢复后以现网为准
+  'survey360_activity_grants',
+  'survey360_settings',
 ] as const;
 
 export interface AuthorizationSnapshot {

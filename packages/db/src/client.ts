@@ -23,9 +23,17 @@ export interface DbHandle {
   close(): Promise<void>;
 }
 
-/** 连接真 PostgreSQL（生产与 `test:pg`）。 */
-export function createPgDb(url: string, options: { max?: number } = {}): DbHandle {
-  const client = postgres(url, { max: options.max ?? 10, onnotice: () => undefined });
+/**
+ * 连接真 PostgreSQL（生产与 `test:pg`）。
+ * applicationName：写进连接的 application_name（pg_stat_activity 可见）。API 与后台进程设为 `italent-api:<版本>`，
+ * F-082 的部署检查脚本据此确认目标库上已没有应用连接（契约 §6.5，DEC-386）。
+ */
+export function createPgDb(url: string, options: { max?: number; applicationName?: string } = {}): DbHandle {
+  const client = postgres(url, {
+    max: options.max ?? 10,
+    onnotice: () => undefined,
+    ...(options.applicationName ? { connection: { application_name: options.applicationName } } : {}),
+  });
   const db = drizzlePg(client, { schema });
   return {
     db: db as unknown as Db,

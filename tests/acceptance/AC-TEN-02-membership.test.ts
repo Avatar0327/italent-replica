@@ -8,7 +8,7 @@
 import { createUser, getTenant, grantMembership, revokeMembership, setTenantStatus, setUserStatus } from '@italent/db';
 import { installTenantProbe, useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { probeRoutes } from './support/probe-routes.js';
+import { PROBE_POLICIES, probeRoutes } from './support/probe-routes.js';
 import { cmd, errorCode, seedTenantWithMember, tenantApi } from './support/tenant-api.js';
 
 const testDb = useTestDb();
@@ -35,7 +35,7 @@ describe('成员关系与租户状态：每次请求在服务端重验', () => {
     await grantMembership(db, { tenantId: a.tenant.id, userId: shared.id, expectedRevision: 0 }, cmd(a.user.id));
     await grantMembership(db, { tenantId: b.tenant.id, userId: shared.id, expectedRevision: 0 }, cmd(b.user.id));
 
-    api = tenantApi(db, { tenantRoutes: [probeRoutes] });
+    api = tenantApi(db, { tenantRoutes: [probeRoutes], routePolicies: [PROBE_POLICIES] });
     await api.request('POST', '/api/tenant/probes', { user: a.user.id, tenant: a.tenant.id, body: { name: 'A-1' } });
     await api.request('POST', '/api/tenant/probes', { user: b.user.id, tenant: b.tenant.id, body: { name: 'B-1' } });
   });

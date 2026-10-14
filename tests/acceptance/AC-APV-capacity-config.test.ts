@@ -20,6 +20,7 @@ import {
   type InstanceView,
 } from './AC-APV-support.js';
 import { tenantApi } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const database = useTestDb();
 const BASE = '/api/tenant/approval';
@@ -230,7 +231,7 @@ describe('清单 25：流程配置权仅限租户级管理员（DEC-102）', () 
     const w = await approvalWorld(database().db, 'apv-config-right');
     const world = await permissionAdmin(w);
     const departmentHr = await w.member('部门 HR');
-    const profile = await createProfile(world, `apvcfg${randomUUID().slice(0, 6)}`);
+    const profile = await createProfile(world, `apvcfg${uniqueSuffix()}`);
     const response = await setObjectPermission(
       world,
       profile,

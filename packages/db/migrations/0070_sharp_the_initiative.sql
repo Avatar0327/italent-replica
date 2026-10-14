@@ -1,0 +1,1 @@
+ALTER TABLE "idp_sub_processes" ADD COLUMN "end_notice_template" text;

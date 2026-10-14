@@ -37,7 +37,10 @@ function rowsOf<T>(result: unknown): T[] {
   return (Array.isArray(result) ? result : (result as { rows: T[] }).rows) as T[];
 }
 
-describe('AC-TEN-06 按租户备份恢复演练', () => {
+// 整库备份 / 恢复按全部租户表逐表进行，耗时随表数增长（R3-T03 新增 23 张表后逼近默认 30s），单独放宽且仍有上限
+const RESTORE_TIMEOUT = { timeout: 90_000 };
+
+describe('AC-TEN-06 按租户备份恢复演练', RESTORE_TIMEOUT, () => {
   let api: ReturnType<typeof tenantApi>;
   let fixture: ReturnType<typeof tenantApi>;
   let operator: Awaited<ReturnType<typeof seedOperator>>;

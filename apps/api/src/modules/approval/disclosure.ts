@@ -7,6 +7,11 @@
 import { sql, type Tx } from '@italent/db';
 import {
   APPROVAL_TYPES,
+  instanceRecusal,
+  jumpAllowed,
+  nodeRecusal,
+  rejectToPreviousAllowed,
+  revokeAllowed,
   blindReviewFields,
   disclosedFieldNames,
   hasExit,
@@ -15,6 +20,7 @@ import {
   rejectAllowed,
   visibleWhenHidden,
   type ApprovalNode,
+  type RecusalFacts,
 } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import { AppError } from '../../errors.js';
@@ -23,8 +29,8 @@ import { ADAPTERS, type BusinessSnapshot } from './adapters.js';
 import { formFieldsWithForeign } from './foreign-fields.js';
 import { rowsOf, type ApprovalContext, type Row } from './context.js';
 import { loadVersion, type VersionView } from './definitions.js';
-import { userOfPerson } from './resolver.js';
-import { addSignAllowed, addSignLink, isOwnRequest, retrievableTask, urgeOpen, votesInTransition } from './rules.js';
+import { addSignAllowed, addSignLink, retrievableTask, urgeOpen, votesInTransition } from './rules.js';
+import { loadRecusalFacts } from './subjects.js';
 import { displayWindow, loadInstance, loadLogs, loadTasks, type InstanceRow, type TaskRow } from './store.js';
 
 export const SHOW_ORIGINALS_SETTING = 'approval.show_original_values';
@@ -51,7 +57,8 @@ export interface DetailData {
   readonly showOriginals: boolean;
   /** 查看人可对本单执行的管理员动作（N8）。 */
   readonly admin: { readonly transfer: boolean; readonly intervene: boolean };
-  readonly subjectUserId: string | null;
+  /** 实例冻结的回避事实（F-048）：动作按它判定，不对外披露（DEC-057）。 */
+  readonly recusal: RecusalFacts;
   /** 查看人被抄送的节点（DEC-097）：被抄送人只看该节点的表单。 */
   readonly ccNodeKey: string | null;
 }
@@ -90,7 +97,7 @@ export async function readDetail(
     logs: await loadLogs(tx, ctx.tenantId, instanceId),
     showOriginals: setting.value === true,
     admin,
-    subjectUserId: await userOfPerson(tx, ctx.tenantId, instance.subjectEmployeeId),
+    recusal: await loadRecusalFacts(tx, ctx.tenantId, instance),
     ccNodeKey,
   };
 }
@@ -103,7 +110,8 @@ export async function assertCanOpen(tx: Tx, ctx: ApprovalContext, instance: Inst
   if (instance.initiatorUserId === viewer.userId) return;
   const [participant] = rowsOf(
     await tx.execute(sql`SELECT 1 WHERE EXISTS (SELECT 1 FROM approval_tasks t WHERE t.tenant_id=${ctx.tenantId}
-        AND t.instance_id=${instance.id}::uuid AND t.assignee_user_id=${viewer.userId}::uuid AND t.origin<>'self_skip')
+        AND t.instance_id=${instance.id}::uuid AND t.assignee_user_id=${viewer.userId}::uuid
+        AND t.origin NOT IN ('self_skip','subject_skip'))
       OR EXISTS (SELECT 1 FROM approval_instance_ccs c WHERE c.tenant_id=${ctx.tenantId}
         AND c.instance_id=${instance.id}::uuid AND c.user_id=${viewer.userId}::uuid)`),
   );
@@ -125,7 +133,9 @@ async function ccNodeOf(tx: Tx, tenantId: string, instanceId: string, userId: st
 
 /** 查看人作为审批人参与过的任务（被自审跳过只是留痕，不算参与，C-非3）。 */
 function ownTasks(data: Pick<DetailData, 'allTasks'>, userId: string): TaskRow[] {
-  return data.allTasks.filter((task) => task.assigneeUserId === userId && task.origin !== 'self_skip');
+  return data.allTasks.filter(
+    (task) => task.assigneeUserId === userId && task.origin !== 'self_skip' && task.origin !== 'subject_skip',
+  );
 }
 
 /** 查看人所在节点：最近一次参与的节点 → 被抄送的节点 → 当前节点。 */
@@ -160,9 +170,18 @@ function actionsFor(data: DetailData, userId: string, blind: boolean): string[] 
   const running = instance.status === 'running';
   const mine = allTasks.find((task) => task.status === 'pending' && task.assigneeUserId === userId);
   const node = version.nodes.find((candidate) => candidate.key === (mine?.nodeKey ?? instance.currentNodeKey));
-  const own = isOwnRequest(instance, data.subjectUserId, userId);
-  // DEC-058：发起人或异动本人不能审批；看不到本单变化字段的人（盲审，C-非4）也不显示同意 / 驳回，只能转交。
-  const decide = !own && !blind;
+  // F-048 §6 #25：办理类动作按节点级（异常管理员任务按实例级），管理员类按实例级——与命令执行同一判定（recusal.ts）
+  const who = { userId };
+  const instanceHit = instanceRecusal(who, data.recusal);
+  const recusedOn = (task: TaskRow): boolean => {
+    if (task.isExceptionAdmin) return instanceHit;
+    const taskNode = version.nodes.find((candidate) => candidate.key === task.nodeKey);
+    return taskNode !== undefined && nodeRecusal(taskNode, who, data.recusal) !== null;
+  };
+  const recused = mine !== undefined && recusedOn(mine);
+  // DEC-058：被回避的人不能审批（节点开关 avoidSelf / avoidSubjects，关闭的节点照常办理）；看不到本单变化字段的人
+  // （盲审，C-非4）也不显示同意 / 驳回，只能转交。
+  const decide = !recused && !blind;
   if (running && mine && node) {
     // DEC-144：同意 / 不同意是出口动作，按节点配置公布；会签节点的前加签人不计入流转规则，不公布不同意（DEC-152）。
     // 驳回是节点开关（F-003 第二轮），加签人沿用原节点开关。
@@ -170,27 +189,39 @@ function actionsFor(data: DetailData, userId: string, blind: boolean): string[] 
     if (decide && hasExit(node, 'approve')) actions.push('approve');
     if (decide && votes && hasExit(node, 'disagree')) actions.push('disagree');
     if (decide && rejectAllowed(node)) actions.push('reject');
-    if (node.actions.transfer || mine.isExceptionAdmin) actions.push('transfer');
+    // DEC-318 K-39：驳回到上一步（单人节点、非第一个节点）、审批人跳转按节点开关公布，与命令同一判定
+    const first = version.nodes[0]?.key === node.key;
+    if (decide && rejectToPreviousAllowed(node) && !isCountersign(node) && !first && !addSignLink(allTasks, mine)) {
+      actions.push('rejectPrevious');
+    }
+    if (decide && jumpAllowed(node) && !addSignLink(allTasks, mine)) actions.push('jump');
+    if (!recused && (node.actions.transfer || mine.isExceptionAdmin)) actions.push('transfer');
     if (decide && node.actions.addSign && addSignAllowed(allTasks, mine)) actions.push('addSign');
     // `14` §11.3：加签人不能编辑表单内容，只有本节点原审批人可以；DEC-105：员工信息类不开放编辑。
     const editable = APPROVAL_TYPES[data.snapshot.approvalType].approvalEdit && !addSignLink(allTasks, mine);
     if (decide && node.editMode === 'separate' && editable) actions.push('edit');
-    if (node.actions.copySend) actions.push('cc');
+    if (!recused && node.actions.copySend) actions.push('cc');
   }
-  if (retrievableTask(instance, version, allTasks, userId)) actions.push('retrieve');
+  const retrievable = retrievableTask(instance, version, allTasks, userId);
+  if (retrievable && !recusedOn(retrievable)) actions.push('retrieve');
   if (instance.initiatorUserId === userId) actions.push(...initiatorActions(data));
-  // DEC-092：本人发起或本人为异动对象的申请，不公布管理员转交 / 干预。
-  if (running && !own && data.admin.transfer) actions.push('adminTransfer');
-  if (running && !own && data.admin.intervene) actions.push('adminIntervene');
+  // DEC-092 / DEC-329②：本人发起或本人为本单涵盖主体的申请，不公布管理员转交 / 干预。
+  if (running && !instanceHit && data.admin.transfer) actions.push('adminTransfer');
+  if (running && !instanceHit && data.admin.intervene) actions.push('adminIntervene');
   return actions;
 }
 
 function initiatorActions({ instance, version }: DetailData): string[] {
   const actions: string[] = [];
-  if (['running', 'returned'].includes(instance.status)) actions.push('withdraw');
-  // X-16：任职申请只能在申请单上修改后提交，审批侧不公布执行不了的“重提”；员工子集变更撤回后也可沿原实例重提（F9）。
-  const personnel = instance.businessType === 'personnel_change';
-  if (personnel && ['returned', 'withdrawn'].includes(instance.status)) actions.push('resubmit');
+  // DEC-318 K-39：撤回按当前节点的开关（isRevoke，缺省开启）
+  const current = version.nodes.find((node) => node.key === instance.currentNodeKey);
+  if (['running', 'returned'].includes(instance.status) && (!current || revokeAllowed(current))) {
+    actions.push('withdraw');
+  }
+  // X-16：任职申请只能在申请单上修改后提交，审批侧不公布执行不了的“重提”；员工子集变更撤回后也可沿原实例重提（F9），
+  // 发展计划驳回或撤回后由所有者沿原实例重提（DEC-318 K-39）。
+  const sameInstance = ['personnel_change', 'idp'].includes(instance.businessType);
+  if (sameInstance && ['returned', 'withdrawn'].includes(instance.status)) actions.push('resubmit');
   if (urgeOpen(instance, version)) actions.push('urge');
   return actions;
 }

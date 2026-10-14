@@ -24,6 +24,7 @@ import { loginEmailOf } from './AC-EMP-support.js';
 import { auditApi } from './AC-AUD-support.js';
 import { tenantApi } from './support/tenant-api.js';
 import { PLATFORM, seedOperator } from './support/platform-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const database = useTestDb();
 const NOW = '2026-10-01T01:00:00.000Z';
@@ -42,7 +43,7 @@ async function viewer(
 ) {
   const member = await memberWithAdminRole(world, 'audit_admin', label);
   if (!grants.length) return member;
-  const profile = await createProfile(world, `aud-r4-${randomUUID().slice(0, 8)}`);
+  const profile = await createProfile(world, `aud-r4-${uniqueSuffix()}`);
   for (const { code, fields } of grants) {
     const response = await setObjectPermission(
       world,
@@ -171,7 +172,12 @@ describe('PR #75 第四轮', () => {
       { sourceCode: 'R4-S1', code: 'R4-OWN', name: '本人导入部门', parentId: w.world.tenant.id },
       { sourceCode: 'R4-S2', code: 'R4-OWN', name: '本人冲突部门', parentId: w.world.tenant.id },
     ]);
-    expect(mine.status, await mine.clone().text()).toBe(200);
+    expect(mine.status, await mine.clone().text()).toBe(409);
+    const succeeded = randomUUID();
+    const retried = await importAs(creator.user.id, succeeded, [
+      { sourceCode: 'R4-S1', code: 'R4-OWN', name: '本人导入部门', parentId: w.world.tenant.id },
+    ]);
+    expect(retried.status).toBe(200);
     const failed = randomUUID();
     const bad = await importAs(creator.user.id, failed, [
       { sourceCode: 'R4-S3', code: 'R4-BAD', name: '格式错误', parentId: 'not-a-uuid' },
@@ -185,7 +191,10 @@ describe('PR #75 第四轮', () => {
 
     const logs = async (commandId: string) =>
       (await w.audit.operationLogs(creator.as, { behavior: 'import', commandId })).items;
-    expect(await logs(own)).toEqual([expect.objectContaining({ totalCount: 2, successCount: 1, failureCount: 1 })]);
+    expect(await logs(own)).toEqual([expect.objectContaining({ totalCount: 2, successCount: 0, failureCount: 2 })]);
+    expect(await logs(succeeded)).toEqual([
+      expect.objectContaining({ totalCount: 1, successCount: 1, failureCount: 0 }),
+    ]);
     expect(await logs(failed)).toEqual([expect.objectContaining({ result: 'failed', totalCount: 1 })]);
     expect(await logs(others)).toEqual([]);
   });
@@ -193,7 +202,7 @@ describe('PR #75 第四轮', () => {
   it('N3 平台重复邮箱建用户：一次请求恰好一条平台失败审计', async () => {
     const api = tenantApi(w.db, { authorize: undefined, clock: () => new Date(NOW) });
     const operator = await seedOperator(w.db, 'aud-r4-ops');
-    const email = `aud-r4-${randomUUID().slice(0, 8)}@example.com`;
+    const email = `aud-r4-${randomUUID()}@example.com`;
     const create = (commandId: string) =>
       api.request('POST', `${PLATFORM}/users`, {
         user: operator.id,

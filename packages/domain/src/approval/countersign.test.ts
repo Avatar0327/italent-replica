@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { countersignOutcome, countersignVote, exitRulesOf, exitThreshold } from './countersign.js';
 import { definitionViolations, publishViolations } from './definition.js';
 import { addSignerVotes, countersignEndedReason, previousNodeComparand } from './policies.js';
+import { recusalFacts } from './recusal.js';
 import { decideNode, type RoutingFacts } from './routing.js';
 import {
   ADD_SIGN_TYPES,
@@ -226,10 +227,14 @@ describe('发布校验：开启加签须有「同意」出口线（`14` §11.4�
 
 describe('DEC-114 扩展：上一节点是会签时，比较对象是它解析出的全部候选人', () => {
   const facts = (extra: Partial<RoutingFacts>): RoutingFacts => ({
+    ...recusalFacts({
+      initiatorUserId: 'initiator',
+      primaryEmployeeId: null,
+      primaryUserId: null,
+      subjectEmployeeIds: [],
+      subjectUserIds: [],
+    }),
     isFirstNode: false,
-    initiatorUserId: 'initiator',
-    subjectEmployeeId: null,
-    subjectUserId: null,
     exceptionAdminUserId: 'admin',
     previousApproverUserIds: [],
     approvedUserIds: [],

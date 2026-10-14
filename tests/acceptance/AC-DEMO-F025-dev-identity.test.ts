@@ -123,12 +123,16 @@ describe('F-025 开发身份切换（vite 开发代理签名）', () => {
   });
 
   // P2-2（#92 第二轮）：只有 NODE_ENV=development + mode=development + 开发服务器才签名；preview 一律不签
-  const MATRIX = ['development', 'production'].flatMap((nodeEnv) =>
-    ['development', 'production'].flatMap((mode) =>
-      (['dev', 'preview'] as const).map((server) => ({ nodeEnv, mode, server })),
-    ),
-  );
-  it.each(MATRIX)(
+  it.each([
+    { nodeEnv: 'development', mode: 'development', server: 'dev' },
+    { nodeEnv: 'development', mode: 'development', server: 'preview' },
+    { nodeEnv: 'development', mode: 'production', server: 'dev' },
+    { nodeEnv: 'development', mode: 'production', server: 'preview' },
+    { nodeEnv: 'production', mode: 'development', server: 'dev' },
+    { nodeEnv: 'production', mode: 'development', server: 'preview' },
+    { nodeEnv: 'production', mode: 'production', server: 'dev' },
+    { nodeEnv: 'production', mode: 'production', server: 'preview' },
+  ] as const)(
     '真实 vite 服务器 NODE_ENV=$nodeEnv mode=$mode $server：只有开发服务器 + development 才签名，伪造头一律剥掉',
     async ({ nodeEnv, mode, server }) => {
       const seen = await probeThroughVite({ nodeEnv, mode, server });

@@ -3,7 +3,7 @@ import { buttonResource, tenantLocalDate } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import type { Context } from 'hono';
 import { requirePermission } from '../../authorization.js';
-import { runCommand, type CommandResult } from '../../commands.js';
+import { runCommand, type CommandGuard, type CommandResult } from '../../commands.js';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import { auditActor } from '../../system-actor.js';
@@ -378,10 +378,13 @@ export async function runWrite(
   ctx: EmploymentContext,
   input: unknown,
   execute: (tx: Tx, context: EmploymentContext) => Promise<CommandResult>,
+  /** 可选：命令事务内的当前权限复核（CommandGuard，经 ledgerExit 覆盖首次 / 重放 / 回查）；缺省与之前完全相同。 */
+  options: { readonly guard?: CommandGuard } = {},
 ) {
   const result = await runCommand(deps.db, ctx, {
     id: c.req.header('idempotency-key'),
     fingerprint: { method: c.req.method, path: c.req.path, revision: ctx.expectedRevision, input },
+    ...(options.guard ? { guard: options.guard } : {}),
     execute: async (tx, commandId) => {
       const commandContext = { ...ctx, commandId, authorize: authorizeInTransaction(deps.authorize, tx) };
       const commandResult = await execute(tx, commandContext);

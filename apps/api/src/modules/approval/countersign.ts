@@ -29,7 +29,7 @@ import {
   type Run,
 } from './engine.js';
 import { notifyTodo } from './notifications.js';
-import { isEligibleApprover } from './resolver.js';
+import { canTake } from './recusal.js';
 import { votesInTransition } from './rules.js';
 import {
   appendLog,
@@ -186,7 +186,7 @@ export async function reopenEnded(
   for (const task of votingTasks(activation).filter((candidate) => candidate.status === 'ended')) {
     if (restored.has(task.id) || task.assigneeUserId === null || holders.has(task.assigneeUserId)) continue;
     const routing = await currentRouting(tx, run, task.nodeKey);
-    const usable = await isEligibleApprover(tx, routing.subject, task.assigneeUserId);
+    const usable = await canTake(tx, run, routing.subject, task, task.assigneeUserId);
     const admin = usable ? null : await exceptionAdminFor(tx, run, routing.subject, routing.facts);
     if (admin && holders.has(admin.userId)) {
       await mergeSeat(tx, run, task, admin.userId, 'exception_admin');

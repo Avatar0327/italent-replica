@@ -1,0 +1,139 @@
+.talent-review-page {
+  min-width: 0;
+}
+.talent-review-page > .ant-tabs > .ant-tabs-nav {
+  margin-bottom: 12px;
+}
+.talent-review-page .ant-input-search {
+  width: 220px;
+}
+.talent-review-page .list-card {
+  min-height: 560px;
+}
+.review-summary {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin: 20px 0;
+}
+.review-summary > div {
+  background: #f7f9fa;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  padding: 16px 12px;
+  gap: 12px;
+}
+.review-summary p {
+  margin: 6px 0 0;
+  color: #868b8f;
+}
+.review-summary-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: #e9f3ff;
+  color: #146eff;
+  font-size: 22px;
+}
+.review-summary-icon.tone-1 {
+  background: #fff1f8;
+  color: #e658b3;
+}
+.review-summary-icon.tone-2 {
+  background: #fff6e7;
+  color: #fc9700;
+}
+.review-summary-icon.tone-3 {
+  background: #e2f8f6;
+  color: #38bcb9;
+}
+.review-demo-panel > .ant-alert {
+  margin-bottom: 16px;
+}
+.review-demo-toolbar {
+  margin: 12px 0;
+}
+.review-grid-layout {
+  display: grid;
+  grid-template-columns: 1fr 190px;
+  gap: 12px;
+}
+.review-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-top: 12px;
+}
+.review-cell {
+  min-height: 125px;
+  border-radius: 4px;
+  padding: 12px;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.review-cell.blue {
+  background: #dfeeff;
+}
+.review-cell.green {
+  background: #def4ef;
+}
+.review-cell span {
+  color: #5e6266;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.review-grid-info {
+  padding: 12px;
+  background: #edf4ff;
+  margin-top: 12px;
+  border-radius: 5px;
+}
+.review-grid-info h3 {
+  font-size: 12px;
+}
+.review-grid-info p {
+  background: white;
+  padding: 12px;
+  min-height: 70px;
+}
+.review-axis {
+  display: flex;
+  justify-content: space-around;
+  background: #f2f4f5;
+  margin-top: 8px;
+}
+.review-axis-title {
+  text-align: center;
+}
+@media (max-width: 900px) {
+  .review-summary {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .review-grid-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.review-reference-popover {
+  width: 240px;
+}
+.review-reference-popover .ant-select {
+  width: 100%;
+}
+
+/* 新页面已使用 FE-0 模板，不叠加旧页面适配容器的内边距。 */
+.legacy-page:has(> .talent-review-page) {
+  margin-top: 0;
+  padding: 0;
+  background: transparent;
+}
+.talent-review-page .list-page {
+  min-height: calc(100vh - 144px);
+}
+.talent-review-page .ant-table-cell {
+  max-width: 190px;
+}

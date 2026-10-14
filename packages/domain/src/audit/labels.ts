@@ -3,6 +3,19 @@
  * 字段中文名照搬原站任职记录字段（docs/02_业务建模/07 §3.1、15），未登记的字段按编码原样显示，不猜中文名。
  */
 
+import {
+  TALENT_REVIEW_APP_LABEL,
+  TALENT_REVIEW_OBJECT_LABELS,
+  TALENT_REVIEW_OBJECTS,
+  type TalentReviewObject,
+} from '../talent-review/catalog.js';
+import {
+  SUCCESSION_APP_LABEL,
+  SUCCESSION_OBJECT_LABELS,
+  SUCCESSION_OBJECTS,
+  type SuccessionObject,
+} from '../succession/catalog.js';
+
 export interface AuditObjectMeta {
   readonly label: string;
   readonly app: string;
@@ -11,8 +24,31 @@ export interface AuditObjectMeta {
 const ORG_PEOPLE = '组织员工';
 const APPROVAL = '审批中心';
 const ENTERPRISE = '企业设置';
+const SURVEY360 = '360度评估';
+const TALENT = '人才标准';
+const IDP = '个人发展计划';
+const QUALIFICATION = '任职资格';
+const EVALUATION = '人才评定';
+
+/** R3-T04 人才盘点：对象中文名随领域目录登记，后续 PR 不再改本文件。 */
+const TALENT_REVIEW_META = Object.fromEntries(
+  (Object.keys(TALENT_REVIEW_OBJECTS) as TalentReviewObject[]).map((key) => [
+    TALENT_REVIEW_OBJECTS[key].code,
+    { label: TALENT_REVIEW_OBJECT_LABELS[key], app: TALENT_REVIEW_APP_LABEL },
+  ]),
+);
+
+/** R3-T05 继任管理：同上，对象中文名随领域目录登记。 */
+const SUCCESSION_META = Object.fromEntries(
+  (Object.keys(SUCCESSION_OBJECTS) as SuccessionObject[]).map((key) => [
+    SUCCESSION_OBJECTS[key].code,
+    { label: SUCCESSION_OBJECT_LABELS[key], app: SUCCESSION_APP_LABEL },
+  ]),
+);
 
 const OBJECTS: Readonly<Record<string, AuditObjectMeta>> = {
+  ...TALENT_REVIEW_META,
+  ...SUCCESSION_META,
   'job-sequence-sync': { label: '任职序列同步任务', app: ORG_PEOPLE },
   'employment-record': { label: '任职记录', app: ORG_PEOPLE },
   'employment-business': { label: '任职业务', app: ORG_PEOPLE },
@@ -20,6 +56,7 @@ const OBJECTS: Readonly<Record<string, AuditObjectMeta>> = {
   employment_settings: { label: '任职设置', app: ORG_PEOPLE },
   employment_custom_field: { label: '任职自定义字段', app: ORG_PEOPLE },
   organization: { label: '组织单元', app: ORG_PEOPLE },
+  'org-adjustment-run': { label: '组织调整任职联动', app: ORG_PEOPLE },
   org_setting: { label: '组织设置', app: ORG_PEOPLE },
   org_code_reservation: { label: '组织编码', app: ORG_PEOPLE },
   org_import_result: { label: '组织导入', app: ORG_PEOPLE },
@@ -44,6 +81,60 @@ const OBJECTS: Readonly<Record<string, AuditObjectMeta>> = {
   permission_mou: { label: '管理单元', app: ENTERPRISE },
   license_pool: { label: '许可', app: ENTERPRISE },
   audit_retention: { label: '日志保留期', app: ENTERPRISE },
+  'survey360-settings': { label: '360设置', app: SURVEY360 },
+  'survey360-person': { label: '360人员', app: SURVEY360 },
+  'survey360-role': { label: '评价角色', app: SURVEY360 },
+  'survey360-sync-conflict': { label: '人员同步冲突', app: SURVEY360 },
+  'survey360-questionnaire': { label: '套卷', app: SURVEY360 },
+  'survey360-activity': { label: '360活动', app: SURVEY360 },
+  'survey360-object': { label: '评价对象', app: SURVEY360 },
+  'survey360-relation': { label: '评价关系', app: SURVEY360 },
+  'survey360-confirmation': { label: '评价关系确认', app: SURVEY360 },
+  'survey360-sheet': { label: '答卷', app: SURVEY360 },
+  'TalentCenter.DimensionLibrary': { label: '指标库', app: TALENT },
+  'TalentCenter.Category': { label: '指标库分类', app: TALENT },
+  'TalentCenter.DescriptionType': { label: '发展建议类型', app: TALENT },
+  'TalentCenter.Dimension': { label: '指标', app: TALENT },
+  'TalentCenter.TalentCriterionCategory': { label: '人才标准分类', app: TALENT },
+  'TalentCenter.TalentCriterion': { label: '人才标准', app: TALENT },
+  'TalentCenter.TalentCriterionModelImage': { label: '潜力模型图', app: TALENT },
+  'Qualification.EmploymentCategoryClassify': { label: '任职类别分类', app: QUALIFICATION },
+  'Qualification.EmploymentCategory': { label: '任职类别', app: QUALIFICATION },
+  'Qualification.Level': { label: '层级', app: QUALIFICATION },
+  'Qualification.EmploymentLevel': { label: '任职级别', app: QUALIFICATION },
+  'Qualification.TargetType': { label: '指标类型', app: QUALIFICATION },
+  'Qualification.Target': { label: '指标', app: QUALIFICATION },
+  'Qualification.GradeScheme': { label: '等级方案', app: QUALIFICATION },
+  'Qualification.TargetGradeDescription': { label: '指标等级描述', app: QUALIFICATION },
+  'Qualification.CodingRule': { label: '编码规则', app: QUALIFICATION },
+  'Qualification.QualificationStandard': { label: '任职资格标准', app: QUALIFICATION },
+  'Qualification.DevelopmentChannel': { label: '发展通道', app: QUALIFICATION },
+  'TEvaluation.ActivityType': { label: '活动类型', app: EVALUATION },
+  'TEvaluation.ActivityCycle': { label: '活动周期', app: EVALUATION },
+  'TEvaluation.GeneralScoreItem': { label: '通用评分项', app: EVALUATION },
+  'TEvaluation.ReviewGroup': { label: '评审组', app: EVALUATION },
+  'TEvaluation.EvaluationForm': { label: '评价表', app: EVALUATION },
+  'TEvaluation.EvaluationActivity': { label: '评定活动', app: EVALUATION },
+  'TEvaluation.StaffEvaluationData': { label: '员工评定数据', app: EVALUATION },
+  'TEvaluation.EvaluationIndicatorsDetail': { label: '指标明细', app: EVALUATION },
+  'TEvaluation.EvaluationSessions': { label: '评审场次', app: EVALUATION },
+  'TEvaluation.EvaluationSessionsDetail': { label: '评审场次明细', app: EVALUATION },
+  'TEvaluation.EvaluationRecord': { label: '评委评审记录', app: EVALUATION },
+  'TEvaluation.EvaluationRecordDetail': { label: '评委评审明细', app: EVALUATION },
+  'IDP.IDPProcess': { label: '发展计划流程', app: IDP },
+  'IDP.SubProcess': { label: '子流程', app: IDP },
+  'IDP.IDPTemplate': { label: '发展计划模板', app: IDP },
+  'IDP.IDPTemplateModule': { label: '发展计划模块', app: IDP },
+  'IDP.IDPTemplateCommonGoal': { label: '模板通用目标', app: IDP },
+  'IDP.Idp': { label: '发展计划', app: IDP },
+  'IDP.IdpGoal': { label: '发展目标', app: IDP },
+  'IDP.Task': { label: '目标任务', app: IDP },
+  'IDP.GoalReview': { label: '目标回顾', app: IDP },
+  'IDP.Analysis': { label: '综述', app: IDP },
+  'IDP.Review': { label: '回顾', app: IDP },
+  'IDP.TutorShip': { label: '带教信息', app: IDP },
+  'IDP.Career': { label: '职业发展信息', app: IDP },
+  'IDP.WorkShift': { label: '轮岗信息', app: IDP },
 };
 
 /** 对象编码前缀 → 应用（未单独登记的对象按所属模块归类）。 */
@@ -53,6 +144,7 @@ const APP_PREFIXES: readonly (readonly [string, string])[] = [
   ['tenant', ENTERPRISE],
   ['license', ENTERPRISE],
   ['audit', ENTERPRISE],
+  ['survey360', SURVEY360],
 ];
 
 export function auditObjectMeta(objectType: string): AuditObjectMeta {
@@ -115,6 +207,29 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   enabled: '启用',
   employeeId: '员工',
   value: '取值',
+  // R3-T01 人才标准（`23` §2.1 字段名）
+  libraryId: '指标库',
+  definition: '定义',
+  categoryId: '分类',
+  ownerId: '所属人',
+  ownerOrgId: '所属管理单元',
+  grades: '等级描述',
+  behaviors: '行为描述',
+  suggestions: '发展建议',
+  questions: '面试问题',
+  abilityNote: '能力说明',
+  potentialNote: '潜力说明',
+  experienceNote: '经历说明',
+  achievementNote: '成就说明',
+  modelImage: '潜力模型图',
+  filename: '文件名称',
+  contentType: '文件格式',
+  byteSize: '文件大小',
+  sha256: '文件哈希',
+  // F-079（#172 审查 P3，DEC-374⑦）
+  displayOrder: '显示顺序',
+  syncQualification: '同步任职资格子集',
+  createdBy: '创建人',
 };
 
 export function auditFieldLabel(field: string): string {
@@ -137,6 +252,7 @@ export type AuditReferenceKind = (typeof AUDIT_REFERENCE_KINDS)[number];
 const REFERENCE_FIELDS: Readonly<Record<string, AuditReferenceKind>> = {
   departmentId: 'org',
   orgId: 'org',
+  ownerOrgId: 'org',
   positionId: 'position',
   postId: 'post',
   levelId: 'level',
