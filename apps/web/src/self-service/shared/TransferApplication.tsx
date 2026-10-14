@@ -1,12 +1,17 @@
+import type { ApplicationCommandRunner } from './application-command.js';
 import { useState } from 'react';
 import { LinkagePanel } from '../../transfer/LinkagePanel.js';
 import { useLinkageDetail } from '../../transfer/useLinkage.js';
 import { TransferForm } from './TransferForm.js';
 import { text } from '../../transfer/messages.js';
 import { useTransferForm } from './useTransferForm.js';
-type TransferApplicationProps = { tenantId: string; initiator: 'hr' | 'employee' | 'manager' };
-export function TransferApplication({ tenantId, initiator }: TransferApplicationProps) {
-  const state = useTransferForm(tenantId, initiator);
+type TransferApplicationProps = {
+  tenantId: string;
+  initiator: 'hr' | 'employee' | 'manager';
+  runCommand?: ApplicationCommandRunner;
+};
+export function TransferApplication({ tenantId, initiator, runCommand }: TransferApplicationProps) {
+  const state = useTransferForm(tenantId, initiator, undefined, runCommand);
   const locked = state.busy || !!state.saved || !!state.unknownCommand;
   return (
     <section className="transfer-content" aria-busy={state.busy || state.loadingPreview}>

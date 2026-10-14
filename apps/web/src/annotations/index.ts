@@ -2,6 +2,7 @@ import { evaluationNotes } from './evaluation.js';
 import { foundationNotes } from './foundation.js';
 import { personnelNotes } from './personnel.js';
 import { qualificationNotes } from './qualification.js';
+import { selfServiceNotes } from './self-service.js';
 import { settingsNotes } from './settings.js';
 import { survey360Notes } from './survey360.js';
 import { talentNotes } from './talent.js';
@@ -13,6 +14,7 @@ export const annotations = {
   ...foundationNotes,
   ...personnelNotes,
   ...qualificationNotes,
+  ...selfServiceNotes,
   ...settingsNotes,
   ...survey360Notes,
   ...talentNotes,
