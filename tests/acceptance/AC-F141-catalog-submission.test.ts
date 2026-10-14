@@ -30,6 +30,8 @@ const patchReplies: Response[] = [];
 /** 当前页面的目录集合（路径段）与对象可编辑字段（缺省全部）。 */
 let collection = 'category-classes';
 let editableOverride: string[] | undefined;
+/** 服务端已撤销编辑权的字段：PATCH 带这些字段返回 403。 */
+let revokedFields: string[] = [];
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
@@ -42,6 +44,7 @@ beforeEach(() => {
   stored = undefined;
   collection = 'category-classes';
   editableOverride = undefined;
+  revokedFields = [];
   postMode = 'network-error';
   host = document.createElement('div');
   document.body.append(host);
@@ -60,6 +63,8 @@ beforeEach(() => {
           ifMatch: new Headers(init.headers).get('if-match'),
           body: JSON.parse(String(init.body)) as Record<string, unknown>,
         });
+        if (revokedFields.some((field) => field in patches.at(-1)!.body))
+          return json({ error: { code: 'FORBIDDEN', message: '无权修改该字段' } }, 403);
         const queued = patchReplies.shift();
         if (queued) return queued;
         // 与真实后端一致：PATCH 只改请求里带的字段
@@ -314,9 +319,8 @@ it('AC-F141 空值统一：层级原本为空，本人只改名称，他人把�
   expect(stored).toMatchObject({ name: 'B', layerId: 'L2' });
 });
 
-it('AC-F141 没有层级编辑权、保留名称编辑权：只改名称，PATCH 只有 name', async () => {
+it('AC-F141 层级原为空 → 选一个层级 → 清回 → 后台撤销层级编辑权 → 只改名称保存：只发名称、返回 200、库里已保存', async () => {
   collection = 'levels';
-  editableOverride = ['name', 'code', 'displayOrder', 'enabled', 'publicDown'];
   stored = {
     id: 'c1',
     revision: 1,
@@ -329,8 +333,14 @@ it('AC-F141 没有层级编辑权、保留名称编辑权：只改名称，PATCH
   };
   await openPage();
   await openEdit();
+  await chooseThenClearLayer();
+  // 后台撤销层级编辑权：服务端此后拒绝任何带 layerId 的修改（403），页面此时并不知道
+  revokedFields = ['layerId'];
   await type(inputsOf()[0]!, 'B');
   await click(buttonOf('保存'));
   await vi.waitFor(() => expect(patches).toHaveLength(1));
   expect(patches[0]).toEqual({ ifMatch: '1', body: { name: 'B' } });
+  // 返回 200：表单关闭、记录已保存，层级仍为空
+  await vi.waitFor(() => expect(document.body.querySelector('.ant-drawer-content')).toBeNull());
+  expect(stored).toMatchObject({ name: 'B', layerId: null, revision: 2 });
 });
