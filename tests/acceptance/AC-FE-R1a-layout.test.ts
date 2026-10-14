@@ -396,3 +396,32 @@ describe('AC-FE-R1a-33 无名称查看权时不按名称筛选', () => {
     );
   });
 });
+
+describe('AC-FE-R1a-35 组织新建表单只用一个业务时点', () => {
+  it('有日期编辑权时用所选日期，否则用租户当天（DEC-130）', async () => {
+    const { orgCreateDate } = await org();
+    expect(orgCreateDate('2026-11-01', '2026-10-14', { visible: true, editable: true })).toBe('2026-11-01');
+    expect(orgCreateDate('2026-11-01', '2026-10-14', { visible: true, editable: false })).toBe('2026-10-14');
+    expect(orgCreateDate('2026-11-01', '2026-10-14', { visible: false, editable: false })).toBe('2026-10-14');
+  });
+  it('新建共用集合路径作为恢复槽，不随入口、上级或日期变化', async () => {
+    const { orgCreateResource } = await org();
+    expect(orgCreateResource).toBe('/api/tenant/org/organizations');
+  });
+});
+
+describe('AC-FE-R1a-36 候选搜索按目标对象的名称查看权裁剪', () => {
+  it('无名称查看权时候选查询不带 name', async () => {
+    const { referenceQuery } = await job();
+    expect(referenceQuery('2026-10-14', '合成', false)).toBe('asOf=2026-10-14&pageSize=50&enabled=true');
+    expect(referenceQuery('2026-10-14', '合成', true)).toBe(
+      'asOf=2026-10-14&pageSize=50&enabled=true&name=%E5%90%88%E6%88%90',
+    );
+  });
+  it('候选目标对象映射到各自的权限对象', async () => {
+    const { referenceObject } = await job();
+    expect(referenceObject('org')).toBe('TenantBase.Organization');
+    expect(referenceObject('positions')).toBe('TenantBase.Position');
+    expect(referenceObject('sequences')).toBe('TenantBase.JobSequence');
+  });
+});

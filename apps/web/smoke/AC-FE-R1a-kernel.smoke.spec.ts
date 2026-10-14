@@ -1,5 +1,6 @@
 // F-132 第 1 段第 2 轮：组织、职务写入口接 F-123 表单内核（冲突重读保留草稿、回执按形状校验），
 // 组织新建 / 新建下级与负责人展示，名称无查看权时不出名称筛选。
+// 第 3 轮：新建共用集合路径恢复槽、新建表单单一业务时点、候选搜索按目标对象名称查看权裁剪。
 import type { Page, Request } from '@playwright/test';
 import { test, expect, user } from './fixtures.js';
 
@@ -27,6 +28,7 @@ const ALL = [
 ];
 interface Options {
   viewable?: string[];
+  editable?: string[];
   create?: boolean;
 }
 async function setup(page: Page, baseURL: string, options: Options = {}) {
@@ -43,7 +45,7 @@ async function setup(page: Page, baseURL: string, options: Options = {}) {
         objectCode: new URL(route.request().url()).pathname.split('/').at(-1),
         dataOperations: { create, update: true },
         viewableFields: viewable,
-        editableFields: viewable,
+        editableFields: options.editable ?? viewable,
         buttons: [
           ...(create ? [{ buttonCode: 'create', level: 'list' }] : []),
           { buttonCode: 'update', level: 'detail' },
@@ -348,5 +350,124 @@ for (const path of ['/org', '/job?kind=posts']) {
     await expect(drawer.getByLabel('名称', { exact: true })).toHaveCount(0);
     expect(queries.length).toBeGreaterThan(0);
     expect(queries.every((url) => !url.searchParams.has('name'))).toBe(true);
+  });
+}
+
+const pending = '处理中 / 结果待确认。当前表单已锁定，请勿重新创建命令。';
+const candidates = (requests: URL[], path: string) => requests.filter((url) => url.pathname === path);
+function recordGets(page: Page) {
+  const urls: URL[] = [];
+  page.on('request', (request) => {
+    if (request.method() === 'GET') urls.push(new URL(request.url()));
+  });
+  return urls;
+}
+async function chooseListDate(page: Page, date: string) {
+  const picker = page.locator('.page-filters .ant-picker input');
+  await picker.fill(date);
+  await picker.press('Enter');
+  await expect(picker).toHaveValue(date);
+}
+
+test('AC-FE-R1a-35 新建结果未知后换入口、换日期仍锁定，只发 1 次 POST', async ({ page, baseURL }) => {
+  await setup(page, baseURL!);
+  const posts: Request[] = [];
+  await page.route('**/api/tenant/org/organizations', (route) => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    posts.push(route.request());
+    return route.fulfill({ status: 201, json: {} });
+  });
+  await page.goto('/org');
+  await page.getByRole('button', { name: /^新\s*建$/ }).click();
+  await createOrganization(page);
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByText(pending)).toBeVisible();
+  await dialog.getByRole('button', { name: 'Close' }).click();
+  await expect(dialog).toHaveCount(0);
+  await page.locator('tr[data-row-key]').first().getByRole('button', { name: '新建下级' }).click();
+  await expect(dialog.getByText(pending)).toBeVisible();
+  await expect(save(page)).toBeDisabled();
+  await dialog.getByRole('button', { name: 'Close' }).click();
+  await expect(dialog).toHaveCount(0);
+  await chooseListDate(page, '2026-11-01');
+  await page.getByRole('button', { name: /^新\s*建$/ }).click();
+  await expect(dialog.getByText(pending)).toBeVisible();
+  await expect(save(page)).toBeDisabled();
+  expect(posts).toHaveLength(1);
+});
+
+test('AC-FE-R1a-35 无日期编辑权：显示与候选都按租户当天，提交不带生效日期', async ({ page, baseURL }) => {
+  await setup(page, baseURL!, { editable: ALL.filter((field) => field !== 'establishedOn') });
+  const posts: Request[] = [];
+  await page.route('**/api/tenant/org/organizations', (route) => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    posts.push(route.request());
+    return route.fulfill({ status: 201, json: { id: '51000000-0000-4000-8000-000000000001' } });
+  });
+  const gets = recordGets(page);
+  await page.goto('/org');
+  await chooseListDate(page, '2026-11-01');
+  await page.getByRole('button', { name: /^新\s*建$/ }).click();
+  const effective = page
+    .getByRole('dialog')
+    .locator('.ant-form-item')
+    .filter({ has: page.locator('label').filter({ hasText: '生效日期' }) });
+  await expect(effective).toContainText('2026-10-12');
+  await expect(effective).not.toContainText('2026-11-01');
+  await expect.poll(() => candidates(gets, '/api/tenant/org/person-candidates').length).toBeGreaterThan(0);
+  await createOrganization(page);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  const asOf = (path: string) =>
+    candidates(gets, path)
+      .filter((url) => path !== '/api/tenant/org/organizations' || url.searchParams.has('enabled'))
+      .map((url) => url.searchParams.get('asOf'));
+  expect(asOf('/api/tenant/org/organizations').length).toBeGreaterThan(0);
+  expect(new Set(asOf('/api/tenant/org/organizations'))).toEqual(new Set(['2026-10-12']));
+  expect(new Set(asOf('/api/tenant/org/person-candidates'))).toEqual(new Set(['2026-10-12']));
+  expect(posts).toHaveLength(1);
+  expect(posts[0]!.postDataJSON()).not.toHaveProperty('establishedOn');
+});
+
+test('AC-FE-R1a-35 有日期编辑权：改生效日期后上级与人员候选按新日期查询', async ({ page, baseURL }) => {
+  await setup(page, baseURL!);
+  const gets = recordGets(page);
+  await page.goto('/org');
+  await page.getByRole('button', { name: /^新\s*建$/ }).click();
+  const input = page
+    .getByRole('dialog')
+    .locator('.ant-form-item')
+    .filter({ has: page.locator('label').filter({ hasText: '生效日期' }) })
+    .locator('input');
+  await input.fill('2026-11-01');
+  await input.press('Enter');
+  await expect(input).toHaveValue('2026-11-01');
+  const dated = (path: string) => candidates(gets, path).some((url) => url.searchParams.get('asOf') === '2026-11-01');
+  await expect.poll(() => dated('/api/tenant/org/person-candidates')).toBe(true);
+  await expect.poll(() => dated('/api/tenant/org/organizations')).toBe(true);
+});
+
+for (const viewable of [ALL, ALL.filter((field) => field !== 'name')]) {
+  const hidden = viewable !== ALL;
+  test(`AC-FE-R1a-36 上级职位候选${hidden ? '无名称查看权不按名称搜索' : '按名称搜索'}`, async ({ page, baseURL }) => {
+    await setup(page, baseURL!, { viewable });
+    const gets = recordGets(page);
+    await page.goto('/job?kind=positions');
+    await page.getByRole('button', { name: /新\s*建/, exact: true }).click();
+    const parent = page
+      .getByRole('dialog')
+      .locator('.ant-form-item')
+      .filter({ has: page.locator('label').filter({ hasText: /^上级职位$/ }) })
+      .getByRole('combobox');
+    await parent.click();
+    await expect(page.locator('.ant-select-dropdown:visible').getByTitle('合成条目').first()).toBeVisible();
+    const named = () => candidates(gets, '/api/tenant/job/positions').some((url) => url.searchParams.has('name'));
+    if (hidden) {
+      await expect(parent).toHaveAttribute('readonly', /.*/);
+      await parent.pressSequentially('合成');
+      expect(named()).toBe(false);
+    } else {
+      await parent.pressSequentially('合成');
+      await expect.poll(named).toBe(true);
+    }
   });
 }
