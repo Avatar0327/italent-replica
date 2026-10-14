@@ -6,6 +6,7 @@
 import { APPROVAL } from './approval.js';
 import { AUDIT } from './audit.js';
 import { AVATAR } from './avatar.js';
+import { COMMAND_RESULT } from './command-result.js';
 import { CONTRACTS } from './contracts.js';
 import { EMPLOYMENT } from './employment.js';
 import { ESTABLISHMENT } from './establishment.js';
@@ -31,6 +32,7 @@ export const REQUIRED_BY_MODULE: Readonly<Record<string, RequiredTable>> = {
   'tenant-settings': TENANT_SETTINGS,
   audit: AUDIT,
   avatar: AVATAR,
+  'command-result': COMMAND_RESULT,
   'self-service': SELF_SERVICE,
   org: ORG,
   job: JOB,

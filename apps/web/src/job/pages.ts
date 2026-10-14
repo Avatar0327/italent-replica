@@ -7,8 +7,7 @@ export const pages: ModulePages = {
       label: '职务体系',
       group: 'people',
       objectCode: 'TenantBase.JobPost',
-      page: lazyPage('JobPage', () => import('./JobPage.js')),
-      legacy: true,
+      page: lazyPage('JobWorkspace', () => import('./JobWorkspace.js')),
     },
   ],
 };

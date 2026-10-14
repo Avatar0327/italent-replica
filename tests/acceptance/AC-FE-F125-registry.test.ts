@@ -18,8 +18,8 @@ const SRC = fileURLToPath(new URL('../../apps/web/src/', import.meta.url));
 
 // 应用：id | 菜单名 | 分组 | 主对象 | 模块:页面导出名 | 布局
 const APPS_BEFORE = [
-  'org|组织管理|people|TenantBase.Organization|org:OrgChangePage|legacy',
-  'job|职务体系|people|TenantBase.JobPost|job:JobPage|legacy',
+  'org|组织管理|people|TenantBase.Organization|org:OrgPage|-',
+  'job|职务体系|people|TenantBase.JobPost|job:JobWorkspace|-',
   'staff|员工|people|TenantBase.Employee|personnel:StaffPage|-',
   'transfer|调动管理|people|TenantBase.EmploymentRecord|transfer:TransferPage|-',
   'approval|审批中心|work|-|approval:ApprovalPage|-',
@@ -37,7 +37,7 @@ const APPS_BEFORE = [
 // 子路由：路径 | 模块:页面导出名 | 布局 | 是否按菜单可见性拦截
 const ROUTES_BEFORE = [
   '/manager/*|self-service:ManagerPage|-|gated',
-  '/org/changes|org:OrgChangePage|legacy|gated',
+  '/org/changes|org:OrgPage|-|gated',
   '/self/*|self-service:SelfPage|-|gated',
   '/settings/account|account:AccountPage|legacy|ungated',
   '/settings/menu/:code|settings:SettingsPage|-|gated',
@@ -45,9 +45,13 @@ const ROUTES_BEFORE = [
 // 注释键 → 所属模块
 const NOTES_BEFORE: Record<string, string> = {
   approval: 'approval',
+  establishment: 'establishment',
   evaluation: 'evaluation',
   'evaluation-paused': 'evaluation',
   foundation: 'foundation',
+  job: 'job',
+  org: 'org',
+  'org-change': 'org',
   personnel: 'personnel',
   'qualification-category': 'qualification',
   'qualification-level': 'qualification',

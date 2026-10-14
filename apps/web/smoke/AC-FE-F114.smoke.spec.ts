@@ -21,8 +21,10 @@ test('AC-FE-F114 首屏一次快照，失败可重试且 401 显示登录态', a
   expect(calls).toEqual(['/api/tenant/permission/me/snapshot']);
   status = 200;
   await page.getByRole('button', { name: '重新加载', exact: true }).click();
-  await expect(page.locator('.shell-workspace h1')).toBeVisible();
-  expect(calls).toEqual(Array(2).fill('/api/tenant/permission/me/snapshot'));
+  await expect(page.locator('.approval-list-panel')).toBeVisible();
+  expect(calls.filter((path) => path === '/api/tenant/permission/me/snapshot')).toEqual(
+    Array(2).fill('/api/tenant/permission/me/snapshot'),
+  );
   status = 401;
   await page.reload();
   await expect(page.locator('.shell-workspace')).toContainText('请选择演示身份或提供会话上下文');

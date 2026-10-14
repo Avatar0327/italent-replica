@@ -1,0 +1,1 @@
+ALTER TABLE "audit_command_failures" ADD COLUMN "http_status" integer;
