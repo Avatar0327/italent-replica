@@ -2,6 +2,7 @@
 // 组织新建 / 新建下级与负责人展示，名称无查看权时不出名称筛选。
 // 第 3 轮：新建共用集合路径恢复槽、新建表单单一业务时点、候选搜索按目标对象名称查看权裁剪。
 // 第 4 轮：编辑恢复槽只用原单路径，结果未知后换列表日期、换动作仍锁定。
+// 第 5 轮：恢复槽只存实际采用的业务时点（按日期编辑权归一化后），恢复提示与候选查询都读它。
 import type { Page, Request } from '@playwright/test';
 import { test, expect, user } from './fixtures.js';
 
@@ -543,4 +544,38 @@ test('AC-FE-R1a-37 组织变更结果未知后换列表日期、换动作重开�
   await expect(dialog.getByText(/^变更 · /)).toBeVisible();
   await expect(dialog.getByText('未确认命令')).toBeVisible();
   expect(patches).toHaveLength(1);
+});
+
+test('AC-FE-R1a-38 无生效日期编辑权的职务新建结果未知后换日期重开，提示与候选都按实际时点', async ({
+  page,
+  baseURL,
+}) => {
+  await setup(page, baseURL!, { editable: ALL.filter((field) => field !== 'startDate') });
+  const posts: Request[] = [];
+  await page.route('**/api/tenant/job/posts', (route) => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    posts.push(route.request());
+    return route.fulfill({ status: 201, json: {} });
+  });
+  await page.goto('/job?kind=posts');
+  await chooseListDate(page, '2026-11-01');
+  const create = page.getByRole('button', { name: /新\s*建/, exact: true });
+  await create.click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('名称', { exact: true }).fill('合成职务');
+  await save(page).click();
+  await expect(dialog.getByText(pending)).toBeVisible();
+  expect(posts[0]!.postDataJSON()).not.toHaveProperty('startDate');
+  await closeDialog(page);
+  await chooseListDate(page, '2026-11-02');
+  const gets = recordGets(page);
+  await create.click();
+  await expect(dialog.getByText(pending)).toBeVisible();
+  // 槽里存的是实际采用的业务时点（无日期编辑权时为租户当天），不是当时的列表日期。
+  await expect(dialog.getByText(/已按原命令的业务日期打开：/)).toContainText('2026-10-12');
+  const references = () =>
+    gets.filter((url) => url.pathname.startsWith('/api/tenant/job/') && url.pathname !== '/api/tenant/job/posts');
+  await expect.poll(() => references().length).toBeGreaterThan(0);
+  expect(new Set(references().map((url) => url.searchParams.get('asOf')))).toEqual(new Set(['2026-10-12']));
+  expect(posts).toHaveLength(1);
 });
