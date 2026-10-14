@@ -52,7 +52,8 @@ export async function targetAccess(deps: AccessDeps, tx: Tx, tenantId: string, t
   const allowed = async (object: 'record' | 'healthResult' | 'riskResult', operations: readonly string[]) => {
     const resource = codeOf(object);
     for (const operation of operations) {
-      if (!(await authorize({ ...ctx, action: `object.${operation}`, resource, fields: [] }))) return false;
+      const fields = object === 'healthResult' && operation === 'update' ? ['levelId'] : [];
+      if (!(await authorize({ ...ctx, action: `object.${operation}`, resource, fields }))) return false;
     }
     if (!scopes.has(resource))
       scopes.set(resource, await resolveModuleScopeInTransaction({ ...deps, authorize }, ctx, tx, resource));

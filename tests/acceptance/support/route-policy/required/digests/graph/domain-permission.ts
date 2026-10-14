@@ -5,7 +5,44 @@
 import type { Graph } from '../../../evidence-graph.js';
 
 export const GRAPH: Graph = {
+  'packages/domain/src/permission/admin-roles.ts#hasAdminCapability': ['#CAPABILITY_HOLDERS'],
+  'packages/domain/src/permission/admin-roles.ts#isAdminCapability': ['#CAPABILITY_HOLDERS'],
   'packages/domain/src/permission/admin-roles.ts#isAdminRole': ['#ADMIN_ROLES'],
+  'packages/domain/src/permission/decide.ts#BUTTON_RESOURCE': [
+    'packages/domain/src/permission/object-permission.ts#BUTTON_LEVELS',
+  ],
+  'packages/domain/src/permission/decide.ts#allows': [
+    'packages/domain/src/permission/effective.ts#fieldWriteViolations',
+  ],
+  'packages/domain/src/permission/decide.ts#decide': [
+    '#OBJECT_ACTIONS',
+    '#allows',
+    '#decideAdmin',
+    '#decideButton',
+    'packages/domain/src/permission/effective.ts#resolveObjectPermission',
+    'packages/domain/src/permission/module-actions.ts#MODULE_ACTIONS',
+  ],
+  'packages/domain/src/permission/decide.ts#decideAdmin': [
+    'packages/domain/src/permission/admin-roles.ts#hasAdminCapability',
+    'packages/domain/src/permission/admin-roles.ts#isAdminCapability',
+  ],
+  'packages/domain/src/permission/decide.ts#decideButton': [
+    '#BUTTON_RESOURCE',
+    'packages/domain/src/permission/effective.ts#executableButtons',
+    'packages/domain/src/permission/effective.ts#resolveObjectPermission',
+  ],
+  'packages/domain/src/permission/effective.ts#executableButtons': [
+    'packages/domain/src/permission/object-permission.ts#buttonKey',
+  ],
+  'packages/domain/src/permission/effective.ts#mergeObjectPermissions': [
+    '#NONE',
+    'packages/domain/src/permission/object-permission.ts#buttonKey',
+  ],
+  'packages/domain/src/permission/effective.ts#resolveObjectPermission': [
+    '#mergeObjectPermissions',
+    'packages/domain/src/permission/object-permission.ts#isWithinProfileApps',
+  ],
+  'packages/domain/src/permission/module-actions.ts#MODULE_ACTIONS': ['#actions'],
   'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS': [
     'packages/domain/src/approval/transfer-view.ts#TRANSFER_LINKAGE_FIELDS',
     'packages/domain/src/contracts/rules.ts#CONTRACT_FIELDS',
