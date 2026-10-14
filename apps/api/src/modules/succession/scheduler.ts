@@ -4,22 +4,24 @@
  * 每个任务自己按租户时区与幂等键去重（AGENTS §10「定时任务」），这里只负责按间隔串行触发：同一进程上一轮未结束时
  * 不叠加新一轮；一个任务失败只上报，不影响其他任务。没有任务时不起定时器。
  */
+import { runSyncRecovery } from './sync-recovery.js';
 import { runScheduledCalc, SUCCESSION_PRODUCERS } from './calc-jobs.js';
 import type { Db } from '@italent/db';
 
 export type SuccessionJobKind = 'exit_sweep' | 'position_risk' | 'org_stats' | 'org_health' | 'org_health_reset';
 
 export interface SuccessionJob {
-  readonly kind: SuccessionJobKind;
+  readonly kind: SuccessionJobKind | 'sync_recovery';
   run(db: Db, now: Date): Promise<void>;
 }
 
-export const SUCCESSION_JOBS: readonly SuccessionJob[] = (
-  ['exit_sweep', 'position_risk', 'org_stats', 'org_health', 'org_health_reset'] as const
-).map((kind) => ({
-  kind,
-  run: (db, now) => runScheduledCalc(db, now, kind),
-}));
+export const SUCCESSION_JOBS: readonly SuccessionJob[] = [
+  ...(['exit_sweep', 'position_risk', 'org_stats', 'org_health', 'org_health_reset'] as const).map((kind) => ({
+    kind,
+    run: (db: Db, now: Date) => runScheduledCalc(db, now, kind),
+  })),
+  { kind: 'sync_recovery', run: runSyncRecovery },
+];
 
 export interface SuccessionScheduler {
   stop(): Promise<void>;
@@ -31,12 +33,16 @@ export function startSuccessionScheduler(
     readonly intervalMs?: number;
     readonly jobs?: readonly SuccessionJob[];
     readonly clock?: () => Date;
-    readonly onError?: (kind: SuccessionJobKind, error: unknown) => void;
+    readonly onError?: (kind: SuccessionJob['kind'], error: unknown) => void;
   } = {},
 ): SuccessionScheduler {
-  const jobs = options.jobs ?? SUCCESSION_JOBS.filter((job) => SUCCESSION_PRODUCERS.some((p) => p.kind === job.kind));
+  const jobs =
+    options.jobs ??
+    SUCCESSION_JOBS.filter(
+      (job) => job.kind === 'sync_recovery' || SUCCESSION_PRODUCERS.some((p) => p.kind === job.kind),
+    );
   if (!jobs.length) return { stop: async () => undefined };
-  const intervalMs = options.intervalMs ?? 15 * 60_000;
+  const intervalMs = options.intervalMs ?? 60_000;
   if (!Number.isSafeInteger(intervalMs) || intervalMs < 1000)
     throw new RangeError('继任定时任务间隔须为不小于 1000 的毫秒数');
   const clock = options.clock ?? (() => new Date());
