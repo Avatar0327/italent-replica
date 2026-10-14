@@ -1,11 +1,11 @@
 import { Tabs } from 'antd';
 import { useState } from 'react';
-import { CreateCommands } from '../evaluation/CreateEntry.js';
 import { DecisionNote } from '../foundation/DecisionNote.js';
 import { MenuIcon } from '../foundation/ViewHeading.js';
 import { PageState } from '../foundation/PageState.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { useSession } from '../foundation/Session.js';
+import { ConflictCommands } from './conflict.js';
 import { s } from './messages.js';
 import { RECORD } from './RecordForm.js';
 import { RecordList } from './RecordList.js';
@@ -41,7 +41,7 @@ export function SuccessionPage() {
   const active = items.some((item) => item.key === selected) ? selected : items[0]?.key;
   const scope = `${session.tenantId}/${session.identityKey}/${active}`;
   return (
-    <CreateCommands>
+    <ConflictCommands>
       <div className="succession-page">
         <Tabs
           activeKey={active}
@@ -62,6 +62,6 @@ export function SuccessionPage() {
         {active?.endsWith('Map') && <DecisionNote id="succession-maps" />}
         {renderTab(active, scope, loading)}
       </div>
-    </CreateCommands>
+    </ConflictCommands>
   );
 }

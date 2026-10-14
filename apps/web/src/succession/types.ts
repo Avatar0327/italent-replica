@@ -20,8 +20,9 @@ export interface RecordView {
   updatedAt?: string;
   /** 继任类型字段隐藏时缺省（列表为两类混合，见 rules.ts recordKind）。 */
   successionType?: SuccessionType;
-  targetOrgId?: string;
-  targetPositionId?: string;
+  /** 真实投影两个目标 ID 都回，另一类为 null（apps/api succession/projection.ts）。 */
+  targetOrgId?: string | null;
+  targetPositionId?: string | null;
   successorEmployeeId?: string;
   readinessId?: string | null;
   backupType?: string;

@@ -2,7 +2,6 @@ import { Alert, Button, Input, InputNumber, Switch, Table, Tabs, Tag } from 'ant
 import { useState, type ReactNode } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { successionDemo } from '../demo-stubs/succession.js';
-import { CreateCommands } from '../evaluation/CreateEntry.js';
 import { Failure, useRead } from '../evaluation/runtime.js';
 import type { Row } from '../evaluation/model.js';
 import { DecisionNote } from '../foundation/DecisionNote.js';
@@ -11,7 +10,7 @@ import { PageState } from '../foundation/PageState.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { useApiClient } from '../foundation/Session.js';
 import { ListPage } from '../foundation/templates.js';
-import { DeleteButton, useConflictCommand } from './conflict.js';
+import { ConflictCommands, DeleteButton, useConflictCommand } from './conflict.js';
 import { s } from './messages.js';
 import { BASE, READINESS_PATH, ruleLines } from './rules.js';
 import './succession.css';
@@ -54,12 +53,12 @@ export function SuccessionSettingsPage() {
     </Button>
   );
   return (
-    <CreateCommands>
+    <ConflictCommands>
       <div className="succession-page">
         {back}
         {sections[section ?? ''] ?? <PageState kind="not-found" />}
       </div>
-    </CreateCommands>
+    </ConflictCommands>
   );
 }
 

@@ -17,6 +17,7 @@ import {
   preferenceReceipt,
   PREFS_RECEIPT,
   recordDateErrors,
+  recordKind,
   recordQuery,
   ruleLines,
   settingsMenu,
@@ -350,5 +351,21 @@ describe('AC-FE-R3d1 菜单下一层只列有入口对象的设置页', () => {
       '/succession/settings/key-positions',
       '/succession/settings/readiness',
     ]);
+  });
+});
+
+describe('AC-FE-R3d1 继任类型隐藏时按记录自身判断类型', () => {
+  // 真实投影两个目标 ID 都回，另一类为 null（apps/api succession/projection.ts）。
+  const position = { id: 'p', revision: 1, targetOrgId: null, targetPositionId: 'pos', incumbents: [] };
+  const org = { id: 'o', revision: 1, targetOrgId: 'org', targetPositionId: null, personInCharge: null };
+  it('按值是否非空判断：null 的另一类目标不算证据', () => {
+    expect(recordKind(position)).toBe('position');
+    expect(recordKind(org)).toBe('org');
+    expect(recordKind({ id: 'o', revision: 1, targetOrg: { id: 'org', name: '合成组织' } })).toBe('org');
+  });
+  it('两类证据都缺或都有时无法区分，不猜', () => {
+    expect(recordKind({ id: 'x', revision: 1, targetOrgId: null, targetPositionId: null })).toBeUndefined();
+    expect(recordKind({ id: 'x', revision: 1 })).toBeUndefined();
+    expect(recordKind({ id: 'x', revision: 1, targetOrgId: 'org', targetPositionId: 'pos' })).toBeUndefined();
   });
 });

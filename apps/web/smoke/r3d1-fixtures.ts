@@ -36,6 +36,8 @@ export const positionRecord = {
   ...common,
   id: ids.record,
   successionType: 'position',
+  // 真实投影两个目标 ID 都回，另一类为 null（apps/api succession/projection.ts）。
+  targetOrgId: null,
   targetPositionId: ids.position,
   targetPosition: { id: ids.position, name: '合成研发总监', orgId: ids.org },
   incumbents: [{ ...person, employeeId: ids.org, name: '合成现任' }],
@@ -45,6 +47,7 @@ export const orgRecord = {
   id: ids.orgRecord,
   successionType: 'org',
   targetOrgId: ids.org,
+  targetPositionId: null,
   targetOrg: { id: ids.org, name: '合成研发中心' },
   personInCharge: { ...person, name: '合成负责人' },
 };

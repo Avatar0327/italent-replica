@@ -192,14 +192,17 @@ export function ruleLines(
 }
 
 /**
- * 继任类型字段隐藏时列表是两类混合（recordQuery 不带类型参数）：按目标字段推断记录自身的类型，
- * 目标字段也缺省时返回 undefined，页面标“无法区分”，不猜（后端缺口清单）。
+ * 继任类型字段隐藏时列表是两类混合（recordQuery 不带类型参数）：按目标字段的值推断记录自身的类型。
+ * 真实投影两个目标 ID 都回、另一类为 null，所以只认非空值；两类证据都缺或都有时返回 undefined，
+ * 页面标“无法区分”，不猜（后端缺口清单）。
  */
 export function recordKind(row: RecordView): SuccessionType | undefined {
   if (row.successionType) return row.successionType;
-  if (['targetPosition', 'targetPositionId', 'incumbents'].some((key) => key in row)) return 'position';
-  if (['targetOrg', 'targetOrgId', 'personInCharge'].some((key) => key in row)) return 'org';
-  return undefined;
+  const has = (...values: unknown[]) => values.some((value) => value !== undefined && value !== null);
+  const position = has(row.targetPositionId, row.targetPosition, row.incumbents);
+  const org = has(row.targetOrgId, row.targetOrg, row.personInCharge);
+  if (position === org) return undefined;
+  return position ? 'position' : 'org';
 }
 
 export interface MapNode<T> {
