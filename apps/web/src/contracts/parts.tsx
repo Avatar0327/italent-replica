@@ -1,4 +1,4 @@
-import { Alert, Button, Descriptions, Space, Tag } from 'antd';
+import { Alert, Descriptions, Tag } from 'antd';
 import { m } from './messages.js';
 import { value, type Row } from './model.js';
 export function DemoNote({ detail = m.demoHint }: { detail?: string }) {
@@ -13,17 +13,6 @@ export function DemoNote({ detail = m.demoHint }: { detail?: string }) {
         </>
       }
     />
-  );
-}
-export function Coming({ labels = [m.create] }: { labels?: string[] }) {
-  return (
-    <Space>
-      {labels.map((label) => (
-        <Button key={label} disabled title={m.soon}>
-          {label} · {m.soon}
-        </Button>
-      ))}
-    </Space>
   );
 }
 export function Fields({ row, keys, allowed }: { row: Row; keys: string[]; allowed?: readonly string[] }) {

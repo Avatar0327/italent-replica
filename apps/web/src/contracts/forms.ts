@@ -6,7 +6,16 @@ import type { Row } from './model.js';
 export type Operation = 'create' | 'change' | 'renew' | 'terminate';
 export type Mode = 'direct' | 'application';
 export const operations: Operation[] = ['create', 'change', 'renew', 'terminate'];
-const contractFields = ['number', 'companyId', 'typeId', 'termType', 'signingDate', 'effectiveDate', 'termMonths', 'endDate'];
+const contractFields = [
+  'number',
+  'companyId',
+  'typeId',
+  'termType',
+  'signingDate',
+  'effectiveDate',
+  'termMonths',
+  'endDate',
+];
 /** 不能为 null 的字段：缺值时不发送，由后端沿用原合同或报必填。 */
 const required = new Set(['number', 'companyId', 'typeId', 'termType', 'effectiveDate']);
 
@@ -78,7 +87,9 @@ export function normalize(values: Row): Row {
 }
 export function commandFields(body: Row): Row {
   return Object.fromEntries(
-    Object.entries(normalize(body)).filter(([key, input]) => input !== undefined && !(input === null && required.has(key))),
+    Object.entries(normalize(body)).filter(
+      ([key, input]) => input !== undefined && !(input === null && required.has(key)),
+    ),
   );
 }
 
