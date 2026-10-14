@@ -83,7 +83,8 @@ export async function saveResource(
 ) {
   return api.request<Row>(`${resourcePath(resource)}${original ? `/${original.id.toLowerCase()}` : ''}`, {
     method: original ? 'PATCH' : 'POST',
-    command: command ?? newCommand(body, original?.revision ?? 0),
+    // 内核固定命令 ID 与版本；请求体用这里转换后的（清空发显式 null）
+    command: command ? { ...command, body } : newCommand(body, original?.revision ?? 0),
   });
 }
 /** 候选逐页读取，不把未加载的尾页伪装成完整集合。 */
