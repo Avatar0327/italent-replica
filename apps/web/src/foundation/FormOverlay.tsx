@@ -4,6 +4,7 @@ import { ApiError } from './client.js';
 import { ui } from './messages.js';
 import { PermissionField } from './Permissions.js';
 import type { FieldAccess } from './permission-model.js';
+import { FormLock, LockedField } from './forms/FormLock.js';
 import { CommandStatus } from './forms/CommandStatus.js';
 import type { CommandForm } from './forms/useCommandForm.js';
 import { useSession } from './Session.js';
@@ -78,7 +79,7 @@ function OpenForm(props: FormOverlayProps) {
   const [form] = Form.useForm();
   const { busy, error, submit } = useSubmission(props, form);
   const submission = props.submission;
-  const locked = busy || submission?.locked;
+  const locked = busy || !!submission?.locked;
   useEffect(() => {
     if (submission?.state?.values) form.setFieldsValue(submission.state.values);
   }, [form, submission?.state?.values]);
@@ -94,17 +95,7 @@ function OpenForm(props: FormOverlayProps) {
   );
   const content = (
     <>
-      {submission && (
-        <CommandStatus
-          submission={submission}
-          labels={Object.fromEntries(
-            props.groups
-              .flatMap((g) => g.fields)
-              .filter((f) => f.access.visible)
-              .map((f) => [f.name, f.label]),
-          )}
-        />
-      )}
+      {submission && <CommandStatus submission={submission} labels={formLabels(props.groups)} />}
       {!!error && (!submission || !submission.state?.error) && (
         <Alert
           type="error"
@@ -117,9 +108,15 @@ function OpenForm(props: FormOverlayProps) {
           }
         />
       )}
-      <Form form={form} layout="vertical" initialValues={props.initialValues} onFinish={submit} disabled={locked}>
-        <FormGroups groups={props.groups} initialValues={props.initialValues} mode={props.mode} />
-      </Form>
+      <FormLock locked={locked}>
+        <Form form={form} layout="vertical" initialValues={props.initialValues} onFinish={submit} disabled={locked}>
+          <FormGroups
+            groups={props.groups}
+            values={submission?.state?.latest?.values ?? props.initialValues}
+            mode={props.mode}
+          />
+        </Form>
+      </FormLock>
     </>
   );
   return props.mode === 'modal' ? (
@@ -152,7 +149,7 @@ function OpenForm(props: FormOverlayProps) {
   );
 }
 
-function FormGroups(props: Pick<FormOverlayProps, 'groups' | 'initialValues' | 'mode'>) {
+function FormGroups(props: Pick<FormOverlayProps, 'groups' | 'mode'> & { values?: Record<string, unknown> }) {
   return (
     <>
       {props.groups.map((group) => (
@@ -164,13 +161,13 @@ function FormGroups(props: Pick<FormOverlayProps, 'groups' | 'initialValues' | '
               .map((field) =>
                 field.access.editable ? (
                   <Form.Item key={field.name} name={field.name} label={field.label} rules={field.rules}>
-                    {field.control}
+                    <LockedField>{field.control}</LockedField>
                   </Form.Item>
                 ) : (
                   <Form.Item key={field.name} label={field.label}>
                     <PermissionField
                       access={field.access}
-                      value={field.display ?? String(props.initialValues?.[field.name] ?? '—')}
+                      value={field.display ?? String(props.values?.[field.name] ?? '—')}
                     >
                       {field.control}
                     </PermissionField>
@@ -181,5 +178,14 @@ function FormGroups(props: Pick<FormOverlayProps, 'groups' | 'initialValues' | '
         </section>
       ))}
     </>
+  );
+}
+
+function formLabels(groups: FormGroup[]) {
+  return Object.fromEntries(
+    groups
+      .flatMap((g) => g.fields)
+      .filter((f) => f.access.visible)
+      .map((f) => [f.name, f.label]),
   );
 }

@@ -3,8 +3,9 @@ import { useEffect, useState } from 'react';
 import { checkActivityChains, type ChainDraft } from '@italent/domain';
 import { usePermissions } from '../foundation/Permissions.js';
 import { ApiError } from '../foundation/client.js';
-import { ActivityControl, Chains, Conditions, EV } from './ActivityFields.js';
+import { ActivityControl, Chains, Conditions, editableChains, EV } from './ActivityFields.js';
 import { useRecordForm } from './useRecordForm.js';
+import { FormLock, LockedField } from '../foundation/forms/FormLock.js';
 import { CommandStatus } from '../foundation/forms/CommandStatus.js';
 import { evaluationPatch, records, validateDates, validateConditions, type Row } from './model.js';
 import { m, textValue } from './messages.js';
@@ -85,7 +86,8 @@ function useWizard({ row, close, saved }: WizardProps) {
       if (writer.locked) return;
       setLocalError('');
       await form.validateFields();
-      const values = form.getFieldsValue(true) as Record<string, unknown>;
+      const values = { ...form.getFieldsValue(true) } as Record<string, unknown>;
+      if (locked) values.chains = editableChains(current?.chains, values.chains);
       if (!validateDates(values.startDate as string, values.endDate as string)) throw new Error(m.dateInvalid);
       const editable = groups.flat().filter((key) => field(key).editable);
       const body = evaluationPatch(current ?? {}, values, editable);
@@ -126,9 +128,11 @@ export function ActivityWizard(props: WizardProps) {
       {!canCreate && <Alert type="warning" message={m.restricted} />}
       {localError && <Alert type="error" message={localError} />}
       <CommandStatus submission={writer} labels={m} />
-      <Form form={form} layout="vertical" initialValues={initial} disabled={writer.busy || writer.locked}>
-        <WizardFields state={state} row={row} />
-      </Form>
+      <FormLock locked={writer.locked}>
+        <Form form={form} layout="vertical" initialValues={initial} disabled={writer.locked}>
+          <WizardFields state={state} />
+        </Form>
+      </FormLock>
     </Drawer>
   );
 }
@@ -164,7 +168,7 @@ function WizardFooter({ state, close }: { state: ReturnType<typeof useWizard>; c
   );
 }
 
-function WizardFields({ state, row }: { state: ReturnType<typeof useWizard>; row?: Row }) {
+function WizardFields({ state }: { state: ReturnType<typeof useWizard> }) {
   const { step, field } = state;
   return (
     <>
@@ -188,7 +192,11 @@ function WizardFields({ state, row }: { state: ReturnType<typeof useWizard>; row
                       : []
                   }
                 >
-                  {wizardControl(key, state, row)}
+                  {field(key).editable ? (
+                    <LockedField>{wizardControl(key, state)}</LockedField>
+                  ) : (
+                    wizardControl(key, state)
+                  )}
                 </Form.Item>
               ))}
           </div>
@@ -218,12 +226,18 @@ function validateChains(body: Record<string, unknown>, values: Record<string, un
   }
 }
 
-function wizardControl(key: string, state: ReturnType<typeof useWizard>, row?: Row) {
+function wizardControl(key: string, state: ReturnType<typeof useWizard>) {
   const { field, writer, locked } = state;
+  const row = writer.current;
   const disabled = !field(key).editable || writer.locked;
   if (key === 'chains')
     return (
-      <Chains disabled={disabled} locked={locked} {...(!field(key).editable ? { value: records(row?.chains) } : {})} />
+      <Chains
+        latest={row?.chains}
+        disabled={disabled}
+        locked={locked}
+        {...(!field(key).editable ? { value: records(row?.chains) } : {})}
+      />
     );
   if (key === 'conditions')
     return <Conditions disabled={disabled} {...(!field(key).editable ? { value: records(row?.conditions) } : {})} />;

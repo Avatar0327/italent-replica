@@ -1,4 +1,6 @@
 import type { ReactNode } from 'react';
+import { editableRows } from '../foundation/forms/values.js';
+import { useFormLock } from '../foundation/forms/FormLock.js';
 import { Alert, Checkbox, Input, InputNumber, Select, Table } from 'antd';
 import { usePermissions } from '../foundation/Permissions.js';
 import { FormOverlay, type FormField } from '../foundation/FormOverlay.js';
@@ -29,9 +31,9 @@ export function QuestionnaireEditor({
   const contentFields = ['roles', 'scales', 'dimensions', 'questions'];
   let content: ReturnType<typeof questionnaireContent> | undefined;
   let incomplete = false;
-  if (row && contentFields.every((key) => permission.field(key).visible)) {
+  if (current && contentFields.every((key) => permission.field(key).visible)) {
     try {
-      content = questionnaireContent(row);
+      content = questionnaireContent(current);
     } catch {
       incomplete = true;
     }
@@ -45,7 +47,7 @@ export function QuestionnaireEditor({
         visible: true,
         editable: contentFields.every((key) => permission.field(key).editable),
       },
-      control: <ContentEditor used={current?.status === 'used'} />,
+      control: <ContentEditor used={current?.status === 'used'} latest={content} />,
       display: common.readOnly,
     });
   return (
@@ -61,8 +63,12 @@ export function QuestionnaireEditor({
         groups={[{ title: m.basic, fields }]}
         onClose={close}
         onSubmit={async (values) => {
+          const draft =
+            current?.status === 'used' && content && values.content
+              ? { ...values, content: editableContent(content, values.content as Record<string, unknown>) }
+              : values;
           await writer.save(
-            values,
+            draft,
             fields.filter((f) => f.access.visible && f.access.editable).map((f) => f.name),
             row ? 'PUT' : 'POST',
           );
@@ -78,12 +84,18 @@ function ContentEditor({
   value,
   onChange,
   used,
+  latest,
 }: {
+  latest?: Record<string, unknown>;
   value?: Record<string, unknown>;
   onChange?: (value: unknown) => void;
   used: boolean;
 }) {
-  const data = value ?? { roles: [], scales: [], dimensions: [], questions: [] };
+  const lock = useFormLock();
+  onChange = lock.guard(onChange);
+  const fixed = useFormLock(used);
+  const draft = value ?? { roles: [], scales: [], dimensions: [], questions: [] };
+  const data: Record<string, unknown> = used && latest ? editableContent(latest, draft) : draft;
   const update = (key: string, next: unknown) => onChange?.({ ...data, [key]: next });
   const create = (kind: string) => {
     const defaults: Record<string, object> = {
@@ -98,9 +110,9 @@ function ContentEditor({
     <Select
       allowClear
       value={selected as string}
-      disabled={used}
+      disabled={fixed.disabled}
       className="r3b-wide"
-      onChange={(v) => set(v ?? null)}
+      onChange={fixed.guard((v) => set(v ?? null))}
       options={records(data[source]).map((item) => ({ value: String(item.key), label: textValue(item.name) }))}
     />
   );
@@ -180,6 +192,7 @@ interface ItemProps {
   used: boolean;
 }
 function ScaleOptions({ item, set, used }: ItemProps) {
+  const fixed = useFormLock(used);
   return (
     <Repeated
       value={records(item.options)}
@@ -195,14 +208,18 @@ function ScaleOptions({ item, set, used }: ItemProps) {
           </label>
           <label>
             {m.value}
-            <InputNumber value={option.value as number} onChange={(v) => setOption('value', v)} disabled={used} />
+            <InputNumber
+              value={option.value as number}
+              onChange={fixed.guard((v) => setOption('value', v))}
+              disabled={fixed.disabled}
+            />
           </label>
           {['notScored', 'remarkRequired'].map((key) => (
             <Checkbox
               key={key}
               checked={option[key] === true}
-              disabled={used}
-              onChange={(e) => setOption(key, e.target.checked)}
+              disabled={fixed.disabled}
+              onChange={fixed.guard((e) => setOption(key, e.target.checked))}
             >
               {m[key as 'notScored']}
             </Checkbox>
@@ -223,6 +240,7 @@ function ContentFields({
   kind: string;
   selector(source: string, selected: unknown, set: (v: unknown) => void): ReactNode;
 }) {
+  const fixed = useFormLock(used);
   return (
     <>
       {kind === 'roles' ? (
@@ -231,8 +249,8 @@ function ContentFields({
           <RemoteSelect
             path="/api/tenant/survey360/roles"
             value={item.roleId as string}
-            onChange={(v) => set('roleId', v)}
-            disabled={used}
+            onChange={fixed.guard((v) => set('roleId', v))}
+            disabled={fixed.disabled}
           />
         </label>
       ) : (
@@ -294,4 +312,23 @@ function questionnaireValues(row: Row) {
     // 内容不完整时仍允许改有权编辑的头部字段；不凭空补出内容。
     return row;
   }
+}
+
+function editableContent(latest: Record<string, unknown>, draft: Record<string, unknown>) {
+  const rows = (key: string, fields: string[]) =>
+    editableRows(records(latest[key]), records(draft[key]), 'key', fields);
+  return {
+    roles: rows('roles', ['weight']),
+    dimensions: rows('dimensions', ['name', 'definition', 'weight']),
+    questions: rows('questions', ['text', 'weight']),
+    scales: rows('scales', ['name', 'options']).map((scale) => ({
+      ...scale,
+      options: editableRows(
+        records(records(latest.scales).find((s) => s.key === scale.key)?.options),
+        records(scale.options),
+        'key',
+        ['label'],
+      ),
+    })),
+  };
 }

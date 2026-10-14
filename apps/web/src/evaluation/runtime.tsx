@@ -2,6 +2,7 @@ import { Alert, Button, Select, Space } from 'antd';
 import { useEffect, useRef, useState } from 'react';
 import { ApiError, newCommand, type PageResult } from '../foundation/client.js';
 import { useApiClient, useSession } from '../foundation/Session.js';
+import { useFormLock } from '../foundation/forms/FormLock.js';
 import { m, textValue } from './messages.js';
 import type { Row } from './model.js';
 
@@ -82,10 +83,11 @@ export function RemoteSelect(props: {
   label?: string;
   usable?: (row: Row) => boolean;
 }) {
+  const lock = useFormLock(props.disabled);
   const [page, setPage] = useState(1);
   const [items, setItems] = useState<Row[]>([]);
   const path = `${props.path}${props.path.includes('?') ? '&' : '?'}page=${page}&pageSize=200`;
-  const state = useRead<PageResult<Row>>(props.disabled ? undefined : path);
+  const state = useRead<PageResult<Row>>(lock.disabled ? undefined : path);
   useEffect(() => {
     setItems([]);
     setPage(1);
@@ -107,15 +109,15 @@ export function RemoteSelect(props: {
         allowClear
         mode={props.multiple ? 'multiple' : undefined}
         value={props.value}
-        onChange={props.onChange}
+        onChange={lock.guard(props.onChange)}
         options={options}
         loading={state.loading}
-        disabled={props.disabled}
+        disabled={lock.disabled}
         className="r3b-wide"
       />
       <Failure error={state.error} retry={state.reload} />
       {!props.path.startsWith('/api/tenant/survey360/') && state.data?.items.length === 200 && (
-        <Button type="link" onClick={() => setPage(page + 1)}>
+        <Button type="link" disabled={lock.disabled} onClick={lock.guard(() => setPage(page + 1))}>
           {m.more}
         </Button>
       )}
