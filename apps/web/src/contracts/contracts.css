@@ -101,3 +101,39 @@
     grid-template-columns: repeat(3, 1fr);
   }
 }
+.contract-range {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.contract-pagination {
+  justify-content: flex-end;
+}
+.contract-settings {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 24px;
+  margin: 16px 0 0;
+}
+.contract-settings dt {
+  color: #8c9199;
+}
+.contract-settings dd {
+  margin: 4px 0 0;
+}
+.rule-details {
+  width: 100%;
+}
+.rule-details label {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.contract-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.contract-section-title h2 {
+  margin: 0 0 12px;
+}

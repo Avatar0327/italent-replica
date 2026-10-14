@@ -16,16 +16,74 @@ export const configObjects = {
   settings: 'TenantBase.ContractSettings',
 };
 export type Config = keyof typeof configObjects;
-export type Filters = Record<string, string | string[] | undefined>;
-export function listPath(view: View, page: number, days: number) {
-  const query = new URLSearchParams({ view, page: String(page), pageSize: '15' });
+/**
+ * 配置页写入口按对象数据操作判断，不看按钮：后端配置路由只校验数据操作（policy.ts NO_CONFIG_BUTTON / NO_MASTER_BUTTON），
+ * 配置类对象的 /me/objects 恒返回空按钮；删除规则后端按 update 校验（配置对象没有 delete）。
+ */
+export function configAccess(permission?: { summary?: true; dataOperations: Readonly<Record<string, boolean>> }) {
+  const operations = permission && !permission.summary ? permission.dataOperations : {};
+  return { create: operations.create === true, update: operations.update === true };
+}
+export type ListQuery = Record<string, string | undefined>;
+/** 后端列表参数白名单（list-query.ts）；入职缺失只认员工、关键字、组织、类型与按姓名排序（applicableQuery）。 */
+export const filterKeys = [
+  'employeeId',
+  'keyword',
+  'orgId',
+  'includeChildren',
+  'typeId',
+  'companyId',
+  'status',
+  'termType',
+  'effectiveFrom',
+  'effectiveTo',
+  'endFrom',
+  'endTo',
+  'sort',
+  'order',
+];
+const missingKeys = ['employeeId', 'keyword', 'orgId', 'includeChildren', 'typeId', 'sort', 'order'];
+export const sortFields = ['endDate', 'effectiveDate', 'signingDate', 'name', 'number'];
+export function listQuery(view: View, filters: ListQuery): ListQuery {
+  const keys = view === 'missing' ? missingKeys : filterKeys;
+  const query: ListQuery = Object.fromEntries(keys.filter((key) => filters[key]).map((key) => [key, filters[key]]));
+  if (view === 'missing' && query.sort !== 'name') delete query.sort;
+  if (!query.orgId) delete query.includeChildren;
+  if (!query.sort) delete query.order;
+  return query;
+}
+/** 区间开始晚于截止时不发请求，避免把空结果误当“没有数据”。 */
+export function rangeErrors(filters: ListQuery) {
+  return (
+    [
+      ['effectiveFrom', 'effectiveTo'],
+      ['endFrom', 'endTo'],
+    ] as const
+  )
+    .filter(([from, to]) => filters[from] && filters[to] && filters[from]! > filters[to]!)
+    .map(([from]) => from);
+}
+/** 合同模块接口路径集中在此（apps/api/src/modules/contracts/routes.ts），各组件不再各写一份。 */
+const base = '/api/tenant/contracts';
+export const contractApi = {
+  list: base,
+  records: `${base}/records`,
+  commands: `${base}/commands`,
+  settings: `${base}/settings`,
+  types: `${base}/master-data/types`,
+  companies: `${base}/master-data/companies`,
+  rules: `${base}/rules`,
+} as const;
+/** 筛选与排序参数见 apps/api/src/modules/contracts/list-query.ts；空值不发送。 */
+export function listPath(view: View, page: number, days: number, filters: ListQuery = {}, pageSize = 15) {
+  const query = new URLSearchParams({ view, page: String(page), pageSize: String(pageSize) });
   if (view === 'expiring') query.set('days', String(days));
-  return `/api/tenant/contracts?${query}`;
+  for (const [key, input] of Object.entries(filters)) if (input) query.set(key, input);
+  return `${contractApi.list}?${query}`;
 }
 export function canOpenRecord(row: Row, view: View) {
   return (
     typeof row.id === 'string' &&
-    !String(row.id).startsWith('demo-') &&
     view !== 'missing' &&
     view !== 'in_review' &&
     row.rowType !== 'request' &&
@@ -40,6 +98,22 @@ export function value(input: unknown, key: string): string {
   const labels = Object.hasOwn(m.values, key) ? m.values[key] : undefined;
   return labels && Object.hasOwn(labels, String(input)) ? labels[String(input)]! : String(input);
 }
+/** 后端尚未提供的列（#316 姓名 / 工号 / 邮箱、电子协议签署）：保留原站列位，内容留空。 */
+export const stubColumns = new Set([
+  'email',
+  'signature',
+  'electronicFile',
+  'signatureRecords',
+  'attachment',
+  'approver',
+]);
+/** 入职缺失行的任职摘要（queries.ts missingContracts）：列键 → employment 字段。 */
+export const employmentColumns: Record<string, string> = {
+  entryDate: 'entryDate',
+  department: 'departmentId',
+  job: 'postId',
+  post: 'positionId',
+};
 const common = ['name', 'email', 'number', 'companyId', 'typeId', 'termType', 'effectiveDate'];
 export function columnKeys(view: View) {
   if (view === 'missing') return ['name', 'email', 'code', 'entryDate', 'department', 'job', 'post'];
