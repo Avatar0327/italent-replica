@@ -6,7 +6,8 @@ for (const entry of [
   { path: '/approval', menu: '审批中心', note: '审批中心左侧分待处理', heading: '待处理' },
 ]) {
   test(`AC-FE-R1c-20 合 main 保留 ${entry.path} 的页面、菜单和注释`, async ({ page }) => {
-    await page.goto('/staff');
+    // 从不同地址切换，避免 waitForURL 在身份跳转前因旧地址已匹配而提前结束。
+    await page.goto('/approval');
     await page.getByLabel('切换演示身份').selectOption(user);
     await page.waitForURL('**/staff');
     await page.goto(entry.path);
