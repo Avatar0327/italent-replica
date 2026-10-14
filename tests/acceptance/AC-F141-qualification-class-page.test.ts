@@ -27,6 +27,8 @@ describe('AC-F141-qualification-class-page 任职分类维护页登记（DEC-500
     for (const key of [...resource.columns, ...resource.fields.map((f) => f.key)])
       expect(known.has(key), key).toBe(true);
     expect(resource.fields.find((f) => f.key === 'name')?.required).toBe(true);
+    // 后端 categoryClassCreate 的编码必填（input.ts:35），只填名称不能通过前端校验
+    expect(resource.fields.find((f) => f.key === 'code')?.required).toBe(true);
     const parent = resource.fields.find((f) => f.key === 'parentId')!;
     expect(parent).toMatchObject({ kind: 'select', createOnly: true, nullable: true });
     expect(parent.source).toBe('/api/tenant/qualification/category-classes');
