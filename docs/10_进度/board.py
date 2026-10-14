@@ -267,7 +267,35 @@ def progress(d, live):
         os.makedirs(os.path.dirname(PROG), exist_ok=True)
         json.dump(rec, open(PROG, "w"))
     print(f"progress {done}/{tot}" + (f" prev {rec['prev'][0]}/{rec['prev'][1]} @{rec['prev'][2]}" if rec.get("prev") else ""))
-    return {"done": done, "tot": tot, "prev": rec.get("prev"), "since": rec["cur"][2]}
+    return {"done": done, "tot": tot, "prev": rec.get("prev"), "since": rec["cur"][2], "ms": milestones(d, merged)}
+
+
+MS_DEF = {"M1": {"t": "M1 · R1+R3 可演示", "dl": "2026-10-15"}, "M2": {"t": "M2 · R1+R2+R3 完整演示版（在 M1 上加 R2）", "dl": "2026-10-19"}}
+
+
+def milestones(d, merged):
+    """用户 10-14 起要求按两个里程碑分开统计（04 转达）：步骤的 ms 字段优先；否则 R2E 线归 M2，20 天蓝色模块（M-xxx）不计，其余归 M1。
+    已合并 = 步骤 done 或其 PR 已合并；在审 / 返工 = 有 PR 未合并或已派（assigned / ready）；未开工 = 其余（todo / wait）。暂停项不计。"""
+    out = {k: {"t": v["t"], "dl": v["dl"], "done": 0, "act": 0, "todo": 0, "tot": 0} for k, v in MS_DEF.items()}
+    for ln in (d.get("main") or {}).get("lines", []):
+        for g in ln.get("groups", []):
+            for st in g["steps"]:
+                if st.get("s") == "paused":
+                    continue
+                k = st.get("ms") or ("M2" if ln.get("id") == "R2E" else None if str(st.get("k", "")).startswith("M-") else "M1")
+                if k not in out:
+                    continue
+                isdone = st.get("s") == "done" or (st.get("pr") and str(st["pr"]) in merged)
+                m = out[k]
+                m["tot"] += 1
+                if isdone:
+                    m["done"] += 1
+                elif st.get("pr") or st.get("s") in ("assigned", "ready"):
+                    m["act"] += 1
+                else:
+                    m["todo"] += 1
+    out["paused"] = sorted(i.get("pr") for i in d.get("items", []) if "DEC-475" in str(i.get("now", "")) and i.get("pr") and i.get("pr") != 100)
+    return out
 
 
 def build(d, nosync):
