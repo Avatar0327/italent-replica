@@ -1,14 +1,7 @@
 import { Alert, Button, Descriptions, Space, Tabs, Tooltip, type TableColumnsType } from 'antd';
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router';
-import {
-  DetailPage,
-  ListPage,
-  PageState,
-  pageQuery,
-  useSession,
-  type PageResult,
-} from '../../foundation/index.js';
+import { DetailPage, ListPage, PageState, pageQuery, useSession, type PageResult } from '../../foundation/index.js';
 import { PersonAvatar } from '../../shared/PersonAvatar.js';
 import { ApplicationDrawer } from './ApplicationDrawer.js';
 import type { Profile, OwnRecord, Application } from '../../employee-self-service/types.js';

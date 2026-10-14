@@ -214,10 +214,6 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/permission/data-scope-schemas.ts#scopeOrgRefBody': [
     'packages/domain/src/contracts/org-hierarchy.ts#ORG_DIMENSIONS',
   ],
-  'apps/api/src/modules/permission/employee-identity.ts#employeeIdentityProfileId': [
-    'apps/api/src/modules/permission/scope-hierarchy.ts#scopeRows',
-    'packages/domain/src/platform/employee-self-service.ts#EMPLOYEE_SELF_SERVICE_CODE',
-  ],
   'apps/api/src/modules/permission/employment-replay.ts#assertScope': [
     'apps/api/src/modules/employment/visibility.ts#isEmploymentRecordVisible',
     'apps/api/src/modules/permission/module-access.ts#scopeAllowsInTransaction',
@@ -707,7 +703,6 @@ export const GRAPH: Graph = {
     'packages/domain/src/permission/admin-roles.ts#isAdminRole',
   ],
   'apps/api/src/modules/permission/subject.ts#loadGrantedObjectPermissions': [
-    'apps/api/src/modules/permission/employee-identity.ts#employeeIdentityProfileId',
     'apps/api/src/modules/permission/manager-identity.ts#MANAGER_PROFILE_CODE',
     'apps/api/src/modules/permission/manager-identity.ts#defaultManagerPermissions',
     'apps/api/src/modules/permission/manager-identity.ts#managerIdentity',

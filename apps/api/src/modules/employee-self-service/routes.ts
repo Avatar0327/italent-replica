@@ -11,7 +11,8 @@ import type { CommandGuard } from '../../commands.js';
 import {
   grantedSelfServiceButtons,
   requireSelfServiceButtons,
-  type SelfAccess, selfAccess,
+  type SelfAccess,
+  selfAccess,
   transferFieldAccess,
 } from './access.js';
 import { applicationStatus, currentRecord, ownApplication, ownApplications, ownRecords } from './queries.js';

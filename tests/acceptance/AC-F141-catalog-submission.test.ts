@@ -73,14 +73,14 @@ afterEach(async () => {
 
 const text = () => document.body.textContent ?? '';
 const buttonOf = (label: string) =>
-  [...document.body.querySelectorAll('button')].find((b) => b.textContent?.replace(/\s/g, '') === label);
+  Array.from(document.body.querySelectorAll('button')).find((b) => b.textContent?.replace(/\s/g, '') === label);
 const click = (element: Element | undefined) => act(async () => (element as HTMLElement).click());
 const type = (input: HTMLInputElement, value: string) =>
   act(async () => {
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value);
     input.dispatchEvent(new Event('input', { bubbles: true }));
   });
-const menu = (label: string) => [...document.body.querySelectorAll('li')].find((li) => li.textContent === label);
+const menu = (label: string) => Array.from(document.body.querySelectorAll('li')).find((li) => li.textContent === label);
 
 async function openPage() {
   await act(async () => {
@@ -103,11 +103,9 @@ async function openCreate() {
   await vi.waitFor(() => expect(document.body.querySelector('.ant-drawer input, .ant-modal input')).not.toBeNull());
 }
 async function fillAndSave(name = '分类甲', code = 'CLASS_A') {
-  const inputs = [
-    ...document.body.querySelectorAll<HTMLInputElement>(
-      '.ant-drawer input[type="text"], .ant-modal input[type="text"]',
-    ),
-  ];
+  const inputs = Array.from(
+    document.body.querySelectorAll<HTMLInputElement>('.ant-drawer input[type="text"], .ant-modal input[type="text"]'),
+  );
   await type(inputs[0]!, name);
   await type(inputs[1]!, code);
   await click(buttonOf('保存'));
@@ -161,7 +159,7 @@ it('AC-F141 服务器明确拒绝：保留输入并显示原因，改正后可�
   await fillAndSave('分类乙', 'CLASS_B');
   await vi.waitFor(() => expect(posts).toHaveLength(1));
   await vi.waitFor(() => expect(text()).toContain('分类编码已存在'));
-  const inputs = [...document.body.querySelectorAll<HTMLInputElement>('.ant-drawer input[type="text"]')];
+  const inputs = Array.from(document.body.querySelectorAll<HTMLInputElement>('.ant-drawer input[type="text"]'));
   expect(inputs[0]!.value).toBe('分类乙');
   expect(buttonOf('保存')?.hasAttribute('disabled')).toBe(false);
   await type(inputs[1]!, 'CLASS_C');

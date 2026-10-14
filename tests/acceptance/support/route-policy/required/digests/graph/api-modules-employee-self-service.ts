@@ -12,6 +12,12 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/avatar/references.ts#employeeAvatars',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
+  'apps/api/src/modules/employee-self-service/access.ts#grantedSelfServiceButtons': [
+    'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT',
+    'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
+    'packages/domain/src/permission/decide.ts#buttonResource',
+    'packages/domain/src/platform/employee-self-service.ts#EMPLOYEE_SELF_SERVICE_BUTTONS',
+  ],
   'apps/api/src/modules/employee-self-service/access.ts#requireSelfServiceButtons': [
     'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT',
     'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
@@ -155,6 +161,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/job/context.ts#uuidParam',
   ],
   'apps/api/src/modules/employee-self-service/routes.ts#route:GET /profile': [
+    'apps/api/src/modules/employee-self-service/access.ts#grantedSelfServiceButtons',
     'apps/api/src/modules/employee-self-service/access.ts#selfAccess',
     'apps/api/src/modules/employee-self-service/disclosure.ts#discloseOwnRecord',
     'apps/api/src/modules/employee-self-service/queries.ts#currentRecord',
