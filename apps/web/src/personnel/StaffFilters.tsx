@@ -1,9 +1,9 @@
-import { Alert, Button, Checkbox, Drawer, Form, Input, Select, Space, Table, Tag } from 'antd';
+import { Alert, Form, Input, Select, Table, Tag } from 'antd';
 import { useState } from 'react';
 import { FilterDrawer } from '../foundation/FilterDrawer.js';
 import { DecisionNote } from '../foundation/DecisionNote.js';
 import { filterExamples, previewFilters, type DemoFilters } from '../demo-stubs/personnel.js';
-import { columnChoices, type Filters } from './model.js';
+import type { Filters } from './model.js';
 import { m } from './messages.js';
 
 export function StaffFilters({
@@ -65,65 +65,6 @@ export function StaffFilters({
       </Form>
       <DemoFilterPreview demo={demo} onChange={setDemo} />
     </FilterDrawer>
-  );
-}
-
-export function ColumnSettings({
-  value,
-  allowed,
-  onApply,
-  onClose,
-}: {
-  value: string[];
-  allowed: readonly string[];
-  onApply(value: string[]): void;
-  onClose(): void;
-}) {
-  const [draft, setDraft] = useState(value);
-  // 不用 Checkbox.Group：它把受控 value 镜像进内部 state，点击后要等 effect 再渲染一轮，
-  // 这一轮之前界面仍是旧勾选，连续点击会拿旧 value 覆盖前一次操作。逐项受控 + 函数式更新在点击事件内即时生效。
-  const toggle = (key: string, checked: boolean) =>
-    setDraft((previous) => columnChoices.filter((choice) => (choice === key ? checked : previous.includes(choice))));
-  return (
-    <Drawer
-      open
-      width={380}
-      title={m.columns}
-      onClose={onClose}
-      closable={{ placement: 'end' }}
-      footer={
-        <Space>
-          <Button onClick={onClose}>{m.cancel}</Button>
-          <Button
-            type="primary"
-            onClick={() => {
-              onApply(draft);
-              onClose();
-            }}
-          >
-            {m.confirm}
-          </Button>
-        </Space>
-      }
-    >
-      <p>{m.columnHint}</p>
-      <div className="staff-column-options">
-        {columnChoices
-          .filter((key) => allowed.includes(key))
-          .map((key) => (
-            <Checkbox
-              key={key}
-              value={key}
-              disabled={key === 'name'}
-              checked={draft.includes(key)}
-              onChange={(event) => toggle(key, event.target.checked)}
-            >
-              {m.labels[key]}
-            </Checkbox>
-          ))}
-      </div>
-      <p className="staff-muted">{m.localColumns}</p>
-    </Drawer>
   );
 }
 
