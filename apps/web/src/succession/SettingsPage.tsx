@@ -277,7 +277,7 @@ function dictionaryColumns(kind: Kind, permission: Access, { edit, settled, popu
                 )}
                 {canDelete && (
                   <DeleteButton
-                    path={`${dictionaries[kind].path}/${row.id}`}
+                    base={dictionaries[kind].path}
                     row={row}
                     settled={settled}
                     button={{ type: 'link', danger: true }}

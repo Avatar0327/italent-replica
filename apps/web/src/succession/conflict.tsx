@@ -68,7 +68,8 @@ export function useConflictCommand(resource: string, current: Snapshot, read?: (
 }
 
 interface DeleteProps {
-  path: string;
+  /** 集合路径：删除发到 {base}/{row.id}。 */
+  base: string;
   row?: { id: string; revision: number };
   /** 删除收尾（成功或失败）都回调：调用方刷新列表，冲突后重选即按新版本删除。 */
   settled(error?: unknown): void;
@@ -86,12 +87,13 @@ export function DeleteButton(props: DeleteProps) {
   );
 }
 function ArmedDelete({
-  path,
+  base,
   row,
   settled,
   button,
   title = s.deleteConfirm,
 }: DeleteProps & { row: { id: string; revision: number } }) {
+  const path = `${base}/${row.id}`;
   const writer = useConflictCommand(path, { id: row.id, revision: row.revision, values: {} });
   const confirm = async () => {
     try {

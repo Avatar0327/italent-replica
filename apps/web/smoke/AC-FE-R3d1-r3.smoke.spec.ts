@@ -10,6 +10,7 @@ import {
   mockSuccession,
   objectAccess,
   objectFields,
+  goMenu,
   openMenu,
   orgRecord,
   positionRecord,
@@ -345,7 +346,7 @@ test('AC-FE-R3d1-23 规则只读展示限定条件：指定人员值、盘点字
   await expect(page.locator('.succession-rules').first()).toContainText(
     '1. 现任人员 employee_id 等于 合成甲 的 人数 大于等于 1',
   );
-  await page.getByRole('menuitem', { name: '健康度规则设置', exact: true }).click();
+  await goMenu(page, '健康度规则设置');
   await page.getByRole('tab', { name: '继任地图健康度', exact: true }).click();
   await expect(page.locator('.succession-rules').first()).toContainText(
     '1. 自定义人员范围「合成青年人才」 盘点字段 calibrated_perf 不为空 的 盘点结果占比 大于等于 20%',

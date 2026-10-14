@@ -290,23 +290,27 @@ export function watchErrors(page: Page) {
 // antd 会在两个汉字的按钮文字中间插空格（“新 建”），按钮名按字间可有空白匹配。
 export const button = (page: Page | Locator, name: string) =>
   page.getByRole('button', { name: new RegExp(`^${[...name].join('\\s*')}$`) });
-/** 选好演示身份并等侧栏菜单就绪（明确的就绪条件），之后由调用方只导航一次。 */
+/** 选好演示身份并等顶栏应用导航就绪（明确的就绪条件），之后由调用方只导航一次。 */
 export async function openShell(page: Page) {
   await page.goto('/succession');
   await page.getByLabel('切换演示身份').selectOption(user);
   await expect(page).toHaveURL(/\/staff$/);
-  await expect(page.getByRole('menuitem', { name: '继任管理', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '应用导航' })).toBeVisible();
 }
 /**
- * 点应用标题会先导航到 /succession（应用首页即继任列表），同时展开子菜单：
- * 等这次导航落定、页面渲染后再点子项，否则子项的导航会被标题导航盖掉，停在 /succession。
+ * 左侧只列当前应用的菜单、且展开状态停在进入时的应用（F-132），跨应用和继任子菜单都经顶栏全部菜单面板：
+ * 搜索子菜单名，点命中项直达，一次导航、不和侧栏标题导航竞争。
  */
+export async function goMenu(page: Page, item: string) {
+  await page.getByRole('button', { name: '应用导航' }).click();
+  const panel = page.getByRole('dialog', { name: '全部菜单' });
+  await panel.getByRole('searchbox', { name: '搜索菜单' }).fill(item);
+  await panel.getByRole('link', { name: item, exact: true }).click();
+  await expect(panel).toHaveCount(0);
+}
 export async function openMenu(page: Page, item: string) {
   await openShell(page);
-  await page.getByRole('menuitem', { name: '继任管理', exact: true }).click();
-  await expect(page).toHaveURL(/\/succession$/);
-  await expect(page.locator('.succession-page')).toBeVisible();
-  await page.getByRole('menuitem', { name: item, exact: true }).click();
+  await goMenu(page, item);
 }
 export const cancel = (page: Page) =>
   page
