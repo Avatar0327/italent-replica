@@ -1,3 +1,4 @@
+import { contractRoute } from '../contracts/route.js';
 import { lazy, Suspense } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router';
 import { APP_ROUTES, appRoute, legacyTarget } from './routes.js';
@@ -10,9 +11,9 @@ import { ui } from './messages.js';
 const Account = lazy(() => import('../account/AccountPage.js').then((m) => ({ default: m.AccountPage })));
 const Approval = lazy(() => import('../approval/ApprovalPage.js').then((m) => ({ default: m.ApprovalPage })));
 const Evaluation = lazy(() => import('../evaluation/EvaluationPage.js').then((m) => ({ default: m.EvaluationPage })));
-const Job = lazy(() => import('../job/JobPage.js').then((m) => ({ default: m.JobPage })));
+const Job = lazy(() => import('../job/JobWorkspace.js').then((m) => ({ default: m.JobWorkspace })));
 const Manager = lazy(() => import('../self-service/pages/ManagerPage.js').then((m) => ({ default: m.ManagerPage })));
-const Org = lazy(() => import('../org/OrgChangePage.js').then((m) => ({ default: m.OrgChangePage })));
+const Org = lazy(() => import('../org/OrgPage.js').then((m) => ({ default: m.OrgPage })));
 const Qualification = lazy(() =>
   import('../qualification/QualificationPage.js').then((m) => ({ default: m.QualificationPage })),
 );
@@ -25,13 +26,14 @@ const TalentReview = lazy(() =>
   import('../talent-review/TalentReviewPage.js').then((m) => ({ default: m.TalentReviewPage })),
 );
 const Transfer = lazy(() => import('../transfer/TransferPage.js').then((m) => ({ default: m.TransferPage })));
+const Contracts = lazy(() => import('../contracts/ContractsPage.js').then((m) => ({ default: m.ContractsPage })));
 // 页面与布局同行登记，合并页面片时不再维护另一处路由条件。
 const existing = {
   approval: { Page: Approval, legacy: false },
   evaluation: { Page: Evaluation, legacy: false },
-  job: { Page: Job, legacy: true },
+  job: { Page: Job, legacy: false },
   manager: { Page: Manager, legacy: false },
-  org: { Page: Org, legacy: true },
+  org: { Page: Org, legacy: false },
   qualification: { Page: Qualification, legacy: true },
   self: { Page: Self, legacy: false },
   settings: { Page: Settings, legacy: true },
@@ -40,6 +42,7 @@ const existing = {
   talent: { Page: Talent, legacy: true },
   'talent-review': { Page: TalentReview, legacy: true },
   transfer: { Page: Transfer, legacy: false },
+  contracts: { Page: Contracts, legacy: false },
 };
 
 function LandingPage({ title }: { title: string }) {
@@ -71,7 +74,7 @@ export function AppPages() {
     <PageErrorBoundary key={`${session.tenantId}/${session.identityKey}/${location.pathname}`}>
       <Suspense fallback={<PageState kind="loading" />}>
         <Routes>
-          {APP_ROUTES.map((route) => {
+          {[...APP_ROUTES, { ...contractRoute, path: '/contracts/*' }].map((route) => {
             const page = existing[route.id as keyof typeof existing];
             const Page = page?.Page;
             return (
@@ -90,14 +93,7 @@ export function AppPages() {
               />
             );
           })}
-          <Route
-            path="/org/changes"
-            element={
-              <div className="legacy-page">
-                <Org />
-              </div>
-            }
-          />
+          <Route path="/org/changes" element={<Org />} />
           <Route
             path="/settings/account"
             element={

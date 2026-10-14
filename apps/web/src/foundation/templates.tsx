@@ -3,6 +3,7 @@ import {
   Drawer,
   Empty,
   Pagination,
+  Select,
   Space,
   Table,
   Tabs,
@@ -168,7 +169,16 @@ function ListPagination({
           />
         </>
       ) : (
-        <Space>
+        <Space className="list-pagination">
+          <Select
+            size="small"
+            aria-label={ui.pageSize}
+            value={page.pageSize}
+            options={[...new Set([15, 30, 50, page.pageSize])]
+              .sort((a, b) => a - b)
+              .map((value) => ({ value, label: `${value}${ui.perPage}` }))}
+            onChange={(pageSize) => changePage({ page: 1, pageSize })}
+          />
           <Button disabled={page.page <= 1 || loading} onClick={() => changePage({ ...page, page: page.page - 1 })}>
             {ui.previous}
           </Button>

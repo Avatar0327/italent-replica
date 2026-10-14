@@ -8,6 +8,7 @@ import {
   integer,
   jsonb,
   numeric,
+  type PgColumnBuilderBase,
   pgTable,
   text,
   timestamp,
@@ -29,7 +30,7 @@ const strings = (name: string) =>
     .array()
     .notNull()
     .default(sql`'{}'::text[]`);
-const master = (name: string) =>
+const master = <Extra extends Record<string, PgColumnBuilderBase>>(name: string, extra: Extra = {} as Extra) =>
   pgTable(
     name,
     {
@@ -39,10 +40,14 @@ const master = (name: string) =>
       name: text('name').notNull(),
       revision: integer('revision').notNull().default(1),
       enabled: boolean('enabled').notNull().default(true),
+      ...extra,
     },
     (t) => [unique(`${name}_tenant_id`).on(t.tenantId, t.id), unique(`${name}_code`).on(t.tenantId, t.code)],
   );
-export const contractTypes = master('contract_types');
+/** F-128 A15：合同类型的显示顺序，小的在前；同序按编码。 */
+export const contractTypes = master('contract_types', {
+  displayOrder: integer('display_order').notNull().default(0),
+});
 export const contractCompanies = master('contract_companies');
 export const contractPortfolios = pgTable(
   'contract_portfolios',

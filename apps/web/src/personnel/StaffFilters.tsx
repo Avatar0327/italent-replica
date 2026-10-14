@@ -80,6 +80,10 @@ export function ColumnSettings({
   onClose(): void;
 }) {
   const [draft, setDraft] = useState(value);
+  // 不用 Checkbox.Group：它把受控 value 镜像进内部 state，点击后要等 effect 再渲染一轮，
+  // 这一轮之前界面仍是旧勾选，连续点击会拿旧 value 覆盖前一次操作。逐项受控 + 函数式更新在点击事件内即时生效。
+  const toggle = (key: string, checked: boolean) =>
+    setDraft((previous) => columnChoices.filter((choice) => (choice === key ? checked : previous.includes(choice))));
   return (
     <Drawer
       open
@@ -103,18 +107,21 @@ export function ColumnSettings({
       }
     >
       <p>{m.columnHint}</p>
-      <Checkbox.Group
-        className="staff-column-options"
-        value={draft}
-        onChange={(values) => setDraft(values)}
-        options={columnChoices
+      <div className="staff-column-options">
+        {columnChoices
           .filter((key) => allowed.includes(key))
-          .map((key) => ({
-            value: key,
-            label: m.labels[key]!,
-            disabled: key === 'name',
-          }))}
-      />
+          .map((key) => (
+            <Checkbox
+              key={key}
+              value={key}
+              disabled={key === 'name'}
+              checked={draft.includes(key)}
+              onChange={(event) => toggle(key, event.target.checked)}
+            >
+              {m.labels[key]}
+            </Checkbox>
+          ))}
+      </div>
       <p className="staff-muted">{m.localColumns}</p>
     </Drawer>
   );

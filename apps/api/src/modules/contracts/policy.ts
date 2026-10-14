@@ -265,6 +265,16 @@ export const CONTRACT_POLICIES = defineTable('contracts', {
     fields: record,
     invalidId: BAD_REQUEST,
   }),
+  // F-128 A8：某员工全部合同摘要；逐条按员工 + 创建人判可见（employmentVisibilitySql，与 records/:id 同口径），范围外的条目
+  // 不出现（空列表，不 404）；:id 非法 → 400；响应只含摘要列，经 trim
+  'GET /employees/:id/contracts': object({
+    object: CONTRACT,
+    operation: 'view',
+    button: noButton('只读'),
+    scope: listScope(EMPLOYEE_VISIBILITY),
+    fields: record,
+    invalidId: BAD_REQUEST,
+  }),
   // ---- registerCommands：单条 / 批量命令 ---------------------------------------------------------------------------
   // 顺序：checkFields(body.fields) → object.button（contractAction(operation, mode)）→ checkOperationScope（targetId 先
   // loadContract）→ write()；201 + 命令结果（direct 到期即生效的记录，否则申请）经逐 employeeId checkScope 与 trim
@@ -336,6 +346,17 @@ export const CONTRACT_POLICIES = defineTable('contracts', {
     scope: CONFIG_SCOPE,
     fields: shape('contracts.rule'),
     write: auditedConfigWrite('contract.rule.save'),
+    invalidId: BAD_REQUEST,
+  }),
+  // F-128 A16：删除规则（含明细）。配置对象没有“删除”数据操作，沿用 update 判定；uuidParam 在 requireObjectWrite 之前；
+  // 规则不存在 → 404「续签规则不存在」；revision 不符 → 409；与保存同一把配置锁；audit contract.rules.delete；200 { id, deleted }
+  'DELETE /rules/:id': object({
+    object: RULE,
+    operation: 'update',
+    button: NO_CONFIG_BUTTON,
+    scope: CONFIG_SCOPE,
+    fields: shape('contracts.rule'),
+    write: auditedConfigWrite('contract.rules.delete'),
     invalidId: BAD_REQUEST,
   }),
   // ---- registerMasters：合同类型 / 法人公司（DEC-121 无归属对象，只认看全部）------------------------------------------

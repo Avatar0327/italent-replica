@@ -1,4 +1,23 @@
 {
+  "DELETE /api/tenant/contracts/rules/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "df0e8f34e15a",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.ContractRenewalRule/TenantBase.ContractRenewalRule.list"
+    ],
+    "trace": [
+      "obj:TenantBase.ContractRenewalRule:update"
+    ]
+  },
   "GET /api/tenant/contracts": {
     "all": {
       "status": 200
@@ -6,6 +25,25 @@
     "fieldQueries": [
       "fields:TenantBase.EmploymentContract"
     ],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentContract/TenantBase.EmploymentContract.list"
+    ],
+    "trace": [
+      "obj:TenantBase.EmploymentContract:view"
+    ]
+  },
+  "GET /api/tenant/contracts/employees/:id/contracts": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TenantBase.EmploymentContract"
+    ],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
     "scopeQueries": [
       "scope:TenantBase/TenantBase.EmploymentContract/TenantBase.EmploymentContract.list"
     ],
