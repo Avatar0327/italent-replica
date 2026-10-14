@@ -550,13 +550,15 @@ test('AC-FE-R1a-38 无生效日期编辑权的职务新建结果未知后换日�
   page,
   baseURL,
 }) => {
-  await setup(page, baseURL!, { editable: ALL.filter((field) => field !== 'startDate') });
+  const viewable = [...ALL, 'sequenceId'];
+  await setup(page, baseURL!, { viewable, editable: viewable.filter((field) => field !== 'startDate') });
   const posts: Request[] = [];
   await page.route('**/api/tenant/job/posts', (route) => {
     if (route.request().method() !== 'POST') return route.fallback();
     posts.push(route.request());
     return route.fulfill({ status: 201, json: {} });
   });
+  const gets = recordGets(page);
   await page.goto('/job?kind=posts');
   await chooseListDate(page, '2026-11-01');
   const create = page.getByRole('button', { name: /新\s*建/, exact: true });
@@ -568,11 +570,11 @@ test('AC-FE-R1a-38 无生效日期编辑权的职务新建结果未知后换日�
   expect(posts[0]!.postDataJSON()).not.toHaveProperty('startDate');
   await closeDialog(page);
   await chooseListDate(page, '2026-11-02');
-  const gets = recordGets(page);
   await create.click();
   await expect(dialog.getByText(pending)).toBeVisible();
   // 槽里存的是实际采用的业务时点（无日期编辑权时为租户当天），不是当时的列表日期。
   await expect(dialog.getByText(/已按原命令的业务日期打开：/)).toContainText('2026-10-12');
+  // 两次打开的候选查询（重开时同一地址可能直接命中缓存）都按租户当天，不按任一列表日期。
   const references = () =>
     gets.filter((url) => url.pathname.startsWith('/api/tenant/job/') && url.pathname !== '/api/tenant/job/posts');
   await expect.poll(() => references().length).toBeGreaterThan(0);

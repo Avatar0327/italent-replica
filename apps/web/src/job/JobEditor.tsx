@@ -91,12 +91,13 @@ interface EditorProps {
   onClose(): void;
   onSaved(): void;
 }
-function useJobCommand({ kind, original, date }: EditorProps) {
+function useJobCommand({ kind, original, date, today, access }: EditorProps) {
   const base = `/api/tenant/job/${kind}`;
   return useRecordCommand({
-    // 编辑用原单路径、新建用集合路径作键，不带列表日期；日期作为命令上下文存在槽里（F-123 页面片接入 2）。
+    // 编辑用原单路径、新建用集合路径作键，不带列表日期（F-123 页面片接入 2）；
+    // 槽里存实际采用的业务时点：无生效日期编辑权的新建按租户当天，不是列表日期。
     resource: original ? `${base}/${original.id}` : base,
-    context: { date },
+    context: { date: jobTiming(original, date, today, access.field('startDate')).asOf },
     original,
     readPath: original ? (id, context) => `${base}/${id}?asOf=${context.date}` : undefined,
     project: jobInitialValues,
@@ -117,9 +118,9 @@ function withResumed<G extends { fields: FormField[] }>([first, ...rest]: G[], d
 export function JobEditor(props: EditorProps) {
   const { kind, original, access } = props;
   const record = useJobCommand(props);
-  // 槽里有未确认的命令时按它保存的业务日期打开，换列表日期不另起命令。
+  // 业务时点只从槽里取：提示、候选、重读与请求体都用它，换列表日期不另起命令。
   const { date } = record.context;
-  const timing = jobTiming(original, date, props.today, access.field('startDate'));
+  const timing = jobTiming(original, date, date, access.field('startDate'));
   const sections = jobFormGroups(kind).map((group) => ({
     title: m[group.key as 'basic'],
     fields: group.fields.map((name): FormField => {

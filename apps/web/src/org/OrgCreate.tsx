@@ -59,10 +59,15 @@ function createFields(access: PageAccess, asOf: string): FormField[] {
 export function OrgCreate(props: Props) {
   const { parentId, date, access } = props;
   const session = useSession();
-  const asOf = orgCreateDate(date, tenantDate(new Date(), session.timezone), access.field('establishedOn'));
+  const opened = orgCreateDate(date, tenantDate(new Date(), session.timezone), access.field('establishedOn'));
   // 新建没有原单可回查：所有新建入口共用集合路径这一个恢复槽，结果未知时都保持锁定，待刷新列表核对（F-123 页面片接入 2）。
-  // 业务时点就是表单里的设立日期，随草稿存在槽里，不另存命令上下文。
-  const record = useRecordCommand({ resource: orgCreateResource, context: {}, project: (row: OrgRow) => row });
+  // 槽里存实际采用的业务时点（无设立日期编辑权时为租户当天）；显示与候选都从槽里取。
+  const record = useRecordCommand({
+    resource: orgCreateResource,
+    context: { date: opened },
+    project: (row: OrgRow) => row,
+  });
+  const asOf = record.context.date;
   return (
     <FormOverlay
       mode="modal"

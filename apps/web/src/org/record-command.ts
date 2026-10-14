@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useApiClient } from '../foundation/index.js';
 import { messages } from '../foundation/forms/messages.js';
 import type { Submission, Values } from '../foundation/forms/store.js';
@@ -16,25 +17,26 @@ interface Options<T extends RecordRow, C extends Values> {
    * 不带日期、视图、动作或入口，所有入口共用一个槽（docs/08_设计/F-123 页面片接入 2）。
    */
   resource: string;
-  /** 本次打开时的命令上下文；槽里有未完成的命令时以槽里保存的为准。 */
+  /** 本次打开时实际采用的命令上下文（如按日期编辑权归一化后的业务时点）；槽里有未完成的命令时以槽里保存的为准。 */
   context: C;
   original?: T;
   /** 重读原单的地址；新建没有原单，结果未知时保持锁定。 */
   readPath?: (id: string, context: C) => string;
   project(row: T): Values;
 }
-/** 槽里还有未完成的命令（处理中、结果未知、冲突、被拒）时沿用它的上下文，换日期或动作重开不另起命令。 */
-function slotContext<C extends Values>(state: Submission | undefined, opened: C) {
-  const saved = state && state.status !== 'done' ? (state.values[contextField] as C | undefined) : undefined;
-  return saved ?? opened;
+/** 槽里还有未完成的命令（处理中、结果未知、冲突、被拒）时取它保存的上下文，换日期或动作重开不另起命令。 */
+function slotContext<C extends Values>(state: Submission | undefined) {
+  return state && state.status !== 'done' ? (state.values[contextField] as C | undefined) : undefined;
 }
 /** 组织、职务写入口接 F-123 内核：锁定、命令 ID、冲突重读与回执校验都由内核负责，这里只适配 DTO。 */
 export function useRecordCommand<T extends RecordRow, C extends Values>(options: Options<T, C>) {
   const { resource, original, readPath, project } = options;
   const api = useApiClient();
   const command = useCommandForm(resource);
-  const context = slotContext(command.state, options.context);
-  const resumed = Object.entries(context).some(([key, value]) => options.context[key] !== value);
+  const saved = slotContext<C>(command.state);
+  const context = saved ?? options.context;
+  // 打开时槽里已有未完成的命令，才算沿用原命令；本次打开内提交产生的状态不算。
+  const [resumed] = useState(() => saved !== undefined);
   const latest = command.state?.latest;
   const current = latest ? ({ ...latest.values, id: latest.id, revision: latest.revision } as unknown as T) : original;
   const reload = readPath
