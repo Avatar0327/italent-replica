@@ -36,7 +36,7 @@ export function Fields({ row, keys, allowed }: { row: Row; keys: string[]; allow
         .map((key) => ({
           key,
           label: m.fields[key] ?? key,
-          children: value(row[key]),
+          children: value(row[key], key),
         }))}
     />
   );

@@ -2,7 +2,7 @@ import { Button, Drawer, Input, InputNumber, Select, Space } from 'antd';
 import { useState } from 'react';
 import { contractTypes } from '../demo-stubs/contracts.js';
 import { m } from './messages.js';
-import type { Filters, View } from './model.js';
+import { value as displayValue, type Filters, type View } from './model.js';
 import { DemoNote } from './parts.js';
 const quick: Record<View, string[]> = {
   expiring: ['name', 'location', 'companyId', 'department', 'typeId'],
@@ -30,7 +30,7 @@ function Controls({ keys, value, change }: { keys: string[]; value: Filters; cha
               options={
                 key === 'typeId'
                   ? [{ value: '', label: m.unset }, ...contractTypes.map((t) => ({ value: t.id, label: t.name }))]
-                  : ['fixed', 'indefinite', 'task'].map((id) => ({ value: id, label: m.values[id] }))
+                  : ['fixed', 'indefinite', 'task'].map((id) => ({ value: id, label: displayValue(id, 'termType') }))
               }
             />
           ) : (

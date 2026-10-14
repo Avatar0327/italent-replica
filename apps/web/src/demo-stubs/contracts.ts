@@ -57,6 +57,7 @@ export function previewContracts(filters: Filters, view: View): Row[] {
     view === 'missing'
       ? rows.map(({ name, email, code, ...rest }) => ({
           id: rest.id,
+          employeeId: rest.employeeId,
           name,
           email,
           code,

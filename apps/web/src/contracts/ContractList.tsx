@@ -6,7 +6,18 @@ import { PageState } from '../foundation/PageState.js';
 import type { PageResult } from '../foundation/client.js';
 import { previewContracts, contractTypes, demoCsv } from '../demo-stubs/contracts.js';
 import { useRead } from './useRead.js';
-import { canOpenRecord, columnKeys, listPath, object, value, views, width, type Filters, type Row } from './model.js';
+import {
+  canOpenRecord,
+  columnTitle,
+  columnKeys,
+  listPath,
+  object,
+  value,
+  views,
+  width,
+  type Filters,
+  type Row,
+} from './model.js';
 import { m } from './messages.js';
 import { Coming, DemoNote } from './parts.js';
 import { FilterDrawer, QuickFilters } from './Filters.js';
@@ -28,6 +39,12 @@ function useListState() {
     setDemo(true);
     setPage(1);
   };
+  const returnToLive = () => {
+    setFilters({});
+    setDemo(false);
+    setPage(1);
+    result.refresh();
+  };
   return {
     view,
     page,
@@ -35,9 +52,8 @@ function useListState() {
     days,
     setDays,
     filters,
-    setFilters,
     demo,
-    setDemo,
+    returnToLive,
     drawer,
     setDrawer,
     allowed,
@@ -75,7 +91,7 @@ export function ContractList() {
   );
 }
 function ListHeading({ state }: { state: State }) {
-  const { view, setParams, setPage, setFilters, setDemo, result } = state;
+  const { view, setParams, returnToLive } = state;
   return (
     <>
       <header className="contract-heading">
@@ -90,10 +106,7 @@ function ListHeading({ state }: { state: State }) {
             aria-pressed={v.key === view}
             onClick={() => {
               setParams({ view: v.key });
-              setPage(1);
-              setFilters({});
-              setDemo(false);
-              result.refresh();
+              returnToLive();
             }}
           >
             <span>{v.label}</span>
@@ -105,7 +118,7 @@ function ListHeading({ state }: { state: State }) {
   );
 }
 function ListFilters({ state }: { state: State }) {
-  const { view, days, setDays, setPage, filters, apply, setDrawer, setFilters, setDemo, demo, result } = state;
+  const { view, days, setDays, setPage, filters, apply, setDrawer, returnToLive, demo } = state;
   return (
     <>
       <Alert
@@ -146,28 +159,16 @@ function ListFilters({ state }: { state: State }) {
         <Button type="link" onClick={() => setDrawer(true)}>
           {m.filter}
         </Button>
-        <Button
-          type="text"
-          onClick={() => {
-            setFilters({});
-            setDemo(false);
-            setPage(1);
-          }}
-        >
+        <Button type="text" onClick={returnToLive}>
           {m.reset}
         </Button>
       </div>
       {demo && <DemoNote />}
       <div className="contract-toolbar">
-        <Button
-          onClick={() => {
-            setDemo(false);
-            result.refresh();
-          }}
-        >
+        <Button aria-label={m.refresh} onClick={returnToLive}>
           {m.refresh}
         </Button>
-        <Button onClick={() => setDemo((v) => !v)}>{demo ? m.live : m.preview}</Button>
+        <Button onClick={() => (demo ? returnToLive() : apply(filters))}>{demo ? m.live : m.preview}</Button>
         <Button
           disabled={!demo}
           download="demo-contracts.csv"
@@ -185,13 +186,13 @@ function ContractTable({ state }: { state: State }) {
     .filter((key) => demo || allowed.includes(key))
     .map((key) => ({
       key,
-      title: m.fields[key],
+      title: columnTitle(key, view),
       width: width(key, view),
       dataIndex: key,
       ellipsis: true,
-      sorter: demo ? (a: Row, b: Row) => value(a[key]).localeCompare(value(b[key]), 'zh-CN') : undefined,
+      sorter: demo ? (a: Row, b: Row) => value(a[key], key).localeCompare(value(b[key], key), 'zh-CN') : undefined,
       render: (input: unknown) =>
-        demo && key === 'typeId' ? (contractTypes.find((t) => t.id === input)?.name ?? '--') : value(input),
+        demo && key === 'typeId' ? (contractTypes.find((t) => t.id === input)?.name ?? '--') : value(input, key),
     }));
   return !demo && result.error ? (
     <PageState kind="error" error={result.error} retry={result.refresh} />

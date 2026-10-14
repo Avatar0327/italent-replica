@@ -32,12 +32,13 @@ export function canOpenRecord(row: Row, view: View) {
     (view !== 'all' || row.rowType === 'contract')
   );
 }
-export function value(input: unknown): string {
+export function value(input: unknown, key: string): string {
   if (input === undefined || input === null || input === '') return '--';
   if (typeof input === 'boolean') return input ? '是' : '否';
-  if (Array.isArray(input)) return input.length ? input.map(value).join('、') : '--';
+  if (Array.isArray(input)) return input.length ? input.map((item) => value(item, key)).join('、') : '--';
   if (typeof input === 'object') return '--';
-  return m.values[String(input)] ?? String(input);
+  const labels = Object.hasOwn(m.values, key) ? m.values[key] : undefined;
+  return labels && Object.hasOwn(labels, String(input)) ? labels[String(input)]! : String(input);
 }
 const common = ['name', 'email', 'number', 'companyId', 'typeId', 'termType', 'effectiveDate'];
 export function columnKeys(view: View) {
@@ -50,6 +51,7 @@ export function columnKeys(view: View) {
       'approvalStatus',
       'signature',
       'electronicFile',
+      'signatureRecords',
       'signingCount',
       'operation',
     ];
@@ -76,7 +78,12 @@ export function columnKeys(view: View) {
     ...(view === 'valid' ? ['attachment'] : []),
   ];
 }
+export function columnTitle(key: string, view: View) {
+  if (key === 'companyId' && ['valid', 'expired_unrenewed', 'expiring'].includes(view)) return m.legalCompany;
+  return m.columnTitles[view]?.[key] ?? m.fields[key];
+}
 export function width(key: string, view: View) {
+  if (key === 'signatureRecords') return 179;
   if (key === 'email') return view === 'missing' ? 215 : 200;
   if (key.toLowerCase().includes('date')) return view === 'missing' ? 120 : 105;
   if (key === 'electronicFile' || key === 'attachment') return 262;

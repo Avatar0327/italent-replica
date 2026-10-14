@@ -160,8 +160,8 @@ function RuleSummary({ row }: { row: Row }) {
   return Array.isArray(row.details)
     ? row.details.map((detail: Row, index: number) => (
         <p key={index}>
-          {value(detail.typeId)} · {m.fields.daysBefore} {value(detail.daysBefore)} · {m.fields.months}{' '}
-          {value(detail.months)}
+          {value(detail.typeId, 'typeId')} · {m.fields.daysBefore} {value(detail.daysBefore, 'daysBefore')} ·{' '}
+          {m.fields.months} {value(detail.months, 'months')}
         </p>
       ))
     : '--';
@@ -189,5 +189,5 @@ function RuleDrawer({ rule, allowed, close }: { rule?: Row; allowed: readonly st
 
 function configValue(row: Row, key: string) {
   if (key === 'enabled' && typeof row[key] === 'boolean') return row[key] ? m.enabled : m.disabled;
-  return value(row[key]);
+  return value(row[key], key);
 }
