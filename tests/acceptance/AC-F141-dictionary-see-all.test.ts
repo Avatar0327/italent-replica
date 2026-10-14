@@ -67,6 +67,8 @@ describe('AC-F141-dictionary-see-all 评定管理员预置字典看全部（DEC-
       expect(res.status, path).toBe(404);
     }
     const full = await operator(world, { seeAll: true });
-    expect((await full.request('POST', '/activity-types', { ifMatch: 0, body: { name: `字典${randomUUID()}` } })).status).toBe(201);
+    expect(
+      (await full.request('POST', '/activity-types', { ifMatch: 0, body: { name: `字典${randomUUID()}` } })).status,
+    ).toBe(201);
   });
 });
