@@ -4,7 +4,7 @@ import { usePermissions } from '../foundation/Permissions.js';
 import { PageState } from '../foundation/PageState.js';
 import type { PageResult } from '../foundation/client.js';
 import { ui } from '../foundation/messages.js';
-import { configObjects, contractApi, value, type Config, type Row } from './model.js';
+import { configAccess, configObjects, contractApi, value, type Config, type Row } from './model.js';
 import { useRead } from './useRead.js';
 import { m } from './messages.js';
 import { Fields } from './parts.js';
@@ -25,8 +25,9 @@ export function ContractConfig({ kind }: { kind: Config }) {
     kind === 'rules' && settingPermission.snapshot.objects[configObjects.settings] ? contractApi.settings : null,
   );
   const rows = result.data?.items ?? [];
-  const canCreate = kind !== 'settings' && permission.can('create', 'list');
-  const canEdit = permission.can('update', 'detail');
+  const access = configAccess(permission.snapshot.objects[configObjects[kind]]);
+  const canCreate = kind !== 'settings' && access.create;
+  const canEdit = access.update;
   return (
     <section className="contract-card">
       <header className="contract-heading">
@@ -61,7 +62,7 @@ export function ContractConfig({ kind }: { kind: Config }) {
             allowed={allowed}
             setRule={setRule}
             edit={canEdit ? (row) => setEditing({ row }) : undefined}
-            removable={kind === 'rules' && canEdit && permission.can('delete', 'detail')}
+            removable={kind === 'rules' && canEdit}
             toggle={kind === 'types' && canEdit && canToggle(permission.field)}
             reload={result.refresh}
           />

@@ -1,6 +1,5 @@
 // F-127b A15～A17：合同类型、续签规则、合同设置的编辑与规则删除，统一走 F-123 内核。
-import { Alert, Button, Input, InputNumber, Popconfirm, Select, Space, Switch } from 'antd';
-import { useState } from 'react';
+import { Button, Input, InputNumber, Popconfirm, Select, Space, Switch } from 'antd';
 import { FormOverlay, type FormField } from '../foundation/FormOverlay.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { useApiClient } from '../foundation/Session.js';
@@ -102,9 +101,11 @@ export function ConfigForm({
             const method = kind === 'settings' || id ? 'PUT' : 'POST';
             const path = kind === 'settings' || !id ? paths[kind] : `${paths[kind]}/${encodeURIComponent(id)}`;
             const raw = await api.request<unknown>(path, { method, command });
+            // 冲突核对后重提的命令带最新版本，回执按实际提交的版本核对。
+            const sent = command.revision ?? revision;
             return kind === 'settings'
-              ? parseSettingsReceipt(raw, { tenantId: id ?? '', revision })
-              : parseSavedReceipt(raw, { id, revision });
+              ? parseSettingsReceipt(raw, { tenantId: id ?? '', revision: sent })
+              : parseSavedReceipt(raw, { id, revision: sent });
           },
         });
         if (result.status !== 'done') throw result.error ?? new Error(kernel.unknown);
@@ -326,38 +327,47 @@ function DetailInputs({
   );
 }
 
-/** 行内写命令（规则删除 / 类型启停）：带 revision 与命令 ID，回执按本行核对；结果未知时保持锁定。 */
+/** 行内写命令（规则删除 / 类型启停）：带 revision 与命令 ID，回执按实际提交的版本核对；结果未知时保持锁定。 */
 export function RowCommand({ kind, row, onDone }: { kind: 'delete' | 'toggle'; row: Row; onDone(): void }) {
   const api = useApiClient();
   const id = String(row.id);
-  const path = `${kind === 'delete' ? paths.rules : paths.types}/${encodeURIComponent(id)}`;
+  const list = kind === 'delete' ? paths.rules : paths.types;
+  const path = `${list}/${encodeURIComponent(id)}`;
   const submission = useCommandForm(`${path}/${kind}`);
-  const [error, setError] = useState<unknown>();
+  const keys = kind === 'toggle' ? ['code', 'name', 'enabled'] : [];
+  // 冲突时“重读 → 核对差异 → 重提”：核对后以最新版本为准重新构造请求体与按钮文案。
+  const confirmed = submission.state?.status === 'idle' ? submission.state.baseline : {};
+  const source = { ...row, ...confirmed };
   // 原站类型启停在行内，不在编辑表单里；类型 PUT 需完整请求体，只翻转启用状态，其余取本行。
-  const body = kind === 'toggle' ? { code: row.code, name: row.name, enabled: !row.enabled } : {};
+  const body = kind === 'toggle' ? { code: source.code, name: source.name, enabled: !source.enabled } : {};
+  const read = async () => {
+    const latest = (await api.request<{ items: Row[] }>(`${list}?page=1&pageSize=200`)).items.find((r) => r.id === id);
+    if (!latest) throw new Error(kernel.invalidReceipt);
+    return { id, revision: Number(latest.revision), values: pick(latest, keys, {}) };
+  };
   const run = async () => {
-    setError(undefined);
     const revision = Number(row.revision);
     const result = await submission.submit({
       values: body as Values,
-      baseline: {},
-      editableFields: Object.keys(body),
+      baseline: pick(row, keys, {}),
+      editableFields: keys,
       revision,
       businessId: id,
       send: async (command) =>
         parseSavedReceipt(await api.request<unknown>(path, { method: kind === 'delete' ? 'DELETE' : 'PUT', command }), {
           id,
-          revision,
+          revision: command.revision ?? revision,
           deleted: kind === 'delete',
         }),
     });
-    if (result.status === 'done') {
-      submission.clear();
-      onDone();
-    } else setError(result.error);
+    // 拒绝 / 冲突 / 未知由 CommandStatus 按内核状态展示。
+    if (result.status !== 'done') return;
+    submission.clear();
+    onDone();
   };
-  const toggleLabel = row.enabled ? m.disabled : m.enabled;
+  const toggleLabel = source.enabled ? m.disabled : m.enabled;
   const label = kind === 'delete' ? m.delete : toggleLabel;
+  const labels = { code: m.typeCode, name: m.typeName, enabled: m.fields.enabled };
   return (
     <Space direction="vertical">
       <Popconfirm
@@ -370,8 +380,9 @@ export function RowCommand({ kind, row, onDone }: { kind: 'delete' | 'toggle'; r
           {label}
         </Button>
       </Popconfirm>
-      {submission.state && submission.state.status !== 'done' && <CommandStatus submission={submission} />}
-      {!!error && submission.status === 'idle' && <Alert type="error" message={kernel.unknown} />}
+      {submission.state && submission.state.status !== 'done' && (
+        <CommandStatus submission={{ ...submission, reload: () => submission.reread(read) }} labels={labels} />
+      )}
     </Space>
   );
 }

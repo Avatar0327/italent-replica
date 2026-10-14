@@ -16,6 +16,14 @@ export const configObjects = {
   settings: 'TenantBase.ContractSettings',
 };
 export type Config = keyof typeof configObjects;
+/**
+ * 配置页写入口按对象数据操作判断，不看按钮：后端配置路由只校验数据操作（policy.ts NO_CONFIG_BUTTON / NO_MASTER_BUTTON），
+ * 配置类对象的 /me/objects 恒返回空按钮；删除规则后端按 update 校验（配置对象没有 delete）。
+ */
+export function configAccess(permission?: { summary?: true; dataOperations: Readonly<Record<string, boolean>> }) {
+  const operations = permission && !permission.summary ? permission.dataOperations : {};
+  return { create: operations.create === true, update: operations.update === true };
+}
 export type ListQuery = Record<string, string | undefined>;
 /** 后端列表参数白名单（list-query.ts）；入职缺失只认员工、关键字、组织、类型与按姓名排序（applicableQuery）。 */
 export const filterKeys = [

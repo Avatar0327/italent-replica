@@ -1,6 +1,7 @@
 // F-127b：合同类型 / 续签规则 / 合同设置保存与规则删除，审批中行内催办 / 转交 / 撤销（接口全部为合成桩）。
 import { test, expect, user } from './fixtures.js';
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
+import { objectPermissions } from './contracts-permissions.js';
 import {
   capture,
   instance,
@@ -104,7 +105,11 @@ test('AC-FE-R2a-15 合同设置按差异保存，回执须为本租户下一版�
   expect(writes).toEqual([expect.objectContaining({ method: 'PUT', revision: '2', body: { autoTerminate: false } })]);
 });
 
-async function approvals(page: Page, urge: () => object = () => ({ json: {} })) {
+async function approvals(
+  page: Page,
+  urge: () => object = () => ({ json: {} }),
+  actions: string[] = ['urge', 'transfer', 'withdraw'],
+) {
   const writes: Write[] = [];
   await page.route('**/api/tenant/approval/**', (route) => {
     const url = new URL(route.request().url());
@@ -132,7 +137,7 @@ async function approvals(page: Page, urge: () => object = () => ({ json: {} })) 
         revision: 4,
         status: 'running',
         approvalType: 'contract',
-        actions: ['urge', 'transfer', 'withdraw'],
+        actions,
         recordsHidden: false,
         form: { values: {} },
         tasks: [{ id: task, nodeName: '合成审批节点', status: 'pending', assigneeUserId: user }],
@@ -174,4 +179,169 @@ test('AC-FE-R2a-17 催办结果未知锁定本行催办，不自动重发', asyn
   await expect(row(page, '催办')).toBeDisabled();
   await expect(row(page, '转交')).toBeEnabled();
   expect(writes).toHaveLength(1);
+});
+
+test('AC-FE-R2a-17b 催办结果未知的锁存在页面层：切换视图再回来仍锁定，不生成新命令', async ({ page }) => {
+  const writes = await approvals(page, () => ({ status: 500, json: { error: { code: 'INTERNAL' } } }));
+  await row(page, '催办').click();
+  await expect(row(page, '催办')).toBeDisabled();
+  await page.getByRole('button', { name: '有效合同协议', exact: true }).click();
+  await expect(row(page, '催办')).toHaveCount(0);
+  await page.getByRole('button', { name: '审批中合同协议', exact: true }).click();
+  await expect(row(page, '催办')).toBeDisabled();
+  await expect(page.getByRole('button', { name: '回查原单', exact: true })).toBeVisible();
+  expect(writes).toHaveLength(1);
+});
+
+test('AC-FE-R2a-16b 行内审批按钮按该行服务端 actions 渲染，空集合不显示', async ({ page }) => {
+  await approvals(page, undefined, ['urge']);
+  await expect(row(page, '催办')).toBeVisible();
+  await expect(row(page, '转交')).toHaveCount(0);
+  await expect(row(page, '撤销')).toHaveCount(0);
+});
+test('AC-FE-R2a-16c 行内审批 actions 为空时本行没有审批按钮', async ({ page }) => {
+  await approvals(page, undefined, []);
+  await expect(page.locator('.ant-table-row')).toHaveCount(1);
+  for (const label of ['催办', '转交', '撤销']) await expect(row(page, label)).toHaveCount(0);
+});
+
+test('AC-FE-R2a-19 配置写入口按数据操作判断：buttons 为空照样可写，update=false 时无编辑 / 删除', async ({ page }) => {
+  const rules = objectPermissions.rules;
+  await setupContracts(page, {
+    [rules.objectCode]: { ...rules, dataOperations: { create: true, update: false, delete: false } },
+  });
+  await tab(page, '自动续签规则');
+  await expect(page.getByRole('button', named('新建'))).toBeVisible();
+  await expect(page.locator('.ant-table').getByRole('button', named('规则信息'))).toBeVisible();
+  await expect(page.locator('.ant-table').getByRole('button', named('编辑'))).toHaveCount(0);
+  await expect(page.locator('.ant-table').getByRole('button', named('删除'))).toHaveCount(0);
+  await tab(page, '合同管理设置');
+  await expect(page.getByRole('button', named('编辑'))).toBeVisible();
+});
+
+type Stale = { label: string; tab: string; open: (page: Page) => Promise<void>; dialog: string; read: string };
+/** 首次写入返回版本冲突，之后读到服务端新版本；重提须按实际提交的版本核对回执。 */
+async function staleOnce(page: Page, read: string, write: string, row: { revision: number }, list: boolean) {
+  let current = { ...row };
+  const writes: Write[] = [];
+  await page.route(read, (route) =>
+    route.request().method() === 'GET'
+      ? route.fulfill({ json: list ? { items: [current], total: 1, page: 1, pageSize: 15 } : current })
+      : route.fallback(),
+  );
+  await page.route(write, (route) => {
+    if (route.request().method() === 'GET') return route.fallback();
+    capture(writes, route.request());
+    if (writes.length === 1) {
+      current = { ...current, revision: current.revision + 1 };
+      return route.fulfill({ status: 409, json: { error: { code: 'REVISION_CONFLICT', message: '版本冲突' } } });
+    }
+    const next = { ...current, revision: current.revision + 1 };
+    const id = (next as { id?: string }).id;
+    if (route.request().method() === 'DELETE') return route.fulfill({ json: { id, deleted: true } });
+    return route.fulfill({ json: list ? { id, revision: next.revision } : next });
+  });
+  return writes;
+}
+const resolve = async (scope: Locator) => {
+  await scope.getByRole('button', { name: '重读最新版本', exact: true }).click();
+  await scope.getByRole('button', { name: '已核对差异，继续编辑', exact: true }).click();
+};
+const tableEdit = (page: Page) => page.locator('.ant-table').getByRole('button', named('编辑')).click();
+const staleCases: (Stale & { write: string; row: { revision: number }; change: (dialog: Locator) => Promise<void> })[] =
+  [
+    {
+      label: '合同类型',
+      tab: '合同类型',
+      open: tableEdit,
+      dialog: '编辑',
+      read: '**/api/tenant/contracts/master-data/types?*',
+      write: '**/api/tenant/contracts/master-data/types/type',
+      row: typeRow,
+      change: (dialog) => item(dialog, '合同类型名称').getByRole('textbox').fill('合成改名类型'),
+    },
+    {
+      label: '续签规则',
+      tab: '自动续签规则',
+      open: tableEdit,
+      dialog: '编辑自动续签规则',
+      read: '**/api/tenant/contracts/rules?*',
+      write: '**/api/tenant/contracts/rules/rule',
+      row: ruleRow,
+      change: (dialog) => item(dialog, '规则名称').getByRole('textbox').fill('合成改名规则'),
+    },
+    {
+      label: '合同设置',
+      tab: '合同管理设置',
+      open: (page) => page.getByRole('button', named('编辑')).click(),
+      dialog: '编辑合同管理设置',
+      read: '**/api/tenant/contracts/settings',
+      write: '**/api/tenant/contracts/settings',
+      row: settingsRow,
+      change: (dialog) => dialog.getByRole('switch', { name: '到期后自动终止', exact: true }).click(),
+    },
+  ];
+for (const stale of staleCases)
+  test(`AC-FE-R2a-18 ${stale.label}冲突重读后重提：回执按实际提交的新版本核对，保存成功`, async ({ page }) => {
+    await setupContracts(page);
+    const list = stale.label !== '合同设置';
+    const writes = await staleOnce(page, stale.read, stale.write, stale.row, list);
+    await tab(page, stale.tab);
+    await stale.open(page);
+    const dialog = page.getByRole('dialog', { name: stale.dialog, exact: true });
+    await stale.change(dialog);
+    await dialog.getByRole('button', save).click();
+    await resolve(dialog);
+    await dialog.getByRole('button', save).click();
+    await expect(dialog).toHaveCount(0);
+    const revision = stale.row.revision;
+    expect(writes.map((write) => write.revision)).toEqual([String(revision), String(revision + 1)]);
+    expect(writes[0]!.command).not.toEqual(writes[1]!.command);
+  });
+
+test('AC-FE-R2a-20 类型启停冲突后可重读、核对、重提', async ({ page }) => {
+  await setupContracts(page);
+  const writes = await staleOnce(
+    page,
+    '**/api/tenant/contracts/master-data/types?*',
+    '**/api/tenant/contracts/master-data/types/type',
+    typeRow,
+    true,
+  );
+  await tab(page, '合同类型');
+  const table = page.locator('.ant-table');
+  await table.getByRole('button', named('停用')).click();
+  await page.getByRole('tooltip').getByRole('button', named('确定')).click();
+  await resolve(table);
+  await table.getByRole('button', named('停用')).click();
+  await page.getByRole('tooltip').getByRole('button', named('确定')).click();
+  await expect.poll(() => writes.length).toBe(2);
+  await expect(table.getByRole('button', { name: '重读最新版本', exact: true })).toHaveCount(0);
+  expect(writes.map(({ revision, body }) => [revision, body])).toEqual([
+    [String(typeRow.revision), { code: typeRow.code, name: typeRow.name, enabled: false }],
+    [String(typeRow.revision + 1), { code: typeRow.code, name: typeRow.name, enabled: false }],
+  ]);
+});
+
+test('AC-FE-R2a-21 规则删除冲突后可重读、核对、重提', async ({ page }) => {
+  await setupContracts(page);
+  const writes = await staleOnce(
+    page,
+    '**/api/tenant/contracts/rules?*',
+    '**/api/tenant/contracts/rules/rule',
+    ruleRow,
+    true,
+  );
+  await tab(page, '自动续签规则');
+  const table = page.locator('.ant-table');
+  await table.getByRole('button', named('删除')).click();
+  await page.getByRole('tooltip').getByRole('button', named('确定')).click();
+  await resolve(table);
+  await table.getByRole('button', named('删除')).click();
+  await page.getByRole('tooltip').getByRole('button', named('确定')).click();
+  await expect.poll(() => writes.length).toBe(2);
+  expect(writes.map(({ method, revision }) => [method, revision])).toEqual([
+    ['DELETE', String(ruleRow.revision)],
+    ['DELETE', String(ruleRow.revision + 1)],
+  ]);
 });

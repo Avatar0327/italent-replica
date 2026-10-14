@@ -1,6 +1,7 @@
 // F-127b 合同协议冒烟共用夹具：权限快照、列表 / 详情 / 配置接口桩，数据全部为合成值。
 import { expect, user, snapshotFixture, tenant } from './fixtures.js';
 import type { Locator, Page, Request } from '@playwright/test';
+import { objectPermissions, type ObjectPermissionFixture } from './contracts-permissions.js';
 
 export const id = '40000000-0000-4000-8000-000000000001';
 export const requestId = '40000000-0000-4000-8000-000000000002';
@@ -54,16 +55,6 @@ export const settingsRow = {
   autoNumber: true,
   uniqueFields: ['number'],
 };
-const contractFields = [...Object.keys(record), 'actualTerminationDate', 'signingDate', 'termMonths', 'operation'];
-const configFields = [...Object.keys(ruleRow), 'code', ...Object.keys(settingsRow)];
-const buttons = [
-  ...['create', 'createApplication'].map((buttonCode) => ({ buttonCode, level: 'list' })),
-  ...['change', 'changeApplication', 'renew', 'terminate', 'withdraw', 'update', 'delete'].map((buttonCode) => ({
-    buttonCode,
-    level: 'detail',
-  })),
-];
-
 function listRow(view: string | null) {
   if (view === 'missing') return { employeeId: 'employee', name: '合成甲', code: 'DEMO-001' };
   if (view === 'in_review') return pending;
@@ -87,7 +78,8 @@ async function contractRoutes(page: Page) {
   );
   await page.route('**/api/tenant/contracts/settings', (route) => route.fulfill({ json: settingsRow }));
 }
-export async function setupContracts(page: Page) {
+/** overrides 按对象编码替换权限夹具；未登记的对象按无权限 403 返回。 */
+export async function setupContracts(page: Page, overrides: Record<string, ObjectPermissionFixture> = {}) {
   await page.route('**/permission/me/snapshot', (route) =>
     route.fulfill({
       json: {
@@ -98,18 +90,13 @@ export async function setupContracts(page: Page) {
       },
     }),
   );
+  const permissions = new Map(Object.values(objectPermissions).map((entry) => [entry.objectCode, entry]));
+  for (const [code, entry] of Object.entries(overrides)) permissions.set(code, entry);
   await page.route('**/permission/me/objects/*', (route) => {
-    const code = decodeURIComponent(route.request().url().split('/').at(-1)!);
-    const fields = code === 'TenantBase.EmploymentContract' ? contractFields : configFields;
-    return route.fulfill({
-      json: {
-        objectCode: code,
-        dataOperations: { view: true },
-        viewableFields: [...fields, 'name', 'code', 'enabled'],
-        editableFields: fields,
-        buttons,
-      },
-    });
+    const json = permissions.get(decodeURIComponent(route.request().url().split('/').at(-1)!));
+    return json
+      ? route.fulfill({ json })
+      : route.fulfill({ status: 403, json: { error: { code: 'FORBIDDEN', message: '无权访问该对象' } } });
   });
   await contractRoutes(page);
   await page.setViewportSize({ width: 1512, height: 754 });
