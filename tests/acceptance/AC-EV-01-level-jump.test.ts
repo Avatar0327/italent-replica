@@ -1,9 +1,9 @@
 /**
- * AC-EV-01 跨级纯函数（R3-T02 设计 §7.1 第 4 条、P2-06；DEC-372 跨级口径；Q-T02-06 其余边界按设计推荐 🟡，DEC-334②）。
+ * AC-EV-01 跨级纯函数（R3-T02 设计 §7.1 第 4 条、P2-06；DEC-372 跨级口径；Q-T02-06 其余边界按设计推荐，未验证，DEC-497）。
  * max_level_jump = N 表示“最多比原级别高出 N 级”：+N 允许，+N+1 拒绝（EV_XL 实测：可跨 1 级时 +1 成功、+2 / +3 被拒）；
  * 必填、只能选 1～5、没有“不限”（Q-M0-154）。高出的级数 = rank(申请级别) − rank(原级别)；rank 是级别在有序序列（按顺序号升序）里的位置，
- * 不直接用顺序号相减。序列 = 申请类别标准的级别范围；原级别为空视为最低级的前一级；原级别不在序列里 →
- * LEVEL_JUMP_UNDETERMINED；申请不高于原级别允许。
+ * 不直接用顺序号相减。序列 = 申请类别标准的级别范围；原级别为空 = 不限跨级（DEC-497，照原站 W-865）；
+ * 原级别不在序列里 → LEVEL_JUMP_UNDETERMINED；申请不高于原级别允许。
  */
 import { checkLevelJump, defaultApplyLevelId, LEVEL_JUMP_LIMITS, type LevelOrderRef } from '@italent/domain';
 import { describe, expect, it } from 'vitest';
@@ -75,20 +75,41 @@ describe('AC-EV-01 序列顺序与输入顺序无关', () => {
   });
 });
 
-describe('AC-EV-01 Q-T02-06 边界（设计推荐 🟡）', () => {
+describe('AC-EV-01 Q-T02-06 边界（原级别为空照原站 DEC-497；其余子项未验证）', () => {
   const levels = SEQUENCES.不连续;
 
-  it('原级别为空 = 序列最低级的前一级：申请最低级 +1、第二级 +2', () => {
+  // DEC-497：原级别为空不限跨级。旧预期（原级别为空按 rank 0 计，N = 1 时申请第二级被 LEVEL_JUMP_EXCEEDED 拒绝）作废
+  it('原级别为空、N = 1：申报序列最高级允许（照原站 W-865：五级～一级教师、跨级 1，空原级别申报一级教师成功）', () => {
+    const teacher = sequence([10, 20, 30, 40, 50]);
+    expect(checkLevelJump({ levels: teacher, originalLevelId: null, applyLevelId: 'P7', maxLevelJump: 1 })).toEqual({
+      ok: true,
+      raisedLevels: 5,
+    });
+  });
+
+  it('原级别为空、N = 1：申报最低级允许；第二级也允许（不再按 rank 0 计超限）', () => {
     expect(checkLevelJump({ levels, originalLevelId: null, applyLevelId: 'P3', maxLevelJump: 1 })).toEqual({
       ok: true,
       raisedLevels: 1,
     });
     expect(checkLevelJump({ levels, originalLevelId: null, applyLevelId: 'P4', maxLevelJump: 1 })).toEqual({
-      ok: false,
-      code: 'LEVEL_JUMP_EXCEEDED',
+      ok: true,
       raisedLevels: 2,
     });
     expect(defaultApplyLevelId(levels, null)).toBe('P3');
+  });
+
+  it('原级别为空：申请级别不在序列里 → LEVEL_JUMP_UNDETERMINED', () => {
+    expect(checkLevelJump({ levels, originalLevelId: null, applyLevelId: 'X9', maxLevelJump: 1 })).toEqual({
+      ok: false,
+      code: 'LEVEL_JUMP_UNDETERMINED',
+    });
+  });
+
+  it.each([null, undefined, 0, 6, 1.5])('原级别为空、N = %s 非法 → 仍先返回 MAX_LEVEL_JUMP_INVALID（配置校验不放松）', (bad) => {
+    expect(
+      checkLevelJump({ levels, originalLevelId: null, applyLevelId: 'P3', maxLevelJump: bad as unknown as number }),
+    ).toEqual({ ok: false, code: 'MAX_LEVEL_JUMP_INVALID' });
   });
 
   it('原级别不在序列里 → LEVEL_JUMP_UNDETERMINED（不猜）', () => {
