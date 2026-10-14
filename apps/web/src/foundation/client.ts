@@ -87,6 +87,10 @@ function responseError(response: Response, payload: ErrorPayload) {
     'rate-limit': ui.rateLimit,
     unknown: ui.uncertain,
   };
+  // F-141 ④（DEC-500）：字段校验类拒绝没有字段明细时，把服务端给出的业务原因展示出来；有明细由表单回填到字段
+  const reason = payload.error?.message;
+  const detailed = fieldErrors(payload.error?.details).length > 0;
+  if (kind === 'fields' && reason && !detailed) messages.fields = reason;
   const retry = response.headers.get('retry-after');
   return new ApiError(
     response.status,
