@@ -11,6 +11,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { addMember } from './AC-PRM-support.js';
 import { transferWorld } from './AC-TRF-manager-support.js';
 import { tenantApi } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const database = useTestDb();
 const resultPath = (commandId: string) => `/api/tenant/commands/${commandId}/result`;
@@ -46,7 +47,7 @@ describe('F-120 第 2 轮：本人命令结果的归属与结果未知', () => {
   const org = (api: ReturnType<typeof tenantApi>, commandId: string, body: object, as = world.asAdmin) =>
     api.request('POST', '/api/tenant/org/organizations', { ...as, ifMatch: 0, idempotencyKey: commandId, body });
   const validOrg = () => ({
-    name: `F-120 部门 ${randomUUID().slice(0, 8)}`,
+    name: `F-120 部门 ${uniqueSuffix()}`,
     establishedOn: '2025-01-01',
     parents: { admin: { parentId: world.inside.id } },
   });
