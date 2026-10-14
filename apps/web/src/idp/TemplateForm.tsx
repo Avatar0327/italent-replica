@@ -1,4 +1,4 @@
-import { Input, Select } from 'antd';
+import { Input, Radio } from 'antd';
 import type { ReactNode } from 'react';
 import { CreateEntry } from '../evaluation/CreateEntry.js';
 import type { Row } from '../evaluation/model.js';
@@ -38,8 +38,9 @@ function TemplateEditor({ template, close, saved }: { template?: Template; close
     name: <Input maxLength={100} />,
     processId: <CatalogSelect path={`${IDP_API}/processes?enabled=true`} />,
     orgId: <CatalogSelect path={ORG_PATH} />,
+    // 原站新增模板用单选“是 / 否”
     publicDown: (
-      <Select
+      <Radio.Group
         options={[
           { value: true, label: t.yes },
           { value: false, label: t.no },

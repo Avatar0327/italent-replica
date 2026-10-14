@@ -13,9 +13,9 @@ import { CatalogSelect, EmployeeSelect } from './selects.js';
 import type { PlanSummary } from './types.js';
 
 const PATH = `${IDP_API}/plans`;
-const CREATE_FIELDS = ['name', 'employeeId', 'templateId', 'startDate', 'endDate', 'tutorRole', 'tutorEmployeeId'];
+const CREATE_FIELDS = ['name', 'employeeId', 'tutorRole', 'templateId', 'startDate', 'endDate', 'tutorEmployeeId'];
 // 计划创建后员工与模板不可改（plan-input.ts planPatch 只接受这五项）
-const EDIT_FIELDS = ['name', 'startDate', 'endDate', 'tutorRole', 'tutorEmployeeId'];
+const EDIT_FIELDS = ['name', 'tutorRole', 'startDate', 'endDate', 'tutorEmployeeId'];
 const REQUIRED = ['name', 'employeeId', 'templateId', 'startDate', 'endDate', 'tutorRole'];
 const LABELS: Record<string, string> = { ...t.fields, name: t.fields.planName };
 

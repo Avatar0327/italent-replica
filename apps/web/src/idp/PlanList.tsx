@@ -211,9 +211,7 @@ function columns(
     render: (_: unknown, row: PlanSummary) => render(row),
   });
   const all = [
-    field('employeeId').visible && cell('employeeId', t.fields.employeeId, (row) => employees(row.employeeId), 120),
-    // 邮箱、部门、下个阶段开启方式：计划列表接口未提供，如实显示 --（后端缺口清单）
-    cell('email', t.fields.email, () => t.noValue, 160),
+    // 列顺序按原站：名称、姓名、邮箱…
     field('name').visible &&
       cell(
         'name',
@@ -225,6 +223,9 @@ function columns(
         ),
         200,
       ),
+    field('employeeId').visible && cell('employeeId', t.fields.employeeId, (row) => employees(row.employeeId), 120),
+    // 邮箱、部门、下个阶段开启方式：计划列表接口未提供，如实显示 --（后端缺口清单）
+    cell('email', t.fields.email, () => t.noValue, 160),
     field('tutorRole').visible &&
       cell('tutorRole', t.fields.tutorRole, (row) => t.tutorRoles[row.tutorRole ?? ''] ?? t.noValue),
     field('tutorEmployeeId').visible &&
