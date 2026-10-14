@@ -109,7 +109,8 @@ async function approvals(
   page: Page,
   // 催办成功返回流程详情（respondOutcome → respondDetail）。
   urge: () => object = () => ({ json: { id: instance, revision: 4, status: 'running' } }),
-  actions: string[] = ['urge', 'transfer', 'withdraw'],
+  // null：流程详情读取失败。
+  actions: string[] | null = ['urge', 'transfer', 'withdraw'],
 ) {
   const writes: Write[] = [];
   await page.route('**/api/tenant/approval/**', (route) => {
@@ -131,6 +132,7 @@ async function approvals(
               : [],
         },
       });
+    if (!actions) return route.fulfill({ status: 500, json: { error: { code: 'INTERNAL', message: '合成错误' } } });
     return route.fulfill({
       json: {
         id: instance,
@@ -448,4 +450,11 @@ test('AC-FE-R2a-26b 单条改优先级无法排到目标位置时不发请求，
   await ruleLine(page, '合成规则乙').getByRole('button', named('上移')).click();
   await expect(page.getByText('需要批量重排', { exact: false })).toBeVisible();
   expect(writes).toEqual([]);
+});
+
+test('AC-FE-R2a-16d 行内审批信息读取失败时明确提示并可重试，不静默隐藏', async ({ page }) => {
+  await approvals(page, undefined, null);
+  await expect(page.getByText('审批操作读取失败', { exact: true })).toBeVisible();
+  for (const label of ['催办', '转交', '撤销']) await expect(row(page, label)).toHaveCount(0);
+  await expect(row(page, '重试')).toBeVisible();
 });

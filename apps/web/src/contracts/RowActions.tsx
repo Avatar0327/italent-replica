@@ -1,5 +1,5 @@
 // F-127b A4：审批中行内的催办 / 转交 / 撤销，复用审批中心（#297）的详情与动作，不另写审批逻辑。
-import { Button, Space, message } from 'antd';
+import { Button, Space, Typography, message } from 'antd';
 import { useEffect, useState } from 'react';
 import { ApiError } from '../foundation/client.js';
 import { usePermissions } from '../foundation/Permissions.js';
@@ -27,19 +27,29 @@ async function findApproval(api: Api, businessId: string, signal?: AbortSignal):
   }
   return undefined;
 }
-/** 合同列表行不带审批 actions（后端缺口），按行读取流程详情；读取中或读取失败不显示按钮（fail-closed）。 */
+/**
+ * 合同列表行不带审批 actions（后端缺口），按行读取流程详情；读取中或读取失败不显示按钮（fail-closed），
+ * 失败时给出提示与重试，不静默隐藏。
+ */
 function useRowApproval(api: Api, businessId?: string) {
   const [state, setState] = useState<Approval | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [generation, setGeneration] = useState(0);
   useEffect(() => {
     if (!businessId) return;
     const controller = new AbortController();
+    setFailed(false);
     findApproval(api, businessId, controller.signal).then(
       (found) => setState(found ?? null),
-      () => setState(null),
+      () => {
+        if (controller.signal.aborted) return;
+        setState(null);
+        setFailed(true);
+      },
     );
     return () => controller.abort();
-  }, [api, businessId]);
-  return state;
+  }, [api, businessId, generation]);
+  return { current: state, failed, retry: () => setGeneration((n) => n + 1) };
 }
 /**
  * 催办走表单内核：未确认命令按业务行存放在页面层 FormCommands（ContractsPage），
@@ -81,7 +91,7 @@ export function RowActions({ row, onChanged }: { row: Row; onChanged(): void }) 
   const session = useSession();
   const permission = usePermissions(object);
   const businessId = typeof row.id === 'string' ? row.id : '';
-  const current = useRowApproval(api, businessId || undefined);
+  const { current, failed, retry } = useRowApproval(api, businessId || undefined);
   const urge = useUrge(api, businessId);
   const [busy, setBusy] = useState<Action>();
   const [open, setOpen] = useState<ApprovalRow>();
@@ -124,6 +134,14 @@ export function RowActions({ row, onChanged }: { row: Row; onChanged(): void }) 
           {m.approvalActions[action]}
         </Button>
       ))}
+      {failed && (
+        <>
+          <Typography.Text type="warning">{m.approvalReadFailed}</Typography.Text>
+          <Button type="link" size="small" onClick={retry}>
+            {m.retry}
+          </Button>
+        </>
+      )}
       <CommandStatus submission={urge.form} />
       {open && (
         <ApprovalDetail

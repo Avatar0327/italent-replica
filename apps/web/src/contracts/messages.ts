@@ -180,6 +180,8 @@ export const m = {
   addRule: '添加规则',
   flowRule: '流程发起规则',
   renewalHint: '开启后根据配置自动发起合同续签流程；自动执行行为未验证。',
+  approvalReadFailed: '审批操作读取失败',
+  retry: '重试',
   moveUp: '上移',
   moveDown: '下移',
   reorderGap: '只改本条优先级无法排到目标位置（相邻规则跨页或优先级没有空位），需要批量重排，后端暂未提供该接口。',
