@@ -104,11 +104,14 @@ function LoadedProcess({ id, close, saved }: { id: string; close(): void; saved(
 function ProcessEditor({ process, close, saved }: { process?: Process; close(): void; saved(): void }) {
   const permission = usePermissions(OBJECTS.process);
   const writer = useRecordForm(PATH, process as Row | undefined, project);
-  // 子流程按 IDP.SubProcess 自身字段权限渲染，父对象 subProcesses 可编辑是前提（失败即拒绝）
+  // 子流程按 IDP.SubProcess 自身字段权限与操作权渲染，父对象 subProcesses 可编辑是前提（失败即拒绝）
   const subPermission = usePermissions(OBJECTS.subProcess);
+  const subOperations = subPermission.snapshot.objects[OBJECTS.subProcess]?.dataOperations;
   const parent = permission.field('subProcesses');
-  const subAccess = subProcessAccess(parent.visible && parent.editable, subPermission.field);
-  const subDisplay = subProcessAccess(false, subPermission.field);
+  const subAccess = subProcessAccess(parent.visible && parent.editable, subPermission.field, subOperations);
+  const subDisplay = subProcessAccess(false, subPermission.field, subOperations);
+  // 只读展示跟随冲突重读后的最新版本，与表单其他字段同源
+  const shownSubs = writer.current?.subProcesses as SubProcess[] | undefined;
   const controls: Record<string, ReactNode> = {
     name: <Input maxLength={100} />,
     orgId: <CatalogSelect path={ORG_PATH} />,
@@ -122,8 +125,7 @@ function ProcessEditor({ process, close, saved }: { process?: Process; close(): 
     control: controls[name],
     access: permission.field(name),
     rules: rulesOf(name),
-    display:
-      name === 'subProcesses' ? <SubProcessEditor access={subDisplay} value={process?.subProcesses} /> : undefined,
+    display: name === 'subProcesses' ? <SubProcessEditor access={subDisplay} value={shownSubs} /> : undefined,
   }));
   return (
     <FormOverlay
@@ -182,6 +184,8 @@ interface SubHandlers {
   edit?(row: IndexedSub): void;
   up?(index: number): void;
   remove?(index: number): void;
+  /** 移除中间行会改动后续行的顺序号，服务端按编辑权复核；只有移除末行不改顺序。 */
+  removable(index: number): boolean;
 }
 
 /** 子流程按顺序整组提交（seq 由服务端按数组顺序定）；行内编辑在二级弹窗里完成。 */
@@ -206,6 +210,7 @@ function SubProcessEditor({
         }
       : undefined,
     remove: access.remove ? (index) => change(value.filter((_, at) => at !== index)) : undefined,
+    removable: (index) => access.remove && (access.reorder || index === value.length - 1),
   };
   return (
     <div className="idp-sub-process">
@@ -246,7 +251,7 @@ function SubProcessEditor({
 
 /** 列按子流程字段可见性裁剪：不可见字段不出列；开启规则依赖开启方式可见。 */
 function subColumns(visible: readonly string[], handlers: SubHandlers): TableColumnsType<IndexedSub> {
-  const { edit, up, remove } = handlers;
+  const { edit, up, remove, removable } = handlers;
   const all: (TableColumnsType<IndexedSub>[number] | false)[] = [
     { key: 'seq', title: '#', width: 48, render: (_, row) => row.index + 1 },
     visible.includes('name') && { key: 'name', title: t.fields.name, render: (_, row) => display(row.name) },
@@ -283,7 +288,7 @@ function subColumns(visible: readonly string[], handlers: SubHandlers): TableCol
               {t.actions.up}
             </Button>
           )}
-          {remove && (
+          {remove && removable(row.index) && (
             <Button type="link" danger onClick={() => remove(row.index)}>
               {t.actions.remove}
             </Button>

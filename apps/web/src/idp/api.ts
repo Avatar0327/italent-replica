@@ -3,6 +3,7 @@ import { ApiError, type ApiClient } from '../foundation/client.js';
 import type { Values } from '../foundation/forms/store.js';
 import { useCommandForm } from '../foundation/forms/useCommandForm.js';
 import { useApiClient, useSession } from '../foundation/Session.js';
+import { rereadReceipt } from './access.js';
 import { t } from './messages.js';
 
 export const IDP_API = '/api/tenant/idp';
@@ -72,7 +73,7 @@ type Method = 'POST' | 'PATCH' | 'DELETE';
 export function useCommand(
   resource: string,
   businessId?: string,
-  read?: (id: string) => Promise<{ id: string; revision: number }>,
+  read?: (id: string) => Promise<{ id?: unknown; revision?: unknown }>,
 ) {
   const api = useApiClient();
   const command = useCommandForm(resource);
@@ -99,8 +100,9 @@ export function useCommand(
     read && businessId
       ? () =>
           command.reread(async (id) => {
-            const latest = await read(id ?? businessId);
-            return { id: latest.id, revision: latest.revision, values: {} };
+            // 统一校验重读回执：缺 revision 时抛 RereadError，冲突锁不解开（access.ts 三）
+            const key = id ?? businessId;
+            return { ...rereadReceipt(await read(key), key), values: {} };
           })
       : undefined;
   return { ...command, run, reload };

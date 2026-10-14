@@ -14,11 +14,13 @@ import {
   processInView,
   receiptSummary,
   statusText,
+  processActions,
   subProcessAccess,
   taskActions,
   templateActions,
   templateInView,
 } from '../../apps/web/src/idp/model.js';
+import { groupByOwner, operationAccess, RereadError, rereadReceipt } from '../../apps/web/src/idp/access.js';
 import { moduleSettingSections, nodeLabeler } from '../../apps/web/src/idp/template-settings.js';
 import type {
   ApprovalCandidate,
@@ -161,15 +163,15 @@ describe('AC-FE-R3d2 第 2 轮：字段裁剪不丢记录（DEC-431①）', () =
   });
   it('模板状态未知时不给启用 / 停用，其余按钮照常；revision 缺失时不给写操作', () => {
     const all = () => true;
-    expect(templateActions({ id: 'x', revision: 1 }, all)).toEqual(['update', 'copy', 'delete']);
-    expect(templateActions({ id: 'p', revision: 1, status: 'published' }, all)).toEqual([
+    expect(templateActions({ revision: 1 }, all)).toEqual(['update', 'copy', 'delete']);
+    expect(templateActions({ revision: 1, status: 'published' }, all)).toEqual([
       'update',
       'copy',
       'unpublish',
       'delete',
     ]);
-    expect(templateActions({ id: 'd', revision: 1, status: 'draft' }, all)).toContain('publish');
-    expect(templateActions({ id: 'n', status: 'draft' }, all)).toEqual([]);
+    expect(templateActions({ revision: 1, status: 'draft' }, all)).toContain('publish');
+    expect(templateActions({ status: 'draft' }, all)).toEqual([]);
   });
 });
 
@@ -188,14 +190,13 @@ describe('AC-FE-R3d2 第 2 轮：筛选、本人计划、任务权限', () => {
     expect(ownPlans(rows, undefined)).toEqual([]);
   });
   it('任务按服务端返回的节点按钮开放，HR 视图（无按钮）与非进行中计划不开放', () => {
-    const module = { id: 'm', moduleType: 'goal', name: '发展目标' };
-    expect(taskActions(plan('running'), { ...module, buttons: ['RowEditIdpGoal'] })).toEqual(['add', 'edit', 'delete']);
-    expect(taskActions(plan('running'), { ...module, buttons: ['RowAddIdpGoal'] })).toEqual([]);
-    expect(taskActions(plan('running'), module)).toEqual([]);
-    expect(taskActions(plan('ended'), { ...module, buttons: ['RowEditIdpGoal'] })).toEqual([]);
-    expect(taskActions(plan('running', { revision: undefined }), { ...module, buttons: ['RowEditIdpGoal'] })).toEqual(
-      [],
-    );
+    const module = { id: 'm', moduleType: 'goal', name: '发展目标', taskEnabled: true };
+    const edit = { ...module, buttons: ['RowEditIdpGoal'] };
+    expect(taskActions(plan('running'), edit).actions).toEqual(['add', 'edit', 'delete']);
+    expect(taskActions(plan('running'), { ...module, buttons: ['RowAddIdpGoal'] }).actions).toEqual([]);
+    expect(taskActions(plan('running'), module).actions).toEqual([]);
+    expect(taskActions(plan('ended'), edit).actions).toEqual([]);
+    expect(taskActions(plan('running', { revision: undefined }), edit).actions).toEqual([]);
   });
 });
 
@@ -205,22 +206,84 @@ describe('AC-FE-R3d2 第 2 轮：子流程按 IDP.SubProcess 自身权限', () =
     editable: editable.includes(name),
   });
   const all = ['name', 'category', 'approvalType', 'approvalProcessId', 'startMode', 'startTimeType'];
-  it('父字段可编辑且子流程字段全可编辑时可增删改', () => {
-    const access = subProcessAccess(true, field(all, all));
+  const ops = { create: true, update: true, delete: true };
+  it('父字段可编辑、子流程字段全可编辑且有增删改操作权时可增删改', () => {
+    const access = subProcessAccess(true, field(all, all), ops);
     expect(access).toMatchObject({ add: true, edit: true, remove: true, reorder: true });
   });
   it('父字段不可编辑时一律只读（失败即拒绝）', () => {
-    expect(subProcessAccess(false, field(all, all))).toMatchObject({ add: false, edit: false, remove: false });
+    expect(subProcessAccess(false, field(all, all), ops)).toMatchObject({ add: false, edit: false, remove: false });
   });
-  it('子流程对象无权限时只读；必填字段不可编辑时不能新增', () => {
-    expect(subProcessAccess(true, field([], []))).toMatchObject({ add: false, edit: false, remove: false });
-    const partial = subProcessAccess(true, field(all, ['name']));
+  it('子流程字段不可编辑时不能编辑；必填字段不可编辑时不能新增', () => {
+    expect(subProcessAccess(true, field([], []), ops)).toMatchObject({ add: false, edit: false });
+    const partial = subProcessAccess(true, field(all, ['name']), ops);
     expect(partial).toMatchObject({ add: false, edit: true });
   });
   it('隐藏字段不出现在可见字段中', () => {
-    const access = subProcessAccess(true, field(['name', 'category'], ['name']));
+    const access = subProcessAccess(true, field(['name', 'category'], ['name']), ops);
     expect(access.visible).toEqual(['name', 'category']);
     expect(access.editable).toEqual(['name']);
+  });
+});
+
+describe('AC-FE-R3d2 第 3 轮：统一操作权限判定（失败即拒绝）', () => {
+  const field = (name: string) => ({ visible: true, editable: name !== '' });
+  it('只有对象自身操作权明确为 true 才放行；拿不到操作权一律拒绝', () => {
+    const editable = ['name'];
+    const none = { add: false, edit: false, remove: false, reorder: false };
+    expect(operationAccess({ operations: undefined, editable })).toEqual(none);
+    expect(operationAccess({ operations: {}, editable })).toEqual(none);
+    expect(operationAccess({ operations: { create: true, update: true, delete: true }, editable })).toEqual({
+      add: true,
+      edit: true,
+      remove: true,
+      reorder: true,
+    });
+  });
+  it('业务开关必须每一项都明确为 true，缺失（undefined）按关闭处理', () => {
+    const operations = { create: true, update: true, delete: true };
+    expect(operationAccess({ operations, editable: ['name'], switches: [true, undefined] }).add).toBe(false);
+    expect(operationAccess({ operations, editable: ['name'], switches: [true, false] }).remove).toBe(false);
+    expect(operationAccess({ operations, editable: ['name'], switches: [true, true] }).remove).toBe(true);
+  });
+  it('子流程只有查看权（无删除 / 编辑操作权）时不能移除、不能排序，即使字段可编辑', () => {
+    const viewOnly = subProcessAccess(true, field, { create: false, update: false, delete: false });
+    expect(viewOnly).toMatchObject({ add: false, edit: false, remove: false, reorder: false });
+    expect(subProcessAccess(true, field, undefined)).toMatchObject({ remove: false, reorder: false });
+    const deleteOnly = subProcessAccess(true, field, { delete: true });
+    expect(deleteOnly).toMatchObject({ remove: true, reorder: false, edit: false });
+  });
+  it('流程行操作经 processActions 判定：删除缺 revision 不给，无按钮权限不给', () => {
+    const all = () => true;
+    expect(processActions({ revision: 2 }, all)).toEqual(['update', 'delete']);
+    expect(processActions({}, all)).toEqual(['update']);
+    expect(processActions({ revision: 2 }, (action) => action === 'update')).toEqual(['update']);
+    expect(processActions({ revision: 2 }, () => false)).toEqual([]);
+  });
+  it('目标可编辑但模块未开启制定任务时不开放添加；开关缺失时拒绝并给出原因', () => {
+    const module = { id: 'm', moduleType: 'goal', name: '发展目标', buttons: ['RowEditIdpGoal'] };
+    expect(taskActions(plan('running'), { ...module, taskEnabled: false })).toEqual({ actions: [] });
+    expect(taskActions(plan('running'), module)).toEqual({ actions: [], reason: t.task.switchUnknown });
+    expect(taskActions(plan('running'), { ...module, taskEnabled: true }).actions).toEqual(['add', 'edit', 'delete']);
+  });
+});
+
+describe('AC-FE-R3d2 第 3 轮：裁剪字段归属与冲突重读回执', () => {
+  it('归属字段被裁剪（moduleId 缺失）时记录不丢，归入未归属', () => {
+    const goals = [{ id: 'g1', moduleId: 'm1' }, { id: 'g2' }, { id: 'g3', moduleId: 'other' }];
+    const grouped = groupByOwner(goals, (row) => row.moduleId, ['m1']);
+    expect(grouped.of('m1').map((row) => row.id)).toEqual(['g1']);
+    expect(grouped.unassigned.map((row) => row.id)).toEqual(['g2', 'g3']);
+    expect(groupByOwner(undefined, () => undefined, ['m1']).unassigned).toEqual([]);
+  });
+  it('重读回执缺 revision 或不是同一条记录时视为无效，不补造版本号', () => {
+    expect(rereadReceipt({ id: 'p1', revision: 4 }, 'p1')).toEqual({ id: 'p1', revision: 4 });
+    expect(rereadReceipt({ id: 'p1', revision: 0 }, 'p1')).toEqual({ id: 'p1', revision: 0 });
+    expect(() => rereadReceipt({ id: 'p1' }, 'p1')).toThrow(RereadError);
+    expect(() => rereadReceipt({ id: 'p1' }, 'p1')).toThrow('重读失败，请刷新');
+    expect(() => rereadReceipt({ id: 'p2', revision: 4 }, 'p1')).toThrow(RereadError);
+    expect(() => rereadReceipt({ id: 'p1', revision: 1.5 }, 'p1')).toThrow(RereadError);
+    expect(() => rereadReceipt(undefined, 'p1')).toThrow(RereadError);
   });
 });
 

@@ -49,13 +49,19 @@ export const plan = {
   stages,
 };
 const GOAL_BUTTONS = ['RowAddIdpGoal', 'RowEditIdpGoal', 'RowDeleteIdpGoal'];
-function planDetail(buttons: string[]) {
+/**
+ * 目标模块的“制定任务”开关：真实参与人视图不返回（后端缺口），'missing' 模拟该形状；
+ * 默认 true 表示缺口补齐后的契约形状，用来覆盖任务写入链路。
+ */
+type TaskSwitch = boolean | 'missing';
+function planDetail(buttons: string[], taskSwitch: TaskSwitch) {
+  const goalModule = { id: goalModuleId, moduleType: 'goal', name: '发展目标', displayOrder: 1, buttons };
   return {
     ...plan,
     currentNodeName: '制定发展目标',
     modules: [
       { id: moduleId, moduleType: 'basic', name: '基本信息', displayOrder: 0, buttons: [] },
-      { id: goalModuleId, moduleType: 'goal', name: '发展目标', displayOrder: 1, buttons },
+      taskSwitch === 'missing' ? goalModule : { ...goalModule, taskEnabled: taskSwitch },
       { id: analysisModuleId, moduleType: 'analysis', name: '综述', displayOrder: 2, buttons: [] },
       { id: reviewModuleId, moduleType: 'review', name: '中期回顾', displayOrder: 3, buttons: [] },
     ],
@@ -70,7 +76,7 @@ function planDetail(buttons: string[]) {
         endDate: '2026-11-30',
         sourceType: 'custom',
         displayOrder: 0,
-        tasks: [{ id: taskId, name: '合成任务', description: null, startDate: '2026-10-02', endDate: null }],
+        tasks: [{ id: taskId, name: '合成任务', description: '合成任务描述', startDate: '2026-10-02', endDate: null }],
         reviews: [],
       },
     ],
@@ -179,8 +185,14 @@ export interface IdpMockOptions {
   fields?: Record<string, { viewable?: string[]; editable?: string[] }>;
   /** 计划详情里目标模块的节点按钮（参与人视图）；HR 视图传空数组。 */
   goalButtons?: string[];
-  /** 写接口的响应状态（如 500 模拟结果未知）。 */
+  /** 目标模块“制定任务”开关，见 TaskSwitch。 */
+  taskSwitch?: TaskSwitch;
+  /** 按对象覆盖数据操作权（服务端 dataOperations：create / update / delete，默认全部为 true）。 */
+  operations?: Record<string, Record<string, boolean>>;
+  /** 写接口的响应状态（如 500 模拟结果未知、409 模拟版本冲突）。 */
   writeStatus?: number;
+  /** 发生过写请求后，详情读取不再返回 revision（模拟冲突后重读得到无效回执）。 */
+  rereadWithoutRevision?: boolean;
 }
 
 function objectPermission(code: string, options: IdpMockOptions) {
@@ -190,7 +202,7 @@ function objectPermission(code: string, options: IdpMockOptions) {
   const viewable = override?.viewable ?? fields;
   return {
     objectCode: code,
-    dataOperations: { view: true },
+    dataOperations: options.operations?.[code] ?? { create: true, update: true, delete: true },
     viewableFields: viewable,
     editableFields:
       override?.editable ?? viewable.filter((field) => !object.fields.find((item) => item.code === field)?.system),
@@ -206,6 +218,23 @@ function trim<T extends object>(code: string, row: T, options: IdpMockOptions): 
     .fields.map((field) => field.code);
   return Object.fromEntries(Object.entries(row).filter(([key]) => !known.includes(key) || viewable.includes(key))) as T;
 }
+
+/** 详情里的嵌套记录同样按各自对象的字段权限裁剪（目标、任务、综述、回顾、子流程）。 */
+function trimDetail<T extends ReturnType<typeof planDetail>>(detail: T, options: IdpMockOptions): T {
+  return {
+    ...detail,
+    goals: detail.goals.map((goal) => ({
+      ...trim('IDP.IdpGoal', goal, options),
+      tasks: goal.tasks.map((task) => trim('IDP.Task', task, options)),
+    })),
+    analyses: detail.analyses.map((row) => trim('IDP.Analysis', row, options)),
+    reviews: detail.reviews.map((row) => trim('IDP.Review', row, options)),
+  };
+}
+const trimProcess = (row: typeof process, options: IdpMockOptions) => ({
+  ...trim('IDP.IDPProcess', row, options),
+  subProcesses: row.subProcesses.map((sub) => trim('IDP.SubProcess', sub, options)),
+});
 
 /** 让演示身份看到 IDP 全部对象并按目录给出字段与按钮；返回记录到的 IDP 请求，供断言写请求次数与幂等键。 */
 export async function mockIdp(page: Page, options: IdpMockOptions = {}) {
@@ -230,7 +259,7 @@ export async function mockIdp(page: Page, options: IdpMockOptions = {}) {
     hasDataPermission: scoped,
     items: scoped ? items : [],
   });
-  const detail = planDetail(options.goalButtons ?? GOAL_BUTTONS);
+  const detail = trimDetail(planDetail(options.goalButtons ?? GOAL_BUTTONS, options.taskSwitch ?? true), options);
   const reads: Record<string, unknown> = {
     '/plans': list([plan, waiting].map((row) => trim('IDP.Idp', row, options))),
     // 参与人列表固定字段：不含指导人角色、指导人与流程（plan-routes my-plans）
@@ -240,8 +269,8 @@ export async function mockIdp(page: Page, options: IdpMockOptions = {}) {
     [`/plans/${otherPlanId}`]: { ...detail, ...participating },
     '/templates': list([trim('IDP.IDPTemplate', template, options)]),
     [`/templates/${templateId}`]: template,
-    '/processes': list([process]),
-    [`/processes/${processId}`]: process,
+    '/processes': list([trimProcess(process, options)]),
+    [`/processes/${processId}`]: trimProcess(process, options),
     '/approval-processes': {
       items: [
         {
@@ -254,7 +283,8 @@ export async function mockIdp(page: Page, options: IdpMockOptions = {}) {
     },
   };
   const write = (route: Route, path: string) => {
-    if (options.writeStatus) return route.fulfill({ status: options.writeStatus, json: { code: 'INTERNAL' } });
+    const code = options.writeStatus === 409 ? 'REVISION_CONFLICT' : 'INTERNAL';
+    if (options.writeStatus) return route.fulfill({ status: options.writeStatus, json: { error: { code } } });
     if (path.includes('/tasks')) return route.fulfill({ status: path.endsWith('/tasks') ? 201 : 200, json: detail });
     if (path.endsWith('/copy')) return route.fulfill({ status: 201, json: { ...template, id: approvalId } });
     return route.fulfill({ json: path.startsWith('/plans') ? detail : template });
@@ -272,7 +302,12 @@ export async function mockIdp(page: Page, options: IdpMockOptions = {}) {
       });
       return write(route, path);
     }
-    return route.fulfill({ json: reads[path] ?? list([]) });
+    const json = reads[path] ?? list([]);
+    if (options.rereadWithoutRevision && calls.length && /^\/(plans|templates|processes)\/[^/]+$/.test(path)) {
+      const { revision: _revision, ...rest } = json as { revision?: number };
+      return route.fulfill({ json: rest });
+    }
+    return route.fulfill({ json });
   });
   await mockNames(page);
   return calls;

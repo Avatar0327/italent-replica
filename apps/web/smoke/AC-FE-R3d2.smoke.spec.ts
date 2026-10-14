@@ -65,7 +65,7 @@ test('AC-FE-R3d2-01 发展计划：状态列、高级筛选字段、整页详情
   expect(errors).toEqual([]);
 });
 
-test('AC-FE-R3d2-02 计划详情：展示综述与回顾内容，按节点按钮添加 / 编辑 / 删除任务', async ({ page }) => {
+test('AC-FE-R3d2-02 计划详情：展示综述与回顾内容，按节点按钮添加 / 编辑 / 删除任务（含任务描述）', async ({ page }) => {
   const errors = watchErrors(page);
   const calls = await mockIdp(page);
   await asUser(page);
@@ -73,20 +73,29 @@ test('AC-FE-R3d2-02 计划详情：展示综述与回顾内容，按节点按钮
   const detail = page.getByRole('region', { name: '合成发展计划' });
   for (const text of ['合成现状分析', '合成待发展项', '合成阶段总结', '合成改进方法'])
     await expect(detail.getByText(text)).toBeVisible();
-  await expect(detail.getByText('合成任务')).toBeVisible();
+  await expect(detail.getByText('合成任务', { exact: true })).toBeVisible();
+  await expect(detail.getByText('合成任务描述')).toBeVisible();
 
   await detail.getByRole('button', { name: '添加任务' }).click();
+  await detail.getByLabel('任务描述').fill('合成新任务描述');
   await detail.getByLabel('任务名称').fill('合成新任务');
   await detail.getByLabel('任务名称').press('Enter');
   const tasks = `/plans/${planId}/goals/${goalId}/tasks`;
   await expect.poll(() => writes(calls, 'POST', tasks).length).toBe(1);
-  expect(writes(calls, 'POST', tasks)[0]).toMatchObject({ body: { name: '合成新任务' }, revision: '3' });
+  expect(writes(calls, 'POST', tasks)[0]).toMatchObject({
+    body: { name: '合成新任务', description: '合成新任务描述' },
+    revision: '3',
+  });
 
   await detail.getByRole('button', { name: '编辑任务：合成任务' }).click();
+  await expect(detail.getByLabel('任务描述')).toHaveValue('合成任务描述');
+  await detail.getByLabel('任务描述').fill('合成任务描述改');
   await detail.getByLabel('任务名称').fill('合成任务改');
   await detail.getByLabel('任务名称').press('Enter');
   await expect.poll(() => writes(calls, 'PATCH', `${tasks}/${taskId}`).length).toBe(1);
-  expect(writes(calls, 'PATCH', `${tasks}/${taskId}`)[0]).toMatchObject({ body: { name: '合成任务改' } });
+  expect(writes(calls, 'PATCH', `${tasks}/${taskId}`)[0]).toMatchObject({
+    body: { name: '合成任务改', description: '合成任务描述改' },
+  });
 
   await detail.getByRole('button', { name: '删除任务：合成任务' }).click();
   await page
@@ -103,7 +112,7 @@ test('AC-FE-R3d2-03 计划详情：节点没有目标编辑按钮时不开放任
   await asUser(page);
   await page.goto(`/idp/plans?plan=${planId}`);
   const detail = page.getByRole('region', { name: '合成发展计划' });
-  await expect(detail.getByText('合成任务')).toBeVisible();
+  await expect(detail.getByText('合成任务', { exact: true })).toBeVisible();
   await expect(detail.getByRole('button', { name: '添加任务' })).toHaveCount(0);
   await expect(detail.getByRole('button', { name: /编辑任务/ })).toHaveCount(0);
   await expect(detail.getByRole('button', { name: /删除任务/ })).toHaveCount(0);
@@ -253,4 +262,80 @@ test('AC-FE-R3d2-11 没有数据范围时列表显示空范围提示，不回退
   await expect(page.getByText('当前没有可查看的数据范围')).toBeVisible();
   await expect(page.getByRole('button', { name: '合成发展计划', exact: true })).toHaveCount(0);
   expect(errors).toEqual([]);
+});
+
+test('AC-FE-R3d2-12 子流程只有查看权时不显示移除、上移与新增', async ({ page }) => {
+  const errors = watchErrors(page);
+  await mockIdp(page, { operations: { 'IDP.SubProcess': { create: false, update: false, delete: false } } });
+  await openMenu(page, '发展计划流程');
+  await page.getByRole('button', { name: /编\s*辑/, exact: true }).click();
+  const form = page.getByRole('dialog', { name: '编辑发展计划流程' });
+  const row = form.getByRole('row', { name: /合成制定阶段/ });
+  await expect(row).toBeVisible();
+  await expect(row.getByRole('button', { name: /^(移\s*除|上\s*移|编\s*辑)$/ })).toHaveCount(0);
+  await expect(form.getByRole('button', { name: '添加子流程' })).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test('AC-FE-R3d2-13 目标可编辑但模块未开启或未返回“制定任务”时不开放任务操作', async ({ page }) => {
+  const errors = watchErrors(page);
+  await mockIdp(page, { taskSwitch: 'missing' });
+  await asUser(page);
+  await page.goto(`/idp/plans?plan=${planId}`);
+  const detail = page.getByRole('region', { name: '合成发展计划' });
+  await expect(detail.getByText('合成任务', { exact: true })).toBeVisible();
+  await expect(detail.getByRole('button', { name: '添加任务' })).toHaveCount(0);
+  await expect(detail.getByRole('button', { name: /编辑任务|删除任务/ })).toHaveCount(0);
+  await expect(detail.getByText('服务端未返回本模块“制定任务”开关，暂不开放任务操作')).toBeVisible();
+
+  await page.unrouteAll({ behavior: 'ignoreErrors' });
+  await mockIdp(page, { taskSwitch: false });
+  await page.reload();
+  await expect(detail.getByText('合成任务', { exact: true })).toBeVisible();
+  await expect(detail.getByRole('button', { name: '添加任务' })).toHaveCount(0);
+  await expect(detail.getByText('服务端未返回本模块“制定任务”开关，暂不开放任务操作')).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test('AC-FE-R3d2-14 归属模块字段被裁剪时目标、综述、回顾仍在“未归属”中显示', async ({ page }) => {
+  const errors = watchErrors(page);
+  const without = (fields: readonly { code: string }[]) =>
+    fields.map((field) => field.code).filter((code) => code !== 'moduleId');
+  await mockIdp(page, {
+    fields: {
+      'IDP.IdpGoal': { viewable: without(IDP_OBJECTS.goal.fields) },
+      'IDP.Analysis': { viewable: without(IDP_OBJECTS.analysis.fields) },
+      'IDP.Review': { viewable: without(IDP_OBJECTS.review.fields) },
+    },
+  });
+  await asUser(page);
+  await page.goto(`/idp/plans?plan=${planId}`);
+  const detail = page.getByRole('region', { name: '合成发展计划' });
+  const unassigned = detail.getByRole('region', { name: '未归属' });
+  for (const text of ['合成发展目标', '合成现状分析', '合成阶段总结'])
+    await expect(unassigned.getByText(text)).toBeVisible();
+  // 归属不明的目标拿不到所属模块的节点按钮，任务一律只读
+  await expect(unassigned.getByRole('button', { name: '添加任务' })).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test('AC-FE-R3d2-15 冲突后重读缺 revision：不解锁、不发 If-Match: 0，提示重读失败', async ({ page }) => {
+  const errors = watchErrors(page);
+  const calls = await mockIdp(page, { writeStatus: 409, rereadWithoutRevision: true });
+  await asUser(page);
+  await page.goto(`/idp/plans?plan=${planId}`);
+  const detail = page.getByRole('region', { name: '合成发展计划' });
+  await detail.getByRole('button', { name: '添加任务' }).click();
+  await detail.getByLabel('任务名称').fill('合成新任务');
+  await detail.getByLabel('任务名称').press('Enter');
+  await expect(detail.getByText(/版本冲突/)).toBeVisible();
+  await detail.getByRole('button', { name: '重读最新版本' }).click();
+  await expect(detail.getByText('重读失败，请刷新')).toBeVisible();
+  await expect(detail.getByRole('button', { name: '已核对差异，继续编辑' })).toHaveCount(0);
+  await expect(detail.getByLabel('任务名称')).toBeDisabled();
+  await detail.getByLabel('任务名称').press('Enter');
+  const tasks = `/plans/${planId}/goals/${goalId}/tasks`;
+  expect(writes(calls, 'POST', tasks)).toHaveLength(1);
+  expect(calls.filter((call) => call.revision === '0')).toEqual([]);
+  expect(errors.filter((text) => !text.includes('409'))).toEqual([]);
 });

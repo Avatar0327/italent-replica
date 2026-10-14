@@ -1,4 +1,5 @@
 import type { PlanStatus } from '@italent/domain';
+import { operationAccess } from './access.js';
 import { t } from './messages.js';
 import type { PlanModule, PlanSummary, Process, Receipt, Stage, Template } from './types.js';
 
@@ -145,14 +146,34 @@ export function templateActions(row: Pick<Template, 'revision' | 'status'>, can:
   return (['update', 'copy', ...toggle, 'delete'] as TemplateAction[]).filter(can);
 }
 
+export type ProcessAction = 'update' | 'delete';
+/** 流程行操作：编辑先读详情拿 revision，只看按钮权限；删除直接用行 revision，缺失时不给（失败即拒绝）。 */
+export function processActions(row: Pick<Process, 'revision'>, can: (action: ProcessAction) => boolean) {
+  return (['update', 'delete'] as const).filter(
+    (action) => can(action) && (action === 'update' || row.revision !== undefined),
+  );
+}
+
 export type TaskAction = 'add' | 'edit' | 'delete';
 /**
- * 任务的增删改由后端按当前节点的 RowEditIdpGoal 复核（plan-routes 任务接口），前端同口径：
- * 只有服务端在模块上返回了该按钮、计划进行中且带 revision 时才开放；HR 视图不返回节点按钮，不开放。
+ * 任务的增删改由后端按当前节点的 RowEditIdpGoal 且模块开启“制定任务”（task_enabled）复核（plan-routes 任务接口），
+ * 前端同口径经统一入口 operationAccess 判定：计划进行中、带 revision、模块 taskEnabled 明确为 true、
+ * 服务端在模块上返回了该按钮，缺一不开放。参与人视图未返回 taskEnabled 时拒绝并给出原因，不由按钮推断已开启；
+ * HR 视图不返回节点按钮，不开放。
  */
-export function taskActions(plan: PlanSummary, module: PlanModule): TaskAction[] {
-  if (plan.status !== 'running' || plan.revision === undefined) return [];
-  return module.buttons?.includes('RowEditIdpGoal') ? ['add', 'edit', 'delete'] : [];
+export function taskActions(plan: PlanSummary, module: PlanModule): { actions: TaskAction[]; reason?: string } {
+  const executor = module.buttons?.includes('RowEditIdpGoal') === true;
+  const access = operationAccess({
+    operations: { create: executor, update: executor, delete: executor },
+    editable: ['name', 'description'],
+    required: ['name'],
+    switches: [plan.status === 'running', plan.revision !== undefined, module.taskEnabled],
+  });
+  const actions = (['add', 'edit', 'delete'] as const).filter((action) =>
+    action === 'delete' ? access.remove : access[action],
+  );
+  if (executor && module.taskEnabled == null) return { actions, reason: t.task.switchUnknown };
+  return { actions };
 }
 
 /** 新增子流程必须能填写的字段（process-service 子流程必填项）。 */
@@ -167,19 +188,22 @@ export const SUB_PROCESS_FIELDS = [
 ] as const;
 type FieldAccess = (field: string) => { visible: boolean; editable: boolean };
 /**
- * 子流程按 IDP.SubProcess 自身字段权限渲染，并以父对象的 subProcesses 字段可编辑为前提；
+ * 子流程按 IDP.SubProcess 自身字段权限与操作权（dataOperations）渲染，并以父对象的 subProcesses 字段可编辑为前提；
+ * 判定走统一入口 operationAccess：移除要 delete，排序 / 编辑要 update，新增要 create（process-service 同口径），
  * 任一条件不满足即只读（失败即拒绝），隐藏字段不出现在可见字段里。
  */
-export function subProcessAccess(parentEditable: boolean, field: FieldAccess) {
+export function subProcessAccess(
+  parentEditable: boolean,
+  field: FieldAccess,
+  operations: Readonly<Record<string, boolean>> | undefined,
+) {
   const visible = SUB_PROCESS_FIELDS.filter((name) => field(name).visible);
   const editable = parentEditable ? visible.filter((name) => field(name).editable) : [];
-  const writable = parentEditable && visible.length > 0;
-  return {
-    add: writable && SUB_PROCESS_REQUIRED.every((name) => editable.includes(name)),
-    edit: writable && editable.length > 0,
-    remove: writable,
-    reorder: writable,
-    visible: visible as string[],
-    editable: editable as string[],
-  };
+  const access = operationAccess({
+    operations,
+    editable,
+    required: SUB_PROCESS_REQUIRED,
+    switches: [parentEditable, visible.length > 0],
+  });
+  return { ...access, visible: visible as string[], editable: editable as string[] };
 }

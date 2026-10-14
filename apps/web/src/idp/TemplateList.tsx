@@ -36,10 +36,9 @@ const DETAIL = 'template';
 /** 同一模板的状态动作共用一条命令：结果未知时启用、停用、删除一并锁住，按原单回查后再操作。 */
 function useTemplateCommand(id: string) {
   const api = useApiClient();
-  return useCommand(`${IDP_API}/templates/${id}:action`, id, async (key) => {
-    const latest = await api.request<Template>(`${IDP_API}/templates/${key}`);
-    return { id: latest.id, revision: latest.revision ?? 0 };
-  });
+  return useCommand(`${IDP_API}/templates/${id}:action`, id, (key) =>
+    api.request<Template>(`${IDP_API}/templates/${key}`),
+  );
 }
 
 export function TemplateList() {
@@ -293,18 +292,20 @@ function CopyDialog({ source, close, done }: { source: Template; close(): void; 
 function EnableAfterCreate({ template, done, close }: { template: Template; done(): void; close(): void }) {
   const command = useTemplateCommand(template.id);
   const started = useRef(false);
+  const revision = template.revision;
   useEffect(() => {
-    if (started.current) return;
+    // 创建回执没有 revision 时不补造版本号去启用（同 access.ts 三），提示刷新后再启用
+    if (started.current || revision === undefined) return;
     started.current = true;
-    void command
-      .run(`${IDP_API}/templates/${template.id}/publish`, 'POST', {}, template.revision ?? 0)
-      .then((outcome) => {
-        if (!outcome) return;
-        command.clear();
-        done();
-        close();
-      });
-  }, [command, template, done, close]);
+    void command.run(`${IDP_API}/templates/${template.id}/publish`, 'POST', {}, revision).then((outcome) => {
+      if (!outcome) return;
+      command.clear();
+      done();
+      close();
+    });
+  }, [command, template, revision, done, close]);
+  if (revision === undefined)
+    return <Alert type="warning" showIcon closable onClose={close} message={t.enableNoRevision} />;
   if (!command.state || command.status === 'submitting' || command.status === 'done') return null;
   return (
     <Alert

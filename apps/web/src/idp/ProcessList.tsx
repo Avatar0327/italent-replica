@@ -7,7 +7,7 @@ import { useApiClient } from '../foundation/Session.js';
 import { IDP_API, OBJECTS, useCollection, useCommand } from './api.js';
 import { CommandDialog, HeaderActions, NameSearch, useLocalPage, yesNo } from './listing.js';
 import { t } from './messages.js';
-import { display, processInView, type ProcessView } from './model.js';
+import { display, processActions, processInView, type ProcessView } from './model.js';
 import { ProcessForm } from './ProcessForm.js';
 import type { Process } from './types.js';
 import { useNames } from './useNames.js';
@@ -30,20 +30,23 @@ export function ProcessList() {
     'org',
     paging.shown.map((row) => row.orgId),
   );
-  const operations = (row: Process) => (
-    <Space size={4}>
-      {permission.can('update', 'detail') && (
-        <Button type="link" onClick={() => setEditing({ id: row.id })}>
-          {t.actions.edit}
-        </Button>
-      )}
-      {permission.can('delete', 'detail') && row.revision !== undefined && (
-        <Button type="link" danger onClick={() => setRemoving(row)}>
-          {t.actions.delete}
-        </Button>
-      )}
-    </Space>
-  );
+  const operations = (row: Process) => {
+    const actions = processActions(row, (action) => permission.can(action, 'detail'));
+    return (
+      <Space size={4}>
+        {actions.includes('update') && (
+          <Button type="link" onClick={() => setEditing({ id: row.id })}>
+            {t.actions.edit}
+          </Button>
+        )}
+        {actions.includes('delete') && (
+          <Button type="link" danger onClick={() => setRemoving(row)}>
+            {t.actions.delete}
+          </Button>
+        )}
+      </Space>
+    );
+  };
   return (
     <>
       <DecisionNote id="idp-processes" />
@@ -132,10 +135,9 @@ function columns(
 /** 删除走页面级命令：结果未知时关闭再打开仍锁住，按原单回查，不重复发送（F-123 内核）。 */
 function RemoveDialog({ row, close, done }: { row: Process; close(): void; done(): void }) {
   const api = useApiClient();
-  const command = useCommand(`${IDP_API}/processes/${row.id}:action`, row.id, async (id) => {
-    const latest = await api.request<Process>(`${IDP_API}/processes/${id}`);
-    return { id: latest.id, revision: latest.revision ?? 0 };
-  });
+  const command = useCommand(`${IDP_API}/processes/${row.id}:action`, row.id, (id) =>
+    api.request<Process>(`${IDP_API}/processes/${id}`),
+  );
   const ok = async () => {
     const outcome = await command.run(`${IDP_API}/processes/${row.id}`, 'DELETE', {}, row.revision!);
     if (!outcome) return;

@@ -1,10 +1,11 @@
-import { Alert, Button, Collapse, Descriptions, Empty, Space, Steps, Table, Tag } from 'antd';
+import { Alert, Button, Collapse, Descriptions, Empty, Space, Steps, Table, Tag, Typography } from 'antd';
 import { useEffect, useState, type ReactNode } from 'react';
 import { idpDemoBasic, idpDemoReview } from '../demo-stubs/idp.js';
 import { Failure, useRead } from '../evaluation/runtime.js';
 import { DecisionNote } from '../foundation/DecisionNote.js';
 import { PageState } from '../foundation/PageState.js';
 import { useApiClient } from '../foundation/Session.js';
+import { groupByOwner } from './access.js';
 import { IDP_API, useCommand } from './api.js';
 import type { InterventionKind } from './Interventions.js';
 import { CommandNotice } from './listing.js';
@@ -44,7 +45,7 @@ export function PlanDetailPage({ id, onBack, can, edit, intervene }: Props) {
   const plan = detail.plan;
   const names = useNames('employee', [plan?.employeeId, plan?.tutorEmployeeId]);
   const command = useCommand(`${IDP_API}/plans/${id}:task`, id, (planId) =>
-    api.request<PlanDetail>(`${IDP_API}/plans/${planId}`).then((row) => ({ id: row.id, revision: row.revision ?? 0 })),
+    api.request<PlanDetail>(`${IDP_API}/plans/${planId}`),
   );
   const back = <Button onClick={onBack}>{t.back}</Button>;
   if (!plan)
@@ -58,6 +59,9 @@ export function PlanDetailPage({ id, onBack, can, edit, intervene }: Props) {
       </section>
     );
   const writer: TaskWriter = { command, plan, saved: detail.reload };
+  const modules = modulesOf(plan);
+  const groups = planGroups(plan, modules);
+  const unassigned = [groups.goals, groups.analyses, groups.reviews].some((group) => group.unassigned.length);
   return (
     <section aria-label={display(plan.name)} className="idp-detail">
       <header className="idp-detail-header">
@@ -89,12 +93,23 @@ export function PlanDetailPage({ id, onBack, can, edit, intervene }: Props) {
       <CommandNotice command={command} />
       <Collapse
         className="idp-detail-modules"
-        defaultActiveKey={modulesOf(plan).map((module) => module.id)}
-        items={modulesOf(plan).map((module) => ({
-          key: module.id,
-          label: module.name,
-          children: <ModuleBody plan={plan} module={module} writer={writer} />,
-        }))}
+        defaultActiveKey={[...modules.map((module) => module.id), UNASSIGNED]}
+        items={[
+          ...modules.map((module) => ({
+            key: module.id,
+            label: module.name,
+            children: <ModuleBody plan={plan} module={module} groups={groups} writer={writer} />,
+          })),
+          ...(unassigned
+            ? [
+                {
+                  key: UNASSIGNED,
+                  label: t.unassigned.title,
+                  children: <Unassigned plan={plan} groups={groups} writer={writer} />,
+                },
+              ]
+            : []),
+        ]}
       />
     </section>
   );
@@ -119,34 +134,67 @@ function DetailActions({
   ));
 }
 
-/** 模块按模板顺序展示；模块字段不可见时退回到目标、关键信息两块真实数据。 */
+/** 模块按模板顺序展示；模块字段不可见时只保留关键信息，目标、综述、回顾全部进“未归属”。 */
 function modulesOf(plan: PlanDetail): PlanModule[] {
   const modules = [...(plan.modules ?? [])].sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0));
   if (modules.length) return modules;
-  return [
-    { id: 'goal', moduleType: 'goal', name: t.sections.goals },
-    { id: 'key_info', moduleType: 'key_info', name: t.sections.keyInfo },
-  ];
+  return [{ id: 'key_info', moduleType: 'key_info', name: t.sections.keyInfo }];
 }
 
-function ModuleBody({ plan, module, writer }: { plan: PlanDetail; module: PlanModule; writer: TaskWriter }) {
+const UNASSIGNED = '__unassigned';
+/**
+ * 目标、综述、回顾按归属模块分组，统一走 groupByOwner（access.ts 二）：moduleId 被裁剪或指向不在场的模块时
+ * 归入“未归属”，不因字段无权查看而整条消失（DEC-431①）。
+ */
+function planGroups(plan: PlanDetail, modules: PlanModule[]) {
+  const ids = (...types: string[]) =>
+    modules.filter((module) => types.includes(module.moduleType)).map((module) => module.id);
+  return {
+    goals: groupByOwner(plan.goals, (goal) => goal.moduleId, ids('goal')),
+    analyses: groupByOwner(plan.analyses, (row) => row.moduleId, ids('analysis')),
+    reviews: groupByOwner(plan.reviews, (row) => row.moduleId, ids('review', 'summary')),
+  };
+}
+type Groups = ReturnType<typeof planGroups>;
+
+function ModuleBody(props: { plan: PlanDetail; module: PlanModule; groups: Groups; writer: TaskWriter }) {
+  const { plan, module, groups, writer } = props;
   if (module.moduleType === 'basic') return <DemoBlock note={t.demoBasic} rows={idpDemoBasic} />;
   if (module.moduleType === 'talent_review') return <DemoBlock note={t.demoReview} rows={idpDemoReview} />;
   if (module.moduleType === 'key_info') return <KeyInfo info={plan.keyInfo} />;
-  if (module.moduleType === 'analysis') return <Analyses plan={plan} module={module} />;
-  if (module.moduleType === 'review' || module.moduleType === 'summary') return <Reviews plan={plan} module={module} />;
+  if (module.moduleType === 'analysis') return <Analyses rows={groups.analyses.of(module.id)} />;
+  if (module.moduleType === 'review' || module.moduleType === 'summary')
+    return <Reviews rows={groups.reviews.of(module.id)} stages={plan.stages} />;
   if (module.moduleType === 'goal') {
-    // 模块字段不可见（退回模块）时目标不再按模块归类，全部展示
-    const goals = (plan.goals ?? []).filter((goal) => !plan.modules || goal.moduleId === module.id);
-    return <Goals goals={goals} writer={writer} actions={taskActions(plan, module)} />;
+    const { actions, reason } = taskActions(plan, module);
+    return (
+      <>
+        {reason && <Typography.Paragraph type="secondary">{reason}</Typography.Paragraph>}
+        <Goals goals={groups.goals.of(module.id)} writer={writer} actions={actions} />
+      </>
+    );
   }
   return <p className="idp-muted">{module.description || t.moduleReadonly}</p>;
 }
 
+/** 归属不明的内容单独列出；拿不到所属模块的节点按钮与“制定任务”开关，任务一律只读（失败即拒绝）。 */
+function Unassigned({ plan, groups, writer }: { plan: PlanDetail; groups: Groups; writer: TaskWriter }) {
+  const { goals, analyses, reviews } = groups;
+  return (
+    <section aria-label={t.unassigned.title}>
+      <Typography.Paragraph type="secondary">{t.unassigned.note}</Typography.Paragraph>
+      {!!goals.unassigned.length && <Goals goals={goals.unassigned} writer={writer} actions={[]} />}
+      {!!analyses.unassigned.length && <Analyses rows={analyses.unassigned} />}
+      {!!reviews.unassigned.length && <Reviews rows={reviews.unassigned} stages={plan.stages} />}
+    </section>
+  );
+}
+
 const text = (value: string | null | undefined) => (value ? value : t.noContent);
-/** 综述：现状分析、待发展项（plan-routes 详情 analyses，按模块归属）。 */
-function Analyses({ plan, module }: { plan: PlanDetail; module: PlanModule }) {
-  const rows = (plan.analyses ?? []).filter((row) => row.moduleId === module.id);
+type AnalysisRow = NonNullable<PlanDetail['analyses']>[number];
+type ReviewRow = NonNullable<PlanDetail['reviews']>[number];
+/** 综述：现状分析、待发展项（plan-routes 详情 analyses）。 */
+function Analyses({ rows }: { rows: AnalysisRow[] }) {
   if (!rows.length) return <Empty description={t.noContent} />;
   return rows.map((row, index) => (
     <Descriptions
@@ -161,11 +209,10 @@ function Analyses({ plan, module }: { plan: PlanDetail; module: PlanModule }) {
   ));
 }
 
-/** 回顾 / 总结：每个阶段一份总结与改进方法（plan-routes 详情 reviews，按模块归属，阶段名取自阶段进度）。 */
-function Reviews({ plan, module }: { plan: PlanDetail; module: PlanModule }) {
-  const rows = (plan.reviews ?? []).filter((row) => row.moduleId === module.id);
+/** 回顾 / 总结：每个阶段一份总结与改进方法（plan-routes 详情 reviews，阶段名取自阶段进度；阶段被裁剪时显示无权查看）。 */
+function Reviews({ rows, stages }: { rows: ReviewRow[]; stages?: Stage[] }) {
   if (!rows.length) return <Empty description={t.noContent} />;
-  const stageName = (id?: string) => plan.stages?.find((stage) => stage.id === id)?.name;
+  const stageName = (id?: string) => stages?.find((stage) => stage.id === id)?.name ?? t.noAccess;
   return rows.map((row, index) => (
     <Descriptions
       key={index}

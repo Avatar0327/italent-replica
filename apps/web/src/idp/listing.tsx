@@ -1,6 +1,7 @@
-import { Button, Input, Modal, Typography } from 'antd';
+import { Alert, Button, Input, Modal, Typography } from 'antd';
 import { useEffect, useState, type ReactNode } from 'react';
 import { CommandStatus } from '../foundation/forms/CommandStatus.js';
+import { RereadError } from './access.js';
 import type { Command } from './api.js';
 import { t } from './messages.js';
 
@@ -67,6 +68,7 @@ export function CommandNotice({ command }: { command: Command }) {
   return (
     <>
       <CommandStatus submission={command} />
+      {command.state?.readError instanceof RereadError && <Alert type="error" showIcon message={t.rereadFailed} />}
       {command.locked && command.state?.command && (
         <Typography.Paragraph type="secondary" className="idp-command-id">
           {t.commandId}：{command.state.command.id}

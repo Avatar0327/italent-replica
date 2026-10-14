@@ -255,8 +255,17 @@ export const t = {
     delete: (name: string) => `删除任务：${name}`,
     item: (seq: number) => `任务 ${seq}`,
     confirmDelete: '确定删除该任务吗？',
-    hint: '回车保存，Esc 取消',
+    hint: '添加任务名称，回车即可发布',
+    description: '任务描述',
+    descriptionHint: '任务描述（选填）',
+    switchUnknown: '服务端未返回本模块“制定任务”开关，暂不开放任务操作',
   },
+  unassigned: {
+    title: '未归属',
+    note: '以下内容的所属模块无权查看或不在当前计划中，单独列出',
+  },
+  rereadFailed: '重读失败，请刷新',
+  enableNoRevision: '模板已创建，但创建结果没有返回版本号，无法接着启用，请刷新列表后再启用',
   processLine: (name: string) => `流程：${name}`,
   gaps: {
     tutor: '后端未返回指导人，暂不可筛选',

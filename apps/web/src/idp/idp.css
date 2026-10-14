@@ -125,6 +125,16 @@
 .idp-task .ant-input {
   max-width: 360px;
 }
+.idp-task-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+}
+.idp-task-description {
+  margin: 4px 0 0;
+  white-space: pre-wrap;
+}
 .idp-task-add,
 .idp-link {
   padding: 0;

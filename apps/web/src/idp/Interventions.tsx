@@ -37,10 +37,7 @@ function useInterventionCommand(kind: InterventionKind, rows: PlanSummary[]) {
   const single = SINGLE.includes(kind) ? rows[0] : undefined;
   const ids = rows.map((row) => row.id).sort();
   const resource = single ? `${IDP_API}/plans/${single.id}:action` : `${IDP_API}/plans/${kind}:${ids.join(',')}`;
-  return useCommand(resource, single?.id, async (id) => {
-    const latest = await api.request<PlanSummary>(`${IDP_API}/plans/${id}`);
-    return { id: latest.id, revision: latest.revision ?? 0 };
-  });
+  return useCommand(resource, single?.id, (id) => api.request<PlanSummary>(`${IDP_API}/plans/${id}`));
 }
 
 /** 计划状态动作与流程干预的统一弹窗；一次只提交一次，结果未知时锁定并要求回查原单（AGENTS.md §10）。 */

@@ -36,6 +36,8 @@ export interface PlanModule {
   displayOrder?: number;
   /** 参与人视图才返回当前节点授予本模块的按钮；HR 视图不返回。 */
   buttons?: string[];
+  /** 目标模块是否开启“制定任务”（模板 task_enabled）；参与人视图目前不返回，缺失时任务操作一律不开放。 */
+  taskEnabled?: boolean | null;
 }
 export interface GoalTask {
   id: string;
