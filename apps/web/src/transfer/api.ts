@@ -35,9 +35,15 @@ export async function transferRequest<T>(tenantId: string, path: string, options
     });
   } catch (cause) {
     // 兼容现有表单的未知结果判定（>=500 锁住命令）；网络中断同样不能直接重提。
-    if (cause instanceof ApiError) throw new TransferApiError(cause.code, cause.message, cause.status || 503);
+    if (cause instanceof ApiError)
+      throw new TransferApiError(cause.code, transferErrorMessage(cause), cause.status || 503);
     throw cause;
   }
+}
+function transferErrorMessage(error: ApiError) {
+  // DEC-464 / DEC-473：无字段明细的业务拒绝保留原因；刷新与其他错误仍使用底座文案。
+  const rejection = error.kind === 'fields' || error.kind === 'conflict';
+  return rejection && error.fieldErrors.length === 0 ? error.serverMessage || error.message : error.message;
 }
 export function previewInput(model: TransferFormModel) {
   return {

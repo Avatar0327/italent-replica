@@ -47,6 +47,7 @@ function fieldErrors(details: unknown): FieldError[] {
 
 export class ApiError extends Error {
   readonly fieldErrors: FieldError[];
+  readonly serverMessage?: string;
   constructor(
     readonly status: number,
     readonly code: string,
@@ -58,6 +59,7 @@ export class ApiError extends Error {
     super(message);
     this.name = 'ApiError';
     this.fieldErrors = fieldErrors(details?.details);
+    this.serverMessage = details?.message;
   }
 }
 
