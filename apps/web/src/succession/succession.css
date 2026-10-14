@@ -1,0 +1,165 @@
+/* 继任页面样式：颜色与尺寸取主题令牌（主色 #146EFF、文字 #33383D、边框 #E6E8EB、底色 #F7F9FA）。 */
+.succession-page {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.succession-back {
+  align-self: flex-start;
+}
+.succession-toolbar {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.succession-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.succession-muted {
+  color: #868b8f;
+  margin: 4px 0;
+}
+.succession-canvas {
+  position: relative;
+  overflow: auto;
+  min-height: 320px;
+  padding: 8px;
+  background: #f7f8fa;
+}
+.succession-zoom {
+  position: sticky;
+  top: 0;
+  left: 0;
+  z-index: 1;
+}
+/* 自上而下的树：横线由同级 li 的伪元素拼成，竖线是 .succession-link 和下级 ul 的伪元素。 */
+.succession-canvas-content {
+  width: max-content;
+  min-width: 100%;
+  transform-origin: top left;
+}
+.succession-canvas ul {
+  display: flex;
+  justify-content: center;
+  position: relative;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.succession-canvas ul ul {
+  padding-top: 20px;
+}
+.succession-canvas ul ul::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  height: 20px;
+  border-left: 1px solid #c5c9cc;
+}
+.succession-canvas li {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  padding: 20px 8px 0;
+}
+.succession-canvas ul ul > li::before,
+.succession-canvas ul ul > li::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  width: 50%;
+  border-top: 1px solid #c5c9cc;
+}
+.succession-canvas ul ul > li::before {
+  right: 50%;
+}
+.succession-canvas ul ul > li::after {
+  left: 50%;
+}
+.succession-canvas ul ul > li:first-child::before,
+.succession-canvas ul ul > li:last-child::after {
+  border-top: none;
+}
+.succession-link {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  height: 20px;
+  border-left: 1px solid #c5c9cc;
+}
+.succession-card {
+  width: 260px;
+  padding: 10px 12px;
+  border: 1px solid #e6e8eb;
+  border-top: 4px solid #c5c9cc;
+  border-radius: 4px;
+  background: #fff;
+  color: #33383d;
+}
+.succession-card header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.succession-card p {
+  margin: 4px 0;
+}
+.succession-stats {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 8px;
+  margin: 6px 0;
+}
+.succession-stats dt {
+  color: #868b8f;
+}
+.succession-stats dd {
+  margin: 0;
+}
+.succession-successors {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 6px 0 0;
+  border-top: 1px solid #e6e8eb;
+}
+.succession-color {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.succession-color i {
+  width: 14px;
+  height: 14px;
+  border-radius: 2px;
+}
+
+/* 原站继任列表没有视图名下拉，页签即标题（UI2 对照）：隐藏模板的视图标题，按钮靠右。 */
+.succession-records .page-view-heading {
+  display: none;
+}
+.succession-records .page-heading {
+  justify-content: flex-end;
+}
+.succession-heading {
+  margin: 0 16px 0 0;
+}
+.succession-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.succession-filter .ant-select,
+.succession-filter .r3b-wide {
+  width: 180px;
+}
+.succession-rules {
+  max-width: 360px;
+  line-height: 1.6;
+  white-space: normal;
+}
