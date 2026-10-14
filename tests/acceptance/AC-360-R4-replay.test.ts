@@ -26,6 +26,7 @@ import {
 
 import { PORTAL_REPLAY_CASES } from './AC-360-F076-guard-support.js';
 import { resetCredentialConfig } from './AC-360-F076-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 afterAll(resetCredentialConfig);
@@ -202,7 +203,7 @@ const confirmToken = confirmationToken;
 /** 系统管理员建的活动：外部人员作评价对象 + 一名同事评价者，可选启用。 */
 async function linkScene(env: Env, enable: boolean) {
   const { w, q } = env;
-  const activity = await w.activity({ name: `链接${randomUUID().slice(0, 4)}` });
+  const activity = await w.activity({ name: `链接${uniqueSuffix()}` });
   const target = await w.person('链接对象');
   const object = await w.object(activity.id, target.id, [q.id]);
   const rater = await w.person('链接评价者');
@@ -236,7 +237,7 @@ async function removeObject(w: World360, activityId: string, objectId: string) {
 /** 确认场景：外部对象（上级为外部人员）邀请上级确认，返回确认链接。 */
 async function confirmScene(env: Env) {
   const { w, q } = env;
-  const activity = await w.activity({ name: `确认${randomUUID().slice(0, 4)}` });
+  const activity = await w.activity({ name: `确认${uniqueSuffix()}` });
   const boss = await w.person('确认上级');
   const target = await w.person('确认对象');
   await w.ok(
@@ -253,7 +254,7 @@ async function confirmScene(env: Env) {
   return { activity, object, link, revision };
 }
 
-const customer = () => ({ name: '客户', email: `cust-${randomUUID().slice(0, 8)}@example.com` });
+const customer = () => ({ name: '客户', email: `cust-${uniqueSuffix()}@example.com` });
 
 type Case = (env: Env) => Promise<void>;
 interface NotApplicable {
@@ -1015,7 +1016,7 @@ const PR_B_REPLAY: Record<string, Case | NotApplicable> = {
 /** 系统管理员的活动：内部员工甲二（有账号）作同事评价者，启用并发待办；返回甲二的待办作答入口。 */
 async function todoScene(env: Env) {
   const { w, q } = env;
-  const activity = await w.activity({ name: `待办${randomUUID().slice(0, 4)}` });
+  const activity = await w.activity({ name: `待办${uniqueSuffix()}` });
   const object = await w.object(activity.id, (await w.person('待办对象')).id, [q.id]);
   const relation = await w.appraiser(activity.id, object.id, env.people.a2.id, 'peer');
   await w.transition(activity.id, 'enable');

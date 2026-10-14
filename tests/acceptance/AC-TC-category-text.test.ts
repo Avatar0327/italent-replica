@@ -6,7 +6,6 @@
  * - 「设置指标类别」批量入口：勾选标准里的指标后给它们统一填一个类别。批量入口同样校验数据操作权、按钮、
  *   标准的 dimensions 字段编辑权与数据范围，带 If-Match / 幂等键，并写审计（e0a68da）。
  */
-import { randomUUID } from 'node:crypto';
 import { TALENT_OBJECTS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -15,6 +14,7 @@ import { seedPermissionWorld, type PermissionWorld } from './AC-PRM-support.js';
 import { tenantApi } from './support/tenant-api.js';
 import { clock, seedTalentData, talentOperator, type TalentPermissionData } from './AC-TC-permission-support.js';
 import { TC_BASE, TC_NOW, type CriterionView, talentWorld, type TalentWorld } from './AC-TC-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 const BATCH = 'dimension-category';
@@ -127,7 +127,7 @@ describe('DEC-294⑤ 关联记录上的“指标类别”', () => {
 
     const batch = await w.request('POST', `/criteria/${criterion.id}/${BATCH}`, {
       ifMatch: start.revision,
-      idempotencyKey: `tc-dc-${randomUUID().slice(0, 8)}`,
+      idempotencyKey: `tc-dc-${uniqueSuffix()}`,
       body: { dimensionIds: [withCategory.id, plain.id], dimensionCategory: '批量类别' },
     });
     expect(batch.status, await batch.clone().text()).toBe(200);

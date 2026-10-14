@@ -22,6 +22,7 @@ import {
   type FormView,
 } from './AC-TR-form-flow-support.js';
 import { errorCode, tenantApi } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 const clock = () => TR_NOW;
@@ -44,8 +45,8 @@ const KINDS: Kind[] = [
     path: FORMS,
     catalogPath: '/fields',
     catalogBody: () => ({
-      code: `fld_${randomUUID().slice(0, 8)}`,
-      name: `字段${randomUUID().slice(0, 4)}`,
+      code: `fld_${uniqueSuffix()}`,
+      name: `字段${uniqueSuffix()}`,
       kind: 'text',
       group: 'evaluation',
     }),
@@ -58,8 +59,8 @@ const KINDS: Kind[] = [
     path: FLOWS,
     catalogPath: '/roles',
     catalogBody: () => ({
-      code: `role_${randomUUID().slice(0, 8)}`,
-      name: `角色${randomUUID().slice(0, 4)}`,
+      code: `role_${uniqueSuffix()}`,
+      name: `角色${uniqueSuffix()}`,
       resolver: 'self',
     }),
     body: (refId) => flowBody([nodeBody([refId])]),

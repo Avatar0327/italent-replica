@@ -2,9 +2,9 @@
  * R3-T04 PR-B2 验收夹具（设计 §2.2）：评价规则 / 模块等级 / 字段映射。在 B1 的 configWorld / configOperator 之上，
  * 只补这三类对象的路径、最小合法载荷与字段快捷方法。
  */
-import { randomUUID } from 'node:crypto';
 import { expect } from 'vitest';
 import { configWorld, TR_BASE, TR_NOW, type ConfigView } from './AC-TR-config-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 export { configOperator, configWorld, TR_BASE, TR_NOW } from './AC-TR-config-support.js';
 export type { ConfigView } from './AC-TR-config-support.js';
@@ -18,7 +18,7 @@ export type ScoringKind = keyof typeof SCORING_KINDS;
 let counter = 0;
 export const uniq = () => {
   counter += 1;
-  return `${counter}_${randomUUID().slice(0, 4)}`;
+  return `${counter}_${uniqueSuffix()}`;
 };
 export const levels = (...names: string[]) => names.map((name, index) => ({ name, value: names.length - index }));
 export const scoreRuleBody = (extra: Record<string, unknown> = {}) => ({

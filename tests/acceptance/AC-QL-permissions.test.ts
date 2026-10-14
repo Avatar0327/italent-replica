@@ -18,6 +18,7 @@ import { type Data, operator, seed } from './AC-QL-perm-support.js';
 import { type CategoryView, QL_NOW, type StandardView } from './AC-QL-support.js';
 import { createMou } from './AC-TC-support.js';
 import { tenantApi } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 
@@ -96,13 +97,13 @@ describe('任职资格配置的数据范围与向下公开', () => {
       const klass = (await (
         await op.request('POST', '/category-classes', {
           ifMatch: 0,
-          body: { code: `K${randomUUID().slice(0, 5)}`, name: '分类' },
+          body: { code: `K${uniqueSuffix()}`, name: '分类' },
         })
       ).json()) as { id: string };
       const category = (await (
         await op.request('POST', '/categories', {
           ifMatch: 0,
-          body: { code: `C${randomUUID().slice(0, 5)}`, name: '类别', classId: klass.id },
+          body: { code: `C${uniqueSuffix()}`, name: '类别', classId: klass.id },
         })
       ).json()) as { id: string };
       const response = await op.request('POST', '/standards', {
@@ -161,7 +162,7 @@ describe('任职资格配置的数据范围与向下公开', () => {
       const klass = (await (
         await op.request('POST', '/category-classes', {
           ifMatch: 0,
-          body: { code: `K${randomUUID().slice(0, 5)}`, name: '分类' },
+          body: { code: `K${uniqueSuffix()}`, name: '分类' },
         })
       ).json()) as { id: string };
       return op.request('POST', '/categories/import', {

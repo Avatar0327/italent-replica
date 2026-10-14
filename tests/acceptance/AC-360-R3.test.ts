@@ -18,6 +18,7 @@ import {
   world360,
   type World360,
 } from './AC-360-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 const OBJ = survey360.SURVEY360_OBJECTS;
@@ -109,7 +110,7 @@ describe('R2-P2-6 普通 CRUD 按钮权限：公共层按目录登记的按钮�
         'POST /people',
         u('POST', '/people', {
           ifMatch: 0,
-          body: { name: '新人', email: `r3a-${randomUUID().slice(0, 6)}@example.com` },
+          body: { name: '新人', email: `r3a-${uniqueSuffix()}@example.com` },
         }),
       ],
       ['PUT /people/:id', u('PUT', `/people/${s.peer.id}`, { ifMatch: s.peer.revision, body: { name: '改名' } })],
@@ -147,7 +148,7 @@ describe('R2-P2-6 普通 CRUD 按钮权限：公共层按目录登记的按钮�
     const user = await customUser(w, '有按钮', [{ object: 'person', ops: { create: true }, buttons: ['create'] }]);
     const res = await w.as(user)('POST', '/people', {
       ifMatch: 0,
-      body: { name: '新人', email: `r3b-${randomUUID().slice(0, 6)}@example.com` },
+      body: { name: '新人', email: `r3b-${uniqueSuffix()}@example.com` },
     });
     expect(res.status, await res.clone().text()).toBe(201);
   });
@@ -385,7 +386,7 @@ describe('R2-P2-4 审计按真实对象权限与字段权限裁剪', () => {
 
   it('看不到人员邮箱：人员日志列表的变更与详情的 before / after 都不带邮箱', async () => {
     const w = await world360(testDb().db, 'r3j');
-    const email = `audit-r3j-${randomUUID().slice(0, 6)}@example.com`;
+    const email = `audit-r3j-${uniqueSuffix()}@example.com`;
     await w.ok(w.request('POST', '/people', { ifMatch: 0, body: { name: '审计人员', email } }), 201);
     const user = await customUser(w, '日志看不到邮箱', [{ object: 'person', hide: ['email'] }]);
     const audit = auditApi(testDb().db, '2026-10-01T02:00:00Z', { authorize: w.authorize });
@@ -511,7 +512,7 @@ describe('R2-P2-7 精细化权限下新建人员不暴露范围外人员是否�
     const before = await w.ok(w.request('GET', '/people?pageSize=200'));
     const create = (email: string) => w.as(general)('POST', '/people', { ifMatch: 0, body: { name: '新人', email } });
     const taken = await create(hidden.email);
-    const fresh = await create(`fresh-r3n-${randomUUID().slice(0, 6)}@example.com`);
+    const fresh = await create(`fresh-r3n-${uniqueSuffix()}@example.com`);
     expect(taken.status).toBe(403);
     expect(fresh.status).toBe(403);
     expect(await reasonOf(taken)).toEqual(await reasonOf(fresh));

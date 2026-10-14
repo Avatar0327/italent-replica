@@ -18,6 +18,7 @@ import {
 } from './AC-PRM-support.js';
 import { activationWorld, type ActivationWorld } from './AC-TRF-activation-support.js';
 import { cmd, tenantApi } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const database = useTestDb();
 const CLOCK = () => new Date('2026-10-01T01:00:00Z');
@@ -40,7 +41,7 @@ async function permissionWorld(w: ActivationWorld): Promise<PermissionWorld> {
 
 /** 组织与任职记录两个对象都有更新、全部字段与给定组织范围的权限；组织按钮按用例给定。 */
 async function actor(world: PermissionWorld, orgIds: string[], buttons: { buttonCode: string; level: string }[]) {
-  const profile = await createProfile(world, `org35-${randomUUID().slice(0, 8)}`);
+  const profile = await createProfile(world, `org35-${uniqueSuffix()}`);
   for (const definition of [MODULE_OBJECTS.organization, MODULE_OBJECTS.employmentRecord]) {
     const permission = await setObjectPermission(
       world,

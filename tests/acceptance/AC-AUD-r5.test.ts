@@ -22,6 +22,7 @@ import { memberWithAdminRole } from './AC-PRM-users-support.js';
 import { loginEmailOf } from './AC-EMP-support.js';
 import { auditApi } from './AC-AUD-support.js';
 import { tenantApi } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const database = useTestDb();
 const NOW = '2026-10-01T01:00:00.000Z';
@@ -30,7 +31,7 @@ const EMPLOYMENT = MODULE_OBJECTS.employmentRecord;
 /** 审计管理员 + 任职记录全部字段的查看权；可选组织范围。 */
 async function employmentViewer(world: PermissionWorld, label: string, orgRange?: string) {
   const member = await memberWithAdminRole(world, 'audit_admin', label);
-  const profile = await createProfile(world, `aud-r5-${randomUUID().slice(0, 8)}`);
+  const profile = await createProfile(world, `aud-r5-${uniqueSuffix()}`);
   const response = await setObjectPermission(
     world,
     profile,

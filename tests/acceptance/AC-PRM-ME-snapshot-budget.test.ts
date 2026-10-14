@@ -18,6 +18,7 @@ import {
   setObjectPermission,
 } from './AC-PRM-support.js';
 import { tenantApi } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const database = useTestDb();
 const LIMIT = 32 * 1024;
@@ -63,7 +64,7 @@ describe('权限快照整包体积预算', () => {
       SCOPED.map((app) => [app, APP_OBJECT_DIRECTORY[app].find((code) => objectCatalog.get(code))!]),
     );
     const permissionApps = [...new Set([...first.values()].map((code) => objectCatalog.get(code)!.application))];
-    const profile = await createProfile(world, `budget-${randomUUID().slice(0, 6)}`, { apps: permissionApps });
+    const profile = await createProfile(world, `budget-${uniqueSuffix()}`, { apps: permissionApps });
     for (const code of new Set(first.values())) {
       const response = await setObjectPermission(
         world,

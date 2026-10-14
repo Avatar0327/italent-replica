@@ -23,6 +23,7 @@ import {
   type ActivityWorld,
 } from './AC-EV-activity-support.js';
 import type * as RunCommands from '../../apps/api/src/commands.js';
+import { uniqueSuffix } from './support/unique.js';
 
 type RunCommandModule = typeof RunCommands;
 const race = vi.hoisted(() => ({
@@ -66,7 +67,7 @@ vi.mock('../../apps/api/src/commands.js', async (importOriginal) => {
 });
 
 const testDb = useTestDb();
-const suffix = () => randomUUID().slice(0, 6);
+const suffix = () => uniqueSuffix();
 
 /** 等条件成立（轮询），超时报错——给并发测试做“到达屏障”，不靠固定睡眠。 */
 async function waitUntil(condition: () => Promise<boolean>, what: string, timeoutMs = 15_000) {

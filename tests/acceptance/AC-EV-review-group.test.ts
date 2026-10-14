@@ -24,9 +24,10 @@ import {
   reviewWorld,
   type ReviewWorld,
 } from './AC-EV-review-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
-const suffix = () => randomUUID().slice(0, 6);
+const suffix = () => uniqueSuffix();
 const ids = (members: readonly MemberView[]) => members.map((member) => member.employeeId);
 
 interface Page {
