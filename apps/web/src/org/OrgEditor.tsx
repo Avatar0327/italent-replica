@@ -9,10 +9,9 @@ import {
   type FormField,
 } from '../foundation/index.js';
 import { ReferenceSelect } from '../job/JobEditor.js';
-import { orgChangeBody, type Dimension, type OrgRow } from './page-model.js';
+import { orgChangeBody, type Dimension, type OrgAction, type OrgRow } from './page-model.js';
 import { usePageWrite, type PageAccess } from './page-support.js';
 import { pageText as m } from './messages.js';
-export type OrgAction = 'edit' | 'change' | 'disable';
 interface Props {
   original: OrgRow;
   action: OrgAction;

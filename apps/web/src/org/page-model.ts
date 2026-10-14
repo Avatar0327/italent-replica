@@ -1,5 +1,5 @@
 import { canButton, fieldAccess, type ObjectPermission } from '../foundation/permission-model.js';
-import { pageText as m } from './messages.js';
+import { detailText, listText, pageText as m } from './messages.js';
 export interface OrgRow {
   id: string;
   revision: number;
@@ -78,4 +78,44 @@ export function pageAccess(permission: ObjectPermission | undefined) {
       canButton(permission, button, level) &&
       (!['create', 'update', 'delete'].includes(button) || permission?.dataOperations[button] === true),
   };
+}
+
+type FieldGate = Pick<ReturnType<typeof pageAccess>, 'field'>;
+// 原站「启用的组织」列序；状态由视图与筛选体现，不单独成列。
+const listFields = ['code', 'name', 'fullName', 'location', 'broadType', 'establishedOn', 'startDate', 'stopDate'];
+// 原站组织单元详情：组织全称排在基本信息最后。
+const detailFields = [
+  'code',
+  'name',
+  'location',
+  'broadType',
+  'establishedOn',
+  'startDate',
+  'stopDate',
+  'enabled',
+  'fullName',
+  'remarks',
+];
+export function orgListFields(access: FieldGate) {
+  return listFields.filter((field) => access.field(field).visible);
+}
+export function orgDetailFields(access: FieldGate) {
+  return detailFields.filter((field) => access.field(field).visible);
+}
+/** 原站同一字段在列表与详情上叫法不同（如建立日期 / 设立日期）。 */
+export function orgLabel(field: string, place: 'list' | 'detail') {
+  const own: Record<string, string> = place === 'list' ? listText : detailText;
+  return own[field] ?? m[field as keyof typeof m] ?? field;
+}
+export type OrgAction = 'edit' | 'change' | 'disable';
+/** 行操作与详情按钮共用：编辑只更正设立日期（DEC-147），变更 / 停用须能填生效日期。 */
+export function orgActions(access: ReturnType<typeof pageAccess>, row: OrgRow): OrgAction[] {
+  if (!access.can('update')) return [];
+  const actions: OrgAction[] = [];
+  if (access.field('establishedOn').editable) actions.push('edit');
+  if (access.field('effectiveDate').editable) {
+    actions.push('change');
+    if (access.field('enabled').editable && row.enabled === true) actions.push('disable');
+  }
+  return actions;
 }

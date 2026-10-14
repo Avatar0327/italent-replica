@@ -1,4 +1,4 @@
-import { Alert, App, Button, Descriptions, Empty, Input, Select, Space, Tag, Tree } from 'antd';
+import { Alert, App, Button, Descriptions, Dropdown, Empty, Input, Select, Space, Tag, Tree } from 'antd';
 import { useState } from 'react';
 import { useLocation, useSearchParams } from 'react-router';
 import {
@@ -13,10 +13,19 @@ import {
   type ListView,
 } from '../foundation/index.js';
 import { EstablishmentOverview, establishmentObject } from '../establishment/EstablishmentOverview.js';
-import { OrgEditor, type OrgAction } from './OrgEditor.js';
-import { organizationTree, type Dimension, type OrgRow } from './page-model.js';
+import { OrgEditor } from './OrgEditor.js';
+import {
+  orgActions,
+  orgDetailFields,
+  orgLabel,
+  orgListFields,
+  organizationTree,
+  type Dimension,
+  type OrgAction,
+  type OrgRow,
+} from './page-model.js';
 import { usePagePermissions, useRemote, RemoteContent, type PageAccess } from './page-support.js';
-import { pageText as m } from './messages.js';
+import { detailText, pageText as m, text } from './messages.js';
 import { CatalogFilters } from './CatalogFilters.js';
 import './workspace.css';
 const object = 'TenantBase.Organization';
@@ -94,18 +103,6 @@ function useCatalog() {
   };
 }
 type Catalog = ReturnType<typeof useCatalog>;
-const fields = [
-  'code',
-  'name',
-  'fullName',
-  'broadType',
-  'location',
-  'establishedOn',
-  'startDate',
-  'stopDate',
-  'enabled',
-];
-const label = (field: string) => (field === 'enabled' ? m.status : m[field as 'name']);
 function display(field: string, value: unknown) {
   return field === 'enabled' && typeof value === 'boolean' ? (
     <Tag color={value ? 'green' : 'default'}>{value ? m.enabled : m.disabled}</Tag>
@@ -239,63 +236,96 @@ function OrgList({ s, tab, access, view }: { s: Catalog; tab: string; access: Pa
       actions={<Button onClick={s.remote.refresh}>{m.refresh}</Button>}
       filters={
         <>
-          <Alert type="info" showIcon message={tab === 'tree' ? m.treeHint : m.changeHint} />
+          <Alert type="info" showIcon closable message={tab === 'tree' ? m.treeHint : m.changeHint} />
           <OrgFilters s={s} />
         </>
       }
       columns={[
-        ...fields
-          .filter((field) => access.field(field).visible)
-          .map((field) => ({
-            key: field,
-            title: label(field),
-            dataIndex: field,
-            render: (value: unknown, row: OrgRow) =>
-              field === 'name' ? (
-                <Button type="link" onClick={() => s.setSelected(row.id)}>
-                  {String(value ?? m.unavailable)}
-                </Button>
-              ) : (
-                display(field, value)
-              ),
-          })),
-        {
-          key: 'actions',
-          title: m.operation,
-          render: (_: unknown, row: OrgRow) => (
-            <Button type="link" onClick={() => s.setSelected(row.id)}>
-              {m.detail}
-            </Button>
-          ),
-        },
+        ...orgListFields(access).map((field) => ({
+          key: field,
+          title: orgLabel(field, 'list'),
+          dataIndex: field,
+          render: (value: unknown, row: OrgRow) =>
+            field === 'name' ? (
+              <Button type="link" onClick={() => s.setSelected(row.id)}>
+                {String(value ?? m.unavailable)}
+              </Button>
+            ) : (
+              display(field, value)
+            ),
+        })),
+        ...(access.can('update') || !access.field('name').visible
+          ? [
+              {
+                key: 'actions',
+                title: m.operation,
+                render: (_: unknown, row: OrgRow) => <OrgRowActions s={s} access={access} row={row} />,
+              },
+            ]
+          : []),
       ]}
     />
   );
 }
+function openEditor(s: Catalog, original: OrgRow, action: OrgAction) {
+  s.setEditor({ original, action });
+  s.setSelected(undefined);
+}
+// 原站行内为「编辑」与下拉；变更、停用收进「更多」，与详情按钮共用 orgActions 判定。
+// 名称列被字段权限隐藏时没有入口打开详情，保留「详情」兜底（AC-FE-R1a-19）。
+function OrgRowActions({ s, access, row }: { s: Catalog; access: PageAccess; row: OrgRow }) {
+  const actions = orgActions(access, row);
+  const more = actions.filter((action) => action !== 'edit');
+  return (
+    <Space size={4}>
+      {!access.field('name').visible && (
+        <Button type="link" onClick={() => s.setSelected(row.id)}>
+          {m.detail}
+        </Button>
+      )}
+      {actions.includes('edit') && (
+        <Button type="link" onClick={() => openEditor(s, row, 'edit')}>
+          {m.edit}
+        </Button>
+      )}
+      {more.length > 0 && (
+        <Dropdown
+          trigger={['click']}
+          menu={{
+            items: more.map((action) => ({ key: action, label: m[action] })),
+            onClick: ({ key }) => openEditor(s, row, key as OrgAction),
+          }}
+        >
+          <Button type="link">{m.more}</Button>
+        </Dropdown>
+      )}
+    </Space>
+  );
+}
 function OrgDetailActions({ s, access }: { s: Catalog; access: PageAccess }) {
-  if (!s.detail.data || !access.can('update')) return null;
+  const original = s.detail.data;
+  if (!original) return null;
   return (
     <>
-      {(['edit', 'change', 'disable'] as const)
-        .filter((action) => action !== 'edit' || access.field('establishedOn').editable)
-        .filter(
-          (action) => action !== 'disable' || (access.field('enabled').editable && s.detail.data?.enabled === true),
-        )
-        .filter((action) => action === 'edit' || access.field('effectiveDate').editable)
-        .map((action) => (
-          <Button
-            key={action}
-            danger={action === 'disable'}
-            onClick={() => {
-              s.setEditor({ original: s.detail.data!, action });
-              s.setSelected(undefined);
-            }}
-          >
-            {m[action]}
-          </Button>
-        ))}
+      {orgActions(access, original).map((action) => (
+        <Button
+          key={action}
+          type="primary"
+          ghost={action === 'disable'}
+          onClick={() => openEditor(s, original, action)}
+        >
+          {m[action]}
+        </Button>
+      ))}
     </>
   );
+}
+/** 上级只存 ID；名称按当前权限读取上级详情，读不到（范围外 / 已失效）时明确提示，不补写。 */
+function OrgParentName({ id, date }: { id: string; date: string }) {
+  const parent = useRemote<OrgRow>(`/api/tenant/org/organizations/${id}?asOf=${date}`);
+  if (parent.error) return <>{text.hiddenParent}</>;
+  if (!parent.data) return <>{m.missing}</>;
+  return <>{parent.data.name ?? m.unavailable}</>;
 }
 function OrgDetail({ s, access }: { s: Catalog; access: PageAccess }) {
   const { detail } = s;
@@ -316,11 +346,11 @@ function OrgDetail({ s, access }: { s: Catalog; access: PageAccess }) {
               className="r1-detail-fields"
               column={2}
               size="small"
-              items={[...fields, 'remarks']
-                .filter((field) => access.field(field).visible && detail.data?.[field] !== undefined)
+              items={orgDetailFields(access)
+                .filter((field) => detail.data?.[field] !== undefined)
                 .map((field) => ({
                   key: field,
-                  label: label(field),
+                  label: orgLabel(field, 'detail'),
                   children: display(field, detail.data?.[field]),
                 }))}
             />
@@ -330,7 +360,7 @@ function OrgDetail({ s, access }: { s: Catalog; access: PageAccess }) {
           ? [
               {
                 key: 'parents',
-                title: m.hierarchy,
+                title: m.parent,
                 children: (
                   <Descriptions
                     className="r1-detail-fields"
@@ -339,8 +369,8 @@ function OrgDetail({ s, access }: { s: Catalog; access: PageAccess }) {
                       .filter((key) => detail.data?.parents?.[key])
                       .map((key) => ({
                         key,
-                        label: m[key],
-                        children: detail.data?.parents?.[key]?.parentId ?? m.missing,
+                        label: detailText[key],
+                        children: parentName(detail.data?.parents?.[key]?.parentId, s.date),
                       }))}
                   />
                 ),
@@ -350,4 +380,7 @@ function OrgDetail({ s, access }: { s: Catalog; access: PageAccess }) {
       ].filter(() => !!detail.data)}
     />
   );
+}
+function parentName(id: string | null | undefined, date: string) {
+  return id ? <OrgParentName id={id} date={date} /> : m.missing;
 }

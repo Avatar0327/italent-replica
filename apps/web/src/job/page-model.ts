@@ -1,5 +1,5 @@
 import type { FieldAccess } from '../foundation/permission-model.js';
-import { pageText as m } from './messages.js';
+import { kindText, pageText as m } from './messages.js';
 export const jobKinds = [
   'layers',
   'grades',
@@ -27,6 +27,192 @@ export interface JobRow {
   name?: string;
   parents?: Partial<Record<'admin' | 'dotted', { parentId: string | null; sequence?: number | null }>>;
   [field: string]: unknown;
+}
+export const jobFields: Record<JobKind, string[]> = {
+  layers: ['layerLevel'],
+  grades: ['grade', 'scoreLow', 'scoreHigh', 'layerId'],
+  'level-types': [],
+  levels: ['level', 'levelTypeId', 'minGradeId', 'maxGradeId'],
+  sequences: ['parentId', 'levelTypeId', 'source', 'externalId'],
+  'professional-lines': ['parentId'],
+  posts: [
+    'sequenceId',
+    'professionalLineId',
+    'levelTypeId',
+    'minLevelId',
+    'maxLevelId',
+    'minGradeId',
+    'maxGradeId',
+    'responsibilities',
+    'requirements',
+    'evaluationScore',
+  ],
+  positions: [
+    'orgId',
+    'postId',
+    'sequenceId',
+    'professionalLineId',
+    'levelTypeId',
+    'minLevelId',
+    'maxLevelId',
+    'minGradeId',
+    'maxGradeId',
+    'workLocation',
+    'standardPositionId',
+    'adminParent',
+    'adminSequence',
+    'dottedParent',
+    'dottedSequence',
+  ],
+};
+const references: Record<string, string> = {
+  layerId: 'layers',
+  levelTypeId: 'level-types',
+  minGradeId: 'grades',
+  maxGradeId: 'grades',
+  minLevelId: 'levels',
+  maxLevelId: 'levels',
+  sequenceId: 'sequences',
+  professionalLineId: 'professional-lines',
+  orgId: 'org',
+  postId: 'posts',
+  adminParent: 'positions',
+  dottedParent: 'positions',
+  standardPositionId: 'positions',
+};
+/** 引用字段指向的对象；parentId 指向同类对象。'org' 为组织。 */
+export function referenceKind(kind: JobKind, field: string): string | undefined {
+  return field === 'parentId' ? kind : references[field];
+}
+interface FieldGate {
+  field(name: string): FieldAccess;
+}
+// 原站各视图列（F-132 对照表）；职层、专业条线未截到，保持原列。在岗人数、胜任力等接口未返回的列不展示。
+const listFields: Partial<Record<JobKind, string[]>> = {
+  sequences: ['name', 'parentId', 'levelTypeId', 'displayOrder', 'startDate'],
+  'level-types': ['name', 'displayOrder', 'startDate'],
+  grades: ['grade', 'name', 'layerId', 'scoreHigh', 'scoreLow', 'startDate'],
+  levels: ['levelTypeId', 'name', 'level', 'minGradeId', 'maxGradeId'],
+  posts: ['code', 'name', 'sequenceId', 'levelTypeId', 'minLevelId', 'maxLevelId'],
+  positions: [
+    'code',
+    'name',
+    'postId',
+    'orgId',
+    'sequenceId',
+    'levelTypeId',
+    'minLevelId',
+    'maxLevelId',
+    'displayOrder',
+  ],
+};
+// 原站职务新建弹窗与职位详情的字段顺序：head、traits 为原站所见顺序；others 是原站未出现的已有字段，排在后面不删。
+interface JobLayout {
+  head: string[];
+  traits: string[];
+  others: string[];
+  extra: { key: string; fields: string[] };
+}
+const layouts: Partial<Record<JobKind, JobLayout>> = {
+  posts: {
+    head: ['code', 'name', 'establishedOn', 'sequenceId', 'levelTypeId', 'minLevelId', 'maxLevelId'],
+    traits: ['evaluationScore', 'isKey', 'isConfidential', 'displayOrder'],
+    others: ['professionalLineId', 'minGradeId', 'maxGradeId'],
+    extra: { key: 'duty', fields: ['responsibilities', 'requirements'] },
+  },
+  positions: {
+    head: [
+      'code',
+      'name',
+      'establishedOn',
+      'orgId',
+      'workLocation',
+      'postId',
+      'sequenceId',
+      'levelTypeId',
+      'minLevelId',
+      'maxLevelId',
+    ],
+    traits: ['isKey', 'isConfidential', 'displayOrder'],
+    others: ['professionalLineId', 'minGradeId', 'maxGradeId', 'standardPositionId'],
+    extra: { key: 'reporting', fields: ['adminParent', 'adminSequence', 'dottedParent', 'dottedSequence'] },
+  },
+};
+export function jobLabel(kind: JobKind, field: string) {
+  const own: Record<string, string> = kindText[kind];
+  return own[field] ?? m[field as keyof typeof m] ?? field;
+}
+export function jobListFields(kind: JobKind, access: FieldGate) {
+  const fields = listFields[kind] ?? [
+    'code',
+    'name',
+    ...jobFields[kind].slice(0, 5),
+    'enabled',
+    'startDate',
+    'stopDate',
+  ];
+  return fields.filter((field) => access.field(field).visible);
+}
+export function jobFormGroups(kind: JobKind) {
+  const layout = layouts[kind];
+  if (!layout) {
+    const fields = ['name', 'code', ...jobFields[kind], 'displayOrder', 'establishedOn', 'stopDate', 'enabled'];
+    return [{ key: 'basic', fields }];
+  }
+  const { head, traits, others, extra } = layout;
+  return [{ key: 'basic', fields: [...head, ...traits, ...others, 'stopDate', 'enabled'] }, extra];
+}
+export function jobDetailSections(kind: JobKind, access: FieldGate, values: Record<string, unknown>) {
+  const layout = layouts[kind];
+  const groups = layout
+    ? [
+        {
+          key: 'basic',
+          fields: [...layout.head, ...layout.traits, 'enabled', 'startDate', ...layout.others, 'stopDate'],
+        },
+        layout.extra,
+      ]
+    : [
+        {
+          key: 'basic',
+          fields: [
+            'name',
+            'code',
+            ...jobFields[kind],
+            'displayOrder',
+            'enabled',
+            'startDate',
+            'stopDate',
+            'establishedOn',
+          ],
+        },
+      ];
+  return groups
+    .map(({ key, fields }) => ({
+      key,
+      fields: fields.filter((field) => access.field(jobPermissionField(field)).visible && values[field] !== undefined),
+    }))
+    .filter((section) => section.fields.length);
+}
+export interface JobCatalogFilters {
+  asOf: string;
+  page: number;
+  pageSize: number;
+  name: string;
+  enabled: string;
+  orgId?: string;
+}
+export function jobCatalogQuery(kind: JobKind, filters: JobCatalogFilters) {
+  const query = new URLSearchParams({
+    asOf: filters.asOf,
+    page: String(filters.page),
+    pageSize: String(filters.pageSize),
+    ...(filters.name ? { name: filters.name } : {}),
+    ...(filters.enabled ? { enabled: filters.enabled } : { includeDisabled: 'true' }),
+    // 接口只有职位支持按所属组织筛选。
+    ...(kind === 'positions' && filters.orgId ? { orgId: filters.orgId } : {}),
+  });
+  return query.toString();
 }
 /** DEC-465：候选与写入共用时点；无日期编辑权时使用后端默认的租户当天。 */
 export function jobTiming(original: JobRow | undefined, selectedDate: string, today: string, access: FieldAccess) {

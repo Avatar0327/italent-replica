@@ -14,8 +14,20 @@ import {
 } from '../foundation/index.js';
 import { usePagePermissions, useRemote, RemoteContent, type PageAccess } from '../org/page-support.js';
 import { useSequenceSelection } from './SequenceSync.js';
-import { JobEditor, JobHints, jobFields, label } from './JobEditor.js';
-import { jobKinds, jobObjects, jobInitialValues, jobPermissionField, type JobKind, type JobRow } from './page-model.js';
+import { JobEditor, JobHints, ReferenceSelect } from './JobEditor.js';
+import { ReferenceName } from './ReferenceName.js';
+import {
+  jobCatalogQuery,
+  jobDetailSections,
+  jobInitialValues,
+  jobKinds,
+  jobLabel,
+  jobListFields,
+  jobObjects,
+  referenceKind,
+  type JobKind,
+  type JobRow,
+} from './page-model.js';
 import { pageText as m } from './messages.js';
 import { CatalogFilters } from '../org/CatalogFilters.js';
 import '../org/workspace.css';
@@ -52,15 +64,10 @@ function useCatalog(kind: JobKind) {
   const [page, setPage] = useState({ page: 1, pageSize: 15 });
   const [name, setName] = useState('');
   const [enabled, setEnabled] = useState('true');
+  const [orgId, setOrgId] = useState<string>();
   const [selected, setSelected] = useState<string>();
   const [editor, setEditor] = useState<{ original?: JobRow; today: string }>();
-  const query = new URLSearchParams({
-    asOf: date,
-    page: String(page.page),
-    pageSize: String(page.pageSize),
-    ...(name ? { name } : {}),
-    ...(enabled ? { enabled } : { includeDisabled: 'true' }),
-  });
+  const query = jobCatalogQuery(kind, { asOf: date, ...page, name, enabled, orgId });
   const remote = useRemote<PageResult<JobRow> & { today: string }>(`/api/tenant/job/${kind}?${query}`);
   const detail = useRemote<JobRow>(selected ? `/api/tenant/job/${kind}/${selected}?asOf=${date}` : null);
   const reset = () => {
@@ -78,6 +85,8 @@ function useCatalog(kind: JobKind) {
     setName,
     enabled,
     setEnabled,
+    orgId,
+    setOrgId,
     selected,
     setSelected,
     editor,
@@ -89,64 +98,83 @@ function useCatalog(kind: JobKind) {
 }
 type Catalog = ReturnType<typeof useCatalog>;
 function renderValue(field: string, value: unknown) {
-  return field === 'enabled' && typeof value === 'boolean' ? (
-    <Tag color={value ? 'green' : 'default'}>{value ? m.active : m.inactive}</Tag>
-  ) : (
-    String(value ?? m.missing)
-  );
+  if (field === 'enabled' && typeof value === 'boolean')
+    return <Tag color={value ? 'green' : 'default'}>{value ? m.active : m.inactive}</Tag>;
+  if (typeof value === 'boolean') return value ? m.yes : m.no;
+  return String(value ?? m.missing);
 }
-function JobFilters({ s }: { s: Catalog }) {
+function renderDetailValue(s: Catalog, field: string, value: unknown) {
+  const target = referenceKind(s.kind, field);
+  if (target && typeof value === 'string' && value) return <ReferenceName kind={target} id={value} date={s.date} />;
+  return renderValue(field, value);
+}
+function JobFilters({ s, access }: { s: Catalog; access: PageAccess }) {
   return (
-    <Space wrap>
-      <Input.Search
-        key={s.name}
-        defaultValue={s.name}
-        aria-label={m.search}
-        placeholder={m.search}
-        allowClear
-        onSearch={(value) => {
-          s.setName(value);
-          s.reset();
-        }}
-      />
-      <Select
-        aria-label={m.enabled}
-        value={s.enabled}
-        onChange={(value) => {
-          s.setEnabled(value);
-          s.reset();
-        }}
-        options={[
-          { value: 'true', label: m.active },
-          { value: 'false', label: m.inactive },
-          { value: '', label: m.all },
-        ]}
-      />
-      <CatalogFilters
-        value={{ name: s.name, status: s.enabled }}
-        statuses={[
-          { value: 'true', label: m.active },
-          { value: 'false', label: m.inactive },
-          { value: '', label: m.all },
-        ]}
-        clearStatus=""
-        onApply={({ name, status }) => {
-          s.setName(name);
-          s.setEnabled(status);
-          s.reset();
-        }}
-      />
-      <span>{m.startDate}</span>
-      <TenantDatePicker
-        value={s.date}
-        onChange={(value) => {
-          if (value) {
-            s.setDate(value);
+    <>
+      <JobHints kind={s.kind} />
+      <Space wrap>
+        {s.kind === 'positions' && access.field('orgId').visible && (
+          <ReferenceSelect
+            kind="org"
+            date={s.date}
+            value={s.orgId}
+            placeholder={m.orgFilter}
+            onChange={(value) => {
+              s.setOrgId(value ?? undefined);
+              s.reset();
+            }}
+          />
+        )}
+        <Input.Search
+          key={s.name}
+          defaultValue={s.name}
+          aria-label={m.search}
+          placeholder={m.search}
+          allowClear
+          onSearch={(value) => {
+            s.setName(value);
             s.reset();
-          }
-        }}
-      />
-    </Space>
+          }}
+        />
+        <Select
+          aria-label={m.enabled}
+          value={s.enabled}
+          onChange={(value) => {
+            s.setEnabled(value);
+            s.reset();
+          }}
+          options={[
+            { value: 'true', label: m.active },
+            { value: 'false', label: m.inactive },
+            { value: '', label: m.all },
+          ]}
+        />
+        <CatalogFilters
+          value={{ name: s.name, status: s.enabled }}
+          statuses={[
+            { value: 'true', label: m.active },
+            { value: 'false', label: m.inactive },
+            { value: '', label: m.all },
+          ]}
+          clearStatus=""
+          onApply={({ name, status }) => {
+            s.setName(name);
+            s.setEnabled(status);
+            s.reset();
+          }}
+        />
+        <span>{m.startDate}</span>
+        <TenantDatePicker
+          value={s.date}
+          onChange={(value) => {
+            if (value) {
+              s.setDate(value);
+              s.reset();
+            }
+          }}
+        />
+      </Space>
+    </>
   );
 }
 function JobCatalog({ kind, access, view }: { kind: JobKind; access: PageAccess; view: ListView }) {
@@ -169,7 +197,7 @@ function JobCatalog({ kind, access, view }: { kind: JobKind; access: PageAccess;
         loading={s.remote.loading}
         error={s.remote.error}
         retry={s.remote.refresh}
-        filters={<JobFilters s={s} />}
+        filters={<JobFilters s={s} access={access} />}
         actions={
           <>
             <Button onClick={s.remote.refresh}>{m.refresh}</Button>
@@ -184,20 +212,8 @@ function JobCatalog({ kind, access, view }: { kind: JobKind; access: PageAccess;
             )}
           </>
         }
-        columns={[
-          ...columns,
-          {
-            key: 'actions',
-            title: m.operation,
-            render: (_: unknown, row: JobRow) => (
-              <Button type="link" onClick={() => s.setSelected(row.id)}>
-                {m.detail}
-              </Button>
-            ),
-          },
-        ]}
+        columns={columns}
       />
-      <JobHints kind={kind} />
       <JobDetail s={s} access={access} />
       {s.editor && (
         <JobEditor
@@ -222,6 +238,7 @@ function JobCatalog({ kind, access, view }: { kind: JobKind; access: PageAccess;
 function JobDetail({ s, access }: { s: Catalog; access: PageAccess }) {
   const { detail, kind } = s;
   const values = jobInitialValues(detail.data);
+  const sections = detail.data ? jobDetailSections(kind, access, values) : [];
   return (
     <DetailPage
       open={!!s.selected}
@@ -232,6 +249,7 @@ function JobDetail({ s, access }: { s: Catalog; access: PageAccess }) {
         detail.data &&
         access.can('update') && (
           <Button
+            type="primary"
             onClick={() => {
               s.setEditor({ original: detail.data, today: s.remote.data?.today ?? s.date });
               s.setSelected(undefined);
@@ -242,56 +260,56 @@ function JobDetail({ s, access }: { s: Catalog; access: PageAccess }) {
         )
       }
       tabs={[{ key: 'record', label: m[kind] }]}
-      sections={[
-        {
-          key: 'basic',
-          title: m.basic,
-          children: (
-            <Descriptions
-              className="r1-detail-fields"
-              column={2}
-              layout="vertical"
-              size="small"
-              items={[
-                'name',
-                'code',
-                ...jobFields[kind],
-                'displayOrder',
-                'enabled',
-                'startDate',
-                'stopDate',
-                'establishedOn',
-              ]
-                .filter((field) => access.field(jobPermissionField(field)).visible && values[field] !== undefined)
-                .map((field) => ({
-                  key: field,
-                  label: label(field),
-                  children: renderValue(field, values[field]),
-                }))}
-            />
-          ),
-        },
-      ].filter(() => !!detail.data)}
+      sections={sections.map((section) => ({
+        key: section.key,
+        title: m[section.key as 'basic'],
+        children: (
+          <Descriptions
+            className="r1-detail-fields"
+            column={2}
+            layout="vertical"
+            size="small"
+            items={section.fields.map((field) => ({
+              key: field,
+              label: jobLabel(kind, field),
+              children: renderDetailValue(s, field, values[field]),
+            }))}
+          />
+        ),
+      }))}
     />
   );
 }
 
 function jobColumns(kind: JobKind, access: PageAccess, select: (id: string) => void) {
-  const fields = ['code', 'name', ...jobFields[kind].slice(0, 5), 'enabled', 'startDate', 'stopDate'];
-  const columns = fields
-    .filter((field) => access.field(field).visible)
-    .map((field) => ({
-      key: field,
-      title: label(field),
-      dataIndex: field,
-      render: (value: unknown, row: JobRow) =>
-        field === 'name' ? (
-          <Button type="link" onClick={() => select(row.id)}>
-            {String(value ?? m.missing)}
-          </Button>
-        ) : (
-          renderValue(field, value)
-        ),
-    }));
-  return columns;
+  // 原站列表无操作列，点名称打开详情抽屉；名称被字段权限隐藏时保留「详情」兜底（AC-FE-R1a-19）。
+  const fallback = access.field('name').visible
+    ? []
+    : [
+        {
+          key: 'actions',
+          title: m.operation,
+          render: (_: unknown, row: JobRow) => (
+            <Button type="link" onClick={() => select(row.id)}>
+              {m.detail}
+            </Button>
+          ),
+        },
+      ];
+  return [...jobListFields(kind, access).map(listColumn(kind, select)), ...fallback];
+}
+function listColumn(kind: JobKind, select: (id: string) => void) {
+  return (field: string) => ({
+    key: field,
+    title: jobLabel(kind, field),
+    dataIndex: field,
+    render: (value: unknown, row: JobRow) =>
+      field === 'name' ? (
+        <Button type="link" onClick={() => select(row.id)}>
+          {String(value ?? m.missing)}
+        </Button>
+      ) : (
+        renderValue(field, value)
+      ),
+  });
 }
