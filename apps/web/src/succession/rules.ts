@@ -4,7 +4,7 @@
  */
 import type { MenuNode, ServerSnapshot } from '../foundation/permission-snapshot.js';
 import { s } from './messages.js';
-import type { SuccessionType } from './types.js';
+import type { LevelRules, MapItem, MapResult, Preferences, RuleRow, SuccessionType } from './types.js';
 
 export const BASE = '/api/tenant/succession';
 export const READINESS_PATH = '/api/tenant/talent-review/readiness-levels';
@@ -66,6 +66,84 @@ export function assignBody(mode: 'rule' | 'manual', levelId: string | undefined)
   return { levelId };
 }
 
+/**
+ * 表单内核要求回执带业务 ID；下面两类接口的真实回执没有顶层 id，按各自形状核对后给出固定键。
+ * 形状不符一律抛错，由内核判为结果未知（DEC-067 幂等：先回查再决定是否重提）。
+ */
+export const END_RECEIPT = 'records/end';
+export function endReceipt(response: unknown, submitted: readonly { id: string }[]) {
+  const items = (response as { items?: unknown } | null)?.items;
+  const ids = new Set(submitted.map((item) => item.id));
+  const ended = Array.isArray(items) ? (items as { id?: unknown }[]) : undefined;
+  if (!ended || ended.length !== ids.size || !ended.every((item) => typeof item?.id === 'string' && ids.has(item.id)))
+    throw new Error('endReceipt');
+  return { id: END_RECEIPT };
+}
+export const PREFS_RECEIPT = 'preferences';
+const preferenceKeys = ['depth', 'showPositionsWithoutSuccessor', 'rootOrgId'] as const;
+export function preferenceReceipt(response: unknown) {
+  const view = response as Partial<Preferences> | null;
+  if (!Number.isSafeInteger(view?.revision) || !Number.isSafeInteger(view?.depth)) throw new Error('preferenceReceipt');
+  return { id: PREFS_RECEIPT };
+}
+/** 偏好重读：只比较抽屉里能改的三项；未选组织根（null）与表单空值同为 undefined，避免误报差异。 */
+export function preferenceLatest(view: Preferences) {
+  preferenceReceipt(view);
+  return {
+    id: PREFS_RECEIPT,
+    revision: view.revision,
+    values: Object.fromEntries(preferenceKeys.map((key) => [key, view[key] ?? undefined])),
+  };
+}
+/** 赋值没有单条读取接口：重读整张地图，按节点 ID 取结果行；未评定时版本为 0。 */
+export function assignLatest(map: MapResult, id: string, kind: 'position' | 'org') {
+  const items = map.items.flatMap((item) => [item, ...(item.keyPositions ?? [])]);
+  const item = items.find((entry) => entry.id === id);
+  if (!item) throw new Error('assignMissing');
+  const level = kind === 'position' ? item.risk : item.health;
+  return { id, revision: level?.revision ?? 0, values: assignValues(level?.levelId) };
+}
+export const assignValues = (levelId?: string | null) => ({
+  mode: levelId ? 'manual' : 'rule',
+  levelId: levelId ?? undefined,
+});
+
+/** 组织地图：关键职位挂在所属组织下，作为子卡片（接口 keyPositions[]，字段受地图对象权限控制）。 */
+export function orgMapItems(items: readonly MapItem[]): MapItem[] {
+  return items.flatMap((item) => [
+    item,
+    ...(item.keyPositions ?? []).map((position) => ({ ...position, parentId: item.id, keyPosition: true })),
+  ]);
+}
+
+/** 规则只读展示：表达式原样，条件行拼成一句话（docs/02_业务建模/27 §5.9）。 */
+export function ruleLines(rules: LevelRules | null | undefined): { expression: string; rows: string[] } | undefined {
+  if (!rules?.rows?.length) return undefined;
+  const labels = s.rules;
+  const text = (map: Record<string, string> | undefined, key?: string | null) => (key ? (map?.[key] ?? key) : '');
+  const value = (row: RuleRow) => {
+    const unit = row.isPercent ? '%' : '';
+    const low = row.threshold ?? row.values?.join('、') ?? '';
+    return row.thresholdHigh !== undefined && row.thresholdHigh !== null
+      ? `${low}${unit} ~ ${row.thresholdHigh}${unit}`
+      : `${low}${unit}`;
+  };
+  const rows = rules.rows.map((row) =>
+    [
+      `${row.rowNo}.`,
+      text(labels.population, row.population),
+      text(labels.subject, row.subject),
+      row.field?.label ?? row.field?.code ?? row.fieldCode ?? '',
+      text(labels.measure, row.measure),
+      text(labels.comparator, row.comparator ?? row.operator),
+      value(row),
+    ]
+      .filter(Boolean)
+      .join(' '),
+  );
+  return { expression: rules.expression ?? '', rows };
+}
+
 export interface MapNode<T> {
   item: T;
   children: MapNode<T>[];
@@ -102,12 +180,10 @@ export function recordQuery(
   },
   visible: (field: string) => boolean,
 ) {
-  const params = new URLSearchParams({
-    page: String(query.page),
-    pageSize: String(query.pageSize),
-    successionType: query.type,
-    status: query.status ?? 'active',
-  });
+  const params = new URLSearchParams({ page: String(query.page), pageSize: String(query.pageSize) });
+  // 类型字段被隐藏时两张表读到的是混合列表，由服务端按权限裁剪（未决 / 假设）。
+  if (visible('successionType')) params.set('successionType', query.type);
+  if (visible('status')) params.set('status', query.status ?? 'active');
   const target = query.type === 'position' ? 'targetPositionId' : 'targetOrgId';
   if (query.targetId && visible(target)) params.set(target, query.targetId);
   if (query.successorEmployeeId && visible('successorEmployeeId'))
@@ -125,8 +201,10 @@ export function settingsMenu(snapshot: ServerSnapshot): MenuNode[] {
   const node = (key: keyof typeof s.menu, path: string) => ({ key: path, label: s.menu[key], path, group: 'talent' });
   return [
     node('manage', '/succession/manage'),
-    ...(['Succession.RiskLevel', 'Succession.HealthLevel'].some((code) => succession.includes(code))
-      ? [node('mapSettings', '/succession/settings/map')]
+    ...(succession.includes('Succession.RiskLevel') ? [node('mapSettings', '/succession/settings/map')] : []),
+    // 原站“健康度规则设置”是独立页：人员范围 + 继任地图健康度（UI2 对照）。
+    ...(['Succession.HealthLevel', 'Succession.Population'].some((code) => succession.includes(code))
+      ? [node('healthSettings', '/succession/settings/health')]
       : []),
     node('keyPositions', '/succession/settings/key-positions'),
     ...(objects('talent-review').includes('TalentReview.Readiness')

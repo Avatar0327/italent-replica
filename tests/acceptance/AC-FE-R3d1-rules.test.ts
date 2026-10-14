@@ -6,11 +6,19 @@ import { describe, expect, it } from 'vitest';
 import type { ServerSnapshot } from '../../apps/web/src/foundation/permission-snapshot.js';
 import {
   assignBody,
+  assignLatest,
   createRecordBody,
+  END_RECEIPT,
   endCommand,
+  endReceipt,
   mapForest,
+  orgMapItems,
+  preferenceLatest,
+  preferenceReceipt,
+  PREFS_RECEIPT,
   recordDateErrors,
   recordQuery,
+  ruleLines,
   settingsMenu,
 } from '../../apps/web/src/succession/rules.js';
 
@@ -145,6 +153,91 @@ describe('AC-FE-R3d1 列表查询只带可见字段的筛选', () => {
       'page=1&pageSize=50&successionType=org&status=active&successorEmployeeId=e',
     );
   });
+  it('状态、继任类型字段隐藏时这两个参数也不发送', () => {
+    const visible = (field: string) => !['status', 'successionType'].includes(field);
+    expect(recordQuery({ type: 'org', page: 1, pageSize: 15, status: 'all' }, visible)).toBe('page=1&pageSize=15');
+  });
+});
+
+describe('AC-FE-R3d1 真实回执形状（第 2 轮）', () => {
+  const rows = [{ id: 'a' }, { id: 'b' }];
+  it('批量结束回执 {items} 逐条对上提交的记录才算成功', () => {
+    expect(endReceipt({ items: [{ id: 'b' }, { id: 'a' }] }, rows)).toEqual({ id: END_RECEIPT });
+    expect(() => endReceipt({ id: 'a' }, rows)).toThrow();
+    expect(() => endReceipt({ items: [{ id: 'a' }] }, rows)).toThrow();
+    expect(() => endReceipt({ items: [{ id: 'a' }, { id: 'x' }] }, rows)).toThrow();
+    expect(() => endReceipt(null, rows)).toThrow();
+  });
+  const view = {
+    rootOrgId: null,
+    depth: 3,
+    hiddenOrgIds: [],
+    showKeyPositions: false,
+    showPositionsWithoutSuccessor: true,
+    revision: 4,
+  };
+  it('偏好回执没有 id：按版本与层级核对，重读只比较抽屉里的三项', () => {
+    expect(preferenceReceipt(view)).toEqual({ id: PREFS_RECEIPT });
+    expect(() => preferenceReceipt({ ...view, revision: undefined })).toThrow();
+    expect(preferenceLatest(view)).toEqual({
+      id: PREFS_RECEIPT,
+      revision: 4,
+      values: { depth: 3, showPositionsWithoutSuccessor: true, rootOrgId: undefined },
+    });
+  });
+  it('赋值重读按节点取结果行，含组织下的关键职位；未评定时版本为 0', () => {
+    const map = {
+      items: [
+        { id: 'o', name: 'O', parentId: null, health: { levelId: 'h', revision: 3 } },
+        { id: 'p', name: 'P', parentId: null, keyPositions: [{ id: 'k', name: 'K', parentId: 'o' }] },
+      ],
+    };
+    expect(assignLatest(map, 'o', 'org')).toEqual({ id: 'o', revision: 3, values: { mode: 'manual', levelId: 'h' } });
+    expect(assignLatest(map, 'k', 'position')).toEqual({
+      id: 'k',
+      revision: 0,
+      values: { mode: 'rule', levelId: undefined },
+    });
+    expect(() => assignLatest(map, 'x', 'org')).toThrow();
+  });
+});
+
+describe('AC-FE-R3d1 地图数据与规则展示（第 2 轮）', () => {
+  it('组织地图把 keyPositions[] 展开成所属组织下的关键职位卡', () => {
+    const items = orgMapItems([
+      { id: 'o', name: 'O', parentId: null, keyPositions: [{ id: 'k', name: 'K', parentId: null }] },
+    ]);
+    expect(items.map((item) => [item.id, item.parentId, !!item.keyPosition])).toEqual([
+      ['o', null, false],
+      ['k', 'o', true],
+    ]);
+  });
+  it('规则条件行与表达式按原站用语展示，未知枚举原样显示', () => {
+    expect(
+      ruleLines({
+        expression: '1 and 2',
+        rows: [
+          { rowNo: 1, subject: 'incumbent', measure: 'count', comparator: 'eq', threshold: 0 },
+          {
+            rowNo: 2,
+            population: 'all',
+            measure: 'green_rate',
+            comparator: 'between',
+            threshold: 10,
+            thresholdHigh: 20,
+            isPercent: true,
+          },
+          { rowNo: 3, field: { label: '年龄' }, operator: 'lt', values: [45] },
+          { rowNo: 4, measure: 'new_kind', comparator: 'gt', threshold: 1 },
+        ],
+      }),
+    ).toEqual({
+      expression: '1 and 2',
+      rows: ['1. 现任人员 人数 等于 0', '2. 全部人员 绿化率 介于 10% ~ 20%', '3. 年龄 小于 45', '4. new_kind 大于 1'],
+    });
+    expect(ruleLines(null)).toBeUndefined();
+    expect(ruleLines({ expression: '', rows: [] })).toBeUndefined();
+  });
 });
 
 describe('AC-FE-R3d1 菜单下一层只列有入口对象的设置页', () => {
@@ -155,6 +248,14 @@ describe('AC-FE-R3d1 菜单下一层只列有入口对象的设置页', () => {
         { app: 'talent-review', visible: true, entryObjects: review },
       ],
     }) as unknown as ServerSnapshot;
+  it('健康度规则设置是独立页：健康度或人员范围对象可见时出现', () => {
+    expect(settingsMenu(snapshot(['Succession.Population'], [])).map((node) => node.path)).toContain(
+      '/succession/settings/health',
+    );
+    expect(settingsMenu(snapshot(['Succession.HealthLevel'], [])).map((node) => node.path)).not.toContain(
+      '/succession/settings/map',
+    );
+  });
   it('等级对象不可见时不出现继任地图设置；准备度看人才盘点的准备度对象', () => {
     expect(settingsMenu(snapshot(['Succession.Map'], [])).map((node) => node.path)).toEqual([
       '/succession/manage',

@@ -1,32 +1,7 @@
-import type { Locator, Page } from '@playwright/test';
-import { test, expect, user } from './fixtures.js';
-import { mockSuccession, orgMap } from './r3d1-fixtures.js';
+import { test, expect } from './fixtures.js';
+import { button, cancel, ids, mockSuccession, openMenu, openShell, orgMap, watchErrors } from './r3d1-fixtures.js';
 
 test.use({ viewport: { width: 1440, height: 1000 } });
-
-function watchErrors(page: Page) {
-  const errors: string[] = [];
-  page.on('pageerror', (e) => errors.push(e.message));
-  page.on('console', (m) => {
-    if (m.type() === 'error') errors.push(m.text());
-  });
-  return errors;
-}
-// antd 会在两个汉字的按钮文字中间插空格（“新 建”），按钮名按字间可有空白匹配。
-const button = (page: Page | Locator, name: string) =>
-  page.getByRole('button', { name: new RegExp(`^${[...name].join('\\s*')}$`) });
-async function openMenu(page: Page, item: string) {
-  await page.goto('/succession');
-  await page.getByLabel('切换演示身份').selectOption(user);
-  await expect(page).toHaveURL(/\/staff$/);
-  await page.getByRole('menuitem', { name: '继任管理', exact: true }).click();
-  await page.getByRole('menuitem', { name: item, exact: true }).click();
-}
-const cancel = (page: Page) =>
-  page
-    .getByRole('button', { name: /取\s*消/ })
-    .last()
-    .click();
 
 test.beforeEach(async ({ page }) => mockSuccession(page));
 
@@ -85,7 +60,17 @@ test('AC-FE-R3d1-03 职位继任地图：风险色卡片、虚位以待、设置
   await page.getByRole('tab', { name: '职位继任地图', exact: true }).click();
   const card = page.locator('.succession-card', { hasText: '合成研发总监' });
   await expect(card).toContainText('继任者 1人');
+  // 职位卡显示现任姓名，不只显示人数（接口已回 incumbents）。
+  await expect(card).toContainText('合成现任');
   await expect(page.locator('.succession-card', { hasText: '合成架构师' })).toContainText('虚位以待');
+  // 原站是画布：父子之间有连线，可缩放（UI2 对照）。
+  const canvas = page.locator('.succession-canvas');
+  await expect(canvas.locator('.succession-link')).toHaveCount(1);
+  await expect(canvas.locator('.succession-canvas-content')).toHaveAttribute('style', /scale\(1\)/);
+  await button(page, '放大').click();
+  await expect(canvas.locator('.succession-canvas-content')).toHaveAttribute('style', /scale\(1\.1\)/);
+  await page.getByRole('button', { name: '重置缩放', exact: true }).click();
+  await expect(canvas.locator('.succession-canvas-content')).toHaveAttribute('style', /scale\(1\)/);
   await button(page, '展开继任者').click();
   await expect(card).toContainText('随时可继任');
   await page.screenshot({ path: testInfo.outputPath('position-map.png'), fullPage: true, animations: 'disabled' });
@@ -109,10 +94,17 @@ test('AC-FE-R3d1-04 组织继任地图：健康度、绿化率与设置健康度
   await expect(card).toContainText('绿化率');
   await expect(card).toContainText('50%');
   await expect(card).toContainText('合成继任者');
+  // 组织地图用 keyPositions[] 建关键职位卡，带风险等级。
+  await expect(page.locator('.succession-card', { hasText: '合成关键职位' })).toContainText('高风险');
   await card.getByRole('button', { name: '卡片操作' }).click();
   await page.getByRole('menuitem', { name: '设置健康度', exact: true }).click();
   await expect(page.getByRole('dialog', { name: '设置健康度', exact: true })).toContainText('赋值方式');
   await cancel(page);
+  // 组织根筛选：按组织读权限给出选择入口，选中后以 root 查询。
+  const rooted = page.waitForRequest((request) => new URL(request.url()).searchParams.get('root') === ids.childOrg);
+  await page.getByRole('combobox', { name: '组织', exact: true }).click();
+  await page.getByTitle('合成测试部').click();
+  await rooted;
   expect(errors).toEqual([]);
 });
 
@@ -120,8 +112,15 @@ test('AC-FE-R3d1-05 继任地图设置：风险等级列表与新建表单', asy
   const errors = watchErrors(page);
   await openMenu(page, '继任地图设置');
   await expect(page).toHaveURL(/\/succession\/settings\/map$/);
+  // 健康度挪到独立的“健康度规则设置”页（UI2 对照），这里只剩显示设置和风险等级。
+  await expect(page.getByRole('tab', { name: '组织健康度设置', exact: true })).toHaveCount(0);
   await page.getByRole('tab', { name: '职位风险等级设置', exact: true }).click();
   await expect(page.locator('.list-card').first()).toContainText('高风险');
+  // 规则只读也要显示条件行和表达式。
+  const rules = page.locator('.succession-rules').first();
+  await expect(rules).toContainText('1 and 2');
+  await expect(rules).toContainText('现任人员');
+  await expect(rules).toContainText('小于');
   await button(page, '新建').first().click();
   await expect(page.getByRole('dialog', { name: '新建职位风险等级', exact: true })).toContainText('颜色');
   await cancel(page);
@@ -130,20 +129,38 @@ test('AC-FE-R3d1-05 继任地图设置：风险等级列表与新建表单', asy
   expect(errors).toEqual([]);
 });
 
-test('AC-FE-R3d1-06 关键岗位为演示数据，准备度可编辑', async ({ page }) => {
+test('AC-FE-R3d1-06 关键岗位为演示数据，准备度可编辑、无启用开关、无总数分页', async ({ page }) => {
   const errors = watchErrors(page);
-  await openMenu(page, '关键岗位');
-  // 冷启动时菜单点击偶尔早于路由就绪，先确认已到关键岗位页。
-  await expect(async () => {
-    if (!/key-positions$/.test(page.url())) await page.getByRole('menuitem', { name: '关键岗位', exact: true }).click();
-    await expect(page).toHaveURL(/\/succession\/settings\/key-positions$/, { timeout: 2000 });
-  }).toPass();
+  await page.route('**/api/tenant/talent-review/readiness-levels**', (route) => {
+    const current = Number(new URL(route.request().url()).searchParams.get('page'));
+    const items = Array.from({ length: current === 1 ? 15 : 1 }, (_, index) => ({
+      id: `54000000-0000-4000-8000-0000000001${String(index).padStart(2, '0')}`,
+      code: `R${current}-${index}`,
+      name: index === 0 ? `随时可继任${current}` : `合成阶段${current}-${index}`,
+      color: '#2BA471',
+      sortNo: index,
+      enabled: true,
+      revision: 1,
+    }));
+    return route.fulfill({ json: { page: current, pageSize: 15, items } });
+  });
+  // 先等侧栏就绪，再只导航一次（不重复点击）。
+  await openShell(page);
+  await page.goto('/succession/settings/key-positions');
   await expect(page.locator('.succession-page')).toContainText('演示数据');
   await page.getByRole('menuitem', { name: '准备度', exact: true }).click();
-  const row = page.getByRole('row', { name: /随时可继任/ });
+  const row = page.getByRole('row', { name: /随时可继任1/ });
   await expect(row).toBeVisible();
-  await button(row, '编辑').click();
-  await expect(page.getByRole('dialog', { name: '编辑准备度', exact: true })).toBeVisible();
+  // 接口不给 total：满页时允许下一页。
+  await button(page, '下一页').click();
+  await expect(page.getByRole('row', { name: /随时可继任2/ })).toBeVisible();
+  await expect(button(page, '下一页')).toBeDisabled();
+  await button(page, '上一页').click();
+  await button(page.getByRole('row', { name: /随时可继任1/ }), '编辑').click();
+  const dialog = page.getByRole('dialog', { name: '编辑准备度', exact: true });
+  await expect(dialog).toContainText('编码');
+  await expect(dialog.getByRole('switch')).toHaveCount(0);
+  await expect(dialog).not.toContainText('是否启用');
   await cancel(page);
   expect(errors).toEqual([]);
 });

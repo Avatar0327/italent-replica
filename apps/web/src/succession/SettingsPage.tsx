@@ -14,10 +14,11 @@ import { usePermissions } from '../foundation/Permissions.js';
 import { useApiClient } from '../foundation/Session.js';
 import { ListPage } from '../foundation/templates.js';
 import { s } from './messages.js';
-import { BASE, READINESS_PATH } from './rules.js';
+import { BASE, READINESS_PATH, ruleLines } from './rules.js';
 import './succession.css';
+import type { LevelRules } from './types.js';
 
-type Kind = 'risk' | 'health' | 'readiness';
+type Kind = 'risk' | 'health' | 'readiness' | 'population';
 interface Dictionary {
   path: string;
   object: string;
@@ -29,10 +30,13 @@ const dictionaries: Record<Kind, Dictionary> = {
   health: { path: `${BASE}/health-levels`, object: 'Succession.HealthLevel', order: 'displayOrder', update: 'PUT' },
   // 准备度归人才盘点（DEC-301①）：同一字典，接口与权限对象都用人才盘点的。
   readiness: { path: READINESS_PATH, object: 'TalentReview.Readiness', order: 'sortNo', update: 'PATCH' },
+  // 人员范围本页只读：规则编辑按范围暂缓（docs/02_业务建模/27 §5.9）。
+  population: { path: `${BASE}/populations`, object: 'Succession.Population', order: 'displayOrder', update: 'PUT' },
 };
 
 const sections: Record<string, ReactNode> = {
   map: <MapSettings />,
+  health: <HealthSettings />,
   'key-positions': <KeyPositions />,
   readiness: (
     <>
@@ -65,14 +69,33 @@ function MapSettings() {
   const [active, setActive] = useState('display');
   const items = [
     { key: 'display', label: s.settings.display, children: <DisplaySettings /> },
-    ...(['risk', 'health'] as const)
-      .filter((kind) => !!snapshot.objects[dictionaries[kind].object])
-      .map((kind) => ({ key: kind, label: s.settings[kind], children: <DictionaryList kind={kind} /> })),
+    ...(snapshot.objects[dictionaries.risk.object]
+      ? [{ key: 'risk', label: s.settings.risk, children: <DictionaryList kind="risk" /> }]
+      : []),
   ];
   return (
     <>
       <DecisionNote id="succession-map-settings" />
       <Tabs activeKey={active} onChange={setActive} items={items} destroyOnHidden />
+    </>
+  );
+}
+
+/** 健康度规则设置是独立菜单页：人员范围 / 继任地图健康度两个页签（UI2 对照）。 */
+function HealthSettings() {
+  const { snapshot } = usePermissions();
+  const tabs = [
+    { key: 'population', label: s.settings.populations },
+    { key: 'health', label: s.settings.healthTab },
+  ] as const;
+  const items = tabs
+    .filter((tab) => !!snapshot.objects[dictionaries[tab.key].object])
+    .map((tab) => ({ ...tab, children: <DictionaryList kind={tab.key} /> }));
+  const [active, setActive] = useState<string>();
+  return (
+    <>
+      <DecisionNote id="succession-health-settings" />
+      <Tabs activeKey={active ?? items[0]?.key} onChange={setActive} items={items} destroyOnHidden />
     </>
   );
 }
@@ -162,13 +185,15 @@ function DictionaryList({ kind }: { kind: Kind }) {
     }
   };
   const columns = dictionaryColumns(kind, permission, setEditing, remove);
+  const readonly = kind === 'population';
   return (
     <>
       <Failure error={error} />
       <ListPage<Row>
         title={title(kind)}
         rowKey="id"
-        data={{ items: list.data?.items ?? [], total: list.data?.total ?? list.data?.items.length ?? 0 }}
+        // 准备度接口没有 total：交给模板的无总数分页（满页可点下一页）。
+        data={{ items: list.data?.items ?? [], total: list.data?.total }}
         columns={columns}
         page={page}
         onPageChange={setPage}
@@ -176,6 +201,7 @@ function DictionaryList({ kind }: { kind: Kind }) {
         error={list.error}
         retry={list.reload}
         actions={
+          !readonly &&
           permission.can('create', 'list') && (
             <Button type="primary" onClick={() => setEditing('new')}>
               {s.settings.create}
@@ -226,13 +252,18 @@ function dictionaryColumns(kind: Kind, permission: Access, edit: (row: Row) => v
       title: s.settings.enabled,
       render: (row: Row) => (row.enabled ? s.settings.yes : s.settings.no),
     },
+    {
+      key: 'rules',
+      field: 'rules',
+      title: s.settings.rules,
+      render: (row: Row) => <RulesView rules={row.rules as LevelRules | null | undefined} />,
+    },
   ]
-    // 原站准备度列表只有排序、阶段、描述、颜色与操作（UI2 对照）；编码、启用仍在表单里，因为后端必填。
-    .filter((column) => kind !== 'readiness' || !['code', 'enabled'].includes(column.key))
+    .filter((column) => columnKeys[kind].includes(column.key))
     .filter((column) => permission.field(column.field).visible)
     .map(({ key, title: text, render }) => ({ key, title: text, render: (_: unknown, row: Row) => render(row) }));
-  const canEdit = permission.can('update');
-  const canDelete = permission.can('delete');
+  const canEdit = kind !== 'population' && permission.can('update');
+  const canDelete = kind !== 'population' && permission.can('delete');
   const actions =
     canEdit || canDelete
       ? [
@@ -259,6 +290,29 @@ function dictionaryColumns(kind: Kind, permission: Access, edit: (row: Row) => v
         ]
       : [];
   return [...columns, ...actions];
+}
+
+// 原站准备度列表只有排序、阶段、描述、颜色与操作（UI2 对照）；编码仍在表单里，因为后端必填。
+const levelColumns = ['order', 'name', 'code', 'description', 'color', 'enabled', 'rules'];
+const columnKeys: Record<Kind, string[]> = {
+  risk: levelColumns,
+  health: levelColumns,
+  readiness: ['order', 'name', 'description', 'color'],
+  population: ['order', 'name', 'code', 'rules'],
+};
+
+/** 规则只读也要显示内容：表达式 + 条件行（接口 rules 原样，枚举换成原站用语）。 */
+function RulesView({ rules }: { rules: LevelRules | null | undefined }) {
+  const lines = ruleLines(rules);
+  if (!lines) return <span className="succession-rules succession-muted">{s.settings.noRules}</span>;
+  return (
+    <div className="succession-rules">
+      {lines.expression && <div>{`${s.settings.expression}：${lines.expression}`}</div>}
+      {lines.rows.map((line) => (
+        <div key={line}>{line}</div>
+      ))}
+    </div>
+  );
 }
 
 const ColorSwatch = ({ color }: { color: unknown }) =>
@@ -301,8 +355,10 @@ function DictionaryForm({ kind, row, close, saved }: { kind: Kind; row?: Row; cl
       { pattern: /^#[0-9a-fA-F]{6}$/, message: s.settings.colorFormat },
     ]),
     field('description', s.settings.description, <Input.TextArea maxLength={max.description} />),
-    ...(kind === 'readiness' ? [field('sortNo', s.settings.order, <InputNumber min={0} precision={0} />)] : []),
-    field('enabled', s.settings.enabled, <Switch aria-label={s.settings.enabled} />),
+    // 准备度原站表单没有启用开关：enabled 可选、后端默认启用，不发即可（编码后端必填，保留）。
+    ...(kind === 'readiness'
+      ? [field('sortNo', s.settings.order, <InputNumber min={0} precision={0} />)]
+      : [field('enabled', s.settings.enabled, <Switch aria-label={s.settings.enabled} />)]),
   ];
   const verb = row ? s.edit : s.settings.create;
   return (
@@ -312,7 +368,7 @@ function DictionaryForm({ kind, row, close, saved }: { kind: Kind; row?: Row; cl
       recordKey={row?.id ?? `new-${kind}`}
       submission={writer}
       title={`${verb}${title(kind)}`}
-      initialValues={row ? { ...row } : { enabled: true }}
+      initialValues={row ? { ...row } : kind === 'readiness' ? {} : { enabled: true }}
       groups={[{ title: s.basic, fields }]}
       onClose={close}
       onSubmit={async (values) => {

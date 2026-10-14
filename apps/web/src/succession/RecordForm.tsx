@@ -6,11 +6,13 @@ import { RemoteSelect, useRead } from '../evaluation/runtime.js';
 import { useRecordForm } from '../evaluation/useRecordForm.js';
 import type { Row } from '../evaluation/model.js';
 import { FormOverlay, type FormField } from '../foundation/FormOverlay.js';
+import { useCommandForm } from '../foundation/forms/useCommandForm.js';
+import { ui } from '../foundation/messages.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { PersonSelect, TenantDatePicker } from '../foundation/selectors.js';
 import { useApiClient, useSession } from '../foundation/Session.js';
 import { s } from './messages.js';
-import { BASE, createRecordBody, endCommand, recordDateErrors } from './rules.js';
+import { BASE, createRecordBody, END_RECEIPT, endCommand, endReceipt, recordDateErrors } from './rules.js';
 import type { ListResult, ReadinessRef, RecordView, SuccessionType } from './types.js';
 
 export const RECORD = 'Succession.Record';
@@ -163,16 +165,23 @@ function RecordEditor({
 }
 export const targetName = (row?: RecordView) => row?.targetPosition?.name ?? row?.targetOrg?.name;
 
-/** SC-R3 批量结束：一个命令整体成功或失败；结束日期同样不得晚于今天（服务端复核）。 */
+/**
+ * SC-R3 批量结束：一个命令整体成功或失败；结束日期同样不得晚于今天（服务端复核）。
+ * 编辑权只看 editableFields；回执是 {items}，按提交的记录逐条核对（rules.ts endReceipt）。
+ * 批量命令没有单一对象版本，冲突（某条已被改）不提供重读核对：关掉弹窗刷新列表后重新选择。
+ */
 export function EndForm({ rows, close, saved }: { rows: RecordView[]; close(): void; saved(): void }) {
   const permission = usePermissions(RECORD);
+  const api = useApiClient();
   const { today } = useSession();
-  const writer = useRecordForm(`${RECORDS}/end`);
+  const path = `${RECORDS}/end`;
+  const submission = useCommandForm(path);
   const field = (name: string, control: ReactNode, rules: FormField['rules']): FormField => ({
     name,
     label: name === 'endDate' ? s.endFormDate : s.fields.endReason,
     control,
-    access: { ...permission.field(name), editable: permission.field(name).visible },
+    access: permission.field(name),
+    display: name === 'endDate' ? today : undefined,
     rules,
   });
   const fields = [
@@ -190,22 +199,40 @@ export function EndForm({ rows, close, saved }: { rows: RecordView[]; close(): v
       open
       mode="modal"
       recordKey="end"
-      submission={writer}
+      submission={submission}
       title={s.end}
       initialValues={{ endDate: today }}
       groups={[{ title: s.endHint, fields }]}
       onClose={close}
       onSubmit={async (values) => {
-        await writer.save(values, ['endDate', 'endReason'], 'POST', (body) => {
-          try {
-            return endCommand(rows, String(body.endDate), body.endReason as string | undefined);
-          } catch (error) {
-            throw new Error(s.errors[(error as Error).message] ?? (error as Error).message);
-          }
+        const editableFields = fields.filter((f) => f.access.visible && f.access.editable).map((f) => f.name);
+        // 结束日期是必填项：不可编辑时整单不能提交，不拿“可见”当可编辑。
+        if (!editableFields.includes('endDate')) throw new Error(s.errors.readonly);
+        const command = endBody(rows, values);
+        const outcome = await submission.submit({
+          values,
+          baseline: {},
+          editableFields,
+          revision: 0,
+          businessId: END_RECEIPT,
+          send: async (request) =>
+            endReceipt(
+              await api.request(path, { method: 'POST', command: { ...request, body: command } }),
+              command.items,
+            ),
         });
-        writer.clear();
+        if (outcome.status !== 'done') throw outcome.error ?? new Error(ui.failed);
+        submission.clear();
         saved();
       }}
     />
   );
+}
+
+function endBody(rows: RecordView[], values: Record<string, unknown>) {
+  try {
+    return endCommand(rows, String(values.endDate), values.endReason as string | undefined);
+  } catch (error) {
+    throw new Error(s.errors[(error as Error).message] ?? (error as Error).message);
+  }
 }

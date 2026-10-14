@@ -1,23 +1,22 @@
-import { Button, Dropdown, Empty, Popconfirm, Popover, Radio, Select, Space, Switch, Tag } from 'antd';
+import { Button, Dropdown, Empty, Popconfirm, Popover, Select, Space, Switch, Tag } from 'antd';
 import { useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
-import { Failure, useRead, useWriter } from '../evaluation/runtime.js';
-import { FormOverlay, type FormField } from '../foundation/FormOverlay.js';
-import { useCommandForm } from '../foundation/forms/useCommandForm.js';
+import { Failure, RemoteSelect, useRead, useWriter } from '../evaluation/runtime.js';
 import { ui } from '../foundation/messages.js';
 import { PageState } from '../foundation/PageState.js';
 import { usePermissions } from '../foundation/Permissions.js';
-import { useApiClient } from '../foundation/Session.js';
+import { AssignDialog, depthOptions, ORG_OBJECT, PositionFilter } from './MapForms.js';
 import { s } from './messages.js';
+import { targetPaths } from './RecordForm.js';
 import { ReadinessTag } from './RecordList.js';
-import { assignBody, BASE, mapForest, type MapNode } from './rules.js';
-import type { LevelOption, LevelResult, ListResult, MapItem, MapResult, Preferences } from './types.js';
+import { BASE, mapForest, orgMapItems, type MapNode } from './rules.js';
+import type { LevelResult, MapItem, MapResult } from './types.js';
 
 export const MAP = 'Succession.Map';
 type Kind = 'position' | 'org';
 const result = { position: 'Succession.RiskResult', org: 'Succession.HealthResult' } as const;
-const levelOf = (item: MapItem, kind: Kind) => (kind === 'position' ? item.risk : item.health);
-const depthOptions = [2, 3, 4].map((value) => ({ value, label: s.map.depthLabels[value] }));
+// 组织地图里的关键职位卡取职位风险等级（接口 keyPositions[].risk）。
+const levelOf = (item: MapItem, kind: Kind) => (kind === 'position' || item.keyPosition ? item.risk : item.health);
 const percent = (value?: number | null) => (typeof value === 'number' ? `${Math.round(value * 100)}%` : s.none);
 
 /** 地图只读服务端结果：层级、风险 / 健康度、统计都不在前端推算（docs/02_业务建模/27 §5.7、§5.8）。 */
@@ -25,10 +24,12 @@ export function SuccessionMap({ kind }: { kind: Kind }) {
   const [depth, setDepth] = useState(3);
   const [expanded, setExpanded] = useState(false);
   const [info, setInfo] = useState(true);
+  const [root, setRoot] = useState<string>();
   const [assigning, setAssigning] = useState<MapItem>();
-  const path = kind === 'position' ? `${BASE}/maps/position` : `${BASE}/maps/org?depth=${depth}`;
+  const orgRoot = usePermissions(ORG_OBJECT).field('name').visible;
+  const path = kind === 'position' ? `${BASE}/maps/position` : orgMapPath(depth, root);
   const map = useRead<MapResult>(path);
-  const items = map.data?.items ?? [];
+  const items = kind === 'org' ? orgMapItems(map.data?.items ?? []) : (map.data?.items ?? []);
   // 原站左侧是筛选，右侧是图例 / 展开 / 显示信息 / 设置 / 更多操作（UI2 对照）。
   const toolbar = (
     <div className="succession-toolbar">
@@ -36,10 +37,19 @@ export function SuccessionMap({ kind }: { kind: Kind }) {
         {kind === 'position' ? (
           <PositionFilter saved={map.reload} />
         ) : (
-          <label className="succession-filter">
-            <span>{s.map.orgDepth}</span>
-            <Select aria-label={s.map.orgDepth} value={depth} onChange={setDepth} options={depthOptions} />
-          </label>
+          <>
+            {/* 组织根：能读组织名称才给选择入口（接口 root 参数；无权时只看服务端默认根）。 */}
+            {orgRoot && (
+              <label className="succession-filter">
+                <span>{s.map.root}</span>
+                <RemoteSelect path={targetPaths.org} label={s.map.root} value={root} onChange={pickRoot(setRoot)} />
+              </label>
+            )}
+            <label className="succession-filter">
+              <span>{s.map.orgDepth}</span>
+              <Select aria-label={s.map.orgDepth} value={depth} onChange={setDepth} options={depthOptions} />
+            </label>
+          </>
         )}
       </Space>
       <Space wrap>
@@ -62,11 +72,13 @@ export function SuccessionMap({ kind }: { kind: Kind }) {
   else if (items.length === 0) body = <Empty description={ui.empty} />;
   else
     body = (
-      <ul className="succession-tree">
-        {mapForest(items).map((node) => (
-          <Branch key={node.item.id} node={node} kind={kind} expanded={expanded} info={info} assign={setAssigning} />
-        ))}
-      </ul>
+      <MapCanvas>
+        <ul>
+          {mapForest(items).map((node) => (
+            <Branch key={node.item.id} node={node} kind={kind} expanded={expanded} info={info} assign={setAssigning} />
+          ))}
+        </ul>
+      </MapCanvas>
     );
   return (
     <section className="list-card succession-map">
@@ -76,6 +88,7 @@ export function SuccessionMap({ kind }: { kind: Kind }) {
         <AssignDialog
           kind={kind}
           item={assigning}
+          mapPath={path}
           close={() => setAssigning(undefined)}
           saved={() => (setAssigning(undefined), map.reload())}
         />
@@ -86,19 +99,22 @@ export function SuccessionMap({ kind }: { kind: Kind }) {
 
 function Branch(props: {
   node: MapNode<MapItem>;
+  child?: boolean;
   kind: Kind;
   expanded: boolean;
   info: boolean;
   assign(item: MapItem): void;
 }) {
-  const { node, ...rest } = props;
+  // 根节点的上级可能在可见范围外（parentId 非空），连线只画在画布内的父子之间。
+  const { node, child, ...rest } = props;
   return (
     <li>
+      {child && <span className="succession-link" aria-hidden />}
       <MapCard item={node.item} {...rest} />
       {node.children.length > 0 && (
         <ul>
-          {node.children.map((child) => (
-            <Branch key={child.item.id} node={child} {...rest} />
+          {node.children.map((entry) => (
+            <Branch key={entry.item.id} node={entry} child {...rest} />
           ))}
         </ul>
       )}
@@ -124,6 +140,10 @@ function MapCard({
   // 人数只取服务端字段：successorCount 被隐藏时不能用名单长度补算（字段权限）。
   const count = item.successorCount;
   const showSuccessors = (expanded || kind === 'org') && !!item.successors?.length;
+  const names = item.incumbents?.map((person) => person.name).join('、');
+  // 关键职位卡只读：赋值入口在职位地图上，这里不重复（同一结果行两处改易冲突）。
+  const canAssign = !item.keyPosition && permission.can('assign');
+  const position = kind === 'position' || item.keyPosition;
   return (
     <article
       className="succession-card"
@@ -132,7 +152,7 @@ function MapCard({
     >
       <header>
         <strong>{item.name}</strong>
-        {permission.can('assign') && (
+        {canAssign && (
           <Dropdown
             trigger={['click']}
             menu={{
@@ -146,11 +166,10 @@ function MapCard({
           </Dropdown>
         )}
       </header>
+      {item.keyPosition && <Tag>{s.map.keyPosition}</Tag>}
       {level?.levelName && <Tag color={level.levelColor ?? undefined}>{level.levelName}</Tag>}
-      {info && kind === 'position' && item.incumbents && (
-        <p>{item.incumbents.length ? s.map.incumbents(item.incumbents.length) : s.map.vacant}</p>
-      )}
-      {info && kind === 'org' && (
+      {info && position && item.incumbents && <p>{names ? `${s.fields.incumbents}：${names}` : s.map.vacant}</p>}
+      {info && !position && (
         <dl className="succession-stats">
           <dt>{s.fields.personInCharge}</dt>
           <dd>{item.personInCharge?.name ?? s.none}</dd>
@@ -175,6 +194,38 @@ function MapCard({
     </article>
   );
 }
+
+/** 原站画布：自上而下排布，父子之间画连线，可缩放（0.5～2 倍，步长 0.1）。 */
+function MapCanvas({ children }: { children: ReactNode }) {
+  const [scale, setScale] = useState(1);
+  const zoom = (step: number) => setScale((value) => Math.min(2, Math.max(0.5, Math.round((value + step) * 10) / 10)));
+  return (
+    <div className="succession-canvas">
+      <Space className="succession-zoom">
+        <Button size="small" onClick={() => zoom(-0.1)}>
+          {s.map.zoomOut}
+        </Button>
+        <Button size="small" onClick={() => zoom(0.1)}>
+          {s.map.zoomIn}
+        </Button>
+        <Button size="small" onClick={() => setScale(1)}>
+          {s.map.zoomReset}
+        </Button>
+      </Space>
+      <div className="succession-canvas-content" style={{ transform: `scale(${scale})` }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function orgMapPath(depth: number, root?: string) {
+  const query = new URLSearchParams({ depth: String(depth) });
+  if (root) query.set('root', root);
+  return `${BASE}/maps/org?${query}`;
+}
+const pickRoot = (set: (value?: string) => void) => (value: string | string[]) =>
+  set(typeof value === 'string' && value ? value : undefined);
 
 function Legend({ items, kind }: { items: MapItem[]; kind: Kind }) {
   const levels = new Map<string, LevelResult>();
@@ -254,143 +305,6 @@ function ComputeMenu({ kind, done }: { kind: Kind; done(): void }) {
       </Popconfirm>
       {started && <Tag color="blue">{s.map.computeStarted}</Tag>}
       <Failure error={writer.error} />
-    </>
-  );
-}
-
-/** Q-M0-178：按规则计算发 levelId=null；手动赋值从启用等级中选；版本取结果行，未评定时为 0。 */
-function AssignDialog({ kind, item, close, saved }: { kind: Kind; item: MapItem; close(): void; saved(): void }) {
-  const api = useApiClient();
-  const permission = usePermissions(result[kind]);
-  const segment = kind === 'position' ? 'risk' : 'health';
-  const path = `${BASE}/${segment}-results/${item.id}`;
-  const submission = useCommandForm(path);
-  const options = useRead<ListResult<LevelOption>>(`${BASE}/${segment}-levels/options`);
-  const current = levelOf(item, kind);
-  const access = { visible: true, editable: permission.can('assign') };
-  const fields: FormField[] = [
-    {
-      name: 'mode',
-      label: s.assign.mode,
-      access,
-      control: (
-        <Radio.Group
-          options={[
-            { value: 'rule', label: s.assign.rule },
-            { value: 'manual', label: s.assign.manual },
-          ]}
-        />
-      ),
-    },
-    {
-      name: 'levelId',
-      label: kind === 'position' ? s.assign.riskLevel : s.assign.healthLevel,
-      access,
-      control: (
-        <Select
-          allowClear
-          loading={options.loading}
-          options={(options.data?.items ?? []).map((level) => ({ value: level.id, label: level.name }))}
-        />
-      ),
-    },
-  ];
-  return (
-    <FormOverlay
-      open
-      mode="modal"
-      recordKey={path}
-      submission={submission}
-      title={kind === 'position' ? s.map.assignRisk : s.map.assignHealth}
-      initialValues={{ mode: current?.levelId ? 'manual' : 'rule', levelId: current?.levelId ?? undefined }}
-      groups={[{ title: item.name, fields }]}
-      onClose={close}
-      onSubmit={async (values) => {
-        const body = assignBody(values.mode as 'rule' | 'manual', values.levelId as string | undefined);
-        const outcome = await submission.submit({
-          values,
-          baseline: {},
-          editableFields: ['mode', 'levelId'],
-          revision: current?.revision ?? 0,
-          businessId: item.id,
-          send: (request) => api.request(path, { method: 'PUT', command: { ...request, body } }),
-        });
-        if (outcome.status !== 'done') throw outcome.error ?? new Error(ui.failed);
-        submission.clear();
-        saved();
-      }}
-    />
-  );
-}
-
-/** 职位地图筛选是个人偏好（PUT 整份 + 版本）：原站左侧显示当前条件，“高级筛选”在右侧抽屉里改。 */
-function PositionFilter({ saved }: { saved(): void }) {
-  const api = useApiClient();
-  const [open, setOpen] = useState(false);
-  const prefsPath = `${BASE}/maps/position/preferences`;
-  const prefs = useRead<Preferences>(prefsPath);
-  const submission = useCommandForm(prefsPath);
-  const access = { visible: true, editable: true };
-  const yesNo = (value?: boolean) => (value ? s.settings.yes : s.settings.no);
-  const fields: FormField[] = [
-    {
-      name: 'depth',
-      label: s.map.positionDepth,
-      access,
-      control: <Select aria-label={s.map.positionDepth} options={depthOptions} />,
-    },
-    {
-      name: 'showPositionsWithoutSuccessor',
-      label: s.map.showWithoutSuccessor,
-      access,
-      control: <Radio.Group options={[true, false].map((value) => ({ value, label: yesNo(value) }))} />,
-    },
-  ];
-  if (!prefs.data) return <Failure error={prefs.error} retry={prefs.reload} />;
-  const base = prefs.data;
-  return (
-    <>
-      <Button type="text" onClick={() => setOpen(true)}>
-        {`${s.map.positionDepth}：${s.map.depthLabels[base.depth] ?? base.depth}`}
-      </Button>
-      <Button type="text" onClick={() => setOpen(true)}>
-        {`${s.map.showWithoutSuccessor}：${yesNo(base.showPositionsWithoutSuccessor)}`}
-      </Button>
-      <Button type="link" onClick={() => setOpen(true)}>
-        {s.map.advancedFilter}
-      </Button>
-      <FormOverlay
-        open={open}
-        mode="drawer"
-        recordKey={prefsPath}
-        submission={submission}
-        title={s.map.advancedFilter}
-        initialValues={{ ...base }}
-        groups={[{ title: s.map.advancedFilter, fields }]}
-        onClose={() => setOpen(false)}
-        onSubmit={async (values) => {
-          // 原站抽屉里没有“只看关键岗位”，按读回值原样回写，不替用户改。
-          const { rootOrgId, hiddenOrgIds, showKeyPositions } = base;
-          const body = {
-            rootOrgId,
-            hiddenOrgIds,
-            showKeyPositions,
-            depth: Number(values.depth),
-            showPositionsWithoutSuccessor: !!values.showPositionsWithoutSuccessor,
-          };
-          const outcome = await submission.submit({
-            values,
-            baseline: {},
-            editableFields: ['depth', 'showPositionsWithoutSuccessor'],
-            revision: base.revision,
-            send: (request) => api.request(prefsPath, { method: 'PUT', command: { ...request, body } }),
-          });
-          if (outcome.status !== 'done') throw outcome.error ?? new Error(ui.failed);
-          submission.clear();
-          prefs.reload();
-          saved();
-        }}
-      />
     </>
   );
 }
