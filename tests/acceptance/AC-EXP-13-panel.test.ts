@@ -34,7 +34,7 @@ const minute = (formula: string) => run(`DateFormat(${formula}, "yyyy-MM-dd HH:m
 describe('AC-EXP-13 面板全集：7 类，按面板原名都能解析', () => {
   const byCategory = (category: PanelCategory) => FUNCTION_PANEL.filter((entry) => entry.category === category);
 
-  it('各类数量与 §8.6 列出的函数名一致（日期类面板标 26、§8.6 只列 24 个，差额待取证 #105）', () => {
+  it('各类数量与原站面板逐项计数一致，合计 62（R3e，`26` 末节 W-862）', () => {
     expect(byCategory('业务函数')).toHaveLength(12);
     expect(byCategory('日期函数')).toHaveLength(24);
     expect(byCategory('逻辑函数')).toHaveLength(8);
@@ -43,6 +43,7 @@ describe('AC-EXP-13 面板全集：7 类，按面板原名都能解析', () => {
     expect(byCategory('文本函数')).toHaveLength(2);
     expect(byCategory('其它函数')).toHaveLength(2);
     expect(new Set(FUNCTION_PANEL.map((entry) => entry.label)).size).toBe(FUNCTION_PANEL.length);
+    expect(FUNCTION_PANEL).toHaveLength(62);
   });
 
   it('除 Def（语法，不是函数）外，每个面板名都解析到注册函数', () => {
@@ -100,13 +101,17 @@ describe('AC-EXP-13 日期函数：中英文名各一例（今天 / 现在来自
     ['分钟("2026/10/07 08:05")', num(5)],
     ['Second("2026/10/07 23:24:07")', num(7)],
     ['秒(Now())', num(7)],
-    ['WeekDay("2026/10/04")', num(0)],
+    // R3e：原站周日 = 7（`26` 末节，W-862；旧预期 0）
+    ['WeekDay("2026/10/04")', num(7)],
     ['星期(Today())', num(3)],
-    ['DateFormat(Time("2026/10/07 08:05:09"), "HH:mm:ss")', text('08:05:09')],
-    ['DateFormat(时间(Now()), "HH:mm")', text('23:24')],
+    // R3e：Time(日期, 时间) 两个参数，时间省略为 00:00（`26` 末节，W-864；旧口径 Time(日期) 取时分秒）
+    ['DateFormat(Time("2026/10/07", "08:05:09"), "HH:mm:ss")', text('08:05:09')],
+    ['DateFormat(时间(Today(), Now()), "HH:mm")', text('23:24')],
+    ['DateFormat(Time("2026/10/07 08:05:09"), "HH:mm:ss")', text('00:00:00')],
     ['Days("2026/10/01", Today())', num(6)],
     ['天数(Today(), "2026/10/01")', num(-6)],
-    ['Years("2000/10/08", "2026/10/07")', num(25)],
+    // R3e：按年份相减（`26` 末节，W-862；旧预期满年 25）
+    ['Years("2000/10/08", "2026/10/07")', num(26)],
     ['年数("2000/10/07", Today())', num(26)],
     ['Minutes("2026/10/07 08:00", "2026/10/07 09:30")', num(90)],
     ['分钟数("2026/10/07 09:30", "2026/10/07 08:00:30")', num(-89)],
@@ -119,8 +124,9 @@ describe('AC-EXP-13 日期函数：中英文名各一例（今天 / 现在来自
     ['年初(Today())', '2026-01-01'],
     ['LastDay("2026/10/07")', '2026-12-31'],
     ['年末("2024/02/29")', '2024-12-31'],
-    ['NextMonth("2026/01/31")', '2026-02-01'],
-    ['下月("2026/12/15")', '2027-01-01'],
+    // R3e：下月同日，没有这一天取月末（`26` 末节，W-862；旧口径下月 1 日）
+    ['NextMonth("2026/01/31")', '2026-02-28'],
+    ['下月("2026/12/15")', '2027-01-15'],
     ['AddYears("2024/02/29", 1)', '2025-02-28'],
     ['加年(Today(), -1)', '2025-10-07'],
     ['AddMonths("2026/01/31", 1)', '2026-02-28'],
@@ -142,9 +148,9 @@ describe('AC-EXP-13 日期函数：中英文名各一例（今天 / 现在来自
     expect(minute(formula)).toEqual(text(expected));
   });
 
-  it('有效时长 / EffectiveDuration：已注册（六个参数），口径待取证前求值返回结构化失败（#105）', () => {
-    expect(run('有效时长(1, 2, 3, 4, 5, 6)')).toMatchObject({ code: 'FUNCTION_UNAVAILABLE' });
-    expect(run('EffectiveDuration(1, 2, 3, 4, 5, 6)')).toMatchObject({ code: 'FUNCTION_UNAVAILABLE' });
+  it('有效时长 / EffectiveDuration：三个一组（开始、结束、0 或 1），单位分钟（R3e，`26` 末节 W-864）', () => {
+    expect(run('有效时长("2026/10/07 08:00", "2026/10/07 09:00", 1)')).toEqual(num(60));
+    expect(run('EffectiveDuration(Today(), Now(), 1)')).toEqual(num(23 * 60 + 24));
     expect(run('有效时长(1, 2)')).toMatchObject({ code: 'ARGUMENT_COUNT' });
   });
 });
@@ -211,7 +217,8 @@ describe('AC-EXP-13 数学函数：中英文名各一例', () => {
     ['Abs(-3)', num(3)],
     ['绝对值(3)', num(3)],
     ['Mod(7, 3)', num(1)],
-    ['取余(-7, 3)', num(2)],
+    // R3e：符号跟被除数（`26` 末节，W-862；旧预期 2）
+    ['取余(-7, 3)', num(-1)],
   ] as const)('%s', (formula, expected) => {
     expect(run(formula)).toEqual(expected);
   });
@@ -275,7 +282,8 @@ describe('AC-EXP-13 运算符工具栏：× ÷ 与 //', () => {
     expect(run('2×0.5 + 3÷2')).toEqual(num(2.5));
   });
 
-  it('“//” 的含义（整除或注释）待取证：暂按语法错误，提示原因（#105）', () => {
+  it('“//” 是行首整行注释（R3e，`26` 末节 W-864）；不在行首报语法错误', () => {
+    expect(run('// 说明\n7 + 2')).toEqual(num(9));
     expect(run('7 // 2')).toMatchObject({ code: 'SYNTAX_ERROR', message: expect.stringContaining('//') });
   });
 });

@@ -42,7 +42,7 @@ export function AppPages() {
   if (permission.error) return <PageState kind="error" error={permission.error} retry={permission.refresh} />;
   const active = appRoute(location.pathname);
   if (active && !PAGES.ungated.has(location.pathname) && !permission.menus.some((menu) => menu.key === active.id))
-    return <PageState kind="forbidden" />;
+    return <PageState kind="forbidden" refresh={permission.refresh} />;
   return (
     <PageErrorBoundary key={`${session.tenantId}/${session.identityKey}/${location.pathname}`}>
       <Suspense fallback={<PageState kind="loading" />}>
