@@ -1,3 +1,4 @@
+import { contractRoute } from '../contracts/route.js';
 import { lazy, Suspense } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router';
 import { APP_ROUTES, appRoute, legacyTarget } from './routes.js';
@@ -25,6 +26,7 @@ const TalentReview = lazy(() =>
   import('../talent-review/TalentReviewPage.js').then((m) => ({ default: m.TalentReviewPage })),
 );
 const Transfer = lazy(() => import('../transfer/TransferPage.js').then((m) => ({ default: m.TransferPage })));
+const Contracts = lazy(() => import('../contracts/ContractsPage.js').then((m) => ({ default: m.ContractsPage })));
 // 页面与布局同行登记，合并页面片时不再维护另一处路由条件。
 const existing = {
   approval: { Page: Approval, legacy: false },
@@ -40,6 +42,7 @@ const existing = {
   talent: { Page: Talent, legacy: true },
   'talent-review': { Page: TalentReview, legacy: true },
   transfer: { Page: Transfer, legacy: false },
+  contracts: { Page: Contracts, legacy: false },
 };
 
 function LandingPage({ title }: { title: string }) {
@@ -71,7 +74,7 @@ export function AppPages() {
     <PageErrorBoundary key={`${session.tenantId}/${session.identityKey}/${location.pathname}`}>
       <Suspense fallback={<PageState kind="loading" />}>
         <Routes>
-          {APP_ROUTES.map((route) => {
+          {[...APP_ROUTES, { ...contractRoute, path: '/contracts/*' }].map((route) => {
             const page = existing[route.id as keyof typeof existing];
             const Page = page?.Page;
             return (

@@ -1,3 +1,4 @@
+import { contractNotes } from '../contracts/annotations.js';
 import { approvalNotes } from './approval.js';
 import { establishmentNotes } from './establishment.js';
 import { evaluationNotes } from './evaluation.js';
@@ -29,5 +30,6 @@ export const annotations = {
   ...talentNotes,
   ...talentReviewNotes,
   ...transferNotes,
+  ...contractNotes,
 };
 export type { DecisionAnnotation } from './foundation.js';
