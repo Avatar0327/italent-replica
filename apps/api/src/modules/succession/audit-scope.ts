@@ -11,6 +11,7 @@ import type { SuccessionObject } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import type { ModuleScope } from '../permission/module-access.js';
 import { scopeSql } from '../permission/module-access.js';
+import { syncRowsVisible } from './sync-read.js';
 import { calcRowsVisible } from './calc-read.js';
 import { selfRecordHiddenSql } from './read-sql.js';
 
@@ -82,5 +83,9 @@ export const SUCCESSION_AUDIT: Readonly<Partial<Record<SuccessionObject, Success
     visible: (scope, row, viewer) =>
       calcRowsVisible(scope, viewer.tenantId, row.objectId, sql`succession_tenant_today(${viewer.tenantId}::uuid)`),
   },
-  syncBatch: { kind: 'rows' },
+  syncBatch: {
+    kind: 'rows',
+    visible: (scope, row, viewer) =>
+      syncRowsVisible(scope, viewer, row.objectId, sql`succession_tenant_today(${viewer.tenantId}::uuid)`),
+  },
 };

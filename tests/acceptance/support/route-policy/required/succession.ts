@@ -750,6 +750,103 @@ for (const kind of ['risk', 'health'] as const) {
   Object.assign(SUCCESSION, { [`GET ${path}/options`]: options });
 }
 
+/** D3：逐目标可见性、入口写授权与命令重放都绑定实际实现。 */
+function syncRequired(action?: 'sync' | 'retry' | 'abort'): Obligation[] {
+  const constant: Evidence = {
+    role: 'const',
+    unit: 'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>syncBatch',
+    anchor: "object( 'SyncBatch'",
+  };
+  const visible: Evidence = {
+    role: 'scope',
+    unit: `${S}/sync-read.ts#readSync`,
+    anchor: 'syncRowsVisible(scope, ctx, sql`b.id`, today)',
+  };
+  const obj = (operation: string): Obligation => ({
+    perm: `obj:Succession.SyncBatch:${operation}`,
+    facts: ['object:objectContext', 'object:object.* 动作'],
+    need: { scope: 'guard', guard: 'succession.syncVisible' },
+    at: [
+      constant,
+      visible,
+      ...CONTEXT,
+      operation === 'view'
+        ? {
+            role: 'call',
+            unit: `${S}/sync-read.ts#access`,
+            anchor: "action: 'object.view', resource: codeOf('syncBatch')",
+          }
+        : {
+            role: 'call',
+            unit: SUCCESSION_CONTEXT,
+            anchor: 'await successionContext(c, deps, spec.object, spec.operation, spec.expectedRevision)',
+          },
+    ],
+  });
+  const result: Obligation[] = [
+    obj('view'),
+    {
+      perm: 'guard:succession.syncVisible',
+      at: [
+        { ...visible, role: 'call' },
+        { role: 'impl', unit: `${S}/sync-read.ts#syncRowsVisible`, anchor: 'syncTargetVisible(scope, viewer' },
+      ],
+    },
+  ];
+  if (action)
+    result.push(
+      obj(action === 'sync' ? 'create' : 'update'),
+      {
+        perm: `btn:Succession.SyncBatch#${action}@${action === 'sync' ? 'list' : 'detail'}`,
+        facts: ['button:button()'],
+        at: [
+          constant,
+          {
+            role: 'call',
+            unit: SUCCESSION_CONTEXT,
+            anchor: 'await button(deps, ctx, codeOf(spec.object), spec.button.code, spec.button.level)',
+          },
+          {
+            role: 'impl',
+            unit: `${MRA}#button`,
+            anchor: "action: 'object.button', resource: buttonResource(objectCode, code, level)",
+          },
+        ],
+      },
+      {
+        perm: action === 'abort' ? 'guard:succession.syncAdmin' : 'guard:succession.syncRequestScope',
+        at:
+          action === 'abort'
+            ? [
+                { role: 'call', unit: `${S}/sync-routes.ts#writeSync`, anchor: 'await syncAdmin(tx, ctx)' },
+                { role: 'impl', unit: `${S}/sync-read.ts#syncAdmin`, anchor: "p.code='standard_succession_admin'" },
+              ]
+            : [
+                {
+                  role: 'call',
+                  unit: `${S}/sync-routes.ts#writeSync`,
+                  anchor: 'await checkTargets(tx, currentPort(), ctx',
+                },
+                {
+                  role: 'impl',
+                  unit: `${S}/sync-access.ts#authorizeRequesterTargets`,
+                  anchor: "reason: 'BATCH_SCOPE_EXCEEDS_REQUESTER'",
+                },
+              ],
+      },
+    );
+  return result;
+}
+Object.assign(SUCCESSION, {
+  [`GET ${BASE}/sync-batches`]: syncRequired(),
+  [`GET ${BASE}/sync-batches/:id`]: syncRequired(),
+  [`GET ${BASE}/sync-batches/:id/items`]: syncRequired(),
+  [`GET ${BASE}/sync-batches/:id/targets`]: syncRequired(),
+  [`POST ${BASE}/sync`]: syncRequired('sync'),
+  [`POST ${BASE}/sync-batches/:id/retry`]: syncRequired('retry'),
+  [`POST ${BASE}/sync-batches/:id/abort`]: syncRequired('abort'),
+});
+
 // B4：首次命令、重放共用 A2 包装器，冻结集合复用 C1。
 const RISK_ROUTES = `${S}/risk-routes.ts#registerRiskRoutes`;
 const riskConst: Evidence = {

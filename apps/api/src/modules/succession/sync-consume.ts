@@ -10,15 +10,23 @@ import {
   type Db,
   type Tx,
 } from '@italent/db';
-import { recordAudit } from '../../audit/record.js';
+import { recordSyncAudit, batchAuditSnapshot } from './sync-audit.js';
 import { AppError } from '../../errors.js';
 import type { SyncRunHeader, TalentReviewSyncPort } from '../talent-review/sync-port.js';
 import { SyncPortError } from '../talent-review/sync-port.js';
 import { readEffectiveSetting } from '../tenant-settings/service.js';
-import { PlanFailure, activeUser, targetAccess, writerAccess, type AccessDeps } from './sync-access.js';
+import {
+  PlanFailure,
+  activeUser,
+  targetAccess,
+  authorizeRequesterTargets,
+  writerAccess,
+  type AccessDeps,
+} from './sync-access.js';
 import { collectTargets, persistPlan, readPlan } from './sync-plan.js';
 import { rowsOf } from './read-sql.js';
 import { executeSyncBatch } from './sync-execute.js';
+import { claimSync, retryTime } from './sync-control.js';
 import { enqueueSyncHealth } from './sync-health.js';
 import { lockOrganizationSettings } from '../org/locks.js';
 
@@ -39,7 +47,7 @@ const terminal = (batch: Batch) => ['completed', 'terminated', 'rejected'].inclu
 const batchKey = (input: SyncInput) => and(eq(batches.tenantId, input.tenantId), eq(batches.sourceRunId, input.runId));
 const denied = (reason: string) => new AppError('FORBIDDEN', '同步批次不可操作', { reason });
 const C_CODES = ['SCOPE_REQUIRED', 'UNSUPPORTED_TRIGGER', 'ACTOR_SCOPE_EXCEEDED'];
-async function ensureBatch(tx: Tx, input: SyncInput, header: SyncRunHeader) {
+export async function ensureBatch(tx: Tx, input: SyncInput, header: SyncRunHeader) {
   await tx
     .insert(batches)
     .values({
@@ -71,38 +79,53 @@ export async function release(tx: Tx, batch: Batch) {
   await tx.execute(sql`UPDATE succession_sync_mutex SET batch_id=NULL
     WHERE tenant_id=${batch.tenantId}::uuid AND batch_id=${batch.id}::uuid`);
 }
-export async function save(tx: Tx, batch: Batch, patch: Partial<Batch>, now: Date, commandId: string, phase = 'plan') {
+export async function save(
+  tx: Tx,
+  batch: Batch,
+  patch: Partial<Batch>,
+  now: Date,
+  commandId: string,
+  phase = 'plan',
+  actorUserId: string | null = null,
+) {
+  // 调用方先按协议取得互斥/消费记录锁；统一在更新前锁内重读，禁止用镜像伪造前值。
+  const where = and(eq(batches.tenantId, batch.tenantId), eq(batches.id, batch.id));
+  const [before] = await tx.select().from(batches).where(where).for('update');
   const [saved] = await tx
     .update(batches)
-    .set({ ...patch, revision: batch.revision + 1 })
+    .set({
+      ...(patch.status === 'blocked' || patch.status === 'waiting'
+        ? { nextRetryAt: retryTime(before!.autoRetryCount, now) }
+        : patch.status === 'completed'
+          ? { nextRetryAt: null }
+          : {}),
+      ...patch,
+      revision: before!.revision + 1,
+    })
     .where(and(eq(batches.tenantId, batch.tenantId), eq(batches.id, batch.id)))
     .returning();
-  await recordAudit(tx, {
-    tenantId: batch.tenantId,
-    actorUserId: null,
-    objectType: 'Succession.SyncBatch',
-    objectId: batch.id,
-    action: `succession.sync-batch.${phase}`,
-    commandId,
-    occurredAt: now,
-    before: { status: batch.status, hasPlan: batch.hasPlan },
-    after: {
-      status: saved!.status,
-      hasPlan: saved!.hasPlan,
-      blockReason: saved!.blockReason,
-      endReason: saved!.endReason,
-      executionNo: saved!.executionNo,
-    },
-  });
+  await recordSyncAudit(
+    tx,
+    batch,
+    { actorUserId, now, commandId, phase },
+    batchAuditSnapshot(before!),
+    batchAuditSnapshot(saved!),
+  );
   return saved!;
 }
-export async function notify(tx: Tx, batch: Batch, now: Date) {
-  await tx.execute(sql`INSERT INTO succession_notifications
+export async function notify(tx: Tx, batch: Batch, now: Date, actorUserId: string | null = null) {
+  const commandId = `${batch.sourceRunId}:succession:done`;
+  const inserted = rowsOf<Record<string, unknown>>(
+    await tx.execute(sql`INSERT INTO succession_notifications
     (tenant_id,batch_id,recipient_user_id,kind,command_id,created_at)
     SELECT ${batch.tenantId}::uuid,${batch.id}::uuid,${batch.actorUserId}::uuid,'sync_done',
-      ${`${batch.sourceRunId}:succession:done`},${now.toISOString()}::timestamptz
+      ${commandId},${now.toISOString()}::timestamptz
     WHERE succession_calc_user_active(${batch.tenantId}::uuid,${batch.actorUserId}::uuid)
-    ON CONFLICT (tenant_id,subject_id,recipient_user_id,kind) DO NOTHING`);
+    ON CONFLICT (tenant_id,subject_id,recipient_user_id,kind) DO NOTHING
+    RETURNING id,recipient_user_id AS "recipientUserId",kind,state`),
+  );
+  if (inserted[0])
+    await recordSyncAudit(tx, batch, { actorUserId, now, commandId, phase: 'sync_done' }, null, inserted[0]);
 }
 class FirstPlan {
   header: SyncRunHeader | null = null;
@@ -166,16 +189,17 @@ class FirstPlan {
       ...targets,
       ...plan.nominations.map((n) => ({ kind: n.kind, id: (n.orgId ?? n.positionId)! })),
     ];
-    const principals = [header.actorUserId, ...(input.requesterUserId ? [input.requesterUserId] : [])];
-    for (const [phase, userId] of principals.entries()) {
-      const access = await targetAccess(deps, tx, input.tenantId, timezone, userId);
-      let covered = await activeUser(tx, input.tenantId, userId);
-      for (const target of authorizationTargets) if (!(await access.covers(target))) covered = false;
-      if (!covered) {
-        if (phase === 0) throw new PlanFailure('ACTOR_SCOPE_EXCEEDED');
-        throw denied('BATCH_SCOPE_EXCEEDS_REQUESTER');
-      }
-    }
+    const access = await targetAccess(deps, tx, input.tenantId, timezone, header.actorUserId);
+    let covered = await activeUser(tx, input.tenantId, header.actorUserId);
+    for (const target of authorizationTargets) if (!(await access.covers(target))) covered = false;
+    if (!covered) throw new PlanFailure('ACTOR_SCOPE_EXCEEDED');
+    if (input.requesterUserId)
+      await authorizeRequesterTargets(
+        deps,
+        tx,
+        { tenantId: input.tenantId, timezone, userId: input.requesterUserId },
+        authorizationTargets,
+      );
     if (targets.some((t) => t.kind === 'org_health')) await lockOrganizationSettings(tx, input.tenantId);
     const planned = await persistPlan(tx, {
       tenantId: input.tenantId,
@@ -216,10 +240,12 @@ class FirstPlan {
       },
       now,
       pageCommandId,
+      'plan',
+      input.requesterUserId ?? null,
     );
     if (!planned.pending) {
       await release(tx, batch);
-      await notify(tx, batch, now);
+      await notify(tx, batch, now, input.requesterUserId ?? null);
       await enqueueSyncHealth(tx, batch, now);
     }
     return batch;
@@ -256,14 +282,16 @@ class FirstPlan {
       {
         status,
         blockReason: rejected || superseded ? null : failure.code,
-        endReason: rejected || superseded ? failure.code : null,
+        endReason: superseded ? 'superseded' : rejected ? failure.code : null,
         finishedAt: rejected || superseded ? now : null,
       },
       now,
       `${input.runId}:succession:plan:${failure.code}`,
+      'plan',
+      input.requesterUserId ?? null,
     );
     await release(tx, batch);
-    if (rejected) await notify(tx, batch, now);
+    if (rejected) await notify(tx, batch, now, input.requesterUserId ?? null);
     return batch;
   }
 }
@@ -299,8 +327,11 @@ export async function planSyncRun(deps: SyncDeps, input: SyncInput): Promise<Bat
   }
 }
 export async function consumeRun(deps: SyncDeps, input: SyncInput): Promise<Batch | undefined> {
-  const batch = await planSyncRun(deps, input);
-  return batch?.hasPlan && !terminal(batch) ? executeSyncBatch(deps, input, batch) : batch;
+  let batch = await planSyncRun(deps, input);
+  if (!batch?.hasPlan || terminal(batch)) return batch;
+  const tenant = await getTenant(deps.db, input.tenantId);
+  batch = await claimSync(deps, input, batch, tenant!.timezone);
+  return batch && !terminal(batch) ? executeSyncBatch(deps, input, batch) : batch;
 }
 /** SP-02：outbox 只提供租户和 run 定位；主体、日期、策略都在 consumeRun 重读，不能信任事件附带值。 */
 export const consumeSyncOutbox = (
