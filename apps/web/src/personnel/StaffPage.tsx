@@ -6,7 +6,8 @@ import { DecisionNote } from '../foundation/DecisionNote.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import type { PageRequest, PageResult } from '../foundation/client.js';
 import { StaffDetail } from './StaffDetail.js';
-import { StaffFilters, ColumnSettings } from './StaffFilters.js';
+import { StaffFilters } from './StaffFilters.js';
+import { ColumnGear, ColumnSettings } from './ColumnSettings.js';
 import { useRead } from './useRead.js';
 import {
   columnChoices,
@@ -14,6 +15,7 @@ import {
   employeeQuery,
   fieldValue,
   visibleColumns,
+  columnLabel,
   type Filters,
   type Row,
 } from './model.js';
@@ -37,6 +39,8 @@ export function StaffPage() {
     setPage({ ...page, page: 1 });
   };
   const columns = staffColumns(selectedColumns, allowed, setEmployeeId);
+  // 原站列设置入口在表头最右侧齿轮，不占工具栏按钮位。
+  columns.push({ key: 'settings', width: 48, title: <ColumnGear onOpen={() => setOverlay('columns')} /> });
   return (
     <div className="staff-page">
       <DecisionNote id="personnel" />
@@ -51,14 +55,6 @@ export function StaffPage() {
         loading={result.loading}
         error={result.error}
         retry={result.refresh}
-        actions={
-          <Space>
-            <Button onClick={result.refresh}>{m.refresh}</Button>
-            <Button aria-label={m.columns} onClick={() => setOverlay('columns')}>
-              {m.columns}
-            </Button>
-          </Space>
-        }
         filters={
           <QuickFilters
             allowed={allowed}
@@ -92,7 +88,7 @@ export function StaffPage() {
 function staffColumns(selectedColumns: string[], allowed: readonly string[], setEmployeeId: (id: string) => void) {
   const columns: TableColumnsType<Row> = visibleColumns(selectedColumns, allowed).map((key) => ({
     key,
-    title: m.labels[key],
+    title: columnLabel(key),
     dataIndex: key,
     width: key === 'name' ? 150 : 155,
     ellipsis: true,
@@ -137,7 +133,7 @@ function QuickFilters({
 }) {
   return (
     <div className="staff-filter-bar">
-      <Alert className="staff-help" type="info" showIcon message={m.help} />
+      <Alert className="staff-help" type="info" showIcon closable message={m.help} />
       <Space wrap>
         {allowed.includes('name') && (
           <Input.Search
@@ -165,7 +161,6 @@ function QuickFilters({
         <Button type="text" onClick={() => apply({})}>
           {m.reset}
         </Button>
-        <span className="staff-muted">{m.perPage}</span>
       </Space>
     </div>
   );
