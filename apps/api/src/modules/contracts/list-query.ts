@@ -53,6 +53,27 @@ export function parseListQuery(raw: Record<string, string>): ListQuery {
   return { ...query, days: query.days ?? 0 };
 }
 
+/**
+ * 各视图实际生效的筛选：在入口统一决定，下游只认返回值，不逐个参数打补丁。
+ * 入职缺失查的是“没有有效合同的员工”，没有可比较的合同日期 / 类型 / 公司 / 状态 / 期限，只认员工、关键字、组织，
+ * 以及特殊含义的 typeId（缺该类型的有效合同）和按姓名排序；其余合同维度的筛选一律忽略。
+ */
+export function applicableQuery(query: ListQuery): ListQuery {
+  if (query.view !== 'missing') return query;
+  const { view, days, employeeId, keyword, orgId, includeChildren, typeId, order } = query;
+  return {
+    view,
+    days,
+    order,
+    ...(employeeId ? { employeeId } : {}),
+    ...(keyword ? { keyword } : {}),
+    ...(orgId ? { orgId } : {}),
+    ...(includeChildren !== undefined ? { includeChildren } : {}),
+    ...(typeId ? { typeId } : {}),
+    ...(query.sort === 'name' ? { sort: query.sort } : {}),
+  };
+}
+
 /** 部门筛选的最终部门集合；includeChildren 时并入行政维度的全部下级（含停用）。 */
 export async function resolveOrgIds(tx: Tx, ctx: ContractContext, query: ListQuery, today: string) {
   if (!query.orgId) return null;

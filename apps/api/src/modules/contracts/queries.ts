@@ -4,7 +4,7 @@ import type { SQL } from 'drizzle-orm';
 import { employmentVisibilitySql } from '../employment/visibility.js';
 import { rowsOf, type ContractContext } from './context.js';
 import { settings } from './configuration.js';
-import { filterPredicate, orderClause, resolveOrgIds, type ListQuery } from './list-query.js';
+import { applicableQuery, filterPredicate, orderClause, resolveOrgIds, type ListQuery } from './list-query.js';
 
 export interface ListResult {
   items: unknown[];
@@ -40,10 +40,11 @@ function successorExists(c: { tenantId: SQL; employeeId: SQL; typeId: SQL; endDa
 export async function listContracts(
   tx: Tx,
   ctx: ContractContext,
-  query: ListQuery,
+  requested: ListQuery,
   limit: number,
   offset: number,
 ): Promise<ListResult> {
+  const query = applicableQuery(requested);
   const today = tenantLocalDate(ctx.now, ctx.timezone);
   const orgIds = await resolveOrgIds(tx, ctx, query, today);
   const shared = { ctx, query, limit, offset, today, orgIds };
@@ -113,15 +114,17 @@ async function inReviewRequests(tx: Tx, { ctx, query, limit, offset, today, orgI
 
 /**
  * 入职缺失：有当前主职（未离职 / 退休）且没有有效合同的员工；带 typeId 时只看该类型的有效合同。
- * 只认员工、关键字、组织三类筛选与按姓名排序；其余合同维度的筛选对“缺失”没有意义，忽略。
+ * 哪些筛选生效由 applicableQuery 统一决定（入口处已收窄），这里的合同列一律给 NULL，不会被引用到。
  */
 async function missingContracts(tx: Tx, { ctx, query, limit, offset, today, orgIds }: Shared): Promise<ListResult> {
   const scope = ctx.scope
     ? employmentVisibilitySql(ctx.scope, { department: sql`NULL::uuid`, employee: sql`e.id` })
     : sql`true`;
   const none = sql`NULL`;
+  // typeId 在这里不是“合同类型 = x”的筛选，而是“缺该类型的有效合同”，只进下面的 NOT EXISTS
+  const { typeId: missingType, ...employeeFilters } = query;
   const filter = filterPredicate(
-    { ...query, typeId: undefined, companyId: undefined, status: undefined, termType: undefined },
+    employeeFilters,
     {
       side: 'record',
       employee: sql`e.id`,
@@ -143,7 +146,7 @@ async function missingContracts(tx: Tx, { ctx, query, limit, offset, today, orgI
       AND NOT EXISTS (SELECT 1 FROM contract_records c WHERE c.tenant_id=e.tenant_id AND c.employee_id=e.id
         AND NOT c.deleted AND c.status='valid' AND c.approval_status='effective' AND c.effective_date<=${today}::date
         AND (c.end_date IS NULL OR c.end_date>=${today}::date)
-        AND (${query.typeId ?? null}::uuid IS NULL OR c.type_id=${query.typeId ?? null}::uuid))`;
+        AND (${missingType ?? null}::uuid IS NULL OR c.type_id=${missingType ?? null}::uuid))`;
   const direction = query.sort === 'name' && query.order === 'desc' ? sql`DESC` : sql`ASC`;
   const order = query.sort === 'name' ? sql`e.name ${direction},e.id` : sql`e.id`;
   const [count] = rowsOf<{ total: number }>(await tx.execute(sql`SELECT count(*)::int AS total ${body}`));

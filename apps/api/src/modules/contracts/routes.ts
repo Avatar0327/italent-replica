@@ -63,9 +63,17 @@ export async function routeContext(c: C, deps: TenantRouteDeps, object = CONTRAC
     });
   return ctx;
 }
+/** 删除类回执 { id, deleted: true } 只回显调用方已给出的对象 ID，不属于对象字段，不参与字段裁剪。 */
+function isReceipt(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false;
+  const keys = Object.keys(value).sort();
+  return (
+    keys.length === 2 && keys[0] === 'deleted' && keys[1] === 'id' && (value as { deleted: unknown }).deleted === true
+  );
+}
 async function trim(deps: TenantRouteDeps, ctx: ContractContext, object: string, value: unknown): Promise<unknown> {
   const fields = await getModuleViewableFields(deps, ctx, object);
-  if (fields === undefined) return value;
+  if (fields === undefined || isReceipt(value)) return value;
   function project(value: unknown): unknown {
     if (Array.isArray(value)) return value.map(project);
     if (!value || typeof value !== 'object') return value;
