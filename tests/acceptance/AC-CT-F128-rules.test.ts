@@ -3,6 +3,10 @@ import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { contractWorld } from './AC-CT-support.js';
+import { tenantApi } from './support/tenant-api.js';
+import { registerScopeProvider } from '../../apps/api/src/modules/permission/module-access.js';
+import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.js';
+import type { Authorizer } from '@italent/api';
 import { rowsOf } from '../../apps/api/src/modules/contracts/context.js';
 
 const testDb = useTestDb();
@@ -37,6 +41,7 @@ describe('AC-CT F-128 A16 规则删除与分页', () => {
     expect((await w.request('DELETE', `/rules/${rule.id}`)).status).toBe(400);
     const deleted = await w.request('DELETE', `/rules/${rule.id}`, { ifMatch: rule.revision });
     expect(deleted.status, await deleted.clone().text()).toBe(200);
+    expect(await deleted.json()).toEqual({ id: rule.id, deleted: true });
     expect((await listRules(w)).items.map((r) => r.id)).toEqual([kept.id]);
     await withTenant(w.db, w.session.tenant.id, async (tx) => {
       const details = rowsOf(
@@ -48,6 +53,25 @@ describe('AC-CT F-128 A16 规则删除与分页', () => {
       );
       expect(audit).toHaveLength(1);
     });
+  });
+
+  it('删除回执 { id, deleted: true } 不被字段裁剪移除（查看字段受限时亦然）', async () => {
+    const w = await contractWorld(testDb().db, 'f128-rule-receipt');
+    const rule = await addRule(w, 1);
+    const authorize: Authorizer = (request) => request.action !== 'data.scope.all';
+    registerScopeProvider(authorize, {
+      scope: async () => ({ ...EMPTY_SCOPE, all: true, hasDataPermission: true }),
+      authorize: async (request) => Boolean(await authorize(request)),
+      fields: async () => new Set(['name']),
+    });
+    const api = tenantApi(w.db, { authorize, clock: () => new Date('2026-10-01T01:00:00Z') });
+    const response = await api.request('DELETE', `/api/tenant/contracts/rules/${rule.id}`, {
+      tenant: w.session.tenant.id,
+      user: w.session.user.id,
+      ifMatch: rule.revision,
+    });
+    expect(response.status, await response.clone().text()).toBe(200);
+    expect(await response.json()).toEqual({ id: rule.id, deleted: true });
   });
 
   it('同一命令 ID 重放不重复删除；已删除的规则再删 → 404；非法 ID → 400', async () => {

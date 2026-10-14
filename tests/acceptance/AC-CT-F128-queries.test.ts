@@ -85,6 +85,40 @@ describe('AC-CT F-128 A2 入职缺失按类型并带任职列', () => {
   });
 });
 
+describe('AC-CT F-128 A2 入职缺失视图只认适用的筛选（日期等合同维度筛选被忽略）', () => {
+  it.each([
+    'effectiveFrom=2000-01-01',
+    'effectiveTo=2100-01-01',
+    'endFrom=2000-01-01',
+    'endTo=2100-01-01',
+    'effectiveFrom=2000-01-01&effectiveTo=2100-01-01&endFrom=2000-01-01&endTo=2100-01-01',
+    'status=terminated&termType=indefinite&companyId=00000000-0000-4000-8000-000000000000',
+  ])('带 %s 结果与不带时一致', async (extra) => {
+    const { w, second } = await populated(`f128-missing-${extra.length}-${extra.slice(0, 9)}`);
+    const base = await query<{ employeeId: string }>(w, `view=missing&typeId=${w.type.id}`);
+    expect(base.items.map((i) => i.employeeId)).toEqual([second.id]);
+    const withExtra = await query<{ employeeId: string }>(w, `view=missing&typeId=${w.type.id}&${extra}`);
+    expect(withExtra.items.map((i) => i.employeeId)).toEqual([second.id]);
+    expect(withExtra.total).toBe(1);
+  });
+
+  it('日期参数与员工 / 姓名 / 工号 / 组织筛选组合时，后者仍然生效', async () => {
+    const { w, second, child } = await populated('f128-missing-combo');
+    const dates = 'effectiveFrom=2000-01-01&endTo=2100-01-01';
+    const ids = async (qs: string) =>
+      (await query<{ employeeId: string }>(w, `view=missing&typeId=${w.type.id}&${dates}&${qs}`)).items.map(
+        (i) => i.employeeId,
+      );
+    expect(await ids(`employeeId=${second.id}`)).toEqual([second.id]);
+    expect(await ids(`employeeId=${w.employee.id}`)).toEqual([]);
+    expect(await ids(`keyword=${encodeURIComponent('李四')}`)).toEqual([second.id]);
+    expect(await ids('keyword=EMP_LISI')).toEqual([second.id]);
+    expect(await ids('keyword=NOBODY')).toEqual([]);
+    expect(await ids(`orgId=${child}`)).toEqual([second.id]);
+    expect(await ids(`orgId=${w.org.id}`)).toEqual([]);
+  });
+});
+
 describe('AC-CT F-128 A7 高级筛选、排序与总数', () => {
   it.each([
     ['员工', (c: Ctx) => `employeeId=${c.second.id}`, ['B-002']],
