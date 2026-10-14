@@ -1,5 +1,5 @@
 import { sql, type Tx } from '@italent/db';
-import { tenantLocalDate } from '@italent/domain';
+import { applicationStateLabel, tenantLocalDate } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { findCurrentRecord, loadEmploymentBusiness, rowsOf } from '../employment/read-model.js';
 import type { EmploymentContext, PageQuery } from '../employment/types.js';
@@ -70,9 +70,9 @@ export interface OwnApplication {
   currentHandlers: string[];
 }
 
+/** 文案唯一来源在 domain（approval/application-status.ts）：被退回的申请显示“已退回”，不再混在“审批中”里。 */
 export function applicationStatus(state: string) {
-  if (state === 'approved') return '通过';
-  return ['running', 'returned'].includes(state) ? '审批中' : '已终止';
+  return applicationStateLabel(state);
 }
 
 export async function ownApplications(
