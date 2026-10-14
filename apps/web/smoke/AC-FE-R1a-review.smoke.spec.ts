@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { test, expect, user } from './fixtures.js';
+import { test, expect, user, snapshotFixture } from './fixtures.js';
 
 const id = '40000000-0000-4000-8000-000000000001';
 const kinds = ['layers', 'grades', 'level-types', 'levels', 'sequences', 'professional-lines', 'posts', 'positions'];
@@ -11,6 +11,15 @@ async function setup(page: Page, options: { hiddenName?: boolean; schemeOnly?: b
   page.on('console', (message) => {
     if (message.type() === 'error' && !message.text().includes('403 (Forbidden)')) errors.push(message.text());
   });
+  if (options.schemeOnly)
+    await page.route('**/permission/me/snapshot', (route) =>
+      route.fulfill({
+        json: {
+          ...snapshotFixture,
+          apps: snapshotFixture.apps.map((app) => (app.app === 'org' ? { ...app, entryObjects: [schemeObject] } : app)),
+        },
+      }),
+    );
   await page.route('**/permission/me/objects/*', (route) => {
     const objectCode = new URL(route.request().url()).pathname.split('/').at(-1);
     if (options.schemeOnly && objectCode !== schemeObject)
