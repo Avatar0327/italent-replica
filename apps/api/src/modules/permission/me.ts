@@ -25,7 +25,7 @@ export async function myObjectPermission(
 ) {
   catalog = await tenantObjectCatalog(tx, catalog, objectCode);
   if (!catalog.get(objectCode)) throw new AppError('NOT_FOUND', '对象不存在');
-  const subject = await loadSubject(tx, userId, objectCode, managerQuery, { employeeIdentity: true });
+  const subject = await loadSubject(tx, userId, objectCode, managerQuery);
   // 与快照、授权器同一判定（object-access.ts）：对象不在任何（应用边界内的）身份对象清单中、也不是有权的配置类对象 → 拒绝（AC-PRM-01）
   const access = await createObjectAccess(tx, userId, subject, catalog).resolve(objectCode);
   if (!access) throw new AppError('FORBIDDEN', '无权访问该对象');
