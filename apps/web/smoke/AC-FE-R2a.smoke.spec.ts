@@ -1,4 +1,4 @@
-import { test, expect, user } from './fixtures.js';
+import { test, expect, user, snapshotFixture } from './fixtures.js';
 import type { Page } from '@playwright/test';
 const id = '40000000-0000-4000-8000-000000000001';
 const record = {
@@ -17,6 +17,16 @@ const record = {
   versionNo: 2,
 };
 async function setup(page: Page) {
+  await page.route('**/permission/me/snapshot', (route) =>
+    route.fulfill({
+      json: {
+        ...snapshotFixture,
+        apps: snapshotFixture.apps.map((app) =>
+          app.app === 'staff' ? { ...app, entryObjects: [...app.entryObjects, 'TenantBase.EmploymentContract'] } : app,
+        ),
+      },
+    }),
+  );
   await page.route('**/permission/me/objects/*', (route) =>
     route.fulfill({
       json: {
@@ -153,6 +163,7 @@ test('AC-FE-R2a-04 无权限入口隐藏，直达拒绝；详情错误不接桩'
   await page.getByRole('button', { name: '查看合同', exact: true }).first().click();
   await expect(page.getByText('页面或记录不存在', { exact: true })).toBeVisible();
   await expect(page.locator('.contract-detail')).not.toContainText('DEMO-CT-001');
+  await page.route('**/permission/me/snapshot', (route) => route.fulfill({ json: snapshotFixture }));
   await page.route('**/permission/me/objects/TenantBase.EmploymentContract', (route) =>
     route.fulfill({ status: 403, json: { error: { code: 'FORBIDDEN' } } }),
   );

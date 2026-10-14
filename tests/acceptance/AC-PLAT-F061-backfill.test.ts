@@ -48,6 +48,7 @@ import {
   withoutFieldEdit,
   type World,
 } from './support/f061.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 const OBJECT = OBJ.objectCode;
@@ -429,7 +430,7 @@ describe('AC-PLAT-F061 T-23 受管授权登记', () => {
     const manual = (await created.json()) as { id: string };
     const plain = await w.api.request('POST', '/api/tenant/permission/profiles', {
       ...w.asAdmin,
-      body: { code: `custom_${randomUUID().slice(0, 8)}`, name: '普通自定义', apps: ['TenantBase'], licenseType: null },
+      body: { code: `custom_${uniqueSuffix()}`, name: '普通自定义', apps: ['TenantBase'], licenseType: null },
     });
     const custom = (await plain.json()) as { id: string };
     const full = {

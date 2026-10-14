@@ -2,7 +2,6 @@
  * R3-T04 PR-B1 配置对象验收夹具（设计 §2.2、§6.1、§7 配置 CRUD 行）：盘点分类 / 角色 / 字段目录 / 租户设置。
  * 接口挂在 /api/tenant/talent-review/ 之下；缺省注入“全部允许”的授权钩子，权限用例另用真实授权器（configOperator）。
  */
-import { randomUUID } from 'node:crypto';
 import type { Db } from '@italent/db';
 import { TALENT_REVIEW_APP, TALENT_REVIEW_OBJECTS } from '@italent/domain';
 import { expect } from 'vitest';
@@ -17,6 +16,7 @@ import {
 } from './AC-PRM-support.js';
 import { TR_BASE, TR_NOW } from './AC-TR-support.js';
 import { type RequestOptions, seedTenantWithMember, tenantApi } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 export { TR_BASE, TR_NOW };
 
@@ -32,7 +32,7 @@ export type ConfigObject = ConfigKind | 'settings';
 let counter = 0;
 const next = () => {
   counter += 1;
-  return `${counter}_${randomUUID().slice(0, 4)}`;
+  return `${counter}_${uniqueSuffix()}`;
 };
 /** 每种配置对象的最小合法载荷（编码 / 名称唯一）。 */
 export const configBody = (kind: ConfigKind, extra: Record<string, unknown> = {}): Record<string, unknown> => {
@@ -94,7 +94,7 @@ export async function configOperator(
   options: OperatorOptions = {},
 ) {
   const definition = TALENT_REVIEW_OBJECTS[object];
-  const profile = await createProfile(world, `trc-${randomUUID().slice(0, 8)}`, { apps: [TALENT_REVIEW_APP] });
+  const profile = await createProfile(world, `trc-${uniqueSuffix()}`, { apps: [TALENT_REVIEW_APP] });
   const hidden = new Set(options.hidden ?? []);
   const locked = new Set(options.readonly ?? []);
   const setButtons = async (buttons: boolean, omit: readonly string[] | undefined = options.omitButtons) => {
@@ -120,7 +120,7 @@ export async function configOperator(
   };
   if (options.view !== false) await setButtons(options.buttons ?? true);
   await makeGrantable(world, [profile.id]);
-  const user = options.user ?? (await addMember(world, `trc-operator-${randomUUID().slice(0, 4)}`));
+  const user = options.user ?? (await addMember(world, `trc-operator-${uniqueSuffix()}`));
   expect((await grant(world, user.id, profile.id)).status).toBe(201);
   const as = { user: user.id, tenant: world.tenant.id };
   let seeAllRevision = 0;

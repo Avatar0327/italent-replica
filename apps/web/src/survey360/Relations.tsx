@@ -6,7 +6,8 @@ import { DetailPage } from '../foundation/templates.js';
 import { FormOverlay, type FormField } from '../foundation/FormOverlay.js';
 import { PageState } from '../foundation/PageState.js';
 import type { PageResult } from '../foundation/client.js';
-import { Failure, RemoteSelect, useRead, useWriter } from '../evaluation/runtime.js';
+import { Failure, RemoteSelect, useRead } from '../evaluation/runtime.js';
+import { useRecordForm } from '../evaluation/useRecordForm.js';
 import type { Row } from '../evaluation/model.js';
 import { m as common, textValue } from '../evaluation/messages.js';
 import { m } from './messages.js';
@@ -162,7 +163,7 @@ function RelationEditor({
   saved(): void;
 }) {
   const permission = usePermissions(OBJECT);
-  const writer = useWriter(saved);
+  const writer = useRecordForm(path);
   const fields: FormField[] = [
     {
       name: 'personId',
@@ -203,16 +204,19 @@ function RelationEditor({
     <FormOverlay
       open
       recordKey="new-relation"
+      submission={writer}
       title={appraiser ? m.addAppraiser : m.addObject}
       groups={[{ title: m.relations, fields }]}
       onClose={close}
-      onRefresh={() => {
+      onSubmit={async (values) => {
+        await writer.save(
+          values,
+          fields.filter((f) => f.access.visible && f.access.editable).map((f) => f.name),
+          'POST',
+        );
+        writer.clear();
         saved();
         close();
-      }}
-      onSubmit={async (values) => {
-        if (writer.blocked) throw new Error(common.uncertain);
-        await writer.write(path, 'POST', values, 0);
       }}
     />
   );

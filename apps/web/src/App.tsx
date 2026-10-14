@@ -7,7 +7,7 @@ import { SessionProvider, type Session } from './foundation/Session.js';
 import { Shell } from './foundation/Shell.js';
 import { annotations } from './annotations/index.js';
 import { theme } from './foundation/theme.js';
-import { demoSession } from './demo-stubs/session.js';
+import { initialTenantId } from './demo/tenant.js';
 
 const emptySession: Session = {
   tenantId: '',
@@ -17,7 +17,7 @@ const emptySession: Session = {
   displayName: '',
   source: 'server',
 };
-export function App({ session = import.meta.env.DEV ? demoSession() : emptySession }: { session?: Session }) {
+export function App({ session = { ...emptySession, tenantId: initialTenantId() } }: { session?: Session }) {
   return (
     <ConfigProvider locale={zhCN} theme={theme}>
       <AntApp>

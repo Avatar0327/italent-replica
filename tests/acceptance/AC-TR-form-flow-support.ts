@@ -2,7 +2,6 @@
  * R3-T04 PR-B3 盘点内容表单与流程定义验收夹具（设计 §2.2 forms / form_fields / flows / nodes / node_roles；DEC-306①）。
  * 接口 /api/tenant/talent-review/forms、/flows；缺省“全部允许”的授权钩子建数据，权限用例另用真实授权器（formOperator）。
  */
-import { randomUUID } from 'node:crypto';
 import type { Db } from '@italent/db';
 import { TALENT_REVIEW_APP, TALENT_REVIEW_OBJECTS, type TalentReviewObject } from '@italent/domain';
 import { expect } from 'vitest';
@@ -18,6 +17,7 @@ import {
 import { configBody, configWorld, type ConfigView } from './AC-TR-config-support.js';
 import { TR_BASE } from './AC-TR-support.js';
 import type { RequestOptions } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 export const FORMS = '/forms';
 export const FLOWS = '/flows';
@@ -47,7 +47,7 @@ export interface FlowView extends ConfigView {
 let counter = 0;
 const next = () => {
   counter += 1;
-  return `${counter}_${randomUUID().slice(0, 4)}`;
+  return `${counter}_${uniqueSuffix()}`;
 };
 
 export const formBody = (
@@ -134,7 +134,7 @@ export async function formOperator(world: PermissionWorld, object: 'form' | 'flo
   const target = TALENT_REVIEW_OBJECTS[object];
   const referenced: TalentReviewObject = object === 'form' ? 'field' : 'role';
   const catalog = TALENT_REVIEW_OBJECTS[referenced];
-  const profile = await createProfile(world, `trf-${randomUUID().slice(0, 8)}`, { apps: [TALENT_REVIEW_APP] });
+  const profile = await createProfile(world, `trf-${uniqueSuffix()}`, { apps: [TALENT_REVIEW_APP] });
   const hidden = new Set(options.hidden ?? []);
   const locked = new Set(options.readonly ?? []);
   const setButtons = async (buttons: boolean) => {
@@ -173,7 +173,7 @@ export async function formOperator(world: PermissionWorld, object: 'form' | 'flo
     expect(response.status, await response.clone().text()).toBe(200);
   }
   await makeGrantable(world, [profile.id]);
-  const user = await addMember(world, `trf-operator-${randomUUID().slice(0, 4)}`);
+  const user = await addMember(world, `trf-operator-${uniqueSuffix()}`);
   expect((await grant(world, user.id, profile.id)).status).toBe(201);
   const as = { user: user.id, tenant: world.tenant.id };
   const revisions = new Map<string, number>();

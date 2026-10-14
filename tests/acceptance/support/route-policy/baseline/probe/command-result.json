@@ -1,0 +1,17 @@
+{
+  "GET /api/tenant/commands/:commandId/result": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "9b6946fe6881",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "NOT_FOUND",
+      "error": "9b6946fe6881",
+      "status": 404
+    },
+    "scopeQueries": [],
+    "trace": []
+  }
+}

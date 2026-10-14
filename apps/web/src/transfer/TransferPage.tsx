@@ -4,8 +4,13 @@ import { useState } from 'react';
 import { initialTenantId } from '../demo/tenant.js';
 import { text } from './messages.js';
 import './transfer.css';
+import { HrTransferPage } from './HrTransferPage.js';
 
 export function TransferPage({ initiator = 'hr' }: { initiator?: 'hr' | 'employee' | 'manager' }) {
+  return initiator === 'hr' ? <HrTransferPage /> : <LegacyTransferPage initiator={initiator} />;
+}
+
+function LegacyTransferPage({ initiator }: { initiator: 'employee' | 'manager' }) {
   const session = useSession();
   const initialTenant = () => session.tenantId || initialTenantId();
   const [tenantId, setTenantId] = useState(initialTenant);

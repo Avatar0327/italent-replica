@@ -26,6 +26,7 @@ import {
   seedPermissionWorld,
   setObjectPermission,
 } from './AC-PRM-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 const EV_APP = 'TEvaluation';
@@ -204,7 +205,7 @@ describe('AC-EV-contract P0 ①：评定流程对象目录（DEC-331②、DEC-36
 describe('AC-EV-contract P0 ①：身份配置与审计规则位（DEC-197 fail-closed；真实授权器）', () => {
   it('身份可配置流程对象与弃权按钮；审计查看规则未注入时一律不返回，注入后按注入的规则返回', async () => {
     const world = await seedPermissionWorld(testDb().db);
-    const profile = await createProfile(world, `ev-flow-${randomUUID().slice(0, 8)}`, { apps: [EV_APP] });
+    const profile = await createProfile(world, `ev-flow-${uniqueSuffix()}`, { apps: [EV_APP] });
     for (const definition of Object.values(flow())) {
       const response = await setObjectPermission(
         world,

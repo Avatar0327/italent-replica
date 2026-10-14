@@ -7,7 +7,6 @@
  * - 不可见（无评价表查看权）403，停用 400 REFERENCE_DISABLED，范围外与不存在 404；拒绝时同一事务不写任何数据（revision 不变）。
  * 真 PG：设了 TEST_DATABASE_URL 时 `useTestDb` 即真 PostgreSQL，`adminRead` 是另一个请求（独立事务）的回查。
  */
-import { randomUUID } from 'node:crypto';
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { errorOf, ok } from './AC-EV-support.js';
@@ -23,9 +22,10 @@ import {
   type ActivityWorld,
   sendableChainWithId,
 } from './AC-EV-activity-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
-const suffix = () => randomUUID().slice(0, 6);
+const suffix = () => uniqueSuffix();
 
 type ChainBody = Record<string, unknown>;
 

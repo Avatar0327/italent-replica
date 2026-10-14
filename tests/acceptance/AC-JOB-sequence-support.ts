@@ -3,6 +3,7 @@ import { type Db, sql, withTenant } from '@italent/db';
 import { orgPeopleWorld, resultRows, type OrgPeopleWorld } from './AC-ORG-people-support.js';
 import { allowAll, tenantApi } from './support/tenant-api.js';
 import type { Authorizer } from '../../apps/api/src/authorization.js';
+import { uniqueSuffix } from './support/unique.js';
 export const now = new Date('2026-10-05T01:00:00Z');
 export async function worker(
   db: Db,
@@ -26,7 +27,7 @@ export function callAt(db: Db, world: OrgPeopleWorld, authorize: Authorizer = al
     });
 }
 export async function scenario(db: Db, kind: 'posts' | 'positions' = 'posts') {
-  const world = await orgPeopleWorld(db, `seq${randomUUID().slice(0, 8)}`);
+  const world = await orgPeopleWorld(db, `seq${uniqueSuffix()}`);
   const org = await world.org('同步部门');
   const oldSequence = await world.job('sequences', '原序列');
   const nextSequence = await world.job('sequences', '新序列');

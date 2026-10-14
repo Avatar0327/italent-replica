@@ -112,7 +112,59 @@ function calcPolicy(retry = false) {
   });
 }
 
+function syncPolicy(action?: 'sync' | 'retry' | 'abort') {
+  const read = object({
+    object: SUCCESSION_OBJECTS.syncBatch.code,
+    operation: 'view',
+    button: noButton('同步批次查看'),
+    scope: guardScope('succession.syncVisible', NOT_FOUND),
+    fields: projector('succession.sync', 'succession.sync'),
+  });
+  if (!action) return read;
+  const change = object({
+    object: SUCCESSION_OBJECTS.syncBatch.code,
+    operation: action === 'sync' ? 'create' : 'update',
+    button: button(action, action === 'sync' ? 'list' : 'detail'),
+    scope: guardScope('succession.syncVisible', NOT_FOUND),
+    fields: projector('succession.sync', 'succession.sync'),
+    write: write('body', 'succession.syncRecheck', AUTHORIZE_RESULT, { ledger: 'single', commandOnly: true }),
+    guards: [action === 'abort' ? 'succession.syncAdmin' : 'succession.syncRequestScope'],
+  });
+  return all([read, change], projector('succession.sync', 'succession.sync'));
+}
+
 export const SUCCESSION_POLICIES = defineTable('succession', {
+  [`GET ${BASE}/maps/org`]: object({
+    object: SUCCESSION_OBJECTS.map.code,
+    operation: 'view',
+    button: noButton('组织地图查看'),
+    scope: listScope('succession.mapDisplay'),
+    fields: projector('succession.orgMap', 'succession.orgMap'),
+    guards: [SELF_HIDDEN],
+    optional: {
+      mapRecords: object({
+        object: RECORD,
+        operation: 'view',
+        button: noButton('卡片继任与现任披露'),
+        scope: listScope('succession.recordScope(org ∪ creator)'),
+        fields: OUT,
+      }),
+      mapRisk: object({
+        object: SUCCESSION_OBJECTS.riskResult.code,
+        operation: 'view',
+        button: noButton('卡片风险披露'),
+        scope: listScope('succession.riskScope'),
+        fields: projector('succession.risk', 'succession.risk'),
+      }),
+      mapHealth: object({
+        object: SUCCESSION_OBJECTS.healthResult.code,
+        operation: 'view',
+        button: noButton('卡片健康度披露'),
+        scope: listScope('succession.healthScope'),
+        fields: projector('succession.health', 'succession.health'),
+      }),
+    },
+  }),
   [`GET ${BASE}/health-results`]: object({
     object: SUCCESSION_OBJECTS.healthResult.code,
     operation: 'view',
@@ -215,6 +267,13 @@ export const SUCCESSION_POLICIES = defineTable('succession', {
     write: write('body', RECHECK, AUTHORIZE_RESULT, { ledger: 'single', preconditions: ['succession.syncBarrier'] }),
   }),
   ...levelPolicies(),
+  [`GET ${BASE}/sync-batches`]: syncPolicy(),
+  [`GET ${BASE}/sync-batches/:id`]: { ...syncPolicy(), invalidId: BAD_REQUEST },
+  [`GET ${BASE}/sync-batches/:id/items`]: { ...syncPolicy(), invalidId: BAD_REQUEST },
+  [`GET ${BASE}/sync-batches/:id/targets`]: { ...syncPolicy(), invalidId: BAD_REQUEST },
+  [`POST ${BASE}/sync`]: syncPolicy('sync'),
+  [`POST ${BASE}/sync-batches/:id/retry`]: { ...syncPolicy('retry'), invalidId: BAD_REQUEST },
+  [`POST ${BASE}/sync-batches/:id/abort`]: { ...syncPolicy('abort'), invalidId: BAD_REQUEST },
   [`GET ${BASE}/calc-runs`]: calcPolicy(),
   [`GET ${BASE}/calc-runs/:id`]: { ...calcPolicy(), invalidId: BAD_REQUEST },
   [`GET ${BASE}/calc-runs/:id/failures`]: { ...calcPolicy(), invalidId: BAD_REQUEST },

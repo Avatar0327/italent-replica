@@ -139,6 +139,91 @@ const LEFT_PROJECTED: Obligation = {
 };
 
 export const SUCCESSION: RequiredTable = {
+  [`GET ${BASE}/maps/org`]: [
+    {
+      perm: 'obj:Succession.Map:view',
+      facts: ['object:objectContext'],
+      need: { scope: 'list' },
+      at: [
+        {
+          role: 'call',
+          unit: `${S}/org-map-routes.ts#registerOrgMapRoutes`,
+          anchor: "await successionContext(c, deps, 'map')",
+        },
+        ...CONTEXT,
+        {
+          role: 'const',
+          unit: 'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>map',
+          anchor: "object( 'Map'",
+        },
+        {
+          role: 'scope',
+          unit: `${S}/org-map-routes.ts#registerOrgMapRoutes`,
+          anchor: "await readMapDisplayScope(tx, displayCtx, 'org', supplied, 'submitted')",
+        },
+      ],
+    },
+    {
+      perm: 'guard:succession.selfHidden',
+      note: '请求当日 SELF 谓词对组织与嵌套职位目标判定，空记录集合也按目标删除 successors / successorCount 键',
+      at: [
+        {
+          role: 'call',
+          unit: `${S}/org-map-routes.ts#registerOrgMapRoutes`,
+          anchor: 'await hiddenMapTargets(tx, ctx, targets, today)',
+        },
+        {
+          role: 'impl',
+          unit: `${S}/map-card-reader.ts#hiddenMapTargets`,
+          anchor: 'selfRecordHiddenSql(',
+        },
+      ],
+    },
+    ...[
+      {
+        kind: 'record',
+        object: 'Record',
+        branch: 'mapRecords',
+        predicate: 'succession.recordScope(org ∪ creator)',
+        unit: 'record-read.ts#listMapRecordRows',
+        anchor: "conditions(visibility, { status: 'active' })",
+      },
+      {
+        kind: 'healthResult',
+        object: 'HealthResult',
+        branch: 'mapHealth',
+        predicate: 'succession.healthScope',
+        unit: 'health-results.ts#readHealthResults',
+        anchor: 'scopeSql(scope, { org: sql`v.org_id` })',
+      },
+      {
+        kind: 'riskResult',
+        object: 'RiskResult',
+        branch: 'mapRisk',
+        predicate: 'succession.riskScope',
+        unit: 'risk-store.ts#readRiskRows',
+        anchor: 'scopeSql(scope, { org: sql`p.org_id`, creator: sql`r.assigned_by` })',
+      },
+    ].map((item): Obligation => ({
+      perm: `obj:Succession.${item.object}:view`,
+      purpose: `disclosure:${item.branch}`,
+      facts: ['object:object.* 动作'],
+      need: { scope: 'list', predicate: item.predicate },
+      at: [
+        {
+          role: 'call',
+          unit: `${S}/map-card-reader.ts#mapObjectAccess`,
+          anchor: "await deps.authorize({ ...ctx, action: 'object.view', resource: codeOf(kind), fields: [] })",
+        },
+        {
+          role: 'const',
+          unit: `packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>${item.kind}`,
+          anchor: `object( '${item.object}'`,
+        },
+        { role: 'scope', unit: `${S}/${item.unit}`, anchor: item.anchor },
+      ],
+    })),
+  ],
   [`GET ${BASE}/readiness`]: [view(`router.get(\`\${SUCCESSION_BASE}/readiness\`, async (c) => { ${VIEW}`)],
   [`GET ${BASE}/records`]: [
     view(`router.get(RECORDS, async (c) => { ${VIEW}`),
@@ -567,6 +652,15 @@ function healthRequired(mode: 'read' | 'assign' | 'reset' | 'compute'): Obligati
             ]
           : []),
         constant,
+        ...(mode === 'read'
+          ? [
+              {
+                role: 'impl' as const,
+                unit: `${S}/health-results.ts#healthAccess`,
+                anchor: "action: 'object.view', resource: codeOf('healthResult')",
+              },
+            ]
+          : []),
         {
           role: 'scope',
           unit: queue ? `${S}/health-routes.ts#queueResults` : `${S}/health-results.ts#readHealthResults`,
@@ -655,6 +749,103 @@ for (const kind of ['risk', 'health'] as const) {
   });
   Object.assign(SUCCESSION, { [`GET ${path}/options`]: options });
 }
+
+/** D3：逐目标可见性、入口写授权与命令重放都绑定实际实现。 */
+function syncRequired(action?: 'sync' | 'retry' | 'abort'): Obligation[] {
+  const constant: Evidence = {
+    role: 'const',
+    unit: 'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS>syncBatch',
+    anchor: "object( 'SyncBatch'",
+  };
+  const visible: Evidence = {
+    role: 'scope',
+    unit: `${S}/sync-read.ts#readSync`,
+    anchor: 'syncRowsVisible(scope, ctx, sql`b.id`, today)',
+  };
+  const obj = (operation: string): Obligation => ({
+    perm: `obj:Succession.SyncBatch:${operation}`,
+    facts: ['object:objectContext', 'object:object.* 动作'],
+    need: { scope: 'guard', guard: 'succession.syncVisible' },
+    at: [
+      constant,
+      visible,
+      ...CONTEXT,
+      operation === 'view'
+        ? {
+            role: 'call',
+            unit: `${S}/sync-read.ts#access`,
+            anchor: "action: 'object.view', resource: codeOf('syncBatch')",
+          }
+        : {
+            role: 'call',
+            unit: SUCCESSION_CONTEXT,
+            anchor: 'await successionContext(c, deps, spec.object, spec.operation, spec.expectedRevision)',
+          },
+    ],
+  });
+  const result: Obligation[] = [
+    obj('view'),
+    {
+      perm: 'guard:succession.syncVisible',
+      at: [
+        { ...visible, role: 'call' },
+        { role: 'impl', unit: `${S}/sync-read.ts#syncRowsVisible`, anchor: 'syncTargetVisible(scope, viewer' },
+      ],
+    },
+  ];
+  if (action)
+    result.push(
+      obj(action === 'sync' ? 'create' : 'update'),
+      {
+        perm: `btn:Succession.SyncBatch#${action}@${action === 'sync' ? 'list' : 'detail'}`,
+        facts: ['button:button()'],
+        at: [
+          constant,
+          {
+            role: 'call',
+            unit: SUCCESSION_CONTEXT,
+            anchor: 'await button(deps, ctx, codeOf(spec.object), spec.button.code, spec.button.level)',
+          },
+          {
+            role: 'impl',
+            unit: `${MRA}#button`,
+            anchor: "action: 'object.button', resource: buttonResource(objectCode, code, level)",
+          },
+        ],
+      },
+      {
+        perm: action === 'abort' ? 'guard:succession.syncAdmin' : 'guard:succession.syncRequestScope',
+        at:
+          action === 'abort'
+            ? [
+                { role: 'call', unit: `${S}/sync-routes.ts#writeSync`, anchor: 'await syncAdmin(tx, ctx)' },
+                { role: 'impl', unit: `${S}/sync-read.ts#syncAdmin`, anchor: "p.code='standard_succession_admin'" },
+              ]
+            : [
+                {
+                  role: 'call',
+                  unit: `${S}/sync-routes.ts#writeSync`,
+                  anchor: 'await checkTargets(tx, currentPort(), ctx',
+                },
+                {
+                  role: 'impl',
+                  unit: `${S}/sync-access.ts#authorizeRequesterTargets`,
+                  anchor: "reason: 'BATCH_SCOPE_EXCEEDS_REQUESTER'",
+                },
+              ],
+      },
+    );
+  return result;
+}
+Object.assign(SUCCESSION, {
+  [`GET ${BASE}/sync-batches`]: syncRequired(),
+  [`GET ${BASE}/sync-batches/:id`]: syncRequired(),
+  [`GET ${BASE}/sync-batches/:id/items`]: syncRequired(),
+  [`GET ${BASE}/sync-batches/:id/targets`]: syncRequired(),
+  [`POST ${BASE}/sync`]: syncRequired('sync'),
+  [`POST ${BASE}/sync-batches/:id/retry`]: syncRequired('retry'),
+  [`POST ${BASE}/sync-batches/:id/abort`]: syncRequired('abort'),
+});
 
 // B4：首次命令、重放共用 A2 包装器，冻结集合复用 C1。
 const RISK_ROUTES = `${S}/risk-routes.ts#registerRiskRoutes`;

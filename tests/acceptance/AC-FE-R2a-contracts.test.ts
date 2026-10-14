@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { appRoute } from '../../apps/web/src/foundation/routes.js';
-import { loadPermissions } from '../../apps/web/src/demo-stubs/navigation.js';
+import { loadSnapshot } from '../../apps/web/src/foundation/permission-snapshot.js';
 import { type ApiClient, ApiError } from '../../apps/web/src/foundation/client.js';
 
 describe('AC-FE-R2a-01 合同入口与权限', () => {
@@ -11,12 +11,17 @@ describe('AC-FE-R2a-01 合同入口与权限', () => {
     for (const allowed of [false, true]) {
       const api = {
         request: async (path: string) => {
-          if (path.endsWith('/TenantBase.EmploymentContract') && allowed)
-            return { objectCode: 'TenantBase.EmploymentContract', viewableFields: [], buttons: [] };
+          if (path.endsWith('/me/snapshot'))
+            return {
+              session: { tenantId: 'tenant', userId: 'user' },
+              apps: [{ app: 'staff', visible: true, entryObjects: allowed ? ['TenantBase.EmploymentContract'] : [] }],
+              scope: [],
+              adminMenus: [],
+            };
           throw new ApiError(403, 'FORBIDDEN', 'forbidden', '');
         },
       } as unknown as ApiClient;
-      const snapshot = await loadPermissions(api, new AbortController().signal);
+      const { snapshot } = await loadSnapshot(api, new AbortController().signal);
       expect(snapshot.menus.some((menu) => menu.key === 'contracts')).toBe(allowed);
     }
   });

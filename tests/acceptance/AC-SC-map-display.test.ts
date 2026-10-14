@@ -11,6 +11,7 @@ import { scopeAllows } from '../../apps/api/src/modules/permission/module-access
 import { permissionWorldOf, recordOperator } from './AC-SC-permission-support.js';
 import { setObjectPermission } from './AC-PRM-support.js';
 import { successionWorld, SC_TODAY, SC_NOW } from './AC-SC-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const db = useTestDb();
 it('AC-SC-map-display 根、层数、隐藏子树、虚拟子树、权限断层与空范围', async () => {
@@ -90,7 +91,7 @@ it('AC-SC-map-display F-087：真实授权范围 A/C、不可见 B；C 职位新
     ...world.asAdmin,
     ifMatch: 0,
     body: {
-      code: `gap-${randomUUID().slice(0, 8)}`,
+      code: `gap-${uniqueSuffix()}`,
       name: '仅 A C',
       orgRanges: [a.id, c.id].map((orgId) => ({ orgId, includeDescendants: false })),
     },
