@@ -39,7 +39,7 @@ const APPS_BEFORE = [
   'evaluation|人才评定|talent|TEvaluation.EvaluationActivity|evaluation:EvaluationPage|-',
   'survey360|360 评估|talent|Survey360.Activity|survey360:SurveyPage|-',
   'talent-review|人才盘点|talent|TalentReview.Project|talent-review:TalentReviewPage|legacy',
-  'succession|继任管理|talent|Succession.Map|succession:空首页|-',
+  'succession|继任管理|talent|Succession.Map|succession:SuccessionPage|-',
   'idp|个人发展计划|talent|IDP.IDPTemplate|idp:空首页|-',
 ];
 // 子路由：路径 | 模块:页面导出名 | 布局 | 是否按菜单可见性拦截
