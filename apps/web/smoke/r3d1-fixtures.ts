@@ -46,7 +46,13 @@ export const orgRecord = {
   targetOrg: { id: ids.org, name: '合成研发中心' },
   personInCharge: { ...person, name: '合成负责人' },
 };
-const risk = { id: ids.level, positionId: ids.position, levelId: ids.level, levelName: '高风险', levelColor: '#E34D59' };
+const risk = {
+  id: ids.level,
+  positionId: ids.position,
+  levelId: ids.level,
+  levelName: '高风险',
+  levelColor: '#E34D59',
+};
 const successors = [{ id: ids.record, successor: person, readiness, backupType: 'principal', startDate: '2026-10-01' }];
 const positionMap = {
   asOf: '2026-10-13',

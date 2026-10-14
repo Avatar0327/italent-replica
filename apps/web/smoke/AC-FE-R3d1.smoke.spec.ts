@@ -12,6 +12,9 @@ function watchErrors(page: Page) {
   });
   return errors;
 }
+// antd 会在两个汉字的按钮文字中间插空格（“新 建”），按钮名按字间可有空白匹配。
+const button = (page: Page, name: string) =>
+  page.getByRole('button', { name: new RegExp(`^${[...name].join('\\s*')}$`) });
 async function openMenu(page: Page, item: string) {
   await page.goto('/succession');
   await page.getByLabel('切换演示身份').selectOption(user);
@@ -31,7 +34,7 @@ test('AC-FE-R3d1-01 职位继任列表：列表、详情抽屉、编辑与新增
   const errors = watchErrors(page);
   await openMenu(page, '继任地图与列表');
   await expect(page.getByRole('tab', { name: '职位继任列表', exact: true })).toHaveAttribute('aria-selected', 'true');
-  await expect(page.getByRole('button', { name: '合成研发总监', exact: true })).toBeVisible();
+  await expect(button(page, '合成研发总监')).toBeVisible();
   await expect(page.locator('.list-card')).toContainText('随时可继任');
   await expect(page.locator('.list-card')).toContainText('至今');
   await page.getByRole('switch', { name: '注释' }).click();
@@ -39,20 +42,20 @@ test('AC-FE-R3d1-01 职位继任列表：列表、详情抽屉、编辑与新增
   await page.getByRole('switch', { name: '注释' }).click();
   await page.screenshot({ path: testInfo.outputPath('position-list.png'), fullPage: true, animations: 'disabled' });
 
-  await page.getByRole('button', { name: '合成研发总监', exact: true }).click();
+  await button(page, '合成研发总监').click();
   await expect(page.getByRole('dialog', { name: '合成研发总监', exact: true })).toContainText('合成继任者');
-  await page.getByRole('button', { name: '编辑', exact: true }).click();
+  await button(page, '编辑').click();
   await expect(page.getByRole('dialog', { name: '编辑继任', exact: true })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('record-form.png'), fullPage: true, animations: 'disabled' });
   await cancel(page);
-  await page.keyboard.press('Escape');
+  await page.getByRole('dialog', { name: '合成研发总监', exact: true }).getByRole('button', { name: '关闭' }).click();
 
-  await page.getByRole('button', { name: '新增', exact: true }).click();
+  await button(page, '新增').click();
   await expect(page.getByRole('dialog', { name: '新增职位继任', exact: true })).toContainText('目标职位');
   await cancel(page);
 
   await page.getByRole('checkbox').last().check();
-  await page.getByRole('button', { name: '结束继任', exact: true }).click();
+  await button(page, '结束继任').click();
   await expect(page.getByRole('dialog', { name: '结束继任', exact: true })).toContainText('结束日期');
   await cancel(page);
   expect(errors).toEqual([]);
@@ -62,7 +65,7 @@ test('AC-FE-R3d1-02 组织继任列表与详情', async ({ page }) => {
   const errors = watchErrors(page);
   await openMenu(page, '继任地图与列表');
   await page.getByRole('tab', { name: '组织继任列表', exact: true }).click();
-  await page.getByRole('button', { name: '合成研发中心', exact: true }).click();
+  await button(page, '合成研发中心').click();
   await expect(page.getByRole('dialog', { name: '合成研发中心', exact: true })).toContainText('合成负责人');
   expect(errors).toEqual([]);
 });
@@ -74,7 +77,7 @@ test('AC-FE-R3d1-03 职位继任地图：风险色卡片、虚位以待、设置
   const card = page.locator('.succession-card', { hasText: '合成研发总监' });
   await expect(card).toContainText('继任者 1人');
   await expect(page.locator('.succession-card', { hasText: '合成架构师' })).toContainText('虚位以待');
-  await page.getByRole('button', { name: '展开继任者', exact: true }).click();
+  await button(page, '展开继任者').click();
   await expect(card).toContainText('随时可继任');
   await page.screenshot({ path: testInfo.outputPath('position-map.png'), fullPage: true, animations: 'disabled' });
   await card.getByRole('button', { name: '卡片操作' }).click();
@@ -82,7 +85,7 @@ test('AC-FE-R3d1-03 职位继任地图：风险色卡片、虚位以待、设置
   const dialog = page.getByRole('dialog', { name: '设置风险等级', exact: true });
   await expect(dialog).toContainText('赋值方式');
   await cancel(page);
-  await page.getByRole('button', { name: '筛选', exact: true }).click();
+  await button(page, '筛选').click();
   await expect(page.getByRole('dialog', { name: '职位地图筛选', exact: true })).toContainText('展示无继任者');
   await cancel(page);
   expect(errors).toEqual([]);
@@ -109,7 +112,7 @@ test('AC-FE-R3d1-05 继任地图设置：风险等级列表与新建表单', asy
   await expect(page).toHaveURL(/\/succession\/settings\/map$/);
   await page.getByRole('tab', { name: '职位风险等级设置', exact: true }).click();
   await expect(page.locator('.list-card').first()).toContainText('高风险');
-  await page.getByRole('button', { name: '新建', exact: true }).first().click();
+  await button(page, '新建').first().click();
   await expect(page.getByRole('dialog', { name: '新建职位风险等级', exact: true })).toContainText('颜色');
   await cancel(page);
   await page.getByRole('tab', { name: '继任地图显示设置', exact: true }).click();
@@ -122,8 +125,8 @@ test('AC-FE-R3d1-06 关键岗位为演示数据，准备度可编辑', async ({ 
   await openMenu(page, '关键岗位');
   await expect(page.locator('.succession-page')).toContainText('演示数据');
   await page.getByRole('menuitem', { name: '准备度', exact: true }).click();
-  await expect(page.getByRole('button', { name: '随时可继任', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: '随时可继任', exact: true }).click();
+  await expect(button(page, '随时可继任')).toBeVisible();
+  await button(page, '随时可继任').click();
   await expect(page.getByRole('dialog', { name: '编辑准备度', exact: true })).toBeVisible();
   await cancel(page);
   expect(errors).toEqual([]);
