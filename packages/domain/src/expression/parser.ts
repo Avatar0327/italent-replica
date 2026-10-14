@@ -10,9 +10,16 @@
  *   primary := 数字 | 字符串 | 真 | 假 | '(' expr ')' | 调用 | 字段引用 | 标识符
  * 面板逻辑函数 AND / OR / IF（`26` §8.6）与关键字同名：在操作数位置、后跟左括号的 AND( / OR( 是函数调用；
  * IF( 在括号内有顶层逗号时是函数调用（IF(条件, 值1, 值2)），否则仍是 if … then … else。
+ * 字段相减不加空格（#89-4，R3e 实测原站按减法）：`对象.字段` 之后紧挨着的 `-名字`，只有并起来的完整路径是已存在字段
+ * （调用方的字段目录或数据源固定字段，如 360结果.问卷-他评总分）时才并成一个字段名，否则是减号；在这里解析定型，
+ * 求值时不再猜。两种解释同时成立时已存在字段优先（原站怎么消歧未验证）。候选名取自冻结的旧成员词法（legacy-member-lexer，
+ * 5aa1d1ad）能读成一个名字的文本串，小数（a-1.5）、深路径里的多段连字符（a-b.c-d）不会被新词法切开而漏掉。
+ * 存量 legacy 名称文本的历史解释（`legacyMembers`）整个走旧词法：成员位置的连字符一律并入字段名（DEC-228）。
  */
 import type { BinaryOperator, CallNode, Definition, ExprNode, IfBranch, Program } from './ast.js';
-import { HYPHEN_SUBTRACTION_HINT, type SourcePosition } from './failures.js';
+import type { SourcePosition } from './failures.js';
+import { legacyMemberRun, legacyTokenize } from './legacy-member-lexer.js';
+import { isDataSourceField } from './source-fields.js';
 import {
   HIDDEN_FIELD_OWNER,
   HIDDEN_FIELD_PLACEHOLDER,
@@ -31,6 +38,29 @@ export interface ParseOptions {
   readonly stored?: boolean;
   /** 输入模式识别占位符 `〔不可见字段〕`（F-082 新路径才开；缺省不识别，B5 路径逐字不变）。 */
   readonly placeholders?: boolean;
+  /**
+   * 字段目录（#89-4）：带连字符的完整路径是否为已存在字段，决定 `对象.甲-乙` 是一个字段名还是减法。
+   * 数据源固定字段（360结果.问卷-他评总分 等）总是已存在；不传时其余一律按减法。
+   */
+  readonly fieldExists?: (path: string) => boolean;
+  /**
+   * 存量 legacy 名称文本的历史解释（#327 第 3 轮，DEC-228）：词法整个换成冻结的旧成员词法（legacy-member-lexer），
+   * 成员位置（“.”之后）的连字符一律并入字段名，与字段目录无关（fieldExists 不起作用）；不识别句柄、占位符和行首 `//`
+   * 注释，旧词法读不出来的文本解析失败。改绑的历史比较、删除 / 改名守卫、legacy 渲染用它，新保存的公式不用。
+   */
+  readonly legacyMembers?: boolean;
+}
+
+/** 连字符字段的判定：数据源固定字段 + 调用方的字段目录；目录是使用方代码，出错时按已存在（不改成减法，留给未知字段检查）。 */
+function hyphenResolver(fieldExists: ((path: string) => boolean) | undefined): (path: string) => boolean {
+  return (path) => {
+    if (isDataSourceField(path)) return true;
+    try {
+      return fieldExists?.(path) === true;
+    } catch {
+      return true;
+    }
+  };
 }
 
 const DEF_NAMES = new Set(['def', '定义']);
@@ -47,7 +77,11 @@ class Parser {
   private index = 0;
   private depth = 0;
 
-  constructor(private readonly tokens: readonly Token[]) {}
+  constructor(
+    private readonly tokens: readonly Token[],
+    private readonly source: string,
+    private readonly isField: (path: string) => boolean = hyphenResolver(undefined),
+  ) {}
 
   parseProgram(): Program {
     const definitions: Definition[] = [];
@@ -84,17 +118,7 @@ class Parser {
   private error(message: string, token: Token = this.peek()): never {
     const length = Math.max(token.text.length, 1);
     const position: SourcePosition = { line: token.line, column: token.column, offset: token.offset };
-    const detail = this.callAfterHyphenatedField(token) ? `${message}${HYPHEN_SUBTRACTION_HINT}` : message;
-    throw new SyntaxIssueError({ code: 'SYNTAX_ERROR', message: detail, length, ...position });
-  }
-
-  /**
-   * 报错处是紧跟在含“-”字段名后面的括号（只有成员位置的名字会带连字符，DEC-228）：
-   * 多半是想减去一个函数调用却没加空格，如 盘点对象.得分-转换为数字("2")。
-   */
-  private callAfterHyphenatedField(token: Token): boolean {
-    const previous = this.tokens[this.index - 1];
-    return token.kind === 'lparen' && previous?.kind === 'identifier' && previous.text.includes('-');
+    throw new SyntaxIssueError({ code: 'SYNTAX_ERROR', message, length, ...position });
   }
 
   private expect(kind: Token['kind'], message: string): Token {
@@ -312,7 +336,7 @@ class Parser {
   private parseReference(): ExprNode {
     const first = this.next();
     const path = [String(first.value)];
-    let last = first;
+    let end = first.offset + first.text.length;
     let hidden = false;
     while (this.at('dot')) {
       this.next();
@@ -320,17 +344,55 @@ class Parser {
         if (path.length !== 1 || first.value !== HIDDEN_FIELD_OWNER) {
           this.error(`“${HIDDEN_FIELD_PLACEHOLDER}”只能出现在 ${HIDDEN_FIELD_OWNER}. 之后`);
         }
-        last = this.next();
+        const placeholder = this.next();
+        end = placeholder.offset + placeholder.text.length;
         path.push(HIDDEN_FIELD_PLACEHOLDER);
         hidden = true;
         break;
       }
-      last = this.expect('identifier', '“.”后面缺少字段名');
-      path.push(String(last.value));
+      const name = this.expect('identifier', '“.”后面缺少字段名');
+      const merged = this.mergedMember(path, name);
+      path.push(...(merged?.segments ?? [String(name.value)]));
+      end = merged?.end ?? name.offset + name.text.length;
     }
     if (path.length === 1) return { type: 'identifier', name: path[0]!, pos: this.pos(first) };
-    const node = { type: 'field' as const, path, text: path.join('.'), end: last.offset + last.text.length };
+    const node = { type: 'field' as const, path, text: path.join('.'), end };
     return hidden ? { ...node, hidden: true, pos: this.pos(first) } : { ...node, pos: this.pos(first) };
+  }
+
+  /**
+   * 成员名后面紧挨着的 `-名字…`（#89-4）：候选取自冻结的旧成员词法能读成一个名字的文本串（legacyMemberRun，含小数
+   * a-1.5、深路径里的多段连字符 a-b.c-d），在含“-”的断点（“-”前、“.”前、串尾）里从最长的一个起试，并起来的完整路径是
+   * 已存在字段就并成一个名字（已存在字段优先），都不是则 undefined，“-”留给加减法。成功时语法分析的位置移到断点之后；
+   * 断点落在新词法的一个词中间（如 `a-1.5%` 的 `1.5%`）算对不上，跳过。
+   */
+  private mergedMember(
+    path: readonly string[],
+    name: Token,
+  ): { readonly segments: string[]; readonly end: number } | undefined {
+    const run = legacyMemberRun(this.source, name.offset);
+    const base = path.join('.');
+    for (let cut = run.length; cut > name.text.length; cut--) {
+      if (cut !== run.length && run[cut] !== '-' && run[cut] !== '.') continue;
+      const text = run.slice(0, cut);
+      if (!text.includes('-') || !this.isField(`${base}.${text}`)) continue;
+      const next = this.indexAfter(name.offset + cut);
+      if (next === undefined) continue;
+      this.index = next;
+      return { segments: text.split('.'), end: name.offset + cut };
+    }
+    return undefined;
+  }
+
+  /** 当前位置之后，恰好在源码偏移 `offset` 处结束的那个词的下一个位置；偏移落在词中间时为 undefined。 */
+  private indexAfter(offset: number): number | undefined {
+    for (let at = this.index; at < this.tokens.length; at++) {
+      const token = this.tokens[at]!;
+      const end = token.offset + token.text.length;
+      if (end === offset) return at + 1;
+      if (end > offset) return undefined;
+    }
+    return undefined;
   }
 
   /** 存储模式的字段句柄：一个完整的字段引用，text 等于句柄原文，用作依赖排序、诊断和类型目录里的字段键。 */
@@ -367,12 +429,12 @@ type Scanned =
   | { readonly ok: false; readonly limit?: InputLimitReason; readonly error: SyntaxIssue };
 
 /** 长度 / 词数限制与词法扫描：parseFormula 与 checkInputLimits 同源。存储模式不设字数上限。 */
-function scan(source: string, stored: boolean, placeholders: boolean): Scanned {
+function scan(source: string, stored: boolean, placeholders: boolean, legacy = false): Scanned {
   if (!stored && source.length > MAX_FORMULA_LENGTH) {
     return { ok: false, limit: 'TOO_LONG', error: limitIssue('TOO_LONG') };
   }
   try {
-    const tokens = tokenize(source, { handles: stored, placeholders });
+    const tokens = legacy ? legacyTokenize(source) : tokenize(source, { handles: stored, placeholders });
     if (tokens.length > MAX_FORMULA_TOKENS) {
       return { ok: false, limit: 'TOO_MANY_TOKENS', error: limitIssue('TOO_MANY_TOKENS') };
     }
@@ -395,10 +457,13 @@ export function checkInputLimits(source: string, options: { readonly placeholder
 
 /** 解析公式文本；语法错误以结构化结果返回（含行 / 列），不抛异常。 */
 export function parseFormula(source: string, options: ParseOptions = {}): ParseResult {
-  const scanned = scan(source, options.stored === true, options.placeholders === true);
+  const legacy = options.legacyMembers === true;
+  const scanned = scan(source, options.stored === true, options.placeholders === true, legacy);
   if (!scanned.ok) return { ok: false, errors: [scanned.error] };
+  // 旧词法已把成员位置的连字符并进名字，语法分析不再合并
+  const isField = legacy ? () => false : hyphenResolver(options.fieldExists);
   try {
-    return { ok: true, program: new Parser(scanned.tokens).parseProgram() };
+    return { ok: true, program: new Parser(scanned.tokens, source, isField).parseProgram() };
   } catch (error) {
     if (error instanceof SyntaxIssueError) return { ok: false, errors: [error.issue] };
     // 兜底（astra 首审 P2-5）：解析器不应再抛其他异常；万一出现也只给结构化结果，不透出内容

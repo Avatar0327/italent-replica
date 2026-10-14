@@ -3,9 +3,10 @@
  * 周期按周期名称文本过滤（考核结果.周期名称="年度" / "第三季度"），可选绩效活动等其他过滤。
  * - 指定年度指定周期的得分 / 等级：年度、周期两个过滤必填，其他过滤选填；同年同周期多条取最后修改的。
  * - 最近第 N 年的得分 / 等级：过滤后按年度倒序取第 N 个年度（不要求连续年份，不晚于参考年），无结果返回空。
- * - 最近第 N 次的得分 / 等级：过滤后按“考核结果相关日期”倒序取第 N 条。
- * TODO(需取证 #105)：第 N 年 / 第 N 次的参数顺序与日期字段是否为参数原站未说明，参数角色按统一类型推导区分
- * （见 recencyRoles，DEC-287）。
+ * - 最近第 N 次的得分 / 等级：参数为 N、排序日期（考核结果的起始或截止日期字段）、可选条件，按排序日期倒序取第 N 条。
+ *   R3e 已核实（`26` 末节，W-864 说明原文）：排序日期是参数，周期条件不是必填。
+ * 参数角色按统一类型推导区分（见 recencyRoles，DEC-287）。TODO(需取证 #105)：最近 N 年同年多周期怎么取仍未验证；
+ * 中文函数名为面板原名，英文名为复刻命名（R3e：原站只显示中文名）。
  */
 import type { ExprNode, FieldNode } from '../ast.js';
 import { dateOrdinal, instantToParts } from '../dates.js';
@@ -124,6 +125,9 @@ function recencyRoles(
   notes.sort((a, b) => a.index - b.index);
   for (const note of notes) issues.push({ severity: 'warning', message: note.message });
   if (!n) issues.push({ severity: 'error', message: '缺少 N（不小于 1 的整数）' });
+  if (withDateField && !dateField) {
+    issues.push({ severity: 'error', message: '缺少排序日期（考核结果的起始或截止日期字段）' });
+  }
   return { filters, issues, ...(n ? { n } : {}), ...(dateField ? { dateField } : {}) };
 }
 
@@ -160,16 +164,16 @@ function byRecentYear(call: FunctionCall, field: string): ExprValue {
   return resultField(call, rows.filter((row) => yearOf(row) === target).sort(newestFirst)[0], field);
 }
 
-/** 第 N 次：按日期字段倒序（日期为空的行不参与）；没写日期字段时按最后修改时间（🟡 #105）。 */
+/** 第 N 次：按排序日期倒序（日期为空的行不参与；同一日期按最后修改时间倒序）。 */
 function byRecentOccurrence(call: FunctionCall, field: string): ExprValue {
   const { n, filters, dateField } = recencyArgs(call, true);
-  const sortKey = (row: PerformanceRecord, record: Readonly<Record<string, ExprValue>>): number | undefined => {
-    if (!dateField) return row.modifiedAt.getTime();
+  if (!dateField) return call.fail('ARGUMENT_TYPE', '缺少排序日期（考核结果的起始或截止日期字段）');
+  const sortKey = (record: Readonly<Record<string, ExprValue>>): number | undefined => {
     const value = call.evaluate(dateField, record);
     return value.kind === 'empty' ? undefined : dateOrdinal(call.toDate(value));
   };
-  const ranked = filtered(call, filters, dateField ? [dateField] : [])
-    .map(({ row, record }) => ({ row, key: sortKey(row, record) }))
+  const ranked = filtered(call, filters, [dateField])
+    .map(({ row, record }) => ({ row, key: sortKey(record) }))
     .filter((entry): entry is { row: PerformanceRecord; key: number } => entry.key !== undefined)
     .sort((a, b) => b.key - a.key || newestFirst(a.row, b.row));
   return resultField(call, ranked[n - 1]?.row, field);
@@ -183,8 +187,8 @@ const FILTER_PARAMS = [
 const RECENT_YEAR_PARAMS = [filterParam('N', true), filterParam('周期表达式 / 其他过滤', false, true)];
 const RECENT_OCCURRENCE_PARAMS = [
   filterParam('N', true),
-  filterParam('周期表达式', true),
-  filterParam('考核结果日期字段 / 其他过滤', false, true),
+  filterParam('排序日期（起始或截止日期）', true),
+  filterParam('可选条件', false, true),
 ];
 
 /** 得分函数返回数值、等级函数返回文本（统一类型推导用，DEC-287）。 */
@@ -230,7 +234,7 @@ export const PERFORMANCE_FUNCTIONS: readonly FunctionSpec[] = [
     byRecentYear,
     recentYearCheck,
   ),
-  // 英文名为复刻命名（面板只有中文名）
+  // 英文名为复刻命名（R3e：原站面板与说明只显示中文名）
   fetchSpec(
     'PerformanceNthCent',
     ['获取最近第N次绩效考核得分'],

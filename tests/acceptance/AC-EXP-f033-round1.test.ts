@@ -31,9 +31,18 @@ const EMPTY_PERF = 'PerformanceCent(考核结果.年度=1999, 考核结果.周�
 const PERF_PORTS: InMemoryPortData = {
   performance: {
     'emp-1': [
-      { fields: { 年度: 2026, 周期名称: '年度', 得分: 90 }, modifiedAt: new Date('2026-01-01T00:00:00Z') },
-      { fields: { 年度: 2024, 周期名称: '年度', 得分: 80 }, modifiedAt: new Date('2025-01-01T00:00:00Z') },
-      { fields: { 年度: 2023, 周期名称: '年度', 得分: 70 }, modifiedAt: new Date('2024-01-01T00:00:00Z') },
+      {
+        fields: { 年度: 2026, 周期名称: '年度', 得分: 90, 截止日期: '2026/12/31' },
+        modifiedAt: new Date('2026-01-01T00:00:00Z'),
+      },
+      {
+        fields: { 年度: 2024, 周期名称: '年度', 得分: 80, 截止日期: '2024/12/31' },
+        modifiedAt: new Date('2025-01-01T00:00:00Z'),
+      },
+      {
+        fields: { 年度: 2023, 周期名称: '年度', 得分: 70, 截止日期: '2023/12/31' },
+        modifiedAt: new Date('2024-01-01T00:00:00Z'),
+      },
     ],
   },
 };
@@ -129,8 +138,8 @@ describe('P2-2 第 N 年 / 第 N 次：N 写成字段、变量或算式仍是 N�
     ['PerformanceLastCent(盘点对象.N + 0)', num(80)],
     ['PerformanceLastCent(盘点对象.N, 考核结果.周期名称="年度")', num(80)],
     ['Def(k, 盘点对象.N); PerformanceLastCent(k)', num(80)],
-    ['PerformanceNthCent(盘点对象.N, 考核结果.周期名称="年度")', num(80)],
-    ['PerformanceNthCent(考核结果.周期名称="年度", 盘点对象.N)', num(80)],
+    ['PerformanceNthCent(盘点对象.N, 考核结果.截止日期, 考核结果.周期名称="年度")', num(80)],
+    ['PerformanceNthCent(考核结果.周期名称="年度", 考核结果.截止日期, 盘点对象.N)', num(80)],
   ] as const)('盘点对象.N = 2：%s', (formula, expected) => {
     expect(run(formula, { '盘点对象.N': 2 })).toEqual(expected);
   });
@@ -139,15 +148,21 @@ describe('P2-2 第 N 年 / 第 N 次：N 写成字段、变量或算式仍是 N�
     const ports: InMemoryPortData = {
       performance: {
         'emp-1': [
-          { fields: { 年度: 2026, 周期名称: '年度', 等级: 'A' }, modifiedAt: new Date('2026-01-01T00:00:00Z') },
-          { fields: { 年度: 2024, 周期名称: '年度', 等级: 'B' }, modifiedAt: new Date('2025-01-01T00:00:00Z') },
+          {
+            fields: { 年度: 2026, 周期名称: '年度', 等级: 'A', 截止日期: '2026/12/31' },
+            modifiedAt: new Date('2026-01-01T00:00:00Z'),
+          },
+          {
+            fields: { 年度: 2024, 周期名称: '年度', 等级: 'B', 截止日期: '2024/12/31' },
+            modifiedAt: new Date('2025-01-01T00:00:00Z'),
+          },
         ],
       },
     };
     const fields = { '盘点对象.N': 2 };
     for (const formula of [
       'PerformanceLastGrade(盘点对象.N)',
-      'PerformanceNthGrade(盘点对象.N, 考核结果.周期名称="年度")',
+      'PerformanceNthGrade(盘点对象.N, 考核结果.截止日期, 考核结果.周期名称="年度")',
     ]) {
       expect(valueOf(evaluateFormula(formula, contextFor(fields, { ports }))), formula).toEqual(text('B'));
     }
@@ -156,8 +171,8 @@ describe('P2-2 第 N 年 / 第 N 次：N 写成字段、变量或算式仍是 N�
   it.each([
     'PerformanceLastCent(盘点对象.N)',
     'PerformanceLastGrade(盘点对象.N)',
-    'PerformanceNthCent(盘点对象.N, 考核结果.周期名称="年度")',
-    'PerformanceNthGrade(盘点对象.N, 考核结果.周期名称="年度")',
+    'PerformanceNthCent(盘点对象.N, 考核结果.截止日期, 考核结果.周期名称="年度")',
+    'PerformanceNthGrade(盘点对象.N, 考核结果.截止日期, 考核结果.周期名称="年度")',
   ])('N 为空 → EMPTY_IN_ARITHMETIC（DEC-270①）：%s', (formula) => {
     expect(run(formula, { '盘点对象.N': null })).toMatchObject({ code: 'EMPTY_IN_ARITHMETIC' });
   });
@@ -165,8 +180,8 @@ describe('P2-2 第 N 年 / 第 N 次：N 写成字段、变量或算式仍是 N�
   it.each([
     'PerformanceLastCent(盘点对象.N)',
     'PerformanceLastGrade(盘点对象.N)',
-    'PerformanceNthCent(盘点对象.N, 考核结果.周期名称="年度")',
-    'PerformanceNthGrade(盘点对象.N, 考核结果.周期名称="年度")',
+    'PerformanceNthCent(盘点对象.N, 考核结果.截止日期, 考核结果.周期名称="年度")',
+    'PerformanceNthGrade(盘点对象.N, 考核结果.截止日期, 考核结果.周期名称="年度")',
   ])('N 字段无权读取 → FIELD_FORBIDDEN，不泄露取数结果：%s', (formula) => {
     const failure = run(formula, { '盘点对象.N': 2 }, ['盘点对象.N']);
     expect(failure).toMatchObject({ code: 'FIELD_FORBIDDEN' });

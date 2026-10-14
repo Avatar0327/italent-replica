@@ -13,9 +13,9 @@ export const FAILURE_CODES = [
   'FIELD_FORBIDDEN',
   'DATA_FORBIDDEN',
   'DATA_UNAVAILABLE',
-  /** 须取到唯一值的取数（人事子集）取到多条。 */
+  /** 须取到唯一值的取数取到多条（R3e 起人事子集取排序后的第一条，暂无内置函数使用，码值保留）。 */
   'AMBIGUOUS_DATA',
-  /** 面板上有、口径待取证的函数（有效时长）：已注册可保存，求值时失败。 */
+  /** 面板上有、口径待取证的函数：已注册可保存，求值时失败（R3e 起有效时长已实现，暂无内置函数使用，码值保留）。 */
   'FUNCTION_UNAVAILABLE',
   'EMPTY_IN_COMPARISON',
   'EMPTY_IN_ARITHMETIC',
@@ -56,13 +56,6 @@ export interface ComputationFailure extends Partial<SourcePosition> {
 export const FAILURE_PREFIX = '计算失败';
 export const CONVERSION_MESSAGE = '公式无法计算，提示转换出错';
 export const PARSER_MESSAGE = '公式解析器异常，使用了无效的公式文本。';
-
-/** DEC-228：字段名内的连字符一律属于字段名，两个字段相减须在减号两侧加空格。 */
-export const HYPHEN_SUBTRACTION_HINT = '（字段名含“-”；如需相减，请在减号两侧加空格）';
-
-export function hyphenHint(path: string): string {
-  return path.includes('-') ? HYPHEN_SUBTRACTION_HINT : '';
-}
 
 /** 求值过程内部用异常传递失败，在 evaluateFormula 边界统一转成结构化结果。 */
 export class ComputationError extends Error {

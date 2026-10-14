@@ -1,7 +1,8 @@
 /**
  * 日期函数（`26` §8.6 面板日期类、§8.7；DEC-056 / DEC-265）。“今天 / 现在”与时区由计算上下文传入，引擎不读系统时钟。
  * 原站实算确认（DEC-265）：Now / Today 按租户时区；Days(a, b) = b − a；FirstDay / LastDay 为年初 / 年末；
- * WeekDay 周三 = 3。其余函数的参数与返回值按手册 221160022 暂定，标 TODO(需取证 #105)。
+ * WeekDay 周三 = 3。R3e 已核实（`26` 末节，W-862～864）：WeekDay 周日 = 7、NextMonth 取下月同日、Years 按年份相减、
+ * Time 两个参数、有效时长三个一组。仍未验证的标 TODO(需取证 #105)。
  * 中文别名为复刻命名（面板上日期函数除“有效时长”外只有英文名）。
  */
 import {
@@ -17,13 +18,17 @@ import {
   utcMs,
   type DateUnit,
 } from '../dates.js';
-import type { FunctionCall, FunctionSpec } from '../registry.js';
+import type { ArgumentIssue, FunctionCall, FunctionSpec } from '../registry.js';
+import { verdictFor } from '../typing.js';
 import type { DateParts, ExprValue } from '../values.js';
 
-const param = (name: string, required = true) => ({ name, required });
+const param = (name: string, required = true, variadic = false) => ({ name, required, variadic });
 const num = (value: number): ExprValue => ({ kind: 'number', value });
 const dateValue = (value: DateParts): ExprValue => ({ kind: 'date', value });
 const DAY_MS = 86_400_000;
+/** 两个时刻相差的分钟数（结束 − 开始，截断）。 */
+const minutesBetween = (from: DateParts, to: DateParts) =>
+  Math.trunc((dateOrdinal(to) - dateOrdinal(from)) / 60_000) || 0;
 
 function today(call: FunctionCall): DateParts {
   const parsed = parseDateText(call.env.calendar.today);
@@ -94,9 +99,61 @@ const difference = (
 
 const utcDay = (parts: DateParts) => new Date(utcMs(parts.year, parts.month, parts.day));
 const dayOfYear = (parts: DateParts) => Math.round((utcDay(parts).getTime() - utcMs(parts.year, 1, 1)) / DAY_MS) + 1;
-const timeOnly = (parts: DateParts): DateParts => ({ ...parts, year: 1, month: 1, day: 1, precision: 'time' });
-const nextMonthFirstDay = (parts: DateParts) =>
-  dateAdd('m', 1, makeDateParts({ year: parts.year, month: parts.month, day: 1 }));
+/** 下月同日，下月没有这一天取月末（R3e 实测 NextMonth(2026.01.31) = 2026-02-28）；结果只到日。 */
+const nextMonthSameDay = (parts: DateParts) =>
+  dateAdd('m', 1, makeDateParts({ year: parts.year, month: parts.month, day: parts.day }));
+/** 星期一 = 1 … 星期日 = 7（DEC-265 周三 = 3；R3e 实测周日 = 7）。 */
+const isoWeekDay = (parts: DateParts) => utcDay(parts).getUTCDay() || 7;
+
+/** Time(日期, 时间)：日期部分取第一个参数，时分秒取第二个参数，省略时为 00:00（R3e 说明原文）。 */
+function combineTime(call: FunctionCall): ExprValue {
+  const date = dateArg(call, 0);
+  const time = call.args.length > 1 ? dateArg(call, 1) : makeDateParts({ year: 1, month: 1, day: 1 });
+  const { hour, minute, second } = time;
+  return dateValue({ year: date.year, month: date.month, day: date.day, hour, minute, second, precision: 'datetime' });
+}
+
+/** 有效时长每组三个参数：开始、结束、0 或 1。 */
+const DURATION_GROUP = 3;
+
+/**
+ * 有效时长（旧名 EffectiveTime）：按“开始、结束、0 或 1”三个一组，可重复多组；1 累加、0 扣除，单位分钟（R3e 说明原文）。
+ * 每组分钟数同 Minutes（结束 − 开始，截断）；TODO(需取证 #105)：Minutes 的方向与截断仍未验证。
+ */
+function effectiveDuration(call: FunctionCall): ExprValue {
+  if (call.args.length % DURATION_GROUP !== 0) {
+    return call.fail('ARGUMENT_COUNT', '有效时长的参数须按“开始、结束、0 或 1”三个一组');
+  }
+  let total = 0;
+  for (let start = 0; start < call.args.length; start += DURATION_GROUP) {
+    const minutes = minutesBetween(dateArg(call, start), dateArg(call, start + 1));
+    const flag = call.numberArg(call.args, start + 2);
+    if (flag !== 0 && flag !== 1)
+      return call.fail('ARGUMENT_TYPE', '有效时长每组第三个参数只能是 0（扣除）或 1（累加）');
+    total += flag === 1 ? minutes : -minutes;
+  }
+  return num(total);
+}
+
+/** 有效时长的保存检查：参数个数须是 3 的倍数；每组开始、结束须是日期（同 dateParams 的口径，DEC-270②）。 */
+const durationCheck: FunctionSpec['checkArgs'] = (args, infer) => {
+  if (args.length % DURATION_GROUP !== 0) {
+    return [{ severity: 'error', message: `参数须按“开始、结束、0 或 1”三个一组，现有 ${args.length} 个` }];
+  }
+  const issues: ArgumentIssue[] = [];
+  args.forEach((arg, index) => {
+    if (index % DURATION_GROUP === 2) return;
+    const verdict = verdictFor(infer(arg), 'date');
+    if (verdict === 'mismatch') issues.push({ severity: 'error', message: `第${index + 1}个参数应为日期或日期时间` });
+    if (verdict === 'uncertain') {
+      issues.push({
+        severity: 'warning',
+        message: `第${index + 1}个参数类型不确定（应为日期），计算时不是日期将计算失败`,
+      });
+    }
+  });
+  return issues;
+};
 const byUnit = (unit: DateUnit) => (base: DateParts, n: number) => dateAdd(unit, n, base);
 
 export const DATE_FUNCTIONS: readonly FunctionSpec[] = [
@@ -123,10 +180,17 @@ export const DATE_FUNCTIONS: readonly FunctionSpec[] = [
   datePart('Hour', ['小时'], (parts) => parts.hour),
   datePart('Minute', ['分钟'], (parts) => parts.minute),
   datePart('Second', ['秒'], (parts) => parts.second),
-  // DEC-265：周三 = 3；TODO(需取证 #105)：周日暂按 0（同 .NET DayOfWeek）
-  datePart('WeekDay', ['星期'], (parts) => utcDay(parts).getUTCDay()),
-  // TODO(需取证 #105)：Time 的参数与返回值，暂定 Time(日期) 取时分秒部分
-  dateTransform('Time', ['时间'], timeOnly),
+  // R3e 已核实（`26` 末节，W-862）：周日 = 7
+  datePart('WeekDay', ['星期'], isoWeekDay),
+  {
+    // R3e 已核实（`26` 末节，W-864 说明原文）：Time(日期, 时间)，时间省略时为 00:00
+    name: 'Time',
+    aliases: ['时间'],
+    params: [param('日期'), param('时间', false)],
+    returns: 'date',
+    dateParams: [0, 1],
+    implement: combineTime,
+  },
   {
     name: 'ToDate',
     aliases: ['转换为日期'],
@@ -137,24 +201,26 @@ export const DATE_FUNCTIONS: readonly FunctionSpec[] = [
   // DEC-265：FirstDay / LastDay 是该年的 1 月 1 日 / 12 月 31 日，不是月初月末
   dateTransform('FirstDay', ['年初'], (parts) => makeDateParts({ year: parts.year, month: 1, day: 1 })),
   dateTransform('LastDay', ['年末'], (parts) => makeDateParts({ year: parts.year, month: 12, day: 31 })),
-  // TODO(需取证 #105)：NextMonth 返回下月 1 日还是下月同日，暂定下月 1 日
-  dateTransform('NextMonth', ['下月'], nextMonthFirstDay),
+  // R3e 已核实（`26` 末节，W-862）：下月同日，没有这一天取月末
+  dateTransform('NextMonth', ['下月'], nextMonthSameDay),
   dateAddition('AddYears', ['加年'], byUnit('y')),
   dateAddition('AddMonths', ['加月'], byUnit('m')),
   dateAddition('AddDays', ['加天'], byUnit('d')),
   dateAddition('AddHours', ['加小时'], (base, n) => addMinutes(base, n * 60)),
   dateAddition('AddMinutes', ['加分钟'], addMinutes),
   difference('Days', ['天数'], (from, to) => dateDiff('d', from, to)),
-  // TODO(需取证 #105)：Years 按满年、Minutes 截断，暂定
-  difference('Years', ['年数'], (from, to) => dateDiff('y', from, to)),
-  difference('Minutes', ['分钟数'], (from, to) => Math.trunc((dateOrdinal(to) - dateOrdinal(from)) / 60_000) || 0),
+  // R3e 已核实（`26` 末节，W-862）：Years("2020.06.30", "2026.06.29") = 6，按年份相减（结束年 − 开始年）。
+  // TODO(需取证 #105)：Years 的精度 / 舍入未验证；Minutes 的方向与截断未验证，维持暂定
+  difference('Years', ['年数'], (from, to) => to.year - from.year),
+  difference('Minutes', ['分钟数'], minutesBetween),
   {
-    // TODO(需取证 #105)：面板“有效时长( , , , , , )”六个参数的含义原站未说明；已注册可保存，求值时失败
+    // R3e 已核实（`26` 末节，W-864 说明原文）：三个一组可重复；英文名为复刻命名（说明里的旧名 EffectiveTime 作别名）
     name: 'EffectiveDuration',
-    aliases: ['有效时长'],
-    params: ['参数1', '参数2', '参数3', '参数4', '参数5', '参数6'].map((name) => param(name)),
-    lazy: true,
-    implement: (call) => call.fail('FUNCTION_UNAVAILABLE', '有效时长 的参数与口径待取证，暂不能计算'),
+    aliases: ['有效时长', 'EffectiveTime'],
+    params: [param('开始'), param('结束'), param('0 或 1', true, true)],
+    returns: 'number',
+    checkArgs: durationCheck,
+    implement: effectiveDuration,
   },
   {
     name: 'DateDiff',
