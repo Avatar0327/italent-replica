@@ -2,7 +2,7 @@
  * 使用方接口（REQ-EXP-001 第 5 条）：校验公式、单个求值、计算项目排序与批量求值。
  * 失败一律以结构化结果返回（`26` §8.4），不抛未捕获异常。
  */
-import { childrenOf, type CallNode, type ExprNode, type Program } from './ast.js';
+import { childrenOf, walk, type CallNode, type ExprNode, type Program } from './ast.js';
 import { isValidTimeZone } from '../tenant-time.js';
 import type { BatchContext, EvaluationCalendar, EvaluationContext } from './context.js';
 import { instantToParts, parseDateText } from './dates.js';
@@ -10,7 +10,6 @@ import { Evaluator } from './evaluator.js';
 import {
   ComputationError,
   FAILURE_PREFIX,
-  hyphenHint,
   PARSER_MESSAGE,
   type ComputationFailure,
   type SourcePosition,
@@ -55,10 +54,17 @@ export interface ValidationWarning extends SourcePosition {
 export interface ValidationOptions {
   readonly registry?: FunctionRegistry;
   /**
-   * 字段目录：完整字段路径或短字段名是否存在。传入时保存校验报未知字段（UNKNOWN_FIELD，含“-”时提示
-   * “如需相减，请在减号两侧加空格”，DEC-228）；不传时只查语法、函数名、参数个数，引用到的字段在结果的 fields 里。
+   * 字段目录：完整字段路径或短字段名是否存在。传入时保存校验报未知字段（UNKNOWN_FIELD）；不传时只查语法、函数名、
+   * 参数个数，引用到的字段在结果的 fields 里。不另传 fieldExists 时，它也决定带连字符的字段名（#89-4）。
    */
   readonly isKnownField?: (path: string) => boolean;
+  /**
+   * 带连字符的完整路径是否为已存在字段（#89-4）：是则 `对象.甲-乙` 解析为一个字段名，否则按减法。缺省用 isKnownField；
+   * 只想放过未知字段检查、不想把连字符都并进字段名的调用方（isKnownField 恒真）应另传本项。
+   */
+  readonly fieldExists?: (path: string) => boolean;
+  /** 存量 legacy 名称文本的历史解释：按冻结的旧成员词法解析（ParseOptions.legacyMembers），字段目录不参与定型。 */
+  readonly legacyMembers?: boolean;
   /**
    * 字段类型目录：完整字段路径或短字段名的静态类型，不知道时返回 undefined。统一类型推导据此给字段定类型
    * （DEC-287①）：日期参数确定非日期时报错、不确定时提示；第 N 年 / 第 N 次据此区分过滤条件与 N。
@@ -133,7 +139,7 @@ class ReferenceCollector {
       return void this.issues.push({ code: 'UNKNOWN_FIELD', message, length: path.length, ...pos });
     }
     if (known) return;
-    const message = `找不到字段或变量 ${path}${hyphenHint(path)}`;
+    const message = `找不到字段或变量 ${path}`;
     this.issues.push({ code: 'UNKNOWN_FIELD', message, length: path.length, ...pos });
   }
 
@@ -170,6 +176,7 @@ class ReferenceCollector {
    */
   private checkArguments(node: CallNode, spec: FunctionSpec, records: ReadonlySet<string>): void {
     const at = { length: node.name.length, ...node.pos };
+    if (spec.variablesForbiddenFrom !== undefined) this.checkNoVariables(node, spec.variablesForbiddenFrom);
     for (const index of spec.dateParams ?? []) {
       const arg = node.args[index];
       if (!arg) continue;
@@ -189,6 +196,17 @@ class ReferenceCollector {
       else this.warnings.push({ code: 'TYPE_UNCERTAIN', message, ...at });
     }
   }
+
+  /** IN / NOTIN 的候选值不支持变量（R3e 已核实，`26` 末节 W-864 说明原文）：引用了 Def 变量即保存报错。 */
+  private checkNoVariables(node: CallNode, from: number): void {
+    for (const arg of node.args.slice(from)) {
+      walk(arg, (child) => {
+        if (child.type !== 'identifier' || !this.defined.has(child.name)) return;
+        const message = `${node.name}的候选值不支持变量（${child.name}），请直接写值`;
+        this.issues.push({ code: 'ARGUMENT_TYPE', message, length: child.name.length, ...child.pos });
+      });
+    }
+  }
 }
 
 const byOffset = (a: SourcePosition, b: SourcePosition) => a.offset - b.offset;
@@ -201,6 +219,8 @@ export function validateFormula(source: string, options: ValidationOptions = {})
   const parsed = parseFormula(source, {
     stored: options.storage === true,
     placeholders: options.placeholders === true,
+    fieldExists: options.fieldExists ?? options.isKnownField,
+    legacyMembers: options.legacyMembers === true,
   });
   if (!parsed.ok) return parsed;
   const registry = options.registry ?? createDefaultRegistry();
@@ -251,7 +271,12 @@ function syntaxFailure(issue: SyntaxIssue): ComputationFailure {
 export function evaluateFormula(formula: string | Program, context: EvaluationContext): EvaluationResult {
   let program: Program;
   if (typeof formula === 'string') {
-    const validated = validateFormula(formula, { registry: context.registry, fieldKind: context.fieldKind });
+    const fieldExists = (path: string) => context.fieldKind?.(path) !== undefined || readable(context.subject, path);
+    const validated = validateFormula(formula, {
+      registry: context.registry,
+      fieldKind: context.fieldKind,
+      fieldExists,
+    });
     if (!validated.ok) return { ok: false, failure: syntaxFailure(validated.errors[0]!) };
     program = validated.program;
   } else {
@@ -264,6 +289,18 @@ export function evaluateFormula(formula: string | Program, context: EvaluationCo
   const invalidContext = validateContext(context.calendar);
   if (invalidContext) return { ok: false, failure: invalidContext };
   return runProgram(program, context);
+}
+
+/**
+ * 单个 / 批量求值没有保存时的字段目录：带连字符的字段名（#89-4）按字段类型目录与对象读取器判断是否已存在，
+ * 在求值前的校验里定型。读取器无权（forbidden）也算存在；读取器抛错按存在处理（不改成减法），求值时再报数据源不可用。
+ */
+function readable(subject: SubjectReader, path: string): boolean {
+  try {
+    return subject.resolveField(path).status !== 'unknown';
+  } catch {
+    return true;
+  }
 }
 
 /** 已校验的语法树在已校验的上下文里求值（批量求值只校验一次上下文，不按对象重复构造时区格式器）。 */
@@ -407,6 +444,7 @@ interface ItemValidation {
   readonly display?: (key: string) => string;
   readonly registry: FunctionRegistry;
   readonly isKnownField?: (path: string) => boolean;
+  readonly fieldExists?: (path: string) => boolean;
   readonly fieldKind?: (path: string) => ExpressionFieldKind | undefined;
 }
 
@@ -427,6 +465,9 @@ function parseItems(items: readonly ComputationItem[], options: ItemValidation):
   const isKnownField = catalog
     ? (path: string) => resolveComputedField(path, targets) !== undefined || catalog(path)
     : undefined;
+  // 带连字符的字段名（#89-4）：计算项目的目标字段也算已存在（后算项目引用先算项目的结果）
+  const exists = options.fieldExists ?? catalog;
+  const fieldExists = (path: string) => resolveComputedField(path, targets) !== undefined || exists?.(path) === true;
   const parsed: { item: ComputationItem; program: Program; refs: readonly string[] }[] = [];
   const warnings: OrderingDiagnostic[] = [];
   const show = options.display ?? identityDisplay;
@@ -434,6 +475,7 @@ function parseItems(items: readonly ComputationItem[], options: ItemValidation):
     const validated = validateFormula(item.formula, {
       registry: options.registry,
       isKnownField,
+      fieldExists,
       fieldKind,
       storage: options.storage,
     });
@@ -597,6 +639,7 @@ function orderItems(items: readonly ComputationItem[], options: ValidationOption
   const parsed = parseItems(items, {
     registry,
     isKnownField: options.isKnownField,
+    fieldExists: options.fieldExists,
     fieldKind: options.fieldKind,
     storage: options.storage,
     display: options.display,
@@ -790,7 +833,10 @@ export function evaluateBatch(
   hooks: BatchEvaluationHooks = {},
 ): BatchResult {
   const registry = context.registry ?? createDefaultRegistry();
-  const { result: ordered, groups } = orderItems(items, { registry, fieldKind: context.fieldKind });
+  // 带连字符的字段名（#89-4）在排序前对全部计算对象一次定型：类型目录或任一对象能读到即为已存在
+  const fieldExists = (path: string) =>
+    context.fieldKind?.(path) !== undefined || subjects.some((subject) => readable(subject, path));
+  const { result: ordered, groups } = orderItems(items, { registry, fieldKind: context.fieldKind, fieldExists });
   if (!ordered.ok) return ordered;
   if (groups.length) return { ok: false, failure: cyclicFailure(groups, ordered.cycleMembers) };
   const invalidContext = validateContext(context.calendar);
