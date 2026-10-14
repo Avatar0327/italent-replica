@@ -27,6 +27,9 @@ let postMode: 'network-error' | 'rejected' = 'network-error';
 let stored: Record<string, unknown> | undefined;
 const patches: { ifMatch: string | null; body: Record<string, unknown> }[] = [];
 const patchReplies: Response[] = [];
+/** 当前页面的目录集合（路径段）与对象可编辑字段（缺省全部）。 */
+let collection = 'category-classes';
+let editableOverride: string[] | undefined;
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
@@ -37,6 +40,8 @@ beforeEach(() => {
   patches.length = 0;
   patchReplies.length = 0;
   stored = undefined;
+  collection = 'category-classes';
+  editableOverride = undefined;
   postMode = 'network-error';
   host = document.createElement('div');
   document.body.append(host);
@@ -61,8 +66,8 @@ beforeEach(() => {
         stored = { ...stored, ...patches.at(-1)!.body, revision: Number(stored?.revision ?? 0) + 1 };
         return json(stored);
       }
-      if (stored && /\/category-classes\/c1$/.test(url)) return json(stored);
-      if (stored && /\/category-classes\?/.test(url) && url.includes('pageSize=15'))
+      if (stored && new RegExp(`/${collection}/c1$`).test(url)) return json(stored);
+      if (stored && new RegExp(`/${collection}\\?`).test(url) && url.includes('pageSize=15'))
         return json({ items: [stored], page: 1, pageSize: 15, hasDataPermission: true });
       if (url.endsWith('/me/snapshot'))
         return json({ session: { tenantId: 't', userId: 'u' }, apps: [], scope: [], adminMenus: [] });
@@ -73,13 +78,14 @@ beforeEach(() => {
           objectCode,
           dataOperations: { create: true, update: true, delete: false },
           viewableFields: fields,
-          editableFields: fields,
+          editableFields: editableOverride ?? fields,
           buttons: [
             { buttonCode: 'create', level: 'list' },
             { buttonCode: 'update', level: 'detail' },
           ],
         });
       }
+      if (/\/layers\?/.test(url)) return json({ items: [{ id: 'L2', name: '层级二' }] });
       if (url.includes('/candidates/owner-orgs')) return json({ items: [{ id: 'org-1', name: '管理单元甲' }] });
       return json({ items: [], page: 1, pageSize: 15, hasDataPermission: true });
     }),
@@ -103,12 +109,12 @@ const type = (input: HTMLInputElement, value: string) =>
   });
 const menu = (label: string) => Array.from(document.body.querySelectorAll('li')).find((li) => li.textContent === label);
 
-async function openPage() {
+async function openPage(view = collection) {
   await act(async () => {
     root.render(
       h(
         MemoryRouter,
-        { initialEntries: ['/qualification?view=category-classes'] },
+        { initialEntries: [`/qualification?view=${view}`] },
         h(
           SessionProvider,
           { session: { tenantId: 't', identityKey: 'u' } },
@@ -253,4 +259,78 @@ it('AC-F141 冲突重读不覆盖没编辑的字段：他人改了编码，重�
   await vi.waitFor(() => expect(patches).toHaveLength(2));
   expect(patches[1]).toEqual({ ifMatch: '2', body: { name: 'B' } });
   expect(stored).toMatchObject({ name: 'B', code: 'K2' });
+});
+
+const inputsOf = () => Array.from(document.body.querySelectorAll<HTMLInputElement>('.ant-drawer input[type="text"]'));
+const openEdit = async () => {
+  await vi.waitFor(() => expect(buttonOf('编辑')).toBeDefined());
+  await click(buttonOf('编辑'));
+  await vi.waitFor(() => expect(inputsOf().length).toBeGreaterThan(0));
+};
+const layerItem = () =>
+  Array.from(document.body.querySelectorAll('.ant-drawer .ant-form-item')).find(
+    (item) => item.querySelector('label')?.textContent === '层级',
+  )!;
+/** 先选一个层级、再清回空值：草稿里留下 undefined，原记录是 null。 */
+async function chooseThenClearLayer() {
+  const selector = layerItem().querySelector('.ant-select-selector') as HTMLElement;
+  await act(async () => {
+    selector.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+  });
+  await vi.waitFor(() => expect(document.body.querySelector('.ant-select-item-option')).not.toBeNull());
+  await click(document.body.querySelector('.ant-select-item-option')!);
+  await vi.waitFor(() => expect(layerShown()).toBe('层级二'));
+  const clear = layerItem().querySelector('.ant-select-clear') as HTMLElement;
+  await act(async () => {
+    clear.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    clear.click();
+  });
+  await vi.waitFor(() => expect(layerShown()).toBe(''));
+}
+const layerShown = () => layerItem().querySelector('.ant-select-selection-item')?.textContent ?? '';
+
+it('AC-F141 空值统一：层级原本为空，本人只改名称，他人把层级改成 L2，重读后层级回填 L2，PATCH 只带名称', async () => {
+  collection = 'levels';
+  stored = { id: 'c1', revision: 1, name: 'A', code: 'K1', displayOrder: 1, layerId: null, enabled: true };
+  patchReplies.push(json({ error: { code: 'REVISION_CONFLICT', message: '版本已变化' } }, 409));
+  await openPage();
+  await openEdit();
+  await type(inputsOf()[0]!, 'B');
+  await chooseThenClearLayer();
+  await click(buttonOf('保存'));
+  await vi.waitFor(() => expect(patches).toHaveLength(1));
+  expect(patches[0]).toMatchObject({ ifMatch: '1', body: { name: 'B' } });
+  expect(Object.keys(patches[0]!.body)).toEqual(['name']);
+  stored = { ...stored, revision: 2, layerId: 'L2' };
+
+  await vi.waitFor(() => expect(buttonOf('重读最新版本')).toBeDefined());
+  await click(buttonOf('重读最新版本'));
+  await vi.waitFor(() => expect(buttonOf('已核对差异，继续编辑')).toBeDefined());
+  await click(buttonOf('已核对差异，继续编辑'));
+  await vi.waitFor(() => expect(layerShown()).toBe('层级二'));
+  await click(buttonOf('保存'));
+  await vi.waitFor(() => expect(patches).toHaveLength(2));
+  expect(patches[1]).toEqual({ ifMatch: '2', body: { name: 'B' } });
+  expect(stored).toMatchObject({ name: 'B', layerId: 'L2' });
+});
+
+it('AC-F141 没有层级编辑权、保留名称编辑权：只改名称，PATCH 只有 name', async () => {
+  collection = 'levels';
+  editableOverride = ['name', 'code', 'displayOrder', 'enabled', 'publicDown'];
+  stored = {
+    id: 'c1',
+    revision: 1,
+    name: 'A',
+    code: null,
+    displayOrder: null,
+    layerId: null,
+    enabled: true,
+    publicDown: null,
+  };
+  await openPage();
+  await openEdit();
+  await type(inputsOf()[0]!, 'B');
+  await click(buttonOf('保存'));
+  await vi.waitFor(() => expect(patches).toHaveLength(1));
+  expect(patches[0]).toEqual({ ifMatch: '1', body: { name: 'B' } });
 });

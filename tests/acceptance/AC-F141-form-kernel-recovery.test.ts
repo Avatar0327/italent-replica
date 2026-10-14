@@ -78,3 +78,63 @@ describe('AC-F141-form-kernel-recovery 冲突恢复（完整字段投影）', ()
     expect(Object.keys(send.mock.calls[1]![0].body as object)).toEqual(['name']);
   });
 });
+
+describe('AC-F141-form-kernel-recovery 空值表示统一（第 5 轮）', () => {
+  const run = async (baseline: Values, draft: Values, latest: Values & { revision: number }) => {
+    const store = createFormStore();
+    const send = vi.fn<(command: Command) => Promise<{ id: string }>>().mockRejectedValueOnce(conflict());
+    send.mockResolvedValue({ id: 'r1' });
+    const fields = Object.keys(baseline).filter((key) => key !== 'id');
+    const input = (values: Values) => ({
+      values,
+      baseline,
+      editableFields: fields,
+      revision: 1,
+      businessId: 'r1',
+      patchOnly: true,
+      send,
+    });
+    await store.submit('k', input(draft));
+    const firstBody = send.mock.calls[0]![0].body as Values;
+    await store.reread('k', async () => ({ id: 'r1', revision: latest.revision, values: latest }));
+    store.confirm('k');
+    return { firstBody, state: store.get('k')!, store };
+  };
+
+  it('选了又清回原空值（undefined / null / 空串 / 空数组互相等价）算未改：不进命令体，重读后回填最新值', async () => {
+    // 字段类型：单选引用 layerId、文本 note、多选 tags、数字 order、开关 flag（false 是有效值，不算空）
+    const baseline: Values = { id: 'r1', name: 'A', layerId: null, note: null, tags: null, order: null, flag: false };
+    const draft: Values = { name: 'B', layerId: undefined, note: '', tags: [], order: undefined, flag: false };
+    const latest = {
+      id: 'r1',
+      revision: 2,
+      name: 'A',
+      layerId: 'L2',
+      note: '备注',
+      tags: ['t'],
+      order: 5,
+      flag: false,
+    };
+    const { firstBody, state } = await run(baseline, draft, latest);
+    expect(Object.keys(firstBody)).toEqual(['name']);
+    expect(state.values).toMatchObject({ name: 'B', layerId: 'L2', note: '备注', tags: ['t'], order: 5 });
+    expect(state.differences?.map((d) => d.field).sort()).toEqual(['layerId', 'note', 'order', 'tags']);
+  });
+
+  it('有意义的值不被当成空：0、false 与空值不同；非空改成空算改过', async () => {
+    const baseline: Values = { id: 'r1', order: 0, flag: false, layerId: 'L1', tags: ['t'] };
+    const { firstBody } = await run(
+      baseline,
+      { order: undefined, flag: undefined, layerId: undefined, tags: [] },
+      {
+        id: 'r1',
+        revision: 2,
+        order: 0,
+        flag: false,
+        layerId: 'L1',
+        tags: ['t'],
+      },
+    );
+    expect(Object.keys(firstBody).sort()).toEqual(['flag', 'layerId', 'order', 'tags']);
+  });
+});
