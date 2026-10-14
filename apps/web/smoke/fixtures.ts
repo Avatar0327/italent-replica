@@ -1,8 +1,28 @@
+import { APP_ROUTES } from '../src/foundation/routes.js';
 import { test as base, expect } from '@playwright/test';
 
 export const tenant = '10000000-0000-4000-8000-000000000001';
 export const user = '20000000-0000-4000-8000-000000000001';
 export const employee = '30000000-0000-4000-8000-000000000001';
+
+export const snapshotFixture = {
+  session: {
+    tenantId: tenant,
+    tenantName: '合成租户',
+    timezone: 'Asia/Shanghai',
+    today: '2026-10-13',
+    userId: user,
+    displayName: '合成演示用户',
+    employeeId: employee,
+  },
+  apps: APP_ROUTES.map(({ id, objectCode }) => ({
+    app: id,
+    visible: true,
+    entryObjects: objectCode ? [objectCode] : [],
+  })),
+  scope: [],
+  adminMenus: [{ code: 'users.all', path: '用户管理/全部用户', implemented: true, editable: false }],
+};
 
 export const test = base.extend({
   page: async ({ page }, use) => {
@@ -18,6 +38,7 @@ export const test = base.extend({
     await page.route('**/api/tenant/**', (route) => {
       const path = new URL(route.request().url()).pathname;
       let body: unknown = { items: [], total: 0, hasDataPermission: true };
+      if (path.endsWith('/permission/me/snapshot')) body = snapshotFixture;
       if (path.includes('/permission/me/objects/'))
         body = {
           objectCode: decodeURIComponent(path.split('/').at(-1)!),

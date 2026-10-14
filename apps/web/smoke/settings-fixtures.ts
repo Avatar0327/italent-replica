@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { tenant, user } from './fixtures.js';
+import { snapshotFixture, tenant, user } from './fixtures.js';
 export const ids = {
   user,
   profile: '40000000-0000-4000-8000-000000000001',
@@ -74,10 +74,11 @@ export async function settingsFixtures(page: Page, editable = true) {
     { name: 'italent_demo_tenant', value: tenant, url },
     { name: 'italent_demo_user', value: user, url },
   ]);
-  await page.route('**/permission/admin-menus', (route) =>
+  await page.route('**/permission/me/snapshot', (route) =>
     route.fulfill({
       json: {
-        items: [...menus, ['other.mou_settings', '管理单元设置']].map(([code, path]) => ({
+        ...snapshotFixture,
+        adminMenus: [...menus, ['other.mou_settings', '管理单元设置']].map(([code, path]) => ({
           code,
           path,
           editable,
