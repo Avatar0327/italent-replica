@@ -23,12 +23,14 @@ export function PageState({
   if (kind === 'empty') return <Empty className="page-state" description={ui.empty} />;
   const status = { 'not-found': '404', forbidden: '403', login: 'info', error: 'error' } as const;
   const title = { 'not-found': ui.missing, forbidden: ui.denied, login: ui.login, error: ui.failed };
+  // 原站无权限页在标题下提示联系管理员；有后端错误信息时以后端为准。
+  const hint = kind === 'forbidden' ? ui.deniedHint : undefined;
   return (
     <div role={kind === 'error' ? 'alert' : 'status'}>
       <Result
         status={status[kind]}
         title={title[kind]}
-        subTitle={error instanceof ApiError ? error.message : kind === 'forbidden' ? ui.deniedHint : undefined}
+        subTitle={error instanceof ApiError ? error.message : hint}
         extra={
           kind === 'not-found' ? <Link to="/">{ui.home}</Link> : retry && <Button onClick={retry}>{ui.retry}</Button>
         }
