@@ -4,11 +4,12 @@
  * 结束时间相同按报告生成时间倒序；进行中活动不计。DEC-031 的窗口参数只作用于测评。真实数据源与按查看人裁剪在 R3-T03。
  */
 import type { FunctionCall, FunctionSpec } from '../registry.js';
+import { SURVEY360_OBJECT } from '../source-fields.js';
 import type { Survey360Record } from '../ports.js';
 import { EMPTY, type ExprValue } from '../values.js';
 import { latestBoundary, matchesAll, recordReader, requireFieldOf, unwrapPort, withinBoundary } from './shared.js';
 
-export const SURVEY360_OBJECT = '360结果';
+export { SURVEY360_OBJECT };
 const PREFIXES = [SURVEY360_OBJECT] as const;
 
 type Finished = Survey360Record & { readonly endAt: Date; readonly reportGeneratedAt: Date };

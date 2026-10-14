@@ -70,7 +70,8 @@ test('AC-FE-R3c-01 切换演示身份，项目列表、八页签详情与配置�
   await page.goto('/talent-review');
   await page.getByLabel('切换演示身份').selectOption(user);
   await expect(page).toHaveURL(/\/staff$/);
-  await page.getByRole('menuitem', { name: '人才盘点', exact: true }).click();
+  await page.getByRole('button', { name: '应用导航' }).click();
+  await page.getByRole('dialog', { name: '全部菜单' }).getByRole('link', { name: '人才盘点', exact: true }).click();
   await expect(page.getByRole('button', { name: '合成年度盘点', exact: true })).toBeVisible();
   await expect(page.locator('.page-total')).toBeInViewport();
   await page.getByRole('switch', { name: '注释' }).click();
@@ -115,7 +116,8 @@ for (const section of ['盘点模板', '九宫格设置', '盘点校准会']) {
     await page.goto('/talent-review');
     await page.getByLabel('切换演示身份').selectOption(user);
     await expect(page).toHaveURL(/\/staff$/);
-    await page.getByRole('menuitem', { name: '人才盘点', exact: true }).click();
+    await page.getByRole('button', { name: '应用导航' }).click();
+    await page.getByRole('dialog', { name: '全部菜单' }).getByRole('link', { name: '人才盘点', exact: true }).click();
     await page.getByRole('tab', { name: section, exact: true }).click();
     await page.locator('.list-card tbody button').first().click();
     await expect(page.getByRole('dialog')).toBeVisible();
@@ -134,7 +136,8 @@ test('AC-FE-R3c-03 无范围时空列表不混入演示项目', async ({ page })
   await page.goto('/talent-review');
   await page.getByLabel('切换演示身份').selectOption(user);
   await expect(page).toHaveURL(/\/staff$/);
-  await page.getByRole('menuitem', { name: '人才盘点', exact: true }).click();
+  await page.getByRole('button', { name: '应用导航' }).click();
+  await page.getByRole('dialog', { name: '全部菜单' }).getByRole('link', { name: '人才盘点', exact: true }).click();
   await expect(page.locator('.list-card')).toContainText('当前没有可查看的数据范围');
   await expect(page.getByRole('button', { name: '合成年度盘点', exact: true })).toHaveCount(0);
 });
@@ -157,7 +160,8 @@ for (const state of [
     await page.goto('/talent-review');
     await page.getByLabel('切换演示身份').selectOption(user);
     await expect(page).toHaveURL(/\/staff$/);
-    await page.getByRole('menuitem', { name: '人才盘点', exact: true }).click();
+    await page.getByRole('button', { name: '应用导航' }).click();
+    await page.getByRole('dialog', { name: '全部菜单' }).getByRole('link', { name: '人才盘点', exact: true }).click();
     await page.getByRole('button', { name: '合成年度盘点', exact: true }).click();
     const detail = page.getByRole('dialog', { name: '合成年度盘点' });
     await expect(detail).toBeVisible();
@@ -176,7 +180,8 @@ test('AC-FE-R3c-07 保存传 revision、命令ID，冲突展示且禁止旧表�
   await page.goto('/talent-review');
   await page.getByLabel('切换演示身份').selectOption(user);
   await expect(page).toHaveURL(/\/staff$/);
-  await page.getByRole('menuitem', { name: '人才盘点', exact: true }).click();
+  await page.getByRole('button', { name: '应用导航' }).click();
+  await page.getByRole('dialog', { name: '全部菜单' }).getByRole('link', { name: '人才盘点', exact: true }).click();
   await page.getByRole('button', { name: /编\s*辑/, exact: true }).click();
   const form = page.getByRole('dialog', { name: '编辑项目' });
   await expect(form).toBeVisible();
@@ -211,7 +216,8 @@ for (const count of [16, 31]) {
     await page.goto('/talent-review');
     await page.getByLabel('切换演示身份').selectOption(user);
     await expect(page).toHaveURL(/\/staff$/);
-    await page.getByRole('menuitem', { name: '人才盘点', exact: true }).click();
+    await page.getByRole('button', { name: '应用导航' }).click();
+    await page.getByRole('dialog', { name: '全部菜单' }).getByRole('link', { name: '人才盘点', exact: true }).click();
     await page.locator(`.ant-pagination-item[title="${Math.ceil(count / 15)}"]`).click();
     await expect(page.locator('.list-card tbody .ant-table-row')).toHaveCount(1);
     await page.getByRole('button', { name: /^结\s*束$/ }).click();
@@ -237,7 +243,8 @@ for (const [collection, label] of [
     await page.goto('/talent-review');
     await page.getByLabel('切换演示身份').selectOption(user);
     await expect(page).toHaveURL(/\/staff$/);
-    await page.getByRole('menuitem', { name: '人才盘点', exact: true }).click();
+    await page.getByRole('button', { name: '应用导航' }).click();
+    await page.getByRole('dialog', { name: '全部菜单' }).getByRole('link', { name: '人才盘点', exact: true }).click();
     await page.getByRole('tab', { name: label, exact: true }).click();
     await page.locator('.ant-pagination-item[title="2"]').click();
     await expect(page.getByRole('button', { name: '分页记录16', exact: true })).toBeVisible();
@@ -268,7 +275,8 @@ for (const [xCount, yCount] of [
     await page.goto('/talent-review');
     await page.getByLabel('切换演示身份').selectOption(user);
     await expect(page).toHaveURL(/\/staff$/);
-    await page.getByRole('menuitem', { name: '人才盘点', exact: true }).click();
+    await page.getByRole('button', { name: '应用导航' }).click();
+    await page.getByRole('dialog', { name: '全部菜单' }).getByRole('link', { name: '人才盘点', exact: true }).click();
     await page.getByRole('tab', { name: '九宫格设置', exact: true }).click();
     await page.getByRole('button', { name: '合成年度盘点', exact: true }).click();
     const grid = page.getByRole('dialog').locator('.review-grid');
