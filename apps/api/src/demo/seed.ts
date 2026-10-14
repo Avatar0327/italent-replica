@@ -55,7 +55,7 @@ export async function seedDemo(db: Db, options: SeedOptions = {}): Promise<SeedR
   const client = createDemoClient(db, clock.now, options.nodeEnv);
   const existing = await findDemoTenant(db);
   const tenantId = existing ?? (await provision(db, clock.now()));
-  const world = new DemoWorld(db, client(tenantId), tenantId, options.onStep);
+  const world = new DemoWorld(db, client.forTenant(tenantId), tenantId, client.guarded, options.onStep);
   if (!existing) world.written += 1;
   await world.build();
   await seedTransfers(world, clock, options.progress);

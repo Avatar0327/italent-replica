@@ -11,14 +11,18 @@ import { DEMO_TRANSFER_PROCESS_CODE, type OrgKey } from './data.js';
 import { transferSubjects } from './scale-data.js';
 import type { SeedProgress } from './progress.js';
 import {
+  fingerprint,
   type Observed,
   type ObservedInstance,
   observe,
+  recheckLocked,
   type SeedAction,
   stepCommandId,
   takeoverReason,
 } from './takeover.js';
 import type { DemoWorld } from './world.js';
+
+const BASE = '/api/tenant';
 
 type End = 'pending' | 'effective' | 'reject' | 'withdraw';
 export interface Scenario {
@@ -243,32 +247,62 @@ export function nextSeedAction(
 /**
  * 按种子台账续做，直到 nextSeedAction 给出 done / takeover。每一步都用确定性命令 ID（takeover.stepCommandId）提交，
  * 与业务写入同事务记入种子台账；中途被打断时这一步要么整体没发生、要么连同台账一起落库，续跑据此接着判定。
+ * 写入一律经 world.guarded：同一事务里先加锁复核“判定之后没有任何变化”，再执行写入（#309 第 5 轮，见 protectedStep）。
  */
 async function advance(world: DemoWorld, scenario: Scenario, businessId: string, initiator: string): Promise<Outcome> {
-  const base = '/api/tenant';
-  const createId = scenarioCommandId(world.tenantId, scenario);
+  const createCommandId = scenarioCommandId(world.tenantId, scenario);
   for (;;) {
-    const observed = await observe(world.db, world.tenantId, scenario.id, createId, businessId);
+    const observed = await observe(world.db, world.tenantId, scenario.id, createCommandId, businessId);
     // 员工本人入口的发起人读不到业务单，读取用系统管理员（演示里看全部）
-    const business = await world.call(world.admin, 'GET', `${base}/employment/businesses/${businessId}`);
+    const business = await world.call(world.admin, 'GET', `${BASE}/employment/businesses/${businessId}`);
     const next = nextSeedAction(scenario, observed, String(business.status));
     if (next.kind === 'takeover') return { kind: 'takenOver', reason: next.reason };
     if (next.kind === 'done') return { kind: 'completed' };
     const { action, taskId, instance } = next;
     const targetId = action === 'withdraw' ? instance.id : taskId;
     const commandId = stepCommandId(scenario.id, { action, round: instance.round, targetId });
-    if (action === 'withdraw') {
-      // 发起人（HR）撤回在途申请 → 业务单回到草稿（普通员工没有“撤回”按钮，所以撤回单由 HR 发起）
-      const path = `${base}/employment/businesses/${businessId}/withdraw`;
-      await world.call(initiator, 'POST', path, {}, Number(business.revision), commandId);
-    } else {
-      const assignee = observed.tasks.find((task) => task.id === taskId)!.assigneeUserId!;
-      const comment = action === 'reject' ? '演示：信息不全，请补充后重新提交' : undefined;
-      const path = `${base}/approval/tasks/${taskId}/${action}`;
-      await world.call(assignee, 'POST', path, { comment }, instance.revision, commandId);
-    }
+    const decided = { scenarioId: scenario.id, createCommandId, businessId, stepCommandId: commandId };
+    const expected = fingerprint(observed);
+    const written = await world.guarded(
+      (tx) => recheckLocked(tx, world.tenantId, decided, expected),
+      () => {
+        const context = { observed, businessId, businessRevision: Number(business.revision), initiator, commandId };
+        return protectedStep(world, next, context);
+      },
+    );
+    if (!written.ok) return { kind: 'takenOver', reason: '判定之后、写入之前出现台账外的操作' };
     await world.wrote('transfers', `${scenario.id}:${action}`);
   }
+}
+
+/**
+ * 种子改变调动单据状态的唯一写入口：审批、驳回、撤回三类动作都只由 nextSeedAction 决定、只在这里发出，且只在
+ * world.guarded 的复核事务里执行。撤回走业务单接口（带业务单 revision），审批 / 驳回走任务接口（带实例 revision）；
+ * 两者都由 recheckLocked 在同一事务里先确认实例、任务、日志、审计、台账与业务单 revision 都没变。
+ */
+async function protectedStep(
+  world: DemoWorld,
+  next: Extract<Decision, { kind: 'act' }>,
+  context: { observed: Observed; businessId: string; businessRevision: number; initiator: string; commandId: string },
+): Promise<void> {
+  const { action, taskId, instance } = next;
+  const { commandId } = context;
+  if (action === 'withdraw') {
+    // 发起人（HR）撤回在途申请 → 业务单回到草稿（普通员工没有“撤回”按钮，所以撤回单由 HR 发起）
+    const path = `${BASE}/employment/businesses/${context.businessId}/withdraw`;
+    await world.call(context.initiator, 'POST', path, {}, context.businessRevision, commandId);
+    return;
+  }
+  const assignee = context.observed.tasks.find((task) => task.id === taskId)!.assigneeUserId!;
+  const comment = action === 'reject' ? '演示：信息不全，请补充后重新提交' : undefined;
+  await world.call(
+    assignee,
+    'POST',
+    `${BASE}/approval/tasks/${taskId}/${action}`,
+    { comment },
+    instance.revision,
+    commandId,
+  );
 }
 
 /**

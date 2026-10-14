@@ -3,7 +3,7 @@
  * 重复运行只补缺失，半途失败后再运行从缺失处继续，不需要重置。写入一律走公开租户接口（见 client.ts）。
  */
 import { type Db, eq, users, withPlatform } from '@italent/db';
-import { type Call, type Json, listAll } from './client.js';
+import { type Call, type Guarded, type Json, listAll } from './client.js';
 import {
   DEMO_DATES,
   DEMO_HRBP_KEY,
@@ -64,6 +64,8 @@ export class DemoWorld {
     readonly db: Db,
     readonly call: Call,
     readonly tenantId: string,
+    /** 受保护写入（client.ts）：调动单据的审批 / 驳回 / 撤回经它与接管复核落在同一事务。 */
+    readonly guarded: Guarded,
     private readonly onStep?: StepHook,
   ) {}
 

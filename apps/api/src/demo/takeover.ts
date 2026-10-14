@@ -8,7 +8,7 @@
  * - 每一步：`demo-seed-step:DEMO-TRF-nn:r<轮次>:<操作>:<对象 ID>`，审批 / 驳回的对象是任务 ID，撤回的对象是实例 ID。
  * 命令台账按租户分区，所以步骤 ID 不再带租户（命令 ID 限 100 字符，commands.ts）。
  */
-import { type Db, sql, withTenant } from '@italent/db';
+import { APP_ROLE, type Db, sql, type Tx, withTenant } from '@italent/db';
 
 export type SeedAction = 'approve' | 'reject' | 'withdraw';
 
@@ -50,6 +50,8 @@ export interface Observed {
   readonly logs: readonly { round: number; taskId: string | null; actorUserId: string | null }[];
   /** 写到这张业务单或其审批实例上的全部审计事件的命令 ID（AGENTS §5：所有写操作都进统一变更日志）。 */
   readonly auditCommandIds: readonly (string | null)[];
+  /** 业务单头：revision（业务单的任何写入都会推进）与被调动员工（写入路径的第一把锁）。 */
+  readonly business: { readonly revision: number; readonly employeeId: string } | null;
   readonly ledger: SeedLedger;
 }
 
@@ -145,37 +147,78 @@ export async function observe(
   createCommandId: string,
   businessId: string,
 ): Promise<Observed> {
-  return withTenant(db, tenantId, async (tx) => {
-    const query = async <T>(statement: ReturnType<typeof sql>) => rowsOf<T>(await tx.execute(statement));
-    const instances = await query<ObservedInstance>(
-      sql`SELECT id, status, round, revision, initiator_user_id AS "initiatorUserId" FROM approval_instances
-        WHERE business_id = ${businessId}::uuid ORDER BY created_at`,
-    );
-    const ids = `{${instances.map((row) => row.id).join(',')}}`;
-    const tasks = await query<ObservedTask>(
-      sql`SELECT id, round, status, assignee_user_id AS "assigneeUserId", origin, parent_task_id AS "parentTaskId"
-        FROM approval_tasks WHERE instance_id = ANY(${ids}::uuid[]) ORDER BY instance_id, seq`,
-    );
-    const logs = await query<Observed['logs'][number]>(
-      sql`SELECT round, task_id AS "taskId", actor_user_id AS "actorUserId" FROM approval_instance_logs
-        WHERE instance_id = ANY(${ids}::uuid[]) ORDER BY instance_id, seq`,
-    );
-    const audits = await query<{ commandId: string | null }>(
-      sql`SELECT command_id AS "commandId" FROM audit_events
-        WHERE object_id = ${businessId} OR object_id = ANY(${ids}::text[])`,
-    );
-    const ledgerIds = await query<{ commandId: string }>(
-      sql`SELECT command_id AS "commandId" FROM command_ledger
-        WHERE command_id = ${createCommandId} OR command_id LIKE ${`${STEP_PREFIX}${scenarioId}:%`}`,
-    );
-    const commandIds = new Set(ledgerIds.map((row) => row.commandId));
-    const steps = [...commandIds].map(parseStep).filter((step): step is LedgerStep => step !== null);
-    return {
-      instances,
-      tasks,
-      logs,
-      auditCommandIds: audits.map((row) => row.commandId),
-      ledger: { commandIds, steps },
-    };
-  });
+  return withTenant(db, tenantId, (tx) => observeIn(tx, scenarioId, createCommandId, businessId));
+}
+
+async function observeIn(tx: Tx, scenarioId: string, createCommandId: string, businessId: string): Promise<Observed> {
+  const query = async <T>(statement: ReturnType<typeof sql>) => rowsOf<T>(await tx.execute(statement));
+  const instances = await query<ObservedInstance>(
+    sql`SELECT id, status, round, revision, initiator_user_id AS "initiatorUserId" FROM approval_instances
+      WHERE business_id = ${businessId}::uuid ORDER BY created_at, id`,
+  );
+  const ids = `{${instances.map((row) => row.id).join(',')}}`;
+  const tasks = await query<ObservedTask>(
+    sql`SELECT id, round, status, assignee_user_id AS "assigneeUserId", origin, parent_task_id AS "parentTaskId"
+      FROM approval_tasks WHERE instance_id = ANY(${ids}::uuid[]) ORDER BY instance_id, seq`,
+  );
+  const logs = await query<Observed['logs'][number]>(
+    sql`SELECT round, task_id AS "taskId", actor_user_id AS "actorUserId" FROM approval_instance_logs
+      WHERE instance_id = ANY(${ids}::uuid[]) ORDER BY instance_id, seq`,
+  );
+  const audits = await query<{ commandId: string | null }>(
+    sql`SELECT command_id AS "commandId" FROM audit_events
+      WHERE object_id = ${businessId} OR object_id = ANY(${ids}::text[]) ORDER BY occurred_at, id`,
+  );
+  const [business] = await query<{ revision: number; employeeId: string }>(
+    sql`SELECT revision, employee_id AS "employeeId" FROM employment_business_objects WHERE id = ${businessId}::uuid`,
+  );
+  const ledgerIds = await query<{ commandId: string }>(
+    sql`SELECT command_id AS "commandId" FROM command_ledger
+      WHERE command_id = ${createCommandId} OR command_id LIKE ${`${STEP_PREFIX}${scenarioId}:%`}
+      ORDER BY command_id`,
+  );
+  const commandIds = new Set(ledgerIds.map((row) => row.commandId));
+  const steps = [...commandIds].map(parseStep).filter((step): step is LedgerStep => step !== null);
+  return {
+    instances,
+    tasks,
+    logs,
+    auditCommandIds: audits.map((row) => row.commandId),
+    business: business ?? null,
+    ledger: { commandIds, steps },
+  };
+}
+
+/** 观测结果的稳定指纹：任一行、任一列有变化（含新增日志、审计、台账、任务与 revision）指纹就不同。 */
+export function fingerprint(observed: Observed): string {
+  return JSON.stringify({ ...observed, ledger: [...observed.ledger.commandIds].sort() });
+}
+
+/**
+ * 写入事务里的接管复核（#309 第 5 轮）：在种子写入所在的同一事务开头，按业务写路径的锁序先锁被调动员工行
+ * （transfer-locks.lockTransferParticipants 的第一把锁，审批 / 业务单的一切写入都先取它），再锁审批实例行，
+ * 然后重新观测。与判定时的指纹一致才放行：说明判定之后没有任何台账外的写入，且锁一直持有到种子的写入提交，
+ * 用户操作要么在复核前已可见、要么排在种子写入之后。本步命令 ID 已在台账里，说明本步已经提交，同一请求之后的
+ * 读取事务（如返回详情）直接放行。
+ */
+export async function recheckLocked(
+  tx: Tx,
+  tenantId: string,
+  decided: {
+    readonly scenarioId: string;
+    readonly createCommandId: string;
+    readonly businessId: string;
+    readonly stepCommandId: string;
+  },
+  expected: string,
+): Promise<boolean> {
+  await tx.execute(sql`SELECT set_config('app.tenant_id', ${tenantId}, true)`);
+  await tx.execute(sql.raw(`SET LOCAL ROLE ${APP_ROLE.tenant}`));
+  await tx.execute(sql`SELECT e.id FROM employment_employees e JOIN employment_business_objects b
+    ON b.tenant_id = e.tenant_id AND b.employee_id = e.id WHERE b.id = ${decided.businessId}::uuid
+    FOR NO KEY UPDATE OF e`);
+  await tx.execute(sql`SELECT id FROM approval_instances WHERE business_id = ${decided.businessId}::uuid
+    ORDER BY created_at, id FOR UPDATE`);
+  const now = await observeIn(tx, decided.scenarioId, decided.createCommandId, decided.businessId);
+  return now.ledger.commandIds.has(decided.stepCommandId) || fingerprint(now) === expected;
 }
