@@ -799,3 +799,175 @@ describe('第 2 轮审查：出口清单——不再有“读取结果之前就�
     expect(result.status, result.out).toBe(0);
   }, 60_000);
 });
+
+// ---------------------------------------------------------------------------------------------
+// 第 3 轮审查返工（DEC-431① / DEC-434，同类第 3 次）：核对的对象必须就是提交的对象。
+// `git commit` 提交的是索引，重算（pnpm test）读的是工作区：提交前工作区必须与索引一致（含未跟踪文件），
+// 登记核对读 `git write-tree` 写出的待提交树，文件枚举 = HEAD ∪ main ∪ 分叉点 ∪ 待提交树。
+
+describe('第 3 轮审查 P2-1：核对读工作区、提交读索引——两者不一致必须停下', () => {
+  const schemaSides = {
+    base: { [SCHEMA]: schemaIndex(['tenancy']) },
+    branch: { [SCHEMA]: schemaIndex(['tenancy', 'alpha']) },
+    main: { [SCHEMA]: schemaIndex(['tenancy', 'beta']) },
+  };
+
+  it('暂存丢掉 alpha 的版本，工作区恢复完整但不重新暂存 → --continue 失败、不提交，列出不一致的文件', () => {
+    const { root, head } = stopAtBusinessConflict(schemaSides);
+    const full = read(root, SCHEMA);
+    expect(full).toContain('alpha');
+    put(root, { [SCHEMA]: schemaIndex(['tenancy', 'beta']) });
+    sh(root, 'add', SCHEMA);
+    put(root, { [SCHEMA]: full });
+    const done = resolveBusinessAndContinue(root);
+    expectRefused(root, head, done);
+    expect(done.out).toContain('工作区与索引不一致');
+    expect(done.out).toContain(SCHEMA);
+  }, 60_000);
+
+  it('反过来：索引完整、工作区丢项未暂存 → 同样失败（不以任何一边为准，由人决定提交哪份）', () => {
+    const { root, head } = stopAtBusinessConflict(schemaSides);
+    put(root, { [SCHEMA]: schemaIndex(['tenancy', 'beta']) });
+    const done = resolveBusinessAndContinue(root);
+    expectRefused(root, head, done);
+    expect(done.out).toContain('工作区与索引不一致');
+    expect(done.out).toContain(SCHEMA);
+  }, 60_000);
+
+  it('登记以外的已跟踪文件改了没暂存（重算会读到、提交不含）→ 失败', () => {
+    const { root, head } = stopAtBusinessConflict(schemaSides);
+    const done = (() => {
+      put(root, { [SERVICE]: service(30) });
+      sh(root, 'add', SERVICE);
+      put(root, { [SERVICE]: service(40) });
+      return run(root, '--continue');
+    })();
+    expectRefused(root, head, done);
+    expect(done.out).toContain('工作区与索引不一致');
+    expect(done.out).toContain(SERVICE);
+  }, 60_000);
+
+  it('未跟踪的登记文件（重算会读到、提交不含）→ 失败', () => {
+    const { root, head } = stopAtBusinessConflict(schemaSides);
+    put(root, { [`${DECLARED}/fresh.ts`]: declaredFile({ sameStatusInvalidId: [A] }) });
+    const done = resolveBusinessAndContinue(root);
+    expectRefused(root, head, done);
+    expect(done.out).toContain('未跟踪');
+    expect(done.out).toContain(`${DECLARED}/fresh.ts`);
+  }, 60_000);
+
+  it('开始合并前工作区有未跟踪文件 → 不开始合并（以免停在合并中途才发现）', () => {
+    const root = buildRepo({ ...schemaSides, main: { 'docs/note.md': '更新\n' } });
+    const head = sh(root, 'rev-parse', 'HEAD');
+    put(root, { 'notes.md': '草稿\n' });
+    const result = run(root);
+    expect(result.status, result.out).not.toBe(0);
+    expect(result.out).toContain('notes.md');
+    expect(mergeInProgress(root)).toBe(false);
+    expect(sh(root, 'rev-parse', 'HEAD')).toBe(head);
+  }, 60_000);
+
+  it('一致时照常通过：提交的树里就是核对过的内容', () => {
+    const { root } = stopAtBusinessConflict(schemaSides);
+    const done = resolveBusinessAndContinue(root);
+    expect(done.status, done.out).toBe(0);
+    const committed = sh(root, 'show', `HEAD:${SCHEMA}`);
+    for (const name of ['tenancy', 'alpha', 'beta']) expect(committed).toContain(`./${name}.js`);
+  }, 60_000);
+});
+
+describe('第 3 轮审查 P2-2：待提交树里独有的登记文件也要核对（按空来源）', () => {
+  const FRESH = `${DECLARED}/fresh.ts`;
+
+  it('新增并暂存三侧都没有的 declared/fresh.ts、写入声明 → --continue 失败、不提交，报多出的登记项', () => {
+    const { root, head } = stopAtBusinessConflict({
+      base: { [SCHEMA]: schemaIndex(['tenancy']) },
+      branch: { [SCHEMA]: schemaIndex(['tenancy', 'alpha']) },
+      main: { [SCHEMA]: schemaIndex(['tenancy', 'beta']) },
+    });
+    put(root, { [FRESH]: declaredFile({ sameStatusInvalidId: [A, B] }) });
+    sh(root, 'add', FRESH);
+    const done = resolveBusinessAndContinue(root);
+    expectRefused(root, head, done);
+    expect(done.out).toContain(FRESH);
+    expect(done.out).toContain('多出的登记项');
+  }, 60_000);
+
+  it('Git 无冲突合并后由人在提交前加进待提交树的登记文件同样核对（已包含 main 的路径）', () => {
+    const root = buildRepo({
+      base: { [SCHEMA]: schemaIndex(['tenancy']) },
+      main: { 'docs/note.md': '更新\n' },
+      branch: { [SCHEMA]: schemaIndex(['tenancy', 'alpha']) },
+    });
+    sh(root, 'merge', '-q', '--no-edit', 'origin/main');
+    const head = sh(root, 'rev-parse', 'HEAD');
+    put(root, { [FRESH]: declaredFile({ sameStatusInvalidId: [C] }) });
+    sh(root, 'add', FRESH);
+    const result = run(root, '--continue');
+    expect(result.status, result.out).not.toBe(0);
+    expect(result.out).toContain(FRESH);
+    expect(result.out).toContain('多出的登记项');
+    expect(sh(root, 'rev-parse', 'HEAD')).toBe(head);
+  }, 60_000);
+});
+
+describe('第 3 轮审查：重算之后、提交之前再核对一次（重算读到的 = 提交的）', () => {
+  // 临时仓库跑不了真实重算：package.json 的 test 脚本换成假重算，merge:main 照常用 pnpm test <文件> 调它
+  const fakeRegen = (body: string): Files => ({
+    'package.json': `${JSON.stringify({ type: 'module', scripts: { test: 'node fake-regen.mjs' } })}\n`,
+    'fake-regen.mjs': `import { mkdirSync, writeFileSync } from 'node:fs';\n${body}\n`,
+  });
+  const regenRun = (root: string) => {
+    const result = spawnSync(process.execPath, ['scripts/merge-main.mjs', '--no-fetch'], {
+      cwd: root,
+      encoding: 'utf8',
+    });
+    return { status: result.status, out: `${result.stdout}${result.stderr}` };
+  };
+  const sides = (regen: string) => ({
+    base: {
+      [SCHEMA]: schemaIndex(['tenancy']),
+      // 真实仓库里两个生成物目录总是存在（regenerate 对它们 git add -A）
+      [`${ROUTE_POLICY}/required/digests/nodes.ts`]: "export const NODES = ['base'];\n",
+      [`${ROUTE_POLICY}/baseline/endpoint-counts.json`]: '{"total":10}\n',
+      ...fakeRegen(regen),
+    },
+    main: { 'docs/note.md': '更新\n' },
+    branch: { [SCHEMA]: schemaIndex(['tenancy', 'alpha']) },
+  });
+
+  it('重算写进生成物目录：随重算一起暂存并提交（对照）', () => {
+    const digest = `${ROUTE_POLICY}/required/digests/nodes.ts`;
+    const root = buildRepo(
+      sides(
+        `mkdirSync('${ROUTE_POLICY}/required/digests', { recursive: true });\n` +
+          `writeFileSync('${digest}', "export const NODES = ['regen'];\\n");`,
+      ),
+    );
+    const result = regenRun(root);
+    expect(result.status, result.out).toBe(0);
+    expect(sh(root, 'show', `HEAD:${digest}`)).toContain('regen');
+    expect(sh(root, 'status', '--porcelain')).toBe('');
+  }, 60_000);
+
+  it('重算过程中登记文件在工作区被改（未暂存）→ 提交前失败、不提交', () => {
+    const root = buildRepo(sides(`writeFileSync('${SCHEMA}', "export * from './tenancy.js';\\n");`));
+    const head = sh(root, 'rev-parse', 'HEAD');
+    const result = regenRun(root);
+    expect(result.status, result.out).not.toBe(0);
+    expect(result.out).toContain('工作区与索引不一致');
+    expect(result.out).toContain(SCHEMA);
+    expect(sh(root, 'rev-parse', 'HEAD')).toBe(head);
+    expect(mergeInProgress(root)).toBe(true);
+  }, 60_000);
+
+  it('重算在生成物目录以外留下未跟踪文件 → 提交前失败、不提交', () => {
+    const root = buildRepo(sides(`writeFileSync('stray.txt', 'x\\n');`));
+    const head = sh(root, 'rev-parse', 'HEAD');
+    const result = regenRun(root);
+    expect(result.status, result.out).not.toBe(0);
+    expect(result.out).toContain('未跟踪');
+    expect(result.out).toContain('stray.txt');
+    expect(sh(root, 'rev-parse', 'HEAD')).toBe(head);
+  }, 60_000);
+});
