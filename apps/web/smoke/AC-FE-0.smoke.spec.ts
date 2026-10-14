@@ -1,5 +1,6 @@
 import { test, expect, tenant, user, snapshotFixture } from './fixtures.js';
 import { APP_ROUTES } from './page-registry.js';
+import { ui } from '../src/foundation/messages.js';
 
 test('AC-FE-0-04 通过现有演示身份选择器进入应用，注释可切换', async ({ page }) => {
   await page.goto('/staff');
@@ -10,7 +11,9 @@ test('AC-FE-0-04 通过现有演示身份选择器进入应用，注释可切换
   await expect(page.locator('.shell-content > .decision-note').getByText('DEC-456', { exact: true })).toHaveCount(0);
   await page.getByRole('switch', { name: '注释' }).click();
   await expect(page.locator('.shell-content > .decision-note').getByText('DEC-456', { exact: true })).toBeVisible();
-  await page.getByRole('menuitem', { name: '人才盘点', exact: true }).click();
+  // 左侧只列当前应用菜单，跨应用经顶栏全部菜单面板进入（#326 第 2 轮 P2-2）
+  await page.getByRole('button', { name: '应用导航' }).click();
+  await page.getByRole('dialog', { name: '全部菜单' }).getByRole('link', { name: '人才盘点', exact: true }).click();
   await expect(page).toHaveURL(/\/talent-review$/);
   await expect(page.locator('.shell-content > .decision-note').getByText('DEC-456', { exact: true })).toBeVisible();
 });
@@ -26,7 +29,9 @@ for (const app of APP_ROUTES) {
     await page.goto(app.path);
     await expect(page.locator('.shell-workspace h1').first()).toBeVisible();
     await expect(page.getByRole('button', { name: '应用导航' })).toBeVisible();
-    await expect(page.locator('.app-switch')).toContainText(app.label);
+    // 顶栏显示当前应用（原站“应用”即本系统分组）名，左侧列出本页菜单（#326 第 2 轮 P2-2）
+    await expect(page.locator('.app-switch')).toContainText(ui.groups[app.group]);
+    await expect(page.locator('.shell-sidebar').getByRole('menuitem', { name: app.label, exact: true })).toBeVisible();
     await expect(page.locator('.shell-workspace')).not.toContainText('正在加载');
     expect(errors).toEqual([]);
   });
@@ -52,8 +57,16 @@ test('AC-FE-0-06 旧路径保留参数与锚点，无权限页和未知页面均
     body.apps = body.apps.map((app) => (app.app === 'org' ? { ...app, visible: false, entryObjects: [] } : app));
     await route.fulfill({ json: body });
   });
+  let snapshots = 0;
+  page.on('request', (request) => {
+    if (request.url().endsWith('/permission/me/snapshot')) snapshots += 1;
+  });
   await page.goto('/org');
   await expect(page.getByText('暂无访问权限', { exact: true })).toBeVisible();
+  // 原站整页无权限在提示下给“刷新页面”，点击重新获取权限（#326 第 2 轮 P2-7）
+  const before = snapshots;
+  await page.getByRole('button', { name: '刷新页面' }).click();
+  await expect.poll(() => snapshots).toBeGreaterThan(before);
   await page.goto('/not-a-page');
   await expect(page.getByRole('status').getByText('页面或记录不存在', { exact: true })).toBeVisible();
 });
@@ -150,14 +163,30 @@ test('AC-FE-0-11 顶栏全部菜单面板、消息抽屉与个人菜单按原站
   await page.goto('/staff');
   await page.getByLabel('切换演示身份').selectOption(user);
   const apps = page.getByRole('button', { name: '应用导航' });
-  await expect(apps).toContainText('员工');
+  // 原站顶栏显示当前应用名，左侧只列当前应用的菜单（#326 第 2 轮 P2-2）
+  await expect(apps).toContainText('组织员工');
+  const sidebar = page.locator('.shell-sidebar');
+  await expect(sidebar.getByRole('menuitem', { name: '员工', exact: true })).toBeVisible();
+  await expect(sidebar.getByRole('menuitem', { name: '人才盘点' })).toHaveCount(0);
   await apps.click();
   const panel = page.getByRole('dialog', { name: '全部菜单' });
   await expect(apps).toContainText('关闭菜单');
   await expect(panel.getByRole('region', { name: '人才管理' }).getByRole('link', { name: '人才盘点' })).toBeVisible();
+  // 面板打开后焦点在搜索框，Tab 循环不离开面板
+  await expect(panel.getByRole('searchbox', { name: '搜索菜单' })).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  expect(await page.evaluate(() => !!document.activeElement?.closest('.all-menus'))).toBe(true);
+  // 点当前页面对应的菜单也收起面板
+  await panel.getByRole('region', { name: '组织员工' }).getByRole('link', { name: '员工', exact: true }).click();
+  await expect(panel).toHaveCount(0);
+  await apps.click();
+  // 下级菜单同样可搜，结果平铺并带路径（#326 第 2 轮 P2-1）
+  await panel.getByRole('searchbox', { name: '搜索菜单' }).fill('全部用户');
+  await expect(panel.getByText('搜索结果 1', { exact: true })).toBeVisible();
+  await expect(panel.getByRole('link', { name: /全部用户/ })).toContainText('设置 > 企业设置 > 用户管理');
   await panel.getByRole('searchbox', { name: '搜索菜单' }).fill('职务');
   await expect(panel.getByRole('link', { name: '人才盘点' })).toHaveCount(0);
-  await panel.getByRole('link', { name: '职务体系' }).click();
+  await panel.getByRole('link', { name: /职务体系/ }).click();
   await expect(page).toHaveURL(/\/job/);
   await expect(panel).toHaveCount(0);
   await page.getByRole('button', { name: '消息', exact: true }).click();

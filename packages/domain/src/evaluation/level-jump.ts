@@ -5,9 +5,10 @@
  * <1 或 >5 都是配置非法（MAX_LEVEL_JUMP_INVALID），不当作不限，也不静默放行。
  * 高出的级数 = rank(申请级别) − rank(原级别)；rank 是级别在有序级别序列里的位置（按顺序号升序后编号 1、2、3…），
  * 不直接用顺序号相减，所以顺序号 10 / 20 / 40 与 1 / 2 / 3 同结果。
- * Q-T02-06 的其余边界先按设计推荐实现 🟡（DEC-334②），取证后再核对：
+ * 原级别为空 = 不限跨级（DEC-497，照原站 W-865）：申请级别在序列里就允许，raisedLevels 取 rank(申请级别)，
+ * 仅供展示，不参与判定；max_level_jump 非法时仍先拒绝，配置校验不放松。
+ * Q-T02-06 的其余子项先按设计推荐实现，标“未验证（DEC-497）”：
  * - 序列 = 申请类别标准的级别范围（由调用方传入）；
- * - 原级别为空 = 序列最低级的前一级（rank 0）；
  * - 原级别（或申请级别）不在序列里 = LEVEL_JUMP_UNDETERMINED，不猜；
  * - 申请不高于原级别允许，高出级数记 0。
  * 序列里的级别 ID 须唯一：有重复时位置失真，按“无法判定”处理（不猜哪一个是对的）。
@@ -49,8 +50,11 @@ export function checkLevelJump(input: LevelJumpInput): LevelJumpResult {
   const ranks = rankOf(input.levels);
   if (!ranks) return { ok: false, code: 'LEVEL_JUMP_UNDETERMINED' };
   const applyRank = ranks.get(input.applyLevelId);
-  const originalRank = input.originalLevelId === null ? 0 : ranks.get(input.originalLevelId);
-  if (applyRank === undefined || originalRank === undefined) return { ok: false, code: 'LEVEL_JUMP_UNDETERMINED' };
+  if (applyRank === undefined) return { ok: false, code: 'LEVEL_JUMP_UNDETERMINED' };
+  // DEC-497：原级别为空不限跨级；rank 0 只用来算展示用的 raisedLevels
+  if (input.originalLevelId === null) return { ok: true, raisedLevels: applyRank };
+  const originalRank = ranks.get(input.originalLevelId);
+  if (originalRank === undefined) return { ok: false, code: 'LEVEL_JUMP_UNDETERMINED' };
   const raisedLevels = Math.max(0, applyRank - originalRank);
   if (raisedLevels > max) return { ok: false, code: 'LEVEL_JUMP_EXCEEDED', raisedLevels };
   return { ok: true, raisedLevels };

@@ -396,3 +396,38 @@ body {
 .full-width-selector {
   width: 100%;
 }
+.all-menus-results {
+  width: 500px;
+  margin: 0 auto;
+}
+.all-menus-results h2 {
+  margin: 0 0 12px;
+  color: var(--shell-muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+.all-menus-results a {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 42px;
+  margin-bottom: 12px;
+  padding: 0 16px;
+  border-radius: 5px;
+  background: #f7f8fa;
+  color: var(--shell-text);
+}
+.all-menus-results a:hover {
+  color: var(--shell-link);
+}
+/* 原站命中部分为浅黄底 */
+.all-menus-results mark {
+  padding: 0;
+  background: #fff1c2;
+  color: inherit;
+}
+.all-menus-trail {
+  margin-left: auto;
+  color: var(--shell-muted);
+  font-size: 12px;
+}

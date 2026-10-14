@@ -1,5 +1,5 @@
 import { Button, Descriptions, Empty, Space, Tag } from 'antd';
-import { useId, useState } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import { PERSONNEL_OBJECT, SUBSETS } from '@italent/domain';
 import { usePermissions } from '../foundation/Permissions.js';
 import { PageState } from '../foundation/PageState.js';
@@ -8,7 +8,7 @@ import type { PageResult } from '../foundation/client.js';
 import { ReadPanel } from './ReadPanel.js';
 import { useRead } from './useRead.js';
 import { useSubsetAccess, type ProfileSubset } from './useSubsetAccess.js';
-import { displayValue, fieldValue, recordPeriod, type Row } from './model.js';
+import { displayValue, fieldValue, profileSections, recordPeriod, type Row } from './model.js';
 import { m, subsetLabels } from './messages.js';
 
 export function FieldGrid({
@@ -29,31 +29,28 @@ export function FieldGrid({
       items={visible.map((key) => ({
         key,
         label: m.labels[key],
-        children: fieldValue(key, row[key]),
+        children: fieldValue(key, row[key], 'long'),
       }))}
     />
   ) : (
     <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={m.noFields} />
   );
 }
-const profileSections = [
-  {
-    key: 'basic',
-    title: m.basic,
-    fields: ['name', 'code', 'gender', 'birthday', 'age', 'nationality', 'nation', 'marryCategory', 'politicalStatus'],
-  },
-  {
-    key: 'contact',
-    title: m.contact,
-    fields: ['mobilePhone', 'email', 'workEmail', 'backupMail', 'contactAddress', 'emergencyContact', 'emergencyPhone'],
-  },
-  { key: 'school', title: m.education, fields: ['educationLevel', 'lastSchool', 'major', 'graduateDate'] },
-  {
-    key: 'dates',
-    title: m.dates,
-    fields: ['employeeStatus', 'entryDate', 'firstEntryDate', 'latestEntryDate', 'lastWorkDate'],
-  },
-];
+/** 原站“人员信息”每个分区右上角有“收起”，收起后只留标题栏。 */
+function CollapsibleSection({ id, title, children }: { id: string; title: string; children: ReactNode }) {
+  const [open, setOpen] = useState(true);
+  return (
+    <section className="staff-section" id={id} aria-label={title}>
+      <header className="staff-section-header">
+        <h3 className="staff-section-title">{title}</h3>
+        <Button type="link" size="small" aria-expanded={open} onClick={() => setOpen(!open)}>
+          {open ? m.collapse : m.expand}
+        </Button>
+      </header>
+      {open && children}
+    </section>
+  );
+}
 
 /** 原站“人员信息”页签：基本信息与各子集纵向排列，右侧档案导航点击后滚动到对应分区。 */
 export function PersonnelProfile({ row, employeeId }: { row: Row; employeeId: string }) {
@@ -73,10 +70,9 @@ export function PersonnelProfile({ row, employeeId }: { row: Row; employeeId: st
     <div className="staff-profile">
       <div className="staff-profile-content">
         {sections.map((section) => (
-          <section className="staff-section" key={section.key} id={anchor(section.key)} aria-label={section.title}>
-            <h3 className="staff-section-title">{section.title}</h3>
+          <CollapsibleSection key={section.key} id={anchor(section.key)} title={section.title}>
             <FieldGrid row={row} fields={section.fields} allowed={allowed} />
-          </section>
+          </CollapsibleSection>
         ))}
         {access.error !== undefined ? (
           <PageState kind="error" error={access.error} retry={access.refresh} />
@@ -139,6 +135,11 @@ export function PageButtons({
     </div>
   );
 }
+/** 原站当前任职标“生效中”，青绿色字、浅绿底、绿边（非 antd 蓝色）；历史记录为默认灰色。 */
+function RecordTag({ current }: { current: boolean }) {
+  if (current) return <Tag className="staff-current-tag">{m.current}</Tag>;
+  return <Tag>{m.historical}</Tag>;
+}
 export function EmploymentRecords({ employeeId }: { employeeId: string }) {
   const [page, setPage] = useState(1);
   const object = 'TenantBase.EmploymentRecord';
@@ -166,7 +167,7 @@ export function EmploymentRecords({ employeeId }: { employeeId: string }) {
                   })}
                 </span>
                 {allowed.includes('isCurrent') && typeof row.isCurrent === 'boolean' && (
-                  <Tag color={row.isCurrent ? 'blue' : 'default'}>{row.isCurrent ? m.current : m.historical}</Tag>
+                  <RecordTag current={row.isCurrent} />
                 )}
               </header>
               <FieldGrid row={row} allowed={allowed} fields={['staffId', 'entryDate', 'employeeStatus']} />
@@ -203,8 +204,7 @@ function SubsetRows({
   );
   const fields = definition.fields.map((field) => field.code).filter((key) => m.labels[key]);
   return (
-    <section className="staff-section" id={id} aria-label={subsetLabels[kind]}>
-      <h3 className="staff-section-title">{subsetLabels[kind]}</h3>
+    <CollapsibleSection id={id} title={subsetLabels[kind]}>
       <ReadPanel {...result} empty={!result.data?.items.length && m.noSubset(subsetLabels[kind])}>
         {(result.data?.items ?? []).map((row) => (
           <div className="staff-subset-row" key={row.id}>
@@ -213,6 +213,6 @@ function SubsetRows({
         ))}
       </ReadPanel>
       <PageButtons page={page} count={result.data?.items.length ?? 0} loading={result.loading} onChange={setPage} />
-    </section>
+    </CollapsibleSection>
   );
 }

@@ -69,3 +69,27 @@ describe('AC-FE-R1b-columns 设置显示字段', () => {
     expect(columnChoices).toEqual(expect.arrayContaining(defaultColumns));
   });
 });
+
+// #326 第 2 轮 P2-3 / P2-5：原站候选与默认已选含“首次参加工作日期”（后端字段 workDate），分组名为“当前列表字段”。
+describe('AC-FE-R1b-columns 候选字段与分组按原站', () => {
+  const { columnLabel } = model;
+  it('首次参加工作日期在候选与默认已选中，排在员工ID之后、性别之前，恢复默认同样带上', () => {
+    expect(columnChoices).toContain('workDate');
+    expect(defaultColumns.slice(0, 5)).toEqual(['name', 'code', 'workDate', 'gender', 'entryDate']);
+    expect(restoreDefaultColumns()).toContain('workDate');
+    expect(columnLabel('workDate')).toBe('首次参加工作日期');
+    expect(matchColumns(['workDate', 'entryDate'], '参加工作')).toEqual(['workDate']);
+  });
+
+  it('列表接口已返回的人员字段都可选：出生日期、民族、婚姻状况、最后工作日等', () => {
+    expect(columnChoices).toEqual(
+      expect.arrayContaining(['birthday', 'nation', 'marryCategory', 'politicalStatus', 'lastWorkDate', 'workEmail']),
+    );
+    expect(new Set(columnChoices).size).toBe(columnChoices.length);
+  });
+
+  it('左栏分组名为“当前列表字段”', async () => {
+    const { m } = await import(resolve('apps/web/src/personnel/messages.ts'));
+    expect(m.listFields).toBe('当前列表字段');
+  });
+});
