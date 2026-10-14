@@ -77,7 +77,7 @@ function errorKind(status: number, code: string): ErrorKind {
 function responseError(response: Response, payload: ErrorPayload) {
   const code = payload.error?.code ?? 'REQUEST_FAILED';
   const kind = errorKind(response.status, code);
-  const messages: Record<ErrorKind, string> = {
+  const messages = {
     login: ui.login,
     forbidden: ui.denied,
     'not-found': ui.missing,
@@ -87,10 +87,6 @@ function responseError(response: Response, payload: ErrorPayload) {
     'rate-limit': ui.rateLimit,
     unknown: ui.uncertain,
   };
-  // F-141 ④（DEC-500）：字段校验类拒绝没有字段明细时，把服务端给出的业务原因展示出来；有明细由表单回填到字段
-  const reason = payload.error?.message;
-  const detailed = fieldErrors(payload.error?.details).length > 0;
-  if (kind === 'fields' && reason && !detailed) messages.fields = reason;
   const retry = response.headers.get('retry-after');
   return new ApiError(
     response.status,
@@ -100,6 +96,18 @@ function responseError(response: Response, payload: ErrorPayload) {
     payload.error,
     retry && /^\d+$/.test(retry) ? Number(retry) : undefined,
   );
+}
+
+/**
+ * 拒绝原因的展示入口（F-141 缺陷 4，DEC-500 / DEC-464 / 473）：字段校验类、业务冲突类拒绝没有字段明细时，显示服务端给出的原因；
+ * 有字段明细由表单回填到字段，其余错误用底座文案。ApiError.message 保持默认文案（AC-FE-R1c-21），状态条、表单浮层、调动表单都经这里。
+ */
+export function rejectionMessage(error: unknown): string {
+  if (error instanceof ApiError) {
+    const rejection = error.kind === 'fields' || error.kind === 'conflict';
+    return rejection && error.fieldErrors.length === 0 ? error.serverMessage || error.message : error.message;
+  }
+  return error instanceof Error && error.message ? error.message : ui.uncertain;
 }
 
 export function newCommand<T>(body: T, revision?: number): Command<T> {
