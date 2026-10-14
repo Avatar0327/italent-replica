@@ -52,7 +52,7 @@ describe('AC-F141-form-kernel-recovery 冲突恢复（完整字段投影）', ()
     });
     expect(send).toHaveBeenCalledTimes(2);
     expect(send.mock.calls[1]![0]).toMatchObject({ revision: 2, body: { name: 'B' } });
-    expect(Object.keys(send.mock.calls[1]![0].body)).toEqual(['name']);
+    expect(Object.keys(send.mock.calls[1]![0].body as object)).toEqual(['name']);
     expect(send.mock.calls[1]![0].id).not.toBe(send.mock.calls[0]![0].id);
   });
 
@@ -75,6 +75,6 @@ describe('AC-F141-form-kernel-recovery 冲突恢复（完整字段投影）', ()
     store.confirm('k');
     await store.submit('k', input({ ...store.get('k')!.values, name: 'A' }));
     expect(send.mock.calls[1]![0]).toMatchObject({ revision: 2, body: { name: 'A' } });
-    expect(Object.keys(send.mock.calls[1]![0].body)).toEqual(['name']);
+    expect(Object.keys(send.mock.calls[1]![0].body as object)).toEqual(['name']);
   });
 });
