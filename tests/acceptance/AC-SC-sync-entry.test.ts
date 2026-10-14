@@ -1,5 +1,6 @@
 /** D3 / AC-SC-03、04 / SP-13、14：入口、接管、终止、投影的首批红测。 */
 import { randomUUID } from 'node:crypto';
+import type { Authorizer } from '@italent/api';
 import { sql, type DbHandle } from '@italent/db';
 import { createTestDb } from '@italent/testkit';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -60,7 +61,12 @@ afterAll(async () => {
   await handle?.close();
 });
 
-async function setup(plan = true, targetOrgId = std.orgB.id, actorUserId = w.user.id) {
+async function setup(
+  plan = true,
+  targetOrgId = std.orgB.id,
+  actorUserId = w.user.id,
+  options: { health?: boolean; kind?: 'org' | 'position' } = {},
+) {
   await w.asTenant(async (tx) => {
     await tx.execute(sql`UPDATE succession_sync_mutex SET batch_id=NULL WHERE tenant_id=${w.tenant.id}::uuid`);
     await tx.execute(sql`UPDATE succession_sync_batches SET status='terminated' WHERE tenant_id=${w.tenant.id}::uuid`);
@@ -87,16 +93,18 @@ async function setup(plan = true, targetOrgId = std.orgB.id, actorUserId = w.use
         nominations: [
           {
             ...run.nominations[0]!,
-            kind: 'org',
+            kind: options.kind ?? 'org',
             direction: 'successor',
-            orgId: targetOrgId,
-            positionId: null,
+            orgId: options.kind === 'position' ? null : targetOrgId,
+            positionId: options.kind === 'position' ? std.keyPosition.id : null,
             successorEmployeeId: std.successor1.id,
             readinessId: null,
             readinessCode: null,
           },
         ],
-        orgHealth: [],
+        orgHealth: options.health
+          ? [{ ...run.orgHealth[0]!, orgId: targetOrgId, status: 'empty', levelId: null, levelCode: null }]
+          : [],
       },
     ],
   });
@@ -692,4 +700,129 @@ describe('AC-SC-03/04 P2-2 调用人 SELF 写授权', () => {
       expect((await snapshot()).records).toHaveLength(1);
     },
   );
+});
+
+/** D3-M05 选 1：调用人仅缺健康度 levelId 编辑权，原触发人与系统主体仍完整授权。 */
+function callerWithoutHealthField(caller: string, deniedRecordOperation?: 'create' | 'update'): Authorizer {
+  const authorize: Authorizer = (request) =>
+    request.userId !== caller ||
+    !(
+      (request.resource === 'Succession.HealthResult' &&
+        request.action === 'object.update' &&
+        request.fields?.includes('levelId')) ||
+      (request.resource === 'Succession.Record' && request.action === `object.${deniedRecordOperation}`)
+    );
+  registerScopeProvider(authorize, {
+    authorize: async (request) => authorize(request),
+    scope: async () => ({ ...EMPTY_SCOPE, all: true, hasDataPermission: true, source: 'identity' }),
+    fields: async () => new Set(['id', 'revision', 'status']),
+  });
+  return authorize;
+}
+
+describe('AC-SC-03/04 D3-M05 健康度调用人字段授权', () => {
+  it.each(['首次 sync', 'retry', '已有计划 sync', 'FirstPlan 首次人工消费', 'FirstPlan 无计划接管', '人工有计划恢复'])(
+    '%s：levelId 不可编辑时拒绝，独立事务确认记录、健康度及批次不变',
+    async (entry) => {
+      const caller = await w.userOf(std.successor2);
+      const planned = ['retry', '已有计划 sync', '人工有计划恢复'].includes(entry);
+      const h = await setup(planned, std.orgB.id, w.user.id, { health: true });
+      if (entry === 'FirstPlan 无计划接管') {
+        const blocked = await planSyncRun({ ...h.deps, authorize: () => false }, h.input);
+        expect(blocked).toMatchObject({ status: 'blocked', hasPlan: false });
+      }
+      h.port.advance(121);
+      const authorize = callerWithoutHealthField(caller);
+      const deps = { ...h.deps, authorize };
+      binding.current = deps;
+      const snapshot = () =>
+        w.asTenant(async (tx) => ({
+          records: rowsOf(
+            await tx.execute(sql`SELECT id,revision FROM succession_records
+            WHERE tenant_id=${w.tenant.id}::uuid ORDER BY id`),
+          ),
+          health: rowsOf(
+            await tx.execute(sql`SELECT org_id,level_id,revision FROM succession_health_results
+            WHERE tenant_id=${w.tenant.id}::uuid ORDER BY org_id`),
+          ),
+          batches: rowsOf(
+            await tx.execute(sql`SELECT id,revision,status,has_plan,execution_no
+            FROM succession_sync_batches WHERE tenant_id=${w.tenant.id}::uuid
+            AND source_run_id=${h.input.runId}::uuid`),
+          ),
+        }));
+      const before = await snapshot();
+      if (entry.startsWith('FirstPlan') || entry === '人工有计划恢复') {
+        await expect
+          .soft(consumeRun(deps, { ...h.input, leaseOwner: randomUUID(), requesterUserId: caller }))
+          .rejects.toMatchObject({ code: 'FORBIDDEN', details: { reason: 'BATCH_SCOPE_EXCEEDS_REQUESTER' } });
+      } else {
+        const retry = entry === 'retry';
+        const api = tenantApi(w.db, { authorize, clock: () => SC_NOW });
+        const response = await api.request(
+          'POST',
+          `/api/tenant/succession/${retry ? `sync-batches/${h.batch.id}/retry` : 'sync'}`,
+          {
+            tenant: w.tenant.id,
+            user: caller,
+            body: retry ? {} : { runId: h.input.runId },
+            ...(retry ? { ifMatch: h.batch.revision } : {}),
+          },
+        );
+        expect.soft(response.status).toBe(403);
+        expect.soft(await response.json()).toMatchObject({
+          error: { code: 'FORBIDDEN', details: { reason: 'BATCH_SCOPE_EXCEEDS_REQUESTER' } },
+        });
+      }
+      expect(await snapshot()).toEqual(before);
+    },
+  );
+
+  it.each(['org', 'position'] as const)('%s 继任记录仍可写，不额外要求健康度 levelId 编辑权', async (kind) => {
+    const h = await setup(false, kind === 'position' ? std.orgA.id : std.orgB.id, w.user.id, { kind });
+    const caller = await w.userOf(std.successor2);
+    const authorize = callerWithoutHealthField(caller);
+    binding.current = { ...h.deps, authorize };
+    const api = tenantApi(w.db, { authorize, clock: () => SC_NOW });
+    const response = await api.request('POST', '/api/tenant/succession/sync', {
+      tenant: w.tenant.id,
+      user: caller,
+      body: { runId: h.input.runId },
+    });
+    expect(response.status, await response.clone().text()).toBe(202);
+    const batch = (await response.json()) as { id: string; status: string };
+    expect(batch.status).toBe('completed');
+    const records = await w.asTenant((tx) =>
+      tx.execute(sql`SELECT succession_type FROM succession_records
+      WHERE tenant_id=${w.tenant.id}::uuid AND source_batch_id=${batch.id}::uuid`),
+    );
+    expect(rowsOf(records)).toEqual([{ succession_type: kind }]);
+  });
+
+  it.each([
+    ['org', 'create'],
+    ['org', 'update'],
+    ['position', 'create'],
+    ['position', 'update'],
+  ] as const)('%s 继任记录缺 %s 对象权仍拒绝', async (kind, operation) => {
+    const h = await setup(false, kind === 'position' ? std.orgA.id : std.orgB.id, w.user.id, { kind });
+    const caller = await w.userOf(std.successor2);
+    const authorize = callerWithoutHealthField(caller, operation);
+    binding.current = { ...h.deps, authorize };
+    const api = tenantApi(w.db, { authorize, clock: () => SC_NOW });
+    const response = await api.request('POST', '/api/tenant/succession/sync', {
+      tenant: w.tenant.id,
+      user: caller,
+      body: { runId: h.input.runId },
+    });
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({
+      error: { details: { reason: 'BATCH_SCOPE_EXCEEDS_REQUESTER' } },
+    });
+    const batches = await w.asTenant((tx) =>
+      tx.execute(sql`SELECT id FROM succession_sync_batches
+      WHERE tenant_id=${w.tenant.id}::uuid AND source_run_id=${h.input.runId}::uuid`),
+    );
+    expect(rowsOf(batches)).toEqual([]);
+  });
 });
