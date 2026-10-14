@@ -1,5 +1,5 @@
-import type { DecisionAnnotation } from './foundation.js';
-export const transferNotes: Record<string, DecisionAnnotation> = {
+import type { DecisionAnnotation } from '../annotations/index.js';
+export const notes: Record<string, DecisionAnnotation> = {
   transfer: {
     original: '调动管理无独立面包屑，采用图标与视图标题，列表每页15条、行高40；从他人调动申请打开原／新任职信息表单。',
     decision:

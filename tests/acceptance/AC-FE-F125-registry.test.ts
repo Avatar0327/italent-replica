@@ -10,7 +10,7 @@ import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { annotationOwners, annotations, collectAnnotations } from '../../apps/web/src/annotations/index.js';
-import { collectPages, type ModulePage } from '../../apps/web/src/foundation/page-registry.js';
+import { collectPages, type EntryRoute, type ModulePage } from '../../apps/web/src/foundation/page-registry.js';
 import { menuNodes, type ServerSnapshot } from '../../apps/web/src/foundation/permission-snapshot.js';
 import { APP_ROUTES, MENU_ROUTES, PAGES, SUB_ROUTES, appRoute } from '../../apps/web/src/foundation/routes.js';
 
@@ -173,8 +173,17 @@ describe('AC-FE-F125-03 登记文件位置与应用内入口的菜单可见性',
     expect(readdirSync(join(SRC, 'annotations'))).toEqual(['index.ts']);
   });
   it('应用内入口只在所属应用入口对象含其对象时出现，排在应用之后', () => {
-    const entry = { id: 'entry', app: 'staff', label: '入口', group: 'people', objectCode: 'T.E', page: undefined };
-    const routes = [...APP_ROUTES, { ...entry, path: '/entry', module: 'm', legacy: false }];
+    const entry: EntryRoute = {
+      id: 'entry',
+      app: 'staff',
+      label: '入口',
+      group: 'people',
+      objectCode: 'T.E',
+      path: '/entry',
+      module: 'm',
+      legacy: false,
+    };
+    const routes = [...APP_ROUTES, entry];
     const snapshot = (entryObjects: string[]) =>
       ({ apps: [{ app: 'staff', visible: true, entryObjects }], adminMenus: [] }) as unknown as ServerSnapshot;
     expect(menuNodes(routes, snapshot(['TenantBase.Employee'])).map((menu) => menu.key)).toEqual(['staff']);

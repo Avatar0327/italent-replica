@@ -1,5 +1,5 @@
-import type { DecisionAnnotation } from './foundation.js';
-export const settingsNotes: Record<string, DecisionAnnotation> = {
+import type { DecisionAnnotation } from '../annotations/index.js';
+export const notes: Record<string, DecisionAnnotation> = {
   settings: {
     original: '企业设置以用户、身份授权、管理单元列表为主，标题是视图切换，无独立面包屑。数据变更日志截图为受限页。',
     decision:

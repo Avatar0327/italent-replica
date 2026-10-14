@@ -1,5 +1,5 @@
-import type { DecisionAnnotation } from './foundation.js';
-export const approvalNotes: Record<string, DecisionAnnotation> = {
+import type { DecisionAnnotation } from '../annotations/index.js';
+export const notes: Record<string, DecisionAnnotation> = {
   approval: {
     original: '审批中心左侧分待处理、已处理和已申请，无独立面包屑；点击记录打开本单申请信息、原值与审批记录。',
     decision:

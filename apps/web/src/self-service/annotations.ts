@@ -1,6 +1,6 @@
-import type { DecisionAnnotation } from './foundation.js';
+import type { DecisionAnnotation } from '../annotations/index.js';
 
-export const selfServiceNotes: Record<string, DecisionAnnotation> = {
+export const notes: Record<string, DecisionAnnotation> = {
   'self.profile': {
     original: '我的档案采用头像摘要、横向页签、双列字段分区及右侧分区导航。',
     decision: '复用 FE-0 主题与详情抽屉。真实档案只读，按本人接口裁剪；未接入的人员子集单独标为演示数据。',

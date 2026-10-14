@@ -1,5 +1,5 @@
-import type { DecisionAnnotation } from './foundation.js';
-export const evaluationNotes: Record<string, DecisionAnnotation> = {
+import type { DecisionAnnotation } from '../annotations/index.js';
+export const notes: Record<string, DecisionAnnotation> = {
   evaluation: {
     original:
       '活动设置以名称、年度、周期、状态、所属组织、报名人数、负责人列表呈现；配置分活动信息、参评条件、活动环节三步。',

@@ -5,7 +5,7 @@
 ## 页面片接入
 
 - 公共入口：`src/foundation/index.ts`。组件库固定 Ant Design 5，React Router 使用安装时的稳定大版本 8；React 19 兼容补丁在 `main.tsx` 加载。
-- 应用目录：`foundation/routes.ts`；页面装配：`foundation/AppPages.tsx`。用模块组件替换已有空首页，子路由也在这里显式登记。
+- 页面登记（F-125）：各模块在 `src/<模块>/pages.ts` 自带应用页、子路由与菜单下一层适配，`foundation/routes.ts` 自动汇总、`foundation/AppPages.tsx` 只装配；新片只改本模块目录，写法见 `docs/08_设计/F-125_前端片登记说明.md`。
 - `<App session={session} />` 接受会话租户、身份缓存标识、租户名称、租户时区和展示名称。Cookie 由浏览器携带，演示身份头由现有 Vite 代理签名。前端不接触签名密钥。
 - `useApiClient()` 读取当前会话；`request('/api/tenant/...', { method, command })` 的写命令由 `newCommand(body, revision)` 创建。结果未知时先回查原记录；只有显式重放时才重用同一命令，变更内容须建新命令。客户端不会自动重试。
 - `pageQuery({ page, pageSize })` 适配页码接口；第二参数 `'offset'` 适配 `limit/offset`。每页上限 200，页码／偏移量还须遵守目标接口上限。`ListPage` 优先使用服务端 `total`，其次使用显式 `hasMore`；两者都缺失时，按审查确认的兼容规则，仅本页条数达到 `pageSize` 才允许继续，不推算总数。末页恰好满页时可翻到一个空页，空页禁用下一页并保留上一页；调用方应传入本次请求对应的 `page`，加载期间设置 `loading`。
@@ -16,7 +16,7 @@
 - `FormOverlay` 支持 drawer/modal。每字段显式传入可见／可编辑权限，只提交可编辑值。`recordKey` 必传：编辑用 `id:revision`，刷新冲突记录后更新 key；新建用本次打开的稳定键。保存成功关闭，400/422 字段错误回填，409 revision 冲突提示刷新。
 - `OrgTreeSelect` 接收服务端按指定组织维度返回的树；`PersonSelect` 接收 `(query, signal) => Promise<Choice[]>`，由调用方保持加载函数稳定并使用已有候选接口；不在前端拼接范围。
 - `TenantDatePicker` 的值始终是 `YYYY-MM-DD`；当前业务日期用 `tenantDate(instant, session.timezone)`，事件时间保持 UTC。
-- 注释放 `annotations/<模块>.ts`，使用 `DecisionAnnotation`，在 `annotations/index.ts` 合并登记到根 `DecisionNotesProvider`；页面渲染 `<DecisionNote id="..." />`，全局开关默认关闭。
+- 注释放 `src/<模块>/annotations.ts`（导出 `notes`，类型 `DecisionAnnotation`），由 `annotations/index.ts` 自动汇总到根 `DecisionNotesProvider`；页面渲染 `<DecisionNote id="..." />`，全局开关默认关闭。
 - 现有页面装在 `.legacy-page` 内，仅做租户与布局接入，后续页面片再替换业务 UI。
 
 ## L2 缺口
