@@ -6,6 +6,7 @@ import type { Graph } from '../../../evidence-graph.js';
 import { GRAPH as api_audit } from './api-audit.js';
 import { GRAPH as api_modules_approval } from './api-modules-approval.js';
 import { GRAPH as api_modules_avatar } from './api-modules-avatar.js';
+import { GRAPH as api_modules_command_result } from './api-modules-command-result.js';
 import { GRAPH as api_modules_contracts } from './api-modules-contracts.js';
 import { GRAPH as api_modules_employee_self_service } from './api-modules-employee-self-service.js';
 import { GRAPH as api_modules_employment } from './api-modules-employment.js';
@@ -48,6 +49,7 @@ export const GRAPH: Graph = {
   ...api_audit,
   ...api_modules_approval,
   ...api_modules_avatar,
+  ...api_modules_command_result,
   ...api_modules_contracts,
   ...api_modules_employee_self_service,
   ...api_modules_employment,
