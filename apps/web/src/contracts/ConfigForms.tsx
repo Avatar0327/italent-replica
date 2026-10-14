@@ -11,11 +11,10 @@ import { useCommandForm } from '../foundation/forms/useCommandForm.js';
 import type { Values } from '../foundation/forms/store.js';
 import { parseSavedReceipt, parseSettingsReceipt } from './forms.js';
 import { m } from './messages.js';
-import { configObjects, value, type Config, type Row } from './model.js';
+import { configObjects, contractApi, value, type Config, type Row } from './model.js';
 import { PeopleSelect, RefLabels, RefSelect, refPaths } from './references.js';
 
-const base = '/api/tenant/contracts';
-const paths = { types: `${base}/master-data/types`, rules: `${base}/rules`, settings: `${base}/settings` };
+const paths = { types: contractApi.types, rules: contractApi.rules, settings: contractApi.settings };
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const configFields: Record<Config, string[]> = {
   types: ['code', 'name', 'enabled'],
@@ -357,7 +356,8 @@ export function RowCommand({ kind, row, onDone }: { kind: 'delete' | 'toggle'; r
       onDone();
     } else setError(result.error);
   };
-  const label = kind === 'delete' ? m.delete : row.enabled ? m.disabled : m.enabled;
+  const toggleLabel = row.enabled ? m.disabled : m.enabled;
+  const label = kind === 'delete' ? m.delete : toggleLabel;
   return (
     <Space direction="vertical">
       <Popconfirm

@@ -3,7 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router';
 import { usePermissions } from '../foundation/Permissions.js';
 import { PageState } from '../foundation/PageState.js';
 import { m } from './messages.js';
-import { object, value, type Row } from './model.js';
+import { contractApi, object, value, type Row } from './model.js';
 import { useRead } from './useRead.js';
 import { ContractButtons } from './ContractForm.js';
 import { NameOf, RefLabel, refPaths, useToday } from './references.js';
@@ -35,7 +35,7 @@ export function ContractDetail() {
   const navigate = useNavigate();
   const permission = usePermissions(object);
   const allowed = permission.snapshot.objects[object]?.viewableFields ?? [];
-  const result = useRead<Row>(id ? `/api/tenant/contracts/records/${encodeURIComponent(id)}` : null);
+  const result = useRead<Row>(id ? `${contractApi.records}/${encodeURIComponent(id)}` : null);
   const data = result.data;
   return (
     <div className="contract-detail">

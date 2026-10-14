@@ -55,12 +55,23 @@ export function rangeErrors(filters: ListQuery) {
     .filter(([from, to]) => filters[from] && filters[to] && filters[from]! > filters[to]!)
     .map(([from]) => from);
 }
+/** 合同模块接口路径集中在此（apps/api/src/modules/contracts/routes.ts），各组件不再各写一份。 */
+const base = '/api/tenant/contracts';
+export const contractApi = {
+  list: base,
+  records: `${base}/records`,
+  commands: `${base}/commands`,
+  settings: `${base}/settings`,
+  types: `${base}/master-data/types`,
+  companies: `${base}/master-data/companies`,
+  rules: `${base}/rules`,
+} as const;
 /** 筛选与排序参数见 apps/api/src/modules/contracts/list-query.ts；空值不发送。 */
 export function listPath(view: View, page: number, days: number, filters: ListQuery = {}, pageSize = 15) {
   const query = new URLSearchParams({ view, page: String(page), pageSize: String(pageSize) });
   if (view === 'expiring') query.set('days', String(days));
   for (const [key, input] of Object.entries(filters)) if (input) query.set(key, input);
-  return `/api/tenant/contracts?${query}`;
+  return `${contractApi.list}?${query}`;
 }
 export function canOpenRecord(row: Row, view: View) {
   return (

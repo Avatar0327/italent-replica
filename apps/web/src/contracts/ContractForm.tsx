@@ -22,12 +22,11 @@ import {
   type Operation,
 } from './forms.js';
 import { m } from './messages.js';
-import { object, value, type Row } from './model.js';
+import { contractApi, object, value, type Row } from './model.js';
 import { RefLabel, RefSelect, refPaths, usePeople } from './references.js';
 import { useRead } from './useRead.js';
 
-const commands = '/api/tenant/contracts/commands';
-const records = '/api/tenant/contracts/records';
+const { commands, records } = contractApi;
 export const modeLabel = (op: Operation, mode: Mode) =>
   mode === 'direct' ? m.operations[op] : m.applyFor(m.operations[op]!);
 
@@ -119,7 +118,7 @@ export function ContractForm(props: Props) {
 function useFormFields(op: Operation, source?: Row, employee?: Choice) {
   const permission = usePermissions(object);
   // 自动编号只在设置明确开启时放过编号必填；读不到设置时保守按必填。
-  const settings = useRead<Row>(op === 'create' ? '/api/tenant/contracts/settings' : null);
+  const settings = useRead<Row>(op === 'create' ? contractApi.settings : null);
   const context = { source, autoNumber: settings.data?.autoNumber === true };
   const editable = editableFormFields(op, (field) => permission.field(field).editable);
   const access = (field: string) => ({ visible: permission.field(field).visible, editable: editable.includes(field) });

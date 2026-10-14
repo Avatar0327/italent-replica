@@ -6,12 +6,12 @@ import type { PageResult } from '../foundation/client.js';
 import { useFormLock } from '../foundation/forms/FormLock.js';
 import type { Choice } from '../foundation/selectors.js';
 import { m } from './messages.js';
-import type { Row } from './model.js';
+import { contractApi, type Row } from './model.js';
 import { useRead } from './useRead.js';
 
 export const refPaths = {
-  typeId: '/api/tenant/contracts/master-data/types',
-  companyId: '/api/tenant/contracts/master-data/companies',
+  typeId: contractApi.types,
+  companyId: contractApi.companies,
   orgId: '/api/tenant/org/organizations',
   employeeId: '/api/tenant/personnel/employees',
   departmentId: '/api/tenant/org/organizations',
@@ -85,7 +85,8 @@ export function RefSelect({
   const lock = useFormLock(disabled);
   // 已停用 / 无权查看的旧值仍显示 ID，不用合成名称替换真实关联。
   const known = new Set(options.map((option) => option.value));
-  const extra = (Array.isArray(value) ? value : value ? [value] : []).filter((id) => !known.has(id));
+  const selected = Array.isArray(value) ? value : [value].filter((id): id is string => !!id);
+  const extra = selected.filter((id) => !known.has(id));
   return (
     <Select
       showSearch
@@ -152,12 +153,20 @@ export function PeopleSelect({
   const lock = useFormLock(disabled);
   const [query, setQuery] = useState('');
   const [options, setOptions] = useState<Choice[]>([]);
+  const [error, setError] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
-    const timer = setTimeout(
-      () => void load(query, controller.signal).then(setOptions, () => !controller.signal.aborted && setOptions([])),
-      200,
-    );
+    // 读取失败要提示，不能把空候选当成“查无此人”。
+    const fail = () => {
+      if (controller.signal.aborted) return;
+      setOptions([]);
+      setError(true);
+    };
+    const done = (next: Choice[]) => {
+      setOptions(next);
+      setError(false);
+    };
+    const timer = setTimeout(() => void load(query, controller.signal).then(done, fail), 200);
     return () => {
       clearTimeout(timer);
       controller.abort();
@@ -175,6 +184,8 @@ export function PeopleSelect({
       onSearch={setQuery}
       onChange={lock.guard((next: string[]) => onChange?.(next))}
       placeholder={m.choose}
+      status={error ? 'error' : undefined}
+      notFoundContent={error ? m.optionsError : m.empty}
       options={[...options, ...value.filter((id) => !known.has(id)).map((id) => ({ value: id, label: id }))]}
     />
   );

@@ -4,7 +4,7 @@ import { usePermissions } from '../foundation/Permissions.js';
 import { PageState } from '../foundation/PageState.js';
 import type { PageResult } from '../foundation/client.js';
 import { ui } from '../foundation/messages.js';
-import { configObjects, value, type Config, type Row } from './model.js';
+import { configObjects, contractApi, value, type Config, type Row } from './model.js';
 import { useRead } from './useRead.js';
 import { m } from './messages.js';
 import { Fields } from './parts.js';
@@ -18,16 +18,11 @@ export function ContractConfig({ kind }: { kind: Config }) {
   const [page, setPage] = useState(1);
   const [rule, setRule] = useState<Row>();
   const [editing, setEditing] = useState<{ row?: Row }>();
-  const path =
-    kind === 'settings'
-      ? '/api/tenant/contracts/settings'
-      : `/api/tenant/contracts${kind === 'types' ? '/master-data/types' : '/rules'}?page=${page}&pageSize=${pageSize}`;
+  const path = kind === 'settings' ? contractApi.settings : `${contractApi[kind]}?page=${page}&pageSize=${pageSize}`;
   const result = useRead<Row & Partial<PageResult<Row>>>(path);
   const settingPermission = usePermissions(configObjects.settings);
   const settings = useRead<Row>(
-    kind === 'rules' && settingPermission.snapshot.objects[configObjects.settings]
-      ? '/api/tenant/contracts/settings'
-      : null,
+    kind === 'rules' && settingPermission.snapshot.objects[configObjects.settings] ? contractApi.settings : null,
   );
   const rows = result.data?.items ?? [];
   const canCreate = kind !== 'settings' && permission.can('create', 'list');
