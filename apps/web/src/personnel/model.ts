@@ -1,3 +1,4 @@
+import { EMPLOYEE_FIELDS, SUBSETS, type PersonnelField } from '@italent/domain';
 import type { PageRequest } from '../foundation/client.js';
 import { m } from './messages.js';
 
@@ -97,9 +98,26 @@ export function longDate(value: string) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   return match ? `${match[1]}年${Number(match[2])}月${Number(match[3])}日` : value;
 }
+/**
+ * 只有日期类型字段写年月日，按字段类型判断而不是看取值形状：员工ID 等文本即使形如“2026-10-14”也原样显示。
+ * 类型取自领域字段定义（人员与各子集）；入职周期与任职记录的日期由接口另行返回，不在字段定义里。
+ */
+const typedFields: readonly PersonnelField[] = [
+  ...EMPLOYEE_FIELDS,
+  ...Object.values(SUBSETS).flatMap((subset): readonly PersonnelField[] => subset.fields),
+];
+const dateFields = new Set([
+  ...typedFields.filter((field) => field.kind === 'date').map((field) => field.code),
+  'entryDate',
+  'firstEntryDate',
+  'latestEntryDate',
+  'lastWorkDate',
+  'effectiveDate',
+  'stopDate',
+]);
 export function fieldValue(key: string, value: unknown, format?: 'long') {
   if (key === 'employeeStatus' && typeof value === 'number') return m.statuses[value] ?? displayValue(value);
-  if (format === 'long' && typeof value === 'string') return longDate(value);
+  if (format === 'long' && dateFields.has(key) && typeof value === 'string') return longDate(value);
   return displayValue(value);
 }
 /** 原站任职记录卡片写“开始 至 结束”（年月日），无截止日期（9999-12-31）写“至今”。 */
@@ -109,8 +127,8 @@ export function recordPeriod(row: { effectiveDate?: unknown; stopDate?: unknown 
   return `${from} ${m.until} ${fieldValue('stopDate', row.stopDate, 'long')}`;
 }
 /**
- * 原站“人员信息”页签人员字段合在一个“员工信息”分区，二列排布；前 18 项按原站顺序（截图到联系地址为止）。
- * 之后的字段原站未截全，复刻接着列出原有分区里的其余字段，顺序未验证。籍贯、QQ、微信后端暂无字段。
+ * 原站“人员信息”页签人员字段合在一个“员工信息”分区，二列排布；前 19 项按原站顺序（截图到联系地址为止）。
+ * 之后的字段原站未截全，复刻接着列出原有分区里的其余字段，顺序未验证。QQ、微信后端暂无字段。
  */
 export const profileSections = [
   {
@@ -131,6 +149,7 @@ export const profileSections = [
       'marryCategory',
       'politicalStatus',
       'householdCategory',
+      'householdAddress',
       'registAddress',
       'officePhone',
       'mobilePhone',

@@ -17,7 +17,7 @@ const grid = (row: Record<string, unknown>, fields: string[]) =>
 describe('AC-FE-R1b-03 人员信息分区按原站', () => {
   it('人员字段合为一个“员工信息”分区，字段顺序与原站一致', () => {
     expect(profileSections.map((section: { title: string }) => section.title)).toEqual(['员工信息']);
-    expect(profileSections[0].fields.slice(0, 18)).toEqual([
+    expect(profileSections[0].fields.slice(0, 19)).toEqual([
       'name',
       'engName',
       'email',
@@ -36,6 +36,7 @@ describe('AC-FE-R1b-03 人员信息分区按原站', () => {
       'registAddress',
       'officePhone',
       'mobilePhone',
+      'contactAddress',
     ]);
     expect(m.labels.workDate).toBe('参加工作日期');
     expect(m.labels.nationality).toBe('国籍(地区)');
