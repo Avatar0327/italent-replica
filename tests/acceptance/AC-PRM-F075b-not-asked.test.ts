@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { readFrozenProbes } from './support/route-policy/discovery.js';
-import { expectDeclared, knownGapPairIds } from './support/route-policy/module-declared.js';
+import { expectDeclared, knownGapPairIds, traceRequestIds } from './support/route-policy/module-declared.js';
 import { KNOWN_GAPS } from './support/route-policy/probe-known-gaps.js';
 import { REDUNDANT_OBSERVATIONS } from './support/route-policy/probe-redundant.js';
 
@@ -56,20 +56,20 @@ describe('AC-PRM-F075b 去掉的 18 项冗余授权调用不再发生', () => {
     }
   });
 
-  it('只去掉这 9 个入口：其余仍询问 Activity 键的入口恰好 48 个（47 个 360 入口 + 审计的失败命令查询）（查看权与 viewAll 各 48），没有多删', () => {
+  it('只去掉这 9 个入口：其余仍询问 Activity 键的“入口 × 请求键”恰好等于各模块声明（360 入口 + 审计的失败命令查询），没有多删', () => {
     const nine = new Set(REMAINING.map(([endpoint]) => endpoint));
     const asking = (key: string) =>
       Object.entries(probes)
         .filter(([, found]) => found.trace.includes(key))
         .map(([endpoint]) => endpoint);
     for (const key of [VIEW, VIEW_ALL]) {
-      const endpoints = asking(key);
       expect(
-        endpoints.filter((e) => nine.has(e)),
+        asking(key).filter((e) => nine.has(e)),
         key,
       ).toEqual([]);
-      expect(endpoints, key).toHaveLength(48);
     }
+    // 其余入口 × 两个键按模块声明逐项相等（DEC-475④）：新增 / 删除同类入口只改所属模块的声明文件
+    expectDeclared('仍询问 Activity 键的入口', 'activityKeyRequests', traceRequestIds(probes, [VIEW, VIEW_ALL]));
     // 真正消费活动 / 人员 / 报告结果权限的入口照常询问
     for (const endpoint of [
       `GET ${P}/activities`,

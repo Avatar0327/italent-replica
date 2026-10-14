@@ -10,12 +10,20 @@
 import type { ManifestRoute } from '@italent/api';
 import { expect } from 'vitest';
 import type { EndpointDiscovery } from './discovery.js';
+import { BRANCH_INPUTS } from './branch-inputs.js';
 import { declaredPerms } from './perms.js';
 import { KNOWN_GAPS } from './probe-known-gaps.js';
 import { DECLARED } from './required/declared/index.js';
 import { REQUIRED_BY_MODULE } from './required/index.js';
+import { mapSelectors } from './selectors.js';
 
-export type DeclaredKind = 'multiCarrierAdmission' | 'sameStatusInvalidId' | 'knownGapPairs';
+export type DeclaredKind =
+  | 'multiCarrierAdmission'
+  | 'sameStatusInvalidId'
+  | 'knownGapPairs'
+  | 'activityKeyRequests'
+  | 'selectorSites'
+  | 'branchInputEndpoints';
 
 /** 一份模块声明：每种条目一个集合；未列出的种类视为该模块没有此类条目。 */
 export interface ModuleDeclared {
@@ -25,6 +33,12 @@ export interface ModuleDeclared {
   readonly sameStatusInvalidId?: readonly string[];
   /** 已知缺口台账里该模块端点的逐对登记 `[端点, 请求键]`。 */
   readonly knownGapPairs?: readonly (readonly [string, string])[];
+  /** 发现探测的授权轨迹里仍询问 Activity 查看 / viewAll 键的“端点 × 请求键”（AC-PRM-F075b）。 */
+  readonly activityKeyRequests?: readonly (readonly [string, string])[];
+  /** 声明里的 `map` 型动态选择器位置 `[端点, 位置]`（AC-PRM-FW-02 选择器绑定）。 */
+  readonly selectorSites?: readonly (readonly [string, string])[];
+  /** 在输入来源表（BRANCH_INPUTS）里有登记的端点。 */
+  readonly branchInputEndpoints?: readonly string[];
 }
 
 const ROUTE_OWNER: ReadonlyMap<string, string> = new Map(
@@ -47,14 +61,20 @@ interface KindSpec {
 
 const routeKeyKind: KindSpec = { routeOf: (id) => id, forge: (key) => key, ownerOf: (id) => routeOwner(id) };
 
+/** “端点 × 第二键”型条目：标识 = `端点\t第二键`，归属看端点。 */
+const pairKind = (second: string): KindSpec => ({
+  routeOf: (id) => id.split(PAIR_SEPARATOR)[0]!,
+  forge: (key) => `${key}${PAIR_SEPARATOR}${second}`,
+  ownerOf: (id) => routeOwner(id.split(PAIR_SEPARATOR)[0]!),
+});
+
 export const DECLARED_KINDS: Readonly<Record<DeclaredKind, KindSpec>> = {
   multiCarrierAdmission: routeKeyKind,
   sameStatusInvalidId: routeKeyKind,
-  knownGapPairs: {
-    routeOf: (id) => id.split(PAIR_SEPARATOR)[0]!,
-    forge: (key) => `${key}${PAIR_SEPARATOR}obj:Forged.Object:view`,
-    ownerOf: (id) => routeOwner(id.split(PAIR_SEPARATOR)[0]!),
-  },
+  knownGapPairs: pairKind('obj:Forged.Object:view'),
+  activityKeyRequests: pairKind('obj:Forged.Activity:view'),
+  selectorSites: pairKind('object'),
+  branchInputEndpoints: routeKeyKind,
 };
 
 /** 按模块汇总某一种类的声明（条目标识：路由键，或 `端点\t请求键`）。 */
@@ -126,6 +146,22 @@ export const sameStatusInvalidIdRoutes = (fresh: Readonly<Record<string, Endpoin
     .filter(([, d]) => d.invalidId && d.invalidId.status === d.all.status && d.invalidId.code === d.all.code)
     .filter(([, d]) => d.invalidId!.reason === d.all.reason && d.invalidId!.error !== d.all.error)
     .map(([k]) => k);
+
+/** 授权轨迹里询问了给定键的“端点\t请求键”（按键顺序、端点顺序稳定）。 */
+export const traceRequestIds = (
+  probes: Readonly<Record<string, { readonly trace: readonly string[] }>>,
+  keys: readonly string[],
+): string[] =>
+  Object.entries(probes).flatMap(([endpoint, found]) =>
+    keys.filter((key) => found.trace.includes(key)).map((key) => pairId([endpoint, key])),
+  );
+
+/** 声明里的 map 型选择器位置“端点\t位置”。 */
+export const selectorSiteIds = (routes: readonly ManifestRoute[]): string[] =>
+  routes.flatMap((r) => mapSelectors(r.policy).map((site) => pairId([`${r.method} ${r.path}`, site.position])));
+
+/** 输入来源表里有登记的端点。 */
+export const branchInputEndpointIds = (): string[] => Object.keys(BRANCH_INPUTS);
 
 /** 已知缺口台账的全部登记对（`端点\t请求键`）。 */
 export const knownGapPairIds = (): string[] => KNOWN_GAPS.flatMap((g) => g.pairs.map(pairId));

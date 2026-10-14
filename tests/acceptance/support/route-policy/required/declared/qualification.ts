@@ -12,4 +12,8 @@ export const QUALIFICATION_DECLARED: ModuleDeclared = {
     'PUT /api/tenant/qualification/standards/:id/channels',
     'PUT /api/tenant/qualification/targets/:id/grade-descriptions/:detailId',
   ],
+  /** 声明里的 map 型动态选择器位置“端点 × 位置”（AC-PRM-FW-02 选择器绑定） */
+  selectorSites: [['GET /api/tenant/qualification/candidates/owner-orgs', 'object']],
+  /** 输入来源表（branch-inputs.ts）里有登记的端点 */
+  branchInputEndpoints: ['GET /api/tenant/qualification/candidates/owner-orgs'],
 };

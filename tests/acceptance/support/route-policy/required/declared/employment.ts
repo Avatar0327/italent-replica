@@ -24,4 +24,15 @@ export const EMPLOYMENT_DECLARED: ModuleDeclared = {
     'POST /api/tenant/employment/transfers/employees/:id/preview',
     'PUT /api/tenant/employment/custom-fields/:id/inheritance',
   ],
+  /** 声明里的 map 型动态选择器位置“端点 × 位置”（AC-PRM-FW-02 选择器绑定） */
+  selectorSites: [
+    ['POST /api/tenant/employment/employees/:id/import', 'rows.button'],
+    ['POST /api/tenant/employment/employees/:id/import', 'rows.operation'],
+    ['POST /api/tenant/employment/employees/:id/import/forward-update-preview', 'rows.operation'],
+  ],
+  /** 输入来源表（branch-inputs.ts）里有登记的端点 */
+  branchInputEndpoints: [
+    'POST /api/tenant/employment/employees/:id/import',
+    'POST /api/tenant/employment/employees/:id/import/forward-update-preview',
+  ],
 };

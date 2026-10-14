@@ -15,4 +15,14 @@ export const TALENT_DECLARED: ModuleDeclared = {
     'POST /api/tenant/talent/criteria/:id/model-image/attachments',
     'POST /api/tenant/talent/criteria/:id/model-image/attachments/:attachmentId/upload',
   ],
+  /** 声明里的 map 型动态选择器位置“端点 × 位置”（AC-PRM-FW-02 选择器绑定） */
+  selectorSites: [
+    ['GET /api/tenant/talent/candidates/owner-orgs', 'of[0].object'],
+    ['GET /api/tenant/talent/forms/:object', 'of[0].button'],
+    ['GET /api/tenant/talent/forms/:object', 'of[0].object'],
+    ['GET /api/tenant/talent/forms/:object', 'of[0].operation'],
+    ['GET /api/tenant/talent/forms/:object', 'of[1].object'],
+  ],
+  /** 输入来源表（branch-inputs.ts）里有登记的端点 */
+  branchInputEndpoints: ['GET /api/tenant/talent/candidates/owner-orgs', 'GET /api/tenant/talent/forms/:object'],
 };
