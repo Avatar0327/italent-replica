@@ -1,3 +1,4 @@
+import { registerSyncRoutes } from './sync-routes.js';
 import { registerRiskRoutes } from './risk-routes.js';
 import { registerCalcRoutes } from './calc-routes.js';
 import { registerSuccessionConfigRoutes } from './config-routes.js';
@@ -112,6 +113,7 @@ export function registerSuccessionRoutes(router: Hono<TenantEnv>, deps: TenantRo
     return c.json((await projectSuccession(deps, ctx, 'record', [found.view]))[0]);
   });
 
+  registerSyncRoutes(router, deps);
   registerCalcRoutes(router, deps);
   registerRecordWrites(router, deps);
   registerSuccessionConfigRoutes(router, deps);

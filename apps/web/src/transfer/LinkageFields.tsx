@@ -1,6 +1,7 @@
 /** 调动表单的联动区块（R1-T10，`13` §7 HR 端“他人调动申请”表单）：只在 HR 入口出现，本人申请没有（`12` 附录）。 */
+import type { ReactNode } from 'react';
 import { linkageText } from './messages.js';
-import type { Choice, ContractChoice, LinkageDraft, TransferFormProps } from './types.js';
+import type { Choice, ContractChoice, LinkageDraft, TransferFormProps, TransferCatalog } from './types.js';
 
 export function LinkageFields({ model, busy, onLinkage }: TransferFormProps) {
   const draft = model.linkage;
@@ -11,46 +12,62 @@ export function LinkageFields({ model, busy, onLinkage }: TransferFormProps) {
     <fieldset disabled={busy} className="transfer-linkage">
       <legend>{linkageText.section}</legend>
       <div className="transfer-grid">
-        <ContractFields draft={draft} contracts={model.contracts ?? []} change={change} />
-        <label>
-          <input
-            type="checkbox"
-            name="adjustSalary"
-            checked={draft.adjustSalary}
-            onChange={(event) => change({ adjustSalary: event.target.checked })}
+        <LinkageAccess catalog={model.catalog} codes={['isChangeContract', 'contractChange']}>
+          <ContractFields draft={draft} contracts={model.contracts ?? []} change={change} />
+        </LinkageAccess>
+        <LinkageAccess catalog={model.catalog} codes={['adjustSalary']}>
+          <label>
+            <input
+              type="checkbox"
+              name="adjustSalary"
+              checked={draft.adjustSalary}
+              onChange={(event) => change({ adjustSalary: event.target.checked })}
+            />
+            {linkageText.adjustSalary}
+          </label>
+        </LinkageAccess>
+        {draft.adjustSalary && (
+          <LinkageAccess catalog={model.catalog} codes={['adjustSalary']}>
+            <p>{linkageText.salaryHint}</p>
+          </LinkageAccess>
+        )}
+        <LinkageAccess catalog={model.catalog} codes={['onTrialMonths']}>
+          <label>
+            {linkageText.trialMonths}
+            <input
+              name="onTrialMonths"
+              type="number"
+              min={1}
+              max={60}
+              value={draft.onTrialMonths ?? ''}
+              onChange={(event) => change({ onTrialMonths: event.target.value ? Number(event.target.value) : null })}
+            />
+          </label>
+        </LinkageAccess>
+        <LinkageAccess catalog={model.catalog} codes={['onTrialStartDate']}>
+          <label>
+            {linkageText.trialStartDate}
+            <input
+              name="onTrialStartDate"
+              type="date"
+              value={draft.onTrialStartDate}
+              onChange={(event) => change({ onTrialStartDate: event.target.value })}
+            />
+          </label>
+        </LinkageAccess>
+        <LinkageAccess catalog={model.catalog} codes={['handoverPersonId']}>
+          <PersonSelect
+            name="handoverPersonId"
+            label={linkageText.handoverPerson}
+            value={draft.handoverPersonId}
+            people={people}
+            onChange={(handoverPersonId) => change({ handoverPersonId })}
           />
-          {linkageText.adjustSalary}
-        </label>
-        {draft.adjustSalary && <p>{linkageText.salaryHint}</p>}
-        <label>
-          {linkageText.trialMonths}
-          <input
-            name="onTrialMonths"
-            type="number"
-            min={1}
-            max={60}
-            value={draft.onTrialMonths ?? ''}
-            onChange={(event) => change({ onTrialMonths: event.target.value ? Number(event.target.value) : null })}
-          />
-        </label>
-        <label>
-          {linkageText.trialStartDate}
-          <input
-            name="onTrialStartDate"
-            type="date"
-            value={draft.onTrialStartDate}
-            onChange={(event) => change({ onTrialStartDate: event.target.value })}
-          />
-        </label>
-        <PersonSelect
-          name="handoverPersonId"
-          label={linkageText.handoverPerson}
-          value={draft.handoverPersonId}
-          people={people}
-          onChange={(handoverPersonId) => change({ handoverPersonId })}
-        />
+        </LinkageAccess>
       </div>
-      <DutyFields draft={draft} people={people} change={change} />
+      <LinkageAccess catalog={model.catalog} codes={['dutyTransfer']}>
+        <DutyFields draft={draft} people={people} change={change} />
+      </LinkageAccess>
     </fieldset>
   );
 }
@@ -193,5 +210,24 @@ function PersonSelect(props: {
         ))}
       </select>
     </label>
+  );
+}
+
+function LinkageAccess({
+  catalog,
+  codes,
+  children,
+}: {
+  catalog: TransferCatalog;
+  codes: string[];
+  children: ReactNode;
+}) {
+  // 与调动 catalog 的基本字段一致：显式权限清单决定显示和只读；缺省沿用既有全字段契约。
+  if (catalog.viewableFields && !codes.every((code) => catalog.viewableFields!.includes(code))) return null;
+  const readonly = !!catalog.editableFields && !codes.every((code) => catalog.editableFields!.includes(code));
+  return (
+    <fieldset className="transfer-linkage-field" disabled={readonly}>
+      {children}
+    </fieldset>
   );
 }
