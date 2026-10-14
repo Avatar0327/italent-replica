@@ -2,9 +2,9 @@
  * F-141 第 2 轮：目录页表单提交时，antd 会把没填的字段以 undefined 带进 values；顺序号没填不是错误
  * （任职分类、任职级别的顺序号都是可选），只有填了不合法的值才拒绝。
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { qualificationResources } from '../../apps/web/src/qualification/resources.js';
-import { commandRequestBody, validateValues } from '../../apps/web/src/talent/catalog/api.js';
+import { commandRequestBody, saveResource, validateValues } from '../../apps/web/src/talent/catalog/api.js';
 
 const classes = () => qualificationResources.find((r) => r.key === 'category-classes')!;
 
@@ -43,5 +43,20 @@ describe('AC-F141-catalog-validate 内核命令体 → 请求体', () => {
       details: [{ id: 'x' }],
     });
     expect(commandRequestBody(standards, original, [], { name: '标准乙' })).toEqual({ name: '标准乙' });
+  });
+});
+
+describe('AC-F141-catalog-validate 保存请求', () => {
+  it('内核固定的命令只保留 ID 与版本，请求体用转换后的（清空发 null），幂等键不变', async () => {
+    const levels = qualificationResources.find((r) => r.key === 'levels')!;
+    const request = vi.fn(async (_path: string, _options: unknown) => ({ id: 'a', revision: 4 }));
+    const kernel = { id: 'command-1', revision: 3, body: { layerId: undefined } };
+    await saveResource({ request } as never, levels, { layerId: null }, { id: 'a', revision: 3 }, kernel);
+    const options = request.mock.calls[0]![1] as {
+      method: string;
+      command: { id: string; revision: number; body: unknown };
+    };
+    expect(options.method).toBe('PATCH');
+    expect(options.command).toEqual({ id: 'command-1', revision: 3, body: { layerId: null } });
   });
 });
