@@ -4,6 +4,29 @@ import { q } from './messages.js';
 const base = '/api/tenant/qualification/';
 export const qualificationResources: Resource[] = [
   {
+    key: 'categories',
+    title: q.categories,
+    module: 'qualification',
+    object: 'Qualification.EmploymentCategory',
+    owner: 'category',
+    note: 'qualification-category',
+    columns: ['name', 'code', 'classId', 'enabled'],
+    fields: [
+      { key: 'name', label: m.name, required: true },
+      { key: 'code', label: m.code, max: 50 },
+      {
+        key: 'classId',
+        label: q.class,
+        kind: 'select',
+        required: true,
+        createOnly: true,
+        source: `${base}category-classes`,
+      },
+      { key: 'enabled', label: m.status, kind: 'boolean' },
+      { key: 'publicDown', label: q.publicDown, kind: 'boolean' },
+    ],
+  },
+  {
     // F-141（DEC-500）补登记的任职分类维护页：字段取自后端契约（category-classes）；原站该页的列与交互证据不足（未验证），
     // 复用同一套目录页，不自创交互。上级分类建后不可改（后端 categoryClassPatch 不收 parentId）。
     key: 'category-classes',
@@ -25,29 +48,6 @@ export const qualificationResources: Resource[] = [
         source: `${base}category-classes`,
       },
       { key: 'displayOrder', label: m.order, kind: 'number' },
-      { key: 'enabled', label: m.status, kind: 'boolean' },
-      { key: 'publicDown', label: q.publicDown, kind: 'boolean' },
-    ],
-  },
-  {
-    key: 'categories',
-    title: q.categories,
-    module: 'qualification',
-    object: 'Qualification.EmploymentCategory',
-    owner: 'category',
-    note: 'qualification-category',
-    columns: ['name', 'code', 'classId', 'enabled'],
-    fields: [
-      { key: 'name', label: m.name, required: true },
-      { key: 'code', label: m.code, max: 50 },
-      {
-        key: 'classId',
-        label: q.class,
-        kind: 'select',
-        required: true,
-        createOnly: true,
-        source: `${base}category-classes`,
-      },
       { key: 'enabled', label: m.status, kind: 'boolean' },
       { key: 'publicDown', label: q.publicDown, kind: 'boolean' },
     ],

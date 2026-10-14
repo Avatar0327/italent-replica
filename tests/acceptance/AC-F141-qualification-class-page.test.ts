@@ -35,10 +35,10 @@ describe('AC-F141-qualification-class-page 任职分类维护页登记（DEC-500
     expect(() => validateValues(resource, { name: '  ' })).toThrow();
   });
 
-  it('分类放在类别之前（类别按分类组织）；每个资源的注释登记都在本模块注释里', () => {
+  it('默认页仍是任职类别（分类排在类别之后）；每个资源的注释登记都在本模块注释里', () => {
     const keys = qualificationResources.map((r) => r.key);
-    expect(keys.indexOf('category-classes')).toBeGreaterThanOrEqual(0);
-    expect(keys.indexOf('category-classes')).toBeLessThan(keys.indexOf('categories'));
+    expect(keys[0]).toBe('categories');
+    expect(keys.indexOf('category-classes')).toBe(1);
     for (const resource of qualificationResources) expect(notes[resource.note], resource.note).toBeDefined();
   });
 });

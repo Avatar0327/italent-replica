@@ -188,8 +188,8 @@ function validationType(field: Field) {
 
 /**
  * 保存走页面级表单提交内核（F-123，DEC-464 / 473）：未知结果的命令保存在页面的 FormCommands 里，关闭重开、切换页签都不会
- * 换命令 ID 再发；服务器明确拒绝时保留输入、改正后新命令重提。命令体已由 writablePatch 算好（含显式 null 清空），
- * 以它作为内核的提交值，不让内核再按编辑差异重算一遍。
+ * 换命令 ID 再发；服务器明确拒绝时保留输入、改正后新命令重提。命令体由 writablePatch 算好（含显式 null 清空）作为内核的提交值；
+ * 内核的基线是打开表单时读到的真实记录，409 重读确认后内核把基线与版本更新为最新记录，“有没有修改”也按它比较。
  */
 function useSaveResource(
   resource: Resource,
@@ -218,9 +218,12 @@ function useSaveResource(
     } catch (error) {
       throw new ApiError(422, 'LOCAL_VALIDATION', 'fields', (error as Error).message);
     }
+    // 比较基线：冲突重读并确认后是最新记录，其余时候是打开表单时读到的记录（内核在冲突后保留并更新自己的基线 / 版本）。
+    const state = command.state;
+    const compareWith = original && state && state.status !== 'done' ? (state.baseline as Row) : original;
     const body = writablePatch(
       values,
-      original,
+      compareWith,
       fields.filter((field) => field.access.editable).map((field) => field.name),
       resource.fields.filter((field) => field.nullable).map((field) => field.key),
     );
@@ -229,7 +232,8 @@ function useSaveResource(
     if (!original && resource.module === 'qualification' && resource.key === 'standards') body.details ??= [];
     const result = await command.submit({
       values: body,
-      baseline: {},
+      // 打开表单时读到的真实记录：差异表的“原值”与冲突后的比较都以它为起点，不能传空对象
+      baseline: original ?? {},
       editableFields: Object.keys(body),
       revision: original?.revision ?? 0,
       businessId: original?.id,
