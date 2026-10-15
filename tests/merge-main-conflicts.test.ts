@@ -950,12 +950,12 @@ describe('第 3 轮审查：重算之后、提交之前再核对一次（重算�
     expect(sh(root, 'status', '--porcelain')).toBe('');
   }, 60_000);
 
-  it('重算过程中登记文件在工作区被改（未暂存）→ 提交前失败、不提交', () => {
+  it('重算过程中改了登记文件（生成物以外）→ 提交前失败、不提交（第 5 轮起在隔离目录里按内容比对）', () => {
     const root = buildRepo(regenSides(`writeFileSync('${SCHEMA}', "export * from './tenancy.js';\\n");`));
     const head = sh(root, 'rev-parse', 'HEAD');
     const result = regenRun(root);
     expect(result.status, result.out).not.toBe(0);
-    expect(result.out).toContain('工作区与索引不一致');
+    expect(result.out).toContain('生成物以外的文件');
     expect(result.out).toContain(SCHEMA);
     expect(sh(root, 'rev-parse', 'HEAD')).toBe(head);
     expect(mergeInProgress(root)).toBe(true);
@@ -966,7 +966,7 @@ describe('第 3 轮审查：重算之后、提交之前再核对一次（重算�
     const head = sh(root, 'rev-parse', 'HEAD');
     const result = regenRun(root);
     expect(result.status, result.out).not.toBe(0);
-    expect(result.out).toContain('未跟踪');
+    expect(result.out).toContain('生成物以外的文件');
     expect(result.out).toContain('stray.txt');
     expect(sh(root, 'rev-parse', 'HEAD')).toBe(head);
   }, 60_000);
