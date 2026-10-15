@@ -1,4 +1,4 @@
-import { test, expect, user, employee, tenant } from './fixtures.js';
+import { test, expect, user, employee, tenant, selfServiceButtons } from './fixtures.js';
 
 const recordId = '50000000-0000-4000-8000-000000000001';
 
@@ -13,6 +13,7 @@ const record = {
   fieldLabels: { departmentId: '合成研发部' },
 };
 const ownProfile = {
+  selfServiceButtons,
   employee: { id: employee, name: '合成员工', code: 'DEMO-001', revision: 1 },
   timezone: 'Asia/Shanghai',
   today: '2026-10-13',
@@ -147,7 +148,13 @@ test('AC-FE-R1d-1 经理筛选与待办页签传递到服务器，隐藏字段�
 });
 
 test('AC-FE-R1d-1 无授权不显示本人调动；禁止读取时显示错误而非演示档案', async ({ page }) => {
+  // 共享档案授予了三个按钮；无授权时本人入口返回空按钮清单（#348 第 1 轮 P2）。
+  await page.route('**/self-service/profile', (route) =>
+    route.fulfill({ json: { ...ownProfile, selfServiceButtons: [] } }),
+  );
   await page.goto('/self/applications');
+  // 档案与任职记录都已渲染后再断言，避免在页面加载前判零的假绿。
+  await expect(page.locator('.shell-workspace .ant-table-row').first()).toBeVisible();
   await expect(page.getByRole('button', { name: '本人调动申请', exact: true })).toHaveCount(0);
   await page.route('**/self-service/profile', (route) =>
     route.fulfill({ status: 403, json: { error: { code: 'FORBIDDEN' } } }),
