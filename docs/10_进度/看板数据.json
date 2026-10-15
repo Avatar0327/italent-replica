@@ -4941,7 +4941,7 @@
 "after": [
 "F-142"
 ],
-"note": "F-142 已合并 · DEC-536：改 Codex Astra high 开发、Sol high 审（原定 Claude Opus 作废）；提示词 03 起草，经 00 交用户在 Codex 发起，发起后标“已派”",
+"note": "F-142 已合并 · DEC-536：改 Codex Astra high 开发、Sol high 审（原定 Claude Opus 作废）；提示词 03 起草，经 00 交用户在 Codex 发起，发起后标“已派”；分支 codex/F-154-mentor-career-rotation",
 "mod": "R3",
 "ms": "D2"
 },
