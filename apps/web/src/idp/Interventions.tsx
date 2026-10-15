@@ -1,8 +1,9 @@
 import { Alert, Button, Form, Input, Modal, Radio, Select, Space } from 'antd';
 import { useState } from 'react';
+import { slotKey } from '../foundation/forms/slot.js';
 import { useApiClient } from '../foundation/Session.js';
 import { writeIntegrity } from './access.js';
-import { BATCH, IDP_API, useCommand, type Command } from './api.js';
+import { BATCH, IDP_API, useBatch, useCommand, type Command } from './api.js';
 import { CommandNotice } from './listing.js';
 import { t } from './messages.js';
 import { batchSplit, receiptSummary, type BatchAction } from './model.js';
@@ -29,21 +30,39 @@ const TITLES: Record<InterventionKind, string> = {
 
 const SINGLE: readonly InterventionKind[] = ['start', 'jump', 'transfer', 'delete'];
 
+const PLANS = `${IDP_API}/plans`;
 /**
- * 单条动作按计划存一条命令（原单 = 计划，可回查）；批量按“动作 + 所选计划”存一条命令，以逐条回执为结论。
+ * 单条动作按计划的恢复槽存一条命令（原单 = 计划，可回查）；批量按所选可执行计划存一条命令，逐个计划的槽都钉到它，
+ * 以逐条回执为结论。动作记进槽上下文（F-147）：同一计划上别的动作（单条或批量）未确认时本弹窗锁定。
  * 命令在页面根部（F-123），弹窗关闭再打开仍是同一条：结果未知时锁住并显示命令 ID，不发第二次请求。
  */
-function useInterventionCommand(kind: InterventionKind, rows: PlanSummary[]) {
+export function Intervention(props: Props) {
+  const { kind } = props;
+  return SINGLE.includes(kind) ? (
+    <SingleIntervention {...props} />
+  ) : (
+    <BatchIntervention {...props} kind={kind as BatchAction} />
+  );
+}
+function SingleIntervention(props: Props) {
   const api = useApiClient();
-  const single = SINGLE.includes(kind) ? rows[0] : undefined;
-  const ids = rows.map((row) => row.id).sort();
-  const resource = single ? `${IDP_API}/plans/${single.id}:action` : `${IDP_API}/plans/${kind}:${ids.join(',')}`;
-  return useCommand(resource, single?.id, (id) => api.request<PlanSummary>(`${IDP_API}/plans/${id}`));
+  const plan = props.rows.length === 1 ? props.rows[0] : undefined;
+  const command = useCommand(
+    plan ? slotKey(PLANS, plan.id) : slotKey(PLANS),
+    plan?.id,
+    (id) => api.request<PlanSummary>(`${PLANS}/${id}`),
+    { action: props.kind },
+  );
+  return <InterventionDialog {...props} command={command} />;
+}
+function BatchIntervention(props: Props & { kind: BatchAction }) {
+  const eligible = batchSplit(props.rows, props.kind).eligible.map((row) => row.id);
+  const command = useBatch(PLANS, eligible, { action: props.kind });
+  return <InterventionDialog {...props} command={command} />;
 }
 
 /** 计划状态动作与流程干预的统一弹窗；一次只提交一次，结果未知时锁定并要求回查原单（AGENTS.md §10）。 */
-export function Intervention({ kind, rows, onClose, done }: Props) {
-  const command = useInterventionCommand(kind, rows);
+function InterventionDialog({ kind, rows, onClose, done, command }: Props & { command: Command }) {
   const [receipts, setReceipts] = useState<Receipt[]>();
   if (receipts) {
     const summary = receiptSummary(receipts);
@@ -94,7 +113,7 @@ function SingleConfirm({ kind, rows, onClose, command, finished }: DialogProps &
   const plan = rows.length === 1 ? rows[0] : undefined;
   const ok = async () => {
     if (!plan || plan.revision === undefined) return;
-    const path = kind === 'start' ? `${IDP_API}/plans/${plan.id}/start` : `${IDP_API}/plans/${plan.id}`;
+    const path = kind === 'start' ? `${PLANS}/${plan.id}/start` : `${PLANS}/${plan.id}`;
     if (await command.run(path, kind === 'start' ? 'POST' : 'DELETE', {}, plan.revision)) finished();
   };
   return (
@@ -120,7 +139,7 @@ function BatchDialog({ kind, rows, onClose, command, finished }: DialogProps & {
     const body = kind === 'startNext' ? { items, runningMode } : { items, ...note };
     const path = { urge: 'urge', startNext: 'start-next', terminate: 'terminate' }[kind];
     // 批量没有单一原单，命令按 revision 0 提交（契约要求），以回执逐条判定
-    const outcome = await command.run<{ receipts: Receipt[] }>(`${IDP_API}/plans/${path}`, 'POST', body, 0, BATCH);
+    const outcome = await command.run<{ receipts: Receipt[] }>(`${PLANS}/${path}`, 'POST', body, 0, BATCH);
     if (outcome) finished(outcome.response?.receipts ?? []);
   };
   return (
@@ -185,7 +204,7 @@ function JumpDialog({ rows, onClose, command, finished }: DialogProps) {
   const ok = async () => {
     const values = await form.validateFields();
     const body = { toNodeKey: values.toNodeKey, stageId: stage!.id, reason: values.reason.trim() };
-    if (await command.run(`${IDP_API}/plans/${plan!.id}/jump`, 'POST', body, plan!.revision!)) finished();
+    if (await command.run(`${PLANS}/${plan!.id}/jump`, 'POST', body, plan!.revision!)) finished();
   };
   return (
     <Modal
@@ -234,7 +253,7 @@ function TransferDialog({ rows, onClose, command, finished }: DialogProps) {
     const values = await form.validateFields();
     const reason = values.reason?.trim();
     const body = { toUserId: values.toUserId.trim(), ...(reason ? { reason } : {}) };
-    if (await command.run(`${IDP_API}/plans/${plan!.id}/transfer`, 'POST', body, plan!.revision!)) finished();
+    if (await command.run(`${PLANS}/${plan!.id}/transfer`, 'POST', body, plan!.revision!)) finished();
   };
   return (
     <Modal

@@ -16,6 +16,7 @@ import {
   periodsIntersect,
   RULE_TEXT_SOURCES,
   stageDueDate,
+  stagePassed,
   tenantLocalDate,
   type IdpObject,
 } from '@italent/domain';
@@ -153,7 +154,8 @@ export async function stageViews(tx: Tx, plan: PlanRow, stages: readonly StageRo
     const dueDate = stageDueDate(stage, index, {
       planStart: plan.startDate,
       planEnd: plan.endDate,
-      previousEnd: previous?.status === 'ended' ? previous.endedOn : null,
+      // 被跳过终止的上一阶段也算已结束（F-155），按其结束日推算
+      previousEnd: previous && stagePassed(previous.status) ? previous.endedOn : null,
       employmentEffective: effective,
     });
     return {

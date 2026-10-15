@@ -1,16 +1,25 @@
 import { useApiClient } from '../foundation/Session.js';
 import { slotKey } from '../foundation/forms/slot.js';
+import { forAction } from '../foundation/forms/action.js';
 import { useCommandForm } from '../foundation/forms/useCommandForm.js';
 import { messages } from '../foundation/forms/messages.js';
 import type { Values } from '../foundation/forms/store.js';
 import type { Row } from './model.js';
 
-/** API 适配只负责 DTO；锁定、命令 ID、冲突重读由底座统一负责。 */
-export function useRecordForm(path: string, row?: Row, project: (row: Row) => Values = (value) => value) {
+/**
+ * API 适配只负责 DTO；锁定、命令 ID、冲突重读由底座统一负责。
+ * action 是本表单在该对象上的动作（如 { action: 'edit' }）：同一对象别的动作未确认时本表单锁定（F-147 forAction）。
+ */
+export function useRecordForm(
+  path: string,
+  row?: Row,
+  project: (row: Row) => Values = (value) => value,
+  action: Values = {},
+) {
   const api = useApiClient();
   const resource = row ? `${path}/${row.id}` : path;
   // 恢复槽：编辑为原单路径、新建为集合路径（与 CreateEntry 的在途新建检查同一个槽，F-142）。
-  const command = useCommandForm(slotKey(path, row?.id));
+  const command = forAction(useCommandForm(slotKey(path, row?.id)), action);
   const latest = command.state?.latest;
   const current = latest ? ({ ...latest.values, id: latest.id, revision: latest.revision } as Row) : row;
   return {
