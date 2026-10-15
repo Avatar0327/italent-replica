@@ -661,8 +661,6 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/permission/scope-resolver.ts#addBoundedIds': ['#MAX_SCOPE_IDS'],
   'apps/api/src/modules/permission/scope-resolver.ts#expandOrgIds': [
     'apps/api/src/modules/permission/scope-hierarchy.ts#expandScopeOrgSet',
-    'apps/api/src/modules/permission/scope-hierarchy.ts#expandScopeRoots',
-    'packages/domain/src/evaluation/catalog.ts#EVALUATION_APP',
   ],
   'apps/api/src/modules/permission/scope-resolver.ts#identityAll': [
     'apps/api/src/modules/permission/scope-hierarchy.ts#scopeRows',
@@ -675,10 +673,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/scope-hierarchy.ts#scopeRows',
     '#roleRoots',
   ],
-  'apps/api/src/modules/permission/scope-resolver.ts#personnelCreationScope': [
-    'apps/api/src/modules/permission/scope-hierarchy.ts#expandScopeRoots',
-    '#managementRoots',
-  ],
+  'apps/api/src/modules/permission/scope-resolver.ts#personnelCreationScope': ['#expandOrgIds', '#managementRoots'],
   'apps/api/src/modules/permission/scope-resolver.ts#resolveDataScope': [
     '#addBoundedIds',
     '#expandOrgIds',
