@@ -4,7 +4,7 @@ import type { SQL } from 'drizzle-orm';
 import { tenantLocalDate } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import type { EmploymentContext, PageQuery } from '../employment/types.js';
-import { managerIdentity } from '../permission/manager-identity.js';
+import { managerIdentityWithOrgs } from '../permission/manager-identity.js';
 import { scopeRows } from '../permission/scope-hierarchy.js';
 import { employeeAvatars, type AvatarReference } from '../avatar/references.js';
 import { scopeSql } from '../permission/module-access.js';
@@ -45,7 +45,7 @@ function effectiveJobs(tenantId: string, kind: JobKind, asOf: string) {
 }
 export async function managerReferenceQuery(tx: Tx, ctx: EmploymentContext, q: ManagerReferenceQuery) {
   const today = tenantLocalDate(ctx.now, ctx.timezone);
-  const identity = await managerIdentity(tx, { ...ctx, asOf: today });
+  const identity = await managerIdentityWithOrgs(tx, { ...ctx, asOf: today });
   if (!identity.active) throw new AppError('FORBIDDEN', '需要经理自助身份');
   const orgs = `{${identity.orgIds.join(',')}}`;
   return sql`WITH organizations AS (

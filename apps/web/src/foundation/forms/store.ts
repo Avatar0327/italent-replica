@@ -54,16 +54,42 @@ function failureStatus(error: unknown): Submission['status'] {
 export function slotContext<C extends Values = Values>(state?: Submission) {
   return state && state.status !== 'done' ? (state.context as C | undefined) : undefined;
 }
+/** 槽里的命令未确认（处理中、结果未知、冲突）时返回它保存的上下文：同对象的其他动作据此禁用或按它重开。 */
+export function lockedContext<C extends Values = Values>(state?: Submission) {
+  return isLocked(state) ? (state!.context as C | undefined) : undefined;
+}
+/**
+ * 恢复槽 → 占用它的条目（F-147）：批量命令、带版本的冲突恢复条目与槽不同名，按槽才能找到同对象的未确认命令。
+ */
+function createPins(notify: () => void) {
+  const pins = new Map<string, string>();
+  return {
+    holder: (slots: readonly string[]) => slots.map((slot) => pins.get(slot)).find((key) => key !== undefined),
+    pin(slots: readonly string[], key: string) {
+      slots.forEach((slot) => pins.set(slot, key));
+      notify();
+    },
+    /** 只放开仍钉在 key 上的槽：别的命令后来钉上的不动。 */
+    unpin(slots: readonly string[], key: string) {
+      slots.forEach((slot) => {
+        if (pins.get(slot) === key) pins.delete(slot);
+      });
+      notify();
+    },
+  };
+}
 /** DEC-464/473/475：状态由页面持有；没有解锁未知命令或自动重放的接口。 */
 export function createFormStore() {
   const entries = new Map<string, Submission>();
   const listeners = new Set<() => void>();
+  const notify = () => listeners.forEach((listener) => listener());
   const put = (key: string, state: Submission) => {
     entries.set(key, state);
-    listeners.forEach((listener) => listener());
+    notify();
   };
   return {
     get: (key: string) => entries.get(key),
+    ...createPins(notify),
     subscribe(listener: () => void) {
       listeners.add(listener);
       return () => {
@@ -73,7 +99,7 @@ export function createFormStore() {
     clear(key: string) {
       if (isLocked(entries.get(key))) return;
       entries.delete(key);
-      listeners.forEach((listener) => listener());
+      notify();
     },
     async submit(key: string, input: SubmitInput) {
       const existing = entries.get(key);

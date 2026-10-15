@@ -7,7 +7,7 @@ import type { Graph } from '../../../evidence-graph.js';
 export const GRAPH: Graph = {
   'apps/api/src/modules/transfer/access.ts#inTeam': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
-    'apps/api/src/modules/permission/manager-identity.ts#managerIdentity',
+    'apps/api/src/modules/permission/manager-identity.ts#managerIdentityWithOrgs',
     'apps/api/src/modules/permission/scope-persons.ts#currentPersons',
   ],
   'apps/api/src/modules/transfer/access.ts#requireManagerBusinessSource': [
@@ -444,7 +444,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/job/metadata.ts#jobTables',
   ],
   'apps/api/src/modules/transfer/manager-references.ts#managerReferenceQuery': [
-    'apps/api/src/modules/permission/manager-identity.ts#managerIdentity',
+    'apps/api/src/modules/permission/manager-identity.ts#managerIdentityWithOrgs',
     'apps/api/src/modules/permission/module-access.ts#scopeSql',
     '#effectiveJobs',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
@@ -541,7 +541,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/transfer/manager-team.ts#managerTeamQuery': [
-    'apps/api/src/modules/permission/manager-identity.ts#managerIdentity',
+    'apps/api/src/modules/permission/manager-identity.ts#managerIdentityWithOrgs',
     'apps/api/src/modules/permission/module-access.ts#scopeSql',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],

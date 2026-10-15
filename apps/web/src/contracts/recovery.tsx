@@ -5,6 +5,7 @@ import type { Command } from '../foundation/client.js';
 import type { FormField, FormGroup } from '../foundation/FormOverlay.js';
 import { useApiClient } from '../foundation/Session.js';
 import { CommandStatus } from '../foundation/forms/CommandStatus.js';
+import { forAction } from '../foundation/forms/action.js';
 import type { CommandForm } from '../foundation/forms/useCommandForm.js';
 import { useContractCommand } from './commands.js';
 import type { Values } from '../foundation/forms/store.js';
@@ -37,17 +38,20 @@ type Target = {
   /** 参与比较的业务字段：删除也按这些字段比较，不能为空。 */
   keys: readonly string[];
   fallback?: Row;
+  /** 本入口的动作（编辑、删除、启停、移序……）：同一对象的动作共用恢复槽，动作记在槽上下文（F-147）。 */
+  action?: string;
 };
 type Send = (command: Command<Values>, sent: number) => Promise<{ id: string }>;
 
 /**
+ * resource 是恢复槽键（slotKey：对象路径，新建为集合路径），不带动作。
  * 确认后的基线只在提交成功（clear 后回到页面数据）或用户核对差异（内核 confirm）时更新；
  * 被拒 / 未知 / 冲突时沿用上一次提交所依据的基线与版本——与内核下一次提交取的 prior 是同一份（store.submit），
  * 所以请求体、展示值和 If-Match 不会错位。
  */
-export function useConfigCommand(resource: string, { kind, id, row, keys, fallback }: Target) {
+export function useConfigCommand(resource: string, { kind, id, row, keys, fallback, action }: Target) {
   const api = useApiClient();
-  const submission = useContractCommand(resource);
+  const submission = forAction(useContractCommand(resource), action ? { action } : {});
   const pending = submission.state && submission.state.status !== 'done' ? submission.state : undefined;
   const baseline = pending ? pending.baseline : projectFields(row, keys, fallback);
   const revision = pending ? pending.revision : Number(row?.revision ?? 0);
