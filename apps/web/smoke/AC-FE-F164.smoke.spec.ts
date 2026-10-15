@@ -160,7 +160,9 @@ test('AC-FE-F164-06 回顾保存冲突：重读最新版本、核对差异后带
   expect(errors).toEqual([]);
 });
 
-test('AC-FE-F164-07 回顾保存结果未知：表单锁定，回查原单后仍锁定，不发第二次 PUT', async ({ page }) => {
+test('AC-FE-F164-07 回顾保存结果未知：表单与同一计划的任务入口一并锁定，回查原单后仍锁定，不发第二次 PUT', async ({
+  page,
+}) => {
   const errors = watchErrors(page, ['500']);
   const calls = await mockIdp(page, { reviewButtons: ['EditModuleContent'], writeStatus: 500 });
   await asUser(page);
@@ -171,6 +173,9 @@ test('AC-FE-F164-07 回顾保存结果未知：表单锁定，回查原单后仍
   await expect(form.getByText(/结果待确认/)).toBeVisible();
   await expect(form.getByLabel('总结')).toBeDisabled();
   await expect(form.getByRole('button', { name: /保\s*存/ })).toBeDisabled();
+  // F-147：回顾命令在计划的恢复槽，同一计划上的制定任务一并锁定并提示（表单外）
+  await expect(page.getByText('本对象有未确认的其他操作，确认结果前不能发起新操作。')).toBeVisible();
+  await expect(page.getByRole('button', { name: '添加任务' })).toBeDisabled();
   await form.getByRole('button', { name: '回查原单' }).click();
   await expect(form.getByText('原单当前值（仅供核对，不能据此确认本次命令结果）')).toBeVisible();
   await expect(form.getByLabel('总结')).toBeDisabled();

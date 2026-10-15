@@ -1,4 +1,5 @@
 import { Button, Form, Input, Space, Tag, Typography } from 'antd';
+import { forAction } from '../foundation/forms/action.js';
 import { CommandStatus } from '../foundation/forms/CommandStatus.js';
 import { FormLock, LockedField } from '../foundation/forms/FormLock.js';
 import { slotKey } from '../foundation/forms/slot.js';
@@ -22,17 +23,29 @@ import { useNames } from './useNames.js';
 
 const LABELS = { summary: t.review.summary, improvement: t.review.improvement };
 
+/** 与后端同口径按码点计长，超长前端拦下不发请求。 */
+const lengthRule = (field: keyof ReviewValues) => ({
+  validator: (_: unknown, value: string | null | undefined) =>
+    reviewTooLong({ [field]: value }).length
+      ? Promise.reject(new Error(t.reviewForm.tooLong(REVIEW_MAX)))
+      : Promise.resolve(),
+});
+
 /**
  * 当前阶段的回顾填写（原站 B4_26“总体回顾”；F-155b）：总结、改进方法两个多行框，各 ≤1000 字，右下角计数。
- * 保存走 F-142 提交内核：槽键为稳定的模块路径，阶段作为命令上下文存进槽里；处理中 / 结果未知 / 冲突时锁住，
- * 冲突按计划详情重读后由内核回填。保存是草稿，两项可以先空着；提交审批时缺项由后端 409 IDP_REVIEW_REQUIRED 拦下。
+ * 保存走 F-142 提交内核：回顾写的是计划（带计划 revision），命令放在计划的恢复槽，动作记“回顾 + 模块”，
+ * 阶段作为命令上下文存进槽里（F-147）；处理中 / 结果未知 / 冲突时锁住，计划上的其他动作（制定任务、干预）
+ * 一并锁定，反之亦然；冲突按计划详情重读后由内核回填。保存是草稿，两项可以先空着；提交审批时缺项由后端 409 IDP_REVIEW_REQUIRED 拦下。
  */
 export function ReviewForm(props: { plan: PlanDetail; module: PlanModule; stage: Stage; saved(): void }) {
   const { plan, module, saved } = props;
   const api = useApiClient();
   const session = useSession();
   const names = useNames('employee', [session.employeeId]);
-  const command = useCommandForm(slotKey(`${IDP_API}/plans/${plan.id}/modules`, module.id));
+  const command = forAction(useCommandForm(slotKey(`${IDP_API}/plans`, plan.id)), {
+    action: 'review',
+    moduleId: module.id,
+  });
   // 未完成的命令沿用它当初的阶段；阶段已切换时提交仍按原阶段核对（后端按当前阶段复核，变了会拒绝）。
   const stageId = slotContext<{ stageId: string }>(command.state)?.stageId ?? props.stage.id!;
   const baseline = stageReview(plan, module.id, stageId);
@@ -81,14 +94,7 @@ export function ReviewForm(props: { plan: PlanDetail; module: PlanModule; stage:
               label={LABELS[field]}
               // 星号照原站；保存是草稿不拦空，必填在提交审批时由后端校验
               required
-              rules={[
-                {
-                  validator: (_, value: string | null | undefined) =>
-                    reviewTooLong({ [field]: value }).length
-                      ? Promise.reject(new Error(t.reviewForm.tooLong(REVIEW_MAX)))
-                      : Promise.resolve(),
-                },
-              ]}
+              rules={[lengthRule(field)]}
             >
               <LockedField>
                 <Input.TextArea

@@ -29,9 +29,9 @@ const stage = (seq: number, name: string, status: string) => ({
   seq,
   name,
   status,
-  approvalInstanceId: null,
+  approvalInstanceId: null as string | null,
   dueDate: '2026-10-01',
-  endedOn: null,
+  endedOn: null as string | null,
   failureReason: null,
   attemptCount: 0,
 });
