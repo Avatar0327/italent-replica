@@ -227,9 +227,22 @@ export const CAREER_FIELDS = [
 export const PLAN_STATUSES = ['not_started', 'running', 'ended', 'terminated'] as const;
 export type PlanStatus = (typeof PLAN_STATUSES)[number];
 
-/** 阶段（子流程实例）状态：待开启 / 进行中 / 已结束 / 开启失败（IDP-R3）。 */
-export const STAGE_STATUSES = ['pending', 'running', 'ended', 'failed'] as const;
+/**
+ * 阶段（子流程实例）状态：待开启 / 进行中 / 已结束 / 已终止 / 开启失败（IDP-R3）。已结束 = 审批正常完成；已终止 = 被
+ * 流程干预“结束当前阶段再开启下个阶段”跳过（DEC-511 UI3补：原站流程条显示“已终止”，F-155）。
+ */
+export const STAGE_STATUSES = ['pending', 'running', 'ended', 'terminated', 'failed'] as const;
 export type StageStatus = (typeof STAGE_STATUSES)[number];
+
+/** 已过去的阶段（正常结束或被跳过终止）：后续阶段的“上一阶段结束”、调度的“前序都已结束”、计划结束判定都按它算。 */
+export const PASSED_STAGE_STATUSES: readonly StageStatus[] = ['ended', 'terminated'];
+
+/**
+ * 回顾模块（中期回顾，moduleType 3）的“总体回顾”表单（DEC-511 UI3补，F-155）：总结、改进方法两项，各 ≤1000 字；
+ * 可以先保存（不强制必填），提交当前节点时两项必填。
+ */
+export const REVIEW_FIELDS = ['summary', 'improvement'] as const;
+export const REVIEW_TEXT_MAX = 1000;
 
 /**
  * 指导人角色（Q-M0-115① IDP.TutorRole）：直线经理 1、间接经理 2、第三 / 四 / 五级主管 3 / 4 / 5、导师 6、部门 HRBP 11、

@@ -129,7 +129,8 @@ async function activeTenants(db: Db, tenantId: string | null): Promise<TenantRow
 }
 
 /**
- * 候选计划（一页，按计划 ID 游标推进）：进行中、没有运行中的阶段、存在“前序都已结束”的待开启自动阶段且今天还没尝试过。
+ * 候选计划（一页，按计划 ID 游标推进）：进行中、没有运行中的阶段、存在“前序都已过去”（已结束或已终止，F-155）的
+ * 待开启自动阶段且今天还没尝试过。
  * 到期日、参照日期与锁在逐条复核时判断——开不了的计划不计入本次尝试数，游标越过它继续往后找（第 2 轮 P2-9）。
  */
 async function candidatePage(tx: Tx, tenantId: string, businessDate: string, after: string | null) {
@@ -144,7 +145,7 @@ async function candidatePage(tx: Tx, tenantId: string, businessDate: string, aft
           WHERE s.tenant_id = p.tenant_id AND s.plan_id = p.id AND s.status = 'pending' AND sp.start_mode = 'auto'
             AND (s.last_attempt_on IS NULL OR s.last_attempt_on < ${businessDate}::date)
             AND NOT EXISTS (SELECT 1 FROM idp_plan_stages e WHERE e.tenant_id = s.tenant_id AND e.plan_id = s.plan_id
-              AND e.seq < s.seq AND e.status <> 'ended'))
+              AND e.seq < s.seq AND e.status NOT IN ('ended', 'terminated')))
       ORDER BY p.id LIMIT ${CANDIDATE_PAGE}`),
   ).map((r) => r.plan_id);
 }
@@ -186,7 +187,7 @@ async function sweepTenant(db: Db, meta: PlatformCommandMeta, tenant: TenantRow,
         const stages = await loadStages(tx, tenant.id, [planId]);
         if (stages.some((s) => s.status === 'running')) return null;
         const next = nextOpenableStage(stages);
-        // 前序都已结束、待开启（开启失败的不自动重试）、自动开启、今天还没尝试过
+        // 前序都已过去（已结束 / 已终止）、待开启（开启失败的不自动重试）、自动开启、今天还没尝试过
         if (!next || next.status !== 'pending' || next.startMode !== 'auto') return null;
         if (next.lastAttemptOn !== null && next.lastAttemptOn >= local.date) return null;
         const due = (await stageViews(tx, plan, stages, local.date)).find((v) => v.id === next.id)?.dueDate;

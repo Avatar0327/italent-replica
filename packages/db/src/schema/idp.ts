@@ -400,7 +400,7 @@ export const idpPlanStages = pgTable(
       foreignColumns: [idpSubProcesses.tenantId, idpSubProcesses.id],
       name: 'idp_plan_stages_sub_process_fk',
     }).onDelete('restrict'),
-    check('idp_plan_stages_status', inList(t.status, ['pending', 'running', 'ended', 'failed'])),
+    check('idp_plan_stages_status', inList(t.status, ['pending', 'running', 'ended', 'terminated', 'failed'])),
     check('idp_plan_stages_attempts', sql`${t.attemptCount} >= 0`),
   ],
 );

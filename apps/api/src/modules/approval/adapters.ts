@@ -43,6 +43,9 @@ import { AppError } from '../../errors.js';
 import { approvalError, rowsOf, type ApprovalContext, type Row } from './context.js';
 import { OPEN_STATUSES } from './store.js';
 
+/** 办理决定：同意、不同意（出口动作）、驳回（beforeApprove 区分用）。 */
+export type TaskDecision = 'approve' | 'disagree' | 'reject';
+
 export type BusinessType = 'employment' | 'personnel_change' | 'contract' | 'idp' | 'talent_review';
 
 export interface BusinessSnapshot {
@@ -109,8 +112,17 @@ export interface BusinessAdapter {
     businessIds: readonly string[],
     options: { readonly organization: boolean; readonly reassignFrom?: string },
   ): Promise<void>;
-  /** 同意前的业务前提（R3-T07 无目标校验 IDP-R10）；不满足时抛错，任务不动。 */
-  beforeApprove?(tx: Tx, ctx: ApprovalContext, businessId: string, nodeKey: string): Promise<void>;
+  /**
+   * 办理决定前的业务前提（R3-T07 无目标校验 IDP-R10）；同意、不同意、驳回都会调用，`decision` 标明是哪一种，
+   * 只该拦“同意 / 提交”的前提（F-155 回顾必填）据此跳过另两种。不满足时抛错，任务不动。
+   */
+  beforeApprove?(
+    tx: Tx,
+    ctx: ApprovalContext,
+    businessId: string,
+    nodeKey: string,
+    decision: TaskDecision,
+  ): Promise<void>;
   /**
    * F-048：集合审批的“对象 → 主体”映射（docs/08_设计/F-048_审批多主体回避_设计.md §5.3）——本单涵盖的全部对象对应的
    * 员工 ID（可重复、可含单主体，含已终止对象）。不实现即单主体业务（只有 snapshot.subjectEmployeeId）。只在发起与重提时
