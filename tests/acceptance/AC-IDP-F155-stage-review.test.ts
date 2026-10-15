@@ -9,7 +9,14 @@ import { STAGE_STATUSES } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { t } from '../../apps/web/src/idp/messages.js';
-import { type Approvals, planWorld, type PlanView, type Receipt } from './AC-IDP-plan-support.js';
+import {
+  type Approvals,
+  planWorld,
+  type PlanView,
+  type PlanWorld,
+  type PlanWorldOptions,
+  type Receipt,
+} from './AC-IDP-plan-support.js';
 
 const testDb = useTestDb();
 
@@ -82,18 +89,22 @@ describe('F-155a 被跳过的阶段为已终止', () => {
   });
 });
 
-describe('F-155a 中期回顾：保存限长、提交必填', () => {
-  async function atMidReview(label: string) {
-    const w = await planWorld(testDb().db, label);
-    let plan = await w.startedPlan();
-    await w.submit(plan, 1, w.employee.userId);
-    plan = await w.submit(plan, 1, w.manager.userId);
-    await w.ok(await w.intervene('start-next', { items: items(plan), runningMode: 'skipRunning' }));
-    plan = await w.readPlan(plan.id);
-    expect(plan.currentNodeName).toBe('员工中期回顾');
-    return { w, plan };
-  }
+async function atMidReview(label: string, options: PlanWorldOptions = {}) {
+  const w = await planWorld(testDb().db, label, options);
+  return { w, plan: await midReviewPlan(w) };
+}
 
+async function midReviewPlan(w: PlanWorld, extra: Record<string, unknown> = {}) {
+  let plan = await w.startedPlan(extra);
+  await w.submit(plan, 1, w.employee.userId);
+  plan = await w.submit(plan, 1, w.manager.userId);
+  await w.ok(await w.intervene('start-next', { items: items(plan), runningMode: 'skipRunning' }));
+  plan = await w.readPlan(plan.id);
+  expect(plan.currentNodeName).toBe('员工中期回顾');
+  return plan;
+}
+
+describe('F-155a 中期回顾：保存限长、提交必填', () => {
   const contentPath = (w: Awaited<ReturnType<typeof atMidReview>>['w'], plan: PlanView) =>
     `/plans/${plan.id}/modules/${w.reviewModule.id}/content`;
 
@@ -148,6 +159,49 @@ describe('F-155a 中期回顾：保存限长、提交必填', () => {
     // 指导人节点没有填写回顾的按钮，不再校验
     const done = await w.submit(submitted, 2, w.manager.userId);
     expect(done.stages[1]!.status).toBe('ended');
+  });
+});
+
+describe('F-155a 回顾必填只拦“同意”（第 1 轮 P2-1）', () => {
+  /** 租户给员工中期回顾节点打开了驳回与不同意（节点开关，DEC-318 K-39 / DEC-144）。 */
+  const employeeExits: PlanWorldOptions = {
+    nodes: { idp_employee: { actions: { reject: true }, exits: ['approve', 'disagree'] } },
+  };
+
+  async function undecided(label: string) {
+    const w = await planWorld(testDb().db, label, employeeExits);
+    const plan = await midReviewPlan(w);
+    const { instance, task } = await w.pendingTask(plan, 2, w.employee.userId);
+    const decide = (action: 'approve' | 'disagree' | 'reject') =>
+      w.taskAction(w.employee.userId, task.id, action, instance.revision, { comment: '回顾稍后补' });
+    return { w, plan, decide };
+  }
+
+  it('回顾没填齐时同意：409 IDP_REVIEW_REQUIRED，任务不动', async () => {
+    const { w, plan, decide } = await undecided('idp-f155-approve');
+    expect(await errorBody(await decide('approve'))).toMatchObject({
+      status: 409,
+      details: { reason: 'IDP_REVIEW_REQUIRED', fields: ['summary', 'improvement'] },
+    });
+    expect((await w.instanceOf(plan, 2)).currentNodeKey).toBe('employee_mid');
+  });
+
+  it('回顾没填齐时不同意：照常办理，流程沿不同意结束、阶段记开启失败（K-39）', async () => {
+    const { w, plan, decide } = await undecided('idp-f155-disagree');
+    const disagreed = await decide('disagree');
+    expect(disagreed.status, await disagreed.clone().text()).toBe(200);
+    expect((await w.readPlan(plan.id)).stages[1]).toMatchObject({
+      status: 'failed',
+      failureReason: 'APPROVAL_DISAPPROVED',
+    });
+  });
+
+  it('回顾没填齐时驳回：照常办理，退回发起人（计划所有者）、阶段保持进行中', async () => {
+    const { w, plan, decide } = await undecided('idp-f155-reject');
+    const rejected = await decide('reject');
+    expect(rejected.status, await rejected.clone().text()).toBe(200);
+    expect((await w.instanceOf(plan, 2)).status).toBe('returned');
+    expect((await w.readPlan(plan.id)).stages[1]!.status).toBe('running');
   });
 });
 

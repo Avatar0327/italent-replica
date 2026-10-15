@@ -96,6 +96,8 @@ export interface NodeOverride {
   readonly actions?: Record<string, unknown>;
   readonly noAssignee?: string;
   readonly historySameAssigneeSkip?: boolean;
+  /** 出口动作（DEC-144），缺省只有同意。 */
+  readonly exits?: readonly ('approve' | 'disagree')[];
 }
 
 /**
