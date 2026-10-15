@@ -94,3 +94,160 @@
   font-size: 12px;
   color: #5e6266;
 }
+
+/* F-132 第 2 段：原站横向视图（当前视图蓝字下划线）、右上工具栏、浅蓝提示与全页表单（DEC-489）。 */
+.transfer-list-head,
+.transfer-form-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.transfer-form-head h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 500;
+}
+.transfer-views {
+  display: flex;
+  gap: 20px;
+}
+.transfer-view.ant-btn {
+  padding: 0 0 4px;
+  border-radius: 0;
+  font-size: 16px;
+}
+/* 选中态要压过 antd 文字按钮的悬停色（点击后鼠标仍停在按钮上）。 */
+.transfer-views .transfer-view-active.ant-btn,
+.transfer-views .transfer-view.transfer-view-active.ant-btn:not(:disabled):hover {
+  color: #146eff;
+  border-bottom: 2px solid #146eff;
+}
+.transfer-tool-dropdown::after {
+  content: '▾';
+  margin-left: 4px;
+}
+.transfer-banner {
+  margin-bottom: 12px;
+}
+.transfer-banner-body {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+.transfer-banner-body p {
+  margin: 0;
+}
+.transfer-banner-body .ant-btn-link {
+  padding: 0;
+  height: auto;
+}
+.transfer-filter-select {
+  min-width: 140px;
+}
+.transfer-advanced {
+  width: 100%;
+}
+.transfer-advanced .ant-select,
+.transfer-advanced .ant-picker,
+.transfer-advanced .ant-input-affix-wrapper {
+  width: 100%;
+}
+.transfer-link-text {
+  color: #146eff;
+}
+.transfer-name-link.ant-btn {
+  padding: 0;
+  height: auto;
+}
+.hr-transfer-form-page {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.hr-transfer-form-page .r1c-transfer-form {
+  padding: 20px;
+  border-radius: 8px;
+}
+/* #333 第 1 轮 P2-5：原站四个区块 + 右侧约 150px 锚点导航；底部取消为白、其余为蓝。 */
+.hr-transfer-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 150px;
+  gap: 24px;
+  align-items: start;
+}
+.hr-transfer-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+.r1c-transfer-form .hr-transfer-section {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+  scroll-margin-top: 16px;
+}
+.hr-transfer-anchors {
+  position: sticky;
+  top: 16px;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid #e6e8eb;
+}
+.r1c-transfer-form .hr-transfer-anchors button {
+  border: 0;
+  background: none;
+  text-align: left;
+  padding: 6px 12px;
+  color: #5e6266;
+}
+.r1c-transfer-form .hr-transfer-anchors button:hover {
+  color: #146eff;
+}
+.hr-yes-no {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  font-size: 12px;
+}
+.hr-yes-no label {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+.hr-readonly-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+.hr-readonly-field output {
+  border: 1px solid #e6e8eb;
+  border-radius: 5px;
+  min-height: 32px;
+  padding: 5px 10px;
+  background: #f7f9fa;
+  color: #5e6266;
+}
+.hr-form-gap {
+  color: #8c9199;
+  font-size: 12px;
+}
+.r1c-transfer-form .hr-transfer-actions button:first-child {
+  background: white;
+  border-color: #e6e8eb;
+  color: #33383d;
+}
+.r1c-transfer-form .hr-transfer-actions button.hr-primary {
+  background: #146eff;
+  border-color: #146eff;
+  color: white;
+}
+.r1c-transfer-form .hr-transfer-actions button:disabled {
+  opacity: 0.5;
+}

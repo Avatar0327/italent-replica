@@ -20,7 +20,16 @@ const example: ApprovalDetail = {
       actedAt: '2026-10-11T01:00:00Z',
     },
   ],
-  logs: [],
+  logs: [
+    { event: 'start', createdAt: '2026-10-10T02:30:00Z' },
+    {
+      event: 'approve',
+      taskId: 'demo-task',
+      detail: { comment: '同意岗位调整。' },
+      createdAt: '2026-10-11T01:00:00Z',
+    },
+    { event: 'complete', createdAt: '2026-10-11T01:00:00Z' },
+  ],
 };
 export function completedExamples(): ApprovalRow[] {
   const { id, title, revision, approvalType, status, createdAt } = example;

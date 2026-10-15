@@ -331,11 +331,12 @@ const REPLAY_CASES: Record<string, Case | NotApplicable> = {
       { object: 'activity', buttons: [survey360.SURVEY360_BUTTONS.allActivities] },
       { object: 'person', ops: { create: true }, buttons: ['create'] },
     ]);
+    const email = `new-${uniqueSuffix()}@example.com`;
     const create = (key: string) =>
       u.as('POST', '/people', {
         ifMatch: 0,
         idempotencyKey: key,
-        body: { ...customer(), email: `new-${key.slice(0, 8)}@example.com`, superiorPersonId: env.people.b1.id },
+        body: { ...customer(), email, superiorPersonId: env.people.b1.id },
       });
     const replay = await replayAfter(create, 201, () =>
       u.setObjects([{ object: 'activity' }, { object: 'person', ops: { create: true }, buttons: ['create'] }]),

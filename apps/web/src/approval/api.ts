@@ -1,10 +1,11 @@
 import { ApiError, newCommand, type ApiClient, type PageRequest } from '../foundation/client.js';
 import { completedExamples } from '../demo-stubs/approval.js';
+import { messages as kernel } from '../foundation/forms/messages.js';
 import { messages as m } from './messages.js';
-import type { ApprovalAction, ApprovalDetail, ApprovalList, ApprovalRow, ApprovalView } from './types.js';
+import type { ApprovalAction, ApprovalDetail, ApprovalList, ApprovalLog, ApprovalRow, ApprovalView } from './types.js';
 
 const base = '/api/tenant/approval';
-const actions: ApprovalAction[] = ['approve', 'reject', 'transfer', 'withdraw'];
+const actions: ApprovalAction[] = ['approve', 'disagree', 'reject', 'transfer', 'withdraw'];
 export const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const visibleActions = (detail: ApprovalDetail) => actions.filter((action) => detail.actions.includes(action));
 
@@ -33,32 +34,59 @@ export async function approvalList(
     hasMore: result.items.length === page.pageSize,
   };
 }
+/**
+ * 操作记录的意见只取日志自身 detail.comment（#333 第 2 轮 P2）。后端写日志时：同意 / 不同意 / 驳回 / 跳转 / 抄送的
+ * taskId 是操作人自己的任务；转交、加签、加签返回、撤回的 taskId 指向新任务，经 taskId 去读任务意见会拿到接收人后来的意见。
+ * 发起、催办、撤销、终止等不带意见。
+ */
+export function logComment(log: ApprovalLog): string | null {
+  const comment = log.detail?.comment;
+  return typeof comment === 'string' && comment.trim() ? comment : null;
+}
 export const readApproval = (api: ApiClient, id: string, signal?: AbortSignal) =>
   api.request<ApprovalDetail>(`${base}/instances/${encodeURIComponent(id)}`, { signal });
 
+/**
+ * 动作回执校验（DEC-502①(a)）：动作接口成功时返回动作后的详情（routes.ts respondOutcome → respondDetail），
+ * id 须是本实例，revision 须大于实际提交的命令 revision（冲突重读后即新 revision）；否则按结果未知处理，不当成功。
+ */
+export function acceptReceipt(receipt: unknown, instanceId: string, sentRevision: number) {
+  const value = receipt as Partial<ApprovalDetail> | null;
+  const revision = value?.revision;
+  if (value?.id !== instanceId || typeof revision !== 'number' || !Number.isSafeInteger(revision))
+    throw new Error(kernel.unknown);
+  if (revision <= sentRevision) throw new Error(kernel.unknown);
+  return value as ApprovalDetail;
+}
+/** 动作请求的路径与请求体；提交经 F-123 内核时由内核生成命令 ID 与 revision（F-123 页面片接入 2）。 */
+export function approvalRequest(
+  detail: ApprovalDetail,
+  action: ApprovalAction,
+  taskId?: string,
+  input: { comment?: unknown; toUserId?: unknown } = {},
+) {
+  if (!visibleActions(detail).includes(action) || (action !== 'withdraw' && !taskId))
+    throw new ApiError(403, 'ACTION_UNAVAILABLE', 'forbidden', m.actionDenied);
+  const toUserId = typeof input.toUserId === 'string' ? input.toUserId.trim().toLowerCase() : undefined;
+  if (action === 'transfer' && (!toUserId || !uuidPattern.test(toUserId)))
+    throw new ApiError(422, 'INVALID_TARGET', 'fields', m.targetInvalid);
+  const comment = typeof input.comment === 'string' ? input.comment.trim() || null : null;
+  const body: { comment?: string | null; toUserId?: string } = action === 'withdraw' ? {} : { comment };
+  if (action === 'transfer') body.toUserId = toUserId;
+  return {
+    path:
+      action === 'withdraw'
+        ? `${base}/instances/${encodeURIComponent(detail.id)}/withdraw`
+        : `${base}/tasks/${encodeURIComponent(taskId!)}/${action}`,
+    body,
+  };
+}
 export function approvalCommand(
   detail: ApprovalDetail,
   action: ApprovalAction,
   taskId?: string,
   input: { comment?: string; toUserId?: string } = {},
 ) {
-  if (!visibleActions(detail).includes(action) || (action !== 'withdraw' && !taskId))
-    throw new ApiError(403, 'ACTION_UNAVAILABLE', 'forbidden', m.actionDenied);
-  const toUserId = input.toUserId?.trim().toLowerCase();
-  if (action === 'transfer' && (!toUserId || !uuidPattern.test(toUserId)))
-    throw new ApiError(422, 'INVALID_TARGET', 'fields', m.targetInvalid);
-  const body =
-    action === 'withdraw'
-      ? {}
-      : {
-          comment: input.comment?.trim() || null,
-          ...(action === 'transfer' ? { toUserId } : {}),
-        };
-  return {
-    path:
-      action === 'withdraw'
-        ? `${base}/instances/${encodeURIComponent(detail.id)}/withdraw`
-        : `${base}/tasks/${encodeURIComponent(taskId!)}/${action}`,
-    command: newCommand(body, detail.revision),
-  };
+  const request = approvalRequest(detail, action, taskId, input);
+  return { path: request.path, command: newCommand(request.body, detail.revision) };
 }

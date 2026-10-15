@@ -43,7 +43,7 @@ export function TransferForm(props: TransferFormProps) {
   );
 }
 
-function SelectionFields({ model, onSelection }: TransferFormProps) {
+export function SelectionFields({ model, onSelection }: TransferFormProps) {
   const visible = (field: string) =>
     (field !== 'reasonCode' || model.preview?.basicFieldModes?.reasonCode !== 'hidden') &&
     (!model.catalog.viewableFields || model.catalog.viewableFields.includes(field));
@@ -144,7 +144,7 @@ function EffectiveDateSelection({ model, onSelection }: TransferFormProps) {
   );
 }
 
-function EmploymentFields(props: TransferFormProps) {
+export function EmploymentFields(props: TransferFormProps) {
   const form = props.model.preview!.form;
   const required = new Set(requiredTransferFields(form));
   return (
@@ -310,16 +310,24 @@ function ReferenceControl(props: PairProps & { value: FieldValue; choices: reado
   );
 }
 
-function TransferActions({ model, onAction, busy, actionsDisabled, submitOnly }: TransferFormProps) {
+/** 表单本身能否提交（与按钮权限无关）：忙、未取得预览、必填项不可用或缺失时都不能提交。HR 全页表单共用此口径。 */
+export function transferBlocked({ model, busy, actionsDisabled }: TransferFormProps): boolean {
+  const preview = model.preview;
+  return (
+    !!busy ||
+    !!actionsDisabled ||
+    !preview ||
+    !!preview.requiredFieldsUnavailable ||
+    missingTransferRequiredFields(preview.form, { ...preview.fields, ...model.fields }).length > 0
+  );
+}
+
+function TransferActions(props: TransferFormProps) {
+  const { model, onAction, submitOnly } = props;
   const preview = model.preview;
   const allowed = preview?.allowedActions;
   const direct = model.initiator !== 'employee' && preview?.allowDirectTransfer;
-  const blocked =
-    busy ||
-    actionsDisabled ||
-    !preview ||
-    preview.requiredFieldsUnavailable ||
-    missingTransferRequiredFields(preview.form, { ...preview.fields, ...model.fields }).length > 0;
+  const blocked = transferBlocked(props);
   return (
     <div className="transfer-actions">
       {preview?.requiredFieldsUnavailable && <p role="alert">{text.requiredUnavailable}</p>}

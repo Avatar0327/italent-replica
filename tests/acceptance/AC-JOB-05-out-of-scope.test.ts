@@ -78,9 +78,11 @@ async function scenario(label: string) {
     });
   /** boundUser：入职前先把该账号绑定到此人（已绑定的人员入职无需登录邮箱，DEC-140）。 */
   const hire = async (name: string, fields: object = {}, prefix?: string, boundUser?: string) => {
+    // 员工 ID 的排序前缀不应缩减唯一编码后缀的随机位数。
+    const code = `E${uniqueSuffix()}`;
     uuidPrefix.value = prefix ?? null;
     try {
-      const employee = await create('employment/employees', { code: `E${uniqueSuffix()}`, name });
+      const employee = await create('employment/employees', { code, name });
       if (boundUser) {
         const link = { tenantId: world.tenant.id, userId: boundUser, employeeId: employee.id };
         await withTenant(db, world.tenant.id, (tx) => tx.insert(permissionUserPersonLinks).values(link));

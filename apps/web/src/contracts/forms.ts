@@ -1,5 +1,6 @@
 // F-127b：合同表单纯逻辑。规则以后端 contracts/service.ts prepare 为准，前端只提前提示，不替代服务端校验。
 import { addDays, contractAction, termEnd } from '@italent/domain';
+import { projectFields } from '../foundation/forms/values.js';
 import { m } from './messages.js';
 import type { Row } from './model.js';
 
@@ -43,12 +44,10 @@ export function formFieldNames(op: Operation) {
 export function editableFormFields(op: Operation, editable: (field: string) => boolean) {
   return formFieldNames(op).filter((field) => editable(field) && !(op === 'renew' && field === 'typeId'));
 }
-const pick = (source: Row | undefined, keys: string[]) =>
-  Object.fromEntries(keys.map((key) => [key, source?.[key] ?? null]));
 export function initialValues(op: Operation, source?: Row): Row {
   if (op === 'terminate') return { actualTerminationDate: null };
-  if (op === 'create') return { ...pick(undefined, contractFields), termType: 'fixed' };
-  const copied = pick(source, contractFields);
+  if (op === 'create') return { ...projectFields(undefined, contractFields), termType: 'fixed' };
+  const copied = projectFields(source, contractFields);
   if (op === 'change') return { ...copied, effectiveDate: null };
   // 续签沿用原合同主体，编号、签订日期、终止日期重新确定；生效日期与后端默认一致（原终止日次日）。
   const end = typeof source?.endDate === 'string' ? source.endDate : null;
