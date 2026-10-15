@@ -118,10 +118,14 @@ for (const tab of ['list', 'tree', 'changes', 'establishment']) {
     else {
       await page.getByText('合成组织', { exact: true }).first().click();
       await expect(page.getByRole('dialog')).toBeVisible();
-      await page
-        .getByRole('button', { name: tab === 'changes' ? /变\s*更/ : /编\s*辑/, exact: true })
-        .last()
-        .click();
+      if (tab === 'changes') {
+        await page.getByRole('dialog').getByRole('button', { name: '更多操作' }).click();
+        await page.getByRole('menuitem', { name: '变更' }).click();
+      } else
+        await page
+          .getByRole('button', { name: /编\s*辑/, exact: true })
+          .last()
+          .click();
       await expect(page.getByRole('dialog').getByRole('button', { name: /保\s*存/ })).toBeVisible();
       await page.getByRole('button', { name: /取\s*消/ }).click();
     }
@@ -197,7 +201,8 @@ test('AC-FE-R1a-09 组织停用提交后端校验，编制详情只读', async (
   });
   await page.goto('/org');
   await page.getByRole('button', { name: '合成组织', exact: true }).click();
-  await page.getByRole('button', { name: /停\s*用/, exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: '更多操作' }).click();
+  await page.getByRole('menuitem', { name: '停用' }).click();
   await expect(page.getByRole('dialog', { name: '停用 · 合成组织' })).toContainText('级联停用');
   await page.getByRole('button', { name: /保\s*存/ }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
