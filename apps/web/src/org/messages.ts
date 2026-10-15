@@ -69,6 +69,7 @@ export const pageText = {
   change: '变更',
   disable: '停用',
   operation: '操作',
+  more: '更多',
   basic: '基本信息',
   hierarchy: '组织关系',
   unavailable: '无权限查看',
@@ -90,6 +91,33 @@ export const pageText = {
   saved: '保存成功，请刷新查看所选日期的数据。',
   noChange: '请至少修改一个字段',
   recovery: '请关闭抽屉，刷新并核对保存结果后重新打开。',
+  resumedLabel: '未确认命令',
+  resumed: '该组织有一条结果尚未确认的命令，已按原命令的操作与生效日期打开；核对结果后再发起其他操作。',
   permissionTitle: '权限加载失败',
   linked: '任职联动',
+  create: '新建',
+  createChild: '新建下级',
+  personInChargeId: '负责人',
+  hrbpId: 'HRBP',
+  personHint: '输入姓名搜索',
+  personFailed: '候选人员加载失败或无权限',
+  hiddenPerson: '（不在可见范围）',
+};
+
+/** 原站「启用的组织」列表列名。 */
+export const listText = {
+  code: '机构ID',
+  establishedOn: '建立日期',
+  stopDate: '禁用日期',
+};
+/** 原站组织单元详情的字段名与上级组织分区。 */
+export const detailText = {
+  code: '机构ID',
+  location: '所在地点',
+  fullName: '组织全称',
+  enabled: '状态',
+  personInChargeId: '负责人',
+  admin: '行政维度上级',
+  business: '业务维度上级',
+  product: '产品维度上级',
 };

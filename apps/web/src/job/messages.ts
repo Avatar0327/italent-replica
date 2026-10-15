@@ -106,5 +106,42 @@ export const pageText = {
   cancel: '取消',
   candidateFailed: '候选加载失败，请重新搜索。',
   candidateHint: '输入名称搜索候选',
+  resumedLabel: '未确认命令',
+  resumed: '结果尚未确认，已按原命令的业务日期打开：',
   candidateMore: '当前显示前 50 条，请输入名称缩小范围。',
+  yes: '是',
+  no: '否',
+  isKey: '关键',
+  isConfidential: '涉密',
+  duty: '职位说明',
+  reporting: '职位汇报关系',
+  orgFilter: '所属组织',
+  hiddenReference: '（不在可见范围）',
+};
+
+/** 同一字段在不同对象上的原站叫法（F-132 对照表）。 */
+export const kindText = {
+  layers: {},
+  grades: {},
+  'level-types': {},
+  levels: { minGradeId: '开始职等', maxGradeId: '结束职等' },
+  sequences: { parentId: '上级序列', levelTypeId: '关联职级类别' },
+  'professional-lines': {},
+  posts: { isKey: '关键职务', isConfidential: '涉密职务' },
+  positions: {
+    sequenceId: '职位序列',
+    isKey: '是否关键职位',
+    isConfidential: '是否涉密职位',
+    adminParent: '直线上级',
+    dottedParent: '虚线上级',
+  },
+};
+/** 原站职位表单把上级写成「上级职位」，详情汇报关系分区才叫「直线上级」。 */
+export const formText: Partial<Record<keyof typeof kindText, Record<string, string>>> = {
+  positions: {
+    adminParent: '上级职位',
+    adminSequence: '上级职位顺序号',
+    dottedParent: '虚线上级',
+    dottedSequence: '虚线上级顺序号',
+  },
 };
