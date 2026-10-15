@@ -222,3 +222,133 @@ test('AC-FE-F153-12 “调动”入口（直接调动）没有暂存，选同一
   await expect(page.locator('input[name="place"]')).toHaveValue('合成工作地');
   expect(state.reads).toBe(0);
 });
+
+// #350 第 1 轮 P2-1：多个异动类型共用一个表单（formId 相同），只看单据表单定不了类型。
+const sharedTypes = [
+  { code: 'place', name: '工作地调整', formId: 'hr' },
+  { code: 'inner', name: '部门内调岗', formId: 'hr' },
+];
+async function sharedCatalog(page: Page) {
+  await page.route('**/employment/transfers/catalog**', (route) =>
+    route.fulfill({
+      json: {
+        today: '2026-10-12',
+        types: sharedTypes,
+        reasons: [],
+        viewableFields: linkageFields,
+        editableFields: linkageFields,
+      },
+    }),
+  );
+}
+const typeSelect = (page: Page) => page.locator('select[name="transferTypeCode"]');
+async function stashAs(page: Page, type: string) {
+  await openTransfer(page);
+  await pick(page);
+  await typeSelect(page).selectOption(type);
+  await expect(page.locator('input[name="place"]')).toBeVisible();
+  await page.getByRole('button', { name: '暂存', exact: true }).click();
+  await expect(page.getByText(/暂存成功/).first()).toBeVisible();
+  await back(page);
+}
+
+test('AC-FE-F153-13 #350 P2-1 多类型共用表单：重选同一人按暂存时的类型带出，提交带同一类型', async ({ page }) => {
+  await sharedCatalog(page);
+  const state = await backend(page, (route) => route.fulfill({ json: business }));
+  await stashAs(page, 'inner');
+  expect(state.creates[0]).toMatchObject({ submit: false, transferTypeCode: 'inner' });
+  await pick(page);
+  await expect(banner(page)).toBeVisible();
+  await expect(typeSelect(page)).toHaveValue('inner');
+  await expect(page.locator('input[name="place"]')).toHaveValue('暂存工作地');
+  await page.getByRole('button', { name: '提交', exact: true }).click();
+  await expect.poll(() => state.creates.length).toBe(2);
+  expect(state.creates[1]).toMatchObject({ submit: true, transferTypeCode: 'inner', fields: { place: '暂存工作地' } });
+});
+
+test('AC-FE-F153-14 #350 P2-1 取不到暂存类型时不默认第一项：留空提示重选，选定前不能暂存或提交', async ({ page }) => {
+  await sharedCatalog(page);
+  const state = await backend(page, (route) => route.fulfill({ json: business }));
+  await stashAs(page, 'inner');
+  // 只记单号的会话条目（F-153 第 1 版写入的形状）：没有类型可还原。
+  await page.evaluate((id) => {
+    const key = Object.keys(sessionStorage).find((item) => item.startsWith('italent.transfer.l2:'))!;
+    const value = JSON.parse(sessionStorage.getItem(key)!) as { drafts: Record<string, unknown> };
+    sessionStorage.setItem(key, JSON.stringify({ ...value, drafts: { [Object.keys(value.drafts)[0]!]: id } }));
+  }, draftId);
+  await page.getByRole('button', { name: button('他人调动申请') }).click();
+  await page.locator('select[name="employeeId"]').selectOption(employee);
+  await expect(page.getByText('无法确定上次暂存的异动类型，请重新选择异动类型后再暂存或提交')).toBeVisible();
+  await expect(typeSelect(page)).toHaveValue('');
+  await expect(page.getByRole('button', { name: '提交', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: '暂存', exact: true })).toBeDisabled();
+  await typeSelect(page).selectOption('inner');
+  await expect(page.getByText('无法确定上次暂存的异动类型', { exact: false })).toHaveCount(0);
+  await expect(page.locator('input[name="place"]')).toHaveValue('暂存工作地');
+  await page.getByRole('button', { name: '提交', exact: true }).click();
+  await expect.poll(() => state.creates.length).toBe(2);
+  expect(state.creates[1]).toMatchObject({ submit: true, transferTypeCode: 'inner', fields: { place: '暂存工作地' } });
+});
+
+test('AC-FE-F153-15 #350 P2-2 提交遇 409：锁定、重读核对差异后保留带出字段，按最新版本重提', async ({ page }) => {
+  const state = await backend(page, (route) => route.fulfill({ json: business }));
+  await stash(page);
+  let revision = 4;
+  await page.route('**/transfers/employees/*/preview', (route) =>
+    route.fulfill({
+      json: {
+        employeeRevision: revision,
+        allowDirectTransfer: true,
+        allowedActions: { application: true, directList: true },
+        form: {
+          id: 'hr',
+          name: '调动申请',
+          isStandard: true,
+          excludedAutofillFields: [],
+          fieldModes: { 'preset:place': 'editable' },
+          customFields: [],
+        },
+        fields: { place: '合成工作地' },
+        customFields: {},
+        before: { fields: { place: revision === 4 ? '原工作地' : '他人改后工作地' }, customFields: {} },
+      },
+    }),
+  );
+  const sent: { ifMatch?: string; body: Record<string, unknown> }[] = [];
+  await page.route('**/transfers/employees/' + employee, (route) => {
+    const body = route.request().postDataJSON() as Record<string, unknown>;
+    sent.push({ ifMatch: route.request().headers()['if-match'], body });
+    // 第一次提交时他人已改任职（版本 4 → 5）：服务端回 409，之后的预览即为最新版本。
+    if (sent.length === 1) {
+      revision = 5;
+      return route.fulfill({ status: 409, json: { error: { code: 'REVISION_CONFLICT', message: '版本冲突' } } });
+    }
+    return route.fulfill({ json: { ...receipt, revision: 2, status: 'in_review' } });
+  });
+  await pick(page);
+  await expect(page.locator('input[name="place"]')).toHaveValue('暂存工作地');
+  await page.getByRole('button', { name: '提交', exact: true }).click();
+  await expect.poll(() => sent.length).toBe(1);
+  expect(sent[0]!.ifMatch).toBe('4');
+  await expect(page.getByText('版本冲突：输入已保留，请重读最新版本并核对差异后重提。')).toBeVisible();
+  await expect(page.getByRole('button', { name: '提交', exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: '重读最新版本', exact: true }).click();
+  await expect(page.getByText('他人改后工作地').first()).toBeVisible();
+  await page.getByRole('button', { name: '已核对差异，继续编辑', exact: true }).click();
+  await expect(page.locator('input[name="place"]')).toHaveValue('暂存工作地');
+  await page.getByRole('button', { name: '提交', exact: true }).click();
+  await expect.poll(() => sent.length).toBe(2);
+  expect(sent[1]!.ifMatch).toBe('5');
+  expect(sent[1]!.body).toMatchObject({ submit: true, fields: { place: '暂存工作地' } });
+  expect(state.creates).toHaveLength(1);
+});
+
+test('AC-FE-F153-16 #350 P2-2 “重新读取表单”换上最新预览，不丢带出的暂存字段', async ({ page }) => {
+  await backend(page, (route) => route.fulfill({ json: business }));
+  await stash(page);
+  await pick(page);
+  await expect(page.locator('input[name="place"]')).toHaveValue('暂存工作地');
+  await page.getByRole('button', { name: '重新读取表单', exact: true }).click();
+  await expect(page.locator('input[name="place"]')).toHaveValue('暂存工作地');
+  await expect(banner(page)).toBeVisible();
+});

@@ -11,7 +11,7 @@ export interface DraftSnapshot {
   readonly employeeId: string;
   readonly effectiveDate?: string;
   readonly formId?: string;
-  /** 读接口目前不返回；返回时优先于按表单推断（DEC-467）。 */
+  /** 读接口目前不返回，取暂存时记入会话索引的类型；读接口返回时以它为准。 */
   readonly transferTypeCode?: string;
   readonly fields: FieldValues;
   readonly customFields: FieldValues;
@@ -27,7 +27,13 @@ function invalid(): never {
 }
 
 /** 单号、人员、revision、联动版本任一不符即读取失败；已不是草稿（他处已提交或作废）返回 null，不带出。 */
-export function parseDraft(id: string, employeeId: string, business: unknown, linkage: unknown): DraftSnapshot | null {
+export function parseDraft(
+  id: string,
+  employeeId: string,
+  business: unknown,
+  linkage: unknown,
+  storedType?: string,
+): DraftSnapshot | null {
   if (!isObject(business) || business.id !== id || business.employeeId !== employeeId) invalid();
   if (business.status !== 'draft') return null;
   if (!Number.isInteger(business.revision) || !isObject(business.fields)) invalid();
@@ -35,7 +41,7 @@ export function parseDraft(id: string, employeeId: string, business: unknown, li
   if (!isObject(linkage) || linkage.businessId !== id || linkage.revision !== business.revision) invalid();
   const effectiveDate = optionalText(business.effectiveDate);
   const formId = optionalText(business.formId);
-  const transferTypeCode = optionalText(business.transferTypeCode);
+  const transferTypeCode = optionalText(business.transferTypeCode) ?? optionalText(storedType);
   return {
     id,
     employeeId,
@@ -87,12 +93,20 @@ export function linkageFromOptions(options: unknown): LinkageDraft {
   };
 }
 
-/** DEC-467：异动类型取返回的 transferTypeCode；否则取表单唯一对应的类型；都定不了保持当前，不用 changeType 推断。 */
-export function draftTransferType(catalog: TransferCatalog, draft: DraftSnapshot, current: string) {
-  if (draft.transferTypeCode && catalog.types.some((type) => type.code === draft.transferTypeCode))
-    return draft.transferTypeCode;
-  const matches = catalog.types.filter((type) => draft.formId && type.formId === draft.formId);
-  return matches.length === 1 ? matches[0]!.code : current;
+/**
+ * 还原暂存的异动类型（#350 第 1 轮 P2-1）：多个类型可共用一个表单，只看表单定不了类型。
+ * - 记下的类型仍在目录里、且与单据表单一致：用它；
+ * - 没记下类型时，表单只对应一个类型才用它（DEC-467，不用 changeType 推断）；
+ * - 其余（记下的类型与表单不符、目录里没有、表单对应多个类型）返回 undefined：不默认，交用户重新选择。
+ */
+export function draftTransferType(catalog: TransferCatalog, draft: DraftSnapshot): string | undefined {
+  const matches = (type: TransferCatalog['types'][number]) => !draft.formId || type.formId === draft.formId;
+  if (draft.transferTypeCode) {
+    const stored = catalog.types.find((type) => type.code === draft.transferTypeCode);
+    return stored && matches(stored) ? stored.code : undefined;
+  }
+  const candidates = draft.formId ? catalog.types.filter(matches) : [];
+  return candidates.length === 1 ? candidates[0]!.code : undefined;
 }
 
 // 与 LinkageAccess 同一组权限编码：一组全部可编辑才带出暂存值，否则保持默认。
@@ -128,12 +142,14 @@ function withoutPending(model: TransferFormModel): TransferFormModel {
 export function restoreDraft(model: TransferFormModel, draft: DraftSnapshot): TransferFormModel {
   if (model.employeeId !== draft.employeeId) return model;
   const effectiveDate = draft.effectiveDate ?? model.effectiveDate;
-  const transferTypeCode = draftTransferType(model.catalog, draft, model.transferTypeCode);
+  const restoredType = draftTransferType(model.catalog, draft);
+  const transferTypeCode = restoredType ?? '';
   const same = effectiveDate === model.effectiveDate && transferTypeCode === model.transferTypeCode;
   const next: TransferFormModel = {
     ...model,
     effectiveDate,
     transferTypeCode,
+    typeConfirmation: !restoredType,
     reasonCode: same ? model.reasonCode : '',
     fields: {},
     customFields: {},
@@ -141,6 +157,17 @@ export function restoreDraft(model: TransferFormModel, draft: DraftSnapshot): Tr
     pendingDraft: { employeeId: draft.employeeId, fields: draft.fields, customFields: draft.customFields },
   };
   return same && model.preview ? applyPendingDraft(next) : { ...next, preview: null };
+}
+
+/**
+ * 目录（按生效日期）到达后定类型：当前类型仍在目录里则保留；带出中（等确认或等回填）的类型不在目录里时留空等用户选择，
+ * 不默认成第一项；其余情况取第一项。
+ */
+export function catalogType(model: TransferFormModel, catalog: TransferCatalog) {
+  if (catalog.types.some((type) => type.code === model.transferTypeCode))
+    return { transferTypeCode: model.transferTypeCode, typeConfirmation: false };
+  if (model.typeConfirmation || model.pendingDraft) return { transferTypeCode: '', typeConfirmation: true };
+  return { transferTypeCode: catalog.types[0]?.code ?? '', typeConfirmation: false };
 }
 
 function editedValues(source: 'preset' | 'custom', draft: FieldValues, current: FieldValues, modes: Modes) {
@@ -174,6 +201,7 @@ export function clearDraft(model: TransferFormModel): TransferFormModel {
     ...withoutPending(model),
     effectiveDate,
     transferTypeCode,
+    typeConfirmation: false,
     reasonCode: '',
     withEstablishment: false,
     fields: {},

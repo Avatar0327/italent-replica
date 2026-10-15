@@ -5,6 +5,7 @@ export const text = {
   draftRestored: '已带出上次暂存信息',
   clearDraft: '点击清除',
   draftRestoreFailed: '上次暂存信息读取失败，未带出，可直接填写',
+  typeConfirmation: '无法确定上次暂存的异动类型，请重新选择异动类型后再暂存或提交',
   fields: '任职字段',
   recoveryUnavailable: '无法保存会话处理状态，本次操作未发起。请检查浏览器存储后重试。',
   inProgress: '调动中员工',

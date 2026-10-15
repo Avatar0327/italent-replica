@@ -11,6 +11,7 @@ import {
 } from '../../apps/web/src/transfer/hr-session.js';
 import {
   applyPendingDraft,
+  catalogType,
   clearDraft,
   draftTransferType,
   editableLinkage,
@@ -99,16 +100,16 @@ const model: TransferFormModel = {
 
 it('AC-FE-F153-01 DEC-511 暂存按人只记一份：同一人再暂存替换旧单，提交后不再带出，按租户 / 身份隔离', () => {
   beginHrWrite(scope);
-  finishHrWrite(scope, { employeeId: employee, draftId: 'draft-a' });
+  finishHrWrite(scope, { employeeId: employee, draft: { id: 'draft-a', transferTypeCode: 'inner' } });
   beginHrWrite(scope);
-  finishHrWrite(scope, { employeeId: employee, draftId: draftId });
+  finishHrWrite(scope, { employeeId: employee, draft: { id: draftId, transferTypeCode: 'transfer' } });
   beginHrWrite(scope);
-  finishHrWrite(scope, { employeeId: 'other-employee', draftId: 'draft-c' });
+  finishHrWrite(scope, { employeeId: 'other-employee', draft: { id: 'draft-c' } });
   expect(readHrSession(scope)).toEqual({
     processing: false,
-    drafts: { [employee]: draftId, 'other-employee': 'draft-c' },
+    drafts: { [employee]: { id: draftId, transferTypeCode: 'transfer' }, 'other-employee': { id: 'draft-c' } },
   });
-  expect(hrDraftOf(scope, employee)).toBe(draftId);
+  expect(hrDraftOf(scope, employee)).toEqual({ id: draftId, transferTypeCode: 'transfer' });
   expect(hrDraftOf(JSON.stringify(['tenant', 'other']), employee)).toBeUndefined();
   beginHrWrite(scope);
   finishHrWrite(scope, { employeeId: employee });
@@ -119,13 +120,24 @@ it('AC-FE-F153-01 DEC-511 暂存按人只记一份：同一人再暂存替换旧
 
 it('AC-FE-F153-01 被拒（无回执）不改按人索引；旧版按单号数组的会话不锁表单、不带出', () => {
   beginHrWrite(scope);
-  finishHrWrite(scope, { employeeId: employee, draftId });
+  finishHrWrite(scope, { employeeId: employee, draft: { id: draftId, transferTypeCode: 'transfer' } });
   beginHrWrite(scope);
   finishHrWrite(scope);
-  expect(hrDraftOf(scope, employee)).toBe(draftId);
+  expect(hrDraftOf(scope, employee)).toEqual({ id: draftId, transferTypeCode: 'transfer' });
   sessionStorage.setItem(`italent.transfer.l2:${scope}`, JSON.stringify({ processing: false, drafts: [draftId] }));
   expect(readHrSession(scope)).toEqual({ processing: false, drafts: {} });
   expect(() => beginHrWrite(scope)).not.toThrow();
+});
+
+it('AC-FE-F153-01 #350 P2-1 只记单号的条目照常带出、类型留待确认；条目形状不符按会话损坏处理', () => {
+  const stored = (drafts: unknown) =>
+    sessionStorage.setItem(`italent.transfer.l2:${scope}`, JSON.stringify({ processing: false, drafts }));
+  stored({ [employee]: draftId });
+  expect(hrDraftOf(scope, employee)).toEqual({ id: draftId });
+  stored({ [employee]: { id: 1 } });
+  expect(() => readHrSession(scope)).toThrow();
+  stored({ [employee]: { id: draftId, transferTypeCode: 3 } });
+  expect(() => readHrSession(scope)).toThrow();
 });
 
 it('AC-FE-F153-02 读取暂存按真实接口形状核对：单号、人员、revision、联动版本不符一律视为读取失败', () => {
@@ -193,16 +205,54 @@ it('AC-FE-F153-03 联动选项还原为表单草稿；被隐藏（未返回）�
   ).toThrow();
 });
 
-it('AC-FE-F153-04 DEC-467 异动类型取返回的 transferTypeCode，否则按表单唯一对应的类型，不用 changeType', () => {
+it('AC-FE-F153-04 DEC-467 异动类型取暂存时记下的类型，否则按表单唯一对应的类型，不用 changeType', () => {
   const parsed = parseDraft(draftId, employee, business, linkage)!;
-  expect(draftTransferType(model.catalog, parsed, 'inner')).toBe('transfer');
-  expect(draftTransferType(model.catalog, { ...parsed, transferTypeCode: 'inner' }, 'transfer')).toBe('inner');
+  expect(draftTransferType(model.catalog, parsed)).toBe('transfer');
+  const typed = parseDraft(draftId, employee, business, linkage, 'transfer')!;
+  expect(typed.transferTypeCode).toBe('transfer');
+  expect(draftTransferType(model.catalog, typed)).toBe('transfer');
+  // 读接口将来返回类型时以它为准。
+  expect(parseDraft(draftId, employee, { ...business, transferTypeCode: 'inner' }, linkage, 'transfer')).toMatchObject({
+    transferTypeCode: 'inner',
+  });
+});
+
+it('AC-FE-F153-04 #350 P2-1 多个类型共用一个表单：按记下的类型还原；取不到或与表单不符时不默认', () => {
   const shared = {
     ...model.catalog,
-    types: [...model.catalog.types, { code: 'other', name: '其他调动', formId: 'hr' }],
+    types: [
+      { code: 'place', name: '工作地调整', formId: 'hr' },
+      { code: 'inner', name: '部门内调岗', formId: 'hr' },
+    ],
   };
-  expect(draftTransferType(shared, parsed, 'inner')).toBe('inner');
-  expect(draftTransferType(model.catalog, { ...parsed, formId: 'position_adjustment' }, 'inner')).toBe('inner');
+  const parse = (storedType?: string) => parseDraft(draftId, employee, business, linkage, storedType)!;
+  expect(draftTransferType(shared, parse('place'))).toBe('place');
+  expect(draftTransferType(shared, parse('inner'))).toBe('inner');
+  expect(draftTransferType(shared, parse())).toBeUndefined();
+  // 记下的类型已不在目录里，或与单据表单不符：不退回目录第一项。
+  expect(draftTransferType(shared, parse('transfer'))).toBeUndefined();
+  expect(draftTransferType(model.catalog, parse('inner'))).toBeUndefined();
+  expect(draftTransferType(model.catalog, { ...parse(), formId: 'position_adjustment' })).toBeUndefined();
+});
+
+it('AC-FE-F153-04 #350 P2-1 类型无法确定时留空并要求确认；目录刷新不把它默认成第一项', () => {
+  const shared = {
+    ...model.catalog,
+    types: [
+      { code: 'place', name: '工作地调整', formId: 'hr' },
+      { code: 'inner', name: '部门内调岗', formId: 'hr' },
+    ],
+  };
+  const restored = restoreDraft({ ...model, catalog: shared }, parseDraft(draftId, employee, business, linkage)!);
+  expect(restored).toMatchObject({ transferTypeCode: '', typeConfirmation: true, preview: null });
+  expect(catalogType(restored, shared)).toEqual({ transferTypeCode: '', typeConfirmation: true });
+  const typed = restoreDraft({ ...model, catalog: shared }, parseDraft(draftId, employee, business, linkage, 'place')!);
+  expect(typed).toMatchObject({ transferTypeCode: 'place', typeConfirmation: false });
+  expect(catalogType({ ...model, transferTypeCode: 'gone' }, shared)).toEqual({
+    transferTypeCode: 'place',
+    typeConfirmation: false,
+  });
+  expect(clearDraft(restored)).toMatchObject({ transferTypeCode: 'place', typeConfirmation: false });
 });
 
 it('AC-FE-F153-05 带出时只回填“当前可编辑且与预览不同”的字段，只读与未改字段取预览', () => {

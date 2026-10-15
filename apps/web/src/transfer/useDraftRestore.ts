@@ -7,7 +7,7 @@ import type { TransferFormModel } from './types.js';
 export type DraftRestoreStatus = 'idle' | 'loading' | 'restored' | 'failed';
 type SetModel = React.Dispatch<React.SetStateAction<TransferFormModel>>;
 
-function draftIdOf(scope: string, employeeId: string) {
+function draftOf(scope: string, employeeId: string) {
   try {
     return hrDraftOf(scope, employeeId);
   } catch {
@@ -29,9 +29,10 @@ function forget(scope: string, employeeId: string) {
 export function useDraftRestore(tenantId: string, scope: string | undefined, employeeId: string, setModel: SetModel) {
   const [status, setStatus] = useState<DraftRestoreStatus>('idle');
   useEffect(() => {
-    const draftId = scope && employeeId ? draftIdOf(scope, employeeId) : undefined;
-    setStatus(draftId ? 'loading' : 'idle');
-    if (!scope || !draftId) return;
+    const ref = scope && employeeId ? draftOf(scope, employeeId) : undefined;
+    setStatus(ref ? 'loading' : 'idle');
+    if (!scope || !ref) return;
+    const draftId = ref.id;
     const controller = new AbortController();
     const { signal } = controller;
     void Promise.all([
@@ -40,7 +41,7 @@ export function useDraftRestore(tenantId: string, scope: string | undefined, emp
     ])
       .then(([business, linkage]) => {
         if (signal.aborted) return;
-        const draft = parseDraft(draftId, employeeId, business, linkage);
+        const draft = parseDraft(draftId, employeeId, business, linkage, ref.transferTypeCode);
         if (!draft) {
           forget(scope, employeeId);
           setStatus('idle');

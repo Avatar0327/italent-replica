@@ -7,6 +7,8 @@ import type { HrFormMode } from '../../transfer/hr-form-model.js';
 import type { TransferAction, TransferFormProps } from '../../transfer/types.js';
 import { TransferForm } from './TransferForm.js';
 import { text } from '../../transfer/messages.js';
+import { CommandStatus } from '../../foundation/forms/CommandStatus.js';
+import { fieldLabels } from '../../transfer/hr-conflict.js';
 import { useTransferForm } from './useTransferForm.js';
 type TransferApplicationProps = {
   tenantId: string;
@@ -37,7 +39,7 @@ export function TransferApplication(props: TransferApplicationProps) {
         hrForm={hrForm}
         model={state.model}
         busy={locked}
-        actionsDisabled={state.loadingPreview || restoring}
+        actionsDisabled={state.loadingPreview || restoring || !!state.model.typeConfirmation}
         onSelection={state.selection}
         onField={state.field}
         onReferenceQuery={state.referenceQuery}
@@ -48,6 +50,7 @@ export function TransferApplication(props: TransferApplicationProps) {
         }}
       />
       {state.saved && initiator === 'hr' && <LinkageDetail tenantId={tenantId} businessId={state.saved.id} />}
+      {state.conflict && <CommandStatus submission={state.conflict} labels={fieldLabels(state.model.preview)} />}
       <CommandRecovery state={state} />
       {!state.unknownCommand && (
         <div className="transfer-actions">
@@ -95,6 +98,11 @@ function Notices({ state, locked }: { state: FormState; locked: boolean }) {
       {(state.commandError || state.error) && (
         <p role="alert" className="transfer-error">
           {state.commandError || state.error}
+        </p>
+      )}
+      {state.model.typeConfirmation && (
+        <p role="alert" className="transfer-error">
+          {text.typeConfirmation}
         </p>
       )}
       <DraftBanner state={state} locked={locked} />

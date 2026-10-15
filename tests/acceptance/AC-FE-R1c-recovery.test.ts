@@ -8,15 +8,15 @@ afterEach(() => {
   sessionStorage.clear();
 });
 
-it('AC-FE-R1c-11 DEC-464 / DEC-511 暂存索引只存单号（按人一份），按租户 / 身份隔离且保留其他人的暂存', () => {
+it('AC-FE-R1c-11 DEC-464 / DEC-511 暂存索引只存单号与类型（按人一份），按租户 / 身份隔离且保留其他人的暂存', () => {
   const scope = JSON.stringify(['tenant', 'identity']);
   beginHrWrite(scope);
-  finishHrWrite(scope, { employeeId: 'employee-a', draftId: 'draft-a' });
+  finishHrWrite(scope, { employeeId: 'employee-a', draft: { id: 'draft-a', transferTypeCode: 'transfer' } });
   beginHrWrite(scope);
-  finishHrWrite(scope, { employeeId: 'employee-b', draftId: 'draft-b' });
+  finishHrWrite(scope, { employeeId: 'employee-b', draft: { id: 'draft-b' } });
   expect(readHrSession(scope)).toEqual({
     processing: false,
-    drafts: { 'employee-a': 'draft-a', 'employee-b': 'draft-b' },
+    drafts: { 'employee-a': { id: 'draft-a', transferTypeCode: 'transfer' }, 'employee-b': { id: 'draft-b' } },
   });
   expect(readHrSession(JSON.stringify(['tenant', 'other']))).toEqual({ processing: false, drafts: {} });
   expect(readHrSession(JSON.stringify(['other', 'identity']))).toEqual({ processing: false, drafts: {} });
