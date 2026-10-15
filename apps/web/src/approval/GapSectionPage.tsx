@@ -79,7 +79,7 @@ function GapBanner({ lines }: { lines: readonly string[] }) {
   return (
     <Alert
       type="info"
-      closable={{ 'aria-label': c.closeBanner }}
+      closable={{ closeIcon: c.closeMark, 'aria-label': c.closeBanner }}
       onClose={() => setOpen(false)}
       message={
         <div className="approval-banner">

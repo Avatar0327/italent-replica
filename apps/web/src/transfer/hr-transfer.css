@@ -119,8 +119,9 @@
   border-radius: 0;
   font-size: 16px;
 }
-.transfer-view-active.ant-btn,
-.transfer-view-active.ant-btn:hover {
+/* 选中态要压过 antd 文字按钮的悬停色（点击后鼠标仍停在按钮上）。 */
+.transfer-views .transfer-view-active.ant-btn,
+.transfer-views .transfer-view.transfer-view-active.ant-btn:not(:disabled):hover {
   color: #146eff;
   border-bottom: 2px solid #146eff;
 }

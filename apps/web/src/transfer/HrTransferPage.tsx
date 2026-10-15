@@ -56,7 +56,7 @@ function HrTransferContent() {
         <TransferToolbar view={view} onOpen={(kind) => setParams({ view, form: kind })} />
       </header>
       <DecisionNote id="transfer" />
-      <TransferBanner key={view} view={view} />
+      <TransferBanner key={`banner-${view}`} view={view} />
       <TransferList key={view} view={view} />
     </section>
   );
@@ -94,7 +94,7 @@ function TransferBanner({ view }: { view: TransferView }) {
     <Alert
       type="info"
       className="transfer-banner"
-      closable={{ 'aria-label': t.closeBanner }}
+      closable={{ closeIcon: t.closeMark, 'aria-label': t.closeBanner }}
       onClose={() => setOpen(false)}
       message={
         <div className="transfer-banner-body">

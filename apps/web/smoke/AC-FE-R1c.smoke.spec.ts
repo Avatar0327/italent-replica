@@ -547,7 +547,7 @@ for (const status of [400, 422]) {
       writes++;
       return writes === 1
         ? route.fulfill({ status, json: { error: { code: 'VALIDATION_FAILED', message: '请补充驳回意见' } } })
-        : route.fulfill({ json: { instanceId: instance, status: 'rejected' } });
+        : route.fulfill({ json: detail(5, 'returned') });
     });
     await switchIdentity(page, '/approval');
     await page.getByRole('button', { name: '合成员工的调动申请', exact: true }).click();
@@ -711,7 +711,8 @@ for (const status of [409, 422]) {
     await page.locator('select[name="employeeId"]').selectOption(employee);
     await page.locator('input[name="place"]').fill('合成原工作地');
     await page.getByRole('button', { name: '暂存', exact: true }).click();
-    await expect(page.getByRole('dialog').locator('p[role="alert"]')).toContainText(reason);
+    // 他人调动申请为当前页全页表单（原站），拒绝原因显示在表单内。
+    await expect(page.locator('.r1c-transfer-form p[role="alert"]')).toContainText(reason);
     await expect(page.locator('input[name="place"]')).toHaveValue('合成原工作地');
     await expect(page.locator('select[name="employeeId"]')).toHaveValue(employee);
     await page.locator('input[name="place"]').fill('合成改正工作地');

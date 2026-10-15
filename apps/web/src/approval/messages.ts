@@ -119,6 +119,8 @@ export const centerText = {
   gap: '该页面的接口待补齐。以下按原站保留页面结构，暂无数据，按钮不可用。',
   collapse: '收起',
   closeBanner: '关闭提示',
+  /** antd 5 的 Alert 对象式 closable 须带 closeIcon 才渲染关闭按钮；按钮名取 closeBanner。 */
+  closeMark: '×',
   learnMore: '了解更多',
   advanced: '高级筛选',
   clear: '清空已选',

@@ -62,7 +62,8 @@ export function approvalRequest(
   if (action === 'transfer' && (!toUserId || !uuidPattern.test(toUserId)))
     throw new ApiError(422, 'INVALID_TARGET', 'fields', m.targetInvalid);
   const comment = typeof input.comment === 'string' ? input.comment.trim() || null : null;
-  const body = action === 'withdraw' ? {} : { comment, ...(action === 'transfer' ? { toUserId } : {}) };
+  const body: { comment?: string | null; toUserId?: string } = action === 'withdraw' ? {} : { comment };
+  if (action === 'transfer') body.toUserId = toUserId;
   return {
     path:
       action === 'withdraw'
