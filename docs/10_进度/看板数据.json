@@ -1,8 +1,8 @@
 {
 "updated": "2026-10-14",
 "stats": {
-"merged": 272,
-"open": 10,
+"merged": 273,
+"open": 9,
 "dec": 540,
 "ev": "43/177"
 },
@@ -4693,7 +4693,7 @@
 "k": "FE-R2b-1",
 "n": "FE-R2b-1 Offer 列表（10 个视图）/ 详情 / 转移状态·失效·拒绝弹窗 / 入职设置只读页（接演示数据）",
 "s": "ready",
-"note": "DEC-538 拟派发：Codex Astra 本地任务开发、Sol high 审；分支 codex/FE-R2b-1-offer-list；提示词起草中",
+"note": "DEC-538 拟派发：Codex Astra high 本地任务（~/Code/wt-fer2b1，基于 main 5f29be7d）开发、Sol high 审；分支 codex/FE-R2b-1-offer-list；提示词已就绪转 00，待用户发起；全部接 demo-stubs 标“演示数据”",
 "after": [],
 "mod": "R2",
 "ms": "D2",
