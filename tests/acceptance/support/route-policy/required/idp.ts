@@ -662,8 +662,15 @@ const PLAN_ROUTES: RequiredTable = {
   [`GET ${BASE}/my-plans`]: [
     {
       perm: 'own:idp.participant',
-      note: '本人 / 指导人的非未开始计划 + 当前有待办的计划（SQL 谓词按当前用户）',
+      note: '本人的进行中 / 已结束计划、指导人的非未开始计划 + 当前有待办的计划（SQL 谓词按当前用户）',
       at: [planRoute('GET', '/my-plans', 'const me = await personOfUser(tx, ctx.tenantId, ctx.userId)')],
+    },
+  ],
+  [`GET ${BASE}/tutor-plans`]: [
+    {
+      perm: 'own:idp.tutor',
+      note: '本人任指导人的进行中计划（F-164，SQL 谓词按当前用户）',
+      at: [planRoute('GET', '/tutor-plans', 'const me = await personOfUser(tx, ctx.tenantId, ctx.userId)')],
     },
   ],
   [`GET ${BASE}/plans/:id`]: [
@@ -673,7 +680,7 @@ const PLAN_ROUTES: RequiredTable = {
       facts: ['object:object.* 动作', VIEWER_FACT],
       note: 'HR：计划查看权且员工在其 IDP 范围内（hrSees）',
       at: [
-        planRoute('GET', '/plans/:id', 'return respondPlan(c, deps, ctx, await hrScopeOf(c, deps, ctx), id, 200)'),
+        planRoute('GET', '/plans/:id', 'return respondPlan(c, deps, ctx, await hrScopeOf(c, deps, ctx), id, 200, true)'),
         HR_SCOPE,
         SHOW_PLAN,
         REQUIRE_VIEWER,
