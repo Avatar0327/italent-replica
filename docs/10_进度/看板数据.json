@@ -2,8 +2,8 @@
 "updated": "2026-10-14",
 "stats": {
 "merged": 273,
-"open": 9,
-"dec": 540,
+"open": 11,
+"dec": 541,
 "ev": "43/177"
 },
 "tasks": {
@@ -983,6 +983,18 @@
 }
 },
 "log": [
+[
+"10-15 11:50",
+"FE-R2b-1 开出 Draft #357；F-154（#356）卡在职业发展缺 3 个后端字段，需取证（issue #355），已转 00 待决定"
+],
+[
+"10-15 11:42",
+"D2·R3·后补·F-154 开出 Draft PR #356，开发中"
+],
+[
+"10-15 11:15",
+"已派：D2·R3·后补·F-154、D2·R2·前端·FE-R2b-1（Codex Astra 本地任务，00 派出）"
+],
 [
 "10-15 11:13",
 "D2·R3·后补·F-164（#352）第 3 轮审查已发起"
@@ -4696,12 +4708,13 @@
 {
 "k": "FE-R2b-1",
 "n": "FE-R2b-1 Offer 列表（10 个视图）/ 详情 / 转移状态·失效·拒绝弹窗 / 入职设置只读页（接演示数据）",
-"s": "ready",
-"note": "DEC-538 拟派发：Codex Astra high 本地任务（~/Code/wt-fer2b1，基于 main 5f29be7d）开发、Sol high 审；分支 codex/FE-R2b-1-offer-list；提示词已就绪转 00，待用户发起；全部接 demo-stubs 标“演示数据”",
+"s": "assigned",
+"note": "已派 · #357 Draft（只提交了判红测试，实现中）· Codex Astra high 本地任务 ~/Code/wt-fer2b1 · 转交审版本后 Sol high 审（DEC-538）",
 "after": [],
 "mod": "R2",
 "ms": "D2",
-"kind": "前端"
+"kind": "前端",
+"pr": 357
 },
 {
 "k": "FE-R2b-2",
@@ -4991,13 +5004,14 @@
 {
 "k": "F-154",
 "n": "F-154 带教 / 职业发展 / 轮岗列表与弹窗，演示数据 5 / 4 / 7 条",
-"s": "ready",
+"s": "assigned",
 "after": [
 "F-142"
 ],
-"note": "F-142 已合并 · DEC-536/538：Codex Astra 本地任务（非云端，~/Code/wt-f154）开发、Sol high 审；分支 codex/F-154-mentor-career-rotation；发起后标“已派”",
+"note": "#356 Draft（只提交了判红测试）· 卡点【等决定，已转 00】：职业发展缺 3 个后端字段，需取证（issue #355：候选来源与当前任职取值口径）· 转交审版本后 Sol high 审",
 "mod": "R3",
-"ms": "D2"
+"ms": "D2",
+"pr": 356
 },
 {
 "k": "F-155b",
