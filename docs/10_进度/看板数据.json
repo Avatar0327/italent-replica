@@ -984,6 +984,10 @@
 },
 "log": [
 [
+"10-15 11:15",
+"已派：D2·R3·后补·F-154、D2·R2·前端·FE-R2b-1（Codex Astra 本地任务，00 派出）"
+],
+[
 "10-15 11:13",
 "D2·R3·后补·F-164（#352）第 3 轮审查已发起"
 ],
@@ -4696,8 +4700,8 @@
 {
 "k": "FE-R2b-1",
 "n": "FE-R2b-1 Offer 列表（10 个视图）/ 详情 / 转移状态·失效·拒绝弹窗 / 入职设置只读页（接演示数据）",
-"s": "ready",
-"note": "DEC-538 拟派发：Codex Astra high 本地任务（~/Code/wt-fer2b1，基于 main 5f29be7d）开发、Sol high 审；分支 codex/FE-R2b-1-offer-list；提示词已就绪转 00，待用户发起；全部接 demo-stubs 标“演示数据”",
+"s": "assigned",
+"note": "已派 · Codex Astra high 本地任务（~/Code/wt-fer2b1）已开工；分支 codex/FE-R2b-1-offer-list；将开 Draft PR，Sol high 审（DEC-538）；接 demo-stubs 标“演示数据”",
 "after": [],
 "mod": "R2",
 "ms": "D2",
@@ -4991,11 +4995,11 @@
 {
 "k": "F-154",
 "n": "F-154 带教 / 职业发展 / 轮岗列表与弹窗，演示数据 5 / 4 / 7 条",
-"s": "ready",
+"s": "assigned",
 "after": [
 "F-142"
 ],
-"note": "F-142 已合并 · DEC-536/538：Codex Astra 本地任务（非云端，~/Code/wt-f154）开发、Sol high 审；分支 codex/F-154-mentor-career-rotation；发起后标“已派”",
+"note": "已派 · Codex Astra high 本地任务（~/Code/wt-f154）开发中，已读 11 张截图；分支 codex/F-154-mentor-career-rotation；将开 Draft PR，Sol high 审（DEC-536/538）",
 "mod": "R3",
 "ms": "D2"
 },
