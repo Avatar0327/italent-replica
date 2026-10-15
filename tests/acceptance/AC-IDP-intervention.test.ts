@@ -31,7 +31,7 @@ describe('催办', () => {
 });
 
 describe('开启下个阶段', () => {
-  it('有进行中阶段：不处理（skipRunning）跳过；结束当前阶段（endRunning）后开启下一阶段，原实例作废', async () => {
+  it('有进行中阶段：不处理（skipRunning）跳过；结束当前阶段（endRunning）后开启下一阶段，原实例作废、原阶段已终止', async () => {
     const w = await planWorld(testDb().db, 'idp-next');
     let plan = await w.startedPlan();
     const skipped = await w.ok<{ receipts: Receipt[] }>(
@@ -47,7 +47,8 @@ describe('开启下个阶段', () => {
     );
     expect(ended.receipts[0]).toMatchObject({ status: 200, outcome: 'opened' });
     plan = await w.readPlan(plan.id);
-    expect(plan.stages.map((s) => s.status)).toEqual(['ended', 'running', 'pending']);
+    // 被跳过的阶段已终止（F-155，DEC-511），不是正常结束
+    expect(plan.stages.map((s) => s.status)).toEqual(['terminated', 'running', 'pending']);
     expect((await w.detail(firstInstance)).status).toBe('cancelled');
     expect(plan.currentStageName).toBe('中期回顾');
   });
@@ -59,7 +60,7 @@ describe('开启下个阶段', () => {
       await w.ok(await w.intervene('start-next', { items: items(plan), runningMode: 'endRunning' }));
       plan = await w.readPlan(plan.id);
     }
-    expect(plan.stages.map((s) => s.status)).toEqual(['ended', 'ended', 'running']);
+    expect(plan.stages.map((s) => s.status)).toEqual(['terminated', 'terminated', 'running']);
     const other = await w.startedPlan({ name: '另一个计划' });
     const result = await w.ok<{ receipts: Receipt[] }>(
       await w.intervene('start-next', {

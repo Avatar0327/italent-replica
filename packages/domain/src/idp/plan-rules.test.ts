@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { addDays } from '../contracts/rules.js';
-import { autoStartCutoff, currentStageName, periodsIntersect, stageDueDate } from './plan-rules.js';
+import { STAGE_STATUSES } from './catalog.js';
+import {
+  autoStartCutoff,
+  currentStageName,
+  nextOpenableStage,
+  periodsIntersect,
+  stageDueDate,
+  stagePassed,
+} from './plan-rules.js';
 
 const refs = { planStart: '2026-01-01', planEnd: '2026-12-31', previousEnd: '2026-09-01', employmentEffective: null };
 const rule = {
@@ -47,5 +55,15 @@ describe('IDP 计划执行规则', () => {
     expect(currentStageName('running', stages)).toBe('努力提升中');
     expect(currentStageName('running', [{ name: '制定计划', status: 'running' }])).toBe('制定计划');
     expect(currentStageName('ended', stages)).toBe(null);
+  });
+
+  it('已终止（被跳过）与已结束同算已过去的阶段，不再被开启（F-155）', () => {
+    expect(STAGE_STATUSES.filter(stagePassed)).toEqual(['ended', 'terminated']);
+    const stages = [
+      { seq: 1, name: '制定计划', status: 'terminated' as const },
+      { seq: 2, name: '中期回顾', status: 'pending' as const },
+    ];
+    expect(nextOpenableStage(stages)?.seq).toBe(2);
+    expect(currentStageName('running', stages)).toBe('努力提升中');
   });
 });
