@@ -199,6 +199,7 @@ def codex_results():
     return out
 
 
+EVIDENCE_LOCAL = False  # 10-15：取证改由总编排派远程 Codex，本机取证窗口闲置，提交时间不代表取证进度，不再报停顿
 EVIDENCE_IDLE = 60  # 分钟：取证窗口（提交信息以“取证”开头）这么久没有新提交 → 提醒（用户 10-07 要求取证不停）
 
 
@@ -346,7 +347,7 @@ def main():
             paused = os.path.exists(pause) and datetime.date.today().isoformat() < open(pause).read().strip()
         except Exception:
             paused = False
-        if ev_t and not paused:
+        if ev_t and not paused and EVIDENCE_LOCAL:
             m = int(mins_since(ev_t))
             k3 = f"evidence-idle@{ev_t}@{m // EVIDENCE_IDLE}"
             if m >= EVIDENCE_IDLE and k3 not in stalled:
