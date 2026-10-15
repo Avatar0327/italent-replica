@@ -1233,6 +1233,27 @@ describe('第 5 轮审查 P2-1：基准开头固定一次，HEAD 中途被移动
     expect(result.out).toContain('HEAD 在脚本运行期间被移动');
   }, 60_000);
 
+  it('业务冲突停下后 HEAD 被移到另一个提交（MERGE_HEAD 还在）→ --continue 拒绝，不把新提交上的文件丢掉', () => {
+    const { root, head } = stopAtBusinessConflict({
+      base: { [SCHEMA]: schemaIndex(['tenancy']) },
+      branch: { [SCHEMA]: schemaIndex(['tenancy', 'alpha']) },
+      main: { [SCHEMA]: schemaIndex(['tenancy', 'beta']) },
+    });
+    // 另起一个在 head 上多了 moved.txt 的提交，用底层命令把 HEAD 移过去（合并状态不受影响）
+    const env = { ...process.env, GIT_INDEX_FILE: path.join(root, '.git/moved-index') };
+    const git = (...args: string[]) => spawnSync('git', args, { cwd: root, encoding: 'utf8', env }).stdout.trim();
+    git('read-tree', head);
+    const blob = spawnSync('git', ['hash-object', '-w', '--stdin'], { cwd: root, input: 'moved\n', encoding: 'utf8' });
+    git('update-index', '--add', '--cacheinfo', `100644,${blob.stdout.trim()},moved.txt`);
+    const moved = sh(root, 'commit-tree', git('write-tree'), '-p', head, '-m', 'moved');
+    sh(root, 'update-ref', 'HEAD', moved);
+    const done = resolveBusinessAndContinue(root);
+    expect(done.status, done.out).not.toBe(0);
+    expect(sh(root, 'rev-parse', 'HEAD')).toBe(moved);
+    expect(mergeInProgress(root)).toBe(true);
+    expect(done.out).toContain('ORIG_HEAD');
+  }, 60_000);
+
   it('重算期间另一个终端切到同一提交上的新分支（git checkout -b other）→ 非 0 退出，两个分支都不动', () => {
     const root = buildRepo(withMarkerIgnored(regenSides(meanwhile("git('checkout', '-q', '-b', 'other');"))));
     const head = sh(root, 'rev-parse', 'HEAD');

@@ -104,6 +104,8 @@ const REGEN_STEPS = [
 const mergeInProgress = () => gitOk('rev-parse', '-q', '--verify', 'MERGE_HEAD');
 const unmerged = () => git('diff', '--name-only', '--diff-filter=U', '-z').split('\0').filter(Boolean);
 const short = (sha) => sha.slice(0, 12);
+const MOVED_HINT =
+  '不提交、不重试，也不并入期间的新提交；请用 git status / git log 确认仓库状态后重新运行 pnpm merge:main';
 
 /** 此刻 HEAD 指向的分支（分离头时为 HEAD）与提交。只在 fixBase 与 baseMoves 里读，读到的不当内容来源用。 */
 function currentHead() {
@@ -120,21 +122,15 @@ function currentHead() {
  *   ref：HEAD 指向的分支（分离头为 HEAD），提交时 update-ref 它；head / main：开始时本分支与 main 的提交；fork：二者的分叉点；
  *   merging：提交是否以 main 为第二个父提交（本次开始合并，或 --continue 接着进行中的合并）。
  * --continue 接着进行中的合并时 main = MERGE_HEAD，且须仍等于 origin/main（否则说不清核对与提交的是哪个 main）；
- * 没有进行中的合并、本分支又不包含 main 时拒绝（核对按“合入 main”算，提交却不含 main）。
+ * HEAD 须仍是开始合并时的提交（git merge 记在 ORIG_HEAD）：索引里的合并结果是从它算的，HEAD 中途被移走（MERGE_HEAD 还在）
+ * 就会以新 HEAD 为父提交、却丢掉新 HEAD 上的文件。没有进行中的合并、本分支又不包含 main 时拒绝（核对按“合入 main”算，提交却不含 main）。
  */
 function fixBase(continuing) {
   const { ref, head } = currentHead();
   if (ref === 'refs/heads/main') fail('不要在 main 上运行，请在自己的分支上运行');
   const main = git('rev-parse', '--verify', `${MAIN}^{commit}`).trim();
   const merging = continuing && mergeInProgress();
-  if (merging) {
-    const mergeHead = git('rev-parse', '--verify', 'MERGE_HEAD^{commit}').trim();
-    if (mergeHead !== main)
-      fail(
-        `合并开始后 ${MAIN} 变了（MERGE_HEAD ${short(mergeHead)} ≠ ${MAIN} ${short(main)}），` +
-          '无法确定核对与提交的是哪个 main：git merge --abort 后重新运行 pnpm merge:main',
-      );
-  }
+  if (merging) requireMergeOf(head, main);
   const contains = gitOk('merge-base', '--is-ancestor', main, head);
   if (continuing && !merging && !contains)
     fail(`--continue：没有进行中的合并，本分支也还没包含 ${MAIN}；请去掉 --continue 重新运行 pnpm merge:main`);
@@ -142,22 +138,35 @@ function fixBase(continuing) {
   return { ref, head, main, fork, merging: merging || (!continuing && !contains) };
 }
 
+/** --continue 接着的合并必须正是“head 合入 main”：MERGE_HEAD = main（origin/main），ORIG_HEAD（git merge 记下的开始时 HEAD）= head。 */
+function requireMergeOf(head, main) {
+  const mergeHead = git('rev-parse', '--verify', 'MERGE_HEAD^{commit}').trim();
+  if (mergeHead !== main)
+    fail(
+      `合并开始后 ${MAIN} 变了（MERGE_HEAD ${short(mergeHead)} ≠ ${MAIN} ${short(main)}），` +
+        '无法确定核对与提交的是哪个 main：git merge --abort 后重新运行 pnpm merge:main',
+    );
+  const orig = spawnSync('git', ['rev-parse', '-q', '--verify', 'ORIG_HEAD^{commit}'], { cwd: ROOT, encoding: 'utf8' });
+  const origHead = orig.stdout.trim();
+  if (origHead !== head)
+    fail(
+      `合并开始后 HEAD 被移动（开始合并时 ORIG_HEAD ${origHead ? short(origHead) : '无'}，现在 HEAD ${short(head)}），` +
+        `索引里的合并结果不是从当前 HEAD 算的。\n${MOVED_HINT}`,
+    );
+}
+
 /** HEAD 相对基准的移动：指向的分支、提交、合并状态（MERGE_HEAD）任一与基准不同都列出。 */
 function baseMoves(base) {
   const now = currentHead();
-  const mergeHead = mergeInProgress() ? git('rev-parse', 'MERGE_HEAD').trim() : undefined;
-  const expected = base.merging ? base.main : undefined;
+  const mergeHead = mergeInProgress() ? git('rev-parse', 'MERGE_HEAD').trim() : '';
+  const expected = base.merging ? base.main : '';
+  const shown = (sha) => (sha ? short(sha) : '无');
   return [
     now.ref === base.ref ? '' : `HEAD 指向 ${now.ref}（开始时 ${base.ref}）`,
     now.head === base.head ? '' : `HEAD 在 ${short(now.head)}（开始时 ${short(base.head)}）`,
-    mergeHead === expected
-      ? ''
-      : `MERGE_HEAD 为 ${mergeHead ? short(mergeHead) : '无'}（应为 ${expected ? short(expected) : '无'}）`,
+    mergeHead === expected ? '' : `MERGE_HEAD 为 ${shown(mergeHead)}（应为 ${shown(expected)}）`,
   ].filter(Boolean);
 }
-
-const MOVED_HINT =
-  '不提交、不重试，也不并入期间的新提交；请用 git status / git log 确认仓库状态后重新运行 pnpm merge:main';
 
 /** 基准没被移动才继续（开始合并后、写出待提交树后、提交前各查一次；提交本身另有 update-ref 的 CAS 兜底）。 */
 function requireBaseUnmoved(base, when) {
