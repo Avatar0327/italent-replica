@@ -29,10 +29,27 @@ export const pages: ModulePages = {
       },
     },
   ],
+  // 员工自助 > 我的发展计划 > 个人发展计划 / 我辅导的发展计划（DEC-523，两项同级）；员工自助应用由 self-service 声明，
+  // 子菜单经 menus 扩展点由本模块登记。可见性随员工自助，列表内容由后端按本人 / 指导人过滤（F-164）。
+  menus: [
+    {
+      app: 'self',
+      children: (_snapshot, route) => [
+        {
+          key: 'self-idp',
+          label: '我的发展计划',
+          path: OWN_PLANS_PATH,
+          group: route.group,
+          children: [
+            { key: 'self-idp-own', label: '个人发展计划', path: OWN_PLANS_PATH, group: route.group },
+            { key: 'self-idp-tutoring', label: '我辅导的发展计划', path: TUTOR_PLANS_PATH, group: route.group },
+          ],
+        },
+      ],
+    },
+  ],
   routes: [
     { path: '/idp/*', page: IdpPage },
-    // 员工自助 > 我的发展计划 > 个人发展计划 / 我辅导的发展计划：员工自助左侧菜单只能由员工自助登记
-    // （page-registry 规定子项由声明该应用的模块提供），本片只提供路由，两页之间用页内同级导航切换。
     { path: OWN_PLANS_PATH, page: MyPlansPage },
     { path: TUTOR_PLANS_PATH, page: TutorPlansPage },
   ],

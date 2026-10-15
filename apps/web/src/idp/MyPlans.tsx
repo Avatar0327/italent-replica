@@ -1,7 +1,6 @@
-import { Button, Select, Table, Tabs, Tooltip, type TableColumnsType } from 'antd';
+import { Button, Select, Table, Tooltip, type TableColumnsType } from 'antd';
 import { useMemo, useState, type ReactNode } from 'react';
-import { useLocation, useNavigate, useSearchParams } from 'react-router';
-import { CreateCommands } from '../evaluation/CreateEntry.js';
+import { useSearchParams } from 'react-router';
 import { DecisionNote } from '../foundation/DecisionNote.js';
 import { PageState } from '../foundation/PageState.js';
 import { TenantDatePicker } from '../foundation/selectors.js';
@@ -10,9 +9,9 @@ import { ViewHeading } from '../foundation/ViewHeading.js';
 import { IDP_API, useCollection } from './api.js';
 import { t } from './messages.js';
 import { display, matchesFilters, ownPlans, statusText, type PlanFilters } from './model.js';
-import { OWN_PLANS_PATH, TUTOR_PLANS_PATH } from './paths.js';
 import { PlanDetailPage } from './PlanDetail.js';
 import type { PlanSummary } from './types.js';
+import { IdpCommands } from './commands.js';
 import { useNames } from './useNames.js';
 import './idp.css';
 
@@ -25,9 +24,9 @@ const DETAIL = 'plan';
 export function MyPlansPage() {
   const session = useSession();
   return (
-    <CreateCommands>
+    <IdpCommands>
       <MyPlans key={`${session.tenantId}/${session.identityKey}`} employeeId={session.employeeId ?? undefined} />
-    </CreateCommands>
+    </IdpCommands>
   );
 }
 
@@ -35,9 +34,9 @@ export function MyPlansPage() {
 export function TutorPlansPage() {
   const session = useSession();
   return (
-    <CreateCommands>
+    <IdpCommands>
       <TutorPlans key={`${session.tenantId}/${session.identityKey}`} />
-    </CreateCommands>
+    </IdpCommands>
   );
 }
 
@@ -87,23 +86,6 @@ function TutorPlans() {
   );
 }
 
-/** 同级导航：员工自助左侧菜单不能由本模块登记（page-registry 归属外），先在页内给出原站菜单的两个子项。 */
-function PeerNav() {
-  const location = useLocation();
-  const navigate = useNavigate();
-  return (
-    <Tabs
-      className="idp-peer-nav"
-      activeKey={location.pathname === TUTOR_PLANS_PATH ? TUTOR_PLANS_PATH : OWN_PLANS_PATH}
-      onChange={(key) => void navigate(key)}
-      items={[
-        { key: OWN_PLANS_PATH, label: t.personalPlans },
-        { key: TUTOR_PLANS_PATH, label: t.tutorPlans },
-      ]}
-    />
-  );
-}
-
 function PlanListPage(props: {
   title: string;
   note: string;
@@ -135,7 +117,6 @@ function PlanListPage(props: {
     );
   return (
     <div className="idp-page idp-my-plans">
-      <PeerNav />
       <header className="page-heading">
         <ViewHeading title={title} />
         <Button onClick={list.reload}>{t.actions.refresh}</Button>

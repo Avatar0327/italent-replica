@@ -262,6 +262,11 @@ export const t = {
     hint: '请输入',
     tooLong: (max: number) => `最多 ${max} 字`,
     save: '保存',
+    submit: '提交',
+    // 与后端 409 IDP_REVIEW_REQUIRED 同一口径（approval-adapter requireReview）
+    required: (label: string) => `${label}还没有填写，不能提交`,
+    noTask: '当前没有待你提交的回顾，请刷新后再试',
+    readFailed: '读取审批信息失败，请稍后再试',
   },
   denied: {
     title: '无权限查看当前发展计划~',
@@ -290,6 +295,7 @@ export const t = {
     fields: '提交必需的字段无权查看，保存无法带回原值，暂不开放新增、编辑、移除和排序',
   },
   rereadFailed: '重读失败，请刷新',
+  receiptInvalid: '保存回执缺少有效版本，结果待确认',
   enableNoRevision: '模板已创建，但创建结果没有返回版本号，无法接着启用，请刷新列表后再启用',
   processLine: (name: string) => `流程：${name}`,
   gaps: {

@@ -2,11 +2,12 @@
 // 夹具照后端真实形态（r3d2-fixtures：tutor-plans 行、403 IDP_PLAN_NO_VISIBLE_MODULE、PUT 模块内容回完整详情）。
 import type { Page } from '@playwright/test';
 import { test, expect, user } from './fixtures.js';
-import { basicOnlyId, mockIdp, planId, type IdpCall } from './r3d2-fixtures.js';
+import { basicOnlyId, mockIdp, planId, reviewTaskId, type IdpCall } from './r3d2-fixtures.js';
 test.use({ viewport: { width: 1440, height: 1000 } });
 
 const CONTENT = /^\/plans\/[^/]+\/modules\/[^/]+\/content$/;
 const puts = (calls: IdpCall[]) => calls.filter((call) => call.method === 'PUT' && CONTENT.test(call.path));
+const approves = (calls: IdpCall[]) => calls.filter((call) => call.path === `/approval/tasks/${reviewTaskId}/approve`);
 
 /** 浏览器把 4xx / 5xx 响应记成控制台错误；只放过本例预期的状态码。 */
 function watchErrors(page: Page, expected: string[] = []) {
@@ -23,6 +24,13 @@ async function asUser(page: Page) {
   await expect(page).toHaveURL(/\/staff$/);
 }
 const reviewForm = (page: Page) => page.getByRole('region', { name: '总体回顾' });
+/** 侧栏 员工自助 > 我的发展计划 下的两个同级入口（DEC-523）；目录收起时先展开。 */
+async function sideNav(page: Page, label: '个人发展计划' | '我辅导的发展计划') {
+  const sidebar = page.locator('.shell-sidebar');
+  const item = sidebar.getByRole('menuitem', { name: label, exact: true });
+  if (!(await item.isVisible())) await sidebar.getByRole('menuitem', { name: '我的发展计划', exact: true }).click();
+  await item.click();
+}
 
 test('AC-FE-F164-01 本人打开无可见模块的计划：原站空状态，链接回个人发展计划，不给重试', async ({ page }) => {
   const errors = watchErrors(page, ['403']);
@@ -44,12 +52,14 @@ test('AC-FE-F164-01 本人打开无可见模块的计划：原站空状态，链
   expect(errors).toEqual([]);
 });
 
-test('AC-FE-F164-02 我辅导的发展计划：同级导航、姓名与辅导员工分类筛选；无可见模块时链接回本页', async ({ page }) => {
+test('AC-FE-F164-02 我辅导的发展计划：侧栏同级入口、姓名与辅导员工分类筛选；无可见模块时链接回本页', async ({
+  page,
+}) => {
   const errors = watchErrors(page, ['403']);
   await mockIdp(page);
   await asUser(page);
   await page.goto('/self/idp');
-  await page.getByRole('tab', { name: '我辅导的发展计划' }).click();
+  await sideNav(page, '我辅导的发展计划');
   await expect(page).toHaveURL(/\/self\/idp\/tutoring$/);
   await expect(page.getByRole('heading', { name: '我辅导的发展计划' })).toBeVisible();
   for (const name of ['名称', '姓名', '指导人', '状态', '当前步骤'])
@@ -71,7 +81,7 @@ test('AC-FE-F164-02 我辅导的发展计划：同级导航、姓名与辅导员
   await link.click();
   await expect(page).toHaveURL(/\/self\/idp\/tutoring$/);
 
-  await page.getByRole('tab', { name: '个人发展计划' }).click();
+  await sideNav(page, '个人发展计划');
   await expect(page).toHaveURL(/\/self\/idp$/);
   expect(errors).toEqual([]);
 });
@@ -157,6 +167,9 @@ test('AC-FE-F164-06 回顾保存冲突：重读最新版本、核对差异后带
   await expect.poll(() => puts(calls).length).toBe(2);
   expect(puts(calls)[1]).toMatchObject({ body: { summary: '合成我的总结' }, revision: '4' });
   expect(puts(calls)[1]!.key).not.toBe(puts(calls)[0]!.key);
+  // 重提的回执版本前进（4 → 5）：按已保存解锁
+  await expect(form.getByLabel('总结')).toBeEnabled();
+  await expect(form.getByText(/结果待确认|版本冲突/)).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 
@@ -181,6 +194,123 @@ test('AC-FE-F164-07 回顾保存结果未知：表单与同一计划的任务入
   await expect(form.getByLabel('总结')).toBeDisabled();
   await form.getByRole('button', { name: /保\s*存/ }).click({ force: true });
   expect(puts(calls)).toHaveLength(1);
+  expect(errors).toEqual([]);
+});
+
+test('AC-FE-F164-08 从正常菜单进入：全部菜单 > 员工自助，侧栏我的发展计划下两个同级入口', async ({ page }) => {
+  const errors = watchErrors(page);
+  await mockIdp(page);
+  await asUser(page);
+  await page.getByRole('button', { name: '应用导航' }).click();
+  await page.getByRole('dialog', { name: '全部菜单' }).getByRole('link', { name: '员工自助', exact: true }).click();
+  await expect(page).toHaveURL(/\/self$/);
+  const sidebar = page.locator('.shell-sidebar');
+  // 侧栏只在首次加载时展开当前应用；从全部菜单跳过来时先展开员工自助（底座原有行为）
+  await sidebar.getByRole('menuitem', { name: '员工自助', exact: true }).click();
+  await sidebar.getByRole('menuitem', { name: '我的发展计划', exact: true }).click();
+  const own = sidebar.getByRole('menuitem', { name: '个人发展计划', exact: true });
+  const tutoring = sidebar.getByRole('menuitem', { name: '我辅导的发展计划', exact: true });
+  await expect(own).toBeVisible();
+  await expect(tutoring).toBeVisible();
+  await own.click();
+  await expect(page).toHaveURL(/\/self\/idp$/);
+  await expect(page.getByRole('heading', { name: '个人发展计划' })).toBeVisible();
+  await tutoring.click();
+  await expect(page).toHaveURL(/\/self\/idp\/tutoring$/);
+  await expect(page.getByRole('heading', { name: '我辅导的发展计划' })).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test('AC-FE-F164-09 回顾结果未知后切换入口再回来：仍锁定，不能以新命令重发', async ({ page }) => {
+  const errors = watchErrors(page, ['500']);
+  const calls = await mockIdp(page, { reviewButtons: ['EditModuleContent'], writeStatus: 500 });
+  await asUser(page);
+  await page.goto(`/self/idp?plan=${planId}`);
+  await reviewForm(page).getByLabel('总结').fill('合成未知总结');
+  await reviewForm(page)
+    .getByRole('button', { name: /保\s*存/ })
+    .click();
+  await expect(reviewForm(page).getByText(/结果待确认/)).toBeVisible();
+  await page.getByRole('button', { name: /返\s*回/ }).click();
+  // 切到同级入口再切回：页面按路径重建，命令仍在模块级存储里
+  await sideNav(page, '我辅导的发展计划');
+  await expect(page.getByRole('heading', { name: '我辅导的发展计划' })).toBeVisible();
+  await sideNav(page, '个人发展计划');
+  await page.getByRole('button', { name: '合成发展计划', exact: true }).click();
+  const form = reviewForm(page);
+  await expect(form.getByText(/结果待确认/)).toBeVisible();
+  await expect(form.getByLabel('总结')).toBeDisabled();
+  await expect(form.getByRole('button', { name: /保\s*存/ })).toBeDisabled();
+  await form.getByRole('button', { name: /保\s*存/ }).click({ force: true });
+  expect(puts(calls)).toHaveLength(1);
+  expect(errors).toEqual([]);
+});
+
+const BAD_RECEIPTS = [
+  ['10', 'without-revision', '缺 revision'],
+  ['11', 'stale-revision', 'revision 没前进'],
+] as const;
+for (const [no, receipt, what] of BAD_RECEIPTS)
+  test(`AC-FE-F164-${no} 回顾保存回执${what}：按结果未知锁定，不当成已保存`, async ({ page }) => {
+    const errors = watchErrors(page);
+    const calls = await mockIdp(page, { reviewButtons: ['EditModuleContent'], reviewReceipt: receipt });
+    await asUser(page);
+    await page.goto(`/self/idp?plan=${planId}`);
+    const form = reviewForm(page);
+    await form.getByLabel('总结').fill('合成回执总结');
+    await form.getByRole('button', { name: /保\s*存/ }).click();
+    await expect.poll(() => puts(calls).length).toBe(1);
+    await expect(form.getByText(/结果待确认/)).toBeVisible();
+    await expect(form.getByLabel('总结')).toBeDisabled();
+    await expect(form.getByRole('button', { name: /保\s*存/ })).toBeDisabled();
+    await expect(page.getByRole('button', { name: '添加任务' })).toBeDisabled();
+    expect(errors).toEqual([]);
+  });
+
+// 提交（送审）路径的前端必填（F-164 第 1 轮 P2-4）：两项去空白后非空才发请求，缺项定位到字段，口径同后端 IDP_REVIEW_REQUIRED。
+const MISSING = [
+  ['12', '改进方法', '', '缺项'],
+  ['13', '总结', '  \n　 ', '纯空白'],
+] as const;
+for (const [no, field, value, what] of MISSING)
+  test(`AC-FE-F164-${no} 回顾提交${what}：${field}报“还没有填写，不能提交”并定位，不保存也不提交`, async ({ page }) => {
+    const errors = watchErrors(page);
+    const calls = await mockIdp(page, { reviewButtons: ['EditModuleContent'], reviewApproval: true });
+    await asUser(page);
+    await page.goto(`/self/idp?plan=${planId}`);
+    const form = reviewForm(page);
+    await form.getByLabel(field).fill(value);
+    await form.getByRole('button', { name: /提\s*交/ }).click();
+    await expect(form.getByText(`${field}还没有填写，不能提交`)).toBeVisible();
+    await expect(form.getByLabel(field)).toBeFocused();
+    await page.waitForTimeout(300);
+    expect(calls).toHaveLength(0);
+    expect(errors).toEqual([]);
+  });
+
+test('AC-FE-F164-14 回顾保存草稿可空；填齐后提交：先保存改动，再同意本人待办（带幂等键与实例版本）', async ({
+  page,
+}) => {
+  const errors = watchErrors(page);
+  const calls = await mockIdp(page, { reviewButtons: ['EditModuleContent'], reviewApproval: true });
+  await asUser(page);
+  await page.goto(`/self/idp?plan=${planId}`);
+  const form = reviewForm(page);
+  await form.getByLabel('总结').fill('');
+  await form.getByRole('button', { name: /保\s*存/ }).click();
+  await expect.poll(() => puts(calls).length).toBe(1);
+  await expect(form.getByText(/还没有填写/)).toHaveCount(0);
+  expect(approves(calls)).toHaveLength(0);
+
+  await form.getByLabel('总结').fill('合成提交总结');
+  await form.getByRole('button', { name: /提\s*交/ }).click();
+  await expect.poll(() => approves(calls).length).toBe(1);
+  expect(puts(calls)).toHaveLength(2);
+  expect(puts(calls)[1]).toMatchObject({ body: { summary: '合成提交总结' } });
+  expect(calls.indexOf(puts(calls)[1]!)).toBeLessThan(calls.indexOf(approves(calls)[0]!));
+  expect(approves(calls)[0]).toMatchObject({ method: 'POST', revision: '7', body: { comment: null } });
+  expect(approves(calls)[0]!.key).toBeTruthy();
+  await expect(form.getByText(/结果待确认|版本冲突/)).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 

@@ -1,6 +1,6 @@
 import { IDP_OBJECTS } from '../../../packages/domain/src/idp/catalog.js';
 import type { Page, Route } from '@playwright/test';
-import { employee, snapshotFixture } from './fixtures.js';
+import { employee, snapshotFixture, user } from './fixtures.js';
 
 // 全部为合成数据（AGENTS.md §5）；ID 不截断随机 UUID，固定写死便于断言。
 export const planId = 'b0000000-0000-4000-8000-000000000001';
@@ -217,8 +217,32 @@ export interface IdpMockOptions {
   rereadSubProcessOmit?: string[];
   /** 计划详情里回顾模块的节点按钮（参与人视图，F-155b）；默认不给。 */
   reviewButtons?: string[];
+  /** 回顾保存成功（库里已进版本）但回执异常：缺 revision，或 revision 仍是请求带的旧版本（F-164 第 1 轮 P2-3）。 */
+  reviewReceipt?: 'without-revision' | 'stale-revision';
   /** 第一阶段被 HR 跳过（已终止，F-155），第二阶段进行中。 */
   skippedFirstStage?: boolean;
+  /** 运行中阶段带审批实例，本人有待办（回顾“提交”= 同意该待办，F-164 第 1 轮 P2-4）；审批接口照 approval routes 夹具。 */
+  reviewApproval?: boolean;
+}
+
+export const reviewInstanceId = 'c0000000-0000-4000-8000-000000000201';
+export const reviewTaskId = 'c0000000-0000-4000-8000-000000000202';
+/** 与 GET /approval/instances/:id 同形；同意成功时返回动作后的详情（routes.ts respondOutcome → respondDetail）。 */
+function reviewApprovalDetail(revision: number, done: boolean) {
+  return {
+    id: reviewInstanceId,
+    title: '合成员工甲的发展计划',
+    revision,
+    status: done ? 'approved' : 'running',
+    approvalType: 'idp_plan',
+    actions: done ? [] : ['approve'],
+    recordsHidden: false,
+    form: { values: {} },
+    tasks: [
+      { id: reviewTaskId, nodeName: '员工制定计划', status: done ? 'approved' : 'pending', assigneeUserId: user },
+    ],
+    logs: [],
+  };
 }
 
 /** 照 stage-service endRunningStage：被跳过的阶段记已终止和结束日期，作废的审批实例 id 保留。 */
@@ -233,7 +257,14 @@ const skippedStages = [
 function detailOf(options: IdpMockOptions) {
   const base = planDetail(options.goalButtons ?? GOAL_BUTTONS, options.taskSwitch ?? true, options.reviewButtons ?? []);
   const skipped = { ...base, stages: skippedStages, currentStageName: '中期回顾' };
-  return trimDetail(options.skippedFirstStage ? skipped : base, options);
+  const withApproval = {
+    ...base,
+    stages: base.stages.map((row) =>
+      row.status === 'running' ? { ...row, approvalInstanceId: reviewInstanceId } : row,
+    ),
+  };
+  const chosen = options.skippedFirstStage ? skipped : options.reviewApproval ? withApproval : base;
+  return trimDetail(chosen, options);
 }
 
 function objectPermission(code: string, options: IdpMockOptions) {
@@ -318,7 +349,7 @@ export async function mockIdp(page: Page, options: IdpMockOptions = {}) {
     if (status === 409) server.conflict();
     if (status === 409 && path === plans.content) plans.conflict();
     if (status) return route.fulfill({ status, json: { error: { code } } });
-    if (path === plans.content) return route.fulfill({ json: plans.save(call) });
+    if (path === plans.content) return route.fulfill({ json: reviewReceipt(plans.save(call), call, options) });
     if (path.includes('/tasks')) return route.fulfill({ status: path.endsWith('/tasks') ? 201 : 200, json: detail });
     if (path.endsWith('/copy')) return route.fulfill({ status: 201, json: { ...template, id: approvalId } });
     if (path.startsWith('/processes')) return route.fulfill({ json: server.save(call) });
@@ -343,8 +374,31 @@ export async function mockIdp(page: Page, options: IdpMockOptions = {}) {
     const json = server.read(path) ?? plans.read(path) ?? reads[path] ?? list([]);
     return route.fulfill({ json: calls.length ? reread(path, json, options) : json });
   });
+  if (options.reviewApproval) await mockReviewApproval(page, calls);
   await mockNames(page);
   return calls;
+}
+
+/** 回顾所在阶段的审批实例：详情读取与本人待办的同意；同意记进 calls（路径带 /approval 前缀）。 */
+async function mockReviewApproval(page: Page, calls: IdpCall[]) {
+  let revision = 7;
+  let done = false;
+  await page.route(`**/api/tenant/approval/instances/${reviewInstanceId}`, (route) =>
+    route.fulfill({ json: reviewApprovalDetail(revision, done) }),
+  );
+  await page.route(`**/api/tenant/approval/tasks/${reviewTaskId}/approve`, (route) => {
+    const request = route.request();
+    calls.push({
+      method: request.method(),
+      path: `/approval/tasks/${reviewTaskId}/approve`,
+      body: request.postDataJSON(),
+      key: request.headers()['idempotency-key'] ?? null,
+      revision: request.headers()['if-match'] ?? null,
+    });
+    revision += 1;
+    done = true;
+    return route.fulfill({ json: reviewApprovalDetail(revision, done) });
+  });
 }
 
 type ListOf = (items: unknown[]) => unknown;
@@ -419,6 +473,13 @@ function planServer(detail: ReturnType<typeof planDetail>) {
     save: (call: IdpCall) => store(call.body as Record<string, unknown>),
     read: (path: string) => (path === `/plans/${planId}` ? stored : undefined),
   };
+}
+
+function reviewReceipt(saved: Record<string, unknown>, call: IdpCall, options: IdpMockOptions) {
+  if (options.reviewReceipt === 'stale-revision') return { ...saved, revision: Number(call.revision) };
+  if (options.reviewReceipt !== 'without-revision') return saved;
+  const { revision: _revision, ...rest } = saved;
+  return rest;
 }
 
 /** 流程的服务端记录：只在 processVersions 模式下随冲突换版本、随成功写入合并请求体，其余情况沿用静态夹具。 */

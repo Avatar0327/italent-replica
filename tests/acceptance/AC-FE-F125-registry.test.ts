@@ -180,6 +180,25 @@ describe('AC-FE-F125-02 无重复路由 id / path / 菜单键 / 注释键', () =
     expect(one.menus.map((route) => route.id)).toEqual([...APP_IDS, 'y', 'z']);
     expect(one.routes.map((route) => route.path)).toEqual(['/a', '/b']);
   });
+  it('F-164 菜单扩展：挂到声明模块自己的子项之后，按模块名排序；挂到未知应用报错', () => {
+    const node = (key: string) => ({ key, label: key, path: `/self/${key}`, group: 'work' as const });
+    const self = { ...app('self'), children: () => [node('own')] };
+    const extension = (key: string) => ({ pages: { menus: [{ app: 'self', children: () => [node(key)] }] } });
+    const result = collectPages(
+      {
+        '../base/pages.ts': { pages: { apps: APP_IDS.map((id) => (id === 'self' ? self : app(id))) } },
+        '../z/pages.ts': extension('z'),
+        '../a/pages.ts': extension('a'),
+      },
+      APP_IDS,
+    );
+    const route = result.apps.find((item) => item.id === 'self')!;
+    const children = route.children!;
+    expect(children({} as ServerSnapshot, route).map((menu) => menu.key)).toEqual(['own', 'a', 'z']);
+    expect(
+      collect({ ...all(), '../x/pages.ts': { pages: { menus: [{ app: 'ghost', children: () => [] }] } } }),
+    ).toThrow(/未知应用.*ghost/);
+  });
   it('注释键重复或缺导出报错，结果按键排序', () => {
     const note = { original: 'o', decision: 'd', decisions: [], level: 'L2' } as const;
     expect(() =>
@@ -229,5 +248,17 @@ describe('AC-FE-F125-03 登记文件位置与应用内入口的菜单可见性',
       ({ apps: [{ app: 'staff', visible: true, entryObjects }], adminMenus: [] }) as unknown as ServerSnapshot;
     expect(menuNodes(routes, snapshot(['TenantBase.Employee'])).map((menu) => menu.key)).toEqual(['staff']);
     expect(menuNodes(routes, snapshot(['T.E'])).map((menu) => menu.key)).toEqual(['staff', 'entry']);
+  });
+  it('F-164：员工自助 > 我的发展计划由 IDP 登记，两个同级入口；员工自助不可见时整组不显示', () => {
+    const snapshot = (visible: boolean) =>
+      ({ apps: [{ app: 'self', visible, entryObjects: [] }], adminMenus: [] }) as unknown as ServerSnapshot;
+    const [self] = menuNodes(APP_ROUTES, snapshot(true));
+    const idp = self?.children?.find((menu) => menu.key === 'self-idp');
+    expect(idp?.label).toBe('我的发展计划');
+    expect(idp?.children?.map((menu) => [menu.label, menu.path])).toEqual([
+      ['个人发展计划', '/self/idp'],
+      ['我辅导的发展计划', '/self/idp/tutoring'],
+    ]);
+    expect(menuNodes(APP_ROUTES, snapshot(false))).toEqual([]);
   });
 });
