@@ -25,7 +25,7 @@ export interface PlanStageView {
   readonly subProcessId: string;
   readonly seq: number;
   readonly name: string;
-  readonly status: 'pending' | 'running' | 'ended' | 'failed';
+  readonly status: 'pending' | 'running' | 'ended' | 'terminated' | 'failed';
   readonly approvalInstanceId: string | null;
   readonly dueDate: string | null;
   readonly endedOn: string | null;
@@ -382,6 +382,13 @@ export async function planWorld(db: Db, label: string, options: PlanWorldOptions
     );
   }
 
+  /** 员工在“员工中期回顾”填写回顾模块（F-155：提交时总结、改进方法必填）。 */
+  async function fillReview(view: PlanView, body: Record<string, unknown> = {}) {
+    const path = `/plans/${view.id}/modules/${reviewModule.id}/content`;
+    const content = { summary: '上半年进展顺利', improvement: '加强复盘', ...body };
+    return ok<{ planId: string }>(await execute(employee.userId, 'PUT', path, content));
+  }
+
   /** 平台调度（凌晨 2 点自动开启）：时钟由进程注入。 */
   async function runScheduler(iso: string) {
     // 动态导入：调度入口随实现提交，失败测试阶段按断言失败而不是整个文件导入失败
@@ -426,6 +433,7 @@ export async function planWorld(db: Db, label: string, options: PlanWorldOptions
     submit,
     execute,
     addGoal,
+    fillReview,
     runScheduler,
     intervene,
   };
