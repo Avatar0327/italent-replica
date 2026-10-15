@@ -79,6 +79,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/activation-store.ts#pendingActivations': [
     '#QUEUE_LIMIT',
+    '#QUEUE_SHIFTED_KINDS',
     '#blockerIds',
     '#finalExecutionDateSql',
     '#pendingActivationState',
@@ -559,6 +560,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/employment/forward-update.ts#pendingAfterSource': [
+    'apps/api/src/modules/employment/activation-store.ts#QUEUE_SHIFTED_KINDS',
     'apps/api/src/modules/employment/activation-store.ts#finalExecutionDateSql',
     'apps/api/src/modules/employment/timeline.ts#operationKey',
     'apps/api/src/modules/employment/timeline.ts#plannedEffectiveDate',
