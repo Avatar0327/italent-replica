@@ -10,9 +10,10 @@ test.beforeEach(async ({ page }) => {
     route.fulfill({
       json: {
         objectCode: 'TenantBase.EmploymentRecord',
-        dataOperations: { read: true },
-        viewableFields: ['name'],
-        editableFields: [],
+        // HR 新建调动要 create 与可编辑字段（#333 第 1 轮 P2-2）；Transfer.Hr 只决定入口。
+        dataOperations: { read: true, create: true },
+        viewableFields: ['name', 'place'],
+        editableFields: ['place'],
         buttons: [{ buttonCode: 'Transfer.Hr', level: 'detail' }],
       },
     }),
@@ -64,7 +65,12 @@ function detail(revision = 4, status = 'running') {
     recordsHidden: false,
     form: { values: { effectiveDate: '2026-11-01', place: '合成工作地' }, originals: { place: '原工作地' } },
     tasks: [{ id: task, nodeName: '部门负责人审批', status: 'pending', assigneeUserId: user }],
-    logs: [],
+    // 操作记录取 logs 而非 tasks（#333 第 1 轮 P2-4）：1 个待办任务 + 3 条日志，页签计数应为 3。
+    logs: [
+      { event: 'start', nodeKey: null, taskId: null, createdAt: '2026-10-12T01:00:00Z' },
+      { event: 'transfer', nodeKey: 'leader', taskId: task, createdAt: '2026-10-12T02:00:00Z' },
+      { event: 'urge', nodeKey: 'leader', taskId: task, createdAt: '2026-10-12T03:00:00Z' },
+    ],
   };
 }
 const button = (label: string) => new RegExp(`^${label.split('').join('\\s*')}$`);
@@ -101,6 +107,110 @@ test('AC-FE-R1c-03 调动列表、表单、我的申请与注释', async ({ page
   expect(errors).toEqual([]);
 });
 
+// #333 第 1 轮 P2-1 / P2-5：HR 表单四区块、锚点、是否单选；两个入口的按钮不同。
+const linkageCatalog = ['adjustSalary', 'isChangeContract', 'contractChange', 'withEstablishment'];
+async function hrCatalog(page: Page) {
+  const fields = ['effectiveDate', 'transferTypeCode', 'reasonCode', ...linkageCatalog];
+  await page.route('**/employment/transfers/catalog**', (route) =>
+    route.fulfill({
+      json: {
+        today: '2026-10-12',
+        types: [{ code: 'transfer', name: '部门间调动', formId: 'hr' }],
+        reasons: [],
+        viewableFields: fields,
+        editableFields: fields,
+      },
+    }),
+  );
+}
+const hrButtons = (page: Page) => page.locator('.hr-transfer-actions button');
+async function openEntry(page: Page, entry: string) {
+  await switchIdentity(page, '/transfer');
+  await page.getByRole('button', { name: button(entry) }).click();
+  await page.locator('select[name="employeeId"]').selectOption(employee);
+  await expect(page.locator('input[name="place"]')).toBeVisible();
+}
+
+test('AC-FE-R1c-03b 他人调动申请：四区块、锚点导航、是否单选，按钮为取消 / 暂存 / 提交', async ({ page }) => {
+  await hrCatalog(page);
+  await openEntry(page, '他人调动申请');
+  await expect(page.locator('.hr-transfer-section > legend')).toHaveText([
+    '调动信息',
+    '任职调整',
+    '薪资调整',
+    '合同变更',
+  ]);
+  const anchors = page.getByRole('navigation', { name: '表单导航' }).getByRole('button');
+  await expect(anchors).toHaveText(['调动信息', '任职调整', '薪资调整', '合同变更']);
+  const info = page.locator('#hr-transfer-info');
+  await expect(info.locator('output[name="jobNumber"]')).toHaveText('DEMO-001');
+  for (const label of ['是否调整薪资', '是否变更合同', '是否带编制调动']) {
+    const group = info.getByRole('radiogroup', { name: label });
+    await expect(group.getByRole('radio', { name: '否' })).toBeChecked();
+  }
+  const contract = page.locator('#hr-transfer-contract');
+  await expect(contract).toContainText('未选择变更合同。');
+  await info.getByRole('radiogroup', { name: '是否变更合同' }).getByRole('radio', { name: '是' }).check();
+  await expect(contract).not.toContainText('未选择变更合同。');
+  // 原站不支持的字段只提示缺口，不造假数据。
+  await expect(page.locator('#hr-transfer-salary')).toContainText('社保缴纳地');
+  await expect(hrButtons(page)).toHaveText(['取消', '暂存', '提交']);
+  await expect(page.getByRole('button', { name: '保存', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '直接调动', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '提交', exact: true })).toBeEnabled();
+});
+
+test('AC-FE-R1c-03c 调动入口按钮为取消 / 保存；无直接调动权限时保存不可用', async ({ page }) => {
+  let writes = 0;
+  await page.route(`**/transfers/employees/${employee}`, (route) => {
+    writes += 1;
+    return route.fulfill({ json: draftResult });
+  });
+  await openEntry(page, '调动');
+  await expect(hrButtons(page)).toHaveText(['取消', '保存']);
+  await expect(page.getByRole('button', { name: '保存', exact: true })).toBeDisabled();
+  await expect(page.getByRole('note')).toHaveText('当前账号或该员工不允许直接调动，请改用“他人调动申请”。');
+  await page.getByRole('button', { name: '取消', exact: true }).click();
+  await expect(page.getByRole('button', { name: '调动中员工', exact: true, pressed: true })).toBeVisible();
+  expect(writes).toBe(0);
+});
+
+// #333 第 1 轮 P2-2：Transfer.Hr 只决定入口；没有新建权限或可编辑字段时不能写。
+for (const [name, operations, editable] of [
+  ['无新建权限', { read: true }, ['place']],
+  ['无可编辑字段', { read: true, create: true }, []],
+] as const) {
+  test(`AC-FE-R1c-03d ${name}：两个入口的写按钮都不可用且不发命令`, async ({ page }) => {
+    await page.route('**/permission/me/objects/TenantBase.EmploymentRecord', (route) =>
+      route.fulfill({
+        json: {
+          objectCode: 'TenantBase.EmploymentRecord',
+          dataOperations: operations,
+          viewableFields: ['name', 'place'],
+          editableFields: editable,
+          buttons: [{ buttonCode: 'Transfer.Hr', level: 'detail' }],
+        },
+      }),
+    );
+    let writes = 0;
+    await page.route(`**/transfers/employees/${employee}`, (route) => {
+      writes += 1;
+      return route.fulfill({ json: draftResult });
+    });
+    const hint = '当前账号没有新增任职记录的权限或可编辑字段，不能保存调动。';
+    await openEntry(page, '他人调动申请');
+    await expect(page.getByRole('note')).toHaveText(hint);
+    await expect(page.getByRole('button', { name: '暂存', exact: true })).toBeDisabled();
+    await expect(page.getByRole('button', { name: '提交', exact: true })).toBeDisabled();
+    await page.getByRole('button', { name: '取消', exact: true }).click();
+    await page.getByRole('button', { name: button('调动') }).click();
+    await page.locator('select[name="employeeId"]').selectOption(employee);
+    await expect(page.getByRole('note')).toHaveText(hint);
+    await expect(page.getByRole('button', { name: '保存', exact: true })).toBeDisabled();
+    expect(writes).toBe(0);
+  });
+}
+
 test('AC-FE-R1c-04 我的待办三个分类、卡片、当前页详情与操作弹窗', async ({ page }, testInfo) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
@@ -118,7 +228,13 @@ test('AC-FE-R1c-04 我的待办三个分类、卡片、当前页详情与操作�
   await page.screenshot({ path: testInfo.outputPath('approval-list.png'), fullPage: true, animations: 'disabled' });
   await openTodo(page);
   await expect(page.getByText('原：原工作地', { exact: true })).toBeVisible();
-  await expect(page.getByRole('tab', { name: '操作记录(1)' })).toBeVisible();
+  await expect(page.getByRole('tab', { name: '操作记录(3)' })).toBeVisible();
+  const records = page.locator('.approval-detail-collab .approval-log');
+  await expect(records).toHaveCount(3);
+  await expect(records.nth(0)).toContainText('发起申请');
+  await expect(records.nth(1)).toContainText('转交');
+  await expect(records.nth(1)).toContainText('部门负责人审批');
+  await expect(records.nth(2)).toContainText('催办');
   await expect(page.getByRole('button', { name: '流程管理', exact: true })).toBeDisabled();
   await page.screenshot({ path: testInfo.outputPath('approval-detail.png'), fullPage: true, animations: 'disabled' });
   for (const action of ['同意', '驳回', '转交', '撤销']) {
@@ -144,6 +260,40 @@ test('AC-FE-R1c-04 我的待办三个分类、卡片、当前页详情与操作�
   await page.getByRole('switch', { name: '注释' }).click();
   await expect(page.getByText('DEC-057', { exact: true })).toBeVisible();
   expect(errors).toEqual([]);
+});
+
+test('AC-FE-R1c-04b 切换审批分类回到第 1 页，不带上一分类的页码', async ({ page }) => {
+  // #333 第 1 轮 P2-3：待处理 16 条翻到第 2 页后切到已申请，应请求第 1 页并显示卡片。
+  await page.route('**/api/tenant/approval/todos?**', (route) => {
+    const current = Number(new URL(route.request().url()).searchParams.get('page'));
+    const count = current === 1 ? 15 : 1;
+    const items = Array.from({ length: count }, (_, index) => ({
+      taskId: `50000000-0000-4000-8000-0000000001${String(index).padStart(2, '0')}`,
+      instanceId: instance,
+      title: `合成待办 ${current}-${index + 1}`,
+      nodeName: '部门负责人审批',
+      approvalType: 'transfer',
+      createdAt: '2026-10-12T01:00:00Z',
+    }));
+    return route.fulfill({ json: { items } });
+  });
+  const pages: string[] = [];
+  page.on('request', (request) => {
+    const url = new URL(request.url());
+    if (url.pathname.endsWith('/approval/instances')) pages.push(url.searchParams.get('page') ?? '');
+  });
+  await switchIdentity(page, '/approval');
+  await expect(page.locator('.approval-card')).toHaveCount(15);
+  await page.getByRole('button', { name: '下一页', exact: true }).click();
+  await expect(page.getByText('第 2 页', { exact: true })).toBeVisible();
+  await expect(page.locator('.approval-card')).toHaveCount(1);
+  await page.getByRole('button', { name: '已申请', exact: true }).click();
+  await expect(page.getByRole('button', { name: '合成员工的调动申请', exact: true })).toBeVisible();
+  expect(pages).toEqual(['1']);
+  // 切回原分类也从第 1 页开始。
+  await page.getByRole('button', { name: '待处理', exact: true }).click();
+  await expect(page.locator('.approval-card')).toHaveCount(15);
+  await expect(page.getByText('第 1 页', { exact: true })).toBeVisible();
 });
 
 for (const [label, action] of [
@@ -659,14 +809,18 @@ for (const [status, message] of [
         json: { ...original, allowDirectTransfer: true, allowedActions: { application: true, directList: true } },
       });
     });
-    await page.route('**/transfers/employees/' + employee, (route) =>
-      route.fulfill({ json: { ...draftResult, status } }),
-    );
+    let body: unknown;
+    await page.route('**/transfers/employees/' + employee, (route) => {
+      body = route.request().postDataJSON();
+      return route.fulfill({ json: { ...draftResult, status } });
+    });
     await switchIdentity(page, '/transfer');
-    await openHr(page);
+    // 直接调动走“调动”入口的“保存”（#333 第 1 轮 P2-1）。
+    await page.getByRole('button', { name: button('调动') }).click();
     await page.locator('select[name="employeeId"]').selectOption(employee);
-    await page.getByRole('button', { name: '直接调动', exact: true }).click();
+    await page.getByRole('button', { name: '保存', exact: true }).click();
     await expect(page.getByText(message!, { exact: true })).toBeVisible();
+    expect(body).toMatchObject({ mode: 'direct', submit: false });
   });
 }
 

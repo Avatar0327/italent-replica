@@ -113,13 +113,18 @@ async function approvals(
   actions: string[] | null = ['urge', 'transfer', 'withdraw'],
 ) {
   const writes: Write[] = [];
+  // 转交 / 撤销返回动作后的流程详情：revision 前进，撤销后为 withdrawn；之后的 GET 跟随新版本（#333 第 1 轮 P3）。
+  const current = { revision: 4, status: 'running' };
   await page.route('**/api/tenant/approval/**', (route) => {
     const url = new URL(route.request().url());
     if (route.request().method() !== 'GET') {
       capture(writes, route.request());
-      // 转交 / 撤销同样返回动作后的流程详情，revision 前进（DEC-502①(f) 夹具用真实接口形态）。
-      const done = { json: { id: instance, revision: 5, status: 'running' } };
-      const { status = 200, json } = (url.pathname.endsWith('/urge') ? urge() : done) as {
+      const urging = url.pathname.endsWith('/urge');
+      if (!urging) {
+        current.revision += 1;
+        current.status = url.pathname.endsWith('/withdraw') ? 'withdrawn' : 'running';
+      }
+      const { status = 200, json } = (urging ? urge() : { json: { id: instance, ...current } }) as {
         status?: number;
         json: unknown;
       };
@@ -130,7 +135,7 @@ async function approvals(
         json: {
           items:
             url.searchParams.get('businessId') === requestId
-              ? [{ id: instance, title: '合成合同变更申请', status: 'running', approvalType: 'contract', revision: 4 }]
+              ? [{ id: instance, title: '合成合同变更申请', approvalType: 'contract', ...current }]
               : [],
         },
       });
@@ -139,8 +144,7 @@ async function approvals(
       json: {
         id: instance,
         title: '合成合同变更申请',
-        revision: 4,
-        status: 'running',
+        ...current,
         approvalType: 'contract',
         actions,
         recordsHidden: false,
@@ -173,7 +177,8 @@ test('AC-FE-R2a-16 审批中行内催办 / 转交 / 撤销复用审批中心命�
   expect(writes.map(({ path, revision }) => [path, revision])).toEqual([
     [`/api/tenant/approval/instances/${instance}/urge`, '4'],
     [`/api/tenant/approval/tasks/${task}/transfer`, '4'],
-    [`/api/tenant/approval/instances/${instance}/withdraw`, '4'],
+    // 撤销前重读详情，按转交后的新版本提交。
+    [`/api/tenant/approval/instances/${instance}/withdraw`, '5'],
   ]);
   expect(writes[1]!.body).toEqual({ comment: null, toUserId: user });
 });

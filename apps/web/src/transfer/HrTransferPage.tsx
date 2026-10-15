@@ -1,9 +1,10 @@
 import { Alert, Button, Space, Tooltip } from 'antd';
 import { useState } from 'react';
 import { useSearchParams } from 'react-router';
-import { Can, DecisionNote, useSession } from '../foundation/index.js';
+import { Can, DecisionNote, usePermissions, useSession } from '../foundation/index.js';
 import { TransferApplication } from '../self-service/shared/TransferApplication.js';
-import { listText as t, text as m } from './messages.js';
+import { hrWriteAccess, type HrFormMode } from './hr-form-model.js';
+import { hrFormText as h, listText as t } from './messages.js';
 import {
   dropdownTools,
   enabledTools,
@@ -20,7 +21,8 @@ import { TransferList } from './TransferList.js';
 import './transfer.css';
 import './hr-transfer.css';
 
-type FormKind = 'apply' | 'direct';
+const record = 'TenantBase.EmploymentRecord';
+type FormKind = HrFormMode;
 const isFormKind = (value: string | null): value is FormKind => value === 'apply' || value === 'direct';
 
 /** 调动管理按原站：横向三个视图（?view=），“他人调动申请”“调动”在当前页打开全页表单（?form=）。 */
@@ -68,7 +70,7 @@ function TransferToolbar({ view, onOpen }: { view: TransferView; onOpen(kind: Fo
     <Space wrap>
       {transferTools[view].map((tool) =>
         isFormKind(tool) && enabledTools.includes(tool) ? (
-          <Can key={tool} object="TenantBase.EmploymentRecord" button="Transfer.Hr">
+          <Can key={tool} object={record} button="Transfer.Hr">
             <Button type={tool === 'apply' ? 'primary' : 'default'} onClick={() => onOpen(tool)}>
               {toolLabels[tool]}
             </Button>
@@ -117,11 +119,13 @@ function TransferBanner({ view }: { view: TransferView }) {
   );
 }
 /**
- * 原站“调动”“他人调动申请”都是当前页全页长表单；两个入口共用同一份申请表单，
- * 底部按钮由预览返回的 allowedActions 决定（直接调动 / 暂存 / 提交），这里不另造按钮。
+ * 原站“调动”“他人调动申请”都是当前页全页长表单，区块相同、底部按钮不同（#333 第 1 轮 P2-1）。
+ * 写权限按任职记录对象的 create 与可编辑字段判断（P2-2）；只有发起按钮 Transfer.Hr 不够。
  */
 function TransferFormPage({ kind, onBack }: { kind: FormKind; onBack(): void }) {
   const session = useSession();
+  const permissions = usePermissions(record);
+  const writable = hrWriteAccess(permissions.snapshot.objects[record]);
   return (
     <section className="hr-transfer-form-page">
       <header className="transfer-form-head">
@@ -129,14 +133,15 @@ function TransferFormPage({ kind, onBack }: { kind: FormKind; onBack(): void }) 
         <Button onClick={onBack}>{t.back}</Button>
       </header>
       <DecisionNote id="transfer-form" />
-      <Alert type="info" message={m.formHint} showIcon />
-      <Can object="TenantBase.EmploymentRecord" button="Transfer.Hr">
+      <Alert type="info" message={kind === 'apply' ? h.applyHint : h.directHint} showIcon />
+      <Can object={record} button="Transfer.Hr">
         <div className="legacy-page r1c-transfer-form">
           <TransferApplication
-            key={`${session.tenantId}/${session.identityKey}`}
+            key={`${session.tenantId}/${session.identityKey}/${kind}`}
             tenantId={session.tenantId}
             initiator="hr"
             hrScope={JSON.stringify([session.tenantId, session.identityKey])}
+            hrForm={{ mode: kind, writable, onCancel: onBack }}
           />
         </div>
       </Can>

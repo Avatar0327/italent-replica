@@ -5,7 +5,15 @@ import { presetLabels } from '../transfer/messages.js';
 import { completedDetail } from '../demo-stubs/approval.js';
 import { useApprovalAction } from './action-command.js';
 import { readApproval, uuidPattern, visibleActions } from './api.js';
-import { detailText as d, fieldLabels, instanceStatus, messages as m, statusLabels, typeLabels } from './messages.js';
+import {
+  detailText as d,
+  fieldLabels,
+  instanceStatus,
+  logEvents,
+  messages as m,
+  statusLabels,
+  typeLabels,
+} from './messages.js';
 import { actionOrder } from './page-model.js';
 import type { ApprovalAction, ApprovalDetail as Detail, ApprovalRow } from './types.js';
 
@@ -141,7 +149,7 @@ function DetailColumns({ detail }: { detail: Detail }) {
           className="approval-detail-collab"
           type="card"
           items={[
-            { key: 'records', label: d.records(detail.tasks.length), children: <ApprovalHistory detail={detail} /> },
+            { key: 'records', label: d.records(detail.logs.length), children: <ApprovalHistory detail={detail} /> },
             {
               key: 'communicate',
               label: d.communicate,
@@ -174,30 +182,37 @@ function ApprovalProgress({ detail }: { detail: Detail }) {
     </div>
   );
 }
+/** 操作记录取流程日志（详情 logs，最近 200 条升序）；日志关联任务时补节点名与审批意见。 */
 function ApprovalHistory({ detail }: { detail: Detail }) {
   const { timezone } = useSession();
   if (detail.recordsHidden) return <Alert type="info" message={m.historyHidden} />;
+  const tasks = new Map(detail.tasks.map((task) => [task.id, task]));
   return (
     <>
       <p className="approval-muted">{m.historyLimit}</p>
       <Timeline
-        items={detail.tasks.map((task) => ({
-          color: task.status === 'pending' ? 'blue' : 'gray',
-          children: (
-            <div>
-              <strong>{task.nodeName}</strong> <Tag>{statusLabels[task.status] ?? task.status}</Tag>
-              {task.comment && <p>{task.comment}</p>}
-              <small>{formatInstant(task.actedAt, timezone)}</small>
-            </div>
-          ),
-        }))}
+        items={detail.logs.map((log, index) => {
+          const task = log.taskId ? tasks.get(log.taskId) : undefined;
+          return {
+            key: `${log.createdAt}-${index}`,
+            color: 'gray',
+            children: (
+              <div className="approval-log">
+                <strong>{logEvents[log.event] ?? log.event}</strong>
+                {task && <Tag>{task.nodeName}</Tag>}
+                {task?.comment && <p>{task.comment}</p>}
+                <small>{formatInstant(log.createdAt, timezone)}</small>
+              </div>
+            ),
+          };
+        })}
       />
     </>
   );
 }
 /**
  * 顶部按钮只取详情 actions（服务端下发），按原站顺序；有未确认命令时只允许打开那一个动作核对。
- * 流程管理、查看流程日志没有接口，保留位置但禁用。
+ * 流程管理没有接口；完整日志接口已有（GET /instances/:id/logs），但日志弹窗本段未实现。两者保留位置但禁用。
  */
 function ActionBar(props: { row: ApprovalRow; demo?: boolean; detail: Detail; action: ActionState; refresh(): void }) {
   const { row, demo, detail, action } = props;
@@ -217,11 +232,12 @@ function ActionBar(props: { row: ApprovalRow; demo?: boolean; detail: Detail; ac
             {m[item]}
           </Button>
         ))}
-      {[d.processManage, d.processLog].map((label) => (
-        <Tooltip key={label} title={d.gapTool}>
-          <Button disabled>{label}</Button>
-        </Tooltip>
-      ))}
+      <Tooltip title={d.gapTool}>
+        <Button disabled>{d.processManage}</Button>
+      </Tooltip>
+      <Tooltip title={d.logDialogGap}>
+        <Button disabled>{d.processLog}</Button>
+      </Tooltip>
       <Button onClick={props.refresh}>{m.refresh}</Button>
       {!demo && !actions.length && <span className="approval-muted">{m.noAction}</span>}
       {!row.taskId && actions.some((item) => item !== 'withdraw') && <span>{m.taskRequired}</span>}

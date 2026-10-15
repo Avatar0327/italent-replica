@@ -172,3 +172,82 @@
   padding: 20px;
   border-radius: 8px;
 }
+/* #333 第 1 轮 P2-5：原站四个区块 + 右侧约 150px 锚点导航；底部取消为白、其余为蓝。 */
+.hr-transfer-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 150px;
+  gap: 24px;
+  align-items: start;
+}
+.hr-transfer-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+.r1c-transfer-form .hr-transfer-section {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+  scroll-margin-top: 16px;
+}
+.hr-transfer-anchors {
+  position: sticky;
+  top: 16px;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid #e6e8eb;
+}
+.r1c-transfer-form .hr-transfer-anchors button {
+  border: 0;
+  background: none;
+  text-align: left;
+  padding: 6px 12px;
+  color: #5e6266;
+}
+.r1c-transfer-form .hr-transfer-anchors button:hover {
+  color: #146eff;
+}
+.hr-yes-no {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  font-size: 12px;
+}
+.hr-yes-no label {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+.hr-readonly-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+.hr-readonly-field output {
+  border: 1px solid #e6e8eb;
+  border-radius: 5px;
+  min-height: 32px;
+  padding: 5px 10px;
+  background: #f7f9fa;
+  color: #5e6266;
+}
+.hr-form-gap {
+  color: #8c9199;
+  font-size: 12px;
+}
+.r1c-transfer-form .hr-transfer-actions button:first-child {
+  background: white;
+  border-color: #e6e8eb;
+  color: #33383d;
+}
+.r1c-transfer-form .hr-transfer-actions button.hr-primary {
+  background: #146eff;
+  border-color: #146eff;
+  color: white;
+}
+.r1c-transfer-form .hr-transfer-actions button:disabled {
+  opacity: 0.5;
+}

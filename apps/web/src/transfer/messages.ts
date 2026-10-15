@@ -35,7 +35,6 @@ export const text = {
   effectiveStatus: '已生效',
   detailTitle: '调动详情',
   listSearch: '搜索姓名 / 工号',
-  formHint: '选择调动人员后，核对调动前后信息，再暂存或提交申请。',
   formClose: '关闭调动表单',
   requiredUnavailable: '表单必填项不可用，请联系 HR 检查表单或字段权限',
   personalScenario: '选择人事申请',
@@ -234,4 +233,34 @@ export const bannerText = {
   ],
   completed: ['可在此页面查看已经生效的调动记录，也可以进行调动申请或者调动等操作'],
   all: ['可在此页面查看所有的调动记录，也可以进行调动申请、调入申请或者调动等操作'],
+} as const;
+
+/**
+ * F-132 第 2 段 #333 第 1 轮返工：HR 全页表单按原站四个区块与两种入口（DEC-489；取证只在本机查看）。
+ * 原站有、接口没有的字段不伪造输入框，只在所属区块用提示说明（DEC-456）。
+ */
+export const hrFormText = {
+  sections: '表单导航',
+  info: '调动信息',
+  adjustment: '任职调整',
+  salary: '薪资调整',
+  contract: '合同变更',
+  jobNumber: '工号',
+  adjustSalary: '是否调整薪资',
+  changeContract: '是否变更合同',
+  withEstablishment: '是否带编制调动',
+  cancel: '取消',
+  draft: '暂存',
+  submit: '提交',
+  save: '保存',
+  applyHint: '选择调动人员后，核对调动前后信息，再暂存或提交申请。',
+  directHint: '选择调动人员后，核对调动前后信息，再保存；直接调动不走审批，按调动日期生效。',
+  noWrite: '当前账号没有新增任职记录的权限或可编辑字段，不能保存调动。',
+  noDirect: '当前账号或该员工不允许直接调动，请改用“他人调动申请”。',
+  noApplication: '当前不能为该员工发起调动申请。',
+  infoGap: '原站本区块还有性别、年龄、是否同步履历、试岗方式、预计试岗结束日期、测试、是否调整目标，接口暂不支持，本页不显示。',
+  salaryGap: '原站本区块的社保缴纳地、社保方案、社保缴纳主体（原值 / 调整后）接口暂不支持，本页不显示。',
+  contractGap: '原站本区块的“发起电子文件签署”接口暂不支持，本页不显示。',
+  salaryOff: '未选择调整薪资。',
+  contractOff: '未选择变更合同。',
 } as const;

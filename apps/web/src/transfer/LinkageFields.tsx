@@ -72,14 +72,8 @@ export function LinkageFields({ model, busy, onLinkage }: TransferFormProps) {
   );
 }
 
-function ContractFields(props: {
-  draft: LinkageDraft;
-  contracts: readonly ContractChoice[];
-  change: (patch: Partial<LinkageDraft>) => void;
-}) {
-  const { draft, contracts, change } = props;
-  const field = (code: string, value: string | number | null) =>
-    change({ contractFields: { ...draft.contractFields, [code]: value } });
+function ContractFields(props: ContractProps) {
+  const { draft, change } = props;
   return (
     <>
       <label>
@@ -91,59 +85,71 @@ function ContractFields(props: {
         />
         {linkageText.changeContract}
       </label>
-      {draft.changeContract && (
-        <>
-          <label>
-            {linkageText.contractTarget}
-            <select
-              name="contractTargetId"
-              value={draft.contractTargetId}
-              onChange={(event) => change({ contractTargetId: event.target.value })}
-            >
-              <option value="">—</option>
-              {contracts.map((contract, index) => (
-                <option key={contract.id} value={contract.id}>
-                  {contract.name ?? linkageText.contractOption(index + 1)}
-                </option>
-              ))}
-            </select>
-          </label>
-          {!contracts.length && <p>{linkageText.noContracts}</p>}
-          <label>
-            {linkageText.contractEndDate}
-            <input
-              name="contractEndDate"
-              type="date"
-              value={String(draft.contractFields.endDate ?? '')}
-              onChange={(event) => field('endDate', event.target.value || null)}
-            />
-          </label>
-          <label>
-            {linkageText.contractTermMonths}
-            <input
-              name="contractTermMonths"
-              type="number"
-              min={1}
-              value={String(draft.contractFields.termMonths ?? '')}
-              onChange={(event) => field('termMonths', event.target.value ? Number(event.target.value) : null)}
-            />
-          </label>
-          <label>
-            {linkageText.contractSigningDate}
-            <input
-              name="contractSigningDate"
-              type="date"
-              value={String(draft.contractFields.signingDate ?? '')}
-              onChange={(event) => field('signingDate', event.target.value || null)}
-            />
-          </label>
-        </>
-      )}
+      {draft.changeContract && <ContractDetails {...props} />}
     </>
   );
 }
 
-function DutyFields(props: {
+interface ContractProps {
+  draft: LinkageDraft;
+  contracts: readonly ContractChoice[];
+  change: (patch: Partial<LinkageDraft>) => void;
+}
+/** 变更的合同与新合同字段；联动区块与 HR 全页表单“合同变更”区块共用。 */
+export function ContractDetails({ draft, contracts, change }: ContractProps) {
+  const field = (code: string, value: string | number | null) =>
+    change({ contractFields: { ...draft.contractFields, [code]: value } });
+  return (
+    <>
+      <label>
+        {linkageText.contractTarget}
+        <select
+          name="contractTargetId"
+          value={draft.contractTargetId}
+          onChange={(event) => change({ contractTargetId: event.target.value })}
+        >
+          <option value="">—</option>
+          {contracts.map((contract, index) => (
+            <option key={contract.id} value={contract.id}>
+              {contract.name ?? linkageText.contractOption(index + 1)}
+            </option>
+          ))}
+        </select>
+      </label>
+      {!contracts.length && <p>{linkageText.noContracts}</p>}
+      <label>
+        {linkageText.contractEndDate}
+        <input
+          name="contractEndDate"
+          type="date"
+          value={String(draft.contractFields.endDate ?? '')}
+          onChange={(event) => field('endDate', event.target.value || null)}
+        />
+      </label>
+      <label>
+        {linkageText.contractTermMonths}
+        <input
+          name="contractTermMonths"
+          type="number"
+          min={1}
+          value={String(draft.contractFields.termMonths ?? '')}
+          onChange={(event) => field('termMonths', event.target.value ? Number(event.target.value) : null)}
+        />
+      </label>
+      <label>
+        {linkageText.contractSigningDate}
+        <input
+          name="contractSigningDate"
+          type="date"
+          value={String(draft.contractFields.signingDate ?? '')}
+          onChange={(event) => field('signingDate', event.target.value || null)}
+        />
+      </label>
+    </>
+  );
+}
+
+export function DutyFields(props: {
   draft: LinkageDraft;
   people: readonly Choice[];
   change: (patch: Partial<LinkageDraft>) => void;
@@ -191,7 +197,7 @@ function DutyFields(props: {
   );
 }
 
-function PersonSelect(props: {
+export function PersonSelect(props: {
   name: string;
   label: string;
   value: string;
@@ -213,7 +219,7 @@ function PersonSelect(props: {
   );
 }
 
-function LinkageAccess({
+export function LinkageAccess({
   catalog,
   codes,
   children,

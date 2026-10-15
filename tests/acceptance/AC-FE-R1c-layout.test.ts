@@ -7,6 +7,7 @@ const transfer = () => import(resolve('apps/web/src/transfer/page-model.ts'));
 const approval = () => import(resolve('apps/web/src/approval/page-model.ts'));
 const approvalPages = () => import(resolve('apps/web/src/approval/pages.ts'));
 const demo = () => import(resolve('apps/web/src/demo-stubs/transfer.ts'));
+const hrForm = () => import(resolve('apps/web/src/transfer/hr-form-model.ts'));
 
 describe('AC-FE-R1c 调动管理列表按原站三个视图', () => {
   it('标题视图为调动中员工 / 已完成的调动 / 全部调动记录，没有复刻自加的“我的申请”', async () => {
@@ -164,5 +165,71 @@ describe('AC-FE-R1c 审批中心子页按原站', () => {
     expect(instanceStatus.running).toEqual({ label: '审批中', tone: 'running' });
     expect(instanceStatus.disapproved).toEqual({ label: '不通过', tone: 'failed' });
     expect(instanceStatus.returned).toEqual({ label: '已驳回', tone: 'returned' });
+  });
+});
+
+// #333 第 1 轮返工：HR 全页表单两个入口的按钮、写权限与四个区块。
+describe('AC-FE-R1c HR 调动表单按入口与权限', () => {
+  const full = { dataOperations: { read: true, create: true }, editableFields: ['departmentId'] };
+  const preview = (direct: boolean) => ({
+    allowDirectTransfer: direct,
+    allowedActions: { application: true, directList: direct, directRow: false },
+  });
+  it('区块按原站：调动信息 / 任职调整 / 薪资调整 / 合同变更', async () => {
+    const { hrSections } = await hrForm();
+    expect(hrSections.map((section: { label: string }) => section.label)).toEqual([
+      '调动信息',
+      '任职调整',
+      '薪资调整',
+      '合同变更',
+    ]);
+  });
+  it('P2-1 调动为取消 / 保存，他人调动申请为取消 / 暂存 / 提交', async () => {
+    const { hrFormActions, hrActionLabels } = await hrForm();
+    const labels = (mode: 'apply' | 'direct') =>
+      hrFormActions[mode].map((action: keyof typeof hrActionLabels) => hrActionLabels[action]);
+    expect(labels('direct')).toEqual(['取消', '保存']);
+    expect(labels('apply')).toEqual(['取消', '暂存', '提交']);
+  });
+  it('P2-1 两个入口 × 有无直接调动权限', async () => {
+    const { hrActionState } = await hrForm();
+    const state = (mode: 'apply' | 'direct', direct: boolean) =>
+      hrActionState({ mode, writable: true, blocked: false, preview: preview(direct) });
+    expect(state('apply', true).enabled).toEqual({ cancel: true, draft: true, submit: true, save: false });
+    expect(state('apply', false).enabled).toEqual({ cancel: true, draft: true, submit: true, save: false });
+    expect(state('apply', false).hint).toBeUndefined();
+    expect(state('direct', true).enabled).toEqual({ cancel: true, draft: false, submit: false, save: true });
+    expect(state('direct', true).hint).toBeUndefined();
+    expect(state('direct', false).enabled).toEqual({ cancel: true, draft: false, submit: false, save: false });
+    expect(state('direct', false).hint).toBe('当前账号或该员工不允许直接调动，请改用“他人调动申请”。');
+    // 直接调动开关开着但列表级按钮 Employment.Tranfer 不在，仍不能保存。
+    const allowedActions = { application: true, directList: false, directRow: true };
+    const rowOnly = { allowDirectTransfer: true, allowedActions };
+    expect(hrActionState({ mode: 'direct', writable: true, blocked: false, preview: rowOnly }).enabled.save).toBe(
+      false,
+    );
+  });
+  it('P2-2 写权限要 create 与可编辑字段；只留 Transfer.Hr 按钮不够，摘要按无权', async () => {
+    const { hrWriteAccess, hrActionState } = await hrForm();
+    expect(hrWriteAccess(full)).toBe(true);
+    expect(hrWriteAccess(undefined)).toBe(false);
+    expect(hrWriteAccess({ ...full, summary: true })).toBe(false);
+    expect(hrWriteAccess({ ...full, dataOperations: { read: true, create: false } })).toBe(false);
+    expect(hrWriteAccess({ ...full, editableFields: [] })).toBe(false);
+    for (const mode of ['apply', 'direct'] as const) {
+      const state = hrActionState({ mode, writable: false, blocked: false, preview: preview(true) });
+      expect(state.enabled).toEqual({ cancel: true, draft: false, submit: false, save: false });
+      expect(state.hint).toBe('当前账号没有新增任职记录的权限或可编辑字段，不能保存调动。');
+    }
+  });
+  it('表单未就绪（未选员工或必填缺失）时写按钮都不可点，取消仍可用', async () => {
+    const { hrActionState } = await hrForm();
+    expect(hrActionState({ mode: 'apply', writable: true, blocked: true, preview: preview(true) }).enabled).toEqual({
+      cancel: true,
+      draft: false,
+      submit: false,
+      save: false,
+    });
+    expect(hrActionState({ mode: 'direct', writable: true, blocked: true, preview: null }).hint).toBeUndefined();
   });
 });
