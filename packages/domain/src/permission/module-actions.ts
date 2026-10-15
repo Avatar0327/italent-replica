@@ -1,5 +1,6 @@
 import { CONTRACT_FIELDS } from '../contracts/rules.js';
 import { TRANSFER_LINKAGE_FIELDS } from '../approval/transfer-view.js';
+import { EXIT_BUTTONS, EXIT_REQUEST_FIELDS, EXIT_REQUEST_SYSTEM_FIELDS } from '../employment/exit.js';
 /** Real schema/DTO catalogs for DEC-080. Functional rights never imply a data scope. */
 import type { ButtonDefinition, DataOperation, ObjectDefinition } from './object-permission.js';
 
@@ -227,6 +228,11 @@ export const MODULE_OBJECTS = {
     'allowDirectTransfer',
     'unrestrictTargetDepartment',
     'autoPopulate',
+    // R2-T03 离职三个字典（B60～62）挂在任职设置配置对象上：名称、编码、启用、显示顺序（设计 §2.1）
+    'code',
+    'name',
+    'enabled',
+    'displayOrder',
   ]),
   employmentCustomField: object('EmploymentCustomField', ['name', 'objectType', 'valueType', 'inherit'], crud, [
     'code',
@@ -280,6 +286,8 @@ export const MODULE_OBJECTS = {
       'employType',
       // R1-T10 调动联动（`13` §7 表单区块）：审批披露、盲审与字段权限共用这些编码。
       ...TRANSFER_LINKAGE_FIELDS,
+      // R2-T03 离职扩展字段（设计 §4A / §9，lastWorkDate / reasonCode 已在上面）
+      ...EXIT_REQUEST_FIELDS,
     ],
     [
       button('Employment.Create', 'detail', 'create'),
@@ -298,6 +306,11 @@ export const MODULE_OBJECTS = {
       button('Employment.Preview', 'detail'),
       // R1-T08：生效失败 / 挂起的申请修正后重试（DEC-052）
       button('Employment.RetryActivation', 'detail', 'update'),
+      // R2-T03 离职（设计 §4A）：直接离职 / 离职申请 / 编辑离职 / 撤销离职
+      button(EXIT_BUTTONS.direct, 'detail', 'create'),
+      button(EXIT_BUTTONS.application, 'detail', 'create'),
+      button(EXIT_BUTTONS.edit, 'detail', 'update'),
+      button(EXIT_BUTTONS.cancel, 'detail', 'update'),
     ],
     [
       'employeeId',
@@ -316,6 +329,7 @@ export const MODULE_OBJECTS = {
       'employeeStatus',
       'entryStatus',
       'activation',
+      ...EXIT_REQUEST_SYSTEM_FIELDS,
     ],
   ),
 } as const satisfies Record<string, ObjectDefinition>;
