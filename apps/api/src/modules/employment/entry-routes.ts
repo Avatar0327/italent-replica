@@ -38,11 +38,16 @@ async function prepareEntryAction<T>(
   deps: TenantRouteDeps,
   authorize: BusinessWriteGuard,
   schema: z.ZodType<T>,
+  writePayload: (input: T) => object = () => ({}),
 ) {
   const id = uuidParam(c);
   const ctx = await readContext(c, deps, 'object.update', revision(c));
   const input = parse(schema, await jsonBody(c));
-  await requireEmploymentWrite(ctx, 'update', {}, 'Employment.Edit', undefined, { commandOnly: true });
+  // 改期要改入职日期：按 { effectiveDate } 校验字段写权限；办理入职 / 取消不改任职字段，空载荷只校验按钮
+  const payload = writePayload(input);
+  await requireEmploymentWrite(ctx, 'update', payload, 'Employment.Edit', undefined, {
+    commandOnly: Object.keys(payload).length === 0,
+  });
   await authorize(deps, ctx, id);
   return { id, ctx, input };
 }
@@ -63,7 +68,9 @@ export function registerEntryRoutes(router: Hono<TenantEnv>, deps: TenantRouteDe
     }));
   });
   router.post('/pending-entries/:id/postpone', async (c) => {
-    const { id, ctx, input } = await prepareEntryAction(c, deps, authorize, postponeInput);
+    const { id, ctx, input } = await prepareEntryAction(c, deps, authorize, postponeInput, ({ effectiveDate }) => ({
+      effectiveDate,
+    }));
     return runWrite(c, deps, ctx, { id, action: 'postpone', input }, async (tx, context) => ({
       status: 200,
       body: await postponePendingEntry(tx, context, id, input),

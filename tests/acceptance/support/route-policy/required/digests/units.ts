@@ -185,10 +185,10 @@ export const DIGESTS: Digests = {
     lockPendingEntry: 'de29f5ad6f4a',
   },
   'apps/api/src/modules/employment/entry-routes.ts': {
-    prepareEntryAction: 'e125057087fe',
+    prepareEntryAction: 'cd19daed245e',
     'route:DELETE /pending-entries/:id': 'f6ef32b91e27',
     'route:POST /pending-entries/:id/complete': '0681bae2ae36',
-    'route:POST /pending-entries/:id/postpone': '446f7c94f327',
+    'route:POST /pending-entries/:id/postpone': 'e7fc9507334b',
   },
   'apps/api/src/modules/employment/exit-routes.ts': {
     'route:GET /exits/dictionaries/:dict': '3433254b32bc',
@@ -1454,7 +1454,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/context.ts#requireLinkedEmploymentRecord': 'd276a41f4fc8',
   'apps/api/src/modules/employment/context.ts#requireScopedEmploymentObject': '074eba4f3f59',
   'apps/api/src/modules/employment/employee-status.ts#lockPendingEntry': '607049f9acef',
-  'apps/api/src/modules/employment/entry-routes.ts#prepareEntryAction': 'c2f2212bf09c',
+  'apps/api/src/modules/employment/entry-routes.ts#prepareEntryAction': '16db1c882eb2',
   'apps/api/src/modules/employment/entry-routes.ts#route:DELETE /pending-entries/:id': 'e4465ecb04d9',
   'apps/api/src/modules/employment/entry-routes.ts#route:POST /pending-entries/:id/complete': 'a829fa16c6cd',
   'apps/api/src/modules/employment/entry-routes.ts#route:POST /pending-entries/:id/postpone': 'bed760662ace',

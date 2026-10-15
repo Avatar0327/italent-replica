@@ -987,7 +987,8 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     ]),
     ...byId,
   }),
-  // 改期入职：body 严格 { effectiveDate（必填）, remark? }（400）；先删原待入职、再按新日期原字段重建（同事务，记录 ID 变更）；
+  // 改期入职：body 严格 { effectiveDate（必填）, remark? }（400）；requireEmploymentWrite 按 { effectiveDate } 校验字段写权限
+  // （无该字段写权限 403，不落库）；先删原待入职、再按新日期、原业务类型与字段重建（同事务，记录 ID 变更）；
   // 后面还有任职记录 / 在途申请 → 删除一步拒绝，整笔回滚；入职日 × 部门校验同添加（DEC-138 / 139）
   'POST /pending-entries/:id/postpone': object({
     object: EMPLOYMENT,
@@ -996,15 +997,19 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     guards: [DIRECT_OPERATION, LINKAGE],
     scope: BUSINESS_WRITE,
     fields: RESPONSE,
-    write: employmentCommand([
-      'lockTransferBusiness',
-      'lockEmploymentBusiness',
-      'assertRevision',
-      'requireScopedEmploymentObject',
-      'requireLinkedEmploymentRecord',
-      'assertNoPendingApplication',
-      'lockEmploymentEmployee',
-    ]),
+    write: employmentWrite(
+      'body',
+      [
+        'lockTransferBusiness',
+        'lockEmploymentBusiness',
+        'assertRevision',
+        'requireScopedEmploymentObject',
+        'requireLinkedEmploymentRecord',
+        'assertNoPendingApplication',
+        'lockEmploymentEmployee',
+      ],
+      { controls: ['remark'] },
+    ),
     ...byId,
   }),
   // 删除待入职（不可恢复）：object.delete + Employment.Delete；只有待入职可删 409 NOT_PENDING_ENTRY；删除内核同

@@ -59,7 +59,7 @@ export async function cancelPendingEntry(
 
 /**
  * 改期入职（EN-R8）：入职日期必填、备注可选，入职状态变“延期”；已取消入职改期即恢复。
- * 任职记录的生效日 / 入职日不可原地改（只追加版本链，AGENTS §2），所以改期 = 删除原待入职记录并按新日期、原字段
+ * 任职记录的生效日 / 入职日不可原地改（只追加版本链，AGENTS §2），所以改期 = 删除原待入职记录并按新日期、原业务类型 / 表单标识 / 字段
  * 重建（同事务）；记录 ID 随之变化，两条用日志的 previous_business_id 串起。后面还有任职记录或在途申请时，
  * 删除一步按既有口径拒绝，整笔回滚。
  */
@@ -71,7 +71,7 @@ export async function postponePendingEntry(
 ): Promise<EmploymentBusiness> {
   assertRemark(input.remark);
   const effectiveDate = businessDate(input.effectiveDate);
-  const { record } = await lockPendingEntry(tx, ctx, recordId);
+  const { business, record } = await lockPendingEntry(tx, ctx, recordId);
   if (effectiveDate === record.effectiveDate && record.entryStatus !== ENTRY_STATUS.cancelled)
     throw new AppError('VALIDATION_FAILED', '改期后的入职日期不能与原入职日期相同', { reason: 'ENTRY_DATE_UNCHANGED' });
   await transitionEmployment(tx, ctx, { id: recordId, action: 'delete' });
@@ -80,7 +80,15 @@ export async function postponePendingEntry(
     tx,
     { ...ctx, expectedRevision: employee.revision },
     record.employeeId,
-    { kind: 'hire', mode: 'direct', effectiveDate, fields: record.fields, customFields: record.customFields },
+    {
+      // 保留原业务类型（hire / rehire / retire_rehire）与表单标识：重聘、返聘改期后仍是重聘、返聘
+      kind: record.kind,
+      mode: 'direct',
+      formId: business.payload.formId,
+      effectiveDate,
+      fields: record.fields,
+      customFields: record.customFields,
+    },
     { entry: { pendingEntry: true, entryStatus: ENTRY_STATUS.postponed } },
   );
   await logEntryAction(tx, ctx, {

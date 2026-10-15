@@ -183,10 +183,7 @@ function entryUpdate(path: string, linkageCall?: Evidence): Obligation[] {
     ob(
       `btn:${RECORD}#Employment.Edit@detail`,
       ['button:requireEmploymentWrite(按钮)'],
-      [
-        prepare("await requireEmploymentWrite(ctx, 'update', {}, 'Employment.Edit', undefined, { commandOnly: true })"),
-        WRITE_BUTTON,
-      ],
+      [prepare("await requireEmploymentWrite(ctx, 'update', payload, 'Employment.Edit', undefined, {"), WRITE_BUTTON],
     ),
     businessWrite(prepare('await authorize(deps, ctx, id)')),
     directOperation(PENDING_LOCK),
