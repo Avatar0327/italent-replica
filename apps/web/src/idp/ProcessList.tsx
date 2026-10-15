@@ -3,6 +3,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { DecisionNote } from '../foundation/DecisionNote.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { ListPage } from '../foundation/templates.js';
+import { slotKey } from '../foundation/forms/slot.js';
 import { useApiClient } from '../foundation/Session.js';
 import { IDP_API, OBJECTS, useCollection, useCommand } from './api.js';
 import { CommandDialog, HeaderActions, NameSearch, useLocalPage, yesNo } from './listing.js';
@@ -135,8 +136,11 @@ function columns(
 /** 删除走页面级命令：结果未知时关闭再打开仍锁住，按原单回查，不重复发送（F-123 内核）。 */
 function RemoveDialog({ row, close, done }: { row: Process; close(): void; done(): void }) {
   const api = useApiClient();
-  const command = useCommand(`${IDP_API}/processes/${row.id}:action`, row.id, (id) =>
-    api.request<Process>(`${IDP_API}/processes/${id}`),
+  const command = useCommand(
+    slotKey(`${IDP_API}/processes`, row.id),
+    row.id,
+    (id) => api.request<Process>(`${IDP_API}/processes/${id}`),
+    { action: 'delete' },
   );
   const ok = async () => {
     const outcome = await command.run(`${IDP_API}/processes/${row.id}`, 'DELETE', {}, row.revision!);

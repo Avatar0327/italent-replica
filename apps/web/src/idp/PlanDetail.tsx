@@ -4,6 +4,7 @@ import { idpDemoBasic, idpDemoReview } from '../demo-stubs/idp.js';
 import { Failure, useRead } from '../evaluation/runtime.js';
 import { DecisionNote } from '../foundation/DecisionNote.js';
 import { PageState } from '../foundation/PageState.js';
+import { slotKey } from '../foundation/forms/slot.js';
 import { useApiClient } from '../foundation/Session.js';
 import { groupByOwner } from './access.js';
 import { IDP_API, useCommand } from './api.js';
@@ -44,8 +45,11 @@ export function PlanDetailPage({ id, onBack, can, edit, intervene }: Props) {
   const detail = usePlan(id);
   const plan = detail.plan;
   const names = useNames('employee', [plan?.employeeId, plan?.tutorEmployeeId]);
-  const command = useCommand(`${IDP_API}/plans/${id}:task`, id, (planId) =>
-    api.request<PlanDetail>(`${IDP_API}/plans/${planId}`),
+  const command = useCommand(
+    slotKey(`${IDP_API}/plans`, id),
+    id,
+    (planId) => api.request<PlanDetail>(`${IDP_API}/plans/${planId}`),
+    { action: 'task' },
   );
   const back = <Button onClick={onBack}>{t.back}</Button>;
   if (!plan)

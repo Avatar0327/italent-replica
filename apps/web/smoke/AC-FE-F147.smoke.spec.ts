@@ -32,7 +32,11 @@ async function writesTo(page: Page, pattern: string, respond: () => object = () 
   });
   return writes;
 }
-const closeDialog = (page: Page) => page.getByRole('button', { name: /取\s*消/ }).last().click();
+const closeDialog = (page: Page) =>
+  page
+    .getByRole('button', { name: /取\s*消/ })
+    .last()
+    .click();
 
 test.describe('合同', () => {
   test('AC-FE-F147-01 续签结果未知后点“终止”：按槽里的续签重开并锁定，不打开终止表单', async ({ page }) => {
@@ -205,7 +209,7 @@ test.describe('继任', () => {
       return route.abort('failed');
     });
     await openSuccession(page, '继任地图与列表');
-    await expect(page.locator('.list-card')).toContainText(positionRecord.position?.name ?? '合成研发总监');
+    await expect(page.locator('.list-card')).toContainText(positionRecord.targetPosition.name);
     const selectRow = () => page.getByRole('checkbox').last().check();
     await selectRow();
     await button(page, '更多操作').click();
@@ -232,7 +236,10 @@ test.describe('发展计划', () => {
     await page.getByLabel('切换演示身份').selectOption(user);
     await expect(page).toHaveURL(/\/staff$/);
     await page.getByRole('button', { name: '应用导航' }).click();
-    await page.getByRole('dialog', { name: '全部菜单' }).getByRole('link', { name: '人才发展计划', exact: true }).click();
+    await page
+      .getByRole('dialog', { name: '全部菜单' })
+      .getByRole('link', { name: '人才发展计划', exact: true })
+      .click();
     await expect(page).toHaveURL(/\/idp\/plans$/);
     await page.getByRole('menuitem', { name: '人才发展计划', exact: true }).click();
     await page.getByRole('menuitem', { name, exact: true }).click();
@@ -242,7 +249,10 @@ test.describe('发展计划', () => {
   test('AC-FE-F147-09 批量催办结果未知：同一计划的终止一并锁定，不发第二次', async ({ page }) => {
     const calls = await mockIdp(page, { writeStatus: 500 });
     await openIdp(page, '发展计划');
-    await page.getByRole('row', { name: /合成发展计划/ }).getByRole('checkbox').check();
+    await page
+      .getByRole('row', { name: /合成发展计划/ })
+      .getByRole('checkbox')
+      .check();
     const intervene = async (label: string) => {
       await page.getByRole('button', { name: /流程干预/ }).click();
       await page.getByRole('menuitem', { name: label, exact: true }).click();

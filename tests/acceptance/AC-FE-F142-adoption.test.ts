@@ -48,7 +48,7 @@ describe('AC-FE-F142 页面不留重复实现', () => {
     expect(read('evaluation/useRecordForm.ts')).toMatch(/useCommandForm\(slotKey\(/);
     expect(read('evaluation/CreateEntry.tsx')).toMatch(/useCommandForm\(slotKey\(/);
     // F-147：审批动作与待办存进内核槽上下文，读取走内核 lockedContext，页面不再自写一份。
-    expect(read('approval/action-command.ts')).toMatch(/lockedContext\(/);
+    expect(read('approval/action-command.ts')).toMatch(/lockedContext(<\w+>)?\(/);
     expect(read('approval/action-command.ts')).not.toMatch(/function lockedContext/);
   });
   it('ConflictCommands 只在内核里实现：继任页面只留删除按钮', () => {
