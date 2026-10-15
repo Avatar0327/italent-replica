@@ -75,7 +75,7 @@ function extraFields(template: Template | undefined, canPublish: boolean): FormF
 function TemplateEditor({ template, close, saved }: Props) {
   const api = useApiClient();
   const permission = usePermissions(OBJECTS.template);
-  const writer = useRecordForm(PATH, template as Row | undefined, project);
+  const writer = useRecordForm(PATH, template as Row | undefined, project, template ? { action: 'edit' } : {});
   const canPublish = permission.can('publish', 'detail');
   const controls: Record<string, ReactNode> = {
     name: <Input maxLength={100} />,

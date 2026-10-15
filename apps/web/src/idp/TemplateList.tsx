@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router';
 import { DecisionNote } from '../foundation/DecisionNote.js';
 import { usePermissions } from '../foundation/Permissions.js';
+import { slotKey } from '../foundation/forms/slot.js';
 import { useApiClient } from '../foundation/Session.js';
 import { ListPage } from '../foundation/templates.js';
 import { IDP_API, OBJECTS, useCollection, useCommand } from './api.js';
@@ -33,11 +34,17 @@ const CONFIRMS: Record<Confirmable, string> = {
 };
 const DETAIL = 'template';
 
-/** 同一模板的状态动作共用一条命令：结果未知时启用、停用、删除一并锁住，按原单回查后再操作。 */
-function useTemplateCommand(id: string) {
+/**
+ * 同一模板的动作（启用、停用、删除、复制、编辑）共用模板的恢复槽，动作记进槽上下文（F-147）：
+ * 任一动作结果未知时其他动作一并锁住，按原单回查后再操作。
+ */
+function useTemplateCommand(id: string, action: string) {
   const api = useApiClient();
-  return useCommand(`${IDP_API}/templates/${id}:action`, id, (key) =>
-    api.request<Template>(`${IDP_API}/templates/${key}`),
+  return useCommand(
+    slotKey(`${IDP_API}/templates`, id),
+    id,
+    (key) => api.request<Template>(`${IDP_API}/templates/${key}`),
+    { action },
   );
 }
 
@@ -228,7 +235,7 @@ function columns(
 /** 启用 / 停用 / 删除：页面级命令，关闭再打开仍是同一条命令，结果未知时“确定”保持禁用。 */
 function ConfirmDialog(props: { row: Template; action: Confirmable; close(): void; done(action: Confirmable): void }) {
   const { row, action, close, done } = props;
-  const command = useTemplateCommand(row.id);
+  const command = useTemplateCommand(row.id, action);
   const ok = async () => {
     const path = `${IDP_API}/templates/${row.id}${action === 'delete' ? '' : `/${action}`}`;
     const outcome = await command.run(path, action === 'delete' ? 'DELETE' : 'POST', {}, row.revision!);
@@ -246,10 +253,11 @@ function ConfirmDialog(props: { row: Template; action: Confirmable; close(): voi
 
 /**
  * 复制是新建命令（复制接口按 revision 0 处理）；名称必填 1～100。
- * 命令按源模板存在页面根部：结果未知时关闭再打开仍锁住，不发第二次请求，幂等键不变。
+ * 命令存在源模板的恢复槽（动作 copy）：结果未知时关闭再打开仍锁住，不发第二次请求，幂等键不变；
+ * 不带原单 ID，复制结果是新模板，不能按源模板回查。
  */
 function CopyDialog({ source, close, done }: { source: Template; close(): void; done(): void }) {
-  const command = useCommand(`${IDP_API}/templates/${source.id}/copy`);
+  const command = useCommand(slotKey(`${IDP_API}/templates`, source.id), undefined, undefined, { action: 'copy' });
   const [form] = Form.useForm<{ name: string }>();
   const pending = command.state?.values.name;
   const ok = async () => {
@@ -290,7 +298,7 @@ function CopyDialog({ source, close, done }: { source: Template; close(): void; 
  * 启用失败或结果未知时保留提示与命令 ID，模板本身已创建，不回滚、不自动重试。
  */
 function EnableAfterCreate({ template, done, close }: { template: Template; done(): void; close(): void }) {
-  const command = useTemplateCommand(template.id);
+  const command = useTemplateCommand(template.id, 'publish');
   const started = useRef(false);
   const revision = template.revision;
   useEffect(() => {

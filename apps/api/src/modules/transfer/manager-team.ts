@@ -2,7 +2,7 @@ import { sql, type Tx } from '@italent/db';
 import type { SQL } from 'drizzle-orm';
 import { AppError } from '../../errors.js';
 import { scopeRows } from '../permission/scope-hierarchy.js';
-import { managerIdentity } from '../permission/manager-identity.js';
+import { managerIdentityWithOrgs } from '../permission/manager-identity.js';
 import { scopeSql } from '../permission/module-access.js';
 import { tenantLocalDate } from '@italent/domain';
 import type { EmploymentContext, PageQuery } from '../employment/types.js';
@@ -10,7 +10,7 @@ import { employeeAvatars } from '../avatar/references.js';
 
 export async function managerTeamQuery(tx: Tx, ctx: EmploymentContext): Promise<SQL> {
   const asOf = tenantLocalDate(ctx.now, ctx.timezone);
-  const identity = await managerIdentity(tx, { ...ctx, asOf });
+  const identity = await managerIdentityWithOrgs(tx, { ...ctx, asOf });
   if (!identity.active) throw new AppError('FORBIDDEN', '需要经理自助身份');
   const orgs = `{${identity.orgIds.join(',')}}`;
   // Q-M0-71：先按负责组织过滤，再分页。历史可见不产生候选资格。每人至多两行：current 取当前生效主职，

@@ -250,6 +250,7 @@ describe('审批中心接入', () => {
       }),
     );
     plan = await w.readPlan(plan.id);
+    await w.fillReview(plan);
     await w.submit(plan, 2, w.employee.userId);
     plan = await w.submit(plan, 2, w.manager.userId);
     // 期末回顾：上一阶段结束后 7 天自动开启，HR 可提前手动开启（IDP-R4）

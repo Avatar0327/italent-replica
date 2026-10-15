@@ -2,7 +2,13 @@
  * 发展计划执行规则（纯函数，docs/02_业务建模/28 §2.1 / §2.3；Q-M0-115①②；DEC-296⑤ / DEC-056）。
  */
 import { addDays } from '../contracts/rules.js';
-import { AUTO_START_HOUR, IMPROVING_STAGE_NAME, type PlanStatus, type StageStatus } from './catalog.js';
+import {
+  AUTO_START_HOUR,
+  IMPROVING_STAGE_NAME,
+  PASSED_STAGE_STATUSES,
+  type PlanStatus,
+  type StageStatus,
+} from './catalog.js';
 import type { StartRule } from './rules.js';
 
 /** 计算阶段到期日所需的参照日期（未知为 null）。 */
@@ -65,6 +71,9 @@ export function currentStageName(status: PlanStatus, stages: readonly StageState
   if (running) return running.name;
   return stages.some((stage) => stage.status === 'pending' || stage.status === 'failed') ? IMPROVING_STAGE_NAME : null;
 }
+
+/** 阶段是否已过去（已结束或已终止，F-155）。 */
+export const stagePassed = (status: StageStatus) => PASSED_STAGE_STATUSES.includes(status);
 
 /** 下一个待开启的阶段（按顺序第一个“待开启 / 开启失败”的），没有则为 undefined。 */
 export function nextOpenableStage<T extends StageState & { readonly seq: number }>(

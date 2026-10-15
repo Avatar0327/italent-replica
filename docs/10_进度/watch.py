@@ -18,6 +18,7 @@ READY = 10  # 分钟：提交后这么久、CI 绿（或无 CI）且无送审评
 READY_DRAFT = 20  # Draft 停 20 分钟无新提交 → 可能已完成但没转 Ready（用户 10-09：#144 漏报）
 DRAFT_IDLE = 60  # 分钟：Draft 无提交无评论 → 问是否卡在待决
 HANDOFF = 15  # 分钟：开发完成后仍未发起审查 → 衔接超时，进度窗口直接催
+NOMERGE = 120  # 分钟：有非 Draft 在途 PR 却超过这么久没有任何合并 → 全局提醒（DEC-521④，10-15 约 5 小时无合并未被发现），之后每小时再报
 OPUS_REMIND = 60  # 分钟：claude.ai/code 的 Opus 审查会话本机看不到，发起后这么久 PR 上仍无“审查原文 / 结论”就提醒去看会话，之后每 60 分钟再提醒
 
 
@@ -235,6 +236,9 @@ def single_instance():
     return pidf
 
 
+nomerge_tick = [0]
+
+
 def main():
     pidf = single_instance()
     old = {}
@@ -341,6 +345,20 @@ def main():
                 if m >= OPUS_REMIND and k not in stalled:
                     ev.append(f"Opus 审查待收 #{n} {p['t']}：claude.ai/code 审查会话发起 {m} 分钟，PR 上仍无审查原文 / 结论，请审查合并窗口看会话是否已完成或卡住")
                     stalled.add(k)
+        # DEC-521④ 全局“长时间无合并”：逐 PR 规则看不到“每个 PR 都在动、但没有一个能合”的流水线空转
+        if not hold and int(time.time()) // 600 != nomerge_tick[0]:
+            nomerge_tick[0] = int(time.time()) // 600
+            try:
+                mg = gh(["pr", "list", "--state", "merged", "--limit", "1", "--json", "number,mergedAt"])
+                if mg:
+                    m = int(mins_since(mg[0]["mergedAt"]))
+                    live = [n for n, p in cur.items() if not p["draft"]]
+                    kn = f"nomerge@{mg[0]['number']}@{m // 60}"
+                    if m >= NOMERGE and live and kn not in stalled:
+                        ev.append(f"⚠ 长时间无合并：最近一次合并 #{mg[0]['number']} 在 {m} 分钟前，非 Draft 在途 PR {len(live)} 个（{'、'.join('#' + str(n) for n in sorted(live)[:8])}）——请逐个核对卡在审查返工、队列、CI 还是等决定，并提醒用户（DEC-385）")
+                        stalled.add(kn)
+            except Exception:
+                pass
         ev_t = last_evidence_commit()
         pause = os.path.expanduser("~/.cache/italent-evidence-pause")  # 内容为 ISO 日期：取证窗口按计划停到该日，期间不报停顿
         try:

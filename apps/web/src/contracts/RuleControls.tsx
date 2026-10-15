@@ -3,6 +3,7 @@ import { Button, Switch, message } from 'antd';
 import { usePermissions } from '../foundation/Permissions.js';
 import { PageState } from '../foundation/PageState.js';
 import { useApiClient } from '../foundation/Session.js';
+import { slotKey } from '../foundation/forms/slot.js';
 import { configFields, configLabels } from './ConfigForms.js';
 import { parseSavedReceipt, parseSettingsReceipt } from './forms.js';
 import { m } from './messages.js';
@@ -35,11 +36,12 @@ function RenewalSwitch({ settings, visible, editable }: { settings: Read; visibl
   const api = useApiClient();
   const data = settings.data;
   const tenantId = String(data?.tenantId ?? '');
-  const { form, baseline, submit } = useConfigCommand(`${contractApi.settings}/autoRenew`, {
+  const { form, baseline, submit } = useConfigCommand(slotKey(contractApi.settings), {
     kind: 'settings',
     id: tenantId || undefined,
     row: data,
     keys: ['autoRenew'],
+    action: 'autoRenew',
   });
   const current = baseline.autoRenew;
   const toggle = async (next: boolean) => {
@@ -113,7 +115,13 @@ export function RuleMove({
   const id = String(row.id);
   const path = `${contractApi.rules}/${encodeURIComponent(id)}`;
   const keys = configFields.rules;
-  const { form, baseline, submit } = useConfigCommand(`${path}/move`, { kind: 'rules', id, row, keys });
+  const { form, baseline, submit } = useConfigCommand(slotKey(contractApi.rules, id), {
+    kind: 'rules',
+    id,
+    row,
+    keys,
+    action: 'move',
+  });
   const run = async (priority: number | null) => {
     if (priority === null) return void message.warning(m.reorderGap);
     const result = await submit({

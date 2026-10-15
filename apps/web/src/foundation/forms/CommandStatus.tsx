@@ -11,6 +11,7 @@ export function CommandStatus({
   labels?: Record<string, unknown>;
 }) {
   const { state, reload, confirm } = submission;
+  if (submission.blocked && !state) return <Alert type="warning" showIcon message={m.blocked} />;
   if (!state || ['idle', 'done'].includes(state.status)) return null;
   let message = m[state.status as 'submitting' | 'unknown' | 'conflict'];
   if (state.status === 'rejected') message = state.error instanceof Error ? rejectionMessage(state.error) : m.rejected;
