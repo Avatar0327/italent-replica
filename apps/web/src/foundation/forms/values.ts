@@ -48,7 +48,8 @@ export interface RefillInput {
 export function refillDraft({ values, latest, edited, submittable }: RefillInput) {
   if (!latest) return values;
   const mine = (field: string) => edited.includes(field) && submittable.includes(field);
-  const refill = Object.keys(latest).filter((field) => !mine(field));
+  // 草稿里有、最新记录里没有的字段同样取最新（置空），不能只看最新记录自带的键。
+  const refill = [...new Set([...Object.keys(latest), ...Object.keys(values)])].filter((field) => !mine(field));
   return { ...values, ...Object.fromEntries(refill.map((field) => [field, latest[field]])) };
 }
 

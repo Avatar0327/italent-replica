@@ -61,6 +61,22 @@ describe('AC-FE-F142 重读回填', () => {
       subProcesses: latest.subProcesses,
     });
   });
+  it('草稿里有、最新记录里没有的字段：不可提交时置空，改过且可提交时保留草稿', () => {
+    const values = { name: '新组织', addEmployment: 'yes' };
+    const latest = { name: '原组织' };
+    const hidden = refillDraft({ values, latest, edited: ['name', 'addEmployment'], submittable: ['name'] });
+    expect(Object.entries(hidden)).toEqual([
+      ['name', '新组织'],
+      ['addEmployment', undefined],
+    ]);
+    const shown = refillDraft({
+      values,
+      latest,
+      edited: ['name', 'addEmployment'],
+      submittable: ['name', 'addEmployment'],
+    });
+    expect(shown).toEqual(values);
+  });
   it('冲突重读：内核按最新记录回填未改字段与上次不可提交的字段，保留改过的字段', async () => {
     const store = createFormStore();
     await store.submit('k', {

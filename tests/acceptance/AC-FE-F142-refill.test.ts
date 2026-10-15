@@ -4,6 +4,7 @@
 // 场景照组织变更页：改名提交 → 409 → 重读核对 → 输入新备注、把名称改回原名 → “是否新增任职”随之隐藏。
 // 第 2 轮 P2：字段转为不可提交并回填最新记录时，内核草稿与已改字段集合要一起更新；不重提再重读、字段恢复可编辑后，
 // 旧草稿不能复活。场景照 IDP 流程页：子流程整组随最新记录缺天数转只读（idp/submission.ts）。
+// 第 3 轮 P2：最新记录本来没有的字段（组织“是否新增任职”）被 settle 清掉后，控件里的旧选择也要清掉，字段重新出现时不能带回旧值。
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -12,6 +13,7 @@ const requireWeb = createRequire(resolve('apps/web/package.json'));
 const { createElement: h, act } = requireWeb('react');
 const { createRoot } = requireWeb('react-dom/client');
 const { Input } = requireWeb('antd');
+const { useState } = requireWeb('react');
 const { SessionProvider } = await import(resolve('apps/web/src/foundation/Session.tsx'));
 const { FormOverlay } = await import(resolve('apps/web/src/foundation/FormOverlay.tsx'));
 const { FormCommands, useCommandForm } = await import(resolve('apps/web/src/foundation/forms/useCommandForm.tsx'));
@@ -160,5 +162,62 @@ describe('AC-FE-F142 连续重读', () => {
     expect(form.status).toBe('done');
     // 只改了流程名称：请求体不带子流程，不会让后端删掉服务端新增的阶段。
     expect(sent[1]).toEqual({ name: '新流程' });
+  });
+});
+
+const organization = { name: '原组织', remark: '原备注' };
+function Change() {
+  form = useCommandForm(slotKey('/api/tenant/org/organizations', 'o-2'));
+  const current = form.state?.latest?.values ?? organization;
+  const [name, setName] = useState(organization.name);
+  // 照 OrgEditor：名称与当前原单不同才出现“是否新增任职”；组织记录本身没有这个字段。
+  const rename = { ...field('name', '名称'), control: h(Input, { onChange: (event) => setName(event.target.value) }) };
+  const choice = name.trim() !== current.name ? [field('addEmployment', '是否新增任职')] : [];
+  return h(FormOverlay, {
+    open: true,
+    recordKey: 'o-2',
+    title: '组织变更',
+    mode: 'modal',
+    submission: form,
+    initialValues: organization,
+    groups: [{ title: '基本信息', fields: [rename, field('remark', '备注'), ...choice] }],
+    onSubmit: async (values: Record<string, unknown>) => {
+      const result = await form.submit({
+        values,
+        baseline: organization,
+        editableFields: Object.keys(values),
+        revision: 2,
+        businessId: 'o-2',
+        patchOnly: true,
+        send: async (command: { body: unknown }) => {
+          sent.push(command.body);
+          if (sent.length === 1) throw new ApiError(409, 'REVISION_CONFLICT', 'refresh', '合成冲突');
+          return { id: 'o-2' };
+        },
+      });
+      if (result.status !== 'done') throw result.error;
+    },
+    onClose: vi.fn(),
+  });
+}
+
+describe('AC-FE-F142 最新记录缺字段', () => {
+  it('隐藏后 settle 清掉的选择同步清掉控件值，再次改名字段重新出现时为空，请求体不带旧选择', async () => {
+    sent = [];
+    await act(() => root.render(h(SessionProvider, { session }, h(FormCommands, null, h(Change)))));
+    await act(() => type('name', '新组织'));
+    await act(() => type('addEmployment', 'yes'));
+    await save();
+    expect(sent).toEqual([{ name: '新组织', addEmployment: 'yes' }]);
+    await act(() => form.reread(async () => ({ id: 'o-2', revision: 3, values: organization })));
+    expect([input('name').value, input('addEmployment').value]).toEqual(['新组织', 'yes']);
+    await act(() => form.confirm());
+    // 名称改回原名：选择字段隐藏，内核与控件都不再留着“是”。
+    await act(() => type('name', '原组织'));
+    expect(input('addEmployment')).toBeNull();
+    await act(() => type('name', '改名二'));
+    expect(input('addEmployment').value).toBe('');
+    await save();
+    expect(sent[1]).toEqual({ name: '改名二' });
   });
 });
