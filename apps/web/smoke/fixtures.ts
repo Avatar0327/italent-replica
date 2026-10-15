@@ -29,6 +29,19 @@ export const snapshotFixture = {
   adminMenus: [{ code: 'users.all', path: '用户管理/全部用户', implemented: true, editable: false }],
 };
 
+/**
+ * 职位地图个人偏好：未保存过时后端按默认值整份返回（map-preferences.ts readPreferences，回执不带 id）。
+ * 兜底的列表形状不是偏好 DTO，页面按结果未知进错误态（F-176）。
+ */
+export const mapPreferences = {
+  rootOrgId: null,
+  depth: 3,
+  hiddenOrgIds: [],
+  showKeyPositions: false,
+  showPositionsWithoutSuccessor: true,
+  revision: 0,
+};
+
 export const test = base.extend({
   page: async ({ page }, use) => {
     await page.route('**/__demo/personas', (route) =>
@@ -64,6 +77,7 @@ export const test = base.extend({
           record: null,
         };
       if (path.endsWith('/transfers/manager')) body = { canApply: false, canViewReporting: false };
+      if (path.endsWith('/succession/maps/position/preferences')) body = mapPreferences;
       if (path.endsWith('/transfers/catalog')) body = { types: [], reasons: [], today: '2026-10-12' };
       return route.fulfill({ json: body });
     });
