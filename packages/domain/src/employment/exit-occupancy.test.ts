@@ -283,7 +283,6 @@ describe('exitOccupancy：P 投影（编制占用，§6B.1 / §6）', () => {
 
 describe('P 投影：多笔申请按 main 的逐笔顺序累计（projectedMembers）', () => {
   const records = [record('rec-a', 'A', '2026-09-01', null, { kind: 'hire' })];
-  const submitted = { transferIn: 'submitted', transferOut: 'submitted' } as const;
   const approvedOnly = { transferIn: 'approved', transferOut: 'approved' } as const;
   const t1 = application('app-1', 'B', '2026-10-25', null);
   const t2 = application('app-2', 'C', '2026-11-01', null, { operationKey: 2 });

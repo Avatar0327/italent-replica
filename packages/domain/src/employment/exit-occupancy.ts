@@ -28,7 +28,9 @@ export type ApplicationStage = 'in_review' | 'approved' | 'effective';
 /**
  * 申请预占段（main `pendingTransfers` 的结果）：该员工调动申请在目标岗位的预占区间。
  * from = greatest(载荷生效日, 今天)，to = 插入窗口结束；staffId 取载荷 `selectedStaffId`，未选定时由取数侧按生效日所在周期补。
- * 原岗位的“提前扣出”不单列输入：按 timings 从该员工的时间轴记录里扣掉 [from, to)（与 main 一致）。
+ * 原岗位的“提前扣出”不单列输入：按 timings 从该员工累计的全部区间里扣掉 [from, to)（与 main 一致）。
+ * plannedDate / operationKey 是同员工多笔申请的稳定投影顺序（先后决定后序申请扣掉此前累计的预占）：
+ * 先 from，再 plannedDate（§5.0A 计划生效日），再 operationKey（DEC-108，timeline.ts operationKey；null = 正在落地，视为最新）。
  */
 export interface PreOccupancySegment {
   readonly businessId: string;
@@ -40,6 +42,8 @@ export interface PreOccupancySegment {
   readonly capacityId: string | null;
   readonly from: string;
   readonly to: string | null;
+  readonly plannedDate: string;
+  readonly operationKey: number | null;
 }
 
 /**
@@ -190,29 +194,72 @@ function releaseCuts(exits: readonly ExitState[]): { exit: ExitState; cut: Span 
 const counted = (stage: ApplicationStage, timing: 'submitted' | 'approved') =>
   timing === 'submitted' || stage !== 'in_review';
 
-/** P：时间轴记录扣掉已计入申请的原岗位窗口，加上目标岗位预占段，再整体扣掉同周期预减区间。 */
+/** 累计投影中的一块占用：来源与它还剩的区间。 */
+interface Piece {
+  readonly subject: Pick<OccupancySegment, 'employeeId' | 'staffId' | 'departmentId' | 'positionId' | 'capacityId'>;
+  readonly sourceId: string;
+  readonly spans: Span[];
+}
+
+/**
+ * 申请的处理顺序，与 main `projectedMembers` 同口径：预占起点（= 最终执行日期）→ 计划日 → 操作序号，
+ * 没有操作序号的视为最新；业务 ID 只在以上全相同（不应出现）时兜底，保证输出确定。
+ */
+function compareApplications(a: PreOccupancySegment, b: PreOccupancySegment): number {
+  const operation =
+    a.operationKey === b.operationKey
+      ? 0
+      : a.operationKey === null
+        ? 1
+        : b.operationKey === null
+          ? -1
+          : a.operationKey - b.operationKey;
+  return (
+    compareText(a.from, b.from) ||
+    compareText(a.plannedDate, b.plannedDate) ||
+    operation ||
+    compareText(a.businessId, b.businessId)
+  );
+}
+
+/**
+ * 同一员工的累计投影（main `projectedMembers` 的逐笔处理）：先放时间轴记录，再按顺序处理每笔申请——
+ * 已按控编时机计入“调出”的，从当前累计的全部区间（含此前申请的预占）里扣出其窗口；已计入“调入”的，加入目标岗位预占段。
+ */
+function accumulate(
+  records: readonly TimelineSegment[],
+  apps: readonly PreOccupancySegment[],
+  timings: OccupancyTimings,
+) {
+  const pieces: Piece[] = records.map((record) => ({
+    subject: record,
+    sourceId: record.recordId,
+    spans: [closed(record.from, record.to)],
+  }));
+  for (const app of [...apps].sort(compareApplications)) {
+    const window = closed(app.from, app.to);
+    if (counted(app.stage, timings.transferOut))
+      for (const piece of pieces) piece.spans.splice(0, piece.spans.length, ...subtractAll(piece.spans, [window]));
+    if (counted(app.stage, timings.transferIn))
+      pieces.push({ subject: app, sourceId: app.businessId, spans: [window] });
+  }
+  return pieces;
+}
+
+/** P：按员工逐笔累计记录与申请预占，最后统一扣掉同周期预减区间 [R, 下一周期入职日)。 */
 function occupancyP(input: ExitOccupancyInput, records: readonly TimelineSegment[]): OccupancySegment[] {
   const cuts = releaseCuts(input.exits);
-  const apply = (subject: { employeeId: string; staffId: string }, spans: Span[]) =>
-    subtractAll(
-      spans,
-      cuts.filter(({ exit }) => sameCycle(exit, subject)).map(({ cut }) => cut),
-    );
-  const origin = (employeeId: string) =>
-    input.applications
-      .filter((app) => app.employeeId === employeeId && counted(app.stage, input.timings.transferOut))
-      .map((app) => closed(app.from, app.to));
-  const fromRecords = records.flatMap((record) =>
-    emit(
-      record,
-      record.recordId,
-      apply(record, subtractAll([closed(record.from, record.to)], origin(record.employeeId))),
-    ),
+  const employees = new Set([...records.map((r) => r.employeeId), ...input.applications.map((a) => a.employeeId)]);
+  return [...employees].flatMap((employeeId) =>
+    accumulate(
+      records.filter((record) => record.employeeId === employeeId),
+      input.applications.filter((app) => app.employeeId === employeeId),
+      input.timings,
+    ).flatMap((piece) => {
+      const own = cuts.filter(({ exit }) => sameCycle(exit, piece.subject)).map(({ cut }) => cut);
+      return emit(piece.subject, piece.sourceId, subtractAll(piece.spans, own));
+    }),
   );
-  const fromApplications = input.applications
-    .filter((app) => counted(app.stage, input.timings.transferIn))
-    .flatMap((app) => emit(app, app.businessId, apply(app, [closed(app.from, app.to)])));
-  return [...fromRecords, ...fromApplications];
 }
 
 /** 两个投影由同一函数给出；输入只差离职状态 / 日期 / 挂回与否，前后各算一次再求差集。 */
