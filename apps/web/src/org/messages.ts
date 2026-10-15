@@ -106,7 +106,7 @@ export const pageText = {
   import: '导入',
   listHint:
     '可在此页面新增组织；可点击部门名称进入详情页面，进行【编辑】、【变更】、【停用】组织等操作；' +
-    '也可点击【组织架构调整】进入组织架构树页面进行一些快捷操作，比如组织【更名】、【调整负责人】、【转移】、【停用】等。',
+    '也可在列表行内点击【新建下级】、【编辑】，或在【更多】中【变更】、【停用】组织。',
   // 原站变更弹窗顶部说明（B2_09）。
   changeNotice:
     '1、变更组织后，将新增该组织的组织变更记录 ' +
@@ -155,6 +155,12 @@ export const importText = {
   tooMany: (limit: number) => `单次最多导入 ${limit} 行，请拆分后再导入`,
   rowInvalid: (row: number) => `第 ${row} 行不是对象`,
   rowMissing: (row: number, field: string) => `第 ${row} 行缺少 ${field}`,
+  rowTarget: (row: number) => `第 ${row} 行带 expectedRevision 时须同时填写 orgId`,
+  rowOperation: (row: number, operation: string) => `第 ${row} 行需要${operation}组织的权限，当前无权${operation}`,
+  rowField: (row: number, field: string) => `第 ${row} 行的 ${field} 列无写入权限或不是导入列`,
+  operations: { create: '新建', update: '更新' },
+  reading: '正在读取文件…',
+  rereadInvalid: '组织最新版本读取结果无效',
   result: '导入结果',
   sourceCode: '原系统编码',
   code: '机构编码',

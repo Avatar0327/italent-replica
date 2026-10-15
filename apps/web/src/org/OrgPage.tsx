@@ -188,6 +188,7 @@ function CatalogDialogs({ s, access }: { s: Catalog; access: PageAccess }) {
       )}
       {s.importing && (
         <OrgImport
+          access={access}
           onClose={() => s.setImporting(false)}
           onImported={(results) => {
             s.setImported(results);

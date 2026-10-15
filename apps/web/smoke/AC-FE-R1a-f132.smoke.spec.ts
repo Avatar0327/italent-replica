@@ -1,5 +1,6 @@
 // F-132 第 2 段（组织页）：按原站核对后的按钮位置与顺序、列设置（B2_03 居中两栏弹窗）、组织导入与变更 / 停用表单。
-// 夹具按接口真实形状：组织行含 broadType、isVirtual、displayOrder；导入回执 200 { results }，行冲突 409 CONFLICT。
+// 夹具按接口真实形状：组织行含 broadType、isVirtual、displayOrder；导入回执 200 { results }，行冲突 409 CONFLICT，
+// 更新行版本过期 409 REVISION_CONFLICT（details 含 expected / actual / rowIndex / sourceCode）。
 import type { Page, Request } from '@playwright/test';
 import { test, expect, user } from './fixtures.js';
 
@@ -7,6 +8,8 @@ const tenant = '10000000-0000-4000-8000-000000000001';
 const id = '40000000-0000-4000-8000-000000000001';
 const parent = '40000000-0000-4000-8000-000000000002';
 const ALL = [
+  'sourceCode',
+  'parentId',
   'name',
   'code',
   'enabled',
@@ -45,7 +48,8 @@ const org = {
   hrbpId: null,
   parents: { admin: { parentId: null, sequence: null } },
 };
-async function setup(page: Page, baseURL: string, buttons = ['create@list', 'update@detail', 'import@list']) {
+const BUTTONS = ['create@list', 'update@detail', 'import@list'];
+async function setup(page: Page, baseURL: string, buttons = BUTTONS, operations = { create: true, update: true }) {
   await page.clock.setFixedTime(new Date('2026-10-12T08:00:00Z'));
   await page.context().addCookies([
     { name: 'italent_demo_tenant', value: tenant, url: baseURL },
@@ -55,7 +59,7 @@ async function setup(page: Page, baseURL: string, buttons = ['create@list', 'upd
     route.fulfill({
       json: {
         objectCode: new URL(route.request().url()).pathname.split('/').at(-1),
-        dataOperations: { create: true, update: true },
+        dataOperations: operations,
         viewableFields: ALL,
         editableFields: ALL,
         buttons: buttons.map((code) => ({ buttonCode: code.split('@')[0], level: code.split('@')[1] })),
@@ -77,15 +81,16 @@ const rows = [
   { sourceCode: 'SRC-1', code: 'ORG-101', name: '合成导入一', parentId: parent },
   { sourceCode: 'SRC-2', code: 'ORG-001', name: '合成组织', parentId: parent, orgId: id, expectedRevision: 1 },
 ];
+const file = (name: string, content: unknown[]) => ({
+  name,
+  mimeType: 'application/json',
+  buffer: Buffer.from(JSON.stringify({ rows: content })),
+});
 async function chooseImport(page: Page) {
   await page.getByRole('button', { name: '更多操作' }).click();
   await page.getByRole('menuitem', { name: '导入' }).click();
   const dialog = page.getByRole('dialog', { name: '导入组织' });
-  await dialog.getByLabel('选择文件').setInputFiles({
-    name: 'org-import.json',
-    mimeType: 'application/json',
-    buffer: Buffer.from(JSON.stringify({ rows })),
-  });
+  await dialog.getByLabel('选择文件').setInputFiles(file('org-import.json', rows));
   await expect(dialog.getByText('已读取 2 行')).toBeVisible();
   return dialog;
 }
@@ -193,6 +198,111 @@ for (const [label, reply] of [
     expect(posts).toHaveLength(1);
   });
 }
+
+test('AC-FE-R1a-42 有导入按钮但新建、更新数据权都没有时不出导入入口（反向）', async ({ page, baseURL }) => {
+  await setup(page, baseURL!, BUTTONS, { create: false, update: false });
+  await page.goto('/org');
+  await expect(page.locator('tr[data-row-key]')).toHaveCount(1);
+  await expect(page.getByRole('button', { name: '更多操作' })).toHaveCount(0);
+});
+
+test('AC-FE-R1a-43 组织导入逐行预检：只有新建权时，带 orgId 的更新行就地提示，不发请求（反向）', async ({
+  page,
+  baseURL,
+}) => {
+  await setup(page, baseURL!, BUTTONS, { create: true, update: false });
+  const posts = await routeImport(page, () => ({ status: 200, json: { results: [] } }));
+  await page.goto('/org');
+  await page.getByRole('button', { name: '更多操作' }).click();
+  await page.getByRole('menuitem', { name: '导入' }).click();
+  const dialog = page.getByRole('dialog', { name: '导入组织' });
+  await dialog.getByLabel('选择文件').setInputFiles(file('org-import.json', rows));
+  await expect(dialog.getByText('第 2 行需要更新组织的权限，当前无权更新')).toBeVisible();
+  await save(page).click();
+  await expect(dialog.getByText('请选择导入文件')).toBeVisible();
+  expect(posts).toHaveLength(0);
+});
+
+test('AC-FE-R1a-43 组织导入换文件：读取完成前不能提交旧文件，较早的读取结果不覆盖后选的文件', async ({
+  page,
+  baseURL,
+}) => {
+  await setup(page, baseURL!);
+  // 名为 slow.json 的文件读取挂起，直到页面调用 releaseSlow()，模拟大文件读取未完成。
+  await page.addInitScript(() => {
+    const read = File.prototype.text;
+    File.prototype.text = function (this: File) {
+      if (this.name !== 'slow.json') return read.call(this);
+      return new Promise<string>((done) => {
+        (window as unknown as { releaseSlow(): void }).releaseSlow = () => done(read.call(this));
+      });
+    };
+  });
+  const posts = await routeImport(page, (request) => {
+    const sent = (request.postDataJSON() as { rows: typeof rows }).rows;
+    const results = sent.map((item) => ({ sourceCode: item.sourceCode, code: item.code, status: 'created' }));
+    return { status: 200, json: { results } };
+  });
+  await page.goto('/org');
+  const dialog = await chooseImport(page);
+  const third = { sourceCode: 'SRC-3', code: 'ORG-103', name: '合成导入三', parentId: parent };
+  await dialog.getByLabel('选择文件').setInputFiles(file('slow.json', [...rows, third]));
+  await expect(dialog.getByText('已读取 2 行')).toHaveCount(0);
+  await save(page).click();
+  await expect(dialog.getByText('请选择导入文件')).toBeVisible();
+  expect(posts).toHaveLength(0);
+  await expect(dialog.getByText('正在读取文件…')).toBeVisible();
+  await dialog.getByLabel('选择文件').setInputFiles(file('fast.json', [third]));
+  await expect(dialog.getByText('已读取 1 行')).toBeVisible();
+  await page.evaluate(async () => {
+    (window as unknown as { releaseSlow(): void }).releaseSlow();
+    await new Promise((done) => setTimeout(done, 200));
+  });
+  await expect(dialog.getByText('已读取 1 行')).toBeVisible();
+  await save(page).click();
+  await expect(page.getByRole('dialog', { name: '导入结果' })).toBeVisible();
+  expect(posts.map((request) => request.postDataJSON())).toEqual([{ rows: [third] }]);
+});
+
+test('AC-FE-R1a-43 组织导入更新行版本冲突 409 REVISION_CONFLICT：重读最新版本、核对后显式重提', async ({
+  page,
+  baseURL,
+}) => {
+  await setup(page, baseURL!);
+  const reads: Request[] = [];
+  await page.route(`**/api/tenant/org/organizations/${id}`, (route) => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    reads.push(route.request());
+    return route.fulfill({ json: { ...org, revision: 2, name: '他人改过的名称' } });
+  });
+  const conflict = {
+    code: 'REVISION_CONFLICT',
+    message: '组织已被他人修改，请刷新后显式重提',
+    details: { expected: 1, actual: 2, rowIndex: 1, sourceCode: 'SRC-2' },
+  };
+  const posts = await routeImport(page, (request) => {
+    const sent = (request.postDataJSON() as { rows: typeof rows }).rows;
+    if (sent[1]!.expectedRevision !== 2) return { status: 409, json: { error: conflict } };
+    const results = sent.map((item) => ({ sourceCode: item.sourceCode, code: item.code, status: 'updated' }));
+    return { status: 200, json: { results } };
+  });
+  await page.goto('/org');
+  const dialog = await chooseImport(page);
+  await save(page).click();
+  await expect(dialog.getByText(/版本冲突/)).toBeVisible();
+  await expect(save(page)).toBeDisabled();
+  await dialog.getByRole('button', { name: '重读最新版本' }).click();
+  await dialog.getByRole('button', { name: '已核对差异，继续编辑' }).click();
+  await expect(save(page)).toBeEnabled();
+  await expect(dialog.getByText('已读取 2 行')).toBeVisible();
+  await save(page).click();
+  await expect(page.getByRole('dialog', { name: '导入结果' })).toBeVisible();
+  expect(reads).toHaveLength(1);
+  expect(posts.map((request) => request.postDataJSON())).toEqual([
+    { rows },
+    { rows: [rows[0], { ...rows[1], expectedRevision: 2 }] },
+  ]);
+});
 
 test('AC-FE-R1a-44 列设置：齿轮打开居中两栏弹窗，勾选、拖动排序、恢复默认，确定后生效', async ({ page, baseURL }) => {
   await setup(page, baseURL!);

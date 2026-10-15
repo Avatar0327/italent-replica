@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 const columns = () => import(resolve('apps/web/src/org/columns.ts'));
 const importing = () => import(resolve('apps/web/src/org/import-model.ts'));
+const pageModel = () => import(resolve('apps/web/src/org/page-model.ts'));
 const DEFAULT = ['code', 'name', 'fullName', 'location', 'broadType', 'establishedOn', 'startDate', 'stopDate'];
 const gate = (hidden: string[]) => ({ field: (name: string) => ({ visible: !hidden.includes(name) }) });
 
@@ -75,17 +76,32 @@ const row = (sourceCode: string) => ({
   parentId: '00000000-0000-4000-8000-000000000002',
 });
 
+// 权限按接口 GET /permission/me/objects/:code 的真实形状（dataOperations / editableFields / buttons）。
+const IMPORT_FIELDS = ['sourceCode', 'code', 'name', 'parentId', 'parents', 'startDate'];
+const permission = (operations: { create?: boolean; update?: boolean }, editable = IMPORT_FIELDS) => ({
+  objectCode: 'TenantBase.Organization',
+  dataOperations: { create: false, update: false, ...operations },
+  viewableFields: IMPORT_FIELDS,
+  editableFields: editable,
+  buttons: [{ buttonCode: 'import', level: 'list' }],
+});
+const ORG = '00000000-0000-4000-8000-000000000011';
+const update = (sourceCode: string) => ({ ...row(sourceCode), orgId: ORG, expectedRevision: 1 });
+
 describe('AC-FE-R1a-41 组织导入前置检查与回执', () => {
   it('模板格式 { rows } 原样提交；缺必填列、空表、超过 100 行、非 JSON 都不发请求', async () => {
     const { parseOrgImport } = await importing();
+    const { pageAccess } = await pageModel();
+    const gate = pageAccess(permission({ create: true, update: true }));
+    const parse = (text: string) => parseOrgImport(text, gate);
     const rows = [{ ...row('S-1'), startDate: '2026-10-09' }];
-    expect(parseOrgImport(JSON.stringify({ rows }))).toEqual({ rows });
-    expect(parseOrgImport('not json')).toEqual({ error: '文件不是有效的 JSON，请按模板填写' });
-    expect(parseOrgImport('{"rows":[]}')).toHaveProperty('error');
-    expect(parseOrgImport(JSON.stringify({ rows: Array.from({ length: 101 }, (_, i) => row(`S-${i}`)) }))).toEqual({
+    expect(parse(JSON.stringify({ rows }))).toEqual({ rows });
+    expect(parse('not json')).toEqual({ error: '文件不是有效的 JSON，请按模板填写' });
+    expect(parse('{"rows":[]}')).toHaveProperty('error');
+    expect(parse(JSON.stringify({ rows: Array.from({ length: 101 }, (_, i) => row(`S-${i}`)) }))).toEqual({
       error: expect.stringContaining('100'),
     });
-    const missing = parseOrgImport(JSON.stringify({ rows: [row('S-1'), { ...row('S-2'), parentId: ' ' }] }));
+    const missing = parse(JSON.stringify({ rows: [row('S-1'), { ...row('S-2'), parentId: ' ' }] }));
     expect(missing).toEqual({ error: expect.stringContaining('2') });
     expect((missing as { error: string }).error).toContain('parentId');
   });
@@ -103,5 +119,72 @@ describe('AC-FE-R1a-41 组织导入前置检查与回执', () => {
     expect(orgImportReceipt(rows, { results: [results[0], { ...results[1], status: 'done' }] })).toBeUndefined();
     expect(orgImportReceipt(rows, { items: results })).toBeUndefined();
     expect(orgImportReceipt(rows, {})).toBeUndefined();
+  });
+
+  it('逐行按接口口径校验写权：有 orgId 为更新、否则为新建，控制项以外的列都须可写（反向）', async () => {
+    const { parseOrgImport } = await importing();
+    const { pageAccess } = await pageModel();
+    const text = (rows: unknown[]) => JSON.stringify({ rows });
+    const createOnly = pageAccess(permission({ create: true }));
+    expect(parseOrgImport(text([row('S-1')]), createOnly)).toEqual({ rows: [row('S-1')] });
+    expect(parseOrgImport(text([row('S-1'), update('S-2')]), createOnly)).toEqual({
+      error: '第 2 行需要更新组织的权限，当前无权更新',
+    });
+    const updateOnly = pageAccess(permission({ update: true }));
+    expect(parseOrgImport(text([update('S-1'), { ...update('S-2'), addEmployment: true }]), updateOnly)).toHaveProperty(
+      'rows',
+    );
+    expect(parseOrgImport(text([update('S-1'), row('S-2')]), updateOnly)).toEqual({
+      error: '第 2 行需要新建组织的权限，当前无权新建',
+    });
+    const noSource = pageAccess(
+      permission(
+        { create: true },
+        IMPORT_FIELDS.filter((field) => field !== 'sourceCode'),
+      ),
+    );
+    expect(parseOrgImport(text([row('S-1')]), noSource)).toEqual({ error: expect.stringContaining('sourceCode') });
+    const noStart = pageAccess(
+      permission(
+        { create: true },
+        IMPORT_FIELDS.filter((field) => field !== 'startDate'),
+      ),
+    );
+    expect(parseOrgImport(text([row('S-1')]), noStart)).toHaveProperty('rows');
+    expect(parseOrgImport(text([{ ...row('S-1'), startDate: '2026-10-09' }]), noStart)).toEqual({
+      error: expect.stringContaining('startDate'),
+    });
+    const { orgId: _, ...mappedOnly } = update('S-1');
+    expect(parseOrgImport(text([mappedOnly]), updateOnly)).toEqual({
+      error: '第 1 行带 expectedRevision 时须同时填写 orgId',
+    });
+  });
+
+  it('导入入口：有 import@list 但新建、更新数据权都没有，或必填列（含 sourceCode、parentId）不可写时不出入口', async () => {
+    const { orgImportable, pageAccess } = await pageModel();
+    expect(orgImportable(pageAccess(permission({ create: true })))).toBe(true);
+    expect(orgImportable(pageAccess(permission({ update: true })))).toBe(true);
+    expect(orgImportable(pageAccess(permission({})))).toBe(false);
+    for (const field of ['sourceCode', 'parentId'])
+      expect(
+        orgImportable(
+          pageAccess(
+            permission(
+              { create: true },
+              IMPORT_FIELDS.filter((name) => name !== field),
+            ),
+          ),
+        ),
+      ).toBe(false);
+    expect(orgImportable(pageAccess({ ...permission({ create: true }), buttons: [] }))).toBe(false);
+  });
+
+  it('冲突重读：带 orgId 的行按读回的最新版本改写 expectedRevision；读回不是同一组织或版本无效时读取失败', async () => {
+    const { rereadImportRows } = await importing();
+    const rows = [row('S-1'), update('S-2')];
+    const latest = await rereadImportRows(rows, async (id: string) => ({ id, revision: 3, name: '他人改过的名称' }));
+    expect(latest).toEqual([row('S-1'), { ...update('S-2'), expectedRevision: 3 }]);
+    await expect(rereadImportRows(rows, async () => ({ id: 'other', revision: 3 }))).rejects.toThrow();
+    await expect(rereadImportRows(rows, async (id: string) => ({ id, revision: '3' }))).rejects.toThrow();
   });
 });

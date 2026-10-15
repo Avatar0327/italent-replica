@@ -1,5 +1,6 @@
 import { slotKey } from '../foundation/forms/slot.js';
 import { canButton, fieldAccess, type FieldAccess, type ObjectPermission } from '../foundation/permission-model.js';
+import { orgImportRequired } from './import-model.js';
 import { detailText, listText, pageText as m } from './messages.js';
 export interface OrgRow {
   id: string;
@@ -85,6 +86,8 @@ export function pageAccess(permission: ObjectPermission | undefined) {
     can: (button: string, level = 'detail') =>
       canButton(permission, button, level) &&
       (!['create', 'update', 'delete'].includes(button) || permission?.dataOperations[button] === true),
+    /** 只看数据操作权、不看按钮：组织导入逐行只按新建 / 更新数据权与字段写权校验（apps/api 组织导入 writeFields）。 */
+    writes: (operation: 'create' | 'update') => permission?.dataOperations[operation] === true,
   };
 }
 
@@ -130,11 +133,16 @@ export function orgCreatable(access: ReturnType<typeof pageAccess>) {
   return access.can('create', 'list') && access.field('name').editable && access.field('parents').editable;
 }
 /**
- * 导入入口：服务端先查 import@list 按钮，再逐行按新建 / 更新校验字段写权（apps/api 组织导入）；
- * 前端按同一口径收紧，必填列（编码、名称、上级）不可写时不出入口（DEC-502①c）。
+ * 导入入口：服务端先查 import@list 按钮，再逐行按新建 / 更新数据权与该行字段写权校验（apps/api 组织导入 writeFields，
+ * 字段即行内去掉控制项的列）。前端按同一口径收紧：两种数据权都没有、或每行都要写的列不可写时不出入口（DEC-502①c）；
+ * 逐行判断见 import-model.ts importRowsDenied。
  */
 export function orgImportable(access: ReturnType<typeof pageAccess>) {
-  return access.can('import', 'list') && ['code', 'name', 'parents'].every((name) => access.field(name).editable);
+  return (
+    access.can('import', 'list') &&
+    (access.writes('create') || access.writes('update')) &&
+    orgImportRequired.every((name) => access.field(name).editable)
+  );
 }
 /** 新建请求体：只发有值的字段，ID 统一小写，上级放进 parents.admin（apps/api 新建组织契约）。 */
 export function orgCreateBody(values: Record<string, unknown>) {
