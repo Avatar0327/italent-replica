@@ -246,7 +246,7 @@ export async function approveTask(
   const blocked = await blindReview(tx, scene, viewable);
   if (blocked) return blocked;
   const { run, task, node } = scene;
-  await ADAPTERS[run.instance.businessType].beforeApprove?.(tx, ctx, run.instance.businessId, task.nodeKey);
+  await ADAPTERS[run.instance.businessType].beforeApprove?.(tx, ctx, run.instance.businessId, task.nodeKey, 'approve');
   if (input.fields && Object.keys(input.fields).length) {
     assertApprovalEdit(run);
     if (node.editMode !== 'with_approve')
@@ -310,7 +310,7 @@ export async function disagreeTask(
   const blocked = await blindReview(tx, scene, viewable);
   if (blocked) return blocked;
   const { run, task, node } = scene;
-  await ADAPTERS[run.instance.businessType].beforeApprove?.(tx, ctx, run.instance.businessId, task.nodeKey);
+  await ADAPTERS[run.instance.businessType].beforeApprove?.(tx, ctx, run.instance.businessId, task.nodeKey, 'disagree');
   await closeTask(tx, ctx, task.id, 'disagreed', input.comment);
   await appendLog(tx, ctx, run.instance, {
     event: 'disagree',
@@ -346,7 +346,7 @@ export async function rejectTask(
   const blocked = await blindReview(tx, scene, viewable);
   if (blocked) return blocked;
   const { run, task, node } = scene;
-  await ADAPTERS[run.instance.businessType].beforeApprove?.(tx, ctx, run.instance.businessId, task.nodeKey);
+  await ADAPTERS[run.instance.businessType].beforeApprove?.(tx, ctx, run.instance.businessId, task.nodeKey, 'reject');
   // DEC-059：节点开关「驳回意见必填」，出厂关闭。
   if (node.rejectCommentRequired && !input.comment?.trim()) {
     throw approvalError('VALIDATION_FAILED', 'APPROVAL_COMMENT_REQUIRED', '本节点驳回时必须填写意见');
