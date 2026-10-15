@@ -5,7 +5,13 @@
  * 每次写入推进计划 revision（If-Match = 计划 revision），与业务同事务写审计（按计划员工归属）。
  */
 import { sql, type Tx } from '@italent/db';
-import { tenantLocalDate, type CompetencySource, type NodeButton } from '@italent/domain';
+import {
+  REVIEW_FIELDS,
+  REVIEW_TEXT_MAX,
+  tenantLocalDate,
+  type CompetencySource,
+  type NodeButton,
+} from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { rowsOf } from './access.js';
 import { auditGoalChildren } from './cascade-audit.js';
@@ -366,9 +372,25 @@ export async function saveModuleContent(
   if (!allowed.length || extra.length) {
     throw new AppError('VALIDATION_FAILED', '该模块不能填写这些内容', { fields: extra });
   }
+  if (kind === 'review') reviewWithinLimit(input);
   if (kind === 'analysis') await saveAnalysis(tx, ctx, plan, moduleId, input);
   else await saveReview(tx, ctx, plan, moduleId, executor.stage.id, input);
   return finish(tx, ctx, plan);
+}
+
+/**
+ * 回顾模块保存（草稿）：两项都可以先空着，但各 ≤1000 字（按字符计，F-155；提交时的必填由审批适配器 beforeApprove
+ * 校验）。超长的字段逐个列在 details.fields。
+ */
+function reviewWithinLimit(input: ModuleContentInput): void {
+  const fields = REVIEW_FIELDS.filter((field) => [...(input[field] ?? '')].length > REVIEW_TEXT_MAX);
+  if (fields.length) {
+    throw new AppError('VALIDATION_FAILED', `总结、改进方法各不能超过 ${REVIEW_TEXT_MAX} 字`, {
+      reason: 'IDP_REVIEW_TOO_LONG',
+      fields,
+      maximum: REVIEW_TEXT_MAX,
+    });
+  }
 }
 
 async function saveAnalysis(tx: Tx, ctx: PlanWriteContext, plan: PlanRow, moduleId: string, input: ModuleContentInput) {

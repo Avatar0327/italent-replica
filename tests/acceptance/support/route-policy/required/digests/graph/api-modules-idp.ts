@@ -64,6 +64,7 @@ export const GRAPH: Graph = {
     '#deletedSubject',
     '#deletedType',
     '#requireGoals',
+    '#requireReview',
     '#stageOf',
     'apps/api/src/modules/idp/plan-store.ts#loadStage',
     'apps/api/src/modules/idp/plan-store.ts#requirePlanRow',
@@ -76,6 +77,12 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/idp/approval-adapter.ts#requireGoals': [
     'apps/api/src/modules/idp/access.ts#rowsOf',
     '#stageOf',
+  ],
+  'apps/api/src/modules/idp/approval-adapter.ts#requireReview': [
+    'apps/api/src/modules/idp/access.ts#rowsOf',
+    '#REVIEW_LABELS',
+    '#stageOf',
+    'packages/domain/src/idp/catalog.ts#REVIEW_FIELDS',
   ],
   'apps/api/src/modules/idp/approval-adapter.ts#stageOf': ['apps/api/src/modules/idp/plan-store.ts#loadStage'],
   'apps/api/src/modules/idp/cascade-audit.ts#auditContents': [
@@ -173,6 +180,10 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/idp/execution-service.ts#requireGoalModule': [
     'apps/api/src/modules/idp/write-support.ts#conflict',
   ],
+  'apps/api/src/modules/idp/execution-service.ts#reviewWithinLimit': [
+    'packages/domain/src/idp/catalog.ts#REVIEW_FIELDS',
+    'packages/domain/src/idp/catalog.ts#REVIEW_TEXT_MAX',
+  ],
   'apps/api/src/modules/idp/execution-service.ts#saveAnalysis': [
     'apps/api/src/modules/idp/access.ts#rowsOf',
     'apps/api/src/modules/idp/write-support.ts#audit',
@@ -188,6 +199,7 @@ export const GRAPH: Graph = {
     '#CONTENT_FIELDS',
     '#executorFor',
     '#finish',
+    '#reviewWithinLimit',
     '#saveAnalysis',
     '#saveReview',
   ],
@@ -1015,6 +1027,7 @@ export const GRAPH: Graph = {
     '#dueBasisOf',
     '#employmentEffective',
     'packages/domain/src/idp/plan-rules.ts#stageDueDate',
+    'packages/domain/src/idp/plan-rules.ts#stagePassed',
   ],
   'apps/api/src/modules/idp/plan-view.ts#stagesShown': [
     '#employmentVisible',
@@ -1364,15 +1377,15 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/idp/access.ts#rowsOf',
     '#approvalContext',
   ],
-  'apps/api/src/modules/idp/stage-service.ts#endRunningStage': ['#cancelStageInstance', '#endStage'],
-  'apps/api/src/modules/idp/stage-service.ts#endStage': [
+  'apps/api/src/modules/idp/stage-service.ts#closeStage': [
     'apps/api/src/modules/idp/plan-store.ts#bumpPlan',
     '#auditStage',
     '#businessDate',
   ],
+  'apps/api/src/modules/idp/stage-service.ts#endRunningStage': ['#cancelStageInstance', '#closeStage'],
   'apps/api/src/modules/idp/stage-service.ts#onStageApproved': [
     'apps/api/src/modules/idp/plan-store.ts#loadStages',
-    '#endStage',
+    '#closeStage',
     '#openStage',
     '#opensOnPreviousEnd',
     '#settlePlan',
@@ -1392,6 +1405,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/idp/stage-service.ts#settlePlan': [
     'apps/api/src/modules/idp/plan-store.ts#loadStages',
     'apps/api/src/modules/idp/write-support.ts#audit',
+    'packages/domain/src/idp/plan-rules.ts#stagePassed',
   ],
   'apps/api/src/modules/idp/template-service.ts#addCommonGoal': [
     '#finish',

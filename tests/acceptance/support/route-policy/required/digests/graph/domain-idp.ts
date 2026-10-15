@@ -36,6 +36,7 @@ export const GRAPH: Graph = {
   'packages/domain/src/idp/catalog.ts#withLinkedFields': ['#LINKED_FIELDS'],
   'packages/domain/src/idp/plan-rules.ts#currentStageName': ['packages/domain/src/idp/catalog.ts#IMPROVING_STAGE_NAME'],
   'packages/domain/src/idp/plan-rules.ts#stageDueDate': ['packages/domain/src/contracts/rules.ts#addDays'],
+  'packages/domain/src/idp/plan-rules.ts#stagePassed': ['packages/domain/src/idp/catalog.ts#PASSED_STAGE_STATUSES'],
   'packages/domain/src/idp/rules.ts#nodeButtonsOf': [
     'packages/domain/src/idp/catalog.ts#CONTENT_NODE_BUTTONS',
     'packages/domain/src/idp/catalog.ts#GOAL_NODE_BUTTONS',

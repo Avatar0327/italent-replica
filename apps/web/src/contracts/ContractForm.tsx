@@ -7,7 +7,11 @@ import { usePermissions } from '../foundation/Permissions.js';
 import { PersonSelect, TenantDatePicker, type Choice } from '../foundation/selectors.js';
 import { useApiClient } from '../foundation/Session.js';
 import { useContractCommand } from './commands.js';
+import { forAction } from '../foundation/forms/action.js';
 import { messages as kernel } from '../foundation/forms/messages.js';
+import { slotKey } from '../foundation/forms/slot.js';
+import { lockedContext } from '../foundation/forms/store.js';
+import type { CommandForm } from '../foundation/forms/useCommandForm.js';
 import { projectFields } from '../foundation/forms/values.js';
 import {
   availableModes,
@@ -29,10 +33,18 @@ import { NameOf, RefLabel, RefSelect, refPaths, usePeople, useToday } from './re
 import { useRead } from './useRead.js';
 
 const { commands, records } = contractApi;
+/** 槽上下文（F-147）：操作与方式；新签另记所选人员与任职摘要，换入口重开时按它恢复表单。 */
+type Context = { op: Operation; mode: Mode; employee?: Choice; employment?: Row };
+/** 恢复槽：变更 / 续签 / 终止按源合同，新签按合同集合路径（与人员、方式无关）。 */
+const slotOf = (sourceId?: string) => slotKey(records, sourceId);
+const idOf = (source?: Row) => (typeof source?.id === 'string' ? source.id : undefined);
 export const modeLabel = (op: Operation, mode: Mode) =>
   mode === 'direct' ? m.operations[op] : m.applyFor(m.operations[op]!);
 
-/** 按钮按（操作 × 方式）授权渲染；新签为列表级，其余为详情级。 */
+/**
+ * 按钮按（操作 × 方式）授权渲染；新签为列表级，其余为详情级。
+ * 本对象有未确认的命令时，任一按钮都按槽里的操作与方式重开那条命令核对，不打开别的表单（F-147）。
+ */
 export function ContractButtons({
   ops,
   source,
@@ -48,7 +60,8 @@ export function ContractButtons({
   onDone(): void;
 }) {
   const permission = usePermissions(object);
-  const [open, setOpen] = useState<{ op: Operation; mode: Mode }>();
+  const [open, setOpen] = useState<Context>();
+  const held = lockedContext<Context>(useContractCommand(slotOf(idOf(source))).state);
   // 没有可核对的 revision 时不提供变更类入口，避免带着无效 If-Match 提交。
   if (source && !Number.isSafeInteger(source.revision)) return null;
   return (
@@ -58,22 +71,13 @@ export function ContractButtons({
           <Button
             key={`${op}-${mode}`}
             type={op === 'create' ? 'primary' : 'default'}
-            onClick={() => setOpen({ op, mode })}
+            onClick={() => setOpen(held ?? { op, mode, employee, employment })}
           >
             {modeLabel(op, mode)}
           </Button>
         )),
       )}
-      {open && (
-        <ContractForm
-          {...open}
-          source={source}
-          employee={employee}
-          employment={employment}
-          onClose={() => setOpen(undefined)}
-          onDone={onDone}
-        />
-      )}
+      {open && <ContractForm {...open} source={source} onClose={() => setOpen(undefined)} onDone={onDone} />}
     </>
   );
 }
@@ -92,18 +96,16 @@ type Props = {
 export function ContractForm(props: Props) {
   const { op, mode, source, employee, onClose, onDone } = props;
   const api = useApiClient();
-  const sourceId = typeof source?.id === 'string' ? source.id : undefined;
-  const resource = sourceId
-    ? `${records}/${sourceId}/${op}/${mode}`
-    : `${commands}/create/${mode}/${employee?.value ?? ''}`;
-  const submission = useContractCommand(resource);
+  const sourceId = idOf(source);
+  const resource = slotOf(sourceId);
+  const submission = forAction(useContractCommand(resource), { op, mode });
   const { groups, fields } = useFormFields(op, source, employee, source ? employmentOf(source) : props.employment);
   const submit = useSubmit(props, submission, fields);
   return (
     <FormOverlay
       open
       mode="modal"
-      recordKey={resource}
+      recordKey={`${resource}#${op}/${mode}`}
       submission={{
         ...submission,
         reload: sourceId
@@ -226,8 +228,8 @@ function originalFields(op: Operation, source: Row, access: (field: string) => {
   }));
 }
 /** 提交经 F-123 内核；回执按实际形态分流（合同 / 申请），不按 mode 推断。 */
-function useSubmit(props: Props, submission: ReturnType<typeof useContractCommand>, fields: string[]) {
-  const { op, mode, source, employee, onDone } = props;
+function useSubmit(props: Props, submission: CommandForm, fields: string[]) {
+  const { op, mode, source, employee, employment, onDone } = props;
   const api = useApiClient();
   const navigate = useNavigate();
   const receipt = useRef<ContractReceipt>(undefined);
@@ -242,6 +244,7 @@ function useSubmit(props: Props, submission: ReturnType<typeof useContractComman
       revision: sourceId ? Number(source?.revision) : 0,
       businessId: sourceId,
       patchOnly: op === 'change' || op === 'renew',
+      context: op === 'create' ? { employee, employment } : undefined,
       send: async (command) => {
         if (!chosen) throw new Error(m.required);
         const body = {

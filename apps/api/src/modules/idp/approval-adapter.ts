@@ -5,11 +5,13 @@
  * - 实例完成 = 阶段结束（onStageApproved）；驳回（到发起人）与撤回后实例等所有者重提，阶段保持进行中；重提不带
  *   修正内容（计划内容按节点按钮维护）；不同意结束流程 → 阶段开启失败，HR 查明后手动重开（DEC-318 K-39，不再一刀切
  *   禁用）。审批中心的“编辑”对 IDP 不可用（审批类型不支持审批中编辑，内容由节点按钮决定）；
- * - 同意前：节点配置了“新增目标”的发展目标模块开启无目标校验时，该模块须有目标（IDP-R10，AC-IDP-05）。
+ * - 办理前：节点配置了“新增目标”的发展目标模块开启无目标校验时，该模块须有目标（IDP-R10，AC-IDP-05）；同意时，
+ *   节点配置了“填写本模块”的回顾模块，本阶段的总结、改进方法须都已填写（F-155，DEC-511 UI3补：先保存、提交时
+ *   必填；不同意、驳回不要求）。
  * 取锁顺序：计划 → 审批实例（审批命令先经 lock 锁计划行，再锁实例）；批量交接经 lockMany 按计划 ID 升序先锁齐计划。
  */
 import { sql, type Tx } from '@italent/db';
-import { APPROVAL_TYPES, type ApprovalTypeCode, IDP_OBJECTS } from '@italent/domain';
+import { APPROVAL_TYPES, type ApprovalTypeCode, IDP_OBJECTS, REVIEW_FIELDS } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { SYSTEM_USER_ID } from '../../system-actor.js';
 import type { BusinessAdapter, BusinessSnapshot } from '../approval/adapters.js';
@@ -41,6 +43,38 @@ async function requireGoals(tx: Tx, ctx: ApprovalContext, stageId: string, nodeK
   );
   if (missing) {
     throw new AppError('CONFLICT', `「${missing.name}」还没有发展目标，不能提交`, { reason: 'IDP_GOAL_REQUIRED' });
+  }
+}
+
+const REVIEW_LABELS: Record<(typeof REVIEW_FIELDS)[number], string> = { summary: '总结', improvement: '改进方法' };
+
+/**
+ * 回顾必填（F-155）：本节点有“填写本模块”按钮的回顾模块，本阶段那一份的总结、改进方法都须非空（空白按未填）。
+ * 缺项按模块报 409 IDP_REVIEW_REQUIRED，details 给出模块与缺的字段。
+ */
+async function requireReview(tx: Tx, ctx: ApprovalContext, stageId: string, nodeKey: string): Promise<void> {
+  const stage = await stageOf(tx, ctx.tenantId, stageId);
+  const modules = rowsOf<{ id: string; name: string; summary: string | null; improvement: string | null }>(
+    await tx.execute(sql`SELECT m.id::text, m.name, r.summary, r.improvement FROM idp_plans p
+      JOIN idp_template_modules m ON m.tenant_id = p.tenant_id AND m.template_id = p.template_id
+        AND m.module_type = 'review'
+      JOIN idp_template_node_settings n ON n.tenant_id = m.tenant_id AND n.module_id = m.id
+        AND n.sub_process_id = ${stage.subProcessId}::uuid AND n.node_key = ${nodeKey} AND n.enabled
+        AND 'EditModuleContent' = ANY(n.buttons)
+      LEFT JOIN idp_plan_reviews r ON r.tenant_id = p.tenant_id AND r.plan_id = p.id AND r.module_id = m.id
+        AND r.stage_id = ${stage.id}::uuid
+      WHERE p.tenant_id = ${ctx.tenantId} AND p.id = ${stage.planId}::uuid
+      ORDER BY m.display_order`),
+  );
+  for (const module of modules) {
+    const fields = REVIEW_FIELDS.filter((field) => !module[field]?.trim());
+    if (!fields.length) continue;
+    const labels = fields.map((field) => REVIEW_LABELS[field]).join('、');
+    throw new AppError('CONFLICT', `「${module.name}」的${labels}还没有填写，不能提交`, {
+      reason: 'IDP_REVIEW_REQUIRED',
+      moduleId: module.id,
+      fields,
+    });
   }
 }
 
@@ -122,5 +156,9 @@ export const idpAdapter: BusinessAdapter = {
   edit() {
     throw new AppError('CONFLICT', '发展计划在审批中的修改按节点按钮进行', { reason: 'APPROVAL_EDIT_UNSUPPORTED' });
   },
-  beforeApprove: requireGoals,
+  async beforeApprove(tx, ctx, stageId, nodeKey, decision) {
+    await requireGoals(tx, ctx, stageId, nodeKey);
+    // 回顾必填只拦“同意 / 提交”：不同意、驳回不要求先填回顾（F-155 第 1 轮 P2-1）
+    if (decision === 'approve') await requireReview(tx, ctx, stageId, nodeKey);
+  },
 };
