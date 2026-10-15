@@ -7,7 +7,7 @@ import {
 } from '@italent/domain';
 import { sql, type Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
-import { expandScopeRoots, scopeRows, type ScopeRoot } from './scope-hierarchy.js';
+import { expandScopeOrgSet, expandScopeRoots, scopeRows, type ScopeRoot } from './scope-hierarchy.js';
 import { EMPTY_SCOPE, type ModuleScope, type ScopeQuery, type ScopeTerm } from './scope-types.js';
 
 const MAX_SCOPE_IDS = 20_000;
@@ -155,6 +155,12 @@ function addBoundedIds(target: Set<string>, ids: readonly string[]): void {
   }
 }
 
+async function expandOrgIds(tx: Tx, query: ScopeQuery, roots: readonly ScopeRoot[]): Promise<string[]> {
+  // DEC-455④ / F-107：活动及其同应用引用共用去重计数，覆盖事务内复核；其他模块保持原口径。
+  if (query.appCode === EVALUATION_APP) return [...(await expandScopeOrgSet(tx, query.tenantId, query.asOf, roots))];
+  return expandScopeRoots(tx, query.tenantId, query.asOf, roots);
+}
+
 /**
  * 其他应用里按人员归属裁剪的业务对象（R3-T07 IDP：发展计划及其组成部分、关键信息按员工，K-50）：由业务模块在加载时登记，
  * 组织类维度对这些对象同样带出“按人员”的关联谓词，与员工信息类对象同口径。
@@ -188,7 +194,7 @@ export async function resolveDataScope(tx: Tx, query: ScopeQuery): Promise<Modul
     let term: ScopeTerm | undefined;
     if (rule.dimension === 'management') {
       const roots = await managementRoots(tx, query);
-      const orgIds = await expandScopeRoots(tx, query.tenantId, query.asOf, roots);
+      const orgIds = await expandOrgIds(tx, query, roots);
       term = {
         dimension: 'management',
         orgIds,
@@ -199,7 +205,7 @@ export async function resolveDataScope(tx: Tx, query: ScopeQuery): Promise<Modul
       };
     } else if (rule.dimension === 'organization') {
       const roots = await roleRoots(tx, query, [rule.role_code ?? ''], true);
-      const orgIds = await expandScopeRoots(tx, query.tenantId, query.asOf, roots);
+      const orgIds = await expandOrgIds(tx, query, roots);
       term = {
         dimension: 'organization',
         orgIds,
