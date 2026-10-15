@@ -217,6 +217,23 @@ export interface IdpMockOptions {
   rereadSubProcessOmit?: string[];
   /** 计划详情里回顾模块的节点按钮（参与人视图，F-155b）；默认不给。 */
   reviewButtons?: string[];
+  /** 第一阶段被 HR 跳过（已终止，F-155），第二阶段进行中。 */
+  skippedFirstStage?: boolean;
+}
+
+/** 照 stage-service endRunningStage：被跳过的阶段记已终止和结束日期，作废的审批实例 id 保留。 */
+const skippedStages = [
+  {
+    ...stage(1, '制定计划', 'terminated'),
+    approvalInstanceId: 'c0000000-0000-4000-8000-000000000101',
+    endedOn: '2026-10-10',
+  },
+  stage(2, '中期回顾', 'running'),
+];
+function detailOf(options: IdpMockOptions) {
+  const base = planDetail(options.goalButtons ?? GOAL_BUTTONS, options.taskSwitch ?? true, options.reviewButtons ?? []);
+  const skipped = { ...base, stages: skippedStages, currentStageName: '中期回顾' };
+  return trimDetail(options.skippedFirstStage ? skipped : base, options);
 }
 
 function objectPermission(code: string, options: IdpMockOptions) {
@@ -291,8 +308,7 @@ export async function mockIdp(page: Page, options: IdpMockOptions = {}) {
     hasDataPermission: scoped,
     items: scoped ? items : [],
   });
-  const buttons = options.goalButtons ?? GOAL_BUTTONS;
-  const detail = trimDetail(planDetail(buttons, options.taskSwitch ?? true, options.reviewButtons ?? []), options);
+  const detail = detailOf(options);
   const reads = staticReads(options, detail, list);
   const server = processServer(options);
   const plans = planServer(detail);

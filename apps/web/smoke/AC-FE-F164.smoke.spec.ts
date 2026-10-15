@@ -178,3 +178,15 @@ test('AC-FE-F164-07 回顾保存结果未知：表单锁定，回查原单后仍
   expect(puts(calls)).toHaveLength(1);
   expect(errors).toEqual([]);
 });
+
+test('AC-FE-F155b-01 被跳过的阶段在流程条上显示“已终止”，不显示“已结束”', async ({ page }) => {
+  const errors = watchErrors(page);
+  await mockIdp(page, { skippedFirstStage: true });
+  await asUser(page);
+  await page.goto(`/self/idp?plan=${planId}`);
+  const steps = page.locator('.idp-stage-steps .ant-steps-item');
+  await expect(steps.filter({ hasText: '制定计划' })).toContainText('已终止');
+  await expect(steps.filter({ hasText: '制定计划' })).not.toContainText('已结束');
+  await expect(steps.filter({ hasText: '中期回顾' })).toContainText('进行中');
+  expect(errors).toEqual([]);
+});
