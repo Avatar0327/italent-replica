@@ -1,14 +1,35 @@
-import { test, expect, snapshotFixture } from './fixtures.js';
+import { test, expect, snapshotFixture, tenant, user } from './fixtures.js';
 import type { Page } from '@playwright/test';
 
 const named = (name: string) => ({ name, exact: true });
+const failures = new WeakMap<Page, string[]>();
+test.beforeEach(async ({ page, baseURL }) => {
+  const unexpected: string[] = [];
+  failures.set(page, unexpected);
+  page.on('pageerror', (error) => unexpected.push(error.message));
+  page.on('request', (request) => {
+    if (request.url().includes('/api/') && request.method() !== 'GET') unexpected.push(request.url());
+  });
+  await page.context().addCookies([
+    { name: 'italent_demo_tenant', value: tenant, url: baseURL! },
+    { name: 'italent_demo_user', value: user, url: baseURL! },
+  ]);
+});
+
+test.afterEach(async ({ page }) => {
+  expect(failures.get(page)).toEqual([]);
+});
+
 const confirm = { name: /^确\s*定$/ };
 async function open(page: Page) {
   await page.goto('/offers');
   await expect(page.getByRole('heading', named('Offer管理'))).toBeVisible();
 }
 async function view(page: Page, name: string) {
-  await page.getByRole('button', named(name)).click();
+  if (['未发起审批', '审批中', '审批通过'].includes(name)) {
+    await page.getByRole('button', named('待发二级视图')).click();
+    await page.getByRole('menuitem', named(name)).click();
+  } else await page.getByRole('button', named(name)).click();
 }
 async function menu(page: Page, person: string) {
   await page.getByRole('row').filter({ hasText: person }).getByRole('button', named('行操作')).click();
@@ -16,13 +37,18 @@ async function menu(page: Page, person: string) {
 }
 async function target(page: Page, name: string) {
   await page.getByRole('dialog').getByLabel('offer状态', { exact: true }).click();
-  await page.getByRole('option', named(name)).click();
+  await page
+    .locator('.ant-select-dropdown:visible .ant-select-item-option-content')
+    .filter({ hasText: new RegExp(`^${name}$`) })
+    .click();
 }
 
 test('AC-FE-R2b1-01 菜单、十视图、列头与演示标识', async ({ page }) => {
   await open(page);
   await expect(page.getByRole('menuitem', named('Offer管理'))).toBeVisible();
-  await expect(page.getByText('演示数据', { exact: true })).toBeVisible();
+  expect(Math.round((await page.getByRole('columnheader', named('个人邮箱')).boundingBox())!.width)).toBe(140);
+  await page.screenshot({ animations: 'disabled', path: '../../.demo/fer2b1-list.png' });
+  await expect(page.locator('.offers-page').getByText('演示数据', { exact: true })).toBeVisible();
   for (const [name, column] of [
     ['待发Offer', '当前审批人'],
     ['未发起审批', '批量发起审批结果'],
@@ -71,6 +97,7 @@ test('AC-FE-R2b1-03 AC-OF-09 接受日期必填、超编确认、无写入', asy
   await dialog.getByRole('button', confirm).click();
   const capacity = page.getByRole('dialog').filter({ hasText: '已超出设定编制，是否继续操作？' });
   await expect(capacity).toBeVisible();
+  await page.screenshot({ animations: 'disabled', path: '../../.demo/fer2b1-capacity.png' });
   await capacity.getByRole('button', confirm).click();
   await expect(page.getByText('演示数据：未写入业务数据，状态不变', { exact: true })).toBeVisible();
   await expect(page.getByRole('row').filter({ hasText: '合成超编丙' })).toBeVisible();
@@ -82,6 +109,7 @@ test('AC-FE-R2b1-04 AC-OF-08 历史拒绝只在转移表单回显', async ({ pag
   await page.getByRole('button', named('合成退回己')).click();
   const detail = page.getByRole('dialog', named('合成退回己'));
   await expect(detail).toContainText('合同信息');
+  await page.screenshot({ animations: 'disabled', path: '../../.demo/fer2b1-detail.png' });
   await expect(detail).not.toContainText('拒绝offer时间');
   await expect(detail).not.toContainText('拒绝原因');
   await expect(detail).not.toContainText('合成历史拒绝备注');
@@ -103,7 +131,10 @@ test('AC-FE-R2b1-05 失效原因必填，确定直接关闭且状态不变', asy
   await dialog.getByRole('button', confirm).click();
   await expect(dialog.getByText('必填', { exact: true })).toBeVisible();
   await dialog.getByLabel('失效原因', { exact: true }).click();
-  await page.getByRole('option', named('候选人放弃')).click();
+  await page
+    .locator('.ant-select-dropdown:visible .ant-select-item-option-content')
+    .filter({ hasText: /^候选人放弃$/ })
+    .click();
   await dialog.getByRole('button', confirm).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.getByRole('row').filter({ hasText: '合成社招甲' })).toBeVisible();
@@ -114,6 +145,7 @@ test('AC-FE-R2b1-06 设置21项没有可编辑控件或写入口', async ({ page
   await page.getByRole('link', named('入职设置')).click();
   const nav = page.getByRole('navigation', named('设置目录'));
   await expect(nav.getByRole('button')).toHaveCount(21);
+  await page.screenshot({ animations: 'disabled', path: '../../.demo/fer2b1-settings.png' });
   for (const button of await nav.getByRole('button').all()) {
     await button.click();
     const content = page.getByRole('region', named('设置摘要'));
@@ -139,4 +171,51 @@ test('AC-FE-R2b1-07 入口遵守服务端快照，不能直达绕过', async ({ 
   await expect(page.getByRole('menuitem', named('Offer管理'))).toHaveCount(0);
   await expect(page.getByText('暂无访问权限', { exact: true })).toBeVisible();
   await expect(page.getByRole('navigation', named('设置目录'))).toHaveCount(0);
+});
+
+test('AC-FE-R2b1-08 拒绝日期与原因都必填，取消与确定均不改变列表', async ({ page }) => {
+  await open(page);
+  await (await menu(page, '合成社招甲')).getByRole('menuitem', named('转移状态')).click();
+  await target(page, '已拒绝offer');
+  const dialog = page.getByRole('dialog', named('转移状态'));
+  await dialog.getByRole('button', confirm).click();
+  await expect(dialog.getByText('必填', { exact: true })).toHaveCount(2);
+  await dialog.getByLabel('拒绝offer时间', { exact: true }).fill('2026-11-03');
+  await dialog.getByLabel('拒绝offer时间', { exact: true }).press('Tab');
+  await dialog.getByRole('button', confirm).click();
+  await expect(dialog.getByText('必填', { exact: true })).toHaveCount(1);
+  await dialog.getByLabel('拒绝原因', { exact: true }).click();
+  await page
+    .locator('.ant-select-dropdown:visible .ant-select-item-option-content')
+    .filter({ hasText: /^个人原因$/ })
+    .click();
+  await dialog.getByRole('button', confirm).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByRole('button', named('合成社招甲'))).toBeVisible();
+  await (await menu(page, '合成社招甲')).getByRole('menuitem', named('转移状态')).click();
+  await target(page, '已拒绝offer');
+  await expect(page.getByLabel('拒绝offer时间', { exact: true })).toHaveValue('');
+  await page
+    .getByRole('dialog')
+    .getByRole('button', { name: /^取\s*消$/ })
+    .click();
+  await expect(page.getByRole('button', named('合成社招甲'))).toBeVisible();
+});
+
+test('AC-FE-R2b1-09 每页15条、本地筛选、视图与分页清理选择', async ({ page }) => {
+  await open(page);
+  await expect(page.locator('tbody tr[data-row-key]')).toHaveCount(15);
+  await page.getByRole('listitem', named('下一页')).click();
+  await expect(page.locator('tbody tr[data-row-key]')).toHaveCount(2);
+  await page.getByRole('button', named('姓名 ▾')).click();
+  await page.getByRole('textbox', named('姓名')).fill('合成社招甲');
+  await expect(page.locator('tbody tr[data-row-key]')).toHaveCount(1);
+  await page.getByRole('heading', named('Offer管理')).click();
+  await view(page, '已拒绝Offer');
+  const toolbar = page.locator('.page-heading');
+  await expect(toolbar.getByRole('button', named('转移状态'))).toBeDisabled();
+  await page.getByRole('row').filter({ hasText: '合成拒绝戊' }).getByRole('checkbox').check();
+  await expect(toolbar.getByRole('button', named('转移状态'))).toBeEnabled();
+  await view(page, '已接受Offer');
+  await expect(toolbar.getByRole('button', named('转移状态'))).toBeDisabled();
 });
