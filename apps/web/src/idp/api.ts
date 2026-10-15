@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ApiError, type ApiClient } from '../foundation/client.js';
+import { forAction } from '../foundation/forms/action.js';
 import type { Values } from '../foundation/forms/store.js';
-import { useCommandForm } from '../foundation/forms/useCommandForm.js';
+import { useBatchCommand, useCommandForm, type CommandForm } from '../foundation/forms/useCommandForm.js';
 import { useApiClient, useSession } from '../foundation/Session.js';
 import { rereadReceipt } from './access.js';
 import { t } from './messages.js';
@@ -67,6 +68,8 @@ type Method = 'POST' | 'PATCH' | 'DELETE';
  * 命令状态按“租户 × 身份 × 资源”存在页面根部，弹窗关闭再打开仍是同一条命令；
  * 处理中 / 结果未知 / 冲突时锁住且不发新请求，不自动盲重试（AGENTS.md §10 并发 / 幂等）。
  * 只有已明确拒绝或已完成的命令才清掉，开始下一条新命令。
+ * resource 是对象的恢复槽（slotKey），action 是本入口在该对象上的动作，记进槽上下文（F-147）：
+ * 同一对象别的动作未确认时本入口锁定（forAction），不另起命令。
  * `businessId` 是原单 ID：有它才能“回查原单”；单条写入的回执必须是同一条记录。
  * 返回 undefined 表示未完成（被锁、被拒绝或结果未知），状态与命令 ID 由 CommandNotice 展示。
  */
@@ -74,9 +77,20 @@ export function useCommand(
   resource: string,
   businessId?: string,
   read?: (id: string) => Promise<{ id?: unknown; revision?: unknown }>,
+  action: Values = {},
+) {
+  return useRun(forAction(useCommandForm(resource), action), businessId, read);
+}
+/** 批量干预：逐个计划的恢复槽都钉到这条命令（useBatchCommand），以逐条回执为结论。 */
+export function useBatch(collection: string, ids: readonly string[], action: Values) {
+  return useRun(forAction(useBatchCommand(collection, ids), { ...action, ids: [...ids].sort() }));
+}
+function useRun(
+  command: CommandForm,
+  businessId?: string,
+  read?: (id: string) => Promise<{ id?: unknown; revision?: unknown }>,
 ) {
   const api = useApiClient();
-  const command = useCommandForm(resource);
   const run = async <T>(path: string, method: Method, body: Values, revision: number, idOf?: (result: T) => string) => {
     if (command.locked) return undefined;
     if (command.status === 'rejected' || command.status === 'done') command.clear();
@@ -107,7 +121,7 @@ export function useCommand(
       : undefined;
   return { ...command, run, reload };
 }
-export type Command = ReturnType<typeof useCommand>;
+export type Command = ReturnType<typeof useRun>;
 
 /** 批量命令没有单一原单，回执里的逐条结果才是结论；命令台账仍按命令 ID 去重。 */
 export const BATCH = () => 'batch';

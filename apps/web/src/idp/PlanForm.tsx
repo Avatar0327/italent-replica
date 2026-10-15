@@ -36,7 +36,7 @@ export function PlanForm({ plan, close, saved }: { plan?: PlanSummary; close(): 
 function PlanEditor({ plan, close, saved }: { plan?: PlanSummary; close(): void; saved(): void }) {
   const permission = usePermissions(OBJECTS.plan);
   const row = plan as Row | undefined;
-  const writer = useRecordForm(PATH, row, project);
+  const writer = useRecordForm(PATH, row, project, row ? { action: 'edit' } : {});
   const controls: Record<string, ReactNode> = {
     name: <Input maxLength={200} />,
     employeeId: <EmployeeSelect />,
