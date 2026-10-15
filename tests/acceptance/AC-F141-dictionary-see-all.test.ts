@@ -79,6 +79,47 @@ describe('AC-F141-dictionary-see-all 评定字典看全部给企业设置层 sys
     expect([403, 404]).toContain(groups.status);
   });
 
+  it('系统管理员只有看全部与新建：改、删别人建的三个字典记录被拒，库内不变（第 8 轮，DEC-503）', async () => {
+    const seeded = await seedPermissionWorld(testDb().db);
+    const world = { ...seeded, api: tenantApi(seeded.db, { authorize: undefined }) };
+    const creator = await operator(world, { seeAll: true });
+    const sys = await addMember(world, 'f141-system-admin-readonly');
+    const grantRole = await world.api.request('POST', '/api/tenant/permission/admins', {
+      ...world.asAdmin,
+      body: { userId: sys.id, role: 'system_admin', grantableAdminRoles: [], grantableProfileIds: [] },
+    });
+    expect(grantRole.status, await grantRole.clone().text()).toBe(201);
+    const as = { user: sys.id, tenant: world.tenant.id };
+
+    for (const [path, table] of DICTIONARIES) {
+      const made = await creator.request('POST', `/${path}`, { ifMatch: 0, body: { name: nameOf() } });
+      expect(made.status, `${path} 造数据: ${await made.clone().text()}`).toBe(201);
+      const row = (await made.json()) as { id: string; name: string; revision: number };
+      const rowsBefore = await countOf(world.db, world.tenant.id, table);
+
+      const patched = await world.api.request('PATCH', `${BASE}/${path}/${row.id}`, {
+        ...as,
+        ifMatch: row.revision,
+        body: { name: nameOf() },
+      });
+      expect(patched.status, `${path} 修改: ${await patched.clone().text()}`).toBe(403);
+      const removed = await world.api.request('DELETE', `${BASE}/${path}/${row.id}`, { ...as, ifMatch: row.revision });
+      expect(removed.status, `${path} 删除: ${await removed.clone().text()}`).toBe(403);
+
+      expect(await countOf(world.db, world.tenant.id, table), `${path} 记录数不变`).toBe(rowsBefore);
+      const after = await creator.request('GET', `/${path}/${row.id}`);
+      expect(after.status).toBe(200);
+      expect(await after.json(), `${path} 记录内容不变`).toMatchObject({ name: row.name, revision: row.revision });
+
+      // 看全部与新建不受影响
+      const list = await world.api.request('GET', `${BASE}/${path}?pageSize=50`, as);
+      expect(list.status).toBe(200);
+      expect(((await list.json()) as { items: { id: string }[] }).items.map((i) => i.id)).toContain(row.id);
+      const created = await world.api.request('POST', `${BASE}/${path}`, { ...as, ifMatch: 0, body: { name: nameOf() } });
+      expect(created.status, `${path} 新建: ${await created.clone().text()}`).toBe(201);
+    }
+  });
+
   it('评定管理员不预置看全部：不能新建三个字典（库内不变），也看不到别人建的', async () => {
     const w = await provisionWorld(testDb().db, 'f141-dict-ev-admin');
     const holder = await holderOfProfile(w, EV_ADMIN, 'f141-ev-admin');
