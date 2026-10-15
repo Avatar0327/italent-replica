@@ -32,7 +32,8 @@ function ImportFile({ value, disabled, onChange }: FileProps) {
         onChange={async (event) => {
           const file = event.target.files?.[0];
           if (!file) return;
-          const parsed = parseOrgImport(await file.text());
+          // 文件读不出（被移走、无权限）与内容不合法同样就地提示，不发请求。
+          const parsed = parseOrgImport(await file.text().catch(() => ''));
           setError('error' in parsed ? parsed.error : undefined);
           onChange?.('rows' in parsed ? parsed.rows : undefined);
         }}
