@@ -1,4 +1,5 @@
 import { test, expect, tenant, user, snapshotFixture } from './fixtures.js';
+import type { Locator, Page } from '@playwright/test';
 import { APP_ROUTES } from './page-registry.js';
 import { ui } from '../src/foundation/messages.js';
 import { centerText } from '../src/approval/messages.js';
@@ -6,6 +7,15 @@ import { listText } from '../src/transfer/messages.js';
 
 // F-132（#333）按原站（DEC-489）：这两个应用首页没有页面级 h1，以横向视图 / 分类导航代替标题（F-170）。
 const viewNavigation: Record<string, string> = { '/transfer': listText.views, '/approval': centerText.categories };
+// 导航不依赖列表状态，加载失败时照样可见（#345 第 1 轮 P2）；另须等到列表或正常空态，且没有加载失败。
+const listReady: Record<string, (page: Page) => Locator> = {
+  '/transfer': (page) => page.locator('.r1c-list .ant-table-row').first().or(page.locator('.r1c-list .ant-empty')),
+  '/approval': (page) =>
+    page
+      .locator('.approval-todo-main .approval-cards')
+      .or(page.locator('.approval-todo-main').getByText(centerText.empty)),
+};
+const loadFailed = (page: Page) => page.locator('.shell-workspace').getByText(ui.failed, { exact: true });
 
 test('AC-FE-0-04 通过现有演示身份选择器进入应用，注释可切换', async ({ page }) => {
   await page.goto('/staff');
@@ -38,6 +48,11 @@ for (const app of APP_ROUTES) {
         ? page.locator('.shell-workspace').getByRole('navigation', { name: navigation, exact: true })
         : page.locator('.shell-workspace h1').first(),
     ).toBeVisible();
+    const ready = listReady[app.path];
+    if (ready) {
+      await expect(ready(page)).toBeVisible();
+      await expect(loadFailed(page)).toHaveCount(0);
+    }
     await expect(page.getByRole('button', { name: '应用导航' })).toBeVisible();
     // 顶栏显示当前应用（原站“应用”即本系统分组）名，左侧列出本页菜单（#326 第 2 轮 P2-2）
     await expect(page.locator('.app-switch')).toContainText(ui.groups[app.group]);
@@ -46,6 +61,22 @@ for (const app of APP_ROUTES) {
     expect(errors).toEqual([]);
   });
 }
+
+test('AC-FE-0-05 /approval 待办加载失败时首页就绪断言不成立', async ({ page, baseURL }) => {
+  await page.context().addCookies([
+    { name: 'italent_demo_tenant', value: tenant, url: baseURL! },
+    { name: 'italent_demo_user', value: user, url: baseURL! },
+  ]);
+  await page.route('**/api/tenant/approval/todos?*', (route) =>
+    // 形态同后端统一错误（apps/api/src/errors.ts）。
+    route.fulfill({ status: 503, json: { error: { code: 'SERVICE_UNAVAILABLE', message: '服务暂不可用' } } }),
+  );
+  await page.goto('/approval');
+  await expect(loadFailed(page)).toBeVisible();
+  // 导航仍可见，所以只断言导航会漏掉这种失败；就绪断言必须不成立。
+  await expect(page.locator('.shell-workspace').getByRole('navigation', { name: centerText.categories })).toBeVisible();
+  await expect(listReady['/approval']!(page)).toHaveCount(0);
+});
 
 test('AC-FE-0-06 旧路径保留参数与锚点，无权限页和未知页面均可恢复', async ({ page, baseURL }) => {
   await page.context().addCookies([
