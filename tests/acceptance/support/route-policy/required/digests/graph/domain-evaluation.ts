@@ -20,6 +20,10 @@ export const GRAPH: Graph = {
     '#withoutDelete',
   ],
   'packages/domain/src/evaluation/catalog.ts#object': ['#EVALUATION_APP', '#SYSTEM_FIELDS', '#crud'],
+  'packages/domain/src/evaluation/catalog.ts#systemAdminDictionaryPermissions': [
+    '#EVALUATION_DICTIONARY_OBJECTS',
+    '#EVALUATION_OBJECTS',
+  ],
   'packages/domain/src/evaluation/conditions.ts#activityConditionField': ['#FIELD_PREFIX'],
   'packages/domain/src/evaluation/conditions.ts#notAllowed': ['#COMBINATION_FUNCTIONS', '#registry'],
   'packages/domain/src/evaluation/conditions.ts#rangeInverted': [

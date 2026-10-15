@@ -187,8 +187,8 @@ describe('AC-PLAT-F061 T-16 授权项编码与指纹守卫', () => {
       17: '02db592a85571f4f',
       // R3-T04 B6b：盘点模板 copy 按钮
       18: '1782e8b0f7923b5a',
-      // F-141（DEC-500）：新增 IDP 管理员 / 员工 / 经理标准身份；评定管理员预置三个字典的看全部
-      19: '45cce8d19a84d524',
+      // F-141（DEC-500）：新增 IDP 管理员 / 员工 / 经理标准身份（评定字典看全部按 DEC-503 不进标准身份）
+      19: '2b3c3ef8b3ecd838',
     };
     expect(HISTORY[STANDARD_GRANT_VERSION], `version ${STANDARD_GRANT_VERSION} 没有登记指纹：追加一行`).toBe(
       STANDARD_GRANT_DIGEST,

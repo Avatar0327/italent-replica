@@ -43,7 +43,7 @@ export const STANDARD_GRANT_ENTRY = 'permission/standard-profile-grants';
  * 本 PR 有意增删的编码写进同目录 standard-grant-changes.json（F-097），守卫测试以分叉点的编码为基线核对实际增删。
  */
 export const STANDARD_GRANT_VERSION = 19;
-export const STANDARD_GRANT_DIGEST = '45cce8d19a84d524';
+export const STANDARD_GRANT_DIGEST = '2b3c3ef8b3ecd838';
 
 /**
  * 预置“看全部”补装批准清单（D3 = A′，DEC-374②）：看全部属于数据范围扩大，存量租户的标准身份只对**这里明确列出**的目标补，
@@ -78,10 +78,6 @@ export const SEE_ALL_BACKFILL_APPROVED: readonly SeeAllBackfillApproval[] = [
   approve('standard_succession_admin', 'SuccessionAndDevelopment', 'entity', 'Succession.Population', 'DEC-384'),
   approve('standard_succession_admin', 'SuccessionAndDevelopment', 'entity', 'Succession.RuleSettings', 'DEC-384'),
   approve('standard_talent_admin', 'TalentCenter', 'entity', 'TalentCenter.DescriptionType', 'DEC-384'),
-  // DEC-500：评定管理员预置活动类型 / 周期 / 通用评分项三个字典的看全部（用户 2026-10-14 在总编排窗口定），否则评定向导第一步下拉为空
-  ...(['ActivityType', 'ActivityCycle', 'GeneralScoreItem'] as const).map((name) =>
-    approve('standard_evaluation_admin', 'TEvaluation', 'entity', `TEvaluation.${name}`, 'DEC-500'),
-  ),
   // 三个标准 HR 身份的 DEC-121 预置：职务字典类实体 + 编制方案数据源（各 8 个）
   ...['standard_org_system_admin', 'standard_hr_admin', 'standard_hr_specialist'].flatMap((profileCode) => [
     ...['JobLayer', 'JobGrade', 'JobLevelType', 'JobLevel', 'JobSequence', 'JobProfessionalLine', 'JobPost'].map(

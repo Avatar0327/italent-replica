@@ -16,7 +16,7 @@ import {
 } from './employee-self-service.js';
 import { MODULE_OBJECTS, ORG_EMPLOYEE_APP } from '../permission/module-actions.js';
 import type { ButtonGrant, ObjectDefinition, ObjectPermission } from '../permission/object-permission.js';
-import { EVALUATION_APP, EVALUATION_OBJECTS, EVALUATION_SEE_ALL_OBJECTS } from '../evaluation/catalog.js';
+import { EVALUATION_APP, EVALUATION_OBJECTS } from '../evaluation/catalog.js';
 import { EVALUATION_FLOW_OBJECTS } from '../evaluation/flow-catalog.js';
 import { IDP_APP, IDP_OBJECTS, type IdpObject } from '../idp/catalog.js';
 import { PERSONNEL_OBJECTS } from '../personnel/catalog.js';
@@ -212,8 +212,8 @@ const SUCCESSION_PROFILES: readonly StandardProfile[] = [
 
 /**
  * R3-T02 的三个预置身份（Q-T02-02，DEC-331②，规格 23 §14；设计 §1.3）。数据范围一律不预置（硬规则：默认空）：
- * 与继任 / 盘点不同，这里**不**对没有组织字段的字典（层级、等级方案、编码规则）预置看全部（活动类型、周期、通用评分项
- * 三个评定字典自 DEC-500 起例外，只给评定管理员预置），
+ * 与继任 / 盘点不同，这里**不**对没有组织字段的字典（层级、等级方案、编码规则；活动类型、周期、通用评分项）预置看全部
+ * （评定三个字典的“看全部 + 新建”按 DEC-503 给企业设置层的 system_admin，不在标准身份里），
  * 由租户管理员按（用户 × 应用）授予；原站说明评定管理员授权时人才评定、任职资格两个应用各设管理单元。
  * 各身份的功能明细原站未逐项展开（🟡）。许可归属未取证，与人才标准管理员同口径不占名额。
  * 员工身份的发展通道页面权限见 EMPLOYEE_PROFILE（C1-2b，DEC-399）。
@@ -242,12 +242,6 @@ const QUALIFICATION_PROFILES: readonly StandardProfile[] = [
       ...(['category', 'level', 'target', 'standard'] as const).map((key) => readOnly(QUALIFICATION_OBJECTS[key])),
     ],
     hr: false,
-    // DEC-500：只有评定管理员预置三个字典的看全部（其他身份、其他对象照旧不预置），否则评定向导第一步下拉为空
-    seeAll: EVALUATION_SEE_ALL_OBJECTS.map((key) => ({
-      appCode: EVALUATION_APP,
-      targetKind: 'entity' as const,
-      targetCode: EVALUATION_OBJECTS[key].code,
-    })),
   },
   {
     // 只含流程对象：评定过程 / 评定记录（不含活动设置与基础设置）

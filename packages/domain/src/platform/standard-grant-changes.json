@@ -1,12 +1,5 @@
 {
-  "reason": "F-141（DEC-500）：新增 IDP 管理员 / 员工 / 经理三个标准身份；评定管理员预置活动类型、周期、通用评分项三个字典的看全部",
-  "add": [
-    "standard_idp_admin/*",
-    "standard_idp_employee/*",
-    "standard_idp_manager/*",
-    "standard_evaluation_admin/seeAll:TEvaluation:entity:TEvaluation.ActivityType",
-    "standard_evaluation_admin/seeAll:TEvaluation:entity:TEvaluation.ActivityCycle",
-    "standard_evaluation_admin/seeAll:TEvaluation:entity:TEvaluation.GeneralScoreItem"
-  ],
+  "reason": "F-141（DEC-500）：新增 IDP 管理员 / 员工 / 经理三个标准身份（DEC-503：评定字典的看全部不进标准身份，不在此列）",
+  "add": ["standard_idp_admin/*", "standard_idp_employee/*", "standard_idp_manager/*"],
   "remove": []
 }

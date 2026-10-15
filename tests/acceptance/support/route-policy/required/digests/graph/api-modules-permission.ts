@@ -654,6 +654,10 @@ export const GRAPH: Graph = {
     '#getIdentityScope',
     '#lockIdentityScope',
   ],
+  'apps/api/src/modules/permission/scope-resolver.ts#SYSTEM_ADMIN_DICTIONARIES': [
+    'packages/domain/src/evaluation/catalog.ts#EVALUATION_DICTIONARY_OBJECTS',
+    'packages/domain/src/evaluation/catalog.ts#EVALUATION_OBJECTS',
+  ],
   'apps/api/src/modules/permission/scope-resolver.ts#addBoundedIds': ['#MAX_SCOPE_IDS'],
   'apps/api/src/modules/permission/scope-resolver.ts#identityAll': [
     'apps/api/src/modules/permission/scope-hierarchy.ts#scopeRows',
@@ -680,6 +684,7 @@ export const GRAPH: Graph = {
     '#roleRoots',
     '#ruleKey',
     '#rulesFor',
+    '#systemAdminAll',
     'apps/api/src/modules/permission/scope-types.ts#EMPTY_SCOPE',
     'packages/domain/src/personnel/catalog.ts#PERSONNEL_SCOPE_FIELDS',
   ],
@@ -690,6 +695,11 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/permission/scope-resolver.ts#rulesFor': [
     'apps/api/src/modules/permission/scope-hierarchy.ts#scopeRows',
     '#MAX_SCOPE_RULES',
+  ],
+  'apps/api/src/modules/permission/scope-resolver.ts#systemAdminAll': [
+    'apps/api/src/modules/permission/scope-hierarchy.ts#scopeRows',
+    '#SYSTEM_ADMIN_DICTIONARIES',
+    'packages/domain/src/evaluation/catalog.ts#EVALUATION_APP',
   ],
   'apps/api/src/modules/permission/sets.ts#PERMISSION_SETS': ['#ORG_SETS', '#PROFILE_SETS'],
   'apps/api/src/modules/permission/sets.ts#objectPermissionSets': ['#PROFILE_SETS', '#permissionSet'],
@@ -716,7 +726,13 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/sets.ts#objectPermissionSets',
   ],
   'apps/api/src/modules/permission/subject.ts#loadObjectPermissions': ['#loadObjectPermissionRows'],
-  'apps/api/src/modules/permission/subject.ts#loadSubject': ['#loadAdminRoles', '#loadGrantedObjectPermissions'],
+  'apps/api/src/modules/permission/subject.ts#loadSubject': [
+    'apps/api/src/modules/permission/sets.ts#objectPermissionSets',
+    '#loadAdminRoles',
+    '#loadGrantedObjectPermissions',
+    'packages/domain/src/evaluation/catalog.ts#EVALUATION_APP',
+    'packages/domain/src/evaluation/catalog.ts#systemAdminDictionaryPermissions',
+  ],
   'apps/api/src/modules/permission/tenant-catalog.ts#tenantObjectCatalog': [
     '#TENANT_FIELD_LIMIT',
     '#sources',

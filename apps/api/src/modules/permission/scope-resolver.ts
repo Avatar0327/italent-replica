@@ -1,5 +1,10 @@
 import { managerIdentity } from './manager-identity.js';
-import { PERSONNEL_SCOPE_FIELDS } from '@italent/domain';
+import {
+  EVALUATION_APP,
+  EVALUATION_DICTIONARY_OBJECTS,
+  EVALUATION_OBJECTS,
+  PERSONNEL_SCOPE_FIELDS,
+} from '@italent/domain';
 import { sql, type Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
 import { expandScopeRoots, scopeRows, type ScopeRoot } from './scope-hierarchy.js';
@@ -23,6 +28,19 @@ async function identityAll(tx: Tx, q: ScopeQuery): Promise<boolean> {
   `),
   );
   return rows.length > 0;
+}
+/** DEC-503：评定三个字典的“看全部”给企业设置层的有效系统管理员（与 subject.ts 的功能权限同一份字典清单）。 */
+const SYSTEM_ADMIN_DICTIONARIES = new Set(EVALUATION_DICTIONARY_OBJECTS.map((key) => EVALUATION_OBJECTS[key].code));
+async function systemAdminAll(tx: Tx, q: ScopeQuery): Promise<boolean> {
+  if (q.appCode !== EVALUATION_APP || !SYSTEM_ADMIN_DICTIONARIES.has(q.objectCode ?? '')) return false;
+  return (
+    scopeRows(
+      await tx.execute(sql`
+    SELECT 1 FROM permission_admins WHERE tenant_id=${q.tenantId} AND user_id=${q.userId}
+      AND role='system_admin' AND status='active' LIMIT 1
+  `),
+    ).length > 0
+  );
 }
 async function linkedPerson(tx: Tx, q: ScopeQuery): Promise<string | undefined> {
   const [row] = scopeRows<{ employee_id: string }>(
@@ -149,7 +167,8 @@ export function registerPersonScopedObject(objectCode: string): void {
 
 /** Single resolver behind the authorizer; a trusted asOf, never approval participation. */
 export async function resolveDataScope(tx: Tx, query: ScopeQuery): Promise<ModuleScope> {
-  if (await identityAll(tx, query)) return { ...EMPTY_SCOPE, all: true, hasDataPermission: true, source: 'identity' };
+  if ((await identityAll(tx, query)) || (await systemAdminAll(tx, query)))
+    return { ...EMPTY_SCOPE, all: true, hasDataPermission: true, source: 'identity' };
   const { source, rules } = await rulesFor(tx, query);
   const terms: ScopeTerm[] = [];
   const usesPersonnelScope =

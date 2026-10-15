@@ -55,7 +55,6 @@ export const GRAPH: Graph = {
   'packages/domain/src/platform/standard-presets.ts#QUALIFICATION_PROFILES': [
     'packages/domain/src/evaluation/catalog.ts#EVALUATION_APP',
     'packages/domain/src/evaluation/catalog.ts#EVALUATION_OBJECTS',
-    'packages/domain/src/evaluation/catalog.ts#EVALUATION_SEE_ALL_OBJECTS',
     'packages/domain/src/evaluation/flow-catalog.ts#EVALUATION_FLOW_OBJECTS',
     '#full',
     '#readOnly',
