@@ -976,7 +976,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     object: EMPLOYMENT,
     operation: 'update',
     button: button('Employment.Edit', 'detail'),
-    guards: [DIRECT_OPERATION, LINKAGE],
+    guards: [DIRECT_OPERATION],
     scope: BUSINESS_WRITE,
     fields: RESPONSE,
     write: employmentCommand([
@@ -984,7 +984,6 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
       'lockEmploymentBusiness',
       'assertRevision',
       'requireScopedEmploymentObject',
-      'requireLinkedEmploymentRecord',
     ]),
     ...byId,
   }),
