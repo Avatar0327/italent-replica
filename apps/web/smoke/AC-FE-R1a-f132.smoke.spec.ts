@@ -86,11 +86,11 @@ const file = (name: string, content: unknown[]) => ({
   mimeType: 'application/json',
   buffer: Buffer.from(JSON.stringify({ rows: content })),
 });
-async function chooseImport(page: Page) {
+async function chooseImport(page: Page, content: unknown[] = rows) {
   await page.getByRole('button', { name: '更多操作' }).click();
   await page.getByRole('menuitem', { name: '导入' }).click();
   const dialog = page.getByRole('dialog', { name: '导入组织' });
-  await dialog.getByLabel('选择文件').setInputFiles(file('org-import.json', rows));
+  await dialog.getByLabel('选择文件').setInputFiles(file('org-import.json', content));
   await expect(dialog.getByText('已读取 2 行')).toBeVisible();
   return dialog;
 }
@@ -304,6 +304,43 @@ test('AC-FE-R1a-43 组织导入更新行版本冲突 409 REVISION_CONFLICT：重
     { rows },
     { rows: [rows[0], { ...rows[1], expectedRevision: 2 }] },
   ]);
+});
+
+test('AC-FE-R1a-43 未来生效日的导入行版本冲突：按该行 startDate 重读，核对区显示他人在同一时点的修改（第 3 轮 P2）', async ({
+  page,
+  baseURL,
+}) => {
+  await setup(page, baseURL!);
+  const future = '2026-11-01';
+  const asOfs: (string | null)[] = [];
+  // 他人已改 11-01 生效的名称（revision 2）；今天的名称不变。接口按 asOf 取时点值，不带时取租户当天。
+  await page.route(`**/api/tenant/org/organizations/${id}**`, (route) => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    const asOf = new URL(route.request().url()).searchParams.get('asOf');
+    asOfs.push(asOf);
+    const name = asOf === future ? '他人十一月改名' : org.name;
+    return route.fulfill({ json: { ...org, revision: 2, name, startDate: asOf === future ? future : org.startDate } });
+  });
+  const dated = [rows[0]!, { ...rows[1]!, name: '我的十一月名称', startDate: future }];
+  const posts = await routeImport(page, (request) => {
+    const sent = (request.postDataJSON() as { rows: typeof dated }).rows;
+    if (sent[1]!.expectedRevision !== 2)
+      return { status: 409, json: { error: { code: 'REVISION_CONFLICT', message: '组织已被他人修改' } } };
+    const results = sent.map((item) => ({ sourceCode: item.sourceCode, code: item.code, status: 'updated' }));
+    return { status: 200, json: { results } };
+  });
+  await page.goto('/org');
+  const dialog = await chooseImport(page, dated);
+  await save(page).click();
+  await expect(dialog.getByText(/版本冲突/)).toBeVisible();
+  await dialog.getByRole('button', { name: '重读最新版本' }).click();
+  // 核对区是 11-01 时点他人的修改；保存前用户看得到，不会拿今天的值核对后静默覆盖。
+  await expect(dialog.locator('.ant-table').getByText(/他人十一月改名/)).toBeVisible();
+  expect(asOfs).toEqual([future]);
+  await dialog.getByRole('button', { name: '已核对差异，继续编辑' }).click();
+  await save(page).click();
+  await expect(page.getByRole('dialog', { name: '导入结果' })).toBeVisible();
+  expect(posts.at(-1)!.postDataJSON()).toEqual({ rows: [dated[0], { ...dated[1], expectedRevision: 2 }] });
 });
 
 test('AC-FE-R1a-43 普通拒绝后换文件修正，再遇版本冲突：重读后的重提用最新版本（第 2 轮 P2-2）', async ({

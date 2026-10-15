@@ -5,8 +5,14 @@ import { importText as m } from './messages.js';
 export const orgImportPath = '/api/tenant/org/import';
 export const orgImportResource = slotKey(orgImportPath);
 export const orgImportTemplate = '/templates/org-import.json';
-/** 冲突重读按 orgId 读原单最新版本（GET /api/tenant/org/organizations/:id，默认取当天）。 */
-export const orgRecordPath = (orgId: string) => `/api/tenant/org/organizations/${encodeURIComponent(orgId)}`;
+/**
+ * 冲突重读按 orgId 读原单在写入时点的版本（GET /api/tenant/org/organizations/:id?asOf=）；
+ * 不带 asOf 时接口按租户当天取值（apps/api 组织 queryDate），与导入行不填 startDate 时的写入时点一致。
+ */
+export const orgRecordPath = (orgId: string, asOf?: string) => {
+  const path = `/api/tenant/org/organizations/${encodeURIComponent(orgId)}`;
+  return asOf ? `${path}?asOf=${encodeURIComponent(asOf)}` : path;
+};
 /** 与接口 rows.max(100) 一致；超出时前端先拦，不发请求。 */
 export const orgImportLimit = 100;
 /** 接口必填列（apps/api 组织导入 importRow），也是每行都要写的字段；其余列由服务端整批校验。 */
@@ -71,17 +77,23 @@ function recordFields(record: OrgRecord) {
   return Object.fromEntries(Object.entries(fields).filter(([, value]) => typeof value === 'string'));
 }
 /**
- * 版本冲突后的重读（F-142「重读 → 核对 → 显式重提」）：带 orgId 的行读原单最新版本，最新快照只放接口返回的
+ * 版本冲突后的重读（F-142「重读 → 核对 → 显式重提」）：带 orgId 的行按该行实际写入的业务日期读原单
+ * （行里写了 startDate 就按它，否则由接口取租户当天，同 apps/api 组织导入 effectiveDate 口径），
+ * 核对区快照和 expectedRevision 都对应实际写入时点，不拿当天的值去核对未来生效日的写入；最新快照只放接口返回的
  * 业务字段与版本，供核对区显示；文件内容仍是“我的输入”，不被改写。读回须是同一组织、版本为正整数，
  * 否则按读取失败处理，表单保持冲突锁定。
  * 只写 sourceCode 映射、没有 orgId 的行：前端没有按原系统编码查组织的接口，读不到最新内容，只保留原系统编码，
  * 重提时沿用文件里的版本，由服务端按映射再核一次（仍过期则再次返回版本冲突）。
  */
-export async function rereadImportRows(rows: readonly ImportRow[], read: (orgId: string) => Promise<unknown>) {
+export async function rereadImportRows(
+  rows: readonly ImportRow[],
+  read: (orgId: string, asOf: string | undefined) => Promise<unknown>,
+) {
   return Promise.all(
     rows.map(async (row): Promise<ImportRow> => {
       if (typeof row.orgId !== 'string') return { sourceCode: row.sourceCode };
-      const latest = (await read(row.orgId)) as OrgRecord | null;
+      const asOf = typeof row.startDate === 'string' ? row.startDate : undefined;
+      const latest = (await read(row.orgId, asOf)) as OrgRecord | null;
       const revision = latest?.revision;
       if (
         !latest ||

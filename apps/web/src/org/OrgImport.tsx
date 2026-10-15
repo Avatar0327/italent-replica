@@ -97,9 +97,9 @@ function importFields(access: PageAccess, onPick: () => void): FormField[] {
 /**
  * 组织导入接 F-142 内核：命令 ID、锁定、被拒提示与结果未知锁定都由内核负责。
  * - 结果未知：导入没有原单可回读，保持锁定、重开仍锁定，待刷新列表核对（DEC-502①g）。
- * - 更新行版本冲突（409 REVISION_CONFLICT）：内核“重读最新版本”按 orgId 读回各行最新内容与版本，核对区显示
- *   接口返回的最新值；“已核对差异，继续编辑”解锁，用户再点保存显式重提（DEC-502①b）。导入没有单一原单，
- *   以恢复槽作批次标识，供内核核对读回结果属于本批。
+ * - 更新行版本冲突（409 REVISION_CONFLICT）：内核“重读最新版本”按 orgId 读回各行在写入时点（startDate，
+ *   未填为租户当天）的内容与版本，核对区显示接口返回的最新值；“已核对差异，继续编辑”解锁，用户再点保存
+ *   显式重提（DEC-502①b）。导入没有单一原单，以恢复槽作批次标识，供内核核对读回结果属于本批。
  * - 导入没有原值：基线为空，文件内容整份是“我的输入”，重读后不被最新值覆盖；重提时只有版本控制项
  *   （expectedRevision）取权威重读值（withLatestRevisions）。
  * - 换文件时清掉内核里上一份文件的基线与重读结果（未锁定时才可换文件），新文件从头开始。
@@ -120,8 +120,8 @@ export function OrgImport(props: {
       id: orgImportResource,
       revision: 0,
       values: {
-        rows: await rereadImportRows((command.state?.values.rows as ImportRow[] | undefined) ?? [], (orgId) =>
-          api.request<unknown>(orgRecordPath(orgId)),
+        rows: await rereadImportRows((command.state?.values.rows as ImportRow[] | undefined) ?? [], (orgId, asOf) =>
+          api.request<unknown>(orgRecordPath(orgId, asOf)),
         ),
       },
     }));
