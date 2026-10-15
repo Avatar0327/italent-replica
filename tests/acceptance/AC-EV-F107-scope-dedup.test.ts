@@ -60,7 +60,7 @@ describe('AC-EV-F107 活动权限范围去重计数（DEC-455④）', () => {
       await w.api.request('PUT', `/api/tenant/permission/scope-policies/${EVALUATION_APP}/${OBJECT}/entity/${OBJECT}`, {
         ...w.asAdmin,
         ifMatch: policyRevision,
-        body: { rules: [{ dimension, ...(dimension === 'organization' ? { roleCode: 'head' } : {}) }] },
+        body: { rules: [{ dimension, ...(dimension === 'organization' ? { roleCode: 'hrbp' } : {}) }] },
       }),
     );
     policyRevision = saved.revision;
@@ -108,16 +108,16 @@ describe('AC-EV-F107 活动权限范围去重计数（DEC-455④）', () => {
     await w.asOwner(async (run) => {
       const person = randomUUID();
       await run(sql`INSERT INTO employment_employees(id,tenant_id,code,name)
-        VALUES (${person}::uuid,${w.tenant.id},'F107_HEAD','合成负责人')`);
+        VALUES (${person}::uuid,${w.tenant.id},'F107_HRBP','合成HRBP')`);
       await run(sql`INSERT INTO permission_user_person_links(tenant_id,user_id,employee_id)
         VALUES (${w.tenant.id},${op.userId}::uuid,${person}::uuid)`);
-      // 追加组织版本，把同一操作人设为链上各根的负责人，验证组织角色规则同样去重。
+      // 用 HRBP 角色覆盖组织关系分支，避免负责人自助身份的独立旧上限干扰本任务（其同类问题留后续）。
       for (const orgId of chain) {
         const version = randomUUID();
         await run(sql`INSERT INTO org_versions
           SELECT (jsonb_populate_record(NULL::org_versions, to_jsonb(v) || jsonb_build_object(
             'id',${version}::uuid,'version_no',v.version_no+1,'previous_version_id',v.id,
-            'start_date','2025-12-01'::date,'person_in_charge_id',${person}::uuid))).*
+            'start_date','2025-12-01'::date,'hrbp_id',${person}::uuid))).*
           FROM org_versions v WHERE v.tenant_id=${w.tenant.id} AND v.org_id=${orgId}::uuid
           ORDER BY v.start_date DESC,v.version_no DESC LIMIT 1`);
         await run(sql`INSERT INTO org_hierarchy_links(tenant_id,version_id,dimension,parent_org_id,sequence)
@@ -171,7 +171,7 @@ describe('AC-EV-F107 活动权限范围去重计数（DEC-455④）', () => {
     expect(await w.adminRead(outside.id)).toEqual(before);
   });
 
-  it('AC-EV-F107 组织负责人规则的重叠根也按 2,110 个组织计数，事务内写复核不再 413', async () => {
+  it('AC-EV-F107 组织 HRBP 规则的重叠根也按 2,110 个组织计数，事务内写复核不再 413', async () => {
     await setRoots(roots(chain));
     await policy('organization');
     try {
@@ -179,10 +179,10 @@ describe('AC-EV-F107 活动权限范围去重计数（DEC-455④）', () => {
       const changed = await ok<ActivityView>(
         await op.request('PATCH', `${ACTIVITIES}/${existing.id}`, {
           ifMatch: existing.revision,
-          body: { name: '负责人范围去重' },
+          body: { name: 'HRBP范围去重' },
         }),
       );
-      expect(changed.name).toBe('负责人范围去重');
+      expect(changed.name).toBe('HRBP范围去重');
     } finally {
       await policy('management');
     }
