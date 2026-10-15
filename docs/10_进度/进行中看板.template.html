@@ -105,7 +105,7 @@ body[data-ms="D1"] .chip:not([data-ms="D1"]),body[data-ms="D2"] .chip:not([data-
 .dsec{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin:14px 0;display:flex;flex-direction:column;gap:10px;background:var(--sunk)}
 .dh{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 14px;border-bottom:1px solid var(--line);padding-bottom:6px}
 .dn{font-weight:700;font-size:15px;color:var(--ink)}.dp{font-variant-numeric:tabular-nums;color:var(--ink2)}.dd{color:var(--muted);font-size:12px}
-</style>
+.lb{font-weight:400;opacity:.7;font-size:10px}</style>
 <div class="wrap">
   <header>
     <h1>iTalent 进行中</h1>
@@ -179,7 +179,7 @@ function chip(st){
   const x = stepState(st), o = x.o, dsx = (DATA.msof || {})[st.k];
   const tip = [st.k + " " + st.n, NAME[x.s] || x.s, st.pr ? "#" + st.pr : "", dsx ? dsx : "", x.left ? "等 " + x.left.join(" / ") : "", x.s === "ready" ? "前置已全部合并，可派" : "", o ? o.why + (o.idle < 1e5 ? " · " + dur(o.idle) + "无动静" : "") : "", st.note].filter(Boolean).join(" · ");
   const g = (STG[x.s] || "ppp").split("").map(c => `<i class="${c}"></i>`).join("");
-  return `<span class="chip ${x.s}${o && o.stuck ? " stuck" : ""}"${dsx ? ` data-ms="${dsx}"` : ""} title="${esc(tip)}"><span class="k">${esc(st.k)}</span>${esc(st.n)}${st.pr ? `<span class="p">#${st.pr}</span>` : ""}${dsx ? `<span class="dtag">${dsx}</span>` : ""}<span class="stg" title="开发 → 审查 → 合并">${g}</span></span>`;
+  return `<span class="chip ${x.s}${o && o.stuck ? " stuck" : ""}"${dsx ? ` data-ms="${dsx}"` : ""} title="${esc(tip)}"><span class="k">${(DATA.lbl || {})[st.k] ? `<small class="lb">${esc(DATA.lbl[st.k])}·</small>` : ""}${esc(st.k)}</span>${esc(st.n)}${st.pr ? `<span class="p">#${st.pr}</span>` : ""}${dsx ? `<span class="dtag">${dsx}</span>` : ""}<span class="stg" title="开发 → 审查 → 合并">${g}</span></span>`;
 }
 function block(l, summaryOnly){
   const gs = l.groups || (l.steps ? [{n:"", steps:l.steps}] : []);
@@ -206,7 +206,7 @@ if (MSX0 && DATA.page !== "l3") {
   document.getElementById("lines").innerHTML = ["D1", "D2", "D3"].map(D => {
     const m = MSX0[D], n = dd0(m.dl);
     const parts = (M.lines || []).map(l => { const f = filt(l, D); if (!f.groups.length) return ""; return L3IDS.includes(l.id) ? block(f, true) : block(f); }).join("");
-    return `<div class="dsec" id="sec-${D}"><div class="dh"><span class="dn">${esc(m.t)}</span><span class="dp">${m.done}/${m.tot} 已合并</span><span class="dd">${esc(m.dl.slice(5))} 截止 · ${n >= 0 ? "还有 " + n + " 天" : "已逾期 " + (-n) + " 天"}</span></div>${parts || `<div class="pre">没有任务。</div>`}</div>`;
+    return `<div class="dsec" id="sec-${D}"><div class="dh"><span class="dn">${esc(m.t)}</span><span class="dp">${m.done}/${m.tot} 已合并</span><span class="dd">${esc(m.dl.slice(5))} 截止 · ${n >= 0 ? "还有 " + n + " 天" : "已逾期 " + (-n) + " 天"}${m.eta ? " · " + esc(m.eta) : ""}</span></div>${parts || `<div class="pre">没有任务。</div>`}</div>`;
   }).join("");
 } else {
   document.getElementById("lines").innerHTML = (M.lines || []).map(b => block(b)).join("");
@@ -221,7 +221,7 @@ if (MILE && MSX) {
     const modTot = {}, modDone = {};
     rows.forEach(r => { modTot[r.mod] = (modTot[r.mod] || 0) + 1; if (stepState(r.st).s === "done") modDone[r.mod] = (modDone[r.mod] || 0) + 1; });
     const mods = ORDER.filter(o => modTot[o]).map(o => o + " " + (modDone[o] || 0) + "/" + modTot[o]).join(" · ");
-    return `<div class="kpi dcard" onclick="var e=document.getElementById('sec-${k}');if(e)e.scrollIntoView({behavior:'smooth'})" title="点一下跳到 ${k} 分区" style="cursor:pointer;padding:8px 12px"><div style="color:var(--ink);font-weight:600;font-size:13px">${esc(m.t)}</div><div class="mbig">${m.done}/${m.tot}<small>已合并 / 计划（${pct}%）</small></div><div>${esc(mods)}</div><div><b>${m.act}</b> 在审 / 返工　<b>${m.todo}</b> 未开工</div><div>${esc(m.dl.slice(5))} 截止　<b style="color:${n <= 1 ? "var(--bad)" : "var(--ink)"}">${n >= 0 ? "还有 " + n + " 天" : "已逾期 " + (-n) + " 天"}</b></div></div>`;
+    return `<div class="kpi dcard" onclick="var e=document.getElementById('sec-${k}');if(e)e.scrollIntoView({behavior:'smooth'})" title="点一下跳到 ${k} 分区" style="cursor:pointer;padding:8px 12px"><div style="color:var(--ink);font-weight:600;font-size:13px">${esc(m.t)}</div><div class="mbig">${m.done}/${m.tot}<small>已合并 / 计划（${pct}%）</small></div><div>${esc(mods)}</div><div><b>${m.act}</b> 在审 / 返工　<b>${m.todo}</b> 未开工</div><div>${esc(m.dl.slice(5))} 截止　<b style="color:${n <= 1 ? "var(--bad)" : "var(--ink)"}">${n >= 0 ? "还有 " + n + " 天" : "已逾期 " + (-n) + " 天"}</b></div>${m.eta ? `<div style="color:var(--warn,var(--ink))">${esc(m.eta)}</div>` : ""}</div>`;
   }).join("");
 }
 document.getElementById("support").innerHTML = (M.support || []).map(block).join("");
@@ -241,6 +241,6 @@ document.getElementById("log").innerHTML = (DATA.log || []).map(x => `<li>${esc(
 const nStuck = stuck.length + (M.asks || []).length, nRev = (L.open || []).filter(p => p.s === "review").length, nWork = (L.open || []).filter(p => p.s === "rework").length;
 const PG = DATA.prog, pgd = PG && PG.prev ? [PG.done - PG.prev[0], PG.tot - PG.prev[1]] : null;
 const sg = n => (n > 0 ? "+" : "") + n;
-document.getElementById("kpis").innerHTML = (PG ? `<span class="kpi" title="主线 + 支撑任务的计划 PR（不含暂停项）；分子 = 已合并${pgd ? `；${esc(PG.since)} 起较上次读数（${PG.prev[0]}/${PG.prev[1]}）：已完成 ${sg(pgd[0])}，总数 ${sg(pgd[1])}` : ""}"><b>${PG.done}/${PG.tot}</b>已完成 / 计划 PR${pgd ? `<em class="dl">${pgd[0] ? "完成 " + sg(pgd[0]) : ""}${pgd[0] && pgd[1] ? " · " : ""}${pgd[1] ? "总数 " + sg(pgd[1]) : ""}</em>` : ""}</span>` : "") + `<span class="kpi${nStuck ? " bad" : ""}"><b>${nStuck}</b>卡点</span><span class="kpi"><b>${nRev}</b>审查中</span><span class="kpi"><b>${nWork}</b>返工</span><span class="kpi"><b>${(L.open || []).length}</b>在途 PR</span><span class="kpi"><b>${td.length}</b>今日合并</span>`;
+document.getElementById("kpis").innerHTML = (PG ? `<span class="kpi" title="主线（含后补 F 线）的计划 PR（不含暂停项与重复项）；分子 = 已合并${pgd ? `；${esc(PG.since)} 起较上次读数（${PG.prev[0]}/${PG.prev[1]}）：已完成 ${sg(pgd[0])}，总数 ${sg(pgd[1])}` : ""}"><b>${PG.done}/${PG.tot}</b>已完成 / 计划 PR${pgd ? `<em class="dl">${pgd[0] ? "完成 " + sg(pgd[0]) : ""}${pgd[0] && pgd[1] ? " · " : ""}${pgd[1] ? "总数 " + sg(pgd[1]) : ""}</em>` : ""}</span>` : "") + `<span class="kpi${nStuck ? " bad" : ""}"><b>${nStuck}</b>卡点</span><span class="kpi"><b>${nRev}</b>审查中</span><span class="kpi"><b>${nWork}</b>返工</span><span class="kpi"><b>${(L.open || []).length}</b>在途 PR</span><span class="kpi"><b>${td.length}</b>今日合并</span>`;
 document.getElementById("at").textContent = "GitHub 状态取自 " + (L.at || "—") + "（发布时刷新）";
 </script>
