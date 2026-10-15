@@ -35,6 +35,7 @@ export function useCommandForm(resource: string, store?: FormStore) {
     busy: state?.status === 'submitting',
     submit: (input: SubmitInput) => owner.submit(key, input),
     reread: (read: (id?: string) => Promise<Latest>) => owner.reread(key, read),
+    settle: (submittable: readonly string[]) => owner.settle(key, submittable),
     confirm: () => owner.confirm(key),
     clear: () => owner.clear(key),
   };
@@ -50,22 +51,31 @@ export interface DraftTarget {
  * - 内核状态变化（恢复、提交、重读）时整份回填 refillDraft 的结果：这些时刻表单刚打开或处于锁定，内核草稿就是用户草稿。
  * - 只有可提交字段集合变化（动态字段显隐、权限变化）时不覆盖整份表单：用户核对后继续输入的实时草稿是基准，
  *   未改字段本就等于最新记录，只把转为不可提交的字段取最新记录。
+ * - 转为不可提交的已改字段同时经 settle 改写内核草稿、记为未改；这次内核变化不再整份回填，免得覆盖实时草稿。
  */
-export function useDraftRefill(state: Submission | undefined, submittable: readonly string[], form: DraftTarget) {
+export function useDraftRefill(
+  command: Pick<CommandForm, 'state' | 'settle'> | undefined,
+  submittable: readonly string[],
+  form: DraftTarget,
+) {
   const key = submittable.join('\n');
   const fields = useRef(key);
-  const { values, latest, editedFields } = state ?? {};
+  const settled = useRef<Values>(undefined);
+  const { values, latest, editedFields } = command?.state ?? {};
+  const settle = command?.settle;
   // 先登记字段集合再回填：两者同一次渲染变化时，回填按新的可提交字段判断。
   useEffect(() => {
-    if (fields.current === key) return;
+    const changed = fields.current !== key;
     fields.current = key;
     if (!latest) return;
     const submittable = key.split('\n');
     const fixed = Object.keys(latest.values).filter((field) => !submittable.includes(field));
-    form.setFieldsValue(Object.fromEntries(fixed.map((field) => [field, latest.values[field]])));
-  }, [form, key, latest]);
+    if (changed) form.setFieldsValue(Object.fromEntries(fixed.map((field) => [field, latest.values[field]])));
+    const result = editedFields?.some((field) => !submittable.includes(field)) ? settle?.(submittable) : undefined;
+    if (result) settled.current = result.values;
+  }, [form, key, latest, editedFields, settle]);
   useEffect(() => {
-    if (!values) return;
+    if (!values || values === settled.current) return;
     const submittable = fields.current.split('\n');
     form.setFieldsValue(refillDraft({ values, latest: latest?.values, edited: editedFields ?? [], submittable }));
   }, [form, values, latest, editedFields]);

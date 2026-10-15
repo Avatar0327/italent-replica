@@ -33,8 +33,9 @@ describe('AC-FE-F142 页面不留重复实现', () => {
   it('重读回填走 refillDraft / useDraftRefill：页面不留 rereadDraft，表单不直接回填内核草稿', () => {
     expect(offenders(/rereadDraft/)).toEqual([]);
     expect(offenders(/setFieldsValue\(\w+\.state\.values\)/)).toEqual([]);
-    expect(read('foundation/FormOverlay.tsx')).toMatch(/useDraftRefill\(/);
-    expect(read('evaluation/ActivityWizard.tsx')).toMatch(/useDraftRefill\(/);
+    // 两个接入点都把命令对象交给 useDraftRefill（只读回填同步内核草稿，F-142 第 2 轮 P2），不只交 state。
+    expect(read('foundation/FormOverlay.tsx')).toMatch(/useDraftRefill\(submission,/);
+    expect(read('evaluation/ActivityWizard.tsx')).toMatch(/useDraftRefill\(\s*writer,/);
   });
   it('恢复槽键走 slotKey，上下文存进内核槽，不再塞进表单值', () => {
     expect(offenders(/__context/)).toEqual([]);

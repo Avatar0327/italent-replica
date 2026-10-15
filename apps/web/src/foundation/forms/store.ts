@@ -119,6 +119,24 @@ export function createFormStore() {
       put(key, { ...state, reading: true, readError: undefined });
       put(key, await rereadState(state, read));
     },
+    /**
+     * 当前不可提交的已改字段以最新记录为准、改记为未改（claude_fe_rules b）：只读回填不只改表单控件，
+     * 也改内核草稿。之后不重提再重读、字段恢复可编辑时，旧草稿都不会复活。处理中、结果未知的命令不动。
+     * 有改动时返回改后的状态，没有改动返回 undefined。
+     */
+    settle(key: string, submittable: readonly string[]) {
+      const state = entries.get(key);
+      if (!state?.latest || ['submitting', 'unknown', 'done'].includes(state.status)) return;
+      const fixed = state.editedFields.filter((field) => !submittable.includes(field));
+      if (!fixed.length) return;
+      const latest = state.latest.values;
+      put(key, {
+        ...state,
+        values: { ...state.values, ...Object.fromEntries(fixed.map((field) => [field, latest[field]])) },
+        editedFields: state.editedFields.filter((field) => submittable.includes(field)),
+      });
+      return entries.get(key);
+    },
     confirm(key: string) {
       const state = entries.get(key);
       if (state?.status === 'conflict' && state.latest && !state.reading && !state.readError)

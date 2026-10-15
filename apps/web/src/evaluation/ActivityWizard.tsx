@@ -70,7 +70,7 @@ function useWizard({ row, close, saved }: WizardProps) {
   };
   // 重读后按内核 refillDraft 回填（F-142）：只有改过且当前可提交的字段保留草稿，其余取最新记录。
   useDraftRefill(
-    writer.state,
+    writer,
     groups.flat().filter((key) => field(key).editable),
     form,
   );

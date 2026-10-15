@@ -83,6 +83,36 @@ describe('AC-FE-F142 重读回填', () => {
     expect(store.get('k')?.values).toEqual({ name: '我的草稿', remark: '他人备注', owner: '他人负责人' });
     expect(store.get('k')?.differences?.map((item) => item.field)).toEqual(['name', 'remark']);
   });
+  it('转为不可提交的已改字段 settle 后取最新、记为未改，再次重读跟随新的最新记录；结果未知的命令不动', async () => {
+    const store = createFormStore();
+    const input = {
+      values: { name: '我的草稿', stages: '我的阶段' },
+      baseline: { name: '原名', stages: '原阶段' },
+      editableFields: ['name', 'stages'],
+      revision: 3,
+      businessId: 'r1',
+      patchOnly: true,
+    };
+    await store.submit('k', { ...input, send: async () => Promise.reject(conflict()) });
+    const latest = (revision: number, stages: string) => async (id?: string) => ({
+      id: id!,
+      revision,
+      values: { name: '原名', stages },
+    });
+    await store.reread('k', latest(4, '他人阶段'));
+    expect(store.settle('k', ['name', 'stages'])).toBeUndefined();
+    expect(store.settle('k', ['name'])).toMatchObject({
+      values: { name: '我的草稿', stages: '他人阶段' },
+      editedFields: ['name'],
+    });
+    expect(store.settle('k', ['name'])).toBeUndefined();
+    await store.reread('k', latest(5, '他人两个阶段'));
+    expect(store.get('k')?.values).toEqual({ name: '我的草稿', stages: '他人两个阶段' });
+    await store.submit('u', { ...input, send: async () => Promise.reject(unknown()) });
+    await store.reread('u', latest(4, '他人阶段'));
+    expect(store.settle('u', ['name'])).toBeUndefined();
+    expect(store.get('u')?.values).toEqual(input.values);
+  });
   it('patchOnly 请求体与已编辑字段都按空值归一比较', async () => {
     const store = createFormStore();
     const send = vi.fn(async () => ({ id: 'r1' }));

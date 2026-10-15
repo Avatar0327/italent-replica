@@ -84,7 +84,7 @@ function OpenForm(props: FormOverlayProps) {
   const submission = props.submission;
   const locked = busy || !!submission?.locked;
   // 重读后按内核 refillDraft 回填（F-142，claude_fe_rules b）：只有改过且当前可提交的字段保留草稿。
-  useDraftRefill(submission?.state, submittableOf(props.groups), form);
+  useDraftRefill(submission, submittableOf(props.groups), form);
   const footer = (
     <Space>
       <Button onClick={props.onClose} disabled={busy}>
