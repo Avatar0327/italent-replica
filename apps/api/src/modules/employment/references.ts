@@ -7,7 +7,7 @@ import { assertNoReportingCycle, insertedWindow, type ReportingWindow } from './
 import type { EmploymentContext, PresetFields } from './types.js';
 import { AppError } from '../../errors.js';
 import { lockOrganizationSettings } from '../org/locks.js';
-import { employmentDepartmentDisable } from '../org/employment-validity.js';
+import { employmentDepartmentDisable, type EmploymentDepartmentDisable } from '../org/employment-validity.js';
 
 /**
  * DEC-150：只扩展新增任职业务及申请修改；历史记录编辑、向后引用判定保留各自已有日期口径。
@@ -35,15 +35,35 @@ export async function assertEmploymentDepartmentAvailable(
     await lockOrganizationSettings(tx, ctx.tenantId);
     // 等待锁期间可能已提交停用版本；必须在获得锁之后重新读取。
     const disabled = await employmentDepartmentDisable(tx, ctx.tenantId, departmentId, effectiveDate);
-    if (disabled) {
-      throw new AppError(
-        'VALIDATION_FAILED',
-        `任职部门【${disabled.name}】已被停用（停用日期：${disabled.disabledOn}），请检查`,
-        { reason: 'EMPLOYMENT_DEPARTMENT_DISABLED', disabledOn: disabled.disabledOn },
-      );
-    }
+    if (disabled) throw departmentDisabled(disabled);
     await assertOrg(tx, ctx.tenantId, departmentId, effectiveDate);
   }
+}
+
+/**
+ * 有终点变体（离职设计 §6B.2-3）：任职部门在 [from, to) 内任一天不可用即拒绝，to 为空表示开放（只要之后停用就拒绝）。
+ * 用于撤销 / 顺延等“扩大在职区间”的操作按 ΔO 逐段校验；同样取停用锁并在锁内复查，拒绝形态与无终点变体一致。
+ * `employmentDepartmentDisable` 返回从 from 起（或覆盖 from）的第一个不可用段，其起日早于 to 即与区间相交。
+ */
+export async function assertEmploymentDepartmentAvailableWithin(
+  tx: Tx,
+  ctx: EmploymentContext,
+  departmentId: string | null,
+  from: string,
+  to: string | null,
+): Promise<void> {
+  if (!departmentId) return;
+  await lockOrganizationSettings(tx, ctx.tenantId);
+  const disabled = await employmentDepartmentDisable(tx, ctx.tenantId, departmentId, from);
+  if (disabled && (to === null || disabled.disabledOn < to)) throw departmentDisabled(disabled);
+}
+
+function departmentDisabled(disabled: EmploymentDepartmentDisable): AppError {
+  return new AppError(
+    'VALIDATION_FAILED',
+    `任职部门【${disabled.name}】已被停用（停用日期：${disabled.disabledOn}），请检查`,
+    { reason: 'EMPLOYMENT_DEPARTMENT_DISABLED', disabledOn: disabled.disabledOn },
+  );
 }
 
 /** 循环汇报校验的对象：哪名员工，被校验的记录在时间轴上实际生效的区间（为空则不校验）。 */

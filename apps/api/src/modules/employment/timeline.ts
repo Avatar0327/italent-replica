@@ -27,10 +27,28 @@ export function operationKey(tenantId: string, businessId: SQL): SQL {
  * 计划生效日的唯一来源（DEC-431①；F-140 约束 1 / 2，DEC-499）：最新载荷版本（按业务内单调的 version_no）的人工计划列。
  * 人工写日期的版本计划 = 本版本日期，系统顺延等派生版本沿用上一版本（迁移 0130 触发器维护），因此迟到顺延后仍按原计划日
  * 排序（DEC-195①）；不读 outbox 改期事件，不依赖 created_at / UUID 先后。纯函数镜像见 domain resolvePlannedEffectiveDate。
+ * 离职设计 §5.0A（R2-T03）要求的“离职顺延事件计入、取首次顺延前的日期”由这一写法覆盖：离职顺延同样追加派生版本
+ * （triggerBusinessId 非空）沿用人工计划，无需另读 `employment.leave.rescheduled`；排序、到期、迟到窗口、时间轴同日位置
+ * 全部只调用本函数（§5.0A.1 D-1～D-18）。
  */
 export function plannedEffectiveDate(tenantId: string, businessId: SQL, fallback: SQL): SQL {
   return sql`COALESCE((SELECT p.planned_effective_date FROM employment_payload_versions p
       WHERE p.tenant_id=${tenantId} AND p.business_id=${businessId} ORDER BY p.version_no DESC LIMIT 1), ${fallback})`;
+}
+
+/** 读一个业务的计划生效日（`plannedEffectiveDate` 的取值入口）：调用方在已锁定业务的事务内用，没有载荷时取 fallback。 */
+export async function loadPlannedEffectiveDate(
+  tx: Tx,
+  tenantId: string,
+  businessId: string,
+  fallback: string,
+): Promise<string> {
+  const [row] = rowsOf<{ planned: string }>(
+    await tx.execute(
+      sql`SELECT ${plannedEffectiveDate(tenantId, sql`${businessId}::uuid`, sql`${fallback}::date`)}::text AS planned`,
+    ),
+  );
+  return row?.planned ?? fallback;
 }
 
 /** 新记录在时间轴上的位置；shifted 表示当日已有操作更晚的记录，新记录插在它们之前（它们依次后移一位）。 */

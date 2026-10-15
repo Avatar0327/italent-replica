@@ -33,11 +33,8 @@ describe('AC-DM-26：SQL 队列 ≡ 纯函数（含离职与多次迟到顺延�
       for (const kind of EXECUTION_KINDS)
         for (const plannedDate of planned)
           for (const executionDate of executions) {
-            const [row] = resultRows<{ value: string }>(
-              await tx.execute(
-                sql`SELECT ${finalExecutionDateSql(sql`${kind}::text`, sql`${plannedDate}::date`, executionDate)}::text AS value`,
-              ),
-            );
+            const expression = finalExecutionDateSql(sql`${kind}::text`, sql`${plannedDate}::date`, executionDate);
+            const [row] = resultRows<{ value: string }>(await tx.execute(sql`SELECT ${expression}::text AS value`));
             expect(row!.value, `${kind} ${plannedDate} @ ${executionDate}`).toBe(
               finalExecutionDate({ kind, plannedEffectiveDate: plannedDate, lastWorkDate: null, executionDate }),
             );

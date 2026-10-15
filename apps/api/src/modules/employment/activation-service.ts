@@ -35,9 +35,10 @@ export interface ActivationResult {
   readonly suspended: string[];
 }
 
-async function dueQueue(tx: Tx, ctx: EmploymentContext, employeeId: string): Promise<PendingActivation[]> {
+/** 到期项 = 计划生效日 ≤ 租户今天（设计 §5.0A D-4：与排序同一来源，不读载荷日）。 */
+export async function dueQueue(tx: Tx, ctx: EmploymentContext, employeeId: string): Promise<PendingActivation[]> {
   const today = tenantLocalDate(ctx.now, ctx.timezone);
-  return (await pendingActivations(tx, ctx, employeeId)).filter((item) => item.effectiveDate <= today);
+  return (await pendingActivations(tx, ctx, employeeId)).filter((item) => item.plannedDate <= today);
 }
 
 export async function activateDueBusinesses(
