@@ -15,7 +15,13 @@ export const t = {
     disabledProcesses: '已停用的流程',
   },
   status: { not_started: '未开始', running: '进行中', ended: '已结束', terminated: '已终止' } as Record<string, string>,
-  stageStatus: { pending: '待开启', running: '进行中', ended: '已结束', failed: '开启失败' } as Record<string, string>,
+  stageStatus: {
+    pending: '待开启',
+    running: '进行中',
+    ended: '已结束',
+    terminated: '已终止',
+    failed: '开启失败',
+  } as Record<string, string>,
   templateStatus: { draft: '停用', published: '开启' } as Record<string, string>,
   tutorRoles: {
     direct_manager: '直线经理',
