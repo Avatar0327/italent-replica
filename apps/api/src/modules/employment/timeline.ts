@@ -23,12 +23,13 @@ export function operationKey(tenantId: string, businessId: SQL): SQL {
     FROM employment_state_events e WHERE e.tenant_id = ${tenantId} AND e.business_id = ${businessId})`;
 }
 
-/** DEC-195：改到同日后仍按原计划日排序；无改期事件则使用当前业务日期。 */
+/**
+ * 计划生效日的唯一来源（DEC-431①；F-140 约束 1 / 2，DEC-499）：最新载荷版本（按业务内单调的 version_no）的人工计划列。
+ * 人工写日期的版本计划 = 本版本日期，系统顺延等派生版本沿用上一版本（迁移 0130 触发器维护），因此迟到顺延后仍按原计划日
+ * 排序（DEC-195①）；不读 outbox 改期事件，不依赖 created_at / UUID 先后。纯函数镜像见 domain resolvePlannedEffectiveDate。
+ */
 export function plannedEffectiveDate(tenantId: string, businessId: SQL, fallback: SQL): SQL {
-  return sql`COALESCE((SELECT (e.payload->'after'->>'originalEffectiveDate')::date
-    FROM employment_outbox e WHERE e.tenant_id=${tenantId} AND e.business_id=${businessId}
-      AND e.event_type='employment.transfer.rescheduled' ORDER BY e.created_at,e.id LIMIT 1),
-    (SELECT p.effective_date FROM employment_payload_versions p
+  return sql`COALESCE((SELECT p.planned_effective_date FROM employment_payload_versions p
       WHERE p.tenant_id=${tenantId} AND p.business_id=${businessId} ORDER BY p.version_no DESC LIMIT 1), ${fallback})`;
 }
 
