@@ -239,7 +239,7 @@ def progress(d, live):
     分子 = 步骤 PR 已合并或标 done。与上次不同则把上次读数记为 prev，看板显示变化量"""
     merged = (live or {}).get("merged", {})
     done = tot = 0
-    for ln in (d.get("main") or {}).get("lines", []):   # 10-15：只算主线，与 D1+D2+D3 三张卡片之和一致（支撑在页 2，重复项不计）
+    for ln in (d.get("main") or {}).get("lines", []):   # 10-15：算主线（含后补 F 线），与 D1+D2+D3 三张卡片之和一致；页 2 的支撑任务不计，重复项不计
         steps = [s for g in ln.get("groups", []) for s in g["steps"]]
         for st in steps:
             if st.get("s") == "paused" or st.get("dup"):
@@ -287,7 +287,9 @@ def resolve(ln, st):
         ms = "D2"
     else:
         ms = "D1"
-    if lid == "R2E" or k in ("REM-R2a", "REM-R2b", "GAP-R2", "SPLIT-R2", "PRIO-R2"):
+    if st.get("mod"):
+        mod = st["mod"]
+    elif lid == "R2E" or k in ("REM-R2a", "REM-R2b", "GAP-R2", "SPLIT-R2", "PRIO-R2"):
         mod = "R2"
     elif k.startswith("M-"):
         mod = "蓝"
@@ -299,7 +301,11 @@ def resolve(ln, st):
         mod = "底座"
     else:
         mod = "支撑"
-    if k.startswith("REM-") or k.startswith("F-129") or k.startswith("F-131") or k == "UI-ref":
+    if st.get("kind"):
+        kind = st["kind"]
+    elif lid == "F":
+        kind = "后补"
+    elif k.startswith("REM-") or k.startswith("F-129") or k.startswith("F-131") or k == "UI-ref":
         kind = "取证"
     elif k in ("GAP-R2", "SPLIT-R2", "PRIO-R2"):
         kind = "规划"
@@ -310,6 +316,18 @@ def resolve(ln, st):
     else:
         kind = "后端"
     return ms, mod, kind
+
+
+def labels(d):
+    """步骤键 → “D1·R3·前端”：任务序号前统一的前缀（用户 10-15 要求，看板与文字汇报同一格式）。"""
+    out = {}
+    for ln in (d.get("main") or {}).get("lines", []):
+        for g in ln.get("groups", []):
+            for st in g["steps"]:
+                if st.get("s") != "paused" and not st.get("dup"):
+                    ms, mod, kind = resolve(ln, st)
+                    out[st["k"]] = f"{ms}·{mod}·{kind}"
+    return out
 
 
 def mile_rows(d):
@@ -387,7 +405,7 @@ def build(d, nosync):
     lv = live_prs() if not nosync else d.get("_live")
     live = open(os.path.join(HERE, "进行中看板.template.html"), encoding="utf8").read().replace(
         "__DATA__", json.dumps({"main": d.get("main"), "items": d.get("items"), "log": d.get("log", [])[:12],
-                                "live": lv, "prog": progress(d, lv), "mile": mile_rows(d), "msof": ms_of(d)}, ensure_ascii=False))
+                                "live": lv, "prog": progress(d, lv), "mile": mile_rows(d), "msof": ms_of(d), "lbl": labels(d)}, ensure_ascii=False))
     live = live.replace("<section><h2>支撑任务</h2>", "<section hidden><h2>支撑任务</h2>", 1)   # 支撑任务在页 2（L3 深度线），页 1 不显示
     with open(os.path.join(HERE, "进行中看板.html"), "w", encoding="utf8") as f:
         f.write(live)
