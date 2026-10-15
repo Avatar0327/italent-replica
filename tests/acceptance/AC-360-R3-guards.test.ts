@@ -418,12 +418,14 @@ const reasonOf = async (res: Response) =>
   ((await res.clone().json()) as { error: { details?: { reason?: string } } }).error.details?.reason;
 /** 写入并用同一命令 ID 重放，两次响应都交给 check。 */
 async function writeTwice(
-  call: (key: string) => Promise<Response>,
+  call: (key: string, suffix: string) => Promise<Response>,
   status: number,
   check: (body: Record<string, unknown>) => void,
 ) {
   const key = randomUUID();
-  for (const res of [await call(key), await call(key)]) {
+  // 重放沿用同一唯一后缀，保证两次请求内容一致。
+  const suffix = uniqueSuffix();
+  for (const res of [await call(key, suffix), await call(key, suffix)]) {
     expect(res.status, await res.clone().text()).toBe(status);
     check(await json(res));
   }
@@ -535,11 +537,11 @@ const ROUTE_CASES: Record<string, RouteCases> = {
     },
     trimming: async (env) =>
       writeTwice(
-        (key) =>
+        (key, suffix) =>
           admin(env, env.users.tSettings)('POST', '/roles', {
             ifMatch: 0,
             idempotencyKey: key,
-            body: { name: `裁剪${key.slice(0, 4)}` },
+            body: { name: `裁剪${suffix}` },
           }),
         201,
         (body) => expect(body).not.toHaveProperty('displayText'),
@@ -752,11 +754,11 @@ const ROUTE_CASES: Record<string, RouteCases> = {
     },
     trimming: async (env) =>
       writeTwice(
-        (key) =>
+        (key, suffix) =>
           admin(env, env.users.tPersonMobile)('POST', '/people', {
             ifMatch: 0,
             idempotencyKey: key,
-            body: { name: '新人员', email: `m-${key.slice(0, 6)}@example.com` },
+            body: { name: '新人员', email: `m-${suffix}@example.com` },
           }),
         201,
         (body) => expect(body).not.toHaveProperty('mobile'),
@@ -1544,7 +1546,7 @@ const ROUTE_CASES: Record<string, RouteCases> = {
       const target = await env.w.person('导入对象');
       await env.w.object(activity.id, target.id, [env.q.id]);
       await writeTwice(
-        (key) =>
+        (key, suffix) =>
           admin(env, env.users.tRel)('POST', `/activities/${activity.id}/appraisers/import`, {
             ifMatch: 0,
             idempotencyKey: key,
@@ -1555,7 +1557,7 @@ const ROUTE_CASES: Record<string, RouteCases> = {
                   objectEmail: target.email,
                   roleId: env.w.role('customer'),
                   name: '导入客户',
-                  email: `imp-${key.slice(0, 6)}@example.com`,
+                  email: `imp-${suffix}@example.com`,
                 },
               ],
             },
@@ -1573,7 +1575,7 @@ const ROUTE_CASES: Record<string, RouteCases> = {
       const hiddenTarget = await env.w.person('导入对象（看不到关系ID）');
       await env.w.object(hidden.id, hiddenTarget.id, [env.q.id]);
       await writeTwice(
-        (key) =>
+        (key, suffix) =>
           admin(env, env.users.tRelNoId)('POST', `/activities/${hidden.id}/appraisers/import`, {
             ifMatch: 0,
             idempotencyKey: key,
@@ -1584,7 +1586,7 @@ const ROUTE_CASES: Record<string, RouteCases> = {
                   objectEmail: hiddenTarget.email,
                   roleId: env.w.role('customer'),
                   name: '导入客户',
-                  email: `imp-noid-${key.slice(0, 6)}@example.com`,
+                  email: `imp-noid-${suffix}@example.com`,
                 },
               ],
             },
@@ -1802,12 +1804,12 @@ const ROUTE_CASES: Record<string, RouteCases> = {
     trimming: async (env) => {
       const revision = await confirmRevision(env);
       await writeTwice(
-        (key) =>
+        (key, suffix) =>
           env.w.link(env.L.tc)('POST', '/confirmation/appraisers', {
             ifMatch: revision,
             idempotencyKey: key,
             body: {
-              person: { name: '确认加的客户', email: `conf-${key.slice(0, 6)}@example.com` },
+              person: { name: '确认加的客户', email: `conf-${suffix}@example.com` },
               roleId: env.w.role('customer'),
             },
           }),

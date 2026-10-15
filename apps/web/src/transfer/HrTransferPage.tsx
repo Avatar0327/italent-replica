@@ -1,15 +1,31 @@
-import { Alert, Button, Descriptions, Drawer, Input, Space, Tag } from 'antd';
+import { Alert, Button, Space, Tooltip } from 'antd';
 import { useState } from 'react';
-import { ApprovalListPanel } from '../approval/ApprovalPage.js';
-import { transferExamples, type TransferListRow } from '../demo-stubs/transfer.js';
-import { Can, DecisionNote, DetailPage, ListPage, useSession, type PageRequest } from '../foundation/index.js';
+import { useSearchParams } from 'react-router';
+import { Can, DecisionNote, usePermissions, useSession } from '../foundation/index.js';
 import { TransferApplication } from '../self-service/shared/TransferApplication.js';
-import { text as m } from './messages.js';
-import { ReferenceFrame, ReferenceView } from './ReferenceView.js';
-import { TransferDrafts } from './TransferDrafts.js';
+import { hrWriteAccess, type HrFormMode } from './hr-form-model.js';
+import { hrFormText as h, listText as t } from './messages.js';
+import {
+  dropdownTools,
+  enabledTools,
+  isTransferView,
+  toolLabels,
+  transferBanners,
+  transferTools,
+  transferViews,
+  type TransferTool,
+  type TransferView,
+} from './page-model.js';
+import { ReferenceFrame } from './ReferenceView.js';
+import { TransferList } from './TransferList.js';
 import './transfer.css';
 import './hr-transfer.css';
 
+const record = 'TenantBase.EmploymentRecord';
+type FormKind = HrFormMode;
+const isFormKind = (value: string | null): value is FormKind => value === 'apply' || value === 'direct';
+
+/** 调动管理按原站：横向三个视图（?view=），“他人调动申请”“调动”在当前页打开全页表单（?form=）。 */
 export function HrTransferPage() {
   return (
     <ReferenceFrame>
@@ -18,181 +34,117 @@ export function HrTransferPage() {
   );
 }
 function HrTransferContent() {
-  const [tab, setTab] = useState('progress');
-  const [open, setOpen] = useState(false);
+  const [params, setParams] = useSearchParams();
+  const value = params.get('view');
+  const view: TransferView = isTransferView(value) ? value : 'progress';
+  const form = params.get('form');
+  if (isFormKind(form)) return <TransferFormPage kind={form} onBack={() => setParams({ view })} />;
   return (
     <section className="hr-transfer-page">
-      <ReferenceView
-        title={
-          tab === 'mine'
-            ? m.myApplications
-            : tab === 'all'
-              ? m.allRecords
-              : tab === 'completed'
-                ? m.completed
-                : m.inProgress
-        }
-        choices={[
-          { key: 'progress', label: m.inProgress },
-          { key: 'completed', label: m.completed },
-          { key: 'all', label: m.allRecords },
-          { key: 'mine', label: m.myApplications },
-        ]}
-        onChange={setTab}
-        actions={
-          <Can object="TenantBase.EmploymentRecord" button="Transfer.Hr">
-            <Button type="primary" onClick={() => setOpen(true)}>
-              {m.subtitle}
+      <header className="transfer-list-head">
+        <nav className="transfer-views" aria-label={t.views}>
+          {transferViews.map((item) => (
+            <Button
+              key={item.key}
+              type="text"
+              aria-pressed={item.key === view}
+              className={item.key === view ? 'transfer-view transfer-view-active' : 'transfer-view'}
+              onClick={() => setParams({ view: item.key })}
+            >
+              {item.label}
             </Button>
-          </Can>
-        }
-      />
+          ))}
+        </nav>
+        <TransferToolbar view={view} onOpen={(kind) => setParams({ view, form: kind })} />
+      </header>
       <DecisionNote id="transfer" />
-      {tab === 'mine' ? (
-        <>
-          <TransferDrafts />
-          <ApprovalListPanel />
-        </>
-      ) : (
-        <TransferList key={tab} tab={tab} />
-      )}
-      <TransferDrawer open={open} onClose={() => setOpen(false)} />
+      <TransferBanner key={`banner-${view}`} view={view} />
+      <TransferList key={view} view={view} />
     </section>
   );
 }
-function TransferDrawer({ open, onClose }: { open: boolean; onClose(): void }) {
-  const session = useSession();
+/** 工具顺序按视图；只有他人调动申请、调动有现成表单，其余保留位置禁用（下拉项带箭头）。 */
+function TransferToolbar({ view, onOpen }: { view: TransferView; onOpen(kind: FormKind): void }) {
+  const className = (tool: TransferTool) => (dropdownTools.includes(tool) ? 'transfer-tool-dropdown' : undefined);
   return (
-    <Drawer
-      open={open}
-      title={m.subtitle}
-      width={1120}
-      rootClassName="r1c-reference-drawer"
-      onClose={() => onClose()}
-      destroyOnHidden
-    >
+    <Space wrap>
+      {transferTools[view].map((tool) =>
+        isFormKind(tool) && enabledTools.includes(tool) ? (
+          <Can key={tool} object={record} button="Transfer.Hr">
+            <Button type={tool === 'apply' ? 'primary' : 'default'} onClick={() => onOpen(tool)}>
+              {toolLabels[tool]}
+            </Button>
+          </Can>
+        ) : (
+          <Tooltip key={tool} title={t.pendingTool}>
+            <Button disabled className={className(tool)}>
+              {toolLabels[tool]}
+            </Button>
+          </Tooltip>
+        ),
+      )}
+    </Space>
+  );
+}
+/** 原站浅蓝提示右侧可收起、可关闭；常见问题链接没有落地页，保留位置禁用。 */
+function TransferBanner({ view }: { view: TransferView }) {
+  const [open, setOpen] = useState(true);
+  const [collapsed, setCollapsed] = useState(false);
+  const banner = transferBanners[view];
+  if (!open) return null;
+  return (
+    <Alert
+      type="info"
+      className="transfer-banner"
+      closable={{ closeIcon: t.closeMark, 'aria-label': t.closeBanner }}
+      onClose={() => setOpen(false)}
+      message={
+        <div className="transfer-banner-body">
+          <div>
+            {(collapsed ? banner.lines.slice(0, 1) : banner.lines).map((line) => (
+              <p key={line}>{line}</p>
+            ))}
+            {!collapsed && (
+              <Button type="link" disabled>
+                {banner.link}
+              </Button>
+            )}
+          </div>
+          <Button type="link" onClick={() => setCollapsed(!collapsed)}>
+            {collapsed ? t.expand : t.collapse}
+          </Button>
+        </div>
+      }
+    />
+  );
+}
+/**
+ * 原站“调动”“他人调动申请”都是当前页全页长表单，区块相同、底部按钮不同（#333 第 1 轮 P2-1）。
+ * 写权限按任职记录对象的 create 与可编辑字段判断（P2-2）；只有发起按钮 Transfer.Hr 不够。
+ */
+function TransferFormPage({ kind, onBack }: { kind: FormKind; onBack(): void }) {
+  const session = useSession();
+  const permissions = usePermissions(record);
+  const writable = hrWriteAccess(permissions.snapshot.objects[record]);
+  return (
+    <section className="hr-transfer-form-page">
+      <header className="transfer-form-head">
+        <h2>{toolLabels[kind]}</h2>
+        <Button onClick={onBack}>{t.back}</Button>
+      </header>
       <DecisionNote id="transfer-form" />
-      <Alert type="info" message={m.formHint} showIcon />
-      {open && (
+      <Alert type="info" message={kind === 'apply' ? h.applyHint : h.directHint} showIcon />
+      <Can object={record} button="Transfer.Hr">
         <div className="legacy-page r1c-transfer-form">
           <TransferApplication
-            key={`${session.tenantId}/${session.identityKey}`}
+            key={`${session.tenantId}/${session.identityKey}/${kind}`}
             tenantId={session.tenantId}
             initiator="hr"
             hrScope={JSON.stringify([session.tenantId, session.identityKey])}
+            hrForm={{ mode: kind, writable, onCancel: onBack }}
           />
         </div>
-      )}
-    </Drawer>
-  );
-}
-function TransferList({ tab }: { tab: string }) {
-  const [selected, setSelected] = useState<TransferListRow>();
-  const [query, setQuery] = useState('');
-  const [page, setPage] = useState<PageRequest>({ page: 1, pageSize: 15 });
-  const rows = transferExamples().filter(
-    (row) =>
-      (tab === 'all' || (tab === 'completed' ? row.status === 'effective' : row.status !== 'effective')) &&
-      `${row.name} ${row.code}`.includes(query.trim()),
-  );
-  const statuses = { running: m.running, approved: m.approved, effective: m.effectiveStatus };
-  return (
-    <>
-      <>
-        <Alert type="info" showIcon message={m.listHint} />
-        <div className="hr-demo-notice">
-          <Tag color="gold">{m.demo}</Tag>
-          <span>{m.listGap}</span>
-        </div>
-        <div className="r1c-list">
-          <ListPage
-            title={tab === 'all' ? m.allRecords : tab === 'completed' ? m.completed : m.inProgress}
-            data={{ items: rows.slice((page.page - 1) * page.pageSize, page.page * page.pageSize), total: rows.length }}
-            rowKey="id"
-            page={page}
-            onPageChange={setPage}
-            filters={
-              <Input
-                allowClear
-                className="transfer-list-search"
-                aria-label={m.listSearch}
-                placeholder={m.listSearch}
-                value={query}
-                onChange={(event) => {
-                  setQuery(event.target.value);
-                  setPage({ ...page, page: 1 });
-                }}
-              />
-            }
-            columns={[
-              {
-                title: m.employeeName,
-                dataIndex: 'name',
-                render: (value: string, row: TransferListRow) => (
-                  <Button type="link" onClick={() => setSelected(row)}>
-                    {value}
-                  </Button>
-                ),
-              },
-              { title: m.employeeCode, dataIndex: 'code' },
-              { title: m.date, dataIndex: 'effectiveDate' },
-              { title: m.type, dataIndex: 'type' },
-              { title: m.beforeDepartment, dataIndex: 'beforeDepartment' },
-              { title: m.beforePosition, dataIndex: 'beforePosition' },
-              { title: m.afterDepartment, dataIndex: 'department' },
-              { title: m.afterPosition, dataIndex: 'position' },
-              {
-                title: m.approvalStatus,
-                dataIndex: 'status',
-                render: (value: TransferListRow['status']) => (
-                  <Tag color={value === 'effective' ? 'green' : 'blue'}>{statuses[value]}</Tag>
-                ),
-              },
-            ]}
-          />
-        </div>
-      </>
-      {selected && <TransferExampleDetail selected={selected} onClose={() => setSelected(undefined)} />}
-    </>
-  );
-}
-function TransferExampleDetail({ selected, onClose }: { selected: TransferListRow; onClose(): void }) {
-  const statuses = { running: m.running, approved: m.approved, effective: m.effectiveStatus };
-  return (
-    <DetailPage
-      open
-      onClose={onClose}
-      title={selected.name}
-      summary={
-        <>
-          <DecisionNote id="transfer" />
-          <Alert type="info" message={m.demo} description={m.listGap} showIcon />
-          <Space>
-            <Tag>{statuses[selected.status]}</Tag>
-            {selected.code}
-          </Space>
-        </>
-      }
-      sections={[
-        {
-          key: 'transfer',
-          title: m.adjustment,
-          children: (
-            <Descriptions
-              bordered
-              column={2}
-              items={[
-                { key: 'date', label: m.date, children: selected.effectiveDate },
-                { key: 'type', label: m.type, children: selected.type },
-                { key: 'before', label: m.beforeDepartment, children: selected.beforeDepartment },
-                { key: 'after', label: m.afterDepartment, children: selected.department },
-                { key: 'beforePosition', label: m.beforePosition, children: selected.beforePosition },
-                { key: 'afterPosition', label: m.afterPosition, children: selected.position },
-              ]}
-            />
-          ),
-        },
-      ]}
-    />
+      </Can>
+    </section>
   );
 }

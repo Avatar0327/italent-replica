@@ -19,6 +19,7 @@ import {
   type ConfigView,
 } from './AC-TR-scoring-support.js';
 import { errorCode, tenantApi } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 const clock = () => TR_NOW;
@@ -27,7 +28,7 @@ describe.each([
   {
     object: 'scoreRule',
     path: '/score-rules',
-    body: (name = `权限规则${Math.random()}`) => gradeRuleBody({ name }),
+    body: (name = `权限规则${uniqueSuffix()}`) => gradeRuleBody({ name }),
     secret: 'allowUnable',
     nested: 'levels',
     attempt: { allowUnable: true },
@@ -37,7 +38,7 @@ describe.each([
   {
     object: 'moduleGrade',
     path: '/module-grades',
-    body: (name = `权限等级${Math.random()}`) => moduleGradeBody({ name }),
+    body: (name = `权限等级${uniqueSuffix()}`) => moduleGradeBody({ name }),
     secret: 'items',
     nested: 'items',
     attempt: { items: scoreItems(0, 1) },

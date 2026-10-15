@@ -57,6 +57,9 @@ const ENTRIES_BEFORE = [
 // 注释键 → 所属模块
 const NOTES_BEFORE: Record<string, string> = {
   approval: 'approval',
+  'approval-applications': 'approval',
+  'approval-detail': 'approval',
+  'approval-gap': 'approval',
   contracts: 'contracts',
   establishment: 'establishment',
   evaluation: 'evaluation',

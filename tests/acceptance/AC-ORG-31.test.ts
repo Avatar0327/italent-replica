@@ -3,6 +3,7 @@ import { expect, it } from 'vitest';
 import { versions } from './AC-JOB-sequence-support.js';
 import { activationWorld, type ActivationWorld } from './AC-TRF-activation-support.js';
 import { tenantApi } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const database = useTestDb();
 function orgApi(w: ActivationWorld) {
@@ -22,7 +23,7 @@ async function rename(w: ActivationWorld, org = w.from, effectiveDate = '2026-10
         {
           sourceCode: org.id,
           orgId: org.id,
-          code: `I${org.id.slice(0, 8)}`,
+          code: `I${uniqueSuffix()}`,
           name: `${org.name}改名`,
           parentId: w.session.tenant.id,
           expectedRevision: org.revision,
