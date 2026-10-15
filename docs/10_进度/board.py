@@ -239,10 +239,10 @@ def progress(d, live):
     分子 = 步骤 PR 已合并或标 done。与上次不同则把上次读数记为 prev，看板显示变化量"""
     merged = (live or {}).get("merged", {})
     done = tot = 0
-    for ln in (d.get("main") or {}).get("lines", []) + (d.get("main") or {}).get("support", []):
-        steps = [s for g in ln.get("groups", []) for s in g["steps"]] if ln.get("groups") else ln.get("steps", [])
+    for ln in (d.get("main") or {}).get("lines", []):   # 10-15：只算主线，与 D1+D2+D3 三张卡片之和一致（支撑在页 2，重复项不计）
+        steps = [s for g in ln.get("groups", []) for s in g["steps"]]
         for st in steps:
-            if st.get("s") == "paused":
+            if st.get("s") == "paused" or st.get("dup"):
                 continue
             tot += 1
             done += bool(st.get("s") == "done" or (st.get("pr") and str(st["pr"]) in merged))
