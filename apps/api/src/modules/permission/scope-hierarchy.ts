@@ -109,7 +109,7 @@ export async function expandScopeRoots(tx: Tx, tenantId: string, asOf: string, r
  * 范围根展开成**去重后**的组织 ID 集合，有界保护按去重后的组织数计数（#226 第 2 轮 P2-1）。
  * `expandScopeRoots` 保留“根 × 下级”的展开行，重叠的根（如一条组织链上的多个上级都勾“包含下级”）会让同一组织被不同祖先重复计数，
  * 覆盖 2,110 个组织的合法选择也会撞 20,000 行保护；这里递归时只以（维度，组织）去重，勾了“包含下级”的根共用一次遍历，
- * 不勾的根直接并入。只给需要“集合”语义的调用方用（评定活动适用范围判重复）；权限侧现有调用方仍用 `expandScopeRoots`，行为不变。
+ * 不勾的根直接并入。用于评定活动适用范围判重复与 TEvaluation 权限范围（DEC-455④ / F-107）；其他应用仍用 `expandScopeRoots`。
  * 与 `scopeHierarchyReader` 同口径（DEC-146）：维度须已开启，范围根与下级按 `asOf` 当天的组织版本取，停用的组织也展开。
  */
 export async function expandScopeOrgSet(
@@ -144,9 +144,11 @@ export async function expandScopeOrgSet(
           AND h.parent_org_id=tree.org_id
         JOIN current_versions v ON v.id=h.version_id
       )
-      SELECT org_id FROM (SELECT org_id FROM tree LIMIT ${MAX_SCOPE_IDS + 1}) bounded
-      UNION
-      SELECT v.org_id FROM roots q JOIN current_versions v ON v.org_id=q.org_id
+      SELECT org_id FROM (
+        SELECT org_id FROM tree
+        UNION
+        SELECT v.org_id FROM roots q JOIN current_versions v ON v.org_id=q.org_id
+      ) distinct_orgs LIMIT ${MAX_SCOPE_IDS + 1}
     `),
   );
   if (rows.length > MAX_SCOPE_IDS) throw new AppError('PAYLOAD_TOO_LARGE', '数据范围超过有界解析上限');
