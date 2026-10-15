@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 
 const SRC = resolve('apps/web/src');
 const SMOKE = resolve('apps/web/smoke');
-const pages = ['succession', 'idp', 'contracts', 'org', 'job', 'evaluation', 'survey360'] as const;
+const pages = ['succession', 'idp', 'contracts', 'org', 'job', 'evaluation', 'survey360', 'approval'] as const;
 const read = (file: string) => readFileSync(join(SRC, file), 'utf8');
 const sources = (dir: string) =>
   readdirSync(join(SRC, dir))
@@ -21,9 +21,10 @@ describe('AC-FE-F142 页面不留重复实现', () => {
   it('命令存储只经内核 useCommandForm：页面不自己订阅存储、不自己按会话拼键', () => {
     expect(offenders(/useSyncExternalStore/)).toEqual([]);
     expect(offenders(/JSON\.stringify\(\[session\.tenantId/)).toEqual([]);
-    // 合同的模块级存储只交给 useCommandForm(resource, store)；评定旧创建兼容层只剩测试引用（AC-FE-R3b-rework）。
-    expect(offenders(/createFormStore\(/, ['contracts/commands.ts', 'evaluation/create-commands.ts'])).toEqual([]);
-    expect(read('contracts/commands.ts')).toMatch(/useCommandForm\(resource, store\)/);
+    // 合同、审批的模块级存储只交给 useCommandForm(resource, store)；评定旧创建兼容层只剩测试引用（AC-FE-R3b-rework）。
+    const stores = ['contracts/commands.ts', 'approval/commands.ts'];
+    expect(offenders(/createFormStore\(/, [...stores, 'evaluation/create-commands.ts'])).toEqual([]);
+    for (const file of stores) expect(read(file), file).toMatch(/useCommandForm\(resource, store\)/);
   });
   it('字段投影走 projectFields：页面不再按字段 ?? null 自拼投影', () => {
     expect(offenders(/\.map\(\((\w+)\) => \[\1, [^;\n]*\?\? null\]\)/)).toEqual([]);
@@ -46,6 +47,9 @@ describe('AC-FE-F142 页面不留重复实现', () => {
     expect(read('job/JobEditor.tsx')).toMatch(/resource: slotKey\(/);
     expect(read('evaluation/useRecordForm.ts')).toMatch(/useCommandForm\(slotKey\(/);
     expect(read('evaluation/CreateEntry.tsx')).toMatch(/useCommandForm\(slotKey\(/);
+    // F-147：审批动作与待办存进内核槽上下文，读取走内核 lockedContext，页面不再自写一份。
+    expect(read('approval/action-command.ts')).toMatch(/lockedContext\(/);
+    expect(read('approval/action-command.ts')).not.toMatch(/function lockedContext/);
   });
   it('ConflictCommands 只在内核里实现：继任页面只留删除按钮', () => {
     expect(offenders(/createContext/)).toEqual([]);
@@ -87,6 +91,10 @@ const smokes: Record<(typeof pages)[number], string[]> = {
   survey360: [
     'AC-FE-F123-R2 360 冲突重读启用后只读评价形式显示最新值、可编辑名称保留草稿',
     'AC-FE-R3b-R2-01 360 结果未知关闭重开及切换页签不能生成第二个创建命令',
+  ],
+  approval: [
+    'AC-FE-F147-07 转交冲突重读后关闭：槽里仍记着转交，其他动作保持禁用、提示不消失',
+    'AC-FE-R2a-17b 催办结果未知的锁存在页面层：切换视图再回来仍锁定，不生成新命令',
   ],
 };
 
