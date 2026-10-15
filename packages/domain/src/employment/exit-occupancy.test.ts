@@ -56,6 +56,8 @@ function application(
     capacityId: null,
     from,
     to,
+    plannedDate: from,
+    operationKey: 1,
     ...extra,
   };
 }
@@ -279,6 +281,111 @@ describe('exitOccupancy：P 投影（编制占用，§6B.1 / §6）', () => {
   });
 });
 
+describe('P 投影：多笔申请按 main 的逐笔顺序累计（projectedMembers）', () => {
+  const records = [record('rec-a', 'A', '2026-09-01', null, { kind: 'hire' })];
+  const submitted = { transferIn: 'submitted', transferOut: 'submitted' } as const;
+  const approvedOnly = { transferIn: 'approved', transferOut: 'approved' } as const;
+  const t1 = application('app-1', 'B', '2026-10-25', null);
+  const t2 = application('app-2', 'C', '2026-11-01', null, { operationKey: 2 });
+  const p = (input: Partial<ExitOccupancyInput>) => view(exitOccupancy({ ...empty, records, ...input }).p);
+
+  it('不同日期：后序申请扣掉此前累计的预占（T1 10-25 调入 B、T2 11-01 调入 C → B 只到 11-01）', () => {
+    const expected = ['A [2026-09-01, 2026-10-25)', 'B [2026-10-25, 2026-11-01)', 'C [2026-11-01, ∞)'];
+    expect(p({ applications: [t1, t2] })).toEqual(expected);
+    expect(p({ applications: [t2, t1] })).toEqual(expected);
+  });
+
+  it('不同日期：撤销 approved 离职后的 ΔP 里 B 是 [10-25, 11-01)，不是 [10-25, ∞)', () => {
+    const applications = [t1, t2];
+    const result = exitOccupancy({ ...empty, records, applications, exits: [exit('approved')] });
+    const after = exitOccupancy({ ...empty, records, applications });
+    expect(view(newlyOccupied(result.p, after.p))).toEqual([
+      'A [2026-10-06, 2026-10-25)',
+      'B [2026-10-25, 2026-11-01)',
+      'C [2026-11-01, ∞)',
+    ]);
+  });
+
+  describe('同日：先后由计划日、再由操作序号决定，与数组顺序、业务 ID 大小无关', () => {
+    const sameDay = (id1: string, id2: string, extra1 = {}, extra2 = {}) => [
+      application(id1, 'B', '2026-10-25', null, { operationKey: 1, ...extra1 }),
+      application(id2, 'C', '2026-10-25', null, { operationKey: 2, ...extra2 }),
+    ];
+
+    it.each([
+      ['业务 ID 与操作序号同序', 'app-a', 'app-z'],
+      ['业务 ID 与操作序号反序（UUID 不能决定先后）', 'app-z', 'app-a'],
+    ])('操作序号小的先处理，后者扣掉前者：%s', (_name, id1, id2) => {
+      const applications = sameDay(id1, id2);
+      const expected = ['A [2026-09-01, 2026-10-25)', 'C [2026-10-25, ∞)'];
+      expect(p({ applications })).toEqual(expected);
+      expect(p({ applications: [...applications].reverse() })).toEqual(expected);
+    });
+
+    it('计划日更早的先处理，哪怕操作序号更大', () => {
+      const applications = sameDay(
+        'app-1',
+        'app-2',
+        { plannedDate: '2026-10-20', operationKey: 9 },
+        { plannedDate: '2026-10-22' },
+      );
+      // app-1 计划日 10-20 先处理；app-2（C）后处理并扣掉 B
+      expect(p({ applications })).toEqual(['A [2026-09-01, 2026-10-25)', 'C [2026-10-25, ∞)']);
+      const reversed = sameDay(
+        'app-1',
+        'app-2',
+        { plannedDate: '2026-10-22', operationKey: 1 },
+        { plannedDate: '2026-10-20', operationKey: 2 },
+      );
+      // app-2（C）计划日更早先处理，app-1（B）后处理并扣掉 C
+      expect(p({ applications: reversed })).toEqual(['A [2026-09-01, 2026-10-25)', 'B [2026-10-25, ∞)']);
+    });
+
+    it('没有操作序号（正在落地的直接业务）视为最新，排最后', () => {
+      const applications = sameDay('app-1', 'app-2', { operationKey: null }, { operationKey: 5 });
+      expect(p({ applications })).toEqual(['A [2026-09-01, 2026-10-25)', 'B [2026-10-25, ∞)']);
+    });
+  });
+
+  describe('控编时机组合', () => {
+    it('transferIn = transferOut = approved：只有已批准的申请计入；审批中的既不预占也不扣出', () => {
+      const approved1 = { ...t1, stage: 'approved' } as const;
+      expect(p({ applications: [approved1, t2], timings: approvedOnly })).toEqual([
+        'A [2026-09-01, 2026-10-25)',
+        'B [2026-10-25, ∞)',
+      ]);
+      const approved2 = { ...t2, stage: 'approved' } as const;
+      expect(p({ applications: [t1, approved2], timings: approvedOnly })).toEqual([
+        'A [2026-09-01, 2026-11-01)',
+        'C [2026-11-01, ∞)',
+      ]);
+    });
+
+    it('transferIn = submitted、transferOut = approved：审批中的申请只预占不扣出，两笔都预占、原岗位不被扣', () => {
+      expect(p({ applications: [t1, t2], timings: { transferIn: 'submitted', transferOut: 'approved' } })).toEqual([
+        'A [2026-09-01, ∞)',
+        'B [2026-10-25, ∞)',
+        'C [2026-11-01, ∞)',
+      ]);
+    });
+
+    it('transferIn = approved、transferOut = submitted：审批中的申请只扣出不预占，后序申请照样扣掉此前累计的预占', () => {
+      const approved1 = { ...t1, stage: 'approved' } as const;
+      // T1 已批准：扣出 A、预占 B；T2 审批中：只扣出（扣掉 A 与 B 在 11-01 之后的部分），不预占 C
+      expect(
+        p({ applications: [approved1, t2], timings: { transferIn: 'approved', transferOut: 'submitted' } }),
+      ).toEqual(['A [2026-09-01, 2026-10-25)', 'B [2026-10-25, 2026-11-01)']);
+    });
+  });
+
+  it('离职预减在逐笔累计之后统一扣：R 之后的预占与累计结果都不计', () => {
+    expect(p({ applications: [t1, t2], exits: [exit('approved', { releaseDate: '2026-10-28' })] })).toEqual([
+      'A [2026-09-01, 2026-10-25)',
+      'B [2026-10-25, 2026-10-28)',
+    ]);
+  });
+});
+
 describe('newlyOccupied：操作前后差集，§6B.3 逐行', () => {
   const aRecord = (to: string | null) => record('rec-a', 'A', '2026-09-01', to, { kind: 'hire' });
   const future = record('rec-t', 'B', '2026-10-25', null);
@@ -391,13 +498,21 @@ describe('newlyOccupied：操作前后差集，§6B.3 逐行', () => {
     expect(delta(before, after)).toEqual({ o: [], p: [] });
   });
 
-  it('#6 离职落地时作废在途申请：预占段消失 = 只有缩小，ΔP 为空，缩小段在反向差集里', () => {
-    const records = [aRecord(null)];
-    const applications = [application('app-t', 'B', '2026-10-25', null)];
-    const before = exitOccupancy({ ...empty, records, applications });
-    const after = exitOccupancy({ ...empty, records });
-    expect(newlyOccupied(before.p, after.p).map((s) => s.departmentId)).toEqual(['A']);
-    expect(view(newlyOccupied(after.p, before.p))).toEqual(['B [2026-10-25, ∞)']);
+  it('#6 离职落地（approved → effective）时作废在途申请：截断后的时间轴、申请消失，ΔO、ΔP 均为空', () => {
+    const before: ExitOccupancyInput = {
+      ...empty,
+      records: [aRecord(null)],
+      applications: [application('app-t', 'B', '2026-10-25', null, { stage: 'approved' })],
+      exits: [exit('approved')],
+    };
+    const after: ExitOccupancyInput = {
+      ...empty,
+      records: [aRecord('2026-10-21'), record('rec-leave', 'A', '2026-10-21', null, { kind: 'leave' })],
+      applications: [],
+      exits: [exit('effective')],
+    };
+    expect(view(exitOccupancy(before).p)).toEqual(['A [2026-09-01, 2026-10-06)']);
+    expect(delta(before, after)).toEqual({ o: [], p: [] });
   });
 
   it('#8 审批中离职照常计入：作为停用计数的基线，排定 / 作废离职前后都不变', () => {
