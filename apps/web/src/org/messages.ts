@@ -102,6 +102,72 @@ export const pageText = {
   personHint: '输入姓名搜索',
   personFailed: '候选人员加载失败或无权限',
   hiddenPerson: '（不在可见范围）',
+  moreActions: '更多操作',
+  import: '导入',
+  listHint:
+    '可在此页面新增组织；可点击部门名称进入详情页面，进行【编辑】、【变更】、【停用】组织等操作；' +
+    '也可在列表行内点击【新建下级】、【编辑】，或在【更多】中【变更】、【停用】组织。',
+  // 原站变更弹窗顶部说明（B2_09）。
+  changeNotice:
+    '1、变更组织后，将新增该组织的组织变更记录 ' +
+    '2、若变更名称或行政上级，将结束该组织及其下级组织内人员的原任职，并新增开始日期为变更日期的任职记录',
+  disableNotice: '点击保存之前请仔细确认以下信息，保存后该组织的调整操作即刻按照所选日期生效',
+  createNotice: '点击保存之前请仔细确认以下信息，保存后系统即刻建立新组织',
+  notice: '说明',
+  // 原站新建 / 变更 / 停用弹窗的字段名（B2_07–B2_09），与列表、详情的叫法不同。
+  disableDate: '停用日期',
+  disableTarget: '停用组织',
+  changeDate: '变更生效日期',
+  formCode: '编码',
+  formName: '名称',
+  formShortName: '简称',
+  workplace: '工作地',
+  displayOrder: '显示顺序',
+  isVirtual: '虚拟组织',
+};
+
+/** 原站「设置显示字段」弹窗（B2_03）。 */
+export const columnText = {
+  columns: '列设置',
+  columnTitle: '设置显示字段',
+  searchFields: '搜索字段',
+  allFields: '全部字段',
+  listFields: '当前列表字段',
+  selectedFieldsLabel: '已选字段',
+  selectedFields: (n: number, total: number) => `已选字段 ${n}/${total}`,
+  restoreDefault: '恢复默认',
+  localColumns: '列设置仅在本次页面会话中生效',
+  cancel: '取消',
+  confirm: '确定',
+};
+
+/** 组织导入：按模板 JSON 整批提交，任一行冲突整批不保存（apps/api 组织导入契约）。 */
+export const importText = {
+  title: '导入组织',
+  file: '导入文件',
+  pick: '选择文件',
+  template: '下载导入模板',
+  hint: '按模板填写后上传 JSON 文件；单次最多 100 行，任一行校验失败整批不保存。',
+  required: '请选择导入文件',
+  loaded: (n: number) => `已读取 ${n} 行`,
+  invalidJson: '文件不是有效的 JSON，请按模板填写',
+  noRows: '文件中没有 rows 数据行',
+  tooMany: (limit: number) => `单次最多导入 ${limit} 行，请拆分后再导入`,
+  rowInvalid: (row: number) => `第 ${row} 行不是对象`,
+  rowMissing: (row: number, field: string) => `第 ${row} 行缺少 ${field}`,
+  rowOperation: (row: number, operation: string) => `第 ${row} 行需要${operation}组织的权限，当前无权${operation}`,
+  rowField: (row: number, field: string) => `第 ${row} 行的 ${field} 列无写入权限或不是导入列`,
+  operations: { create: '新建', update: '更新' },
+  reading: '正在读取文件…',
+  rereadInvalid: '组织最新版本读取结果无效',
+  result: '导入结果',
+  sourceCode: '原系统编码',
+  code: '机构编码',
+  status: '结果',
+  reason: '说明',
+  statuses: { created: '新建', updated: '更新', conflict: '冲突' } as Record<string, string>,
+  close: '关闭',
+  saved: '导入成功，列表已刷新。',
 };
 
 /** 原站「启用的组织」列表列名。 */
@@ -109,6 +175,7 @@ export const listText = {
   code: '机构ID',
   establishedOn: '建立日期',
   stopDate: '禁用日期',
+  enabled: '状态',
 };
 /** 原站组织单元详情的字段名与上级组织分区。 */
 export const detailText = {

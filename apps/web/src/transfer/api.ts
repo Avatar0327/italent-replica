@@ -124,12 +124,19 @@ export function transferBody(model: TransferFormModel, action: TransferAction) {
     ...(linkage ? { linkage } : {}),
   };
 }
-export function saveTransfer(tenantId: string, model: TransferFormModel, action: TransferAction, commandId: string) {
+/** revision 缺省取预览的员工版本；HR 冲突重读核对后由 F-142 内核给出最新版本。 */
+export function saveTransfer(
+  tenantId: string,
+  model: TransferFormModel,
+  action: TransferAction,
+  commandId: string,
+  revision = model.preview!.employeeRevision,
+) {
   const body = transferBody(model, action);
   return transferRequest<TransferBusiness>(tenantId, `${TRANSFER_API}/employees/${model.employeeId}`, {
     method: 'POST',
     body: JSON.stringify(body),
-    headers: { 'if-match': String(model.preview!.employeeRevision), 'idempotency-key': commandId },
+    headers: { 'if-match': String(revision), 'idempotency-key': commandId },
   });
 }
 export function submitSavedTransfer(tenantId: string, business: TransferBusiness, commandId: string) {

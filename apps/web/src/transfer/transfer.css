@@ -171,6 +171,14 @@ body {
   color: #165a42;
   background: #eaf6f0;
 }
+/* F-153：带出暂存提示里的“点击清除”按原站显示为文字链接。 */
+.transfer-notice .transfer-link {
+  padding: 0;
+  border: 0;
+  color: #1677ff;
+  background: none;
+  cursor: pointer;
+}
 @media (max-width: 850px) {
   .transfer-page {
     padding: 16px;
