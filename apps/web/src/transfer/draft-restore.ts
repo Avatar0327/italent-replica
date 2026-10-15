@@ -20,6 +20,7 @@ export interface DraftSnapshot {
 type Json = Record<string, unknown>;
 const isObject = (value: unknown): value is Json =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
+const isAbsent = (value: unknown): value is null | undefined => value === null || value === undefined;
 const optionalText = (value: unknown) => (typeof value === 'string' && value ? value : undefined);
 function invalid(): never {
   throw new Error('invalid transfer draft');
@@ -30,7 +31,7 @@ export function parseDraft(id: string, employeeId: string, business: unknown, li
   if (!isObject(business) || business.id !== id || business.employeeId !== employeeId) invalid();
   if (business.status !== 'draft') return null;
   if (!Number.isInteger(business.revision) || !isObject(business.fields)) invalid();
-  if (business.customFields != null && !isObject(business.customFields)) invalid();
+  if (!isAbsent(business.customFields) && !isObject(business.customFields)) invalid();
   if (!isObject(linkage) || linkage.businessId !== id || linkage.revision !== business.revision) invalid();
   const effectiveDate = optionalText(business.effectiveDate);
   const formId = optionalText(business.formId);
@@ -48,7 +49,7 @@ export function parseDraft(id: string, employeeId: string, business: unknown, li
 }
 
 function dutyLinkage(duty: unknown): Partial<LinkageDraft> {
-  if (duty == null) return {};
+  if (isAbsent(duty)) return {};
   if (!isObject(duty) || !Array.isArray(duty.subordinates) || !Array.isArray(duty.orgRoles)) invalid();
   const subordinates = duty.subordinates.filter(isObject);
   const orgRoles = duty.orgRoles.filter(isObject);
@@ -63,7 +64,7 @@ function dutyLinkage(duty: unknown): Partial<LinkageDraft> {
 }
 /** GET /transfers/:id/linkage 的 options → 表单联动草稿；被隐藏（未返回）的项保持默认。 */
 export function linkageFromOptions(options: unknown): LinkageDraft {
-  if (options == null) return emptyLinkage;
+  if (isAbsent(options)) return emptyLinkage;
   if (!isObject(options)) invalid();
   const { contract, onTrial, handover } = options;
   return {
