@@ -270,7 +270,7 @@ def progress(d, live):
     return {"done": done, "tot": tot, "prev": rec.get("prev"), "since": rec["cur"][2], "ms": milestones(d, merged)}
 
 
-MS_DEF = {"D1": {"t": "D1 · R1+R3 可演示", "dl": "2026-10-15"},
+MS_DEF = {"D1": {"t": "D1 · R1+R3 可演示", "dl": "2026-10-15", "eta": "预计 15:30Z 合入（DEC-535：F-132 快照急修中）"},
           "D2": {"t": "D2 · R1+R2+R3 完整演示版（在 D1 上加 R2）", "dl": "2026-10-19"},
           "D3": {"t": "D3 · 绿 + 蓝全模块", "dl": "2026-10-31"}}
 D3_R2 = {"BE-12", "BE-13", "FE-R2f"}   # 人事分析：蓝色、可先接桩，不影响演示 → D3（用户 10-14 决定）
@@ -360,7 +360,7 @@ def ms_of(d):
 
 
 def milestones(d, merged):
-    out = {k: {"t": v["t"], "dl": v["dl"], "done": 0, "act": 0, "todo": 0, "tot": 0} for k, v in MS_DEF.items()}
+    out = {k: {"t": v["t"], "dl": v["dl"], "eta": v.get("eta", ""), "done": 0, "act": 0, "todo": 0, "tot": 0} for k, v in MS_DEF.items()}
     for r in mile_rows(d):
         st, m = r["st"], out[r["ms"]]
         m["tot"] += 1

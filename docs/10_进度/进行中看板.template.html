@@ -206,7 +206,7 @@ if (MSX0 && DATA.page !== "l3") {
   document.getElementById("lines").innerHTML = ["D1", "D2", "D3"].map(D => {
     const m = MSX0[D], n = dd0(m.dl);
     const parts = (M.lines || []).map(l => { const f = filt(l, D); if (!f.groups.length) return ""; return L3IDS.includes(l.id) ? block(f, true) : block(f); }).join("");
-    return `<div class="dsec" id="sec-${D}"><div class="dh"><span class="dn">${esc(m.t)}</span><span class="dp">${m.done}/${m.tot} 已合并</span><span class="dd">${esc(m.dl.slice(5))} 截止 · ${n >= 0 ? "还有 " + n + " 天" : "已逾期 " + (-n) + " 天"}</span></div>${parts || `<div class="pre">没有任务。</div>`}</div>`;
+    return `<div class="dsec" id="sec-${D}"><div class="dh"><span class="dn">${esc(m.t)}</span><span class="dp">${m.done}/${m.tot} 已合并</span><span class="dd">${esc(m.dl.slice(5))} 截止 · ${n >= 0 ? "还有 " + n + " 天" : "已逾期 " + (-n) + " 天"}${m.eta ? " · " + esc(m.eta) : ""}</span></div>${parts || `<div class="pre">没有任务。</div>`}</div>`;
   }).join("");
 } else {
   document.getElementById("lines").innerHTML = (M.lines || []).map(b => block(b)).join("");
@@ -221,7 +221,7 @@ if (MILE && MSX) {
     const modTot = {}, modDone = {};
     rows.forEach(r => { modTot[r.mod] = (modTot[r.mod] || 0) + 1; if (stepState(r.st).s === "done") modDone[r.mod] = (modDone[r.mod] || 0) + 1; });
     const mods = ORDER.filter(o => modTot[o]).map(o => o + " " + (modDone[o] || 0) + "/" + modTot[o]).join(" · ");
-    return `<div class="kpi dcard" onclick="var e=document.getElementById('sec-${k}');if(e)e.scrollIntoView({behavior:'smooth'})" title="点一下跳到 ${k} 分区" style="cursor:pointer;padding:8px 12px"><div style="color:var(--ink);font-weight:600;font-size:13px">${esc(m.t)}</div><div class="mbig">${m.done}/${m.tot}<small>已合并 / 计划（${pct}%）</small></div><div>${esc(mods)}</div><div><b>${m.act}</b> 在审 / 返工　<b>${m.todo}</b> 未开工</div><div>${esc(m.dl.slice(5))} 截止　<b style="color:${n <= 1 ? "var(--bad)" : "var(--ink)"}">${n >= 0 ? "还有 " + n + " 天" : "已逾期 " + (-n) + " 天"}</b></div></div>`;
+    return `<div class="kpi dcard" onclick="var e=document.getElementById('sec-${k}');if(e)e.scrollIntoView({behavior:'smooth'})" title="点一下跳到 ${k} 分区" style="cursor:pointer;padding:8px 12px"><div style="color:var(--ink);font-weight:600;font-size:13px">${esc(m.t)}</div><div class="mbig">${m.done}/${m.tot}<small>已合并 / 计划（${pct}%）</small></div><div>${esc(mods)}</div><div><b>${m.act}</b> 在审 / 返工　<b>${m.todo}</b> 未开工</div><div>${esc(m.dl.slice(5))} 截止　<b style="color:${n <= 1 ? "var(--bad)" : "var(--ink)"}">${n >= 0 ? "还有 " + n + " 天" : "已逾期 " + (-n) + " 天"}</b></div>${m.eta ? `<div style="color:var(--warn,var(--ink))">${esc(m.eta)}</div>` : ""}</div>`;
   }).join("");
 }
 document.getElementById("support").innerHTML = (M.support || []).map(block).join("");
