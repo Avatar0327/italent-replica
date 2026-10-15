@@ -1,12 +1,12 @@
 // F-142（DEC-502②）：冲突恢复命令从继任页面上收进内核（原 succession/conflict.tsx，DEC-431①）。
-import { createContext, useContext, useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import type { Command } from '../client.js';
 import { ui } from '../messages.js';
-import { useSession } from '../Session.js';
+import { forAction } from './action.js';
 import { messages } from './messages.js';
 import { slotKey } from './slot.js';
 import type { Latest, Values } from './store.js';
-import { FormCommands, useCommandForm } from './useCommandForm.js';
+import { FormCommands, usePinnedCommand } from './useCommandForm.js';
 
 /** 页面手里的对象快照：values 是全量 DTO（不只是表单字段），提交时未改项从这里取。 */
 export interface Snapshot {
@@ -32,16 +32,9 @@ export interface Run {
 export const validObject = (item: { id?: string; revision?: number }) =>
   typeof item.id === 'string' && item.id !== '' && Number.isSafeInteger(item.revision) && (item.revision ?? -1) >= 0;
 
-/** 恢复槽（稳定原单路径，不含版本）→ 结果未知的命令所在条目。挂在页面根部，关弹窗、刷新列表都不丢。 */
-const Pins = createContext<Map<string, string> | undefined>(undefined);
-/** 冲突恢复命令的 Provider：表单状态之外再持有结果未知的钉住表。放在页面根部。 */
+/** 冲突恢复命令的 Provider，放在页面根部；结果未知的钉住表由内核存储持有（F-147）。 */
 export function ConflictCommands({ children }: { children: ReactNode }) {
-  const [pins] = useState(() => new Map<string, string>());
-  return (
-    <FormCommands>
-      <Pins.Provider value={pins}>{children}</Pins.Provider>
-    </FormCommands>
-  );
+  return <FormCommands>{children}</FormCommands>;
 }
 
 /**
@@ -49,33 +42,31 @@ export function ConflictCommands({ children }: { children: ReactNode }) {
  * 409 与结果未知分开处理（claude_fe_rules g）：
  * - 409 冲突：本次尝试按对象版本记一个条目；弹窗内“重读最新版本”核对差异后按最新版本重提。
  *   关闭后列表刷新、重开拿到新版本即是新条目，已确认失败的旧尝试不再挡住保存。新建没有版本，条目就是集合路径。
- * - 结果未知：写入可能已成功、版本已变，换条目就等于换新命令再写一次。所以提交时先把恢复槽（slotKey，
- *   稳定原单路径）钉到本次条目；结果未知就一直钉着，关闭重开、换入口、读回新版本也仍是原命令、仍锁定。
+ * - 结果未知：写入可能已成功、版本已变，换条目就等于换新命令再写一次。所以提交时内核先把恢复槽（slotKey，
+ *   稳定原单路径）钉到本次条目（usePinnedCommand）；结果未知就一直钉着，关闭重开、换入口、读回新版本也仍是原命令、仍锁定。
+ * - action 是本入口的动作（编辑 / 结束 / 删除），记进槽上下文：同一记录上别的动作未确认时本入口锁定（forAction）。
  * - 提交时只有用户改过的字段（edited）取表单值，其余取 full（读回的最新全量），不拿打开时的旧值覆盖别人的修改。
  * - 本地校验（必填、上限）要在 run 之前抛出：send 里抛的错会被内核判为结果未知并锁住。
  */
-export function useConflictCommand(resource: string, current: Snapshot, read?: () => Promise<Latest>) {
-  const session = useSession();
-  const pins = useContext(Pins);
-  if (!pins) throw new Error('ConflictCommands provider required');
+export function useConflictCommand(
+  resource: string,
+  current: Snapshot,
+  read?: () => Promise<Latest>,
+  action: Values = {},
+) {
   const objects = current.objects ?? ('id' in current ? [{ id: current.id, revision: current.revision }] : []);
   // 对象命令的 id / 版本缺失或无效（如被字段权限裁剪）时不能落到新建槽：否则结果未知会锁住所有新建入口。
   const invalid = !objects.every(validObject);
-  const scope = (name: string) => JSON.stringify([session.tenantId, session.identityKey, name]);
   const objectSlots = invalid ? [] : objects.map((item) => slotKey(resource, item.id!));
   const slots = objects.length ? objectSlots : [slotKey(resource)];
   const attempt = objects.length ? `${slots.join(',')}@${objects.map((item) => item.revision).join(',')}` : slots[0]!;
-  // '#' 不会出现在 slotKey 里，无效命令的条目不与任何恢复槽重名，也从不提交。
-  const key = invalid
-    ? `${slotKey(resource)}#invalid`
-    : (slots.map((slot) => pins.get(scope(slot))).find((pinned) => pinned !== undefined) ?? attempt);
-  const command = useCommandForm(key);
+  // '#' 不会出现在 slotKey 里，无效命令的条目不与任何恢复槽重名，也从不提交、从不钉槽。
+  const pinned = usePinnedCommand(invalid ? [] : slots, invalid ? `${slotKey(resource)}#invalid` : attempt);
+  const command = forAction(pinned, action);
   const full = command.state?.latest?.values ?? current.values;
   const reload = read && current.id !== undefined ? () => command.reread(read) : undefined;
   const run = async ({ values, editableFields, send }: Run) => {
     if (invalid) throw new Error(messages.invalidObject);
-    // 先钉再发：提交途中关掉弹窗，重开时也落在同一个条目上。
-    slots.forEach((slot) => pins.set(scope(slot), key));
     const outcome = await command.submit({
       values,
       baseline: current.values,
@@ -85,7 +76,6 @@ export function useConflictCommand(resource: string, current: Snapshot, read?: (
       patchOnly: current.id !== undefined,
       send: (request) => send({ edited: request.body, command: request }),
     });
-    if (outcome.status !== 'unknown') slots.forEach((slot) => pins.delete(scope(slot)));
     if (outcome.status !== 'done') throw outcome.error ?? new Error(ui.failed);
     command.clear();
   };

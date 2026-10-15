@@ -2,11 +2,12 @@
  * 阶段（子流程实例）的开启与结束（docs/02_业务建模/28 IDP-R1～R4；Q-M0-115②；PR 描述 K-06 / K-08 / K-33 / K-41）。
  * - 一个阶段 = 一条审批实例，按子流程**指定的**审批流程发起（startSpecified，DEC-017 不跨流程兜底）；
  * - 开启失败（审批流程已废弃、首节点没有处理人、异常管理员不可用等）记 failed、次数与原因（DEC-052），调度不自动重试；
- * - 实例完成 = 阶段结束；下一段“自动、无规则”立即开启（保存点内，失败只记开启失败）；最后一段结束 = 计划已结束。
+ * - 实例完成 = 阶段结束；下一段“自动、无规则”立即开启（保存点内，失败只记开启失败）；最后一段结束 = 计划已结束；
+ * - HR“结束当前阶段再开启下个阶段”跳过的阶段记已终止（F-155，DEC-511），与正常结束一样算已过去的阶段。
  * 调用方已锁计划行（取锁顺序：计划 → 审批实例）。
  */
 import { sql, type Tx } from '@italent/db';
-import { tenantLocalDate } from '@italent/domain';
+import { type StageStatus, stagePassed, tenantLocalDate } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { SYSTEM_USER_ID } from '../../system-actor.js';
 import { cancel } from '../approval/actions.js';
@@ -127,18 +128,27 @@ export async function openStage(tx: Tx, actor: StageActor, plan: PlanRow, stage:
   return outcome;
 }
 
-/** 结束阶段（审批完成，或 HR“结束当前阶段”），记结束日（租户业务日）。 */
-async function endStage(tx: Tx, actor: StageActor, plan: PlanRow, stage: StageRow): Promise<void> {
-  await tx.execute(sql`UPDATE idp_plan_stages SET status = 'ended', ended_on = ${businessDate(actor)}::date
+/**
+ * 阶段落到已过去的状态，记结束日（租户业务日）：审批完成为已结束；HR“结束当前阶段”跳过为已终止（F-155）。
+ * 结束日两者都记，后续阶段“上一阶段结束”的参照按它算。
+ */
+async function closeStage(
+  tx: Tx,
+  actor: StageActor,
+  plan: PlanRow,
+  stage: StageRow,
+  status: Extract<StageStatus, 'ended' | 'terminated'>,
+): Promise<void> {
+  await tx.execute(sql`UPDATE idp_plan_stages SET status = ${status}, ended_on = ${businessDate(actor)}::date
     WHERE tenant_id = ${actor.tenantId} AND id = ${stage.id}::uuid`);
   await bumpPlan(tx, actor.tenantId, plan.id, actor.now);
-  await auditStage(tx, actor, plan, stage, { status: 'ended' });
+  await auditStage(tx, actor, plan, stage, { status });
 }
 
-/** 所有阶段都结束 → 计划已结束（Q-M0-115① 已结束 = 100）。 */
+/** 所有阶段都已过去（已结束或被跳过终止）→ 计划已结束（Q-M0-115① 已结束 = 100）。 */
 async function settlePlan(tx: Tx, actor: StageActor, plan: PlanRow): Promise<void> {
   const stages = await loadStages(tx, actor.tenantId, [plan.id]);
-  if (plan.status !== 'running' || stages.some((s) => s.status !== 'ended')) return;
+  if (plan.status !== 'running' || !stages.every((s) => stagePassed(s.status))) return;
   await tx.execute(sql`UPDATE idp_plans SET status = 'ended', revision = revision + 1,
     updated_at = ${actor.now.toISOString()} WHERE tenant_id = ${actor.tenantId} AND id = ${plan.id}::uuid`);
   await audit(tx, { ...actor, expectedRevision: 0 }, 'plan', 'update', plan.id, {
@@ -153,7 +163,7 @@ const opensOnPreviousEnd = (stage: StageRow) => stage.startMode === 'auto' && st
 
 /** 审批实例完成：阶段结束，下一段按开启规则处理，最后一段结束则计划结束（K-41）。 */
 export async function onStageApproved(tx: Tx, actor: StageActor, plan: PlanRow, stage: StageRow): Promise<void> {
-  await endStage(tx, actor, plan, stage);
+  await closeStage(tx, actor, plan, stage, 'ended');
   const next = (await loadStages(tx, actor.tenantId, [plan.id])).find((s) => s.seq === stage.seq + 1);
   if (next && next.status === 'pending' && opensOnPreviousEnd(next)) await openStage(tx, actor, plan, next);
   await settlePlan(tx, actor, plan);
@@ -188,8 +198,11 @@ export async function cancelStageInstance(tx: Tx, actor: StageActor, plan: PlanR
   await cancel(tx, approvalContext(actor, plan), stage.approvalInstanceId);
 }
 
-/** HR 结束运行中的阶段：作废实例、阶段结束（不触发“无规则”的自动开启，下一段由调用方开启）。 */
+/**
+ * HR 结束运行中的阶段（开启下个阶段 · 结束当前阶段）：作废实例、阶段记已终止（被跳过，F-155；DEC-511 原站流程条
+ * 显示“已终止”）。不触发“无规则”的自动开启，下一段由调用方开启。
+ */
 export async function endRunningStage(tx: Tx, actor: StageActor, plan: PlanRow, stage: StageRow): Promise<void> {
   await cancelStageInstance(tx, actor, plan, stage);
-  await endStage(tx, actor, plan, stage);
+  await closeStage(tx, actor, plan, stage, 'terminated');
 }

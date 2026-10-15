@@ -4,6 +4,11 @@ import { test as base, expect } from '@playwright/test';
 export const tenant = '10000000-0000-4000-8000-000000000001';
 export const user = '20000000-0000-4000-8000-000000000001';
 export const employee = '30000000-0000-4000-8000-000000000001';
+// 本人调动三个按钮随本人档案返回（F-141 第 2 轮，DEC-500），形态同 GET /self-service/profile 的 selfServiceButtons。
+export const selfServiceButtons = ['Transfer.Self', 'Employment.Create', 'Employment.Submit'].map((buttonCode) => ({
+  buttonCode,
+  level: 'detail',
+}));
 
 export const snapshotFixture = {
   session: {

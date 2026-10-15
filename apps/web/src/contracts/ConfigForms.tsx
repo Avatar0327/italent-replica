@@ -4,6 +4,7 @@ import { FormOverlay, type FormField } from '../foundation/FormOverlay.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { useApiClient } from '../foundation/Session.js';
 import { useFormLock } from '../foundation/forms/FormLock.js';
+import { slotKey } from '../foundation/forms/slot.js';
 import { messages as kernel } from '../foundation/forms/messages.js';
 import { projectFields } from '../foundation/forms/values.js';
 import { parseSavedReceipt, parseSettingsReceipt } from './forms.js';
@@ -52,10 +53,18 @@ export function ConfigForm({
   const permission = usePermissions(configObjects[kind]);
   const rowId = typeof row?.id === 'string' ? row.id : undefined;
   const id = kind === 'settings' ? tenantId : rowId;
-  const resource = kind === 'settings' ? paths.settings : `${paths[kind]}/${id ?? 'new'}`;
+  // 设置每租户一份，槽是设置路径；类型 / 规则按行 ID，新建为集合路径。
+  const resource = kind === 'settings' ? slotKey(paths.settings) : slotKey(paths[kind], id);
   const keys = configFields[kind];
   // 冲突恢复统一走 useConfigCommand：展示值、携带字段与 If-Match 都取同一份确认后的基线。
-  const { form, baseline, submit } = useConfigCommand(resource, { kind, id, row, keys, fallback: defaults[kind] });
+  const { form, baseline, submit } = useConfigCommand(resource, {
+    kind,
+    id,
+    row,
+    keys,
+    fallback: defaults[kind],
+    action: id ? 'edit' : undefined,
+  });
   const fields = formKeys(kind, keys).map((name) =>
     configField(kind, name, lockIf(permission.field(name), name === 'code' && !!id), baseline[name]),
   );
@@ -323,7 +332,13 @@ export function RowCommand({ kind, row, onDone }: { kind: 'delete' | 'toggle'; r
   const config = kind === 'delete' ? 'rules' : 'types';
   const path = `${paths[config]}/${encodeURIComponent(id)}`;
   const keys = configFields[config];
-  const { form, baseline, submit } = useConfigCommand(`${path}/${kind}`, { kind: config, id, row, keys });
+  const { form, baseline, submit } = useConfigCommand(slotKey(paths[config], id), {
+    kind: config,
+    id,
+    row,
+    keys,
+    action: kind,
+  });
   const run = async () => {
     const result = await submit({
       // 启停：类型 PUT 需完整请求体，只翻转启用；删除：按基线原样比较、不带请求字段（patchOnly 后为空）。

@@ -109,8 +109,10 @@ export async function expandScopeRoots(tx: Tx, tenantId: string, asOf: string, r
  * 范围根展开成**去重后**的组织 ID 集合，有界保护按去重后的组织数计数（#226 第 2 轮 P2-1）。
  * `expandScopeRoots` 保留“根 × 下级”的展开行，重叠的根（如一条组织链上的多个上级都勾“包含下级”）会让同一组织被不同祖先重复计数，
  * 覆盖 2,110 个组织的合法选择也会撞 20,000 行保护；这里递归时只以（维度，组织）去重，勾了“包含下级”的根共用一次遍历，
- * 不勾的根直接并入。用于评定活动适用范围判重复与 TEvaluation 权限范围（DEC-455④ / F-107）；其他应用仍用 `expandScopeRoots`。
+ * 不勾的根直接并入。用于评定活动适用范围判重复与各应用权限范围、人员创建范围（DEC-455④ / F-107、DEC-516 / F-162）。
  * 与 `scopeHierarchyReader` 同口径（DEC-146）：维度须已开启，范围根与下级按 `asOf` 当天的组织版本取，停用的组织也展开。
+ * 递归按（维度，组织）去重，每个维度至多 20,000 个不同组织才不超限，所以递归最多取 d×20,000+1 行即可停止（F-159）：
+ * 截断时必有某个维度超过 20,000 个组织，去重后也一定超限，直接 413，不必遍历整棵子树。
  */
 export async function expandScopeOrgSet(
   tx: Tx,
@@ -123,7 +125,9 @@ export async function expandScopeOrgSet(
   const values = roots.map(
     (root) => sql`(${root.orgId}::uuid,${root.dimension}::text,${root.includeDescendants}::boolean)`,
   );
-  const rows = scopeRows<{ org_id: string }>(
+  const treeLimit =
+    new Set(roots.filter((root) => root.includeDescendants).map((root) => root.dimension)).size * MAX_SCOPE_IDS;
+  const rows = scopeRows<{ org_id: string; truncated: boolean }>(
     await tx.execute(sql`
       WITH RECURSIVE requested(org_id,dimension,expand) AS (VALUES ${sql.join(values, sql`, `)}),
       current_versions AS (
@@ -143,14 +147,15 @@ export async function expandScopeOrgSet(
         JOIN org_hierarchy_links h ON h.tenant_id=${tenantId} AND h.dimension=tree.dimension
           AND h.parent_org_id=tree.org_id
         JOIN current_versions v ON v.id=h.version_id
-      )
-      SELECT org_id FROM (
-        SELECT org_id FROM tree
+      ), bounded_tree AS (SELECT org_id FROM tree LIMIT ${treeLimit + 1})
+      SELECT org_id,(SELECT count(*) FROM bounded_tree)>${treeLimit} AS truncated FROM (
+        SELECT org_id FROM bounded_tree
         UNION
         SELECT v.org_id FROM roots q JOIN current_versions v ON v.org_id=q.org_id
       ) distinct_orgs LIMIT ${MAX_SCOPE_IDS + 1}
     `),
   );
-  if (rows.length > MAX_SCOPE_IDS) throw new AppError('PAYLOAD_TOO_LARGE', '数据范围超过有界解析上限');
+  if (rows.length > MAX_SCOPE_IDS || rows[0]?.truncated)
+    throw new AppError('PAYLOAD_TOO_LARGE', '数据范围超过有界解析上限');
   return new Set(rows.map((row) => row.org_id));
 }

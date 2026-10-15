@@ -13,6 +13,7 @@ export const messages = {
   reject: '驳回',
   transfer: '转交',
   withdraw: '撤销',
+  urge: '催办',
   detail: '审批详情',
   titleColumn: '申请内容',
   type: '审批类型',
