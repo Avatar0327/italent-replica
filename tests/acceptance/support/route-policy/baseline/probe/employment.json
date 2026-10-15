@@ -140,6 +140,22 @@
       "obj:TenantBase.EmploymentRecord:view"
     ]
   },
+  "GET /api/tenant/employment/exits/dictionaries/:dict": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "c069c0b31799",
+      "reason": "EXIT_DICTIONARY_KIND_INVALID",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/-",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.EmploymentRecord:view"
+    ]
+  },
   "GET /api/tenant/employment/records/:id": {
     "all": {
       "code": "NOT_FOUND",
@@ -642,6 +658,21 @@
       "obj:TenantBase.EmploymentRecord:view"
     ]
   },
+  "POST /api/tenant/employment/exits/dictionaries/:dict": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "c069c0b31799",
+      "reason": "EXIT_DICTIONARY_KIND_INVALID",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "admin:other_settings"
+    ]
+  },
   "POST /api/tenant/employment/records/:id/forward-update-preview": {
     "all": {
       "code": "VALIDATION_FAILED",
@@ -748,6 +779,27 @@
     "invalidId": {
       "code": "VALIDATION_FAILED",
       "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "admin:other_settings"
+    ]
+  },
+  "PUT /api/tenant/employment/exits/dictionaries/:dict/:id": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "c069c0b31799",
+      "reason": "EXIT_DICTIONARY_KIND_INVALID",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "c069c0b31799",
+      "reason": "EXIT_DICTIONARY_KIND_INVALID",
       "status": 400
     },
     "scopeQueries": [

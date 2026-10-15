@@ -21,3 +21,4 @@ export * from './talent-review.js';
 export * from './talent-review-template-results.js';
 export * from './succession.js';
 export * from './seeds.js';
+export * from './exit.js';

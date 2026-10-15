@@ -15,6 +15,7 @@ const CTX = `${SRC}/employment/context.ts`;
 const TRF = `${SRC}/transfer/routes.ts`;
 const MGR = `${SRC}/transfer/manager-routes.ts`;
 const LNK = `${SRC}/transfer/linkage/routes.ts`;
+const EXIT = `${SRC}/employment/exit-routes.ts`;
 const ACCESS = `${SRC}/transfer/access.ts`;
 const SERVICE = `${SRC}/transfer/service.ts`;
 const RECORD = 'TenantBase.EmploymentRecord';
@@ -1376,6 +1377,36 @@ export const EMPLOYMENT: RequiredTable = {
       'PUT',
       '/custom-fields/:id/inheritance',
       "await requireEmploymentWrite(ctx, 'update', input, undefined, 'TenantBase.EmploymentCustomField')",
+    ),
+  ),
+  // ---- employment/exit-routes.ts：R2-T03 离职三个字典（读：任职记录查看权；写：配置对象，设计 §9.1）----------------
+  'GET /api/tenant/employment/exits/dictionaries/:dict': [
+    ob(
+      `obj:${RECORD}:view`,
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:view', 'object:object.* 动作'],
+      [at(EXIT, 'GET', '/exits/dictionaries/:dict', "const ctx = await readContext(c, deps, 'object.view', 0)"), READ],
+    ),
+  ],
+  'POST /api/tenant/employment/exits/dictionaries/:dict': configWrite(
+    at(EXIT, 'POST', '/exits/dictionaries/:dict', "'tenant.employment.configuration.write'"),
+    'TenantBase.EmploymentSettings',
+    'create',
+    at(
+      EXIT,
+      'POST',
+      '/exits/dictionaries/:dict',
+      "await requireEmploymentWrite(ctx, 'create', input, undefined, 'TenantBase.EmploymentSettings')",
+    ),
+  ),
+  'PUT /api/tenant/employment/exits/dictionaries/:dict/:id': configWrite(
+    at(EXIT, 'PUT', '/exits/dictionaries/:dict/:id', "'tenant.employment.configuration.write'"),
+    'TenantBase.EmploymentSettings',
+    'update',
+    at(
+      EXIT,
+      'PUT',
+      '/exits/dictionaries/:dict/:id',
+      "await requireEmploymentWrite(ctx, 'update', input, undefined, 'TenantBase.EmploymentSettings')",
     ),
   ),
 };
