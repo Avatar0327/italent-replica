@@ -115,13 +115,20 @@ describe('AC-F141-dictionary-see-all 评定字典看全部给企业设置层 sys
       const me = await world.api.request('GET', `/api/tenant/permission/me/objects/${objectCode}`, as);
       expect(me.status, await me.clone().text()).toBe(200);
       const meBody = (await me.json()) as { buttons: { buttonCode: string }[] };
-      expect(meBody.buttons.map((b) => b.buttonCode), `${path} 可执行按钮`).toEqual(['create']);
+      expect(
+        meBody.buttons.map((b) => b.buttonCode),
+        `${path} 可执行按钮`,
+      ).toEqual(['create']);
 
       // 看全部与新建不受影响
       const list = await world.api.request('GET', `${BASE}/${path}?pageSize=50`, as);
       expect(list.status).toBe(200);
       expect(((await list.json()) as { items: { id: string }[] }).items.map((i) => i.id)).toContain(row.id);
-      const created = await world.api.request('POST', `${BASE}/${path}`, { ...as, ifMatch: 0, body: { name: nameOf() } });
+      const created = await world.api.request('POST', `${BASE}/${path}`, {
+        ...as,
+        ifMatch: 0,
+        body: { name: nameOf() },
+      });
       expect(created.status, `${path} 新建: ${await created.clone().text()}`).toBe(201);
     }
   });
