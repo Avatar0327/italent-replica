@@ -604,7 +604,7 @@ export async function materializeEmploymentRecord(
       : undefined;
   // DEC-161：审批通过后仍可能新增停用排期，落地前按 DEC-150 重查整个时段。
   // 拒绝后由生效端口记失败与 HR 待办、按 DEC-112 挂起后序；不能截断任职或改期绕过。
-  await validateNewEmploymentReferences(tx, ctx, fields, payload.effectiveDate, reporting);
+  await validateNewEmploymentReferences(tx, ctx, fields, payload.effectiveDate, reporting, newCycle);
   assertRequiredTransferFields(payload.kind, payload.formSnapshot, fields);
   await checkMaterializedCapacity(tx, ctx, business, fields, options);
   if (newCycle) await insertNewEmploymentCycle(tx, ctx, business, { staffId, entryDate, employType });
@@ -819,7 +819,14 @@ async function validatePreparedEmployment(
     prepared.effectiveDate,
     existing?.state === 'in_review' ? existing.id : undefined,
   );
-  await validateNewEmploymentReferences(tx, ctx, prepared.fields, prepared.effectiveDate, reporting);
+  await validateNewEmploymentReferences(
+    tx,
+    ctx,
+    prepared.fields,
+    prepared.effectiveDate,
+    reporting,
+    NEW_CYCLE_KINDS.includes(kind),
+  );
 }
 
 async function registerCompletion(

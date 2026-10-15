@@ -211,9 +211,10 @@ describe('BE-2a 删除待入职（不可恢复，只删待入职本身）', () =
       deletePendingEntry(tx, portContext(w, pending.business.revision), pending.recordId),
     );
     expect(await entryRecords(w, pending.employee.id)).toEqual([]);
+    const hiredRevision = await businessRevision(w, hired.recordId);
     await expect(
-      withTenant(w.db, w.session.tenant.id, async (tx) =>
-        deletePendingEntry(tx, portContext(w, await businessRevision(w, hired.recordId)), hired.recordId),
+      withTenant(w.db, w.session.tenant.id, (tx) =>
+        deletePendingEntry(tx, portContext(w, hiredRevision), hired.recordId),
       ),
     ).rejects.toMatchObject({ code: 'CONFLICT', details: { reason: 'NOT_PENDING_ENTRY' } });
   });

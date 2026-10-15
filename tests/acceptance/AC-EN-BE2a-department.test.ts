@@ -26,8 +26,8 @@ describe('BE-2a DEC-138 入职日不得早于部门设立日', () => {
     ['添加待入职', { pendingEntry: true }],
     ['直接入职', {}],
     ['入职申请', { mode: 'application' }],
-  ])('%s：入职日早于部门设立日被拒，整笔不落库', async (_name, extra) => {
-    const w = await entryWorld(testDb().db, `be2a-founded-${extra.mode ?? Object.keys(extra).length}`);
+  ] as [string, Record<string, unknown>][])('%s：入职日早于部门设立日被拒，整笔不落库', async (name, extra) => {
+    const w = await entryWorld(testDb().db, `be2a-founded-${name.length}-${Object.keys(extra).length}`);
     const employee = await w.session.employee('设立日合成员工');
     const response = await addHire(w.session, employee, hireBody(w.org.id, '2025-12-31', extra));
     expect(response.status).toBe(400);
