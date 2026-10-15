@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { useSession } from '../Session.js';
 import { createFormStore, isLocked, type FormStore, type Latest, type SubmitInput, type Values } from './store.js';
+import { slotKey } from './slot.js';
 import { refillDraft } from './values.js';
 
 const Context = createContext<FormStore | undefined>(undefined);
@@ -14,25 +15,57 @@ export function FormCommands({ children }: { children: ReactNode }) {
  * store 默认取页面根部的 FormCommands；页面根部会随子页切换重建时，由模块传入自己持有的存储（如合同）。
  */
 export function useCommandForm(resource: string, store?: FormStore) {
+  return usePinnedCommand([resource], resource, store);
+}
+/**
+ * 批量命令（F-147）：条目是集合路径 + 排序后的对象 id，逐个对象的恢复槽都钉到它。
+ * 结果未知时同一对象的单条动作、别的批量都落到这条命令上，仍锁定。
+ */
+export function useBatchCommand(collection: string, ids: readonly string[], store?: FormStore) {
+  const slots = ids.map((id) => slotKey(collection, id));
+  const entry = `${slotKey(collection)}#${[...ids].sort().map(encodeURIComponent).join(',')}`;
+  return usePinnedCommand(slots, entry, store);
+}
+/**
+ * slots 是本命令涉及的恢复槽（稳定原单路径），entry 是本命令的条目：单对象就是槽本身，批量、带版本的冲突恢复另起名。
+ * 提交前先把各槽钉到本条目，结果未知就一直钉着（claude_fe_rules e、g）：同对象的其他入口读到的是这条命令，
+ * 关闭重开、换入口、换版本也仍锁定，不另起命令；已确认的结果（完成、被拒、冲突）放开。
+ */
+export function usePinnedCommand(slots: readonly string[], entry: string, store?: FormStore) {
   const provided = useContext(Context);
   const owner = store ?? provided;
   if (!owner) throw new Error('FormCommands provider required');
   const session = useSession();
-  const key = JSON.stringify([session.tenantId, session.identityKey, resource]);
+  const scope = (name: string) => JSON.stringify([session.tenantId, session.identityKey, name]);
+  const scoped = slots.map(scope);
+  const own = scope(entry);
+  const key = useSyncExternalStore(owner.subscribe, () => owner.holder(scoped) ?? own);
   const state = useSyncExternalStore(owner.subscribe, () => owner.get(key));
   return {
     state,
     status: state?.status ?? 'idle',
     locked: isLocked(state),
     busy: state?.status === 'submitting',
-    submit: (input: SubmitInput) => owner.submit(key, input),
+    async submit(input: SubmitInput) {
+      const holder = owner.holder(scoped);
+      const held = holder === undefined || holder === own ? undefined : owner.get(holder);
+      if (isLocked(held)) return held!;
+      owner.pin(scoped, own);
+      const result = await owner.submit(own, input);
+      if (result.status !== 'unknown') owner.unpin(scoped, own);
+      return result;
+    },
     reread: (read: (id?: string) => Promise<Latest>) => owner.reread(key, read),
     settle: (submittable: readonly string[]) => owner.settle(key, submittable),
     confirm: () => owner.confirm(key),
     clear: () => owner.clear(key),
   };
 }
-export type CommandForm = ReturnType<typeof useCommandForm> & { reload?: () => Promise<void> };
+export type CommandForm = ReturnType<typeof useCommandForm> & {
+  reload?: () => Promise<void>;
+  /** 本对象有别的动作未确认（forAction）：本入口不能提交，弹窗给出提示。 */
+  blocked?: boolean;
+};
 
 /** 接收回填的表单：antd FormInstance 即满足。 */
 export interface DraftTarget {

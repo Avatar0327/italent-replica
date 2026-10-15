@@ -1,17 +1,19 @@
 import { useState } from 'react';
 import { useApiClient } from '../foundation/index.js';
 import { messages as kernel } from '../foundation/forms/messages.js';
-import type { Submission, Values } from '../foundation/forms/store.js';
+import { lockedContext, type Values } from '../foundation/forms/store.js';
 import { acceptReceipt, approvalRequest, readApproval } from './api.js';
 import { useApprovalCommand } from './commands.js';
 import type { ApprovalAction, ApprovalDetail, ApprovalRow } from './types.js';
 
-/** 动作与待办任务随草稿存在槽里；不在编辑字段集合内，内核不会把它放进请求体。 */
-const contextField = '__context';
-interface ActionContext {
-  action: ApprovalAction;
+/**
+ * 动作与待办任务存进内核的命令上下文（SubmitInput.context，F-147）：不进请求体，冲突重读回填草稿也不动它。
+ * 合同行内催办（contracts/RowActions.tsx）与本单共用流程实例的恢复槽，槽里可能是催办。
+ */
+type ActionContext = {
+  action: ApprovalAction | 'urge';
   taskId?: string;
-}
+};
 /** 各动作可编辑的字段：意见、转交对象；撤销不带字段（后端 strictObject 只收这些键）。 */
 export const actionFields: Record<ApprovalAction, readonly string[]> = {
   approve: ['comment'],
@@ -20,11 +22,6 @@ export const actionFields: Record<ApprovalAction, readonly string[]> = {
   transfer: ['toUserId', 'comment'],
   withdraw: [],
 };
-/** 槽里还有未确认的命令（处理中、结果未知、冲突）时，以槽里保存的动作为准，换按钮重开不另起命令。 */
-function lockedContext(state: Submission | undefined, locked: boolean) {
-  return locked ? (state?.values[contextField] as ActionContext | undefined) : undefined;
-}
-
 /**
  * 审批动作接 F-123 内核（F-123 页面片接入 2）：键只含流程实例 ID；回执是动作后的详情，
  * id 须等于实例 ID、revision 须大于实际提交的 revision（acceptReceipt）。
@@ -34,7 +31,8 @@ export function useApprovalAction(row: ApprovalRow, onRead: (detail: ApprovalDet
   const api = useApiClient();
   const command = useApprovalCommand(`/api/tenant/approval/instances/${row.id}`);
   const [chosen, setChosen] = useState<ActionContext>();
-  const pending = lockedContext(command.state, command.locked);
+  // 槽里还有未确认的命令（处理中、结果未知、冲突）时以槽里的动作为准，换按钮重开不另起命令。
+  const pending = lockedContext<ActionContext>(command.state);
   const context = pending ?? chosen;
   const reload = () =>
     command.reread(async (id) => {
@@ -48,21 +46,24 @@ export function useApprovalAction(row: ApprovalRow, onRead: (detail: ApprovalDet
     setChosen({ action, taskId: row.taskId });
   };
   async function submit(detail: ApprovalDetail, values: Values) {
-    if (!context) return;
+    // 催办由合同行内发起，本单不重提；槽里是催办时各按钮都已禁用。
+    if (!context || context.action === 'urge') return;
+    const { action, taskId } = context;
     const result = await command.submit({
-      values: { ...values, [contextField]: context },
+      values,
       baseline: {},
-      editableFields: actionFields[context.action],
+      editableFields: actionFields[action],
       revision: detail.revision,
       businessId: detail.id,
       send: async (sent) => {
-        const request = approvalRequest(detail, context.action, context.taskId, sent.body);
+        const request = approvalRequest(detail, action, taskId, sent.body);
         const receipt = await api.request<unknown>(request.path, {
           method: 'POST',
           command: { ...sent, body: request.body },
         });
         return acceptReceipt(receipt, detail.id, sent.revision ?? detail.revision);
       },
+      context: { action, ...(taskId ? { taskId } : {}) },
     });
     if (result.status !== 'done') throw result.error ?? new Error(kernel.unknown);
     command.clear();
@@ -70,7 +71,7 @@ export function useApprovalAction(row: ApprovalRow, onRead: (detail: ApprovalDet
   return {
     command: { ...command, reload },
     /** 弹窗只在用户点了按钮后打开；锁定时标题与提交仍按槽里的动作。 */
-    action: chosen ? context?.action : undefined,
+    action: chosen && context?.action !== 'urge' ? context?.action : undefined,
     pending: pending?.action,
     open,
     close: () => setChosen(undefined),

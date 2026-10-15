@@ -7,7 +7,7 @@ import {
 } from '@italent/domain';
 import { sql, type Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
-import { expandScopeOrgSet, expandScopeRoots, scopeRows, type ScopeRoot } from './scope-hierarchy.js';
+import { expandScopeOrgSet, scopeRows, type ScopeRoot } from './scope-hierarchy.js';
 import { EMPTY_SCOPE, type ModuleScope, type ScopeQuery, type ScopeTerm } from './scope-types.js';
 
 const MAX_SCOPE_IDS = 20_000;
@@ -156,9 +156,8 @@ function addBoundedIds(target: Set<string>, ids: readonly string[]): void {
 }
 
 async function expandOrgIds(tx: Tx, query: ScopeQuery, roots: readonly ScopeRoot[]): Promise<string[]> {
-  // DEC-455④ / F-107：活动及其同应用引用共用去重计数，覆盖事务内复核；其他模块保持原口径。
-  if (query.appCode === EVALUATION_APP) return [...(await expandScopeOrgSet(tx, query.tenantId, query.asOf, roots))];
-  return expandScopeRoots(tx, query.tenantId, query.asOf, roots);
+  // DEC-455④ / F-107、DEC-516 / F-162：各应用与人员创建范围都按去重后的组织数计上限，重叠的根不重复计数。
+  return [...(await expandScopeOrgSet(tx, query.tenantId, query.asOf, roots))];
 }
 
 /**
@@ -261,7 +260,7 @@ export interface DataScopeExtension {
 /** DEC-082 personnel catalog hook: creator rights do not authorize creating a record outside managed persons. */
 export async function personnelCreationScope(tx: Tx, query: ScopeQuery, current: ModuleScope): Promise<ModuleScope> {
   if (current.all || !current.terms?.some((term) => term.dimension === 'using_user')) return current;
-  const orgIds = await expandScopeRoots(tx, query.tenantId, query.asOf, await managementRoots(tx, query));
+  const orgIds = await expandOrgIds(tx, query, await managementRoots(tx, query));
   const managed: ScopeTerm = {
     dimension: 'management',
     orgIds,
