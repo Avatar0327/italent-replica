@@ -131,12 +131,14 @@ test('AC-FE-R3d2-04 我的发展计划：只列本人计划，表格与原站筛
   await mockIdp(page);
   await asUser(page);
   await page.goto('/self/idp');
-  await expect(page.getByRole('heading', { name: '我的发展计划' })).toBeVisible();
+  // F-164：页面照原站改名“个人发展计划”
+  await expect(page.getByRole('heading', { name: '个人发展计划' })).toBeVisible();
   for (const name of ['名称', '姓名', '指导人', '状态', '当前步骤'])
     await expect(page.getByRole('columnheader', { name, exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '合成发展计划', exact: true })).toBeVisible();
   await expect(page.getByText('合成参与计划')).toHaveCount(0);
-  await expect(page.getByText('共1条')).toBeVisible();
+  // 本人两份：合成发展计划、合成基本信息计划（F-164 夹具）
+  await expect(page.getByText('共2条')).toBeVisible();
   for (const label of ['状态', '开始时间', '结束时间'])
     await expect(page.locator('.idp-inline-filters label', { hasText: new RegExp(`^${label}$`) })).toBeVisible();
   await page.getByRole('button', { name: '合成发展计划', exact: true }).click();

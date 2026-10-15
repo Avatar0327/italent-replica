@@ -1,6 +1,6 @@
-import { Button, Select, Table, Tooltip, type TableColumnsType } from 'antd';
-import { useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router';
+import { Button, Select, Table, Tabs, Tooltip, type TableColumnsType } from 'antd';
+import { useMemo, useState, type ReactNode } from 'react';
+import { useLocation, useNavigate, useSearchParams } from 'react-router';
 import { CreateCommands } from '../evaluation/CreateEntry.js';
 import { DecisionNote } from '../foundation/DecisionNote.js';
 import { PageState } from '../foundation/PageState.js';
@@ -16,10 +16,12 @@ import { useNames } from './useNames.js';
 import './idp.css';
 
 const DETAIL = 'plan';
+const OWN = '/self/idp';
+const TUTORING = '/self/idp/tutoring';
 
 /**
- * 员工自助 > 我的发展计划（原站 04）：只列本人作为被发展人的计划，表格 + 行内筛选（状态 / 指导人 / 起止时间）。
- * 作为指导人或审批人参与的计划从待办与审批中心进入，不在本页列出。HR 干预动作不在本页提供。
+ * 员工自助 > 我的发展计划 > 个人发展计划（原站 04 / B5_23）：只列本人作为被发展人的进行中、已结束计划
+ * （已终止的后端不返回，F-164），表格 + 行内筛选（状态 / 指导人 / 起止时间）。HR 干预动作不在本页提供。
  */
 export function MyPlansPage() {
   const session = useSession();
@@ -30,16 +32,91 @@ export function MyPlansPage() {
   );
 }
 
+/** 我的发展计划 > 我辅导的发展计划（原站 B5_26）：本人任指导人的进行中计划（tutor-plans，F-164）。 */
+export function TutorPlansPage() {
+  const session = useSession();
+  return (
+    <CreateCommands>
+      <TutorPlans key={`${session.tenantId}/${session.identityKey}`} />
+    </CreateCommands>
+  );
+}
+
 function MyPlans({ employeeId }: { employeeId?: string }) {
   const list = useCollection<PlanSummary>(`${IDP_API}/my-plans`);
   const [filters, setFilters] = useState<PlanFilters>({});
-  const [params, setParams] = useSearchParams();
-  const openId = params.get(DETAIL);
-  const open = (id?: string) => setParams(id ? { [DETAIL]: id } : {});
   const rows = useMemo(
     () => ownPlans(list.items ?? [], employeeId).filter((row) => matchesFilters(row, filters)),
     [list.items, employeeId, filters],
   );
+  return (
+    <PlanListPage
+      title={t.personalPlans}
+      note="idp-my-plans"
+      others="own"
+      list={list}
+      rows={rows}
+      filters={<InlineFilters value={filters} change={setFilters} />}
+    />
+  );
+}
+
+function TutorPlans() {
+  const list = useCollection<PlanSummary>(`${IDP_API}/tutor-plans`);
+  const [filters, setFilters] = useState<PlanFilters>({});
+  const rows = useMemo(() => (list.items ?? []).filter((row) => matchesFilters(row, filters)), [list.items, filters]);
+  const employees = useNames(
+    'employee',
+    (list.items ?? []).map((row) => row.employeeId),
+  );
+  const people = [...new Set((list.items ?? []).map((row) => row.employeeId).filter((id): id is string => !!id))];
+  return (
+    <PlanListPage
+      title={t.tutorPlans}
+      note="idp-tutor-plans"
+      others="tutoring"
+      list={list}
+      rows={rows}
+      filters={
+        <InlineFilters
+          value={filters}
+          change={setFilters}
+          people={people.map((id) => ({ value: id, label: employees(id) }))}
+        />
+      }
+    />
+  );
+}
+
+/** 同级导航：员工自助左侧菜单不能由本模块登记（page-registry 归属外），先在页内给出原站菜单的两个子项。 */
+function PeerNav() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  return (
+    <Tabs
+      className="idp-peer-nav"
+      activeKey={location.pathname === TUTORING ? TUTORING : OWN}
+      onChange={(key) => void navigate(key)}
+      items={[
+        { key: OWN, label: t.personalPlans },
+        { key: TUTORING, label: t.tutorPlans },
+      ]}
+    />
+  );
+}
+
+function PlanListPage(props: {
+  title: string;
+  note: string;
+  others: 'own' | 'tutoring';
+  list: ReturnType<typeof useCollection<PlanSummary>>;
+  rows: PlanSummary[];
+  filters: ReactNode;
+}) {
+  const { title, note, others, list, rows, filters } = props;
+  const [params, setParams] = useSearchParams();
+  const openId = params.get(DETAIL);
+  const open = (id?: string) => setParams(id ? { [DETAIL]: id } : {});
   const names = useNames(
     'employee',
     rows.flatMap((row) => [row.employeeId, row.tutorEmployeeId]),
@@ -53,17 +130,19 @@ function MyPlans({ employeeId }: { employeeId?: string }) {
           can={() => false}
           edit={() => undefined}
           intervene={() => undefined}
+          others={others}
         />
       </div>
     );
   return (
     <div className="idp-page idp-my-plans">
+      <PeerNav />
       <header className="page-heading">
-        <ViewHeading title={t.myPlans} />
+        <ViewHeading title={title} />
         <Button onClick={list.reload}>{t.actions.refresh}</Button>
       </header>
-      <DecisionNote id="idp-my-plans" />
-      <InlineFilters value={filters} change={setFilters} />
+      <DecisionNote id={note} />
+      {filters}
       {list.error ? (
         <PageState kind="error" error={list.error} retry={list.reload} />
       ) : (
@@ -93,24 +172,49 @@ function columns(names: (id?: string | null) => string, open: (id: string) => vo
       ),
     },
     { key: 'employeeId', title: t.fields.employeeId, render: (_, row) => names(row.employeeId) },
-    // 参与人列表接口不返回指导人（plan-routes my-plans 固定字段），如实显示 --（后端缺口）
+    // 个人发展计划接口不返回指导人（plan-routes my-plans 固定字段），如实显示 --（后端缺口）；我辅导的发展计划返回本人
     {
       key: 'tutorEmployeeId',
       title: t.fields.tutorEmployeeId,
       render: (_, row) => (row.tutorEmployeeId ? names(row.tutorEmployeeId) : t.noValue),
     },
     { key: 'status', title: t.fields.status, render: (_, row) => statusText(t.status, row.status) },
-    // 列表接口不返回当前步骤（后端缺口），有值才展示
-    { key: 'currentNodeName', title: t.fields.currentNodeName, render: (_, row) => display(row.currentNodeName) },
+    // 原站“当前步骤”列显示阶段名（如“制定计划”）；列表接口只返回当前阶段，按阶段名展示
+    { key: 'currentStageName', title: t.fields.currentNodeName, render: (_, row) => display(row.currentStageName) },
   ];
 }
 
 const statusOptions = ['running', 'ended', 'terminated'].map((value) => ({ value, label: t.status[value] }));
 
-/** 原站 04 的行内筛选：状态、指导人、开始时间、结束时间；指导人因接口未返回暂不可选（后端缺口）。 */
-function InlineFilters({ value, change }: { value: PlanFilters; change(value: PlanFilters): void }) {
+const TARGET = 'target';
+/**
+ * 原站 04 的行内筛选：状态、指导人、开始时间、结束时间；指导人因接口未返回暂不可选（后端缺口）。
+ * 我辅导的发展计划（B5_26）另有姓名（列表里出现的员工）与“辅导员工分类”；分类只有“辅导对象”一项，列表全是辅导对象。
+ * 状态照原站保留全部选项：本页只列进行中，个人发展计划不列已终止，选了为空。
+ */
+function InlineFilters(props: {
+  value: PlanFilters;
+  change(value: PlanFilters): void;
+  people?: { value: string; label: string }[];
+}) {
+  const { value, change, people } = props;
   return (
     <div className="idp-inline-filters">
+      {people && (
+        <>
+          <label htmlFor="idp-my-employee">{t.fields.employeeId}</label>
+          <Select
+            id="idp-my-employee"
+            allowClear
+            showSearch
+            optionFilterProp="label"
+            placeholder={t.choose}
+            value={value.employeeId}
+            options={people}
+            onChange={(employeeId) => change({ ...value, employeeId })}
+          />
+        </>
+      )}
       <label htmlFor="idp-my-status">{t.fields.status}</label>
       <Select
         id="idp-my-status"
@@ -131,6 +235,12 @@ function InlineFilters({ value, change }: { value: PlanFilters; change(value: Pl
       />
       <label>{t.fields.endDate}</label>
       <TenantDatePicker value={value.endTo} onChange={(date) => change({ ...value, endTo: date ?? undefined })} />
+      {people && (
+        <>
+          <label htmlFor="idp-my-category">{t.tutorCategory}</label>
+          <Select id="idp-my-category" value={TARGET} options={[{ value: TARGET, label: t.tutorTarget }]} />
+        </>
+      )}
     </div>
   );
 }

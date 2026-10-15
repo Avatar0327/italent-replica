@@ -66,6 +66,8 @@ const smokes: Record<(typeof pages)[number], string[]> = {
   idp: [
     'AC-FE-R3d2-22 两次冲突、子流程先缺字段后恢复且服务端新增阶段：确认后显示最新两条，只改名称不提交子流程',
     'AC-FE-R3d2-15 冲突后重读缺 revision：不解锁、不发 If-Match: 0，提示重读失败',
+    'AC-FE-F164-06 回顾保存冲突：重读最新版本、核对差异后带新版本重提，保留我的输入',
+    'AC-FE-F164-07 回顾保存结果未知：表单锁定，回查原单后仍锁定，不发第二次 PUT',
   ],
   contracts: [
     'AC-FE-R2a-12 ${cases[op].title}：版本冲突保留输入，重读核对后带新版本重提',

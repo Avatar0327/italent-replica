@@ -37,9 +37,7 @@ async function basicOnlyTemplate(w: PlanWorld) {
     201,
   );
   expect(created.modules.map((m) => m.moduleType)).toEqual(['basic']);
-  await w.ok(
-    await w.http(w.hrUser, 'POST', `${IDP}/templates/${created.id}/publish`, { ifMatch: created.revision }),
-  );
+  await w.ok(await w.http(w.hrUser, 'POST', `${IDP}/templates/${created.id}/publish`, { ifMatch: created.revision }));
   return created.id;
 }
 

@@ -5,6 +5,10 @@ export const t = {
   templates: '发展计划模板',
   processes: '发展计划流程',
   myPlans: '我的发展计划',
+  personalPlans: '个人发展计划',
+  tutorPlans: '我辅导的发展计划',
+  tutorCategory: '辅导员工分类',
+  tutorTarget: '辅导对象',
   views: {
     active: '未开始&进行中',
     ended: '已结束的计划',
@@ -253,6 +257,17 @@ export const t = {
   header: { plan: '计划：', period: '周期：', tutor: '指导人：' },
   analysis: { currentAnalysis: '现状分析', developmentItems: '待发展项' },
   review: { summary: '总结', improvement: '改进方法' },
+  reviewForm: {
+    overall: '总体回顾',
+    hint: '请输入',
+    tooLong: (max: number) => `最多 ${max} 字`,
+    save: '保存',
+  },
+  denied: {
+    title: '无权限查看当前发展计划~',
+    own: '查看其它发展计划',
+    tutoring: '查看其它我辅导的发展计划',
+  },
   noContent: '暂未填写',
   task: {
     add: '添加任务',

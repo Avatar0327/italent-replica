@@ -18,6 +18,10 @@ export const goalId = 'b0000000-0000-4000-8000-000000000201';
 export const taskId = 'b0000000-0000-4000-8000-000000000202';
 export const otherPlanId = 'b0000000-0000-4000-8000-000000000011';
 export const otherEmployee = '30000000-0000-4000-8000-000000000002';
+export const thirdEmployee = '30000000-0000-4000-8000-000000000003';
+export const tutoredId = 'b0000000-0000-4000-8000-000000000012';
+/** 模板只有基本信息模块的计划：打开详情 403 IDP_PLAN_NO_VISIBLE_MODULE（F-164）。 */
+export const basicOnlyId = 'b0000000-0000-4000-8000-000000000013';
 
 const stage = (seq: number, name: string, status: string) => ({
   id: `b0000000-0000-4000-8000-00000000010${seq}`,
@@ -54,7 +58,7 @@ const GOAL_BUTTONS = ['RowAddIdpGoal', 'RowEditIdpGoal', 'RowDeleteIdpGoal'];
  * 默认 true 表示缺口补齐后的契约形状，用来覆盖任务写入链路。
  */
 type TaskSwitch = boolean | 'missing';
-function planDetail(buttons: string[], taskSwitch: TaskSwitch) {
+function planDetail(buttons: string[], taskSwitch: TaskSwitch, reviewButtons: string[]) {
   const goalModule = { id: goalModuleId, moduleType: 'goal', name: '发展目标', displayOrder: 1, buttons };
   return {
     ...plan,
@@ -63,7 +67,7 @@ function planDetail(buttons: string[], taskSwitch: TaskSwitch) {
       { id: moduleId, moduleType: 'basic', name: '基本信息', displayOrder: 0, buttons: [] },
       taskSwitch === 'missing' ? goalModule : { ...goalModule, taskEnabled: taskSwitch },
       { id: analysisModuleId, moduleType: 'analysis', name: '综述', displayOrder: 2, buttons: [] },
-      { id: reviewModuleId, moduleType: 'review', name: '中期回顾', displayOrder: 3, buttons: [] },
+      { id: reviewModuleId, moduleType: 'review', name: '中期回顾', displayOrder: 3, buttons: reviewButtons },
     ],
     goals: [
       {
@@ -101,6 +105,11 @@ const participating = {
 function participantRow(row: typeof plan | typeof participating) {
   const { tutorRole: _r, tutorEmployeeId: _t, processId: _p, ...rest } = row;
   return rest;
+}
+/** 我辅导的发展计划（plan-routes tutor-plans）：指导人为本人的进行中计划，返回指导人，不含指导人角色与流程。 */
+function tutorRow(id: string, name: string, employeeId: string) {
+  const { tutorRole: _r, processId: _p, ...rest } = plan;
+  return { ...rest, id, name, employeeId, tutorEmployeeId: employee };
 }
 export const template = {
   id: templateId,
@@ -206,6 +215,8 @@ export interface IdpMockOptions {
   processVersions?: Record<string, unknown>[];
   /** 发生过写请求后，流程详情里每个子流程去掉这些键（模拟冲突后重读到被裁剪的子流程）。 */
   rereadSubProcessOmit?: string[];
+  /** 计划详情里回顾模块的节点按钮（参与人视图，F-155b）；默认不给。 */
+  reviewButtons?: string[];
 }
 
 function objectPermission(code: string, options: IdpMockOptions) {
@@ -280,35 +291,18 @@ export async function mockIdp(page: Page, options: IdpMockOptions = {}) {
     hasDataPermission: scoped,
     items: scoped ? items : [],
   });
-  const detail = trimDetail(planDetail(options.goalButtons ?? GOAL_BUTTONS, options.taskSwitch ?? true), options);
-  const reads: Record<string, unknown> = {
-    '/plans': list([plan, waiting].map((row) => trim('IDP.Idp', row, options))),
-    // 参与人列表固定字段：不含指导人角色、指导人与流程（plan-routes my-plans）
-    '/my-plans': { page: 1, pageSize: 200, items: [plan, participating].map(participantRow) },
-    [`/plans/${planId}`]: detail,
-    [`/plans/${waitingId}`]: { ...detail, ...waiting },
-    [`/plans/${otherPlanId}`]: { ...detail, ...participating },
-    '/templates': list([trim('IDP.IDPTemplate', template, options)]),
-    [`/templates/${templateId}`]: template,
-    '/processes': list([trimProcess(process, options)]),
-    [`/processes/${processId}`]: trimProcess(process, options),
-    '/approval-processes': {
-      items: [
-        {
-          id: approvalId,
-          name: '合成审批流程',
-          approvalType: 'idp_plan',
-          nodes: [{ nodeKey: 'n1', name: '制定发展目标', seq: 1 }],
-        },
-      ],
-    },
-  };
+  const buttons = options.goalButtons ?? GOAL_BUTTONS;
+  const detail = trimDetail(planDetail(buttons, options.taskSwitch ?? true, options.reviewButtons ?? []), options);
+  const reads = staticReads(options, detail, list);
   const server = processServer(options);
+  const plans = planServer(detail);
   const write = (route: Route, path: string, call: IdpCall) => {
     const status = calls.length <= (options.conflictTimes ?? 0) ? 409 : options.writeStatus;
     const code = status === 409 ? 'REVISION_CONFLICT' : 'INTERNAL';
     if (status === 409) server.conflict();
+    if (status === 409 && path === plans.content) plans.conflict();
     if (status) return route.fulfill({ status, json: { error: { code } } });
+    if (path === plans.content) return route.fulfill({ json: plans.save(call) });
     if (path.includes('/tasks')) return route.fulfill({ status: path.endsWith('/tasks') ? 201 : 200, json: detail });
     if (path.endsWith('/copy')) return route.fulfill({ status: 201, json: { ...template, id: approvalId } });
     if (path.startsWith('/processes')) return route.fulfill({ json: server.save(call) });
@@ -328,11 +322,87 @@ export async function mockIdp(page: Page, options: IdpMockOptions = {}) {
       calls.push(call);
       return write(route, path, call);
     }
-    const json = server.read(path) ?? reads[path] ?? list([]);
+    // 模板除基本信息外没有模块：任何查看人打开都 403（plan-access requireVisibleModule）
+    if (path === `/plans/${basicOnlyId}`) return route.fulfill({ status: 403, json: NO_VISIBLE_MODULE });
+    const json = server.read(path) ?? plans.read(path) ?? reads[path] ?? list([]);
     return route.fulfill({ json: calls.length ? reread(path, json, options) : json });
   });
   await mockNames(page);
   return calls;
+}
+
+type ListOf = (items: unknown[]) => unknown;
+/** 静态读取表：列表与详情按路径返回（计划详情另由 planServer 按写入结果给出）。 */
+function staticReads(
+  options: IdpMockOptions,
+  detail: ReturnType<typeof planDetail>,
+  list: ListOf,
+): Record<string, unknown> {
+  return {
+    '/plans': list([plan, waiting].map((row) => trim('IDP.Idp', row, options))),
+    // 参与人列表固定字段：不含指导人角色、指导人与流程（plan-routes my-plans）
+    '/my-plans': {
+      page: 1,
+      pageSize: 200,
+      items: [plan, participating, { ...plan, id: basicOnlyId, name: '合成基本信息计划' }].map(participantRow),
+    },
+    '/tutor-plans': {
+      page: 1,
+      pageSize: 200,
+      items: [
+        tutorRow(otherPlanId, '合成参与计划', otherEmployee),
+        tutorRow(tutoredId, '合成辅导计划', thirdEmployee),
+        tutorRow(basicOnlyId, '合成基本信息计划', thirdEmployee),
+      ],
+    },
+    [`/plans/${planId}`]: detail,
+    [`/plans/${waitingId}`]: { ...detail, ...waiting },
+    [`/plans/${otherPlanId}`]: { ...detail, ...participating },
+    '/templates': list([trim('IDP.IDPTemplate', template, options)]),
+    [`/templates/${templateId}`]: template,
+    '/processes': list([trimProcess(process, options)]),
+    [`/processes/${processId}`]: trimProcess(process, options),
+    '/approval-processes': {
+      items: [
+        {
+          id: approvalId,
+          name: '合成审批流程',
+          approvalType: 'idp_plan',
+          nodes: [{ nodeKey: 'n1', name: '制定发展目标', seq: 1 }],
+        },
+      ],
+    },
+  };
+}
+
+const NO_VISIBLE_MODULE = {
+  error: { code: 'FORBIDDEN', message: '无权限查看当前发展计划', details: { reason: 'IDP_PLAN_NO_VISIBLE_MODULE' } },
+};
+
+/**
+ * 计划的服务端记录（F-155b 回顾）：PUT 模块内容成功时按请求体（去首尾空白，空串存 null）改写运行中阶段那一份并进版本，
+ * 返回完整详情（plan-routes respondPlan），之后的详情读取反映写入；冲突时先被别人保存过一次。
+ */
+function planServer(detail: ReturnType<typeof planDetail>) {
+  let stored = detail;
+  const stageId = stages.find((row) => row.status === 'running')!.id;
+  const store = (values: Record<string, unknown>) => {
+    const key = (row: { moduleId: string; stageId: string }) =>
+      row.moduleId === reviewModuleId && row.stageId === stageId;
+    const prior = stored.reviews.find(key) ?? { moduleId: reviewModuleId, stageId, summary: null, improvement: null };
+    const clean = Object.fromEntries(
+      Object.entries(values).map(([field, value]) => [field, typeof value === 'string' ? value.trim() || null : value]),
+    );
+    const reviews = [...stored.reviews.filter((row) => !key(row)), { ...prior, ...clean }];
+    stored = { ...stored, revision: stored.revision + 1, reviews } as typeof stored;
+    return stored;
+  };
+  return {
+    content: `/plans/${planId}/modules/${reviewModuleId}/content`,
+    conflict: () => store({ summary: '合成他人保存的总结' }),
+    save: (call: IdpCall) => store(call.body as Record<string, unknown>),
+    read: (path: string) => (path === `/plans/${planId}` ? stored : undefined),
+  };
 }
 
 /** 流程的服务端记录：只在 processVersions 模式下随冲突换版本、随成功写入合并请求体，其余情况沿用静态夹具。 */
@@ -376,6 +446,7 @@ async function mockNames(page: Page) {
   const names: Record<string, string> = {
     [employee]: '合成员工甲',
     [otherEmployee]: '合成员工乙',
+    [thirdEmployee]: '合成员工丙',
     [orgId]: '合成研发部',
   };
   await page.route(/\/api\/tenant\/(employment\/employees|org\/organizations)\/[^/?]+$/, (route) => {

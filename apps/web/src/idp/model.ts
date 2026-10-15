@@ -3,6 +3,7 @@ import { operationAccess, writeIntegrity } from './access.js';
 import { t } from './messages.js';
 import type {
   GoalTask,
+  PlanDetail,
   PlanGoal,
   PlanModule,
   PlanSummary,
@@ -196,6 +197,36 @@ export function taskActions(plan: PlanSummary, module: PlanModule): { actions: T
   );
   if (executor && module.taskEnabled == null) return { actions, reason: t.task.switchUnknown };
   return { actions };
+}
+
+export const REVIEW_FIELDS = ['summary', 'improvement'] as const;
+export type ReviewField = (typeof REVIEW_FIELDS)[number];
+export type ReviewValues = Partial<Record<ReviewField, string | null>>;
+/** 总结、改进方法各不超过 1000 字，按码点计数（后端 execution-service reviewWithinLimit 同口径）。 */
+export const REVIEW_MAX = 1000;
+export const codepoints = (value: string | null | undefined) => [...(value ?? '')].length;
+/** 超长的字段（与后端 400 IDP_REVIEW_TOO_LONG 的 fields 一致）：后端先去首尾空白再按码点计，这里同口径。 */
+export const reviewTooLong = (values: ReviewValues) =>
+  REVIEW_FIELDS.filter((field) => codepoints(values[field]?.trim()) > REVIEW_MAX);
+
+/**
+ * 回顾在当前节点填写（F-155，plan-routes PUT 模块内容）：后端按当前阶段在办待办人 + 模块在该节点有
+ * EditModuleContent 复核，内容按（计划 × 模块 × 当前阶段）存一份。前端同口径经 operationAccess 判定：
+ * 计划进行中、带 revision、有运行中阶段、服务端在模块上返回了该按钮，缺一不开放；返回可填写的阶段。
+ */
+export function reviewStage(plan: PlanDetail, module: PlanModule): Stage | undefined {
+  const stage = plan.stages?.find((row) => row.status === 'running');
+  const access = operationAccess({
+    operations: { update: module.buttons?.includes('EditModuleContent') === true },
+    editable: REVIEW_FIELDS,
+    switches: [module.moduleType === 'review', plan.status === 'running', commandable(plan), !!stage?.id],
+  });
+  return access.edit ? stage : undefined;
+}
+/** 本阶段这一份回顾（未填写时为空值，保存后才有记录）。 */
+export function stageReview(plan: PlanDetail, moduleId: string, stageId: string): Record<ReviewField, string | null> {
+  const row = plan.reviews?.find((review) => review.moduleId === moduleId && review.stageId === stageId);
+  return { summary: row?.summary ?? null, improvement: row?.improvement ?? null };
 }
 
 /**

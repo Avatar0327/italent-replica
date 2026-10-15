@@ -680,7 +680,11 @@ const PLAN_ROUTES: RequiredTable = {
       facts: ['object:object.* 动作', VIEWER_FACT],
       note: 'HR：计划查看权且员工在其 IDP 范围内（hrSees）',
       at: [
-        planRoute('GET', '/plans/:id', 'return respondPlan(c, deps, ctx, await hrScopeOf(c, deps, ctx), id, 200, true)'),
+        planRoute(
+          'GET',
+          '/plans/:id',
+          'return respondPlan(c, deps, ctx, await hrScopeOf(c, deps, ctx), id, 200, true)',
+        ),
         HR_SCOPE,
         SHOW_PLAN,
         REQUIRE_VIEWER,
