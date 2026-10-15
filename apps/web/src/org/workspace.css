@@ -62,3 +62,96 @@
     grid-template-columns: 180px minmax(0, 1fr);
   }
 }
+
+/* 组织列表「设置显示字段」（原站 B2_03），与人员列表同一版式，样式各自维护。 */
+.org-gear.ant-btn {
+  color: #868b8f;
+}
+.org-gear-item.ant-btn {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  width: 160px;
+  font-size: 12px;
+}
+.org-gear-chevron::after {
+  content: '›';
+  color: #868b8f;
+}
+.org-columns-modal .ant-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.org-columns-panes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  height: 360px;
+  border: 1px solid #e6e8eb;
+  border-radius: 5px;
+}
+.org-columns-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  padding: 12px 16px;
+  overflow: auto;
+}
+.org-columns-pane + .org-columns-pane {
+  border-left: 1px solid #e6e8eb;
+}
+.org-columns-pane header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: #868b8f;
+}
+.org-columns-pane .org-column-options {
+  gap: 12px;
+  padding-left: 24px;
+}
+.org-columns-selected {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.org-columns-selected li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  margin-bottom: 8px;
+  padding: 0 12px;
+  border: 1px solid #e6e8eb;
+  border-radius: 5px;
+  background: #f5f6f7;
+  cursor: move;
+}
+.org-columns-selected li:hover {
+  border-color: #c9cdd2;
+}
+.org-columns-selected li.is-locked {
+  color: #868b8f;
+  cursor: not-allowed;
+}
+.org-columns-selected li.is-dragging {
+  opacity: 0.4;
+}
+.org-columns-icon {
+  flex: none;
+  color: #868b8f;
+}
+.org-columns-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.org-columns-footer .org-columns-muted {
+  margin-right: auto;
+}
+.org-columns-muted {
+  color: #868b8f;
+  font-size: 12px;
+}

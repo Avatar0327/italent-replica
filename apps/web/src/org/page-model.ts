@@ -89,8 +89,17 @@ export function pageAccess(permission: ObjectPermission | undefined) {
 }
 
 type FieldGate = Pick<ReturnType<typeof pageAccess>, 'field'>;
-// 原站「启用的组织」列序；状态由视图与筛选体现，不单独成列。
-const listFields = ['code', 'name', 'fullName', 'location', 'broadType', 'establishedOn', 'startDate', 'stopDate'];
+// 原站「启用的组织」默认列序；状态由视图与筛选体现，默认不成列（可在设置显示字段里加）。
+export const listFields = [
+  'code',
+  'name',
+  'fullName',
+  'location',
+  'broadType',
+  'establishedOn',
+  'startDate',
+  'stopDate',
+];
 // 原站组织单元详情：组织全称排在基本信息最后。
 const detailFields = [
   'code',
@@ -119,6 +128,13 @@ export function orgLabel(field: string, place: 'list' | 'detail') {
 /** 新建与新建下级共用：须有新建数据权、列表「新建」按钮，且名称与上级可编辑（接口要求行政维度上级）。 */
 export function orgCreatable(access: ReturnType<typeof pageAccess>) {
   return access.can('create', 'list') && access.field('name').editable && access.field('parents').editable;
+}
+/**
+ * 导入入口：服务端先查 import@list 按钮，再逐行按新建 / 更新校验字段写权（apps/api 组织导入）；
+ * 前端按同一口径收紧，必填列（编码、名称、上级）不可写时不出入口（DEC-502①c）。
+ */
+export function orgImportable(access: ReturnType<typeof pageAccess>) {
+  return access.can('import', 'list') && ['code', 'name', 'parents'].every((name) => access.field(name).editable);
 }
 /** 新建请求体：只发有值的字段，ID 统一小写，上级放进 parents.admin（apps/api 新建组织契约）。 */
 export function orgCreateBody(values: Record<string, unknown>) {

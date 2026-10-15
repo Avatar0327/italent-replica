@@ -1,9 +1,8 @@
-import { Alert, App, Button, Descriptions, Dropdown, Empty, Input, Select, Space, Tag, Tree } from 'antd';
+import { Alert, App, Button, Dropdown, Empty, Input, Select, Space, Tree } from 'antd';
 import { useState } from 'react';
 import { useLocation, useSearchParams } from 'react-router';
 import {
   DecisionNote,
-  DetailPage,
   ListPage,
   PageState,
   TenantDatePicker,
@@ -15,15 +14,18 @@ import {
 import { EstablishmentOverview, establishmentObject } from '../establishment/EstablishmentOverview.js';
 import { FormCommands } from '../foundation/forms/useCommandForm.js';
 import { OrgCreate } from './OrgCreate.js';
+import { OrgDetail, orgValue } from './OrgDetail.js';
 import { OrgEditor } from './OrgEditor.js';
-import { PersonName } from './PersonFields.js';
+import { OrgImport, OrgImportResults } from './OrgImport.js';
+import { OrgColumnGear, OrgColumnSettings } from './ColumnSettings.js';
+import { orgColumnOptions, restoreOrgColumns, visibleOrgColumns } from './columns.js';
+import type { OrgImportResult } from './import-model.js';
 import {
   orgActions,
   orgCatalogQuery,
   orgCreatable,
-  orgDetailFields,
+  orgImportable,
   orgLabel,
-  orgListFields,
   orgObject,
   organizationTree,
   type Dimension,
@@ -31,7 +33,7 @@ import {
   type OrgRow,
 } from './page-model.js';
 import { usePagePermissions, useRemote, RemoteContent, type PageAccess } from './page-support.js';
-import { detailText, pageText as m, text } from './messages.js';
+import { importText, pageText as m } from './messages.js';
 import { CatalogFilters } from './CatalogFilters.js';
 import './workspace.css';
 export function OrgPage() {
@@ -75,6 +77,11 @@ function useCatalog(access: PageAccess) {
   const [selected, setSelected] = useState<string>();
   const [editor, setEditor] = useState<{ original: OrgRow; action: OrgAction }>();
   const [creating, setCreating] = useState<{ parentId?: string }>();
+  // 列设置只在本次页面会话中生效（与人员列表同一口径，原站另有服务端保存，列入缺口）。
+  const [columns, setColumns] = useState(restoreOrgColumns);
+  const [columnsOpen, setColumnsOpen] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [imported, setImported] = useState<OrgImportResult[]>();
   const filters = { asOf: date, dimension, ...page, includeDisabled, name };
   const query = orgCatalogQuery(filters, access.field('name').visible);
   const remote = useRemote<PageResult<OrgRow>>(`/api/tenant/org/organizations?${query}`);
@@ -102,19 +109,20 @@ function useCatalog(access: PageAccess) {
     setEditor,
     creating,
     setCreating,
+    columns,
+    setColumns,
+    columnsOpen,
+    setColumnsOpen,
+    importing,
+    setImporting,
+    imported,
+    setImported,
     remote,
     detail,
     reset,
   };
 }
 type Catalog = ReturnType<typeof useCatalog>;
-function display(field: string, value: unknown) {
-  return field === 'enabled' && typeof value === 'boolean' ? (
-    <Tag color={value ? 'green' : 'default'}>{value ? m.enabled : m.disabled}</Tag>
-  ) : (
-    String(value ?? m.missing)
-  );
-}
 function OrgCatalog({ tab, access, view }: { tab: string; access: PageAccess; view: ListView }) {
   const { message } = App.useApp();
   const s = useCatalog(access);
@@ -127,7 +135,16 @@ function OrgCatalog({ tab, access, view }: { tab: string; access: PageAccess; vi
           <OrgList s={s} tab={tab} access={access} view={view} />
         </div>
       </div>
-      <OrgDetail s={s} access={access} />
+      <OrgDetail
+        selected={s.selected}
+        date={s.date}
+        detail={s.detail}
+        access={access}
+        onClose={() => s.setSelected(undefined)}
+        onCreate={(parentId) => openCreate(s, parentId)}
+        onEdit={(original, action) => openEditor(s, original, action)}
+      />
+      <CatalogDialogs s={s} access={access} />
       {s.editor && (
         <OrgEditor
           original={s.editor.original}
@@ -153,6 +170,33 @@ function OrgCatalog({ tab, access, view }: { tab: string; access: PageAccess; vi
           }}
         />
       )}
+    </>
+  );
+}
+/** 列设置、导入与导入结果弹窗；导入成功后刷新列表并展示逐行回执。 */
+function CatalogDialogs({ s, access }: { s: Catalog; access: PageAccess }) {
+  const { message } = App.useApp();
+  return (
+    <>
+      {s.columnsOpen && (
+        <OrgColumnSettings
+          value={s.columns}
+          allowed={orgColumnOptions(access)}
+          onApply={s.setColumns}
+          onClose={() => s.setColumnsOpen(false)}
+        />
+      )}
+      {s.importing && (
+        <OrgImport
+          onClose={() => s.setImporting(false)}
+          onImported={(results) => {
+            s.setImported(results);
+            s.remote.refresh();
+            void message.success(importText.saved);
+          }}
+        />
+      )}
+      {s.imported && <OrgImportResults results={s.imported} onClose={() => s.setImported(undefined)} />}
     </>
   );
 }
@@ -240,6 +284,8 @@ function OrgFilters({ s, access }: { s: Catalog; access: PageAccess }) {
     </Space>
   );
 }
+// 原站「启用的组织」顶部提示（01）；架构图与变更页签保留各自的操作提示。
+const hints = { list: m.listHint, tree: m.treeHint, changes: m.changeHint };
 function OrgList({ s, tab, access, view }: { s: Catalog; tab: string; access: PageAccess; view: ListView }) {
   return (
     <ListPage
@@ -257,12 +303,12 @@ function OrgList({ s, tab, access, view }: { s: Catalog; tab: string; access: Pa
       actions={<OrgListActions s={s} access={access} />}
       filters={
         <>
-          <Alert type="info" showIcon closable message={tab === 'tree' ? m.treeHint : m.changeHint} />
+          <Alert type="info" showIcon closable message={hints[tab as keyof typeof hints]} />
           <OrgFilters s={s} access={access} />
         </>
       }
       columns={[
-        ...orgListFields(access).map((field) => ({
+        ...visibleOrgColumns(s.columns, orgColumnOptions(access)).map((field) => ({
           key: field,
           title: orgLabel(field, 'list'),
           dataIndex: field,
@@ -272,31 +318,44 @@ function OrgList({ s, tab, access, view }: { s: Catalog; tab: string; access: Pa
                 {String(value ?? m.unavailable)}
               </Button>
             ) : (
-              display(field, value)
+              orgValue(field, value)
             ),
         })),
-        ...(access.can('update') || orgCreatable(access) || !access.field('name').visible
-          ? [
-              {
-                key: 'actions',
-                title: m.operation,
-                render: (_: unknown, row: OrgRow) => <OrgRowActions s={s} access={access} row={row} />,
-              },
-            ]
-          : []),
+        {
+          key: 'actions',
+          // 原站操作列表头带齿轮，打开「设置显示字段」（01、B2_03）。
+          title: (
+            <Space size={4}>
+              {m.operation}
+              <OrgColumnGear onOpen={() => s.setColumnsOpen(true)} />
+            </Space>
+          ),
+          render: (_: unknown, row: OrgRow) => <OrgRowActions s={s} access={access} row={row} />,
+        },
       ]}
     />
   );
 }
-// 导入拆到后续 PR（见 PR 说明）；新建与新建下级共用 orgCreatable 判定。
+/** 原站列表工具栏：新建与「更多操作▾」，导入在「更多操作」里（01；下拉其余项未取证，未验证）。 */
 function OrgListActions({ s, access }: { s: Catalog; access: PageAccess }) {
+  const importable = orgImportable(access);
   return (
     <>
-      <Button onClick={s.remote.refresh}>{m.refresh}</Button>
       {orgCreatable(access) && (
         <Button type="primary" onClick={() => openCreate(s)}>
           {m.create}
         </Button>
+      )}
+      {importable && (
+        <Dropdown
+          trigger={['click']}
+          menu={{
+            items: [{ key: 'import', label: m.import }],
+            onClick: () => s.setImporting(true),
+          }}
+        >
+          <Button>{m.moreActions}</Button>
+        </Dropdown>
       )}
     </>
   );
@@ -309,7 +368,7 @@ function openEditor(s: Catalog, original: OrgRow, action: OrgAction) {
   s.setEditor({ original, action });
   s.setSelected(undefined);
 }
-// 原站行内为「编辑」与下拉；变更、停用收进「更多」，与详情按钮共用 orgActions 判定。
+// 原站行内依次为「新建下级」「编辑」与下拉（01）；变更、停用收进下拉，与详情按钮共用 orgActions 判定。
 // 名称列被字段权限隐藏时没有入口打开详情，保留「详情」兜底（AC-FE-R1a-19）。
 function OrgRowActions({ s, access, row }: { s: Catalog; access: PageAccess; row: OrgRow }) {
   const actions = orgActions(access, row);
@@ -321,14 +380,14 @@ function OrgRowActions({ s, access, row }: { s: Catalog; access: PageAccess; row
           {m.detail}
         </Button>
       )}
-      {actions.includes('edit') && (
-        <Button type="link" onClick={() => openEditor(s, row, 'edit')}>
-          {m.edit}
-        </Button>
-      )}
       {orgCreatable(access) && (
         <Button type="link" onClick={() => openCreate(s, row.id)}>
           {m.createChild}
+        </Button>
+      )}
+      {actions.includes('edit') && (
+        <Button type="link" onClick={() => openEditor(s, row, 'edit')}>
+          {m.edit}
         </Button>
       )}
       {more.length > 0 && (
@@ -344,91 +403,4 @@ function OrgRowActions({ s, access, row }: { s: Catalog; access: PageAccess; row
       )}
     </Space>
   );
-}
-function OrgDetailActions({ s, access }: { s: Catalog; access: PageAccess }) {
-  const original = s.detail.data;
-  if (!original) return null;
-  return (
-    <>
-      {orgCreatable(access) && <Button onClick={() => openCreate(s, original.id)}>{m.createChild}</Button>}
-      {orgActions(access, original).map((action) => (
-        <Button
-          key={action}
-          type="primary"
-          ghost={action === 'disable'}
-          onClick={() => openEditor(s, original, action)}
-        >
-          {m[action]}
-        </Button>
-      ))}
-    </>
-  );
-}
-/** 上级只存 ID；名称按当前权限读取上级详情，读不到（范围外 / 已失效）时明确提示，不补写。 */
-function OrgParentName({ id, date }: { id: string; date: string }) {
-  const parent = useRemote<OrgRow>(`/api/tenant/org/organizations/${id}?asOf=${date}`);
-  if (parent.error) return <>{text.hiddenParent}</>;
-  if (!parent.data) return <>{m.missing}</>;
-  return <>{parent.data.name ?? m.unavailable}</>;
-}
-function OrgDetail({ s, access }: { s: Catalog; access: PageAccess }) {
-  const { detail } = s;
-  return (
-    <DetailPage
-      open={!!s.selected}
-      onClose={() => s.setSelected(undefined)}
-      summary={<RemoteContent state={detail}>{null}</RemoteContent>}
-      title={access.field('name').visible ? (detail.data?.name ?? m.detail) : m.detail}
-      actions={<OrgDetailActions s={s} access={access} />}
-      tabs={[{ key: 'organization', label: m.organizationUnit }]}
-      sections={[
-        {
-          key: 'basic',
-          title: m.basic,
-          children: (
-            <Descriptions
-              className="r1-detail-fields"
-              column={2}
-              size="small"
-              items={orgDetailFields(access)
-                .filter((field) => detail.data?.[field] !== undefined)
-                .map((field) => ({
-                  key: field,
-                  label: orgLabel(field, 'detail'),
-                  children: detailValue(field, detail.data?.[field]),
-                }))}
-            />
-          ),
-        },
-        ...(access.field('parents').visible
-          ? [
-              {
-                key: 'parents',
-                title: m.parent,
-                children: (
-                  <Descriptions
-                    className="r1-detail-fields"
-                    column={1}
-                    items={(['admin', 'business', 'product'] as const)
-                      .filter((key) => detail.data?.parents?.[key])
-                      .map((key) => ({
-                        key,
-                        label: detailText[key],
-                        children: parentName(detail.data?.parents?.[key]?.parentId, s.date),
-                      }))}
-                  />
-                ),
-              },
-            ]
-          : []),
-      ].filter(() => !!detail.data)}
-    />
-  );
-}
-function detailValue(field: string, value: unknown) {
-  if (field === 'personInChargeId' && typeof value === 'string' && value) return <PersonName id={value} />;
-  return display(field, value);
-}
-function parentName(id: string | null | undefined, date: string) {
-  return id ? <OrgParentName id={id} date={date} /> : m.missing;
 }

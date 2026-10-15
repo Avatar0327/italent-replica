@@ -156,9 +156,11 @@ test('AC-FE-R1a-08 组织变更显式联动；冲突后重读、核对差异再�
   });
   await page.goto('/org?tab=changes');
   await page.getByRole('button', { name: '合成组织', exact: true }).click();
-  await page.getByRole('button', { name: /变\s*更/, exact: true }).click();
+  // 原站详情把变更收在「更多操作」里（B2_09）。
+  await page.getByRole('dialog').getByRole('button', { name: '更多操作' }).click();
+  await page.getByRole('menuitem', { name: '变更' }).click();
   const dialog = page.getByRole('dialog');
-  await dialog.getByLabel('机构名称').fill('合成组织二');
+  await dialog.getByLabel('名称', { exact: true }).fill('合成组织二');
   await save(page).click();
   await expect(page.getByText('请选择是否新增任职')).toBeVisible();
   expect(writes(requests)).toHaveLength(0);
@@ -169,7 +171,7 @@ test('AC-FE-R1a-08 组织变更显式联动；冲突后重读、核对差异再�
   await expect(save(page)).toBeDisabled();
   await dialog.getByRole('button', { name: '重读最新版本' }).click();
   await expect(dialog.getByLabel('备注')).toHaveValue('他人备注');
-  await expect(dialog.getByLabel('机构名称')).toHaveValue('合成组织二');
+  await expect(dialog.getByLabel('名称', { exact: true })).toHaveValue('合成组织二');
   await dialog.getByRole('button', { name: '已核对差异，继续编辑' }).click();
   await save(page).click();
   await expect(dialog).toHaveCount(0);
@@ -232,8 +234,8 @@ test('AC-FE-R1a-28 回执缺少原单 ID 时不显示成功，表单锁定待回
 
 async function createOrganization(page: Page) {
   const dialog = page.getByRole('dialog');
-  await dialog.getByLabel('机构名称').fill('合成新组织');
-  await dialog.getByLabel('机构简称').fill('合成新');
+  await dialog.getByLabel('名称', { exact: true }).fill('合成新组织');
+  await dialog.getByLabel('简称', { exact: true }).fill('合成新');
   const parent = dialog
     .locator('.ant-form-item')
     .filter({ has: page.locator('label').filter({ hasText: '行政维度上级' }) })
