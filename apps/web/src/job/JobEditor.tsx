@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { FormOverlay, TenantDatePicker, type FormField } from '../foundation/index.js';
 import { usePagePermissions, useRemote, type PageAccess } from '../org/page-support.js';
 import { useRecordCommand } from '../org/record-command.js';
+import { slotKey } from '../foundation/forms/slot.js';
 import {
   jobBody,
   jobFormGroups,
@@ -96,7 +97,7 @@ function useJobCommand({ kind, original, date, today, access }: EditorProps) {
   return useRecordCommand({
     // 编辑用原单路径、新建用集合路径作键，不带列表日期（F-123 页面片接入 2）；
     // 槽里存实际采用的业务时点：无生效日期编辑权的新建按租户当天，不是列表日期。
-    resource: original ? `${base}/${original.id}` : base,
+    resource: slotKey(base, original?.id),
     context: { date: jobTiming(original, date, today, access.field('startDate')).asOf },
     original,
     readPath: original ? (id, context) => `${base}/${id}?asOf=${context.date}` : undefined,

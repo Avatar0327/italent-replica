@@ -1,6 +1,7 @@
 import { newCommand, type Command } from '../client.js';
 import { messages } from './messages.js';
-export type Values = Record<string, unknown>;
+import { changedFields, refillDraft, sameValue, type Values } from './values.js';
+export type { Values } from './values.js';
 export interface Latest {
   id: string;
   revision: number;
@@ -26,6 +27,8 @@ export interface Submission {
   differences?: Difference[];
   reading?: boolean;
   readError?: unknown;
+  /** 命令上下文（业务时点、动作等）：不进请求体，随槽保存，换日期 / 动作 / 入口重开时以它为准。 */
+  context?: Values;
 }
 export interface SubmitInput {
   values: Values;
@@ -35,15 +38,19 @@ export interface SubmitInput {
   effectiveDate?: string;
   businessId?: string;
   patchOnly?: boolean;
+  context?: Values;
   send(command: Command<Values>): Promise<{ id: string }>;
 }
-const equal = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 export const isLocked = (state?: Submission) => !!state && ['submitting', 'unknown', 'conflict'].includes(state.status);
 function failureStatus(error: unknown): Submission['status'] {
   const failure = error as { status?: number; code?: string } | null;
   if (typeof failure?.status !== 'number' || failure.status < 400 || failure.status >= 500) return 'unknown';
   if (failure.status === 409 && failure.code === 'REVISION_CONFLICT') return 'conflict';
   return 'rejected';
+}
+/** 槽里还有未完成的命令（处理中、结果未知、冲突、被拒）时返回它保存的上下文；完成或空槽返回 undefined。 */
+export function slotContext<C extends Values = Values>(state?: Submission) {
+  return state && state.status !== 'done' ? (state.context as C | undefined) : undefined;
 }
 /** DEC-464/473/475：状态由页面持有；没有解锁未知命令或自动重放的接口。 */
 export function createFormStore() {
@@ -75,7 +82,7 @@ export function createFormStore() {
       const body = Object.fromEntries(
         Object.entries(input.values).filter(
           ([field, value]) =>
-            input.editableFields.includes(field) && (!input.patchOnly || !equal(value, baseline[field])),
+            input.editableFields.includes(field) && (!input.patchOnly || !sameValue(value, baseline[field])),
         ),
       );
       // 生效日期是调用方提供的租户业务日期，不从浏览器时区推算。
@@ -87,9 +94,11 @@ export function createFormStore() {
         values: structuredClone(input.values),
         baseline: structuredClone(baseline),
         editableFields: [...input.editableFields],
-        editedFields: input.editableFields.filter((field) => !equal(input.values[field], baseline[field])),
+        editedFields: changedFields(input.values, baseline, input.editableFields),
         revision,
         businessId: input.businessId,
+        // 未完成的命令沿用它当初的上下文，与基线、版本同理。
+        context: prior?.context ?? input.context,
         latest: prior?.latest,
       };
       put(key, state);
@@ -131,19 +140,25 @@ async function rereadState(state: Submission, read: (id?: string) => Promise<Lat
     if (!latest.id || latest.id !== state.businessId || !Number.isSafeInteger(latest.revision) || latest.revision < 0)
       throw new Error(messages.invalidReceipt);
     const differences = state.editableFields
-      .filter((field) => !equal(state.baseline[field], latest.values[field]))
+      .filter((field) => !sameValue(state.baseline[field], latest.values[field]))
       .map((field) => ({
         field,
         before: state.baseline[field],
         latest: latest.values[field],
         mine: state.editedFields.includes(field) ? state.values[field] : state.baseline[field],
       }));
-    const values = { ...state.values };
-    if (state.status === 'conflict')
-      for (const field of state.editableFields) {
-        // 重读产生的回填不是人工编辑；再次重读及服务端改回原值时也须跟随最新版本。
-        if (!state.editedFields.includes(field)) values[field] = latest.values[field];
-      }
+    // 重读产生的回填不是人工编辑；再次重读及服务端改回原值时也须跟随最新版本。上次不可提交的字段同样取最新。
+    const unedited = state.editableFields.filter((field) => !state.editedFields.includes(field));
+    const values =
+      state.status === 'conflict'
+        ? refillDraft({
+            // 最新记录里没有的未改字段同样跟随最新（置空）。
+            values: { ...state.values, ...Object.fromEntries(unedited.map((field) => [field, undefined])) },
+            latest: latest.values,
+            edited: state.editedFields,
+            submittable: state.editableFields,
+          })
+        : state.values;
     return { ...state, values, latest, differences, reading: false, readError: undefined };
   } catch (readError) {
     return { ...state, reading: false, readError };

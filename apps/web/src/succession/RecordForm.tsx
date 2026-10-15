@@ -7,7 +7,7 @@ import { FormOverlay, type FormField } from '../foundation/FormOverlay.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { PersonSelect, TenantDatePicker } from '../foundation/selectors.js';
 import { useApiClient, useSession } from '../foundation/Session.js';
-import { useConflictCommand } from './conflict.js';
+import { useConflictCommand } from '../foundation/forms/ConflictCommands.js';
 import { s } from './messages.js';
 import { BASE, createRecordBody, END_RECEIPT, endCommand, endReceipt, recordDateErrors } from './rules.js';
 import type { ListResult, ReadinessRef, RecordView, SuccessionType } from './types.js';

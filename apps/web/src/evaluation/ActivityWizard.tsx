@@ -7,6 +7,7 @@ import { ActivityControl, Chains, Conditions, editableChains, EV } from './Activ
 import { useRecordForm } from './useRecordForm.js';
 import { FormLock, LockedField } from '../foundation/forms/FormLock.js';
 import { CommandStatus } from '../foundation/forms/CommandStatus.js';
+import { useDraftValues } from '../foundation/forms/useCommandForm.js';
 import { evaluationPatch, records, validateDates, validateConditions, type Row } from './model.js';
 import { m, textValue } from './messages.js';
 export const EVALUATION = 'TEvaluation.EvaluationActivity';
@@ -56,9 +57,6 @@ function useWizard({ row, close, saved }: WizardProps) {
   const [form] = Form.useForm();
   const writer = useRecordForm(`${EV}/activities`, row);
   const current = writer.current;
-  useEffect(() => {
-    if (writer.state?.values) form.setFieldsValue(writer.state.values);
-  }, [form, writer.state?.values]);
   const locked = !!current && current.applyCount !== 0;
   const field = (key: string) => {
     const access = permission.field(key);
@@ -70,6 +68,14 @@ function useWizard({ row, close, saved }: WizardProps) {
         !(locked && ['typeId', 'orgRange', 'categoryIds', 'levelIds', 'effectiveDate', 'noticeOrgRange'].includes(key)),
     };
   };
+  // 重读后按内核 refillDraft 回填（F-142）：只有改过且当前可提交的字段保留草稿，其余取最新记录。
+  const draft = useDraftValues(
+    writer.state,
+    groups.flat().filter((key) => field(key).editable),
+  );
+  useEffect(() => {
+    if (draft) form.setFieldsValue(draft);
+  }, [form, draft]);
   const initial = row ?? {
     maxLevelJump: 1,
     applicants: [],

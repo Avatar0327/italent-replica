@@ -8,6 +8,7 @@ import { PersonSelect, TenantDatePicker, type Choice } from '../foundation/selec
 import { useApiClient } from '../foundation/Session.js';
 import { useContractCommand } from './commands.js';
 import { messages as kernel } from '../foundation/forms/messages.js';
+import { projectFields } from '../foundation/forms/values.js';
 import {
   availableModes,
   commandFields,
@@ -77,8 +78,7 @@ export function ContractButtons({
   );
 }
 
-const project = (row: Row, op: Operation) =>
-  Object.fromEntries(formFieldNames(op).map((field) => [field, row[field] ?? null]));
+const project = (row: Row, op: Operation) => projectFields(row, formFieldNames(op));
 
 type Props = {
   op: Operation;

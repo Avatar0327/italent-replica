@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { Alert, Button, Descriptions, Modal } from 'antd';
+import { slotKey } from '../foundation/forms/slot.js';
 import { FormCommands, useCommandForm } from '../foundation/forms/useCommandForm.js';
 import { m } from './messages.js';
 
@@ -17,7 +18,7 @@ export function CreateEntry({
   close(): void;
   children: ReactNode;
 }) {
-  const submission = useCommandForm(path);
+  const submission = useCommandForm(slotKey(path));
   const state = submission.state;
   const pending = state && ['submitting', 'unknown'].includes(state.status) ? state : undefined;
   const [openedPending] = useState(!!pending);

@@ -8,11 +8,9 @@ import { CommandStatus } from '../foundation/forms/CommandStatus.js';
 import type { CommandForm } from '../foundation/forms/useCommandForm.js';
 import { useContractCommand } from './commands.js';
 import type { Values } from '../foundation/forms/store.js';
+import { projectFields } from '../foundation/forms/values.js';
 import { m } from './messages.js';
 import { contractApi, type Config, type Row } from './model.js';
-
-export const pick = (row: Row | undefined, keys: readonly string[], fallback: Row = {}) =>
-  Object.fromEntries(keys.map((key) => [key, row?.[key] ?? fallback[key] ?? null]));
 
 /** 重读时按 ID 找不到本行：按已删除处理，保持锁定并提示刷新列表。 */
 export class RowGone extends Error {}
@@ -51,13 +49,13 @@ export function useConfigCommand(resource: string, { kind, id, row, keys, fallba
   const api = useApiClient();
   const submission = useContractCommand(resource);
   const pending = submission.state && submission.state.status !== 'done' ? submission.state : undefined;
-  const baseline = pending ? pending.baseline : pick(row, keys, fallback);
+  const baseline = pending ? pending.baseline : projectFields(row, keys, fallback);
   const revision = pending ? pending.revision : Number(row?.revision ?? 0);
   const read = async () => {
     const latest =
       kind === 'settings' ? await api.request<Row>(contractApi.settings) : await findRow(api, contractApi[kind], id!);
     const latestId = kind === 'settings' ? latest.tenantId : latest.id;
-    return { id: String(latestId), revision: Number(latest.revision), values: pick(latest, keys) };
+    return { id: String(latestId), revision: Number(latest.revision), values: projectFields(latest, keys) };
   };
   const reload = async () => {
     await submission.reread(async () => {

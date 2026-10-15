@@ -4,7 +4,7 @@ import { RemoteSelect, Failure, useRead } from '../evaluation/runtime.js';
 import { FormOverlay, type FormField } from '../foundation/FormOverlay.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { useApiClient } from '../foundation/Session.js';
-import { useConflictCommand } from './conflict.js';
+import { useConflictCommand } from '../foundation/forms/ConflictCommands.js';
 import { s } from './messages.js';
 import { targetPaths } from './RecordForm.js';
 import {
@@ -40,7 +40,7 @@ export function AssignDialog(props: { kind: Kind; item: MapItem; mapPath: string
   const baseline = assignValues(current?.levelId);
   // 没有单条读取接口：冲突后重读整张地图，按节点取结果行（重读 → 核对差异 → 继续编辑）。
   const writer = useConflictCommand(
-    path,
+    `${BASE}/${segment}-results`,
     { id: item.id, revision: current?.revision ?? 0, values: baseline },
     async () => assignLatest(await api.request<MapResult>(props.mapPath), item.id, kind),
   );
