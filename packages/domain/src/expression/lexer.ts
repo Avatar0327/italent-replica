@@ -1,7 +1,8 @@
 /**
  * 词法分析（REQ-EXP-001）：兼容原站公式文本——中文函数名与字段名、全角比较符 / 括号 / 逗号、
- * 以数字开头的对象名（360结果）、带连字符的字段名（问卷-他评总分，DEC-228）、百分比字面量（82%）、
- * 乘除号 × ÷（本租户规则原文写法）、名字里带“/”的面板函数名（`26` §8.6）。
+ * 以数字开头的对象名（360结果）、百分比字面量（82%）、乘除号 × ÷（本租户规则原文写法）、名字里带“/”的面板函数名
+ * （`26` §8.6）、行首 `//` 整行注释（R3e）。带连字符的字段名（360结果.问卷-他评总分）不在词法里合并：“-”一律切成减号，
+ * 由语法分析按字段目录决定是否并回字段名（#89-4，见 parser.ts）。
  * 中文引号与无法识别的字符在这里报错并给出行列（复刻改进，`26` §8.1）。
  */
 import type { SourcePosition } from './failures.js';
@@ -171,6 +172,7 @@ class Scanner {
     while (this.offset < this.source.length) {
       const ch = this.peek();
       if (isSpace(ch)) this.advance(1);
+      else if (this.source.startsWith('//', this.offset)) this.skipComment();
       else this.scanToken(ch);
     }
     this.tokens.push({ kind: 'eof', text: '', value: '', ...this.position() });
@@ -206,6 +208,19 @@ class Scanner {
     return this.tokens.at(-1)?.kind === 'dot';
   }
 
+  /**
+   * `//` 在行首（前面只有空白）时到行尾都是注释（R3e 已核实，`26` 末节 W-864 说明原文：“增加在行首，对整行公式进行文字注释”）。
+   * 不在行首的 `//` 原站未说明，报语法错误，不猜成整除或行尾注释。字符串里的 `//` 由 scanString 整段读走，不会到这里。
+   */
+  private skipComment(): void {
+    const lineStart = this.source.lastIndexOf('\n', this.offset - 1) + 1;
+    if (this.source.slice(lineStart, this.offset).trim() !== '') {
+      this.error('SYNTAX_ERROR', '“//” 只能写在行首，对整行公式作注释', 2);
+    }
+    const end = this.source.indexOf('\n', this.offset);
+    this.advance((end === -1 ? this.source.length : end) - this.offset);
+  }
+
   private error(code: SyntaxIssueCode, message: string, length = 1): never {
     throw new SyntaxIssueError({ code, message, length, ...this.position() });
   }
@@ -220,10 +235,6 @@ class Scanner {
     if (ch === "'") this.error('SYNTAX_ERROR', '字符串须用英文双引号');
     if (isDigit(ch)) return this.atMember() ? this.scanIdentifier() : this.scanNumberOrIdentifier();
     if (isIdentStart(ch)) return this.scanIdentifier();
-    // TODO(需取证 #105)：运算符工具栏里的“//”是整除还是注释原站未说明，取证前不猜，按语法错误提示
-    if (this.source.startsWith('//', this.offset)) {
-      this.error('SYNTAX_ERROR', '“//” 的含义（整除或注释）待取证，暂不支持', 2);
-    }
     const punctuation = PUNCTUATION[ch];
     if (punctuation) {
       const start = this.position();
@@ -284,26 +295,16 @@ class Scanner {
     this.push('number', text, Number(percent ? text.slice(0, -1) : text), start, percent || undefined);
   }
 
-  /**
-   * 名字。对象成员位置（“.”之后）的连字符一律属于字段名（DEC-228）：原站字段如 360结果.问卷-他评总分；
-   * 字段相减须在减号两侧加空格（盘点对象.得分 - 盘点对象.基准）。不在成员位置的名字（Def 变量、函数名、
-   * 不带对象前缀的短字段名）里“-”是减号，a-b、总分-上级分、10-3 都是减法。
-   */
+  /** 名字。“-”不属于名字：成员位置带连字符的字段名由语法分析按字段目录并回（#89-4）。 */
   private scanIdentifier(): void {
     const start = this.position();
-    const member = this.atMember();
-    const slashName = member ? undefined : this.slashFunctionName();
+    const slashName = this.atMember() ? undefined : this.slashFunctionName();
     if (slashName) {
       this.advance(slashName.length);
       return this.push('identifier', slashName, slashName, start);
     }
     let end = this.offset;
-    while (end < this.source.length) {
-      const ch = this.source[end]!;
-      if (isIdentPart(ch)) end++;
-      else if (member && ch === '-' && isIdentPart(this.source[end + 1] ?? '')) end++;
-      else break;
-    }
+    while (end < this.source.length && isIdentPart(this.source[end]!)) end++;
     const text = this.source.slice(this.offset, end);
     this.advance(text.length);
     const keyword = KEYWORDS[text] ?? KEYWORDS[text.toLowerCase()];

@@ -7,7 +7,7 @@
  * - 活动类型、活动周期、通用评分项没有组织字段（字典，DEC-121 同口径）。
  * 本目录只含配置对象（PR-A / PR-B）；员工评定数据等流程对象见 flow-catalog.ts（P0 契约冻结）。
  */
-import type { ButtonDefinition, ObjectDefinition } from '../permission/object-permission.js';
+import type { ButtonDefinition, ObjectDefinition, ObjectPermission } from '../permission/object-permission.js';
 
 export const EVALUATION_APP = 'TEvaluation';
 
@@ -111,6 +111,36 @@ export const EVALUATION_ORG_OBJECTS: readonly EvaluationObject[] = [
   'evaluationForm',
   'evaluationActivity',
 ];
+
+/**
+ * 评定三个字典：活动类型、活动周期、通用评分项没有组织字段，只按管理单元裁剪的人新建不了（新建只认看全部，DEC-121）。
+ * DEC-503：这三项的“看全部 + 新建”给企业设置层的 system_admin（系统管理员），评定管理员与其他业务身份都不预置；
+ * 原站对应身份未取证（未验证，DEC-503）。
+ */
+export const EVALUATION_DICTIONARY_OBJECTS: readonly EvaluationObject[] = [
+  'activityType',
+  'activityCycle',
+  'generalScoreItem',
+];
+
+/**
+ * 系统管理员（企业设置层 system_admin）在三个评定字典上的对象权限：只给“看全部 + 新建”（DEC-503）——
+ * 全部字段可见、非系统字段可填（新建要填）、仅新建数据操作与新建按钮；修改、删除不自动给，
+ * 要改删须另行显式授予业务身份。“看全部”由数据范围解析另行给出（permission/scope-resolver.ts，同一份字典清单）。
+ */
+export function systemAdminDictionaryPermissions(): ObjectPermission[] {
+  return EVALUATION_DICTIONARY_OBJECTS.map((key) => {
+    const definition = EVALUATION_OBJECTS[key];
+    return {
+      objectCode: definition.code,
+      dataOperations: { create: true, update: false, delete: false },
+      fields: definition.fields.map((f) => ({ fieldCode: f.code, view: true, edit: !f.system })),
+      buttons: definition.buttons
+        .filter((b) => b.requires === 'create')
+        .map((b) => ({ buttonCode: b.code, level: b.level })),
+    };
+  });
+}
 
 /** 审计动作前缀（`<前缀>.create|update|delete`）。 */
 export const EVALUATION_AUDIT_ACTIONS: Readonly<Record<EvaluationObject, string>> = {

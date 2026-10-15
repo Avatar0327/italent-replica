@@ -36,6 +36,8 @@ export interface EmploymentPayloadRow extends PreparedInheritance {
   lastWorkDate: string | null;
   formId: string;
   selectedStaffId: string | null;
+  /** 人工计划生效日（F-140）：读自库；写入时由 insertEmploymentRow 丢弃，由插入触发器维护（迁移 0130）。 */
+  plannedEffectiveDate?: string;
   /** 读自库；写入时由 insertEmploymentRow 丢弃，只经显式状态流转或触发器继承（F-022）。 */
   employeeStatus?: number;
   entryStatus?: number | null;
@@ -220,6 +222,7 @@ export async function insertEmploymentRow(
 }
 
 function versionValues(input: Record<string, unknown>, status?: VersionStatus): Record<string, unknown> {
-  const { employeeStatus: _employeeStatus, entryStatus: _entryStatus, ...values } = input;
+  // 人工计划生效日只由插入触发器按“人工版本取本版本日期、派生版本沿用上一版本”写入（迁移 0130，F-140 约束 2）。
+  const { employeeStatus: _status, entryStatus: _entry, plannedEffectiveDate: _planned, ...values } = input;
   return status ? { ...values, employeeStatus: status.employeeStatus, entryStatus: status.entryStatus } : values;
 }

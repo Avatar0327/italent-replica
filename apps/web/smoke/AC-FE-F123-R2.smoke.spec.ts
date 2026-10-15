@@ -17,7 +17,7 @@ async function expectContentLocked(form: Locator) {
 
 for (const [tab, path] of [
   ['套卷', 'questionnaires'],
-  ['题库 · 企业自定义', 'templates'],
+  ['题库 · 企业自定义', 'questionnaire-templates'],
 ]) {
   for (const outcome of ['slow', 'conflict']) {
     test(`AC-FE-F123-R2 ${tab} ${outcome} 所有内容控件合并提交锁`, async ({ page }) => {

@@ -57,13 +57,36 @@ describe('AC-FE-R2a-02 只读请求与申请分流', () => {
     expect(canOpenRecord({ id: 'request' }, 'in_review')).toBe(false);
     expect(canOpenRecord({ employeeId: 'employee' }, 'missing')).toBe(false);
   });
-  it('高级筛选仅使用独立合成数据，日期区间和类型可组合', async () => {
-    const { previewContracts } = await import('../../apps/web/src/demo-stubs/contracts.js');
-    const rows = previewContracts(
-      { name: '合成甲', typeId: ['demo-labor'], from: '2027-01-01', to: '2027-12-31' },
-      'all',
-    );
-    expect(rows.map((row) => row.id)).toEqual(['demo-contract-a']);
-    expect(previewContracts({ name: '不存在' }, 'all')).toEqual([]);
+  // F-127b：筛选改由后端执行（list-query.ts），原“独立合成数据过滤”改为核对发出的参数。
+  it('高级筛选按后端参数白名单发送，日期区间和类型可组合，非法区间被拦下', async () => {
+    const { listPath, listQuery, rangeErrors } = await import('../../apps/web/src/contracts/model.js');
+    const filters = {
+      keyword: '合成甲',
+      typeId: 'type-a',
+      effectiveFrom: '2027-01-01',
+      effectiveTo: '2027-12-31',
+      employeeLabel: '合成甲',
+      includeChildren: 'true',
+      order: 'desc',
+    };
+    const url = new URL(listPath('all', 1, 30, listQuery('all', filters)), 'https://example.com');
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      view: 'all',
+      page: '1',
+      pageSize: '15',
+      keyword: '合成甲',
+      typeId: 'type-a',
+      effectiveFrom: '2027-01-01',
+      effectiveTo: '2027-12-31',
+    });
+    expect(listQuery('all', { orgId: 'org', includeChildren: 'true', sort: 'endDate', order: 'desc' })).toEqual({
+      orgId: 'org',
+      includeChildren: 'true',
+      sort: 'endDate',
+      order: 'desc',
+    });
+    expect(rangeErrors({ effectiveFrom: '2027-12-31', effectiveTo: '2027-01-01', endFrom: '2027-01-01' })).toEqual([
+      'effectiveFrom',
+    ]);
   });
 });

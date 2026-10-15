@@ -4,6 +4,7 @@ import { test, expect, user, employee } from './fixtures.js';
 const fields = [
   'name',
   'code',
+  'workDate',
   'gender',
   'entryDate',
   'employeeStatus',
@@ -46,6 +47,7 @@ async function staffFixtures(page: Page) {
                   gender: '女',
                   employeeStatus: 3,
                   entryDate: '2024-01-01',
+                  workDate: '2020-07-01',
                 },
               ],
         hasDataPermission: true,
@@ -87,20 +89,35 @@ test('AC-FE-R1b-03 切换身份，列表筛选、列设置、档案三个页签�
   await page.getByRole('button', { name: /^确\s*定$/ }).click();
   await expect(page.getByRole('button', { name: '合成林晓', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: '重置筛选', exact: true }).click();
-  await page.getByRole('button', { name: '列设置', exact: true }).click();
+  await openColumnSettings(page);
   await page.getByRole('checkbox', { name: '性别', exact: true }).uncheck();
-  await page.getByRole('button', { name: /^确\s*定$/ }).click();
+  await page
+    .getByRole('dialog', { name: '设置显示字段' })
+    .getByRole('button', { name: /^确\s*定$/ })
+    .click();
   await expect(page.getByRole('columnheader', { name: '性别', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: '合成林晓', exact: true }).click();
   await expect(page.getByRole('dialog', { name: '员工档案' })).toBeVisible();
   await expect(page.getByRole('dialog')).toContainText('lin@example.com');
   await expect(page.locator('.detail-drawer .ant-drawer-content-wrapper')).toHaveCSS('transform', 'none');
   await page.screenshot({ path: '../../.demo/fe-r1b-detail.png' });
-  await page.getByRole('tab', { name: '任职记录', exact: true }).click();
-  await expect(page.getByText('当前生效', { exact: true })).toBeVisible();
-  await expect(page.getByText('2024-01-01 → 2026-09-30', { exact: true })).toBeVisible();
-  await page.getByRole('tab', { name: '人员子集', exact: true }).click();
+  await expect(page.getByRole('tab', { name: '人员信息', exact: true })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByText('合成示例大学', { exact: true })).toBeVisible();
+  // 原站“员工信息”与各子集分区右上角都有“收起”（#326 第 2 轮 P2-4）
+  const info = page.getByRole('region', { name: '员工信息' });
+  await expect(info).toContainText('lin@example.com');
+  await info.getByRole('button', { name: '收起' }).click();
+  await expect(info.getByText('lin@example.com')).toHaveCount(0);
+  await expect(info.getByRole('button', { name: '展开' })).toHaveAttribute('aria-expanded', 'false');
+  const education = page.getByRole('region', { name: '教育经历' });
+  await education.getByRole('button', { name: '收起' }).click();
+  await expect(education.getByText('合成示例大学', { exact: true })).toHaveCount(0);
+  await page.getByRole('tab', { name: '任职记录', exact: true }).click();
+  // 原站任职卡片写“年月日”，“生效中”为青绿色标签（#326 第 2 轮 P2-6）
+  await expect(page.getByText('生效中', { exact: true })).toBeVisible();
+  await expect(page.getByText('生效中', { exact: true })).toHaveCSS('color', 'rgb(0, 168, 112)');
+  await expect(page.getByText('2024年1月1日 至 2026年9月30日', { exact: true })).toBeVisible();
+  await expect(page.getByText('2026年10月1日 至今', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: '关闭', exact: true }).click();
   await page.getByRole('switch', { name: '注释' }).click();
   await expect(page.getByText('DEC-108', { exact: true }).first()).toBeVisible();
@@ -112,7 +129,7 @@ test('AC-FE-R1b-03b 列设置勾选在点击事件内同步生效，同一帧连
   await page.goto('/staff');
   await page.getByLabel('切换演示身份').selectOption(user);
   await expect(page.getByRole('button', { name: '合成林晓', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: '列设置', exact: true }).click();
+  await openColumnSettings(page);
   const gender = page.getByRole('checkbox', { name: '性别', exact: true });
   const email = page.getByRole('checkbox', { name: '电子邮件', exact: true });
   await expect(gender).toBeChecked();
@@ -126,7 +143,10 @@ test('AC-FE-R1b-03b 列设置勾选在点击事件内同步生效，同一帧连
     return { afterFirst, gender: input('gender').checked, email: input('email').checked };
   });
   expect(states).toEqual({ afterFirst: false, gender: false, email: false });
-  await page.getByRole('button', { name: /^确\s*定$/ }).click();
+  await page
+    .getByRole('dialog', { name: '设置显示字段' })
+    .getByRole('button', { name: /^确\s*定$/ })
+    .click();
   await expect(page.getByRole('columnheader', { name: '性别', exact: true })).toHaveCount(0);
   await expect(page.getByRole('columnheader', { name: '电子邮件', exact: true })).toHaveCount(0);
 });
@@ -157,6 +177,80 @@ test('AC-FE-R1b-04 隐藏字段不显示，详情失败不回退列表快照', a
   await page.getByRole('button', { name: '合成林晓', exact: true }).click();
   await expect(page.getByRole('dialog')).toContainText('页面或记录不存在');
   await expect(page.getByRole('dialog')).not.toContainText('lin@example.com');
+});
+
+async function openColumnSettings(page: Page) {
+  // 原站：表头右侧齿轮 → “设置显示字段” → 居中双栏弹窗
+  await page.getByRole('button', { name: '列设置', exact: true }).click();
+  await page.getByRole('button', { name: '设置显示字段', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: '设置显示字段' })).toBeVisible();
+}
+
+test('AC-FE-R1b-03c 设置显示字段：居中双栏、姓名锁定、拖拽排序与恢复默认', async ({ page }) => {
+  await staffFixtures(page);
+  await page.goto('/staff');
+  await page.getByLabel('切换演示身份').selectOption(user);
+  await expect(page.getByRole('button', { name: '合成林晓', exact: true })).toBeVisible();
+  await openColumnSettings(page);
+  const dialog = page.getByRole('dialog', { name: '设置显示字段' });
+  await expect(page.locator('.staff-columns-modal .ant-modal')).toBeVisible();
+  await expect(dialog.getByRole('checkbox', { name: '员工姓名', exact: true })).toBeDisabled();
+  const selected = dialog.getByRole('list', { name: '已选字段' });
+  await expect(dialog.getByText('已选字段 7/8', { exact: true })).toBeVisible();
+  await expect(selected.getByRole('listitem')).toHaveText([
+    '员工姓名',
+    '员工ID',
+    '首次参加工作日期',
+    '性别',
+    '入职日期',
+    '人员状态',
+    '电子邮件',
+  ]);
+  await expect(selected.getByRole('listitem').first()).toHaveAttribute('draggable', 'false');
+  // 原站左栏分组名“当前列表字段”；右栏已选字段逐行浅底带边框（#326 第 2 轮 P2-5）
+  await expect(dialog.getByRole('checkbox', { name: '当前列表字段', exact: true })).toBeVisible();
+  const row = selected.getByRole('listitem', { name: '员工ID' });
+  await expect(row).toHaveCSS('background-color', 'rgb(245, 246, 247)');
+  await expect(row).toHaveCSS('border-top-width', '1px');
+  await expect(row).toHaveCSS('margin-bottom', '8px');
+  await selected.getByRole('listitem', { name: '入职日期' }).dragTo(selected.getByRole('listitem', { name: '员工ID' }));
+  await expect(selected.getByRole('listitem')).toHaveText([
+    '员工姓名',
+    '入职日期',
+    '员工ID',
+    '首次参加工作日期',
+    '性别',
+    '人员状态',
+    '电子邮件',
+  ]);
+  await dialog.getByRole('checkbox', { name: '性别', exact: true }).uncheck();
+  await expect(dialog.getByText('已选字段 6/8', { exact: true })).toBeVisible();
+  await dialog.getByRole('searchbox', { name: '搜索字段' }).fill('日期');
+  await expect(dialog.getByRole('checkbox', { name: '员工ID', exact: true })).toHaveCount(0);
+  await dialog.getByRole('searchbox', { name: '搜索字段' }).fill('');
+  await dialog.getByRole('button', { name: /^确\s*定$/ }).click();
+  await expect(page.getByRole('columnheader')).toHaveText([
+    '员工姓名',
+    '入职日期',
+    '员工ID',
+    '首次参加工作日期',
+    '人员状态',
+    '电子邮件',
+    '',
+  ]);
+  await openColumnSettings(page);
+  await dialog.getByRole('button', { name: '恢复默认', exact: true }).click();
+  await expect(selected.getByRole('listitem')).toHaveText([
+    '员工姓名',
+    '员工ID',
+    '首次参加工作日期',
+    '性别',
+    '入职日期',
+    '人员状态',
+    '电子邮件',
+  ]);
+  await dialog.getByRole('button', { name: /^取\s*消$/ }).click();
+  await expect(page.getByRole('columnheader', { name: '性别', exact: true })).toHaveCount(0);
 });
 
 async function profileFixtures(page: Page) {
@@ -212,11 +306,11 @@ test('AC-FE-R1b-07 子集导航按对象权限隐藏，不请求无权限子集'
   await page.goto('/staff');
   await page.getByLabel('切换演示身份').selectOption(user);
   await page.getByRole('button', { name: '合成林晓', exact: true }).click();
-  await page.getByRole('tab', { name: '人员子集', exact: true }).click();
-  await expect(page.getByRole('navigation', { name: '人员子集' })).toBeVisible();
-  await expect(page.getByRole('button', { name: '教育经历', exact: true })).toHaveCount(0);
-  await page.getByRole('button', { name: '培训经历', exact: true }).click();
-  await expect(page.getByRole('tabpanel', { name: '人员子集' })).toContainText('暂无子集记录');
+  const nav = page.getByRole('navigation', { name: '档案导航' });
+  await expect(nav).toBeVisible();
+  await expect(nav.getByRole('button', { name: '教育经历', exact: true })).toHaveCount(0);
+  await nav.getByRole('button', { name: '培训经历', exact: true }).click();
+  await expect(page.getByRole('region', { name: '培训经历' })).toContainText('暂无培训经历');
   expect(educationRequests).toEqual([]);
 });
 

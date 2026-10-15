@@ -129,6 +129,26 @@ export async function transferFieldAccess(tx: Tx, deps: TenantRouteDeps, ctx: Em
 }
 
 /**
+ * 本人入口里三个本人调动按钮各自是否允许（F-141 缺陷 1 第 2 轮）：页面据此显示“本人调动申请”。员工自动身份只作用于本人入口
+ * （契约 §2.2），不并进通用授权主体，所以按钮可见性在这里按叠加授权器单独判定，与 requireSelfServiceButtons 同一判定函数，
+ * 只是不抛错、返回已允许的按钮。
+ */
+export async function grantedSelfServiceButtons(tx: Tx, ctx: EmploymentContext) {
+  if (!ctx.authorize) return [];
+  const authorize = authorizeInTransaction(ctx.authorize, tx);
+  const granted: { buttonCode: string; level: string }[] = [];
+  for (const { buttonCode, level } of EMPLOYEE_SELF_SERVICE_BUTTONS) {
+    const allowed = await authorize({
+      ...ctx,
+      action: 'object.button',
+      resource: buttonResource(EMPLOYMENT_OBJECT, buttonCode, level),
+    });
+    if (allowed) granted.push({ buttonCode, level });
+  }
+  return granted;
+}
+
+/**
  * 本人调动的三个按钮（Transfer.Self / Employment.Create / Employment.Submit）都须允许（契约 §2.3.1）：本人入口每次调动都是
  * “新建并提交”。判定走叠加授权器（员工身份配置 ∪ 用户自己的身份），读调用方事务的快照。命令入口接 `CommandGuard.before`
  * （routes.ts selfTransferGuard，覆盖首次执行 / 直接重放 / 失败后回查），预览入口在其事务第一步调用。

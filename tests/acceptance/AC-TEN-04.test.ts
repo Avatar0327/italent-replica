@@ -171,13 +171,18 @@ describe('AC-TEN-04 平台开通租户：标准预置下发', () => {
         'standard_qualification_admin',
         'standard_evaluation_admin',
         'standard_evaluation_specialist',
+        // F-141（DEC-500）：IDP 管理员 / IDP 员工 / IDP 经理（个人发展计划，应用 IDP）；都不是 autoHeld，可授予
+        'standard_idp_admin',
+        'standard_idp_employee',
+        'standard_idp_manager',
         // R3-T02 C1-2b（DEC-399）：预置“员工”自助身份（autoHeld，自动适用于全体员工）
         'employee_self_service',
       ].sort(),
     );
     expect(items.every((p) => p.source === 'standard')).toBe(true);
     const grantable = await api.request('GET', '/api/tenant/permission/grantable-profiles', asAdmin);
-    // DEC-402③：员工身份 autoHeld，不进租户管理员的可授权业务身份，授权选择器不列它
+    // DEC-402③：员工身份 autoHeld，不进租户管理员的可授权业务身份，授权选择器不列它；三个 IDP 身份不是 autoHeld，全部可授权
+    // （所以仍是 总数 − 1，没有放宽）
     const grantableItems = ((await grantable.json()) as { items: { code: string }[] }).items;
     expect(grantableItems).toHaveLength(items.length - 1);
     expect(grantableItems.map((p) => p.code)).not.toContain('employee_self_service');

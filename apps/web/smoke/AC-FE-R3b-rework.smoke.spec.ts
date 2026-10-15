@@ -137,7 +137,7 @@ test('AC-FE-R3b-R2-04 已有报名锁申请级别等后端锁定字段，可跨�
 
 for (const entry of [
   { tab: '套卷', title: '新建套卷', path: 'questionnaires' },
-  { tab: '题库 · 企业自定义', title: '新增套卷模板', path: 'templates' },
+  { tab: '题库 · 企业自定义', title: '新增套卷模板', path: 'questionnaire-templates' },
 ]) {
   test(`AC-FE-R3b-R2-01 ${entry.title} 共用结果未知保护`, async ({ page }) => {
     await setupR3b(page, '/survey360');

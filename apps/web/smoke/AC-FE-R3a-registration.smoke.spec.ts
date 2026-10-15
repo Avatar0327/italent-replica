@@ -14,7 +14,8 @@ for (const [label, path, title, selector, noteCount] of [
     });
     await page.goto('/staff');
     await page.getByLabel('切换演示身份').selectOption(user);
-    await page.getByRole('menuitem', { name: label, exact: true }).click();
+    await page.getByRole('button', { name: '应用导航' }).click();
+    await page.getByRole('dialog', { name: '全部菜单' }).getByRole('link', { name: label, exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`${path}$`));
     await expect(page.getByRole('heading', { name: title, exact: true })).toBeVisible();
     const notes = page.locator(`${selector} .decision-note`);

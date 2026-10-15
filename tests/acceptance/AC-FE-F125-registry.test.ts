@@ -4,6 +4,7 @@
  * messages.ts / permission-snapshot.ts / annotations/*.ts 汇总结果，
  * 迁移后逐项比对；应用是后端固定集合，逐行全等；入口、子路由与注释只校验“迁移前条目仍在且不变”，新片追加不用改本文件。
  * 有意改动已有条目（如把旧页面换成新页面、去掉 legacy 布局）时，改对应一行即可。
+ * F-137：注释正文、DEC 列表、等级逐字固定在 AC-FE-F125-notes.json；有意修改注释时同步改该文件对应条目。
  */
 import { APP_IDS } from '@italent/domain';
 import { readdirSync, statSync } from 'node:fs';
@@ -19,6 +20,7 @@ import {
 } from '../../apps/web/src/foundation/page-registry.js';
 import { menuNodes, type ServerSnapshot } from '../../apps/web/src/foundation/permission-snapshot.js';
 import { APP_ROUTES, MENU_ROUTES, PAGES, SUB_ROUTES, appRoute } from '../../apps/web/src/foundation/routes.js';
+import NOTES_SNAPSHOT from './AC-FE-F125-notes.json' with { type: 'json' };
 
 const SRC = fileURLToPath(new URL('../../apps/web/src/', import.meta.url));
 
@@ -37,8 +39,8 @@ const APPS_BEFORE = [
   'evaluation|人才评定|talent|TEvaluation.EvaluationActivity|evaluation:EvaluationPage|-',
   'survey360|360 评估|talent|Survey360.Activity|survey360:SurveyPage|-',
   'talent-review|人才盘点|talent|TalentReview.Project|talent-review:TalentReviewPage|legacy',
-  'succession|继任管理|talent|Succession.Map|succession:空首页|-',
-  'idp|个人发展计划|talent|IDP.IDPTemplate|idp:空首页|-',
+  'succession|继任管理|talent|Succession.Map|succession:SuccessionPage|-',
+  'idp|人才发展计划|talent|IDP.IDPTemplate|idp:IdpPage|-',
 ];
 // 子路由：路径 | 模块:页面导出名 | 布局 | 是否按菜单可见性拦截
 const ROUTES_BEFORE = [
@@ -121,6 +123,11 @@ describe('AC-FE-F125-01 汇总结果与迁移前逐项一致', () => {
     expect(annotations[key]).toEqual(
       expect.objectContaining({ original: expect.any(String), decision: expect.any(String) }),
     );
+  });
+  it('F-137：注释正文、DEC 列表、等级与快照逐字一致', () => {
+    expect(Object.keys(NOTES_SNAPSHOT).sort()).toEqual(Object.keys(NOTES_BEFORE).sort());
+    for (const [key, note] of Object.entries(NOTES_SNAPSHOT))
+      expect({ key, note: annotations[key] }).toEqual({ key, note });
   });
   it('旧路径跳转与个人设置入口不变', () => {
     expect(appRoute('/org/changes')?.id).toBe('org');

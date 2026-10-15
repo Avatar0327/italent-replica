@@ -230,6 +230,11 @@ export const employmentPayloadVersions = pgTable(
     changeType: text('change_type'),
     mode: text('mode').notNull(),
     effectiveDate: day('effective_date').notNull(),
+    /**
+     * 人工计划生效日（F-140 约束 2）：只有人工写日期的版本取本版本的生效日，系统派生版本（迟到顺延、向后更新、
+     * 序列同步、状态传播）一律沿用上一版本的值；effective_date 是实际写入日。由插入触发器维护（迁移 0130）。
+     */
+    plannedEffectiveDate: day('planned_effective_date').notNull(),
     lastWorkDate: day('last_work_date'),
     formId: text('form_id').notNull(),
     selectedStaffId: uuid('selected_staff_id'),

@@ -1,0 +1,141 @@
+/* 个人发展计划：主题沿用 FE-0 原站实测值（正文 12px #33383D，边框 #E6E8EB，背景 #F7F9FA，链接 #0054F0）。 */
+.idp-page {
+  min-width: 0;
+  color: #33383d;
+  font-size: 12px;
+}
+.idp-page .ant-input-search {
+  width: 220px;
+}
+.idp-page .list-card {
+  min-height: 560px;
+}
+.idp-muted {
+  color: #868b8f;
+  margin: 8px 0 0;
+}
+.idp-goal {
+  border: 1px solid #e6e8eb;
+  border-radius: 5px;
+  padding: 12px 16px;
+  margin-bottom: 12px;
+}
+.idp-goal h3,
+.idp-key-info h3 {
+  font-size: 14px;
+  margin: 0 0 8px;
+}
+.idp-key-info + .idp-key-info {
+  margin-top: 16px;
+}
+.idp-demo .ant-alert {
+  margin-bottom: 12px;
+}
+.idp-template-detail {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 16px;
+}
+.idp-module-list {
+  border: 1px solid #e6e8eb;
+  border-radius: 5px;
+  background: #f7f9fa;
+  padding: 8px 0;
+  margin: 0;
+  list-style: none;
+}
+.idp-module-list li button {
+  width: 100%;
+  text-align: left;
+}
+.idp-module-list li.active button {
+  background: #fff;
+  color: #0054f0;
+}
+.idp-sub-process {
+  border: 1px solid #e6e8eb;
+  border-radius: 5px;
+  padding: 12px 12px 0;
+  margin-bottom: 12px;
+  background: #f7f9fa;
+}
+.idp-sub-process header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+.idp-detail {
+  background: #fff;
+  border: 1px solid #e6e8eb;
+  border-radius: 5px;
+  padding: 16px 20px;
+}
+.idp-detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+.idp-detail-header h1 {
+  font-size: 18px;
+  margin: 0;
+}
+.idp-plan-line span + span::before {
+  content: '|';
+  margin: 0 8px;
+  color: #e6e8eb;
+}
+.idp-detail-summary,
+.idp-stage-steps {
+  margin-bottom: 16px;
+}
+.idp-section-title {
+  font-size: 14px;
+  margin: 20px 0 8px;
+}
+.idp-module-settings h3 {
+  font-size: 13px;
+  margin: 12px 0 6px;
+}
+.idp-inline-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 12px 0;
+}
+.idp-inline-filters .ant-select {
+  min-width: 160px;
+}
+.idp-person-select {
+  display: block;
+}
+.idp-tasks {
+  margin-top: 8px;
+}
+.idp-task {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 0;
+}
+.idp-task .ant-input {
+  max-width: 360px;
+}
+.idp-task-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+}
+.idp-task-description {
+  margin: 4px 0 0;
+  white-space: pre-wrap;
+}
+.idp-task-add,
+.idp-link {
+  padding: 0;
+}
