@@ -3,12 +3,14 @@ import { createContext, useContext, useState, type ReactNode } from 'react';
 import type { Command } from '../client.js';
 import { ui } from '../messages.js';
 import { useSession } from '../Session.js';
+import { messages } from './messages.js';
 import { slotKey } from './slot.js';
 import type { Latest, Values } from './store.js';
 import { FormCommands, useCommandForm } from './useCommandForm.js';
 
 /** 页面手里的对象快照：values 是全量 DTO（不只是表单字段），提交时未改项从这里取。 */
 export interface Snapshot {
+  /** 新建不写 id 键；写了 id 键就是对象命令（值缺失也算，不当新建）。 */
   id?: string;
   revision: number;
   values: Values;
@@ -25,6 +27,9 @@ export interface Run {
   editableFields: readonly string[];
   send(request: Sending): Promise<{ id: string }>;
 }
+
+const validObject = (item: { id?: string; revision: number }) =>
+  typeof item.id === 'string' && item.id !== '' && Number.isSafeInteger(item.revision) && item.revision >= 0;
 
 /** 恢复槽（稳定原单路径，不含版本）→ 结果未知的命令所在条目。挂在页面根部，关弹窗、刷新列表都不丢。 */
 const Pins = createContext<Map<string, string> | undefined>(undefined);
@@ -52,15 +57,22 @@ export function useConflictCommand(resource: string, current: Snapshot, read?: (
   const session = useSession();
   const pins = useContext(Pins);
   if (!pins) throw new Error('ConflictCommands provider required');
-  const objects = current.objects ?? (current.id === undefined ? [] : [{ id: current.id, revision: current.revision }]);
+  const objects = current.objects ?? ('id' in current ? [{ id: current.id, revision: current.revision }] : []);
+  // 对象命令的 id / 版本缺失或无效（如被字段权限裁剪）时不能落到新建槽：否则结果未知会锁住所有新建入口。
+  const invalid = !objects.every(validObject);
   const scope = (name: string) => JSON.stringify([session.tenantId, session.identityKey, name]);
-  const slots = objects.length ? objects.map((item) => slotKey(resource, item.id)) : [slotKey(resource)];
+  const objectSlots = invalid ? [] : objects.map((item) => slotKey(resource, item.id!));
+  const slots = objects.length ? objectSlots : [slotKey(resource)];
   const attempt = objects.length ? `${slots.join(',')}@${objects.map((item) => item.revision).join(',')}` : slots[0]!;
-  const key = slots.map((slot) => pins.get(scope(slot))).find((pinned) => pinned !== undefined) ?? attempt;
+  // '#' 不会出现在 slotKey 里，无效命令的条目不与任何恢复槽重名，也从不提交。
+  const key = invalid
+    ? `${slotKey(resource)}#invalid`
+    : (slots.map((slot) => pins.get(scope(slot))).find((pinned) => pinned !== undefined) ?? attempt);
   const command = useCommandForm(key);
   const full = command.state?.latest?.values ?? current.values;
   const reload = read && current.id !== undefined ? () => command.reread(read) : undefined;
   const run = async ({ values, editableFields, send }: Run) => {
+    if (invalid) throw new Error(messages.invalidObject);
     // 先钉再发：提交途中关掉弹窗，重开时也落在同一个条目上。
     slots.forEach((slot) => pins.set(scope(slot), key));
     const outcome = await command.submit({
@@ -82,6 +94,8 @@ export function useConflictCommand(resource: string, current: Snapshot, read?: (
     full,
     /** 冲突或结果未知：关闭时调用方应刷新来源（DEC-067 先回查再重提）；冲突重开即按新版本解锁，结果未知仍锁定。 */
     stale: command.status === 'conflict' || command.status === 'unknown',
+    /** 对象 id / 版本无效：入口应禁用，run 不发请求直接拒绝。 */
+    invalid,
     run,
   };
 }

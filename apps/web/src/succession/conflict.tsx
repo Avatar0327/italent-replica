@@ -13,9 +13,12 @@ interface DeleteProps {
   button?: ButtonProps;
   title?: string;
 }
-/** 删除按钮（冲突恢复命令已上收进内核 foundation/forms/ConflictCommands，F-142）：未选中时只渲染禁用按钮；选中后经 useConflictCommand 发删除命令。 */
+/**
+ * 删除按钮（冲突恢复命令已上收进内核 foundation/forms/ConflictCommands，F-142）：未选中，或选中行的 id / 版本
+ * 缺失、无效（如被字段权限裁剪）时只渲染禁用按钮，不进内核、不发请求；其余经 useConflictCommand 发删除命令。
+ */
 export function DeleteButton(props: DeleteProps) {
-  return props.row ? (
+  return deletable(props.row) ? (
     <ArmedDelete {...props} row={props.row} />
   ) : (
     <Button {...props.button} disabled>
@@ -23,6 +26,8 @@ export function DeleteButton(props: DeleteProps) {
     </Button>
   );
 }
+const deletable = (row?: DeleteProps['row']): row is NonNullable<DeleteProps['row']> =>
+  !!row && typeof row.id === 'string' && row.id !== '' && Number.isSafeInteger(row.revision) && row.revision >= 0;
 function ArmedDelete({
   base,
   row,

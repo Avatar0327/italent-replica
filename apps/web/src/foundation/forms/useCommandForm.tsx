@@ -1,6 +1,14 @@
-import { createContext, useContext, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { useSession } from '../Session.js';
-import { createFormStore, isLocked, type FormStore, type Latest, type Submission, type SubmitInput } from './store.js';
+import {
+  createFormStore,
+  isLocked,
+  type FormStore,
+  type Latest,
+  type Submission,
+  type SubmitInput,
+  type Values,
+} from './store.js';
 import { refillDraft } from './values.js';
 
 const Context = createContext<FormStore | undefined>(undefined);
@@ -33,17 +41,31 @@ export function useCommandForm(resource: string, store?: FormStore) {
 }
 export type CommandForm = ReturnType<typeof useCommandForm> & { reload?: () => Promise<void> };
 
+/** 接收回填的表单：antd FormInstance 即满足。 */
+export interface DraftTarget {
+  setFieldsValue(values: Values): void;
+}
 /**
- * 交给表单控件的草稿：重读后按 refillDraft 回填（未改与当前不可提交的字段取最新记录）。
- * 依赖只取引用与可提交字段名，结果引用稳定，调用方 setFieldsValue 不会每次渲染都重新回填。
+ * 把内核草稿交给表单控件（claude_fe_rules b）。
+ * - 内核状态变化（恢复、提交、重读）时整份回填 refillDraft 的结果：这些时刻表单刚打开或处于锁定，内核草稿就是用户草稿。
+ * - 只有可提交字段集合变化（动态字段显隐、权限变化）时不覆盖整份表单：用户核对后继续输入的实时草稿是基准，
+ *   未改字段本就等于最新记录，只把转为不可提交的字段取最新记录。
  */
-export function useDraftValues(state: Submission | undefined, submittable: readonly string[]) {
+export function useDraftRefill(state: Submission | undefined, submittable: readonly string[], form: DraftTarget) {
   const key = submittable.join('\n');
+  const fields = useRef(key);
   const { values, latest, editedFields } = state ?? {};
-  return useMemo(
-    () =>
-      values &&
-      refillDraft({ values, latest: latest?.values, edited: editedFields ?? [], submittable: key.split('\n') }),
-    [values, latest, editedFields, key],
-  );
+  useEffect(() => {
+    if (!values) return;
+    const submittable = fields.current.split('\n');
+    form.setFieldsValue(refillDraft({ values, latest: latest?.values, edited: editedFields ?? [], submittable }));
+  }, [form, values, latest, editedFields]);
+  useEffect(() => {
+    if (fields.current === key) return;
+    fields.current = key;
+    if (!latest) return;
+    const submittable = key.split('\n');
+    const fixed = Object.keys(latest.values).filter((field) => !submittable.includes(field));
+    form.setFieldsValue(Object.fromEntries(fixed.map((field) => [field, latest.values[field]])));
+  }, [form, key, latest]);
 }

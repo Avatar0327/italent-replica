@@ -11,6 +11,7 @@ const requireWeb = createRequire(resolve('apps/web/package.json'));
 const { createElement: h, act } = requireWeb('react');
 const { createRoot } = requireWeb('react-dom/client');
 const { SessionProvider, useApiClient } = await import(resolve('apps/web/src/foundation/Session.tsx'));
+const { DeleteButton } = await import(resolve('apps/web/src/succession/conflict.tsx'));
 const { ConflictCommands, useConflictCommand } = await import(
   resolve('apps/web/src/foundation/forms/ConflictCommands.tsx')
 );
@@ -29,12 +30,23 @@ const session = {
 };
 const RECORDS = '/api/tenant/succession/records';
 const path = `${RECORDS}/r-1`;
-const record = (revision: number, remark: string) => ({
+// 继任记录 RecordView（apps/api/src/modules/succession/projection.ts）；可写字段取 recordPatch 里的 endReason。
+const record = (revision: number, endReason: string) => ({
   id: 'r-1',
   revision,
-  remark,
-  readiness: 'ready_now',
+  successionType: 'org',
+  targetOrgId: 'o-1',
+  targetPositionId: null,
+  successorEmployeeId: 'e-1',
+  readinessId: null,
+  readiness: null,
+  backupType: 'principal',
+  startDate: '2026-01-01',
   endDate: null,
+  endReason,
+  endSource: null,
+  sourceKind: 'manual',
+  status: 'active',
 });
 const json = (status: number, body: unknown, headers: Record<string, string> = {}) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', ...headers } });
@@ -74,7 +86,8 @@ function serve(...responses: Response[]) {
     return next;
   });
 }
-function Editor({ name, snapshot }: { name: string; snapshot: { id: string; revision: number; values: object } }) {
+type Snap = { id?: string; revision: number; values: object };
+function Editor({ name, snapshot }: { name: string; snapshot: Snap }) {
   api = useApiClient();
   writers[name] = useConflictCommand(RECORDS, snapshot, async () => {
     const row = (await api.request(path)) as ReturnType<typeof record>;
@@ -84,11 +97,15 @@ function Editor({ name, snapshot }: { name: string; snapshot: { id: string; revi
 }
 const page = (...editors: unknown[]) =>
   act(() => root.render(h(SessionProvider, { session }, h(ConflictCommands, null, ...editors))));
-const snapshot = (revision: number, remark: string) => ({ id: 'r-1', revision, values: record(revision, remark) });
-const save = (writer: Writer, remark: string) =>
+const snapshot = (revision: number, endReason: string) => ({
+  id: 'r-1',
+  revision,
+  values: record(revision, endReason),
+});
+const save = (writer: Writer, endReason: string) =>
   writer.run({
-    values: { remark },
-    editableFields: ['remark'],
+    values: { endReason },
+    editableFields: ['endReason'],
     send: async ({ edited, command }: { edited: object; command: object }) => {
       const row = (await api.request(path, {
         method: 'PUT',
@@ -102,55 +119,86 @@ describe('AC-FE-F142 ConflictCommands', () => {
   it('409 走重读 → 核对差异 → 重提：重提带最新版本与新命令 ID，只发改过的字段', async () => {
     serve(
       failure(409, 'REVISION_CONFLICT'),
-      json(200, record(4, '他人备注')),
-      json(200, record(5, '我的备注'), { etag: '"5"' }),
+      json(200, record(4, '他人结束原因')),
+      json(200, record(5, '我的结束原因'), { etag: '"5"' }),
     );
-    await page(h(Editor, { key: 'a', name: 'a', snapshot: snapshot(3, '原备注') }));
-    await act(() => expect(save(writers.a!, '我的备注')).rejects.toThrow());
+    await page(h(Editor, { key: 'a', name: 'a', snapshot: snapshot(3, '原结束原因') }));
+    await act(() => expect(save(writers.a!, '我的结束原因')).rejects.toThrow());
     expect(writers.a!.form.status).toBe('conflict');
     expect(writers.a!.stale).toBe(true);
     await act(() => writers.a!.form.reload!());
     expect(writers.a!.form.state?.differences).toEqual([
-      { field: 'remark', before: '原备注', latest: '他人备注', mine: '我的备注' },
+      { field: 'endReason', before: '原结束原因', latest: '他人结束原因', mine: '我的结束原因' },
     ]);
-    expect(writers.a!.full).toEqual(record(4, '他人备注'));
+    expect(writers.a!.full).toEqual(record(4, '他人结束原因'));
     await act(() => writers.a!.form.confirm());
-    await act(() => save(writers.a!, '我的备注'));
+    await act(() => save(writers.a!, '我的结束原因'));
     expect(calls.map((call) => [call.method, call.ifMatch])).toEqual([
       ['PUT', '3'],
       ['GET', null],
       ['PUT', '4'],
     ]);
     expect(calls[2]!.key).not.toBe(calls[0]!.key);
-    expect(calls[2]!.body).toEqual({ remark: '我的备注' });
+    expect(calls[2]!.body).toEqual({ endReason: '我的结束原因' });
   });
 
   it('结果未知与 409 分开处理：关闭重开、列表刷新到新版本、换入口都仍锁定，不发第二条命令', async () => {
     serve(failure(503, 'SERVICE_UNAVAILABLE'));
-    await page(h(Editor, { key: 'a', name: 'a', snapshot: snapshot(3, '原备注') }));
-    await act(() => expect(save(writers.a!, '我的备注')).rejects.toThrow());
+    await page(h(Editor, { key: 'a', name: 'a', snapshot: snapshot(3, '原结束原因') }));
+    await act(() => expect(save(writers.a!, '我的结束原因')).rejects.toThrow());
     expect(writers.a!.form.status).toBe('unknown');
     const command = writers.a!.form.state?.command?.id;
     await page();
-    await page(h(Editor, { key: 'b', name: 'b', snapshot: snapshot(4, '我的备注') }));
+    await page(h(Editor, { key: 'b', name: 'b', snapshot: snapshot(4, '我的结束原因') }));
     expect(writers.b!.form.status).toBe('unknown');
     expect(writers.b!.form.locked).toBe(true);
     expect(writers.b!.form.state?.command?.id).toBe(command);
-    await page(h(Editor, { key: 'c', name: 'c', snapshot: snapshot(4, '我的备注') }));
+    await page(h(Editor, { key: 'c', name: 'c', snapshot: snapshot(4, '我的结束原因') }));
     await act(() => expect(save(writers.c!, '再改一次')).rejects.toThrow());
     expect(writers.c!.form.state?.command?.id).toBe(command);
     expect(calls).toHaveLength(1);
   });
 
   it('确认的 409 不跨版本锁定：关闭后列表刷新到新版本，重开即可按新版本保存', async () => {
-    serve(failure(409, 'REVISION_CONFLICT'), json(200, record(5, '我的备注'), { etag: '"5"' }));
-    await page(h(Editor, { key: 'a', name: 'a', snapshot: snapshot(3, '原备注') }));
-    await act(() => expect(save(writers.a!, '我的备注')).rejects.toThrow());
+    serve(failure(409, 'REVISION_CONFLICT'), json(200, record(5, '我的结束原因'), { etag: '"5"' }));
+    await page(h(Editor, { key: 'a', name: 'a', snapshot: snapshot(3, '原结束原因') }));
+    await act(() => expect(save(writers.a!, '我的结束原因')).rejects.toThrow());
     await page();
-    await page(h(Editor, { key: 'b', name: 'b', snapshot: snapshot(4, '他人备注') }));
+    await page(h(Editor, { key: 'b', name: 'b', snapshot: snapshot(4, '他人结束原因') }));
     expect(writers.b!.form.locked).toBe(false);
-    await act(() => save(writers.b!, '我的备注'));
+    await act(() => save(writers.b!, '我的结束原因'));
     expect(calls.map((call) => call.ifMatch)).toEqual(['3', '4']);
+  });
+});
+
+describe('AC-FE-F142 对象命令缺 id 不落新建槽', () => {
+  // 列表记录的 id 被字段权限裁剪时，删除 / 编辑不能发往 records/undefined，结果未知也不能锁住新增入口。
+  it('删除入口：选中行缺 id 或版本无效时按钮不可用，不发请求', async () => {
+    serve();
+    const settled = vi.fn();
+    const rows = [{ revision: 3 }, { id: '', revision: 3 }, { id: 'r-1' }, { id: 'r-1', revision: -1 }];
+    await page(...rows.map((row, i) => h(DeleteButton, { key: i, base: RECORDS, row, settled })));
+    const buttons = Array.from(host.querySelectorAll('button'));
+    expect(buttons).toHaveLength(4);
+    expect(buttons.every((button) => button.disabled)).toBe(true);
+    await act(async () => buttons.forEach((button) => button.click()));
+    expect(document.querySelector('.ant-popover')).toBeNull();
+    expect(calls).toEqual([]);
+    expect(settled).not.toHaveBeenCalled();
+  });
+
+  it('内核防线：对象快照缺 id 时拒绝提交，不发请求、不占新建槽', async () => {
+    serve(failure(503, 'SERVICE_UNAVAILABLE'));
+    await page(
+      h(Editor, { key: 'x', name: 'x', snapshot: { id: undefined, revision: 3, values: record(3, '原结束原因') } }),
+      h(Editor, { key: 'n', name: 'n', snapshot: { revision: 0, values: {} } }),
+    );
+    await act(() => expect(save(writers.x!, '我的结束原因')).rejects.toThrow());
+    expect(calls).toEqual([]);
+    expect(writers.n!.form.locked).toBe(false);
+    expect(writers.x!.form.status).toBe('idle');
+    expect([writers.x!.invalid, writers.n!.invalid]).toEqual([true, false]);
+    await act(() => expect(save(writers.x!, '我的结束原因')).rejects.toThrow('记录标识无效'));
   });
 });
 
