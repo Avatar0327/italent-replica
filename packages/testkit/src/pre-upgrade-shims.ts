@@ -24,6 +24,13 @@ export const PRE_UPGRADE_SHIMS: readonly PreUpgradeShim[] = [
   { table: 'command_ledger', column: 'actor_user_id', type: 'uuid', migration: 'command_ledger_actor' },
   { table: 'command_ledger', column: 'command_type', type: 'text', migration: 'command_ledger_actor' },
   { table: 'audit_command_failures', column: 'http_status', type: 'integer', migration: 'command_failure_http_status' },
+  // F-140：升级前垫片列为空，计划日函数取回退值（记录 / 载荷生效日）；正式迁移 0130 回填并加触发器。
+  {
+    table: 'employment_payload_versions',
+    column: 'planned_effective_date',
+    type: 'date',
+    migration: 'employment_planned_effective_date',
+  },
 ];
 
 const ident = (name: string) => sql.raw(`"${name.replaceAll('"', '""')}"`);

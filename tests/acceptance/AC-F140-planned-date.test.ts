@@ -65,7 +65,7 @@ describe('F-140 约束 2：人工计划与系统顺延分字段', () => {
     );
   });
 
-  it('数据库护栏：系统派生版本不能改人工计划；裸 SQL 追加的派生版本自动沿用计划', async () => {
+  it('数据库护栏：计划列一律由触发器推导，系统派生版本即使显式传入实际日期也沿用人工计划', async () => {
     const { w, transfer } = await lateTransfer('f140-guard');
     const tenantId = w.session.tenant.id;
     const append = (planned: string | null) =>
@@ -79,12 +79,14 @@ describe('F-140 约束 2：人工计划与系统顺延分字段', () => {
         FROM employment_payload_versions WHERE tenant_id=${tenantId} AND business_id=${transfer.id}::uuid
         ORDER BY version_no DESC LIMIT 1`),
       );
-    await expect(append('2026-11-03')).rejects.toThrow();
-    await append(null);
-    expect((await storedVersions(w, transfer.id)).at(-1)).toMatchObject({
-      effectiveDate: '2026-11-03',
-      plannedEffectiveDate: '2026-10-20',
-    });
+    for (const planned of ['2026-11-03', null]) {
+      await append(planned);
+      expect((await storedVersions(w, transfer.id)).at(-1), String(planned)).toMatchObject({
+        effectiveDate: '2026-11-03',
+        plannedEffectiveDate: '2026-10-20',
+        derived: true,
+      });
+    }
   });
 });
 

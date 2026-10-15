@@ -2,7 +2,7 @@
 -- 不再从 outbox 改期事件按 (created_at, id) 推断（同一事务的事件共用 created_at、id 为随机 UUID，#100 第 7 轮 P2-01）。
 -- 人工写日期的版本（trigger_business_id 为空：新建、草稿 / 驳回 / 审批中修改、审批编辑；首版）计划 = 本版本生效日；
 -- 系统派生版本（迟到顺延、向后更新、序列同步、状态传播，trigger_business_id 非空）一律沿用上一版本的计划，
--- 只有 effective_date 记录实际写入日。显式传入的值必须与上述结果相同，否则拒绝（系统写入不得改人工计划）。
+-- 只有 effective_date 记录实际写入日。该列一律由触发器推导，插入时传入的值被覆盖：任何写入方都不能直接设置计划。
 ALTER TABLE "employment_payload_versions" ADD COLUMN "planned_effective_date" date;
 --> statement-breakpoint
 -- 存量回填（DEC-402 未上线，不做兼容，只保证迁移可执行）：按同一规则取“版本号不大于本版本的最后一个人工版本”的生效日。
@@ -45,10 +45,6 @@ BEGIN
       RAISE EXCEPTION 'employment payload version % has no previous planned effective date', NEW.id
         USING ERRCODE = '23514';
     END IF;
-  END IF;
-  IF NEW.planned_effective_date IS NOT NULL AND NEW.planned_effective_date <> v_planned THEN
-    RAISE EXCEPTION 'planned effective date of employment payload version % can only follow its manual date', NEW.id
-      USING ERRCODE = '23514';
   END IF;
   NEW.planned_effective_date := v_planned;
   RETURN NEW;
