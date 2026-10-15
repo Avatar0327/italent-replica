@@ -1,6 +1,11 @@
 import { test, expect, tenant, user, snapshotFixture } from './fixtures.js';
 import { APP_ROUTES } from './page-registry.js';
 import { ui } from '../src/foundation/messages.js';
+import { centerText } from '../src/approval/messages.js';
+import { listText } from '../src/transfer/messages.js';
+
+// F-132（#333）按原站（DEC-489）：这两个应用首页没有页面级 h1，以横向视图 / 分类导航代替标题（F-170）。
+const viewNavigation: Record<string, string> = { '/transfer': listText.views, '/approval': centerText.categories };
 
 test('AC-FE-0-04 通过现有演示身份选择器进入应用，注释可切换', async ({ page }) => {
   await page.goto('/staff');
@@ -27,7 +32,12 @@ for (const app of APP_ROUTES) {
       { name: 'italent_demo_user', value: user, url: baseURL! },
     ]);
     await page.goto(app.path);
-    await expect(page.locator('.shell-workspace h1').first()).toBeVisible();
+    const navigation = viewNavigation[app.path];
+    await expect(
+      navigation
+        ? page.locator('.shell-workspace').getByRole('navigation', { name: navigation, exact: true })
+        : page.locator('.shell-workspace h1').first(),
+    ).toBeVisible();
     await expect(page.getByRole('button', { name: '应用导航' })).toBeVisible();
     // 顶栏显示当前应用（原站“应用”即本系统分组）名，左侧列出本页菜单（#326 第 2 轮 P2-2）
     await expect(page.locator('.app-switch')).toContainText(ui.groups[app.group]);
