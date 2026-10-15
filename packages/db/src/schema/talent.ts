@@ -107,7 +107,7 @@ export const talentDimensionCategories = pgTable(
   ],
 );
 
-/** 发展建议类型 TalentCenter.DescriptionType（DEC-281④）：租户可配置的下拉数据源，开通时预置样本“行动建议”。 */
+/** 发展建议类型 TalentCenter.DescriptionType（DEC-281④）：租户可配置的下拉数据源，开通时预置原站 5 种（DEC-514②）。 */
 export const talentDescriptionTypes = pgTable(
   'talent_description_types',
   {

@@ -17,10 +17,16 @@ export const TALENT_DUPLICATE_MESSAGE = '名称或者编码重复，请重新输
 /** DEC-281②：新增能力指标引用时权重的缺省值。 */
 export const TALENT_DEFAULT_WEIGHT = 1;
 /**
- * DEC-281④：开通时预置的发展建议类型。原站样本只见到“行动建议”，租户可自行增改。
- * TODO(需取证 #109): 完整选项与配置入口未取到（🟡）。
+ * 开通时预置的发展建议类型：预置原站 5 种（DEC-514② 修订 DEC-281④），名称与顺序照原站下拉
+ * （UI3补 R3_任职资格 B4_02～06）。配置页保留（复刻增强），预置类型与租户自建的一样可改名、停用。
  */
-export const TALENT_DESCRIPTION_TYPE_PRESETS = [{ name: '行动建议', displayOrder: 1 }] as const;
+export const TALENT_DESCRIPTION_TYPE_PRESETS = [
+  { name: '误区行为', displayOrder: 1 },
+  { name: '反思问题', displayOrder: 2 },
+  { name: '原因探析和改进指引', displayOrder: 3 },
+  { name: '行动建议', displayOrder: 4 },
+  { name: '推荐阅读', displayOrder: 5 },
+] as const;
 
 const SYSTEM_FIELDS = ['id', 'revision', 'createdBy', 'createdAt', 'updatedAt'];
 const crud: readonly ButtonDefinition[] = [
