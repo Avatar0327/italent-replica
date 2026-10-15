@@ -166,3 +166,44 @@ describe('unprovableProblems：前置拒绝的条件', () => {
     await expect(createIsolation(root).materializeTree(tree)).rejects.toThrow('src/out.ts');
   });
 });
+
+describe('materializeTree：符号链接按链接链的实际解析判断（第 5 轮审查 P2-2）', () => {
+  /** 在仓库里建链接并提交，返回提交的树。 */
+  const withLinks = (root: string, links: Record<string, string>) => {
+    for (const [file, target] of Object.entries(links)) {
+      mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
+      symlinkSync(target, path.join(root, file));
+    }
+    sh(root, 'add', '-A');
+    sh(root, 'commit', '-qm', 'links');
+    return sh(root, 'rev-parse', 'HEAD^{tree}');
+  };
+
+  it('链接链越过隔离根（up → 根，再从 up/../.. 出去）→ 抛错并列出该链接；按文本归一化后的位置有真文件也不放过', async () => {
+    const root = repo({ 'd/e/outside.txt': '1\n' });
+    const tree = withLinks(root, {
+      'd/e/f/up': '../../..',
+      'src/leak.txt': '../d/e/f/up/../../outside.txt',
+    });
+    await expect(createIsolation(root).materializeTree(tree)).rejects.toThrow(/src\/leak\.txt/);
+    await expect(createIsolation(root).materializeTree(tree)).rejects.not.toThrow(/d\/e\/f\/up/);
+  });
+
+  it('目标不存在（解析不了）→ 无法证明在根内，抛错', async () => {
+    const root = repo();
+    const tree = withLinks(root, { 'src/dangling.ts': './missing.ts' });
+    await expect(createIsolation(root).materializeTree(tree)).rejects.toThrow(/src\/dangling\.ts/);
+  });
+
+  it('根内的多级链接、指向根内目录的链接照常写出，原样收集不出改动', async () => {
+    const root = repo();
+    const tree = withLinks(root, { 'lib/dir': '../src', 'lib/a.ts': 'dir/a.ts', 'lib/b.ts': 'a.ts' });
+    const tmp = await createIsolation(root).materializeTree(tree);
+    try {
+      expect(readFileSync(path.join(tmp.dir, 'lib/b.ts'), 'utf8')).toBe('export const A = 1;\n');
+      expect(createIsolation(root).collectTree(tmp, tree, inGen)).toEqual({ tree, changed: [], problems: [] });
+    } finally {
+      tmp.cleanup();
+    }
+  });
+});

@@ -1161,3 +1161,114 @@ describe('第 4 轮审查 P2-2 / DEC-501③：提交用核对过的固定树，h
     expect(sh(root, 'status', '--porcelain')).toBe('');
   }, 60_000);
 });
+
+// ---------------------------------------------------------------------------------------------
+// 第 5 轮审查返工（同类第 5 次，DEC-504 / DEC-501）：
+// P2-1 基准读得太晚——t0 / t1 固定之后 commitTree 才重新读 HEAD，拿它当父提交和 CAS 旧值，并发提交新增的文件被下一个提交删掉；
+// P2-2 符号链接只按文本判断——链接链（d/e/f/up → ../../..）能让重算读到隔离根以外的内容，树外内容进了提交。
+// 每条反例在 758252e5 上都是行为失败（退出 0 并提交）。
+
+const regenRunEnv = (root: string, env: Record<string, string>) => {
+  const result = spawnSync(process.execPath, ['scripts/merge-main.mjs', '--no-fetch'], {
+    cwd: root,
+    encoding: 'utf8',
+    env: { ...process.env, ...env },
+  });
+  return { status: result.status, out: `${result.stdout}${result.stderr}` };
+};
+
+const DIGEST = `${ROUTE_POLICY}/required/digests/nodes.ts`;
+
+/**
+ * 假重算：第一次运行时在原仓库里做 action（模拟重算期间另一个终端操作仓库），之后照常写生成物。
+ * 原仓库路径由测试经环境变量传入（重算在隔离目录里跑，看不到原仓库）。
+ */
+const meanwhile = (action: string) =>
+  [
+    "import { execFileSync } from 'node:child_process';",
+    "import { existsSync } from 'node:fs';",
+    'const root = process.env.MERGE_MAIN_TEST_ROOT;',
+    "const git = (...args) => execFileSync('git', args, { cwd: root, stdio: 'ignore' });",
+    'if (!existsSync(`${root}/.meanwhile-done`)) {',
+    "  writeFileSync(`${root}/.meanwhile-done`, '');",
+    `  ${action}`,
+    '}',
+    `writeFileSync('${DIGEST}', "export const NODES = ['regen'];\\n");`,
+  ].join('\n');
+
+const COMMIT_CONCURRENT = [
+  "writeFileSync(`${root}/concurrent.txt`, 'concurrent\\n');",
+  "git('add', 'concurrent.txt');",
+  "git('commit', '-qm', 'concurrent');",
+].join(' ');
+
+/** 夹具的 .gitignore 加上假重算的标记文件，免得它被开始前的“工作区干净”检查或提交拦下。 */
+const withMarkerIgnored = (sides: ReturnType<typeof regenSides>) => ({
+  ...sides,
+  base: { ...sides.base, '.gitignore': 'node_modules\n.meanwhile-done\n' },
+});
+
+describe('第 5 轮审查 P2-1：基准开头固定一次，HEAD 中途被移动就非 0 退出（不重试、不并入新提交）', () => {
+  it('重算期间另一个终端 git add concurrent.txt && git commit → 非 0 退出、说明原因；不在新提交上再提交，concurrent.txt 仍在 HEAD', () => {
+    const root = buildRepo(withMarkerIgnored(regenSides(meanwhile(COMMIT_CONCURRENT))));
+    const head = sh(root, 'rev-parse', 'HEAD');
+    const result = regenRunEnv(root, { MERGE_MAIN_TEST_ROOT: root });
+    expect(result.status, result.out).not.toBe(0);
+    expect(sh(root, 'log', '-1', '--format=%s')).toBe('concurrent');
+    expect(sh(root, 'rev-parse', 'HEAD^1')).toBe(head);
+    expect(sh(root, 'show', 'HEAD:concurrent.txt')).toBe('concurrent');
+    expect(result.out).toContain('HEAD 在脚本运行期间被移动');
+    expect(result.out).toContain(head.slice(0, 12));
+  }, 60_000);
+
+  it('分支已包含 main（单父提交的路径）：重算期间另一个终端提交 → 同样非 0 退出，concurrent.txt 仍在 HEAD', () => {
+    const root = buildRepo(withMarkerIgnored(regenSides(meanwhile(COMMIT_CONCURRENT))));
+    sh(root, 'merge', '-q', '--no-edit', 'origin/main');
+    const head = sh(root, 'rev-parse', 'HEAD');
+    const result = regenRunEnv(root, { MERGE_MAIN_TEST_ROOT: root });
+    expect(result.status, result.out).not.toBe(0);
+    expect(sh(root, 'log', '-1', '--format=%s')).toBe('concurrent');
+    expect(sh(root, 'rev-parse', 'HEAD^1')).toBe(head);
+    expect(sh(root, 'show', 'HEAD:concurrent.txt')).toBe('concurrent');
+    expect(result.out).toContain('HEAD 在脚本运行期间被移动');
+  }, 60_000);
+
+  it('重算期间另一个终端切到同一提交上的新分支（git checkout -b other）→ 非 0 退出，两个分支都不动', () => {
+    const root = buildRepo(withMarkerIgnored(regenSides(meanwhile("git('checkout', '-q', '-b', 'other');"))));
+    const head = sh(root, 'rev-parse', 'HEAD');
+    const result = regenRunEnv(root, { MERGE_MAIN_TEST_ROOT: root });
+    expect(result.status, result.out).not.toBe(0);
+    expect(sh(root, 'rev-parse', 'refs/heads/branch')).toBe(head);
+    expect(sh(root, 'rev-parse', 'refs/heads/other')).toBe(head);
+    expect(result.out).toContain('HEAD 在脚本运行期间被移动');
+    expect(result.out).toContain('refs/heads/other');
+  }, 60_000);
+});
+
+describe('第 5 轮审查 P2-2：符号链接按链接链的实际解析判断，越过隔离根就拒绝', () => {
+  it('d/e/f/up → ../../..、src/leak.txt → ../d/e/f/up/../../outside.txt，临时根放 99 → 拒绝、不重算、不提交', () => {
+    const tmp = mkdtempSync(path.join(tmpdir(), `merge-main-tmpdir-${randomUUID()}-`));
+    roots.push(tmp);
+    // 隔离目录建在 $TMPDIR/merge-main-isolated-*/tree 下：up 解析到隔离根，再上两级就是 $TMPDIR
+    writeFileSync(path.join(tmp, 'outside.txt'), '99\n');
+    const sides = regenSides(
+      "import { readFileSync } from 'node:fs';\n" +
+        "const value = readFileSync('src/leak.txt', 'utf8').trim();\n" +
+        `writeFileSync('${DIGEST}', \`export const DATA = \${value};\\n\`);`,
+    );
+    // 按文本归一化，src/leak.txt 指向 d/e/outside.txt：放一个真文件在那里，按文本判断（含 Node 默认的 realpathSync）就会误判“在根内”
+    const root = buildRepo({ ...sides, base: { ...sides.base, 'd/e/outside.txt': '1\n' } });
+    mkdirSync(path.join(root, 'd/e/f'), { recursive: true });
+    mkdirSync(path.join(root, 'src'), { recursive: true });
+    symlinkSync('../../..', path.join(root, 'd/e/f/up'));
+    symlinkSync('../d/e/f/up/../../outside.txt', path.join(root, 'src/leak.txt'));
+    sh(root, 'add', 'd/e/f/up', 'src/leak.txt');
+    sh(root, 'commit', '-qm', 'links');
+    const head = sh(root, 'rev-parse', 'HEAD');
+    const result = regenRunEnv(root, { TMPDIR: tmp });
+    expectRefusedBeforeCommit(root, head, result);
+    expect(result.out).toContain('src/leak.txt');
+    expect(result.out).toContain('隔离根');
+    expect(result.out).not.toContain('重算：');
+  }, 60_000);
+});
