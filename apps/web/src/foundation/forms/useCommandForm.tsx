@@ -55,11 +55,7 @@ export function useDraftRefill(state: Submission | undefined, submittable: reado
   const key = submittable.join('\n');
   const fields = useRef(key);
   const { values, latest, editedFields } = state ?? {};
-  useEffect(() => {
-    if (!values) return;
-    const submittable = fields.current.split('\n');
-    form.setFieldsValue(refillDraft({ values, latest: latest?.values, edited: editedFields ?? [], submittable }));
-  }, [form, values, latest, editedFields]);
+  // 先登记字段集合再回填：两者同一次渲染变化时，回填按新的可提交字段判断。
   useEffect(() => {
     if (fields.current === key) return;
     fields.current = key;
@@ -68,4 +64,9 @@ export function useDraftRefill(state: Submission | undefined, submittable: reado
     const fixed = Object.keys(latest.values).filter((field) => !submittable.includes(field));
     form.setFieldsValue(Object.fromEntries(fixed.map((field) => [field, latest.values[field]])));
   }, [form, key, latest]);
+  useEffect(() => {
+    if (!values) return;
+    const submittable = fields.current.split('\n');
+    form.setFieldsValue(refillDraft({ values, latest: latest?.values, edited: editedFields ?? [], submittable }));
+  }, [form, values, latest, editedFields]);
 }

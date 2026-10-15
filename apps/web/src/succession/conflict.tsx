@@ -1,5 +1,5 @@
 import { Button, Popconfirm, type ButtonProps } from 'antd';
-import { useConflictCommand } from '../foundation/forms/ConflictCommands.js';
+import { useConflictCommand, validObject } from '../foundation/forms/ConflictCommands.js';
 import { useApiClient } from '../foundation/Session.js';
 import { s } from './messages.js';
 import { deleteReceipt } from './rules.js';
@@ -26,8 +26,7 @@ export function DeleteButton(props: DeleteProps) {
     </Button>
   );
 }
-const deletable = (row?: DeleteProps['row']): row is NonNullable<DeleteProps['row']> =>
-  !!row && typeof row.id === 'string' && row.id !== '' && Number.isSafeInteger(row.revision) && row.revision >= 0;
+const deletable = (row?: DeleteProps['row']): row is NonNullable<DeleteProps['row']> => !!row && validObject(row);
 function ArmedDelete({
   base,
   row,

@@ -28,8 +28,9 @@ export interface Run {
   send(request: Sending): Promise<{ id: string }>;
 }
 
-const validObject = (item: { id?: string; revision: number }) =>
-  typeof item.id === 'string' && item.id !== '' && Number.isSafeInteger(item.revision) && item.revision >= 0;
+/** 对象命令的 id 与版本是否可用：入口可先用它禁用按钮，不必等进内核才拒绝。 */
+export const validObject = (item: { id?: string; revision?: number }) =>
+  typeof item.id === 'string' && item.id !== '' && Number.isSafeInteger(item.revision) && (item.revision ?? -1) >= 0;
 
 /** 恢复槽（稳定原单路径，不含版本）→ 结果未知的命令所在条目。挂在页面根部，关弹窗、刷新列表都不丢。 */
 const Pins = createContext<Map<string, string> | undefined>(undefined);
