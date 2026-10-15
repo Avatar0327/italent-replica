@@ -985,6 +985,10 @@
 "log": [
 [
 "10-15",
+"F-155a 后端段开工（Claude 云端会话 Opus 5.5 High）；#335 F-107 仍为 Codex 草稿，未交审"
+],
+[
+"10-15",
 "新 PR #335 F-107（评定活动范围上限按去重计数，Draft）上板，归 F-087 排查项"
 ],
 [
@@ -5579,6 +5583,19 @@
 "pr": 334,
 "s": "assigned",
 "note": "Codex Astra Ultra 开发中（DEC-513），#334 Draft"
+}
+]
+},
+{
+"id": "F-155",
+"name": "IDP 阶段与中期回顾",
+"why": "DEC-511 UI3 补 ④(b)(c)：被跳过阶段显示“已终止”；中期回顾总结 + 改进方法必填 ≤1000 字",
+"steps": [
+{
+"k": "F-155a",
+"n": "F-155a 后端段（阶段终止显示 / 中期回顾校验）",
+"s": "assigned",
+"note": "Claude 云端会话 Opus 5.5 High 开发中（分支 claude/F-155a-idp-stage-review），尚无 PR"
 }
 ]
 }
