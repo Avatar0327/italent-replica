@@ -151,7 +151,8 @@ jobs:
             echo '### pnpm merge:main 完成'
             echo
             echo '```'
-            grep -E '^(迁移|  |生成物冲突|已提交|已是最新|已包含|注意|main 改过依赖)' "$log" | head -60
+            # 只是摘要：匹配超过 60 行时 head 提前关管道，grep 收到 Broken pipe 退出 2，pipefail 下会把本步（最后一条命令）判失败、跳过推送（#337）
+            grep -E '^(迁移|  |生成物冲突|已提交|已是最新|已包含|注意|main 改过依赖)' "$log" | head -60 || true
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Mark queue head
