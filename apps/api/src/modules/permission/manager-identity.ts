@@ -1,7 +1,7 @@
 /** Q-M0-71：负责人自助是即时派生身份，不写授权行，不改变用户 × 应用的显式范围。 */
 import { sql, type Tx } from '@italent/db';
 import { MODULE_OBJECTS, type GrantedObjectPermission } from '@italent/domain';
-import { scopeRows, expandScopeRoots } from './scope-hierarchy.js';
+import { expandScopeOrgSet, scopeRows } from './scope-hierarchy.js';
 import { currentPersons } from './scope-persons.js';
 
 export const MANAGER_PROFILE_CODE = 'department_manager_self_service';
@@ -11,6 +11,10 @@ export interface ManagerQuery {
   asOf: string;
 }
 
+/**
+ * 负责人自助身份判定：负责组织（按 asOf 当天组织版本）或有直属下级即为活跃，**不展开组织**。
+ * 每次鉴权都会走（对象权限、本人快照），展开下级与身份判定拆开，负责链深的员工不因展开上限在范围解析前被拒（F-161 / DEC-516）。
+ */
 export async function managerIdentity(tx: Tx, q: ManagerQuery) {
   const [binding] = scopeRows<{ employeeId: string }>(
     await tx.execute(sql`
@@ -19,7 +23,7 @@ export async function managerIdentity(tx: Tx, q: ManagerQuery) {
     WHERE l.tenant_id=${q.tenantId} AND l.user_id=${q.userId}::uuid LIMIT 1
   `),
   );
-  if (!binding) return { active: false, employeeId: null, orgIds: [] as string[], rootIds: [] as string[] };
+  if (!binding) return { active: false, employeeId: null, rootIds: [] as string[] };
   const roots = scopeRows<{ id: string }>(
     await tx.execute(sql`
     SELECT org_id AS id FROM (SELECT DISTINCT ON (org_id) org_id,person_in_charge_id
@@ -27,12 +31,6 @@ export async function managerIdentity(tx: Tx, q: ManagerQuery) {
       ORDER BY org_id,start_date DESC,version_no DESC) v
     WHERE person_in_charge_id=${binding.employeeId}::uuid LIMIT 201
   `),
-  );
-  const orgIds = await expandScopeRoots(
-    tx,
-    q.tenantId,
-    q.asOf,
-    roots.map((r) => ({ orgId: r.id, dimension: 'admin', includeDescendants: true })),
   );
   const reports = scopeRows(
     await tx.execute(sql`
@@ -44,9 +42,18 @@ export async function managerIdentity(tx: Tx, q: ManagerQuery) {
   return {
     active: roots.length > 0 || reports.length > 0,
     employeeId: binding.employeeId,
-    orgIds,
     rootIds: roots.map((r) => r.id),
   };
+}
+
+/**
+ * 身份判定 + 负责组织及全部下级（行政维度）。只给需要负责组织集合的经理自助查询用。
+ * 链上多层都由同一人负责时子树互相重叠，按去重后的组织数计上限（比照 F-107）；超过 20,000 个组织或 200 个负责组织仍 413。
+ */
+export async function managerIdentityWithOrgs(tx: Tx, q: ManagerQuery) {
+  const identity = await managerIdentity(tx, q);
+  const roots = identity.rootIds.map((orgId) => ({ orgId, dimension: 'admin', includeDescendants: true }));
+  return { ...identity, orgIds: [...(await expandScopeOrgSet(tx, q.tenantId, q.asOf, roots))] };
 }
 
 /** 默认值是身份配置的后备；租户创建同编码身份后，完全使用其对象/字段配置，不叠加默认字段。 */

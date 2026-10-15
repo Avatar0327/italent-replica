@@ -5,7 +5,9 @@ import { ApiError } from '../foundation/client.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { useApiClient, useSession } from '../foundation/Session.js';
 import { CommandStatus } from '../foundation/forms/CommandStatus.js';
-import { useContractCommand } from './commands.js';
+import { forAction } from '../foundation/forms/action.js';
+import { slotKey } from '../foundation/forms/slot.js';
+import { useApprovalCommand } from '../approval/commands.js';
 import { ApprovalDetail } from '../approval/ApprovalDetail.js';
 import { readApproval } from '../approval/api.js';
 import type { ApprovalDetail as Detail, ApprovalRow } from '../approval/types.js';
@@ -52,12 +54,15 @@ function useRowApproval(api: Api, businessId?: string) {
   return { current: state, failed, retry: () => setGeneration((n) => n + 1) };
 }
 /**
- * 催办走表单内核：未确认命令按业务行存放在合同模块级存储（commands.ts），
- * 切换视图 / 子页重挂载后仍锁定，不生成新的幂等键（DEC-464/475）。
+ * 催办走表单内核，与审批详情的转交、撤销共用流程实例的恢复槽（审批模块级存储，F-147），动作记在槽上下文：
+ * 切换视图 / 子页重挂载后仍锁定，不生成新的幂等键（DEC-464/475）；任一动作结果未知时其他动作一并锁定。
+ * 流程实例未读到时没有催办按钮，槽暂挂在集合路径上，不会提交。
  */
-function useUrge(api: Api, businessId: string) {
-  const urge = useContractCommand(`contracts/requests/${businessId}/urge`);
+function useUrge(api: Api, instanceId?: string) {
+  const urge = forAction(useApprovalCommand(slotKey(approval, instanceId)), { action: 'urge' });
   const send = async (target: Approval) => {
+    // 点击时重读到的流程实例换了（极少见），本行的槽不对应它，按不可用处理。
+    if (target.instance.id !== instanceId) return void message.warning(m.approvalUnavailable.urge);
     const result = await urge.submit({
       values: {},
       baseline: {},
@@ -92,7 +97,7 @@ export function RowActions({ row, onChanged }: { row: Row; onChanged(): void }) 
   const permission = usePermissions(object);
   const businessId = typeof row.id === 'string' ? row.id : '';
   const { current, failed, retry } = useRowApproval(api, businessId || undefined);
-  const urge = useUrge(api, businessId);
+  const urge = useUrge(api, current?.instance.id);
   const [busy, setBusy] = useState<Action>();
   const [open, setOpen] = useState<ApprovalRow>();
   const run = async (action: Action) => {
@@ -128,7 +133,7 @@ export function RowActions({ row, onChanged }: { row: Row; onChanged(): void }) 
           key={action}
           type="link"
           size="small"
-          disabled={!!busy || (action === 'urge' && urge.form.locked)}
+          disabled={!!busy || (action === 'urge' && (urge.form.locked || !!urge.form.blocked))}
           onClick={() => void run(action)}
         >
           {m.approvalActions[action]}
