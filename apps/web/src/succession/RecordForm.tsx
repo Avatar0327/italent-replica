@@ -150,6 +150,7 @@ function RecordEditor({
       const latest = await api.request<RecordView>(`${RECORDS}/${row!.id}`);
       return { id: latest.id, revision: latest.revision, values: { ...latest } };
     },
+    row ? { action: 'edit' } : {},
   );
   const fields = useRecordFields(type, row, today);
   return (
@@ -193,19 +194,21 @@ export const targetName = (row?: RecordView) => row?.targetPosition?.name ?? row
  * 编辑权只看 editableFields；回执是 {items}，按提交的记录逐条核对（rules.ts endReceipt）。
  * 冲突（某条已被改）两种恢复：弹窗内重读逐条记录、核对后按最新版本提交；或关闭（列表随之刷新）后重新选择。
  * 命令键由所选记录及其版本组成，重选后拿到新版本即是新键，不会被上一次的冲突锁住；
- * 结果未知时逐条钉住，重选含其中任一条仍是原命令（conflict.tsx）。
+ * 结果未知时逐条钉住记录的恢复槽（与编辑、删除同槽，动作 end 记在槽上下文，F-147），
+ * 重选含其中任一条仍是原命令，这些记录的编辑、删除也一并锁定。
  */
 export function EndForm({ rows, close, saved }: { rows: RecordView[]; close(): void; saved(): void }) {
   const permission = usePermissions(RECORD);
   const api = useApiClient();
   const { today } = useSession();
   const writer = useConflictCommand(
-    `${RECORDS}/end`,
+    RECORDS,
     { id: END_RECEIPT, revision: 0, values: { rows }, objects: rows },
     async () => {
       const fresh = await Promise.all(rows.map((row) => api.request<RecordView>(`${RECORDS}/${row.id}`)));
       return { id: END_RECEIPT, revision: 0, values: { rows: fresh } };
     },
+    { action: 'end' },
   );
   const field = (name: string, control: ReactNode, rules: FormField['rules']): FormField => ({
     name,

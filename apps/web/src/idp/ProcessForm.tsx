@@ -105,7 +105,7 @@ function LoadedProcess({ id, close, saved }: { id: string; close(): void; saved(
 }
 function ProcessEditor({ process, close, saved }: { process?: Process; close(): void; saved(): void }) {
   const permission = usePermissions(OBJECTS.process);
-  const writer = useRecordForm(PATH, process as Row | undefined, project);
+  const writer = useRecordForm(PATH, process as Row | undefined, project, process ? { action: 'edit' } : {});
   // 子流程按 IDP.SubProcess 自身字段权限与操作权渲染，父对象 subProcesses 可编辑是前提（失败即拒绝）
   const subPermission = usePermissions(OBJECTS.subProcess);
   const subOperations = subPermission.snapshot.objects[OBJECTS.subProcess]?.dataOperations;

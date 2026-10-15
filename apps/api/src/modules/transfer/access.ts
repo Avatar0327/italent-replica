@@ -7,7 +7,7 @@ import { rowsOf } from '../employment/record-store.js';
 import type { EmploymentContext } from '../employment/types.js';
 import { scopeAllowsInTransaction, authorizeInTransaction } from '../permission/module-access.js';
 import { currentPersons } from '../permission/scope-persons.js';
-import { managerIdentity } from '../permission/manager-identity.js';
+import { managerIdentity, managerIdentityWithOrgs } from '../permission/manager-identity.js';
 
 export type TransferInitiator = 'hr' | 'manager' | 'employee';
 const ROLE_BUTTONS = { hr: 'Transfer.Hr', manager: 'Transfer.Manager', employee: 'Transfer.Self' } as const;
@@ -91,7 +91,7 @@ async function inTeam(
   departmentId: string | null,
   today: string,
 ): Promise<boolean> {
-  const identity = await managerIdentity(tx, { ...ctx, asOf: today });
+  const identity = await managerIdentityWithOrgs(tx, { ...ctx, asOf: today });
   if (!departmentId || !identity.orgIds.includes(departmentId)) return false;
   const [current] = rowsOf<{ kind: string }>(
     await tx.execute(sql`
