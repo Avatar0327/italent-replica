@@ -41,6 +41,8 @@ export interface SubmitInput {
   context?: Values;
   send(command: Command<Values>): Promise<{ id: string }>;
 }
+/** F-141 起对外的比较名；实现只有 values.ts 的 sameValue 一份（DEC-502②），空值口径相同：0 与 false 不算空。 */
+export const equal = sameValue;
 export const isLocked = (state?: Submission) => !!state && ['submitting', 'unknown', 'conflict'].includes(state.status);
 function failureStatus(error: unknown): Submission['status'] {
   const failure = error as { status?: number; code?: string } | null;

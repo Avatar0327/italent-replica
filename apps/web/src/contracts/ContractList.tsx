@@ -12,6 +12,7 @@ import {
   columnTitle,
   columnKeys,
   employmentColumns,
+  isColumnShown,
   listPath,
   listQuery,
   object,
@@ -218,8 +219,7 @@ function ContractTable({ state }: { state: State }) {
   const { view, allowed, result, page, setPage, pageSize, setPageSize, reload } = state;
   const label = useLabels();
   const rows = result.data?.items ?? [];
-  const shown = (key: string) =>
-    stubColumns.has(key) || (view === 'missing' && key in employmentColumns) || allowed.includes(key);
+  const shown = (key: string) => isColumnShown(view, key, allowed);
   const columns = columnKeys(view)
     .filter(shown)
     .map((key) => ({

@@ -1,4 +1,5 @@
 import { Alert, Button, Space, Table } from 'antd';
+import { rejectionMessage } from '../client.js';
 import type { CommandForm } from './useCommandForm.js';
 import { messages as m } from './messages.js';
 const display = (value: unknown) => (value === undefined ? '—' : JSON.stringify(value));
@@ -12,7 +13,7 @@ export function CommandStatus({
   const { state, reload, confirm } = submission;
   if (!state || ['idle', 'done'].includes(state.status)) return null;
   let message = m[state.status as 'submitting' | 'unknown' | 'conflict'];
-  if (state.status === 'rejected') message = state.error instanceof Error ? state.error.message : m.rejected;
+  if (state.status === 'rejected') message = state.error instanceof Error ? rejectionMessage(state.error) : m.rejected;
   return (
     <Space direction="vertical">
       <Alert

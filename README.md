@@ -48,4 +48,4 @@
 3. 切换为“HR专员（演示）”：审批“调入部门HRBP审核”节点。生效日不晚于今天时审批通过即生效；生效日在以后的，到期后由定时生效任务落地（演示进程 30 秒轮询一次）。
 4. 结果：员工自助“任职记录”出现新部门的一条记录；经理工作台“已处理”可见；HR 在调动管理里选该员工时，调动前信息已是新部门；审计管理员调 `/api/tenant/audit/data-changes` 可查到本次变更。
 
-> 前端暂时没有审批中心页面（同意 / 驳回）：界面审批待 F-027（DEC-229）。在那之前，第 2、3 步用已有接口完成，例如在浏览器开发者工具里调用：`GET /api/tenant/approval/todos` 取待办，`GET /api/tenant/approval/instances/{instanceId}` 取 `revision`，再 `POST /api/tenant/approval/tasks/{taskId}/approve`（请求头 `x-tenant-id`、`If-Match: "<revision>"`、`Idempotency-Key`，请求体 `{}`）。
+> 第 2、3 步在前端“审批中心”页面完成：切换到对应身份，打开审批中心的待办，进入申请单后点“同意”或“驳回”（页面也支持转交、加签等动作）。接口见 `GET /api/tenant/approval/todos`、`POST /api/tenant/approval/tasks/{taskId}/approve`，只在需要脚本化验证时直接调用。

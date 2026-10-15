@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { AvatarReference } from '../account/avatar-api.js';
 import { accountText as text } from '../account/messages.js';
+import { avatarInitials } from './avatar-initials.js';
 import './person-avatar.css';
 
 interface Props {
@@ -10,13 +11,6 @@ interface Props {
   readonly size?: number;
 }
 const COLORS = ['#286aaa', '#287e67', '#9b514d', '#806193', '#996e2c', '#496f83'] as const;
-
-function initials(name: string) {
-  const parts = name.trim().split(/\s+/);
-  if (/^[a-z]/i.test(parts[0] ?? ''))
-    return `${parts[0]?.[0] ?? ''}${parts.length > 1 ? (parts.at(-1)?.[0] ?? '') : ''}`.toUpperCase();
-  return Array.from(name.trim()).slice(-2).join('');
-}
 
 function contentPath(avatar: AvatarReference | null | undefined) {
   if (!avatar) return null;
@@ -84,7 +78,7 @@ function AvatarSession({ tenantId, name, avatar, size = 40 }: Props) {
         verticalAlign: 'middle',
       }}
     >
-      {initials(name)}
+      {avatarInitials(name)}
     </span>
   );
 }

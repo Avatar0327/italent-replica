@@ -1,16 +1,16 @@
-import { EMPLOYEE_STATUS_LABELS, ENTRY_STATUS_LABELS } from '@italent/domain';
+import { APPLICATION_STATE_LABELS, EMPLOYEE_STATUS_LABELS, ENTRY_STATUS_LABELS } from '@italent/domain';
 
 export const managerText = {
   employTypes: { internal: '正式员工', intern: '实习生', external: '外部人员' },
   statuses: {
-    running: '审批中',
-    returned: '已退回',
+    running: APPLICATION_STATE_LABELS.running,
+    returned: APPLICATION_STATE_LABELS.returned,
     in_review: '审批中',
-    approved: '通过',
+    approved: APPLICATION_STATE_LABELS.approved,
     effective: '已生效',
     completed: '已完成',
-    cancelled: '已终止',
-    rejected: '已退回',
+    cancelled: APPLICATION_STATE_LABELS.terminated,
+    rejected: APPLICATION_STATE_LABELS.returned,
     disapproved: '未通过',
     draft: '草稿',
     withdrawn: '已撤回',

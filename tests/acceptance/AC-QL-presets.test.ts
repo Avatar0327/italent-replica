@@ -3,7 +3,7 @@
  * - 任职资格系统管理员：Qualification 应用的全部业务功能；
  * - 评定管理员：TEvaluation 应用的配置对象 + 流程对象；Qualification 里被评定引用的四个对象只读（🟡，DEC-352 查看权）；
  * - 评定专员：只含流程对象（评定过程 / 评定记录）。
- * 数据范围一律缺省为空（硬规则）：三个身份开通时不预置任何看全部。
+ * 数据范围一律缺省为空（硬规则）：三个身份开通时不预置任何看全部（评定字典的看全部给企业设置层 system_admin，DEC-503）。
  * 新租户开通即有；存量租户经平台回补（permission/standard-profiles 登记项）补齐，不覆盖租户手工建的同编码身份，
  * 租户撤销过的授权不被再次补回（F-061 台账）。员工身份（C1-2b，DEC-399）见 AC-QL-employee-profile。
  */
@@ -149,7 +149,7 @@ describe('AC-QL-presets 新租户开通即有三个预置身份（DEC-331②）'
     expect(await buttonsOf(qlAdmin, EVALUATION_FLOW_OBJECTS.staffEvaluation.code)).toBe(403);
   });
 
-  it('数据范围缺省为空：三个预置身份开通时不带任何看全部 / 身份范围行（硬规则，不照继任 / 盘点预置字典看全部）（AC-QL-presets）', async () => {
+  it('数据范围缺省为空：三个预置身份开通时不带任何看全部 / 身份范围行（硬规则；评定字典的看全部给企业设置层 system_admin，DEC-503）（AC-QL-presets）', async () => {
     const w = await provisionWorld(testDb().db, 'ql-presets-scope');
     const rows = await withTenant(w.db, w.tenantId, (tx) => tx.select().from(permissionIdentityScopes));
     const ids = new Set(NEW_CODES.map((code) => w.profileIds.get(code)));

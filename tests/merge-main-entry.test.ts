@@ -66,7 +66,8 @@ function buildRepo(opts: { base: Mig[]; main: Mig[]; branch: Mig[] }) {
   const root = mkdtempSync(path.join(tmpdir(), 'merge-main-entry-'));
   roots.push(root);
   mkdirSync(path.join(root, 'scripts'));
-  for (const file of ['merge-main.mjs', 'merge-main-lib.mjs'])
+  // 入口脚本 import 同目录的 lib（含 F-133 的登记合并 lib），整组复制
+  for (const file of readdirSync(path.join(REPO, 'scripts')).filter((f) => /^merge-main.*\.mjs$/.test(f)))
     copyFileSync(path.join(REPO, 'scripts', file), path.join(root, 'scripts', file));
   writeFileSync(path.join(root, 'package.json'), '{"type":"module"}\n');
   sh(root, 'init', '-q', '-b', 'main');
