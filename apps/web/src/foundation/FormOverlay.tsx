@@ -1,6 +1,6 @@
 import { Alert, Button, Drawer, Form, Modal, Space, type FormInstance, type FormItemProps } from 'antd';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { ApiError } from './client.js';
+import { ApiError, rejectionMessage } from './client.js';
 import { ui } from './messages.js';
 import { PermissionField } from './Permissions.js';
 import type { FieldAccess } from './permission-model.js';
@@ -100,7 +100,7 @@ function OpenForm(props: FormOverlayProps) {
         <Alert
           type="error"
           showIcon
-          message={error instanceof ApiError ? error.message : ui.uncertain}
+          message={error instanceof ApiError ? rejectionMessage(error) : ui.uncertain}
           action={
             error instanceof ApiError && error.kind === 'refresh' && props.onRefresh ? (
               <Button onClick={props.onRefresh}>{ui.refreshAction}</Button>

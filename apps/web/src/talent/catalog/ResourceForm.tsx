@@ -1,11 +1,13 @@
 import { Alert, Input, InputNumber, Select } from 'antd';
-import { useRef } from 'react';
 import { ApiError, type ApiClient } from '../../foundation/client.js';
 import { FormOverlay, type FormField } from '../../foundation/FormOverlay.js';
+import { messages as commandMessages } from '../../foundation/forms/messages.js';
+import { equal } from '../../foundation/forms/store.js';
+import { useCommandForm } from '../../foundation/forms/useCommandForm.js';
 import { PageState } from '../../foundation/PageState.js';
 import { fieldAccess, type ObjectPermission } from '../../foundation/permission-model.js';
 import { useApiClient } from '../../foundation/Session.js';
-import { candidates, saveResource, validateValues, writablePatch } from './api.js';
+import { candidates, commandRequestBody, resourcePath, saveResource, validateValues } from './api.js';
 import { useRemote } from './hooks.js';
 import { ReferencedDimensions } from './ReferencedDimensions.js';
 import { StandardTargets } from './StandardTargets.js';
@@ -100,7 +102,7 @@ export function ResourceForm({
     (!original && !!resource.owner && !owners.length) ||
     !fields.some((field) => field.access.editable);
   const initialValues = original ? { ...original } : {};
-  const submit = useSaveResource(resource, original, fields, blocked, onSaved);
+  const { submit, submission } = useSaveResource(resource, original, fields, blocked, onSaved);
   const notice = data.error ? (
     <PageState kind="error" error={data.error} />
   ) : (
@@ -121,6 +123,7 @@ export function ResourceForm({
     <FormOverlay
       mode={resource.module === 'qualification' && resource.key === 'categories' ? 'modal' : 'drawer'}
       recordKey={original ? `${original.id}:${original.revision}` : `new:${resource.key}`}
+      submission={submission}
       title={`${original ? m.edit : m.create} · ${resource.title}`}
       open
       onClose={onClose}
@@ -184,6 +187,11 @@ function validationType(field: Field) {
   return { type: 'string' as const, whitespace: true };
 }
 
+/**
+ * 保存走页面级表单提交内核（F-123，DEC-464 / 473）：未知结果的命令保存在页面的 FormCommands 里，关闭重开、切换页签都不会
+ * 换命令 ID 再发；服务器明确拒绝时保留输入、改正后新命令重提。内核拿到完整字段投影（打开时的记录、表单草稿、重读的最新记录），
+ * 命令体由内核按“草稿 vs 基线”逐字段裁剪；409 重读确认后内核把基线与版本更新为最新记录、没改过的字段回填最新值。
+ */
 function useSaveResource(
   resource: Resource,
   original: Row | null,
@@ -192,30 +200,48 @@ function useSaveResource(
   onSaved: () => void,
 ) {
   const api = useApiClient();
-  const uncertain = useRef(false);
-  return async (values: Record<string, unknown>) => {
+  const path = original ? `${resourcePath(resource)}/${original.id}` : resourcePath(resource);
+  const command = useCommandForm(path);
+  const submission = {
+    ...command,
+    reload: original
+      ? () =>
+          command.reread(async (id) => {
+            const latest = await api.request<Row>(`${resourcePath(resource)}/${id}`);
+            return { id: latest.id, revision: latest.revision, values: latest };
+          })
+      : undefined,
+  };
+  const submit = async (values: Record<string, unknown>) => {
     if (blocked) throw new Error(m.unavailable);
-    if (uncertain.current) throw new ApiError(0, 'RESULT_UNKNOWN', 'unknown', m.uncertain);
     try {
       validateValues(resource, values);
     } catch (error) {
       throw new ApiError(422, 'LOCAL_VALIDATION', 'fields', (error as Error).message);
     }
-    const body = writablePatch(
+    const editable = fields.filter((field) => field.access.editable).map((field) => field.name);
+    const nullable = resource.fields.filter((field) => field.nullable).map((field) => field.key);
+    // “有没有修改”：与内核同一套比较（含空值等价），基线是内核的当前基线——冲突重读并确认后是最新记录，其余时候是打开时的记录。
+    const state = command.state;
+    const base = (original && state && state.status !== 'done' ? state.baseline : original) ?? {};
+    if (!editable.some((field) => !equal(values[field], base[field])))
+      throw new ApiError(422, 'LOCAL_VALIDATION', 'fields', m.noChanges);
+    // 内核持有完整字段投影：基线（打开时的记录）、草稿（表单全部可编辑字段）、重读得到的最新记录三者字段集合一致。
+    // 用户改过的字段只按“草稿 vs 基线”逐字段算；409 重读后没改过的字段回填最新值（不会把表单里残留的旧值当成新修改），
+    // PATCH 只发改过的字段（内核 patchOnly）。发送前只做序列化（空值写成 null / 省略），不改变“哪些字段算改过”。
+    const result = await command.submit({
       values,
-      original,
-      fields.filter((field) => field.access.editable).map((field) => field.name),
-      resource.fields.filter((field) => field.nullable).map((field) => field.key),
-    );
-    if (!Object.keys(body).length) throw new ApiError(422, 'LOCAL_VALIDATION', 'fields', m.noChanges);
-    // 标准的明细为整组替换；基础编辑绝不携带旧明细，创建空标准按已有契约提交空格集合。
-    if (!original && resource.module === 'qualification' && resource.key === 'standards') body.details ??= [];
-    try {
-      await saveResource(api, resource, body, original);
-      onSaved();
-    } catch (error) {
-      if (error instanceof ApiError && error.kind === 'unknown') uncertain.current = true;
-      throw error;
-    }
+      baseline: original ?? {},
+      editableFields: editable,
+      revision: original?.revision ?? 0,
+      businessId: original?.id,
+      patchOnly: !!original,
+      send: (request) =>
+        saveResource(api, resource, commandRequestBody(resource, original, nullable, request.body), original, request),
+    });
+    if (result.status !== 'done') throw result.error ?? new Error(commandMessages.unknown);
+    command.clear();
+    onSaved();
   };
+  return { submit, submission };
 }

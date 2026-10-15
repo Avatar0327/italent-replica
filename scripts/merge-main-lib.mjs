@@ -268,7 +268,7 @@ export function classifyConflict(diff3Text) {
  * 逐处处理冲突：decide(hunk, prefix) 返回替换文本则解决该处，返回 null 则原样保留冲突标记。
  * prefix 是这一处之前的文本（之前未解决的冲突按 main 一侧计），用来判断冲突处在文件里的位置。
  */
-function resolveHunks(diff3Text, decide) {
+export function resolveHunks(diff3Text, decide) {
   let remaining = 0;
   let prefix = '';
   const text = parseDiff3(diff3Text)

@@ -123,8 +123,8 @@ function evaluationFixture(pathname: string) {
 function surveyFixture(pathname: string) {
   if (pathname.endsWith(`/activities/${id}`)) return activity;
   if (pathname.endsWith('/activities')) return { items: [activity] };
-  if (/\/(questionnaires|templates)$/.test(pathname)) return { items: [questionnaire] };
-  if (/\/(questionnaires|templates)\/[^/]+$/.test(pathname)) return questionnaire;
+  if (/\/(questionnaires|questionnaire-templates)$/.test(pathname)) return { items: [questionnaire] };
+  if (/\/(questionnaires|questionnaire-templates)\/[^/]+$/.test(pathname)) return questionnaire;
   if (pathname.endsWith('/objects'))
     return { items: [{ id, revision: 1, person: { name: '合成参评人' }, questionnaireIds: [id] }] };
   if (pathname.endsWith('/appraisers')) return { items: [{ id, appraiser: { name: '合成评价者' }, roleName: '同事' }] };

@@ -1,10 +1,12 @@
 export const q = {
   title: '任职资格',
+  categoryClasses: '任职分类',
   categories: '任职类别',
   levels: '任职级别',
   standards: '任职资格标准',
   channels: '员工发展通道',
   class: '所属分类',
+  parentClass: '上级分类',
   layer: '层级',
   category: '任职类别',
   levelsRange: '级别范围',

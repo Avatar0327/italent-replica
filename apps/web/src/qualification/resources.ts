@@ -27,6 +27,32 @@ export const qualificationResources: Resource[] = [
     ],
   },
   {
+    // F-141（DEC-500）补登记的任职分类维护页：字段取自后端契约（category-classes）；原站该页的列与交互证据不足（未验证），
+    // 复用同一套目录页，不自创交互。上级分类建后不可改（后端 categoryClassPatch 不收 parentId）。
+    key: 'category-classes',
+    title: q.categoryClasses,
+    module: 'qualification',
+    object: 'Qualification.EmploymentCategoryClassify',
+    owner: 'categoryClass',
+    note: 'qualification-category-class',
+    columns: ['name', 'code', 'parentId', 'displayOrder', 'enabled'],
+    fields: [
+      { key: 'name', label: m.name, required: true },
+      { key: 'code', label: m.code, max: 50, required: true },
+      {
+        key: 'parentId',
+        label: q.parentClass,
+        kind: 'select',
+        nullable: true,
+        createOnly: true,
+        source: `${base}category-classes`,
+      },
+      { key: 'displayOrder', label: m.order, kind: 'number' },
+      { key: 'enabled', label: m.status, kind: 'boolean' },
+      { key: 'publicDown', label: q.publicDown, kind: 'boolean' },
+    ],
+  },
+  {
     key: 'levels',
     title: q.levels,
     module: 'qualification',

@@ -57,7 +57,7 @@ for (const status of [409, 422]) {
     await choose(page, form, '选择人员', '合成已添加人员');
     await choose(page, form, '选取套卷', '合成协作套卷');
     await form.getByRole('button', saveButton).click();
-    await expect(form.getByRole('alert')).toContainText(status === 409 ? '该人员已是评价对象' : '请检查');
+    await expect(form.getByRole('alert')).toContainText('该人员已是评价对象');
     await expect(form).toContainText('合成协作套卷');
     expect(requests).toHaveLength(1);
     await choose(page, form, '选择人员', '合成新人员');
@@ -89,7 +89,7 @@ for (const status of [409, 422]) {
     await form.getByLabel('名称', { exact: true }).fill('合成待修正活动');
     await form.getByLabel('欢迎语', { exact: true }).fill('合成欢迎语');
     await form.getByRole('button', saveButton).click();
-    await expect(form.getByRole('alert')).toContainText(status === 409 ? '合成活动被明确拒绝' : '请检查');
+    await expect(form.getByRole('alert')).toContainText('合成活动被明确拒绝');
     await expect(form.getByLabel('名称', { exact: true })).toHaveValue('合成待修正活动');
     await expect(form.getByLabel('欢迎语', { exact: true })).toHaveValue('合成欢迎语');
     await expect(form.getByLabel('欢迎语', { exact: true })).toBeEditable();

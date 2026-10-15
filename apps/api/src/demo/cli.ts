@@ -15,6 +15,7 @@ const PHASE_LABELS: Readonly<Record<SeedPhase, string>> = {
   jobs: '职务体系',
   employees: '员工',
   access: '授权与负责人',
+  qualification: '任职资格层级候选',
   transfers: '调动流程与调动单',
 };
 

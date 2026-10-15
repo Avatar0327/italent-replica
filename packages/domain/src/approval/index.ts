@@ -8,3 +8,4 @@ export * from './policies.js';
 export * from './transfer-view.js';
 export * from './countersign.js';
 export * from './recusal.js';
+export * from './application-status.js';
