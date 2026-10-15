@@ -296,9 +296,12 @@ export const GRAPH: Graph = {
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
   ],
   'apps/api/src/modules/permission/manager-identity.ts#managerIdentity': [
-    'apps/api/src/modules/permission/scope-hierarchy.ts#expandScopeRoots',
     'apps/api/src/modules/permission/scope-hierarchy.ts#scopeRows',
     'apps/api/src/modules/permission/scope-persons.ts#currentPersons',
+  ],
+  'apps/api/src/modules/permission/manager-identity.ts#managerIdentityWithOrgs': [
+    '#managerIdentity',
+    'apps/api/src/modules/permission/scope-hierarchy.ts#expandScopeOrgSet',
   ],
   'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction': ['#providers'],
   'apps/api/src/modules/permission/module-access.ts#editableModuleFields': [
