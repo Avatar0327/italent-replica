@@ -24,6 +24,8 @@ async function fixture(label: string) {
   const other = await createOrg(w.api, w.as, `${label}其他`);
   const tx = <T>(work: Parameters<typeof withTenant<T>>[2]) => withTenant(testDb().db, w.tenant.id, work);
   const owner = w.as.user;
+  // ql_levels_display_order 按租户唯一；每个 fixture 新建租户，递增序号避免随机碰撞。
+  let displayOrder = 0;
   /** 直接写库建对象（契约测试不依赖 PR-A 的接口）。 */
   const insert = async (orgId: string, extra: { enabled?: boolean; publicDown?: boolean } = {}) =>
     tx(async (t) => {
@@ -38,7 +40,7 @@ async function fixture(label: string) {
       const levelId = randomUUID();
       await t.execute(sql`INSERT INTO ql_levels (id, tenant_id, code, name, display_order, owner_id, owner_org_id,
         created_by) VALUES (${levelId}, ${w.tenant.id}, ${`L${code}`}, '级别',
-        ${Math.floor(Math.random() * 1e6)}, ${owner}, ${orgId}, ${owner})`);
+        ${++displayOrder}, ${owner}, ${orgId}, ${owner})`);
       const standardId = randomUUID();
       await t.execute(sql`INSERT INTO ql_standards (id, tenant_id, category_id, name, level_ids, owner_id,
         owner_org_id, created_by) VALUES (${standardId}, ${w.tenant.id}, ${categoryId}, '标准',
