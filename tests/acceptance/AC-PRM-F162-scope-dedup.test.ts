@@ -21,6 +21,8 @@ describe('AC-PRM-F162 其他应用与人员创建范围去重计数（DEC-516 / 
   let tenantId: string;
   let userId: string;
   let chain: string[];
+  /** 链首的上级：不在管理单元里，去重展开后也不得带进范围（反向用例）。 */
+  let outside: string;
   let leafCount = 0;
 
   const run = <T>(work: (tx: Tx) => Promise<T>) => withTenant(database().db, tenantId, work);
@@ -66,22 +68,23 @@ describe('AC-PRM-F162 其他应用与人员创建范围去重计数（DEC-516 / 
     tenantId = seeded.tenant.id;
     userId = seeded.user.id;
     chain = Array.from({ length: DEPTH }, () => randomUUID());
+    outside = randomUUID();
     const person = randomUUID();
     await owner(async (tx) => {
       await tx.execute(sql`INSERT INTO employment_employees(id,tenant_id,code,name)
         VALUES (${person}::uuid,${tenantId},'F162_HRBP','合成HRBP')`);
       await tx.execute(sql`INSERT INTO permission_user_person_links(tenant_id,user_id,employee_id)
         VALUES (${tenantId},${userId}::uuid,${person}::uuid)`);
-      for (const [i, orgId] of chain.entries()) {
+      for (const [i, orgId] of [outside, ...chain].entries()) {
         const version = randomUUID();
         await tx.execute(sql`INSERT INTO org_objects(id,tenant_id) VALUES (${orgId}::uuid,${tenantId})`);
         await tx.execute(sql`INSERT INTO org_versions
           (id,tenant_id,org_id,version_no,start_date,code,name,full_name,hrbp_id)
           VALUES (${version}::uuid,${tenantId},${orgId}::uuid,1,'2025-01-01',${`F162_C${i}`},${`链${i}`},${`链${i}`},
-          ${person}::uuid)`);
+          ${i === 0 ? null : person}::uuid)`);
         if (i > 0)
           await tx.execute(sql`INSERT INTO org_hierarchy_links(tenant_id,version_id,dimension,parent_org_id)
-            VALUES (${tenantId},${version}::uuid,'admin',${chain[i - 1]}::uuid)`);
+            VALUES (${tenantId},${version}::uuid,'admin',${i === 1 ? outside : chain[i - 2]}::uuid)`);
       }
       // 一条组织链上的每个上级都勾“包含下级”：展开行 = Σ 子树大小，远超去重后的组织数。
       const [mou] = scopeRows<{ id: string }>(
@@ -106,6 +109,7 @@ describe('AC-PRM-F162 其他应用与人员创建范围去重计数（DEC-516 / 
       expect(scope.orgIds, app.appCode).toHaveLength(DEPTH + LEAVES);
       expect(new Set(scope.orgIds).size).toBe(DEPTH + LEAVES);
       expect(scope.orgIds).toEqual(expect.arrayContaining(chain));
+      expect(scope.orgIds).not.toContain(outside);
     }
   });
 
@@ -122,12 +126,14 @@ describe('AC-PRM-F162 其他应用与人员创建范围去重计数（DEC-516 / 
     const scope = await resolve({ appCode: QUALIFICATION_APP, objectCode: 'F162.Object' });
     expect(scope.terms?.map((term) => term.dimension)).toEqual(['organization']);
     expect(scope.orgIds).toHaveLength(DEPTH + LEAVES);
+    expect(scope.orgIds).not.toContain(outside);
   });
 
   it('AC-PRM-F162 人员创建范围（仅“使用用户”规则时改按管理范围）也按去重组织计数', async () => {
     const scope = await creation();
     expect(scope.terms?.map((term) => term.dimension)).toEqual(['management']);
     expect(scope.terms?.[0]?.orgIds).toHaveLength(DEPTH + LEAVES);
+    expect(scope.terms?.[0]?.orgIds).not.toContain(outside);
     expect(scope.terms?.[0]?.personQuery?.kind).toBe('organization');
   });
 
