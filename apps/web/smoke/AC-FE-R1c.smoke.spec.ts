@@ -597,28 +597,34 @@ test('AC-FE-R1c-10 横向视图、浅蓝提示、主题密度与当前页审批�
 
 const draftId = '60000000-0000-4000-8000-000000000001';
 const draftResult = { id: draftId, revision: 1, employeeRevision: 4, status: 'draft' };
+// GET /businesses/:id 与 GET /transfers/:id/linkage 的真实形状（read-model.ts / linkage 路由）。
+const draftBusiness = {
+  ...draftResult,
+  employeeId: employee,
+  kind: 'transfer',
+  changeType: 'position_adjustment',
+  mode: 'application',
+  formId: 'hr',
+  effectiveDate: '2026-10-12',
+  fields: { place: '暂存工作地' },
+  customFields: {},
+  employeeStatus: 'employed',
+  entryStatus: null,
+  record: null,
+  activation: null,
+};
 async function hrRecoveryFixture(page: Page) {
-  await page.route('**/employment/businesses/' + draftId, (route) =>
-    route.fulfill({
-      json: {
-        ...draftResult,
-        effectiveDate: '2026-10-12',
-        fields: { place: '暂存工作地' },
-        customFields: {},
-      },
-    }),
-  );
+  await page.route('**/employment/businesses/' + draftId, (route) => route.fulfill({ json: draftBusiness }));
   await page.route('**/transfers/*/linkage', (route) =>
     route.fulfill({
       json: {
         businessId: draftId,
+        revision: 1,
+        // 该目录未开放调整薪资：带出时不得替用户重提（F-153 只带出可编辑的联动项）。
+        options: { adjustSalary: true },
         executedAt: null,
         contract: null,
-        onTrial: null,
-        handover: null,
         salaryReminder: null,
-        dutyTransfer: null,
-        partTimes: [],
       },
     }),
   );
@@ -640,10 +646,11 @@ async function openSection(page: Page, label: string) {
   await expect(page.getByRole('heading', { name: label, exact: true })).toBeVisible();
 }
 
-// DEC-464 取消原命令恢复；保留原有防重与同单提交断言，改从“我的申请”进入。
-async function openMyDraft(page: Page) {
-  await openSection(page, '我的申请');
-  await page.getByRole('button', { name: '查看暂存申请 1', exact: true }).click();
+// F-153（DEC-511）：暂存按人一份，重选同一人自动带出；“我的申请”不再列暂存单。
+async function reopenDraft(page: Page) {
+  await openHr(page);
+  await page.locator('select[name="employeeId"]').selectOption(employee);
+  await expect(page.getByRole('status').filter({ hasText: '已带出上次暂存信息' })).toBeVisible();
 }
 // 表单为当前页全页；返回列表即卸载表单（原先是关闭抽屉）。
 async function closeHr(page: Page) {
@@ -654,7 +661,7 @@ async function saveDraft(page: Page) {
   await openHr(page);
   await page.locator('select[name="employeeId"]').selectOption(employee);
   await page.getByRole('button', { name: '暂存', exact: true }).click();
-  await expect(page.getByText('暂存成功，请在我的申请中查看')).toBeVisible();
+  await expect(page.getByText('信息暂存成功，下次选择此人可自动带出')).toBeVisible();
   await closeHr(page);
 }
 const processing = '处理中，请在我的申请中查看';
@@ -663,59 +670,23 @@ async function expectReadonly(page: Page) {
   await expect(page.getByRole('button', { name: '恢复原命令', exact: true })).toHaveCount(0);
   await expect(page.locator('.r1c-transfer-form').locator('input, select, button[type="submit"]')).toHaveCount(0);
   await expect(page.getByRole('button', { name: '暂存', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: '提交暂存申请', exact: true })).toHaveCount(0);
 }
 
-test('AC-FE-R1c-11 DEC-464 我的申请打开暂存单，读取完整选项后提交同单', async ({ page }) => {
+test('AC-FE-R1c-11 DEC-511 刷新后重选同一人带出暂存，提交走新建提交（不经我的申请）', async ({ page }) => {
   await hrRecoveryFixture(page);
-  await page.route('**/employment/businesses/' + draftId, (route) =>
-    route.fulfill({
-      json: {
-        ...draftResult,
-        withEstablishment: true,
-        fields: { place: '暂存工作地' },
-        customFields: {},
-      },
-    }),
-  );
-  await page.route('**/transfers/*/linkage', (route) =>
-    route.fulfill({
-      json: {
-        businessId: draftId,
-        revision: 1,
-        options: { adjustSalary: true, contract: null, onTrial: { months: 3 } },
-      },
-    }),
-  );
-  let creates = 0;
-  const submitted: { path: string; body: unknown; revision?: string }[] = [];
+  const bodies: Record<string, unknown>[] = [];
   await page.route('**/transfers/employees/' + employee, (route) => {
-    creates++;
-    return route.fulfill({ json: draftResult });
-  });
-  await page.route('**/employment/businesses/*/submit', (route) => {
-    submitted.push({
-      path: new URL(route.request().url()).pathname,
-      body: route.request().postDataJSON(),
-      revision: route.request().headers()['if-match'],
-    });
-    return route.fulfill({ json: { ...draftResult, revision: 2, status: 'in_review' } });
+    bodies.push(route.request().postDataJSON());
+    return route.fulfill({ json: bodies.length === 1 ? draftResult : { ...draftResult, status: 'in_review' } });
   });
   await saveDraft(page);
   await page.reload();
-  await openMyDraft(page);
-  await expect(page.getByTestId('draft-field-withEstablishment')).toContainText('是');
-  await expect(page.getByTestId('draft-field-adjustSalary')).toContainText('是');
-  await expect(page.getByTestId('draft-field-onTrial.startDate')).toContainText('未读取');
-  await expect(page.getByText('暂存工作地', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: '提交暂存申请', exact: true }).click();
-  await expect.poll(() => submitted.length).toBe(1);
-  expect(submitted[0]).toEqual({
-    path: '/api/tenant/employment/businesses/' + draftId + '/submit',
-    body: {},
-    revision: '1',
-  });
-  expect(creates).toBe(1);
+  await reopenDraft(page);
+  await expect(page.locator('input[name="place"]')).toHaveValue('暂存工作地');
+  await page.getByRole('button', { name: '提交', exact: true }).click();
+  await expect.poll(() => bodies.length).toBe(2);
+  expect(bodies[1]).toMatchObject({ submit: true, fields: { place: '暂存工作地' } });
+  expect(bodies[1]!.linkage).toBeUndefined();
 });
 
 test('AC-FE-R1c-12 DEC-464 创建未知关闭刷新后只读，不再保存命令编号', async ({ page }) => {
@@ -760,26 +731,7 @@ for (const status of [400, 422]) {
   });
 }
 
-test('AC-FE-R1c-14 DEC-464 暂存读取失败不能提交，缺失选项显示未读取而非否', async ({ page }) => {
-  await hrRecoveryFixture(page);
-  let readsFail = true;
-  await page.route('**/employment/businesses/' + draftId, (route) =>
-    readsFail
-      ? route.fulfill({ status: 403, json: { error: { code: 'FORBIDDEN' } } })
-      : route.fulfill({ json: { ...draftResult, fields: { place: '当前权限值' } } }),
-  );
-  await page.route('**/transfers/employees/' + employee, (route) => route.fulfill({ json: draftResult }));
-  await saveDraft(page);
-  await openMyDraft(page);
-  await expect(page.getByRole('alert').last()).toBeVisible();
-  await expect(page.getByRole('button', { name: '提交暂存申请', exact: true })).toHaveCount(0);
-  readsFail = false;
-  await page.getByRole('button', { name: '重新读取已暂存申请', exact: true }).click();
-  await expect(page.getByTestId('draft-field-withEstablishment')).toContainText('未读取');
-  await expect(page.getByTestId('draft-field-adjustSalary')).toContainText('未读取');
-  await expect(page.getByText('当前权限值', { exact: true })).toBeVisible();
-});
-
+// 原 R1c-14（我的申请暂存单读取失败）随暂存单列表撤掉；读取失败见 AC-FE-F153-11。
 test('AC-FE-R1c-15 DEC-464 在途关闭后迟到成功回执不能解除只读保护', async ({ page }) => {
   let release: () => void = () => {};
   const gate = new Promise<void>((resolve) => {
@@ -812,27 +764,22 @@ test('AC-FE-R1c-15 DEC-464 在途关闭后迟到成功回执不能解除只读�
   }
 });
 
-test('AC-FE-R1c-16 DEC-464 暂存提交未知，重开与我的申请均不能再次发命令', async ({ page }) => {
+test('AC-FE-R1c-16 DEC-464 带出暂存后提交未知，重开只读不能再次发命令', async ({ page }) => {
   await hrRecoveryFixture(page);
-  await page.route('**/transfers/employees/' + employee, (route) => route.fulfill({ json: draftResult }));
-  let writes = 0;
-  await page.route('**/employment/businesses/*/submit', (route) => {
-    writes++;
+  let submits = 0;
+  await page.route('**/transfers/employees/' + employee, (route) => {
+    if (!route.request().postDataJSON().submit) return route.fulfill({ json: draftResult });
+    submits++;
     return route.fulfill({ status: 503, json: { error: { code: 'UNAVAILABLE' } } });
   });
   await saveDraft(page);
-  await openMyDraft(page);
-  await page.getByRole('button', { name: '提交暂存申请', exact: true }).click();
-  await expect(page.getByText(processing, { exact: true }).last()).toBeVisible();
-  await page.getByRole('button', { name: '关闭', exact: true }).click();
-  await openApp(page, '调动管理');
-  await openHr(page);
+  await reopenDraft(page);
+  await page.getByRole('button', { name: '提交', exact: true }).click();
   await expectReadonly(page);
   await closeHr(page);
-  await openMyDraft(page);
-  await expect(page.getByText(processing, { exact: true }).last()).toBeVisible();
-  await expect(page.getByRole('button', { name: '提交暂存申请', exact: true })).toHaveCount(0);
-  expect(writes).toBe(1);
+  await openHr(page);
+  await expectReadonly(page);
+  expect(submits).toBe(1);
 });
 
 for (const [status, message] of [
@@ -873,29 +820,7 @@ for (const [status, message] of [
   });
 }
 
-for (const returned of [true, false]) {
-  test(`AC-FE-R1c-19 DEC-467 部门间调动暂存详情${returned ? '显示返回的异动类型' : '字段缺失显示未读取'}`, async ({
-    page,
-  }) => {
-    await hrRecoveryFixture(page);
-    let savedType: unknown;
-    await page.route('**/transfers/employees/' + employee, (route) => {
-      savedType = route.request().postDataJSON().transferTypeCode;
-      return route.fulfill({ json: draftResult });
-    });
-    await page.route('**/employment/businesses/' + draftId, (route) =>
-      route.fulfill({
-        json: { ...draftResult, changeType: null, ...(returned ? { transferTypeCode: savedType } : {}) },
-      }),
-    );
-    await saveDraft(page);
-    expect(savedType).toBe('transfer'); // catalog 中“部门间调动”的编码。
-    await openMyDraft(page);
-    const row = page.getByRole('row').filter({ has: page.getByText('异动类型', { exact: true }) });
-    await expect(row).toContainText(returned ? 'transfer' : '未读取');
-    await expect(row).not.toContainText('无');
-  });
-}
+// 原 R1c-19（暂存详情显示异动类型）随暂存单列表撤掉；带出时的类型推断见 AC-FE-F153-04。
 
 for (const status of [409, 422]) {
   test(`AC-FE-R1c-21 HR ${status} 拒绝显示原原因、保留输入并允许改正重提`, async ({ page }) => {
@@ -920,7 +845,7 @@ for (const status of [409, 422]) {
     await expect(page.locator('select[name="employeeId"]')).toHaveValue(employee);
     await page.locator('input[name="place"]').fill('合成改正工作地');
     await page.getByRole('button', { name: '暂存', exact: true }).click();
-    await expect(page.getByText('暂存成功，请在我的申请中查看')).toBeVisible();
+    await expect(page.getByText('信息暂存成功，下次选择此人可自动带出')).toBeVisible();
     expect(commands).toHaveLength(2);
     expect(commands[1]).not.toBe(commands[0]);
     expect(bodies[1]).toMatchObject({ fields: { place: '合成改正工作地' } });

@@ -58,6 +58,17 @@ export interface TransferFormModel {
   readonly linkage?: LinkageDraft;
   /** 可变更的合同（该员工当前有效、操作人可见）。 */
   readonly contracts?: readonly ContractChoice[];
+  /**
+   * F-153：带出的暂存无法确定异动类型（暂存时未记下、与单据表单不符，或该日期的目录里已没有）时为 true：
+   * 类型留空，等用户重新选择后再预览、回填；在此之前不能暂存或提交（#350 第 1 轮 P2-1）。
+   */
+  readonly typeConfirmation?: boolean;
+  /** F-153：已带出、等对应预览到达后回填的暂存字段（DEC-511）。 */
+  readonly pendingDraft?: {
+    readonly employeeId: string;
+    readonly fields: FieldValues;
+    readonly customFields: FieldValues;
+  };
 }
 export type TransferAction = 'draft' | 'submit' | 'direct';
 export interface TransferFormProps {
