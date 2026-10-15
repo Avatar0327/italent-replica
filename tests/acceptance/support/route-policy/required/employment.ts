@@ -185,7 +185,7 @@ function entryUpdate(path: string, linkageCall?: Evidence): Obligation[] {
       ['button:requireEmploymentWrite(按钮)'],
       [prepare("await requireEmploymentWrite(ctx, 'update', payload, 'Employment.Edit', undefined, {"), WRITE_BUTTON],
     ),
-    businessWrite(prepare('await authorize(deps, ctx, id)')),
+    businessWrite(prepare('await authorizeBusinessWrite(deps, ctx, id)')),
     directOperation(PENDING_LOCK),
     ...(linkageCall ? [linkage(linkageCall)] : []),
   ];
@@ -999,7 +999,7 @@ export const EMPLOYMENT: RequiredTable = {
         EMP,
         'POST',
         '/employees/:id/businesses',
-        'const business = await createEmploymentBusiness(tx, context, id, input)',
+        'const business = await createEmploymentBusiness(tx, context, id, input, entry ? { entry } : {})',
       ),
     ),
   ],
@@ -1420,7 +1420,7 @@ export const EMPLOYMENT: RequiredTable = {
   'DELETE /api/tenant/employment/pending-entries/:id': [
     ob(
       `obj:${RECORD}:delete`,
-      ['object:readContext(object.*)', 'object:object.* 动作'],
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:delete', 'object:object.* 动作'],
       [
         at(
           ENTRY,
@@ -1441,7 +1441,7 @@ export const EMPLOYMENT: RequiredTable = {
     ),
     ob(
       `btn:${RECORD}#Employment.Delete@detail`,
-      [],
+      ['button:requireEmploymentWrite(按钮)'],
       [
         at(
           ENTRY,
@@ -1453,7 +1453,7 @@ export const EMPLOYMENT: RequiredTable = {
         RECORD_CONST,
       ],
     ),
-    businessWrite(at(ENTRY, 'DELETE', '/pending-entries/:id', 'await authorize(deps, ctx, id)')),
+    businessWrite(at(ENTRY, 'DELETE', '/pending-entries/:id', 'await authorizeBusinessWrite(deps, ctx, id)')),
     directOperation(PENDING_LOCK),
     linkage(at(ENTRY, 'DELETE', '/pending-entries/:id', 'body: await deletePendingEntry(tx, context, id)')),
   ],

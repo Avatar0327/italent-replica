@@ -304,6 +304,7 @@
           "employment runWrite()"
         ],
         "guard": [
+          "employment.businessWrite",
           "employment.linkage"
         ],
         "object": [
@@ -14884,6 +14885,9 @@
         "fieldsOut": [
           "employment runWrite()"
         ],
+        "guard": [
+          "employment.businessWrite"
+        ],
         "object": [
           "object.* 动作",
           "readContext(object.*)"
@@ -14935,6 +14939,7 @@
           "employment runWrite()"
         ],
         "guard": [
+          "employment.businessWrite",
           "employment.linkage"
         ],
         "object": [
@@ -14992,6 +14997,7 @@
           "employment runWrite()"
         ],
         "guard": [
+          "employment.businessWrite",
           "employment.linkage"
         ],
         "object": [

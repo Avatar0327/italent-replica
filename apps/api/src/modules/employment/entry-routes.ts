@@ -36,7 +36,7 @@ export type BusinessWriteGuard = (
 async function prepareEntryAction<T>(
   c: Context<TenantEnv>,
   deps: TenantRouteDeps,
-  authorize: BusinessWriteGuard,
+  authorizeBusinessWrite: BusinessWriteGuard,
   schema: z.ZodType<T>,
   writePayload: (input: T) => object = () => ({}),
 ) {
@@ -48,29 +48,39 @@ async function prepareEntryAction<T>(
   await requireEmploymentWrite(ctx, 'update', payload, 'Employment.Edit', undefined, {
     commandOnly: Object.keys(payload).length === 0,
   });
-  await authorize(deps, ctx, id);
+  await authorizeBusinessWrite(deps, ctx, id);
   return { id, ctx, input };
 }
 
-export function registerEntryRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps, authorize: BusinessWriteGuard) {
+export function registerEntryRoutes(
+  router: Hono<TenantEnv>,
+  deps: TenantRouteDeps,
+  authorizeBusinessWrite: BusinessWriteGuard,
+) {
   router.post('/pending-entries/:id/complete', async (c) => {
-    const { id, ctx, input } = await prepareEntryAction(c, deps, authorize, completeInput);
+    const { id, ctx, input } = await prepareEntryAction(c, deps, authorizeBusinessWrite, completeInput);
     return runWrite(c, deps, ctx, { id, action: 'complete', input }, async (tx, context) => {
       await completePendingEntry(tx, context, id, input);
       return { status: 200, body: await requireSavedBusiness(tx, context, id) };
     });
   });
   router.post('/pending-entries/:id/cancel', async (c) => {
-    const { id, ctx, input } = await prepareEntryAction(c, deps, authorize, cancelInput);
+    const { id, ctx, input } = await prepareEntryAction(c, deps, authorizeBusinessWrite, cancelInput);
     return runWrite(c, deps, ctx, { id, action: 'cancel', input }, async (tx, context) => ({
       status: 200,
       body: await cancelPendingEntry(tx, context, id, input),
     }));
   });
   router.post('/pending-entries/:id/postpone', async (c) => {
-    const { id, ctx, input } = await prepareEntryAction(c, deps, authorize, postponeInput, ({ effectiveDate }) => ({
-      effectiveDate,
-    }));
+    const { id, ctx, input } = await prepareEntryAction(
+      c,
+      deps,
+      authorizeBusinessWrite,
+      postponeInput,
+      ({ effectiveDate }) => ({
+        effectiveDate,
+      }),
+    );
     return runWrite(c, deps, ctx, { id, action: 'postpone', input }, async (tx, context) => ({
       status: 200,
       body: await postponePendingEntry(tx, context, id, input),
@@ -80,7 +90,7 @@ export function registerEntryRoutes(router: Hono<TenantEnv>, deps: TenantRouteDe
     const id = uuidParam(c);
     const ctx = await readContext(c, deps, 'object.delete', revision(c));
     await requireEmploymentWrite(ctx, 'delete', {}, 'Employment.Delete');
-    await authorize(deps, ctx, id);
+    await authorizeBusinessWrite(deps, ctx, id);
     return runWrite(c, deps, ctx, { id, action: 'delete-pending' }, async (tx, context) => ({
       status: 200,
       body: await deletePendingEntry(tx, context, id),
