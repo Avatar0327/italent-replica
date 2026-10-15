@@ -12,6 +12,7 @@ export const messages = {
   mine: '我的输入',
   none: '字段值无变化，请核对最新版本后继续。',
   invalidReceipt: '原单回执无效，请重新查询。',
+  invalidObject: '记录标识无效，请刷新列表后重试。',
   rejected: '服务器已拒绝，请修改后重提。',
   failedRead: '读取失败，输入已保留，请重新读取。',
 };
