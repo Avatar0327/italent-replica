@@ -4,6 +4,7 @@
  * 编码租户内唯一（不分大小写）、保存后不可改；可新增、改名、停用 / 启用、调顺序；不提供删除（被引用的编码不能消失）。
  * 字典是配置对象：写入由路由按 tenant.employment.configuration.write 授权，审计 exit_dictionary.save（DEC-203 配置日志）。
  */
+import { getTableColumns } from 'drizzle-orm';
 import { and, asc, eq, exitReasons, exitTypes, exitWhereabouts, inArray, sql, type Tx } from '@italent/db';
 import { EXIT_DICTIONARY_KINDS, EXIT_DICTIONARY_PRESETS, type ExitDictionaryKind } from '@italent/domain';
 import { z } from 'zod';
@@ -11,23 +12,17 @@ import { advisoryLock, asUuid } from '../../advisory-lock.js';
 import { recordAudit } from '../../audit/record.js';
 import { AppError } from '../../errors.js';
 import { auditActor } from '../../system-actor.js';
-import { registerSeed } from '../../seeds/registry.js';
+import { registerSeed, type SeedSkip, type SeedWriteContext } from '../../seeds/registry.js';
 import { assertRevision } from './context.js';
 import type { EmploymentContext } from './types.js';
 
 const TABLES = { types: exitTypes, reasons: exitReasons, whereabouts: exitWhereabouts } as const;
-/** 单个字典的读取上限：字典由管理员手工维护，超过即视为异常数据，不做分页。 */
-const DICTIONARY_LIMIT = 500;
+/**
+ * 每个字典最多 500 项（契约）：字典由管理员手工维护、不提供删除，停用也不减少行数，所以上限在新增时拦（含预置补装），
+ * 列表在上限内整份返回、始终可读，不做分页。
+ */
+export const EXIT_DICTIONARY_LIMIT = 500;
 export const EXIT_DICTIONARY_AUDIT = { action: 'exit_dictionary.save', objectType: 'exit_dictionary' } as const;
-
-export interface ExitDictionaryEntry {
-  readonly id: string;
-  readonly code: string;
-  readonly name: string;
-  readonly enabled: boolean;
-  readonly displayOrder: number;
-  readonly revision: number;
-}
 
 const createInput = z.strictObject({
   code: z.string().trim().min(1).max(100),
@@ -60,16 +55,10 @@ export function exitDictionaryKind(value: string | undefined): ExitDictionaryKin
   return value as ExitDictionaryKind;
 }
 
+// 响应固定键：id / code / name / enabled / displayOrder / revision（不含租户与时间戳）
 const columns = (kind: ExitDictionaryKind) => {
-  const t = TABLES[kind];
-  return {
-    id: t.id,
-    code: t.code,
-    name: t.name,
-    enabled: t.enabled,
-    displayOrder: t.displayOrder,
-    revision: t.revision,
-  };
+  const { tenantId: _tenant, createdAt: _created, updatedAt: _updated, ...rest } = getTableColumns(TABLES[kind]);
+  return rest;
 };
 
 export async function listExitDictionary(
@@ -77,21 +66,39 @@ export async function listExitDictionary(
   tenantId: string,
   kind: ExitDictionaryKind,
   filter: { readonly enabled?: boolean } = {},
-): Promise<ExitDictionaryEntry[]> {
+) {
   const t = TABLES[kind];
   const rows = await tx
     .select(columns(kind))
     .from(t)
     .where(and(eq(t.tenantId, tenantId), filter.enabled === undefined ? undefined : eq(t.enabled, filter.enabled)))
     .orderBy(asc(t.displayOrder), asc(t.code), asc(t.id))
-    .limit(DICTIONARY_LIMIT + 1);
-  if (rows.length > DICTIONARY_LIMIT) throw new AppError('PAYLOAD_TOO_LARGE', '离职字典超过单次读取上限');
+    .limit(EXIT_DICTIONARY_LIMIT + 1);
+  if (rows.length > EXIT_DICTIONARY_LIMIT) throw new AppError('PAYLOAD_TOO_LARGE', '离职字典超过单次读取上限');
   return rows;
 }
 
 /** 同一租户同一字典的写入串行化：新增前查重与唯一索引一起保证同编码并发新增恰一条成功。 */
 async function lockDictionary(tx: Tx, tenantId: string, kind: ExitDictionaryKind) {
   await advisoryLock(tx, asUuid(tenantId), `:exit-dictionary:${kind}`);
+}
+
+/** 新增前（已持同一字典锁）确认未达上限；达到即 409 EXIT_DICTIONARY_LIMIT_REACHED，不写入、不审计。 */
+async function atLimit(tx: Tx, tenantId: string, kind: ExitDictionaryKind) {
+  const t = TABLES[kind];
+  const [row] = await tx
+    .select({ count: sql<number>`count(*)::int` })
+    .from(t)
+    .where(eq(t.tenantId, tenantId));
+  return row!.count >= EXIT_DICTIONARY_LIMIT;
+}
+async function assertBelowLimit(tx: Tx, tenantId: string, kind: ExitDictionaryKind) {
+  if (await atLimit(tx, tenantId, kind)) {
+    throw new AppError('CONFLICT', '离职字典项已达上限', {
+      reason: 'EXIT_DICTIONARY_LIMIT_REACHED',
+      limit: EXIT_DICTIONARY_LIMIT,
+    });
+  }
 }
 
 async function findByCode(tx: Tx, tenantId: string, kind: ExitDictionaryKind, code: string) {
@@ -109,7 +116,7 @@ export async function saveExitDictionaryEntry(
   kind: ExitDictionaryKind,
   raw: unknown,
   id?: string,
-): Promise<ExitDictionaryEntry> {
+) {
   const t = TABLES[kind];
   await lockDictionary(tx, ctx.tenantId, kind);
   if (!id) {
@@ -118,6 +125,7 @@ export async function saveExitDictionaryEntry(
     if (await findByCode(tx, ctx.tenantId, kind, input.code)) {
       throw new AppError('CONFLICT', '离职字典编码已存在', { reason: 'EXIT_DICTIONARY_CODE_TAKEN', code: input.code });
     }
+    await assertBelowLimit(tx, ctx.tenantId, kind);
     const [after] = await tx
       .insert(t)
       .values({ ...input, tenantId: ctx.tenantId, createdAt: ctx.now, updatedAt: ctx.now })
@@ -145,20 +153,14 @@ export async function saveExitDictionaryEntry(
   return after!;
 }
 
-interface AuditWriter {
-  readonly tenantId: string;
-  readonly actorUserId: string | null;
-  readonly commandId: string;
-  readonly now: Date;
-}
-const writerOf = (ctx: EmploymentContext): AuditWriter => ({
+const writerOf = (ctx: EmploymentContext): SeedWriteContext => ({
   tenantId: ctx.tenantId,
   actorUserId: auditActor(ctx.userId),
   commandId: ctx.commandId,
   now: ctx.now,
 });
 
-async function audit(tx: Tx, writer: AuditWriter, id: string, before: object | null, after: object) {
+async function audit(tx: Tx, writer: SeedWriteContext, id: string, before: object | null, after: object) {
   await recordAudit(tx, {
     tenantId: writer.tenantId,
     actorUserId: writer.actorUserId,
@@ -221,20 +223,26 @@ registerSeed({
     const have = new Set<string>();
     for (const kind of EXIT_DICTIONARY_KINDS) {
       const t = TABLES[kind];
+      const codes = EXIT_DICTIONARY_PRESETS.filter((p) => p.kind === kind).map((p) => p.code);
       const rows = await tx
-        .select({ code: t.code })
+        .select({ code: sql<string>`lower(${t.code})` })
         .from(t)
-        .where(eq(t.tenantId, tenantId))
-        .limit(DICTIONARY_LIMIT + 1);
-      for (const row of rows) have.add(presetCode(kind, row.code.toLowerCase()));
+        .where(and(eq(t.tenantId, tenantId), inArray(sql`lower(${t.code})`, codes)));
+      for (const row of rows) have.add(presetCode(kind, row.code));
     }
     return have;
   },
   install: async (tx, write, missing) => {
+    const skipped: SeedSkip[] = [];
     for (const [index, preset] of EXIT_DICTIONARY_PRESETS.entries()) {
-      if (!missing.includes(presetCode(preset.kind, preset.code))) continue;
-      // 与管理员新增同锁；管理员已手工建了同编码（不分大小写）时不插入、不覆盖
+      const code = presetCode(preset.kind, preset.code);
+      if (!missing.includes(code)) continue;
+      // 与管理员新增同锁、同上限；管理员已手工建了同编码（不分大小写）时不插入、不覆盖
       await lockDictionary(tx, write.tenantId, preset.kind);
+      if (await atLimit(tx, write.tenantId, preset.kind)) {
+        skipped.push({ code, reason: 'EXIT_DICTIONARY_LIMIT_REACHED' });
+        continue;
+      }
       const [after] = await tx
         .insert(TABLES[preset.kind])
         .values({
@@ -249,5 +257,6 @@ registerSeed({
         .returning(columns(preset.kind));
       if (after) await audit(tx, write, after.id, null, after);
     }
+    return { skipped };
   },
 });

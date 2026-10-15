@@ -328,6 +328,8 @@ export const GRAPH: Graph = {
     'packages/domain/src/employment/employee-status.ts#ENTRY_STATUS_CODES',
   ],
   'apps/api/src/modules/employment/errors.ts#EmploymentError': ['#EMPLOYMENT_STATUS'],
+  'apps/api/src/modules/employment/exit-dictionaries.ts#assertBelowLimit': ['#EXIT_DICTIONARY_LIMIT', '#atLimit'],
+  'apps/api/src/modules/employment/exit-dictionaries.ts#atLimit': ['#EXIT_DICTIONARY_LIMIT', '#TABLES'],
   'apps/api/src/modules/employment/exit-dictionaries.ts#audit': [
     'apps/api/src/audit/record.ts#recordAudit',
     '#EXIT_DICTIONARY_AUDIT',
@@ -338,7 +340,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/exit-dictionaries.ts#findByCode': ['#TABLES', '#columns'],
   'apps/api/src/modules/employment/exit-dictionaries.ts#listExitDictionary': [
-    '#DICTIONARY_LIMIT',
+    '#EXIT_DICTIONARY_LIMIT',
     '#TABLES',
     '#columns',
   ],
@@ -354,6 +356,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/exit-dictionaries.ts#saveExitDictionaryEntry': [
     'apps/api/src/modules/employment/context.ts#assertRevision',
     '#TABLES',
+    '#assertBelowLimit',
     '#audit',
     '#columns',
     '#createInput',
