@@ -2,7 +2,7 @@
 // 夹具照后端真实形态（r3d2-fixtures：tutor-plans 行、403 IDP_PLAN_NO_VISIBLE_MODULE、PUT 模块内容回完整详情）。
 import type { Page } from '@playwright/test';
 import { test, expect, user } from './fixtures.js';
-import { basicOnlyId, mockIdp, planId, reviewTaskId, type IdpCall } from './r3d2-fixtures.js';
+import { basicOnlyId, goalId, mockIdp, planId, reviewInstanceId, reviewTaskId, type IdpCall } from './r3d2-fixtures.js';
 test.use({ viewport: { width: 1440, height: 1000 } });
 
 const CONTENT = /^\/plans\/[^/]+\/modules\/[^/]+\/content$/;
@@ -370,6 +370,91 @@ test('AC-FE-F164-17 同意回执 revision 没前进：按结果未知锁定，�
   await form.getByRole('button', { name: /提\s*交/ }).click({ force: true });
   await page.waitForTimeout(300);
   expect(approves(calls)).toHaveLength(1);
+  expect(errors).toEqual([]);
+});
+
+/** 回顾保存成功之后，对审批实例的读取一律挂起到放行（F-164 第 2 轮审查的复现：保存成功到同意之间的窗口）。 */
+async function holdInstanceRead(page: Page, calls: IdpCall[]) {
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route(`**/api/tenant/approval/instances/${reviewInstanceId}`, async (route) => {
+    if (puts(calls).length) await held;
+    await route.fallback();
+  });
+  return release;
+}
+/** 拦下的写入记进 calls 后返回 500（结果未知）；passFirst 为真时第一次放行给夹具。 */
+async function failWrites(page: Page, calls: IdpCall[], glob: string, method: string, passFirst = false) {
+  let seen = 0;
+  await page.route(glob, (route) => {
+    const request = route.request();
+    if (request.method() !== method || (passFirst && seen++ === 0)) return route.fallback();
+    const path = new URL(request.url()).pathname.replace(/^.*\/api\/tenant\/idp/, '');
+    const key = request.headers()['idempotency-key'] ?? null;
+    calls.push({ method, path, body: request.postDataJSON(), key, revision: request.headers()['if-match'] ?? null });
+    return route.fulfill({ status: 500, json: { error: { code: 'INTERNAL' } } });
+  });
+}
+
+test('AC-FE-F164-18 提交途中（保存已成功、重读审批实例未返回）表单保持锁定：再改再存发不出去，只同意先前保存的内容', async ({
+  page,
+}) => {
+  const errors = watchErrors(page, ['500']);
+  const calls = await mockIdp(page, { reviewButtons: ['EditModuleContent'], reviewApproval: 'mine' });
+  await asUser(page);
+  await page.goto(`/self/idp?plan=${planId}`);
+  const form = reviewForm(page);
+  await expect(form.getByRole('button', { name: /提\s*交/ })).toBeEnabled();
+  const release = await holdInstanceRead(page, calls);
+  // 第二次保存若发得出去就是结果未知（审查复现：此后原提交仍同意）
+  await failWrites(page, calls, `**/api/tenant/idp/plans/${planId}/modules/*/content`, 'PUT', true);
+  await form.getByLabel('总结').fill('合成提交总结甲');
+  await form.getByRole('button', { name: /提\s*交/ }).click();
+  await expect.poll(() => puts(calls).length).toBe(1);
+  await page.waitForTimeout(300);
+  await expect(form.getByLabel('总结')).toBeDisabled();
+  await expect(form.getByRole('button', { name: /保\s*存/ })).toBeDisabled();
+  await expect(form.getByRole('button', { name: /提\s*交/ })).toBeDisabled();
+  await form.getByRole('button', { name: /保\s*存/ }).click({ force: true });
+  await page.waitForTimeout(300);
+  expect(puts(calls)).toHaveLength(1);
+  expect(approves(calls)).toHaveLength(0);
+
+  release();
+  await expect.poll(() => approves(calls).length).toBe(1);
+  expect(puts(calls)).toHaveLength(1);
+  expect(puts(calls)[0]).toMatchObject({ body: { summary: '合成提交总结甲' } });
+  await expect(form.getByText(/结果待确认|版本冲突/)).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test('AC-FE-F164-19 提交途中计划上另有写入结果未知（同页制定任务 500）：发同意前核对计划槽，停下不发同意', async ({
+  page,
+}) => {
+  const errors = watchErrors(page, ['500']);
+  const calls = await mockIdp(page, { reviewButtons: ['EditModuleContent'], reviewApproval: 'mine' });
+  await asUser(page);
+  await page.goto(`/self/idp?plan=${planId}`);
+  const form = reviewForm(page);
+  await expect(form.getByRole('button', { name: /提\s*交/ })).toBeEnabled();
+  const release = await holdInstanceRead(page, calls);
+  const tasks = `/plans/${planId}/goals/${goalId}/tasks`;
+  await failWrites(page, calls, `**/api/tenant/idp${tasks}`, 'POST');
+  await form.getByLabel('总结').fill('合成提交总结甲');
+  await form.getByRole('button', { name: /提\s*交/ }).click();
+  await expect.poll(() => puts(calls).length).toBe(1);
+  // 保存已成功、同意还没发：同一计划上的制定任务写入结果未知，计划恢复槽锁定
+  await page.getByRole('button', { name: '添加任务' }).click();
+  await page.getByLabel('任务名称').fill('合成新任务');
+  await page.getByLabel('任务名称').press('Enter');
+  await expect.poll(() => calls.filter((call) => call.method === 'POST' && call.path === tasks).length).toBe(1);
+
+  release();
+  await page.waitForTimeout(800);
+  expect(approves(calls)).toHaveLength(0);
+  await expect(form.getByText('发展计划上有未确认的操作，没有提交')).toBeVisible();
+  await expect(form.getByLabel('总结')).toBeDisabled();
+  await expect(form.getByRole('button', { name: /提\s*交/ })).toBeDisabled();
   expect(errors).toEqual([]);
 });
 

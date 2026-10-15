@@ -4,11 +4,12 @@ import { acceptReceipt, approvalRequest, readApproval } from '../approval/api.js
 import { useApprovalCommand } from '../approval/commands.js';
 import type { ApprovalDetail } from '../approval/types.js';
 import { myPendingTask } from '../contracts/forms.js';
+import { ApiError } from '../foundation/client.js';
 import { forAction } from '../foundation/forms/action.js';
 import { CommandStatus } from '../foundation/forms/CommandStatus.js';
 import { FormLock, LockedField } from '../foundation/forms/FormLock.js';
 import { slotKey } from '../foundation/forms/slot.js';
-import { slotContext } from '../foundation/forms/store.js';
+import { isLocked, slotContext } from '../foundation/forms/store.js';
 import { useCommandForm, useDraftRefill } from '../foundation/forms/useCommandForm.js';
 import { useApiClient, useSession } from '../foundation/Session.js';
 import { rereadReceipt, saveReceipt } from './access.js';
@@ -19,6 +20,7 @@ import {
   display,
   REVIEW_FIELDS,
   REVIEW_MAX,
+  reviewStage,
   reviewTooLong,
   stageReview,
   type ReviewValues,
@@ -80,7 +82,16 @@ function useReviewSave(props: ReviewProps, form: FormInstance<ReviewValues>) {
     if (result.status === 'done') saved();
     return result.status === 'done';
   };
-  return { command: { ...command, reload }, baseline, save };
+  /** 计划恢复槽上有未确认的命令（本表单或同计划的制定任务、干预）：读的是存储里的当前状态，不是渲染时的快照。 */
+  const unsettled = () => isLocked(command.peek());
+  /** 重读计划：仍在本阶段、本审批实例上才能同意。 */
+  const sameStage = async (instanceId: string) => {
+    const row = await api.request<PlanDetail>(`${IDP_API}/plans/${plan.id}`).catch(() => undefined);
+    const current = row?.modules?.find((item) => item.id === module.id);
+    const stage = row && current ? reviewStage(row, current) : undefined;
+    return stage?.id === stageId && stage.approvalInstanceId === instanceId;
+  };
+  return { command: { ...command, reload }, baseline, save, unsettled, sameStage };
 }
 
 /** 本人在该实例上可以“同意”的在办待办；不在回顾节点、不是处理人、已提交时没有。 */
@@ -88,25 +99,35 @@ const approvableTask = (detail: ApprovalDetail, userId: string | undefined) =>
   detail.actions.includes('approve') ? myPendingTask(detail, userId) : undefined;
 
 /**
+ * 提交在发同意之前停下（保存未确认、计划上有未确认命令、阶段已变、没有本人待办、读取失败）：同意没有发出，
+ * 按被拒收尾、不锁定（同 approvalRequest 的 ACTION_UNAVAILABLE），随后清掉命令、提示原因。
+ */
+const STOPPED = 'IDP_REVIEW_SUBMIT_STOPPED';
+const stop = (message: string): never => {
+  throw new ApiError(409, STOPPED, 'conflict', message);
+};
+
+/**
  * 回顾提交 = 同意本人在本阶段审批实例上的待办（POST /approval/tasks/:taskId/approve，If-Match 实例 revision）。
  * 命令放在流程实例的恢复槽（审批模块级存储，与审批详情、合同催办共用，F-147），动作与待办记在槽上下文；
  * 回执须是本实例且版本前进（acceptReceipt）。先读实例：本人没有可同意的待办就不给提交入口（`ready` 为假）。
- * approve 返回要提示的文案（点击时实例已变、没有本人待办），成功或交给内核显示状态时返回空。
+ * 整个提交是这一条命令：点击即处于处理中，保存改动、重读、同意都在 send 里，期间表单与“保存”一直锁定，
+ * 不会在保存成功到同意之间解锁（F-164 第 2 轮 P2）。版本取点击时读到的实例版本：回顾保存不改审批实例，
+ * 期间实例若有变化由后端按 If-Match 判冲突。
  */
 function useReviewApproval(instanceId: string | undefined, version: unknown, saved: () => void) {
   const api = useApiClient();
   const session = useSession();
   const approval = forAction(useApprovalCommand(slotKey(APPROVAL_INSTANCES, instanceId)), { action: 'approve' });
-  const [task, setTask] = useState<string>();
+  const [pending, setPending] = useState<{ detail: ApprovalDetail; taskId: string }>();
   useEffect(() => {
     let live = true;
-    const settle = (id?: string) => live && setTask(id);
+    const settle = (detail?: ApprovalDetail) => {
+      const taskId = detail && approvableTask(detail, session.userId);
+      if (live) setPending(detail && taskId ? { detail, taskId } : undefined);
+    };
     if (!instanceId) settle();
-    else
-      readApproval(api, instanceId).then(
-        (detail) => settle(approvableTask(detail, session.userId)),
-        () => settle(),
-      );
+    else readApproval(api, instanceId).then(settle, () => settle());
     return () => {
       live = false;
     };
@@ -117,35 +138,41 @@ function useReviewApproval(instanceId: string | undefined, version: unknown, sav
       const detail = await readApproval(api, String(id ?? instanceId));
       return { id: detail.id, revision: detail.revision, values: {} };
     });
-  const send = (detail: ApprovalDetail, taskId: string) =>
-    approval.submit({
+  /** prepare 在命令处理中执行（保存改动、核对阶段），recheck 在发同意前最后核对；不满足时调用 stop。 */
+  const approve = async (prepare: () => Promise<void>, recheck: () => void): Promise<string | undefined> => {
+    if (!pending) return t.reviewForm.noTask;
+    if (approval.status === 'rejected' || approval.status === 'done') approval.clear();
+    const result = await approval.submit({
       values: {},
       baseline: {},
       editableFields: [],
-      revision: detail.revision,
-      businessId: detail.id,
-      context: { taskId },
+      revision: pending.detail.revision,
+      businessId: pending.detail.id,
+      context: { taskId: pending.taskId },
       send: async (sent) => {
+        await prepare();
+        const detail = await readApproval(api, pending.detail.id).catch(() => stop(t.reviewForm.readFailed));
+        const taskId = approvableTask(detail, session.userId) ?? stop(t.reviewForm.noTask);
+        recheck();
         const request = approvalRequest(detail, 'approve', taskId, sent.body);
         const receipt = await api.request<unknown>(request.path, {
           method: 'POST',
           command: { ...sent, body: request.body },
         });
-        return acceptReceipt(receipt, detail.id, sent.revision ?? detail.revision);
+        return acceptReceipt(receipt, detail.id, sent.revision ?? pending.detail.revision);
       },
     });
-  const approve = async (): Promise<string | undefined> => {
-    const detail = instanceId ? await readApproval(api, instanceId).catch(() => undefined) : undefined;
-    if (!detail) return t.reviewForm.readFailed;
-    const taskId = approvableTask(detail, session.userId);
-    if (!taskId) return t.reviewForm.noTask;
-    if (approval.status === 'rejected' || approval.status === 'done') approval.clear();
-    if ((await send(detail, taskId)).status !== 'done') return undefined;
+    const error = result.error;
+    if (result.status === 'rejected' && error instanceof ApiError && error.code === STOPPED) {
+      approval.clear();
+      return error.message;
+    }
+    if (result.status !== 'done') return undefined;
     approval.clear();
     saved();
   };
   // 命令未确认（处理中、结果未知、冲突）时入口保留并锁定，不因待办状态变化而消失
-  const ready = !!task || approval.status !== 'idle';
+  const ready = !!pending || approval.status !== 'idle';
   return { approval: { ...approval, reload }, approve, ready };
 }
 
@@ -165,7 +192,7 @@ export function ReviewForm(props: ReviewProps) {
   const session = useSession();
   const names = useNames('employee', [session.employeeId]);
   const [form] = Form.useForm<ReviewValues>();
-  const { command, baseline, save } = useReviewSave(props, form);
+  const { command, baseline, save, unsettled, sameStage } = useReviewSave(props, form);
   const instanceId = props.stage.approvalInstanceId ?? undefined;
   const { approval, approve, ready } = useReviewApproval(instanceId, plan.revision, props.saved);
   const locked = command.locked || approval.locked || !!approval.blocked;
@@ -186,8 +213,15 @@ export function ReviewForm(props: ReviewProps) {
       return;
     }
     const changed = REVIEW_FIELDS.some((field) => (values[field] ?? null) !== baseline[field]);
-    if (changed && !(await save(values))) return;
-    setNotice(await approve());
+    const recheck = () => {
+      if (unsettled()) stop(t.reviewForm.planPending);
+    };
+    const prepare = async () => {
+      if (changed && !(await save(values))) stop(t.reviewForm.saveUnconfirmed);
+      if (!(await sameStage(instanceId!))) stop(t.reviewForm.stageChanged);
+      recheck();
+    };
+    setNotice(await approve(prepare, recheck));
   };
   return (
     <section aria-label={t.reviewForm.overall} className="idp-review-form">

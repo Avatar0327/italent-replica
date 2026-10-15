@@ -58,6 +58,8 @@ export function usePinnedCommand(slots: readonly string[], entry: string, store?
       if (result.status !== 'unknown') owner.unpin(scoped, own);
       return result;
     },
+    /** 存储里的当前状态（不是渲染时的快照）：异步流程中途据此核对恢复槽上有没有新的未确认命令。 */
+    peek: () => owner.get(owner.holder(scoped) ?? own),
     reread: (read: (id?: string) => Promise<Latest>) => owner.reread(key, read),
     settle: (submittable: readonly string[]) => owner.settle(key, submittable),
     confirm: () => owner.confirm(key),

@@ -267,6 +267,9 @@ export const t = {
     required: (label: string) => `${label}还没有填写，不能提交`,
     noTask: '当前没有待你提交的回顾，请刷新后再试',
     readFailed: '读取审批信息失败，请稍后再试',
+    saveUnconfirmed: '回顾保存未确认，没有提交',
+    planPending: '发展计划上有未确认的操作，没有提交',
+    stageChanged: '当前阶段已变化，请刷新后再提交',
   },
   denied: {
     title: '无权限查看当前发展计划~',
