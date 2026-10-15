@@ -34,13 +34,14 @@ export function AssignDialog(props: { kind: Kind; item: MapItem; mapPath: string
   const api = useApiClient();
   const permission = usePermissions(result[kind]);
   const segment = kind === 'position' ? 'risk' : 'health';
-  const path = `${BASE}/${segment}-results/${item.id}`;
+  const results = `${BASE}/${segment}-results`;
+  const path = `${results}/${item.id}`;
   const options = useRead<ListResult<LevelOption>>(`${BASE}/${segment}-levels/options`);
   const current = kind === 'position' ? item.risk : item.health;
   const baseline = assignValues(current?.levelId);
   // 没有单条读取接口：冲突后重读整张地图，按节点取结果行（重读 → 核对差异 → 继续编辑）。
   const writer = useConflictCommand(
-    `${BASE}/${segment}-results`,
+    results,
     { id: item.id, revision: current?.revision ?? 0, values: baseline },
     async () => assignLatest(await api.request<MapResult>(props.mapPath), item.id, kind),
   );
