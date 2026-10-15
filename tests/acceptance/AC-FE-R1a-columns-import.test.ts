@@ -121,7 +121,7 @@ describe('AC-FE-R1a-41 组织导入前置检查与回执', () => {
     expect(orgImportReceipt(rows, {})).toBeUndefined();
   });
 
-  it('逐行按接口口径校验写权：有 orgId 为更新、否则为新建，控制项以外的列都须可写（反向）', async () => {
+  it('逐行按接口口径校验写权：有 orgId 或 expectedRevision 为更新、否则为新建，控制项以外的列都须可写（反向）', async () => {
     const { parseOrgImport } = await importing();
     const { pageAccess } = await pageModel();
     const text = (rows: unknown[]) => JSON.stringify({ rows });
@@ -154,10 +154,11 @@ describe('AC-FE-R1a-41 组织导入前置检查与回执', () => {
     expect(parseOrgImport(text([{ ...row('S-1'), startDate: '2026-10-09' }]), noStart)).toEqual({
       error: expect.stringContaining('startDate'),
     });
+    // 第 2 轮 P2-3：只写 sourceCode 映射与 expectedRevision、没有 orgId 的行是接口认可的更新行（AC-ORG-12 / DEC-060），
+    // 按更新权预检后放行；只有新建权时按“更新”拦下。
     const { orgId: _, ...mappedOnly } = update('S-1');
-    expect(parseOrgImport(text([mappedOnly]), updateOnly)).toEqual({
-      error: '第 1 行带 expectedRevision 时须同时填写 orgId',
-    });
+    expect(parseOrgImport(text([mappedOnly]), updateOnly)).toEqual({ rows: [mappedOnly] });
+    expect(parseOrgImport(text([mappedOnly]), createOnly)).toEqual({ error: expect.stringContaining('更新') });
   });
 
   it('导入入口：有 import@list 但新建、更新数据权都没有，或必填列（含 sourceCode、parentId）不可写时不出入口', async () => {
@@ -179,12 +180,46 @@ describe('AC-FE-R1a-41 组织导入前置检查与回执', () => {
     expect(orgImportable(pageAccess({ ...permission({ create: true }), buttons: [] }))).toBe(false);
   });
 
-  it('冲突重读：带 orgId 的行按读回的最新版本改写 expectedRevision；读回不是同一组织或版本无效时读取失败', async () => {
+  it('冲突重读：最新快照只放接口返回的业务字段与版本，文件内容不被改写；读回不是同一组织或版本无效时读取失败', async () => {
     const { rereadImportRows } = await importing();
     const rows = [row('S-1'), update('S-2')];
-    const latest = await rereadImportRows(rows, async (id: string) => ({ id, revision: 3, name: '他人改过的名称' }));
-    expect(latest).toEqual([row('S-1'), { ...update('S-2'), expectedRevision: 3 }]);
+    // GET /api/tenant/org/organizations/:id 的真实形状（read-model.ts OrgRecord）：行政上级在 parents.admin。
+    const record = (id: string) => ({
+      id,
+      revision: 3,
+      code: 'ORG-001',
+      name: '他人改过的名称',
+      parents: { admin: { parentId: '00000000-0000-4000-8000-000000000009', sequence: 1 } },
+    });
+    const latest = await rereadImportRows(rows, async (id: string) => record(id));
+    expect(latest).toEqual([
+      { sourceCode: 'S-1' },
+      {
+        sourceCode: 'S-2',
+        orgId: ORG,
+        code: 'ORG-001',
+        name: '他人改过的名称',
+        parentId: '00000000-0000-4000-8000-000000000009',
+        expectedRevision: 3,
+      },
+    ]);
     await expect(rereadImportRows(rows, async () => ({ id: 'other', revision: 3 }))).rejects.toThrow();
     await expect(rereadImportRows(rows, async (id: string) => ({ id, revision: '3' }))).rejects.toThrow();
+  });
+
+  it('重提：版本控制项取权威重读值，其余列保持文件内容；原系统编码或 orgId 对不上的行不套用', async () => {
+    const { withLatestRevisions } = await importing();
+    const mine = [row('S-1'), update('S-2'), update('S-3')];
+    const latest = [
+      { sourceCode: 'S-1' },
+      { sourceCode: 'S-2', orgId: ORG, name: '他人改过的名称', expectedRevision: 7 },
+      { sourceCode: 'S-3', orgId: '00000000-0000-4000-8000-000000000099', expectedRevision: 9 },
+    ];
+    expect(withLatestRevisions(mine, latest)).toEqual([
+      row('S-1'),
+      { ...update('S-2'), expectedRevision: 7 },
+      update('S-3'),
+    ]);
+    expect(withLatestRevisions(mine, undefined)).toEqual(mine);
   });
 });

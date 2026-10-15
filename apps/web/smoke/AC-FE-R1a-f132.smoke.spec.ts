@@ -292,6 +292,8 @@ test('AC-FE-R1a-43 组织导入更新行版本冲突 409 REVISION_CONFLICT：重
   await expect(dialog.getByText(/版本冲突/)).toBeVisible();
   await expect(save(page)).toBeDisabled();
   await dialog.getByRole('button', { name: '重读最新版本' }).click();
+  // 第 2 轮 P2-1：核对区的“最新值”是接口返回的最新名称，不是文件里的旧值；文件内容作为“我的输入”重提。
+  await expect(dialog.locator('.ant-table').getByText(/他人改过的名称/)).toBeVisible();
   await dialog.getByRole('button', { name: '已核对差异，继续编辑' }).click();
   await expect(save(page)).toBeEnabled();
   await expect(dialog.getByText('已读取 2 行')).toBeVisible();
@@ -302,6 +304,63 @@ test('AC-FE-R1a-43 组织导入更新行版本冲突 409 REVISION_CONFLICT：重
     { rows },
     { rows: [rows[0], { ...rows[1], expectedRevision: 2 }] },
   ]);
+});
+
+test('AC-FE-R1a-43 普通拒绝后换文件修正，再遇版本冲突：重读后的重提用最新版本（第 2 轮 P2-2）', async ({
+  page,
+  baseURL,
+}) => {
+  await setup(page, baseURL!);
+  await page.route(`**/api/tenant/org/organizations/${id}`, (route) => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    return route.fulfill({ json: { ...org, revision: 7, name: '他人改过的名称' } });
+  });
+  const fixed = [{ ...rows[0]!, code: 'ORG-102' }, rows[1]!];
+  const posts = await routeImport(page, (request) => {
+    const sent = (request.postDataJSON() as { rows: typeof rows }).rows;
+    if (sent[0]!.code === 'ORG-101')
+      return { status: 409, json: { error: { code: 'CONFLICT', message: '导入编码或映射冲突' } } };
+    if (sent[1]!.expectedRevision !== 7)
+      return { status: 409, json: { error: { code: 'REVISION_CONFLICT', message: '组织已被他人修改' } } };
+    const results = sent.map((item) => ({ sourceCode: item.sourceCode, code: item.code, status: 'updated' }));
+    return { status: 200, json: { results } };
+  });
+  await page.goto('/org');
+  const dialog = await chooseImport(page);
+  await save(page).click();
+  await expect.poll(() => posts.length).toBe(1);
+  await expect(save(page)).toBeEnabled();
+  await dialog.getByLabel('选择文件').setInputFiles(file('org-import-fixed.json', fixed));
+  await expect(dialog.getByText('已读取 2 行')).toBeVisible();
+  await save(page).click();
+  await expect(dialog.getByText(/版本冲突/)).toBeVisible();
+  await dialog.getByRole('button', { name: '重读最新版本' }).click();
+  await dialog.getByRole('button', { name: '已核对差异，继续编辑' }).click();
+  await save(page).click();
+  await expect.poll(() => posts.length).toBe(3);
+  expect(posts.at(-1)!.postDataJSON()).toEqual({ rows: [fixed[0], { ...rows[1], expectedRevision: 7 }] });
+  await expect(page.getByRole('dialog', { name: '导入结果' })).toBeVisible();
+});
+
+test('AC-FE-R1a-43 只写原系统编码映射与 expectedRevision、没有 orgId 的更新行可以提交（AC-ORG-12，第 2 轮 P2-3）', async ({
+  page,
+  baseURL,
+}) => {
+  await setup(page, baseURL!, undefined, { create: false, update: true });
+  const mapped = { sourceCode: 'SRC-2', code: 'ORG-001', name: '合成组织改名', parentId: parent, expectedRevision: 1 };
+  const posts = await routeImport(page, () => ({
+    status: 200,
+    json: { results: [{ sourceCode: 'SRC-2', code: 'ORG-001', status: 'updated', orgId: id }] },
+  }));
+  await page.goto('/org');
+  await page.getByRole('button', { name: '更多操作' }).click();
+  await page.getByRole('menuitem', { name: '导入' }).click();
+  const dialog = page.getByRole('dialog', { name: '导入组织' });
+  await dialog.getByLabel('选择文件').setInputFiles(file('org-import-mapped.json', [mapped]));
+  await expect(dialog.getByText('已读取 1 行')).toBeVisible();
+  await save(page).click();
+  await expect(page.getByRole('dialog', { name: '导入结果' })).toBeVisible();
+  expect(posts.map((request) => request.postDataJSON())).toEqual([{ rows: [mapped] }]);
 });
 
 test('AC-FE-R1a-44 列设置：齿轮打开居中两栏弹窗，勾选、拖动排序、恢复默认，确定后生效', async ({ page, baseURL }) => {

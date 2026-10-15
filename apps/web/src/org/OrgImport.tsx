@@ -11,6 +11,7 @@ import {
   orgRecordPath,
   parseOrgImport,
   rereadImportRows,
+  withLatestRevisions,
   type ImportGate,
   type ImportRow,
   type OrgImportResult,
@@ -23,18 +24,21 @@ interface FileProps {
   value?: ImportRow[];
   disabled?: boolean;
   gate: ImportGate;
+  /** 换文件：调用方据此丢弃上一份文件的命令基线与重读结果。 */
+  onPick(): void;
   onChange?(value: ImportRow[] | undefined): void;
 }
 /**
  * 读取模板 JSON 为 rows；读不出或无权写入时清空值并就地提示，不发请求。锁定时由 LockedField 下发 disabled。
  * 换文件先清掉旧值，读完前必填校验拦住保存；读取期间又换了文件，较早的结果作废，不覆盖后选的文件。
  */
-function ImportFile({ value, disabled, gate, onChange }: FileProps) {
+function ImportFile({ value, disabled, gate, onPick, onChange }: FileProps) {
   const [error, setError] = useState<string>();
   const [reading, setReading] = useState(false);
   const picked = useRef(0);
   const pick = async (file: File | undefined) => {
     const current = ++picked.current;
+    onPick();
     onChange?.(undefined);
     setError(undefined);
     setReading(!!file);
@@ -64,7 +68,7 @@ function ImportFile({ value, disabled, gate, onChange }: FileProps) {
 }
 const readOnly = { visible: true, editable: false };
 /** 导入文件只在有导入入口的口径下可写（orgImportable），不固定标成可编辑；逐行写权在读取文件时按 gate 预检。 */
-function importFields(access: PageAccess): FormField[] {
+function importFields(access: PageAccess, onPick: () => void): FormField[] {
   return [
     {
       name: '__hint',
@@ -83,7 +87,7 @@ function importFields(access: PageAccess): FormField[] {
     {
       name: 'rows',
       label: m.file,
-      control: <ImportFile gate={access} />,
+      control: <ImportFile gate={access} onPick={onPick} />,
       access: { visible: true, editable: orgImportable(access) },
       rules: [{ required: true, message: m.required }],
     },
@@ -93,10 +97,12 @@ function importFields(access: PageAccess): FormField[] {
 /**
  * 组织导入接 F-142 内核：命令 ID、锁定、被拒提示与结果未知锁定都由内核负责。
  * - 结果未知：导入没有原单可回读，保持锁定、重开仍锁定，待刷新列表核对（DEC-502①g）。
- * - 更新行版本冲突（409 REVISION_CONFLICT）：内核“重读最新版本”按 orgId 读回各行最新版本，核对差异后
- *   “已核对差异，继续编辑”解锁，用户再点保存显式重提（DEC-502①b）。导入没有单一原单，以恢复槽作批次标识，
- *   供内核核对读回结果属于本批。
- * - 基线取本次提交的行：行未被人工改过，重读后跟随最新版本回填，重提即带新的 expectedRevision。
+ * - 更新行版本冲突（409 REVISION_CONFLICT）：内核“重读最新版本”按 orgId 读回各行最新内容与版本，核对区显示
+ *   接口返回的最新值；“已核对差异，继续编辑”解锁，用户再点保存显式重提（DEC-502①b）。导入没有单一原单，
+ *   以恢复槽作批次标识，供内核核对读回结果属于本批。
+ * - 导入没有原值：基线为空，文件内容整份是“我的输入”，重读后不被最新值覆盖；重提时只有版本控制项
+ *   （expectedRevision）取权威重读值（withLatestRevisions）。
+ * - 换文件时清掉内核里上一份文件的基线与重读结果（未锁定时才可换文件），新文件从头开始。
  */
 export function OrgImport(props: {
   access: PageAccess;
@@ -122,9 +128,10 @@ export function OrgImport(props: {
   const submission: CommandForm = { ...command, reload: command.status === 'conflict' ? reread : undefined };
   const submit = async (values: Record<string, unknown>) => {
     let results: OrgImportResult[] | undefined;
+    const latest = command.state?.latest?.values.rows as ImportRow[] | undefined;
     const outcome = await command.submit({
-      values: { rows: values.rows },
-      baseline: { rows: values.rows },
+      values: { rows: withLatestRevisions(values.rows as ImportRow[], latest) },
+      baseline: {},
       editableFields: ['rows'],
       revision: 0,
       businessId: orgImportResource,
@@ -148,7 +155,7 @@ export function OrgImport(props: {
       title={m.title}
       onClose={close}
       onSubmit={submit}
-      groups={[{ title: pageText.basic, fields: importFields(props.access) }]}
+      groups={[{ title: pageText.basic, fields: importFields(props.access, command.clear) }]}
     />
   );
 }

@@ -155,7 +155,6 @@ export const importText = {
   tooMany: (limit: number) => `单次最多导入 ${limit} 行，请拆分后再导入`,
   rowInvalid: (row: number) => `第 ${row} 行不是对象`,
   rowMissing: (row: number, field: string) => `第 ${row} 行缺少 ${field}`,
-  rowTarget: (row: number) => `第 ${row} 行带 expectedRevision 时须同时填写 orgId`,
   rowOperation: (row: number, operation: string) => `第 ${row} 行需要${operation}组织的权限，当前无权${operation}`,
   rowField: (row: number, field: string) => `第 ${row} 行的 ${field} 列无写入权限或不是导入列`,
   operations: { create: '新建', update: '更新' },
