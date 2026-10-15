@@ -659,6 +659,11 @@ export const GRAPH: Graph = {
     'packages/domain/src/evaluation/catalog.ts#EVALUATION_OBJECTS',
   ],
   'apps/api/src/modules/permission/scope-resolver.ts#addBoundedIds': ['#MAX_SCOPE_IDS'],
+  'apps/api/src/modules/permission/scope-resolver.ts#expandOrgIds': [
+    'apps/api/src/modules/permission/scope-hierarchy.ts#expandScopeOrgSet',
+    'apps/api/src/modules/permission/scope-hierarchy.ts#expandScopeRoots',
+    'packages/domain/src/evaluation/catalog.ts#EVALUATION_APP',
+  ],
   'apps/api/src/modules/permission/scope-resolver.ts#identityAll': [
     'apps/api/src/modules/permission/scope-hierarchy.ts#scopeRows',
   ],
@@ -675,8 +680,8 @@ export const GRAPH: Graph = {
     '#managementRoots',
   ],
   'apps/api/src/modules/permission/scope-resolver.ts#resolveDataScope': [
-    'apps/api/src/modules/permission/scope-hierarchy.ts#expandScopeRoots',
     '#addBoundedIds',
+    '#expandOrgIds',
     '#identityAll',
     '#linkedPerson',
     '#managementRoots',

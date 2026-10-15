@@ -5,7 +5,7 @@ import { MenuIcon } from '../foundation/ViewHeading.js';
 import { PageState } from '../foundation/PageState.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { useSession } from '../foundation/Session.js';
-import { ConflictCommands } from './conflict.js';
+import { ConflictCommands } from '../foundation/forms/ConflictCommands.js';
 import { s } from './messages.js';
 import { RECORD } from './RecordForm.js';
 import { RecordList } from './RecordList.js';

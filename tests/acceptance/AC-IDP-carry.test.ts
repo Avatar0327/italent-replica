@@ -12,6 +12,7 @@ import { describe, expect, it } from 'vitest';
 import { idpOperator } from './AC-IDP-permission-support.js';
 import { errorOf, permissionWorldOf, planWorld, type PlanView, type PlanWorld } from './AC-IDP-plan-support.js';
 import { createProfile, grant, makeGrantable, type PermissionWorld, setObjectPermission } from './AC-PRM-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 
@@ -31,7 +32,7 @@ const planBody = (w: PlanWorld, extra: Record<string, unknown> = {}) => ({
  * 源记录须在范围内才能带出（第 2 轮 P2-2，范围为空的反例见 AC-IDP-tutor-scope）。
  */
 async function grantEmploymentView(pw: PermissionWorld, userId: string, hidden: readonly string[], orgId: string) {
-  const profile = await createProfile(pw, `emp-${userId.slice(0, 6)}`, { apps: ['TenantBase'] });
+  const profile = await createProfile(pw, `emp-${uniqueSuffix()}`, { apps: ['TenantBase'] });
   const definition = MODULE_OBJECTS.employmentRecord;
   const response = await setObjectPermission(
     pw,

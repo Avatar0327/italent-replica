@@ -1,4 +1,5 @@
 import { useApiClient } from '../foundation/Session.js';
+import { slotKey } from '../foundation/forms/slot.js';
 import { useCommandForm } from '../foundation/forms/useCommandForm.js';
 import { messages } from '../foundation/forms/messages.js';
 import type { Values } from '../foundation/forms/store.js';
@@ -8,7 +9,8 @@ import type { Row } from './model.js';
 export function useRecordForm(path: string, row?: Row, project: (row: Row) => Values = (value) => value) {
   const api = useApiClient();
   const resource = row ? `${path}/${row.id}` : path;
-  const command = useCommandForm(resource);
+  // 恢复槽：编辑为原单路径、新建为集合路径（与 CreateEntry 的在途新建检查同一个槽，F-142）。
+  const command = useCommandForm(slotKey(path, row?.id));
   const latest = command.state?.latest;
   const current = latest ? ({ ...latest.values, id: latest.id, revision: latest.revision } as Row) : row;
   return {

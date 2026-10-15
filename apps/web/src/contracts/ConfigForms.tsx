@@ -5,10 +5,11 @@ import { usePermissions } from '../foundation/Permissions.js';
 import { useApiClient } from '../foundation/Session.js';
 import { useFormLock } from '../foundation/forms/FormLock.js';
 import { messages as kernel } from '../foundation/forms/messages.js';
+import { projectFields } from '../foundation/forms/values.js';
 import { parseSavedReceipt, parseSettingsReceipt } from './forms.js';
 import { m } from './messages.js';
 import { configObjects, contractApi, value, type Config, type Row } from './model.js';
-import { RecoveryStatus, pick, recoveryGroups, useConfigCommand } from './recovery.js';
+import { RecoveryStatus, recoveryGroups, useConfigCommand } from './recovery.js';
 import { PeopleSelect, RefLabels, RefSelect, refPaths } from './references.js';
 
 const paths = { types: contractApi.types, rules: contractApi.rules, settings: contractApi.settings };
@@ -74,7 +75,7 @@ export function ConfigForm({
       onRefresh={onSaved}
       onSubmit={async (values) => {
         const result = await submit({
-          values: { ...pick(baseline, carried), ...values },
+          values: { ...projectFields(baseline, carried), ...values },
           editableFields: [...editable, ...carried],
           patchOnly: kind === 'settings',
           send: async (command, sent) => {

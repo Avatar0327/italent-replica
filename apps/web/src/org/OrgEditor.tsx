@@ -9,9 +9,10 @@ import {
   type FormField,
 } from '../foundation/index.js';
 import { ReferenceSelect } from '../job/JobEditor.js';
-import { orgChangeBody, type Dimension, type OrgAction, type OrgRow } from './page-model.js';
+import { orgChangeBody, orgCreateResource, type Dimension, type OrgAction, type OrgRow } from './page-model.js';
 import { type PageAccess } from './page-support.js';
 import { useRecordCommand } from './record-command.js';
+import { slotKey } from '../foundation/forms/slot.js';
 import { pageText as m } from './messages.js';
 interface Props {
   original: OrgRow;
@@ -158,7 +159,7 @@ function useSubmit(props: Props, record: ReturnType<typeof useOrgCommand>) {
 function useOrgCommand({ original, action, date }: Props) {
   return useRecordCommand({
     // 原单路径作键：行内、详情、换日期或换动作重开都进同一个槽；动作与日期作为命令上下文存在槽里（F-123 页面片接入 2）。
-    resource: `/api/tenant/org/organizations/${original.id}`,
+    resource: slotKey(orgCreateResource, original.id),
     context: { action, date },
     original,
     readPath: (id, context) => `/api/tenant/org/organizations/${id}?asOf=${context.date}`,

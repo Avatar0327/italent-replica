@@ -6,7 +6,7 @@ import { PermissionField } from './Permissions.js';
 import type { FieldAccess } from './permission-model.js';
 import { FormLock, LockedField } from './forms/FormLock.js';
 import { CommandStatus } from './forms/CommandStatus.js';
-import type { CommandForm } from './forms/useCommandForm.js';
+import { useDraftRefill, type CommandForm } from './forms/useCommandForm.js';
 import { useSession } from './Session.js';
 
 export interface FormField {
@@ -40,6 +40,12 @@ export function FormOverlay(props: FormOverlayProps) {
     <OpenForm key={`${session.tenantId}/${session.identityKey}/${props.recordKey}`} {...props} />
   ) : null;
 }
+/** 当前可提交的字段：可见且可编辑。提交只带这些字段，重读回填也以它判断哪些字段保留草稿。 */
+const submittableOf = (groups: FormGroup[]) =>
+  groups
+    .flatMap((group) => group.fields)
+    .filter((field) => field.access.visible && field.access.editable)
+    .map((field) => field.name);
 function useSubmission(props: FormOverlayProps, form: FormInstance) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>();
@@ -58,10 +64,7 @@ function useSubmission(props: FormOverlayProps, form: FormInstance) {
     setError(undefined);
     try {
       // 只提交当前可编辑字段；只读初始值不作为用户输入偷偷带回。
-      const editable = props.groups
-        .flatMap((group) => group.fields)
-        .filter((field) => field.access.visible && field.access.editable)
-        .map((field) => field.name);
+      const editable = submittableOf(props.groups);
       await props.onSubmit(Object.fromEntries(Object.entries(values).filter(([name]) => editable.includes(name))));
       if (alive.current) props.onClose();
     } catch (cause) {
@@ -80,9 +83,8 @@ function OpenForm(props: FormOverlayProps) {
   const { busy, error, submit } = useSubmission(props, form);
   const submission = props.submission;
   const locked = busy || !!submission?.locked;
-  useEffect(() => {
-    if (submission?.state?.values) form.setFieldsValue(submission.state.values);
-  }, [form, submission?.state?.values]);
+  // 重读后按内核 refillDraft 回填（F-142，claude_fe_rules b）：只有改过且当前可提交的字段保留草稿。
+  useDraftRefill(submission, submittableOf(props.groups), form);
   const footer = (
     <Space>
       <Button onClick={props.onClose} disabled={busy}>

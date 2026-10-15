@@ -3,6 +3,7 @@
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { uniqueSuffix } from './support/unique.js';
 
 const requireWeb = createRequire(resolve('apps/web/package.json'));
 const { createElement, act } = requireWeb('react');
@@ -122,7 +123,7 @@ beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   vi.stubGlobal('fetch', vi.fn(mockFetch));
   vi.stubGlobal('crypto', {
-    randomUUID: () => `command-${requests.length}-${Math.random()}`,
+    randomUUID: () => `command-${requests.length}-${uniqueSuffix()}`,
     subtle: { digest: async () => new Uint8Array(32).buffer },
   });
   vi.stubGlobal('URL', Object.assign(class extends URL {}, { createObjectURL: createUrl, revokeObjectURL: revokeUrl }));
