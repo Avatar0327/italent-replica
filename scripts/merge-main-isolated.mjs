@@ -7,6 +7,8 @@
 //   ③ collectTree：重算后逐个文件按内容（hash-object --no-filters）与 T0 比对，改动只许落在给定的生成物路径里，
 //      被忽略的新文件一律报出；用临时索引写出新树 T1，由调用方对 T1 做最终核对，再用 commit-tree 提交 T1；
 //   ④ unprovableProblems：无法证明一致的配置（上面那几种）在开始前与冲突处理后直接拒绝（DEC-402，不尝试兼容）。
+// 第 6 轮（第 5 轮审查 P2-2）：符号链接是否走出隔离根，不再按文本判断，改为写出后用 realpath(3) 按链接链实际解析
+// （linksOutside）；④ 里的文本判断只是开始前的快速预检。
 // ctx = { root, gitDir, git }：git 调用都在仓库根执行，或用 --git-dir 显式指向本仓库。
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import {
@@ -15,6 +17,7 @@ import {
   mkdtempSync,
   readdirSync,
   readlinkSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -29,7 +32,10 @@ const DEPENDENCY_DIR = 'node_modules';
 
 const split0 = (text) => text.split('\0').filter(Boolean);
 
-/** 符号链接目标是否落在仓库之外（绝对路径，或相对路径走出仓库根）。按文本判断，不跟随链接。 */
+/**
+ * 符号链接目标按文本看是否走出仓库（绝对路径，或相对路径走出仓库根）。不跟随链接，链接链（a/up → ../..，
+ * 再经 a/up/../.. 出去）看不出来，所以只用作开始前的快速预检；是否在隔离根内以写出后的 linksOutside 为准。
+ */
 export function symlinkEscapes(file, target) {
   if (path.posix.isAbsolute(target) || path.win32.isAbsolute(target)) return true;
   const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(file), target));
@@ -50,7 +56,7 @@ export function createIsolation(root) {
   const ctx = { root, git, gitDir: git(['rev-parse', '--absolute-git-dir']).trim() };
   return {
     unprovableProblems: () => unprovableProblems(ctx),
-    materializeTree: (tree) => materializeTree(ctx, tree),
+    materializeTree: (tree, prefix) => materializeTree(ctx, tree, prefix),
     collectTree: (iso, tree, allowed) => collectTree(ctx, iso, tree, allowed),
   };
 }
@@ -138,34 +144,64 @@ async function catBlobs(gitDir, shas, onBlob) {
   if (index !== shas.length) throw new Error(`git cat-file 只读出 ${index} / ${shas.length} 个对象`);
 }
 
-/** 写出一个条目：普通文件按对象原样写、可执行位照模式；符号链接按目标建（走出仓库的抛错）。 */
+/** 写出一个条目：普通文件按对象原样写、可执行位照模式；符号链接按目标文本原样建（是否在根内由 linksOutside 判断）。 */
 function writeEntry(dir, { mode, file }, bytes) {
   const target = path.join(dir, file);
   mkdirSync(path.dirname(target), { recursive: true });
   if (mode !== SYMLINK) return writeFileSync(target, bytes, { mode: mode === '100755' ? 0o755 : 0o644 });
-  const link = bytes.toString();
-  if (symlinkEscapes(file, link)) throw new Error(`指向仓库外的符号链接：${file} → ${link}`);
-  symlinkSync(link, target);
+  symlinkSync(bytes.toString(), target);
 }
 
 /**
- * 把树 tree 逐字节写进新建的临时目录（DEC-501①）；子模块抛错（unprovableProblems 已先拦下，这里是同一条件的兜底）。
+ * 按链接链的实际解析判断（第 5 轮审查 P2-2，DEC-402）：每个符号链接用 realpath(3) 解析到底，结果必须在隔离根内；
+ * 解析不了（目标不存在、成环、无权限）同样无法证明，一律列出。
+ * 必须用 realpathSync.native：Node 默认的 realpathSync 先按文本消掉链接目标里的“..”再逐级解析（up/.. 被当成原地），
+ * 与内核不一致——正是 up → ../../..、leak → ../d/e/f/up/../../outside.txt 这类链接链的漏洞。
+ * 每个链接都解析在根内时，树里不含“..”的路径逐级下降、每经过一个链接都落回根内，读到的都是根内（= 树里）的内容。
+ */
+function linksOutside(dir, links) {
+  const root = realpathSync.native(dir);
+  return links.filter((file) => {
+    try {
+      const real = realpathSync.native(path.join(dir, file));
+      return real !== root && !real.startsWith(`${root}${path.sep}`);
+    } catch {
+      return true;
+    }
+  });
+}
+
+/**
+ * 把树 tree（给了 prefix 就只取这个目录）逐字节写进新建的临时目录（DEC-501①）；子模块抛错（unprovableProblems 已先拦下，
+ * 这里是同一条件的兜底）。先写普通文件、最后建符号链接：写普通文件时目录里还没有任何链接，每次写入都落在临时目录里；
+ * 全部写完后按链接链实际解析，有链接不在隔离根内就抛错（在任何读取之前）。
  * 返回 { base, dir, entries: 路径 → { mode, sha }, cleanup }；base 下还放临时索引，dir 是写出的目录。
  */
-async function materializeTree({ git, gitDir }, tree) {
+async function materializeTree({ git, gitDir }, tree, prefix) {
   const base = mkdtempSync(path.join(tmpdir(), 'merge-main-isolated-'));
   const dir = path.join(base, 'tree');
   mkdirSync(dir);
   const cleanup = () => rmSync(base, { recursive: true, force: true });
   try {
-    const list = split0(git(['ls-tree', '-r', '-z', tree])).map(parseEntry);
+    const list = split0(git(['ls-tree', '-r', '-z', tree, ...(prefix ? ['--', prefix] : [])])).map(parseEntry);
     const gitlinks = list.filter((e) => e.mode === GITLINK).map((e) => e.file);
     if (gitlinks.length) throw new Error(`树里有子模块，无法写出：${gitlinks.join('、')}`);
+    const links = list.filter((e) => e.mode === SYMLINK);
+    const ordered = [...list.filter((e) => e.mode !== SYMLINK), ...links];
     await catBlobs(
       gitDir,
-      list.map((e) => e.sha),
-      (i, bytes) => writeEntry(dir, list[i], bytes),
+      ordered.map((e) => e.sha),
+      (i, bytes) => writeEntry(dir, ordered[i], bytes),
     );
+    const outside = linksOutside(
+      dir,
+      links.map((e) => e.file),
+    );
+    if (outside.length)
+      throw new Error(
+        `符号链接按实际解析不在隔离根内（或解析不了），无法证明重算读到的都来自待提交树（DEC-402）：${outside.join('、')}` +
+          '（改成直接指向仓库内已有文件的链接，或改为普通文件）',
+      );
     return { base, dir, entries: new Map(list.map((e) => [e.file, { mode: e.mode, sha: e.sha }])), cleanup };
   } catch (error) {
     cleanup();

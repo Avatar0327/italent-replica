@@ -15,6 +15,6 @@ export interface CollectedTree {
 export declare function symlinkEscapes(file: string, target: string): boolean;
 export declare function createIsolation(root: string): {
   unprovableProblems(): string[];
-  materializeTree(tree: string): Promise<IsolatedTree>;
+  materializeTree(tree: string, prefix?: string): Promise<IsolatedTree>;
   collectTree(iso: IsolatedTree, tree: string, allowed: (file: string) => boolean): CollectedTree;
 };

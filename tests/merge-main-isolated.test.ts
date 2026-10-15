@@ -3,7 +3,8 @@
  * 入口级反例（assume-unchanged、filter、hook……）见 tests/merge-main-conflicts.test.ts；这里锁住三件事：
  *   ① 从树写出是逐字节的——仓库开着 autocrlf / text 属性、有 CRLF 内容、可执行位、仓库内符号链接时，什么都不改就收集不出改动；
  *   ② 收集只认内容：允许的目录里新增 / 修改 / 删除都进新树，别处的改动与被忽略的新文件都列为问题；
- *   ③ 前置拒绝的各项条件（含索引里 .gitattributes 设的 filter）。
+ *   ③ 前置拒绝的各项条件（含索引里 .gitattributes 设的 filter）；
+ *   ④ 第 6 轮：写出后符号链接按链接链的实际解析（realpath(3)）判断是否在隔离根内，文本判断只是开始前的预检。
  */
 import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -64,7 +65,7 @@ function repo(extra: Record<string, string> = {}) {
 
 const inGen = (file: string) => file.startsWith('gen/');
 
-describe('symlinkEscapes：符号链接目标按文本判断是否走出仓库', () => {
+describe('symlinkEscapes：符号链接目标按文本判断是否走出仓库（开始前的快速预检）', () => {
   it.each([
     ['a/b.ts', '../c.ts', false],
     ['a/b.ts', 'c/d.ts', false],

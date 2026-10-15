@@ -13,6 +13,8 @@
 //   核对对象 = 提交对象（F-133 第 5 轮，DEC-501）：冲突处理后索引写出树 t0；重算与授权定号只在从 t0 逐字节写出的临时目录里跑，
 //           产物按内容收集成 t1；登记核对 t0 / t1，用 commit-tree + update-ref 提交 t1（不跑 hook），提交后断言 HEAD^{tree} = t1；
 //           assume-unchanged / skip-worktree / sparse / filter / 子模块 / 外部符号链接直接拒绝（scripts/merge-main-isolated.mjs）
+//   同一基准（F-133 第 6 轮）：开头固定一次本分支 ref 与提交、main 提交、分叉点（fixBase），此后冲突处理、改号、定号、核对、
+//           父提交与 update-ref 的 CAS 旧值都只用它；HEAD 中途被移动（另一个终端提交、切分支、reset）就非 0 退出，不重试、不并入
 //   --continue  业务冲突手工解决并 git add 之后，从改号那一步继续（不再 fetch，MERGE_HEAD 须仍是 origin/main）
 //   --no-regen  不跑重算命令（只合并、改号、提交）
 //   --take-ours-for-counts  业务冲突里 main 一侧只改了数字字面量（如端点计数）的文件，冲突处取本分支一侧并 git add；
@@ -77,6 +79,8 @@ const writeIn = (dir, file, text) => {
   writeFileSync(path.join(dir, file), text);
 };
 const writeRepo = (file, text) => writeIn(ROOT, file, text);
+/** 冲突处理的三方版本：[本分支, 分叉点, main]，取自基准（不读索引的 :2 / :1 / :3，也不再解析 HEAD / origin/main）。 */
+const revsOf = (base) => [base.head, base.fork, base.main];
 const fail = (message) => {
   console.error(message);
   process.exit(1);
@@ -99,6 +103,70 @@ const REGEN_STEPS = [
 
 const mergeInProgress = () => gitOk('rev-parse', '-q', '--verify', 'MERGE_HEAD');
 const unmerged = () => git('diff', '--name-only', '--diff-filter=U', '-z').split('\0').filter(Boolean);
+const short = (sha) => sha.slice(0, 12);
+
+/** 此刻 HEAD 指向的分支（分离头时为 HEAD）与提交。只在 fixBase 与 baseMoves 里读，读到的不当内容来源用。 */
+function currentHead() {
+  const symbolic = spawnSync('git', ['symbolic-ref', '-q', 'HEAD'], { cwd: ROOT, encoding: 'utf8' });
+  return {
+    ref: symbolic.status === 0 ? symbolic.stdout.trim() : 'HEAD',
+    head: git('rev-parse', '--verify', 'HEAD^{commit}').trim(),
+  };
+}
+
+/**
+ * 基准（F-133 第 6 轮，第 5 轮审查 P2-1）：流程开头固定一次。此后冲突处理的三方版本、迁移改号、授权定号、登记核对读的
+ * “本分支 / 分叉点 / main”，以及提交的父提交与 update-ref 的 CAS 旧值，全部是这里的提交 id，不再解析 HEAD / origin/main。
+ *   ref：HEAD 指向的分支（分离头为 HEAD），提交时 update-ref 它；head / main：开始时本分支与 main 的提交；fork：二者的分叉点；
+ *   merging：提交是否以 main 为第二个父提交（本次开始合并，或 --continue 接着进行中的合并）。
+ * --continue 接着进行中的合并时 main = MERGE_HEAD，且须仍等于 origin/main（否则说不清核对与提交的是哪个 main）；
+ * 没有进行中的合并、本分支又不包含 main 时拒绝（核对按“合入 main”算，提交却不含 main）。
+ */
+function fixBase(continuing) {
+  const { ref, head } = currentHead();
+  if (ref === 'refs/heads/main') fail('不要在 main 上运行，请在自己的分支上运行');
+  const main = git('rev-parse', '--verify', `${MAIN}^{commit}`).trim();
+  const merging = continuing && mergeInProgress();
+  if (merging) {
+    const mergeHead = git('rev-parse', '--verify', 'MERGE_HEAD^{commit}').trim();
+    if (mergeHead !== main)
+      fail(
+        `合并开始后 ${MAIN} 变了（MERGE_HEAD ${short(mergeHead)} ≠ ${MAIN} ${short(main)}），` +
+          '无法确定核对与提交的是哪个 main：git merge --abort 后重新运行 pnpm merge:main',
+      );
+  }
+  const contains = gitOk('merge-base', '--is-ancestor', main, head);
+  if (continuing && !merging && !contains)
+    fail(`--continue：没有进行中的合并，本分支也还没包含 ${MAIN}；请去掉 --continue 重新运行 pnpm merge:main`);
+  const fork = git('merge-base', head, main).trim();
+  return { ref, head, main, fork, merging: merging || (!continuing && !contains) };
+}
+
+/** HEAD 相对基准的移动：指向的分支、提交、合并状态（MERGE_HEAD）任一与基准不同都列出。 */
+function baseMoves(base) {
+  const now = currentHead();
+  const mergeHead = mergeInProgress() ? git('rev-parse', 'MERGE_HEAD').trim() : undefined;
+  const expected = base.merging ? base.main : undefined;
+  return [
+    now.ref === base.ref ? '' : `HEAD 指向 ${now.ref}（开始时 ${base.ref}）`,
+    now.head === base.head ? '' : `HEAD 在 ${short(now.head)}（开始时 ${short(base.head)}）`,
+    mergeHead === expected
+      ? ''
+      : `MERGE_HEAD 为 ${mergeHead ? short(mergeHead) : '无'}（应为 ${expected ? short(expected) : '无'}）`,
+  ].filter(Boolean);
+}
+
+const MOVED_HINT =
+  '不提交、不重试，也不并入期间的新提交；请用 git status / git log 确认仓库状态后重新运行 pnpm merge:main';
+
+/** 基准没被移动才继续（开始合并后、写出待提交树后、提交前各查一次；提交本身另有 update-ref 的 CAS 兜底）。 */
+function requireBaseUnmoved(base, when) {
+  const moves = baseMoves(base);
+  if (moves.length)
+    fail(
+      `${when}：HEAD 在脚本运行期间被移动（另一个终端提交、切换分支或 reset？）：\n  ${moves.join('\n  ')}\n${MOVED_HINT}`,
+    );
+}
 
 function splitConflicts(files) {
   return { generated: files.filter(isGeneratedPath), other: files.filter((f) => !isGeneratedPath(f)) };
@@ -110,8 +178,8 @@ function printConflicts({ generated, other }) {
 }
 
 /**
- * 冲突文件的 diff3 文本：revs = [本分支, 分叉点, main]（合并进行中用索引的 :2 / :1 / :3）。
- * 任一侧缺文件（新增 / 删除冲突）返回 undefined。
+ * 冲突文件的 diff3 文本：revs = [本分支, 分叉点, main]，一律是基准里的提交 id（revsOf），预演与正式运行同一份。
+ * 任一侧缺文件（新增 / 删除冲突、改名）返回 undefined，留给人工。
  */
 function diff3Text(file, revs) {
   const [ours, base, theirs] = revs.map((rev) => show(rev, file));
@@ -251,33 +319,18 @@ function refuseUnprovable(when) {
 }
 
 /**
- * 合并进行中时 MERGE_HEAD 必须就是 origin/main：核对的“main 一侧”读 origin/main，提交的第二个父提交是 MERGE_HEAD，
- * 两者不同（例如手工 fetch 过）就无法说明核对的是哪个 main。--continue 时不再 fetch。
- */
-function requireMergeHeadIsMain() {
-  if (!mergeInProgress()) return;
-  const [mergeHead, main] = [git('rev-parse', 'MERGE_HEAD').trim(), git('rev-parse', MAIN).trim()];
-  if (mergeHead !== main)
-    fail(
-      `合并开始后 ${MAIN} 变了（MERGE_HEAD ${mergeHead.slice(0, 12)} ≠ ${MAIN} ${main.slice(0, 12)}），` +
-        '无法确定核对与提交的是哪个 main：git merge --abort 后重新运行 pnpm merge:main',
-    );
-}
-
-/**
  * 登记类文件合并结果的最终不变式（F-133 第 3 轮起，DEC-431①）：**无条件**——不看哪一边改过、不因“两边一致”“已包含 main”提前通过。
  * 读的是待提交树 tree（不是工作区）；文件枚举 = 本分支 ∪ main ∪ 分叉点 ∪ 待提交树，任一侧没有的文件按“没有条目”算，
  * 所以待提交树里独有的登记文件也要核对（里面的条目都是多出的）。应有身份（分叉点保留项 ∪ 本分支新增 ∪ main 新增）
  * 每个必须存在且恰好一份，应有集合非空而文件缺失判失败，登记区有无法识别的形状判失败。
- * 含 Git 无冲突自动合并的、脚本自动取并集的、人工解决过的文件。合并进行中 HEAD 仍是合并前的提交。有问题就停下，不提交。
+ * 含 Git 无冲突自动合并的、脚本自动取并集的、人工解决过的文件。三侧取自基准（第 6 轮），不读 HEAD / origin/main。有问题就停下，不提交。
  */
-async function verifyRegistries(tree, when) {
-  const fork = git('merge-base', 'HEAD', MAIN).trim();
+async function verifyRegistries(base, tree, when) {
   const listed = (rev) => git('ls-tree', '-r', '--name-only', '-z', rev).split('\0').filter(isRegistryPath);
-  const files = [...new Set([tree, 'HEAD', MAIN, fork].flatMap(listed))].sort();
+  const files = [...new Set([tree, base.head, base.main, base.fork].flatMap(listed))].sort();
   const tools = await loadTools();
   const problems = files.flatMap((file) => {
-    const versions = { ours: show('HEAD', file), base: show(fork, file), theirs: show(MAIN, file) };
+    const versions = { ours: show(base.head, file), base: show(base.fork, file), theirs: show(base.main, file) };
     return registryProblems(tools, file, show(tree, file), versions).map((problem) => `${file}：${problem}`);
   });
   if (problems.length)
@@ -290,9 +343,9 @@ async function verifyRegistries(tree, when) {
 
 /**
  * 授权项编码指纹：用 vite 的 runnerImport 直接加载 root 下的 TS 源码（不必先构建，不新增依赖）。
- * root 默认是工作区；--check 传入从合并结果树里导出的临时目录（packages/domain/src 不依赖 npm 包）。
+ * root 一律是 materializeTree 从树写出的临时目录（正式运行是 t0，--check 是本分支 / 合并结果的 packages/domain/src），不读工作区。
  */
-async function grantDigest(root = ROOT) {
+async function grantDigest(root) {
   const { runnerImport } = await import('vite');
   const { module } = await runnerImport(path.join(root, GRANTS_PATH), {
     root,
@@ -302,23 +355,23 @@ async function grantDigest(root = ROOT) {
   return module.grantCodesDigest(module.STANDARD_GRANT_CODES);
 }
 
-const grantLabel = () => `${git('rev-parse', '--abbrev-ref', 'HEAD').trim()}（merge:main 定号，DEC-439④）`;
+const grantLabel = (base) => `${base.ref.replace(/^refs\/heads\//, '')}（merge:main 定号，DEC-439④）`;
 
 /** 授权版本定号（DEC-439④）：以合并结果的指纹与 main 比较，写回常量与 HISTORY。dir 是从待提交树写出的隔离目录。 */
-async function assignGrantVersion(dir) {
-  syncGrantChanges(dir);
-  const mainGrants = show(MAIN, GRANTS_PATH);
-  const mainTest = show(MAIN, GRANT_HISTORY_PATH);
+async function assignGrantVersion(base, dir) {
+  syncGrantChanges(base, dir);
+  const mainGrants = show(base.main, GRANTS_PATH);
+  const mainTest = show(base.main, GRANT_HISTORY_PATH);
   if (mainGrants === undefined || mainTest === undefined) return console.log('授权版本：main 上没有授权版本文件，跳过');
-  const branchGrants = show('HEAD', GRANTS_PATH);
-  const branchTest = show('HEAD', GRANT_HISTORY_PATH);
+  const branchGrants = show(base.head, GRANTS_PATH);
+  const branchTest = show(base.head, GRANT_HISTORY_PATH);
   const plan = planGrantVersion({
     main: readGrantConstants(mainGrants),
     mainHistory: parseGrantHistory(mainTest),
     branch: branchGrants === undefined ? undefined : readGrantConstants(branchGrants),
     branchHistory: branchTest === undefined ? [] : parseGrantHistory(branchTest),
     mergedDigest: await grantDigest(dir),
-    label: grantLabel(),
+    label: grantLabel(base),
   });
   const grantsNow = readIn(dir, GRANTS_PATH);
   const testNow = readIn(dir, GRANT_HISTORY_PATH);
@@ -335,65 +388,68 @@ async function assignGrantVersion(dir) {
 
 /**
  * 编码增删声明（F-097）：本分支相对分叉点改过就整份取本分支，否则取 main。git 自动合并成功（两边改了不同行）时也要改写，
- * 否则会拼出两个 PR 的混合声明。合并进行中 HEAD 仍是合并前的提交。
+ * 否则会拼出两个 PR 的混合声明。三侧取自基准。
  */
-function syncGrantChanges(dir) {
-  const fork = git('merge-base', 'HEAD', MAIN).trim();
+function syncGrantChanges(base, dir) {
   const text = pickGrantChanges({
-    branch: show('HEAD', GRANT_CHANGES_PATH),
-    fork: show(fork, GRANT_CHANGES_PATH),
-    main: show(MAIN, GRANT_CHANGES_PATH),
+    branch: show(base.head, GRANT_CHANGES_PATH),
+    fork: show(base.fork, GRANT_CHANGES_PATH),
+    main: show(base.main, GRANT_CHANGES_PATH),
   });
   if (text !== undefined) writeIn(dir, GRANT_CHANGES_PATH, text);
 }
 
 const CONFLICT_MARKER_RE = /^(?:<{7}|>{7}) /m;
 
+const DOMAIN_SRC = 'packages/domain/src';
+
 /**
- * 合并结果的授权项编码指纹（P3-2，与实际定号同口径）：git merge-tree 写出合并结果树，导出 packages/domain/src 到临时目录加载。
+ * 树里 packages/domain/src 的授权项编码指纹（--check 用）：经 materializeTree 写出（与正式运行同一条符号链接检查），
+ * resolve 可在加载前改写冲突文件；写不出、改写不了或加载失败返回 undefined。
+ */
+async function treeGrantDigest(tree, resolve = () => true) {
+  let iso;
+  try {
+    iso = await isolation.materializeTree(tree, DOMAIN_SRC);
+    for (const file of iso.entries.keys()) if (!resolve(file, iso.dir)) return undefined;
+    return await grantDigest(iso.dir);
+  } catch {
+    return undefined;
+  } finally {
+    iso?.cleanup();
+  }
+}
+
+/**
+ * 合并结果的授权项编码指纹（P3-2，与实际定号同口径）：git merge-tree 写出基准两侧的合并结果树，取 packages/domain/src 加载。
  * standard-grants.ts 只在两行常量冲突时按自动定号的规则处理；packages/domain/src 里还有其他冲突则算不出，返回 undefined。
  */
 async function mergedGrantDigest(base) {
-  const run = spawnSync('git', ['merge-tree', '--write-tree', '--no-messages', 'HEAD', MAIN], {
+  const run = spawnSync('git', ['merge-tree', '--write-tree', '--no-messages', base.head, base.main], {
     cwd: ROOT,
     encoding: 'utf8',
   });
   if (run.status !== 0 && run.status !== 1) return undefined;
-  const tree = run.stdout.split('\n')[0].trim();
-  const dir = mkdtempSync(path.join(tmpdir(), 'merge-main-grants-'));
-  try {
-    const tar = spawnSync(
-      'sh',
-      ['-c', `git archive --format=tar "$1" packages/domain/src | tar -x -C "$2"`, 'sh', tree, dir],
-      {
-        cwd: ROOT,
-        stdio: 'ignore',
-      },
-    );
-    if (tar.status !== 0) return undefined;
-    const files = git('ls-tree', '-r', '--name-only', tree, '--', 'packages/domain/src').split('\n').filter(Boolean);
-    for (const file of files) {
-      const text = readFileSync(path.join(dir, file), 'utf8');
-      if (!CONFLICT_MARKER_RE.test(text)) continue;
-      const diff3 = file === GRANTS_PATH ? diff3Text(file, ['HEAD', base, MAIN]) : undefined;
-      const resolved = diff3 === undefined ? null : resolveGrantConflict(file, diff3);
-      if (!resolved || resolved.remaining) return undefined;
-      writeFileSync(path.join(dir, file), resolved.text);
-    }
-    return await grantDigest(dir);
-  } catch {
-    return undefined;
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+  return treeGrantDigest(run.stdout.split('\n')[0].trim(), (file, dir) => {
+    if (!CONFLICT_MARKER_RE.test(readIn(dir, file))) return true;
+    const diff3 = file === GRANTS_PATH ? diff3Text(file, revsOf(base)) : undefined;
+    const resolved = diff3 === undefined ? null : resolveGrantConflict(file, diff3);
+    if (!resolved || resolved.remaining) return false;
+    writeIn(dir, file, resolved.text);
+    return true;
+  });
 }
 
-/** --check：按合并结果的指纹预告定号（P3-2）；算不出时按本分支相对分叉点的指纹给条件式提示。 */
+/** --check：按合并结果的指纹预告定号（P3-2）；算不出时按本分支（基准的 head，不读工作区）相对分叉点的指纹给条件式提示。 */
 async function printGrantPlan(base, upToDate) {
-  const mainGrants = show(MAIN, GRANTS_PATH);
-  const forkGrants = show(base, GRANTS_PATH);
+  const mainGrants = show(base.main, GRANTS_PATH);
+  const forkGrants = show(base.fork, GRANTS_PATH);
   if (mainGrants === undefined || forkGrants === undefined) return;
-  const branchDigest = await grantDigest();
+  const branchDigest = await treeGrantDigest(base.head);
+  if (branchDigest === undefined)
+    return console.log(
+      '授权版本：本分支的授权项编码指纹算不出（packages/domain/src 写不出或加载失败），以合并时的实际定号为准',
+    );
   const mergedDigest = upToDate ? branchDigest : await mergedGrantDigest(base);
   console.log(
     describeGrantPlan({
@@ -406,8 +462,8 @@ async function printGrantPlan(base, upToDate) {
 }
 
 /** 预演合并冲突：git merge-tree --write-tree 不碰工作区，冲突时退出码 1，第一行后是冲突文件。 */
-function predictConflicts() {
-  const run = spawnSync('git', ['merge-tree', '--write-tree', '--name-only', '--no-messages', 'HEAD', MAIN], {
+function predictConflicts(base) {
+  const run = spawnSync('git', ['merge-tree', '--write-tree', '--name-only', '--no-messages', base.head, base.main], {
     cwd: ROOT,
     encoding: 'utf8',
   });
@@ -415,31 +471,31 @@ function predictConflicts() {
   return run.stdout.split('\n').slice(1).filter(Boolean);
 }
 
-/** 本分支迁移改号计划：以合并前的 HEAD 为本分支、origin/main 为基准（合并进行中 HEAD 仍是合并前的提交）。 */
-function migrationPlan() {
-  const mainJournal = json(MAIN, JOURNAL_PATH);
-  const branchJournal = json('HEAD', JOURNAL_PATH);
+/** 本分支迁移改号计划：本分支、main 都取自基准（开始时的提交）。 */
+function migrationPlan(base) {
+  const mainJournal = json(base.main, JOURNAL_PATH);
+  const branchJournal = json(base.head, JOURNAL_PATH);
   if (!mainJournal || !branchJournal) fail(`读不到 ${JOURNAL_PATH}`);
   const sql = {
-    main: (tag) => show(MAIN, sqlPath(tag)),
-    branch: (tag) => show('HEAD', sqlPath(tag)),
+    main: (tag) => show(base.main, sqlPath(tag)),
+    branch: (tag) => show(base.head, sqlPath(tag)),
   };
   try {
     const plan = planRenumber(mainJournal, branchJournal, sql);
-    return { ...plan, identityProblems: identityProblems(plan, mainJournal, sql) };
+    return { ...plan, identityProblems: identityProblems(base, plan, mainJournal, sql) };
   } catch (error) {
     return fail(`迁移改号计划失败：${error.message}`);
   }
 }
 
 /** 保留（改号）的迁移的快照 id 不能与 main 或彼此重复（见 checkSnapshotIdentity）；读 main 全部快照 id 只在有改号时做。 */
-function identityProblems(plan, mainJournal, sql) {
+function identityProblems(base, plan, mainJournal, sql) {
   if (!plan.renames.length) return [];
   const idOf = (rev, idx) => json(rev, snapshotPath(idx))?.id;
   return checkSnapshotIdentity({
-    main: mainJournal.entries.map((e) => ({ tag: e.tag, id: idOf(MAIN, e.idx) })),
-    kept: plan.renames.map(({ from }) => ({ tag: from.tag, id: idOf('HEAD', from.idx) })),
-    mainLastId: idOf(MAIN, mainJournal.entries.at(-1).idx),
+    main: mainJournal.entries.map((e) => ({ tag: e.tag, id: idOf(base.main, e.idx) })),
+    kept: plan.renames.map(({ from }) => ({ tag: from.tag, id: idOf(base.head, from.idx) })),
+    mainLastId: idOf(base.main, mainJournal.entries.at(-1).idx),
     digestOf: (side, tag) => sqlDigest(sql[side](tag)),
   });
 }
@@ -465,12 +521,12 @@ function printPlan(plan) {
   console.log(lines.join('\n'));
 }
 
-function rebasedSnapshots(plan) {
-  const mainJournal = json(MAIN, JOURNAL_PATH);
-  const mainLast = json(MAIN, snapshotPath(mainJournal.entries.at(-1).idx));
+function rebasedSnapshots(base, plan) {
+  const mainJournal = json(base.main, JOURNAL_PATH);
+  const mainLast = json(base.main, snapshotPath(mainJournal.entries.at(-1).idx));
   // 每条新增迁移的增量基准 = 它在本分支 journal 里的前一条（可能是已合并的旧名迁移）
-  const bases = plan.renames.map(({ baseIdx }) => baseIdx !== undefined && json('HEAD', snapshotPath(baseIdx)));
-  const own = plan.renames.map(({ from }) => json('HEAD', snapshotPath(from.idx)));
+  const bases = plan.renames.map(({ baseIdx }) => baseIdx !== undefined && json(base.head, snapshotPath(baseIdx)));
+  const own = plan.renames.map(({ from }) => json(base.head, snapshotPath(from.idx)));
   if (!mainLast || bases.some((s) => !s) || own.some((s) => !s)) fail('迁移快照缺失，无法自动改号，请人工处理');
   const { snapshots, conflicts } = rebaseSnapshots(bases[0], own, mainLast, bases);
   if (conflicts.length) fail(`迁移快照与 main 改了同一处，须人工处理：\n  ${conflicts.join('\n  ')}`);
@@ -481,18 +537,18 @@ function rebasedSnapshots(plan) {
  * 写改号后的 SQL、快照与 journal；旧路径（改号前的、已合并的旧名迁移）若是 main 的文件就恢复成 main 版本，否则删掉。
  * 没有新增迁移（只有已合并的旧名迁移）时不需要重算快照。
  */
-function applyRenumber(plan) {
-  const snapshots = plan.renames.length ? rebasedSnapshots(plan) : [];
+function applyRenumber(base, plan) {
+  const snapshots = plan.renames.length ? rebasedSnapshots(base, plan) : [];
   const written = new Set();
   plan.renames.forEach(({ from, to }, i) => {
-    writeRepo(sqlPath(to.tag), show('HEAD', sqlPath(from.tag)) ?? fail(`缺少 ${sqlPath(from.tag)}`));
+    writeRepo(sqlPath(to.tag), show(base.head, sqlPath(from.tag)) ?? fail(`缺少 ${sqlPath(from.tag)}`));
     writeRepo(snapshotPath(to.idx), drizzleJson(snapshots[i]));
     written.add(sqlPath(to.tag)).add(snapshotPath(to.idx));
   });
   for (const { from } of [...plan.renames, ...plan.stale]) {
     for (const old of [sqlPath(from.tag), snapshotPath(from.idx)]) {
       if (written.has(old)) continue;
-      const onMain = show(MAIN, old);
+      const onMain = show(base.main, old);
       if (onMain !== undefined) writeRepo(old, onMain);
       else if (existsSync(path.join(ROOT, old))) rmSync(path.join(ROOT, old));
     }
@@ -545,9 +601,9 @@ const generatedByScript = (file) => GRANT_FILES.includes(file) || REGEN_DIRS.som
  * 之后按内容比对收集产物、写出新树返回。用户工作区不参与：它的标记、filter、被忽略的本地文件都影响不到读到的内容。
  * 既不重算、也没有授权文件时没有要读的文件，直接返回 t0。
  */
-async function isolatedRegen(t0) {
+async function isolatedRegen(base, t0) {
   const regen = !args.has('--no-regen');
-  const grants = GRANT_FILES.some((file) => show(t0, file) !== undefined || show(MAIN, file) !== undefined);
+  const grants = GRANT_FILES.some((file) => show(t0, file) !== undefined || show(base.main, file) !== undefined);
   if (!regen && !grants) return t0;
   const iso = await isolation.materializeTree(t0).catch((error) => fail(`写出待提交树失败：${error.message}`));
   console.log(`隔离重算：待提交树 ${t0.slice(0, 12)} 已逐字节写出到 ${iso.dir}`);
@@ -557,7 +613,7 @@ async function isolatedRegen(t0) {
       if (install.status !== 0) throw new Error('隔离目录里 pnpm install 失败');
     }
     if (grants)
-      await assignGrantVersion(iso.dir).catch((error) => {
+      await assignGrantVersion(base, iso.dir).catch((error) => {
         throw new Error(`授权版本定号失败：${error.message}\n请人工处理后运行 pnpm merge:main --continue`);
       });
     if (regen) regenerate(iso.dir);
@@ -574,26 +630,36 @@ async function isolatedRegen(t0) {
 }
 
 /**
- * 提交（DEC-501③）：用核对过的固定树 t1 直接 commit-tree（父提交 HEAD，合并进行中再加 MERGE_HEAD），update-ref 带旧值 CAS，
- * hooksPath 指向空目录，任何 hook 都没有机会改树；提交后断言 HEAD^{tree} = t1。随后清掉合并状态，
- * 把用户的索引与工作区从 t0 同步到 t1（只动重算 / 定号改了的文件）。
+ * 提交（DEC-501③，第 6 轮）：用核对过的固定树 t1 直接 commit-tree，父提交是基准的 head（合并时再加基准的 main），
+ * update-ref 更新基准的 ref、CAS 旧值是基准的 head——都不是此刻的 HEAD：期间有人提交、切分支或 reset，
+ * 提交前的检查或 update-ref 的 CAS 会拦下，非 0 退出，不重试、不并入。hooksPath 指向空目录，任何 hook 都没有机会改树；
+ * 提交后断言 HEAD^{tree} = t1。随后清掉合并状态，把用户的索引与工作区从 t0 同步到 t1（只动重算 / 定号改了的文件）。
  */
-function commitTree(t0, t1) {
-  const head = git('rev-parse', 'HEAD').trim();
-  const merging = mergeInProgress();
-  if (!merging && t1 === git('rev-parse', 'HEAD^{tree}').trim()) {
+function commitTree(base, t0, t1) {
+  requireBaseUnmoved(base, '提交前');
+  if (!base.merging && t1 === git('rev-parse', `${base.head}^{tree}`).trim()) {
     console.log('已是最新，无需提交');
     return false;
   }
   const noHooks = mkdtempSync(path.join(tmpdir(), 'merge-main-nohooks-'));
   try {
     const quiet = (...argv) => git('-c', `core.hooksPath=${noHooks}`, ...argv);
-    const parents = merging ? ['-p', head, '-p', git('rev-parse', 'MERGE_HEAD').trim()] : ['-p', head];
+    const parents = base.merging ? ['-p', base.head, '-p', base.main] : ['-p', base.head];
     const commit = quiet('commit-tree', t1, ...parents, '-m', COMMIT_MESSAGE).trim();
-    quiet('update-ref', '-m', `merge:main: ${COMMIT_MESSAGE}`, 'HEAD', commit, head);
+    const message = `merge:main: ${COMMIT_MESSAGE}`;
+    const cas = spawnSync(
+      'git',
+      ['-c', `core.hooksPath=${noHooks}`, 'update-ref', '-m', message, base.ref, commit, base.head],
+      { cwd: ROOT, encoding: 'utf8' },
+    );
+    if (cas.status !== 0)
+      fail(
+        `提交时 ${base.ref} 已不在 ${short(base.head)}（${cas.stderr.trim()}）：HEAD 在脚本运行期间被移动。\n${MOVED_HINT}`,
+      );
     const committed = git('rev-parse', 'HEAD^{tree}').trim();
-    if (committed !== t1) fail(`提交后的树 ${committed} 不是核对过的树 ${t1}（HEAD 已指向 ${commit}），请人工检查`);
-    if (merging) quiet('merge', '--quit');
+    if (committed !== t1)
+      fail(`提交后的树 ${committed} 不是核对过的树 ${t1}（${base.ref} 已指向 ${commit}），请人工检查`);
+    if (base.merging) quiet('merge', '--quit');
     const sync = spawnSync('git', ['-c', `core.hooksPath=${noHooks}`, 'read-tree', '-m', '-u', t0, t1], {
       cwd: ROOT,
       encoding: 'utf8',
@@ -611,12 +677,12 @@ function commitTree(t0, t1) {
   }
 }
 
-function resolveGenerated(files) {
+function resolveGenerated(base, files) {
   if (files.length) console.log(`生成物冲突取 main 版本（随后重算）：\n  ${files.join('\n  ')}`);
   for (const file of files) {
-    if (show(MAIN, file) === undefined) git('rm', '-q', '--', file);
+    if (show(base.main, file) === undefined) git('rm', '-q', '--', file);
     else {
-      git('checkout', MAIN, '--', file);
+      git('checkout', base.main, '--', file);
       git('add', '--', file);
     }
   }
@@ -636,22 +702,21 @@ function explainGraphDiff() {
   if (pending.length) console.log(`  待说明项（须在 PR 描述里逐条说明）：\n    ${pending.join('\n    ')}`);
 }
 
-async function check() {
-  const upToDate = gitOk('merge-base', '--is-ancestor', MAIN, 'HEAD');
+async function check(base) {
+  const upToDate = !base.merging;
   console.log(upToDate ? `当前分支已包含 ${MAIN}。` : `需要合并 ${MAIN}。`);
-  const base = git('merge-base', 'HEAD', MAIN).trim();
-  const conflicts = splitConflicts(upToDate ? [] : predictConflicts());
-  const grants = grantConflicts(conflicts.other, ['HEAD', base, MAIN]).map((g) => g.file);
+  const conflicts = splitConflicts(upToDate ? [] : predictConflicts(base));
+  const grants = grantConflicts(conflicts.other, revsOf(base)).map((g) => g.file);
   conflicts.other = conflicts.other.filter((f) => !grants.includes(f));
-  const registry = await registryConflicts(conflicts.other, ['HEAD', base, MAIN]);
+  const registry = await registryConflicts(conflicts.other, revsOf(base));
   const registryFiles = registry.resolved.map((r) => r.file);
   conflicts.other = conflicts.other.filter((f) => !registryFiles.includes(f));
   printConflicts(conflicts);
   if (grants.length) console.log(`授权版本冲突（合并时自动定号）：\n  ${grants.join('\n  ')}`);
   if (registryFiles.length) console.log(`登记类冲突（合并时自动取并集）：\n  ${registryFiles.join('\n  ')}`);
   printRegistryManual(registry.manual);
-  if (conflicts.other.length) printCountHint(countOnlyConflicts(conflicts.other, ['HEAD', base, MAIN]));
-  const plan = migrationPlan();
+  if (conflicts.other.length) printCountHint(countOnlyConflicts(conflicts.other, revsOf(base)));
+  const plan = migrationPlan(base);
   printPlan(plan);
   await printGrantPlan(base, upToDate);
   console.log(`生成物白名单：\n  ${GENERATED_PATHS.join('\n  ')}`);
@@ -659,27 +724,28 @@ async function check() {
   process.exit(conflicts.other.length || plan.identityProblems.length ? 1 : 0);
 }
 
-function startMerge() {
+function startMerge(base) {
   // 未跟踪文件也算：重算会读到、提交不含（F-133 第 4 轮），在开始合并前拦下，免得停在合并中途
   const dirty = git('status', '--porcelain').trimEnd();
   if (dirty) fail(`工作区有未提交的改动或未跟踪的文件，先提交、暂存或移走：\n${dirty}`);
-  if (gitOk('merge-base', '--is-ancestor', MAIN, 'HEAD')) return console.log(`已包含 ${MAIN}，只检查迁移编号与重算`);
-  spawnSync('git', ['merge', '--no-ff', '--no-commit', MAIN], { cwd: ROOT, stdio: 'inherit' });
-  if (!mergeInProgress() && !gitOk('merge-base', '--is-ancestor', MAIN, 'HEAD')) fail('git merge 失败');
+  if (!base.merging) return console.log(`已包含 ${MAIN}，只检查迁移编号与重算`);
+  // 合并的是基准里的 main 提交（不是此刻的 origin/main），MERGE_HEAD 就是 base.main
+  spawnSync('git', ['merge', '--no-ff', '--no-commit', base.main], { cwd: ROOT, stdio: 'inherit' });
+  if (!mergeInProgress()) fail('git merge 失败');
 }
 
 /** 冲突处理：生成物取 main、授权版本、登记类取并集、（可选）只改计数；剩下业务冲突就停下。 */
-async function resolveConflicts() {
+async function resolveConflicts(base) {
   const conflicts = splitConflicts(unmerged());
-  resolveGenerated(conflicts.generated);
-  const grants = conflicts.other.length ? grantConflicts(conflicts.other, [':2', ':1', ':3']) : [];
+  resolveGenerated(base, conflicts.generated);
+  const grants = conflicts.other.length ? grantConflicts(conflicts.other, revsOf(base)) : [];
   for (const { file, text } of grants) {
     writeRepo(file, text);
     git('add', '--', file);
   }
   if (grants.length) console.log(`授权版本冲突取 main 一侧（随后定号）：\n  ${grants.map((g) => g.file).join('\n  ')}`);
   let other = conflicts.other.filter((f) => !grants.some((g) => g.file === f));
-  const registry = await registryConflicts(other, [':2', ':1', ':3']);
+  const registry = await registryConflicts(other, revsOf(base));
   for (const { file, text } of registry.resolved) {
     writeRepo(file, text);
     git('add', '--', file);
@@ -688,7 +754,7 @@ async function resolveConflicts() {
     console.log(`登记类冲突取并集（两边新增项都保留）：\n  ${registry.resolved.map((r) => r.file).join('\n  ')}`);
   printRegistryManual(registry.manual);
   other = other.filter((f) => !registry.resolved.some((r) => r.file === f));
-  const countOnly = other.length ? countOnlyConflicts(other, [':2', ':1', ':3']) : [];
+  const countOnly = other.length ? countOnlyConflicts(other, revsOf(base)) : [];
   if (args.has('--take-ours-for-counts') && countOnly.length) {
     const resolved = resolveCountOnly(countOnly);
     other = other.filter((f) => !resolved.has(f));
@@ -701,28 +767,30 @@ async function resolveConflicts() {
 }
 
 async function main() {
-  if (git('rev-parse', '--abbrev-ref', 'HEAD').trim() === 'main') fail('不要在 main 上运行，请在自己的分支上运行');
   const continuing = args.has('--continue');
-  // --continue 接着一次已开始的合并：不再 fetch，核对与提交都对准开始合并时的 main（requireMergeHeadIsMain）
+  // --continue 接着一次已开始的合并：不再 fetch，核对与提交都对准开始合并时的 main（fixBase 要求 MERGE_HEAD = origin/main）
   if (!args.has('--no-fetch') && !(continuing && mergeInProgress())) git('fetch', '-q', 'origin', 'main');
-  if (args.has('--check')) return check();
+  if (args.has('--check')) return check(fixBase(false));
   refuseUnprovable('开始前');
-  if (!continuing) startMerge();
-  requireMergeHeadIsMain();
-  await resolveConflicts();
+  // 基准在这里固定一次（fetch 之后、动仓库之前），此后不再解析 HEAD / origin/main
+  const base = fixBase(continuing);
+  if (!continuing) startMerge(base);
+  requireBaseUnmoved(base, '开始合并后');
+  await resolveConflicts(base);
   requireWorktreeIsIndex('冲突处理后');
   refuseUnprovable('冲突处理后');
-  const plan = migrationPlan();
+  const plan = migrationPlan(base);
   printPlan(plan);
   if (plan.identityProblems.length)
     fail('保留迁移的快照身份重复（见上），未改号；人工处理后运行 pnpm merge:main --continue');
-  if (plan.changed) applyRenumber(plan);
+  if (plan.changed) applyRenumber(base, plan);
   // 此后不再碰仓库索引：t0 = 索引写出的树，重算 / 定号在隔离目录里做并写出 t1，核对与提交都只认这两棵树
   const t0 = git('write-tree').trim();
-  await verifyRegistries(t0, '重算前');
-  const t1 = await isolatedRegen(t0);
-  await verifyRegistries(t1, '提交前');
-  if (commitTree(t0, t1) && !args.has('--no-regen')) explainGraphDiff();
+  requireBaseUnmoved(base, '写出待提交树后');
+  await verifyRegistries(base, t0, '重算前');
+  const t1 = await isolatedRegen(base, t0);
+  await verifyRegistries(base, t1, '提交前');
+  if (commitTree(base, t0, t1) && !args.has('--no-regen')) explainGraphDiff();
 }
 
 await main();
