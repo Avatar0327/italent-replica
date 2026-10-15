@@ -107,17 +107,38 @@ test('AC-FE-R2a-15 合同设置按差异保存，回执须为本租户下一版�
 
 async function approvals(
   page: Page,
-  // 催办成功返回流程详情（respondOutcome → respondDetail）。
-  urge: () => object = () => ({ json: { id: instance, revision: 4, status: 'running' } }),
+  // 不传时按后端返回动作后的流程详情（respondOutcome → respondDetail）。
+  urge?: () => object,
   // null：流程详情读取失败。
   actions: string[] | null = ['urge', 'transfer', 'withdraw'],
 ) {
   const writes: Write[] = [];
+  // 写回执与之后的 GET 都是同一份完整详情：转交后原任务 transferred、接收人新任务 pending，
+  // 撤销后状态 withdrawn、待办取消、无可用动作（#333 第 1 轮 P3、第 2 轮 P3-1）。
+  const current = { revision: 4, status: 'running', transferred: false };
+  const detail = () => ({
+    id: instance,
+    title: '合成合同变更申请',
+    revision: current.revision,
+    status: current.status,
+    approvalType: 'contract',
+    actions: current.status === 'running' ? (actions ?? []) : [],
+    recordsHidden: false,
+    form: { values: {} },
+    tasks: approvalTasks(current),
+    logs: [],
+  });
   await page.route('**/api/tenant/approval/**', (route) => {
     const url = new URL(route.request().url());
     if (route.request().method() !== 'GET') {
       capture(writes, route.request());
-      const { status = 200, json } = (url.pathname.endsWith('/urge') ? urge() : { json: {} }) as {
+      const urging = url.pathname.endsWith('/urge');
+      if (!urging) {
+        current.revision += 1;
+        current.transferred ||= url.pathname.endsWith('/transfer');
+        current.status = url.pathname.endsWith('/withdraw') ? 'withdrawn' : 'running';
+      }
+      const { status = 200, json } = (urging && urge ? urge() : { json: detail() }) as {
         status?: number;
         json: unknown;
       };
@@ -128,29 +149,34 @@ async function approvals(
         json: {
           items:
             url.searchParams.get('businessId') === requestId
-              ? [{ id: instance, title: '合成合同变更申请', status: 'running', approvalType: 'contract', revision: 4 }]
+              ? [
+                  {
+                    id: instance,
+                    title: '合成合同变更申请',
+                    approvalType: 'contract',
+                    revision: current.revision,
+                    status: current.status,
+                  },
+                ]
               : [],
         },
       });
     if (!actions) return route.fulfill({ status: 500, json: { error: { code: 'INTERNAL', message: '合成错误' } } });
-    return route.fulfill({
-      json: {
-        id: instance,
-        title: '合成合同变更申请',
-        revision: 4,
-        status: 'running',
-        approvalType: 'contract',
-        actions,
-        recordsHidden: false,
-        form: { values: {} },
-        tasks: [{ id: task, nodeName: '合成审批节点', status: 'pending', assigneeUserId: user }],
-        logs: [],
-      },
-    });
+    return route.fulfill({ json: detail() });
   });
   await setupContracts(page);
   await page.getByRole('button', { name: '审批中合同协议', exact: true }).click();
   return writes;
+}
+const receiverTask = '50000000-0000-4000-8000-0000000000a2';
+function approvalTasks(current: { status: string; transferred: boolean }) {
+  const open = current.status === 'running' ? 'pending' : 'cancelled';
+  const own = { id: task, nodeName: '合成审批节点', assigneeUserId: user };
+  if (!current.transferred) return [{ ...own, status: open }];
+  return [
+    { ...own, status: 'transferred' },
+    { id: receiverTask, nodeName: '合成审批节点', status: open, assigneeUserId: user },
+  ];
 }
 const row = (page: Page, label: string) => page.locator('.ant-table').getByRole('button', { name: label, exact: true });
 
@@ -171,7 +197,8 @@ test('AC-FE-R2a-16 审批中行内催办 / 转交 / 撤销复用审批中心命�
   expect(writes.map(({ path, revision }) => [path, revision])).toEqual([
     [`/api/tenant/approval/instances/${instance}/urge`, '4'],
     [`/api/tenant/approval/tasks/${task}/transfer`, '4'],
-    [`/api/tenant/approval/instances/${instance}/withdraw`, '4'],
+    // 撤销前重读详情，按转交后的新版本提交。
+    [`/api/tenant/approval/instances/${instance}/withdraw`, '5'],
   ]);
   expect(writes[1]!.body).toEqual({ comment: null, toUserId: user });
 });

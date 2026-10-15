@@ -21,6 +21,7 @@ import {
   type InstanceView,
 } from './AC-APV-support.js';
 import { cmd, tenantApi } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const database = useTestDb();
 const BASE = '/api/tenant/approval';
@@ -372,7 +373,7 @@ describe('F10：审批侧撤回按真实创建人维度判断数据范围', () =
     const world = await permissionAdmin(w);
     const user = await w.member('只看本人创建的 HR');
     const objectCode = MODULE_OBJECTS.employmentRecord.code;
-    const profile = await createProfile(world, `apvf10${user.slice(0, 6)}`);
+    const profile = await createProfile(world, `apvf10${uniqueSuffix()}`);
     const set = await setObjectPermission(
       world,
       profile,
