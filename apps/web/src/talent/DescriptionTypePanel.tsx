@@ -18,7 +18,7 @@ const pick = (item: DescriptionType) => readFields(item, ['name', 'enabled', 'di
 const editDraft = (item: DescriptionType): Draft => ({ ...pick(item), original: item });
 
 /**
- * 发展建议类型（DEC-281④）：发展建议“类型”下拉的数据源，租户可配置；开通时预置样本“行动建议”（完整选项未取证 🟡）。
+ * 发展建议类型（DEC-281④）：发展建议“类型”下拉的数据源，租户可配置；开通时预置原站 5 种（DEC-514②）。
  * 停用的类型不能新选用，已有发展建议保留；被使用的类型不能删除。没有组织字段：只认看全部或创建人（DEC-121）。
  */
 export function DescriptionTypePanel({ tenantId }: { tenantId: string }) {

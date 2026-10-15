@@ -1,7 +1,7 @@
 /**
  * DEC-281⑨⑩（`23` §7 ③；R1-T17 开通预置）：开通租户时预置“人才标准管理员（人才标准）”身份——人才标准应用的全部对象、
  * 全部功能；可见数据按管理单元控制，数据范围仍默认空，不预置看全部。唯一例外是没有组织字段的发展建议类型字典，
- * 按 DEC-121 同口径预置看全部（否则管理员无法维护下拉选项）；开通时同时预置样本类型“行动建议”（🟡 完整选项未取证）。
+ * 按 DEC-121 同口径预置看全部（否则管理员无法维护下拉选项）；开通时同时预置原站 5 种发展建议类型（DEC-514②，名称与顺序的逐项断言见 AC-TC-F156）。
  */
 import { grantMembership } from '@italent/db';
 import { TALENT_APP, TALENT_OBJECTS } from '@italent/domain';
@@ -14,6 +14,7 @@ import { assignTalentMou, createMou, createOrg, TC_BASE, TC_NOW } from './AC-TC-
 
 const testDb = useTestDb();
 const clock = () => TC_NOW;
+const PRESET_NAMES = ['误区行为', '反思问题', '原因探析和改进指引', '行动建议', '推荐阅读'];
 
 interface ProfileDetail {
   apps: string[];
@@ -85,7 +86,7 @@ describe('DEC-281⑩ 开通预置“人才标准管理员”身份', () => {
     }
   });
 
-  it('开通时预置样本类型“行动建议”；授予身份并选管理单元后，只看到管理单元内的数据', async () => {
+  it('开通时预置原站 5 种发展建议类型；授予身份并选管理单元后，只看到管理单元内的数据', async () => {
     const { db } = testDb();
     const member = await newUser(db, 'tc-preset-member');
     await grantMembership(db, { tenantId: result.tenant.id, userId: member.id, expectedRevision: 0 }, cmd());
@@ -95,13 +96,11 @@ describe('DEC-281⑩ 开通预置“人才标准管理员”身份', () => {
 
     const options = await api.request('GET', `${TC_BASE}/candidates/description-types`, as);
     expect(options.status, await options.clone().text()).toBe(200);
-    expect(((await options.json()) as { items: { name: string }[] }).items.map((item) => item.name)).toEqual([
-      '行动建议',
-    ]);
+    const optionItems = ((await options.json()) as { items: { name: string }[] }).items;
+    expect(optionItems.map((item) => item.name)).toEqual(PRESET_NAMES);
     const dictionary = await api.request('GET', `${TC_BASE}/description-types`, as);
-    expect(((await dictionary.json()) as { items: { name: string }[] }).items.map((item) => item.name)).toEqual([
-      '行动建议',
-    ]);
+    const dictionaryItems = ((await dictionary.json()) as { items: { name: string }[] }).items;
+    expect(dictionaryItems.map((item) => item.name)).toEqual(PRESET_NAMES);
 
     const inside = await createOrg(fixture, asAdmin, '预置范围内');
     const outside = await createOrg(fixture, asAdmin, '预置范围外');
