@@ -2,8 +2,8 @@ import { test, expect, user } from './fixtures.js';
 
 for (const entry of [
   { path: '/staff', menu: '员工', note: '员工列表使用紧凑表格', button: '高级筛选' },
-  { path: '/transfer', menu: '调动管理', note: '调动管理无独立面包屑', heading: '调动中员工' },
-  { path: '/approval', menu: '审批中心', note: '审批中心左侧分待处理', heading: '待处理' },
+  { path: '/transfer', menu: '调动管理', note: '调动管理为横向三个视图', button: '调动中员工' },
+  { path: '/approval', menu: '审批中心', note: '我的待办左侧为搜索', heading: '待处理' },
 ]) {
   test(`AC-FE-R1c-20 合 main 保留 ${entry.path} 的页面、菜单和注释`, async ({ page }) => {
     // 从不同地址切换，避免 waitForURL 在身份跳转前因旧地址已匹配而提前结束。

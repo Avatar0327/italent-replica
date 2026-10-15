@@ -2,6 +2,9 @@ import type { ApplicationCommandRunner } from './application-command.js';
 import { useState } from 'react';
 import { LinkagePanel } from '../../transfer/LinkagePanel.js';
 import { useLinkageDetail } from '../../transfer/useLinkage.js';
+import { HrTransferForm } from '../../transfer/HrTransferForm.js';
+import type { HrFormMode } from '../../transfer/hr-form-model.js';
+import type { TransferAction, TransferFormProps } from '../../transfer/types.js';
 import { TransferForm } from './TransferForm.js';
 import { text } from '../../transfer/messages.js';
 import { useTransferForm } from './useTransferForm.js';
@@ -10,8 +13,11 @@ type TransferApplicationProps = {
   initiator: 'hr' | 'employee' | 'manager';
   hrScope?: string;
   runCommand?: ApplicationCommandRunner;
+  /** HR 调动管理全页表单：按入口（他人调动申请 / 调动）与写权限决定区块与按钮；员工、经理入口不传。 */
+  hrForm?: { mode: HrFormMode; writable: boolean; onCancel: () => void };
 };
-export function TransferApplication({ tenantId, initiator, runCommand, hrScope }: TransferApplicationProps) {
+export function TransferApplication(props: TransferApplicationProps) {
+  const { tenantId, initiator, runCommand, hrScope, hrForm } = props;
   const state = useTransferForm(tenantId, initiator, undefined, runCommand, hrScope);
   if (hrScope && state.processing) return <p role="status">{text.processing}</p>;
   if (hrScope && state.saved) return <p role="status">{state.commandNotice}</p>;
@@ -35,7 +41,8 @@ export function TransferApplication({ tenantId, initiator, runCommand, hrScope }
       )}
       {state.loadingPreview && <p role="status">{text.loading}</p>}
       {!state.model.employees.length && state.model.catalog.today && <p>{text.noEmployees}</p>}
-      <TransferForm
+      <FormBody
+        hrForm={hrForm}
         model={state.model}
         busy={locked}
         actionsDisabled={state.loadingPreview}
@@ -87,6 +94,15 @@ export function TransferApplication({ tenantId, initiator, runCommand, hrScope }
       )}
     </section>
   );
+}
+
+/** HR 入口按区块与入口按钮渲染；写权限不足时连 onAction 也不转发，避免绕过按钮禁用发出写请求。 */
+function FormBody({ hrForm, ...props }: TransferFormProps & { hrForm: TransferApplicationProps['hrForm'] }) {
+  if (!hrForm) return <TransferForm {...props} />;
+  const onAction = (action: TransferAction) => {
+    if (hrForm.writable) props.onAction?.(action);
+  };
+  return <HrTransferForm {...props} {...hrForm} onAction={onAction} />;
 }
 
 function CommandRecovery({ state }: { state: ReturnType<typeof useTransferForm> }) {

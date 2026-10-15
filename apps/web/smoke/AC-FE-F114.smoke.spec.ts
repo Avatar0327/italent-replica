@@ -21,7 +21,7 @@ test('AC-FE-F114 首屏一次快照，失败可重试且 401 显示登录态', a
   expect(calls).toEqual(['/api/tenant/permission/me/snapshot']);
   status = 200;
   await page.getByRole('button', { name: '重新加载', exact: true }).click();
-  await expect(page.locator('.approval-list-panel')).toBeVisible();
+  await expect(page.locator('.approval-todo')).toBeVisible();
   expect(calls.filter((path) => path === '/api/tenant/permission/me/snapshot')).toEqual(
     Array(2).fill('/api/tenant/permission/me/snapshot'),
   );
