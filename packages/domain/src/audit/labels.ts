@@ -79,6 +79,12 @@ const OBJECTS: Readonly<Record<string, AuditObjectMeta>> = {
   permission_profile: { label: '身份', app: ENTERPRISE },
   permission_grant: { label: '用户授权', app: ENTERPRISE },
   permission_mou: { label: '管理单元', app: ENTERPRISE },
+  // F-141 ⑤（DEC-500）：数据范围相关对象；筛选仍按编码（audit/routes.ts），中文名只用于展示
+  permission_user_app_scope: { label: '用户数据范围', app: ENTERPRISE },
+  permission_identity_scope: { label: '身份看全部范围', app: ENTERPRISE },
+  permission_scope_policy: { label: '数据范围策略', app: ENTERPRISE },
+  permission_scope_app: { label: '数据范围应用', app: ENTERPRISE },
+  permission_dynamic_org_grant: { label: '动态组织授权', app: ENTERPRISE },
   license_pool: { label: '许可', app: ENTERPRISE },
   audit_retention: { label: '日志保留期', app: ENTERPRISE },
   'survey360-settings': { label: '360设置', app: SURVEY360 },

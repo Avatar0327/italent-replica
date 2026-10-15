@@ -32,6 +32,8 @@ import {
   isAdminRole,
   type ObjectPermission,
   type PermissionSubject,
+  EVALUATION_APP,
+  systemAdminDictionaryPermissions,
 } from '@italent/domain';
 
 export async function loadAdminRoles(tx: Tx, userId: string): Promise<AdminRole[]> {
@@ -132,5 +134,13 @@ export async function loadSubject(
 ): Promise<PermissionSubject> {
   const adminRoles = await loadAdminRoles(tx, userId);
   const objectPermissions = await loadGrantedObjectPermissions(tx, userId, objectCode, managerQuery);
+  // DEC-503：企业设置层的系统管理员在评定三个字典上有完整功能权限（“看全部”由 scope-resolver 同一份清单给出）；
+  // 只限这三个对象，不是对业务对象的隐式管理员旁路。
+  if (adminRoles.includes('system_admin'))
+    objectPermissions.push(
+      ...systemAdminDictionaryPermissions()
+        .filter((permission) => !objectCode || permission.objectCode === objectCode)
+        .map((permission) => objectPermissionSets({ ...permission, profileApps: [EVALUATION_APP] })),
+    );
   return { adminRoles, objectPermissions };
 }

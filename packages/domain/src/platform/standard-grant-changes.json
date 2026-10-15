@@ -1,5 +1,5 @@
 {
-  "reason": "",
-  "add": [],
+  "reason": "F-141（DEC-500）：新增 IDP 管理员 / 员工 / 经理三个标准身份（DEC-503：评定字典的看全部不进标准身份，不在此列）",
+  "add": ["standard_idp_admin/*", "standard_idp_employee/*", "standard_idp_manager/*"],
   "remove": []
 }

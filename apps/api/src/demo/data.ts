@@ -226,3 +226,10 @@ export const DEMO_PERSONA_HEADS: Readonly<Record<OrgKey, string>> = {
 export const DEMO_HRBP_KEY = 'hr';
 
 export const DEMO_TRANSFER_PROCESS_CODE = 'DEMO_TRANSFER';
+
+/** 任职资格“层级”候选（F-141，DEC-500）：任职级别的层级下拉来源；演示用的通用三档，名称在租户内唯一。 */
+export const DEMO_QUALIFICATION_LAYERS: readonly { readonly name: string; readonly displayOrder: number }[] = [
+  { name: '高层', displayOrder: 1 },
+  { name: '中层', displayOrder: 2 },
+  { name: '基层', displayOrder: 3 },
+];

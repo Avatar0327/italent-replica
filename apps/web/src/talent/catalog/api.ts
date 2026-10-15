@@ -1,4 +1,11 @@
-import { newCommand, pageQuery, type ApiClient, type PageRequest, type PageResult } from '../../foundation/client.js';
+import {
+  newCommand,
+  pageQuery,
+  type ApiClient,
+  type Command,
+  type PageRequest,
+  type PageResult,
+} from '../../foundation/client.js';
 import type { Resource, Row } from './types.js';
 import { m } from './messages.js';
 
@@ -41,22 +48,43 @@ export function validateValues(resource: Resource, values: Record<string, unknow
     if (!pattern.test(values.code)) throw new Error(m.invalidCode);
   }
   if (
-    'displayOrder' in values &&
+    values.displayOrder !== undefined &&
+    values.displayOrder !== null &&
     (!Number.isInteger(values.displayOrder) ||
       Number(values.displayOrder) < 0 ||
       Number(values.displayOrder) > 1_000_000)
   )
     throw new Error(m.invalidOrder);
 }
+/** 内核算出的命令体 → 请求体：清空（undefined）只对可清空且已有值的字段发 null；创建空标准按契约提交空格集合。 */
+export function commandRequestBody(
+  resource: Resource,
+  original: Row | null,
+  nullable: string[],
+  body: Record<string, unknown>,
+) {
+  const sent = Object.fromEntries(
+    Object.entries(body).flatMap(([key, value]): [string, unknown][] =>
+      value !== undefined ? [[key, value]] : original && nullable.includes(key) ? [[key, null]] : [],
+    ),
+  );
+  // 标准的明细为整组替换；基础编辑绝不携带旧明细，创建空标准按已有契约提交空格集合。
+  if (!original && resource.module === 'qualification' && resource.key === 'standards') sent.details ??= [];
+  return sent;
+}
+
 export async function saveResource(
   api: ApiClient,
   resource: Resource,
   body: Record<string, unknown>,
   original: Pick<Row, 'id' | 'revision'> | null,
+  /** 表单提交内核（F-123）固定的命令：幂等键不变；没传时才新建（目录页以外的调用方）。 */
+  command?: Command,
 ) {
   return api.request<Row>(`${resourcePath(resource)}${original ? `/${original.id.toLowerCase()}` : ''}`, {
     method: original ? 'PATCH' : 'POST',
-    command: newCommand(body, original?.revision ?? 0),
+    // 内核固定命令 ID 与版本；请求体用这里转换后的（清空发显式 null）
+    command: command ? { ...command, body } : newCommand(body, original?.revision ?? 0),
   });
 }
 /** 候选逐页读取，不把未加载的尾页伪装成完整集合。 */

@@ -1,5 +1,10 @@
 import { records } from '../evaluation/model.js';
 import { m } from './messages.js';
+export type SurveyKind = 'activities' | 'questionnaires' | 'templates';
+/** 页签 → 后端路径（相对 /api/tenant/survey360）。题库页签对应后端的 questionnaire-templates，不是 templates。 */
+export function surveyPath(kind: SurveyKind): string {
+  return kind === 'templates' ? '/questionnaire-templates' : `/${kind}`;
+}
 export const validateQuestionnaireSelection = (ids: readonly string[]) =>
   ids.length >= 1 && ids.length <= 3 && new Set(ids).size === ids.length;
 const pick = (row: Record<string, unknown>, fields: string[]) =>

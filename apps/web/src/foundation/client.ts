@@ -98,6 +98,18 @@ function responseError(response: Response, payload: ErrorPayload) {
   );
 }
 
+/**
+ * 拒绝原因的展示入口（F-141 缺陷 4，DEC-500 / DEC-464 / 473）：字段校验类、业务冲突类拒绝没有字段明细时，显示服务端给出的原因；
+ * 有字段明细由表单回填到字段，其余错误用底座文案。ApiError.message 保持默认文案（AC-FE-R1c-21），状态条、表单浮层、调动表单都经这里。
+ */
+export function rejectionMessage(error: unknown): string {
+  if (error instanceof ApiError) {
+    const rejection = error.kind === 'fields' || error.kind === 'conflict';
+    return rejection && error.fieldErrors.length === 0 ? error.serverMessage || error.message : error.message;
+  }
+  return error instanceof Error && error.message ? error.message : ui.uncertain;
+}
+
 export function newCommand<T>(body: T, revision?: number): Command<T> {
   // 固定本次命令的内容，调用方显式回查后才可重放同一命令；修改表单须新建命令。
   return { id: crypto.randomUUID(), body: structuredClone(body), revision };

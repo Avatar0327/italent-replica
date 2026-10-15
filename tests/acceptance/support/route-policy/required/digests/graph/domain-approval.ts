@@ -5,6 +5,7 @@
 import type { Graph } from '../../../evidence-graph.js';
 
 export const GRAPH: Graph = {
+  'packages/domain/src/approval/application-status.ts#applicationStateLabel': ['#APPLICATION_STATE_LABELS'],
   'packages/domain/src/approval/catalog.ts#APPROVAL_OBJECTS': [
     '#APPROVAL_INSTANCE_OBJECT',
     '#APPROVAL_PROCESS_OBJECT',

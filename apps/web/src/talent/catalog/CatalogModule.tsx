@@ -1,6 +1,7 @@
 import { Menu } from 'antd';
 import { useSearchParams } from 'react-router';
 import { PageState } from '../../foundation/PageState.js';
+import { FormCommands } from '../../foundation/forms/useCommandForm.js';
 import { ResourcePage } from './ResourcePage.js';
 import { usePermissions } from '../../foundation/Permissions.js';
 import { useEffect, useState } from 'react';
@@ -8,13 +9,20 @@ import type { Resource } from './types.js';
 import type { ReactNode } from 'react';
 import './catalog.css';
 
-export function CatalogModule({
-  resources,
-  extra,
-}: {
+interface CatalogProps {
   resources: Resource[];
   extra?: { key: string; title: string; objects: readonly string[]; content: ReactNode };
-}) {
+}
+/** 页面级提交状态放在最外层：高于页签、权限加载态与表单，关闭重开、切换页签都不会丢掉未确认的命令（F-123）。 */
+export function CatalogModule(props: CatalogProps) {
+  return (
+    <FormCommands>
+      <CatalogContent {...props} />
+    </FormCommands>
+  );
+}
+
+function CatalogContent({ resources, extra }: CatalogProps) {
   const [query, setQuery] = useSearchParams();
   const entries = [...resources.map((item) => ({ ...item, objects: [item.object] })), ...(extra ? [extra] : [])];
   const permissions = usePermissions();

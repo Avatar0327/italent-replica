@@ -1,7 +1,7 @@
 import { linkagePayload, sourceDepartment } from './linkage-api.js';
 import { jobReferences, text } from './messages.js';
 import type { Choice, TransferAction, TransferBusiness, TransferFormModel, TransferPreview } from './types.js';
-import { ApiError, createApiClient } from '../foundation/client.js';
+import { ApiError, createApiClient, rejectionMessage } from '../foundation/client.js';
 
 export const EMPLOYMENT_API = '/api/tenant/employment';
 export const TRANSFER_API = `${EMPLOYMENT_API}/transfers`;
@@ -41,9 +41,8 @@ export async function transferRequest<T>(tenantId: string, path: string, options
   }
 }
 function transferErrorMessage(error: ApiError) {
-  // DEC-464 / DEC-473：无字段明细的业务拒绝保留原因；刷新与其他错误仍使用底座文案。
-  const rejection = error.kind === 'fields' || error.kind === 'conflict';
-  return rejection && error.fieldErrors.length === 0 ? error.serverMessage || error.message : error.message;
+  // DEC-464 / DEC-473：无字段明细的业务拒绝保留原因；刷新与其他错误仍使用底座文案（统一走底座的 rejectionMessage）。
+  return rejectionMessage(error);
 }
 export function previewInput(model: TransferFormModel) {
   return {

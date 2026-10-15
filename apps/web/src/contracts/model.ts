@@ -114,6 +114,19 @@ export const employmentColumns: Record<string, string> = {
   job: 'postId',
   post: 'positionId',
 };
+/** 入职缺失行里不属于 employment 摘要的人员列（姓名、工号）：与 employmentColumns 一起构成七个人员列的另外几列（邮箱是 stubColumns）。 */
+export const missingPersonColumns = new Set(['name', 'code']);
+/**
+ * 列表某列是否显示（唯一的列判定）：后端未提供的占位列与入职缺失的人员列不受合同对象字段清单过滤——
+ * 入职缺失的行是人员，不是合同；其余按合同对象的可见字段。
+ */
+export function isColumnShown(view: View, key: string, allowed: readonly string[]) {
+  return (
+    stubColumns.has(key) ||
+    (view === 'missing' && (key in employmentColumns || missingPersonColumns.has(key))) ||
+    allowed.includes(key)
+  );
+}
 const common = ['name', 'email', 'number', 'companyId', 'typeId', 'termType', 'effectiveDate'];
 export function columnKeys(view: View) {
   if (view === 'missing') return ['name', 'email', 'code', 'entryDate', 'department', 'job', 'post'];
