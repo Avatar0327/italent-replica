@@ -55,6 +55,7 @@ async function atStage(w: PlanWorld, seq: number): Promise<PlanView> {
     plan = await w.readPlan(plan.id);
   }
   if (seq >= 3) {
+    await w.fillReview(plan);
     await w.submit(plan, 2, w.employee.userId);
     plan = await w.submit(plan, 2, w.manager.userId);
     const ended = plan.stages[1]!.endedOn!;
@@ -72,6 +73,8 @@ async function atStage(w: PlanWorld, seq: number): Promise<PlanView> {
 /** 员工提交、指导人驳回（到发起人）：实例退回。 */
 async function returnedAt(w: PlanWorld, seq: number) {
   let plan = await atStage(w, seq);
+  // 中期回顾员工节点提交时回顾必填（F-155）
+  if (seq === 2) await w.fillReview(plan);
   plan = await w.submit(plan, seq, w.employee.userId);
   const { instance, task } = await w.pendingTask(plan, seq, w.manager.userId);
   await w.ok(
