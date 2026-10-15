@@ -21,7 +21,7 @@ async function attempt(w: ExitWorld, statement: ReturnType<typeof sql>) {
   }
 }
 
-describe('R2-T03 B1a 离职数据表', () => {
+describe('AC-DM-19 / B-67 离职数据表（R2-T03 B1a，设计 §2.1 / §2.4）', () => {
   it('扩展行：非日期业务字段可改；业务、员工、周期、发起方式、转交时机快照不可改；不可删除', async () => {
     const w = await exitWorld(testDb().db, 'data-request');
     const { business } = await w.seedExitBusiness();

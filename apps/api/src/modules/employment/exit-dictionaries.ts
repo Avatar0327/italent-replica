@@ -122,7 +122,7 @@ export async function saveExitDictionaryEntry(
       .insert(t)
       .values({ ...input, tenantId: ctx.tenantId, createdAt: ctx.now, updatedAt: ctx.now })
       .returning(columns(kind));
-    await audit(tx, ctx, after!.id, null, after!);
+    await audit(tx, writerOf(ctx), after!.id, null, after!);
     return after!;
   }
   const input = parse(updateInput, raw);
@@ -141,21 +141,34 @@ export async function saveExitDictionaryEntry(
     .set({ ...changes, revision: before.revision + 1, updatedAt: ctx.now })
     .where(and(eq(t.tenantId, ctx.tenantId), eq(t.id, id)))
     .returning(columns(kind));
-  await audit(tx, ctx, id, before, after!);
+  await audit(tx, writerOf(ctx), id, before, after!);
   return after!;
 }
 
-async function audit(tx: Tx, ctx: EmploymentContext, id: string, before: object | null, after: object) {
+interface AuditWriter {
+  readonly tenantId: string;
+  readonly actorUserId: string | null;
+  readonly commandId: string;
+  readonly now: Date;
+}
+const writerOf = (ctx: EmploymentContext): AuditWriter => ({
+  tenantId: ctx.tenantId,
+  actorUserId: auditActor(ctx.userId),
+  commandId: ctx.commandId,
+  now: ctx.now,
+});
+
+async function audit(tx: Tx, writer: AuditWriter, id: string, before: object | null, after: object) {
   await recordAudit(tx, {
-    tenantId: ctx.tenantId,
-    actorUserId: auditActor(ctx.userId),
+    tenantId: writer.tenantId,
+    actorUserId: writer.actorUserId,
     action: EXIT_DICTIONARY_AUDIT.action,
     objectType: EXIT_DICTIONARY_AUDIT.objectType,
     objectId: id,
     before,
     after,
-    commandId: ctx.commandId,
-    occurredAt: ctx.now,
+    commandId: writer.commandId,
+    occurredAt: writer.now,
   });
 }
 
@@ -234,18 +247,7 @@ registerSeed({
         })
         .onConflictDoNothing()
         .returning(columns(preset.kind));
-      if (!after) continue;
-      await recordAudit(tx, {
-        tenantId: write.tenantId,
-        actorUserId: write.actorUserId,
-        action: EXIT_DICTIONARY_AUDIT.action,
-        objectType: EXIT_DICTIONARY_AUDIT.objectType,
-        objectId: after.id,
-        before: null,
-        after,
-        commandId: write.commandId,
-        occurredAt: write.now,
-      });
+      if (after) await audit(tx, write, after.id, null, after);
     }
   },
 });

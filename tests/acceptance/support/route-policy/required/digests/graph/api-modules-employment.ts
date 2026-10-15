@@ -331,7 +331,6 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/exit-dictionaries.ts#audit': [
     'apps/api/src/audit/record.ts#recordAudit',
     '#EXIT_DICTIONARY_AUDIT',
-    'apps/api/src/system-actor.ts#auditActor',
   ],
   'apps/api/src/modules/employment/exit-dictionaries.ts#columns': ['#TABLES'],
   'apps/api/src/modules/employment/exit-dictionaries.ts#exitDictionaryKind': [
@@ -362,7 +361,9 @@ export const GRAPH: Graph = {
     '#lockDictionary',
     '#parse',
     '#updateInput',
+    '#writerOf',
   ],
+  'apps/api/src/modules/employment/exit-dictionaries.ts#writerOf': ['apps/api/src/system-actor.ts#auditActor'],
   'apps/api/src/modules/employment/exit-routes.ts#route:GET /exits/dictionaries/:dict': [
     'apps/api/src/modules/employment/context.ts#readContext',
     'apps/api/src/modules/employment/exit-dictionaries.ts#exitDictionaryKind',
