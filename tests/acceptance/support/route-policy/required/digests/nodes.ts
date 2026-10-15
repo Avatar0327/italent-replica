@@ -4949,7 +4949,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'packages/domain/src/evaluation/catalog.ts#SYSTEM_FIELDS': ['8d9baab08926', 'e3b0c44298fc'],
   'packages/domain/src/evaluation/catalog.ts#crud': ['3cb768b4b1f6', 'e3b0c44298fc'],
   'packages/domain/src/evaluation/catalog.ts#object': ['551c4dba1ef8', 'c177702b8943'],
-  'packages/domain/src/evaluation/catalog.ts#systemAdminDictionaryPermissions': ['6528809fe205', 'b42c96c4009d'],
+  'packages/domain/src/evaluation/catalog.ts#systemAdminDictionaryPermissions': ['ce1da366cac3', 'b42c96c4009d'],
   'packages/domain/src/evaluation/catalog.ts#withButtons': ['3d0f0e534964', 'e3b0c44298fc'],
   'packages/domain/src/evaluation/catalog.ts#withoutDelete': ['d898bcf03a4e', 'e3b0c44298fc'],
   'packages/domain/src/evaluation/conditions.ts#ACTIVITY_CONDITION_OPERATORS': ['62a19f65de5c', 'e3b0c44298fc'],

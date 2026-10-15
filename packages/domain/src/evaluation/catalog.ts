@@ -124,17 +124,20 @@ export const EVALUATION_DICTIONARY_OBJECTS: readonly EvaluationObject[] = [
 ];
 
 /**
- * 系统管理员（企业设置层 system_admin）在三个评定字典上的对象权限：全部字段可见、非系统字段可编辑、全部数据操作与按钮。
- * 只是功能权限；“看全部”由数据范围解析另行给出（permission/scope-resolver.ts，同一份字典清单）。
+ * 系统管理员（企业设置层 system_admin）在三个评定字典上的对象权限：只给“看全部 + 新建”（DEC-503）——
+ * 全部字段可见、非系统字段可填（新建要填）、仅新建数据操作与新建按钮；修改、删除不自动给，
+ * 要改删须另行显式授予业务身份。“看全部”由数据范围解析另行给出（permission/scope-resolver.ts，同一份字典清单）。
  */
 export function systemAdminDictionaryPermissions(): ObjectPermission[] {
   return EVALUATION_DICTIONARY_OBJECTS.map((key) => {
     const definition = EVALUATION_OBJECTS[key];
     return {
       objectCode: definition.code,
-      dataOperations: { create: true, update: true, delete: true },
+      dataOperations: { create: true, update: false, delete: false },
       fields: definition.fields.map((f) => ({ fieldCode: f.code, view: true, edit: !f.system })),
-      buttons: definition.buttons.map((b) => ({ buttonCode: b.code, level: b.level })),
+      buttons: definition.buttons
+        .filter((b) => b.requires === 'create')
+        .map((b) => ({ buttonCode: b.code, level: b.level })),
     };
   });
 }

@@ -91,7 +91,7 @@ describe('AC-F141-dictionary-see-all 评定字典看全部给企业设置层 sys
     expect(grantRole.status, await grantRole.clone().text()).toBe(201);
     const as = { user: sys.id, tenant: world.tenant.id };
 
-    for (const [path, table] of DICTIONARIES) {
+    for (const [path, table, objectCode] of DICTIONARIES) {
       const made = await creator.request('POST', `/${path}`, { ifMatch: 0, body: { name: nameOf() } });
       expect(made.status, `${path} 造数据: ${await made.clone().text()}`).toBe(201);
       const row = (await made.json()) as { id: string; name: string; revision: number };
@@ -110,6 +110,12 @@ describe('AC-F141-dictionary-see-all 评定字典看全部给企业设置层 sys
       const after = await creator.request('GET', `/${path}/${row.id}`);
       expect(after.status).toBe(200);
       expect(await after.json(), `${path} 记录内容不变`).toMatchObject({ name: row.name, revision: row.revision });
+
+      // 服务端回传的按钮只有新建；前端只按它显示（改、删按钮不出现）
+      const me = await world.api.request('GET', `/api/tenant/permission/me/objects/${objectCode}`, as);
+      expect(me.status, await me.clone().text()).toBe(200);
+      const meBody = (await me.json()) as { buttons: { buttonCode: string }[] };
+      expect(meBody.buttons.map((b) => b.buttonCode), `${path} 可执行按钮`).toEqual(['create']);
 
       // 看全部与新建不受影响
       const list = await world.api.request('GET', `${BASE}/${path}?pageSize=50`, as);
