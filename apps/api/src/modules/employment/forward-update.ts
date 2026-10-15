@@ -19,7 +19,7 @@ import {
 } from './forward-rules.js';
 import { availableForwardChanges, referenceCheckDate } from './forward-references.js';
 import { appendForwardPayload, auditForwardTarget } from './forward-store.js';
-import { finalExecutionDateSql } from './activation-store.js';
+import { finalExecutionDateSql, QUEUE_SHIFTED_KINDS } from './activation-store.js';
 import { operationKey, plannedEffectiveDate } from './timeline.js';
 import type { EmploymentContext, EmploymentState } from './types.js';
 
@@ -76,12 +76,13 @@ async function sourceOrder(tx: Tx, ctx: EmploymentContext, source: ForwardSource
  * TODO(需取证 #44)：编辑同日在前的记录时，原站是否也更新同日在后的生效记录未实测（新增业务总在当日最后，不受影响）。
  */
 /**
- * DEC-195：未落地调动（及离职，设计 §5.0 D-9）投影到最终执行日期，重复改期始终取原计划日，再按操作序号比较。
+ * DEC-195：未落地调动（离职待 B3-1 与顺延关口一起启用，设计 §5.0 D-9）投影到最终执行日期，重复改期始终取原计划日，再按操作序号比较。
  * 最终执行日期只用 activation-store.ts `finalExecutionDateSql`（domain execution-order.ts 的镜像）。
  */
 function pendingAfterSource(ctx: EmploymentContext, source: ForwardSource): SQL {
   const planned = plannedEffectiveDate(ctx.tenantId, sql`b.id`, sql`p.effective_date`);
-  const executionDate = finalExecutionDateSql(sql`p.kind`, planned, tenantLocalDate(ctx.now, ctx.timezone));
+  const today = tenantLocalDate(ctx.now, ctx.timezone);
+  const executionDate = finalExecutionDateSql(sql`p.kind`, planned, today, QUEUE_SHIFTED_KINDS);
   const sourcePlanned = source.businessId
     ? plannedEffectiveDate(ctx.tenantId, sql`${source.businessId}::uuid`, sql`${source.effectiveDate}::date`)
     : sql`${source.effectiveDate}::date`;

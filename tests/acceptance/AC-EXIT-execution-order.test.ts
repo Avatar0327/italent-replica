@@ -8,7 +8,11 @@ import { CYCLE_OPENING_KINDS, compareExecutionOrder, EXECUTION_KINDS, finalExecu
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { dueQueue } from '../../apps/api/src/modules/employment/activation-service.js';
-import { finalExecutionDateSql, pendingActivations } from '../../apps/api/src/modules/employment/activation-store.js';
+import {
+  finalExecutionDateSql,
+  pendingActivations,
+  QUEUE_SHIFTED_KINDS,
+} from '../../apps/api/src/modules/employment/activation-store.js';
 import { resultRows } from './AC-ORG-people-support.js';
 import { activationWorld } from './AC-TRF-activation-support.js';
 import {
@@ -23,6 +27,8 @@ import {
 } from './AC-EXIT-queue-support.js';
 
 const database = useTestDb();
+/** 完整规则（调动与离职都顺延，B3-1 启用后的公开口径）；公开路径当前默认只顺延调动。 */
+const FULL_RULE = ['transfer', 'leave'] as const;
 
 describe('AC-DM-26：SQL 队列 ≡ 纯函数（含离职与多次迟到顺延）', () => {
   it('finalExecutionDateSql 与 finalExecutionDate 对全部 kind × 计划日 × 执行日逐点相等', async () => {
@@ -52,7 +58,7 @@ describe('AC-DM-26：SQL 队列 ≡ 纯函数（含离职与多次迟到顺延�
       const person = (await w.hired(`队列员工 ${round}`)).employee;
       const ids = await seedQueue(w, person.id, applications);
       const queue = await withTenant(w.db, w.session.tenant.id, (tx) =>
-        pendingActivations(tx, queueContext(w), person.id),
+        pendingActivations(tx, queueContext(w), person.id, FULL_RULE),
       );
       const expected = applications
         .map((application, index) => {
@@ -94,11 +100,31 @@ describe('AC-DM-26：SQL 队列 ≡ 纯函数（含离职与多次迟到顺延�
       { kind: 'transfer', versions: [manual(1, '2026-10-10')], submitSeq: 3001 },
     ]);
     const queue = await withTenant(w.db, w.session.tenant.id, (tx) =>
-      pendingActivations(tx, queueContext(w), person.employee.id),
+      pendingActivations(tx, queueContext(w), person.employee.id, FULL_RULE),
     );
     expect(queue.map((item) => item.id)).toEqual([transfer, exit]);
     expect(queue.map((item) => item.finalDate)).toEqual(['2026-10-18', '2026-10-18']);
     expect(queue.map((item) => item.plannedDate)).toEqual(['2026-10-10', '2026-10-16']);
+  });
+});
+
+describe('离职顺延排序的启用关口（QUEUE_SHIFTED_KINDS）', () => {
+  it('公开路径默认只顺延调动：离职仍按计划日排序，与实际落地日一致（B3-1 随顺延关口加入 leave）', async () => {
+    expect(QUEUE_SHIFTED_KINDS).toEqual(['transfer']);
+    const w = await activationWorld(database().db, 'exit-gate-default');
+    const person = await w.hired();
+    const [exit, transfer] = await seedQueue(w, person.employee.id, [
+      { kind: 'leave', versions: [manual(1, '2026-10-16')], submitSeq: 3100 },
+      { kind: 'transfer', versions: [manual(1, '2026-10-10')], submitSeq: 3101 },
+    ]);
+    const queue = await withTenant(w.db, w.session.tenant.id, (tx) =>
+      pendingActivations(tx, queueContext(w), person.employee.id),
+    );
+    // 与 main 相同：离职 10-16 在迟到调动（最终 10-18）之前
+    expect(queue.map((item) => [item.id, item.finalDate])).toEqual([
+      [exit, '2026-10-16'],
+      [transfer, '2026-10-18'],
+    ]);
   });
 });
 

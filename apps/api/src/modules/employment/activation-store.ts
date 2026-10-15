@@ -31,7 +31,7 @@ export interface PendingActivation {
   readonly effectiveDate: string;
   /** §5.0A 计划生效日（timeline.ts plannedEffectiveDate）：到期截取、同日先后与迟到判定的起点。 */
   readonly plannedDate: string;
-  /** §5.0 最终执行日期：若在租户今天落地，实际写入的生效日（队列第一排序键）。 */
+  /** §5.0 最终执行日期：若在租户今天落地，实际写入的生效日（队列第一排序键；离职在 B3-1 前不顺延，见 QUEUE_SHIFTED_KINDS）。 */
   readonly finalDate: string;
   /** 申请单上显式填写的调入部门 / 职位（含向后更新同步过来的值）；未填时为空，继承值由生效时解析。 */
   readonly departmentId: string | null;
@@ -62,21 +62,43 @@ export const pendingActivationState = (timezone: string) => sql`(s.state='approv
     AND NOT EXISTS (SELECT 1 FROM employment_outbox o WHERE o.tenant_id=b.tenant_id AND o.business_id=b.id
       AND o.event_type='employment.transfer.linked'))`;
 
+export type ShiftedKind = 'transfer' | 'leave';
+
 /**
- * 最终执行日期的 SQL 镜像（domain `finalExecutionDate`，设计 §5.0）：调动与离职按 greatest(计划日, 今天)
- * （resolveLateExecution / resolveLateLeave 的投影，DEC-272），其余 kind 按计划日不顺延。
+ * 最终执行日期的 SQL 镜像（domain `finalExecutionDate`，设计 §5.0）：`shifted` 里的 kind 按 greatest(计划日, 今天)
+ * （resolveLateExecution / resolveLateLeave 的投影，DEC-272），其余 kind 按计划日不顺延；默认调动与离职都顺延，与纯函数逐点等价。
  * `planned` 一律传 §5.0A 的计划生效日（`plannedEffectiveDate`），不再各处自读载荷日。
  */
-export function finalExecutionDateSql(kind: SQL, planned: SQL, today: string): SQL {
-  return sql`(CASE WHEN ${kind} IN ('transfer', 'leave')
-    THEN greatest(${planned}, ${today}::date) ELSE ${planned} END)`;
+export function finalExecutionDateSql(
+  kind: SQL,
+  planned: SQL,
+  today: string,
+  shifted: readonly ShiftedKind[] = ['transfer', 'leave'],
+): SQL {
+  const kinds = sql.join(
+    shifted.map((item) => sql`${item}`),
+    sql`, `,
+  );
+  return sql`(CASE WHEN ${kind}::text IN (${kinds}) THEN greatest(${planned}, ${today}::date) ELSE ${planned} END)`;
 }
 
+/**
+ * 公开路径（待生效队列排序、向后更新候选）当前按“最终执行日期”顺延的 kind。离职不在其中：实际顺延与落地（设计 §5.1 步骤 0，
+ * `activateExit` / `postponeLateExit`）在 B3-1 才实现，现在只排序会出现“队列说 10-18、落地仍写 10-16”的两套日期。
+ * B3-1 与顺延关口同一个 PR 把 'leave' 加进来；SQL ≡ 纯函数对离职的等价性已由 finalExecutionDateSql 默认参数的验收测试锁住。
+ */
+export const QUEUE_SHIFTED_KINDS: readonly ShiftedKind[] = ['transfer'];
+
 /** 一名员工的全部待生效业务，按生效顺序排列（未到期的也在内，调用方按业务日截取）。 */
-export async function pendingActivations(tx: Tx, ctx: EmploymentContext, employeeId: string) {
+export async function pendingActivations(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  shifted: readonly ShiftedKind[] = QUEUE_SHIFTED_KINDS,
+) {
   const today = tenantLocalDate(ctx.now, ctx.timezone);
   const planned = plannedEffectiveDate(ctx.tenantId, sql`b.id`, sql`p.effective_date`);
-  const finalDate = finalExecutionDateSql(sql`p.kind`, planned, today);
+  const finalDate = finalExecutionDateSql(sql`p.kind`, planned, today, shifted);
   const rows = rowsOf<PendingActivation>(
     await tx.execute(sql`
     SELECT b.id, b.employee_id AS "employeeId", b.revision, p.kind, p.effective_date::text AS "effectiveDate",
