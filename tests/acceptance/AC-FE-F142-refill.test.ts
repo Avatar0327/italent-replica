@@ -171,7 +171,8 @@ function Change() {
   const current = form.state?.latest?.values ?? organization;
   const [name, setName] = useState(organization.name);
   // 照 OrgEditor：名称与当前原单不同才出现“是否新增任职”；组织记录本身没有这个字段。
-  const rename = { ...field('name', '名称'), control: h(Input, { onChange: (event) => setName(event.target.value) }) };
+  const onChange = (event: { target: { value: string } }) => setName(event.target.value);
+  const rename = { ...field('name', '名称'), control: h(Input, { onChange }) };
   const choice = name.trim() !== current.name ? [field('addEmployment', '是否新增任职')] : [];
   return h(FormOverlay, {
     open: true,
