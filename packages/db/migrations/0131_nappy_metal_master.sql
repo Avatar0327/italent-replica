@@ -1,0 +1,2 @@
+ALTER TABLE "idp_plan_stages" DROP CONSTRAINT "idp_plan_stages_status";--> statement-breakpoint
+ALTER TABLE "idp_plan_stages" ADD CONSTRAINT "idp_plan_stages_status" CHECK ("idp_plan_stages"."status" IN ('pending', 'running', 'ended', 'terminated', 'failed'));
