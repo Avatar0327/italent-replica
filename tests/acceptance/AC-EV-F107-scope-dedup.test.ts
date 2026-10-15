@@ -82,9 +82,10 @@ describe('AC-EV-F107 活动权限范围去重计数（DEC-455④）', () => {
       const tid = w.tenant.id;
       await run(sql`INSERT INTO org_objects(id,tenant_id)
         SELECT md5(${tid}||${label}||g)::uuid,${tid} FROM generate_series(1,${count}) g`);
-      await run(sql`INSERT INTO org_versions(id,tenant_id,org_id,version_no,start_date,code,name,full_name)
+      // 停用叶子仍须计入权限范围（DEC-146），也避免本范围测试为两万个叶子重算无关的人员排序号。
+      await run(sql`INSERT INTO org_versions(id,tenant_id,org_id,version_no,start_date,code,name,full_name,enabled)
         SELECT md5(${tid}||${label}||'v'||g)::uuid,${tid},md5(${tid}||${label}||g)::uuid,1,'2025-01-01',
-        ${label}||g,'合成组织'||g,'合成组织'||g FROM generate_series(1,${count}) g`);
+        ${label}||g,'合成组织'||g,'合成组织'||g,false FROM generate_series(1,${count}) g`);
       // 批量造数后刷新统计，避免逐行排序触发器沿用小表计划反复全表扫描。
       await run(sql`ANALYZE org_objects`);
       await run(sql`ANALYZE org_versions`);
@@ -128,7 +129,6 @@ describe('AC-EV-F107 活动权限范围去重计数（DEC-455④）', () => {
       await run(sql`UPDATE org_settings SET business_enabled=true WHERE tenant_id=${w.tenant.id}`);
     });
     await leaves(chain[DEPTH - 1]!, 'F107small', LEAVES, ['admin']);
-    await leaves(w.orgB, 'F107large', LIMIT - 1, ['admin', 'business']);
   }, 120_000);
 
   it('AC-EV-F107 管理范围 21,055 行 / 2,110 个组织：列表、详情、新建、修改、重放和删除均成功', async () => {
@@ -189,13 +189,14 @@ describe('AC-EV-F107 活动权限范围去重计数（DEC-455④）', () => {
   });
 
   it('AC-EV-F107 跨行政 / 业务维度共 40,000 行但恰好 20,000 个组织，完整返回且允许读取', async () => {
+    await leaves(w.orgB, 'F107large', LIMIT - 1, ['admin', 'business']);
     await setRoots([...roots([w.orgB]), ...roots([w.orgB], 'business')]);
     const scope = await resolved();
     expect(scope.orgIds).toHaveLength(LIMIT);
     expect(new Set(scope.orgIds).size).toBe(LIMIT);
     expect(scope.orgIds).toContain(w.orgB);
     expect((await ok<ActivityView>(await op.request('GET', `${ACTIVITIES}/${outside.id}`))).name).toBe(outside.name);
-  });
+  }, 120_000);
 
   it('AC-EV-F107 去重后 20,001 个组织仍 413，不能在维度去重前截断而漏掉深层组织', async () => {
     await w.asOwner(async (run) => {
