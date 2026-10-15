@@ -9,6 +9,7 @@ import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { newUser, provision, provisioned, type ProvisionResult, seedOperator } from './support/platform-api.js';
 import { cmd, errorCode, tenantApi } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 
@@ -250,7 +251,7 @@ describe('AC-TEN-04 平台开通租户：标准预置下发', () => {
     );
     expect(events.find((e) => e.objectId === result.tenant.id)).toMatchObject({ actorUserId: operator.id });
 
-    const key = `provision-${result.tenant.id.slice(0, 8)}`;
+    const key = `provision-${uniqueSuffix()}`;
     const body = { firstAdminUserId: admin.id, exceptionAdminUserId: admin.id, code: `idem-${key}`, name: '幂等' };
     const first = await api.request('POST', '/api/platform/tenants', { user: operator.id, body, idempotencyKey: key });
     const replay = await api.request('POST', '/api/platform/tenants', { user: operator.id, body, idempotencyKey: key });

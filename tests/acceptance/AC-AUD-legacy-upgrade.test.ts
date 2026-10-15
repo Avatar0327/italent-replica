@@ -9,6 +9,7 @@ import { useTestDb } from '@italent/testkit';
 import { expect, it } from 'vitest';
 import { creatorOf } from '../../apps/api/src/modules/permission/scope-audit.js';
 import { auditApi } from './AC-AUD-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb({ migrateBefore: '_audit_log' });
 const NOW = '2026-10-01T01:00:00.000Z';
@@ -21,7 +22,7 @@ it('升级前的日志：字段 / 操作类型 / 对象 ID 筛选与展示一致
   const recordId = randomUUID();
   const orgId = randomUUID();
   await withPlatform(db, async (tx) => {
-    await tx.execute(sql`INSERT INTO tenants (id,code,name) VALUES (${tenantId},${`legacy-${tenantId.slice(0, 8)}`},
+    await tx.execute(sql`INSERT INTO tenants (id,code,name) VALUES (${tenantId},${`legacy-${uniqueSuffix()}`},
       '升级前租户')`);
     await tx.execute(sql`INSERT INTO users (id,email,display_name)
       VALUES (${userId},${`legacy-${userId}@example.com`},'升级前管理员')`);
@@ -76,7 +77,7 @@ it('PR #75 第三轮 P1-1：升级前只存变化字段的人员类日志按对�
   const subsetRecord = randomUUID();
   const orphanRecord = randomUUID();
   await withPlatform(db, (tx) =>
-    tx.execute(sql`INSERT INTO tenants (id,code,name) VALUES (${tenantId},${`legacy-p-${tenantId.slice(0, 8)}`},
+    tx.execute(sql`INSERT INTO tenants (id,code,name) VALUES (${tenantId},${`legacy-p-${uniqueSuffix()}`},
       '升级前人员租户')`),
   );
   await withTenant(db, tenantId, async (tx) => {

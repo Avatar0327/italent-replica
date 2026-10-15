@@ -459,7 +459,7 @@ export async function permissionWorldOf(w: PlanWorld): Promise<PermissionWorld> 
 
 /** TenantBase 身份：任职记录与组织全部字段可查看；orgIds 为 TenantBase 数据范围（含下级），空 = 缺省空范围。 */
 export async function grantTenantBaseView(pw: PermissionWorld, userId: string, orgIds: readonly string[]) {
-  const profile = await createProfile(pw, `tb-${userId.slice(0, 6)}`, { apps: ['TenantBase'] });
+  const profile = await createProfile(pw, `tb-${uniqueSuffix()}`, { apps: ['TenantBase'] });
   for (const definition of [MODULE_OBJECTS.employmentRecord, MODULE_OBJECTS.organization]) {
     const response = await setObjectPermission(
       pw,
