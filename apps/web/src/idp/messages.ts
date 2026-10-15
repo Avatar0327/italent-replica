@@ -270,6 +270,8 @@ export const t = {
     saveUnconfirmed: '回顾保存未确认，没有提交',
     planPending: '发展计划上有未确认的操作，没有提交',
     stageChanged: '当前阶段已变化，请刷新后再提交',
+    stageMoved: '阶段已变化：下面是上一阶段没有保存的草稿，仅供参考',
+    enterStage: '进入当前阶段',
   },
   denied: {
     title: '无权限查看当前发展计划~',

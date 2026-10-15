@@ -40,25 +40,69 @@ const lengthRule = (field: keyof ReviewValues) => ({
 });
 
 /**
+ * 提交在发同意之前、保存在发 PUT 之前停下（保存未确认、计划上有未确认命令、阶段已变、没有本人待办、读取失败）：同意没有发出，
+ * 按被拒收尾、不锁定（同 approvalRequest 的 ACTION_UNAVAILABLE），随后清掉命令、提示原因。
+ */
+const STOPPED = 'IDP_REVIEW_SUBMIT_STOPPED';
+const stop = (message: string): never => {
+  throw new ApiError(409, STOPPED, 'conflict', message);
+};
+
+/**
+ * 计划各版本上运行中的阶段（阶段 + 审批实例），按租户 + 计划记。后端开启、结束阶段都推进计划 revision
+ * （stage-service bumpPlan），版本定了阶段就定了；PUT 模块内容带 If-Match、按执行人当前阶段写，请求体不带阶段
+ * （execution-service saveModuleContent）。所以发 PUT 前按请求版本核对命令的阶段，旧阶段的草稿就写不进新阶段
+ * （F-164 第 3 轮 P2）。渲染与冲突重读读到的版本都记下；模块级保存，切换入口再回来仍在。
+ */
+const stagesAt = new Map<string, Map<number, string>>();
+const STAGES_KEPT = 20;
+type ReviewContext = { stageId: string; instanceId: string };
+const contextOf = (stage: Pick<Stage, 'id' | 'approvalInstanceId'>): ReviewContext => ({
+  stageId: stage.id,
+  instanceId: stage.approvalInstanceId ?? '',
+});
+const keyOf = (context: ReviewContext) => `${context.stageId}|${context.instanceId}`;
+function remember(scope: string, plan: PlanDetail) {
+  if (typeof plan.revision !== 'number') return;
+  const known = stagesAt.get(scope) ?? new Map<number, string>();
+  stagesAt.set(scope, known);
+  const running = plan.stages?.find((row) => row.status === 'running');
+  known.set(plan.revision, running ? keyOf(contextOf(running)) : '');
+  if (known.size > STAGES_KEPT) known.delete(Math.min(...known.keys()));
+}
+const stageAt = (scope: string, revision: number | undefined) =>
+  revision === undefined ? undefined : stagesAt.get(scope)?.get(revision);
+/** 已知最新版本上运行中的阶段。 */
+function newestStage(scope: string) {
+  const known = stagesAt.get(scope);
+  return known?.size ? known.get(Math.max(...known.keys())) : undefined;
+}
+
+/**
  * 回顾保存：F-142 提交内核，回顾写的是计划（带计划 revision），命令放在计划的恢复槽，动作记“回顾 + 模块”，
  * 阶段作为命令上下文存进槽里（F-147）；冲突按计划详情重读后由内核回填。保存是草稿，两项可以先空着。
  */
 function useReviewSave(props: ReviewProps, form: FormInstance<ReviewValues>) {
   const { plan, module, saved } = props;
   const api = useApiClient();
+  const scope = `${useSession().tenantId}/${plan.id}`;
+  remember(scope, plan);
   const command = forAction(useCommandForm(slotKey(`${IDP_API}/plans`, plan.id)), {
     action: 'review',
     moduleId: module.id,
   });
-  // 未完成的命令沿用它当初的阶段；阶段已切换时提交仍按原阶段核对（后端按当前阶段复核，变了会拒绝）。
-  const stageId = slotContext<{ stageId: string }>(command.state)?.stageId ?? props.stage.id!;
+  // 未完成的命令沿用它当初的阶段；阶段已切换时按 moved 让旧上下文失效，发 PUT 前再按版本核对。
+  const editing = slotContext<ReviewContext>(command.state) ?? contextOf(props.stage);
+  const stageId = editing.stageId;
   const baseline = stageReview(plan, module.id, stageId);
   useDraftRefill(command, REVIEW_FIELDS, form);
   const path = `${IDP_API}/plans/${plan.id}/modules/${module.id}/content`;
   const reload = () =>
     command.reread(async (id) => {
       const row = await api.request<PlanDetail>(`${IDP_API}/plans/${id ?? plan.id}`);
-      return { ...rereadReceipt(row, plan.id), values: stageReview(row, module.id, stageId) };
+      const receipt = rereadReceipt(row, plan.id);
+      remember(scope, row);
+      return { ...receipt, values: stageReview(row, module.id, stageId) };
     });
   const save = async (values: ReviewValues) => {
     if (command.locked) return false;
@@ -70,14 +114,15 @@ function useReviewSave(props: ReviewProps, form: FormInstance<ReviewValues>) {
       revision: plan.revision!,
       businessId: plan.id,
       patchOnly: true,
-      context: { stageId },
+      context: editing,
       // 回执是完整计划详情：同一计划且版本前进才算保存成功，否则按结果未知锁定（F-164 第 1 轮 P2-3）
-      send: async (request) =>
-        saveReceipt(
-          await api.request<PlanDetail>(path, { method: 'PUT', command: request }),
-          plan.id,
-          request.revision,
-        ),
+      send: async (request) => {
+        // 保存、提交都经这里：请求版本上的运行中阶段须是本命令的阶段与审批实例，否则不发（按被拒收尾）
+        const sent = slotContext<ReviewContext>(command.peek());
+        if (!sent || stageAt(scope, request.revision) !== keyOf(sent)) stop(t.reviewForm.stageChanged);
+        const row = await api.request<PlanDetail>(path, { method: 'PUT', command: request });
+        return saveReceipt(row, plan.id, request.revision);
+      },
     });
     if (result.status === 'done') saved();
     return result.status === 'done';
@@ -91,21 +136,27 @@ function useReviewSave(props: ReviewProps, form: FormInstance<ReviewValues>) {
     const stage = row && current ? reviewStage(row, current) : undefined;
     return stage?.id === stageId && stage.approvalInstanceId === instanceId;
   };
-  return { command: { ...command, reload }, baseline, save, unsettled, sameStage };
+  /**
+   * 正在编辑的阶段已不是已知最新版本上的阶段（冲突重读或计划刷新发现阶段已变）：旧编辑上下文失效，
+   * 草稿锁定只供参考，显式进入当前阶段后才能再写。处理中、结果未知、冲突未重读的命令仍按原规则锁定。
+   */
+  const state = command.state;
+  const unread = state?.status === 'conflict' && (!state.latest || !!state.reading || !!state.readError);
+  const newest = newestStage(scope);
+  const moved = !['submitting', 'unknown'].includes(command.status) && !unread && newest !== keyOf(editing);
+  /** 进入当前阶段：放下旧阶段的命令与草稿，表单换成当前阶段的内容，并刷新计划（阶段变了随之重建表单）。 */
+  const enter = () => {
+    command.confirm();
+    command.clear();
+    form.setFieldsValue(stageReview(plan, module.id, props.stage.id));
+    saved();
+  };
+  return { command: { ...command, reload }, baseline, save, unsettled, sameStage, moved, enter };
 }
 
 /** 本人在该实例上可以“同意”的在办待办；不在回顾节点、不是处理人、已提交时没有。 */
 const approvableTask = (detail: ApprovalDetail, userId: string | undefined) =>
   detail.actions.includes('approve') ? myPendingTask(detail, userId) : undefined;
-
-/**
- * 提交在发同意之前停下（保存未确认、计划上有未确认命令、阶段已变、没有本人待办、读取失败）：同意没有发出，
- * 按被拒收尾、不锁定（同 approvalRequest 的 ACTION_UNAVAILABLE），随后清掉命令、提示原因。
- */
-const STOPPED = 'IDP_REVIEW_SUBMIT_STOPPED';
-const stop = (message: string): never => {
-  throw new ApiError(409, STOPPED, 'conflict', message);
-};
 
 /**
  * 回顾提交 = 同意本人在本阶段审批实例上的待办（POST /approval/tasks/:taskId/approve，If-Match 实例 revision）。
@@ -192,10 +243,10 @@ export function ReviewForm(props: ReviewProps) {
   const session = useSession();
   const names = useNames('employee', [session.employeeId]);
   const [form] = Form.useForm<ReviewValues>();
-  const { command, baseline, save, unsettled, sameStage } = useReviewSave(props, form);
+  const { command, baseline, save, unsettled, sameStage, moved, enter } = useReviewSave(props, form);
   const instanceId = props.stage.approvalInstanceId ?? undefined;
   const { approval, approve, ready } = useReviewApproval(instanceId, plan.revision, props.saved);
-  const locked = command.locked || approval.locked || !!approval.blocked;
+  const locked = command.locked || approval.locked || !!approval.blocked || moved;
   const [notice, setNotice] = useState<string>();
   const validated = () => (locked ? Promise.resolve(undefined) : form.validateFields().catch(() => undefined));
   const onSave = async () => {
@@ -230,7 +281,16 @@ export function ReviewForm(props: ReviewProps) {
         <span>{names(session.employeeId)}</span>
         {plan.currentNodeName && <Tag color="blue">{display(plan.currentNodeName)}</Tag>}
       </Space>
-      <CommandStatus submission={command} labels={LABELS} />
+      {moved ? (
+        <Space className="idp-review-moved">
+          <Typography.Text type="warning">{t.reviewForm.stageMoved}</Typography.Text>
+          <Button size="small" onClick={enter}>
+            {t.reviewForm.enterStage}
+          </Button>
+        </Space>
+      ) : (
+        <CommandStatus submission={command} labels={LABELS} />
+      )}
       <CommandStatus submission={approval} />
       {notice && <Typography.Text type="warning">{notice}</Typography.Text>}
       <FormLock locked={locked}>

@@ -458,6 +458,161 @@ test('AC-FE-F164-19 提交途中计划上另有写入结果未知（同页制定
   expect(errors).toEqual([]);
 });
 
+// 第 3 轮 P2：旧阶段的草稿不得写进新阶段。夹具照后端：阶段结束 / 开启都推进计划 revision（stage-service bumpPlan），
+// PUT 模块内容按执行人当前运行中的阶段写（execution-service saveModuleContent），请求体里没有阶段。
+interface StageRow {
+  id: string;
+  name: string;
+  status: string;
+  approvalInstanceId: string | null;
+}
+interface ReviewRow {
+  moduleId: string;
+  stageId: string;
+  summary: string | null;
+  improvement: string | null;
+}
+interface PlanRow {
+  revision: number;
+  currentStageName: string;
+  currentNodeName?: string;
+  stages: StageRow[];
+  modules: { id: string; moduleType: string }[];
+  reviews: ReviewRow[];
+}
+const nextInstanceId = 'c0000000-0000-4000-8000-000000000777';
+const readPlan = (page: Page) =>
+  page.waitForResponse((r) => r.request().method() === 'GET' && r.url().endsWith(`/api/tenant/idp/plans/${planId}`));
+/**
+ * HR 结束当前阶段、开启下一阶段（计划 revision 4 → 5），员工在另一页已为新阶段保存 C。
+ * 之后的详情读取返回新阶段；PUT 照后端写进运行中的阶段，返回的 next 即“库里”的记录。
+ */
+async function moveToNextStage(page: Page, calls: IdpCall[], initial: PlanRow) {
+  const next: PlanRow = structuredClone(initial);
+  const moduleId = initial.modules.find((row) => row.moduleType === 'review')!.id;
+  next.revision = 5;
+  next.stages[0]!.status = 'terminated';
+  next.stages[1]!.status = 'running';
+  next.stages[1]!.approvalInstanceId = initial.stages[0]!.approvalInstanceId ? nextInstanceId : null;
+  next.currentStageName = next.stages[1]!.name;
+  next.currentNodeName = '员工下一阶段回顾';
+  next.reviews.push({ moduleId, stageId: next.stages[1]!.id, summary: '合成新阶段已有值C', improvement: '合成新改进' });
+  await page.route(`**/api/tenant/idp/plans/${planId}`, (route) => route.fulfill({ json: next }));
+  await page.route(`**/api/tenant/approval/instances/${reviewInstanceId}`, (route) =>
+    route.fulfill({
+      json: { id: reviewInstanceId, revision: 8, status: 'cancelled', actions: [], tasks: [], logs: [] },
+    }),
+  );
+  await page.route(`**/api/tenant/approval/instances/${nextInstanceId}`, (route) =>
+    route.fulfill({
+      json: {
+        id: nextInstanceId,
+        revision: 1,
+        status: 'running',
+        actions: ['approve'],
+        tasks: [{ id: 'c0000000-0000-4000-8000-000000000778', status: 'pending', assigneeUserId: user }],
+        logs: [],
+        form: { values: {} },
+      },
+    }),
+  );
+  await page.route(`**/api/tenant/idp/plans/${planId}/modules/*/content`, (route) => {
+    const request = route.request();
+    const body = request.postDataJSON() as Partial<ReviewRow>;
+    calls.push({
+      method: request.method(),
+      path: new URL(request.url()).pathname.replace(/^.*\/api\/tenant\/idp/, ''),
+      body,
+      key: request.headers()['idempotency-key'] ?? null,
+      revision: request.headers()['if-match'] ?? null,
+    });
+    const running = next.stages.find((row) => row.status === 'running')!.id;
+    const prior = next.reviews.find((row) => row.moduleId === moduleId && row.stageId === running)!;
+    next.reviews = [...next.reviews.filter((row) => row !== prior), { ...prior, ...body }];
+    next.revision += 1;
+    return route.fulfill({ json: next });
+  });
+  return next;
+}
+const reviewOf = (plan: PlanRow, stage: number) => plan.reviews.find((row) => row.stageId === plan.stages[stage]!.id);
+
+test('AC-FE-F164-20 冲突重读发现阶段已变：旧阶段草稿只供参考，保存 / 提交都发不出去，新阶段内容 C 不变', async ({
+  page,
+}) => {
+  const errors = watchErrors(page, ['409']);
+  const calls = await mockIdp(page, { reviewButtons: ['EditModuleContent'], reviewApproval: 'mine', conflictTimes: 1 });
+  await asUser(page);
+  const read = readPlan(page);
+  await page.goto(`/self/idp?plan=${planId}`);
+  const initial = (await (await read).json()) as PlanRow;
+  const form = reviewForm(page);
+  await expect(form.getByRole('button', { name: /提\s*交/ })).toBeEnabled();
+  await form.getByLabel('总结').fill('合成旧阶段草稿B');
+  await form.getByRole('button', { name: /保\s*存/ }).click();
+  await expect(form.getByText(/版本冲突/)).toBeVisible();
+  const next = await moveToNextStage(page, calls, initial);
+  await form.getByRole('button', { name: '重读最新版本' }).click();
+  // 用户能点的都点一遍：有“已核对差异”就核对，再提交、再保存（审查复现的路径）
+  const proceed = form.getByRole('button', { name: /已核对差异，继续编辑|进入当前阶段/ });
+  await expect(proceed).toBeVisible();
+  const confirm = form.getByRole('button', { name: '已核对差异，继续编辑' });
+  if (await confirm.isVisible()) await confirm.click();
+  await form.getByRole('button', { name: /提\s*交/ }).click({ force: true });
+  await form.getByRole('button', { name: /保\s*存/ }).click({ force: true });
+  await page.waitForTimeout(800);
+  expect(puts(calls)).toHaveLength(1);
+  expect(approves(calls)).toHaveLength(0);
+  expect(reviewOf(next, 1)).toMatchObject({ summary: '合成新阶段已有值C' });
+  // 旧草稿留着供参考、锁定；显式进入当前阶段后才能写，表单换成新阶段的内容
+  await expect(form.getByText('阶段已变化：下面是上一阶段没有保存的草稿，仅供参考')).toBeVisible();
+  await expect(form.getByRole('button', { name: '已核对差异，继续编辑' })).toHaveCount(0);
+  await expect(form.getByLabel('总结')).toHaveValue('合成旧阶段草稿B');
+  await expect(form.getByLabel('总结')).toBeDisabled();
+  await form.getByRole('button', { name: '进入当前阶段' }).click();
+  await expect(form.getByLabel('总结')).toHaveValue('合成新阶段已有值C');
+  await expect(form.getByLabel('总结')).toBeEnabled();
+  expect(puts(calls)).toHaveLength(1);
+  expect(errors).toEqual([]);
+});
+
+test('AC-FE-F164-21 保存被拒后阶段已变（切换入口再回来）：普通保存发不出去，进入当前阶段后才写新阶段', async ({
+  page,
+}) => {
+  const errors = watchErrors(page, ['400']);
+  const calls = await mockIdp(page, { reviewButtons: ['EditModuleContent'], writeStatus: 400 });
+  await asUser(page);
+  const read = readPlan(page);
+  await page.goto(`/self/idp?plan=${planId}`);
+  const initial = (await (await read).json()) as PlanRow;
+  await reviewForm(page).getByLabel('总结').fill('合成旧阶段草稿B');
+  await reviewForm(page)
+    .getByRole('button', { name: /保\s*存/ })
+    .click();
+  await expect.poll(() => puts(calls).length).toBe(1);
+  const next = await moveToNextStage(page, calls, initial);
+  await page.getByRole('button', { name: /返\s*回/ }).click();
+  await sideNav(page, '我辅导的发展计划');
+  await expect(page.getByRole('heading', { name: '我辅导的发展计划' })).toBeVisible();
+  await sideNav(page, '个人发展计划');
+  await page.getByRole('button', { name: '合成发展计划', exact: true }).click();
+  const form = reviewForm(page);
+  await expect(form.getByText('员工下一阶段回顾')).toBeVisible();
+  await form.getByRole('button', { name: /保\s*存/ }).click({ force: true });
+  await page.waitForTimeout(800);
+  expect(puts(calls)).toHaveLength(1);
+  expect(reviewOf(next, 1)).toMatchObject({ summary: '合成新阶段已有值C' });
+  await expect(form.getByText('阶段已变化：下面是上一阶段没有保存的草稿，仅供参考')).toBeVisible();
+  await form.getByRole('button', { name: '进入当前阶段' }).click();
+  await expect(form.getByLabel('总结')).toHaveValue('合成新阶段已有值C');
+  await form.getByLabel('总结').fill('合成新阶段改写D');
+  await form.getByRole('button', { name: /保\s*存/ }).click();
+  await expect.poll(() => puts(calls).length).toBe(2);
+  expect(puts(calls)[1]).toMatchObject({ body: { summary: '合成新阶段改写D' }, revision: '5' });
+  expect(reviewOf(next, 1)).toMatchObject({ summary: '合成新阶段改写D' });
+  expect(reviewOf(next, 0)).toMatchObject({ summary: initial.reviews[0]!.summary });
+  expect(errors).toEqual([]);
+});
+
 test('AC-FE-F155b-01 被跳过的阶段在流程条上显示“已终止”，不显示“已结束”', async ({ page }) => {
   const errors = watchErrors(page);
   await mockIdp(page, { skippedFirstStage: true });

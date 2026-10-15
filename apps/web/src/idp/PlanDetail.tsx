@@ -214,7 +214,14 @@ function ModuleBody(props: { plan: PlanDetail; module: PlanModule; groups: Group
     const past = rows.filter((row) => row.stageId !== stage.id);
     return (
       <>
-        <ReviewForm plan={plan} module={module} stage={stage} saved={writer.saved} />
+        {/* 阶段或审批实例变了就重建表单：没提交过的上一阶段输入不带进新阶段（F-164 第 3 轮 P2） */}
+        <ReviewForm
+          key={`${stage.id}|${stage.approvalInstanceId ?? ''}`}
+          plan={plan}
+          module={module}
+          stage={stage}
+          saved={writer.saved}
+        />
         {!!past.length && <Reviews rows={past} stages={plan.stages} titled />}
       </>
     );
