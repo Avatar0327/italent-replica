@@ -91,7 +91,7 @@ describe('AC-FE-R2b1 演示视图与原站操作边界', () => {
       'matching',
     ]);
     expect(settings.filter((s) => s.group === '入职')).toHaveLength(13);
-    expect(settings.filter((s) => s.rows).every((s) => s.rows!.length <= 3)).toBe(true);
+    expect(settings.filter((s) => s.rows).every((s) => s.rows!.length >= 2 && s.rows!.length <= 3)).toBe(true);
     expect(rows.every((r) => r.name.includes('合成') && r.email.endsWith('@example.invalid'))).toBe(true);
   });
 });

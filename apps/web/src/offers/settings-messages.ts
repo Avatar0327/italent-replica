@@ -118,7 +118,7 @@ export const settings: SettingSummary[] = [
   entry('qr', '扫码添加待入职方案', {
     columns: ['优先级', '方案名称', '方案说明', '适用组织范围', '状态', '操作'],
     rows: offerSettingExamples.qr,
-    note: '原站1条默认方案，优先级99。',
+    note: '原站1条默认方案，优先级99；按演示范围展示2条合成样例。',
   }),
   entry('handbook', '入职手册/扫码报到配置', {
     note: '原站在独立设计器中配置入职手册与扫码报到页面。本片只读展示此说明，不提供设计器、上传或扫码入口。',
