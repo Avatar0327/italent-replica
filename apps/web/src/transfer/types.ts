@@ -58,6 +58,12 @@ export interface TransferFormModel {
   readonly linkage?: LinkageDraft;
   /** 可变更的合同（该员工当前有效、操作人可见）。 */
   readonly contracts?: readonly ContractChoice[];
+  /** F-153：已带出、等对应预览到达后回填的暂存字段（DEC-511）。 */
+  readonly pendingDraft?: {
+    readonly employeeId: string;
+    readonly fields: FieldValues;
+    readonly customFields: FieldValues;
+  };
 }
 export type TransferAction = 'draft' | 'submit' | 'direct';
 export interface TransferFormProps {

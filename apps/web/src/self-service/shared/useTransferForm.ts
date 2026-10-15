@@ -18,6 +18,8 @@ import {
 import { text } from '../../transfer/messages.js';
 import { emptyLinkage } from '../../transfer/linkage-api.js';
 import { useContractChoices } from '../../transfer/useLinkage.js';
+import { applyPendingDraft } from '../../transfer/draft-restore.js';
+import { useDraftRestore } from '../../transfer/useDraftRestore.js';
 import type {
   EmployeeChoice,
   FieldValue,
@@ -47,6 +49,8 @@ export function useTransferForm(
   adapter?: TransferFormAdapter,
   runCommand?: ApplicationCommandRunner,
   hrScope?: string,
+  /** F-153：他人调动申请（有暂存）选人后按人带出暂存；“调动”入口没有暂存，不带出。 */
+  restoreDrafts = false,
 ) {
   const [model, setModel] = useState<TransferFormModel>({
     ...(adapter?.initialModel ?? initial),
@@ -76,6 +80,7 @@ export function useTransferForm(
   usePreview(tenantId, model, commands.saved, reload, setModel, setLoadingPreview, setError, setNotice, adapter);
   // R1-T10 的联动仅接入 HR；经理自助本轮仍不提供跨对象联动。
   useContractChoices(tenantId, initiator === 'hr' ? model.employeeId : '', initiator, setModel);
+  const draft = useDraftRestore(tenantId, restoreDrafts ? hrScope : undefined, model.employeeId, setModel);
   const selection = selectField(setModel, setError);
   const field = editField(setModel);
   const refresh = () => {
@@ -99,6 +104,7 @@ export function useTransferForm(
     commandError: hrScope ? hr.commandError : '',
     commandNotice: hrScope ? hr.commandNotice : '',
     loadingPreview,
+    draft,
     page,
     selection,
     field,
@@ -340,7 +346,8 @@ function usePreview(
       void (adapter?.loadPreview ?? loadPreview)(tenantId, model, controller.signal)
         .then((result) => {
           if (controller.signal.aborted) return;
-          setModel((current) => ({ ...current, ...result }));
+          // F-153：带出的暂存字段等对应预览到达后，按当前字段权限回填（DEC-511）。
+          setModel((current) => applyPendingDraft({ ...current, ...result }));
           setNotice(result.unavailable ? text.referencesUnavailable : '');
           setError('');
         })

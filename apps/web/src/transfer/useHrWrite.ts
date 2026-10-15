@@ -12,7 +12,7 @@ function isProcessing(scope?: string) {
     return true;
   }
 }
-/** 新建与草稿提交共用唯一写入口；未知结果只读，卸载后的响应没有会话写权限。 */
+/** HR 调动的唯一写入口；未知结果只读，卸载后的响应没有会话写权限。有回执时按人更新暂存索引（DEC-511）。 */
 export function useHrWrite(scope?: string) {
   const [processing, setProcessing] = useState(() => isProcessing(scope));
   const [error, setError] = useState('');
@@ -29,7 +29,7 @@ export function useHrWrite(scope?: string) {
       window.removeEventListener(hrSessionChanged, refresh);
     };
   }, [scope]);
-  const run = async (send: (id: string) => Promise<TransferBusiness>) => {
+  const run = async (send: (id: string) => Promise<TransferBusiness>, employeeId: string) => {
     if (!scope || running.current || isProcessing(scope)) return;
     try {
       beginHrWrite(scope);
@@ -44,7 +44,7 @@ export function useHrWrite(scope?: string) {
       const receipt = await send(crypto.randomUUID());
       if (!mounted.current) return;
       if (!receipt.id || !Number.isInteger(receipt.revision) || !receipt.status) throw new Error(text.unknown);
-      finishHrWrite(scope, receipt.status === 'draft' ? receipt.id : undefined);
+      finishHrWrite(scope, { employeeId, ...(receipt.status === 'draft' ? { draftId: receipt.id } : {}) });
       setResult(receipt);
     } catch (cause) {
       if (!mounted.current) return;

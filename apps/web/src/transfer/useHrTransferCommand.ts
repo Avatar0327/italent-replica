@@ -32,7 +32,7 @@ export function useHrTransferCommand(
       if (missingTransferRequiredFields(model.preview.form, { ...model.preview.fields, ...model.fields }).length)
         return;
       setAction(action);
-      await write.run((id) => saveTransfer(tenantId, model, action, id));
+      await write.run((id) => saveTransfer(tenantId, model, action, id), model.employeeId);
     },
   };
 }
