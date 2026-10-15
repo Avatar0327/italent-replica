@@ -1,4 +1,4 @@
-import { test, expect, user, employee, tenant } from './fixtures.js';
+import { test, expect, user, employee, tenant, selfServiceButtons } from './fixtures.js';
 
 const recordId = '50000000-0000-4000-8000-000000000001';
 
@@ -13,6 +13,7 @@ const record = {
   fieldLabels: { departmentId: '合成研发部' },
 };
 const ownProfile = {
+  selfServiceButtons,
   employee: { id: employee, name: '合成员工', code: 'DEMO-001', revision: 1 },
   timezone: 'Asia/Shanghai',
   today: '2026-10-13',
