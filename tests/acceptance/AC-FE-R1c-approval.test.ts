@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createApiClient } from '../../apps/web/src/foundation/client.js';
-import { approvalCommand, approvalList, visibleActions } from '../../apps/web/src/approval/api.js';
+import {
+  acceptReceipt,
+  approvalCommand,
+  approvalList,
+  logComment,
+  visibleActions,
+} from '../../apps/web/src/approval/api.js';
 import type { ApprovalDetail } from '../../apps/web/src/approval/types.js';
 import { transferRequest } from '../../apps/web/src/transfer/api.js';
 
@@ -58,6 +64,23 @@ describe('AC-FE-R1c-01 / AC-APV-05 审批命令契约', () => {
   });
 });
 
+describe('AC-FE-R1c-06 DEC-502①(a) 动作回执按真实详情形状校验', () => {
+  // 动作接口成功时返回动作后的详情（routes.ts respondOutcome → respondDetail），revision 须大于实际提交的 revision。
+  it('回执 id 等于实例、revision 大于本次命令 revision 才算成功', () => {
+    expect(acceptReceipt({ ...detail, revision: 8 }, detail.id, 7)).toEqual({ ...detail, revision: 8 });
+  });
+  it('只有任务 ID 或实例 ID 不符、revision 未前进或缺失都按结果未知处理', () => {
+    expect(() => acceptReceipt({ instanceId: detail.id }, detail.id, 7)).toThrow(/结果待确认/);
+    expect(() => acceptReceipt({ ...detail, id: 'instance-2', revision: 8 }, detail.id, 7)).toThrow(/结果待确认/);
+    expect(() => acceptReceipt({ ...detail, revision: 7 }, detail.id, 7)).toThrow(/结果待确认/);
+    expect(() => acceptReceipt({ ...detail, revision: '8' }, detail.id, 7)).toThrow(/结果待确认/);
+  });
+  it('冲突重读后按实际提交的新 revision 校验，而不是打开时的 revision', () => {
+    expect(() => acceptReceipt({ ...detail, revision: 8 }, detail.id, 8)).toThrow(/结果待确认/);
+    expect(acceptReceipt({ ...detail, revision: 9 }, detail.id, 8).revision).toBe(9);
+  });
+});
+
 describe('AC-FE-R1c-02 我的列表', () => {
   it('待办与我发起使用对应接口和服务端分页', async () => {
     const request = vi.fn().mockResolvedValue({ items: [{ taskId: 't', instanceId: 'i', title: '申请' }] });
@@ -95,5 +118,38 @@ describe('AC-FE-R1c-05 调动复用底座客户端', () => {
     expect(new Headers(init.headers).get('if-match')).toBe('8');
     expect(new Headers(init.headers).get('idempotency-key')).toBe('original-command');
     expect(JSON.parse(init.body)).toEqual({ fields: { place: '合成工作地' } });
+  });
+});
+
+// #333 第 2 轮 P2：意见只取日志自身 detail.comment；形状照后端 appendLog（actions.ts / engine.ts / node-actions.ts）。
+describe('AC-FE-R1c-04c 操作记录意见来源', () => {
+  const at = '2026-10-12T02:00:00Z';
+  const from = '70000000-0000-4000-8000-000000000001';
+  const to = '70000000-0000-4000-8000-000000000002';
+  it('转交、加签取转交人自己的意见，不随 taskId 指向的接收人任务变化', () => {
+    const delegation = { fromUserId: from, toUserId: to, comment: '转交者意见甲' };
+    expect(logComment({ event: 'transfer', taskId: 'receiver-task', detail: delegation, createdAt: at })).toBe(
+      '转交者意见甲',
+    );
+    const addSign = { ...delegation, comment: '加签说明', type: 'before', signers: [to] };
+    expect(logComment({ event: 'add_sign_before', taskId: 'signer-task', detail: addSign, createdAt: at })).toBe(
+      '加签说明',
+    );
+  });
+  it('同意 / 不同意 / 驳回 / 跳转 / 抄送取各自日志的意见', () => {
+    for (const event of ['approve', 'disagree', 'reject', 'reject_previous', 'jump', 'cc'])
+      expect(logComment({ event, taskId: 'own-task', detail: { comment: `${event} 意见` }, createdAt: at })).toBe(
+        `${event} 意见`,
+      );
+  });
+  it('发起、催办、撤销、加签返回、撤回不带意见；空意见不显示', () => {
+    expect(logComment({ event: 'start', detail: { processCode: 'transfer' }, createdAt: at })).toBeNull();
+    expect(logComment({ event: 'urge', detail: { recipients: 1 }, createdAt: at })).toBeNull();
+    expect(logComment({ event: 'withdraw', detail: {}, createdAt: at })).toBeNull();
+    const signReturn = { event: 'add_sign_return', taskId: 'next', detail: { toUserId: to }, createdAt: at };
+    expect(logComment(signReturn)).toBeNull();
+    expect(logComment({ event: 'retrieve', taskId: 'reopened', createdAt: at })).toBeNull();
+    expect(logComment({ event: 'approve', detail: { comment: null }, createdAt: at })).toBeNull();
+    expect(logComment({ event: 'approve', detail: { comment: '  ' }, createdAt: at })).toBeNull();
   });
 });

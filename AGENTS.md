@@ -102,7 +102,7 @@
   | 构建 | `pnpm build` |
   | 生成迁移（改 `packages/db/src/schema/` 后） / 手写 SQL 迁移 | `pnpm db:generate` / `pnpm --filter @italent/db exec drizzle-kit generate --custom --name=<名称>` |
   | 对 `DATABASE_URL` 执行迁移 | `pnpm db:migrate` |
-  | 合入 main：生成物冲突取 main 后重算、本分支迁移改号接在 main 之后、授权版本按合并结果定为 main + 1 并重算指纹（DEC-430①、DEC-439④；`--check` 只预演，定号按合并结果预告） | `pnpm merge:main` |
+  | 合入 main：生成物冲突取 main 后重算、两边各加条目的登记类文件（F-039 声明集合 / 注册表、`app.ts` 模块挂载、schema 导出）自动取并集并核对（F-133，DEC-491④）、本分支迁移改号接在 main 之后、授权版本按合并结果定为 main + 1 并重算指纹（DEC-430①、DEC-439④；`--check` 只预演，定号按合并结果预告） | `pnpm merge:main` |
 - 目录结构（归属车道留待第 1 轮派发单填写）：
   | 目录 | 内容 |
   |---|---|

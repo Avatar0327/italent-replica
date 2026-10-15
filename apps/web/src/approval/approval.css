@@ -1,99 +1,257 @@
+/* 审批中心按原站（DEC-489）：待办为左分类栏 + 卡片列表；详情为标题区 + 进度 + 左表单 / 右协作两栏。 */
 .approval-page {
   min-height: 620px;
 }
-.approval-title-link.ant-btn {
+.approval-muted {
+  color: #868b8f;
+  font-size: 12px;
+}
+.approval-section-title {
+  margin: 0 0 12px;
+  font-size: 16px;
+  font-weight: 500;
+}
+.approval-title-link.ant-btn,
+.approval-table-link.ant-btn {
   padding: 0;
   height: auto;
   white-space: normal;
   text-align: left;
+}
+.approval-title-link.ant-btn {
   color: #20252d;
+  font-weight: 600;
+}
+
+/* 我的待办 */
+.approval-todo {
+  display: grid;
+  grid-template-columns: 254px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+.approval-categories {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px;
+  border-radius: 8px;
+  background: white;
+}
+.approval-categories .ant-input {
+  margin-bottom: 8px;
+}
+.approval-category.ant-btn {
+  justify-content: flex-start;
+  height: 36px;
+  border-radius: 5px;
+}
+.approval-category-active.ant-btn,
+.approval-category-active.ant-btn:hover {
+  color: white;
+  background: #146eff;
+}
+.approval-todo-main {
+  min-width: 0;
+  padding: 16px 20px;
+  border-radius: 8px;
+  background: white;
+}
+.approval-todo-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.approval-todo-head h2 {
+  margin: 0;
+  font-size: 16px;
   font-weight: 500;
 }
-.approval-list-panel .ant-table-thead {
-  display: none;
+.approval-sort {
+  color: #5e6266;
+  font-size: 12px;
 }
-.approval-list-panel .ant-table-cell {
-  padding: 22px 16px;
+.approval-cards {
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
-.approval-record {
+.approval-cards-loading {
+  display: block;
+  padding: 40px 0;
+}
+.approval-card {
   display: flex;
   gap: 12px;
   align-items: flex-start;
+  min-height: 100px;
+  padding: 16px 0;
+  border-bottom: 1px solid #e6e8eb;
+}
+.approval-card-body {
+  flex: 1;
+  min-width: 0;
+}
+.approval-card-title {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.approval-card-action.ant-btn {
+  flex-shrink: 0;
+  min-width: 74px;
 }
 .approval-record-mark {
   display: inline-grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 30px;
   flex-shrink: 0;
   color: #fff;
   border-radius: 50%;
   background: #fd6b9d;
 }
 .approval-record-meta {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  margin: 10px 0 12px;
+  margin: 8px 0;
   color: #5e6266;
   font-size: 12px;
 }
-.approval-summary {
-  padding-bottom: 20px;
+.approval-pager {
+  display: flex;
+  justify-content: center;
+  padding-top: 16px;
 }
-.approval-muted {
+/* 已申请卡片的状态标签：审批中蓝、通过绿、已终止 / 不通过红（列表与流程管理里为普通文字）。 */
+.approval-tone.ant-tag {
+  margin: 0;
+  border: 0;
+}
+.approval-tone-running.ant-tag {
+  color: rgb(22, 119, 255);
+  background: rgba(22, 119, 255, 0.1);
+}
+.approval-tone-passed.ant-tag {
+  color: rgb(0, 173, 14);
+  background: rgba(0, 173, 14, 0.1);
+}
+.approval-tone-failed.ant-tag {
+  color: rgb(245, 73, 73);
+  background: rgba(245, 73, 73, 0.1);
+}
+.approval-tone-returned.ant-tag {
+  color: #5e6266;
+  background: #f2f3f5;
+}
+
+/* 委托与流程管理（接口待补齐的页面结构） */
+.approval-gap-page,
+.approval-applications {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.approval-gap-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+.approval-views {
+  display: flex;
+  gap: 16px;
+}
+.approval-view.ant-btn {
+  padding: 0 0 4px;
+  border-radius: 0;
+  font-size: 16px;
+}
+.approval-view-active.ant-btn,
+.approval-view-active.ant-btn:hover {
+  color: #146eff;
+  border-bottom: 2px solid #146eff;
+}
+.approval-gap-filters {
+  margin-bottom: 12px;
+}
+.approval-gap-filters .ant-input {
+  width: 160px;
+}
+.approval-banner p {
+  margin: 0;
+}
+
+/* 审批详情 */
+.approval-detail-page,
+.approval-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.approval-detail-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  padding: 16px 20px;
+  border-radius: 8px;
+  background: white;
+}
+.approval-detail-title {
+  flex: 1;
+  min-width: 0;
+}
+.approval-detail-title h2 {
+  margin: 0;
+  overflow: hidden;
+  font-size: 16px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.approval-detail-title small {
+  color: #868b8f;
+}
+.approval-progress {
+  padding: 16px 20px;
+  border-radius: 8px;
+  background: white;
+}
+.approval-detail-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+.approval-detail-form,
+.approval-detail-collab {
+  padding: 0 20px 16px;
+  border-radius: 8px;
+  background: white;
+}
+.approval-detail-collab .ant-tabs-nav {
+  padding-top: 12px;
+}
+.approval-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px 24px;
+  margin: 0;
+}
+.approval-field dt {
   color: #868b8f;
   font-size: 12px;
 }
-.approval-action-bar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 18px 0;
-  margin-top: 28px;
-  border-top: 1px solid #e6e8eb;
-}
-.approval-page > .ant-tabs-left > .ant-tabs-nav {
-  width: 180px;
-  padding: 16px 12px;
-  background: white;
-}
-.approval-page > .ant-tabs-left > .ant-tabs-nav .ant-tabs-tab {
-  margin: 0 0 10px;
-  padding: 10px 16px;
-  border-radius: 5px;
-  text-align: left;
-}
-.approval-page > .ant-tabs-left > .ant-tabs-nav .ant-tabs-tab-active {
-  background: #146eff;
-}
-.approval-page > .ant-tabs-left > .ant-tabs-nav .ant-tabs-tab-active .ant-tabs-tab-btn {
-  color: white;
-}
-.approval-page > .ant-tabs-left > .ant-tabs-nav .ant-tabs-ink-bar {
-  display: none;
-}
-.approval-page > .ant-tabs-left > .ant-tabs-content-holder {
-  border: 0;
-  min-width: 0;
-}
-.approval-page > .ant-tabs-left > .ant-tabs-content-holder > .ant-tabs-content > .ant-tabs-tabpane {
-  padding-left: 16px;
-}
-.approval-list-panel .r1c-list {
-  min-height: 620px;
-}
-.approval-list-panel .r1c-list .ant-table-cell {
-  padding: 20px 12px;
-}
-.approval-list-panel .r1c-list .approval-title-link {
+.approval-field dd {
+  margin: 4px 0 0;
   color: #33383d;
-  font-size: 14px;
-  height: auto;
 }
-.approval-applications .ant-table-thead {
-  display: table-header-group;
+.approval-field dd.approval-changed {
+  color: #ff7d00;
 }
-.approval-applications .r1c-list .ant-table-cell {
-  padding: 9px 12px;
+.approval-field dd small {
+  display: block;
+  color: #b3b6ba;
 }

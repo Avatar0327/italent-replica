@@ -1,7 +1,7 @@
 import type { PageResult } from '../foundation/client.js';
 
 export type ApprovalView = 'pending' | 'completed' | 'initiated';
-export type ApprovalAction = 'approve' | 'reject' | 'transfer' | 'withdraw';
+export type ApprovalAction = 'approve' | 'disagree' | 'reject' | 'transfer' | 'withdraw';
 export interface ApprovalRow {
   id: string;
   title: string;
@@ -26,7 +26,17 @@ export interface ApprovalDetail extends ApprovalRow {
     comment?: string | null;
     actedAt?: string | null;
   }[];
-  logs: { id?: string; event: string; createdAt: string }[];
+  /** 详情只带最近 200 条（升序）；完整分页在 GET /instances/:id/logs。 */
+  logs: ApprovalLog[];
+}
+export interface ApprovalLog {
+  event: string;
+  nodeKey?: string | null;
+  taskId?: string | null;
+  actorUserId?: string | null;
+  /** 事件自身的明细；意见在 detail.comment（后端 appendLog）。 */
+  detail?: Record<string, unknown>;
+  createdAt: string;
 }
 export interface ApprovalList extends PageResult<ApprovalRow> {
   demo?: boolean;
