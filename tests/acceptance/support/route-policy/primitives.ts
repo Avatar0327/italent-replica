@@ -146,7 +146,12 @@ export const PRIMITIVES: readonly Primitive[] = [
     ['employment visibility', calls('visibleEmploymentRecords', 'employmentVisibilitySql'), NEAR],
     ['auditViewer', call('auditViewer')],
     ['manager team', call('inTeam'), NEAR],
-    ['readContext（非配置对象）', /readContext\(\s*c,\s*deps,\s*(?:'object\.|action)/, { unless: CONFIG_OBJECTS }],
+    // 离职字典读取（R2-T03 §9.1）：持任职记录查看权即可读，字典无组织字段，只用上下文、不按范围过滤（listExitDictionary）
+    [
+      'readContext（非配置对象）',
+      /readContext\(\s*c,\s*deps,\s*(?:'object\.|action)/,
+      { unless: new RegExp(`${CONFIG_OBJECTS.source}|listExitDictionary`) },
+    ],
     // 目录路由只用上下文、不按范围过滤（readTransferCatalog）
     ['readPageContext', call('readPageContext'), { unless: /readTransferCatalog/ }],
     ['scope.all', /scope\??\.all\b/, NEAR],

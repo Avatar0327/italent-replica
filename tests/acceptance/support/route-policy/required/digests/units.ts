@@ -181,6 +181,11 @@ export const DIGESTS: Digests = {
     requireLinkedEmploymentRecord: '64e920b2e04d',
     requireScopedEmploymentObject: '699e68b222c1',
   },
+  'apps/api/src/modules/employment/exit-routes.ts': {
+    'route:GET /exits/dictionaries/:dict': '3433254b32bc',
+    'route:POST /exits/dictionaries/:dict': '9690d9b65058',
+    'route:PUT /exits/dictionaries/:dict/:id': '8b409a1cdfdf',
+  },
   'apps/api/src/modules/employment/forward-import.ts': {
     schema: 'c7b8883502d5',
   },
@@ -1440,6 +1445,9 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/context.ts#requireEmploymentWrite': 'f57d748709aa',
   'apps/api/src/modules/employment/context.ts#requireLinkedEmploymentRecord': 'd276a41f4fc8',
   'apps/api/src/modules/employment/context.ts#requireScopedEmploymentObject': '074eba4f3f59',
+  'apps/api/src/modules/employment/exit-routes.ts#route:GET /exits/dictionaries/:dict': 'f2d7229ace36',
+  'apps/api/src/modules/employment/exit-routes.ts#route:POST /exits/dictionaries/:dict': 'ae551b97839d',
+  'apps/api/src/modules/employment/exit-routes.ts#route:PUT /exits/dictionaries/:dict/:id': 'b2603d8f2177',
   'apps/api/src/modules/employment/forward-import.ts#schema': '12907b33413c',
   'apps/api/src/modules/employment/forward-preview.ts#previewEmploymentForwardUpdate': '4f083b329455',
   'apps/api/src/modules/employment/routes.ts#authorizeBusinessWrite': 'cb0a6177d681',

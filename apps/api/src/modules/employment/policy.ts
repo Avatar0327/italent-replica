@@ -124,6 +124,7 @@ const LINKAGE = 'employment.linkage';
 const RESPONSE = projector('employment.response', 'employment.response');
 const SETTINGS_FIELDS = shape('employment.settings');
 const CUSTOM_FIELD_FIELDS = shape('employment.customField');
+const EXIT_DICTIONARY_KEYS = ['id', 'code', 'name', 'enabled', 'displayOrder', 'revision'] as const;
 
 /** 调动发起人 → 按钮：hr → Transfer.Hr、manager → Transfer.Manager、employee → Transfer.Self（detail；access.ts ROLE_BUTTONS）。 */
 const TRANSFER_INITIATORS = ['hr', 'manager', 'employee'] as const satisfies readonly TransferInitiator[];
@@ -948,6 +949,34 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     'update',
     CUSTOM_FIELD_FIELDS,
     auditedConfigWrite('employment_custom_field'),
+    byId,
+  ),
+  // ---- employment/exit-routes.ts：R2-T03 离职三个字典（设计 §2.1 / §4 / §9.1）-----------------------------------------
+  // :dict ∉ types / reasons / whereabouts → 400；enabled 查询非法 → 400；字典无组织字段，不按范围裁剪，返回固定键
+  'GET /exits/dictionaries/:dict': object({
+    object: EMPLOYMENT,
+    operation: 'view',
+    button: noButton('字典读取无按钮（表单下拉、列表显示名称）'),
+    scope: noScope('离职字典是租户配置，无组织 / 人员字段（设计 §9.1 字典行）'),
+    fields: fixed(EXIT_DICTIONARY_KEYS, 'R2-T03 设计 §2.1：字典项固定键，配置对象不做字段裁剪'),
+    ...byId,
+  }),
+  // body 严格 { code, name, enabled?, displayOrder? }（400）；If-Match 须为 0；编码重复（不分大小写）→ 409
+  // EXIT_DICTIONARY_CODE_TAKEN；审计 exit_dictionary.save / exit_dictionary
+  'POST /exits/dictionaries/:dict': configuration(
+    SETTINGS,
+    'create',
+    SETTINGS_FIELDS,
+    auditedConfigWrite('exit_dictionary'),
+    byId,
+  ),
+  // 管理员别名先于 :dict / uuidParam 校验（400）；body 严格 { code?, name?, enabled?, displayOrder? }，改编码 → 400
+  // EXIT_DICTIONARY_CODE_IMMUTABLE；项不存在 → 404「离职字典项不存在」；审计 exit_dictionary.save / exit_dictionary
+  'PUT /exits/dictionaries/:dict/:id': configuration(
+    SETTINGS,
+    'update',
+    SETTINGS_FIELDS,
+    auditedConfigWrite('exit_dictionary'),
     byId,
   ),
 });
