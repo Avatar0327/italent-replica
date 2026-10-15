@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { test, expect, employee, tenant } from './fixtures.js';
+import { test, expect, employee, tenant, selfServiceButtons } from './fixtures.js';
 
 const business = '50000000-0000-4000-8000-000000000002';
 const department = '60000000-0000-4000-8000-000000000002';
@@ -55,6 +55,7 @@ async function setup(page: Page, manager: boolean) {
     if (path.endsWith('/self-service/profile'))
       return route.fulfill({
         json: {
+          selfServiceButtons,
           employee: { id: employee, name: '合成申请人', code: 'DEMO-001', revision: 7 },
           timezone: 'Asia/Shanghai',
           today: '2026-10-13',
