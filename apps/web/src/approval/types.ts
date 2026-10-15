@@ -1,7 +1,7 @@
 import type { PageResult } from '../foundation/client.js';
 
 export type ApprovalView = 'pending' | 'completed' | 'initiated';
-export type ApprovalAction = 'approve' | 'reject' | 'transfer' | 'withdraw';
+export type ApprovalAction = 'approve' | 'disagree' | 'reject' | 'transfer' | 'withdraw';
 export interface ApprovalRow {
   id: string;
   title: string;

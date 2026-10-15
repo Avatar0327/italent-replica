@@ -94,3 +94,80 @@
   font-size: 12px;
   color: #5e6266;
 }
+
+/* F-132 第 2 段：原站横向视图（当前视图蓝字下划线）、右上工具栏、浅蓝提示与全页表单（DEC-489）。 */
+.transfer-list-head,
+.transfer-form-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.transfer-form-head h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 500;
+}
+.transfer-views {
+  display: flex;
+  gap: 20px;
+}
+.transfer-view.ant-btn {
+  padding: 0 0 4px;
+  border-radius: 0;
+  font-size: 16px;
+}
+.transfer-view-active.ant-btn,
+.transfer-view-active.ant-btn:hover {
+  color: #146eff;
+  border-bottom: 2px solid #146eff;
+}
+.transfer-tool-dropdown::after {
+  content: '▾';
+  margin-left: 4px;
+}
+.transfer-banner {
+  margin-bottom: 12px;
+}
+.transfer-banner-body {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+.transfer-banner-body p {
+  margin: 0;
+}
+.transfer-banner-body .ant-btn-link {
+  padding: 0;
+  height: auto;
+}
+.transfer-filter-select {
+  min-width: 140px;
+}
+.transfer-advanced {
+  width: 100%;
+}
+.transfer-advanced .ant-select,
+.transfer-advanced .ant-picker,
+.transfer-advanced .ant-input-affix-wrapper {
+  width: 100%;
+}
+.transfer-link-text {
+  color: #146eff;
+}
+.transfer-name-link.ant-btn {
+  padding: 0;
+  height: auto;
+}
+.hr-transfer-form-page {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.hr-transfer-form-page .r1c-transfer-form {
+  padding: 20px;
+  border-radius: 8px;
+}

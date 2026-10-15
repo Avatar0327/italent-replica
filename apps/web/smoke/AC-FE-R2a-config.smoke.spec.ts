@@ -117,7 +117,9 @@ async function approvals(
     const url = new URL(route.request().url());
     if (route.request().method() !== 'GET') {
       capture(writes, route.request());
-      const { status = 200, json } = (url.pathname.endsWith('/urge') ? urge() : { json: {} }) as {
+      // 转交 / 撤销同样返回动作后的流程详情，revision 前进（DEC-502①(f) 夹具用真实接口形态）。
+      const done = { json: { id: instance, revision: 5, status: 'running' } };
+      const { status = 200, json } = (url.pathname.endsWith('/urge') ? urge() : done) as {
         status?: number;
         json: unknown;
       };

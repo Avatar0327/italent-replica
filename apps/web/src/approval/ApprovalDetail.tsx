@@ -1,18 +1,12 @@
-import { Alert, Button, Empty, Input, Space, Table, Tag, Timeline } from 'antd';
+import { Alert, Button, Drawer, Empty, Input, Space, Steps, Tabs, Tag, Timeline, Tooltip } from 'antd';
 import { useEffect, useState } from 'react';
-import {
-  ApiError,
-  DecisionNote,
-  DetailPage,
-  FormOverlay,
-  PageState,
-  useApiClient,
-  useSession,
-} from '../foundation/index.js';
+import { DecisionNote, FormOverlay, PageState, useApiClient, useSession } from '../foundation/index.js';
 import { presetLabels } from '../transfer/messages.js';
 import { completedDetail } from '../demo-stubs/approval.js';
-import { approvalCommand, readApproval, uuidPattern, visibleActions } from './api.js';
-import { fieldLabels, messages as m, statusLabels, typeLabels } from './messages.js';
+import { useApprovalAction } from './action-command.js';
+import { readApproval, uuidPattern, visibleActions } from './api.js';
+import { detailText as d, fieldLabels, instanceStatus, messages as m, statusLabels, typeLabels } from './messages.js';
+import { actionOrder } from './page-model.js';
 import type { ApprovalAction, ApprovalDetail as Detail, ApprovalRow } from './types.js';
 
 export function displayValue(value: unknown): string {
@@ -21,157 +15,163 @@ export function displayValue(value: unknown): string {
   if (Array.isArray(value)) return value.map(displayValue).join('、');
   return typeof value === 'object' ? JSON.stringify(value) : String(value);
 }
+/** 原站申请信息：标签 + 值；改变后的值橙色显示，下方浅灰“原：旧值”。 */
 export function ApprovalFields({ detail }: { detail: Detail }) {
-  const rows = Object.entries(detail.form.values).map(([key, value]) => ({ key, value }));
-  return rows.length ? (
-    <Table
-      size="small"
-      pagination={false}
-      rowKey="key"
-      dataSource={rows}
-      columns={[
-        {
-          title: m.field,
-          dataIndex: 'key',
-          width: '25%',
-          render: (key: string) => fieldLabels[key] ?? presetLabels[key] ?? key,
-        },
-        ...(detail.form.originals
-          ? [
-              {
-                title: m.original,
-                key: 'original',
-                width: '35%',
-                render: (_: unknown, row: { key: string }) => displayValue(detail.form.originals?.[row.key]),
-              },
-            ]
-          : []),
-        { title: m.updated, dataIndex: 'value', render: displayValue },
-      ]}
-    />
-  ) : (
-    <Empty description={m.noValues} />
+  const rows = Object.entries(detail.form.values);
+  if (!rows.length) return <Empty description={m.noValues} />;
+  const originals = detail.form.originals ?? {};
+  return (
+    <dl className="approval-fields">
+      {rows.map(([key, value]) => (
+        <div key={key} className="approval-field">
+          <dt>{fieldLabels[key] ?? presetLabels[key] ?? key}</dt>
+          <dd className={key in originals ? 'approval-changed' : undefined}>
+            <span>{displayValue(value)}</span>
+            {key in originals && <small>{d.original(displayValue(originals[key]))}</small>}
+          </dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 
 interface DetailProps {
   row: ApprovalRow;
   demo?: boolean;
+  /** 审批中心内在当前页打开（带返回）；合同等页面行内打开时用右侧抽屉。 */
+  layout?: 'drawer' | 'page';
   onClose(): void;
   onChanged(): void;
 }
-function useApprovalDetail({ row, demo, onClose, onChanged }: DetailProps) {
+function useApprovalDetail({ row, demo }: DetailProps) {
   const api = useApiClient();
   const [detail, setDetail] = useState<Detail>();
   const [error, setError] = useState<unknown>();
   const [generation, setGeneration] = useState(0);
-  const [action, setAction] = useState<ApprovalAction>();
-  const [mustReload, setMustReload] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
     setDetail(undefined);
     setError(undefined);
     void (demo ? Promise.resolve(completedDetail(row.id)) : readApproval(api, row.id, controller.signal))
       .then((value) => {
-        if (!controller.signal.aborted) {
-          setDetail(value);
-          setMustReload(false);
-        }
+        if (!controller.signal.aborted) setDetail(value);
       })
       .catch((cause: unknown) => {
         if (!controller.signal.aborted) setError(cause);
       });
     return () => controller.abort();
   }, [api, row.id, demo, generation]);
-  const refresh = () => {
-    setAction(undefined);
-    setGeneration((value) => value + 1);
-  };
-  const submit = async (values: Record<string, unknown>) => {
-    if (!detail || !action || demo) return;
-    if (mustReload) throw new ApiError(409, 'RELOAD_REQUIRED', 'refresh', m.reloadRequired);
-    const request = approvalCommand(detail, action, row.taskId, {
-      comment: typeof values.comment === 'string' ? values.comment : undefined,
-      toUserId: typeof values.toUserId === 'string' ? values.toUserId : undefined,
-    });
-    try {
-      await api.request(request.path, { method: 'POST', command: request.command });
-    } catch (cause) {
-      // 结果未知 / 冲突后必须人工回查，不能从相同弹窗重复发新命令。
-      if (!(cause instanceof ApiError && [400, 422].includes(cause.status))) setMustReload(true);
-      throw cause;
-    }
-    onChanged();
-    onClose();
-  };
-  return { detail, error, action, mustReload, refresh, submit, setAction };
+  return { detail, error, setDetail, refresh: () => setGeneration((value) => value + 1) };
 }
 
 export function ApprovalDetail(props: DetailProps) {
   const state = useApprovalDetail(props);
-  const detail = state.detail;
+  const action = useApprovalAction(props.row, state.setDetail);
+  const { detail } = state;
+  const body = <DetailBody {...props} state={state} action={action} />;
   return (
     <>
-      <DetailPage
-        open
-        onClose={props.onClose}
-        title={detail?.title ?? m.detail}
-        summary={<DetailSummary state={state} demo={props.demo} />}
-        actions={detail && <Button onClick={state.refresh}>{m.refresh}</Button>}
-        tabs={
-          detail
-            ? [
-                { key: 'form', label: m.values, children: <ApprovalFields detail={detail} /> },
-                { key: 'history', label: m.history, children: <ApprovalHistory detail={detail} /> },
-              ]
-            : undefined
-        }
-        sections={
-          detail
-            ? [
-                {
-                  key: 'actions',
-                  title: m.operation,
-                  children: <ActionBar {...props} state={state} detail={detail} />,
-                },
-              ]
-            : []
-        }
-      />
-      {detail && state.action && (
+      {props.layout === 'page' ? (
+        <section className="approval-detail-page">{body}</section>
+      ) : (
+        <Drawer open width={1200} title={detail?.title ?? m.detail} onClose={props.onClose} destroyOnHidden>
+          {body}
+        </Drawer>
+      )}
+      {detail && action.action && (
         <FormOverlay
           open
           mode="modal"
-          recordKey={detail.id + ':' + detail.revision + ':' + state.action}
-          title={m[state.action]}
-          onClose={() => state.setAction(undefined)}
-          onRefresh={state.refresh}
-          onSubmit={state.submit}
-          groups={[actionGroup(state.action, detail)]}
+          recordKey={detail.id}
+          submission={action.command}
+          title={m[action.action]}
+          onClose={action.close}
+          onSubmit={async (values) => {
+            await action.submit(detail, values);
+            props.onChanged();
+            props.onClose();
+          }}
+          groups={[actionGroup(action.action, detail)]}
         />
       )}
     </>
   );
 }
-function DetailSummary({ state, demo }: { state: ReturnType<typeof useApprovalDetail>; demo?: boolean }) {
-  const detail = state.detail;
+type DetailState = ReturnType<typeof useApprovalDetail>;
+type ActionState = ReturnType<typeof useApprovalAction>;
+function DetailBody(props: DetailProps & { state: DetailState; action: ActionState }) {
+  const { state, demo, action } = props;
+  const { detail } = state;
+  const { timezone } = useSession();
   return (
-    <>
-      <DecisionNote id="approval" />
+    <div className="approval-detail">
+      <header className="approval-detail-head">
+        {props.layout === 'page' && <Button onClick={props.onClose}>{d.back}</Button>}
+        <div className="approval-detail-title">
+          <h2 title={detail?.title}>{detail?.title ?? m.detail}</h2>
+          {detail && <small>{headline(detail, timezone)}</small>}
+        </div>
+        {detail && <ActionBar row={props.row} demo={demo} detail={detail} action={action} refresh={state.refresh} />}
+      </header>
+      <DecisionNote id="approval-detail" />
       {demo && <Alert type="info" message={m.demo} description={m.demoDetail} showIcon />}
       {!!state.error && <PageState kind="error" error={state.error} retry={state.refresh} />}
       {!state.error && !detail && <PageState kind="loading" />}
-      {state.mustReload && <Alert type="warning" message={m.reloadRequired} showIcon />}
+      {action.pending && <Alert type="warning" showIcon message={d.locked(m[action.pending])} />}
       {detail?.status === 'approved' && <Alert type="info" message={m.approvedNotice} showIcon />}
-      {detail && (
-        <Space className="approval-summary">
-          <Tag color={detail.status === 'approved' ? 'green' : 'blue'}>
-            {statusLabels[detail.status ?? ''] ?? detail.status}
-          </Tag>
-          <span>{typeLabels[detail.approvalType] ?? detail.approvalType}</span>
-        </Space>
-      )}
+      {detail && <DetailColumns detail={detail} />}
+    </div>
+  );
+}
+function headline(detail: Detail, timezone: string) {
+  const status = instanceStatus[detail.status ?? '']?.label ?? statusLabels[detail.status ?? ''] ?? detail.status;
+  const type = typeLabels[detail.approvalType] ?? detail.approvalType;
+  return [type, status, formatInstant(detail.createdAt, timezone)].filter(Boolean).join(' · ');
+}
+function DetailColumns({ detail }: { detail: Detail }) {
+  return (
+    <>
+      <ApprovalProgress detail={detail} />
+      <div className="approval-detail-columns">
+        <Tabs
+          className="approval-detail-form"
+          items={[{ key: 'form', label: m.values, children: <ApprovalFields detail={detail} /> }]}
+        />
+        <Tabs
+          className="approval-detail-collab"
+          type="card"
+          items={[
+            { key: 'records', label: d.records(detail.tasks.length), children: <ApprovalHistory detail={detail} /> },
+            {
+              key: 'communicate',
+              label: d.communicate,
+              children: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={d.communicateGap} />,
+            },
+          ]}
+        />
+      </div>
     </>
+  );
+}
+/** 原站进度：开始 → 各节点 → 结束；已走过绿、当前蓝、后续灰。接口只给已产生的任务，后续节点暂缺。 */
+function ApprovalProgress({ detail }: { detail: Detail }) {
+  const nodes = [...new Map(detail.tasks.map((task) => [task.nodeName, task])).values()];
+  const running = detail.status === 'running';
+  return (
+    <div className="approval-progress">
+      <Steps
+        size="small"
+        items={[
+          { title: d.start, status: 'finish' },
+          ...nodes.map((task) => ({
+            title: task.nodeName,
+            status: task.status === 'pending' ? ('process' as const) : ('finish' as const),
+          })),
+          { title: d.end, status: running ? ('wait' as const) : ('finish' as const) },
+        ]}
+      />
+      {running && <small className="approval-muted">{d.progressGap}</small>}
+    </div>
   );
 }
 function ApprovalHistory({ detail }: { detail: Detail }) {
@@ -195,33 +195,37 @@ function ApprovalHistory({ detail }: { detail: Detail }) {
     </>
   );
 }
-function ActionBar({
-  detail,
-  row,
-  demo,
-  state,
-}: DetailProps & {
-  detail: Detail;
-  state: ReturnType<typeof useApprovalDetail>;
-}) {
-  const actions = visibleActions(detail);
+/**
+ * 顶部按钮只取详情 actions（服务端下发），按原站顺序；有未确认命令时只允许打开那一个动作核对。
+ * 流程管理、查看流程日志没有接口，保留位置但禁用。
+ */
+function ActionBar(props: { row: ApprovalRow; demo?: boolean; detail: Detail; action: ActionState; refresh(): void }) {
+  const { row, demo, detail, action } = props;
+  const available = visibleActions(detail);
+  const actions = actionOrder.filter((item) => available.includes(item));
   return (
-    <div className="approval-action-bar">
+    <Space wrap className="approval-action-bar">
       {!demo &&
         actions.map((item) => (
           <Button
             key={item}
             type={item === 'approve' ? 'primary' : 'default'}
-            danger={item === 'reject' || item === 'withdraw'}
-            disabled={state.mustReload || (item !== 'withdraw' && !row.taskId)}
-            onClick={() => state.setAction(item)}
+            ghost={item === 'disagree'}
+            disabled={(!!action.pending && action.pending !== item) || (item !== 'withdraw' && !row.taskId)}
+            onClick={() => action.open(item)}
           >
             {m[item]}
           </Button>
         ))}
-      {!actions.length && <span className="approval-muted">{m.noAction}</span>}
+      {[d.processManage, d.processLog].map((label) => (
+        <Tooltip key={label} title={d.gapTool}>
+          <Button disabled>{label}</Button>
+        </Tooltip>
+      ))}
+      <Button onClick={props.refresh}>{m.refresh}</Button>
+      {!demo && !actions.length && <span className="approval-muted">{m.noAction}</span>}
       {!row.taskId && actions.some((item) => item !== 'withdraw') && <span>{m.taskRequired}</span>}
-    </div>
+    </Space>
   );
 }
 function actionGroup(action: ApprovalAction, detail: Detail) {

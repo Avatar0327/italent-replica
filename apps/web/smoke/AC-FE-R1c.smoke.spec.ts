@@ -1,4 +1,4 @@
-import { test, expect, user, employee } from './fixtures.js';
+import { test, expect, user, employee, snapshotFixture } from './fixtures.js';
 import type { Page } from '@playwright/test';
 
 test.use({ viewport: { width: 1440, height: 900 } });
@@ -48,23 +48,30 @@ test.beforeEach(async ({ page }) => {
           ],
         },
       });
-    return route.fulfill({
-      json: {
-        id: instance,
-        title: '合成员工的调动申请',
-        revision: 4,
-        status: 'running',
-        approvalType: 'transfer',
-        actions: ['approve', 'reject', 'transfer', 'withdraw'],
-        recordsHidden: false,
-        form: { values: { effectiveDate: '2026-11-01', place: '合成工作地' }, originals: { place: '原工作地' } },
-        tasks: [{ id: task, nodeName: '部门负责人审批', status: 'pending', assigneeUserId: user }],
-        logs: [],
-      },
-    });
+    return route.fulfill({ json: detail() });
   });
   await transferFixtures(page);
 });
+// 与 GET /approval/instances/:id 同形；动作接口成功时也返回这份详情（routes.ts respondOutcome → respondDetail）。
+function detail(revision = 4, status = 'running') {
+  return {
+    id: instance,
+    title: '合成员工的调动申请',
+    revision,
+    status,
+    approvalType: 'transfer',
+    actions: status === 'running' ? ['approve', 'reject', 'transfer', 'withdraw'] : [],
+    recordsHidden: false,
+    form: { values: { effectiveDate: '2026-11-01', place: '合成工作地' }, originals: { place: '原工作地' } },
+    tasks: [{ id: task, nodeName: '部门负责人审批', status: 'pending', assigneeUserId: user }],
+    logs: [],
+  };
+}
+const button = (label: string) => new RegExp(`^${label.split('').join('\\s*')}$`);
+async function openTodo(page: Page) {
+  await page.getByRole('button', { name: '合成员工的调动申请', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '合成员工的调动申请', exact: true })).toBeVisible();
+}
 
 test('AC-FE-R1c-03 调动列表、表单、我的申请与注释', async ({ page }, testInfo) => {
   const errors: string[] = [];
@@ -73,7 +80,7 @@ test('AC-FE-R1c-03 调动列表、表单、我的申请与注释', async ({ page
     if (message.type() === 'error') errors.push(message.text());
   });
   await switchIdentity(page, '/transfer');
-  await expect(page.getByRole('heading', { name: '调动中员工', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '调动中员工', exact: true, pressed: true })).toBeVisible();
   await expect(page.locator('.r1c-reference').getByText('演示数据', { exact: true }).first()).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('transfer-list.png'), fullPage: true, animations: 'disabled' });
   await page.getByRole('button', { name: '林晓（合成）', exact: true }).click();
@@ -84,15 +91,17 @@ test('AC-FE-R1c-03 调动列表、表单、我的申请与注释', async ({ page
   await expect(page.locator('input[name="place"]')).toBeVisible();
   await expect(page.getByRole('button', { name: /提\s*交/, exact: true })).toBeEnabled();
   await page.screenshot({ path: testInfo.outputPath('transfer-form.png'), fullPage: true, animations: 'disabled' });
-  await page.getByRole('button', { name: '关闭', exact: true }).click();
-  await page.getByRole('button', { name: '切换视图', exact: true }).click();
-  await page.getByRole('menuitem', { name: '我的申请', exact: true }).click();
+  await page.getByRole('button', { name: '返回调动管理', exact: true }).click();
+  await expect(page.getByRole('button', { name: '调动中员工', exact: true, pressed: true })).toBeVisible();
+  await openSection(page, '我的申请');
   await page.getByRole('button', { name: '合成员工的调动申请', exact: true }).click();
   await expect(page.getByText('合成工作地', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: button('返回') }).click();
+  await expect(page.getByRole('heading', { name: '我的申请', exact: true })).toBeVisible();
   expect(errors).toEqual([]);
 });
 
-test('AC-FE-R1c-04 审批中心三个页签、详情与操作弹窗', async ({ page }, testInfo) => {
+test('AC-FE-R1c-04 我的待办三个分类、卡片、当前页详情与操作弹窗', async ({ page }, testInfo) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   page.on('console', (message) => {
@@ -101,24 +110,37 @@ test('AC-FE-R1c-04 审批中心三个页签、详情与操作弹窗', async ({ p
   await switchIdentity(page, '/approval');
   await expect(page.getByRole('heading', { name: '待处理', exact: true })).toBeVisible();
   await expect(page.locator('.ant-spin-blur')).toHaveCount(0);
+  await expect(page.getByRole('navigation', { name: '审批分类' })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: '我的委托', exact: true })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: '流程管理', exact: true })).toHaveCount(0);
+  await expect(page.locator('.approval-card').getByRole('checkbox')).toBeDisabled();
+  await expect(page.getByRole('button', { name: '去处理', exact: true })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('approval-list.png'), fullPage: true, animations: 'disabled' });
-  await page.getByRole('button', { name: '合成员工的调动申请', exact: true }).click();
-  await expect(page.getByText('原工作地', { exact: true })).toBeVisible();
+  await openTodo(page);
+  await expect(page.getByText('原：原工作地', { exact: true })).toBeVisible();
+  await expect(page.getByRole('tab', { name: '操作记录(1)' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '流程管理', exact: true })).toBeDisabled();
   await page.screenshot({ path: testInfo.outputPath('approval-detail.png'), fullPage: true, animations: 'disabled' });
   for (const action of ['同意', '驳回', '转交', '撤销']) {
-    await page.getByRole('button', { name: new RegExp(action.split('').join('\\s*')), exact: true }).click();
+    await page
+      .getByRole('button', { name: button(action) })
+      .first()
+      .click();
     await expect(page.getByRole('dialog').last()).toBeVisible();
-    await page.getByRole('button', { name: /取\s*消/, exact: true }).click();
+    await page.getByRole('button', { name: button('取消') }).click();
   }
-  await page.getByRole('button', { name: '关闭', exact: true }).click();
-  await page.getByRole('tab', { name: '已处理', exact: true }).click();
+  await expect(page.getByRole('button', { name: button('不同意') })).toHaveCount(0);
+  await page.getByRole('button', { name: button('返回') }).click();
+  await page.getByRole('button', { name: '已处理', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '已处理', exact: true })).toBeVisible();
   await expect(page.locator('.r1c-reference').getByText('演示数据', { exact: true }).first()).toBeVisible();
   await page.getByRole('button', { name: '合成员工林晓的调动申请', exact: true }).click();
   await expect(page.getByText('审批已通过，业务是否生效以业务申请单为准。')).toBeVisible();
-  await expect(page.getByRole('button', { name: /同\s*意/, exact: true })).toHaveCount(0);
-  await page.getByRole('button', { name: '关闭', exact: true }).click();
-  await page.getByRole('tab', { name: '已申请', exact: true }).click();
+  await expect(page.getByRole('button', { name: button('同意') })).toHaveCount(0);
+  await page.getByRole('button', { name: button('返回') }).click();
+  await page.getByRole('button', { name: '已申请', exact: true }).click();
   await expect(page.getByRole('button', { name: '合成员工的调动申请', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '查看详情', exact: true })).toBeVisible();
   await page.getByRole('switch', { name: '注释' }).click();
   await expect(page.getByText('DEC-057', { exact: true })).toBeVisible();
   expect(errors).toEqual([]);
@@ -139,14 +161,19 @@ for (const [label, action] of [
         revision: route.request().headers()['if-match'],
         command: route.request().headers()['idempotency-key'],
       });
-      return route.fulfill({ json: { instanceId: instance, status: 'approved' } });
+      return route.fulfill({ json: detail(5, action === 'withdraw' ? 'withdrawn' : 'approved') });
     });
+    const reloads = page.waitForRequest((request) => request.url().includes('/approval/todos?'));
     await switchIdentity(page, '/approval');
-    await page.getByRole('button', { name: '合成员工的调动申请', exact: true }).click();
-    await page.getByRole('button', { name: new RegExp(label!.split('').join('\\s*')), exact: true }).click();
+    await reloads;
+    await openTodo(page);
+    await page.getByRole('button', { name: button(label!) }).click();
     if (action === 'transfer') await page.getByLabel('转交给（账号编号）').fill(user);
-    await page.getByRole('button', { name: /保\s*存/, exact: true }).click();
+    const listed = page.waitForRequest((request) => request.url().includes('/approval/todos?'));
+    await page.getByRole('button', { name: button('保存') }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
+    await listed;
+    await expect(page.getByRole('heading', { name: '待处理', exact: true })).toBeVisible();
     expect(requests).toHaveLength(1);
     expect(requests[0]?.revision).toBe('4');
     expect(requests[0]?.command).toMatch(/^[\da-f-]{36}$/);
@@ -159,23 +186,75 @@ for (const [label, action] of [
   });
 }
 
-test('AC-FE-R1c-07 结果未知后禁止盲重提，关闭后必须主动回查', async ({ page }) => {
+test('AC-FE-R1c-07 结果未知锁定：不能重提或换动作，关闭重开与回查原单后仍锁定', async ({ page }) => {
   let writes = 0;
   await page.route('**/api/tenant/approval/tasks/*/approve', (route) => {
     writes++;
     return route.fulfill({ status: 503, json: { error: { code: 'UNAVAILABLE' } } });
   });
   await switchIdentity(page, '/approval');
-  await page.getByRole('button', { name: '合成员工的调动申请', exact: true }).click();
-  await page.getByRole('button', { name: /同\s*意/, exact: true }).click();
-  await page.getByRole('button', { name: /保\s*存/, exact: true }).click();
-  await expect(page.getByText('请关闭操作框并重新读取详情，核对本次操作结果后再决定是否重提。').first()).toBeVisible();
-  await page.getByRole('button', { name: /保\s*存/, exact: true }).click();
+  await openTodo(page);
+  await page.getByRole('button', { name: button('同意') }).click();
+  await page.getByRole('button', { name: button('保存') }).click();
+  await expect(page.getByText('处理中 / 结果待确认。当前表单已锁定，请勿重新创建命令。')).toBeVisible();
+  await expect(page.getByRole('button', { name: button('保存') })).toBeDisabled();
+  await page.getByRole('button', { name: button('取消') }).click();
+  await expect(page.getByText('本单有未确认的“同意”操作，请打开核对结果；确认前不能发起其他操作。')).toBeVisible();
+  for (const other of ['驳回', '转交', '撤销'])
+    await expect(page.getByRole('button', { name: button(other) })).toBeDisabled();
+  await page.getByRole('button', { name: button('返回') }).click();
+  await openTodo(page);
+  await page.getByRole('button', { name: button('同意') }).click();
+  await expect(page.getByText('处理中 / 结果待确认。当前表单已锁定，请勿重新创建命令。')).toBeVisible();
+  await page.getByRole('button', { name: '回查原单', exact: true }).click();
+  await expect(page.getByText('原单当前值（仅供核对，不能据此确认本次命令结果）')).toBeVisible();
+  await expect(page.getByRole('button', { name: button('保存') })).toBeDisabled();
   expect(writes).toBe(1);
-  await page.getByRole('button', { name: /取\s*消/, exact: true }).click();
-  await expect(page.getByRole('button', { name: /同\s*意/, exact: true })).toBeDisabled();
-  await page.getByRole('dialog').getByRole('button', { name: '重新读取', exact: true }).click();
-  await expect(page.getByRole('button', { name: /同\s*意/, exact: true })).toBeEnabled();
+});
+
+test('AC-FE-R1c-07c DEC-502①(a) 回执 revision 未超过本次提交按结果未知锁定，不提示成功', async ({ page }) => {
+  let writes = 0;
+  await page.route(`**/api/tenant/approval/instances/${instance}`, (route) => route.fulfill({ json: detail() }));
+  await page.route('**/api/tenant/approval/tasks/*/approve', (route) => {
+    writes++;
+    return route.fulfill({ json: detail(4, 'approved') });
+  });
+  await switchIdentity(page, '/approval');
+  await openTodo(page);
+  await page.getByRole('button', { name: button('同意') }).click();
+  await page.getByRole('button', { name: button('保存') }).click();
+  await expect(page.getByText('处理中 / 结果待确认。当前表单已锁定，请勿重新创建命令。')).toBeVisible();
+  await expect(page.getByRole('button', { name: button('保存') })).toBeDisabled();
+  expect(writes).toBe(1);
+});
+
+test('AC-FE-R1c-07b 版本冲突与结果未知分开：重读最新版本后按新 revision 重提', async ({ page }) => {
+  const revisions: (string | undefined)[] = [];
+  let revision = 4;
+  await page.route(`**/api/tenant/approval/instances/${instance}`, (route) =>
+    route.fulfill({ json: detail(revision) }),
+  );
+  await page.route('**/api/tenant/approval/tasks/*/approve', (route) => {
+    revisions.push(route.request().headers()['if-match']);
+    if (revisions.length === 1) {
+      revision = 5;
+      return route.fulfill({ status: 409, json: { error: { code: 'REVISION_CONFLICT', message: '已被他人修改' } } });
+    }
+    return route.fulfill({ json: detail(6, 'approved') });
+  });
+  await switchIdentity(page, '/approval');
+  await openTodo(page);
+  await page.getByRole('button', { name: button('同意') }).click();
+  await page.getByLabel('审批意见').fill('合成审批意见');
+  await page.getByRole('button', { name: button('保存') }).click();
+  await expect(page.getByText('版本冲突：输入已保留，请重读最新版本并核对差异后重提。')).toBeVisible();
+  await expect(page.getByText('处理中 / 结果待确认。当前表单已锁定，请勿重新创建命令。')).toHaveCount(0);
+  await page.getByRole('button', { name: '重读最新版本', exact: true }).click();
+  await page.getByRole('button', { name: '已核对差异，继续编辑', exact: true }).click();
+  await expect(page.getByLabel('审批意见')).toHaveValue('合成审批意见');
+  await page.getByRole('button', { name: button('保存') }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(revisions).toEqual(['4', '5']);
 });
 
 test('AC-FE-R1c-08 撤权隐藏发起按钮，审批字段与记录按返回值裁剪', async ({ page }) => {
@@ -191,7 +270,7 @@ test('AC-FE-R1c-08 撤权隐藏发起按钮，审批字段与记录按返回值�
     }),
   );
   await switchIdentity(page, '/transfer');
-  await expect(page.getByRole('heading', { name: '调动中员工', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '调动中员工', exact: true, pressed: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '他人调动申请', exact: true })).toHaveCount(0);
   await page.route(`**/approval/instances/${instance}`, (route) =>
     route.fulfill({
@@ -211,9 +290,11 @@ test('AC-FE-R1c-08 撤权隐藏发起按钮，审批字段与记录按返回值�
   );
   await page.goto('/approval');
   await page.getByRole('button', { name: '合成员工的调动申请', exact: true }).click();
-  await expect(page.getByRole('button', { name: /同\s*意/, exact: true })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: '裁剪后的申请', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: button('同意') })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: button('转交') })).toBeVisible();
   await expect(page.getByText('合成工作地', { exact: true })).toHaveCount(0);
-  await page.getByRole('tab', { name: '审批记录', exact: true }).click();
+  await page.getByRole('tab', { name: /^操作记录/ }).click();
   await expect(page.getByText('根据流程设置，当前查看人不可查看审批记录。')).toBeVisible();
 });
 
@@ -259,17 +340,37 @@ async function switchIdentity(page: Page, path: string) {
   await page.getByLabel('切换演示身份').selectOption(user);
   await page.waitForURL('**/staff');
   await page.goto(path);
-  await expect(page.locator('.shell-workspace h1').first()).toBeVisible({ timeout: 15_000 });
+  // 列表标题行按原站隐藏（标题位是横向视图 / 分类栏），改等页面根节点。
+  await expect(page.locator('.hr-transfer-page, .approval-page').first()).toBeVisible({ timeout: 15_000 });
 }
 
-test('AC-FE-R1c-10 参考包视图切换、主题密度与右侧详情抽屉', async ({ page }) => {
+test('AC-FE-R1c-10 横向视图、浅蓝提示、主题密度与当前页审批分类', async ({ page }) => {
+  // 管理员子页（流程管理 / 管理员委托）只在审批中心入口对象含流程实例时出现。
+  await page.route('**/permission/me/snapshot', (route) =>
+    route.fulfill({
+      json: {
+        ...snapshotFixture,
+        apps: snapshotFixture.apps.map((app) =>
+          app.app === 'approval' ? { ...app, entryObjects: ['TenantBase.ApprovalInstance'] } : app,
+        ),
+      },
+    }),
+  );
   await switchIdentity(page, '/transfer');
   await expect(page.locator('.ant-breadcrumb')).toBeHidden();
-  const view = page.getByRole('button', { name: '切换视图', exact: true });
-  await expect(view).toBeVisible();
-  await view.click();
-  await page.getByRole('menuitem', { name: '全部调动记录', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '全部调动记录', exact: true })).toBeVisible();
+  const views = page.getByRole('navigation', { name: '调动管理视图' });
+  await views.getByRole('button', { name: '全部调动记录', exact: true }).click();
+  await expect(page).toHaveURL(/view=all/);
+  await expect(views.getByRole('button', { name: '全部调动记录', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expect(views.getByRole('button', { name: '全部调动记录', exact: true })).toHaveCSS(
+    'color',
+    'rgb(20, 110, 255)',
+  );
+  await page.getByRole('button', { name: '关闭提示' }).click();
+  await expect(page.locator('.transfer-banner')).toHaveCount(0);
   const launch = page.getByRole('button', { name: '他人调动申请', exact: true });
   await expect(launch).toHaveCSS('background-color', 'rgb(20, 110, 255)');
   await expect(launch).toHaveCSS('height', '32px');
@@ -285,9 +386,14 @@ test('AC-FE-R1c-10 参考包视图切换、主题密度与右侧详情抽屉', a
   await page.goto('/approval');
   expect(new URL((await pending).url()).searchParams.get('pageSize')).toBe('15');
   await expect(page.locator('.ant-breadcrumb')).toBeHidden();
-  await expect(page.getByRole('tablist')).toHaveAttribute('aria-orientation', 'vertical');
-  await page.getByRole('tab', { name: '已处理', exact: true }).click();
+  const categories = page.getByRole('navigation', { name: '审批分类' });
+  await categories.getByRole('button', { name: '已处理', exact: true }).click();
+  await expect(page).toHaveURL(/view=completed/);
   await expect(page.getByRole('heading', { name: '已处理', exact: true })).toBeVisible();
+  for (const section of ['我的委托', '流程管理', '管理员委托']) {
+    await page.getByRole('menuitem', { name: section, exact: true }).click();
+    await expect(page.getByText('接口待补齐').first()).toBeVisible();
+  }
 });
 
 const draftId = '60000000-0000-4000-8000-000000000001';
@@ -322,11 +428,27 @@ async function openHr(page: Page) {
   await page.getByRole('button', { name: '他人调动申请', exact: true }).click();
 }
 
+// 左侧只列当前应用菜单，跨应用经顶栏全部菜单面板进入（同 AC-FE-0）；页面内状态不因整页刷新丢失。
+async function openApp(page: Page, label: string) {
+  await page.getByRole('button', { name: '应用导航' }).click();
+  await page.getByRole('dialog', { name: '全部菜单' }).getByRole('link', { name: label, exact: true }).click();
+}
+async function openSection(page: Page, label: string) {
+  await openApp(page, '审批中心');
+  const title = page.locator('.shell-sidebar .ant-menu-submenu-title', { hasText: '审批中心' });
+  if ((await title.getAttribute('aria-expanded')) !== 'true') await title.click();
+  await page.getByRole('menuitem', { name: label, exact: true }).click();
+  await expect(page.getByRole('heading', { name: label, exact: true })).toBeVisible();
+}
+
 // DEC-464 取消原命令恢复；保留原有防重与同单提交断言，改从“我的申请”进入。
 async function openMyDraft(page: Page) {
-  await page.getByRole('button', { name: '切换视图', exact: true }).click();
-  await page.getByRole('menuitem', { name: '我的申请', exact: true }).click();
+  await openSection(page, '我的申请');
   await page.getByRole('button', { name: '查看暂存申请 1', exact: true }).click();
+}
+// 表单为当前页全页；返回列表即卸载表单（原先是关闭抽屉）。
+async function closeHr(page: Page) {
+  await page.getByRole('button', { name: '返回调动管理', exact: true }).click();
 }
 async function saveDraft(page: Page) {
   await switchIdentity(page, '/transfer');
@@ -334,13 +456,13 @@ async function saveDraft(page: Page) {
   await page.locator('select[name="employeeId"]').selectOption(employee);
   await page.getByRole('button', { name: '暂存', exact: true }).click();
   await expect(page.getByText('暂存成功，请在我的申请中查看')).toBeVisible();
-  await page.getByRole('button', { name: '关闭', exact: true }).click();
+  await closeHr(page);
 }
 const processing = '处理中，请在我的申请中查看';
 async function expectReadonly(page: Page) {
   await expect(page.getByText(processing, { exact: true }).last()).toBeVisible();
   await expect(page.getByRole('button', { name: '恢复原命令', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('dialog').locator('input, select, button[type="submit"]')).toHaveCount(0);
+  await expect(page.locator('.r1c-transfer-form').locator('input, select, button[type="submit"]')).toHaveCount(0);
   await expect(page.getByRole('button', { name: '暂存', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: '提交暂存申请', exact: true })).toHaveCount(0);
 }
@@ -410,7 +532,7 @@ test('AC-FE-R1c-12 DEC-464 创建未知关闭刷新后只读，不再保存命�
   await page.locator('select[name="employeeId"]').selectOption(employee);
   await page.getByRole('button', { name: '暂存', exact: true }).click();
   await expectReadonly(page);
-  await page.getByRole('button', { name: '关闭', exact: true }).click();
+  await closeHr(page);
   await page.reload();
   await openHr(page);
   await expectReadonly(page);
@@ -476,13 +598,13 @@ test('AC-FE-R1c-15 DEC-464 在途关闭后迟到成功回执不能解除只读�
   await page.getByRole('button', { name: '暂存', exact: true }).click();
   await expect.poll(() => writes).toBe(1);
   try {
-    await page.getByRole('button', { name: '关闭', exact: true }).click();
+    await closeHr(page);
     await openHr(page);
     await expectReadonly(page);
     const response = page.waitForResponse((item) => item.url().endsWith('/transfers/employees/' + employee));
     release();
     await response;
-    await page.getByRole('button', { name: '关闭', exact: true }).click();
+    await closeHr(page);
     await openHr(page);
     await expectReadonly(page);
     expect(writes).toBe(1);
@@ -504,10 +626,11 @@ test('AC-FE-R1c-16 DEC-464 暂存提交未知，重开与我的申请均不能�
   await page.getByRole('button', { name: '提交暂存申请', exact: true }).click();
   await expect(page.getByText(processing, { exact: true }).last()).toBeVisible();
   await page.getByRole('button', { name: '关闭', exact: true }).click();
+  await openApp(page, '调动管理');
   await openHr(page);
   await expectReadonly(page);
-  await page.getByRole('button', { name: '关闭', exact: true }).click();
-  await page.getByRole('button', { name: '查看暂存申请 1', exact: true }).click();
+  await closeHr(page);
+  await openMyDraft(page);
   await expect(page.getByText(processing, { exact: true }).last()).toBeVisible();
   await expect(page.getByRole('button', { name: '提交暂存申请', exact: true })).toHaveCount(0);
   expect(writes).toBe(1);
