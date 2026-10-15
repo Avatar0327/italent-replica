@@ -1,7 +1,9 @@
 /// <reference lib="dom" />
 // @vitest-environment happy-dom
 // F-153（DEC-511）：调动暂存按人一份——重选同一人自动带出、可清除，不再按单号累积暂存单列表。
-import { afterEach, expect, it } from 'vitest';
+import { createRequire } from 'node:module';
+import { resolve } from 'node:path';
+import { afterEach, expect, it, vi } from 'vitest';
 import {
   beginHrWrite,
   finishHrWrite,
@@ -20,9 +22,13 @@ import {
   restoreDraft,
 } from '../../apps/web/src/transfer/draft-restore.js';
 import { emptyLinkage } from '../../apps/web/src/transfer/linkage-api.js';
+import { text } from '../../apps/web/src/transfer/messages.js';
 import type { TransferFormModel, TransferPreview } from '../../apps/web/src/transfer/types.js';
 
-afterEach(() => sessionStorage.clear());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  sessionStorage.clear();
+});
 
 const scope = JSON.stringify(['tenant', 'identity']);
 const employee = '30000000-0000-4000-8000-000000000001';
@@ -311,4 +317,49 @@ it('AC-FE-F153-05 联动只带出当前可编辑的项：只读或隐藏的项�
     emptyLinkage,
   );
   expect(editableLinkage(model.catalog, parsed.linkage)).toBe(parsed.linkage);
+});
+
+const requireWeb = createRequire(resolve('apps/web/package.json'));
+const { createElement: h, act } = requireWeb('react');
+const { createRoot } = requireWeb('react-dom/client');
+const { useHrWrite } = await import(resolve('apps/web/src/transfer/useHrWrite.ts'));
+// POST /transfers/employees/:id 的真实回执（transfer/service.ts createTransfer）：业务单 + 调动元数据；
+// 新建业务单推进员工版本（write-service createEmploymentBusiness → bumpEmploymentEmployee），提交再推进一次。
+const submitted = { ...business, revision: 2, status: 'in_review', initiator: 'hr', transferTypeCode: 'transfer' };
+it.each([
+  ['有效回执：员工版本已推进过发出的 5', 6, true],
+  ['陈旧回执：员工版本 4 没有推进过发出的 5', 4, false],
+])('AC-FE-F153-07 #350 第 2 轮 P2-2 %s', async (_name, employeeRevision, accepted) => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  finishHrWrite(scope, { employeeId: employee, draft: { id: draftId, transferTypeCode: 'transfer' } });
+  const root = createRoot(document.createElement('div'));
+  let state!: ReturnType<typeof useHrWrite>;
+  function Probe() {
+    state = useHrWrite(scope);
+    return null;
+  }
+  try {
+    await act(() => root.render(h(Probe)));
+    const send = async () => ({ ...submitted, employeeRevision });
+    let failure: unknown;
+    await act(() =>
+      state.run(send, { employeeId: employee, transferTypeCode: 'transfer', revision: 5 }).catch((cause: unknown) => {
+        failure = cause;
+      }),
+    );
+    if (accepted) {
+      expect(failure).toBeUndefined();
+      expect(state.result).toMatchObject({ id: draftId, status: 'in_review', employeeRevision: 6 });
+      expect(hrDraftOf(scope, employee)).toBeUndefined();
+      expect(readHrSession(scope).processing).toBe(false);
+      return;
+    }
+    // 失配不是本次写入的结果：不报成功、不动按人索引，保持处理中锁定（结果未知，DEC-464）。
+    expect(failure).toMatchObject({ message: text.unknown });
+    expect(state.result).toBeNull();
+    expect(hrDraftOf(scope, employee)).toEqual({ id: draftId, transferTypeCode: 'transfer' });
+    expect(readHrSession(scope).processing).toBe(true);
+  } finally {
+    await act(() => root.unmount());
+  }
 });

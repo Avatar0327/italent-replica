@@ -40,7 +40,8 @@ it('AC-FE-R1c-21 VALIDATION_FAILED 422 无 details 时 HR 页面显示服务端�
     const send = () => transferRequest<never>('tenant', path, { method: 'POST', body: '{}' });
     // 失败原样抛给 F-142 内核区分被拒 / 冲突 / 未知（#350 P2-2）；页面提示与解锁不变。
     let failure: unknown;
-    await act(() => state.run(send, { employeeId: 'synthetic-employee' }).catch((cause: unknown) => (failure = cause)));
+    const outcome = { employeeId: 'synthetic-employee', revision: 3 };
+    await act(() => state.run(send, outcome).catch((cause: unknown) => (failure = cause)));
     expect(failure).toMatchObject({ code: 'VALIDATION_FAILED', status: 422 });
     expect(host.querySelector('[role="alert"]')?.textContent).toBe(reason);
     expect(state.processing).toBe(false);

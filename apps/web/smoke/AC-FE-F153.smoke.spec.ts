@@ -5,7 +5,9 @@ import type { Page } from '@playwright/test';
 test.use({ viewport: { width: 1440, height: 900 } });
 
 const draftId = '60000000-0000-4000-8000-000000000001';
-const receipt = { id: draftId, revision: 1, employeeRevision: 4, status: 'draft' };
+// POST /transfers/employees/:id 的回执：新建业务单把员工版本从预览的 4 推进到 5，提交再推进一次（write-service）。
+const receipt = { id: draftId, revision: 1, employeeRevision: 5, status: 'draft' };
+const submittedReceipt = { ...receipt, revision: 2, employeeRevision: 6, status: 'in_review' };
 // GET /api/tenant/employment/businesses/:id 的真实形状（read-model.ts）；fields 为完整预置字段快照。
 const business = {
   ...receipt,
@@ -97,7 +99,7 @@ async function backend(page: Page, read: (route: Parameters<Parameters<Page['rou
   await page.route('**/transfers/employees/' + employee, (route) => {
     const body = route.request().postDataJSON() as Record<string, unknown>;
     state.creates.push(body);
-    return route.fulfill({ json: body.submit ? { ...receipt, revision: 2, status: 'in_review' } : receipt });
+    return route.fulfill({ json: body.submit ? submittedReceipt : receipt });
   });
   return state;
 }
@@ -323,7 +325,7 @@ test('AC-FE-F153-15 #350 P2-2 提交遇 409：锁定、重读核对差异后保�
       revision = 5;
       return route.fulfill({ status: 409, json: { error: { code: 'REVISION_CONFLICT', message: '版本冲突' } } });
     }
-    return route.fulfill({ json: { ...receipt, revision: 2, status: 'in_review' } });
+    return route.fulfill({ json: { ...receipt, revision: 2, employeeRevision: 7, status: 'in_review' } });
   });
   await pick(page);
   await expect(page.locator('input[name="place"]')).toHaveValue('暂存工作地');
@@ -351,4 +353,126 @@ test('AC-FE-F153-16 #350 P2-2 “重新读取表单”换上最新预览，不�
   await page.getByRole('button', { name: '重新读取表单', exact: true }).click();
   await expect(page.locator('input[name="place"]')).toHaveValue('暂存工作地');
   await expect(banner(page)).toBeVisible();
+});
+
+// #350 第 2 轮：按真实接口行为的任职服务端——If-Match 与当前员工版本不符回 409；新建并提交推进两次员工版本。
+interface Server {
+  revision: number;
+  /** 下一次写入到达前他人改到的版本（在写入时推进，避免预览重取先拿到新版本）。 */
+  changedBeforeWrite?: number;
+  sent: { ifMatch?: string; body: Record<string, unknown> }[];
+}
+async function employmentServer(page: Page) {
+  const server: Server = { revision: 4, sent: [] };
+  await page.route('**/transfers/employees/*/preview', (route) =>
+    route.fulfill({
+      json: {
+        employeeRevision: server.revision,
+        allowDirectTransfer: true,
+        allowedActions: { application: true, directList: true },
+        form: {
+          id: 'hr',
+          name: '调动申请',
+          isStandard: true,
+          excludedAutofillFields: [],
+          fieldModes: { 'preset:place': 'editable' },
+          customFields: [],
+        },
+        fields: { place: '合成工作地' },
+        customFields: {},
+        before: { fields: { place: `第 ${server.revision} 版工作地` }, customFields: {} },
+      },
+    }),
+  );
+  await page.route('**/transfers/employees/' + employee, (route) => {
+    const ifMatch = route.request().headers()['if-match'];
+    server.sent.push({ ifMatch, body: route.request().postDataJSON() as Record<string, unknown> });
+    server.revision = server.changedBeforeWrite ?? server.revision;
+    server.changedBeforeWrite = undefined;
+    if (ifMatch !== String(server.revision))
+      return route.fulfill({ status: 409, json: { error: { code: 'REVISION_CONFLICT', message: '版本冲突' } } });
+    server.revision += 2;
+    return route.fulfill({ json: { ...submittedReceipt, employeeRevision: server.revision } });
+  });
+  return server;
+}
+/** 他人先把任职改到 5：带出后提交遇 409，重读到 5 并确认；之后他人又改到 6。 */
+async function confirmConflict(page: Page, server: Server) {
+  await pick(page);
+  await expect(page.locator('input[name="place"]')).toHaveValue('暂存工作地');
+  server.changedBeforeWrite = 5;
+  await page.getByRole('button', { name: '提交', exact: true }).click();
+  await expect(page.getByText('版本冲突：输入已保留，请重读最新版本并核对差异后重提。')).toBeVisible();
+  await page.getByRole('button', { name: '重读最新版本', exact: true }).click();
+  await expect(page.getByText('第 5 版工作地').first()).toBeVisible();
+  await page.getByRole('button', { name: '已核对差异，继续编辑', exact: true }).click();
+  await expect(page.locator('input[name="place"]')).toHaveValue('暂存工作地');
+  expect(server.sent.map((item) => item.ifMatch)).toEqual(['4']);
+  server.revision = 6;
+}
+
+test('AC-FE-F153-17 #350 第 2 轮 P2-1 已确认冲突后点击清除重填：按清除后新预览的版本提交', async ({ page }) => {
+  await backend(page, (route) => route.fulfill({ json: business }));
+  await stash(page);
+  const server = await employmentServer(page);
+  await confirmConflict(page, server);
+  await page.getByRole('button', { name: '点击清除', exact: true }).click();
+  await expect(page.locator('input[name="effectiveDate"]')).toHaveValue('2026-10-12');
+  await expect(page.locator('input[name="place"]')).toHaveValue('合成工作地');
+  await page.locator('input[name="place"]').fill('重填工作地');
+  await page.getByRole('button', { name: '提交', exact: true }).click();
+  await expect.poll(() => server.sent.length).toBe(2);
+  expect(server.sent[1]!.ifMatch).toBe('6');
+  expect(server.sent[1]!.body).toMatchObject({ submit: true, fields: { place: '重填工作地' } });
+  await expect(page.getByText('调动申请已提交审批。')).toBeVisible();
+});
+
+test('AC-FE-F153-18 #350 第 2 轮 P2-1 已确认冲突后换人再换回：按换回后新预览的版本提交', async ({ page }) => {
+  const other = '30000000-0000-4000-8000-000000000002';
+  await page.route('**/employment/employees?**', (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          { id: employee, name: '合成员工', code: 'DEMO-001', revision: 3 },
+          { id: other, name: '合成员工乙', code: 'DEMO-002', revision: 1 },
+        ],
+      },
+    }),
+  );
+  await backend(page, (route) => route.fulfill({ json: business }));
+  await stash(page);
+  const server = await employmentServer(page);
+  await confirmConflict(page, server);
+  const reselected = page.waitForResponse((response) => response.url().includes(`/employees/${employee}/preview`));
+  await page.locator('select[name="employeeId"]').selectOption(other);
+  await expect(banner(page)).toHaveCount(0);
+  await page.locator('select[name="employeeId"]').selectOption(employee);
+  await reselected;
+  await expect(banner(page)).toBeVisible();
+  await expect(page.locator('input[name="place"]')).toHaveValue('暂存工作地');
+  await page.getByRole('button', { name: '提交', exact: true }).click();
+  await expect.poll(() => server.sent.length).toBe(2);
+  expect(server.sent[1]!.ifMatch).toBe('6');
+  await expect(page.getByText('调动申请已提交审批。')).toBeVisible();
+});
+
+test('AC-FE-F153-19 #350 第 2 轮 P2-2 回执员工版本未推进：按结果未知锁定，不报成功、不清暂存索引', async ({ page }) => {
+  await backend(page, (route) => route.fulfill({ json: business }));
+  await stash(page);
+  const sent: (string | undefined)[] = [];
+  await page.route('**/transfers/employees/' + employee, (route) => {
+    sent.push(route.request().headers()['if-match']);
+    // 陈旧回执：业务单 revision 2，员工版本仍是发出的 4，不是本次写入的结果。
+    return route.fulfill({ json: { ...receipt, revision: 2, employeeRevision: 4, status: 'in_review' } });
+  });
+  await pick(page);
+  await page.getByRole('button', { name: '提交', exact: true }).click();
+  await expect.poll(() => sent).toEqual(['4']);
+  await expect(page.getByRole('status').filter({ hasText: '处理中，请在我的申请中查看' })).toBeVisible();
+  await expect(page.getByText('调动申请已提交审批。')).toHaveCount(0);
+  const drafts = await page.evaluate(() => {
+    const key = Object.keys(sessionStorage).find((item) => item.startsWith('italent.transfer.l2:'))!;
+    return (JSON.parse(sessionStorage.getItem(key)!) as { drafts: Record<string, unknown> }).drafts;
+  });
+  expect(Object.values(drafts)).toEqual([expect.objectContaining({ id: draftId })]);
 });

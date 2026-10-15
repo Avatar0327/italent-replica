@@ -38,11 +38,18 @@ export function useHrTransferCommand(
     reread.current = { employeeId: model.employeeId, loaded };
     return previewRecord(model.employeeId, loaded.preview);
   };
+  // 新一次尝试（含清除、换人后重来）从当前预览起算：丢掉已确认冲突留下的旧版本与重读缓存（#350 第 2 轮 P2-1）。
+  // 内核对锁定中的槽（提交中、冲突、结果未知）不清除，这些状态仍按原规则锁定。
+  const restart = () => {
+    command.clear();
+    reread.current = undefined;
+  };
   const conflict: CommandForm = {
     ...command,
     reload: () => command.reread(read),
     confirm: () => {
       const latest = reread.current;
+      reread.current = undefined;
       command.confirm();
       if (latest) setModel((current) => withReread(current, latest.employeeId, latest.loaded));
     },
@@ -63,6 +70,7 @@ export function useHrTransferCommand(
       if (model.typeConfirmation) return;
       if (missingTransferRequiredFields(preview.form, { ...preview.fields, ...model.fields }).length) return;
       setAction(action);
+      restart();
       const record = previewRecord(model.employeeId, preview);
       const outcome = await command.submit({
         values: draftValues(model, record),
@@ -70,9 +78,12 @@ export function useHrTransferCommand(
         editableFields: editableKeys(preview),
         revision: record.revision,
         businessId: model.employeeId,
-        send: async ({ revision }) => {
+        send: async (sent) => {
+          // 回执按实际发出的 If-Match 核对（#350 第 2 轮 P2-2）。
+          const revision = sent.revision ?? record.revision;
           const save = (id: string) => saveTransfer(tenantId, model, action, id, revision);
-          await write.run(save, { employeeId: model.employeeId, transferTypeCode: model.transferTypeCode });
+          const { employeeId, transferTypeCode } = model;
+          await write.run(save, { employeeId, transferTypeCode, revision });
           // 内核按员工记录核对回执；业务单回执已由 useHrWrite 校验并保存。
           return { id: model.employeeId };
         },
