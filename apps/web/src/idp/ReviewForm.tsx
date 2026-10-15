@@ -1,5 +1,5 @@
 import { Button, Form, Input, Space, Tag, Typography, type FormInstance } from 'antd';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { acceptReceipt, approvalRequest, readApproval } from '../approval/api.js';
 import { useApprovalCommand } from '../approval/commands.js';
 import type { ApprovalDetail } from '../approval/types.js';
@@ -83,15 +83,35 @@ function useReviewSave(props: ReviewProps, form: FormInstance<ReviewValues>) {
   return { command: { ...command, reload }, baseline, save };
 }
 
+/** 本人在该实例上可以“同意”的在办待办；不在回顾节点、不是处理人、已提交时没有。 */
+const approvableTask = (detail: ApprovalDetail, userId: string | undefined) =>
+  detail.actions.includes('approve') ? myPendingTask(detail, userId) : undefined;
+
 /**
- * 回顾提交 = 同意本人在本阶段审批实例上的待办。命令放在流程实例的恢复槽（审批模块级存储，与审批详情、
- * 合同催办共用，F-147），动作与待办记在槽上下文；回执须是本实例且版本前进（acceptReceipt）。
- * 返回要提示的文案（读不到实例、没有本人待办），成功或交给内核显示状态时返回空。
+ * 回顾提交 = 同意本人在本阶段审批实例上的待办（POST /approval/tasks/:taskId/approve，If-Match 实例 revision）。
+ * 命令放在流程实例的恢复槽（审批模块级存储，与审批详情、合同催办共用，F-147），动作与待办记在槽上下文；
+ * 回执须是本实例且版本前进（acceptReceipt）。先读实例：本人没有可同意的待办就不给提交入口（`ready` 为假）。
+ * approve 返回要提示的文案（点击时实例已变、没有本人待办），成功或交给内核显示状态时返回空。
  */
-function useReviewApproval(instanceId: string | undefined, saved: () => void) {
+function useReviewApproval(instanceId: string | undefined, version: unknown, saved: () => void) {
   const api = useApiClient();
   const session = useSession();
   const approval = forAction(useApprovalCommand(slotKey(APPROVAL_INSTANCES, instanceId)), { action: 'approve' });
+  const [task, setTask] = useState<string>();
+  useEffect(() => {
+    let live = true;
+    const settle = (id?: string) => live && setTask(id);
+    if (!instanceId) settle();
+    else
+      readApproval(api, instanceId).then(
+        (detail) => settle(approvableTask(detail, session.userId)),
+        () => settle(),
+      );
+    return () => {
+      live = false;
+    };
+    // 计划刷新、本命令状态变化（同意完成后清掉）时重读，已提交的待办随之收起入口
+  }, [api, instanceId, session.userId, version, approval.status]);
   const reload = () =>
     approval.reread(async (id) => {
       const detail = await readApproval(api, String(id ?? instanceId));
@@ -117,14 +137,16 @@ function useReviewApproval(instanceId: string | undefined, saved: () => void) {
   const approve = async (): Promise<string | undefined> => {
     const detail = instanceId ? await readApproval(api, instanceId).catch(() => undefined) : undefined;
     if (!detail) return t.reviewForm.readFailed;
-    const taskId = myPendingTask(detail, session.userId);
-    if (!taskId || !detail.actions.includes('approve')) return t.reviewForm.noTask;
+    const taskId = approvableTask(detail, session.userId);
+    if (!taskId) return t.reviewForm.noTask;
     if (approval.status === 'rejected' || approval.status === 'done') approval.clear();
     if ((await send(detail, taskId)).status !== 'done') return undefined;
     approval.clear();
     saved();
   };
-  return { approval: { ...approval, reload }, approve };
+  // 命令未确认（处理中、结果未知、冲突）时入口保留并锁定，不因待办状态变化而消失
+  const ready = !!task || approval.status !== 'idle';
+  return { approval: { ...approval, reload }, approve, ready };
 }
 
 /** 提交时的必填：两项去空白后非空，口径与后端 409 IDP_REVIEW_REQUIRED 相同（approval-adapter requireReview）。 */
@@ -145,7 +167,7 @@ export function ReviewForm(props: ReviewProps) {
   const [form] = Form.useForm<ReviewValues>();
   const { command, baseline, save } = useReviewSave(props, form);
   const instanceId = props.stage.approvalInstanceId ?? undefined;
-  const { approval, approve } = useReviewApproval(instanceId, props.saved);
+  const { approval, approve, ready } = useReviewApproval(instanceId, plan.revision, props.saved);
   const locked = command.locked || approval.locked || !!approval.blocked;
   const [notice, setNotice] = useState<string>();
   const validated = () => (locked ? Promise.resolve(undefined) : form.validateFields().catch(() => undefined));
@@ -184,7 +206,7 @@ export function ReviewForm(props: ReviewProps) {
         <Button loading={command.busy} disabled={locked} onClick={() => void onSave()}>
           {t.reviewForm.save}
         </Button>
-        {instanceId && (
+        {ready && (
           <Button type="primary" loading={approval.busy} disabled={locked} onClick={() => void onSubmit()}>
             {t.reviewForm.submit}
           </Button>

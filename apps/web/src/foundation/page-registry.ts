@@ -111,9 +111,15 @@ function claim(seen: Map<string, string>, kind: string, key: string, module: str
 }
 
 type Children = NonNullable<AppPageDeclaration['children']>;
+/** 声明模块自己的子项在前、扩展在后；同一层菜单键重复说明两处登记撞了，报错而不是静默覆盖。 */
 const extend =
-  (own: Children | undefined, more: Children): Children =>
-  (snapshot, route) => [...(own?.(snapshot, route) ?? []), ...more(snapshot, route)];
+  (own: Children | undefined, more: Children, module: string): Children =>
+  (snapshot, route) => {
+    const menus = [...(own?.(snapshot, route) ?? []), ...more(snapshot, route)];
+    const seen = new Map<string, string>();
+    for (const menu of menus) claim(seen, `${route.id} 菜单键`, menu.key, module);
+    return menus;
+  };
 
 export function collectPages(modules: Record<string, unknown>, appIds: readonly AppId[]): PageRegistry {
   const found = declarations(modules);
@@ -132,7 +138,7 @@ export function collectPages(modules: Record<string, unknown>, appIds: readonly 
     for (const extension of pages.menus ?? []) {
       const app = apps.get(extension.app);
       if (!app) throw new Error(`菜单扩展挂到了未知应用：${extension.app}（${module}）`);
-      apps.set(extension.app, { ...app, children: extend(app.children, extension.children) });
+      apps.set(extension.app, { ...app, children: extend(app.children, extension.children, module) });
     }
   const appRoutes = appIds.map((id) => apps.get(id)!);
   for (const route of appRoutes) claim(paths, '路径', route.path, route.module);

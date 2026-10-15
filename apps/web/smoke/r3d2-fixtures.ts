@@ -221,25 +221,31 @@ export interface IdpMockOptions {
   reviewReceipt?: 'without-revision' | 'stale-revision';
   /** 第一阶段被 HR 跳过（已终止，F-155），第二阶段进行中。 */
   skippedFirstStage?: boolean;
-  /** 运行中阶段带审批实例，本人有待办（回顾“提交”= 同意该待办，F-164 第 1 轮 P2-4）；审批接口照 approval routes 夹具。 */
-  reviewApproval?: boolean;
+  /**
+   * 运行中阶段带审批实例（回顾“提交”= 同意本人待办，F-164 第 1 轮 P2-4）；审批接口照 approval routes 夹具。
+   * mine：本人有在办待办；others：在办待办是别人的，本人没有动作（详情 actions 为空）。
+   */
+  reviewApproval?: 'mine' | 'others';
+  /** 同意成功（实例已前进）但回执的 revision 仍是请求带的版本：按结果未知锁定。 */
+  approveReceipt?: 'stale-revision';
 }
 
 export const reviewInstanceId = 'c0000000-0000-4000-8000-000000000201';
 export const reviewTaskId = 'c0000000-0000-4000-8000-000000000202';
 /** 与 GET /approval/instances/:id 同形；同意成功时返回动作后的详情（routes.ts respondOutcome → respondDetail）。 */
-function reviewApprovalDetail(revision: number, done: boolean) {
+const otherUser = 'c0000000-0000-4000-8000-000000000299';
+function reviewApprovalDetail(revision: number, done: boolean, assignee = user) {
   return {
     id: reviewInstanceId,
     title: '合成员工甲的发展计划',
     revision,
     status: done ? 'approved' : 'running',
     approvalType: 'idp_plan',
-    actions: done ? [] : ['approve'],
+    actions: done || assignee !== user ? [] : ['approve'],
     recordsHidden: false,
     form: { values: {} },
     tasks: [
-      { id: reviewTaskId, nodeName: '员工制定计划', status: done ? 'approved' : 'pending', assigneeUserId: user },
+      { id: reviewTaskId, nodeName: '员工制定计划', status: done ? 'approved' : 'pending', assigneeUserId: assignee },
     ],
     logs: [],
   };
@@ -374,17 +380,18 @@ export async function mockIdp(page: Page, options: IdpMockOptions = {}) {
     const json = server.read(path) ?? plans.read(path) ?? reads[path] ?? list([]);
     return route.fulfill({ json: calls.length ? reread(path, json, options) : json });
   });
-  if (options.reviewApproval) await mockReviewApproval(page, calls);
+  if (options.reviewApproval) await mockReviewApproval(page, calls, options);
   await mockNames(page);
   return calls;
 }
 
 /** 回顾所在阶段的审批实例：详情读取与本人待办的同意；同意记进 calls（路径带 /approval 前缀）。 */
-async function mockReviewApproval(page: Page, calls: IdpCall[]) {
+async function mockReviewApproval(page: Page, calls: IdpCall[], options: IdpMockOptions) {
   let revision = 7;
   let done = false;
+  const assignee = options.reviewApproval === 'others' ? otherUser : user;
   await page.route(`**/api/tenant/approval/instances/${reviewInstanceId}`, (route) =>
-    route.fulfill({ json: reviewApprovalDetail(revision, done) }),
+    route.fulfill({ json: reviewApprovalDetail(revision, done, assignee) }),
   );
   await page.route(`**/api/tenant/approval/tasks/${reviewTaskId}/approve`, (route) => {
     const request = route.request();
@@ -397,7 +404,8 @@ async function mockReviewApproval(page: Page, calls: IdpCall[]) {
     });
     revision += 1;
     done = true;
-    return route.fulfill({ json: reviewApprovalDetail(revision, done) });
+    const stale = options.approveReceipt === 'stale-revision';
+    return route.fulfill({ json: reviewApprovalDetail(stale ? revision - 1 : revision, done) });
   });
 }
 

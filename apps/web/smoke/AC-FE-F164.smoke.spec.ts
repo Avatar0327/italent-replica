@@ -275,7 +275,7 @@ const MISSING = [
 for (const [no, field, value, what] of MISSING)
   test(`AC-FE-F164-${no} 回顾提交${what}：${field}报“还没有填写，不能提交”并定位，不保存也不提交`, async ({ page }) => {
     const errors = watchErrors(page);
-    const calls = await mockIdp(page, { reviewButtons: ['EditModuleContent'], reviewApproval: true });
+    const calls = await mockIdp(page, { reviewButtons: ['EditModuleContent'], reviewApproval: 'mine' });
     await asUser(page);
     await page.goto(`/self/idp?plan=${planId}`);
     const form = reviewForm(page);
@@ -292,7 +292,7 @@ test('AC-FE-F164-14 回顾保存草稿可空；填齐后提交：先保存改动
   page,
 }) => {
   const errors = watchErrors(page);
-  const calls = await mockIdp(page, { reviewButtons: ['EditModuleContent'], reviewApproval: true });
+  const calls = await mockIdp(page, { reviewButtons: ['EditModuleContent'], reviewApproval: 'mine' });
   await asUser(page);
   await page.goto(`/self/idp?plan=${planId}`);
   const form = reviewForm(page);
@@ -311,6 +311,65 @@ test('AC-FE-F164-14 回顾保存草稿可空；填齐后提交：先保存改动
   expect(approves(calls)[0]).toMatchObject({ method: 'POST', revision: '7', body: { comment: null } });
   expect(approves(calls)[0]!.key).toBeTruthy();
   await expect(form.getByText(/结果待确认|版本冲突/)).toHaveCount(0);
+  // 已提交：本人不再有在办待办，提交入口收起
+  await expect(form.getByRole('button', { name: /提\s*交/ })).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test('AC-FE-F164-15 在办待办是别人的（本人无同意动作）：不给提交入口，不发同意请求', async ({ page }) => {
+  const errors = watchErrors(page);
+  const calls = await mockIdp(page, { reviewButtons: ['EditModuleContent'], reviewApproval: 'others' });
+  await asUser(page);
+  await page.goto(`/self/idp?plan=${planId}`);
+  const form = reviewForm(page);
+  await expect(form.getByRole('button', { name: /保\s*存/ })).toBeEnabled();
+  await page.waitForTimeout(300);
+  await expect(form.getByRole('button', { name: /提\s*交/ })).toHaveCount(0);
+  expect(approves(calls)).toHaveLength(0);
+  expect(errors).toEqual([]);
+});
+
+test('AC-FE-F164-16 提交前的保存结果未知：不发同意，表单与提交一并锁定', async ({ page }) => {
+  const errors = watchErrors(page, ['500']);
+  const calls = await mockIdp(page, {
+    reviewButtons: ['EditModuleContent'],
+    reviewApproval: 'mine',
+    writeStatus: 500,
+  });
+  await asUser(page);
+  await page.goto(`/self/idp?plan=${planId}`);
+  const form = reviewForm(page);
+  await form.getByLabel('总结').fill('合成提交总结');
+  await form.getByRole('button', { name: /提\s*交/ }).click();
+  await expect(form.getByText(/结果待确认/)).toBeVisible();
+  await expect(form.getByRole('button', { name: /提\s*交/ })).toBeDisabled();
+  await form.getByRole('button', { name: /提\s*交/ }).click({ force: true });
+  await page.waitForTimeout(300);
+  expect(puts(calls)).toHaveLength(1);
+  expect(approves(calls)).toHaveLength(0);
+  expect(errors).toEqual([]);
+});
+
+test('AC-FE-F164-17 同意回执 revision 没前进：按结果未知锁定，不当成已提交、不发第二次同意', async ({ page }) => {
+  const errors = watchErrors(page);
+  const calls = await mockIdp(page, {
+    reviewButtons: ['EditModuleContent'],
+    reviewApproval: 'mine',
+    approveReceipt: 'stale-revision',
+  });
+  await asUser(page);
+  await page.goto(`/self/idp?plan=${planId}`);
+  const form = reviewForm(page);
+  await form.getByLabel('总结').fill('合成提交总结');
+  await form.getByRole('button', { name: /提\s*交/ }).click();
+  await expect.poll(() => approves(calls).length).toBe(1);
+  await expect(form.getByText(/结果待确认/)).toBeVisible();
+  await expect(form.getByLabel('总结')).toBeDisabled();
+  // 待办在服务端已办结，但命令未确认：入口保留并锁定，不因待办消失而收起
+  await expect(form.getByRole('button', { name: /提\s*交/ })).toBeDisabled();
+  await form.getByRole('button', { name: /提\s*交/ }).click({ force: true });
+  await page.waitForTimeout(300);
+  expect(approves(calls)).toHaveLength(1);
   expect(errors).toEqual([]);
 });
 
