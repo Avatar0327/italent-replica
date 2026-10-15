@@ -183,32 +183,7 @@ test('AC-FE-R1a-07 新建职层校验必填项并携带租户、命令键和 rev
   expect(writes[0]!.headers['x-tenant-id']).toBe('10000000-0000-4000-8000-000000000001');
 });
 
-test('AC-FE-R1a-08 组织变更显式联动，冲突后不盲重放', async ({ page, baseURL }) => {
-  await page.context().addCookies([
-    { name: 'italent_demo_tenant', value: '10000000-0000-4000-8000-000000000001', url: baseURL! },
-    { name: 'italent_demo_user', value: user, url: baseURL! },
-  ]);
-  const bodies: Record<string, unknown>[] = [];
-  await page.route(`**/api/tenant/org/organizations/${id}`, (route) => {
-    bodies.push(route.request().postDataJSON());
-    return route.fulfill({ status: 409, json: { error: { code: 'REVISION_CONFLICT' } } });
-  });
-  await page.goto('/org?tab=changes');
-  await page.getByRole('button', { name: '合成组织', exact: true }).click();
-  await page.getByRole('button', { name: /变\s*更/, exact: true }).click();
-  await page.getByRole('dialog').getByLabel('机构名称').fill('合成组织二');
-  await page.getByRole('button', { name: /保\s*存/ }).click();
-  await expect(page.getByText('请选择是否新增任职')).toBeVisible();
-  expect(bodies).toHaveLength(0);
-  await page.getByRole('dialog').getByLabel('是否新增任职').click();
-  await page.getByTitle('否', { exact: true }).click();
-  await page.getByRole('button', { name: /保\s*存/ }).click();
-  await expect(page.getByRole('dialog').getByRole('alert')).toContainText('刷新');
-  expect(bodies).toEqual([{ name: '合成组织二', effectiveDate: '2026-10-12', addEmployment: false }]);
-  await page.getByRole('button', { name: /保\s*存/ }).click();
-  await expect(page.getByRole('dialog').getByRole('alert')).toContainText('重新打开');
-  expect(bodies).toHaveLength(1);
-});
+// AC-FE-R1a-08（冲突重读）随表单内核一起移到 AC-FE-R1a-kernel.smoke.spec.ts。
 
 test('AC-FE-R1a-09 组织停用提交后端校验，编制详情只读', async ({ page, baseURL }) => {
   await page.context().addCookies([
@@ -295,8 +270,7 @@ test('AC-FE-R1a-13 原站视图切换、主题尺寸与15条分页', async ({ pa
   await expect(page.getByRole('heading', { level: 1 })).toContainText('职等');
   await expect(create).toBeEnabled();
   await expect(page.locator('.ant-spin-spinning')).toHaveCount(0);
-  await page.waitForTimeout(500); // 仅等截图动画落稳，交互断言已完成。
-  await page.screenshot({ path: testInfo.outputPath('reference-list.png'), fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath('reference-list.png'), fullPage: true, animations: 'disabled' });
 });
 
 test('AC-FE-R1a-14 详情页签留在右侧抽屉，编辑使用双列弹窗', async ({ page }, testInfo) => {
@@ -311,15 +285,13 @@ test('AC-FE-R1a-14 详情页签留在右侧抽屉，编辑使用双列弹窗', a
   const drawer = page.getByRole('dialog');
   await expect(drawer.getByRole('tab', { name: '组织单元', exact: true })).toBeVisible();
   await expect.poll(async () => Math.round((await drawer.boundingBox())?.x ?? -1)).toBe(320);
-  await page.waitForTimeout(500); // 仅等截图动画落稳，交互断言已完成。
-  await page.screenshot({ path: testInfo.outputPath('reference-detail.png'), fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath('reference-detail.png'), fullPage: true, animations: 'disabled' });
   await drawer.getByRole('button', { name: /编\s*辑/, exact: true }).click();
   await expect(page.locator('.ant-modal')).toBeVisible();
   await expect(page.locator('.ant-modal')).toHaveCSS('width', '800px');
   await expect(page.locator('.form-fields-modal').first()).toHaveCSS('display', 'grid');
   await expect(page.locator('.ant-modal')).toHaveCSS('transform', 'none');
-  await page.waitForTimeout(500); // 仅等截图动画落稳，交互断言已完成。
-  await page.screenshot({ path: testInfo.outputPath('reference-form.png'), fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath('reference-form.png'), fullPage: true, animations: 'disabled' });
 });
 
 for (const route of ['/org', '/job?kind=positions']) {
