@@ -4,7 +4,7 @@ import { DecisionNote, FormOverlay, PageState, useApiClient, useSession } from '
 import { presetLabels } from '../transfer/messages.js';
 import { completedDetail } from '../demo-stubs/approval.js';
 import { useApprovalAction } from './action-command.js';
-import { readApproval, uuidPattern, visibleActions } from './api.js';
+import { logComment, readApproval, uuidPattern, visibleActions } from './api.js';
 import {
   detailText as d,
   fieldLabels,
@@ -182,7 +182,7 @@ function ApprovalProgress({ detail }: { detail: Detail }) {
     </div>
   );
 }
-/** 操作记录取流程日志（详情 logs，最近 200 条升序）；日志关联任务时补节点名与审批意见。 */
+/** 操作记录取流程日志（详情 logs，最近 200 条升序）；节点名按关联任务补，意见只取日志自身（logComment）。 */
 function ApprovalHistory({ detail }: { detail: Detail }) {
   const { timezone } = useSession();
   if (detail.recordsHidden) return <Alert type="info" message={m.historyHidden} />;
@@ -193,6 +193,7 @@ function ApprovalHistory({ detail }: { detail: Detail }) {
       <Timeline
         items={detail.logs.map((log, index) => {
           const task = log.taskId ? tasks.get(log.taskId) : undefined;
+          const comment = logComment(log);
           return {
             key: `${log.createdAt}-${index}`,
             color: 'gray',
@@ -200,7 +201,7 @@ function ApprovalHistory({ detail }: { detail: Detail }) {
               <div className="approval-log">
                 <strong>{logEvents[log.event] ?? log.event}</strong>
                 {task && <Tag>{task.nodeName}</Tag>}
-                {task?.comment && <p>{task.comment}</p>}
+                {comment && <p>{comment}</p>}
                 <small>{formatInstant(log.createdAt, timezone)}</small>
               </div>
             ),

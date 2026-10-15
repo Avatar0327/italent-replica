@@ -107,14 +107,27 @@ test('AC-FE-R2a-15 合同设置按差异保存，回执须为本租户下一版�
 
 async function approvals(
   page: Page,
-  // 催办成功返回流程详情（respondOutcome → respondDetail）。
-  urge: () => object = () => ({ json: { id: instance, revision: 4, status: 'running' } }),
+  // 不传时按后端返回动作后的流程详情（respondOutcome → respondDetail）。
+  urge?: () => object,
   // null：流程详情读取失败。
   actions: string[] | null = ['urge', 'transfer', 'withdraw'],
 ) {
   const writes: Write[] = [];
-  // 转交 / 撤销返回动作后的流程详情：revision 前进，撤销后为 withdrawn；之后的 GET 跟随新版本（#333 第 1 轮 P3）。
-  const current = { revision: 4, status: 'running' };
+  // 写回执与之后的 GET 都是同一份完整详情：转交后原任务 transferred、接收人新任务 pending，
+  // 撤销后状态 withdrawn、待办取消、无可用动作（#333 第 1 轮 P3、第 2 轮 P3-1）。
+  const current = { revision: 4, status: 'running', transferred: false };
+  const detail = () => ({
+    id: instance,
+    title: '合成合同变更申请',
+    revision: current.revision,
+    status: current.status,
+    approvalType: 'contract',
+    actions: current.status === 'running' ? (actions ?? []) : [],
+    recordsHidden: false,
+    form: { values: {} },
+    tasks: approvalTasks(current),
+    logs: [],
+  });
   await page.route('**/api/tenant/approval/**', (route) => {
     const url = new URL(route.request().url());
     if (route.request().method() !== 'GET') {
@@ -122,9 +135,10 @@ async function approvals(
       const urging = url.pathname.endsWith('/urge');
       if (!urging) {
         current.revision += 1;
+        current.transferred ||= url.pathname.endsWith('/transfer');
         current.status = url.pathname.endsWith('/withdraw') ? 'withdrawn' : 'running';
       }
-      const { status = 200, json } = (urging ? urge() : { json: { id: instance, ...current } }) as {
+      const { status = 200, json } = (urging && urge ? urge() : { json: detail() }) as {
         status?: number;
         json: unknown;
       };
@@ -135,28 +149,34 @@ async function approvals(
         json: {
           items:
             url.searchParams.get('businessId') === requestId
-              ? [{ id: instance, title: '合成合同变更申请', approvalType: 'contract', ...current }]
+              ? [
+                  {
+                    id: instance,
+                    title: '合成合同变更申请',
+                    approvalType: 'contract',
+                    revision: current.revision,
+                    status: current.status,
+                  },
+                ]
               : [],
         },
       });
     if (!actions) return route.fulfill({ status: 500, json: { error: { code: 'INTERNAL', message: '合成错误' } } });
-    return route.fulfill({
-      json: {
-        id: instance,
-        title: '合成合同变更申请',
-        ...current,
-        approvalType: 'contract',
-        actions,
-        recordsHidden: false,
-        form: { values: {} },
-        tasks: [{ id: task, nodeName: '合成审批节点', status: 'pending', assigneeUserId: user }],
-        logs: [],
-      },
-    });
+    return route.fulfill({ json: detail() });
   });
   await setupContracts(page);
   await page.getByRole('button', { name: '审批中合同协议', exact: true }).click();
   return writes;
+}
+const receiverTask = '50000000-0000-4000-8000-0000000000a2';
+function approvalTasks(current: { status: string; transferred: boolean }) {
+  const open = current.status === 'running' ? 'pending' : 'cancelled';
+  const own = { id: task, nodeName: '合成审批节点', assigneeUserId: user };
+  if (!current.transferred) return [{ ...own, status: open }];
+  return [
+    { ...own, status: 'transferred' },
+    { id: receiverTask, nodeName: '合成审批节点', status: open, assigneeUserId: user },
+  ];
 }
 const row = (page: Page, label: string) => page.locator('.ant-table').getByRole('button', { name: label, exact: true });
 

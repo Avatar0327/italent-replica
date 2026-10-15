@@ -296,6 +296,55 @@ test('AC-FE-R1c-04b 切换审批分类回到第 1 页，不带上一分类的页
   await expect(page.getByText('第 1 页', { exact: true })).toBeVisible();
 });
 
+// #333 第 2 轮 P2：转交日志的 taskId 指向接收人的新任务，转交人意见只在日志自身 detail.comment（actions.ts delegate）。
+const receiver = '50000000-0000-4000-8000-000000000002';
+function transferredDetail(receiverDone: boolean) {
+  const transfer = { fromUserId: user, toUserId: '70000000-0000-4000-8000-000000000002', comment: '转交者意见甲' };
+  return {
+    ...detail(),
+    tasks: [
+      { id: task, nodeName: '部门负责人审批', status: 'transferred', comment: '转交者意见甲' },
+      receiverDone
+        ? { id: receiver, nodeName: '部门负责人审批', status: 'approved', comment: '接收人审批意见乙' }
+        : { id: receiver, nodeName: '部门负责人审批', status: 'pending', comment: null },
+    ],
+    logs: [
+      { event: 'start', taskId: null, detail: { processCode: 'transfer' }, createdAt: '2026-10-12T01:00:00Z' },
+      { event: 'transfer', nodeKey: 'leader', taskId: receiver, detail: transfer, createdAt: '2026-10-12T02:00:00Z' },
+      ...(receiverDone
+        ? [
+            {
+              event: 'approve',
+              nodeKey: 'leader',
+              taskId: receiver,
+              detail: { comment: '接收人审批意见乙' },
+              createdAt: '2026-10-12T03:00:00Z',
+            },
+          ]
+        : []),
+    ],
+  };
+}
+for (const receiverDone of [false, true]) {
+  test(`AC-FE-R1c-04c 转交记录显示转交人意见（接收人${receiverDone ? '已同意' : '未处理'}）`, async ({ page }) => {
+    await page.route(`**/approval/instances/${instance}`, (route) =>
+      route.fulfill({ json: transferredDetail(receiverDone) }),
+    );
+    await switchIdentity(page, '/approval');
+    await openTodo(page);
+    const records = page.locator('.approval-detail-collab .approval-log');
+    await expect(records).toHaveCount(receiverDone ? 3 : 2);
+    await expect(records.nth(0)).not.toContainText('意见');
+    await expect(records.nth(1)).toContainText('转交');
+    await expect(records.nth(1)).toContainText('转交者意见甲');
+    await expect(records.nth(1)).not.toContainText('接收人审批意见乙');
+    if (receiverDone) {
+      await expect(records.nth(2)).toContainText('接收人审批意见乙');
+      await expect(records.nth(2)).not.toContainText('转交者意见甲');
+    }
+  });
+}
+
 for (const [label, action] of [
   ['同意', 'approve'],
   ['驳回', 'reject'],

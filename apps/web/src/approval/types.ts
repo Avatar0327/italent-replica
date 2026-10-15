@@ -34,6 +34,8 @@ export interface ApprovalLog {
   nodeKey?: string | null;
   taskId?: string | null;
   actorUserId?: string | null;
+  /** 事件自身的明细；意见在 detail.comment（后端 appendLog）。 */
+  detail?: Record<string, unknown>;
   createdAt: string;
 }
 export interface ApprovalList extends PageResult<ApprovalRow> {

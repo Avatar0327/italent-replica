@@ -2,7 +2,7 @@ import { ApiError, newCommand, type ApiClient, type PageRequest } from '../found
 import { completedExamples } from '../demo-stubs/approval.js';
 import { messages as kernel } from '../foundation/forms/messages.js';
 import { messages as m } from './messages.js';
-import type { ApprovalAction, ApprovalDetail, ApprovalList, ApprovalRow, ApprovalView } from './types.js';
+import type { ApprovalAction, ApprovalDetail, ApprovalList, ApprovalLog, ApprovalRow, ApprovalView } from './types.js';
 
 const base = '/api/tenant/approval';
 const actions: ApprovalAction[] = ['approve', 'disagree', 'reject', 'transfer', 'withdraw'];
@@ -33,6 +33,15 @@ export async function approvalList(
     items: result.items.map((row) => (view === 'pending' ? { ...row, id: row.instanceId!, status: 'pending' } : row)),
     hasMore: result.items.length === page.pageSize,
   };
+}
+/**
+ * 操作记录的意见只取日志自身 detail.comment（#333 第 2 轮 P2）。后端写日志时：同意 / 不同意 / 驳回 / 跳转 / 抄送的
+ * taskId 是操作人自己的任务；转交、加签、加签返回、撤回的 taskId 指向新任务，经 taskId 去读任务意见会拿到接收人后来的意见。
+ * 发起、催办、撤销、终止等不带意见。
+ */
+export function logComment(log: ApprovalLog): string | null {
+  const comment = log.detail?.comment;
+  return typeof comment === 'string' && comment.trim() ? comment : null;
 }
 export const readApproval = (api: ApiClient, id: string, signal?: AbortSignal) =>
   api.request<ApprovalDetail>(`${base}/instances/${encodeURIComponent(id)}`, { signal });

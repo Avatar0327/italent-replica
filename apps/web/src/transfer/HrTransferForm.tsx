@@ -67,7 +67,7 @@ function SectionFrame({ section, busy, children }: { section: HrSection; busy?: 
 
 function InfoSection(props: HrTransferFormProps) {
   const { model, busy, onLinkage } = props;
-  // 联动字段与原表单一致，等预览返回后再显示：是否带编制等默认值来自预览，不在前端预填。
+  // 联动字段等预览返回后再显示；三组单选的初值“否”是前端空草稿的默认值（useTransferForm、linkage-api），不来自预览。
   const draft = model.preview ? model.linkage : undefined;
   const employee = model.employees.find((item) => item.id === model.employeeId);
   const people = model.employees.filter((item) => item.id !== model.employeeId);
@@ -136,7 +136,10 @@ function InfoLinkage({ model, draft, change, onWithEstablishment }: LinkageProps
   );
 }
 
-/** 原站“是 / 否”单选；默认否。 */
+/**
+ * “是 / 否”单选，前端初值为否。是否调整薪资、是否变更合同在 `14` 审批详情字段表中标必填；
+ * 是否带编制调动的已选值与必填星号原站无证据（#333 第 2 轮 P3-2），沿用现有实现，未按原站验证。
+ */
 function YesNo(props: { name: string; label: string; value: boolean; onChange: (value: boolean) => void }) {
   const { name, label, value, onChange } = props;
   return (
