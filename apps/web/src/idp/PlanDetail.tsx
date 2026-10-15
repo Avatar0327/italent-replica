@@ -22,6 +22,7 @@ import {
   type PlanAction,
   type TaskAction,
 } from './model.js';
+import { OWN_PLANS_PATH, TUTOR_PLANS_PATH } from './paths.js';
 import { GoalTasks, type TaskWriter } from './PlanTasks.js';
 import { ReviewForm } from './ReviewForm.js';
 import type { KeyInfoRow, PlanDetail, PlanGoal, PlanModule, PlanSummary, Stage } from './types.js';
@@ -138,7 +139,7 @@ const denied = (error: unknown) => error instanceof ApiError && error.kind === '
 
 /** 原站无权限空状态（B5_23 / B5_14 / B5_46）：只有提示与“查看其它…”链接，没有重试和返回按钮。 */
 function NoVisibleModule({ others }: Pick<Props, 'others'>) {
-  const to = others === 'own' ? '/self/idp' : '/self/idp/tutoring';
+  const to = others === 'own' ? OWN_PLANS_PATH : TUTOR_PLANS_PATH;
   return (
     <section aria-label={t.denied.title} className="idp-detail idp-denied">
       <Empty

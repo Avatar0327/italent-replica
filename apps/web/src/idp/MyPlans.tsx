@@ -10,14 +10,13 @@ import { ViewHeading } from '../foundation/ViewHeading.js';
 import { IDP_API, useCollection } from './api.js';
 import { t } from './messages.js';
 import { display, matchesFilters, ownPlans, statusText, type PlanFilters } from './model.js';
+import { OWN_PLANS_PATH, TUTOR_PLANS_PATH } from './paths.js';
 import { PlanDetailPage } from './PlanDetail.js';
 import type { PlanSummary } from './types.js';
 import { useNames } from './useNames.js';
 import './idp.css';
 
 const DETAIL = 'plan';
-const OWN = '/self/idp';
-const TUTORING = '/self/idp/tutoring';
 
 /**
  * 员工自助 > 我的发展计划 > 个人发展计划（原站 04 / B5_23）：只列本人作为被发展人的进行中、已结束计划
@@ -95,11 +94,11 @@ function PeerNav() {
   return (
     <Tabs
       className="idp-peer-nav"
-      activeKey={location.pathname === TUTORING ? TUTORING : OWN}
+      activeKey={location.pathname === TUTOR_PLANS_PATH ? TUTOR_PLANS_PATH : OWN_PLANS_PATH}
       onChange={(key) => void navigate(key)}
       items={[
-        { key: OWN, label: t.personalPlans },
-        { key: TUTORING, label: t.tutorPlans },
+        { key: OWN_PLANS_PATH, label: t.personalPlans },
+        { key: TUTOR_PLANS_PATH, label: t.tutorPlans },
       ]}
     />
   );

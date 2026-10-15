@@ -1,4 +1,5 @@
 import { lazyPage, type ModulePages } from '../foundation/page-registry.js';
+import { OWN_PLANS_PATH, TUTOR_PLANS_PATH } from './paths.js';
 
 const IdpPage = lazyPage('IdpPage', () => import('./IdpPage.js'));
 const MyPlansPage = lazyPage('MyPlansPage', () => import('./MyPlans.js'));
@@ -32,7 +33,7 @@ export const pages: ModulePages = {
     { path: '/idp/*', page: IdpPage },
     // 员工自助 > 我的发展计划 > 个人发展计划 / 我辅导的发展计划：员工自助左侧菜单只能由员工自助登记
     // （page-registry 规定子项由声明该应用的模块提供），本片只提供路由，两页之间用页内同级导航切换。
-    { path: '/self/idp', page: MyPlansPage },
-    { path: '/self/idp/tutoring', page: TutorPlansPage },
+    { path: OWN_PLANS_PATH, page: MyPlansPage },
+    { path: TUTOR_PLANS_PATH, page: TutorPlansPage },
   ],
 };
