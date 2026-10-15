@@ -1,5 +1,5 @@
 import type { Locator, Page, Request } from '@playwright/test';
-import { expect, snapshotFixture, user } from './fixtures.js';
+import { expect, mapPreferences, snapshotFixture, user } from './fixtures.js';
 
 // FE-R3d-1 冒烟的合成数据：编号全为占位，人名为“合成××”，不含原站真实数据。
 export const ids = {
@@ -133,15 +133,8 @@ const population = {
   revision: 1,
   rules: { expression: '1', rows: [{ rowNo: 1, field: { code: 'age', label: '年龄' }, operator: 'lt', values: [45] }] },
 };
-// 偏好接口的真实回执不带 id（map-routes.ts PUT /maps/:kind/preferences）。
-export const preferences = {
-  rootOrgId: null,
-  depth: 3,
-  hiddenOrgIds: [],
-  showKeyPositions: false,
-  showPositionsWithoutSuccessor: true,
-  revision: 0,
-};
+// 偏好接口的真实回执不带 id（map-routes.ts PUT /maps/:kind/preferences），与默认夹具同一份。
+export const preferences = mapPreferences;
 const readinessLevel = { ...readiness, description: '合成说明', sortNo: 1, enabled: true, revision: 1 };
 
 const recordFields = [
