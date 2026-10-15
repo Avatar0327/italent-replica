@@ -75,7 +75,7 @@ const MATRIX = `${TR_APP}.Matrix`;
 const PRESET_COUNT = STANDARD_PROFILES.flatMap(presetSeeAllTargets).length;
 
 describe('AC-PLAT-F061 D3 批准清单守卫（DEC-374②、DEC-384）', () => {
-  it('批准清单每行写身份、应用、种类、目标编码与 DEC 号：DEC-374② 4 个 + DEC-384 32 个 + DEC-408② 2 个 + DEC-415 5 个（DEC-503 起评定字典不在批准清单）', () => {
+  it('批准清单每行写身份、应用、种类、目标编码与 DEC 号：DEC-374② 4 个 + DEC-384 32 个 + DEC-408② 2 个 + DEC-415 5 个（评定字典不在内，DEC-503）', () => {
     expect(SEE_ALL_BACKFILL_APPROVED).toHaveLength(43);
     const byDec = (dec: string) => SEE_ALL_BACKFILL_APPROVED.filter((a) => a.dec === dec);
     expect(byDec('DEC-374②')).toEqual(
