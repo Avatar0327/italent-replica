@@ -118,7 +118,7 @@ async function assertNoRebuildRequired(
   });
 }
 
-/** 未落地申请的原计划日：首次改期事件记录的原生效日（批准当天改期但未落地的申请不丢原区间），否则取最新载荷。 */
+/** 未落地申请的原计划日：载荷版本的人工计划列（批准当天已顺延但未落地的申请不丢原区间，F-140 约束 2）。 */
 async function originalPlannedDate(tx: Tx, ctx: EmploymentContext, business: LockedEmploymentBusiness) {
   const [row] = rowsOf<{ planned: string }>(
     await tx.execute(
@@ -137,7 +137,7 @@ export async function postponeLateTransfer(tx: Tx, ctx: EmploymentContext, busin
   const previous = business.payload;
   if (previous.kind !== 'transfer') return;
   const record = await loadEmploymentRecord(tx, ctx.tenantId, business.id, today);
-  // 区间按原计划日判定（已落地取时间轴行，未落地取首次改期前的原计划日），在任何写入之前：批准当天已顺延、但因前序
+  // 区间按原计划日判定（已落地取时间轴行，未落地取人工计划日），在任何写入之前：批准当天已顺延、但因前序
   // 未落地留在队列的申请同日再执行时，最新载荷已是执行日，仍须复核原计划区间（设计 §2.3，S2-P2-01）。
   const planned = record ? record.effectiveDate : await originalPlannedDate(tx, ctx, business);
   if (resolveLateExecution({ plannedEffectiveDate: planned, executionDate: today }).late)
@@ -170,7 +170,8 @@ export async function postponeLateTransfer(tx: Tx, ctx: EmploymentContext, busin
     'employment-business',
     business.id,
     { effectiveDate: previous.effectiveDate },
-    { originalEffectiveDate: previous.effectiveDate, effectiveDate: today },
+    // versionNo：业务内单调序号（F-140 约束 1），排序与计划日只读版本，不读本事件的时间戳。
+    { originalEffectiveDate: previous.effectiveDate, effectiveDate: today, versionNo: next.versionNo },
   );
   if (record) {
     const [point] = rowsOf<{ startDate: string; sortOrder: number }>(
