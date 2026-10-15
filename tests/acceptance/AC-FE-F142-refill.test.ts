@@ -135,7 +135,7 @@ function Proc() {
     onClose: vi.fn(),
   });
 }
-const save = () => act(async () => host.ownerDocument.querySelector<HTMLButtonElement>('.ant-btn-primary')!.click());
+const save = () => act(async () => document.querySelector<HTMLButtonElement>('.ant-btn-primary')!.click());
 
 describe('AC-FE-F142 连续重读', () => {
   it('不重提连续重读：转只读时回填的字段视为未改，恢复可编辑后仍以最新记录为准，不复活旧草稿', async () => {

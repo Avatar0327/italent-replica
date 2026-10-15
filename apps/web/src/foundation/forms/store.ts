@@ -79,12 +79,7 @@ export function createFormStore() {
       const prior = existing?.status === 'done' ? undefined : existing;
       const baseline = prior?.baseline ?? input.baseline;
       const revision = prior?.revision ?? input.revision;
-      const body = Object.fromEntries(
-        Object.entries(input.values).filter(
-          ([field, value]) =>
-            input.editableFields.includes(field) && (!input.patchOnly || !sameValue(value, baseline[field])),
-        ),
-      );
+      const body = commandBody(input, baseline);
       // 生效日期是调用方提供的租户业务日期，不从浏览器时区推算。
       if (input.effectiveDate !== undefined) body.effectiveDate = input.effectiveDate;
       const command = newCommand(body, revision);
@@ -119,23 +114,12 @@ export function createFormStore() {
       put(key, { ...state, reading: true, readError: undefined });
       put(key, await rereadState(state, read));
     },
-    /**
-     * 当前不可提交的已改字段以最新记录为准、改记为未改（claude_fe_rules b）：只读回填不只改表单控件，
-     * 也改内核草稿。之后不重提再重读、字段恢复可编辑时，旧草稿都不会复活。处理中、结果未知的命令不动。
-     * 有改动时返回改后的状态，没有改动返回 undefined。
-     */
+    /** 当前不可提交的已改字段改取最新记录（见 settledState）；有改动时返回改后的状态，没有改动返回 undefined。 */
     settle(key: string, submittable: readonly string[]) {
       const state = entries.get(key);
-      if (!state?.latest || ['submitting', 'unknown', 'done'].includes(state.status)) return;
-      const fixed = state.editedFields.filter((field) => !submittable.includes(field));
-      if (!fixed.length) return;
-      const latest = state.latest.values;
-      put(key, {
-        ...state,
-        values: { ...state.values, ...Object.fromEntries(fixed.map((field) => [field, latest[field]])) },
-        editedFields: state.editedFields.filter((field) => submittable.includes(field)),
-      });
-      return entries.get(key);
+      const next = state && settledState(state, submittable);
+      if (next) put(key, next);
+      return next;
     },
     confirm(key: string) {
       const state = entries.get(key);
@@ -151,6 +135,16 @@ export function createFormStore() {
   };
 }
 export type FormStore = ReturnType<typeof createFormStore>;
+
+/** 请求体只带可编辑字段；patchOnly 时再去掉与基线相同的字段（空值统一口径）。 */
+function commandBody(input: SubmitInput, baseline: Values) {
+  return Object.fromEntries(
+    Object.entries(input.values).filter(
+      ([field, value]) =>
+        input.editableFields.includes(field) && (!input.patchOnly || !sameValue(value, baseline[field])),
+    ),
+  );
+}
 
 async function rereadState(state: Submission, read: (id?: string) => Promise<Latest>): Promise<Submission> {
   try {
@@ -181,4 +175,20 @@ async function rereadState(state: Submission, read: (id?: string) => Promise<Lat
   } catch (readError) {
     return { ...state, reading: false, readError };
   }
+}
+
+/**
+ * 当前不可提交的已改字段以最新记录为准、改记为未改（claude_fe_rules b）：只读回填不只改表单控件，
+ * 也改内核草稿。之后不重提再重读、字段恢复可编辑时，旧草稿都不会复活。处理中、结果未知的命令不动。
+ */
+function settledState(state: Submission, submittable: readonly string[]): Submission | undefined {
+  if (!state.latest || ['submitting', 'unknown', 'done'].includes(state.status)) return undefined;
+  const fixed = state.editedFields.filter((field) => !submittable.includes(field));
+  if (!fixed.length) return undefined;
+  const latest = state.latest.values;
+  return {
+    ...state,
+    values: { ...state.values, ...Object.fromEntries(fixed.map((field) => [field, latest[field]])) },
+    editedFields: state.editedFields.filter((field) => submittable.includes(field)),
+  };
 }
