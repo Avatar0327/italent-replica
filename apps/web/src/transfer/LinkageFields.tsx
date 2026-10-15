@@ -31,30 +31,7 @@ export function LinkageFields({ model, busy, onLinkage }: TransferFormProps) {
             <p>{linkageText.salaryHint}</p>
           </LinkageAccess>
         )}
-        <LinkageAccess catalog={model.catalog} codes={['onTrialMonths']}>
-          <label>
-            {linkageText.trialMonths}
-            <input
-              name="onTrialMonths"
-              type="number"
-              min={1}
-              max={60}
-              value={draft.onTrialMonths ?? ''}
-              onChange={(event) => change({ onTrialMonths: event.target.value ? Number(event.target.value) : null })}
-            />
-          </label>
-        </LinkageAccess>
-        <LinkageAccess catalog={model.catalog} codes={['onTrialStartDate']}>
-          <label>
-            {linkageText.trialStartDate}
-            <input
-              name="onTrialStartDate"
-              type="date"
-              value={draft.onTrialStartDate}
-              onChange={(event) => change({ onTrialStartDate: event.target.value })}
-            />
-          </label>
-        </LinkageAccess>
+        <TrialFields catalog={model.catalog} draft={draft} change={change} />
         <LinkageAccess catalog={model.catalog} codes={['handoverPersonId']}>
           <PersonSelect
             name="handoverPersonId"
@@ -69,6 +46,43 @@ export function LinkageFields({ model, busy, onLinkage }: TransferFormProps) {
         <DutyFields draft={draft} people={people} change={change} />
       </LinkageAccess>
     </fieldset>
+  );
+}
+
+/** 试岗期限与开始日期；HR 全页表单放在“调动信息”区块，与此处共用。 */
+export function TrialFields(props: {
+  catalog: TransferCatalog;
+  draft: LinkageDraft;
+  change: (patch: Partial<LinkageDraft>) => void;
+}) {
+  const { catalog, draft, change } = props;
+  return (
+    <>
+      <LinkageAccess catalog={catalog} codes={['onTrialMonths']}>
+        <label>
+          {linkageText.trialMonths}
+          <input
+            name="onTrialMonths"
+            type="number"
+            min={1}
+            max={60}
+            value={draft.onTrialMonths ?? ''}
+            onChange={(event) => change({ onTrialMonths: event.target.value ? Number(event.target.value) : null })}
+          />
+        </label>
+      </LinkageAccess>
+      <LinkageAccess catalog={catalog} codes={['onTrialStartDate']}>
+        <label>
+          {linkageText.trialStartDate}
+          <input
+            name="onTrialStartDate"
+            type="date"
+            value={draft.onTrialStartDate}
+            onChange={(event) => change({ onTrialStartDate: event.target.value })}
+          />
+        </label>
+      </LinkageAccess>
+    </>
   );
 }
 

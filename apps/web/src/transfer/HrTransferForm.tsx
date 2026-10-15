@@ -9,7 +9,7 @@ import {
   type HrFormMode,
   type HrSection,
 } from './hr-form-model.js';
-import { ContractDetails, DutyFields, LinkageAccess, PersonSelect } from './LinkageFields.js';
+import { ContractDetails, DutyFields, LinkageAccess, PersonSelect, TrialFields } from './LinkageFields.js';
 import { hrFormText as h, linkageText, text } from './messages.js';
 import type { LinkageDraft, TransferFormProps } from './types.js';
 
@@ -67,7 +67,8 @@ function SectionFrame({ section, busy, children }: { section: HrSection; busy?: 
 
 function InfoSection(props: HrTransferFormProps) {
   const { model, busy, onLinkage } = props;
-  const draft = model.linkage;
+  // 联动字段与原表单一致，等预览返回后再显示：是否带编制等默认值来自预览，不在前端预填。
+  const draft = model.preview ? model.linkage : undefined;
   const employee = model.employees.find((item) => item.id === model.employeeId);
   const people = model.employees.filter((item) => item.id !== model.employeeId);
   const change = (patch: Partial<LinkageDraft>) => onLinkage?.(patch);
@@ -130,30 +131,7 @@ function InfoLinkage({ model, draft, change, onWithEstablishment }: LinkageProps
           onChange={(value) => onWithEstablishment?.(value)}
         />
       </LinkageAccess>
-      <LinkageAccess catalog={model.catalog} codes={['onTrialStartDate']}>
-        <label>
-          {linkageText.trialStartDate}
-          <input
-            name="onTrialStartDate"
-            type="date"
-            value={draft.onTrialStartDate}
-            onChange={(event) => change({ onTrialStartDate: event.target.value })}
-          />
-        </label>
-      </LinkageAccess>
-      <LinkageAccess catalog={model.catalog} codes={['onTrialMonths']}>
-        <label>
-          {linkageText.trialMonths}
-          <input
-            name="onTrialMonths"
-            type="number"
-            min={1}
-            max={60}
-            value={draft.onTrialMonths ?? ''}
-            onChange={(event) => change({ onTrialMonths: event.target.value ? Number(event.target.value) : null })}
-          />
-        </label>
-      </LinkageAccess>
+      <TrialFields catalog={model.catalog} draft={draft} change={change} />
     </>
   );
 }
