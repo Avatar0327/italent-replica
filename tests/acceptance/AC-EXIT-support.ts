@@ -10,6 +10,7 @@ import { expect } from 'vitest';
 import { installMissingSeeds } from '../../apps/api/src/seeds/index.js';
 import { employmentSession } from './AC-EMP-support.js';
 import type { RequestOptions } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 export interface ExitDictionaryEntry {
   readonly id: string;
@@ -58,7 +59,7 @@ export async function exitWorld(db: Db, label: string) {
   }
   /** 可信造数：直接离职一条（main 现有任职入口）并补写离职扩展行；extra 覆盖扩展行列（列名 → 值）。 */
   async function seedExitBusiness(extra: Record<string, string> = {}) {
-    const org = await session.org(`离职部门${randomUUID().slice(0, 8)}`, { establishedOn: '2025-01-01' });
+    const org = await session.org(`离职部门${uniqueSuffix()}`, { establishedOn: '2025-01-01' });
     const created = await session.employee('离职员工');
     const hire = { kind: 'hire', mode: 'direct', effectiveDate: '2025-01-01', fields: { departmentId: org.id } };
     await session.business(created.id, hire, created.revision);
