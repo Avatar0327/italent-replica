@@ -36,7 +36,7 @@ function InfoEditor({ kind, row, close, saved }: { kind: InfoKind; row?: InfoRow
   const path = infoPath(kind);
   const command = forAction(useCommandForm(slotKey(path, row?.id)), { action: 'edit' });
   const operation = permission.snapshot.objects[spec.object]?.dataOperations[row ? 'update' : 'create'] === true;
-  const fields = infoFields(kind, permission, operation);
+  const fields = infoFields(kind, permission, operation, command.state?.latest?.values ?? row);
   const editable = fields.filter((f) => f.access.visible && f.access.editable).map((f) => f.name);
   const incomplete = !row && spec.fields.some((f) => f.required && !editable.includes(f.name));
   const read = async (id: string) => {
@@ -81,7 +81,10 @@ function InfoEditor({ kind, row, close, saved }: { kind: InfoKind; row?: InfoRow
             });
             const receipt = infoReceipt(raw, request.revision, 'save', row?.id);
             // 保存回执到重读之间始终处于 submitting；重读失败归入结果待确认，不能先解锁。
-            const latest = await read(receipt.id);
+            const latest = await read(receipt.id).catch((cause: unknown) => {
+              // 写入已返回成功；后续读取的 4xx 不能被内核当作原命令拒绝并解锁。
+              throw new Error(m.invalid, { cause });
+            });
             if (
               latest.id !== receipt.id ||
               !Number.isSafeInteger(latest.revision) ||
@@ -138,11 +141,17 @@ function InfoControl({
   );
 }
 
-function infoFields(kind: InfoKind, permission: ReturnType<typeof usePermissions>, operation: boolean) {
+function infoFields(
+  kind: InfoKind,
+  permission: ReturnType<typeof usePermissions>,
+  operation: boolean,
+  values?: Record<string, unknown>,
+) {
   return INFO[kind].fields.map((field): FormField => ({
     name: field.name,
     label: field.label,
     control: <InfoControl kind={kind} field={field} />,
+    display: <InfoControl kind={kind} field={field} disabled value={values?.[field.name] as string | null} />,
     access: { ...permission.field(field.name), editable: operation && permission.field(field.name).editable },
     rules: [
       ...(field.required ? [{ required: true, message: m.required }] : []),

@@ -307,7 +307,9 @@ function InfoHeading({
   return (
     <header className="page-heading">
       <h1 className="page-view-heading">
-        <span className="page-view-icon">{kind === 'careers' ? '⌘' : <MenuIcon />}</span>
+        <span className="page-view-icon" aria-hidden="true">
+          {kind === 'careers' ? '⌘' : <MenuIcon />}
+        </span>
         <span>{INFO[kind].title}</span>
       </h1>
       <Space>

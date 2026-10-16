@@ -59,14 +59,7 @@ export function InfoDelete({
         <p>{m.limit}</p>
       ) : (
         rows.map((row) => (
-          <DeleteItem
-            key={row.id}
-            kind={kind}
-            row={row}
-            saved={saved}
-            handlers={handlers}
-            batchBusy={busy}
-          />
+          <DeleteItem key={row.id} kind={kind} row={row} saved={saved} handlers={handlers} batchBusy={busy} />
         ))
       )}
     </Modal>

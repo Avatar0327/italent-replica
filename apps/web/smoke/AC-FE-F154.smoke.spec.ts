@@ -67,14 +67,14 @@ for (const [index, spec] of cases.entries()) {
     for (const name of spec.headers) await expect(page.getByRole('columnheader', { name, exact: true })).toBeVisible();
     await expect(page.getByText(`共${spec.count}条`, { exact: true })).toBeVisible();
     await expect(page.getByRole('table')).toContainText('合成员工甲');
-    await page.screenshot({ path: testInfo.outputPath(`${spec.path}-list.png`) });
+    await page.screenshot({ animations: 'disabled', path: testInfo.outputPath(`${spec.path}-list.png`) });
     for (const name of ['导入', '导出', '轮岗申请', '高级筛选'])
       await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0);
     await page.getByRole('button', { name: new RegExp(`^${spec.create.split('').join('\\s*')}$`) }).click();
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
     for (const field of spec.fields) await expect(dialog.getByText(field, { exact: true })).toBeVisible();
-    await page.screenshot({ path: testInfo.outputPath(`${spec.path}-form.png`) });
+    await page.screenshot({ animations: 'disabled', path: testInfo.outputPath(`${spec.path}-form.png`) });
   });
 }
 
@@ -178,7 +178,13 @@ test('AC-FE-F154-09 批量删除一次确认，逐条回执保留失败项', asy
 
 async function choose(page: Page, field: string, value: string) {
   await page.getByRole('dialog').getByLabel(field, { exact: true }).click();
-  await page.locator('.ant-select-dropdown:visible').getByText(value, { exact: true }).click();
+  const control = page.getByRole('dialog').getByLabel(field, { exact: true });
+  const listId = await control.getAttribute('aria-controls');
+  await page
+    .locator('.ant-select-dropdown')
+    .filter({ has: page.locator(`[id="${listId}"]`) })
+    .getByText(value, { exact: true })
+    .click();
 }
 async function setDate(page: Page, label: string, value: string) {
   const input = page.getByRole('dialog').getByRole('group', { name: label, exact: true }).getByRole('textbox');
@@ -222,3 +228,119 @@ for (const spec of cases)
     expect(calls[1]!.body).toEqual({ startDate: '2026-09-01' });
     for (const key of ['careerLineId', 'targetLevelId', 'targetPostId']) expect(calls[0]!.body).not.toHaveProperty(key);
   });
+
+test('AC-FE-F154-12 人员只读仍回显姓名，只提交可编辑字段', async ({ page }) => {
+  const calls = await mockInfo(page, {
+    fields: {
+      'IDP.Career': {
+        viewable: ['employeeId', 'startDate', 'endDate', 'strengths'],
+        editable: ['strengths'],
+      },
+    },
+  });
+  await enter(page, 'careers');
+  await edit(page);
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toContainText('合成员工甲');
+  await expect(dialog).not.toContainText(employee);
+  await dialog.getByLabel('优势项', { exact: true }).fill('仅修改可编辑字段');
+  await dialog.getByRole('button', { name: /保\s*存/ }).click();
+  await expect(dialog).toBeHidden();
+  expect(calls[0]!.body).toEqual({ strengths: '仅修改可编辑字段' });
+});
+
+test('AC-FE-F154-13 写入成功后重读 403 仍锁定，不把写入误判为拒绝', async ({ page }) => {
+  const calls = await mockInfo(page);
+  await page.route(`**/api/tenant/idp/careers/${infoId}`, (route) =>
+    route.request().method() === 'GET' && calls.length
+      ? route.fulfill({ status: 403, json: { error: { code: 'FORBIDDEN' } } })
+      : route.fallback(),
+  );
+  await enter(page, 'careers');
+  await edit(page);
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('优势项', { exact: true }).fill('保存后读权限变化');
+  await dialog.getByRole('button', { name: /保\s*存/ }).click();
+  await expect(dialog).toContainText('结果待确认');
+  await expect(dialog.getByRole('button', { name: /保\s*存/ })).toBeDisabled();
+  expect(calls).toHaveLength(1);
+});
+
+test('AC-FE-F154-14 新建结果未知换页重开仍使用集合恢复槽', async ({ page }) => {
+  const calls = await mockInfo(page, { writeStatus: 503 });
+  await enter(page, 'careers');
+  await page
+    .locator('.page-heading')
+    .getByRole('button', { name: /新\s*建/ })
+    .click();
+  await choose(page, '发展员工', '合成员工甲');
+  await setDate(page, '开始时间', '2027-01-01');
+  await setDate(page, '结束时间', '2027-02-01');
+  await page
+    .getByRole('dialog')
+    .getByRole('button', { name: /保\s*存/ })
+    .click();
+  await expect(page.getByRole('dialog')).toContainText('待确认');
+  await page
+    .getByRole('dialog')
+    .getByRole('button', { name: /取\s*消/ })
+    .click();
+  await page.getByRole('menuitem', { name: '轮岗信息', exact: true }).click();
+  await page.getByRole('menuitem', { name: '职业发展信息', exact: true }).click();
+  await page
+    .locator('.page-heading')
+    .getByRole('button', { name: /新\s*建/ })
+    .click();
+  await expect(page.getByRole('dialog')).toContainText('待确认');
+  await expect(page.getByRole('dialog').getByRole('button', { name: /保\s*存/ })).toHaveCount(0);
+  expect(calls).toHaveLength(1);
+});
+
+test('AC-FE-F154-15 写入成功到后续读取完成一直锁定', async ({ page }) => {
+  const calls = await mockInfo(page);
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let reading = false;
+  await page.route(`**/api/tenant/idp/careers/${infoId}`, async (route) => {
+    if (route.request().method() === 'GET' && calls.length) {
+      reading = true;
+      await gate;
+    }
+    await route.fallback();
+  });
+  await enter(page, 'careers');
+  await edit(page);
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('优势项', { exact: true }).fill('等待回查');
+  await dialog.getByRole('button', { name: /保\s*存/ }).click();
+  await expect.poll(() => reading).toBe(true);
+  try {
+    await expect(dialog.getByRole('button', { name: /保\s*存/ })).toBeDisabled();
+    await expect(dialog.getByLabel('优势项', { exact: true })).toBeDisabled();
+    expect(calls).toHaveLength(1);
+  } finally {
+    release();
+  }
+  await expect(dialog).toBeHidden();
+});
+
+test('AC-FE-F154-16 可见值筛选生效，缺必填字段编辑权不开放新建', async ({ page }) => {
+  await mockInfo(page);
+  await enter(page, 'tutorships');
+  await expect(page.getByRole('combobox', { name: '开始时间', exact: true })).toBeEnabled();
+  await page.getByRole('combobox', { name: '开始时间', exact: true }).click();
+  await page.locator('.ant-select-dropdown:visible').getByText('2026-10-01', { exact: true }).click();
+  await expect(page.getByText('共1条', { exact: true })).toBeVisible();
+  await mockInfo(page, {
+    fields: {
+      'IDP.Career': {
+        viewable: ['startDate', 'endDate', 'strengths'],
+        editable: ['strengths'],
+      },
+    },
+  });
+  await page.goto('/idp/careers');
+  await expect(page.locator('.page-heading').getByRole('button', { name: /新\s*建/ })).toBeDisabled();
+});
