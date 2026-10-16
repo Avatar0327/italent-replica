@@ -985,6 +985,10 @@
 "log": [
 [
 "10-16",
+"新增 D2·R2·后补·F-200（F-192a 补回归断言，#371 合入后派）、F-201（BE-14 承接三项，并入 BE-14 派发单）；F-199 会话已开；分母 166→168"
+],
+[
+"10-16",
 "D2·R2·后补·F-199（#369 P3-1：通用删除清理待入职合同）新增并拟派发；分母 165→166"
 ],
 [
@@ -5652,9 +5656,31 @@
 "after": [
 "F-194"
 ],
-"note": "已拟派发 · 云端 Claude Sonnet 5.5 High · 分支 claude/F-199-delete-pending-contract（含 bb4fc254）· Sol high 审 · 等开会话 / PR",
+"note": "云端 Claude Sonnet 5.5 High 已开会话（session_01CuY6RaD6Do6Upoa9ffh7Sk）· 分支 claude/F-199-delete-pending-contract（含 bb4fc254）· PR 号待补 · Sol high 审",
 "mod": "R2",
 "ms": "D2"
+},
+{
+"k": "F-200",
+"n": "F-200 F-192a 补回归断言：同命令取消 / 恢复重放；入站跨租户及空范围拒绝；恢复失败时台账与 outbox 回滚（#371 Sol high 第 1 轮 P3）",
+"s": "wait",
+"after": [
+"F-192a"
+],
+"note": "待 #371 合入后派发",
+"mod": "R2",
+"ms": "D2"
+},
+{
+"k": "F-201",
+"n": "F-201 BE-14 承接三项（Offer×待入职关联随改期恢复更新 / 入站调用须带受控上下文与 revision / OF-R9 开关×Offer 状态集成测试，#371 审查交接）",
+"s": "wait",
+"after": [
+"F-192a"
+],
+"note": "并入 BE-14 派发单逐项验收，随 BE-14 派发",
+"mod": "R2",
+"ms": null
 }
 ]
 },
