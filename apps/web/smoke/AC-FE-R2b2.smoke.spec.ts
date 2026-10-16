@@ -170,7 +170,7 @@ test('AC-FE-R2b2-07 无取消入口，已取消夹具改期恢复', async ({ pag
   await expect(page.getByRole('menuitem', named('改期入职'))).toHaveCount(0);
   await expect(page.getByRole('menuitem', named('取消入职'))).toHaveCount(0);
   await page.keyboard.press('Escape');
-  await expect(row(page).getByRole('button', named('编辑'))).toBeDisabled();
+  await expect(row(page).getByRole('button', named('编辑'))).toBeEnabled();
   state.row.entryStatus = 1;
   await tab(page, '已取消入职').click();
   await expect(row(page)).toContainText('取消');
@@ -266,3 +266,36 @@ test('AC-FE-R2b2-11 只有按钮权限，没有对象更新权时不出现入职
   await expect(page.getByRole('menuitem', named('入职'))).toHaveCount(0);
   expect(state.writes).toEqual([]);
 });
+
+for (const change of ['probation', 'date', 'relation'])
+  test(`AC-FE-R2b2-12 编辑 ${change} 必填、真实 PATCH 和列表持久回填`, async ({ page, baseURL }) => {
+    const state = await entryPage(page, baseURL!);
+    await row(page).getByRole('button', named('编辑')).click();
+    const dialog = page.getByRole('dialog', { name: /^编辑/ });
+    await expect(item(dialog, '是否有试用期')).toContainText('请选择');
+    await dialog.getByRole('button', save).click();
+    await expect(item(dialog, '是否有试用期')).toContainText('必填');
+    expect(state.writes).toEqual([]);
+    await choose(dialog, '是否有试用期', '否');
+    if (change === 'date') await pickDate(dialog, '计划入职日期', '2026-09-10');
+    if (change === 'relation') await choose(dialog, '雇佣关系', '实习生');
+    await dialog.getByRole('button', save).click();
+    await expect(dialog).toHaveCount(0);
+    expect(state.writes).toHaveLength(1);
+    expect(state.writes[0]).toMatchObject({
+      method: 'PATCH',
+      revision: '4',
+      path: `/api/tenant/employment/pending-entries/${entryId}`,
+      body: {
+        effectiveDate: change === 'date' ? '2026-09-10' : '2026-10-15',
+        probation: false,
+        employType: change === 'relation' ? 'intern' : 'internal',
+      },
+    });
+    expect(state.writes[0]!.command).toBeTruthy();
+    expect(state.row.id).toBe(change === 'probation' ? entryId : nextId);
+    await expect(row(page)).toContainText('正常');
+    await row(page).getByRole('button', named('编辑')).click();
+    await expect(item(dialog, '是否有试用期')).toContainText('否');
+    expect(Object.keys(state.writes[0]!.body as object).sort()).toEqual(['effectiveDate', 'employType', 'probation']);
+  });

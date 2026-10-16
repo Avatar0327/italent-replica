@@ -21,6 +21,8 @@ export const initialEntry = {
   entryStatus: 0,
   departmentId,
   revision: 4,
+  probation: null as boolean | null,
+  employType: 'internal',
 };
 export const entryFields = ['effectiveDate', 'departmentId', 'employType'];
 export const contractFields = [
@@ -91,7 +93,7 @@ function business(state: EntryState) {
     mode: 'direct',
     formId: 'standard',
     effectiveDate: state.row.effectiveDate,
-    fields: { departmentId, employType: 'internal' },
+    fields: { departmentId, employType: state.row.employType },
     customFields: {},
     employeeStatus: state.row.employeeStatus,
     entryStatus: state.row.entryStatus,
@@ -113,7 +115,7 @@ function record(state: EntryState) {
     effectiveDate: state.row.effectiveDate,
     stopDate: '9999-12-31',
     previousRecordId: null,
-    fields: { departmentId, employType: 'internal' },
+    fields: { departmentId, employType: state.row.employType },
     customFields: {},
     employeeStatus: state.row.employeeStatus,
     entryStatus: state.row.entryStatus,
@@ -207,6 +209,16 @@ async function employmentRoutes(page: Page, state: EntryState) {
     if (path.endsWith('/cancel')) state.row.entryStatus = 1;
     if (path.endsWith('/postpone')) {
       state.row = { ...state.row, id: nextId, revision: 0, effectiveDate: String(body?.effectiveDate), entryStatus: 2 };
+    }
+    if (request.method() === 'PATCH') {
+      if (
+        body?.effectiveDate !== state.row.effectiveDate ||
+        (body?.employType && body.employType !== state.row.employType)
+      )
+        state.row = { ...state.row, id: nextId, revision: 0 };
+      state.row.effectiveDate = String(body?.effectiveDate);
+      state.row.probation = Boolean(body?.probation);
+      if (body?.employType) state.row.employType = String(body.employType);
     }
     if (request.method() === 'DELETE') state.removed = true;
     state.row.revision++;
