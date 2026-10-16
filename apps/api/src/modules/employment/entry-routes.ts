@@ -179,7 +179,7 @@ function registerEntryViews(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const trimmed = (await trimEmploymentResponse(
       deps,
       ctx,
-      // probation、合同起止日（F-194）是控制项、不在任职字段目录，通用字段投影会把它们裁掉：先摘下，裁剪后显式放回
+      // probation、合同起止日（F-194）、取消说明（F-206）是控制项、不在任职字段目录，通用字段投影会把它们裁掉：先摘下，裁剪后显式放回
       items.map(
         ({
           name: _name,
@@ -187,6 +187,7 @@ function registerEntryViews(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
           probation: _probation,
           contractStartDate: _start,
           contractEndDate: _end,
+          cancelRemark: _cancelRemark,
           ...record
         }) => record,
       ),
@@ -197,6 +198,7 @@ function registerEntryViews(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
         probation: items[index]!.probation,
         contractStartDate: items[index]!.contractStartDate,
         contractEndDate: items[index]!.contractEndDate,
+        cancelRemark: items[index]!.cancelRemark,
         ...(shown('code') ? { code: items[index]!.code } : {}),
         ...(shown('name') ? { name: items[index]!.name } : {}),
       })),
