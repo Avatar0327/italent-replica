@@ -9,8 +9,14 @@ import { collection, completeBody, editable, emailText, readEntry, receipt, type
 import { initial, refreshAfter, request, requireWrite, useEntryAccess, useEntryCommand } from './commands.js';
 import { titleExtra, useCompleteGroups } from './CompleteFields.js';
 import { m } from './messages.js';
+import { EditForm } from './EditForm.js';
 
-export function CompleteLoader(props: { row: Row; onClose(): void; refresh(): Promise<void> }) {
+export function CompleteLoader(props: {
+  action?: 'edit' | 'complete';
+  row: Row;
+  onClose(): void;
+  refresh(): Promise<void>;
+}) {
   const api = useApiClient();
   const [result, setResult] = useState<{ data?: Values; error?: unknown }>();
   useEffect(() => {
@@ -25,7 +31,11 @@ export function CompleteLoader(props: { row: Row; onClose(): void; refresh(): Pr
   }, [api, props.row]);
   if (!result?.data)
     return <PageState kind={result?.error ? 'error' : 'loading'} error={result?.error} retry={props.onClose} />;
-  return <CompleteForm {...props} data={result.data} />;
+  return props.action === 'edit' ? (
+    <EditForm {...props} data={result.data} />
+  ) : (
+    <CompleteForm {...props} data={result.data} />
+  );
 }
 function CompleteForm({
   row,

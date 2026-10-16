@@ -1,4 +1,4 @@
-import { Alert, Button, Dropdown, Space, Tabs, Tooltip, type TableColumnsType } from 'antd';
+import { Alert, Button, Dropdown, Space, Tabs, type TableColumnsType } from 'antd';
 import { useCallback, useEffect, useRef, useState, type Key } from 'react';
 import dayjs from 'dayjs';
 import { EMPLOYEE_STATUS_LABELS, ENTRY_STATUS_LABELS } from '@italent/domain';
@@ -50,7 +50,7 @@ function EntryList() {
   const [view, setView] = useState<View>('all');
   const [page, setPage] = useState({ page: 1, pageSize: 30 });
   const [keys, setKeys] = useState<Key[]>([]);
-  const [open, setOpen] = useState<Row>();
+  const [open, setOpen] = useState<{ row: Row; action: 'edit' | 'complete' }>();
   const read = useEntries(view, page);
   const refresh = async () => {
     await read.read();
@@ -75,7 +75,7 @@ function EntryList() {
     key: 'actions',
     fixed: 'right',
     width: 164,
-    render: (_, row) => <RowActions row={row} view={view} open={() => setOpen(row)} />,
+    render: (_, row) => <RowActions row={row} view={view} open={(action) => setOpen({ row, action })} />,
   });
   return (
     <div className="entries-page">
@@ -113,7 +113,9 @@ function EntryList() {
         filters={<Filters view={view} />}
         selection={{ keys, onChange: setKeys, actions: null }}
       />
-      {open && <CompleteLoader row={open} onClose={() => setOpen(undefined)} refresh={refresh} />}
+      {open && (
+        <CompleteLoader row={open.row} action={open.action} onClose={() => setOpen(undefined)} refresh={refresh} />
+      )}
     </div>
   );
 }
@@ -147,16 +149,20 @@ function cell(title: string, row: Row) {
       : EMPLOYEE_STATUS_LABELS[row.employeeStatus];
   return '--';
 }
-function RowActions({ row, view, open }: { row: Row; view: View; open(): void }) {
+function RowActions({ row, view, open }: { row: Row; view: View; open(action: 'edit' | 'complete'): void }) {
   const p = useEntryAccess();
   if (view === 'hired') return null;
   return (
     <Space size={0}>
-      <Tooltip title={m.pending}>
-        <Button type="link" disabled>
-          {m.edit}
-        </Button>
-      </Tooltip>
+      <Button
+        type="link"
+        disabled={
+          view === 'cancelled' || !p.edit || !p.field('effectiveDate').editable || !validObject(row) || !row.employeeId
+        }
+        onClick={() => open('edit')}
+      >
+        {m.edit}
+      </Button>
       {view !== 'cancelled' && (
         <>
           <Button type="link" disabled>
@@ -167,7 +173,7 @@ function RowActions({ row, view, open }: { row: Row; view: View; open(): void })
             menu={{
               items: [
                 ...(p.edit && row.entryStatus !== 1 && validObject(row) && row.employeeId
-                  ? [{ key: 'complete', label: m.complete, onClick: open }]
+                  ? [{ key: 'complete', label: m.complete, onClick: () => open('complete') }]
                   : []),
                 { key: 'sign', label: m.sign, disabled: true },
               ],

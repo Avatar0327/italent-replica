@@ -82,16 +82,16 @@ function TermMonths({
     />
   );
 }
-function TrialSelect({
+export function TrialSelect({
   value,
   onChange,
   report,
 }: {
   value?: boolean | null;
   onChange?: (value: boolean) => void;
-  report(value: boolean): void;
+  report?(value: boolean): void;
 }) {
-  useEffect(() => report(value === true), [value, report]);
+  useEffect(() => report?.(value === true), [value, report]);
   const lock = useFormLock();
   return (
     <Select

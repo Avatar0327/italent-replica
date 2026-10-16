@@ -52,9 +52,10 @@ export async function readEntry(api: ApiClient, row: Row): Promise<Values> {
 export function receipt(value: unknown, row: Row, command: Command, action: string): Values {
   const result = value as Values | null;
   const valid = result && typeof result.id === 'string' && result.id && Number.isSafeInteger(result.revision);
-  const identity = action === 'postpone' ? result?.id !== row.id : result?.id === row.id;
-  const revision =
-    action === 'postpone' ? Number(result?.revision) >= 1 : Number(result?.revision) > Number(command.revision);
+  const identity = ['postpone', 'replace'].includes(action) ? result?.id !== row.id : result?.id === row.id;
+  const revision = ['postpone', 'replace'].includes(action)
+    ? Number(result?.revision) >= 1
+    : Number(result?.revision) > Number(command.revision);
   if (!valid || !identity || !revision || result.employeeId !== row.employeeId) throw new Error(kernel.unknown);
   return result;
 }
