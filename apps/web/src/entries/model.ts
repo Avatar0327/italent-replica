@@ -51,24 +51,26 @@ export async function readEntry(api: ApiClient, row: Row, fresh = false): Promis
         probation: row.probation ?? null,
       };
     // 列表与详情必须属于同一版本；更新列表后整条重读，不能把新 revision 配给旧值。
-    row = await latestEntry(api, business, record);
+    row = await latestEntry(api, business);
     fresh = false;
   }
   throw new Error(kernel.unknown);
 }
 // F-188 只在四视图列表返回 probation；冲突重读不能拿旧行补成“最新值”。按服务端分页定位原单。
-async function latestEntry(api: ApiClient, business: Values, record: Values) {
-  let view = record.entryStatus === 1 ? 'cancelled' : 'all';
-  if (record.employeeStatus !== 1) view = 'hired';
-  for (let page = 1; ; page++) {
-    const result = await request<PageResult<Row>>(api, `${collection}?view=${view}&page=${page}&pageSize=100`);
-    const current = result.items.find((item) => item.id === business.id);
-    if (current) {
-      if (current.revision !== business.revision) throw new Error(kernel.unknown);
-      return current;
+async function latestEntry(api: ApiClient, business: Values) {
+  // 状态可能被字段权限裁剪；按原 ID 遍历互补视图，不能把缺失状态当成已入职。
+  for (const view of ['all', 'cancelled', 'hired']) {
+    for (let page = 1; ; page++) {
+      const result = await request<PageResult<Row>>(api, `${collection}?view=${view}&page=${page}&pageSize=100`);
+      const current = result.items.find((item) => item.id === business.id);
+      if (current) {
+        if (current.revision !== business.revision) throw new Error(kernel.unknown);
+        return current;
+      }
+      if (result.items.length < 100) break;
     }
-    if (result.items.length < 100) throw new Error(kernel.unknown);
   }
+  throw new Error(kernel.unknown);
 }
 export function receipt(value: unknown, row: Row, command: Command, action: string): Values {
   const result = value as Values | null;
