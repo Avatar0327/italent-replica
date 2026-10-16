@@ -108,12 +108,12 @@ describe('BE-2a 取消入职（原因 5 项下拉、非必填）', () => {
     expect((await entryAction(w, recordId, 'cancel', {})).status).toBe(409);
   });
 
-  it('原因可不填；不在 5 项内的原因被拒', async () => {
+  it('原因可不填（默认其他原因）；不在 5 项内的原因被拒', async () => {
     const w = await entryWorld(testDb().db, 'be2a-cancel-reason');
     const { recordId } = await addPending(w);
     expect((await entryAction(w, recordId, 'cancel', { reason: '随便写' })).status).toBe(400);
     expect((await entryAction(w, recordId, 'cancel', {})).status).toBe(200);
-    expect(await entryActionRows(w)).toMatchObject([{ action: 'cancel', reasonCode: null, remark: null }]);
+    expect(await entryActionRows(w)).toMatchObject([{ action: 'cancel', reasonCode: 'other', remark: null }]);
   });
 });
 
