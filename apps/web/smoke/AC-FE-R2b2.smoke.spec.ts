@@ -302,3 +302,84 @@ for (const change of ['probation', 'date', 'relation'])
     await expect(item(dialog, '是否有试用期')).toContainText('否');
     expect(Object.keys(state.writes[0]!.body as object).sort()).toEqual(['effectiveDate', 'employType', 'probation']);
   });
+
+async function actionDialog(page: Page, action: string) {
+  if (action === 'postpone') {
+    const dialog = await selectedAction(page, '改期入职');
+    await pickDate(dialog, '入职日期', '2026-10-25');
+    return dialog;
+  }
+  if (action === 'edit') {
+    await row(page).getByRole('button', named('编辑')).click();
+    const dialog = page.getByRole('dialog', { name: /^编辑/ });
+    await choose(dialog, '是否有试用期', '否');
+    return dialog;
+  }
+  await row(page)
+    .getByRole('button', { name: /更多|▾/ })
+    .click();
+  await page.getByRole('menuitem', named('删除人员')).click();
+  return page.locator('.ant-popconfirm');
+}
+for (const action of ['edit', 'postpone', 'delete']) {
+  for (const failure of ['conflict', 'unknown'])
+    test(`AC-FE-R2b2-13 ${action} ${failure} 恢复槽跨视图且不盲重试`, async ({ page, baseURL }) => {
+      const state = await entryPage(page, baseURL!);
+      let attempts = 0;
+      await page.route('**/pending-entries/**', (route) => {
+        if (route.request().method() === 'GET') return route.fallback();
+        attempts++;
+        if (attempts > 1) return route.fallback();
+        state.row.revision = 8;
+        return failure === 'conflict'
+          ? route.fulfill({ status: 409, json: { error: { code: 'REVISION_CONFLICT', message: '合成版本冲突' } } })
+          : route.fulfill({ json: { status: 'unexpected' } });
+      });
+      const submit = action === 'delete' ? named('是') : save;
+      let dialog = await actionDialog(page, action);
+      await dialog.getByRole('button', submit).click();
+      await expect(dialog.getByRole('button', submit)).toBeDisabled();
+      if (failure === 'conflict') {
+        await dialog.getByRole('button', named('重读最新版本')).click();
+        await dialog.getByRole('button', named('已核对差异，继续编辑')).click();
+        await dialog.getByRole('button', submit).click();
+        await expect(dialog).toHaveCount(0);
+        expect(state.writes[0]!.revision).toBe('8');
+        expect(attempts).toBe(2);
+      } else {
+        await dialog.getByRole('button', named(action === 'delete' ? '否' : '取消')).click();
+        await tab(page, '今日待入职').click();
+        // 重开时所有控件都已锁住，因此不再填值。
+        if (action === 'postpone') dialog = await selectedAction(page, '改期入职');
+        else if (action === 'edit') {
+          await row(page).getByRole('button', named('编辑')).click();
+          dialog = page.getByRole('dialog', { name: /^编辑/ });
+        } else dialog = await actionDialog(page, action);
+        await expect(dialog.getByRole('button', submit)).toBeDisabled();
+        await dialog.getByRole('button', named('回查原单')).click();
+        await expect(dialog).toContainText('原单当前值');
+        await expect(dialog.getByRole('button', submit)).toBeDisabled();
+        expect(attempts).toBe(1);
+      }
+    });
+}
+
+test('AC-FE-R2b2-14 编辑冲突重读从服务端列表恢复未改动的试用期', async ({ page, baseURL }) => {
+  const state = await entryPage(page, baseURL!);
+  state.row.probation = false;
+  await page.reload();
+  await page.route('**/pending-entries/*', (route) => {
+    if (route.request().method() !== 'PATCH') return route.fallback();
+    state.row.probation = true;
+    state.row.revision = 8;
+    return route.fulfill({ status: 409, json: { error: { code: 'REVISION_CONFLICT', message: '合成版本冲突' } } });
+  });
+  await row(page).getByRole('button', named('编辑')).click();
+  const dialog = page.getByRole('dialog', { name: /^编辑/ });
+  await pickDate(dialog, '计划入职日期', '2026-10-25');
+  await dialog.getByRole('button', save).click();
+  await dialog.getByRole('button', named('重读最新版本')).click();
+  await dialog.getByRole('button', named('已核对差异，继续编辑')).click();
+  await expect(item(dialog, '是否有试用期').locator('.ant-select-selection-item')).toHaveText('是');
+  await expect(item(dialog, '计划入职日期').getByRole('textbox')).toHaveValue('2026-10-25');
+});
