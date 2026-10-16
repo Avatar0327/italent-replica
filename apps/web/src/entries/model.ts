@@ -36,21 +36,28 @@ export async function request<T>(api: ApiClient, path: string, options?: Paramet
   }
 }
 export async function readEntry(api: ApiClient, row: Row, fresh = false): Promise<Values> {
-  const [business, record, employee] = await Promise.all([
-    request<Values>(api, `${base}/businesses/${row.id}`),
-    request<Values>(api, `${base}/records/${row.id}`),
-    request<Values>(api, `${base}/employees/${row.employeeId}`),
-  ]);
-  return {
-    ...business,
-    ...(record.fields as Values),
-    name: employee.name,
-    code: employee.code,
-    probation: fresh ? await latestProbation(api, business, record) : (row.probation ?? null),
-  };
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const [business, record, employee] = await Promise.all([
+      request<Values>(api, `${base}/businesses/${row.id}`),
+      request<Values>(api, `${base}/records/${row.id}`),
+      request<Values>(api, `${base}/employees/${row.employeeId}`),
+    ]);
+    if (!fresh && row.revision === business.revision && record.revision === business.revision)
+      return {
+        ...business,
+        ...(record.fields as Values),
+        name: employee.name,
+        code: employee.code,
+        probation: row.probation ?? null,
+      };
+    // 列表与详情必须属于同一版本；更新列表后整条重读，不能把新 revision 配给旧值。
+    row = await latestEntry(api, business, record);
+    fresh = false;
+  }
+  throw new Error(kernel.unknown);
 }
 // F-188 只在四视图列表返回 probation；冲突重读不能拿旧行补成“最新值”。按服务端分页定位原单。
-async function latestProbation(api: ApiClient, business: Values, record: Values) {
+async function latestEntry(api: ApiClient, business: Values, record: Values) {
   let view = record.entryStatus === 1 ? 'cancelled' : 'all';
   if (record.employeeStatus !== 1) view = 'hired';
   for (let page = 1; ; page++) {
@@ -58,7 +65,7 @@ async function latestProbation(api: ApiClient, business: Values, record: Values)
     const current = result.items.find((item) => item.id === business.id);
     if (current) {
       if (current.revision !== business.revision) throw new Error(kernel.unknown);
-      return current.probation ?? null;
+      return current;
     }
     if (result.items.length < 100) throw new Error(kernel.unknown);
   }

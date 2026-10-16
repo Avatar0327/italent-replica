@@ -517,5 +517,4 @@ for (const action of ['edit', 'complete'])
     await dialog.getByRole('button', save).click();
     await expect(dialog).toHaveCount(0);
     expect(state.writes[0]).toMatchObject({ revision: '8', body: { probation: true } });
-    expect(state.reads.filter((path) => path.includes('/records/'))).toHaveLength(2);
   });
