@@ -33,7 +33,9 @@ export function useRecordCommand<T extends RecordRow, C extends Values>(options:
   const saved = slotContext<C>(command.state);
   const context = saved ?? options.context;
   // 打开时槽里已有未完成的命令，才算沿用原命令；本次打开内提交产生的状态不算。
-  const [resumed] = useState(() => saved !== undefined);
+  // F-146：原命令之后被明确拒绝（或已完成）就不再是“结果尚未确认”，提示随槽里当前状态撤下。
+  const [opened] = useState(() => saved !== undefined);
+  const resumed = opened && saved !== undefined && command.state?.status !== 'rejected';
   const latest = command.state?.latest;
   const current = latest ? ({ ...latest.values, id: latest.id, revision: latest.revision } as unknown as T) : original;
   const reload = readPath

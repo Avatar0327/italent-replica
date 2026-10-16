@@ -467,6 +467,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/idp/plan-access.ts#requireExecutor': ['#denied', '#hrSees', '#nodeButtons', '#participation'],
   'apps/api/src/modules/idp/plan-access.ts#requireViewer': ['#hrSees', '#participation'],
+  'apps/api/src/modules/idp/plan-access.ts#requireVisibleModule': ['apps/api/src/modules/idp/access.ts#rowsOf'],
   'apps/api/src/modules/idp/plan-input.ts#batchItems': ['#items', '#text'],
   'apps/api/src/modules/idp/plan-input.ts#careerCreate': ['#DATE_ORDER', '#ordered', '#span', '#text', '#uuid'],
   'apps/api/src/modules/idp/plan-input.ts#careerPatch': ['#isoDate', '#text', '#uuid'],
@@ -523,6 +524,10 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/idp/plan-routes.ts#hrScopeOf': [
     'apps/api/src/modules/idp/access.ts#codeOf',
     'apps/api/src/modules/idp/access.ts#idpScope',
+  ],
+  'apps/api/src/modules/idp/plan-routes.ts#participantSummaries': [
+    '#summaries',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/idp/plan-routes.ts#planCommand': ['apps/api/src/modules/permission/scope-types.ts#EMPTY_SCOPE'],
   'apps/api/src/modules/idp/plan-routes.ts#receiptsNow': [
@@ -630,9 +635,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/idp/access.ts#rowsOf',
     '#BASE',
     '#baseContext',
-    '#summaries',
+    '#participantSummaries',
     'apps/api/src/modules/job/context.ts#pageQuery',
-    'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/idp/plan-routes.ts#route:GET /api/tenant/idp/plans': [
     'apps/api/src/modules/idp/access.ts#idpContext',
@@ -659,6 +663,14 @@ export const GRAPH: Graph = {
     '#hrScopeOf',
     'apps/api/src/modules/job/context.ts#uuidParam',
     'apps/api/src/modules/permission/scope-types.ts#EMPTY_SCOPE',
+  ],
+  'apps/api/src/modules/idp/plan-routes.ts#route:GET /api/tenant/idp/tutor-plans': [
+    'apps/api/src/modules/approval/resolver.ts#personOfUser',
+    'apps/api/src/modules/idp/access.ts#rowsOf',
+    '#BASE',
+    '#baseContext',
+    '#participantSummaries',
+    'apps/api/src/modules/job/context.ts#pageQuery',
   ],
   'apps/api/src/modules/idp/plan-routes.ts#route:PATCH /api/tenant/idp/plans/:id': [
     'apps/api/src/modules/idp/access.ts#checkWriteFields',
@@ -807,6 +819,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/idp/plan-routes.ts#showPlan': [
     'apps/api/src/modules/idp/plan-access.ts#requireViewer',
+    'apps/api/src/modules/idp/plan-access.ts#requireVisibleModule',
     'apps/api/src/modules/idp/plan-store.ts#loadStages',
     'apps/api/src/modules/idp/plan-store.ts#requirePlanRow',
     'apps/api/src/modules/idp/plan-view.ts#loadPlanDetail',

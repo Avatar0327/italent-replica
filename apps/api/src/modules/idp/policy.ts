@@ -373,10 +373,16 @@ export const IDP_POLICIES = defineTable('idp', {
   ...templatePart('commonGoal', 'common-goals'),
   // ---- 计划（HR）----------------------------------------------------------------------------------------------------
   [`GET ${BASE}/plans`]: reader('plan', PLAN_LIST),
-  // 参与人列表（K-30～K-32）：本人 / 指导人的非未开始计划 + 当前有待办的计划；固定字段（去掉 tutorRole 等）
+  // 参与人列表（K-30～K-32）：本人的进行中 / 已结束计划（F-164）、指导人的非未开始计划 + 当前有待办的计划；
+  // 固定字段（去掉 tutorRole 等）
   [`GET ${BASE}/my-plans`]: own({
     predicate: 'idp.participant',
     fields: projector('idp.participantSummary', 'idp.plan'),
+  }),
+  // 我辅导的发展计划（F-164）：本人任指导人的进行中计划；固定字段（指导人即本人，随行返回）
+  [`GET ${BASE}/tutor-plans`]: own({
+    predicate: 'idp.tutor',
+    fields: projector('idp.tutorSummary', 'idp.plan'),
   }),
   [`GET ${BASE}/plans/:id`]: PLAN_VIEWER,
   // 新建计划所选模板须对操作人可见（templateCheck：模板查看权 + 模板范围，自有或向下公开）

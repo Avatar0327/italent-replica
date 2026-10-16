@@ -156,9 +156,11 @@ test('AC-FE-R1a-08 组织变更显式联动；冲突后重读、核对差异再�
   });
   await page.goto('/org?tab=changes');
   await page.getByRole('button', { name: '合成组织', exact: true }).click();
-  await page.getByRole('button', { name: /变\s*更/, exact: true }).click();
+  // 原站详情把变更收在「更多操作」里（B2_09）。
+  await page.getByRole('dialog').getByRole('button', { name: '更多操作' }).click();
+  await page.getByRole('menuitem', { name: '变更' }).click();
   const dialog = page.getByRole('dialog');
-  await dialog.getByLabel('机构名称').fill('合成组织二');
+  await dialog.getByLabel('名称', { exact: true }).fill('合成组织二');
   await save(page).click();
   await expect(page.getByText('请选择是否新增任职')).toBeVisible();
   expect(writes(requests)).toHaveLength(0);
@@ -169,7 +171,7 @@ test('AC-FE-R1a-08 组织变更显式联动；冲突后重读、核对差异再�
   await expect(save(page)).toBeDisabled();
   await dialog.getByRole('button', { name: '重读最新版本' }).click();
   await expect(dialog.getByLabel('备注')).toHaveValue('他人备注');
-  await expect(dialog.getByLabel('机构名称')).toHaveValue('合成组织二');
+  await expect(dialog.getByLabel('名称', { exact: true })).toHaveValue('合成组织二');
   await dialog.getByRole('button', { name: '已核对差异，继续编辑' }).click();
   await save(page).click();
   await expect(dialog).toHaveCount(0);
@@ -232,8 +234,8 @@ test('AC-FE-R1a-28 回执缺少原单 ID 时不显示成功，表单锁定待回
 
 async function createOrganization(page: Page) {
   const dialog = page.getByRole('dialog');
-  await dialog.getByLabel('机构名称').fill('合成新组织');
-  await dialog.getByLabel('机构简称').fill('合成新');
+  await dialog.getByLabel('名称', { exact: true }).fill('合成新组织');
+  await dialog.getByLabel('简称', { exact: true }).fill('合成新');
   const parent = dialog
     .locator('.ant-form-item')
     .filter({ has: page.locator('label').filter({ hasText: '行政维度上级' }) })
@@ -580,4 +582,70 @@ test('AC-FE-R1a-38 无生效日期编辑权的职务新建结果未知后换日�
   await expect.poll(() => references().length).toBeGreaterThan(0);
   expect(new Set(references().map((url) => url.searchParams.get('asOf')))).toEqual(new Set(['2026-10-12']));
   expect(posts).toHaveLength(1);
+});
+
+// F-146（#330 第 5 轮 P3）：恢复提示随槽里命令的当前状态走，命令被明确拒绝后不再提示“结果尚未确认”。
+test('AC-FE-R1a-39 组织变更冲突后关闭重开，重提被明确拒绝后不再显示恢复提示', async ({ page, baseURL }) => {
+  await setup(page, baseURL!);
+  const patches: Request[] = [];
+  await page.route(`**/api/tenant/org/organizations/${id}**`, (route) => {
+    if (route.request().method() === 'GET') return route.fallback();
+    patches.push(route.request());
+    if (patches.length === 1) return route.fulfill({ status: 409, json: { error: { code: 'REVISION_CONFLICT' } } });
+    return route.fulfill({ status: 400, json: { error: { code: 'VALIDATION_FAILED', message: '备注不合法' } } });
+  });
+  await page.goto('/org');
+  const row = page.locator('tr[data-row-key]').first();
+  const openChange = async () => {
+    await row.getByRole('button', { name: /更\s*多/ }).click();
+    await page.getByRole('menuitem', { name: '变更' }).click();
+  };
+  await openChange();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('备注').fill('我的备注');
+  await save(page).click();
+  await expect(dialog.getByText('版本冲突：输入已保留，请重读最新版本并核对差异后重提。')).toBeVisible();
+  await closeDialog(page);
+  await openChange();
+  await expect(dialog.getByText('未确认命令')).toBeVisible();
+  await dialog.getByRole('button', { name: '重读最新版本' }).click();
+  await dialog.getByRole('button', { name: '已核对差异，继续编辑' }).click();
+  await save(page).click();
+  await expect.poll(() => patches.length).toBe(2);
+  await expect(save(page)).toBeEnabled();
+  await expect(dialog.getByText('未确认命令')).toHaveCount(0);
+});
+
+test('AC-FE-R1a-39 职务编辑冲突后关闭重开，重提被明确拒绝后不再显示恢复提示', async ({ page, baseURL }) => {
+  await setup(page, baseURL!);
+  const patches: Request[] = [];
+  await page.route(`**/api/tenant/job/layers/${id}`, (route) => {
+    if (route.request().method() === 'GET') return route.fallback();
+    patches.push(route.request());
+    if (patches.length === 1) return route.fulfill({ status: 409, json: { error: { code: 'REVISION_CONFLICT' } } });
+    return route.fulfill({ status: 400, json: { error: { code: 'VALIDATION_FAILED', message: '名称不合法' } } });
+  });
+  await page.goto('/job?kind=layers');
+  const openEditor = async () => {
+    await page.getByRole('button', { name: '合成条目', exact: true }).click();
+    await page
+      .getByRole('button', { name: /编\s*辑/, exact: true })
+      .last()
+      .click();
+  };
+  await openEditor();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('名称', { exact: true }).fill('合成条目二');
+  await save(page).click();
+  await expect(dialog.getByText('版本冲突：输入已保留，请重读最新版本并核对差异后重提。')).toBeVisible();
+  await closeDialog(page);
+  await page.keyboard.press('Escape');
+  await openEditor();
+  await expect(dialog.getByText(/已按原命令的业务日期打开：/)).toBeVisible();
+  await dialog.getByRole('button', { name: '重读最新版本' }).click();
+  await dialog.getByRole('button', { name: '已核对差异，继续编辑' }).click();
+  await save(page).click();
+  await expect.poll(() => patches.length).toBe(2);
+  await expect(save(page)).toBeEnabled();
+  await expect(dialog.getByText(/已按原命令的业务日期打开：/)).toHaveCount(0);
 });

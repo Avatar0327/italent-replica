@@ -5,6 +5,10 @@ export const t = {
   templates: '发展计划模板',
   processes: '发展计划流程',
   myPlans: '我的发展计划',
+  personalPlans: '个人发展计划',
+  tutorPlans: '我辅导的发展计划',
+  tutorCategory: '辅导员工分类',
+  tutorTarget: '辅导对象',
   views: {
     active: '未开始&进行中',
     ended: '已结束的计划',
@@ -253,6 +257,27 @@ export const t = {
   header: { plan: '计划：', period: '周期：', tutor: '指导人：' },
   analysis: { currentAnalysis: '现状分析', developmentItems: '待发展项' },
   review: { summary: '总结', improvement: '改进方法' },
+  reviewForm: {
+    overall: '总体回顾',
+    hint: '请输入',
+    tooLong: (max: number) => `最多 ${max} 字`,
+    save: '保存',
+    submit: '提交',
+    // 与后端 409 IDP_REVIEW_REQUIRED 同一口径（approval-adapter requireReview）
+    required: (label: string) => `${label}还没有填写，不能提交`,
+    noTask: '当前没有待你提交的回顾，请刷新后再试',
+    readFailed: '读取审批信息失败，请稍后再试',
+    saveUnconfirmed: '回顾保存未确认，没有提交',
+    planPending: '发展计划上有未确认的操作，没有提交',
+    stageChanged: '当前阶段已变化，请刷新后再提交',
+    stageMoved: '阶段已变化：下面是上一阶段没有保存的草稿，仅供参考',
+    enterStage: '进入当前阶段',
+  },
+  denied: {
+    title: '无权限查看当前发展计划~',
+    own: '查看其它发展计划',
+    tutoring: '查看其它我辅导的发展计划',
+  },
   noContent: '暂未填写',
   task: {
     add: '添加任务',
@@ -275,6 +300,7 @@ export const t = {
     fields: '提交必需的字段无权查看，保存无法带回原值，暂不开放新增、编辑、移除和排序',
   },
   rereadFailed: '重读失败，请刷新',
+  receiptInvalid: '保存回执缺少有效版本，结果待确认',
   enableNoRevision: '模板已创建，但创建结果没有返回版本号，无法接着启用，请刷新列表后再启用',
   processLine: (name: string) => `流程：${name}`,
   gaps: {

@@ -15,7 +15,13 @@ import { REBUILD_REQUIRED } from './activation-store.js';
 import { auditEmployment } from './context.js';
 import { loadEmploymentRecord } from './read-model.js';
 import { insertEmploymentRow, rowsOf, type LockedEmploymentBusiness } from './record-store.js';
-import { insertEmploymentTimeline, operationKey, plannedEffectiveDate, timelinePosition } from './timeline.js';
+import {
+  insertEmploymentTimeline,
+  loadPlannedEffectiveDate,
+  operationKey,
+  plannedEffectiveDate,
+  timelinePosition,
+} from './timeline.js';
 import type { EmploymentContext } from './types.js';
 
 export { REBUILD_REQUIRED };
@@ -119,17 +125,8 @@ async function assertNoRebuildRequired(
 }
 
 /** 未落地申请的原计划日：载荷版本的人工计划列（批准当天已顺延但未落地的申请不丢原区间，F-140 约束 2）。 */
-async function originalPlannedDate(tx: Tx, ctx: EmploymentContext, business: LockedEmploymentBusiness) {
-  const [row] = rowsOf<{ planned: string }>(
-    await tx.execute(
-      sql`SELECT ${plannedEffectiveDate(
-        ctx.tenantId,
-        sql`${business.id}::uuid`,
-        sql`${business.payload.effectiveDate}::date`,
-      )}::text AS planned`,
-    ),
-  );
-  return row?.planned ?? business.payload.effectiveDate;
+function originalPlannedDate(tx: Tx, ctx: EmploymentContext, business: LockedEmploymentBusiness) {
+  return loadPlannedEffectiveDate(tx, ctx.tenantId, business.id, business.payload.effectiveDate);
 }
 
 export async function postponeLateTransfer(tx: Tx, ctx: EmploymentContext, business: LockedEmploymentBusiness) {

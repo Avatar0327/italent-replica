@@ -15,6 +15,9 @@ const CTX = `${SRC}/employment/context.ts`;
 const TRF = `${SRC}/transfer/routes.ts`;
 const MGR = `${SRC}/transfer/manager-routes.ts`;
 const LNK = `${SRC}/transfer/linkage/routes.ts`;
+const EXIT = `${SRC}/employment/exit-routes.ts`;
+const ENTRY = `${SRC}/employment/entry-routes.ts`;
+const STATUS = `${SRC}/employment/employee-status.ts`;
 const ACCESS = `${SRC}/transfer/access.ts`;
 const SERVICE = `${SRC}/transfer/service.ts`;
 const RECORD = 'TenantBase.EmploymentRecord';
@@ -161,6 +164,32 @@ const TRANSITIONS = fn(
   'registerBusinessTransitions',
   "let ctx = await readContext(c, deps, action === 'delete' ? 'object.delete' : 'object.update', revision(c))",
 );
+
+/** R2 BE-2a 待入职动作（entry-routes.ts）：办理入职 / 取消 / 改期共用 prepareEntryAction，只读上下文与按钮在那里。 */
+const PENDING_LOCK = fn(
+  STATUS,
+  'lockPendingEntry',
+  'await requireScopedEmploymentObject(tx, ctx, record.employeeId, record.fields.departmentId, record.id)',
+);
+function entryUpdate(path: string, linkageCall?: Evidence): Obligation[] {
+  const prepare = (anchor: string) => fn(ENTRY, 'prepareEntryAction', anchor);
+  return [
+    ob(
+      `obj:${RECORD}:update`,
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:update', 'object:object.* 动作'],
+      [prepare("const ctx = await readContext(c, deps, 'object.update', revision(c))"), READ, WRITE_OBJECT],
+      `POST ${path}`,
+    ),
+    ob(
+      `btn:${RECORD}#Employment.Edit@detail`,
+      ['button:requireEmploymentWrite(按钮)'],
+      [prepare("await requireEmploymentWrite(ctx, 'update', payload, 'Employment.Edit', undefined, {"), WRITE_BUTTON],
+    ),
+    businessWrite(prepare('await authorizeBusinessWrite(deps, ctx, id)')),
+    directOperation(PENDING_LOCK),
+    ...(linkageCall ? [linkage(linkageCall)] : []),
+  ];
+}
 
 function transition(action: 'submit' | 'withdraw' | 'revoke' | 'delete'): Obligation[] {
   const button = `Employment.${action[0]!.toUpperCase()}${action.slice(1)}`;
@@ -970,7 +999,7 @@ export const EMPLOYMENT: RequiredTable = {
         EMP,
         'POST',
         '/employees/:id/businesses',
-        'const business = await createEmploymentBusiness(tx, context, id, input)',
+        'const business = await createEmploymentBusiness(tx, context, id, input, entry ? { entry } : {})',
       ),
     ),
   ],
@@ -1376,6 +1405,86 @@ export const EMPLOYMENT: RequiredTable = {
       'PUT',
       '/custom-fields/:id/inheritance',
       "await requireEmploymentWrite(ctx, 'update', input, undefined, 'TenantBase.EmploymentCustomField')",
+    ),
+  ),
+  // ---- employment/entry-routes.ts：R2 BE-2a 待入职状态动作（办理入职 / 取消 / 改期 / 删除）-------------------------------
+  'POST /api/tenant/employment/pending-entries/:id/complete': entryUpdate(
+    '/pending-entries/:id/complete',
+    at(ENTRY, 'POST', '/pending-entries/:id/complete', 'await completePendingEntry(tx, context, id, input)'),
+  ),
+  'POST /api/tenant/employment/pending-entries/:id/cancel': entryUpdate('/pending-entries/:id/cancel'),
+  'POST /api/tenant/employment/pending-entries/:id/postpone': entryUpdate(
+    '/pending-entries/:id/postpone',
+    at(ENTRY, 'POST', '/pending-entries/:id/postpone', 'body: await postponePendingEntry(tx, context, id, input)'),
+  ),
+  'DELETE /api/tenant/employment/pending-entries/:id': [
+    ob(
+      `obj:${RECORD}:delete`,
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:delete', 'object:object.* 动作'],
+      [
+        at(
+          ENTRY,
+          'DELETE',
+          '/pending-entries/:id',
+          "const ctx = await readContext(c, deps, 'object.delete', revision(c))",
+        ),
+        READ,
+        at(
+          ENTRY,
+          'DELETE',
+          '/pending-entries/:id',
+          "await requireEmploymentWrite(ctx, 'delete', {}, 'Employment.Delete')",
+        ),
+        WRITE_DELETE,
+        RECORD_CONST,
+      ],
+    ),
+    ob(
+      `btn:${RECORD}#Employment.Delete@detail`,
+      ['button:requireEmploymentWrite(按钮)'],
+      [
+        at(
+          ENTRY,
+          'DELETE',
+          '/pending-entries/:id',
+          "await requireEmploymentWrite(ctx, 'delete', {}, 'Employment.Delete')",
+        ),
+        WRITE_BUTTON,
+        RECORD_CONST,
+      ],
+    ),
+    businessWrite(at(ENTRY, 'DELETE', '/pending-entries/:id', 'await authorizeBusinessWrite(deps, ctx, id)')),
+    directOperation(PENDING_LOCK),
+    linkage(at(ENTRY, 'DELETE', '/pending-entries/:id', 'body: await deletePendingEntry(tx, context, id)')),
+  ],
+  // ---- employment/exit-routes.ts：R2-T03 离职三个字典（读：任职记录查看权；写：配置对象，设计 §9.1）----------------
+  'GET /api/tenant/employment/exits/dictionaries/:dict': [
+    ob(
+      `obj:${RECORD}:view`,
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:view', 'object:object.* 动作'],
+      [at(EXIT, 'GET', '/exits/dictionaries/:dict', "const ctx = await readContext(c, deps, 'object.view', 0)"), READ],
+    ),
+  ],
+  'POST /api/tenant/employment/exits/dictionaries/:dict': configWrite(
+    at(EXIT, 'POST', '/exits/dictionaries/:dict', "'tenant.employment.configuration.write'"),
+    'TenantBase.EmploymentSettings',
+    'create',
+    at(
+      EXIT,
+      'POST',
+      '/exits/dictionaries/:dict',
+      "await requireEmploymentWrite(ctx, 'create', input, undefined, 'TenantBase.EmploymentSettings')",
+    ),
+  ),
+  'PUT /api/tenant/employment/exits/dictionaries/:dict/:id': configWrite(
+    at(EXIT, 'PUT', '/exits/dictionaries/:dict/:id', "'tenant.employment.configuration.write'"),
+    'TenantBase.EmploymentSettings',
+    'update',
+    at(
+      EXIT,
+      'PUT',
+      '/exits/dictionaries/:dict/:id',
+      "await requireEmploymentWrite(ctx, 'update', input, undefined, 'TenantBase.EmploymentSettings')",
     ),
   ),
 };
