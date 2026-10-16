@@ -79,7 +79,7 @@ describe('AC-FE-0-07 公共对象目录与后端逐应用核对', () => {
     expect(result.menus.map((menu) => menu.key)).toEqual([
       app,
       ...(code === M.contract.code ? ['contracts'] : []),
-      ...(app === 'transfer' && code === M.employmentRecord.code ? ['offers'] : []),
+      ...(app === 'transfer' && code === M.employmentRecord.code ? ['entries', 'offers'] : []),
       // F-154：带教信息独立入口。
       ...(app === 'idp' && code === 'IDP.TutorShip' ? ['tutorship-information'] : []),
     ]);
