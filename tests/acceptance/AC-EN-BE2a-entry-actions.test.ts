@@ -45,7 +45,6 @@ describe('BE-2a 添加待入职与是否有试用期', () => {
 
   it.each([
     ['待入职只能直接添加', { pendingEntry: true, mode: 'application' }],
-    ['待入职阶段不填是否有试用期（办理入职时再填）', { pendingEntry: true, probation: true }],
     ['probation 必须为布尔值', { probation: 'yes' }],
     ['非入职类业务不能带 pendingEntry', { pendingEntry: true, kind: 'transfer' }],
     ['非入职类业务不能带 probation', { probation: true, kind: 'regularization' }],
@@ -55,6 +54,20 @@ describe('BE-2a 添加待入职与是否有试用期', () => {
     const response = await addHire(w.session, employee, hireBody(w.org.id, '2026-09-01', extra));
     expect(response.status).toBe(400);
     expect(await entryRecords(w, employee.id)).toEqual([]);
+  });
+});
+
+describe('F-188 添加待入职可选带 probation 并落库（原“待入职阶段不填”的拒绝已去掉）', () => {
+  it('pendingEntry + probation：201，仍是待入职；值落库（列表读回见 AC-EN-F188-entry-edit）', async () => {
+    const w = await entryWorld(testDb().db, 'be2a-pending-prob');
+    const employee = await w.session.employee('待入职试用期合成员工');
+    const response = await addHire(
+      w.session,
+      employee,
+      hireBody(w.org.id, '2026-10-10', { pendingEntry: true, probation: true }),
+    );
+    expect(response.status, await response.clone().text()).toBe(201);
+    expect((await entryRecords(w, employee.id))[0]).toMatchObject({ employeeStatus: PENDING, entryStatus: NORMAL });
   });
 });
 
