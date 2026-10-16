@@ -49,8 +49,12 @@ export interface PendingActivation {
 
 const QUEUE_LIMIT = 200;
 
-/** 已落地的未来调动统一复查；成功尝试退出队列，失败保留 HR 待办。兼容旧版联动事件及 PR-A 未写排队事件、保存时为未来生效的记录（租户日期）。 */
-export const pendingActivationState = (timezone: string) => sql`(s.state='approved' AND p.mode='application' OR
+/**
+ * 已落地的未来调动统一复查；成功尝试退出队列，失败保留 HR 待办。兼容旧版联动事件及 PR-A 未写排队事件、保存时为未来生效的记录（租户日期）。
+ * R2-T03 §18.1 关口①：走过离职门禁（有 exit_requests 行）的离职不进队列，B3-3 开闸前调度与 HR 待办都看不到它们；
+ * 没有扩展行的离职（可信造数）保持 main 行为。
+ */
+export const pendingActivationState = (timezone: string) => sql`((s.state='approved' AND p.mode='application' OR
   s.state='effective' AND p.kind='transfer' AND (EXISTS (
     SELECT 1 FROM employment_outbox o WHERE o.tenant_id=b.tenant_id AND o.business_id=b.id
       AND o.event_type IN ('employment.transfer.recheck.pending','employment.transfer.linkage.pending'))
@@ -60,7 +64,8 @@ export const pendingActivationState = (timezone: string) => sql`(s.state='approv
     AND NOT EXISTS (SELECT 1 FROM employment_activation_attempts done
       WHERE done.tenant_id=b.tenant_id AND done.business_id=b.id AND done.outcome='effective')
     AND NOT EXISTS (SELECT 1 FROM employment_outbox o WHERE o.tenant_id=b.tenant_id AND o.business_id=b.id
-      AND o.event_type='employment.transfer.linked'))`;
+      AND o.event_type='employment.transfer.linked'))
+  AND NOT EXISTS (SELECT 1 FROM exit_requests gated WHERE gated.tenant_id=b.tenant_id AND gated.business_id=b.id))`;
 
 export type ShiftedKind = 'transfer' | 'leave';
 
@@ -139,6 +144,38 @@ export async function pendingActivations(
   }));
   if (rows.length > QUEUE_LIMIT) throw new AppError('PAYLOAD_TOO_LARGE', '待生效业务超过单名员工的处理上限');
   return rows;
+}
+
+export interface OverdueTransfer {
+  readonly id: string;
+  readonly kind: 'transfer';
+  /** §5.0A 计划生效日（不是最新载荷日）。 */
+  readonly effectiveDate: string;
+  readonly materialized: boolean;
+  readonly departmentId: string | null;
+}
+
+/**
+ * 逾期迟到调动（设计 §8A，DEC-252①“已过计划日未执行”）：计划生效日 < 租户今天的调动。
+ * blocking：A 未落地的申请、B 已落地但联动未完成；reminders：C 已落地且只剩提醒（不拦截，进 warnings）。只读，离职 / 退休入口共用。
+ */
+export async function findOverdueTransfers(tx: Tx, ctx: EmploymentContext, employeeId: string) {
+  const today = tenantLocalDate(ctx.now, ctx.timezone);
+  const overdue = (await pendingActivations(tx, ctx, employeeId))
+    .filter((item) => item.kind === 'transfer' && item.plannedDate < today)
+    .map((item) => ({
+      id: item.id,
+      kind: 'transfer' as const,
+      effectiveDate: item.plannedDate,
+      materialized: item.materialized,
+      departmentId: item.departmentId,
+      reminderOnly: item.reminderOnly,
+    }));
+  const strip = ({ reminderOnly: _reminder, ...item }: (typeof overdue)[number]): OverdueTransfer => item;
+  return {
+    blocking: overdue.filter((item) => !item.reminderOnly).map(strip),
+    reminders: overdue.filter((item) => item.reminderOnly).map(strip),
+  };
 }
 
 /** 排在该业务之前的待生效业务（DEC-108 / DEC-112：前序未落地时不得越过它生效）。 */

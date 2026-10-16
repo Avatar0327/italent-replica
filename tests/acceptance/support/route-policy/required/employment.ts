@@ -210,11 +210,7 @@ function transition(action: 'submit' | 'withdraw' | 'revoke' | 'delete'): Obliga
       [fn(EMP, 'registerBusinessTransitions', 'transferBusinessContext(tx, ctx, id,'), ...BUSINESS_SOURCE],
     ),
     linkage(
-      fn(
-        EMP,
-        'registerBusinessTransitions',
-        'const business = await transitionEmployment(tx, checked, { id, action })',
-      ),
+      fn(EMP, 'registerBusinessTransitions', 'const business = await transitionEmployment(tx, checked, {'),
       '状态迁移（撤回 / 撤销 / 删除）改写后续记录前按 DEC-178 复核',
     ),
   ];

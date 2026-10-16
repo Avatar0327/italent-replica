@@ -6,12 +6,13 @@ import { requireTransferButton } from '../transfer/access.js';
 import { type Tx, withTenant } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
 import { Hono, type Context } from 'hono';
+import type { CommandGuard } from '../../commands.js';
 import { z } from 'zod';
 import { requirePermission } from '../../authorization.js';
 import { AppError, handleError } from '../../errors.js';
 import type { TenantRouteDeps, TenantRouteModule } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
-import { getModuleViewableFields } from '../permission/module-access.js';
+import { authorizeInTransaction, getModuleViewableFields } from '../permission/module-access.js';
 import { provisionEmployeeUser } from '../permission/user-provisioning.js';
 import {
   readSettings,
@@ -39,10 +40,19 @@ import { createEmployee, employeeName, getEmployee, listEmployees } from './empl
 import { EmploymentError } from './errors.js';
 import { normalizeEmploymentInput, normalizeBusinessPatch } from './fields.js';
 import { previewEmploymentEditForwardUpdate, previewEmploymentForwardUpdate } from './forward-preview.js';
+import { createExitApplication } from './exit-application.js';
+import {
+  isExitKind,
+  requireExitGate,
+  requireExitPermission,
+  type ExitOperation,
+  type ExitGateTarget,
+} from './exit-gate.js';
+import { splitExitOptions } from './exit-initiation.js';
 import { importEmploymentRecords, normalizeEmploymentImport, previewEmploymentImport } from './forward-import.js';
 import { editEmploymentRecord } from './record-edit.js';
 import { prepareInheritance, inheritancePreview } from './inheritance.js';
-import { lockEmploymentEmployee } from './record-store.js';
+import { lockEmploymentBusiness, lockEmploymentEmployee } from './record-store.js';
 import { listEmploymentRecords, loadEmploymentBusiness, loadEmploymentRecord } from './read-model.js';
 import {
   createEmploymentBusiness,
@@ -100,6 +110,22 @@ export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
   registerEntryEmailRoutes(module, deps, authorizeBusinessWrite);
   router.route('/api/tenant/employment', module);
 };
+
+/**
+ * 离职入口的命令内复核（#199）：首次执行与幂等重放都先在事务内按当前授权重过 Dimission* 权限链，撤权后不返回缓存响应。
+ * 仅当入口操作的是 kind=leave / retirement 时使用；前置条件在命令内的 requireExitGate。
+ */
+function exitGuard(
+  deps: TenantRouteDeps,
+  ctx: EmploymentContext,
+  operation: ExitOperation,
+  target: ExitGateTarget,
+): CommandGuard {
+  return {
+    before: (tx) =>
+      requireExitPermission({ ...ctx, authorize: authorizeInTransaction(deps.authorize, tx) }, operation, target),
+  };
+}
 
 /** 登录邮箱不是人员字段：建档 / 入职时交给权限模块的用户端口（DEC-128；入职必填，DEC-140），不参与任职字段权限校验。 */
 const loginEmail = z.email().max(320).optional();
@@ -175,12 +201,15 @@ function registerEmployeeBusinessCreate(router: Hono<TenantEnv>, deps: TenantRou
     const id = uuidParam(c);
     const ctx = await readContext(c, deps, 'object.create', revision(c), id);
     const { rawInput: withoutEmail, email } = splitLoginEmail(await jsonBody(c));
-    const { rawInput, entry } = splitEntryOptions(withoutEmail);
+    const { rawInput: withoutExit, exit } = splitExitOptions(withoutEmail);
+    const { rawInput, entry } = splitEntryOptions(withoutExit);
     const input = normalizeEmploymentInput(ctx, rawInput);
     assertEntryOptionsAllowed(input, entry);
     if (email !== undefined && !NEW_CYCLE_KINDS.includes(input.kind)) {
       throw new AppError('VALIDATION_FAILED', '只有入职类业务可以提供登录邮箱');
     }
+    if (input.kind !== 'leave' && Object.keys(exit).length)
+      throw new AppError('VALIDATION_FAILED', '只有离职业务可以提供离职字段');
     await requireEmploymentWrite(ctx, 'create', rawInput as object, 'Employment.Create');
     if (input.kind === 'transfer') {
       await withTenant(deps.db, ctx.tenantId, async (tx) => {
@@ -189,17 +218,46 @@ function registerEmployeeBusinessCreate(router: Hono<TenantEnv>, deps: TenantRou
       });
     }
     if (input.fields.departmentId !== undefined) requireEmploymentScope(ctx, id, input.fields.departmentId);
-    return runWrite(c, deps, ctx, { ...input, loginEmail: email, entry }, async (tx, context) => {
-      if (input.kind === 'transfer') {
-        await lockTransferParticipants(tx, context, id, input.fields.addedSubordinateIds ?? []);
-        await lockEmploymentEmployee(tx, context, id, context.expectedRevision);
-        await requireTransferSource(tx, context, id, 'hr');
-        if (input.mode === 'direct') await requireDirectTransfer(tx, context);
-      }
-      const business = await createEmploymentBusiness(tx, context, id, input, entry ? { entry } : {});
-      if (NEW_CYCLE_KINDS.includes(input.kind)) await ensureHiredAccount(tx, context, id, email);
-      return { status: 201, body: business };
-    });
+    const gate: ExitGateTarget = {
+      employeeId: id,
+      initiation: 'hr',
+      mode: input.mode,
+      lastWorkDate: input.lastWorkDate!,
+      exit,
+    };
+    return runWrite(
+      c,
+      deps,
+      ctx,
+      { ...input, loginEmail: email, entry, exit },
+      async (tx, context) => {
+        if (input.kind === 'leave') {
+          // 通用入口创建离职与专用入口同一服务、同一门禁（§4A / §4B）；发起方式固定为 HR
+          const created = await createExitApplication(tx, context, {
+            employeeId: id,
+            initiation: 'hr',
+            mode: input.mode,
+            lastWorkDate: input.lastWorkDate!,
+            effectiveDate: input.effectiveDate,
+            formId: input.formId,
+            fields: input.fields,
+            customFields: input.customFields,
+            exit,
+          });
+          return { status: 201, body: created };
+        }
+        if (input.kind === 'transfer') {
+          await lockTransferParticipants(tx, context, id, input.fields.addedSubordinateIds ?? []);
+          await lockEmploymentEmployee(tx, context, id, context.expectedRevision);
+          await requireTransferSource(tx, context, id, 'hr');
+          if (input.mode === 'direct') await requireDirectTransfer(tx, context);
+        }
+        const business = await createEmploymentBusiness(tx, context, id, input, entry ? { entry } : {});
+        if (NEW_CYCLE_KINDS.includes(input.kind)) await ensureHiredAccount(tx, context, id, email);
+        return { status: 201, body: business };
+      },
+      input.kind === 'leave' ? { guard: exitGuard(deps, ctx, 'create', gate) } : {},
+    );
   });
 }
 
@@ -290,19 +348,28 @@ function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       await withTenant(deps.db, ctx.tenantId, (tx) =>
         requireScopedEmploymentObject(tx, ctx, current.employeeId, departmentId, id),
       );
-    return runWrite(c, deps, ctx, input, async (tx, context) => {
-      let checked = await transferBusinessContext(
-        tx,
-        { ...context, transferTarget: undefined },
-        id,
-        'command',
-        departmentId,
-        input,
-      );
-      if (departmentId !== undefined && checked.transferTarget)
-        checked = { ...checked, transferTarget: { ...checked.transferTarget, departmentId } };
-      return { status: 200, body: await updateEmploymentBusiness(tx, checked, id, input) };
-    });
+    return runWrite(
+      c,
+      deps,
+      ctx,
+      input,
+      async (tx, context) => {
+        let checked = await transferBusinessContext(
+          tx,
+          { ...context, transferTarget: undefined },
+          id,
+          'command',
+          departmentId,
+          input,
+        );
+        if (departmentId !== undefined && checked.transferTarget)
+          checked = { ...checked, transferTarget: { ...checked.transferTarget, departmentId } };
+        return { status: 200, body: await updateEmploymentBusiness(tx, checked, id, input) };
+      },
+      isExitKind(current.kind)
+        ? { guard: exitGuard(deps, ctx, 'update', { employeeId: current.employeeId, patch: input }) }
+        : {},
+    );
   });
   registerBusinessTransitions(router, deps);
 }
@@ -319,32 +386,47 @@ function registerBusinessTransitions(router: Hono<TenantEnv>, deps: TenantRouteD
         ctx = await withTenant(deps.db, ctx.tenantId, (tx) =>
           transferBusinessContext(tx, ctx, id, 'before-command', undefined, action === 'submit' ? {} : undefined),
         );
-        if (action === 'submit') await emptySubmitBody(c);
+        const ack = action === 'submit' ? await submitBody(c) : undefined;
         await requireEmploymentWrite(
           ctx,
           action === 'delete' ? 'delete' : 'update',
           {},
           `Employment.${action[0]!.toUpperCase()}${action.slice(1)}`,
         );
-        await authorizeBusinessWrite(deps, ctx, id);
+        const current = await authorizeBusinessWrite(deps, ctx, id);
+        if (ack !== undefined && !isExitKind(current.kind))
+          throw new AppError('VALIDATION_FAILED', '只有离职提交可以带在途调动确认令牌');
         if (action === 'submit')
           await withTenant(deps.db, ctx.tenantId, (tx) => requireEmployeeTransferBusiness(tx, ctx, id));
-        const write = runWrite(c, deps, ctx, { id, action }, async (tx, context) => {
-          const checked = await transferBusinessContext(
-            tx,
-            { ...context, transferTarget: undefined },
-            id,
-            'command',
-            undefined,
-            action === 'submit' ? {} : undefined,
-          );
-          const business = await transitionEmployment(tx, checked, { id, action });
-          // R1-T07：提交即按审批类型匹配流程并发起；撤回 / 撤销 / 删除同步结束在途实例，均与状态迁移同事务。
-          if (action === 'submit') await employmentApprovalHooks.submitted(tx, context, id);
-          else if (action === 'withdraw') await employmentApprovalHooks.withdrawn(tx, context, id);
-          else await employmentApprovalHooks.deleted(tx, context, id);
-          return { status: 200, body: business };
-        });
+        const operation: ExitOperation = action === 'submit' || action === 'withdraw' ? action : 'cancel';
+        const guard = isExitKind(current.kind)
+          ? {
+              guard: exitGuard(deps, ctx, operation, { employeeId: current.employeeId, deleting: action === 'delete' }),
+            }
+          : {};
+        const write = runWrite(
+          c,
+          deps,
+          ctx,
+          { id, action, ...(ack ? { ack } : {}) },
+          async (tx, context) => {
+            const checked = await transferBusinessContext(
+              tx,
+              { ...context, transferTarget: undefined },
+              id,
+              'command',
+              undefined,
+              action === 'submit' ? {} : undefined,
+            );
+            const business = await transitionEmployment(tx, checked, { id, action, ...(ack ? { ack } : {}) });
+            // R1-T07：提交即按审批类型匹配流程并发起；撤回 / 撤销 / 删除同步结束在途实例，均与状态迁移同事务。
+            if (action === 'submit') await employmentApprovalHooks.submitted(tx, context, id);
+            else if (action === 'withdraw') await employmentApprovalHooks.withdrawn(tx, context, id);
+            else await employmentApprovalHooks.deleted(tx, context, id);
+            return { status: 200, body: business };
+          },
+          guard,
+        );
         return discloseDeletionBlock(deps, ctx, write);
       },
     );
@@ -416,11 +498,32 @@ function registerActivation(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     await emptySubmitBody(c);
     await requireEmploymentWrite(ctx, 'update', {}, 'Employment.RetryActivation');
     const current = await authorizeBusinessWrite(deps, ctx, id);
-    return runWrite(c, deps, ctx, { id, action: 'retry-activation' }, async (tx, context) => {
-      await retryActivation(tx, context, id, current.employeeId);
-      return { status: 200, body: await requireSavedBusiness(tx, context, id) };
-    });
+    const exit = isExitKind(current.kind);
+    return runWrite(
+      c,
+      deps,
+      ctx,
+      { id, action: 'retry-activation' },
+      async (tx, context) => {
+        // §18.1 关口④：B3-3 前离职的生效重试一律 409（权限为 RetryActivation 且 Dimission 的交集）
+        if (exit)
+          await requireExitGate(tx, context, 'retry', {
+            employeeId: current.employeeId,
+            business: await lockEmploymentBusiness(tx, context, id),
+          });
+        await retryActivation(tx, context, id, current.employeeId);
+        return { status: 200, body: await requireSavedBusiness(tx, context, id) };
+      },
+      exit ? { guard: exitGuard(deps, ctx, 'retry', { employeeId: current.employeeId }) } : {},
+    );
   });
+}
+
+/** 提交只接受离职的在途调动确认令牌（§8）；其余参数一律 400。 */
+async function submitBody(c: Context<TenantEnv>): Promise<string | undefined> {
+  if (!c.req.header('content-type')) return undefined;
+  return parse(z.strictObject({ pendingTransferAck: z.string().max(200).optional() }), await jsonBody(c))
+    .pendingTransferAck;
 }
 
 /** 提交不接受客户端参数：流程编码由审批中心按业务派生（PR #35 第二轮清单 14），带任何字段一律 400。 */

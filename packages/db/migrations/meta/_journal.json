@@ -953,6 +953,13 @@
       "when": 1792128580287,
       "tag": "0135_f188_pending_entry_probation",
       "breakpoints": true
+    },
+    {
+      "idx": 136,
+      "version": "7",
+      "when": 1792137234057,
+      "tag": "0136_f194_pending_entry_contract",
+      "breakpoints": true
     }
   ]
 }

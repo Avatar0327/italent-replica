@@ -10474,6 +10474,9 @@
           "revision(c)",
           "runCommand / runWrite"
         ],
+        "domain": [
+          "transfer.initiator"
+        ],
         "fieldsIn": [
           "requireEmploymentWrite"
         ],
@@ -14719,6 +14722,9 @@
           "revision(c)",
           "runCommand / runWrite"
         ],
+        "domain": [
+          "transfer.initiator"
+        ],
         "fieldsIn": [
           "requireEmploymentWrite"
         ],
@@ -15276,6 +15282,9 @@
           "assertRevision",
           "runCommand / runWrite"
         ],
+        "domain": [
+          "transfer.initiator"
+        ],
         "fieldsIn": [
           "requireEmploymentWrite"
         ],
@@ -15444,6 +15453,9 @@
           "assertRevision",
           "revision(c)",
           "runCommand / runWrite"
+        ],
+        "domain": [
+          "transfer.initiator"
         ],
         "fieldsIn": [
           "requireEmploymentWrite",
