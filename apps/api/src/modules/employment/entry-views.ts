@@ -34,6 +34,11 @@ export interface EntryViewItem {
   /** 待入职合同起止日（F-194，entry-pending-contract.ts）；存量待入职、已办理入职没有合同为 null。前端用于“合同生效日期”列与办理入职预填。 */
   readonly contractStartDate: string | null;
   readonly contractEndDate: string | null;
+  /**
+   * 取消说明（F-206，DEC-560）：本条记录最近一次 cancel 动作日志的 remark；没取消过 / 没填说明为 null。
+   * 改期恢复会换新记录 ID，新记录不继承旧说明；恢复后再取消读到的是新记录上的那次。行可见即可见，不另做字段权限。
+   */
+  readonly cancelRemark: string | null;
 }
 
 function viewPredicate(view: EntryView, today: string): SQL {
@@ -72,7 +77,8 @@ export async function listEntryView(
       r.kind, t.start_date::text AS "effectiveDate",
       s.employee_status::integer AS "employeeStatus", s.entry_status::integer AS "entryStatus",
       ${department} AS "departmentId", b.revision, pp.probation,
-      pc.start_date::text AS "contractStartDate", pc.end_date::text AS "contractEndDate"
+      pc.start_date::text AS "contractStartDate", pc.end_date::text AS "contractEndDate",
+      cancel.remark AS "cancelRemark"
     FROM employment_records r
     JOIN employment_timeline t ON t.tenant_id=r.tenant_id AND t.record_id=r.id
     JOIN employment_business_objects b ON b.tenant_id=r.tenant_id AND b.id=r.id
@@ -80,6 +86,10 @@ export async function listEntryView(
     LEFT JOIN employment_pending_entry_probation pp ON pp.tenant_id=r.tenant_id AND pp.business_id=r.id
     LEFT JOIN employment_pending_entry_contract pc ON pc.tenant_id=r.tenant_id AND pc.business_id=r.id
     LEFT JOIN LATERAL employment_record_status(r.tenant_id, r.id) s ON true
+    LEFT JOIN LATERAL (SELECT CASE WHEN btrim(a.remark)='' THEN NULL ELSE a.remark END AS remark
+      FROM employment_entry_actions a
+      WHERE a.tenant_id=r.tenant_id AND a.business_id=r.id AND a.action='cancel'
+      ORDER BY a.created_at DESC, a.id DESC LIMIT 1) cancel ON true
     LEFT JOIN LATERAL (SELECT p.department_id FROM employment_payload_versions p
       WHERE p.tenant_id=r.tenant_id AND p.business_id=r.id AND p.is_record_snapshot
       ORDER BY p.version_no DESC LIMIT 1) snap ON true
