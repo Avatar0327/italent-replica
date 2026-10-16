@@ -138,7 +138,7 @@ function offerColumns(view: View, setDetail: (row: OfferExample) => void, act: A
       ),
       key: 'gear',
       width: 24,
-      fixed: view === 'all' ? undefined : 'right',
+      fixed: 'right',
       render: () => null,
     },
   );
@@ -185,20 +185,22 @@ function OfferViews({ rows, view, switchView }: { rows: OfferExample[]; view: Vi
       <div className={`offer-view ${pendingViews.includes(view) ? 'offer-active' : ''}`}>
         <button aria-label={viewSpecs[0].label} aria-pressed={view === 'pending'} onClick={() => switchView('pending')}>
           <span>{viewSpecs[0].label}</span>
-          <strong>{rows.filter((r) => inView(r, pendingViews.includes(view) ? view : 'pending')).length}</strong>
         </button>
-        <Dropdown
-          trigger={['click']}
-          menu={{
-            items: viewSpecs.slice(0, 4).map((v) => ({ key: v.key, label: v.label })),
-            onClick: ({ key }) => switchView(key as View),
-            selectedKeys: [view],
-          }}
-        >
-          <Button size="small" type="text" aria-label="待发二级视图">
-            {pendingViews.includes(view) ? spec.label : viewSpecs[0].label} ▾
-          </Button>
-        </Dropdown>
+        <div className="offer-pending-summary">
+          <strong>{rows.filter((r) => inView(r, pendingViews.includes(view) ? view : 'pending')).length}</strong>
+          <Dropdown
+            trigger={['click']}
+            menu={{
+              items: viewSpecs.slice(0, 4).map((v) => ({ key: v.key, label: v.label })),
+              onClick: ({ key }) => switchView(key as View),
+              selectedKeys: [view],
+            }}
+          >
+            <Button size="small" type="text" aria-label="待发二级视图">
+              {pendingViews.includes(view) ? spec.label : viewSpecs[0].label} ▾
+            </Button>
+          </Dropdown>
+        </div>
       </div>
       {viewSpecs.slice(4).map((v) => (
         <div key={v.key} className={`offer-view ${view === v.key ? 'offer-active' : ''}`}>
