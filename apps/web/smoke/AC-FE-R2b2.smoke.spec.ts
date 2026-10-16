@@ -1,10 +1,14 @@
-import type { Page } from '@playwright/test';
+import type { Page, Locator } from '@playwright/test';
 import { test, expect } from './fixtures.js';
-import { choose, item, named, pickDate, save } from './contracts-fixtures.js';
+import { item, named, pickDate, save } from './contracts-fixtures.js';
 import { companyId, entryId, nextId, setupEntries, typeId } from './entry-fixtures.js';
 
 // 首个行为门禁：旧实现没有 entries 菜单；不靠 import 不存在的文件制造红测。
 // DEC-546/548：取消入口由 F-192 另派；已取消场景用夹具造数据。
+async function choose(scope: Locator, label: string, option: string) {
+  await item(scope, label).locator('.ant-select-selector').click();
+  await scope.page().locator('.ant-select-dropdown:visible').getByTitle(option, { exact: true }).click();
+}
 async function entryPage(page: Page, baseURL: string) {
   const state = await setupEntries(page, baseURL);
   await expect(page.getByRole('menuitem', { name: '入职管理', exact: true })).toBeVisible({ timeout: 5000 });
@@ -199,3 +203,45 @@ test('AC-FE-R2b2-08 删除气泡确认后四视图不可见', async ({ page, bas
     await expect(row(page)).toHaveCount(0);
   }
 });
+
+test('AC-FE-R2b2-09 409 重读保留改动，显式确认后用新 revision', async ({ page, baseURL }) => {
+  const state = await entryPage(page, baseURL!);
+  let first = true;
+  await page.route('**/pending-entries/*/complete', async (route) => {
+    if (!first) return route.fallback();
+    first = false;
+    state.row.revision = 8;
+    return route.fulfill({ status: 409, json: { error: { code: 'REVISION_CONFLICT', message: '合成版本冲突' } } });
+  });
+  const dialog = await onboard(page);
+  await choose(dialog, '是否有试用期', '否');
+  await dialog.getByRole('button', save).click();
+  await dialog.getByRole('button', named('重读最新版本')).click();
+  await dialog.getByRole('button', named('已核对差异，继续编辑')).click();
+  await dialog.getByRole('button', save).click();
+  await expect(dialog).toHaveCount(0);
+  expect(state.writes[0]).toMatchObject({ revision: '8', body: { probation: false } });
+});
+
+for (const action of ['complete', 'generate-email'])
+  test(`AC-FE-R2b2-10 ${action} 结果未知后关闭、换视图、重开仍锁定`, async ({ page, baseURL }) => {
+    await entryPage(page, baseURL!);
+    let writes = 0;
+    await page.route(`**/pending-entries/*/${action}`, (route) => {
+      writes++;
+      return route.fulfill({ json: { status: 'unexpected' } });
+    });
+    let dialog = await onboard(page);
+    await choose(dialog, '是否有试用期', '否');
+    await dialog.getByRole('button', action === 'complete' ? save : named('生成邮箱')).click();
+    await expect(dialog.getByRole('button', save)).toBeDisabled();
+    await dialog.getByRole('button', named('取消')).click();
+    await tab(page, '今日待入职').click();
+    dialog = await onboard(page);
+    await expect(dialog.getByRole('button', save)).toBeDisabled();
+    await expect(dialog.getByRole('button', named('生成邮箱'))).toBeDisabled();
+    await dialog.getByRole('button', named('回查原单')).click();
+    await expect(dialog).toContainText('原单当前值');
+    await expect(dialog.getByRole('button', save)).toBeDisabled();
+    expect(writes).toBe(1);
+  });
