@@ -3,7 +3,7 @@
 "stats": {
 "merged": 289,
 "open": 7,
-"dec": 555,
+"dec": 556,
 "ev": "43/177"
 },
 "tasks": {
@@ -983,6 +983,10 @@
 }
 },
 "log": [
+[
+"10-16",
+"D2·R2·后补·F-199（#369 P3-1：通用删除清理待入职合同）新增并拟派发；分母 165→166"
+],
 [
 "10-16",
 "D2·R2·后补·F-192a（#371）第1轮可以合并已入队（370→364→371）"
@@ -5638,6 +5642,17 @@
 "F-188"
 ],
 "note": "F-195 + F-197 合单（DEC-555）· 重放权限复核（后端）· 云端 Claude Sonnet 5.5 High 已开会话（session_01TwxZ3f9jV8MF8QxTtdPajj）· 分支 claude/F-195-197-replay-guard · PR 号待补 · Sol high 审",
+"mod": "R2",
+"ms": "D2"
+},
+{
+"k": "F-199",
+"n": "F-199 通用 DELETE /businesses/:id 清理待入职合同残留 + 审计（#369 Sol high 第 1 轮 P3-1，后端）",
+"s": "assigned",
+"after": [
+"F-194"
+],
+"note": "已拟派发 · 云端 Claude Sonnet 5.5 High · 分支 claude/F-199-delete-pending-contract（含 bb4fc254）· Sol high 审 · 等开会话 / PR",
 "mod": "R2",
 "ms": "D2"
 }
