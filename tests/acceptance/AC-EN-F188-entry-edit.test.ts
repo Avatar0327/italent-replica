@@ -137,7 +137,7 @@ describe('F-188 是否有试用期：必填、落库、随替换记录保留', (
     const w = await entryWorld(testDb().db, 'f188-strict');
     const { recordId } = await addPending(w, '2026-10-10');
     const body = { effectiveDate: '2026-10-11', probation: true };
-    for (const extra of [{ remark: '备注' }, { fields: { place: '新地点' } }, { employType: 'intern' }])
+    for (const extra of [{ remark: '备注' }, { fields: { place: '新地点' } }, { employType: 'external' }])
       expect((await edit(w, recordId, { ...body, ...extra })).status).toBe(400);
     expect((await edit(w, recordId, { ...body, effectiveDate: '10-11' })).status).toBe(400);
     expect((await view(w))[0]).toMatchObject({ id: recordId, effectiveDate: '2026-10-10' });
@@ -181,6 +181,63 @@ async function probationRows(w: EntryWorld) {
     return (Array.isArray(result) ? result : (result as { rows: unknown[] }).rows) as Record<string, unknown>[];
   });
 }
+
+describe('F-188 编辑里可改雇佣关系（R2e9：内部员工 / 实习生）', () => {
+  const employType = async (w: EntryWorld, employeeId: string) =>
+    ((await w.session.records(employeeId, '2026-12-31')) as unknown as { fields: { employType?: string } }[])[0]!.fields
+      .employType;
+
+  it('改为实习生成功并读回；不传 employType 不改；状态与日期保持', async () => {
+    const w = await entryWorld(testDb().db, 'f188-employ-type');
+    const { employee, recordId } = await addPending(w, '2026-10-10');
+    expect(await employType(w, employee.id)).toBe('internal');
+    const { item } = await editOk(w, recordId, { effectiveDate: '2026-10-10', probation: true, employType: 'intern' });
+    expect(item).toMatchObject({ effectiveDate: '2026-10-10', entryStatus: NORMAL, probation: true });
+    expect(await employType(w, employee.id)).toBe('intern');
+    const kept = await editOk(w, item.id, { effectiveDate: '2026-10-12', probation: false });
+    expect(kept.item).toMatchObject({ effectiveDate: '2026-10-12', probation: false });
+    expect(await employType(w, employee.id)).toBe('intern');
+    const back = await editOk(w, kept.item.id, {
+      effectiveDate: '2026-10-12',
+      probation: false,
+      employType: 'internal',
+    });
+    expect(back.item.effectiveDate).toBe('2026-10-12');
+    expect(await employType(w, employee.id)).toBe('internal');
+  });
+
+  it('传内部员工 / 实习生以外的值 400（含 external、空串、非字符串），记录不变', async () => {
+    const w = await entryWorld(testDb().db, 'f188-employ-type-bad');
+    const { employee, recordId } = await addPending(w, '2026-10-10');
+    for (const bad of ['external', '', 'other', 1, null])
+      expect((await edit(w, recordId, { effectiveDate: '2026-10-10', probation: true, employType: bad })).status).toBe(
+        400,
+      );
+    expect((await view(w))[0]).toMatchObject({ id: recordId, probation: null });
+    expect(await employType(w, employee.id)).toBe('internal');
+  });
+
+  it('无 employType 字段写权限：403，没有任何写入；有权限的人照常改', async () => {
+    const w = await entryWorld(testDb().db, 'f188-employ-type-perm');
+    const { employee, recordId } = await addPending(w, '2026-10-10');
+    const denied = tenantApi(w.db, {
+      clock: () => new Date('2026-10-01T01:00:00.000Z'),
+      authorize: (request) => !(request.action === 'object.update' && request.fields?.includes('employType')),
+    });
+    const response = await denied.request('PATCH', `/api/tenant/employment/pending-entries/${recordId}`, {
+      user: w.session.user.id,
+      tenant: w.session.tenant.id,
+      ifMatch: await businessRevision(w, recordId),
+      idempotencyKey: randomUUID(),
+      body: { effectiveDate: '2026-10-10', probation: true, employType: 'intern' },
+    });
+    expect(response.status, await response.clone().text()).toBe(403);
+    expect(await entryActionRows(w)).toEqual([]);
+    expect(await employType(w, employee.id)).toBe('internal');
+    expect((await view(w))[0]).toMatchObject({ id: recordId, probation: null });
+    await editOk(w, recordId, { effectiveDate: '2026-10-10', probation: true, employType: 'intern' });
+  });
+});
 
 describe('F-188 权限与并发', () => {
   it('没有 effectiveDate 字段写权限：403，没有任何写入；If-Match 过期 409', async () => {
