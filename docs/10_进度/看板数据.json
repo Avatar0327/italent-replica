@@ -5862,9 +5862,10 @@
 "n": "F-207 AC-PRM-FW-02-storage 高负载超时第 3 次挡队（#347/#359/#375），仿 F-116 单设用例超时，不改断言",
 "s": "assigned",
 "after": [],
-"note": "storage 用例单设超时（只改测试，不改断言）· 云端 Claude Sonnet High 开发中（session_01BuEZhGYocq8PJKCtnjhzjA）· Sol high 审 · 标签定为 D2·R2·后补（03 最终确认）· PR 号待补",
+"note": "storage 用例单设超时（只改测试，不改断言）· #378 已开（Ready）· Claude 云端 Sonnet High · Sol high 审 · 标签 D2·R2·后补",
 "mod": "R2",
-"ms": "D2"
+"ms": "D2",
+"pr": 378
 }
 ]
 },
