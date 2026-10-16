@@ -4,6 +4,7 @@ import dayjs from 'dayjs';
 import { EMPLOYEE_STATUS_LABELS, ENTRY_STATUS_LABELS } from '@italent/domain';
 import { ListPage } from '../foundation/templates.js';
 import { validObject } from '../foundation/forms/ConflictCommands.js';
+import { createFormStore } from '../foundation/forms/store.js';
 import { FormCommands } from '../foundation/forms/useCommandForm.js';
 import { useApiClient, useSession } from '../foundation/Session.js';
 import type { PageResult } from '../foundation/client.js';
@@ -12,16 +13,22 @@ import { DeleteBubble } from './DeleteBubble.js';
 import { PostponeForm } from './PostponeForm.js';
 import { CompleteLoader } from './CompleteForm.js';
 import { collection, request, type Row, type View } from './model.js';
-import { useEntryAccess } from './commands.js';
+import { EntryStore, useEntryAccess } from './commands.js';
 import { m } from './messages.js';
 import './entries.css';
 
 export function EntriesPage() {
   const session = useSession();
+  return <EntryCommands key={`${session.tenantId}/${session.identityKey}`} />;
+}
+function EntryCommands() {
+  const [store] = useState(createFormStore);
   return (
-    <FormCommands key={`${session.tenantId}/${session.identityKey}`}>
-      <EntryList />
-    </FormCommands>
+    <EntryStore.Provider value={store}>
+      <FormCommands store={store}>
+        <EntryList />
+      </FormCommands>
+    </EntryStore.Provider>
   );
 }
 function useEntries(view: View, page: { page: number; pageSize: number }) {

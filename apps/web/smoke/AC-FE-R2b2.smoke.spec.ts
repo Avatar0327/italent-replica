@@ -300,6 +300,7 @@ for (const change of ['probation', 'date', 'relation'])
     await expect(row(page)).toContainText('正常');
     await row(page).getByRole('button', named('编辑')).click();
     await expect(item(dialog, '是否有试用期')).toContainText('否');
+    await expect(dialog.getByRole('button', save)).toBeEnabled();
     expect(Object.keys(state.writes[0]!.body as object).sort()).toEqual(['effectiveDate', 'employType', 'probation']);
   });
 

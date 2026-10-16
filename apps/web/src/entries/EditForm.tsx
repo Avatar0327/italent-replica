@@ -44,15 +44,17 @@ export function EditForm({
       ]}
       onSubmit={async (values) => {
         requireWrite(allowed);
-        await cmd.run(values, editable, async (command) => {
+        await cmd.run(values, editable, async (command, link) => {
           const replaced =
             command.body.effectiveDate !== cmd.full.effectiveDate ||
             (command.body.employType !== undefined && command.body.employType !== cmd.full.employType);
-          receipt(
-            await request(api, `${collection}/${row.id}`, { method: 'PATCH', command }),
-            row,
-            command,
-            replaced ? 'replace' : 'edit',
+          link(
+            receipt(
+              await request(api, `${collection}/${row.id}`, { method: 'PATCH', command }),
+              row,
+              command,
+              replaced ? 'replace' : 'edit',
+            ),
           );
           await refreshAfter(refresh);
         });

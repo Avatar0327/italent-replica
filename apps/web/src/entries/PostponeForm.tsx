@@ -47,14 +47,16 @@ export function PostponeForm({ row, onClose, refresh }: { row: Row; onClose(): v
       ]}
       onSubmit={async (values) => {
         requireWrite(allowed);
-        await cmd.run(values, ['effectiveDate', 'remark'], async (command) => {
+        await cmd.run(values, ['effectiveDate', 'remark'], async (command, link) => {
           const remark = String(command.body.remark ?? '').trim();
           const body = { effectiveDate: command.body.effectiveDate, ...(remark ? { remark } : {}) };
-          receipt(
-            await request(api, `${collection}/${row.id}/postpone`, { method: 'POST', command: { ...command, body } }),
-            row,
-            command,
-            'postpone',
+          link(
+            receipt(
+              await request(api, `${collection}/${row.id}/postpone`, { method: 'POST', command: { ...command, body } }),
+              row,
+              command,
+              'postpone',
+            ),
           );
           await refreshAfter(refresh);
         });
