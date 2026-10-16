@@ -211,6 +211,9 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/employment/forward-preview.ts': {
     previewEmploymentForwardUpdate: '9e9497cd9082',
   },
+  'apps/api/src/modules/employment/replay-guard.ts': {
+    requireBusinessWriteScope: 'aa0b8a073e41',
+  },
   'apps/api/src/modules/employment/routes.ts': {
     authorizeBusinessWrite: '9cd4b1d55a33',
     authorizeImport: 'a90cea9ad49e',
@@ -1480,6 +1483,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/exit-routes.ts#route:PUT /exits/dictionaries/:dict/:id': 'b2603d8f2177',
   'apps/api/src/modules/employment/forward-import.ts#schema': '12907b33413c',
   'apps/api/src/modules/employment/forward-preview.ts#previewEmploymentForwardUpdate': '4f083b329455',
+  'apps/api/src/modules/employment/replay-guard.ts#requireBusinessWriteScope': '90ef4cd1f0fc',
   'apps/api/src/modules/employment/routes.ts#authorizeBusinessWrite': 'fd6829e031d2',
   'apps/api/src/modules/employment/routes.ts#authorizeImport': 'ef294a22f161',
   'apps/api/src/modules/employment/routes.ts#importEmployment': '50aeb6b369e2',
