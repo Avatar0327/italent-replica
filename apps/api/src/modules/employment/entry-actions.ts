@@ -27,7 +27,7 @@ import {
   type PendingContract,
   type PendingContractNotice,
 } from './entry-pending-contract.js';
-import { clearPendingProbation, loadPendingProbation, savePendingProbation } from './entry-probation.js';
+import { loadPendingProbation, savePendingProbation } from './entry-probation.js';
 import { bumpEmploymentBusiness, lockEmploymentEmployee, type LockedEmploymentBusiness } from './record-store.js';
 import { transitionEmployment } from './transitions.js';
 import type { EmploymentBusiness, EmploymentContext, EmploymentRecord } from './types.js';
@@ -171,7 +171,6 @@ async function replacePendingEntry(
       ? { startDate: input.effectiveDate, endDate: previousContract.endDate }
       : previousContract;
   await transitionEmployment(tx, ctx, { id: record.id, action: 'delete' });
-  await clearPendingProbation(tx, ctx, record.id);
   await clearPendingContract(tx, ctx, record.id);
   const employee = await lockEmploymentEmployee(tx, ctx, record.employeeId);
   const created = await createEmploymentBusiness(
@@ -324,7 +323,6 @@ export async function deletePendingEntry(
 ): Promise<EmploymentBusiness> {
   await lockPendingEntry(tx, ctx, recordId);
   const deleted = await transitionEmployment(tx, ctx, { id: recordId, action: 'delete' });
-  await clearPendingProbation(tx, ctx, recordId);
   await releasePendingContract(tx, ctx, recordId, 'delete');
   return deleted;
 }

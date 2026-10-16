@@ -382,7 +382,6 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/entry-actions.ts#deletePendingEntry': [
     'apps/api/src/modules/employment/employee-status.ts#lockPendingEntry',
     'apps/api/src/modules/employment/entry-pending-contract.ts#releasePendingContract',
-    'apps/api/src/modules/employment/entry-probation.ts#clearPendingProbation',
     'apps/api/src/modules/employment/transitions.ts#transitionEmployment',
   ],
   'apps/api/src/modules/employment/entry-actions.ts#editPendingEntry': [
@@ -410,7 +409,6 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/entry-pending-contract.ts#clearPendingContract',
     'apps/api/src/modules/employment/entry-pending-contract.ts#loadPendingContract',
     'apps/api/src/modules/employment/entry-pending-contract.ts#pendingContractAudit',
-    'apps/api/src/modules/employment/entry-probation.ts#clearPendingProbation',
     'apps/api/src/modules/employment/entry-probation.ts#loadPendingProbation',
     'apps/api/src/modules/employment/record-store.ts#lockEmploymentEmployee',
     'apps/api/src/modules/employment/transitions.ts#transitionEmployment',
@@ -1725,6 +1723,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/deletion-guards.ts#assertRestoredPredecessor',
     'apps/api/src/modules/employment/employee-status.ts#assertRegularizationNotPropagated',
     'apps/api/src/modules/employment/entry-pending-contract.ts#releasePendingContract',
+    'apps/api/src/modules/employment/entry-probation.ts#clearPendingProbation',
     'apps/api/src/modules/employment/read-model.ts#loadEmploymentRecord',
     'apps/api/src/modules/employment/record-store.ts#insertEmploymentRow',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
