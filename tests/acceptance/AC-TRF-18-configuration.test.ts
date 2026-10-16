@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { sql, type Tx } from '@italent/db';
+import { sql, withTenant, type Tx } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import {
@@ -34,7 +34,7 @@ describe('AC-TRF-18：真实调动表单配置、字典与 R1-T05 继承矩阵',
   it('预置标准类型与原因含生效日、顺序和状态；排除 YG 演示项；流程由可信入口派生', async () => {
     const { db } = testDb();
     const session = await employmentSession(db, 'trfcatalog');
-    await db.transaction(async (tx: Tx) => {
+    await withTenant(db, session.tenant.id, async (tx: Tx) => {
       const catalog = await readTransferCatalog(tx, session.tenant.id, '2026-10-01');
       expect(catalog.types).toHaveLength(12);
       expect(catalog.types).toContainEqual(
@@ -85,18 +85,13 @@ describe('AC-TRF-18：真实调动表单配置、字典与 R1-T05 继承矩阵',
     const { db } = testDb();
     const session = await inheritanceFixture(db, 'trfswitches');
     const other = await employmentSession(db, 'trfswitchother');
-    await db.transaction(async (tx: Tx) => {
+    await withTenant(db, session.tenant.id, async (tx: Tx) => {
       expect(await readTransferSettings(tx, session.tenant.id)).toMatchObject({
         revision: 0,
         unrestrictTargetDepartment: true,
         autoPopulate: true,
       });
       await updateTransferSettings(tx, context(session), { unrestrictTargetDepartment: false, autoPopulate: false });
-      expect(await readTransferSettings(tx, other.tenant.id)).toMatchObject({
-        revision: 0,
-        unrestrictTargetDepartment: true,
-        autoPopulate: true,
-      });
       await expect(
         updateTransferSettings(tx, context(session), {
           unrestrictTargetDepartment: true,
@@ -110,6 +105,14 @@ describe('AC-TRF-18：真实调动表单配置、字典与 R1-T05 继承矩阵',
         formId: 'TenantBase.JobLevelTransferMultiFormView',
       });
       expect(prepared.fields.place).toBeNull();
+    });
+    // 他租户在本租户提交改动后仍是出厂值；RLS 下须在他租户自己的上下文里读，本租户事务读不到其行
+    await withTenant(db, other.tenant.id, async (tx: Tx) => {
+      expect(await readTransferSettings(tx, other.tenant.id)).toMatchObject({
+        revision: 0,
+        unrestrictTargetDepartment: true,
+        autoPopulate: true,
+      });
     });
   });
 
@@ -142,7 +145,7 @@ describe('AC-TRF-18：真实调动表单配置、字典与 R1-T05 继承矩阵',
       },
       session.hired.employeeRevision,
     );
-    await db.transaction(async (tx: Tx) => {
+    await withTenant(db, session.tenant.id, async (tx: Tx) => {
       const base = { employeeId: session.employee.id, kind: 'transfer' as const, effectiveDate: '2026-02-01' };
       const gradeForm = await prepareInheritance(tx, context(session), {
         ...base,
@@ -171,7 +174,7 @@ describe('AC-TRF-18：真实调动表单配置、字典与 R1-T05 继承矩阵',
   it('自定义真实表单按字段执行只读/隐藏/未拖出规则，服务端拒绝伪造写入', async () => {
     const { db } = testDb();
     const session = await inheritanceFixture(db, 'trffieldpolicy', false);
-    await db.transaction(async (tx: Tx) => {
+    await withTenant(db, session.tenant.id, async (tx: Tx) => {
       await saveTransferForm(tx, context(session), {
         id: 'tenant-grade-review',
         name: '合成逐字段表单',

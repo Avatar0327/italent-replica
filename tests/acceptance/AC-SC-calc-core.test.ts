@@ -423,8 +423,10 @@ describe('AC-SC-calc-core run 契约', () => {
     expect((await tx((t) => pendingCalcNotifications(t, member.tenant.id))).map((n) => n.id)).toContain(notice!.id);
     for (const column of ['user', 'member']) {
       const recipient = await seedTenantWithMember(db(), `calc-inactive-${column}`);
-      await db().execute(sql`INSERT INTO tenant_memberships (tenant_id,user_id,status)
-        VALUES (${member.tenant.id}::uuid,${recipient.user.id}::uuid,'active')`);
+      await tx((t) =>
+        t.execute(sql`INSERT INTO tenant_memberships (tenant_id,user_id,status)
+          VALUES (${member.tenant.id}::uuid,${recipient.user.id}::uuid,'active')`),
+      );
       if (column === 'user')
         await db().execute(sql`UPDATE users SET status='disabled' WHERE id=${recipient.user.id}::uuid`);
       else

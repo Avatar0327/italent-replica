@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { Db } from '@italent/db';
+import { withTenant, type Db } from '@italent/db';
 import { expect } from 'vitest';
 import { employmentSession, type EmploymentBusiness, type EmploymentSession } from './AC-EMP-support.js';
 import { saveTransferForm } from '../../apps/api/src/modules/transfer/configuration.js';
@@ -35,7 +35,8 @@ export async function inheritanceFixture(db: Db, label: string, inherit = true, 
   const session = await employmentSession(db, label);
   const field = await customField(session, inherit);
   // R1-T09：用真实租户表单配置覆盖 R1-T05 原测试表单矩阵，禁止生产魔法 ID 后门。
-  await db.transaction(async (tx) => {
+  // 须带租户上下文：强制 RLS 下裸事务读不到本租户的自定义字段定义（F-209 / F-186）。
+  await withTenant(db, session.tenant.id, async (tx) => {
     for (const [id, mode] of [
       ['readonly-custom', 'readonly'],
       ['hidden-custom', 'hidden'],
