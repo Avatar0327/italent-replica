@@ -8,11 +8,15 @@ import { ProcessList } from './ProcessList.js';
 import { IdpCommands } from './commands.js';
 import { TemplateList } from './TemplateList.js';
 import './idp.css';
+import { TutorshipList, CareerList, WorkShiftList } from './InfoList.js';
 
 const SECTIONS = [
   { key: 'plans', object: OBJECTS.plan, page: PlanList },
   { key: 'templates', object: OBJECTS.template, page: TemplateList },
   { key: 'processes', object: OBJECTS.process, page: ProcessList },
+  { key: 'tutorships', object: 'IDP.TutorShip', page: TutorshipList },
+  { key: 'careers', object: 'IDP.Career', page: CareerList },
+  { key: 'work-shifts', object: 'IDP.WorkShift', page: WorkShiftList },
 ] as const;
 
 /** 人才发展计划：/idp/plans | templates | processes 三张列表，无面包屑；计划与模板详情为整页（?plan= / ?template=）。 */

@@ -519,7 +519,7 @@ describe('AC-FE-R3d2 页面与注释登记', () => {
   const snapshot = (entryObjects: string[]) =>
     ({ apps: [{ app: 'idp', visible: true, entryObjects }], adminMenus: [] }) as never;
   const app = PAGES.apps.find((item) => item.app === 'idp')!;
-  it('应用登记为人才发展计划，下一层按入口对象给出三张列表', () => {
+  it('应用登记为人才发展计划，下一层按入口对象给出五张列表', () => {
     expect(app.label).toBe('人才发展计划');
     expect(app.page?.name).toBe('IdpPage');
     const route = app as never;
@@ -527,6 +527,9 @@ describe('AC-FE-R3d2 页面与注释登记', () => {
       '发展计划',
       '发展计划模板',
       '发展计划流程',
+      // F-154：职业发展信息与轮岗信息列表。
+      '职业发展信息',
+      '轮岗信息',
     ]);
     expect(app.children!(snapshot(['IDP.IDPTemplate']), route).map((node) => node.path)).toEqual(['/idp/templates']);
     expect(PAGES.routes.filter((item) => item.module === 'idp').map((item) => item.path)).toEqual([
