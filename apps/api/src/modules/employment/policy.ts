@@ -1037,10 +1037,11 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     ),
     ...byId,
   }),
-  // 编辑待入职（F-188，R2e8 行内“编辑”）：body 严格 { effectiveDate（必填，允许过去日期）, probation（必填布尔）}（400）；
-  // 同改期按 { effectiveDate } 校验字段写权限（无权限 403，不落库），probation 是控制项不进字段协议；
+  // 编辑待入职（F-188，R2e8 行内“编辑”）：body 严格 { effectiveDate（必填，允许过去日期）, probation（必填布尔）,
+  // employType?（internal / intern，R2e9）}（400）；
+  // 同改期按 { effectiveDate, employType? } 校验字段写权限（无权限 403，不落库），probation 是控制项不进字段协议；
   // 只有待入职可编辑 409 NOT_PENDING_ENTRY；日期变了 = 删除原记录并按新日期重建、保持原入职状态（正常 / 延期 / 取消不变）、
-  // 试用期搬到新记录；日期没变只更新试用期（记录 ID 不变，revision +1）；不联动 Offer / 合同 / 信息采集
+  // 试用期搬到新记录；日期与雇佣关系都没变只更新试用期（记录 ID 不变，revision +1）；雇佣关系变了同样替换记录；不联动 Offer / 合同 / 信息采集
   'PATCH /pending-entries/:id': object({
     object: EMPLOYMENT,
     operation: 'update',

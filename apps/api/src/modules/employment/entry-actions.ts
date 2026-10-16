@@ -9,6 +9,7 @@ import {
   ENTRY_REMARK_MAX,
   type EntryAction,
   type EntryCancelReason,
+  type EntryEditEmployType,
   type EntryStatusCode,
 } from '@italent/domain';
 import { AppError } from '../../errors.js';
@@ -69,6 +70,7 @@ interface ReplaceInput {
   readonly effectiveDate: string;
   readonly entryStatus: EntryStatusCode;
   readonly probation: boolean | null;
+  readonly employType?: EntryEditEmployType;
   readonly remark?: string;
 }
 
@@ -100,7 +102,7 @@ async function replacePendingEntry(
       mode: 'direct',
       formId: business.payload.formId,
       effectiveDate: input.effectiveDate,
-      fields: record.fields,
+      fields: input.employType ? { ...record.fields, employType: input.employType } : record.fields,
       customFields: record.customFields,
     },
     {
@@ -126,8 +128,18 @@ async function replacePendingEntry(
     `employment.entry.${input.action}`,
     'employment-business',
     created.id,
-    { businessId: record.id, effectiveDate: record.effectiveDate, entryStatus: record.entryStatus },
-    { businessId: created.id, effectiveDate: input.effectiveDate, entryStatus: input.entryStatus },
+    {
+      businessId: record.id,
+      effectiveDate: record.effectiveDate,
+      entryStatus: record.entryStatus,
+      ...(input.employType ? { employType: record.fields.employType } : {}),
+    },
+    {
+      businessId: created.id,
+      effectiveDate: input.effectiveDate,
+      entryStatus: input.entryStatus,
+      ...(input.employType ? { employType: input.employType } : {}),
+    },
   );
   return created;
 }
@@ -154,26 +166,31 @@ export async function postponePendingEntry(
 }
 
 /**
- * 编辑待入职（F-188，DEC-546② R2e8 行内“编辑”）：计划入职日期（允许过去日期）+ 是否有试用期（必填）。
- * 入职状态保持原值（正常 / 延期 / 取消都不变，与改期入职变“延期”不同）；日期不变只更新试用期（记录 ID 不变，revision +1，
- * 不写动作日志，字段级审计记变更），日期变了走替换内核。雇佣关系等其他任职字段不在这里改（仍走 PATCH /records/:id）。
+ * 编辑待入职（F-188，DEC-546② R2e8 行内“编辑”；R2e9 起可改雇佣关系）：计划入职日期（允许过去日期）+ 是否有试用期（必填）
+ * + 雇佣关系（可选，内部员工 / 实习生，不传不改）。入职状态保持原值（正常 / 延期 / 取消都不变，与改期入职变“延期”不同）。
+ * 日期和雇佣关系都没变：只更新试用期（记录 ID 不变，revision +1，不写动作日志，字段级审计记变更）；
+ * 日期或雇佣关系变了：任职记录不可原地改这两项，走替换内核。其他任职字段仍走 PATCH /records/:id。
+ * 合同起止日期不联动：待入职阶段没有合同数据（合同在办理入职时才生成），由 F-194 补（DEC-550）。
  */
 export async function editPendingEntry(
   tx: Tx,
   ctx: EmploymentContext,
   recordId: string,
-  input: { readonly effectiveDate: string; readonly probation: boolean },
+  input: { readonly effectiveDate: string; readonly probation: boolean; readonly employType?: EntryEditEmployType },
 ): Promise<EmploymentBusiness> {
   const effectiveDate = businessDate(input.effectiveDate);
   const locked = await lockPendingEntry(tx, ctx, recordId);
   const { business, record } = locked;
   const entryStatus = record.entryStatus ?? ENTRY_STATUS.normal;
-  if (effectiveDate !== record.effectiveDate)
+  const employType =
+    input.employType !== undefined && input.employType !== record.fields.employType ? input.employType : undefined;
+  if (effectiveDate !== record.effectiveDate || employType !== undefined)
     return replacePendingEntry(tx, ctx, locked, {
       action: 'edit',
       effectiveDate,
       entryStatus,
       probation: input.probation,
+      employType,
     });
   const before = await loadPendingProbation(tx, ctx, recordId);
   await savePendingProbation(tx, ctx, record.employeeId, recordId, input.probation);

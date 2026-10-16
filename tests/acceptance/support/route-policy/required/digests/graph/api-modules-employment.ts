@@ -461,6 +461,9 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/entry-routes.ts#completeInput': [
     'apps/api/src/modules/employment/entry-contract.ts#entryContractSchema',
   ],
+  'apps/api/src/modules/employment/entry-routes.ts#editInput': [
+    'packages/domain/src/employment/entry.ts#ENTRY_EDIT_EMPLOY_TYPES',
+  ],
   'apps/api/src/modules/employment/entry-routes.ts#entryContractGuard': [
     'apps/api/src/modules/employment/entry-contract.ts#requireEntryContractAccess',
   ],

@@ -3,7 +3,7 @@
  * 策略登记在 employment/policy.ts；写权限沿用任职记录的“编辑 / 删除”对象操作与按钮（原站是否另有独立权限项未验证）。
  */
 import { withTenant } from '@italent/db';
-import { ENTRY_CANCEL_REASON_CODES, ENTRY_REMARK_MAX, tenantLocalDate } from '@italent/domain';
+import { ENTRY_CANCEL_REASON_CODES, ENTRY_EDIT_EMPLOY_TYPES, ENTRY_REMARK_MAX, tenantLocalDate } from '@italent/domain';
 import type { Context, Hono } from 'hono';
 import { z } from 'zod';
 import { AppError } from '../../errors.js';
@@ -39,7 +39,11 @@ const remark = z.string().trim().min(1).max(ENTRY_REMARK_MAX).optional();
 const completeInput = z.strictObject({ probation: z.boolean(), contract: entryContractSchema.optional() });
 const cancelInput = z.strictObject({ reason: z.enum(ENTRY_CANCEL_REASON_CODES).optional(), remark });
 const postponeInput = z.strictObject({ effectiveDate: z.string().min(1), remark });
-const editInput = z.strictObject({ effectiveDate: z.string().min(1), probation: z.boolean() });
+const editInput = z.strictObject({
+  effectiveDate: z.string().min(1),
+  probation: z.boolean(),
+  employType: z.enum(ENTRY_EDIT_EMPLOY_TYPES).optional(),
+});
 
 export function parse<T>(schema: z.ZodType<T>, value: unknown): T {
   const result = schema.safeParse(value);
@@ -138,9 +142,8 @@ export function registerEntryRoutes(
       deps,
       authorizeBusinessWrite,
       editInput,
-      ({ effectiveDate }) => ({
-        effectiveDate,
-      }),
+      // 雇佣关系与入职日期一样按字段写权限校验；不传就不进载荷
+      ({ effectiveDate, employType }) => ({ effectiveDate, ...(employType ? { employType } : {}) }),
     );
     return runWrite(c, deps, ctx, { id, action: 'edit', input }, async (tx, context) => ({
       status: 200,
