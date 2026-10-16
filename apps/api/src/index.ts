@@ -108,6 +108,13 @@ export {
   type EmploymentRecordEvent,
   registerEmployeeStatusHooks,
 } from './modules/employment/status-hooks.js';
+// F-192a：待入职 ↔ Offer 联动端口（BE-14 在装配时登记；入站取消 / 失效删除由 BE-14 直接调用领域函数）
+export {
+  type EntryCancelledEvent,
+  type EntryOfferHooks,
+  type EntryRestoredEvent,
+  registerEntryOfferHooks,
+} from './modules/employment/entry-offer-hooks.js';
 // R3-T05 设计 §4.6：继任定时任务（server.ts 启动；任务随 PR-A / PR-B 登记）
 export {
   type SuccessionJob,

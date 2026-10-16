@@ -85,14 +85,26 @@ describe('F-192a 取消入职默认原因（其他原因）', () => {
     await cancelOk(w, first.recordId);
     const second = await addPending(w, '2026-10-11', '显式原因员工');
     await cancelOk(w, second.recordId, { reason: 'personal', remark: '候选人另有安排' });
-    expect(await entryActionRows(w)).toMatchObject([
-      { action: 'cancel', reasonCode: 'other', remark: null, businessId: first.recordId },
-      { action: 'cancel', reasonCode: 'personal', remark: '候选人另有安排', businessId: second.recordId },
-    ]);
-    expect(await auditRows(w, 'employment.entry.cancel')).toMatchObject([
-      { objectId: first.recordId, after: { reason: 'other', entryStatus: CANCELLED } },
-      { objectId: second.recordId, after: { reason: 'personal', remark: '候选人另有安排' } },
-    ]);
+    // 测试时钟固定，同刻写入的行按随机 ID 排序：按业务 ID 取行
+    const actions = await entryActionRows(w);
+    expect(actions.find((row) => row.businessId === first.recordId)).toMatchObject({
+      action: 'cancel',
+      reasonCode: 'other',
+      remark: null,
+    });
+    expect(actions.find((row) => row.businessId === second.recordId)).toMatchObject({
+      reasonCode: 'personal',
+      remark: '候选人另有安排',
+    });
+    const audits = await auditRows(w, 'employment.entry.cancel');
+    expect(audits.find((row) => row.objectId === first.recordId)?.after).toMatchObject({
+      reason: 'other',
+      entryStatus: CANCELLED,
+    });
+    expect(audits.find((row) => row.objectId === second.recordId)?.after).toMatchObject({
+      reason: 'personal',
+      remark: '候选人另有安排',
+    });
   });
 });
 
@@ -217,11 +229,13 @@ describe('F-192a Offer 入站端口', () => {
 
   it('不传原因记为 other；记录已取消时幂等（不重复写日志）', async () => {
     const w = await entryWorld(testDb().db, 'f192a-offer-refuse-idem');
-    const { recordId, business } = await addPending(w);
-    const cancel = () =>
-      withTenant(w.db, w.session.tenant.id, async (tx) =>
-        cancelPendingEntryForOfferRefusal(tx, portContext(w, business.revision), recordId, {}),
+    const { recordId } = await addPending(w);
+    const cancel = async () => {
+      const revision = await businessRevision(w, recordId);
+      await withTenant(w.db, w.session.tenant.id, (tx) =>
+        cancelPendingEntryForOfferRefusal(tx, portContext(w, revision), recordId, {}),
       );
+    };
     await cancel();
     await cancel();
     expect(await entryActionRows(w)).toMatchObject([{ action: 'cancel', reasonCode: 'other' }]);
