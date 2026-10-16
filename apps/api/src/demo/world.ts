@@ -5,6 +5,7 @@
 import { type Db, eq, users, withPlatform } from '@italent/db';
 import { QUALIFICATION_OBJECTS } from '@italent/domain';
 import { type Call, type Guarded, type Json, listAll } from './client.js';
+import { seedR3 } from './r3-seed.js';
 import {
   DEMO_DATES,
   DEMO_HRBP_KEY,
@@ -28,7 +29,7 @@ import {
   gradeOfLevel,
 } from './scale-data.js';
 
-export type SeedPhase = 'orgs' | 'jobs' | 'employees' | 'access' | 'qualification' | 'transfers';
+export type SeedPhase = 'orgs' | 'jobs' | 'employees' | 'access' | 'qualification' | 'r3' | 'transfers';
 export interface SeedStep {
   readonly phase: SeedPhase;
   /** 刚写入的对象的自然键（组织 / 职务体系编码、工号…）。 */
@@ -103,6 +104,7 @@ export class DemoWorld {
     await this.setupHr();
     await this.setupAuditor();
     await this.seedQualificationLayers();
+    await seedR3(this);
   }
 
   private async loadAdmin(): Promise<void> {
@@ -354,7 +356,12 @@ export class DemoWorld {
     await this.wrote('access', `${userId}:scope`);
   }
 
-  private async grant(userId: string, profileCode: string): Promise<void> {
+  /** 标准身份编码 → 身份 ID（loadAdmin 读入）。 */
+  profileId(code: string): string {
+    return this.profiles.get(code)!;
+  }
+
+  async grant(userId: string, profileCode: string): Promise<void> {
     const profileId = this.profiles.get(profileCode)!;
     const grants = await this.as(`permission/grants?userId=${userId}`, 'GET');
     if (((grants.items ?? []) as Json[]).some((row) => row.profileId === profileId && row.status !== 'revoked')) return;
