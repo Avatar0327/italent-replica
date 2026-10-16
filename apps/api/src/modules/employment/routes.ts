@@ -71,6 +71,7 @@ import { rawImportRows, withFailedImportLog } from '../../audit/record.js';
 import { failedImportAnchors, importedItems } from './import-audit.js';
 import { policedSub } from '../../route-policy/index.js';
 import { EMPLOYMENT_POLICIES } from './policy.js';
+import { registerExitRoutes } from './exit-routes.js';
 
 export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
   // F-039：子应用套本模块登记表（EMPLOYMENT_POLICIES），注册行不变、处理函数不变
@@ -91,6 +92,7 @@ export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
   registerBatchEdit(module, deps);
   registerSettings(module, deps);
   registerCustomFields(module, deps);
+  registerExitRoutes(module, deps);
   router.route('/api/tenant/employment', module);
 };
 

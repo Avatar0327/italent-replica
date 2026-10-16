@@ -18,6 +18,8 @@ import {
 import { text } from '../../transfer/messages.js';
 import { emptyLinkage } from '../../transfer/linkage-api.js';
 import { useContractChoices } from '../../transfer/useLinkage.js';
+import { applyPendingDraft, catalogType } from '../../transfer/draft-restore.js';
+import { useDraftRestore } from '../../transfer/useDraftRestore.js';
 import type {
   EmployeeChoice,
   FieldValue,
@@ -47,6 +49,8 @@ export function useTransferForm(
   adapter?: TransferFormAdapter,
   runCommand?: ApplicationCommandRunner,
   hrScope?: string,
+  /** F-153：他人调动申请（有暂存）选人后按人带出暂存；“调动”入口没有暂存，不带出。 */
+  restoreDrafts = false,
 ) {
   const [model, setModel] = useState<TransferFormModel>({
     ...(adapter?.initialModel ?? initial),
@@ -69,26 +73,26 @@ export function useTransferForm(
     adapter,
     runCommand,
   );
-  const hr = useHrTransferCommand(tenantId, model, loadingPreview, hrScope);
+  const hr = useHrTransferCommand(tenantId, model, loadingPreview, setModel, hrScope);
   const commands = hrScope ? hr : legacy;
   useCatalog(tenantId, model.effectiveDate, setModel, setError, initiator, !adapter);
   useEmployees(tenantId, model.catalog.today, search, page, setModel, setError, initiator, !adapter);
   usePreview(tenantId, model, commands.saved, reload, setModel, setLoadingPreview, setError, setNotice, adapter);
   // R1-T10 的联动仅接入 HR；经理自助本轮仍不提供跨对象联动。
   useContractChoices(tenantId, initiator === 'hr' ? model.employeeId : '', initiator, setModel);
+  const draft = useDraftRestore(tenantId, restoreDrafts ? hrScope : undefined, model.employeeId, setModel);
   const selection = selectField(setModel, setError);
   const field = editField(setModel);
-  const refresh = () => {
+  const reread = (update: (current: TransferFormModel) => TransferFormModel) => {
     setError('');
-    setModel((current) => ({ ...current, fields: {}, customFields: {}, preview: null }));
+    setModel(update);
     setReload((value) => value + 1);
   };
   const reset = () => {
     legacy.setSaved(null);
-    setModel((current) => ({ ...current, withEstablishment: false }));
     legacy.resetConflict();
     setNotice('');
-    refresh();
+    reread(blankForm);
   };
   return {
     model,
@@ -96,16 +100,18 @@ export function useTransferForm(
     notice,
     ...commands,
     processing: !!hrScope && hr.processing,
+    conflict: hrScope ? hr.conflict : undefined,
     commandError: hrScope ? hr.commandError : '',
     commandNotice: hrScope ? hr.commandNotice : '',
     loadingPreview,
+    draft,
     page,
     selection,
     field,
     linkage: (patch: Partial<LinkageDraft>) =>
       setModel((current) => (current.linkage ? { ...current, linkage: { ...current.linkage, ...patch } } : current)),
     withEstablishment: (value: boolean) => setModel((current) => ({ ...current, withEstablishment: value })),
-    refresh,
+    refresh: () => reread(keptForm),
     reset,
     setPage: (next: number) => {
       setPage(next);
@@ -120,6 +126,30 @@ export function useTransferForm(
   };
 }
 
+/**
+ * 重新读取表单不丢草稿（#350 第 1 轮 P2-2）：尚未回填的带出草稿原样保留，否则把当前改动作为待回填草稿，
+ * 等新预览到达后按当时可编辑的字段回填。
+ */
+function keptForm(model: TransferFormModel): TransferFormModel {
+  const { employeeId, fields, customFields } = model;
+  const kept =
+    model.pendingDraft || !employeeId ? model : { ...model, pendingDraft: { employeeId, fields, customFields } };
+  return { ...kept, fields: {}, customFields: {}, preview: null };
+}
+const blankForm = (model: TransferFormModel): TransferFormModel => ({
+  ...model,
+  withEstablishment: false,
+  fields: {},
+  customFields: {},
+  preview: null,
+});
+/** 换人时放弃待确认的带出类型，回到默认类型；选定类型即视为已确认。 */
+function selectedType(current: TransferFormModel, field: string, value: string) {
+  if (field === 'transferTypeCode') return { transferTypeCode: value, typeConfirmation: false };
+  if (field === 'employeeId' && current.typeConfirmation)
+    return { transferTypeCode: current.catalog.types[0]?.code ?? '', typeConfirmation: false };
+  return {};
+}
 function selectField(setModel: SetModel, setError: SetText) {
   return (field: 'employeeId' | 'effectiveDate' | 'transferTypeCode' | 'reasonCode', value: string) => {
     setError('');
@@ -129,6 +159,7 @@ function selectField(setModel: SetModel, setError: SetText) {
         : {
             ...current,
             [field]: value,
+            ...selectedType(current, field, value),
             reasonCode: field === 'transferTypeCode' ? '' : current.reasonCode,
             fields: {},
             customFields: {},
@@ -261,9 +292,7 @@ function useCatalog(
           ...current,
           catalog,
           effectiveDate: current.effectiveDate || catalog.today || '',
-          transferTypeCode: catalog.types.some((type) => type.code === current.transferTypeCode)
-            ? current.transferTypeCode
-            : (catalog.types[0]?.code ?? ''),
+          ...catalogType(current, catalog),
         }));
       })
       .catch((cause: unknown) => {
@@ -340,7 +369,8 @@ function usePreview(
       void (adapter?.loadPreview ?? loadPreview)(tenantId, model, controller.signal)
         .then((result) => {
           if (controller.signal.aborted) return;
-          setModel((current) => ({ ...current, ...result }));
+          // F-153：带出的暂存字段等对应预览到达后，按当前字段权限回填（DEC-511）。
+          setModel((current) => applyPendingDraft({ ...current, ...result }));
           setNotice(result.unavailable ? text.referencesUnavailable : '');
           setError('');
         })
