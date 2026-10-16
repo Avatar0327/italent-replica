@@ -78,7 +78,7 @@ async function cancelOk(w: EntryWorld, recordId: string, body: object = {}) {
   expect(response.status, await response.clone().text()).toBe(200);
 }
 
-describe('F-192a 取消入职默认原因（其他原因）', () => {
+describe('F-192a(DEC-546 / DEC-548) 取消入职默认原因（其他原因）', () => {
   it('不传原因：动作日志与审计的原因都是 other；显式原因照旧', async () => {
     const w = await entryWorld(testDb().db, 'f192a-default-reason');
     const first = await addPending(w, '2026-10-10', '默认原因员工');
@@ -108,7 +108,7 @@ describe('F-192a 取消入职默认原因（其他原因）', () => {
   });
 });
 
-describe('F-192a Offer 联动出站端口', () => {
+describe('F-192a(DEC-546 / DEC-548) Offer 联动出站端口', () => {
   it('取消调用 onEntryCancelled 恰好一次；重复取消 409 不再调用', async () => {
     const w = await entryWorld(testDb().db, 'f192a-hook-cancel');
     const { employee, recordId } = await addPending(w);
@@ -203,7 +203,7 @@ describe('F-192a Offer 联动出站端口', () => {
   });
 });
 
-describe('F-192a Offer 入站端口', () => {
+describe('F-192a(DEC-546 / DEC-548) Offer 入站端口', () => {
   it('拒绝已接受 Offer 自动取消入职：进已取消、原因正确、日期不变，且不回调 onEntryCancelled', async () => {
     const w = await entryWorld(testDb().db, 'f192a-offer-refuse');
     const { employee, recordId, business } = await addPending(w, '2026-10-10');
@@ -255,7 +255,7 @@ describe('F-192a Offer 入站端口', () => {
   });
 });
 
-describe('F-192a 失效 Offer 删除待入职（F-171 端口）', () => {
+describe('F-192a(DEC-546 / DEC-548) 失效 Offer 删除待入职（F-171 端口）', () => {
   it('记录被删除，已取消视图与全部待入职里都查不到，也不触发 Offer 端口', async () => {
     const w = await entryWorld(testDb().db, 'f192a-offer-invalid');
     const { employee, recordId, business } = await addPending(w);
