@@ -88,15 +88,7 @@ function OpenForm(props: FormOverlayProps) {
   const locked = busy || !!submission?.locked;
   // 重读后按内核 refillDraft 回填（F-142，claude_fe_rules b）：只有改过且当前可提交的字段保留草稿。
   useDraftRefill(submission, submittableOf(props.groups), form);
-  const title =
-    props.titleExtra === undefined || props.titleExtra === null ? (
-      props.title
-    ) : (
-      <Flex align="center" justify="space-between" gap={16}>
-        <span>{props.title}</span>
-        <Flex flex="none">{props.titleExtra}</Flex>
-      </Flex>
-    );
+  const title = formTitle(props);
   const footer = (
     <Space>
       <Button onClick={props.onClose} disabled={busy}>
@@ -168,6 +160,16 @@ function OpenForm(props: FormOverlayProps) {
     >
       {content}
     </Drawer>
+  );
+}
+
+function formTitle({ title, titleExtra }: Pick<FormOverlayProps, 'title' | 'titleExtra'>) {
+  if (titleExtra === undefined || titleExtra === null) return title;
+  return (
+    <Flex align="center" justify="space-between" gap={16}>
+      <span>{title}</span>
+      <Flex flex="none">{titleExtra}</Flex>
+    </Flex>
   );
 }
 
