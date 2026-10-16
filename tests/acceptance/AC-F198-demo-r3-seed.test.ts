@@ -29,7 +29,7 @@ const EXPECTED: Readonly<Record<'admin' | 'hr', readonly (typeof R3_APPS)[number
 let user: Actors;
 const progress = memoryProgress();
 
-const snapshotOf = async (key: 'admin' | 'hr') => {
+const snapshotOf = async (key: 'admin' | 'hr' | 'employeeA') => {
   const body = await user.send(await user.persona(key), 'GET', '/api/tenant/permission/me/snapshot');
   return new Map((body.apps as AppView[]).map((app) => [app.app, app]));
 };
@@ -112,6 +112,11 @@ describe('AC-F198-demo-r3-seed 演示种子的 R3 权限与样例', () => {
     const records = await user.send(await user.persona('hr'), 'GET', '/api/tenant/succession/records?status=all');
     expect(records.hasDataPermission).toBe(true);
     expect((records.items as Json[]).length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('反向：普通员工（无任何 R3 标准身份）的 R3 入口一个都看不到', async () => {
+    const apps = await snapshotOf('employeeA');
+    for (const app of R3_APPS) expect(apps.get(app)?.visible, `员工 ${app}`).toBe(false);
   });
 
   it('再跑一次种子：样例条数不变，没有新增授权行', async () => {

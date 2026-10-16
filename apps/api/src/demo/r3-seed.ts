@@ -17,7 +17,7 @@ import { type Json, listAll } from './client.js';
 import { DEMO_ORGS } from './data.js';
 import { DEMO_R3, DEMO_R3_DATES, DEMO_R3_MOU } from './r3-data.js';
 import { DEMO_STAFF } from './scale-data.js';
-import type { DemoWorld } from './world.js';
+import { DemoSeedIncompleteError, type DemoWorld } from './world.js';
 
 const str = (row: Json, key: string): string => String(row[key]);
 
@@ -292,6 +292,8 @@ async function seedIdp(world: DemoWorld, rd: string): Promise<void> {
   const i = DEMO_R3.idp;
   const d = DEMO_R3_DATES;
   const approvals = ((await world.as('idp/approval-processes?approvalType=idp_plan', 'GET')).items ?? []) as Json[];
+  const approval = approvals[0];
+  if (!approval) throw new DemoSeedIncompleteError('IDP 计划审批流程缺失');
   const processId = await ensureByName(world, 'idp/processes', i.processName, () =>
     world.as(
       'idp/processes',
@@ -306,7 +308,7 @@ async function seedIdp(world: DemoWorld, rd: string): Promise<void> {
             name: '制定计划',
             category: 'plan',
             approvalType: 'idp_plan',
-            approvalProcessId: str(approvals[0]!, 'id'),
+            approvalProcessId: str(approval, 'id'),
             startMode: 'manual',
           },
         ],
