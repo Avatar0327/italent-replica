@@ -8,8 +8,7 @@
  */
 import { createHmac } from 'node:crypto';
 import { and, eq, exitRequests, sql, type Tx } from '@italent/db';
-import { buttonResource, EXIT_BUTTONS } from '@italent/domain';
-import { requirePermission } from '../../authorization.js';
+import { EXIT_BUTTONS } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { getModuleViewableFieldsInTransaction } from '../permission/module-access.js';
 import { findOverdueTransfers } from './activation-store.js';
@@ -23,7 +22,7 @@ import type { LockedEmploymentBusiness } from './record-store.js';
 import type { BusinessKind, EmploymentBusinessPatch, EmploymentContext } from './types.js';
 import { visibleEmploymentRecords } from './visibility.js';
 
-export type ExitOperation = 'preview' | 'create' | 'submit' | 'update' | 'withdraw' | 'cancel' | 'retry';
+export type ExitOperation = 'create' | 'submit' | 'update' | 'withdraw' | 'cancel' | 'retry';
 /** createEmploymentBusiness 只认经过本门禁的离职创建（exit-application.ts 持有）；可信造数走 ctx.trustedExit。 */
 export const EXIT_GATE_PASS = Object.freeze({ passedExitGate: true });
 export const isExitKind = (kind: BusinessKind) => kind === 'leave' || kind === 'retirement';
@@ -78,13 +77,6 @@ export async function loadExitRequest(tx: Tx, tenantId: string, businessId: stri
 
 // ---- 权限链 ----------------------------------------------------------------------------------------------
 
-const detailButton = (ctx: EmploymentContext, code: string) =>
-  requirePermission(ctx.authorize!, {
-    ...ctx,
-    action: 'object.button',
-    resource: buttonResource(EMPLOYMENT_OBJECT, code, 'detail'),
-  });
-
 const EXIT_CONTROL_KEYS = ['dutyTransfer', 'pendingTransferAck'];
 const createPayload = (target: ExitGateTarget) => ({
   kind: target.kind ?? 'leave',
@@ -96,39 +88,47 @@ const createPayload = (target: ExitGateTarget) => ({
   ...(target.payload ?? {}),
 });
 
+interface PermissionSpec {
+  readonly op: 'create' | 'update' | 'delete';
+  readonly payload: object;
+  readonly buttons: readonly string[];
+}
+
+/** 每个操作要过的 对象操作 + 载荷 + 按钮；统一经 requireEmploymentWrite，不新增权限原语。 */
+function permissionSpec(operation: ExitOperation, target: ExitGateTarget): PermissionSpec | null {
+  switch (operation) {
+    case 'create':
+      // 自助 / 经理代发的发起人按钮归 F-020（暂名 Portal.ExitApply / Team.ExitApply）
+      if (target.initiation && target.initiation !== 'hr') return null;
+      return {
+        op: 'create',
+        payload: createPayload(target),
+        buttons: [target.mode === 'direct' ? BUTTON.direct : BUTTON.application],
+      };
+    case 'update':
+      return { op: 'update', payload: { ...target.patch, ...target.payload }, buttons: [BUTTON.edit] };
+    case 'submit':
+    case 'withdraw':
+      return !target.row || target.row.initiator === 'hr'
+        ? { op: 'update', payload: {}, buttons: [BUTTON.application] }
+        : null;
+    case 'cancel':
+      return { op: target.deleting ? 'delete' : 'update', payload: {}, buttons: [BUTTON.cancel] };
+    case 'retry':
+      // RetryActivation 与 Dimission 的交集
+      return { op: 'update', payload: {}, buttons: [BUTTON.retry, BUTTON.direct] };
+  }
+}
+
 /** 功能权 + 按钮权 + 字段权；可信上下文（无授权器）直接放行。范围由入口层先验。 */
 export async function requireExitPermission(ctx: EmploymentContext, operation: ExitOperation, target: ExitGateTarget) {
   if (!ctx.authorize || target.approvalEdit) return;
-  const command = { commandOnly: true };
-  switch (operation) {
-    case 'preview':
-      await detailButton(ctx, BUTTON.direct).catch(() => detailButton(ctx, BUTTON.application));
-      return;
-    case 'create':
-      if (target.initiation && target.initiation !== 'hr') return;
-      await requireEmploymentWrite(
-        ctx,
-        'create',
-        createPayload(target),
-        target.mode === 'direct' ? BUTTON.direct : BUTTON.application,
-      );
-      return;
-    case 'update':
-      await requireEmploymentWrite(ctx, 'update', { ...target.patch, ...target.payload }, BUTTON.edit);
-      return;
-    case 'submit':
-    case 'withdraw':
-      // 自助 / 经理代发的发起人按钮归 F-020（暂名 Portal.ExitApply / Team.ExitApply）；HR 单据复核 DimissionApproval
-      if (!target.row || target.row.initiator === 'hr')
-        await requireEmploymentWrite(ctx, 'update', {}, BUTTON.application, undefined, command);
-      return;
-    case 'cancel':
-      await requireEmploymentWrite(ctx, target.deleting ? 'delete' : 'update', {}, BUTTON.cancel, undefined, command);
-      return;
-    case 'retry':
-      await requireEmploymentWrite(ctx, 'update', {}, BUTTON.retry, undefined, command);
-      await detailButton(ctx, BUTTON.direct);
-  }
+  const spec = permissionSpec(operation, target);
+  if (!spec) return;
+  // 空载荷的命令类按钮（提交 / 撤回 / 撤销 / 重试）只校验按钮
+  const options = Object.keys(spec.payload).length ? {} : { commandOnly: true };
+  for (const button of spec.buttons)
+    await requireEmploymentWrite(ctx, spec.op, spec.payload, button, undefined, options);
 }
 
 // ---- §7.2 日期创建后不可改 ---------------------------------------------------------------------------------
