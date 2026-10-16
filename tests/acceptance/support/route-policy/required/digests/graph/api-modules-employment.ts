@@ -1753,6 +1753,7 @@ export const GRAPH: Graph = {
     '#requireSavedBusiness',
     '#selectEmploymentCycle',
     '#validatePreparedEmployment',
+    '#withPositionManagerDerivation',
   ],
   'apps/api/src/modules/employment/write-service.ts#cycleForMaterialization': ['#selectEmploymentCycle'],
   'apps/api/src/modules/employment/write-service.ts#effectiveEmployType': ['#NEW_CYCLE_KINDS'],
