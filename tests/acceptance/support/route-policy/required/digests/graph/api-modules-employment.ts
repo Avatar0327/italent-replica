@@ -384,6 +384,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/employee-status.ts#lockPendingEntry',
     '#assertRemark',
     '#replacePendingEntry',
+    'apps/api/src/modules/employment/entry-offer-hooks.ts#entryOfferHooks',
     'apps/api/src/modules/employment/fields.ts#businessDate',
     'packages/domain/src/employment/employee-status.ts#ENTRY_STATUS',
   ],
@@ -460,6 +461,8 @@ export const GRAPH: Graph = {
     'packages/domain/src/employment/entry-email.ts#EMAIL_PREFIX_FIELD_CODES',
     'packages/domain/src/employment/entry-email.ts#normalizeEmailDomain',
   ],
+  'apps/api/src/modules/employment/entry-offer-hooks.ts#entryOfferHooks': ['#hooks', '#narrow'],
+  'apps/api/src/modules/employment/entry-offer-hooks.ts#hooks': ['#noop'],
   'apps/api/src/modules/employment/entry-options.ts#assertEntryOptionsAllowed': [
     'apps/api/src/modules/employment/write-service.ts#NEW_CYCLE_KINDS',
   ],

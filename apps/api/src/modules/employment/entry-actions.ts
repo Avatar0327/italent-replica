@@ -1,6 +1,7 @@
 /**
  * 待入职的状态动作（R2 BE-2a；docs/02_业务建模/34 EN-R8 / R9 / R14，DEC-484② / DEC-540 保守口径）：
- * 取消入职、改期入职、编辑待入职（F-188）、删除待入职。只做 F-129 已核实的状态变化，不联动 Offer / 信息采集；
+ * 取消入职、改期入职、编辑待入职（F-188）、删除待入职。只做 F-129 已核实的状态变化，不联动信息采集；
+ * Offer 联动只留端口（F-192a，entry-offer-hooks.ts，BE-14 接）：取消 / 已取消恢复出站通知，Offer 拒绝入站取消；
  * 待入职合同（F-194）：改期入职同步合同起始日，编辑不联动，删除一并清理，取消保留供恢复时改期联动。
  * 办理入职复用 employee-status.ts 的 completePendingEntry（其内含 DEC-138 / 139 校验）。
  */
@@ -15,6 +16,7 @@ import {
 } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { auditEmployment } from './context.js';
+import { entryOfferHooks } from './entry-offer-hooks.js';
 import { changePendingEntryStatus, lockPendingEntry } from './employee-status.js';
 import { businessDate } from './fields.js';
 import {
@@ -55,22 +57,76 @@ async function logEntryAction(tx: Tx, ctx: EmploymentContext, log: EntryActionLo
       ${log.toDate ?? null}::date, ${ctx.commandId}, ${ctx.userId}::uuid, ${ctx.now.toISOString()}::timestamptz)`);
 }
 
-/** 取消入职（EN-R9）：入职状态 = 取消，进“已取消入职”；原因（5 项）与说明非必填；重复取消 409。 */
-export async function cancelPendingEntry(
+interface CancelInput {
+  readonly reason?: EntryCancelReason;
+  readonly remark?: string;
+}
+
+/** 不传原因时的默认值（R2e9 原站：下拉默认“其他原因”）。 */
+const DEFAULT_CANCEL_REASON: EntryCancelReason = 'other';
+
+/**
+ * 取消的共同内核：状态 → 取消、动作日志、审计（含原因）同事务。
+ * 路由入口重复取消是冲突（409）；Offer 入站端口保持幂等：已取消直接返回，不重复写日志。
+ */
+async function cancelEntryCore(
   tx: Tx,
   ctx: EmploymentContext,
   recordId: string,
-  input: { readonly reason?: EntryCancelReason; readonly remark?: string },
-): Promise<EmploymentBusiness> {
+  input: CancelInput,
+  mode: { readonly rejectUnchanged: boolean },
+): Promise<{ readonly record: EmploymentRecord; readonly changed: boolean }> {
   assertRemark(input.remark);
-  const record = await changePendingEntryStatus(tx, ctx, recordId, 'cancelled', { rejectUnchanged: true });
+  const { record: before } = await lockPendingEntry(tx, ctx, recordId);
+  if (!mode.rejectUnchanged && before.entryStatus === ENTRY_STATUS.cancelled) return { record: before, changed: false };
+  const reason = input.reason ?? DEFAULT_CANCEL_REASON;
+  const record = await changePendingEntryStatus(tx, ctx, recordId, 'cancelled', mode);
   await logEntryAction(tx, ctx, {
     employeeId: record.employeeId,
     businessId: recordId,
     action: 'cancel',
-    reason: input.reason,
+    reason,
     remark: input.remark,
   });
+  await auditEmployment(
+    tx,
+    ctx,
+    'employment.entry.cancel',
+    'employment-business',
+    recordId,
+    { entryStatus: before.entryStatus },
+    { entryStatus: record.entryStatus, reason, remark: input.remark ?? null },
+  );
+  return { record, changed: true };
+}
+
+/**
+ * 取消入职（EN-R9）：入职状态 = 取消，进“已取消入职”；原因（5 项）与说明非必填，不传原因记为“其他原因”（F-192a）；重复取消 409。
+ * 同事务通知 Offer 联动端口（BE-14 把 Offer 改为已拒绝）；端口抛错整笔回滚。无二次确认是前端的事。
+ */
+export async function cancelPendingEntry(
+  tx: Tx,
+  ctx: EmploymentContext,
+  recordId: string,
+  input: CancelInput,
+): Promise<EmploymentBusiness> {
+  const { record } = await cancelEntryCore(tx, ctx, recordId, input, { rejectUnchanged: true });
+  await entryOfferHooks.entryCancelled(tx, ctx, { employeeId: record.employeeId, businessId: recordId });
+  return requireSavedBusiness(tx, ctx, recordId);
+}
+
+/**
+ * 入站端口（交 BE-14）：Offer 侧“拒绝已接受的 Offer”自动取消入职（R2e9），原因 / 备注为拒绝 Offer 时所选。
+ * 复用取消内核，但**不回调 onEntryCancelled**（Offer 已是已拒绝，避免循环）；已取消则幂等返回；
+ * 已办理入职的记录拒绝（NOT_PENDING_ENTRY）。失效 Offer 删除待入职走 deletePendingEntry，不进已取消。
+ */
+export async function cancelPendingEntryForOfferRefusal(
+  tx: Tx,
+  ctx: EmploymentContext,
+  recordId: string,
+  input: CancelInput,
+): Promise<EmploymentBusiness> {
+  await cancelEntryCore(tx, ctx, recordId, input, { rejectUnchanged: false });
   return requireSavedBusiness(tx, ctx, recordId);
 }
 
@@ -190,6 +246,7 @@ export async function postponePendingEntry(
   const locked = await lockPendingEntry(tx, ctx, recordId);
   if (effectiveDate === locked.record.effectiveDate && locked.record.entryStatus !== ENTRY_STATUS.cancelled)
     throw new AppError('VALIDATION_FAILED', '改期后的入职日期不能与原入职日期相同', { reason: 'ENTRY_DATE_UNCHANGED' });
+  const wasCancelled = locked.record.entryStatus === ENTRY_STATUS.cancelled;
   const { business, contract } = await replacePendingEntry(tx, ctx, locked, {
     action: 'postpone',
     effectiveDate,
@@ -197,6 +254,13 @@ export async function postponePendingEntry(
     remark: input.remark,
     syncContract: true,
   });
+  // 已取消经改期恢复：通知 Offer 联动端口回到已接受；不传日期，Offer 拟入职日期保持原值（F-192a / DEC-546）
+  if (wasCancelled)
+    await entryOfferHooks.entryRestored(tx, ctx, {
+      employeeId: locked.record.employeeId,
+      businessId: business.id,
+      previousBusinessId: recordId,
+    });
   // 前端据此提示“待入职记录中劳动合同起止日期改为YYYY/MM/DD-”；存量待入职没有合同则不提示
   return { ...business, contractNotice: contract };
 }
