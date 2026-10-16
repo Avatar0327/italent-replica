@@ -1,9 +1,22 @@
 /**
- * 待入职状态动作日志（R2 BE-2a；34 EN-R8 / R9）：取消入职的原因与说明、改期入职的新旧日期与备注。
- * 只追加：取消 / 改期各写一行，不原地改；改期会替换待入职记录（任职记录不可改日期），previous_business_id 串起前后两条。
+ * 待入职状态动作日志（R2 BE-2a；34 EN-R8 / R9）：取消入职的原因与说明、改期入职的新旧日期与备注；
+ * F-188 增加“编辑”（行内编辑换日期，同样替换记录）。
+ * 只追加：取消 / 改期 / 编辑各写一行，不原地改；改期会替换待入职记录（任职记录不可改日期），previous_business_id 串起前后两条。
  */
 import { sql } from 'drizzle-orm';
-import { check, date, foreignKey, index, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core';
+import {
+  boolean,
+  check,
+  date,
+  foreignKey,
+  index,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+  unique,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import { employmentBusinessObjects } from './employment.js';
 import { tenants } from './tenancy.js';
 
@@ -41,8 +54,41 @@ export const employmentEntryActions = pgTable(
       ],
     }),
     index('employment_entry_actions_business').on(t.tenantId, t.businessId, t.createdAt),
-    check('employment_entry_actions_action', sql`${t.action} IN ('cancel', 'postpone')`),
+    check('employment_entry_actions_action', sql`${t.action} IN ('cancel', 'postpone', 'edit')`),
     check('employment_entry_actions_reason', sql`${t.reasonCode} IS NULL OR btrim(${t.reasonCode}) <> ''`),
-    check('employment_entry_actions_postpone_dates', sql`${t.action} <> 'postpone' OR ${t.toDate} IS NOT NULL`),
+    check(
+      'employment_entry_actions_postpone_dates',
+      sql`${t.action} NOT IN ('postpone', 'edit') OR ${t.toDate} IS NOT NULL`,
+    ),
+  ],
+);
+
+/**
+ * 待入职阶段的“是否有试用期”（F-188，DEC-546② R2e8）：跟随待入职记录保存，办理入职时才决定人员状态。
+ * 以待入职业务 ID 为键；改期 / 编辑换日期替换记录时在同事务内把值搬到新业务；办理入职、删除后不再保留。
+ * 没填过就没有行（读出为 null，DEC-402 不回填）。
+ */
+export const employmentPendingEntryProbation = pgTable(
+  'employment_pending_entry_probation',
+  {
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
+    employeeId: uuid('employee_id').notNull(),
+    businessId: uuid('business_id').notNull(),
+    probation: boolean('probation').notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ name: 'employment_pending_entry_probation_pk', columns: [t.tenantId, t.businessId] }),
+    foreignKey({
+      name: 'employment_pending_entry_probation_business_fk',
+      columns: [t.tenantId, t.employeeId, t.businessId],
+      foreignColumns: [
+        employmentBusinessObjects.tenantId,
+        employmentBusinessObjects.employeeId,
+        employmentBusinessObjects.id,
+      ],
+    }),
   ],
 );

@@ -1,9 +1,9 @@
 /**
- * 待入职状态动作路由（R2 BE-2a；34 EN-R8 / R9 / R10 / R14）：办理入职、取消、改期、删除。
+ * 待入职状态动作路由（R2 BE-2a；34 EN-R8 / R9 / R10 / R14）：办理入职、取消、改期、编辑（F-188）、删除。
  * 策略登记在 employment/policy.ts；写权限沿用任职记录的“编辑 / 删除”对象操作与按钮（原站是否另有独立权限项未验证）。
  */
 import { withTenant } from '@italent/db';
-import { ENTRY_CANCEL_REASON_CODES, ENTRY_REMARK_MAX, tenantLocalDate } from '@italent/domain';
+import { ENTRY_CANCEL_REASON_CODES, ENTRY_EDIT_EMPLOY_TYPES, ENTRY_REMARK_MAX, tenantLocalDate } from '@italent/domain';
 import type { Context, Hono } from 'hono';
 import { z } from 'zod';
 import { AppError } from '../../errors.js';
@@ -30,7 +30,7 @@ import {
   generateEntryContract,
   requireEntryContractAccess,
 } from './entry-contract.js';
-import { cancelPendingEntry, deletePendingEntry, postponePendingEntry } from './entry-actions.js';
+import { cancelPendingEntry, deletePendingEntry, editPendingEntry, postponePendingEntry } from './entry-actions.js';
 import { ENTRY_VIEWS, listEntryView } from './entry-views.js';
 import type { EmploymentContext } from './types.js';
 import { requireSavedBusiness } from './write-service.js';
@@ -39,6 +39,11 @@ const remark = z.string().trim().min(1).max(ENTRY_REMARK_MAX).optional();
 const completeInput = z.strictObject({ probation: z.boolean(), contract: entryContractSchema.optional() });
 const cancelInput = z.strictObject({ reason: z.enum(ENTRY_CANCEL_REASON_CODES).optional(), remark });
 const postponeInput = z.strictObject({ effectiveDate: z.string().min(1), remark });
+const editInput = z.strictObject({
+  effectiveDate: z.string().min(1),
+  probation: z.boolean(),
+  employType: z.enum(ENTRY_EDIT_EMPLOY_TYPES).optional(),
+});
 
 export function parse<T>(schema: z.ZodType<T>, value: unknown): T {
   const result = schema.safeParse(value);
@@ -130,6 +135,21 @@ export function registerEntryRoutes(
       body: await postponePendingEntry(tx, context, id, input),
     }));
   });
+  // F-188 行内“编辑”：计划入职日期（允许过去日期）+ 是否有试用期（必填）；字段写权限同改期按 { effectiveDate } 校验
+  router.patch('/pending-entries/:id', async (c) => {
+    const { id, ctx, input } = await prepareEntryAction(
+      c,
+      deps,
+      authorizeBusinessWrite,
+      editInput,
+      // 雇佣关系与入职日期一样按字段写权限校验；不传就不进载荷
+      ({ effectiveDate, employType }) => ({ effectiveDate, ...(employType ? { employType } : {}) }),
+    );
+    return runWrite(c, deps, ctx, { id, action: 'edit', input }, async (tx, context) => ({
+      status: 200,
+      body: await editPendingEntry(tx, context, id, input),
+    }));
+  });
   router.delete('/pending-entries/:id', async (c) => {
     const id = uuidParam(c);
     const ctx = await readContext(c, deps, 'object.delete', revision(c));
@@ -159,11 +179,13 @@ function registerEntryViews(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const trimmed = (await trimEmploymentResponse(
       deps,
       ctx,
-      items.map(({ name: _name, code: _code, ...record }) => record),
+      // probation 是控制项、不在任职字段目录，通用字段投影会把它裁掉：先摘下，裁剪后显式放回（F-188）
+      items.map(({ name: _name, code: _code, probation: _probation, ...record }) => record),
     )) as object[];
     return c.json({
       items: trimmed.map((record, index) => ({
         ...record,
+        probation: items[index]!.probation,
         ...(shown('code') ? { code: items[index]!.code } : {}),
         ...(shown('name') ? { name: items[index]!.name } : {}),
       })),
