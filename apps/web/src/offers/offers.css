@@ -1,0 +1,99 @@
+.offers-page {
+  padding: 0 16px 24px;
+}
+.offer-links {
+  display: flex;
+  gap: 16px;
+  padding: 12px 0;
+}
+.offers-page h1 {
+  font-size: 18px;
+}
+.offers-page h2 {
+  font-size: 15px;
+}
+.offer-views {
+  display: flex;
+  gap: 10px;
+  margin: 16px 0;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+.offer-view {
+  flex: 1 0 160px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: white;
+}
+.offer-view > button:first-child {
+  display: block;
+  width: 100%;
+  background: transparent;
+  color: inherit;
+  border: 0;
+  text-align: left;
+  padding: 12px 20px 8px;
+  cursor: pointer;
+}
+.offer-view strong {
+  display: block;
+  font-size: 24px;
+  margin-top: 8px;
+}
+.offer-pending-summary {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 20px 8px;
+}
+.offer-pending-summary strong {
+  margin-top: 0;
+}
+.offer-active {
+  border-color: #91b8ff;
+  color: #0054f0;
+}
+.offer-view button:focus-visible,
+.offer-settings-layout nav button:focus-visible {
+  outline: 2px solid #0054f0;
+}
+.offers-page .ant-table-thead > tr > th {
+  background: #f7f8fa;
+}
+.offers-page .ant-table-cell .ant-btn {
+  padding-inline: 4px;
+}
+.offer-settings-layout {
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.offer-settings-layout nav {
+  background: white;
+  padding: 12px;
+  border-radius: 8px;
+}
+.offer-settings-layout nav button {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  padding: 10px;
+  cursor: pointer;
+}
+.offer-settings-layout nav button[aria-current='page'] {
+  color: #0054f0;
+  background: #edf4ff;
+}
+.offer-settings-layout > .list-card {
+  padding: 24px;
+}
+
+.offer-demo-date {
+  width: 100%;
+}
+.offer-filter-select {
+  min-width: 180px;
+}

@@ -17,6 +17,7 @@ const MGR = `${SRC}/transfer/manager-routes.ts`;
 const LNK = `${SRC}/transfer/linkage/routes.ts`;
 const EXIT = `${SRC}/employment/exit-routes.ts`;
 const ENTRY = `${SRC}/employment/entry-routes.ts`;
+const EMAIL = `${SRC}/employment/entry-email-routes.ts`;
 const STATUS = `${SRC}/employment/employee-status.ts`;
 const ACCESS = `${SRC}/transfer/access.ts`;
 const SERVICE = `${SRC}/transfer/service.ts`;
@@ -1095,6 +1096,9 @@ export const EMPLOYMENT: RequiredTable = {
   'GET /api/tenant/employment/activation-todos': [
     recordView(at(EMP, 'GET', '/activation-todos', "const ctx = await readPageContext(c, deps, 'list')")),
   ],
+  'GET /api/tenant/employment/pending-entries': [
+    recordView(at(ENTRY, 'GET', '/pending-entries', "const ctx = await readPageContext(c, deps, 'list')")),
+  ],
   'POST /api/tenant/employment/businesses/:id/activation/retry': [
     ob(
       `obj:${RECORD}:update`,
@@ -1408,9 +1412,79 @@ export const EMPLOYMENT: RequiredTable = {
     ),
   ),
   // ---- employment/entry-routes.ts：R2 BE-2a 待入职状态动作（办理入职 / 取消 / 改期 / 删除）-------------------------------
-  'POST /api/tenant/employment/pending-entries/:id/complete': entryUpdate(
-    '/pending-entries/:id/complete',
-    at(ENTRY, 'POST', '/pending-entries/:id/complete', 'await completePendingEntry(tx, context, id, input)'),
+  'POST /api/tenant/employment/pending-entries/:id/complete': [
+    ...entryUpdate(
+      '/pending-entries/:id/complete',
+      at(
+        ENTRY,
+        'POST',
+        '/pending-entries/:id/complete',
+        'await completePendingEntry(tx, context, id, { probation: input.probation })',
+      ),
+    ),
+    // 条件准入（带 contract 才挂）：CommandGuard.before 在命令事务内复核合同“新建”按钮（首次 / 重放 / 回查三个出口）
+    ob(
+      'guard:employment.entryContract',
+      [],
+      [
+        at(
+          ENTRY,
+          'POST',
+          '/pending-entries/:id/complete',
+          '{ guard: entryContractGuard(deps, ctx, id, input.contract) }',
+        ),
+        fn(ENTRY, 'entryContractGuard', 'requireEntryContractAccess(tx, deps, ctx, id, contract)'),
+      ],
+      '条件守卫：请求带 contract 时另要合同新建按钮 / 字段创建权 / 合同数据范围',
+    ),
+    {
+      ...ob(
+        'btn:TenantBase.EmploymentContract#create@list',
+        ['button:buttonResource', 'button:object.button'],
+        [
+          fn(ENTRY, 'entryContractGuard', 'requireEntryContractAccess(tx, deps, ctx, id, contract)'),
+          fn(
+            `${SRC}/employment/entry-contract.ts`,
+            'requireEntryContractAccess',
+            "resource: buttonResource(CONTRACT_OBJECT, contractAction('create', 'direct'), 'list')",
+          ),
+          {
+            role: 'const',
+            unit: 'packages/domain/src/contracts/rules.ts#CONTRACT_OBJECT',
+            anchor: "'TenantBase.EmploymentContract'",
+          },
+        ],
+      ),
+      purpose: 'when:employment.entryContract',
+    },
+  ],
+  'POST /api/tenant/employment/pending-entries/:id/generate-email': entryUpdate('/pending-entries/:id/generate-email'),
+  // ---- employment/entry-email-routes.ts：R2 BE-2b 入职生成邮箱规则配置（EN-R12）------------------------------------------
+  'GET /api/tenant/employment/entry-email-rules': [
+    ob(
+      'obj:TenantBase.EmploymentSettings:view',
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentSettings:view', 'object:object.* 动作'],
+      [
+        at(
+          EMAIL,
+          'GET',
+          '/entry-email-rules',
+          "const ctx = await readContext(c, deps, 'object.view', 0, undefined, 'TenantBase.EmploymentSettings')",
+        ),
+        READ,
+      ],
+    ),
+  ],
+  'PUT /api/tenant/employment/entry-email-rules': configWrite(
+    at(EMAIL, 'PUT', '/entry-email-rules', "'tenant.employment.configuration.write'"),
+    'TenantBase.EmploymentSettings',
+    'update',
+    at(
+      EMAIL,
+      'PUT',
+      '/entry-email-rules',
+      "await requireEmploymentWrite(ctx, 'update', input, undefined, 'TenantBase.EmploymentSettings')",
+    ),
   ),
   'POST /api/tenant/employment/pending-entries/:id/cancel': entryUpdate('/pending-entries/:id/cancel'),
   'POST /api/tenant/employment/pending-entries/:id/postpone': entryUpdate(

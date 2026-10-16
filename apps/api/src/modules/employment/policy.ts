@@ -777,6 +777,17 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     scope: listScope('module.scopeSql'),
     fields: RESPONSE,
   }),
+  // ---- employment/entry-routes.ts：R2 BE-2b 入职四视图（34 EN-R1，DEC-484②）---------------------------------------------
+  // view ∈ all / today / cancelled / hired（缺失或不合法 400）；readPageContext(list)：任职记录对象查看 + 列表范围，
+  // listEntryView 的 employmentScopePredicate = scopeSql（人员 / 记录部门 / 创建人，范围为空什么也看不到）；
+  // 记录字段按任职记录可见字段裁剪，姓名 / 工号按人员对象可见字段另行裁剪；hasDataPermission 协议键
+  'GET /pending-entries': object({
+    object: EMPLOYMENT,
+    operation: 'view',
+    button: noButton('列表无按钮'),
+    scope: listScope('module.scopeSql'),
+    fields: projector('employment.response', 'employment.entryViews'),
+  }),
   // 重试生效：If-Match 必填；空体；requireEmploymentWrite('update', {}, RetryActivation)；authorizeBusinessWrite（写入口径）；
   // 命令内 retryActivation 内联校验 revision（409 REVISION_CONFLICT）、未生效 / 未失败 / 未到期 / 前序失败（409）
   'POST /businesses/:id/activation/retry': object({
@@ -932,6 +943,16 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   'GET /settings': configurationView(SETTINGS, SETTINGS_FIELDS),
   // body 严格 { allowDirectTransfer }（400）；审计 employment.settings.update / employment_settings
   'PUT /settings': configuration(SETTINGS, 'update', SETTINGS_FIELDS, auditedConfigWrite('employment_settings')),
+  // R2 BE-2b 入职生成邮箱规则（34 EN-R12）：规则整份挂在任职设置对象的 entryEmailRules 字段上；GET 返回 { revision, entryEmailRules }；
+  // PUT body 严格 { entryEmailRules }（≤ 20 条、名称不重复、组织存在、后缀合法，400）；If-Match 为当前版本号（409）；
+  // 审计 employment.entry_email_rules.update / employment_settings
+  'GET /entry-email-rules': configurationView(SETTINGS, SETTINGS_FIELDS),
+  'PUT /entry-email-rules': configuration(
+    SETTINGS,
+    'update',
+    SETTINGS_FIELDS,
+    auditedConfigWrite('employment_settings'),
+  ),
   // body 严格 { name, valueType, objectType }（400）；If-Match 须为 0（createCustomField 断言）；每类型上限 200 → 503；
   // 审计 employment.custom_field.create / employment_custom_field
   'POST /custom-fields': configuration(
@@ -952,14 +973,17 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     byId,
   ),
   // ---- employment/entry-routes.ts：R2 BE-2a 待入职状态动作（34 EN-R8 / R9 / R10 / R14）---------------------------------
-  // 办理入职：If-Match = 业务 revision；body 严格 { probation }（400）；readContext('object.update') + Employment.Edit（命令式，
+  // 办理入职：If-Match = 业务 revision；body 严格 { probation, contract? }（400；contract = 合同字段白名单，BE-2b，同事务调
+  // generateContractForBusiness，合同权限 / 范围按合同对象重验，失败整笔回滚；
+  // 字段创建权 + 合同“新建”按钮 + 合同数据范围由 CommandGuard.before 在命令事务内复核，首次 / 重放 / 回查三个出口都覆盖）；
+  // readContext('object.update') + Employment.Edit（命令式，
   // 空字段集合）+ authorizeBusinessWrite（写入口径 404「任职业务不存在」）；命令内 lockPendingEntry（调动参与者 → 员工 → 业务头，
   // 范围 DEC-193）→ 只有待入职可办 409 NOT_PENDING_ENTRY / 已取消 409 ENTRY_CANCELLED → DEC-138 / 139 入职日 × 部门校验（400）
   'POST /pending-entries/:id/complete': object({
     object: EMPLOYMENT,
     operation: 'update',
     button: button('Employment.Edit', 'detail'),
-    guards: [DIRECT_OPERATION, LINKAGE],
+    guards: [DIRECT_OPERATION, LINKAGE, 'employment.entryContract'],
     scope: BUSINESS_WRITE,
     fields: RESPONSE,
     write: employmentCommand([
@@ -1010,6 +1034,25 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
       ],
       { controls: ['remark'] },
     ),
+    ...byId,
+  }),
+  // 生成邮箱（EN-R12）：If-Match = 业务 revision；body 严格 {}（400）；readContext('object.update') + Employment.Edit（命令式）+
+  // authorizeBusinessWrite；命令内 lockPendingEntry（范围 DEC-193；非待入职 409 NOT_PENDING_ENTRY、已取消 409 ENTRY_CANCELLED）；
+  // 只读规则与人员 / 账号邮箱，成功、失败、跳过、无规则都写审计 employment.entry.email_generate，不回写人员档案；
+  // 回执是固定形状（status / email / reason / ruleId / ruleName），  // 用显式投影 emailReceipt 而不是通用任职字段裁剪（否则 email 被裁空）
+  'POST /pending-entries/:id/generate-email': object({
+    object: EMPLOYMENT,
+    operation: 'update',
+    button: button('Employment.Edit', 'detail'),
+    guards: [DIRECT_OPERATION],
+    scope: BUSINESS_WRITE,
+    fields: projector('employment.response', 'employment.emailReceipt'),
+    write: employmentCommand([
+      'lockTransferBusiness',
+      'lockEmploymentBusiness',
+      'assertRevision',
+      'requireScopedEmploymentObject',
+    ]),
     ...byId,
   }),
   // 删除待入职（不可恢复）：object.delete + Employment.Delete；只有待入职可删 409 NOT_PENDING_ENTRY；删除内核同

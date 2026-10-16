@@ -1,4 +1,4 @@
-import { Alert, Button, Drawer, Form, Modal, Space, type FormInstance, type FormItemProps } from 'antd';
+import { Alert, Button, Drawer, Flex, Form, Modal, Space, type FormInstance, type FormItemProps } from 'antd';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ApiError, rejectionMessage } from './client.js';
 import { ui } from './messages.js';
@@ -26,6 +26,9 @@ export interface FormOverlayProps {
   recordKey: string;
   submission?: CommandForm;
   title: string;
+  titleExtra?: ReactNode;
+  footerExtra?: ReactNode;
+  className?: string;
   open: boolean;
   mode?: 'drawer' | 'modal';
   groups: FormGroup[];
@@ -85,11 +88,13 @@ function OpenForm(props: FormOverlayProps) {
   const locked = busy || !!submission?.locked;
   // 重读后按内核 refillDraft 回填（F-142，claude_fe_rules b）：只有改过且当前可提交的字段保留草稿。
   useDraftRefill(submission, submittableOf(props.groups), form);
+  const title = formTitle(props);
   const footer = (
     <Space>
       <Button onClick={props.onClose} disabled={busy}>
         {ui.cancel}
       </Button>
+      {props.footerExtra}
       <Button type="primary" disabled={locked} loading={busy} onClick={() => form.submit()}>
         {ui.save}
       </Button>
@@ -131,7 +136,8 @@ function OpenForm(props: FormOverlayProps) {
     <Modal
       open
       width={800}
-      title={props.title}
+      rootClassName={props.className}
+      title={title}
       onCancel={props.onClose}
       closable={!busy}
       maskClosable={!busy}
@@ -143,8 +149,8 @@ function OpenForm(props: FormOverlayProps) {
   ) : (
     <Drawer
       open
-      rootClassName="form-overlay"
-      title={props.title}
+      rootClassName={props.className ? `form-overlay ${props.className}` : 'form-overlay'}
+      title={title}
       width={560}
       onClose={props.onClose}
       closable={busy ? false : { placement: 'end' }}
@@ -154,6 +160,16 @@ function OpenForm(props: FormOverlayProps) {
     >
       {content}
     </Drawer>
+  );
+}
+
+function formTitle({ title, titleExtra }: Pick<FormOverlayProps, 'title' | 'titleExtra'>) {
+  if (titleExtra === undefined || titleExtra === null) return title;
+  return (
+    <Flex align="center" justify="space-between" gap={16}>
+      <span>{title}</span>
+      <Flex flex="none">{titleExtra}</Flex>
+    </Flex>
   );
 }
 

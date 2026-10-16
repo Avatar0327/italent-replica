@@ -173,6 +173,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/contracts/service.ts#assertNoInFlight',
   ],
   'apps/api/src/modules/contracts/ports.ts#changeContractForTransfer': ['#portCommand'],
+  'apps/api/src/modules/contracts/ports.ts#generateContractForBusiness': ['#portCommand'],
   'apps/api/src/modules/contracts/ports.ts#portCommand': [
     '#constraintName',
     'apps/api/src/modules/contracts/service.ts#createCommand',
