@@ -9,4 +9,7 @@ export const GRAPH: Graph = {
   'packages/domain/src/employment/employee-status.ts#ENTRY_STATUS_CODES': ['#ENTRY_STATUS'],
   'packages/domain/src/employment/employee-status.ts#isEmployeeStatusCode': ['#EMPLOYEE_STATUS_CODES'],
   'packages/domain/src/employment/employee-status.ts#isEntryStatusCode': ['#ENTRY_STATUS_CODES'],
+  'packages/domain/src/employment/entry-email.ts#EMAIL_PREFIX_FIELD_CODES': ['#EMAIL_PREFIX_FIELDS'],
+  'packages/domain/src/employment/entry-email.ts#normalizeEmailDomain': ['#DOMAIN_PATTERN'],
+  'packages/domain/src/employment/exit.ts#EXIT_DICTIONARY_KINDS': ['#EXIT_DICTIONARIES'],
 };

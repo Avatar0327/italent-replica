@@ -1,7 +1,9 @@
 import { Alert, Button, Collapse, Descriptions, Empty, Space, Steps, Table, Tag, Typography } from 'antd';
 import { useEffect, useState, type ReactNode } from 'react';
+import { Link } from 'react-router';
 import { idpDemoBasic, idpDemoReview } from '../demo-stubs/idp.js';
 import { Failure, useRead } from '../evaluation/runtime.js';
+import { ApiError } from '../foundation/client.js';
 import { DecisionNote } from '../foundation/DecisionNote.js';
 import { PageState } from '../foundation/PageState.js';
 import { slotKey } from '../foundation/forms/slot.js';
@@ -11,8 +13,19 @@ import { IDP_API, useCommand } from './api.js';
 import type { InterventionKind } from './Interventions.js';
 import { CommandNotice } from './listing.js';
 import { t } from './messages.js';
-import { display, period, planActions, statusText, taskActions, type PlanAction, type TaskAction } from './model.js';
+import {
+  display,
+  period,
+  planActions,
+  reviewStage,
+  statusText,
+  taskActions,
+  type PlanAction,
+  type TaskAction,
+} from './model.js';
+import { OWN_PLANS_PATH, TUTOR_PLANS_PATH } from './paths.js';
 import { GoalTasks, type TaskWriter } from './PlanTasks.js';
+import { ReviewForm } from './ReviewForm.js';
 import type { KeyInfoRow, PlanDetail, PlanGoal, PlanModule, PlanSummary, Stage } from './types.js';
 import { useNames } from './useNames.js';
 
@@ -22,6 +35,8 @@ interface Props {
   can(action: PlanAction): boolean;
   edit(plan: PlanSummary): void;
   intervene(kind: InterventionKind, plan: PlanSummary): void;
+  /** 无权限页“查看其它…”回到哪个列表：员工本人回个人发展计划，其余（指导人、审批人、HR）回我辅导的发展计划。 */
+  others: 'own' | 'tutoring';
 }
 /** 详情动作：编辑、开始、跳转、转交（原站转交只在详情发起）与删除；按状态 ∩ 授权给出。 */
 const DETAIL_ACTIONS: readonly PlanAction[] = ['update', 'start', 'jump', 'transfer', 'delete'];
@@ -40,7 +55,7 @@ function usePlan(id: string) {
  * 计划详情整页（原站 05）：标题为员工姓名，下方“计划 / 周期 / 指导人”，阶段进度条与当前步骤，
  * 模块按模板顺序折叠展开；任务的增删改按服务端返回的节点按钮开放（B2_05 / B2_06）。
  */
-export function PlanDetailPage({ id, onBack, can, edit, intervene }: Props) {
+export function PlanDetailPage({ id, onBack, can, edit, intervene, others }: Props) {
   const api = useApiClient();
   const detail = usePlan(id);
   const plan = detail.plan;
@@ -52,6 +67,7 @@ export function PlanDetailPage({ id, onBack, can, edit, intervene }: Props) {
     { action: 'task' },
   );
   const back = <Button onClick={onBack}>{t.back}</Button>;
+  if (!plan && denied(detail.error)) return <NoVisibleModule others={others} />;
   if (!plan)
     return (
       <section aria-label={t.plans} className="idp-detail">
@@ -119,6 +135,29 @@ export function PlanDetailPage({ id, onBack, can, edit, intervene }: Props) {
   );
 }
 
+/**
+ * 详情接口看得到计划才会返回 403，唯一原因是模板除基本信息外没有模块（F-164 IDP_PLAN_NO_VISIBLE_MODULE）；
+ * 看不到的计划返回 404，仍走通用失败页。
+ */
+const denied = (error: unknown) => error instanceof ApiError && error.kind === 'forbidden';
+
+/** 原站无权限空状态（B5_23 / B5_14 / B5_46）：只有提示与“查看其它…”链接，没有重试和返回按钮。 */
+function NoVisibleModule({ others }: Pick<Props, 'others'>) {
+  const to = others === 'own' ? OWN_PLANS_PATH : TUTOR_PLANS_PATH;
+  return (
+    <section aria-label={t.denied.title} className="idp-detail idp-denied">
+      <Empty
+        description={
+          <Space size="large">
+            <span>{t.denied.title}</span>
+            <Link to={to}>{others === 'own' ? t.denied.own : t.denied.tutoring}</Link>
+          </Space>
+        }
+      />
+    </section>
+  );
+}
+
 function DetailActions({
   plan,
   can,
@@ -167,8 +206,26 @@ function ModuleBody(props: { plan: PlanDetail; module: PlanModule; groups: Group
   if (module.moduleType === 'talent_review') return <DemoBlock note={t.demoReview} rows={idpDemoReview} />;
   if (module.moduleType === 'key_info') return <KeyInfo info={plan.keyInfo} />;
   if (module.moduleType === 'analysis') return <Analyses rows={groups.analyses.of(module.id)} />;
-  if (module.moduleType === 'review' || module.moduleType === 'summary')
-    return <Reviews rows={groups.reviews.of(module.id)} stages={plan.stages} />;
+  if (module.moduleType === 'review' || module.moduleType === 'summary') {
+    const rows = groups.reviews.of(module.id);
+    const stage = reviewStage(plan, module);
+    if (!stage) return <Reviews rows={rows} stages={plan.stages} />;
+    // 当前阶段在表单里填写，其它阶段的回顾只读列在下面
+    const past = rows.filter((row) => row.stageId !== stage.id);
+    return (
+      <>
+        {/* 阶段或审批实例变了就重建表单：没提交过的上一阶段输入不带进新阶段（F-164 第 3 轮 P2） */}
+        <ReviewForm
+          key={`${stage.id}|${stage.approvalInstanceId ?? ''}`}
+          plan={plan}
+          module={module}
+          stage={stage}
+          saved={writer.saved}
+        />
+        {!!past.length && <Reviews rows={past} stages={plan.stages} titled />}
+      </>
+    );
+  }
   if (module.moduleType === 'goal') {
     const { actions, reason } = taskActions(plan, module);
     return (
@@ -214,7 +271,7 @@ function Analyses({ rows }: { rows: AnalysisRow[] }) {
 }
 
 /** 回顾 / 总结：每个阶段一份总结与改进方法（plan-routes 详情 reviews，阶段名取自阶段进度；阶段被裁剪时显示无权查看）。 */
-function Reviews({ rows, stages }: { rows: ReviewRow[]; stages?: Stage[] }) {
+function Reviews({ rows, stages, titled }: { rows: ReviewRow[]; stages?: Stage[]; titled?: boolean }) {
   if (!rows.length) return <Empty description={t.noContent} />;
   const stageName = (id?: string) => stages?.find((stage) => stage.id === id)?.name ?? t.noAccess;
   return rows.map((row, index) => (
@@ -222,7 +279,7 @@ function Reviews({ rows, stages }: { rows: ReviewRow[]; stages?: Stage[] }) {
       key={index}
       size="small"
       column={1}
-      title={rows.length > 1 ? stageName(row.stageId) : undefined}
+      title={titled || rows.length > 1 ? stageName(row.stageId) : undefined}
       items={[
         { key: 'summary', label: t.review.summary, children: text(row.summary) },
         { key: 'improvement', label: t.review.improvement, children: text(row.improvement) },

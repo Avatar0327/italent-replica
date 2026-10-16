@@ -5,6 +5,7 @@ import { orgCreateBody, orgCreateDate, orgCreateResource, type OrgRow } from './
 import { PersonSelect } from './PersonFields.js';
 import { type PageAccess } from './page-support.js';
 import { useRecordCommand } from './record-command.js';
+import { info } from './OrgEditor.js';
 import { detailText, pageText as m } from './messages.js';
 
 interface Props {
@@ -33,7 +34,7 @@ function CreateParentSelect(props: DateProps) {
 function CreatePersonSelect(props: DateProps) {
   return <PersonSelect date={useCreateDate(props)} value={props.value} onChange={props.onChange} />;
 }
-// 原站新建组织弹窗：生效日期、上级、编码、名称、简称在前；接口没有的字段（部门职责等）列入后端缺口，不在此占位。
+// 原站新建组织弹窗（B2_08）：顶部确认说明，生效日期、上级、编码、名称、简称在前；接口没有的字段（部门职责等）列入后端缺口，不在此占位。
 function createFields(access: PageAccess, asOf: string): FormField[] {
   const dateAccess = access.field('establishedOn');
   const follow = dateAccess.visible && dateAccess.editable;
@@ -45,15 +46,16 @@ function createFields(access: PageAccess, asOf: string): FormField[] {
     rules: required ? [{ required: true, message: m.required }] : undefined,
   });
   return [
+    info('__hint', m.notice, m.createNotice),
     // 接口没有单独的生效日期：首个版本从设立日期开始（DEC-130），原站此处叫「生效日期」。
     { ...field('establishedOn', m.date, <TenantDatePicker />, true), display: asOf },
     field('adminParent', detailText.admin, <CreateParentSelect asOf={asOf} follow={follow} />, true),
-    field('code', m.code, <Input maxLength={64} />),
-    field('name', m.name, <Input maxLength={200} />, true),
-    field('shortName', m.shortName, <Input maxLength={100} />, true),
+    field('code', m.formCode, <Input maxLength={64} />),
+    field('name', m.formName, <Input maxLength={200} />, true),
+    field('shortName', m.formShortName, <Input maxLength={100} />, true),
     field('personInChargeId', m.personInChargeId, <CreatePersonSelect asOf={asOf} follow={follow} />),
     field('hrbpId', m.hrbpId, <CreatePersonSelect asOf={asOf} follow={follow} />),
-    field('location', m.location, <Input maxLength={500} />),
+    field('location', m.workplace, <Input maxLength={500} />),
   ];
 }
 export function OrgCreate(props: Props) {

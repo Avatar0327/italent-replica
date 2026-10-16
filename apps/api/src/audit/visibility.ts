@@ -493,7 +493,16 @@ const RULES: readonly Rule[] = [
     },
   },
   {
-    types: ['employment-record', 'employment-business', 'transfer-request', 'employment_assignment'],
+    // R2-T03：离职单、撤销记录、效果台账与任职业务同一口径（设计 §9；写入时显式传 scope.employeeId）
+    types: [
+      'employment-record',
+      'employment-business',
+      'transfer-request',
+      'employment_assignment',
+      'exit-request',
+      'exit-cancellation',
+      'exit-effect',
+    ],
     objectCode: EMPLOYMENT,
     visible: (scope, row, viewer) => {
       const owner = ownedBy(row, employmentCreator(viewer.tenantId, row.objectId, true));
@@ -787,6 +796,7 @@ interface ConfigFields {
 const CONFIG_FIELDS_BY_TYPE: Readonly<Record<string, ConfigFields>> = {
   employment_settings: { code: 'TenantBase.EmploymentSettings' },
   transfer_settings: { code: 'TenantBase.EmploymentSettings' },
+  exit_dictionary: { code: 'TenantBase.EmploymentSettings' },
   employment_custom_field: { code: 'TenantBase.EmploymentCustomField' },
   'approval-process': { code: 'TenantBase.ApprovalProcess' },
   transfer_form: {

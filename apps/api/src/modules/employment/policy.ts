@@ -124,6 +124,7 @@ const LINKAGE = 'employment.linkage';
 const RESPONSE = projector('employment.response', 'employment.response');
 const SETTINGS_FIELDS = shape('employment.settings');
 const CUSTOM_FIELD_FIELDS = shape('employment.customField');
+const EXIT_DICTIONARY_KEYS = ['id', 'code', 'name', 'enabled', 'displayOrder', 'revision'] as const;
 
 /** 调动发起人 → 按钮：hr → Transfer.Hr、manager → Transfer.Manager、employee → Transfer.Self（detail；access.ts ROLE_BUTTONS）。 */
 const TRANSFER_INITIATORS = ['hr', 'manager', 'employee'] as const satisfies readonly TransferInitiator[];
@@ -608,7 +609,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
         'requireScopedEmploymentObject',
         'requireLinkedEmploymentRecord',
       ],
-      { controls: ['loginEmail'] },
+      { controls: ['loginEmail', 'pendingEntry', 'probation'] },
     ),
     ...byId,
   }),
@@ -776,6 +777,17 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     scope: listScope('module.scopeSql'),
     fields: RESPONSE,
   }),
+  // ---- employment/entry-routes.ts：R2 BE-2b 入职四视图（34 EN-R1，DEC-484②）---------------------------------------------
+  // view ∈ all / today / cancelled / hired（缺失或不合法 400）；readPageContext(list)：任职记录对象查看 + 列表范围，
+  // listEntryView 的 employmentScopePredicate = scopeSql（人员 / 记录部门 / 创建人，范围为空什么也看不到）；
+  // 记录字段按任职记录可见字段裁剪，姓名 / 工号按人员对象可见字段另行裁剪；hasDataPermission 协议键
+  'GET /pending-entries': object({
+    object: EMPLOYMENT,
+    operation: 'view',
+    button: noButton('列表无按钮'),
+    scope: listScope('module.scopeSql'),
+    fields: projector('employment.response', 'employment.entryViews'),
+  }),
   // 重试生效：If-Match 必填；空体；requireEmploymentWrite('update', {}, RetryActivation)；authorizeBusinessWrite（写入口径）；
   // 命令内 retryActivation 内联校验 revision（409 REVISION_CONFLICT）、未生效 / 未失败 / 未到期 / 前序失败（409）
   'POST /businesses/:id/activation/retry': object({
@@ -931,6 +943,16 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   'GET /settings': configurationView(SETTINGS, SETTINGS_FIELDS),
   // body 严格 { allowDirectTransfer }（400）；审计 employment.settings.update / employment_settings
   'PUT /settings': configuration(SETTINGS, 'update', SETTINGS_FIELDS, auditedConfigWrite('employment_settings')),
+  // R2 BE-2b 入职生成邮箱规则（34 EN-R12）：规则整份挂在任职设置对象的 entryEmailRules 字段上；GET 返回 { revision, entryEmailRules }；
+  // PUT body 严格 { entryEmailRules }（≤ 20 条、名称不重复、组织存在、后缀合法，400）；If-Match 为当前版本号（409）；
+  // 审计 employment.entry_email_rules.update / employment_settings
+  'GET /entry-email-rules': configurationView(SETTINGS, SETTINGS_FIELDS),
+  'PUT /entry-email-rules': configuration(
+    SETTINGS,
+    'update',
+    SETTINGS_FIELDS,
+    auditedConfigWrite('employment_settings'),
+  ),
   // body 严格 { name, valueType, objectType }（400）；If-Match 须为 0（createCustomField 断言）；每类型上限 200 → 503；
   // 审计 employment.custom_field.create / employment_custom_field
   'POST /custom-fields': configuration(
@@ -948,6 +970,136 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     'update',
     CUSTOM_FIELD_FIELDS,
     auditedConfigWrite('employment_custom_field'),
+    byId,
+  ),
+  // ---- employment/entry-routes.ts：R2 BE-2a 待入职状态动作（34 EN-R8 / R9 / R10 / R14）---------------------------------
+  // 办理入职：If-Match = 业务 revision；body 严格 { probation, contract? }（400；contract = 合同字段白名单，BE-2b，同事务调
+  // generateContractForBusiness，合同权限 / 范围按合同对象重验，失败整笔回滚；
+  // 字段创建权 + 合同“新建”按钮 + 合同数据范围由 CommandGuard.before 在命令事务内复核，首次 / 重放 / 回查三个出口都覆盖）；
+  // readContext('object.update') + Employment.Edit（命令式，
+  // 空字段集合）+ authorizeBusinessWrite（写入口径 404「任职业务不存在」）；命令内 lockPendingEntry（调动参与者 → 员工 → 业务头，
+  // 范围 DEC-193）→ 只有待入职可办 409 NOT_PENDING_ENTRY / 已取消 409 ENTRY_CANCELLED → DEC-138 / 139 入职日 × 部门校验（400）
+  'POST /pending-entries/:id/complete': object({
+    object: EMPLOYMENT,
+    operation: 'update',
+    button: button('Employment.Edit', 'detail'),
+    guards: [DIRECT_OPERATION, LINKAGE, 'employment.entryContract'],
+    scope: BUSINESS_WRITE,
+    fields: RESPONSE,
+    write: employmentCommand([
+      'lockTransferBusiness',
+      'lockEmploymentBusiness',
+      'assertRevision',
+      'requireScopedEmploymentObject',
+      'requireLinkedEmploymentRecord',
+    ]),
+    ...byId,
+  }),
+  // 取消入职：body 严格 { reason?（5 项枚举）, remark? }（400）；重复取消 409 ENTRY_STATUS_UNCHANGED；审计 employment.record.status
+  'POST /pending-entries/:id/cancel': object({
+    object: EMPLOYMENT,
+    operation: 'update',
+    button: button('Employment.Edit', 'detail'),
+    guards: [DIRECT_OPERATION],
+    scope: BUSINESS_WRITE,
+    fields: RESPONSE,
+    write: employmentCommand([
+      'lockTransferBusiness',
+      'lockEmploymentBusiness',
+      'assertRevision',
+      'requireScopedEmploymentObject',
+    ]),
+    ...byId,
+  }),
+  // 改期入职：body 严格 { effectiveDate（必填）, remark? }（400）；requireEmploymentWrite 按 { effectiveDate } 校验字段写权限
+  // （无该字段写权限 403，不落库）；先删原待入职、再按新日期、原业务类型与字段重建（同事务，记录 ID 变更）；
+  // 后面还有任职记录 / 在途申请 → 删除一步拒绝，整笔回滚；入职日 × 部门校验同添加（DEC-138 / 139）
+  'POST /pending-entries/:id/postpone': object({
+    object: EMPLOYMENT,
+    operation: 'update',
+    button: button('Employment.Edit', 'detail'),
+    guards: [DIRECT_OPERATION, LINKAGE],
+    scope: BUSINESS_WRITE,
+    fields: RESPONSE,
+    write: employmentWrite(
+      'body',
+      [
+        'lockTransferBusiness',
+        'lockEmploymentBusiness',
+        'assertRevision',
+        'requireScopedEmploymentObject',
+        'requireLinkedEmploymentRecord',
+        'assertNoPendingApplication',
+        'lockEmploymentEmployee',
+      ],
+      { controls: ['remark'] },
+    ),
+    ...byId,
+  }),
+  // 生成邮箱（EN-R12）：If-Match = 业务 revision；body 严格 {}（400）；readContext('object.update') + Employment.Edit（命令式）+
+  // authorizeBusinessWrite；命令内 lockPendingEntry（范围 DEC-193；非待入职 409 NOT_PENDING_ENTRY、已取消 409 ENTRY_CANCELLED）；
+  // 只读规则与人员 / 账号邮箱，成功、失败、跳过、无规则都写审计 employment.entry.email_generate，不回写人员档案；
+  // 回执是固定形状（status / email / reason / ruleId / ruleName），  // 用显式投影 emailReceipt 而不是通用任职字段裁剪（否则 email 被裁空）
+  'POST /pending-entries/:id/generate-email': object({
+    object: EMPLOYMENT,
+    operation: 'update',
+    button: button('Employment.Edit', 'detail'),
+    guards: [DIRECT_OPERATION],
+    scope: BUSINESS_WRITE,
+    fields: projector('employment.response', 'employment.emailReceipt'),
+    write: employmentCommand([
+      'lockTransferBusiness',
+      'lockEmploymentBusiness',
+      'assertRevision',
+      'requireScopedEmploymentObject',
+    ]),
+    ...byId,
+  }),
+  // 删除待入职（不可恢复）：object.delete + Employment.Delete；只有待入职可删 409 NOT_PENDING_ENTRY；删除内核同
+  // DELETE /businesses/:id（transitionEmployment delete，在途申请 409）
+  'DELETE /pending-entries/:id': object({
+    object: EMPLOYMENT,
+    operation: 'delete',
+    button: button('Employment.Delete', 'detail'),
+    guards: [DIRECT_OPERATION, LINKAGE],
+    scope: BUSINESS_WRITE,
+    fields: RESPONSE,
+    write: employmentCommand([
+      'lockTransferBusiness',
+      'lockEmploymentBusiness',
+      'assertRevision',
+      'requireScopedEmploymentObject',
+      'assertNoPendingApplication',
+      'requireLinkedEmploymentRecord',
+    ]),
+    ...byId,
+  }),
+  // ---- employment/exit-routes.ts：R2-T03 离职三个字典（设计 §2.1 / §4 / §9.1）-----------------------------------------
+  // :dict ∉ types / reasons / whereabouts → 400；enabled 查询非法 → 400；字典无组织字段，不按范围裁剪，返回固定键
+  'GET /exits/dictionaries/:dict': object({
+    object: EMPLOYMENT,
+    operation: 'view',
+    button: noButton('字典读取无按钮（表单下拉、列表显示名称）'),
+    scope: noScope('离职字典是租户配置，无组织 / 人员字段（设计 §9.1 字典行）'),
+    fields: fixed(EXIT_DICTIONARY_KEYS, 'R2-T03 设计 §2.1：字典项固定键，配置对象不做字段裁剪'),
+    ...byId,
+  }),
+  // body 严格 { code, name, enabled?, displayOrder? }（400）；If-Match 须为 0；编码重复（不分大小写）→ 409
+  // EXIT_DICTIONARY_CODE_TAKEN；审计 exit_dictionary.save / exit_dictionary
+  'POST /exits/dictionaries/:dict': configuration(
+    SETTINGS,
+    'create',
+    SETTINGS_FIELDS,
+    auditedConfigWrite('exit_dictionary'),
+    byId,
+  ),
+  // 管理员别名先于 :dict / uuidParam 校验（400）；body 严格 { code?, name?, enabled?, displayOrder? }，改编码 → 400
+  // EXIT_DICTIONARY_CODE_IMMUTABLE；项不存在 → 404「离职字典项不存在」；审计 exit_dictionary.save / exit_dictionary
+  'PUT /exits/dictionaries/:dict/:id': configuration(
+    SETTINGS,
+    'update',
+    SETTINGS_FIELDS,
+    auditedConfigWrite('exit_dictionary'),
     byId,
   ),
 });

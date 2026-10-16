@@ -139,3 +139,16 @@
 .idp-link {
   padding: 0;
 }
+
+/* 回顾填写（B4_26）：标题下是填写人与当前节点，保存按钮在区块内居中 */
+.idp-review-form .idp-review-filler {
+  margin-bottom: 12px;
+}
+.idp-review-actions {
+  display: flex;
+  justify-content: center;
+}
+/* 无权限空状态（B5_23）：页面中部只有插画、提示与链接 */
+.idp-denied {
+  padding: 96px 0;
+}

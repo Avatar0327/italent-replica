@@ -7,6 +7,8 @@ import type { HrFormMode } from '../../transfer/hr-form-model.js';
 import type { TransferAction, TransferFormProps } from '../../transfer/types.js';
 import { TransferForm } from './TransferForm.js';
 import { text } from '../../transfer/messages.js';
+import { CommandStatus } from '../../foundation/forms/CommandStatus.js';
+import { fieldLabels } from '../../transfer/hr-conflict.js';
 import { useTransferForm } from './useTransferForm.js';
 type TransferApplicationProps = {
   tenantId: string;
@@ -18,10 +20,11 @@ type TransferApplicationProps = {
 };
 export function TransferApplication(props: TransferApplicationProps) {
   const { tenantId, initiator, runCommand, hrScope, hrForm } = props;
-  const state = useTransferForm(tenantId, initiator, undefined, runCommand, hrScope);
+  const state = useTransferForm(tenantId, initiator, undefined, runCommand, hrScope, hrForm?.mode === 'apply');
   if (hrScope && state.processing) return <p role="status">{text.processing}</p>;
   if (hrScope && state.saved) return <p role="status">{state.commandNotice}</p>;
-  const locked = state.busy || !!state.saved || !!state.unknownCommand;
+  const restoring = state.draft.status === 'loading';
+  const locked = state.busy || restoring || !!state.saved || !!state.unknownCommand;
   return (
     <section className="transfer-content" aria-busy={state.busy || state.loadingPreview}>
       {initiator !== 'employee' ? (
@@ -29,23 +32,14 @@ export function TransferApplication(props: TransferApplicationProps) {
       ) : (
         <PersonalScenarios state={state} locked={locked} />
       )}
-      {(state.commandError || state.error) && (
-        <p role="alert" className="transfer-error">
-          {state.commandError || state.error}
-        </p>
-      )}
-      {state.notice && (
-        <p role="status" className="transfer-notice">
-          {state.notice}
-        </p>
-      )}
+      <Notices state={state} locked={locked} />
       {state.loadingPreview && <p role="status">{text.loading}</p>}
       {!state.model.employees.length && state.model.catalog.today && <p>{text.noEmployees}</p>}
       <FormBody
         hrForm={hrForm}
         model={state.model}
         busy={locked}
-        actionsDisabled={state.loadingPreview}
+        actionsDisabled={state.loadingPreview || restoring || !!state.model.typeConfirmation}
         onSelection={state.selection}
         onField={state.field}
         onReferenceQuery={state.referenceQuery}
@@ -56,6 +50,7 @@ export function TransferApplication(props: TransferApplicationProps) {
         }}
       />
       {state.saved && initiator === 'hr' && <LinkageDetail tenantId={tenantId} businessId={state.saved.id} />}
+      {state.conflict && <CommandStatus submission={state.conflict} labels={fieldLabels(state.model.preview)} />}
       <CommandRecovery state={state} />
       {!state.unknownCommand && (
         <div className="transfer-actions">
@@ -93,6 +88,48 @@ export function TransferApplication(props: TransferApplicationProps) {
         </div>
       )}
     </section>
+  );
+}
+
+type FormState = ReturnType<typeof useTransferForm>;
+function Notices({ state, locked }: { state: FormState; locked: boolean }) {
+  return (
+    <>
+      {(state.commandError || state.error) && (
+        <p role="alert" className="transfer-error">
+          {state.commandError || state.error}
+        </p>
+      )}
+      {state.model.typeConfirmation && (
+        <p role="alert" className="transfer-error">
+          {text.typeConfirmation}
+        </p>
+      )}
+      <DraftBanner state={state} locked={locked} />
+      {state.notice && (
+        <p role="status" className="transfer-notice">
+          {state.notice}
+        </p>
+      )}
+    </>
+  );
+}
+/** F-153（DEC-511）：原站选人后带出上次暂存，顶部提示可“点击清除”；读取失败时不带出，表单照常可填。 */
+function DraftBanner({ state, locked }: { state: FormState; locked: boolean }) {
+  if (state.draft.status === 'failed')
+    return (
+      <p role="alert" className="transfer-error">
+        {text.draftRestoreFailed}
+      </p>
+    );
+  if (state.draft.status !== 'restored') return null;
+  return (
+    <p role="status" className="transfer-notice">
+      {text.draftRestored}{' '}
+      <button type="button" className="transfer-link" disabled={locked} onClick={state.draft.clear}>
+        {text.clearDraft}
+      </button>
+    </p>
   );
 }
 

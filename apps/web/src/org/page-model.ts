@@ -1,5 +1,6 @@
 import { slotKey } from '../foundation/forms/slot.js';
 import { canButton, fieldAccess, type FieldAccess, type ObjectPermission } from '../foundation/permission-model.js';
+import { orgImportRequired } from './import-model.js';
 import { detailText, listText, pageText as m } from './messages.js';
 export interface OrgRow {
   id: string;
@@ -85,12 +86,23 @@ export function pageAccess(permission: ObjectPermission | undefined) {
     can: (button: string, level = 'detail') =>
       canButton(permission, button, level) &&
       (!['create', 'update', 'delete'].includes(button) || permission?.dataOperations[button] === true),
+    /** 只看数据操作权、不看按钮：组织导入逐行只按新建 / 更新数据权与字段写权校验（apps/api 组织导入 writeFields）。 */
+    writes: (operation: 'create' | 'update') => permission?.dataOperations[operation] === true,
   };
 }
 
 type FieldGate = Pick<ReturnType<typeof pageAccess>, 'field'>;
-// 原站「启用的组织」列序；状态由视图与筛选体现，不单独成列。
-const listFields = ['code', 'name', 'fullName', 'location', 'broadType', 'establishedOn', 'startDate', 'stopDate'];
+// 原站「启用的组织」默认列序；状态由视图与筛选体现，默认不成列（可在设置显示字段里加）。
+export const listFields = [
+  'code',
+  'name',
+  'fullName',
+  'location',
+  'broadType',
+  'establishedOn',
+  'startDate',
+  'stopDate',
+];
 // 原站组织单元详情：组织全称排在基本信息最后。
 const detailFields = [
   'code',
@@ -119,6 +131,18 @@ export function orgLabel(field: string, place: 'list' | 'detail') {
 /** 新建与新建下级共用：须有新建数据权、列表「新建」按钮，且名称与上级可编辑（接口要求行政维度上级）。 */
 export function orgCreatable(access: ReturnType<typeof pageAccess>) {
   return access.can('create', 'list') && access.field('name').editable && access.field('parents').editable;
+}
+/**
+ * 导入入口：服务端先查 import@list 按钮，再逐行按新建 / 更新数据权与该行字段写权校验（apps/api 组织导入 writeFields，
+ * 字段即行内去掉控制项的列）。前端按同一口径收紧：两种数据权都没有、或每行都要写的列不可写时不出入口（DEC-502①c）；
+ * 逐行判断见 import-model.ts importRowsDenied。
+ */
+export function orgImportable(access: ReturnType<typeof pageAccess>) {
+  return (
+    access.can('import', 'list') &&
+    (access.writes('create') || access.writes('update')) &&
+    orgImportRequired.every((name) => access.field(name).editable)
+  );
 }
 /** 新建请求体：只发有值的字段，ID 统一小写，上级放进 parents.admin（apps/api 新建组织契约）。 */
 export function orgCreateBody(values: Record<string, unknown>) {

@@ -1,10 +1,13 @@
 /**
  * 待生效业务队列与生效尝试记录（R1-T08）。待生效业务 = 最新状态为「审批通过」的申请单（DEC-125：生效前只有申请单，
- * 不进任职版本链）。同一员工的队列顺序 = 生效日 → 同日结束周期类在前、开新周期类在后（DEC-077 保留部分）
- * → 操作先后（DEC-108：最近一次提交的状态事件序号，与 timeline.ts 落地插入点同一口径）。调用方须先持员工行锁：同员工的全部任职写入都先锁员工（record-store.ts）。
+ * 不进任职版本链）。同一员工的队列顺序 = 最终执行日期 → 计划生效日 → 同日结束周期类在前、开新周期类在后（DEC-077 保留部分）
+ * → 操作先后（DEC-108：最近一次提交的状态事件序号，与 timeline.ts 落地插入点同一口径）；规则只有一份，
+ * 在 domain execution-order.ts（设计 §5.0），下面的 SQL 是它的镜像，验收测试断言两者等价。
+ * 调用方须先持员工行锁：同员工的全部任职写入都先锁员工（record-store.ts）。
  */
 import { employmentActivationAttempts, sql, type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
+import type { SQL } from 'drizzle-orm';
 import { AppError } from '../../errors.js';
 import { auditActor } from '../../system-actor.js';
 import { auditEmployment, employmentCreator, employmentScopePredicate } from './context.js';
@@ -24,7 +27,12 @@ export interface PendingActivation {
   readonly employeeId: string;
   readonly revision: number;
   readonly kind: BusinessKind;
+  /** 最新载荷版本的生效日：迟到顺延后是系统写入的执行日，不是计划日；排序与到期判断不读它。 */
   readonly effectiveDate: string;
+  /** §5.0A 计划生效日（timeline.ts plannedEffectiveDate）：到期截取、同日先后与迟到判定的起点。 */
+  readonly plannedDate: string;
+  /** §5.0 最终执行日期：若在租户今天落地，实际写入的生效日（队列第一排序键；离职在 B3-1 前不顺延，见 QUEUE_SHIFTED_KINDS）。 */
+  readonly finalDate: string;
   /** 申请单上显式填写的调入部门 / 职位（含向后更新同步过来的值）；未填时为空，继承值由生效时解析。 */
   readonly departmentId: string | null;
   readonly positionId: string | null;
@@ -54,11 +62,47 @@ export const pendingActivationState = (timezone: string) => sql`(s.state='approv
     AND NOT EXISTS (SELECT 1 FROM employment_outbox o WHERE o.tenant_id=b.tenant_id AND o.business_id=b.id
       AND o.event_type='employment.transfer.linked'))`;
 
+export type ShiftedKind = 'transfer' | 'leave';
+
+/**
+ * 最终执行日期的 SQL 镜像（domain `finalExecutionDate`，设计 §5.0）：`shifted` 里的 kind 按 greatest(计划日, 今天)
+ * （resolveLateExecution / resolveLateLeave 的投影，DEC-272），其余 kind 按计划日不顺延；默认调动与离职都顺延，与纯函数逐点等价。
+ * `planned` 一律传 §5.0A 的计划生效日（`plannedEffectiveDate`），不再各处自读载荷日。
+ */
+export function finalExecutionDateSql(
+  kind: SQL,
+  planned: SQL,
+  today: string,
+  shifted: readonly ShiftedKind[] = ['transfer', 'leave'],
+): SQL {
+  const kinds = sql.join(
+    shifted.map((item) => sql`${item}`),
+    sql`, `,
+  );
+  return sql`(CASE WHEN ${kind}::text IN (${kinds}) THEN greatest(${planned}, ${today}::date) ELSE ${planned} END)`;
+}
+
+/**
+ * 公开路径（待生效队列排序、向后更新候选）当前按“最终执行日期”顺延的 kind。离职不在其中：实际顺延与落地（设计 §5.1 步骤 0，
+ * `activateExit` / `postponeLateExit`）在 B3-1 才实现，现在只排序会出现“队列说 10-18、落地仍写 10-16”的两套日期。
+ * B3-1 与顺延关口同一个 PR 把 'leave' 加进来；SQL ≡ 纯函数对离职的等价性已由 finalExecutionDateSql 默认参数的验收测试锁住。
+ */
+export const QUEUE_SHIFTED_KINDS: readonly ShiftedKind[] = ['transfer'];
+
 /** 一名员工的全部待生效业务，按生效顺序排列（未到期的也在内，调用方按业务日截取）。 */
-export async function pendingActivations(tx: Tx, ctx: EmploymentContext, employeeId: string) {
+export async function pendingActivations(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  shifted: readonly ShiftedKind[] = QUEUE_SHIFTED_KINDS,
+) {
+  const today = tenantLocalDate(ctx.now, ctx.timezone);
+  const planned = plannedEffectiveDate(ctx.tenantId, sql`b.id`, sql`p.effective_date`);
+  const finalDate = finalExecutionDateSql(sql`p.kind`, planned, today, shifted);
   const rows = rowsOf<PendingActivation>(
     await tx.execute(sql`
     SELECT b.id, b.employee_id AS "employeeId", b.revision, p.kind, p.effective_date::text AS "effectiveDate",
+      ${planned}::text AS "plannedDate", ${finalDate}::text AS "finalDate",
       CASE WHEN 'preset:departmentId' = ANY(p.explicit_field_codes) THEN p.department_id END AS "departmentId",
       CASE WHEN 'preset:positionId' = ANY(p.explicit_field_codes) THEN p.position_id END AS "positionId",
       (s.state='effective') AS materialized,
@@ -83,10 +127,7 @@ export async function pendingActivations(tx: Tx, ctx: EmploymentContext, employe
       WHERE a.tenant_id=b.tenant_id AND a.business_id=b.id ORDER BY a.attempt_no DESC LIMIT 1) a ON true
     WHERE b.tenant_id=${ctx.tenantId} AND b.employee_id=${employeeId}::uuid
       AND ${pendingActivationState(ctx.timezone)}
-    ORDER BY CASE WHEN p.kind='transfer'
-      -- resolveLateExecution（DEC-272）的 SQL 投影：迟到调动按实际执行日排队
-      THEN greatest(p.effective_date,${tenantLocalDate(ctx.now, ctx.timezone)}::date) ELSE p.effective_date END,
-      ${plannedEffectiveDate(ctx.tenantId, sql`b.id`, sql`p.effective_date`)},
+    ORDER BY ${finalDate}, ${planned},
       p.kind IN ('hire', 'rehire', 'retire_rehire'), ${operationKey(ctx.tenantId, sql`b.id`)}
     LIMIT ${QUEUE_LIMIT + 1}
   `),

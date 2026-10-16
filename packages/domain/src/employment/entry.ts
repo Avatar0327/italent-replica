@@ -1,0 +1,22 @@
+/**
+ * 待入职状态动作的纯数据常量（R2 BE-2a；34 EN-R8 / R9，DEC-484② / F-129）。
+ * 取消入职原因：原站为下拉 5 项、非必填；证据只到“5 项下拉”，是否可配置未验证，首版固定枚举（DEC-402）。
+ */
+export const ENTRY_CANCEL_REASONS = {
+  compensation: '薪酬福利不满意',
+  growth: '发展空间受限',
+  better_offer: '有更好的工作机会',
+  personal: '个人原因',
+  other: '其他原因',
+} as const;
+export type EntryCancelReason = keyof typeof ENTRY_CANCEL_REASONS;
+export const ENTRY_CANCEL_REASON_CODES = Object.keys(ENTRY_CANCEL_REASONS) as [
+  EntryCancelReason,
+  ...EntryCancelReason[],
+];
+
+export const ENTRY_ACTIONS = ['cancel', 'postpone'] as const;
+export type EntryAction = (typeof ENTRY_ACTIONS)[number];
+
+/** 取消说明 / 改期备注的长度上限。 */
+export const ENTRY_REMARK_MAX = 500;

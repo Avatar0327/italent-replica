@@ -12,6 +12,7 @@ import {
   assignLatest,
   assignValues,
   BASE,
+  isPreferences,
   preferenceBody,
   preferenceLatest,
   preferenceReceipt,
@@ -114,7 +115,7 @@ const PREFS_PATH = `${BASE}/maps/position/preferences`;
  */
 export function PositionFilter({ saved }: { saved(): void }) {
   const [open, setOpen] = useState(false);
-  const prefs = useRead<Preferences>(PREFS_PATH);
+  const prefs = usePreferences();
   if (!prefs.data) return <Failure error={prefs.error} retry={prefs.reload} />;
   const view = prefs.data;
   const show = () => setOpen(true);
@@ -144,6 +145,17 @@ export function PositionFilter({ saved }: { saved(): void }) {
   );
 }
 const yesNo = (value?: boolean) => (value ? s.settings.yes : s.settings.no);
+
+/**
+ * 偏好在读取边界按真实 DTO 核对（F-180）：形状异常时只在筛选条局部报错、可刷新重读，
+ * 不把异常带进抽屉渲染而让整页进错误边界；也不拿默认值顶替，异常保持可见。
+ */
+function usePreferences() {
+  const read = useRead<unknown>(PREFS_PATH);
+  if (read.data === undefined || isPreferences(read.data))
+    return { ...read, data: read.data as Preferences | undefined };
+  return { ...read, data: undefined, error: new Error(s.map.preferencesInvalid) };
+}
 
 /**
  * 偏好抽屉：快照是读回的整份偏好（含抽屉外的隐藏组织、只看关键岗位），冲突重读后取最新整份，

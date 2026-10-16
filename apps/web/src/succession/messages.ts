@@ -94,6 +94,7 @@ export const s = {
     orgDepth: '展示组织层级',
     depthLabels: { 2: '二级', 3: '三级', 4: '四级' } as Record<number, string>,
     advancedFilter: '高级筛选',
+    preferencesInvalid: '个人筛选读取结果异常，请刷新后重试',
     noLevel: '未评定',
     noLegend: '当前地图没有已评定的等级',
     showWithoutSuccessor: '展示无继任者的职位',

@@ -65,7 +65,7 @@ export function useCollection<T>(path: string | undefined) {
 type Method = 'POST' | 'PATCH' | 'DELETE';
 /**
  * 干预、状态动作、复制与任务写入统一走 F-123 页面级提交内核（DEC-464/473/475）：
- * 命令状态按“租户 × 身份 × 资源”存在页面根部，弹窗关闭再打开仍是同一条命令；
+ * 命令状态按“租户 × 身份 × 资源”存在 IDP 模块级存储（commands.tsx 的 IdpCommands），弹窗关闭再打开、切换入口回来仍是同一条命令；
  * 处理中 / 结果未知 / 冲突时锁住且不发新请求，不自动盲重试（AGENTS.md §10 并发 / 幂等）。
  * 只有已明确拒绝或已完成的命令才清掉，开始下一条新命令。
  * resource 是对象的恢复槽（slotKey），action 是本入口在该对象上的动作，记进槽上下文（F-147）：

@@ -205,6 +205,25 @@ describe('F-155a 回顾必填只拦“同意”（第 1 轮 P2-1）', () => {
   });
 });
 
+// F-164 第 1 轮 P2-4：前端提交前已查两项非空、缺项不发请求；后端 IDP_REVIEW_REQUIRED 仍是最终防线，绕过前端照样拦。
+describe('F-155b 绕过前端直接同意：后端仍按回顾必填拦下', () => {
+  it('两项都只保存了空白，直接调审批“同意”：409 IDP_REVIEW_REQUIRED 指出两项，实例与待办不动', async () => {
+    const { w, plan } = await atMidReview('idp-f155b-bypass');
+    await w.fillReview(plan, { summary: '  \n　 ', improvement: '\t' });
+    const before = await w.instanceOf(plan, 2);
+    const response = await w.submitRaw(await w.readPlan(plan.id), 2, w.employee.userId);
+    expect(await errorBody(response)).toMatchObject({
+      status: 409,
+      code: 'CONFLICT',
+      details: { reason: 'IDP_REVIEW_REQUIRED', fields: ['summary', 'improvement'] },
+    });
+    const after = await w.instanceOf(plan, 2);
+    expect(after.revision).toBe(before.revision);
+    expect(after.currentNodeKey).toBe('employee_mid');
+    await w.pendingTask(plan, 2, w.employee.userId);
+  });
+});
+
 describe('F-155a 阶段状态显示', () => {
   it('每个阶段状态都有文案，被跳过的阶段显示“已终止”', () => {
     expect(STAGE_STATUSES.filter((status) => !t.stageStatus[status])).toEqual([]);
