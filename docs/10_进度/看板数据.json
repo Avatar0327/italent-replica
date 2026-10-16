@@ -984,6 +984,10 @@
 },
 "log": [
 [
+"10-16 12:11Z",
+"F-192b 已由 00 在 Codex 发起（Astra high，wt-f192b）"
+],
+[
 "10-16 12:10Z",
 "#374（F-196）第 2 轮暂不能合并（1 项 P2）→ 第 3 轮返工"
 ],
@@ -5684,7 +5688,7 @@
 "F-192a",
 "FE-R2b-2"
 ],
-"note": "F-192 ① 界面部分：批量“更多操作”改期入职后补“取消入职”及弹窗 + ②③ 前端回归 · 已拟派发 · Codex Astra high 本地任务（DEC-536/542，15:52Z 前派出）· 分支 codex/F-192b-entry-cancel · 上限 600 行 · 不改 apps/api · Sol high 审 · 待 00 在 Codex 发起",
+"note": "F-192 ① 界面部分：批量“更多操作”改期入职后补“取消入职”及弹窗 + ②③ 前端回归 · 12:11Z 已由 00 在 Codex 本地线程发起（Astra high，工作树 wt-f192b，分支 codex/F-192b-entry-cancel）· 上限 600 行 · 不改 apps/api · PR 号待补 · Sol high 审",
 "mod": "R2",
 "ms": "D2"
 },
