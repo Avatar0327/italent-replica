@@ -56,29 +56,24 @@ const SAMPLES: readonly { module: string; path: string; pick: (rows: Json[]) => 
   { module: 'IDP 计划', path: 'idp/plans?pageSize=200', pick: zz },
 ];
 
-const census = async () => ({
-  samples: await Promise.all(SAMPLES.map(async (s) => s.pick(await itemsOf('admin', s.path)).length)),
-  grants: await Promise.all(
-    (['admin', 'hr'] as const).map(async (key) => {
-      // 授权列表由系统管理员读取（HR 没有授权管理入口）
-      const body = await user.send(
-        await user.persona('admin'),
-        'GET',
-        `/api/tenant/permission/grants?userId=${await user.persona(key)}`,
-      );
-      return ((body.items ?? []) as Json[]).length;
-    }),
-  ),
-});
+/** 逐个请求（不并发）：失败时不留下在途请求去撞已关闭的测试库。 */
+const census = async () => {
+  const samples: number[] = [];
+  for (const sample of SAMPLES) samples.push(sample.pick(await itemsOf('admin', sample.path)).length);
+  const grants: number[] = [];
+  for (const key of ['admin', 'hr'] as const) {
+    // 授权列表由系统管理员读取（HR 没有授权管理入口）
+    const path = `/api/tenant/permission/grants?userId=${await user.persona(key)}`;
+    grants.push((((await user.send(await user.persona('admin'), 'GET', path)).items ?? []) as Json[]).length);
+  }
+  return { samples, grants };
+};
 
 describe('AC-F198-demo-r3-seed 演示种子的 R3 权限与样例', () => {
-  let first: Awaited<ReturnType<typeof census>>;
-
   beforeAll(async () => {
     const created = await seedDemo(database().db, { ...options, progress });
     expect(created.created).toBe(true);
     user = await actors(database().db);
-    first = await census();
   });
 
   it('系统管理员的权限快照里 7 个 R3 应用都可见，且入口对象非空', async () => {
@@ -120,8 +115,9 @@ describe('AC-F198-demo-r3-seed 演示种子的 R3 权限与样例', () => {
   });
 
   it('再跑一次种子：样例条数不变，没有新增授权行', async () => {
+    const before = await census();
     const again = await seedDemo(database().db, { ...options, progress });
     expect(again.created).toBe(false);
-    expect(await census()).toEqual(first);
+    expect(await census()).toEqual(before);
   });
 });
