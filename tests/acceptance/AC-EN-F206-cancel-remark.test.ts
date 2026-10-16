@@ -5,11 +5,15 @@
  * 详情：前端详情由通用 /businesses /records /employees 拼成，没有待入职专用详情接口，不新建（见 PR 描述）。
  */
 import { randomUUID } from 'node:crypto';
+import type { Authorizer } from '@italent/api';
 import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { listEntryView } from '../../apps/api/src/modules/employment/entry-views.js';
+import { registerScopeProvider } from '../../apps/api/src/modules/permission/module-access.js';
+import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.js';
 import { addPending, entryAction, entryWorld, type EntryWorld } from './AC-EN-BE2a-support.js';
+import { tenantApi } from './support/tenant-api.js';
 
 const testDb = useTestDb();
 
@@ -37,7 +41,7 @@ async function restore(w: EntryWorld, recordId: string, effectiveDate: string): 
   return ((await response.json()) as { record: { id: string } }).record.id;
 }
 
-describe('F-206 取消说明读字段', () => {
+describe('F-206(DEC-560) 取消说明读字段', () => {
   it('取消带说明：已取消视图读到该说明；未取消的记录为 null', async () => {
     const w = await entryWorld(testDb().db, 'f206-remark');
     const cancelled = await addPending(w, '2026-10-10', '取消说明员工');
@@ -127,3 +131,36 @@ async function insertCancelAction(
         ${randomUUID()}, ${randomUUID()}::uuid, ${at}::timestamptz)`),
   );
 }
+
+describe('F-206(DEC-560) 取消说明随行可见：数据范围反向', () => {
+  async function cancelledAs(w: EntryWorld, orgIds: readonly string[]): Promise<Item[]> {
+    const authorize: Authorizer = () => true;
+    registerScopeProvider(authorize, {
+      scope: async () => ({
+        ...EMPTY_SCOPE,
+        orgIds,
+        hasDataPermission: orgIds.length > 0,
+        terms: orgIds.length ? [{ dimension: 'organization' as const, orgIds, personIds: [] }] : [],
+      }),
+      authorize: async () => true,
+      fields: async () => new Set(['id', 'employeeId', 'kind', 'effectiveDate', 'revision', 'departmentId']),
+    });
+    const api = tenantApi(w.db, { authorize, clock: () => new Date('2026-10-01T01:00:00.000Z') });
+    const response = await api.request('GET', '/api/tenant/employment/pending-entries?view=cancelled', {
+      user: w.session.user.id,
+      tenant: w.session.tenant.id,
+    });
+    expect(response.status, await response.clone().text()).toBe(200);
+    return ((await response.json()) as { items: Item[] }).items;
+  }
+
+  it('范围内看到说明；范围外 / 范围为空看不到该行，也读不到说明', async () => {
+    const w = await entryWorld(testDb().db, 'f206-scope');
+    const other = await w.session.org(`另一部门-${randomUUID()}`, { establishedOn: '2026-01-01' });
+    const { recordId } = await addPending(w);
+    await cancel(w, recordId, { remark: '范围测试说明' });
+    expect(await cancelledAs(w, [w.org.id])).toMatchObject([{ id: recordId, cancelRemark: '范围测试说明' }]);
+    expect(await cancelledAs(w, [other.id])).toEqual([]);
+    expect(await cancelledAs(w, [])).toEqual([]);
+  });
+});
