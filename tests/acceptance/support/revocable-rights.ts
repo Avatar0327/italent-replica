@@ -43,6 +43,13 @@ export function revocable() {
   return { rights, authorize };
 }
 
+/** 组织维度范围（人员按当前所在组织算），和真实解析器产出的形状一致：只剩 `orgIds` 里的部门。 */
+export const orgScope = (tenantId: string, asOf: string, ...orgIds: string[]): ModuleScope => ({
+  ...EMPTY_SCOPE,
+  hasDataPermission: true,
+  terms: [{ dimension: 'organization', orgIds, personIds: [], personQuery: { kind: 'organization', tenantId, asOf } }],
+});
+
 export type Revoker = readonly [name: string, apply: (rights: ReturnType<typeof revocable>['rights']) => void];
 export const revoke = (deny: (request: Request) => boolean): Revoker['1'] => {
   return (rights) => {

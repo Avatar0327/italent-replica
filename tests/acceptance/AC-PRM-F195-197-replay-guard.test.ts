@@ -19,6 +19,7 @@ import {
   deniesObjectUpdate,
   emptyScope,
   isButton,
+  orgScope,
   revocable,
   revoke,
   snapshot,
@@ -143,6 +144,49 @@ describe.each(PATHS)('F-195 离职记录的$name', (path) => {
     const response = await path.send(x, randomUUID(), revisions);
     expect(response.status, await response.clone().text()).toBe(403);
     expect(await snapshot(x.w.db, x.w.session.tenant.id)).toEqual(before);
+  });
+});
+
+// ---- 历史离职记录的员工当前范围（#372 第 3 轮 P3-1）------------------------------------------------------------------
+
+/** 旧周期在 A（调出部门）离职，员工后来在 B（调入部门）重新入职：被编辑的历史离职记录部门是 A，员工当前部门是 B。 */
+async function rehiredWorld(label: string) {
+  const x = await exitWorld(label);
+  const { revision } = await x.w.session.getEmployee(x.employee.id);
+  await x.w.session.business(
+    x.employee.id,
+    {
+      kind: 'rehire',
+      mode: 'direct',
+      effectiveDate: '2026-10-04',
+      fields: { employType: 'internal', departmentId: x.w.to.id },
+    },
+    revision,
+  );
+  return x;
+}
+const orgRights = (x: ExitWorld, ...orgIds: string[]) => orgScope(x.w.session.tenant.id, TODAY, ...orgIds);
+
+describe.each(PATHS)('F-195 历史离职记录的$name：员工已在 B 重新入职，范围收窄到只剩 A', (path) => {
+  it('首次成功后收窄：记录部门 A 在范围内但员工当前在 B → 同键重放被拒，业务 / 审计 / 台账不变', async () => {
+    const x = await rehiredWorld(`f195-rehired-${path.name.length}`);
+    const key = randomUUID();
+    const { revisions } = await firstEdit(x, path, key);
+    const before = await snapshot(x.w.db, x.w.session.tenant.id);
+    x.rights.scope = orgRights(x, x.w.from.id);
+    const replay = await path.send(x, key, revisions);
+    expect([403, 404], await replay.clone().text()).toContain(replay.status);
+    expect(await snapshot(x.w.db, x.w.session.tenant.id)).toEqual(before);
+  });
+
+  it('对照：范围含 A 与 B 时同键重放返回原响应', async () => {
+    const x = await rehiredWorld(`f195-rehired-same-${path.name.length}`);
+    const key = randomUUID();
+    const { revisions, first } = await firstEdit(x, path, key);
+    x.rights.scope = orgRights(x, x.w.from.id, x.w.to.id);
+    const replay = await path.send(x, key, revisions);
+    expect(replay.status, await replay.clone().text()).toBe(200);
+    expect(await replay.json()).toEqual(await first.json());
   });
 });
 

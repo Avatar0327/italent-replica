@@ -6,6 +6,8 @@
  * 每个出口：首次成功 → 事务内范围收空 → 同键重放被拒；首次执行时事务内范围已空 → 被拒；失败后回查台账同样复核。
  * 第 3 轮（#372 第 2 轮 P2-1 续）：范围不是收空而是收窄到只剩 A 或只剩 B——创建继承到的部门、已有业务的员工当前范围。
  * DELETE 只追加 deleted 状态、业务头仍可查，能命中原台账；无离职扩展行的旧版离职申请 retry 可成功，也都能成功重放。
+ * 第 4 轮（#372 第 3 轮 P2-1 / P2-2）：事务内重新解析的范围同时用于前置检查、实际执行、提交前结果校验和重放复核——
+ * 首次执行时范围就已收窄到只剩 A（创建继承到 B）要被拒；重放 / 回查还要校验台账里原响应快照（原 201 带 B，业务当前值已改到 A）。
  * 被拒时业务 / 审计 / 台账 / revision 都不变。
  */
 import './support/exit-gate-enforced.js';
@@ -16,7 +18,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type * as Commands from '../../apps/api/src/commands.js';
 import { EMPTY_SCOPE, type ModuleScope } from '../../apps/api/src/modules/permission/scope-types.js';
 import { gateWorld, leaveBody } from './AC-EXIT-gate-support.js';
-import { revocable, snapshot } from './support/revocable-rights.js';
+import { orgScope as orgScopeOf, revocable, snapshot } from './support/revocable-rights.js';
 import { tenantApi } from './support/tenant-api.js';
 
 // 失败后回查：让命令主事务的 guard.before 第一次抛错（模拟并发冲突回滚），runCommand 随后走 replayAfterFailure 的回查出口
@@ -133,7 +135,7 @@ const OPERATIONS: readonly ExitOperation[] = [
     prepare: async (x) => {
       // 可信造数的旧版离职申请没有离职扩展行：批准后生效重试走原有路径（成功时 200），不经 B3-3 的 409
       const id = await x.w.synthetic(x.employee.id, { kind: 'leave', state: 'approved', effectiveDate: '2026-10-05' });
-      // 批准后的一次生效尝试已失败（定时任务不处理离职，这里直接造“失败”的尝试记录）
+      // 批准后的一次生效尝试已失败（定时任务只排除有离职扩展行的申请，旧版无扩展行的离职申请仍会进入调度；这里直接造“失败”的尝试记录）
       await x.w.sqlRows(sql`INSERT INTO employment_activation_attempts
           (tenant_id, employee_id, business_id, attempt_no, outcome, reason, business_date, trigger, command_id)
         VALUES (${x.w.session.tenant.id}, ${x.employee.id}::uuid, ${id}::uuid, 1, 'failed', 'SYNTHETIC_FAILURE',
@@ -236,19 +238,8 @@ describe('F-195 exitGuard 事务内范围复核：目标部门与失败回查', 
 
 // ---- 第 3 轮：非空范围收窄 -----------------------------------------------------------------------------------------
 
-/** 组织维度范围（人员按当前所在组织算），和真实解析器产出的形状一致：只剩 `orgIds` 里的部门。 */
-const orgScope = (x: ExitWorld, ...orgIds: string[]): ModuleScope => ({
-  ...EMPTY_SCOPE,
-  hasDataPermission: true,
-  terms: [
-    {
-      dimension: 'organization',
-      orgIds,
-      personIds: [],
-      personQuery: { kind: 'organization', tenantId: x.w.session.tenant.id, asOf: TODAY },
-    },
-  ],
-});
+const orgScope = (x: ExitWorld, ...orgIds: string[]): ModuleScope =>
+  orgScopeOf(x.w.session.tenant.id, TODAY, ...orgIds);
 
 /** 员工当前在调出部门 A；已有一条 10-15 起调往调入部门 B 的直接任职。10-20 的离职申请实际继承 B。 */
 async function inheritWorld(label: string) {
@@ -357,6 +348,89 @@ describe.each(NARROW_CASES)('F-195 exitGuard 非空范围收窄：$name', (c) =>
     x.rights.scope = c.allowed(x);
     const replay = await send(key);
     expect(replay.status).toBe(first.status);
+    expect(await replay.json()).toEqual(await first.json());
+    expect(await x.snap()).toEqual(before);
+  });
+});
+
+// ---- 第 4 轮：首次执行用事务内范围 + 重放复核原响应快照 ----------------------------------------------------------------
+
+describe.each(NARROW_CASES)('F-195 事务内范围贯穿首次执行与结果校验：$name', (c) => {
+  it('首次执行：入口放行但命令事务内范围已收窄 → 被拒，业务 / 审计 / 台账 / revision 都不变', async () => {
+    const x = await inheritWorld(`f195-first-narrow-${c.name.length}`);
+    const send = await c.prepare(x);
+    const before = await x.snap();
+    x.rights.scope = c.narrowed(x);
+    const response = await send(randomUUID());
+    expect(rejected(response.status), await response.clone().text()).toBe(true);
+    expect(await x.snap()).toEqual(before);
+  });
+
+  it('对照：命令事务内范围含 A 与 B 的合法首次请求照常成功', async () => {
+    const x = await inheritWorld(`f195-first-allowed-${c.name.length}`);
+    const send = await c.prepare(x);
+    x.rights.scope = c.allowed(x);
+    const response = await send(randomUUID());
+    expect(response.status, await response.clone().text()).toBeLessThan(300);
+  });
+});
+
+/** 首次创建返回部门 B 的 201；随后一次合法 PATCH 把这条申请改到 A：业务当前值是 A，台账里的原响应仍带 B。 */
+async function createdThenMovedToA(label: string) {
+  const x = await inheritWorld(label);
+  const { revision } = await x.w.session.getEmployee(x.employee.id);
+  const send: Send = (key) =>
+    x.call('POST', `/employees/${x.employee.id}/businesses`, { ifMatch: revision, body: leaveBody(LATER), key });
+  const key = randomUUID();
+  const first = await send(key);
+  expect(first.status, await first.clone().text()).toBe(201);
+  const created = (await first.clone().json()) as { id: string; revision: number; fields: { departmentId: string } };
+  expect(created.fields.departmentId).toBe(x.w.to.id);
+  const moved = await x.call('PATCH', `/businesses/${created.id}`, {
+    ifMatch: created.revision,
+    body: { fields: { departmentId: x.w.from.id } },
+    key: randomUUID(),
+  });
+  expect(moved.status, await moved.clone().text()).toBe(200);
+  return { x, send, key, first };
+}
+
+describe('F-195 重放复核原响应快照：原 201 带 B，业务当前值已改到 A，范围收窄到只剩 A', () => {
+  it('直接重放：被拒，不返回带 B 的原响应，业务 / 审计 / 台账 / revision 不变', async () => {
+    const { x, send, key } = await createdThenMovedToA('f195-snapshot-direct');
+    const before = await x.snap();
+    x.rights.scope = orgScope(x, x.w.from.id);
+    const replay = await send(key);
+    expect(rejected(replay.status), await replay.clone().text()).toBe(true);
+    expect(await replay.clone().text()).not.toContain(x.w.to.id);
+    expect(await x.snap()).toEqual(before);
+  });
+
+  it('失败后回查：同样被拒；范围含 A 与 B 时回查命中原响应（证明走的是回查出口）', async () => {
+    const { x, send, key, first } = await createdThenMovedToA('f195-snapshot-recheck');
+    const before = await x.snap();
+
+    x.rights.scope = orgScope(x, x.w.from.id, x.w.to.id);
+    hooks.failMainTransaction = true;
+    const same = await send(key);
+    expect(same.status, await same.clone().text()).toBe(201);
+    expect(await same.json()).toEqual(await first.json());
+
+    x.rights.scope = orgScope(x, x.w.from.id);
+    hooks.failMainTransaction = true;
+    const replay = await send(key);
+    expect(rejected(replay.status), await replay.clone().text()).toBe(true);
+    expect(await replay.clone().text()).not.toContain(x.w.to.id);
+    expect(hooks.failMainTransaction).toBe(false);
+    expect(await x.snap()).toEqual(before);
+  });
+
+  it('对照：范围含 A 与 B 的合法请求，同键重放仍返回原响应', async () => {
+    const { x, send, key, first } = await createdThenMovedToA('f195-snapshot-same');
+    const before = await x.snap();
+    x.rights.scope = orgScope(x, x.w.from.id, x.w.to.id);
+    const replay = await send(key);
+    expect(replay.status, await replay.clone().text()).toBe(201);
     expect(await replay.json()).toEqual(await first.json());
     expect(await x.snap()).toEqual(before);
   });
