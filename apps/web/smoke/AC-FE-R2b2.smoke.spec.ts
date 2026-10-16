@@ -518,3 +518,40 @@ for (const action of ['edit', 'complete'])
     await expect(dialog).toHaveCount(0);
     expect(state.writes[0]).toMatchObject({ revision: '8', body: { probation: true } });
   });
+
+for (const [action, status] of [
+  ['edit', 403],
+  ['postpone', 503],
+] as const)
+  test(`AC-FE-R2b2-21 ${action} 换 ID 后读 ${status} 新旧记录共用未知锁`, async ({ page, baseURL }) => {
+    const state = await entryPage(page, baseURL!);
+    let fail = true;
+    await page.route('**/pending-entries?*', (route) =>
+      fail && state.writes.length
+        ? route.fulfill({ status, json: { error: { code: 'UNAVAILABLE', message: '合成读失败' } } })
+        : route.fallback(),
+    );
+    let dialog = await actionDialog(page, action);
+    if (action === 'edit') await pickDate(dialog, '计划入职日期', '2026-10-25');
+    await dialog.getByRole('button', save).click();
+    await expect(dialog.getByRole('button', named('回查原单'))).toBeVisible();
+    expect(state.row.id).toBe(nextId);
+    await dialog.getByRole('button', named('取消')).click();
+    fail = false;
+    await tab(page, '已取消入职').click();
+    await tab(page, '全部待入职').click();
+    await row(page).getByRole('button', named('编辑')).click();
+    dialog = page.getByRole('dialog', { name: /^编辑/ });
+    await expect(dialog.getByRole('button', save)).toBeDisabled();
+    await dialog.getByRole('button', named('取消')).click();
+    dialog = await selectedAction(page, '改期入职');
+    await expect(dialog.getByRole('button', save)).toBeDisabled();
+    await dialog.getByRole('button', named('取消')).click();
+    dialog = await onboard(page);
+    await expect(dialog.getByRole('button', save)).toBeDisabled();
+    await expect(dialog.getByRole('button', named('生成邮箱'))).toBeDisabled();
+    await dialog.getByRole('button', named('取消')).click();
+    dialog = await actionDialog(page, 'delete');
+    await expect(dialog.getByRole('button', named('是'))).toBeDisabled();
+    expect(state.writes).toHaveLength(1);
+  });
