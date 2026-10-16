@@ -1671,6 +1671,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/deletion-guards.ts#assertNoPendingApplication',
     'apps/api/src/modules/employment/deletion-guards.ts#assertRestoredPredecessor',
     'apps/api/src/modules/employment/employee-status.ts#assertRegularizationNotPropagated',
+    'apps/api/src/modules/employment/entry-pending-contract.ts#releasePendingContract',
     'apps/api/src/modules/employment/read-model.ts#loadEmploymentRecord',
     'apps/api/src/modules/employment/record-store.ts#insertEmploymentRow',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
