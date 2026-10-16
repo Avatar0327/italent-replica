@@ -5655,7 +5655,7 @@
 "after": [
 "BE-4d"
 ],
-"note": "只改测试（#362 P3-5 离职测试证据补强）· 已拟派发 · 云端 Claude Sonnet 5.5 High · 分支 claude/F-196-exit-test-evidence · 上限 800 行 · Sol high 审 · 等开会话 / PR",
+"note": "只改测试（#362 P3-5）· 云端 Claude Sonnet 5.5 High 已开会话（session_01BC9emGCN9TKJHjWM7y7WrG）· 分支 claude/F-196-exit-test-evidence · 上限 800 行 · PR 号待补 · Sol high 审",
 "mod": "R2",
 "ms": "D3"
 },
