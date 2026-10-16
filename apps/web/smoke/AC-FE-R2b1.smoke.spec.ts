@@ -219,3 +219,40 @@ test('AC-FE-R2b1-09 每页15条、本地筛选、视图与分页清理选择', a
   await view(page, '已接受Offer');
   await expect(toolbar.getByRole('button', named('转移状态'))).toBeDisabled();
 });
+
+test('AC-FE-R2b1-10 待发数量与二级视图下拉同行，切换后仍保持同行', async ({ page }) => {
+  await open(page);
+  for (const name of ['待发Offer', '未发起审批', '审批中', '审批通过']) {
+    await view(page, name);
+    const card = page.locator('.offer-view').first();
+    const count = (await card.locator('strong').boundingBox())!;
+    const dropdown = (await card.getByRole('button', named('待发二级视图')).boundingBox())!;
+    expect(Math.abs(count.y + count.height / 2 - dropdown.y - dropdown.height / 2)).toBeLessThan(2);
+    expect(dropdown.x).toBeGreaterThanOrEqual(count.x + count.width);
+  }
+  await page.screenshot({ animations: 'disabled', path: '../../.demo/fer2b1-r2-card.png' });
+});
+
+test('AC-FE-R2b1-11 全部视图齿轮始终固定右侧，操作列仍随横向滚动', async ({ page }) => {
+  await open(page);
+  await view(page, '全部Offer');
+  const scroller = page.locator('.offers-page .ant-table-content');
+  const gear = page.getByRole('columnheader', named('列设置'));
+  const actions = page.getByRole('columnheader', named('操作'));
+  const container = (await scroller.boundingBox())!;
+  const actionStart = (await actions.boundingBox())!.x;
+  for (const left of [0, 300, 10000]) {
+    await scroller.evaluate((element, value) => {
+      element.scrollLeft = value;
+    }, left);
+    await expect
+      .poll(async () => {
+        const box = (await gear.boundingBox())!;
+        return Math.abs(box.x + box.width - container.x - container.width);
+      })
+      .toBeLessThan(2);
+  }
+  expect((await actions.boundingBox())!.x).toBeLessThan(actionStart - 100);
+  await expect(actions).not.toHaveCSS('position', 'sticky');
+  await page.screenshot({ animations: 'disabled', path: '../../.demo/fer2b1-r2-all-right.png' });
+});
