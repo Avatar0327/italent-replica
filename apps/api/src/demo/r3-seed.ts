@@ -53,6 +53,7 @@ export async function seedR3(world: DemoWorld): Promise<void> {
   const mouId = await ensureMou(world);
   await assignMou(world, world.admin, TALENT_APP, mouId);
   await assignMou(world, world.admin, QUALIFICATION_APP, mouId);
+  await assignMou(world, world.admin, IDP_APP, mouId);
   const rd = world.orgs.get('rd')!.id;
   const qualification = await seedQualification(world, rd);
   await seedTalent(world, rd);
@@ -98,14 +99,13 @@ async function profileSeeAll(world: DemoWorld, profileCode: string, appCode: str
 }
 
 /**
- * 管理员的数据范围：评定活动、盘点项目按对象看全部；继任、IDP 按应用看全部（标准身份不预置，硬规则默认空）。
- * 人才标准、任职资格不支持组织范围，改按命名管理单元授（assignMou）。
+ * 管理员的数据范围：评定活动、盘点项目按对象看全部；继任按应用看全部（标准身份不预置，硬规则默认空）。
+ * 人才标准、任职资格、IDP 不支持组织范围，改按命名管理单元授（assignMou；IDP 的管理单元范围与 F-154 的 seedIdpInfo 同法）。
  */
 async function grantAdminScopes(world: DemoWorld): Promise<void> {
   await profileSeeAll(world, 'standard_evaluation_admin', EVALUATION_APP, EVALUATION_OBJECTS.evaluationActivity.code);
   await profileSeeAll(world, 'standard_talent_review_admin', TALENT_REVIEW_APP, TALENT_REVIEW_OBJECTS.project.code);
   await profileSeeAll(world, 'standard_succession_admin', SUCCESSION_APP);
-  await profileSeeAll(world, 'standard_idp_admin', IDP_APP);
 }
 
 async function ensureMou(world: DemoWorld): Promise<string> {
