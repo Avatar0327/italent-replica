@@ -1,4 +1,4 @@
-import { Alert, Button, Drawer, Form, Modal, Space, type FormInstance, type FormItemProps } from 'antd';
+import { Alert, Button, Drawer, Flex, Form, Modal, Space, type FormInstance, type FormItemProps } from 'antd';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ApiError, rejectionMessage } from './client.js';
 import { ui } from './messages.js';
@@ -89,13 +89,13 @@ function OpenForm(props: FormOverlayProps) {
   // 重读后按内核 refillDraft 回填（F-142，claude_fe_rules b）：只有改过且当前可提交的字段保留草稿。
   useDraftRefill(submission, submittableOf(props.groups), form);
   const title =
-    props.titleExtra == null ? (
+    props.titleExtra === undefined || props.titleExtra === null ? (
       props.title
     ) : (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+      <Flex align="center" justify="space-between" gap={16}>
         <span>{props.title}</span>
-        <span style={{ flexShrink: 0 }}>{props.titleExtra}</span>
-      </div>
+        <Flex flex="none">{props.titleExtra}</Flex>
+      </Flex>
     );
   const footer = (
     <Space>
