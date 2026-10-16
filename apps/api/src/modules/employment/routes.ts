@@ -43,7 +43,13 @@ import { isExitKind, requireExitGate, type ExitOperation, type ExitGateTarget } 
 import { splitExitOptions } from './exit-initiation.js';
 import { importEmploymentRecords, normalizeEmploymentImport, previewEmploymentImport } from './forward-import.js';
 import { editEmploymentRecord } from './record-edit.js';
-import { exitCommandGuard, exitEditGuard, requireBusinessWriteScope, type EditTarget } from './replay-guard.js';
+import {
+  exitCommandGuard,
+  importEditGuard,
+  recordEditGuard,
+  requireBusinessWriteScope,
+  type EditTarget,
+} from './replay-guard.js';
 import { prepareInheritance, inheritancePreview } from './inheritance.js';
 import { lockEmploymentBusiness, lockEmploymentEmployee } from './record-store.js';
 import { listEmploymentRecords, loadEmploymentBusiness, loadEmploymentRecord } from './read-model.js';
@@ -548,7 +554,7 @@ function registerBatchEdit(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       ctx,
       input,
       async (tx, context) => ({ status: 200, body: await batchEditEmploymentRecords(tx, context, input) }),
-      { guard: exitEditGuard(deps, ctx, targets) },
+      { guard: recordEditGuard(deps, ctx, targets) },
     );
   });
 }
@@ -742,8 +748,8 @@ function registerForwardUpdates(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
       ctx,
       input,
       async (tx, context) => ({ status: 200, body: await editEmploymentRecord(tx, context, id, input) }),
-      // F-195：离职 / 退休记录的编辑，重放也在命令内重过范围与 Dimission* 权限链
-      { guard: exitEditGuard(deps, ctx, [{ id, employeeId: current.employeeId, kind: current.kind, patch: input }]) },
+      // F-195 / F-202：重放、失败回查也在命令内按当前授权重过编辑权限与范围；离职 / 退休记录另过 Dimission* 权限链
+      { guard: recordEditGuard(deps, ctx, [{ id, employeeId: current.employeeId, kind: current.kind, patch: input }]) },
     );
   });
   router.post('/employees/:id/import', (c) => importEmployment(c, deps));
@@ -772,7 +778,7 @@ async function importEmployment(c: Context<TenantEnv>, deps: TenantRouteDeps) {
       ctx,
       input,
       async (tx, context) => ({ status: 200, body: await importWithTransferAuthorization(tx, context, id, input) }),
-      { guard: exitEditGuard(deps, ctx, targets) },
+      { guard: importEditGuard(deps, ctx, id, targets) },
     );
   });
 }

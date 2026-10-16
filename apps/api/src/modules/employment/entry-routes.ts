@@ -30,7 +30,7 @@ import {
   generateEntryContract,
   requireEntryContractAccess,
 } from './entry-contract.js';
-import { pendingEditGuard } from './replay-guard.js';
+import { pendingActionGuard, pendingDeleteGuard } from './replay-guard.js';
 import { cancelPendingEntry, deletePendingEntry, editPendingEntry, postponePendingEntry } from './entry-actions.js';
 import { ENTRY_VIEWS, listEntryView } from './entry-views.js';
 import type { EmploymentContext } from './types.js';
@@ -93,6 +93,7 @@ function entryContractGuard(
   return contract ? { before: (tx) => requireEntryContractAccess(tx, deps, ctx, id, contract) } : undefined;
 }
 
+/** cancel / postpone / PATCH / DELETE 都接 CommandGuard.before（F-197、F-202）：同键重放、失败回查也按当前授权在命令内复核。 */
 export function registerEntryRoutes(
   router: Hono<TenantEnv>,
   deps: TenantRouteDeps,
@@ -115,14 +116,18 @@ export function registerEntryRoutes(
     );
   });
   router.post('/pending-entries/:id/cancel', async (c) => {
-    const { id, ctx, input } = await prepareEntryAction(c, deps, authorizeBusinessWrite, cancelInput);
-    return runWrite(c, deps, ctx, { id, action: 'cancel', input }, async (tx, context) => ({
-      status: 200,
-      body: await cancelPendingEntry(tx, context, id, input),
-    }));
+    const { id, ctx, input, payload } = await prepareEntryAction(c, deps, authorizeBusinessWrite, cancelInput);
+    return runWrite(
+      c,
+      deps,
+      ctx,
+      { id, action: 'cancel', input },
+      async (tx, context) => ({ status: 200, body: await cancelPendingEntry(tx, context, id, input) }),
+      { guard: pendingActionGuard(deps, ctx, id, payload) },
+    );
   });
   router.post('/pending-entries/:id/postpone', async (c) => {
-    const { id, ctx, input } = await prepareEntryAction(
+    const { id, ctx, input, payload } = await prepareEntryAction(
       c,
       deps,
       authorizeBusinessWrite,
@@ -131,11 +136,24 @@ export function registerEntryRoutes(
         effectiveDate,
       }),
     );
-    return runWrite(c, deps, ctx, { id, action: 'postpone', input }, async (tx, context) => ({
-      status: 200,
-      body: await postponePendingEntry(tx, context, id, input),
-    }));
+    return runWrite(
+      c,
+      deps,
+      ctx,
+      { id, action: 'postpone', input },
+      async (tx, context) => ({ status: 200, body: await postponePendingEntry(tx, context, id, input) }),
+      { guard: pendingActionGuard(deps, ctx, id, payload) },
+    );
   });
+  registerEntryEditRoutes(router, deps, authorizeBusinessWrite);
+}
+
+/** 待入职行内编辑（F-188）与删除（EN-R14）；同样接 CommandGuard.before，见上。 */
+function registerEntryEditRoutes(
+  router: Hono<TenantEnv>,
+  deps: TenantRouteDeps,
+  authorizeBusinessWrite: BusinessWriteGuard,
+) {
   // F-188 行内“编辑”：计划入职日期（允许过去日期）+ 是否有试用期（必填）；字段写权限同改期按 { effectiveDate } 校验
   router.patch('/pending-entries/:id', async (c) => {
     const { id, ctx, input, payload } = await prepareEntryAction(
@@ -153,7 +171,7 @@ export function registerEntryRoutes(
       { id, action: 'edit', input },
       async (tx, context) => ({ status: 200, body: await editPendingEntry(tx, context, id, input) }),
       // F-197：同键重放也按当前对象 / 按钮 / 字段 / 数据范围在命令内复核
-      { guard: pendingEditGuard(deps, ctx, id, payload) },
+      { guard: pendingActionGuard(deps, ctx, id, payload) },
     );
   });
   router.delete('/pending-entries/:id', async (c) => {
@@ -161,10 +179,14 @@ export function registerEntryRoutes(
     const ctx = await readContext(c, deps, 'object.delete', revision(c));
     await requireEmploymentWrite(ctx, 'delete', {}, 'Employment.Delete');
     await authorizeBusinessWrite(deps, ctx, id);
-    return runWrite(c, deps, ctx, { id, action: 'delete-pending' }, async (tx, context) => ({
-      status: 200,
-      body: await deletePendingEntry(tx, context, id),
-    }));
+    return runWrite(
+      c,
+      deps,
+      ctx,
+      { id, action: 'delete-pending' },
+      async (tx, context) => ({ status: 200, body: await deletePendingEntry(tx, context, id) }),
+      { guard: pendingDeleteGuard(deps, ctx, id) },
+    );
   });
 }
 
