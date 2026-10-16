@@ -5,7 +5,7 @@
  * 流程匹配输入含 initiation。
  */
 import { randomUUID } from 'node:crypto';
-import { sql, tenantSettingOverrides, withTenant } from '@italent/db';
+import { sql, systemSettings, tenantSettingOverrides, withPlatform, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { ADAPTERS } from '../../apps/api/src/modules/approval/adapters.js';
@@ -44,10 +44,11 @@ async function world(label: string) {
     commandId: randomUUID(),
     expectedRevision: (await w.session.getEmployee(employeeId)).revision,
   });
-  const create = async (userId: string, input: Parameters<typeof createExitApplication>[2]) =>
-    withTenant(w.db, w.session.tenant.id, async (tx) =>
-      createExitApplication(tx, await ctx(userId, input.employeeId), input),
-    );
+  // 上下文先取好再开事务：PGlite 单连接，事务内不能再发 HTTP 读取
+  const create = async (userId: string, input: Parameters<typeof createExitApplication>[2]) => {
+    const context = await ctx(userId, input.employeeId);
+    return withTenant(w.db, w.session.tenant.id, (tx) => createExitApplication(tx, context, input));
+  };
   return { w, manager, staff, userOf, ctx, create };
 }
 
@@ -117,6 +118,13 @@ describe('AC-DM-28 B-65 自助 / 经理代发的字段子集与身份关系', ()
       code: 'FORBIDDEN',
       details: { reason: 'EXIT_MANAGER_INITIATION_DISABLED' },
     });
+    // 系统值由 F-020 seed；本批只认租户的有效覆盖，测试先补一条系统行（覆盖表有外键）
+    await withPlatform(w.db, (tx) =>
+      tx
+        .insert(systemSettings)
+        .values({ key: MANAGER_SWITCH, value: false, description: '经理代发离职开关', overridable: true })
+        .onConflictDoNothing(),
+    );
     await withTenant(w.db, w.session.tenant.id, (tx) =>
       tx.insert(tenantSettingOverrides).values({
         tenantId: w.session.tenant.id,
@@ -142,30 +150,18 @@ describe('AC-DM-28 B-65 自助 / 经理代发的字段子集与身份关系', ()
     const user = await userOf(staff.id);
     const created = await create(user, self(staff.id));
     const draft = await w.business(created.id);
-    await withTenant(w.db, w.session.tenant.id, async (tx) =>
-      transitionEmployment(
-        tx,
-        { ...(await ctx(user, staff.id)), expectedRevision: draft.revision },
-        {
-          id: created.id,
-          action: 'submit',
-        },
-      ),
+    const submitCtx = { ...(await ctx(user, staff.id)), expectedRevision: draft.revision };
+    await withTenant(w.db, w.session.tenant.id, (tx) =>
+      transitionEmployment(tx, submitCtx, { id: created.id, action: 'submit' }),
     );
     await expect(w.approve(created, '2026-10-06T02:00:00Z')).rejects.toMatchObject({
       details: { reason: 'EXIT_HR_FIELDS_REQUIRED' },
     });
-    expect((await w.business(created.id)).status).toBe('in_review');
     const pending = await w.business(created.id);
-    await withTenant(w.db, w.session.tenant.id, async (tx) =>
-      updateExitFields(
-        tx,
-        { ...(await ctx(w.session.user.id, staff.id)), expectedRevision: pending.revision },
-        created.id,
-        {
-          exitTypeCode: 'voluntary',
-        },
-      ),
+    expect(pending.status).toBe('in_review');
+    const hrCtx = { ...(await ctx(w.session.user.id, staff.id)), expectedRevision: pending.revision };
+    await withTenant(w.db, w.session.tenant.id, (tx) =>
+      updateExitFields(tx, hrCtx, created.id, { exitTypeCode: 'voluntary' }),
     );
     expect(await w.approve(created, '2026-10-06T02:00:00Z')).toMatchObject({ status: 'approved' });
   });
@@ -173,12 +169,9 @@ describe('AC-DM-28 B-65 自助 / 经理代发的字段子集与身份关系', ()
   it('流程匹配输入含 initiation（发起条件字段 business.initiation）', async () => {
     const { w, staff, userOf, ctx, create } = await world('app-initiation');
     const created = await create(await userOf(staff.id), self(staff.id));
-    const snapshot = await withTenant(w.db, w.session.tenant.id, async (tx) =>
-      ADAPTERS.employment.snapshot(
-        tx,
-        { ...(await ctx(w.session.user.id, staff.id)), expectedRevision: 0 },
-        created.id,
-      ),
+    const context = { ...(await ctx(w.session.user.id, staff.id)), expectedRevision: 0 };
+    const snapshot = await withTenant(w.db, w.session.tenant.id, (tx) =>
+      ADAPTERS.employment.snapshot(tx, context, created.id),
     );
     expect(snapshot.conditionValues).toMatchObject({ 'business.initiation': 'self' });
   });

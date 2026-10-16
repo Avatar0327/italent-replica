@@ -19,6 +19,7 @@ import { AppError } from '../../errors.js';
 import { readEmploymentSettings } from './configuration.js';
 import { auditEmployment, requireScopedEmploymentObject } from './context.js';
 import { assertNotBeforeCurrentCycle } from './cycles.js';
+import { EXIT_GATE_PASS, isExitKind, requireExitGate } from './exit-gate.js';
 import { forwardUpdateEmployment } from './forward-update.js';
 import type { ForwardValues } from './forward-rules.js';
 import { emptyPresetFields } from './types.js';
@@ -87,6 +88,8 @@ export interface CreateEmploymentOptions {
   readonly establishmentWarnings?: EstablishmentWarning[];
   /** F-022 入职写入端口（R2-T01 接线）：添加待入职、是否有试用期；不开放给请求体。 */
   readonly entry?: EntryOptions;
+  /** 离职创建须经 exit-application.ts 的门禁（R2-T03 §4A）；只有它持有这个凭证。 */
+  readonly exitPass?: typeof EXIT_GATE_PASS;
 }
 
 export async function createEmploymentBusiness(
@@ -97,6 +100,10 @@ export async function createEmploymentBusiness(
   options: CreateEmploymentOptions = {},
 ): Promise<EmploymentBusiness> {
   const normalized = normalizeEmploymentInput(ctx, input);
+  if (normalized.kind === 'leave' && !ctx.trustedExit && options.exitPass !== EXIT_GATE_PASS)
+    throw new AppError('FORBIDDEN', '离职业务须经离职门禁创建', { reason: 'EXIT_GATE_REQUIRED' });
+  // 经门禁的直接离职只存 approved，不落地（§18.1 关口③；B3-3 起改为调用 activateExit）
+  const gatedDirect = options.exitPass === EXIT_GATE_PASS && normalized.mode === 'direct';
   if (normalized.kind === 'transfer')
     await lockTransferParticipants(tx, ctx, employeeId, normalized.fields.addedSubordinateIds ?? []);
   const employee = await lockEmploymentEmployee(tx, ctx, employeeId, ctx.expectedRevision);
@@ -157,10 +164,10 @@ export async function createEmploymentBusiness(
     revision: 1,
     employee,
     payload,
-    state: normalized.mode === 'direct' ? 'effective' : 'draft',
+    state: normalized.mode === 'direct' ? (gatedDirect ? 'approved' : 'effective') : 'draft',
     eventNo: 0,
   };
-  if (normalized.mode === 'direct') await materializeEmploymentRecord(tx, ctx, business, options);
+  if (normalized.mode === 'direct' && !gatedDirect) await materializeEmploymentRecord(tx, ctx, business, options);
   await appendEmploymentState(tx, ctx, business, business.state);
   await bumpEmploymentEmployee(tx, ctx, employee);
   await auditEmployment(tx, ctx, 'employment.business.create', 'employment-business', id, null, payloadAudit(payload));
@@ -215,6 +222,14 @@ export async function updateEmploymentBusiness(
   const patch = normalizeBusinessPatch(input);
   const business = await lockEmploymentBusiness(tx, ctx, id);
   await requireEmployeeTransferBusiness(tx, ctx, id, patch);
+  // R2-T03 §4A / §7.2：离职 / 退休的日期创建后不可改，判定在权限链之后、状态检查与任何写入之前；审批编辑与编辑并同意同路
+  if (isExitKind(business.payload.kind))
+    await requireExitGate(tx, ctx, 'update', {
+      employeeId: business.employeeId,
+      business,
+      patch,
+      approvalEdit: options.approvalEdit === true,
+    });
   // DEC-053：被驳回的申请可在同一单上修改后重提；审批中修改由审批中心按节点可编辑字段放行（REQ-APV-003 R2）。
   if (business.payload.mode !== 'application' || !['draft', 'in_review', 'rejected'].includes(business.state)) {
     throw new AppError('CONFLICT', '只有草稿、审批中或被驳回的申请可以修改', { reason: 'PAYLOAD_IMMUTABLE' });

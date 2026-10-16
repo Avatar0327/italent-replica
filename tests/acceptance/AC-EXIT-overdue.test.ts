@@ -84,7 +84,7 @@ describe('AC-DM-21 逾期迟到调动三类（§8A）', () => {
 
   it('B-43 审批通过不拦（已提交的离职，之后才出现逾期调动）', async () => {
     const { w, employee } = await world('overdue-approve');
-    const draft = await w.createdLeave(employee.id, leaveBody(LATER));
+    const draft = await w.createdLeave(employee.id, leaveBody(LATER, 'application', { exitTypeCode: 'voluntary' }));
     const sent = await w.session.request('POST', `/businesses/${draft.id}/submit`, {
       ifMatch: draft.revision,
       body: {},

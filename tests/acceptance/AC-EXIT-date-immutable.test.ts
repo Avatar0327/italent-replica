@@ -9,6 +9,7 @@ import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { runEmploymentTransition } from '../../apps/api/src/modules/employment/transitions.js';
 import { approvalWorld, transferScene } from './AC-APV-support.js';
+import { installExitSeeds } from './AC-EXIT-support.js';
 import { denyButtons, gateWorld, leaveBody } from './AC-EXIT-gate-support.js';
 
 const database = useTestDb();
@@ -91,6 +92,7 @@ describe('AC-DM-33 B-86 审批编辑与编辑并同意', () => {
   async function scene(label: string, editMode: 'separate' | 'with_approve') {
     const w = await approvalWorld(database().db, label);
     const s = await transferScene(w);
+    await installExitSeeds(w.db, w.tenant.id);
     await w.publishedProcess({
       approvalType: 'leave',
       conditions: { items: [{ no: 1, field: 'processCode', operator: 'eq', value: 'DimissionProcessNew' }] },
@@ -111,7 +113,13 @@ describe('AC-DM-33 B-86 审批编辑与编辑并同意', () => {
             await w.request(w.hr.id, 'GET', `/api/tenant/employment/employees/${s.subject.employeeId}`),
           )
         ).revision,
-        body: { kind: 'leave', mode: 'application', lastWorkDate: LATER, fields: {} },
+        body: {
+          kind: 'leave',
+          mode: 'application',
+          lastWorkDate: LATER,
+          fields: {},
+          exit: { exitTypeCode: 'voluntary' },
+        },
       }),
       201,
     );

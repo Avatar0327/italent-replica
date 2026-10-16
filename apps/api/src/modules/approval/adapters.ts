@@ -25,6 +25,7 @@ import {
 } from '@italent/domain';
 import { findCurrentRecord, findPredecessor, loadEmploymentBusiness } from '../employment/read-model.js';
 import { lockEmploymentEmployee } from '../employment/record-store.js';
+import { loadExitRequest } from '../employment/exit-gate.js';
 import { transitionEmployment } from '../employment/transitions.js';
 import { PRESET_FIELD_NAMES, type PresetFields } from '../employment/types.js';
 import { updateEmploymentBusiness } from '../employment/write-service.js';
@@ -197,6 +198,11 @@ async function latestPayload(tx: Tx, tenantId: string, businessId: string) {
   );
   if (!row) throw new AppError('SERVICE_UNAVAILABLE', '任职业务版本链不完整');
   return { version: row.id, lastWorkDate: row.last_work_date ?? null };
+}
+
+async function exitInitiation(tx: Tx, tenantId: string, businessId: string): Promise<string> {
+  const row = await loadExitRequest(tx, tenantId, businessId);
+  return row?.initiator ?? 'hr';
 }
 
 /** 13 §6.3：类型字典与入口不是一一对应；以可信入口绑定匹配，不从类型序号拼接编码。 */
@@ -394,6 +400,10 @@ const employmentAdapter: BusinessAdapter = {
         'employee.code': employee.code,
         'employee.name': employee.name,
         'record.effectiveDate': business.effectiveDate,
+        // R2-T03 §4B：离职流程匹配多一个输入——发起方式（hr / self / manager）
+        ...(business.kind === 'leave'
+          ? { 'business.initiation': await exitInitiation(tx, ctx.tenantId, businessId) }
+          : {}),
         ...ref('before', before?.fields),
         ...ref('record', fields),
       },

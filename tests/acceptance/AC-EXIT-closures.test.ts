@@ -37,7 +37,10 @@ describe('AC-DM-32 B-80 §18.1 五个关口（B3-3 前离职一律不落地）',
 
   it('② 审批通过且 E ≤ 今天：停在 approved，不落地、不记生效尝试；① 调度运行后仍 approved 且不在队列', async () => {
     const { w, employee } = await world('closure-approve');
-    const draft = await w.createdLeave(employee.id, leaveBody('2026-10-01'));
+    const draft = await w.createdLeave(
+      employee.id,
+      leaveBody('2026-10-01', 'application', { exitTypeCode: 'voluntary' }),
+    );
     const sent = await w.session.request('POST', `/businesses/${draft.id}/submit`, {
       ifMatch: draft.revision,
       body: {},

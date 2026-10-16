@@ -373,14 +373,25 @@ export interface ApprovalTypeDefinition {
 /** 发展计划对象（IDP.Idp）：IDP 审批实例的业务对象。 */
 const IDP_PLAN_OBJECT = `${IDP_APP}.Idp`;
 
-const employmentType = (code: string, name: string, defaultProcessCode: string | null = null) =>
+/** 离职流程匹配多一个输入：发起方式（hr / self / manager，R2-T03 §4B）。 */
+const LEAVE_CONDITION_FIELDS: readonly ConditionField[] = [
+  ...EMPLOYMENT_CONDITION_FIELDS,
+  { path: 'business.initiation', label: '发起方式', kind: 'text' },
+];
+
+const employmentType = (
+  code: string,
+  name: string,
+  defaultProcessCode: string | null = null,
+  conditionFields: readonly ConditionField[] = EMPLOYMENT_CONDITION_FIELDS,
+) =>
   ({
     code,
     name,
     objectCode: MODULE_OBJECTS.employmentRecord.code,
     adapter: 'employment',
     defaultProcessCode,
-    conditionFields: EMPLOYMENT_CONDITION_FIELDS,
+    conditionFields,
     formFields: employmentFormFields,
     readonlyFields: PROFILE_FORM_FIELDS,
     approvalEdit: true,
@@ -427,7 +438,7 @@ export const APPROVAL_TYPES = {
   contract_change: contractType('contract_change', '变更合同', 'ChangeContractProcess'),
   contract_terminate: contractType('contract_terminate', '终止合同', 'TerminateContractProcess'),
   transfer: employmentType('transfer', '调动', 'TransferProcessNew'),
-  leave: employmentType('leave', '离职', 'DimissionProcessNew'),
+  leave: employmentType('leave', '离职', 'DimissionProcessNew', LEAVE_CONDITION_FIELDS),
   regularization: employmentType('regularization', '转正', 'ProbationProcessNew'),
   intern_regularization: employmentType('intern_regularization', '实习转正', 'TraineeEntryProcess'),
   hire: employmentType('hire', '入职', 'EntryProcessNew'),
