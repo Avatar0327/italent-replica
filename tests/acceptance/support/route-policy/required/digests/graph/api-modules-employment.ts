@@ -282,6 +282,7 @@ export const GRAPH: Graph = {
     '#lockPendingEntry',
     '#propagateEmployeeStatus',
     '#reloadRecord',
+    'apps/api/src/modules/employment/entry-pending-contract.ts#releasePendingContract',
     'apps/api/src/modules/employment/entry-probation.ts#clearPendingProbation',
     'apps/api/src/modules/employment/references.ts#assertEmploymentDepartmentAvailable',
     'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS',
@@ -364,6 +365,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/entry-actions.ts#deletePendingEntry': [
     'apps/api/src/modules/employment/employee-status.ts#lockPendingEntry',
+    'apps/api/src/modules/employment/entry-pending-contract.ts#releasePendingContract',
     'apps/api/src/modules/employment/entry-probation.ts#clearPendingProbation',
     'apps/api/src/modules/employment/transitions.ts#transitionEmployment',
   ],
@@ -388,6 +390,9 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/entry-actions.ts#replacePendingEntry': [
     'apps/api/src/modules/employment/context.ts#auditEmployment',
     '#logEntryAction',
+    'apps/api/src/modules/employment/entry-pending-contract.ts#clearPendingContract',
+    'apps/api/src/modules/employment/entry-pending-contract.ts#loadPendingContract',
+    'apps/api/src/modules/employment/entry-pending-contract.ts#pendingContractAudit',
     'apps/api/src/modules/employment/entry-probation.ts#clearPendingProbation',
     'apps/api/src/modules/employment/entry-probation.ts#loadPendingProbation',
     'apps/api/src/modules/employment/record-store.ts#lockEmploymentEmployee',
@@ -459,6 +464,25 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/write-service.ts#NEW_CYCLE_KINDS',
   ],
   'apps/api/src/modules/employment/entry-options.ts#splitEntryOptions': ['#KEYS', '#entryControls'],
+  'apps/api/src/modules/employment/entry-pending-contract.ts#loadPendingContract': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/employment/entry-pending-contract.ts#releasePendingContract': [
+    'apps/api/src/modules/employment/context.ts#auditEmployment',
+    '#clearPendingContract',
+    '#loadPendingContract',
+    '#pendingContractAudit',
+  ],
+  'apps/api/src/modules/employment/entry-pending-contract.ts#saveAddedPendingContract': [
+    'apps/api/src/modules/employment/employee-status.ts#ENTRY_KINDS',
+    '#savePendingContract',
+  ],
+  'apps/api/src/modules/employment/entry-pending-contract.ts#saveAddedPendingEntryData': [
+    '#pendingContractAudit',
+    '#saveAddedPendingContract',
+    'apps/api/src/modules/employment/entry-probation.ts#probationAudit',
+    'apps/api/src/modules/employment/entry-probation.ts#saveAddedProbation',
+  ],
   'apps/api/src/modules/employment/entry-probation.ts#loadPendingProbation': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
@@ -1732,8 +1756,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#auditEmployment',
     'apps/api/src/modules/employment/cycles.ts#assertNotBeforeCurrentCycle',
     'apps/api/src/modules/employment/employee-status.ts#entryStatusFor',
-    'apps/api/src/modules/employment/entry-probation.ts#probationAudit',
-    'apps/api/src/modules/employment/entry-probation.ts#saveAddedProbation',
+    'apps/api/src/modules/employment/entry-pending-contract.ts#saveAddedPendingEntryData',
     'apps/api/src/modules/employment/exit-gate.ts#EXIT_GATE_PASS',
     'apps/api/src/modules/employment/fields.ts#normalizeEmploymentInput',
     'apps/api/src/modules/employment/inheritance.ts#prepareInheritance',

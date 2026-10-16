@@ -195,7 +195,7 @@ export const DIGESTS: Digests = {
     entryContractGuard: 'ec5dcf80696e',
     prepareEntryAction: '2eca18beecfb',
     'route:DELETE /pending-entries/:id': '8922f7a82589',
-    'route:GET /pending-entries': 'be2d89a530fe',
+    'route:GET /pending-entries': '0b44d67a37e6',
     'route:PATCH /pending-entries/:id': '24539de441db',
     'route:POST /pending-entries/:id/complete': 'adc34aa3952f',
     'route:POST /pending-entries/:id/postpone': 'd100c021bfdf',

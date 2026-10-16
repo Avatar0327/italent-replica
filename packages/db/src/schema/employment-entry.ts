@@ -92,3 +92,36 @@ export const employmentPendingEntryProbation = pgTable(
     }),
   ],
 );
+
+/**
+ * 待入职劳动合同（F-194，DEC-550 R2e9 §5 / §7.5）：待入职阶段挂在待入职记录上的“临时合同”，不是合同模块的正式合同
+ * （不进 contracts 表、不出现在合同列表）。以待入职业务 ID 为键，记录进入待入职时生成（起始日 = 计划入职日期，终止日为空）；
+ * 改期入职同步起始日，行内编辑不动它；改期 / 编辑换日期替换记录时在同事务内搬到新业务；办理入职、删除待入职后清除。
+ * 没有行 = 存量待入职（DEC-402 不回填），读出 null。
+ */
+export const employmentPendingEntryContract = pgTable(
+  'employment_pending_entry_contract',
+  {
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
+    employeeId: uuid('employee_id').notNull(),
+    businessId: uuid('business_id').notNull(),
+    startDate: date('start_date', { mode: 'string' }).notNull(),
+    endDate: date('end_date', { mode: 'string' }),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ name: 'employment_pending_entry_contract_pk', columns: [t.tenantId, t.businessId] }),
+    foreignKey({
+      name: 'employment_pending_entry_contract_business_fk',
+      columns: [t.tenantId, t.employeeId, t.businessId],
+      foreignColumns: [
+        employmentBusinessObjects.tenantId,
+        employmentBusinessObjects.employeeId,
+        employmentBusinessObjects.id,
+      ],
+    }),
+    check('employment_pending_entry_contract_dates', sql`${t.endDate} IS NULL OR ${t.endDate} >= ${t.startDate}`),
+  ],
+);

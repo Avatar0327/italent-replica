@@ -15,6 +15,7 @@ import {
 } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { auditEmployment, requireLinkedEmploymentRecord, requireScopedEmploymentObject } from './context.js';
+import { releasePendingContract, type PendingContract } from './entry-pending-contract.js';
 import { clearPendingProbation } from './entry-probation.js';
 import { findPredecessor, loadEmploymentRecord } from './read-model.js';
 import { assertEmploymentDepartmentAvailable } from './references.js';
@@ -47,6 +48,11 @@ export interface EntryOptions {
    * 添加待入职（pendingEntry）时不决定人员状态，只随待入职记录落库（entry-probation.ts，F-188）。
    */
   readonly probation?: boolean;
+  /**
+   * 添加待入职时的待入职合同（F-194，entry-pending-contract.ts）：缺省 = 新生成（起始日取计划入职日期）；
+   * 改期 / 编辑换日期替换记录时由 entry-actions 传入搬运后的合同，原记录没有合同（存量）传 null = 不补生成。不接受请求指定。
+   */
+  readonly pendingContract?: PendingContract | null;
 }
 
 export const ENTRY_KINDS: readonly BusinessKind[] = ['hire', 'rehire', 'retire_rehire'];
@@ -145,6 +151,8 @@ export async function completePendingEntry(
   await propagateEmployeeStatus(tx, ctx, record, record.employeeStatus, employeeStatus);
   // F-188：办理入职后人员状态已定，待入职阶段的试用期不再保留
   await clearPendingProbation(tx, ctx, recordId);
+  // F-194：待入职合同到此为止；正式合同由办理入职请求里的合同信息另行生成（entry-contract.ts），不在这里沿用或复制
+  await releasePendingContract(tx, ctx, recordId, 'complete');
   return reloadRecord(tx, ctx, recordId);
 }
 

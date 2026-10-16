@@ -284,10 +284,18 @@ export async function trimEmploymentResponse(
           };
         });
       else if (
-        // total / succeeded / failed 是批量编辑回执的协议元数据（R1-T16），不是任职字段
-        ['notice', 'hasDataPermission', 'page', 'pageSize', 'emptyReason', 'total', 'succeeded', 'failed'].includes(
-          key,
-        ) ||
+        // total / succeeded / failed 是批量编辑回执的协议元数据（R1-T16），contractNotice 是改期入职的合同提示（F-194），都不是任职字段
+        [
+          'notice',
+          'contractNotice',
+          'hasDataPermission',
+          'page',
+          'pageSize',
+          'emptyReason',
+          'total',
+          'succeeded',
+          'failed',
+        ].includes(key) ||
         viewable.has(key)
       )
         result[key] = field;
