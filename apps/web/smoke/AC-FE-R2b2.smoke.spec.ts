@@ -498,3 +498,24 @@ test('AC-FE-R2b2-19 编辑未知后其他动作共用原单锁', async ({ page, 
   await expect(dialog.getByRole('button', named('是'))).toBeDisabled();
   expect(writes).toBe(1);
 });
+
+for (const action of ['edit', 'complete'])
+  test(`AC-FE-R2b2-20 ${action} 打开前他人改试用期时整条重读`, async ({ page, baseURL }) => {
+    const state = await entryPage(page, baseURL!);
+    state.row.probation = false;
+    await page.reload();
+    await expect(row(page)).toBeVisible();
+    Object.assign(state.row, { probation: true, revision: 8, employType: 'external' });
+    let dialog;
+    if (action === 'complete') dialog = await onboard(page);
+    else {
+      await row(page).getByRole('button', named('编辑')).click();
+      dialog = page.getByRole('dialog', { name: /^编辑/ });
+    }
+    await expect(item(dialog, '是否有试用期').locator('.ant-select-selection-item')).toHaveText('是');
+    if (action === 'complete') await choose(dialog, '试用期(月)', '1');
+    await dialog.getByRole('button', save).click();
+    await expect(dialog).toHaveCount(0);
+    expect(state.writes[0]).toMatchObject({ revision: '8', body: { probation: true } });
+    expect(state.reads.filter((path) => path.includes('/records/'))).toHaveLength(2);
+  });
