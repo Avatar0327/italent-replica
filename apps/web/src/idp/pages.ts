@@ -9,8 +9,20 @@ const CHILDREN = [
   { object: 'IDP.Idp', key: 'plans', label: '发展计划' },
   { object: 'IDP.IDPTemplate', key: 'templates', label: '发展计划模板' },
   { object: 'IDP.IDPProcess', key: 'processes', label: '发展计划流程' },
+  { object: 'IDP.Career', key: 'careers', label: '职业发展信息' },
+  { object: 'IDP.WorkShift', key: 'work-shifts', label: '轮岗信息' },
 ];
 export const pages: ModulePages = {
+  entries: [
+    {
+      id: 'tutorship-information',
+      app: 'idp',
+      label: '带教信息',
+      group: 'talent',
+      objectCode: 'IDP.TutorShip',
+      page: lazyPage('TutorshipPage', () => import('./TutorshipPage.js')),
+    },
+  ],
   apps: [
     {
       app: 'idp',
