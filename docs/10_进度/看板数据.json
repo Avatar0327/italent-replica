@@ -5853,7 +5853,7 @@
 "n": "F-206 已取消入职列表与详情返回取消说明（后端读字段，DEC-560 方案 B，issue #376）",
 "s": "assigned",
 "after": [],
-"note": "DEC-560 方案 B（F-192b 前置）· #379 第 1 轮开发完成（13:05Z，head de9422fd，仍为 Draft）· 待发起 Sol high 审 · 次序 F-206>F-202>F-203（DEC-561）",
+"note": "DEC-560 方案 B（F-192b 前置）· #379 第 1 轮开发完成（13:05Z，head de9422fd，仍为 Draft）· Sol high 第 1 轮审查中 · 次序 F-206>F-202>F-203（DEC-561）",
 "mod": "R2",
 "ms": "D2",
 "pr": 379
