@@ -110,7 +110,7 @@ describe('AC-DM-21 逾期迟到调动三类（§8A）', () => {
 
   it('B-45 计划日只经 §5.0A：已被系统顺延到今天的调动仍按首次计划日判逾期', async () => {
     const { w, employee } = await world('overdue-planned');
-    await seedQueue(w, employee.id, [
+    const [shifted] = await seedQueue(w, employee.id, [
       { kind: 'transfer', versions: [manual(1, '2026-10-01'), derived(2, TODAY)], submitSeq: 1 },
       { kind: 'transfer', versions: [manual(1, TODAY)], submitSeq: 2 },
     ]);
@@ -119,5 +119,7 @@ describe('AC-DM-21 逾期迟到调动三类（§8A）', () => {
     );
     expect(blocking.map((item) => item.effectiveDate)).toEqual(['2026-10-01']);
     expect(reminders).toEqual([]);
+    // 同一判定经 HTTP 入口：只拦被顺延的那张（按首次计划日），计划日 = 今天的那张不算逾期；被拒后无任何写入
+    await expectBlocked(w, employee.id, { businessId: shifted, effectiveDate: '2026-10-01', materialized: false });
   });
 });
