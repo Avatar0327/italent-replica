@@ -26,6 +26,9 @@ export interface FormOverlayProps {
   recordKey: string;
   submission?: CommandForm;
   title: string;
+  titleExtra?: ReactNode;
+  footerExtra?: ReactNode;
+  className?: string;
   open: boolean;
   mode?: 'drawer' | 'modal';
   groups: FormGroup[];
@@ -85,11 +88,21 @@ function OpenForm(props: FormOverlayProps) {
   const locked = busy || !!submission?.locked;
   // 重读后按内核 refillDraft 回填（F-142，claude_fe_rules b）：只有改过且当前可提交的字段保留草稿。
   useDraftRefill(submission, submittableOf(props.groups), form);
+  const title =
+    props.titleExtra == null ? (
+      props.title
+    ) : (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+        <span>{props.title}</span>
+        <span style={{ flexShrink: 0 }}>{props.titleExtra}</span>
+      </div>
+    );
   const footer = (
     <Space>
       <Button onClick={props.onClose} disabled={busy}>
         {ui.cancel}
       </Button>
+      {props.footerExtra}
       <Button type="primary" disabled={locked} loading={busy} onClick={() => form.submit()}>
         {ui.save}
       </Button>
@@ -131,7 +144,8 @@ function OpenForm(props: FormOverlayProps) {
     <Modal
       open
       width={800}
-      title={props.title}
+      rootClassName={props.className}
+      title={title}
       onCancel={props.onClose}
       closable={!busy}
       maskClosable={!busy}
@@ -143,8 +157,8 @@ function OpenForm(props: FormOverlayProps) {
   ) : (
     <Drawer
       open
-      rootClassName="form-overlay"
-      title={props.title}
+      rootClassName={props.className ? `form-overlay ${props.className}` : 'form-overlay'}
+      title={title}
       width={560}
       onClose={props.onClose}
       closable={busy ? false : { placement: 'end' }}
