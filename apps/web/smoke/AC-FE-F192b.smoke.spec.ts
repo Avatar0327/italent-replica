@@ -184,7 +184,7 @@ for (const failure of ['network', 'receipt', 'read'])
   });
 
 for (const denied of ['update', 'field', 'button', 'rehire'])
-  test(`AC-FE-F192b-06 ${denied} 不启用取消`, async ({ page, baseURL }) => {
+  test(`AC-FE-F192b-06 ${denied} 取消权限与改期权限分别校验`, async ({ page, baseURL }) => {
     const state = await setupEntries(page, baseURL!);
     if (denied === 'rehire') state.row.kind = 'rehire';
     if (denied !== 'rehire')
@@ -202,8 +202,28 @@ for (const denied of ['update', 'field', 'button', 'rehire'])
     await page.reload();
     await row(page).getByRole('checkbox').check();
     await more(page).click();
-    await expect(cancelItem(page)).toHaveAttribute('aria-disabled', 'true');
-    expect(state.writes).toEqual([]);
+    if (denied === 'field') {
+      await expect(cancelItem(page)).not.toHaveAttribute('aria-disabled', 'true');
+      await expect(page.getByRole('menuitem', named('改期入职'))).toHaveAttribute('aria-disabled', 'true');
+      await cancelItem(page).click();
+      const dialog = page.getByRole('dialog', { name: /^取消入职/ });
+      await expect(dialog.getByRole('button', save)).toBeEnabled();
+      await dialog.getByRole('button', save).click();
+      await expect(dialog).toHaveCount(0);
+      expect(state.writes).toHaveLength(1);
+      expect(state.writes[0]).toMatchObject({
+        method: 'POST',
+        path: `/api/tenant/employment/pending-entries/${entryId}/cancel`,
+        revision: '4',
+        body: { reason: 'other' },
+      });
+      await expect(row(page)).toHaveCount(0);
+      await expect(await cancelledView(page)).toHaveText('--');
+    } else {
+      if (denied === 'rehire') await expect(cancelItem(page)).toHaveAttribute('aria-disabled', 'true');
+      else await expect(cancelItem(page)).toHaveCount(0);
+      expect(state.writes).toEqual([]);
+    }
   });
 
 test('AC-FE-F192b-04 回执成功至列表读回期间持续锁定，状态裁剪不丢取消说明', async ({ page, baseURL }) => {
