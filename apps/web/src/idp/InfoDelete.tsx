@@ -6,6 +6,7 @@ import { CommandStatus } from '../foundation/forms/CommandStatus.js';
 import { useCommandForm } from '../foundation/forms/useCommandForm.js';
 import { forAction } from '../foundation/forms/action.js';
 import { slotKey } from '../foundation/forms/slot.js';
+import { projectFields } from '../foundation/forms/values.js';
 import { INFO, infoPath, infoReceipt, infoText as m, type InfoRow, type InfoKind } from './info-model.js';
 
 type Handlers = Map<string, () => Promise<void>>;
@@ -83,6 +84,10 @@ function DeleteItem({
   const path = slotKey(infoPath(kind), row.id);
   const command = forAction(useCommandForm(path), { action: 'delete' });
   const [done, setDone] = useState(false);
+  const fields = INFO[kind].fields.filter((field) => permission.field(field.name).visible);
+  const names = fields.map((field) => field.name);
+  const baseline = projectFields(command.state?.baseline ?? row, names);
+  const current = projectFields(command.state?.latest?.values ?? baseline, names);
   const allowed =
     permission.can('delete') && permission.snapshot.objects[INFO[kind].object]?.dataOperations.delete === true;
   const submission = {
@@ -90,15 +95,17 @@ function DeleteItem({
     reload: () =>
       command.reread(async () => {
         const latest = await api.request<InfoRow>(path);
-        return { id: latest.id, revision: latest.revision!, values: {} };
+        return { id: latest.id, revision: latest.revision!, values: projectFields(latest, names) };
       }),
   };
   const remove = async () => {
     if (done || !allowed || command.locked || !Number.isSafeInteger(row.revision)) return;
     const result = await command.submit({
-      values: {},
-      baseline: {},
-      editableFields: [],
+      // 删除不修改字段：以可见原值参与内核差异核对（包括只读字段），相同值的 patch 请求体仍是 {}。
+      values: baseline,
+      baseline,
+      editableFields: names,
+      patchOnly: true,
       revision: row.revision!,
       businessId: row.id,
       send: async (request) =>
@@ -124,7 +131,7 @@ function DeleteItem({
     <div className="info-delete-item">
       <Space>
         <span>
-          {String(row.startDate ?? m.none)} · {String(row.endDate ?? m.none)}
+          {String(current.startDate ?? m.none)} · {String(current.endDate ?? m.none)}
         </span>
         <Button
           disabled={batchBusy || done || !allowed || command.locked || !Number.isSafeInteger(row.revision)}
@@ -134,7 +141,7 @@ function DeleteItem({
           {done ? m.deleted : m.confirm}
         </Button>
       </Space>
-      <CommandStatus submission={submission} />
+      <CommandStatus submission={submission} labels={Object.fromEntries(fields.map((f) => [f.name, f.label]))} />
     </div>
   );
 }
