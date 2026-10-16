@@ -8,6 +8,7 @@ import { FormCommands } from '../foundation/forms/useCommandForm.js';
 import { useApiClient, useSession } from '../foundation/Session.js';
 import type { PageResult } from '../foundation/client.js';
 import { NameOf, refPaths, useToday } from '../contracts/references.js';
+import { DeleteBubble } from './DeleteBubble.js';
 import { PostponeForm } from './PostponeForm.js';
 import { CompleteLoader } from './CompleteForm.js';
 import { collection, request, type Row, type View } from './model.js';
@@ -76,7 +77,9 @@ function EntryList() {
     key: 'actions',
     fixed: 'right',
     width: 164,
-    render: (_, row) => <RowActions row={row} view={view} open={(action) => setOpen({ row, action })} />,
+    render: (_, row) => (
+      <RowActions row={row} view={view} refresh={refresh} open={(action) => setOpen({ row, action })} />
+    ),
   });
   return (
     <div className="entries-page">
@@ -150,43 +153,67 @@ function cell(title: string, row: Row) {
       : EMPLOYEE_STATUS_LABELS[row.employeeStatus];
   return '--';
 }
-function RowActions({ row, view, open }: { row: Row; view: View; open(action: 'edit' | 'complete'): void }) {
+function RowActions({
+  row,
+  view,
+  open,
+  refresh,
+}: {
+  row: Row;
+  view: View;
+  refresh(): Promise<void>;
+  open(action: 'edit' | 'complete'): void;
+}) {
   const p = useEntryAccess();
+  const [deleting, setDeleting] = useState(false);
+  const removable = p.remove && validObject(row) && !!row.employeeId;
   if (view === 'hired') return null;
   return (
-    <Space size={0}>
-      <Button
-        type="link"
-        disabled={
-          view === 'cancelled' || !p.edit || !p.field('effectiveDate').editable || !validObject(row) || !row.employeeId
-        }
-        onClick={() => open('edit')}
-      >
-        {m.edit}
-      </Button>
-      {view !== 'cancelled' && (
-        <>
-          <Button type="link" disabled>
-            {m.application}
+    <DeleteBubble row={row} open={deleting} close={() => setDeleting(false)} refresh={refresh}>
+      <Space size={0}>
+        <Button
+          type="link"
+          disabled={
+            view === 'cancelled' ||
+            !p.edit ||
+            !p.field('effectiveDate').editable ||
+            !validObject(row) ||
+            !row.employeeId
+          }
+          onClick={() => open('edit')}
+        >
+          {m.edit}
+        </Button>
+        {view === 'cancelled' && (
+          <Button type="link" disabled={!removable} onClick={() => setDeleting(true)}>
+            {m.remove}
           </Button>
-          <Dropdown
-            trigger={['click']}
-            menu={{
-              items: [
-                ...(p.edit && row.entryStatus !== 1 && validObject(row) && row.employeeId
-                  ? [{ key: 'complete', label: m.complete, onClick: () => open('complete') }]
-                  : []),
-                { key: 'sign', label: m.sign, disabled: true },
-              ],
-            }}
-          >
-            <Button type="link" aria-label={m.more}>
-              ▾
+        )}
+        {view !== 'cancelled' && (
+          <>
+            <Button type="link" disabled>
+              {m.application}
             </Button>
-          </Dropdown>
-        </>
-      )}
-    </Space>
+            <Dropdown
+              trigger={['click']}
+              menu={{
+                items: [
+                  ...(p.edit && row.entryStatus !== 1 && validObject(row) && row.employeeId
+                    ? [{ key: 'complete', label: m.complete, onClick: () => open('complete') }]
+                    : []),
+                  { key: 'sign', label: m.sign, disabled: true },
+                  ...(removable ? [{ key: 'delete', label: m.remove, onClick: () => setDeleting(true) }] : []),
+                ],
+              }}
+            >
+              <Button type="link" aria-label={m.more}>
+                ▾
+              </Button>
+            </Dropdown>
+          </>
+        )}
+      </Space>
+    </DeleteBubble>
   );
 }
 
