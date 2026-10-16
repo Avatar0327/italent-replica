@@ -14,6 +14,7 @@ import { createDemoClient, DemoClock } from './client.js';
 import { DEMO_PEOPLE, DEMO_TENANT, ROLE_ENTRIES, ROLE_LABELS } from './data.js';
 import type { SeedProgress } from './progress.js';
 import { seedTransfers } from './transfers.js';
+import { seedIdpInfo } from './idp-info-seed.js';
 import { DemoSeedIncompleteError, DemoWorld, type StepHook } from './world.js';
 
 export { DemoSeedIncompleteError } from './world.js';
@@ -58,6 +59,7 @@ export async function seedDemo(db: Db, options: SeedOptions = {}): Promise<SeedR
   const world = new DemoWorld(db, client.forTenant(tenantId), tenantId, client.guarded, options.onStep);
   if (!existing) world.written += 1;
   await world.build();
+  world.written += await seedIdpInfo(world);
   await seedTransfers(world, clock, options.progress);
   return { created: world.written > 0, manifest: await buildManifest(db, tenantId) };
 }
