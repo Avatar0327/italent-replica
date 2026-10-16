@@ -3,6 +3,7 @@
  * （员工行锁后重读未办结离职；败者不会先撞 revision 冲突），库中只有一条离职扩展行。
  * PGlite 单连接无法并发，只在设了 TEST_DATABASE_URL 时运行。
  */
+import './support/exit-gate-enforced.js';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { gateWorld, leaveBody } from './AC-EXIT-gate-support.js';

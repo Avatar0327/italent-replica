@@ -5,6 +5,7 @@
  * ④ 重试与通用 activate 409 EXIT_ACTIVATION_NOT_AVAILABLE；⑤ dutyTransfer 400 EXIT_DUTY_TRANSFER_NOT_AVAILABLE。
  * 另：approved / effective 离职的通用 DELETE / revoke 在 B4 前一律 409 EXIT_OPERATION_NOT_AVAILABLE。
  */
+import './support/exit-gate-enforced.js';
 import { randomUUID } from 'node:crypto';
 import { withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';

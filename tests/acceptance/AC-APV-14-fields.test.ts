@@ -132,7 +132,7 @@ describe('清单 3：审批快照覆盖自定义字段、业务日期与最后�
     expect(await reasonOf(blind)).toMatchObject({ status: 403, reason: 'APPROVAL_BLIND_REVIEW' });
   });
 
-  it('离职节点可查看、编辑最后工作日：详情有值，编辑写入业务顶层并重算生效日', async () => {
+  it('离职节点可查看最后工作日：详情有值；审批编辑改最后工作日一律拒绝（R2-T03 DEC-499，创建后不可改）', async () => {
     const w = await approvalWorld(database().db, 'apv-last-work-date');
     const s = await transferScene(w);
     await w.publishedProcess({
@@ -158,15 +158,13 @@ describe('清单 3：审批快照覆盖自定义字段、业务日期与最后�
       }),
       201,
     );
-    let instance = await w.submit(draft);
+    const instance = await w.submit(draft);
     expect(instance.form.values).toMatchObject({ lastWorkDate: '2026-10-20', effectiveDate: '2026-10-21' });
-    instance = await w.json(
-      await w.taskAction(s.outHead.userId, current(instance).id, 'edit', instance.revision, {
-        fields: { lastWorkDate: '2026-10-25' },
-      }),
-    );
-    expect(instance.form.values).toMatchObject({ lastWorkDate: '2026-10-25', effectiveDate: '2026-10-26' });
-    expect(await w.business(draft.id)).toMatchObject({ effectiveDate: '2026-10-26' });
+    const rejected = await w.taskAction(s.outHead.userId, current(instance).id, 'edit', instance.revision, {
+      fields: { lastWorkDate: '2026-10-25' },
+    });
+    expect(await reasonOf(rejected)).toMatchObject({ status: 400, reason: 'EXIT_DATE_IMMUTABLE' });
+    expect(await w.business(draft.id)).toMatchObject({ effectiveDate: '2026-10-21' });
   });
 });
 

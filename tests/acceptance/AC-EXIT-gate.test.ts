@@ -4,6 +4,7 @@
  * 按钮 + 功能权 + 范围 + 前置条件，不以 Employment.Create / Edit / Delete 代替 Dimission* 四个按钮；
  * 失败一律无业务写入（前后 stateOf 逐项相等）。
  */
+import './support/exit-gate-enforced.js';
 import { sql } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';

@@ -4,6 +4,7 @@
  * C 已落地且只剩提醒 → 不拦截。拦截点：创建 / 提交（409 EXIT_LATE_TRANSFER_PENDING，错误体给可见项与 hiddenCount）；
  * approve / 撤销 / 删除 不拦截（由生效编排兜底）。设计 v1.9 的 v1.2 明细表已不在文中，按 §8A 自拟，B-39 属 B3-1，不含。
  */
+import './support/exit-gate-enforced.js';
 import { withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';

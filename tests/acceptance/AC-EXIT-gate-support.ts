@@ -129,8 +129,10 @@ export async function gateWorld(db: Db, label: string, options: { today?: string
       timeline: await sqlRows(sql`SELECT record_id, start_date::text, sort_order FROM employment_timeline
         WHERE tenant_id=${t} AND employee_id=${e}::uuid ORDER BY start_date, sort_order`),
       businesses: await sqlRows(sql`SELECT b.id, b.revision,
-          (SELECT count(*) FROM employment_payload_versions p WHERE p.tenant_id=b.tenant_id AND p.business_id=b.id) AS versions,
-          (SELECT count(*) FROM employment_state_events s WHERE s.tenant_id=b.tenant_id AND s.business_id=b.id) AS events,
+          (SELECT count(*) FROM employment_payload_versions p
+            WHERE p.tenant_id=b.tenant_id AND p.business_id=b.id) AS versions,
+          (SELECT count(*) FROM employment_state_events s
+            WHERE s.tenant_id=b.tenant_id AND s.business_id=b.id) AS events,
           (SELECT state FROM employment_state_events s WHERE s.tenant_id=b.tenant_id AND s.business_id=b.id
             ORDER BY event_no DESC LIMIT 1) AS state
         FROM employment_business_objects b WHERE b.tenant_id=${t} AND b.employee_id=${e}::uuid ORDER BY b.id`),

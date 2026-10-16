@@ -4,6 +4,7 @@
  * 审批编辑（edit）、编辑并同意（approve 带 fields）；records / batch-edit / 导入编辑行与 PATCH exits/:id 归 B2b。
  * 判定在权限链之后、首个写之前：无 DimissionEdit 先得 403；日期与当前值相同不算修改。
  */
+import './support/exit-gate-enforced.js';
 import { randomUUID } from 'node:crypto';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';

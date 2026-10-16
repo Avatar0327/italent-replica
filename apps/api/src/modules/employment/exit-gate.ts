@@ -70,6 +70,11 @@ const conflict = (reason: string, message: string, details: object = {}) =>
   new AppError('CONFLICT', message, { reason, ...details });
 
 export async function loadExitRequest(tx: Tx, tenantId: string, businessId: string) {
+  // 升级验收（AC-EV-leave-upgrade、AC-APV-F048-upgrade-types）在迁移 0132 之前的结构上跑离职流转：没有扩展表按“没有扩展行”处理
+  const [probe] = rowsOf<{ present: boolean }>(
+    await tx.execute(sql`SELECT to_regclass('public.exit_requests') IS NOT NULL AS present`),
+  );
+  if (!probe?.present) return undefined;
   const [row] = await tx
     .select()
     .from(exitRequests)
@@ -177,7 +182,8 @@ async function inFlightApplications(
       JOIN LATERAL (SELECT state FROM employment_state_events s
         WHERE s.tenant_id=b.tenant_id AND s.business_id=b.id ORDER BY s.event_no DESC LIMIT 1) s ON true
       WHERE b.tenant_id=${ctx.tenantId} AND b.employee_id=${employeeId}::uuid
-        AND (${mode}::text IS NULL OR p.mode=${mode}::text) AND p.kind = ANY(${`{${kinds.join(',')}}`}::text[]) AND s.state = ANY(${`{${states.join(',')}}`}::text[])
+        AND (${mode}::text IS NULL OR p.mode=${mode}::text)
+        AND p.kind = ANY(${`{${kinds.join(',')}}`}::text[]) AND s.state = ANY(${`{${states.join(',')}}`}::text[])
       ORDER BY planned, b.id LIMIT 1001`),
   );
 }

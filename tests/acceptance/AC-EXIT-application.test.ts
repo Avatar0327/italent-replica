@@ -4,6 +4,7 @@
  * self / manager 只能走字段子集；发起人、被离职人、发起方式分开记录；最后节点同意前离职类型必须补齐；
  * 流程匹配输入含 initiation。
  */
+import './support/exit-gate-enforced.js';
 import { randomUUID } from 'node:crypto';
 import { sql, systemSettings, tenantSettingOverrides, withPlatform, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
