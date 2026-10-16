@@ -77,6 +77,30 @@ describe('AC-DM-22 离职申请经门禁创建（B-26 / B-30 补充）', () => {
   });
 });
 
+describe('交接人校验（DEC-177 可见性：按员工对象的真实创建者与当前范围判断）', () => {
+  it('范围内的合法交接人可用；未知与范围外统一 400 EXIT_HANDOVER_EMPLOYEE_INVALID，错误体一致不暴露存在性', async () => {
+    const { w, employee } = await world('gate-handover');
+    const handover = (await w.hired('范围内交接人')).employee;
+    const other = await w.otherUser();
+    const outside = await w.employeeAs(other.id, '范围外交接人');
+    const hr = w.restricted(denyButtons(), w.session.user.id);
+    const visible = await hr('GET', `/employees/${handover.id}`);
+    expect(visible.status).toBe(200);
+    const bodyOf = async (handoverEmployeeId: string) =>
+      w.reason(await w.createLeave(employee.id, leaveBody(LATER, 'application', { handoverEmployeeId }), hr));
+    const unknown = await bodyOf('00000000-0000-4000-8000-000000000001');
+    const hidden = await bodyOf(outside.id);
+    expect(unknown).toMatchObject({ status: 400, reason: 'EXIT_HANDOVER_EMPLOYEE_INVALID' });
+    expect(hidden).toEqual(unknown);
+    const ok = await w.createLeave(
+      employee.id,
+      leaveBody(LATER, 'application', { handoverEmployeeId: handover.id }),
+      hr,
+    );
+    expect(ok.status, await ok.clone().text()).toBe(201);
+  });
+});
+
 describe('B-46 / B-47 按钮与功能权：Dimission* 四个按钮，Employment.Create / Edit / Delete 不能代替', () => {
   it('B-46 创建：直接离职需 Dimission、申请需 DimissionApproval；无则 403 且无写入', async () => {
     const { w, employee } = await world('gate-create-buttons');

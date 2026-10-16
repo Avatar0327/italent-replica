@@ -53,6 +53,26 @@ async function world(label: string) {
   return { w, manager, staff, userOf, ctx, create };
 }
 
+/** 系统值由 F-020 seed；本批只认租户的有效覆盖，测试先补一条系统行（覆盖表有外键）。 */
+async function enableManagerInitiation(w: Awaited<ReturnType<typeof world>>['w']) {
+  await withPlatform(w.db, (tx) =>
+    tx
+      .insert(systemSettings)
+      .values({ key: MANAGER_SWITCH, value: false, description: '经理代发离职开关', overridable: true })
+      .onConflictDoNothing(),
+  );
+  await withTenant(w.db, w.session.tenant.id, (tx) =>
+    tx.insert(tenantSettingOverrides).values({
+      tenantId: w.session.tenant.id,
+      key: MANAGER_SWITCH,
+      value: true,
+      active: true,
+      revision: 1,
+      updatedBy: w.session.user.id,
+    }),
+  );
+}
+
 const self = (employeeId: string, exit: object = { whereaboutsCode: 'startup' }) => ({
   employeeId,
   initiation: 'self' as const,
@@ -111,6 +131,36 @@ describe('AC-DM-28 B-65 自助 / 经理代发的字段子集与身份关系', ()
     expect(await w.stateOf(manager.id)).toEqual(before);
   });
 
+  it('self / manager 的整个输入都限子集：任职字段、自定义字段、表单选择、生效日一律 400，无写入，不改申请快照', async () => {
+    const { w, manager, staff, userOf, create } = await world('app-subset-input');
+    await enableManagerInitiation(w);
+    const before = await w.stateOf(staff.id);
+    const extras = [
+      ['fields', { fields: { departmentId: w.to.id, place: '改写地点' } }],
+      ['customFields', { customFields: { [randomUUID()]: 'x' } }],
+      ['formId', { formId: 'custom-form' }],
+      ['effectiveDate', { effectiveDate: '2026-10-21' }],
+    ] as const;
+    const actors = [
+      ['self', await userOf(staff.id)],
+      ['manager', await userOf(manager.id)],
+    ] as const;
+    for (const [initiation, user] of actors)
+      for (const [name, extra] of extras)
+        await expect(
+          create(user, { ...self(staff.id), initiation, ...extra }),
+          `${initiation} ${name}`,
+        ).rejects.toMatchObject({
+          code: 'VALIDATION_FAILED',
+          details: { reason: 'EXIT_FIELD_NOT_ALLOWED_FOR_INITIATION' },
+        });
+    expect(await w.stateOf(staff.id)).toEqual(before);
+    // 对照：空的 fields / customFields 等于没传
+    const ok = await create(await userOf(staff.id), { ...self(staff.id), fields: {}, customFields: {} });
+    expect(ok.status).toBe('draft');
+    expect((await w.business(ok.id)).fields).toMatchObject({ departmentId: w.from.id, place: null });
+  });
+
   it('manager：开关默认关 → 403；开启后非直线经理 404，直线经理成功并按经理本人记发起人', async () => {
     const { w, manager, staff, userOf, create } = await world('app-manager');
     const input = { ...self(staff.id), initiation: 'manager' as const };
@@ -119,23 +169,7 @@ describe('AC-DM-28 B-65 自助 / 经理代发的字段子集与身份关系', ()
       code: 'FORBIDDEN',
       details: { reason: 'EXIT_MANAGER_INITIATION_DISABLED' },
     });
-    // 系统值由 F-020 seed；本批只认租户的有效覆盖，测试先补一条系统行（覆盖表有外键）
-    await withPlatform(w.db, (tx) =>
-      tx
-        .insert(systemSettings)
-        .values({ key: MANAGER_SWITCH, value: false, description: '经理代发离职开关', overridable: true })
-        .onConflictDoNothing(),
-    );
-    await withTenant(w.db, w.session.tenant.id, (tx) =>
-      tx.insert(tenantSettingOverrides).values({
-        tenantId: w.session.tenant.id,
-        key: MANAGER_SWITCH,
-        value: true,
-        active: true,
-        revision: 1,
-        updatedBy: w.session.user.id,
-      }),
-    );
+    await enableManagerInitiation(w);
     const stranger = (await w.hired('路人')).employee;
     await expect(create(await userOf(stranger.id), input)).rejects.toMatchObject({ code: 'NOT_FOUND' });
     const created = await create(managerUser, input);

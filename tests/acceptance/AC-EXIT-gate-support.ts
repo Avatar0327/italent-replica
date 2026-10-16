@@ -112,6 +112,19 @@ export async function gateWorld(db: Db, label: string, options: { today?: string
     return (await submitted.json()) as { id: string; revision: number };
   }
 
+  /** 以另一用户的身份建员工（创建者与主用户不同）。 */
+  async function employeeAs(userId: string, name: string) {
+    const api = tenantApi(db, { clock: () => new Date(nowIso) });
+    const response = await api.request('POST', `${BASE}/employees`, {
+      user: userId,
+      tenant: w.session.tenant.id,
+      ifMatch: 0,
+      body: { name, code: `EMP_${randomUUID().replaceAll('-', '')}` },
+    });
+    expect(response.status, await response.clone().text()).toBe(201);
+    return (await response.json()) as { id: string };
+  }
+
   const sqlRows = <T>(statement: ReturnType<typeof sql>) =>
     withTenant(db, w.session.tenant.id, async (tx) => rowsOf<T>(await tx.execute(statement)));
 
@@ -207,6 +220,7 @@ export async function gateWorld(db: Db, label: string, options: { today?: string
     stateOf,
     otherUser,
     applyAs,
+    employeeAs,
     synthetic,
     sqlRows,
   };
