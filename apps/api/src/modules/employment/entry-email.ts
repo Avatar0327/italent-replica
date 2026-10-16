@@ -233,3 +233,14 @@ export async function generateEntryEmailFor(
   });
   return result;
 }
+
+/**
+ * 生成邮箱回执的显式投影：回执不是任职对象，没有“字段”可裁，通用任职字段投影会把 email、规则标识全部裁掉。
+ * 只回固定键；能走到这里已经过任职记录的编辑权（按钮 + 对象）和业务范围，邮箱是这次操作本身的结果。
+ */
+export function emailReceipt(body: unknown): Record<string, unknown> {
+  const { status, email, reason, ruleId, ruleName } = body as Record<string, unknown>;
+  return Object.fromEntries(
+    Object.entries({ status, email, reason, ruleId, ruleName }).filter(([, value]) => value !== undefined),
+  );
+}

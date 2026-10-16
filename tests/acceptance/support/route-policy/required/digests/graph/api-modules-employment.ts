@@ -370,13 +370,29 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/write-service.ts#createEmploymentBusiness',
     'packages/domain/src/employment/employee-status.ts#ENTRY_STATUS',
   ],
+  'apps/api/src/modules/employment/entry-contract.ts#contractContext': [
+    'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
+    'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
+    'packages/domain/src/contracts/rules.ts#CONTRACT_OBJECT',
+  ],
   'apps/api/src/modules/employment/entry-contract.ts#entryContractSchema': [
     'apps/api/src/modules/contracts/input.ts#fieldsSchema',
   ],
   'apps/api/src/modules/employment/entry-contract.ts#generateEntryContract': [
     'apps/api/src/modules/contracts/ports.ts#generateContractForBusiness',
-    'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
+    '#contractContext',
+    '#contractFields',
+  ],
+  'apps/api/src/modules/employment/entry-contract.ts#requireEntryContractAccess': [
+    'apps/api/src/authorization.ts#requirePermission',
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    'apps/api/src/modules/contracts/context.ts#checkFields',
+    'apps/api/src/modules/contracts/context.ts#checkOperationScope',
+    '#contractContext',
+    '#contractFields',
     'packages/domain/src/contracts/rules.ts#CONTRACT_OBJECT',
+    'packages/domain/src/contracts/rules.ts#contractAction',
+    'packages/domain/src/permission/decide.ts#buttonResource',
   ],
   'apps/api/src/modules/employment/entry-email-routes.ts#route:GET /entry-email-rules': [
     'apps/api/src/modules/employment/context.ts#readContext',
@@ -422,6 +438,9 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/entry-routes.ts#completeInput': [
     'apps/api/src/modules/employment/entry-contract.ts#entryContractSchema',
   ],
+  'apps/api/src/modules/employment/entry-routes.ts#entryContractGuard': [
+    'apps/api/src/modules/employment/entry-contract.ts#requireEntryContractAccess',
+  ],
   'apps/api/src/modules/employment/entry-routes.ts#postponeInput': ['#remark'],
   'apps/api/src/modules/employment/entry-routes.ts#prepareEntryAction': [
     'apps/api/src/modules/employment/context.ts#jsonBody',
@@ -458,6 +477,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/employee-status.ts#completePendingEntry',
     'apps/api/src/modules/employment/entry-contract.ts#generateEntryContract',
     '#completeInput',
+    '#entryContractGuard',
     '#prepareEntryAction',
     'apps/api/src/modules/employment/write-service.ts#requireSavedBusiness',
   ],

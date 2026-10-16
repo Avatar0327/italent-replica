@@ -3700,8 +3700,8 @@
           "status": 401
         },
         "member": {
-          "code": "VALIDATION_FAILED",
-          "status": 400
+          "code": "FORBIDDEN",
+          "status": 403
         },
         "nonMember": {
           "code": "TENANT_NOT_MEMBER",
@@ -14982,6 +14982,8 @@
       "module": "employment",
       "primitives": {
         "button": [
+          "buttonResource",
+          "object.button",
           "requireEmploymentWrite(按钮)"
         ],
         "command": [
@@ -14993,6 +14995,7 @@
           "employment.importRowOperation"
         ],
         "fieldsIn": [
+          "checkFields",
           "requireEmploymentWrite"
         ],
         "fieldsOut": [
@@ -15010,6 +15013,7 @@
           "TenantBase.EmploymentRecord:update"
         ],
         "scope": [
+          "checkScope",
           "employment scope",
           "employment visibility",
           "readContext（非配置对象）",

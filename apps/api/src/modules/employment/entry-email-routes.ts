@@ -15,7 +15,13 @@ import {
   runWrite,
   trimEmploymentResponse,
 } from './context.js';
-import { emailRulesBody, generateEntryEmailFor, readEmailRules, replaceEmailRules } from './entry-email.js';
+import {
+  emailReceipt,
+  emailRulesBody,
+  generateEntryEmailFor,
+  readEmailRules,
+  replaceEmailRules,
+} from './entry-email.js';
 import { parse, prepareEntryAction, type BusinessWriteGuard } from './entry-routes.js';
 
 export function registerEntryEmailRoutes(
@@ -46,9 +52,13 @@ export function registerEntryEmailRoutes(
   });
   router.post('/pending-entries/:id/generate-email', async (c) => {
     const { id, ctx, input } = await prepareEntryAction(c, deps, authorizeBusinessWrite, z.strictObject({}));
-    return runWrite(c, deps, ctx, { id, action: 'generate-email', input }, async (tx, context) => ({
-      status: 200,
-      body: await generateEntryEmailFor(tx, context, id),
-    }));
+    return runWrite(
+      c,
+      deps,
+      ctx,
+      { id, action: 'generate-email', input },
+      async (tx, context) => ({ status: 200, body: await generateEntryEmailFor(tx, context, id) }),
+      { project: emailReceipt },
+    );
   });
 }

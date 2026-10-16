@@ -1412,15 +1412,52 @@ export const EMPLOYMENT: RequiredTable = {
     ),
   ),
   // ---- employment/entry-routes.ts：R2 BE-2a 待入职状态动作（办理入职 / 取消 / 改期 / 删除）-------------------------------
-  'POST /api/tenant/employment/pending-entries/:id/complete': entryUpdate(
-    '/pending-entries/:id/complete',
-    at(
-      ENTRY,
-      'POST',
+  'POST /api/tenant/employment/pending-entries/:id/complete': [
+    ...entryUpdate(
       '/pending-entries/:id/complete',
-      'await completePendingEntry(tx, context, id, { probation: input.probation })',
+      at(
+        ENTRY,
+        'POST',
+        '/pending-entries/:id/complete',
+        'await completePendingEntry(tx, context, id, { probation: input.probation })',
+      ),
     ),
-  ),
+    // 条件准入（带 contract 才挂）：CommandGuard.before 在命令事务内复核合同“新建”按钮（首次 / 重放 / 回查三个出口）
+    ob(
+      'guard:employment.entryContract',
+      [],
+      [
+        at(
+          ENTRY,
+          'POST',
+          '/pending-entries/:id/complete',
+          '{ guard: entryContractGuard(deps, ctx, id, input.contract) }',
+        ),
+        fn(ENTRY, 'entryContractGuard', 'requireEntryContractAccess(tx, deps, ctx, id, contract)'),
+      ],
+      '条件守卫：请求带 contract 时另要合同新建按钮 / 字段创建权 / 合同数据范围',
+    ),
+    {
+      ...ob(
+        'btn:TenantBase.EmploymentContract#create@list',
+        ['button:buttonResource', 'button:object.button'],
+        [
+          fn(ENTRY, 'entryContractGuard', 'requireEntryContractAccess(tx, deps, ctx, id, contract)'),
+          fn(
+            `${SRC}/employment/entry-contract.ts`,
+            'requireEntryContractAccess',
+            "resource: buttonResource(CONTRACT_OBJECT, contractAction('create', 'direct'), 'list')",
+          ),
+          {
+            role: 'const',
+            unit: 'packages/domain/src/contracts/rules.ts#CONTRACT_OBJECT',
+            anchor: "'TenantBase.EmploymentContract'",
+          },
+        ],
+      ),
+      purpose: 'when:employment.entryContract',
+    },
+  ],
   'POST /api/tenant/employment/pending-entries/:id/generate-email': entryUpdate('/pending-entries/:id/generate-email'),
   // ---- employment/entry-email-routes.ts：R2 BE-2b 入职生成邮箱规则配置（EN-R12）------------------------------------------
   'GET /api/tenant/employment/entry-email-rules': [

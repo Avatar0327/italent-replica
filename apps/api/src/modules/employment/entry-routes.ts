@@ -23,7 +23,13 @@ import {
   uuidParam,
 } from './context.js';
 import { completePendingEntry } from './employee-status.js';
-import { entryContractSchema, generateEntryContract } from './entry-contract.js';
+import type { CommandGuard } from '../../commands.js';
+import {
+  entryContractSchema,
+  type EntryContract,
+  generateEntryContract,
+  requireEntryContractAccess,
+} from './entry-contract.js';
 import { cancelPendingEntry, deletePendingEntry, postponePendingEntry } from './entry-actions.js';
 import { ENTRY_VIEWS, listEntryView } from './entry-views.js';
 import type { EmploymentContext } from './types.js';
@@ -67,6 +73,20 @@ export async function prepareEntryAction<T>(
   return { id, ctx, input };
 }
 
+/**
+ * 办理入职带合同信息时的合同权限命令内复核：接 CommandGuard.before，runCommand 的三个出口（首次执行、直接重放、失败后回查）
+ * 都经 ledgerExit 先过它，所以撤销合同权限后重放拿不到原 200。没带合同信息时不挂（行为同 BE-2a）。
+ * 工厂放在路由文件、检查函数留在 entry-contract.ts，与本人调动按钮的复核同一做法。
+ */
+function entryContractGuard(
+  deps: TenantRouteDeps,
+  ctx: EmploymentContext,
+  id: string,
+  contract: EntryContract | undefined,
+): CommandGuard | undefined {
+  return contract ? { before: (tx) => requireEntryContractAccess(tx, deps, ctx, id, contract) } : undefined;
+}
+
 export function registerEntryRoutes(
   router: Hono<TenantEnv>,
   deps: TenantRouteDeps,
@@ -75,11 +95,18 @@ export function registerEntryRoutes(
   registerEntryViews(router, deps);
   router.post('/pending-entries/:id/complete', async (c) => {
     const { id, ctx, input } = await prepareEntryAction(c, deps, authorizeBusinessWrite, completeInput);
-    return runWrite(c, deps, ctx, { id, action: 'complete', input }, async (tx, context) => {
-      const record = await completePendingEntry(tx, context, id, { probation: input.probation });
-      if (input.contract) await generateEntryContract(tx, deps, context, record, input.contract);
-      return { status: 200, body: await requireSavedBusiness(tx, context, id) };
-    });
+    return runWrite(
+      c,
+      deps,
+      ctx,
+      { id, action: 'complete', input },
+      async (tx, context) => {
+        const record = await completePendingEntry(tx, context, id, { probation: input.probation });
+        if (input.contract) await generateEntryContract(tx, deps, context, record, input.contract);
+        return { status: 200, body: await requireSavedBusiness(tx, context, id) };
+      },
+      { guard: entryContractGuard(deps, ctx, id, input.contract) },
+    );
   });
   router.post('/pending-entries/:id/cancel', async (c) => {
     const { id, ctx, input } = await prepareEntryAction(c, deps, authorizeBusinessWrite, cancelInput);

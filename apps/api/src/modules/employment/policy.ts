@@ -974,14 +974,16 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   ),
   // ---- employment/entry-routes.ts：R2 BE-2a 待入职状态动作（34 EN-R8 / R9 / R10 / R14）---------------------------------
   // 办理入职：If-Match = 业务 revision；body 严格 { probation, contract? }（400；contract = 合同字段白名单，BE-2b，同事务调
-  // generateContractForBusiness，合同权限 / 范围按合同对象重验，失败整笔回滚）；readContext('object.update') + Employment.Edit（命令式，
+  // generateContractForBusiness，合同权限 / 范围按合同对象重验，失败整笔回滚；
+  // 字段创建权 + 合同“新建”按钮 + 合同数据范围由 CommandGuard.before 在命令事务内复核，首次 / 重放 / 回查三个出口都覆盖）；
+  // readContext('object.update') + Employment.Edit（命令式，
   // 空字段集合）+ authorizeBusinessWrite（写入口径 404「任职业务不存在」）；命令内 lockPendingEntry（调动参与者 → 员工 → 业务头，
   // 范围 DEC-193）→ 只有待入职可办 409 NOT_PENDING_ENTRY / 已取消 409 ENTRY_CANCELLED → DEC-138 / 139 入职日 × 部门校验（400）
   'POST /pending-entries/:id/complete': object({
     object: EMPLOYMENT,
     operation: 'update',
     button: button('Employment.Edit', 'detail'),
-    guards: [DIRECT_OPERATION, LINKAGE],
+    guards: [DIRECT_OPERATION, LINKAGE, 'employment.entryContract'],
     scope: BUSINESS_WRITE,
     fields: RESPONSE,
     write: employmentCommand([
@@ -1036,14 +1038,15 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   }),
   // 生成邮箱（EN-R12）：If-Match = 业务 revision；body 严格 {}（400）；readContext('object.update') + Employment.Edit（命令式）+
   // authorizeBusinessWrite；命令内 lockPendingEntry（范围 DEC-193；非待入职 409 NOT_PENDING_ENTRY、已取消 409 ENTRY_CANCELLED）；
-  // 只读规则与人员 / 账号邮箱，成功、失败、跳过、无规则都写审计 employment.entry.email_generate，不回写人员档案
+  // 只读规则与人员 / 账号邮箱，成功、失败、跳过、无规则都写审计 employment.entry.email_generate，不回写人员档案；
+  // 回执是固定形状（status / email / reason / ruleId / ruleName），  // 用显式投影 emailReceipt 而不是通用任职字段裁剪（否则 email 被裁空）
   'POST /pending-entries/:id/generate-email': object({
     object: EMPLOYMENT,
     operation: 'update',
     button: button('Employment.Edit', 'detail'),
     guards: [DIRECT_OPERATION],
     scope: BUSINESS_WRITE,
-    fields: RESPONSE,
+    fields: projector('employment.response', 'employment.emailReceipt'),
     write: employmentCommand([
       'lockTransferBusiness',
       'lockEmploymentBusiness',
