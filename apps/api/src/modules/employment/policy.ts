@@ -609,7 +609,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
         'requireScopedEmploymentObject',
         'requireLinkedEmploymentRecord',
       ],
-      { controls: ['loginEmail'] },
+      { controls: ['loginEmail', 'pendingEntry', 'probation'] },
     ),
     ...byId,
   }),
@@ -951,6 +951,86 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     auditedConfigWrite('employment_custom_field'),
     byId,
   ),
+  // ---- employment/entry-routes.ts：R2 BE-2a 待入职状态动作（34 EN-R8 / R9 / R10 / R14）---------------------------------
+  // 办理入职：If-Match = 业务 revision；body 严格 { probation }（400）；readContext('object.update') + Employment.Edit（命令式，
+  // 空字段集合）+ authorizeBusinessWrite（写入口径 404「任职业务不存在」）；命令内 lockPendingEntry（调动参与者 → 员工 → 业务头，
+  // 范围 DEC-193）→ 只有待入职可办 409 NOT_PENDING_ENTRY / 已取消 409 ENTRY_CANCELLED → DEC-138 / 139 入职日 × 部门校验（400）
+  'POST /pending-entries/:id/complete': object({
+    object: EMPLOYMENT,
+    operation: 'update',
+    button: button('Employment.Edit', 'detail'),
+    guards: [DIRECT_OPERATION, LINKAGE],
+    scope: BUSINESS_WRITE,
+    fields: RESPONSE,
+    write: employmentCommand([
+      'lockTransferBusiness',
+      'lockEmploymentBusiness',
+      'assertRevision',
+      'requireScopedEmploymentObject',
+      'requireLinkedEmploymentRecord',
+    ]),
+    ...byId,
+  }),
+  // 取消入职：body 严格 { reason?（5 项枚举）, remark? }（400）；重复取消 409 ENTRY_STATUS_UNCHANGED；审计 employment.record.status
+  'POST /pending-entries/:id/cancel': object({
+    object: EMPLOYMENT,
+    operation: 'update',
+    button: button('Employment.Edit', 'detail'),
+    guards: [DIRECT_OPERATION],
+    scope: BUSINESS_WRITE,
+    fields: RESPONSE,
+    write: employmentCommand([
+      'lockTransferBusiness',
+      'lockEmploymentBusiness',
+      'assertRevision',
+      'requireScopedEmploymentObject',
+    ]),
+    ...byId,
+  }),
+  // 改期入职：body 严格 { effectiveDate（必填）, remark? }（400）；requireEmploymentWrite 按 { effectiveDate } 校验字段写权限
+  // （无该字段写权限 403，不落库）；先删原待入职、再按新日期、原业务类型与字段重建（同事务，记录 ID 变更）；
+  // 后面还有任职记录 / 在途申请 → 删除一步拒绝，整笔回滚；入职日 × 部门校验同添加（DEC-138 / 139）
+  'POST /pending-entries/:id/postpone': object({
+    object: EMPLOYMENT,
+    operation: 'update',
+    button: button('Employment.Edit', 'detail'),
+    guards: [DIRECT_OPERATION, LINKAGE],
+    scope: BUSINESS_WRITE,
+    fields: RESPONSE,
+    write: employmentWrite(
+      'body',
+      [
+        'lockTransferBusiness',
+        'lockEmploymentBusiness',
+        'assertRevision',
+        'requireScopedEmploymentObject',
+        'requireLinkedEmploymentRecord',
+        'assertNoPendingApplication',
+        'lockEmploymentEmployee',
+      ],
+      { controls: ['remark'] },
+    ),
+    ...byId,
+  }),
+  // 删除待入职（不可恢复）：object.delete + Employment.Delete；只有待入职可删 409 NOT_PENDING_ENTRY；删除内核同
+  // DELETE /businesses/:id（transitionEmployment delete，在途申请 409）
+  'DELETE /pending-entries/:id': object({
+    object: EMPLOYMENT,
+    operation: 'delete',
+    button: button('Employment.Delete', 'detail'),
+    guards: [DIRECT_OPERATION, LINKAGE],
+    scope: BUSINESS_WRITE,
+    fields: RESPONSE,
+    write: employmentCommand([
+      'lockTransferBusiness',
+      'lockEmploymentBusiness',
+      'assertRevision',
+      'requireScopedEmploymentObject',
+      'assertNoPendingApplication',
+      'requireLinkedEmploymentRecord',
+    ]),
+    ...byId,
+  }),
   // ---- employment/exit-routes.ts：R2-T03 离职三个字典（设计 §2.1 / §4 / §9.1）-----------------------------------------
   // :dict ∉ types / reasons / whereabouts → 400；enabled 查询非法 → 400；字典无组织字段，不按范围裁剪，返回固定键
   'GET /exits/dictionaries/:dict': object({

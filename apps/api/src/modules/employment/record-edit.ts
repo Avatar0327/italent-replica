@@ -17,7 +17,8 @@ import { forwardUpdateEmployment } from './forward-update.js';
 import { sequenceForNewPost } from './inheritance.js';
 import { loadEmploymentRecord } from './read-model.js';
 import { bumpEmploymentBusiness, lockEmploymentBusiness } from './record-store.js';
-import { validateEmploymentReferences } from './references.js';
+import { assertEmploymentDepartmentAvailable, validateEmploymentReferences } from './references.js';
+import { isPendingEntryRecord } from './employee-status.js';
 import { recordWindow } from './reporting-cycle.js';
 import { requireSavedBusiness } from './write-service.js';
 import type { EmploymentBusinessPatch, EmploymentContext, EmploymentRecord, CustomFields } from './types.js';
@@ -75,6 +76,9 @@ export async function editEmploymentRecord(
   }
   const reporting = await editedRecordReporting(tx, ctx, record, patch);
   if (reporting?.window && options.linkageDate) reporting.window = { ...reporting.window, from: options.linkageDate };
+  // DEC-138 / 139：编辑待入职与添加、办理入职共用入职日期 × 部门校验
+  if (isPendingEntryRecord(record))
+    await assertEmploymentDepartmentAvailable(tx, ctx, after.fields.departmentId, record.effectiveDate, true);
   await validateEmploymentReferences(tx, ctx, after.fields, record.effectiveDate, reporting, options.linkageDate);
   const beforeAudit = { ...record.fields, ...customAudit(record.customFields) };
   const afterAudit = { ...after.fields, ...customAudit(after.customFields) };
