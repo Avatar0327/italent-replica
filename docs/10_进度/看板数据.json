@@ -5844,7 +5844,7 @@
 "n": "F-206 已取消入职列表与详情返回取消说明（后端读字段，DEC-560 方案 B，issue #376）",
 "s": "assigned",
 "after": [],
-"note": "DEC-560 方案 B（F-192b 前置）· 云端 Claude Sonnet High 已开会话（session_012TxuvJcdk1tALxz1MtU2XA）· Sol high 审 · 次序 F-206>F-202>F-203（DEC-561）· PR 号待补",
+"note": "DEC-560 方案 B（F-192b 前置）· 云端 Claude Sonnet High 开发中（session_012TxuvJcdk1tALxz1MtU2XA）· Sol high 审 · 次序 F-206>F-202>F-203（DEC-561）· PR 号待补",
 "mod": "R2",
 "ms": "D2"
 },
@@ -5853,9 +5853,9 @@
 "n": "F-207 AC-PRM-FW-02-storage 高负载超时第 3 次挡队（#347/#359/#375），仿 F-116 单设用例超时，不改断言",
 "s": "assigned",
 "after": [],
-"note": "storage 用例单设超时（只改测试，不改断言）· 云端 Claude Sonnet High 已开会话（session_01BuEZhGYocq8PJKCtnjhzjA）· Sol high 审 · 标签 D3·底座·后补（与 03 派发单一致）· PR 号待补",
-"mod": "底座",
-"ms": "D3"
+"note": "storage 用例单设超时（只改测试，不改断言）· 云端 Claude Sonnet High 开发中（session_01BuEZhGYocq8PJKCtnjhzjA）· Sol high 审 · 标签定为 D2·R2·后补（03 最终确认）· PR 号待补",
+"mod": "R2",
+"ms": "D2"
 }
 ]
 },
