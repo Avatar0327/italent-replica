@@ -2,21 +2,24 @@
  * 命令内的写权限复核（CommandGuard.before）：F-195 / F-197，DEC-406 权限类后补。
  * runCommand 的三个出口（首次执行、同键直接重放、失败后回查）都先过 before，所以撤权后重放拿不到台账里的原响应。
  * 入口（事务外）的复核只管本次请求，管不到“入口放行之后、命令事务之前”的撤权；命令内的权限依赖与数据范围都在这里
- * 按当前授权重新取得（事务内绑定的授权器、事务内解析的数据范围），不沿用入口取到的快照。
+ * 按当前授权重新取得（commandContext：事务内绑定的授权器、事务内解析的数据范围），不沿用入口取到的快照。
+ * 这些 guard 都带 scopedGuard 标记：runWrite 让执行、提交前结果校验和重放复核（业务当前值 / 原响应快照 / 命令足迹）
+ * 也用同一份事务内范围，所以这里只负责前置检查。
  */
 import type { Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
 import { requirePermission, type Authorizer } from '../../authorization.js';
-import type { CommandGuard } from '../../commands.js';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
-import { authorizeInTransaction, resolveModuleScopeInTransaction } from '../permission/module-access.js';
 import {
   EMPLOYMENT_OBJECT,
+  commandContext,
   requireEmployeeInScope,
   requireEmploymentScope,
   requireEmploymentWrite,
   requireScopedEmploymentObject,
+  scopedGuard,
+  type ScopedCommandGuard,
 } from './context.js';
 import { isExitKind, requireExitPermission, type ExitGateTarget, type ExitOperation } from './exit-gate.js';
 import { loadEmploymentBusiness } from './read-model.js';
@@ -47,15 +50,6 @@ export async function requireBusinessWriteScope(
   return value;
 }
 
-/** 命令事务内的上下文：授权器绑定到本事务，数据范围按当前授权在本事务内重新解析（入口的范围只是请求内快照）。 */
-async function commandContext(tx: Tx, deps: TenantRouteDeps, ctx: EmploymentContext): Promise<EmploymentContext> {
-  const authorize = authorizeInTransaction(deps.authorize, tx);
-  const scope = ctx.scope
-    ? await resolveModuleScopeInTransaction(deps, ctx, tx, ctx.objectCode ?? EMPLOYMENT_OBJECT)
-    : undefined;
-  return { ...ctx, authorize, scope };
-}
-
 /** 入口 readContext 的对象编辑权判定（不带字段），命令内按当前授权再过一遍。 */
 function requireObjectUpdate(ctx: EmploymentContext) {
   return requirePermission(ctx.authorize!, {
@@ -77,10 +71,14 @@ export interface EditTarget {
  * 记录编辑 / 批量编辑 / 导入编辑行三条路径共用的离职复核：目标里有离职 / 退休记录时，命令内重过范围与 Dimission* 权限链
  * （editEmploymentRecord 内同一道门只在真正执行时才跑，命中台账的重放到不了那里）。没有离职目标不挂，行为不变。
  */
-export function exitEditGuard(deps: TenantRouteDeps, ctx: EmploymentContext, targets: readonly EditTarget[]) {
+export function exitEditGuard(
+  deps: TenantRouteDeps,
+  ctx: EmploymentContext,
+  targets: readonly EditTarget[],
+): ScopedCommandGuard | undefined {
   const exits = targets.filter((target) => isExitKind(target.kind));
   if (!exits.length) return undefined;
-  const guard: CommandGuard = {
+  return scopedGuard({
     before: async (tx) => {
       const scoped = await commandContext(tx, deps, ctx);
       await requireObjectUpdate(scoped);
@@ -93,8 +91,7 @@ export function exitEditGuard(deps: TenantRouteDeps, ctx: EmploymentContext, tar
         await requireExitPermission(scoped, 'update', { employeeId: target.employeeId, patch: target.patch });
       }
     },
-  };
-  return guard;
+  });
 }
 
 /**
@@ -106,15 +103,15 @@ export function pendingEditGuard(
   ctx: EmploymentContext,
   id: string,
   payload: object,
-): CommandGuard {
-  return {
+): ScopedCommandGuard {
+  return scopedGuard({
     before: async (tx) => {
       const scoped = await commandContext(tx, deps, ctx);
       await requireObjectUpdate(scoped);
       await requireEmploymentWrite(scoped, 'update', payload, 'Employment.Edit');
       await requireBusinessWriteScope(tx, scoped.authorize!, scoped, id);
     },
-  };
+  });
 }
 
 /** 离职入口命令内复核的范围目标：已有业务按业务 + 员工 + 目标部门校验；创建（还没有业务）按员工 + 目标部门。 */
@@ -125,8 +122,9 @@ export interface ExitScopeTarget {
 
 /**
  * 离职入口（create / PATCH / submit / withdraw / DELETE /businesses/:id / activation/retry）的命令内复核（#199，F-195）：
- * 首次执行、同键重放、失败回查三个出口都先在命令事务内按当前授权重新解析数据范围，校验员工、业务和实际目标部门的
- * 写入范围，再过 Dimission* 权限链；重放时对原结果里的业务再查一遍（实际写入的部门可能是继承来的）。入口取到的范围只是请求内快照，管不到入口放行之后、命令事务之前的范围收窄。
+ * 首次执行、同键重放、失败回查三个出口都先在命令事务内按当前授权重新解析数据范围，校验员工、业务和请求里显式给出的
+ * 目标部门的写入范围，再过 Dimission* 权限链。创建时没填的部门是从时间线继承来的（PATCH 也会重算继承），请求里看不到，
+ * 由 runWrite 在同一份事务内范围上校验实际写入的结果（执行后）和原响应（重放时）。
  */
 export function exitCommandGuard(
   deps: TenantRouteDeps,
@@ -134,21 +132,14 @@ export function exitCommandGuard(
   operation: ExitOperation,
   target: ExitGateTarget,
   scopeTarget: ExitScopeTarget,
-): CommandGuard {
-  return {
+): ScopedCommandGuard {
+  return scopedGuard({
     before: async (tx) => {
       const scoped = await commandContext(tx, deps, ctx);
       await requireExitScope(tx, scoped, target, scopeTarget);
       await requireExitPermission(scoped, operation, target);
     },
-    // 请求里的部门可以不传（创建时从时间线继承、PATCH 重算继承），实际写入的值只在原结果的业务上：重放前对它再查一遍范围
-    replayed: async (tx, result) => {
-      const id = (result.body as { id?: unknown } | null)?.id;
-      if (typeof id !== 'string') return;
-      const scoped = await commandContext(tx, deps, ctx);
-      await requireBusinessWriteScope(tx, scoped.authorize!, scoped, id, target.employeeId);
-    },
-  };
+  });
 }
 
 async function requireExitScope(
