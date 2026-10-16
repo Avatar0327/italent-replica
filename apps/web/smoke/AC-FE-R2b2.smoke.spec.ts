@@ -323,16 +323,18 @@ async function actionDialog(page: Page, action: string) {
   return page.locator('.ant-popconfirm');
 }
 for (const action of ['edit', 'postpone', 'delete']) {
-  for (const failure of ['conflict', 'unknown'])
+  for (const failure of ['conflict', 'unknown', 'employeeStatus', 'entryStatus'])
     test(`AC-FE-R2b2-13 ${action} ${failure} 恢复槽跨视图且不盲重试`, async ({ page, baseURL }) => {
       const state = await entryPage(page, baseURL!);
+      if (failure.endsWith('Status')) state.hidden = [failure];
       let attempts = 0;
       await page.route('**/pending-entries/**', (route) => {
         if (route.request().method() === 'GET') return route.fallback();
         attempts++;
         if (attempts > 1) return route.fallback();
         state.row.revision = 8;
-        return failure === 'conflict'
+        if (failure === 'entryStatus') state.row.entryStatus = 1;
+        return failure !== 'unknown'
           ? route.fulfill({ status: 409, json: { error: { code: 'REVISION_CONFLICT', message: '合成版本冲突' } } })
           : route.fulfill({ json: { status: 'unexpected' } });
       });
@@ -340,7 +342,7 @@ for (const action of ['edit', 'postpone', 'delete']) {
       let dialog = await actionDialog(page, action);
       await dialog.getByRole('button', submit).click();
       await expect(dialog.getByRole('button', submit)).toBeDisabled();
-      if (failure === 'conflict') {
+      if (failure !== 'unknown') {
         await dialog.getByRole('button', named('重读最新版本')).click();
         await dialog.getByRole('button', named('已核对差异，继续编辑')).click();
         await dialog.getByRole('button', submit).click();

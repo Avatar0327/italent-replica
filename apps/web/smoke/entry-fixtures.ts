@@ -40,6 +40,7 @@ export async function setupEntries(page: Page, baseURL: string) {
   const state = {
     row: { ...initialEntry },
     removed: false,
+    hidden: [] as string[],
     email: {
       status: 'generated',
       email: 'synthetic.entry@example.invalid',
@@ -168,6 +169,11 @@ async function employmentRoutes(page: Page, state: EntryState) {
     const path = url.pathname;
     if (request.method() === 'GET') {
       state.reads.push(path + url.search);
+      const reply = (value: unknown) =>
+        route.fulfill({
+          contentType: 'application/json',
+          body: JSON.stringify(value, (key, value: unknown) => (state.hidden.includes(key) ? undefined : value)),
+        });
       if (path.endsWith('/pending-entries')) {
         const view = url.searchParams.get('view');
         const pending = state.row.employeeStatus === 1;
@@ -175,28 +181,24 @@ async function employmentRoutes(page: Page, state: EntryState) {
         if (view === 'hired') included = !pending;
         if (view === 'cancelled') included = pending && state.row.entryStatus === 1;
         if (view === 'today') included = included && state.row.effectiveDate === '2026-10-15';
-        return route.fulfill({
-          json: {
-            items: !state.removed && included ? [state.row] : [],
-            page: 1,
-            pageSize: 30,
-            hasDataPermission: true,
-          },
+        return reply({
+          items: !state.removed && included ? [state.row] : [],
+          page: 1,
+          pageSize: 30,
+          hasDataPermission: true,
         });
       }
-      if (path.includes('/businesses/')) return route.fulfill({ json: business(state) });
-      if (path.includes('/records/')) return route.fulfill({ json: record(state) });
+      if (path.includes('/businesses/')) return reply(business(state));
+      if (path.includes('/records/')) return reply(record(state));
       if (path.includes('/employees/'))
-        return route.fulfill({
-          json: {
-            id: personId,
-            name: state.row.name,
-            code: state.row.code,
-            revision: 8,
-            status: state.row.employeeStatus === 1 ? 'pending' : 'employed',
-            employeeStatus: state.row.employeeStatus,
-            entryStatus: state.row.entryStatus,
-          },
+        return reply({
+          id: personId,
+          name: state.row.name,
+          code: state.row.code,
+          revision: 8,
+          status: state.row.employeeStatus === 1 ? 'pending' : 'employed',
+          employeeStatus: state.row.employeeStatus,
+          entryStatus: state.row.entryStatus,
         });
       return route.fallback();
     }
