@@ -1,7 +1,7 @@
 {
 "updated": "2026-10-14",
 "stats": {
-"merged": 288,
+"merged": 289,
 "open": 7,
 "dec": 555,
 "ev": "43/177"
@@ -983,6 +983,10 @@
 }
 },
 "log": [
+[
+"10-16",
+"D2·R2·后补·F-192a（#371）开发完成，第1轮 Sol high 审查中"
+],
 [
 "10-16",
 "D2·R2·前端·FE-R2b-2（#364）第2轮可以合并已入队（362→370→364）"
@@ -5554,9 +5558,10 @@
 "F-187",
 "F-194"
 ],
-"note": "云端 Claude Sonnet 5.5 High 已开会话（session_0132VfcCwxmeTKRXrM7aeEtQ）· 分支 claude/F-192a-entry-cancel（基于 e648db49+）· PR 号待补 · Sol high 审",
+"note": "#371 开发完成（head f243ad52，+423/−9，5 文件）· 第 1 轮 Sol high 审查中",
 "mod": "R2",
-"ms": "D2"
+"ms": "D2",
+"pr": 371
 },
 {
 "k": "F-192b",
