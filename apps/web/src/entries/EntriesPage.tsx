@@ -59,7 +59,7 @@ function EntryList() {
   const columns: TableColumnsType<Row> = m.columns[view].split('|').map((title) => ({
     title,
     key: title,
-    width: title === '电子文件' ? 262 : title === '司龄校正值（年）' ? 172 : 140,
+    width: m.columnWidths[title] ?? 140,
     ellipsis: true,
     render: (_, row) => cell(title, row),
   }));
@@ -139,8 +139,12 @@ function cell(title: string, row: Row) {
   if (['待入职部门', '部门'].includes(title))
     return <NameOf path={refPaths.departmentId} id={row.departmentId} asOf={row.effectiveDate} />;
   if (title === '入职类型') return row.kind ? (m.kind[row.kind as keyof typeof m.kind] ?? '--') : '--';
-  if (title === '入职状态') return row.entryStatus == null ? '--' : ENTRY_STATUS_LABELS[row.entryStatus];
-  if (title === '当前状态') return row.employeeStatus == null ? '--' : EMPLOYEE_STATUS_LABELS[row.employeeStatus];
+  if (title === '入职状态')
+    return row.entryStatus === null || row.entryStatus === undefined ? '--' : ENTRY_STATUS_LABELS[row.entryStatus];
+  if (title === '当前状态')
+    return row.employeeStatus === null || row.employeeStatus === undefined
+      ? '--'
+      : EMPLOYEE_STATUS_LABELS[row.employeeStatus];
   return '--';
 }
 function RowActions({ row, view, open }: { row: Row; view: View; open(): void }) {

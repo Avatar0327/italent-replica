@@ -245,3 +245,24 @@ for (const action of ['complete', 'generate-email'])
     await expect(dialog.getByRole('button', save)).toBeDisabled();
     expect(writes).toBe(1);
   });
+
+test('AC-FE-R2b2-11 只有按钮权限，没有对象更新权时不出现入职动作', async ({ page, baseURL }) => {
+  const state = await entryPage(page, baseURL!);
+  await page.route('**/permission/me/objects/TenantBase.EmploymentRecord', (route) =>
+    route.fulfill({
+      json: {
+        objectCode: 'TenantBase.EmploymentRecord',
+        dataOperations: {},
+        viewableFields: ['id', 'revision'],
+        editableFields: [],
+        buttons: [{ buttonCode: 'Employment.Edit', level: 'detail' }],
+      },
+    }),
+  );
+  await page.reload();
+  await row(page)
+    .getByRole('button', { name: /更多|▾/ })
+    .click();
+  await expect(page.getByRole('menuitem', named('入职'))).toHaveCount(0);
+  expect(state.writes).toEqual([]);
+});

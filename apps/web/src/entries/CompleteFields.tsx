@@ -96,7 +96,7 @@ function TrialSelect({
   return (
     <Select
       placeholder={m.choose}
-      value={value == null ? undefined : String(value)}
+      value={value === null || value === undefined ? undefined : String(value)}
       options={[
         { value: 'true', label: m.yes },
         { value: 'false', label: m.no },
@@ -105,6 +105,10 @@ function TrialSelect({
       onChange={lock.guard((next: string) => onChange?.(next === 'true'))}
     />
   );
+}
+function yesNo(value: unknown) {
+  if (typeof value !== 'boolean') return '--';
+  return value ? m.yes : m.no;
 }
 function displayFields(data: Values, email: ReactNode) {
   const date = String(data.effectiveDate ?? '');
@@ -124,7 +128,7 @@ function displayFields(data: Values, email: ReactNode) {
     职等: <NameOf path="/api/tenant/job/grades" id={data.gradeId} asOf={date} />,
     职务序列: <NameOf path="/api/tenant/job/sequences" id={data.sequenceId} asOf={date} />,
     工作地点: String(data.place ?? '--'),
-    是否部门负责人: typeof data.isDepartmentHead === 'boolean' ? (data.isDepartmentHead ? m.yes : m.no) : '--',
+    是否部门负责人: yesNo(data.isDepartmentHead),
     新增下属: <RefLabels path={refPaths.employeeId} ids={data.addedSubordinateIds} />,
     直线经理: <NameOf path={refPaths.employeeId} id={data.directManagerId} />,
     虚线经理: <NameOf path={refPaths.employeeId} id={data.dottedManagerId} />,

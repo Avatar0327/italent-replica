@@ -169,14 +169,10 @@ async function employmentRoutes(page: Page, state: EntryState) {
       if (path.endsWith('/pending-entries')) {
         const view = url.searchParams.get('view');
         const pending = state.row.employeeStatus === 1;
-        const included =
-          view === 'hired'
-            ? !pending
-            : view === 'cancelled'
-              ? pending && state.row.entryStatus === 1
-              : pending &&
-                state.row.entryStatus !== 1 &&
-                (view !== 'today' || state.row.effectiveDate === '2026-10-15');
+        let included = pending && state.row.entryStatus !== 1;
+        if (view === 'hired') included = !pending;
+        if (view === 'cancelled') included = pending && state.row.entryStatus === 1;
+        if (view === 'today') included = included && state.row.effectiveDate === '2026-10-15';
         return route.fulfill({
           json: {
             items: !state.removed && included ? [state.row] : [],
