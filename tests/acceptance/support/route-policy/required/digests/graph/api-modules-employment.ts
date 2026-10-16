@@ -563,8 +563,13 @@ export const GRAPH: Graph = {
     '#writerOf',
   ],
   'apps/api/src/modules/employment/exit-dictionaries.ts#writerOf': ['apps/api/src/system-actor.ts#auditActor'],
+  'apps/api/src/modules/employment/exit-gate.ts#BUTTON': ['packages/domain/src/employment/exit.ts#EXIT_BUTTONS'],
   'apps/api/src/modules/employment/exit-gate.ts#assertDictionaries': [
     'apps/api/src/modules/employment/exit-dictionaries.ts#assertExitDictionaryEnabled',
+    '#assertHandoverEmployee',
+  ],
+  'apps/api/src/modules/employment/exit-gate.ts#assertHandoverEmployee': [
+    'apps/api/src/modules/employment/visibility.ts#visibleEmploymentRecords',
   ],
   'apps/api/src/modules/employment/exit-gate.ts#assertNoLeaveInProgress': ['#conflict', '#inFlightApplications'],
   'apps/api/src/modules/employment/exit-gate.ts#assertNoOverdueTransfer': [
