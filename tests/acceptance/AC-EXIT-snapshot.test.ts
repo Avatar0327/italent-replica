@@ -70,14 +70,23 @@ describe('F-196 / AC-DM-32 B-80 / AC-DM-33 B-86 stateSnapshot 成功命令台账
   it('其他租户的同 ID 回执不进本租户的快照；失败回执（≥ 400）也不进', async () => {
     const { w, mine, mineInstance } = await scene('snapshot-other-tenant');
     const foreign = await gateWorld(database().db, 'snapshot-foreign');
+    // 基线先读，再插入外租户成功回执（响应体的 id / instanceId / employeeId 都指向本员工）和本租户失败回执
+    const before = await w.stateOf(mine.id);
+    const foreignKey = `foreign-probe-${randomUUID()}`;
     await withTenant(foreign.db, foreign.session.tenant.id, (tx) =>
       tx.execute(sql`INSERT INTO command_ledger(tenant_id, command_id, request_hash, response_status, response_body)
-        VALUES (${foreign.session.tenant.id}, ${`snapshot-${randomUUID()}`}, 'snapshot', 200,
+        VALUES (${foreign.session.tenant.id}, ${foreignKey}, 'snapshot', 200,
           ${JSON.stringify({ instanceId: mineInstance, id: mineInstance, employeeId: mine.id })}::jsonb)`),
     );
-    const before = await w.stateOf(mine.id);
-    await ledgerRow(w, { instanceId: mineInstance }, 409);
-    expect(await w.stateOf(mine.id)).toEqual(before);
+    const failedKey = await ledgerRow(w, { instanceId: mineInstance }, 409);
+    const after = await w.stateOf(mine.id);
+    expect(after).toEqual(before);
+    // 明确断言两个键都不在快照里：整份相等本身挡不住“基线里就已读进来”的情形
+    const keys = after.ledger.map((row) => row.command_id);
+    expect(keys).not.toContain(foreignKey);
+    expect(keys).not.toContain(failedKey);
+    // 正向对照：同一个员工 ID 在外租户自己的快照里能读到这条回执（确认插入没有落空，过滤确实是靠租户隔离挡住的）
+    expect((await foreign.stateOf(mine.id)).ledger.map((row) => row.command_id)).toContain(foreignKey);
   });
 
   it('addedRows：只追加的行集里既有行被删除或改动即判红', () => {
