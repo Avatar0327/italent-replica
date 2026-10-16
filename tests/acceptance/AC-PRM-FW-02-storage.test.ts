@@ -209,7 +209,8 @@ describe('AC-PRM-FW-02 图存储：重算的差异面（F-072 测试 3、4）', 
       diff.every((l) => l.startsWith('nodes.ts: ')),
       diff.join('\n'),
     ).toBe(true);
-  });
+    // 整图重算本机约 16s，高负载 CI 会超过全局 30s（#347、#359、#375），单独放宽，不动全局超时（F-207，仿 F-116）
+  }, 120_000);
 
   it('删除一个根后重算：其独有节点从 nodes.ts 与 graph/* 消失；对残留登记报 EVIDENCE_UNUSED', () => {
     const files = {

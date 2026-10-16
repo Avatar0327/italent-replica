@@ -14417,10 +14417,14 @@
           "TenantBase.EmploymentRecord:update"
         ],
         "scope": [
+          "employment scope",
           "employment visibility",
           "readContext（非配置对象）",
           "scope.all",
           "scopeSql"
+        ],
+        "scopePoint": [
+          "employment point"
         ]
       }
     },
@@ -14911,9 +14915,7 @@
         "scope": [
           "employment scope",
           "employment visibility",
-          "readPageContext",
-          "scope.all",
-          "scopeSql"
+          "readPageContext"
         ],
         "scopePoint": [
           "employment point"
