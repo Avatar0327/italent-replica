@@ -189,21 +189,26 @@ describe('AC-DM-28 B-65 自助 / 经理代发的字段子集与身份关系', ()
     await withTenant(w.db, w.session.tenant.id, (tx) =>
       transitionEmployment(tx, submitCtx, { id: created.id, action: 'submit' }),
     );
+    const submitted = await w.stateOf(staff.id);
     await expect(w.approve(created, '2026-10-06T02:00:00Z')).rejects.toMatchObject({
       details: { reason: 'EXIT_HR_FIELDS_REQUIRED' },
     });
+    // 被拒的同意：业务、审批实例 / 任务 / 日志、扩展行、审计、台账逐项不变
+    expect(await w.stateOf(staff.id)).toEqual(submitted);
     const pending = await w.business(created.id);
     expect(pending.status).toBe('in_review');
     const hrCtx = { ...(await ctx(w.session.user.id, staff.id)), expectedRevision: pending.revision };
     await withTenant(w.db, w.session.tenant.id, (tx) =>
       updateExitFields(tx, hrCtx, created.id, { exitTypeCode: 'voluntary' }),
     );
+    expect(await w.exitRow(created.id)).toMatchObject({ exit_type_code: 'voluntary', initiator: 'self' });
     expect(await w.approve(created, '2026-10-06T02:00:00Z')).toMatchObject({ status: 'approved' });
   });
 
   it('流程匹配输入含 initiation（发起条件字段 business.initiation）', async () => {
     const { w, staff, userOf, ctx, create } = await world('app-initiation');
     const created = await create(await userOf(staff.id), self(staff.id));
+    expect(created.status).toBe('draft');
     const context = { ...(await ctx(w.session.user.id, staff.id)), expectedRevision: 0 };
     const snapshot = await withTenant(w.db, w.session.tenant.id, (tx) =>
       ADAPTERS.employment.snapshot(tx, context, created.id),
