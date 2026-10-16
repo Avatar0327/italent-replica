@@ -10,7 +10,8 @@
 .info-page .ant-alert {
   margin-bottom: 12px;
 }
-.info-control .ant-select {
+.info-control .ant-select,
+.info-control .ant-picker {
   width: 100%;
 }
 .ant-modal:has(.info-control) .form-group-title:empty {

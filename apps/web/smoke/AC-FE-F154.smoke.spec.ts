@@ -331,7 +331,10 @@ test('AC-FE-F154-16 可见值筛选生效，缺必填字段编辑权不开放新
   await enter(page, 'tutorships');
   await expect(page.getByRole('combobox', { name: '开始时间', exact: true })).toBeEnabled();
   await page.getByRole('combobox', { name: '开始时间', exact: true }).click();
-  await page.locator('.ant-select-dropdown:visible').getByText('2026-10-01', { exact: true }).click();
+  await page
+    .locator('.ant-select-dropdown:visible .ant-select-item-option-content')
+    .filter({ hasText: /^2026-10-01$/ })
+    .click();
   await expect(page.getByText('共1条', { exact: true })).toBeVisible();
   await mockInfo(page, {
     fields: {
