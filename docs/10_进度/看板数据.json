@@ -985,6 +985,10 @@
 "log": [
 [
 "10-16",
+"#359 BE-4 B1b 第 3 轮可以合并，已重新入队"
+],
+[
+"10-16",
 "#359 BE-4 B1b 解冲突已推送，第 3 轮快审已发起"
 ],
 [
@@ -4858,7 +4862,7 @@
 "k": "BE-4b",
 "n": "BE-4 离职 B1b（日期单一来源 + 队列 SQL）",
 "s": "assigned",
-"note": "#359 已推送解冲突（head 79a309d0，MERGEABLE）· 第 3 轮 Sol high 快审（只看冲突解法）已发起，过了入队 · 合入后 03 派 R2-T03 B2a · 新增后补 P3：AC-EXIT-leave-entry-main.test.ts:41 补 finalDate 断言",
+"note": "#359 第 3 轮（解冲突）可以合并（head 79a309d0），已重新入队 · 合入后 03 发“拟派发 R2-T03 B2a” · 新增后补 P3：AC-EXIT-leave-entry-main.test.ts:41 补 finalDate 断言",
 "after": [
 "BE-4"
 ],
