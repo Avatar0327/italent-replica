@@ -34,7 +34,7 @@ const completeInput = z.strictObject({ probation: z.boolean(), contract: entryCo
 const cancelInput = z.strictObject({ reason: z.enum(ENTRY_CANCEL_REASON_CODES).optional(), remark });
 const postponeInput = z.strictObject({ effectiveDate: z.string().min(1), remark });
 
-function parse<T>(schema: z.ZodType<T>, value: unknown): T {
+export function parse<T>(schema: z.ZodType<T>, value: unknown): T {
   const result = schema.safeParse(value);
   if (!result.success) throw new AppError('VALIDATION_FAILED', '请求字段不合法', result.error.issues);
   return result.data;
@@ -48,7 +48,7 @@ export type BusinessWriteGuard = (
 ) => Promise<{ readonly employeeId: string }>;
 
 /** 三个动作共用的入口：读上下文（object.update）→ 解析请求体 → 编辑按钮（命令式，空字段集合）→ 写入口径范围。 */
-async function prepareEntryAction<T>(
+export async function prepareEntryAction<T>(
   c: Context<TenantEnv>,
   deps: TenantRouteDeps,
   authorizeBusinessWrite: BusinessWriteGuard,

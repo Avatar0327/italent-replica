@@ -943,6 +943,16 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   'GET /settings': configurationView(SETTINGS, SETTINGS_FIELDS),
   // body 严格 { allowDirectTransfer }（400）；审计 employment.settings.update / employment_settings
   'PUT /settings': configuration(SETTINGS, 'update', SETTINGS_FIELDS, auditedConfigWrite('employment_settings')),
+  // R2 BE-2b 入职生成邮箱规则（34 EN-R12）：规则整份挂在任职设置对象的 entryEmailRules 字段上；GET 返回 { revision, entryEmailRules }；
+  // PUT body 严格 { entryEmailRules }（≤ 20 条、名称不重复、组织存在、后缀合法，400）；If-Match 为当前版本号（409）；
+  // 审计 employment.entry_email_rules.update / employment_settings
+  'GET /entry-email-rules': configurationView(SETTINGS, SETTINGS_FIELDS),
+  'PUT /entry-email-rules': configuration(
+    SETTINGS,
+    'update',
+    SETTINGS_FIELDS,
+    auditedConfigWrite('employment_settings'),
+  ),
   // body 严格 { name, valueType, objectType }（400）；If-Match 须为 0（createCustomField 断言）；每类型上限 200 → 503；
   // 审计 employment.custom_field.create / employment_custom_field
   'POST /custom-fields': configuration(
@@ -1022,6 +1032,24 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
       ],
       { controls: ['remark'] },
     ),
+    ...byId,
+  }),
+  // 生成邮箱（EN-R12）：If-Match = 业务 revision；body 严格 {}（400）；readContext('object.update') + Employment.Edit（命令式）+
+  // authorizeBusinessWrite；命令内 lockPendingEntry（范围 DEC-193；非待入职 409 NOT_PENDING_ENTRY、已取消 409 ENTRY_CANCELLED）；
+  // 只读规则与人员 / 账号邮箱，成功、失败、跳过、无规则都写审计 employment.entry.email_generate，不回写人员档案
+  'POST /pending-entries/:id/generate-email': object({
+    object: EMPLOYMENT,
+    operation: 'update',
+    button: button('Employment.Edit', 'detail'),
+    guards: [DIRECT_OPERATION],
+    scope: BUSINESS_WRITE,
+    fields: RESPONSE,
+    write: employmentCommand([
+      'lockTransferBusiness',
+      'lockEmploymentBusiness',
+      'assertRevision',
+      'requireScopedEmploymentObject',
+    ]),
     ...byId,
   }),
   // 删除待入职（不可恢复）：object.delete + Employment.Delete；只有待入职可删 409 NOT_PENDING_ENTRY；删除内核同

@@ -27,6 +27,7 @@ export * from './employment/exit-occupancy.js';
 export * from './employment/planned-date.js';
 export * from './employment/exit.js';
 export * from './employment/entry.js';
+export * from './employment/entry-email.js';
 export * from './transfer/catalog.js';
 export * from './transfer/required.js';
 export {
