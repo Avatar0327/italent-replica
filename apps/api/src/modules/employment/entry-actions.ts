@@ -74,6 +74,16 @@ export async function cancelPendingEntry(
   return requireSavedBusiness(tx, ctx, recordId);
 }
 
+/** TODO(F-192a)：入站端口占位，下一提交实现。 */
+export async function cancelPendingEntryForOfferRefusal(
+  tx: Tx,
+  ctx: EmploymentContext,
+  recordId: string,
+  _input: { readonly reason?: EntryCancelReason; readonly remark?: string },
+): Promise<EmploymentBusiness> {
+  return requireSavedBusiness(tx, ctx, recordId);
+}
+
 interface ReplaceInput {
   readonly action: 'postpone' | 'edit';
   readonly effectiveDate: string;
