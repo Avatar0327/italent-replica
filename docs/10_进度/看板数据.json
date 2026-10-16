@@ -2,7 +2,7 @@
 "updated": "2026-10-14",
 "stats": {
 "merged": 293,
-"open": 9,
+"open": 11,
 "dec": 562,
 "ev": "43/177"
 },
@@ -5834,10 +5834,10 @@
 "after": [
 "F-199"
 ],
-"note": "P3 · #373 已合入 · Claude 云端 Sonnet High 开发中（session_01KZqyBdZ3EoUKywFdnmq2vS）· Sol high 审 · PR 号待补",
+"note": "P3 · #380 第 1 轮开发完成（13:06Z，head d504e257）· 待发起 Sol high 审 · Claude 云端 Sonnet High",
 "mod": "R2",
 "ms": "D3",
-"pr": null
+"pr": 380
 },
 {
 "k": "F-205",
@@ -5853,9 +5853,10 @@
 "n": "F-206 已取消入职列表与详情返回取消说明（后端读字段，DEC-560 方案 B，issue #376）",
 "s": "assigned",
 "after": [],
-"note": "DEC-560 方案 B（F-192b 前置）· 云端 Claude Sonnet High 开发中（session_012TxuvJcdk1tALxz1MtU2XA）· Sol high 审 · 次序 F-206>F-202>F-203（DEC-561）· PR 号待补",
+"note": "DEC-560 方案 B（F-192b 前置）· #379 第 1 轮开发完成（13:05Z，head de9422fd，仍为 Draft）· 待发起 Sol high 审 · 次序 F-206>F-202>F-203（DEC-561）",
 "mod": "R2",
-"ms": "D2"
+"ms": "D2",
+"pr": 379
 },
 {
 "k": "F-207",
