@@ -1,8 +1,8 @@
 {
 "updated": "2026-10-14",
 "stats": {
-"merged": 280,
-"open": 8,
+"merged": 281,
+"open": 7,
 "dec": 541,
 "ev": "43/177"
 },
@@ -983,6 +983,10 @@
 }
 },
 "log": [
+[
+"10-16",
+"D2·R2·后端·BE-4 B1b（#359）已合入（cae46f24）"
+],
 [
 "10-16",
 "D2·R2·后端·BE-2b（#361）第 2 轮可以合并，入队（359→361）"
@@ -4865,8 +4869,8 @@
 {
 "k": "BE-4b",
 "n": "BE-4 离职 B1b（日期单一来源 + 队列 SQL）",
-"s": "assigned",
-"note": "#359 第 3 轮（解冲突）可以合并（head 79a309d0），已重新入队 · 合入后 03 发“拟派发 R2-T03 B2a” · 新增后补 P3：AC-EXIT-leave-entry-main.test.ts:41 补 finalDate 断言",
+"s": "done",
+"note": "#359 已合入（cae46f24，10-16 03:35Z）· 03 随后发“拟派发 R2-T03 B2a” · 后补 P3：AC-EXIT-leave-entry-main.test.ts:41 补 finalDate 断言",
 "after": [
 "BE-4"
 ],
