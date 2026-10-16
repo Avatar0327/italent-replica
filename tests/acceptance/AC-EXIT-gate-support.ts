@@ -45,6 +45,9 @@ export async function stateSnapshot(db: Db, tenantId: string, employeeId: string
     withTenant(db, t, async (tx) => rowsOf<T>(await tx.execute(statement)));
   const ownBusinesses = sql`SELECT id::text FROM employment_business_objects WHERE tenant_id=${t}
     AND employee_id=${e}::uuid`;
+  // 审批动作的成功回执是 { instanceId }（approval/actions.ts ok()），审批实例详情回执才是 { id }
+  const ownInstances = sql`SELECT id::text FROM approval_instances WHERE tenant_id=${t}
+    AND subject_employee_id=${e}::uuid`;
   return {
     timeline: await rows(sql`SELECT record_id, start_date::text, sort_order FROM employment_timeline
       WHERE tenant_id=${t} AND employee_id=${e}::uuid ORDER BY start_date, sort_order`),
@@ -66,6 +69,9 @@ export async function stateSnapshot(db: Db, tenantId: string, employeeId: string
       FROM approval_instances i WHERE i.tenant_id=${t} AND i.subject_employee_id=${e}::uuid ORDER BY i.id`),
     outbox: await rows(sql`SELECT count(*) AS n FROM employment_outbox WHERE tenant_id=${t}
       AND employee_id=${e}::uuid`),
+    outboxEvents: await rows(sql`SELECT business_id, event_type, object_type, object_id, command_id, payload
+      FROM employment_outbox WHERE tenant_id=${t} AND employee_id=${e}::uuid
+      ORDER BY business_id, event_type, object_type, object_id, command_id, id`),
     attempts: await rows(sql`SELECT count(*) AS n FROM employment_activation_attempts WHERE tenant_id=${t}
       AND employee_id=${e}::uuid`),
     effects: await rows(sql`SELECT business_id, phase, kind, target_type, target_id, detail, command_id
@@ -86,26 +92,53 @@ export async function stateSnapshot(db: Db, tenantId: string, employeeId: string
       FROM command_ledger WHERE tenant_id=${t} AND response_status < 400
         AND (response_body->>'id' = ${e}::text OR response_body->>'employeeId' = ${e}::text
           OR response_body->>'id' IN (${ownBusinesses}) OR response_body->>'businessId' IN (${ownBusinesses})
-          OR response_body->>'id' IN (SELECT id::text FROM approval_instances
-            WHERE tenant_id=${t} AND subject_employee_id=${e}::uuid))
+          OR response_body->>'id' IN (${ownInstances}) OR response_body->>'instanceId' IN (${ownInstances}))
       ORDER BY command_id`),
   };
 }
 
-/** after 比 before 多出的行（快照里的行是纯 JSON，按序列化值比较）。 */
+/** 按 key 对齐前后两份行：新增、删除、同 key 内容有变。 */
+export function diffRows<T extends Record<string, unknown>>(before: readonly T[], after: readonly T[], key: keyof T) {
+  const old = new Map(before.map((row) => [String(row[key]), row]));
+  const now = new Map(after.map((row) => [String(row[key]), row]));
+  return {
+    added: after.filter((row) => !old.has(String(row[key]))),
+    removed: before.filter((row) => !now.has(String(row[key]))),
+    changed: after
+      .filter((row) => old.has(String(row[key])) && JSON.stringify(old.get(String(row[key]))) !== JSON.stringify(row))
+      .map((row) => ({ before: old.get(String(row[key]))!, after: row })),
+  };
+}
+
+/**
+ * 只追加的行集（审计、台账、outbox、exit_effects、审批日志）：既有行必须原样还在，返回新增行。
+ * 行是纯 JSON，按序列化值比较；既有行被删或被改都会在这里判红。
+ */
 export function addedRows<T>(before: readonly T[], after: readonly T[]): T[] {
+  const kept = new Set(after.map((row) => JSON.stringify(row)));
+  expect(
+    before.filter((row) => !kept.has(JSON.stringify(row))),
+    '只追加的行集：既有行不得被删除或改动',
+  ).toEqual([]);
   const seen = new Set(before.map((row) => JSON.stringify(row)));
   return after.filter((row) => !seen.has(JSON.stringify(row)));
 }
 
-export type StateSnapshot = Awaited<ReturnType<typeof stateSnapshot>>;
+type Changes = { [K in keyof StateSnapshot]?: (before: StateSnapshot[K], after: StateSnapshot[K]) => void };
 
-/** 部分对象应变化的用例：除 changed 列出的键外逐项相等（取代手挑几项比较），changed 的键由调用方逐项另行断言。 */
-export function expectOnlyChanged(before: StateSnapshot, after: StateSnapshot, changed: (keyof StateSnapshot)[]) {
+/**
+ * 前后快照比较：changes 里列出的键是“预期会变”的对象，每个键必须带一个断言函数（预期的新增行与内容，
+ * 既有行是否保留），不能只排除不断言；其余键整份逐项相等。
+ */
+export function expectChanges(before: StateSnapshot, after: StateSnapshot, changes: Changes) {
+  const changed = Object.keys(changes) as (keyof StateSnapshot)[];
+  for (const key of changed) (changes[key] as (b: unknown, a: unknown) => void)(before[key], after[key]);
   const keep = (state: StateSnapshot) =>
-    Object.fromEntries(Object.entries(state).filter(([key]) => !changed.includes(key as keyof StateSnapshot)));
-  expect(keep(after)).toEqual(keep(before));
+    Object.fromEntries(Object.entries(state).filter(([k]) => !changed.includes(k as never)));
+  expect(keep(after), `未声明变化的对象（除 ${changed.join(' / ')} 外）必须整份相等`).toEqual(keep(before));
 }
+
+export type StateSnapshot = Awaited<ReturnType<typeof stateSnapshot>>;
 
 export async function gateWorld(db: Db, label: string, options: { today?: string } = {}) {
   const today = options.today ?? '2026-10-06';

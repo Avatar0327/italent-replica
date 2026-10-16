@@ -78,11 +78,14 @@ describe('AC-DM-33 B-86 通用 PATCH businesses/:id', () => {
   it('对照：日期与当前值相同 + 非日期字段 → 200，只改非日期字段；无 DimissionEdit 先得 403', async () => {
     const { w, draft } = await states();
     const body = { lastWorkDate: LATER, fields: { place: '新地点' } };
+    const employeeId = (await w.business(draft.id)).employeeId;
+    const before = await w.stateOf(employeeId);
     const denied = await w.restricted(denyButtons('Employment.DimissionEdit'))('PATCH', `/businesses/${draft.id}`, {
       ifMatch: draft.revision,
       body: { lastWorkDate: '2026-10-25' },
     });
     expect(denied.status).toBe(403);
+    expect(await w.stateOf(employeeId)).toEqual(before);
     const ok = await w.session.request('PATCH', `/businesses/${draft.id}`, { ifMatch: draft.revision, body });
     expect(ok.status, await ok.clone().text()).toBe(200);
     expect(await w.business(draft.id)).toMatchObject({ effectiveDate: '2026-10-21', fields: { place: '新地点' } });
