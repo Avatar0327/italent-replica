@@ -2,7 +2,7 @@
 "updated": "2026-10-14",
 "stats": {
 "merged": 290,
-"open": 7,
+"open": 8,
 "dec": 556,
 "ev": "43/177"
 },
@@ -983,6 +983,10 @@
 }
 },
 "log": [
+[
+"10-16",
+"D2·R2·后补·F-199（#373）开发完成待审"
+],
 [
 "10-16",
 "D2·R2·后补·F-195+F-197（#372）第1轮 Sol high 审查中"
@@ -5666,9 +5670,10 @@
 "after": [
 "F-194"
 ],
-"note": "云端 Claude Sonnet 5.5 High 已开会话（session_01CuY6RaD6Do6Upoa9ffh7Sk）· 分支 claude/F-199-delete-pending-contract（含 bb4fc254）· PR 号待补 · Sol high 审",
+"note": "#373 10:20Z 开发完成（head 3d5390e7，+190/−1）· 等 03 发起第 1 轮 Sol high 审查",
 "mod": "R2",
-"ms": "D2"
+"ms": "D2",
+"pr": 373
 },
 {
 "k": "F-200",
