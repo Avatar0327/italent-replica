@@ -1,8 +1,10 @@
 /** C2-1b：真实旧结构升级，时间轴删除排除、跨多日补入与迁移幂等。 */
-import { sql } from '@italent/db';
+import { randomUUID } from 'node:crypto';
+import { sql, withTenant } from '@italent/db';
 import { createTestDb } from '@italent/testkit';
 import { expect, it } from 'vitest';
 import { evaluationLeaveWorld, rowsOf, LEAVE_MIGRATION, replayLeaveMigration } from './AC-EV-leave-support.js';
+import { removeEmploymentTimeline } from '../../apps/api/src/modules/employment/timeline.js';
 import { runEvaluationLeave } from '../../apps/api/src/modules/evaluation/leave-handler.js';
 
 it('AC-EV-leave-upgrade：C1 未来离职、三天前已生效且有评定的周期补入；已删除与无评定旧周期排除，重跑不重复', async () => {
@@ -20,7 +22,20 @@ it('AC-EV-leave-upgrade：C1 未来离职、三天前已生效且有评定的周
     const futureLeave = await w.leave(date!.future, futurePerson.id);
     const removedPerson = await w.hire('迁移已删除离职', w.orgA);
     const removed = await w.leave(date!.future, removedPerson.id);
-    await w.remove(removed);
+    // 迁移前已删除：直接追加 deleted 状态事件、墓碑并摘掉时间轴行（复用时间轴删除步骤），不经通用删除内核——
+    // 旧结构里还没有 F-194 的待入职合同表，新内核会查它（迁移的排除依据是时间轴行；生产总是先迁移再服务）
+    await withTenant(handle.db, w.tenantId, async (tx) => {
+      await tx.execute(sql`INSERT INTO employment_state_events(id, tenant_id, employee_id, business_id,
+        payload_version_id, state, event_no, command_id, created_at)
+        SELECT gen_random_uuid(), tenant_id, employee_id, business_id, payload_version_id, 'deleted',
+          event_no + 1, ${randomUUID()}, now()
+        FROM employment_state_events WHERE tenant_id=${w.tenantId} AND business_id=${removed.id}::uuid
+        ORDER BY event_no DESC LIMIT 1`);
+      await tx.execute(sql`INSERT INTO employment_record_tombstones(id, tenant_id, employee_id, record_id, command_id)
+        SELECT gen_random_uuid(), tenant_id, employee_id, id, ${randomUUID()}
+        FROM employment_records WHERE tenant_id=${w.tenantId} AND id=${removed.id}::uuid`);
+      await removeEmploymentTimeline(tx, w.ctx(), removedPerson.id, removed.id, false);
+    });
     const noEvaluation = await w.hire('迁移旧周期无评定', w.orgA);
     const ignored = await w.leave(date!.old, noEvaluation.id);
     expect(await w.queue(oldLeave.id)).toEqual([]);
