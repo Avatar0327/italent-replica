@@ -24,6 +24,10 @@ export const m = {
   application: '入职申请',
   more: '更多操作',
   postpone: '改期入职',
+  cancelEntry: '取消入职',
+  cancelHint:
+    '1. 【新增入职】取消待入职后，若需恢复入职，可使用【改期入职】功能；\n' +
+    '2. 非【新增入职】取消待入职后，待入职记录将被删除。若需恢复入职，可重新同步Offer，或重新添加待入职记录。',
   moreItems: [
     '添加待入职',
     '新增员工',
@@ -38,6 +42,7 @@ export const m = {
     '发起入职准备',
     '通知采集信息',
     '改期入职',
+    '取消入职',
     '发起电子签署',
     '批量入职',
     '批量入职申请',
@@ -110,6 +115,7 @@ export const m = {
     hired: '姓名|性别|证件号码|入职日期|入职类型|报到日期|当前状态|入职状态|入职地点',
   },
   fields: {
+    reason: '取消入职原因',
     effectiveDate: '入职日期',
     probation: '是否有试用期',
     probationMonths: '试用期(月)',

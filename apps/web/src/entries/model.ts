@@ -1,4 +1,5 @@
 import dayjs from 'dayjs';
+import { EMPLOYEE_STATUS, ENTRY_STATUS } from '@italent/domain';
 import { ApiError, type ApiClient, type Command, type PageResult } from '../foundation/client.js';
 import { messages as kernel } from '../foundation/forms/messages.js';
 import { projectFields, isBlank, type Values } from '../foundation/forms/values.js';
@@ -8,6 +9,11 @@ export type View = 'all' | 'today' | 'cancelled' | 'hired';
 export const base = '/api/tenant/employment';
 export const collection = `${base}/pending-entries`;
 export const object = 'TenantBase.EmploymentRecord';
+// DEC-548 / F-192b 仅接已验证的新增入职分支；状态被裁剪时不据此推断状态，最终仍由后端校验。
+export const cancelAvailable = (row: Values) =>
+  row.kind === 'hire' &&
+  row.entryStatus !== ENTRY_STATUS.cancelled &&
+  (row.employeeStatus === undefined || row.employeeStatus === EMPLOYEE_STATUS.pendingEntry);
 export const contractObject = 'TenantBase.EmploymentContract';
 export const contractFields = ['companyId', 'typeId', 'termType', 'termMonths', 'endDate'];
 export const editable = ['probation', 'probationMonths', 'probationEndDate', ...contractFields];
@@ -49,6 +55,7 @@ export async function readEntry(api: ApiClient, row: Row, fresh = false): Promis
         name: employee.name,
         code: employee.code,
         probation: row.probation ?? null,
+        cancelRemark: row.cancelRemark ?? null,
       };
     // 列表与详情必须属于同一版本；更新列表后整条重读，不能把新 revision 配给旧值。
     row = await latestEntry(api, business);

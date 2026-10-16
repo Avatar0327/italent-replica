@@ -11,8 +11,9 @@ import type { PageResult } from '../foundation/client.js';
 import { NameOf, refPaths, useToday } from '../contracts/references.js';
 import { DeleteBubble } from './DeleteBubble.js';
 import { PostponeForm } from './PostponeForm.js';
+import { CancelForm } from './CancelForm.js';
 import { CompleteLoader } from './CompleteForm.js';
-import { collection, request, type Row, type View } from './model.js';
+import { cancelAvailable, collection, request, type Row, type View } from './model.js';
 import { EntryStore, useEntryAccess } from './commands.js';
 import { m } from './messages.js';
 import './entries.css';
@@ -59,7 +60,7 @@ function EntryList() {
   const [view, setView] = useState<View>('all');
   const [page, setPage] = useState({ page: 1, pageSize: 30 });
   const [keys, setKeys] = useState<Key[]>([]);
-  const [open, setOpen] = useState<{ row: Row; action: 'edit' | 'complete' | 'postpone' }>();
+  const [open, setOpen] = useState<{ row: Row; action: 'edit' | 'complete' | 'postpone' | 'cancel' }>();
   const read = useEntries(view, page);
   const refresh = async () => {
     await read.read();
@@ -103,7 +104,7 @@ function EntryList() {
           <Toolbar
             view={view}
             row={keys.length === 1 ? read.data.items.find((row) => row.id === keys[0]) : undefined}
-            open={(row) => setOpen({ row, action: 'postpone' })}
+            open={(row, action) => setOpen({ row, action })}
           />
         }
       />
@@ -121,12 +122,13 @@ function EntryList() {
         filters={<Filters view={view} />}
         selection={{ keys, onChange: setKeys, actions: null }}
       />
-      {open &&
-        (open.action === 'postpone' ? (
-          <PostponeForm row={open.row} onClose={() => setOpen(undefined)} refresh={refresh} />
-        ) : (
-          <CompleteLoader row={open.row} action={open.action} onClose={() => setOpen(undefined)} refresh={refresh} />
-        ))}
+      {open?.action === 'postpone' && (
+        <PostponeForm row={open.row} onClose={() => setOpen(undefined)} refresh={refresh} />
+      )}
+      {open?.action === 'cancel' && <CancelForm row={open.row} onClose={() => setOpen(undefined)} refresh={refresh} />}
+      {open && (open.action === 'edit' || open.action === 'complete') && (
+        <CompleteLoader row={open.row} action={open.action} onClose={() => setOpen(undefined)} refresh={refresh} />
+      )}
     </div>
   );
 }
@@ -146,6 +148,7 @@ function Filters({ view }: { view: View }) {
   );
 }
 function cell(title: string, row: Row) {
+  if (title === '取消说明') return row.cancelRemark ?? '--';
   if (['人员', '姓名'].includes(title)) return <span className="entry-link">{row.name ?? '--'}</span>;
   if (['计划入职日期', '入职日期', '原定入职日期'].includes(title))
     return <span className="entry-link">{row.effectiveDate ?? '--'}</span>;
@@ -224,7 +227,7 @@ function RowActions({
   );
 }
 
-function Toolbar({ view, row, open }: { view: View; row?: Row; open(row: Row): void }) {
+function Toolbar({ view, row, open }: { view: View; row?: Row; open(row: Row, action: 'postpone' | 'cancel'): void }) {
   const p = useEntryAccess();
   const enabled = !!row && validObject(row) && !!row.employeeId && p.edit && p.field('effectiveDate').editable;
   return (
@@ -235,7 +238,7 @@ function Toolbar({ view, row, open }: { view: View; row?: Row; open(row: Row): v
         </Button>
       ))}
       {['today', 'cancelled'].includes(view) && (
-        <Button disabled={!enabled} onClick={() => row && open(row)}>
+        <Button disabled={!enabled} onClick={() => row && open(row, 'postpone')}>
           {m.postpone}
         </Button>
       )}
@@ -243,11 +246,15 @@ function Toolbar({ view, row, open }: { view: View; row?: Row; open(row: Row): v
         <Dropdown
           trigger={['click']}
           menu={{
+            className: 'entry-more-menu',
             items: m.moreItems.map((label) => ({
               key: label,
               label,
-              disabled: label !== m.postpone || !enabled,
-              onClick: () => row && open(row),
+              disabled:
+                !enabled ||
+                (label !== m.postpone && label !== m.cancelEntry) ||
+                (label === m.cancelEntry && (!row || !cancelAvailable(row))),
+              onClick: () => row && open(row, label === m.cancelEntry ? 'cancel' : 'postpone'),
             })),
           }}
         >

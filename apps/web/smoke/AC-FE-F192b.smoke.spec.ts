@@ -25,8 +25,9 @@ test('AC-FE-F192b-01 菜单顺序、滚动、零/单/多选与入口边界', asy
   await more(page).click();
   await expect(cancelItem(page)).toBeVisible({ timeout: 5000 });
   await expect(cancelItem(page)).toHaveAttribute('aria-disabled', 'true');
-  const menu = page.locator('.ant-dropdown:visible .ant-dropdown-menu');
+  const menu = page.getByRole('menu').filter({ has: cancelItem(page) });
   const labels = await menu.getByRole('menuitem').allTextContents();
+  expect(labels).toContain('取消入职');
   const index = labels.indexOf('取消入职');
   expect(labels.slice(index - 1, index + 2)).toEqual(['改期入职', '取消入职', '发起电子签署']);
   expect(await menu.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
@@ -204,3 +205,28 @@ for (const denied of ['update', 'field', 'button', 'rehire'])
     await expect(cancelItem(page)).toHaveAttribute('aria-disabled', 'true');
     expect(state.writes).toEqual([]);
   });
+
+test('AC-FE-F192b-04 回执成功至列表读回期间持续锁定，状态裁剪不丢取消说明', async ({ page, baseURL }) => {
+  const state = await setupEntries(page, baseURL!);
+  state.hidden = ['entryStatus', 'employeeStatus'];
+  let release!: () => void;
+  const reading = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route('**/pending-entries?*', async (route) => {
+    if (state.writes.length) await reading;
+    return route.fallback();
+  });
+  const dialog = await openCancel(page);
+  await item(dialog, '备注').getByRole('textbox').fill('合成服务端说明');
+  await dialog.getByRole('button', save).click();
+  await expect.poll(() => state.writes.length).toBe(1);
+  await expect(dialog.getByRole('button', save)).toBeDisabled();
+  await expect(dialog.getByRole('button', named('取消'))).toBeDisabled();
+  await expect(item(dialog, '备注').getByRole('textbox')).toBeDisabled();
+  release();
+  await expect(dialog).toHaveCount(0);
+  await tab(page, '已取消入职').click();
+  await expect(row(page)).toContainText('合成服务端说明');
+  expect(state.writes).toHaveLength(1);
+});

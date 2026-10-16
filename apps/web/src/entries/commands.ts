@@ -23,7 +23,12 @@ export function useEntryAccess() {
     remove: !!operations?.delete && p.can('Employment.Delete'),
   };
 }
-export function useEntryCommand(row: Row, action: string, baseline: Values = row) {
+export function useEntryCommand(
+  row: Row,
+  action: string,
+  baseline: Values = row,
+  rereadValues: (values: Values) => Values = (values) => values,
+) {
   const api = useApiClient();
   const store = useContext(EntryStore)!;
   const session = useSession();
@@ -36,7 +41,7 @@ export function useEntryCommand(row: Row, action: string, baseline: Values = row
       ...command,
       reload: () =>
         command.reread(async (id) => {
-          const values = await readEntry(api, { ...row, id: id ?? row.id }, true);
+          const values = rereadValues(await readEntry(api, { ...row, id: id ?? row.id }, true));
           return { id: String(values.id), revision: Number(values.revision), values };
         }),
     },
