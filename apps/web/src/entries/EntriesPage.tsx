@@ -229,7 +229,9 @@ function RowActions({
 
 function Toolbar({ view, row, open }: { view: View; row?: Row; open(row: Row, action: 'postpone' | 'cancel'): void }) {
   const p = useEntryAccess();
-  const enabled = !!row && validObject(row) && !!row.employeeId && p.edit && p.field('effectiveDate').editable;
+  const writable = !!row && validObject(row) && !!row.employeeId && p.edit;
+  const postponeEnabled = writable && p.field('effectiveDate').editable;
+  const cancelEnabled = writable && cancelAvailable(row);
   return (
     <Space>
       {m.toolbar[view].map((label) => (
@@ -238,7 +240,7 @@ function Toolbar({ view, row, open }: { view: View; row?: Row; open(row: Row, ac
         </Button>
       ))}
       {['today', 'cancelled'].includes(view) && (
-        <Button disabled={!enabled} onClick={() => row && open(row, 'postpone')}>
+        <Button disabled={!postponeEnabled} onClick={() => row && open(row, 'postpone')}>
           {m.postpone}
         </Button>
       )}
@@ -247,15 +249,14 @@ function Toolbar({ view, row, open }: { view: View; row?: Row; open(row: Row, ac
           trigger={['click']}
           menu={{
             className: 'entry-more-menu',
-            items: m.moreItems.map((label) => ({
-              key: label,
-              label,
-              disabled:
-                !enabled ||
-                (label !== m.postpone && label !== m.cancelEntry) ||
-                (label === m.cancelEntry && (!row || !cancelAvailable(row))),
-              onClick: () => row && open(row, label === m.cancelEntry ? 'cancel' : 'postpone'),
-            })),
+            items: m.moreItems
+              .filter((label) => label !== m.cancelEntry || p.edit)
+              .map((label) => ({
+                key: label,
+                label,
+                disabled: label === m.cancelEntry ? !cancelEnabled : label !== m.postpone || !postponeEnabled,
+                onClick: () => row && open(row, label === m.cancelEntry ? 'cancel' : 'postpone'),
+              })),
           }}
         >
           <Button>{m.more} ▾</Button>

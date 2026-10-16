@@ -16,7 +16,7 @@ export function CancelForm({ row, onClose, refresh }: { row: Row; onClose(): voi
   const p = useEntryAccess();
   const baseline = cancelValues(row);
   const cmd = useEntryCommand(row, 'cancel', baseline, cancelValues);
-  const allowed = p.edit && p.field('effectiveDate').editable && cancelAvailable(cmd.full);
+  const allowed = p.edit && cancelAvailable(cmd.full);
   const access = { visible: true, editable: allowed };
   return (
     <FormOverlay
