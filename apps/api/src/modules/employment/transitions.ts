@@ -12,6 +12,7 @@ import { runCommand, type CommandResult } from '../../commands.js';
 import { AppError } from '../../errors.js';
 import { assertRegularizationNotPropagated } from './employee-status.js';
 import { releasePendingContract } from './entry-pending-contract.js';
+import { clearPendingProbation } from './entry-probation.js';
 import {
   activationPredecessors,
   PREDECESSOR_FAILED,
@@ -332,6 +333,8 @@ async function deleteEmploymentBusiness(
   await auditEmployment(tx, ctx, 'employment.business.delete', 'employment-business', business.id, before, null);
   // F-199：通用删除与专用 DELETE /pending-entries 共用此内核；待入职合同随业务一并清理并留审计（没有合同的不留）
   await releasePendingContract(tx, ctx, business.id, 'delete');
+  // F-203：试用期行（F-188）同样在内核同事务清理，各入口不再各自补清
+  await clearPendingProbation(tx, ctx, business.id);
   return previous;
 }
 
