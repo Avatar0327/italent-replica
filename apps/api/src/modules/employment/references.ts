@@ -7,7 +7,7 @@ import { assertNoReportingCycle, insertedWindow, type ReportingWindow } from './
 import type { EmploymentContext, PresetFields } from './types.js';
 import { AppError } from '../../errors.js';
 import { lockOrganizationSettings } from '../org/locks.js';
-import { employmentDepartmentDisable } from '../org/employment-validity.js';
+import { employmentDepartmentDisable, type EmploymentDepartmentDisable } from '../org/employment-validity.js';
 
 /**
  * DEC-150：只扩展新增任职业务及申请修改；历史记录编辑、向后引用判定保留各自已有日期口径。
@@ -42,18 +42,42 @@ export async function assertEmploymentDepartmentAvailable(
     if (entry) await assertNotBeforeFounded(tx, ctx.tenantId, departmentId, effectiveDate);
     // 等待锁期间可能已提交停用版本；必须在获得锁之后重新读取。
     const disabled = await employmentDepartmentDisable(tx, ctx.tenantId, departmentId, effectiveDate);
-    if (disabled) {
-      const atEntry = entry && disabled.disabledOn <= effectiveDate;
-      throw new AppError(
-        'VALIDATION_FAILED',
-        atEntry
-          ? `任职部门【${disabled.name}】在入职日期（${effectiveDate}）时为停用状态，请检查`
-          : `任职部门【${disabled.name}】已被停用（停用日期：${disabled.disabledOn}），请检查`,
-        { reason: 'EMPLOYMENT_DEPARTMENT_DISABLED', disabledOn: disabled.disabledOn },
-      );
-    }
+    if (disabled) throw departmentDisabled(disabled, entry ? effectiveDate : undefined);
     await assertOrg(tx, ctx.tenantId, departmentId, effectiveDate);
   }
+}
+
+/**
+ * 有终点变体（离职设计 §6B.2-3）：任职部门在 [from, to) 内任一天不可用即拒绝，to 为空表示开放（只要之后停用就拒绝）。
+ * 用于撤销 / 顺延等“扩大在职区间”的操作按 ΔO 逐段校验；同样取停用锁并在锁内复查，拒绝形态与无终点变体一致。
+ * `employmentDepartmentDisable` 返回从 from 起（或覆盖 from）的第一个不可用段，其起日早于 to 即与区间相交。
+ */
+export async function assertEmploymentDepartmentAvailableWithin(
+  tx: Tx,
+  ctx: EmploymentContext,
+  departmentId: string | null,
+  from: string,
+  to: string | null,
+): Promise<void> {
+  if (!departmentId) return;
+  await lockOrganizationSettings(tx, ctx.tenantId);
+  const disabled = await employmentDepartmentDisable(tx, ctx.tenantId, departmentId, from);
+  if (disabled && (to === null || disabled.disabledOn < to)) throw departmentDisabled(disabled);
+}
+
+/**
+ * 停用拒绝的统一构造。entryDate 只在入职类业务（entry）传入：停用日不晚于入职日（入职时已处于停用期内）给“在入职日期时为停用状态”
+ * 提示，否则给“已被停用（停用日期）”提示（W-433 / 436 / 437，提示语照搬原站）。
+ */
+function departmentDisabled(disabled: EmploymentDepartmentDisable, entryDate?: string): AppError {
+  const atEntry = entryDate !== undefined && disabled.disabledOn <= entryDate;
+  return new AppError(
+    'VALIDATION_FAILED',
+    atEntry
+      ? `任职部门【${disabled.name}】在入职日期（${entryDate}）时为停用状态，请检查`
+      : `任职部门【${disabled.name}】已被停用（停用日期：${disabled.disabledOn}），请检查`,
+    { reason: 'EMPLOYMENT_DEPARTMENT_DISABLED', disabledOn: disabled.disabledOn },
+  );
 }
 
 async function assertNotBeforeFounded(tx: Tx, tenantId: string, departmentId: string, entryDate: string) {

@@ -29,7 +29,7 @@ import {
   rowsOf,
   type LockedEmploymentBusiness,
 } from './record-store.js';
-import { removeEmploymentTimeline } from './timeline.js';
+import { loadPlannedEffectiveDate, removeEmploymentTimeline } from './timeline.js';
 import { assertNoLinkedChanges, assertNoPendingApplication, assertRestoredPredecessor } from './deletion-guards.js';
 import type { EmploymentBusiness, EmploymentContext, EmploymentState } from './types.js';
 import { assertRequiredTransferFields } from '../transfer/required-fields.js';
@@ -90,11 +90,11 @@ export async function transitionEmployment(
   if (input.action === 'submit') await requireEmployeeTransferBusiness(tx, ctx, input.id);
   if (input.action === 'submit' || input.action === 'approve') {
     const { payload } = business;
-    // DEC-195② / DEC-272：审批通过时已过计划生效日的调动改到批准当天（共用判定函数）。
+    // DEC-195② / DEC-272：审批通过时已过计划生效日的调动改到批准当天（共用判定函数，起点是 §5.0A 计划生效日，D-8）。
     const effectiveDate =
       input.action === 'approve' && payload.kind === 'transfer'
         ? resolveLateExecution({
-            plannedEffectiveDate: payload.effectiveDate,
+            plannedEffectiveDate: await loadPlannedEffectiveDate(tx, ctx.tenantId, business.id, payload.effectiveDate),
             executionDate: tenantLocalDate(ctx.now, ctx.timezone),
           }).effectiveDate
         : payload.effectiveDate;
