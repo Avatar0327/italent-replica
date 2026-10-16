@@ -780,6 +780,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   // ---- employment/entry-routes.ts：R2 BE-2b 入职四视图（34 EN-R1，DEC-484②）---------------------------------------------
   // view ∈ all / today / cancelled / hired（缺失或不合法 400）；readPageContext(list)：任职记录对象查看 + 列表范围，
   // listEntryView 的 employmentScopePredicate = scopeSql（人员 / 记录部门 / 创建人，范围为空什么也看不到）；
+  // 每项带 probation（F-188，待入职试用期，没填过 null）；
   // 记录字段按任职记录可见字段裁剪，姓名 / 工号按人员对象可见字段另行裁剪；hasDataPermission 协议键
   'GET /pending-entries': object({
     object: EMPLOYMENT,
@@ -1033,6 +1034,32 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
         'lockEmploymentEmployee',
       ],
       { controls: ['remark'] },
+    ),
+    ...byId,
+  }),
+  // 编辑待入职（F-188，R2e8 行内“编辑”）：body 严格 { effectiveDate（必填，允许过去日期）, probation（必填布尔）}（400）；
+  // 同改期按 { effectiveDate } 校验字段写权限（无权限 403，不落库），probation 是控制项不进字段协议；
+  // 只有待入职可编辑 409 NOT_PENDING_ENTRY；日期变了 = 删除原记录并按新日期重建、保持原入职状态（正常 / 延期 / 取消不变）、
+  // 试用期搬到新记录；日期没变只更新试用期（记录 ID 不变，revision +1）；不联动 Offer / 合同 / 信息采集
+  'PATCH /pending-entries/:id': object({
+    object: EMPLOYMENT,
+    operation: 'update',
+    button: button('Employment.Edit', 'detail'),
+    guards: [DIRECT_OPERATION, LINKAGE],
+    scope: BUSINESS_WRITE,
+    fields: RESPONSE,
+    write: employmentWrite(
+      'body',
+      [
+        'lockTransferBusiness',
+        'lockEmploymentBusiness',
+        'assertRevision',
+        'requireScopedEmploymentObject',
+        'requireLinkedEmploymentRecord',
+        'assertNoPendingApplication',
+        'lockEmploymentEmployee',
+      ],
+      { controls: ['probation'] },
     ),
     ...byId,
   }),

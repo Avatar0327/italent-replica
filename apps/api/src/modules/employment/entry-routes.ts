@@ -1,5 +1,5 @@
 /**
- * 待入职状态动作路由（R2 BE-2a；34 EN-R8 / R9 / R10 / R14）：办理入职、取消、改期、删除。
+ * 待入职状态动作路由（R2 BE-2a；34 EN-R8 / R9 / R10 / R14）：办理入职、取消、改期、编辑（F-188）、删除。
  * 策略登记在 employment/policy.ts；写权限沿用任职记录的“编辑 / 删除”对象操作与按钮（原站是否另有独立权限项未验证）。
  */
 import { withTenant } from '@italent/db';
@@ -30,7 +30,7 @@ import {
   generateEntryContract,
   requireEntryContractAccess,
 } from './entry-contract.js';
-import { cancelPendingEntry, deletePendingEntry, postponePendingEntry } from './entry-actions.js';
+import { cancelPendingEntry, deletePendingEntry, editPendingEntry, postponePendingEntry } from './entry-actions.js';
 import { ENTRY_VIEWS, listEntryView } from './entry-views.js';
 import type { EmploymentContext } from './types.js';
 import { requireSavedBusiness } from './write-service.js';
@@ -39,6 +39,7 @@ const remark = z.string().trim().min(1).max(ENTRY_REMARK_MAX).optional();
 const completeInput = z.strictObject({ probation: z.boolean(), contract: entryContractSchema.optional() });
 const cancelInput = z.strictObject({ reason: z.enum(ENTRY_CANCEL_REASON_CODES).optional(), remark });
 const postponeInput = z.strictObject({ effectiveDate: z.string().min(1), remark });
+const editInput = z.strictObject({ effectiveDate: z.string().min(1), probation: z.boolean() });
 
 export function parse<T>(schema: z.ZodType<T>, value: unknown): T {
   const result = schema.safeParse(value);
@@ -128,6 +129,22 @@ export function registerEntryRoutes(
     return runWrite(c, deps, ctx, { id, action: 'postpone', input }, async (tx, context) => ({
       status: 200,
       body: await postponePendingEntry(tx, context, id, input),
+    }));
+  });
+  // F-188 行内“编辑”：计划入职日期（允许过去日期）+ 是否有试用期（必填）；字段写权限同改期按 { effectiveDate } 校验
+  router.patch('/pending-entries/:id', async (c) => {
+    const { id, ctx, input } = await prepareEntryAction(
+      c,
+      deps,
+      authorizeBusinessWrite,
+      editInput,
+      ({ effectiveDate }) => ({
+        effectiveDate,
+      }),
+    );
+    return runWrite(c, deps, ctx, { id, action: 'edit', input }, async (tx, context) => ({
+      status: 200,
+      body: await editPendingEntry(tx, context, id, input),
     }));
   });
   router.delete('/pending-entries/:id', async (c) => {

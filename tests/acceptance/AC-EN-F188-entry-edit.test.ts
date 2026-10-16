@@ -14,7 +14,6 @@ import {
   businessRevision,
   entryAction,
   entryActionRows,
-  entryRecords,
   entryWorld,
   hireBody,
   type EntryWorld,
@@ -231,7 +230,12 @@ describe('F-188 删除不可恢复（R2e8）', () => {
     for (const name of ['all', 'today', 'cancelled', 'hired']) expect(await view(w, name)).toEqual([]);
     const edited = await edit(w, recordId, { effectiveDate: '2026-10-12', probation: true }, 1);
     const postponed = await entryAction(w, recordId, 'postpone', { effectiveDate: '2026-10-12' }, 1);
-    expect([edited.status, postponed.status].every((status) => status === 404 || status === 409)).toBe(true);
+    // 墓碑后业务不再是有效任职记录：编辑 / 改期都是 409；后端没有恢复路由
+    expect([edited.status, postponed.status]).toEqual([409, 409]);
+    for (const path of ['restore', 'recover', 'undelete'])
+      expect(
+        (await w.session.request('POST', `/pending-entries/${recordId}/${path}`, { ifMatch: 1, body: {} })).status,
+      ).toBe(404);
     expect(await probationRows(w)).toEqual([]);
     for (const name of ['all', 'today', 'cancelled', 'hired']) expect(await view(w, name)).toEqual([]);
   });

@@ -3,9 +3,11 @@ import { reconcileCompletion, openCompletion } from '../transfer/completion.js';
 import { queueTransferLinkage, validateTransferSubordinates } from './transfer-linkage.js';
 import { lockTransferParticipants } from './transfer-locks.js';
 import { assertEstablishmentCapacity, type EstablishmentWarning } from './activation-checks.js';
+import { savePendingProbation } from './entry-probation.js';
 import { personnelHooks } from './personnel-hooks.js';
 import { employeeStatusHooks } from './status-hooks.js';
 import {
+  ENTRY_KINDS,
   entryStatusFor,
   inheritedStatus,
   propagateEmployeeStatus,
@@ -138,6 +140,9 @@ export async function createEmploymentBusiness(
     effective.fields,
     options,
   );
+  // F-188：待入职阶段的“是否有试用期”随记录落库（改期 / 编辑换日期替换记录时由 entry-actions 带到这里）
+  if (options.entry?.pendingEntry && ENTRY_KINDS.includes(normalized.kind) && options.entry.probation !== undefined)
+    await savePendingProbation(tx, ctx, employee.id, id, options.entry.probation);
   const payload = await appendEmploymentPayload(
     tx,
     ctx,
