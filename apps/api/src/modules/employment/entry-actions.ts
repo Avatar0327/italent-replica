@@ -69,7 +69,8 @@ interface ReplaceInput {
   readonly action: 'postpone' | 'edit';
   readonly effectiveDate: string;
   readonly entryStatus: EntryStatusCode;
-  readonly probation: boolean | null;
+  /** 新的试用期；不传 = 沿用原值（改期入职只搬运，不改）。 */
+  readonly probation?: boolean;
   readonly employType?: EntryEditEmployType;
   readonly remark?: string;
 }
@@ -89,6 +90,8 @@ async function replacePendingEntry(
   input: ReplaceInput,
 ): Promise<EmploymentBusiness> {
   const { business, record } = locked;
+  const previousProbation = await loadPendingProbation(tx, ctx, record.id);
+  const probation = input.probation ?? previousProbation;
   await transitionEmployment(tx, ctx, { id: record.id, action: 'delete' });
   await clearPendingProbation(tx, ctx, record.id);
   const employee = await lockEmploymentEmployee(tx, ctx, record.employeeId);
@@ -109,7 +112,7 @@ async function replacePendingEntry(
       entry: {
         pendingEntry: true,
         entryStatus: input.entryStatus,
-        ...(input.probation === null ? {} : { probation: input.probation }),
+        ...(probation === null ? {} : { probation }),
       },
     },
   );
@@ -132,12 +135,14 @@ async function replacePendingEntry(
       businessId: record.id,
       effectiveDate: record.effectiveDate,
       entryStatus: record.entryStatus,
+      probation: previousProbation,
       ...(input.employType ? { employType: record.fields.employType } : {}),
     },
     {
       businessId: created.id,
       effectiveDate: input.effectiveDate,
       entryStatus: input.entryStatus,
+      probation,
       ...(input.employType ? { employType: input.employType } : {}),
     },
   );
@@ -160,7 +165,6 @@ export async function postponePendingEntry(
     action: 'postpone',
     effectiveDate,
     entryStatus: ENTRY_STATUS.postponed,
-    probation: await loadPendingProbation(tx, ctx, recordId),
     remark: input.remark,
   });
 }

@@ -378,7 +378,6 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/employee-status.ts#lockPendingEntry',
     '#assertRemark',
     '#replacePendingEntry',
-    'apps/api/src/modules/employment/entry-probation.ts#loadPendingProbation',
     'apps/api/src/modules/employment/fields.ts#businessDate',
     'packages/domain/src/employment/employee-status.ts#ENTRY_STATUS',
   ],
@@ -386,6 +385,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#auditEmployment',
     '#logEntryAction',
     'apps/api/src/modules/employment/entry-probation.ts#clearPendingProbation',
+    'apps/api/src/modules/employment/entry-probation.ts#loadPendingProbation',
     'apps/api/src/modules/employment/record-store.ts#lockEmploymentEmployee',
     'apps/api/src/modules/employment/transitions.ts#transitionEmployment',
     'apps/api/src/modules/employment/write-service.ts#createEmploymentBusiness',
@@ -457,6 +457,10 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/entry-options.ts#splitEntryOptions': ['#KEYS', '#entryControls'],
   'apps/api/src/modules/employment/entry-probation.ts#loadPendingProbation': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/employment/entry-probation.ts#saveAddedProbation': [
+    'apps/api/src/modules/employment/employee-status.ts#ENTRY_KINDS',
+    '#savePendingProbation',
   ],
   'apps/api/src/modules/employment/entry-routes.ts#completeInput': [
     'apps/api/src/modules/employment/entry-contract.ts#entryContractSchema',
@@ -1576,9 +1580,9 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/write-service.ts#createEmploymentBusiness': [
     'apps/api/src/modules/employment/context.ts#auditEmployment',
     'apps/api/src/modules/employment/cycles.ts#assertNotBeforeCurrentCycle',
-    'apps/api/src/modules/employment/employee-status.ts#ENTRY_KINDS',
     'apps/api/src/modules/employment/employee-status.ts#entryStatusFor',
-    'apps/api/src/modules/employment/entry-probation.ts#savePendingProbation',
+    'apps/api/src/modules/employment/entry-probation.ts#probationAudit',
+    'apps/api/src/modules/employment/entry-probation.ts#saveAddedProbation',
     'apps/api/src/modules/employment/fields.ts#normalizeEmploymentInput',
     'apps/api/src/modules/employment/inheritance.ts#prepareInheritance',
     'apps/api/src/modules/employment/inheritance.ts#resolveEffectiveInheritance',

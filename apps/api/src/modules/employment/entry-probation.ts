@@ -4,8 +4,9 @@
  * 所以值要在同事务内搬到新记录；办理入职、删除后清除。没填过 = 没有行 = 读出 null（DEC-402 不回填存量）。
  */
 import { sql, type Tx } from '@italent/db';
+import { ENTRY_KINDS, type EntryOptions } from './employee-status.js';
 import { rowsOf } from './record-store.js';
-import type { EmploymentContext } from './types.js';
+import type { BusinessKind, EmploymentContext } from './types.js';
 
 export async function savePendingProbation(
   tx: Tx,
@@ -37,3 +38,20 @@ export async function clearPendingProbation(tx: Tx, ctx: EmploymentContext, busi
   await tx.execute(sql`DELETE FROM employment_pending_entry_probation
     WHERE tenant_id=${ctx.tenantId} AND business_id=${businessId}::uuid`);
 }
+
+/** 添加待入职（pendingEntry）时随请求带来的试用期落库；返回实际保存的值（没带 / 不是待入职返回 undefined）。 */
+export async function saveAddedProbation(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  businessId: string,
+  kind: BusinessKind,
+  entry: EntryOptions | undefined,
+): Promise<boolean | undefined> {
+  const probation = entry?.pendingEntry && ENTRY_KINDS.includes(kind) ? entry.probation : undefined;
+  if (probation !== undefined) await savePendingProbation(tx, ctx, employeeId, businessId, probation);
+  return probation;
+}
+
+/** 创建审计 after 里的试用期键：没保存过就不出现。 */
+export const probationAudit = (probation: boolean | undefined) => (probation === undefined ? {} : { probation });

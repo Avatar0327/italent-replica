@@ -3,11 +3,10 @@ import { reconcileCompletion, openCompletion } from '../transfer/completion.js';
 import { queueTransferLinkage, validateTransferSubordinates } from './transfer-linkage.js';
 import { lockTransferParticipants } from './transfer-locks.js';
 import { assertEstablishmentCapacity, type EstablishmentWarning } from './activation-checks.js';
-import { savePendingProbation } from './entry-probation.js';
+import { probationAudit, saveAddedProbation } from './entry-probation.js';
 import { personnelHooks } from './personnel-hooks.js';
 import { employeeStatusHooks } from './status-hooks.js';
 import {
-  ENTRY_KINDS,
   entryStatusFor,
   inheritedStatus,
   propagateEmployeeStatus,
@@ -141,8 +140,7 @@ export async function createEmploymentBusiness(
     options,
   );
   // F-188：待入职阶段的“是否有试用期”随记录落库（改期 / 编辑换日期替换记录时由 entry-actions 带到这里）
-  if (options.entry?.pendingEntry && ENTRY_KINDS.includes(normalized.kind) && options.entry.probation !== undefined)
-    await savePendingProbation(tx, ctx, employee.id, id, options.entry.probation);
+  const pendingProbation = await saveAddedProbation(tx, ctx, employee.id, id, normalized.kind, options.entry);
   const payload = await appendEmploymentPayload(
     tx,
     ctx,
@@ -168,7 +166,9 @@ export async function createEmploymentBusiness(
   if (normalized.mode === 'direct') await materializeEmploymentRecord(tx, ctx, business, options);
   await appendEmploymentState(tx, ctx, business, business.state);
   await bumpEmploymentEmployee(tx, ctx, employee);
-  await auditEmployment(tx, ctx, 'employment.business.create', 'employment-business', id, null, payloadAudit(payload));
+  // 待入职试用期是字段级变更（DEC-019），随创建进同一条审计（F-188）
+  const created = { ...payloadAudit(payload), ...probationAudit(pendingProbation) };
+  await auditEmployment(tx, ctx, 'employment.business.create', 'employment-business', id, null, created);
   return requireSavedBusiness(tx, ctx, id);
 }
 

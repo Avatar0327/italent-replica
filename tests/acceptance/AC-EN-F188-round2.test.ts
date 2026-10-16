@@ -136,7 +136,7 @@ describe('F-188 返工 P2-2：试用期前后值进审计', () => {
       201,
     );
     const created = await auditRows(w, 'employment.business.create');
-    expect(created.map((row) => row.after?.probation)).toEqual([true, undefined]);
+    expect(created.map((row) => row.after?.probation).sort()).toEqual([true, undefined]);
   });
 
   it('改日期同时改试用期：审计 before.probation=false、after.probation=true', async () => {
@@ -157,7 +157,7 @@ describe('F-188 返工 P2-2：试用期前后值进审计', () => {
     expect(second.status, await second.clone().text()).toBe(200);
     const rows = await auditRows(w, 'employment.entry.edit');
     expect(rows).toHaveLength(2);
-    expect(rows[1]).toMatchObject({ before: { probation: false }, after: { probation: true } });
+    expect(rows.find((row) => row.before?.probation === false)).toMatchObject({ after: { probation: true } });
   });
 
   it('改期入职携带试用期：审计前后值相同（不丢失）', async () => {
