@@ -149,8 +149,10 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-EV-F092 真 PG：离职 × �
     const g = await w.createGroup([person]);
     const record = await w.savedLeave(person, '2026-10-11');
     const [row] = rowsOf<{ id: string }>(
-      await w.db.execute(sql`SELECT id FROM ev_sync_queue
+      await withTenant(w.db, w.tenant.id, (tx) =>
+        tx.execute(sql`SELECT id FROM ev_sync_queue
       WHERE tenant_id=${w.tenant.id} AND handler='review_group_exit' AND record_id=${record.id}::uuid`),
+      ),
     );
     const paused = signal();
     const release = signal();
@@ -189,8 +191,10 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-EV-F092 真 PG：离职 × �
       const g = mode === '编辑新增' ? await w.createGroup([]) : undefined;
       const leave = await w.savedLeave(person, '2026-10-10');
       const [queue] = rowsOf<{ id: string }>(
-        await w.db.execute(sql`SELECT id FROM ev_sync_queue
+        await withTenant(w.db, w.tenant.id, (tx) =>
+          tx.execute(sql`SELECT id FROM ev_sync_queue
       WHERE tenant_id=${w.tenant.id} AND handler='review_group_exit' AND record_id=${leave.id}::uuid`),
+        ),
       );
       const writingReady = signal();
       const allowWriteLock = signal();
@@ -241,7 +245,11 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-EV-F092 真 PG：离职 × �
       expect(await w.queue(leave.id)).toMatchObject([{ state: 'done', attempts: 1 }]);
       expect(await w.run()).toMatchObject({ picked: 0 });
       if (g) expect(await w.group(g.id)).toEqual(g);
-      const rows = rowsOf(await w.db.execute(sql`SELECT id FROM ev_review_groups WHERE tenant_id=${w.tenant.id}`));
+      const rows = rowsOf(
+        await withTenant(w.db, w.tenant.id, (tx) =>
+          tx.execute(sql`SELECT id FROM ev_review_groups WHERE tenant_id=${w.tenant.id}`),
+        ),
+      );
       expect(rows).toHaveLength(g ? 1 : 0);
     },
   );
@@ -377,9 +385,11 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-EV-F092 第三轮锁后日�
       w.setTime('2026-10-12T16:00:00Z');
       await w.rehire(person, '2026-10-13');
       if (state === 'failed')
-        await w.db.execute(sql`UPDATE ev_sync_queue SET state='failed', attempts=1,
+        await withTenant(w.db, w.tenant.id, (tx) =>
+          tx.execute(sql`UPDATE ev_sync_queue SET state='failed', attempts=1,
         next_attempt_at='2026-10-14T00:00:00Z'::timestamptz
-        WHERE tenant_id=${w.tenant.id} AND handler='review_group_exit' AND record_id=${leave.id}::uuid`);
+        WHERE tenant_id=${w.tenant.id} AND handler='review_group_exit' AND record_id=${leave.id}::uuid`),
+        );
       const key = randomUUID();
       const body = { members: w.members(person, added) };
       const response = await w.edit(g, body, key);
@@ -450,10 +460,12 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-EV-F092 第三轮锁后日�
       ).toMatchObject({ done: 1 });
       await w.expectMembers(g.id, []);
       const [row] = rowsOf<{ groupAt: string; queueAt: string }>(
-        await w.db.execute(sql`
+        await withTenant(w.db, w.tenant.id, (tx) =>
+          tx.execute(sql`
         SELECT g.updated_at::text AS "groupAt", q.updated_at::text AS "queueAt"
         FROM ev_review_groups g JOIN ev_sync_queue q ON q.tenant_id=g.tenant_id
         WHERE g.id=${g.id}::uuid AND q.handler='review_group_exit' AND q.record_id=${leave.id}::uuid`),
+        ),
       );
       expect(new Date(row!.groupAt).toISOString()).toBe('2026-10-12T16:00:00.000Z');
       expect(row!.queueAt).toBe(row!.groupAt);
