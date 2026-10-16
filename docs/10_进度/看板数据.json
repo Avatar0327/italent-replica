@@ -5750,7 +5750,7 @@
 "after": [
 "BE-4d"
 ],
-"note": "F-195 + F-197 合单 · #372 第 4 轮开发完成（head dcc8b82d）· 第 4 轮 Sol high 审查中（Sonnet xhigh 接手会话）",
+"note": "F-195 + F-197 合单 · #372 第 4 轮开发完成（head dcc8b82d）· 第 4 轮 Sol high 审查中（Sonnet xhigh 接手会话） · #372 第 4 轮 Sol high 可以合并，已入队（队列 375→374→372）",
 "mod": "R2",
 "ms": "D2",
 "pr": 372
@@ -5774,7 +5774,7 @@
 "after": [
 "F-188"
 ],
-"note": "F-195 + F-197 合单 · #372 第 4 轮开发完成（head dcc8b82d）· 第 4 轮 Sol high 审查中（Sonnet xhigh 接手会话）",
+"note": "F-195 + F-197 合单 · #372 第 4 轮开发完成（head dcc8b82d）· 第 4 轮 Sol high 审查中（Sonnet xhigh 接手会话） · #372 第 4 轮 Sol high 可以合并，已入队（队列 375→374→372）",
 "mod": "R2",
 "ms": "D2",
 "pr": 372
@@ -5834,7 +5834,7 @@
 "after": [
 "F-199"
 ],
-"note": "P3 · #373 已合入 · Claude 云端 Sonnet High 开发 · Sol high 审 · 派发单 cl_f203.md · 开会话中（PR 号待补）",
+"note": "P3 · #373 已合入 · Claude 云端 Sonnet High 开发中（session_01KZqyBdZ3EoUKywFdnmq2vS）· Sol high 审 · PR 号待补",
 "mod": "R2",
 "ms": "D3",
 "pr": null
@@ -5862,7 +5862,7 @@
 "n": "F-207 AC-PRM-FW-02-storage 高负载超时第 3 次挡队（#347/#359/#375），仿 F-116 单设用例超时，不改断言",
 "s": "assigned",
 "after": [],
-"note": "storage 用例单设超时（只改测试，不改断言）· #378 已开（Ready）· Claude 云端 Sonnet High · Sol high 审 · 标签 D2·R2·后补",
+"note": "storage 用例单设超时（只改测试，+2/−1）· #378 Sol high 第 1 轮审查中 · 标签 D2·R2·后补",
 "mod": "R2",
 "ms": "D2",
 "pr": 378
