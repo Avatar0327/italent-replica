@@ -18,6 +18,8 @@ import {
 import { tenantApi } from './support/tenant-api.js';
 
 const testDb = useTestDb();
+// 非默认表单标识：改期重建业务时 formId 必须原样保留（审查 #358 第 2 轮 P3）
+const FORM_ID = 'campus-hire';
 
 async function counts(w: Awaited<ReturnType<typeof entryWorld>>) {
   return withTenant(w.db, w.session.tenant.id, async (tx) => {
@@ -70,14 +72,14 @@ describe('BE-2a 第 1 轮返工 P2-2：改期保留业务类型', () => {
     const response = await addHire(
       w.session,
       { id: employee.id, revision: left.employeeRevision },
-      { ...hireBody(w.org.id, '2026-10-10', { pendingEntry: true }), kind },
+      { ...hireBody(w.org.id, '2026-10-10', { pendingEntry: true }), kind, formId: FORM_ID },
     );
     expect(response.status, await response.clone().text()).toBe(201);
     const pending = (await response.json()) as { id: string };
     const postponed = await entryAction(w, pending.id, 'postpone', { effectiveDate: '2026-10-20' });
     expect(postponed.status, await postponed.clone().text()).toBe(200);
     const body = (await postponed.json()) as { id: string; kind: string; record: { kind: string } };
-    expect(body).toMatchObject({ kind, record: { kind } });
+    expect(body).toMatchObject({ kind, formId: FORM_ID, record: { kind } });
     const cycle = await withTenant(w.db, w.session.tenant.id, async (tx) => {
       const result = await tx.execute(sql`SELECT entry_type AS "entryType" FROM employment_cycles
         WHERE tenant_id=${w.session.tenant.id} AND employee_id=${employee.id}::uuid ORDER BY entry_date DESC LIMIT 1`);
