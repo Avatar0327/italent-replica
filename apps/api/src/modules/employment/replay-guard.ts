@@ -11,8 +11,14 @@ import type { CommandGuard } from '../../commands.js';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import { authorizeInTransaction, resolveModuleScopeInTransaction } from '../permission/module-access.js';
-import { EMPLOYMENT_OBJECT, requireEmploymentWrite, requireScopedEmploymentObject } from './context.js';
-import { isExitKind, requireExitPermission } from './exit-gate.js';
+import {
+  EMPLOYMENT_OBJECT,
+  requireEmployeeInScope,
+  requireEmploymentScope,
+  requireEmploymentWrite,
+  requireScopedEmploymentObject,
+} from './context.js';
+import { isExitKind, requireExitPermission, type ExitGateTarget, type ExitOperation } from './exit-gate.js';
 import { loadEmploymentBusiness } from './read-model.js';
 import type { BusinessKind, EmploymentBusinessPatch, EmploymentContext } from './types.js';
 
@@ -108,4 +114,55 @@ export function pendingEditGuard(
       await requireBusinessWriteScope(tx, scoped.authorize!, scoped, id);
     },
   };
+}
+
+/** 离职入口命令内复核的范围目标：已有业务按业务 + 员工 + 目标部门校验；创建（还没有业务）按员工 + 目标部门。 */
+export interface ExitScopeTarget {
+  readonly businessId?: string;
+  readonly departmentId?: string | null;
+}
+
+/**
+ * 离职入口（create / PATCH / submit / withdraw / DELETE /businesses/:id / activation/retry）的命令内复核（#199，F-195）：
+ * 首次执行、同键重放、失败回查三个出口都先在命令事务内按当前授权重新解析数据范围，校验员工、业务和实际目标部门的
+ * 写入范围，再过 Dimission* 权限链。入口取到的范围只是请求内快照，管不到入口放行之后、命令事务之前的范围收窄。
+ */
+export function exitCommandGuard(
+  deps: TenantRouteDeps,
+  ctx: EmploymentContext,
+  operation: ExitOperation,
+  target: ExitGateTarget,
+  scopeTarget: ExitScopeTarget,
+): CommandGuard {
+  return {
+    before: async (tx) => {
+      const scoped = await commandContext(tx, deps, ctx);
+      await requireExitScope(tx, scoped, target, scopeTarget);
+      await requireExitPermission(scoped, operation, target);
+    },
+  };
+}
+
+async function requireExitScope(
+  tx: Tx,
+  scoped: EmploymentContext,
+  target: ExitGateTarget,
+  scopeTarget: ExitScopeTarget,
+) {
+  const { businessId } = scopeTarget;
+  const departmentId = scopeTarget.departmentId ?? target.patch?.fields?.departmentId;
+  if (businessId) {
+    await requireBusinessWriteScope(tx, scoped.authorize!, scoped, businessId, target.employeeId);
+    if (departmentId !== undefined)
+      await requireScopedEmploymentObject(tx, scoped, target.employeeId, departmentId, businessId);
+    return;
+  }
+  await requireEmployeeInScope(tx, scoped, target.employeeId);
+  if (scoped.trustedScopeBypass)
+    await requirePermission(scoped.authorize!, {
+      ...scoped,
+      action: 'tenant.employment.write',
+      resource: target.employeeId,
+    });
+  if (departmentId !== undefined) requireEmploymentScope(scoped, target.employeeId, departmentId);
 }

@@ -63,15 +63,18 @@ export async function readContext(
   }
   const result = { ...context, scope, authorize: deps.authorize, objectCode, trustedScopeBypass };
   if (resource) {
-    const creatorId = await withTenant(deps.db, tenant.tenantId, async (tx) => {
-      const creator = await employmentCreatorId(tx, result, resource);
-      if (scope && !(await scopeAllowsInTransaction(tx, scope, { personId: resource, creatorId: creator })))
-        throw new AppError('NOT_FOUND', '任职数据不存在');
-      return creator;
-    });
+    const creatorId = await withTenant(deps.db, tenant.tenantId, (tx) => requireEmployeeInScope(tx, result, resource));
     return { ...result, scopeEmployeeId: resource, scopeEmployeeCreatorId: creatorId };
   }
   return result;
+}
+
+/** 员工在 ctx 数据范围内（范围外与不存在同一个 404）；返回创建人（使用用户维度用）。入口与命令内复核共用。 */
+export async function requireEmployeeInScope(tx: Tx, ctx: EmploymentContext, employeeId: string) {
+  const creator = await employmentCreatorId(tx, ctx, employeeId);
+  if (ctx.scope && !(await scopeAllowsInTransaction(tx, ctx.scope, { personId: employeeId, creatorId: creator })))
+    throw new AppError('NOT_FOUND', '任职数据不存在');
+  return creator;
 }
 
 export function readPageContext(

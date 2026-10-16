@@ -5,13 +5,12 @@ import { listCompletionTodos } from '../transfer/completion.js';
 import { requireTransferButton } from '../transfer/access.js';
 import { type Tx, withTenant } from '@italent/db';
 import { Hono, type Context } from 'hono';
-import type { CommandGuard } from '../../commands.js';
 import { z } from 'zod';
 import { requirePermission } from '../../authorization.js';
 import { AppError, handleError } from '../../errors.js';
 import type { TenantRouteDeps, TenantRouteModule } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
-import { authorizeInTransaction, getModuleViewableFields } from '../permission/module-access.js';
+import { getModuleViewableFields } from '../permission/module-access.js';
 import { provisionEmployeeUser } from '../permission/user-provisioning.js';
 import {
   readSettings,
@@ -40,17 +39,11 @@ import { EmploymentError } from './errors.js';
 import { normalizeEmploymentInput, normalizeBusinessPatch } from './fields.js';
 import { previewEmploymentEditForwardUpdate, previewEmploymentForwardUpdate } from './forward-preview.js';
 import { createExitApplication } from './exit-application.js';
-import {
-  isExitKind,
-  requireExitGate,
-  requireExitPermission,
-  type ExitOperation,
-  type ExitGateTarget,
-} from './exit-gate.js';
+import { isExitKind, requireExitGate, type ExitOperation, type ExitGateTarget } from './exit-gate.js';
 import { splitExitOptions } from './exit-initiation.js';
 import { importEmploymentRecords, normalizeEmploymentImport, previewEmploymentImport } from './forward-import.js';
 import { editEmploymentRecord } from './record-edit.js';
-import { exitEditGuard, requireBusinessWriteScope, type EditTarget } from './replay-guard.js';
+import { exitCommandGuard, exitEditGuard, requireBusinessWriteScope, type EditTarget } from './replay-guard.js';
 import { prepareInheritance, inheritancePreview } from './inheritance.js';
 import { lockEmploymentBusiness, lockEmploymentEmployee } from './record-store.js';
 import { listEmploymentRecords, loadEmploymentBusiness, loadEmploymentRecord } from './read-model.js';
@@ -110,22 +103,6 @@ export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
   registerEntryEmailRoutes(module, deps, authorizeBusinessWrite);
   router.route('/api/tenant/employment', module);
 };
-
-/**
- * 离职入口的命令内复核（#199）：首次执行与幂等重放都先在事务内按当前授权重过 Dimission* 权限链，撤权后不返回缓存响应。
- * 仅当入口操作的是 kind=leave / retirement 时使用；前置条件在命令内的 requireExitGate。
- */
-function exitGuard(
-  deps: TenantRouteDeps,
-  ctx: EmploymentContext,
-  operation: ExitOperation,
-  target: ExitGateTarget,
-): CommandGuard {
-  return {
-    before: (tx) =>
-      requireExitPermission({ ...ctx, authorize: authorizeInTransaction(deps.authorize, tx) }, operation, target),
-  };
-}
 
 /** 登录邮箱不是人员字段：建档 / 入职时交给权限模块的用户端口（DEC-128；入职必填，DEC-140），不参与任职字段权限校验。 */
 const loginEmail = z.email().max(320).optional();
@@ -256,7 +233,9 @@ function registerEmployeeBusinessCreate(router: Hono<TenantEnv>, deps: TenantRou
         if (NEW_CYCLE_KINDS.includes(input.kind)) await ensureHiredAccount(tx, context, id, email);
         return { status: 201, body: business };
       },
-      input.kind === 'leave' ? { guard: exitGuard(deps, ctx, 'create', gate) } : {},
+      input.kind === 'leave'
+        ? { guard: exitCommandGuard(deps, ctx, 'create', gate, { departmentId: input.fields.departmentId }) }
+        : {},
     );
   });
 }
@@ -367,7 +346,15 @@ function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
         return { status: 200, body: await updateEmploymentBusiness(tx, checked, id, input) };
       },
       isExitKind(current.kind)
-        ? { guard: exitGuard(deps, ctx, 'update', { employeeId: current.employeeId, patch: input }) }
+        ? {
+            guard: exitCommandGuard(
+              deps,
+              ctx,
+              'update',
+              { employeeId: current.employeeId, patch: input },
+              { businessId: id },
+            ),
+          }
         : {},
     );
   });
@@ -401,7 +388,13 @@ function registerBusinessTransitions(router: Hono<TenantEnv>, deps: TenantRouteD
         const operation: ExitOperation = action === 'submit' || action === 'withdraw' ? action : 'cancel';
         const guard = isExitKind(current.kind)
           ? {
-              guard: exitGuard(deps, ctx, operation, { employeeId: current.employeeId, deleting: action === 'delete' }),
+              guard: exitCommandGuard(
+                deps,
+                ctx,
+                operation,
+                { employeeId: current.employeeId, deleting: action === 'delete' },
+                { businessId: id },
+              ),
             }
           : {};
         const write = runWrite(
@@ -514,7 +507,9 @@ function registerActivation(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
         await retryActivation(tx, context, id, current.employeeId);
         return { status: 200, body: await requireSavedBusiness(tx, context, id) };
       },
-      exit ? { guard: exitGuard(deps, ctx, 'retry', { employeeId: current.employeeId }) } : {},
+      exit
+        ? { guard: exitCommandGuard(deps, ctx, 'retry', { employeeId: current.employeeId }, { businessId: id }) }
+        : {},
     );
   });
 }
