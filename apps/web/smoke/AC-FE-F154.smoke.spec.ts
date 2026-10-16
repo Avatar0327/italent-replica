@@ -1,3 +1,4 @@
+import type { Page } from '@playwright/test';
 import { test, expect, employee, user } from './fixtures.js';
 import { orgId, otherEmployee } from './r3d2-fixtures.js';
 import { mockInfo, infoId, type InfoKind } from './f154-fixtures.js';
@@ -56,7 +57,7 @@ const cases = [
 
 test.use({ viewport: { width: 1440, height: 900 } });
 for (const [index, spec] of cases.entries()) {
-  test(`AC-FE-F154-0${index + 1} ${spec.title}展示真实列表及新建字段`, async ({ page }) => {
+  test(`AC-FE-F154-0${index + 1} ${spec.title}展示真实列表及新建字段`, async ({ page }, testInfo) => {
     await mockInfo(page);
     await page.goto('/');
     await page.getByLabel('切换演示身份').selectOption(user);
@@ -65,22 +66,25 @@ for (const [index, spec] of cases.entries()) {
     await expect(page.getByRole('heading', { name: spec.title, exact: true })).toBeVisible();
     for (const name of spec.headers) await expect(page.getByRole('columnheader', { name, exact: true })).toBeVisible();
     await expect(page.getByText(`共${spec.count}条`, { exact: true })).toBeVisible();
+    await expect(page.getByRole('table')).toContainText('合成员工甲');
+    await page.screenshot({ path: testInfo.outputPath(`${spec.path}-list.png`) });
     for (const name of ['导入', '导出', '轮岗申请', '高级筛选'])
       await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0);
     await page.getByRole('button', { name: new RegExp(`^${spec.create.split('').join('\\s*')}$`) }).click();
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
     for (const field of spec.fields) await expect(dialog.getByText(field, { exact: true })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath(`${spec.path}-form.png`) });
   });
 }
 
-async function enter(page: import('@playwright/test').Page, kind: InfoKind) {
+async function enter(page: Page, kind: InfoKind) {
   await page.goto('/');
   await page.getByLabel('切换演示身份').selectOption(user);
   await expect(page).toHaveURL(/\/staff$/);
   await page.goto(`/idp/${kind}`);
 }
-async function edit(page: import('@playwright/test').Page) {
+async function edit(page: Page) {
   await page.getByRole('button', { name: '编辑', exact: true }).first().click();
   await expect(page.getByRole('dialog')).toBeVisible();
 }
@@ -94,12 +98,14 @@ test('AC-FE-F154-04 职业发展编辑回显、冲突重读保留改动并回填
   await dialog.getByLabel('优势项', { exact: true }).fill('更新优势');
   await dialog.getByRole('button', { name: /保\s*存/ }).click();
   await dialog.getByRole('button', { name: '重读最新版本' }).click();
-  await expect(dialog.getByLabel('结束时间', { exact: true })).toHaveValue('2027-06-30');
+  await expect(dialog.getByRole('group', { name: '结束时间', exact: true }).getByRole('textbox')).toHaveValue(
+    '2027-06-30',
+  );
   await expect(dialog.getByLabel('优势项', { exact: true })).toHaveValue('更新优势');
   await dialog.getByRole('button', { name: '已核对差异，继续编辑' }).click();
   await dialog.getByRole('button', { name: /保\s*存/ }).click();
   await expect(dialog).toBeHidden();
-  expect(calls.map((c) => c.revision)).toEqual(['"1"', '"2"']);
+  expect(calls.map((c) => c.revision)).toEqual(['1', '2']);
   expect(calls[1]!.body).toEqual({ strengths: '更新优势' });
 });
 
@@ -147,8 +153,72 @@ test('AC-FE-F154-07 人员读取失败显示局部错误并重读', async ({ pag
 test('AC-FE-F154-08 行删除回执沿用原 revision，刷新列表', async ({ page }) => {
   const calls = await mockInfo(page);
   await enter(page, 'work-shifts');
-  await page.getByRole('button', { name: '删除', exact: true }).nth(1).click();
+  await page.getByRole('button', { name: '删除', exact: true }).first().click();
   await page.getByRole('dialog').getByRole('button', { name: '确认删除' }).click();
   await expect(page.getByText('共6条', { exact: true })).toBeVisible();
-  expect(calls[0]).toMatchObject({ method: 'DELETE', path: `/api/tenant/idp/work-shifts/${infoId}`, revision: '"1"' });
+  expect(calls[0]).toMatchObject({ method: 'DELETE', path: `/api/tenant/idp/work-shifts/${infoId}`, revision: '1' });
 });
+
+test('AC-FE-F154-09 批量删除一次确认，逐条回执保留失败项', async ({ page }) => {
+  const calls = await mockInfo(page, { conflictTimes: 1 });
+  await enter(page, 'work-shifts');
+  await page.getByRole('checkbox').nth(1).check();
+  await page.getByRole('checkbox').nth(2).check();
+  await page
+    .locator('.page-heading')
+    .getByRole('button', { name: /删\s*除/ })
+    .click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByRole('button', { name: '删除所选记录' }).click();
+  await expect(dialog).toContainText('重读最新版本');
+  await expect(dialog).toContainText('已删除');
+  await expect(page.getByText('共6条', { exact: true })).toBeVisible();
+  expect(calls).toHaveLength(2);
+});
+
+async function choose(page: Page, field: string, value: string) {
+  await page.getByRole('dialog').getByLabel(field, { exact: true }).click();
+  await page.locator('.ant-select-dropdown:visible').getByText(value, { exact: true }).click();
+}
+async function setDate(page: Page, label: string, value: string) {
+  const input = page.getByRole('dialog').getByRole('group', { name: label, exact: true }).getByRole('textbox');
+  await input.fill(value);
+  await input.press('Enter');
+}
+for (const spec of cases)
+  test(`AC-FE-F154-11 ${spec.title}新建成功后编辑回显并提交`, async ({ page }) => {
+    const calls = await mockInfo(page);
+    await enter(page, spec.path as InfoKind);
+    await page
+      .locator('.page-heading')
+      .getByRole('button', { name: new RegExp(spec.create.split('').join('\\s*')) })
+      .click();
+    if (spec.path === 'tutorships') {
+      await choose(page, '带教人', '合成导师乙');
+      await choose(page, '被带教人', '合成员工甲');
+    } else await choose(page, spec.path === 'careers' ? '发展员工' : '姓名', '合成员工甲');
+    await setDate(page, '开始时间', '2027-01-01');
+    await setDate(page, spec.path === 'tutorships' ? '结束日期' : '结束时间', '2027-02-01');
+    if (spec.path === 'work-shifts') {
+      await choose(page, '轮岗部门', '合成研发部');
+      await choose(page, '轮岗职位', '合成轮岗职位');
+    }
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: /保\s*存/ })
+      .click();
+    await expect(page.getByRole('dialog')).toBeHidden();
+    await expect(page.getByText(`共${spec.count + 1}条`, { exact: true })).toBeVisible();
+    await edit(page);
+    await expect(page.getByRole('dialog')).toContainText('合成员工甲');
+    await setDate(page, '开始时间', '2026-09-01');
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: /保\s*存/ })
+      .click();
+    await expect(page.getByRole('dialog')).toBeHidden();
+    expect(calls.map((c) => c.method)).toEqual(['POST', 'PATCH']);
+    expect(calls.map((c) => c.revision)).toEqual(['0', '1']);
+    expect(calls[1]!.body).toEqual({ startDate: '2026-09-01' });
+    for (const key of ['careerLineId', 'targetLevelId', 'targetPostId']) expect(calls[0]!.body).not.toHaveProperty(key);
+  });

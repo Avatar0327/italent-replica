@@ -93,10 +93,15 @@ export async function mockInfo(
     else collection.push(result);
     return route.fulfill({ status: row ? 200 : 201, json: trim(kind, result) });
   });
+  await mockReferences(page, options.personError);
+  return calls;
+}
+
+async function mockReferences(page: Page, personError?: boolean) {
   await page.route('**/api/tenant/employment/employees**', (route) => {
     const path = new URL(route.request().url()).pathname;
     const id = path.split('/')[5];
-    if (options.personError) return route.fulfill({ status: 503, json: { error: { code: 'UNAVAILABLE' } } });
+    if (personError) return route.fulfill({ status: 503, json: { error: { code: 'UNAVAILABLE' } } });
     const persons = [employee, otherEmployee].map((id, i) => ({
       id,
       name: i ? '合成导师乙' : '合成员工甲',
@@ -128,5 +133,4 @@ export async function mockInfo(
         : { items: [{ id: positionId, name: '合成轮岗职位' }], page: 1, pageSize: 200 },
     }),
   );
-  return calls;
 }
