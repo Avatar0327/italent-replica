@@ -1277,7 +1277,7 @@ export const EMPLOYMENT: RequiredTable = {
     ),
     ob(
       `obj:${RECORD}:{create,update}`,
-      ['objectOp:TenantBase.EmploymentRecord:update'],
+      ['objectOp:TenantBase.EmploymentRecord:update', 'objectOp:TenantBase.EmploymentRecord:create'],
       [
         fn(
           EMP,
@@ -1290,15 +1290,20 @@ export const EMPLOYMENT: RequiredTable = {
           "if (!preview) await requireEmploymentWrite(ctx, 'update', patch, 'Employment.Edit')",
         ),
         WRITE_OBJECT,
-        // F-202：编辑行在命令事务内按当前授权再判一次（同键重放、失败回查也过这道），见 replay-guard.ts
-        fn(EMP, 'importEmployment', '{ guard: importEditGuard(deps, ctx, id, targets) }'),
+        // F-202 / F-208：编辑行与新建行在命令事务内按当前授权再判一次（同键重放、失败回查也过这道），见 replay-guard.ts
+        fn(EMP, 'importEmployment', '{ guard: importWriteGuard(deps, ctx, id, targets, creates) }'),
         {
           role: 'impl',
           unit: `${REPLAY}#requireEditTargets`,
           anchor: "await requireEmploymentWrite(scoped, 'update', target.patch, 'Employment.Edit')",
         },
+        {
+          role: 'impl',
+          unit: `${REPLAY}#importWriteGuard`,
+          anchor: "await requireEmploymentWrite(scoped, 'create', create.business, 'Employment.Create')",
+        },
       ],
-      '逐行：operation = create 判 create，其余判 update；编辑行另在命令内复核（importEditGuard）',
+      '逐行：operation = create 判 create，其余判 update；两类行另在命令内复核（importWriteGuard）',
     ),
     ob(
       `btn:${RECORD}#{Employment.Create@detail,Employment.Edit@detail}`,
@@ -1445,9 +1450,9 @@ export const EMPLOYMENT: RequiredTable = {
           ENTRY,
           'POST',
           '/pending-entries/:id/complete',
-          '{ guard: entryContractGuard(deps, ctx, id, input.contract) }',
+          '{ guard: completeEntryGuard(deps, ctx, id, input.contract) }',
         ),
-        fn(ENTRY, 'entryContractGuard', 'requireEntryContractAccess(tx, deps, ctx, id, contract)'),
+        fn(ENTRY, 'completeEntryGuard', 'requireEntryContractAccess(tx, deps, ctx, id, contract)'),
       ],
       '条件守卫：请求带 contract 时另要合同新建按钮 / 字段创建权 / 合同数据范围',
     ),
@@ -1456,7 +1461,7 @@ export const EMPLOYMENT: RequiredTable = {
         'btn:TenantBase.EmploymentContract#create@list',
         ['button:buttonResource', 'button:object.button'],
         [
-          fn(ENTRY, 'entryContractGuard', 'requireEntryContractAccess(tx, deps, ctx, id, contract)'),
+          fn(ENTRY, 'completeEntryGuard', 'requireEntryContractAccess(tx, deps, ctx, id, contract)'),
           fn(
             `${SRC}/employment/entry-contract.ts`,
             'requireEntryContractAccess',

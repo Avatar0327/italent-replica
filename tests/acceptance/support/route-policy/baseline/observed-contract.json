@@ -14855,6 +14855,7 @@
           "readContext(object.*)"
         ],
         "objectOp": [
+          "TenantBase.EmploymentRecord:create",
           "TenantBase.EmploymentRecord:update",
           "TenantBase.EmploymentRecord:view"
         ],
