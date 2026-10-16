@@ -1169,7 +1169,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/employment/transitions.ts#approveEmploymentBusiness': ['27d3f2c3a8c4', '1931e4923ec3'],
   'apps/api/src/modules/employment/transitions.ts#assertExitHrFields': ['d0359731a4fd', '583ee92c250c'],
   'apps/api/src/modules/employment/transitions.ts#assertTransition': ['6f04d749d85e', '583ee92c250c'],
-  'apps/api/src/modules/employment/transitions.ts#deleteEmploymentBusiness': ['f8559bb5b1e9', '0fa770464ce6'],
+  'apps/api/src/modules/employment/transitions.ts#deleteEmploymentBusiness': ['b5e1524358d9', '0cdcbce20d84'],
   'apps/api/src/modules/employment/transitions.ts#deletionSnapshot': ['e28b279e0663', 'd0a6fe87af33'],
   'apps/api/src/modules/employment/transitions.ts#exitGateFor': ['2d528482a163', '0efe6d71b49e'],
   'apps/api/src/modules/employment/transitions.ts#transitionEmployment': ['3013e4fa9a07', '13d0a5509fb8'],
