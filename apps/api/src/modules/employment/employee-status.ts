@@ -16,6 +16,7 @@ import {
 import { AppError } from '../../errors.js';
 import { auditEmployment, requireLinkedEmploymentRecord, requireScopedEmploymentObject } from './context.js';
 import { findPredecessor, loadEmploymentRecord } from './read-model.js';
+import { assertEmploymentDepartmentAvailable } from './references.js';
 import {
   bumpEmploymentBusiness,
   camelRow,
@@ -38,6 +39,8 @@ export interface VersionStatus {
 export interface EntryOptions {
   /** 添加待入职：待入职 + 入职状态正常。 */
   readonly pendingEntry?: boolean;
+  /** 添加待入职时的入职状态，缺省正常；只由改期入职（替换待入职记录，BE-2a）传延期。 */
+  readonly entryStatus?: EntryStatusCode;
   /** 办理入职 / 实习转正时是否有试用期：有为试用，否则正式（34 EN-R11；DEC-234 实习转正同入职）。 */
   readonly probation?: boolean;
 }
@@ -72,8 +75,13 @@ export function entryStatusFor(kind: BusinessKind, entry?: EntryOptions): Versio
   if (!entry || !ENTRY_LIKE_KINDS.includes(kind)) return undefined;
   // 待入职只属于新增 / 重聘入职（Q-M0-99）；实习转正只取是否有试用期
   if (entry.pendingEntry && ENTRY_KINDS.includes(kind))
-    return { employeeStatus: EMPLOYEE_STATUS.pendingEntry, entryStatus: ENTRY_STATUS.normal };
+    return { employeeStatus: EMPLOYEE_STATUS.pendingEntry, entryStatus: entry.entryStatus ?? ENTRY_STATUS.normal };
   return { employeeStatus: entry.probation ? EMPLOYEE_STATUS.probation : EMPLOYEE_STATUS.regular, entryStatus: null };
+}
+
+/** 待入职的入职记录（人员状态仍为待入职；取消 / 延期也算）。 */
+export function isPendingEntryRecord(record: Pick<EmploymentRecord, 'kind' | 'employeeStatus'>): boolean {
+  return ENTRY_KINDS.includes(record.kind) && record.employeeStatus === EMPLOYEE_STATUS.pendingEntry;
 }
 
 interface LockedRecord {
@@ -82,13 +90,13 @@ interface LockedRecord {
 }
 
 /** 取锁顺序同任职编辑（F-008）：调动参与者 → 员工 → 业务头；再按当前范围校验（DEC-177 / 193）。 */
-async function lockPendingEntry(tx: Tx, ctx: EmploymentContext, recordId: string): Promise<LockedRecord> {
+export async function lockPendingEntry(tx: Tx, ctx: EmploymentContext, recordId: string): Promise<LockedRecord> {
   await lockTransferBusiness(tx, ctx, recordId);
   const business = await lockEmploymentBusiness(tx, ctx, recordId);
   const record = await loadEmploymentRecord(tx, ctx.tenantId, recordId, tenantLocalDate(ctx.now, ctx.timezone));
   if (business.state !== 'effective' || !record) throw new AppError('CONFLICT', '只能流转有效任职记录');
   await requireScopedEmploymentObject(tx, ctx, record.employeeId, record.fields.departmentId, record.id);
-  if (!ENTRY_KINDS.includes(record.kind) || record.employeeStatus !== EMPLOYEE_STATUS.pendingEntry)
+  if (!isPendingEntryRecord(record))
     throw new AppError('CONFLICT', '只有待入职的入职记录可以办理此操作', { reason: 'NOT_PENDING_ENTRY' });
   return { business, record };
 }
@@ -102,11 +110,16 @@ export async function changePendingEntryStatus(
   ctx: EmploymentContext,
   recordId: string,
   target: EntryTarget,
+  options: { readonly rejectUnchanged?: boolean } = {},
 ): Promise<EmploymentRecord> {
   if (!Object.hasOwn(ENTRY_TARGETS, target)) throw new AppError('VALIDATION_FAILED', '入职状态不合法');
   const { business, record } = await lockPendingEntry(tx, ctx, recordId);
   const entryStatus = ENTRY_TARGETS[target];
-  if (record.entryStatus === entryStatus) return record;
+  if (record.entryStatus === entryStatus) {
+    // 路由入口显式取消时重复取消是冲突；端口（联动取消等）保持幂等
+    if (options.rejectUnchanged) throw new AppError('CONFLICT', '入职状态未变化', { reason: 'ENTRY_STATUS_UNCHANGED' });
+    return record;
+  }
   await appendStatusSnapshot(tx, ctx, business, record, { employeeStatus: record.employeeStatus, entryStatus });
   return reloadRecord(tx, ctx, recordId);
 }
@@ -121,6 +134,8 @@ export async function completePendingEntry(
   const { business, record } = await lockPendingEntry(tx, ctx, recordId);
   if (record.entryStatus === ENTRY_STATUS.cancelled)
     throw new AppError('CONFLICT', '已取消入职，请先改期恢复', { reason: 'ENTRY_CANCELLED' });
+  // DEC-138 / 139：办理入职与添加 / 编辑共用同一入口，部门在保存后可能又排定停用
+  await assertEmploymentDepartmentAvailable(tx, ctx, record.fields.departmentId, record.effectiveDate, true);
   const employeeStatus = options.probation ? EMPLOYEE_STATUS.probation : EMPLOYEE_STATUS.regular;
   await appendStatusSnapshot(tx, ctx, business, record, { employeeStatus, entryStatus: record.entryStatus });
   await propagateEmployeeStatus(tx, ctx, record, record.employeeStatus, employeeStatus);

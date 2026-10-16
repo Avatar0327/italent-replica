@@ -19,31 +19,55 @@ export async function validateNewEmploymentReferences(
   fields: PresetFields,
   effectiveDate: string,
   reporting?: ReportingCheck,
+  entry = false,
 ): Promise<void> {
-  await assertEmploymentDepartmentAvailable(tx, ctx, fields.departmentId, effectiveDate);
+  await assertEmploymentDepartmentAvailable(tx, ctx, fields.departmentId, effectiveDate, entry);
   await validateEmploymentReferences(tx, ctx, fields, effectiveDate, reporting);
 }
 
-/** DEC-196：与停用共用组织锁，整段可用性在锁内复查；完整锁序见 org/locks.ts。 */
+/**
+ * DEC-196：与停用共用组织锁，整段可用性在锁内复查；完整锁序见 org/locks.ts。
+ * entry = 入职类业务（添加待入职 / 编辑 / 办理入职 / 入职接口的唯一入口，DEC-138 / 139，34 EN-R16）：
+ * 另拦入职日早于部门设立日，停用按入职日落在停用期内 / 在停用日之前给两种提示（W-433 / 436 / 437，提示语照搬原站）。
+ */
 export async function assertEmploymentDepartmentAvailable(
   tx: Tx,
   ctx: EmploymentContext,
   departmentId: string | null,
   effectiveDate: string,
+  entry = false,
 ): Promise<void> {
   if (departmentId) {
     await lockOrganizationSettings(tx, ctx.tenantId);
+    if (entry) await assertNotBeforeFounded(tx, ctx.tenantId, departmentId, effectiveDate);
     // 等待锁期间可能已提交停用版本；必须在获得锁之后重新读取。
     const disabled = await employmentDepartmentDisable(tx, ctx.tenantId, departmentId, effectiveDate);
     if (disabled) {
+      const atEntry = entry && disabled.disabledOn <= effectiveDate;
       throw new AppError(
         'VALIDATION_FAILED',
-        `任职部门【${disabled.name}】已被停用（停用日期：${disabled.disabledOn}），请检查`,
+        atEntry
+          ? `任职部门【${disabled.name}】在入职日期（${effectiveDate}）时为停用状态，请检查`
+          : `任职部门【${disabled.name}】已被停用（停用日期：${disabled.disabledOn}），请检查`,
         { reason: 'EMPLOYMENT_DEPARTMENT_DISABLED', disabledOn: disabled.disabledOn },
       );
     }
     await assertOrg(tx, ctx.tenantId, departmentId, effectiveDate);
   }
+}
+
+async function assertNotBeforeFounded(tx: Tx, tenantId: string, departmentId: string, entryDate: string) {
+  const [first] = rowsOf<{ name: string; founded: string }>(
+    await tx.execute(sql`SELECT name, start_date::text AS founded FROM org_versions
+      WHERE tenant_id=${tenantId} AND org_id=${departmentId}::uuid ORDER BY start_date, version_no LIMIT 1`),
+  );
+  if (first && entryDate < first.founded)
+    throw new AppError(
+      'VALIDATION_FAILED',
+      `入职日期（${entryDate}）不能早于任职部门【${first.name}】的最早生效日期（${first.founded}），` +
+        '请检查修改入职日期或通过修改部门的设立日期来调整部门最早生效日期',
+      { reason: 'ENTRY_BEFORE_DEPARTMENT_FOUNDED', founded: first.founded },
+    );
 }
 
 /** 循环汇报校验的对象：哪名员工，被校验的记录在时间轴上实际生效的区间（为空则不校验）。 */

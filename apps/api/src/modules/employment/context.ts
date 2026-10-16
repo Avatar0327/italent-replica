@@ -189,6 +189,7 @@ export async function requireEmploymentWrite(
   payload: object,
   button?: string,
   objectCode = EMPLOYMENT_OBJECT,
+  options: { readonly commandOnly?: boolean } = {},
 ): Promise<void> {
   if (!ctx.authorize) return;
   if (operation === 'delete') {
@@ -208,7 +209,7 @@ export async function requireEmploymentWrite(
       'Employment.Revoke',
       'Employment.RetryActivation',
     ];
-    if (!Object.keys(actual).length && !commandButtons.includes(button ?? '')) {
+    if (!Object.keys(actual).length && !options.commandOnly && !commandButtons.includes(button ?? '')) {
       throw new AppError('VALIDATION_FAILED', '必须提供要写入的业务字段');
     }
     await requireObjectWrite(ctx.authorize, ctx, { objectCode, operation, payload: actual });
