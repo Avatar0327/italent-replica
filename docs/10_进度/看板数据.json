@@ -5611,7 +5611,7 @@
 "after": [
 "BE-4d"
 ],
-"note": "F-195 + F-197 合单（DEC-555）· 重放权限复核（后端）· 云端 Claude Sonnet 5.5 High · 分支 claude/F-195-197-replay-guard（含 bb4fc254）· Sol high 审 · 已拟派发，等开会话 / PR",
+"note": "F-195 + F-197 合单（DEC-555）· 重放权限复核（后端）· 云端 Claude Sonnet 5.5 High 已开会话（session_01TwxZ3f9jV8MF8QxTtdPajj）· 分支 claude/F-195-197-replay-guard · PR 号待补 · Sol high 审",
 "mod": "R2",
 "ms": "D2"
 },
@@ -5633,7 +5633,7 @@
 "after": [
 "F-188"
 ],
-"note": "F-195 + F-197 合单（DEC-555）· 重放权限复核（后端）· 云端 Claude Sonnet 5.5 High · 分支 claude/F-195-197-replay-guard（含 bb4fc254）· Sol high 审 · 已拟派发，等开会话 / PR",
+"note": "F-195 + F-197 合单（DEC-555）· 重放权限复核（后端）· 云端 Claude Sonnet 5.5 High 已开会话（session_01TwxZ3f9jV8MF8QxTtdPajj）· 分支 claude/F-195-197-replay-guard · PR 号待补 · Sol high 审",
 "mod": "R2",
 "ms": "D2"
 }
