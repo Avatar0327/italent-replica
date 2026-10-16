@@ -2,7 +2,7 @@
 "updated": "2026-10-14",
 "stats": {
 "merged": 279,
-"open": 8,
+"open": 9,
 "dec": 541,
 "ev": "43/177"
 },
@@ -983,6 +983,10 @@
 }
 },
 "log": [
+[
+"10-16",
+"D2·R2·后端·BE-2b 已派，PR #361（草稿）"
+],
 [
 "10-16",
 "D2·R2·后端·BE-2a（#358）已合入（41341aa9）；03 拟派 BE-2b"
@@ -4704,10 +4708,11 @@
 "k": "BE-2b",
 "n": "BE-2b 入职四视图查询 + 邮箱规则 EN-R12 + 入职合同端口接线",
 "s": "assigned",
-"note": "03 拟派发：云端 Sonnet High、Sol high 审；分支 claude/BE-2b-entry-views，基线 41341aa9 · 范围：入职四视图查询 + 邮箱规则 EN-R12 + 入职合同端口 generateContractForBusiness · 顺带 BE-2a 遗留 P3",
+"note": "#361 草稿开发中（claude/BE-2b-entry-views，基线 41341aa9，云端 Sonnet High）· 完成后 03 发 Sol high 审 · 范围：入职四视图查询 + 邮箱规则 EN-R12 + 入职合同端口 · 顺带 BE-2a 遗留 P3",
 "after": [
 "BE-2a"
-]
+],
+"pr": 361
 },
 {
 "k": "F-172",
