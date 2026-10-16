@@ -984,6 +984,10 @@
 },
 "log": [
 [
+"10-16 12:40Z",
+"F-206/F-207 云端会话已开；#372 第 4 轮、#374 第 3 轮审查中；F-207 标签定为 D3·底座·后补"
+],
+[
 "10-16 12:45Z",
 "F-206、F-207 已拟派发（03）；DEC-562 撤销 DEC-557 并行限额，回退线改周额度 90%；F-202 等 #372、F-203 等 #373"
 ],
@@ -5738,7 +5742,7 @@
 "after": [
 "BE-4d"
 ],
-"note": "F-195 + F-197 合单 · #372 第 3 轮暂不能合并 · 第 4 轮由 Sonnet xhigh 新会话返工（DEC-531②）· 12:00Z 前已推 8e4814f5，待 03 发起第 4 轮审查",
+"note": "F-195 + F-197 合单 · #372 第 4 轮开发完成（head dcc8b82d）· 第 4 轮 Sol high 审查中（Sonnet xhigh 接手会话）",
 "mod": "R2",
 "ms": "D2",
 "pr": 372
@@ -5750,7 +5754,7 @@
 "after": [
 "BE-4d"
 ],
-"note": "只改测试（#362 P3-5）· #374 第 2 轮 Sol high 暂不能合并：1 项 P2（跨租户负例把可能错读的台账纳入基线，未真正验证“不命中”）· P2-2、原 P3 已修 · 第 3 轮返工（含 DEC-385 两问）",
+"note": "只改测试（#362 P3-5）· #374 第 3 轮开发完成（head 4dcbc0f2）· 第 3 轮 Sol high 审查中",
 "mod": "R2",
 "ms": "D3",
 "pr": 374
@@ -5762,7 +5766,7 @@
 "after": [
 "F-188"
 ],
-"note": "F-195 + F-197 合单 · #372 第 3 轮暂不能合并 · 第 4 轮由 Sonnet xhigh 新会话返工（DEC-531②）· 12:00Z 前已推 8e4814f5，待 03 发起第 4 轮审查",
+"note": "F-195 + F-197 合单 · #372 第 4 轮开发完成（head dcc8b82d）· 第 4 轮 Sol high 审查中（Sonnet xhigh 接手会话）",
 "mod": "R2",
 "ms": "D2",
 "pr": 372
@@ -5840,7 +5844,7 @@
 "n": "F-206 已取消入职列表与详情返回取消说明（后端读字段，DEC-560 方案 B，issue #376）",
 "s": "assigned",
 "after": [],
-"note": "DEC-560 方案 B（F-192b 前置）· 已拟派发 · 云端 Claude Sonnet High · Sol high 审 · 派发单 cl_f206.md · 次序 F-206>F-202>F-203（DEC-561）· 等开会话 / PR",
+"note": "DEC-560 方案 B（F-192b 前置）· 云端 Claude Sonnet High 已开会话（session_012TxuvJcdk1tALxz1MtU2XA）· Sol high 审 · 次序 F-206>F-202>F-203（DEC-561）· PR 号待补",
 "mod": "R2",
 "ms": "D2"
 },
@@ -5849,9 +5853,9 @@
 "n": "F-207 AC-PRM-FW-02-storage 高负载超时第 3 次挡队（#347/#359/#375），仿 F-116 单设用例超时，不改断言",
 "s": "assigned",
 "after": [],
-"note": "storage 用例单设超时（只改测试，不改断言）· 已拟派发 · 云端 Claude Sonnet High · Sol high 审 · 派发单 cl_f207.md · 标签按 03：D2·R2·后补 · 等开会话 / PR",
-"mod": "R2",
-"ms": "D2"
+"note": "storage 用例单设超时（只改测试，不改断言）· 云端 Claude Sonnet High 已开会话（session_01BuEZhGYocq8PJKCtnjhzjA）· Sol high 审 · 标签 D3·底座·后补（与 03 派发单一致）· PR 号待补",
+"mod": "底座",
+"ms": "D3"
 }
 ]
 },
