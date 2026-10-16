@@ -136,7 +136,7 @@ async function doneOnce(path: PendingPath, label: string) {
   return { ...x, revision, key, firstBody: (await first.json()) as unknown };
 }
 
-describe.each(PENDING_PATHS)('F-202 待入职 $name 同键重放按当前授权复核', (path) => {
+describe.each(PENDING_PATHS)('F-202 DEC-406 待入职 $name 同键重放按当前授权复核', (path) => {
   it.each(path.revokers)('首次成功后%s：同键同内容重放被拒，业务 / 审计 / 台账不变', async (name, apply) => {
     const x = await doneOnce(path, `f202-pend-${path.name}-${name.length}`);
     const before = await snapshot(x.w.db, x.w.session.tenant.id);
@@ -317,7 +317,7 @@ async function firstOk(sent: Sent, key: string) {
   return (await first.json()) as unknown;
 }
 
-describe.each(RECORD_PATHS)('F-202 普通记录的$name', (path) => {
+describe.each(RECORD_PATHS)('F-202 DEC-406 普通记录的$name', (path) => {
   it.each(ORDINARY_REVOKERS)('首次成功后%s：同键同内容重放被拒，业务 / 审计 / 台账不变', async (name, apply) => {
     const x = await recordWorld(`f202-rec-${path.name.length}-${name.length}`);
     const sent = await path.prepare(x, [x.ordinary]);
@@ -389,7 +389,7 @@ describe.each(RECORD_PATHS)('F-202 普通记录的$name', (path) => {
 
 const MIXED_PATHS = RECORD_PATHS.filter((path) => !path.name.startsWith('记录编辑'));
 
-describe.each(MIXED_PATHS)('F-202 混合批次的$name：离职记录 + 普通记录', (path) => {
+describe.each(MIXED_PATHS)('F-202 DEC-406 混合批次的$name：离职记录 + 普通记录', (path) => {
   it('首次成功后撤掉 Employment.Edit：整批重放被拒（离职那条原本有 guard，普通那条没有）', async () => {
     const x = await recordWorld(`f202-mixed-edit-${path.name.length}`);
     const { leave, rehire } = await x.mixed();
@@ -440,7 +440,7 @@ describe.each(MIXED_PATHS)('F-202 混合批次的$name：离职记录 + 普通�
   });
 });
 
-describe('F-202 跨员工混合批次 POST /records/batch-edit：只有普通那条不在范围内', () => {
+describe('F-202 DEC-406 跨员工混合批次 POST /records/batch-edit：只有普通那条不在范围内', () => {
   async function mixedBatch(label: string) {
     const x = await recordWorld(label);
     const { leave } = await x.mixed();
