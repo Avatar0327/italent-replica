@@ -21,10 +21,14 @@ describe('AC-FE-F142 页面不留重复实现', () => {
   it('命令存储只经内核 useCommandForm：页面不自己订阅存储、不自己按会话拼键', () => {
     expect(offenders(/useSyncExternalStore/)).toEqual([]);
     expect(offenders(/JSON\.stringify\(\[session\.tenantId/)).toEqual([]);
-    // 合同、审批的模块级存储只交给 useCommandForm(resource, store)；评定旧创建兼容层只剩测试引用（AC-FE-R3b-rework）。
+    // 合同、审批的模块级存储只交给 useCommandForm(resource, store)；IDP 三个入口的根部只交给内核 FormCommands
+    // （F-164 第 1 轮 P2-1，切换入口不丢命令，新建、编辑与行内命令同一份存储）；评定旧创建兼容层只剩测试引用（AC-FE-R3b-rework）。
     const stores = ['contracts/commands.ts', 'approval/commands.ts'];
-    expect(offenders(/createFormStore\(/, [...stores, 'evaluation/create-commands.ts'])).toEqual([]);
+    expect(offenders(/createFormStore\(/, [...stores, 'idp/commands.tsx', 'evaluation/create-commands.ts'])).toEqual(
+      [],
+    );
     for (const file of stores) expect(read(file), file).toMatch(/useCommandForm\(resource, store\)/);
+    expect(read('idp/commands.tsx')).toMatch(/<FormCommands store=\{store\}>/);
   });
   it('字段投影走 projectFields：页面不再按字段 ?? null 自拼投影', () => {
     expect(offenders(/\.map\(\((\w+)\) => \[\1, [^;\n]*\?\? null\]\)/)).toEqual([]);
@@ -70,6 +74,9 @@ const smokes: Record<(typeof pages)[number], string[]> = {
   idp: [
     'AC-FE-R3d2-22 两次冲突、子流程先缺字段后恢复且服务端新增阶段：确认后显示最新两条，只改名称不提交子流程',
     'AC-FE-R3d2-15 冲突后重读缺 revision：不解锁、不发 If-Match: 0，提示重读失败',
+    'AC-FE-F164-06 回顾保存冲突：重读最新版本、核对差异后带新版本重提，保留我的输入',
+    'AC-FE-F164-07 回顾保存结果未知：表单与同一计划的任务入口一并锁定，回查原单后仍锁定，不发第二次 PUT',
+    'AC-FE-F164-09 回顾结果未知后切换入口再回来：仍锁定，不能以新命令重发',
   ],
   contracts: [
     'AC-FE-R2a-12 ${cases[op].title}：版本冲突保留输入，重读核对后带新版本重提',

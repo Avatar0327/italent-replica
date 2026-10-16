@@ -436,6 +436,14 @@
       "obj:IDP.IDPTemplate:view"
     ]
   },
+  "GET /api/tenant/idp/tutor-plans": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": []
+  },
   "GET /api/tenant/idp/tutorships": {
     "all": {
       "status": 200

@@ -7,6 +7,8 @@ export interface Stage {
   seq: number;
   name: string;
   status: StageStatus;
+  /** 本阶段的审批实例；回顾提交即同意本人在该实例上的待办（F-155b） */
+  approvalInstanceId?: string | null;
   dueDate?: string | null;
   endedOn?: string | null;
   failureReason?: string | null;

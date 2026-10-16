@@ -43,8 +43,18 @@ export interface SubRouteDeclaration {
   /** 只要求会话，不按菜单可见性拦截（个人设置） */
   readonly ungated?: boolean;
 }
+/**
+ * 挂到别的模块已声明应用下的下级菜单（F-164 补契约）：原站一个应用的菜单可能分属多个业务模块
+ * （员工自助 > 我的发展计划由 IDP 提供），子项由提供页面的模块登记；排在声明模块自己的子项之后，按模块名排序。
+ * 可见性同 children：应用不可见时整组不显示，这里不授予权限。
+ */
+export interface MenuExtensionDeclaration {
+  readonly app: AppId;
+  readonly children: (snapshot: ServerSnapshot, route: AppRoute) => MenuNode[];
+}
 export interface ModulePages {
   readonly apps?: readonly AppPageDeclaration[];
+  readonly menus?: readonly MenuExtensionDeclaration[];
   readonly entries?: readonly EntryPageDeclaration[];
   readonly routes?: readonly SubRouteDeclaration[];
 }
@@ -100,6 +110,17 @@ function claim(seen: Map<string, string>, kind: string, key: string, module: str
   seen.set(key, module);
 }
 
+type Children = NonNullable<AppPageDeclaration['children']>;
+/** 声明模块自己的子项在前、扩展在后；同一层菜单键重复说明两处登记撞了，报错而不是静默覆盖。 */
+const extend =
+  (own: Children | undefined, more: Children, module: string): Children =>
+  (snapshot, route) => {
+    const menus = [...(own?.(snapshot, route) ?? []), ...more(snapshot, route)];
+    const seen = new Map<string, string>();
+    for (const menu of menus) claim(seen, `${route.id} 菜单键`, menu.key, module);
+    return menus;
+  };
+
 export function collectPages(modules: Record<string, unknown>, appIds: readonly AppId[]): PageRegistry {
   const found = declarations(modules);
   const apps = new Map<string, AppRoute>();
@@ -113,6 +134,12 @@ export function collectPages(modules: Record<string, unknown>, appIds: readonly 
     }
   const missing = appIds.filter((id) => !apps.has(id));
   if (missing.length) throw new Error(`页面登记缺少应用：${missing.join('、')}`);
+  for (const { module, pages } of found)
+    for (const extension of pages.menus ?? []) {
+      const app = apps.get(extension.app);
+      if (!app) throw new Error(`菜单扩展挂到了未知应用：${extension.app}（${module}）`);
+      apps.set(extension.app, { ...app, children: extend(app.children, extension.children, module) });
+    }
   const appRoutes = appIds.map((id) => apps.get(id)!);
   for (const route of appRoutes) claim(paths, '路径', route.path, route.module);
   const entries = found
