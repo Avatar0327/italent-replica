@@ -985,6 +985,10 @@
 "log": [
 [
 "10-16",
+"D2·R2·后补·F-195+F-197 合单（DEC-555）已拟派发，分母不变 165"
+],
+[
+"10-16",
 "D2·R2·后端·BE-4d（#362）已合入 bb4fc254；F-195/F-196/F-197 可派发"
 ],
 [
@@ -5603,11 +5607,11 @@
 {
 "k": "F-195",
 "n": "F-195 离职按钮校验绕过：记录编辑 / 批量编辑 / 导入重放三条路径（#362 第 1 轮 P2-4，权限类必清）",
-"s": "wait",
+"s": "assigned",
 "after": [
 "BE-4d"
 ],
-"note": "待 #362 合入后派发",
+"note": "F-195 + F-197 合单（DEC-555）· 重放权限复核（后端）· 云端 Claude Sonnet 5.5 High · 分支 claude/F-195-197-replay-guard（含 bb4fc254）· Sol high 审 · 已拟派发，等开会话 / PR",
 "mod": "R2",
 "ms": "D2"
 },
@@ -5625,11 +5629,11 @@
 {
 "k": "F-197",
 "n": "F-197 新 PATCH /pending-entries/:id 补接 CommandGuard.before（撤权后同键重放仍返回 200，#367 第 1 轮 P2-3，DEC-406 权限类）",
-"s": "wait",
+"s": "assigned",
 "after": [
 "F-188"
 ],
-"note": "待 #367 合入后派发",
+"note": "F-195 + F-197 合单（DEC-555）· 重放权限复核（后端）· 云端 Claude Sonnet 5.5 High · 分支 claude/F-195-197-replay-guard（含 bb4fc254）· Sol high 审 · 已拟派发，等开会话 / PR",
 "mod": "R2",
 "ms": "D2"
 }
