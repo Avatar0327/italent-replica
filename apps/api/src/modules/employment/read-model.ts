@@ -190,8 +190,9 @@ export async function findCurrentRecord(tx: Tx, tenantId: string, employeeId: st
 }
 
 /**
- * access='read' 按 DEC-177 可见口径（详情、预览）；access='write' 是写入前的取数，仍要求记录部门与员工当前任职
- * 同时在范围内（DEC-177 只放宽“看”；可见但部门在范围外的记录能否直接改，TODO(需取证 #72)）。
+ * access='read' 按 DEC-177 可见口径（详情、预览）；access='write' 是写入前的取数，用记录部门、员工、创建人三个坐标
+ * 按数据范围各项的维度判定（组织维度只看记录部门，汇报关系维度只看员工，使用用户维度只看创建人，其余维度部门与员工
+ * 同时命中），不套 DEC-177 对“看”的放宽（可见但部门在范围外的记录能否直接改，TODO(需取证 #72)）。
  */
 export async function loadEmploymentBusiness(
   tx: Tx,

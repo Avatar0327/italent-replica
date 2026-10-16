@@ -16,7 +16,6 @@ import type * as Commands from '../../apps/api/src/commands.js';
 import { addPending, businessRevision, entryWorld } from './AC-EN-BE2a-support.js';
 import { gateWorld } from './AC-EXIT-gate-support.js';
 import {
-  deniesFieldWrite,
   deniesObjectUpdate,
   emptyScope,
   isButton,
@@ -60,6 +59,9 @@ const TODAY = '2026-10-06';
 const clock = () => new Date(`${TODAY}T01:00:00.000Z`);
 const rejected = (status: number) => status === 403 || status === 404;
 const deniesObjectCreate = (request: Request) => request.action === 'object.create';
+// 字段创建权：新建行入口走 object.create 且带字段集合（revocable-rights 的 deniesFieldWrite 只认 object.update）
+const deniesFieldCreate = (field: string) => (request: Request) =>
+  request.action === 'object.create' && (request.fields ?? []).includes(field);
 
 beforeEach(() => {
   hooks.failMainTransaction = false;
@@ -283,7 +285,7 @@ type Sent = Awaited<ReturnType<ImportWorld['sendItems']>>;
 const CREATE_REVOKERS: readonly Revoker[] = [
   ['撤掉 Employment.Create 按钮', revoke(isButton('Employment.Create'))],
   ['撤掉任职记录对象新增权', revoke(deniesObjectCreate)],
-  ['撤掉 remarks 字段写权限', revoke(deniesFieldWrite('remarks'))],
+  ['撤掉 remarks 字段创建权', revoke(deniesFieldCreate('remarks'))],
   ['数据范围收为空', emptyScope],
 ];
 

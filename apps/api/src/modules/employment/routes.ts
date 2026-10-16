@@ -45,7 +45,8 @@ import { importEmploymentRecords, normalizeEmploymentImport, previewEmploymentIm
 import { editEmploymentRecord } from './record-edit.js';
 import {
   exitCommandGuard,
-  importEditGuard,
+  importWriteGuard,
+  type CreateTarget,
   recordEditGuard,
   requireBusinessWriteScope,
   type EditTarget,
@@ -771,14 +772,15 @@ async function importEmployment(c: Context<TenantEnv>, deps: TenantRouteDeps) {
   };
   return withFailedImportLog(deps.db, task, async () => {
     const input = normalizeEmploymentImport(raw);
-    const targets = await authorizeImport(deps, ctx, id, input);
+    const { targets, creates } = await authorizeImport(deps, ctx, id, input);
     return runWrite(
       c,
       deps,
       ctx,
       input,
       async (tx, context) => ({ status: 200, body: await importWithTransferAuthorization(tx, context, id, input) }),
-      { guard: importEditGuard(deps, ctx, id, targets) },
+      // F-202 编辑行、F-208 新建行：重放、失败回查也在命令内按当前授权与范围复核
+      { guard: importWriteGuard(deps, ctx, id, targets, creates) },
     );
   });
 }
@@ -797,8 +799,9 @@ async function authorizeImport(
   employeeId: string,
   input: ReturnType<typeof normalizeEmploymentImport>,
   preview = false,
-): Promise<EditTarget[]> {
+): Promise<{ targets: EditTarget[]; creates: CreateTarget[] }> {
   const targets: EditTarget[] = [];
+  const creates: CreateTarget[] = [];
   if (!preview)
     await requirePermission(deps.authorize, {
       ...ctx,
@@ -813,6 +816,7 @@ async function authorizeImport(
       if (!preview) await requireEmploymentWrite(ctx, 'create', item.business as object, 'Employment.Create');
       if (business.fields.departmentId !== undefined)
         requireEmploymentScope(ctx, employeeId, business.fields.departmentId);
+      creates.push({ business: item.business as object, departmentId: business.fields.departmentId });
     } else {
       const patch = normalizeBusinessPatch(item.patch);
       const current = await authorizeBusinessWrite(deps, ctx, item.id, employeeId);
@@ -826,7 +830,7 @@ async function authorizeImport(
         );
     }
   }
-  return targets;
+  return { targets, creates };
 }
 
 async function requireImportTransferAccess(

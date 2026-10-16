@@ -89,18 +89,31 @@ export function recordEditGuard(
   });
 }
 
-/** 导入入口（POST /employees/:id/import）的编辑行复核：入口另要求导入按钮与员工当前范围（readContext 带员工），其余同上。 */
-export function importEditGuard(
+/** 导入新建行（operation = create）的命令内复核目标：入口按请求原文校验字段创建权，按解析后的目标部门校验范围。 */
+export interface CreateTarget {
+  readonly business: object;
+  readonly departmentId?: string | null;
+}
+
+/**
+ * 导入入口（POST /employees/:id/import）的命令内复核（F-202 编辑行、F-208 新建行）：入口另要求导入按钮与员工当前范围
+ * （readContext 带员工），编辑行其余同 recordEditGuard；新建行按入口同一口径重过对象新增权 / 字段创建权 / Employment.Create
+ * 按钮与目标部门范围（纯新建批次没有编辑目标，不挂这道门就没有任何命令内复核）。
+ * 整批成功或整批失败：混合批次里任一行复核不过，整批被拒。
+ */
+export function importWriteGuard(
   deps: TenantRouteDeps,
   ctx: EmploymentContext,
   employeeId: string,
   targets: readonly EditTarget[],
+  creates: readonly CreateTarget[],
 ): ScopedCommandGuard | undefined {
-  if (!targets.length) return undefined;
+  if (!targets.length && !creates.length) return undefined;
   return scopedGuard({
     before: async (tx) => {
       const scoped = await commandContext(tx, deps, ctx);
-      await requireObjectUpdate(scoped);
+      // 对象编辑权只有编辑行才要：纯新建批次入口只判对象新增权（requireEmploymentWrite 'create'）
+      if (targets.length) await requireObjectUpdate(scoped);
       await requirePermission(scoped.authorize!, {
         ...scoped,
         action: 'object.button',
@@ -108,6 +121,10 @@ export function importEditGuard(
       });
       await requireEmployeeInScope(tx, scoped, employeeId);
       await requireEditTargets(tx, scoped, targets);
+      for (const create of creates) {
+        await requireEmploymentWrite(scoped, 'create', create.business, 'Employment.Create');
+        if (create.departmentId !== undefined) requireEmploymentScope(scoped, employeeId, create.departmentId);
+      }
     },
   });
 }
@@ -131,7 +148,7 @@ async function requireEditTargets(tx: Tx, scoped: EmploymentContext, targets: re
 }
 
 /**
- * 待入职状态动作（F-188 PATCH /pending-entries/:id、F-202 POST postpone / POST cancel）的命令内复核：
+ * 待入职状态动作（F-188 PATCH /pending-entries/:id、F-202 POST postpone / POST cancel、F-208 POST complete）的命令内复核：
  * 对象编辑权、Employment.Edit 按钮、入职日期等字段写权限、写入口径数据范围，口径与入口 prepareEntryAction 相同，
  * 只是改按当前授权在命令事务内重过。办理入职 / 取消不改任职字段（载荷为空）时只校验按钮，同入口。
  */

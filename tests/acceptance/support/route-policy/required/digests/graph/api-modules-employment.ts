@@ -507,14 +507,16 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/employee-status.ts#ENTRY_KINDS',
     '#savePendingProbation',
   ],
+  'apps/api/src/modules/employment/entry-routes.ts#completeEntryGuard': [
+    'apps/api/src/modules/employment/context.ts#scopedGuard',
+    'apps/api/src/modules/employment/entry-contract.ts#requireEntryContractAccess',
+    'apps/api/src/modules/employment/replay-guard.ts#pendingActionGuard',
+  ],
   'apps/api/src/modules/employment/entry-routes.ts#completeInput': [
     'apps/api/src/modules/employment/entry-contract.ts#entryContractSchema',
   ],
   'apps/api/src/modules/employment/entry-routes.ts#editInput': [
     'packages/domain/src/employment/entry.ts#ENTRY_EDIT_EMPLOY_TYPES',
-  ],
-  'apps/api/src/modules/employment/entry-routes.ts#entryContractGuard': [
-    'apps/api/src/modules/employment/entry-contract.ts#requireEntryContractAccess',
   ],
   'apps/api/src/modules/employment/entry-routes.ts#postponeInput': ['#remark'],
   'apps/api/src/modules/employment/entry-routes.ts#prepareEntryAction': [
@@ -559,8 +561,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#runWrite',
     'apps/api/src/modules/employment/employee-status.ts#completePendingEntry',
     'apps/api/src/modules/employment/entry-contract.ts#generateEntryContract',
+    '#completeEntryGuard',
     '#completeInput',
-    '#entryContractGuard',
     '#prepareEntryAction',
     'apps/api/src/modules/employment/write-service.ts#requireSavedBusiness',
   ],
@@ -1258,10 +1260,12 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-gate.ts#requireExitPermission',
     '#requireExitScope',
   ],
-  'apps/api/src/modules/employment/replay-guard.ts#importEditGuard': [
+  'apps/api/src/modules/employment/replay-guard.ts#importWriteGuard': [
     'apps/api/src/authorization.ts#requirePermission',
     'apps/api/src/modules/employment/context.ts#commandContext',
     'apps/api/src/modules/employment/context.ts#requireEmployeeInScope',
+    'apps/api/src/modules/employment/context.ts#requireEmploymentScope',
+    'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
     'apps/api/src/modules/employment/context.ts#scopedGuard',
     '#requireEditTargets',
     '#requireObjectUpdate',
@@ -1366,7 +1370,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#runWrite',
     'apps/api/src/modules/employment/forward-import.ts#normalizeEmploymentImport',
     'apps/api/src/modules/employment/import-audit.ts#failedImportAnchors',
-    'apps/api/src/modules/employment/replay-guard.ts#importEditGuard',
+    'apps/api/src/modules/employment/replay-guard.ts#importWriteGuard',
     '#authorizeImport',
     '#importWithTransferAuthorization',
     'apps/api/src/modules/job/context.ts#revision',
