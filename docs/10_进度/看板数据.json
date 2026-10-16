@@ -5838,7 +5838,7 @@
 "after": [
 "F-199"
 ],
-"note": "P3 · #380 第 1 轮开发完成（13:06Z，head d504e257）· Sol high 第 1 轮审查中 · Claude 云端 Sonnet High",
+"note": "P3 · #380 Sol high 第 1 轮可以合并，已入队（队列 378→379→374→372→380）· Claude 云端 Sonnet High",
 "mod": "R2",
 "ms": "D3",
 "pr": 380
