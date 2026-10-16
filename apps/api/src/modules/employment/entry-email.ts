@@ -145,11 +145,13 @@ async function orgChain(tx: Tx, tenantId: string, departmentId: string, asOf: st
       WHERE tenant_id=${tenantId} AND start_date <= ${asOf}::date
       ORDER BY org_id, start_date DESC, version_no DESC
     ), chain AS (
-      SELECT v.org_id, v.id AS version_id, ARRAY[v.org_id] AS path FROM current_versions v WHERE v.org_id=${departmentId}::uuid
+      SELECT v.org_id, v.id AS version_id, ARRAY[v.org_id] AS path
+      FROM current_versions v WHERE v.org_id=${departmentId}::uuid
       UNION ALL
       SELECT parent.org_id, parent.id, chain.path || parent.org_id FROM chain
-      JOIN org_hierarchy_links link ON link.tenant_id=${tenantId} AND link.dimension='admin' AND link.version_id=chain.version_id
-      JOIN current_versions parent ON parent.org_id=link.parent_org_id
+      JOIN org_hierarchy_links link ON link.tenant_id=${tenantId} AND link.dimension='admin'
+        AND link.version_id=chain.version_id
+      JOIN current_versions parent ON parent.org_id=link.parent_org_id AND parent.stop_date >= ${asOf}::date
       WHERE NOT parent.org_id = ANY(chain.path)
     )
     SELECT org_id AS "orgId" FROM chain
