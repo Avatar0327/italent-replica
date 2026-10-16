@@ -379,8 +379,11 @@ export async function runWrite(
   ctx: EmploymentContext,
   input: unknown,
   execute: (tx: Tx, context: EmploymentContext) => Promise<CommandResult>,
-  /** 可选：命令事务内的当前权限复核（CommandGuard，经 ledgerExit 覆盖首次 / 重放 / 回查）；缺省与之前完全相同。 */
-  options: { readonly guard?: CommandGuard } = {},
+  /**
+   * 可选：命令事务内的当前权限复核（CommandGuard，经 ledgerExit 覆盖首次 / 重放 / 回查）；
+   * project：固定形状回执（不是任职对象）的显式投影，替代通用任职字段裁剪；缺省两项与之前完全相同。
+   */
+  options: { readonly guard?: CommandGuard; readonly project?: (body: unknown) => unknown } = {},
 ) {
   const result = await runCommand(deps.db, ctx, {
     id: c.req.header('idempotency-key'),
@@ -399,7 +402,8 @@ export async function runWrite(
   );
   const payload = result.body as { revision?: number } | null;
   if (payload?.revision !== undefined) c.header('ETag', `"${payload.revision}"`);
-  return c.json(await trimEmploymentResponse(deps, ctx, result.body), result.status);
+  const body = options.project ? options.project(result.body) : await trimEmploymentResponse(deps, ctx, result.body);
+  return c.json(body, result.status);
 }
 
 export function assertRevision(expected: number, actual: number): void {

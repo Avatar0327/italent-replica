@@ -74,6 +74,7 @@ import { EMPLOYMENT_POLICIES } from './policy.js';
 import { registerExitRoutes } from './exit-routes.js';
 import { assertEntryOptionsAllowed, splitEntryOptions } from './entry-options.js';
 import { registerEntryRoutes } from './entry-routes.js';
+import { registerEntryEmailRoutes } from './entry-email-routes.js';
 
 export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
   // F-039：子应用套本模块登记表（EMPLOYMENT_POLICIES），注册行不变、处理函数不变
@@ -96,6 +97,7 @@ export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
   registerCustomFields(module, deps);
   registerExitRoutes(module, deps);
   registerEntryRoutes(module, deps, authorizeBusinessWrite);
+  registerEntryEmailRoutes(module, deps, authorizeBusinessWrite);
   router.route('/api/tenant/employment', module);
 };
 

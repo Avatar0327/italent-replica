@@ -45,7 +45,7 @@ export interface EntryOptions {
   readonly probation?: boolean;
 }
 
-const ENTRY_KINDS: readonly BusinessKind[] = ['hire', 'rehire', 'retire_rehire'];
+export const ENTRY_KINDS: readonly BusinessKind[] = ['hire', 'rehire', 'retire_rehire'];
 /** DEC-234：实习转正按入职处理（原站变动类型为“入职”，15 §9.5）——按是否有试用期取试用 / 正式，默认正式。 */
 const ENTRY_LIKE_KINDS: readonly BusinessKind[] = [...ENTRY_KINDS, 'intern_regularization'];
 /** 本身决定人员状态的业务（与迁移 0062 的触发器、employment_kind_status 一致）；其余业务继承插入点前一条。 */
