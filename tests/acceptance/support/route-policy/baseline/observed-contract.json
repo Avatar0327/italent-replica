@@ -223,8 +223,6 @@
       "module": "employment",
       "primitives": {
         "button": [
-          "buttonResource",
-          "object.button",
           "requireTransferButton"
         ],
         "command": [
@@ -252,10 +250,6 @@
         "object": [
           "object.* 动作",
           "readContext(object.*)"
-        ],
-        "objectOp": [
-          "TenantBase.EmploymentRecord:create",
-          "TenantBase.EmploymentRecord:update"
         ],
         "precondition": [
           "transferBusinessContext"
@@ -10354,8 +10348,6 @@
       "module": "employment",
       "primitives": {
         "button": [
-          "buttonResource",
-          "object.button",
           "requireEmploymentWrite(按钮)",
           "requireTransferButton"
         ],
@@ -10383,7 +10375,6 @@
           "readContext(object.*)"
         ],
         "objectOp": [
-          "TenantBase.EmploymentRecord:create",
           "TenantBase.EmploymentRecord:update"
         ],
         "precondition": [
@@ -10419,8 +10410,6 @@
       "module": "employment",
       "primitives": {
         "button": [
-          "buttonResource",
-          "object.button",
           "requireEmploymentWrite(按钮)"
         ],
         "command": [
@@ -10446,7 +10435,6 @@
           "readContext(object.*)"
         ],
         "objectOp": [
-          "TenantBase.EmploymentRecord:create",
           "TenantBase.EmploymentRecord:update"
         ],
         "scope": [
@@ -14344,8 +14332,6 @@
       "module": "employment",
       "primitives": {
         "button": [
-          "buttonResource",
-          "object.button",
           "requireEmploymentWrite(按钮)"
         ],
         "command": [
@@ -14371,7 +14357,6 @@
           "readContext(object.*)"
         ],
         "objectOp": [
-          "TenantBase.EmploymentRecord:create",
           "TenantBase.EmploymentRecord:update"
         ],
         "scope": [
@@ -14400,8 +14385,6 @@
       "module": "employment",
       "primitives": {
         "button": [
-          "buttonResource",
-          "object.button",
           "requireTransferButton"
         ],
         "command": [
@@ -14429,10 +14412,6 @@
         "object": [
           "object.* 动作",
           "readContext(object.*)"
-        ],
-        "objectOp": [
-          "TenantBase.EmploymentRecord:create",
-          "TenantBase.EmploymentRecord:update"
         ],
         "precondition": [
           "transferBusinessContext"
@@ -14469,8 +14448,6 @@
       "module": "employment",
       "primitives": {
         "button": [
-          "buttonResource",
-          "object.button",
           "requireTransferButton"
         ],
         "command": [
@@ -14498,10 +14475,6 @@
         "object": [
           "object.* 动作",
           "readContext(object.*)"
-        ],
-        "objectOp": [
-          "TenantBase.EmploymentRecord:create",
-          "TenantBase.EmploymentRecord:update"
         ],
         "precondition": [
           "transferBusinessContext"
@@ -14538,8 +14511,6 @@
       "module": "employment",
       "primitives": {
         "button": [
-          "buttonResource",
-          "object.button",
           "requireTransferButton"
         ],
         "command": [
@@ -14567,10 +14538,6 @@
         "object": [
           "object.* 动作",
           "readContext(object.*)"
-        ],
-        "objectOp": [
-          "TenantBase.EmploymentRecord:create",
-          "TenantBase.EmploymentRecord:update"
         ],
         "precondition": [
           "transferBusinessContext"
@@ -14690,8 +14657,6 @@
       "module": "employment",
       "primitives": {
         "button": [
-          "buttonResource",
-          "object.button",
           "requireEmploymentWrite(按钮)",
           "requireTransferButton"
         ],
@@ -14719,8 +14684,7 @@
           "readContext(object.*)"
         ],
         "objectOp": [
-          "TenantBase.EmploymentRecord:create",
-          "TenantBase.EmploymentRecord:update"
+          "TenantBase.EmploymentRecord:create"
         ],
         "scope": [
           "employment scope",
@@ -15255,8 +15219,6 @@
       "module": "employment",
       "primitives": {
         "button": [
-          "buttonResource",
-          "object.button",
           "requireEmploymentWrite(按钮)"
         ],
         "command": [
@@ -15281,7 +15243,6 @@
           "readContext(object.*)"
         ],
         "objectOp": [
-          "TenantBase.EmploymentRecord:create",
           "TenantBase.EmploymentRecord:update"
         ],
         "scope": [

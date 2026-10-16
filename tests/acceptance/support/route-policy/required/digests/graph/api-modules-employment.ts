@@ -514,6 +514,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-gate.ts#EXIT_GATE_PASS',
     'apps/api/src/modules/employment/exit-gate.ts#requireExitGate',
     'apps/api/src/modules/employment/exit-initiation.ts#applyInitiationSubset',
+    'apps/api/src/modules/employment/exit-initiation.ts#assertBusinessInputSubset',
     'apps/api/src/modules/employment/exit-initiation.ts#assertInitiatorRelation',
     'apps/api/src/modules/employment/fields.ts#normalizeEmploymentInput',
     'apps/api/src/modules/employment/record-store.ts#lockEmploymentEmployee',
@@ -569,6 +570,8 @@ export const GRAPH: Graph = {
     '#assertHandoverEmployee',
   ],
   'apps/api/src/modules/employment/exit-gate.ts#assertHandoverEmployee': [
+    'apps/api/src/modules/employment/context.ts#employmentCreator',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
     'apps/api/src/modules/employment/visibility.ts#visibleEmploymentRecords',
   ],
   'apps/api/src/modules/employment/exit-gate.ts#assertNoLeaveInProgress': ['#conflict', '#inFlightApplications'],
@@ -599,11 +602,6 @@ export const GRAPH: Graph = {
     '#checkPendingTransferAck',
   ],
   'apps/api/src/modules/employment/exit-gate.ts#createPayload': ['#EXIT_CONTROL_KEYS'],
-  'apps/api/src/modules/employment/exit-gate.ts#detailButton': [
-    'apps/api/src/authorization.ts#requirePermission',
-    'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT',
-    'packages/domain/src/permission/decide.ts#buttonResource',
-  ],
   'apps/api/src/modules/employment/exit-gate.ts#disclose': [
     'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT',
     'apps/api/src/modules/employment/context.ts#employmentCreator',
@@ -618,6 +616,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/exit-gate.ts#loadExitRequest': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
+  'apps/api/src/modules/employment/exit-gate.ts#permissionSpec': ['#BUTTON', '#createPayload'],
   'apps/api/src/modules/employment/exit-gate.ts#requireExitGate': [
     '#assertExitDatesUnchanged',
     '#cancelConditions',
@@ -629,9 +628,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/exit-gate.ts#requireExitPermission': [
     'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
-    '#BUTTON',
-    '#createPayload',
-    '#detailButton',
+    '#permissionSpec',
   ],
   'apps/api/src/modules/employment/exit-gate.ts#submitConditions': [
     '#assertNoOverdueTransfer',
@@ -645,6 +642,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/employment/exit.ts#EXIT_SELF_REASON_CODES',
     'packages/domain/src/employment/exit.ts#EXIT_SELF_WHEREABOUTS_CODES',
   ],
+  'apps/api/src/modules/employment/exit-initiation.ts#assertBusinessInputSubset': ['#reject'],
   'apps/api/src/modules/employment/exit-initiation.ts#assertInitiatorRelation': [
     '#boundEmployee',
     '#managerInitiationEnabled',

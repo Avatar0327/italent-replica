@@ -14,6 +14,7 @@
 - `DetailPage` 按第 1 批原站参考改为右侧抽屉，新增必传 `open`、`onClose`，摘要、页签和分区都在抽屉内；调用方保留底层列表，关闭后卸载详情。
 - `FilterDrawer` 为 500px 右侧高级筛选抽屉，接收 `open`、`onClear`、`onClose`、`onApply` 与筛选内容；页面维护草稿条件，取消不应用，校验和应用成功后由页面关闭。
 - `FormOverlay` 支持 drawer/modal。每字段显式传入可见／可编辑权限，只提交可编辑值。`recordKey` 必传：编辑用 `id:revision`，刷新冲突记录后更新 key；新建用本次打开的稳定键。保存成功关闭，400/422 字段错误回填，409 revision 冲突提示刷新。
+  可选 `titleExtra` 在标题右侧放工具节点，`footerExtra` 在取消与保存之间放附加节点（禁用状态由调用方控制），`className` 追加到弹窗根节点；两种模式均支持，不传时保持默认外观与提交行为（DEC-545）。
 - `OrgTreeSelect` 接收服务端按指定组织维度返回的树；`PersonSelect` 接收 `(query, signal) => Promise<Choice[]>`，由调用方保持加载函数稳定并使用已有候选接口；不在前端拼接范围。
 - `TenantDatePicker` 的值始终是 `YYYY-MM-DD`；当前业务日期用 `tenantDate(instant, session.timezone)`，事件时间保持 UTC。
 - 注释放 `src/<模块>/annotations.ts`（导出 `notes`，类型 `DecisionAnnotation`），由 `annotations/index.ts` 自动汇总到根 `DecisionNotesProvider`；页面渲染 `<DecisionNote id="..." />`，全局开关默认关闭。
