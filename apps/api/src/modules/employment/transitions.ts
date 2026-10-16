@@ -19,6 +19,7 @@ import {
 } from './activation-store.js';
 import { assertPredecessorsSettled, blockingPredecessors } from './linkage-dependency.js';
 import { auditEmployment } from './context.js';
+import { isExitKind, loadExitRequest, requireExitGate, saveAck } from './exit-gate.js';
 import { findPredecessor, loadEmploymentRecord } from './read-model.js';
 import { resolveEffectiveInheritance } from './inheritance.js';
 import {
@@ -59,6 +60,8 @@ const STATE_AFTER = {
 export interface EmploymentTransitionInput {
   readonly id: string;
   readonly action: (typeof ACTIONS)[number];
+  /** 离职提交时的在途调动确认令牌（R2-T03 §8）；其他业务不接受。 */
+  readonly ack?: string;
 }
 
 /** 可信审批 / 定时任务调用入口；审批动作只经审批中心（R1-T07），到期生效由 R1-T08 定时任务经 activate 端口落地。 */
@@ -86,6 +89,8 @@ export async function transitionEmployment(
   if (!input || !ACTIONS.includes(input.action)) throw new AppError('VALIDATION_FAILED', '任职状态动作不合法');
   if (['submit', 'approve', 'activate'].includes(input.action)) await lockTransferBusiness(tx, ctx, input.id);
   const business = await lockEmploymentBusiness(tx, ctx, input.id);
+  const gatedExit =
+    isExitKind(business.payload.kind) && !ctx.trustedExit ? await exitGateFor(tx, ctx, business, input) : null;
   assertTransition(business, input.action);
   if (input.action === 'submit') await requireEmployeeTransferBusiness(tx, ctx, input.id);
   if (input.action === 'submit' || input.action === 'approve') {
@@ -135,9 +140,11 @@ export async function transitionEmployment(
     if (previous) await personnelHooks.sync(tx, ctx, business.employeeId, previous.id, previous.kind, previous.date);
   } else if (input.action === 'approve') {
     // R1-T07：只由审批中心在最后一个节点通过后同事务调用；审批通过 ≠ 生效，只有生效日已到才落地并向后更新。
+    if (gatedExit?.row) assertExitHrFields(gatedExit.row);
     await appendEmploymentState(tx, ctx, business, 'approved');
-    // DEC-195②：迟到审批同样按实际执行日对齐联动。
-    await approveEmploymentBusiness(tx, { ...ctx, deferredExecution: true }, business);
+    // §18.1 关口②：经门禁的离职只存 approved，不落地、不记生效尝试（B3-3 起调 activateExit）；
+    // DEC-195②：其余业务迟到审批同样按实际执行日对齐联动。
+    if (!gatedExit?.row) await approveEmploymentBusiness(tx, { ...ctx, deferredExecution: true }, business);
   } else if (input.action === 'activate') {
     if (tenantLocalDate(ctx.now, ctx.timezone) < business.payload.effectiveDate) {
       throw new AppError('CONFLICT', '尚未到任职生效日期', { reason: 'EFFECTIVE_DATE_NOT_REACHED' });
@@ -200,6 +207,34 @@ async function approveEmploymentBusiness(tx: Tx, ctx: EmploymentContext, busines
       { bumpRevision: false },
     );
   }
+}
+
+/** 离职的门禁前置：提交 / 撤回 / 撤销 / 删除 / 生效端口各自的权限与前置条件；返回扩展行（没有行的可信造数保持 main 行为）。 */
+async function exitGateFor(
+  tx: Tx,
+  ctx: EmploymentContext,
+  business: LockedEmploymentBusiness,
+  input: EmploymentTransitionInput,
+) {
+  const target = { employeeId: business.employeeId, business };
+  const row = await loadExitRequest(tx, ctx.tenantId, business.id);
+  if (input.action === 'submit') {
+    const { ack } = await requireExitGate(tx, ctx, 'submit', target, input.ack);
+    if (ack) await saveAck(tx, ctx, business.id, ack);
+  } else if (input.action === 'withdraw') await requireExitGate(tx, ctx, 'withdraw', target);
+  else if (input.action === 'delete' || input.action === 'revoke')
+    await requireExitGate(tx, ctx, 'cancel', { ...target, deleting: input.action === 'delete' });
+  else if (input.action === 'activate') await requireExitGate(tx, ctx, 'retry', target);
+  return { row };
+}
+
+/** confirmed 阶段前离职类型必须已补齐（§4B）：缺则最后节点同意 409，不改审批结论（整个命令回滚，HR 补齐后重提同意）。 */
+function assertExitHrFields(row: { exitTypeCode: string | null }) {
+  if (!row.exitTypeCode)
+    throw new AppError('CONFLICT', '请先补齐离职类型后再同意', {
+      reason: 'EXIT_HR_FIELDS_REQUIRED',
+      fields: ['exitTypeCode'],
+    });
 }
 
 function assertTransition(business: LockedEmploymentBusiness, action: EmploymentTransitionInput['action']): void {

@@ -1,6 +1,7 @@
 /**
  * 待入职的状态动作（R2 BE-2a；docs/02_业务建模/34 EN-R8 / R9 / R14，DEC-484② / DEC-540 保守口径）：
- * 取消入职、改期入职、编辑待入职（F-188）、删除待入职。只做 F-129 已核实的状态变化，不联动 Offer / 信息采集 / 合同（未验证，见 PR 描述）。
+ * 取消入职、改期入职、编辑待入职（F-188）、删除待入职。只做 F-129 已核实的状态变化，不联动 Offer / 信息采集；
+ * 待入职合同（F-194）：改期入职同步合同起始日，编辑不联动，删除一并清理，取消保留供恢复时改期联动。
  * 办理入职复用 employee-status.ts 的 completePendingEntry（其内含 DEC-138 / 139 校验）。
  */
 import { sql, type Tx } from '@italent/db';
@@ -16,6 +17,14 @@ import { AppError } from '../../errors.js';
 import { auditEmployment } from './context.js';
 import { changePendingEntryStatus, lockPendingEntry } from './employee-status.js';
 import { businessDate } from './fields.js';
+import {
+  clearPendingContract,
+  loadPendingContract,
+  pendingContractAudit,
+  releasePendingContract,
+  type PendingContract,
+  type PendingContractNotice,
+} from './entry-pending-contract.js';
 import { clearPendingProbation, loadPendingProbation, savePendingProbation } from './entry-probation.js';
 import { bumpEmploymentBusiness, lockEmploymentEmployee, type LockedEmploymentBusiness } from './record-store.js';
 import { transitionEmployment } from './transitions.js';
@@ -73,12 +82,20 @@ interface ReplaceInput {
   readonly probation?: boolean;
   readonly employType?: EntryEditEmployType;
   readonly remark?: string;
+  /** 改期入职（原站验证）把待入职合同起始日改成新日期；编辑换日期不联动，合同原样搬到新记录（F-194）。 */
+  readonly syncContract: boolean;
+}
+
+interface ReplacedEntry {
+  readonly business: EmploymentBusiness;
+  /** 搬运 / 联动后新记录上的合同；原记录没有合同（存量）为 null。 */
+  readonly contract: PendingContract | null;
 }
 
 /**
  * 改期 / 编辑换日期的共同内核：任职记录的生效日 / 入职日不可原地改（只追加版本链，AGENTS §2），所以 = 删除原待入职记录
  * 并按新日期、原业务类型 / 表单标识 / 字段重建（同事务）；记录 ID 随之变化，两条用日志的 previous_business_id 串起，
- * 待入职试用期（F-188）搬到新记录。后面还有任职记录或在途申请时，删除一步按既有口径拒绝，整笔回滚。
+ * 待入职试用期（F-188）、待入职合同（F-194）搬到新记录。后面还有任职记录或在途申请时，删除一步按既有口径拒绝，整笔回滚。
  * 重建后的入职状态由调用方定：改期恒为延期，编辑保持原值。
  *
  * 不联动 Offer（R2e8 / DEC-546）：编辑 / 改期不回写 Offer 拟入职日期；手动删除待入职不改 Offer 状态。BE-14 接 Offer 时遵守。
@@ -88,12 +105,18 @@ async function replacePendingEntry(
   ctx: EmploymentContext,
   locked: { readonly business: LockedEmploymentBusiness; readonly record: EmploymentRecord },
   input: ReplaceInput,
-): Promise<EmploymentBusiness> {
+): Promise<ReplacedEntry> {
   const { business, record } = locked;
   const previousProbation = await loadPendingProbation(tx, ctx, record.id);
   const probation = input.probation ?? previousProbation;
+  const previousContract = await loadPendingContract(tx, ctx, record.id);
+  const contract =
+    previousContract && input.syncContract
+      ? { startDate: input.effectiveDate, endDate: previousContract.endDate }
+      : previousContract;
   await transitionEmployment(tx, ctx, { id: record.id, action: 'delete' });
   await clearPendingProbation(tx, ctx, record.id);
+  await clearPendingContract(tx, ctx, record.id);
   const employee = await lockEmploymentEmployee(tx, ctx, record.employeeId);
   const created = await createEmploymentBusiness(
     tx,
@@ -113,6 +136,7 @@ async function replacePendingEntry(
         pendingEntry: true,
         entryStatus: input.entryStatus,
         ...(probation === null ? {} : { probation }),
+        pendingContract: contract,
       },
     },
   );
@@ -136,6 +160,7 @@ async function replacePendingEntry(
       effectiveDate: record.effectiveDate,
       entryStatus: record.entryStatus,
       probation: previousProbation,
+      ...pendingContractAudit(previousContract),
       ...(input.employType ? { employType: record.fields.employType } : {}),
     },
     {
@@ -143,30 +168,37 @@ async function replacePendingEntry(
       effectiveDate: input.effectiveDate,
       entryStatus: input.entryStatus,
       probation,
+      ...pendingContractAudit(contract),
       ...(input.employType ? { employType: input.employType } : {}),
     },
   );
-  return created;
+  return { business: created, contract };
 }
 
-/** 改期入职（EN-R8）：入职日期必填、备注可选，入职状态变“延期”；已取消入职改期即恢复。 */
+/**
+ * 改期入职（EN-R8）：入职日期必填、备注可选，入职状态变“延期”；已取消入职改期即恢复。
+ * 同事务把待入职合同起始日改成新日期（F-194，DEC-550）。
+ */
 export async function postponePendingEntry(
   tx: Tx,
   ctx: EmploymentContext,
   recordId: string,
   input: { readonly effectiveDate: string; readonly remark?: string },
-): Promise<EmploymentBusiness> {
+): Promise<EmploymentBusiness & { readonly contractNotice: PendingContractNotice | null }> {
   assertRemark(input.remark);
   const effectiveDate = businessDate(input.effectiveDate);
   const locked = await lockPendingEntry(tx, ctx, recordId);
   if (effectiveDate === locked.record.effectiveDate && locked.record.entryStatus !== ENTRY_STATUS.cancelled)
     throw new AppError('VALIDATION_FAILED', '改期后的入职日期不能与原入职日期相同', { reason: 'ENTRY_DATE_UNCHANGED' });
-  return replacePendingEntry(tx, ctx, locked, {
+  const { business, contract } = await replacePendingEntry(tx, ctx, locked, {
     action: 'postpone',
     effectiveDate,
     entryStatus: ENTRY_STATUS.postponed,
     remark: input.remark,
+    syncContract: true,
   });
+  // 前端据此提示“待入职记录中劳动合同起止日期改为YYYY/MM/DD-”；存量待入职没有合同则不提示
+  return { ...business, contractNotice: contract };
 }
 
 /**
@@ -174,7 +206,7 @@ export async function postponePendingEntry(
  * + 雇佣关系（可选，内部员工 / 实习生，不传不改）。入职状态保持原值（正常 / 延期 / 取消都不变，与改期入职变“延期”不同）。
  * 日期和雇佣关系都没变：只更新试用期（记录 ID 不变，revision +1，不写动作日志，字段级审计记变更）；
  * 日期或雇佣关系变了：任职记录不可原地改这两项，走替换内核。其他任职字段仍走 PATCH /records/:id。
- * 合同起止日期不联动：待入职阶段没有合同数据（合同在办理入职时才生成），由 F-194 补（DEC-550）。
+ * 合同起止日期不联动（F-194，DEC-550）：日期变了合同原样搬到新记录，响应不带 contractNotice。
  */
 export async function editPendingEntry(
   tx: Tx,
@@ -189,13 +221,16 @@ export async function editPendingEntry(
   const employType =
     input.employType !== undefined && input.employType !== record.fields.employType ? input.employType : undefined;
   if (effectiveDate !== record.effectiveDate || employType !== undefined)
-    return replacePendingEntry(tx, ctx, locked, {
-      action: 'edit',
-      effectiveDate,
-      entryStatus,
-      probation: input.probation,
-      employType,
-    });
+    return (
+      await replacePendingEntry(tx, ctx, locked, {
+        action: 'edit',
+        effectiveDate,
+        entryStatus,
+        probation: input.probation,
+        employType,
+        syncContract: false,
+      })
+    ).business;
   const before = await loadPendingProbation(tx, ctx, recordId);
   await savePendingProbation(tx, ctx, record.employeeId, recordId, input.probation);
   await bumpEmploymentBusiness(tx, ctx, business);
@@ -226,5 +261,6 @@ export async function deletePendingEntry(
   await lockPendingEntry(tx, ctx, recordId);
   const deleted = await transitionEmployment(tx, ctx, { id: recordId, action: 'delete' });
   await clearPendingProbation(tx, ctx, recordId);
+  await releasePendingContract(tx, ctx, recordId, 'delete');
   return deleted;
 }

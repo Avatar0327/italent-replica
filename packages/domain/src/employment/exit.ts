@@ -51,6 +51,12 @@ export const EXIT_SETTINGS = {
 export type ExitSettingKey = keyof typeof EXIT_SETTINGS;
 export const EXIT_SETTING_KEYS = Object.keys(EXIT_SETTINGS) as ExitSettingKey[];
 
+/**
+ * 经理代发租户开关（§4B，默认 false）：key 由 B2a 定义，系统值 seed 与管理页由 F-020 做；
+ * 没有系统行时按未开启处理，只认租户的有效覆盖。
+ */
+export const EXIT_MANAGER_INITIATION_KEY = 'exit.manager_initiation_enabled';
+
 /** 离职扩展行上的业务字段（字段权限登记到任职记录对象，§4A / §9；lastWorkDate / reasonCode 已有）。 */
 export const EXIT_REQUEST_FIELDS = [
   'exitTypeCode',

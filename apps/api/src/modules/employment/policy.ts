@@ -780,7 +780,8 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   // ---- employment/entry-routes.ts：R2 BE-2b 入职四视图（34 EN-R1，DEC-484②）---------------------------------------------
   // view ∈ all / today / cancelled / hired（缺失或不合法 400）；readPageContext(list)：任职记录对象查看 + 列表范围，
   // listEntryView 的 employmentScopePredicate = scopeSql（人员 / 记录部门 / 创建人，范围为空什么也看不到）；
-  // 每项带 probation（F-188，待入职试用期，没填过 null）；
+  // 每项带 probation（F-188，待入职试用期，没填过 null）与 contractStartDate / contractEndDate（F-194，待入职合同起止日，存量 / 已办理入职为 null；
+  // 控制项显式投影，权限沿用待入职列表本身的对象与字段权限，不另要求合同对象权限）；
   // 记录字段按任职记录可见字段裁剪，姓名 / 工号按人员对象可见字段另行裁剪；hasDataPermission 协议键
   'GET /pending-entries': object({
     object: EMPLOYMENT,
@@ -978,7 +979,8 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   // generateContractForBusiness，合同权限 / 范围按合同对象重验，失败整笔回滚；
   // 字段创建权 + 合同“新建”按钮 + 合同数据范围由 CommandGuard.before 在命令事务内复核，首次 / 重放 / 回查三个出口都覆盖）；
   // readContext('object.update') + Employment.Edit（命令式，
-  // 空字段集合）+ authorizeBusinessWrite（写入口径 404「任职业务不存在」）；命令内 lockPendingEntry（调动参与者 → 员工 → 业务头，
+  // 空字段集合）+ authorizeBusinessWrite（写入口径 404「任职业务不存在」）；办理入职同事务清除待入职合同（F-194，正式合同仍只按
+  // 请求里的 contract 生成一份，不带 contract 则不生成）；命令内 lockPendingEntry（调动参与者 → 员工 → 业务头，
   // 范围 DEC-193）→ 只有待入职可办 409 NOT_PENDING_ENTRY / 已取消 409 ENTRY_CANCELLED → DEC-138 / 139 入职日 × 部门校验（400）
   'POST /pending-entries/:id/complete': object({
     object: EMPLOYMENT,
@@ -1014,7 +1016,9 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   }),
   // 改期入职：body 严格 { effectiveDate（必填）, remark? }（400）；requireEmploymentWrite 按 { effectiveDate } 校验字段写权限
   // （无该字段写权限 403，不落库）；先删原待入职、再按新日期、原业务类型与字段重建（同事务，记录 ID 变更）；
-  // 后面还有任职记录 / 在途申请 → 删除一步拒绝，整笔回滚；入职日 × 部门校验同添加（DEC-138 / 139）
+  // 后面还有任职记录 / 在途申请 → 删除一步拒绝，整笔回滚；入职日 × 部门校验同添加（DEC-138 / 139）；
+  // F-194：同事务把待入职合同起始日改成新日期（合同随新记录搬运），响应在业务之外加 contractNotice { startDate, endDate }
+  // （存量待入职没有合同则为 null），合同联动写字段级审计（前后值）
   'POST /pending-entries/:id/postpone': object({
     object: EMPLOYMENT,
     operation: 'update',
@@ -1041,7 +1045,8 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   // employType?（internal / intern，R2e9）}（400）；
   // 同改期按 { effectiveDate, employType? } 校验字段写权限（无权限 403，不落库），probation 是控制项不进字段协议；
   // 只有待入职可编辑 409 NOT_PENDING_ENTRY；日期变了 = 删除原记录并按新日期重建、保持原入职状态（正常 / 延期 / 取消不变）、
-  // 试用期搬到新记录；日期与雇佣关系都没变只更新试用期（记录 ID 不变，revision +1）；雇佣关系变了同样替换记录；不联动 Offer / 合同 / 信息采集
+  // 试用期搬到新记录；日期与雇佣关系都没变只更新试用期（记录 ID 不变，revision +1）；雇佣关系变了同样替换记录；不联动 Offer / 信息采集；
+  // 待入职合同起止日不变（F-194，换日期时原样搬到新记录），响应不带 contractNotice
   'PATCH /pending-entries/:id': object({
     object: EMPLOYMENT,
     operation: 'update',
@@ -1084,7 +1089,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     ...byId,
   }),
   // 删除待入职（不可恢复）：object.delete + Employment.Delete；只有待入职可删 409 NOT_PENDING_ENTRY；删除内核同
-  // DELETE /businesses/:id（transitionEmployment delete，在途申请 409）
+  // DELETE /businesses/:id（transitionEmployment delete，在途申请 409）；同事务清除待入职合同（F-194，留前值审计）
   'DELETE /pending-entries/:id': object({
     object: EMPLOYMENT,
     operation: 'delete',

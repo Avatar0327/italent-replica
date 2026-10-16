@@ -15,11 +15,22 @@ import {
   createTenant,
   createUser,
   type Db,
+  eq,
   grantMembership,
   type PlatformCommandMeta,
+  tenants,
   type Tenant,
   type User,
+  withPlatform,
 } from '@italent/db';
+import { runWithAuditRequest } from '../../../apps/api/src/audit/request-context.js';
+import { AppError } from '../../../apps/api/src/errors.js';
+import { runCommand } from '../../../apps/api/src/commands.js';
+import { normalizeEmploymentInput } from '../../../apps/api/src/modules/employment/fields.js';
+import {
+  createEmploymentBusiness,
+  requireSavedBusiness,
+} from '../../../apps/api/src/modules/employment/write-service.js';
 
 /** 测试中注入“全部允许”的授权钩子；真实判定由 R1-T01 接入。 */
 export const allowAll: Authorizer = () => true;
@@ -48,6 +59,18 @@ export function pinFormulaIdBinding(value: boolean): void {
   pinnedFormulaIdBinding = value;
 }
 
+/**
+ * R2-T03 B2a：离职创建经门禁后，直接离职只存 approved、不落地（设计 §18.1），而存量验收用例大量把“已离职员工”当作前置夹具。
+ * 缺省（'seed'）把经通用入口创建 kind=leave 的请求改走服务端可信端口 ctx.trustedExit='seed'（进程内、与 HTTP 同一命令台账 / 审计 / 事务），
+ * 行为与门禁之前的 main 相同；离职门禁自己的验收文件 import './support/exit-gate-enforced.js' 切到 'enforce'，走真实门禁。
+ */
+let exitGateMode: 'seed' | 'enforce' = 'seed';
+export function pinExitGate(mode: 'seed' | 'enforce'): void {
+  exitGateMode = mode;
+}
+
+const LEAVE_CREATE = /^\/api\/tenant\/employment\/employees\/([0-9a-f-]{36})\/businesses$/;
+
 export function tenantApi(db: Db, deps: Omit<AppDeps, 'db' | 'identity'> = {}) {
   const secret = randomBytes(32).toString('hex');
   const app = createApp({
@@ -66,12 +89,62 @@ export function tenantApi(db: Db, deps: Omit<AppDeps, 'db' | 'identity'> = {}) {
     const key =
       options.idempotencyKey === undefined && WRITE_METHODS.has(method) ? randomUUID() : options.idempotencyKey;
     if (key) headers['idempotency-key'] = key;
+    const seeded =
+      exitGateMode === 'seed' && method === 'POST' && (!('authorize' in deps) || deps.authorize === allowAll)
+        ? LEAVE_CREATE.exec(path)
+        : null;
+    if (seeded && (options.body as { kind?: string } | undefined)?.kind === 'leave' && options.user && options.tenant)
+      return seedLeave(seeded[1]!, options, key ?? undefined);
     let body: string | undefined;
     if (options.body !== undefined) {
       body = JSON.stringify(options.body);
       headers['content-type'] = 'application/json';
     }
     return Promise.resolve(app.request(path, { method, headers, body, signal: options.signal }));
+  }
+
+  async function seedLeave(employeeId: string, options: RequestOptions, key: string | undefined) {
+    const [tenant] = await withPlatform(db, (tx) => tx.select().from(tenants).where(eq(tenants.id, options.tenant!)));
+    const ctx = {
+      tenantId: options.tenant!,
+      userId: options.user!,
+      timezone: tenant!.timezone,
+      now: (deps.clock ?? (() => new Date()))(),
+      commandId: key ?? randomUUID(),
+      expectedRevision: Number(options.ifMatch ?? 0),
+      trustedExit: 'seed' as const,
+    };
+    try {
+      const clock = deps.clock ?? (() => new Date());
+      const result = await runWithAuditRequest(
+        { clock, method: 'POST', path: `employees/${employeeId}/businesses` },
+        () =>
+          runCommand(db, ctx, {
+            id: key,
+            fingerprint: { method: 'POST', path: `employees/${employeeId}/businesses`, input: options.body },
+            execute: async (tx, commandId) => {
+              const context = { ...ctx, commandId };
+              const input = normalizeEmploymentInput(context, options.body);
+              const created = await createEmploymentBusiness(tx, context, employeeId, input);
+              return { status: 201, body: await requireSavedBusiness(tx, context, created.id) };
+            },
+          }),
+      );
+      return new Response(JSON.stringify(result.body), {
+        status: result.status,
+        headers: { 'content-type': 'application/json' },
+      });
+    } catch (error) {
+      // 与 app.onError 同口径：业务错误按码返回，其余一律 500 不外泄
+      const known = error instanceof AppError;
+      const body = known
+        ? { error: { code: error.code, message: error.message, details: error.details } }
+        : { error: { code: 'INTERNAL_ERROR', message: '服务器内部错误' } };
+      return new Response(JSON.stringify(body), {
+        status: known ? error.status : 500,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
   }
 
   return { app, request };
