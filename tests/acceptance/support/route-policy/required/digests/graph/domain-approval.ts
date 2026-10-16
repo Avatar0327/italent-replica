@@ -126,6 +126,7 @@ export const GRAPH: Graph = {
   'packages/domain/src/approval/transfer-view.ts#TRANSFER_FORM_FIELDS': ['#TRANSFER_DETAIL_VIEW'],
   'packages/domain/src/approval/types.ts#APPROVAL_TYPES': [
     '#EMPLOYEE_INFO_CONDITION_FIELDS',
+    '#LEAVE_CONDITION_FIELDS',
     '#PERSONNEL_CONDITION_FIELDS',
     '#contractType',
     '#employeeInfoFormFields',
@@ -137,6 +138,7 @@ export const GRAPH: Graph = {
   ],
   'packages/domain/src/approval/types.ts#EMPLOYEE_INFO_CONDITION_FIELDS': ['#PERSONNEL_CONDITION_FIELDS'],
   'packages/domain/src/approval/types.ts#IDP_PLAN_OBJECT': ['packages/domain/src/idp/catalog.ts#IDP_APP'],
+  'packages/domain/src/approval/types.ts#LEAVE_CONDITION_FIELDS': ['#EMPLOYMENT_CONDITION_FIELDS'],
   'packages/domain/src/approval/types.ts#approvalTypeOfBusiness': [
     '#APPROVAL_TYPES',
     '#ENTRY_KINDS',

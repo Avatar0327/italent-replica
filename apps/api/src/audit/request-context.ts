@@ -28,6 +28,11 @@ export function currentAuditRequest(): AuditRequest | undefined {
   return storage.getStore();
 }
 
+/** 在指定的请求上下文里运行（测试 / 进程内可信端口造数时补上 HTTP 中间件本来放进去的时钟与来源）。 */
+export function runWithAuditRequest<T>(request: Pick<AuditRequest, 'clock' | 'method' | 'path'>, fn: () => T): T {
+  return storage.run({ source: {}, state: { failureRecorded: false }, ...request }, fn);
+}
+
 export const TRACE_HEADER = 'x-trace-id';
 
 export function auditRequestContext(clock: () => Date): MiddlewareHandler {

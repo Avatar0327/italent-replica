@@ -88,6 +88,11 @@ export async function importEmploymentRecords(tx: Tx, ctx: EmploymentContext, em
   for (const item of input.items) {
     if (item.operation === 'create') {
       const business = normalizeEmploymentInput(ctx, item.business);
+      // R2-T03 §4：离职不走任职新增导入，改用离职入口（历史离职导入归 F-139）
+      if (business.kind === 'leave' || business.kind === 'retirement')
+        throw new AppError('VALIDATION_FAILED', '离职请使用离职入口办理，不支持任职新增导入', {
+          reason: 'EXIT_IMPORT_USE_EXIT_ENDPOINT',
+        });
       if (business.mode !== 'direct' || !['transfer', 'regularization', 'org_adjustment'].includes(business.kind)) {
         throw new AppError('VALIDATION_FAILED', '任职新增导入仅支持直接调动、转正、组织调整');
       }

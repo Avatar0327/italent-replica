@@ -113,7 +113,7 @@ export async function getModuleViewableFields(
 
 /** 同 getModuleViewableFields，但在调用方的租户事务内解析（不另开连接；审批流转内用，R1-T07）。 */
 export async function getModuleViewableFieldsInTransaction(
-  deps: Deps,
+  deps: Pick<Deps, 'authorize' | 'clock'> & Partial<Pick<Deps, 'db'>>,
   ctx: TenantContext,
   objectCode: string,
   tx: Tx,
