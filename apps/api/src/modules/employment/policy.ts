@@ -963,7 +963,8 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     byId,
   ),
   // ---- employment/entry-routes.ts：R2 BE-2a 待入职状态动作（34 EN-R8 / R9 / R10 / R14）---------------------------------
-  // 办理入职：If-Match = 业务 revision；body 严格 { probation }（400）；readContext('object.update') + Employment.Edit（命令式，
+  // 办理入职：If-Match = 业务 revision；body 严格 { probation, contract? }（400；contract = 合同字段白名单，BE-2b，同事务调
+  // generateContractForBusiness，合同权限 / 范围按合同对象重验，失败整笔回滚）；readContext('object.update') + Employment.Edit（命令式，
   // 空字段集合）+ authorizeBusinessWrite（写入口径 404「任职业务不存在」）；命令内 lockPendingEntry（调动参与者 → 员工 → 业务头，
   // 范围 DEC-193）→ 只有待入职可办 409 NOT_PENDING_ENTRY / 已取消 409 ENTRY_CANCELLED → DEC-138 / 139 入职日 × 部门校验（400）
   'POST /pending-entries/:id/complete': object({

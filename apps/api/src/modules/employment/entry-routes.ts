@@ -23,13 +23,14 @@ import {
   uuidParam,
 } from './context.js';
 import { completePendingEntry } from './employee-status.js';
+import { entryContractSchema, generateEntryContract } from './entry-contract.js';
 import { cancelPendingEntry, deletePendingEntry, postponePendingEntry } from './entry-actions.js';
 import { ENTRY_VIEWS, listEntryView } from './entry-views.js';
 import type { EmploymentContext } from './types.js';
 import { requireSavedBusiness } from './write-service.js';
 
 const remark = z.string().trim().min(1).max(ENTRY_REMARK_MAX).optional();
-const completeInput = z.strictObject({ probation: z.boolean() });
+const completeInput = z.strictObject({ probation: z.boolean(), contract: entryContractSchema.optional() });
 const cancelInput = z.strictObject({ reason: z.enum(ENTRY_CANCEL_REASON_CODES).optional(), remark });
 const postponeInput = z.strictObject({ effectiveDate: z.string().min(1), remark });
 
@@ -75,7 +76,8 @@ export function registerEntryRoutes(
   router.post('/pending-entries/:id/complete', async (c) => {
     const { id, ctx, input } = await prepareEntryAction(c, deps, authorizeBusinessWrite, completeInput);
     return runWrite(c, deps, ctx, { id, action: 'complete', input }, async (tx, context) => {
-      await completePendingEntry(tx, context, id, input);
+      const record = await completePendingEntry(tx, context, id, { probation: input.probation });
+      if (input.contract) await generateEntryContract(tx, deps, context, record, input.contract);
       return { status: 200, body: await requireSavedBusiness(tx, context, id) };
     });
   });
