@@ -19,11 +19,12 @@ import {
   requireEmploymentWrite,
   revision,
   runWrite,
+  scopedGuard,
+  type ScopedCommandGuard,
   trimEmploymentResponse,
   uuidParam,
 } from './context.js';
 import { completePendingEntry } from './employee-status.js';
-import type { CommandGuard } from '../../commands.js';
 import {
   entryContractSchema,
   type EntryContract,
@@ -80,20 +81,28 @@ export async function prepareEntryAction<T>(
 }
 
 /**
- * 办理入职带合同信息时的合同权限命令内复核：接 CommandGuard.before，runCommand 的三个出口（首次执行、直接重放、失败后回查）
- * 都经 ledgerExit 先过它，所以撤销合同权限后重放拿不到原 200。没带合同信息时不挂（行为同 BE-2a）。
- * 工厂放在路由文件、检查函数留在 entry-contract.ts，与本人调动按钮的复核同一做法。
+ * 办理入职的命令内复核（F-208）：任职授权（对象编辑权、Employment.Edit 按钮、写入口径数据范围，与入口 prepareEntryAction
+ * 同一口径，即 pendingActionGuard 的空载荷形态）一律挂上；带合同信息时在其后再过合同权限（DEC-385③）。
+ * runCommand 的三个出口（首次执行、直接重放、失败后回查）都经 ledgerExit 先过它，所以入口放行之后撤权，
+ * 首次办理拿不到执行，撤权后重放也拿不到原 200。合同检查函数留在 entry-contract.ts，与本人调动按钮的复核同一做法。
  */
-function entryContractGuard(
+function completeEntryGuard(
   deps: TenantRouteDeps,
   ctx: EmploymentContext,
   id: string,
   contract: EntryContract | undefined,
-): CommandGuard | undefined {
-  return contract ? { before: (tx) => requireEntryContractAccess(tx, deps, ctx, id, contract) } : undefined;
+): ScopedCommandGuard {
+  const entry = pendingActionGuard(deps, ctx, id, {});
+  if (!contract) return entry;
+  return scopedGuard({
+    before: async (tx) => {
+      await entry.before(tx);
+      await requireEntryContractAccess(tx, deps, ctx, id, contract);
+    },
+  });
 }
 
-/** cancel / postpone / PATCH / DELETE 都接 CommandGuard.before（F-197、F-202）：同键重放、失败回查也按当前授权在命令内复核。 */
+/** complete / cancel / postpone / PATCH / DELETE 都接 CommandGuard.before（F-197、F-202、F-208）：重放、回查也在命令内复核。 */
 export function registerEntryRoutes(
   router: Hono<TenantEnv>,
   deps: TenantRouteDeps,
@@ -112,7 +121,7 @@ export function registerEntryRoutes(
         if (input.contract) await generateEntryContract(tx, deps, context, record, input.contract);
         return { status: 200, body: await requireSavedBusiness(tx, context, id) };
       },
-      { guard: entryContractGuard(deps, ctx, id, input.contract) },
+      { guard: completeEntryGuard(deps, ctx, id, input.contract) },
     );
   });
   router.post('/pending-entries/:id/cancel', async (c) => {

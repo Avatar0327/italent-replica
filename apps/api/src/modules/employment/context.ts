@@ -137,7 +137,9 @@ async function employmentCreatorId(tx: Tx, ctx: EmploymentContext, id: string, b
 }
 
 /**
- * 写入口径：记录部门与员工当前任职须同时在范围内（新建业务、改部门、直接编辑 / 删除 / 撤回 / 重试）。
+ * 写入口径（新建业务、改部门、直接编辑 / 删除 / 撤回 / 重试）：带上员工、记录部门、创建人三个坐标，按数据范围各项的维度
+ * 判定（scopeSql / scopeAllows 同一口径）——组织维度只看记录部门，汇报关系维度只看员工，使用用户维度只看创建人，
+ * 其余维度要求部门与员工同时命中；各项之间取并集。不是“部门与员工任职一律同时命中”。
  * DEC-193：直接操作不随 DEC-177 的可见放宽；#72 取证结论后再定是否调整（TODO(需取证 #72)）。
  */
 export async function requireScopedEmploymentObject(
