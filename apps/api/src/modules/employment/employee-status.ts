@@ -15,6 +15,7 @@ import {
 } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { auditEmployment, requireLinkedEmploymentRecord, requireScopedEmploymentObject } from './context.js';
+import { clearPendingProbation } from './entry-probation.js';
 import { findPredecessor, loadEmploymentRecord } from './read-model.js';
 import { assertEmploymentDepartmentAvailable } from './references.js';
 import {
@@ -41,7 +42,10 @@ export interface EntryOptions {
   readonly pendingEntry?: boolean;
   /** 添加待入职时的入职状态，缺省正常；只由改期入职（替换待入职记录，BE-2a）传延期。 */
   readonly entryStatus?: EntryStatusCode;
-  /** 办理入职 / 实习转正时是否有试用期：有为试用，否则正式（34 EN-R11；DEC-234 实习转正同入职）。 */
+  /**
+   * 办理入职 / 实习转正时是否有试用期：有为试用，否则正式（34 EN-R11；DEC-234 实习转正同入职）。
+   * 添加待入职（pendingEntry）时不决定人员状态，只随待入职记录落库（entry-probation.ts，F-188）。
+   */
   readonly probation?: boolean;
 }
 
@@ -139,6 +143,8 @@ export async function completePendingEntry(
   const employeeStatus = options.probation ? EMPLOYEE_STATUS.probation : EMPLOYEE_STATUS.regular;
   await appendStatusSnapshot(tx, ctx, business, record, { employeeStatus, entryStatus: record.entryStatus });
   await propagateEmployeeStatus(tx, ctx, record, record.employeeStatus, employeeStatus);
+  // F-188：办理入职后人员状态已定，待入职阶段的试用期不再保留
+  await clearPendingProbation(tx, ctx, recordId);
   return reloadRecord(tx, ctx, recordId);
 }
 

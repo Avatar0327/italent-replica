@@ -48,7 +48,7 @@
 
    **在途 PR 只跑轻量检查（DEC-454①）**：pull_request 推送只跑 `light checks`（lint / typecheck / build / 纯函数单测，约 4 分钟），两个必需检查保持“等待中”；完整测试（PGlite 5 片 + PostgreSQL 5 片 + F-043）只在合并队列队首跑：队列用云端 `merge-main.yml`（`gh workflow run merge-main.yml -f pr=<编号>`）合入 main、重算生成物、打 `queue-head` 标签并推回分支，再由队列脚本关闭、重开 PR，触发带标签的 pull_request 完整运行（DEC-458；单独打标签不触发 CI，workflow_dispatch 运行不关联 PR、分支保护不认）；云端合不了（业务冲突、改动 workflows）时在本机 `pnpm merge:main`，先打标签再推送。目标分支不是 main 的 PR 一律只跑轻量检查。“CI 绿了再审”看 light checks。开发方不要自己打 `queue-head` 标签。说明见同一文件第 6 节。
 
-8. **交审前自检（必做，DEC-338）**：所有开发任务在贴“开发完成，待审”之前，按 `.claude/skills/dev-selfcheck/SKILL.md` 跑一遍自检（open-code-review 项目规则 + 对照设计与 DEC），结果写进“开发完成”评论。开发由 Claude 负责：Opus 负责规划、设计与契约 PR，Sonnet 负责实现；同类 P2 连续两轮没修好，在同一分支换 Opus 接手。审查由 Codex 负责（DEC-340①）：C 档设计审与代码首轮用 Astra Ultra；C 档代码第 2 轮起用 Sol xhigh + priority；B 档用 Sol high + priority。
+8. **交审前自检（必做，DEC-338）**：所有开发任务在贴“开发完成，待审”之前，按 `.agents/skills/dev-selfcheck/SKILL.md`（Claude 侧同内容在 `.claude/skills/`）跑一遍自检（open-code-review 项目规则 + 对照设计与 DEC），结果写进“开发完成”评论。两份技能以 `.agents/skills` 为准，修改时两边一起改，由守卫测试把关。开发由 Claude 负责：Opus 负责规划、设计与契约 PR，Sonnet 负责实现；同类 P2 连续两轮没修好，在同一分支换 Opus 接手。审查由 Codex 负责（DEC-340①）：C 档设计审与代码首轮用 Astra Ultra；C 档代码第 2 轮起用 Sol xhigh + priority；B 档用 Sol high + priority。
 
 ## 4. 不确定时：开“需取证”issue，不猜
 规格没写到、写得有歧义、或规格与代码现实冲突时：
