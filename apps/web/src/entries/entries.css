@@ -78,3 +78,29 @@
 .entry-postpone .ant-modal-title {
   padding-right: 32px;
 }
+
+.entry-cancel .ant-modal {
+  top: max(24px, calc(50vh - 200px));
+}
+.entry-more-menu {
+  max-height: 290px;
+  overflow-y: auto;
+}
+.entry-cancel .ant-form-item-label {
+  width: 126px;
+}
+.entry-cancel .form-group-title:empty {
+  display: none;
+}
+.entry-cancel .form-group-title:not(:empty) {
+  margin: 20px 0;
+  padding: 10px 14px;
+  color: #606770;
+  background: #f3f7ff;
+  border: 1px solid #cfe1ff;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: normal;
+  line-height: 1.8;
+  white-space: pre-line;
+}

@@ -22,6 +22,7 @@ export const initialEntry = {
   departmentId,
   revision: 4,
   probation: null as boolean | null,
+  cancelRemark: null as string | null,
   employType: 'internal',
 };
 export const entryFields = ['effectiveDate', 'departmentId', 'employType'];
@@ -208,9 +209,13 @@ async function employmentRoutes(page: Page, state: EntryState) {
     if (path.endsWith('/generate-email')) return route.fulfill({ json: state.email });
     const body = request.postDataJSON() as Record<string, unknown> | null;
     if (path.endsWith('/complete')) state.row.employeeStatus = body?.probation ? 2 : 3;
-    if (path.endsWith('/cancel')) state.row.entryStatus = 1;
+    if (path.endsWith('/cancel')) {
+      state.row.entryStatus = 1;
+      state.row.cancelRemark = String(body?.remark ?? '').trim() || null;
+    }
     if (path.endsWith('/postpone')) {
       state.row = { ...state.row, id: nextId, revision: 0, effectiveDate: String(body?.effectiveDate), entryStatus: 2 };
+      state.row.cancelRemark = null;
     }
     if (request.method() === 'PATCH') {
       if (
