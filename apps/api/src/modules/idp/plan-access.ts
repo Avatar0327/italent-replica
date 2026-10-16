@@ -5,6 +5,7 @@
  *   直线经理（非指导人）、带教人（非指导人）不是参与人（K-30 / K-31 按现状不可见）；
  * - 执行人：当前阶段的在办待办人，且模板模块在该（子流程 × 节点）上启用并配置了对应按钮（fail-closed）。
  * 既不是 HR 也不是参与人一律 404（不泄露计划是否存在）；看得到但不是执行人 403 IDP_NODE_BUTTON_DENIED。
+ * 打开详情时另按模板模块判定（F-164，DEC-518 / DEC-523）：除基本信息外没有模块 → 403 IDP_PLAN_NO_VISIBLE_MODULE。
  */
 import { sql, type Tx } from '@italent/db';
 import type { NodeButton } from '@italent/domain';
@@ -62,6 +63,19 @@ export async function requireViewer(
   const at = await participation(tx, ctx, plan, stages);
   if (!at.participant) throw new AppError('NOT_FOUND', '发展计划不存在');
   return { kind: 'participant', at };
+}
+
+/**
+ * 打开详情（F-164，DEC-518 / DEC-523）：模板除基本信息外没有模块时，任何查看人都无权查看（原站“无权限查看当前发展计划”）。
+ * 原站按“步骤 × 角色可见模块”判定，复刻只看模板有没有基本信息以外的模块（L2 取舍 A10）。须在 requireViewer 之后调用，
+ * 看不到的仍 404；写入后的计划回显不经此判定（HR 新建、开始这类计划照常返回）。
+ */
+export async function requireVisibleModule(tx: Tx, tenantId: string, plan: Pick<PlanRow, 'templateId'>) {
+  const [row] = rowsOf<{ found: number }>(
+    await tx.execute(sql`SELECT 1 AS found FROM idp_template_modules
+      WHERE tenant_id = ${tenantId} AND template_id = ${plan.templateId}::uuid AND module_type <> 'basic' LIMIT 1`),
+  );
+  if (!row) throw new AppError('FORBIDDEN', '无权限查看当前发展计划', { reason: 'IDP_PLAN_NO_VISIBLE_MODULE' });
 }
 
 /** 某模块在（子流程 × 节点）上启用的按钮（未配置 = 无按钮）。 */

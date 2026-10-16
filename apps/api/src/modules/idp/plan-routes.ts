@@ -31,7 +31,7 @@ import {
 import * as execution from './execution-service.js';
 import { runIdpCommand } from './executor.js';
 import * as intervention from './intervention-service.js';
-import { type HrScope, hrSees, requireViewer } from './plan-access.js';
+import { type HrScope, hrSees, requireViewer, requireVisibleModule } from './plan-access.js';
 import * as input from './plan-input.js';
 import { mentorSourcesOf } from './plan-mentor.js';
 import * as plans from './plan-service.js';
@@ -79,12 +79,16 @@ const planCommand = (hr: HrScope) => ({
   extend: (w: WriteContext): plans.PlanWriteContext => ({ ...w, hr }),
 });
 
-/** 按查看人呈现计划当前状态（HR 字段裁剪 / 参与人固定字段集）。 */
-async function showPlan(deps: TenantRouteDeps, ctx: IdpContext, hr: HrScope, planId: string) {
+/**
+ * 按查看人呈现计划当前状态（HR 字段裁剪 / 参与人固定字段集）。opening = 打开详情：另按模板模块判定（F-164）；
+ * 写入后的回显不判定，免得 HR 新建、开始只有基本信息模块的计划时写成功却回 403。
+ */
+async function showPlan(deps: TenantRouteDeps, ctx: IdpContext, hr: HrScope, planId: string, opening = false) {
   const projections = await planProjections(deps, ctx);
   return withTenant(deps.db, ctx.tenantId, async (tx) => {
     const plan = await requirePlanRow(tx, ctx.tenantId, planId);
     const viewer = await requireViewer(tx, ctx, hr, plan, await loadStages(tx, ctx.tenantId, [planId]));
+    if (opening) await requireVisibleModule(tx, ctx.tenantId, plan);
     const detail = await loadPlanDetail(tx, plan, tenantLocalDate(ctx.now, ctx.timezone));
     return { revision: plan.revision, body: await presentPlan(tx, ctx.tenantId, detail, viewer, projections) };
   });
@@ -97,8 +101,9 @@ async function respondPlan(
   hr: HrScope,
   id: string,
   status: 200 | 201,
+  opening = false,
 ) {
-  const shown = await showPlan(deps, ctx, hr, id);
+  const shown = await showPlan(deps, ctx, hr, id, opening);
   c.header('ETag', `"${shown.revision}"`);
   return c.json(shown.body, status);
 }
@@ -149,6 +154,17 @@ async function summaries(tx: Tx, tenantId: string, rows: PlanRow[], asOf: string
   );
 }
 
+/** 参与人列表的摘要（按选中的 id，固定字段，不经 HR 投影）。 */
+async function participantSummaries(tx: Tx, ctx: IdpContext, ids: readonly string[]) {
+  if (!ids.length) return [];
+  const rows = await tx
+    .select()
+    .from(idpPlans)
+    .where(and(eq(idpPlans.tenantId, ctx.tenantId), inArray(idpPlans.id, [...ids])))
+    .orderBy(asc(idpPlans.createdAt), asc(idpPlans.id));
+  return summaries(tx, ctx.tenantId, rows, tenantLocalDate(ctx.now, ctx.timezone), null);
+}
+
 function statusQuery(c: Context) {
   const value = c.req.query('status');
   if (value === undefined || value === '') return undefined;
@@ -183,7 +199,10 @@ function registerPlanReads(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     return c.json({ ...listEnvelope(page, scope), items: items.map((item) => project(item, top)) });
   });
 
-  /** 参与人列表（K-30～K-32）：本人 / 指导人的非未开始计划，以及当前有待办的计划；固定字段。 */
+  /**
+   * 参与人列表（K-30～K-32）：本人的进行中 / 已结束计划（F-164：已终止的不列，原站“个人发展计划”），指导人的非未开始
+   * 计划，以及当前有待办的计划；固定字段。
+   */
   router.get(`${BASE}/my-plans`, async (c) => {
     const ctx = baseContext(c, deps);
     const page = pageQuery(c);
@@ -191,22 +210,37 @@ function registerPlanReads(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       const me = await personOfUser(tx, ctx.tenantId, ctx.userId);
       const ids = rowsOf<{ id: string }>(
         await tx.execute(sql`SELECT p.id FROM idp_plans p WHERE p.tenant_id = ${ctx.tenantId} AND (
-          (p.status <> 'not_started' AND ${me}::uuid IS NOT NULL
-            AND (p.employee_id = ${me}::uuid OR p.tutor_employee_id = ${me}::uuid))
+          (${me}::uuid IS NOT NULL AND p.employee_id = ${me}::uuid AND p.status IN ('running', 'ended'))
+          OR (${me}::uuid IS NOT NULL AND p.tutor_employee_id = ${me}::uuid AND p.status <> 'not_started')
           OR EXISTS (SELECT 1 FROM idp_plan_stages s JOIN approval_tasks t ON t.tenant_id = s.tenant_id
             AND t.instance_id = s.approval_instance_id
             WHERE s.tenant_id = p.tenant_id AND s.plan_id = p.id AND s.status = 'running' AND t.status = 'pending'
               AND t.assignee_user_id = ${ctx.userId}::uuid))
           ORDER BY p.created_at, p.id LIMIT ${page.limit} OFFSET ${page.offset}`),
       ).map((r) => r.id);
-      if (!ids.length) return [];
-      const rows = await tx
-        .select()
-        .from(idpPlans)
-        .where(and(eq(idpPlans.tenantId, ctx.tenantId), inArray(idpPlans.id, ids)))
-        .orderBy(asc(idpPlans.createdAt), asc(idpPlans.id));
-      const shown = await summaries(tx, ctx.tenantId, rows, tenantLocalDate(ctx.now, ctx.timezone), null);
+      const shown = await participantSummaries(tx, ctx, ids);
       return shown.map(({ tutorRole: _r, tutorEmployeeId: _t, processId: _p, ...rest }) => rest);
+    });
+    return c.json({ page: page.page, pageSize: page.pageSize, items });
+  });
+
+  /**
+   * 我辅导的发展计划（F-164，原站“辅导员工分类：辅导对象”）：本人任指导人的进行中计划；固定字段，
+   * 指导人就是本人，随行返回供列表显示。
+   */
+  router.get(`${BASE}/tutor-plans`, async (c) => {
+    const ctx = baseContext(c, deps);
+    const page = pageQuery(c);
+    const items = await withTenant(deps.db, ctx.tenantId, async (tx) => {
+      const me = await personOfUser(tx, ctx.tenantId, ctx.userId);
+      if (!me) return [];
+      const ids = rowsOf<{ id: string }>(
+        await tx.execute(sql`SELECT p.id FROM idp_plans p WHERE p.tenant_id = ${ctx.tenantId}
+          AND p.tutor_employee_id = ${me}::uuid AND p.status = 'running'
+          ORDER BY p.created_at, p.id LIMIT ${page.limit} OFFSET ${page.offset}`),
+      ).map((r) => r.id);
+      const shown = await participantSummaries(tx, ctx, ids);
+      return shown.map(({ tutorRole: _r, processId: _p, ...rest }) => rest);
     });
     return c.json({ page: page.page, pageSize: page.pageSize, items });
   });
@@ -214,7 +248,7 @@ function registerPlanReads(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.get(`${BASE}/plans/:id`, async (c) => {
     const ctx = baseContext(c, deps);
     const id = uuidParam(c);
-    return respondPlan(c, deps, ctx, await hrScopeOf(c, deps, ctx), id, 200);
+    return respondPlan(c, deps, ctx, await hrScopeOf(c, deps, ctx), id, 200, true);
   });
 }
 

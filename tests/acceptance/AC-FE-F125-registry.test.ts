@@ -18,7 +18,7 @@ import {
   type EntryRoute,
   type ModulePage,
 } from '../../apps/web/src/foundation/page-registry.js';
-import { menuNodes, type ServerSnapshot } from '../../apps/web/src/foundation/permission-snapshot.js';
+import { menuNodes, type MenuNode, type ServerSnapshot } from '../../apps/web/src/foundation/permission-snapshot.js';
 import { APP_ROUTES, MENU_ROUTES, PAGES, SUB_ROUTES, appRoute } from '../../apps/web/src/foundation/routes.js';
 import NOTES_SNAPSHOT from './AC-FE-F125-notes.json' with { type: 'json' };
 
@@ -180,6 +180,66 @@ describe('AC-FE-F125-02 无重复路由 id / path / 菜单键 / 注释键', () =
     expect(one.menus.map((route) => route.id)).toEqual([...APP_IDS, 'y', 'z']);
     expect(one.routes.map((route) => route.path)).toEqual(['/a', '/b']);
   });
+  it('F-164 菜单扩展：挂到声明模块自己的子项之后，按模块名排序；挂到未知应用报错', () => {
+    const node = (key: string) => ({ key, label: key, path: `/self/${key}`, group: 'work' as const });
+    const self = { ...app('self'), children: () => [node('own')] };
+    const extension = (key: string) => ({ pages: { menus: [{ app: 'self', children: () => [node(key)] }] } });
+    const result = collectPages(
+      {
+        '../base/pages.ts': { pages: { apps: APP_IDS.map((id) => (id === 'self' ? self : app(id))) } },
+        '../z/pages.ts': extension('z'),
+        '../a/pages.ts': extension('a'),
+      },
+      APP_IDS,
+    );
+    const route = result.apps.find((item) => item.id === 'self')!;
+    const children = route.children!;
+    expect(children({} as ServerSnapshot, route).map((menu) => menu.key)).toEqual(['own', 'a', 'z']);
+    expect(
+      collect({ ...all(), '../x/pages.ts': { pages: { menus: [{ app: 'ghost', children: () => [] }] } } }),
+    ).toThrow(/未知应用.*ghost/);
+  });
+  it('F-164 菜单扩展：同一层菜单键与已有子项重复时报错；三层菜单顺序与模块遍历顺序无关', () => {
+    const node = (key: string, children?: MenuNode[]): MenuNode => ({
+      key,
+      label: key,
+      path: `/self/${key}`,
+      group: 'work',
+      ...(children ? { children } : {}),
+    });
+    const self = { ...app('self'), children: () => [node('own')] };
+    const base = { pages: { apps: APP_IDS.map((id) => (id === 'self' ? self : app(id))) } };
+    const extension = (key: string, leaves: string[] = []) => ({
+      pages: {
+        menus: [
+          {
+            app: 'self',
+            children: () => [node(key, leaves.length ? leaves.map((leaf) => node(leaf)) : undefined)],
+          },
+        ],
+      },
+    });
+    const tree = (modules: Record<string, unknown>) => {
+      const route = collectPages(modules, APP_IDS).apps.find((item) => item.id === 'self')!;
+      const keys = (menus: MenuNode[]): unknown[] =>
+        menus.map((menu) => (menu.children ? [menu.key, keys(menu.children)] : menu.key));
+      return keys(route.children!({} as ServerSnapshot, route));
+    };
+    const forward = {
+      '../base/pages.ts': base,
+      '../a/pages.ts': extension('a', ['a2', 'a1']),
+      '../z/pages.ts': extension('z'),
+    };
+    const reversed = {
+      '../z/pages.ts': extension('z'),
+      '../a/pages.ts': extension('a', ['a2', 'a1']),
+      '../base/pages.ts': base,
+    };
+    // 第三层保持登记顺序（原站 个人发展计划 在 我辅导的发展计划 之前），不重排
+    expect(tree(forward)).toEqual(['own', ['a', ['a2', 'a1']], 'z']);
+    expect(tree(reversed)).toEqual(tree(forward));
+    expect(() => tree({ ...forward, '../dup/pages.ts': extension('own') })).toThrow(/重复.*self 菜单键 own/);
+  });
   it('注释键重复或缺导出报错，结果按键排序', () => {
     const note = { original: 'o', decision: 'd', decisions: [], level: 'L2' } as const;
     expect(() =>
@@ -229,5 +289,29 @@ describe('AC-FE-F125-03 登记文件位置与应用内入口的菜单可见性',
       ({ apps: [{ app: 'staff', visible: true, entryObjects }], adminMenus: [] }) as unknown as ServerSnapshot;
     expect(menuNodes(routes, snapshot(['TenantBase.Employee'])).map((menu) => menu.key)).toEqual(['staff']);
     expect(menuNodes(routes, snapshot(['T.E'])).map((menu) => menu.key)).toEqual(['staff', 'entry']);
+  });
+  it('F-164：员工自助 > 我的发展计划由 IDP 登记，两个同级入口；员工自助不可见时整组不显示', () => {
+    const snapshot = (visible: boolean) =>
+      ({ apps: [{ app: 'self', visible, entryObjects: [] }], adminMenus: [] }) as unknown as ServerSnapshot;
+    const [self] = menuNodes(APP_ROUTES, snapshot(true));
+    const idp = self?.children?.find((menu) => menu.key === 'self-idp');
+    expect(idp?.label).toBe('我的发展计划');
+    expect(idp?.children?.map((menu) => [menu.label, menu.path])).toEqual([
+      ['个人发展计划', '/self/idp'],
+      ['我辅导的发展计划', '/self/idp/tutoring'],
+    ]);
+    expect(menuNodes(APP_ROUTES, snapshot(false))).toEqual([]);
+  });
+  it('F-164：全部应用与入口可见时，真实登记的菜单键在整棵树里不重复，汇总两次结果一致', () => {
+    const entryObjects = MENU_ROUTES.flatMap((route) => (route.objectCode ? [route.objectCode] : []));
+    const snapshot = {
+      apps: APP_IDS.map((id) => ({ app: id, visible: true, entryObjects })),
+      adminMenus: [],
+    } as unknown as ServerSnapshot;
+    const keys = (menus: MenuNode[]): string[] => menus.flatMap((menu) => [menu.key, ...keys(menu.children ?? [])]);
+    const all = keys(menuNodes(MENU_ROUTES, snapshot));
+    expect(all).toEqual(expect.arrayContaining(['self', 'self-idp', 'self-idp-own', 'self-idp-tutoring']));
+    expect(all.filter((key, index) => all.indexOf(key) !== index)).toEqual([]);
+    expect(menuNodes(MENU_ROUTES, snapshot)).toEqual(menuNodes(MENU_ROUTES, snapshot));
   });
 });

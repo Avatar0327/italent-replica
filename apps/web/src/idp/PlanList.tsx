@@ -66,6 +66,7 @@ export function PlanList() {
           can={can}
           edit={overlays.edit}
           intervene={(kind, plan) => overlays.intervene(kind, [plan])}
+          others="tutoring"
         />
       ) : (
         <PlanTable

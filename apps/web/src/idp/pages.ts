@@ -1,7 +1,9 @@
 import { lazyPage, type ModulePages } from '../foundation/page-registry.js';
+import { OWN_PLANS_PATH, TUTOR_PLANS_PATH } from './paths.js';
 
 const IdpPage = lazyPage('IdpPage', () => import('./IdpPage.js'));
 const MyPlansPage = lazyPage('MyPlansPage', () => import('./MyPlans.js'));
+const TutorPlansPage = lazyPage('TutorPlansPage', () => import('./MyPlans.js'));
 // 下一层三张列表按入口对象给出（原站菜单：人才发展计划 > 发展计划 / 发展计划模板 / 发展计划流程）。
 const CHILDREN = [
   { object: 'IDP.Idp', key: 'plans', label: '发展计划' },
@@ -27,9 +29,28 @@ export const pages: ModulePages = {
       },
     },
   ],
+  // 员工自助 > 我的发展计划 > 个人发展计划 / 我辅导的发展计划（DEC-523，两项同级）；员工自助应用由 self-service 声明，
+  // 子菜单经 menus 扩展点由本模块登记。可见性随员工自助，列表内容由后端按本人 / 指导人过滤（F-164）。
+  menus: [
+    {
+      app: 'self',
+      children: (_snapshot, route) => [
+        {
+          key: 'self-idp',
+          label: '我的发展计划',
+          path: OWN_PLANS_PATH,
+          group: route.group,
+          children: [
+            { key: 'self-idp-own', label: '个人发展计划', path: OWN_PLANS_PATH, group: route.group },
+            { key: 'self-idp-tutoring', label: '我辅导的发展计划', path: TUTOR_PLANS_PATH, group: route.group },
+          ],
+        },
+      ],
+    },
+  ],
   routes: [
     { path: '/idp/*', page: IdpPage },
-    // 员工自助 > 我的发展计划：菜单项需在员工自助登记（归属外），本片只提供路由。
-    { path: '/self/idp', page: MyPlansPage },
+    { path: OWN_PLANS_PATH, page: MyPlansPage },
+    { path: TUTOR_PLANS_PATH, page: TutorPlansPage },
   ],
 };

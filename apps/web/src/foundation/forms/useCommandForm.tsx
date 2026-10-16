@@ -5,10 +5,13 @@ import { slotKey } from './slot.js';
 import { refillDraft } from './values.js';
 
 const Context = createContext<FormStore | undefined>(undefined);
-/** 放在页面根部，不能放在会卸载的弹窗/详情内部。 */
-export function FormCommands({ children }: { children: ReactNode }) {
-  const [store] = useState(createFormStore);
-  return <Context.Provider value={store}>{children}</Context.Provider>;
+/**
+ * 放在页面根部，不能放在会卸载的弹窗/详情内部。模块的几个入口各是一页、页面根部随切换重建时，
+ * 传入模块持有的 store，入口下的新建、编辑和行内命令同在这份存储里（F-164）。
+ */
+export function FormCommands({ children, store }: { children: ReactNode; store?: FormStore }) {
+  const [own] = useState(createFormStore);
+  return <Context.Provider value={store ?? own}>{children}</Context.Provider>;
 }
 /**
  * resource 是恢复槽键（slot.ts slotKey）；键再按会话（租户 + 身份）隔离。
@@ -55,6 +58,8 @@ export function usePinnedCommand(slots: readonly string[], entry: string, store?
       if (result.status !== 'unknown') owner.unpin(scoped, own);
       return result;
     },
+    /** 存储里的当前状态（不是渲染时的快照）：异步流程中途据此核对恢复槽上有没有新的未确认命令。 */
+    peek: () => owner.get(owner.holder(scoped) ?? own),
     reread: (read: (id?: string) => Promise<Latest>) => owner.reread(key, read),
     settle: (submittable: readonly string[]) => owner.settle(key, submittable),
     confirm: () => owner.confirm(key),

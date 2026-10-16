@@ -72,6 +72,8 @@ import { failedImportAnchors, importedItems } from './import-audit.js';
 import { policedSub } from '../../route-policy/index.js';
 import { EMPLOYMENT_POLICIES } from './policy.js';
 import { registerExitRoutes } from './exit-routes.js';
+import { assertEntryOptionsAllowed, splitEntryOptions } from './entry-options.js';
+import { registerEntryRoutes } from './entry-routes.js';
 
 export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
   // F-039：子应用套本模块登记表（EMPLOYMENT_POLICIES），注册行不变、处理函数不变
@@ -93,6 +95,7 @@ export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
   registerSettings(module, deps);
   registerCustomFields(module, deps);
   registerExitRoutes(module, deps);
+  registerEntryRoutes(module, deps, authorizeBusinessWrite);
   router.route('/api/tenant/employment', module);
 };
 
@@ -169,8 +172,10 @@ function registerEmployeeBusinessCreate(router: Hono<TenantEnv>, deps: TenantRou
   router.post('/employees/:id/businesses', async (c) => {
     const id = uuidParam(c);
     const ctx = await readContext(c, deps, 'object.create', revision(c), id);
-    const { rawInput, email } = splitLoginEmail(await jsonBody(c));
+    const { rawInput: withoutEmail, email } = splitLoginEmail(await jsonBody(c));
+    const { rawInput, entry } = splitEntryOptions(withoutEmail);
     const input = normalizeEmploymentInput(ctx, rawInput);
+    assertEntryOptionsAllowed(input, entry);
     if (email !== undefined && !NEW_CYCLE_KINDS.includes(input.kind)) {
       throw new AppError('VALIDATION_FAILED', '只有入职类业务可以提供登录邮箱');
     }
@@ -182,14 +187,14 @@ function registerEmployeeBusinessCreate(router: Hono<TenantEnv>, deps: TenantRou
       });
     }
     if (input.fields.departmentId !== undefined) requireEmploymentScope(ctx, id, input.fields.departmentId);
-    return runWrite(c, deps, ctx, { ...input, loginEmail: email }, async (tx, context) => {
+    return runWrite(c, deps, ctx, { ...input, loginEmail: email, entry }, async (tx, context) => {
       if (input.kind === 'transfer') {
         await lockTransferParticipants(tx, context, id, input.fields.addedSubordinateIds ?? []);
         await lockEmploymentEmployee(tx, context, id, context.expectedRevision);
         await requireTransferSource(tx, context, id, 'hr');
         if (input.mode === 'direct') await requireDirectTransfer(tx, context);
       }
-      const business = await createEmploymentBusiness(tx, context, id, input);
+      const business = await createEmploymentBusiness(tx, context, id, input, entry ? { entry } : {});
       if (NEW_CYCLE_KINDS.includes(input.kind)) await ensureHiredAccount(tx, context, id, email);
       return { status: 201, body: business };
     });

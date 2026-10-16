@@ -1,11 +1,11 @@
 import { Navigate, useLocation } from 'react-router';
-import { CreateCommands } from '../evaluation/CreateEntry.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { PageState } from '../foundation/PageState.js';
 import { useSession } from '../foundation/Session.js';
 import { OBJECTS } from './api.js';
 import { PlanList } from './PlanList.js';
 import { ProcessList } from './ProcessList.js';
+import { IdpCommands } from './commands.js';
 import { TemplateList } from './TemplateList.js';
 import './idp.css';
 
@@ -18,9 +18,9 @@ const SECTIONS = [
 /** 人才发展计划：/idp/plans | templates | processes 三张列表，无面包屑；计划与模板详情为整页（?plan= / ?template=）。 */
 export function IdpPage() {
   return (
-    <CreateCommands>
+    <IdpCommands>
       <IdpContent />
-    </CreateCommands>
+    </IdpCommands>
   );
 }
 function IdpContent() {
