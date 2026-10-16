@@ -89,9 +89,9 @@ export function deleteReceipt(response: unknown) {
 export const PREFS_RECEIPT = 'preferences';
 const isStrings = (value: unknown) => Array.isArray(value) && value.every((item) => typeof item === 'string');
 /** 偏好回执按真实 DTO 逐项核对（map-routes.ts PUT /maps/:kind/preferences）；层级只有二到四级。 */
-export function preferenceReceipt(response: unknown) {
+export function isPreferences(response: unknown): response is Preferences {
   const view = response as Partial<Record<keyof Preferences, unknown>> | null;
-  const valid =
+  return (
     !!view &&
     (view.rootOrgId === null || typeof view.rootOrgId === 'string') &&
     Number.isInteger(view.depth) &&
@@ -101,8 +101,12 @@ export function preferenceReceipt(response: unknown) {
     typeof view.showKeyPositions === 'boolean' &&
     typeof view.showPositionsWithoutSuccessor === 'boolean' &&
     Number.isSafeInteger(view.revision) &&
-    (view.revision as number) >= 0;
-  if (!valid) throw new Error('preferenceReceipt');
+    (view.revision as number) >= 0
+  );
+}
+/** 写回执形状不符抛错，由内核判为结果未知（DEC-067）；读取边界用 isPreferences 局部报错（F-180）。 */
+export function preferenceReceipt(response: unknown) {
+  if (!isPreferences(response)) throw new Error('preferenceReceipt');
   return { id: PREFS_RECEIPT };
 }
 /**
