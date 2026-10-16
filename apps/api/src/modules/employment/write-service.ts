@@ -115,23 +115,12 @@ export async function createEmploymentBusiness(
   const selected = NEW_CYCLE_KINDS.includes(normalized.kind)
     ? undefined
     : await selectEmploymentCycle(tx, ctx, employee.id, normalized);
-  let prepared = await prepareInheritance(tx, ctx, {
+  const inherited = await prepareInheritance(tx, ctx, {
     ...normalized,
     employeeId: employee.id,
     staffId: selected?.cycle.id,
   });
-  if (options.positionManagerDerivation) {
-    prepared = {
-      ...prepared,
-      formSnapshot: {
-        ...prepared.formSnapshot,
-        fieldDerivations: [
-          ...(prepared.formSnapshot.fieldDerivations ?? []),
-          { rule: 'position-manager', referenceId: prepared.fields.positionId },
-        ],
-      },
-    };
-  }
+  const prepared = options.positionManagerDerivation ? withPositionManagerDerivation(inherited) : inherited;
   const effective = await resolveEffectiveInheritance(tx, ctx, prepared, {
     staffId: selected?.cycle.id ?? '',
     predecessor: selected?.predecessor ?? null,
@@ -177,6 +166,20 @@ export async function createEmploymentBusiness(
   const created = { ...payloadAudit(payload), ...probationAudit(pendingProbation) };
   await auditEmployment(tx, ctx, 'employment.business.create', 'employment-business', id, null, created);
   return requireSavedBusiness(tx, ctx, id);
+}
+
+/** F-006：职位变更同步直线经理时，在表单快照里记下派生规则。 */
+function withPositionManagerDerivation(prepared: PreparedInheritance): PreparedInheritance {
+  return {
+    ...prepared,
+    formSnapshot: {
+      ...prepared.formSnapshot,
+      fieldDerivations: [
+        ...(prepared.formSnapshot.fieldDerivations ?? []),
+        { rule: 'position-manager', referenceId: prepared.fields.positionId },
+      ],
+    },
+  };
 }
 
 async function initializeEmploymentBusiness(
