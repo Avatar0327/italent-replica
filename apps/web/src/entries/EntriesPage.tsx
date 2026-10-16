@@ -8,6 +8,7 @@ import { FormCommands } from '../foundation/forms/useCommandForm.js';
 import { useApiClient, useSession } from '../foundation/Session.js';
 import type { PageResult } from '../foundation/client.js';
 import { NameOf, refPaths, useToday } from '../contracts/references.js';
+import { PostponeForm } from './PostponeForm.js';
 import { CompleteLoader } from './CompleteForm.js';
 import { collection, request, type Row, type View } from './model.js';
 import { useEntryAccess } from './commands.js';
@@ -50,7 +51,7 @@ function EntryList() {
   const [view, setView] = useState<View>('all');
   const [page, setPage] = useState({ page: 1, pageSize: 30 });
   const [keys, setKeys] = useState<Key[]>([]);
-  const [open, setOpen] = useState<{ row: Row; action: 'edit' | 'complete' }>();
+  const [open, setOpen] = useState<{ row: Row; action: 'edit' | 'complete' | 'postpone' }>();
   const read = useEntries(view, page);
   const refresh = async () => {
     await read.read();
@@ -89,14 +90,11 @@ function EntryList() {
           setOpen(undefined);
         }}
         tabBarExtraContent={
-          <Space>
-            {m.toolbar[view].map((label) => (
-              <Button key={label} disabled>
-                {label}
-              </Button>
-            ))}
-            {view !== 'hired' && <Button disabled>{m.more} ▾</Button>}
-          </Space>
+          <Toolbar
+            view={view}
+            row={keys.length === 1 ? read.data.items.find((row) => row.id === keys[0]) : undefined}
+            open={(row) => setOpen({ row, action: 'postpone' })}
+          />
         }
       />
       <Alert key={view} className="entry-notice" showIcon type="info" closable message={m.notices[view]} />
@@ -113,9 +111,12 @@ function EntryList() {
         filters={<Filters view={view} />}
         selection={{ keys, onChange: setKeys, actions: null }}
       />
-      {open && (
-        <CompleteLoader row={open.row} action={open.action} onClose={() => setOpen(undefined)} refresh={refresh} />
-      )}
+      {open &&
+        (open.action === 'postpone' ? (
+          <PostponeForm row={open.row} onClose={() => setOpen(undefined)} refresh={refresh} />
+        ) : (
+          <CompleteLoader row={open.row} action={open.action} onClose={() => setOpen(undefined)} refresh={refresh} />
+        ))}
     </div>
   );
 }
@@ -185,6 +186,41 @@ function RowActions({ row, view, open }: { row: Row; view: View; open(action: 'e
           </Dropdown>
         </>
       )}
+    </Space>
+  );
+}
+
+function Toolbar({ view, row, open }: { view: View; row?: Row; open(row: Row): void }) {
+  const p = useEntryAccess();
+  const enabled = !!row && validObject(row) && !!row.employeeId && p.edit && p.field('effectiveDate').editable;
+  return (
+    <Space>
+      {m.toolbar[view].map((label) => (
+        <Button key={label} disabled>
+          {label}
+        </Button>
+      ))}
+      {['today', 'cancelled'].includes(view) && (
+        <Button disabled={!enabled} onClick={() => row && open(row)}>
+          {m.postpone}
+        </Button>
+      )}
+      {view === 'all' && (
+        <Dropdown
+          trigger={['click']}
+          menu={{
+            items: m.moreItems.map((label) => ({
+              key: label,
+              label,
+              disabled: label !== m.postpone || !enabled,
+              onClick: () => row && open(row),
+            })),
+          }}
+        >
+          <Button>{m.more} ▾</Button>
+        </Dropdown>
+      )}
+      {view === 'today' && <Button disabled>{m.more} ▾</Button>}
     </Space>
   );
 }

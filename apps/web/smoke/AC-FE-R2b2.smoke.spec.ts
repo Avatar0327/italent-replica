@@ -30,7 +30,10 @@ async function selectedAction(page: Page, label: string) {
   if (await page.getByRole('button', { name: label, exact: true }).count())
     await page.getByRole('button', { name: label, exact: true }).click();
   else {
-    await page.getByRole('button', { name: /更多操作/ }).click();
+    await page
+      .locator('.ant-tabs-extra-content')
+      .getByRole('button', { name: /更多操作/ })
+      .click();
     await page.getByRole('menuitem', { name: label, exact: true }).click();
   }
   return page.getByRole('dialog', { name: new RegExp(`^${label}`) });
