@@ -60,8 +60,9 @@ const census = async () => ({
   samples: await Promise.all(SAMPLES.map(async (s) => s.pick(await itemsOf('admin', s.path)).length)),
   grants: await Promise.all(
     (['admin', 'hr'] as const).map(async (key) => {
+      // 授权列表由系统管理员读取（HR 没有授权管理入口）
       const body = await user.send(
-        await user.persona(key),
+        await user.persona('admin'),
         'GET',
         `/api/tenant/permission/grants?userId=${await user.persona(key)}`,
       );
