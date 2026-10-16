@@ -10,16 +10,20 @@
  * 确定业务失败的失败记录（AGENTS.md §10「审计」），不属于业务审计，不比较。
  */
 import { randomUUID } from 'node:crypto';
-import type { Authorizer } from '@italent/api';
-import { sql, withTenant } from '@italent/db';
-import { MODULE_OBJECTS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { rowsOf } from '../../apps/api/src/modules/employment/record-store.js';
-import { registerScopeProvider } from '../../apps/api/src/modules/permission/module-access.js';
-import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.js';
 import { addPending, businessRevision, entryWorld } from './AC-EN-BE2a-support.js';
 import { gateWorld, leaveBody } from './AC-EXIT-gate-support.js';
+import {
+  deniesFieldWrite,
+  deniesObjectUpdate,
+  emptyScope,
+  isButton,
+  revocable,
+  revoke,
+  snapshot,
+  type Revoker,
+} from './support/revocable-rights.js';
 import { tenantApi } from './support/tenant-api.js';
 
 const database = useTestDb();
@@ -28,63 +32,6 @@ const TODAY = '2026-10-06';
 const clock = () => new Date(`${TODAY}T01:00:00.000Z`);
 // 最后工作日已过的直接离职立即生效，才有可编辑的有效离职记录；造数走可信端口（不经离职创建门禁，本单只测编辑重放）
 const LAST_WORK_DAY = '2026-10-01';
-
-type Request = Parameters<Authorizer>[0];
-const isButton = (code: string) => (request: Request) =>
-  request.action === 'object.button' && String(request.resource).includes(`#${code}@`);
-const deniesObjectUpdate = (request: Request) =>
-  request.action === 'object.update' && (request.fields?.length ?? 0) === 0;
-const deniesFieldWrite = (field: string) => (request: Request) =>
-  request.action === 'object.update' && (request.fields ?? []).includes(field);
-
-const FIELDS = new Set<string>([
-  ...[MODULE_OBJECTS.employmentRecord, MODULE_OBJECTS.employee, MODULE_OBJECTS.employmentSettings].flatMap((object) =>
-    object.fields.map((field) => field.code),
-  ),
-  'id',
-  'revision',
-]);
-
-/**
- * 可中途撤权的授权器。入口（事务外）的授权器调用一律放行；带事务的调用——命令内的权限复核、事务内解析的数据范围——
- * 才应用 `rights`。所以先让首次执行成功（rights 为空），再设置 rights 模拟“撤权发生在入口复核之后”。
- */
-function revocable() {
-  const rights: { deny?: (request: Request) => boolean; emptyScope?: boolean } = {};
-  const authorize: Authorizer = () => true;
-  registerScopeProvider(authorize, {
-    scope: async (_query, tx) =>
-      tx && rights.emptyScope ? EMPTY_SCOPE : { ...EMPTY_SCOPE, all: true, hasDataPermission: true },
-    authorize: async (request, tx) => !(tx && rights.deny?.(request)),
-    fields: async () => FIELDS,
-  });
-  return { rights, authorize };
-}
-
-type Revoker = readonly [name: string, apply: (rights: ReturnType<typeof revocable>['rights']) => void];
-const revoke = (deny: (request: Request) => boolean): Revoker['1'] => {
-  return (rights) => {
-    rights.deny = deny;
-  };
-};
-const emptyScope: Revoker['1'] = (rights) => {
-  rights.emptyScope = true;
-};
-
-/** 业务、审计、台账三类状态的快照（被拒后逐项相等）。 */
-async function snapshot(db: Parameters<typeof withTenant>[0], tenantId: string) {
-  return withTenant(db, tenantId, async (tx) => {
-    const [row] = rowsOf<Record<string, unknown>>(
-      await tx.execute(sql`SELECT
-        (SELECT count(*) FROM audit_events WHERE tenant_id=${tenantId}) AS audits,
-        (SELECT count(*) FROM command_ledger WHERE tenant_id=${tenantId}) AS ledger,
-        (SELECT count(*) FROM employment_payload_versions WHERE tenant_id=${tenantId}) AS versions,
-        (SELECT string_agg(id::text || ':' || revision, ',' ORDER BY id) FROM employment_business_objects
-          WHERE tenant_id=${tenantId}) AS revisions`),
-    );
-    return row;
-  });
-}
 
 // ---- 离职记录的三条编辑路径 -------------------------------------------------------------------------------------
 
