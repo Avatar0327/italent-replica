@@ -1277,7 +1277,7 @@ export const EMPLOYMENT: RequiredTable = {
     ),
     ob(
       `obj:${RECORD}:{create,update}`,
-      [],
+      ['objectOp:TenantBase.EmploymentRecord:update'],
       [
         fn(
           EMP,
@@ -1290,8 +1290,15 @@ export const EMPLOYMENT: RequiredTable = {
           "if (!preview) await requireEmploymentWrite(ctx, 'update', patch, 'Employment.Edit')",
         ),
         WRITE_OBJECT,
+        // F-202：编辑行在命令事务内按当前授权再判一次（同键重放、失败回查也过这道），见 replay-guard.ts
+        fn(EMP, 'importEmployment', '{ guard: importEditGuard(deps, ctx, id, targets) }'),
+        {
+          role: 'impl',
+          unit: `${REPLAY}#requireEditTargets`,
+          anchor: "await requireEmploymentWrite(scoped, 'update', target.patch, 'Employment.Edit')",
+        },
       ],
-      '逐行：operation = create 判 create，其余判 update',
+      '逐行：operation = create 判 create，其余判 update；编辑行另在命令内复核（importEditGuard）',
     ),
     ob(
       `btn:${RECORD}#{Employment.Create@detail,Employment.Edit@detail}`,

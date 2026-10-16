@@ -68,37 +68,74 @@ export interface EditTarget {
 }
 
 /**
- * 记录编辑 / 批量编辑 / 导入编辑行三条路径共用的离职复核：目标里有离职 / 退休记录时，命令内重过范围与 Dimission* 权限链
- * （editEmploymentRecord 内同一道门只在真正执行时才跑，命中台账的重放到不了那里）。没有离职目标不挂，行为不变。
+ * 记录编辑 / 批量编辑 / 导入编辑行三条路径共用的命令内复核（F-195 离职，F-202 普通记录）：
+ * 每个目标都按入口同一口径在命令事务内按当前授权重过：对象编辑权、Employment.Edit 按钮与字段写权限、写入口径数据范围
+ * （业务范围 + 请求里显式给出的目标部门）；目标是离职 / 退休记录时另加员工当前范围与 Dimission* 权限链
+ * （editEmploymentRecord 内同一道门只在真正执行时才跑，命中台账的重放到不了那里）。
+ * 批量与导入是整单成功或整单失败：混合批次里任一目标复核不过，整批被拒，不做部分成功。
  */
-export function exitEditGuard(
+export function recordEditGuard(
   deps: TenantRouteDeps,
   ctx: EmploymentContext,
   targets: readonly EditTarget[],
 ): ScopedCommandGuard | undefined {
-  const exits = targets.filter((target) => isExitKind(target.kind));
-  if (!exits.length) return undefined;
+  if (!targets.length) return undefined;
   return scopedGuard({
     before: async (tx) => {
       const scoped = await commandContext(tx, deps, ctx);
       await requireObjectUpdate(scoped);
-      for (const target of exits) {
-        await requireEmployeeInScope(tx, scoped, target.employeeId);
-        await requireBusinessWriteScope(tx, scoped.authorize!, scoped, target.id, target.employeeId);
-        const departmentId = target.patch.fields?.departmentId;
-        if (departmentId !== undefined)
-          await requireScopedEmploymentObject(tx, scoped, target.employeeId, departmentId, target.id);
-        await requireExitPermission(scoped, 'update', { employeeId: target.employeeId, patch: target.patch });
-      }
+      await requireEditTargets(tx, scoped, targets);
     },
   });
 }
 
+/** 导入入口（POST /employees/:id/import）的编辑行复核：入口另要求导入按钮与员工当前范围（readContext 带员工），其余同上。 */
+export function importEditGuard(
+  deps: TenantRouteDeps,
+  ctx: EmploymentContext,
+  employeeId: string,
+  targets: readonly EditTarget[],
+): ScopedCommandGuard | undefined {
+  if (!targets.length) return undefined;
+  return scopedGuard({
+    before: async (tx) => {
+      const scoped = await commandContext(tx, deps, ctx);
+      await requireObjectUpdate(scoped);
+      await requirePermission(scoped.authorize!, {
+        ...scoped,
+        action: 'object.button',
+        resource: 'TenantBase.EmploymentRecord#Employment.Import@list',
+      });
+      await requireEmployeeInScope(tx, scoped, employeeId);
+      await requireEditTargets(tx, scoped, targets);
+    },
+  });
+}
+
+async function requireEditTargets(tx: Tx, scoped: EmploymentContext, targets: readonly EditTarget[]) {
+  // 批量编辑各条共用同一份 patch，字段 / 按钮权限只需判一次
+  const checkedPatches = new Set<EmploymentBusinessPatch>();
+  for (const target of targets) {
+    if (!checkedPatches.has(target.patch)) {
+      checkedPatches.add(target.patch);
+      await requireEmploymentWrite(scoped, 'update', target.patch, 'Employment.Edit');
+    }
+    const exit = isExitKind(target.kind);
+    if (exit) await requireEmployeeInScope(tx, scoped, target.employeeId);
+    await requireBusinessWriteScope(tx, scoped.authorize!, scoped, target.id, target.employeeId);
+    const departmentId = target.patch.fields?.departmentId;
+    if (departmentId !== undefined)
+      await requireScopedEmploymentObject(tx, scoped, target.employeeId, departmentId, target.id);
+    if (exit) await requireExitPermission(scoped, 'update', { employeeId: target.employeeId, patch: target.patch });
+  }
+}
+
 /**
- * 待入职行内编辑（F-188 PATCH /pending-entries/:id）的命令内复核：对象编辑权、Employment.Edit 按钮、入职日期等字段写权限、
- * 写入口径数据范围，口径与入口 prepareEntryAction 相同，只是改按当前授权在命令事务内重过。
+ * 待入职状态动作（F-188 PATCH /pending-entries/:id、F-202 POST postpone / POST cancel）的命令内复核：
+ * 对象编辑权、Employment.Edit 按钮、入职日期等字段写权限、写入口径数据范围，口径与入口 prepareEntryAction 相同，
+ * 只是改按当前授权在命令事务内重过。办理入职 / 取消不改任职字段（载荷为空）时只校验按钮，同入口。
  */
-export function pendingEditGuard(
+export function pendingActionGuard(
   deps: TenantRouteDeps,
   ctx: EmploymentContext,
   id: string,
@@ -108,7 +145,20 @@ export function pendingEditGuard(
     before: async (tx) => {
       const scoped = await commandContext(tx, deps, ctx);
       await requireObjectUpdate(scoped);
-      await requireEmploymentWrite(scoped, 'update', payload, 'Employment.Edit');
+      await requireEmploymentWrite(scoped, 'update', payload, 'Employment.Edit', undefined, {
+        commandOnly: Object.keys(payload).length === 0,
+      });
+      await requireBusinessWriteScope(tx, scoped.authorize!, scoped, id);
+    },
+  });
+}
+
+/** 待入职删除（F-202 DELETE /pending-entries/:id）：对象删除权、Employment.Delete 按钮、写入口径数据范围，同入口。 */
+export function pendingDeleteGuard(deps: TenantRouteDeps, ctx: EmploymentContext, id: string): ScopedCommandGuard {
+  return scopedGuard({
+    before: async (tx) => {
+      const scoped = await commandContext(tx, deps, ctx);
+      await requireEmploymentWrite(scoped, 'delete', {}, 'Employment.Delete');
       await requireBusinessWriteScope(tx, scoped.authorize!, scoped, id);
     },
   });
