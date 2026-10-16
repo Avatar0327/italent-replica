@@ -85,6 +85,7 @@ export function exitEditGuard(deps: TenantRouteDeps, ctx: EmploymentContext, tar
       const scoped = await commandContext(tx, deps, ctx);
       await requireObjectUpdate(scoped);
       for (const target of exits) {
+        await requireEmployeeInScope(tx, scoped, target.employeeId);
         await requireBusinessWriteScope(tx, scoped.authorize!, scoped, target.id, target.employeeId);
         const departmentId = target.patch.fields?.departmentId;
         if (departmentId !== undefined)
@@ -125,7 +126,7 @@ export interface ExitScopeTarget {
 /**
  * 离职入口（create / PATCH / submit / withdraw / DELETE /businesses/:id / activation/retry）的命令内复核（#199，F-195）：
  * 首次执行、同键重放、失败回查三个出口都先在命令事务内按当前授权重新解析数据范围，校验员工、业务和实际目标部门的
- * 写入范围，再过 Dimission* 权限链。入口取到的范围只是请求内快照，管不到入口放行之后、命令事务之前的范围收窄。
+ * 写入范围，再过 Dimission* 权限链；重放时对原结果里的业务再查一遍（实际写入的部门可能是继承来的）。入口取到的范围只是请求内快照，管不到入口放行之后、命令事务之前的范围收窄。
  */
 export function exitCommandGuard(
   deps: TenantRouteDeps,
@@ -140,6 +141,13 @@ export function exitCommandGuard(
       await requireExitScope(tx, scoped, target, scopeTarget);
       await requireExitPermission(scoped, operation, target);
     },
+    // 请求里的部门可以不传（创建时从时间线继承、PATCH 重算继承），实际写入的值只在原结果的业务上：重放前对它再查一遍范围
+    replayed: async (tx, result) => {
+      const id = (result.body as { id?: unknown } | null)?.id;
+      if (typeof id !== 'string') return;
+      const scoped = await commandContext(tx, deps, ctx);
+      await requireBusinessWriteScope(tx, scoped.authorize!, scoped, id, target.employeeId);
+    },
   };
 }
 
@@ -152,6 +160,8 @@ async function requireExitScope(
   const { businessId } = scopeTarget;
   const departmentId = scopeTarget.departmentId ?? target.patch?.fields?.departmentId;
   if (businessId) {
+    // 员工当前范围与业务（记录部门）范围是两项：组织维度下，业务部门可以和员工当前所在部门不同
+    await requireEmployeeInScope(tx, scoped, target.employeeId);
     await requireBusinessWriteScope(tx, scoped.authorize!, scoped, businessId, target.employeeId);
     if (departmentId !== undefined)
       await requireScopedEmploymentObject(tx, scoped, target.employeeId, departmentId, businessId);
