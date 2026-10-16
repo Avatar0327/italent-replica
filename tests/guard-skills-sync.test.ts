@@ -10,7 +10,7 @@ const AGENTS = join(ROOT, '.agents/skills');
 
 function listSkills(directory: string): string[] {
   if (!existsSync(directory)) return [];
-  return readdirSync(directory, { recursive: true })
+  return readdirSync(directory, { recursive: true, encoding: 'utf8' })
     .filter((path) => basename(path) === 'SKILL.md')
     .sort();
 }
