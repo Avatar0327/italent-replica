@@ -121,8 +121,8 @@ export function registerEntryRoutes(
  */
 function registerEntryViews(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.get('/pending-entries', async (c) => {
-    const view = parse(z.enum(ENTRY_VIEWS), c.req.query('view'));
     const ctx = await readPageContext(c, deps, 'list');
+    const view = parse(z.enum(ENTRY_VIEWS), c.req.query('view'));
     const page = pageQuery(c);
     const items = await withTenant(deps.db, ctx.tenantId, (tx) =>
       listEntryView(tx, ctx.tenantId, { view, today: tenantLocalDate(ctx.now, ctx.timezone), page }, ctx.scope),
