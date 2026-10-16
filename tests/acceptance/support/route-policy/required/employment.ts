@@ -1095,6 +1095,9 @@ export const EMPLOYMENT: RequiredTable = {
   'GET /api/tenant/employment/activation-todos': [
     recordView(at(EMP, 'GET', '/activation-todos', "const ctx = await readPageContext(c, deps, 'list')")),
   ],
+  'GET /api/tenant/employment/pending-entries': [
+    recordView(at(EMP, 'GET', '/pending-entries', "const ctx = await readPageContext(c, deps, 'list')")),
+  ],
   'POST /api/tenant/employment/businesses/:id/activation/retry': [
     ob(
       `obj:${RECORD}:update`,

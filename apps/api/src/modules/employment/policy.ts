@@ -777,6 +777,17 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     scope: listScope('module.scopeSql'),
     fields: RESPONSE,
   }),
+  // ---- employment/entry-routes.ts：R2 BE-2b 入职四视图（34 EN-R1，DEC-484②）---------------------------------------------
+  // view ∈ all / today / cancelled / hired（缺失或不合法 400）；readPageContext(list)：任职记录对象查看 + 列表范围，
+  // listEntryView 的 employmentScopePredicate = scopeSql（人员 / 记录部门 / 创建人，范围为空什么也看不到）；
+  // 记录字段按任职记录可见字段裁剪，姓名 / 工号按人员对象可见字段另行裁剪；hasDataPermission 协议键
+  'GET /pending-entries': object({
+    object: EMPLOYMENT,
+    operation: 'view',
+    button: noButton('列表无按钮'),
+    scope: listScope('module.scopeSql'),
+    fields: projector('employment.response', 'employment.entryViews'),
+  }),
   // 重试生效：If-Match 必填；空体；requireEmploymentWrite('update', {}, RetryActivation)；authorizeBusinessWrite（写入口径）；
   // 命令内 retryActivation 内联校验 revision（409 REVISION_CONFLICT）、未生效 / 未失败 / 未到期 / 前序失败（409）
   'POST /businesses/:id/activation/retry': object({

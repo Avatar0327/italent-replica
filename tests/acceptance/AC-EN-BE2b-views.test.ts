@@ -65,7 +65,7 @@ describe('BE-2b 入职四视图', () => {
     expect(names(await view(w, 'all'))).toEqual(['今日合成员工', '将来合成员工', '延期合成员工'].sort());
     expect(names(await view(w, 'today'))).toEqual(['今日合成员工', '延期合成员工']);
     expect(names(await view(w, 'cancelled'))).toEqual(['取消合成员工']);
-    expect(names(await view(w, 'hired'))).toEqual(['直接入职合成员工', '办理合成员工']);
+    expect(names(await view(w, 'hired'))).toEqual(['办理合成员工', '直接入职合成员工']);
   });
 
   it('条目带员工、业务类型、日期、状态与部门；按入职日、ID 排序', async () => {
@@ -85,7 +85,8 @@ describe('BE-2b 入职四视图', () => {
     });
     expect(future.revision).toBe(await businessRevision(w, s.future.id));
     expect(all.find((item) => item.name === '延期合成员工')).toMatchObject({ entryStatus: 2 });
-    expect((await view(w, 'hired')).every((item) => item.entryStatus === null)).toBe(true);
+    // 办理入职后人员状态离开“待入职”（试用 / 正式），入职状态保留办理时的值（BE-2a）
+    expect((await view(w, 'hired')).every((item) => item.employeeStatus !== 1)).toBe(true);
   });
 
   it('改期替换记录后只见新记录；删除后全视图不可见（EN-R14）', async () => {
