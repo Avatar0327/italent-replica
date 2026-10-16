@@ -31,6 +31,9 @@ export interface EntryViewItem {
   readonly revision: number;
   /** 待入职阶段填写的“是否有试用期”（F-188）；没填过为 null。前端编辑弹窗与办理入职表单据此预填。 */
   readonly probation: boolean | null;
+  /** 待入职合同起止日（F-194，entry-pending-contract.ts）；存量待入职、已办理入职没有合同为 null。前端用于“合同生效日期”列与办理入职预填。 */
+  readonly contractStartDate: string | null;
+  readonly contractEndDate: string | null;
 }
 
 function viewPredicate(view: EntryView, today: string): SQL {
@@ -68,12 +71,14 @@ export async function listEntryView(
       ${personnelHooks.currentName(tenantId, sql`e.id`, sql`e.name`)} AS name,
       r.kind, t.start_date::text AS "effectiveDate",
       s.employee_status::integer AS "employeeStatus", s.entry_status::integer AS "entryStatus",
-      ${department} AS "departmentId", b.revision, pp.probation
+      ${department} AS "departmentId", b.revision, pp.probation,
+      pc.start_date::text AS "contractStartDate", pc.end_date::text AS "contractEndDate"
     FROM employment_records r
     JOIN employment_timeline t ON t.tenant_id=r.tenant_id AND t.record_id=r.id
     JOIN employment_business_objects b ON b.tenant_id=r.tenant_id AND b.id=r.id
     JOIN employment_employees e ON e.tenant_id=r.tenant_id AND e.id=r.employee_id
     LEFT JOIN employment_pending_entry_probation pp ON pp.tenant_id=r.tenant_id AND pp.business_id=r.id
+    LEFT JOIN employment_pending_entry_contract pc ON pc.tenant_id=r.tenant_id AND pc.business_id=r.id
     LEFT JOIN LATERAL employment_record_status(r.tenant_id, r.id) s ON true
     LEFT JOIN LATERAL (SELECT p.department_id FROM employment_payload_versions p
       WHERE p.tenant_id=r.tenant_id AND p.business_id=r.id AND p.is_record_snapshot

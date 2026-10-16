@@ -7,6 +7,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { sql, withTenant } from '@italent/db';
+import { MODULE_OBJECTS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import {
@@ -18,7 +19,17 @@ import {
   hireBody,
   type EntryWorld,
 } from './AC-EN-BE2a-support.js';
+import { withLoginEmail } from './AC-EMP-support.js';
+import {
+  addMember,
+  createProfile,
+  grant,
+  makeGrantable,
+  seedPermissionWorld,
+  setObjectPermission,
+} from './AC-PRM-support.js';
 import { tenantApi } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 const clock = () => new Date('2026-10-01T01:00:00.000Z');
@@ -327,5 +338,66 @@ describe('F-194 租户隔离', () => {
     });
     expect(seenByA).toEqual([{ tenantId: a.session.tenant.id, businessId: pendingA.recordId }]);
     expect(await pendingContractRows(b)).toHaveLength(1);
+  });
+});
+
+describe('F-194 真实授权提供器下列表带合同起止日', () => {
+  it('只有任职记录查看权（没有合同对象权限）：contractStartDate / contractEndDate 仍读回（控制项显式投影）', async () => {
+    const seed = await seedPermissionWorld(testDb().db);
+    const setup = tenantApi(seed.db, { clock });
+    const create = async (path: string, body: object, ifMatch = 0) => {
+      const response = await setup.request('POST', `/api/tenant/${path}`, { ...seed.asAdmin, ifMatch, body });
+      expect(response.status, await response.clone().text()).toBe(201);
+      return (await response.json()) as { id: string; revision: number };
+    };
+    const org = await create('org/organizations', {
+      name: '合同读回部门',
+      establishedOn: '2025-01-01',
+      parents: { admin: { parentId: seed.tenant.id } },
+    });
+    const employee = await create('employment/employees', { code: `E${uniqueSuffix()}`, name: '合同读回员工' });
+    await create(
+      `employment/employees/${employee.id}/businesses`,
+      withLoginEmail(employee.id, {
+        kind: 'hire',
+        mode: 'direct',
+        effectiveDate: '2026-10-10',
+        fields: { employType: 'internal', departmentId: org.id },
+        pendingEntry: true,
+      }),
+      employee.revision,
+    );
+    const profile = await createProfile(seed, `read-${uniqueSuffix()}`);
+    const employment = MODULE_OBJECTS.employmentRecord;
+    const permission = await setObjectPermission(
+      seed,
+      profile,
+      {
+        dataOperations: { create: false, update: false, delete: false },
+        fields: employment.fields.map((field) => ({ fieldCode: field.code, view: true, edit: false })),
+        buttons: [],
+      },
+      employment.code,
+    );
+    expect(permission.status, await permission.clone().text()).toBe(200);
+    await makeGrantable(seed, [profile.id]);
+    const reader = await addMember(seed, 'contract-reader');
+    expect((await grant(seed, reader.id, profile.id)).status).toBe(201);
+    const all = await setup.request('PUT', `/api/tenant/permission/profiles/${profile.id}/data-scopes/TenantBase`, {
+      ...seed.asAdmin,
+      ifMatch: 0,
+      body: { targetKind: 'app', targetCode: '', seeAll: true },
+    });
+    expect(all.status, await all.clone().text()).toBe(200);
+    const real = tenantApi(seed.db, { authorize: undefined, clock });
+    const response = await real.request('GET', '/api/tenant/employment/pending-entries?view=all', {
+      user: reader.id,
+      tenant: seed.tenant.id,
+    });
+    expect(response.status, await response.clone().text()).toBe(200);
+    const items = ((await response.json()) as { items: Record<string, unknown>[] }).items;
+    expect(items.map((item) => [item.effectiveDate, item.contractStartDate, item.contractEndDate])).toEqual([
+      ['2026-10-10', '2026-10-10', null],
+    ]);
   });
 });
