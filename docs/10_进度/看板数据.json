@@ -2,8 +2,8 @@
 "updated": "2026-10-14",
 "stats": {
 "merged": 283,
-"open": 7,
-"dec": 544,
+"open": 8,
+"dec": 546,
 "ev": "43/177"
 },
 "tasks": {
@@ -983,6 +983,10 @@
 }
 },
 "log": [
+[
+"10-16",
+"D2·R2·前端·FE-R2b-2a（FormOverlay 契约）PR #365（草稿）"
+],
 [
 "10-16",
 "D2·R2·前端·FE-R2b-1（#357）已合入（204ab7dd）"
@@ -4890,7 +4894,8 @@
 "after": [
 "FE-R2b-1"
 ],
-"note": "03 拟派发（DEC-545，用户选 1）：Codex Astra high 本地任务（00 用 computer use 在 Codex 发起）、Sol high 审；工作树 wt-fo-contract，分支 codex/FormOverlay-contract，基线 6aa3fd47 · 范围：apps/web/src/foundation/FormOverlay.tsx 加可选标题工具区、底栏附加节点、样式入口，旧调用方不变，预计一两百行 · 合入后 #364 继续"
+"note": "#365 Draft 开发中（Astra 本地，分支 codex/FormOverlay-contract，基线 6aa3fd47）· DEC-545 用户选 1 · 范围：FormOverlay.tsx 加可选标题工具区、底栏附加节点、样式入口，旧调用方不变 · 完成后 Sol high 审，合入后 #364 继续",
+"pr": 365
 },
 {
 "k": "FE-R2b-2",
