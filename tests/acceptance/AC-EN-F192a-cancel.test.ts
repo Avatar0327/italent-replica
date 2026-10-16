@@ -6,6 +6,7 @@
  * ④失效 Offer 删除待入职（F-171 端口）：记录删除、不进“已取消入职”。
  * 用桩登记端口验证调用次数与参数；测试时钟 2026-10-01，业务数据均为合成数据。
  */
+import { randomUUID } from 'node:crypto';
 import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -13,6 +14,7 @@ import {
   cancelPendingEntryForOfferRefusal,
   deletePendingEntry,
 } from '../../apps/api/src/modules/employment/entry-actions.js';
+import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.js';
 import {
   type EntryOfferHooks,
   registerEntryOfferHooks,
@@ -65,6 +67,32 @@ async function ledgerCount(w: EntryWorld): Promise<number> {
       )[0]!.n,
     ),
   );
+}
+
+async function outboxCount(w: EntryWorld): Promise<number> {
+  return withTenant(w.db, w.session.tenant.id, async (tx) =>
+    Number(
+      rowsOf<{ n: string }>(
+        await tx.execute(sql`SELECT count(*)::text AS n FROM employment_outbox WHERE tenant_id=${w.session.tenant.id}`),
+      )[0]!.n,
+    ),
+  );
+}
+
+/** 同命令键（Idempotency-Key）的动作请求：重放要走命令台账（AGENTS §10 幂等）。 */
+function keyedAction(
+  w: EntryWorld,
+  recordId: string,
+  action: 'cancel' | 'postpone',
+  revision: number,
+  body: object,
+  key: string,
+) {
+  return w.session.request('POST', `/pending-entries/${recordId}/${action}`, {
+    ifMatch: revision,
+    body,
+    idempotencyKey: key,
+  });
 }
 
 async function viewIds(w: EntryWorld, view: string): Promise<string[]> {
@@ -155,12 +183,17 @@ describe('F-192a(DEC-546 / DEC-548) Offer 联动出站端口', () => {
     const w = await entryWorld(testDb().db, 'f192a-hook-restore-fail');
     const { employee, recordId } = await addPending(w, '2026-10-10');
     await cancelOk(w, recordId);
+    const ledgerBefore = await ledgerCount(w);
+    const outboxBefore = await outboxCount(w);
     stub.onEntryRestored.mockRejectedValue(new Error('offer unavailable'));
     const response = await entryAction(w, recordId, 'postpone', { effectiveDate: '2026-10-20' });
     expect(response.status).toBeGreaterThanOrEqual(500);
     const records = await entryRecords(w, employee.id);
     expect(records.map((r) => [r.id, r.entryStatus, r.effectiveDate])).toEqual([[recordId, CANCELLED, '2026-10-10']]);
     expect((await entryActionRows(w)).map((row) => row.action)).toEqual(['cancel']);
+    // 回滚到取消完成之后：失败的恢复命令没有留下台账成功条目，也没有多出 outbox 行
+    expect(await ledgerCount(w)).toBe(ledgerBefore);
+    expect(await outboxCount(w)).toBe(outboxBefore);
   });
 
   it('未取消的改期、编辑、手动删除都不调用两个端口', async () => {
@@ -203,6 +236,59 @@ describe('F-192a(DEC-546 / DEC-548) Offer 联动出站端口', () => {
   });
 });
 
+describe('F-192a(DEC-546 / DEC-548) 同命令重放', () => {
+  it('同键重放取消：返回与首次相同，端口只调用一次，动作日志、审计、台账都不增加', async () => {
+    const w = await entryWorld(testDb().db, 'f192a-replay-cancel');
+    const { recordId } = await addPending(w);
+    const revision = await businessRevision(w, recordId);
+    const key = randomUUID();
+    const body = { reason: 'personal', remark: '候选人另有安排' };
+    const first = await keyedAction(w, recordId, 'cancel', revision, body, key);
+    expect(first.status, await first.clone().text()).toBe(200);
+    const firstBody = await first.json();
+    const counts = async () => [
+      (await entryActionRows(w)).length,
+      (await auditRows(w, 'employment.entry.cancel')).length,
+      await ledgerCount(w),
+      await outboxCount(w),
+    ];
+    const before = await counts();
+    const replay = await keyedAction(w, recordId, 'cancel', revision, body, key);
+    expect(replay.status, await replay.clone().text()).toBe(200);
+    expect(await replay.json()).toEqual(firstBody);
+    expect(stub.onEntryCancelled).toHaveBeenCalledTimes(1);
+    expect(await counts()).toEqual(before);
+    expect(before.slice(0, 2)).toEqual([1, 1]);
+  });
+
+  it('同键重放“已取消 → 改期恢复”：返回与首次相同，端口只调用一次，不生成第二条延期记录', async () => {
+    const w = await entryWorld(testDb().db, 'f192a-replay-restore');
+    const { employee, recordId } = await addPending(w, '2026-10-10');
+    await cancelOk(w, recordId);
+    const revision = await businessRevision(w, recordId);
+    const key = randomUUID();
+    const body = { effectiveDate: '2026-10-20', remark: '补办' };
+    const first = await keyedAction(w, recordId, 'postpone', revision, body, key);
+    expect(first.status, await first.clone().text()).toBe(200);
+    const firstBody = await first.json();
+    const auditBefore = (await auditRows(w, 'employment.entry.postpone')).length;
+    expect(auditBefore).toBe(1);
+    const actionsBefore = (await entryActionRows(w)).length;
+    const ledgerBefore = await ledgerCount(w);
+    const outboxBefore = await outboxCount(w);
+    const replay = await keyedAction(w, recordId, 'postpone', revision, body, key);
+    expect(replay.status, await replay.clone().text()).toBe(200);
+    expect(await replay.json()).toEqual(firstBody);
+    expect(stub.onEntryRestored).toHaveBeenCalledTimes(1);
+    const records = await entryRecords(w, employee.id);
+    expect(records.map((r) => [r.entryStatus, r.effectiveDate])).toEqual([[POSTPONED, '2026-10-20']]);
+    expect((await entryActionRows(w)).length).toBe(actionsBefore);
+    expect((await auditRows(w, 'employment.entry.postpone')).length).toBe(auditBefore);
+    expect(await ledgerCount(w)).toBe(ledgerBefore);
+    expect(await outboxCount(w)).toBe(outboxBefore);
+  });
+});
+
 describe('F-192a(DEC-546 / DEC-548) Offer 入站端口', () => {
   it('拒绝已接受 Offer 自动取消入职：进已取消、原因正确、日期不变，且不回调 onEntryCancelled', async () => {
     const w = await entryWorld(testDb().db, 'f192a-offer-refuse');
@@ -240,6 +326,42 @@ describe('F-192a(DEC-546 / DEC-548) Offer 入站端口', () => {
     await cancel();
     expect(await entryActionRows(w)).toMatchObject([{ action: 'cancel', reasonCode: 'other' }]);
     expect(await entryActionRows(w)).toHaveLength(1);
+  });
+
+  // 两层防线各锁一次：对方租户自己的事务（行级安全挡住）；对方租户的 ctx 套在本租户事务上（只剩 SQL 里的租户谓词）
+  it.each([
+    ['对方租户自己的事务', 'other'],
+    ['对方租户 ctx 套在本租户事务上', 'own'],
+  ] as const)('跨租户 ctx 取消本租户记录（%s）：被拒 NOT_FOUND，记录、动作日志、审计都不变', async (_name, txOf) => {
+    const w = await entryWorld(testDb().db, `f192a-offer-xtenant-${txOf}-a`);
+    const other = await entryWorld(testDb().db, `f192a-offer-xtenant-${txOf}-b`);
+    const { employee, recordId, business } = await addPending(w, '2026-10-10');
+    const txTenant = txOf === 'other' ? other.session.tenant.id : w.session.tenant.id;
+    await expect(
+      withTenant(w.db, txTenant, (tx) =>
+        cancelPendingEntryForOfferRefusal(tx, portContext(other, business.revision), recordId, { reason: 'other' }),
+      ),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    expect((await entryRecords(w, employee.id))[0]).toMatchObject({ entryStatus: 0 });
+    expect(await entryActionRows(w)).toEqual([]);
+    expect(await auditRows(w, 'employment.entry.cancel')).toEqual([]);
+    expect(await entryActionRows(other)).toEqual([]);
+    expect(await auditRows(other, 'employment.entry.cancel')).toEqual([]);
+  });
+
+  it('空数据范围 ctx 取消：被拒 NOT_FOUND，记录、动作日志、审计都不变', async () => {
+    const w = await entryWorld(testDb().db, 'f192a-offer-empty-scope');
+    const { employee, recordId, business } = await addPending(w, '2026-10-10');
+    await expect(
+      withTenant(w.db, w.session.tenant.id, (tx) =>
+        cancelPendingEntryForOfferRefusal(tx, { ...portContext(w, business.revision), scope: EMPTY_SCOPE }, recordId, {
+          reason: 'other',
+        }),
+      ),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    expect((await entryRecords(w, employee.id))[0]).toMatchObject({ entryStatus: 0 });
+    expect(await entryActionRows(w)).toEqual([]);
+    expect(await auditRows(w, 'employment.entry.cancel')).toEqual([]);
   });
 
   it('已办理入职的记录不能被 Offer 拒绝取消', async () => {
