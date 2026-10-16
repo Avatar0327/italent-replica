@@ -23,8 +23,9 @@ describe('AC-FE-F154 真实种子与提交契约', () => {
     const second = await seedDemo(db().db, { nodeEnv: 'test', clock });
     expect(second.created).toBe(false);
     expect(await inventory()).toEqual(before);
-    // 非租户成员不能借种子公开入口读取示例人员信息。
-    await expect(call('c1540000-0000-4000-8000-000000000099', 'GET', '/api/tenant/idp/careers')).rejects.toThrow('403');
+    // 有效用户切到非所属租户，同一公开入口也不能读到演示记录。
+    const outside = createDemoClient(db().db, clock, 'test').forTenant('c1540000-0000-4000-8000-000000000099');
+    await expect(outside(admin, 'GET', '/api/tenant/idp/careers')).rejects.toThrow('403');
   }, 300_000);
   it('AC-FE-F154-10 写入与删除按真实回执 revision 校验，拒绝伪成功', () => {
     expect(infoReceipt({ id: 'a', revision: 3 }, 2, 'save', 'a').revision).toBe(3);
