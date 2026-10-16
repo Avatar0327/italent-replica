@@ -176,6 +176,48 @@ test('AC-FE-F154-09 批量删除一次确认，逐条回执保留失败项', asy
   expect(calls).toHaveLength(2);
 });
 
+for (const batch of [false, true]) {
+  test(`AC-FE-F154-17 ${batch ? '批量' : '单条'}删除冲突展示实际变化，核对后才用新版本删除`, async ({ page }) => {
+    const calls = await mockInfo(page, {
+      conflictTimes: 1,
+      fields: { 'IDP.WorkShift': { viewable: ['startDate', 'endDate'], editable: [] } },
+    });
+    await enter(page, 'work-shifts');
+    if (batch) {
+      await page.getByRole('checkbox').nth(1).check();
+      await page.getByRole('checkbox').nth(2).check();
+      await page
+        .locator('.page-heading')
+        .getByRole('button', { name: /删\s*除/ })
+        .click();
+    } else {
+      await page.getByRole('button', { name: '删除', exact: true }).first().click();
+    }
+    const dialog = page.getByRole('dialog');
+    const item = dialog.locator('.info-delete-item').first();
+    const remove = item.getByRole('button', { name: '确认删除' });
+    await dialog.getByRole('button', { name: batch ? '删除所选记录' : '确认删除' }).click();
+    if (batch) await expect(dialog.getByRole('button', { name: '已删除' })).toBeVisible();
+    await expect(remove).toBeDisabled();
+    await item.getByRole('button', { name: '重读最新版本' }).click();
+    const difference = item.getByRole('row').filter({ hasText: '结束时间' });
+    await expect(difference).toContainText('2026-12-31');
+    await expect(difference).toContainText('2027-06-30');
+    await expect(item.getByText('字段值无变化', { exact: true })).toHaveCount(0);
+    await expect(item.getByText('2026-10-01 · 2027-06-30', { exact: true })).toBeVisible();
+    await expect(item.getByRole('table')).not.toContainText('姓名');
+    await expect(remove).toBeDisabled();
+    expect(calls).toHaveLength(batch ? 2 : 1);
+    await item.getByRole('button', { name: '已核对差异，继续编辑' }).click();
+    await expect(remove).toBeEnabled();
+    await remove.click();
+    await expect(page.getByText(`共${batch ? 5 : 6}条`, { exact: true })).toBeVisible();
+    expect(calls.map((call) => call.revision)).toEqual(batch ? ['1', '1', '2'] : ['1', '2']);
+    expect(calls.at(-1)).toMatchObject({ method: 'DELETE', path: `/api/tenant/idp/work-shifts/${infoId}` });
+    expect(calls.map((call) => call.body)).toEqual(batch ? [{}, {}, {}] : [{}, {}]);
+  });
+}
+
 async function choose(page: Page, field: string, value: string) {
   await page.getByRole('dialog').getByLabel(field, { exact: true }).click();
   const control = page.getByRole('dialog').getByLabel(field, { exact: true });
