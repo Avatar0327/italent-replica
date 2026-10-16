@@ -985,6 +985,10 @@
 "log": [
 [
 "10-16",
+"03 拟派发 D2·R2·前端·FE-R2b-2a（FormOverlay 契约 PR，Astra 本地）"
+],
+[
+"10-16",
 "DEC-545：#364 先做 FormOverlay 小型契约 PR，合入后继续；#364 改为“等契约 PR”"
 ],
 [
@@ -4876,6 +4880,15 @@
 "pr": 357
 },
 {
+"k": "FE-R2b-2a",
+"n": "FE-R2b-2 前置：FormOverlay 小型契约 PR（标题工具区 / 底栏附加节点 / 样式入口）",
+"s": "assigned",
+"after": [
+"FE-R2b-1"
+],
+"note": "03 拟派发（DEC-545，用户选 1）：Codex Astra high 本地任务（00 用 computer use 在 Codex 发起）、Sol high 审；工作树 wt-fo-contract，分支 codex/FormOverlay-contract，基线 6aa3fd47 · 范围：apps/web/src/foundation/FormOverlay.tsx 加可选标题工具区、底栏附加节点、样式入口，旧调用方不变，预计一两百行 · 合入后 #364 继续"
+},
+{
 "k": "FE-R2b-2",
 "n": "FE-R2b-2 入职四视图 + 办理入职表单",
 "s": "assigned",
@@ -4883,7 +4896,8 @@
 "after": [
 "FE-R2b-1",
 "BE-2a",
-"BE-2b"
+"BE-2b",
+"FE-R2b-2a"
 ],
 "mod": "R2",
 "ms": "D2",
