@@ -79,7 +79,9 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/activation-store.ts#pendingActivations': [
     '#QUEUE_LIMIT',
+    '#QUEUE_SHIFTED_KINDS',
     '#blockerIds',
+    '#finalExecutionDateSql',
     '#pendingActivationState',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     'apps/api/src/modules/employment/timeline.ts#operationKey',
@@ -731,6 +733,8 @@ export const GRAPH: Graph = {
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/employment/forward-update.ts#pendingAfterSource': [
+    'apps/api/src/modules/employment/activation-store.ts#QUEUE_SHIFTED_KINDS',
+    'apps/api/src/modules/employment/activation-store.ts#finalExecutionDateSql',
     'apps/api/src/modules/employment/timeline.ts#operationKey',
     'apps/api/src/modules/employment/timeline.ts#plannedEffectiveDate',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
@@ -818,8 +822,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/timeline.ts#timelinePosition',
   ],
   'apps/api/src/modules/employment/late-transfer.ts#originalPlannedDate': [
-    'apps/api/src/modules/employment/record-store.ts#rowsOf',
-    'apps/api/src/modules/employment/timeline.ts#plannedEffectiveDate',
+    'apps/api/src/modules/employment/timeline.ts#loadPlannedEffectiveDate',
   ],
   'apps/api/src/modules/employment/late-transfer.ts#postponeLateTransfer': [
     'apps/api/src/modules/employment/context.ts#auditEmployment',
@@ -1013,6 +1016,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/references.ts#assertEmploymentDepartmentAvailable': [
     '#assertNotBeforeFounded',
+    '#departmentDisabled',
     'apps/api/src/modules/establishment/org-reader.ts#assertOrg',
     'apps/api/src/modules/org/employment-validity.ts#employmentDepartmentDisable',
     'apps/api/src/modules/org/locks.ts#lockOrganizationSettings',
@@ -1376,6 +1380,10 @@ export const GRAPH: Graph = {
     '#shiftSameDay',
     '#timelinePosition',
   ],
+  'apps/api/src/modules/employment/timeline.ts#loadPlannedEffectiveDate': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    '#plannedEffectiveDate',
+  ],
   'apps/api/src/modules/employment/timeline.ts#neighbor': ['apps/api/src/modules/employment/record-store.ts#rowsOf'],
   'apps/api/src/modules/employment/timeline.ts#neighbors': ['#neighbor'],
   'apps/api/src/modules/employment/timeline.ts#neighborsAt': ['#neighbor'],
@@ -1482,6 +1490,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/record-store.ts#bumpEmploymentBusiness',
     'apps/api/src/modules/employment/record-store.ts#lockEmploymentBusiness',
     'apps/api/src/modules/employment/references.ts#assertEmploymentDepartmentAvailable',
+    'apps/api/src/modules/employment/timeline.ts#loadPlannedEffectiveDate',
     'apps/api/src/modules/employment/transfer-locks.ts#lockTransferBusiness',
     '#ACTIONS',
     '#STATE_AFTER',

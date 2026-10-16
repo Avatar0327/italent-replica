@@ -4968,7 +4968,6 @@
       "module": "idp",
       "primitives": {
         "scope": [
-          "creator scope",
           "visible()"
         ]
       }
@@ -5187,6 +5186,27 @@
         "scope": [
           "creator scope",
           "requestScope"
+        ]
+      }
+    },
+    "GET /api/tenant/idp/tutor-plans": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "status": 200
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "idp",
+      "primitives": {
+        "scope": [
+          "visible()"
         ]
       }
     },

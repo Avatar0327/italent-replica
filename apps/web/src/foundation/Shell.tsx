@@ -51,10 +51,15 @@ function menuItem(menu: MenuNode, navigate: (path: string) => void) {
     icon: <MenuIcon />,
     label: menu.label,
     onTitleClick: () => navigate(menu.path),
-    children: menu.children?.length
-      ? menu.children.map((child) => ({ key: child.path, label: child.label }))
-      : undefined,
+    children: menu.children?.length ? menu.children.map(subItem) : undefined,
   };
+}
+/** 应用下的菜单：叶子按路径导航；目录（如员工自助 > 我的发展计划）只展开，键取菜单键以免与子项路径重复。 */
+type SubItem = { key: string; label: string; children?: SubItem[] };
+function subItem(menu: MenuNode): SubItem {
+  return menu.children?.length
+    ? { key: menu.key, label: menu.label, children: menu.children.map(subItem) }
+    : { key: menu.path, label: menu.label };
 }
 /**
  * 原站左侧导航只列当前应用的菜单，切换应用走顶栏全部菜单面板。

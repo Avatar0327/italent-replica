@@ -8,7 +8,7 @@
     "employment": 57,
     "establishment": 16,
     "evaluation": 34,
-    "idp": 57,
+    "idp": 58,
     "job": 14,
     "org": 14,
     "permission": 44,
@@ -28,5 +28,5 @@
     "talent-review-platform": 1,
     "tenant-settings": 3
   },
-  "total": 665
+  "total": 666
 }

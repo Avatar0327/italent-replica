@@ -104,6 +104,21 @@ export function rereadReceipt(row: { id?: unknown; revision?: unknown } | null |
   return { id, revision };
 }
 
+/**
+ * 三之二、写入回执：成功响应必须是同一条记录且 revision 前进（大于本次提交带的版本），否则按结果未知抛出，
+ * 内核保持锁定、只能回查原单（F-164 第 1 轮 P2-3）。只认 id 会把缺版本或旧版本的回执当成已保存而解锁。
+ */
+export function saveReceipt(
+  row: { id?: unknown; revision?: unknown } | null | undefined,
+  id: string,
+  sent: number | undefined,
+) {
+  const revision = row?.revision;
+  const valid = typeof revision === 'number' && Number.isSafeInteger(revision);
+  if (row?.id !== id || !valid || typeof sent !== 'number' || revision <= sent) throw new Error(t.receiptInvalid);
+  return { id };
+}
+
 // 四、冲突重读后的表单回填已上收进内核 refillDraft（foundation/forms/values.ts，F-142）。
 
 /** 五、新增时必填字段不可提交（无编辑权或完整性不足），创建请求必然被服务端拒绝，保存直接禁用。 */

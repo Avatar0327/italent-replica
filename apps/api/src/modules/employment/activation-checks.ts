@@ -114,11 +114,11 @@ export function ruleRejection(error: unknown): ActivationFailure | null {
 
 async function precheck(tx: Tx, ctx: EmploymentContext, item: PendingActivation): Promise<ActivationFailure | null> {
   const { id: businessId, employeeId, kind } = item;
-  // DEC-186 / DEC-272：调动按实际执行日对齐（共用判定函数）；其他业务按原生效日。
+  // DEC-186 / DEC-272：调动按实际执行日对齐（共用判定函数，起点是 §5.0A 计划生效日，D-8）；其他业务按原生效日。
   const effectiveDate =
     kind === 'transfer'
       ? resolveLateExecution({
-          plannedEffectiveDate: item.effectiveDate,
+          plannedEffectiveDate: item.plannedDate,
           executionDate: tenantLocalDate(ctx.now, ctx.timezone),
         }).effectiveDate
       : item.effectiveDate;

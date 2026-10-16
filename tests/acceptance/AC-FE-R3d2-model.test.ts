@@ -532,15 +532,22 @@ describe('AC-FE-R3d2 页面与注释登记', () => {
     expect(PAGES.routes.filter((item) => item.module === 'idp').map((item) => item.path)).toEqual([
       '/idp/*',
       '/self/idp',
+      // F-164：我辅导的发展计划
+      '/self/idp/tutoring',
     ]);
   });
-  it.each(['idp-plans', 'idp-plan-detail', 'idp-my-plans', 'idp-templates', 'idp-processes', 'idp-demo'])(
-    '注释 %s 已登记且写明原站与决策',
-    (id) => {
-      expect(annotations[id]).toBeDefined();
-      expect(annotations[id]?.decisions).toContain('DEC-494');
-      expect(annotations[id]?.original).toBeTruthy();
-      expect(annotations[id]?.decision).toBeTruthy();
-    },
-  );
+  it.each([
+    'idp-plans',
+    'idp-plan-detail',
+    'idp-my-plans',
+    'idp-tutor-plans',
+    'idp-templates',
+    'idp-processes',
+    'idp-demo',
+  ])('注释 %s 已登记且写明原站与决策', (id) => {
+    expect(annotations[id]).toBeDefined();
+    expect(annotations[id]?.decisions).toContain('DEC-494');
+    expect(annotations[id]?.original).toBeTruthy();
+    expect(annotations[id]?.decision).toBeTruthy();
+  });
 });
