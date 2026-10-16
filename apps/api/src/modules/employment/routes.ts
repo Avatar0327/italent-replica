@@ -4,7 +4,6 @@ import { lockTransferParticipants } from './transfer-locks.js';
 import { listCompletionTodos } from '../transfer/completion.js';
 import { requireTransferButton } from '../transfer/access.js';
 import { type Tx, withTenant } from '@italent/db';
-import { tenantLocalDate } from '@italent/domain';
 import { Hono, type Context } from 'hono';
 import type { CommandGuard } from '../../commands.js';
 import { z } from 'zod';
@@ -51,6 +50,7 @@ import {
 import { splitExitOptions } from './exit-initiation.js';
 import { importEmploymentRecords, normalizeEmploymentImport, previewEmploymentImport } from './forward-import.js';
 import { editEmploymentRecord } from './record-edit.js';
+import { exitEditGuard, requireBusinessWriteScope, type EditTarget } from './replay-guard.js';
 import { prepareInheritance, inheritancePreview } from './inheritance.js';
 import { lockEmploymentBusiness, lockEmploymentEmployee } from './record-store.js';
 import { listEmploymentRecords, loadEmploymentBusiness, loadEmploymentRecord } from './read-model.js';
@@ -538,40 +538,29 @@ function registerBatchEdit(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const input = normalizeBatchEdit(await jsonBody(c));
     await requireEmploymentWrite(ctx, 'update', input.patch, 'Employment.Edit');
     const departmentId = input.patch.fields?.departmentId;
+    const targets: EditTarget[] = [];
     for (const item of input.items) {
       const current = await authorizeBusinessWrite(deps, ctx, item.id);
+      targets.push({ id: item.id, employeeId: current.employeeId, kind: current.kind, patch: input.patch });
       if (departmentId !== undefined)
         await withTenant(deps.db, ctx.tenantId, (tx) =>
           requireScopedEmploymentObject(tx, ctx, current.employeeId, departmentId, item.id),
         );
     }
-    return runWrite(c, deps, ctx, input, async (tx, context) => ({
-      status: 200,
-      body: await batchEditEmploymentRecords(tx, context, input),
-    }));
+    return runWrite(
+      c,
+      deps,
+      ctx,
+      input,
+      async (tx, context) => ({ status: 200, body: await batchEditEmploymentRecords(tx, context, input) }),
+      { guard: exitEditGuard(deps, ctx, targets) },
+    );
   });
 }
 
 async function authorizeBusinessWrite(deps: TenantRouteDeps, ctx: EmploymentContext, id: string, employeeId?: string) {
-  // 幂等重放也重验当前范围，不能依赖可能被命令台账跳过的 execute。
-  const value = await withTenant(deps.db, ctx.tenantId, (tx) =>
-    loadEmploymentBusiness(
-      tx,
-      ctx.tenantId,
-      id,
-      tenantLocalDate(ctx.now, ctx.timezone),
-      ctx.transferTarget ? undefined : ctx.scope,
-      'write',
-    ),
-  );
-  if (!value || (employeeId && value.employeeId !== employeeId)) throw new AppError('NOT_FOUND', '任职业务不存在');
-  if (ctx.trustedScopeBypass)
-    await requirePermission(deps.authorize, {
-      ...ctx,
-      action: 'tenant.employment.write',
-      resource: value.employeeId,
-    });
-  return value;
+  // 幂等重放也重验当前范围，不能依赖可能被命令台账跳过的 execute；同一道判定在命令内由 replay-guard 再过一遍。
+  return withTenant(deps.db, ctx.tenantId, (tx) => requireBusinessWriteScope(tx, deps.authorize, ctx, id, employeeId));
 }
 
 function registerSettings(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
@@ -752,10 +741,15 @@ function registerForwardUpdates(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
       await withTenant(deps.db, ctx.tenantId, (tx) =>
         requireScopedEmploymentObject(tx, ctx, current.employeeId, departmentId, id),
       );
-    return runWrite(c, deps, ctx, input, async (tx, context) => ({
-      status: 200,
-      body: await editEmploymentRecord(tx, context, id, input),
-    }));
+    return runWrite(
+      c,
+      deps,
+      ctx,
+      input,
+      async (tx, context) => ({ status: 200, body: await editEmploymentRecord(tx, context, id, input) }),
+      // F-195：离职 / 退休记录的编辑，重放也在命令内重过范围与 Dimission* 权限链
+      { guard: exitEditGuard(deps, ctx, [{ id, employeeId: current.employeeId, kind: current.kind, patch: input }]) },
+    );
   });
   router.post('/employees/:id/import', (c) => importEmployment(c, deps));
 }
@@ -776,11 +770,15 @@ async function importEmployment(c: Context<TenantEnv>, deps: TenantRouteDeps) {
   };
   return withFailedImportLog(deps.db, task, async () => {
     const input = normalizeEmploymentImport(raw);
-    await authorizeImport(deps, ctx, id, input);
-    return runWrite(c, deps, ctx, input, async (tx, context) => ({
-      status: 200,
-      body: await importWithTransferAuthorization(tx, context, id, input),
-    }));
+    const targets = await authorizeImport(deps, ctx, id, input);
+    return runWrite(
+      c,
+      deps,
+      ctx,
+      input,
+      async (tx, context) => ({ status: 200, body: await importWithTransferAuthorization(tx, context, id, input) }),
+      { guard: exitEditGuard(deps, ctx, targets) },
+    );
   });
 }
 
@@ -798,7 +796,8 @@ async function authorizeImport(
   employeeId: string,
   input: ReturnType<typeof normalizeEmploymentImport>,
   preview = false,
-) {
+): Promise<EditTarget[]> {
+  const targets: EditTarget[] = [];
   if (!preview)
     await requirePermission(deps.authorize, {
       ...ctx,
@@ -815,7 +814,8 @@ async function authorizeImport(
         requireEmploymentScope(ctx, employeeId, business.fields.departmentId);
     } else {
       const patch = normalizeBusinessPatch(item.patch);
-      await authorizeBusinessWrite(deps, ctx, item.id, employeeId);
+      const current = await authorizeBusinessWrite(deps, ctx, item.id, employeeId);
+      targets.push({ id: item.id, employeeId, kind: current.kind, patch });
       await withTenant(deps.db, ctx.tenantId, (tx) => requireEmployeeTransferBusiness(tx, ctx, item.id, patch));
       if (!preview) await requireEmploymentWrite(ctx, 'update', patch, 'Employment.Edit');
       const departmentId = patch.fields?.departmentId;
@@ -825,6 +825,7 @@ async function authorizeImport(
         );
     }
   }
+  return targets;
 }
 
 async function requireImportTransferAccess(

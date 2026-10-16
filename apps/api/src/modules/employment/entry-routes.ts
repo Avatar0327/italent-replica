@@ -30,6 +30,7 @@ import {
   generateEntryContract,
   requireEntryContractAccess,
 } from './entry-contract.js';
+import { pendingEditGuard } from './replay-guard.js';
 import { cancelPendingEntry, deletePendingEntry, editPendingEntry, postponePendingEntry } from './entry-actions.js';
 import { ENTRY_VIEWS, listEntryView } from './entry-views.js';
 import type { EmploymentContext } from './types.js';
@@ -75,7 +76,7 @@ export async function prepareEntryAction<T>(
     commandOnly: Object.keys(payload).length === 0,
   });
   await authorizeBusinessWrite(deps, ctx, id);
-  return { id, ctx, input };
+  return { id, ctx, input, payload };
 }
 
 /**
@@ -137,7 +138,7 @@ export function registerEntryRoutes(
   });
   // F-188 行内“编辑”：计划入职日期（允许过去日期）+ 是否有试用期（必填）；字段写权限同改期按 { effectiveDate } 校验
   router.patch('/pending-entries/:id', async (c) => {
-    const { id, ctx, input } = await prepareEntryAction(
+    const { id, ctx, input, payload } = await prepareEntryAction(
       c,
       deps,
       authorizeBusinessWrite,
@@ -145,10 +146,15 @@ export function registerEntryRoutes(
       // 雇佣关系与入职日期一样按字段写权限校验；不传就不进载荷
       ({ effectiveDate, employType }) => ({ effectiveDate, ...(employType ? { employType } : {}) }),
     );
-    return runWrite(c, deps, ctx, { id, action: 'edit', input }, async (tx, context) => ({
-      status: 200,
-      body: await editPendingEntry(tx, context, id, input),
-    }));
+    return runWrite(
+      c,
+      deps,
+      ctx,
+      { id, action: 'edit', input },
+      async (tx, context) => ({ status: 200, body: await editPendingEntry(tx, context, id, input) }),
+      // F-197：同键重放也按当前对象 / 按钮 / 字段 / 数据范围在命令内复核
+      { guard: pendingEditGuard(deps, ctx, id, payload) },
+    );
   });
   router.delete('/pending-entries/:id', async (c) => {
     const id = uuidParam(c);
