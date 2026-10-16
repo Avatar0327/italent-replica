@@ -5707,9 +5707,10 @@
 "after": [
 "F-192a"
 ],
-"note": "#371 P3 取消入职回归断言补强（只改测试）· 云端 Claude Sonnet 5.5 High 已开会话（session_01Mme5CebeTTceQYe1mx9evG）· 上限 400 行 · PR 号待补 · Sol high 审",
+"note": "#371 P3 取消入职回归断言补强（只改测试）· #375 开发完成 11:20Z（+122/−0，head 19efe95c）· 第 1 轮待 03 发起 Sol high 审",
 "mod": "R2",
-"ms": "D2"
+"ms": "D2",
+"pr": 375
 },
 {
 "k": "F-201",
