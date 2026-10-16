@@ -2,7 +2,7 @@
 "updated": "2026-10-14",
 "stats": {
 "merged": 304,
-"open": 4,
+"open": 5,
 "dec": 567,
 "ev": "43/177"
 },
@@ -983,6 +983,10 @@
 }
 },
 "log": [
+[
+"10-16",
+"D2·R2·后补·F-211 已开 PR #385（开发中）"
+],
 [
 "10-16",
 "D2·R2·后补·F-210（#384）已合并 b156841e"
@@ -6035,9 +6039,10 @@
 "k": "F-211",
 "n": "测试夹具补租户上下文第三批：AC-EV-F092-panel-exit-pg、AC-TRF-163-required、AC-TR-template-delete-pg（P3，只改测试）",
 "s": "assigned",
-"note": "开发中（云端 Claude Sonnet 5.5 High，session_01N9NFPDd3T3EyLkMWrWVRpJ，无 PR）· Codex Sol high 审 · 基于最新 main，不依赖 #383/#384、无需取证",
+"note": "开发中（#385，3 个测试文件 +58/−37，开发方尚未贴“开发完成待审”）· 云端 Claude Sonnet 5.5 High · Codex Sol high 审 · 基于最新 main、无需取证",
 "mod": "R2",
-"ms": "D2"
+"ms": "D2",
+"pr": 385
 },
 {
 "k": "F-203",
