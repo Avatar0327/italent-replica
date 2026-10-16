@@ -13,10 +13,12 @@ import { describe, expect, it } from 'vitest';
 import { pendingActivations } from '../../apps/api/src/modules/employment/activation-store.js';
 import { runEmploymentTransition } from '../../apps/api/src/modules/employment/transitions.js';
 import { queueContext } from './AC-EXIT-queue-support.js';
-import { gateWorld, leaveBody } from './AC-EXIT-gate-support.js';
+import { addedRows, diffRows, expectChanges, gateWorld, leaveBody } from './AC-EXIT-gate-support.js';
 
 const database = useTestDb();
 const TODAY = '2026-10-06';
+/** 直接离职创建一次产生的 outbox 事件（按 event_type 排序）。 */
+const OUTBOX_DIRECT = ['employment.business.create', 'employment.business.state.approved', 'exit.request.create'];
 
 async function world(label: string) {
   const w = await gateWorld(database().db, label, { today: TODAY });
@@ -31,7 +33,28 @@ describe('AC-DM-32 B-80 §18.1 五个关口（B3-3 前离职一律不落地）',
     const created = await w.createdLeave(employee.id, leaveBody('2026-10-01', 'direct'));
     expect(created.status).toBe('approved');
     const after = await w.stateOf(employee.id);
-    expect({ ...after, businesses: before.businesses, exits: before.exits, outbox: before.outbox }).toEqual(before);
+    // 创建本身会变的对象各带断言（新增行与内容、既有行原样保留）；其余（时间轴、合同、审批实例 / 日志、exit_effects、
+    // 生效尝试）整份逐项相等
+    expectChanges(before, after, {
+      businesses: (b, a) => expect(addedRows(b, a)).toMatchObject([{ id: created.id, state: 'approved' }]),
+      exits: (b, a) => expect(addedRows(b, a)).toMatchObject([{ business_id: created.id, mode: 'direct' }]),
+      audits: (b, a) =>
+        expect(addedRows(b, a).map((row) => row.action)).toEqual([
+          'employment.business.create',
+          'employment.business.state.approved',
+          'exit.request.create',
+        ]),
+      ledger: (b, a) =>
+        expect(addedRows(b, a)).toMatchObject([
+          { response_status: 201, command_type: 'POST /api/tenant/employment/employees/:id/businesses' },
+        ]),
+      outboxEvents: (b, a) => {
+        const added = addedRows(b, a);
+        expect(added.map((row) => row.event_type)).toEqual(OUTBOX_DIRECT);
+        expect(added.every((row) => row.business_id === created.id)).toBe(true);
+      },
+      outbox: (b, a) => expect(Number(a[0]!.n) - Number(b[0]!.n)).toBe(OUTBOX_DIRECT.length),
+    });
     expect((await w.session.records(employee.id, '2026-10-10')).map((r) => r.kind)).toEqual(['hire']);
     expect(await w.exitRow(created.id)).toMatchObject({ mode: 'direct', initiator: 'hr', pre_release_date: null });
   });
@@ -50,21 +73,39 @@ describe('AC-DM-32 B-80 §18.1 五个关口（B3-3 前离职一律不落地）',
     const before = await w.stateOf(employee.id);
     expect(await w.approve(draft, `${TODAY}T02:00:00Z`)).toMatchObject({ status: 'approved' });
     const after = await w.stateOf(employee.id);
-    expect({ timeline: after.timeline, contracts: after.contracts, attempts: after.attempts }).toEqual({
-      timeline: before.timeline,
-      contracts: before.contracts,
-      attempts: before.attempts,
+    // 审批通过走可信端口 transitions.approve：只推进业务头 / 状态事件，写一条审计、一条 outbox、一条台账；审批实例与日志
+    // 不由本端口改动，和时间轴、合同、扩展行、exit_effects、生效尝试一起整份逐项相等
+    expectChanges(before, after, {
+      businesses: (b, a) => {
+        const diff = diffRows(b, a, 'id');
+        expect([diff.added, diff.removed]).toEqual([[], []]);
+        // 计数列在 PGlite 是 number、真 PG 是 bigint 字符串，统一转 number 比较
+        const [change] = diff.changed;
+        expect(diff.changed).toHaveLength(1);
+        expect(change!.before).toMatchObject({ id: draft.id, state: 'in_review', revision: 2 });
+        expect(change!.after).toMatchObject({ id: draft.id, state: 'approved', revision: 3 });
+        expect(Number(change!.after.events)).toBe(Number(change!.before.events) + 1);
+        expect(Number(change!.after.versions)).toBe(Number(change!.before.versions));
+      },
+      audits: (b, a) =>
+        expect(addedRows(b, a)).toMatchObject([{ action: 'employment.business.state.approved', object_id: draft.id }]),
+      ledger: (b, a) => expect(addedRows(b, a)).toMatchObject([{ response_status: 200 }]),
+      outboxEvents: (b, a) =>
+        expect(addedRows(b, a)).toMatchObject([
+          {
+            business_id: draft.id,
+            event_type: 'employment.business.state.approved',
+            payload: { before: { state: 'in_review' }, after: { state: 'approved' } },
+          },
+        ]),
+      outbox: (b, a) => expect(Number(a[0]!.n) - Number(b[0]!.n)).toBe(1),
     });
     const queue = await withTenant(w.db, w.session.tenant.id, (tx) =>
       pendingActivations(tx, queueContext(w, '2026-10-18'), employee.id),
     );
     expect(queue).toEqual([]);
     expect(await w.runScheduler('2026-10-18T01:00:00Z')).toMatchObject({ activated: [], failed: [], suspended: [] });
-    const final = await w.stateOf(employee.id);
-    expect({ timeline: final.timeline, attempts: final.attempts }).toEqual({
-      timeline: before.timeline,
-      attempts: before.attempts,
-    });
+    expect(await w.stateOf(employee.id)).toEqual(after);
     expect((await w.business(draft.id)).status).toBe('approved');
   });
 

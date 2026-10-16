@@ -3,7 +3,7 @@
  * 在 activationWorld（带审批兜底流程、调出 / 调入部门、已入职员工）之上加：受限授权的 HTTP 入口、
  * 离职相关读取（扩展行、状态快照）、造数（审批中的转正等合成申请、已落地的联动未完成调动）。
  * “前后读取逐项相等”统一用 stateOf：时间轴、业务头与版本 / 事件计数、扩展行、合同、审批实例 / 任务、
- * 任职 outbox 与生效尝试的计数。
+ * 任职 outbox 与生效尝试的计数，再加 F-196 补的四类：exit_effects、业务审计、审批日志、成功命令台账。
  */
 import { randomUUID } from 'node:crypto';
 import type { Authorizer } from '@italent/api';
@@ -31,6 +31,114 @@ export const denyButtons =
   (...codes: string[]): Authorizer =>
   (request) =>
     !(request.action === 'object.button' && codes.some((code) => String(request.resource).includes(`#${code}@`)));
+
+/**
+ * 前后读取比较用的状态快照（设计 §18.1 / B-80 / B-86：逐项相等），按租户 + 员工（或其业务 / 审批实例）过滤，
+ * 全部有稳定排序；时间戳等易变列不进快照。F-196 补的四类（#362 第 1 轮 P3-5）：
+ * effects = exit_effects；audits = 业务审计（audit_events 的动作 / 对象 / 前后值）；
+ * approvalLogs = 审批实例动作日志；ledger = 成功（< 400）命令台账，按命令键，只取响应落在本员工的业务 / 员工 / 审批实例上的条目。
+ */
+export async function stateSnapshot(db: Db, tenantId: string, employeeId: string) {
+  const t = tenantId;
+  const e = employeeId;
+  const rows = <T = Record<string, unknown>>(statement: ReturnType<typeof sql>) =>
+    withTenant(db, t, async (tx) => rowsOf<T>(await tx.execute(statement)));
+  const ownBusinesses = sql`SELECT id::text FROM employment_business_objects WHERE tenant_id=${t}
+    AND employee_id=${e}::uuid`;
+  // 审批动作的成功回执是 { instanceId }（approval/actions.ts ok()），审批实例详情回执才是 { id }
+  const ownInstances = sql`SELECT id::text FROM approval_instances WHERE tenant_id=${t}
+    AND subject_employee_id=${e}::uuid`;
+  return {
+    timeline: await rows(sql`SELECT record_id, start_date::text, sort_order FROM employment_timeline
+      WHERE tenant_id=${t} AND employee_id=${e}::uuid ORDER BY start_date, sort_order`),
+    businesses: await rows(sql`SELECT b.id, b.revision,
+        (SELECT count(*) FROM employment_payload_versions p
+          WHERE p.tenant_id=b.tenant_id AND p.business_id=b.id) AS versions,
+        (SELECT count(*) FROM employment_state_events s
+          WHERE s.tenant_id=b.tenant_id AND s.business_id=b.id) AS events,
+        (SELECT state FROM employment_state_events s WHERE s.tenant_id=b.tenant_id AND s.business_id=b.id
+          ORDER BY event_no DESC LIMIT 1) AS state
+      FROM employment_business_objects b WHERE b.tenant_id=${t} AND b.employee_id=${e}::uuid ORDER BY b.id`),
+    exits: await rows(sql`SELECT * FROM exit_requests WHERE tenant_id=${t} AND employee_id=${e}::uuid
+      ORDER BY business_id`),
+    contracts: await rows(sql`SELECT id, status, end_date::text, deleted FROM contract_records
+      WHERE tenant_id=${t} AND employee_id=${e}::uuid ORDER BY id`),
+    instances: await rows(sql`SELECT i.id, i.status, i.revision,
+        (SELECT string_agg(k.status, ',' ORDER BY k.id) FROM approval_tasks k
+          WHERE k.tenant_id=i.tenant_id AND k.instance_id=i.id) AS tasks
+      FROM approval_instances i WHERE i.tenant_id=${t} AND i.subject_employee_id=${e}::uuid ORDER BY i.id`),
+    outbox: await rows(sql`SELECT count(*) AS n FROM employment_outbox WHERE tenant_id=${t}
+      AND employee_id=${e}::uuid`),
+    outboxEvents: await rows(sql`SELECT business_id, event_type, object_type, object_id, command_id, payload
+      FROM employment_outbox WHERE tenant_id=${t} AND employee_id=${e}::uuid
+      ORDER BY business_id, event_type, object_type, object_id, command_id, id`),
+    attempts: await rows(sql`SELECT count(*) AS n FROM employment_activation_attempts WHERE tenant_id=${t}
+      AND employee_id=${e}::uuid`),
+    effects: await rows(sql`SELECT business_id, phase, kind, target_type, target_id, detail, command_id
+      FROM exit_effects WHERE tenant_id=${t} AND employee_id=${e}::uuid
+      ORDER BY business_id, phase, kind, target_type, target_id, command_id, id`),
+    audits: await rows<{
+      action: string;
+    }>(sql`SELECT action, object_type, object_id, operation, actor_user_id, before, after, command_id
+      FROM audit_events WHERE tenant_id=${t}
+        AND (scope_employee_id=${e}::uuid OR object_id=${e}::text OR object_id IN (${ownBusinesses}))
+      ORDER BY action, object_type, object_id, command_id, occurred_at, id`),
+    approvalLogs: await rows(sql`SELECT l.instance_id, l.seq, l.round, l.node_key, l.task_id, l.event,
+        l.actor_user_id, l.detail
+      FROM approval_instance_logs l JOIN approval_instances i ON i.tenant_id=l.tenant_id AND i.id=l.instance_id
+      WHERE l.tenant_id=${t} AND i.subject_employee_id=${e}::uuid ORDER BY l.instance_id, l.seq`),
+    ledger: await rows(sql`SELECT command_id, command_type, response_status, actor_user_id, request_hash,
+        md5(response_body::text) AS body_hash
+      FROM command_ledger WHERE tenant_id=${t} AND response_status < 400
+        AND (response_body->>'id' = ${e}::text OR response_body->>'employeeId' = ${e}::text
+          OR response_body->>'id' IN (${ownBusinesses}) OR response_body->>'businessId' IN (${ownBusinesses})
+          OR response_body->>'id' IN (${ownInstances}) OR response_body->>'instanceId' IN (${ownInstances}))
+      ORDER BY command_id`),
+  };
+}
+
+/** 按 key 对齐前后两份行：新增、删除、同 key 内容有变。 */
+export function diffRows<T extends Record<string, unknown>>(before: readonly T[], after: readonly T[], key: keyof T) {
+  const old = new Map(before.map((row) => [String(row[key]), row]));
+  const now = new Map(after.map((row) => [String(row[key]), row]));
+  return {
+    added: after.filter((row) => !old.has(String(row[key]))),
+    removed: before.filter((row) => !now.has(String(row[key]))),
+    changed: after
+      .filter((row) => old.has(String(row[key])) && JSON.stringify(old.get(String(row[key]))) !== JSON.stringify(row))
+      .map((row) => ({ before: old.get(String(row[key]))!, after: row })),
+  };
+}
+
+/**
+ * 只追加的行集（审计、台账、outbox、exit_effects、审批日志）：既有行必须原样还在，返回新增行。
+ * 行是纯 JSON，按序列化值比较；既有行被删或被改都会在这里判红。
+ */
+export function addedRows<T>(before: readonly T[], after: readonly T[]): T[] {
+  const kept = new Set(after.map((row) => JSON.stringify(row)));
+  expect(
+    before.filter((row) => !kept.has(JSON.stringify(row))),
+    '只追加的行集：既有行不得被删除或改动',
+  ).toEqual([]);
+  const seen = new Set(before.map((row) => JSON.stringify(row)));
+  return after.filter((row) => !seen.has(JSON.stringify(row)));
+}
+
+type Changes = { [K in keyof StateSnapshot]?: (before: StateSnapshot[K], after: StateSnapshot[K]) => void };
+
+/**
+ * 前后快照比较：changes 里列出的键是“预期会变”的对象，每个键必须带一个断言函数（预期的新增行与内容，
+ * 既有行是否保留），不能只排除不断言；其余键整份逐项相等。
+ */
+export function expectChanges(before: StateSnapshot, after: StateSnapshot, changes: Changes) {
+  const changed = Object.keys(changes) as (keyof StateSnapshot)[];
+  for (const key of changed) (changes[key] as (b: unknown, a: unknown) => void)(before[key], after[key]);
+  const keep = (state: StateSnapshot) =>
+    Object.fromEntries(Object.entries(state).filter(([k]) => !changed.includes(k as never)));
+  expect(keep(after), `未声明变化的对象（除 ${changed.join(' / ')} 外）必须整份相等`).toEqual(keep(before));
+}
+
+export type StateSnapshot = Awaited<ReturnType<typeof stateSnapshot>>;
 
 export async function gateWorld(db: Db, label: string, options: { today?: string } = {}) {
   const today = options.today ?? '2026-10-06';
@@ -135,34 +243,7 @@ export async function gateWorld(db: Db, label: string, options: { today?: string
     )[0];
 
   /** 前后读取比较用的状态快照（设计 §18.1 / B-80 / B-86：逐项相等）。 */
-  async function stateOf(employeeId: string) {
-    const t = w.session.tenant.id;
-    const e = employeeId;
-    return {
-      timeline: await sqlRows(sql`SELECT record_id, start_date::text, sort_order FROM employment_timeline
-        WHERE tenant_id=${t} AND employee_id=${e}::uuid ORDER BY start_date, sort_order`),
-      businesses: await sqlRows(sql`SELECT b.id, b.revision,
-          (SELECT count(*) FROM employment_payload_versions p
-            WHERE p.tenant_id=b.tenant_id AND p.business_id=b.id) AS versions,
-          (SELECT count(*) FROM employment_state_events s
-            WHERE s.tenant_id=b.tenant_id AND s.business_id=b.id) AS events,
-          (SELECT state FROM employment_state_events s WHERE s.tenant_id=b.tenant_id AND s.business_id=b.id
-            ORDER BY event_no DESC LIMIT 1) AS state
-        FROM employment_business_objects b WHERE b.tenant_id=${t} AND b.employee_id=${e}::uuid ORDER BY b.id`),
-      exits: await sqlRows(sql`SELECT * FROM exit_requests WHERE tenant_id=${t} AND employee_id=${e}::uuid
-        ORDER BY business_id`),
-      contracts: await sqlRows(sql`SELECT id, status, end_date::text, deleted FROM contract_records
-        WHERE tenant_id=${t} AND employee_id=${e}::uuid ORDER BY id`),
-      instances: await sqlRows(sql`SELECT i.id, i.status, i.revision,
-          (SELECT string_agg(k.status, ',' ORDER BY k.id) FROM approval_tasks k
-            WHERE k.tenant_id=i.tenant_id AND k.instance_id=i.id) AS tasks
-        FROM approval_instances i WHERE i.tenant_id=${t} AND i.subject_employee_id=${e}::uuid ORDER BY i.id`),
-      outbox: await sqlRows(sql`SELECT count(*) AS n FROM employment_outbox WHERE tenant_id=${t}
-        AND employee_id=${e}::uuid`),
-      attempts: await sqlRows(sql`SELECT count(*) AS n FROM employment_activation_attempts WHERE tenant_id=${t}
-        AND employee_id=${e}::uuid`),
-    };
-  }
+  const stateOf = (employeeId: string) => stateSnapshot(db, w.session.tenant.id, employeeId);
 
   /** 同租户的第二个用户（HTTP 入口以其身份发起写入，创建者与主用户不同）。 */
   async function otherUser() {

@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest';
 import { runEmploymentTransition } from '../../apps/api/src/modules/employment/transitions.js';
 import { approvalWorld, transferScene } from './AC-APV-support.js';
 import { installExitSeeds } from './AC-EXIT-support.js';
-import { denyButtons, gateWorld, leaveBody } from './AC-EXIT-gate-support.js';
+import { denyButtons, gateWorld, leaveBody, stateSnapshot } from './AC-EXIT-gate-support.js';
 
 const database = useTestDb();
 const LATER = '2026-10-20';
@@ -78,11 +78,14 @@ describe('AC-DM-33 B-86 通用 PATCH businesses/:id', () => {
   it('对照：日期与当前值相同 + 非日期字段 → 200，只改非日期字段；无 DimissionEdit 先得 403', async () => {
     const { w, draft } = await states();
     const body = { lastWorkDate: LATER, fields: { place: '新地点' } };
+    const employeeId = (await w.business(draft.id)).employeeId;
+    const before = await w.stateOf(employeeId);
     const denied = await w.restricted(denyButtons('Employment.DimissionEdit'))('PATCH', `/businesses/${draft.id}`, {
       ifMatch: draft.revision,
       body: { lastWorkDate: '2026-10-25' },
     });
     expect(denied.status).toBe(403);
+    expect(await w.stateOf(employeeId)).toEqual(before);
     const ok = await w.session.request('PATCH', `/businesses/${draft.id}`, { ifMatch: draft.revision, body });
     expect(ok.status, await ok.clone().text()).toBe(200);
     expect(await w.business(draft.id)).toMatchObject({ effectiveDate: '2026-10-21', fields: { place: '新地点' } });
@@ -130,10 +133,12 @@ describe('AC-DM-33 B-86 审批编辑与编辑并同意', () => {
 
   it('审批编辑改最后工作日：400 EXIT_DATE_IMMUTABLE，任务 / 实例 / 业务不变；改非日期字段 200', async () => {
     const { w, s, draft, instance, task } = await scene('immutable-edit', 'separate');
+    const before = await stateSnapshot(w.db, w.tenant.id, s.subject.employeeId);
     const rejected = await w.taskAction(s.outHead.userId, task.id, 'edit', instance.revision, {
       fields: { lastWorkDate: '2026-10-25' },
     });
     expect(await reasonOf(rejected)).toMatchObject({ status: 400, reason: 'EXIT_DATE_IMMUTABLE' });
+    expect(await stateSnapshot(w.db, w.tenant.id, s.subject.employeeId)).toEqual(before);
     const after = await w.detail(instance.id);
     expect({ revision: after.revision, tasks: after.tasks }).toEqual({
       revision: instance.revision,
@@ -149,10 +154,12 @@ describe('AC-DM-33 B-86 审批编辑与编辑并同意', () => {
 
   it('编辑并同意带日期改动：整个同意动作失败，任务仍待办、节点不推进；日期未变的同意通过', async () => {
     const { w, s, draft, instance, task } = await scene('immutable-approve', 'with_approve');
+    const before = await stateSnapshot(w.db, w.tenant.id, s.subject.employeeId);
     const rejected = await w.taskAction(s.outHead.userId, task.id, 'approve', instance.revision, {
       fields: { lastWorkDate: '2026-10-25', place: '改地点' },
     });
     expect(await reasonOf(rejected)).toMatchObject({ status: 400, reason: 'EXIT_DATE_IMMUTABLE' });
+    expect(await stateSnapshot(w.db, w.tenant.id, s.subject.employeeId)).toEqual(before);
     const after = await w.detail(instance.id);
     expect(after.revision).toBe(instance.revision);
     expect(w.pending(after).map((t) => t.id)).toEqual([task.id]);
