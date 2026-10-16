@@ -1,5 +1,5 @@
 import dayjs from 'dayjs';
-import { ApiError, type ApiClient, type Command } from '../foundation/client.js';
+import { ApiError, type ApiClient, type Command, type PageResult } from '../foundation/client.js';
 import { messages as kernel } from '../foundation/forms/messages.js';
 import { projectFields, isBlank, type Values } from '../foundation/forms/values.js';
 import type { EntryViewItem } from '../../../api/src/modules/employment/entry-views.js';
@@ -35,7 +35,7 @@ export async function request<T>(api: ApiClient, path: string, options?: Paramet
     throw error;
   }
 }
-export async function readEntry(api: ApiClient, row: Row): Promise<Values> {
+export async function readEntry(api: ApiClient, row: Row, fresh = false): Promise<Values> {
   const [business, record, employee] = await Promise.all([
     request<Values>(api, `${base}/businesses/${row.id}`),
     request<Values>(api, `${base}/records/${row.id}`),
@@ -46,8 +46,22 @@ export async function readEntry(api: ApiClient, row: Row): Promise<Values> {
     ...(record.fields as Values),
     name: employee.name,
     code: employee.code,
-    probation: business.probation ?? row.probation ?? null,
+    probation: fresh ? await latestProbation(api, business, record) : (row.probation ?? null),
   };
+}
+// F-188 只在四视图列表返回 probation；冲突重读不能拿旧行补成“最新值”。按服务端分页定位原单。
+async function latestProbation(api: ApiClient, business: Values, record: Values) {
+  let view = record.entryStatus === 1 ? 'cancelled' : 'all';
+  if (record.employeeStatus !== 1) view = 'hired';
+  for (let page = 1; ; page++) {
+    const result = await request<PageResult<Row>>(api, `${collection}?view=${view}&page=${page}&pageSize=100`);
+    const current = result.items.find((item) => item.id === business.id);
+    if (current) {
+      if (current.revision !== business.revision) throw new Error(kernel.unknown);
+      return current.probation ?? null;
+    }
+    if (result.items.length < 100) throw new Error(kernel.unknown);
+  }
 }
 export function receipt(value: unknown, row: Row, command: Command, action: string): Values {
   const result = value as Values | null;

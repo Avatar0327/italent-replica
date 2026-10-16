@@ -383,3 +383,118 @@ test('AC-FE-R2b2-14 编辑冲突重读从服务端列表恢复未改动的试用
   await expect(item(dialog, '是否有试用期').locator('.ant-select-selection-item')).toHaveText('是');
   await expect(item(dialog, '计划入职日期').getByRole('textbox')).toHaveValue('2026-10-25');
 });
+
+test('AC-FE-R2b2-15 字段写权与删除对象权不足时关闭入口，合同不可创建时不提交合同', async ({ page, baseURL }) => {
+  const state = await entryPage(page, baseURL!);
+  await page.route('**/permission/me/objects/*', (route) =>
+    route.fulfill({
+      json: {
+        objectCode: decodeURIComponent(new URL(route.request().url()).pathname.split('/').at(-1)!),
+        dataOperations: { update: true },
+        viewableFields: ['id', 'revision'],
+        editableFields: [],
+        buttons: ['Employment.Edit', 'Employment.Delete'].map((buttonCode) => ({ buttonCode, level: 'detail' })),
+      },
+    }),
+  );
+  await page.reload();
+  await expect(row(page).getByRole('button', named('编辑'))).toBeDisabled();
+  await row(page).getByRole('checkbox').check();
+  await page
+    .locator('.ant-tabs-extra-content')
+    .getByRole('button', { name: /更多操作/ })
+    .click();
+  await expect(page.getByRole('menuitem', named('改期入职'))).toHaveAttribute('aria-disabled', 'true');
+  await page.keyboard.press('Escape');
+  await row(page)
+    .getByRole('button', { name: /更多|▾/ })
+    .click();
+  await expect(page.getByRole('menuitem', named('删除人员'))).toHaveCount(0);
+  await page.getByRole('menuitem', named('入职')).click();
+  const dialog = page.getByRole('dialog', { name: /^入职(?:\s|$)/ });
+  await expect(item(dialog, '法人公司').locator('.ant-select')).toHaveCount(0);
+  await choose(dialog, '是否有试用期', '否');
+  await dialog.getByRole('button', save).click();
+  await expect(dialog).toHaveCount(0);
+  expect(state.writes[0]!.body).toEqual({ probation: false });
+});
+
+test('AC-FE-R2b2-16 写成功后等整页重读，读失败维持 unknown 锁', async ({ page, baseURL }) => {
+  const state = await entryPage(page, baseURL!);
+  let release!: () => void;
+  const hold = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let reading = false;
+  await page.route('**/pending-entries?*', async (route) => {
+    if (!state.writes.length) return route.fallback();
+    reading = true;
+    await hold;
+    return route.fulfill({ status: 503, json: { error: { code: 'UNAVAILABLE', message: '合成读失败' } } });
+  });
+  const dialog = await actionDialog(page, 'edit');
+  await dialog.getByRole('button', save).click();
+  await expect.poll(() => reading).toBe(true);
+  await expect(dialog.getByRole('button', save)).toBeDisabled();
+  expect(state.writes).toHaveLength(1);
+  release();
+  await expect(dialog.getByRole('button', named('回查原单'))).toBeVisible();
+  await expect(dialog.getByRole('button', save)).toBeDisabled();
+  expect(state.writes).toHaveLength(1);
+});
+
+test('AC-FE-R2b2-17 服务端裁剪字段只展示占位，不补出名称或用于搜索', async ({ page, baseURL }) => {
+  const state = await entryPage(page, baseURL!);
+  await page.route('**/pending-entries?*', (route) =>
+    route.fulfill({
+      json: {
+        items: [{ id: entryId, employeeId: state.row.employeeId, revision: 4, probation: null }],
+        page: 1,
+        pageSize: 30,
+        hasDataPermission: true,
+      },
+    }),
+  );
+  await page.reload();
+  await expect(page.getByRole('row').filter({ has: page.getByRole('button', named('编辑')) })).toContainText('--');
+  await expect(page.getByText('合成入职甲', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('合成入职部门', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', named('姓名 ▾'))).toBeDisabled();
+  expect(state.writes).toEqual([]);
+});
+for (const status of [400, 403, 409])
+  test(`AC-FE-R2b2-18 编辑 ${status} 保留后端原文`, async ({ page, baseURL }) => {
+    await entryPage(page, baseURL!);
+    const message = `合成后端 ${status} 原文`;
+    await page.route('**/pending-entries/*', (route) =>
+      route.request().method() === 'PATCH'
+        ? route.fulfill({ status, json: { error: { code: 'BUSINESS_REJECTED', message } } })
+        : route.fallback(),
+    );
+    const dialog = await actionDialog(page, 'edit');
+    await dialog.getByRole('button', save).click();
+    await expect(dialog.getByText(message, { exact: true })).toBeVisible();
+  });
+
+test('AC-FE-R2b2-19 编辑未知后其他动作共用原单锁', async ({ page, baseURL }) => {
+  await entryPage(page, baseURL!);
+  let writes = 0;
+  await page.route('**/pending-entries/*', (route) => {
+    if (route.request().method() === 'GET') return route.fallback();
+    writes++;
+    return route.fulfill({ json: {} });
+  });
+  let dialog = await actionDialog(page, 'edit');
+  await dialog.getByRole('button', save).click();
+  await dialog.getByRole('button', named('取消')).click();
+  dialog = await selectedAction(page, '改期入职');
+  await expect(dialog.getByRole('button', save)).toBeDisabled();
+  await dialog.getByRole('button', named('取消')).click();
+  dialog = await onboard(page);
+  await expect(dialog.getByRole('button', save)).toBeDisabled();
+  await expect(dialog.getByRole('button', named('生成邮箱'))).toBeDisabled();
+  await dialog.getByRole('button', named('取消')).click();
+  dialog = await actionDialog(page, 'delete');
+  await expect(dialog.getByRole('button', named('是'))).toBeDisabled();
+  expect(writes).toBe(1);
+});

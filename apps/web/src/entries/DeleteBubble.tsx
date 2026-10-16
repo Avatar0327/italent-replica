@@ -31,7 +31,7 @@ export function DeleteBubble({
       okText={m.yes}
       cancelText={m.no}
       placement="left"
-      okButtonProps={{ disabled: !p.remove || cmd.form.locked, loading: cmd.form.busy }}
+      okButtonProps={{ 'aria-label': m.yes, disabled: !p.remove || cmd.form.locked, loading: cmd.form.busy }}
       cancelButtonProps={{ disabled: cmd.form.busy }}
       onCancel={close}
       onConfirm={async () => {

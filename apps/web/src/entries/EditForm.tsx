@@ -24,41 +24,7 @@ export function EditForm({
   const p = useEntryAccess();
   const cmd = useEntryCommand(row, 'edit', data);
   const allowed = p.edit && p.field('effectiveDate').editable;
-  const field = (name: string, label: string, control: FormField['control']): FormField => ({
-    name,
-    label,
-    control,
-    rules: required,
-    access: { visible: true, editable: allowed && (name !== 'employType' || p.field(name).editable) },
-  });
-  const full = cmd.full;
-  const fields = [
-    readOnly(m.person, String(full.name ?? '--')),
-    readOnly(m.code, String(full.code ?? '--')),
-    readOnly(
-      m.department,
-      <NameOf path={refPaths.departmentId} id={full.departmentId} asOf={String(full.effectiveDate)} />,
-    ),
-    readOnly(m.position, <NameOf path={refPaths.positionId} id={full.positionId} asOf={String(full.effectiveDate)} />),
-    readOnly(m.organization),
-    field('effectiveDate', m.plannedDate, <TenantDatePicker />),
-    readOnly(m.entryKind, m.kind[full.kind as keyof typeof m.kind] ?? '--'),
-    readOnly(m.employmentForm),
-    {
-      ...field(
-        'employType',
-        m.employType,
-        <Select
-          placeholder={m.choose}
-          options={Object.entries(m.relation).map(([value, label]) => ({ value, label }))}
-        />,
-      ),
-      display: m.relation[full.employType as keyof typeof m.relation] ?? '--',
-    },
-    readOnly(m.workplace, String(full.workplace ?? '--')),
-    field('probation', m.fields.probation, <TrialSelect />),
-    readOnly(m.profitCenter),
-  ];
+  const fields = editFields(cmd.full, p, allowed);
   const editable = fields.filter((f) => f.access.editable).map((f) => f.name);
   return (
     <FormOverlay
@@ -93,4 +59,41 @@ export function EditForm({
       }}
     />
   );
+}
+
+function editFields(full: Values, p: ReturnType<typeof useEntryAccess>, allowed: boolean): FormField[] {
+  const field = (name: string, label: string, control: FormField['control']): FormField => ({
+    name,
+    label,
+    control,
+    rules: required,
+    access: { visible: true, editable: allowed && (name !== 'employType' || p.field(name).editable) },
+  });
+  return [
+    readOnly(m.person, String(full.name ?? '--')),
+    readOnly(m.code, String(full.code ?? '--')),
+    readOnly(
+      m.department,
+      <NameOf path={refPaths.departmentId} id={full.departmentId} asOf={String(full.effectiveDate)} />,
+    ),
+    readOnly(m.position, <NameOf path={refPaths.positionId} id={full.positionId} asOf={String(full.effectiveDate)} />),
+    readOnly(m.organization),
+    field('effectiveDate', m.plannedDate, <TenantDatePicker />),
+    readOnly(m.entryKind, m.kind[full.kind as keyof typeof m.kind] ?? '--'),
+    readOnly(m.employmentForm),
+    {
+      ...field(
+        'employType',
+        m.employType,
+        <Select
+          placeholder={m.choose}
+          options={Object.entries(m.relation).map(([value, label]) => ({ value, label }))}
+        />,
+      ),
+      display: m.relation[full.employType as keyof typeof m.relation] ?? '--',
+    },
+    readOnly(m.workplace, String(full.place ?? '--')),
+    field('probation', m.fields.probation, <TrialSelect />),
+    readOnly(m.profitCenter),
+  ];
 }

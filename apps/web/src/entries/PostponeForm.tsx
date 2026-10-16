@@ -18,6 +18,7 @@ export function PostponeForm({ row, onClose, refresh }: { row: Row; onClose(): v
     <FormOverlay
       open
       mode="modal"
+      className="entry-postpone"
       title={m.postpone}
       titleExtra={titleExtra}
       recordKey={row.id}

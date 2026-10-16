@@ -30,7 +30,7 @@ export function useEntryCommand(row: Row, action: string, baseline: Values = row
       ...command,
       reload: () =>
         command.reread(async () => {
-          const values = await readEntry(api, row);
+          const values = await readEntry(api, row, true);
           return { id: String(values.id), revision: Number(values.revision), values };
         }),
     },

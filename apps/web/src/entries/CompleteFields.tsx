@@ -49,7 +49,8 @@ function MonthSelect({
       value={value}
       disabled={lock.disabled}
       placeholder={m.choose}
-      options={Array.from({ length: 12 }, (_, i) => ({ value: i + 1, label: String(i + 1) }))}
+      // TODO(需取证 #368)：当前证据只验证 1 个月，完整下拉候选取得证据后补齐。
+      options={[{ value: 1, label: '1' }]}
       onChange={lock.guard((months: number) => {
         onChange?.(months);
         if (replace || isBlank(form.getFieldValue(target))) form.setFieldValue(target, endOfTerm(date, months));
