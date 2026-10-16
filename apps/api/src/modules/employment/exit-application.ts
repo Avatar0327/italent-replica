@@ -12,6 +12,7 @@ import { assertHandoverEmployee, EXIT_GATE_PASS, requireExitGate } from './exit-
 import { assertExitDictionaryEnabled } from './exit-dictionaries.js';
 import {
   applyInitiationSubset,
+  assertBusinessInputSubset,
   assertInitiatorRelation,
   exitOptionsSchema,
   type ExitInitiation,
@@ -59,6 +60,7 @@ export async function createExitApplication(
 ): Promise<EmploymentBusiness> {
   const employeeId = input.employeeId.toLowerCase();
   const exit = applyInitiationSubset(input.initiation, input.mode, input.exit ?? {});
+  assertBusinessInputSubset(input.initiation, input);
   const normalized = normalizeEmploymentInput(ctx, {
     kind: 'leave',
     mode: input.mode,

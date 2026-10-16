@@ -23,6 +23,33 @@ const ACCESS = `${SRC}/transfer/access.ts`;
 const SERVICE = `${SRC}/transfer/service.ts`;
 const RECORD = 'TenantBase.EmploymentRecord';
 const EMPLOYEE = 'TenantBase.Employee';
+const EXIT_GATE = `${SRC}/employment/exit-gate.ts`;
+const RECORD_EDIT = `${SRC}/employment/record-edit.ts`;
+
+/**
+ * R2-T03 B2a 离职门禁（exit-gate.ts requireExitPermission）：kind = leave / retirement 时在通用任职入口上叠加 Dimission* 按钮、
+ * 功能权与字段权（requireEmploymentWrite / object.button），探测器因此多观测到按钮原语与 create / update 对象操作。
+ * 它们是同一个准入（任职记录的对应按钮）的离职叠加，挂在各入口的按钮义务上承接，不新增权限键，声明集合不变。
+ */
+const EXIT_GATE_IMPL: Evidence[] = [
+  {
+    role: 'impl',
+    unit: `${EXIT_GATE}#requireExitPermission`,
+    anchor: "await requireEmploymentWrite(ctx, 'update', { ...target.patch, ...target.payload }, BUTTON.edit)",
+  },
+  { role: 'impl', unit: `${EXIT_GATE}#detailButton`, anchor: "action: 'object.button'," },
+];
+const exitFacts = (...ops: ('create' | 'update')[]) => [
+  'button:buttonResource',
+  'button:object.button',
+  ...ops.map((op) => `objectOp:${RECORD}:${op}`),
+];
+
+const EDIT_RECORD_EXIT: Evidence = {
+  role: 'impl',
+  unit: `${RECORD_EDIT}#editEmploymentRecord`,
+  anchor: "if (isExitKind(record.kind)) await requireExitPermission(ctx, 'update', {",
+};
 
 const READ: Evidence = {
   role: 'impl',
@@ -202,7 +229,13 @@ function transition(action: 'submit' | 'withdraw' | 'revoke' | 'delete'): Obliga
       ['object:readContext(object.*)', 'object:object.* 动作'],
       [TRANSITIONS, READ, write, op === 'delete' ? WRITE_DELETE : WRITE_OBJECT, RECORD_CONST],
     ),
-    ob(`btn:${RECORD}#${button}@detail`, [], [write, WRITE_BUTTON, RECORD_CONST]),
+    ob(`btn:${RECORD}#${button}@detail`, exitFacts('create', 'update'), [
+      write,
+      WRITE_BUTTON,
+      RECORD_CONST,
+      fn(EMP, 'registerBusinessTransitions', 'exitGuard(deps, ctx, operation, {'),
+      ...EXIT_GATE_IMPL,
+    ]),
     businessWrite(fn(EMP, 'registerBusinessTransitions', 'await authorizeBusinessWrite(deps, ctx, id)')),
     ob(
       'guard:transfer.source',
@@ -210,11 +243,7 @@ function transition(action: 'submit' | 'withdraw' | 'revoke' | 'delete'): Obliga
       [fn(EMP, 'registerBusinessTransitions', 'transferBusinessContext(tx, ctx, id,'), ...BUSINESS_SOURCE],
     ),
     linkage(
-      fn(
-        EMP,
-        'registerBusinessTransitions',
-        'const business = await transitionEmployment(tx, checked, { id, action })',
-      ),
+      fn(EMP, 'registerBusinessTransitions', 'const business = await transitionEmployment(tx, checked, {'),
       '状态迁移（撤回 / 撤销 / 删除）改写后续记录前按 DEC-178 复核',
     ),
   ];
@@ -951,7 +980,7 @@ export const EMPLOYMENT: RequiredTable = {
     ),
     ob(
       `btn:${RECORD}#Employment.Create@detail`,
-      ['button:requireEmploymentWrite(按钮)'],
+      ['button:requireEmploymentWrite(按钮)', ...exitFacts('update')],
       [
         at(
           EMP,
@@ -960,6 +989,8 @@ export const EMPLOYMENT: RequiredTable = {
           "await requireEmploymentWrite(ctx, 'create', rawInput as object, 'Employment.Create')",
         ),
         WRITE_BUTTON,
+        at(EMP, 'POST', '/employees/:id/businesses', "exitGuard(deps, ctx, 'create', gate)"),
+        ...EXIT_GATE_IMPL,
       ],
     ),
     ob(
@@ -1055,10 +1086,12 @@ export const EMPLOYMENT: RequiredTable = {
     ),
     ob(
       `btn:${RECORD}#Employment.Edit@detail`,
-      ['button:requireEmploymentWrite(按钮)'],
+      ['button:requireEmploymentWrite(按钮)', ...exitFacts('create')],
       [
         at(EMP, 'PATCH', '/businesses/:id', "await requireEmploymentWrite(ctx, 'update', input, 'Employment.Edit')"),
         WRITE_BUTTON,
+        at(EMP, 'PATCH', '/businesses/:id', "exitGuard(deps, ctx, 'update', {"),
+        ...EXIT_GATE_IMPL,
       ],
     ),
     ob(
@@ -1116,7 +1149,7 @@ export const EMPLOYMENT: RequiredTable = {
     ),
     ob(
       `btn:${RECORD}#Employment.RetryActivation@detail`,
-      ['button:requireEmploymentWrite(按钮)'],
+      ['button:requireEmploymentWrite(按钮)', ...exitFacts('create')],
       [
         at(
           EMP,
@@ -1125,6 +1158,8 @@ export const EMPLOYMENT: RequiredTable = {
           "await requireEmploymentWrite(ctx, 'update', {}, 'Employment.RetryActivation')",
         ),
         WRITE_BUTTON,
+        at(EMP, 'POST', '/businesses/:id/activation/retry', "exitGuard(deps, ctx, 'retry', {"),
+        ...EXIT_GATE_IMPL,
       ],
     ),
     businessWrite(
@@ -1245,10 +1280,13 @@ export const EMPLOYMENT: RequiredTable = {
     ),
     ob(
       `btn:${RECORD}#Employment.Edit@detail`,
-      ['button:requireEmploymentWrite(按钮)'],
+      ['button:requireEmploymentWrite(按钮)', ...exitFacts('create')],
       [
         at(EMP, 'PATCH', '/records/:id', "await requireEmploymentWrite(ctx, 'update', input, 'Employment.Edit')"),
         WRITE_BUTTON,
+        at(EMP, 'PATCH', '/records/:id', 'body: await editEmploymentRecord(tx, context, id, input)'),
+        EDIT_RECORD_EXIT,
+        ...EXIT_GATE_IMPL,
       ],
     ),
     businessWrite(at(EMP, 'PATCH', '/records/:id', 'const current = await authorizeBusinessWrite(deps, ctx, id)')),
@@ -1324,7 +1362,7 @@ export const EMPLOYMENT: RequiredTable = {
     ),
     ob(
       `btn:${RECORD}#Employment.Edit@detail`,
-      ['button:requireEmploymentWrite(按钮)'],
+      ['button:requireEmploymentWrite(按钮)', ...exitFacts('create')],
       [
         at(
           EMP,
@@ -1333,6 +1371,9 @@ export const EMPLOYMENT: RequiredTable = {
           "await requireEmploymentWrite(ctx, 'update', input.patch, 'Employment.Edit')",
         ),
         WRITE_BUTTON,
+        at(EMP, 'POST', '/records/batch-edit', 'body: await batchEditEmploymentRecords(tx, context, input)'),
+        EDIT_RECORD_EXIT,
+        ...EXIT_GATE_IMPL,
       ],
     ),
     businessWrite(

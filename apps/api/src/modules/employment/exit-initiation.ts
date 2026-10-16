@@ -97,6 +97,32 @@ export function applyInitiationSubset(
   return { ...exit, reasonCode };
 }
 
+/**
+ * self / manager 只能提交最后工作日与 exit 子集：任职字段、自定义字段、表单选择、生效日一律 400（员工信息由服务端读取、只读带出）。
+ * 否则调用方可改写部门 / 地点，污染申请快照与流程匹配输入（§4B）。
+ */
+export function assertBusinessInputSubset(
+  initiation: ExitInitiation,
+  input: {
+    readonly fields?: object;
+    readonly customFields?: object;
+    readonly formId?: string;
+    readonly effectiveDate?: string;
+  },
+): void {
+  if (initiation === 'hr') return;
+  const extra = [
+    ...(Object.keys(input.fields ?? {}).length ? ['fields'] : []),
+    ...(Object.keys(input.customFields ?? {}).length ? ['customFields'] : []),
+    ...(input.formId === undefined ? [] : ['formId']),
+    ...(input.effectiveDate === undefined ? [] : ['effectiveDate']),
+  ];
+  if (extra.length)
+    throw reject('EXIT_FIELD_NOT_ALLOWED_FOR_INITIATION', '该发起方式只能提交最后工作日与离职申请字段', {
+      fields: extra,
+    });
+}
+
 async function boundEmployee(tx: Tx, ctx: EmploymentContext): Promise<string | undefined> {
   const [row] = rowsOf<{ employeeId: string }>(
     await tx.execute(sql`SELECT employee_id AS "employeeId" FROM permission_user_person_links

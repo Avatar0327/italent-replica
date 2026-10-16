@@ -330,7 +330,15 @@ export async function saveAck(tx: Tx, ctx: EmploymentContext, businessId: string
  */
 export async function assertHandoverEmployee(tx: Tx, ctx: EmploymentContext, employeeId: string | undefined) {
   if (!employeeId) return;
-  const [visible] = await visibleEmploymentRecords(tx, ctx.tenantId, ctx.scope, [{ employeeId, departmentId: null }]);
+  // “使用用户”范围按员工对象的真实创建者判断（与 readContext 对员工详情的口径一致），不能只传部门 / 员工
+  const [row] = ctx.scope?.terms?.some((term) => term.dimension === 'using_user')
+    ? rowsOf<{ creator: string | null }>(
+        await tx.execute(sql`SELECT ${employmentCreator(ctx.tenantId, sql`${employeeId}::uuid`)} AS creator`),
+      )
+    : [];
+  const [visible] = await visibleEmploymentRecords(tx, ctx.tenantId, ctx.scope, [
+    { employeeId, departmentId: null, creatorId: row?.creator ?? null },
+  ]);
   if (!visible) throw new AppError('VALIDATION_FAILED', '交接人不存在', { reason: 'EXIT_HANDOVER_EMPLOYEE_INVALID' });
 }
 
