@@ -430,6 +430,8 @@ export async function auditEmployment(
   after: unknown,
   payloadVersionId?: string,
   meta?: Readonly<Record<string, unknown>>,
+  /** 写入方确知归属时显式给出（离职单 / 撤销记录 / 效果台账，DEC-197；R2-T03 §9）。 */
+  scope?: { readonly employeeId?: string | null },
 ): Promise<void> {
   await recordAudit(tx, {
     tenantId: ctx.tenantId,
@@ -441,6 +443,7 @@ export async function auditEmployment(
     after,
     commandId: ctx.commandId,
     occurredAt: ctx.now,
+    ...(scope ? { scope } : {}),
   });
   await tx.execute(sql`
     WITH ownership AS (

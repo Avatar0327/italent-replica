@@ -442,6 +442,7 @@ export const GRAPH: Graph = {
     '#employeeHeader',
     '#employmentPatch',
     '#employmentTransition',
+    '#exitInitiation',
     '#latestPayload',
     '#mayMergeSeat',
     '#profileValues',
@@ -469,6 +470,9 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/adapters.ts#employmentTransition': [
     '#businessRevision',
     'apps/api/src/modules/employment/transitions.ts#transitionEmployment',
+  ],
+  'apps/api/src/modules/approval/adapters.ts#exitInitiation': [
+    'apps/api/src/modules/employment/exit-gate.ts#loadExitRequest',
   ],
   'apps/api/src/modules/approval/adapters.ts#latestPayload': ['apps/api/src/modules/approval/context.ts#rowsOf'],
   'apps/api/src/modules/approval/adapters.ts#mayMergeSeat': [
