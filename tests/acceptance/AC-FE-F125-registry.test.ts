@@ -52,6 +52,7 @@ const ROUTES_BEFORE = [
 ];
 // 应用内入口：id | 菜单名 | 分组 | 对象 | 模块:页面导出名 | 布局 | 所属应用 | 挂载路径
 const ENTRIES_BEFORE = [
+  'entries|入职管理|people|TenantBase.EmploymentRecord|entries:EntriesPage|-|transfer|/entries/*',
   'offers|Offer管理|people|TenantBase.EmploymentRecord|offers:OffersPage|-|transfer|/offers/*',
   'contracts|合同协议|people|TenantBase.EmploymentContract|contracts:ContractsPage|-|staff|/contracts/*',
 ];
