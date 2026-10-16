@@ -161,6 +161,20 @@
       "obj:TenantBase.EmploymentRecord:view"
     ]
   },
+  "GET /api/tenant/employment/entry-email-rules": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TenantBase.EmploymentSettings"
+    ],
+    "scopeQueries": [
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.EmploymentSettings:view"
+    ]
+  },
   "GET /api/tenant/employment/exits/dictionaries/:dict": {
     "all": {
       "code": "VALIDATION_FAILED",
@@ -176,6 +190,19 @@
     "trace": [
       "obj:TenantBase.EmploymentRecord:view"
     ]
+  },
+  "GET /api/tenant/employment/pending-entries": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "a634390c1dfe",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
+    },
+    "scopeQueries": [],
+    "trace": []
   },
   "GET /api/tenant/employment/records/:id": {
     "all": {
@@ -735,6 +762,27 @@
       "obj:TenantBase.EmploymentRecord:update"
     ]
   },
+  "POST /api/tenant/employment/pending-entries/:id/generate-email": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "bea36a2d464b",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/-",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "btn:TenantBase.EmploymentRecord#Employment.Edit@detail",
+      "obj:TenantBase.EmploymentRecord:update"
+    ]
+  },
   "POST /api/tenant/employment/pending-entries/:id/postpone": {
     "all": {
       "code": "VALIDATION_FAILED",
@@ -863,6 +911,20 @@
       "error": "17147722c2a8",
       "status": 400
     },
+    "scopeQueries": [
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "admin:other_settings"
+    ]
+  },
+  "PUT /api/tenant/employment/entry-email-rules": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "afc1cba80779",
+      "status": 400
+    },
+    "fieldQueries": [],
     "scopeQueries": [
       "scope:data.scope.all:"
     ],

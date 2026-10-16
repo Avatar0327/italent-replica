@@ -8,6 +8,7 @@ export const EMPLOYMENT_DECLARED: ModuleDeclared = {
     'POST /api/tenant/employment/custom-fields',
     'POST /api/tenant/employment/exits/dictionaries/:dict',
     'PUT /api/tenant/employment/custom-fields/:id/inheritance',
+    'PUT /api/tenant/employment/entry-email-rules',
     'PUT /api/tenant/employment/exits/dictionaries/:dict/:id',
     'PUT /api/tenant/employment/settings',
     'PUT /api/tenant/employment/transfers/settings',

@@ -17,6 +17,7 @@ const MGR = `${SRC}/transfer/manager-routes.ts`;
 const LNK = `${SRC}/transfer/linkage/routes.ts`;
 const EXIT = `${SRC}/employment/exit-routes.ts`;
 const ENTRY = `${SRC}/employment/entry-routes.ts`;
+const EMAIL = `${SRC}/employment/entry-email-routes.ts`;
 const STATUS = `${SRC}/employment/employee-status.ts`;
 const ACCESS = `${SRC}/transfer/access.ts`;
 const SERVICE = `${SRC}/transfer/service.ts`;
@@ -1096,7 +1097,7 @@ export const EMPLOYMENT: RequiredTable = {
     recordView(at(EMP, 'GET', '/activation-todos', "const ctx = await readPageContext(c, deps, 'list')")),
   ],
   'GET /api/tenant/employment/pending-entries': [
-    recordView(at(EMP, 'GET', '/pending-entries', "const ctx = await readPageContext(c, deps, 'list')")),
+    recordView(at(ENTRY, 'GET', '/pending-entries', "const ctx = await readPageContext(c, deps, 'list')")),
   ],
   'POST /api/tenant/employment/businesses/:id/activation/retry': [
     ob(
@@ -1413,7 +1414,40 @@ export const EMPLOYMENT: RequiredTable = {
   // ---- employment/entry-routes.ts：R2 BE-2a 待入职状态动作（办理入职 / 取消 / 改期 / 删除）-------------------------------
   'POST /api/tenant/employment/pending-entries/:id/complete': entryUpdate(
     '/pending-entries/:id/complete',
-    at(ENTRY, 'POST', '/pending-entries/:id/complete', 'await completePendingEntry(tx, context, id, input)'),
+    at(
+      ENTRY,
+      'POST',
+      '/pending-entries/:id/complete',
+      'await completePendingEntry(tx, context, id, { probation: input.probation })',
+    ),
+  ),
+  'POST /api/tenant/employment/pending-entries/:id/generate-email': entryUpdate('/pending-entries/:id/generate-email'),
+  // ---- employment/entry-email-routes.ts：R2 BE-2b 入职生成邮箱规则配置（EN-R12）------------------------------------------
+  'GET /api/tenant/employment/entry-email-rules': [
+    ob(
+      'obj:TenantBase.EmploymentSettings:view',
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentSettings:view', 'object:object.* 动作'],
+      [
+        at(
+          EMAIL,
+          'GET',
+          '/entry-email-rules',
+          "const ctx = await readContext(c, deps, 'object.view', 0, undefined, 'TenantBase.EmploymentSettings')",
+        ),
+        READ,
+      ],
+    ),
+  ],
+  'PUT /api/tenant/employment/entry-email-rules': configWrite(
+    at(EMAIL, 'PUT', '/entry-email-rules', "'tenant.employment.configuration.write'"),
+    'TenantBase.EmploymentSettings',
+    'update',
+    at(
+      EMAIL,
+      'PUT',
+      '/entry-email-rules',
+      "await requireEmploymentWrite(ctx, 'update', input, undefined, 'TenantBase.EmploymentSettings')",
+    ),
   ),
   'POST /api/tenant/employment/pending-entries/:id/cancel': entryUpdate('/pending-entries/:id/cancel'),
   'POST /api/tenant/employment/pending-entries/:id/postpone': entryUpdate(

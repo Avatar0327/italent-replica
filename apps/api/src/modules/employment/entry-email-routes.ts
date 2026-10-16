@@ -18,15 +18,13 @@ import {
 import { emailRulesBody, generateEntryEmailFor, readEmailRules, replaceEmailRules } from './entry-email.js';
 import { parse, prepareEntryAction, type BusinessWriteGuard } from './entry-routes.js';
 
-const SETTINGS_OBJECT = 'TenantBase.EmploymentSettings';
-
 export function registerEntryEmailRoutes(
   router: Hono<TenantEnv>,
   deps: TenantRouteDeps,
   authorizeBusinessWrite: BusinessWriteGuard,
 ) {
   router.get('/entry-email-rules', async (c) => {
-    const ctx = await readContext(c, deps, 'object.view', 0, undefined, SETTINGS_OBJECT);
+    const ctx = await readContext(c, deps, 'object.view', 0, undefined, 'TenantBase.EmploymentSettings');
     const rules = await withTenant(deps.db, ctx.tenantId, (tx) => readEmailRules(tx, ctx.tenantId));
     return c.json(await trimEmploymentResponse(deps, ctx, rules));
   });
@@ -37,10 +35,10 @@ export function registerEntryEmailRoutes(
       'tenant.employment.configuration.write',
       revision(c),
       undefined,
-      SETTINGS_OBJECT,
+      'TenantBase.EmploymentSettings',
     );
     const input = parse(emailRulesBody, await jsonBody(c));
-    await requireEmploymentWrite(ctx, 'update', input, undefined, SETTINGS_OBJECT);
+    await requireEmploymentWrite(ctx, 'update', input, undefined, 'TenantBase.EmploymentSettings');
     return runWrite(c, deps, ctx, input, async (tx, context) => ({
       status: 200,
       body: await replaceEmailRules(tx, context, input),
