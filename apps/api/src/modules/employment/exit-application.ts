@@ -8,7 +8,7 @@ import { and, eq, exitRequests, sql, type Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
 import { readEffectiveSetting } from '../tenant-settings/service.js';
 import { auditEmployment } from './context.js';
-import { EXIT_GATE_PASS, requireExitGate } from './exit-gate.js';
+import { assertHandoverEmployee, EXIT_GATE_PASS, requireExitGate } from './exit-gate.js';
 import { assertExitDictionaryEnabled } from './exit-dictionaries.js';
 import {
   applyInitiationSubset,
@@ -142,6 +142,7 @@ export async function updateExitFields(
     const value = parsed.data[key];
     if (value && value !== row[key]) await assertExitDictionaryEnabled(tx, ctx.tenantId, kind, value);
   }
+  await assertHandoverEmployee(tx, ctx, parsed.data.handoverEmployeeId);
   const values = columnValues(parsed.data);
   if (!Object.keys(values).length) throw new AppError('VALIDATION_FAILED', '必须提供要修改的离职字段');
   await tx

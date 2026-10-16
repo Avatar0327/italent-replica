@@ -8,7 +8,7 @@
  */
 import { createHmac } from 'node:crypto';
 import { and, eq, exitRequests, sql, type Tx } from '@italent/db';
-import { buttonResource } from '@italent/domain';
+import { buttonResource, EXIT_BUTTONS } from '@italent/domain';
 import { requirePermission } from '../../authorization.js';
 import { AppError } from '../../errors.js';
 import { getModuleViewableFieldsInTransaction } from '../permission/module-access.js';
@@ -28,13 +28,7 @@ export type ExitOperation = 'preview' | 'create' | 'submit' | 'update' | 'withdr
 export const EXIT_GATE_PASS = Object.freeze({ passedExitGate: true });
 export const isExitKind = (kind: BusinessKind) => kind === 'leave' || kind === 'retirement';
 
-const BUTTON = {
-  direct: 'Employment.Dimission',
-  application: 'Employment.DimissionApproval',
-  edit: 'Employment.DimissionEdit',
-  cancel: 'Employment.DimissionCancel',
-  retry: 'Employment.RetryActivation',
-} as const;
+const BUTTON = { ...EXIT_BUTTONS, retry: 'Employment.RetryActivation' } as const;
 
 /** 创建 / 提交时确认过的在途调动集合与令牌哈希（写入 exit_requests.pending_transfer_ack，不回传，§8）。 */
 export interface AckRecord {
@@ -330,7 +324,18 @@ export async function saveAck(tx: Tx, ctx: EmploymentContext, businessId: string
 
 // ---- 各操作的前置条件 --------------------------------------------------------------------------------------
 
+/**
+ * 交接人：必须是本租户且当前范围可见的员工；不存在与范围外统一 400，外键错误不能变成 500、也不暴露存在性。
+ * 只存值，交接流程归 BE-8。
+ */
+export async function assertHandoverEmployee(tx: Tx, ctx: EmploymentContext, employeeId: string | undefined) {
+  if (!employeeId) return;
+  const [visible] = await visibleEmploymentRecords(tx, ctx.tenantId, ctx.scope, [{ employeeId, departmentId: null }]);
+  if (!visible) throw new AppError('VALIDATION_FAILED', '交接人不存在', { reason: 'EXIT_HANDOVER_EMPLOYEE_INVALID' });
+}
+
 async function assertDictionaries(tx: Tx, ctx: EmploymentContext, exit: ExitOptions) {
+  await assertHandoverEmployee(tx, ctx, exit.handoverEmployeeId);
   if (exit.reasonCode) await assertExitDictionaryEnabled(tx, ctx.tenantId, 'reasons', exit.reasonCode);
   if (exit.whereaboutsCode) await assertExitDictionaryEnabled(tx, ctx.tenantId, 'whereabouts', exit.whereaboutsCode);
   if (exit.exitTypeCode) await assertExitDictionaryEnabled(tx, ctx.tenantId, 'types', exit.exitTypeCode);

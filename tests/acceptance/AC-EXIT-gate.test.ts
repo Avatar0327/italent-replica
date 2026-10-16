@@ -66,6 +66,11 @@ describe('AC-DM-22 离职申请经门禁创建（B-26 / B-30 补充）', () => {
     const before = await w.stateOf(employee.id);
     const unknown = await w.createLeave(employee.id, leaveBody(LATER, 'application', { reasonCode: 'nope' }));
     expect(await w.reason(unknown)).toMatchObject({ status: 400, reason: 'EXIT_DICTIONARY_UNKNOWN' });
+    const stranger = await w.createLeave(
+      employee.id,
+      leaveBody(LATER, 'application', { handoverEmployeeId: '00000000-0000-4000-8000-000000000001' }),
+    );
+    expect(await w.reason(stranger)).toMatchObject({ status: 400, reason: 'EXIT_HANDOVER_EMPLOYEE_INVALID' });
     const early = await w.createLeave(employee.id, leaveBody('2026-08-31'));
     expect(await w.reason(early)).toMatchObject({ status: 400, reason: 'EXIT_LAST_WORK_DATE_BEFORE_ENTRY' });
     expect(await w.stateOf(employee.id)).toEqual(before);
