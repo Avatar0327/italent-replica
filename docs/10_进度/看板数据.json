@@ -2,7 +2,7 @@
 "updated": "2026-10-14",
 "stats": {
 "merged": 291,
-"open": 7,
+"open": 8,
 "dec": 556,
 "ev": "43/177"
 },
@@ -5663,9 +5663,10 @@
 "after": [
 "BE-4d"
 ],
-"note": "只改测试（#362 P3-5）· 云端 Claude Sonnet 5.5 High 已开会话（session_01BC9emGCN9TKJHjWM7y7WrG）· 分支 claude/F-196-exit-test-evidence · 上限 800 行 · PR 号待补 · Sol high 审",
+"note": "只改测试（#362 P3-5）· #374 开发完成 11:09Z（+113/−43，head 7a29d800）· 第 1 轮待 03 发起 Sol high 审",
 "mod": "R2",
-"ms": "D3"
+"ms": "D3",
+"pr": 374
 },
 {
 "k": "F-197",
