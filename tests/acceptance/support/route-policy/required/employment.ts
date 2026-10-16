@@ -172,14 +172,14 @@ const PENDING_LOCK = fn(
   'lockPendingEntry',
   'await requireScopedEmploymentObject(tx, ctx, record.employeeId, record.fields.departmentId, record.id)',
 );
-function entryUpdate(path: string, linkageCall?: Evidence): Obligation[] {
+function entryUpdate(path: string, linkageCall?: Evidence, method = 'POST'): Obligation[] {
   const prepare = (anchor: string) => fn(ENTRY, 'prepareEntryAction', anchor);
   return [
     ob(
       `obj:${RECORD}:update`,
       ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:update', 'object:object.* 动作'],
       [prepare("const ctx = await readContext(c, deps, 'object.update', revision(c))"), READ, WRITE_OBJECT],
-      `POST ${path}`,
+      `${method} ${path}`,
     ),
     ob(
       `btn:${RECORD}#Employment.Edit@detail`,
@@ -1486,6 +1486,12 @@ export const EMPLOYMENT: RequiredTable = {
   'POST /api/tenant/employment/pending-entries/:id/postpone': entryUpdate(
     '/pending-entries/:id/postpone',
     at(ENTRY, 'POST', '/pending-entries/:id/postpone', 'body: await postponePendingEntry(tx, context, id, input)'),
+  ),
+  // F-188 行内编辑：与改期同一套入口（prepareEntryAction）与替换内核（editPendingEntry → 删除重建）
+  'PATCH /api/tenant/employment/pending-entries/:id': entryUpdate(
+    '/pending-entries/:id',
+    at(ENTRY, 'PATCH', '/pending-entries/:id', 'body: await editPendingEntry(tx, context, id, input)'),
+    'PATCH',
   ),
   'DELETE /api/tenant/employment/pending-entries/:id': [
     ob(

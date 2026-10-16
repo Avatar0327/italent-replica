@@ -1,7 +1,7 @@
 /**
  * 入职业务的两个服务端控制项（R2 BE-2a，EntryOptions 的路由接线；15 §9.3）：
  * pendingEntry = 添加待入职，probation = 是否有试用期。像 loginEmail 一样从请求体里单独取出，不进入任职字段校验，
- * 也不能用来直接写人员状态 / 入职状态；只允许入职类业务。
+ * 也不能用来直接写人员状态 / 入职状态；只允许入职类业务。待入职时 probation 落到 entry-probation.ts（F-188）。
  */
 import { z } from 'zod';
 import { AppError } from '../../errors.js';
@@ -28,8 +28,6 @@ export function assertEntryOptionsAllowed(input: NormalizedEmploymentInput, entr
   if (!NEW_CYCLE_KINDS.includes(input.kind))
     throw new AppError('VALIDATION_FAILED', '只有入职类业务可以提供待入职 / 是否有试用期');
   if (!entry.pendingEntry) return;
+  // 待入职阶段可选带 probation，随待入职记录落库（F-188）；Offer 同步来的待入职没有值，原站在编辑时才要求补填
   if (input.mode !== 'direct') throw new AppError('VALIDATION_FAILED', '待入职只能直接添加，不走入职申请');
-  // 待入职阶段不保存“是否有试用期”（无落库位置），办理入职时再选；避免静默丢弃字段
-  if (entry.probation !== undefined)
-    throw new AppError('VALIDATION_FAILED', '待入职阶段不填是否有试用期，请在办理入职时选择');
 }

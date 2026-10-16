@@ -282,6 +282,7 @@ export const GRAPH: Graph = {
     '#lockPendingEntry',
     '#propagateEmployeeStatus',
     '#reloadRecord',
+    'apps/api/src/modules/employment/entry-probation.ts#clearPendingProbation',
     'apps/api/src/modules/employment/references.ts#assertEmploymentDepartmentAvailable',
     'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS',
     'packages/domain/src/employment/employee-status.ts#ENTRY_STATUS',
@@ -363,18 +364,35 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/entry-actions.ts#deletePendingEntry': [
     'apps/api/src/modules/employment/employee-status.ts#lockPendingEntry',
+    'apps/api/src/modules/employment/entry-probation.ts#clearPendingProbation',
     'apps/api/src/modules/employment/transitions.ts#transitionEmployment',
   ],
-  'apps/api/src/modules/employment/entry-actions.ts#postponePendingEntry': [
+  'apps/api/src/modules/employment/entry-actions.ts#editPendingEntry': [
     'apps/api/src/modules/employment/context.ts#auditEmployment',
     'apps/api/src/modules/employment/employee-status.ts#lockPendingEntry',
-    '#assertRemark',
-    '#logEntryAction',
+    '#replacePendingEntry',
+    'apps/api/src/modules/employment/entry-probation.ts#loadPendingProbation',
+    'apps/api/src/modules/employment/entry-probation.ts#savePendingProbation',
     'apps/api/src/modules/employment/fields.ts#businessDate',
+    'apps/api/src/modules/employment/record-store.ts#bumpEmploymentBusiness',
+    'apps/api/src/modules/employment/write-service.ts#requireSavedBusiness',
+    'packages/domain/src/employment/employee-status.ts#ENTRY_STATUS',
+  ],
+  'apps/api/src/modules/employment/entry-actions.ts#postponePendingEntry': [
+    'apps/api/src/modules/employment/employee-status.ts#lockPendingEntry',
+    '#assertRemark',
+    '#replacePendingEntry',
+    'apps/api/src/modules/employment/fields.ts#businessDate',
+    'packages/domain/src/employment/employee-status.ts#ENTRY_STATUS',
+  ],
+  'apps/api/src/modules/employment/entry-actions.ts#replacePendingEntry': [
+    'apps/api/src/modules/employment/context.ts#auditEmployment',
+    '#logEntryAction',
+    'apps/api/src/modules/employment/entry-probation.ts#clearPendingProbation',
+    'apps/api/src/modules/employment/entry-probation.ts#loadPendingProbation',
     'apps/api/src/modules/employment/record-store.ts#lockEmploymentEmployee',
     'apps/api/src/modules/employment/transitions.ts#transitionEmployment',
     'apps/api/src/modules/employment/write-service.ts#createEmploymentBusiness',
-    'packages/domain/src/employment/employee-status.ts#ENTRY_STATUS',
   ],
   'apps/api/src/modules/employment/entry-contract.ts#contractContext': [
     'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
@@ -441,8 +459,18 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/write-service.ts#NEW_CYCLE_KINDS',
   ],
   'apps/api/src/modules/employment/entry-options.ts#splitEntryOptions': ['#KEYS', '#entryControls'],
+  'apps/api/src/modules/employment/entry-probation.ts#loadPendingProbation': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/employment/entry-probation.ts#saveAddedProbation': [
+    'apps/api/src/modules/employment/employee-status.ts#ENTRY_KINDS',
+    '#savePendingProbation',
+  ],
   'apps/api/src/modules/employment/entry-routes.ts#completeInput': [
     'apps/api/src/modules/employment/entry-contract.ts#entryContractSchema',
+  ],
+  'apps/api/src/modules/employment/entry-routes.ts#editInput': [
+    'packages/domain/src/employment/entry.ts#ENTRY_EDIT_EMPLOY_TYPES',
   ],
   'apps/api/src/modules/employment/entry-routes.ts#entryContractGuard': [
     'apps/api/src/modules/employment/entry-contract.ts#requireEntryContractAccess',
@@ -477,6 +505,12 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/job/context.ts#pageQuery',
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/employment/entry-routes.ts#route:PATCH /pending-entries/:id': [
+    'apps/api/src/modules/employment/context.ts#runWrite',
+    'apps/api/src/modules/employment/entry-actions.ts#editPendingEntry',
+    '#editInput',
+    '#prepareEntryAction',
   ],
   'apps/api/src/modules/employment/entry-routes.ts#route:POST /pending-entries/:id/complete': [
     'apps/api/src/modules/employment/context.ts#runWrite',
@@ -1698,6 +1732,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#auditEmployment',
     'apps/api/src/modules/employment/cycles.ts#assertNotBeforeCurrentCycle',
     'apps/api/src/modules/employment/employee-status.ts#entryStatusFor',
+    'apps/api/src/modules/employment/entry-probation.ts#probationAudit',
+    'apps/api/src/modules/employment/entry-probation.ts#saveAddedProbation',
     'apps/api/src/modules/employment/exit-gate.ts#EXIT_GATE_PASS',
     'apps/api/src/modules/employment/fields.ts#normalizeEmploymentInput',
     'apps/api/src/modules/employment/inheritance.ts#prepareInheritance',
