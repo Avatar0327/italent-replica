@@ -17,6 +17,7 @@ import {
   scopeSql,
   scopeAllows,
   authorizeInTransaction,
+  resolveModuleScopeInTransaction,
   scopeAllowsInTransaction,
 } from '../permission/module-access.js';
 import { requireObjectWrite } from '../permission/object-write.js';
@@ -63,15 +64,18 @@ export async function readContext(
   }
   const result = { ...context, scope, authorize: deps.authorize, objectCode, trustedScopeBypass };
   if (resource) {
-    const creatorId = await withTenant(deps.db, tenant.tenantId, async (tx) => {
-      const creator = await employmentCreatorId(tx, result, resource);
-      if (scope && !(await scopeAllowsInTransaction(tx, scope, { personId: resource, creatorId: creator })))
-        throw new AppError('NOT_FOUND', '任职数据不存在');
-      return creator;
-    });
+    const creatorId = await withTenant(deps.db, tenant.tenantId, (tx) => requireEmployeeInScope(tx, result, resource));
     return { ...result, scopeEmployeeId: resource, scopeEmployeeCreatorId: creatorId };
   }
   return result;
+}
+
+/** 员工在 ctx 数据范围内（范围外与不存在同一个 404）；返回创建人（使用用户维度用）。入口与命令内复核共用。 */
+export async function requireEmployeeInScope(tx: Tx, ctx: EmploymentContext, employeeId: string) {
+  const creator = await employmentCreatorId(tx, ctx, employeeId);
+  if (ctx.scope && !(await scopeAllowsInTransaction(tx, ctx.scope, { personId: employeeId, creatorId: creator })))
+    throw new AppError('NOT_FOUND', '任职数据不存在');
+  return creator;
 }
 
 export function readPageContext(
@@ -381,6 +385,51 @@ export async function jsonBody(c: Context): Promise<unknown> {
   }
 }
 
+/**
+ * 命令事务内的上下文（F-195 / F-197）：授权器绑定本事务，数据范围按当前授权在本事务内重新解析；入口 readContext 取到的
+ * 范围只是请求内快照，管不到入口放行之后、命令事务之前的撤权。同一事务只解析一次（按 tx 缓存），所以 guard 的前置检查、
+ * 实际执行、提交前结果校验和重放复核看到的是同一份范围。
+ */
+const commandContexts = new WeakMap<
+  Tx,
+  { readonly ctx: EmploymentContext; readonly scoped: Promise<EmploymentContext> }
+>();
+export function commandContext(tx: Tx, deps: TenantRouteDeps, ctx: EmploymentContext): Promise<EmploymentContext> {
+  const cached = commandContexts.get(tx);
+  if (cached?.ctx === ctx) return cached.scoped;
+  const authorize = authorizeInTransaction(deps.authorize, tx);
+  const resolved = ctx.scope
+    ? resolveModuleScopeInTransaction(deps, ctx, tx, ctx.objectCode ?? EMPLOYMENT_OBJECT)
+    : Promise.resolve(undefined);
+  const scoped = resolved.then((scope) => ({ ...ctx, authorize, scope }));
+  commandContexts.set(tx, { ctx, scoped });
+  return scoped;
+}
+
+/** 带事务内范围标记的 CommandGuard：runWrite 对它改用 commandContext 执行与校验结果，见 runWrite。 */
+export interface ScopedCommandGuard extends CommandGuard {
+  readonly scoped: true;
+}
+export const scopedGuard = (guard: CommandGuard): ScopedCommandGuard => ({ ...guard, scoped: true });
+const isScopedGuard = (guard: CommandGuard | undefined): guard is ScopedCommandGuard =>
+  !!guard && (guard as { scoped?: boolean }).scoped === true;
+
+/** 重放复核：命中台账后，在同一事务内用事务内范围校验业务当前值、原响应快照与命令足迹（authorizeEmploymentResult）。 */
+function withReplayRecheck(
+  deps: TenantRouteDeps,
+  ctx: EmploymentContext,
+  commandId: string,
+  guard: ScopedCommandGuard,
+): CommandGuard {
+  return {
+    ...guard,
+    replayed: async (tx, replay) => {
+      await guard.replayed?.(tx, replay);
+      await authorizeEmploymentResult(tx, await commandContext(tx, deps, ctx), deps.authorize, commandId, replay.body);
+    },
+  };
+}
+
 export async function runWrite(
   c: Context<TenantEnv>,
   deps: TenantRouteDeps,
@@ -389,25 +438,34 @@ export async function runWrite(
   execute: (tx: Tx, context: EmploymentContext) => Promise<CommandResult>,
   /**
    * 可选：命令事务内的当前权限复核（CommandGuard，经 ledgerExit 覆盖首次 / 重放 / 回查）；
+   * 带 `scopedGuard` 标记的 guard 还让执行与结果校验改用事务内重新解析的数据范围（commandContext），重放命中台账后
+   * 同一事务内再校验原响应，这类出口不再跑事务外、用入口旧范围的那次结果复核；
    * project：固定形状回执（不是任职对象）的显式投影，替代通用任职字段裁剪；缺省两项与之前完全相同。
    */
   options: { readonly guard?: CommandGuard; readonly project?: (body: unknown) => unknown } = {},
 ) {
+  const key = c.req.header('idempotency-key');
+  const scoped = isScopedGuard(options.guard) ? options.guard : undefined;
+  const guard = scoped ? withReplayRecheck(deps, ctx, key!, scoped) : options.guard;
   const result = await runCommand(deps.db, ctx, {
-    id: c.req.header('idempotency-key'),
+    id: key,
     fingerprint: { method: c.req.method, path: c.req.path, revision: ctx.expectedRevision, input },
-    ...(options.guard ? { guard: options.guard } : {}),
+    ...(guard ? { guard } : {}),
     execute: async (tx, commandId) => {
-      const commandContext = { ...ctx, commandId, authorize: authorizeInTransaction(deps.authorize, tx) };
-      const commandResult = await execute(tx, commandContext);
+      const base = scoped
+        ? await commandContext(tx, deps, ctx)
+        : { ...ctx, authorize: authorizeInTransaction(deps.authorize, tx) };
+      const context = { ...base, commandId };
+      const commandResult = await execute(tx, context);
       // Validate linked writes in the command transaction so an out-of-scope footprint rolls back atomically.
-      await authorizeEmploymentResult(tx, commandContext, deps.authorize, commandId, commandResult.body);
+      await authorizeEmploymentResult(tx, context, deps.authorize, commandId, commandResult.body);
       return commandResult;
     },
   });
-  await withTenant(deps.db, ctx.tenantId, (tx) =>
-    authorizeEmploymentResult(tx, ctx, deps.authorize, c.req.header('idempotency-key')!, result.body),
-  );
+  if (!scoped)
+    await withTenant(deps.db, ctx.tenantId, (tx) =>
+      authorizeEmploymentResult(tx, ctx, deps.authorize, key!, result.body),
+    );
   const payload = result.body as { revision?: number } | null;
   if (payload?.revision !== undefined) c.header('ETag', `"${payload.revision}"`);
   const body = options.project ? options.project(result.body) : await trimEmploymentResponse(deps, ctx, result.body);

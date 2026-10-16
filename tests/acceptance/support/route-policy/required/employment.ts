@@ -12,6 +12,7 @@ import type { Evidence, Obligation, RequiredTable } from './types.js';
 const SRC = 'apps/api/src/modules';
 const EMP = `${SRC}/employment/routes.ts`;
 const CTX = `${SRC}/employment/context.ts`;
+const REPLAY = `${SRC}/employment/replay-guard.ts`;
 const TRF = `${SRC}/transfer/routes.ts`;
 const MGR = `${SRC}/transfer/manager-routes.ts`;
 const LNK = `${SRC}/transfer/linkage/routes.ts`;
@@ -97,9 +98,15 @@ const LINKED: Evidence = {
   unit: `${CTX}#requireLinkedEmploymentRecord`,
   anchor: "throw new AppError('LINKED_RECORD_OUT_OF_SCOPE'",
 };
-const BUSINESS_WRITE: Evidence = {
+// 入口的 authorizeBusinessWrite 只把判定委托给 replay-guard.ts 的 requireBusinessWriteScope（F-195：命令事务内共用同一份）
+const BUSINESS_WRITE_ENTRY: Evidence = {
   role: 'impl',
   unit: `${EMP}#authorizeBusinessWrite`,
+  anchor: '(tx) => requireBusinessWriteScope(tx, deps.authorize, ctx, id, employeeId)',
+};
+const BUSINESS_WRITE: Evidence = {
+  role: 'impl',
+  unit: `${REPLAY}#requireBusinessWriteScope`,
   anchor:
     "if (!value || (employeeId && value.employeeId !== employeeId)) throw new AppError('NOT_FOUND', '任职业务不存在')",
 };
@@ -158,7 +165,11 @@ const managerView = (call: Evidence) =>
 const linkage = (call: Evidence, note?: string) =>
   ob('guard:employment.linkage', ['guard:employment.linkage'], [call, LINKED], note);
 const businessWrite = (call: Evidence) =>
-  ob('guard:employment.businessWrite', ['guard:employment.businessWrite'], [call, BUSINESS_WRITE]);
+  ob(
+    'guard:employment.businessWrite',
+    ['guard:employment.businessWrite'],
+    [call, BUSINESS_WRITE_ENTRY, BUSINESS_WRITE],
+  );
 const directOperation = (call: Evidence) => ob('guard:employment.directOperation', [], [call, DIRECT_OPERATION]);
 const TRANSITIONS = fn(
   EMP,
@@ -1578,6 +1589,7 @@ function importGuards(call: Evidence): Obligation[] {
           unit: `${EMP}#authorizeImport`,
           anchor: 'await authorizeBusinessWrite(deps, ctx, item.id, employeeId)',
         },
+        BUSINESS_WRITE_ENTRY,
         BUSINESS_WRITE,
       ],
     ),
