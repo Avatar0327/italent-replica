@@ -2,7 +2,7 @@
 "updated": "2026-10-14",
 "stats": {
 "merged": 302,
-"open": 5,
+"open": 6,
 "dec": 567,
 "ev": "43/177"
 },
@@ -983,6 +983,10 @@
 }
 },
 "log": [
+[
+"10-16",
+"D2·R2·后补·F-210 出 PR #384（审查中，依赖 #383）；#383 队列 BLOCKED（APIFAIL）待处理"
+],
 [
 "10-16",
 "D2·R2·后补·F-210 云端开发会话已开（开发中）"
@@ -5993,7 +5997,7 @@
 "k": "F-209",
 "n": "测试夹具 AC-EMP-inheritance-support.ts 补租户上下文（#382 超范围后补，P3，只改测试）",
 "s": "assigned",
-"note": "#383 第 1 轮 Codex Sol high 可合并（无 P0～P2，head 4aabaa0a）· 已入队待合并 · 合并后连带关闭 F-186 · 同类夹具问题已立项 F-210",
+"note": "#383 第 1 轮 Sol high 可合并（无 P0～P2）· 在合并队列（queue-head），21:15Z mergeq 记 BLOCKED 完整 CI APIFAIL（run 38964244106 实为 success），待 05/03 处理 · 合并后连带关闭 F-186 · 同类夹具问题已立项 F-210",
 "mod": "R2",
 "ms": "D2",
 "pr": 383
@@ -6002,9 +6006,10 @@
 "k": "F-210",
 "n": "测试补租户上下文：AC-TRF-18-configuration、AC-SC-calc-core（同 F-209 类，P3，只改测试；顺带全仓 tests/ 同类写法只列清单）",
 "s": "assigned",
-"note": "开发中（云端 Claude Sonnet 5.5 High，session_012Q84FByJRV3tT8ZfuS8NJZ，无 PR）· Codex Sol high 审 · 不依赖其他任务、无需取证 · 验收：三种连接下两文件全过",
+"note": "#384 第 1 轮 Codex Sol high 审查中（head b281b7d8）· 依赖 #383（F-209）先合入 · 全仓清单另查出 AC-EV-F092-panel-exit-pg（6 条）、AC-TRF-163-required（2 条）同类问题，待审查确认后 03 另提新 F",
 "mod": "R2",
-"ms": "D2"
+"ms": "D2",
+"pr": 384
 },
 {
 "k": "F-203",
