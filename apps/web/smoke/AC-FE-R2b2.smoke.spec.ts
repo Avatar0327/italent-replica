@@ -4,7 +4,7 @@ import { choose, item, named, pickDate, save } from './contracts-fixtures.js';
 import { companyId, entryId, nextId, setupEntries, typeId } from './entry-fixtures.js';
 
 // 首个行为门禁：旧实现没有 entries 菜单；不靠 import 不存在的文件制造红测。
-// TODO(需取证 #363)：FormOverlay 的暂存底栏与标题工具区契约合入后，继续本片实现并跑绿。
+// DEC-546/548：取消入口由 F-192 另派；已取消场景用夹具造数据。
 async function entryPage(page: Page, baseURL: string) {
   const state = await setupEntries(page, baseURL);
   await expect(page.getByRole('menuitem', { name: '入职管理', exact: true })).toBeVisible({ timeout: 5000 });
@@ -17,7 +17,7 @@ async function onboard(page: Page) {
     .getByRole('button', { name: /更多|▾/ })
     .click();
   await page.getByRole('menuitem', { name: '入职', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: '入职', exact: true });
+  const dialog = page.getByRole('dialog', { name: /^入职(?:\s|$)/ });
   await expect(dialog).toBeVisible();
   return dialog;
 }
@@ -29,7 +29,7 @@ async function selectedAction(page: Page, label: string) {
     await page.getByRole('button', { name: /更多操作/ }).click();
     await page.getByRole('menuitem', { name: label, exact: true }).click();
   }
-  return page.getByRole('dialog', { name: label, exact: true });
+  return page.getByRole('dialog', { name: new RegExp(`^${label}`) });
 }
 
 test('AC-FE-R2b2-01 菜单、四视图请求和列头', async ({ page, baseURL }) => {
@@ -155,17 +155,19 @@ test('AC-FE-R2b2-06 AC-EN-03 改期校验与新 ID 重读', async ({ page, baseU
   await expect(row(page)).toContainText('2026-10-25');
   expect(state.row.id).toBe(nextId);
   expect(state.reads.slice(before).some((url) => url.includes('/pending-entries?'))).toBe(true);
-  await expect(page.getByText('改期入职成功', { exact: true })).toBeVisible();
+  await expect(page.getByText('操作成功', { exact: true })).toBeVisible();
 });
 
-test('AC-FE-R2b2-07 取消后进入已取消，再改期恢复', async ({ page, baseURL }) => {
+test('AC-FE-R2b2-07 无取消入口，已取消夹具改期恢复', async ({ page, baseURL }) => {
   const state = await entryPage(page, baseURL!);
-  const cancel = await selectedAction(page, '取消入职');
-  await choose(cancel, '取消入职原因', '个人原因');
-  await cancel.getByRole('button', save).click();
-  await expect(cancel).toHaveCount(0);
-  await expect(row(page)).toHaveCount(0);
-  expect(state.writes[0]!.body).toEqual({ reason: 'personal' });
+  await row(page)
+    .getByRole('button', { name: /更多|▾/ })
+    .click();
+  await expect(page.getByRole('menuitem', named('改期入职'))).toHaveCount(0);
+  await expect(page.getByRole('menuitem', named('取消入职'))).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await expect(row(page).getByRole('button', named('编辑'))).toBeDisabled();
+  state.row.entryStatus = 1;
   await tab(page, '已取消入职').click();
   await expect(row(page)).toContainText('取消');
   const postpone = await selectedAction(page, '改期入职');
@@ -174,6 +176,7 @@ test('AC-FE-R2b2-07 取消后进入已取消，再改期恢复', async ({ page, 
   await expect(postpone).toHaveCount(0);
   await tab(page, '全部待入职').click();
   await expect(row(page)).toContainText('延期');
+  expect(state.writes.every((write) => !write.path.endsWith('/cancel'))).toBe(true);
 });
 
 test('AC-FE-R2b2-08 删除气泡确认后四视图不可见', async ({ page, baseURL }) => {
