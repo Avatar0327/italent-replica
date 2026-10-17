@@ -8,7 +8,8 @@ import { EMPLOYEE_STATUS, type EmployeeStatusCode, type InternView } from '@ital
 import type { SQL } from 'drizzle-orm';
 import { employmentCreator, employmentScopePredicate } from './context.js';
 import { personnelHooks } from './personnel-hooks.js';
-import { loadProbationCycle } from './probation.js';
+import { loadProbationVersions, type ProbationVersion } from './entry-probation.js';
+import { resolveProbationInfo } from './probation.js';
 import { checkPage, rowsOf } from './read-model.js';
 import type { BusinessKind, EmploymentScope, EmploymentState, EmployType, PageQuery } from './types.js';
 
@@ -56,24 +57,26 @@ export async function listInternView(
   checkPage(input.page);
   const query = input.view === 'converting' ? convertingQuery : recordQuery;
   const rows = rowsOf<Omit<InternViewItem, 'probation'>>(await tx.execute(query(tenantId, input, scope)));
-  const items: InternViewItem[] = [];
-  for (const row of rows)
-    items.push({
-      ...row,
-      probation: input.view === 'converted' ? await regularizedProbation(tx, tenantId, row) : null,
-    });
-  return items;
+  const converted = input.view === 'converted';
+  const versions = converted
+    ? await loadProbationVersions(
+        tx,
+        tenantId,
+        rows.map((row) => row.id),
+      )
+    : new Map();
+  return rows.map((row) => ({ ...row, probation: converted ? regularizedProbation(row, versions.get(row.id)) : null }));
 }
 
 /**
- * 已转正的试用期信息读 BE-3 的版本表（DEC-585，probation.ts loadProbationCycle）：以转正日为时点取本周期的开启记录，
- * 开启记录就是这条实习转正时才算它的试用期；无试用期为 null。分页上限 200 行，逐行读取。
+ * 已转正行的试用期（DEC-585，BE-3 的试用期版本链）：这条实习转正就是开启本段试用的记录，直接按行自己的记录 ID 读，
+ * 不再按“员工 + 转正日”重新定位锚点——同一天退休又返聘时，当天最后的周期不是这一行（PR #386 第 3 轮 P2-1）。
+ * 整页一次批量读取版本；无试用期为 null。
  */
-async function regularizedProbation(tx: Tx, tenantId: string, row: Omit<InternViewItem, 'probation'>) {
-  const cycle = await loadProbationCycle(tx, tenantId, row.employeeId, row.effectiveDate);
-  if (cycle?.anchor.id !== row.id || !cycle.info.hasProbation) return null;
-  const { startDate, months, expectedEndDate } = cycle.info;
-  return { startDate: startDate!, months: months!, endDate: expectedEndDate! };
+function regularizedProbation(row: Omit<InternViewItem, 'probation'>, version: ProbationVersion | undefined) {
+  const info = resolveProbationInfo(version ?? null, row);
+  if (!info.hasProbation) return null;
+  return { startDate: info.startDate!, months: info.months!, endDate: info.expectedEndDate! };
 }
 
 function filters(tenantId: string, filter: InternViewFilter, department: SQL, employee: SQL, code: SQL): SQL {

@@ -794,6 +794,9 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/entry-probation.ts#loadProbationVersion': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
+  'apps/api/src/modules/employment/entry-probation.ts#loadProbationVersions': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
   'apps/api/src/modules/employment/entry-probation.ts#saveAddedProbation': [
     'apps/api/src/modules/employment/employee-status.ts#ENTRY_KINDS',
     '#savePendingProbation',
@@ -1396,6 +1399,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/personnel-hooks.ts#personnelHooks',
   ],
   'apps/api/src/modules/employment/intern-views.ts#listInternView': [
+    'apps/api/src/modules/employment/entry-probation.ts#loadProbationVersions',
     '#convertingQuery',
     '#recordQuery',
     '#regularizedProbation',
@@ -1413,7 +1417,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/personnel-hooks.ts#personnelHooks',
   ],
   'apps/api/src/modules/employment/intern-views.ts#regularizedProbation': [
-    'apps/api/src/modules/employment/probation.ts#loadProbationCycle',
+    'apps/api/src/modules/employment/probation.ts#resolveProbationInfo',
   ],
   'apps/api/src/modules/employment/late-transfer.ts#assertNoRebuildRequired': [
     'apps/api/src/modules/employment/activation-store.ts#REBUILD_REQUIRED',
@@ -1722,9 +1726,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/entry-probation.ts#loadProbationVersion',
     '#loadAnchor',
     '#loadCycleRegularization',
-    'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS',
-    'packages/domain/src/employment/probation.ts#normalizeProbationInfo',
-    'packages/domain/src/employment/probation.ts#resolveDeferredProbation',
+    '#resolveProbationInfo',
   ],
   'apps/api/src/modules/employment/probation.ts#probationDetail': [
     'apps/api/src/modules/employment/context.ts#employmentCreator',
@@ -1732,6 +1734,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     'apps/api/src/modules/employment/visibility.ts#employmentVisibilitySql',
     'packages/domain/src/employment/probation.ts#actualProbationEndDate',
+  ],
+  'apps/api/src/modules/employment/probation.ts#resolveProbationInfo': [
+    'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS',
+    'packages/domain/src/employment/probation.ts#normalizeProbationInfo',
+    'packages/domain/src/employment/probation.ts#resolveDeferredProbation',
   ],
   'apps/api/src/modules/employment/read-model.ts#findCurrentRecord': ['#record', '#recordsQuery', '#rowsOf'],
   'apps/api/src/modules/employment/read-model.ts#findPredecessor': ['#loadEmploymentRecord', '#rowsOf'],
