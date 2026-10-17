@@ -6,7 +6,7 @@
  */
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { internWorld, type InternWorld } from './AC-IN-BE6a-support.js';
+import { internWorld, scopedRequest, type InternWorld } from './AC-IN-BE6a-support.js';
 import { tenantApi } from './support/tenant-api.js';
 import { uniqueSuffix } from './support/unique.js';
 
@@ -155,6 +155,17 @@ describe('AC-IN-BE6a-02 直接实习转正：校验', () => {
     const response = await w.regularize(await setup(w), withProbation(w.org.id));
     expect(response.status).toBe(409);
     expect(await response.json()).toMatchObject({ error: { details: { reason } } });
+  });
+
+  it('目标部门不在数据范围 → 404，不落地（反向）', async () => {
+    const w = await internWorld(testDb().db, 'be6a-reg-scope');
+    const id = await intern(w);
+    const request = scopedRequest(w, [w.org.id], ['id']);
+    const body = { ...BASE, departmentId: w.other.id };
+    expect((await request('POST', `/interns/${id}/regularize`, { ifMatch: await w.revision(id), body })).status).toBe(
+      404,
+    );
+    expect(await kinds(w, id)).toEqual(['hire']);
   });
 
   it('员工 revision 不一致 → 409，不落地', async () => {

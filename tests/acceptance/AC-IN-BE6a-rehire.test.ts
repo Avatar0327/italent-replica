@@ -3,13 +3,9 @@
  * 补证结论 R2f B41“再入职入口”）。保守口径：只按“证件类型 + 证件号码”在租户内精确匹配已离职 / 退休人员；
  * 多人命中明确拒绝、不自动挑选；手机 / 邮箱匹配与复聘次数未验证、本单不做。
  */
-import type { Authorizer } from '@italent/api';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { registerScopeProvider } from '../../apps/api/src/modules/permission/module-access.js';
-import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.js';
-import { internWorld, type InternWorld } from './AC-IN-BE6a-support.js';
-import { tenantApi } from './support/tenant-api.js';
+import { internWorld, scopedRequest, type InternWorld } from './AC-IN-BE6a-support.js';
 import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
@@ -102,23 +98,8 @@ describe('AC-IN-BE6a-06 按证件号的重聘判定', () => {
     const w = await internWorld(testDb().db, 'be6a-rehire-scope');
     const number = idNumber();
     await leftPerson(w, '范围外合成员工', number);
-    const authorize: Authorizer = () => true;
-    registerScopeProvider(authorize, {
-      scope: async () => ({
-        ...EMPTY_SCOPE,
-        orgIds: [w.org.id],
-        hasDataPermission: true,
-        terms: [{ dimension: 'organization' as const, orgIds: [w.org.id], personIds: [] }],
-      }),
-      authorize: async () => true,
-      fields: async () => new Set(['code', 'name']),
-    });
-    const api = tenantApi(w.db, { authorize, clock: () => new Date('2026-10-01T01:00:00.000Z') });
-    const response = await api.request('POST', '/api/tenant/employment/rehire-matches', {
-      user: w.session.user.id,
-      tenant: w.session.tenant.id,
-      body: { idType: 'id_card', idNumber: number },
-    });
+    const request = scopedRequest(w, [w.org.id], ['code', 'name']);
+    const response = await request('POST', '/rehire-matches', { body: { idType: 'id_card', idNumber: number } });
     expect(response.status).toBe(404);
   });
 });

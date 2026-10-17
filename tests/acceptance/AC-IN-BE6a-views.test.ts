@@ -3,13 +3,9 @@
  * 实习中 = 雇佣关系实习生 + 人员状态正式 + 主职当前生效；实习转正中 = 实习转正审批中 / 审批通过未生效；
  * 已转正 = 生效的实习转正记录（直接或申请）；已离职 = 实习生身份的离职记录（结束实习归 BE-6b，本单只读已有离职）。
  */
-import type { Authorizer } from '@italent/api';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { registerScopeProvider } from '../../apps/api/src/modules/permission/module-access.js';
-import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.js';
-import { internWorld, names, type InternViewItem, type InternWorld } from './AC-IN-BE6a-support.js';
-import { tenantApi } from './support/tenant-api.js';
+import { internWorld, names, scopedRequest, type InternViewItem, type InternWorld } from './AC-IN-BE6a-support.js';
 
 const testDb = useTestDb();
 
@@ -126,23 +122,9 @@ describe('AC-IN-BE6a-04 实习四视图', () => {
 
 describe('AC-IN-BE6a-05 实习四视图的数据范围与字段裁剪（fail-closed）', () => {
   async function scoped(w: InternWorld, orgIds: readonly string[], fields: readonly string[]) {
-    const authorize: Authorizer = () => true;
-    registerScopeProvider(authorize, {
-      scope: async () => ({
-        ...EMPTY_SCOPE,
-        orgIds,
-        hasDataPermission: orgIds.length > 0,
-        terms: orgIds.length ? [{ dimension: 'organization' as const, orgIds, personIds: [] }] : [],
-      }),
-      authorize: async () => true,
-      fields: async () => new Set(fields),
-    });
-    const api = tenantApi(w.db, { authorize, clock: () => new Date('2026-10-01T01:00:00.000Z') });
+    const request = scopedRequest(w, orgIds, fields);
     return async (name: string) => {
-      const response = await api.request('GET', `/api/tenant/employment/interns?view=${name}`, {
-        user: w.session.user.id,
-        tenant: w.session.tenant.id,
-      });
+      const response = await request('GET', `/interns?view=${name}`);
       expect(response.status, await response.clone().text()).toBe(200);
       return (await response.json()) as { items: InternViewItem[]; hasDataPermission: boolean };
     };
