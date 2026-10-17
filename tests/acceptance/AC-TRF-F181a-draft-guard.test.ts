@@ -84,6 +84,7 @@ async function guardedWorld(label: string) {
     ...s,
     rights,
     api,
+    send,
     /** 经可撤权授权器的覆盖暂存。 */
     guardedStash: async (key: string, body: Record<string, unknown> = {}, revision?: number) =>
       send('POST', `/transfers/employees/${s.employeeId}`, {
@@ -383,5 +384,153 @@ describe('F-181a 清除重放不沿用入口的旧目标例外（Switch 31）', 
     expect(rejected(response.status), await response.clone().text()).toBe(true);
     expect(await state(x)).toEqual(before);
     expect(await x.businessState(x.stash.id)).toBe('draft');
+  });
+});
+
+// #403 第 3 轮 P2（DEC-431① 同类统一）：调动单的所有“同单写”入口——通用编辑 / 提交 / 撤回 / 撤销 / 删除、联动保存、清除、
+// 覆盖暂存——重放与失败回查都必须在命令事务内按当前范围重算同单来源与 Switch 31 目标例外，不得沿用入口的旧上下文。
+// 夹具同上：经办人只有源部门范围，入口靠 transferTarget 例外放行；首次成功后命令内范围收空 / 换成无关部门。
+describe('F-181a 调动同单写入口：重放不沿用入口的旧范围与旧目标例外（统一 guard）', () => {
+  async function sameOrderWorld(label: string, exception = true) {
+    const x = await guardedWorld(label);
+    const settings = await x.w.session.request('PUT', '/transfers/settings', {
+      ifMatch: 0,
+      body: { unrestrictTargetDepartment: true, autoPopulate: false },
+    });
+    expect(settings.status, await settings.clone().text()).toBe(200);
+    const stash = await saved(await x.guardedStash(randomUUID()));
+    const third = await x.w.session.org('第三部门', { establishedOn: '2026-01-01' });
+    const sourceOnly = () => orgScope(x.tenantId, '2026-10-01', x.w.from.id);
+    // 入口也只放行源部门：目标部门在范围外，入口靠 Switch 31 的 transferTarget 例外通过（旧实现把这份例外带进命令事务）
+    if (exception) x.rights.entryScope = sourceOnly();
+    return { ...x, stash, third, sourceOnly };
+  }
+  type World = Awaited<ReturnType<typeof sameOrderWorld>>;
+  interface Path {
+    readonly name: string;
+    /** 该入口没有目标部门例外（联动保存不走 transferBusinessContext）：入口按全部范围放行，命令内范围再收窄。 */
+    readonly exception?: false;
+    /** 首次成功时命令内的范围；缺省只含源部门（靠目标例外）。联动保存没有例外，范围须同时含源与目标部门。 */
+    readonly firstScope?: (x: World) => ReturnType<typeof orgScope>;
+    /** 在开放权限下把暂存单推进到该入口需要的状态，返回该入口发请求要带的 If-Match。 */
+    readonly prepare: (x: World) => Promise<number>;
+    readonly call: (x: World, key: string, revision: number) => Promise<Response>;
+  }
+  const submitPlain = async (x: World) => {
+    const response = await x.w.session.request('POST', `/businesses/${x.stash.id}/submit`, {
+      ifMatch: x.stash.revision,
+      body: {},
+    });
+    expect(response.status, await response.clone().text()).toBe(200);
+    return ((await response.json()) as { revision: number }).revision;
+  };
+  const business = (x: World) => `/businesses/${x.stash.id}`;
+  const PATHS: readonly Path[] = [
+    {
+      name: 'PATCH /businesses/:id（编辑）',
+      prepare: async (x) => x.stash.revision,
+      call: (x, key, revision) =>
+        x.send('PATCH', business(x), { ifMatch: revision, key, body: { fields: { place: '改后地点' } } }),
+    },
+    {
+      name: 'POST /businesses/:id/submit（提交）',
+      prepare: async (x) => x.stash.revision,
+      call: (x, key, revision) => x.send('POST', `${business(x)}/submit`, { ifMatch: revision, key }),
+    },
+    {
+      name: 'DELETE /businesses/:id（删除）',
+      prepare: async (x) => x.stash.revision,
+      call: (x, key, revision) => x.send('DELETE', business(x), { ifMatch: revision, key }),
+    },
+    {
+      name: 'POST /businesses/:id/withdraw（撤回）',
+      prepare: submitPlain,
+      call: (x, key, revision) => x.send('POST', `${business(x)}/withdraw`, { ifMatch: revision, key }),
+    },
+    {
+      name: 'POST /businesses/:id/revoke（撤销）',
+      prepare: submitPlain,
+      call: (x, key, revision) => x.send('POST', `${business(x)}/revoke`, { ifMatch: revision, key }),
+    },
+    {
+      name: 'PUT /transfers/:id/linkage（联动保存）',
+      exception: false,
+      firstScope: (x) => orgScope(x.tenantId, '2026-10-01', x.w.from.id, x.w.to.id),
+      prepare: async (x) => x.stash.revision,
+      call: (x, key, revision) =>
+        x.send('PUT', `/transfers/${x.stash.id}/linkage`, { ifMatch: revision, key, body: {} }),
+    },
+    {
+      name: 'DELETE /transfers/employees/:id/draft/:businessId（清除）',
+      prepare: async (x) => x.stash.revision,
+      call: (x, key, revision) =>
+        x.send('DELETE', `/transfers/employees/${x.employeeId}/draft/${x.stash.id}`, { ifMatch: revision, key }),
+    },
+  ];
+  const GONE: ReadonlyArray<readonly [string, (x: World) => void]> = [
+    [
+      '数据范围收为空',
+      (x) => {
+        x.rights.scope = undefined;
+        x.rights.emptyScope = true;
+      },
+    ],
+    [
+      '范围换成无关的第三部门',
+      (x) => {
+        x.rights.scope = orgScope(x.tenantId, '2026-10-01', x.third.id);
+      },
+    ],
+  ];
+  const leaks = (text: string, x: World) =>
+    [x.stash.id, x.employeeId, x.w.to.id].filter((value) => text.includes(value));
+
+  describe.each(PATHS)('$name', (path) => {
+    async function firstDone(label: string) {
+      const x = await sameOrderWorld(label, path.exception ?? true);
+      const revision = await path.prepare(x);
+      x.rights.scope = path.firstScope ? path.firstScope(x) : x.sourceOnly();
+      const key = randomUUID();
+      const first = await path.call(x, key, revision);
+      expect(first.status, await first.clone().text()).toBeLessThan(300);
+      return { x, key, revision, first };
+    }
+
+    it('对照：权限不变时同键重放返回原响应，不重复写入', async () => {
+      const { x, key, revision, first } = await firstDone(`f181a-so-same-${path.name.length}`);
+      const before = await state(x);
+      const replay = await path.call(x, key, revision);
+      expect(replay.status, await replay.clone().text()).toBe(first.status);
+      expect(await replay.json()).toEqual(await first.json());
+      expect(await state(x)).toEqual(before);
+    });
+
+    it.each(GONE)('首次成功后%s：同键重放被拒，响应不带原回执，业务 / 审计 / 台账不变', async (name, apply) => {
+      const { x, key, revision } = await firstDone(`f181a-so-replay-${path.name.length}-${name.length}`);
+      const before = await state(x);
+      apply(x);
+      const replay = await path.call(x, key, revision);
+      const text = await replay.text();
+      expect(rejected(replay.status), text).toBe(true);
+      expect(leaks(text, x), '被拒响应不得披露原回执里的单据 / 员工 / 目标部门').toEqual([]);
+      expect(await state(x)).toEqual(before);
+    });
+  });
+
+  it('POST /transfers/employees/:id（覆盖暂存）：首次成功后范围收空，同键重放被拒且不披露原回执', async () => {
+    const x = await sameOrderWorld('f181a-so-create');
+    const key = randomUUID();
+    const revision = (await x.w.session.getEmployee(x.employeeId)).revision;
+    x.rights.scope = x.sourceOnly();
+    const first = await x.guardedStash(key, { effectiveDate: '2026-10-12' }, revision);
+    expect(first.status, await first.clone().text()).toBe(201);
+    const before = await state(x);
+    x.rights.scope = undefined;
+    x.rights.emptyScope = true;
+    const replay = await x.guardedStash(key, { effectiveDate: '2026-10-12' }, revision);
+    const text = await replay.text();
+    expect(rejected(replay.status), text).toBe(true);
+    expect(text).not.toContain(x.w.to.id);
+    expect(await state(x)).toEqual(before);
   });
 });
