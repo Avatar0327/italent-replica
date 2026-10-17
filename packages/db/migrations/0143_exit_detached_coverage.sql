@@ -2,8 +2,29 @@
 -- 员工自离职生效日起即为离职。覆盖校验原本要求“每条未墓碑的主职记录恰有一行投影”，这里放行被离职摘下的调动。
 -- 豁免条件只有一份，由 employment_record_detached 判定，覆盖校验触发器与应用（isDetachedRecord）共用：
 -- 目标是主职调动、当前没有投影行；台账 future_transfer_detached（effective 阶段、employment-record 目标）与目标同员工；
--- 台账的来源业务是同员工、同任职周期的真实离职（有离职扩展行、记录仍在时间轴上），且目标不早于该离职的生效日。
+-- 台账的来源业务是同员工、同任职周期的真实离职（有离职扩展行、记录仍在时间轴上），且按可信顺序（employment_follows）排在该离职之后——同日也严格比较。
 -- 离职被撤销 / 删除后离职投影消失，挂回投影才能通过校验（撤销路径在 B4）。
+-- 同日先后的可信顺序（契约 C-3，镜像 timeline.ts timelinePosition 的插入规则）：落地日 → 计划生效日 → 操作序号。
+-- 三个输入都来自系统写入的记录 / 载荷版本 / 状态事件，不读台账 JSON 里任何可伪造的顺序字段。
+CREATE FUNCTION employment_follows(p_tenant uuid, p_anchor uuid, p_record uuid) RETURNS boolean
+LANGUAGE sql STABLE SET search_path = pg_catalog, public AS $$
+  WITH keys AS (
+    SELECT r.id, r.start_date,
+      (SELECT p.planned_effective_date FROM public.employment_payload_versions p
+        WHERE p.tenant_id = r.tenant_id AND p.business_id = r.id ORDER BY p.version_no DESC LIMIT 1) AS planned,
+      (SELECT COALESCE(max(e.event_seq) FILTER (WHERE e.state = 'in_review'), min(e.event_seq))
+        FROM public.employment_state_events e WHERE e.tenant_id = r.tenant_id AND e.business_id = r.id) AS operation
+    FROM public.employment_records r
+    WHERE r.tenant_id = p_tenant AND r.id IN (p_anchor, p_record)
+  )
+  SELECT EXISTS (
+    SELECT 1 FROM keys a, keys r
+    WHERE a.id = p_anchor AND r.id = p_record AND a.id <> r.id
+      AND (r.start_date > a.start_date OR (r.start_date = a.start_date AND (r.planned > a.planned
+        OR (r.planned = a.planned AND r.operation > a.operation))))
+  );
+$$;
+--> statement-breakpoint
 CREATE FUNCTION employment_record_detached(p_tenant uuid, p_record uuid) RETURNS boolean
 LANGUAGE sql STABLE SET search_path = pg_catalog, public AS $$
   SELECT EXISTS (
@@ -19,7 +40,7 @@ LANGUAGE sql STABLE SET search_path = pg_catalog, public AS $$
     JOIN public.exit_requests source_exit ON source_exit.tenant_id = leave_record.tenant_id
       AND source_exit.business_id = leave_record.id
     WHERE r.tenant_id = p_tenant AND r.id = p_record AND r.kind = 'transfer' AND r.service_type = 'primary'
-      AND r.start_date >= leave_record.start_date
+      AND public.employment_follows(r.tenant_id, leave_record.id, r.id)
       AND NOT EXISTS (SELECT 1 FROM public.employment_timeline own
         WHERE own.tenant_id = r.tenant_id AND own.record_id = r.id)
   );

@@ -262,7 +262,7 @@ export interface DetachedTransferWindow {
 
 /**
  * 离职设计 §5.8：离职落地后，同周期里排在它之后的已落地调动（未来直接调动，或同日迟到落地、按 C-3 排在离职之后的调动）
- * 的时间轴行摘下，员工自离职生效日起即为离职；记录、载荷版本、状态事件全部保留。离职区间开放到下一条剩余记录（下一周期
+ * 的时间轴行摘下（“排在其后”只用数据库函数 employment_follows 判定，与覆盖校验触发器同一口径，同日按 C-3），员工自离职生效日起即为离职；记录、载荷版本、状态事件全部保留。离职区间开放到下一条剩余记录（下一周期
  * 的入职）或无穷。返回被摘下的窗口，供调用方写台账（撤销时按窗口挂回，B4）。调用方已持员工锁。
  */
 export async function detachFutureTransfers(
@@ -282,7 +282,7 @@ export async function detachFutureTransfers(
     SELECT t.record_id AS "recordId", t.start_date::text AS "from", upper(t.valid_during)::text AS "to"
     FROM employment_timeline t JOIN employment_records r ON r.tenant_id=t.tenant_id AND r.id=t.record_id
     WHERE t.tenant_id=${ctx.tenantId} AND t.employee_id=${employeeId}::uuid AND t.staff_id=${leave.staffId}::uuid
-      AND r.kind='transfer' AND (t.start_date,t.sort_order)>(${leave.startDate}::date,${leave.sortOrder})
+      AND r.kind='transfer' AND employment_follows(${ctx.tenantId}::uuid, ${leaveRecordId}::uuid, r.id)
     ORDER BY t.start_date,t.sort_order`),
   );
   if (!detached.length) return [];
