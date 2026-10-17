@@ -52,7 +52,7 @@
  *    直接返回（employment-replay.ts:43）；footprint / result 仍按附录登记 §10.3 的 employment.employeeCreate / generic（待设计守卫名），
  *    现状事务内 / 返回后都没有复核。
  */
-import { CONTRACT_OBJECT, MODULE_OBJECTS } from '@italent/domain';
+import { APPROVAL_INSTANCE_OBJECT, CONTRACT_OBJECT, EXIT_BUTTONS, MODULE_OBJECTS } from '@italent/domain';
 import {
   type ButtonPolicy,
   defineTable,
@@ -237,6 +237,8 @@ const TODO_PENDING_KEYS = [
   'nodeName',
   'isExceptionAdmin',
   'origin',
+  // R2-T03 §9 合并待办：批量离职申请的批次号
+  'batchId',
   'createdAt',
 ] as const;
 /** tab=initiated：listInstances(role=initiated)（本人为 initiator_user_id）。 */
@@ -281,6 +283,42 @@ const IMPORT_PREVIEW_ROWS: RowsPolicy = {
   target: { param: 'id' },
   batch: 'atomic',
 };
+
+// ---- R2-T03 B2b 离职办理入口（employment/exit-routes.ts）------------------------------------------------------------
+/** 新建离职的按钮按办理方式：direct → Dimission、application → DimissionApproval（exit-gate.ts permissionSpec）。 */
+const EXIT_CREATE_BUTTON: ButtonPolicy = {
+  from: 'mapper',
+  mapper: 'employment.exitButton',
+  domain: ['application', 'direct'],
+};
+const EXIT_CREATE_PRECONDITIONS = ['lockEmploymentEmployee', 'requireExitGate', 'assertRevision'];
+const EXIT_PREVIEW_KEYS = ['lastWorkDate', 'effectiveDate', 'blockers', 'ack', 'warnings'] as const;
+const exitPreview = (code: string) =>
+  object({
+    object: EMPLOYMENT,
+    operation: 'view',
+    button: button(code, 'detail'),
+    scope: pointScope({ param: 'id' }, 'employment.employee', NF_DATA),
+    fields: fixed(EXIT_PREVIEW_KEYS, 'R2-T03 设计 §4 preview：固定键，清单逐项按可见性与字段查看权披露'),
+    write: write(
+      'body',
+      none('只读预览：没有命令事务，没有提交前足迹'),
+      none('只读预览：清单已按可见性与字段查看权披露'),
+    ),
+    ...byId,
+  });
+const exitTransition = () =>
+  object({
+    object: EMPLOYMENT,
+    operation: 'update',
+    button: button(EXIT_BUTTONS.application, 'detail'),
+    // 状态迁移改写后续记录前按 DEC-178 复核（同通用 submit / withdraw）
+    guards: [LINKAGE],
+    scope: BUSINESS_WRITE,
+    fields: RESPONSE,
+    write: employmentCommand(['lockEmploymentBusiness', 'assertRevision', 'assertTransition', 'requireExitGate']),
+    ...byId,
+  });
 
 export const EMPLOYMENT_POLICIES = defineTable('employment', {
   // ---- transfer/routes.ts registerPersonalEntry：本人调动入口 ------------------------------------------------------
@@ -1186,6 +1224,72 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     ]),
     ...byId,
   }),
+  // ---- employment/exit-routes.ts：R2-T03 B2b 离职办理入口（设计 §4 / §4A / §9.1；命令内复核 exitCommandGuard）--------
+  // 预览：readContext(object.view, resource=id) 人员范围 404「任职数据不存在」；body 严格 { lastWorkDate }（400）；
+  // Dimission / DimissionApproval 任一（两项都无 403）；只读，清单逐项按 DEC-177 可见 + 字段查看权披露
+  'POST /exits/employees/:id/preview': any(
+    [exitPreview(EXIT_BUTTONS.direct), exitPreview(EXIT_BUTTONS.application)],
+    byId,
+  ),
+  // 新建：If-Match 必填；resource=id 人员范围 404；body 不接受 kind（400）；按 mode 取按钮（direct → Dimission、
+  // application → DimissionApproval），不要求 Employment.Create；字段 = 任职载荷 + exit 区块；带 departmentId 时
+  // requireEmploymentScope；命令内员工锁 → 门禁（§4A：未办结离职 / 字典 / §8A / §8B / §8 令牌 / 关口⑤）→ 申请服务
+  'POST /exits/employees/:id': object({
+    object: EMPLOYMENT,
+    operation: 'create',
+    button: EXIT_CREATE_BUTTON,
+    guards: [LINKAGE],
+    scope: guardScope('employment.scope', NF_DATA),
+    fields: RESPONSE,
+    write: employmentWrite('body.fields+customFields', EXIT_CREATE_PRECONDITIONS, { controls: ['exit'] }),
+    ...byId,
+  }),
+  // 批量申请：items 1～100（400）；逐人范围 / DimissionApproval / 字段在命令内复核（exitBatchGuard），不通过的人与
+  // 业务前置条件一起作为逐条原因：任一人不满足 → 整批 409 EXIT_BATCH_REJECTED、无任何写入；每人建申请并提交
+  'POST /exits/batch': object({
+    object: EMPLOYMENT,
+    operation: 'create',
+    button: button(EXIT_BUTTONS.application, 'detail'),
+    guards: [LINKAGE],
+    scope: guardScope('employment.scope', NF_DATA),
+    fields: RESPONSE,
+    rows: {
+      path: 'items[*]',
+      fields: 'body',
+      target: { body: 'items[*].employeeId' },
+      batch: 'atomic',
+    },
+    write: employmentWrite('body', [...EXIT_CREATE_PRECONDITIONS, 'assertTransition'], { controls: ['exit'] }),
+  }),
+  // 编辑离职：If-Match 必填；body = 离职扩展字段 + 可选日期（400）；写入口径 404「任职业务不存在」，不是离职单 404；
+  // DimissionEdit，审批中的单另需审批管理员按钮 adminIntervene（B-65a）；日期与当前值不同 400 EXIT_DATE_IMMUTABLE（§7.2）
+  'PATCH /exits/:id': all(
+    [
+      object({
+        object: EMPLOYMENT,
+        operation: 'update',
+        button: button(EXIT_BUTTONS.edit, 'detail'),
+        scope: BUSINESS_WRITE,
+        fields: RESPONSE,
+      }),
+      object({
+        object: APPROVAL_INSTANCE_OBJECT,
+        operation: 'button',
+        button: button('adminIntervene', 'detail'),
+        scope: noScope('只判按钮：单据处于 in_review 时才要求（与审批编辑同约束）'),
+        fields: noFields('只决定能否编辑审批中的离职单'),
+      }),
+    ],
+    RESPONSE,
+    {
+      write: employmentWrite('body', ['lockEmploymentBusiness', 'assertRevision', 'requireExitGate']),
+      ...byId,
+    },
+  ),
+  // 提交 / 撤回：If-Match 必填；写入口径 404，不是离职单 404；DimissionApproval（hr 发起，不要求 Employment.Submit /
+  // Withdraw）；提交只接受 { pendingTransferAck }、只允许原发起人（403 EXIT_SUBMIT_INITIATOR_ONLY）；命令内状态迁移 + 审批钩子
+  'POST /exits/:id/submit': exitTransition(),
+  'POST /exits/:id/withdraw': exitTransition(),
   // ---- employment/exit-routes.ts：R2-T03 离职三个字典（设计 §2.1 / §4 / §9.1）-----------------------------------------
   // :dict ∉ types / reasons / whereabouts → 400；enabled 查询非法 → 400；字典无组织字段，不按范围裁剪，返回固定键
   'GET /exits/dictionaries/:dict': object({
@@ -1441,7 +1545,8 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
         button: noButton('配置对象无按钮：requireEmploymentWrite 只查 object.update（命令式空字段集合）'),
         // 逐人经 BE-3 转正入口发起：联动校验在 createEmploymentBusiness 里照常调用（系统批次不带数据范围）
         guards: [LINKAGE],
-        scope: noScope('按规则适用组织扫描的系统批次，不叠加操作人数据范围（DEC-539①）'),
+        // 办理按规则适用组织（系统批次，DEC-539①）；回执按操作人当前任职范围逐人过滤（首次与重放，第 2 轮审查 P1）
+        scope: listScope('employment.runReceipt'),
         fields: SETTINGS_FIELDS,
       }),
     ],

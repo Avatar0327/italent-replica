@@ -282,6 +282,82 @@ const configWriteBase = (
   ob(`obj:${object}:${operation}`, [`objectOp:${object}:${operation}`], [write, WRITE_OBJECT]),
 ];
 
+// ---- R2-T03 B2b 离职办理入口（exit-routes.ts）：按钮 / 范围 / 字段在入口与命令内（exitCommandGuard）各判一次 -------------
+const EXIT_PERMISSION: Evidence = {
+  role: 'impl',
+  unit: `${SRC}/employment/exit-gate.ts#requireExitPermission`,
+  anchor: 'await requireEmploymentWrite(ctx, spec.op, spec.payload, button, undefined, options)',
+};
+const EXIT_GUARD = fn(REPLAY, 'exitCommandGuard', 'await requireExitPermission(scoped, operation, target)');
+const exitCall = (name: string, anchor: string) => fn(EXIT, name, anchor);
+function exitPreview(button: string): Obligation[] {
+  const group = `exitPreview:${button}`;
+  const call = at(
+    EXIT,
+    'POST',
+    '/exits/employees/:id/preview',
+    "const ctx = await readContext(c, deps, 'object.view', 0, id)",
+  );
+  return [
+    {
+      ...ob(
+        `obj:${RECORD}:view`,
+        ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:view', 'object:object.* 动作'],
+        [call, READ, RECORD_CONST],
+      ),
+      or: group,
+    },
+    {
+      ...ob(
+        `btn:${RECORD}#${button}@detail`,
+        ['button:object.button', 'button:buttonResource'],
+        [
+          at(EXIT, 'POST', '/exits/employees/:id/preview', 'await requirePreviewButton(deps, ctx)'),
+          exitCall('requirePreviewButton', "resource: buttonResource(EMPLOYMENT_OBJECT, code, 'detail')"),
+        ],
+      ),
+      or: group,
+    },
+  ];
+}
+function exitBusinessCommand(path: string, anchor: string, unit: 'route' | 'registerExitChanges'): Obligation[] {
+  const call = (text: string) =>
+    unit === 'route' ? at(EXIT, 'PATCH', path, text) : exitCall('registerExitChanges', text);
+  const guard =
+    unit === 'route'
+      ? fn(REPLAY, 'requireExitEditRights', "await requireExitPermission(ctx, 'update', target)")
+      : EXIT_GUARD;
+  return [
+    ob(
+      `obj:${RECORD}:update`,
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:update', 'object:object.* 动作'],
+      [
+        call("const ctx = await readContext(c, deps, 'object.update', revision(c))"),
+        READ,
+        guard,
+        EXIT_PERMISSION,
+        WRITE_OBJECT,
+      ],
+    ),
+    ob(
+      `btn:${RECORD}#${anchor}@detail`,
+      [],
+      [
+        call(
+          unit === 'route' ? '{ guard: exitEditGuard(deps, ctx, gate, id) }' : '{ guard: exitCommandGuard(deps, ctx,',
+        ),
+        guard,
+        EXIT_PERMISSION,
+        WRITE_BUTTON,
+      ],
+    ),
+    businessWrite(call('const current = await authorizeBusinessWrite(deps, ctx, id)')),
+    ...(unit === 'registerExitChanges'
+      ? [linkage(call('const business = await transitionEmployment(tx, context, { id, action })'))]
+      : []),
+  ];
+}
+
 /** R2 BE-8a 黑名单：入口 readContext 判对象操作，写权限链在命令内 requireBlacklistWrite（#199，guard.before）。 */
 const BLACKLIST = 'TenantBase.Blacklist';
 const BL_CONST: Evidence = {
@@ -1902,6 +1978,110 @@ export const EMPLOYMENT: RequiredTable = {
     ),
   ),
   // ---- employment/exit-routes.ts：R2-T03 离职三个字典（读：任职记录查看权；写：配置对象，设计 §9.1）----------------
+  // ---- R2-T03 B2b 离职办理入口 ----------------------------------------------------------------------------------
+  'POST /api/tenant/employment/exits/employees/:id/preview': [
+    ...exitPreview('Employment.Dimission'),
+    ...exitPreview('Employment.DimissionApproval'),
+  ],
+  'POST /api/tenant/employment/exits/employees/:id': [
+    ob(
+      `obj:${RECORD}:create`,
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:create', 'object:object.* 动作'],
+      [
+        at(
+          EXIT,
+          'POST',
+          '/exits/employees/:id',
+          "const ctx = await readContext(c, deps, 'object.create', revision(c), id)",
+        ),
+        READ,
+        EXIT_GUARD,
+        EXIT_PERMISSION,
+        WRITE_OBJECT,
+      ],
+    ),
+    ob(
+      `btn:${RECORD}#{mapper:employment.exitButton}`,
+      [],
+      [
+        at(
+          EXIT,
+          'POST',
+          '/exits/employees/:id',
+          "{ guard: exitCommandGuard(deps, ctx, 'create', gate, { departmentId }) }",
+        ),
+        EXIT_GUARD,
+        EXIT_PERMISSION,
+        WRITE_BUTTON,
+      ],
+      '按钮 = 办理方式：direct → Employment.Dimission、application → Employment.DimissionApproval',
+    ),
+    ob(
+      'guard:employment.scope',
+      [],
+      [
+        at(
+          EXIT,
+          'POST',
+          '/exits/employees/:id',
+          'if (departmentId !== undefined) requireEmploymentScope(ctx, id, departmentId)',
+        ),
+        EMPLOYMENT_SCOPE,
+      ],
+    ),
+    linkage(at(EXIT, 'POST', '/exits/employees/:id', 'body: await createExitApplication(tx, context,')),
+  ],
+  'POST /api/tenant/employment/exits/batch': [
+    ob(
+      `obj:${RECORD}:create`,
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:create', 'object:object.* 动作'],
+      [at(EXIT, 'POST', '/exits/batch', "const ctx = await readContext(c, deps, 'object.create')"), READ, WRITE_OBJECT],
+    ),
+    ob(
+      `btn:${RECORD}#Employment.DimissionApproval@detail`,
+      [],
+      [
+        at(EXIT, 'POST', '/exits/batch', 'const guard = exitBatchGuard(deps, ctx, items)'),
+        fn(REPLAY, 'exitBatchGuard', "await requireExitPermission(scoped, 'create', target)"),
+        EXIT_PERMISSION,
+        WRITE_BUTTON,
+      ],
+      '逐人复核；不通过的人作为逐条原因进整批 409（不单独 403）',
+    ),
+    ob(
+      'guard:employment.scope',
+      [],
+      [fn(REPLAY, 'exitBatchGuard', 'await requireExitScope(tx, scoped, target, {})'), EMPLOYMENT_SCOPE],
+    ),
+    linkage(at(EXIT, 'POST', '/exits/batch', 'body: await createExitBatch(tx, context, items, guard.failures())')),
+  ],
+  'PATCH /api/tenant/employment/exits/:id': [
+    ...exitBusinessCommand('/exits/:id', 'Employment.DimissionEdit', 'route'),
+    ob(
+      'btn:TenantBase.ApprovalInstance#adminIntervene@detail',
+      ['button:object.button', 'button:buttonResource'],
+      [
+        at(EXIT, 'PATCH', '/exits/:id', '{ guard: exitEditGuard(deps, ctx, gate, id) }'),
+        fn(REPLAY, 'exitEditGuard', 'await requireExitEditRights(tx, scoped, target, businessId)'),
+        fn(
+          REPLAY,
+          'requireExitEditRights',
+          "resource: buttonResource(APPROVAL_INSTANCE_OBJECT, 'adminIntervene', 'detail')",
+        ),
+      ],
+      '只在单据处于 in_review 时要求（与审批编辑同约束，B-65a）',
+    ),
+  ],
+  'POST /api/tenant/employment/exits/:id/submit': exitBusinessCommand(
+    '/exits/:id/submit',
+    'Employment.DimissionApproval',
+    'registerExitChanges',
+  ),
+  'POST /api/tenant/employment/exits/:id/withdraw': exitBusinessCommand(
+    '/exits/:id/withdraw',
+    'Employment.DimissionApproval',
+    'registerExitChanges',
+  ),
   'GET /api/tenant/employment/exits/dictionaries/:dict': [
     ob(
       `obj:${RECORD}:view`,
