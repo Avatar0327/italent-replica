@@ -8,6 +8,7 @@
 import './support/exit-gate-enforced.js';
 import { randomUUID } from 'node:crypto';
 import type { Authorizer } from '@italent/api';
+import { sql } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { denyButtons, gateWorld, type GateWorld } from './AC-EXIT-gate-support.js';
@@ -223,6 +224,23 @@ describe('AC-DM-22 POST exits/:id/submit | withdraw', () => {
     expect((await resubmit(w.restricted(denyButtons(), other.id))).status).toBe(404);
     expect(await w.stateOf(employee.id)).toEqual(before);
     expect(await w.exitRow(draft.id)).toMatchObject({ initiator: 'hr', initiator_user_id: w.session.user.id });
+  });
+
+  it('B-64 审批人不需要发起按钮：无 Dimission / DimissionApproval 的审批人可同意，单据审批通过', async () => {
+    const { w, draft } = await drafted('routes-approver');
+    const sent = await w.session.request('POST', `/exits/${draft.id}/submit`, { ifMatch: draft.revision, body: {} });
+    expect(sent.status).toBe(200);
+    const [task] = await w.sqlRows<{ id: string; assignee: string; revision: number }>(sql`SELECT t.id,
+        t.assignee_user_id AS assignee, i.revision FROM approval_tasks t
+      JOIN approval_instances i ON i.tenant_id=t.tenant_id AND i.id=t.instance_id
+      WHERE t.tenant_id=${w.session.tenant.id} AND i.business_id=${draft.id}::uuid AND t.status='pending'`);
+    const approver = w.asUser(task!.assignee, denyButtons('Employment.Dimission', 'Employment.DimissionApproval'));
+    const approved = await approver('POST', `/../approval/tasks/${task!.id}/approve`, {
+      ifMatch: Number(task!.revision),
+      body: {},
+    });
+    expect(approved.status, await approved.clone().text()).toBe(200);
+    expect(await w.business(draft.id)).toMatchObject({ status: 'approved' });
   });
 
   it('不是离职单 → 404（调动单不能走离职入口）', async () => {

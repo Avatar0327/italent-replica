@@ -209,6 +209,8 @@ const TODO_PENDING_KEYS = [
   'nodeName',
   'isExceptionAdmin',
   'origin',
+  // R2-T03 §9 合并待办：批量离职申请的批次号
+  'batchId',
   'createdAt',
 ] as const;
 /** tab=initiated：listInstances(role=initiated)（本人为 initiator_user_id）。 */
