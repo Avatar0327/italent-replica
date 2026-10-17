@@ -7,6 +7,7 @@
  */
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
+import type { EmploymentRecord } from './AC-EMP-support.js';
 import { customField } from './AC-EMP-inheritance-support.js';
 import {
   businessRevision,
@@ -23,8 +24,19 @@ import {
 
 const testDb = useTestDb();
 
+/** 任职记录接口返回的完整字段（夹具类型只列了公共部分）。 */
+type RecordView = EmploymentRecord & {
+  readonly revision: number;
+  readonly employeeStatus: number;
+  readonly before: { readonly fields: Readonly<Record<string, unknown>> } | null;
+};
+
+async function recordsAt(w: PbWorld, employeeId: string, asOf: string) {
+  return (await w.session.records(employeeId, asOf)) as RecordView[];
+}
+
 async function currentAt(w: PbWorld, employeeId: string, asOf: string) {
-  return (await w.session.records(employeeId, asOf)).find((record) => record.isCurrent)!;
+  return (await recordsAt(w, employeeId, asOf)).find((record) => record.isCurrent)!;
 }
 
 async function statuses(w: PbWorld, employeeId: string) {
@@ -37,12 +49,12 @@ async function statuses(w: PbWorld, employeeId: string) {
 
 /** 完整语义快照：任职记录（字段、自定义字段、变更前、状态、区间、当前 / 最新）+ 转正日期投影，ID 换成别名。 */
 async function semantic(w: PbWorld, employeeId: string, asOf: string) {
-  const records = await w.session.records(employeeId, asOf);
+  const records = await recordsAt(w, employeeId, asOf);
   const aliases = new Map<string, string>([[employeeId, 'employee']]);
   records.forEach((record, index) => {
     aliases.set(record.id, `record-${index}`);
     aliases.set(record.staffId, 'staff');
-    if (record.fields.jobNumber) aliases.set(record.fields.jobNumber, 'jobNumber');
+    if (typeof record.fields.jobNumber === 'string') aliases.set(record.fields.jobNumber, 'jobNumber');
   });
   const alias = (value: unknown): unknown => {
     if (typeof value === 'string') return aliases.get(value) ?? value;
