@@ -76,7 +76,11 @@ const open = async (page: Page, kind: Kind) => {
   await expect(page.getByRole('tab', { name: labels.find(([k]) => k === kind)![1], selected: true })).toBeVisible();
 };
 const table = (page: Page) => page.locator('.exit-settings .ant-table-tbody');
-const rowOf = (page: Page, code: string) => table(page).getByRole('row').filter({ hasText: code });
+// 按编码列整格匹配：voluntary 是 involuntary 的子串。
+const rowOf = (page: Page, code: string) =>
+  table(page)
+    .getByRole('row')
+    .filter({ has: page.getByRole('cell', { name: code, exact: true }) });
 const confirmPop = (page: Page) => page.getByRole('tooltip').getByRole('button', named('确定')).click();
 const codes = (page: Page) => table(page).locator('tr td:first-child').allInnerTexts();
 const dialog = (page: Page, name: string): Locator => page.getByRole('dialog', { name, exact: true });
