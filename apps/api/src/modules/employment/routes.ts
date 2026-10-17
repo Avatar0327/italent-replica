@@ -82,6 +82,7 @@ import { failedImportAnchors, importedItems } from './import-audit.js';
 import { policedSub } from '../../route-policy/index.js';
 import { EMPLOYMENT_POLICIES } from './policy.js';
 import { registerExitRoutes } from './exit-routes.js';
+import { registerBlacklistRoutes } from './blacklist-routes.js';
 import { assertEntryOptionsAllowed, splitEntryOptions } from './entry-options.js';
 import { registerEntryRoutes } from './entry-routes.js';
 import { registerEntryEmailRoutes } from './entry-email-routes.js';
@@ -106,6 +107,7 @@ export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
   registerSettings(module, deps);
   registerCustomFields(module, deps);
   registerExitRoutes(module, deps, authorizeBusinessWrite);
+  registerBlacklistRoutes(module, deps);
   registerEntryRoutes(module, deps, authorizeBusinessWrite);
   registerEntryEmailRoutes(module, deps, authorizeBusinessWrite);
   router.route('/api/tenant/employment', module);

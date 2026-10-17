@@ -5,8 +5,11 @@ export const EMPLOYMENT_DECLARED: ModuleDeclared = {
   /** R1c：含 ≥2 个准入承载节点的备选的端点（需要 need 登记） */
   multiCarrierAdmission: [
     'GET /api/tenant/employment/transfers/employees/:id/contracts',
+    'DELETE /api/tenant/employment/blacklist-rules/:id',
+    'POST /api/tenant/employment/blacklist-rules',
     'POST /api/tenant/employment/custom-fields',
     'POST /api/tenant/employment/exits/dictionaries/:dict',
+    'PUT /api/tenant/employment/blacklist-rules/:id',
     'PUT /api/tenant/employment/custom-fields/:id/inheritance',
     'PUT /api/tenant/employment/entry-email-rules',
     'PUT /api/tenant/employment/exits/dictionaries/:dict/:id',
@@ -30,6 +33,8 @@ export const EMPLOYMENT_DECLARED: ModuleDeclared = {
     'POST /api/tenant/employment/records/:id/forward-update-preview',
     'POST /api/tenant/employment/transfers/employees/:id',
     'POST /api/tenant/employment/transfers/employees/:id/preview',
+    'PUT /api/tenant/employment/blacklist-rules/:id',
+    'PUT /api/tenant/employment/blacklist/:id',
     'PUT /api/tenant/employment/custom-fields/:id/inheritance',
   ],
   /** 声明里的 map 型动态选择器位置“端点 × 位置”（AC-PRM-FW-02 选择器绑定） */

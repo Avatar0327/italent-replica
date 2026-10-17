@@ -30,6 +30,7 @@ export * from './employment/exit.js';
 export * from './employment/part-time-constants.js';
 export * from './employment/entry.js';
 export * from './employment/entry-email.js';
+export * from './employment/blacklist.js';
 export * from './transfer/catalog.js';
 export * from './transfer/required.js';
 export {

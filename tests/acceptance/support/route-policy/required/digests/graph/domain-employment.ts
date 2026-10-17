@@ -5,6 +5,11 @@
 import type { Graph } from '../../../evidence-graph.js';
 
 export const GRAPH: Graph = {
+  'packages/domain/src/employment/blacklist.ts#BLACKLIST_REASON_CODES': ['#BLACKLIST_REASONS'],
+  'packages/domain/src/employment/blacklist.ts#BLACKLIST_RULE_TERM_CODES': ['#BLACKLIST_RULE_TERMS'],
+  'packages/domain/src/employment/blacklist.ts#BLACKLIST_SOURCE_CODES': ['#BLACKLIST_SOURCES'],
+  'packages/domain/src/employment/blacklist.ts#blacklistBlockedMessage': ['#blacklistReasonLabel'],
+  'packages/domain/src/employment/blacklist.ts#blacklistReasonLabel': ['#BLACKLIST_REASONS'],
   'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS_CODES': ['#EMPLOYEE_STATUS'],
   'packages/domain/src/employment/employee-status.ts#ENTRY_STATUS_CODES': ['#ENTRY_STATUS'],
   'packages/domain/src/employment/employee-status.ts#isEmployeeStatusCode': ['#EMPLOYEE_STATUS_CODES'],

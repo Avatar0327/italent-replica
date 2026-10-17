@@ -61,6 +61,7 @@ import {
   type PolicyBase,
   type RoutePolicy,
   type RowsPolicy,
+  type ScopePolicy,
   type WritePolicy,
 } from '../../route-policy/index.js';
 import {
@@ -71,6 +72,7 @@ import {
   button,
   buttonOnly,
   denied,
+  EMPTY_LIST,
   fixed,
   guardScope,
   listScope,
@@ -94,6 +96,7 @@ const EMPLOYMENT = MODULE_OBJECTS.employmentRecord.code;
 const EMPLOYEE = MODULE_OBJECTS.employee.code;
 const SETTINGS = MODULE_OBJECTS.employmentSettings.code;
 const CUSTOM_FIELD = MODULE_OBJECTS.employmentCustomField.code;
+const BLACKLIST = MODULE_OBJECTS.blacklist.code;
 
 // ---- 拒绝码（reason = 现状文案）---------------------------------------------------------------------------------
 const NF_EMPLOYEE = denied(404, 'NOT_FOUND', '员工不存在');
@@ -104,6 +107,8 @@ const NF_TRANSFER = denied(404, 'NOT_FOUND', '调动不存在');
 const NF_LINKAGE_ITEM = denied(404, 'NOT_FOUND', '联动子项不存在');
 const F_UNBOUND = denied(403, 'FORBIDDEN', '当前用户未绑定员工');
 const F_NO_DEPARTMENT = denied(403, 'FORBIDDEN', '无权选择调动部门');
+const NF_BLACKLIST = denied(404, 'NOT_FOUND', '黑名单记录不存在');
+const F_BLACKLIST = denied(403, 'FORBIDDEN', '黑名单只对有“看全部”数据权限的人员开放');
 /** `job/context.uuidParam`：路径标识非 UUID → 400 VALIDATION_FAILED「对象标识必须为 UUID」。 */
 const byId = { invalidId: BAD_REQUEST };
 
@@ -125,6 +130,28 @@ const RESPONSE = projector('employment.response', 'employment.response');
 const SETTINGS_FIELDS = shape('employment.settings');
 const CUSTOM_FIELD_FIELDS = shape('employment.customField');
 const EXIT_DICTIONARY_KEYS = ['id', 'code', 'name', 'enabled', 'displayOrder', 'revision'] as const;
+/** 黑名单记录 / 列表 / 回执按黑名单对象的字段查看权平铺裁剪（blacklist-routes.ts trimBlacklist）。 */
+const BLACKLIST_FIELDS = projector('employment.blacklist', 'employment.blacklist');
+/** 选人员加黑：该员工须在操作人的任职数据范围内（requireEmployeeInScope，范围外与不存在同一个 404「员工不存在」）。 */
+const BLACKLIST_EMPLOYEE = 'employment.blacklistEmployeeScope';
+/**
+ * 黑名单写入：权限链（数据操作 + 字段 / 按钮 / 看全部 / 选人员范围）在 CommandGuard.before 内按当前权限复核
+ * （requireBlacklistWrite，#199），审计 blacklist.* 同事务；无组织字段，返回后只按字段查看权投影。
+ */
+function blacklistWrite(fields: FieldsFrom, preconditions: readonly string[], commandOnly = false) {
+  return write(fields, 'employment.blacklistGuard', none('黑名单只认看全部，命令内已复核，返回后只投影'), {
+    preconditions,
+    ...(commandOnly ? { commandOnly } : {}),
+  });
+}
+function blacklistPolicy(
+  operation: 'view' | 'create' | 'update' | 'delete',
+  buttonRef: ButtonPolicy,
+  scope: ScopePolicy,
+  extra: PolicyBase = {},
+): RoutePolicy {
+  return object({ object: BLACKLIST, operation, button: buttonRef, scope, fields: BLACKLIST_FIELDS, ...extra });
+}
 
 /** 调动发起人 → 按钮：hr → Transfer.Hr、manager → Transfer.Manager、employee → Transfer.Self（detail；access.ts ROLE_BUTTONS）。 */
 const TRANSFER_INITIATORS = ['hr', 'manager', 'employee'] as const satisfies readonly TransferInitiator[];
@@ -1238,6 +1265,50 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     'update',
     SETTINGS_FIELDS,
     auditedConfigWrite('exit_dictionary'),
+    byId,
+  ),
+  // ---- employment/blacklist-routes.ts：R2 BE-8a 黑名单（B68，差距表“补证结论 R2f”、DEC-569）----------------------------
+  // 无组织字段，数据范围只认看全部：无看全部 → 200 items: []、hasDataPermission false；按敏感字段筛选须可查看（403）；
+  // status / reason / source / pageSize 非法 → 400
+  'GET /blacklist': blacklistPolicy('view', noButton('列表只按查看权与看全部过滤'), seeAll(EMPTY_LIST)),
+  // If-Match 须为 0；body 严格（选人员时不能手填身份字段）→ 400；同一人员 / 证件号已在名单 409 BLACKLIST_DUPLICATE；
+  // 员工不存在或不在任职范围 404「员工不存在」；审计 blacklist.create
+  'POST /blacklist': blacklistPolicy('create', button('create', 'list'), seeAll(F_BLACKLIST), {
+    guards: [BLACKLIST_EMPLOYEE],
+    write: blacklistWrite('body', ['assertRevision', 'assertNotDuplicated']),
+  }),
+  // body 严格 { reason?, expiryDate?, note? }；已移出 409 BLACKLIST_REMOVED；审计 blacklist.update
+  'PUT /blacklist/:id': blacklistPolicy('update', button('update', 'list_row'), seeAll(NF_BLACKLIST), {
+    write: blacklistWrite('body', ['assertRevision', 'requireActive']),
+    ...byId,
+  }),
+  // 工具栏 / 行内移出共用：body { items: [{ id, revision }] } 1～100 条整批；审计 blacklist.remove
+  'POST /blacklist/remove': blacklistPolicy('update', button('remove', 'list'), seeAll(NF_BLACKLIST), {
+    write: blacklistWrite('body', ['assertRevision', 'requireActive'], true),
+  }),
+  // 删除整行（审计 blacklist.delete 留快照）：body 同移出
+  'POST /blacklist/delete': blacklistPolicy('delete', button('delete', 'list'), seeAll(NF_BLACKLIST), {
+    write: blacklistWrite('body', ['assertRevision'], true),
+  }),
+  // 离职自动加黑规则：任职设置配置对象（审计 blacklist_rule.*）；条件只认“离职次数 ≥ N”，期限只认永久 / 离职当月
+  'GET /blacklist-rules': configurationView(SETTINGS, SETTINGS_FIELDS),
+  'POST /blacklist-rules': configuration(SETTINGS, 'create', SETTINGS_FIELDS, auditedConfigWrite('blacklist_rule')),
+  'PUT /blacklist-rules/:id': configuration(
+    SETTINGS,
+    'update',
+    SETTINGS_FIELDS,
+    auditedConfigWrite('blacklist_rule'),
+    byId,
+  ),
+  // 配置对象没有删除操作：沿用 update（空字段集合）
+  'DELETE /blacklist-rules/:id': configuration(
+    SETTINGS,
+    'update',
+    SETTINGS_FIELDS,
+    write('body', 'config.audited:blacklist_rule', none('配置对象无范围，返回后只投影'), {
+      commandOnly: true,
+      preconditions: ['assertRevision'],
+    }),
     byId,
   ),
 });
