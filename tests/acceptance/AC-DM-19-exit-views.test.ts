@@ -652,6 +652,7 @@ const NESTED: [string, string][] = [
   ['events[].createdAt', 'createdAt'],
   ['cancellation.id', 'id'],
   ['cancellation.stateBefore', 'status'],
+  ['cancellation.case', 'status'],
   ['cancellation.revision', 'revision'],
   ['cancellation.createdAt', 'createdAt'],
   ['dutyTransfer.timing', 'dutyTransferTiming'],
@@ -664,7 +665,6 @@ const NESTED: [string, string][] = [
 const CONTAINER_ONLY = [
   'events[].eventNo',
   'cancellation.reason',
-  'cancellation.case',
   'effects[].phase',
   'effects[].kind',
   'effects[].count',
@@ -743,5 +743,54 @@ describe('AC-DM-19 状态筛选需要状态字段的查看权（第 3 轮 P2-B�
       }
     expect(x.ids(await x.view('all', '&status=draft', sighted))).toEqual([draft.id]);
     expect((await hidden('GET', '/exits?view=all')).status).toBe(200);
+  });
+});
+
+// ---- 第 4 轮（#409 审查 P2 两项）：由状态派生的值与撤销视图排序同样受字段权约束 --------------------------------------
+
+describe('AC-DM-19 派生值与撤销视图排序（第 4 轮）', () => {
+  it('无 status 字段权：撤销信息的 case（由撤销前状态决定，§7.1）在列表与详情里都不返回；有权照常', async () => {
+    const x = await world('views-case');
+    const made = await x.exit('派生员工', '2026-10-20', 'direct');
+    await x.force(made.id, 'voided');
+    await x.cancellation(made.id, made.employee.id, '原因', '2026-10-06T03:00:00Z');
+    const viewer = (fields: readonly string[]) => x.w.restricted(denyButtons(), undefined, fields);
+    const seen = async (api: Api) => ({
+      detail: ((await (await api('GET', `/exits/${made.id}`)).json()) as { cancellation: object }).cancellation,
+      row: ((await (await api('GET', '/exits?view=cancellations')).json()) as ViewPage).items[0]!.cancellation,
+    });
+    const blind = await seen(viewer(FULL.filter((field) => field !== 'status')));
+    for (const cancellation of [blind.detail, blind.row]) {
+      expect(cancellation).not.toHaveProperty('case');
+      expect(cancellation).not.toHaveProperty('stateBefore');
+      expect(JSON.stringify(cancellation)).not.toContain('approved');
+      expect(cancellation).toMatchObject({ reason: '原因' });
+    }
+    const sighted = await seen(viewer(FULL));
+    expect(sighted.detail).toMatchObject({ case: 'approved_voided', stateBefore: 'approved' });
+    expect(sighted.row).toMatchObject({ case: 'approved_voided' });
+  });
+
+  it('撤销视图：没有创建时间查看权时不按撤销时间排序，改按业务 id；有权保留撤销时间降序（含参照记录）', async () => {
+    const x = await world('views-sort-cancel');
+    const cancelledAt = new Map<string, string>();
+    let counter = 0;
+    const ids = await distinguishable(
+      async (day) => {
+        const made = await x.exit(`撤销序${counter}`, day);
+        await x.force(made.id, 'voided');
+        const at = `2026-10-06T0${(counter % 8) + 1}:00:00Z`;
+        await x.cancellation(made.id, made.employee.id, `原因${counter}`, at);
+        cancelledAt.set(made.id, at);
+        counter += 1;
+        return made;
+      },
+      ['2026-10-20'],
+      descendingThenIdDesc((id) => cancelledAt.get(id)!),
+    );
+    const viewer = (fields: readonly string[]) => x.w.restricted(denyButtons(), undefined, fields);
+    const order = async (api: Api) => (await x.view('cancellations', '&pageSize=50', api)).items.map((i) => i.id);
+    expect(await order(viewer(FULL.filter((field) => field !== 'createdAt')))).toEqual([...ids].sort());
+    expect(await order(viewer(FULL))).toEqual([...ids].sort(descendingThenIdDesc((id) => cancelledAt.get(id)!)));
   });
 });
