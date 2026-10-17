@@ -130,12 +130,12 @@ export const MODULE_OBJECTS = {
       ...OFFER_APPROVAL_PROGRESS_FIELDS,
     ],
   ),
-  // R2 BE-14a3（OF-R15）：批量审批单经 Offer 列表“批量发起审批”生成、在审批中心撤回；按钮照同类集合审批单
-  // TalentReview.ResultApproval 登记（DEC-080：批量发起 create@list、撤回 withdraw@detail）。字段权限供审批中心披露
+  // F-222（codex-F185b B1/B2）：对象功能与功能权限仅两个详情页“不同意”按钮；通用工作流操作不在该取证结论内。
+  // 不同意改变已有单据状态，沿用本文件审批提交 / 撤回 / 撤销的 update 数据操作；字段权限供审批中心披露。
   offerBatchApproval: object(
     'OfferBatchApproval',
     OFFER_BATCH_FIELDS,
-    [button('create', 'list', 'create'), button('withdraw', 'detail', 'update')],
+    [button('PartDisAgree', 'detail', 'update'), button('AllDisAgree', 'detail', 'update')],
     ['status'],
   ),
   organization: object(

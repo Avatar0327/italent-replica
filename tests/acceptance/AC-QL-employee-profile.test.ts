@@ -598,11 +598,13 @@ describe('AC-QL-employee-profile 必测 11：version / 指纹守卫（DEC-404、
   it('AC-QL-employee-profile F-222：原三个 HR 身份替换为两个不同意按钮，其他身份不扩权且旧编码移除', () => {
     const profiles = ['standard_org_system_admin', 'standard_hr_admin', 'standard_hr_specialist'];
     const expected = profiles.flatMap((profile) =>
-      ['PartDisAgree', 'AllDisAgree'].map((button) => `${profile}/TenantBase.OfferBatchApproval/button:${button}@detail`),
+      ['PartDisAgree', 'AllDisAgree'].map(
+        (button) => `${profile}/TenantBase.OfferBatchApproval/button:${button}@detail`,
+      ),
     );
-    expect(STANDARD_GRANT_CODES.filter((code) => code.includes('/TenantBase.OfferBatchApproval/button:')).sort()).toEqual(
-      expected.sort(),
-    );
+    expect(
+      STANDARD_GRANT_CODES.filter((code) => code.includes('/TenantBase.OfferBatchApproval/button:')).sort(),
+    ).toEqual(expected.sort());
   });
 
   // DEC-439④：version 在合并时由 pnpm merge:main 统一定为 main + 1，不再在测试里钉“合并进来的 main 版本 / 指纹”快照
