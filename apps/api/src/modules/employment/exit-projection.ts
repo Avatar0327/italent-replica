@@ -43,7 +43,8 @@ async function exitState(
 ): Promise<ExitState> {
   const [next] = rowsOf<{ entryDate: string | null }>(
     await tx.execute(sql`SELECT min(entry_date)::text AS "entryDate" FROM employment_cycles
-      WHERE tenant_id=${ctx.tenantId} AND employee_id=${exit.employeeId}::uuid AND entry_date > ${exit.releaseDate}::date`),
+      WHERE tenant_id=${ctx.tenantId} AND employee_id=${exit.employeeId}::uuid
+        AND entry_date > ${exit.releaseDate}::date`),
   );
   return { ...exit, state, effectiveDate, nextCycleEntryDate: next?.entryDate ?? null };
 }
@@ -99,7 +100,12 @@ export async function assertExtendedEmploymentAvailable(
         throw new AppError('CONFLICT', error.message, {
           activationFailure: {
             reason: 'EMPLOYMENT_DEPARTMENT_DISABLED',
-            detail: { departmentId: segment.departmentId, from: segment.from, to: segment.to, disabledOn: reason.disabledOn },
+            detail: {
+              departmentId: segment.departmentId,
+              from: segment.from,
+              to: segment.to,
+              disabledOn: reason.disabledOn,
+            },
           },
         });
       throw error;

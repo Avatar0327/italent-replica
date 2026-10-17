@@ -18,11 +18,7 @@ import {
   type ActivationTrigger,
 } from './activation-store.js';
 import { auditEmployment } from './context.js';
-import {
-  runExitEffectiveHooks,
-  type ExitActivationSource,
-  type ExitEffectiveEvent,
-} from './exit-confirmation.js';
+import { runExitEffectiveHooks, type ExitActivationSource, type ExitEffectiveEvent } from './exit-confirmation.js';
 import { loadExitRequest, pendingTransferAckSet, regularizationBlocker, type AckRecord } from './exit-gate.js';
 import {
   assertExtendedEmploymentAvailable,
@@ -72,7 +68,8 @@ export async function postponeLateExit(
   executionDate: string,
 ): Promise<{ postponed: boolean; lastWorkDate: string; effectiveDate: string }> {
   const resolved = resolveLateLeave({ lastWorkDate: addDays(planned, -1), executionDate });
-  if (!resolved.late) return { postponed: false, lastWorkDate: resolved.lastWorkDate, effectiveDate: resolved.effectiveDate };
+  if (!resolved.late)
+    return { postponed: false, lastWorkDate: resolved.lastWorkDate, effectiveDate: resolved.effectiveDate };
   // 窗口起点与成员的计划日都只取 §5.0A（planned = 创建时的 L + 1）
   await assertNoRebuildRequired(tx, ctx, business, planned, executionDate);
   const previous = business.payload;
@@ -87,7 +84,11 @@ export async function postponeLateExit(
     triggerBusinessId: business.id,
   };
   const { fields, ...metadata } = next;
-  await insertEmploymentRow(tx, 'employment_payload_versions', { ...metadata, ...fields, createdAt: ctx.now.toISOString() });
+  await insertEmploymentRow(tx, 'employment_payload_versions', {
+    ...metadata,
+    ...fields,
+    createdAt: ctx.now.toISOString(),
+  });
   business.payload = next;
   await auditEmployment(
     tx,
@@ -228,7 +229,12 @@ async function runSteps(
 ) {
   const today = tenantLocalDate(ctx.now, ctx.timezone);
   const planned = await loadPlannedEffectiveDate(tx, ctx.tenantId, business.id, business.payload.effectiveDate);
-  const ref = { businessId: business.id, employeeId: business.employeeId, staffId: exit.staffId, releaseDate: exit.preReleaseDate };
+  const ref = {
+    businessId: business.id,
+    employeeId: business.employeeId,
+    staffId: exit.staffId,
+    releaseDate: exit.preReleaseDate,
+  };
   const before: TimelineSegment[] = await loadTimelineSegments(tx, ctx, business.employeeId);
   const late = await postponeLateExit(tx, ctx, business, planned, today);
   if (late.postponed) {
@@ -329,12 +335,19 @@ export async function activateExit(
 
   try {
     const late = await tx.transaction((savepoint) => runSteps(savepoint, ctx, business, exit, source, options.trigger));
-    if (options.trigger !== 'approval') await recordActivationAttempt(tx, ctx, item, { outcome: 'effective', trigger: options.trigger });
+    if (options.trigger !== 'approval')
+      await recordActivationAttempt(tx, ctx, item, { outcome: 'effective', trigger: options.trigger });
     return { outcome: 'effective', ...late };
   } catch (error) {
     const failure = activationFailureOf(error) ?? ruleRejection(error);
     if (!failure) throw error;
-    await recordActivationAttempt(tx, ctx, item, { outcome: 'failed', trigger: options.trigger, ...failure }, { bumpRevision });
+    await recordActivationAttempt(
+      tx,
+      ctx,
+      item,
+      { outcome: 'failed', trigger: options.trigger, ...failure },
+      { bumpRevision },
+    );
     return { outcome: 'failed', reason: failure.reason, detail: failure.detail };
   }
 }

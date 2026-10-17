@@ -36,7 +36,7 @@ import {
 } from './record-store.js';
 import { isDetachedRecord, loadPlannedEffectiveDate, removeEmploymentTimeline } from './timeline.js';
 import { assertNoLinkedChanges, assertNoPendingApplication, assertRestoredPredecessor } from './deletion-guards.js';
-import type { EmploymentBusiness, EmploymentContext, EmploymentState } from './types.js';
+import type { EmploymentBusiness, EmploymentContext, EmploymentRecord, EmploymentState } from './types.js';
 import { assertRequiredTransferFields } from '../transfer/required-fields.js';
 import { requireEmployeeTransferBusiness } from '../transfer/employee-policy.js';
 import { assertTransferLinkageSubmittable } from '../transfer/linkage/service.js';
@@ -327,27 +327,7 @@ async function deleteEmploymentBusiness(
         if (kept) previous = { id: kept.id, kind: kept.kind, date: kept.effectiveDate };
       }
     }
-    await auditEmployment(
-      tx,
-      ctx,
-      'employment.record.delete',
-      'employment-record',
-      business.id,
-      {
-        ...deletionSnapshot(raw),
-        payloadVersionId: business.payload.id,
-        ...(record
-          ? {
-              ...record.fields,
-              // 删除前镜像取最新记录快照上的状态（DEC-216；底表行只是首个版本，PR #93 首审 P2-3）
-              employeeStatus: record.employeeStatus,
-              entryStatus: record.entryStatus,
-              ...Object.fromEntries(Object.entries(record.customFields).map(([key, value]) => [`custom:${key}`, value])),
-            }
-          : {}),
-      },
-      null,
-    );
+    await auditDeletedRecord(tx, ctx, business, raw, record);
     // R3-T05 设计 §5.4：删除已生效记录（如误办的离职）通知订阅方，是否恢复由订阅方按自己的口径决定
     if (record)
       await employeeStatusHooks.recordDeleted(tx, ctx, {
@@ -366,6 +346,37 @@ async function deleteEmploymentBusiness(
   // F-203：试用期行（F-188）同样在内核同事务清理，各入口不再各自补清
   await clearPendingProbation(tx, ctx, business.id);
   return previous;
+}
+
+/** 删除已生效记录的审计（DEC-019）；被离职摘下的未来调动没有时间轴快照，只记底表行。 */
+async function auditDeletedRecord(
+  tx: Tx,
+  ctx: EmploymentContext,
+  business: LockedEmploymentBusiness,
+  raw: Record<string, unknown>,
+  record: EmploymentRecord | null,
+) {
+  await auditEmployment(
+    tx,
+    ctx,
+    'employment.record.delete',
+    'employment-record',
+    business.id,
+    {
+      ...deletionSnapshot(raw),
+      payloadVersionId: business.payload.id,
+      ...(record
+        ? {
+            ...record.fields,
+            // 删除前镜像取最新记录快照上的状态（DEC-216；底表行只是首个版本，PR #93 首审 P2-3）
+            employeeStatus: record.employeeStatus,
+            entryStatus: record.entryStatus,
+            ...Object.fromEntries(Object.entries(record.customFields).map(([key, value]) => [`custom:${key}`, value])),
+          }
+        : {}),
+    },
+    null,
+  );
 }
 
 function deletionSnapshot(raw: Record<string, unknown>): Record<string, unknown> {

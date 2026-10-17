@@ -295,7 +295,8 @@ export async function detachFutureTransfers(
       AND employee_id=${employeeId}::uuid AND (start_date,sort_order)>(${leave.startDate}::date,${leave.sortOrder})
     ORDER BY start_date,sort_order LIMIT 1`),
   );
-  await tx.execute(sql`UPDATE employment_timeline SET valid_during=daterange(start_date,${next?.date ?? null}::date,'[)')
+  await tx.execute(sql`UPDATE employment_timeline
+    SET valid_during=daterange(start_date,${next?.date ?? null}::date,'[)')
     WHERE tenant_id=${ctx.tenantId} AND record_id=${leaveRecordId}::uuid`);
   return detached.map((item) => ({ ...item, to: item.to ?? null }));
 }
