@@ -959,3 +959,48 @@ describe('AC-DM-19 容器整体判权（第 5 轮）', () => {
     expect(unregisteredPaths(containerMutant)).toEqual(['cancellation.extra', 'cancellation.extra.inner']);
   });
 });
+
+// ---- 第 6 轮（#409 审查 P2）：默认拒绝——没有登记依赖的路径一律不输出，空数组 / 未填写也不例外 --------------------------
+
+describe('AC-DM-19 默认拒绝与附件（第 6 轮）', () => {
+  it('无 attachmentRefs 字段权：空数组 / 非空 / 未填写三类在详情里形状一致（均无该键）；有权时原样返回', async () => {
+    const x = await world('views-attachments');
+    const empty = await x.exit('空附件', '2026-10-20', 'application', { exit: { attachmentRefs: [] } });
+    const refs = [randomUUID()];
+    const filled = await x.exit('有附件', '2026-10-21', 'application', { exit: { attachmentRefs: refs } });
+    const unset = await x.exit('未填附件', '2026-10-22');
+    const viewer = (fields: readonly string[]) => x.w.restricted(denyButtons(), undefined, fields);
+    const detail = async (api: Api, id: string) =>
+      (await (await api('GET', `/exits/${id}`)).json()) as Record<string, unknown>;
+    const blind = viewer(FULL.filter((field) => field !== 'attachmentRefs'));
+    const shapes = [];
+    for (const made of [empty, filled, unset]) {
+      const seen = await detail(blind, made.id);
+      expect(seen, made.id).not.toHaveProperty('attachmentRefs');
+      shapes.push(keysOf(seen).join());
+    }
+    expect(new Set(shapes).size, '三类形状一致').toBe(1);
+    const sighted = viewer(FULL);
+    expect((await detail(sighted, empty.id)).attachmentRefs).toEqual([]);
+    expect((await detail(sighted, filled.id)).attachmentRefs).toEqual(refs);
+    expect((await detail(sighted, unset.id)).attachmentRefs).toBeNull();
+  });
+
+  it('默认拒绝：生产输出里临时多出未登记的标量 / 空数组 / 空对象 / 嵌套数组，裁剪后都不出现（即使字段权不受限）', () => {
+    const everything = { employee: () => true, employment: () => true };
+    const item = {
+      id: randomUUID(),
+      status: 'approved',
+      newScalar: 1,
+      newEmptyArray: [],
+      newEmptyObject: {},
+      newNullable: null,
+      cancellation: { reason: 'r', nestedEmpty: [] },
+    } as unknown as ExitItem;
+    const out = trimExit(item, everything) as Record<string, unknown>;
+    expect(out).toMatchObject({ status: 'approved' });
+    for (const key of ['newScalar', 'newEmptyArray', 'newEmptyObject', 'newNullable'])
+      expect(out, key).not.toHaveProperty(key);
+    expect(out.cancellation).toEqual({ reason: 'r' });
+  });
+});
