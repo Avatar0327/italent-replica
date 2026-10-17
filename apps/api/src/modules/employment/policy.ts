@@ -807,7 +807,8 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   }),
   // 直接实习转正：If-Match 必填（员工 revision）；body 严格（实习转正日期、部门、职位 / 直线 / 虚线经理、是否有试用期、
   // 试用期月数 1～6、预计结束、confirmed；合同 / 工号 / 入职日期不受理，400）；resource=id 人员范围 404「任职数据不存在」 +
-  // 看全部的 tenant.employment.write 别名；requireEmploymentWrite('create', { kind, mode, effectiveDate, fields }, Employment.Create)；
+  // 看全部的 tenant.employment.write 别名；requireEmploymentWrite('create', { kind, mode, effectiveDate, fields },
+  // Employment.Create)；
   // requireEmploymentScope（人员 + 目标部门）；命令内 CommandGuard.before 按当前授权重过（internRegularizationGuard，F-195 同口径）；
   // regularizeIntern：员工锁 + revision → 非在职实习生 409 NOT_INTERN / 有审批中转正申请 409 INTERN_REGULARIZATION_IN_PROGRESS →
   // createEmploymentBusiness（直接落地、业务顺序校验、严格控编 409 ESTABLISHMENT_EXCEEDED、DEC-178 联动）→

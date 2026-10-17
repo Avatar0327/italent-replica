@@ -110,9 +110,7 @@ function registerInternViews(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const filter = parse(viewFilter, queryFilter(c));
     const page = pageQuery(c);
     const show = await viewableIn(deps, ctx);
-    if ((filter.departmentId && !show.employment('departmentId')) || (filter.keyword && !show.employee('name')))
-      throw new AppError('FORBIDDEN', '筛选字段不可查看');
-    if (filter.keyword && !show.employee('code')) throw new AppError('FORBIDDEN', '筛选字段不可查看');
+    requireViewableInternFilters(filter, show);
     const items = await withTenant(deps.db, ctx.tenantId, (tx) =>
       listInternView(
         tx,
@@ -130,6 +128,16 @@ function registerInternViews(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   });
 }
 
+type Viewable = Awaited<ReturnType<typeof viewableIn>>;
+
+/** 按部门筛选须部门可见，按关键字（姓名 / 工号）筛选须两者都可见；否则 403，不让筛选成为看不见字段的探针。 */
+function requireViewableInternFilters(filter: z.infer<typeof viewFilter>, show: Viewable) {
+  const hidden =
+    (filter.departmentId !== undefined && !show.employment('departmentId')) ||
+    (filter.keyword !== undefined && !(show.employee('name') && show.employee('code')));
+  if (hidden) throw new AppError('FORBIDDEN', '筛选字段不可查看');
+}
+
 function queryFilter(c: Context<TenantEnv>) {
   const departmentId = c.req.query('departmentId');
   const keyword = c.req.query('keyword');
@@ -144,7 +152,7 @@ async function trimInternItems(
   deps: TenantRouteDeps,
   ctx: EmploymentContext,
   items: readonly InternViewItem[],
-  show: Awaited<ReturnType<typeof viewableIn>>,
+  show: Viewable,
 ) {
   const records = items.map(({ name: _name, code: _code, state: _state, probation: _probation, ...record }) => record);
   const trimmed = (await trimEmploymentResponse(deps, ctx, records)) as object[];
