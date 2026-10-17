@@ -16,10 +16,12 @@ import {
   buttonResource,
   mayResubmit,
   MODULE_OBJECTS,
+  OFFER_OBJECT,
   PERSONNEL_REQUEST_OBJECT,
 } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import { requirePermission } from '../../authorization.js';
+import type { CommandGuard } from '../../commands.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { employmentCreator } from '../employment/context.js';
@@ -104,6 +106,52 @@ async function requireSelfServiceSubmit(deps: TenantRouteDeps, ctx: TenantContex
   });
 }
 
+/** Offer 两类审批（BE-14a3）：业务单是 Offer / 批量审批单，范围与权限按 Offer 对象判定，不落进任职记录的默认分支。 */
+const OFFER_BUSINESS_TYPES = ['offer', 'offer_batch'];
+const isOfferBusiness = (businessType: string) => OFFER_BUSINESS_TYPES.includes(businessType);
+
+/**
+ * Offer 实例的数据范围谓词（对 approval_instances 别名 i）：单个 Offer 按录用部门（组织维度）/ 创建人（使用用户维度）；
+ * 批量单要求**每一份**子表 Offer 都在范围内（一份范围外即整单不在范围，P1-01）。Offer 已删除时不在范围（fail-closed）。
+ */
+function offerInstanceScopeSql(scope: ModuleScope): SQL {
+  const inScope = scopeSql(scope, { org: sql`o.department_id`, creator: sql`o.created_by` });
+  return sql`(CASE WHEN i.business_type='offer' THEN EXISTS (SELECT 1 FROM offers o
+      WHERE o.tenant_id=i.tenant_id AND o.id=i.business_id AND ${inScope})
+    ELSE EXISTS (SELECT 1 FROM offer_batch_approval_items b WHERE b.tenant_id=i.tenant_id AND b.batch_id=i.business_id)
+      AND NOT EXISTS (SELECT 1 FROM offer_batch_approval_items b
+        JOIN offers o ON o.tenant_id=b.tenant_id AND o.id=b.offer_id
+        WHERE b.tenant_id=i.tenant_id AND b.batch_id=i.business_id AND NOT COALESCE((${inScope}), false)) END)`;
+}
+
+/**
+ * Offer 审批的发起人复核（P1-01，DEC-455）：与发起入口同一口径——Offer 对象编辑开关 + 本单关联的每一份 Offer 都在当前
+ * Offer 范围内（与 runOfferWrite 事务内同一解析），不看任职撤回按钮与任职范围。在调用方事务内按当前授权判定。
+ */
+async function requireOfferOwnerRight(deps: TenantRouteDeps, ctx: TenantContext, tx: Tx, instanceId: string) {
+  const authorize = authorizeInTransaction(deps.authorize, tx);
+  await requirePermission(authorize, { ...ctx, action: 'object.update', resource: OFFER_OBJECT, fields: [] });
+  const scope = await resolveModuleScopeInTransaction(deps, ctx, tx, OFFER_OBJECT);
+  const [covered] = rowsOf(
+    await tx.execute(sql`SELECT 1 FROM approval_instances i WHERE i.tenant_id=${ctx.tenantId}
+      AND i.id=${instanceId}::uuid AND ${offerInstanceScopeSql(scope)}`),
+  );
+  if (!covered) throw approvalError('FORBIDDEN', 'APPROVAL_SCOPE_DENIED', '该申请已不在您的数据范围内');
+}
+
+/**
+ * 撤回命令的事务内复核（P1-01）：Offer 两类在命令事务内、首次执行与同键重放都按当前权限再判一次；其他业务类型的撤回
+ * 仍只在路由前置复核（requireWithdrawRight），行为不变。
+ */
+export function withdrawGuard(deps: TenantRouteDeps, ctx: TenantContext, instanceId: string): CommandGuard {
+  return {
+    before: async (tx) => {
+      const instance = await loadInstance(tx, ctx.tenantId, instanceId);
+      if (isOfferBusiness(instance.businessType)) await requireOfferOwnerRight(deps, ctx, tx, instanceId);
+    },
+  };
+}
+
 /**
  * 审批侧撤回时复核发起人当前权限（PR #35 第二轮 C-非5）：任职申请须仍持有任职撤回按钮与编辑权，
  * 且该业务仍在其数据范围内（含“创建人 = 本人”，F10）；员工子集变更须仍可使用自助申请入口。发起人身份在命令内校验。
@@ -112,6 +160,10 @@ export async function requireWithdrawRight(deps: TenantRouteDeps, ctx: TenantCon
   const instance = await withTenant(deps.db, ctx.tenantId, (tx) => loadInstance(tx, ctx.tenantId, instanceId));
   if (instance.businessType === 'personnel_change') {
     await requireSelfServiceSubmit(deps, ctx);
+    return;
+  }
+  if (isOfferBusiness(instance.businessType)) {
+    await withTenant(deps.db, ctx.tenantId, (tx) => requireOfferOwnerRight(deps, ctx, tx, instanceId));
     return;
   }
   // 发展计划（DEC-318 K-39）：所有者撤回按计划的编辑权、编辑按钮与 IDP 范围复核（IDP 没有单独的撤回按钮）
@@ -275,6 +327,7 @@ interface BusinessScopes {
   readonly employment: ModuleScope;
   readonly contract: ModuleScope;
   readonly idp: ModuleScope;
+  readonly offer: ModuleScope;
 }
 
 async function businessScopes(resolve: (objectCode: string) => Promise<ModuleScope>): Promise<BusinessScopes> {
@@ -282,21 +335,28 @@ async function businessScopes(resolve: (objectCode: string) => Promise<ModuleSco
     employment: await resolve(MODULE_OBJECTS.employmentRecord.code),
     contract: await resolve(CONTRACT_OBJECT),
     idp: await resolve(IDP_PLAN_OBJECT),
+    offer: await resolve(OFFER_OBJECT),
   };
 }
 
 /**
  * 各业务实例按所属应用的数据范围判断（DEC-043）：合同按合同对象，发展计划按 IDP 应用（计划对象，K-50：员工当前任职
- * 在范围内），其余（任职、员工子集）按任职记录。IDP 不能落进任职记录的 TenantBase 范围（PR #115 第 2 轮 P1）。
+ * 在范围内），Offer / Offer 批量审批按 Offer 对象（BE-14a3 P1-01 同类：offerPredicate 缺省同 predicate），其余（任职、
+ * 员工子集）按任职记录。IDP、Offer 都不能落进任职记录的 TenantBase 范围（PR #115 第 2 轮 P1）。
  */
-function perBusinessType(scopes: BusinessScopes, predicate: (scope: ModuleScope) => SQL): SQL {
+function perBusinessType(
+  scopes: BusinessScopes,
+  predicate: (scope: ModuleScope) => SQL,
+  offerPredicate: (scope: ModuleScope) => SQL = predicate,
+): SQL {
   return sql`((i.business_type='contract' AND ${predicate(scopes.contract)})
     OR (i.business_type='idp' AND ${predicate(scopes.idp)})
-    OR (i.business_type NOT IN ('contract','idp') AND ${predicate(scopes.employment)}))`;
+    OR (i.business_type IN ('offer','offer_batch') AND ${offerPredicate(scopes.offer)})
+    OR (i.business_type NOT IN ('contract','idp','offer','offer_batch') AND ${predicate(scopes.employment)}))`;
 }
 
 async function byBusinessScope(ctx: TenantContext, resolve: (objectCode: string) => Promise<ModuleScope>) {
-  return perBusinessType(await businessScopes(resolve), (scope) => instanceScopeSql(ctx, scope));
+  return perBusinessType(await businessScopes(resolve), (scope) => instanceScopeSql(ctx, scope), offerInstanceScopeSql);
 }
 
 /**

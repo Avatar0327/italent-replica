@@ -10,6 +10,8 @@ import {
   hasExit,
   IDP_ONLY_APPROVERS,
   isCountersign,
+  OFFER_APPROVERS,
+  OFFER_ONLY_APPROVERS,
   nodeExits,
   type ApprovalNode,
   type ApprovalTypeDefinition,
@@ -57,8 +59,20 @@ export function definitionViolations(definition: ProcessDefinition, type: Approv
     if (type.adapter !== 'idp' && idpOnly.length) {
       violations.push(`节点 ${node.key} 的审批人“发展计划 - 员工本人 / 指导人”只能用于发展计划审批（K-09）`);
     }
+    const offerViolation = offerApproverViolation(node, type);
+    if (offerViolation) violations.push(offerViolation);
   }
   return violations;
+}
+
+/** BE-14a3：Offer 两类审批只用白名单取值（OFFER_APPROVERS）；Offer 专用取值不用于其他类型。 */
+function offerApproverViolation(node: ApprovalNode, type: ApprovalTypeDefinition): string | null {
+  const expressions = approverExpressionsOf(node);
+  const allowed = type.adapter === 'offer' || type.adapter === 'offer_batch' ? OFFER_APPROVERS[type.adapter] : null;
+  const wrong = allowed
+    ? expressions.filter((expression) => !allowed.has(expression))
+    : expressions.filter((expression) => OFFER_ONLY_APPROVERS.has(expression));
+  return wrong.length ? `节点 ${node.key} 的审批人 ${wrong.join('、')} 不能用于${type.name}审批` : null;
 }
 
 /** F-003：出口动作与会签节点的结构（审批人逐人解析，流转规则见 DEC-144）。 */

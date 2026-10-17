@@ -69,6 +69,7 @@ const OBJECTS: Readonly<Record<string, AuditObjectMeta>> = {
   exit_dictionary: { label: '离职字典', app: ORG_PEOPLE },
   offer: { label: 'Offer', app: ORG_PEOPLE },
   offer_dictionary: { label: 'Offer 字典', app: ORG_PEOPLE },
+  offer_batch_approval: { label: 'Offer 批量审批单', app: ORG_PEOPLE },
   // BE-7 兼职（R2-T05 §7.4）：兼职记录（含期限链）与兼职申请
   'employment-part-time': { label: '兼职记录', app: ORG_PEOPLE },
   'part-time-request': { label: '兼职申请', app: ORG_PEOPLE },
