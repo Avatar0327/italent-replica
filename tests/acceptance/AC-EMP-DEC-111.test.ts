@@ -117,7 +117,7 @@ describe('DEC-111 早于当前任职周期入职生效日的业务一律拒绝',
     await expectBeforeEntry(transfer, '调动日期', '2026-09-01');
     const regularization = await session.request('POST', `/employees/${employee.id}/businesses`, {
       ifMatch: hire.employeeRevision,
-      body: { kind: 'regularization', mode: 'direct', effectiveDate: '2026-08-31' },
+      body: { kind: 'regularization', mode: 'direct', effectiveDate: '2026-08-31', probationResult: 'normal' },
     });
     await expectBeforeEntry(regularization, '生效日期', '2026-09-01');
   });

@@ -88,7 +88,7 @@ describe('AC-TRF 保存校验 DEC-150 / DEC-154', () => {
           mode: 'direct',
           effectiveDate: '2026-10-05',
           fields: { departmentId: w.to.id },
-          ...(kind === 'hire' ? { loginEmail: `new-${id}@example.com` } : {}),
+          ...(kind === 'hire' ? { loginEmail: `new-${id}@example.com` } : { probationResult: 'normal' }),
         },
       });
       expect(response.status).toBe(400);

@@ -5,6 +5,11 @@
 import type { Graph } from '../../../evidence-graph.js';
 
 export const GRAPH: Graph = {
+  'packages/domain/src/employment/blacklist.ts#BLACKLIST_REASON_CODES': ['#BLACKLIST_REASONS'],
+  'packages/domain/src/employment/blacklist.ts#BLACKLIST_RULE_TERM_CODES': ['#BLACKLIST_RULE_TERMS'],
+  'packages/domain/src/employment/blacklist.ts#BLACKLIST_SOURCE_CODES': ['#BLACKLIST_SOURCES'],
+  'packages/domain/src/employment/blacklist.ts#blacklistBlockedMessage': ['#blacklistReasonLabel'],
+  'packages/domain/src/employment/blacklist.ts#blacklistReasonLabel': ['#BLACKLIST_REASONS'],
   'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS_CODES': ['#EMPLOYEE_STATUS'],
   'packages/domain/src/employment/employee-status.ts#ENTRY_STATUS_CODES': ['#ENTRY_STATUS'],
   'packages/domain/src/employment/employee-status.ts#isEmployeeStatusCode': ['#EMPLOYEE_STATUS_CODES'],
@@ -12,5 +17,16 @@ export const GRAPH: Graph = {
   'packages/domain/src/employment/entry-email.ts#EMAIL_PREFIX_FIELD_CODES': ['#EMAIL_PREFIX_FIELDS'],
   'packages/domain/src/employment/entry-email.ts#normalizeEmailDomain': ['#DOMAIN_PATTERN'],
   'packages/domain/src/employment/exit.ts#EXIT_DICTIONARY_KINDS': ['#EXIT_DICTIONARIES'],
-  'packages/domain/src/employment/intern.ts#probationExpectedEnd': ['packages/domain/src/contracts/rules.ts#termEnd'],
+  'packages/domain/src/employment/probation.ts#actualProbationEndDate': [
+    'packages/domain/src/contracts/rules.ts#addDays',
+  ],
+  'packages/domain/src/employment/probation.ts#defaultRegularizationDate': [
+    'packages/domain/src/contracts/rules.ts#addDays',
+  ],
+  'packages/domain/src/employment/probation.ts#expectedProbationEndDate': [
+    'packages/domain/src/contracts/rules.ts#termEnd',
+  ],
+  'packages/domain/src/employment/probation.ts#normalizeProbationInfo': ['#expectedProbationEndDate'],
+  'packages/domain/src/employment/probation.ts#probationAdjustmentViolation': ['#violation'],
+  'packages/domain/src/employment/probation.ts#resolveDeferredProbation': ['#expectedProbationEndDate'],
 };

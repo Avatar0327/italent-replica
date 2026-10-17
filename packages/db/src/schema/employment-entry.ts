@@ -10,7 +10,6 @@ import {
   date,
   foreignKey,
   index,
-  integer,
   pgTable,
   primaryKey,
   text,
@@ -91,40 +90,6 @@ export const employmentPendingEntryProbation = pgTable(
         employmentBusinessObjects.id,
       ],
     }),
-  ],
-);
-
-/**
- * 任职试用期信息（R2 BE-6a，直接实习转正；补证结论 R2f B41“试用期管理可读回起止日”）：选了“有试用期”的任职记录才有行，
- * 开始 = 转正日（记录生效日）、预计结束按月数算（可手改）。以业务 ID 为键，随记录一次写入、不原地改；记录删除后行仍保留，
- * 读取一律经现存任职记录关联（删掉的记录读不到）。BE-3 的任职试用期字段先合入时改并到 BE-3 的存储，不另留两套（03 协调 10-17）。
- */
-export const employmentRecordProbation = pgTable(
-  'employment_record_probation',
-  {
-    tenantId: uuid('tenant_id')
-      .notNull()
-      .references(() => tenants.id),
-    employeeId: uuid('employee_id').notNull(),
-    businessId: uuid('business_id').notNull(),
-    startDate: date('start_date', { mode: 'string' }).notNull(),
-    months: integer('months').notNull(),
-    expectedEndDate: date('expected_end_date', { mode: 'string' }).notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => [
-    primaryKey({ name: 'employment_record_probation_pk', columns: [t.tenantId, t.businessId] }),
-    foreignKey({
-      name: 'employment_record_probation_business_fk',
-      columns: [t.tenantId, t.employeeId, t.businessId],
-      foreignColumns: [
-        employmentBusinessObjects.tenantId,
-        employmentBusinessObjects.employeeId,
-        employmentBusinessObjects.id,
-      ],
-    }),
-    check('employment_record_probation_months', sql`${t.months} > 0`),
-    check('employment_record_probation_dates', sql`${t.expectedEndDate} >= ${t.startDate}`),
   ],
 );
 

@@ -6,6 +6,8 @@
  * 缺省值），前置步骤后撤掉，由升级迁移按缺省值补回。
  */
 import { type Db, sql } from '@italent/db';
+import { withPreBlacklistSchema } from './pre-blacklist-schema.js';
+import { withPrePartTimeSchema } from './pre-part-time-schema.js';
 
 const COLUMNS = [
   ['operation', 'text'],
@@ -54,7 +56,15 @@ async function dropColumns(db: Db, names: readonly string[]) {
   );
 }
 
-export async function withPreAuditSchema<T>(db: Db, run: () => Promise<T>): Promise<T> {
+/**
+ * R2 BE-8a 起入职保存会查黑名单表、BE-7 PT-2 起任职写入的提交前复核会查兼职表：旧结构上一并临时补出
+ * （pre-blacklist-schema.ts、pre-part-time-schema.ts；外层先补后撤，内层异常时由外层 finally 依次撤掉）。
+ */
+export function withPreAuditSchema<T>(db: Db, run: () => Promise<T>): Promise<T> {
+  return withPreBlacklistSchema(db, () => withPrePartTimeSchema(db, () => withPreAuditColumns(db, run)));
+}
+
+async function withPreAuditColumns<T>(db: Db, run: () => Promise<T>): Promise<T> {
   const result = await db.execute(sql`SELECT EXISTS (SELECT 1 FROM information_schema.columns
     WHERE table_name = 'audit_events' AND column_name = 'scope_object') AS upgraded`);
   const rows = (Array.isArray(result) ? result : (result as { rows: unknown[] }).rows) as { upgraded: boolean }[];

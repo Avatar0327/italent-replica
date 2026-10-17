@@ -30,6 +30,7 @@ import {
   EVALUATION_ORG_OBJECTS,
   IDP_OBJECTS,
   linkedViewable,
+  OFFER_OBJECT,
   MODULE_OBJECTS,
   PERSONNEL_OBJECT,
   PERSONNEL_REQUEST_OBJECT,
@@ -44,12 +45,14 @@ import {
   TALENT_REVIEW_CONFIG_OBJECTS,
   TALENT_REVIEW_ORG_OBJECTS,
   TALENT_REVIEW_OBJECTS,
+  PART_TIME_AUDIT_OBJECTS,
 } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import type { TenantRouteDeps } from '../routes.js';
 import type { TenantContext } from '../tenant-context.js';
 import { adminScope } from '../modules/approval/access.js';
 import { employmentCreator } from '../modules/employment/context.js';
+import { partTimeRecordCreator, partTimeRequestCreator } from '../modules/employment/part-time/creator-sql.js';
 import { employmentVisibilitySql } from '../modules/employment/visibility.js';
 import {
   getModuleViewableFields,
@@ -190,6 +193,26 @@ function personRule(types: readonly string[], objectCode: string, creator: (row:
     visible: (scope, row, viewer) => {
       const owner = ownedBy(row, creator(row, viewer));
       return anchored(scope, row.employee, scopeSql(scope, { person: row.employee, creator: owner }), owner);
+    },
+  };
+}
+
+/**
+ * BE-7 兼职记录 / 兼职申请（R2-T05 §7.4）：写入时显式归属员工 + 兼职部门（0058 不改）。DEC-177 两项（记录部门 ∪ 员工
+ * 当前主职部门）对 row.org 与改部门前的旧部门（before.departmentId，平铺或在 fields 下）各判一次——改部门那条日志对旧部门
+ * 的 HR 同样可见，之后只在新部门的日志不可见；创建人按兼职口径（creator-sql.ts）。
+ */
+function partTimeRule(type: string, creator: (tenantId: string, objectId: SQL) => SQL): Rule {
+  return {
+    types: [type],
+    objectCode: EMPLOYMENT,
+    visible: (scope, row, viewer) => {
+      const owner = ownedBy(row, creator(viewer.tenantId, uuidOf(row.objectId)));
+      const before = sql`COALESCE(${uuidOf(sql`${row.before}->>'departmentId'`)},
+        ${uuidOf(sql`${row.before}->'fields'->>'departmentId'`)})`;
+      const visible = (department: SQL) =>
+        employmentVisibilitySql(scope, { employee: row.employee, department, creator: owner });
+      return anchored(scope, row.employee, sql`(${visible(row.org)} OR ${visible(before)})`, owner);
     },
   };
 }
@@ -511,6 +534,8 @@ const RULES: readonly Rule[] = [
     },
   },
   transferLinkageRule(),
+  partTimeRule(PART_TIME_AUDIT_OBJECTS.record, partTimeRecordCreator),
+  partTimeRule(PART_TIME_AUDIT_OBJECTS.request, partTimeRequestCreator),
   personRule(['employment_employee'], 'TenantBase.Employee', (row, viewer) =>
     employmentCreator(viewer.tenantId, row.employee),
   ),
@@ -543,6 +568,8 @@ const RULES: readonly Rule[] = [
       (SELECT c.created_by FROM contract_records c WHERE c.tenant_id = ${viewer.tenantId} AND c.id = ${id}),
       (SELECT r.created_by FROM contract_requests r WHERE r.tenant_id = ${viewer.tenantId} AND r.id = ${id}))`;
   }),
+  // R2 BE-14a：Offer 审计归属录用部门，创建人取审计的首条 offer.create（删除后仍可判断）
+  orgRule(['offer'], OFFER_OBJECT, (row, viewer) => creatorSql(viewer.tenantId, row.objectId, 'offer.create', 'offer')),
   orgRule(['organization'], ORG, (row, viewer) =>
     creatorSql(viewer.tenantId, row.objectId, 'org.create', 'organization'),
   ),
@@ -552,6 +579,8 @@ const RULES: readonly Rule[] = [
   ),
   // 组织编码预占：业务接口 visible(scope, undefined) 只有看全部才能操作
   { types: ['org_code_reservation'], objectCode: ORG, visible: seeAllOnly },
+  // R2 BE-8a 黑名单没有组织字段：与业务接口一致只认看全部；证件号 / 手机 / 邮箱按黑名单对象字段权限裁剪
+  { types: ['blacklist'], objectCode: MODULE_OBJECTS.blacklist.code, visible: seeAllOnly },
   // DEC-216 / F-018：带编增减与回退沿用容量对象归属；细分数组另按子字段投影。
   orgRule(['establishment-capacity'], ESTABLISHMENT, (row, viewer) =>
     creatorSql(viewer.tenantId, row.objectId, 'establishment.capacity.create', 'establishment-capacity'),
@@ -797,6 +826,8 @@ const CONFIG_FIELDS_BY_TYPE: Readonly<Record<string, ConfigFields>> = {
   employment_settings: { code: 'TenantBase.EmploymentSettings' },
   transfer_settings: { code: 'TenantBase.EmploymentSettings' },
   exit_dictionary: { code: 'TenantBase.EmploymentSettings' },
+  offer_dictionary: { code: 'TenantBase.EmploymentSettings' },
+  blacklist_rule: { code: 'TenantBase.EmploymentSettings' },
   employment_custom_field: { code: 'TenantBase.EmploymentCustomField' },
   'approval-process': { code: 'TenantBase.ApprovalProcess' },
   transfer_form: {

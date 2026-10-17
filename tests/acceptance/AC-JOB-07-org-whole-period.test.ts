@@ -22,7 +22,7 @@ async function changeOrg(session: JobSession, org: { id: string; revision: numbe
 
 async function scenario(mode: Mode) {
   const session = await jobSession(testDb().db, `job07-${mode}`);
-  const target = await session.org('目标组织');
+  const target = await session.org('目标组织', { establishedOn: '2026-09-30' });
   const post = await session.create('posts', '测试职务');
   const source = await session.org('原组织');
   const position =

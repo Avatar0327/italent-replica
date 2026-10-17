@@ -9,6 +9,7 @@ import { sql, type Tx } from '@italent/db';
 import {
   EMPLOYEE_STATUS,
   ENTRY_STATUS,
+  PART_TIME_KIND,
   tenantLocalDate,
   type EmployeeStatusCode,
   type EntryStatusCode,
@@ -16,7 +17,7 @@ import {
 import { AppError } from '../../errors.js';
 import { auditEmployment, requireLinkedEmploymentRecord, requireScopedEmploymentObject } from './context.js';
 import { releasePendingContract, type PendingContract } from './entry-pending-contract.js';
-import { clearPendingProbation } from './entry-probation.js';
+import { clearPendingProbation, saveEntryProbation } from './entry-probation.js';
 import { findPredecessor, loadEmploymentRecord } from './read-model.js';
 import { assertEmploymentDepartmentAvailable } from './references.js';
 import {
@@ -48,6 +49,9 @@ export interface EntryOptions {
    * 添加待入职（pendingEntry）时不决定人员状态，只随待入职记录落库（entry-probation.ts，F-188）。
    */
   readonly probation?: boolean;
+  /** 有试用期时的试用期（月）与手填的预计试用结束日（BE-3，entry-probation.ts 写入试用期版本链）。 */
+  readonly probationMonths?: number;
+  readonly probationEndDate?: string;
   /**
    * 添加待入职时的待入职合同（F-194，entry-pending-contract.ts）：缺省 = 新生成（起始日取计划入职日期）；
    * 改期 / 编辑换日期替换记录时由 entry-actions 传入搬运后的合同，原记录没有合同（存量）传 null = 不补生成。不接受请求指定。
@@ -57,7 +61,7 @@ export interface EntryOptions {
 
 export const ENTRY_KINDS: readonly BusinessKind[] = ['hire', 'rehire', 'retire_rehire'];
 /** DEC-234：实习转正按入职处理（原站变动类型为“入职”，15 §9.5）——按是否有试用期取试用 / 正式，默认正式。 */
-const ENTRY_LIKE_KINDS: readonly BusinessKind[] = [...ENTRY_KINDS, 'intern_regularization'];
+export const ENTRY_LIKE_KINDS: readonly BusinessKind[] = [...ENTRY_KINDS, 'intern_regularization'];
 /** 本身决定人员状态的业务（与迁移 0062 的触发器、employment_kind_status 一致）；其余业务继承插入点前一条。 */
 const STATUS_SETTING_KINDS: readonly BusinessKind[] = [...ENTRY_LIKE_KINDS, 'regularization', 'leave', 'retirement'];
 
@@ -139,7 +143,7 @@ export async function completePendingEntry(
   tx: Tx,
   ctx: EmploymentContext,
   recordId: string,
-  options: { readonly probation: boolean },
+  options: Pick<EntryOptions, 'probationMonths' | 'probationEndDate'> & { readonly probation: boolean },
 ): Promise<EmploymentRecord> {
   const { business, record } = await lockPendingEntry(tx, ctx, recordId);
   if (record.entryStatus === ENTRY_STATUS.cancelled)
@@ -149,11 +153,45 @@ export async function completePendingEntry(
   const employeeStatus = options.probation ? EMPLOYEE_STATUS.probation : EMPLOYEE_STATUS.regular;
   await appendStatusSnapshot(tx, ctx, business, record, { employeeStatus, entryStatus: record.entryStatus });
   await propagateEmployeeStatus(tx, ctx, record, record.employeeStatus, employeeStatus);
-  // F-188：办理入职后人员状态已定，待入职阶段的试用期不再保留
+  // F-188：办理入职后人员状态已定，待入职阶段的试用期不再保留；BE-3：试用期信息写入任职上的版本链，开始日 = 入职日
   await clearPendingProbation(tx, ctx, recordId);
+  await saveEntryProbation(
+    tx,
+    ctx,
+    { employeeId: record.employeeId, businessId: recordId, effectiveDate: record.effectiveDate },
+    options,
+  );
   // F-194：待入职合同到此为止；正式合同由办理入职请求里的合同信息另行生成（entry-contract.ts），不在这里沿用或复制
   await releasePendingContract(tx, ctx, recordId, 'complete');
   return reloadRecord(tx, ctx, recordId);
+}
+
+/**
+ * 29 PB-R12：调整试用信息把“是否有试用期”由是改否 → 开启试用的那条记录（入职 / 实习转正）人员状态直接变正式，
+ * 同周期在后、仍为试用的版本一并更新；由否改是反向（正式 → 试用）。只在本周期没有生效的转正记录时调用（调用方已判）。
+ * 调用方已持员工锁；业务头按当前 revision 加锁（命令的 If-Match 是员工 revision，不是这条记录的）。
+ */
+export async function switchProbationStatus(
+  tx: Tx,
+  ctx: EmploymentContext,
+  recordId: string,
+  probation: boolean,
+): Promise<void> {
+  const [head] = rowsOf<{ revision: number }>(
+    await tx.execute(sql`SELECT revision FROM employment_business_objects
+      WHERE tenant_id=${ctx.tenantId} AND id=${recordId}::uuid`),
+  );
+  if (!head) throw new AppError('NOT_FOUND', '任职业务不存在');
+  // 开启试用的记录是入职 / 实习转正，不是调动，不涉及调动参与者锁；员工锁已在手，业务头 revision 不会并发变化
+  const business = await lockEmploymentBusiness(tx, { ...ctx, expectedRevision: head.revision }, recordId);
+  const record = await loadEmploymentRecord(tx, ctx.tenantId, recordId, tenantLocalDate(ctx.now, ctx.timezone));
+  if (business.state !== 'effective' || !record) throw new AppError('CONFLICT', '只能流转有效任职记录');
+  await requireScopedEmploymentObject(tx, ctx, record.employeeId, record.fields.departmentId, record.id);
+  const from = probation ? EMPLOYEE_STATUS.regular : EMPLOYEE_STATUS.probation;
+  const to = probation ? EMPLOYEE_STATUS.probation : EMPLOYEE_STATUS.regular;
+  if (record.employeeStatus === from)
+    await appendStatusSnapshot(tx, ctx, business, record, { employeeStatus: to, entryStatus: record.entryStatus });
+  await propagateEmployeeStatus(tx, ctx, record, from, to);
 }
 
 async function reloadRecord(tx: Tx, ctx: EmploymentContext, recordId: string): Promise<EmploymentRecord> {
@@ -266,6 +304,12 @@ async function appendStatusVersion(
   return id;
 }
 
+/** 时间轴上的位置（生效日 + 当日顺序号）。 */
+export interface TimelinePoint {
+  readonly date: string;
+  readonly order: number;
+}
+
 interface PropagationTarget {
   readonly payload: EmploymentPayloadRow;
   readonly state: string;
@@ -285,9 +329,11 @@ export async function propagateEmployeeStatus(
   source: Pick<EmploymentRecord, 'id' | 'employeeId' | 'staffId' | 'effectiveDate'>,
   from: number,
   to: EmployeeStatusCode,
+  /** 只改到这个位置之前（转正改期推后时的区间上界，DEC-589）；在途申请按生效日早于 until.date 判。 */
+  until?: TimelinePoint,
 ): Promise<void> {
   if (from === to) return;
-  for (const target of await propagationTargets(tx, ctx, source, from)) {
+  for (const target of await propagationTargets(tx, ctx, source, from, until)) {
     await requireLinkedEmploymentRecord(tx, ctx, source.employeeId, target.departmentId, target.payload.businessId);
     const effective = target.state === 'effective';
     const record = effective
@@ -317,7 +363,12 @@ async function propagationTargets(
   ctx: EmploymentContext,
   source: Pick<EmploymentRecord, 'id' | 'employeeId' | 'staffId' | 'effectiveDate'>,
   from: number,
+  until?: TimelinePoint,
 ): Promise<PropagationTarget[]> {
+  const bounded = until
+    ? sql`AND ((s.state='effective' AND (t.start_date,t.sort_order)<(${until.date}::date,${until.order}))
+        OR (s.state<>'effective' AND p.effective_date<${until.date}::date))`
+    : sql``;
   const rows = rowsOf<Record<string, unknown>>(
     await tx.execute(sql`
     WITH point AS (SELECT start_date, sort_order FROM employment_timeline
@@ -338,11 +389,12 @@ async function propagationTargets(
       AND v.business_id=b.id AND v.is_record_snapshot ORDER BY v.version_no DESC LIMIT 1) snap ON true
     CROSS JOIN point
     WHERE b.tenant_id=${ctx.tenantId} AND b.employee_id=${source.employeeId}::uuid AND b.id<>${source.id}::uuid
+      AND p.kind<>${PART_TIME_KIND}
       AND ((s.state='effective' AND r.staff_id=${source.staffId}::uuid
           AND (t.start_date,t.sort_order)>(point.start_date,point.sort_order))
         OR (s.state IN ('draft','in_review','approved','rejected') AND r.id IS NULL
           AND p.selected_staff_id=${source.staffId}::uuid AND p.effective_date>${source.effectiveDate}::date))
-      AND COALESCE(st.employee_status, p.employee_status)=${from}
+      AND COALESCE(st.employee_status, p.employee_status)=${from} ${bounded}
     ORDER BY p.effective_date, t.sort_order NULLS LAST, b.id LIMIT 1001
   `),
   );

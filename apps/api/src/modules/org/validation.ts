@@ -81,6 +81,17 @@ export function invalid(field: string, message: string): AppError {
   return new AppError('VALIDATION_FAILED', message, { fields: { [field]: message } });
 }
 
+/** F-213：停用日期不早于等于设立日期；更新、级联、新建三条路径共用同一条文案与错误结构。 */
+export function deactivationNotAfterEstablished(name: string, from: string, establishedOn: string): AppError {
+  const message = `组织【${name}】的停用日期（${from}）不能早于等于该组织的设立日期（${establishedOn}）`;
+  return new AppError('VALIDATION_FAILED', message, {
+    reason: 'DEACTIVATION_NOT_AFTER_ESTABLISHED',
+    fields: { effectiveDate: message },
+    effectiveDate: from,
+    establishedOn,
+  });
+}
+
 /**
  * DEC-130（`10` §11）：新建时“设立日期”必填，缺省为租户当天（DEC-056），可倒填或填未来；首个版本的生效日期
  * 就是设立日期，新建不再单独收生效日期。显式传 null 视为未填写必填项。
@@ -90,7 +101,10 @@ export function normalizeCreation(ctx: OrgWriteContext, input: OrganizationInput
   if (Object.hasOwn(input, 'startDate')) throw invalid('startDate', '新建组织不单独设置生效日期，以设立日期为准');
   if (input.establishedOn === null) throw invalid('establishedOn', '设立日期必填');
   const establishedOn = date(input.establishedOn ?? tenantLocalDate(ctx.now, ctx.timezone), 'establishedOn');
-  return normalizeOrganization(ctx, { ...input, establishedOn, startDate: establishedOn });
+  const normalized = normalizeOrganization(ctx, { ...input, establishedOn, startDate: establishedOn });
+  // F-213：首版生效日 = 设立日，新建即停用等于“设立当天停用”，与更新入口同一规则；先于编码占用与任何写入。
+  if (!normalized.enabled) throw deactivationNotAfterEstablished(normalized.name, establishedOn, establishedOn);
+  return normalized;
 }
 
 /** 不信任 HTTP 输入；结构化人员引用不能拿平台账号冒充员工主数据。 */

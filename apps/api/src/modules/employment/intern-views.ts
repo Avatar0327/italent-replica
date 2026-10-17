@@ -8,6 +8,7 @@ import { EMPLOYEE_STATUS, type EmployeeStatusCode, type InternView } from '@ital
 import type { SQL } from 'drizzle-orm';
 import { employmentCreator, employmentScopePredicate } from './context.js';
 import { personnelHooks } from './personnel-hooks.js';
+import { loadProbationCycle } from './probation.js';
 import { checkPage, rowsOf } from './read-model.js';
 import type { BusinessKind, EmploymentScope, EmploymentState, EmployType, PageQuery } from './types.js';
 
@@ -29,7 +30,7 @@ export interface InternViewItem {
   /** 任职记录为 effective；实习转正中为 in_review / approved。 */
   readonly state: EmploymentState;
   readonly lastWorkDate: string | null;
-  /** 已转正且有试用期时才有（entry-probation.ts）。 */
+  /** 已转正且有试用期时才有（BE-3 试用期版本表）。 */
   readonly probation: { readonly startDate: string; readonly months: number; readonly endDate: string } | null;
 }
 
@@ -54,7 +55,25 @@ export async function listInternView(
 ): Promise<InternViewItem[]> {
   checkPage(input.page);
   const query = input.view === 'converting' ? convertingQuery : recordQuery;
-  return rowsOf<InternViewItem>(await tx.execute(query(tenantId, input, scope)));
+  const rows = rowsOf<Omit<InternViewItem, 'probation'>>(await tx.execute(query(tenantId, input, scope)));
+  const items: InternViewItem[] = [];
+  for (const row of rows)
+    items.push({
+      ...row,
+      probation: input.view === 'converted' ? await regularizedProbation(tx, tenantId, row) : null,
+    });
+  return items;
+}
+
+/**
+ * 已转正的试用期信息读 BE-3 的版本表（DEC-585，probation.ts loadProbationCycle）：以转正日为时点取本周期的开启记录，
+ * 开启记录就是这条实习转正时才算它的试用期；无试用期为 null。分页上限 200 行，逐行读取。
+ */
+async function regularizedProbation(tx: Tx, tenantId: string, row: Omit<InternViewItem, 'probation'>) {
+  const cycle = await loadProbationCycle(tx, tenantId, row.employeeId, row.effectiveDate);
+  if (cycle?.anchor.id !== row.id || !cycle.info.hasProbation) return null;
+  const { startDate, months, expectedEndDate } = cycle.info;
+  return { startDate: startDate!, months: months!, endDate: expectedEndDate! };
 }
 
 function filters(tenantId: string, filter: InternViewFilter, department: SQL, employee: SQL, code: SQL): SQL {
@@ -97,14 +116,11 @@ function recordQuery(tenantId: string, input: InternViewQuery, scope: Employment
       r.kind, t.start_date::text AS "effectiveDate", r.entry_date::text AS "entryDate",
       ${department} AS "departmentId", COALESCE(snap.position_id, r.position_id) AS "positionId",
       ${employType} AS "employType", s.employee_status::integer AS "employeeStatus", b.revision,
-      'effective' AS state, r.last_work_date::text AS "lastWorkDate",
-      CASE WHEN rp.business_id IS NULL THEN NULL ELSE json_build_object('startDate', rp.start_date::text,
-        'months', rp.months, 'endDate', rp.expected_end_date::text) END AS probation
+      'effective' AS state, r.last_work_date::text AS "lastWorkDate"
     FROM employment_records r
     JOIN employment_timeline t ON t.tenant_id=r.tenant_id AND t.record_id=r.id
     JOIN employment_business_objects b ON b.tenant_id=r.tenant_id AND b.id=r.id
     JOIN employment_employees e ON e.tenant_id=r.tenant_id AND e.id=r.employee_id
-    LEFT JOIN employment_record_probation rp ON rp.tenant_id=r.tenant_id AND rp.business_id=r.id
     LEFT JOIN LATERAL employment_record_status(r.tenant_id, r.id) s ON true
     LEFT JOIN LATERAL (SELECT p.department_id, p.position_id, p.employ_type FROM employment_payload_versions p
       WHERE p.tenant_id=r.tenant_id AND p.business_id=r.id AND p.is_record_snapshot
@@ -134,8 +150,7 @@ function convertingQuery(tenantId: string, input: InternViewQuery, scope: Employ
       p.kind, p.effective_date::text AS "effectiveDate", c.entry_date::text AS "entryDate",
       ${department} AS "departmentId", p.position_id AS "positionId", 'internal' AS "employType",
       p.employee_status::integer AS "employeeStatus", b.revision, s.state,
-      p.last_work_date::text AS "lastWorkDate",
-      NULL::json AS probation
+      p.last_work_date::text AS "lastWorkDate"
     FROM employment_business_objects b
     JOIN employment_employees e ON e.tenant_id=b.tenant_id AND e.id=b.employee_id
     JOIN LATERAL (SELECT * FROM employment_payload_versions p WHERE p.tenant_id=b.tenant_id

@@ -13,6 +13,8 @@ import {
   LEAVE_MIGRATION,
   replayLeaveMigration,
 } from './AC-EV-leave-support.js';
+import { addPreBlacklistTable } from './support/pre-blacklist-schema.js';
+import { addPrePartTimeTables } from './support/pre-part-time-schema.js';
 
 const database = useTestDb();
 describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-EV-leave-pg：设计 §7.4 ③⑥⑩', () => {
@@ -101,9 +103,16 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-EV-leave-pg：设计 §7.4 �
       let first: Promise<unknown> | undefined;
       let second: Promise<unknown> | undefined;
       try {
+        // R2 BE-8a：前置步骤里的入职会查黑名单表，旧结构上临时补出，升级迁移前撤掉（support/pre-blacklist-schema.ts）
+        const restoreBlacklist = await addPreBlacklistTable(handle.db);
+        // R2 BE-7 PT-2：旧结构上的任职写入在提交前复核会查兼职表，临时补出；writer_first 在升级迁移前撤掉，
+        // migration_first 全程不跑完整迁移，随测试库销毁（support/pre-part-time-schema.ts）
+        const restorePartTime = await addPrePartTimeTables(handle.db);
         const w = await evaluationLeaveWorld(handle.db);
+        await restoreBlacklist();
         const leave = await w.leave('2026-12-20');
         const other = order === 'writer_first' ? await w.leave('2026-12-20', w.f.mgrB.id) : null;
+        if (order === 'writer_first') await restorePartTime();
         let otherId = other?.id;
         const insert = async (pause: boolean) =>
           withTenant(w.db, w.tenantId, async (tx) => {

@@ -14,6 +14,7 @@ import { GRAPH as api_modules_establishment } from './api-modules-establishment.
 import { GRAPH as api_modules_evaluation } from './api-modules-evaluation.js';
 import { GRAPH as api_modules_idp } from './api-modules-idp.js';
 import { GRAPH as api_modules_job } from './api-modules-job.js';
+import { GRAPH as api_modules_offer } from './api-modules-offer.js';
 import { GRAPH as api_modules_org } from './api-modules-org.js';
 import { GRAPH as api_modules_permission } from './api-modules-permission.js';
 import { GRAPH as api_modules_personnel } from './api-modules-personnel.js';
@@ -34,6 +35,7 @@ import { GRAPH as domain_employment } from './domain-employment.js';
 import { GRAPH as domain_evaluation } from './domain-evaluation.js';
 import { GRAPH as domain_expression } from './domain-expression.js';
 import { GRAPH as domain_idp } from './domain-idp.js';
+import { GRAPH as domain_offer } from './domain-offer.js';
 import { GRAPH as domain_permission } from './domain-permission.js';
 import { GRAPH as domain_personnel } from './domain-personnel.js';
 import { GRAPH as domain_platform } from './domain-platform.js';
@@ -57,6 +59,7 @@ export const GRAPH: Graph = {
   ...api_modules_evaluation,
   ...api_modules_idp,
   ...api_modules_job,
+  ...api_modules_offer,
   ...api_modules_org,
   ...api_modules_permission,
   ...api_modules_personnel,
@@ -77,6 +80,7 @@ export const GRAPH: Graph = {
   ...domain_evaluation,
   ...domain_expression,
   ...domain_idp,
+  ...domain_offer,
   ...domain_permission,
   ...domain_personnel,
   ...domain_platform,

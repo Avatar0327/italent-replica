@@ -15,6 +15,8 @@ import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.j
 import { loadSurvey360Port } from '../../apps/api/src/modules/survey360/port.js';
 import type { QuestionnaireView } from './AC-360-support.js';
 import { DATA_CHANGED, errorOf, key, outbox, reportLink, sceneB, type SceneB } from './AC-360-B-support.js';
+import { withPreBlacklistSchema } from './support/pre-blacklist-schema.js';
+import { withPrePartTimeSchema } from './support/pre-part-time-schema.js';
 
 const database = useTestDb({ migrateBefore: '_survey360_b' });
 const ALL = { ...EMPTY_SCOPE, all: true, hasDataPermission: true };
@@ -190,11 +192,17 @@ async function expectDataChanged(res: Response, what: string) {
 
 it('PR-A 历史计分批次升级后：不能凭它生成报告；重新计分后改内容 / 权重 / 计分方式，各出口报告都失效', async () => {
   const handle = database();
-  const scenes = await withPrBSchema(handle.db, async () => {
-    const list: Legacy[] = [];
-    for (const kind of ['content', 'weights', 'scoreMethod'] as const) list.push(await legacy(handle.db, kind));
-    return list;
-  });
+  // R2 BE-8a / BE-7 PT-2：前置步骤里的入职会查黑名单表，任职写入的提交前复核会查兼职表，旧结构上都临时补出
+  // （support/pre-blacklist-schema.ts、support/pre-part-time-schema.ts）
+  const scenes = await withPrBSchema(handle.db, () =>
+    withPreBlacklistSchema(handle.db, () =>
+      withPrePartTimeSchema(handle.db, async () => {
+        const list: Legacy[] = [];
+        for (const kind of ['content', 'weights', 'scoreMethod'] as const) list.push(await legacy(handle.db, kind));
+        return list;
+      }),
+    ),
+  );
   await handle.migrate();
 
   for (const l of scenes) {

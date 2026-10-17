@@ -4,6 +4,7 @@
       "contract",
       "employment",
       "idp",
+      "part_time",
       "personnel_change",
       "talent_review"
     ],
@@ -202,6 +203,46 @@
         ],
         "object": [
           "requireObjectWrite（对象写操作权）"
+        ]
+      }
+    },
+    "DELETE /api/tenant/employment/blacklist-rules/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "admin": [
+          "tenant.employment.configuration"
+        ],
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireEmploymentWrite",
+          "requireObjectWrite"
+        ],
+        "fieldsOut": [
+          "employment runWrite()"
+        ],
+        "object": [
+          "requireObjectWrite（对象写操作权）"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentSettings:update"
         ]
       }
     },
@@ -884,6 +925,39 @@
           "requestScope",
           "scope.all",
           "scopeSql"
+        ]
+      }
+    },
+    "DELETE /api/tenant/offers/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "offers",
+      "primitives": {
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "creator scope",
+          "requestScope"
         ]
       }
     },
@@ -3453,6 +3527,68 @@
         ]
       }
     },
+    "GET /api/tenant/employment/blacklist": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "object": [
+          "object.* 动作",
+          "readContext(object.*)"
+        ],
+        "objectOp": [
+          "TenantBase.Blacklist:view"
+        ],
+        "scope": [
+          "readContext（非配置对象）",
+          "scope.all"
+        ]
+      }
+    },
+    "GET /api/tenant/employment/blacklist-rules": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "object": [
+          "object.* 动作",
+          "readContext(object.*)"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentSettings:view"
+        ]
+      }
+    },
     "GET /api/tenant/employment/businesses/:id": {
       "edge": {
         "anonymous": {
@@ -3609,6 +3745,37 @@
         ]
       }
     },
+    "GET /api/tenant/employment/employees/:id/probation": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "fieldsOut": [
+          "trimEmploymentResponse"
+        ],
+        "object": [
+          "readPageContext"
+        ],
+        "scope": [
+          "employment visibility",
+          "readPageContext",
+          "scope.all",
+          "scopeSql"
+        ]
+      }
+    },
     "GET /api/tenant/employment/employees/:id/records": {
       "edge": {
         "anonymous": {
@@ -3724,6 +3891,60 @@
       }
     },
     "GET /api/tenant/employment/pending-entries": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "fieldsOut": [
+          "trimEmploymentResponse"
+        ],
+        "object": [
+          "readPageContext"
+        ],
+        "scope": [
+          "readPageContext"
+        ]
+      }
+    },
+    "GET /api/tenant/employment/probation-results": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "object": [
+          "object.* 动作",
+          "readContext(object.*)"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:view"
+        ]
+      }
+    },
+    "GET /api/tenant/employment/probation-views": {
       "edge": {
         "anonymous": {
           "code": "UNAUTHENTICATED",
@@ -5577,6 +5798,114 @@
       "primitives": {
         "admin": [
           "readContext(admin.*)"
+        ]
+      }
+    },
+    "GET /api/tenant/offers": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "offers",
+      "primitives": {
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "requestScope",
+          "scopeSql"
+        ]
+      }
+    },
+    "GET /api/tenant/offers/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "offers",
+      "primitives": {
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "creator scope",
+          "requestScope"
+        ]
+      }
+    },
+    "GET /api/tenant/offers/dictionaries/:kind": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "offers",
+      "primitives": {
+        "object": [
+          "objectContext"
+        ],
+        "objectOp": [
+          "TenantBase.Offer:view"
+        ]
+      }
+    },
+    "GET /api/tenant/offers/views": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "offers",
+      "primitives": {
+        "object": [
+          "objectContext"
+        ],
+        "objectOp": [
+          "TenantBase.Offer:view"
         ]
       }
     },
@@ -14401,6 +14730,182 @@
         ]
       }
     },
+    "POST /api/tenant/employment/blacklist": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "button": [
+          "buttonResource",
+          "object.button"
+        ],
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireObjectWrite"
+        ],
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "object": [
+          "object.* 动作",
+          "readContext(object.*)",
+          "requireObjectWrite（对象写操作权）"
+        ],
+        "objectOp": [
+          "TenantBase.Blacklist:create"
+        ],
+        "scope": [
+          "readContext（非配置对象）",
+          "scope.all"
+        ]
+      }
+    },
+    "POST /api/tenant/employment/blacklist-rules": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "admin": [
+          "tenant.employment.configuration"
+        ],
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireEmploymentWrite",
+          "requireObjectWrite"
+        ],
+        "fieldsOut": [
+          "employment runWrite()"
+        ],
+        "object": [
+          "requireObjectWrite（对象写操作权）"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentSettings:create"
+        ]
+      }
+    },
+    "POST /api/tenant/employment/blacklist/delete": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "button": [
+          "buttonResource",
+          "object.button"
+        ],
+        "command": [
+          "assertRevision",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireObjectWrite"
+        ],
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "object": [
+          "object.* 动作",
+          "readContext(object.*)",
+          "requireObjectWrite（对象写操作权）"
+        ],
+        "objectOp": [
+          "TenantBase.Blacklist:delete"
+        ],
+        "scope": [
+          "readContext（非配置对象）",
+          "scope.all"
+        ]
+      }
+    },
+    "POST /api/tenant/employment/blacklist/remove": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "button": [
+          "buttonResource",
+          "object.button"
+        ],
+        "command": [
+          "assertRevision",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireObjectWrite"
+        ],
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "object": [
+          "object.* 动作",
+          "readContext(object.*)",
+          "requireObjectWrite（对象写操作权）"
+        ],
+        "objectOp": [
+          "TenantBase.Blacklist:update"
+        ],
+        "scope": [
+          "readContext（非配置对象）",
+          "scope.all"
+        ]
+      }
+    },
     "POST /api/tenant/employment/businesses/:id/activation/retry": {
       "edge": {
         "anonymous": {
@@ -14428,6 +14933,60 @@
         ],
         "domain": [
           "transfer.initiator"
+        ],
+        "fieldsIn": [
+          "requireEmploymentWrite"
+        ],
+        "fieldsOut": [
+          "employment runWrite()"
+        ],
+        "guard": [
+          "employment.businessWrite",
+          "employment.linkage"
+        ],
+        "object": [
+          "object.* 动作",
+          "readContext(object.*)"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:update"
+        ],
+        "scope": [
+          "employment scope",
+          "employment visibility",
+          "readContext（非配置对象）",
+          "scope.all",
+          "scopeSql"
+        ],
+        "scopePoint": [
+          "employment point"
+        ]
+      }
+    },
+    "POST /api/tenant/employment/businesses/:id/regularization-date": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "button": [
+          "requireEmploymentWrite(按钮)"
+        ],
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
         ],
         "fieldsIn": [
           "requireEmploymentWrite"
@@ -15300,6 +15859,42 @@
         ]
       }
     },
+    "POST /api/tenant/employment/probation-results": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "admin": [
+          "tenant.employment.configuration"
+        ],
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireEmploymentWrite"
+        ],
+        "fieldsOut": [
+          "employment runWrite()"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentSettings:create"
+        ]
+      }
+    },
     "POST /api/tenant/employment/records/:id/forward-update-preview": {
       "edge": {
         "anonymous": {
@@ -15394,6 +15989,58 @@
           "readContext（非配置对象）",
           "scope.all",
           "scopeSql"
+        ],
+        "scopePoint": [
+          "employment point"
+        ]
+      }
+    },
+    "POST /api/tenant/employment/regularizations": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "button": [
+          "requireEmploymentWrite(按钮)"
+        ],
+        "command": [
+          "assertRevision",
+          "runCommand / runWrite"
+        ],
+        "domain": [
+          "transfer.initiator"
+        ],
+        "fieldsIn": [
+          "requireEmploymentWrite",
+          "transfer write"
+        ],
+        "fieldsOut": [
+          "employment runWrite()"
+        ],
+        "guard": [
+          "employment.linkage"
+        ],
+        "object": [
+          "object.* 动作",
+          "readContext(object.*)"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:create"
+        ],
+        "scope": [
+          "employment scope"
         ],
         "scopePoint": [
           "employment point"
@@ -17079,6 +17726,131 @@
           "resolveModuleScope",
           "scope.all",
           "visibleJob"
+        ]
+      }
+    },
+    "POST /api/tenant/offers": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "VALIDATION_FAILED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "offers",
+      "primitives": {
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "writeFields"
+        ],
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "objectOp": [
+          "TenantBase.Offer:create"
+        ],
+        "scope": [
+          "creator scope",
+          "employment visibility",
+          "requestScope",
+          "scope.all",
+          "scopeSql",
+          "visibleJob"
+        ],
+        "scopePoint": [
+          "visibleJob"
+        ]
+      }
+    },
+    "POST /api/tenant/offers/:id/copy": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "offers",
+      "primitives": {
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "writeFields"
+        ],
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "objectOp": [
+          "TenantBase.Offer:create"
+        ],
+        "scope": [
+          "creator scope",
+          "employment visibility",
+          "requestScope",
+          "scope.all",
+          "scopeSql",
+          "visibleJob"
+        ],
+        "scopePoint": [
+          "visibleJob"
+        ]
+      }
+    },
+    "POST /api/tenant/offers/dictionaries/:kind": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "VALIDATION_FAILED",
+          "reason": "OFFER_DICTIONARY_KIND_INVALID",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "offers",
+      "primitives": {
+        "admin": [
+          "tenant.employment.configuration"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireObjectWrite"
+        ],
+        "object": [
+          "requireObjectWrite（对象写操作权）"
         ]
       }
     },
@@ -21220,6 +21992,92 @@
         ]
       }
     },
+    "PUT /api/tenant/employment/blacklist-rules/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "admin": [
+          "tenant.employment.configuration"
+        ],
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireEmploymentWrite",
+          "requireObjectWrite"
+        ],
+        "fieldsOut": [
+          "employment runWrite()"
+        ],
+        "object": [
+          "requireObjectWrite（对象写操作权）"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentSettings:update"
+        ]
+      }
+    },
+    "PUT /api/tenant/employment/blacklist/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "button": [
+          "buttonResource",
+          "object.button"
+        ],
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireObjectWrite"
+        ],
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "object": [
+          "object.* 动作",
+          "readContext(object.*)",
+          "requireObjectWrite（对象写操作权）"
+        ],
+        "objectOp": [
+          "TenantBase.Blacklist:update"
+        ],
+        "scope": [
+          "readContext（非配置对象）",
+          "scope.all"
+        ]
+      }
+    },
     "PUT /api/tenant/employment/custom-fields/:id/inheritance": {
       "edge": {
         "anonymous": {
@@ -21253,6 +22111,59 @@
         ],
         "objectOp": [
           "TenantBase.EmploymentCustomField:update"
+        ]
+      }
+    },
+    "PUT /api/tenant/employment/employees/:id/probation": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "button": [
+          "requireEmploymentWrite(按钮)"
+        ],
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireEmploymentWrite"
+        ],
+        "fieldsOut": [
+          "employment runWrite()"
+        ],
+        "guard": [
+          "employment.linkage"
+        ],
+        "object": [
+          "object.* 动作",
+          "readContext(object.*)"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:update"
+        ],
+        "scope": [
+          "employment scope",
+          "employment visibility",
+          "readContext（非配置对象）",
+          "scope.all",
+          "scopeSql"
+        ],
+        "scopePoint": [
+          "employment point"
         ]
       }
     },
@@ -21293,6 +22204,42 @@
       }
     },
     "PUT /api/tenant/employment/exits/dictionaries/:dict/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "admin": [
+          "tenant.employment.configuration"
+        ],
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireEmploymentWrite"
+        ],
+        "fieldsOut": [
+          "employment runWrite()"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentSettings:update"
+        ]
+      }
+    },
+    "PUT /api/tenant/employment/probation-results/:id": {
       "edge": {
         "anonymous": {
           "code": "UNAUTHENTICATED",
@@ -21613,6 +22560,82 @@
         "command": [
           "revision(c)",
           "runCommand / runWrite"
+        ]
+      }
+    },
+    "PUT /api/tenant/offers/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "offers",
+      "primitives": {
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "writeFields"
+        ],
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "creator scope",
+          "employment visibility",
+          "requestScope",
+          "scope.all",
+          "scopeSql",
+          "visibleJob"
+        ],
+        "scopePoint": [
+          "visibleJob"
+        ]
+      }
+    },
+    "PUT /api/tenant/offers/dictionaries/:kind/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "VALIDATION_FAILED",
+          "reason": "OFFER_DICTIONARY_KIND_INVALID",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "offers",
+      "primitives": {
+        "admin": [
+          "tenant.employment.configuration"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireObjectWrite"
+        ],
+        "object": [
+          "requireObjectWrite（对象写操作权）"
         ]
       }
     },

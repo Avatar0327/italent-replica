@@ -20,6 +20,15 @@ const EXIT = `${SRC}/employment/exit-routes.ts`;
 const ENTRY = `${SRC}/employment/entry-routes.ts`;
 const EMAIL = `${SRC}/employment/entry-email-routes.ts`;
 const INTERN = `${SRC}/employment/intern-routes.ts`;
+const PROBATION = `${SRC}/employment/probation-routes.ts`;
+const REGULARIZATION = `${SRC}/employment/regularization.ts`;
+// readContext 带 resource 时先按人员范围判（转正逐人在保存点内同一函数判）
+const EMPLOYEE_IN_SCOPE: Evidence = {
+  role: 'impl',
+  unit: `${CTX}#requireEmployeeInScope`,
+  anchor: "throw new AppError('NOT_FOUND', '任职数据不存在')",
+};
+const BL = `${SRC}/employment/blacklist-routes.ts`;
 const STATUS = `${SRC}/employment/employee-status.ts`;
 const ACCESS = `${SRC}/transfer/access.ts`;
 const SERVICE = `${SRC}/transfer/service.ts`;
@@ -271,6 +280,66 @@ const configWriteBase = (
   ),
   ob(`obj:${object}:${operation}`, [`objectOp:${object}:${operation}`], [write, WRITE_OBJECT]),
 ];
+
+/** R2 BE-8a 黑名单：入口 readContext 判对象操作，写权限链在命令内 requireBlacklistWrite（#199，guard.before）。 */
+const BLACKLIST = 'TenantBase.Blacklist';
+const BL_CONST: Evidence = {
+  role: 'const',
+  unit: `${SRC}/employment/blacklist.ts#BLACKLIST_OBJECT`,
+  anchor: 'MODULE_OBJECTS.blacklist.code',
+};
+const blWrite = (anchor: string): Evidence => fn(BL, 'requireBlacklistWrite', anchor);
+const VIEW_FACTS = (operation: string) => [
+  'object:readContext(object.*)',
+  `objectOp:${BLACKLIST}:${operation}`,
+  'object:object.* 动作',
+];
+const OBJECT_WRITE_FACT = 'object:requireObjectWrite（对象写操作权）';
+/** 规则写入的命令内复核 ruleGuard 也调 requireObjectWrite：由配置对象的写操作义务承接该事实。 */
+const withObjectWriteFact = (obligations: Obligation[]): Obligation[] =>
+  obligations.map((o) => (o.perm.startsWith('obj:') ? { ...o, facts: [...(o.facts ?? []), OBJECT_WRITE_FACT] } : o));
+function blacklistRoute(
+  method: string,
+  path: string,
+  operation: 'view' | 'create' | 'update' | 'delete',
+  context: string,
+  button?: readonly [string, 'list' | 'list_row'],
+  employee = false,
+): Obligation[] {
+  const entry = at(BL, method, path, context);
+  const write =
+    operation === 'delete'
+      ? blWrite("await requirePermission(authorize, { ...ctx, action: 'object.delete', resource: BLACKLIST_OBJECT })")
+      : blWrite('await requireObjectWrite(authorize, ctx, {');
+  return [
+    ob(
+      `obj:${BLACKLIST}:${operation}`,
+      operation === 'view' ? VIEW_FACTS(operation) : [...VIEW_FACTS(operation), OBJECT_WRITE_FACT],
+      operation === 'view' ? [entry, READ, BL_CONST] : [entry, READ, write, BL_CONST],
+    ),
+    ...(button
+      ? [
+          ob(
+            `btn:${BLACKLIST}#${button[0]}@${button[1]}`,
+            ['button:buttonResource', 'button:object.button'],
+            [
+              blWrite("action: 'object.button', resource: buttonResource(BLACKLIST_OBJECT, write.button, level),"),
+              BL_CONST,
+            ],
+          ),
+        ]
+      : []),
+    ...(employee
+      ? [
+          ob(
+            'guard:employment.blacklistEmployeeScope',
+            [],
+            [blWrite('await requireEmployeeInScope(tx, { ...ctx, scope: employment }, write.employeeId)')],
+          ),
+        ]
+      : []),
+  ];
+}
 
 export const EMPLOYMENT: RequiredTable = {
   // ---- transfer/routes.ts：本人入口、目录、部门、预览、发起 ----------------------------------------------------------
@@ -1525,7 +1594,7 @@ export const EMPLOYMENT: RequiredTable = {
         ENTRY,
         'POST',
         '/pending-entries/:id/complete',
-        'await completePendingEntry(tx, context, id, { probation: input.probation })',
+        'const record = await completePendingEntry(tx, context, id, probation)',
       ),
     ),
     // 条件准入（带 contract 才挂）：CommandGuard.before 在命令事务内复核合同“新建”按钮（首次 / 重放 / 回查三个出口）
@@ -1643,6 +1712,194 @@ export const EMPLOYMENT: RequiredTable = {
     directOperation(PENDING_LOCK),
     linkage(at(ENTRY, 'DELETE', '/pending-entries/:id', 'body: await deletePendingEntry(tx, context, id)')),
   ],
+  // ---- employment/probation-routes.ts：R2 BE-3 试用期与转正（视图、详情、调整试用信息、转正、试用结果字典）----------------
+  'GET /api/tenant/employment/probation-views': [
+    recordView(at(PROBATION, 'GET', '/probation-views', "const ctx = await readPageContext(c, deps, 'list')")),
+  ],
+  'GET /api/tenant/employment/employees/:id/probation': [
+    recordView(
+      at(PROBATION, 'GET', '/employees/:id/probation', "const ctx = await readPageContext(c, deps, 'detail', id)"),
+    ),
+  ],
+  'PUT /api/tenant/employment/employees/:id/probation': [
+    ob(
+      `obj:${RECORD}:update`,
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:update', 'object:object.* 动作'],
+      [
+        at(
+          PROBATION,
+          'PUT',
+          '/employees/:id/probation',
+          "const ctx = await readContext(c, deps, 'object.update', revision(c), id)",
+        ),
+        READ,
+        WRITE_OBJECT,
+      ],
+    ),
+    ob(
+      `btn:${RECORD}#Employment.Edit@detail`,
+      ['button:requireEmploymentWrite(按钮)'],
+      [
+        at(
+          PROBATION,
+          'PUT',
+          '/employees/:id/probation',
+          "await requireEmploymentWrite(ctx, 'update', {}, 'Employment.Edit', undefined, { commandOnly: true })",
+        ),
+        WRITE_BUTTON,
+      ],
+    ),
+    ob(
+      'guard:employment.scope',
+      [],
+      [
+        at(
+          PROBATION,
+          'PUT',
+          '/employees/:id/probation',
+          "const ctx = await readContext(c, deps, 'object.update', revision(c), id)",
+        ),
+        {
+          role: 'impl',
+          unit: `${CTX}#readContext`,
+          anchor: '(tx) => requireEmployeeInScope(tx, result, resource)',
+        },
+        EMPLOYEE_IN_SCOPE,
+      ],
+    ),
+    directOperation(
+      fn(
+        STATUS,
+        'switchProbationStatus',
+        'await requireScopedEmploymentObject(tx, ctx, record.employeeId, record.fields.departmentId, record.id)',
+      ),
+    ),
+    linkage(at(PROBATION, 'PUT', '/employees/:id/probation', 'await adjustProbation(tx, context, id, adjustment)')),
+  ],
+  'POST /api/tenant/employment/regularizations': [
+    ob(
+      `obj:${RECORD}:create`,
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:create', 'object:object.* 动作'],
+      [
+        at(PROBATION, 'POST', '/regularizations', "const ctx = await readContext(c, deps, 'object.create')"),
+        READ,
+        WRITE_OBJECT,
+      ],
+    ),
+    ob(
+      `btn:${RECORD}#Employment.Create@detail`,
+      ['button:requireEmploymentWrite(按钮)'],
+      [
+        at(
+          PROBATION,
+          'POST',
+          '/regularizations',
+          "await requireEmploymentWrite(ctx, 'create', payload, 'Employment.Create')",
+        ),
+        WRITE_BUTTON,
+      ],
+    ),
+    ob(
+      'guard:employment.scope',
+      [],
+      [
+        fn(REGULARIZATION, 'regularizeOne', 'await requireEmployeeInScope(tx, ctx, item.employeeId)'),
+        EMPLOYEE_IN_SCOPE,
+      ],
+      '逐人在保存点内判定，只让那一人失败（回执 404）',
+    ),
+    directOperation(
+      fn(
+        `${SRC}/employment/write-service.ts`,
+        'materializeEmploymentRecord',
+        'await requireScopedEmploymentObject(tx, ctx, business.employeeId, fields.departmentId)',
+      ),
+    ),
+    linkage(
+      at(
+        PROBATION,
+        'POST',
+        '/regularizations',
+        'async (tx, context) => ({ status: 200, body: await regularizeEmployees(tx, context, input) })',
+      ),
+    ),
+  ],
+  'POST /api/tenant/employment/businesses/:id/regularization-date': [
+    ob(
+      `obj:${RECORD}:update`,
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:update', 'object:object.* 动作'],
+      [
+        at(
+          PROBATION,
+          'POST',
+          '/businesses/:id/regularization-date',
+          "const ctx = await readContext(c, deps, 'object.update', revision(c))",
+        ),
+        READ,
+        WRITE_OBJECT,
+      ],
+    ),
+    ob(
+      `btn:${RECORD}#Employment.Edit@detail`,
+      ['button:requireEmploymentWrite(按钮)'],
+      [
+        at(
+          PROBATION,
+          'POST',
+          '/businesses/:id/regularization-date',
+          "await requireEmploymentWrite(ctx, 'update', input, 'Employment.Edit')",
+        ),
+        WRITE_BUTTON,
+      ],
+    ),
+    businessWrite(
+      at(PROBATION, 'POST', '/businesses/:id/regularization-date', 'await authorizeBusinessWrite(deps, ctx, id)'),
+    ),
+    directOperation(
+      fn(
+        `${SRC}/employment/regularization-reschedule.ts`,
+        'rescheduleRegularization',
+        'await requireScopedEmploymentObject(',
+      ),
+    ),
+    linkage(
+      at(
+        PROBATION,
+        'POST',
+        '/businesses/:id/regularization-date',
+        'body: await rescheduleRegularization(tx, context, id, input.effectiveDate)',
+      ),
+    ),
+  ],
+  'GET /api/tenant/employment/probation-results': [
+    ob(
+      `obj:${RECORD}:view`,
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:view', 'object:object.* 动作'],
+      [at(PROBATION, 'GET', '/probation-results', "const ctx = await readContext(c, deps, 'object.view', 0)"), READ],
+    ),
+  ],
+  'POST /api/tenant/employment/probation-results': configWrite(
+    at(PROBATION, 'POST', '/probation-results', "'tenant.employment.configuration.write'"),
+    'TenantBase.EmploymentSettings',
+    'create',
+    at(
+      PROBATION,
+      'POST',
+      '/probation-results',
+      "await requireEmploymentWrite(ctx, 'create', input, undefined, 'TenantBase.EmploymentSettings')",
+    ),
+  ),
+  'PUT /api/tenant/employment/probation-results/:id': configWrite(
+    at(PROBATION, 'PUT', '/probation-results/:id', "'tenant.employment.configuration.write'"),
+    'TenantBase.EmploymentSettings',
+    'update',
+    at(
+      PROBATION,
+      'PUT',
+      '/probation-results/:id',
+      "await requireEmploymentWrite(ctx, 'update', input, undefined, 'TenantBase.EmploymentSettings')",
+    ),
+  ),
   // ---- employment/exit-routes.ts：R2-T03 离职三个字典（读：任职记录查看权；写：配置对象，设计 §9.1）----------------
   'GET /api/tenant/employment/exits/dictionaries/:dict': [
     ob(
@@ -1672,6 +1929,86 @@ export const EMPLOYMENT: RequiredTable = {
       '/exits/dictionaries/:dict/:id',
       "await requireEmploymentWrite(ctx, 'update', input, undefined, 'TenantBase.EmploymentSettings')",
     ),
+  ),
+  // ---- employment/blacklist-routes.ts：R2 BE-8a 黑名单（B68）与离职自动加黑规则（任职设置配置对象）------------------
+  'GET /api/tenant/employment/blacklist': blacklistRoute(
+    'GET',
+    '/blacklist',
+    'view',
+    "const ctx = await readContext(c, deps, 'object.view', 0, undefined, BLACKLIST_OBJECT)",
+  ),
+  'POST /api/tenant/employment/blacklist': blacklistRoute(
+    'POST',
+    '/blacklist',
+    'create',
+    "const ctx = await readContext(c, deps, 'object.create', revision(c), undefined, BLACKLIST_OBJECT)",
+    ['create', 'list'],
+    true,
+  ),
+  'PUT /api/tenant/employment/blacklist/:id': blacklistRoute(
+    'PUT',
+    '/blacklist/:id',
+    'update',
+    "const ctx = await readContext(c, deps, 'object.update', revision(c), undefined, BLACKLIST_OBJECT)",
+    ['update', 'list_row'],
+  ),
+  'POST /api/tenant/employment/blacklist/remove': blacklistRoute(
+    'POST',
+    '/blacklist/remove',
+    'update',
+    "const ctx = await readContext(c, deps, 'object.update', 0, undefined, BLACKLIST_OBJECT)",
+    ['remove', 'list'],
+  ),
+  'POST /api/tenant/employment/blacklist/delete': blacklistRoute(
+    'POST',
+    '/blacklist/delete',
+    'delete',
+    "const ctx = await readContext(c, deps, 'object.delete', 0, undefined, BLACKLIST_OBJECT)",
+    ['delete', 'list'],
+  ),
+  'GET /api/tenant/employment/blacklist-rules': [
+    ob(
+      'obj:TenantBase.EmploymentSettings:view',
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentSettings:view', 'object:object.* 动作'],
+      [
+        at(
+          BL,
+          'GET',
+          '/blacklist-rules',
+          "const ctx = await readContext(c, deps, 'object.view', 0, undefined, 'TenantBase.EmploymentSettings')",
+        ),
+        READ,
+      ],
+    ),
+  ],
+  ...Object.fromEntries(
+    (
+      [
+        ['POST', '/blacklist-rules', 'create'],
+        ['PUT', '/blacklist-rules/:id', 'update'],
+        ['DELETE', '/blacklist-rules/:id', 'update'],
+      ] as const
+    ).map(([method, path, operation]) => [
+      `${method} /api/tenant/employment${path}`,
+      withObjectWriteFact(
+        configWrite(
+          fn(
+            BL,
+            'registerBlacklistRuleRoutes',
+            "readContext( c, deps, 'tenant.employment.configuration.write', revision(c),",
+          ),
+          'TenantBase.EmploymentSettings',
+          operation,
+          at(
+            BL,
+            method,
+            path,
+            `await requireEmploymentWrite(ctx, '${operation}', ${method === 'DELETE' ? '{}' : 'input'}, undefined, ` +
+              "'TenantBase.EmploymentSettings'",
+          ),
+        ),
+      ),
+    ]),
   ),
 };
 

@@ -198,11 +198,12 @@ function statusRules(name: string, t: { employeeStatus: AnyPgColumn; entryStatus
   ];
 }
 
+/** part_time：兼职记录的底层业务（R2-T05 §1.1 / §1.3），只出现在数据库与兼职模块，不加进应用层 BusinessKind。 */
 function kindRule(name: string, kind: AnyPgColumn) {
   return check(
     name,
     sql`${kind} IN ('hire', 'rehire', 'retire_rehire', 'regularization', 'transfer',
-      'org_adjustment', 'leave', 'retirement', 'intern_regularization')`,
+      'org_adjustment', 'leave', 'retirement', 'intern_regularization', 'part_time')`,
   );
 }
 
@@ -430,7 +431,13 @@ export const employmentRecords = pgTable(
     ...statusRules('employment_records', t),
     kindRule('employment_records_kind', t.kind),
     changeTypeRule('employment_records_change_type', t.changeType),
-    check('employment_records_primary_only', sql`${t.serviceType} = 'primary'`),
+    // R2-T05 §1.1：任职类型白名单（原站 ServiceType 主职 / 兼职 / 借调 / 外派，Q-M0-121①），兼职记录的业务类型固定为
+    // part_time、主职记录不能是 part_time。时间轴只承载主职（触发器 employment_timeline_primary_only，迁移手写部分）。
+    check(
+      'employment_records_service_type',
+      sql`${t.serviceType} IN ('primary', 'part_time', 'secondment', 'expatriate')`,
+    ),
+    check('employment_records_service_kind', sql`(${t.serviceType} = 'primary') = (${t.kind} <> 'part_time')`),
     check('employment_records_start_valid', sql`isfinite(${t.startDate}) AND ${t.startDate} >= ${t.entryDate}`),
     check('employment_records_source_not_self', sql`${t.inheritanceSourceId} <> ${t.id}`),
   ],

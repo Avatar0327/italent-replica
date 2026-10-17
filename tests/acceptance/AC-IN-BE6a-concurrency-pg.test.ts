@@ -23,7 +23,8 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-IN-BE6a-07 并发直�
         await tx.execute(sql`SELECT
           (SELECT count(*)::integer FROM employment_records WHERE tenant_id=${w.session.tenant.id}
             AND employee_id=${intern.employee.id}::uuid AND kind='intern_regularization') AS records,
-          (SELECT count(*)::integer FROM employment_record_probation WHERE tenant_id=${w.session.tenant.id}
+          (SELECT count(*)::integer FROM employment_probation_versions
+            WHERE source='intern_regularization' AND tenant_id=${w.session.tenant.id}
             AND employee_id=${intern.employee.id}::uuid) AS periods`),
       );
       return row;
