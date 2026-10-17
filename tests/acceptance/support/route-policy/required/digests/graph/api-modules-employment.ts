@@ -2500,6 +2500,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/write-service.ts#materializeEmploymentRecord',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
+  'apps/api/src/modules/employment/transitions.ts#assertRegularizationSubmittable': [
+    'apps/api/src/modules/employment/probation-guard.ts#assertProbationProcessesIdle',
+  ],
   'apps/api/src/modules/employment/transitions.ts#deleteEmploymentBusiness': [
     'apps/api/src/modules/employment/context.ts#auditEmployment',
     'apps/api/src/modules/employment/deletion-guards.ts#assertNoLinkedChanges',
@@ -2526,10 +2529,6 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-gate.ts#requireExitGate',
     'apps/api/src/modules/employment/exit-gate.ts#saveAck',
   ],
-  'apps/api/src/modules/employment/transitions.ts#submitPreconditions': [
-    'apps/api/src/modules/employment/probation-guard.ts#assertProbationProcessesIdle',
-    'apps/api/src/modules/transfer/employee-policy.ts#requireEmployeeTransferBusiness',
-  ],
   'apps/api/src/modules/employment/transitions.ts#transitionEmployment': [
     'apps/api/src/modules/employment/activation-checks.ts#assertEstablishmentCapacity',
     'apps/api/src/modules/employment/exit-confirmation.ts#confirmExit',
@@ -2548,15 +2547,16 @@ export const GRAPH: Graph = {
     '#STATE_AFTER',
     '#approveEmploymentBusiness',
     '#assertExitHrFields',
+    '#assertRegularizationSubmittable',
     '#assertTransition',
     '#deleteEmploymentBusiness',
     '#exitGateFor',
-    '#submitPreconditions',
     'apps/api/src/modules/employment/write-service.ts#appendEmploymentState',
     'apps/api/src/modules/employment/write-service.ts#materializeEmploymentRecord',
     'apps/api/src/modules/employment/write-service.ts#requireSavedBusiness',
     'apps/api/src/modules/establishment/carried-transfer.ts#assertReleasedEstablishment',
     'apps/api/src/modules/establishment/carried-transfer.ts#reverseCarriedEstablishment',
+    'apps/api/src/modules/transfer/employee-policy.ts#requireEmployeeTransferBusiness',
     'apps/api/src/modules/transfer/linkage/service.ts#assertTransferLinkageSubmittable',
     'apps/api/src/modules/transfer/required-fields.ts#assertRequiredTransferFields',
     'packages/domain/src/employment/late-execution.ts#resolveLateExecution',
