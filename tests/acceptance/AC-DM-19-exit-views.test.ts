@@ -518,20 +518,32 @@ describe('AC-DM-19 系统字段按各自字段权裁剪（第 2 轮 P2-1，设�
   });
 });
 
-/** 造到“按 id 升序的顺序”既不等于日期升序也不等于日期降序为止（id 是随机 UUID，保证参照记录能区分两种排序）。 */
+type Row = { id: string };
+/** 与 SQL 一致的完整比较器：主键 + id 次序键（in_progress 升序 / completed 降序 / all 创建时间降序）。 */
+const byId = (a: Row, b: Row) => a.id.localeCompare(b.id);
+const ascending = (keyOf: (id: string) => string) => (a: Row, b: Row) =>
+  keyOf(a.id).localeCompare(keyOf(b.id)) || byId(a, b);
+const descending = (keyOf: (id: string) => string) => (a: Row, b: Row) =>
+  keyOf(b.id).localeCompare(keyOf(a.id)) || byId(a, b);
+const descendingThenIdDesc = (keyOf: (id: string) => string) => (a: Row, b: Row) =>
+  keyOf(b.id).localeCompare(keyOf(a.id)) || byId(b, a);
+
+/**
+ * 造到“id 升序的顺序”不等于任何有权用户会看到的完整顺序为止（id 是随机 UUID，保证参照记录能区分两种排序）；
+ * 判断用与 SQL 一致的完整比较器（含 id 次序键），不是只比主键。
+ */
 async function distinguishable(
-  make: (day: string) => Promise<{ id: string }>,
+  make: (day: string) => Promise<Row>,
   days: string[],
-  datesOf: (id: string) => string,
+  designed: (a: Row, b: Row) => number,
 ) {
-  const made: { id: string }[] = [];
+  const made: Row[] = [];
   for (let index = 0; index < 12; index += 1) {
     made.push(await make(days[index % days.length]!));
     if (made.length < 3) continue;
-    const byId = made.map((item) => item.id).sort();
-    const asc = [...made].sort((a, b) => datesOf(a.id).localeCompare(datesOf(b.id))).map((item) => item.id);
-    if (JSON.stringify(byId) !== JSON.stringify(asc) && JSON.stringify(byId) !== JSON.stringify(asc.toReversed()))
-      return made.map((item) => item.id);
+    const blind = [...made].sort(byId).map((item) => item.id);
+    const sighted = [...made].sort(designed).map((item) => item.id);
+    if (JSON.stringify(blind) !== JSON.stringify(sighted)) return made.map((item) => item.id);
   }
   throw new Error('造不出可区分的排序样本');
 }
@@ -548,7 +560,7 @@ describe('AC-DM-19 默认排序不泄露隐藏字段的先后（第 2 轮 P2-2�
         return made;
       },
       ['2026-10-20', '2026-10-28', '2026-10-24'],
-      (id) => dates.get(id)!,
+      ascending((id) => dates.get(id)!),
     );
     const without = (...fields: string[]) =>
       x.w.restricted(
@@ -580,7 +592,7 @@ describe('AC-DM-19 默认排序不泄露隐藏字段的先后（第 2 轮 P2-2�
         return made;
       },
       ['2026-10-01', '2026-10-03', '2026-10-02'],
-      (id) => dates.get(id)!,
+      descending((id) => dates.get(id)!),
     );
     const blind = x.w.restricted(
       denyButtons(),
@@ -606,7 +618,7 @@ describe('AC-DM-19 默认排序不泄露隐藏字段的先后（第 2 轮 P2-2�
         return made;
       },
       ['2026-10-20'],
-      (id) => String(created.get(id)).padStart(3, '0'),
+      descendingThenIdDesc((id) => String(created.get(id)).padStart(3, '0')),
     );
     const blind = x.w.restricted(
       denyButtons(),
@@ -615,5 +627,121 @@ describe('AC-DM-19 默认排序不泄露隐藏字段的先后（第 2 轮 P2-2�
     );
     const seen = (await x.view('all', '&pageSize=50', blind)).items.map((item) => item.id);
     expect(seen).toEqual([...ids].sort());
+  });
+});
+
+// ---- 第 3 轮（#409 审查 P2-A / P2-B）：嵌套字段按路径裁剪；status 筛选纳入筛选字段查看权 --------------------------------
+
+/** 叶子路径（数组元素用 [] 合并）；null 也是叶子。 */
+function leafPaths(value: unknown, prefix = ''): string[] {
+  if (Array.isArray(value)) return [...new Set(value.flatMap((item) => leafPaths(item, `${prefix}[]`)))];
+  if (value && typeof value === 'object')
+    return Object.entries(value).flatMap(([key, item]) => leafPaths(item, prefix ? `${prefix}.${key}` : key));
+  return [prefix];
+}
+const isNested = (path: string) => /[.[]/.test(path);
+
+/** 嵌套叶子路径 → 它自己的字段编码（任职记录字段目录）。 */
+const NESTED: [string, string][] = [
+  ['versions[].versionNo', 'versionNo'],
+  ['versions[].createdAt', 'createdAt'],
+  ['versions[].effectiveDate', 'effectiveDate'],
+  ['versions[].plannedEffectiveDate', 'effectiveDate'],
+  ['versions[].lastWorkDate', 'lastWorkDate'],
+  ['events[].state', 'status'],
+  ['events[].createdAt', 'createdAt'],
+  ['cancellation.id', 'id'],
+  ['cancellation.stateBefore', 'status'],
+  ['cancellation.revision', 'revision'],
+  ['cancellation.createdAt', 'createdAt'],
+  ['dutyTransfer.timing', 'dutyTransferTiming'],
+  ['dates.planned.lastWorkDate', 'lastWorkDate'],
+  ['dates.final.lastWorkDate', 'lastWorkDate'],
+  ['dates.planned.effectiveDate', 'effectiveDate'],
+  ['dates.final.effectiveDate', 'effectiveDate'],
+];
+/** 没有自己的字段编码、只作容器内说明的叶子：行可见即可见（撤销原因 / 类型、事件序号、效果汇总、转交件数）。 */
+const CONTAINER_ONLY = [
+  'events[].eventNo',
+  'cancellation.reason',
+  'cancellation.case',
+  'effects[].phase',
+  'effects[].kind',
+  'effects[].count',
+  'dutyTransfer.transferred',
+  'dutyTransfer.failed',
+];
+
+describe('AC-DM-19 嵌套字段按路径裁剪（第 3 轮 P2-A，设计 §9.1）', () => {
+  async function nestedWorld(label: string) {
+    const x = await world(label);
+    const made = await x.exit('嵌套员工', '2026-10-20', 'direct', { exit: { exitTypeCode: 'voluntary' } });
+    const t = x.w.session.tenant.id;
+    await x.run(sql`INSERT INTO exit_effects(tenant_id,business_id,employee_id,phase,kind,target_type,target_id,
+        command_id) VALUES (${t},${made.id}::uuid,${made.employee.id}::uuid,'confirmed','duty_transferred',
+        'employment_record',gen_random_uuid(),'fx')`);
+    await x.force(made.id, 'voided');
+    await x.cancellation(made.id, made.employee.id, '撤销原因', '2026-10-06T03:00:00Z');
+    const as = (fields: readonly string[]) => x.w.restricted(denyButtons(), undefined, fields);
+    const detailOf = async (api: Api) => (await (await api('GET', `/exits/${made.id}`)).json()) as DetailBody;
+    const rowOf = async (api: Api) =>
+      ((await (await api('GET', '/exits?view=cancellations')).json()) as ViewPage).items[0]!;
+    return { x, made, as, detailOf, rowOf };
+  }
+
+  it('嵌套叶子要么登记了自己的字段编码，要么是明确的容器叶子（新增嵌套键不能默认放行）', async () => {
+    const { x, as, detailOf, rowOf } = await nestedWorld('views-nested-catalog');
+    const full = as(FULL);
+    const known = new Set([...NESTED.map(([path]) => path), ...CONTAINER_ONLY]);
+    const listed = (await rowOf(full)) as object;
+    const nested = [...leafPaths(await detailOf(full)), ...leafPaths(listed)].filter(isNested);
+    expect(nested.filter((path) => !known.has(path))).toEqual([]);
+    expect(
+      NESTED.every(([path]) => nested.includes(path)),
+      '登记的路径都真实出现',
+    ).toBe(true);
+    expect(x.ids(await x.view('cancellations'))).toHaveLength(1);
+  });
+
+  it('真实角色逐个撤掉嵌套键对应的字段权：该路径在详情（和列表的撤销信息）里不再出现，其余路径保留', async () => {
+    const { as, detailOf, rowOf } = await nestedWorld('views-nested-revoke');
+    const full = as(FULL);
+    const fullDetail = leafPaths(await detailOf(full)).filter(isNested);
+    const fullRow = leafPaths(await rowOf(full)).filter(isNested);
+    for (const code of new Set(NESTED.map(([, field]) => field))) {
+      const viewer = as(FULL.filter((field) => field !== code));
+      const gone = NESTED.filter(([, field]) => field === code).map(([path]) => path);
+      const label = `撤掉 ${code}`;
+      expect(leafPaths(await detailOf(viewer)).filter(isNested), label).toEqual(
+        fullDetail.filter((path) => !gone.includes(path)),
+      );
+      expect(leafPaths(await rowOf(viewer)).filter(isNested), label).toEqual(
+        fullRow.filter((path) => !gone.includes(path)),
+      );
+    }
+  });
+});
+
+describe('AC-DM-19 状态筛选需要状态字段的查看权（第 3 轮 P2-B）', () => {
+  it('无 status 字段权：离职中 / 全部视图按 status 筛选都在查询前 403，有权照常；不带 status 不受影响', async () => {
+    const x = await world('views-status-filter');
+    const draft = await x.exit('草稿', '2026-10-20');
+    await x.exit('审批通过', '2026-10-25', 'direct');
+    const hidden = x.w.restricted(
+      denyButtons(),
+      undefined,
+      FULL.filter((field) => field !== 'status'),
+    );
+    const sighted = x.w.restricted(denyButtons(), undefined, FULL);
+    for (const view of ['all', 'in_progress'])
+      for (const status of ['approved', 'draft', 'rejected']) {
+        const label = `${view} status=${status}`;
+        const blocked = await hidden('GET', `/exits?view=${view}&status=${status}`);
+        expect(blocked.status, label).toBe(403);
+        expect(await blocked.clone().text(), label).not.toContain('"total"');
+        expect((await sighted('GET', `/exits?view=${view}&status=${status}`)).status, label).toBe(200);
+      }
+    expect(x.ids(await x.view('all', '&status=draft', sighted))).toEqual([draft.id]);
+    expect((await hidden('GET', '/exits?view=all')).status).toBe(200);
   });
 });
