@@ -985,6 +985,10 @@
 "log": [
 [
 "10-17",
+"DEC-578：BE-8b 改名“交接事项与离职自动加黑”，不再做终止在途，作废在途申请归 BE-4h；F-213 开 Draft PR #392"
+],
+[
+"10-17",
 "FE2b 离职三个字典设置页已开会话，开发中"
 ],
 [
@@ -5561,7 +5565,7 @@
 "after": [
 "BE-4f"
 ],
-"note": "待排 · 前序 BE-4f · 03 DEC-577 台账登记 · 与 BE-8b“终止在途”范围重叠，归属待 00 定"
+"note": "待排 · 前序 BE-4f · 03 DEC-577 台账登记 · DEC-578：离职生效时作废全部在途申请归本行（BE-8b 不再做终止在途）"
 },
 {
 "k": "BE-4i",
@@ -5629,9 +5633,9 @@
 },
 {
 "k": "BE-8b",
-"n": "BE-8b 交接自动建单、终止在途（含离职自动加黑；全单按 A27 收口，DEC-571）",
+"n": "BE-8b 交接事项与离职自动加黑",
 "s": "wait",
-"note": "证据够，等 BE-4h（R2-T03 B3-2） · “终止在途”与 R2-T03 B3-2“作废全部在途任职申请”范围重叠，归属待 00 定 · 03 盘点 inv_1017 §三",
+"note": "待排 · DEC-578：只做交接事项、交接发起规则、离职自动加黑，不再做“终止在途”（离职生效时作废全部在途申请归 BE-4h = R2-T03 B3-2；按申请类型选终止还是保留归 F-138）· 前序 BE-8a + BE-4h · 全单按 A27 收口（DEC-571）",
 "after": [
 "BE-8a",
 "BE-4h"
@@ -6351,7 +6355,8 @@
 "s": "dev",
 "mod": "R1",
 "ms": "D2",
-"note": "开发中（云端会话 session_01KP3BdtPW2H6kgFUrmpRQ56，尚无 PR）· Sonnet High 开发 / Codex Sol high 审 · 分支 claude/F-213-org-deactivate-date · 停用日不得早于或等于设立日（org/deactivation.ts），先确认现有停用是否已拦截 · DEC-575"
+"note": "开发中（Draft PR #392，分支 claude/F-213-org-deactivate-date，+127，云端会话 session_01KP3BdtPW2H6kgFUrmpRQ56）· Sonnet High 开发 / Codex Sol high 审 · 停用日不得早于或等于设立日 · DEC-575",
+"pr": 392
 }
 ]
 }
