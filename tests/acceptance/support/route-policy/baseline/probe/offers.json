@@ -135,6 +135,25 @@
     "scopeQueries": [],
     "trace": []
   },
+  "POST /api/tenant/offers/:id/approval": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "2a146d3522c1",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.Offer/-"
+    ],
+    "trace": [
+      "obj:TenantBase.Offer:update"
+    ]
+  },
   "POST /api/tenant/offers/:id/copy": {
     "all": {
       "code": "NOT_FOUND",
@@ -242,6 +261,19 @@
       "code": "VALIDATION_FAILED",
       "error": "17147722c2a8",
       "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/tenant/offers/batch-approvals": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "7cc93e650c83",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
     },
     "scopeQueries": [],
     "trace": []

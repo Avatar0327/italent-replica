@@ -38,6 +38,7 @@ import { auditActor } from '../../system-actor.js';
 import { visibleEmploymentRecords } from '../employment/visibility.js';
 import { scopeSql } from '../permission/module-access.js';
 import { JOB_OBJECT_CODES, visibleJob } from '../permission/module-route-access.js';
+import { withApprovalProgress } from './approval-progress.js';
 import { readEffectiveSetting } from '../tenant-settings/service.js';
 import { assertOfferRevision, requireOfferInScope, type OfferContext } from './context.js';
 import { requireEnabledOfferReason } from './dictionaries.js';
@@ -206,7 +207,8 @@ async function guarded<T>(work: () => Promise<T>, deleting = false): Promise<T> 
     return await work();
   } catch (error) {
     if (pgErrorCode(error) !== '23503') throw error;
-    if (deleting) throw new AppError('CONFLICT', 'Offer 已被其他 Offer 引用', { reason: 'OFFER_REFERENCED' });
+    if (deleting)
+      throw new AppError('CONFLICT', 'Offer 已被其他 Offer 或批量审批单引用', { reason: 'OFFER_REFERENCED' });
     throw new AppError('VALIDATION_FAILED', 'Offer 引用的对象不存在', { reason: 'OFFER_REFERENCE_INVALID' });
   }
 }
@@ -306,6 +308,18 @@ async function save(tx: Tx, ctx: OfferContext, before: OfferRow, action: string,
   return offerDto(after!);
 }
 
+/**
+ * 审批结果回写审批子状态（BE-14a3）：审批中心以可信身份调用（审批不授予范围，DEC-057），只改审批子状态，留审计。
+ */
+export function saveApprovalStatus(
+  tx: Tx,
+  ctx: Pick<OfferContext, 'tenantId' | 'userId' | 'commandId' | 'now'>,
+  before: OfferRow,
+  approvalStatus: OfferApprovalStatus,
+) {
+  return save(tx, ctx as OfferContext, before, 'approval', { approvalStatus });
+}
+
 function requireEditable(row: OfferRow) {
   if (!offerEditable(facts(row)))
     throw new AppError('CONFLICT', '只有待发且不在审批中的 Offer 可以编辑或删除', { reason: 'OFFER_NOT_EDITABLE' });
@@ -328,6 +342,9 @@ export async function deleteOffer(tx: Tx, ctx: OfferContext, id: string) {
   const before = await lockOffer(tx, ctx, id);
   assertOfferRevision(ctx.expectedRevision, before.revision);
   requireEditable(before);
+  // 被驳回 / 撤回后待重新发起的单个 Offer 审批随删除作废（同任职申请删除，DEC-103）
+  const { cancelOfferApprovals } = await import('./approval.js');
+  await cancelOfferApprovals(tx, ctx, id);
   await guarded(() => tx.delete(offers).where(and(eq(offers.tenantId, ctx.tenantId), eq(offers.id, id))), true);
   await audit(tx, ctx, 'delete', id, before, null);
   return { id, deleted: true };
@@ -386,7 +403,9 @@ function withActions(row: OfferRow, allowed: OfferActionFilter, current?: Readon
 
 export async function offerDetail(tx: Tx, ctx: OfferContext, id: string, allowed: OfferActionFilter) {
   const row = await loadOffer(tx, ctx, id);
-  return withActions(row, allowed, await currentEntryIds(tx, ctx.tenantId, [row]));
+  const current = await currentEntryIds(tx, ctx.tenantId, [row]);
+  const [dto] = await withApprovalProgress(tx, ctx.tenantId, [withActions(row, allowed, current)]);
+  return dto!;
 }
 
 export interface OfferListQuery {
@@ -427,7 +446,8 @@ export async function listOffers(tx: Tx, ctx: OfferContext, query: OfferListQuer
     .limit(query.limit)
     .offset(query.offset);
   const current = await currentEntryIds(tx, ctx.tenantId, rows);
-  return { total: count!.total, items: rows.map((row) => withActions(row, allowed, current)) };
+  const items = rows.map((row) => withActions(row, allowed, current));
+  return { total: count!.total, items: await withApprovalProgress(tx, ctx.tenantId, items) };
 }
 
 const PLAN_MESSAGES: Readonly<Record<string, string>> = {
@@ -467,7 +487,11 @@ export async function transferOffer(tx: Tx, ctx: OfferContext, id: string, input
 
 /** 失效（OF-R7）：确定即失效，记失效时间；不可恢复（转移候选为空、只能复制）。 */
 export async function invalidateOffer(tx: Tx, ctx: OfferContext, id: string, input: OfferInvalidateInput) {
+  // BE-14a3：先锁在途批量单再锁 Offer（与审批动作同序），取锁后复核关联未变；随后在同一事务里作废在途审批
+  const { cancelOfferApprovals, lockOfferBatches } = await import('./approval.js');
+  const recheck = await lockOfferBatches(tx, ctx.tenantId, id);
   const before = await lockOffer(tx, ctx, id);
+  await recheck();
   assertOfferRevision(ctx.expectedRevision, before.revision);
   const plan = planOfferInvalidation(facts(before), input);
   if (!plan.ok) failPlan(plan);
@@ -477,7 +501,9 @@ export async function invalidateOffer(tx: Tx, ctx: OfferContext, id: string, inp
     'invalid-reasons',
     plan.patch.invalidReasonCode,
   );
-  return save(tx, ctx, before, 'invalidate', { ...plan.patch, invalidReasonCode, invalidAt: ctx.now });
+  const after = await save(tx, ctx, before, 'invalidate', { ...plan.patch, invalidReasonCode, invalidAt: ctx.now });
+  // 同一事务里作废在途审批（单个实例 / 所在批量单），否则 revision 变了的审批再也办不结（#398 衔接）
+  return (await cancelOfferApprovals(tx, ctx, id)) ? offerDto(await loadOffer(tx, ctx, id)) : after;
 }
 
 /** 转移状态表单：可选目标与已保存的拒绝时间 / 原因 / 备注（再次选“已拒绝”时带出原值，DEC-532①）。 */

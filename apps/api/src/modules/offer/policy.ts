@@ -11,6 +11,9 @@
  * - 转移状态（C2，BE-14a2，transitions.ts）：行主按钮入口只认 OfferLineOpStatusTransfer@list_row，顶部工具栏入口只认
  *   Offer.StatusTransfer@list（DEC-533④ / 537③），不另设管理员越权（DEC-503）；失效按对象编辑开关；转移表单与 OF-R3
  *   发送判定是只读，按对象查看权与当前范围。
+ * - 转移状态两项按钮（Offer.StatusTransfer / OfferLineOpStatusTransfer）只登记授权项，入口随 C2（BE-14a2）接入，本表无对应路由。
+ * - 发起审批（BE-14a3）：单个 / 批量都走 runOfferWrite（object.update，与编辑同开关）+ 逐份 Offer 的当前范围；审批流转
+ *   在同一事务内交审批中心（approval/engine startOrResume），首节点为空等拒绝时整单回滚。
  */
 import { OFFER_BUTTONS, OFFER_OBJECT } from '@italent/domain';
 import { defineTable, type PolicyBase, type RoutePolicy } from '../../route-policy/index.js';
@@ -43,8 +46,11 @@ const DICTIONARY = fixed(['id', 'code', 'name', 'enabled', 'displayOrder', 'revi
 const RESULT = { generic: { targets: 'id', locator: 'offer.byId' } } as const;
 const bodyWrite = (preconditions: readonly string[]) =>
   write('body', 'offer.commandGuard', RESULT, { ledger: 'single', preconditions });
-const commandOnly = (preconditions: readonly string[]) =>
-  commandWrite('offer.commandGuard', RESULT, { ledger: 'single', preconditions });
+/** 批量发起返回一组 Offer：重放时逐个复核仍在范围（routes.batchVisible）。 */
+const BATCH_RESULT = { generic: { targets: 'items[*].id', locator: 'offer.byId' } } as const;
+const commandOnly = (preconditions: readonly string[], result: typeof RESULT | typeof BATCH_RESULT = RESULT) =>
+  commandWrite('offer.commandGuard', result, { ledger: 'single', preconditions });
+const APPROVAL_PRECONDITIONS = ['offer.approvable', 'approval.processMatched', 'approval.firstNodeAssignee'];
 const ROW_TRANSFER = button(OFFER_BUTTONS.lineStatusTransfer.code, OFFER_BUTTONS.lineStatusTransfer.level);
 const TOOLBAR_TRANSFER = button(OFFER_BUTTONS.statusTransfer.code, OFFER_BUTTONS.statusTransfer.level);
 
@@ -75,7 +81,7 @@ const ACTION_DISCLOSURE = {
     scope: noScope('只判按钮'),
     fields: noFields('只决定 toolbarActions'),
   }),
-  rowUpdate: disclose('update', '行操作 edit / invalidate'),
+  rowUpdate: disclose('update', '行操作 submitApproval / edit / invalidate'),
   rowDelete: disclose('delete', '行操作 delete'),
   rowCopy: disclose('create', '行操作 copy'),
 };
@@ -223,7 +229,28 @@ export const OFFER_POLICIES = defineTable('offers', {
     button: noButton('失效按对象编辑开关'),
     scope: point,
     fields: record,
-    write: commandOnly(['revision', 'offer.invalidation', 'offer.invalidReasonEnabled']),
+    // BE-14a3：同一事务内作废本 Offer 的在途审批（单个实例 / 所在批量单，cancelOfferApprovals）
+    write: commandOnly(['revision', 'offer.invalidation', 'offer.invalidReasonEnabled', 'offer.cancelApprovals']),
+  }),
+  // BE-14a3：body 只接受 {}；非待发 / 审批中 / 已通过 → 409 OFFER_APPROVAL_NOT_ALLOWED；首节点为空 → 409（DEC-054）
+  'POST /:id/approval': object({
+    ...byId,
+    object: OFFER,
+    operation: 'update',
+    button: noButton('发起审批按对象编辑开关（行主按钮编码原站未取证）'),
+    scope: point,
+    fields: record,
+    write: commandOnly(['revision', ...APPROVAL_PRECONDITIONS]),
+  }),
+  // body { offerIds(1～100 不重复), approvalSubjectOrgId?, remark? }（400）；If-Match 须为 0；任一份不满足整单拒绝；
+  // 审批主体缺省取申请人主职部门，取不到 400 OFFER_BATCH_SUBJECT_REQUIRED，显式指定须在组织范围内
+  'POST /batch-approvals': object({
+    object: OFFER,
+    operation: 'update',
+    button: noButton('批量发起审批按对象编辑开关'),
+    scope: pointScope({ body: 'offerIds[*]' }, 'offer.byId', NOT_FOUND),
+    fields: record,
+    write: commandOnly(['offer.batchSubject', ...APPROVAL_PRECONDITIONS], BATCH_RESULT),
   }),
   // 立即同步待入职（BE-14b2，OF-R8）：已接受（或时机为发送时的已发）才可；已同步重复点击幂等；同步失败也是 200（记在 Offer 上）
   'POST /:id/sync': object({
@@ -233,6 +260,8 @@ export const OFFER_POLICIES = defineTable('offers', {
     button: noButton('立即同步按对象编辑开关；对人员 / 任职的写入是受控的系统联动，不要求操作人有人员范围（F-201②）'),
     scope: point,
     fields: record,
+    // 任职落地内核的联动复核（DEC-178）；Offer 同步以显式系统全量范围调用，对同步恒放行
+    guards: ['employment.linkage'],
     write: commandOnly(['revision', 'offer.syncState', 'offer.syncInternConversion']),
   }),
   // 关联 / 解除关联在职实习生：待发 / 已发可改；对象须是实习生且在操作人当前人员范围内

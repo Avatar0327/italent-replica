@@ -2,7 +2,7 @@
  * Offer 请求体的严格校验（OF-R1 字段集）：多余字段 400，在字段授权之前拦下，避免被当作无权字段 403。
  * 金额以十进制字符串落库（numeric(14,2)），接口收发数字。
  */
-import { OFFER_ENTRIES, OFFER_SOURCES, OFFER_STATUSES, OFFER_TYPES } from '@italent/domain';
+import { MAX_OFFER_BATCH, OFFER_ENTRIES, OFFER_SOURCES, OFFER_STATUSES, OFFER_TYPES } from '@italent/domain';
 import { z } from 'zod';
 import { AppError } from '../../errors.js';
 
@@ -71,6 +71,21 @@ export type OfferTransferInput = z.infer<typeof transferSchema>;
 export type OfferInvalidateInput = z.infer<typeof invalidateSchema>;
 export type OfferUpdateInput = z.infer<typeof updateSchema>;
 
+/** 批量发起审批（OF-R15）：子表 1～MAX_OFFER_BATCH 份、不重复；审批主体缺省取申请人主职部门（DEC-533④）。 */
+const batchSchema = z.strictObject({
+  offerIds: z
+    .array(z.uuid().transform((id) => id.toLowerCase()))
+    .min(1)
+    .max(MAX_OFFER_BATCH)
+    .refine((ids) => new Set(ids).size === ids.length, { message: 'Offer 不能重复' }),
+  approvalSubjectOrgId: z
+    .uuid()
+    .transform((id) => id.toLowerCase())
+    .optional(),
+  remark: z.string().trim().max(500).optional(),
+});
+export type OfferBatchInput = z.infer<typeof batchSchema>;
+
 function parse<T>(schema: z.ZodType<T>, raw: unknown): T {
   const parsed = schema.safeParse(raw);
   if (!parsed.success) throw new AppError('VALIDATION_FAILED', 'Offer 字段不合法', parsed.error.issues);
@@ -79,6 +94,9 @@ function parse<T>(schema: z.ZodType<T>, raw: unknown): T {
 
 export const parseOfferCreate = (raw: unknown) => parse(createSchema, raw);
 export const parseOfferUpdate = (raw: unknown) => parse(updateSchema, raw);
+export const parseOfferBatch = (raw: unknown) => parse(batchSchema, raw);
+/** 单个发起审批无请求体字段（只接受空对象）。 */
+export const parseOfferSubmit = (raw: unknown) => parse(z.strictObject({}), raw);
 export const parseOfferTransfer = (raw: unknown) => parse(transferSchema, raw);
 export const parseOfferInvalidate = (raw: unknown) => parse(invalidateSchema, raw);
 export const parseOfferSync = (raw: unknown) => parse(syncSchema, raw);

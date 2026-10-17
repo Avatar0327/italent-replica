@@ -1,6 +1,7 @@
 import { CONTRACT_FIELDS } from '../contracts/rules.js';
 import { TRANSFER_LINKAGE_FIELDS } from '../approval/transfer-view.js';
 import { OFFER_BUTTONS, OFFER_FIELDS, OFFER_STATUS_FIELDS } from '../offer/rules.js';
+import { OFFER_APPROVAL_PROGRESS_FIELDS, OFFER_BATCH_FIELDS } from '../offer/approval.js';
 import { EXIT_BUTTONS, EXIT_REQUEST_FIELDS, EXIT_REQUEST_SYSTEM_FIELDS } from '../employment/exit.js';
 import { PART_TIME_BUTTONS, PART_TIME_FIELDS, PART_TIME_SYSTEM_FIELDS } from '../employment/part-time-constants.js';
 /** Real schema/DTO catalogs for DEC-080. Functional rights never imply a data scope. */
@@ -136,7 +137,16 @@ export const MODULE_OBJECTS = {
       'lastSyncAt',
       'linkedEmployeeId',
       'syncedContractKind',
+      ...OFFER_APPROVAL_PROGRESS_FIELDS,
     ],
+  ),
+  // R2 BE-14a3（OF-R15）：批量审批单经 Offer 列表“批量发起审批”生成、在审批中心撤回；按钮照同类集合审批单
+  // TalentReview.ResultApproval 登记（DEC-080：批量发起 create@list、撤回 withdraw@detail）。字段权限供审批中心披露
+  offerBatchApproval: object(
+    'OfferBatchApproval',
+    OFFER_BATCH_FIELDS,
+    [button('create', 'list', 'create'), button('withdraw', 'detail', 'update')],
+    ['status'],
   ),
   organization: object(
     'Organization',
