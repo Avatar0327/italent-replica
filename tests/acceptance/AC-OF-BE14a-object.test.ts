@@ -187,6 +187,43 @@ describe('BE-14a 拒绝 / 失效原因字典（A37）', () => {
     expect((await w.request('GET', '/dictionaries/unknown')).status).toBe(400);
   });
 
+  it('字典两个写入口：缺 If-Match 400、If-Match 不对 409，均不写入；同键重放不重复写；审计归配置对象', async () => {
+    const w = await offerWorld(testDb().db, 'dictionary-revision');
+    const path = '/dictionaries/invalid-reasons';
+    const body = { code: 'no_show', name: '未到岗' };
+    const noMatch = await w.request('POST', path, { body });
+    expect(noMatch.status).toBe(400);
+    expect((await errorOf(noMatch)).code).toBe('REVISION_REQUIRED');
+    expect((await w.request('POST', path, { ifMatch: 1, body })).status).toBe(409);
+    const key = crypto.randomUUID();
+    const first = await w.request('POST', path, { ifMatch: 0, body, idempotencyKey: key });
+    expect(first.status).toBe(201);
+    const created = (await first.json()) as { id: string; revision: number };
+    const replay = await w.request('POST', path, { ifMatch: 0, body, idempotencyKey: key });
+    expect(await replay.json()).toEqual(created);
+    expect((await w.request('PUT', `${path}/${created.id}`, { body: { name: '改' } })).status).toBe(400);
+    const stale = await w.request('PUT', `${path}/${created.id}`, { ifMatch: 9, body: { name: '改' } });
+    expect((await errorOf(stale)).code).toBe('REVISION_CONFLICT');
+    expect((await w.request('PUT', `${path}/${created.id}`, { ifMatch: 1, body: { name: '未报到' } })).status).toBe(
+      200,
+    );
+    const result = await withTenant(w.db, w.tenant.id, (tx) =>
+      tx.execute(sql`SELECT action, object_type AS "objectType", scope_org_id AS "orgId",
+        scope_employee_id AS "employeeId", actor_user_id AS "actor" FROM audit_events
+        WHERE tenant_id = ${w.tenant.id} AND object_id = ${created.id}`),
+    );
+    const rows = (Array.isArray(result) ? result : (result as { rows: unknown[] }).rows) as Record<string, unknown>[];
+    expect(rows).toHaveLength(2);
+    for (const row of rows)
+      expect(row).toMatchObject({
+        action: 'offer_dictionary.save',
+        objectType: 'offer_dictionary',
+        orgId: null,
+        employeeId: null,
+        actor: w.user.id,
+      });
+  });
+
   it('字典写入要配置能力：没有 tenant.employment.configuration.write 时 403，读取仍可用', async () => {
     const w = await offerWorld(testDb().db, 'dictionary-deny', deny('tenant.employment.configuration.write'));
     const denied = await w.request('POST', '/dictionaries/refusal-reasons', {
