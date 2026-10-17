@@ -103,6 +103,7 @@ describe.runIf(realPostgres)('AC-TRF 核心真 PG 交错', () => {
           kind: 'regularization',
           mode: 'direct',
           effectiveDate: '2026-10-05',
+          probationResult: 'normal',
           fields: { place: '直接转正地点' },
         },
       });

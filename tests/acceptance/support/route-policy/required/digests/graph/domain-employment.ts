@@ -18,4 +18,16 @@ export const GRAPH: Graph = {
   'packages/domain/src/employment/entry-email.ts#normalizeEmailDomain': ['#DOMAIN_PATTERN'],
   'packages/domain/src/employment/exit.ts#EXIT_DICTIONARY_KINDS': ['#EXIT_DICTIONARIES'],
   'packages/domain/src/employment/exit.ts#EXIT_FORM_FIELDS': ['#EXIT_REQUEST_FIELDS'],
+  'packages/domain/src/employment/probation.ts#actualProbationEndDate': [
+    'packages/domain/src/contracts/rules.ts#addDays',
+  ],
+  'packages/domain/src/employment/probation.ts#defaultRegularizationDate': [
+    'packages/domain/src/contracts/rules.ts#addDays',
+  ],
+  'packages/domain/src/employment/probation.ts#expectedProbationEndDate': [
+    'packages/domain/src/contracts/rules.ts#termEnd',
+  ],
+  'packages/domain/src/employment/probation.ts#normalizeProbationInfo': ['#expectedProbationEndDate'],
+  'packages/domain/src/employment/probation.ts#probationAdjustmentViolation': ['#violation'],
+  'packages/domain/src/employment/probation.ts#resolveDeferredProbation': ['#expectedProbationEndDate'],
 };

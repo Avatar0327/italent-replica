@@ -13,6 +13,7 @@ import { AppError } from '../../errors.js';
 import { assertRegularizationNotPropagated } from './employee-status.js';
 import { releasePendingContract } from './entry-pending-contract.js';
 import { clearPendingProbation } from './entry-probation.js';
+import { assertProbationProcessesIdle } from './probation-guard.js';
 import {
   activationPredecessors,
   PREDECESSOR_FAILED,
@@ -96,6 +97,13 @@ export async function transitionEmployment(
     isExitKind(business.payload.kind) && !ctx.trustedExit ? await exitGateFor(tx, ctx, business, input) : null;
   assertTransition(business, input.action);
   if (input.action === 'submit') await requireEmployeeTransferBusiness(tx, ctx, input.id);
+  // 29 PB-R9 / AC-PB-03：转正申请在提交时判互斥（草稿照常保存），自己不拦自己
+  if (input.action === 'submit' && business.payload.kind === 'regularization')
+    await assertProbationProcessesIdle(tx, ctx, {
+      employeeId: business.employeeId,
+      action: 'apply',
+      businessId: input.id,
+    });
   if (input.action === 'submit' || input.action === 'approve') {
     const { payload } = business;
     // DEC-195② / DEC-272：审批通过时已过计划生效日的调动改到批准当天（共用判定函数，起点是 §5.0A 计划生效日，D-8）。

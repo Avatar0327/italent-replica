@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import type { Db } from '@italent/db';
+import { sql, withTenant, type Db } from '@italent/db';
 import { expect } from 'vitest';
+import { installMissingSeeds } from '../../apps/api/src/seeds/index.js';
 import { seedTenantWithMember, tenantApi, type RequestOptions } from './support/tenant-api.js';
 
 export const EMP_TODAY = '2026-10-01';
@@ -55,8 +56,26 @@ export function withLoginEmail(employeeId: string, body: Record<string, unknown>
   return { ...body, loginEmail: loginEmailOf(employeeId) };
 }
 
+/**
+ * BE-3：转正须选试用结果字典项，夹具租户补装预置项（DEC-361 种子，新租户开通即装）。
+ * 升级类用例（migrateBefore）停在旧表结构上，字典表还不存在时跳过，夹具照旧可用。
+ */
+export async function installProbationSeeds(db: Db, tenantId: string): Promise<void> {
+  await withTenant(db, tenantId, async (tx) => {
+    const result = await tx.execute(sql`SELECT to_regclass('employment_probation_results') IS NOT NULL AS ready`);
+    const [row] = (Array.isArray(result) ? result : (result as { rows: unknown[] }).rows) as { ready: boolean }[];
+    if (!row?.ready) return;
+    await installMissingSeeds(
+      tx,
+      { tenantId, actorUserId: null, now: new Date(), commandId: `probation-seed-${randomUUID()}` },
+      { modules: ['employment-probation'] },
+    );
+  });
+}
+
 export async function employmentSession(db: Db, label: string, options: { timezone?: string } = {}) {
   const member = await seedTenantWithMember(db, label, options.timezone);
+  await installProbationSeeds(db, member.tenant.id);
   let now = new Date(`${EMP_TODAY}T01:00:00.000Z`);
   const api = tenantApi(db, { clock: () => now });
   const request = (method: string, path: string, options: RequestOptions = {}) =>
@@ -85,9 +104,12 @@ export async function employmentSession(db: Db, label: string, options: { timezo
     body: Record<string, unknown>,
     revision: number,
   ): Promise<EmploymentBusiness> {
+    // 转正必填试用结果（BE-3）：没指定时取预置的“正常转正”
+    const withResult =
+      body.kind === 'regularization' && !('probationResult' in body) ? { ...body, probationResult: 'normal' } : body;
     const response = await request('POST', `/employees/${employeeId}/businesses`, {
       ifMatch: revision,
-      body: withLoginEmail(employeeId, body),
+      body: withLoginEmail(employeeId, withResult),
     });
     expect(response.status).toBe(201);
     return (await response.json()) as EmploymentBusiness;

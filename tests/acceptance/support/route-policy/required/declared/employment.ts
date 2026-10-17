@@ -5,22 +5,25 @@ export const EMPLOYMENT_DECLARED: ModuleDeclared = {
   /** R1c：含 ≥2 个准入承载节点的备选的端点（需要 need 登记） */
   multiCarrierAdmission: [
     'GET /api/tenant/employment/transfers/employees/:id/contracts',
-    'DELETE /api/tenant/employment/blacklist-rules/:id',
-    'POST /api/tenant/employment/blacklist-rules',
     'POST /api/tenant/employment/custom-fields',
     'POST /api/tenant/employment/exits/dictionaries/:dict',
-    'PUT /api/tenant/employment/blacklist-rules/:id',
+    'POST /api/tenant/employment/probation-results',
     'PUT /api/tenant/employment/custom-fields/:id/inheritance',
     'PUT /api/tenant/employment/entry-email-rules',
     'PUT /api/tenant/employment/exits/dictionaries/:dict/:id',
+    'PUT /api/tenant/employment/probation-results/:id',
     'PUT /api/tenant/employment/settings',
     'PUT /api/tenant/employment/transfers/settings',
+    'DELETE /api/tenant/employment/blacklist-rules/:id',
+    'POST /api/tenant/employment/blacklist-rules',
+    'PUT /api/tenant/employment/blacklist-rules/:id',
   ],
   /** 状态码相同、错误体不同，由实际行为证明非法标识声明适用的端点 */
   sameStatusInvalidId: [
     'PATCH /api/tenant/employment/businesses/:id',
     'PATCH /api/tenant/employment/pending-entries/:id',
     'PATCH /api/tenant/employment/records/:id',
+    'POST /api/tenant/employment/businesses/:id/regularization-date',
     'POST /api/tenant/employment/employees/:id/businesses',
     'POST /api/tenant/employment/employees/:id/forward-update-preview',
     'POST /api/tenant/employment/employees/:id/import',
@@ -36,6 +39,8 @@ export const EMPLOYMENT_DECLARED: ModuleDeclared = {
     'PUT /api/tenant/employment/blacklist-rules/:id',
     'PUT /api/tenant/employment/blacklist/:id',
     'PUT /api/tenant/employment/custom-fields/:id/inheritance',
+    'PUT /api/tenant/employment/employees/:id/probation',
+    'PUT /api/tenant/employment/probation-results/:id',
   ],
   /** 声明里的 map 型动态选择器位置“端点 × 位置”（AC-PRM-FW-02 选择器绑定） */
   selectorSites: [
