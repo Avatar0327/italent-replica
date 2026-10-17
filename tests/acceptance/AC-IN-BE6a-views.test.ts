@@ -112,6 +112,22 @@ describe('AC-IN-BE6a-04 实习四视图', () => {
     expect(names(await w.view('converted'))).toEqual(['未来转正合成实习生']);
   });
 
+  it('第 3 轮 P2-1：同一天退休又返聘后，历史转正行的试用期仍按这一行自己的记录读取', async () => {
+    const w = await internWorld(testDb().db, 'be6a-views-cross-cycle');
+    const { employee } = await w.hire('跨周期合成实习生', 'intern');
+    await w.regularizeOk(employee.id, '2026-09-15', w.org.id, { probation: true, probationMonths: 1 });
+    const retire = { kind: 'retirement', mode: 'direct', lastWorkDate: '2026-09-14', fields: {} };
+    await w.session.business(employee.id, retire, await w.revision(employee.id));
+    const fields = { employType: 'internal', departmentId: w.org.id };
+    const rehire = { kind: 'retire_rehire', mode: 'direct', effectiveDate: '2026-09-15', fields };
+    await w.session.business(employee.id, rehire, await w.revision(employee.id));
+    const [converted] = await w.view('converted');
+    expect(converted).toMatchObject({
+      employeeId: employee.id,
+      probation: { startDate: '2026-09-15', months: 1, endDate: '2026-10-14' },
+    });
+  });
+
   it('已离职视图只认实习生身份的离职：内部员工离职不出现', async () => {
     const w = await internWorld(testDb().db, 'be6a-views-left');
     const staff = await w.hire('离职内部合成员工', 'internal');
