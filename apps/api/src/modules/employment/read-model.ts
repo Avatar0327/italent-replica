@@ -1,6 +1,6 @@
 import { sql, type Tx } from '@italent/db';
 import type { SQL } from 'drizzle-orm';
-import type { EmployeeStatusCode, EntryStatusCode } from '@italent/domain';
+import { PART_TIME_KIND, type EmployeeStatusCode, type EntryStatusCode } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { activationSummary } from './activation-store.js';
 import { employmentScopePredicate, employmentCreator } from './context.js';
@@ -193,6 +193,7 @@ export async function findCurrentRecord(tx: Tx, tenantId: string, employeeId: st
  * access='read' 按 DEC-177 可见口径（详情、预览）；access='write' 是写入前的取数，用记录部门、员工、创建人三个坐标
  * 按数据范围各项的维度判定（组织维度只看记录部门，汇报关系维度只看员工，使用用户维度只看创建人，其余维度部门与员工
  * 同时命中），不套 DEC-177 对“看”的放宽（可见但部门在范围外的记录能否直接改，TODO(需取证 #72)）。
+ * 兼职底层业务（kind = part_time）只经兼职接口读，这里一律读不到（R2-T05 §3.4 P-05）。
  */
 export async function loadEmploymentBusiness(
   tx: Tx,
@@ -219,6 +220,7 @@ export async function loadEmploymentBusiness(
     JOIN LATERAL (SELECT s.state FROM employment_state_events s
       WHERE s.tenant_id=b.tenant_id AND s.business_id=b.id ORDER BY s.event_no DESC LIMIT 1) s ON true
     WHERE b.tenant_id=${tenantId} AND b.id=${id}
+      AND p.kind<>${PART_TIME_KIND}
       AND ${scopeFilter} LIMIT 1
   `),
   );

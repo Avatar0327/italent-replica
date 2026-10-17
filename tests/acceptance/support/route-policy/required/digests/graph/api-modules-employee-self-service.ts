@@ -105,6 +105,7 @@ export const GRAPH: Graph = {
     '#employmentStatus',
     'apps/api/src/modules/employment/read-model.ts#loadEmploymentBusiness',
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
+    'packages/domain/src/employment/part-time-constants.ts#PART_TIME_KIND',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/employee-self-service/references.ts#referenceChoices': [

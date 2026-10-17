@@ -9,6 +9,7 @@ import { sql, type Tx } from '@italent/db';
 import {
   EMPLOYEE_STATUS,
   ENTRY_STATUS,
+  PART_TIME_KIND,
   tenantLocalDate,
   type EmployeeStatusCode,
   type EntryStatusCode,
@@ -388,6 +389,7 @@ async function propagationTargets(
       AND v.business_id=b.id AND v.is_record_snapshot ORDER BY v.version_no DESC LIMIT 1) snap ON true
     CROSS JOIN point
     WHERE b.tenant_id=${ctx.tenantId} AND b.employee_id=${source.employeeId}::uuid AND b.id<>${source.id}::uuid
+      AND p.kind<>${PART_TIME_KIND}
       AND ((s.state='effective' AND r.staff_id=${source.staffId}::uuid
           AND (t.start_date,t.sort_order)>(point.start_date,point.sort_order))
         OR (s.state IN ('draft','in_review','approved','rejected') AND r.id IS NULL
