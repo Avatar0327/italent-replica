@@ -7,6 +7,7 @@ import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { runOfferSyncSweep } from '../../apps/api/src/modules/offer/sync-scheduler.js';
 import { syncWorld } from './AC-OF-BE14b2-support.js';
+import { settledOrBlocked } from './support/pg-interleave.js';
 
 const testDb = useTestDb();
 const count = async (w: Awaited<ReturnType<typeof syncWorld>>, offerId: string) => {
@@ -51,3 +52,38 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('并发同步恰好一条
     expect(await w.read(offer.id)).toMatchObject({ syncStatus: 'success', hasPendingEntry: true });
   });
 });
+
+describe.runIf(Boolean(process.env.TEST_DATABASE_URL))(
+  '恢复路径先锁 Offer 再锁员工 / 业务（与 #406 重发同序，真 PG）',
+  () => {
+    it('已取消入职改期恢复时，Offer 行被他人持有：恢复请求在等 Offer 锁，此时不持有员工、业务行锁', async () => {
+      const w = await syncWorld(testDb().db, 'sync-lock-order');
+      const synced = await w.accepted(await w.social());
+      const entryId = synced.pendingEntryBusinessId!;
+      expect((await w.entryAction(entryId, 'cancel', {})).status).toBe(200);
+      const employeeId = (await w.record(entryId)).employeeId;
+
+      let release!: () => void;
+      let held!: () => void;
+      const heldPromise = new Promise<void>((resolve) => (held = resolve));
+      const holder = withTenant(w.db, w.tenant.id, async (tx) => {
+        await tx.execute(sql`SELECT id FROM offers WHERE id = ${synced.id}::uuid FOR UPDATE`);
+        held();
+        await new Promise<void>((resolve) => (release = resolve));
+      });
+      await heldPromise;
+      const restore = w.entryAction(entryId, 'postpone', { effectiveDate: '2026-11-15' });
+      expect(await settledOrBlocked(w.db, restore, 1)).toBe('blocked');
+      // 恢复请求此刻只在等 Offer 锁：员工行、待入职业务行都还能被别人立即锁住（NOWAIT 不报 55P03）
+      await withTenant(w.db, w.tenant.id, async (tx) => {
+        await tx.execute(
+          sql`SELECT id FROM employment_employees WHERE id = ${employeeId}::uuid FOR NO KEY UPDATE NOWAIT`,
+        );
+        await tx.execute(sql`SELECT id FROM employment_business_objects WHERE id = ${entryId}::uuid FOR UPDATE NOWAIT`);
+      });
+      release();
+      await holder;
+      expect((await restore).status).toBe(200);
+    });
+  },
+);
