@@ -234,6 +234,74 @@ def live_prs():
 PROG = os.path.expanduser("~/.cache/italent-board-progress.json")
 
 
+LEDGER = os.path.expanduser("~/.cache/italent-ledger.json")
+EVRAW = os.path.expanduser("~/Documents/italent-evidence-raw")   # 远程批次拉回到 remote/ 或根目录
+# 台账阶段 → 看板步骤状态（10-17 用户：R2e8 早已完成看板仍显示待派，非 PR 进度全靠手改）
+LSTAGE = {"取证": "assigned", "开发": "dev", "审查": "review", "返工": "rework", "待合并": "merge", "合并中": "merge",
+          "待派": "todo", "等前序": "wait"}
+ACTIVE = {"assigned", "dev", "review", "rework", "merge", "decide"}
+STARTED = {"assigned", "dev", "review", "rework", "merge"}      # 真开工才覆盖 DEC 暂缓
+BATCH = re.compile(r"\b(R\d[a-z]\d+[a-z]?\d*|D\d[a-z]-[A-Z]+)\b")
+
+
+NOTDONE = re.compile(r"拆为|拆成|改名|并入|合并入|取消|放弃|作废|撤销")   # done 也用于移出台账，这些备注不算业务完成
+
+
+def ev_done(b):
+    """远程取证批次是否已产出：codex-<批次>*/spec.md 末行恰为 DONE-<批次> 或 DONE-<批次>-<分段>（不串 R2e8/R2e80）"""
+    import glob
+    for f in glob.glob(os.path.join(EVRAW, f"codex-{b}*", "spec.md")) + glob.glob(os.path.join(EVRAW, "remote", f"codex-{b}*", "spec.md")):
+        try:
+            last = open(f, encoding="utf8", errors="ignore").read().strip().splitlines()[-1].strip()
+        except (OSError, IndexError):
+            continue
+        if re.fullmatch(rf"DONE-{re.escape(b)}(-[A-Za-z0-9]+)*", last):
+            return True
+    return False
+
+
+def sync_status(d):
+    """按台账（唯一事实源）与远程取证 DONE 标记校正 main 步骤状态；有 PR 的步骤仍以 PR 实况为准（模板侧）。
+    匹配：步骤 k 与台账任务同名；取证步骤另按名称里的批次号（R2e8、D3a-REC 等）匹配。返回变更列表。"""
+    try:
+        led = json.load(open(LEDGER))
+    except (OSError, ValueError):
+        led = {}                         # 台账缺失 / 暂不可解析：取证 DONE 标记仍独立同步
+    items, done = (led.get("items") if isinstance(led.get("items"), dict) else {}), set()
+    for h in (led.get("history") if isinstance(led.get("history"), list) else []):
+        if isinstance(h, dict) and h.get("op") == "done" and not NOTDONE.search(str(h.get("note") or "")):
+            done.add(h.get("task"))
+    chg = []
+    for ln in (d.get("main") or {}).get("lines", []):
+        for g in ln.get("groups", []):
+            for st in g["steps"]:
+                if st.get("s") == "done" or st.get("dup"):
+                    continue
+                keys = [st["k"]]
+                isev = "取证" in st.get("n", "")
+                if isev:
+                    keys += BATCH.findall(st.get("n", ""))[:1]
+                new = None
+                live = [items[k] for k in keys if k in items]
+                evok = isev and any(ev_done(k) for k in keys[1:])
+                if evok and not (live and live[0].get("stage") == "取证"):
+                    new = "done"                 # 已产出 DONE 且台账不在“取证”（续批未发）→ 取证步骤完成
+                elif live:
+                    it = live[0]
+                    # 待决只有 owner=00（等用户 / 总编排拍板）才显示待决；其他人手上的待决、未知阶段不改
+                    new = ("decide" if it.get("owner") == "00" else ("assigned" if st.get("s") == "decide" else None)) if it.get("stage") == "待决" else \
+                        LSTAGE.get(it.get("stage"))
+                elif any(k in done for k in keys):
+                    new = "done"
+                if st.get("s") == "paused" and new not in STARTED:
+                    new = None                   # DEC 暂缓的步骤，只有台账显示真开工才覆盖（完成也不自动改，由 00 解除暂缓）
+                if new and new != st.get("s"):
+                    chg.append(f"{st['k']} {st.get('s', '-')}→{new}")
+                    st["s"] = new
+    print("ledger sync " + ("；".join(chg) if chg else "无变化"))
+    return chg
+
+
 def progress(d, live):
     """进行中看板顶部的“已完成 / 计划 PR”（用户 10-11 要求）：主线 + 支撑任务的步骤，暂停的不计；
     分子 = 步骤 PR 已合并或标 done。与上次不同则把上次读数记为 prev，看板显示变化量"""
@@ -253,7 +321,7 @@ def progress(d, live):
         byk = {s["k"]: s for s in steps}
         isdone = lambda s: s and (s.get("s") == "done" or (s.get("pr") and str(s["pr"]) in merged))
         for st in steps:
-            if st.get("after") and not st.get("pr") and st.get("s") not in ("assigned", "paused", "done") and all(isdone(byk.get(k)) for k in st["after"]):
+            if st.get("after") and not st.get("pr") and st.get("s") not in ACTIVE | {"paused", "done"} and all(isdone(byk.get(k)) for k in st["after"]):
                 ready.append(f"{ln['id']} {st['k']} {st['n']}")
     print("ready " + ("；".join(ready) if ready else "无"))
     at = (live or {}).get("at", "")
@@ -401,7 +469,8 @@ def build_l3(d, lv):
 def build(d, nosync):
     if not nosync:
         sync(d)
-        save(d)
+    sync_status(d)
+    save(d)
     lv = live_prs() if not nosync else d.get("_live")
     live = open(os.path.join(HERE, "进行中看板.template.html"), encoding="utf8").read().replace(
         "__DATA__", json.dumps({"main": d.get("main"), "items": d.get("items"), "log": d.get("log", [])[:12],
