@@ -19,6 +19,14 @@ const LNK = `${SRC}/transfer/linkage/routes.ts`;
 const EXIT = `${SRC}/employment/exit-routes.ts`;
 const ENTRY = `${SRC}/employment/entry-routes.ts`;
 const EMAIL = `${SRC}/employment/entry-email-routes.ts`;
+const PROBATION = `${SRC}/employment/probation-routes.ts`;
+const REGULARIZATION = `${SRC}/employment/regularization.ts`;
+// readContext 带 resource 时先按人员范围判（转正逐人在保存点内同一函数判）
+const EMPLOYEE_IN_SCOPE: Evidence = {
+  role: 'impl',
+  unit: `${CTX}#requireEmployeeInScope`,
+  anchor: "throw new AppError('NOT_FOUND', '任职数据不存在')",
+};
 const STATUS = `${SRC}/employment/employee-status.ts`;
 const ACCESS = `${SRC}/transfer/access.ts`;
 const SERVICE = `${SRC}/transfer/service.ts`;
@@ -1438,7 +1446,7 @@ export const EMPLOYMENT: RequiredTable = {
         ENTRY,
         'POST',
         '/pending-entries/:id/complete',
-        'await completePendingEntry(tx, context, id, { probation: input.probation })',
+        'const record = await completePendingEntry(tx, context, id, probation)',
       ),
     ),
     // 条件准入（带 contract 才挂）：CommandGuard.before 在命令事务内复核合同“新建”按钮（首次 / 重放 / 回查三个出口）
@@ -1556,6 +1564,147 @@ export const EMPLOYMENT: RequiredTable = {
     directOperation(PENDING_LOCK),
     linkage(at(ENTRY, 'DELETE', '/pending-entries/:id', 'body: await deletePendingEntry(tx, context, id)')),
   ],
+  // ---- employment/probation-routes.ts：R2 BE-3 试用期与转正（视图、详情、调整试用信息、转正、试用结果字典）----------------
+  'GET /api/tenant/employment/probation-views': [
+    recordView(at(PROBATION, 'GET', '/probation-views', "const ctx = await readPageContext(c, deps, 'list')")),
+  ],
+  'GET /api/tenant/employment/employees/:id/probation': [
+    recordView(
+      at(PROBATION, 'GET', '/employees/:id/probation', "const ctx = await readPageContext(c, deps, 'detail', id)"),
+    ),
+  ],
+  'PUT /api/tenant/employment/employees/:id/probation': [
+    ob(
+      `obj:${RECORD}:update`,
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:update', 'object:object.* 动作'],
+      [
+        at(
+          PROBATION,
+          'PUT',
+          '/employees/:id/probation',
+          "const ctx = await readContext(c, deps, 'object.update', revision(c), id)",
+        ),
+        READ,
+        WRITE_OBJECT,
+      ],
+    ),
+    ob(
+      `btn:${RECORD}#Employment.Edit@detail`,
+      ['button:requireEmploymentWrite(按钮)'],
+      [
+        at(
+          PROBATION,
+          'PUT',
+          '/employees/:id/probation',
+          "await requireEmploymentWrite(ctx, 'update', {}, 'Employment.Edit', undefined, { commandOnly: true })",
+        ),
+        WRITE_BUTTON,
+      ],
+    ),
+    ob(
+      'guard:employment.scope',
+      [],
+      [
+        at(
+          PROBATION,
+          'PUT',
+          '/employees/:id/probation',
+          "const ctx = await readContext(c, deps, 'object.update', revision(c), id)",
+        ),
+        {
+          role: 'impl',
+          unit: `${CTX}#readContext`,
+          anchor: '(tx) => requireEmployeeInScope(tx, result, resource)',
+        },
+        EMPLOYEE_IN_SCOPE,
+      ],
+    ),
+    directOperation(
+      fn(
+        STATUS,
+        'switchProbationStatus',
+        'await requireScopedEmploymentObject(tx, ctx, record.employeeId, record.fields.departmentId, record.id)',
+      ),
+    ),
+    linkage(at(PROBATION, 'PUT', '/employees/:id/probation', 'await adjustProbation(tx, context, id, adjustment)')),
+  ],
+  'POST /api/tenant/employment/regularizations': [
+    ob(
+      `obj:${RECORD}:create`,
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:create', 'object:object.* 动作'],
+      [
+        at(PROBATION, 'POST', '/regularizations', "const ctx = await readContext(c, deps, 'object.create')"),
+        READ,
+        WRITE_OBJECT,
+      ],
+    ),
+    ob(
+      `btn:${RECORD}#Employment.Create@detail`,
+      ['button:requireEmploymentWrite(按钮)'],
+      [
+        at(
+          PROBATION,
+          'POST',
+          '/regularizations',
+          "await requireEmploymentWrite(ctx, 'create', payload, 'Employment.Create')",
+        ),
+        WRITE_BUTTON,
+      ],
+    ),
+    ob(
+      'guard:employment.scope',
+      [],
+      [
+        fn(REGULARIZATION, 'regularizeOne', 'await requireEmployeeInScope(tx, ctx, item.employeeId)'),
+        EMPLOYEE_IN_SCOPE,
+      ],
+      '逐人在保存点内判定，只让那一人失败（回执 404）',
+    ),
+    directOperation(
+      fn(
+        `${SRC}/employment/write-service.ts`,
+        'materializeEmploymentRecord',
+        'await requireScopedEmploymentObject(tx, ctx, business.employeeId, fields.departmentId)',
+      ),
+    ),
+    linkage(
+      at(
+        PROBATION,
+        'POST',
+        '/regularizations',
+        'async (tx, context) => ({ status: 200, body: await regularizeEmployees(tx, context, input) })',
+      ),
+    ),
+  ],
+  'GET /api/tenant/employment/probation-results': [
+    ob(
+      `obj:${RECORD}:view`,
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:view', 'object:object.* 动作'],
+      [at(PROBATION, 'GET', '/probation-results', "const ctx = await readContext(c, deps, 'object.view', 0)"), READ],
+    ),
+  ],
+  'POST /api/tenant/employment/probation-results': configWrite(
+    at(PROBATION, 'POST', '/probation-results', "'tenant.employment.configuration.write'"),
+    'TenantBase.EmploymentSettings',
+    'create',
+    at(
+      PROBATION,
+      'POST',
+      '/probation-results',
+      "await requireEmploymentWrite(ctx, 'create', input, undefined, SETTINGS)",
+    ),
+  ),
+  'PUT /api/tenant/employment/probation-results/:id': configWrite(
+    at(PROBATION, 'PUT', '/probation-results/:id', "'tenant.employment.configuration.write'"),
+    'TenantBase.EmploymentSettings',
+    'update',
+    at(
+      PROBATION,
+      'PUT',
+      '/probation-results/:id',
+      "await requireEmploymentWrite(ctx, 'update', input, undefined, SETTINGS)",
+    ),
+  ),
   // ---- employment/exit-routes.ts：R2-T03 离职三个字典（读：任职记录查看权；写：配置对象，设计 §9.1）----------------
   'GET /api/tenant/employment/exits/dictionaries/:dict': [
     ob(

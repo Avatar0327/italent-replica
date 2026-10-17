@@ -141,6 +141,26 @@
       "obj:TenantBase.Employee:view"
     ]
   },
+  "GET /api/tenant/employment/employees/:id/probation": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "38c39852c2f4",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/TenantBase.EmploymentRecord.detail",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.EmploymentRecord:view"
+    ]
+  },
   "GET /api/tenant/employment/employees/:id/records": {
     "all": {
       "code": "NOT_FOUND",
@@ -195,6 +215,34 @@
     "all": {
       "code": "VALIDATION_FAILED",
       "error": "a634390c1dfe",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/TenantBase.EmploymentRecord.list",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.EmploymentRecord:view"
+    ]
+  },
+  "GET /api/tenant/employment/probation-results": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/-",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.EmploymentRecord:view"
+    ]
+  },
+  "GET /api/tenant/employment/probation-views": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "e24c52d4604e",
       "status": 400
     },
     "fieldQueries": [],
@@ -825,6 +873,20 @@
       "obj:TenantBase.EmploymentRecord:update"
     ]
   },
+  "POST /api/tenant/employment/probation-results": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "0d1055843c26",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "admin:other_settings"
+    ]
+  },
   "POST /api/tenant/employment/records/:id/forward-update-preview": {
     "all": {
       "code": "VALIDATION_FAILED",
@@ -858,6 +920,21 @@
     ],
     "trace": [
       "obj:TenantBase.EmploymentRecord:update"
+    ]
+  },
+  "POST /api/tenant/employment/regularizations": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "eff4a176ad6c",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/-",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.EmploymentRecord:create"
     ]
   },
   "POST /api/tenant/employment/transfers/employees/:id": {
@@ -940,6 +1017,26 @@
       "admin:other_settings"
     ]
   },
+  "PUT /api/tenant/employment/employees/:id/probation": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "b2cb3fa601c6",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/-",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.EmploymentRecord:update"
+    ]
+  },
   "PUT /api/tenant/employment/entry-email-rules": {
     "all": {
       "code": "VALIDATION_FAILED",
@@ -966,6 +1063,25 @@
       "code": "VALIDATION_FAILED",
       "error": "c069c0b31799",
       "reason": "EXIT_DICTIONARY_KIND_INVALID",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "admin:other_settings"
+    ]
+  },
+  "PUT /api/tenant/employment/probation-results/:id": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "6e87a7266204",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [

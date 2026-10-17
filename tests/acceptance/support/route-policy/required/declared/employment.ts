@@ -7,9 +7,11 @@ export const EMPLOYMENT_DECLARED: ModuleDeclared = {
     'GET /api/tenant/employment/transfers/employees/:id/contracts',
     'POST /api/tenant/employment/custom-fields',
     'POST /api/tenant/employment/exits/dictionaries/:dict',
+    'POST /api/tenant/employment/probation-results',
     'PUT /api/tenant/employment/custom-fields/:id/inheritance',
     'PUT /api/tenant/employment/entry-email-rules',
     'PUT /api/tenant/employment/exits/dictionaries/:dict/:id',
+    'PUT /api/tenant/employment/probation-results/:id',
     'PUT /api/tenant/employment/settings',
     'PUT /api/tenant/employment/transfers/settings',
   ],
@@ -29,6 +31,8 @@ export const EMPLOYMENT_DECLARED: ModuleDeclared = {
     'POST /api/tenant/employment/transfers/employees/:id',
     'POST /api/tenant/employment/transfers/employees/:id/preview',
     'PUT /api/tenant/employment/custom-fields/:id/inheritance',
+    'PUT /api/tenant/employment/employees/:id/probation',
+    'PUT /api/tenant/employment/probation-results/:id',
   ],
   /** 声明里的 map 型动态选择器位置“端点 × 位置”（AC-PRM-FW-02 选择器绑定） */
   selectorSites: [
