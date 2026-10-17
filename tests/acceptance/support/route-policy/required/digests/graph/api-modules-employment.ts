@@ -22,7 +22,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/linkage-dependency.ts#assertPredecessorsSettled',
     'apps/api/src/modules/employment/record-store.ts#bumpEmploymentBusiness',
     'apps/api/src/modules/employment/record-store.ts#lockEmploymentBusiness',
-    'apps/api/src/modules/employment/timeline.ts#isOnTimeline',
+    'apps/api/src/modules/employment/timeline.ts#isDetachedRecord',
     'apps/api/src/modules/employment/transitions.ts#transitionEmployment',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
@@ -2020,6 +2020,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/references.ts#validateNewEmploymentReferences': [
     '#assertEmploymentDepartmentAvailable',
     '#validateEmploymentReferences',
+    '#validateTerminatingReferences',
   ],
   'apps/api/src/modules/employment/references.ts#validatePositionRanges': [
     '#validateRange',
@@ -2029,6 +2030,12 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/references.ts#validateRange': [
     'apps/api/src/modules/job/validation.ts#invalid',
     'apps/api/src/modules/job/validation.ts#requiredJob',
+  ],
+  'apps/api/src/modules/employment/references.ts#validateTerminatingReferences': [
+    'apps/api/src/modules/employment/read-model.ts#rowsOf',
+    '#JOB_REFERENCES',
+    'apps/api/src/modules/job/read-model.ts#latestJobObject',
+    'apps/api/src/modules/job/validation.ts#invalid',
   ],
   'apps/api/src/modules/employment/regularization-reschedule.ts#BLOCKING_KINDS': [
     'apps/api/src/modules/employment/employee-status.ts#ENTRY_LIKE_KINDS',
@@ -2556,10 +2563,6 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/timeline.ts#isDetachedRecord': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
-    '#isOnTimeline',
-  ],
-  'apps/api/src/modules/employment/timeline.ts#isOnTimeline': [
-    'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/timeline.ts#loadPlannedEffectiveDate': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
@@ -2648,6 +2651,8 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/transitions.ts#auditDeletedRecord': [
     'apps/api/src/modules/employment/context.ts#auditEmployment',
     '#deletionSnapshot',
+    '#detachedSnapshot',
+    '#snapshotRecord',
   ],
   'apps/api/src/modules/employment/transitions.ts#deleteEmploymentBusiness': [
     'apps/api/src/modules/employment/context.ts#auditEmployment',
@@ -2671,10 +2676,16 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/transitions.ts#deletionSnapshot': [
     'apps/api/src/modules/employment/record-store.ts#camelRow',
   ],
+  'apps/api/src/modules/employment/transitions.ts#detachedSnapshot': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
   'apps/api/src/modules/employment/transitions.ts#exitGateFor': [
     'apps/api/src/modules/employment/exit-gate.ts#loadExitRequest',
     'apps/api/src/modules/employment/exit-gate.ts#requireExitGate',
     'apps/api/src/modules/employment/exit-gate.ts#saveAck',
+  ],
+  'apps/api/src/modules/employment/transitions.ts#snapshotRecord': [
+    'apps/api/src/modules/employment/read-model.ts#snapshotFields',
   ],
   'apps/api/src/modules/employment/transitions.ts#transitionEmployment': [
     'apps/api/src/modules/employment/activation-checks.ts#assertEstablishmentCapacity',
