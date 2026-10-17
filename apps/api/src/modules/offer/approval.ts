@@ -15,7 +15,8 @@ import type { TenantRouteDeps } from '../../routes.js';
 import { getModuleViewableFieldsInTransaction, scopeAllows } from '../permission/module-access.js';
 import { assertOfferRevision, type OfferContext } from './context.js';
 import type { OfferBatchInput } from './input.js';
-import { lockOffer, offerDetail, saveApprovalStatus, type OfferRow } from './service.js';
+import { withApprovalProgress } from './approval-progress.js';
+import { loadOffer, lockOffer, offerDto, saveApprovalStatus, type OfferRow } from './service.js';
 
 const notApprovable = () =>
   new AppError('CONFLICT', '只有待发且未发起审批或审批不通过的 Offer 可以发起审批', {
@@ -31,6 +32,12 @@ function requireApprovable(row: OfferRow) {
 export const offerApprovalFields = (deps: TenantRouteDeps, ctx: OfferContext): FieldAccess => ({
   viewable: (tx, userId, objectCode) => getModuleViewableFieldsInTransaction(deps, { ...ctx, userId }, objectCode, tx),
 });
+
+/** 发起后的结果：Offer 接口形状 + 审批进度（写命令响应不带行操作，同 #398 的转移 / 失效）。 */
+async function submitted(tx: Tx, ctx: OfferContext, id: string) {
+  const [dto] = await withApprovalProgress(tx, ctx.tenantId, [offerDto(await loadOffer(tx, ctx, id))]);
+  return dto!;
+}
 
 const approvalContext = (ctx: OfferContext, fields: FieldAccess): ApprovalContext => ({
   ...ctx,
@@ -55,7 +62,7 @@ export async function submitOfferApproval(tx: Tx, ctx: OfferContext, id: string,
   await saveApprovalStatus(tx, ctx, before, 'approving');
   const { startOrResume } = await import('../approval/engine.js');
   await startOrResume(tx, approvalContext(ctx, fields), { businessType: 'offer', businessId: id });
-  return offerDetail(tx, ctx, id);
+  return submitted(tx, ctx, id);
 }
 
 /** 审批主体缺省取申请人主职部门（DEC-533④）：发起人绑定的人员在业务日期的主职任职部门。 */
@@ -121,7 +128,7 @@ export async function submitOfferBatch(tx: Tx, ctx: OfferContext, input: OfferBa
   const { startOrResume } = await import('../approval/engine.js');
   await startOrResume(tx, approvalContext(ctx, fields), { businessType: 'offer_batch', businessId: created.id });
   const items = [];
-  for (const id of input.offerIds) items.push(await offerDetail(tx, ctx, id));
+  for (const id of input.offerIds) items.push(await submitted(tx, ctx, id));
   return { id: created.id, revision: created.revision, items };
 }
 
@@ -136,11 +143,12 @@ export async function cancelOfferApprovals(
   tx: Tx,
   ctx: Omit<ApprovalContext, 'expectedRevision' | 'fields'>,
   offerId: string,
-) {
+): Promise<boolean> {
   const approval: ApprovalContext = { ...ctx, expectedRevision: 0 };
   const { cancel } = await import('../approval/actions.js');
   const { voidBatch, voidOffer } = await import('./approval-adapter.js');
-  for (const single of await activeInstances(tx, ctx.tenantId, 'offer', [offerId])) {
+  const singles = await activeInstances(tx, ctx.tenantId, 'offer', [offerId]);
+  for (const single of singles) {
     await cancel(tx, approval, single.id);
     await voidOffer(tx, approval, offerId);
   }
@@ -148,8 +156,10 @@ export async function cancelOfferApprovals(
     await tx.execute(sql`SELECT batch_id::text FROM offer_batch_approval_items
       WHERE tenant_id = ${ctx.tenantId} AND offer_id = ${offerId}::uuid`),
   ).map((row) => row.batch_id);
-  for (const batch of await activeInstances(tx, ctx.tenantId, 'offer_batch', batchIds)) {
+  const batches = await activeInstances(tx, ctx.tenantId, 'offer_batch', batchIds);
+  for (const batch of batches) {
     await cancel(tx, approval, batch.id);
     await voidBatch(tx, approval, batch.business_id);
   }
+  return singles.length + batches.length > 0;
 }
