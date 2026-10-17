@@ -19,10 +19,15 @@ export interface PartTimeInput {
   readonly endDate?: string | null;
 }
 
-/** 错误转成“SQLSTATE 错误文本”，便于同时断言错误码与约束名。 */
+/** 错误转成“SQLSTATE 约束名 错误文本”，便于同时断言错误码与约束名（触发器抛出的约束名不在文本里）。 */
 export function failure(error: unknown) {
-  const cause = (error as { cause?: { code?: string } }).cause ?? error;
-  return `${(cause as { code?: string }).code ?? ''} ${String(cause)}`;
+  // PGlite 给 constraint，postgres.js 给 constraint_name
+  const cause = ((error as { cause?: unknown }).cause ?? error) as {
+    code?: string;
+    constraint?: string;
+    constraint_name?: string;
+  };
+  return `${cause.code ?? ''} ${cause.constraint ?? cause.constraint_name ?? ''} ${String(cause)}`;
 }
 
 export async function partTimeWorld(db: Db, label: string) {

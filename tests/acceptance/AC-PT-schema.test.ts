@@ -219,9 +219,9 @@ describe('BE-7 PT-1 兼职申请三表（§1.4）', () => {
       /part_time_requests_record_pair/,
     );
     expect(await w.attempt((tx) => tx.execute(head(randomUUID(), 'end', primaryId)))).toMatch(
-      /part_time_requests_record/,
+      /part_time_requests_record_part_time/,
     );
-    expect(await w.attempt((tx) => tx.execute(head(randomUUID(), 'transfer', null)))).toMatch(
+    expect(await w.attempt((tx) => tx.execute(head(randomUUID(), 'transfer', recordId)))).toMatch(
       /part_time_requests_type/,
     );
     // 状态事件：作废必须带原因，其余不带；只有 effective 写落地记录

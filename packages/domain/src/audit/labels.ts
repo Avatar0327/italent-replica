@@ -67,6 +67,9 @@ const OBJECTS: Readonly<Record<string, AuditObjectMeta>> = {
   'exit-cancellation': { label: '撤销的离职记录', app: ORG_PEOPLE },
   'exit-effect': { label: '离职下游效果', app: ORG_PEOPLE },
   exit_dictionary: { label: '离职字典', app: ORG_PEOPLE },
+  // BE-7 兼职（R2-T05 §7.4）：兼职记录（含期限链）与兼职申请
+  'employment-part-time': { label: '兼职记录', app: ORG_PEOPLE },
+  'part-time-request': { label: '兼职申请', app: ORG_PEOPLE },
   'establishment-scheme': { label: '编制方案', app: ORG_PEOPLE },
   'establishment-capacity': { label: '编制', app: ORG_PEOPLE },
   'TenantBase.EmploymentContract': { label: '合同协议', app: ORG_PEOPLE },
@@ -202,6 +205,12 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   employeeStatus: '人员状态',
   entryStatus: '入职状态',
   isDepartmentHead: '是否部门负责人',
+  // BE-7 兼职（`31` §1、R2d / R2f1 表单字段名）
+  partTimeType: '任职类型',
+  endDate: '结束日期',
+  originalEndDate: '原定结束日期',
+  requestRemark: '申请备注',
+  serviceStatus: '任职状态',
   isStoreManager: '是否店长',
   employType: '雇佣关系',
   state: '状态',

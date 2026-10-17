@@ -111,7 +111,15 @@ describe('BE-7 PT-1 审批类型与表达式（§1.5）', () => {
         },
       ],
     });
-    expect(process).toMatchObject({ approvalType: 'part_time_end', status: 'published' });
+    expect(process).toMatchObject({
+      approvalType: 'part_time_end',
+      objectCode: MODULE_OBJECTS.employmentRecord.code,
+      currentVersion: { status: 'published' },
+    });
+    expect(process.currentVersion!.nodes[0]).toMatchObject({
+      editMode: 'with_approve',
+      editableFields: ['endDate', 'requestRemark'],
+    });
   });
 });
 
@@ -189,22 +197,23 @@ describe('BE-7 PT-1 业务类型 part_time 占位（§13.1：PT-4a 前不开放�
 });
 
 describe('BE-7 PT-1 按钮、字段与审计标签（§7.2 / §7.4）', () => {
+  // 批量结束在兼职列表上勾选多条操作，是列表级按钮；其余在员工 / 兼职详情上（§7.2 未定层级，复刻取此）
   const BUTTONS = [
-    ['Employment.PartTime', 'create'],
-    ['Employment.PartTimeApproval', 'create'],
-    ['Employment.PartTimeExtend', 'update'],
-    ['Employment.PartTimeEnd', 'update'],
-    ['Employment.PartTimeBatchEnd', 'update'],
-    ['Employment.PartTimeEdit', 'update'],
+    ['Employment.PartTime', 'detail', 'create'],
+    ['Employment.PartTimeApproval', 'detail', 'create'],
+    ['Employment.PartTimeExtend', 'detail', 'update'],
+    ['Employment.PartTimeEnd', 'detail', 'update'],
+    ['Employment.PartTimeBatchEnd', 'list', 'update'],
+    ['Employment.PartTimeEdit', 'detail', 'update'],
   ] as const;
 
   it('任职记录对象新增 6 个按钮与 6 个字段（3 个可授编辑、3 个系统字段只可授查看）', () => {
     const { buttons, fields } = MODULE_OBJECTS.employmentRecord;
-    for (const [code, requires] of BUTTONS) {
+    for (const [code, level, requires] of BUTTONS) {
       expect(
         buttons.find((b) => b.code === code),
         code,
-      ).toMatchObject({ code, level: 'detail', requires });
+      ).toMatchObject({ code, level, requires });
     }
     const field = (code: string) => fields.find((f) => f.code === code);
     for (const code of ['partTimeType', 'endDate', 'requestRemark'])
