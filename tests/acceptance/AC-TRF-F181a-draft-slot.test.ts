@@ -187,7 +187,7 @@ describe('AC-TRF-F181a 调动暂存服务端按人一份', () => {
 });
 
 describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-TRF-F181a 真实 PG 并发', () => {
-  it('⑧同一员工两次暂存并发：至多一笔成功之外的必须 409，最终恰好一份暂存单且读口一致', async () => {
+  it('⑧同一员工两次暂存并发：一笔成功一笔 409，恰好一份暂存单且读口一致，败者重提即覆盖', async () => {
     const s = await slotWorld('f181a-race');
     const revision = (await s.w.session.getEmployee(s.person.employee.id)).revision;
     const send = (effectiveDate: string) =>
@@ -203,15 +203,19 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-TRF-F181a 真实 PG �
         },
       });
     const responses = await Promise.all([send('2026-10-11'), send('2026-10-12')]);
-    const statuses = responses.map((r) => r.status).sort();
-    expect(statuses[0]).toBe(201);
-    for (const status of statuses.slice(1)) expect([201, 409]).toContain(status);
-    const winners = responses.filter((r) => r.status === 201);
+    // 同一 If-Match 并发：先拿到员工锁的胜出，另一笔刷新后才能显式重提（409，不盲重试）
+    expect(responses.map((r) => r.status).sort()).toEqual([201, 409]);
+    const winner = responses.find((r) => r.status === 201)!;
+    const won = (await winner.json()) as { id: string };
     const live = await s.liveDrafts();
     expect(live.length).toBe(1);
     const meta = await s.draft();
-    expect(meta?.businessId).toBe(live[0]!.id);
-    expect(winners.length).toBeGreaterThanOrEqual(1);
+    expect(live[0]!.id).toBe(won.id);
+    expect(meta?.businessId).toBe(won.id);
+    // 败者按新版本重提即覆盖胜者：仍恰好一份
+    const retried = await saved(await s.save({ effectiveDate: '2026-10-14' }));
+    expect((await s.liveDrafts()).map((row) => row.id)).toEqual([retried.id]);
+    expect(await s.businessState(won.id)).toBe('deleted');
   });
 
   it('⑨并发下一次暂存与一次清除：读口与草稿一致（要么都在，要么都无）', async () => {
