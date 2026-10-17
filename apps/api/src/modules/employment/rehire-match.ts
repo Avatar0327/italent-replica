@@ -1,8 +1,6 @@
 /**
- * 新增实习生 / 再入职时按证件号的重聘判定（R2 BE-6a；差距表 B38、A48 判定部分；31 IN-R1；R2f B41“再入职入口”）。
- * 原站提示“输入证件类型+证件号码、手机号码、电子邮件，可快速匹配出再入职人员”，三个键的优先级、唯一性未验证；
- * 保守口径：只按“证件类型 + 证件号码”在租户内精确匹配（去首尾空格）当前已离职 / 退休的人员；多人命中明确拒绝，
- * 不自动挑选；手机 / 邮箱匹配与复聘次数未验证、本单不做。只判定，不建档、不入职（重聘入职走已有 kind=rehire）。
+ * 按证件号的重聘判定（R2 BE-6a；差距表 B38、A48；31 IN-R1；R2f B41）。原站可按证件、手机、邮箱匹配，三键优先级与唯一性
+ * 未验证，保守口径：只按“证件类型 + 证件号码”在租户内精确匹配已离职 / 退休人员，多人命中拒绝、不自动挑选；只判定不入职。
  */
 import { sql, type Tx } from '@italent/db';
 import { z } from 'zod';
@@ -21,10 +19,9 @@ export interface RehireCandidate {
   readonly code: string;
   /** 个人邮箱（人员信息 email）。 */
   readonly email: string | null;
-  /** 结束类型：离职 / 退休。 */
   readonly endKind: 'leave' | 'retirement';
   readonly lastWorkDate: string | null;
-  /** 结束时所在部门（离职 / 退休那条任职的部门）。 */
+  /** 离职 / 退休那条任职的部门。 */
   readonly departmentId: string | null;
   /** 表单“重聘”默认否（R2f B41）。 */
   readonly rehire: false;

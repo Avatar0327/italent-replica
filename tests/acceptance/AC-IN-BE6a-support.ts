@@ -1,32 +1,15 @@
-/**
- * BE-6a 实习生验收夹具（docs/02_业务建模/31 §2；差距表 B34～B41、A48；补证结论 R2f B41）：
- * 实习生经通用入职入口新增（employType=intern），直接实习转正、实习四视图、重聘判定都经 HTTP 路由。
- */
+/** BE-6a 实习生验收夹具：实习生经通用入职入口新增（employType=intern），转正、视图、重聘判定都经 HTTP 路由。 */
 import { randomUUID } from 'node:crypto';
 import { withTenant, type Db } from '@italent/db';
 import { expect } from 'vitest';
 import { installApprovalFallbacks } from './AC-APV-support.js';
 import { employmentSession, withLoginEmail, type EmploymentSession } from './AC-EMP-support.js';
+import { runEmploymentTransition } from '../../apps/api/src/modules/employment/transitions.js';
 import { createEmploymentBusiness } from '../../apps/api/src/modules/employment/write-service.js';
 import { tenantApi } from './support/tenant-api.js';
 
-export interface InternViewItem {
-  readonly id: string;
-  readonly employeeId: string;
-  readonly code?: string;
-  readonly name?: string;
-  readonly kind: string;
-  readonly effectiveDate: string;
-  readonly entryDate: string;
-  readonly departmentId?: string | null;
-  readonly positionId?: string | null;
-  readonly employType?: string | null;
-  readonly employeeStatus: number;
-  readonly revision: number;
-  readonly state: string;
-  readonly lastWorkDate: string | null;
-  readonly probation: { startDate: string; months: number; endDate: string } | null;
-}
+/** 视图条目：只列用例里按名字取用的键，其余按 toMatchObject 比对。 */
+export type InternViewItem = Record<string, unknown> & { readonly id: string; readonly name?: string };
 
 export async function internWorld(db: Db, label: string) {
   const session = await employmentSession(db, label);
@@ -39,40 +22,58 @@ export async function internWorld(db: Db, label: string) {
 export type InternWorld = Awaited<ReturnType<typeof internWorld>>;
 
 function helpers(db: Db, session: EmploymentSession, orgId: string) {
+  const revision = async (employeeId: string) => (await session.getEmployee(employeeId)).revision;
+  const portContext = (expectedRevision: number) => ({
+    tenantId: session.tenant.id,
+    userId: session.user.id,
+    timezone: session.tenant.timezone,
+    now: new Date('2026-10-01T01:00:00Z'),
+    commandId: randomUUID(),
+    expectedRevision,
+  });
+
   async function hire(name: string, employType: 'intern' | 'internal', extra: Record<string, unknown> = {}) {
     const employee = await session.employee(name);
+    const body = {
+      kind: 'hire',
+      mode: 'direct',
+      effectiveDate: '2026-09-01',
+      fields: { employType, departmentId: orgId },
+    };
     const response = await session.request('POST', `/employees/${employee.id}/businesses`, {
       ifMatch: employee.revision,
-      body: withLoginEmail(employee.id, {
-        kind: 'hire',
-        mode: 'direct',
-        effectiveDate: '2026-09-01',
-        fields: { employType, departmentId: orgId },
-        ...extra,
-      }),
+      body: withLoginEmail(employee.id, { ...body, ...extra }),
     });
     expect(response.status, await response.clone().text()).toBe(201);
-    const business = (await response.json()) as { id: string };
-    return { employee, hireId: business.id, name };
+    return { employee, hireId: ((await response.json()) as { id: string }).id, name };
   }
 
-  const revision = async (employeeId: string) => (await session.getEmployee(employeeId)).revision;
-
   /** 直接实习转正：返回原始响应，失败用例要读状态码与错误码。 */
-  async function regularize(employeeId: string, body: Record<string, unknown>, ifMatch?: number) {
-    return session.request('POST', `/interns/${employeeId}/regularize`, {
+  const regularize = async (employeeId: string, body: Record<string, unknown>, ifMatch?: number) =>
+    session.request('POST', `/interns/${employeeId}/regularize`, {
       ifMatch: ifMatch ?? (await revision(employeeId)),
       body,
     });
+
+  /** 直接实习转正且必须成功，返回新业务 ID。 */
+  async function regularizeOk(employeeId: string, effectiveDate: string, departmentId: string, extra: object = {}) {
+    const response = await regularize(employeeId, { effectiveDate, departmentId, probation: false, ...extra });
+    expect(response.status, await response.clone().text()).toBe(201);
+    return ((await response.json()) as { id: string }).id;
+  }
+
+  /** 审批中心最后节点通过时调用的可信端口（transitions.approve）。 */
+  async function approve(businessId: string) {
+    const { revision: current } = (await (await session.request('GET', `/businesses/${businessId}`)).json()) as {
+      revision: number;
+    };
+    await runEmploymentTransition(db, portContext(current), { id: businessId, action: 'approve' });
   }
 
   /** 发起并提交实习转正申请（审批中）。 */
   async function applyRegularization(employeeId: string, effectiveDate = '2026-10-20') {
-    const draft = await session.business(
-      employeeId,
-      { kind: 'intern_regularization', mode: 'application', effectiveDate, fields: {} },
-      await revision(employeeId),
-    );
+    const input = { kind: 'intern_regularization', mode: 'application', effectiveDate, fields: {} };
+    const draft = await session.business(employeeId, input, await revision(employeeId));
     const submitted = await session.request('POST', `/businesses/${draft.id}/submit`, {
       ifMatch: draft.revision,
       body: {},
@@ -81,34 +82,19 @@ function helpers(db: Db, session: EmploymentSession, orgId: string) {
     return draft.id;
   }
 
-  /** 离职造数：经测试 API 的可信离职端口（不经离职门禁，不落 BE-6b 的结束实习）。 */
-  async function leave(employeeId: string, lastWorkDate = '2026-09-20') {
-    return session.business(
+  /** 离职造数：测试 API 的可信离职端口（不经离职门禁，不是 BE-6b 的结束实习）。 */
+  const leave = async (employeeId: string, lastWorkDate = '2026-09-20') =>
+    session.business(
       employeeId,
       { kind: 'leave', mode: 'direct', lastWorkDate, fields: {} },
       await revision(employeeId),
     );
-  }
 
   /** 退休造数：R2-T04 的可信端口（trustedExit = retirement）。 */
-  async function retire(employeeId: string, lastWorkDate = '2026-09-20') {
-    const expectedRevision = await revision(employeeId);
-    return withTenant(db, session.tenant.id, (tx) =>
-      createEmploymentBusiness(
-        tx,
-        {
-          tenantId: session.tenant.id,
-          userId: session.user.id,
-          timezone: session.tenant.timezone,
-          now: new Date('2026-10-01T01:00:00Z'),
-          commandId: randomUUID(),
-          expectedRevision,
-          trustedExit: 'retirement',
-        },
-        employeeId,
-        { kind: 'retirement', mode: 'direct', lastWorkDate, fields: {} },
-      ),
-    );
+  async function retire(employeeId: string, lastWorkDate: string) {
+    const ctx = { ...portContext(await revision(employeeId)), trustedExit: 'retirement' as const };
+    const input = { kind: 'retirement' as const, mode: 'direct' as const, lastWorkDate, fields: {} };
+    return withTenant(db, session.tenant.id, (tx) => createEmploymentBusiness(tx, ctx, employeeId, input));
   }
 
   async function view(name: string, query = ''): Promise<InternViewItem[]> {
@@ -121,22 +107,27 @@ function helpers(db: Db, session: EmploymentSession, orgId: string) {
   async function identify(employeeId: string, idType: string, idNumber: string, email?: string) {
     const api = tenantApi(db, { clock: () => new Date('2026-10-01T01:00:00Z') });
     const as = { user: session.user.id, tenant: session.tenant.id };
-    const current = await api.request('GET', `/api/tenant/personnel/employees/${employeeId}`, as);
-    expect(current.status, await current.clone().text()).toBe(200);
-    const { revision: personRevision } = (await current.json()) as { revision: number };
-    const response = await api.request('PATCH', `/api/tenant/personnel/employees/${employeeId}`, {
-      ...as,
-      ifMatch: personRevision,
-      body: { idType, idNumber, ...(email ? { email } : {}) },
-    });
+    const path = `/api/tenant/personnel/employees/${employeeId}`;
+    const { revision: ifMatch } = (await (await api.request('GET', path, as)).json()) as { revision: number };
+    const response = await api.request('PATCH', path, { ...as, ifMatch, body: { idType, idNumber, email } });
     expect(response.status, await response.clone().text()).toBe(200);
   }
 
-  async function match(body: Record<string, unknown>) {
-    return session.request('POST', '/rehire-matches', { body });
-  }
+  const match = (body: Record<string, unknown>) => session.request('POST', '/rehire-matches', { body });
 
-  return { hire, revision, regularize, applyRegularization, leave, retire, view, identify, match };
+  return {
+    hire,
+    revision,
+    regularize,
+    regularizeOk,
+    approve,
+    applyRegularization,
+    leave,
+    retire,
+    view,
+    identify,
+    match,
+  };
 }
 
 export const names = (items: readonly { name?: string }[]) => items.map((item) => item.name).sort();

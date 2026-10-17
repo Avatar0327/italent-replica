@@ -1,9 +1,7 @@
 /**
- * 直接实习转正（R2 BE-6a；差距表 B41；补证结论 R2f B41；DEC-234 实习转正按入职处理）。
- * 保存即生效、不走审批：经 main 的任职落地路径（createEmploymentBusiness，kind=intern_regularization，direct）新起一条主职，
- * 原任职按版本链在转正日前一天结束、雇佣关系改内部员工（write-service effectiveEmployType）、变动类型“实习转正”；
- * 有试用期为“试用”、否则“正式”（employee-status entryStatusFor），有试用期时同事务写入试用期信息（entry-probation.ts）。
- * 不经离职生效（activateExit）、不打开 §18.1 关口（00 10-17 指示）。
+ * 直接实习转正（R2 BE-6a；差距表 B41；R2f B41；DEC-234 实习转正按入职处理）：保存即生效、不走审批，经 main 的任职落地路径
+ * （createEmploymentBusiness）新起主职——原任职按版本链在转正日前一天结束、雇佣关系改内部员工、变动类型“实习转正”、
+ * 有试用期为“试用”否则“正式”。不经离职生效（activateExit）、不打开 §18.1 关口（00 10-17 指示）。
  */
 import { sql, type Tx } from '@italent/db';
 import { EMPLOYEE_STATUS, PROBATION_MONTH_OPTIONS, probationExpectedEnd } from '@italent/domain';
@@ -32,41 +30,34 @@ export const internRegularizationInput = z
     directManagerId: id.nullable().optional(),
     dottedManagerId: id.nullable().optional(),
     probation: z.boolean(),
-    probationMonths: z
-      .number()
-      .int()
-      .refine((months) => (PROBATION_MONTH_OPTIONS as readonly number[]).includes(months))
-      .optional(),
+    probationMonths: z.literal([...PROBATION_MONTH_OPTIONS]).optional(),
     probationEndDate: z.string().min(1).optional(),
     confirmed: z.boolean().optional(),
   })
-  .refine((input) => (input.probation ? input.probationMonths !== undefined : input.probationMonths === undefined), {
-    message: '有试用期时必须填写试用期(月)，无试用期时不能填写',
-    path: ['probationMonths'],
-  })
-  .refine((input) => input.probation || input.probationEndDate === undefined, {
-    message: '无试用期时不能填写预计试用结束日期',
-    path: ['probationEndDate'],
-  });
+  .refine(
+    (input) =>
+      input.probation
+        ? input.probationMonths !== undefined
+        : input.probationMonths === undefined && input.probationEndDate === undefined,
+    { message: '有试用期时必须填写试用期(月)；无试用期时不能填写试用期信息', path: ['probationMonths'] },
+  );
 export type InternRegularizationInput = z.infer<typeof internRegularizationInput>;
 
-/** 写入的任职字段（字段写权限、数据范围都按它校验）：只含请求里给出的汇报关系 / 职位。 */
+/** 写入的任职字段（字段写权限、数据范围都按它校验）：部门 + 请求里给出的职位 / 汇报关系。 */
 export function regularizationFields(input: InternRegularizationInput): Partial<PresetFields> {
-  const fields: Partial<Record<keyof PresetFields, string | null>> = { departmentId: input.departmentId };
-  for (const key of ['positionId', 'directManagerId', 'dottedManagerId'] as const)
-    if (input[key] !== undefined) fields[key] = input[key];
-  return fields as Partial<PresetFields>;
+  const { departmentId, positionId, directManagerId, dottedManagerId } = input;
+  const given = Object.entries({ positionId, directManagerId, dottedManagerId }).filter(([, v]) => v !== undefined);
+  return { departmentId, ...Object.fromEntries(given) };
 }
 
-/** 试用期信息：开始 = 转正日，预计结束不传按月数算，传了不得早于开始（可手改，R2e6 / R2f B41）。 */
-export function regularizationProbation(input: InternRegularizationInput): RecordProbation | null {
+/** 试用期信息：开始 = 转正日，预计结束不传按月数算，传了（可手改，R2e6 / R2f B41）不得早于开始。 */
+function regularizationProbation(input: InternRegularizationInput): RecordProbation | null {
   if (!input.probation) return null;
   const startDate = businessDate(input.effectiveDate);
   const months = input.probationMonths!;
-  const endDate =
-    input.probationEndDate === undefined
-      ? probationExpectedEnd(startDate, months)
-      : businessDate(input.probationEndDate);
+  const endDate = input.probationEndDate
+    ? businessDate(input.probationEndDate)
+    : probationExpectedEnd(startDate, months);
   if (endDate < startDate) throw new AppError('VALIDATION_FAILED', '预计试用结束日期不能早于实习转正日期');
   return { startDate, months, endDate };
 }

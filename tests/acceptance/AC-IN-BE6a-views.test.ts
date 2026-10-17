@@ -3,7 +3,6 @@
  * 实习中 = 雇佣关系实习生 + 人员状态正式 + 主职当前生效；实习转正中 = 实习转正审批中 / 审批通过未生效；
  * 已转正 = 生效的实习转正记录（直接或申请）；已离职 = 实习生身份的离职记录（结束实习归 BE-6b，本单只读已有离职）。
  */
-import { randomUUID } from 'node:crypto';
 import type { Authorizer } from '@italent/api';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
@@ -23,14 +22,10 @@ async function seed(w: InternWorld) {
   const staff = await w.hire('内部合成员工', 'internal');
   const pending = await w.hire('待入职合成实习生', 'intern', { effectiveDate: '2026-10-10', pendingEntry: true });
   const convertingId = await w.applyRegularization(converting.employee.id);
-  const regularized = await w.regularize(direct.employee.id, {
-    effectiveDate: '2026-09-20',
-    departmentId: w.other.id,
+  const directId = await w.regularizeOk(direct.employee.id, '2026-09-20', w.other.id, {
     probation: true,
     probationMonths: 2,
   });
-  expect(regularized.status, await regularized.clone().text()).toBe(201);
-  const directId = ((await regularized.json()) as { id: string }).id;
   const leave = await w.leave(left.employee.id, '2026-09-20');
   return { interning, converting, convertingId, direct, directId, left, leaveId: leave.id, staff, pending };
 }
@@ -86,21 +81,7 @@ describe('AC-IN-BE6a-04 实习四视图', () => {
   it('申请审批通过后到期生效：从“实习转正中”移到“已转正”', async () => {
     const w = await internWorld(testDb().db, 'be6a-views-approved');
     const intern = await w.hire('申请转正合成实习生', 'intern');
-    const id = await w.applyRegularization(intern.employee.id, '2026-10-01');
-    const service = await import('../../apps/api/src/modules/employment/transitions.js');
-    const current = (await (await w.session.request('GET', `/businesses/${id}`)).json()) as { revision: number };
-    await service.runEmploymentTransition(
-      w.db,
-      {
-        tenantId: w.session.tenant.id,
-        userId: w.session.user.id,
-        timezone: w.session.tenant.timezone,
-        now: new Date('2026-10-01T01:00:00Z'),
-        commandId: randomUUID(),
-        expectedRevision: current.revision,
-      },
-      { id, action: 'approve' },
-    );
+    await w.approve(await w.applyRegularization(intern.employee.id, '2026-10-01'));
     expect(names(await w.view('converting'))).toEqual([]);
     expect(names(await w.view('converted'))).toEqual(['申请转正合成实习生']);
     expect(names(await w.view('interning'))).toEqual([]);
@@ -110,16 +91,7 @@ describe('AC-IN-BE6a-04 实习四视图', () => {
     const w = await internWorld(testDb().db, 'be6a-views-filter');
     const first = await w.hire('甲合成实习生', 'intern');
     await w.hire('乙合成实习生', 'intern');
-    const elsewhere = await w.hire('丙合成实习生', 'intern');
-    expect(
-      (
-        await w.regularize(elsewhere.employee.id, {
-          effectiveDate: '2026-10-01',
-          departmentId: w.other.id,
-          probation: false,
-        })
-      ).status,
-    ).toBe(201);
+    await w.regularizeOk((await w.hire('丙合成实习生', 'intern')).employee.id, '2026-10-01', w.other.id);
     expect(names(await w.view('interning', `&departmentId=${w.org.id}`))).toEqual(['乙合成实习生', '甲合成实习生']);
     expect(names(await w.view('converted', `&departmentId=${w.org.id}`))).toEqual([]);
     expect(names(await w.view('interning', `&keyword=${first.employee.code}`))).toEqual(['甲合成实习生']);
@@ -128,22 +100,15 @@ describe('AC-IN-BE6a-04 实习四视图', () => {
     expect(page1).toHaveLength(1);
     expect(page2).toHaveLength(1);
     expect(page1[0]!.id).not.toBe(page2[0]!.id);
-    expect((await w.session.request('GET', '/interns?view=interning&pageSize=1000')).status).toBe(400);
+    const bad = ['', 'view=all', 'view=interning&pageSize=1000', 'view=interning&departmentId=bad'];
+    for (const query of [...bad, `view=interning&keyword=${'x'.repeat(101)}`])
+      expect((await w.session.request('GET', `/interns?${query}`)).status, query).toBe(400);
   });
-
-  it.each(['', 'view=all', 'view=interning&departmentId=bad', 'view=interning&keyword=' + 'x'.repeat(101)])(
-    '非法查询 %s → 400',
-    async (query) => {
-      const w = await internWorld(testDb().db, `be6a-views-bad-${randomUUID()}`);
-      expect((await w.session.request('GET', `/interns?${query}`)).status).toBe(400);
-    },
-  );
 
   it('转正日在未来：到转正日前仍是当前生效的实习生（实习中），转正记录已落地（已转正）；到日后只在已转正', async () => {
     const w = await internWorld(testDb().db, 'be6a-views-future');
     const intern = await w.hire('未来转正合成实习生', 'intern');
-    const body = { effectiveDate: '2026-10-16', departmentId: w.org.id, probation: false };
-    expect((await w.regularize(intern.employee.id, body)).status).toBe(201);
+    await w.regularizeOk(intern.employee.id, '2026-10-16', w.org.id);
     expect(names(await w.view('interning'))).toEqual(['未来转正合成实习生']);
     expect(names(await w.view('converted'))).toEqual(['未来转正合成实习生']);
     w.session.setNow('2026-10-16T01:00:00.000Z');
@@ -183,36 +148,19 @@ describe('AC-IN-BE6a-05 实习四视图的数据范围与字段裁剪（fail-clo
     };
   }
 
-  it('只看到范围内部门的实习生；范围为空什么也看不到', async () => {
+  it('只看到范围内部门的实习生；范围为空什么也看不到；不可见字段不出现', async () => {
     const w = await internWorld(testDb().db, 'be6a-scope');
     await w.hire('本部门合成实习生', 'intern');
-    const other = await w.hire('他部门合成实习生', 'intern');
-    expect(
-      (
-        await w.regularize(other.employee.id, {
-          effectiveDate: '2026-10-01',
-          departmentId: w.other.id,
-          probation: false,
-        })
-      ).status,
-    ).toBe(201);
+    await w.regularizeOk((await w.hire('他部门合成实习生', 'intern')).employee.id, '2026-10-01', w.other.id);
     const all = ['id', 'employeeId', 'code', 'name', 'kind', 'effectiveDate', 'departmentId'];
     const inScope = await scoped(w, [w.org.id], all);
     expect(names((await inScope('interning')).items)).toEqual(['本部门合成实习生']);
     expect((await inScope('converted')).items).toEqual([]);
     const empty = await (await scoped(w, [], all))('interning');
-    expect(empty.items).toEqual([]);
-    expect(empty.hasDataPermission).toBe(false);
-  });
-
-  it('不可见字段不出现：任职字段按任职记录可见字段，姓名 / 工号按人员对象可见字段', async () => {
-    const w = await internWorld(testDb().db, 'be6a-trim');
-    await w.hire('裁剪合成实习生', 'intern');
-    const [item] = (await (await scoped(w, [w.org.id], ['id', 'employeeId', 'kind', 'effectiveDate']))('interning'))
-      .items;
+    expect(empty).toMatchObject({ items: [], hasDataPermission: false });
+    // 任职字段按任职记录可见字段，姓名 / 工号按人员对象可见字段
+    const [item] = (await (await scoped(w, [w.org.id], ['id', 'kind', 'effectiveDate']))('interning')).items;
     expect(item).toMatchObject({ kind: 'hire', effectiveDate: '2026-09-01' });
-    expect(item).not.toHaveProperty('departmentId');
-    expect(item).not.toHaveProperty('name');
-    expect(item).not.toHaveProperty('code');
+    for (const field of ['departmentId', 'name', 'code']) expect(item).not.toHaveProperty(field);
   });
 });

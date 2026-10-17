@@ -1038,7 +1038,6 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/intern-routes.ts#route:GET /interns': [
     'apps/api/src/modules/employment/context.ts#readPageContext',
     'apps/api/src/modules/employment/entry-routes.ts#parse',
-    '#queryFilter',
     '#requireViewableInternFilters',
     '#trimInternItems',
     '#viewFilter',
@@ -1069,6 +1068,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#requireEmploymentScope',
     'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
     'apps/api/src/modules/employment/entry-routes.ts#parse',
+    '#pick',
     '#viewableIn',
     'apps/api/src/modules/employment/rehire-match.ts#matchRehire',
     'apps/api/src/modules/employment/rehire-match.ts#rehireMatchInput',
@@ -1076,6 +1076,8 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/intern-routes.ts#trimInternItems': [
     'apps/api/src/modules/employment/context.ts#trimEmploymentResponse',
+    '#pick',
+    '#viewableIn',
   ],
   'apps/api/src/modules/employment/intern-routes.ts#viewableIn': [
     'apps/api/src/modules/employment/context.ts#EMPLOYEE_OBJECT',

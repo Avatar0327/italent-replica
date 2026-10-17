@@ -1114,7 +1114,7 @@ export const EMPLOYMENT: RequiredTable = {
       'guard:employment.viewableFilters',
       [],
       [
-        at(INTERN, 'GET', '/interns', 'requireViewableInternFilters(filter, show)'),
+        at(INTERN, 'GET', '/interns', 'requireViewableInternFilters(filter, await viewableIn(deps, ctx))'),
         fn(INTERN, 'requireViewableInternFilters', "if (hidden) throw new AppError('FORBIDDEN', '筛选字段不可查看')"),
       ],
     ),

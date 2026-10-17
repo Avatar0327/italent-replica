@@ -1,7 +1,4 @@
-/**
- * BE-6a 真 PostgreSQL：同一实习生并发两次直接实习转正（同一员工 revision）只有一次落地，另一次 409，
- * 不会出现两条实习转正任职或两份试用期信息（员工行锁 + revision，DEC-067 并发约定）。
- */
+/** BE-6a 真 PG：同一实习生、同一 revision 并发两次直接转正，只落地一次（员工行锁 + revision，DEC-067）。 */
 import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';

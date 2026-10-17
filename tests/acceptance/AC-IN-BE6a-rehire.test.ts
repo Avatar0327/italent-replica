@@ -14,19 +14,7 @@ import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 
-interface MatchResult {
-  readonly matched: boolean;
-  readonly candidate?: {
-    readonly employeeId: string;
-    readonly name?: string;
-    readonly code?: string;
-    readonly email?: string | null;
-    readonly endKind: 'leave' | 'retirement';
-    readonly lastWorkDate?: string | null;
-    readonly departmentId?: string | null;
-    readonly rehire: boolean;
-  };
-}
+type MatchResult = { readonly matched: boolean; readonly candidate?: Record<string, unknown> };
 
 const idNumber = () => `SYN${uniqueSuffix()}`;
 

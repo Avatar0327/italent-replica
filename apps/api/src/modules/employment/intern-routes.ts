@@ -5,7 +5,7 @@
  */
 import { withTenant } from '@italent/db';
 import { INTERN_VIEWS, PERSONNEL_OBJECT, tenantLocalDate } from '@italent/domain';
-import type { Context, Hono } from 'hono';
+import type { Hono } from 'hono';
 import { z } from 'zod';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
@@ -42,7 +42,7 @@ export function registerInternRoutes(router: Hono<TenantEnv>, deps: TenantRouteD
     const id = uuidParam(c);
     const ctx = await readContext(c, deps, 'object.create', revision(c), id);
     const input = parse(internRegularizationInput, await jsonBody(c));
-    // 字段写权限按实际写入的任职字段校验，口径同通用新增（kind / mode / 生效日是顶层元数据）
+    // 字段写权限按实际写入的任职字段校验，口径同通用新增
     const business = {
       kind: 'intern_regularization',
       mode: 'direct',
@@ -71,22 +71,17 @@ export function registerInternRoutes(router: Hono<TenantEnv>, deps: TenantRouteD
     );
     if (!candidate) return c.json({ matched: false });
     const show = await viewableIn(deps, ctx);
-    const { employeeId, endKind, rehire, name, code, email, lastWorkDate, departmentId } = candidate;
+    const { name, code, email, lastWorkDate, departmentId, ...fixed } = candidate;
+    const visible = { ...pick(show.employee, { name, code }), ...pick(show.personnel, { email }) };
     return c.json({
       matched: true,
-      candidate: {
-        employeeId,
-        ...(show.employee('name') ? { name } : {}),
-        ...(show.employee('code') ? { code } : {}),
-        ...(show.personnel('email') ? { email } : {}),
-        endKind,
-        ...(show.employment('lastWorkDate') ? { lastWorkDate } : {}),
-        ...(show.employment('departmentId') ? { departmentId } : {}),
-        rehire,
-      },
+      candidate: { ...fixed, ...visible, ...pick(show.employment, { lastWorkDate, departmentId }) },
     });
   });
 }
+
+const pick = (shown: (field: string) => boolean, values: Record<string, unknown>) =>
+  Object.fromEntries(Object.entries(values).filter(([field]) => shown(field)));
 
 /** 三个对象的可见字段：姓名 / 工号属人员对象，个人邮箱属人员信息，部门 / 最后工作日属任职记录；无字段权限配置 = 全可见。 */
 async function viewableIn(deps: TenantRouteDeps, ctx: EmploymentContext) {
@@ -107,10 +102,9 @@ function registerInternViews(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.get('/interns', async (c) => {
     const ctx = await readPageContext(c, deps, 'list');
     const view = parse(z.enum(INTERN_VIEWS), c.req.query('view'));
-    const filter = parse(viewFilter, queryFilter(c));
+    const filter = parse(viewFilter, { departmentId: c.req.query('departmentId'), keyword: c.req.query('keyword') });
     const page = pageQuery(c);
-    const show = await viewableIn(deps, ctx);
-    requireViewableInternFilters(filter, show);
+    requireViewableInternFilters(filter, await viewableIn(deps, ctx));
     const items = await withTenant(deps.db, ctx.tenantId, (tx) =>
       listInternView(
         tx,
@@ -120,7 +114,7 @@ function registerInternViews(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       ),
     );
     return c.json({
-      items: await trimInternItems(deps, ctx, items, show),
+      items: await trimInternItems(deps, ctx, items),
       page: page.page,
       pageSize: page.pageSize,
       hasDataPermission: ctx.scope?.hasDataPermission ?? true,
@@ -138,32 +132,13 @@ function requireViewableInternFilters(filter: z.infer<typeof viewFilter>, show: 
   if (hidden) throw new AppError('FORBIDDEN', '筛选字段不可查看');
 }
 
-function queryFilter(c: Context<TenantEnv>) {
-  const departmentId = c.req.query('departmentId');
-  const keyword = c.req.query('keyword');
-  return { ...(departmentId === undefined ? {} : { departmentId }), ...(keyword === undefined ? {} : { keyword }) };
-}
-
-/**
- * state（业务状态）与 probation（试用期信息）是视图控制项、不在任职字段目录，通用投影会把它们裁掉：先摘下，裁剪后放回
- * （行可见即可见，同入职视图的 probation / cancelRemark）。
- */
-async function trimInternItems(
-  deps: TenantRouteDeps,
-  ctx: EmploymentContext,
-  items: readonly InternViewItem[],
-  show: Viewable,
-) {
+/** state / probation 是视图控制项、不在任职字段目录，通用投影会裁掉：先摘下，裁剪后放回（行可见即可见，同入职视图）。 */
+async function trimInternItems(deps: TenantRouteDeps, ctx: EmploymentContext, items: readonly InternViewItem[]) {
+  const show = await viewableIn(deps, ctx);
   const records = items.map(({ name: _name, code: _code, state: _state, probation: _probation, ...record }) => record);
   const trimmed = (await trimEmploymentResponse(deps, ctx, records)) as object[];
   return trimmed.map((record, index) => {
-    const item = items[index]!;
-    return {
-      ...record,
-      state: item.state,
-      probation: item.probation,
-      ...(show.employee('code') ? { code: item.code } : {}),
-      ...(show.employee('name') ? { name: item.name } : {}),
-    };
+    const { state, probation, name, code } = items[index]!;
+    return { ...record, state, probation, ...pick(show.employee, { code, name }) };
   });
 }

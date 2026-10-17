@@ -235,10 +235,7 @@ async function requireExitScope(
   if (departmentId !== undefined) requireEmploymentScope(scoped, target.employeeId, departmentId);
 }
 
-/**
- * 直接实习转正（BE-6a，POST /interns/:id/regularize）的命令内复核：口径同入口——对象新增权、Employment.Create 按钮与
- * 字段创建权、员工当前范围（看全部另要任职写权别名）、目标部门写入范围；按当前授权在命令事务内重过，撤权后重放拿不到原 201。
- */
+/** 直接实习转正（BE-6a）的命令内复核：按当前授权重过入口同一口径（新增权、按钮、字段创建权、员工与目标部门范围）。 */
 export function internRegularizationGuard(
   deps: TenantRouteDeps,
   ctx: EmploymentContext,
