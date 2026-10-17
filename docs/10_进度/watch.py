@@ -9,7 +9,7 @@ Opus 审查待收：PR 上有“审查已发起”（Opus / claude.ai/code）评
 红灯 / 冲突挂起：CI 红或与 main 冲突，最新提交超 180 分钟且 90 分钟无评论 → 报一次（10-13 补漏）。
 状态存在 STATE 文件里，重启不丢基线；已报过的停摆同一 head 只报一次。
 """
-import json, os, subprocess, sys, time, datetime
+import glob, json, os, subprocess, sys, time, datetime
 
 STATE = os.path.expanduser("~/.cache/italent-progress-watch.json")
 INTERVAL = 180
@@ -239,6 +239,45 @@ def single_instance():
 nomerge_tick = [0]
 
 
+LEDGER = os.path.expanduser("~/.cache/italent-ledger.json")
+EVRAW = os.path.expanduser("~/Documents/italent-evidence-raw")
+
+
+def ledger_events(cur):
+    """10-17 看板实时化：台账完成 / 新增 / 换阶段不产生 PR 事件，01 原本不会醒。
+    台账 history 只追加不裁剪，游标用条数（同秒多条也不漏）；返回 (新游标, 事件)。"""
+    try:
+        hist = json.load(open(LEDGER)).get("history")
+    except Exception:
+        return cur, []
+    if not isinstance(hist, list):
+        return cur, []
+    if not isinstance(cur, int) or cur > len(hist):
+        return len(hist), []  # 首次 / 台账被重建：只建基线
+    out = []
+    for h in hist[cur:]:
+        if not isinstance(h, dict):
+            continue
+        chg = h.get("chg") if isinstance(h.get("chg"), list) else []
+        stg = [str(c)[6:] for c in chg if str(c).startswith("stage=")]
+        own = [str(c)[6:] for c in chg if str(c).startswith("owner=")]   # 待决的 owner 决定是否显示“待决”
+        if h.get("op") in ("done", "add") or stg or own:
+            what = "完成" if h.get("op") == "done" else "→" + stg[0] if stg else "负责人→" + own[0] if own else "新增"
+            out.append(f"{h.get('task')} {what}")
+    return len(hist), out
+
+
+def evidence_marks(prev):
+    """取证批次 spec.md 末行 → {路径: 末行}；读失败沿用上轮值，避免基线丢失后重复报完成。远程拉回在 remote/ 下。"""
+    got = dict(prev or {})   # 路径暂时消失 / 不可枚举也保留上轮值，恢复后不重复报完成
+    for f in glob.glob(f"{EVRAW}/codex-*/spec.md") + glob.glob(f"{EVRAW}/remote/codex-*/spec.md"):
+        try:
+            got[f] = open(f, errors="ignore").read().strip().splitlines()[-1].strip()
+        except Exception:
+            pass
+    return got
+
+
 def main():
     pidf = single_instance()
     old = {}
@@ -246,6 +285,8 @@ def main():
         old = json.load(open(STATE))
     prev, stalled = old.get("prs"), set(old.get("stalled", []))
     cprev = old.get("codex")
+    lcur = old.get("li")
+    evd = old.get("evm")
     while True:
         try:
             if int(open(pidf).read().strip()) != os.getpid():
@@ -359,6 +400,15 @@ def main():
                         stalled.add(kn)
             except Exception:
                 pass
+        # 10-17 看板实时化：台账变化、取证批次完成也唤醒 01 重建看板
+        lcur, lev = ledger_events(lcur)
+        if lev:
+            ev.append("台账变化（看板需重建）：" + "；".join(lev[:12]) + ("…" if len(lev) > 12 else ""))
+        em = evidence_marks(evd)
+        fresh = sorted({v for f, v in em.items() if v.startswith("DONE-") and (evd or {}).get(f) != v}) if evd is not None else []
+        if fresh:
+            ev.append("取证批次完成（看板需重建，03 验收）：" + "、".join(fresh))
+        evd = em
         ev_t = last_evidence_commit()
         pause = os.path.expanduser("~/.cache/italent-evidence-pause")  # 内容为 ISO 日期：取证窗口按计划停到该日，期间不报停顿
         try:
@@ -372,7 +422,7 @@ def main():
                 ev.append(f"取证停顿：取证窗口最近一次“取证”提交在 {m} 分钟前，请确认是否卡住、是否在等用户操作")
                 stalled.add(k3)
         open(os.path.expanduser("~/.cache/italent-progress-watch.beat"), "w").write(datetime.datetime.now().isoformat())
-        json.dump({"prs": cur, "stalled": sorted(stalled)[-200:], "codex": cprev}, open(STATE, "w"))
+        json.dump({"prs": cur, "stalled": sorted(stalled)[-200:], "codex": cprev, "li": lcur, "evm": evd}, open(STATE, "w"))
         quiet = [e for e in ev if (" 新推送 " in e or " CI green" in e or " 新评论 " in e)]
         loud = [e for e in ev if e not in quiet]
         if quiet:
