@@ -24,7 +24,7 @@ async function connectionRole(): Promise<{ user: string; bypass: boolean }> {
   return row;
 }
 
-describe('F-212 普通角色分片守卫', () => {
+describe('AC-CI-F212 / DEC-568 普通角色分片守卫', () => {
   it('分片要求普通角色时：真 PG 连接，且不是超级用户、没有 BYPASSRLS', async (context) => {
     if (!requireAppRole) context.skip('未设 REQUIRE_APP_ROLE=1（普通角色分片才设）');
     expect(testDbMode(), 'REQUIRE_APP_ROLE=1 却在 PGlite 上跑').toBe('pg');
