@@ -19,6 +19,9 @@ export const GRAPH: Graph = {
   'packages/domain/src/offer/rules.ts#planOfferTransition': ['#blank', '#reject', '#transitionGuard'],
   'packages/domain/src/offer/rules.ts#transitionGuard': ['#OFFER_TRANSITIONS'],
   'packages/domain/src/offer/rules.ts#validOfferSendApprovalSetting': ['#OFFER_TYPES'],
+  'packages/domain/src/offer/sync.ts#offerSyncDue': ['#daysUntil'],
+  'packages/domain/src/offer/sync.ts#offerSyncKind': ['packages/domain/src/offer/rules.ts#effectiveOfferType'],
+  'packages/domain/src/offer/sync.ts#validOfferSyncSetting': ['#OFFER_SYNC_DAYS', '#OFFER_SYNC_MODES'],
   'packages/domain/src/offer/views.ts#OFFER_VIEWS': ['#LABEL_FIELDS', '#SOURCES'],
   'packages/domain/src/offer/views.ts#SOURCES': ['#DATE', '#w'],
   'packages/domain/src/offer/views.ts#offerRowActions': [

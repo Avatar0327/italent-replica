@@ -173,6 +173,43 @@
       "obj:TenantBase.Offer:update"
     ]
   },
+  "POST /api/tenant/offers/:id/link-employee": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "21fc7b9e199f",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
+    },
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/tenant/offers/:id/sync": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "2a146d3522c1",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.Offer/-"
+    ],
+    "trace": [
+      "obj:TenantBase.Offer:update"
+    ]
+  },
   "POST /api/tenant/offers/:id/toolbar-transfer": {
     "all": {
       "code": "VALIDATION_FAILED",

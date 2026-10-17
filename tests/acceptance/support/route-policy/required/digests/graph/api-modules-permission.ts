@@ -40,7 +40,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/http.ts#revisionConflict',
   ],
   'apps/api/src/modules/permission/admins.ts#viewOf': ['packages/domain/src/permission/admin-roles.ts#isAdminRole'],
-  'apps/api/src/modules/permission/audit.ts#audit': ['#auditAs'],
+  'apps/api/src/modules/permission/audit.ts#audit': ['#auditAs', 'apps/api/src/system-actor.ts#auditActor'],
   'apps/api/src/modules/permission/audit.ts#auditAs': [
     'apps/api/src/audit/record.ts#recordAudit',
     '#revisionOf',
@@ -754,6 +754,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/permission/tenant-users.ts#listTenantUsers': ['#memberQuery', '#typeFilter', '#viewsOf'],
   'apps/api/src/modules/permission/tenant-users.ts#provisionAccount': [
     'apps/api/src/modules/permission/scope-hierarchy.ts#scopeRows',
+    'apps/api/src/system-actor.ts#auditActor',
   ],
   'apps/api/src/modules/permission/tenant-users.ts#registerExternalUser': [
     'apps/api/src/modules/permission/audit.ts#audit',

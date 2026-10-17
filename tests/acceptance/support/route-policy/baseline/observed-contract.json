@@ -17922,6 +17922,79 @@
         ]
       }
     },
+    "POST /api/tenant/offers/:id/link-employee": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "VALIDATION_FAILED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "offers",
+      "primitives": {
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "creator scope",
+          "employment visibility",
+          "requestScope",
+          "scope.all",
+          "scopeSql"
+        ]
+      }
+    },
+    "POST /api/tenant/offers/:id/sync": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "offers",
+      "primitives": {
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "guard": [
+          "employment.linkage"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "creator scope",
+          "requestScope"
+        ]
+      }
+    },
     "POST /api/tenant/offers/:id/toolbar-transfer": {
       "edge": {
         "anonymous": {
@@ -17943,6 +18016,7 @@
           "button()"
         ],
         "command": [
+          "assertRevision",
           "revision(c)",
           "runCommand / runWrite"
         ],
@@ -17979,6 +18053,7 @@
           "button()"
         ],
         "command": [
+          "assertRevision",
           "revision(c)",
           "runCommand / runWrite"
         ],
