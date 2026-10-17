@@ -141,6 +141,38 @@ describe('AC-DM-06 规则增删改查', () => {
     expect(await w.list()).toEqual([]);
   });
 
+  it('同优先级取先登记者（#387 第 1 轮 P2-2）：同一时刻登记 10 条，读取顺序与匹配结果都是首条', async () => {
+    const w = await rulesWorld('same-instant');
+    // employmentSession 的时钟固定：10 条规则 created_at 完全相同，只能靠登记顺序区分
+    const ids: string[] = [];
+    for (let index = 0; index < 10; index += 1) {
+      const rule = await w.created(
+        w.body({
+          name: `规则${index}`,
+          conditions: [{ field: 'exitCount', operator: 'gte', value: 1 }],
+          term: index === 0 ? 'permanent' : 'exit_month',
+        }),
+      );
+      ids.push(rule.id);
+    }
+    expect((await w.list()).map((r) => r.id)).toEqual(ids);
+    const service = (await import(SERVICE).catch(() => null)) as typeof RuleService | null;
+    expect(service, '缺少自动加黑规则服务').not.toBeNull();
+    await withTenant(w.db, w.session.tenant.id, async (tx) => {
+      const rules = await service!.loadBlacklistRules(tx, w.session.tenant.id);
+      expect(matchBlacklistRule(rules, { exitCount: 1, orgChain: [w.org.id] })).toMatchObject({
+        id: ids[0],
+        name: '规则0',
+        term: 'permanent',
+      });
+    });
+    // 改优先级不改登记顺序：首条调到同级的末尾后再调回，仍排在最前
+    const first = (await w.list())[0]!;
+    expect((await w.update(first.id, 1, w.body({ name: '规则0', priority: 2, term: 'permanent' }))).status).toBe(200);
+    expect((await w.update(first.id, 2, w.body({ name: '规则0', priority: 1, term: 'permanent' }))).status).toBe(200);
+    expect((await w.list()).map((r) => r.id)).toEqual(ids);
+  });
+
   it('规则服务供 BE-8b 调用：读出规则交给纯函数匹配，多条命中取优先级数字最小者；开关读取有效值', async () => {
     const w = await rulesWorld('service');
     const child = await w.session.org('规则子部门', {

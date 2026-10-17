@@ -11,7 +11,7 @@ import {
   registerEmploymentActivationChecks,
 } from '../../apps/api/src/modules/employment/activation-checks.js';
 import { addHire, hireBody } from './AC-EN-BE2a-support.js';
-import { blacklistWorld, businessCounts, leftEmployee, setPersonIdentity } from './AC-DM-R2-blacklist-support.js';
+import { blacklistWorld, businessSnapshot, leftEmployee, setPersonIdentity } from './AC-DM-R2-blacklist-support.js';
 
 const testDb = useTestDb();
 const MESSAGE = '此人员已被列入黑名单（姓名：拦截员工，原因：稳定性差），无法执行此操作';
@@ -30,13 +30,13 @@ describe('AC-DM-R2 再入职保存时拦截', () => {
     const w = await blacklistWorld(testDb().db, `block-${kind}-${pending}`);
     const { employee, org } = await leftEmployee(w.db, w.session, '拦截员工', {}, ending);
     await w.added({ employeeId: employee.id, reason: 'instability' });
-    const before = await businessCounts(w.db, w.session.tenant.id);
+    const before = await businessSnapshot(w.db, w.session.tenant.id);
     const body = { ...hireBody(org.id, '2026-10-10', pending ? { pendingEntry: true } : {}), kind };
     const response = await addHire(w.session, employee, body);
     expect(response.status, await response.clone().text()).toBe(409);
     const body409 = await error(response);
     expect(body409).toMatchObject({ code: 'CONFLICT', message: MESSAGE, details: { reason: 'EMPLOYEE_BLACKLISTED' } });
-    expect(await businessCounts(w.db, w.session.tenant.id)).toEqual(before);
+    expect(await businessSnapshot(w.db, w.session.tenant.id)).toEqual(before);
   });
 
   it('hire：新建人员档案与黑名单姓名 + 证件号相同即拦截；只同名不拦', async () => {
@@ -45,15 +45,30 @@ describe('AC-DM-R2 再入职保存时拦截', () => {
     await w.added({ name: '拦截员工', idNumber: 'ID-SYN-0101', reason: 'instability' });
     const same = await w.session.employee('拦截员工');
     await setPersonIdentity(w.db, w.session, same.id, { idNumber: 'id-syn-0101' });
-    const before = await businessCounts(w.db, w.session.tenant.id);
+    const before = await businessSnapshot(w.db, w.session.tenant.id);
     const blocked = await addHire(w.session, same, hireBody(org.id, '2026-10-10', { pendingEntry: true }));
     expect(blocked.status, await blocked.clone().text()).toBe(409);
     expect((await error(blocked)).message).toBe(MESSAGE);
-    expect(await businessCounts(w.db, w.session.tenant.id)).toEqual(before);
+    expect(await businessSnapshot(w.db, w.session.tenant.id)).toEqual(before);
     const namesake = await w.session.employee('拦截员工');
     await setPersonIdentity(w.db, w.session, namesake.id, { idNumber: 'ID-SYN-0102' });
     const allowed = await addHire(w.session, namesake, hireBody(org.id, '2026-10-10'));
     expect(allowed.status, await allowed.clone().text()).toBe(201);
+  });
+
+  it('空白证件号 / 邮箱不是匹配键（#387 第 1 轮 P2-1）：同名、手机不同、证件号都为空的人不被误拦', async () => {
+    const w = await blacklistWorld(testDb().db, 'blank-identity');
+    const blank = { idNumber: '', email: '  ' };
+    const a = await leftEmployee(w.db, w.session, '空证件员工', { ...blank, mobilePhone: '13800000201' });
+    const entry = await w.added({ employeeId: a.employee.id, reason: 'instability' });
+    expect(entry).toMatchObject({ idNumber: null, email: null, mobilePhone: '13800000201' });
+    const b = await leftEmployee(w.db, w.session, '空证件员工', { ...blank, mobilePhone: '13800000202' });
+    const rehire = { ...hireBody(b.org.id, '2026-10-10', { pendingEntry: true }), kind: 'rehire' };
+    const allowed = await addHire(w.session, b.employee, rehire);
+    expect(allowed.status, await allowed.clone().text()).toBe(201);
+    // A 本人仍被拦（按人员匹配）
+    const blocked = await addHire(w.session, a.employee, { ...rehire, fields: { departmentId: a.org.id } });
+    expect((await error(blocked)).details).toMatchObject({ reason: 'EMPLOYEE_BLACKLISTED' });
   });
 
   it('已移出、已过有效截止日期的不拦；截止日当天仍拦；删除后不拦', async () => {

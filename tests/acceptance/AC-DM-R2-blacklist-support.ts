@@ -2,10 +2,11 @@
  * R2 BE-8a 黑名单验收夹具（B68；docs/02_业务建模/30 DM-R2；DEC-569）：经公开接口维护黑名单、读取业务表计数。
  * 只用旧 main 已有的夹具；黑名单能力缺失时测试得到 404 / 断言失败，而不是导入错误。
  */
-import { sql, withTenant, type Db } from '@italent/db';
+import { sql, withPlatform, withTenant, type Db } from '@italent/db';
 import { expect } from 'vitest';
 import { employmentSession, type EmploymentSession } from './AC-EMP-support.js';
 import type { RequestOptions } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 export interface BlacklistEntry {
   readonly id: string;
@@ -60,7 +61,7 @@ export async function leftEmployee(
   person: { idNumber?: string; mobilePhone?: string; email?: string } = {},
   ending: 'leave' | 'retirement' = 'leave',
 ) {
-  const org = await session.org(`黑名单部门-${name}`, { establishedOn: '2025-01-01' });
+  const org = await session.org(`黑名单部门-${name}-${uniqueSuffix()}`, { establishedOn: '2025-01-01' });
   const employee = await session.employee(name);
   const hire = { kind: 'hire', mode: 'direct', effectiveDate: '2025-01-01', fields: { departmentId: org.id } };
   const hired = await session.business(employee.id, hire, employee.revision);
@@ -95,34 +96,47 @@ export async function setPersonIdentity(
   );
 }
 
-/** 任职、人员与待入职相关业务表的行数（拦截时“无任何写入”的前后比对）。 */
-export async function businessCounts(db: Db, tenantId: string) {
-  const tables = [
-    'employment_employees',
-    'employment_business_objects',
-    'employment_payload_versions',
-    'employment_state_events',
-    'employment_records',
-    'employment_timeline',
-    'employment_cycles',
-    'employment_outbox',
-    'employment_pending_entry_probation',
-    'employment_pending_entry_contract',
-    'employment_entry_actions',
-    'personnel_employee_versions',
-    'employment_blacklist',
-    'command_ledger',
-  ];
-  return withTenant(db, tenantId, async (tx) => {
-    const counts: Record<string, number> = {};
-    for (const table of tables) {
-      const [row] = rowsOf<{ n: number }>(
-        await tx.execute(sql`SELECT count(*)::int AS n FROM ${sql.identifier(table)} WHERE tenant_id = ${tenantId}`),
+/**
+ * 拦截时“无任何写入”的前后比对：逐行快照（行数 + 全部行内容的摘要），不只比行数——已有行被改写也会被发现。
+ * 覆盖任职、人员、待入职、黑名单、命令台账，以及入职时会动到的账号相关表（成员关系、人员绑定、全局账号）。
+ */
+const TENANT_TABLES = [
+  'employment_employees',
+  'employment_business_objects',
+  'employment_payload_versions',
+  'employment_state_events',
+  'employment_records',
+  'employment_timeline',
+  'employment_cycles',
+  'employment_outbox',
+  'employment_pending_entry_probation',
+  'employment_pending_entry_contract',
+  'employment_entry_actions',
+  'personnel_employee_versions',
+  'employment_blacklist',
+  'command_ledger',
+  'tenant_memberships',
+  'permission_user_person_links',
+];
+const snapshotSql = (table: string, where = sql`true`) => sql`
+  SELECT count(*)::int AS n, md5(coalesce(string_agg(t::text, E'\n' ORDER BY t::text), '')) AS digest
+  FROM ${sql.identifier(table)} t WHERE ${where}`;
+
+export async function businessSnapshot(db: Db, tenantId: string) {
+  const snapshot: Record<string, { n: number; digest: string }> = {};
+  await withTenant(db, tenantId, async (tx) => {
+    for (const table of TENANT_TABLES) {
+      const [row] = rowsOf<{ n: number; digest: string }>(
+        await tx.execute(snapshotSql(table, sql`t.tenant_id = ${tenantId}`)),
       );
-      counts[table] = row!.n;
+      snapshot[table] = row!;
     }
-    return counts;
   });
+  await withPlatform(db, async (tx) => {
+    const [row] = rowsOf<{ n: number; digest: string }>(await tx.execute(snapshotSql('users')));
+    snapshot.users = row!;
+  });
+  return snapshot;
 }
 
 export async function blacklistWorld(db: Db, label: string) {

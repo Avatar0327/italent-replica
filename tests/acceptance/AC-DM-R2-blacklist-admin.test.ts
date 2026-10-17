@@ -81,6 +81,17 @@ describe('AC-DM-R2 手动加黑与列表', () => {
     expect((await w.list()).items).toHaveLength(1);
   });
 
+  it('空白证件号不参与查重（#387 第 1 轮 P2-1）：两个不同人员证件号都为空，先后加黑都成功、证件号存为空', async () => {
+    const w = await blacklistWorld(testDb().db, 'blank-duplicate');
+    const a = await leftEmployee(w.db, w.session, '空证件甲', { idNumber: '', mobilePhone: '13800000211' });
+    const b = await leftEmployee(w.db, w.session, '空证件乙', { idNumber: ' ', mobilePhone: '13800000212' });
+    const first = await w.added({ employeeId: a.employee.id, reason: 'integrity' });
+    const second = await w.add({ employeeId: b.employee.id, reason: 'integrity' });
+    expect(second.status, await second.clone().text()).toBe(201);
+    expect([first.idNumber, ((await second.json()) as { idNumber: string | null }).idNumber]).toEqual([null, null]);
+    expect((await w.list()).items).toHaveLength(2);
+  });
+
   it('筛选：姓名包含、证件号 / 手机号精确、原因、来源、状态；按加黑日期倒序', async () => {
     const w = await blacklistWorld(testDb().db, 'filters');
     const a = await w.added({ name: '筛选张一', idNumber: 'ID-SYN-0011', reason: 'integrity' });
