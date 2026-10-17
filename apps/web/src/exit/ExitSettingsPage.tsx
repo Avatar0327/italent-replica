@@ -38,7 +38,8 @@ function DictionaryTabs() {
     <section className="exit-card">
       <Tabs
         activeKey={kind}
-        onChange={(key) => void navigate(`/exit-settings/${key}`)}
+        // 相对当前页签切换，不写死入口路径（入口 id 由 pages.ts 登记）。
+        onChange={(key) => void navigate(`../${key}`, { relative: 'path' })}
         items={KINDS.map((key) => ({ key, label: m.dictionaries[key] }))}
       />
       <Dictionary key={kind} kind={kind} />
