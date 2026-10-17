@@ -333,14 +333,15 @@ export async function activateExit(
     return { outcome: 'pending', blockedByBusinessId: blocking[0]!.id };
   }
 
+  // 保存点回滚后内存里的业务对象要还原，调用命令（审批落地）随后还会用它递增 revision
+  const saved = { state: business.state, eventNo: business.eventNo, payload: business.payload };
+  let late: Awaited<ReturnType<typeof runSteps>>;
   try {
-    const late = await tx.transaction((savepoint) => runSteps(savepoint, ctx, business, exit, source, options.trigger));
-    if (options.trigger !== 'approval')
-      await recordActivationAttempt(tx, ctx, item, { outcome: 'effective', trigger: options.trigger });
-    return { outcome: 'effective', ...late };
+    late = await tx.transaction((savepoint) => runSteps(savepoint, ctx, business, exit, source, options.trigger));
   } catch (error) {
     const failure = activationFailureOf(error) ?? ruleRejection(error);
     if (!failure) throw error;
+    Object.assign(business, saved);
     await recordActivationAttempt(
       tx,
       ctx,
@@ -350,4 +351,7 @@ export async function activateExit(
     );
     return { outcome: 'failed', reason: failure.reason, detail: failure.detail };
   }
+  if (options.trigger !== 'approval')
+    await recordActivationAttempt(tx, ctx, item, { outcome: 'effective', trigger: options.trigger });
+  return { outcome: 'effective', ...late };
 }
