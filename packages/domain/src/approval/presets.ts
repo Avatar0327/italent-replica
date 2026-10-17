@@ -111,7 +111,15 @@ function standardCondition(type: ApprovalTypeCode): Pick<ProcessDefinition, 'con
 const GENERIC_FORM = ['effectiveDate', 'departmentId', 'postId', 'positionId', 'levelId'];
 type GenericType = Exclude<
   ApprovalTypeCode,
-  'transfer' | 'leave' | 'personnel_change' | 'emp_info_change' | 'part_time_add' | 'part_time_extend' | 'part_time_end'
+  | 'transfer'
+  | 'leave'
+  | 'personnel_change'
+  | 'emp_info_change'
+  | 'part_time_add'
+  | 'part_time_extend'
+  | 'part_time_end'
+  | 'offer'
+  | 'offer_batch'
 >;
 function genericPreset(type: GenericType): PresetProcess {
   const name = APPROVAL_TYPES[type].name;
@@ -183,6 +191,58 @@ function partTimePreset(
     }),
   };
 }
+
+/** 不同意连到结束（DEC-144）：上级不同意即结束，不再到下一节点（OF-R15）。 */
+const AGREE_OR_NOT = ['approve', 'disagree'] as const;
+
+/**
+ * Offer 两类审批（BE-14a3，DEC-094 草稿）。候选人与 Offer 薪资属敏感信息，avoidSelf = true（DEC-332①）；候选人不是员工、
+ * 没有主体集合，avoidSubjects = false。表单按类型统一（OF-R12）：单个 Offer 用 Offer 字段集，批量用批量单三项。
+ * - 单个 Offer 审批：节点未取证（OF-R15 末句），沿用占位，只放“录用部门负责人”一个节点，由租户调整后发布；
+ * - Offer 批量审批：照原站 OfferBatchApprovalProcess——直接上级（申请人的直接上级；空 = 无操作，首节点为空提交报错，
+ *   DEC-054）→ 审批主体一级组织负责人（空 = 转异常管理员）；不得照搬“录用部门负责人”。
+ */
+const OFFER_PRESETS: readonly PresetProcess[] = [
+  {
+    presetKey: 'standard_offer',
+    code: 'StandardOfferApproval',
+    approvalType: 'offer',
+    definition: draft({
+      name: '标准Offer审批流程',
+      description: '出厂预置：节点结构未取证（录用部门负责人占位），发布前须配置异常管理员',
+      priority: 0,
+      ...standardCondition('offer'),
+      nodes: [
+        node('offer_department_head', '录用部门负责人', 'offer_department_head', {
+          formFields: APPROVAL_TYPES.offer.formFields,
+          exits: AGREE_OR_NOT,
+        }),
+      ],
+    }),
+  },
+  {
+    presetKey: 'standard_offer_batch',
+    code: 'StandardOfferBatchApproval',
+    approvalType: 'offer_batch',
+    definition: draft({
+      name: '标准Offer批量审批流程',
+      description: '出厂预置：直接上级 → 审批主体一级组织负责人，发布前须配置异常管理员',
+      priority: 0,
+      ...standardCondition('offer_batch'),
+      nodes: [
+        node('direct_manager', '直接上级', 'initiator_direct_manager', {
+          formFields: APPROVAL_TYPES.offer_batch.formFields,
+          noAssignee: 'none',
+          exits: AGREE_OR_NOT,
+        }),
+        node('first_level_head', '审批主体一级组织负责人', 'approval_subject_first_level_org_head', {
+          formFields: APPROVAL_TYPES.offer_batch.formFields,
+          exits: AGREE_OR_NOT,
+        }),
+      ],
+    }),
+  },
+];
 
 export const PRESET_PROCESSES: readonly PresetProcess[] = [
   {
@@ -347,4 +407,5 @@ export const PRESET_PROCESSES: readonly PresetProcess[] = [
       nodes: [node('department_head', '部门负责人审批', 'latest_record_department_head', { formFields: [] })],
     }),
   },
+  ...OFFER_PRESETS,
 ];

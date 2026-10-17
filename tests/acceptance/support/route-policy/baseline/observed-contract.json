@@ -4,6 +4,8 @@
       "contract",
       "employment",
       "idp",
+      "offer",
+      "offer_batch",
       "part_time",
       "personnel_change",
       "talent_review"
@@ -18,6 +20,8 @@
       "TenantBase.EstimationResult",
       "TenantBase.Family",
       "TenantBase.Languageability",
+      "TenantBase.Offer",
+      "TenantBase.OfferBatchApproval",
       "TenantBase.ProfessionalTechnicalPostInfo",
       "TenantBase.ProjectExperience",
       "TenantBase.Punish",
@@ -17843,6 +17847,39 @@
         ]
       }
     },
+    "POST /api/tenant/offers/:id/approval": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "offers",
+      "primitives": {
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "creator scope",
+          "requestScope"
+        ]
+      }
+    },
     "POST /api/tenant/offers/:id/copy": {
       "edge": {
         "anonymous": {
@@ -17978,6 +18015,39 @@
         "button": [
           "button()"
         ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "creator scope",
+          "requestScope"
+        ]
+      }
+    },
+    "POST /api/tenant/offers/batch-approvals": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "VALIDATION_FAILED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "offers",
+      "primitives": {
         "command": [
           "revision(c)",
           "runCommand / runWrite"

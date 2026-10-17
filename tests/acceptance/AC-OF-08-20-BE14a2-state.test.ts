@@ -231,11 +231,12 @@ describe('AC-OF-16 / 19 / 20 行操作矩阵', () => {
     expect(of('invalid')).toEqual({ primary: ['copy'], menu: ['viewMail', 'view'] });
   });
 
-  it('接口只返回已接线的动作：发送 / 重发 / 编辑并同步 / 审批 / 邮件 / 签署 / 关联实习生不出现', async () => {
+  // BE-14a3 接线后“发起审批”出现在待发主按钮；审批中的催办 / 转交 / 撤销仍未接线
+  it('接口只返回已接线的动作：发送 / 重发 / 编辑并同步 / 审批中动作 / 邮件 / 签署 / 关联实习生不出现', async () => {
     const w = await offerWorld(testDb().db, 'matrix');
     const pending = await w.social();
     expect(actionsOf(await w.get(pending.id))).toEqual({
-      primary: [],
+      primary: ['submitApproval'],
       menu: ['edit', 'transfer', 'invalidate', 'view', 'delete'],
     });
     const approved = await w.social();
