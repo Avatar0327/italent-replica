@@ -8,7 +8,7 @@ import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { addMember } from './AC-PRM-support.js';
-import { activationWorld, type ActivationWorld } from './AC-TRF-activation-support.js';
+import { activationWorld } from './AC-TRF-activation-support.js';
 import { tenantApi } from './support/tenant-api.js';
 
 const database = useTestDb();
