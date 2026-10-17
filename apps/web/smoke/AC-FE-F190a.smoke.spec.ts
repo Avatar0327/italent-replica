@@ -62,3 +62,39 @@ test('AC-FE-F190a-04 外壳展开分组、子项路由与 legacy、直达鉴权�
   await expect(title).toHaveCount(0);
   expect(errors).toEqual([]);
 });
+
+test('AC-FE-F190a-06 冲突子项不能借调动权限挂载隐藏的 IDP 应用', async ({ page, baseURL }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await page.route(/\/src\/idp\/pages\.ts(?:\?.*)?$/, async (route) => {
+    const response = await route.fetch();
+    const body = (await response.text())
+      .replace(
+        'entries: [',
+        `entries: [{
+      id: 'fixture-conflict', app: 'transfer', group: 'people', label: '合成冲突组',
+      children: [{ id: 'IDP', label: '合成子项', objectCode: 'TenantBase.EmploymentRecord' }]
+    },`,
+      )
+      .replace('page: IdpPage,', "page: { Component: () => '禁止挂载的合成 IDP 应用' },");
+    await route.fulfill({ response, body });
+  });
+  await page.route('**/permission/me/snapshot', (route) =>
+    route.fulfill({
+      json: {
+        ...snapshotFixture,
+        apps: snapshotFixture.apps.map((app) => (app.app === 'idp' ? { ...app, visible: false } : app)),
+      },
+    }),
+  );
+  await page.context().addCookies([
+    { name: 'italent_demo_tenant', value: tenant, url: baseURL! },
+    { name: 'italent_demo_user', value: user, url: baseURL! },
+  ]);
+  for (const path of ['/idp', '/idp/', '/%69dp']) {
+    errors.length = 0;
+    await page.goto(path);
+    await expect.poll(() => errors.join('\n')).toMatch(/子菜单路由冲突/);
+    await expect(page.getByText('禁止挂载的合成 IDP 应用', { exact: true })).toHaveCount(0);
+  }
+});

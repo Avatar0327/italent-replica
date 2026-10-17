@@ -80,7 +80,13 @@ describe('AC-FE-F190a 共享入口子菜单契约', () => {
     expect(() => collect([{ ...group, children: [leaf('a'), leaf('a')] }])).toThrow(/重复/);
     expect(() => collect([group, { ...leaf('a'), app: 'idp', group: 'talent' }])).toThrow(/重复/);
     expect(() => collect([{ ...group, children: [{ ...leaf('a'), children: [leaf('b')] }] }])).toThrow(/一层/);
-    for (const id of ['idp/private', ':private', '*', '..', 'private?'])
+    for (const id of ['idp/private', ':private', '*', '..', 'private?', 'IDP/', '%69dp'])
       expect(() => collect([{ ...group, children: [leaf(id)] }])).toThrow(/单段/);
+  });
+  it('05 拒绝子项与应用、旧入口、其他子项的大小写、尾斜杠和编码等价路由', () => {
+    expect(() => collect([{ ...group, app: 'transfer', children: [leaf('IDP')] }])).toThrow(/冲突/);
+    for (const id of ['A', 'a/', '%61'])
+      expect(() => collect([group, { ...leaf(id), app: 'idp', group: 'talent' }])).toThrow(/冲突/);
+    expect(() => collect([{ ...group, children: [leaf('a'), leaf('A')] }])).toThrow(/冲突/);
   });
 });
