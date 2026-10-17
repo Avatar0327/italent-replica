@@ -24,6 +24,7 @@ import { readEmploymentSettings } from './configuration.js';
 import { auditEmployment, requireScopedEmploymentObject } from './context.js';
 import { assertNotBeforeCurrentCycle } from './cycles.js';
 import { EXIT_GATE_PASS, isExitKind, requireExitGate } from './exit-gate.js';
+import { assertInternRegularizationEligible, assertNoPendingRegularization } from './intern-eligibility.js';
 import { forwardUpdateEmployment } from './forward-update.js';
 import type { ForwardValues } from './forward-rules.js';
 import { emptyPresetFields } from './types.js';
@@ -113,6 +114,7 @@ export async function createEmploymentBusiness(
   const employee = await lockEmploymentEmployee(tx, ctx, employeeId, ctx.expectedRevision);
   await assertNotBeforeCurrentCycle(tx, ctx, employee.id, normalized);
   await assertBusinessSequence(tx, ctx, employee.id, normalized);
+  await assertNoPendingRegularization(tx, ctx, employee.id, normalized.kind);
   assertEmployTypeUsage(normalized);
   await assertDirectTransferAllowed(tx, ctx, employee.id, normalized);
   // 29 PB-R9：直接转正即“提交”，有转正流程在审批中时拒绝；申请在提交时判（transitions.ts）
@@ -159,7 +161,7 @@ export async function createEmploymentBusiness(
     prepared,
     null,
     selected?.cycle.id,
-    options.changeType,
+    options.changeType ?? defaultChangeType(normalized.kind),
     entryStatusFor(normalized.kind, options.entry),
   );
   const business: LockedEmploymentBusiness = {
@@ -178,6 +180,11 @@ export async function createEmploymentBusiness(
   const created = { ...payloadAudit(payload), ...pendingAudit };
   await auditEmployment(tx, ctx, 'employment.business.create', 'employment-business', id, null, created);
   return requireSavedBusiness(tx, ctx, id);
+}
+
+/** 实习转正（直接或申请）的变动类型固定为“实习转正”（R2f B41；31 Q-M0-122 ④ 实习转正中的异动类型）。 */
+function defaultChangeType(kind: BusinessKind): ChangeType | undefined {
+  return kind === 'intern_regularization' ? 'intern_regularization' : undefined;
 }
 
 /** F-006：职位变更同步直线经理时，在表单快照里记下派生规则。 */
@@ -386,6 +393,8 @@ async function assertBusinessSequence(
   );
   const reason = sequenceViolation(latest?.kind, input.kind);
   if (reason) throw new AppError('CONFLICT', '任职业务前后顺序不合法', { reason });
+  // 实习转正另看插入点之后与前驱身份（F-215）：新增、申请改期、落地（审批通过后到期生效记生效失败，DEC-052）都经这里
+  await assertInternRegularizationEligible(tx, ctx, employeeId, input);
 }
 
 /** 前一条为 previous 时能否接 kind：终止任职后只能开新周期，在职时不能再入职（`07` §2、DEC-077）。 */

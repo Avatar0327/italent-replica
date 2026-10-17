@@ -119,6 +119,8 @@ export function domainConstants(): Record<string, string[]> {
     // 导入逐行操作（org / job import-service）；任职导入逐行为 create / edit（employment/forward-import.ts）
     'import.rowOperation': ['create', 'update'],
     'employment.importRowOperation': ['create', 'edit'],
+    // 离职办理方式（employment/exit-gate.ts permissionSpec：direct → Dimission、application → DimissionApproval）
+    'employment.exitMode': ['application', 'direct'],
     // 人才标准六对象（forms/:object）与可选所属管理单元的五对象（candidates/owner-orgs，字典不设单元）
     'talent.object': Object.keys(TALENT_OBJECTS).sort(),
     // 人才表单的 operation 查询参数（talent/form-access.ts talentFormHandler：create / update，其余 400）
