@@ -1,7 +1,7 @@
 import { lockTransferParticipants } from '../employment/transfer-locks.js';
 /** DEC-137：按组织变更生效日的行政树和已生效任职选人；同事务、有界、整体成功或失败。 */
 import { sql, type Tx } from '@italent/db';
-import { tenantLocalDate } from '@italent/domain';
+import { PART_TIME_KIND, tenantLocalDate } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { pendingActivationState } from '../employment/activation-store.js';
 import { auditEmployment, employmentCreator, requireLinkedEmploymentRecord } from '../employment/context.js';
@@ -136,7 +136,7 @@ export async function hasPendingOrgEmployment(tx: Tx, ctx: EmploymentContext, or
     LEFT JOIN LATERAL (SELECT id,department_id FROM employment_payload_versions current_payload
       WHERE current_payload.tenant_id=r.tenant_id AND current_payload.business_id=r.id
         AND current_payload.is_record_snapshot ORDER BY version_no DESC LIMIT 1) current_payload ON true
-    WHERE b.tenant_id=${ctx.tenantId} AND p.effective_date<${date}::date
+    WHERE b.tenant_id=${ctx.tenantId} AND p.effective_date<${date}::date AND p.kind<>${PART_TIME_KIND}
       AND (s.state IN ('draft','in_review','approved','rejected')
         OR (s.state='effective' AND (p.effective_date>${today}::date OR ${pendingActivationState(ctx.timezone)})))
       AND (p.department_id IN (SELECT org_id FROM tree)

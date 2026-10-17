@@ -44,12 +44,14 @@ import {
   TALENT_REVIEW_CONFIG_OBJECTS,
   TALENT_REVIEW_ORG_OBJECTS,
   TALENT_REVIEW_OBJECTS,
+  PART_TIME_AUDIT_OBJECTS,
 } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import type { TenantRouteDeps } from '../routes.js';
 import type { TenantContext } from '../tenant-context.js';
 import { adminScope } from '../modules/approval/access.js';
 import { employmentCreator } from '../modules/employment/context.js';
+import { partTimeRecordCreator, partTimeRequestCreator } from '../modules/employment/part-time/creator-sql.js';
 import { employmentVisibilitySql } from '../modules/employment/visibility.js';
 import {
   getModuleViewableFields,
@@ -190,6 +192,26 @@ function personRule(types: readonly string[], objectCode: string, creator: (row:
     visible: (scope, row, viewer) => {
       const owner = ownedBy(row, creator(row, viewer));
       return anchored(scope, row.employee, scopeSql(scope, { person: row.employee, creator: owner }), owner);
+    },
+  };
+}
+
+/**
+ * BE-7 兼职记录 / 兼职申请（R2-T05 §7.4）：写入时显式归属员工 + 兼职部门（0058 不改）。DEC-177 两项（记录部门 ∪ 员工
+ * 当前主职部门）对 row.org 与改部门前的旧部门（before.departmentId，平铺或在 fields 下）各判一次——改部门那条日志对旧部门
+ * 的 HR 同样可见，之后只在新部门的日志不可见；创建人按兼职口径（creator-sql.ts）。
+ */
+function partTimeRule(type: string, creator: (tenantId: string, objectId: SQL) => SQL): Rule {
+  return {
+    types: [type],
+    objectCode: EMPLOYMENT,
+    visible: (scope, row, viewer) => {
+      const owner = ownedBy(row, creator(viewer.tenantId, uuidOf(row.objectId)));
+      const before = sql`COALESCE(${uuidOf(sql`${row.before}->>'departmentId'`)},
+        ${uuidOf(sql`${row.before}->'fields'->>'departmentId'`)})`;
+      const visible = (department: SQL) =>
+        employmentVisibilitySql(scope, { employee: row.employee, department, creator: owner });
+      return anchored(scope, row.employee, sql`(${visible(row.org)} OR ${visible(before)})`, owner);
     },
   };
 }
@@ -511,6 +533,8 @@ const RULES: readonly Rule[] = [
     },
   },
   transferLinkageRule(),
+  partTimeRule(PART_TIME_AUDIT_OBJECTS.record, partTimeRecordCreator),
+  partTimeRule(PART_TIME_AUDIT_OBJECTS.request, partTimeRequestCreator),
   personRule(['employment_employee'], 'TenantBase.Employee', (row, viewer) =>
     employmentCreator(viewer.tenantId, row.employee),
   ),

@@ -1,9 +1,10 @@
 /** DEC-080：统一命令台账返回后重验，涵盖首次成功、直接重放和失败回查重放。 */
-import { MODULE_OBJECTS } from '@italent/domain';
+import { MODULE_OBJECTS, PART_TIME_AUDIT_OBJECTS, PART_TIME_KIND } from '@italent/domain';
 import { authorizeEstablishmentReplay } from './establishment-replay.js';
 import { sql, type Tx } from '@italent/db';
 import type { Authorizer } from '../../authorization.js';
 import { AppError } from '../../errors.js';
+import { partTimeRecordCreator } from '../employment/part-time/creator-sql.js';
 import type { EmploymentContext } from '../employment/types.js';
 import { isEmploymentRecordVisible } from '../employment/visibility.js';
 import { authorizeInTransaction, scopeAllowsInTransaction, resolveModuleScopeInTransaction } from './module-access.js';
@@ -88,8 +89,25 @@ export async function authorizeEmploymentResult(
     });
 }
 
-/** 联动改写事件：向后更新、负责人标志补写，以及删除中间任职时恢复前一条的有效区间（R1-T11）。 */
-const LINKED_ACTIONS = new Set(['employment.forward-update', 'employment.record.restore']);
+/**
+ * 联动改写事件：向后更新、负责人标志补写，删除中间任职时恢复前一条的有效区间（R1-T11），以及离职 / 调动联动
+ * 结束兼职、作废兼职申请（R2-T05 §7.3A，同 DEC-178 按可见口径复核）。
+ */
+const LINKED_ACTIONS = new Set([
+  'employment.forward-update',
+  'employment.record.restore',
+  'employment.part_time.ended_by_exit',
+  'employment.part_time.ended_by_transfer',
+  'part_time.request.voided_by_exit',
+  'part_time.request.voided_by_transfer',
+]);
+/** 任职足迹的审计 / outbox 对象类型：任职记录、任职业务，以及兼职记录与兼职申请（R2-T05 §7.3A）。 */
+const FOOTPRINT_TYPES = sql.join(
+  ['employment-record', 'employment-business', PART_TIME_AUDIT_OBJECTS.record, PART_TIME_AUDIT_OBJECTS.request].map(
+    (type) => sql`${type}`,
+  ),
+  sql`,`,
+);
 
 /**
  * 本命令只经联动改写的记录：DEC-178 按 DEC-177 可见口径复查；
@@ -150,13 +168,13 @@ async function footprints(tx: Tx, tenantId: string, commandId: string) {
     SELECT a.object_id AS id,a.action,a.after,NULL::uuid AS "snapshotDepartment",false AS "hasSnapshot"
     FROM audit_events a
     WHERE a.tenant_id=${tenantId} AND a.command_id=${commandId}
-      AND a.object_type IN ('employment-record','employment-business')
+      AND a.object_type IN (${FOOTPRINT_TYPES})
     UNION ALL
     SELECT o.object_id::text AS id,'snapshot' AS action,NULL::jsonb AS after,p.department_id,true
     FROM employment_outbox o JOIN employment_payload_versions p
       ON p.tenant_id=o.tenant_id AND p.id=o.payload_version_id
     WHERE o.tenant_id=${tenantId} AND o.command_id=${commandId}
-      AND o.object_type IN ('employment-record','employment-business')
+      AND o.object_type IN (${FOOTPRINT_TYPES})
     LIMIT ${MAX_EVENTS + 1}
   `),
   );
@@ -164,20 +182,41 @@ async function footprints(tx: Tx, tenantId: string, commandId: string) {
   return result;
 }
 
+/** 业务当前部门：记录快照优先，未落地的取最新载荷（兼职底层业务即兼职部门）；b 为业务头别名。 */
+const businessDepartment = (alias: string) => {
+  const b = sql.identifier(alias);
+  return sql`(SELECT CASE WHEN p.is_record_snapshot OR r.id IS NULL THEN p.department_id ELSE r.department_id END
+    FROM (SELECT department_id,is_record_snapshot FROM employment_payload_versions p
+      WHERE p.tenant_id=${b}.tenant_id AND p.business_id=${b}.id ORDER BY version_no DESC LIMIT 1) p
+    LEFT JOIN employment_records r ON r.tenant_id=${b}.tenant_id AND r.id=${b}.id)`;
+};
+
 async function currentTargets(tx: Tx, tenantId: string, ids: string[]) {
   // 删除是不可变状态事件；对象和 payload 仍保留，因此合法删除响应也能通过范围复查。
+  // 兼职申请不在业务头表（R2-T05 §7.3A）：新增按申请最新版本部门，延长 / 结束按目标兼职记录当前部门；创建人 = 发起人。
+  const wanted = sql`(SELECT jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb))`;
   return rows<Target>(
     await tx.execute(sql`
-    SELECT b.id,b.employee_id AS "employeeId",
-      CASE WHEN p.is_record_snapshot OR r.id IS NULL THEN p.department_id ELSE r.department_id END AS "departmentId",
-      (SELECT a.creator_user_id FROM audit_object_creators a WHERE a.tenant_id=b.tenant_id AND a.object_id=b.id::text
-        AND a.action='employment.business.create' ORDER BY a.created_at LIMIT 1) AS "creatorId"
+    SELECT b.id,b.employee_id AS "employeeId",${businessDepartment('b')} AS "departmentId",
+      CASE WHEN (SELECT p.kind FROM employment_payload_versions p WHERE p.tenant_id=b.tenant_id AND p.business_id=b.id
+          ORDER BY version_no DESC LIMIT 1)=${PART_TIME_KIND}
+        THEN ${partTimeRecordCreator(tenantId, sql`b.id`)}
+        ELSE (SELECT a.creator_user_id FROM audit_object_creators a WHERE a.tenant_id=b.tenant_id
+          AND a.object_id=b.id::text AND a.action='employment.business.create' ORDER BY a.created_at LIMIT 1)
+      END AS "creatorId"
     FROM employment_business_objects b
-    JOIN LATERAL (SELECT department_id,is_record_snapshot FROM employment_payload_versions p
-      WHERE p.tenant_id=b.tenant_id AND p.business_id=b.id ORDER BY version_no DESC LIMIT 1) p ON true
-    LEFT JOIN employment_records r ON r.tenant_id=b.tenant_id AND r.id=b.id
-    WHERE b.tenant_id=${tenantId} AND b.id::text IN
-      (SELECT jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb))
+    WHERE b.tenant_id=${tenantId} AND b.id::text IN ${wanted}
+    UNION ALL
+    SELECT q.id,q.employee_id,
+      CASE WHEN q.record_id IS NULL
+        THEN (SELECT v.department_id FROM part_time_request_versions v WHERE v.tenant_id=q.tenant_id
+          AND v.request_id=q.id ORDER BY v.version_no DESC LIMIT 1)
+        ELSE (SELECT ${businessDepartment('target')} FROM employment_business_objects target
+          WHERE target.tenant_id=q.tenant_id AND target.id=q.record_id)
+      END,
+      q.initiator_user_id
+    FROM part_time_requests q
+    WHERE q.tenant_id=${tenantId} AND q.id::text IN ${wanted}
   `),
   );
 }

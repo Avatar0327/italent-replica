@@ -490,8 +490,11 @@ export async function auditEmployment(
   after: unknown,
   payloadVersionId?: string,
   meta?: Readonly<Record<string, unknown>>,
-  /** 写入方确知归属时显式给出（离职单 / 撤销记录 / 效果台账，DEC-197；R2-T03 §9）。 */
-  scope?: { readonly employeeId?: string | null },
+  /**
+   * 写入方确知归属时显式给出（离职单 / 撤销记录 / 效果台账，DEC-197；R2-T03 §9）。兼职记录 / 申请另给 orgId = 兼职部门
+   * （0058 推不出这两类对象的部门，R2-T05 §7.4）；不在业务头表的对象（兼职申请、离职单）outbox 员工取 scope.employeeId。
+   */
+  scope?: { readonly employeeId?: string | null; readonly orgId?: string | null },
 ): Promise<void> {
   await recordAudit(tx, {
     tenantId: ctx.tenantId,
@@ -514,7 +517,8 @@ export async function auditEmployment(
         tenant_id,employee_id,business_id,event_type,object_type,object_id,command_id,payload,
         payload_version_id,created_at
       )
-      SELECT ${ctx.tenantId},ownership.employee_id,ownership.business_id,${action},${objectType},${objectId},
+      SELECT ${ctx.tenantId},COALESCE(ownership.employee_id,${scope?.employeeId ?? null}::uuid),ownership.business_id,
+        ${action},${objectType},${objectId},
         ${ctx.commandId},${JSON.stringify({ before, after, ...(meta ? { meta } : {}) })}::jsonb,
         ${payloadVersionId ?? null}::uuid,
         ${ctx.now.toISOString()}::timestamptz
