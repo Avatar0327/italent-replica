@@ -17,6 +17,7 @@ export const GRAPH: Graph = {
   'packages/domain/src/employment/entry-email.ts#EMAIL_PREFIX_FIELD_CODES': ['#EMAIL_PREFIX_FIELDS'],
   'packages/domain/src/employment/entry-email.ts#normalizeEmailDomain': ['#DOMAIN_PATTERN'],
   'packages/domain/src/employment/exit.ts#EXIT_DICTIONARY_KINDS': ['#EXIT_DICTIONARIES'],
+  'packages/domain/src/employment/exit.ts#EXIT_FORM_FIELDS': ['#EXIT_REQUEST_FIELDS'],
   'packages/domain/src/employment/probation.ts#actualProbationEndDate': [
     'packages/domain/src/contracts/rules.ts#addDays',
   ],
