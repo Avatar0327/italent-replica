@@ -264,7 +264,7 @@ const EXIT_CREATE_BUTTON: ButtonPolicy = {
   domain: ['application', 'direct'],
 };
 const EXIT_CREATE_PRECONDITIONS = ['lockEmploymentEmployee', 'requireExitGate', 'assertRevision'];
-const EXIT_PREVIEW_KEYS = ['lastWorkDate', 'effectiveDate', 'blockers', 'ack', 'warnings', 'contracts'] as const;
+const EXIT_PREVIEW_KEYS = ['lastWorkDate', 'effectiveDate', 'blockers', 'ack', 'warnings'] as const;
 const exitPreview = (code: string) =>
   object({
     object: EMPLOYMENT,
@@ -1148,7 +1148,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   }),
   // ---- employment/exit-routes.ts：R2-T03 B2b 离职办理入口（设计 §4 / §4A / §9.1；命令内复核 exitCommandGuard）--------
   // 预览：readContext(object.view, resource=id) 人员范围 404「任职数据不存在」；body 严格 { lastWorkDate }（400）；
-  // Dimission / DimissionApproval 任一（两项都无 403）；只读，清单逐项按 DEC-177 可见 + 字段查看权披露，合同只给件数
+  // Dimission / DimissionApproval 任一（两项都无 403）；只读，清单逐项按 DEC-177 可见 + 字段查看权披露
   'POST /exits/employees/:id/preview': any(
     [exitPreview(EXIT_BUTTONS.direct), exitPreview(EXIT_BUTTONS.application)],
     byId,

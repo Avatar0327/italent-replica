@@ -60,7 +60,6 @@ describe('AC-DM-22 POST exits/employees/:id/preview', () => {
       ack: { ackToken: string; items: unknown[]; hiddenCount: number };
       blockers: { reason: string; items: { businessId: string }[] }[];
       warnings: { reason: string; items: { businessId: string }[] }[];
-      contracts: Record<string, number>;
     };
     expect(body.effectiveDate).toBe('2026-10-21');
     expect(body.ack).toMatchObject({
@@ -76,7 +75,6 @@ describe('AC-DM-22 POST exits/employees/:id/preview', () => {
     ]);
     const voided = body.warnings.find((warning) => warning.reason === 'EXIT_APPLICATIONS_TO_VOID');
     expect(voided?.items.map((item) => item.businessId).sort()).toEqual([blocker, transfer.id].sort());
-    expect(body.contracts).toEqual({ terminate: 0, delete: 0, withdrawRequests: 0 });
     expect(await w.stateOf(employee.id)).toEqual(before);
     const later = await world('routes-preview-ack');
     const pending = await later.w.apply(later.employee.id, '2026-10-25', { departmentId: later.w.to.id });
