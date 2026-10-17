@@ -202,7 +202,8 @@ async function organizationsOf(
       SELECT v.org_id AS department_id, v.org_id, v.id AS version_id, v.broad_type, ARRAY[v.org_id] AS path, 0 AS depth
       FROM current_versions v WHERE v.org_id = ANY(${`{${departments.join(',')}}`}::uuid[])
       UNION ALL
-      SELECT chain.department_id, parent.org_id, parent.id, parent.broad_type, chain.path || parent.org_id, chain.depth + 1
+      SELECT chain.department_id, parent.org_id, parent.id, parent.broad_type, chain.path || parent.org_id,
+        chain.depth + 1
       FROM chain
       JOIN org_hierarchy_links link ON link.tenant_id=${tenantId} AND link.dimension='admin'
         AND link.version_id=chain.version_id

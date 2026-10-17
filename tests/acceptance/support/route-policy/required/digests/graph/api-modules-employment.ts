@@ -535,6 +535,10 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/employee-status.ts#ENTRY_KINDS',
     '#savePendingProbation',
   ],
+  'apps/api/src/modules/employment/entry-probation.ts#saveCreatedProbation': [
+    'apps/api/src/modules/employment/employee-status.ts#ENTRY_LIKE_KINDS',
+    '#saveEntryProbation',
+  ],
   'apps/api/src/modules/employment/entry-probation.ts#saveEntryProbation': ['#appendProbationVersion'],
   'apps/api/src/modules/employment/entry-routes.ts#completeEntryGuard': [
     'apps/api/src/modules/employment/context.ts#scopedGuard',
@@ -2094,10 +2098,9 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/write-service.ts#createEmploymentBusiness': [
     'apps/api/src/modules/employment/context.ts#auditEmployment',
     'apps/api/src/modules/employment/cycles.ts#assertNotBeforeCurrentCycle',
-    'apps/api/src/modules/employment/employee-status.ts#ENTRY_LIKE_KINDS',
     'apps/api/src/modules/employment/employee-status.ts#entryStatusFor',
     'apps/api/src/modules/employment/entry-pending-contract.ts#saveAddedPendingEntryData',
-    'apps/api/src/modules/employment/entry-probation.ts#saveEntryProbation',
+    'apps/api/src/modules/employment/entry-probation.ts#saveCreatedProbation',
     'apps/api/src/modules/employment/exit-gate.ts#EXIT_GATE_PASS',
     'apps/api/src/modules/employment/fields.ts#normalizeEmploymentInput',
     'apps/api/src/modules/employment/inheritance.ts#prepareInheritance',

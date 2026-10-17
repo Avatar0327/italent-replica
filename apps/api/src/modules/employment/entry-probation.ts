@@ -8,7 +8,7 @@ import { sql, type Tx } from '@italent/db';
 import { normalizeProbationInfo, type ProbationInfo } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { auditEmployment } from './context.js';
-import { ENTRY_KINDS, type EntryOptions } from './employee-status.js';
+import { ENTRY_KINDS, ENTRY_LIKE_KINDS, type EntryOptions } from './employee-status.js';
 import { rowsOf } from './record-store.js';
 import type { BusinessKind, EmploymentContext } from './types.js';
 
@@ -164,4 +164,21 @@ export async function saveEntryProbation(
     },
     'entry',
   );
+}
+
+/**
+ * 新建入职 / 实习转正业务时的试用期（createEmploymentBusiness 调用）：直接办理开始日 = 生效日（R2e6、R2f1）；
+ * 申请在审批期间可能改期，开始日留空，读取时取记录实际生效日（probation.ts，第 1 轮审查 P2-4）。其他业务不写。
+ */
+export async function saveCreatedProbation(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  businessId: string,
+  input: { readonly kind: BusinessKind; readonly mode: 'direct' | 'application'; readonly effectiveDate: string },
+  entry: EntryOptions | undefined,
+): Promise<void> {
+  if (!ENTRY_LIKE_KINDS.includes(input.kind)) return;
+  const target = { employeeId, businessId, effectiveDate: input.effectiveDate, deferStart: input.mode !== 'direct' };
+  await saveEntryProbation(tx, ctx, target, entry);
 }
