@@ -791,6 +791,58 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     scope: listScope('module.scopeSql'),
     fields: projector('employment.response', 'employment.entryViews'),
   }),
+  // ---- employment/intern-routes.ts：R2 BE-6a 实习生（B34～B38、B41、A48）-------------------------------------------------
+  // 实习四视图：view ∈ interning / converting / converted / left（缺失或不合法 400）；departmentId（UUID）/ keyword（1～100）
+  // 筛选不合法 400，按部门筛选须任职记录 departmentId 可见、按关键字须人员对象 name / code 可见（employment.viewableFilters，
+  // 否则 403「筛选字段不可查看」）；readPageContext(list)：任职记录对象查看 + 列表范围，listInternView 的
+  // employmentScopePredicate = scopeSql（人员 / 记录部门 / 创建人，范围为空什么也看不到）；记录字段按任职记录可见字段裁剪，
+  // 姓名 / 工号按人员对象可见字段另行裁剪；state / probation 是视图控制项，行可见即可见；hasDataPermission 协议键
+  'GET /interns': object({
+    object: EMPLOYMENT,
+    operation: 'view',
+    button: noButton('列表无按钮'),
+    guards: ['employment.viewableFilters'],
+    scope: listScope('module.scopeSql'),
+    fields: projector('employment.response', 'employment.internViews'),
+  }),
+  // 直接实习转正：If-Match 必填（员工 revision）；body 严格（实习转正日期、部门、职位 / 直线 / 虚线经理、是否有试用期、
+  // 试用期月数 1～6、预计结束、confirmed；合同 / 工号 / 入职日期不受理，400）；resource=id 人员范围 404「任职数据不存在」 +
+  // 看全部的 tenant.employment.write 别名；requireEmploymentWrite('create', { kind, mode, effectiveDate, fields }, Employment.Create)；
+  // requireEmploymentScope（人员 + 目标部门）；命令内 CommandGuard.before 按当前授权重过（internRegularizationGuard，F-195 同口径）；
+  // regularizeIntern：员工锁 + revision → 非在职实习生 409 NOT_INTERN / 有审批中转正申请 409 INTERN_REGULARIZATION_IN_PROGRESS →
+  // createEmploymentBusiness（直接落地、业务顺序校验、严格控编 409 ESTABLISHMENT_EXCEEDED、DEC-178 联动）→
+  // 非严格超编未确认 409 CONFIRMATION_REQUIRED（整单回滚）→ 试用期信息同事务写入并审计
+  'POST /interns/:id/regularize': object({
+    object: EMPLOYMENT,
+    operation: 'create',
+    button: button('Employment.Create', 'detail'),
+    guards: [DIRECT_OPERATION, LINKAGE],
+    scope: guardScope('employment.scope', NF_DATA),
+    fields: RESPONSE,
+    write: employmentWrite(
+      'body.fields+customFields',
+      ['lockEmploymentEmployee', 'assertRevision', 'requireScopedEmploymentObject', 'requireLinkedEmploymentRecord'],
+      { controls: ['probation', 'probationMonths', 'probationEndDate', 'confirmed'] },
+    ),
+    ...byId,
+  }),
+  // 重聘判定（只读，POST 以免证件号进 URL）：readContext('object.create', Employee)；body 严格 { idType, idNumber }（400，
+  // 手机 / 邮箱匹配未验证不受理）；requireEmploymentWrite('create', {}, Employee.Create@list，命令式空集合）；
+  // requireEmploymentScope(ctx) 只认看全部（DEC-121，否则 404「任职数据不存在」）；多人命中 409 REHIRE_MATCH_AMBIGUOUS；
+  // 带出项按三个对象的可见字段裁剪：name / code（人员对象）、email（人员信息）、departmentId / lastWorkDate（任职记录）
+  'POST /rehire-matches': object({
+    object: EMPLOYEE,
+    operation: 'create',
+    button: button('Employee.Create', 'list'),
+    scope: seeAll(NF_DATA),
+    fields: projector('employment.response', 'employment.rehireMatch'),
+    write: write(
+      'body',
+      none('只读判定：没有命令事务，没有提交前足迹'),
+      none('只读判定：没有返回后复核，带出项按可见字段裁剪'),
+      { commandOnly: true },
+    ),
+  }),
   // 重试生效：If-Match 必填；空体；requireEmploymentWrite('update', {}, RetryActivation)；authorizeBusinessWrite（写入口径）；
   // 命令内 retryActivation 内联校验 revision（409 REVISION_CONFLICT）、未生效 / 未失败 / 未到期 / 前序失败（409）
   'POST /businesses/:id/activation/retry': object({

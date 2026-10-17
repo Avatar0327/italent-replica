@@ -148,7 +148,7 @@ export async function createEmploymentBusiness(
     prepared,
     null,
     selected?.cycle.id,
-    options.changeType,
+    options.changeType ?? defaultChangeType(normalized.kind),
     entryStatusFor(normalized.kind, options.entry),
   );
   const business: LockedEmploymentBusiness = {
@@ -167,6 +167,11 @@ export async function createEmploymentBusiness(
   const created = { ...payloadAudit(payload), ...pendingAudit };
   await auditEmployment(tx, ctx, 'employment.business.create', 'employment-business', id, null, created);
   return requireSavedBusiness(tx, ctx, id);
+}
+
+/** 实习转正（直接或申请）的变动类型固定为“实习转正”（R2f B41；31 Q-M0-122 ④ 实习转正中的异动类型）。 */
+function defaultChangeType(kind: BusinessKind): ChangeType | undefined {
+  return kind === 'intern_regularization' ? 'intern_regularization' : undefined;
 }
 
 /** F-006：职位变更同步直线经理时，在表单快照里记下派生规则。 */

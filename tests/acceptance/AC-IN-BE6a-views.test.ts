@@ -114,7 +114,7 @@ describe('AC-IN-BE6a-04 实习四视图', () => {
     expect(
       (
         await w.regularize(elsewhere.employee.id, {
-          effectiveDate: '2026-10-16',
+          effectiveDate: '2026-10-01',
           departmentId: w.other.id,
           probation: false,
         })
@@ -138,6 +138,18 @@ describe('AC-IN-BE6a-04 实习四视图', () => {
       expect((await w.session.request('GET', `/interns?${query}`)).status).toBe(400);
     },
   );
+
+  it('转正日在未来：到转正日前仍是当前生效的实习生（实习中），转正记录已落地（已转正）；到日后只在已转正', async () => {
+    const w = await internWorld(testDb().db, 'be6a-views-future');
+    const intern = await w.hire('未来转正合成实习生', 'intern');
+    const body = { effectiveDate: '2026-10-16', departmentId: w.org.id, probation: false };
+    expect((await w.regularize(intern.employee.id, body)).status).toBe(201);
+    expect(names(await w.view('interning'))).toEqual(['未来转正合成实习生']);
+    expect(names(await w.view('converted'))).toEqual(['未来转正合成实习生']);
+    w.session.setNow('2026-10-16T01:00:00.000Z');
+    expect(await w.view('interning')).toEqual([]);
+    expect(names(await w.view('converted'))).toEqual(['未来转正合成实习生']);
+  });
 
   it('已离职视图只认实习生身份的离职：内部员工离职不出现', async () => {
     const w = await internWorld(testDb().db, 'be6a-views-left');
@@ -178,7 +190,7 @@ describe('AC-IN-BE6a-05 实习四视图的数据范围与字段裁剪（fail-clo
     expect(
       (
         await w.regularize(other.employee.id, {
-          effectiveDate: '2026-10-16',
+          effectiveDate: '2026-10-01',
           departmentId: w.other.id,
           probation: false,
         })

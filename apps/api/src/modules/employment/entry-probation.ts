@@ -55,3 +55,23 @@ export async function saveAddedProbation(
 
 /** 创建审计 after 里的试用期键：没保存过就不出现。 */
 export const probationAudit = (probation: boolean | undefined) => (probation === undefined ? {} : { probation });
+
+/** 任职试用期信息（BE-6a，表 employment_record_probation）：有试用期的任职随落地一次写入，开始 = 记录生效日。 */
+export interface RecordProbation {
+  readonly startDate: string;
+  readonly months: number;
+  readonly endDate: string;
+}
+
+export async function saveRecordProbation(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  businessId: string,
+  probation: RecordProbation,
+): Promise<void> {
+  await tx.execute(sql`INSERT INTO employment_record_probation(tenant_id, employee_id, business_id,
+      start_date, months, expected_end_date, created_at)
+    VALUES (${ctx.tenantId}, ${employeeId}::uuid, ${businessId}::uuid, ${probation.startDate}::date,
+      ${probation.months}, ${probation.endDate}::date, ${ctx.now.toISOString()}::timestamptz)`);
+}

@@ -234,3 +234,30 @@ async function requireExitScope(
     });
   if (departmentId !== undefined) requireEmploymentScope(scoped, target.employeeId, departmentId);
 }
+
+/**
+ * 直接实习转正（BE-6a，POST /interns/:id/regularize）的命令内复核：口径同入口——对象新增权、Employment.Create 按钮与
+ * 字段创建权、员工当前范围（看全部另要任职写权别名）、目标部门写入范围；按当前授权在命令事务内重过，撤权后重放拿不到原 201。
+ */
+export function internRegularizationGuard(
+  deps: TenantRouteDeps,
+  ctx: EmploymentContext,
+  employeeId: string,
+  business: object,
+  departmentId: string,
+): ScopedCommandGuard {
+  return scopedGuard({
+    before: async (tx) => {
+      const scoped = await commandContext(tx, deps, ctx);
+      if (scoped.trustedScopeBypass)
+        await requirePermission(scoped.authorize!, {
+          ...scoped,
+          action: 'tenant.employment.write',
+          resource: employeeId,
+        });
+      await requireEmployeeInScope(tx, scoped, employeeId);
+      await requireEmploymentWrite(scoped, 'create', business, 'Employment.Create');
+      requireEmploymentScope(scoped, employeeId, departmentId);
+    },
+  });
+}
