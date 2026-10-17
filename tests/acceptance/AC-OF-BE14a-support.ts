@@ -175,6 +175,7 @@ export async function offerRealWorld(db: Db, label: string, deniedEdit: readonly
   for (const definition of [MODULE_OBJECTS.offer, MODULE_OBJECTS.jobPosition]) await permit(definition, deniedEdit);
   await makeGrantable(seed, [profile.id]);
   expect((await grant(seed, member.id, profile.id)).status).toBe(201);
+  const seeAllRevisions = new Map<string, number>();
   const scope = await api.request('PUT', `/api/tenant/permission/scopes/${member.id}/TenantBase`, {
     ...seed.asAdmin,
     ifMatch: 0,
@@ -230,6 +231,22 @@ export async function offerRealWorld(db: Db, label: string, deniedEdit: readonly
     traces,
     /** 改身份上 Offer 字段的编辑权（撤权后同键重放用）。 */
     denyEdit: (fields: readonly string[]) => permit(MODULE_OBJECTS.offer, fields),
+    /**
+     * 身份上给某对象单独授“看全部”（第 3 轮：Offer 看全部而 Employee 只有部门 A，人员引用须按 Employee 自己的范围）。
+     */
+    seeAll: async (objectCode: string) => {
+      const response = await api.request(
+        'PUT',
+        `/api/tenant/permission/profiles/${profile.id}/data-scopes/TenantBase`,
+        {
+          ...seed.asAdmin,
+          ifMatch: seeAllRevisions.get(objectCode) ?? 0,
+          body: { targetKind: 'entity', targetCode: objectCode, seeAll: true },
+        },
+      );
+      expect(response.status, await response.clone().text()).toBe(200);
+      seeAllRevisions.set(objectCode, ((await response.json()) as { revision: number }).revision);
+    },
     outsidePosition: ((await position.json()) as { id: string }).id,
   };
 }

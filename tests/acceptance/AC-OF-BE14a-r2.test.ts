@@ -112,3 +112,69 @@ describe('P2-02 引用按被引用对象的当前范围校验', () => {
     expect(await w.get(offer.id)).toMatchObject({ levelId: null, contractCompanyId: null, revision: 1 });
   });
 });
+
+/**
+ * 第 3 轮（#394 第 2 轮审查 P2-02 余项）：直线上级 / 虚线上级 / HRBP 按 Employee 自己的当前范围校验，不能借用 Offer 的范围。
+ * 成员对 Offer 有对象级“看全部”，Employee 只有部门 A；目标员工不在部门 A（读取 404）。
+ */
+describe('P2-02 余项：人员引用按 Employee 自身范围', () => {
+  const FIELDS = ['directManagerId', 'dottedManagerId', 'hrbpId'] as const;
+
+  it('三个人员字段 × 新建 / 编辑 / 复制共 9 例都 400 OFFER_REFERENCE_INVALID，不写入、revision 不变、无成功审计与台账', async () => {
+    const w = await offerRealWorld(testDb().db, 'person-scope');
+    await w.seeAll('TenantBase.Offer');
+    const target = w.manager.id;
+    const base = (await (
+      await w.real('POST', '', { ifMatch: 0, body: { entry: 'intern', ...w.internFields() } })
+    ).json()) as OfferBody;
+    for (const field of FIELDS) {
+      const before = await w.count();
+      const createKey = randomUUID();
+      const created = await w.real('POST', '', {
+        ifMatch: 0,
+        idempotencyKey: createKey,
+        body: { entry: 'intern', ...w.internFields(), [field]: target },
+      });
+      expect(created.status, `${field} 新建：${await created.clone().text()}`).toBe(400);
+      expect((await errorOf(created)).details).toMatchObject({ reason: 'OFFER_REFERENCE_INVALID' });
+      expect(await w.count()).toBe(before);
+      expect(await w.traces(createKey)).toBe(0);
+
+      const editKey = randomUUID();
+      const edited = await w.real('PUT', `/${base.id}`, {
+        ifMatch: 1,
+        idempotencyKey: editKey,
+        body: { [field]: target },
+      });
+      expect(edited.status, `${field} 编辑：${await edited.clone().text()}`).toBe(400);
+      expect(await w.get(base.id)).toMatchObject({ [field]: null, revision: 1 });
+      expect(await w.traces(editKey)).toBe(0);
+
+      const source = await w.intern({ [field]: target });
+      await w.invalidated(source.id);
+      const copyBefore = await w.count();
+      const copyKey = randomUUID();
+      const copied = await w.real('POST', `/${source.id}/copy`, { ifMatch: 1, idempotencyKey: copyKey });
+      expect(copied.status, `${field} 复制：${await copied.clone().text()}`).toBe(400);
+      expect(await w.count()).toBe(copyBefore);
+      expect(await w.traces(copyKey)).toBe(0);
+    }
+  });
+
+  it('对照：Employee 也有看全部时，三个人员字段新建成功', async () => {
+    const w = await offerRealWorld(testDb().db, 'person-scope-ok');
+    await w.seeAll('TenantBase.Offer');
+    await w.seeAll('TenantBase.Employee');
+    const created = await w.real('POST', '', {
+      ifMatch: 0,
+      body: {
+        entry: 'intern',
+        ...w.internFields(),
+        directManagerId: w.manager.id,
+        dottedManagerId: w.manager.id,
+        hrbpId: w.hrbp.id,
+      },
+    });
+    expect(created.status, await created.clone().text()).toBe(201);
+  });
+});
