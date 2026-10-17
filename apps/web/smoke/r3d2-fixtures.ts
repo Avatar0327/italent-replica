@@ -103,8 +103,9 @@ const participating = {
   processId: undefined,
 };
 function participantRow(row: typeof plan | typeof participating) {
-  const { tutorRole: _r, processId: _p, ...rest } = row;
-  return rest;
+  const { tutorRole: _r, tutorEmployeeId: _t, processId: _p, ...rest } = row;
+  // 三条列表夹具的指导人均为 employee；不改变参与人详情的字段集。
+  return { ...rest, tutorEmployeeId: employee };
 }
 /** 我辅导的发展计划（plan-routes tutor-plans）：指导人为本人的进行中计划，返回指导人，不含指导人角色与流程。 */
 function tutorRow(id: string, name: string, employeeId: string) {
@@ -422,11 +423,7 @@ function staticReads(
     '/my-plans': {
       page: 1,
       pageSize: 200,
-      items: [
-        plan,
-        { ...participating, tutorEmployeeId: employee },
-        { ...plan, id: basicOnlyId, name: '合成基本信息计划' },
-      ].map(participantRow),
+      items: [plan, participating, { ...plan, id: basicOnlyId, name: '合成基本信息计划' }].map(participantRow),
     },
     '/tutor-plans': {
       page: 1,
