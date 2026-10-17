@@ -466,6 +466,7 @@ export const EXIT_RESPONSE_DEPENDENCIES: Readonly<Record<string, Dependency>> = 
   reasonName: on('reasonCode'),
   whereaboutsName: on('whereaboutsCode'),
   // 生效失败 / 挂起标记（最近一次生效尝试）
+  activation: on('activation'),
   'activation.status': on('activation'),
   'activation.reason': on('activation'),
   'activation.blockedByBusinessId': on('activation'),
@@ -516,41 +517,55 @@ function dependencyOf(path: string): Dependency | undefined {
 
 const DROPPED = Symbol('dropped');
 
-/** 按路径规则递归裁剪：容器本身没有规则，只看叶子；未登记的嵌套叶子不输出。 */
+const allows = (rule: Dependency, show: ExitViewable) =>
+  rule.field === null || (rule.object === 'employee' ? show.employee : show.employment)(rule.field);
+
+/**
+ * 按路径规则递归裁剪，三条规则（#409 第 5 轮）：
+ * 1. 容器（对象 / 数组）若在表里登记了整体依赖（如 activation），先判整体权，无权整个键缺席，不进入递归；
+ * 2. 其余容器本身没有规则，只看叶子；叶子未登记的一律不输出（嵌套 fail-closed，顶层未登记键 = 键名即字段编码）；
+ * 3. 裁剪前有叶子、裁剪后一个不剩的容器整体缺席——不留 {} / []，否则凭键是否存在或元素个数就能推断隐藏的值。
+ * 裁剪前本来就是空的容器（如没有效果记录的 effects）原样保留。
+ */
 function trimNode(value: unknown, path: string, show: ExitViewable): unknown {
-  if (Array.isArray(value))
-    return value.map((item) => trimNode(item, `${path}[]`, show)).filter((item) => item !== DROPPED);
-  if (value !== null && typeof value === 'object')
-    return Object.fromEntries(
-      Object.entries(value)
-        .map(([key, item]) => [key, trimNode(item, path ? `${path}.${key}` : key, show)] as const)
-        .filter(([, item]) => item !== DROPPED),
-    );
+  const isContainer = value !== null && typeof value === 'object';
+  const whole = EXIT_RESPONSE_DEPENDENCIES[path];
+  if (isContainer && whole && !allows(whole, show)) return DROPPED;
+  if (Array.isArray(value)) {
+    const kept = value.map((item) => trimNode(item, `${path}[]`, show)).filter((item) => item !== DROPPED);
+    return value.length > 0 && kept.length === 0 ? DROPPED : kept;
+  }
+  if (isContainer) {
+    const entries = Object.entries(value);
+    const kept = entries
+      .map(([key, item]) => [key, trimNode(item, path ? `${path}.${key}` : key, show)] as const)
+      .filter(([, item]) => item !== DROPPED);
+    return entries.length > 0 && kept.length === 0 ? DROPPED : Object.fromEntries(kept);
+  }
   const rule = dependencyOf(path);
-  if (!rule) return DROPPED;
-  if (rule.field === null) return value;
-  return (rule.object === 'employee' ? show.employee : show.employment)(rule.field) ? value : DROPPED;
+  return rule && allows(rule, show) ? value : DROPPED;
 }
 
 export function trimExit<T extends ExitItem>(item: T, show: ExitViewable): Partial<T> {
   return trimNode(item, '', show) as Partial<T>;
 }
 
-/** 详情：补上原定 / 最终日期块后，与列表走同一张表裁剪。 */
-export function trimExitDetail(detail: ExitDetail, show: ExitViewable) {
+/** 详情裁剪前的完整输出：补上原定 / 最终日期块（测试的“裁剪前路径”守卫读它）。 */
+export function exitDetailPayload(detail: ExitDetail) {
   const planned = new Date(`${detail.plannedLastWorkDate}T00:00:00Z`);
   planned.setUTCDate(planned.getUTCDate() + 1);
-  return trimNode(
-    {
-      ...detail,
-      dates: {
-        planned: { lastWorkDate: detail.plannedLastWorkDate, effectiveDate: planned.toISOString().slice(0, 10) },
-        final: { lastWorkDate: detail.lastWorkDate, effectiveDate: detail.effectiveDate },
-      },
+  return {
+    ...detail,
+    dates: {
+      planned: { lastWorkDate: detail.plannedLastWorkDate, effectiveDate: planned.toISOString().slice(0, 10) },
+      final: { lastWorkDate: detail.lastWorkDate, effectiveDate: detail.effectiveDate },
     },
-    '',
-    show,
-  ) as Record<string, unknown>;
+  };
+}
+
+/** 详情：与列表走同一张表裁剪。 */
+export function trimExitDetail(detail: ExitDetail, show: ExitViewable) {
+  return trimNode(exitDetailPayload(detail), '', show) as Record<string, unknown>;
 }
 
 /** 筛选 → 依赖的字段（Record 覆盖 ExitViewFilter 的每个键：新增筛选必须登记）。 */

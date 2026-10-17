@@ -1151,8 +1151,14 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/exit-queries.ts#toItem': ['#iso'],
   'apps/api/src/modules/employment/exit-queries.ts#trimExit': ['#trimNode'],
-  'apps/api/src/modules/employment/exit-queries.ts#trimExitDetail': ['#trimNode'],
-  'apps/api/src/modules/employment/exit-queries.ts#trimNode': ['#DROPPED', '#dependencyOf', '#trimNode'],
+  'apps/api/src/modules/employment/exit-queries.ts#trimExitDetail': ['#exitDetailPayload', '#trimNode'],
+  'apps/api/src/modules/employment/exit-queries.ts#trimNode': [
+    '#DROPPED',
+    '#EXIT_RESPONSE_DEPENDENCIES',
+    '#allows',
+    '#dependencyOf',
+    '#trimNode',
+  ],
   'apps/api/src/modules/employment/exit-queries.ts#viewOrder': ['#EXIT_SORT_DEPENDENCIES'],
   'apps/api/src/modules/employment/exit-routes.ts#VIEW_QUERY_KEYS': ['#viewQuery'],
   'apps/api/src/modules/employment/exit-routes.ts#batchSchema': [

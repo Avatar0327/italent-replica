@@ -14,6 +14,9 @@ import {
   EXIT_RESPONSE_DEPENDENCIES,
   EXIT_SORT_DEPENDENCIES,
   EXIT_VIEWS,
+  exitDetailPayload,
+  listExitView,
+  loadExitDetail,
   trimExit,
   type ExitItem,
 } from '../../apps/api/src/modules/employment/exit-queries.js';
@@ -809,6 +812,34 @@ describe('AC-DM-19 派生值与撤销视图排序（第 4 轮）', () => {
 
 // ---- 字段依赖表守卫（#409 第 4 轮，DEC-431①）：派生 / 排序 / 筛选依赖的字段只在一张表里登记 ----------------------------
 
+/** 路径规则里出现过的容器前缀（'versions[].versionNo' → 'versions'、'versions[]'）。 */
+const CONTAINERS = new Set(
+  Object.keys(EXIT_RESPONSE_DEPENDENCIES).flatMap((path) => {
+    const segments = path.split('.');
+    return segments.slice(0, -1).flatMap((_, index) => {
+      const prefix = segments.slice(0, index + 1).join('.');
+      return prefix.endsWith('[]') ? [prefix, prefix.slice(0, -2)] : [prefix];
+    });
+  }),
+);
+
+/** 裁剪前输出里没有登记依赖的路径：叶子（顶层 = 字段目录里的键或已登记，嵌套 = 必须已登记）和容器（必须是已登记路径的前缀）。 */
+function unregisteredPaths(value: unknown, path = ''): string[] {
+  const registered = path in EXIT_RESPONSE_DEPENDENCIES;
+  if (Array.isArray(value)) {
+    const own = path && !registered && !CONTAINERS.has(path) ? [path] : [];
+    return [...own, ...value.flatMap((item) => unregisteredPaths(item, path ? `${path}[]` : ''))];
+  }
+  if (value && typeof value === 'object') {
+    const own = path && !registered && !CONTAINERS.has(path) ? [path] : [];
+    return [
+      ...own,
+      ...Object.entries(value).flatMap(([key, item]) => unregisteredPaths(item, path ? `${path}.${key}` : key)),
+    ];
+  }
+  return registered || (!isNested(path) && FULL.includes(path)) ? [] : [path];
+}
+
 describe('AC-DM-19 字段依赖表守卫', () => {
   it('不依赖任何受控字段的叶子必须写明理由；依赖的字段都在字段目录里（防拼错）', () => {
     for (const [path, rule] of Object.entries(EXIT_RESPONSE_DEPENDENCIES)) {
@@ -844,9 +875,9 @@ describe('AC-DM-19 字段依赖表守卫', () => {
       cancellation: { reason: 'r', newSecretLeaf: 'x' },
       newTopLevelButRegisteredNowhereNested: { inner: 1 },
     } as unknown as ExitItem;
-    const out = trimExit(item, everything) as { cancellation: object; newTopLevelButRegisteredNowhereNested: object };
+    const out = trimExit(item, everything) as { cancellation: object };
     expect(out.cancellation).toEqual({ reason: 'r' });
-    expect(out.newTopLevelButRegisteredNowhereNested).toEqual({});
+    expect(out).not.toHaveProperty('newTopLevelButRegisteredNowhereNested');
   });
 });
 
@@ -898,5 +929,33 @@ describe('AC-DM-19 容器整体判权（第 5 轮）', () => {
     const noDates = await detailOf(as(FULL.filter((f) => f !== 'effectiveDate' && f !== 'lastWorkDate')));
     expect(noDates).not.toHaveProperty('dates');
     expect(JSON.stringify(noDates)).not.toContain('"dates"');
+  });
+
+  it('裁剪前的输出路径（含容器）都登记了依赖：未登记的嵌套叶子或容器会让守卫判红（含注入 cancellation.newSecretLeaf 的变异）', async () => {
+    const { x } = await nestedWorld('views-guard-pre');
+    const failed = await x.exit('失败单', '2026-10-25', 'direct');
+    await x.attempt(failed.id, failed.employee.id, 'failed', 'REBUILD_REQUIRED');
+    const t = x.w.session.tenant.id;
+    const all = { employee: () => true, employment: () => true };
+    const pre = await withTenant(database().db, t, async (tx) => {
+      const page = { page: 1, pageSize: 50, limit: 50, offset: 0 };
+      const rows = (await listExitView(tx, t, { view: 'all', page, filter: {}, show: all }, undefined)).items;
+      const details = [];
+      for (const row of rows) details.push(exitDetailPayload((await loadExitDetail(tx, t, row.id, undefined))!));
+      return { rows, details };
+    });
+    // 数据里确实有撤销信息、生效失败标记、效果台账，守卫看得到这些容器
+    expect(leafPaths(pre.details).some((path) => path.includes('cancellation.'))).toBe(true);
+    expect(leafPaths(pre.details).some((path) => path.includes('activation.'))).toBe(true);
+    expect(unregisteredPaths(pre.rows)).toEqual([]);
+    expect(unregisteredPaths(pre.details)).toEqual([]);
+    // 变异：加入未登记的嵌套叶子 / 嵌套容器，守卫必须报出
+    const voided = pre.details.findIndex((detail) => detail.cancellation);
+    const leafMutant = structuredClone(pre.details);
+    (leafMutant[voided]!.cancellation as Record<string, unknown>).newSecretLeaf = 'x';
+    expect(unregisteredPaths(leafMutant)).toEqual(['cancellation.newSecretLeaf']);
+    const containerMutant = structuredClone(pre.details);
+    (containerMutant[voided]!.cancellation as Record<string, unknown>).extra = { inner: 1 };
+    expect(unregisteredPaths(containerMutant)).toEqual(['cancellation.extra', 'cancellation.extra.inner']);
   });
 });
