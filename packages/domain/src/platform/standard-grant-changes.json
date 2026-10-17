@@ -1,5 +1,5 @@
 {
-  "reason": "R2 BE-14a：新增 Offer 对象（TenantBase.Offer）的字段、CRUD 与转移状态两项按钮授权项，进组织员工系统管理员 / HR 管理员 / HR 专员三个标准身份（DEC-415）",
+  "reason": "R2 BE-14b2：Offer 新增同步待入职相关的 9 个只读系统字段（同步状态 / 原因 / 说明 / 次数 / 时间、关联待入职与实习生、合同类型），进组织员工系统管理员 / HR 管理员 / HR 专员三个标准身份（DEC-415）",
   "add": [
     "standard_hr_admin/TenantBase.Offer/*",
     "standard_hr_specialist/TenantBase.Offer/*",
