@@ -25,8 +25,8 @@ const runs = (w: SuccessionWorld) =>
 
 it.each(['停用', '不存在'] as const)('AC-SC-map-lifecycle 已保存隐藏组织%s：剩余职位图仍可读取', async (state) => {
   const w = await successionWorld(db().db, `sc-hidden-${state}`);
-  const a = await w.org('A');
-  const h = await w.org('隐藏 H', a.id);
+  const a = await w.org('A', undefined, { establishedOn: '2026-09-30' });
+  const h = await w.org('隐藏 H', a.id, { establishedOn: '2026-09-30' });
   const p = await w.position(a.id, '正常显示职位');
   const options = {
     ifMatch: 0,
@@ -58,8 +58,8 @@ it.each(['停用', '不存在'] as const)('AC-SC-map-lifecycle 已保存隐藏�
 
 it('AC-SC-map-lifecycle 隐藏停用：compute-stats 同键复用原回执，新命令含停用项仍拒绝', async () => {
   const w = await successionWorld(db().db, 'sc-stats-hidden-stop');
-  const a = await w.org('A');
-  const h = await w.org('隐藏 H', a.id);
+  const a = await w.org('A', undefined, { establishedOn: '2026-09-30' });
+  const h = await w.org('隐藏 H', a.id, { establishedOn: '2026-09-30' });
   const options = {
     ifMatch: 0,
     idempotencyKey: randomUUID(),
@@ -89,8 +89,8 @@ it('AC-SC-map-lifecycle 隐藏停用：compute-stats 同键复用原回执，新
 
 it('AC-SC-map-lifecycle 偏好同键返回原配置，新提交拒绝停用隐藏项，清除旧项仍触发统计', async () => {
   const w = await successionWorld(db().db, 'sc-prefs-hidden-stop');
-  const a = await w.org('A');
-  const h = await w.org('隐藏 H', a.id);
+  const a = await w.org('A', undefined, { establishedOn: '2026-09-30' });
+  const h = await w.org('隐藏 H', a.id, { establishedOn: '2026-09-30' });
   const options = {
     ifMatch: 0,
     idempotencyKey: randomUUID(),
@@ -132,7 +132,7 @@ it('AC-SC-map-lifecycle 偏好同键返回原配置，新提交拒绝停用隐�
 
 it('AC-SC-map-lifecycle 根停用：显示和新提交 404，原统计/偏好回执仍可重放', async () => {
   const w = await successionWorld(db().db, 'sc-map-root-stop');
-  const a = await w.org('根 A');
+  const a = await w.org('根 A', undefined, { establishedOn: '2026-09-30' });
   const body = { rootOrgId: a.id, depth: 2, hiddenOrgIds: [] };
   const stats = { ifMatch: 0, idempotencyKey: randomUUID(), body };
   const prefs = {
@@ -175,8 +175,8 @@ it.each(['统计', '偏好'] as const)(
   'AC-SC-map-lifecycle %s已提交后隐藏组织停用、回包丢失，失败回查恢复原回执',
   async (kind) => {
     const w = await successionWorld(db().db, `sc-map-recovery-${kind}`);
-    const a = await w.org('A');
-    const h = await w.org('隐藏 H', a.id);
+    const a = await w.org('A', undefined, { establishedOn: '2026-09-30' });
+    const h = await w.org('隐藏 H', a.id, { establishedOn: '2026-09-30' });
     const compute = kind === '统计',
       status = compute ? 202 : 200;
     let unknown = true;
@@ -223,8 +223,8 @@ it.each(['统计', '偏好'] as const)(
 
 it('AC-SC-map-lifecycle 不重验启用门槛仍复核原集合授权；范围撤销后重放 404', async () => {
   const w = await successionWorld(db().db, 'sc-original-scope-revoked');
-  const a = await w.org('A');
-  const h = await w.org('隐藏 H', a.id);
+  const a = await w.org('A', undefined, { establishedOn: '2026-09-30' });
+  const h = await w.org('隐藏 H', a.id, { establishedOn: '2026-09-30' });
   let hasScope = true;
   const api = tenantApi(w.db, {
     clock: () => SC_NOW,

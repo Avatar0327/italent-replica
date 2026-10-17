@@ -57,7 +57,7 @@ async function setup(strategy = 'append', empty = false, position = false) {
     await tx.execute(sql`UPDATE succession_sync_batches SET status='terminated' WHERE tenant_id=${w.tenant.id}::uuid`);
   });
   await setting('sync_strategy', strategy, revision++);
-  const org = await w.org(`执行目标${revision}`);
+  const org = await w.org(`执行目标${revision}`, undefined, { establishedOn: '2026-09-30' });
   const target = position ? await w.position(org.id, `目标职位${revision}`) : org;
   const kind = position ? ('position' as const) : ('org' as const);
   const oldId = await w.insertRecord({ type: kind, targetId: target.id, successorId: std.head.id });
