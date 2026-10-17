@@ -318,7 +318,7 @@ export async function listExitView(
 
 /** 扩展行的业务字段（详情用）；金额按数字返回，缺省为 null。 */
 export interface ExitExtension {
-  readonly attachmentRefs: unknown;
+  readonly attachmentRefs: readonly string[] | null;
   readonly handoverEmployeeId: string | null;
   readonly addToBlacklist: boolean;
   readonly compensationAmount: number | null;
@@ -411,7 +411,7 @@ export async function loadExitDetail(
     effects.filter((effect) => effect.kind === kind).reduce((sum, effect) => sum + Number(effect.count), 0);
   return {
     ...toItem(row),
-    attachmentRefs: ext.attachmentRefs ?? null,
+    attachmentRefs: (ext.attachmentRefs as string[] | null | undefined) ?? null,
     handoverEmployeeId: (ext.handoverEmployeeId as string | null) ?? null,
     addToBlacklist: Boolean(ext.addToBlacklist),
     compensationAmount: amount(ext.compensationAmount),
@@ -437,12 +437,14 @@ export async function loadExitDetail(
   };
 }
 
-// ---- 字段依赖表（§9.1；#409 第 4 轮，DEC-431①）----------------------------------------------------------------
+// ---- 字段依赖表（§9.1；#409 第 4～6 轮，DEC-431①）----------------------------------------------------------------
 //
 // 三类“依赖某个字段”的输出统一登记在这里，裁剪、筛选检查、排序回退都只读这几张表，不在各处单独判断：
-//   1. 响应叶子（EXIT_RESPONSE_DEPENDENCIES）：每个叶子路径依赖哪个字段编码（MODULE_OBJECTS.employmentRecord，含
-//      EXIT_REQUEST_SYSTEM_FIELDS；姓名 / 工号属人员对象）；由某个字段派生的值（显示名、case、原定日期）跟随它的字段；
-//      确实不派生自任何受控字段的叶子必须写明理由（field: null + why），没有登记的叶子一律不输出（fail-closed）。
+//   1. 响应路径（EXIT_RESPONSE_DEPENDENCIES）：**默认拒绝**——响应里的每一个路径（顶层键、嵌套键、数组、数组元素、
+//      容器）都必须在表里登记，没登记的一律不输出（无论是标量、空数组、空对象还是 null）；始终可见的路径也要显式登记为
+//      field: null 并写明理由（“无需字段权”），不存在“没登记就放行”。登记的字段是任职记录字段目录里的编码
+//      （MODULE_OBJECTS.employmentRecord，含 EXIT_REQUEST_SYSTEM_FIELDS；姓名 / 工号属人员对象）；由某个字段派生的值
+//      （显示名、case、原定日期）跟随它的字段。容器登记整体依赖时先判整体权，无权整个键缺席（不留空壳）。
 //   2. 筛选（EXIT_FILTER_DEPENDENCIES）：按它筛选等于探测它的值，须先能看到依赖的字段。
 //   3. 排序（EXIT_SORT_DEPENDENCIES）：排序键依赖的字段；看不到时改用 id 排序。
 // 视图归属（离职中 / 已完成 / 撤销）由视图名这一显式查询参数决定，是业务入口本身（设计 §3.2），不另按状态字段权拦截。
@@ -452,12 +454,44 @@ type Dependency =
 
 const independent = (why: string): Dependency => ({ field: null, why });
 const on = (field: string): Dependency => ({ field });
+const CONTAINER = independent('容器本身不含值，其中每个叶子在表里各有登记的规则');
 
-/**
- * 路径规则：顶层键 `key`、嵌套 `a.b`、数组元素 `a[].b`。顶层叶子未登记时，键名就是任职记录字段编码（AC-DM-19 核对
- * 它在字段目录里）；嵌套叶子必须登记。
- */
+/** 键名就是任职记录字段编码的顶层叶子（逐个列出）。 */
+const OWN_FIELDS = [
+  'id',
+  'employeeId',
+  'departmentId',
+  'positionId',
+  'lastWorkDate',
+  'effectiveDate',
+  'exitTypeCode',
+  'reasonCode',
+  'whereaboutsCode',
+  'status',
+  'mode',
+  'initiator',
+  'initiatorUserId',
+  'batchId',
+  'revision',
+  'createdAt',
+  'handoverEmployeeId',
+  'addToBlacklist',
+  'compensationAmount',
+  'nonCompeteAmount',
+  'lastPayDate',
+  'socialInsuranceEndMonth',
+  'annualLeaveSettled',
+  'taxPeriod',
+  'taxYear',
+  'employerName',
+  'actualLeaveDate',
+  'dutyTransferTiming',
+  'preReleaseDate',
+] as const;
+
+/** 路径写法：顶层键 `key`、嵌套 `a.b`、数组 `a` 与其元素 `a[]`、元素内的键 `a[].b`。 */
 export const EXIT_RESPONSE_DEPENDENCIES: Readonly<Record<string, Dependency>> = {
+  ...Object.fromEntries(OWN_FIELDS.map((field) => [field, on(field)])),
   name: { field: 'name', object: 'employee' },
   code: { field: 'code', object: 'employee' },
   // 派生显示名 / 原定日期：跟随所属字段
@@ -465,6 +499,9 @@ export const EXIT_RESPONSE_DEPENDENCIES: Readonly<Record<string, Dependency>> = 
   exitTypeName: on('exitTypeCode'),
   reasonName: on('reasonCode'),
   whereaboutsName: on('whereaboutsCode'),
+  // 附件元数据 ID：数组与元素同一字段权；空数组、未填写也是该字段的值，无权时整个键缺席
+  attachmentRefs: on('attachmentRefs'),
+  'attachmentRefs[]': on('attachmentRefs'),
   // 生效失败 / 挂起标记（最近一次生效尝试）
   activation: on('activation'),
   'activation.status': on('activation'),
@@ -481,25 +518,35 @@ export const EXIT_RESPONSE_DEPENDENCIES: Readonly<Record<string, Dependency>> = 
     '撤销原因文本：字段目录无独立编码，与离职原因字典的 reasonCode 无关，不派生自受控字段',
   ),
   // 详情的载荷版本（原定 / 最终日期的出处）
+  versions: CONTAINER,
+  'versions[]': CONTAINER,
   'versions[].versionNo': on('versionNo'),
   'versions[].createdAt': on('createdAt'),
   'versions[].effectiveDate': on('effectiveDate'),
   'versions[].plannedEffectiveDate': on('effectiveDate'),
   'versions[].lastWorkDate': on('lastWorkDate'),
   // 状态事件
+  events: CONTAINER,
+  'events[]': CONTAINER,
   'events[].eventNo': independent('第几次状态流转的序号，不含状态值，不派生自受控字段'),
   'events[].state': on('status'),
   'events[].createdAt': on('createdAt'),
   // 日期块（原定 / 最终）
+  dates: CONTAINER,
+  'dates.planned': CONTAINER,
+  'dates.final': CONTAINER,
   'dates.planned.lastWorkDate': on('lastWorkDate'),
   'dates.final.lastWorkDate': on('lastWorkDate'),
   'dates.planned.effectiveDate': on('effectiveDate'),
   'dates.final.effectiveDate': on('effectiveDate'),
   // 审批实例 / 效果台账 / 职责转交：来自其他对象，只给标识或汇总件数（不带目标 ID）
   approvalInstanceId: independent('审批中心实例标识，不是任职字段，不派生自受控字段'),
+  effects: CONTAINER,
+  'effects[]': CONTAINER,
   'effects[].phase': independent('效果台账汇总（阶段）：来自 exit_effects，不派生自受控字段；目标对象可见性归各自模块'),
   'effects[].kind': independent('效果台账汇总（种类）：同上'),
   'effects[].count': independent('效果台账汇总（件数）：同上'),
+  dutyTransfer: CONTAINER,
   'dutyTransfer.timing': on('dutyTransferTiming'),
   'dutyTransfer.transferred': independent('职责转交成功件数：来自 exit_effects 汇总，不派生自受控字段'),
   'dutyTransfer.failed': independent('职责转交失败件数：同上'),
@@ -511,39 +558,34 @@ export interface ExitViewable {
   readonly employment: (field: string) => boolean;
 }
 
-function dependencyOf(path: string): Dependency | undefined {
-  return EXIT_RESPONSE_DEPENDENCIES[path] ?? (/[.[]/.test(path) ? undefined : on(path));
-}
-
 const DROPPED = Symbol('dropped');
 
 const allows = (rule: Dependency, show: ExitViewable) =>
   rule.field === null || (rule.object === 'employee' ? show.employee : show.employment)(rule.field);
 
 /**
- * 按路径规则递归裁剪，三条规则（#409 第 5 轮）：
- * 1. 容器（对象 / 数组）若在表里登记了整体依赖（如 activation），先判整体权，无权整个键缺席，不进入递归；
- * 2. 其余容器本身没有规则，只看叶子；叶子未登记的一律不输出（嵌套 fail-closed，顶层未登记键 = 键名即字段编码）；
- * 3. 裁剪前有叶子、裁剪后一个不剩的容器整体缺席——不留 {} / []，否则凭键是否存在或元素个数就能推断隐藏的值。
- * 裁剪前本来就是空的容器（如没有效果记录的 effects）原样保留。
+ * 按路径规则递归裁剪，默认拒绝（#409 第 6 轮）：
+ * 1. 每个路径（标量、null、空数组、空对象、数组、数组元素、容器）都必须在表里登记，没登记的不输出；
+ * 2. 登记了字段依赖的路径（含容器）先判权，无权整个键缺席，不进入递归；
+ * 3. 裁剪前有成员、裁剪后一个不剩的容器整体缺席——不留 {} / []；裁剪前本来就是空的容器（有权时的 []）原样保留。
  */
 function trimNode(value: unknown, path: string, show: ExitViewable): unknown {
-  const isContainer = value !== null && typeof value === 'object';
-  const whole = EXIT_RESPONSE_DEPENDENCIES[path];
-  if (isContainer && whole && !allows(whole, show)) return DROPPED;
+  if (path !== '') {
+    const rule = EXIT_RESPONSE_DEPENDENCIES[path];
+    if (!rule || !allows(rule, show)) return DROPPED;
+  }
   if (Array.isArray(value)) {
     const kept = value.map((item) => trimNode(item, `${path}[]`, show)).filter((item) => item !== DROPPED);
     return value.length > 0 && kept.length === 0 ? DROPPED : kept;
   }
-  if (isContainer) {
+  if (value !== null && typeof value === 'object') {
     const entries = Object.entries(value);
     const kept = entries
       .map(([key, item]) => [key, trimNode(item, path ? `${path}.${key}` : key, show)] as const)
       .filter(([, item]) => item !== DROPPED);
     return entries.length > 0 && kept.length === 0 ? DROPPED : Object.fromEntries(kept);
   }
-  const rule = dependencyOf(path);
-  return rule && allows(rule, show) ? value : DROPPED;
+  return value;
 }
 
 export function trimExit<T extends ExitItem>(item: T, show: ExitViewable): Partial<T> {
@@ -551,6 +593,7 @@ export function trimExit<T extends ExitItem>(item: T, show: ExitViewable): Parti
 }
 
 /** 详情裁剪前的完整输出：补上原定 / 最终日期块（测试的“裁剪前路径”守卫读它）。 */
+export type ExitDetailPayload = ReturnType<typeof exitDetailPayload>;
 export function exitDetailPayload(detail: ExitDetail) {
   const planned = new Date(`${detail.plannedLastWorkDate}T00:00:00Z`);
   planned.setUTCDate(planned.getUTCDate() + 1);

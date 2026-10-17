@@ -15,6 +15,7 @@ import {
   EXIT_SORT_DEPENDENCIES,
   EXIT_VIEWS,
   exitDetailPayload,
+  type ExitDetailPayload,
   listExitView,
   loadExitDetail,
   trimExit,
@@ -812,33 +813,89 @@ describe('AC-DM-19 派生值与撤销视图排序（第 4 轮）', () => {
 
 // ---- 字段依赖表守卫（#409 第 4 轮，DEC-431①）：派生 / 排序 / 筛选依赖的字段只在一张表里登记 ----------------------------
 
-/** 路径规则里出现过的容器前缀（'versions[].versionNo' → 'versions'、'versions[]'）。 */
-const CONTAINERS = new Set(
-  Object.keys(EXIT_RESPONSE_DEPENDENCIES).flatMap((path) => {
-    const segments = path.split('.');
-    return segments.slice(0, -1).flatMap((_, index) => {
-      const prefix = segments.slice(0, index + 1).join('.');
-      return prefix.endsWith('[]') ? [prefix, prefix.slice(0, -2)] : [prefix];
-    });
-  }),
-);
-
-/** 裁剪前输出里没有登记依赖的路径：叶子（顶层 = 字段目录里的键或已登记，嵌套 = 必须已登记）和容器（必须是已登记路径的前缀）。 */
-function unregisteredPaths(value: unknown, path = ''): string[] {
-  const registered = path in EXIT_RESPONSE_DEPENDENCIES;
-  if (Array.isArray(value)) {
-    const own = path && !registered && !CONTAINERS.has(path) ? [path] : [];
-    return [...own, ...value.flatMap((item) => unregisteredPaths(item, path ? `${path}[]` : ''))];
-  }
-  if (value && typeof value === 'object') {
-    const own = path && !registered && !CONTAINERS.has(path) ? [path] : [];
+/** 一份数据 / 样本里没有在依赖表登记的路径（默认拒绝：叶子、容器、数组与数组元素都必须登记）。 */
+function unregisteredPaths(
+  value: unknown,
+  table: Readonly<Record<string, unknown>> = EXIT_RESPONSE_DEPENDENCIES,
+  path = '',
+): string[] {
+  const own = path && !(path in table) ? [path] : [];
+  if (Array.isArray(value))
+    return [...own, ...value.flatMap((item) => unregisteredPaths(item, table, path ? `${path}[]` : ''))];
+  if (value && typeof value === 'object')
     return [
       ...own,
-      ...Object.entries(value).flatMap(([key, item]) => unregisteredPaths(item, path ? `${path}.${key}` : key)),
+      ...Object.entries(value).flatMap(([key, item]) => unregisteredPaths(item, table, path ? `${path}.${key}` : key)),
     ];
-  }
-  return registered || (!isNested(path) && FULL.includes(path)) ? [] : [path];
+  return own;
 }
+
+/** 样本里的全部路径（叶子、容器、数组、数组元素），不依赖数据里有没有子项。 */
+function allPaths(value: unknown, path = ''): string[] {
+  const own = path ? [path] : [];
+  if (Array.isArray(value)) return [...own, ...value.flatMap((item) => allPaths(item, path ? `${path}[]` : ''))];
+  if (value && typeof value === 'object')
+    return [...own, ...Object.entries(value).flatMap(([key, item]) => allPaths(item, path ? `${path}.${key}` : key))];
+  return own;
+}
+
+/**
+ * 按响应类型枚举路径（不按数据）：样本用 satisfies 绑定到 ExitItem / ExitDetailPayload，类型里新增 / 改名任何字段
+ * 这里都编译不过，必须补样本；样本里每个数组带一个元素、每个可空对象取对象形态，所以空数组、未填写这类“数据里没有
+ * 子路径”的情形也在枚举之内。
+ */
+const ITEM_SAMPLE = {
+  id: '',
+  employeeId: '',
+  code: '',
+  name: '',
+  departmentId: null,
+  positionId: null,
+  lastWorkDate: '',
+  plannedLastWorkDate: '',
+  effectiveDate: '',
+  exitTypeCode: null,
+  exitTypeName: null,
+  reasonCode: null,
+  reasonName: null,
+  whereaboutsCode: null,
+  whereaboutsName: null,
+  status: 'approved',
+  mode: 'direct',
+  initiator: 'hr',
+  initiatorUserId: '',
+  batchId: null,
+  revision: 1,
+  createdAt: '',
+  activation: { status: 'failed', reason: null, blockedByBusinessId: null },
+  cancellation: { id: '', reason: '', case: '', stateBefore: '', revision: 1, createdAt: '' },
+} satisfies ExitItem;
+const DETAIL_SAMPLE = {
+  ...ITEM_SAMPLE,
+  attachmentRefs: [''],
+  handoverEmployeeId: null,
+  addToBlacklist: false,
+  compensationAmount: null,
+  nonCompeteAmount: null,
+  lastPayDate: null,
+  socialInsuranceEndMonth: null,
+  annualLeaveSettled: null,
+  taxPeriod: null,
+  taxYear: null,
+  employerName: null,
+  actualLeaveDate: null,
+  dutyTransferTiming: '',
+  preReleaseDate: null,
+  versions: [{ versionNo: 1, effectiveDate: '', plannedEffectiveDate: '', lastWorkDate: null, createdAt: '' }],
+  events: [{ eventNo: 1, state: '', createdAt: '' }],
+  approvalInstanceId: null,
+  effects: [{ phase: '', kind: '', count: 1 }],
+  dutyTransfer: { timing: '', transferred: 0, failed: 0 },
+  dates: {
+    planned: { lastWorkDate: '', effectiveDate: '' },
+    final: { lastWorkDate: '', effectiveDate: '' },
+  },
+} satisfies ExitDetailPayload;
 
 describe('AC-DM-19 字段依赖表守卫', () => {
   it('不依赖任何受控字段的叶子必须写明理由；依赖的字段都在字段目录里（防拼错）', () => {
@@ -931,6 +988,30 @@ describe('AC-DM-19 容器整体判权（第 5 轮）', () => {
     expect(JSON.stringify(noDates)).not.toContain('"dates"');
   });
 
+  it('按响应类型枚举：列表项与详情的每个路径（含数组、数组元素、容器）都在依赖表登记，表里没有多余登记；去掉登记或新增未登记的数组字段会判红', () => {
+    const paths = [...new Set([...allPaths(ITEM_SAMPLE), ...allPaths(DETAIL_SAMPLE)])];
+    expect(
+      paths.filter((path) => !(path in EXIT_RESPONSE_DEPENDENCIES)),
+      '类型里有、表里没登记',
+    ).toEqual([]);
+    expect(
+      Object.keys(EXIT_RESPONSE_DEPENDENCIES).filter((path) => !paths.includes(path)),
+      '表里有、类型样本里没有（拼错或多余）',
+    ).toEqual([]);
+    // 变异一：去掉 attachmentRefs 登记（容器与元素）
+    const withoutAttachment = Object.fromEntries(
+      Object.entries(EXIT_RESPONSE_DEPENDENCIES).filter(([path]) => !path.startsWith('attachmentRefs')),
+    );
+    expect(unregisteredPaths(DETAIL_SAMPLE, withoutAttachment).sort()).toEqual(['attachmentRefs', 'attachmentRefs[]']);
+    // 变异二：类型 / 样本里新增一个数据为空数组的字段、一个嵌套数组
+    const grown = {
+      ...DETAIL_SAMPLE,
+      newList: [] as string[],
+      effects: [{ ...DETAIL_SAMPLE.effects[0], newItems: [] }],
+    };
+    expect(unregisteredPaths(grown).sort()).toEqual(['effects[].newItems', 'newList']);
+  });
+
   it('裁剪前的输出路径（含容器）都登记了依赖：未登记的嵌套叶子或容器会让守卫判红（含注入 cancellation.newSecretLeaf 的变异）', async () => {
     const { x } = await nestedWorld('views-guard-pre');
     const failed = await x.exit('失败单', '2026-10-25', 'direct');
@@ -957,6 +1038,10 @@ describe('AC-DM-19 容器整体判权（第 5 轮）', () => {
     const containerMutant = structuredClone(pre.details);
     (containerMutant[voided]!.cancellation as Record<string, unknown>).extra = { inner: 1 };
     expect(unregisteredPaths(containerMutant)).toEqual(['cancellation.extra', 'cancellation.extra.inner']);
+    // 数据为空数组的新字段也要报出（空容器没有子路径，仍按容器自身路径检查）
+    const emptyArrayMutant = structuredClone(pre.details);
+    (emptyArrayMutant[voided] as Record<string, unknown>).newEmptyArray = [];
+    expect(unregisteredPaths(emptyArrayMutant)).toEqual(['newEmptyArray']);
   });
 });
 

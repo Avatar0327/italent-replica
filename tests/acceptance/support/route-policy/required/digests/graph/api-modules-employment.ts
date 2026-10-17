@@ -1112,7 +1112,13 @@ export const GRAPH: Graph = {
     '#asRows',
     'apps/api/src/modules/employment/fields.ts#dayAfter',
   ],
-  'apps/api/src/modules/employment/exit-queries.ts#EXIT_RESPONSE_DEPENDENCIES': ['#independent', '#on'],
+  'apps/api/src/modules/employment/exit-queries.ts#CONTAINER': ['#independent'],
+  'apps/api/src/modules/employment/exit-queries.ts#EXIT_RESPONSE_DEPENDENCIES': [
+    '#CONTAINER',
+    '#OWN_FIELDS',
+    '#independent',
+    '#on',
+  ],
   'apps/api/src/modules/employment/exit-queries.ts#candidates': [
     'apps/api/src/modules/employment/context.ts#employmentCreator',
     '#SHOWN_DEPARTMENT',
@@ -1120,7 +1126,6 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/timeline.ts#plannedEffectiveDate',
     'apps/api/src/modules/employment/visibility.ts#employmentVisibilitySql',
   ],
-  'apps/api/src/modules/employment/exit-queries.ts#dependencyOf': ['#EXIT_RESPONSE_DEPENDENCIES', '#on'],
   'apps/api/src/modules/employment/exit-queries.ts#filterFieldsOf': ['#EXIT_FILTER_DEPENDENCIES'],
   'apps/api/src/modules/employment/exit-queries.ts#filterPredicates': [
     '#SHOWN_DEPARTMENT',
@@ -1156,7 +1161,6 @@ export const GRAPH: Graph = {
     '#DROPPED',
     '#EXIT_RESPONSE_DEPENDENCIES',
     '#allows',
-    '#dependencyOf',
     '#trimNode',
   ],
   'apps/api/src/modules/employment/exit-queries.ts#viewOrder': ['#EXIT_SORT_DEPENDENCIES'],
