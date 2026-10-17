@@ -533,7 +533,7 @@ export const DIGESTS: Digests = {
     'route:PUT /dictionaries/:kind/:id': 'cc37191c8e4d',
   },
   'apps/api/src/modules/offer/transitions.ts': {
-    offerActionAccess: 'c9198ee9d61d',
+    offerActionAccess: '74375cf9c372',
     'route:GET /:id/send-check': 'b27b1aee9a46',
     'route:GET /:id/transfer-form': 'b27cdbe16757',
     'route:POST /:id/invalidate': '3ec1206461fa',

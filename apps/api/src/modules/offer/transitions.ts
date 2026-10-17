@@ -37,7 +37,8 @@ registerSettingValidator(OFFER_SEND_APPROVAL_KEY, validOfferSendApprovalSetting)
  * 顶部工具栏的转移状态按列表级按钮另给（toolbarActions）。
  */
 export async function offerActionAccess(deps: TenantRouteDeps, ctx: OfferContext) {
-  const can = (action: string, resource: string) => deps.authorize({ ...ctx, action, resource });
+  // 只判开关：显式带空字段集合（真实授权器对新增 / 编辑不带字段一律拒绝，#398 P2-1）；实际写入字段由命令自身校验
+  const can = (action: string, resource: string) => deps.authorize({ ...ctx, action, resource, fields: [] });
   const { lineStatusTransfer: row, statusTransfer: list } = OFFER_BUTTONS;
   const [transfer, toolbar, update, remove, create] = await Promise.all([
     can('object.button', buttonResource(OFFER_OBJECT, row.code, row.level)),

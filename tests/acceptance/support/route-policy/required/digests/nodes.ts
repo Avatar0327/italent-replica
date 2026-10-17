@@ -2210,7 +2210,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/offer/service.ts#typeOf': ['312dc2ebf9fd', 'e3b0c44298fc'],
   'apps/api/src/modules/offer/service.ts#updateOffer': ['dd01f943ac2b', '7d62f0f1bc7f'],
   'apps/api/src/modules/offer/service.ts#withActions': ['fb56ee1f53d2', '5eac6f1149e1'],
-  'apps/api/src/modules/offer/transitions.ts#offerActionAccess': ['c9198ee9d61d', '4e4d4f7a7a79'],
+  'apps/api/src/modules/offer/transitions.ts#offerActionAccess': ['74375cf9c372', '4e4d4f7a7a79'],
   'apps/api/src/modules/offer/transitions.ts#transferCommand': ['6873ae06bab8', '178a3c4668ab'],
   'apps/api/src/modules/org/codes.ts#assertCodeAvailable': ['e38e10b1ed52', '5aecb8321553'],
   'apps/api/src/modules/org/codes.ts#available': ['57bb05854839', '0a6d97ea716a'],
