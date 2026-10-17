@@ -18,12 +18,13 @@ import type { Context, Hono } from 'hono';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import { jsonBody } from '../employment/context.js';
+import { registerEntryOfferHooks } from '../employment/entry-offer-hooks.js';
 import { uuidParam } from '../job/context.js';
 import { registerSettingValidator } from '../tenant-settings/service.js';
 import { offerOperationCheck, offerReadContext, offerTransferCheck, runOfferWrite, trimOffer } from './context.js';
 import type { OfferContext } from './context.js';
 import { parseOfferInvalidate, parseOfferLink, parseOfferSync, parseOfferTransfer } from './input.js';
-import { linkEmployee, syncOfferNow, syncOfferWhenDue } from './sync.js';
+import { linkEmployee, offerEntryHooks, syncOfferNow, syncOfferWhenDue } from './sync.js';
 import {
   invalidateOffer,
   offerDto,
@@ -36,6 +37,8 @@ import {
 
 registerSettingValidator(OFFER_SEND_APPROVAL_KEY, validOfferSendApprovalSetting);
 registerSettingValidator(OFFER_SYNC_TIMING_KEY, validOfferSyncSetting);
+// F-201①：待入职取消 / 改期恢复的联动端口由 Offer 在模块加载时登记实现（employment 不 import Offer；测试可再登记桩覆盖）
+registerEntryOfferHooks(offerEntryHooks);
 
 /**
  * 行操作的权限裁剪：转移状态按行级按钮，编辑 / 失效按编辑开关，删除按删除开关，复制按新增开关；查看已由读权限保证。

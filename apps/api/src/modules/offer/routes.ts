@@ -6,7 +6,6 @@
 import { withTenant } from '@italent/db';
 import { OFFER_OBJECT, OFFER_VIEWS, offerView } from '@italent/domain';
 import { Hono, type Context } from 'hono';
-import { registerEntryOfferHooks } from '../employment/entry-offer-hooks.js';
 import { z } from 'zod';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps, TenantRouteModule } from '../../routes.js';
@@ -45,7 +44,6 @@ import {
   offerStillVisible,
   updateOffer,
 } from './service.js';
-import { offerEntryHooks } from './sync.js';
 import { offerActionAccess, registerOfferTransitions } from './transitions.js';
 
 type C = Context<TenantEnv>;
@@ -152,8 +150,6 @@ function registerCommands(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
 
 export const registerOfferRoutes: TenantRouteModule = (router, deps) => {
   const module = policedSub(router, OFFER_POLICIES, () => new Hono<TenantEnv>());
-  // F-201①：待入职取消 / 改期恢复的联动端口由 Offer 登记实现（employment 不 import Offer）
-  registerEntryOfferHooks(offerEntryHooks);
   module.get('/views', async (c) => {
     await objectContext(c, deps, OFFER_OBJECT, 'view');
     return c.json({ items: OFFER_VIEWS });
