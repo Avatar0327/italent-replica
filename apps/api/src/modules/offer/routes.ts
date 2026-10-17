@@ -1,7 +1,7 @@
 /**
  * Offer 管理路由（R2 BE-14a C1，DEC-581），子应用挂在 /api/tenant/offers，策略登记在 offer/policy.ts（F-039）。
  * 读：Offer 对象查看权 + 当前数据范围；写：对象数据操作 + 实际写入字段的编辑权（新建 / 复制含继承来的字段，删除只判开关）。
- * 转移状态、失效、行操作与 OF-R3 的入口随 C2（BE-14a2）接入，本段不注册。
+ * 转移状态、失效、转移表单与 OF-R3 发送判定（C2，BE-14a2）在 transitions.ts；列表 / 详情按权限带出可用的行操作。
  */
 import { withTenant } from '@italent/db';
 import { OFFER_OBJECT, OFFER_VIEWS, offerView } from '@italent/domain';
@@ -38,12 +38,13 @@ import {
   createOffer,
   deleteOffer,
   listOffers,
-  loadOffer,
   lockOffer,
   offerCreateWrites,
   offerDetail,
+  offerStillVisible,
   updateOffer,
 } from './service.js';
+import { offerActionAccess, registerOfferTransitions } from './transitions.js';
 
 type C = Context<TenantEnv>;
 const enabledQuery = z.enum(['true', 'false']).optional();
@@ -98,12 +99,6 @@ function registerDictionaries(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
   });
 }
 
-/** 写命令的结果对象：重放时复核仍在当前范围（撤范围后同键重放 404）。 */
-const stillVisible = async (tx: Parameters<typeof loadOffer>[0], ctx: OfferContext, body: unknown) => {
-  const id = (body as { id?: string } | null)?.id;
-  if (id) await loadOffer(tx, ctx, id);
-};
-
 function registerCommands(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
   module.post('/', async (c) => {
     const input = parseOfferCreate(await jsonBody(c));
@@ -115,7 +110,7 @@ function registerCommands(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
       'create',
       offerCreateCheck(input, writes),
       async (tx, ctx) => ({ status: 201, body: await createOffer(tx, ctx, await writes(tx, ctx)) }),
-      { isNew: true, replayed: stillVisible },
+      { isNew: true, replayed: offerStillVisible },
     );
   });
   module.put('/:id', async (c) => {
@@ -128,7 +123,7 @@ function registerCommands(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
       'update',
       offerFieldsCheck('update', input),
       async (tx, ctx) => ({ status: 200, body: await updateOffer(tx, ctx, id, input) }),
-      { replayed: stillVisible },
+      { replayed: offerStillVisible },
     );
   });
   module.delete('/:id', async (c) => {
@@ -148,7 +143,7 @@ function registerCommands(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
       'create',
       offerCopyCheck(source),
       async (tx, ctx) => ({ status: 201, body: await copyOffer(tx, ctx, await source(tx, ctx)) }),
-      { replayed: stillVisible },
+      { replayed: offerStillVisible },
     );
   });
 }
@@ -164,11 +159,13 @@ export const registerOfferRoutes: TenantRouteModule = (router, deps) => {
     const ctx = await offerReadContext(c, deps);
     const { view, filters } = await listFilters(c, deps, ctx, c.req.query('view'));
     const page = pageQuery(c);
+    const { allowed, toolbarActions } = await offerActionAccess(deps, ctx);
     const result = await withTenant(deps.db, ctx.tenantId, (tx) =>
-      listOffers(tx, ctx, { view, filters, limit: page.limit, offset: page.offset }),
+      listOffers(tx, ctx, { view, filters, limit: page.limit, offset: page.offset }, allowed),
     );
     const body = {
       ...result,
+      toolbarActions,
       page: page.page,
       pageSize: page.pageSize,
       hasDataPermission: ctx.scope.hasDataPermission,
@@ -178,9 +175,11 @@ export const registerOfferRoutes: TenantRouteModule = (router, deps) => {
   module.get('/:id', async (c) => {
     const ctx = await offerReadContext(c, deps);
     const id = uuidParam(c);
-    const body = await withTenant(deps.db, ctx.tenantId, (tx) => offerDetail(tx, ctx, id));
+    const { allowed } = await offerActionAccess(deps, ctx);
+    const body = await withTenant(deps.db, ctx.tenantId, (tx) => offerDetail(tx, ctx, id, allowed));
     return c.json(await trimOffer(deps, ctx, body));
   });
   registerCommands(module, deps);
+  registerOfferTransitions(module, deps);
   router.route('/api/tenant/offers', module);
 };

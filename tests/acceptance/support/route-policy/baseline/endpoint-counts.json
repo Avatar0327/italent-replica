@@ -10,7 +10,7 @@
     "evaluation": 34,
     "idp": 58,
     "job": 14,
-    "offers": 10,
+    "offers": 15,
     "org": 14,
     "permission": 44,
     "personnel": 18,
@@ -29,5 +29,5 @@
     "talent-review-platform": 1,
     "tenant-settings": 3
   },
-  "total": 700
+  "total": 705
 }
