@@ -16,7 +16,6 @@ import type { TenantContext } from '../../tenant-context.js';
 import { findEffectiveBlacklistByIdentity } from '../employment/blacklist.js';
 import { EMPLOYMENT_OBJECT } from '../employment/context.js';
 import { findRehireCandidates } from '../employment/rehire-match.js';
-import { visibleEmploymentRecords } from '../employment/visibility.js';
 import { getModuleViewableFields, resolveModuleScope } from '../permission/module-access.js';
 import type { OfferContext } from './context.js';
 
@@ -61,18 +60,19 @@ async function visibleRehireHint(
     getModuleViewableFields(deps, ctx, EMPLOYMENT_OBJECT),
   ]);
   const shown = (field: string) => viewable === undefined || viewable.has(field);
+  // 两个提示字段都不可见：什么都不提示（含多人命中），与不命中不可区分；先判，免得歧义分支泄露匹配结果
+  if (!shown(ENDED_FIELDS.endKind) && !shown(ENDED_FIELDS.lastWorkDate)) return null;
   const today = tenantLocalDate(deps.clock(), ctx.timezone);
-  const people = await withTenant(deps.db, ctx.tenantId, async (tx) => {
-    const found = await findRehireCandidates(
+  // 范围（含“使用用户”按创建人）在候选 SQL 里先过滤再限量：范围外的人不占名额，也不影响单人 / 多人的判断
+  const people = await withTenant(deps.db, ctx.tenantId, (tx) =>
+    findRehireCandidates(
       tx,
       ctx.tenantId,
       { idType: person.idType, idNumber: person.idNumber, mobilePhone: person.mobile, email: person.personalEmail },
       today,
-    );
-    const targets = found.map((item) => ({ employeeId: item.employeeId, departmentId: item.departmentId }));
-    const visible = await visibleEmploymentRecords(tx, ctx.tenantId, scope, targets);
-    return found.filter((_, index) => visible[index]);
-  });
+      scope,
+    ),
+  );
   const [only, ...others] = people;
   if (!only) return null;
   if (others.length) return { ambiguous: true };

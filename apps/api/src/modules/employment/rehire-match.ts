@@ -6,7 +6,10 @@ import { sql, type Tx } from '@italent/db';
 import type { SQL } from 'drizzle-orm';
 import { z } from 'zod';
 import { AppError } from '../../errors.js';
+import type { ModuleScope } from '../permission/module-access.js';
+import { employmentCreator } from './context.js';
 import { rowsOf } from './read-model.js';
+import { employmentVisibilitySql } from './visibility.js';
 
 export const rehireMatchInput = z.strictObject({
   idType: z.string().trim().min(1).max(100),
@@ -32,8 +35,14 @@ export interface RehireCandidate {
  * 当前人员信息（personnel 版本链最新一版）匹配、且租户今天有效的任职（今天及以前最后一条）是离职 / 退休。
  * 先限定今天再取最后一条：未来的重聘待入职不挡当前已离职（PR #386 第 1 轮 P2-2）；在职、未来才离职的人不算。
  * where 是对 e（人员）与 v（人员信息最新版）的匹配条件，由两个入口各自给出。
+ * scope 给了就把任职记录可见性（DEC-177，含“使用用户”按创建人）下推到本查询：先按范围过滤、再限量，范围外的人不占名额。
  */
-async function endedPeople(tx: Tx, tenantId: string, where: SQL, today: string, limit: number) {
+async function endedPeople(tx: Tx, tenantId: string, where: SQL, today: string, limit: number, scope?: ModuleScope) {
+  const visible = employmentVisibilitySql(scope, {
+    employee: sql`e.id`,
+    department: sql`COALESCE(snap.department_id, r.department_id)`,
+    creator: employmentCreator(tenantId, sql`r.id`, true),
+  });
   return rowsOf<Omit<RehireCandidate, 'rehire'>>(
     await tx.execute(sql`
     SELECT e.id AS "employeeId", COALESCE(v.name, e.name) AS name, e.code, v.email,
@@ -49,7 +58,7 @@ async function endedPeople(tx: Tx, tenantId: string, where: SQL, today: string, 
     LEFT JOIN LATERAL (SELECT p.department_id FROM employment_payload_versions p
       WHERE p.tenant_id=r.tenant_id AND p.business_id=r.id AND p.is_record_snapshot
       ORDER BY p.version_no DESC LIMIT 1) snap ON true
-    WHERE e.tenant_id=${tenantId} AND (${where}) AND r.kind IN ('leave','retirement')
+    WHERE e.tenant_id=${tenantId} AND (${where}) AND r.kind IN ('leave','retirement') AND ${visible}
     ORDER BY e.id LIMIT ${limit}
   `),
   );
@@ -80,8 +89,17 @@ export interface RehireKeys {
   readonly email?: string | null | undefined;
 }
 
-/** Offer 新建时的重聘提示（34 OF-R2）：证件（类型 + 号码）、手机号、邮箱任一命中，邮箱不分大小写；不判歧义，调用方按权限裁剪后再数。 */
-export async function findRehireCandidates(tx: Tx, tenantId: string, keys: RehireKeys, today: string) {
+/**
+ * Offer 新建时的重聘提示（34 OF-R2）：证件（类型 + 号码）、手机号、邮箱任一命中，邮箱不分大小写。
+ * 只返回 scope 内看得见的人，且最多 2 人（调用方只需分辨 0 / 1 / 多人）：范围过滤在 SQL 里先于限量。
+ */
+export async function findRehireCandidates(
+  tx: Tx,
+  tenantId: string,
+  keys: RehireKeys,
+  today: string,
+  scope: ModuleScope,
+) {
   const blank = (value: string | null | undefined) => value?.trim() || null;
   const [idType, idNumber, mobile, email] = [keys.idType, keys.idNumber, keys.mobilePhone, keys.email].map(blank);
   const conditions: SQL[] = [];
@@ -89,5 +107,5 @@ export async function findRehireCandidates(tx: Tx, tenantId: string, keys: Rehir
   if (mobile) conditions.push(sql`btrim(v.mobile_phone)=${mobile}`);
   if (email) conditions.push(sql`lower(btrim(v.email))=${email.toLowerCase()}`);
   if (!conditions.length) return [];
-  return endedPeople(tx, tenantId, sql.join(conditions, sql` OR `), today, 50);
+  return endedPeople(tx, tenantId, sql.join(conditions, sql` OR `), today, 2, scope);
 }
