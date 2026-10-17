@@ -65,8 +65,10 @@ export function pinFormulaIdBinding(value: boolean): void {
  * 行为与门禁之前的 main 相同；离职门禁自己的验收文件 import './support/exit-gate-enforced.js' 切到 'enforce'，走真实门禁。
  */
 let exitGateMode: 'seed' | 'enforce' = 'seed';
-export function pinExitGate(mode: 'seed' | 'enforce'): void {
+export function pinExitGate(mode: 'seed' | 'enforce'): 'seed' | 'enforce' {
+  const previous = exitGateMode;
   exitGateMode = mode;
+  return previous;
 }
 
 const LEAVE_CREATE = /^\/api\/tenant\/employment\/employees\/([0-9a-f-]{36})\/businesses$/;

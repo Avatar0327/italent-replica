@@ -13,10 +13,12 @@ const iso = (value: unknown) => (value ? new Date(value as string).toISOString()
 export async function listTodos(tx: Tx, tenantId: string, userId: string, page: Page) {
   const rows = rowsOf(
     await tx.execute(sql`SELECT t.id AS task_id,t.instance_id,t.node_key,t.is_exception_admin,t.origin,t.created_at,
-        i.title,i.approval_type,n.name AS node_name
+        i.title,i.approval_type,n.name AS node_name,e.batch_id
       FROM approval_tasks t
       JOIN approval_instances i ON i.tenant_id=t.tenant_id AND i.id=t.instance_id
       JOIN approval_process_nodes n ON n.tenant_id=i.tenant_id AND n.version_id=i.version_id AND n.node_key=t.node_key
+      LEFT JOIN exit_requests e ON i.business_type='employment' AND e.tenant_id=i.tenant_id
+        AND e.business_id=i.business_id
       WHERE t.tenant_id=${tenantId} AND t.assignee_user_id=${userId}::uuid AND t.status='pending'
       ORDER BY t.created_at DESC,t.id LIMIT ${page.limit} OFFSET ${page.offset}`),
   );
@@ -30,6 +32,8 @@ export async function listTodos(tx: Tx, tenantId: string, userId: string, page: 
     nodeName: row.is_exception_admin ? `${String(row.node_name)}（异常管理员）` : String(row.node_name),
     isExceptionAdmin: Boolean(row.is_exception_admin),
     origin: String(row.origin),
+    // R2-T03 §9 合并待办：同一批量离职申请的待办带同一批次号，前端按它分组展示
+    batchId: (row.batch_id as string | null) ?? null,
     createdAt: iso(row.created_at),
   }));
 }

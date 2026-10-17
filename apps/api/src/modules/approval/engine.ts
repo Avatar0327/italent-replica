@@ -54,6 +54,7 @@ import {
 import { freezeRunSubjects, recusalFactsOf } from './recusal.js';
 import { freezeSubjects } from './subjects.js';
 import {
+  activeInstanceOf,
   resumableInstanceOf,
   appendLog,
   cancelPending,
@@ -103,6 +104,24 @@ export async function openRun(tx: Tx, ctx: ApprovalContext, instanceId: string, 
   const version = await loadVersion(tx, ctx.tenantId, instance.versionId);
   const snapshot = await adapter.snapshot(tx, ctx, instance.businessId);
   return { ctx, before: instance, version, snapshot, instance, events: [] };
+}
+
+/**
+ * 业务方在审批中途改了表单内容（R2-T03 §4B：HR 编辑审批中的离职单，#388 P2-1）：在业务写入的同一事务里，让在途实例记下
+ * 新的业务版本并推进 revision。审批人手里修改前的页面（旧 revision）随即 409，刷新后按新内容审批；没有在途实例时不做事。
+ */
+export async function refreshBusinessVersion(
+  tx: Tx,
+  ctx: ApprovalContext,
+  businessType: BusinessType,
+  businessId: string,
+): Promise<void> {
+  const active = await activeInstanceOf(tx, ctx.tenantId, businessType, businessId);
+  if (!active) return;
+  const run = await openRun(tx, ctx, active.id);
+  if (run.snapshot.version === run.instance.businessVersion) return;
+  run.instance = { ...run.instance, businessVersion: run.snapshot.version };
+  await persistRun(tx, run, 'approval.instance.business_refreshed');
 }
 
 /** 审批人所读的载荷版本必须仍是业务单的当前版本，否则旧审批失效（清单 1）。 */

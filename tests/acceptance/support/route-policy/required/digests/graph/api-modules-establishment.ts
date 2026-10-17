@@ -268,6 +268,10 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/read-model.ts#loadEmploymentRecord',
     'apps/api/src/modules/employment/timeline.ts#employmentTimelineNeighbors',
   ],
+  'apps/api/src/modules/establishment/exit-release.ts#capacitiesOn': [
+    'apps/api/src/modules/establishment/store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/establishment/exit-release.ts#registerEstablishmentPreRelease': ['#capacitiesOn'],
   'apps/api/src/modules/establishment/membership-windows.ts#membershipWindows': [
     'apps/api/src/modules/establishment/org-reader.ts#subtreeIds',
     'apps/api/src/modules/establishment/store.ts#rowsOf',

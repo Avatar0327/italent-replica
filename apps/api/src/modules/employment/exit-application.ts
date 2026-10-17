@@ -7,7 +7,9 @@
 import { and, eq, exitRequests, sql, type Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
 import { readEffectiveSetting } from '../tenant-settings/service.js';
+import { z } from 'zod';
 import { auditEmployment } from './context.js';
+import { confirmExit } from './exit-confirmation.js';
 import { assertHandoverEmployee, EXIT_GATE_PASS, requireExitGate } from './exit-gate.js';
 import { assertExitDictionaryEnabled } from './exit-dictionaries.js';
 import {
@@ -37,6 +39,8 @@ export interface ExitApplicationInput {
   readonly fields?: Partial<PresetFields>;
   readonly customFields?: CustomFields;
   readonly exit?: ExitOptions;
+  /** 批量申请的批次号（exits/batch，设计 §2.1 batch_id）。 */
+  readonly batchId?: string;
 }
 
 /** exit_requests 的可写列（扩展行 ← exit 区块）；金额以字符串入库。 */
@@ -96,6 +100,7 @@ export async function createExitApplication(
     initiator: input.initiation,
     initiatorUserId: ctx.userId,
     pendingTransferAck: ack,
+    batchId: input.batchId ?? null,
     dutyTransferTiming: await dutyTransferTiming(tx, ctx.tenantId),
   });
   await auditEmployment(
@@ -110,23 +115,50 @@ export async function createExitApplication(
     undefined,
     { employeeId },
   );
+  // 直接离职保存即进入 confirmed 阶段（§3.1：编制预减 R；不自动发起交接 DM-R14）；仍只存 approved，不落地（§18.1 ③）
+  if (input.mode === 'direct') await confirmExit(tx, ctx, { ...business, mode: 'direct' });
   return business;
 }
 
 const SETTLED = ['voided', 'disapproved', 'deleted'];
 
+/** 编辑离职请求：扩展字段 + 可选的最后工作日 / 生效日（只能与当前值相同，§7.2）。 */
+export interface ExitPatch {
+  readonly fields: Omit<ExitOptions, 'dutyTransfer' | 'pendingTransferAck'>;
+  readonly dates: { readonly lastWorkDate?: string; readonly effectiveDate?: string };
+}
+
+const exitPatchSchema = exitOptionsSchema.omit({ dutyTransfer: true, pendingTransferAck: true }).extend({
+  lastWorkDate: z.string().optional(),
+  effectiveDate: z.string().optional(),
+});
+
+/** PATCH exits/:id 与审批编辑共用的解析：日期键单独拿出来交给门禁比较，其余按离职扩展字段校验。 */
+export function parseExitPatch(raw: unknown): ExitPatch {
+  const parsed = exitPatchSchema.safeParse(raw);
+  if (!parsed.success) throw new AppError('VALIDATION_FAILED', '离职字段不合法', parsed.error.issues);
+  const { lastWorkDate, effectiveDate, ...fields } = parsed.data;
+  return {
+    fields,
+    dates: {
+      ...(lastWorkDate === undefined ? {} : { lastWorkDate }),
+      ...(effectiveDate === undefined ? {} : { effectiveDate }),
+    },
+  };
+}
+
 /**
- * 编辑离职的非日期字段（B14，设计 §7.2；PATCH exits/:id 在 B2b 接线）：字典须为启用项；只改请求里出现的字段；
- * 日期键一律不收（exitOptionsSchema 没有日期字段，通用 PATCH 的日期判定在 requireExitGate update）。
+ * 编辑离职的非日期字段（B14，设计 §7.2；PATCH exits/:id 与审批编辑）：字典须为启用项；只改请求里出现的字段。
+ * 日期与当前值不同由门禁 update 判定（400 EXIT_DATE_IMMUTABLE，先于任何写入；无权者先得 403）。
+ * approvalEdit：审批编辑的权限由审批中心按节点规则负责，门禁只判日期。
  */
 export async function updateExitFields(
   tx: Tx,
   ctx: EmploymentContext,
   businessId: string,
-  raw: unknown,
+  patch: ExitPatch,
+  options: { readonly approvalEdit?: boolean } = {},
 ): Promise<EmploymentBusiness> {
-  const parsed = exitOptionsSchema.omit({ dutyTransfer: true, pendingTransferAck: true }).safeParse(raw);
-  if (!parsed.success) throw new AppError('VALIDATION_FAILED', '离职字段不合法', parsed.error.issues);
   const business = await lockEmploymentBusiness(tx, ctx, businessId);
   const [row] = await tx
     .select()
@@ -135,17 +167,23 @@ export async function updateExitFields(
   if (!row || business.payload.kind !== 'leave') throw new AppError('NOT_FOUND', '离职单不存在');
   if (SETTLED.includes(business.state))
     throw new AppError('CONFLICT', '已办结的离职不能再编辑', { reason: 'EXIT_NOT_EDITABLE' });
-  await requireExitGate(tx, ctx, 'update', { employeeId: business.employeeId, business, payload: parsed.data });
+  await requireExitGate(tx, ctx, 'update', {
+    employeeId: business.employeeId,
+    business,
+    patch: patch.dates,
+    payload: patch.fields,
+    ...(options.approvalEdit ? { approvalEdit: true } : {}),
+  });
   for (const [key, kind] of [
     ['reasonCode', 'reasons'],
     ['whereaboutsCode', 'whereabouts'],
     ['exitTypeCode', 'types'],
   ] as const) {
-    const value = parsed.data[key];
+    const value = patch.fields[key];
     if (value && value !== row[key]) await assertExitDictionaryEnabled(tx, ctx.tenantId, kind, value);
   }
-  await assertHandoverEmployee(tx, ctx, parsed.data.handoverEmployeeId);
-  const values = columnValues(parsed.data);
+  await assertHandoverEmployee(tx, ctx, patch.fields.handoverEmployeeId);
+  const values = columnValues(patch.fields);
   if (!Object.keys(values).length) throw new AppError('VALIDATION_FAILED', '必须提供要修改的离职字段');
   await tx
     .update(exitRequests)
@@ -163,9 +201,13 @@ export async function updateExitFields(
     values,
     undefined,
     undefined,
-    {
-      employeeId: business.employeeId,
-    },
+    { employeeId: business.employeeId },
   );
+  // HR 编辑审批中的单（#388 P2-1）：离职字段进了审批版本，同事务让在途实例记下新版本并推进 revision，旧审批页面随即 409；
+  // 审批编辑自己会在审批命令里刷新版本，这里不重复推进
+  if (business.state === 'in_review' && !options.approvalEdit) {
+    const { refreshBusinessVersion } = await import('../approval/engine.js');
+    await refreshBusinessVersion(tx, ctx, 'employment', businessId);
+  }
   return requireSavedBusiness(tx, ctx, businessId);
 }
