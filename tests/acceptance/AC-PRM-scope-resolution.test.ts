@@ -83,9 +83,15 @@ describe('AC-PRM-03~07/17/18/21 scope resolution and policy priority', () => {
     const w = await fixture();
     const root = await w.org('范围根');
     const child = await w.org('下级', root.id);
-    const disabled = await w.org('已停用', root.id, { enabled: false });
-    // DEC-129：停用组织下不能再新建启用的下级，停用分支整支都是停用状态。
-    const disabledChild = await w.org('停用下级', disabled.id, { enabled: false });
+    const disabled = await w.org('已停用', root.id);
+    const disabledChild = await w.org('停用下级', disabled.id);
+    // F-213：新建不能直接停用（设立当天停用被拒）；设立日（2025-01-01）之后、查询日之前级联停用整支（DEC-129）。
+    const stopped = await w.setup.request('PATCH', `/api/tenant/org/organizations/${disabled.id}`, {
+      ...w.asAdmin,
+      ifMatch: disabled.revision,
+      body: { enabled: false, effectiveDate: '2025-06-01' },
+    });
+    expect(stopped.status, await stopped.clone().text()).toBe(200);
     const other = await w.org('另一个根');
     await w.org('不展开子级', other.id);
     expect((await w.resolve()).hasDataPermission).toBe(false);
