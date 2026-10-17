@@ -1327,7 +1327,7 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/transfer/routes.ts': {
     authorizeBusinessWrite: '93e23cc9a0f4',
     configurationContext: 'b7e4a3042c4b',
-    'route:DELETE /transfers/employees/:id/draft/:businessId': 'f7b4fc300d94',
+    'route:DELETE /transfers/employees/:id/draft/:businessId': 'f164801ee29a',
     'route:GET /transfers/catalog': '538aa31bbdf5',
     'route:GET /transfers/departments': '293f11653294',
     'route:GET /transfers/employees/:id/draft': 'dc1dbefa2747',
@@ -2399,7 +2399,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/transfer/preview.ts#previewTransfer': '886248775159',
   'apps/api/src/modules/transfer/routes.ts#authorizeBusinessWrite': '012374a9aee4',
   'apps/api/src/modules/transfer/routes.ts#configurationContext': '627bca51f7c9',
-  'apps/api/src/modules/transfer/routes.ts#route:DELETE /transfers/employees/:id/draft/:businessId': 'c0717d1189fd',
+  'apps/api/src/modules/transfer/routes.ts#route:DELETE /transfers/employees/:id/draft/:businessId': 'ba237c2ea0f9',
   'apps/api/src/modules/transfer/routes.ts#route:GET /transfers/catalog': 'b91272aa50a6',
   'apps/api/src/modules/transfer/routes.ts#route:GET /transfers/departments': 'd02c27b6509c',
   'apps/api/src/modules/transfer/routes.ts#route:GET /transfers/employees/:id/draft': '1b25a3b755ab',

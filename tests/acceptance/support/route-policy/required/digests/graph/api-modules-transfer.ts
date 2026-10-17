@@ -603,6 +603,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/job/context.ts#revision',
   ],
   'apps/api/src/modules/transfer/routes.ts#route:DELETE /transfers/employees/:id/draft/:businessId': [
+    'apps/api/src/modules/employment/context.ts#adoptCommandContext',
     'apps/api/src/modules/employment/context.ts#commandContext',
     'apps/api/src/modules/employment/context.ts#readContext',
     'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',

@@ -12,6 +12,7 @@ import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import {
+  adoptCommandContext,
   commandContext,
   readContext,
   readPageContext,
@@ -171,9 +172,13 @@ function registerDraftRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
         // 命令事务内按当前授权重过删除授权链与发起权限（#199 CommandGuard.before）
         guard: scopedGuard({
           before: async (tx) => {
-            const scoped = await commandContext(tx, deps, ctx);
+            // 丢掉入口算出的目标部门例外（transferTarget）：按命令事务内的当前范围重算同单来源与例外，
+            // 之后的执行 / 重放 / 失败回查 / 结果复核都用这份上下文（范围收空后不再靠旧例外放行）
+            const fresh = await commandContext(tx, deps, { ...ctx, transferTarget: undefined });
+            const scoped = await transferBusinessContext(tx, fresh, businessId, 'before-command');
             await requireEmploymentWrite(scoped, 'delete', {}, 'Employment.Delete');
             await requireBusinessWriteScope(tx, scoped.authorize!, scoped, businessId, id);
+            adoptCommandContext(tx, ctx, scoped);
           },
         }),
       },

@@ -847,6 +847,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/employment/configuration.ts#updateSettings': ['b33044b7221d', 'fcd8855445a5'],
   'apps/api/src/modules/employment/context.ts#EMPLOYEE_OBJECT': ['f7ac418f4a9d', 'e3b0c44298fc'],
   'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT': ['77fe2be978ad', 'e3b0c44298fc'],
+  'apps/api/src/modules/employment/context.ts#adoptCommandContext': ['4e63579d2ee0', '97cbae7f7465'],
   'apps/api/src/modules/employment/context.ts#assertRevision': ['024adbfc7855', '583ee92c250c'],
   'apps/api/src/modules/employment/context.ts#auditEmployment': ['822c5709b055', '3219564f2d3c'],
   'apps/api/src/modules/employment/context.ts#commandContext': ['71154e774534', 'c602f6f87790'],

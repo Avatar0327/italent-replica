@@ -20,13 +20,13 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON transfer_draft_slots TO app_user;
 --> statement-breakpoint
 -- 单据离开草稿（提交 / 删除 / 审批…）即不再是暂存单：状态事件落库的同一事务里移除槽位指针，所有状态迁移入口共用
 -- （撤回回到草稿的申请不会重新占槽）。放在库里而不是应用层，升级前的结构上跑的旧路径也不会去碰尚不存在的表
-CREATE FUNCTION transfer_draft_slot_release() RETURNS trigger LANGUAGE plpgsql AS $$
+CREATE FUNCTION public.transfer_draft_slot_release() RETURNS trigger LANGUAGE plpgsql SET search_path = public, pg_temp AS $$
 BEGIN
   IF NEW.state <> 'draft' THEN
-    DELETE FROM transfer_draft_slots WHERE tenant_id = NEW.tenant_id AND business_id = NEW.business_id;
+    DELETE FROM public.transfer_draft_slots WHERE tenant_id = NEW.tenant_id AND business_id = NEW.business_id;
   END IF;
   RETURN NEW;
 END $$;
 --> statement-breakpoint
-CREATE TRIGGER employment_state_events_release_draft_slot AFTER INSERT ON employment_state_events
-  FOR EACH ROW EXECUTE FUNCTION transfer_draft_slot_release();
+CREATE TRIGGER employment_state_events_release_draft_slot AFTER INSERT ON public.employment_state_events
+  FOR EACH ROW EXECUTE FUNCTION public.transfer_draft_slot_release();

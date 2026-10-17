@@ -414,6 +414,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#auditEmployment',
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
   ],
+  'apps/api/src/modules/employment/context.ts#adoptCommandContext': ['#commandContexts'],
   'apps/api/src/modules/employment/context.ts#auditEmployment': [
     'apps/api/src/audit/record.ts#recordAudit',
     'apps/api/src/system-actor.ts#auditActor',
