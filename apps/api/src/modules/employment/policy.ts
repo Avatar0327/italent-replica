@@ -568,7 +568,8 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   }),
   // 修改联动：If-Match 必填；normalizeLinkage 400；调动可见且 kind=transfer，否则 404「调动不存在」；requireLinkageSource
   // （DEC-194：employee 单据 400，其余按单据 initiator 重走 requireTransferSource）；preauthorizeLinkage 按新旧差异授权任职字段 /
-  // 下属经理字段 / 组织角色 / 合同变更（options 为 null 时不提取字段）；命令内 updateTransferLinkage 再判一次
+  // 下属经理字段 / 组织角色 / 合同变更（options 为 null 时不提取字段）；命令内 updateTransferLinkage 再判一次；
+  // 命令事务内由调动同单写统一 guard（same-order-guard.ts，CommandGuard.before）按当前范围重验可见与 requireLinkageSource，重放 / 回查同走
   'PUT /transfers/:id/linkage': object({
     object: EMPLOYMENT,
     operation: 'update',

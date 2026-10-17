@@ -334,6 +334,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/transfer/linkage/items.ts#retryLinkageItem',
     '#authorizeRetry',
     '#parse',
+    'apps/api/src/modules/transfer/same-order-guard.ts#sameOrderScopeGuard',
   ],
   'apps/api/src/modules/transfer/linkage/routes.ts#route:PUT /transfers/:id/linkage': [
     'apps/api/src/modules/employment/context.ts#jsonBody',
@@ -346,6 +347,7 @@ export const GRAPH: Graph = {
     '#preauthorizeLinkage',
     'apps/api/src/modules/transfer/linkage/service.ts#requireLinkageSource',
     'apps/api/src/modules/transfer/linkage/service.ts#updateTransferLinkage',
+    'apps/api/src/modules/transfer/same-order-guard.ts#sameOrderScopeGuard',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/transfer/linkage/service.ts#assertTransferLinkageSubmittable': [
@@ -603,17 +605,14 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/job/context.ts#revision',
   ],
   'apps/api/src/modules/transfer/routes.ts#route:DELETE /transfers/employees/:id/draft/:businessId': [
-    'apps/api/src/modules/employment/context.ts#adoptCommandContext',
-    'apps/api/src/modules/employment/context.ts#commandContext',
     'apps/api/src/modules/employment/context.ts#readContext',
     'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
     'apps/api/src/modules/employment/context.ts#runWrite',
-    'apps/api/src/modules/employment/context.ts#scopedGuard',
-    'apps/api/src/modules/employment/replay-guard.ts#requireBusinessWriteScope',
     'apps/api/src/modules/job/context.ts#revision',
     'apps/api/src/modules/job/context.ts#uuidParam',
     'apps/api/src/modules/transfer/draft-slot.ts#releaseTransferDraft',
     '#authorizeBusinessWrite',
+    'apps/api/src/modules/transfer/same-order-guard.ts#sameOrderWriteGuard',
     'apps/api/src/modules/transfer/service.ts#transferBusinessContext',
   ],
   'apps/api/src/modules/transfer/routes.ts#route:GET /transfers/catalog': [
@@ -658,17 +657,16 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/transfer/routes.ts#route:POST /transfers/employees/:id': [
     'apps/api/src/authorization.ts#requirePermission',
-    'apps/api/src/modules/employment/context.ts#commandContext',
     'apps/api/src/modules/employment/context.ts#jsonBody',
     'apps/api/src/modules/employment/context.ts#readContext',
     'apps/api/src/modules/employment/context.ts#runWrite',
-    'apps/api/src/modules/employment/context.ts#scopedGuard',
     'apps/api/src/modules/job/context.ts#revision',
     'apps/api/src/modules/job/context.ts#uuidParam',
     'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
     'apps/api/src/modules/transfer/access.ts#requireTransferSource',
     'apps/api/src/modules/transfer/linkage/routes.ts#preauthorizeLinkage',
     'apps/api/src/modules/transfer/preview.ts#previewTransfer',
+    'apps/api/src/modules/transfer/same-order-guard.ts#sameOrderCreateGuard',
     'apps/api/src/modules/transfer/service.ts#createTransfer',
     'apps/api/src/modules/transfer/service.ts#normalizeTransferInput',
     'apps/api/src/modules/transfer/service.ts#requireDirectTransfer',
@@ -701,6 +699,24 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/transfer/routes.ts#visibleTransferForm': [
     'apps/api/src/modules/permission/module-access.ts#editableModuleFields',
+  ],
+  'apps/api/src/modules/transfer/same-order-guard.ts#refreshGuard': [
+    'apps/api/src/modules/employment/context.ts#adoptCommandContext',
+    'apps/api/src/modules/employment/context.ts#commandContext',
+    'apps/api/src/modules/employment/context.ts#scopedGuard',
+  ],
+  'apps/api/src/modules/transfer/same-order-guard.ts#sameOrderCreateGuard': [
+    '#refreshGuard',
+    'apps/api/src/modules/transfer/service.ts#transferTargetContext',
+  ],
+  'apps/api/src/modules/transfer/same-order-guard.ts#sameOrderScopeGuard': [
+    'apps/api/src/modules/employment/replay-guard.ts#requireBusinessWriteScope',
+    '#refreshGuard',
+  ],
+  'apps/api/src/modules/transfer/same-order-guard.ts#sameOrderWriteGuard': [
+    'apps/api/src/modules/employment/replay-guard.ts#requireBusinessWriteScope',
+    '#refreshGuard',
+    'apps/api/src/modules/transfer/service.ts#transferBusinessContext',
   ],
   'apps/api/src/modules/transfer/service.ts#createTransfer': [
     'apps/api/src/modules/employment/approval-hooks.ts#employmentApprovalHooks',

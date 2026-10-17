@@ -12,15 +12,12 @@ import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import {
-  adoptCommandContext,
-  commandContext,
   readContext,
   readPageContext,
   jsonBody,
   revision,
   uuidParam,
   runWrite,
-  scopedGuard,
   trimEmploymentResponse,
   requireEmploymentWrite,
   pageQuery,
@@ -41,6 +38,7 @@ import {
 import { previewTransfer } from './preview.js';
 import { preauthorizeLinkage, registerTransferLinkageRoutes } from './linkage/routes.js';
 import { readTransferDraft, releaseTransferDraft } from './draft-slot.js';
+import { sameOrderCreateGuard, sameOrderWriteGuard } from './same-order-guard.js';
 import {
   createTransfer,
   normalizeTransferInput,
@@ -87,7 +85,11 @@ export function registerTransferRoutes(router: Hono<TenantEnv>, deps: TenantRout
       await requireTransferWrite({ ...ctx, authorize: authorizeInTransaction(deps.authorize, tx) }, input);
       const preview = await previewTransfer(tx, ctx, id, input);
       if (input.employment.mode === 'direct') await requireDirectTransfer(tx, preview.context);
-      return { input, context: preview.context };
+      return {
+        input,
+        context: preview.context,
+        targetDepartmentId: preview.value.fields.departmentId ?? null,
+      };
     });
     await requireTransferWrite(prepared.context, prepared.input);
     const linkageAccess = await preauthorizeLinkage(c, deps, prepared.context, {
@@ -105,10 +107,12 @@ export function registerTransferRoutes(router: Hono<TenantEnv>, deps: TenantRout
         body: await createTransfer(tx, context, id, { ...prepared.input, linkageAccess }),
       }),
       {
-        // 命令事务内按当前授权重过对象 / 来源 / 字段写权限（#199 CommandGuard.before）；覆盖暂存会删旧单，更不能沿用入口旧范围
-        guard: scopedGuard({
-          before: async (tx) => {
-            const scoped = await commandContext(tx, deps, prepared.context);
+        // 命令事务内按当前授权重过对象 / 来源 / 字段写权限，来源与目标部门例外按当前范围重算（统一 guard）
+        guard: sameOrderCreateGuard(deps, prepared.context, {
+          employeeId: id,
+          input: prepared.input,
+          targetDepartmentId: prepared.targetDepartmentId,
+          authorize: async (tx, scoped) => {
             await requirePermission(scoped.authorize!, {
               ...scoped,
               action: 'object.create',
@@ -169,17 +173,11 @@ function registerDraftRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
         return { status: 200, body: deleted };
       },
       {
-        // 命令事务内按当前授权重过删除授权链与发起权限（#199 CommandGuard.before）
-        guard: scopedGuard({
-          before: async (tx) => {
-            // 丢掉入口算出的目标部门例外（transferTarget）：按命令事务内的当前范围重算同单来源与例外，
-            // 之后的执行 / 重放 / 失败回查 / 结果复核都用这份上下文（范围收空后不再靠旧例外放行）
-            const fresh = await commandContext(tx, deps, { ...ctx, transferTarget: undefined });
-            const scoped = await transferBusinessContext(tx, fresh, businessId, 'before-command');
-            await requireEmploymentWrite(scoped, 'delete', {}, 'Employment.Delete');
-            await requireBusinessWriteScope(tx, scoped.authorize!, scoped, businessId, id);
-            adoptCommandContext(tx, ctx, scoped);
-          },
+        // 命令事务内按当前授权重过删除授权链（调动同单写统一 guard：来源 / 范围 / 目标例外都在命令内重算）
+        guard: sameOrderWriteGuard(deps, ctx, {
+          businessId,
+          employeeId: id,
+          authorize: (_tx, scoped) => requireEmploymentWrite(scoped, 'delete', {}, 'Employment.Delete'),
         }),
       },
     );
