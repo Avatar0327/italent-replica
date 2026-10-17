@@ -9,7 +9,9 @@ import {
   OFFER_BUTTONS,
   OFFER_OBJECT,
   OFFER_SEND_APPROVAL_KEY,
+  OFFER_SYNC_TIMING_KEY,
   validOfferSendApprovalSetting,
+  validOfferSyncSetting,
   type OfferRowAction,
 } from '@italent/domain';
 import type { Context, Hono } from 'hono';
@@ -20,9 +22,11 @@ import { uuidParam } from '../job/context.js';
 import { registerSettingValidator } from '../tenant-settings/service.js';
 import { offerOperationCheck, offerReadContext, offerTransferCheck, runOfferWrite, trimOffer } from './context.js';
 import type { OfferContext } from './context.js';
-import { parseOfferInvalidate, parseOfferTransfer } from './input.js';
+import { parseOfferInvalidate, parseOfferLink, parseOfferSync, parseOfferTransfer } from './input.js';
+import { linkEmployee, syncOfferNow, syncOfferWhenDue } from './sync.js';
 import {
   invalidateOffer,
+  offerDto,
   offerStillVisible,
   offerSendCheck,
   offerTransferForm,
@@ -31,6 +35,7 @@ import {
 } from './service.js';
 
 registerSettingValidator(OFFER_SEND_APPROVAL_KEY, validOfferSendApprovalSetting);
+registerSettingValidator(OFFER_SYNC_TIMING_KEY, validOfferSyncSetting);
 
 /**
  * 行操作的权限裁剪：转移状态按行级按钮，编辑 / 失效按编辑开关，删除按删除开关，复制按新增开关；查看已由读权限保证。
@@ -70,7 +75,13 @@ async function transferCommand(c: Context<TenantEnv>, deps: TenantRouteDeps, ref
     { id, input },
     'update',
     offerTransferCheck(ref),
-    async (tx, ctx) => ({ status: 200, body: await transferOffer(tx, ctx, id, input) }),
+    async (tx, ctx) => {
+      const moved = await transferOffer(tx, ctx, id, input);
+      if (input.target !== 'accepted') return { status: 200, body: moved };
+      // 接受后按同步时机当场同步（AC-OF-10）；同步失败记在 Offer 上，不回滚接受（AC-OF-06）
+      const synced = await syncOfferWhenDue(tx, ctx, id);
+      return { status: 200, body: synced.attempted ? offerDto(synced.row!) : moved };
+    },
     { replayed: offerStillVisible },
   );
 }
@@ -90,6 +101,33 @@ export function registerOfferTransitions(module: Hono<TenantEnv>, deps: TenantRo
   });
   module.post('/:id/transfer', (c) => transferCommand(c, deps, OFFER_BUTTONS.lineStatusTransfer));
   module.post('/:id/toolbar-transfer', (c) => transferCommand(c, deps, OFFER_BUTTONS.statusTransfer));
+  // OF-R8 立即同步 / 关联在职实习生：按对象编辑开关（与失效同口径），Offer 自己的数据范围裁剪
+  module.post('/:id/sync', async (c) => {
+    const id = uuidParam(c);
+    const input = parseOfferSync(await jsonBody(c));
+    return runOfferWrite(
+      c,
+      deps,
+      { id, input },
+      'update',
+      offerOperationCheck('update'),
+      async (tx, ctx) => ({ status: 200, body: await syncOfferNow(tx, ctx, id) }),
+      { replayed: offerStillVisible },
+    );
+  });
+  module.post('/:id/link-employee', async (c) => {
+    const id = uuidParam(c);
+    const input = parseOfferLink(await jsonBody(c));
+    return runOfferWrite(
+      c,
+      deps,
+      { id, input },
+      'update',
+      offerOperationCheck('update'),
+      async (tx, ctx) => ({ status: 200, body: await linkEmployee(tx, ctx, id, input.employeeId) }),
+      { replayed: offerStillVisible },
+    );
+  });
   module.post('/:id/invalidate', async (c) => {
     const id = uuidParam(c);
     const input = parseOfferInvalidate(await jsonBody(c));

@@ -4,7 +4,12 @@
 import { expect } from 'vitest';
 import { offerWorld, type OfferBody, type OfferWorld } from './AC-OF-BE14a-support.js';
 import { withLoginEmail } from './AC-EMP-support.js';
+import { uniqueSuffix } from './support/unique.js';
 import type { Db } from '@italent/db';
+import {
+  DEFAULT_ESTABLISHMENT_CHECKS,
+  registerEmploymentActivationChecks,
+} from '../../apps/api/src/modules/employment/activation-checks.js';
 
 export const SYNC_SETTING = '/api/tenant/settings/offer.sync_timing';
 export const ACCEPT = { target: 'accepted', acceptTime: '2026-10-17' };
@@ -32,8 +37,8 @@ export interface EntryItem {
   readonly contractEndDate: string | null;
 }
 
-export async function syncWorld(db: Db, label: string, world?: OfferWorld) {
-  const w = world ?? (await offerWorld(db, label));
+export async function syncWorld<W extends OfferWorld = OfferWorld>(db: Db, label: string, world?: W) {
+  const w = (world ?? (await offerWorld(db, label))) as W;
   const as = { user: w.user.id, tenant: w.tenant.id };
   let settingRevision = 0;
   /** 同步时机设置（OF-R8）：整份覆盖租户配置。 */
@@ -84,7 +89,11 @@ export async function syncWorld(db: Db, label: string, world?: OfferWorld) {
   const entryAction = async (id: string, action: 'cancel' | 'postpone', body: object) =>
     employment('POST', `/pending-entries/${id}/${action}`, { ifMatch: await businessRevision(id), body });
   /** 在职实习生：经任职接口办理直接入职（实习生）。 */
-  async function internEmployee(name: string, employType: 'intern' | 'internal' = 'intern') {
+  async function internEmployee(
+    name: string,
+    employType: 'intern' | 'internal' = 'intern',
+    departmentId = w.department.id,
+  ) {
     const created = await employment('POST', '/employees', {
       ifMatch: 0,
       body: { name, code: `INT_${crypto.randomUUID().replaceAll('-', '')}` },
@@ -97,47 +106,50 @@ export async function syncWorld(db: Db, label: string, world?: OfferWorld) {
         kind: 'hire',
         mode: 'direct',
         effectiveDate: '2026-10-17',
-        fields: { employType, departmentId: w.department.id },
+        fields: { employType, departmentId },
       }),
     });
     expect(hired.status, await hired.clone().text()).toBe(201);
     return employee;
   }
-  /** 严格控编：部门编制 1，已占 1（占编的是另一名内部员工）。 */
-  async function strictCapacity() {
-    const post = (path: string, body: object) =>
-      w.seeder.request('POST', `/api/tenant/establishment${path}`, { ...as, ifMatch: 0, body });
-    const scheme = await post('/schemes', {
-      name: '合成同步控编方案',
-      periodType: 'annual',
-      maintenanceMode: 'local',
-      startDate: '2026-01-01',
-      occupancyRanges: [{ employmentType: 'internal' }],
-    });
-    expect(scheme.status, await scheme.clone().text()).toBe(201);
-    const { id: schemeId } = (await scheme.json()) as { id: string };
-    const capacity = await post('/capacities', {
-      orgId: w.department.id,
-      schemeId,
-      periodStart: '2026-01-01',
-      localCapacity: 1,
-      strictControl: true,
-    });
-    expect(capacity.status, await capacity.clone().text()).toBe(201);
-    await internEmployee('占编合成员工', 'internal');
-    return (await capacity.json()) as { id: string; revision: number };
+  /**
+   * 严格控编超编：经编制单一判定入口的注入点让部门“已满编”（与 AC-DM-R2 同做法，编制占用本身由 AC-EST-* 覆盖）；
+   * 用例结束须 relaxCapacity 或由 afterEach 复位。
+   */
+  function strictCapacity() {
+    registerEmploymentActivationChecks({ establishmentExceeded: async () => true });
   }
-  /** 放开严格控制，让失败的同步可以重试成功。 */
-  async function relaxCapacity(capacity: { id: string; revision: number }) {
-    const response = await w.seeder.request('PATCH', `/api/tenant/establishment/capacities/${capacity.id}`, {
-      ...as,
-      ifMatch: capacity.revision,
-      body: { strictControl: false },
-    });
-    expect(response.status, await response.clone().text()).toBe(200);
+  function relaxCapacity() {
+    registerEmploymentActivationChecks(DEFAULT_ESTABLISHMENT_CHECKS);
   }
+  /** 同步会校验职级的有效性：夹具里的裸职级对象没有版本，这里建一个真实职级。 */
+  const type = await w.seeder.request('POST', '/api/tenant/job/level-types', {
+    ...as,
+    ifMatch: 0,
+    body: { name: '同步职级体系', code: `LT${uniqueSuffix()}`, startDate: '2020-01-01' },
+  });
+  expect(type.status, await type.clone().text()).toBe(201);
+  const level = await w.seeder.request('POST', '/api/tenant/job/levels', {
+    ...as,
+    ifMatch: 0,
+    body: {
+      name: '同步职级',
+      code: `JL${uniqueSuffix()}`,
+      level: 5,
+      levelTypeId: ((await type.json()) as { id: string }).id,
+      startDate: '2020-01-01',
+    },
+  });
+  expect(level.status, await level.clone().text()).toBe(201);
+  const realLevelId = ((await level.json()) as { id: string }).id;
+  // 直线上级须在任职生效日处于在职状态：夹具里的裸员工没有任职记录，这里办理一名内部员工入职
+  const manager = await internEmployee('在职直线上级', 'internal');
   return {
     ...w,
+    realLevelId,
+    managerId: manager.id,
+    social: (extra: Record<string, unknown> = {}) =>
+      w.social({ levelId: realLevelId, directManagerId: manager.id, ...extra }),
     timing,
     read,
     sync,
@@ -153,7 +165,7 @@ export async function syncWorld(db: Db, label: string, world?: OfferWorld) {
     relaxCapacity,
   };
 }
-export type SyncWorld = Awaited<ReturnType<typeof syncWorld>>;
+export type SyncWorld = Awaited<ReturnType<typeof syncWorld<OfferWorld>>>;
 
 /** 同步字段齐全的社招 Offer（带试用期、合同终止日、证件等，供映射断言）。 */
 export const fullSocial = (w: SyncWorld, extra: Record<string, unknown> = {}) =>

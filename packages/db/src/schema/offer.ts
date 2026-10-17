@@ -2,7 +2,7 @@
  * Offer（R2 BE-14a；docs/02_业务建模/34 §2、OF-R1，字段见 01_证据/导出/R2_对象字段_配置证据.md）。
  * Offer 不是任职记录：头行原地更新、带 revision，字段级前后快照写统一审计（DEC-019），删除保留快照。
  * 引用列都用（租户, ID）复合外键，跨租户或不存在的引用由数据库拒绝。待入职关联（pending_entry_business_id）
- * 和发送人 / 发送时间由 BE-14b 写入，本段只建列。
+ * 和同步状态由 BE-14b2 写入；发送人 / 发送时间由 BE-14b1 写入。
  */
 import { sql } from 'drizzle-orm';
 import {
@@ -93,6 +93,15 @@ export const offers = pgTable(
     campusOfferId: uuid('campus_offer_id'),
     copiedFromOfferId: uuid('copied_from_offer_id'),
     pendingEntryBusinessId: uuid('pending_entry_business_id'),
+    // 同步待入职（BE-14b2，34 文末映射 SyncStatus / SyncMsg）：未同步为空；失败记机读原因、说明与次数
+    syncStatus: text('sync_status'),
+    syncReason: text('sync_reason'),
+    syncMessage: text('sync_message'),
+    syncAttempts: integer('sync_attempts').notNull().default(0),
+    syncedAt: timestamp('synced_at', { withTimezone: true }),
+    lastSyncAt: timestamp('last_sync_at', { withTimezone: true }),
+    // 关联的在职 / 离职实习生（OF-R8：在职实习生的正式 Offer 是否同步可单独关）
+    linkedEmployeeId: uuid('linked_employee_id'),
     revision: integer('revision').notNull().default(1),
     createdBy: uuid('created_by').notNull(),
     createdAt: utc('created_at'),
@@ -148,6 +157,12 @@ export const offers = pgTable(
       columns: [t.tenantId, t.pendingEntryBusinessId],
       foreignColumns: [employmentBusinessObjects.tenantId, employmentBusinessObjects.id],
     }),
+    foreignKey({
+      name: 'offers_linked_employee_fk',
+      columns: [t.tenantId, t.linkedEmployeeId],
+      foreignColumns: [employmentEmployees.tenantId, employmentEmployees.id],
+    }),
+    check('offers_sync_status', sql`${t.syncStatus} IS NULL OR ${t.syncStatus} IN ('success', 'failed')`),
     check('offers_entry', sql`${t.entry} IN ('offer', 'intern', 'campus_early_intern')`),
     check('offers_type', sql`${t.offerType} IS NULL OR ${t.offerType} IN ('social', 'campus', 'intern')`),
     check('offers_source', sql`${t.source} IN ('new_hire', 'intern_conversion')`),

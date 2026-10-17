@@ -6,7 +6,11 @@
 import * as domain from '@italent/domain';
 import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+import {
+  DEFAULT_ESTABLISHMENT_CHECKS,
+  registerEmploymentActivationChecks,
+} from '../../apps/api/src/modules/employment/activation-checks.js';
 import { runOfferSyncSweep } from '../../apps/api/src/modules/offer/sync-scheduler.js';
 import { findOfferByPendingEntry } from '../../apps/api/src/modules/offer/sync.js';
 import { errorOf, offerRealWorld } from './AC-OF-BE14a-support.js';
@@ -14,6 +18,7 @@ import { fullSocial, syncWorld } from './AC-OF-BE14b2-support.js';
 
 const testDb = useTestDb();
 const rows = <T>(result: unknown) => (Array.isArray(result) ? result : (result as { rows: unknown[] }).rows) as T[];
+afterEach(() => registerEmploymentActivationChecks(DEFAULT_ESTABLISHMENT_CHECKS));
 const at = (day: string) => ({ clock: () => new Date(`${day}T04:00:00.000Z`) });
 
 describe('OF-R8 同步时机设置与判定（纯函数）', () => {
@@ -77,8 +82,8 @@ describe('AC-OF-10 / AC-EN-08 接受时同步', () => {
     expect(record.fields).toMatchObject({
       employType: 'internal',
       departmentId: w.department.id,
-      levelId: w.level.id,
-      directManagerId: w.manager.id,
+      levelId: w.realLevelId,
+      directManagerId: w.managerId,
       place: '上海',
     });
     const [person] = rows<{ name: string; id_number: string; mobile_phone: string; email: string; gender: string }>(
@@ -163,10 +168,10 @@ describe('AC-OF-04 接受且距入职日 ≤ N 天：夜间补同步', () => {
   it('夜间任务只处理自己租户到期的 Offer；已失败的当天不重复重试，次日重试', async () => {
     const w = await syncWorld(testDb().db, 'sync-retry-day');
     await w.timing({ mode: 'on_accept_within_days', days: 90 });
-    const capacity = await w.strictCapacity();
+    w.strictCapacity();
     const accepted = await w.accepted(await w.social());
     expect(accepted).toMatchObject({ syncStatus: 'failed', syncAttempts: 1 });
-    await w.relaxCapacity(capacity);
+    w.relaxCapacity();
     expect((await runOfferSyncSweep(w.db, at('2026-10-17'))).synced).toEqual([]); // 同一业务日不重试
     expect((await runOfferSyncSweep(w.db, at('2026-10-18'))).synced).toEqual([accepted.id]);
     expect(await w.read(accepted.id)).toMatchObject({ syncStatus: 'success', syncAttempts: 2, syncReason: null });
@@ -176,7 +181,7 @@ describe('AC-OF-04 接受且距入职日 ≤ N 天：夜间补同步', () => {
 describe('AC-OF-06 严格控编超编：接受成功，同步失败', () => {
   it('接受成功；同步失败记原因、次数；未生成待入职也未建人员；放开控编后手动重试成功', async () => {
     const w = await syncWorld(testDb().db, 'sync-strict');
-    const capacity = await w.strictCapacity();
+    w.strictCapacity();
     const offer = await w.social();
     const accepted = await w.accepted(offer);
     expect(accepted).toMatchObject({
@@ -195,7 +200,7 @@ describe('AC-OF-06 严格控编超编：接受成功，同步失败', () => {
     );
     expect(created!.n).toBe(0);
 
-    await w.relaxCapacity(capacity);
+    w.relaxCapacity();
     const retried = await w.synced(accepted);
     expect(retried).toMatchObject({ syncStatus: 'success', syncReason: null, syncMessage: null, syncAttempts: 2 });
     expect(await w.entries()).toHaveLength(1);
@@ -205,17 +210,17 @@ describe('AC-OF-06 严格控编超编：接受成功，同步失败', () => {
 describe('立即同步：状态守卫、幂等、版本', () => {
   it('待发 / 已拒绝 / 失效 / 已发（非发送时机）不能同步 → 409 OFFER_SYNC_STATE_INVALID', async () => {
     const w = await syncWorld(testDb().db, 'sync-guard');
-    const pending = await w.social();
-    for (const [offer, status] of [
-      [pending, 'pending'],
-      [await w.social(), 'sent'],
-      [await w.social(), 'rejected'],
-      [await w.social(), 'invalid'],
-    ] as const) {
-      if (status !== 'pending') await w.force(offer.id, 'status', status);
+    const reject = { target: 'rejected', refusalTime: '2026-10-16', refusalReasonCode: 'personal' };
+    const sent = await w.social();
+    await w.force(sent.id, 'status', 'sent');
+    const rejected = await w.social();
+    await w.moved(rejected, reject);
+    const invalid = await w.social();
+    await w.invalidated(invalid.id);
+    for (const offer of [await w.social(), sent, rejected, invalid]) {
       const current = await w.read(offer.id);
       const response = await w.sync(current);
-      expect(response.status, status).toBe(409);
+      expect(response.status, current.status).toBe(409);
       expect((await errorOf(response)).details).toMatchObject({ reason: 'OFFER_SYNC_STATE_INVALID' });
     }
     expect(await w.entries()).toHaveLength(0);

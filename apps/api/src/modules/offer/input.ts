@@ -63,6 +63,9 @@ const transferSchema = z.strictObject({
 });
 /** 失效表单（OF-R7）：原因走字典、备注选填。 */
 const invalidateSchema = z.strictObject({ reasonCode: text(100), remark: text(500) });
+/** 立即同步无请求体字段；关联在职实习生传 employeeId（null = 解除）。 */
+const syncSchema = z.strictObject({});
+const linkSchema = z.strictObject({ employeeId: z.uuid().nullable() });
 export type OfferCreateInput = z.infer<typeof createSchema>;
 export type OfferTransferInput = z.infer<typeof transferSchema>;
 export type OfferInvalidateInput = z.infer<typeof invalidateSchema>;
@@ -78,3 +81,5 @@ export const parseOfferCreate = (raw: unknown) => parse(createSchema, raw);
 export const parseOfferUpdate = (raw: unknown) => parse(updateSchema, raw);
 export const parseOfferTransfer = (raw: unknown) => parse(transferSchema, raw);
 export const parseOfferInvalidate = (raw: unknown) => parse(invalidateSchema, raw);
+export const parseOfferSync = (raw: unknown) => parse(syncSchema, raw);
+export const parseOfferLink = (raw: unknown) => parse(linkSchema, raw);
