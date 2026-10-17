@@ -13,6 +13,7 @@ import {
   LEAVE_MIGRATION,
   replayLeaveMigration,
 } from './AC-EV-leave-support.js';
+import { addPreBlacklistTable } from './support/pre-blacklist-schema.js';
 
 const database = useTestDb();
 describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-EV-leave-pg：设计 §7.4 ③⑥⑩', () => {
@@ -101,7 +102,10 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-EV-leave-pg：设计 §7.4 �
       let first: Promise<unknown> | undefined;
       let second: Promise<unknown> | undefined;
       try {
+        // R2 BE-8a：前置步骤里的入职会查黑名单表，旧结构上临时补出，升级迁移前撤掉（support/pre-blacklist-schema.ts）
+        const restore = await addPreBlacklistTable(handle.db);
         const w = await evaluationLeaveWorld(handle.db);
+        await restore();
         const leave = await w.leave('2026-12-20');
         const other = order === 'writer_first' ? await w.leave('2026-12-20', w.f.mgrB.id) : null;
         let otherId = other?.id;

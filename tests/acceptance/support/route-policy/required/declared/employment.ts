@@ -14,6 +14,9 @@ export const EMPLOYMENT_DECLARED: ModuleDeclared = {
     'PUT /api/tenant/employment/probation-results/:id',
     'PUT /api/tenant/employment/settings',
     'PUT /api/tenant/employment/transfers/settings',
+    'DELETE /api/tenant/employment/blacklist-rules/:id',
+    'POST /api/tenant/employment/blacklist-rules',
+    'PUT /api/tenant/employment/blacklist-rules/:id',
   ],
   /** 状态码相同、错误体不同，由实际行为证明非法标识声明适用的端点 */
   sameStatusInvalidId: [
@@ -31,6 +34,8 @@ export const EMPLOYMENT_DECLARED: ModuleDeclared = {
     'POST /api/tenant/employment/records/:id/forward-update-preview',
     'POST /api/tenant/employment/transfers/employees/:id',
     'POST /api/tenant/employment/transfers/employees/:id/preview',
+    'PUT /api/tenant/employment/blacklist-rules/:id',
+    'PUT /api/tenant/employment/blacklist/:id',
     'PUT /api/tenant/employment/custom-fields/:id/inheritance',
     'PUT /api/tenant/employment/employees/:id/probation',
     'PUT /api/tenant/employment/probation-results/:id',

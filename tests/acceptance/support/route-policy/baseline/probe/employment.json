@@ -1,4 +1,24 @@
 {
+  "DELETE /api/tenant/employment/blacklist-rules/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "c9767f8fac37",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "admin:other_settings",
+      "obj:TenantBase.EmploymentSettings:update"
+    ]
+  },
   "DELETE /api/tenant/employment/businesses/:id": {
     "all": {
       "code": "NOT_FOUND",
@@ -54,6 +74,35 @@
     ],
     "trace": [
       "obj:TenantBase.EmploymentRecord:view"
+    ]
+  },
+  "GET /api/tenant/employment/blacklist": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TenantBase.Blacklist"
+    ],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.Blacklist/-",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.Blacklist:view"
+    ]
+  },
+  "GET /api/tenant/employment/blacklist-rules": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TenantBase.EmploymentSettings"
+    ],
+    "scopeQueries": [
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.EmploymentSettings:view"
     ]
   },
   "GET /api/tenant/employment/businesses/:id": {
@@ -563,6 +612,65 @@
       "obj:TenantBase.EmploymentRecord:update"
     ]
   },
+  "POST /api/tenant/employment/blacklist": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "5fab1c082e9e",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.Blacklist/-",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.Blacklist:create"
+    ]
+  },
+  "POST /api/tenant/employment/blacklist-rules": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "918be8be320a",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "admin:other_settings"
+    ]
+  },
+  "POST /api/tenant/employment/blacklist/delete": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "eae01feb92a2",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.Blacklist/-",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.Blacklist:delete"
+    ]
+  },
+  "POST /api/tenant/employment/blacklist/remove": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "eae01feb92a2",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.Blacklist/-",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.Blacklist:update"
+    ]
+  },
   "POST /api/tenant/employment/businesses/:id/activation/retry": {
     "all": {
       "code": "NOT_FOUND",
@@ -1016,6 +1124,45 @@
     "trace": [
       "btn:TenantBase.EmploymentRecord#Employment.RetryActivation@detail",
       "obj:TenantBase.EmploymentRecord:update"
+    ]
+  },
+  "PUT /api/tenant/employment/blacklist-rules/:id": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "918be8be320a",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "admin:other_settings"
+    ]
+  },
+  "PUT /api/tenant/employment/blacklist/:id": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "be5e8a4d37b3",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.Blacklist/-",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.Blacklist:update"
     ]
   },
   "PUT /api/tenant/employment/custom-fields/:id/inheritance": {

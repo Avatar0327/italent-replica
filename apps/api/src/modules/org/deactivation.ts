@@ -4,13 +4,13 @@
  * DEC-196：审批中、审批通过未生效的调入申请同样计入；只读最新载荷与状态，不重复计已落地申请。
  * 原站停用时可把整支人员、职位转入替换组织（强推断）；复刻有意不做自动转移，与 DEC-016 一致。
  */
-import { and, asc, eq, orgVersions, sql, type Tx } from '@italent/db';
+import { and, asc, eq, inArray, orgVersions, sql, type Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
 import { countDepartmentStaff } from '../employment/org-people.js';
 import { rowsOf } from '../employment/read-model.js';
 import { countEnabledPositions } from '../job/read-model.js';
 import { futureBoundaries, loadOrgSnapshot, type OrgRecord } from './read-model.js';
-import type { NormalizedOrganization, OrgWriteContext } from './validation.js';
+import { deactivationNotAfterEstablished, type NormalizedOrganization, type OrgWriteContext } from './validation.js';
 
 /** 级联涉及的组织须都在操作人数据范围内，由路由按当前范围逐个校验（范围外一律按不存在处理，不列名称）。 */
 export type CascadeAuthorizer = (tx: Tx, orgIds: readonly string[]) => Promise<void>;
@@ -32,6 +32,44 @@ export function unavailableFrom(current: OrgRecord, next: NormalizedOrganization
   if (current.enabled && !next.enabled) return next.startDate;
   if (next.enabled && next.stopDate < current.stopDate) return dayAfter(next.stopDate);
   return null;
+}
+
+/**
+ * F-213（R2f3 §2.2）：停用日必须晚于该组织的设立日（首版生效日，DEC-130），否则追加的停用版本会与首版同日或早于首版。
+ * 本组织与每个会被级联追加停用版本的下级共用这一处判断：from 早于设立日一律拒绝；等于设立日时，当天已是停用状态的
+ * 不算本次停用（整表提交的客户端会原样带上 enabled=false），仍启用的拒绝。多个下级同时命中时取编码最小的一个，文案指名该组织。
+ * 调用方须已确认 ids 在操作人数据范围内（范围外一律按不存在处理，不能由此泄露名称）。
+ */
+export async function assertDeactivationAfterEstablished(
+  tx: Tx,
+  ctx: OrgWriteContext,
+  ids: readonly string[],
+  from: string,
+): Promise<void> {
+  if (!ids.length) return;
+  const rows = await tx
+    .select({
+      orgId: orgVersions.orgId,
+      code: orgVersions.code,
+      name: orgVersions.name,
+      startDate: orgVersions.startDate,
+      enabled: orgVersions.enabled,
+    })
+    .from(orgVersions)
+    .where(and(eq(orgVersions.tenantId, ctx.tenantId), inArray(orgVersions.orgId, [...ids])))
+    .orderBy(asc(orgVersions.startDate), asc(orgVersions.versionNo));
+  const offenders: { code: string; name: string; establishedOn: string }[] = [];
+  for (const id of ids) {
+    const versions = rows.filter((row) => row.orgId === id);
+    const first = versions[0];
+    if (!first || first.startDate < from) continue;
+    const atFrom = versions.filter((row) => row.startDate <= from).at(-1);
+    if (first.startDate === from && !atFrom?.enabled) continue;
+    offenders.push({ code: first.code, name: atFrom?.name ?? first.name, establishedOn: first.startDate });
+  }
+  const [target] = offenders.sort((a, b) => (a.code < b.code ? -1 : a.code > b.code ? 1 : 0));
+  if (!target) return;
+  throw deactivationNotAfterEstablished(target.name, from, target.establishedOn);
 }
 
 /**
@@ -62,6 +100,8 @@ export async function planDeactivation(
     if (!authorize) throw new AppError('FORBIDDEN', '级联停用必须校验下级组织的数据范围');
     await authorize(tx, ids);
   }
+  // 本组织的停用日已在 updateOrganization 入口判断（要早于 recordAt 等其他版本判断，才能给出同一条文案）。
+  await assertDeactivationAfterEstablished(tx, ctx, ids, from);
   await rejectFutureDescendantVersions(tx, ctx, ids, from);
   await assertSubtreeVacant(tx, ctx, root, ids, from, atFrom);
   return atFrom.filter((node) => descendants.has(node.id) && node.enabled);

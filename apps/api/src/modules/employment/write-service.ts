@@ -6,6 +6,7 @@ import { assertEstablishmentCapacity, type EstablishmentWarning } from './activa
 import { saveAddedPendingEntryData } from './entry-pending-contract.js';
 import { saveCreatedProbation } from './entry-probation.js';
 import { assertProbationProcessesIdle } from './probation-guard.js';
+import { assertNotBlacklisted } from './blacklist.js';
 import { personnelHooks } from './personnel-hooks.js';
 import { employeeStatusHooks } from './status-hooks.js';
 import {
@@ -140,6 +141,9 @@ export async function createEmploymentBusiness(
     effective.fields,
     options,
   );
+  // DEC-569：黑名单人员不允许再入职——新周期入职类（含添加待入职、改期重建）保存时拦截，放在编制校验之后
+  // （原站先过编制超编确认、确认后才报黑名单）；命中即整笔回滚，不生成待入职记录
+  if (NEW_CYCLE_KINDS.includes(normalized.kind)) await assertNotBlacklisted(tx, ctx, employee.id);
   // F-188：待入职阶段的“是否有试用期”随记录落库（改期 / 编辑换日期替换记录时由 entry-actions 带到这里）
   // F-194：同时生成待入职合同（起始日 = 计划入职日期、终止日为空）；Offer 同步生成待入职（BE-14）走同一通道
   const pendingAudit = await saveAddedPendingEntryData(tx, ctx, employee.id, id, normalized, options.entry);

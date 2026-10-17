@@ -1,6 +1,7 @@
 import { CONTRACT_FIELDS } from '../contracts/rules.js';
 import { TRANSFER_LINKAGE_FIELDS } from '../approval/transfer-view.js';
 import { EXIT_BUTTONS, EXIT_REQUEST_FIELDS, EXIT_REQUEST_SYSTEM_FIELDS } from '../employment/exit.js';
+import { PART_TIME_BUTTONS, PART_TIME_FIELDS, PART_TIME_SYSTEM_FIELDS } from '../employment/part-time-constants.js';
 /** Real schema/DTO catalogs for DEC-080. Functional rights never imply a data scope. */
 import type { ButtonDefinition, DataOperation, ObjectDefinition } from './object-permission.js';
 
@@ -235,10 +236,31 @@ export const MODULE_OBJECTS = {
     'name',
     'enabled',
     'displayOrder',
+    // R2 BE-8a 离职自动加黑规则（B68）也挂在任职设置配置对象上：规则信息、加黑条件、加黑信息（name 已在上面）
+    'priority',
+    'orgIds',
+    'description',
+    'conditions',
+    'term',
+    'reason',
+    'note',
   ]),
   employmentCustomField: object('EmploymentCustomField', ['name', 'objectType', 'valueType', 'inherit'], crud, [
     'code',
   ]),
+  // R2 BE-8a 黑名单（B68，差距表“补证结论 R2f”）：无组织字段，数据范围只认看全部；加黑日期 / 来源 / 状态由系统写入。
+  // 行内“移出”与工具栏“移出”共用 remove@list（原站是否两个独立权限项未验证）；导入未验证，不登记按钮（后补）。
+  blacklist: object(
+    'Blacklist',
+    ['employeeId', 'name', 'idNumber', 'mobilePhone', 'email', 'reason', 'expiryDate', 'note'],
+    [
+      button('create', 'list', 'create'),
+      button('update', 'list_row', 'update'),
+      button('remove', 'list', 'update'),
+      button('delete', 'list', 'delete'),
+    ],
+    ['blacklistDate', 'source', 'status', 'removedAt'],
+  ),
   // F-022：人员状态 / 入职状态取当前生效主职版本，只读（系统字段：可授查看，不可授编辑）
   employee: object(
     'Employee',
@@ -290,6 +312,8 @@ export const MODULE_OBJECTS = {
       ...TRANSFER_LINKAGE_FIELDS,
       // R2-T03 离职扩展字段（设计 §4A / §9，lastWorkDate / reasonCode 已在上面）
       ...EXIT_REQUEST_FIELDS,
+      // BE-7 兼职（设计 §7.2）：兼职类型、结束日期、申请备注
+      ...PART_TIME_FIELDS,
     ],
     [
       button('Employment.Create', 'detail', 'create'),
@@ -313,6 +337,13 @@ export const MODULE_OBJECTS = {
       button(EXIT_BUTTONS.application, 'detail', 'create'),
       button(EXIT_BUTTONS.edit, 'detail', 'update'),
       button(EXIT_BUTTONS.cancel, 'detail', 'update'),
+      // BE-7 兼职（设计 §7.2）：新增兼职 / 新增兼职申请 / 延长申请 / 结束申请 / 批量结束 / 编辑兼职
+      button(PART_TIME_BUTTONS.direct, 'detail', 'create'),
+      button(PART_TIME_BUTTONS.application, 'detail', 'create'),
+      button(PART_TIME_BUTTONS.extend, 'detail', 'update'),
+      button(PART_TIME_BUTTONS.end, 'detail', 'update'),
+      button(PART_TIME_BUTTONS.batchEnd, 'list', 'update'),
+      button(PART_TIME_BUTTONS.edit, 'detail', 'update'),
     ],
     [
       'employeeId',
@@ -332,6 +363,8 @@ export const MODULE_OBJECTS = {
       'entryStatus',
       'activation',
       ...EXIT_REQUEST_SYSTEM_FIELDS,
+      // 兼职：原定结束日期取申请版本，任职状态 / 视图归属按期限链派生，只可授查看
+      ...PART_TIME_SYSTEM_FIELDS,
     ],
   ),
 } as const satisfies Record<string, ObjectDefinition>;

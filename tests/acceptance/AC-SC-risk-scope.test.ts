@@ -94,8 +94,8 @@ it('AC-SC-risk C1 权限断层新根与冻结一致；撤范围后重放 404 且
 });
 it('AC-SC-risk C1 四种语义：保存隐藏项停用后忽略；原任务重放不重施新条件门槛', async () => {
   const w = await successionWorld(handle.db, 'risk-lifecycle');
-  const a = await w.org('根'),
-    b = await w.org('隐藏', a.id);
+  const a = await w.org('根', undefined, { establishedOn: '2026-09-30' }),
+    b = await w.org('隐藏', a.id, { establishedOn: '2026-09-30' });
   await w.position(a.id, '风险职位');
   const body = {
     rootOrgId: a.id,
