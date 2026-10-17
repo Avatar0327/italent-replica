@@ -37,6 +37,8 @@ import {
   CONTRACT_OBJECT,
   IDP_OBJECTS,
   MODULE_OBJECTS,
+  OFFER_BATCH_OBJECT,
+  OFFER_OBJECT,
   SUBSETS,
 } from '@italent/domain';
 import {
@@ -131,13 +133,15 @@ const processAdmin = (extra: PolicyBase = {}) => admin('process_matrix', { field
 // ---- 任务动作（§3.3 八个动作）-----------------------------------------------------------------------------------------
 /**
  * 任务所属业务快照的字段对象（adapters.ts snapshot.fieldObjectCode）：任职记录 / 合同 / 人员子集各对象 /
- * IDP 计划（idp/approval-adapter.ts，R3-T07）。
+ * IDP 计划（idp/approval-adapter.ts，R3-T07）/ Offer 与 Offer 批量审批单（offer/approval-adapter.ts，R2 BE-14a3）。
  */
 const TASK_OBJECT_DOMAIN = [
   MODULE_OBJECTS.employmentRecord.code,
   CONTRACT_OBJECT,
   ...Object.values(SUBSETS).map((subset) => subset.objectCode),
   IDP_OBJECTS.plan.code,
+  OFFER_OBJECT,
+  OFFER_BATCH_OBJECT,
 ];
 const TASK_OBJECT: ObjectSelector = {
   from: 'record',
@@ -469,7 +473,8 @@ export const APPROVAL_POLICIES = defineTable('approval', {
   }),
   'POST /instances/:id/urge': initiatorAction(URGE),
   // requireWithdrawRight 路由前置：employment / contract 须仍持撤回按钮 + 编辑权 + 范围（403 APPROVAL_SCOPE_DENIED）；
-  // personnel_change 须仍持自助申请按钮；发起人判定随后在命令内 openOwn
+  // personnel_change 须仍持自助申请按钮；offer / offer_batch 须仍持 Offer 编辑权且每份 Offer 在 Offer 范围内，并经
+  // withdrawGuard 在命令事务内（含同键重放）再判（BE-14a3 P1-01）；发起人判定随后在命令内 openOwn
   'POST /instances/:id/withdraw': initiatorAction(WITHDRAW, { guards: ['approval.withdrawRight'] }),
   'POST /instances/:id/admin-transfer': adminAction('adminTransfer'),
   // kind 缺省 reassign；jump 不需要 taskId / toUserId；干预或转给自己须填 reason（400 APPROVAL_REASON_REQUIRED）

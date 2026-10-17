@@ -424,7 +424,7 @@ export const APPROVAL: RequiredTable = {
     initiator(
       fn(
         'registerInstanceRoutes',
-        'const result = await command(c, deps, ctx, { id }, (tx, context) => act(tx, context, id))',
+        'const result = await command(c, deps, ctx, { id }, (tx, context) => act(tx, context, id), guard)',
       ),
     ),
   ],
@@ -432,7 +432,7 @@ export const APPROVAL: RequiredTable = {
     initiator(
       fn(
         'registerInstanceRoutes',
-        'const result = await command(c, deps, ctx, { id }, (tx, context) => act(tx, context, id))',
+        'const result = await command(c, deps, ctx, { id }, (tx, context) => act(tx, context, id), guard)',
       ),
       ['relation:initiator（withdraw / resubmit right）'],
     ),
@@ -444,6 +444,19 @@ export const APPROVAL: RequiredTable = {
         {
           role: 'impl',
           unit: `${ACCESS}#requireWithdrawRight`,
+          anchor: "throw approvalError('FORBIDDEN', 'APPROVAL_SCOPE_DENIED', '该申请已不在您的数据范围内')",
+        },
+      ],
+    },
+    {
+      // BE-14a3 P1-01：Offer / Offer 批量审批的撤回另在命令事务内（含同键重放）按 Offer 编辑权 + 逐份 Offer 范围复核
+      perm: 'guard:approval.withdrawRight',
+      facts: ['guard:approval.withdrawRight'],
+      at: [
+        fn('registerInstanceRoutes', "const guard = path === 'withdraw' ? withdrawGuard(deps, ctx, id) : undefined"),
+        {
+          role: 'impl',
+          unit: `${ACCESS}#requireOfferOwnerRight`,
           anchor: "throw approvalError('FORBIDDEN', 'APPROVAL_SCOPE_DENIED', '该申请已不在您的数据范围内')",
         },
       ],

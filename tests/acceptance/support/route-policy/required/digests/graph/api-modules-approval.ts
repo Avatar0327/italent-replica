@@ -18,11 +18,13 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/access.ts#businessScopes': [
     '#IDP_PLAN_OBJECT',
     'packages/domain/src/contracts/rules.ts#CONTRACT_OBJECT',
+    'packages/domain/src/offer/rules.ts#OFFER_OBJECT',
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
   ],
   'apps/api/src/modules/approval/access.ts#byBusinessScope': [
     '#businessScopes',
     '#instanceScopeSql',
+    '#offerInstanceScopeSql',
     '#perBusinessType',
   ],
   'apps/api/src/modules/approval/access.ts#hasButton': [
@@ -33,9 +35,13 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#employmentCreator',
     'apps/api/src/modules/permission/module-access.ts#scopeSql',
   ],
+  'apps/api/src/modules/approval/access.ts#isOfferBusiness': ['#OFFER_BUSINESS_TYPES'],
   'apps/api/src/modules/approval/access.ts#isProcessAdmin': ['#PROCESS_ADMIN'],
   'apps/api/src/modules/approval/access.ts#listScopeOf': [
     'apps/api/src/modules/permission/module-access.ts#resolveModuleScope',
+  ],
+  'apps/api/src/modules/approval/access.ts#offerInstanceScopeSql': [
+    'apps/api/src/modules/permission/module-access.ts#scopeSql',
   ],
   'apps/api/src/modules/approval/access.ts#requireIdpOwnerRight': [
     'apps/api/src/authorization.ts#requirePermission',
@@ -47,6 +53,15 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
     'apps/api/src/modules/permission/object-write.ts#requireObjectWrite',
     'packages/domain/src/permission/decide.ts#buttonResource',
+  ],
+  'apps/api/src/modules/approval/access.ts#requireOfferOwnerRight': [
+    'apps/api/src/authorization.ts#requirePermission',
+    '#offerInstanceScopeSql',
+    'apps/api/src/modules/approval/context.ts#approvalError',
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
+    'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
+    'packages/domain/src/offer/rules.ts#OFFER_OBJECT',
   ],
   'apps/api/src/modules/approval/access.ts#requireProcessButton': [
     'apps/api/src/authorization.ts#requirePermission',
@@ -89,6 +104,8 @@ export const GRAPH: Graph = {
     'apps/api/src/authorization.ts#requirePermission',
     '#IDP_PLAN_OBJECT',
     '#instanceScopeSql',
+    '#isOfferBusiness',
+    '#requireOfferOwnerRight',
     '#requireSelfServiceSubmit',
     'apps/api/src/modules/approval/context.ts#approvalError',
     'apps/api/src/modules/approval/context.ts#rowsOf',
@@ -98,6 +115,11 @@ export const GRAPH: Graph = {
     'packages/domain/src/contracts/rules.ts#CONTRACT_OBJECT',
     'packages/domain/src/permission/decide.ts#buttonResource',
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
+  ],
+  'apps/api/src/modules/approval/access.ts#withdrawGuard': [
+    '#isOfferBusiness',
+    '#requireOfferOwnerRight',
+    'apps/api/src/modules/approval/store.ts#loadInstance',
   ],
   'apps/api/src/modules/approval/actions.ts#addSign': [
     '#assertAddSignType',
@@ -427,6 +449,8 @@ export const GRAPH: Graph = {
     '#personnelAdapter',
     'apps/api/src/modules/contracts/adapter.ts#contractAdapter',
     'apps/api/src/modules/idp/approval-adapter.ts#idpAdapter',
+    'apps/api/src/modules/offer/approval-adapter.ts#offerAdapter',
+    'apps/api/src/modules/offer/approval-adapter.ts#offerBatchAdapter',
     'apps/api/src/modules/talent-review/approval-adapter.ts#talentReviewAdapter',
   ],
   'apps/api/src/modules/approval/adapters.ts#HELD_STATUSES': ['apps/api/src/modules/approval/store.ts#OPEN_STATUSES'],
@@ -1365,6 +1389,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/access.ts#adminTargetScope',
     'apps/api/src/modules/approval/access.ts#requireResubmitRight',
     'apps/api/src/modules/approval/access.ts#requireWithdrawRight',
+    'apps/api/src/modules/approval/access.ts#withdrawGuard',
     'apps/api/src/modules/approval/actions.ts#adminAct',
     'apps/api/src/modules/approval/actions.ts#resubmit',
     'apps/api/src/modules/approval/actions.ts#urge',
