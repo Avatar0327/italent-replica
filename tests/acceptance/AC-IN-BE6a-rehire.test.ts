@@ -87,7 +87,7 @@ describe('AC-IN-BE6a-06 按证件号的重聘判定', () => {
     ['缺证件类型', { idNumber: 'SYN1' }],
     ['缺证件号码', { idType: 'id_card' }],
     ['空证件号码', { idType: 'id_card', idNumber: '   ' }],
-    ['手机号匹配未验证不受理', { idType: 'id_card', idNumber: 'SYN1', mobilePhone: '13800000000' }],
+    ['手机号匹配未验证不受理', { idType: 'id_card', idNumber: 'SYN1', mobilePhone: 'SYN-MOBILE' }],
     ['邮箱匹配未验证不受理', { idType: 'id_card', idNumber: 'SYN1', email: 'a@example.com' }],
   ])('%s → 400', async (_label, body) => {
     const w = await internWorld(testDb().db, `be6a-rehire-invalid-${uniqueSuffix()}`);
