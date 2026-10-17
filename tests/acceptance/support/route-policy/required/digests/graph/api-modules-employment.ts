@@ -1008,15 +1008,16 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/inheritance.ts#snapshotForm': [
     'apps/api/src/modules/employment/fields.ts#PRESET_FIELDS',
   ],
-  'apps/api/src/modules/employment/intern-regularization.ts#assertNothingEndsInternshipAfter': [
-    'apps/api/src/modules/employment/record-store.ts#rowsOf',
-  ],
-  'apps/api/src/modules/employment/intern-regularization.ts#assertRegularizableIntern': [
-    'apps/api/src/modules/employment/fields.ts#businessDate',
+  'apps/api/src/modules/employment/intern-eligibility.ts#assertInternRegularizationEligible': [
     '#assertNothingEndsInternshipAfter',
     'apps/api/src/modules/employment/read-model.ts#findPredecessor',
-    'apps/api/src/modules/employment/record-store.ts#rowsOf',
     'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS',
+  ],
+  'apps/api/src/modules/employment/intern-eligibility.ts#assertNoPendingRegularization': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/employment/intern-eligibility.ts#assertNothingEndsInternshipAfter': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/intern-regularization.ts#confirmEstablishment': [
     'apps/api/src/modules/establishment/employment-check.ts#employmentEstablishmentAssessment',
@@ -1032,11 +1033,9 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/intern-regularization.ts#regularizeIntern': [
     'apps/api/src/modules/employment/context.ts#auditEmployment',
     'apps/api/src/modules/employment/entry-probation.ts#saveRecordProbation',
-    '#assertRegularizableIntern',
     '#confirmEstablishment',
     '#regularizationFields',
     '#regularizationProbation',
-    'apps/api/src/modules/employment/record-store.ts#lockEmploymentEmployee',
     'apps/api/src/modules/employment/write-service.ts#createEmploymentBusiness',
   ],
   'apps/api/src/modules/employment/intern-routes.ts#route:GET /interns': [
@@ -1930,6 +1929,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/record-store.ts#insertEmploymentRow',
   ],
   'apps/api/src/modules/employment/write-service.ts#assertBusinessSequence': [
+    'apps/api/src/modules/employment/intern-eligibility.ts#assertInternRegularizationEligible',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     '#sequenceViolation',
   ],
@@ -1959,6 +1959,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/fields.ts#normalizeEmploymentInput',
     'apps/api/src/modules/employment/inheritance.ts#prepareInheritance',
     'apps/api/src/modules/employment/inheritance.ts#resolveEffectiveInheritance',
+    'apps/api/src/modules/employment/intern-eligibility.ts#assertNoPendingRegularization',
     'apps/api/src/modules/employment/record-store.ts#bumpEmploymentEmployee',
     'apps/api/src/modules/employment/record-store.ts#lockEmploymentEmployee',
     'apps/api/src/modules/employment/transfer-locks.ts#lockTransferParticipants',

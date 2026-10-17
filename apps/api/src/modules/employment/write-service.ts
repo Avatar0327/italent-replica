@@ -21,6 +21,7 @@ import { readEmploymentSettings } from './configuration.js';
 import { auditEmployment, requireScopedEmploymentObject } from './context.js';
 import { assertNotBeforeCurrentCycle } from './cycles.js';
 import { EXIT_GATE_PASS, isExitKind, requireExitGate } from './exit-gate.js';
+import { assertInternRegularizationEligible, assertNoPendingRegularization } from './intern-eligibility.js';
 import { forwardUpdateEmployment } from './forward-update.js';
 import type { ForwardValues } from './forward-rules.js';
 import { emptyPresetFields } from './types.js';
@@ -110,6 +111,7 @@ export async function createEmploymentBusiness(
   const employee = await lockEmploymentEmployee(tx, ctx, employeeId, ctx.expectedRevision);
   await assertNotBeforeCurrentCycle(tx, ctx, employee.id, normalized);
   await assertBusinessSequence(tx, ctx, employee.id, normalized);
+  await assertNoPendingRegularization(tx, ctx, employee.id, normalized.kind);
   assertEmployTypeUsage(normalized);
   await assertDirectTransferAllowed(tx, ctx, employee.id, normalized);
   const selected = NEW_CYCLE_KINDS.includes(normalized.kind)
@@ -380,6 +382,8 @@ async function assertBusinessSequence(
   );
   const reason = sequenceViolation(latest?.kind, input.kind);
   if (reason) throw new AppError('CONFLICT', '任职业务前后顺序不合法', { reason });
+  // 实习转正另看插入点之后与前驱身份（F-215）：新增、申请改期、落地（审批通过后到期生效记生效失败，DEC-052）都经这里
+  await assertInternRegularizationEligible(tx, ctx, employeeId, input);
 }
 
 /** 前一条为 previous 时能否接 kind：终止任职后只能开新周期，在职时不能再入职（`07` §2、DEC-077）。 */
