@@ -610,6 +610,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/exit-application.ts#parseExitPatch': ['#exitPatchSchema'],
   'apps/api/src/modules/employment/exit-application.ts#updateExitFields': [
+    'apps/api/src/modules/approval/engine.ts#refreshBusinessVersion',
     'apps/api/src/modules/employment/context.ts#auditEmployment',
     '#SETTLED',
     '#columnValues',
@@ -708,6 +709,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/exit-gate.ts#createConditions': [
     'apps/api/src/modules/employment/cycles.ts#currentEmploymentCycle',
+    '#assertActualLeaveDate',
     '#assertDictionaries',
     '#assertNoLeaveInProgress',
     '#assertNoOverdueTransfer',
@@ -747,6 +749,7 @@ export const GRAPH: Graph = {
     '#plannedRows',
   ],
   'apps/api/src/modules/employment/exit-gate.ts#requireExitGate': [
+    '#assertActualLeaveDate',
     '#assertExitDatesUnchanged',
     '#cancelConditions',
     '#conflict',
@@ -1416,14 +1419,10 @@ export const GRAPH: Graph = {
     '#requireExitScope',
   ],
   'apps/api/src/modules/employment/replay-guard.ts#exitEditGuard': [
-    'apps/api/src/authorization.ts#requirePermission',
     'apps/api/src/modules/employment/context.ts#commandContext',
     'apps/api/src/modules/employment/context.ts#scopedGuard',
-    'apps/api/src/modules/employment/exit-gate.ts#businessState',
-    'apps/api/src/modules/employment/exit-gate.ts#requireExitPermission',
+    '#requireExitEditRights',
     '#requireExitScope',
-    'packages/domain/src/approval/catalog.ts#APPROVAL_INSTANCE_OBJECT',
-    'packages/domain/src/permission/decide.ts#buttonResource',
   ],
   'apps/api/src/modules/employment/replay-guard.ts#importWriteGuard': [
     'apps/api/src/authorization.ts#requirePermission',
@@ -1466,6 +1465,13 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-gate.ts#isExitKind',
     'apps/api/src/modules/employment/exit-gate.ts#requireExitPermission',
     '#requireBusinessWriteScope',
+  ],
+  'apps/api/src/modules/employment/replay-guard.ts#requireExitEditRights': [
+    'apps/api/src/authorization.ts#requirePermission',
+    'apps/api/src/modules/employment/exit-gate.ts#businessState',
+    'apps/api/src/modules/employment/exit-gate.ts#requireExitPermission',
+    'packages/domain/src/approval/catalog.ts#APPROVAL_INSTANCE_OBJECT',
+    'packages/domain/src/permission/decide.ts#buttonResource',
   ],
   'apps/api/src/modules/employment/replay-guard.ts#requireExitScope': [
     'apps/api/src/authorization.ts#requirePermission',

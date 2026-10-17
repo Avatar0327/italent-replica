@@ -445,12 +445,14 @@ export const GRAPH: Graph = {
     '#employmentTransition',
     '#exitInitiation',
     '#exitMetadata',
+    '#exitVersion',
     '#filledExitFields',
     '#latestPayload',
     '#mayMergeSeat',
     '#originalsOf',
     '#profileValues',
     '#ref',
+    '#requireExitApprovalEdit',
     '#same',
     '#splitExitEdit',
     '#transferMetadata',
@@ -522,6 +524,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/context.ts#rowsOf',
     'packages/domain/src/personnel/tenure.ts#ageOn',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/approval/adapters.ts#requireExitApprovalEdit': [
+    'apps/api/src/modules/employment/exit-gate.ts#loadExitRequest',
+    'apps/api/src/modules/employment/replay-guard.ts#requireExitEditRights',
+    'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
   ],
   'apps/api/src/modules/approval/adapters.ts#splitExitEdit': [
     'packages/domain/src/employment/exit.ts#EXIT_FORM_FIELDS',
@@ -1040,6 +1047,11 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/engine.ts#recordSelfSkip': [
     'apps/api/src/modules/approval/store.ts#appendLog',
     'apps/api/src/modules/approval/store.ts#insertTask',
+  ],
+  'apps/api/src/modules/approval/engine.ts#refreshBusinessVersion': [
+    '#openRun',
+    '#persistRun',
+    'apps/api/src/modules/approval/store.ts#activeInstanceOf',
   ],
   'apps/api/src/modules/approval/engine.ts#resume': [
     'apps/api/src/modules/approval/adapters.ts#ADAPTERS',
@@ -1725,6 +1737,10 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/context.ts#rowsOf',
     '#assertPendingRoom',
     '#auditTask',
+  ],
+  'apps/api/src/modules/approval/store.ts#activeInstanceOf': [
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    '#instanceOf',
   ],
   'apps/api/src/modules/approval/store.ts#appendLog': ['apps/api/src/modules/approval/context.ts#actorOf'],
   'apps/api/src/modules/approval/store.ts#assertAssigneeUsable': [

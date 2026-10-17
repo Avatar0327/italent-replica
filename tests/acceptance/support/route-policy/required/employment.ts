@@ -314,7 +314,7 @@ function exitBusinessCommand(path: string, anchor: string, unit: 'route' | 'regi
     unit === 'route' ? at(EXIT, 'PATCH', path, text) : exitCall('registerExitChanges', text);
   const guard =
     unit === 'route'
-      ? fn(REPLAY, 'exitEditGuard', "await requireExitPermission(scoped, 'update', target)")
+      ? fn(REPLAY, 'requireExitEditRights', "await requireExitPermission(ctx, 'update', target)")
       : EXIT_GUARD;
   return [
     ob(
@@ -1717,7 +1717,12 @@ export const EMPLOYMENT: RequiredTable = {
       ['button:object.button', 'button:buttonResource'],
       [
         at(EXIT, 'PATCH', '/exits/:id', '{ guard: exitEditGuard(deps, ctx, gate, id) }'),
-        fn(REPLAY, 'exitEditGuard', "resource: buttonResource(APPROVAL_INSTANCE_OBJECT, 'adminIntervene', 'detail')"),
+        fn(REPLAY, 'exitEditGuard', 'await requireExitEditRights(tx, scoped, target, businessId)'),
+        fn(
+          REPLAY,
+          'requireExitEditRights',
+          "resource: buttonResource(APPROVAL_INSTANCE_OBJECT, 'adminIntervene', 'detail')",
+        ),
       ],
       '只在单据处于 in_review 时要求（与审批编辑同约束，B-65a）',
     ),
