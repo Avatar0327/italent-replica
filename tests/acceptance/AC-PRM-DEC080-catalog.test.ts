@@ -3,6 +3,13 @@ import { trimModuleResponse } from '../../apps/api/src/modules/permission/module
 import { decide, MODULE_OBJECTS, ObjectCatalog, type PermissionSubject } from '@italent/domain';
 
 describe('DEC-080 real module catalogs and fail-closed writes', () => {
+  it('AC-PRM-DEC080 F-222：Offer 批量审批单只登记原站 B1/B2 的两个详情页不同意按钮', () => {
+    expect(MODULE_OBJECTS.offerBatchApproval.buttons).toEqual([
+      { code: 'PartDisAgree', level: 'detail', requires: 'update' },
+      { code: 'AllDisAgree', level: 'detail', requires: 'update' },
+    ]);
+  });
+
   it('registers actual fields and buttons, with system fields never editable', () => {
     for (const definition of Object.values(MODULE_OBJECTS)) {
       expect(definition.fields.length, definition.code).toBeGreaterThan(0);
