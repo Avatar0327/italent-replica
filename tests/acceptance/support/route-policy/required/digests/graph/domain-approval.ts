@@ -74,6 +74,8 @@ export const GRAPH: Graph = {
   'packages/domain/src/approval/presets.ts#LEAVE_FORM': ['packages/domain/src/employment/exit.ts#EXIT_FORM_FIELDS'],
   'packages/domain/src/approval/presets.ts#PRESET_ACTIONS': ['#PRESET_RECUSAL'],
   'packages/domain/src/approval/presets.ts#PRESET_PROCESSES': [
+    '#HEAD_FIRST',
+    '#HRBP_FIRST',
     '#IDP_EMPLOYEE_ACTIONS',
     '#IDP_TUTOR_ACTIONS',
     '#LEAVE_FORM',
@@ -81,6 +83,7 @@ export const GRAPH: Graph = {
     '#draft',
     '#genericPreset',
     '#node',
+    '#partTimePreset',
     '#standardCondition',
   ],
   'packages/domain/src/approval/presets.ts#genericPreset': [
@@ -94,6 +97,14 @@ export const GRAPH: Graph = {
   'packages/domain/src/approval/presets.ts#node': [
     '#PRESET_ACTIONS',
     'packages/domain/src/approval/transfer-view.ts#TRANSFER_FORM_FIELDS',
+  ],
+  'packages/domain/src/approval/presets.ts#partTimePreset': [
+    '#PART_TIME_FORM',
+    '#PART_TIME_NODES',
+    '#draft',
+    '#node',
+    '#standardCondition',
+    'packages/domain/src/approval/types.ts#APPROVAL_TYPES',
   ],
   'packages/domain/src/approval/presets.ts#standardCondition': ['packages/domain/src/approval/types.ts#APPROVAL_TYPES'],
   'packages/domain/src/approval/recusal.ts#instanceRecusal': ['#isInitiator', '#isSubject'],
@@ -133,6 +144,7 @@ export const GRAPH: Graph = {
     '#employeeInfoFormFields',
     '#employmentType',
     '#idpType',
+    '#partTimeType',
     '#personnelFormFields',
     'packages/domain/src/personnel/catalog.ts#PERSONNEL_OBJECT',
     'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS',
@@ -168,6 +180,12 @@ export const GRAPH: Graph = {
   'packages/domain/src/approval/types.ts#idpType': ['#IDP_PLAN_OBJECT'],
   'packages/domain/src/approval/types.ts#isApprovalType': ['#APPROVAL_TYPES'],
   'packages/domain/src/approval/types.ts#nodeExits': ['#DEFAULT_EXITS'],
+  'packages/domain/src/approval/types.ts#partTimeType': [
+    '#PART_TIME_CONDITION_FIELDS',
+    '#PROFILE_FORM_FIELDS',
+    '#employmentFormFields',
+    'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
+  ],
   'packages/domain/src/approval/types.ts#personnelFormFields': ['packages/domain/src/personnel/fields.ts#SUBSETS'],
   'packages/domain/src/approval/types.ts#subsetProcessCode': ['#SUBSET_PROCESS_CODES'],
 };

@@ -110,7 +110,10 @@ function standardCondition(type: ApprovalTypeCode): Pick<ProcessDefinition, 'con
 
 /** 未取证节点结构的任职类审批：部门负责人审批 → HRBP 审核（TODO(需取证 #38)）。 */
 const GENERIC_FORM = ['effectiveDate', 'departmentId', 'postId', 'positionId', 'levelId'];
-type GenericType = Exclude<ApprovalTypeCode, 'transfer' | 'leave' | 'personnel_change' | 'emp_info_change'>;
+type GenericType = Exclude<
+  ApprovalTypeCode,
+  'transfer' | 'leave' | 'personnel_change' | 'emp_info_change' | 'part_time_add' | 'part_time_extend' | 'part_time_end'
+>;
 function genericPreset(type: GenericType): PresetProcess {
   const name = APPROVAL_TYPES[type].name;
   const form = type.startsWith('contract_') ? CONTRACT_FIELDS : GENERIC_FORM;
@@ -133,6 +136,55 @@ function genericPreset(type: GenericType): PresetProcess {
 
 // R2-T03 §9：离职表单带出离职类型 / 原因 / 去向等扩展字段，审批人按字段权限看到（盲审照常）
 const LEAVE_FORM = ['lastWorkDate', 'effectiveDate', 'departmentId', 'postId', ...EXIT_FORM_FIELDS];
+
+/**
+ * 兼职三类申请（R2-T05 §4.5）：节点名照原站角色。新增 / 延长按 R2d 取证的“主职部门 HRBP → 主职部门负责人 → 兼职部门 HRBP
+ * → 兼职部门负责人”，结束按 R2f1 / F-165③ 相反。HRBP 无人时转异常管理员（F-165③），首节点无人提交即报错（DEC-054）。
+ * 结束兼职“同意时打开可编辑的业务表单”（R2f1），可编辑字段集未验证，取最小集合结束日期与申请备注（A-14 / B-8）；
+ * 新增 / 延长未验证，不开审批中编辑（租户可改）。开始日期的字段权限编码未定（§7.2 只登记 6 个新字段），表单暂不放。
+ */
+const PART_TIME_FORM = [
+  'partTimeType',
+  'departmentId',
+  'postId',
+  'levelId',
+  'directManagerId',
+  'endDate',
+  'requestRemark',
+];
+const PART_TIME_NODES = {
+  primaryHrbp: ['primary_hrbp', '主职部门HRBP', 'latest_record_department_hrbp'],
+  primaryHead: ['primary_head', '主职部门负责人', 'latest_record_department_head'],
+  partTimeHrbp: ['part_time_hrbp', '兼职部门HRBP', 'record_department_hrbp'],
+  partTimeHead: ['part_time_head', '兼职部门负责人', 'record_department_head'],
+} as const satisfies Record<string, readonly [string, string, ApproverExpression]>;
+const HRBP_FIRST = ['primaryHrbp', 'primaryHead', 'partTimeHrbp', 'partTimeHead'] as const;
+const HEAD_FIRST = ['partTimeHead', 'partTimeHrbp', 'primaryHead', 'primaryHrbp'] as const;
+
+function partTimePreset(
+  type: 'part_time_add' | 'part_time_extend' | 'part_time_end',
+  code: string,
+  order: readonly (keyof typeof PART_TIME_NODES)[],
+): PresetProcess {
+  const name = APPROVAL_TYPES[type].name;
+  const edit: Partial<SingleApprovalNode> =
+    type === 'part_time_end' ? { editMode: 'with_approve', editableFields: ['endDate', 'requestRemark'] } : {};
+  return {
+    presetKey: `standard_${type}`,
+    code,
+    approvalType: type,
+    definition: draft({
+      name: `标准${name}流程`,
+      description: '出厂预置：按原站兼职流程节点结构建立，发布前须配置异常管理员',
+      priority: 0,
+      ...standardCondition(type),
+      nodes: order.map((key) => {
+        const [nodeKey, nodeName, approver] = PART_TIME_NODES[key];
+        return node(nodeKey, nodeName, approver, { formFields: PART_TIME_FORM, ...edit });
+      }),
+    }),
+  };
+}
 
 export const PRESET_PROCESSES: readonly PresetProcess[] = [
   {
@@ -204,6 +256,9 @@ export const PRESET_PROCESSES: readonly PresetProcess[] = [
       'contract_terminate',
     ] as const
   ).map(genericPreset),
+  partTimePreset('part_time_add', 'StandardParttimeJob', HRBP_FIRST),
+  partTimePreset('part_time_extend', 'StandardExtendParttimeJob', HRBP_FIRST),
+  partTimePreset('part_time_end', 'StandardEndParttimeJob', HEAD_FIRST),
   {
     // DEC-116：个人信息变更的发起入口未接入；节点结构未取证（TODO(需取证 #38)），表单待租户按需勾选员工信息字段。
     presetKey: 'standard_emp_info_change',
