@@ -30,10 +30,20 @@ import {
   parseOfferDictionaryInput,
   saveOfferDictionaryEntry,
 } from './dictionaries.js';
-import { offerCopyCheck, offerCreateCheck } from './checks.js';
+import { frozenPerTransaction, offerCopyCheck, offerCreateCheck } from './checks.js';
 import { parseOfferCreate, parseOfferUpdate } from './input.js';
 import { OFFER_POLICIES } from './policy.js';
-import { copyOffer, createOffer, deleteOffer, listOffers, loadOffer, offerDetail, updateOffer } from './service.js';
+import {
+  copyOffer,
+  createOffer,
+  deleteOffer,
+  listOffers,
+  loadOffer,
+  lockOffer,
+  offerCreateWrites,
+  offerDetail,
+  updateOffer,
+} from './service.js';
 
 type C = Context<TenantEnv>;
 const enabledQuery = z.enum(['true', 'false']).optional();
@@ -97,13 +107,14 @@ const stillVisible = async (tx: Parameters<typeof loadOffer>[0], ctx: OfferConte
 function registerCommands(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
   module.post('/', async (c) => {
     const input = parseOfferCreate(await jsonBody(c));
+    const writes = frozenPerTransaction((tx, ctx) => offerCreateWrites(tx, ctx, input));
     return runOfferWrite(
       c,
       deps,
       input,
       'create',
-      offerCreateCheck(input),
-      async (tx, ctx) => ({ status: 201, body: await createOffer(tx, ctx, input) }),
+      offerCreateCheck(input, writes),
+      async (tx, ctx) => ({ status: 201, body: await createOffer(tx, ctx, await writes(tx, ctx)) }),
       { isNew: true, replayed: stillVisible },
     );
   });
@@ -129,13 +140,14 @@ function registerCommands(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
   });
   module.post('/:id/copy', async (c) => {
     const id = uuidParam(c);
+    const source = frozenPerTransaction((tx, ctx) => lockOffer(tx, ctx, id));
     return runOfferWrite(
       c,
       deps,
       { id },
       'create',
-      offerCopyCheck(id),
-      async (tx, ctx) => ({ status: 201, body: await copyOffer(tx, ctx, id) }),
+      offerCopyCheck(source),
+      async (tx, ctx) => ({ status: 201, body: await copyOffer(tx, ctx, await source(tx, ctx)) }),
       { replayed: stillVisible },
     );
   });

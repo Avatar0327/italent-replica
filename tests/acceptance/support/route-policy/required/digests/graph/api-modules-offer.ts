@@ -6,13 +6,11 @@ import type { Graph } from '../../../evidence-graph.js';
 
 export const GRAPH: Graph = {
   'apps/api/src/modules/offer/checks.ts#offerCopyCheck': [
-    'apps/api/src/modules/offer/service.ts#loadOffer',
     'apps/api/src/modules/offer/service.ts#offerCopyWrites',
     'apps/api/src/modules/permission/module-route-access.ts#writeFields',
     'packages/domain/src/offer/rules.ts#OFFER_OBJECT',
   ],
   'apps/api/src/modules/offer/checks.ts#offerCreateCheck': [
-    'apps/api/src/modules/offer/service.ts#offerCreateWrites',
     'apps/api/src/modules/permission/module-route-access.ts#writeFields',
     'packages/domain/src/offer/rules.ts#OFFER_OBJECT',
   ],
@@ -142,18 +140,22 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/offer/routes.ts#route:POST /': [
     'apps/api/src/modules/employment/context.ts#jsonBody',
+    'apps/api/src/modules/offer/checks.ts#frozenPerTransaction',
     'apps/api/src/modules/offer/checks.ts#offerCreateCheck',
     'apps/api/src/modules/offer/context.ts#runOfferWrite',
     'apps/api/src/modules/offer/input.ts#parseOfferCreate',
     '#stillVisible',
     'apps/api/src/modules/offer/service.ts#createOffer',
+    'apps/api/src/modules/offer/service.ts#offerCreateWrites',
   ],
   'apps/api/src/modules/offer/routes.ts#route:POST /:id/copy': [
     'apps/api/src/modules/job/context.ts#uuidParam',
+    'apps/api/src/modules/offer/checks.ts#frozenPerTransaction',
     'apps/api/src/modules/offer/checks.ts#offerCopyCheck',
     'apps/api/src/modules/offer/context.ts#runOfferWrite',
     '#stillVisible',
     'apps/api/src/modules/offer/service.ts#copyOffer',
+    'apps/api/src/modules/offer/service.ts#lockOffer',
   ],
   'apps/api/src/modules/offer/routes.ts#route:POST /dictionaries/:kind': [
     'apps/api/src/modules/employment/context.ts#jsonBody',
@@ -184,12 +186,11 @@ export const GRAPH: Graph = {
     'apps/api/src/audit/record.ts#recordAudit',
     'apps/api/src/system-actor.ts#auditActor',
   ],
-  'apps/api/src/modules/offer/service.ts#campusCarried': ['#CAMPUS_CARRIED', '#loadOffer', '#present'],
+  'apps/api/src/modules/offer/service.ts#campusCarried': ['#CAMPUS_CARRIED', '#lockOffer', '#present'],
   'apps/api/src/modules/offer/service.ts#copyOffer': [
     'apps/api/src/modules/offer/context.ts#assertOfferRevision',
     '#audit',
     '#guarded',
-    '#lockOffer',
     '#offerDto',
     '#requireDepartment',
     '#requireReferences',
@@ -198,7 +199,6 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/offer/service.ts#createOffer': [
     '#audit',
     '#guarded',
-    '#offerCreateWrites',
     '#offerDto',
     '#requireComplete',
     '#requireDepartment',

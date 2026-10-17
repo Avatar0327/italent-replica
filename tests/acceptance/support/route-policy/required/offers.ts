@@ -142,7 +142,7 @@ export const OFFERS: RequiredTable = {
     'create',
     writesCheck(
       'offerCreateCheck',
-      "writeFields({ authorize }, ctx, OFFER_OBJECT, 'create', tx ? await offerCreateWrites",
+      "writeFields({ authorize }, ctx, OFFER_OBJECT, 'create', tx ? await writes(tx, ctx) : input)",
     ),
   ),
   [`PUT ${BASE}/:id`]: offerWrite('PUT', '/:id', 'update'),

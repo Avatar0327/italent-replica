@@ -83,12 +83,17 @@ async function audit(
 }
 
 /** 加锁读取并核对范围；范围外与不存在同为 404。 */
-export async function lockOffer(tx: Tx, ctx: OfferContext, id: string): Promise<OfferRow> {
+export async function lockOffer(
+  tx: Tx,
+  ctx: OfferContext,
+  id: string,
+  strength: 'update' | 'share' = 'update',
+): Promise<OfferRow> {
   const [row] = await tx
     .select()
     .from(offers)
     .where(and(eq(offers.tenantId, ctx.tenantId), eq(offers.id, id)))
-    .for('update');
+    .for(strength);
   if (!row) throw new AppError('NOT_FOUND', 'Offer 不存在');
   requireOfferInScope(ctx, row);
   return row;
@@ -194,10 +199,13 @@ function requireEntry(input: OfferCreateInput) {
 const present = (values: Readonly<Record<string, unknown>>) =>
   Object.fromEntries(Object.entries(values).filter(([, value]) => value !== undefined && value !== null));
 
-/** 校招生提前实习：从所选校招 Offer 带出请求里没填的基本信息（只取有值的项）。 */
+/**
+ * 校招生提前实习：从所选校招 Offer 带出请求里没填的基本信息（只取有值的项）。校招 Offer 待发时可编辑，读时加共享锁，
+ * 本事务提交前他人改不了它（审查 #394 P2-03）。
+ */
 async function campusCarried(tx: Tx, ctx: OfferContext, input: OfferCreateInput) {
   if (!input.campusOfferId) return {};
-  const campus = await loadOffer(tx, ctx, input.campusOfferId);
+  const campus = await lockOffer(tx, ctx, input.campusOfferId, 'share');
   if (campus.offerType !== 'campus' || campus.status === 'invalid')
     throw new AppError('VALIDATION_FAILED', '所选 Offer 不是有效的校招 Offer', { reason: 'OFFER_CAMPUS_REQUIRED' });
   const missing = CAMPUS_CARRIED.filter((field) => input[field as keyof OfferCreateInput] === undefined);
@@ -206,12 +214,14 @@ async function campusCarried(tx: Tx, ctx: OfferContext, input: OfferCreateInput)
 
 /**
  * 新建实际写入的字段（审查 #394 P2-01）：请求字段 + 从校招 Offer 继承的字段。字段编辑权按它校验（事务内的
- * CommandGuard.before），新建也按它落库，两处同一个来源。
+ * CommandGuard.before），新建也按它落库：路由按事务冻结这份结果，判定与落库共用同一个对象（P2-03）。
  */
 export async function offerCreateWrites(tx: Tx, ctx: OfferContext, input: OfferCreateInput) {
   requireEntry(input);
   return { ...input, ...(await campusCarried(tx, ctx, input)) };
 }
+
+export type OfferCreateWrites = Awaited<ReturnType<typeof offerCreateWrites>>;
 
 /** 复制实际写入的字段（审查 #394 P2-01）：被复制 Offer 上有值的业务字段与入口 / 类型 / 来源 / 校招 Offer。 */
 export function offerCopyWrites(source: OfferRow) {
@@ -224,9 +234,12 @@ export function offerCopyWrites(source: OfferRow) {
   });
 }
 
-/** 三个新建入口（DEC-527③）：实习两个入口类型固定为实习；校招生提前实习须选一份校招 Offer 并带出基本信息。 */
-export async function createOffer(tx: Tx, ctx: OfferContext, input: OfferCreateInput) {
-  const { entry, offerType, source, campusOfferId, ...values } = await offerCreateWrites(tx, ctx, input);
+/**
+ * 三个新建入口（DEC-527③）：实习两个入口类型固定为实习；校招生提前实习须选一份校招 Offer 并带出基本信息。
+ * writes 是本事务判定字段编辑权时用的同一份展开结果（offerCreateWrites），这里不再读校招 Offer。
+ */
+export async function createOffer(tx: Tx, ctx: OfferContext, writes: OfferCreateWrites) {
+  const { entry, offerType, source, campusOfferId, ...values } = writes;
   const type = entry === 'offer' ? (offerType ?? null) : 'intern';
   requireComplete(type, values);
   requireDepartment(ctx, values.departmentId as string | null, ctx.userId);
@@ -290,9 +303,11 @@ export async function deleteOffer(tx: Tx, ctx: OfferContext, id: string) {
   return { id, deleted: true };
 }
 
-/** 复制（失效后唯一的出口，OF-R7）：新 Offer 回到待发 / 未发起审批，记下被复制的 Offer；状态表单字段不复制。 */
-export async function copyOffer(tx: Tx, ctx: OfferContext, id: string) {
-  const source = await lockOffer(tx, ctx, id);
+/**
+ * 复制（失效后唯一的出口，OF-R7）：新 Offer 回到待发 / 未发起审批，记下被复制的 Offer；状态表单字段不复制。
+ * source 是本事务判定字段编辑权时锁读的同一行（lockOffer），这里不再读第二次（审查 #394 P2-03）。
+ */
+export async function copyOffer(tx: Tx, ctx: OfferContext, source: OfferRow) {
   assertOfferRevision(ctx.expectedRevision, source.revision);
   if (source.status !== 'invalid')
     throw new AppError('CONFLICT', '只有失效的 Offer 可以复制', { reason: 'OFFER_COPY_NOT_ALLOWED' });
