@@ -76,6 +76,8 @@ describe('转移状态两项按钮权限（真实授权器）', () => {
     expect(await w.get(offer.id)).toMatchObject({ status: 'pending', revision: 1 });
     const listed = await w.real('GET', '?view=pending');
     expect(((await listed.json()) as { toolbarActions: string[] }).toolbarActions).toEqual([]);
+    const form = await w.real('GET', `/${offer.id}/transfer-form`);
+    expect(await form.json()).toMatchObject({ targets: ['accepted', 'rejected'] });
     const row = await w.real('POST', `/${offer.id}/transfer`, { ifMatch: 1, body: accept });
     expect(row.status, await row.clone().text()).toBe(200);
   });

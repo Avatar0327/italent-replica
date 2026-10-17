@@ -4,7 +4,7 @@
  * （DEC-503）。写命令一律经 runCommand 的 ledgerExit + CommandGuard.before：首次、重放、失败回查都按当前权限复核（#199）。
  */
 import { type Tx } from '@italent/db';
-import { OFFER_OBJECT } from '@italent/domain';
+import { OFFER_OBJECT, type ButtonLevel } from '@italent/domain';
 import type { Context } from 'hono';
 import { requirePermission, type Authorizer } from '../../authorization.js';
 import { runCommand, type CommandGuard, type CommandResult } from '../../commands.js';
@@ -19,7 +19,7 @@ import {
   trimModuleResponse,
   type ModuleScope,
 } from '../permission/module-access.js';
-import { objectContext, requestScope, writeFields } from '../permission/module-route-access.js';
+import { button, objectContext, requestScope, writeFields } from '../permission/module-route-access.js';
 import { requireObjectWrite } from '../permission/object-write.js';
 import { revision } from '../job/context.js';
 
@@ -65,6 +65,18 @@ export const offerOperationCheck =
   (operation: OfferOperation): OfferCheck =>
   (authorize, ctx) =>
     requirePermission(authorize, { ...ctx, action: `object.${operation}`, resource: OFFER_OBJECT, fields: [] });
+
+/**
+ * 转移状态：只按入口对应的一项按钮判断（DEC-537③；顶部工具栏 / 行主按钮各自独立，DEC-533④）。两项按钮登记为依赖
+ * 对象编辑开关（module-actions.ts），撤掉编辑开关按钮也随之失效；system_admin 不越过对象权限（DEC-503）。
+ */
+export const offerTransferCheck =
+  (ref: { readonly code: string; readonly level: ButtonLevel }): OfferCheck =>
+  (authorize, ctx) => {
+    // 只用到授权器：事务内复核时传入的是绑定本事务的授权器
+    const deps = { authorize } as TenantRouteDeps;
+    return button(deps, ctx, OFFER_OBJECT, ref.code, ref.level);
+  };
 
 /** Offer 写入口：execute 拿到的上下文带本事务重新解析的数据范围；响应按字段查看权裁剪。 */
 export async function runOfferWrite(
@@ -143,11 +155,19 @@ export async function runDictionaryWrite(
 export async function trimOffer(deps: TenantRouteDeps, ctx: OfferContext, body: unknown) {
   if (!body || typeof body !== 'object') return body;
   const value = body as Record<string, unknown>;
-  if (Array.isArray(value.items))
-    return { ...value, items: await trimModuleResponse(deps, ctx, OFFER_OBJECT, value.items as object[]) };
+  if (Array.isArray(value.items)) {
+    const rows = value.items as Record<string, unknown>[];
+    const trimmed = await trimModuleResponse(deps, ctx, OFFER_OBJECT, rows);
+    return { ...value, items: trimmed.map((row, index) => ({ ...row, ...protocolKeys(rows[index]!) })) };
+  }
   if (value.deleted === true) return value;
-  return trimModuleResponse(deps, ctx, OFFER_OBJECT, value);
+  return { ...(await trimModuleResponse(deps, ctx, OFFER_OBJECT, value)), ...protocolKeys(value) };
 }
+
+/** 行操作与转移表单的可选目标是接口协议数据，不是对象字段，不按字段查看权裁剪（BE-14a2）。 */
+const PROTOCOL_KEYS = ['rowActions', 'targets'] as const;
+const protocolKeys = (row: Record<string, unknown>) =>
+  Object.fromEntries(PROTOCOL_KEYS.filter((key) => key in row).map((key) => [key, row[key]]));
 
 /** Offer 落在当前范围内：录用部门命中组织维度，或创建人命中使用用户维度；范围外与不存在同为 404。 */
 export function requireOfferInScope(

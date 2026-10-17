@@ -197,6 +197,7 @@ describe('AC-OF-18 / 19 失效', () => {
     expect(await ok.json()).toMatchObject({ status: 'invalid', invalidRemark: '放弃' });
     for (const status of ['sent', 'accepted']) {
       const offer = await w.intern();
+      if (status === 'accepted') await w.force(offer.id, 'accept_time', '2026-10-16');
       await w.force(offer.id, 'status', status);
       const response = await w.invalidate(offer, { reasonCode: 'candidate_gave_up' });
       expect(response.status, `${status}：${await response.clone().text()}`).toBe(200);
@@ -247,6 +248,7 @@ describe('AC-OF-16 / 19 / 20 行操作矩阵', () => {
     ];
     for (const [status, actions] of cases) {
       const offer = await w.social();
+      if (status === 'accepted') await w.force(offer.id, 'accept_time', '2026-10-16');
       await w.force(offer.id, 'status', status);
       expect(actionsOf(await w.get(offer.id)), status).toEqual(actions);
     }

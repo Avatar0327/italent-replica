@@ -2,7 +2,7 @@
  * Offer 请求体的严格校验（OF-R1 字段集）：多余字段 400，在字段授权之前拦下，避免被当作无权字段 403。
  * 金额以十进制字符串落库（numeric(14,2)），接口收发数字。
  */
-import { OFFER_ENTRIES, OFFER_SOURCES, OFFER_TYPES } from '@italent/domain';
+import { OFFER_ENTRIES, OFFER_SOURCES, OFFER_STATUSES, OFFER_TYPES } from '@italent/domain';
 import { z } from 'zod';
 import { AppError } from '../../errors.js';
 
@@ -53,7 +53,19 @@ const createSchema = z.strictObject({
   ...OFFER_FIELD_SCHEMA,
 });
 const updateSchema = z.strictObject(OFFER_FIELD_SCHEMA);
+/** 转移状态表单（34 §2.1）：目标状态 + 接受时间 / 拒绝时间、原因、备注；必填按目标在领域规则里判。 */
+const transferSchema = z.strictObject({
+  target: z.enum(OFFER_STATUSES),
+  acceptTime: day,
+  refusalTime: day,
+  refusalReasonCode: text(100),
+  refusalRemark: text(500),
+});
+/** 失效表单（OF-R7）：原因走字典、备注选填。 */
+const invalidateSchema = z.strictObject({ reasonCode: text(100), remark: text(500) });
 export type OfferCreateInput = z.infer<typeof createSchema>;
+export type OfferTransferInput = z.infer<typeof transferSchema>;
+export type OfferInvalidateInput = z.infer<typeof invalidateSchema>;
 export type OfferUpdateInput = z.infer<typeof updateSchema>;
 
 function parse<T>(schema: z.ZodType<T>, raw: unknown): T {
@@ -64,3 +76,5 @@ function parse<T>(schema: z.ZodType<T>, raw: unknown): T {
 
 export const parseOfferCreate = (raw: unknown) => parse(createSchema, raw);
 export const parseOfferUpdate = (raw: unknown) => parse(updateSchema, raw);
+export const parseOfferTransfer = (raw: unknown) => parse(transferSchema, raw);
+export const parseOfferInvalidate = (raw: unknown) => parse(invalidateSchema, raw);
