@@ -76,7 +76,7 @@ describe('confirmed 阶段：编制预减时点 R 与预减台账（DEC-266①�
   });
 });
 
-describe('审批适配：exitMetadata、LEAVE_FORM、审批编辑补齐离职类型', () => {
+describe('审批适配（DEC-057 / DEC-058 / DEC-332①）：exitMetadata、LEAVE_FORM、审批编辑补齐离职类型', () => {
   it('预置离职流程节点表单含离职扩展字段；快照值与变化字段带离职类型 / 原因 / 去向', async () => {
     const preset = PRESET_PROCESSES.find((process) => process.presetKey === 'standard_leave')!;
     for (const node of preset.definition.nodes as unknown as {
@@ -164,7 +164,7 @@ describe('审批适配：exitMetadata、LEAVE_FORM、审批编辑补齐离职类
   });
 });
 
-describe('D-13 与 notifyMessage', () => {
+describe('D-13（DEC-195③）与 notifyMessage（DEC-263③）', () => {
   it('已生效离职的审批快照带原定 / 实际生效日（与调动同一函数）', async () => {
     const w = await gateWorld(database().db, 'confirm-dates', { today: TODAY });
     const { employee } = await w.hired();
