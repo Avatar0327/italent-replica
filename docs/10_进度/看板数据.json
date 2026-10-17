@@ -3,7 +3,7 @@
 "stats": {
 "merged": 305,
 "open": 4,
-"dec": 568,
+"dec": 575,
 "ev": "43/177"
 },
 "tasks": {
@@ -983,6 +983,22 @@
 }
 },
 "log": [
+[
+"10-17",
+"F-213 标签更正为 D2·R1·后补·F-213（00：模块用 R1，F 号一律后补）"
+],
+[
+"10-17",
+"DEC-575：F-213（组织停用日校验）由 D3 改 D2，现在派，计入 D2 分母；标签 D2·组织·后端·F-213"
+],
+[
+"10-17",
+"DEC-574⑤（用户 10-17）：BE-3 不必等 BE-4，BE-3 + F-205 现在派，属 D2；03 拟派发，待开会话"
+],
+[
+"10-17",
+"DEC-573（用户 10-17）：先聚焦做完 D2。BE-4e / BE-6a / BE-8a / BE-7 已开会话，开发中；F-213（组织停用日校验）/ F-181 / F-182 / F-190 / F-191 / F-193（非 D 期）暂缓，派发单已备好"
+],
 [
 "10-17",
 "03 拟派发 10 行（盘点第一组）：新增 BE-4e、BE-6a、BE-8a、F-181、F-182、组织停用日校验（F 号待 00），BE-6/BE-8 拆为 6a/6b、8a/8b；分母 +6"
@@ -5482,16 +5498,14 @@
 "after": [
 "BE-4d"
 ],
-"note": "拟派发（排第 1）· Opus High · 前序 B2a #362 已合 · BE-5/6b/8b/9/10 与 FE-R2c 的共同前序 · 基于最新 main 11777ec9 · 云端 Claude 开发 / Codex Sol high 审 · 00 已同意（盘点 inv_1017.md 第一组）"
+"note": "开发中（云端会话 session_01F7cxEFr3uVmbwwuxnb5sit，尚无 PR）· Codex Sol high 审 · 03 10-17 已开会话"
 },
 {
 "k": "BE-3",
 "n": "BE-3 试用期与转正",
-"s": "wait",
-"note": "待排 · 不需要补证；排在 BE-4 离职之后（差距表 §3.3 第 3 步）",
-"after": [
-"BE-4"
-]
+"s": "assigned",
+"note": "拟派发（DEC-574⑤，用户 10-17：不必排在 BE-4 后面，现在派）· Opus High · 范围：任职试用期字段、编辑试用期、四个试用视图、转正“试用结果”字段、批量转正 · F-205 并入同一会话 · 云端 Claude 开发 / Codex Sol high 审 · 分支 claude/BE-3-probation",
+"after": []
 },
 {
 "k": "BE-15",
@@ -5519,7 +5533,7 @@
 "after": [
 "BE-4d"
 ],
-"note": "拟派发（排第 3）· Opus High · 依据 R2f2 §2.2、R2f3 §2.7/§2.8、R2c B68，exit 表 addToBlacklist 已在 B1a 落库 · 基于最新 main 11777ec9 · 云端 Claude 开发 / Codex Sol high 审 · 00 已同意（盘点 inv_1017.md 第一组）"
+"note": "开发中（云端会话 session_01UsHXEmDcUEwrFcoyZqgKJ6，尚无 PR）· Codex Sol high 审 · 03 10-17 已开会话"
 },
 {
 "k": "BE-8b",
@@ -5563,7 +5577,7 @@
 "after": [
 "BE-2a"
 ],
-"note": "拟派发（排第 2）· Opus High · 依据 R2f1 §2.1、R2d B41，BE-2 已合 · 基于最新 main 11777ec9 · 云端 Claude 开发 / Codex Sol high 审 · 00 已同意（盘点 inv_1017.md 第一组）"
+"note": "开发中（云端会话 session_01K6swMbfsgXgNSh4byo5Bi9，尚无 PR）· Codex Sol high 审 · 03 10-17 已开会话"
 },
 {
 "k": "BE-6b",
@@ -5579,7 +5593,7 @@
 "k": "BE-7",
 "n": "BE-7 兼职（先 Opus 设计主职 / 兼职影响）",
 "s": "assigned",
-"note": "拟派发（排第 4，先出设计段：Opus 设计主职 / 兼职对向后更新的影响，B33 延长 / 结束待补证）· Opus High · 基于最新 main 11777ec9 · 云端 Claude 开发 / Codex Sol high 审 · 00 已同意（盘点 inv_1017.md 第一组）",
+"note": "开发中（云端会话 session_016GXowSPDKr1dUxCi1sUCVS，尚无 PR）· 先出设计段 · Codex Sol high 审 · 03 10-17 已开会话",
 "after": []
 },
 {
@@ -5750,9 +5764,9 @@
 {
 "k": "F-193",
 "n": "F-193 cross-review 技能 description 加引号（两侧同步，#366 第 1 轮 P3）",
-"s": "assigned",
+"s": "paused",
 "after": [],
-"note": "拟派发（排第 10）· Sonnet High · 基于最新 main 11777ec9 · 云端 Claude 开发 / Codex Sol high 审 · 00 已同意（盘点 inv_1017.md 第一组）",
+"note": "DEC-573 暂缓：先聚焦做完 D2，D3 开发待 D2 收口后再派；派发单已备好、会话未开；非 D 期",
 "mod": "底座",
 "ms": "D3"
 }
@@ -5837,18 +5851,18 @@
 {
 "k": "F-190",
 "n": "F-190 带教子菜单层级：共享入口登记契约小片补子菜单，再改带教入口（#356 第 1 轮 P3）",
-"s": "assigned",
+"s": "paused",
 "after": [],
-"note": "拟派发（排第 8）· Opus High · 契约 PR 先合 · 基于最新 main 11777ec9 · 云端 Claude 开发 / Codex Sol high 审 · 00 已同意（盘点 inv_1017.md 第一组）",
+"note": "DEC-573 暂缓：先聚焦做完 D2，D3 开发待 D2 收口后再派；派发单已备好、会话未开",
 "mod": "R3",
 "ms": "D3"
 },
 {
 "k": "F-191",
 "n": "F-191 公共外壳模块名对齐原站“继任与发展”（按契约 PR 走）",
-"s": "assigned",
+"s": "paused",
 "after": [],
-"note": "拟派发（排第 9）· Sonnet High · 依据 remote/codex-R3e spec · 基于最新 main 11777ec9 · 云端 Claude 开发 / Codex Sol high 审 · 00 已同意（盘点 inv_1017.md 第一组）",
+"note": "DEC-573 暂缓：先聚焦做完 D2，D3 开发待 D2 收口后再派；派发单已备好、会话未开",
 "mod": "R3",
 "ms": "D3"
 }
@@ -6110,9 +6124,9 @@
 {
 "k": "F-205",
 "n": "F-205 转正日期口径：BE-3 与 BE-15 共用同一计算函数，默认转正日 = 预计试用结束日次日（03 核对原站 W-105b）",
-"s": "wait",
+"s": "assigned",
 "after": [],
-"note": "随 BE-3 派发单逐项验收（并入，不单独开会话）",
+"note": "拟派发（随 BE-3，不单独开会话）· 默认转正日 = 预计试用结束日次日，与 BE-15 共用一个函数 · DEC-574⑤",
 "mod": "R2",
 "ms": "D2"
 },
@@ -6224,26 +6238,26 @@
 {
 "k": "F-181",
 "n": "F-181 调动暂存改服务端按人一份（#350 / F-153 第 1 轮遗留）",
-"s": "assigned",
+"s": "paused",
 "mod": "R2",
 "ms": "D3",
-"note": "拟派发（排第 6，任务表第 193 行）· Opus High · 服务端按人覆盖 / 清除暂存单并提供元数据读口，前端改用服务端数据 · 基于最新 main 11777ec9 · 云端 Claude 开发 / Codex Sol high 审 · 00 已同意（盘点 inv_1017.md 第一组）"
+"note": "DEC-573 暂缓：先聚焦做完 D2，D3 开发待 D2 收口后再派；派发单已备好、会话未开"
 },
 {
 "k": "F-182",
 "n": "F-182 IDP my-plans 补指导人（#352 / F-164 第 1 轮 P3）",
-"s": "assigned",
+"s": "paused",
 "mod": "R3",
 "ms": "D3",
-"note": "拟派发（排第 7，任务表第 194 行）· Sonnet High · 接口补指导人字段，前端列显示并可按指导人筛选 · 基于最新 main 11777ec9 · 云端 Claude 开发 / Codex Sol high 审 · 00 已同意（盘点 inv_1017.md 第一组）"
+"note": "DEC-573 暂缓：先聚焦做完 D2，D3 开发待 D2 收口后再派；派发单已备好、会话未开"
 },
 {
-"k": "F-待补号",
+"k": "F-213",
 "n": "组织停用日校验：停用日不得早于或等于设立日（R2f3 §2.2；F 号待 00 补）",
 "s": "assigned",
 "mod": "R1",
-"ms": "D3",
-"note": "拟派发（排第 5）· Sonnet High · 开发先确认现有停用是否已拦截 · 任务表还没有 F 行，已请 00 补号（号定后改 key）· 基于最新 main 11777ec9 · 云端 Claude 开发 / Codex Sol high 审 · 00 已同意（盘点 inv_1017.md 第一组）"
+"ms": "D2",
+"note": "拟派发（DEC-575 改 D2，现在派）· Sonnet High · 开发先确认现有停用是否已拦截 · 停用日不得早于或等于设立日（org/deactivation.ts），提示文案对齐原站 · 云端 Claude 开发 / Codex Sol high 审 · 此前 DEC-573 暂缓已撤销"
 }
 ]
 }
