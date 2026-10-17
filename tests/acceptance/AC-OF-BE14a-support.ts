@@ -218,8 +218,8 @@ export async function offerRealWorld(db: Db, label: string, deniedEdit: readonly
   const traces = async (commandId: string) =>
     rows<{ n: number }>(
       await withTenant(db, w.tenant.id, (tx) =>
-        tx.execute(sql`SELECT (SELECT count(*) FROM audit_events WHERE command_id = ${commandId})
-          + (SELECT count(*) FROM command_ledger WHERE command_id = ${commandId}) AS n`),
+        tx.execute(sql`SELECT ((SELECT count(*) FROM audit_events WHERE command_id = ${commandId})
+          + (SELECT count(*) FROM command_ledger WHERE command_id = ${commandId}))::int AS n`),
       ),
     )[0]!.n;
   return {
