@@ -5,6 +5,7 @@
  */
 import { sql, withTenant, type Db } from '@italent/db';
 import { activateExit, type ExitActivationOptions } from '../../apps/api/src/modules/employment/exit-activation.js';
+import { rowsOf } from '../../apps/api/src/modules/employment/record-store.js';
 import type { EmploymentContext } from '../../apps/api/src/modules/employment/types.js';
 import { randomUUID } from 'node:crypto';
 import { gateWorld, leaveBody } from './AC-EXIT-gate-support.js';
@@ -16,9 +17,11 @@ export function exitActivator(db: Db, session: { tenant: { id: string; timezone:
   return (businessId: string, at: string, options: ExitActivationOptions = { trigger: 'scheduler' }) =>
     withTenant(db, session.tenant.id, async (tx) => {
       const tenantId = session.tenant.id;
-      const [head] = (await tx.execute(
-        sql`SELECT revision FROM employment_business_objects WHERE tenant_id=${tenantId} AND id=${businessId}::uuid`,
-      )) as unknown as { revision: number }[];
+      const [head] = rowsOf<{ revision: number }>(
+        await tx.execute(
+          sql`SELECT revision FROM employment_business_objects WHERE tenant_id=${tenantId} AND id=${businessId}::uuid`,
+        ),
+      );
       const ctx: EmploymentContext = {
         tenantId,
         userId: session.user.id,

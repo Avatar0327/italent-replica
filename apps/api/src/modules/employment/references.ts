@@ -20,9 +20,12 @@ export async function validateNewEmploymentReferences(
   effectiveDate: string,
   reporting?: ReportingCheck,
   entry = false,
+  /** 离职 / 退休落地（R2-T03 §5.1 步骤 2）：记录不占用部门，只校验引用存在，按最后一个在职日（引用仍有效的那天）解析。 */
+  terminatingAsOf?: string,
 ): Promise<void> {
-  await assertEmploymentDepartmentAvailable(tx, ctx, fields.departmentId, effectiveDate, entry);
-  await validateEmploymentReferences(tx, ctx, fields, effectiveDate, reporting);
+  if (terminatingAsOf === undefined)
+    await assertEmploymentDepartmentAvailable(tx, ctx, fields.departmentId, effectiveDate, entry);
+  await validateEmploymentReferences(tx, ctx, fields, terminatingAsOf ?? effectiveDate, reporting, effectiveDate);
 }
 
 /**

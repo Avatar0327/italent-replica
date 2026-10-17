@@ -199,15 +199,15 @@ describe('AC-DM-26 B-05c 区间边界（F-007 §2-2 位置规则）', () => {
     expect(await x.activate(leave.id, '2026-10-18')).toMatchObject({ outcome: 'effective', postponed: true });
   });
 
-  it('未落地申请计划日 = E：操作序号更早（排在离职之前）不计，更晚计入', async () => {
+  it('未落地申请计划日 = E：操作序号更早 = 排在离职之前，是前序（pending）而不是区间成员；更晚 → 区间成员，REBUILD_REQUIRED', async () => {
     for (const [name, eventSeq, outcome] of [
-      ['earlier', 0, 'effective'],
+      ['earlier', 0, 'pending'],
       ['later', 900000, 'failed'],
     ] as const) {
       const x = await world(`edge-${name}`);
       const leave = await x.directLeave('2026-10-15');
       await x.synthetic(x.employee.id, { kind: 'transfer', state: 'approved', effectiveDate: '2026-10-16', eventSeq });
-      expect((await x.activate(leave.id, '2026-10-18')).outcome, name).toBe(outcome);
+      expect((await x.activate(leave.id, '2026-10-18', { trigger: 'approval' })).outcome, name).toBe(outcome);
     }
   });
 });

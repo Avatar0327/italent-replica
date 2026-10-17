@@ -105,7 +105,8 @@ export async function lateWindowBlockers(
   return { blockers: rows.slice(0, limit), truncated: rows.length > limit };
 }
 
-async function assertNoRebuildRequired(
+/** 调动与离职（exit-activation.ts 步骤 0）共用的区间判定：区间非空即 fail-closed。 */
+export async function assertNoRebuildRequired(
   tx: Tx,
   ctx: EmploymentContext,
   business: LockedEmploymentBusiness,

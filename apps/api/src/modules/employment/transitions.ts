@@ -34,7 +34,7 @@ import {
   rowsOf,
   type LockedEmploymentBusiness,
 } from './record-store.js';
-import { loadPlannedEffectiveDate, removeEmploymentTimeline } from './timeline.js';
+import { isDetachedRecord, loadPlannedEffectiveDate, removeEmploymentTimeline } from './timeline.js';
 import { assertNoLinkedChanges, assertNoPendingApplication, assertRestoredPredecessor } from './deletion-guards.js';
 import type { EmploymentBusiness, EmploymentContext, EmploymentState } from './types.js';
 import { assertRequiredTransferFields } from '../transfer/required-fields.js';
@@ -294,7 +294,9 @@ async function deleteEmploymentBusiness(
   let previous: { id: string; kind: string; date: string } | null = null;
   if (business.state === 'effective') {
     const record = await loadEmploymentRecord(tx, ctx.tenantId, business.id, tenantLocalDate(ctx.now, ctx.timezone));
-    if (!record) throw new AppError('SERVICE_UNAVAILABLE', '生效业务没有可读取的任职记录');
+    // 被离职摘下的未来调动不在时间轴上（离职设计 §5.8）：记录与墓碑照常处理，没有区间可恢复，也没有生效中的下游可通知
+    const detached = !record && (await isDetachedRecord(tx, ctx.tenantId, business.id));
+    if (!record && !detached) throw new AppError('SERVICE_UNAVAILABLE', '生效业务没有可读取的任职记录');
     const [raw] = rowsOf<Record<string, unknown>>(
       await tx.execute(sql`
         SELECT * FROM employment_records
@@ -303,9 +305,11 @@ async function deleteEmploymentBusiness(
       `),
     );
     if (!raw) throw new AppError('SERVICE_UNAVAILABLE', '任职记录删除快照不可用');
-    await assertNoPendingApplication(tx, ctx, { ...record, id: business.id });
-    await assertNoLinkedChanges(tx, ctx, record);
-    await assertRegularizationNotPropagated(tx, ctx, business);
+    if (record) {
+      await assertNoPendingApplication(tx, ctx, { ...record, id: business.id });
+      await assertNoLinkedChanges(tx, ctx, record);
+      await assertRegularizationNotPropagated(tx, ctx, business);
+    }
     await insertEmploymentRow(tx, 'employment_record_tombstones', {
       id: randomUUID(),
       tenantId: ctx.tenantId,
@@ -314,12 +318,14 @@ async function deleteEmploymentBusiness(
       commandId: ctx.commandId,
       createdAt: ctx.now.toISOString(),
     });
-    const opensCycle = NEW_CYCLE_KINDS.includes(business.payload.kind);
-    const point = await removeEmploymentTimeline(tx, ctx, business.employeeId, business.id, opensCycle);
-    if (point) {
-      await assertRestoredPredecessor(tx, ctx, record, { previousId: point.recordId, window: point.window });
-      const kept = await loadEmploymentRecord(tx, ctx.tenantId, point.recordId, point.window.from);
-      if (kept) previous = { id: kept.id, kind: kept.kind, date: kept.effectiveDate };
+    if (record) {
+      const opensCycle = NEW_CYCLE_KINDS.includes(business.payload.kind);
+      const point = await removeEmploymentTimeline(tx, ctx, business.employeeId, business.id, opensCycle);
+      if (point) {
+        await assertRestoredPredecessor(tx, ctx, record, { previousId: point.recordId, window: point.window });
+        const kept = await loadEmploymentRecord(tx, ctx.tenantId, point.recordId, point.window.from);
+        if (kept) previous = { id: kept.id, kind: kept.kind, date: kept.effectiveDate };
+      }
     }
     await auditEmployment(
       tx,
@@ -330,23 +336,28 @@ async function deleteEmploymentBusiness(
       {
         ...deletionSnapshot(raw),
         payloadVersionId: business.payload.id,
-        ...record.fields,
-        // 删除前镜像取最新记录快照上的状态（DEC-216；底表行只是首个版本，PR #93 首审 P2-3）
-        employeeStatus: record.employeeStatus,
-        entryStatus: record.entryStatus,
-        ...Object.fromEntries(Object.entries(record.customFields).map(([key, value]) => [`custom:${key}`, value])),
+        ...(record
+          ? {
+              ...record.fields,
+              // 删除前镜像取最新记录快照上的状态（DEC-216；底表行只是首个版本，PR #93 首审 P2-3）
+              employeeStatus: record.employeeStatus,
+              entryStatus: record.entryStatus,
+              ...Object.fromEntries(Object.entries(record.customFields).map(([key, value]) => [`custom:${key}`, value])),
+            }
+          : {}),
       },
       null,
     );
     // R3-T05 设计 §5.4：删除已生效记录（如误办的离职）通知订阅方，是否恢复由订阅方按自己的口径决定
-    await employeeStatusHooks.recordDeleted(tx, ctx, {
-      employeeId: business.employeeId,
-      recordId: business.id,
-      kind: record.kind,
-      effectiveDate: record.effectiveDate,
-      lastWorkDate: business.payload.lastWorkDate,
-      employeeStatus: record.employeeStatus,
-    });
+    if (record)
+      await employeeStatusHooks.recordDeleted(tx, ctx, {
+        employeeId: business.employeeId,
+        recordId: business.id,
+        kind: record.kind,
+        effectiveDate: record.effectiveDate,
+        lastWorkDate: business.payload.lastWorkDate,
+        employeeStatus: record.employeeStatus,
+      });
   }
   await appendEmploymentState(tx, ctx, business, 'deleted');
   await auditEmployment(tx, ctx, 'employment.business.delete', 'employment-business', business.id, before, null);

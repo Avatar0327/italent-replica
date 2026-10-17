@@ -7,7 +7,7 @@ import './support/exit-gate-enforced.js';
 import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { EXIT_QUEUE_VIEW, pendingActivations } from '../../apps/api/src/modules/employment/activation-store.js';
+import { pendingActivations, pendingExitQueue } from '../../apps/api/src/modules/employment/activation-store.js';
 import { loadPlannedEffectiveDate } from '../../apps/api/src/modules/employment/timeline.js';
 import { queueContext } from './AC-EXIT-queue-support.js';
 import { exitActivationWorld, type ExitActivationWorld } from './AC-EXIT-activation-support.js';
@@ -22,9 +22,11 @@ async function approvedTransfer(x: ExitActivationWorld, effectiveDate: string, a
   return x.approve(applied, `${approveAt}T02:00:00Z`);
 }
 
-const queueOf = (x: ExitActivationWorld, today: string, view?: typeof EXIT_QUEUE_VIEW) =>
+const queueOf = (x: ExitActivationWorld, today: string, withExits = false) =>
   withTenant(x.db, x.session.tenant.id, (tx) =>
-    pendingActivations(tx, queueContext(x, today), x.employee.id, view).then((rows) => rows.map((row) => row.id)),
+    (withExits ? pendingExitQueue : pendingActivations)(tx, queueContext(x, today), x.employee.id).then((rows) =>
+      rows.map((row) => row.id),
+    ),
   );
 
 describe('AC-DM-26 B-11 迟到调动与离职交错（§10.1，场景 S：T 计划 10-10、离职 E = 10-16、10-18 执行）', () => {
@@ -37,7 +39,7 @@ describe('AC-DM-26 B-11 迟到调动与离职交错（§10.1，场景 S：T 计�
 
   it('① 调度到期：T REBUILD_REQUIRED（blockers 含离职），离职 PREDECESSOR_FAILED 挂起，队列 [T, 离职]', async () => {
     const { x, transfer, leave } = await scenario('b11-1');
-    expect(await queueOf(x, '2026-10-18', EXIT_QUEUE_VIEW)).toEqual([transfer.id, leave.id]);
+    expect(await queueOf(x, '2026-10-18', true)).toEqual([transfer.id, leave.id]);
     expect(await queueOf(x, '2026-10-18')).toEqual([transfer.id]);
     expect(await x.runScheduler('2026-10-18T01:00:00Z')).toMatchObject({ failed: [transfer.id] });
     expect((await x.attempts(transfer.id))[0]).toMatchObject({ outcome: 'failed', reason: 'REBUILD_REQUIRED' });
@@ -86,8 +88,8 @@ describe('AC-DM-26 B-11 迟到调动与离职交错（§10.1，场景 S：T 计�
     expect(await x.stateOfBusiness(transfer.id)).toBe('approved');
 
     const y = await world('b11-3b');
-    const applied = await y.apply(y.employee.id, '2026-10-10', { departmentId: y.to.id });
     const leaveB = await y.directLeave('2026-10-15');
+    const applied = await y.apply(y.employee.id, '2026-10-10', { departmentId: y.to.id });
     await y.approve(applied, '2026-10-18T02:00:00Z');
     expect((await y.attempts(applied.id))[0]).toMatchObject({ outcome: 'failed', reason: 'REBUILD_REQUIRED' });
     expect(await y.activate(leaveB.id, '2026-10-18', { trigger: 'approval' })).toMatchObject({
@@ -128,7 +130,7 @@ describe('AC-DM-26 B-85a / B-85b 共同迟到后删除 T 再重试离职（不�
     const x = await world('b85');
     const transfer = await approvedTransfer(x, '2026-10-20');
     const leave = await x.directLeave('2026-10-29');
-    expect(await queueOf(x, '2026-11-01', EXIT_QUEUE_VIEW)).toEqual([transfer.id, leave.id]);
+    expect(await queueOf(x, '2026-11-01', true)).toEqual([transfer.id, leave.id]);
     await x.runScheduler('2026-11-01T01:00:00Z');
     expect(await x.activate(leave.id, '2026-11-01')).toMatchObject({ outcome: 'suspended' });
     x.setNow('2026-11-02T01:00:00Z');
