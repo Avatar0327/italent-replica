@@ -15,6 +15,7 @@ import {
   pendingActivations,
   pendingActivationState,
 } from '../../apps/api/src/modules/employment/activation-store.js';
+import { lockEmploymentBusiness } from '../../apps/api/src/modules/employment/record-store.js';
 import type { EmploymentContext } from '../../apps/api/src/modules/employment/types.js';
 import { createEmploymentBusiness } from '../../apps/api/src/modules/employment/write-service.js';
 import { hasPendingOrgEmployment } from '../../apps/api/src/modules/org/employment-linkage.js';
@@ -79,6 +80,19 @@ describe('AC-PT-12 PB-07：通用任职接口对兼职底层业务一律 404，�
     const hire = await hireOf(w);
     const edited = await w.request('PATCH', `/records/${hire.id}`, { ifMatch: hire.revision, ...patch });
     expect(edited.status, await edited.clone().text()).toBe(200);
+  });
+
+  it('内部锁端口：类型守卫先于 revision 校验，错误 revision 也只得 404、不带 actual（P-06，第 1 轮 P3）', async () => {
+    const w = await partTimeWorld(database().db, 'pb07-lock');
+    const id = await w.seedPartTime();
+    const code = (revision: number, options = {}) =>
+      withTenant(w.db, w.tenantId, (tx) => lockEmploymentBusiness(tx, w.context(revision), id, options)).then(
+        () => 'ok',
+        (error: { code?: string; details?: unknown }) => `${error.code}:${JSON.stringify(error.details ?? null)}`,
+      );
+    expect(await code(99)).toBe('NOT_FOUND:null');
+    expect(await code(1)).toBe('NOT_FOUND:null');
+    expect(await code(1, { partTime: true })).toBe('ok');
   });
 
   it('PB-07b：兼职底层业务放进批量编辑 → 404，整批回滚（主职那条也不改，P-42）', async () => {
