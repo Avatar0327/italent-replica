@@ -1,5 +1,6 @@
 import type { AppId } from '@italent/domain';
 import { lazy, type ComponentType, type LazyExoticComponent } from 'react';
+import { matchRoutes } from 'react-router';
 import type { ui } from './messages.js';
 import type { MenuNode, ServerSnapshot } from './permission-snapshot.js';
 
@@ -201,6 +202,14 @@ export function collectPages(modules: Record<string, unknown>, appIds: readonly 
     )
     .sort((a, b) => compareText(a.path, b.path));
   for (const route of routes) claim(paths, '路径', route.path, route.module);
+  // 子项独占一个根路径；用路由器检查双向匹配，包含大小写、尾斜杠、编码和已有子路径。
+  for (const child of entries.flatMap((entry) => entry.children ?? []))
+    for (const route of [...appRoutes, ...pageRoutes(entries), ...routes]) {
+      if (route === child) continue;
+      const root = route.path.split('/').slice(0, 2).join('/');
+      if (matchRoutes([{ path: root }], child.path) || matchRoutes([{ path: mountPath(child) }], route.path))
+        throw new Error(`子菜单路由冲突：${child.path} 与 ${route.path}`);
+    }
   return {
     apps: appRoutes,
     entries,

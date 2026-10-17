@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 import { APP_IDS } from '@italent/domain';
-import { matchPath } from 'react-router';
-import { collectPages, pageRoutes, type AppRoute, type MenuRoute } from './page-registry.js';
+import { matchRoutes } from 'react-router';
+import { collectPages, mountPath, pageRoutes, type AppRoute, type MenuRoute } from './page-registry.js';
 
 export type { AppRoute, EntryRoute, MenuRoute, SubRoute } from './page-registry.js';
 
@@ -12,17 +12,15 @@ export const MENU_ROUTES: readonly MenuRoute[] = PAGES.menus;
 export const SUB_ROUTES = PAGES.routes;
 
 export function appRoute(path: string) {
-  let decoded = path;
-  try {
-    decoded = decodeURIComponent(path);
-  } catch {
-    // 畸形编码交给路由器处理，不能因此抛错使整页失效。
-  }
-  // 新子项与 React Router 的解码匹配一致；旧入口继续使用原匹配规则。
-  const child = PAGES.entries
-    .flatMap((entry) => entry.children ?? [])
-    .find((item) => matchPath(`${item.path}/*`, decoded));
-  if (child) return child;
+  // 与 AppPages 使用相同挂载顺序、优先级和解码，只为实际命中的新子项替换旧入口判定。
+  const child = matchRoutes(
+    [
+      ...pageRoutes(MENU_ROUTES).map((item) => ({ path: mountPath(item), handle: item })),
+      ...SUB_ROUTES.map((item) => ({ path: item.path, handle: undefined })),
+    ],
+    path,
+  )?.[0]?.route.handle;
+  if (child && PAGES.entries.some((entry) => entry.children?.some((item) => item === child))) return child;
   return pageRoutes(MENU_ROUTES).find((item) => path === item.path || path.startsWith(`${item.path}/`));
 }
 export function legacyTarget(path: string, search = '', hash = ''): string | null {
