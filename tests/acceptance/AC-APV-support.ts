@@ -37,7 +37,11 @@ export type ApproverExpressionInput =
   | 'record_department_hrbp'
   | 'record_first_level_org_head'
   // BE-7 PT-1：主职部门 HRBP（兼职预置流程）
-  | 'latest_record_department_hrbp';
+  | 'latest_record_department_hrbp'
+  // R2 BE-14a3：Offer 两类审批专用
+  | 'offer_department_head'
+  | 'initiator_direct_manager'
+  | 'approval_subject_first_level_org_head';
 
 export interface ExitRuleInput {
   readonly kind: 'count' | 'percent';

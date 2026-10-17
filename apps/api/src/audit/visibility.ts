@@ -570,6 +570,10 @@ const RULES: readonly Rule[] = [
   }),
   // R2 BE-14a：Offer 审计归属录用部门，创建人取审计的首条 offer.create（删除后仍可判断）
   orgRule(['offer'], OFFER_OBJECT, (row, viewer) => creatorSql(viewer.tenantId, row.objectId, 'offer.create', 'offer')),
+  // R2 BE-14a3：批量审批单归属审批主体组织，按 Offer 对象的组织范围查看
+  orgRule(['offer_batch_approval'], OFFER_OBJECT, (row, viewer) =>
+    creatorSql(viewer.tenantId, row.objectId, 'offer_batch_approval.create', 'offer_batch_approval'),
+  ),
   orgRule(['organization'], ORG, (row, viewer) =>
     creatorSql(viewer.tenantId, row.objectId, 'org.create', 'organization'),
   ),

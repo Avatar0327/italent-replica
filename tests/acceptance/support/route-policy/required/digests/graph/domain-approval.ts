@@ -57,6 +57,7 @@ export const GRAPH: Graph = {
     '#MAX_NODES',
     '#NODE_KEY',
     '#nodeShapeViolations',
+    '#offerApproverViolation',
     'packages/domain/src/approval/types.ts#IDP_ONLY_APPROVERS',
     'packages/domain/src/approval/types.ts#approverExpressionsOf',
   ],
@@ -65,6 +66,11 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/types.ts#isCountersign',
     'packages/domain/src/approval/types.ts#nodeExits',
   ],
+  'packages/domain/src/approval/definition.ts#offerApproverViolation': [
+    'packages/domain/src/approval/types.ts#OFFER_APPROVERS',
+    'packages/domain/src/approval/types.ts#OFFER_ONLY_APPROVERS',
+    'packages/domain/src/approval/types.ts#approverExpressionsOf',
+  ],
   'packages/domain/src/approval/definition.ts#publishViolations': [
     '#avoidSubjectsViolations',
     'packages/domain/src/approval/types.ts#hasExit',
@@ -72,6 +78,13 @@ export const GRAPH: Graph = {
   'packages/domain/src/approval/presets.ts#IDP_EMPLOYEE_ACTIONS': ['#IDP_ACTIONS'],
   'packages/domain/src/approval/presets.ts#IDP_TUTOR_ACTIONS': ['#IDP_ACTIONS'],
   'packages/domain/src/approval/presets.ts#LEAVE_FORM': ['packages/domain/src/employment/exit.ts#EXIT_FORM_FIELDS'],
+  'packages/domain/src/approval/presets.ts#OFFER_PRESETS': [
+    '#AGREE_OR_NOT',
+    '#draft',
+    '#node',
+    '#standardCondition',
+    'packages/domain/src/approval/types.ts#APPROVAL_TYPES',
+  ],
   'packages/domain/src/approval/presets.ts#PRESET_ACTIONS': ['#PRESET_RECUSAL'],
   'packages/domain/src/approval/presets.ts#PRESET_PROCESSES': [
     '#HEAD_FIRST',
@@ -79,6 +92,7 @@ export const GRAPH: Graph = {
     '#IDP_EMPLOYEE_ACTIONS',
     '#IDP_TUTOR_ACTIONS',
     '#LEAVE_FORM',
+    '#OFFER_PRESETS',
     '#PRESET_ACTIONS',
     '#draft',
     '#genericPreset',
@@ -139,6 +153,8 @@ export const GRAPH: Graph = {
   'packages/domain/src/approval/types.ts#APPROVAL_TYPES': [
     '#EMPLOYEE_INFO_CONDITION_FIELDS',
     '#LEAVE_CONDITION_FIELDS',
+    '#OFFER_BATCH_TYPE',
+    '#OFFER_TYPE',
     '#PERSONNEL_CONDITION_FIELDS',
     '#contractType',
     '#employeeInfoFormFields',
@@ -152,6 +168,15 @@ export const GRAPH: Graph = {
   'packages/domain/src/approval/types.ts#EMPLOYEE_INFO_CONDITION_FIELDS': ['#PERSONNEL_CONDITION_FIELDS'],
   'packages/domain/src/approval/types.ts#IDP_PLAN_OBJECT': ['packages/domain/src/idp/catalog.ts#IDP_APP'],
   'packages/domain/src/approval/types.ts#LEAVE_CONDITION_FIELDS': ['#EMPLOYMENT_CONDITION_FIELDS'],
+  'packages/domain/src/approval/types.ts#OFFER_BATCH_TYPE': [
+    'packages/domain/src/offer/approval.ts#OFFER_BATCH_FIELDS',
+    'packages/domain/src/offer/approval.ts#OFFER_BATCH_OBJECT',
+    'packages/domain/src/offer/approval.ts#OFFER_BATCH_PROCESS_CODE',
+  ],
+  'packages/domain/src/approval/types.ts#OFFER_TYPE': [
+    'packages/domain/src/offer/rules.ts#OFFER_FIELDS',
+    'packages/domain/src/offer/rules.ts#OFFER_OBJECT',
+  ],
   'packages/domain/src/approval/types.ts#approvalTypeOfBusiness': [
     '#APPROVAL_TYPES',
     '#ENTRY_KINDS',
