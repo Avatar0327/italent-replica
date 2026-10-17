@@ -72,6 +72,17 @@ describe('AC-IN-BE6a-06 按证件号的重聘判定', () => {
     expect(await matchOk(w, { idType: 'passport', idNumber: number })).toEqual({ matched: false });
   });
 
+  it('审查 P2-2：已离职、另有未来重聘待入职，按租户今天有效的任职判定，仍命中离职', async () => {
+    const w = await internWorld(testDb().db, 'be6a-rehire-future');
+    const number = idNumber();
+    const person = await leftPerson(w, '待重聘合成员工', number);
+    const fields = { employType: 'intern', departmentId: w.org.id };
+    const rehire = { kind: 'rehire', mode: 'direct', effectiveDate: '2026-11-01', pendingEntry: true, fields };
+    await w.session.business(person.employee.id, rehire, await w.revision(person.employee.id));
+    const { candidate } = await matchOk(w, { idType: 'id_card', idNumber: number });
+    expect(candidate).toMatchObject({ employeeId: person.employee.id, endKind: 'leave', lastWorkDate: '2026-09-20' });
+  });
+
   it('多人命中 → 409 REHIRE_MATCH_AMBIGUOUS，不自动挑选、不带出任何人员信息', async () => {
     const w = await internWorld(testDb().db, 'be6a-rehire-ambiguous');
     const number = idNumber();

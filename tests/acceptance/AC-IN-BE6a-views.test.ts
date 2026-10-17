@@ -145,4 +145,16 @@ describe('AC-IN-BE6a-05 实习四视图的数据范围与字段裁剪（fail-clo
     expect(item).toMatchObject({ kind: 'hire', effectiveDate: '2026-09-01' });
     for (const field of ['departmentId', 'name', 'code']) expect(item).not.toHaveProperty(field);
   });
+
+  it('审查 P2-3（DEC-406①）：试用期日期按字段权限逐项裁剪，不整体放行', async () => {
+    const w = await internWorld(testDb().db, 'be6a-trim-probation');
+    const intern = await w.hire('试用裁剪合成实习生', 'intern');
+    await w.regularizeOk(intern.employee.id, '2026-10-01', w.org.id, { probation: true, probationMonths: 2 });
+    const base = ['id', 'kind', 'effectiveDate'];
+    const [hidden] = (await (await scoped(w, [w.org.id], base))('converted')).items;
+    expect(hidden).toMatchObject({ kind: 'intern_regularization' });
+    expect(hidden).not.toHaveProperty('probation');
+    const [partial] = (await (await scoped(w, [w.org.id], [...base, 'probationStartDate']))('converted')).items;
+    expect(partial!.probation).toEqual({ startDate: '2026-10-01' });
+  });
 });

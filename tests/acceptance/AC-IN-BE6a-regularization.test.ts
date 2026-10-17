@@ -168,6 +168,19 @@ describe('AC-IN-BE6a-02 直接实习转正：校验', () => {
     expect(await kinds(w, id)).toEqual(['hire']);
   });
 
+  it('审查 P2-1：已离职后回填离职前的转正日期 → 409 ACTIVE_EMPLOYMENT_REQUIRED，记录 / revision / 试用期不变', async () => {
+    const w = await internWorld(testDb().db, 'be6a-reg-backfill');
+    const id = await intern(w);
+    await w.leave(id, '2026-09-20');
+    const revision = await w.revision(id);
+    const response = await w.regularize(id, withProbation(w.org.id, { effectiveDate: '2026-09-15' }), revision);
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ error: { details: { reason: 'ACTIVE_EMPLOYMENT_REQUIRED' } } });
+    expect((await kinds(w, id)).sort()).toEqual(['hire', 'leave']);
+    expect(await w.revision(id)).toBe(revision);
+    expect(await w.view('converted')).toEqual([]);
+  });
+
   it('员工 revision 不一致 → 409，不落地', async () => {
     const w = await internWorld(testDb().db, 'be6a-reg-revision');
     const id = await intern(w);
