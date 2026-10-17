@@ -79,7 +79,8 @@ export async function serviceWorld(db: Db, label: string) {
       for (const [index, value] of chain.entries())
         await tx.execute(sql`INSERT INTO employment_state_events(tenant_id, employee_id, business_id,
             payload_version_id, state, event_no, command_id)
-          VALUES (${w.tenantId}, ${w.employeeId}, ${id}, ${payload}, ${value}, ${index + 1}, ${`pt-exit-${id}-${index}`})`);
+          VALUES (${w.tenantId}, ${w.employeeId}, ${id}, ${payload}, ${value}, ${index + 1},
+            ${`pt-exit-${id}-${index}`})`);
     });
     return { id, effectiveDate };
   }
@@ -104,9 +105,11 @@ export async function serviceWorld(db: Db, label: string) {
           ORDER BY version_no DESC LIMIT 1`),
       );
       await tx.execute(sql`INSERT INTO employment_payload_versions(tenant_id, employee_id, business_id, version_no,
-          previous_version_id, kind, mode, effective_date, form_id, selected_staff_id, is_record_snapshot, department_id)
-        VALUES (${w.tenantId}, ${w.employeeId}, ${recordId}, ${last!.version_no + 1}, ${last!.id}, 'part_time',
-          'direct', ${last!.effective_date}, 'part_time', ${last!.selected_staff_id}, true, ${departmentId})`);
+          previous_version_id, command_id, trigger_business_id, kind, mode, effective_date, form_id, selected_staff_id,
+          is_record_snapshot, department_id)
+        VALUES (${w.tenantId}, ${w.employeeId}, ${recordId}, ${last!.version_no + 1}, ${last!.id}, ${randomUUID()},
+          ${recordId}, 'part_time', 'direct', ${last!.effective_date}, 'part_time', ${last!.selected_staff_id}, true,
+          ${departmentId})`);
     });
 
   /** 兼职相关表与审计的写入指纹：被拒后逐项相等 = 无写入。 */

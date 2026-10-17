@@ -67,8 +67,8 @@ describe('AC-PT-09 离职落地结束兼职', () => {
 
   it('S6：其他员工的兼职不受影响（只按离职员工的任职周期结束）', async () => {
     const w = await serviceWorld(database().db, 'pt09-other');
-    const other = await w.session.employee('另一名员工');
-    await w.session.business(
+    const other = await w.employee('另一名员工');
+    await w.business(
       other.id,
       { kind: 'hire', mode: 'direct', effectiveDate: '2025-01-01', fields: { departmentId: w.primaryOrg.id } },
       other.revision,

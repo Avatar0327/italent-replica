@@ -50,7 +50,7 @@ describe('AC-PT-wiring 兼职装配（PB-79）', () => {
       ['GET', '/part-times'],
       ['POST', '/part-time-requests'],
     ] as const) {
-      const response = await w.request(method, path, { ifMatch: 1, body: {} });
+      const response = await w.request(method, path, method === 'GET' ? {} : { ifMatch: 1, body: {} });
       expect(response.status, `${method} ${path}`).toBe(404);
     }
   });

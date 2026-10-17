@@ -50,7 +50,7 @@ describe('createPartTime：写入底座（§1.3）', () => {
             WHERE tenant_id=${w.tenantId} AND object_id=${id}`,
         ),
         outbox: await one<{ event_type: string; employee_id: string }>(sql`SELECT event_type, employee_id
-          FROM employment_outbox WHERE tenant_id=${w.tenantId} AND object_id=${id}::text`),
+          FROM employment_outbox WHERE tenant_id=${w.tenantId} AND object_id=${id}::uuid`),
       };
     });
     expect(facts.record).toMatchObject({
@@ -134,7 +134,7 @@ describe('createPartTime：日期与业务校验（D-1～D-10）', () => {
 
   it('PB-23：兼职部门 10-20 起停用 → 无结束日 / 结束日 ≥ 10-20 被拒（EMPLOYMENT_DEPARTMENT_DISABLED），10-19 前成功', async () => {
     const w = await serviceWorld(database().db, 'pt-dept-disabled');
-    const org = await w.session.org(`停用部门${uniqueSuffix()}`, { establishedOn: '2024-01-01' });
+    const org = await w.org(`停用部门${uniqueSuffix()}`, { establishedOn: '2024-01-01' });
     expect((await w.disableOrg(org, '2026-10-20')).status).toBe(200);
     const before = await w.writes();
     const open = await w.rejection({ departmentId: org.id, startDate: '2026-10-01', endDate: null });
@@ -150,7 +150,7 @@ describe('createPartTime：日期与业务校验（D-1～D-10）', () => {
 
   it('D-9：开始日早于部门设立日 → 400 ENTRY_BEFORE_DEPARTMENT_FOUNDED', async () => {
     const w = await serviceWorld(database().db, 'pt-before-founded');
-    const late = await w.session.org(`晚设立部门${uniqueSuffix()}`, { establishedOn: '2026-09-20' });
+    const late = await w.org(`晚设立部门${uniqueSuffix()}`, { establishedOn: '2026-09-20' });
     const error = await w.rejection({ departmentId: late.id, startDate: '2026-09-10', endDate: null });
     expect(error.code).toBe('VALIDATION_FAILED');
     expect(w.reason(error)).toBe('ENTRY_BEFORE_DEPARTMENT_FOUNDED');

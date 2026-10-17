@@ -68,7 +68,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-PT-concurrency-pg 兼职写�
 
   it('PB-55：兼职先提交（持组织锁）→ 停用在锁后统计到它，409，组织仍启用', async () => {
     const w = await serviceWorld(database().db, 'pt-pg-org-first');
-    const org = await w.session.org(`并发部门${uniqueSuffix()}`, { establishedOn: '2024-01-01' });
+    const org = await w.org(`并发部门${uniqueSuffix()}`, { establishedOn: '2024-01-01' });
     const writer = holdThen(w.db, w.tenantId, (tx) => create(w, tx, { departmentId: org.id }));
     await writer.held;
     const disable = w.disableOrg(org, '2026-10-02');
@@ -82,7 +82,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-PT-concurrency-pg 兼职写�
 
   it('PB-55：停用统计完后兼职再提交 —— 兼职在组织锁上等待，放行后锁内复查部门停用，400，不会漏计', async () => {
     const w = await serviceWorld(database().db, 'pt-pg-org-second');
-    const org = await w.session.org(`并发部门二${uniqueSuffix()}`, { establishedOn: '2024-01-01' });
+    const org = await w.org(`并发部门二${uniqueSuffix()}`, { establishedOn: '2024-01-01' });
     const reached = signal();
     const release = signal();
     const original = partTimeStore.countDepartmentPartTimes;

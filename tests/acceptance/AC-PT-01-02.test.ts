@@ -51,7 +51,8 @@ describe('AC-PT-01 外派 / 借调唯一（D-5）', () => {
     ['deleted', false],
   ] as const)('A-7：同员工的外派新增申请处于 %s 时%s占用名额', async (state, blocks) => {
     const w = await serviceWorld(database().db, `pt01-request-${state}`);
-    await w.seedRequest({ serviceType: 'expatriate', state });
+    const effectiveRecordId = state === 'effective' ? await w.seedPartTime({ endDate: null }) : undefined;
+    await w.seedRequest({ serviceType: 'expatriate', state, effectiveRecordId });
     if (blocks) {
       expect(w.reason(await w.rejection({ serviceType: 'expatriate' }))).toBe('PART_TIME_EXCLUSIVE_TYPE_EXISTS');
     } else {
