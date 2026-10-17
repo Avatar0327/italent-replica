@@ -1,4 +1,5 @@
 import { test, expect, tenant, user, snapshotFixture } from './fixtures.js';
+import { ui } from '../src/foundation/messages.js';
 
 test('AC-FE-F190a-04 外壳展开分组、子项路由与 legacy、直达鉴权和刷新展开', async ({ page, baseURL }) => {
   const errors: string[] = [];
@@ -48,7 +49,7 @@ test('AC-FE-F190a-04 外壳展开分组、子项路由与 legacy、直达鉴权�
   await expect(page.locator('.legacy-page')).toHaveCount(0);
   allowed = ['IDP.Idp'];
   await page.goto('/fixture-second');
-  await expect(page.locator('.shell-workspace')).toContainText('无权限');
+  await expect(page.locator('.shell-workspace')).toContainText(ui.denied);
   await expect(sidebar.getByText('合成子页乙', { exact: true })).toHaveCount(0);
   allowed = [];
   await page.reload();
