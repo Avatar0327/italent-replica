@@ -65,5 +65,5 @@ export const ui = {
   date: '选择日期',
   back: '返回',
   group: '基本信息',
-  groups: { people: '组织员工', talent: '人才管理', work: '工作台', settings: '设置' },
+  groups: { people: '组织员工', talent: '继任与发展', work: '工作台', settings: '设置' },
 } as const;
