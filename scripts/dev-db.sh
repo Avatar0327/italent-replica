@@ -15,29 +15,11 @@ if ! pg_isready -q -h localhost; then
 fi
 until pg_isready -q -h localhost; do sleep 0.5; done
 
-# app：运行时角色（非超级用户、不绕过 RLS）；app_owner：迁移与测试建库角色
-"${PSQL[@]}" -c "SELECT 1 FROM pg_roles WHERE rolname='app'" | grep -q 1 \
-  || "${PSQL[@]}" -c "CREATE ROLE app LOGIN PASSWORD 'app' NOSUPERUSER NOBYPASSRLS"
-"${PSQL[@]}" -c "SELECT 1 FROM pg_roles WHERE rolname='app_owner'" | grep -q 1 \
-  || "${PSQL[@]}" -c "CREATE ROLE app_owner LOGIN PASSWORD 'app_owner' CREATEDB"
-# 租户路径 / 平台路径角色（R1-T00，迁移 0003）：集群级对象，由超级用户预建；
-# 迁移角色 app_owner 与运行时角色 app 都须是其成员，才能在事务内 SET LOCAL ROLE
-for role in app_user app_platform; do
-  "${PSQL[@]}" -c "SELECT 1 FROM pg_roles WHERE rolname='$role'" | grep -q 1 \
-    || "${PSQL[@]}" -c "CREATE ROLE $role NOLOGIN NOSUPERUSER NOBYPASSRLS"
-done
-"${PSQL[@]}" -c "GRANT app_user, app_platform TO app_owner, app"
-# 测试库在 afterAll 用 DROP DATABASE … WITH (FORCE) 删除（packages/testkit/src/test-db.ts），FORCE 要终止库内
-# 所有进程；碰上 autovacuum worker 时，非超级用户须有 pg_signal_backend，否则报“permission denied to
-# terminate process”，测试文件失败并残留库。只授这一个内建角色，不把 app_owner 提升为超级用户。
-"${PSQL[@]}" -c "GRANT pg_signal_backend TO app_owner"
-# F-082 部署检查脚本（scripts/check-deploy-target.mjs）要求检查账号能看全其他会话（超级用户或 pg_read_all_stats），
-# 看不全就判失败。CI 的测试账号是超级用户；本地测试账号同样授予这一个内建只读角色，让真 PG 用例与 CI 等价。
-"${PSQL[@]}" -c "GRANT pg_read_all_stats TO app_owner"
+# 角色与授权（app / app_owner / app_user / app_platform、内建角色授权、模板库扩展）的唯一定义在 scripts/pg-roles.sql，
+# CI 的普通角色分片也用同一份（F-212）；经 stdin 传入，postgres 系统用户不必能读仓库目录
+"${AS_PG[@]}" psql -v ON_ERROR_STOP=1 -qtA <"$(dirname "$0")/pg-roles.sql"
 "${PSQL[@]}" -c "SELECT 1 FROM pg_database WHERE datname='italent_test'" | grep -q 1 \
   || "${AS_PG[@]}" createdb -O app_owner italent_test
-# 在模板库装好扩展，测试时新建的库自动带上（btree_gist 是可信扩展，库属主也可自行创建）
-"${PSQL[@]}" -d template1 -c "CREATE EXTENSION IF NOT EXISTS btree_gist"
 "${PSQL[@]}" -d italent_test -c "CREATE EXTENSION IF NOT EXISTS btree_gist"
 
 # 清理残留测试库（只删 testkit 命名的 italent_t_<32 位十六进制>）：测试进程被中断时 afterAll 不执行，

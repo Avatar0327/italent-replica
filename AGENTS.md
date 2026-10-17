@@ -28,6 +28,7 @@
 ## 3. 每个任务的工作方式
 1. 先读第 1 节列出的相关文档，再读任务行和对应规格、AC。
 2. **先写测试**：把本任务的验收场景写成自动化测试，文件放在 `tests/acceptance/`，文件名带 AC 编号（如 `AC-TRF-04.*`）。先确认测试失败，再开始实现。
+   **新验收测试须能在普通角色下通过**（F-212，DEC-568）：CI 另有一组分片用 `app_owner`（非超级用户、NOBYPASSRLS）跑全部 PG 验收，租户表 FORCE RLS，裸 `db.transaction` / 裸连接读写租户表会被拒或读到 0 行；读写租户数据一律放进对应租户的 `withTenant`。本地 `pnpm test:pg` 默认就是这个角色（`scripts/dev-db.sh`，角色定义见 `scripts/pg-roles.sql`）。
 3. 只修改本任务**归属目录**里的文件（派发单会写明）。共享文件（路由注册、公共类型、迁移序号）只能通过“契约 PR”修改，契约 PR 必须先单独合并。
 4. 分支命名 `claude/R1-Txx-简述` 或 `codex/R1-Txx-简述`；**一个 PR 只做一个任务**。
 5. PR 描述必须包含以下各项：
@@ -113,7 +114,7 @@
   | `packages/testkit/` | 测试辅助：`useTestDb()` 为每个测试文件建全新库并跑迁移（设了 `TEST_DATABASE_URL` 用真 PG，否则 PGlite） |
   | `tests/acceptance/` | 验收测试 `AC-<编号>.test.ts`，示例见 `AC-SMOKE-01.test.ts` |
   | `scripts/` | `cloud-setup.sh`、`dev-db.sh`、`test-pg.sh`、`test-all.sh` |
-  | `.github/workflows/ci.yml` | CI：在途 PR 只跑轻量检查（lint、typecheck、build、纯函数单测）；队首 PR（带 `queue-head` 标签的 pull_request 运行）、main、每周定时跑完整测试：PGlite 5 片 + PostgreSQL 16 5 片（镜像取本仓库 ghcr，DEC-431④）+ F-043 并发（DEC-454①）；Node 22 每周定时/手动补跑；Draft PR 不跑，纯文档快速通过 |
+  | `.github/workflows/ci.yml` | CI：在途 PR 只跑轻量检查（lint、typecheck、build、纯函数单测）；队首 PR（带 `queue-head` 标签的 pull_request 运行）、main、每周定时跑完整测试：PGlite 5 片 + PostgreSQL 16 超级用户 5 片（镜像取本仓库 ghcr，DEC-431④）+ PostgreSQL 16 普通角色 `app_owner` 5 片（F-212，DEC-568）+ F-043 并发（DEC-454①）；Node 22 每周定时/手动补跑；Draft PR 不跑，纯文档快速通过 |
 | `.github/workflows/merge-main.yml` | 合并队列的云端 `pnpm merge:main`：合入 main、重算生成物、打 `queue-head` 标签、推回 PR 分支；不触发 CI，完整运行由队列关闭重开 PR 触发（DEC-454①、DEC-458，手动触发） |
 - 工作区包之间直接解析到 `src/*.ts`（自定义导出条件 `@italent/source`），测试与类型检查无需先构建。
 
