@@ -3,7 +3,7 @@
 "stats": {
 "merged": 307,
 "open": 11,
-"dec": 578,
+"dec": 583,
 "ev": "43/177"
 },
 "tasks": {
@@ -983,6 +983,14 @@
 }
 },
 "log": [
+[
+"10-17",
+"DEC-583 用户选 A：BE-8a 整单送审；FE2b #393 第 1 轮审查发起"
+],
+[
+"10-17",
+"DEC-505：BE-7 拆为 12 批 PT（PT1…PT7，同时 1 个 PR），分母 +11；BE-10/BE-11 前序暂按 03 倾向改为 PT-6（待 03 回写台账确认）"
+],
 [
 "10-17",
 "#389 F-212 04:39Z、#390 BE-7 设计段 04:40Z 合并；F-213 #392 第 1 轮审查发起；D3b-PERF/ATT 取证（DEC-582）加入"
@@ -5696,22 +5704,22 @@
 {
 "k": "FE2b",
 "n": "FE2b 离职三个字典设置页（从 FE-R2c 拆出，约 650 行）",
-"s": "dev",
+"s": "review",
 "after": [],
 "kind": "前端",
 "mod": "R2",
 "ms": "D2",
-"note": "开发中（Draft PR #393，分支 claude/inspiring-gates-x7wfm6，+435，云端会话 session_01B9kUz7NpamSXQDrwCeJBeb）· Claude Opus High 按前端规则 / Codex Sol high 审 · 约定分支名 claude/FE2b-exit-dictionaries 未用，以云端会话自动名为准 · 前序 B1a（#347）已合 · DEC-577",
+"note": "第 1 轮审查中（PR #393，head a4765333，Codex Sol high，04:44Z 发起）",
 "pr": 393
 },
 {
 "k": "BE-8a",
 "n": "BE-8a 黑名单（手动加黑、再入职保存拦截、自动加黑规则配置，DEC-569）",
-"s": "decide",
+"s": "dev",
 "after": [
 "BE-4d"
 ],
-"note": "开发已完成，【等 00 / 用户决定】超 1500 行（Draft PR #387，+2258，测试约 700）· 03 推荐 A 整单送审，60 分钟（至约 05:34Z）未回按 A 执行（DEC-556）· 分支 claude/BE-8a-blacklist，云端会话 session_01UsHXEmDcUEwrFcoyZqgKJ6",
+"note": "开发中，等转 Ready 贴开发完成（Draft PR #387，+2258；DEC-583 用户选 A 整单送审不拆）· 分支 claude/BE-8a-blacklist，云端会话 session_01UsHXEmDcUEwrFcoyZqgKJ6",
 "pr": 387
 },
 {
@@ -5770,12 +5778,113 @@
 ]
 },
 {
-"k": "BE-7",
-"n": "BE-7 兼职（先 Opus 设计主职 / 兼职影响）",
-"s": "done",
-"note": "设计段已合并（#390，10-17 04:40Z，第 3 轮可以合并）· 实现按设计 §13 盘点 PT 分批派发，派发后由 03 拆行",
+"k": "BE-7-PT1",
+"n": "BE-7-PT-1 契约与数据",
+"s": "todo",
 "after": [],
-"pr": 390
+"note": "待派 · 契约与数据约 1075 行 · 无外部依赖 · 拟派云端 Opus High 开发 / Sol high 审（派发单 cl_pt1.md） · DEC-505 由 BE-7 拆出"
+},
+{
+"k": "BE-7-PT2",
+"n": "BE-7-PT-2 纯函数、主职守卫、复核链与审计归属",
+"s": "wait",
+"after": [
+"BE-7-PT1"
+],
+"note": "待前序 · 约 1370 行 · DEC-505 由 BE-7 拆出"
+},
+{
+"k": "BE-7-PT3a",
+"n": "BE-7-PT-3a 写入底座（内部服务、钩子、探针、停用计数）",
+"s": "wait",
+"after": [
+"BE-7-PT2"
+],
+"note": "待前序 · 建议也在 BE-4i 之后 · DEC-505 由 BE-7 拆出"
+},
+{
+"k": "BE-7-PT3b",
+"n": "BE-7-PT-3b 开放新增 / 查询兼职入口",
+"s": "wait",
+"after": [
+"BE-7-PT3a"
+],
+"note": "待前序 · 兼职设计 §11 串行，同时只放 1 个 PR（DEC-249②） · DEC-505 由 BE-7 拆出"
+},
+{
+"k": "BE-7-PT3c",
+"n": "BE-7-PT-3c 编辑、批量结束",
+"s": "wait",
+"after": [
+"BE-7-PT3b"
+],
+"note": "待前序 · 兼职设计 §11 串行，同时只放 1 个 PR（DEC-249②） · DEC-505 由 BE-7 拆出"
+},
+{
+"k": "BE-7-PT4a",
+"n": "BE-7-PT-4a 申请底座、真适配器",
+"s": "wait",
+"after": [
+"BE-7-PT3c",
+"BE-4e"
+],
+"note": "待前序 · 硬依赖 #388 notifyMessage · DEC-505 由 BE-7 拆出"
+},
+{
+"k": "BE-7-PT4b",
+"n": "BE-7-PT-4b 新增兼职申请入口",
+"s": "wait",
+"after": [
+"BE-7-PT4a"
+],
+"note": "待前序 · 兼职设计 §11 串行，同时只放 1 个 PR（DEC-249②） · DEC-505 由 BE-7 拆出"
+},
+{
+"k": "BE-7-PT4c",
+"n": "BE-7-PT-4c 延长 / 结束申请、结束节点审批编辑",
+"s": "wait",
+"after": [
+"BE-7-PT4b"
+],
+"note": "待前序 · 兼职设计 §11 串行，同时只放 1 个 PR（DEC-249②） · DEC-505 由 BE-7 拆出"
+},
+{
+"k": "BE-7-PT5",
+"n": "BE-7-PT-5 六视图、期限链与申请历史",
+"s": "wait",
+"after": [
+"BE-7-PT4c"
+],
+"note": "待前序 · 兼职设计 §11 串行，同时只放 1 个 PR（DEC-249②） · DEC-505 由 BE-7 拆出"
+},
+{
+"k": "BE-7-PT6",
+"n": "BE-7-PT-6 调动兼职调整端口、调动删除探针、继任端口",
+"s": "wait",
+"after": [
+"BE-7-PT5",
+"BE-4h"
+],
+"note": "待前序 · 兼职设计 §11 串行，同时只放 1 个 PR（DEC-249②） · DEC-505 由 BE-7 拆出"
+},
+{
+"k": "BE-7-PT6b",
+"n": "BE-7-PT-6b 撤销离职下游清单兼职项",
+"s": "wait",
+"after": [
+"BE-7-PT6",
+"BE-4j"
+],
+"note": "待前序 · 兼职设计 §11 串行，同时只放 1 个 PR（DEC-249②） · DEC-505 由 BE-7 拆出"
+},
+{
+"k": "BE-7-PT7",
+"n": "BE-7-PT-7 isDepartmentHead、addedSubordinateIds",
+"s": "wait",
+"after": [
+"BE-7-PT6"
+],
+"note": "待前序 · 兼职设计 §11 串行，同时只放 1 个 PR（DEC-249②） · DEC-505 由 BE-7 拆出"
 },
 {
 "k": "FE-R2d",
@@ -5797,7 +5906,7 @@
 "s": "wait",
 "note": "待排 · 证据已齐（F-204 收口），等前序 BE-7、BE-9 · 依赖 R1-T10",
 "after": [
-"BE-7",
+"BE-7-PT6",
 "BE-9"
 ]
 },
@@ -5808,7 +5917,7 @@
 "note": "待排 · 证据已齐（F-204 收口），等前序 BE-10、BE-7",
 "after": [
 "BE-10",
-"BE-7"
+"BE-7-PT6"
 ]
 },
 {

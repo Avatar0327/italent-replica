@@ -283,6 +283,7 @@ export const GRAPH: Graph = {
     '#assertExpiry',
     '#assertNotDuplicated',
     '#audit',
+    '#blankToNull',
     '#lockBlacklist',
     '#personSnapshot',
     '#readEntry',
@@ -296,6 +297,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/employment/blacklist.ts#assertNotDuplicated': [
+    '#identityKey',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/blacklist.ts#audit': [
@@ -314,11 +316,14 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/blacklist.ts#deleteBlacklistEntries': ['#audit', '#lockBatch'],
   'apps/api/src/modules/employment/blacklist.ts#findEffectiveBlacklistEntry': [
+    '#identityKey',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
+  'apps/api/src/modules/employment/blacklist.ts#identityKey': ['#CASELESS', '#storedIdentity'],
   'apps/api/src/modules/employment/blacklist.ts#isoDate': ['apps/api/src/modules/org/read-model.ts#validIsoDate'],
   'apps/api/src/modules/employment/blacklist.ts#listBlacklist': [
     '#COLUMNS',
+    '#identityKey',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/blacklist.ts#listQuery': [
@@ -347,6 +352,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/blacklist.ts#parseBlacklistFilter': ['#listQuery', '#parse'],
   'apps/api/src/modules/employment/blacklist.ts#parseBlacklistUpdate': ['#parse', '#updateInput'],
   'apps/api/src/modules/employment/blacklist.ts#personSnapshot': [
+    '#storedIdentity',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/blacklist.ts#readEntry': [
