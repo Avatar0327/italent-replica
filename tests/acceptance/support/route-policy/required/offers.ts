@@ -194,6 +194,30 @@ const actionDisclosure = (path: string, anchor: string): Obligation[] => {
   ];
 };
 
+/** 新建响应的重聘提示（identity.ts）：按任职记录查看权裁剪后才附上，只决定响应是否带 rehireHint，不拒绝请求。 */
+const rehireDisclosure = (): Obligation[] => [
+  {
+    perm: 'obj:TenantBase.EmploymentRecord:view',
+    purpose: 'disclosure:rehireHint',
+    need: NONE,
+    facts: ['object:object.* 动作', 'objectOp:TenantBase.EmploymentRecord:view'],
+    note: '只决定响应是否带 rehireHint，不拒绝请求（无权 / 范围外 / 字段不可见都当作没有命中）',
+    at: [
+      at('POST', '/', 'respond: (ctx, body) => withRehireHint(deps, ctx, body)'),
+      {
+        role: 'impl',
+        unit: `${O}/identity.ts#visibleRehireHint`,
+        anchor: "action: 'object.view', resource: EMPLOYMENT_OBJECT",
+      },
+      {
+        role: 'const',
+        unit: 'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT',
+        anchor: "'TenantBase.EmploymentRecord'",
+      },
+    ],
+  },
+];
+
 export const OFFERS: RequiredTable = {
   [`GET ${BASE}/views`]: [view("await objectContext(c, deps, OFFER_OBJECT, 'view')", '/views', false)],
   [`GET ${BASE}/dictionaries/:kind`]: [
@@ -222,15 +246,18 @@ export const OFFERS: RequiredTable = {
     ...readView('/:id'),
     ...actionDisclosure('/:id', 'const { allowed } = await offerActionAccess(deps, ctx)'),
   ],
-  [`POST ${BASE}`]: offerWrite(
-    'POST',
-    '/',
-    'create',
-    writesCheck(
-      'offerCreateCheck',
-      "writeFields({ authorize }, ctx, OFFER_OBJECT, 'create', tx ? await writes(tx, ctx) : input)",
+  [`POST ${BASE}`]: [
+    ...offerWrite(
+      'POST',
+      '/',
+      'create',
+      writesCheck(
+        'offerCreateCheck',
+        "writeFields({ authorize }, ctx, OFFER_OBJECT, 'create', tx ? await writes(tx, ctx) : input)",
+      ),
     ),
-  ),
+    ...rehireDisclosure(),
+  ],
   [`PUT ${BASE}/:id`]: offerWrite('PUT', '/:id', 'update'),
   [`DELETE ${BASE}/:id`]: offerWrite('DELETE', '/:id', 'delete'),
   [`POST ${BASE}/:id/copy`]: offerWrite(

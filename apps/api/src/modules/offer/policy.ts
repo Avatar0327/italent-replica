@@ -154,6 +154,16 @@ export const OFFER_POLICIES = defineTable('offers', {
     scope: pointScope({ body: 'departmentId' }, 'offer.department', NOT_FOUND),
     fields: record,
     write: bodyWrite(['offer.requiredFields', 'offer.entryRules']),
+    // 重聘提示（OF-R2）：响应阶段按任职记录查看权 / 数据范围 / 字段查看权裁剪，只决定响应是否带 rehireHint，不参与准入
+    optional: {
+      rehireHint: object({
+        object: 'TenantBase.EmploymentRecord',
+        operation: 'view',
+        button: noButton('只判对象查看权'),
+        scope: noScope('按任职记录数据范围过滤命中的离职人员，只决定是否带提示'),
+        fields: noFields('只决定提示里的结束类型 / 最后工作日是否出现'),
+      }),
+    },
   }),
   'GET /:id': object({
     ...byId,
