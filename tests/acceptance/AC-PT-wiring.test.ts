@@ -4,8 +4,8 @@
  * （任职会话夹具的 tenantApi），**不导入 index.ts**，也不在测试里手工调任何兼职登记函数：离职落地后兼职被结束
  * （钩子已装），删除含兼职周期的入职记录被拒（探针已装）。另有守卫：install.ts 只被 employment/routes.ts 引用。
  */
-import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { join, relative, resolve } from 'node:path';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { dirname, join, relative, resolve } from 'node:path';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { serviceWorld } from './AC-PT-service-support.js';
@@ -19,6 +19,31 @@ function sources(dir: string): string[] {
     if (statSync(path).isDirectory()) return sources(path);
     return path.endsWith('.ts') ? [path] : [];
   });
+}
+
+const INDEX = resolve(MODULES, 'index.ts');
+
+/** 从本测试出发沿相对 import 走静态依赖图，返回会加载 index.ts / @italent/api 的第一条链（没有则 null）。 */
+function indexImportChain(entry: string): string[] | null {
+  const seen = new Set<string>();
+  const visit = (file: string, chain: string[]): string[] | null => {
+    if (seen.has(file)) return null;
+    seen.add(file);
+    const text = readFileSync(file, 'utf8');
+    for (const match of text.matchAll(/(?:from|import\()\s*['"]([^'"]+)['"]/g)) {
+      const spec = match[1]!;
+      if (spec === '@italent/api' || spec.startsWith('@italent/api/')) return [...chain, file, spec];
+      if (!spec.startsWith('.')) continue;
+      const target = resolve(dirname(file), spec.replace(/\.js$/, '.ts'));
+      if (target === INDEX) return [...chain, file, 'index.ts'];
+      if (existsSync(target)) {
+        const found = visit(target, [...chain, file]);
+        if (found) return found;
+      }
+    }
+    return null;
+  };
+  return visit(entry, []);
 }
 
 describe('AC-PT-wiring 兼职装配（PB-79）', () => {
@@ -53,6 +78,10 @@ describe('AC-PT-wiring 兼职装配（PB-79）', () => {
       const response = await w.request(method, path, method === 'GET' ? {} : { ifMatch: 1, body: {} });
       expect(response.status, `${method} ${path}`).toBe(404);
     }
+  });
+
+  it('守卫：本用例的静态依赖图不含 index.ts / @italent/api（只经 app.ts createApp 建应用）', () => {
+    expect(indexImportChain(import.meta.filename)).toBeNull();
   });
 
   it('守卫：installPartTime 只在 employment/routes.ts 里被引用（生产必经点，不在 index.ts 或别处）', () => {

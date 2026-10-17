@@ -4,14 +4,6 @@
  */
 import { randomBytes, randomUUID } from 'node:crypto';
 import {
-  type AppDeps,
-  type Authorizer,
-  createApp,
-  createDevIdentityResolver,
-  devIdentityHeaders,
-  type ErrorBody,
-} from '@italent/api';
-import {
   createTenant,
   createUser,
   type Db,
@@ -23,8 +15,12 @@ import {
   type User,
   withPlatform,
 } from '@italent/db';
+// 直接从源文件取（不经 @italent/api 的 index.ts）：装配集成用例 AC-PT-wiring 要求只经 app.ts createApp 建应用（R2-T05 §4.9）
+import { type AppDeps, createApp } from '../../../apps/api/src/app.js';
 import { runWithAuditRequest } from '../../../apps/api/src/audit/request-context.js';
-import { AppError } from '../../../apps/api/src/errors.js';
+import type { Authorizer } from '../../../apps/api/src/authorization.js';
+import { createDevIdentityResolver, devIdentityHeaders } from '../../../apps/api/src/identity.js';
+import { AppError, type ErrorBody } from '../../../apps/api/src/errors.js';
 import { runCommand } from '../../../apps/api/src/commands.js';
 import { normalizeEmploymentInput } from '../../../apps/api/src/modules/employment/fields.js';
 import {

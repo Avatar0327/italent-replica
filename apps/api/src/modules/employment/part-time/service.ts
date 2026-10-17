@@ -22,6 +22,7 @@ import {
   assertExclusiveTypeFree,
   normalizeNewPartTime,
   partTimePresetFields,
+  validatePartTimeCustomFields,
   validatePartTimeReferences,
   type NewPartTimeInput,
 } from './validation.js';
@@ -66,6 +67,7 @@ export async function createPartTime(
     employType: cycle.employType as never,
   });
   await validatePartTimeReferences(tx, ctx, normalized, fields);
+  const custom = await validatePartTimeCustomFields(tx, ctx, normalized.customFields);
   const { id, payloadVersionId } = await insertPartTimeRecord(tx, ctx, {
     employeeId: employee.id,
     staffId: cycle.staffId,
@@ -74,8 +76,8 @@ export async function createPartTime(
     startDate: normalized.startDate,
     endDate: normalized.endDate,
     fields,
-    customFields: normalized.customFields,
-    explicitFieldCodes: normalized.explicitFieldCodes,
+    customFields: custom.customFields,
+    explicitFieldCodes: [...normalized.explicitFieldCodes, ...custom.codes],
   });
   // 审计 + outbox 与业务同事务；归属 = 员工 + 兼职部门（0058 推不出这类对象的部门，§7.4）。不写 employment.record.create（P-04）
   await auditEmployment(
@@ -87,6 +89,8 @@ export async function createPartTime(
     null,
     {
       ...Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== null)),
+      // DEC-019：自定义字段展开成 custom:<id> 进审计快照与 outbox（同主职落地审计约定）
+      ...Object.fromEntries(Object.entries(custom.customFields).map(([id, value]) => [`custom:${id}`, value])),
       serviceType: normalized.serviceType,
       startDate: normalized.startDate,
       endDate: normalized.endDate,

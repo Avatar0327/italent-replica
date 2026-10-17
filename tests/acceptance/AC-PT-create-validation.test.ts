@@ -7,7 +7,7 @@ import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { rowsOf } from '../../apps/api/src/modules/approval/context.js';
-import { serviceWorld } from './AC-PT-service-support.js';
+import { serviceWorld, type ServiceWorld } from './AC-PT-service-support.js';
 import { uniqueSuffix } from './support/unique.js';
 
 const database = useTestDb();
@@ -188,4 +188,50 @@ describe('createPartTime：日期与业务校验（D-1～D-10）', () => {
     expect(error.code).toBe('NOT_FOUND');
     expect(await w.writes()).toEqual(before);
   });
+});
+
+describe('createPartTime：自定义字段按定义校验并进审计（§1.1，DEC-019）', () => {
+  it('合法值落库，并以 custom:<id> 同时出现在记录、载荷、审计 after / changes 与 outbox', async () => {
+    const w = await serviceWorld(database().db, 'pt-custom-ok');
+    const id = await w.customField('integer');
+    const result = await w.create({ customFields: { [id]: 17 } });
+    const facts = await withTenant(w.db, w.tenantId, async (tx) => {
+      const one = async <T>(query: ReturnType<typeof sql>) => rowsOf<T>(await tx.execute(query));
+      return {
+        record: await one<{ custom_fields: unknown }>(sql`SELECT custom_fields FROM employment_records
+          WHERE tenant_id=${w.tenantId} AND id=${result.id}`),
+        payload: await one<{ custom_fields: unknown; explicit: string[] }>(sql`SELECT custom_fields,
+          explicit_field_codes AS explicit FROM employment_payload_versions
+          WHERE tenant_id=${w.tenantId} AND business_id=${result.id}`),
+        audit: await one<{ after: Record<string, unknown>; changes: unknown }>(sql`SELECT after, changes
+          FROM audit_events WHERE tenant_id=${w.tenantId} AND object_id=${result.id} AND action='employment.part_time.create'`),
+        outbox: await one<{ payload: { after: Record<string, unknown> } }>(sql`SELECT payload FROM employment_outbox
+          WHERE tenant_id=${w.tenantId} AND object_id=${result.id}::uuid AND event_type='employment.part_time.create'`),
+      };
+    });
+    expect(facts.record[0]!.custom_fields).toEqual({ [id]: 17 });
+    expect(facts.payload[0]!.custom_fields).toEqual({ [id]: 17 });
+    expect(facts.payload[0]!.explicit).toContain(`custom:${id}`);
+    expect(facts.audit).toHaveLength(1);
+    expect(facts.audit[0]!.after[`custom:${id}`]).toBe(17);
+    expect(JSON.stringify(facts.audit[0]!.changes)).toContain(`custom:${id}`);
+    expect(facts.outbox).toHaveLength(1);
+    expect(facts.outbox[0]!.payload.after[`custom:${id}`]).toBe(17);
+  });
+
+  it.each([
+    ['整数字段传字符串', async (w: ServiceWorld) => ({ [await w.customField('integer')]: 'not-an-integer' })],
+    ['未知字段', async () => ({ ['00000000-0000-4000-8000-0000000000bb']: 1 })],
+    ['非任职对象（合同）字段', async (w: ServiceWorld) => ({ [await w.customField('text', 'contract')]: '合同备注' })],
+  ] as const)(
+    '%s → 400 VALIDATION_FAILED，业务头 / 载荷 / 记录 / 期限 / 审计 / outbox 都不新增',
+    async (_name, build) => {
+      const w = await serviceWorld(database().db, 'pt-custom-bad');
+      const customFields = await build(w);
+      const before = await w.writes();
+      const error = await w.rejection({ customFields });
+      expect(error.code).toBe('VALIDATION_FAILED');
+      expect(await w.writes()).toEqual(before);
+    },
+  );
 });

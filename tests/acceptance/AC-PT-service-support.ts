@@ -39,6 +39,16 @@ export async function serviceWorld(db: Db, label: string) {
   }
   const reason = (error: AppError) => (error.details as { reason?: string } | undefined)?.reason;
 
+  /** 经真实配置入口建一个自定义字段定义（任职对象 / 合同对象），返回字段 ID。 */
+  async function customField(valueType: string, objectType: 'employment' | 'contract' = 'employment') {
+    const response = await w.request('POST', '/custom-fields', {
+      ifMatch: 0,
+      body: { name: `兼职字段${valueType}${objectType}`, objectType, valueType },
+    });
+    if (response.status !== 201) throw new Error(`建自定义字段失败 ${response.status} ${await response.text()}`);
+    return ((await response.json()) as { id: string }).id;
+  }
+
   const terms = (recordId: string) =>
     withTenant(db, w.tenantId, async (tx) =>
       rowsOf<{ term_no: number; end_date: string | null; source: string; source_id: string | null }>(
@@ -126,7 +136,20 @@ export async function serviceWorld(db: Db, label: string) {
       return row;
     });
 
-  return { ...w, create, rejection, reason, terms, headRevision, leave, pendingExit, disableOrg, moveSnapshot, writes };
+  return {
+    ...w,
+    customField,
+    create,
+    rejection,
+    reason,
+    terms,
+    headRevision,
+    leave,
+    pendingExit,
+    disableOrg,
+    moveSnapshot,
+    writes,
+  };
 }
 
 export type ServiceWorld = Awaited<ReturnType<typeof serviceWorld>>;

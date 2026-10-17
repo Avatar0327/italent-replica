@@ -15,7 +15,8 @@ import {
 import { AppError } from '../../../errors.js';
 import { invalid } from '../../job/validation.js';
 import { partTimeCurrentEndSql } from './span-sql.js';
-import { businessDate } from '../fields.js';
+import { getCustomFieldsForInheritance } from '../configuration.js';
+import { businessDate, validateCustomValue } from '../fields.js';
 import { rowsOf } from '../record-store.js';
 import { assertEmploymentDepartmentAvailableWithin, validateEmploymentReferences } from '../references.js';
 import { emptyPresetFields } from '../types.js';
@@ -172,4 +173,31 @@ export async function validatePartTimeReferences(
   ] as const)
     if (id === employeeId) throw invalid(field, '经理不能是本人');
   await validateEmploymentReferences(tx, ctx, fields, startDate);
+}
+
+/**
+ * 自定义字段（§1.1 custom_fields：任职对象自定义字段按定义校验，不继承）：字段必须是本租户任职对象的定义（合同对象的、
+ * 未知的一律拒绝），数量不超过处理上限，值按字段类型校验；返回通过校验的值与对应的 custom:<id> 显式字段编码。
+ * 与主职入职 / 编辑同一个读取与校验入口（getCustomFieldsForInheritance + validateCustomValue）。
+ */
+export async function validatePartTimeCustomFields(
+  tx: Tx,
+  ctx: EmploymentContext,
+  given: Readonly<Record<string, unknown>>,
+): Promise<{
+  readonly customFields: Record<string, ReturnType<typeof validateCustomValue>>;
+  readonly codes: string[];
+}> {
+  const entries = Object.entries(given);
+  if (!entries.length) return { customFields: {}, codes: [] };
+  if (entries.length > 200) throw new AppError('VALIDATION_FAILED', '单次自定义字段超过处理上限');
+  const definitions = await getCustomFieldsForInheritance(tx, ctx.tenantId);
+  const customFields: Record<string, ReturnType<typeof validateCustomValue>> = {};
+  for (const [id, value] of entries) {
+    const definition = definitions.find((field) => field.id === id);
+    if (!definition)
+      throw new AppError('VALIDATION_FAILED', '自定义字段不属于本租户任职对象', { field: `custom:${id}` });
+    customFields[id] = validateCustomValue(value, definition.valueType);
+  }
+  return { customFields, codes: Object.keys(customFields).map((id) => `custom:${id}`) };
 }
