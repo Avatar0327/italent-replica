@@ -307,10 +307,11 @@ describe('F-181a 清除重放不沿用入口的旧目标例外（Switch 31）', 
     });
     expect(settings.status, await settings.clone().text()).toBe(200);
     const stash = await saved(await x.guardedStash(randomUUID()));
+    const third = await x.w.session.org('第三部门', { establishedOn: '2026-01-01' });
     const sourceOnly = () => orgScope(x.tenantId, '2026-10-01', x.w.from.id);
     // 入口也只放行源部门：目标部门在范围外，入口靠 Switch 31 的 transferTarget 例外通过（旧实现把这份例外带进命令事务）
     x.rights.entryScope = sourceOnly();
-    return { ...x, stash, sourceOnly };
+    return { ...x, stash, third, sourceOnly };
   }
   type Switch31 = Awaited<ReturnType<typeof switch31World>>;
   const SOURCE_GONE: ReadonlyArray<readonly [string, (x: Switch31) => Promise<void>]> = [
@@ -324,8 +325,7 @@ describe('F-181a 清除重放不沿用入口的旧目标例外（Switch 31）', 
     [
       '范围换成无关的第三部门',
       async (x) => {
-        const third = await x.w.session.org('第三部门', { establishedOn: '2026-01-01' });
-        x.rights.scope = orgScope(x.tenantId, '2026-10-01', third.id);
+        x.rights.scope = orgScope(x.tenantId, '2026-10-01', x.third.id);
       },
     ],
   ];
