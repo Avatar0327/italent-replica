@@ -14,7 +14,13 @@ import { and, desc, eq, isUuid, orgHierarchyLinks, orgObjects, orgVersions, sql,
 import { AppError } from '../../errors.js';
 import { assertCodeAvailable, consumeCode, ensureOrgSetup } from './codes.js';
 import { applyEstablishedOnCorrection, planEstablishedOnCorrection } from './correction.js';
-import { assertParentAvailable, type CascadeAuthorizer, planDeactivation, unavailableFrom } from './deactivation.js';
+import {
+  assertDeactivationAfterEstablished,
+  assertParentAvailable,
+  type CascadeAuthorizer,
+  planDeactivation,
+  unavailableFrom,
+} from './deactivation.js';
 import { assertOrgPeopleEligible, submittedPeople } from './people.js';
 import { futureBoundaries, loadOrgSnapshot, type OrgPath, type OrgRecord, resolveOrgPaths } from './read-model.js';
 import {
@@ -139,6 +145,8 @@ export async function updateOrganization(
   const [object] = await tx.select().from(orgObjects).where(objectKey(ctx.tenantId, orgId)).for('no key update');
   if (!object) throw new AppError('NOT_FOUND', '组织不存在');
   assertRevision(ctx.expectedRevision, object.revision);
+  // F-213：停用日须晚于设立日；先于“已有后续版本”等判断，早于设立日与等于设立日给同一条原站文案。
+  if (patch.enabled === false) await assertDeactivationAfterEstablished(tx, ctx, [orgId], effectiveDate);
   await rejectEarlierThanFutureVersion(tx, ctx, orgId, effectiveDate);
   if (patch.establishedOn !== undefined) await assertEstablishedOnUnchanged(tx, ctx, orgId, patch.establishedOn);
   const current = await recordAt(tx, object, effectiveDate);

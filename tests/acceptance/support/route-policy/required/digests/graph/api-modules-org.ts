@@ -50,6 +50,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/org/deactivation.ts#planDeactivation': [
     '#CASCADE_LIMIT',
+    '#assertDeactivationAfterEstablished',
     '#assertSubtreeVacant',
     '#rejectFutureDescendantVersions',
     '#subtree',
@@ -484,6 +485,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/org/write-service.ts#updateOrganization': [
     'apps/api/src/modules/org/codes.ts#assertCodeAvailable',
     'apps/api/src/modules/org/codes.ts#ensureOrgSetup',
+    'apps/api/src/modules/org/deactivation.ts#assertDeactivationAfterEstablished',
     'apps/api/src/modules/org/deactivation.ts#assertParentAvailable',
     'apps/api/src/modules/org/deactivation.ts#planDeactivation',
     'apps/api/src/modules/org/deactivation.ts#unavailableFrom',

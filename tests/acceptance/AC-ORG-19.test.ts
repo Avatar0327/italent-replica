@@ -15,7 +15,10 @@ describe('AC-ORG-19 组织列表按预计算名次排序（DEC-089）', () => {
     const second = await session.create('顺序号二', { parents: { admin: { parentId: root, sequence: 2 } } });
     const first = await session.create('顺序号一', { parents: { admin: { parentId: root, sequence: 1 } } });
     const child = await session.create('顺序号二的下级', { parents: { admin: { parentId: second.id, sequence: 1 } } });
-    const disabled = await session.create('将停用部门', { parents: { admin: { parentId: root, sequence: 0 } } });
+    const disabled = await session.create('将停用部门', {
+      parents: { admin: { parentId: root, sequence: 0 } },
+      establishedOn: '2026-09-30',
+    });
     const stop = await session.request('PATCH', `/organizations/${disabled.id}`, {
       ifMatch: disabled.revision,
       body: { enabled: false, effectiveDate: '2026-10-01' },
