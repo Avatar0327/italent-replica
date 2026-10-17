@@ -120,45 +120,40 @@ describe('P2-02 引用按被引用对象的当前范围校验', () => {
 describe('P2-02 余项：人员引用按 Employee 自身范围', () => {
   const FIELDS = ['directManagerId', 'dottedManagerId', 'hrbpId'] as const;
 
-  it('三个人员字段 × 新建 / 编辑 / 复制共 9 例都 400 OFFER_REFERENCE_INVALID，不写入、revision 不变、无成功审计与台账', async () => {
-    const w = await offerRealWorld(testDb().db, 'person-scope');
+  /** 第 4 轮：拆成 9 个独立用例（审查指出循环在第一例失败即中止），编辑、复制逐例断言错误码。 */
+  const CASES = FIELDS.flatMap((field) => (['create', 'edit', 'copy'] as const).map((op) => [field, op] as const));
+
+  it.each(CASES)('%s × %s：400 OFFER_REFERENCE_INVALID，不写入、revision 不变、无成功审计与台账', async (field, op) => {
+    const w = await offerRealWorld(testDb().db, `person-${field}-${op}`);
     await w.seeAll('TenantBase.Offer');
     const target = w.manager.id;
-    const base = (await (
-      await w.real('POST', '', { ifMatch: 0, body: { entry: 'intern', ...w.internFields() } })
-    ).json()) as OfferBody;
-    for (const field of FIELDS) {
+    const key = randomUUID();
+    if (op === 'create') {
       const before = await w.count();
-      const createKey = randomUUID();
       const created = await w.real('POST', '', {
         ifMatch: 0,
-        idempotencyKey: createKey,
+        idempotencyKey: key,
         body: { entry: 'intern', ...w.internFields(), [field]: target },
       });
-      expect(created.status, `${field} 新建：${await created.clone().text()}`).toBe(400);
+      expect(created.status, await created.clone().text()).toBe(400);
       expect((await errorOf(created)).details).toMatchObject({ reason: 'OFFER_REFERENCE_INVALID' });
       expect(await w.count()).toBe(before);
-      expect(await w.traces(createKey)).toBe(0);
-
-      const editKey = randomUUID();
-      const edited = await w.real('PUT', `/${base.id}`, {
-        ifMatch: 1,
-        idempotencyKey: editKey,
-        body: { [field]: target },
-      });
-      expect(edited.status, `${field} 编辑：${await edited.clone().text()}`).toBe(400);
+    } else if (op === 'edit') {
+      const base = await w.intern();
+      const edited = await w.real('PUT', `/${base.id}`, { ifMatch: 1, idempotencyKey: key, body: { [field]: target } });
+      expect(edited.status, await edited.clone().text()).toBe(400);
+      expect((await errorOf(edited)).details).toMatchObject({ reason: 'OFFER_REFERENCE_INVALID' });
       expect(await w.get(base.id)).toMatchObject({ [field]: null, revision: 1 });
-      expect(await w.traces(editKey)).toBe(0);
-
+    } else {
       const source = await w.intern({ [field]: target });
       await w.invalidated(source.id);
-      const copyBefore = await w.count();
-      const copyKey = randomUUID();
-      const copied = await w.real('POST', `/${source.id}/copy`, { ifMatch: 1, idempotencyKey: copyKey });
-      expect(copied.status, `${field} 复制：${await copied.clone().text()}`).toBe(400);
-      expect(await w.count()).toBe(copyBefore);
-      expect(await w.traces(copyKey)).toBe(0);
+      const before = await w.count();
+      const copied = await w.real('POST', `/${source.id}/copy`, { ifMatch: 1, idempotencyKey: key });
+      expect(copied.status, await copied.clone().text()).toBe(400);
+      expect((await errorOf(copied)).details).toMatchObject({ reason: 'OFFER_REFERENCE_INVALID' });
+      expect(await w.count()).toBe(before);
     }
+    expect(await w.traces(key)).toBe(0);
   });
 
   it('对照：Employee 也有看全部时，三个人员字段新建成功', async () => {
