@@ -21,7 +21,7 @@ import {
 
 const span = (startDate: string, endDate: string | null) => ({ startDate, endDate });
 
-describe('PB-06 任职状态与视图归属（§1.2 / §6.1）', () => {
+describe('AC-PT-06 / AC-PT-03 PB-06 任职状态与视图归属（§1.2 / §6.1）', () => {
   const closed = span('2026-10-10', '2026-10-20');
 
   it.each([
@@ -81,7 +81,7 @@ describe('PB-06 任职状态与视图归属（§1.2 / §6.1）', () => {
   });
 });
 
-describe('D-5 外派 / 借调唯一（§4.3，W-616，A-7）', () => {
+describe('AC-PT-01 / AC-PT-02 D-5 外派 / 借调唯一（§4.3，W-616，A-7）', () => {
   const today = '2026-10-01';
   const expatriate = { serviceType: 'expatriate', ...span('2026-09-01', null) };
 
@@ -118,7 +118,7 @@ describe('D-5 外派 / 借调唯一（§4.3，W-616，A-7）', () => {
   });
 });
 
-describe('§4.3A 主职周期边界 partTimeBoundaryViolation', () => {
+describe('AC-PT-13 §4.3A 主职周期边界 partTimeBoundaryViolation', () => {
   const primary = { staffId: 'staff-1', kind: 'hire', employeeStatus: 3 };
   const base: PartTimeBoundaryInput = {
     ...span('2026-10-01', null),
@@ -175,7 +175,7 @@ describe('§4.3A 主职周期边界 partTimeBoundaryViolation', () => {
   });
 });
 
-describe('离职 / 调动结束兼职（§4.6 / §4.7，S3～S7）', () => {
+describe('AC-PT-09 / AC-LNK-06 离职 / 调动结束兼职（§4.6 / §4.7，S3～S7）', () => {
   it('结束日 = 实际生效日 − 1（含跨月、跨年）', () => {
     expect(partTimeTransferEndDate('2026-10-13')).toBe('2026-10-12');
     expect(partTimeExitEndDate('2026-11-01')).toBe('2026-10-31');
