@@ -18,7 +18,6 @@ import type { EmploymentContext } from './types.js';
 
 /** 字典由管理员手工维护、不提供删除，上限在新增时拦，列表在上限内整份返回、不分页。 */
 export const PROBATION_RESULT_LIMIT = 200;
-export const PROBATION_RESULT_KEYS = ['id', 'code', 'name', 'enabled', 'displayOrder', 'revision'] as const;
 const AUDIT = { action: 'probation_result.save', objectType: 'probation_result' } as const;
 
 const createInput = z.strictObject({
@@ -34,11 +33,14 @@ const updateInput = z.strictObject({
   displayOrder: z.int().min(0).max(100000).optional(),
 });
 
-/** 路由在字段授权之前先做严格校验：多余字段 400，而不是被当作无权字段 403。 */
-export function parseProbationResultInput(raw: unknown, mode: 'create' | 'update'): Record<string, unknown> {
-  const parsed = (mode === 'create' ? createInput : updateInput).safeParse(raw);
+function parse<T>(schema: z.ZodType<T>, raw: unknown): T {
+  const parsed = schema.safeParse(raw);
   if (!parsed.success) throw new AppError('VALIDATION_FAILED', '试用结果字段不合法', parsed.error.issues);
   return parsed.data;
+}
+/** 路由在字段授权之前先做严格校验：多余字段 400，而不是被当作无权字段 403。 */
+export function parseProbationResultInput(raw: unknown, mode: 'create' | 'update'): Record<string, unknown> {
+  return mode === 'create' ? parse(createInput, raw) : parse(updateInput, raw);
 }
 
 const { tenantId: _tenant, createdAt: _created, updatedAt: _updated, ...columns } = getTableColumns(table);
@@ -79,7 +81,7 @@ export async function saveProbationResult(tx: Tx, ctx: EmploymentContext, raw: u
   await lockDictionary(tx, ctx.tenantId);
   const writer = writerOf(ctx);
   if (!id) {
-    const input = createInput.parse(parseProbationResultInput(raw, 'create'));
+    const input = parse(createInput, raw);
     assertRevision(ctx.expectedRevision, 0);
     if (await findByCode(tx, ctx.tenantId, input.code))
       throw new AppError('CONFLICT', '试用结果编码已存在', { reason: 'PROBATION_RESULT_CODE_TAKEN', code: input.code });
@@ -95,7 +97,7 @@ export async function saveProbationResult(tx: Tx, ctx: EmploymentContext, raw: u
     await audit(tx, writer, after!.id, null, after!);
     return after!;
   }
-  const input = updateInput.parse(parseProbationResultInput(raw, 'update'));
+  const input = parse(updateInput, raw);
   const [before] = await tx
     .select(columns)
     .from(table)

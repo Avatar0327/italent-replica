@@ -214,12 +214,12 @@ export const DIGESTS: Digests = {
     previewEmploymentForwardUpdate: '9e9497cd9082',
   },
   'apps/api/src/modules/employment/probation-routes.ts': {
-    'route:GET /employees/:id/probation': '2aae2d6b9ee2',
+    'route:GET /employees/:id/probation': '3c6095c242e8',
     'route:GET /probation-results': '140957a8db47',
     'route:GET /probation-views': 'bbdd8a6b12dc',
     'route:POST /probation-results': 'f4a66a4d53a0',
     'route:POST /regularizations': '52b92717eba2',
-    'route:PUT /employees/:id/probation': '413850b2e2b0',
+    'route:PUT /employees/:id/probation': '604dbfac27aa',
     'route:PUT /probation-results/:id': '1023b87e2164',
   },
   'apps/api/src/modules/employment/regularization.ts': {

@@ -56,6 +56,8 @@ interface Anchor {
   readonly employeeId: string;
   readonly staffId: string;
   readonly entryDate: string;
+  /** 开启试用的记录自己的生效日（入职日 / 实习转正日）。 */
+  readonly effectiveDate: string;
   readonly employeeStatus: EmployeeStatusCode;
 }
 
@@ -63,7 +65,8 @@ interface Anchor {
 async function loadAnchor(tx: Tx, tenantId: string, employeeId: string, asOf: string): Promise<Anchor | null> {
   const [row] = rowsOf<Anchor>(
     await tx.execute(sql`SELECT a.id, a.employee_id AS "employeeId", a.staff_id AS "staffId",
-        a.entry_date::text AS "entryDate", st.employee_status::integer AS "employeeStatus"
+        a.entry_date::text AS "entryDate", at.start_date::text AS "effectiveDate",
+        st.employee_status::integer AS "employeeStatus"
       FROM employment_timeline cur
       JOIN employment_records cr ON cr.tenant_id=cur.tenant_id AND cr.id=cur.record_id
       JOIN employment_records a ON a.tenant_id=cr.tenant_id AND a.employee_id=cr.employee_id AND a.staff_id=cr.staff_id
@@ -110,7 +113,9 @@ export interface ProbationCycle {
   readonly regularization: CycleRegularization | null;
 }
 
-/** 没有试用期版本（入职时没填）时按开启记录的人员状态推断是否有试用期，其余为空。 */
+/**
+ * 没有试用期版本（入职申请、入职时没填）时按开启记录的人员状态推断是否有试用期，开始日取该记录生效日，其余为空。
+ */
 export async function loadProbationCycle(
   tx: Tx,
   tenantId: string,
@@ -124,7 +129,7 @@ export async function loadProbationCycle(
     ? normalizeProbationInfo(version)
     : normalizeProbationInfo({
         hasProbation: anchor.employeeStatus === EMPLOYEE_STATUS.probation,
-        startDate: null,
+        startDate: anchor.effectiveDate,
         months: null,
         expectedEndDate: null,
       });

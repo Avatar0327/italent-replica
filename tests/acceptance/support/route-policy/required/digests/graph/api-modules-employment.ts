@@ -1172,7 +1172,11 @@ export const GRAPH: Graph = {
     'apps/api/src/advisory-lock.ts#advisoryLock',
     'apps/api/src/advisory-lock.ts#asUuid',
   ],
-  'apps/api/src/modules/employment/probation-results.ts#parseProbationResultInput': ['#createInput', '#updateInput'],
+  'apps/api/src/modules/employment/probation-results.ts#parseProbationResultInput': [
+    '#createInput',
+    '#parse',
+    '#updateInput',
+  ],
   'apps/api/src/modules/employment/probation-results.ts#requireEnabledProbationResult': ['#findByCode'],
   'apps/api/src/modules/employment/probation-results.ts#saveProbationResult': [
     'apps/api/src/modules/employment/context.ts#assertRevision',
@@ -1182,7 +1186,7 @@ export const GRAPH: Graph = {
     '#createInput',
     '#findByCode',
     '#lockDictionary',
-    '#parseProbationResultInput',
+    '#parse',
     '#updateInput',
     '#writerOf',
   ],

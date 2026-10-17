@@ -6,7 +6,7 @@
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { addHire, entryAction, hireBody } from './AC-EN-BE2a-support.js';
-import { hire, pbWorld, probationOf, regularizeOk } from './AC-PB-support.js';
+import { hire, pbWorld, probationOf, regularizeOk, transition } from './AC-PB-support.js';
 
 const testDb = useTestDb();
 
@@ -47,11 +47,32 @@ describe('BE-3 试用期信息', () => {
       { probation: true, probationMonths: 7 },
       { probation: false, probationMonths: 3 },
       { probation: true, probationEndDate: '2026-13-01' },
+      { probation: true, probationMonths: 3, mode: 'application' },
     ]) {
       const employee = await w.session.employee();
       const response = await addHire(w.session, employee, hireBody(w.org.id, '2026-09-01', extra));
       expect(response.status, JSON.stringify(extra)).toBe(400);
     }
+  });
+
+  it('入职申请只记是否有试用期：生效后开始日取入职日，月数与预计结束日待调整试用信息填写', async () => {
+    const w = await pbWorld(testDb().db, 'pb-info-apply');
+    const employee = await w.session.employee();
+    const created = await addHire(
+      w.session,
+      employee,
+      hireBody(w.org.id, '2026-09-10', { mode: 'application', probation: true }),
+    );
+    expect(created.status, await created.clone().text()).toBe(201);
+    const business = (await created.json()) as { id: string };
+    for (const action of ['submit', 'approve'] as const)
+      expect((await transition(w, business, action)).status).toBe(200);
+    expect(await probationOf(w, employee.id)).toMatchObject({
+      hasProbation: true,
+      startDate: '2026-09-10',
+      months: null,
+      expectedEndDate: null,
+    });
   });
 
   it('办理入职时填写试用期：开始日 = 入职日，月数推算预计结束日', async () => {

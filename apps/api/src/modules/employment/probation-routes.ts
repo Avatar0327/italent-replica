@@ -83,6 +83,12 @@ function probationWriteGuard(
       // 批量转正逐人在保存点里判范围（只让那一人失败）；单人调整在这里整单拒绝
       for (const employeeId of employeeIds) await requireEmployeeInScope(tx, scoped, employeeId);
     },
+    // 同键重放：回执里的每一人（成功与失败都算）按当前范围复核，撤权后拿不到原回执
+    replayed: async (tx, replay) => {
+      const scoped = await commandContext(tx, deps, ctx);
+      const receipt = replay.body as { items?: readonly { employeeId: string }[] } | null;
+      for (const item of receipt?.items ?? []) await requireEmployeeInScope(tx, scoped, item.employeeId);
+    },
   });
 }
 
@@ -109,8 +115,9 @@ export function registerProbationRoutes(router: Hono<TenantEnv>, deps: TenantRou
       async (tx, context) => {
         await adjustProbation(tx, context, id, adjustment);
         const today = tenantLocalDate(context.now, context.timezone);
-        // 回执只带试用信息（控制项），不带任职记录行
-        const { records: _records, ...info } = await probationDetail(tx, context, id, today);
+        // 回执只带员工、revision 与试用信息（控制项），不带入职日期、任职记录行等任职字段
+        const detail = await probationDetail(tx, context, id, today);
+        const { records: _records, recordId: _recordId, entryDate: _entryDate, ...info } = detail;
         return { status: 200, body: info };
       },
       { guard: probationWriteGuard(deps, ctx, 'update', {}, [id]), project: (body) => body },
@@ -180,15 +187,15 @@ function registerProbationViews(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
     const id = uuidParam(c);
     const ctx = await readPageContext(c, deps, 'detail', id);
     const detail = await withTenant(deps.db, ctx.tenantId, (tx) => probationDetail(tx, ctx, id, queryDate(c, ctx)));
-    // 记录行（id / kind / effectiveDate / employeeStatus）按任职字段权裁剪；试用信息是控制项，员工可见即可见
-    const { records, ...info } = detail;
-    const trimmed = (await trimEmploymentResponse(deps, ctx, { items: records })) as { items: object[] };
+    // 员工 / 记录键与记录行（id / kind / effectiveDate / employeeStatus）按任职字段权逐层裁剪；
+    // 试用信息与转正日期投影是控制项（不在任职字段目录），员工可见即可见
+    const { records, employeeId, revision: employeeRevision, recordId, entryDate, ...controls } = detail;
+    const base = { employeeId, revision: employeeRevision, recordId, entryDate, items: records };
+    const { items, ...trimmed } = (await trimEmploymentResponse(deps, ctx, base)) as { items: object[] };
     return c.json({
-      ...info,
-      records: trimmed.items.map((record, index) => ({
-        ...record,
-        regularizationDate: records[index]!.regularizationDate,
-      })),
+      ...trimmed,
+      ...controls,
+      records: items.map((record, index) => ({ ...record, regularizationDate: records[index]!.regularizationDate })),
     });
   });
 }

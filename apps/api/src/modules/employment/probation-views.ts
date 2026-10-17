@@ -127,7 +127,8 @@ export async function listProbationView(
       st.employee_status::integer AS "employeeStatus", e.revision,
       COALESCE(pv.has_probation, CASE WHEN ast.employee_status IS NULL THEN NULL
         ELSE ast.employee_status=${EMPLOYEE_STATUS.probation} END) AS "hasProbation",
-      pv.start_date::text AS "startDate", pv.months::integer AS months,
+      COALESCE(pv.start_date, CASE WHEN pv.id IS NULL AND ast.employee_status=${EMPLOYEE_STATUS.probation}
+        THEN anchor.start_date END)::text AS "startDate", pv.months::integer AS months,
       pv.expected_end_date::text AS "expectedEndDate", reg.effective_date AS "regularizationDate",
       pick.id AS "regularizationBusinessId", pick.state AS "regularizationState",
       pick.mode AS "regularizationMode", pick.result_code AS "probationResult"
@@ -138,7 +139,7 @@ export async function listProbationView(
     LEFT JOIN LATERAL (SELECT p.department_id, p.post_id FROM employment_payload_versions p
       WHERE p.tenant_id=cr.tenant_id AND p.business_id=cr.id AND p.is_record_snapshot
       ORDER BY p.version_no DESC LIMIT 1) snap ON true
-    LEFT JOIN LATERAL (SELECT a.id FROM employment_records a
+    LEFT JOIN LATERAL (SELECT a.id, at.start_date FROM employment_records a
       JOIN employment_timeline at ON at.tenant_id=a.tenant_id AND at.record_id=a.id
       WHERE a.tenant_id=cr.tenant_id AND a.employee_id=cr.employee_id AND a.staff_id=cr.staff_id
         AND a.kind IN (${kinds}) AND at.start_date<=${input.today}::date

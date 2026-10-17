@@ -48,8 +48,14 @@ export function assertEntryOptionsAllowed(input: NormalizedEmploymentInput, entr
   if (!entry) return;
   if (!NEW_CYCLE_KINDS.includes(input.kind))
     throw new AppError('VALIDATION_FAILED', '只有入职类业务可以提供待入职 / 是否有试用期');
+  const terms = entry.probationMonths !== undefined || entry.probationEndDate !== undefined;
+  // 入职申请审批期间还可能改期，开始日要到生效时才定：申请只记是否有试用期，月数等入职生效后经调整试用信息填写
+  if (terms && input.mode !== 'direct')
+    throw new AppError('VALIDATION_FAILED', '入职申请只记录是否有试用期，试用期月数在入职生效后调整试用信息时填写', {
+      reason: 'PROBATION_TERMS_APPLICATION',
+    });
   if (!entry.pendingEntry) return;
-  if (entry.probationMonths !== undefined || entry.probationEndDate !== undefined)
+  if (terms)
     throw new AppError('VALIDATION_FAILED', '待入职只记录是否有试用期，试用期月数在办理入职时填写', {
       reason: 'PROBATION_TERMS_PENDING',
     });
