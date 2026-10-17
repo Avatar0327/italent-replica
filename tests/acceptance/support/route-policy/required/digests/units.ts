@@ -463,7 +463,7 @@ export const DIGESTS: Digests = {
     'route:DELETE /api/tenant/idp/plans/:id': '0a0e902b23d8',
     'route:DELETE /api/tenant/idp/plans/:id/goals/:goalId': '3f6d6eb9ff64',
     'route:DELETE /api/tenant/idp/plans/:id/goals/:goalId/tasks/:taskId': '8f9b56b10c9e',
-    'route:GET /api/tenant/idp/my-plans': 'c02467cae6b6',
+    'route:GET /api/tenant/idp/my-plans': '29a6b1502491',
     'route:GET /api/tenant/idp/plans': '01979ec5be96',
     'route:GET /api/tenant/idp/plans/:id': '212e850f3bcd',
     'route:GET /api/tenant/idp/plans/:id/competency-candidates': '38b337f0003f',
