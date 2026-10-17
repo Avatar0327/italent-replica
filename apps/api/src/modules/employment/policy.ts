@@ -226,6 +226,22 @@ function configurationView(objectCode: string, fields: FieldsPolicy): RoutePolic
   });
 }
 
+/**
+ * 立即执行回执的人员披露（BE-15a 第 4 轮审查 P2）：可选分支，只决定回执列出哪些员工、不参与准入、不拒绝请求——
+ * visibleEmployees 先判任职记录查看权（object.view），没有时 launched / failed 两列为空；有时再按数据范围逐人过滤
+ * （employment.runReceipt，与准入节点上的范围同一裁剪）。逐人条目是固定键，不含任职字段值。
+ */
+const RUN_RECEIPT_DISCLOSURE = object({
+  object: EMPLOYMENT,
+  operation: 'view',
+  button: noButton('回执披露只取任职记录查看权与数据范围'),
+  scope: listScope('employment.runReceipt'),
+  fields: fixed(
+    ['employeeId', 'ruleId', 'businessId', 'businessStatus', 'initiatorUserId', 'reason'],
+    'BE-15a 第 2 轮审查 P1：立即执行回执的逐人固定键',
+  ),
+});
+
 // ---- 经理待办固定键（§3.5；manager-routes.ts registerManagerTodos）----------------------------------------------------
 /** tab=pending（默认）：approval/queries.ts listTodos（本人为待办人 assignee_user_id）。 */
 const TODO_PENDING_KEYS = [
@@ -1553,6 +1569,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     ],
     SETTINGS_FIELDS,
     {
+      optional: { receiptDisclosure: RUN_RECEIPT_DISCLOSURE },
       write: write(
         'body',
         'config.audited:auto_regularization_run',
