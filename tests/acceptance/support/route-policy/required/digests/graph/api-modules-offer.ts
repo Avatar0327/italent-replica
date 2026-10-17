@@ -110,7 +110,6 @@ export const GRAPH: Graph = {
     'apps/api/src/authorization.ts#requirePermission',
     'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT',
     'apps/api/src/modules/employment/rehire-match.ts#findRehireCandidates',
-    'apps/api/src/modules/employment/visibility.ts#visibleEmploymentRecords',
     '#ENDED_FIELDS',
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
     'apps/api/src/modules/permission/module-access.ts#resolveModuleScope',

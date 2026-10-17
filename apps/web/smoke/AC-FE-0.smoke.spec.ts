@@ -212,7 +212,7 @@ test('AC-FE-0-11 顶栏全部菜单面板、消息抽屉与个人菜单按原站
   await apps.click();
   const panel = page.getByRole('dialog', { name: '全部菜单' });
   await expect(apps).toContainText('关闭菜单');
-  await expect(panel.getByRole('region', { name: '人才管理' }).getByRole('link', { name: '人才盘点' })).toBeVisible();
+  await expect(panel.getByRole('region', { name: '继任与发展' }).getByRole('link', { name: '人才盘点' })).toBeVisible();
   // 面板打开后焦点在搜索框，Tab 循环不离开面板
   await expect(panel.getByRole('searchbox', { name: '搜索菜单' })).toBeFocused();
   await page.keyboard.press('Shift+Tab');

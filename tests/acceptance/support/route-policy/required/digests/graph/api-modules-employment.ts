@@ -2104,7 +2104,9 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/regularization.ts#schema': ['#MAX_BATCH_REGULARIZATION'],
   'apps/api/src/modules/employment/rehire-match.ts#endedPeople': [
+    'apps/api/src/modules/employment/context.ts#employmentCreator',
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
+    'apps/api/src/modules/employment/visibility.ts#employmentVisibilitySql',
   ],
   'apps/api/src/modules/employment/rehire-match.ts#findRehireCandidates': ['#endedPeople'],
   'apps/api/src/modules/employment/rehire-match.ts#matchRehire': ['#endedPeople'],
