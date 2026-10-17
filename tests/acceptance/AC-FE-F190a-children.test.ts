@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { collectPages, mountPath } from '../../apps/web/src/foundation/page-registry.js';
+import {
+  collectPages,
+  lazyPage,
+  mountPath,
+  pageRoutes,
+  type EntryPageDeclaration,
+} from '../../apps/web/src/foundation/page-registry.js';
 import { menuNodes, type ServerSnapshot } from '../../apps/web/src/foundation/permission-snapshot.js';
 
 const leaf = (id: string, objectCode = id) => ({ id, label: id, objectCode });
@@ -9,7 +15,7 @@ const group = {
   label: '合成分组',
   group: 'talent',
   children: [leaf('z'), { ...leaf('a'), legacy: true }],
-};
+} satisfies EntryPageDeclaration;
 const collect = (entries: unknown[]) =>
   collectPages(
     {
@@ -58,6 +64,8 @@ describe('AC-FE-F190a 共享入口子菜单契约', () => {
     expect(menuNodes(collect([{ ...group, children: [] }]).entries, snapshot(['a']))).toEqual([]);
   });
   it('03 子项继承 app / group / module，自己声明路由与 legacy；不支持更深层级或重复键', () => {
+    const page = lazyPage('Fixture', async () => ({ Fixture: () => null }));
+    expect(pageRoutes(collect([{ ...group, children: [{ ...leaf('a'), page }] }]).entries)[0]?.page).toBe(page);
     const registry = collect([group]);
     expect(registry.entries[0]?.children).toEqual(
       ['z', 'a'].map((id) => ({

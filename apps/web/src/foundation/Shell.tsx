@@ -47,10 +47,10 @@ function Header() {
 }
 function menuItem(menu: MenuNode, navigate: (path: string) => void) {
   return {
-    key: menu.path,
+    key: menu.directory ? menu.key : menu.path,
     icon: <MenuIcon />,
     label: menu.label,
-    onTitleClick: () => navigate(menu.path),
+    onTitleClick: menu.directory ? undefined : () => navigate(menu.path),
     children: menu.children?.length ? menu.children.map(subItem) : undefined,
   };
 }
@@ -84,6 +84,8 @@ export function Shell() {
   const { menus, loading, error, refresh } = usePermissions();
   const active = appRoute(location.pathname);
   const items = sidebarItems(menus, active?.path, navigate);
+  const parent = menus.find((menu) => menu.directory && menu.children?.some((child) => child.path === active?.path));
+  const openKey = parent?.key ?? active?.path;
   let content = <AppPages />;
   if (loading) content = <PageState kind="loading" />;
   else if (error) {
@@ -102,9 +104,10 @@ export function Shell() {
           aria-label={ui.apps}
         >
           <Menu
+            key={parent?.key ?? 'menus'}
             mode="inline"
             selectedKeys={[location.pathname]}
-            defaultOpenKeys={active ? [active.path] : []}
+            defaultOpenKeys={openKey ? [openKey] : []}
             items={items}
             onClick={({ key }) => navigate(key)}
           />

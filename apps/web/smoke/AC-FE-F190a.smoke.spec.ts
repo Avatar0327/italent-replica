@@ -37,7 +37,7 @@ test('AC-FE-F190a-04 外壳展开分组、子项路由与 legacy、直达鉴权�
   await expect(sidebar.getByText('合成子页乙', { exact: true })).not.toBeVisible();
   await title.click();
   await expect(page).toHaveURL(/\/idp$/);
-  const nested = sidebar.locator('.ant-menu-submenu').filter({ has: title });
+  const nested = title.locator('..');
   await nested.getByText('合成子页乙', { exact: true }).click();
   await expect(page).toHaveURL(/\/fixture-second$/);
   await expect(page.locator('.legacy-page h1')).toHaveText('合成子页乙');

@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 import { APP_IDS } from '@italent/domain';
-import { collectPages, type AppRoute, type MenuRoute } from './page-registry.js';
+import { collectPages, pageRoutes, type AppRoute, type MenuRoute } from './page-registry.js';
 
 export type { AppRoute, EntryRoute, MenuRoute, SubRoute } from './page-registry.js';
 
@@ -11,7 +11,7 @@ export const MENU_ROUTES: readonly MenuRoute[] = PAGES.menus;
 export const SUB_ROUTES = PAGES.routes;
 
 export function appRoute(path: string) {
-  return MENU_ROUTES.find((item) => path === item.path || path.startsWith(`${item.path}/`));
+  return pageRoutes(MENU_ROUTES).find((item) => path === item.path || path.startsWith(`${item.path}/`));
 }
 export function legacyTarget(path: string, search = '', hash = ''): string | null {
   const target = ({ '/': '/transfer', '/jobs': '/job', '/account': '/settings/account' } as Record<string, string>)[
