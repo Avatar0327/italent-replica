@@ -1,4 +1,6 @@
 import { CONTRACT_FIELDS, CONTRACT_OBJECT } from '../contracts/rules.js';
+import { OFFER_BATCH_FIELDS, OFFER_BATCH_OBJECT, OFFER_BATCH_PROCESS_CODE } from '../offer/approval.js';
+import { OFFER_FIELDS, OFFER_OBJECT } from '../offer/rules.js';
 /**
  * 审批中心领域模型（R1-T07；docs/02_业务建模/14、REQ-APV-001~004）。
  * 流程按审批类型隔离（DEC-017）；节点是动作开关集 + 消息规则数组（`14` §8.2）；时效字段只预留（DEC-035）。
@@ -22,11 +24,29 @@ export const APPROVER_EXPRESSIONS = [
   // R3-T07 PR-B（K-09，W-114 节点链）：只有 IDP 三类审批类型可选（IDP_ONLY_APPROVERS）
   'idp_employee', // 发展计划 - 员工本人（填写节点，不按自审处理，K-37）
   'idp_tutor', // 发展计划 - 指导人
+  // R2 BE-14a3（F-171 ①②，OF-R15）：只有 Offer 两类审批可选（OFFER_APPROVERS）
+  'offer_department_head', // Offer 审批 - 录用部门负责人
+  'initiator_direct_manager', // 申请人直接上级：发起人 → 最新生效主职任职 → 直线经理（区别于取流程主体的 direct_manager）
+  'approval_subject_first_level_org_head', // Offer 批量审批 - 审批主体组织 → 一级组织 → 负责人
 ] as const;
 export type ApproverExpression = (typeof APPROVER_EXPRESSIONS)[number];
 
 /** 只在 IDP 审批类型上可用的审批人表达式（取发展计划上的员工 / 指导人）。 */
 export const IDP_ONLY_APPROVERS: ReadonlySet<ApproverExpression> = new Set(['idp_employee', 'idp_tutor']);
+
+/**
+ * Offer 两类审批的审批人白名单（BE-14a3）：候选人不是员工，流程主体与任职记录类取值都取不到人，只开放这几项；
+ * 批量审批不得用“录用部门负责人”（OF-R15）。三个新取值也只用于这两类，不改其他业务的审批行为。
+ */
+export const OFFER_APPROVERS: Readonly<Record<'offer' | 'offer_batch', ReadonlySet<ApproverExpression>>> = {
+  offer: new Set(['owner', 'initiator_direct_manager', 'offer_department_head']),
+  offer_batch: new Set(['owner', 'initiator_direct_manager', 'approval_subject_first_level_org_head']),
+};
+export const OFFER_ONLY_APPROVERS: ReadonlySet<ApproverExpression> = new Set([
+  'offer_department_head',
+  'initiator_direct_manager',
+  'approval_subject_first_level_org_head',
+]);
 
 /**
  * 审批人为空：首节点提交即报错，中间节点一律转异常管理员（DEC-054、REQ-APV-002 R6、`14` §10）。
@@ -357,7 +377,15 @@ const employeeInfoFormFields = EMPLOYEE_EDITABLE_FIELDS.filter((f) => !f.system)
  * part_time：兼职申请（BE-7，R2-T05 §1.4 / §1.5）：PT-1 登记类型与预置流程，适配器为占位，PT-4a 接入兼职申请对象。
  */
 export type ApprovalAdapterKind =
-  'employment' | 'personnel_change' | 'employee_info' | 'contract' | 'idp' | 'talent_review' | 'part_time';
+  | 'employment'
+  | 'personnel_change'
+  | 'employee_info'
+  | 'contract'
+  | 'idp'
+  | 'talent_review'
+  | 'part_time'
+  | 'offer'
+  | 'offer_batch';
 export interface ApprovalTypeDefinition {
   readonly code: string;
   readonly name: string;
@@ -435,6 +463,42 @@ const employmentType = (
  * 重聘入职、退休返聘是「入职」的异动类型（`07` §2），走入职审批（approvalTypeOfBusiness）。
  * 原站「组织调整」审批类型挂在组织调整申请对象上（`33`），任职记录上的组织调整异动没有对应的标准流程编码。
  */
+/**
+ * Offer 审批（BE-14a3）：表单字段为 Offer 字段集，按 Offer 对象字段权限披露。原站单个 Offer 审批的标准编码与节点未取证，
+ * 不带标准编码（预置为本类型兜底流程，DEC-018）。审批中编辑首版不开（DEC-105 同口径，改内容请驳回后在 Offer 上修改）。
+ */
+const OFFER_TYPE = {
+  code: 'offer',
+  name: 'Offer审批',
+  objectCode: OFFER_OBJECT,
+  adapter: 'offer',
+  defaultProcessCode: null,
+  conditionFields: [
+    { path: 'processCode', label: '流程编码', kind: 'text' },
+    { path: 'offer.offerType', label: 'Offer类型', kind: 'text' },
+    { path: 'offer.departmentId', label: '录用部门', kind: 'org' },
+  ],
+  formFields: ['offerType', ...OFFER_FIELDS],
+  readonlyFields: [],
+  approvalEdit: false,
+} as const satisfies ApprovalTypeDefinition;
+
+/** Offer 批量审批（OF-R15，DEC-532⑦）：一单含多份 Offer 子表，按批量单对象的字段权限披露。 */
+const OFFER_BATCH_TYPE = {
+  code: 'offer_batch',
+  name: 'Offer批量审批',
+  objectCode: OFFER_BATCH_OBJECT,
+  adapter: 'offer_batch',
+  defaultProcessCode: OFFER_BATCH_PROCESS_CODE,
+  conditionFields: [
+    { path: 'processCode', label: '流程编码', kind: 'text' },
+    { path: 'batch.approvalSubjectOrgId', label: '审批主体组织', kind: 'org' },
+  ],
+  formFields: OFFER_BATCH_FIELDS,
+  readonlyFields: [],
+  approvalEdit: false,
+} as const satisfies ApprovalTypeDefinition;
+
 const contractType = (code: string, name: string, defaultProcessCode: string) =>
   ({
     code,
@@ -509,6 +573,8 @@ export const APPROVAL_TYPES = {
     readonlyFields: [],
     approvalEdit: false,
   },
+  offer: OFFER_TYPE,
+  offer_batch: OFFER_BATCH_TYPE,
   personnel_change: {
     code: 'personnel_change',
     name: '员工子集变更',

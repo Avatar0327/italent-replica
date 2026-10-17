@@ -219,7 +219,13 @@ function registerPlanReads(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
           ORDER BY p.created_at, p.id LIMIT ${page.limit} OFFSET ${page.offset}`),
       ).map((r) => r.id);
       const shown = await participantSummaries(tx, ctx, ids);
-      return shown.map(({ tutorRole: _r, tutorEmployeeId: _t, processId: _p, ...rest }) => rest);
+      // 指导人只对本人（计划员工）与指导人本人返回（F-182a，同 tutor-plans 的 tutorEmployeeId）；只因在办待办入列的
+      // 待办人不是计划的关系人，置 null，不扩大参与人对计划的可见范围（DEC-296④）。
+      return shown.map(({ tutorRole: _r, processId: _p, ...rest }) => ({
+        ...rest,
+        tutorEmployeeId:
+          me !== null && (me === rest.employeeId || me === rest.tutorEmployeeId) ? rest.tutorEmployeeId : null,
+      }));
     });
     return c.json({ page: page.page, pageSize: page.pageSize, items });
   });
