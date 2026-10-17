@@ -240,7 +240,7 @@ export const DIGESTS: Digests = {
     'route:PUT /probation-results/:id': 'e1504b0925a6',
   },
   'apps/api/src/modules/employment/regularization-reschedule.ts': {
-    rescheduleRegularization: 'dfde7b7de678',
+    rescheduleRegularization: '2020cec359d9',
   },
   'apps/api/src/modules/employment/regularization.ts': {
     regularizeOne: '874facddf810',
@@ -1544,7 +1544,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/probation-routes.ts#route:POST /regularizations': '4f772beb7b4f',
   'apps/api/src/modules/employment/probation-routes.ts#route:PUT /employees/:id/probation': '98ec4c8d2cb9',
   'apps/api/src/modules/employment/probation-routes.ts#route:PUT /probation-results/:id': '598aaee12ea9',
-  'apps/api/src/modules/employment/regularization-reschedule.ts#rescheduleRegularization': '6bcf675fb388',
+  'apps/api/src/modules/employment/regularization-reschedule.ts#rescheduleRegularization': 'cdda3cbdeba6',
   'apps/api/src/modules/employment/regularization.ts#regularizeOne': 'c8e2526025e2',
   'apps/api/src/modules/employment/replay-guard.ts#importWriteGuard': 'd611756193b7',
   'apps/api/src/modules/employment/replay-guard.ts#requireBusinessWriteScope': '90ef4cd1f0fc',

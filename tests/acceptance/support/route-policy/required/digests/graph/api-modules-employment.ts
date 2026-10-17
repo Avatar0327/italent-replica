@@ -1758,7 +1758,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/regularization-reschedule.ts#BLOCKING_KINDS': [
     'apps/api/src/modules/employment/employee-status.ts#ENTRY_LIKE_KINDS',
   ],
-  'apps/api/src/modules/employment/regularization-reschedule.ts#appendRescheduledPayload': [
+  'apps/api/src/modules/employment/regularization-reschedule.ts#appendRescheduledVersion': [
     'apps/api/src/modules/employment/record-store.ts#insertEmploymentRow',
   ],
   'apps/api/src/modules/employment/regularization-reschedule.ts#assertInCycle': ['#cycleBounds'],
@@ -1768,17 +1768,23 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/regularization-reschedule.ts#cycleBounds': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
-  'apps/api/src/modules/employment/regularization-reschedule.ts#kindList': ['#BLOCKING_KINDS'],
-  'apps/api/src/modules/employment/regularization-reschedule.ts#moveTimeline': [
+  'apps/api/src/modules/employment/regularization-reschedule.ts#detachTimeline': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
-    'apps/api/src/modules/employment/timeline.ts#insertEmploymentTimeline',
-    'apps/api/src/modules/employment/write-service.ts#validateTransferReposition',
   ],
-  'apps/api/src/modules/employment/regularization-reschedule.ts#recomputeWindow': [
+  'apps/api/src/modules/employment/regularization-reschedule.ts#kindList': ['#BLOCKING_KINDS'],
+  'apps/api/src/modules/employment/regularization-reschedule.ts#reinherited': [
+    'apps/api/src/modules/employment/field-derivations.ts#derivationFields',
+    'apps/api/src/modules/employment/fields.ts#INHERITED_FIELDS',
+  ],
+  'apps/api/src/modules/employment/regularization-reschedule.ts#relocateRecord': [
     'apps/api/src/modules/employment/employee-status.ts#propagateEmployeeStatus',
     'apps/api/src/modules/employment/read-model.ts#findPredecessor',
-    'apps/api/src/modules/employment/read-model.ts#loadEmploymentRecord',
+    '#appendRescheduledVersion',
     '#currentPoint',
+    '#detachTimeline',
+    '#reinherited',
+    'apps/api/src/modules/employment/timeline.ts#insertEmploymentTimeline',
+    'apps/api/src/modules/employment/write-service.ts#validateTransferReposition',
   ],
   'apps/api/src/modules/employment/regularization-reschedule.ts#rescheduleRegularization': [
     'apps/api/src/modules/employment/context.ts#auditEmployment',
@@ -1787,11 +1793,10 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/read-model.ts#loadEmploymentRecord',
     'apps/api/src/modules/employment/record-store.ts#bumpEmploymentBusiness',
     'apps/api/src/modules/employment/record-store.ts#lockEmploymentBusiness',
-    '#appendRescheduledPayload',
+    '#appendRescheduledVersion',
     '#assertInCycle',
     '#currentPoint',
-    '#moveTimeline',
-    '#recomputeWindow',
+    '#relocateRecord',
     '#windowConflicts',
     'apps/api/src/modules/employment/timeline.ts#timelinePosition',
     'apps/api/src/modules/employment/write-service.ts#requireSavedBusiness',
