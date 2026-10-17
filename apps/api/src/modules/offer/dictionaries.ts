@@ -1,5 +1,6 @@
 /**
- * Offer 拒绝原因 / 失效原因两个字典（A37；34 §2.1 转移表单、OF-R7 失效表单）的读写、选择校验与预置项登记。
+ * Offer 拒绝原因 / 失效原因两个字典（A37；34 §2.1 转移表单、OF-R7 失效表单）的读写与预置项登记；
+ * 转移 / 失效表单选用时的启用项校验随 C2（BE-14a2）。
  * 形态照离职字典（employment/exit-dictionaries.ts）：编码租户内唯一（不分大小写）、保存后不可改；可新增、改名、停用 / 启用、
  * 调顺序；不提供删除（已保存 Offer 引用的编码不能消失）。写入审计 offer_dictionary.save。
  */
@@ -147,18 +148,6 @@ async function audit(tx: Tx, writer: SeedWriteContext, id: string, before: objec
     commandId: writer.commandId,
     occurredAt: writer.now,
   });
-}
-
-/** 新选用的原因只能是启用项：不存在 → OFFER_DICTIONARY_UNKNOWN，停用 → OFFER_DICTIONARY_DISABLED，均为 400。 */
-export async function assertOfferDictionaryEnabled(tx: Tx, tenantId: string, kind: OfferDictionaryKind, code: string) {
-  const entry = await findByCode(tx, tenantId, kind, code);
-  if (!entry || !entry.enabled)
-    throw new AppError('VALIDATION_FAILED', entry ? 'Offer 字典项已停用' : 'Offer 字典项不存在', {
-      reason: entry ? 'OFFER_DICTIONARY_DISABLED' : 'OFFER_DICTIONARY_UNKNOWN',
-      dictionary: kind,
-      code,
-    });
-  return entry.code;
 }
 
 // ---- 预置项（DEC-361：新租户开通即装，存量租户经平台回补补装；只补缺失编码，不覆盖租户改名 / 停用）----

@@ -1,9 +1,8 @@
 /**
- * Offer 管理的 10 个视图与行操作矩阵（R2 BE-14a；34 §2.1，A19）。列序列宽与前端 apps/web/src/offers/messages.ts
+ * Offer 管理的 10 个视图（R2 BE-14a C1；34 §2.1，A19）；行操作矩阵随 C2（BE-14a2）接入。列序列宽与前端 apps/web/src/offers/messages.ts
  * （派发附录 B2）一致；field 为空的列是本段还没有数据来源的字段（简历、附件、签署、同步状态等），接口照样返回列定义、值为空。
  */
 import type { OfferApprovalStatus, OfferField, OfferStatus } from './rules.js';
-import { offerEditable, offerInvalidatable, type OfferStateFacts } from './rules.js';
 
 export type OfferListField =
   | OfferField
@@ -266,58 +265,4 @@ export const OFFER_VIEWS: readonly OfferView[] = SOURCES.map((source) => ({
 
 export function offerView(key: string): OfferView | undefined {
   return OFFER_VIEWS.find((view) => view.key === key);
-}
-
-/** 行操作编码（34 §2.1 行操作矩阵；待发的审批子状态按 R2e3 截图，与前端 apps/web/src/offers/model.ts 一致）。 */
-export const OFFER_ROW_ACTIONS = [
-  'submitApproval',
-  'edit',
-  'send',
-  'transfer',
-  'invalidate',
-  'linkIntern',
-  'view',
-  'delete',
-  'resend',
-  'editSync',
-  'viewMail',
-  'sign',
-  'copy',
-  'urge',
-  'delegate',
-  'revoke',
-] as const;
-export type OfferRowAction = (typeof OFFER_ROW_ACTIONS)[number];
-export interface OfferRowActions {
-  readonly primary: readonly OfferRowAction[];
-  readonly menu: readonly OfferRowAction[];
-}
-
-/**
- * 按状态给出行主按钮与下拉（AC-OF-16 / 19 / 20）：已拒绝的转移状态只在行主按钮、下拉没有转移与失效；失效只剩复制 /
- * 查看；已入职主按钮查看邮件。待发失效只给非实习类（DEC-533①）。
- */
-export function offerRowActions(
-  offer: Pick<OfferStateFacts, 'status' | 'approvalStatus' | 'offerType'>,
-): OfferRowActions {
-  const invalidate: OfferRowAction[] = offerInvalidatable(offer) ? ['invalidate'] : [];
-  switch (offer.status) {
-    case 'pending':
-      if (offer.approvalStatus === 'approving') return { primary: ['urge', 'delegate', 'revoke'], menu: invalidate };
-      if (offer.approvalStatus === 'approved' && offerEditable(offer)) return { primary: ['edit'], menu: invalidate };
-      return {
-        primary: ['submitApproval'],
-        menu: ['edit', 'send', 'transfer', ...invalidate, 'linkIntern', 'view', 'delete'],
-      };
-    case 'sent':
-      return { primary: ['resend'], menu: ['editSync', 'transfer', 'viewMail', ...invalidate, 'view'] };
-    case 'accepted':
-      return { primary: ['editSync'], menu: ['transfer', 'viewMail', ...invalidate, 'sign', 'view'] };
-    case 'rejected':
-      return { primary: ['transfer'], menu: ['viewMail', 'view'] };
-    case 'onboarded':
-      return { primary: ['viewMail'], menu: ['sign', 'view'] };
-    case 'invalid':
-      return { primary: ['copy'], menu: ['viewMail', 'view'] };
-  }
 }

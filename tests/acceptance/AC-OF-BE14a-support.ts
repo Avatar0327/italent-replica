@@ -18,7 +18,6 @@ export interface OfferBody {
   readonly approvalStatus: string;
   readonly offerType: string | null;
   readonly revision: number;
-  readonly rowActions?: { primary: string[]; menu: string[] };
   readonly [key: string]: unknown;
 }
 
@@ -94,19 +93,15 @@ export async function offerWorld(db: Db, label: string, authorize?: Authorizer) 
     expect(response.status, await response.clone().text()).toBe(200);
     return (await response.json()) as OfferBody;
   }
-  const transfer = (offer: { id: string; revision: number }, body: Record<string, unknown>) =>
-    request('POST', `/${offer.id}/transfer`, { ifMatch: offer.revision, body: { entry: 'row', ...body } });
-  async function moved(offer: { id: string; revision: number }, body: Record<string, unknown>) {
-    const response = await transfer(offer, body);
-    expect(response.status, await response.clone().text()).toBe(200);
-    return (await response.json()) as OfferBody;
-  }
-  const invalidate = (offer: { id: string; revision: number }, body: Record<string, unknown>) =>
-    request('POST', `/${offer.id}/invalidate`, { ifMatch: offer.revision, body });
-  /** 可信造数：直接改状态（已发等 BE-14b 才有入口的状态）。 */
+  /** 可信造数：直接改状态（已发、失效等 C2 / BE-14b 才有入口的状态）。 */
   const force = (id: string, column: string, value: string) =>
     withTenant(db, member.tenant.id, (tx) =>
       tx.execute(sql`UPDATE offers SET ${sql.identifier(column)} = ${value} WHERE id = ${id}`),
+    );
+  const invalidated = (id: string) =>
+    withTenant(db, member.tenant.id, (tx) =>
+      tx.execute(sql`UPDATE offers SET status = 'invalid', invalid_reason_code = 'candidate_gave_up',
+        invalid_at = now() WHERE id = ${id}`),
     );
   async function list(query: string) {
     const response = await request('GET', `?${query}`);
@@ -129,10 +124,8 @@ export async function offerWorld(db: Db, label: string, authorize?: Authorizer) 
     social,
     intern,
     get,
-    transfer,
-    moved,
-    invalidate,
     force,
+    invalidated,
     list,
   };
 }

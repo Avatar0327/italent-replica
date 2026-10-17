@@ -1,27 +1,28 @@
 /**
- * Offer 模块路由的现状声明（F-039；R2 BE-14a）。子应用挂在 /api/tenant/offers，键用本地路径。
+ * Offer 模块路由的现状声明（F-039；R2 BE-14a C1，DEC-581）。子应用挂在 /api/tenant/offers，键用本地路径。
  *
  * 现状骨架（routes.ts / context.ts）：
- * - offerReadContext：objectContext(object.view) + requestScope（页面编码 TenantBase.Offer.list / .detail）；读接口按录用
+ * - offerReadContext：objectContext(object.view) + requestScope（页面编码 TenantBase.Offer.list / .detail）；列表 / 详情按录用
  *   部门（组织维度）与创建人（使用用户维度）裁剪，范围外与不存在同为 404；列表的范围谓词在 SQL 内、先于分页。
- * - runOfferWrite：要求 If-Match（新建须为 0）；事务外 objectContext + writeFields（实际写入字段）+ 可选按钮，事务内经
- *   CommandGuard.before 按当前授权与当前范围再判一次（#199），重放命中台账后复核结果 Offer 仍在当前范围。
- * - 转移状态按请求体 entry 选按钮：toolbar → Offer.StatusTransfer@list，row → OfferLineOpStatusTransfer@list_row（DEC-533④），
- *   只按这两项按钮控制，不另设管理员越权（DEC-503）。
+ *   视图定义与字典下拉只查对象查看权（静态定义 / 无组织字段，不取范围）。
+ * - runOfferWrite：要求 If-Match（新建须为 0）；事务外 objectContext + 各入口自己的判定（新建 / 编辑 writeFields，删除 / 复制
+ *   只判数据操作开关），事务内经 CommandGuard.before 按当前授权与当前范围再判（#199），重放命中台账后复核结果仍在范围。
  * - 两个字典挂在任职设置配置对象上：写入 = tenant.employment.configuration.write + 配置对象字段编辑权，无数据范围。
+ * - 转移状态两项按钮（Offer.StatusTransfer / OfferLineOpStatusTransfer）只登记授权项，入口随 C2（BE-14a2）接入，本表无对应路由。
  */
-import { OFFER_BUTTONS, OFFER_OBJECT } from '@italent/domain';
-import { defineTable, type ButtonPolicy } from '../../route-policy/index.js';
+import { OFFER_OBJECT } from '@italent/domain';
+import { defineTable, type PolicyBase, type RoutePolicy } from '../../route-policy/index.js';
 import {
+  admin,
+  all,
   BAD_REQUEST,
-  button,
   commandWrite,
-  configWrite,
   fixed,
   listScope,
   noButton,
   noFields,
   noScope,
+  none,
   NOT_FOUND,
   object,
   pointScope,
@@ -36,19 +37,35 @@ const point = pointScope({ param: 'id' }, 'offer.byId', NOT_FOUND);
 const byId = { invalidId: BAD_REQUEST } as const;
 const record = shape('offer.record');
 const DICTIONARY = fixed(['id', 'code', 'name', 'enabled', 'displayOrder', 'revision'], 'A37 字典项固定键');
-const TRANSFER_BUTTON: ButtonPolicy = {
-  from: 'body',
-  path: 'entry',
-  map: {
-    toolbar: button(OFFER_BUTTONS.statusTransfer.code, OFFER_BUTTONS.statusTransfer.level),
-    row: button(OFFER_BUTTONS.lineStatusTransfer.code, OFFER_BUTTONS.lineStatusTransfer.level),
-  },
-};
 const RESULT = { generic: { targets: 'id', locator: 'offer.byId' } } as const;
 const bodyWrite = (preconditions: readonly string[]) =>
   write('body', 'offer.commandGuard', RESULT, { ledger: 'single', preconditions });
 const commandOnly = (preconditions: readonly string[]) =>
   commandWrite('offer.commandGuard', RESULT, { ledger: 'single', preconditions });
+
+/** 字典写入：配置别名 tenant.employment.configuration.write（admin other_settings）+ 任职设置对象的字段编辑权。 */
+function dictionaryWrite(operation: 'create' | 'update', extra: PolicyBase = {}): RoutePolicy {
+  return all(
+    [
+      admin('other_settings', { alias: 'tenant.employment.configuration.write', fields: DICTIONARY }),
+      object({
+        object: SETTINGS,
+        operation,
+        button: noButton('配置对象无按钮：只查 object.<op> + 字段目录'),
+        scope: noScope('配置对象无数据范围'),
+        fields: DICTIONARY,
+      }),
+    ],
+    DICTIONARY,
+    {
+      write: write('body', 'config.audited:offer_dictionary', none('配置对象无范围，返回固定键'), {
+        ledger: 'single',
+        preconditions: ['assertOfferRevision'],
+      }),
+      ...extra,
+    },
+  );
+}
 
 export const OFFER_POLICIES = defineTable('offers', {
   'GET /views': object({
@@ -66,30 +83,15 @@ export const OFFER_POLICIES = defineTable('offers', {
     scope: noScope('字典无组织字段，按 Offer 查看权整份可读'),
     fields: DICTIONARY,
   }),
-  'POST /dictionaries/:kind': object({
-    object: SETTINGS,
-    operation: 'create',
-    button: noButton('配置对象写入按配置能力与字段编辑权'),
-    scope: noScope('配置对象无范围'),
-    fields: DICTIONARY,
-    guards: ['tenant.employment.configuration.write'],
-    write: configWrite('offer.commandGuard', { ledger: 'single' }),
-  }),
-  'PUT /dictionaries/:kind/:id': object({
-    ...byId,
-    object: SETTINGS,
-    operation: 'update',
-    button: noButton('配置对象写入按配置能力与字段编辑权'),
-    scope: noScope('配置对象无范围'),
-    fields: DICTIONARY,
-    guards: ['tenant.employment.configuration.write'],
-    write: configWrite('offer.commandGuard', { ledger: 'single' }),
-  }),
+  // body 严格 { code, name, enabled?, displayOrder? }（400）；If-Match 须为 0；编码重复（不分大小写）→ 409
+  'POST /dictionaries/:kind': dictionaryWrite('create'),
+  // 改编码 → 400 OFFER_DICTIONARY_CODE_IMMUTABLE；项不存在 → 404；:id 非 UUID → 400
+  'PUT /dictionaries/:kind/:id': dictionaryWrite('update', byId),
   // view 缺省 pending；未知视图 / 本视图外的筛选 400；筛选字段无查看权 403 FILTER_FIELD_HIDDEN
   'GET /': object({
     object: OFFER,
     operation: 'view',
-    button: noButton('列表按对象查看权；行操作按按钮与数据操作权限过滤'),
+    button: noButton('列表按对象查看权'),
     scope: listScope(SCOPE),
     fields: shape('offer.list'),
     guards: ['offer.filterFieldVisible'],
@@ -125,7 +127,7 @@ export const OFFER_POLICIES = defineTable('offers', {
     operation: 'delete',
     button: noButton('删除按对象删除开关'),
     scope: point,
-    fields: noFields('删除回执 { id, deleted }'),
+    fields: record,
     write: commandOnly(['offer.editable', 'revision']),
   }),
   'POST /:id/copy': object({
@@ -136,39 +138,5 @@ export const OFFER_POLICIES = defineTable('offers', {
     scope: point,
     fields: record,
     write: commandOnly(['offer.copyable', 'revision']),
-  }),
-  'GET /:id/transfer-form': object({
-    ...byId,
-    object: OFFER,
-    operation: 'view',
-    button: noButton('只读'),
-    scope: point,
-    fields: shape('offer.transferForm'),
-  }),
-  'POST /:id/transfer': object({
-    ...byId,
-    object: OFFER,
-    operation: 'update',
-    button: TRANSFER_BUTTON,
-    scope: point,
-    fields: record,
-    write: commandOnly(['revision', 'offer.transition', 'offer.refusalReasonEnabled']),
-  }),
-  'POST /:id/invalidate': object({
-    ...byId,
-    object: OFFER,
-    operation: 'update',
-    button: noButton('失效按对象编辑开关'),
-    scope: point,
-    fields: record,
-    write: commandOnly(['revision', 'offer.invalidation', 'offer.invalidReasonEnabled']),
-  }),
-  'GET /:id/send-check': object({
-    ...byId,
-    object: OFFER,
-    operation: 'view',
-    button: noButton('只读判定'),
-    scope: point,
-    fields: fixed(['id', 'offerType', 'allowed', 'reason'], 'OF-R3 发送判定固定键'),
   }),
 });

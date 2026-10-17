@@ -1,28 +1,16 @@
 /**
- * Offer 命令与查询（R2 BE-14a；34 §2.1、OF-R1 / R3 / R7 / R12，DEC-527③ / 529 / 532 / 533 / 537）。
- * 状态与表单规则全在领域纯函数（@italent/domain offer/rules.ts），这里负责加锁、范围、字典校验、落库与审计。
- * 要联动待入职的分支由纯函数返回 OFFER_SYNC_NOT_READY（409），本段不写待入职（BE-14b 接线）。
+ * Offer 命令与查询（R2 BE-14a C1，DEC-581；34 §2.1、OF-R1 / R12，DEC-527③ / 532⑤）：新建（三个入口）、编辑、删除、复制、
+ * 列表 / 详情。按类型必填与可编辑判定在领域纯函数（@italent/domain offer/rules.ts），这里负责加锁、范围、落库与审计。
+ * 状态转移、失效、行操作与 OF-R3 在 C2（BE-14a2）。
  */
 import { and, desc, eq, offers, pgErrorCode, sql, type Tx } from '@italent/db';
 import {
-  effectiveOfferType,
   missingOfferFields,
   OFFER_FIELDS,
   OFFER_REFUSAL_FIELDS,
-  OFFER_SEND_APPROVAL_DEFAULT,
-  OFFER_SEND_APPROVAL_KEY,
-  OFFER_TRANSITIONS,
   offerEditable,
-  offerRowActions,
-  planOfferInvalidation,
-  planOfferSend,
-  planOfferTransition,
-  validOfferSendApprovalSetting,
-  type OfferField,
-  type OfferPlan,
   type OfferApprovalStatus,
-  type OfferRowAction,
-  type OfferStateFacts,
+  type OfferField,
   type OfferStatus,
   type OfferType,
   type OfferView,
@@ -32,10 +20,8 @@ import { recordAudit } from '../../audit/record.js';
 import { AppError } from '../../errors.js';
 import { auditActor } from '../../system-actor.js';
 import { scopeSql } from '../permission/module-access.js';
-import { readEffectiveSetting } from '../tenant-settings/service.js';
-import { assertOfferDictionaryEnabled } from './dictionaries.js';
 import { assertOfferRevision, requireOfferInScope, type OfferContext } from './context.js';
-import type { OfferCreateInput, OfferInvalidateInput, OfferTransferInput, OfferUpdateInput } from './input.js';
+import type { OfferCreateInput, OfferUpdateInput } from './input.js';
 
 export type OfferRow = typeof offers.$inferSelect;
 const MONEY: readonly OfferField[] = [
@@ -56,12 +42,6 @@ const CAMPUS_CARRIED: readonly OfferField[] = [
 ];
 
 const typeOf = (row: Pick<OfferRow, 'offerType'>) => row.offerType as OfferType | null;
-const facts = (row: OfferRow): OfferStateFacts => ({
-  status: row.status as OfferStatus,
-  approvalStatus: row.approvalStatus as OfferApprovalStatus,
-  offerType: typeOf(row),
-  hasPendingEntry: row.pendingEntryBusinessId !== null,
-});
 
 /** 接口形状：金额转数字；拒绝时间 / 原因 / 备注只在“已拒绝”时出现（DEC-532①：退回待发后保留但详情不显示）。 */
 export function offerDto(row: OfferRow) {
@@ -73,31 +53,6 @@ export function offerDto(row: OfferRow) {
   }
   if (row.status !== 'rejected') for (const field of OFFER_REFUSAL_FIELDS) delete dto[field];
   return dto;
-}
-
-const withActions = (row: OfferRow, allowed: (action: OfferRowAction) => boolean) => {
-  const actions = offerRowActions(facts(row));
-  return {
-    ...offerDto(row),
-    rowActions: { primary: actions.primary.filter(allowed), menu: actions.menu.filter(allowed) },
-  };
-};
-
-function failPlan(plan: Extract<OfferPlan<unknown>, { ok: false }>): never {
-  const code = plan.reason === 'OFFER_FORM_INCOMPLETE' ? 'VALIDATION_FAILED' : 'CONFLICT';
-  const message: Record<string, string> = {
-    OFFER_TRANSITION_INVALID: '当前状态不能转移到目标状态',
-    OFFER_APPROVAL_IN_PROGRESS: 'Offer 审批中，不能执行该操作',
-    OFFER_SYNC_NOT_READY: '该操作需要联动待入职，暂未开放',
-    OFFER_FORM_INCOMPLETE: '必填项未填写',
-    OFFER_INVALIDATION_NOT_ALLOWED: '当前 Offer 不能失效',
-    OFFER_APPROVAL_REQUIRED: '发送前须审批通过',
-    OFFER_NOT_PENDING: '只有待发 Offer 可以发送',
-  };
-  throw new AppError(code, message[plan.reason]!, {
-    reason: plan.reason,
-    ...(plan.fields ? { fields: plan.fields } : {}),
-  });
 }
 
 /** 审计归属录用部门（按当前组织范围查看审计），删除 / 失效后仍按快照里的部门判断。 */
@@ -162,7 +117,8 @@ function requireDepartment(ctx: OfferContext, departmentId: string | null | unde
 
 function requireComplete(type: OfferType | null, values: Readonly<Record<string, unknown>>) {
   const missing = missingOfferFields(type, values);
-  if (missing.length) failPlan({ ok: false, reason: 'OFFER_FORM_INCOMPLETE', fields: missing });
+  if (missing.length)
+    throw new AppError('VALIDATION_FAILED', '必填项未填写', { reason: 'OFFER_FORM_INCOMPLETE', fields: missing });
 }
 
 /** 引用不存在或跨租户（复合外键）→ 400；被其他 Offer 引用时不能删除 → 409。 */
@@ -232,7 +188,7 @@ async function save(tx: Tx, ctx: OfferContext, before: OfferRow, action: string,
 }
 
 function requireEditable(row: OfferRow) {
-  if (!offerEditable(facts(row)))
+  if (!offerEditable({ status: row.status as OfferStatus, approvalStatus: row.approvalStatus as OfferApprovalStatus }))
     throw new AppError('CONFLICT', '只有待发且不在审批中的 Offer 可以编辑或删除', { reason: 'OFFER_NOT_EDITABLE' });
 }
 
@@ -286,60 +242,8 @@ export async function copyOffer(tx: Tx, ctx: OfferContext, id: string) {
   return offerDto(row!);
 }
 
-/** 转移状态（AC-OF-08 / 09 / 17）：拒绝原因只能选启用的字典项。 */
-export async function transferOffer(tx: Tx, ctx: OfferContext, id: string, input: OfferTransferInput) {
-  const before = await lockOffer(tx, ctx, id);
-  assertOfferRevision(ctx.expectedRevision, before.revision);
-  const plan = planOfferTransition(facts(before), input.target, input);
-  if (!plan.ok) failPlan(plan);
-  if (plan.patch.refusalReasonCode)
-    await assertOfferDictionaryEnabled(tx, ctx.tenantId, 'refusal-reasons', plan.patch.refusalReasonCode);
-  return save(tx, ctx, before, 'transfer', plan.patch);
-}
-
-/** 失效（OF-R7）：确定即失效，记失效时间；不可恢复。 */
-export async function invalidateOffer(tx: Tx, ctx: OfferContext, id: string, input: OfferInvalidateInput) {
-  const before = await lockOffer(tx, ctx, id);
-  assertOfferRevision(ctx.expectedRevision, before.revision);
-  const plan = planOfferInvalidation(facts(before), input);
-  if (!plan.ok) failPlan(plan);
-  await assertOfferDictionaryEnabled(tx, ctx.tenantId, 'invalid-reasons', plan.patch.invalidReasonCode);
-  return save(tx, ctx, before, 'invalidate', { ...plan.patch, invalidAt: ctx.now });
-}
-
-/** 转移状态表单：候选目标与已保存的拒绝时间 / 原因 / 备注（再次选“已拒绝”时带出原值，DEC-532①）。 */
-export async function offerTransferForm(tx: Tx, ctx: OfferContext, id: string) {
-  const row = await loadOffer(tx, ctx, id);
-  return {
-    id: row.id,
-    status: row.status,
-    revision: row.revision,
-    targets: OFFER_TRANSITIONS[row.status as OfferStatus],
-    acceptTime: row.acceptTime,
-    refusalTime: row.refusalTime,
-    refusalReasonCode: row.refusalReasonCode,
-    refusalRemark: row.refusalRemark,
-  };
-}
-
-/** OF-R3 发送前拦截判定（发送动作在 BE-14b）：返回是否允许与机读原因。 */
-export async function offerSendCheck(tx: Tx, ctx: OfferContext, id: string) {
-  const row = await loadOffer(tx, ctx, id);
-  const setting = (await readEffectiveSetting(tx, ctx.tenantId, OFFER_SEND_APPROVAL_KEY)).value;
-  const plan = planOfferSend(
-    facts(row),
-    validOfferSendApprovalSetting(setting) ? setting : OFFER_SEND_APPROVAL_DEFAULT,
-  );
-  return {
-    id: row.id,
-    offerType: effectiveOfferType(typeOf(row)),
-    allowed: plan.ok,
-    reason: plan.ok ? null : plan.reason,
-  };
-}
-
-export async function offerDetail(tx: Tx, ctx: OfferContext, id: string, allowed: (a: OfferRowAction) => boolean) {
-  return withActions(await loadOffer(tx, ctx, id), allowed);
+export async function offerDetail(tx: Tx, ctx: OfferContext, id: string) {
+  return offerDto(await loadOffer(tx, ctx, id));
 }
 
 export interface OfferListQuery {
@@ -352,12 +256,7 @@ export interface OfferListQuery {
 const TEXT_FILTERS = new Set(['name', 'personalEmail', 'mobile', 'idNumber', 'appliedPosition', 'workPlace']);
 
 /** 列表按视图的状态 / 审批子状态、筛选条件与数据范围在 SQL 中过滤，范围谓词先于分页。 */
-export async function listOffers(
-  tx: Tx,
-  ctx: OfferContext,
-  query: OfferListQuery,
-  allowed: (action: OfferRowAction) => boolean,
-) {
+export async function listOffers(tx: Tx, ctx: OfferContext, query: OfferListQuery) {
   const conditions: SQL[] = [
     sql`${offers.tenantId} = ${ctx.tenantId}`,
     scopeSql(ctx.scope, { org: sql`${offers.departmentId}`, creator: sql`${offers.createdBy}` }),
@@ -384,5 +283,5 @@ export async function listOffers(
     .orderBy(desc(offers.createdAt), desc(offers.id))
     .limit(query.limit)
     .offset(query.offset);
-  return { total: count!.total, items: rows.map((row) => withActions(row, allowed)) };
+  return { total: count!.total, items: rows.map(offerDto) };
 }

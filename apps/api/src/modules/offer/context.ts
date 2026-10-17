@@ -1,10 +1,10 @@
 /**
- * Offer 模块的请求上下文与写入出口（R2 BE-14a）。权限按 Offer 对象（TenantBase.Offer）的对象 / 字段 / 按钮权限判断，
+ * Offer 模块的请求上下文与写入出口（R2 BE-14a C1）。权限按 Offer 对象（TenantBase.Offer）的对象 / 字段权限判断，
  * 数据范围按录用部门（组织维度）与创建人（使用用户维度）裁剪，默认空（fail-closed）；system_admin 不越过对象权限
  * （DEC-503）。写命令一律经 runCommand 的 ledgerExit + CommandGuard.before：首次、重放、失败回查都按当前权限复核（#199）。
  */
 import { type Tx } from '@italent/db';
-import { OFFER_OBJECT, type ButtonLevel } from '@italent/domain';
+import { OFFER_OBJECT } from '@italent/domain';
 import type { Context } from 'hono';
 import { requirePermission, type Authorizer } from '../../authorization.js';
 import { runCommand, type CommandGuard, type CommandResult } from '../../commands.js';
@@ -19,7 +19,8 @@ import {
   trimModuleResponse,
   type ModuleScope,
 } from '../permission/module-access.js';
-import { button, objectContext, requestScope, writeFields } from '../permission/module-route-access.js';
+import { objectContext, requestScope, writeFields } from '../permission/module-route-access.js';
+import { requireObjectWrite } from '../permission/object-write.js';
 import { revision } from '../job/context.js';
 
 /**
@@ -45,60 +46,48 @@ export async function offerReadContext(c: Context<TenantEnv>, deps: TenantRouteD
 export type OfferOperation = 'create' | 'update' | 'delete';
 
 /**
- * 写命令的当前权限复核，事务内执行（CommandGuard.before）：操作开关、实际写入的字段、可选按钮。撤权之后同键重放也拒绝。
+ * 写命令的权限复核：事务外先判一次（拒绝不入台账），事务内由 CommandGuard.before 按当前授权再判，撤权后同键重放也拒绝。
+ * 每类写入口用各自的判定函数，不共用分支（F-039 按处理函数闭包取现状）。
  */
-export interface OfferWriteCheck {
-  readonly operation: OfferOperation;
-  readonly fields?: Readonly<Record<string, unknown>>;
-  readonly button?: { readonly code: string; readonly level: ButtonLevel };
-}
+export type OfferCheck = (authorize: Authorizer, ctx: OfferContext) => Promise<void>;
 
-async function check(authorize: Authorizer, ctx: OfferContext, objectCode: string, write: OfferWriteCheck) {
-  const deps = { authorize };
-  if (objectCode === OFFER_DICTIONARY_OBJECT)
-    await requirePermission(authorize, { ...ctx, action: CONFIGURATION_WRITE, resource: objectCode });
-  if (write.operation === 'delete') {
-    if (!(await authorize({ ...ctx, action: 'object.delete', resource: objectCode })))
-      throw new AppError('FORBIDDEN', '无权删除');
-  } else await writeFields(deps, ctx, objectCode, write.operation, write.fields ?? {});
-  if (write.button) await button(deps as TenantRouteDeps, ctx, objectCode, write.button.code, write.button.level);
-}
+/** 新建 / 编辑：对象数据操作 + 实际写入字段的编辑权。 */
+export const offerFieldsCheck =
+  (operation: 'create' | 'update', fields: Readonly<Record<string, unknown>>): OfferCheck =>
+  (authorize, ctx) =>
+    writeFields({ authorize }, ctx, OFFER_OBJECT, operation, fields);
 
-/**
- * 写入口：事务外先做一次授权判定（拒绝不入台账），事务内由 guard 按当前授权与当前范围复核；execute 拿到的上下文
- * 带本事务重新解析的数据范围。
- */
+/** 删除 / 复制：只判对象数据操作开关，不提取字段。 */
+export const offerOperationCheck =
+  (operation: OfferOperation): OfferCheck =>
+  (authorize, ctx) =>
+    requirePermission(authorize, { ...ctx, action: `object.${operation}`, resource: OFFER_OBJECT, fields: [] });
+
+/** Offer 写入口：execute 拿到的上下文带本事务重新解析的数据范围；响应按字段查看权裁剪。 */
 export async function runOfferWrite(
   c: Context<TenantEnv>,
   deps: TenantRouteDeps,
   input: unknown,
-  write: OfferWriteCheck,
+  operation: OfferOperation,
+  check: OfferCheck,
   execute: (tx: Tx, ctx: OfferContext) => Promise<CommandResult>,
   options: {
-    readonly objectCode?: string;
     readonly isNew?: boolean;
     /** 重放命中台账后复核结果对象仍在当前范围内（撤范围后同键重放不再交出原响应）。 */
     readonly replayed?: (tx: Tx, ctx: OfferContext, body: unknown) => Promise<void>;
   } = {},
 ) {
-  const objectCode = options.objectCode ?? OFFER_OBJECT;
-  const configuration = objectCode === OFFER_DICTIONARY_OBJECT;
   const expectedRevision = revision(c);
   if (options.isNew && expectedRevision !== 0) throw new AppError('REVISION_CONFLICT', '新建对象的 revision 必须为 0');
-  const base = configuration
-    ? { ...tenantOf(c), expectedRevision, now: deps.clock(), commandId: '' }
-    : await objectContext(c, deps, objectCode, write.operation, expectedRevision);
-  const ctx: OfferContext = {
-    ...base,
-    scope: configuration ? EMPTY_SCOPE : await requestScope(c, deps, base, objectCode),
-  };
-  await check(deps.authorize, ctx, objectCode, write);
+  const base = await objectContext(c, deps, OFFER_OBJECT, operation, expectedRevision);
+  const ctx: OfferContext = { ...base, scope: await requestScope(c, deps, base, OFFER_OBJECT) };
+  await check(deps.authorize, ctx);
   const inTransaction = async (tx: Tx): Promise<OfferContext> => ({
     ...ctx,
-    scope: configuration ? EMPTY_SCOPE : await resolveModuleScopeInTransaction(deps, ctx, tx, objectCode),
+    scope: await resolveModuleScopeInTransaction(deps, ctx, tx, OFFER_OBJECT),
   });
   const guard: CommandGuard = {
-    before: async (tx) => check(authorizeInTransaction(deps.authorize, tx), await inTransaction(tx), objectCode, write),
+    before: async (tx) => check(authorizeInTransaction(deps.authorize, tx), await inTransaction(tx)),
     ...(options.replayed
       ? { replayed: async (tx, replay) => options.replayed!(tx, await inTransaction(tx), replay.body) }
       : {}),
@@ -111,26 +100,49 @@ export async function runOfferWrite(
   });
   const body = result.body as { revision?: number } | null;
   if (body?.revision !== undefined) c.header('ETag', `"${body.revision}"`);
-  return c.json(await trimOffer(deps, ctx, objectCode, result.body), result.status);
+  return c.json(await trimOffer(deps, ctx, result.body), result.status);
 }
 
-/** 协议元数据（行操作、转移候选），不是对象字段，不参与字段裁剪。 */
-const PROTOCOL_KEYS = ['rowActions', 'targets'] as const;
+/**
+ * 字典写入口（配置对象，无数据范围）：tenant.employment.configuration.write + 任职设置对象的字段编辑权，事务内复核；
+ * 响应是字典项固定键，不按 Offer 字段裁剪。
+ */
+export async function runDictionaryWrite(
+  c: Context<TenantEnv>,
+  deps: TenantRouteDeps,
+  input: unknown,
+  operation: 'create' | 'update',
+  fields: Readonly<Record<string, unknown>>,
+  execute: (tx: Tx, ctx: OfferContext) => Promise<CommandResult>,
+) {
+  const expectedRevision = revision(c);
+  if (operation === 'create' && expectedRevision !== 0)
+    throw new AppError('REVISION_CONFLICT', '新建对象的 revision 必须为 0');
+  const ctx: OfferContext = { ...tenantOf(c), expectedRevision, now: deps.clock(), commandId: '', scope: EMPTY_SCOPE };
+  const allowed = async (authorize: Authorizer) => {
+    await requirePermission(authorize, { ...ctx, action: CONFIGURATION_WRITE, resource: OFFER_DICTIONARY_OBJECT });
+    await requireObjectWrite(authorize, ctx, { objectCode: OFFER_DICTIONARY_OBJECT, operation, payload: fields });
+  };
+  await allowed(deps.authorize);
+  const result = await runCommand(deps.db, ctx, {
+    id: c.req.header('idempotency-key'),
+    fingerprint: { method: c.req.method, path: c.req.path, revision: expectedRevision, input },
+    guard: { before: (tx) => allowed(authorizeInTransaction(deps.authorize, tx)) },
+    execute: async (tx, commandId) => execute(tx, { ...ctx, commandId }),
+  });
+  const body = result.body as { revision?: number } | null;
+  if (body?.revision !== undefined) c.header('ETag', `"${body.revision}"`);
+  return c.json(result.body, result.status);
+}
 
-/** 字段裁剪：items 逐行按对象字段查看权裁剪；分页与协议元数据不裁。 */
-export async function trimOffer(deps: TenantRouteDeps, ctx: OfferContext, objectCode: string, body: unknown) {
+/** 字段裁剪：items 逐行按对象字段查看权裁剪；分页信封与删除回执不裁。 */
+export async function trimOffer(deps: TenantRouteDeps, ctx: OfferContext, body: unknown) {
   if (!body || typeof body !== 'object') return body;
   const value = body as Record<string, unknown>;
-  const trimRow = async (row: Record<string, unknown>) => {
-    const kept = PROTOCOL_KEYS.filter((key) => key in row);
-    const rest = Object.fromEntries(Object.entries(row).filter(([key]) => !kept.includes(key as never)));
-    const trimmed = await trimModuleResponse(deps, ctx, objectCode, rest);
-    return { ...trimmed, ...Object.fromEntries(kept.map((key) => [key, row[key]])) };
-  };
   if (Array.isArray(value.items))
-    return { ...value, items: await Promise.all((value.items as Record<string, unknown>[]).map(trimRow)) };
+    return { ...value, items: await trimModuleResponse(deps, ctx, OFFER_OBJECT, value.items as object[]) };
   if (value.deleted === true) return value;
-  return trimRow(value);
+  return trimModuleResponse(deps, ctx, OFFER_OBJECT, value);
 }
 
 /** Offer 落在当前范围内：录用部门命中组织维度，或创建人命中使用用户维度；范围外与不存在同为 404。 */

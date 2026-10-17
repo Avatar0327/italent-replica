@@ -110,6 +110,3 @@ SELECT enable_tenant_isolation('offer_dictionary_items');
 GRANT SELECT, INSERT ON offer_dictionary_items TO app_user;
 --> statement-breakpoint
 GRANT UPDATE (name, enabled, display_order, revision, updated_at) ON offer_dictionary_items TO app_user;
---> statement-breakpoint
-INSERT INTO system_settings(key,value,description,overridable,version,updated_at) VALUES
-  ('offer.send_requires_approval','{"social":false,"campus":false,"intern":false}'::jsonb,'Offer：按类型设置发送前须审批通过（OF-R3）',true,1,now());
