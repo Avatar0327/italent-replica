@@ -272,6 +272,17 @@ async function resolveFresh(tx: Tx, subject: RoutingSubject, expression: Approve
       return candidateOf(tx, subject, subject.subjectEmployeeId);
     case 'idp_tutor':
       return candidateOf(tx, subject, subject.tutorEmployeeId ?? null);
+    // R2 BE-14a3（OF-R15）：Offer 适配器把录用部门（单个）/ 审批主体组织（批量）放在 recordDepartmentId；类型限制见
+    // OFFER_APPROVERS，其他业务选不到这三项
+    case 'offer_department_head':
+      return candidateOf(tx, subject, await orgRole(tx, subject, subject.recordDepartmentId, 'head'));
+    case 'initiator_direct_manager':
+      // 申请人（发起人）的直接上级，与 direct_manager（流程主体）同一取法（DEC-230）
+      return directManagerOf(tx, subject, { personId: null, userId: subject.initiatorUserId });
+    case 'approval_subject_first_level_org_head': {
+      const firstLevel = await firstLevelOrg(tx, subject, subject.recordDepartmentId);
+      return candidateOf(tx, subject, await orgRole(tx, subject, firstLevel, 'head'));
+    }
   }
 }
 

@@ -14,6 +14,7 @@ import {
   integer,
   numeric,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   unique,
@@ -197,5 +198,64 @@ export const offerDictionaryItems = pgTable(
     check('offer_dictionary_items_name', sql`btrim(${t.name}) <> ''`),
     check('offer_dictionary_items_order', sql`${t.displayOrder} >= 0`),
     check('offer_dictionary_items_revision', sql`${t.revision} > 0`),
+  ],
+);
+
+/**
+ * Offer 批量审批单（R2 BE-14a3，OF-R15）：审批主体组织 + 备注，子表见 offerBatchApprovalItems。状态跟随审批实例：
+ * approving → approved / disapproved；驳回、撤回后单据作废（returned / withdrawn），子表 Offer 回到“未发起审批”。
+ */
+export const offerBatchApprovals = pgTable(
+  'offer_batch_approvals',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: tenantId(),
+    approvalSubjectOrgId: uuid('approval_subject_org_id').notNull(),
+    remark: text('remark'),
+    status: text('status').notNull().default('approving'),
+    revision: integer('revision').notNull().default(1),
+    createdBy: uuid('created_by').notNull(),
+    createdAt: utc('created_at'),
+    updatedAt: utc('updated_at'),
+  },
+  (t) => [
+    unique('offer_batch_approvals_tenant_id').on(t.tenantId, t.id),
+    foreignKey({
+      name: 'offer_batch_approvals_subject_org_fk',
+      columns: [t.tenantId, t.approvalSubjectOrgId],
+      foreignColumns: [orgObjects.tenantId, orgObjects.id],
+    }),
+    check(
+      'offer_batch_approvals_status',
+      sql`${t.status} IN ('approving', 'approved', 'disapproved', 'returned', 'withdrawn', 'cancelled')`,
+    ),
+    check('offer_batch_approvals_revision', sql`${t.revision} > 0`),
+  ],
+);
+
+/** 批量审批单的 Offer 子表：按提交顺序；被批量单引用的 Offer 不能删除（复合外键）。 */
+export const offerBatchApprovalItems = pgTable(
+  'offer_batch_approval_items',
+  {
+    tenantId: tenantId(),
+    batchId: uuid('batch_id').notNull(),
+    offerId: uuid('offer_id').notNull(),
+    seq: integer('seq').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.batchId, t.offerId] }),
+    unique('offer_batch_approval_items_seq').on(t.tenantId, t.batchId, t.seq),
+    index('offer_batch_approval_items_offer').on(t.tenantId, t.offerId),
+    foreignKey({
+      name: 'offer_batch_approval_items_batch_fk',
+      columns: [t.tenantId, t.batchId],
+      foreignColumns: [offerBatchApprovals.tenantId, offerBatchApprovals.id],
+    }),
+    foreignKey({
+      name: 'offer_batch_approval_items_offer_fk',
+      columns: [t.tenantId, t.offerId],
+      foreignColumns: [offers.tenantId, offers.id],
+    }),
+    check('offer_batch_approval_items_seq_positive', sql`${t.seq} > 0`),
   ],
 );
