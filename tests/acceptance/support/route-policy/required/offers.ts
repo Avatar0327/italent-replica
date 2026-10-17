@@ -192,6 +192,26 @@ const actionDisclosure = (path: string, anchor: string): Obligation[] => {
   ];
 };
 
+/**
+ * 同步待入职会走 createEmploymentBusiness 落地任职记录，落地前对联动记录按 DEC-178 复核（requireLinkedEmploymentRecord）。
+ * Offer 同步以显式“系统全量”人员范围调用（sync.ts inboundEmploymentContext，F-201②），所以该复核对同步恒放行——
+ * 谁能触发同步由 Offer 对象编辑开关与 Offer 自己的数据范围判定（上面的 obj:update 义务），不是人员范围；这里登记的是
+ * 链路上存在这道复核、而不是它拦得住谁。守卫来自任职落地内核本身，不是误复用调动联动的检查。
+ */
+const syncLinkage = (path: string, anchor: string): Obligation => ({
+  perm: 'guard:employment.linkage',
+  facts: ['guard:employment.linkage'],
+  note: 'DEC-178：任职落地内核联动复核；Offer 同步以显式系统全量范围调用，对同步恒放行（F-201②）',
+  at: [
+    at('POST', path, anchor, TRANSITIONS),
+    {
+      role: 'impl',
+      unit: 'apps/api/src/modules/employment/context.ts#requireLinkedEmploymentRecord',
+      anchor: "throw new AppError('LINKED_RECORD_OUT_OF_SCOPE'",
+    },
+  ],
+});
+
 export const OFFERS: RequiredTable = {
   [`GET ${BASE}/views`]: [view("await objectContext(c, deps, OFFER_OBJECT, 'view')", '/views', false)],
   [`GET ${BASE}/dictionaries/:kind`]: [
@@ -251,6 +271,9 @@ export const OFFERS: RequiredTable = {
   ),
   [`POST ${BASE}/:id/invalidate`]: offerWrite('POST', '/:id/invalidate', 'update', undefined, TRANSITIONS),
   // BE-14b2：立即同步 / 关联在职实习生，都按对象编辑开关（runOfferWrite → objectContext），Offer 自己的数据范围裁剪
-  [`POST ${BASE}/:id/sync`]: offerWrite('POST', '/:id/sync', 'update', undefined, TRANSITIONS),
+  [`POST ${BASE}/:id/sync`]: [
+    ...offerWrite('POST', '/:id/sync', 'update', undefined, TRANSITIONS),
+    syncLinkage('/:id/sync', 'body: await syncOfferNow(tx, ctx, id)'),
+  ],
   [`POST ${BASE}/:id/link-employee`]: offerWrite('POST', '/:id/link-employee', 'update', undefined, TRANSITIONS),
 };
