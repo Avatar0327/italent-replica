@@ -1545,7 +1545,8 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
         button: noButton('配置对象无按钮：requireEmploymentWrite 只查 object.update（命令式空字段集合）'),
         // 逐人经 BE-3 转正入口发起：联动校验在 createEmploymentBusiness 里照常调用（系统批次不带数据范围）
         guards: [LINKAGE],
-        // 办理按规则适用组织（系统批次，DEC-539①）；回执按操作人当前任职范围逐人过滤（首次与重放，第 2 轮审查 P1）
+        // 准入只认配置写（配置对象无数据范围），办理按规则适用组织（系统批次，DEC-539①）；
+        // 这里的范围是回执的人员披露：按操作人当前任职范围逐人过滤（visibleEmployees，首次与重放同一出口，第 2 轮审查 P1）
         scope: listScope('employment.runReceipt'),
         fields: SETTINGS_FIELDS,
       }),

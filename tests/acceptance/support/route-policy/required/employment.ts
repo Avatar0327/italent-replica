@@ -373,6 +373,16 @@ const VIEW_FACTS = (operation: string) => [
 ];
 const OBJECT_WRITE_FACT = 'object:requireObjectWrite（对象写操作权）';
 /** 规则写入的命令内复核 ruleGuard 也调 requireObjectWrite：由配置对象的写操作义务承接该事实。 */
+/**
+ * 立即执行回执的人员披露：visibleEmployees 先判任职记录查看权（object.view），这一判定由配置对象 update 义务承接——
+ * 它的范围就是回执披露（employment.runReceipt），证据指向同一个函数。
+ */
+const withRunReceiptFact = (obligations: Obligation[]): Obligation[] =>
+  obligations.map((o) =>
+    o.perm === 'obj:TenantBase.EmploymentSettings:update'
+      ? { ...o, facts: [...(o.facts ?? []), 'object:object.* 动作'] }
+      : o,
+  );
 const withObjectWriteFact = (obligations: Obligation[]): Obligation[] =>
   obligations.map((o) => (o.perm.startsWith('obj:') ? { ...o, facts: [...(o.facts ?? []), OBJECT_WRITE_FACT] } : o));
 function blacklistRoute(
@@ -2215,41 +2225,76 @@ export const EMPLOYMENT: RequiredTable = {
         ['POST', '/auto-regularization-rules/:id/copy', 'create', '{}'],
         ['PUT', '/auto-regularization-rules/:id/enabled', 'update', '{ enabled }'],
         ['DELETE', '/auto-regularization-rules/:id', 'update', '{}'],
-        ['POST', '/auto-regularization/run', 'update', '{}'],
       ] as const
     ).map(([method, path, operation, payload]) => [
       `${method} /api/tenant/employment${path}`,
-      [
-        ...withObjectWriteFact(
-          configWrite(
-            fn(AUTO_REG, 'writeContext', "readContext( c, deps, 'tenant.employment.configuration.write', revision(c),"),
-            'TenantBase.EmploymentSettings',
-            operation,
-            at(
-              AUTO_REG,
-              method,
-              path,
-              `await requireEmploymentWrite(ctx, '${operation}', ${payload}, undefined, ` +
-                "'TenantBase.EmploymentSettings'",
-            ),
+      withObjectWriteFact(
+        configWrite(
+          fn(AUTO_REG, 'writeContext', "readContext( c, deps, 'tenant.employment.configuration.write', revision(c),"),
+          'TenantBase.EmploymentSettings',
+          operation,
+          at(
+            AUTO_REG,
+            method,
+            path,
+            `await requireEmploymentWrite(ctx, '${operation}', ${payload}, undefined, ` +
+              "'TenantBase.EmploymentSettings'",
           ),
         ),
-        // 立即执行逐人经 BE-3 转正入口发起，联动校验在那里照常调用（系统批次无数据范围）
-        ...(path === '/auto-regularization/run'
-          ? [
-              linkage(
-                at(
-                  AUTO_REG,
-                  method,
-                  path,
-                  'async (tx, context) => ({ status: 200, body: await runAutoRegularizationNow(tx, context, cursor) })',
-                ),
-              ),
-            ]
-          : []),
-      ],
+      ),
     ]),
   ),
+  /**
+   * 立即执行：准入只认配置写（admin:other_settings 不叠加数据范围，系统批次按规则适用组织办理）；
+   * 配置对象 update 义务的范围是回执的人员披露（BE-15a 第 2 轮审查 P1）——首次返回与同键重放都经 runWrite 的投影出口
+   * visibleRunReceipt → visibleEmployees，按操作人当前的任职记录查看权与数据范围逐人过滤。
+   */
+  'POST /api/tenant/employment/auto-regularization/run': [
+    ...withObjectWriteFact(
+      withRunReceiptFact(
+        withNeeds(
+          configWriteBase(
+            fn(AUTO_REG, 'writeContext', "readContext( c, deps, 'tenant.employment.configuration.write', revision(c),"),
+            'TenantBase.EmploymentSettings',
+            'update',
+            at(
+              AUTO_REG,
+              'POST',
+              '/auto-regularization/run',
+              "await requireEmploymentWrite(ctx, 'update', {}, undefined, 'TenantBase.EmploymentSettings'",
+            ),
+          ),
+          {
+            'admin:other_settings': bound(NONE),
+            'obj:TenantBase.EmploymentSettings:update': bound(list('employment.runReceipt'), [
+              at(
+                AUTO_REG,
+                'POST',
+                '/auto-regularization/run',
+                '{ guard: ruleGuard(deps, ctx, {}), project: (body) => visibleRunReceipt(deps, ctx, body) }',
+              ),
+              fn(
+                AUTO_REG,
+                'visibleEmployees',
+                "if (!(await deps.authorize({ ...tenant, action: 'object.view', resource: EMPLOYMENT_OBJECT }))) " +
+                  'return visible;',
+              ),
+              ...SCOPE_AT['employment.runReceipt'],
+            ]),
+          },
+        ),
+      ),
+    ),
+    // 逐人经 BE-3 转正入口发起，联动校验在那里照常调用（系统批次无数据范围）
+    linkage(
+      at(
+        AUTO_REG,
+        'POST',
+        '/auto-regularization/run',
+        'async (tx, context) => ({ status: 200, body: await runAutoRegularizationNow(tx, context, cursor) })',
+      ),
+    ),
+  ],
 };
 
 /** 导入 / 导入预演共用 authorizeImport 的逐行守卫。 */

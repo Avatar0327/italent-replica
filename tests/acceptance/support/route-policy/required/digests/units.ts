@@ -179,6 +179,7 @@ export const DIGESTS: Digests = {
     'route:POST /auto-regularization/run': 'b99798a886bf',
     'route:PUT /auto-regularization-rules/:id': '7d8ee2c6797a',
     'route:PUT /auto-regularization-rules/:id/enabled': '5e3092aadae1',
+    visibleEmployees: '311254d756ec',
     writeContext: '0f98695a8fa8',
   },
   'apps/api/src/modules/employment/blacklist-routes.ts': {
@@ -1576,6 +1577,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
     '9d6fe976bb88',
   'apps/api/src/modules/employment/auto-regularization-routes.ts#route:PUT /auto-regularization-rules/:id/enabled':
     'c0874a5a5e86',
+  'apps/api/src/modules/employment/auto-regularization-routes.ts#visibleEmployees': 'dbfa9076c8e2',
   'apps/api/src/modules/employment/auto-regularization-routes.ts#writeContext': '87163d4c2bf1',
   'apps/api/src/modules/employment/blacklist-routes.ts#registerBlacklistRuleRoutes': '5a4be0735eda',
   'apps/api/src/modules/employment/blacklist-routes.ts#requireBlacklistWrite': '7283f2d3910d',
