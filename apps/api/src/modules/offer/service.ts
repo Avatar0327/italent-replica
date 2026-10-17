@@ -3,7 +3,7 @@
  * 列表 / 详情（C1）；状态转移、失效、转移表单、行操作与 OF-R3 发送判定（C2，BE-14a2）。规则在领域纯函数
  * （@italent/domain offer/rules.ts、views.ts），这里负责加锁、范围、字典校验、落库与审计。
  */
-import { and, desc, eq, offers, pgErrorCode, sql, type Tx } from '@italent/db';
+import { and, asc, desc, eq, offerSendRecords, offers, pgErrorCode, sql, type Tx } from '@italent/db';
 import {
   MODULE_OBJECTS,
   missingOfferFields,
@@ -48,7 +48,7 @@ import { readEffectiveSetting } from '../tenant-settings/service.js';
 import { assertOfferRevision, requireOfferInScope, type OfferContext } from './context.js';
 import { requireEnabledOfferReason } from './dictionaries.js';
 import { requireQuotaConfirmed } from './establishment.js';
-import { rehireHintFor, requireNotBlacklisted, type OfferIdentity } from './identity.js';
+import { requireNotBlacklisted, type OfferIdentity } from './identity.js';
 import type { OfferCreateInput, OfferInvalidateInput, OfferTransferInput, OfferUpdateInput } from './input.js';
 
 export type OfferRow = typeof offers.$inferSelect;
@@ -109,7 +109,7 @@ async function audit(
   ctx: OfferContext,
   action: string,
   id: string,
-  before: OfferRow | null,
+  before: (OfferRow & { readonly sendRecords?: readonly object[] }) | null,
   after: OfferRow | null,
 ) {
   await recordAudit(tx, {
@@ -262,7 +262,10 @@ async function campusCarried(tx: Tx, ctx: OfferContext, input: OfferCreateInput)
  */
 export async function offerCreateWrites(tx: Tx, ctx: OfferContext, input: OfferCreateInput) {
   requireEntry(input);
-  return { ...input, ...(await campusCarried(tx, ctx, input)) };
+  const writes = { ...input, ...(await campusCarried(tx, ctx, input)) };
+  // OF-R2：身份证号带出出生日期（未填时）。派生值进同一份载荷：字段编辑权、落库共用它，无权字段整单拒绝（DEC-455①）
+  const birthDate = writes.birthDate === undefined ? birthDateFromIdCard(writes.idType, writes.idNumber) : null;
+  return birthDate ? { ...writes, birthDate } : writes;
 }
 
 export type OfferCreateWrites = Awaited<ReturnType<typeof offerCreateWrites>>;
@@ -289,14 +292,11 @@ export async function createOffer(tx: Tx, ctx: OfferContext, writes: OfferCreate
   requireDepartment(ctx, values.departmentId as string | null, ctx.userId);
   await requireReferences(tx, ctx, values);
   await requireNotBlacklisted(tx, ctx, values);
-  const rehireHint = await rehireHintFor(tx, ctx, values);
-  // OF-R2：身份证号带出出生日期（未填时）
-  const birthDate = values.birthDate ?? birthDateFromIdCard(values.idType, values.idNumber);
   const [row] = await guarded(() =>
     tx
       .insert(offers)
       .values({
-        ...toColumns({ ...values, birthDate }),
+        ...toColumns(values),
         tenantId: ctx.tenantId,
         entry,
         offerType: type,
@@ -309,7 +309,7 @@ export async function createOffer(tx: Tx, ctx: OfferContext, writes: OfferCreate
       .returning(),
   );
   await audit(tx, ctx, 'create', row!.id, null, row!);
-  return rehireHint ? { ...offerDto(row!), rehireHint } : offerDto(row!);
+  return offerDto(row!);
 }
 
 export async function save(tx: Tx, ctx: OfferContext, before: OfferRow, action: string, patch: Partial<OfferRow>) {
@@ -349,13 +349,29 @@ export async function updateOffer(tx: Tx, ctx: OfferContext, id: string, input: 
   return save(tx, ctx, before, 'update', approvalStatus ? { ...patch, approvalStatus } : patch);
 }
 
-/** 删除只限待发（34 §2.1 行操作矩阵）；保留删除前快照在审计里（AGENTS §5）。 */
+/**
+ * 删除只限待发（34 §2.1 行操作矩阵）；保留删除前快照在审计里（AGENTS §5）。退回待发的 Offer 可能有发送历史：发送记录
+ * 随 Offer 级联删除，删除前的发送历史（先后、类型、收件人、抄送 / 密送、投递状态）一并写进审计快照（审查 #406 P2-03）。
+ */
 export async function deleteOffer(tx: Tx, ctx: OfferContext, id: string) {
   const before = await lockOffer(tx, ctx, id);
   assertOfferRevision(ctx.expectedRevision, before.revision);
   requireEditable(before);
+  const sendRecords = await tx
+    .select({
+      kind: offerSendRecords.kind,
+      status: offerSendRecords.status,
+      recipient: offerSendRecords.recipient,
+      cc: offerSendRecords.cc,
+      bcc: offerSendRecords.bcc,
+      sentBy: offerSendRecords.sentBy,
+      createdAt: offerSendRecords.createdAt,
+    })
+    .from(offerSendRecords)
+    .where(and(eq(offerSendRecords.tenantId, ctx.tenantId), eq(offerSendRecords.offerId, id)))
+    .orderBy(asc(offerSendRecords.createdAt), asc(offerSendRecords.id));
   await guarded(() => tx.delete(offers).where(and(eq(offers.tenantId, ctx.tenantId), eq(offers.id, id))), true);
-  await audit(tx, ctx, 'delete', id, before, null);
+  await audit(tx, ctx, 'delete', id, sendRecords.length ? { ...before, sendRecords } : before, null);
   return { id, deleted: true };
 }
 

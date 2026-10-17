@@ -1,14 +1,23 @@
 /**
  * Offer 新建 / 编辑时的 OF-R2 校验（34 OF-R2，AC-OF-05，DEC-600）：
  * - 姓名 + 手机 / 邮箱 / 证件号命中有效黑名单 → 409 OFFER_BLACKLISTED（阻断）；
- * - 证件号命中已离职 / 退休人员 → 只提示重聘（rehireHint），不阻断；提示只给结束类型与最后工作日，不带人员信息，
- *   重聘合并的人员匹配交 BE-14b2 同步待入职时重新判定。原站手机 / 邮箱匹配未验证，沿用 BE-6a 的证件号口径。
+ * - 证件号、手机号、邮箱任一命中已离职 / 退休人员 → 只提示重聘（rehireHint），不阻断。
+ *
+ * 重聘提示是离职人员的任职信息（结束类型、最后工作日），不能借 Offer 新建权探测：提示在响应阶段（首次执行与同键重放
+ * 同一出口）按操作人**当前**的任职记录查看权、数据范围、字段查看权裁剪后才附上，不进命令台账；没有权限、人员在范围外、
+ * 字段不可见都当作没有命中（审查 #406 P2-01）。多人命中只数操作人看得见的人。
  */
-import type { Tx } from '@italent/db';
+import { withTenant, type Tx } from '@italent/db';
 import { blacklistBlockedMessage, tenantLocalDate } from '@italent/domain';
 import { AppError } from '../../errors.js';
+import { requirePermission } from '../../authorization.js';
+import type { TenantRouteDeps } from '../../routes.js';
+import type { TenantContext } from '../../tenant-context.js';
 import { findEffectiveBlacklistByIdentity } from '../employment/blacklist.js';
-import { matchRehire } from '../employment/rehire-match.js';
+import { EMPLOYMENT_OBJECT } from '../employment/context.js';
+import { findRehireCandidates } from '../employment/rehire-match.js';
+import { visibleEmploymentRecords } from '../employment/visibility.js';
+import { getModuleViewableFields, resolveModuleScope } from '../permission/module-access.js';
 import type { OfferContext } from './context.js';
 
 export interface OfferIdentity {
@@ -20,10 +29,7 @@ export interface OfferIdentity {
 }
 
 export type RehireHint =
-  | { readonly endKind: 'leave' | 'retirement'; readonly lastWorkDate: string | null }
-  | {
-      readonly ambiguous: true;
-    };
+  { readonly endKind?: 'leave' | 'retirement'; readonly lastWorkDate?: string | null } | { readonly ambiguous: true };
 
 export async function requireNotBlacklisted(tx: Tx, ctx: OfferContext, person: OfferIdentity) {
   const hit = await findEffectiveBlacklistByIdentity(
@@ -36,20 +42,53 @@ export async function requireNotBlacklisted(tx: Tx, ctx: OfferContext, person: O
     throw new AppError('CONFLICT', blacklistBlockedMessage(hit.name, hit.reason), { reason: 'OFFER_BLACKLISTED' });
 }
 
-export async function rehireHintFor(tx: Tx, ctx: OfferContext, person: OfferIdentity): Promise<RehireHint | null> {
-  const idType = person.idType?.trim();
-  const idNumber = person.idNumber?.trim();
-  if (!idType || !idNumber) return null;
+/** 任职记录里这两项分别对应结束类型（业务类型 kind）与最后工作日。 */
+const ENDED_FIELDS = { endKind: 'kind', lastWorkDate: 'lastWorkDate' } as const;
+
+async function visibleRehireHint(
+  deps: TenantRouteDeps,
+  ctx: TenantContext,
+  person: OfferIdentity,
+): Promise<RehireHint | null> {
   try {
-    const hit = await matchRehire(tx, ctx.tenantId, { idType, idNumber }, tenantLocalDate(ctx.now, ctx.timezone));
-    return hit ? { endKind: hit.endKind, lastWorkDate: hit.lastWorkDate } : null;
+    await requirePermission(deps.authorize, { ...ctx, action: 'object.view', resource: EMPLOYMENT_OBJECT, fields: [] });
   } catch (error) {
-    if (
-      error instanceof AppError &&
-      error.details &&
-      (error.details as { reason?: string }).reason === 'REHIRE_MATCH_AMBIGUOUS'
-    )
-      return { ambiguous: true };
+    if (error instanceof AppError && error.code === 'FORBIDDEN') return null;
     throw error;
   }
+  const [scope, viewable] = await Promise.all([
+    resolveModuleScope(deps, ctx, undefined, EMPLOYMENT_OBJECT),
+    getModuleViewableFields(deps, ctx, EMPLOYMENT_OBJECT),
+  ]);
+  const shown = (field: string) => viewable === undefined || viewable.has(field);
+  const today = tenantLocalDate(deps.clock(), ctx.timezone);
+  const people = await withTenant(deps.db, ctx.tenantId, async (tx) => {
+    const found = await findRehireCandidates(
+      tx,
+      ctx.tenantId,
+      { idType: person.idType, idNumber: person.idNumber, mobilePhone: person.mobile, email: person.personalEmail },
+      today,
+    );
+    const targets = found.map((item) => ({ employeeId: item.employeeId, departmentId: item.departmentId }));
+    const visible = await visibleEmploymentRecords(tx, ctx.tenantId, scope, targets);
+    return found.filter((_, index) => visible[index]);
+  });
+  const [only, ...others] = people;
+  if (!only) return null;
+  if (others.length) return { ambiguous: true };
+  const hint: { endKind?: 'leave' | 'retirement'; lastWorkDate?: string | null } = {};
+  if (shown(ENDED_FIELDS.endKind)) hint.endKind = only.endKind;
+  if (shown(ENDED_FIELDS.lastWorkDate)) hint.lastWorkDate = only.lastWorkDate;
+  return Object.keys(hint).length ? hint : null;
+}
+
+/**
+ * 新建响应的出口：Offer 返回体里的证件 / 手机 / 邮箱 + 操作人当前权限 → 附上 rehireHint（没有则原样返回）。
+ * 命令台账里只存 Offer 本身，同键重放也走这里重新授权。
+ */
+export async function withRehireHint(deps: TenantRouteDeps, ctx: TenantContext, body: unknown) {
+  const offer = body as OfferIdentity | null;
+  if (!offer || typeof offer !== 'object') return body;
+  const hint = await visibleRehireHint(deps, ctx, offer);
+  return hint ? { ...offer, rehireHint: hint } : body;
 }

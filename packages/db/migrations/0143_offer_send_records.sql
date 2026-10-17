@@ -16,7 +16,7 @@ CREATE TABLE "offer_send_records" (
 );
 --> statement-breakpoint
 ALTER TABLE "offer_send_records" ADD CONSTRAINT "offer_send_records_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "offer_send_records" ADD CONSTRAINT "offer_send_records_offer_fk" FOREIGN KEY ("tenant_id","offer_id") REFERENCES "public"."offers"("tenant_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "offer_send_records" ADD CONSTRAINT "offer_send_records_offer_fk" FOREIGN KEY ("tenant_id","offer_id") REFERENCES "public"."offers"("tenant_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "offer_send_records_offer" ON "offer_send_records" USING btree ("tenant_id","offer_id","created_at");--> statement-breakpoint
 SELECT enable_tenant_isolation('offer_send_records');
 --> statement-breakpoint

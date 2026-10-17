@@ -30,6 +30,7 @@ import {
   parseOfferDictionaryInput,
   saveOfferDictionaryEntry,
 } from './dictionaries.js';
+import { withRehireHint } from './identity.js';
 import { frozenPerTransaction, offerCopyCheck, offerCreateCheck } from './checks.js';
 import { parseOfferCreate, parseOfferUpdate } from './input.js';
 import { OFFER_POLICIES } from './policy.js';
@@ -111,7 +112,11 @@ function registerCommands(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
       'create',
       offerCreateCheck(input, writes),
       async (tx, ctx) => ({ status: 201, body: await createOffer(tx, ctx, await writes(tx, ctx)) }),
-      { isNew: true, replayed: offerStillVisible },
+      {
+        isNew: true,
+        replayed: offerStillVisible,
+        respond: (ctx, body) => withRehireHint(deps, ctx, body),
+      },
     );
   });
   module.put('/:id', async (c) => {
