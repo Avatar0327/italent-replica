@@ -114,7 +114,7 @@ export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
   registerExitRoutes(module, deps);
   registerEntryRoutes(module, deps, authorizeBusinessWrite);
   registerEntryEmailRoutes(module, deps, authorizeBusinessWrite);
-  registerProbationRoutes(module, deps);
+  registerProbationRoutes(module, deps, authorizeBusinessWrite);
   router.route('/api/tenant/employment', module);
 };
 

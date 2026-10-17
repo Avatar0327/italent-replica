@@ -303,6 +303,12 @@ async function appendStatusVersion(
   return id;
 }
 
+/** 时间轴上的位置（生效日 + 当日顺序号）。 */
+export interface TimelinePoint {
+  readonly date: string;
+  readonly order: number;
+}
+
 interface PropagationTarget {
   readonly payload: EmploymentPayloadRow;
   readonly state: string;
@@ -322,9 +328,11 @@ export async function propagateEmployeeStatus(
   source: Pick<EmploymentRecord, 'id' | 'employeeId' | 'staffId' | 'effectiveDate'>,
   from: number,
   to: EmployeeStatusCode,
+  /** 只改到这个位置之前（转正改期推后时的区间上界，DEC-589）；在途申请按生效日早于 until.date 判。 */
+  until?: TimelinePoint,
 ): Promise<void> {
   if (from === to) return;
-  for (const target of await propagationTargets(tx, ctx, source, from)) {
+  for (const target of await propagationTargets(tx, ctx, source, from, until)) {
     await requireLinkedEmploymentRecord(tx, ctx, source.employeeId, target.departmentId, target.payload.businessId);
     const effective = target.state === 'effective';
     const record = effective
@@ -354,7 +362,12 @@ async function propagationTargets(
   ctx: EmploymentContext,
   source: Pick<EmploymentRecord, 'id' | 'employeeId' | 'staffId' | 'effectiveDate'>,
   from: number,
+  until?: TimelinePoint,
 ): Promise<PropagationTarget[]> {
+  const bounded = until
+    ? sql`AND ((s.state='effective' AND (t.start_date,t.sort_order)<(${until.date}::date,${until.order}))
+        OR (s.state<>'effective' AND p.effective_date<${until.date}::date))`
+    : sql``;
   const rows = rowsOf<Record<string, unknown>>(
     await tx.execute(sql`
     WITH point AS (SELECT start_date, sort_order FROM employment_timeline
@@ -379,7 +392,7 @@ async function propagationTargets(
           AND (t.start_date,t.sort_order)>(point.start_date,point.sort_order))
         OR (s.state IN ('draft','in_review','approved','rejected') AND r.id IS NULL
           AND p.selected_staff_id=${source.staffId}::uuid AND p.effective_date>${source.effectiveDate}::date))
-      AND COALESCE(st.employee_status, p.employee_status)=${from}
+      AND COALESCE(st.employee_status, p.employee_status)=${from} ${bounded}
     ORDER BY p.effective_date, t.sort_order NULLS LAST, b.id LIMIT 1001
   `),
   );

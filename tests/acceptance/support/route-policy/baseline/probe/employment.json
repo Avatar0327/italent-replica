@@ -584,6 +584,26 @@
       "obj:TenantBase.EmploymentRecord:update"
     ]
   },
+  "POST /api/tenant/employment/businesses/:id/regularization-date": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "db9ddaf82412",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/-",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.EmploymentRecord:update"
+    ]
+  },
   "POST /api/tenant/employment/businesses/:id/revoke": {
     "all": {
       "code": "NOT_FOUND",

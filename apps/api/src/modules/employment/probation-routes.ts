@@ -28,13 +28,15 @@ import {
   trimEmploymentResponse,
   uuidParam,
 } from './context.js';
-import { parse } from './entry-routes.js';
+import { parse, type BusinessWriteGuard } from './entry-routes.js';
 import { requirePermission } from '../../authorization.js';
 import { adjustProbation, probationDetail } from './probation.js';
 import { listProbationResults, parseProbationResultInput, saveProbationResult } from './probation-results.js';
 import { listProbationView, PROBATION_VIEW_CONTROLS, type ProbationViewItem } from './probation-views.js';
 import { createRegularizationBusiness, parseRegularizationInput, regularizeEmployees } from './regularization.js';
 import { parseRegularizationBusinessInput } from './fields.js';
+import { rescheduleRegularization } from './regularization-reschedule.js';
+import { pendingActionGuard } from './replay-guard.js';
 import type { EmploymentContext } from './types.js';
 
 const date = z.iso.date();
@@ -133,7 +135,11 @@ export async function createRegularizationViaBusinesses(
   }));
 }
 
-export function registerProbationRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+export function registerProbationRoutes(
+  router: Hono<TenantEnv>,
+  deps: TenantRouteDeps,
+  authorizeBusinessWrite: BusinessWriteGuard,
+) {
   registerProbationViews(router, deps);
   router.put('/employees/:id/probation', async (c) => {
     const id = uuidParam(c);
@@ -183,7 +189,37 @@ export function registerProbationRoutes(router: Hono<TenantEnv>, deps: TenantRou
       { guard: probationWriteGuard(deps, ctx, 'create', payload, []), project: (body) => body },
     );
   });
+  registerRegularizationReschedule(router, deps, authorizeBusinessWrite);
   registerProbationResults(router, deps);
+}
+
+/**
+ * 转正改期（PB-R13，DEC-589）：If-Match = 转正单 revision；body 严格 { effectiveDate }；权限同待入职改期：对象编辑、
+ * Employment.Edit 按钮与生效日期字段写权限、业务写入口径范围，命令内经 CommandGuard.before 按当前授权再过一遍。
+ */
+function registerRegularizationReschedule(
+  router: Hono<TenantEnv>,
+  deps: TenantRouteDeps,
+  authorizeBusinessWrite: BusinessWriteGuard,
+) {
+  router.post('/businesses/:id/regularization-date', async (c) => {
+    const id = uuidParam(c);
+    const ctx = await readContext(c, deps, 'object.update', revision(c));
+    const input = parse(z.strictObject({ effectiveDate: date }), await jsonBody(c));
+    await requireEmploymentWrite(ctx, 'update', input, 'Employment.Edit');
+    await authorizeBusinessWrite(deps, ctx, id);
+    return runWrite(
+      c,
+      deps,
+      ctx,
+      { id, action: 'reschedule-regularization', input },
+      async (tx, context) => ({
+        status: 200,
+        body: await rescheduleRegularization(tx, context, id, input.effectiveDate),
+      }),
+      { guard: pendingActionGuard(deps, ctx, id, input) },
+    );
+  });
 }
 
 /** 四个视图（PB-R1）与试用人员详情（B6）：按任职记录数据范围裁剪；姓名 / 工号按人员对象可见字段另行裁剪。 */

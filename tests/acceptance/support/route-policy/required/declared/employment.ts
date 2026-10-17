@@ -20,6 +20,7 @@ export const EMPLOYMENT_DECLARED: ModuleDeclared = {
     'PATCH /api/tenant/employment/businesses/:id',
     'PATCH /api/tenant/employment/pending-entries/:id',
     'PATCH /api/tenant/employment/records/:id',
+    'POST /api/tenant/employment/businesses/:id/regularization-date',
     'POST /api/tenant/employment/employees/:id/businesses',
     'POST /api/tenant/employment/employees/:id/forward-update-preview',
     'POST /api/tenant/employment/employees/:id/import',

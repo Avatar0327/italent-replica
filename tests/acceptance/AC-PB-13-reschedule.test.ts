@@ -6,7 +6,16 @@
  */
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { employeeRevision, hire, pbWorld, probationOf, regularizeOk, type PbWorld } from './AC-PB-support.js';
+import {
+  draftRegularization,
+  employeeRevision,
+  hire,
+  pbWorld,
+  probationOf,
+  regularizeOk,
+  transition,
+  type PbWorld,
+} from './AC-PB-support.js';
 
 const testDb = useTestDb();
 
@@ -185,6 +194,24 @@ describe('PB-R13 转正改期：拒绝与并发', () => {
     expect(noMatch.status).toBe(400);
     const notRegularization = await reschedule(w, hired.id, '2026-09-02');
     expect(notRegularization.status).toBe(409);
+  });
+
+  it('审批通过未落地的转正申请可改期（到新日期生效）；审批中的申请不能改期', async () => {
+    const w = await pbWorld(testDb().db, 'pb13-approved');
+    const { employee } = await hire(w, { months: 3 });
+    const application = await draftRegularization(w, employee.id, '2026-12-01');
+    expect((await transition(w, application, 'submit')).status).toBe(200);
+    const reviewing = await reschedule(w, application.id, '2026-11-20');
+    expect(reviewing.status).toBe(409);
+    expect((await transition(w, application, 'approve')).status).toBe(200);
+    expect((await reschedule(w, application.id, '2026-11-20')).status).toBe(200);
+    expect(await probationOf(w, employee.id)).toMatchObject({
+      regularizationDate: '2026-11-20',
+      regularizationState: 'approved',
+    });
+    w.session.setNow('2026-11-20T01:00:00.000Z');
+    expect((await transition(w, application, 'activate', '2026-11-20T01:00:00Z')).status).toBe(200);
+    expect((await timeline(w, employee.id)).at(-1)).toEqual(['regularization', '2026-11-20', 3, '2026-11-20']);
   });
 
   it('通用编辑入口仍不能改转正日期（RECORD_DATE_IMMUTABLE）', async () => {

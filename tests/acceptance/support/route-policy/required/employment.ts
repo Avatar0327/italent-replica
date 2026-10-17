@@ -1676,6 +1676,53 @@ export const EMPLOYMENT: RequiredTable = {
       ),
     ),
   ],
+  'POST /api/tenant/employment/businesses/:id/regularization-date': [
+    ob(
+      `obj:${RECORD}:update`,
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:update', 'object:object.* 动作'],
+      [
+        at(
+          PROBATION,
+          'POST',
+          '/businesses/:id/regularization-date',
+          "const ctx = await readContext(c, deps, 'object.update', revision(c))",
+        ),
+        READ,
+        WRITE_OBJECT,
+      ],
+    ),
+    ob(
+      `btn:${RECORD}#Employment.Edit@detail`,
+      ['button:requireEmploymentWrite(按钮)'],
+      [
+        at(
+          PROBATION,
+          'POST',
+          '/businesses/:id/regularization-date',
+          "await requireEmploymentWrite(ctx, 'update', input, 'Employment.Edit')",
+        ),
+        WRITE_BUTTON,
+      ],
+    ),
+    businessWrite(
+      at(PROBATION, 'POST', '/businesses/:id/regularization-date', 'await authorizeBusinessWrite(deps, ctx, id)'),
+    ),
+    directOperation(
+      fn(
+        `${SRC}/employment/regularization-reschedule.ts`,
+        'rescheduleRegularization',
+        'await requireScopedEmploymentObject(',
+      ),
+    ),
+    linkage(
+      at(
+        PROBATION,
+        'POST',
+        '/businesses/:id/regularization-date',
+        'body: await rescheduleRegularization(tx, context, id, input.effectiveDate)',
+      ),
+    ),
+  ],
   'GET /api/tenant/employment/probation-results': [
     ob(
       `obj:${RECORD}:view`,

@@ -1225,6 +1225,27 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
       { controls: ['probationResult', 'items'] },
     ),
   }),
+  // 转正改期（PB-R13，DEC-589）：If-Match = 转正单 revision；body 严格 { effectiveDate }（400）；requireEmploymentWrite 按
+  // { effectiveDate } 校验字段写权限 + Employment.Edit；requireBusinessWriteScope（写入口径 404「任职业务不存在」）；命令内
+  // lockEmploymentBusiness（409 REVISION_CONFLICT）→ 非转正单 / 非已生效或审批通过 409 → 周期外 400
+  // REGULARIZATION_DATE_OUT_OF_CYCLE → 区间内离职 / 转正 / 入职类 409 REGULARIZATION_RESCHEDULE_BLOCKED（列出冲突）→
+  // 追加人工改期载荷版本、重建时间轴（validateTransferReposition 复核插入点），区间内记录按 DEC-178 联动重算人员状态；
+  // CommandGuard.before（pendingActionGuard 同口径）在命令事务内复核
+  'POST /businesses/:id/regularization-date': object({
+    object: EMPLOYMENT,
+    operation: 'update',
+    button: button('Employment.Edit', 'detail'),
+    guards: [DIRECT_OPERATION, LINKAGE],
+    scope: BUSINESS_WRITE,
+    fields: RESPONSE,
+    write: employmentWrite('body', [
+      'lockEmploymentBusiness',
+      'assertRevision',
+      'requireScopedEmploymentObject',
+      'requireLinkedEmploymentRecord',
+    ]),
+    ...byId,
+  }),
   // 试用结果字典（B7）：读取对持任职记录查看权者开放（转正表单下拉）；enabled 查询非法 → 400；无组织字段，不按范围裁剪
   'GET /probation-results': object({
     object: EMPLOYMENT,

@@ -1244,6 +1244,18 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
+  'apps/api/src/modules/employment/probation-routes.ts#route:POST /businesses/:id/regularization-date': [
+    'apps/api/src/modules/employment/context.ts#jsonBody',
+    'apps/api/src/modules/employment/context.ts#readContext',
+    'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
+    'apps/api/src/modules/employment/context.ts#runWrite',
+    'apps/api/src/modules/employment/entry-routes.ts#parse',
+    '#date',
+    'apps/api/src/modules/employment/regularization-reschedule.ts#rescheduleRegularization',
+    'apps/api/src/modules/employment/replay-guard.ts#pendingActionGuard',
+    'apps/api/src/modules/job/context.ts#revision',
+    'apps/api/src/modules/job/context.ts#uuidParam',
+  ],
   'apps/api/src/modules/employment/probation-routes.ts#route:POST /probation-results': [
     'apps/api/src/modules/employment/context.ts#jsonBody',
     'apps/api/src/modules/employment/context.ts#readContext',
@@ -1482,6 +1494,52 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/references.ts#validateRange': [
     'apps/api/src/modules/job/validation.ts#invalid',
     'apps/api/src/modules/job/validation.ts#requiredJob',
+  ],
+  'apps/api/src/modules/employment/regularization-reschedule.ts#BLOCKING_KINDS': [
+    'apps/api/src/modules/employment/employee-status.ts#ENTRY_LIKE_KINDS',
+  ],
+  'apps/api/src/modules/employment/regularization-reschedule.ts#appendRescheduledPayload': [
+    'apps/api/src/modules/employment/record-store.ts#insertEmploymentRow',
+  ],
+  'apps/api/src/modules/employment/regularization-reschedule.ts#assertInCycle': ['#cycleBounds'],
+  'apps/api/src/modules/employment/regularization-reschedule.ts#currentPoint': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/employment/regularization-reschedule.ts#cycleBounds': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/employment/regularization-reschedule.ts#kindList': ['#BLOCKING_KINDS'],
+  'apps/api/src/modules/employment/regularization-reschedule.ts#moveTimeline': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    'apps/api/src/modules/employment/timeline.ts#insertEmploymentTimeline',
+    'apps/api/src/modules/employment/write-service.ts#validateTransferReposition',
+  ],
+  'apps/api/src/modules/employment/regularization-reschedule.ts#recomputeWindow': [
+    'apps/api/src/modules/employment/employee-status.ts#propagateEmployeeStatus',
+    'apps/api/src/modules/employment/read-model.ts#findPredecessor',
+    'apps/api/src/modules/employment/read-model.ts#loadEmploymentRecord',
+    '#currentPoint',
+  ],
+  'apps/api/src/modules/employment/regularization-reschedule.ts#rescheduleRegularization': [
+    'apps/api/src/modules/employment/context.ts#auditEmployment',
+    'apps/api/src/modules/employment/context.ts#requireScopedEmploymentObject',
+    'apps/api/src/modules/employment/personnel-hooks.ts#personnelHooks',
+    'apps/api/src/modules/employment/read-model.ts#loadEmploymentRecord',
+    'apps/api/src/modules/employment/record-store.ts#bumpEmploymentBusiness',
+    'apps/api/src/modules/employment/record-store.ts#lockEmploymentBusiness',
+    '#appendRescheduledPayload',
+    '#assertInCycle',
+    '#currentPoint',
+    '#moveTimeline',
+    '#recomputeWindow',
+    '#windowConflicts',
+    'apps/api/src/modules/employment/timeline.ts#timelinePosition',
+    'apps/api/src/modules/employment/write-service.ts#requireSavedBusiness',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/employment/regularization-reschedule.ts#windowConflicts': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    '#kindList',
   ],
   'apps/api/src/modules/employment/regularization.ts#createRegularizationBusiness': [
     'apps/api/src/modules/employment/context.ts#auditEmployment',
