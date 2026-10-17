@@ -849,3 +849,54 @@ describe('AC-DM-19 字段依赖表守卫', () => {
     expect(out.newTopLevelButRegisteredNowhereNested).toEqual({});
   });
 });
+
+// ---- 第 5 轮（#409 审查 P2）：容器整体按依赖字段判权，无权时键缺席（不留空对象泄露存在性）；守卫检查裁剪前的路径 ----------
+
+describe('AC-DM-19 容器整体判权（第 5 轮）', () => {
+  it('无 activation 字段权：失败 / 挂起 / 无尝试三类单在列表与详情里形状一致（均无 activation 键）；有权时正常返回', async () => {
+    const x = await world('views-activation-container');
+    const failed = await x.exit('失败单', '2026-10-25', 'direct');
+    await x.attempt(failed.id, failed.employee.id, 'failed', 'REBUILD_REQUIRED');
+    const suspended = await x.exit('挂起单', '2026-10-26', 'direct');
+    const blocker = await x.w.synthetic(suspended.employee.id, {
+      kind: 'transfer',
+      state: 'approved',
+      effectiveDate: '2026-10-10',
+    });
+    await x.attempt(suspended.id, suspended.employee.id, 'suspended', 'PREDECESSOR_FAILED', blocker);
+    const plain = await x.exit('无尝试单', '2026-10-27', 'direct');
+    const viewer = (fields: readonly string[]) => x.w.restricted(denyButtons(), undefined, fields);
+    const shapes = async (api: Api) => {
+      const rows = new Map((await x.view('in_progress', '&pageSize=50', api)).items.map((item) => [item.id, item]));
+      const details = new Map<string, Record<string, unknown>>();
+      for (const made of [failed, suspended, plain])
+        details.set(made.id, (await (await api('GET', `/exits/${made.id}`)).json()) as Record<string, unknown>);
+      return [failed, suspended, plain].map((made) => ({ row: rows.get(made.id)!, detail: details.get(made.id)! }));
+    };
+    for (const { row, detail } of await shapes(viewer(FULL.filter((field) => field !== 'activation')))) {
+      expect(row).not.toHaveProperty('activation');
+      expect(detail).not.toHaveProperty('activation');
+    }
+    const blindShapes = await shapes(viewer(FULL.filter((field) => field !== 'activation')));
+    expect(new Set(blindShapes.map(({ row }) => keysOf(row).join())).size, '列表三类形状一致').toBe(1);
+    expect(new Set(blindShapes.map(({ detail }) => keysOf(detail).join())).size, '详情三类形状一致').toBe(1);
+    const [f, s2, p2] = await shapes(viewer(FULL));
+    expect(f!.row.activation).toMatchObject({ status: 'failed', reason: 'REBUILD_REQUIRED' });
+    expect(f!.detail.activation).toMatchObject({ status: 'failed' });
+    expect(s2!.row.activation).toMatchObject({ status: 'suspended', blockedByBusinessId: blocker });
+    expect(p2!.row.activation).toBeNull();
+    expect(p2!.detail.activation).toBeNull();
+  });
+
+  it('其他嵌套容器同理：容器内叶子全部无权时整个容器缺席，不留 [] / {} 暴露条数或存在性', async () => {
+    const { as, detailOf } = await nestedWorld('views-container-empty');
+    const noVersions = await detailOf(
+      as(FULL.filter((f) => !['versionNo', 'createdAt', 'effectiveDate', 'lastWorkDate'].includes(f))),
+    );
+    expect(noVersions).not.toHaveProperty('versions');
+    expect(noVersions).not.toHaveProperty('dates');
+    const noDates = await detailOf(as(FULL.filter((f) => f !== 'effectiveDate' && f !== 'lastWorkDate')));
+    expect(noDates).not.toHaveProperty('dates');
+    expect(JSON.stringify(noDates)).not.toContain('"dates"');
+  });
+});
