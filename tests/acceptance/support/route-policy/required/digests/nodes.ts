@@ -1371,7 +1371,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/employment/visibility.ts#visibleEmploymentRecords': ['6d6a6294a81f', '42012c52ac1a'],
   'apps/api/src/modules/employment/write-service.ts#NEW_CYCLE_KINDS': ['bc841326bb26', 'e3b0c44298fc'],
   'apps/api/src/modules/employment/write-service.ts#appendEmploymentPayload': ['4646e95875a8', 'cdc57b7718bf'],
-  'apps/api/src/modules/employment/write-service.ts#appendEmploymentState': ['93a57b348571', 'c6f5c5b971e7'],
+  'apps/api/src/modules/employment/write-service.ts#appendEmploymentState': ['4caee1d347f7', '9b51939b9972'],
   'apps/api/src/modules/employment/write-service.ts#assertBusinessSequence': ['de7203d9b9b3', 'b01436b5b4d7'],
   'apps/api/src/modules/employment/write-service.ts#assertDirectTransferAllowed': ['f414e5b8b982', '1d80bdde9a66'],
   'apps/api/src/modules/employment/write-service.ts#assertEmployTypeUsage': ['f6d8d5bd2a91', 'dcd1d2ac9213'],

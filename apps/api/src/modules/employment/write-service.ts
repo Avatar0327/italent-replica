@@ -566,10 +566,6 @@ export async function appendEmploymentState(
   });
   business.state = state;
   business.eventNo += 1;
-  // F-181a：单据离开草稿（提交 / 删除 / 审批…）即不再是暂存单；撤回回到草稿的申请不会重新占槽
-  if (state !== 'draft')
-    await tx.execute(sql`DELETE FROM transfer_draft_slots
-      WHERE tenant_id=${ctx.tenantId} AND business_id=${business.id}::uuid`);
   await auditEmployment(
     tx,
     ctx,
