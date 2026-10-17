@@ -44,6 +44,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/org/deactivation.ts#assertParentAvailable': ['#dayAfter'],
   'apps/api/src/modules/org/deactivation.ts#assertSubtreeVacant': [
     'apps/api/src/modules/employment/org-people.ts#countDepartmentStaff',
+    'apps/api/src/modules/employment/part-time/store.ts#countDepartmentPartTimes',
     'apps/api/src/modules/job/read-model.ts#countEnabledPositions',
     '#REPORT_LIMIT',
     '#countPendingTransfers',
