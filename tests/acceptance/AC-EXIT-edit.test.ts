@@ -194,3 +194,36 @@ describe('AC-DM-33 B-86 记录编辑 / 批量编辑 / 导入编辑行对离职�
     expect(ok.status, await ok.clone().text()).toBe(200);
   });
 });
+
+describe('AC-DM-22 #388 P2-1 审批中 HR 编辑离职字段使旧审批页面失效（审批版本覆盖离职扩展字段）', () => {
+  const changes: [string, Record<string, unknown>][] = [
+    ['离职类型', { exitTypeCode: 'involuntary' }],
+    ['离职原因', { reasonCode: 'family' }],
+    ['补偿金', { compensationAmount: 8800 }],
+  ];
+  for (const [label, body] of changes)
+    it(`${label}被 HR 改过：旧实例 revision 同意 409，刷新后同意通过`, async () => {
+      const w = await gateWorld(database().db, `edit-version-${Object.keys(body)[0]}`);
+      const { employee } = await w.hired();
+      const exitBody = { exitTypeCode: 'voluntary', reasonCode: 'personal', compensationAmount: 100 };
+      const sent = await submit(w, await w.createdLeave(employee.id, leaveBody(LATER, 'application', exitBody)));
+      const taskOf = async () =>
+        (
+          await w.sqlRows<{ id: string; assignee: string; revision: number }>(sql`SELECT t.id,
+            t.assignee_user_id AS assignee, i.revision FROM approval_tasks t
+          JOIN approval_instances i ON i.tenant_id=t.tenant_id AND i.id=t.instance_id
+          WHERE t.tenant_id=${w.session.tenant.id} AND i.business_id=${sent.id}::uuid AND t.status='pending'`)
+        )[0]!;
+      const stale = await taskOf();
+      const approve = (revision: number) =>
+        w.asUser(stale.assignee)('POST', `/../approval/tasks/${stale.id}/approve`, { ifMatch: revision, body: {} });
+      const patched = await w.session.request('PATCH', `/exits/${sent.id}`, { ifMatch: sent.revision, body });
+      expect(patched.status, await patched.clone().text()).toBe(200);
+      const old = await approve(Number(stale.revision));
+      expect(old.status, await old.clone().text()).toBe(409);
+      expect((await w.business(sent.id)).status).toBe('in_review');
+      const ok = await approve(Number((await taskOf()).revision));
+      expect(ok.status, await ok.clone().text()).toBe(200);
+      expect((await w.business(sent.id)).status).toBe('approved');
+    });
+});
