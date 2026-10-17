@@ -1385,13 +1385,27 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   ),
   // 立即执行（DEC-539①）：body 严格 {}；总开关关闭 409 AUTO_REGULARIZATION_DISABLED；按规则适用组织扫描（系统批次提前执行，
   // 不叠加操作人数据范围），逐人保存点经 BE-3 转正入口发起，审计 employment.auto_regularization.launch；回执固定形状
-  'POST /auto-regularization/run': configuration(
-    SETTINGS,
-    'update',
+  'POST /auto-regularization/run': all(
+    [
+      admin('other_settings', { alias: 'tenant.employment.configuration.write', fields: SETTINGS_FIELDS }),
+      object({
+        object: SETTINGS,
+        operation: 'update',
+        button: noButton('配置对象无按钮：requireEmploymentWrite 只查 object.update（命令式空字段集合）'),
+        // 逐人经 BE-3 转正入口发起：联动校验在 createEmploymentBusiness 里照常调用（系统批次不带数据范围）
+        guards: [LINKAGE],
+        scope: noScope('按规则适用组织扫描的系统批次，不叠加操作人数据范围（DEC-539①）'),
+        fields: SETTINGS_FIELDS,
+      }),
+    ],
     SETTINGS_FIELDS,
-    write('body', 'config.audited:auto_regularization_run', none('配置对象无范围，回执只含员工 / 规则 / 业务 ID'), {
-      commandOnly: true,
-      preconditions: ['assertRevision'],
-    }),
+    {
+      write: write(
+        'body',
+        'config.audited:auto_regularization_run',
+        none('配置对象无范围，回执只含员工 / 规则 / 业务 ID'),
+        { commandOnly: true, preconditions: ['assertRevision'] },
+      ),
+    },
   ),
 });

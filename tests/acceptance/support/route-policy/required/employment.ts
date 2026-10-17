@@ -1952,19 +1952,34 @@ export const EMPLOYMENT: RequiredTable = {
       ] as const
     ).map(([method, path, operation, payload]) => [
       `${method} /api/tenant/employment${path}`,
-      withObjectWriteFact(
-        configWrite(
-          fn(AUTO_REG, 'writeContext', "readContext( c, deps, 'tenant.employment.configuration.write', revision(c),"),
-          'TenantBase.EmploymentSettings',
-          operation,
-          at(
-            AUTO_REG,
-            method,
-            path,
-            `await requireEmploymentWrite(ctx, '${operation}', ${payload}, undefined, 'TenantBase.EmploymentSettings'`,
+      [
+        ...withObjectWriteFact(
+          configWrite(
+            fn(AUTO_REG, 'writeContext', "readContext( c, deps, 'tenant.employment.configuration.write', revision(c),"),
+            'TenantBase.EmploymentSettings',
+            operation,
+            at(
+              AUTO_REG,
+              method,
+              path,
+              `await requireEmploymentWrite(ctx, '${operation}', ${payload}, undefined, 'TenantBase.EmploymentSettings'`,
+            ),
           ),
         ),
-      ),
+        // 立即执行逐人经 BE-3 转正入口发起，联动校验在那里照常调用（系统批次无数据范围）
+        ...(path === '/auto-regularization/run'
+          ? [
+              linkage(
+                at(
+                  AUTO_REG,
+                  method,
+                  path,
+                  'async (tx, context) => ({ status: 200, body: await runAutoRegularizationNow(tx, context) })',
+                ),
+              ),
+            ]
+          : []),
+      ],
     ]),
   ),
 };

@@ -175,7 +175,7 @@ export const DIGESTS: Digests = {
     'route:DELETE /auto-regularization-rules/:id': '633164e68c0d',
     'route:GET /auto-regularization-rules': '30bcdcc9d33c',
     'route:POST /auto-regularization-rules': 'ca907e16e6e6',
-    'route:POST /auto-regularization-rules/:id/copy': '6257f942e9b6',
+    'route:POST /auto-regularization-rules/:id/copy': '82b510f08ee1',
     'route:POST /auto-regularization/run': '88a212ba6a9f',
     'route:PUT /auto-regularization-rules/:id': '7d8ee2c6797a',
     'route:PUT /auto-regularization-rules/:id/enabled': '5e3092aadae1',

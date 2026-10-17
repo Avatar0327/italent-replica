@@ -678,8 +678,7 @@
     ],
     "trace": [
       "admin:other_settings",
-      "obj:TenantBase.EmploymentSettings:create",
-      "obj:TenantBase.EmploymentSettings:update"
+      "obj:TenantBase.EmploymentSettings:create"
     ]
   },
   "POST /api/tenant/employment/auto-regularization/run": {

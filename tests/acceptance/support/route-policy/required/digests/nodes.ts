@@ -769,7 +769,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/employment/approval-hooks.ts#unavailable': ['b37682b10018', '2a513245673b'],
   'apps/api/src/modules/employment/auto-regularization-routes.ts#SETTINGS': ['15a32ed0ba1c', '962a8dd9a03e'],
   'apps/api/src/modules/employment/auto-regularization-routes.ts#parseRunBody': ['4b499df72430', 'd233e631f0ed'],
-  'apps/api/src/modules/employment/auto-regularization-routes.ts#ruleGuard': ['38736fbdf093', '8c74b844196f'],
+  'apps/api/src/modules/employment/auto-regularization-routes.ts#ruleGuard': ['aa0ba2b785b2', '8c74b844196f'],
   'apps/api/src/modules/employment/auto-regularization-routes.ts#writeContext': ['0f98695a8fa8', '87163d4c2bf1'],
   'apps/api/src/modules/employment/auto-regularization-rules.ts#AUTO_REGULARIZATION_RULE_AUDIT_TYPE': [
     '31af91e859ba',
@@ -837,7 +837,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/employment/auto-regularization.ts#reasonOf': ['fc52e143c3a0', '33b9a70ec0bc'],
   'apps/api/src/modules/employment/auto-regularization.ts#recordOutcome': ['de0b5ada10ed', '7a645dc8391f'],
   'apps/api/src/modules/employment/auto-regularization.ts#resolveInitiator': ['489d73ad7509', '96b9f2e9ce1a'],
-  'apps/api/src/modules/employment/auto-regularization.ts#runAutoRegularizationNow': ['7681da3d5a3d', '2c420ecf2dd6'],
+  'apps/api/src/modules/employment/auto-regularization.ts#runAutoRegularizationNow': ['b59396431b74', '8de9044b90f3'],
   'apps/api/src/modules/employment/auto-regularization.ts#subjectOf': ['1ce084bf8b3b', '553425e688bc'],
   'apps/api/src/modules/employment/batch-edit.ts#MAX_BATCH_EDIT': ['f080c036a7d4', 'e3b0c44298fc'],
   'apps/api/src/modules/employment/batch-edit.ts#batchEditEmploymentRecords': ['3c1e9465b7cb', 'c85bee214fc8'],

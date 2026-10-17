@@ -44,6 +44,7 @@ function ruleGuard(
   deps: TenantRouteDeps,
   ctx: EmploymentContext,
   payload: Readonly<Record<string, unknown>>,
+  operation: 'create' | 'update' = 'update',
 ): CommandGuard {
   return {
     before: async (tx) => {
@@ -53,7 +54,7 @@ function ruleGuard(
         action: 'tenant.employment.configuration.write',
         resource: SETTINGS,
       });
-      await requireObjectWrite(authorize, ctx, { objectCode: SETTINGS, operation: 'update', payload });
+      await requireObjectWrite(authorize, ctx, { objectCode: SETTINGS, operation, payload });
     },
   };
 }
@@ -121,7 +122,7 @@ function registerRuleRowActions(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
       ctx,
       { id, action: 'copy' },
       async (tx, context) => ({ status: 201, body: await copyAutoRegularizationRule(tx, context, id) }),
-      { guard: ruleGuard(deps, ctx, {}) },
+      { guard: ruleGuard(deps, ctx, {}, 'create') },
     );
   });
   router.put('/auto-regularization-rules/:id/enabled', async (c) => {
