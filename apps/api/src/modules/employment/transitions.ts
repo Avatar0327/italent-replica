@@ -84,6 +84,14 @@ export async function runEmploymentTransition(
   });
 }
 
+/** 提交前置判断（顺序不变）：员工调动业务归属，再判转正互斥。 */
+async function submitPreconditions(tx: Tx, ctx: EmploymentContext, business: LockedEmploymentBusiness, id: string) {
+  await requireEmployeeTransferBusiness(tx, ctx, id);
+  // 29 PB-R9 / AC-PB-03：转正申请在提交时判互斥（草稿照常保存），自己不拦自己
+  if (business.payload.kind === 'regularization')
+    await assertProbationProcessesIdle(tx, ctx, { employeeId: business.employeeId, action: 'apply', businessId: id });
+}
+
 /** 同事务编排端口；审批中心（R1-T07）对操作者、节点与参与人规则负责。 */
 export async function transitionEmployment(
   tx: Tx,
@@ -96,14 +104,7 @@ export async function transitionEmployment(
   const gatedExit =
     isExitKind(business.payload.kind) && !ctx.trustedExit ? await exitGateFor(tx, ctx, business, input) : null;
   assertTransition(business, input.action);
-  if (input.action === 'submit') await requireEmployeeTransferBusiness(tx, ctx, input.id);
-  // 29 PB-R9 / AC-PB-03：转正申请在提交时判互斥（草稿照常保存），自己不拦自己
-  if (input.action === 'submit' && business.payload.kind === 'regularization')
-    await assertProbationProcessesIdle(tx, ctx, {
-      employeeId: business.employeeId,
-      action: 'apply',
-      businessId: input.id,
-    });
+  if (input.action === 'submit') await submitPreconditions(tx, ctx, business, input.id);
   if (input.action === 'submit' || input.action === 'approve') {
     const { payload } = business;
     // DEC-195② / DEC-272：审批通过时已过计划生效日的调动改到批准当天（共用判定函数，起点是 §5.0A 计划生效日，D-8）。
