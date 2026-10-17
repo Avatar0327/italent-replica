@@ -92,6 +92,7 @@ import {
   registerProbationRoutes,
   splitProbationResult,
 } from './probation-routes.js';
+import { installPartTime } from './part-time/install.js';
 import { isRegularizationEntryKind } from './regularization.js';
 
 export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
@@ -103,6 +104,8 @@ export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
     }
     return handleError(error, c);
   });
+  // R2-T05 §4.9：兼职的钩子 / 探针装配点，生产与测试都经 createApp 必经此处
+  installPartTime();
   registerTransferRoutes(module, deps);
   registerEmployees(module, deps);
   registerEmployeeRecords(module, deps);

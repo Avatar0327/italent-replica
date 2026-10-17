@@ -1672,6 +1672,14 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/read-model.ts#checkPage',
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
   ],
+  'apps/api/src/modules/employment/part-time/store.ts#countDepartmentPartTimes': [
+    'apps/api/src/modules/employment/part-time/span-sql.ts#partTimeCurrentEndSql',
+    'apps/api/src/modules/employment/part-time/span-sql.ts#partTimeEmptySql',
+    '#currentDepartment',
+    '#latestSnapshot',
+    '#uuidArray',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
   'apps/api/src/modules/employment/personnel-hooks.ts#personnelHooks': ['#hooks'],
   'apps/api/src/modules/employment/personnel-reader.ts#ASSIGNMENT_COLUMNS': ['#INCUMBENT_COLUMNS'],
   'apps/api/src/modules/employment/personnel-reader.ts#query': [
