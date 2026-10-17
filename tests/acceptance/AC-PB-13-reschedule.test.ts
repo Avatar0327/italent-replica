@@ -7,43 +7,26 @@
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import {
+  businessRevision,
   draftRegularization,
   employeeRevision,
   hire,
   pbWorld,
   probationOf,
-  regularizeOk,
+  regularizeAt,
+  rescheduleRegularization,
+  transferAt,
   transition,
   type PbWorld,
 } from './AC-PB-support.js';
 
 const testDb = useTestDb();
 
-async function transfer(w: PbWorld, employeeId: string, effectiveDate: string, place: string) {
-  return w.session.business(
-    employeeId,
-    { kind: 'transfer', mode: 'direct', effectiveDate, fields: { place } },
-    await employeeRevision(w, employeeId),
-  );
-}
-
-async function regularize(w: PbWorld, employeeId: string, effectiveDate: string) {
-  const receipt = await regularizeOk(w, { mode: 'direct', effectiveDate }, [employeeId]);
-  expect(receipt.items[0]!.status, JSON.stringify(receipt.items[0])).toBe('succeeded');
-  return receipt.items[0]!.businessId!;
-}
-
-async function revisionOf(w: PbWorld, businessId: string) {
-  const response = await w.session.request('GET', `/businesses/${businessId}`);
-  return ((await response.json()) as { revision: number }).revision;
-}
-
-async function reschedule(w: PbWorld, businessId: string, effectiveDate: string, revision?: number) {
-  return w.session.request('POST', `/businesses/${businessId}/regularization-date`, {
-    ifMatch: revision ?? (await revisionOf(w, businessId)),
-    body: { effectiveDate },
-  });
-}
+const transfer = (w: PbWorld, employeeId: string, effectiveDate: string, place: string) =>
+  transferAt(w, employeeId, effectiveDate, { place });
+const regularize = regularizeAt;
+const revisionOf = businessRevision;
+const reschedule = rescheduleRegularization;
 
 /** 本周期记录（类型、日期、人员状态、转正日期投影），按时间轴顺序。 */
 async function timeline(w: PbWorld, employeeId: string) {
@@ -108,24 +91,7 @@ describe('PB-R13 转正改期：区间内记录重算人员状态', () => {
       ['transfer', '2026-12-10', 3, '2026-12-01'],
     ]);
   });
-
-  it('对照：改期后的结果与按新日期逐条办理得到的结果一致', async () => {
-    const w = await pbWorld(testDb().db, 'pb13-replay');
-    const moved = await hire(w, { months: 3, name: '改期' });
-    await transfer(w, moved.employee.id, '2026-11-15', '调动地点');
-    await transfer(w, moved.employee.id, '2026-12-10', '调动地点二');
-    const id = await regularize(w, moved.employee.id, '2026-12-01');
-    expect((await reschedule(w, id, '2026-11-01')).status).toBe(200);
-
-    const replayed = await hire(w, { months: 3, name: '重放' });
-    await transfer(w, replayed.employee.id, '2026-11-15', '调动地点');
-    await transfer(w, replayed.employee.id, '2026-12-10', '调动地点二');
-    await regularize(w, replayed.employee.id, '2026-11-01');
-    expect(await timeline(w, moved.employee.id)).toEqual(await timeline(w, replayed.employee.id));
-    const current = async (employeeId: string) =>
-      (await w.session.records(employeeId, '2026-11-20')).find((r) => r.isCurrent)?.kind;
-    expect(await current(moved.employee.id)).toBe(await current(replayed.employee.id));
-  });
+  // 对照用例（完整语义快照）见 AC-PB-13-reschedule-r2.test.ts
 });
 
 describe('PB-R13 转正改期：拒绝与并发', () => {

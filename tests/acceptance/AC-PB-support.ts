@@ -160,3 +160,43 @@ export async function probationView(w: PbWorld, view: string, query = '') {
   expect(response.status, await response.clone().text()).toBe(200);
   return ((await response.json()) as { items: Record<string, unknown>[] }).items;
 }
+
+/** 直接调动（改任职字段），If-Match = 员工 revision。 */
+export async function transferAt(
+  w: PbWorld,
+  employeeId: string,
+  effectiveDate: string,
+  fields: Record<string, unknown>,
+  customFields?: Record<string, unknown>,
+) {
+  return w.session.business(
+    employeeId,
+    { kind: 'transfer', mode: 'direct', effectiveDate, fields, ...(customFields ? { customFields } : {}) },
+    await employeeRevision(w, employeeId),
+  );
+}
+
+/** 单人直接转正，返回转正单 ID。 */
+export async function regularizeAt(w: PbWorld, employeeId: string, effectiveDate: string) {
+  const receipt = await regularizeOk(w, { mode: 'direct', effectiveDate }, [employeeId]);
+  expect(receipt.items[0]!.status, JSON.stringify(receipt.items[0])).toBe('succeeded');
+  return receipt.items[0]!.businessId!;
+}
+
+export async function businessRevision(w: PbWorld, businessId: string) {
+  const response = await w.session.request('GET', `/businesses/${businessId}`);
+  return ((await response.json()) as { revision: number }).revision;
+}
+
+/** PB-R13 转正改期（DEC-589）：If-Match = 转正单 revision。 */
+export async function rescheduleRegularization(
+  w: PbWorld,
+  businessId: string,
+  effectiveDate: string,
+  revision?: number,
+) {
+  return w.session.request('POST', `/businesses/${businessId}/regularization-date`, {
+    ifMatch: revision ?? (await businessRevision(w, businessId)),
+    body: { effectiveDate },
+  });
+}
