@@ -999,8 +999,15 @@
     {
       "idx": 142,
       "version": "7",
-      "when": 1792236298941,
-      "tag": "0142_offer_approval",
+      "when": 1792244541915,
+      "tag": "0142_be6a_intern_regularization",
+      "breakpoints": true
+    },
+    {
+      "idx": 143,
+      "version": "7",
+      "when": 1792244541916,
+      "tag": "0143_offer_approval",
       "breakpoints": true
     }
   ]

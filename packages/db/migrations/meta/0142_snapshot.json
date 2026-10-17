@@ -1,5 +1,5 @@
 {
-  "id": "2a848de7-b951-4efc-b419-24bb6d513cf1",
+  "id": "f964979e-41ae-4aad-900a-37c9460a12ff",
   "prevId": "dab3dc9a-22a5-4ff5-b412-cdbb17439ce4",
   "version": "7",
   "dialect": "postgresql",
@@ -11751,7 +11751,7 @@
         },
         "employment_payload_versions_change_type": {
           "name": "employment_payload_versions_change_type",
-          "value": "\"employment_payload_versions\".\"change_type\" IN ('position_adjustment')"
+          "value": "\"employment_payload_versions\".\"change_type\" IN ('position_adjustment', 'intern_regularization')"
         },
         "employment_payload_versions_version_positive": {
           "name": "employment_payload_versions_version_positive",
@@ -12461,7 +12461,7 @@
         },
         "employment_records_change_type": {
           "name": "employment_records_change_type",
-          "value": "\"employment_records\".\"change_type\" IN ('position_adjustment')"
+          "value": "\"employment_records\".\"change_type\" IN ('position_adjustment', 'intern_regularization')"
         },
         "employment_records_service_type": {
           "name": "employment_records_service_type",
@@ -23278,7 +23278,7 @@
         },
         "approval_instances_business_type": {
           "name": "approval_instances_business_type",
-          "value": "\"approval_instances\".\"business_type\" IN ('employment','personnel_change','contract','idp','talent_review','part_time',\n        'offer','offer_batch')"
+          "value": "\"approval_instances\".\"business_type\" IN ('employment','personnel_change','contract','idp','talent_review','part_time')"
         },
         "approval_instances_revision": {
           "name": "approval_instances_revision",
@@ -24133,7 +24133,7 @@
         },
         "approval_nodes_approver": {
           "name": "approval_nodes_approver",
-          "value": "\"approval_process_nodes\".\"approver_expression\" IN ('owner','direct_manager','latest_record_department_head','record_department_head',\n        'record_department_hrbp','record_first_level_org_head','idp_employee','idp_tutor',\n        'latest_record_department_hrbp','offer_department_head','initiator_direct_manager',\n        'approval_subject_first_level_org_head')"
+          "value": "\"approval_process_nodes\".\"approver_expression\" IN ('owner','direct_manager','latest_record_department_head','record_department_head',\n        'record_department_hrbp','record_first_level_org_head','idp_employee','idp_tutor',\n        'latest_record_department_hrbp')"
         },
         "approval_nodes_no_assignee": {
           "name": "approval_nodes_no_assignee",
@@ -24165,7 +24165,7 @@
         },
         "approval_nodes_approvers": {
           "name": "approval_nodes_approvers",
-          "value": "CASE WHEN \"approval_process_nodes\".\"node_type\" = 'countersign'\n        THEN \"approval_process_nodes\".\"approver_expression\" IS NULL AND cardinality(\"approval_process_nodes\".\"approver_expressions\") BETWEEN 1 AND 8\n          AND \"approval_process_nodes\".\"approver_expressions\" <@ ARRAY['owner','direct_manager','latest_record_department_head',\n            'record_department_head','record_department_hrbp','record_first_level_org_head',\n            'idp_employee','idp_tutor','latest_record_department_hrbp','offer_department_head',\n            'initiator_direct_manager','approval_subject_first_level_org_head']::text[]\n        ELSE \"approval_process_nodes\".\"approver_expression\" IS NOT NULL AND cardinality(\"approval_process_nodes\".\"approver_expressions\") = 0 END"
+          "value": "CASE WHEN \"approval_process_nodes\".\"node_type\" = 'countersign'\n        THEN \"approval_process_nodes\".\"approver_expression\" IS NULL AND cardinality(\"approval_process_nodes\".\"approver_expressions\") BETWEEN 1 AND 8\n          AND \"approval_process_nodes\".\"approver_expressions\" <@ ARRAY['owner','direct_manager','latest_record_department_head',\n            'record_department_head','record_department_hrbp','record_first_level_org_head',\n            'idp_employee','idp_tutor','latest_record_department_hrbp']::text[]\n        ELSE \"approval_process_nodes\".\"approver_expression\" IS NOT NULL AND cardinality(\"approval_process_nodes\".\"approver_expressions\") = 0 END"
         },
         "approval_nodes_exits": {
           "name": "approval_nodes_exits",
@@ -58234,7 +58234,7 @@
       "checkConstraints": {
         "employment_probation_versions_source": {
           "name": "employment_probation_versions_source",
-          "value": "\"employment_probation_versions\".\"source\" IN ('entry', 'adjust')"
+          "value": "\"employment_probation_versions\".\"source\" IN ('entry', 'adjust', 'intern_regularization')"
         },
         "employment_probation_versions_months": {
           "name": "employment_probation_versions_months",
@@ -58338,252 +58338,6 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.offer_batch_approval_items": {
-      "name": "offer_batch_approval_items",
-      "schema": "",
-      "columns": {
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "batch_id": {
-          "name": "batch_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "offer_id": {
-          "name": "offer_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "seq": {
-          "name": "seq",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {
-        "offer_batch_approval_items_offer": {
-          "name": "offer_batch_approval_items_offer",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "offer_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "offer_batch_approval_items_tenant_id_tenants_id_fk": {
-          "name": "offer_batch_approval_items_tenant_id_tenants_id_fk",
-          "tableFrom": "offer_batch_approval_items",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "offer_batch_approval_items_batch_fk": {
-          "name": "offer_batch_approval_items_batch_fk",
-          "tableFrom": "offer_batch_approval_items",
-          "tableTo": "offer_batch_approvals",
-          "columnsFrom": [
-            "tenant_id",
-            "batch_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "offer_batch_approval_items_offer_fk": {
-          "name": "offer_batch_approval_items_offer_fk",
-          "tableFrom": "offer_batch_approval_items",
-          "tableTo": "offers",
-          "columnsFrom": [
-            "tenant_id",
-            "offer_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "offer_batch_approval_items_tenant_id_batch_id_offer_id_pk": {
-          "name": "offer_batch_approval_items_tenant_id_batch_id_offer_id_pk",
-          "columns": [
-            "tenant_id",
-            "batch_id",
-            "offer_id"
-          ]
-        }
-      },
-      "uniqueConstraints": {
-        "offer_batch_approval_items_seq": {
-          "name": "offer_batch_approval_items_seq",
-          "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "batch_id",
-            "seq"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "offer_batch_approval_items_seq_positive": {
-          "name": "offer_batch_approval_items_seq_positive",
-          "value": "\"offer_batch_approval_items\".\"seq\" > 0"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.offer_batch_approvals": {
-      "name": "offer_batch_approvals",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "approval_subject_org_id": {
-          "name": "approval_subject_org_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "remark": {
-          "name": "remark",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'approving'"
-        },
-        "revision": {
-          "name": "revision",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 1
-        },
-        "created_by": {
-          "name": "created_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "offer_batch_approvals_tenant_id_tenants_id_fk": {
-          "name": "offer_batch_approvals_tenant_id_tenants_id_fk",
-          "tableFrom": "offer_batch_approvals",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "offer_batch_approvals_subject_org_fk": {
-          "name": "offer_batch_approvals_subject_org_fk",
-          "tableFrom": "offer_batch_approvals",
-          "tableTo": "org_objects",
-          "columnsFrom": [
-            "tenant_id",
-            "approval_subject_org_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "offer_batch_approvals_tenant_id": {
-          "name": "offer_batch_approvals_tenant_id",
-          "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "id"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "offer_batch_approvals_status": {
-          "name": "offer_batch_approvals_status",
-          "value": "\"offer_batch_approvals\".\"status\" IN ('approving', 'approved', 'disapproved', 'returned', 'withdrawn', 'cancelled')"
-        },
-        "offer_batch_approvals_revision": {
-          "name": "offer_batch_approvals_revision",
-          "value": "\"offer_batch_approvals\".\"revision\" > 0"
-        }
-      },
       "isRLSEnabled": false
     }
   },
