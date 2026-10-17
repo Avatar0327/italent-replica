@@ -98,9 +98,10 @@ export async function regularizeIntern(
 }
 
 /**
- * 只有在职实习生可直接转正（31 IN-R4：已结束实习的人只能重聘，由业务顺序校验 ACTIVE_EMPLOYMENT_REQUIRED 拒绝）：
- * 转正日当天及以前最后一条任职须为实习生、人员状态正式（实习生没有试用态；待入职不算在职）；
- * 已有审批中 / 审批通过未生效的实习转正申请时不能再直接转正，避免同一人两条转正。
+ * 只有在职实习生可直接转正：
+ * - 转正日及以后不能已有结束实习身份的记录（assertNothingEndsInternshipAfter），不只看插入点前驱；
+ * - 转正日当天及以前最后一条任职须为实习生、人员状态正式（实习生没有试用态；待入职不算在职）；
+ * - 已有审批中 / 审批通过未生效的实习转正申请时不能再直接转正，避免同一人两条转正。
  */
 async function assertRegularizableIntern(tx: Tx, ctx: EmploymentContext, employeeId: string, effectiveDate: string) {
   const [pending] = rowsOf<{ id: string }>(
@@ -118,11 +119,34 @@ async function assertRegularizableIntern(tx: Tx, ctx: EmploymentContext, employe
     throw new AppError('CONFLICT', '当前存在审批中的实习转正申请，无法直接转正', {
       reason: 'INTERN_REGULARIZATION_IN_PROGRESS',
     });
+  await assertNothingEndsInternshipAfter(tx, ctx, employeeId, businessDate(effectiveDate));
   const previous = await findPredecessor(tx, ctx.tenantId, employeeId, businessDate(effectiveDate));
   // 没有任职或已离职 / 退休：交给业务顺序校验，保持统一的拒绝码
   if (!previous || ['leave', 'retirement'].includes(previous.kind)) return;
   if (previous.fields.employType !== 'intern' || previous.employeeStatus !== EMPLOYEE_STATUS.regular)
     throw new AppError('CONFLICT', '只有在职实习生可以实习转正', { reason: 'NOT_INTERN' });
+}
+
+/**
+ * 插入点之后的时间轴（PR #386 第 1 轮 P2-1，同类位置统一在此）：插入点前驱仍是实习生，不代表此人现在还是实习生。
+ * 转正日及以后已有离职 / 退休（31 IN-R4：结束实习只能重聘，含当前已离职时回填离职前日期）→ ACTIVE_EMPLOYMENT_REQUIRED，
+ * 与业务顺序校验同码；已有实习转正（回填到已转正之前）→ NOT_INTERN。
+ */
+async function assertNothingEndsInternshipAfter(tx: Tx, ctx: EmploymentContext, employeeId: string, date: string) {
+  const [later] = rowsOf<{ kind: string }>(
+    await tx.execute(sql`
+      SELECT r.kind FROM employment_timeline t
+      JOIN employment_records r ON r.tenant_id=t.tenant_id AND r.id=t.record_id
+      WHERE t.tenant_id=${ctx.tenantId} AND t.employee_id=${employeeId}::uuid AND t.start_date>=${date}::date
+        AND r.kind IN ('leave','retirement','intern_regularization')
+      ORDER BY (r.kind='intern_regularization'), t.start_date, t.sort_order LIMIT 1`),
+  );
+  if (later?.kind === 'intern_regularization')
+    throw new AppError('CONFLICT', '只有在职实习生可以实习转正', { reason: 'NOT_INTERN' });
+  if (later)
+    throw new AppError('CONFLICT', '已结束实习的人员不能实习转正，请走重聘入职', {
+      reason: 'ACTIVE_EMPLOYMENT_REQUIRED',
+    });
 }
 
 /**

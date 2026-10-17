@@ -71,12 +71,15 @@ export function registerInternRoutes(router: Hono<TenantEnv>, deps: TenantRouteD
     );
     if (!candidate) return c.json({ matched: false });
     const show = await viewableIn(deps, ctx);
-    const { name, code, email, lastWorkDate, departmentId, ...fixed } = candidate;
-    const visible = { ...pick(show.employee, { name, code }), ...pick(show.personnel, { email }) };
-    return c.json({
-      matched: true,
-      candidate: { ...fixed, ...visible, ...pick(show.employment, { lastWorkDate, departmentId }) },
-    });
+    // 结束类型 endKind 是离职 / 退休那条任职的业务类型，按任职记录 kind 字段裁剪；employeeId 是重聘入职要用的标识
+    const { name, code, email, lastWorkDate, departmentId, endKind, ...fixed } = candidate;
+    const ended = (field: string) => show.employment(field === 'endKind' ? 'kind' : field);
+    const visible = {
+      ...pick(show.employee, { name, code }),
+      ...pick(show.personnel, { email }),
+      ...pick(ended, { endKind, lastWorkDate, departmentId }),
+    };
+    return c.json({ matched: true, candidate: { ...fixed, ...visible } });
   });
 }
 
@@ -132,13 +135,32 @@ function requireViewableInternFilters(filter: z.infer<typeof viewFilter>, show: 
   if (hidden) throw new AppError('FORBIDDEN', '筛选字段不可查看');
 }
 
-/** state / probation 是视图控制项、不在任职字段目录，通用投影会裁掉：先摘下，裁剪后放回（行可见即可见，同入职视图）。 */
+/**
+ * 试用期日期逐项按任职记录字段权限裁剪（PR #386 第 1 轮 DEC-406①）。三个编码尚未进字段目录（与 BE-3 统一存储时再登记），
+ * 所以有字段限制的人一律看不到（fail-closed），没有字段限制的人可见；一项都不可见时不出 probation 键。
+ */
+const PROBATION_FIELDS = { startDate: 'probationStartDate', months: 'probationMonths', endDate: 'probationEndDate' };
+
+function trimProbation(probation: InternViewItem['probation'], shown: (field: string) => boolean) {
+  const keys = Object.entries(PROBATION_FIELDS).filter(([, code]) => shown(code));
+  if (!keys.length) return {};
+  return {
+    probation: probation && Object.fromEntries(keys.map(([key]) => [key, probation[key as keyof typeof probation]])),
+  };
+}
+
+/** 业务状态 state 按任职记录 status 字段、姓名 / 工号按人员对象、试用期按上面逐项裁剪（同类位置统一在这里）。 */
 async function trimInternItems(deps: TenantRouteDeps, ctx: EmploymentContext, items: readonly InternViewItem[]) {
   const show = await viewableIn(deps, ctx);
   const records = items.map(({ name: _name, code: _code, state: _state, probation: _probation, ...record }) => record);
   const trimmed = (await trimEmploymentResponse(deps, ctx, records)) as object[];
   return trimmed.map((record, index) => {
     const { state, probation, name, code } = items[index]!;
-    return { ...record, state, probation, ...pick(show.employee, { code, name }) };
+    return {
+      ...record,
+      ...(show.employment('status') ? { state } : {}),
+      ...trimProbation(probation, show.employment),
+      ...pick(show.employee, { code, name }),
+    };
   });
 }

@@ -1008,8 +1008,12 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/inheritance.ts#snapshotForm': [
     'apps/api/src/modules/employment/fields.ts#PRESET_FIELDS',
   ],
+  'apps/api/src/modules/employment/intern-regularization.ts#assertNothingEndsInternshipAfter': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
   'apps/api/src/modules/employment/intern-regularization.ts#assertRegularizableIntern': [
     'apps/api/src/modules/employment/fields.ts#businessDate',
+    '#assertNothingEndsInternshipAfter',
     'apps/api/src/modules/employment/read-model.ts#findPredecessor',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS',
@@ -1077,8 +1081,10 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/intern-routes.ts#trimInternItems': [
     'apps/api/src/modules/employment/context.ts#trimEmploymentResponse',
     '#pick',
+    '#trimProbation',
     '#viewableIn',
   ],
+  'apps/api/src/modules/employment/intern-routes.ts#trimProbation': ['#PROBATION_FIELDS'],
   'apps/api/src/modules/employment/intern-routes.ts#viewableIn': [
     'apps/api/src/modules/employment/context.ts#EMPLOYEE_OBJECT',
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',

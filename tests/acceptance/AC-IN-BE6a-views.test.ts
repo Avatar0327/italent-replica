@@ -153,7 +153,8 @@ describe('AC-IN-BE6a-05 实习四视图的数据范围与字段裁剪（fail-clo
     const base = ['id', 'kind', 'effectiveDate'];
     const [hidden] = (await (await scoped(w, [w.org.id], base))('converted')).items;
     expect(hidden).toMatchObject({ kind: 'intern_regularization' });
-    expect(hidden).not.toHaveProperty('probation');
+    // 同类：业务状态按任职记录 status 字段裁剪
+    for (const field of ['probation', 'state']) expect(hidden).not.toHaveProperty(field);
     const [partial] = (await (await scoped(w, [w.org.id], [...base, 'probationStartDate']))('converted')).items;
     expect(partial!.probation).toEqual({ startDate: '2026-10-01' });
   });

@@ -28,8 +28,9 @@ export interface RehireCandidate {
 }
 
 /**
- * 当前人员信息（personnel 版本链最新一版）证件匹配、且任职时间轴最后一条是租户今天及以前生效的离职 / 退休。
- * 在职、未来才离职的人不算；取两条判断是否唯一。
+ * 当前人员信息（personnel 版本链最新一版）证件匹配、且租户今天有效的任职（今天及以前最后一条）是离职 / 退休。
+ * 先限定今天再取最后一条：未来的重聘待入职不挡当前已离职（PR #386 第 1 轮 P2-2）；在职、未来才离职的人不算。
+ * 取两条判断是否唯一。
  */
 export async function matchRehire(
   tx: Tx,
@@ -45,15 +46,15 @@ export async function matchRehire(
     FROM employment_employees e
     JOIN LATERAL (SELECT v.name, v.email, v.id_type, v.id_number FROM personnel_employee_versions v
       WHERE v.tenant_id=e.tenant_id AND v.employee_id=e.id ORDER BY v.revision DESC LIMIT 1) v ON true
-    JOIN LATERAL (SELECT t.record_id, t.start_date FROM employment_timeline t
-      WHERE t.tenant_id=e.tenant_id AND t.employee_id=e.id
-      ORDER BY t.start_date DESC, t.sort_order DESC LIMIT 1) last ON true
-    JOIN employment_records r ON r.tenant_id=e.tenant_id AND r.id=last.record_id
+    JOIN LATERAL (SELECT t.record_id FROM employment_timeline t
+      WHERE t.tenant_id=e.tenant_id AND t.employee_id=e.id AND t.start_date<=${today}::date
+      ORDER BY t.start_date DESC, t.sort_order DESC LIMIT 1) current ON true
+    JOIN employment_records r ON r.tenant_id=e.tenant_id AND r.id=current.record_id
     LEFT JOIN LATERAL (SELECT p.department_id FROM employment_payload_versions p
       WHERE p.tenant_id=r.tenant_id AND p.business_id=r.id AND p.is_record_snapshot
       ORDER BY p.version_no DESC LIMIT 1) snap ON true
     WHERE e.tenant_id=${tenantId} AND v.id_type=${input.idType} AND btrim(v.id_number)=${input.idNumber}
-      AND r.kind IN ('leave','retirement') AND last.start_date<=${today}::date
+      AND r.kind IN ('leave','retirement')
     ORDER BY e.id LIMIT 2
   `),
   );

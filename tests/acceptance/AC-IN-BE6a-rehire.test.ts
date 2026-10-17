@@ -105,6 +105,21 @@ describe('AC-IN-BE6a-06 按证件号的重聘判定', () => {
     expect((await w.match(body)).status).toBe(400);
   });
 
+  it('看全部但字段受限：带出项按三个对象的可见字段裁剪，结束类型按任职 kind（审查 P2-3 同类）', async () => {
+    const w = await internWorld(testDb().db, 'be6a-rehire-trim');
+    const number = idNumber();
+    const person = await leftPerson(w, '裁剪合成员工', number, 'trim.person@example.com');
+    const request = scopedRequest(w, [], ['code', 'name'], true);
+    const response = await request('POST', '/rehire-matches', { body: { idType: 'id_card', idNumber: number } });
+    expect(response.status, await response.clone().text()).toBe(200);
+    expect(((await response.json()) as MatchResult).candidate).toEqual({
+      employeeId: person.employee.id,
+      name: '裁剪合成员工',
+      code: person.employee.code,
+      rehire: false,
+    });
+  });
+
   it('非“看全部”范围（新建员工须看全部，DEC-121）→ 404，不判定、不带出', async () => {
     const w = await internWorld(testDb().db, 'be6a-rehire-scope');
     const number = idNumber();

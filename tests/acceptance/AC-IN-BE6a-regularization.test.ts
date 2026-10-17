@@ -133,6 +133,15 @@ describe('AC-IN-BE6a-02 直接实习转正：校验', () => {
       },
     ],
     [
+      '回填到已转正之前（审查 P2-1 同类）',
+      'NOT_INTERN',
+      async (w) => {
+        const id = await intern(w);
+        expect((await w.regularize(id, withProbation(w.org.id, { effectiveDate: '2026-10-20' }))).status).toBe(201);
+        return id;
+      },
+    ],
+    [
       '已离职（结束实习）的人不能再实习转正（IN-R4）',
       'ACTIVE_EMPLOYMENT_REQUIRED',
       async (w) => {

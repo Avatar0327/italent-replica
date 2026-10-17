@@ -135,12 +135,12 @@ function helpers(db: Db, session: EmploymentSession, orgId: string) {
 
 export const names = (items: readonly { name?: string }[]) => items.map((item) => item.name).sort();
 
-/** 按组织维度的数据范围（orgIds 为空 = 空范围）与可见字段发请求，用于范围 / 裁剪的反向用例。 */
-export function scopedRequest(w: InternWorld, orgIds: readonly string[], fields: readonly string[]) {
+/** 按组织维度的数据范围（orgIds 为空 = 空范围；all = 看全部）与可见字段发请求，用于范围 / 裁剪的反向用例。 */
+export function scopedRequest(w: InternWorld, orgIds: readonly string[], fields: readonly string[], all = false) {
   const authorize: Authorizer = () => true;
   const terms = orgIds.length ? [{ dimension: 'organization' as const, orgIds, personIds: [] }] : [];
   registerScopeProvider(authorize, {
-    scope: async () => ({ ...EMPTY_SCOPE, orgIds, hasDataPermission: orgIds.length > 0, terms }),
+    scope: async () => ({ ...EMPTY_SCOPE, orgIds, all, hasDataPermission: all || orgIds.length > 0, terms }),
     authorize: async () => true,
     fields: async () => new Set(fields),
   });

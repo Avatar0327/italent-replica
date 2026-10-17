@@ -215,7 +215,7 @@ export const DIGESTS: Digests = {
     requireViewableInternFilters: '24f248bf8141',
     'route:GET /interns': '30204c189bd9',
     'route:POST /interns/:id/regularize': '30a7f759a110',
-    'route:POST /rehire-matches': 'd8d968430dc8',
+    'route:POST /rehire-matches': '0f65f77ec626',
   },
   'apps/api/src/modules/employment/replay-guard.ts': {
     importWriteGuard: '8592297e10da',
