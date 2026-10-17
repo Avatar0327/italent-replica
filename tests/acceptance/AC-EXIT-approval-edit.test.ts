@@ -85,3 +85,16 @@ describe('AC-DM-22 #388 P1 审批编辑离职单须 DimissionEdit + adminInterve
     });
   }
 });
+
+describe('AC-DM-22 #388 P2-2 审批编辑的实际离岗日不晚于最后工作日（设计 §2.1）', () => {
+  it('审批编辑改成最后工作日次日 400 且逐项不变；等于最后工作日 200', async () => {
+    const { w, s, asApprover } = await scene('approval-edit-actual', 'separate');
+    const before = await stateSnapshot(w.db, w.tenant.id, s.subject.employeeId);
+    const late = await asApprover(denyButtons(), 'edit', { actualLeaveDate: '2026-10-21' });
+    expect(late.status).toBe(400);
+    expect(await late.text()).toContain('EXIT_ACTUAL_LEAVE_DATE_AFTER_LAST_WORK_DATE');
+    expect(await stateSnapshot(w.db, w.tenant.id, s.subject.employeeId)).toEqual(before);
+    const ok = await asApprover(denyButtons(), 'edit', { actualLeaveDate: LATER });
+    expect(ok.status, await ok.clone().text()).toBe(200);
+  });
+});

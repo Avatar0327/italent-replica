@@ -250,3 +250,52 @@ describe('AC-DM-22 POST exits/:id/submit | withdraw', () => {
     expect(response.status).toBe(404);
   });
 });
+
+describe('AC-DM-22 #388 P2-2 实际离岗日不晚于最后工作日（设计 §2.1）', () => {
+  const AFTER = '2026-10-21';
+  const reasonOf = async (response: Response) =>
+    ((await response.json()) as { error?: { details?: { reason?: string } } }).error?.details?.reason;
+
+  it('新建 / 批量 / PATCH：等于最后工作日通过，晚一天 400 且无写入', async () => {
+    const { w, employee } = await world('routes-actual-leave');
+    const before = await w.stateOf(employee.id);
+    const late = await create(w, employee.id, exitBody(LATER, 'application', { actualLeaveDate: AFTER }));
+    expect(late.status).toBe(400);
+    expect(await reasonOf(late)).toBe('EXIT_ACTUAL_LEAVE_DATE_AFTER_LAST_WORK_DATE');
+    const batchItem = async (actualLeaveDate: string) => ({
+      employeeId: employee.id,
+      revision: (await w.session.getEmployee(employee.id)).revision,
+      lastWorkDate: LATER,
+      exit: { exitTypeCode: 'voluntary', actualLeaveDate },
+    });
+    const batch = await w.session.request('POST', '/exits/batch', { body: { items: [await batchItem(AFTER)] } });
+    expect(batch.status).toBe(409);
+    expect(await batch.clone().text()).toContain('EXIT_ACTUAL_LEAVE_DATE_AFTER_LAST_WORK_DATE');
+    expect(await w.stateOf(employee.id)).toEqual(before);
+    const ok = await create(w, employee.id, exitBody(LATER, 'application', { actualLeaveDate: LATER }));
+    expect(ok.status, await ok.clone().text()).toBe(201);
+    const draft = (await ok.json()) as { id: string; revision: number };
+    const afterCreate = await w.stateOf(employee.id);
+    const patch = (actualLeaveDate: string) =>
+      w.session.request('PATCH', `/exits/${draft.id}`, { ifMatch: draft.revision, body: { actualLeaveDate } });
+    const rejected = await patch(AFTER);
+    expect(rejected.status).toBe(400);
+    expect(await reasonOf(rejected)).toBe('EXIT_ACTUAL_LEAVE_DATE_AFTER_LAST_WORK_DATE');
+    expect(await w.stateOf(employee.id)).toEqual(afterCreate);
+    expect((await patch('2026-10-19')).status).toBe(200);
+    const other = (await w.hired('批量正常')).employee.id;
+    const fine = await w.session.request('POST', '/exits/batch', {
+      body: {
+        items: [
+          {
+            employeeId: other,
+            revision: (await w.session.getEmployee(other)).revision,
+            lastWorkDate: LATER,
+            exit: { exitTypeCode: 'voluntary', actualLeaveDate: LATER },
+          },
+        ],
+      },
+    });
+    expect(fine.status, await fine.clone().text()).toBe(201);
+  });
+});
