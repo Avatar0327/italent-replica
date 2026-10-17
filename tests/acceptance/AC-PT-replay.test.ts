@@ -22,12 +22,7 @@ const database = useTestDb();
 const TODAY = '2026-10-01';
 const OBJECT = MODULE_OBJECTS.employmentRecord.code;
 
-interface Footprint {
-  readonly action: string;
-  readonly objectType: string;
-  readonly objectId: string;
-  readonly after?: unknown;
-}
+type Footprint = readonly [action: string, objectType: string, objectId: string];
 
 /** 一条命令：经 auditEmployment 写足迹（同事务审计 + outbox），再按 scope 复核；返回 undefined 或错误码。 */
 async function replay(w: PartTimeWorld, scope: ModuleScope, footprints: readonly Footprint[], body: unknown = {}) {
@@ -36,10 +31,7 @@ async function replay(w: PartTimeWorld, scope: ModuleScope, footprints: readonly
   const ctx: EmploymentContext = { ...base, objectCode: OBJECT, scope };
   try {
     await withTenant(w.db, w.tenantId, async (tx) => {
-      for (const step of footprints)
-        await auditEmployment(tx, ctx, step.action, step.objectType, step.objectId, null, step.after ?? {}, undefined, {
-          note: 'pt-replay',
-        });
+      for (const [action, type, id] of footprints) await auditEmployment(tx, ctx, action, type, id, null, {});
       await authorizeEmploymentResult(tx, ctx, authorize, base.commandId!, body);
     });
     return undefined;
@@ -48,16 +40,12 @@ async function replay(w: PartTimeWorld, scope: ModuleScope, footprints: readonly
   }
 }
 
-const record = (objectId: string, action = 'employment.part_time.edit') => ({
+const record = (id: string, action = 'employment.part_time.edit'): Footprint => [
   action,
-  objectType: PART_TIME_AUDIT_OBJECTS.record,
-  objectId,
-});
-const request = (objectId: string, action = 'part_time.request.update') => ({
-  action,
-  objectType: PART_TIME_AUDIT_OBJECTS.request,
-  objectId,
-});
+  PART_TIME_AUDIT_OBJECTS.record,
+  id,
+];
+const request = (id: string): Footprint => ['part_time.request.update', PART_TIME_AUDIT_OBJECTS.request, id];
 
 describe('AC-PT-replay §7.3A 统一结果复核链认得兼职足迹', () => {
   it('兼职记录足迹：兼职部门在范围内放行；只管主职部门的写入口径 404；范围为空 404', async () => {
@@ -128,37 +116,10 @@ describe('AC-PT-replay §7.3A 统一结果复核链认得兼职足迹', () => {
     const add = await w.seedRequest();
     const recordId = await w.seedPartTime();
     const ctx = w.context();
+    const scope = { employeeId: w.employeeId, orgId: w.partTimeOrg.id };
     await withTenant(w.db, w.tenantId, async (tx) => {
-      await auditEmployment(
-        tx,
-        ctx,
-        'part_time.request.create',
-        PART_TIME_AUDIT_OBJECTS.request,
-        add,
-        null,
-        {},
-        undefined,
-        undefined,
-        {
-          employeeId: w.employeeId,
-          orgId: w.partTimeOrg.id,
-        },
-      );
-      await auditEmployment(
-        tx,
-        ctx,
-        'employment.part_time.create',
-        PART_TIME_AUDIT_OBJECTS.record,
-        recordId,
-        null,
-        {},
-        undefined,
-        undefined,
-        {
-          employeeId: w.employeeId,
-          orgId: w.partTimeOrg.id,
-        },
-      );
+      for (const [action, type, id] of [record(recordId, 'employment.part_time.create'), request(add)])
+        await auditEmployment(tx, ctx, action, type, id, null, {}, undefined, undefined, scope);
     });
     const rows = await withTenant(w.db, w.tenantId, async (tx) =>
       rowsOf<{ object_id: string; employee_id: string | null; business_id: string | null; org: string | null }>(

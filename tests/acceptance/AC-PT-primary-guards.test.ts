@@ -122,11 +122,9 @@ describe('AC-FWD-11（守卫）/ PB-08 / PB-09：兼职不是向后更新与状�
   it('PB-08：编辑当前主职记录的地点 → 后续主职记录随之更新，兼职记录不动、不追加版本', async () => {
     const w = await partTimeWorld(database().db, 'pb08');
     const hire = await hireOf(w);
-    const placed = await w.request('PATCH', `/records/${hire.id}`, {
-      ifMatch: hire.revision,
-      body: { fields: { place: '原地点' } },
-    });
-    expect(placed.status, await placed.clone().text()).toBe(200);
+    const place = (id: string, revision: number, value: string) =>
+      w.request('PATCH', `/records/${id}`, { ifMatch: revision, body: { fields: { place: value } } });
+    expect((await place(hire.id, hire.revision, '原地点')).status).toBe(200);
     const later = await w.business(
       w.employeeId,
       { kind: 'transfer', mode: 'direct', effectiveDate: '2026-11-01' },
@@ -141,13 +139,9 @@ describe('AC-FWD-11（守卫）/ PB-08 / PB-09：兼职不是向后更新与状�
     const plan = JSON.stringify(await preview.json());
     expect(plan).toContain(later.id);
     expect(plan).not.toContain(partTime);
-    const edited = await w.request('PATCH', `/records/${current.id}`, {
-      ifMatch: current.revision,
-      body: { fields: { place: '新地点' } },
-    });
-    expect(edited.status, await edited.clone().text()).toBe(200);
+    expect((await place(current.id, current.revision, '新地点')).status).toBe(200);
     expect((await w.record(later.id)).fields.place).toBe('新地点');
-    expect(await partTimeVersions(w, partTime)).toEqual([{ version_no: 1, place: '原地点' }]);
+    expect(await versions(w, partTime)).toEqual(['1:原地点:3']);
   });
 
   it('PB-09：转正向后传播“正式”，兼职记录的人员状态快照不变、不追加版本', async () => {
@@ -176,35 +170,25 @@ describe('AC-FWD-11（守卫）/ PB-08 / PB-09：兼职不是向后更新与状�
         endDate: null,
       }),
     );
-    expect(await statusOf(w, partTime)).toEqual([2]);
+    expect(await versions(w, partTime)).toEqual(['1:2']);
     await w.business(
       employee.id,
       { kind: 'regularization', mode: 'direct', effectiveDate: '2026-10-01', fields: {} },
       (await w.getEmployee(employee.id)).revision,
     );
     expect((await w.record(later.id)) as unknown as { employeeStatus: number }).toMatchObject({ employeeStatus: 3 });
-    expect(await statusOf(w, partTime)).toEqual([2]);
+    expect(await versions(w, partTime)).toEqual(['1:2']);
   });
 });
 
-async function partTimeVersions(w: PartTimeWorld, id: string) {
-  return withTenant(w.db, w.tenantId, async (tx) =>
-    rowsOf<{ version_no: number; place: string | null }>(
-      await tx.execute(sql`SELECT version_no, place FROM employment_payload_versions
-        WHERE tenant_id=${w.tenantId} AND business_id=${id} ORDER BY version_no`),
-    ),
+/** 兼职底层业务的载荷版本（“版本号:地点:人员状态”）：不追加版本 = 只有第 1 版且值不变。 */
+const versions = (w: PartTimeWorld, id: string) =>
+  withTenant(w.db, w.tenantId, async (tx) =>
+    rowsOf<{ v: string }>(
+      await tx.execute(sql`SELECT concat_ws(':', version_no, place, employee_status) AS v
+        FROM employment_payload_versions WHERE tenant_id=${w.tenantId} AND business_id=${id} ORDER BY version_no`),
+    ).map((row) => row.v),
   );
-}
-
-async function statusOf(w: PartTimeWorld, id: string) {
-  const rows = await withTenant(w.db, w.tenantId, async (tx) =>
-    rowsOf<{ employee_status: number }>(
-      await tx.execute(sql`SELECT employee_status FROM employment_payload_versions
-        WHERE tenant_id=${w.tenantId} AND business_id=${id} ORDER BY version_no`),
-    ),
-  );
-  return rows.map((row) => Number(row.employee_status));
-}
 
 describe('PB-10：兼职（含未来开始）不进生效队列、HR 生效待办与调度到期集合（P-22 回归）', () => {
   it('pendingActivations / listActivationTodos / pendingActivationState 都看不到兼职底层业务', async () => {
@@ -213,12 +197,11 @@ describe('PB-10：兼职（含未来开始）不进生效队列、HR 生效待�
     const future = await w.seedPartTime({ startDate: '2026-12-01', endDate: '2027-03-31' });
     const ctx = w.context();
     await withTenant(w.db, w.tenantId, async (tx) => {
-      const queue = await pendingActivations(tx, ctx, w.employeeId);
-      expect(queue.map((item) => item.id)).not.toContain(current);
-      expect(queue.map((item) => item.id)).not.toContain(future);
-      const todos = await listActivationTodos(tx, w.tenantId, { limit: 200, offset: 0 }, undefined, ctx.timezone);
-      expect(JSON.stringify(todos)).not.toContain(current);
-      expect(JSON.stringify(todos)).not.toContain(future);
+      const queue = JSON.stringify(await pendingActivations(tx, ctx, w.employeeId));
+      const todos = JSON.stringify(
+        await listActivationTodos(tx, w.tenantId, { limit: 200, offset: 0 }, undefined, ctx.timezone),
+      );
+      for (const id of [current, future]) expect(`${queue}${todos}`).not.toContain(id);
       const [due] = rowsOf<{ n: number }>(
         await tx.execute(sql`SELECT count(*)::int AS n FROM employment_business_objects b
           JOIN LATERAL (SELECT * FROM employment_payload_versions p WHERE p.tenant_id=b.tenant_id
