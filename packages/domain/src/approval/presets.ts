@@ -7,6 +7,7 @@ import { CONTRACT_FIELDS } from '../contracts/rules.js';
  * 其余类型的节点结构尚未取证（TODO(需取证 #38)），预置为
  * “部门负责人审批 → HRBP 审核”，由租户调整后发布。
  */
+import { EXIT_FORM_FIELDS } from '../employment/exit.js';
 import { TRANSFER_FORM_FIELDS } from './transfer-view.js';
 import {
   APPROVAL_TYPES,
@@ -130,7 +131,8 @@ function genericPreset(type: GenericType): PresetProcess {
   };
 }
 
-const LEAVE_FORM = ['lastWorkDate', 'effectiveDate', 'departmentId', 'postId'];
+// R2-T03 §9：离职表单带出离职类型 / 原因 / 去向等扩展字段，审批人按字段权限看到（盲审照常）
+const LEAVE_FORM = ['lastWorkDate', 'effectiveDate', 'departmentId', 'postId', ...EXIT_FORM_FIELDS];
 
 export const PRESET_PROCESSES: readonly PresetProcess[] = [
   {

@@ -105,7 +105,8 @@ describe('AC-DM-33 B-86 PATCH exits/:id 五种状态', () => {
       const [audit] = await w.sqlRows<{ before: object; after: object }>(sql`SELECT before, after FROM audit_events
         WHERE tenant_id=${w.session.tenant.id} AND action='exit.request.update' AND object_id=${business.id}`);
       expect(audit, state).toMatchObject({
-        before: { exitTypeCode: 'voluntary', compensationAmount: null },
+        // 已生效的单是可信造数（无离职类型）
+        before: { exitTypeCode: state === 'effective' ? null : 'voluntary', compensationAmount: null },
         after: { exitTypeCode: 'involuntary', compensationAmount: '1200.50' },
       });
     }

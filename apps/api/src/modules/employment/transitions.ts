@@ -21,6 +21,7 @@ import {
 } from './activation-store.js';
 import { assertPredecessorsSettled, blockingPredecessors } from './linkage-dependency.js';
 import { auditEmployment } from './context.js';
+import { confirmExit } from './exit-confirmation.js';
 import { isExitKind, loadExitRequest, requireExitGate, saveAck } from './exit-gate.js';
 import { findPredecessor, loadEmploymentRecord } from './read-model.js';
 import { resolveEffectiveInheritance } from './inheritance.js';
@@ -144,6 +145,11 @@ export async function transitionEmployment(
     // R1-T07：只由审批中心在最后一个节点通过后同事务调用；审批通过 ≠ 生效，只有生效日已到才落地并向后更新。
     if (gatedExit?.row) assertExitHrFields(gatedExit.row);
     await appendEmploymentState(tx, ctx, business, 'approved');
+    // 离职 confirmed 阶段（§3.1）：最后节点通过当日写编制预减时点 R 与预减台账
+    if (gatedExit?.row) {
+      const { effectiveDate, mode } = business.payload;
+      await confirmExit(tx, ctx, { id: business.id, employeeId: business.employeeId, effectiveDate, mode });
+    }
     // §18.1 关口②：经门禁的离职只存 approved，不落地、不记生效尝试（B3-3 起调 activateExit）；
     // DEC-195②：其余业务迟到审批同样按实际执行日对齐联动。
     if (!gatedExit?.row) await approveEmploymentBusiness(tx, { ...ctx, deferredExecution: true }, business);

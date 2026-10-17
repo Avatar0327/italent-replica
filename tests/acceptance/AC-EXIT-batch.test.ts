@@ -4,6 +4,7 @@
  * 权限逐人：范围外 / 无按钮的人同样只作为逐条原因出现（B-64）。审批中心待办带 batchId，供前端按批次合并展示。
  */
 import './support/exit-gate-enforced.js';
+import { sql } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { denyButtons, gateWorld, type GateWorld } from './AC-EXIT-gate-support.js';
@@ -30,7 +31,11 @@ describe('AC-DM-18 POST exits/batch', () => {
     for (const business of body.items)
       expect(await w.exitRow(business.id)).toMatchObject({ batch_id: body.batchId, mode: 'application' });
     for (const id of people) expect((await w.stateOf(id)).instances).toHaveLength(1);
-    const todos = await w.session.request('GET', '/../approval/todos');
+    // 夹具兜底流程的待办落在异常管理员身上（发起人回避自审）
+    const [task] = await w.sqlRows<{ assignee: string }>(sql`SELECT t.assignee_user_id AS assignee
+      FROM approval_tasks t JOIN approval_instances i ON i.tenant_id=t.tenant_id AND i.id=t.instance_id
+      WHERE t.tenant_id=${w.session.tenant.id} AND i.business_id=${body.items[0]!.id}::uuid AND t.status='pending'`);
+    const todos = await w.asUser(task!.assignee)('GET', '/../approval/todos');
     expect(todos.status).toBe(200);
     const { items } = (await todos.json()) as { items: { batchId: string | null }[] };
     expect(items.filter((todo) => todo.batchId === body.batchId)).toHaveLength(2);

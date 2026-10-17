@@ -10,7 +10,11 @@ import { sql, systemSettings, tenantSettingOverrides, withPlatform, withTenant }
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { ADAPTERS } from '../../apps/api/src/modules/approval/adapters.js';
-import { createExitApplication, updateExitFields } from '../../apps/api/src/modules/employment/exit-application.js';
+import {
+  createExitApplication,
+  parseExitPatch,
+  updateExitFields,
+} from '../../apps/api/src/modules/employment/exit-application.js';
 import { transitionEmployment } from '../../apps/api/src/modules/employment/transitions.js';
 import { gateWorld } from './AC-EXIT-gate-support.js';
 
@@ -199,7 +203,7 @@ describe('AC-DM-28 B-65 自助 / 经理代发的字段子集与身份关系', ()
     expect(pending.status).toBe('in_review');
     const hrCtx = { ...(await ctx(w.session.user.id, staff.id)), expectedRevision: pending.revision };
     await withTenant(w.db, w.session.tenant.id, (tx) =>
-      updateExitFields(tx, hrCtx, created.id, { exitTypeCode: 'voluntary' }),
+      updateExitFields(tx, hrCtx, created.id, parseExitPatch({ exitTypeCode: 'voluntary' })),
     );
     expect(await w.exitRow(created.id)).toMatchObject({ exit_type_code: 'voluntary', initiator: 'self' });
     expect(await w.approve(created, '2026-10-06T02:00:00Z')).toMatchObject({ status: 'approved' });

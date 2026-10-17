@@ -21,7 +21,15 @@ import {
   scopedGuard,
   type ScopedCommandGuard,
 } from './context.js';
-import { isExitKind, requireExitPermission, type ExitGateTarget, type ExitOperation } from './exit-gate.js';
+import { EmploymentError } from './errors.js';
+import {
+  businessState,
+  isExitKind,
+  requireExitPermission,
+  type ExitGateTarget,
+  type ExitOperation,
+} from './exit-gate.js';
+import type { ExitOptions } from './exit-initiation.js';
 import { loadEmploymentBusiness } from './read-model.js';
 import type { BusinessKind, EmploymentBusinessPatch, EmploymentContext } from './types.js';
 
@@ -204,9 +212,80 @@ export function exitCommandGuard(
     before: async (tx) => {
       const scoped = await commandContext(tx, deps, ctx);
       await requireExitScope(tx, scoped, target, scopeTarget);
-      await requireExitPermission(scoped, operation, target);
+      // 编辑审批中的单另需审批管理员按钮：按命令事务内读到的当前状态判断（B-65a）
+      const state =
+        operation === 'update' && scopeTarget.businessId
+          ? await businessState(tx, scoped.tenantId, scopeTarget.businessId)
+          : undefined;
+      await requireExitPermission(scoped, operation, { ...target, ...(state ? { state } : {}) });
     },
   });
+}
+
+/** 批量离职一行（POST exits/batch）。 */
+export interface ExitBatchItem {
+  readonly employeeId: string;
+  readonly revision: number;
+  readonly lastWorkDate: string;
+  readonly exit?: ExitOptions;
+}
+
+/** 批量离职逐条原因：机读码 + 原拒绝的明细（已按查看人裁剪）。 */
+export interface ExitBatchFailure {
+  readonly index: number;
+  readonly employeeId: string;
+  readonly code: string;
+  readonly message: string;
+  readonly [detail: string]: unknown;
+}
+
+export function exitBatchFailure(index: number, employeeId: string, error: unknown): ExitBatchFailure | null {
+  if (!(error instanceof AppError) && !(error instanceof EmploymentError)) return null;
+  const details =
+    error.details && typeof error.details === 'object' && !Array.isArray(error.details) ? error.details : {};
+  return { ...details, index, employeeId, code: error.code, message: error.message };
+}
+
+export const exitBatchRejected = (failures: readonly ExitBatchFailure[]) =>
+  new AppError('CONFLICT', '批量离职中有人员未通过校验，整批未保存', {
+    reason: 'EXIT_BATCH_REJECTED',
+    items: [...failures].sort((a, b) => a.index - b.index),
+  });
+
+/**
+ * 批量离职的命令内复核（#199）：逐人按当前授权重过员工范围与离职申请权限链（同单人创建的 exitCommandGuard）。
+ * 某人不通过不在这里抛出，而是交给执行阶段与其余人的业务前置条件一起作为逐条原因（B-25 / B-64：整批 409、逐条原因）；
+ * 命中台账的重放不再执行，有人不通过就在 replayed 里整批 409，不返回缓存的成功回执。
+ */
+export function exitBatchGuard(deps: TenantRouteDeps, ctx: EmploymentContext, items: readonly ExitBatchItem[]) {
+  let failures: ExitBatchFailure[] = [];
+  const guard = scopedGuard({
+    before: async (tx) => {
+      const scoped = await commandContext(tx, deps, ctx);
+      failures = [];
+      for (const [index, item] of items.entries()) {
+        const target: ExitGateTarget = {
+          employeeId: item.employeeId,
+          initiation: 'hr',
+          mode: 'application',
+          lastWorkDate: item.lastWorkDate,
+          exit: item.exit ?? {},
+        };
+        try {
+          await requireExitScope(tx, scoped, target, {});
+          await requireExitPermission(scoped, 'create', target);
+        } catch (error) {
+          const failure = exitBatchFailure(index, item.employeeId, error);
+          if (!failure) throw error;
+          failures.push(failure);
+        }
+      }
+    },
+    replayed: async () => {
+      if (failures.length) throw exitBatchRejected(failures);
+    },
+  });
+  return Object.assign(guard, { failures: () => failures });
 }
 
 async function requireExitScope(
