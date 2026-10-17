@@ -1,8 +1,8 @@
 {
 "updated": "2026-10-14",
 "stats": {
-"merged": 304,
-"open": 5,
+"merged": 305,
+"open": 4,
 "dec": 567,
 "ev": "43/177"
 },
@@ -983,6 +983,10 @@
 }
 },
 "log": [
+[
+"10-17",
+"D2·R2·后补·F-211（#385）已合并 a4b15a0e"
+],
 [
 "10-16",
 "D2·R2·后补·F-211（#385）第 1 轮审查可合并，入队待合并"
@@ -6046,8 +6050,8 @@
 {
 "k": "F-211",
 "n": "测试夹具补租户上下文第三批：AC-EV-F092-panel-exit-pg、AC-TRF-163-required、AC-TR-template-delete-pg（P3，只改测试）",
-"s": "assigned",
-"note": "#385 第 1 轮 Codex Sol high 可合并（head b5a1c529，无新增后补）· 已入队待合并",
+"s": "done",
+"note": "#385 已合并（a4b15a0e，10-17 01:20Z，完整 CI 一次通过）· 第 1 轮 Sol high 可合并 · 无新增后补",
 "mod": "R2",
 "ms": "D2",
 "pr": 385
