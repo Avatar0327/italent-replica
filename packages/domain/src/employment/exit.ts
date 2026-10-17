@@ -74,6 +74,13 @@ export const EXIT_REQUEST_FIELDS = [
   'actualLeaveDate',
   'attachmentRefs',
 ] as const;
+
+/** 审批表单里的离职扩展字段（LEAVE_FORM 与审批适配器 exitMetadata 共用；附件引用不进表单，§9）。 */
+export const EXIT_FORM_FIELDS: readonly string[] = [
+  'reasonCode',
+  ...EXIT_REQUEST_FIELDS.filter((field) => field !== 'attachmentRefs'),
+];
+
 /** 系统写入、只可查看的离职字段：发起人账号、批次、编制预减时点、转交时机快照（§2.1）。 */
 export const EXIT_REQUEST_SYSTEM_FIELDS = [
   'initiatorUserId',

@@ -14,7 +14,7 @@ import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.j
 import { rowsOf } from '../../apps/api/src/modules/employment/record-store.js';
 import { activationWorld, type ActivationWorld } from './AC-TRF-activation-support.js';
 import { installExitSeeds } from './AC-EXIT-support.js';
-import { cmd, tenantApi } from './support/tenant-api.js';
+import { cmd, pinExitGate, tenantApi } from './support/tenant-api.js';
 
 const BASE = '/api/tenant/employment';
 
@@ -289,9 +289,42 @@ export async function gateWorld(db: Db, label: string, options: { today?: string
     return businessId;
   }
 
+  /** 以指定用户身份调用（authorize 缺省全放行；与 restricted 同一时钟）。 */
+  function asUser(userId: string, authorize?: Authorizer) {
+    const api = tenantApi(db, { ...(authorize ? { authorize } : {}), clock: () => new Date(nowIso) });
+    return (method: string, path: string, init: Parameters<typeof api.request>[2] = {}) =>
+      api.request(method, `${BASE}${path}`, { user: userId, tenant: w.session.tenant.id, ...init });
+  }
+
+  /**
+   * 已生效的离职（B3-3 前公开入口不能让离职落地）：临时切回可信造数端口办直接离职，再补写扩展行（与 seedExitBusiness 同口径）。
+   */
+  async function effectiveExit(employeeId: string, lastWorkDate = '2026-10-01') {
+    const previous = pinExitGate('seed');
+    let created: { id: string; revision: number; status: string };
+    try {
+      created = await createdLeave(employeeId, leaveBody(lastWorkDate, 'direct'));
+    } finally {
+      pinExitGate(previous);
+    }
+    expect(created.status).toBe('effective');
+    const t = w.session.tenant.id;
+    await withTenant(db, t, (tx) =>
+      tx.execute(sql`INSERT INTO exit_requests(tenant_id,business_id,employee_id,staff_id,initiator_user_id,mode,
+          initiator,duty_transfer_timing)
+        SELECT ${t},${created.id}::uuid,${employeeId}::uuid,c.id,${w.session.user.id}::uuid,'direct','hr',
+          'business_effective'
+        FROM employment_cycles c WHERE c.tenant_id=${t} AND c.employee_id=${employeeId}::uuid
+        ORDER BY c.entry_date DESC LIMIT 1`),
+    );
+    return created;
+  }
+
   return {
     ...w,
     as,
+    asUser,
+    effectiveExit,
     setNow,
     restricted,
     createLeave,

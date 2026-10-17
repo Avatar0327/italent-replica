@@ -22,7 +22,12 @@ interface Notice {
  * 不伪造接收人）；停用尚在进行（未提交、可能回滚）时照常登记（pending），发送意图不因临时的停用而丢失，
  * 外发时再按当时的状态处理。登记引用其成员行的外键不会等待：撤销只在接管完成后的最后一步才锁成员行。
  */
-async function insertNotice(tx: Tx, ctx: ApprovalContext, instance: InstanceRow, notice: Notice): Promise<void> {
+async function insertNotice(
+  tx: Tx,
+  ctx: ApprovalContext,
+  instance: Pick<InstanceRow, 'id'>,
+  notice: Notice,
+): Promise<void> {
   if (!(await isActiveAccount(tx, ctx.tenantId, notice.recipientUserId))) return;
   await tx.execute(sql`INSERT INTO approval_notifications
     (id,tenant_id,instance_id,task_id,recipient_user_id,kind,channel,template_code,command_id,created_at)
@@ -37,6 +42,25 @@ export async function notifyTodo(tx: Tx, ctx: ApprovalContext, instance: Instanc
     channel: 'inbox',
     templateCode: null,
     taskId,
+  });
+}
+
+/**
+ * 业务侧的站内消息（R2-T03 §5.5：申请被离职作废时通知发起人，模板 application_voided_by_exit 等）。
+ * 不挂任务；接收人无账号 / 已停用时不发，与节点消息同一口径。
+ */
+export async function notifyMessage(
+  tx: Tx,
+  ctx: ApprovalContext,
+  instance: Pick<InstanceRow, 'id'>,
+  message: { readonly recipientUserId: string; readonly templateCode: string },
+) {
+  await insertNotice(tx, ctx, instance, {
+    recipientUserId: message.recipientUserId,
+    kind: 'message',
+    channel: 'inbox',
+    templateCode: message.templateCode,
+    taskId: null,
   });
 }
 

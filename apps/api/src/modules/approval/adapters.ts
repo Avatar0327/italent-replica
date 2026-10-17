@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { linkageApproval } from '../transfer/linkage/approval.js';
 import type { ForeignField } from './foreign-fields.js';
 import { plannedEffectiveDate } from '../employment/timeline.js';
@@ -16,6 +17,7 @@ import { sql, type Tx } from '@italent/db';
 import {
   ageOn,
   APPROVAL_TYPES,
+  EXIT_FORM_FIELDS,
   approvalTypeOfBusiness,
   PART_TIME_ERRORS,
   PROFILE_FORM_FIELDS,
@@ -27,7 +29,10 @@ import {
 } from '@italent/domain';
 import { findCurrentRecord, findPredecessor, loadEmploymentBusiness } from '../employment/read-model.js';
 import { lockEmploymentEmployee } from '../employment/record-store.js';
+import { parseExitPatch, updateExitFields } from '../employment/exit-application.js';
 import { loadExitRequest } from '../employment/exit-gate.js';
+import { requireExitEditRights } from '../employment/replay-guard.js';
+import { authorizeInTransaction } from '../permission/module-access.js';
 import { transitionEmployment } from '../employment/transitions.js';
 import { PRESET_FIELD_NAMES, type PresetFields } from '../employment/types.js';
 import { updateEmploymentBusiness } from '../employment/write-service.js';
@@ -208,6 +213,45 @@ async function exitInitiation(tx: Tx, tenantId: string, businessId: string): Pro
   return row?.initiator ?? 'hr';
 }
 
+/** R2-T03 §9 exitMetadata：离职扩展行上的表单字段（离职类型 / 原因 / 去向等）；不是离职单返回空。 */
+async function exitMetadata(tx: Tx, tenantId: string, businessId: string): Promise<Row> {
+  const row = (await loadExitRequest(tx, tenantId, businessId)) as Row | undefined;
+  return row ? Object.fromEntries(EXIT_FORM_FIELDS.map((field) => [field, row[field] ?? null])) : {};
+}
+
+/** 变更前原值：前一条任职的字段、自定义字段与业务日期；离职扩展字段没有前一版（为空）。 */
+function originalsOf(before: Awaited<ReturnType<typeof findPredecessor>>, exit: Row): Row | null {
+  if (!before) return null;
+  return {
+    ...before.fields,
+    ...customValues(before.customFields),
+    effectiveDate: before.effectiveDate,
+    lastWorkDate: null,
+    ...Object.fromEntries(Object.keys(exit).map((field) => [field, null])),
+  };
+}
+
+/** 离职扩展字段的指纹（审批版本的一段）；不是离职单为空。 */
+const exitVersion = (exit: Row) =>
+  Object.keys(exit).length ? `exit-${createHash('sha256').update(JSON.stringify(exit)).digest('hex')}` : '';
+
+/**
+ * 审批中编辑离职单（独立编辑与编辑并同意都经适配器 edit）：与 HR 编辑同一复核入口 requireExitEditRights，
+ * 在本命令事务内按审批人当前授权判 DimissionEdit、审批管理员按钮与字段编辑权（设计 §4，DEC-455）。
+ * 审批人只操作本单，不走 HR 员工范围（DEC-057）；可信造数的离职（没有扩展行）保持 main 行为。
+ */
+async function requireExitApprovalEdit(tx: Tx, ctx: ApprovalContext, businessId: string, input: Readonly<Row>) {
+  const exit = await loadExitRequest(tx, ctx.tenantId, businessId);
+  if (!exit) return;
+  if (!ctx.exitEditAuthorize) throw new AppError('FORBIDDEN', '没有编辑离职单的权限');
+  const scoped = { ...ctx, authorize: authorizeInTransaction(ctx.exitEditAuthorize, tx) };
+  await requireExitEditRights(tx, scoped, { employeeId: exit.employeeId, payload: input }, businessId);
+}
+
+/** 离职扩展字段的“有值”口径：没有前一版可比，填了（非空、非 false）即本单内容，进变化字段与盲审。 */
+const filledExitFields = (exit: Row) =>
+  Object.keys(exit).filter((field) => exit[field] !== null && exit[field] !== false);
+
 /** 13 §6.3：类型字典与入口不是一一对应；以可信入口绑定匹配，不从类型序号拼接编码。 */
 async function transferProcessCode(tx: Tx, tenantId: string, businessId: string, formId: string) {
   const [entry] = rowsOf<{ processCode: string }>(
@@ -253,6 +297,18 @@ function employmentPatch(input: Readonly<Row>) {
   };
 }
 
+/**
+ * 审批编辑字段按归属拆开：离职扩展字段 / 其余任职字段。datesOnly = 任职部分只有业务日期（审批表单整张回传的日期），
+ * 这时日期随离职字段一起交给离职编辑判定（与当前值相同即放行），不另走一次任职修改。
+ */
+function splitExitEdit(input: Readonly<Row>) {
+  const exit: Row = {};
+  const employment: Row = {};
+  for (const [key, value] of Object.entries(input)) (EXIT_FORM_FIELDS.includes(key) ? exit : employment)[key] = value;
+  const datesOnly = Object.keys(employment).every((key) => key === 'effectiveDate' || key === 'lastWorkDate');
+  return { exit, employment, datesOnly };
+}
+
 /** 流程发起条件里的任职引用（调动前 / 本单）。 */
 const ref = (prefix: 'before' | 'record', source: Partial<PresetFields> | undefined) =>
   Object.fromEntries(
@@ -262,12 +318,13 @@ const ref = (prefix: 'before' | 'record', source: Partial<PresetFields> | undefi
     ]),
   );
 
+/** DEC-195③ / D-13：已生效的调动与离职在审批详情显示原定（§5.0A 计划生效日）与实际生效日。 */
 async function completedTransferDates(
   tx: Tx,
   ctx: ApprovalContext,
   business: NonNullable<Awaited<ReturnType<typeof loadEmploymentBusiness>>>,
 ): Promise<Row> {
-  if (business.kind !== 'transfer' || business.status !== 'effective') return {};
+  if (!['transfer', 'leave'].includes(business.kind) || business.status !== 'effective') return {};
   const planned = plannedEffectiveDate(ctx.tenantId, sql`${business.id}::uuid`, sql`${business.effectiveDate}::date`);
   const [dates] = rowsOf<Row>(await tx.execute(sql`SELECT ${planned}::text AS "originalEffectiveDate"`));
   return { ...dates, actualEffectiveDate: business.effectiveDate };
@@ -351,18 +408,13 @@ const employmentAdapter: BusinessAdapter = {
     const fields: PresetFields = { ...business.fields, employType: business.fields.employType ?? employType ?? null };
     const payload = await latestPayload(tx, ctx.tenantId, businessId);
     const linkage = await linkageApproval(tx, ctx.tenantId, businessId, business.kind); // R1-T10 P1-6
+    const exit = business.kind === 'leave' ? await exitMetadata(tx, ctx.tenantId, businessId) : {};
     // 清单 3：载荷、原值与变化检测覆盖预置字段、自定义字段、业务日期与最后工作日。
-    const originals: Row | null = before
-      ? {
-          ...before.fields,
-          ...customValues(before.customFields),
-          effectiveDate: before.effectiveDate,
-          lastWorkDate: null,
-        }
-      : null;
+    const originals = originalsOf(before, exit);
     const values: Row = {
       ...fields,
       ...(business.kind === 'transfer' ? await transferMetadata(tx, ctx.tenantId, businessId) : {}),
+      ...exit,
       ...linkage.values,
       ...customValues(business.customFields),
       effectiveDate: business.effectiveDate,
@@ -383,6 +435,7 @@ const employmentAdapter: BusinessAdapter = {
       'effectiveDate',
       ...(payload.lastWorkDate ? ['lastWorkDate'] : []),
       ...(values.withEstablishment === true ? ['withEstablishment'] : []),
+      ...filledExitFields(exit),
       ...linkage.changedFields,
     ];
     return {
@@ -413,7 +466,8 @@ const employmentAdapter: BusinessAdapter = {
       latestDepartmentId: current?.fields.departmentId ?? null,
       recordDepartmentId: fields.departmentId,
       ...(linkage.foreignFields.length ? { foreignFields: linkage.foreignFields } : {}),
-      version: linkage.version ? `${payload.version}:${linkage.version}` : payload.version,
+      // 离职扩展字段不在任职载荷里：其指纹也进审批版本，HR 改了离职类型等内容，旧审批页面随即失效（#388 P2-1）
+      version: [payload.version, linkage.version, exitVersion(exit)].filter(Boolean).join(':'),
       processCode,
     };
   },
@@ -425,10 +479,20 @@ const employmentAdapter: BusinessAdapter = {
     throw approvalError('CONFLICT', 'APPROVAL_RESUBMIT_VIA_BUSINESS', '任职申请请在申请单上修改后重新提交');
   },
   async edit(tx, ctx, id, input) {
-    const expectedRevision = await businessRevision(tx, ctx.tenantId, id);
-    await updateEmploymentBusiness(tx, { ...ctx, expectedRevision }, id, employmentPatch(input), {
-      approvalEdit: true,
-    });
+    await requireExitApprovalEdit(tx, ctx, id, input);
+    // R2-T03 §4B：离职扩展字段（如补齐离职类型）写离职扩展行，其余任职字段照旧；日期与当前值不同两条路都 400
+    const { exit, employment, datesOnly } = splitExitEdit(input);
+    if (!Object.keys(exit).length || !datesOnly) {
+      const expectedRevision = await businessRevision(tx, ctx.tenantId, id);
+      await updateEmploymentBusiness(tx, { ...ctx, expectedRevision }, id, employmentPatch(employment), {
+        approvalEdit: true,
+      });
+    }
+    if (Object.keys(exit).length) {
+      const expectedRevision = await businessRevision(tx, ctx.tenantId, id);
+      const patch = parseExitPatch(datesOnly ? { ...employment, ...exit } : exit);
+      await updateExitFields(tx, { ...ctx, expectedRevision }, id, patch, { approvalEdit: true });
+    }
   },
 };
 

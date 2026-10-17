@@ -63,6 +63,10 @@
       "reject",
       "resubmit"
     ],
+    "employment.exitMode": [
+      "application",
+      "direct"
+    ],
     "employment.importRowOperation": [
       "create",
       "edit"
@@ -276,6 +280,7 @@
           "runCommand / runWrite"
         ],
         "domain": [
+          "employment.exitMode",
           "transfer.initiator"
         ],
         "fieldsIn": [
@@ -339,6 +344,7 @@
           "runCommand / runWrite"
         ],
         "domain": [
+          "employment.exitMode",
           "transfer.initiator"
         ],
         "fieldsIn": [
@@ -10788,6 +10794,7 @@
           "runCommand / runWrite"
         ],
         "domain": [
+          "employment.exitMode",
           "transfer.initiator"
         ],
         "fieldsIn": [
@@ -10810,6 +10817,64 @@
         ],
         "precondition": [
           "transferBusinessContext"
+        ],
+        "scope": [
+          "employment scope",
+          "employment visibility",
+          "readContext（非配置对象）",
+          "scope.all",
+          "scopeSql"
+        ],
+        "scopePoint": [
+          "employment point"
+        ]
+      }
+    },
+    "PATCH /api/tenant/employment/exits/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "button": [
+          "buttonResource",
+          "object.button"
+        ],
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "domain": [
+          "employment.exitMode",
+          "transfer.initiator"
+        ],
+        "fieldsIn": [
+          "requireEmploymentWrite"
+        ],
+        "fieldsOut": [
+          "employment runWrite()"
+        ],
+        "guard": [
+          "employment.businessWrite"
+        ],
+        "object": [
+          "object.* 动作",
+          "readContext(object.*)"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:update"
         ],
         "scope": [
           "employment scope",
@@ -10849,6 +10914,7 @@
           "runCommand / runWrite"
         ],
         "domain": [
+          "employment.exitMode",
           "transfer.initiator"
         ],
         "fieldsIn": [
@@ -10906,6 +10972,7 @@
           "runCommand / runWrite"
         ],
         "domain": [
+          "employment.exitMode",
           "transfer.initiator"
         ],
         "fieldsIn": [
@@ -15004,6 +15071,7 @@
           "runCommand / runWrite"
         ],
         "domain": [
+          "employment.exitMode",
           "transfer.initiator"
         ],
         "fieldsIn": [
@@ -15115,6 +15183,7 @@
           "runCommand / runWrite"
         ],
         "domain": [
+          "employment.exitMode",
           "transfer.initiator"
         ],
         "fieldsIn": [
@@ -15178,6 +15247,7 @@
           "runCommand / runWrite"
         ],
         "domain": [
+          "employment.exitMode",
           "transfer.initiator"
         ],
         "fieldsIn": [
@@ -15241,6 +15311,7 @@
           "runCommand / runWrite"
         ],
         "domain": [
+          "employment.exitMode",
           "transfer.initiator"
         ],
         "fieldsIn": [
@@ -15388,6 +15459,7 @@
           "runCommand / runWrite"
         ],
         "domain": [
+          "employment.exitMode",
           "transfer.initiator"
         ],
         "fieldsIn": [
@@ -15489,6 +15561,7 @@
           "runCommand / runWrite"
         ],
         "domain": [
+          "employment.exitMode",
           "employment.importRowOperation",
           "transfer.initiator"
         ],
@@ -15623,6 +15696,175 @@
         ]
       }
     },
+    "POST /api/tenant/employment/exits/:id/submit": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "domain": [
+          "employment.exitMode",
+          "transfer.initiator"
+        ],
+        "fieldsIn": [
+          "requireEmploymentWrite",
+          "transfer write",
+          "writeFields"
+        ],
+        "fieldsOut": [
+          "employment runWrite()"
+        ],
+        "guard": [
+          "employment.businessWrite",
+          "employment.linkage"
+        ],
+        "object": [
+          "object.* 动作",
+          "readContext(object.*)"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:update"
+        ],
+        "scope": [
+          "creator scope",
+          "employment scope",
+          "employment visibility",
+          "readContext（非配置对象）",
+          "scope.all",
+          "scopeSql",
+          "visible()"
+        ],
+        "scopePoint": [
+          "employment point"
+        ]
+      }
+    },
+    "POST /api/tenant/employment/exits/:id/withdraw": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "domain": [
+          "employment.exitMode",
+          "transfer.initiator"
+        ],
+        "fieldsIn": [
+          "requireEmploymentWrite",
+          "transfer write",
+          "writeFields"
+        ],
+        "fieldsOut": [
+          "employment runWrite()"
+        ],
+        "guard": [
+          "employment.businessWrite",
+          "employment.linkage"
+        ],
+        "object": [
+          "object.* 动作",
+          "readContext(object.*)"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:update"
+        ],
+        "scope": [
+          "creator scope",
+          "employment scope",
+          "employment visibility",
+          "readContext（非配置对象）",
+          "scope.all",
+          "scopeSql",
+          "visible()"
+        ],
+        "scopePoint": [
+          "employment point"
+        ]
+      }
+    },
+    "POST /api/tenant/employment/exits/batch": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "command": [
+          "assertRevision",
+          "runCommand / runWrite"
+        ],
+        "domain": [
+          "employment.exitMode",
+          "transfer.initiator"
+        ],
+        "fieldsIn": [
+          "requireEmploymentWrite",
+          "transfer write"
+        ],
+        "fieldsOut": [
+          "employment runWrite()"
+        ],
+        "guard": [
+          "employment.linkage"
+        ],
+        "object": [
+          "object.* 动作",
+          "readContext(object.*)"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:create"
+        ],
+        "scope": [
+          "employment scope",
+          "employment visibility"
+        ],
+        "scopePoint": [
+          "employment point"
+        ]
+      }
+    },
     "POST /api/tenant/employment/exits/dictionaries/:dict": {
       "edge": {
         "anonymous": {
@@ -15656,6 +15898,95 @@
         ],
         "objectOp": [
           "TenantBase.EmploymentSettings:create"
+        ]
+      }
+    },
+    "POST /api/tenant/employment/exits/employees/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "domain": [
+          "employment.exitMode",
+          "transfer.initiator"
+        ],
+        "fieldsIn": [
+          "requireEmploymentWrite"
+        ],
+        "fieldsOut": [
+          "employment runWrite()"
+        ],
+        "guard": [
+          "employment.linkage"
+        ],
+        "object": [
+          "object.* 动作",
+          "readContext(object.*)"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:create"
+        ],
+        "scope": [
+          "employment scope",
+          "employment visibility",
+          "scope.all",
+          "scopeSql"
+        ],
+        "scopePoint": [
+          "employment point"
+        ]
+      }
+    },
+    "POST /api/tenant/employment/exits/employees/:id/preview": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "button": [
+          "buttonResource",
+          "object.button"
+        ],
+        "object": [
+          "object.* 动作",
+          "readContext(object.*)"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:view"
+        ],
+        "scope": [
+          "employment visibility",
+          "readContext（非配置对象）",
+          "scope.all",
+          "scopeSql"
         ]
       }
     },
@@ -15900,6 +16231,7 @@
           "runCommand / runWrite"
         ],
         "domain": [
+          "employment.exitMode",
           "transfer.initiator"
         ],
         "fieldsIn": [
@@ -16036,6 +16368,7 @@
           "runCommand / runWrite"
         ],
         "domain": [
+          "employment.exitMode",
           "transfer.initiator"
         ],
         "fieldsIn": [
@@ -16092,6 +16425,7 @@
           "runCommand / runWrite"
         ],
         "domain": [
+          "employment.exitMode",
           "transfer.initiator"
         ],
         "fieldsIn": [
@@ -16186,6 +16520,7 @@
           "runCommand / runWrite"
         ],
         "domain": [
+          "employment.exitMode",
           "transfer.initiator"
         ],
         "fieldsIn": [
@@ -16299,6 +16634,7 @@
           "runCommand / runWrite"
         ],
         "domain": [
+          "employment.exitMode",
           "transfer.initiator"
         ],
         "fieldsIn": [

@@ -348,6 +348,8 @@ const TODO_KEYS = [
   'nodeName',
   'isExceptionAdmin',
   'origin',
+  // R2-T03 §9 合并待办：批量离职申请的批次号（其他待办为空）
+  'batchId',
   'createdAt',
 ];
 const NOTIFICATION_KEYS = ['id', 'instanceId', 'taskId', 'kind', 'channel', 'template', 'status', 'createdAt'];
