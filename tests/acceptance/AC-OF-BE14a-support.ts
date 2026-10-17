@@ -105,6 +105,23 @@ export async function offerWorld(db: Db, label: string, authorize?: Authorizer) 
       tx.execute(sql`UPDATE offers SET status = 'invalid', invalid_reason_code = 'candidate_gave_up',
         invalid_at = now() WHERE id = ${id}`),
     );
+  /** 转移状态（BE-14a2）：默认走行主按钮入口，via='toolbar' 走顶部工具栏入口。 */
+  const transfer = (
+    offer: Pick<OfferBody, 'id' | 'revision'>,
+    body: Record<string, unknown>,
+    via: 'row' | 'toolbar' = 'row',
+  ) =>
+    request('POST', `/${offer.id}/${via === 'row' ? 'transfer' : 'toolbar-transfer'}`, {
+      ifMatch: offer.revision,
+      body,
+    });
+  async function moved(offer: Pick<OfferBody, 'id' | 'revision'>, body: Record<string, unknown>): Promise<OfferBody> {
+    const response = await transfer(offer, body);
+    expect(response.status, await response.clone().text()).toBe(200);
+    return (await response.json()) as OfferBody;
+  }
+  const invalidate = (offer: Pick<OfferBody, 'id' | 'revision'>, body: Record<string, unknown>) =>
+    request('POST', `/${offer.id}/invalidate`, { ifMatch: offer.revision, body });
   async function list(query: string) {
     const response = await request('GET', `?${query}`);
     expect(response.status, await response.clone().text()).toBe(200);
@@ -128,6 +145,9 @@ export async function offerWorld(db: Db, label: string, authorize?: Authorizer) 
     get,
     force,
     invalidated,
+    transfer,
+    moved,
+    invalidate,
     list,
   };
 }
@@ -141,7 +161,12 @@ export const errorOf = async (response: Response) =>
  * 第 2 轮（审查 P2-01 / P2-02）：真实权限授权器下的普通成员。Offer 对象有增删改，字段全可看，deniedEdit 里的字段不可编辑；
  * 职位对象可看；数据范围只有录用部门（部门 A）。另建部门 B 及其下的职位（范围外），供引用校验用例使用。
  */
-export async function offerRealWorld(db: Db, label: string, deniedEdit: readonly string[] = []) {
+export async function offerRealWorld(
+  db: Db,
+  label: string,
+  deniedEdit: readonly string[] = [],
+  deniedButtons: readonly string[] = [],
+) {
   const w = await offerWorld(db, label);
   const api = tenantApi(db, { clock: () => OF_NOW, authorize: undefined });
   const adminRecord = await bootstrapTenantAdmin(db, { tenantId: w.tenant.id, userId: w.user.id }, cmd());
@@ -155,24 +180,32 @@ export async function offerRealWorld(db: Db, label: string, deniedEdit: readonly
   };
   const member = await addMember(seed, 'OfferHR');
   const profile = await createProfile(seed, `offer-${uniqueSuffix()}`);
-  const permit = async (definition: ObjectDefinition, deniedEdit: readonly string[]) => {
+  const permit = async (
+    definition: ObjectDefinition,
+    deniedEdit: readonly string[],
+    deniedButtons: readonly string[] = [],
+    ops: Partial<Record<'create' | 'update' | 'delete', boolean>> = {},
+  ) => {
     const response = await setObjectPermission(
       seed,
       profile,
       {
-        dataOperations: { create: true, update: true, delete: true },
+        dataOperations: { create: true, update: true, delete: true, ...ops },
         fields: definition.fields.map((f) => ({
           fieldCode: f.code,
           view: true,
           edit: !f.system && !deniedEdit.includes(f.code),
         })),
-        buttons: definition.buttons.map((b) => ({ buttonCode: b.code, level: b.level })),
+        buttons: definition.buttons
+          .filter((b) => !deniedButtons.includes(b.code))
+          .map((b) => ({ buttonCode: b.code, level: b.level })),
       },
       definition.code,
     );
     expect(response.status, await response.clone().text()).toBe(200);
   };
-  for (const definition of [MODULE_OBJECTS.offer, MODULE_OBJECTS.jobPosition]) await permit(definition, deniedEdit);
+  await permit(MODULE_OBJECTS.offer, deniedEdit, deniedButtons);
+  await permit(MODULE_OBJECTS.jobPosition, deniedEdit);
   await makeGrantable(seed, [profile.id]);
   expect((await grant(seed, member.id, profile.id)).status).toBe(201);
   const seeAllRevisions = new Map<string, number>();
@@ -231,6 +264,16 @@ export async function offerRealWorld(db: Db, label: string, deniedEdit: readonly
     traces,
     /** 改身份上 Offer 字段的编辑权（撤权后同键重放用）。 */
     denyEdit: (fields: readonly string[]) => permit(MODULE_OBJECTS.offer, fields),
+    /** 改身份上 Offer 的按钮权限（BE-14a2：转移状态两项按钮各自独立）。 */
+    denyButtons: (buttons: readonly string[]) => permit(MODULE_OBJECTS.offer, deniedEdit, buttons),
+    /** 去掉 Offer 对象的编辑开关（按钮依赖编辑开关，一并失效）。 */
+    dropUpdate: () => permit(MODULE_OBJECTS.offer, deniedEdit, deniedButtons, { update: false }),
+    /** 改 Offer 对象的数据操作开关（第 2 轮：行操作按真实授权器裁剪的正反例）。 */
+    setOps: (ops: Partial<Record<'create' | 'update' | 'delete', boolean>>) =>
+      permit(MODULE_OBJECTS.offer, deniedEdit, deniedButtons, ops),
+    /** 租户管理员（system_admin）走真实授权器：不越过业务对象权限（DEC-503）。 */
+    adminRequest: (method: string, path: string, options: RequestOptions = {}) =>
+      api.request(method, `/api/tenant/offers${path}`, { ...options, ...seed.asAdmin }),
     /**
      * 身份上给某对象单独授“看全部”（第 3 轮：Offer 看全部而 Employee 只有部门 A，人员引用须按 Employee 自己的范围）。
      */

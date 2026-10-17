@@ -235,8 +235,8 @@ describe('BE-14a 拒绝 / 失效原因字典（A37）', () => {
   });
 });
 
-describe('BE-14a 转移状态两项按钮权限（只登记，入口随 C2）', () => {
-  it('Offer 对象登记 Offer.StatusTransfer@list 与 OfferLineOpStatusTransfer@list_row，标准 HR 身份都授予；本段无转移入口', async () => {
+describe('BE-14a 转移状态两项按钮权限（入口与按钮判定见 AC-OF-01-BE14a2-send-access）', () => {
+  it('Offer 对象登记 Offer.StatusTransfer@list 与 OfferLineOpStatusTransfer@list_row，标准 HR 身份都授予', () => {
     expect(MODULE_OBJECTS.offer.buttons).toEqual(
       expect.arrayContaining([
         { code: 'Offer.StatusTransfer', level: 'list', requires: 'update' },
@@ -249,12 +249,6 @@ describe('BE-14a 转移状态两项按钮权限（只登记，入口随 C2）', 
       expect(offer.buttons.map((b) => `${b.buttonCode}@${b.level}`)).toEqual(
         expect.arrayContaining(['Offer.StatusTransfer@list', 'OfferLineOpStatusTransfer@list_row']),
       );
-    }
-    const w = await offerWorld(testDb().db, 'no-transfer');
-    const offer = await w.social();
-    for (const path of ['transfer', 'toolbar-transfer', 'invalidate']) {
-      const response = await w.request('POST', `/${offer.id}/${path}`, { ifMatch: 1, body: {} });
-      expect(response.status).toBe(404);
     }
   });
 });
