@@ -250,4 +250,7 @@ export const OFFERS: RequiredTable = {
     'statusTransfer',
   ),
   [`POST ${BASE}/:id/invalidate`]: offerWrite('POST', '/:id/invalidate', 'update', undefined, TRANSITIONS),
+  // BE-14b2：立即同步 / 关联在职实习生，都按对象编辑开关（runOfferWrite → objectContext），Offer 自己的数据范围裁剪
+  [`POST ${BASE}/:id/sync`]: offerWrite('POST', '/:id/sync', 'update', undefined, TRANSITIONS),
+  [`POST ${BASE}/:id/link-employee`]: offerWrite('POST', '/:id/link-employee', 'update', undefined, TRANSITIONS),
 };
