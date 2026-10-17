@@ -2,7 +2,7 @@
 "updated": "2026-10-14",
 "stats": {
 "merged": 305,
-"open": 11,
+"open": 12,
 "dec": 578,
 "ev": "43/177"
 },
@@ -983,6 +983,10 @@
 }
 },
 "log": [
+[
+"10-17",
+"FE2b 开 Draft PR #393"
+],
 [
 "10-17",
 "DEC-578：BE-8b 改名“交接事项与离职自动加黑”，不再做终止在途，作废在途申请归 BE-4h；F-213 开 Draft PR #392"
@@ -5619,7 +5623,8 @@
 "kind": "前端",
 "mod": "R2",
 "ms": "D2",
-"note": "开发中（云端会话 session_01B9kUz7NpamSXQDrwCeJBeb，尚无 PR）· Claude Opus High 按前端规则 / Codex Sol high 审 · 分支 claude/FE2b-exit-dictionaries · 前序 B1a（#347）已合 · DEC-577"
+"note": "开发中（Draft PR #393，分支 claude/inspiring-gates-x7wfm6，+435，云端会话 session_01B9kUz7NpamSXQDrwCeJBeb）· Claude Opus High 按前端规则 / Codex Sol high 审 · 约定分支名 claude/FE2b-exit-dictionaries 未用，以云端会话自动名为准 · 前序 B1a（#347）已合 · DEC-577",
+"pr": 393
 },
 {
 "k": "BE-8a",
