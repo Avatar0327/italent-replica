@@ -7,12 +7,23 @@ import type { Graph } from '../../../evidence-graph.js';
 export const GRAPH: Graph = {
   'packages/domain/src/offer/rules.ts#OFFER_FIELDS': ['#OFFER_FIELD_SECTIONS'],
   'packages/domain/src/offer/rules.ts#missingOfferFields': ['#blank', '#offerRequiredFields'],
+  'packages/domain/src/offer/rules.ts#offerInvalidatable': ['#effectiveOfferType'],
   'packages/domain/src/offer/rules.ts#offerRequiredFields': [
     '#INTERN_REQUIRED',
     '#SOCIAL_REQUIRED',
     '#effectiveOfferType',
   ],
+  'packages/domain/src/offer/rules.ts#offerTransferTargets': ['#OFFER_TRANSITIONS', '#transitionGuard'],
+  'packages/domain/src/offer/rules.ts#planOfferInvalidation': ['#blank', '#offerInvalidatable', '#reject'],
+  'packages/domain/src/offer/rules.ts#planOfferSend': ['#effectiveOfferType', '#reject'],
+  'packages/domain/src/offer/rules.ts#planOfferTransition': ['#blank', '#reject', '#transitionGuard'],
+  'packages/domain/src/offer/rules.ts#transitionGuard': ['#OFFER_TRANSITIONS'],
+  'packages/domain/src/offer/rules.ts#validOfferSendApprovalSetting': ['#OFFER_TYPES'],
   'packages/domain/src/offer/views.ts#OFFER_VIEWS': ['#LABEL_FIELDS', '#SOURCES'],
   'packages/domain/src/offer/views.ts#SOURCES': ['#DATE', '#w'],
+  'packages/domain/src/offer/views.ts#offerRowActions': [
+    'packages/domain/src/offer/rules.ts#offerEditable',
+    'packages/domain/src/offer/rules.ts#offerInvalidatable',
+  ],
   'packages/domain/src/offer/views.ts#offerView': ['#OFFER_VIEWS'],
 };
