@@ -242,13 +242,15 @@ export async function isOnTimeline(tx: Tx, tenantId: string, recordId: string): 
   return !!row?.present;
 }
 
-/** 被离职摘下的任职记录：由 future_transfer_detached 台账行认定（台账只追加，挂回在 B4）。 */
+/**
+ * 被离职摘下的任职记录：与覆盖校验触发器共用数据库函数 employment_record_detached（迁移 0143）——同员工、同周期、
+ * 真实离职之后的调动，且有 future_transfer_detached 台账（台账只追加，挂回在 B4），当前不在时间轴上。
+ */
 export async function isDetachedRecord(tx: Tx, tenantId: string, recordId: string): Promise<boolean> {
   const [row] = rowsOf<{ detached: boolean }>(
-    await tx.execute(sql`SELECT EXISTS (SELECT 1 FROM exit_effects WHERE tenant_id=${tenantId}
-      AND kind='future_transfer_detached' AND target_id=${recordId}::uuid) AS detached`),
+    await tx.execute(sql`SELECT employment_record_detached(${tenantId}::uuid, ${recordId}::uuid) AS detached`),
   );
-  return !!row?.detached && !(await isOnTimeline(tx, tenantId, recordId));
+  return !!row?.detached;
 }
 
 export interface DetachedTransferWindow {

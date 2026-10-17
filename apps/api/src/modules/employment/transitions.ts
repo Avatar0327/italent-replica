@@ -24,7 +24,7 @@ import { assertPredecessorsSettled, blockingPredecessors } from './linkage-depen
 import { auditEmployment } from './context.js';
 import { confirmExit } from './exit-confirmation.js';
 import { isExitKind, loadExitRequest, requireExitGate, saveAck } from './exit-gate.js';
-import { findPredecessor, loadEmploymentRecord } from './read-model.js';
+import { findPredecessor, loadEmploymentRecord, snapshotFields } from './read-model.js';
 import { resolveEffectiveInheritance } from './inheritance.js';
 import {
   bumpEmploymentBusiness,
@@ -348,7 +348,19 @@ async function deleteEmploymentBusiness(
   return previous;
 }
 
-/** 删除已生效记录的审计（DEC-019）；被离职摘下的未来调动没有时间轴快照，只记底表行。 */
+/**
+ * 被离职摘下的未来调动不在时间轴上，读不到记录视图：审计前镜像独立于时间轴，取最新记录快照版本（编辑后的值），
+ * 版本 ID 与内容同出一行；还没有任何快照时才回退到底表（离职设计 §5.8，#410 第 1 轮 P2-3）。
+ */
+async function detachedSnapshot(tx: Tx, ctx: EmploymentContext, businessId: string) {
+  const [row] = rowsOf<Record<string, unknown>>(
+    await tx.execute(sql`SELECT * FROM employment_payload_versions WHERE tenant_id=${ctx.tenantId}
+      AND business_id=${businessId}::uuid AND is_record_snapshot ORDER BY version_no DESC LIMIT 1`),
+  );
+  return row;
+}
+
+/** 删除已生效记录的审计（DEC-019）。 */
 async function auditDeletedRecord(
   tx: Tx,
   ctx: EmploymentContext,
@@ -356,6 +368,8 @@ async function auditDeletedRecord(
   raw: Record<string, unknown>,
   record: EmploymentRecord | null,
 ) {
+  const snapshot = record ? undefined : await detachedSnapshot(tx, ctx, business.id);
+  const mirrored = record ?? (snapshot ? snapshotRecord(snapshot) : null);
   await auditEmployment(
     tx,
     ctx,
@@ -364,19 +378,30 @@ async function auditDeletedRecord(
     business.id,
     {
       ...deletionSnapshot(raw),
-      payloadVersionId: business.payload.id,
-      ...(record
+      payloadVersionId: snapshot ? String(snapshot.id) : business.payload.id,
+      ...(mirrored
         ? {
-            ...record.fields,
+            ...mirrored.fields,
             // 删除前镜像取最新记录快照上的状态（DEC-216；底表行只是首个版本，PR #93 首审 P2-3）
-            employeeStatus: record.employeeStatus,
-            entryStatus: record.entryStatus,
-            ...Object.fromEntries(Object.entries(record.customFields).map(([key, value]) => [`custom:${key}`, value])),
+            employeeStatus: mirrored.employeeStatus,
+            entryStatus: mirrored.entryStatus,
+            ...Object.fromEntries(
+              Object.entries(mirrored.customFields).map(([key, value]) => [`custom:${key}`, value]),
+            ),
           }
         : {}),
     },
     null,
   );
+}
+
+function snapshotRecord(row: Record<string, unknown>) {
+  return {
+    fields: snapshotFields(row),
+    customFields: (row.custom_fields ?? {}) as Readonly<Record<string, unknown>>,
+    employeeStatus: Number(row.employee_status),
+    entryStatus: row.entry_status === null ? null : Number(row.entry_status),
+  };
 }
 
 function deletionSnapshot(raw: Record<string, unknown>): Record<string, unknown> {

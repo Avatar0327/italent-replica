@@ -5,7 +5,7 @@ import { employmentDepartmentDisable } from '../org/employment-validity.js';
 import { bumpEmploymentBusiness, lockEmploymentBusiness } from './record-store.js';
 import { loadEmploymentRecord } from './read-model.js';
 import { applyTransferLinkage } from './transfer-linkage.js';
-import { isOnTimeline } from './timeline.js';
+import { isDetachedRecord } from './timeline.js';
 /**
  * 定时生效的失败判定（DEC-052），全部集中在此：先按生效日校验调入部门 / 职位，再经编制单一判定入口（DEC-145：
  * 保存与到期使用真实任职占编投影），然后在保存点内经 activate 端口落地；
@@ -167,7 +167,7 @@ export async function activateWithJudgement(
       if (item.materialized && !item.reminderOnly)
         await assertPredecessorsSettled(savepoint, ctx, item.employeeId, item.id);
       // §5.8：已落地未来调动被离职摘下（不在时间轴上）后到期，不执行联动、不复查编制，记失败交 HR（DEC-052）
-      if (item.materialized && item.kind === 'transfer' && !(await isOnTimeline(savepoint, ctx.tenantId, item.id)))
+      if (item.materialized && item.kind === 'transfer' && (await isDetachedRecord(savepoint, ctx.tenantId, item.id)))
         throw new AppError('CONFLICT', '员工已在调动生效日前离职', {
           activationFailure: { reason: 'EMPLOYEE_DEPARTED_BEFORE_TRANSFER', detail: { businessId: item.id } },
         });

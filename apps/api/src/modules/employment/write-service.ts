@@ -628,7 +628,7 @@ interface MaterializeOptions {
 
 /**
  * DEC-161：审批通过后仍可能新增停用排期，落地前按 DEC-150 重查整个时段；拒绝后由生效端口记失败与 HR 待办、按 DEC-112
- * 挂起后序，不能截断任职或改期绕过。离职 / 退休记录不占用部门（离职设计 R-O6）：跳过部门可用性，引用存在性按最后一个在职日校验。
+ * 挂起后序，不能截断任职或改期绕过。离职 / 退休记录不占用部门（离职设计 R-O6）：跳过部门可用性，只校验引用对象存在。
  */
 function validateMaterializedReferences(
   tx: Tx,
@@ -639,8 +639,7 @@ function validateMaterializedReferences(
   newCycle: boolean,
 ) {
   const terminating = ['leave', 'retirement'].includes(payload.kind);
-  const asOf = terminating ? (payload.lastWorkDate ?? payload.effectiveDate) : undefined;
-  return validateNewEmploymentReferences(tx, ctx, fields, payload.effectiveDate, reporting, newCycle, asOf);
+  return validateNewEmploymentReferences(tx, ctx, fields, payload.effectiveDate, reporting, newCycle, terminating);
 }
 
 export async function materializeEmploymentRecord(
