@@ -17,8 +17,17 @@ import { addedRows, diffRows, expectChanges, gateWorld, leaveBody } from './AC-E
 
 const database = useTestDb();
 const TODAY = '2026-10-06';
-/** 直接离职创建一次产生的 outbox 事件（按 event_type 排序）。 */
-const OUTBOX_DIRECT = ['employment.business.create', 'employment.business.state.approved', 'exit.request.create'];
+/** 直接离职创建一次产生的 outbox 事件（按 event_type 排序；B2b 起保存即 confirmed 阶段，多一条预减审计）。 */
+const OUTBOX_DIRECT = [
+  'employment.business.create',
+  'employment.business.state.approved',
+  'exit.establishment.pre_released',
+  'exit.request.create',
+];
+/** confirmed 阶段（B2b，设计 §3.1 / §6-2）只写编制预减台账一行，不写其他效果。 */
+const preReleased = (businessId: string, releasedFrom: string) => [
+  { business_id: businessId, phase: 'confirmed', kind: 'establishment_pre_released', detail: { releasedFrom } },
+];
 
 async function world(label: string) {
   const w = await gateWorld(database().db, label, { today: TODAY });
@@ -33,15 +42,17 @@ describe('AC-DM-32 B-80 §18.1 五个关口（B3-3 前离职一律不落地）',
     const created = await w.createdLeave(employee.id, leaveBody('2026-10-01', 'direct'));
     expect(created.status).toBe('approved');
     const after = await w.stateOf(employee.id);
-    // 创建本身会变的对象各带断言（新增行与内容、既有行原样保留）；其余（时间轴、合同、审批实例 / 日志、exit_effects、
-    // 生效尝试）整份逐项相等
+    // 创建本身会变的对象各带断言（新增行与内容、既有行原样保留）；其余（时间轴、合同、审批实例 / 日志、生效尝试）
+    // 整份逐项相等；exit_effects 只多 confirmed 阶段的预减台账
     expectChanges(before, after, {
       businesses: (b, a) => expect(addedRows(b, a)).toMatchObject([{ id: created.id, state: 'approved' }]),
       exits: (b, a) => expect(addedRows(b, a)).toMatchObject([{ business_id: created.id, mode: 'direct' }]),
+      effects: (b, a) => expect(addedRows(b, a)).toMatchObject(preReleased(created.id, TODAY)),
       audits: (b, a) =>
         expect(addedRows(b, a).map((row) => row.action)).toEqual([
           'employment.business.create',
           'employment.business.state.approved',
+          'exit.establishment.pre_released',
           'exit.request.create',
         ]),
       ledger: (b, a) =>
@@ -56,7 +67,7 @@ describe('AC-DM-32 B-80 §18.1 五个关口（B3-3 前离职一律不落地）',
       outbox: (b, a) => expect(Number(a[0]!.n) - Number(b[0]!.n)).toBe(OUTBOX_DIRECT.length),
     });
     expect((await w.session.records(employee.id, '2026-10-10')).map((r) => r.kind)).toEqual(['hire']);
-    expect(await w.exitRow(created.id)).toMatchObject({ mode: 'direct', initiator: 'hr', pre_release_date: null });
+    expect(await w.exitRow(created.id)).toMatchObject({ mode: 'direct', initiator: 'hr', pre_release_date: TODAY });
   });
 
   it('② 审批通过且 E ≤ 今天：停在 approved，不落地、不记生效尝试；① 调度运行后仍 approved 且不在队列', async () => {
@@ -73,9 +84,15 @@ describe('AC-DM-32 B-80 §18.1 五个关口（B3-3 前离职一律不落地）',
     const before = await w.stateOf(employee.id);
     expect(await w.approve(draft, `${TODAY}T02:00:00Z`)).toMatchObject({ status: 'approved' });
     const after = await w.stateOf(employee.id);
-    // 审批通过走可信端口 transitions.approve：只推进业务头 / 状态事件，写一条审计、一条 outbox、一条台账；审批实例与日志
-    // 不由本端口改动，和时间轴、合同、扩展行、exit_effects、生效尝试一起整份逐项相等
+    // 审批通过走可信端口 transitions.approve：推进业务头 / 状态事件，进入 confirmed 阶段（扩展行写 R、预减台账一行），
+    // 审计 / outbox 各两条、台账一条；审批实例与日志不由本端口改动，和时间轴、合同、生效尝试一起整份逐项相等
     expectChanges(before, after, {
+      exits: (b, a) => {
+        const [change] = diffRows(b, a, 'business_id').changed;
+        expect(change?.after).toMatchObject({ business_id: draft.id, pre_release_date: TODAY });
+        expect({ ...change!.after, pre_release_date: null }).toEqual(change!.before);
+      },
+      effects: (b, a) => expect(addedRows(b, a)).toMatchObject(preReleased(draft.id, TODAY)),
       businesses: (b, a) => {
         const diff = diffRows(b, a, 'id');
         expect([diff.added, diff.removed]).toEqual([[], []]);
@@ -88,7 +105,10 @@ describe('AC-DM-32 B-80 §18.1 五个关口（B3-3 前离职一律不落地）',
         expect(Number(change!.after.versions)).toBe(Number(change!.before.versions));
       },
       audits: (b, a) =>
-        expect(addedRows(b, a)).toMatchObject([{ action: 'employment.business.state.approved', object_id: draft.id }]),
+        expect(addedRows(b, a)).toMatchObject([
+          { action: 'employment.business.state.approved', object_id: draft.id },
+          { action: 'exit.establishment.pre_released', object_id: draft.id },
+        ]),
       ledger: (b, a) => expect(addedRows(b, a)).toMatchObject([{ response_status: 200 }]),
       outboxEvents: (b, a) =>
         expect(addedRows(b, a)).toMatchObject([
@@ -97,8 +117,9 @@ describe('AC-DM-32 B-80 §18.1 五个关口（B3-3 前离职一律不落地）',
             event_type: 'employment.business.state.approved',
             payload: { before: { state: 'in_review' }, after: { state: 'approved' } },
           },
+          { business_id: draft.id, event_type: 'exit.establishment.pre_released' },
         ]),
-      outbox: (b, a) => expect(Number(a[0]!.n) - Number(b[0]!.n)).toBe(1),
+      outbox: (b, a) => expect(Number(a[0]!.n) - Number(b[0]!.n)).toBe(2),
     });
     const queue = await withTenant(w.db, w.session.tenant.id, (tx) =>
       pendingActivations(tx, queueContext(w, '2026-10-18'), employee.id),
