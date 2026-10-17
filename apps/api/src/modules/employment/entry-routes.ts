@@ -25,6 +25,7 @@ import {
   uuidParam,
 } from './context.js';
 import { completePendingEntry } from './employee-status.js';
+import { assertProbationTerms, probationTerms } from './entry-options.js';
 import {
   entryContractSchema,
   type EntryContract,
@@ -38,7 +39,12 @@ import type { EmploymentContext } from './types.js';
 import { requireSavedBusiness } from './write-service.js';
 
 const remark = z.string().trim().min(1).max(ENTRY_REMARK_MAX).optional();
-const completeInput = z.strictObject({ probation: z.boolean(), contract: entryContractSchema.optional() });
+// BE-3：有试用期时可带试用期（月）/ 手填的预计试用结束日，写入任职上的试用期版本链
+const completeInput = z.strictObject({
+  probation: z.boolean(),
+  ...probationTerms,
+  contract: entryContractSchema.optional(),
+});
 const cancelInput = z.strictObject({ reason: z.enum(ENTRY_CANCEL_REASON_CODES).optional(), remark });
 const postponeInput = z.strictObject({ effectiveDate: z.string().min(1), remark });
 const editInput = z.strictObject({
@@ -111,13 +117,15 @@ export function registerEntryRoutes(
   registerEntryViews(router, deps);
   router.post('/pending-entries/:id/complete', async (c) => {
     const { id, ctx, input } = await prepareEntryAction(c, deps, authorizeBusinessWrite, completeInput);
+    assertProbationTerms(input);
     return runWrite(
       c,
       deps,
       ctx,
       { id, action: 'complete', input },
       async (tx, context) => {
-        const record = await completePendingEntry(tx, context, id, { probation: input.probation });
+        const { contract: _contract, ...probation } = input;
+        const record = await completePendingEntry(tx, context, id, probation);
         if (input.contract) await generateEntryContract(tx, deps, context, record, input.contract);
         return { status: 200, body: await requireSavedBusiness(tx, context, id) };
       },

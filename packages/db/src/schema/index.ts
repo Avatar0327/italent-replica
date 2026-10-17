@@ -24,6 +24,7 @@ export * from './seeds.js';
 export * from './exit.js';
 export * from './employment-entry.js';
 export * from './employment-email.js';
+export * from './employment-probation.js';
 export * from './offer.js';
 export * from './blacklist.js';
 export * from './part-time.js';
