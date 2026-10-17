@@ -52,6 +52,16 @@ export const NO_ORG_FIELD_SEE_ALL = {
   dataSources: [ESTABLISHMENT_SCHEME_DATASOURCE],
 } as const;
 
+/**
+ * DEC-415：黑名单（R2 BE-8a）没有组织字段，属于组织员工模块，看全部预置给本模块的预置管理员（标准版系统管理员、
+ * 人事管理员）；人事专员不是管理员，给它扩大范围须逐次问用户，所以不预置。
+ */
+const BLACKLIST_SEE_ALL: PresetSeeAllTarget = {
+  appCode: ORG_EMPLOYEE_APP,
+  targetKind: 'entity',
+  targetCode: MODULE_OBJECTS.blacklist.code,
+};
+
 /** 身份上预置“看全部”的目标（应用 × 实体 / 数据源）。 */
 export interface PresetSeeAllTarget {
   readonly appCode: string;
@@ -345,6 +355,7 @@ export const STANDARD_PROFILES: readonly StandardProfile[] = [
     apps: [ORG_EMPLOYEE_APP],
     objects: BUSINESS_OBJECTS.map(full),
     hr: true,
+    seeAll: [BLACKLIST_SEE_ALL],
   },
   {
     code: 'standard_hr_admin',
@@ -354,6 +365,7 @@ export const STANDARD_PROFILES: readonly StandardProfile[] = [
     apps: [ORG_EMPLOYEE_APP],
     objects: BUSINESS_OBJECTS.map(full),
     hr: true,
+    seeAll: [BLACKLIST_SEE_ALL],
   },
   {
     // 原站描述“相比人事管理员……除去了设置菜单”：不含流程配置对象

@@ -67,6 +67,8 @@ const APPROVED = ['Settings', 'Category', 'Role', 'Field'].map((name) => `${TR_A
 const EXTRA_TR = ['Readiness', 'Matrix', 'CalcRule'].map((name) => `${TR_APP}.${name}`);
 /** DEC-415：字段映射 / 表单 / 流程 / 盘点模板 / 盘点项目的看全部预置给盘点管理员。 */
 const DEC_415 = ['FieldMapping', 'Form', 'Flow', 'Template', 'Project'].map((name) => `${TR_APP}.${name}`);
+// R2 BE-8a：黑名单给组织员工的两个预置管理员（标准版系统管理员、人事管理员）
+const DEC_415_BLACKLIST = ['standard_org_system_admin', 'standard_hr_admin'];
 const seeAllCode = (target: string) => seeAllGrantCode(TR, TR_APP, 'entity', target);
 const OBJECT = OBJ.objectCode;
 const hrButton = buttonCode(HR.code, OBJECT, BUTTON);
@@ -75,8 +77,8 @@ const MATRIX = `${TR_APP}.Matrix`;
 const PRESET_COUNT = STANDARD_PROFILES.flatMap(presetSeeAllTargets).length;
 
 describe('AC-PLAT-F061 D3 批准清单守卫（DEC-374②、DEC-384）', () => {
-  it('批准清单每行写身份、应用、种类、目标编码与 DEC 号：DEC-374② 4 个 + DEC-384 32 个 + DEC-408② 2 个 + DEC-415 5 个（评定字典不在内，DEC-503）', () => {
-    expect(SEE_ALL_BACKFILL_APPROVED).toHaveLength(43);
+  it('批准清单每行写身份、应用、种类、目标编码与 DEC 号：DEC-374② 4 个 + DEC-384 32 个 + DEC-408② 2 个 + DEC-415 7 个（评定字典不在内，DEC-503）', () => {
+    expect(SEE_ALL_BACKFILL_APPROVED).toHaveLength(45);
     const byDec = (dec: string) => SEE_ALL_BACKFILL_APPROVED.filter((a) => a.dec === dec);
     expect(byDec('DEC-374②')).toEqual(
       APPROVED.map((targetCode) => ({
@@ -89,7 +91,20 @@ describe('AC-PLAT-F061 D3 批准清单守卫（DEC-374②、DEC-384）', () => {
     );
     expect(byDec('DEC-384')).toHaveLength(32);
     expect(byDec('DEC-408②').map((a) => a.targetCode)).toEqual([`${TR_APP}.ScoreRule`, `${TR_APP}.ModuleGrade`]);
-    expect(byDec('DEC-415').map((a) => a.targetCode)).toEqual(DEC_415);
+    expect(
+      byDec('DEC-415')
+        .filter((a) => a.profileCode === TR)
+        .map((a) => a.targetCode),
+    ).toEqual(DEC_415);
+    expect(byDec('DEC-415').filter((a) => a.profileCode !== TR)).toEqual(
+      DEC_415_BLACKLIST.map((profileCode) => ({
+        profileCode,
+        appCode: 'TenantBase',
+        targetKind: 'entity',
+        targetCode: 'TenantBase.Blacklist',
+        dec: 'DEC-415',
+      })),
+    );
     expect(new Set(SEE_ALL_BACKFILL_APPROVED.map((a) => a.dec))).toEqual(
       new Set(['DEC-374②', 'DEC-384', 'DEC-408②', 'DEC-415']),
     );
@@ -100,7 +115,7 @@ describe('AC-PLAT-F061 D3 批准清单守卫（DEC-374②、DEC-384）', () => {
     const unique = new Set(
       SEE_ALL_BACKFILL_APPROVED.map((a) => `${a.profileCode}|${a.appCode}|${a.targetKind}|${a.targetCode}`),
     );
-    expect(unique.size).toBe(43);
+    expect(unique.size).toBe(45);
   });
 
   it('批准的目标就是身份定义里全部预置看全部的目标：unapprovedSeeAllTargets() 为空，看全部编码恰好 43 个', () => {
