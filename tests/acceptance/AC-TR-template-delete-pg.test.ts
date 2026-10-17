@@ -1,5 +1,5 @@
 /** F-094 / B6b：真实 HTTP 事务持锁后交错；TR-R12 / TR-R20、DEC-436。 */
-import { sql, type Db } from '@italent/db';
+import { sql, withTenant, type Db } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it, vi } from 'vitest';
 import * as config from '../../apps/api/src/modules/talent-review/config-kit.js';
@@ -151,12 +151,15 @@ const TEMPLATE_TABLES = [
 
 async function templateRows(db: Db, tenantId: string) {
   const result = new Map<string, string[]>();
-  for (const table of TEMPLATE_TABLES) {
-    const rows = rowsOf<Record<string, unknown>>(
-      await db.execute(sql`SELECT * FROM ${sql.identifier(table)} WHERE tenant_id=${tenantId}::uuid`),
-    );
-    result.set(table, rows.map((row) => JSON.stringify(row)).sort());
-  }
+  // 租户表带 RLS：普通角色须在租户上下文里读，裸读只会得到空数组而让“非空 / 已清空”断言失真
+  await withTenant(db, tenantId, async (tx) => {
+    for (const table of TEMPLATE_TABLES) {
+      const rows = rowsOf<Record<string, unknown>>(
+        await tx.execute(sql`SELECT * FROM ${sql.identifier(table)} WHERE tenant_id=${tenantId}::uuid`),
+      );
+      result.set(table, rows.map((row) => JSON.stringify(row)).sort());
+    }
+  });
   return result;
 }
 

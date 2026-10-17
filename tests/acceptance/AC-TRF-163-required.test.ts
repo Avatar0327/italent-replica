@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { employmentBusinessObjects, employmentPayloadVersions, eq, sql, type Db } from '@italent/db';
+import { employmentBusinessObjects, employmentPayloadVersions, eq, sql, withTenant, type Db } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { approvalWorld } from './AC-APV-support.js';
@@ -55,8 +55,10 @@ async function fixture(db: Db, label: string) {
       },
     });
   const businessCount = async () => {
-    const result = await db.execute(sql`SELECT count(*)::int AS count FROM employment_business_objects
-      WHERE tenant_id=${world.tenant.id} AND employee_id=${person.employeeId}`);
+    const result = await withTenant(db, world.tenant.id, (tx) =>
+      tx.execute(sql`SELECT count(*)::int AS count FROM employment_business_objects
+      WHERE tenant_id=${world.tenant.id} AND employee_id=${person.employeeId}`),
+    );
     return (Array.isArray(result) ? result : (result as { rows: { count: number }[] }).rows)[0]!.count;
   };
   return { ...world, person, manager, original, post, target, fields, create, businessCount, currentRevision };
@@ -102,8 +104,10 @@ describe('DEC-163 / AC-TRF：仅新部门必填，其它场景不带出字段可
     const db = database().db;
     const w = await fixture(db, 'trf-auto-nonempty');
     const saved = await w.json<{ id: string }>(await w.create({ fields: { departmentId: w.target } }), 201);
-    const result = await db.execute(sql`SELECT payload FROM employment_outbox
-      WHERE tenant_id=${w.tenant.id} AND business_id=${saved.id}::uuid AND event_type='employment.record.create'`);
+    const result = await withTenant(db, w.tenant.id, (tx) =>
+      tx.execute(sql`SELECT payload FROM employment_outbox
+      WHERE tenant_id=${w.tenant.id} AND business_id=${saved.id}::uuid AND event_type='employment.record.create'`),
+    );
     const rows = Array.isArray(result)
       ? result
       : (result as { rows: { payload: { meta: { clearedFieldCodes: string[] } } }[] }).rows;
@@ -282,26 +286,28 @@ describe('DEC-163 / AC-TRF：仅新部门必填，其它场景不带出字段可
     expect(created.status).toBe(201);
     const draft = (await created.json()) as { id: string; revision: number };
     // 可信升级夹具：追加一份升级前允许保存的缺字段载荷，原有版本保持不可变。
-    const [payload] = await db
-      .select()
-      .from(employmentPayloadVersions)
-      .where(eq(employmentPayloadVersions.businessId, draft.id));
-    await db.insert(employmentPayloadVersions).values({
-      ...payload!,
-      id: randomUUID(),
-      versionNo: 2,
-      previousVersionId: payload!.id,
-      formSnapshot: payload!.formSnapshot,
-      explicitFieldCodes: [],
-      departmentId: null,
-      positionId: null,
-      directManagerId: null,
-      dottedManagerId: null,
+    await withTenant(db, w.tenant.id, async (tx) => {
+      const [payload] = await tx
+        .select()
+        .from(employmentPayloadVersions)
+        .where(eq(employmentPayloadVersions.businessId, draft.id));
+      await tx.insert(employmentPayloadVersions).values({
+        ...payload!,
+        id: randomUUID(),
+        versionNo: 2,
+        previousVersionId: payload!.id,
+        formSnapshot: payload!.formSnapshot,
+        explicitFieldCodes: [],
+        departmentId: null,
+        positionId: null,
+        directManagerId: null,
+        dottedManagerId: null,
+      });
+      await tx
+        .update(employmentBusinessObjects)
+        .set({ revision: draft.revision + 1 })
+        .where(eq(employmentBusinessObjects.id, draft.id));
     });
-    await db
-      .update(employmentBusinessObjects)
-      .set({ revision: draft.revision + 1 })
-      .where(eq(employmentBusinessObjects.id, draft.id));
     await missing(
       await w.request(w.hr.id, 'POST', `${base}/businesses/${draft.id}/submit`, {
         ifMatch: draft.revision + 1,
