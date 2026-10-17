@@ -1337,4 +1337,61 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     }),
     byId,
   ),
+  // ---- employment/auto-regularization-routes.ts：R2 BE-15a 自动转正规则与立即执行（B57，DEC-533② / DEC-539）--------------
+  // 同自动加黑规则：任职设置配置对象；body 严格（到期前天数 0～999 整数，否则 400 AUTO_RULE_DAYS_INVALID“请设置0至999的整数”；
+  // 名称 / 适用组织 / 业务处理规则 / 发起人类型必填，试用结果须为字典启用项）；审计 auto_regularization_rule.*
+  'GET /auto-regularization-rules': configurationView(SETTINGS, SETTINGS_FIELDS),
+  'POST /auto-regularization-rules': configuration(
+    SETTINGS,
+    'create',
+    SETTINGS_FIELDS,
+    auditedConfigWrite('auto_regularization_rule'),
+  ),
+  'PUT /auto-regularization-rules/:id': configuration(
+    SETTINGS,
+    'update',
+    SETTINGS_FIELDS,
+    auditedConfigWrite('auto_regularization_rule'),
+    byId,
+  ),
+  // 复制：If-Match 0，另建一条（名称加“（复制）”、默认停用）；源规则不存在 404
+  'POST /auto-regularization-rules/:id/copy': configuration(
+    SETTINGS,
+    'create',
+    SETTINGS_FIELDS,
+    write('body', 'config.audited:auto_regularization_rule', none('配置对象无范围，返回后只投影'), {
+      commandOnly: true,
+      preconditions: ['assertRevision'],
+    }),
+    byId,
+  ),
+  // 单条启停（DEC-533②，复刻增加）：body 严格 { enabled }；审计 auto_regularization_rule.enable / disable
+  'PUT /auto-regularization-rules/:id/enabled': configuration(
+    SETTINGS,
+    'update',
+    SETTINGS_FIELDS,
+    auditedConfigWrite('auto_regularization_rule'),
+    byId,
+  ),
+  'DELETE /auto-regularization-rules/:id': configuration(
+    SETTINGS,
+    'update',
+    SETTINGS_FIELDS,
+    write('body', 'config.audited:auto_regularization_rule', none('配置对象无范围，返回后只投影'), {
+      commandOnly: true,
+      preconditions: ['assertRevision'],
+    }),
+    byId,
+  ),
+  // 立即执行（DEC-539①）：body 严格 {}；总开关关闭 409 AUTO_REGULARIZATION_DISABLED；按规则适用组织扫描（系统批次提前执行，
+  // 不叠加操作人数据范围），逐人保存点经 BE-3 转正入口发起，审计 employment.auto_regularization.launch；回执固定形状
+  'POST /auto-regularization/run': configuration(
+    SETTINGS,
+    'update',
+    SETTINGS_FIELDS,
+    write('body', 'config.audited:auto_regularization_run', none('配置对象无范围，回执只含员工 / 规则 / 业务 ID'), {
+      commandOnly: true,
+      preconditions: ['assertRevision'],
+    }),
+  ),
 });

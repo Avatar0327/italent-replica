@@ -988,6 +988,13 @@
       "when": 1792214126006,
       "tag": "0140_be3_probation",
       "breakpoints": true
+    },
+    {
+      "idx": 141,
+      "version": "7",
+      "when": 1792244222110,
+      "tag": "0141_be15a_auto_regularization",
+      "breakpoints": true
     }
   ]
 }

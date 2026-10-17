@@ -268,7 +268,8 @@ describe('AC-PB-14 规则名称与行操作（DEC-539②、DEC-533②）', () =>
 
     const [log] = await withTenant(w.db, w.session.tenant.id, async (tx) =>
       rows<{ initiator: string; proxy: boolean | null; actor: string | null }>(
-        await tx.execute(sql`SELECT i.initiator_user_id::text AS initiator, (l.detail->>'systemProxy')::boolean AS proxy,
+        await tx.execute(sql`SELECT i.initiator_user_id::text AS initiator,
+            (l.detail->>'systemProxy')::boolean AS proxy,
             l.actor_user_id::text AS actor
           FROM approval_instances i JOIN approval_instance_logs l ON l.tenant_id=i.tenant_id AND l.instance_id=i.id
           WHERE i.tenant_id=${w.session.tenant.id} AND i.business_id=${business!.id}::uuid AND l.event='start'`),
@@ -335,7 +336,7 @@ describe('PB-R18 / R19 / R21 自动转正的触发与失败条件', () => {
     await w.enableSwitch();
     const receipt = await w.ran();
     expect(receipt.launched).toEqual([
-      expect.objectContaining({ employeeId: due.employee.id, ruleId: rule.id, businessStatus: 'approved' }),
+      expect.objectContaining({ employeeId: due.employee.id, ruleId: rule.id, businessStatus: 'effective' }),
     ]);
     const [business] = await regularizations(w, due.employee.id);
     expect(business).toMatchObject({ mode: 'direct', effective_date: '2026-10-04' });
@@ -408,7 +409,7 @@ describe('PB-R18 / R19 / R21 自动转正的触发与失败条件', () => {
     const rule = await w.created(w.body({ mode: 'direct' }));
     const due = await hire(w, { date: '2026-09-01', months: 1 });
     const draft = await draftRegularization(w, due.employee.id, '2026-10-01');
-    expect((await transition(w, draft, 'submit')).status).toBe('in_review');
+    expect((await transition(w, draft, 'submit')).status).toBe(200);
     await w.enableSwitch();
     const receipt = await w.ran();
     expect(receipt.launched).toEqual([]);
@@ -416,7 +417,8 @@ describe('PB-R18 / R19 / R21 自动转正的触发与失败条件', () => {
     expect((await w.ran()).failed).toHaveLength(1);
     const [launch] = await withTenant(w.db, w.session.tenant.id, async (tx) =>
       rows<{ state: string; attempts: number; last_reason: string; business_id: string | null }>(
-        await tx.execute(sql`SELECT state, attempts, last_reason, business_id FROM employment_auto_regularization_launches
+        await tx.execute(sql`SELECT state, attempts, last_reason, business_id
+          FROM employment_auto_regularization_launches
           WHERE tenant_id=${w.session.tenant.id} AND employee_id=${due.employee.id}::uuid`),
       ),
     );

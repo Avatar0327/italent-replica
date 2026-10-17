@@ -773,7 +773,12 @@ async function launch(
   };
   await appendLog(tx, ctx, instance, {
     event: 'start',
-    detail: { processId: matched.processId, versionNo: matched.version.versionNo, processCode: snapshot.processCode },
+    detail: {
+      processId: matched.processId,
+      versionNo: matched.version.versionNo,
+      processCode: snapshot.processCode,
+      ...(ctx.systemProxy ? { systemProxy: true } : {}),
+    },
   });
   await assertExceptionAdminAvailable(tx, run);
   await advanceFrom(tx, run, 0);

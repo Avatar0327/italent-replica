@@ -134,14 +134,26 @@ async function regularizeOne(
 ) {
   // 范围外与不存在同一个 404（DEC-177 写入口径），在本人保存点内判定，只记在他的回执里
   await requireEmployeeInScope(tx, ctx, item.employeeId);
-  const created = await createRegularizationBusiness(tx, { ...ctx, expectedRevision: item.revision }, item.employeeId, {
+  return launchRegularization(tx, { ...ctx, expectedRevision: item.revision }, item.employeeId, {
     kind: 'regularization',
     mode: input.mode,
     probationResult: input.probationResult,
     ...(input.effectiveDate ? { effectiveDate: input.effectiveDate } : {}),
   });
-  if (input.mode === 'direct') return created;
-  // 批量申请每人一条独立流程：与单张提交同一入口（含 PB-R9 提交时互斥）
+}
+
+/**
+ * 办理一张转正：直接转正建单即办理；申请建单后经单张提交同一入口提交并发起审批（含 PB-R9 提交时互斥）。
+ * 批量转正（每人一条独立流程，PB-R8）与 BE-15a 自动转正共用。ctx.expectedRevision = 员工 revision。
+ */
+export async function launchRegularization(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  request: RegularizationRequest,
+): Promise<EmploymentBusiness> {
+  const created = await createRegularizationBusiness(tx, ctx, employeeId, request);
+  if (request.mode === 'direct') return created;
   const submitted = await transitionEmployment(
     tx,
     { ...ctx, expectedRevision: created.revision },

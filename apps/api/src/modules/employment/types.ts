@@ -123,6 +123,8 @@ export interface EmploymentContext {
   readonly trustedExit?: 'seed' | 'retirement';
   /** 非保存当时落地（定时生效、HR 重试、审批通过）：迟到执行按实际执行日对齐联动（DEC-186 / DEC-195②）。 */
   readonly deferredExecution?: boolean;
+  /** 系统代发（BE-15a 自动转正，R2e7）：userId 是规则配置的发起人，审批发起日志标“系统代发”。 */
+  readonly systemProxy?: boolean;
 }
 
 export interface EmploymentBusinessInput {
