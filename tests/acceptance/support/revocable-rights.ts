@@ -34,12 +34,15 @@ export function revocable() {
     deny?: (request: Request) => boolean;
     emptyScope?: boolean;
     scope?: ModuleScope;
+    /** 入口（不带事务）解析到的范围；缺省入口放行全部。用于“入口按收窄范围放行（含 Switch 31 目标例外）、命令内再撤权”。 */
+    entryScope?: ModuleScope;
     /** 带事务与不带事务的字段查看权都收窄到这组（F-181a 读口按字段投影）。 */
     fields?: ReadonlySet<string>;
   } = {};
   const authorize: Authorizer = () => true;
   registerScopeProvider(authorize, {
     scope: async (_query, tx) => {
+      if (!tx && rights.entryScope) return rights.entryScope;
       if (tx && rights.scope) return rights.scope;
       return tx && rights.emptyScope ? EMPTY_SCOPE : { ...EMPTY_SCOPE, all: true, hasDataPermission: true };
     },

@@ -15,6 +15,7 @@ import { BASE, clock, D, saved, slotWorld, type SlotWorld } from './AC-TRF-F181a
 import {
   emptyScope,
   isButton,
+  orgScope,
   revocable,
   revoke,
   snapshot,
@@ -292,5 +293,95 @@ describe('F-181a P2-5 元数据读口按字段查看权投影', () => {
       formId: expect.any(String),
       withEstablishment: false,
     });
+  });
+});
+
+// #403 第 2 轮 P2：Switch 31（标准表单不限制目标部门）下，经办人只能操作源部门、目标部门在范围外时，清除靠 transferTarget 例外成功。
+// 之后命令事务内源范围收空：重放 / 失败回查必须在命令内重算来源与例外并拒绝，不得沿用入口的旧例外返回原回执。
+describe('F-181a 清除重放不沿用入口的旧目标例外（Switch 31）', () => {
+  async function switch31World(label: string) {
+    const x = await guardedWorld(label);
+    const settings = await x.w.session.request('PUT', '/transfers/settings', {
+      ifMatch: 0,
+      body: { unrestrictTargetDepartment: true, autoPopulate: false },
+    });
+    expect(settings.status, await settings.clone().text()).toBe(200);
+    const stash = await saved(await x.guardedStash(randomUUID()));
+    const sourceOnly = () => orgScope(x.tenantId, '2026-10-01', x.w.from.id);
+    // 入口也只放行源部门：目标部门在范围外，入口靠 Switch 31 的 transferTarget 例外通过（旧实现把这份例外带进命令事务）
+    x.rights.entryScope = sourceOnly();
+    return { ...x, stash, sourceOnly };
+  }
+  type Switch31 = Awaited<ReturnType<typeof switch31World>>;
+  const SOURCE_GONE: ReadonlyArray<readonly [string, (x: Switch31) => Promise<void>]> = [
+    [
+      '数据范围收为空',
+      async (x) => {
+        x.rights.scope = undefined;
+        x.rights.emptyScope = true;
+      },
+    ],
+    [
+      '范围换成无关的第三部门',
+      async (x) => {
+        const third = await x.w.session.org('第三部门', { establishedOn: '2026-01-01' });
+        x.rights.scope = orgScope(x.tenantId, '2026-10-01', third.id);
+      },
+    ],
+  ];
+
+  it('对照：源部门在范围、目标部门在范围外，靠例外清除成功；权限不变时同键重放返回原回执', async () => {
+    const x = await switch31World('f181a-sw31-same');
+    x.rights.scope = x.sourceOnly();
+    const key = randomUUID();
+    const first = await x.guardedClear(x.stash.id, x.stash.revision, key);
+    expect(first.status, await first.clone().text()).toBe(200);
+    const before = await state(x);
+    const replay = await x.guardedClear(x.stash.id, x.stash.revision, key);
+    expect(replay.status, await replay.clone().text()).toBe(200);
+    expect(await replay.json()).toEqual(await first.json());
+    expect(await state(x)).toEqual(before);
+  });
+
+  it.each(SOURCE_GONE)('首次成功后%s：同键重放被拒，响应不带原回执，业务 / 审计 / 台账不变', async (_name, apply) => {
+    const x = await switch31World(`f181a-sw31-replay-${_name.length}`);
+    x.rights.scope = x.sourceOnly();
+    const key = randomUUID();
+    const first = await x.guardedClear(x.stash.id, x.stash.revision, key);
+    expect(first.status, await first.clone().text()).toBe(200);
+    const before = await state(x);
+    await apply(x);
+    const replay = await x.guardedClear(x.stash.id, x.stash.revision, key);
+    const text = await replay.text();
+    expect(rejected(replay.status), text).toBe(true);
+    expect(text).not.toContain(x.stash.id);
+    expect(text).not.toContain(x.w.to.id);
+    expect(await state(x)).toEqual(before);
+  });
+
+  it.each(SOURCE_GONE)('失败后回查台账：回查前%s → 被拒，不披露原回执', async (_name, apply) => {
+    const x = await switch31World(`f181a-sw31-recheck-${_name.length}`);
+    x.rights.scope = x.sourceOnly();
+    const key = randomUUID();
+    expect((await x.guardedClear(x.stash.id, x.stash.revision, key)).status).toBe(200);
+    const before = await state(x);
+    hooks.failMainTransaction = true;
+    await apply(x);
+    const replay = await x.guardedClear(x.stash.id, x.stash.revision, key);
+    const text = await replay.text();
+    expect(rejected(replay.status), text).toBe(true);
+    expect(text).not.toContain(x.stash.id);
+    expect(hooks.failMainTransaction, '回查出口必须经过 guard').toBe(false);
+    expect(await state(x)).toEqual(before);
+  });
+
+  it.each(SOURCE_GONE)('首次执行：入口放行但命令内%s → 被拒，暂存单与槽位不变', async (_name, apply) => {
+    const x = await switch31World(`f181a-sw31-first-${_name.length}`);
+    const before = await state(x);
+    await apply(x);
+    const response = await x.guardedClear(x.stash.id, x.stash.revision, randomUUID());
+    expect(rejected(response.status), await response.clone().text()).toBe(true);
+    expect(await state(x)).toEqual(before);
+    expect(await x.businessState(x.stash.id)).toBe('draft');
   });
 });
