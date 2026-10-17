@@ -130,3 +130,53 @@ describe('P2-3 删除被摘下的调动：审计 before 取最新记录快照', 
     expect(version!.remarks).toBe(before.remarks);
   });
 });
+
+describe('P2-1 第 3 轮：同日先后按可信顺序（C-3：计划生效日 → 操作序号），不信台账', () => {
+  const forgeDetach = (x: ExitActivationWorld, leaveId: string, transferId: string) => {
+    const tenantId = x.session.tenant.id;
+    return withTenant(x.db, tenantId, async (tx) => {
+      await tx.execute(sql`INSERT INTO exit_effects(tenant_id, business_id, employee_id, phase, kind, target_type,
+          target_id, detail, command_id)
+        VALUES (${tenantId}, ${leaveId}::uuid, ${x.employee.id}::uuid, 'effective', 'future_transfer_detached',
+          'employment-record', ${transferId}::uuid, '{"window":{"from":"2026-10-21","to":null}}'::jsonb,
+          ${randomUUID()})`);
+      await tx.execute(
+        sql`DELETE FROM employment_timeline WHERE tenant_id=${tenantId} AND record_id=${transferId}::uuid`,
+      );
+    });
+  };
+
+  it('a. 同日 T 排在离职之前（H→T→L）：伪造台账并删除 T 投影 → 提交被拒，历史不变', async () => {
+    const x = await world('same-day-before');
+    const transfer = await futureTransfer(x, x.employee.id, '2026-10-21', { departmentId: x.to.id });
+    const leave = await x.directLeave('2026-10-20');
+    await x.activate(leave.id, '2026-10-21');
+    expect((await x.timeline()).map((row) => row.kind)).toEqual(['hire', 'transfer', 'leave']);
+    await expect(forgeDetach(x, leave.id, transfer.id)).rejects.toThrow();
+    expect((await x.timeline()).map((row) => row.kind)).toEqual(['hire', 'transfer', 'leave']);
+  });
+
+  it('b. 同日 T 排在离职之后（计划日相同、操作序号更晚）：真实摘下成功', async () => {
+    const x = await world('same-day-after');
+    const leave = await x.directLeave('2026-10-20');
+    const transfer = await futureTransfer(x, x.employee.id, '2026-10-21', { departmentId: x.to.id });
+    expect(await x.activate(leave.id, '2026-10-21')).toMatchObject({ outcome: 'effective' });
+    expect((await x.timeline()).map((row) => row.kind)).toEqual(['hire', 'leave']);
+    expect(await x.effects(leave.id)).toContainEqual(
+      expect.objectContaining({ kind: 'future_transfer_detached', target_id: transfer.id }),
+    );
+  });
+
+  it('c. 同日多条调动前后混排：只摘下排在离职之后的，之前的保留在历史里', async () => {
+    const x = await world('same-day-mixed');
+    const before = await futureTransfer(x, x.employee.id, '2026-10-21', { departmentId: x.to.id });
+    const leave = await x.directLeave('2026-10-20');
+    const after = await futureTransfer(x, x.employee.id, '2026-10-21', { departmentId: x.from.id });
+    expect(await x.activate(leave.id, '2026-10-21')).toMatchObject({ outcome: 'effective' });
+    expect((await x.timeline()).map((row) => row.kind)).toEqual(['hire', 'transfer', 'leave']);
+    const detached = (await x.effects(leave.id)).filter((row) => row.kind === 'future_transfer_detached');
+    expect(detached.map((row) => row.target_id)).toEqual([after.id]);
+    expect((await x.timeline()).map((row) => row.record_id)).toContain(before.id);
+    await expect(forgeDetach(x, leave.id, before.id)).rejects.toThrow();
+  });
+});
