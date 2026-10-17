@@ -293,3 +293,17 @@ export async function offerRealWorld(
     outsidePosition: ((await position.json()) as { id: string }).id,
   };
 }
+
+/**
+ * 关闭 Offer 同步待入职（BE-14b2：接受时默认同步）：BE-14a 的状态机用例只验证转移规则，不要待入职副作用。
+ * 同步本身由 AC-OF-BE14b2-* 覆盖。
+ */
+export async function syncOff(w: OfferWorld) {
+  const response = await w.seeder.request('PUT', '/api/tenant/settings/offer.sync_timing', {
+    user: w.user.id,
+    tenant: w.tenant.id,
+    ifMatch: 0,
+    body: { value: { enabled: false, mode: 'on_accept', days: 30, internConversion: true } },
+  });
+  expect(response.status, await response.clone().text()).toBe(200);
+}
