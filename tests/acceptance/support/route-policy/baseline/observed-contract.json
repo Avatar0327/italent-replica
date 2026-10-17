@@ -17138,7 +17138,10 @@
         ],
         "scope": [
           "creator scope",
-          "requestScope"
+          "employment visibility",
+          "requestScope",
+          "scope.all",
+          "scopeSql"
         ]
       }
     },
@@ -17171,7 +17174,10 @@
         ],
         "scope": [
           "creator scope",
-          "requestScope"
+          "employment visibility",
+          "requestScope",
+          "scope.all",
+          "scopeSql"
         ]
       }
     },
@@ -21774,7 +21780,10 @@
         ],
         "scope": [
           "creator scope",
-          "requestScope"
+          "employment visibility",
+          "requestScope",
+          "scope.all",
+          "scopeSql"
         ]
       }
     },

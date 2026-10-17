@@ -180,6 +180,7 @@ export const GRAPH: Graph = {
     '#lockOffer',
     '#offerDto',
     '#requireDepartment',
+    '#requirePersonRefs',
     'packages/domain/src/offer/rules.ts#OFFER_FIELDS',
   ],
   'apps/api/src/modules/offer/service.ts#createOffer': [
@@ -190,6 +191,7 @@ export const GRAPH: Graph = {
     '#offerDto',
     '#requireComplete',
     '#requireDepartment',
+    '#requirePersonRefs',
     '#toColumns',
   ],
   'apps/api/src/modules/offer/service.ts#deleteOffer': [
@@ -216,6 +218,10 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/offer/context.ts#requireOfferInScope',
   ],
   'apps/api/src/modules/offer/service.ts#requireEditable': ['packages/domain/src/offer/rules.ts#offerEditable'],
+  'apps/api/src/modules/offer/service.ts#requirePersonRefs': [
+    'apps/api/src/modules/employment/visibility.ts#visibleEmploymentRecords',
+    '#PERSON_REFS',
+  ],
   'apps/api/src/modules/offer/service.ts#save': ['#audit', '#guarded', '#offerDto'],
   'apps/api/src/modules/offer/service.ts#toColumns': ['#MONEY', 'packages/domain/src/offer/rules.ts#OFFER_FIELDS'],
   'apps/api/src/modules/offer/service.ts#updateOffer': [
@@ -225,6 +231,7 @@ export const GRAPH: Graph = {
     '#requireComplete',
     '#requireDepartment',
     '#requireEditable',
+    '#requirePersonRefs',
     '#save',
     '#toColumns',
     '#typeOf',

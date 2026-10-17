@@ -19,6 +19,7 @@ import type { AnyColumn, SQL } from 'drizzle-orm';
 import { recordAudit } from '../../audit/record.js';
 import { AppError } from '../../errors.js';
 import { auditActor } from '../../system-actor.js';
+import { visibleEmploymentRecords } from '../employment/visibility.js';
 import { scopeSql } from '../permission/module-access.js';
 import { assertOfferRevision, requireOfferInScope, type OfferContext } from './context.js';
 import type { OfferCreateInput, OfferUpdateInput } from './input.js';
@@ -115,6 +116,19 @@ function requireDepartment(ctx: OfferContext, departmentId: string | null | unde
   if (departmentId) requireOfferInScope(ctx, { departmentId, createdBy });
 }
 
+/**
+ * 人员引用（直线上级 / 虚线上级 / HRBP）须是本租户、当前范围内可见的员工；不存在与范围外同为 400 OFFER_REFERENCE_INVALID，
+ * 与外键拒绝同码，不暴露存在性。员工创建人未知时不按“使用用户”维度放行（保守取严）。
+ */
+const PERSON_REFS = ['directManagerId', 'dottedManagerId', 'hrbpId'] as const;
+async function requirePersonRefs(tx: Tx, ctx: OfferContext, values: Readonly<Record<string, unknown>>) {
+  const ids = PERSON_REFS.map((field) => values[field]).filter((id): id is string => typeof id === 'string');
+  if (!ids.length) return;
+  const targets = ids.map((employeeId) => ({ employeeId, departmentId: null, creatorId: null }));
+  if ((await visibleEmploymentRecords(tx, ctx.tenantId, ctx.scope, targets)).includes(false))
+    throw new AppError('VALIDATION_FAILED', 'Offer 引用的对象不存在', { reason: 'OFFER_REFERENCE_INVALID' });
+}
+
 function requireComplete(type: OfferType | null, values: Readonly<Record<string, unknown>>) {
   const missing = missingOfferFields(type, values);
   if (missing.length)
@@ -155,6 +169,7 @@ export async function createOffer(tx: Tx, ctx: OfferContext, input: OfferCreateI
   const type = entry === 'offer' ? (offerType ?? null) : 'intern';
   requireComplete(type, values);
   requireDepartment(ctx, values.departmentId as string | null, ctx.userId);
+  await requirePersonRefs(tx, ctx, values);
   const [row] = await guarded(() =>
     tx
       .insert(offers)
@@ -200,6 +215,7 @@ export async function updateOffer(tx: Tx, ctx: OfferContext, id: string, input: 
   const patch = toColumns(input);
   requireComplete(typeOf(before), { ...offerDto(before), ...input });
   if ('departmentId' in input) requireDepartment(ctx, input.departmentId, before.createdBy);
+  await requirePersonRefs(tx, ctx, input);
   return save(tx, ctx, before, 'update', patch);
 }
 
@@ -221,6 +237,7 @@ export async function copyOffer(tx: Tx, ctx: OfferContext, id: string) {
     throw new AppError('CONFLICT', '只有失效的 Offer 可以复制', { reason: 'OFFER_COPY_NOT_ALLOWED' });
   const fields = Object.fromEntries(OFFER_FIELDS.map((field) => [field, source[field as keyof OfferRow]]));
   requireDepartment(ctx, source.departmentId, ctx.userId);
+  await requirePersonRefs(tx, ctx, fields);
   const [row] = await guarded(() =>
     tx
       .insert(offers)

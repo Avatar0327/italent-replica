@@ -66,6 +66,12 @@ describe('BE-14a 新建入口与必填', () => {
     });
     expect(badRef.status).toBe(400);
     expect((await errorOf(badRef)).details).toMatchObject({ reason: 'OFFER_REFERENCE_INVALID' });
+    const ghost = await w.request('POST', '', {
+      ifMatch: 0,
+      body: { entry: 'offer', ...w.socialFields(), hrbpId: crypto.randomUUID() },
+    });
+    expect(ghost.status).toBe(400);
+    expect((await errorOf(ghost)).details).toMatchObject({ reason: 'OFFER_REFERENCE_INVALID' });
     const extra = await w.request('POST', '', {
       ifMatch: 0,
       body: { entry: 'offer', ...w.socialFields(), status: 'sent' },
