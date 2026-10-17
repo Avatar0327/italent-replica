@@ -297,6 +297,55 @@ jobs:
           GENERATED_STRICT: ${{ needs.changes.outputs.generated_strict }}
           GRANT_BASE_REV: ${{ github.event_name == 'pull_request' && 'HEAD^1' || '' }}
 
+  # F-212（DEC-568）：同一批验收测试改用普通角色 app_owner（非超级用户、NOBYPASSRLS）再跑一遍。
+  # 超级用户会绕过 RLS，测试里漏设租户上下文（裸 db.transaction / 裸连接读写）在 test-pg-shards 永远是绿的，
+  # F-209 / F-210 / F-211 连续三批都是这样漏过去的；静态 grep 筛不全，所以让 CI 直接用普通角色拦。
+  # 角色定义与本地 dev-db.sh 共用 scripts/pg-roles.sql。新验收测试须能在普通角色下通过（见 AGENTS.md §3 第 2 条）。
+  # 作业名保留 “shard”：合并队列脚本按名称里的 shard / race 判定完整 CI 与真红。
+  # 不跑 F-043 race（已由 test-pg-race 覆盖，且并发用例与角色无关）；超时与分片数同 test-pg-shards。
+  test-pg-app-role-shards:
+    name: test (PostgreSQL 16 app_owner, shard ${{ matrix.shard }}/5)
+    needs: changes
+    if: github.event.pull_request.draft != true && needs.changes.outputs.mode == 'full'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      packages: read
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5]
+    env:
+      # CI 一次性容器内的测试口令，非机密；app_owner 由 scripts/ci-postgres.sh（PG_APP_ROLE=1）建出
+      TEST_DATABASE_URL: postgres://app_owner:app_owner@localhost:5432/italent_test
+      # 守卫测试 AC-CI-F212-app-role 据此要求当前连接必须是普通角色，而不是静默跳过
+      REQUIRE_APP_ROLE: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Log in to ghcr.io (failure falls back to public registries)
+        continue-on-error: true
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
+        run: echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+      - name: Start PostgreSQL 16 (max_locks_per_transaction = 256) and create app_owner
+        env:
+          PG_APP_ROLE: '1'
+        run: bash scripts/ci-postgres.sh
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test:pg --shard=${{ matrix.shard }}/5 --exclude=tests/acceptance/AC-360-F043-race-pg.test.ts
+        env:
+          GENERATED_STRICT: ${{ needs.changes.outputs.generated_strict }}
+          GRANT_BASE_REV: ${{ github.event_name == 'pull_request' && 'HEAD^1' || '' }}
+
   test-pg-race:
     name: test (PostgreSQL 16, F-043 race)
     needs: changes
@@ -333,16 +382,17 @@ jobs:
       ${{ needs.changes.outputs.mode == 'light'
       && 'PostgreSQL 完整测试待队首运行（DEC-454）'
       || 'test (PostgreSQL 16)' }}
-    needs: [changes, test-pg-shards, test-pg-race]
+    needs: [changes, test-pg-shards, test-pg-app-role-shards, test-pg-race]
     if: always() && github.event.pull_request.draft != true
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
-      - name: Require every PostgreSQL shard and the F-043 race job to succeed (skipped for docs-only and light mode)
+      - name: Require every PostgreSQL shard (superuser and app_owner) and the F-043 race job to succeed (skipped for docs-only and light mode)
         env:
           CHANGES_RESULT: ${{ needs.changes.result }}
           MODE: ${{ needs.changes.outputs.mode }}
           SHARDS_RESULT: ${{ needs.test-pg-shards.result }}
+          APP_ROLE_SHARDS_RESULT: ${{ needs.test-pg-app-role-shards.result }}
           RACE_RESULT: ${{ needs.test-pg-race.result }}
         run: |
           set -eu
@@ -350,10 +400,12 @@ jobs:
           case "$MODE" in
             docs | light)
               test "$SHARDS_RESULT" = skipped
+              test "$APP_ROLE_SHARDS_RESULT" = skipped
               test "$RACE_RESULT" = skipped
               ;;
             full)
               test "$SHARDS_RESULT" = success
+              test "$APP_ROLE_SHARDS_RESULT" = success
               test "$RACE_RESULT" = success
               ;;
             *)
