@@ -34,4 +34,18 @@ describe('F-189 / DEC-547 仓库技能同步守卫', () => {
       expect(readFileSync(agentPath).equals(readFileSync(claudePath)), `${skill} 内容不同，请同步修改两侧`).toBe(true);
     });
   }
+
+  // F-193：YAML 里 " #" 之后会被当成注释截断（如“PR #xx”），故 description 必须整体加引号。
+  for (const skill of allSkills) {
+    it(`${skill} 的 description 整体加了引号且内部无未转义引号`, () => {
+      for (const root of [CLAUDE, AGENTS]) {
+        const text = readFileSync(join(root, skill), 'utf8');
+        const front = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text)?.[1] ?? '';
+        const line = front.split(/\r?\n/).find((entry) => entry.startsWith('description:'));
+        expect(line, `${root}/${skill} 缺少 description`).toBeDefined();
+        const value = (line ?? '').slice('description:'.length).trim();
+        expect(value, `${root}/${skill} 的 description 未加双引号`).toMatch(/^"[^"\\]*"$/);
+      }
+    });
+  }
 });
