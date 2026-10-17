@@ -1166,7 +1166,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/employment/record-store.ts#camelCase': ['f7fee9dda393', 'e3b0c44298fc'],
   'apps/api/src/modules/employment/record-store.ts#camelRow': ['0a589db48f3c', '2a64017e38ee'],
   'apps/api/src/modules/employment/record-store.ts#insertEmploymentRow': ['a09196092de2', 'c4fdf48f7699'],
-  'apps/api/src/modules/employment/record-store.ts#lockEmploymentBusiness': ['3d6d6e180bbf', '28828a25b5ce'],
+  'apps/api/src/modules/employment/record-store.ts#lockEmploymentBusiness': ['475576d0fb13', '0d8cbbb842bc'],
   'apps/api/src/modules/employment/record-store.ts#lockEmploymentEmployee': ['ecf4dc7d87cf', '840a021a36b1'],
   'apps/api/src/modules/employment/record-store.ts#readEmploymentEmployee': ['7b94f46a9a49', '812aabc82ff4'],
   'apps/api/src/modules/employment/record-store.ts#rowsOf': ['2e5ba2ec7199', 'd8399dcaac04'],

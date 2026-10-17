@@ -133,7 +133,6 @@ export async function lockEmploymentBusiness(
     `),
   );
   if (!head) throw new AppError('NOT_FOUND', '任职业务不存在');
-  assertRevision(ctx.expectedRevision, head.revision);
   const [rawPayload] = rowsOf<Record<string, unknown>>(
     await tx.execute(sql`
       SELECT * FROM employment_payload_versions
@@ -149,8 +148,10 @@ export async function lockEmploymentBusiness(
     `),
   );
   if (!rawPayload || !event) throw new AppError('SERVICE_UNAVAILABLE', '任职业务版本链不完整');
+  // 类型守卫先于 revision 校验：对兼职传错 revision 也只得 404，不经 409 带出 actual
   if ((rawPayload.kind === PART_TIME_KIND) !== (options.partTime === true))
     throw new AppError('NOT_FOUND', '任职业务不存在');
+  assertRevision(ctx.expectedRevision, head.revision);
   const payload = camelRow(rawPayload);
   return {
     ...head,
