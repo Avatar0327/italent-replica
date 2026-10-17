@@ -8,6 +8,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { isUuid, sql, type Tx } from '@italent/db';
+import type { SQL } from 'drizzle-orm';
 import {
   BLACKLIST_BATCH_LIMIT,
   BLACKLIST_NOTE_MAX,
@@ -124,6 +125,19 @@ export const parseBlacklistBatch = (raw: unknown) =>
   parse(batchInput, raw, `须为 1～${BLACKLIST_BATCH_LIMIT} 条不重复的黑名单记录`);
 export const parseBlacklistFilter = (raw: Record<string, string>) => parse(listQuery, raw, '黑名单筛选条件不合法');
 
+/**
+ * 联系标识（证件号 / 手机 / 邮箱）的单一口径（#387 第 1 轮 P2-1）：去首尾空白后空串一律视为“没有该标识”（NULL），
+ * 写入快照、查重、筛选、拦截匹配都只经这两个函数取值；表上同口径的 CHECK 与部分唯一索引保证库里没有空白标识。
+ * 证件号、邮箱不分大小写比较。NULL 与任何值比较都不成立，所以缺失的标识永远不会“相等”。
+ */
+type IdentityField = 'idNumber' | 'mobilePhone' | 'email';
+const CASELESS: Readonly<Record<IdentityField, boolean>> = { idNumber: true, mobilePhone: false, email: true };
+const storedIdentity = (value: SQL) => sql`NULLIF(btrim(${value}), '')`;
+/** 写入前的同一口径（值在 JS 侧时）：去首尾空白，空串为 null。 */
+const blankToNull = (value: string | null | undefined) => value?.trim() || null;
+const identityKey = (field: IdentityField, value: SQL) =>
+  CASELESS[field] ? sql`lower(${storedIdentity(value)})` : storedIdentity(value);
+
 const COLUMNS = sql`id, employee_id AS "employeeId", name, id_number AS "idNumber", mobile_phone AS "mobilePhone",
   email, reason, blacklist_date::text AS "blacklistDate", expiry_date::text AS "expiryDate", note, source, status,
   removed_at AS "removedAt", revision`;
@@ -136,8 +150,14 @@ export async function listBlacklist(
 ): Promise<BlacklistEntry[]> {
   const conditions = [sql`tenant_id = ${tenantId}`, sql`status = ${filter.status}`];
   if (filter.name) conditions.push(sql`strpos(lower(name), lower(${filter.name})) > 0`);
-  if (filter.idNumber) conditions.push(sql`lower(btrim(id_number)) = lower(${filter.idNumber})`);
-  if (filter.mobilePhone) conditions.push(sql`btrim(mobile_phone) = ${filter.mobilePhone}`);
+  if (filter.idNumber)
+    conditions.push(
+      sql`${identityKey('idNumber', sql`id_number`)} = ${identityKey('idNumber', sql`${filter.idNumber}`)}`,
+    );
+  if (filter.mobilePhone)
+    conditions.push(
+      sql`${identityKey('mobilePhone', sql`mobile_phone`)} = ${identityKey('mobilePhone', sql`${filter.mobilePhone}`)}`,
+    );
   if (filter.reason) conditions.push(sql`reason = ${filter.reason}`);
   if (filter.source) conditions.push(sql`source = ${filter.source}`);
   return rowsOf<BlacklistEntry>(
@@ -154,8 +174,8 @@ async function lockBlacklist(tx: Tx, tenantId: string) {
 async function personSnapshot(tx: Tx, tenantId: string, employeeId: string) {
   const [person] = rowsOf<{ name: string; idNumber: string | null; mobilePhone: string | null; email: string | null }>(
     await tx.execute(sql`
-      SELECT COALESCE(NULLIF(btrim(v.name), ''), e.name) AS name, v.id_number AS "idNumber",
-        v.mobile_phone AS "mobilePhone", v.email
+      SELECT COALESCE(NULLIF(btrim(v.name), ''), e.name) AS name, ${storedIdentity(sql`v.id_number`)} AS "idNumber",
+        ${storedIdentity(sql`v.mobile_phone`)} AS "mobilePhone", ${storedIdentity(sql`v.email`)} AS email
       FROM employment_employees e
       LEFT JOIN LATERAL (SELECT pv.name, pv.id_number, pv.mobile_phone, pv.email FROM personnel_employee_versions pv
         WHERE pv.tenant_id = e.tenant_id AND pv.employee_id = e.id ORDER BY pv.revision DESC LIMIT 1) v ON true
@@ -176,7 +196,7 @@ async function assertNotDuplicated(tx: Tx, tenantId: string, employeeId: string 
   const [duplicate] = rowsOf<{ id: string }>(
     await tx.execute(sql`SELECT id FROM employment_blacklist WHERE tenant_id = ${tenantId} AND status = 'active'
       AND ((${employeeId}::uuid IS NOT NULL AND employee_id = ${employeeId}::uuid)
-        OR (${idNumber}::text IS NOT NULL AND lower(btrim(id_number)) = lower(btrim(${idNumber}::text))))
+        OR ${identityKey('idNumber', sql`id_number`)} = ${identityKey('idNumber', sql`${idNumber}::text`)})
       LIMIT 1`),
   );
   if (duplicate) throw new AppError('CONFLICT', '此人员已在黑名单中', { reason: 'BLACKLIST_DUPLICATE' });
@@ -217,18 +237,22 @@ export async function addBlacklistEntry(
   await lockBlacklist(tx, ctx.tenantId);
   assertRevision(ctx.expectedRevision, 0);
   const employeeId = input.employeeId ?? null;
-  const person = employeeId
-    ? await personSnapshot(tx, ctx.tenantId, employeeId)
-    : { name: input.name!, idNumber: null, mobilePhone: null, email: null, ...input };
+  const source = employeeId ? await personSnapshot(tx, ctx.tenantId, employeeId) : input;
+  const person = {
+    name: source.name!,
+    idNumber: blankToNull(source.idNumber),
+    mobilePhone: blankToNull(source.mobilePhone),
+    email: blankToNull(source.email),
+  };
   const blacklistDate = options.blacklistDate ?? tenantLocalDate(ctx.now, ctx.timezone);
   assertExpiry(blacklistDate, input.expiryDate);
-  await assertNotDuplicated(tx, ctx.tenantId, employeeId, person.idNumber ?? null);
+  await assertNotDuplicated(tx, ctx.tenantId, employeeId, person.idNumber);
   const id = randomUUID();
   await tx.execute(sql`
     INSERT INTO employment_blacklist(id, tenant_id, employee_id, name, id_number, mobile_phone, email, reason,
       blacklist_date, expiry_date, note, source, created_by, created_at, updated_at)
-    VALUES (${id}::uuid, ${ctx.tenantId}, ${employeeId}::uuid, ${person.name}, ${person.idNumber ?? null},
-      ${person.mobilePhone ?? null}, ${person.email ?? null}, ${input.reason}, ${blacklistDate}::date,
+    VALUES (${id}::uuid, ${ctx.tenantId}, ${employeeId}::uuid, ${person.name}, ${person.idNumber},
+      ${person.mobilePhone}, ${person.email}, ${input.reason}, ${blacklistDate}::date,
       ${input.expiryDate ?? null}::date, ${input.note || null}, ${options.source ?? 'manual'},
       ${auditActor(ctx.userId)}::uuid, ${ctx.now.toISOString()}::timestamptz, ${ctx.now.toISOString()}::timestamptz)`);
   const after = (await readEntry(tx, ctx.tenantId, id))!;
@@ -308,14 +332,16 @@ export async function deleteBlacklistEntries(tx: Tx, ctx: EmploymentContext, inp
 
 /**
  * 判定日在有效黑名单内的匹配记录：同一人员，或姓名相同且证件号 / 手机 / 邮箱任一相同（docs/02_业务建模/34 OF-R2）。
- * 证件号、邮箱不分大小写；只比较非空值。
+ * 标识按 identityKey 口径比较：空白视为没有，证件号 / 邮箱不分大小写。
  */
 export async function findEffectiveBlacklistEntry(tx: Tx, tenantId: string, employeeId: string, today: string) {
   const [hit] = rowsOf<{ name: string; reason: string }>(
     await tx.execute(sql`
       WITH person AS (
-        SELECT e.id, btrim(COALESCE(NULLIF(btrim(v.name), ''), e.name)) AS name, lower(btrim(v.id_number)) AS id_number,
-          btrim(v.mobile_phone) AS mobile_phone, lower(btrim(v.email)) AS email
+        SELECT e.id, btrim(COALESCE(NULLIF(btrim(v.name), ''), e.name)) AS name,
+          ${identityKey('idNumber', sql`v.id_number`)} AS id_number,
+          ${identityKey('mobilePhone', sql`v.mobile_phone`)} AS mobile_phone,
+          ${identityKey('email', sql`v.email`)} AS email
         FROM employment_employees e
         LEFT JOIN LATERAL (SELECT pv.name, pv.id_number, pv.mobile_phone, pv.email FROM personnel_employee_versions pv
           WHERE pv.tenant_id = e.tenant_id AND pv.employee_id = e.id ORDER BY pv.revision DESC LIMIT 1) v ON true
@@ -325,8 +351,9 @@ export async function findEffectiveBlacklistEntry(tx: Tx, tenantId: string, empl
       WHERE b.tenant_id = ${tenantId} AND b.status = 'active'
         AND (b.expiry_date IS NULL OR b.expiry_date >= ${today}::date)
         AND (b.employee_id = p.id OR (btrim(b.name) = p.name AND (
-          lower(btrim(b.id_number)) = p.id_number OR btrim(b.mobile_phone) = p.mobile_phone
-          OR lower(btrim(b.email)) = p.email)))
+          ${identityKey('idNumber', sql`b.id_number`)} = p.id_number
+          OR ${identityKey('mobilePhone', sql`b.mobile_phone`)} = p.mobile_phone
+          OR ${identityKey('email', sql`b.email`)} = p.email)))
       ORDER BY (b.employee_id = p.id) IS TRUE DESC, b.blacklist_date DESC, b.id LIMIT 1`),
   );
   return hit;

@@ -66,14 +66,14 @@ export function parseBlacklistRule(raw: unknown): BlacklistRuleInput {
   return parsed.data;
 }
 
-/** 规则按优先级再按创建顺序排列（与匹配时“同优先级取先登记者”一致）。 */
+/** 规则按优先级再按登记顺序号排列（与匹配时“同优先级取先登记者”一致；不按创建时间，同毫秒时会乱序）。 */
 export async function listBlacklistRules(tx: Tx, tenantId: string, ruleId?: string): Promise<BlacklistRuleView[]> {
   const rules = rowsOf<Omit<BlacklistRuleView, 'conditions'>>(
     await tx.execute(sql`
       SELECT id, name, priority, org_ids AS "orgIds", description, term, reason, note, revision
       FROM employment_blacklist_rules WHERE tenant_id = ${tenantId}
         ${ruleId ? sql`AND id = ${ruleId}::uuid` : sql``}
-      ORDER BY priority, created_at, id LIMIT ${BLACKLIST_RULE_LIMIT}`),
+      ORDER BY priority, sequence_no LIMIT ${BLACKLIST_RULE_LIMIT}`),
   );
   if (!rules.length) return [];
   const conditions = rowsOf<{ ruleId: string; field: 'exitCount'; operator: 'gte'; value: number }>(
@@ -158,19 +158,19 @@ export async function saveBlacklistRule(
   const ruleId = id ?? randomUUID();
   if (!before) {
     assertRevision(ctx.expectedRevision, 0);
-    const [count] = rowsOf<{ n: number }>(
-      await tx.execute(
-        sql`SELECT count(*)::int AS n FROM employment_blacklist_rules WHERE tenant_id = ${ctx.tenantId}`,
-      ),
+    // 登记顺序号在规则锁内分配（max + 1）：删掉末条后号码可能复用，但仍大于所有现存规则，先后关系不变
+    const [count] = rowsOf<{ n: number; next: number }>(
+      await tx.execute(sql`SELECT count(*)::int AS n, COALESCE(max(sequence_no), 0) + 1 AS next
+        FROM employment_blacklist_rules WHERE tenant_id = ${ctx.tenantId}`),
     );
     if (count!.n >= BLACKLIST_RULE_LIMIT)
       throw new AppError('CONFLICT', '自动加黑规则已达上限', {
         reason: 'BLACKLIST_RULE_LIMIT_REACHED',
         limit: BLACKLIST_RULE_LIMIT,
       });
-    await tx.execute(sql`INSERT INTO employment_blacklist_rules(id, tenant_id, name, priority, org_ids, description,
-      term, reason, note, created_at, updated_at)
-      VALUES (${ruleId}::uuid, ${ctx.tenantId}, ${input.name}, ${input.priority}, ${orgIds}::uuid[],
+    await tx.execute(sql`INSERT INTO employment_blacklist_rules(id, tenant_id, name, priority, sequence_no, org_ids,
+      description, term, reason, note, created_at, updated_at)
+      VALUES (${ruleId}::uuid, ${ctx.tenantId}, ${input.name}, ${input.priority}, ${count!.next}, ${orgIds}::uuid[],
       ${input.description || null}, ${input.term}, ${input.reason}, ${input.note || null},
       ${now}::timestamptz, ${now}::timestamptz)`);
   } else {

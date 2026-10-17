@@ -69,7 +69,7 @@ export const employmentBlacklist = pgTable(
       .where(sql`${t.status} = 'active' AND ${t.employeeId} IS NOT NULL`),
     uniqueIndex('employment_blacklist_active_id_number')
       .on(t.tenantId, sql`lower(btrim(${t.idNumber}))`)
-      .where(sql`${t.status} = 'active' AND ${t.idNumber} IS NOT NULL`),
+      .where(sql`${t.status} = 'active' AND btrim(${t.idNumber}) <> ''`),
     index('employment_blacklist_list').on(t.tenantId, t.status, t.blacklistDate),
     check('employment_blacklist_name', sql`btrim(${t.name}) <> ''`),
     check(
@@ -88,6 +88,13 @@ export const employmentBlacklist = pgTable(
       sql`${t.employeeId} IS NOT NULL OR ${t.idNumber} IS NOT NULL OR ${t.mobilePhone} IS NOT NULL
         OR ${t.email} IS NOT NULL`,
     ),
+    // 联系标识没有空白值：缺失一律存 NULL（与服务端 identityKey 同一口径，#387 第 1 轮 P2-1）
+    check(
+      'employment_blacklist_identity',
+      sql`(${t.idNumber} IS NULL OR btrim(${t.idNumber}) <> '')
+        AND (${t.mobilePhone} IS NULL OR btrim(${t.mobilePhone}) <> '')
+        AND (${t.email} IS NULL OR btrim(${t.email}) <> '')`,
+    ),
     check('employment_blacklist_note', sql`${t.note} IS NULL OR char_length(${t.note}) <= 500`),
     check('employment_blacklist_revision_positive', sql`${t.revision} > 0`),
   ],
@@ -101,6 +108,8 @@ export const employmentBlacklistRules = pgTable(
     tenantId: tenant(),
     name: text('name').notNull(),
     priority: integer('priority').notNull(),
+    /** 登记顺序：新增时在租户规则锁内分配、之后不变；同优先级按它取先登记者（#387 第 1 轮 P2-2）。 */
+    sequenceNo: integer('sequence_no').notNull(),
     orgIds: uuid('org_ids').array().notNull(),
     description: text('description'),
     term: text('term').notNull(),
@@ -112,6 +121,8 @@ export const employmentBlacklistRules = pgTable(
   },
   (t) => [
     unique('employment_blacklist_rules_tenant_id').on(t.tenantId, t.id),
+    unique('employment_blacklist_rules_sequence').on(t.tenantId, t.sequenceNo),
+    check('employment_blacklist_rules_sequence_positive', sql`${t.sequenceNo} > 0`),
     check('employment_blacklist_rules_name', sql`btrim(${t.name}) <> ''`),
     check('employment_blacklist_rules_priority', sql`${t.priority} BETWEEN 0 AND 9999`),
     check('employment_blacklist_rules_orgs', sql`cardinality(${t.orgIds}) BETWEEN 1 AND 50`),

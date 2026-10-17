@@ -27,6 +27,9 @@ CREATE TABLE "employment_blacklist" (
 	CONSTRAINT "employment_blacklist_expiry" CHECK ("employment_blacklist"."expiry_date" IS NULL OR "employment_blacklist"."expiry_date" >= "employment_blacklist"."blacklist_date"),
 	CONSTRAINT "employment_blacklist_contact" CHECK ("employment_blacklist"."employee_id" IS NOT NULL OR "employment_blacklist"."id_number" IS NOT NULL OR "employment_blacklist"."mobile_phone" IS NOT NULL
         OR "employment_blacklist"."email" IS NOT NULL),
+	CONSTRAINT "employment_blacklist_identity" CHECK (("employment_blacklist"."id_number" IS NULL OR btrim("employment_blacklist"."id_number") <> '')
+        AND ("employment_blacklist"."mobile_phone" IS NULL OR btrim("employment_blacklist"."mobile_phone") <> '')
+        AND ("employment_blacklist"."email" IS NULL OR btrim("employment_blacklist"."email") <> '')),
 	CONSTRAINT "employment_blacklist_note" CHECK ("employment_blacklist"."note" IS NULL OR char_length("employment_blacklist"."note") <= 500),
 	CONSTRAINT "employment_blacklist_revision_positive" CHECK ("employment_blacklist"."revision" > 0)
 );
@@ -49,6 +52,7 @@ CREATE TABLE "employment_blacklist_rules" (
 	"tenant_id" uuid NOT NULL,
 	"name" text NOT NULL,
 	"priority" integer NOT NULL,
+	"sequence_no" integer NOT NULL,
 	"org_ids" uuid[] NOT NULL,
 	"description" text,
 	"term" text NOT NULL,
@@ -58,6 +62,8 @@ CREATE TABLE "employment_blacklist_rules" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "employment_blacklist_rules_tenant_id" UNIQUE("tenant_id","id"),
+	CONSTRAINT "employment_blacklist_rules_sequence" UNIQUE("tenant_id","sequence_no"),
+	CONSTRAINT "employment_blacklist_rules_sequence_positive" CHECK ("employment_blacklist_rules"."sequence_no" > 0),
 	CONSTRAINT "employment_blacklist_rules_name" CHECK (btrim("employment_blacklist_rules"."name") <> ''),
 	CONSTRAINT "employment_blacklist_rules_priority" CHECK ("employment_blacklist_rules"."priority" BETWEEN 0 AND 9999),
 	CONSTRAINT "employment_blacklist_rules_orgs" CHECK (cardinality("employment_blacklist_rules"."org_ids") BETWEEN 1 AND 50),
@@ -73,7 +79,7 @@ ALTER TABLE "employment_blacklist_rule_conditions" ADD CONSTRAINT "employment_bl
 ALTER TABLE "employment_blacklist_rule_conditions" ADD CONSTRAINT "employment_blacklist_rule_conditions_rule_fk" FOREIGN KEY ("tenant_id","rule_id") REFERENCES "public"."employment_blacklist_rules"("tenant_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "employment_blacklist_rules" ADD CONSTRAINT "employment_blacklist_rules_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 CREATE UNIQUE INDEX "employment_blacklist_active_employee" ON "employment_blacklist" USING btree ("tenant_id","employee_id") WHERE "employment_blacklist"."status" = 'active' AND "employment_blacklist"."employee_id" IS NOT NULL;--> statement-breakpoint
-CREATE UNIQUE INDEX "employment_blacklist_active_id_number" ON "employment_blacklist" USING btree ("tenant_id",lower(btrim("id_number"))) WHERE "employment_blacklist"."status" = 'active' AND "employment_blacklist"."id_number" IS NOT NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX "employment_blacklist_active_id_number" ON "employment_blacklist" USING btree ("tenant_id",lower(btrim("id_number"))) WHERE "employment_blacklist"."status" = 'active' AND btrim("employment_blacklist"."id_number") <> '';--> statement-breakpoint
 CREATE INDEX "employment_blacklist_list" ON "employment_blacklist" USING btree ("tenant_id","status","blacklist_date");--> statement-breakpoint
 -- R2 BE-8a（B68）：租户隔离与授权。黑名单可改的列逐列授权（身份快照、加黑日期、来源创建后不变）；删除保留审计快照
 SELECT enable_tenant_isolation('employment_blacklist');
