@@ -208,6 +208,24 @@ function reasonOf(error: AppError | EmploymentError): string {
 }
 
 /**
+ * 是否到期待发起（不取锁，可用于预筛；办理前须在员工锁内再判一次）：适用对象、命中规则、目标日 ≤ 当天、该规则尚未发起。
+ */
+async function dueRuleOf(
+  tx: Tx,
+  tenantId: string,
+  employeeId: string,
+  rules: readonly ExpandedAutoRegularizationRule[],
+  today: string,
+): Promise<{ readonly subject: Subject; readonly rule: ExpandedAutoRegularizationRule } | null> {
+  const subject = await subjectOf(tx, tenantId, employeeId, today);
+  if (!subject) return null;
+  const rule = matchAutoRegularizationRule(rules, subject.departmentId);
+  if (!rule || autoRegularizationTargetDate(subject.expectedEndDate, rule.daysBefore) > today) return null;
+  if (await launchedBefore(tx, tenantId, rule.id, subject.cycle.anchor.id)) return null;
+  return { subject, rule };
+}
+
+/**
  * 一名员工：调用方已持该员工锁（立即执行等待、每日批次 SKIP LOCKED）。不适用 / 未到期 / 已由该规则发起返回 null。
  * ctx 为系统上下文（userId 不用于发起）；发起时换成规则配置的发起人并带 systemProxy。
  */
@@ -218,12 +236,10 @@ export async function autoRegularizeEmployee(
   rules: readonly ExpandedAutoRegularizationRule[],
 ): Promise<AutoRegularizationOutcome> {
   const today = tenantLocalDate(ctx.now, ctx.timezone);
-  const subject = await subjectOf(tx, ctx.tenantId, employeeId, today);
-  if (!subject) return null;
-  const rule = matchAutoRegularizationRule(rules, subject.departmentId);
-  if (!rule || autoRegularizationTargetDate(subject.expectedEndDate, rule.daysBefore) > today) return null;
+  const due = await dueRuleOf(tx, ctx.tenantId, employeeId, rules, today);
+  if (!due) return null;
+  const { subject, rule } = due;
   const key = { ruleId: rule.id, anchorId: subject.cycle.anchor.id, employeeId };
-  if (await launchedBefore(tx, ctx.tenantId, rule.id, key.anchorId)) return null;
   try {
     const launched = await tx.transaction(async (savepoint) => {
       await assertNoCycleRegularization(savepoint, ctx.tenantId, subject);
@@ -281,18 +297,50 @@ export function collectOutcome(run: AutoRegularizationRun, outcome: AutoRegulari
 }
 
 const RUN_PAGE = 200;
-/** 立即执行单次处理的候选上限；超出的人由下一次执行（每日批次或再次立即执行）接着处理。 */
-export const AUTO_REGULARIZATION_RUN_LIMIT = 2000;
+/**
+ * 立即执行的单次上限：scan = 本次最多扫描的候选数，chunk = 本次最多办理的到期人数。到上限时回执带续跑游标（nextCursor），
+ * 下一次立即执行带上它从游标之后接着扫描；没有更多候选时游标为空。测试可调小以覆盖续跑（同一代码路径）。
+ */
+export const AUTO_REGULARIZATION_RUN_LIMITS = { scan: 2000, chunk: 100 };
+
+/** 只读预筛：从游标之后按员工 ID 升序扫描，收集到期待发起的人；到扫描或办理上限即停，返回续跑游标。 */
+async function scanDue(
+  tx: Tx,
+  tenantId: string,
+  rules: readonly ExpandedAutoRegularizationRule[],
+  today: string,
+  cursor: string | null,
+): Promise<{ readonly due: string[]; readonly nextCursor: string | null }> {
+  const { scan, chunk } = AUTO_REGULARIZATION_RUN_LIMITS;
+  const due: string[] = [];
+  let scanned = 0;
+  let last = cursor;
+  for (;;) {
+    const requested = Math.min(RUN_PAGE, scan - scanned);
+    const page = await autoRegularizationCandidates(tx, tenantId, today, last, requested);
+    for (const employeeId of page) {
+      scanned += 1;
+      last = employeeId;
+      if (!(await dueRuleOf(tx, tenantId, employeeId, rules, today))) continue;
+      due.push(employeeId);
+      if (due.length >= chunk) return { due, nextCursor: employeeId };
+    }
+    if (page.length < requested) return { due, nextCursor: null };
+    if (scanned >= scan) return { due, nextCursor: last };
+  }
+}
 
 /**
- * “立即执行”（DEC-539①）：在请求事务内按员工 ID 升序逐人取锁（等待，不跳过）、逐人保存点办理，同 BE-3 批量转正的锁序；
- * 与每日批次重叠时，后取到锁的一方按发起台账复核，不重复发起。按规则的适用组织扫描，不叠加操作人的数据范围（系统批次提前执行）。
- * 不占用当天的每日批次登记：当天批次照常跑，已发起的人在台账上跳过。
+ * “立即执行”（DEC-539①）：在请求事务内办理。先只读预筛出本批到期的人，再一次按全局顺序锁住他们的全部联动参与者
+ * （lockTransferParticipants 的闭包规划，同调动的锁序协议，不逐人追加锁、不触发锁序守卫），然后逐人在锁内复核、
+ * 在保存点内办理。与每日批次重叠时，后取到锁的一方按发起台账复核，不重复发起。按规则的适用组织扫描，不叠加操作人的
+ * 数据范围（系统批次提前执行）；不占用当天的每日批次登记。到单次上限时回执带 nextCursor，带上它再执行即可续跑。
  */
 export async function runAutoRegularizationNow(
   tx: Tx,
   ctx: EmploymentContext,
-): Promise<AutoRegularizationRun & { readonly hasMore: boolean }> {
+  cursor: string | null = null,
+): Promise<AutoRegularizationRun & { readonly nextCursor: string | null }> {
   if (!(await readAutoRegularizationEnabled(tx, ctx.tenantId)))
     throw new AppError('CONFLICT', '自动转正未开启', { reason: 'AUTO_REGULARIZATION_DISABLED' });
   // 只带系统任务需要的键：请求方的授权器、配置对象编码与数据范围不进入发起（发起人由规则决定）
@@ -307,17 +355,9 @@ export async function runAutoRegularizationNow(
   const businessDate = tenantLocalDate(ctx.now, ctx.timezone);
   const run: AutoRegularizationRun = { businessDate, launched: [], failed: [] };
   const rules = await loadEnabledAutoRegularizationRules(tx, ctx.tenantId, businessDate);
-  if (!rules.length) return { ...run, hasMore: false };
-  let cursor: string | null = null;
-  for (let seen = 0; seen < AUTO_REGULARIZATION_RUN_LIMIT;) {
-    const page = await autoRegularizationCandidates(tx, ctx.tenantId, businessDate, cursor, RUN_PAGE);
-    for (const employeeId of page.slice(0, AUTO_REGULARIZATION_RUN_LIMIT - seen)) {
-      await lockTransferParticipants(tx, system, employeeId);
-      collectOutcome(run, await autoRegularizeEmployee(tx, system, employeeId, rules));
-      seen += 1;
-      cursor = employeeId;
-    }
-    if (page.length < RUN_PAGE) return { ...run, hasMore: false };
-  }
-  return { ...run, hasMore: true };
+  if (!rules.length) return { ...run, nextCursor: null };
+  const { due, nextCursor } = await scanDue(tx, ctx.tenantId, rules, businessDate, cursor);
+  if (due.length) await lockTransferParticipants(tx, system, due[0]!, due.slice(1));
+  for (const employeeId of due) collectOutcome(run, await autoRegularizeEmployee(tx, system, employeeId, rules));
+  return { ...run, nextCursor };
 }

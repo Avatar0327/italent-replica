@@ -174,9 +174,9 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/employment/auto-regularization-routes.ts': {
     'route:DELETE /auto-regularization-rules/:id': '633164e68c0d',
     'route:GET /auto-regularization-rules': '30bcdcc9d33c',
-    'route:POST /auto-regularization-rules': 'ca907e16e6e6',
+    'route:POST /auto-regularization-rules': '9921e0316fd2',
     'route:POST /auto-regularization-rules/:id/copy': '82b510f08ee1',
-    'route:POST /auto-regularization/run': '88a212ba6a9f',
+    'route:POST /auto-regularization/run': '3ebd8dc94099',
     'route:PUT /auto-regularization-rules/:id': '7d8ee2c6797a',
     'route:PUT /auto-regularization-rules/:id/enabled': '5e3092aadae1',
     writeContext: '0f98695a8fa8',

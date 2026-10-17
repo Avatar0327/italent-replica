@@ -1429,7 +1429,8 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     }),
     byId,
   ),
-  // 立即执行（DEC-539①）：body 严格 {}；总开关关闭 409 AUTO_REGULARIZATION_DISABLED；按规则适用组织扫描（系统批次提前执行，
+  // 立即执行（DEC-539①）：body 严格 { cursor? }（上次回执的 nextCursor，非 UUID 400）；
+  // 总开关关闭 409 AUTO_REGULARIZATION_DISABLED；按规则适用组织扫描（系统批次提前执行，
   // 不叠加操作人数据范围），逐人保存点经 BE-3 转正入口发起，审计 employment.auto_regularization.launch；回执固定形状
   'POST /auto-regularization/run': all(
     [

@@ -4,9 +4,10 @@
  * （tenant.employment.configuration.write，管理员 other_settings），命令内经 CommandGuard.before 按当前授权再过一遍（#199）。
  * 总开关：两层配置 probation.auto_regularization_enabled，经既有 /api/tenant/settings/:key 读写，这里只登记取值校验。
  */
-import { withTenant } from '@italent/db';
+import { isUuid, withTenant } from '@italent/db';
 import { AUTO_REGULARIZATION_SETTING_KEY, isAutoRegularizationSettingValue, MODULE_OBJECTS } from '@italent/domain';
 import type { Context, Hono } from 'hono';
+import { z } from 'zod';
 import { requirePermission } from '../../authorization.js';
 import type { CommandGuard } from '../../commands.js';
 import { AppError } from '../../errors.js';
@@ -87,7 +88,7 @@ export function registerAutoRegularizationRoutes(router: Hono<TenantEnv>, deps: 
       ctx,
       input,
       async (tx, context) => ({ status: 201, body: await saveAutoRegularizationRule(tx, context, input) }),
-      { guard: ruleGuard(deps, ctx, input) },
+      { guard: ruleGuard(deps, ctx, input, 'create') },
     );
   });
   router.put('/auto-regularization-rules/:id', async (c) => {
@@ -160,13 +161,13 @@ function registerRuleRowActions(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
 }
 
 /**
- * 立即执行（DEC-539①）：body 严格 {}；按启用规则扫描并发起，回执逐人列出发起 / 失败（员工、规则、业务、原因），
- * 不含任职字段值。权限同规则维护。
+ * 立即执行（DEC-539①）：body 严格 { cursor? }；按启用规则扫描并发起。回执逐人列出发起 / 失败（员工、规则、业务、原因）
+ * 和续跑游标 nextCursor，不含任职字段值。权限同规则维护。
  */
 function registerRunNow(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.post('/auto-regularization/run', async (c) => {
     const ctx = await writeContext(c, deps);
-    parseRunBody(await jsonBody(c));
+    const { cursor } = parseRunBody(await jsonBody(c));
     await requireEmploymentWrite(ctx, 'update', {}, undefined, 'TenantBase.EmploymentSettings', {
       commandOnly: true,
     });
@@ -174,14 +175,19 @@ function registerRunNow(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       c,
       deps,
       ctx,
-      { action: 'auto-regularization-run' },
-      async (tx, context) => ({ status: 200, body: await runAutoRegularizationNow(tx, context) }),
+      { action: 'auto-regularization-run', cursor },
+      async (tx, context) => ({ status: 200, body: await runAutoRegularizationNow(tx, context, cursor) }),
       { guard: ruleGuard(deps, ctx, {}), project: (body) => body },
     );
   });
 }
 
-function parseRunBody(raw: unknown): void {
-  if (raw === null || typeof raw !== 'object' || Array.isArray(raw) || Object.keys(raw).length)
-    throw new AppError('VALIDATION_FAILED', '立即执行的请求体须为 {}');
+/** body 严格 { cursor? }：cursor 为上一次回执的 nextCursor（员工 UUID），从它之后接着扫描。 */
+function parseRunBody(raw: unknown): { readonly cursor: string | null } {
+  const parsed = z
+    .strictObject({ cursor: z.string().refine(isUuid, '续跑游标须为员工 UUID').optional() })
+    .safeParse(raw);
+  if (!parsed.success)
+    throw new AppError('VALIDATION_FAILED', '立即执行的请求体须为 {} 或 { cursor }', parsed.error.issues);
+  return { cursor: parsed.data.cursor?.toLowerCase() ?? null };
 }

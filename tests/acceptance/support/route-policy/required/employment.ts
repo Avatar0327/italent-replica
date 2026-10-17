@@ -2062,7 +2062,7 @@ export const EMPLOYMENT: RequiredTable = {
                   AUTO_REG,
                   method,
                   path,
-                  'async (tx, context) => ({ status: 200, body: await runAutoRegularizationNow(tx, context) })',
+                  'async (tx, context) => ({ status: 200, body: await runAutoRegularizationNow(tx, context, cursor) })',
                 ),
               ),
             ]
