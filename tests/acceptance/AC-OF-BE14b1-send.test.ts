@@ -3,10 +3,11 @@
  * 邮件首版只记一行发送记录（状态 pending，不显示投递状态）；答复链接与候选人答复页归 F-183，本单不生成令牌。
  */
 import { randomUUID } from 'node:crypto';
+import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { errorOf, offerRealWorld, offerWorld } from './AC-OF-BE14a-support.js';
-import { requireApproval, sendRecords, send, setEstablishment } from './AC-OF-BE14b1-support.js';
+import { requireApproval, rowsOf, sendRecords, send, setEstablishment } from './AC-OF-BE14b1-support.js';
 
 const testDb = useTestDb();
 const accept = { target: 'accepted', acceptTime: '2026-10-16' };
@@ -205,5 +206,29 @@ describe('发送的权限与行操作', () => {
     const outside = await w.intern({ departmentId: ((await org.json()) as { id: string }).id });
     const response = await w.real('POST', `/${outside.id}/send`, { ifMatch: outside.revision, body: {} });
     expect(response.status).toBe(404);
+  });
+});
+
+describe('P2-03 发送过又退回待发的 Offer 仍可删除', () => {
+  it('新建 → 发送 → 转回待发 → 详情给 delete → 删除成功；发送记录随之删除，删除审计的快照保留发送历史', async () => {
+    const w = await offerWorld(testDb().db, 'delete-sent');
+    const offer = await w.social();
+    expect((await send(w, offer, { cc: ['cc@example.com'] })).status).toBe(200);
+    const back = await w.moved(await w.get(offer.id), { target: 'pending' });
+    const detail = await w.request('GET', `/${offer.id}`);
+    expect(((await detail.json()) as { rowActions: { menu: string[] } }).rowActions.menu).toContain('delete');
+    const deleted = await w.request('DELETE', `/${offer.id}`, { ifMatch: back.revision });
+    expect(deleted.status, await deleted.clone().text()).toBe(200);
+    expect((await w.request('GET', `/${offer.id}`)).status).toBe(404);
+    expect(await sendRecords(w, offer.id)).toEqual([]);
+    const audits = rowsOf<{ action: string; before: { sendRecords?: { kind: string; cc: string[] }[] } | null }>(
+      await withTenant(w.db, w.tenant.id, (tx) =>
+        tx.execute(sql`SELECT action, before FROM audit_events WHERE tenant_id = ${w.tenant.id}
+          AND object_id = ${offer.id} ORDER BY occurred_at, id`),
+      ),
+    );
+    expect(audits.map((audit) => audit.action)).toContain('offer.delete');
+    const snapshot = audits.find((audit) => audit.action === 'offer.delete')!.before;
+    expect(snapshot?.sendRecords).toMatchObject([{ kind: 'send', cc: ['cc@example.com'] }]);
   });
 });

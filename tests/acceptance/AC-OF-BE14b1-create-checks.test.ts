@@ -5,7 +5,7 @@
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { internWorld } from './AC-IN-BE6a-support.js';
-import { errorOf, offerWorld } from './AC-OF-BE14a-support.js';
+import { errorOf, offerRealWorld, offerWorld } from './AC-OF-BE14a-support.js';
 import { tenantApi } from './support/tenant-api.js';
 import { uniqueSuffix } from './support/unique.js';
 
@@ -118,5 +118,35 @@ describe('OF-R2 重聘提示与身份证带出', () => {
     expect(await born({ idType: 'id_card', idNumber: ID_CARD, birthDate: '2000-01-01' })).toBe('2000-01-01');
     expect(await born({ idType: 'passport', idNumber: ID_CARD })).toBeNull();
     expect(await born({ idType: 'id_card', idNumber: '110105194912310021' })).toBeNull();
+  });
+});
+
+describe('P2-02 身份证带出的出生日期纳入字段编辑权（DEC-455①）', () => {
+  it('没有出生日期编辑权：直接提交 403；只交有效身份证号让系统带出同样整单 403，无新增 Offer、无审计、无台账', async () => {
+    const w = await offerRealWorld(testDb().db, 'birth-denied', ['birthDate']);
+    const attempt = async (key: string, extra: Record<string, unknown>) => {
+      const response = await w.real('POST', '', {
+        ifMatch: 0,
+        idempotencyKey: key,
+        body: { entry: 'intern', ...w.internFields(), ...extra },
+      });
+      expect(response.status, await response.clone().text()).toBe(403);
+      expect(await w.traces(key)).toBe(0);
+    };
+    await attempt('birth-direct', { birthDate: '2000-01-01' });
+    await attempt('birth-derived', { idType: 'id_card', idNumber: ID_CARD });
+    expect(await w.count()).toBe(0);
+    const plain = await w.real('POST', '', { ifMatch: 0, body: { entry: 'intern', ...w.internFields() } });
+    expect(plain.status, await plain.clone().text()).toBe(201);
+  });
+
+  it('有出生日期编辑权：带出值落库', async () => {
+    const w = await offerRealWorld(testDb().db, 'birth-allowed');
+    const response = await w.real('POST', '', {
+      ifMatch: 0,
+      body: { entry: 'intern', ...w.internFields(), idType: 'id_card', idNumber: ID_CARD },
+    });
+    expect(response.status, await response.clone().text()).toBe(201);
+    expect(await response.json()).toMatchObject({ birthDate: '1949-12-31' });
   });
 });

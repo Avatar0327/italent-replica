@@ -2,9 +2,13 @@
  * BE-14b1 验收夹具：发送记录读取、编制（控编方案 + 容量）造数、OF-R3 / OF-R4 两项配置覆盖。
  * 建立在 BE-14a 的 offerWorld 之上（租户、录用部门、社招必填引用）。
  */
+import { randomUUID } from 'node:crypto';
 import { sql, withTenant } from '@italent/db';
+import { MODULE_OBJECTS } from '@italent/domain';
 import { expect } from 'vitest';
-import type { OfferBody, OfferWorld } from './AC-OF-BE14a-support.js';
+import { withLoginEmail } from './AC-EMP-support.js';
+import type { OfferBody, OfferRealWorld, OfferWorld } from './AC-OF-BE14a-support.js';
+import { createProfile, grant, makeGrantable, setObjectPermission } from './AC-PRM-support.js';
 
 export const rowsOf = <T>(result: unknown) => (Array.isArray(result) ? result : (result as { rows: T[] }).rows) as T[];
 
@@ -68,4 +72,82 @@ export async function setEstablishment(w: OfferWorld, strictControl: boolean, lo
     strictControl,
   });
   expect(capacity.status, await capacity.clone().text()).toBe(201);
+}
+
+export interface LeaverKeys {
+  readonly idNumber?: string;
+  readonly mobilePhone?: string;
+  readonly email?: string;
+}
+
+/** 已离职人员（入职 2026-01-15、最后工作日 2026-09-20），人员档案带证件 / 手机 / 邮箱；造数走全部允许的实例。 */
+export async function leaver(w: OfferWorld, departmentId: string, keys: LeaverKeys, name = '离职合成员工') {
+  const as = { user: w.user.id, tenant: w.tenant.id };
+  const employmentApi = (method: string, path: string, options: object = {}) =>
+    w.seeder.request(method, `/api/tenant/employment${path}`, { ...as, ...options });
+  const created = await employmentApi('POST', '/employees', {
+    ifMatch: 0,
+    body: { name, code: `LV_${randomUUID().replaceAll('-', '')}` },
+  });
+  expect(created.status, await created.clone().text()).toBe(201);
+  const { id, revision } = (await created.json()) as { id: string; revision: number };
+  const business = (revisionNow: number, body: Record<string, unknown>) =>
+    employmentApi('POST', `/employees/${id}/businesses`, { ifMatch: revisionNow, body: withLoginEmail(id, body) });
+  const hired = await business(revision, {
+    kind: 'hire',
+    mode: 'direct',
+    effectiveDate: '2026-01-15',
+    fields: { employType: 'internal', departmentId },
+  });
+  expect(hired.status, await hired.clone().text()).toBe(201);
+  const personnelPath = `/api/tenant/personnel/employees/${id}`;
+  const profile = await w.seeder.request('GET', personnelPath, as);
+  const patched = await w.seeder.request('PATCH', personnelPath, {
+    ...as,
+    ifMatch: ((await profile.json()) as { revision: number }).revision,
+    body: keys.idNumber ? { idType: 'id_card', ...keys } : keys,
+  });
+  expect(patched.status, await patched.clone().text()).toBe(200);
+  const current = await employmentApi('GET', `/employees/${id}`);
+  const left = await business(((await current.json()) as { revision: number }).revision, {
+    kind: 'leave',
+    mode: 'direct',
+    lastWorkDate: '2026-09-20',
+    fields: {},
+  });
+  expect(left.status, await left.clone().text()).toBe(201);
+  return { id };
+}
+
+/**
+ * 给真实授权器下的成员单独授任职记录的查看权（独立身份，可整体撤销）：hide 是不给查看的字段。
+ * 撤销只拿掉这一份授权，Offer 自己的权限不受影响（重放时重新授权的用例用）。
+ */
+export async function employmentViewer(w: OfferRealWorld, hide: readonly string[] = []) {
+  const profile = await createProfile(w.seed, `emp-view-${randomUUID()}`);
+  await makeGrantable(w.seed, [profile.id]);
+  const definition = MODULE_OBJECTS.employmentRecord;
+  const set = await setObjectPermission(
+    w.seed,
+    profile,
+    {
+      dataOperations: { create: false, update: false, delete: false },
+      fields: definition.fields.map((f) => ({ fieldCode: f.code, view: !hide.includes(f.code), edit: false })),
+      buttons: [],
+    },
+    definition.code,
+  );
+  expect(set.status, await set.clone().text()).toBe(200);
+  const granted = await grant(w.seed, w.member.id, profile.id);
+  expect(granted.status, await granted.clone().text()).toBe(201);
+  const { id, revision } = (await granted.json()) as { id: string; revision: number };
+  return {
+    revoke: async () => {
+      const response = await w.seed.api.request('POST', `/api/tenant/permission/grants/${id}/revoke`, {
+        ...w.seed.asAdmin,
+        ifMatch: revision,
+      });
+      expect(response.status, await response.clone().text()).toBe(200);
+    },
+  };
 }
