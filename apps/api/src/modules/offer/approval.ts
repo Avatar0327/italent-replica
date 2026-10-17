@@ -107,16 +107,14 @@ export async function submitOfferBatch(tx: Tx, ctx: OfferContext, input: OfferBa
       });
     });
   const created = batch[0]!;
-  await tx
-    .insert(offerBatchApprovalItems)
-    .values(
-      input.offerIds.map((offerId, index) => ({
-        tenantId: ctx.tenantId,
-        batchId: created.id,
-        offerId,
-        seq: index + 1,
-      })),
-    );
+  await tx.insert(offerBatchApprovalItems).values(
+    input.offerIds.map((offerId, index) => ({
+      tenantId: ctx.tenantId,
+      batchId: created.id,
+      offerId,
+      seq: index + 1,
+    })),
+  );
   const { auditBatch } = await import('./approval-adapter.js');
   await auditBatch(tx, ctx, 'create', null, { ...created, offerIds: input.offerIds });
   for (const row of rows) await saveApprovalStatus(tx, ctx, row, 'approving');

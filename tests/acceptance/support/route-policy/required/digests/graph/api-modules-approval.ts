@@ -427,6 +427,8 @@ export const GRAPH: Graph = {
     '#personnelAdapter',
     'apps/api/src/modules/contracts/adapter.ts#contractAdapter',
     'apps/api/src/modules/idp/approval-adapter.ts#idpAdapter',
+    'apps/api/src/modules/offer/approval-adapter.ts#offerAdapter',
+    'apps/api/src/modules/offer/approval-adapter.ts#offerBatchAdapter',
     'apps/api/src/modules/talent-review/approval-adapter.ts#talentReviewAdapter',
   ],
   'apps/api/src/modules/approval/adapters.ts#HELD_STATUSES': ['apps/api/src/modules/approval/store.ts#OPEN_STATUSES'],

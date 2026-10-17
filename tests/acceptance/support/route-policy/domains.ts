@@ -11,6 +11,8 @@ import {
   CONTRACT_OBJECT,
   contractAction,
   IDP_OBJECTS,
+  OFFER_BATCH_OBJECT,
+  OFFER_OBJECT,
   QUALIFICATION_OBJECTS,
   QUALIFICATION_OWNED_OBJECTS,
   SUBSETS,
@@ -47,6 +49,9 @@ const FIELD_OBJECT_EXPRESSIONS: Readonly<Record<string, { adapter: string; codes
   CONTRACT_OBJECT: { adapter: 'contract', codes: [CONTRACT_OBJECT] },
   // idp/approval-adapter.ts
   'IDP_OBJECTS.plan.code': { adapter: 'idp', codes: [IDP_OBJECTS.plan.code] },
+  // offer/approval-adapter.ts（R2 BE-14a3）：单个 Offer 审批 / Offer 批量审批
+  OFFER_OBJECT: { adapter: 'offer', codes: [OFFER_OBJECT] },
+  OFFER_BATCH_OBJECT: { adapter: 'offer_batch', codes: [OFFER_BATCH_OBJECT] },
 };
 
 /**

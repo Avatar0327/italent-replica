@@ -1,9 +1,12 @@
 {
-  "reason": "R2 BE-14a：新增 Offer 对象（TenantBase.Offer）的字段、CRUD 与转移状态两项按钮授权项，进组织员工系统管理员 / HR 管理员 / HR 专员三个标准身份（DEC-415）",
+  "reason": "R2 BE-14a3：新增 Offer 批量审批单对象（TenantBase.OfferBatchApproval）的字段与数据操作授权项，Offer 对象新增“当前审批人 / 当前审批节点”两个只读字段，进组织员工系统管理员 / HR 管理员 / HR 专员三个标准身份（DEC-415）",
   "add": [
-    "standard_hr_admin/TenantBase.Offer/*",
-    "standard_hr_specialist/TenantBase.Offer/*",
-    "standard_org_system_admin/TenantBase.Offer/*"
+    "standard_hr_admin/TenantBase.Offer/field:currentApprov*",
+    "standard_hr_admin/TenantBase.OfferBatchApproval/*",
+    "standard_hr_specialist/TenantBase.Offer/field:currentApprov*",
+    "standard_hr_specialist/TenantBase.OfferBatchApproval/*",
+    "standard_org_system_admin/TenantBase.Offer/field:currentApprov*",
+    "standard_org_system_admin/TenantBase.OfferBatchApproval/*"
   ],
   "remove": []
 }
