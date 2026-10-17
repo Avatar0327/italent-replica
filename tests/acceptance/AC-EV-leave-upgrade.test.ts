@@ -6,13 +6,16 @@ import { expect, it } from 'vitest';
 import { evaluationLeaveWorld, rowsOf, LEAVE_MIGRATION, replayLeaveMigration } from './AC-EV-leave-support.js';
 import { removeEmploymentTimeline } from '../../apps/api/src/modules/employment/timeline.js';
 import { runEvaluationLeave } from '../../apps/api/src/modules/evaluation/leave-handler.js';
+import { addPreBlacklistTable } from './support/pre-blacklist-schema.js';
 import { addPrePartTimeTables } from './support/pre-part-time-schema.js';
 
 it('AC-EV-leave-upgrade：C1 未来离职、三天前已生效且有评定的周期补入；已删除与无评定旧周期排除，重跑不重复', async () => {
   const handle = await createTestDb({ migrateBefore: LEAVE_MIGRATION });
   try {
+    // R2 BE-8a：前置步骤里的入职会查黑名单表，旧结构上临时补出，升级迁移前撤掉（support/pre-blacklist-schema.ts）
+    const restoreBlacklist = await addPreBlacklistTable(handle.db);
     // R2 BE-7 PT-2：前置步骤的任职写入在提交前复核会查兼职表，旧结构上临时补出，升级迁移前撤掉（support/pre-part-time-schema.ts）
-    const restore = await addPrePartTimeTables(handle.db);
+    const restorePartTime = await addPrePartTimeTables(handle.db);
     const w = await evaluationLeaveWorld(handle.db);
     const [date] = rowsOf<{ old: string; future: string; later: string }>(
       await handle.db.execute(sql`
@@ -43,7 +46,8 @@ it('AC-EV-leave-upgrade：C1 未来离职、三天前已生效且有评定的周
     const ignored = await w.leave(date!.old, noEvaluation.id);
     expect(await w.queue(oldLeave.id)).toEqual([]);
     expect(await w.queue(futureLeave.id)).toEqual([]);
-    await restore();
+    await restorePartTime();
+    await restoreBlacklist();
     await handle.migrate();
     expect(await w.queue(oldLeave.id)).toHaveLength(1);
     expect(await w.queue(futureLeave.id)).toHaveLength(1);
