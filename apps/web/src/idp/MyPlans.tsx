@@ -43,9 +43,21 @@ export function TutorPlansPage() {
 function MyPlans({ employeeId }: { employeeId?: string }) {
   const list = useCollection<PlanSummary>(`${IDP_API}/my-plans`);
   const [filters, setFilters] = useState<PlanFilters>({});
-  const rows = useMemo(
-    () => ownPlans(list.items ?? [], employeeId).filter((row) => matchesFilters(row, filters)),
-    [list.items, employeeId, filters],
+  const mine = useMemo(() => ownPlans(list.items ?? [], employeeId), [list.items, employeeId]);
+  const rows = useMemo(() => mine.filter((row) => matchesFilters(row, filters)), [mine, filters]);
+  const tutors = [...new Set(mine.map((row) => row.tutorEmployeeId).filter((id): id is string => !!id))];
+  const names = useNames('employee', tutors);
+  const tutorFilter = (
+    <Select
+      id="idp-my-tutor"
+      allowClear
+      showSearch
+      optionFilterProp="label"
+      placeholder={t.choose}
+      value={filters.tutorEmployeeId}
+      options={tutors.map((id) => ({ value: id, label: names(id) }))}
+      onChange={(tutorEmployeeId) => setFilters({ ...filters, tutorEmployeeId })}
+    />
   );
   return (
     <PlanListPage
@@ -54,7 +66,7 @@ function MyPlans({ employeeId }: { employeeId?: string }) {
       others="own"
       list={list}
       rows={rows}
-      filters={<InlineFilters value={filters} change={setFilters} />}
+      filters={<InlineFilters value={filters} change={setFilters} tutorFilter={tutorFilter} />}
     />
   );
 }
@@ -152,7 +164,6 @@ function columns(names: (id?: string | null) => string, open: (id: string) => vo
       ),
     },
     { key: 'employeeId', title: t.fields.employeeId, render: (_, row) => names(row.employeeId) },
-    // 个人发展计划接口不返回指导人（plan-routes my-plans 固定字段），如实显示 --（后端缺口）；我辅导的发展计划返回本人
     {
       key: 'tutorEmployeeId',
       title: t.fields.tutorEmployeeId,
@@ -168,16 +179,17 @@ const statusOptions = ['running', 'ended', 'terminated'].map((value) => ({ value
 
 const TARGET = 'target';
 /**
- * 原站 04 的行内筛选：状态、指导人、开始时间、结束时间；指导人因接口未返回暂不可选（后端缺口）。
+ * 原站 04 的行内筛选：状态、指导人、开始时间、结束时间。
  * 我辅导的发展计划（B5_26）另有姓名（列表里出现的员工）与“辅导员工分类”；分类只有“辅导对象”一项，列表全是辅导对象。
  * 状态照原站保留全部选项：本页只列进行中，个人发展计划不列已终止，选了为空。
  */
 function InlineFilters(props: {
   value: PlanFilters;
   change(value: PlanFilters): void;
+  tutorFilter?: ReactNode;
   people?: { value: string; label: string }[];
 }) {
-  const { value, change, people } = props;
+  const { value, change, people, tutorFilter } = props;
   return (
     <div className="idp-inline-filters">
       {people && (
@@ -205,9 +217,11 @@ function InlineFilters(props: {
         onChange={(status) => change({ ...value, status })}
       />
       <label htmlFor="idp-my-tutor">{t.fields.tutorEmployeeId}</label>
-      <Tooltip title={t.gaps.tutor}>
-        <Select id="idp-my-tutor" disabled placeholder={t.choose} />
-      </Tooltip>
+      {tutorFilter ?? (
+        <Tooltip title={t.gaps.tutor}>
+          <Select id="idp-my-tutor" disabled placeholder={t.choose} />
+        </Tooltip>
+      )}
       <label>{t.fields.startDate}</label>
       <TenantDatePicker
         value={value.startFrom}

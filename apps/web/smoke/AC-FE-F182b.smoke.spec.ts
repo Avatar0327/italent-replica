@@ -44,8 +44,9 @@ test('AC-FE-F182b-02 按指导人筛选只剩对应行、排除 null；选项去
     if (request.url().includes('/idp/my-plans')) requests.push(request.url());
   });
   const tutor = page.getByRole('combobox', { name: '指导人', exact: true });
+  const select = page.locator('.ant-select').filter({ has: tutor });
   await expect(tutor).toBeEnabled();
-  await tutor.click();
+  await select.locator('.ant-select-selector').click();
   const options = page.locator('.ant-select-dropdown:visible .ant-select-item-option');
   await expect(options).toHaveText(['合成员工乙', '合成员工丙']);
   await options.filter({ hasText: '合成员工乙' }).click();
@@ -53,12 +54,11 @@ test('AC-FE-F182b-02 按指导人筛选只剩对应行、排除 null；选项去
   await expect(page.locator('tbody .idp-link')).toHaveText(['合成乙指导计划一', '合成乙指导计划二']);
   await expect(page.getByRole('button', { name: '合成无指导人计划' })).toHaveCount(0);
   // 候选仍来自筛选前的本页已加载行，可以直接改选另一个指导人。
-  await tutor.click();
+  await select.locator('.ant-select-selector').click();
   await expect(options).toHaveText(['合成员工乙', '合成员工丙']);
   await options.filter({ hasText: '合成员工丙' }).click();
   await expect(page.getByText('共1条')).toBeVisible();
   await expect(page.locator('tbody .idp-link')).toHaveText(['合成丙指导计划']);
-  const select = page.locator('.ant-select').filter({ has: tutor });
   await select.hover();
   await select.locator('.ant-select-clear').click();
   await expect(page.getByText('共4条')).toBeVisible();

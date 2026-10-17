@@ -98,7 +98,7 @@ const participating = {
   id: otherPlanId,
   name: '合成参与计划',
   employeeId: otherEmployee,
-  tutorEmployeeId: employee,
+  tutorEmployeeId: undefined,
   tutorRole: undefined,
   processId: undefined,
 };
@@ -422,7 +422,11 @@ function staticReads(
     '/my-plans': {
       page: 1,
       pageSize: 200,
-      items: [plan, participating, { ...plan, id: basicOnlyId, name: '合成基本信息计划' }].map(participantRow),
+      items: [
+        plan,
+        { ...participating, tutorEmployeeId: employee },
+        { ...plan, id: basicOnlyId, name: '合成基本信息计划' },
+      ].map(participantRow),
     },
     '/tutor-plans': {
       page: 1,
