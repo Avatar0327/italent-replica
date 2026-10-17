@@ -114,6 +114,17 @@ export function parseEmploymentInput(value: unknown): NormalizedEmploymentInput 
   return { ...input, effectiveDate, lastWorkDate: input.lastWorkDate ?? null };
 }
 
+/**
+ * 转正业务（经 regularization.ts 的单一入口）：校验同通用业务，但生效日可不填——由入口按预计试用结束日取次日（F-205）。
+ */
+export function parseRegularizationBusinessInput(value: unknown) {
+  assertNoStatusFields(value);
+  const parsed = businessSchema.safeParse(value);
+  if (!parsed.success) throw new AppError('VALIDATION_FAILED', '任职业务字段不合法', parsed.error.issues);
+  if (parsed.data.lastWorkDate) throw new AppError('VALIDATION_FAILED', '只有离职或退休业务可设置最后工作日');
+  return parsed.data;
+}
+
 export function normalizeBusinessPatch(value: unknown): EmploymentBusinessPatch {
   assertNoStatusFields(value);
   const parsed = patchSchema.safeParse(value);

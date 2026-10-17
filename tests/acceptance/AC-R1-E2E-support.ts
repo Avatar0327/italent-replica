@@ -19,6 +19,7 @@ import {
   permissionAdmin,
   type Person,
 } from './AC-APV-support.js';
+import { installProbationSeeds } from './AC-EMP-support.js';
 import { auditApi, type DataChangeLog } from './AC-AUD-support.js';
 import {
   addMember,
@@ -132,6 +133,7 @@ export async function auditViewer(admin: PermissionWorld, label: string, orgIds:
 
 export async function e2eWorld(db: Db, label: string) {
   const w = await approvalWorld(db, label);
+  await installProbationSeeds(db, w.tenant.id);
   const admin = await permissionAdmin(w);
   const api = tenantApi(db, { authorize: undefined, clock: w.clock });
   const audit = auditApi(db, w.clock, { authorize: undefined });
