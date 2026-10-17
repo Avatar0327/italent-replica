@@ -1,8 +1,8 @@
 {
 "updated": "2026-10-14",
 "stats": {
-"merged": 305,
-"open": 13,
+"merged": 307,
+"open": 11,
 "dec": 578,
 "ev": "43/177"
 },
@@ -983,6 +983,30 @@
 }
 },
 "log": [
+[
+"10-17",
+"#389 F-212 04:39Z、#390 BE-7 设计段 04:40Z 合并；F-213 #392 第 1 轮审查发起；D3b-PERF/ATT 取证（DEC-582）加入"
+],
+[
+"10-17",
+"BE-8a #387 开发完成但超 1500 行（+2258），待决；03 推荐整单送审，60 分钟默认按 A"
+],
+[
+"10-17",
+"BE-7 #390 第 3 轮审查已发起（head 547645d7）"
+],
+[
+"10-17",
+"BE-7 #390 第 2 轮暂不能合并（1 项 P2 + 2 P3），返工中"
+],
+[
+"10-17",
+"DEC-581：BE-14a 拆为 BE-14a1(C1 开发中 #394)/BE-14a2(C2)/BE-14a3(审批类型)，分母 +2；BE-14b 前序改 BE-14a2、BE-6a、BE-8a"
+],
+[
+"10-17",
+"BE-7 #390 第 2 轮审查已发起（head 51849d2c）；BE-15 备注更新；R2e7 取证已验收"
+],
 [
 "10-17",
 "BE-7 #390 第 1 轮 8 项 P2 返工中；BE-14a 开 Draft PR #394；F-212 #389 待总编排确认"
@@ -5176,16 +5200,42 @@
 "after": []
 },
 {
+"k": "D3b-PERF",
+"n": "D3b-PERF 绩效管理第 1 批远程取证（只读）",
+"s": "assigned",
+"kind": "取证",
+"mod": "蓝",
+"ms": "D3",
+"after": [],
+"note": "取证中 · 远程 Codex Sol 高 · Profile 2（A0）· 只读 · 完成标记 DONE-D3b-PERF（DEC-582）"
+},
+{
+"k": "D3b-ATT",
+"n": "D3b-ATT 假勤管理第 1 批远程取证（只读）",
+"s": "assigned",
+"kind": "取证",
+"mod": "蓝",
+"ms": "D3",
+"after": [],
+"note": "取证中 · 远程 Codex Sol 高 · Profile 7（A5）· 只读 · 完成标记 DONE-D3b-ATT（DEC-582）"
+},
+{
 "k": "M-perf",
 "n": "R0-T14 绩效管理（OKR/目标）",
 "s": "todo",
-"note": "取证→契约→页面"
+"note": "取证→契约→页面",
+"after": [
+"D3b-PERF"
+]
 },
 {
 "k": "M-att",
 "n": "R0-T15 假勤管理",
 "s": "todo",
-"note": "取证→契约→页面"
+"note": "取证→契约→页面",
+"after": [
+"D3b-ATT"
+]
 },
 {
 "k": "M-pay",
@@ -5411,28 +5461,46 @@
 "kind": "取证"
 },
 {
-"k": "BE-14a",
-"n": "BE-14a Offer 对象、状态机、视图与审批类型",
-"s": "decide",
-"note": "开发中（Draft PR #394，分支 claude/optimistic-wozniak-kp39wa，云端会话 session_015Aut3ytajQgoMGtXx8NGpW）· Opus High 开发 / Codex Sol high 审 · DEC-576",
+"k": "BE-14a1",
+"n": "BE-14a1 Offer 对象、字典、按钮权限、编辑删除复制、视图（C1）",
+"s": "dev",
 "after": [
 "BE-2a",
 "F-172",
 "F-175",
 "F-177"
 ],
-"pr": 394
+"pr": 394,
+"note": "开发中（Draft PR #394，分支 claude/optimistic-wozniak-kp39wa，云端会话 session_015Aut3ytajQgoMGtXx8NGpW）· 约 1600 行，DEC-581 用户认可超 1500 · Opus High 开发 / Codex Sol high 审 · 由 BE-14a 拆出"
+},
+{
+"k": "BE-14a2",
+"n": "BE-14a2 Offer 状态转移、失效、行操作矩阵、OF-R3（C2）",
+"s": "wait",
+"after": [
+"BE-14a1"
+],
+"note": "待 BE-14a1 合入后派 · 约 1300 行 · DEC-581 由 BE-14a 拆出，可与 BE-14a3 并行"
+},
+{
+"k": "BE-14a3",
+"n": "BE-14a3 Offer 审批 / Offer 批量审批类型",
+"s": "wait",
+"after": [
+"BE-14a1"
+],
+"note": "待 BE-14a1 合入后派 · 约 1200～1500 行 · DEC-581 由 BE-14a 拆出，可与 BE-14a2 并行"
 },
 {
 "k": "BE-14b",
 "n": "BE-14b Offer 发送、同步待入职、设置（含 F-201 三项）",
 "s": "wait",
 "after": [
-"BE-14a",
+"BE-14a2",
 "BE-6a",
 "BE-8a"
 ],
-"note": "待 BE-14a 合入后再派 · 并入 F-201 三项与“待入职改期后 ID 变更的当前记录解析端口” · 新建时重聘、黑名单校验放此段（依赖在途 BE-6a / BE-8a）"
+"note": "待 BE-14a2 合入后再派 · 并入 F-201 三项与“待入职改期后 ID 变更的当前记录解析端口” · 新建时重聘、黑名单校验放此段（依赖在途 BE-6a / BE-8a）"
 },
 {
 "k": "BE-16",
@@ -5602,14 +5670,15 @@
 "k": "BE-3",
 "n": "BE-3 试用期与转正",
 "s": "dev",
-"note": "开发中（云端会话 session_01QV8zRy5TEzKPdU5fKMHyix，尚无 PR）· F-205 并入同一会话 · Opus High 开发 / Codex Sol high 审 · 分支 claude/BE-3-probation · DEC-574⑤",
-"after": []
+"note": "开发中（云端会话 session_01QV8zRy5TEzKPdU5fKMHyix，Draft PR #391，分支 claude/BE-3-probation）· F-205 并入同一会话 · Opus High 开发 / Codex Sol high 审 · 分支 claude/BE-3-probation · DEC-574⑤",
+"after": [],
+"pr": 391
 },
 {
 "k": "BE-15",
 "n": "BE-15 试用考核与自动转正",
 "s": "wait",
-"note": "待排 · 依赖 BE-3；自动转正 / 自动考核执行结果待 F-177 取证 · 软关联前序取证 F-183（R2e7），不卡派发（DEC-534/540）",
+"note": "待排 · 依赖 BE-3（#391 合入后即派）；R2e7 取证已验收，不缺证（F-177 已完成）",
 "after": [
 "BE-3",
 "F-177"
@@ -5638,11 +5707,11 @@
 {
 "k": "BE-8a",
 "n": "BE-8a 黑名单（手动加黑、再入职保存拦截、自动加黑规则配置，DEC-569）",
-"s": "dev",
+"s": "decide",
 "after": [
 "BE-4d"
 ],
-"note": "开发中（Draft PR #387，分支 claude/BE-8a-blacklist，云端会话 session_01UsHXEmDcUEwrFcoyZqgKJ6）· Codex Sol high 审 · DEC-569",
+"note": "开发已完成，【等 00 / 用户决定】超 1500 行（Draft PR #387，+2258，测试约 700）· 03 推荐 A 整单送审，60 分钟（至约 05:34Z）未回按 A 执行（DEC-556）· 分支 claude/BE-8a-blacklist，云端会话 session_01UsHXEmDcUEwrFcoyZqgKJ6",
 "pr": 387
 },
 {
@@ -5703,8 +5772,8 @@
 {
 "k": "BE-7",
 "n": "BE-7 兼职（先 Opus 设计主职 / 兼职影响）",
-"s": "rework",
-"note": "设计段返工中（PR #390，第 1 轮暂不能合并：8 项 P2，Codex Sol high；返工已发云端会话 session_016GXowSPDKr1dUxCi1sUCVS）· 设计合入后再出实现段",
+"s": "done",
+"note": "设计段已合并（#390，10-17 04:40Z，第 3 轮可以合并）· 实现按设计 §13 盘点 PT 分批派发，派发后由 03 拆行",
 "after": [],
 "pr": 390
 },
@@ -6215,8 +6284,8 @@
 {
 "k": "F-212",
 "n": "CI 增加 PG16 普通角色（无 BYPASSRLS）验收分片，并补齐暴露出的剩余缺租户上下文测试（DEC-568，契约级门禁）",
-"s": "merge",
-"note": "审查：第 1 轮可以合并（Codex Sol high，04:09Z，head ba0a88ff，无 P0～P2）· CI 在跑，合并要求全绿 · 契约级门禁变更：待总编排确认（DEC-568）后再入队",
+"s": "done",
+"note": "合并中（PR #389：第 1 轮可以合并；00 已确认 DEC-568，04:14Z 云端 merge:main + 完整 CI，5 个 app_owner 分片须全绿）",
 "mod": "底座",
 "ms": "D2",
 "pr": 389
@@ -6366,10 +6435,10 @@
 {
 "k": "F-213",
 "n": "组织停用日校验：停用日不得早于或等于设立日（R2f3 §2.2；F 号待 00 补）",
-"s": "dev",
+"s": "review",
 "mod": "R1",
 "ms": "D2",
-"note": "开发中（Draft PR #392，分支 claude/F-213-org-deactivate-date，+127，云端会话 session_01KP3BdtPW2H6kgFUrmpRQ56）· Sonnet High 开发 / Codex Sol high 审 · 停用日不得早于或等于设立日 · DEC-575",
+"note": "审查中（PR #392，第 1 轮 Codex Sol high，04:40Z 发起，head 477eb56b）",
 "pr": 392
 }
 ]
