@@ -497,15 +497,36 @@ export function filterFieldsOf(filter: ExitViewFilter): { employee: string[]; em
   if (filter.reasonCode) employment.push('reasonCode');
   if (filter.whereaboutsCode) employment.push('whereaboutsCode');
   if (filter.initiation) employment.push('mode', 'initiator');
+  // 审批状态也是字段：无权看状态的人不能按它筛选，否则能反推隐藏的状态
+  if (filter.status) employment.push('status');
   return { employee: filter.keyword ? ['name', 'code'] : [], employment };
+}
+
+/** 撤销信息里带字段编码的叶子：按各自编码裁剪；撤销原因 / 类型没有自己的编码，随撤销信息一起给。 */
+const CANCELLATION_FIELD: Readonly<Record<string, string>> = {
+  id: 'id',
+  stateBefore: 'status',
+  revision: 'revision',
+  createdAt: 'createdAt',
+};
+
+function trimCancellation(cancellation: NonNullable<ExitItem['cancellation']>, show: ExitViewable) {
+  return Object.fromEntries(
+    Object.entries(cancellation).filter(([key]) => {
+      const field = CANCELLATION_FIELD[key];
+      return field === undefined || show.employment(field);
+    }),
+  );
 }
 
 export function trimExit<T extends ExitItem>(item: T, show: ExitViewable): Partial<T> {
   return Object.fromEntries(
-    Object.entries(item).filter(([key]) => {
-      if (key === 'name' || key === 'code') return show.employee(key);
-      return STRUCTURE_KEYS.has(key) || show.employment(RECORD_ALIAS[key] ?? key);
-    }),
+    Object.entries(item)
+      .filter(([key]) => {
+        if (key === 'name' || key === 'code') return show.employee(key);
+        return STRUCTURE_KEYS.has(key) || show.employment(RECORD_ALIAS[key] ?? key);
+      })
+      .map(([key, value]) => [key, key === 'cancellation' && value ? trimCancellation(value, show) : value]),
   ) as Partial<T>;
 }
 
@@ -536,7 +557,7 @@ export function trimExitDetail(detail: ExitDetail, show: ExitViewable) {
       final: dates(detail.lastWorkDate, detail.effectiveDate),
     },
     versions: versions.map((version) => ({
-      versionNo: version.versionNo,
+      ...(has('versionNo') ? { versionNo: version.versionNo } : {}),
       ...(has('createdAt') ? { createdAt: version.createdAt } : {}),
       ...(has('effectiveDate')
         ? { effectiveDate: version.effectiveDate, plannedEffectiveDate: version.plannedEffectiveDate }
