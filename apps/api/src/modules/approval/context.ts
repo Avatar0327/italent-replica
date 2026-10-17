@@ -32,10 +32,11 @@ export interface ApprovalContext extends TenantContext {
   /** 合同 / 发展计划（R2-1）重提在 openOwn 已按员工→业务→实例加锁后，再于事务内复核当前功能/范围/字段权限。 */
   readonly recheckContractResubmit?: (tx: Tx, instanceId: string, corrections: Row) => Promise<void>;
   /**
-   * 写命令的授权器（审批路由注入）：业务适配器在本命令事务内复核业务侧的按钮与字段权，
-   * 如审批中编辑离职单（R2-T03 §4，DEC-455）。未注入时需要它的适配器一律拒绝（fail-closed）。
+   * 审批中编辑离职单的授权器（审批路由注入；R2-T03 §4，DEC-455）：适配器只在离职编辑时于命令事务内复核按钮与字段权，
+   * 未注入一律拒绝（fail-closed）。不叫 authorize：审批上下文会整体传进任职 / 编制共用写路径，那里见到 authorize
+   * 就按操作人复核 HR 范围并在事务外取连接，会拦住调动、合同等业务的审批（#388 CI 回归）。
    */
-  readonly authorize?: Authorizer;
+  readonly exitEditAuthorize?: Authorizer;
   /** 审计与日志记录的操作人；系统自动处理（如成员停用时的接管，DEC-123）可为平台操作人或空。缺省为 userId。 */
   readonly actorUserId?: string | null;
 }

@@ -241,8 +241,8 @@ const exitVersion = (exit: Row) =>
 async function requireExitApprovalEdit(tx: Tx, ctx: ApprovalContext, businessId: string, input: Readonly<Row>) {
   const exit = await loadExitRequest(tx, ctx.tenantId, businessId);
   if (!exit) return;
-  if (!ctx.authorize) throw new AppError('FORBIDDEN', '没有编辑离职单的权限');
-  const scoped = { ...ctx, authorize: authorizeInTransaction(ctx.authorize, tx) };
+  if (!ctx.exitEditAuthorize) throw new AppError('FORBIDDEN', '没有编辑离职单的权限');
+  const scoped = { ...ctx, authorize: authorizeInTransaction(ctx.exitEditAuthorize, tx) };
   await requireExitEditRights(tx, scoped, { employeeId: exit.employeeId, payload: input }, businessId);
 }
 
