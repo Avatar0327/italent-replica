@@ -1,6 +1,7 @@
 /**
  * 转正改期（PB-R13；DEC-589，#391 第 1 轮审查 P2-1）：转正单专用命令，复用迟到改期（late-transfer.ts）的重排机制——
- * 追加一个载荷版本（人工改期：计划日 = 新日期）、重建时间轴投影，业务 ID 不变，审计写原日期 → 新日期，不原地覆盖。
+ * 追加一个载荷版本（人工改期：计划日 = 新日期）、重建时间轴投影，业务 ID 不变，审计写原日期 → 新日期，不原地覆盖；
+ * 已落地的按新位置的前驱重算继承字段后追加记录快照（显式填写的保留）。
  * - 只对已生效（含直接办理未到日）与审批通过的转正单开放；通用编辑入口仍不能改日期（RECORD_DATE_IMMUTABLE），DEC-231 不变；
  * - 新日期须在本任职周期内：不早于入职日期，不晚于已生效的离职 / 退休（400 REGULARIZATION_DATE_OUT_OF_CYCLE）；
  * - 新旧日期之间有离职、退休、另一条转正或入职类记录（含在途申请）→ 409 REGULARIZATION_RESCHEDULE_BLOCKED，列出冲突；
@@ -14,12 +15,15 @@ import { AppError } from '../../errors.js';
 import { auditEmployment, requireScopedEmploymentObject } from './context.js';
 import { ENTRY_LIKE_KINDS, propagateEmployeeStatus, type TimelinePoint } from './employee-status.js';
 import { personnelHooks } from './personnel-hooks.js';
+import { derivationFields } from './field-derivations.js';
+import { INHERITED_FIELDS } from './fields.js';
 import { findPredecessor, loadEmploymentRecord } from './read-model.js';
 import {
   bumpEmploymentBusiness,
   insertEmploymentRow,
   lockEmploymentBusiness,
   rowsOf,
+  type EmploymentPayloadRow,
   type LockedEmploymentBusiness,
 } from './record-store.js';
 import { insertEmploymentTimeline, timelinePosition } from './timeline.js';
@@ -98,68 +102,67 @@ async function windowConflicts(
   );
 }
 
-/**
- * 改期版本：先追加一个人工版本（命令号 / 触发业务都为空，计划生效日随之改为新日期，迁移 0130 触发器；约束 command_pair），
- * 已落地的再追加一个本命令的记录快照（快照须带命令号，计划日沿用上一版本即新日期），记录字段不变。
- */
-async function appendRescheduledPayload(
+/** 追加一个改期载荷版本（生效日 = 新日期；人工版本的计划日随之改为新日期，派生版本沿用，迁移 0130 触发器）。 */
+async function appendRescheduledVersion(
   tx: Tx,
   ctx: EmploymentContext,
   business: LockedEmploymentBusiness,
-  record: EmploymentRecord | null,
   effectiveDate: string,
+  overrides: Partial<EmploymentPayloadRow>,
 ) {
-  const append = async (overrides: Record<string, unknown>) => {
-    const previous = business.payload;
-    const next = {
-      ...previous,
-      id: randomUUID(),
-      versionNo: previous.versionNo + 1,
-      previousVersionId: previous.id,
-      effectiveDate,
-      ...overrides,
-    } as typeof previous;
-    const { fields, ...metadata } = next;
-    await insertEmploymentRow(tx, 'employment_payload_versions', {
-      ...metadata,
-      ...fields,
-      createdAt: ctx.now.toISOString(),
-    });
-    business.payload = next;
+  const previous = business.payload;
+  const next: EmploymentPayloadRow = {
+    ...previous,
+    id: randomUUID(),
+    versionNo: previous.versionNo + 1,
+    previousVersionId: previous.id,
+    effectiveDate,
+    ...overrides,
   };
-  await append({ commandId: null, triggerBusinessId: null, isRecordSnapshot: false });
-  if (record)
-    await append({
-      commandId: ctx.commandId,
-      triggerBusinessId: business.id,
-      fields: record.fields,
-      customFields: record.customFields,
-      isRecordSnapshot: true,
-      deferredFieldCodes: [],
-    });
+  const { fields, ...metadata } = next;
+  await insertEmploymentRow(tx, 'employment_payload_versions', {
+    ...metadata,
+    ...fields,
+    createdAt: ctx.now.toISOString(),
+  });
+  business.payload = next;
 }
 
-/** 把已落地记录的时间轴行移到新日期：前一条区间接到后一条（同 late-transfer），再按新位置插入。 */
-async function moveTimeline(
-  tx: Tx,
-  ctx: EmploymentContext,
-  business: LockedEmploymentBusiness,
-  record: EmploymentRecord,
-) {
-  const [old] = rowsOf<{ startDate: string; sortOrder: number }>(
-    await tx.execute(sql`SELECT start_date::text AS "startDate", sort_order AS "sortOrder" FROM employment_timeline
-      WHERE tenant_id=${ctx.tenantId} AND record_id=${business.id}::uuid`),
-  );
+/**
+ * 按新位置的前驱重新解析继承字段（#391 第 2 轮 P2-R2-1）：业务显式填写的字段、派生字段与场景留空字段（DEC-163）保留，
+ * 其余继承字段与可继承的自定义字段取新前驱的值（不同周期取空），与按新日期办理时 prepareInheritance 的口径一致。
+ */
+function reinherited(payload: EmploymentPayloadRow, record: EmploymentRecord, predecessor: EmploymentRecord | null) {
+  const previous = predecessor?.staffId === record.staffId ? predecessor : null;
+  const form = payload.formSnapshot;
+  const explicit = new Set(payload.explicitFieldCodes);
+  for (const origin of form.fieldDerivations ?? []) explicit.add(`preset:${derivationFields(origin).field}`);
+  const excluded = new Set(form.excludedAutofillFields ?? []);
+  const fields = { ...record.fields };
+  for (const field of INHERITED_FIELDS) {
+    const code = `preset:${field}`;
+    if (explicit.has(code) || (excluded.has(field) && form.fieldModes[code] === 'editable')) continue;
+    Object.assign(fields, { [field]: previous?.fields[field] ?? null });
+  }
+  const customFields = { ...record.customFields };
+  for (const id of Object.keys(customFields)) {
+    const mode = form.fieldModes[`custom:${id}`];
+    const inherits = form.customInheritance[id] || mode === 'readonly' || mode === 'hidden';
+    if (inherits && !explicit.has(`custom:${id}`)) customFields[id] = previous?.customFields[id] ?? null;
+  }
+  return { fields, customFields };
+}
+
+/** 摘下已落地记录的时间轴行：前一条区间接到后一条（同 late-transfer）。 */
+async function detachTimeline(tx: Tx, ctx: EmploymentContext, business: LockedEmploymentBusiness, old: TimelinePoint) {
   const [before] = rowsOf<{ id: string }>(
     await tx.execute(sql`SELECT record_id AS id FROM employment_timeline WHERE tenant_id=${ctx.tenantId}
-      AND employee_id=${business.employeeId}::uuid
-      AND (start_date,sort_order)<(${old!.startDate}::date,${old!.sortOrder})
+      AND employee_id=${business.employeeId}::uuid AND (start_date,sort_order)<(${old.date}::date,${old.order})
       ORDER BY start_date DESC, sort_order DESC LIMIT 1`),
   );
   const [after] = rowsOf<{ date: string }>(
     await tx.execute(sql`SELECT start_date::text AS date FROM employment_timeline WHERE tenant_id=${ctx.tenantId}
-      AND employee_id=${business.employeeId}::uuid
-      AND (start_date,sort_order)>(${old!.startDate}::date,${old!.sortOrder})
+      AND employee_id=${business.employeeId}::uuid AND (start_date,sort_order)>(${old.date}::date,${old.order})
       ORDER BY start_date, sort_order LIMIT 1`),
   );
   await tx.execute(
@@ -169,15 +172,6 @@ async function moveTimeline(
     await tx.execute(sql`UPDATE employment_timeline
       SET valid_during=daterange(start_date,${after?.date ?? null}::date,'[)')
       WHERE tenant_id=${ctx.tenantId} AND record_id=${before.id}::uuid`);
-  await validateTransferReposition(tx, ctx, business, record);
-  await insertEmploymentTimeline(
-    tx,
-    ctx,
-    business.employeeId,
-    business.id,
-    record.staffId,
-    business.payload.effectiveDate,
-  );
 }
 
 async function currentPoint(tx: Tx, ctx: EmploymentContext, businessId: string): Promise<TimelinePoint | null> {
@@ -188,35 +182,48 @@ async function currentPoint(tx: Tx, ctx: EmploymentContext, businessId: string):
   return row ? { date: row.date, order: Number(row.order) } : null;
 }
 
-/** 区间内记录的人员状态：推后时改前回退（区间上界 = 新位置），提前时改后按新位置向后传播（区间上界 = 原位置）。 */
-async function recomputeWindow(
+/**
+ * 已落地记录移到目标位置。区间内记录的人员状态：推后时先按原位置回退为转正前一条的状态（上界 = 目标位置）；
+ * 提前时移动后从目标位置向后传播转正后的状态（上界 = 原位置）。继承字段按目标位置的前驱重算后追加本命令的记录快照；
+ * 实际插入点必须等于预算的目标位置，否则冲突检测与重算上界失效，整笔拒绝（P2-R2-2）。
+ */
+async function relocateRecord(
   tx: Tx,
   ctx: EmploymentContext,
+  business: LockedEmploymentBusiness,
   record: EmploymentRecord,
   oldPoint: TimelinePoint,
-  newPoint: TimelinePoint,
-  move: () => Promise<void>,
+  target: TimelinePoint,
 ) {
-  const earlier = newPoint.date < oldPoint.date;
+  const earlier = target.date < oldPoint.date;
   if (!earlier) {
-    // 推后：区间内的版本原先继承本转正（正式），回退为转正前一条的状态；先回退再移动，源位置仍是原位置
     const prior = await findPredecessor(tx, ctx.tenantId, record.employeeId, oldPoint.date, oldPoint.order);
     if (prior && prior.staffId === record.staffId)
-      await propagateEmployeeStatus(tx, ctx, record, record.employeeStatus, prior.employeeStatus, newPoint);
-    await move();
-    return;
+      await propagateEmployeeStatus(tx, ctx, record, record.employeeStatus, prior.employeeStatus, target);
   }
-  await move();
-  const moved = await loadEmploymentRecord(tx, ctx.tenantId, record.id, record.effectiveDate);
-  const point = await currentPoint(tx, ctx, record.id);
-  const prior = point && (await findPredecessor(tx, ctx.tenantId, record.employeeId, point.date, point.order));
-  if (moved && prior && prior.staffId === record.staffId)
+  await detachTimeline(tx, ctx, business, oldPoint);
+  const predecessor = await findPredecessor(tx, ctx.tenantId, record.employeeId, target.date, target.order);
+  const moved = { ...record, ...reinherited(business.payload, record, predecessor) };
+  await validateTransferReposition(tx, ctx, business, moved);
+  await insertEmploymentTimeline(tx, ctx, business.employeeId, business.id, record.staffId, target.date);
+  const landed = await currentPoint(tx, ctx, business.id);
+  if (landed?.date !== target.date || landed.order !== target.order)
+    throw new AppError('SERVICE_UNAVAILABLE', '转正改期的插入位置与预算位置不一致');
+  await appendRescheduledVersion(tx, ctx, business, target.date, {
+    commandId: ctx.commandId,
+    triggerBusinessId: business.id,
+    fields: moved.fields,
+    customFields: moved.customFields,
+    isRecordSnapshot: true,
+    deferredFieldCodes: [],
+  });
+  if (earlier && predecessor && predecessor.staffId === record.staffId)
     await propagateEmployeeStatus(
       tx,
       ctx,
-      { ...moved, effectiveDate: point!.date },
-      prior.employeeStatus,
-      moved.employeeStatus,
+      { ...record, effectiveDate: target.date },
+      predecessor.employeeStatus,
+      record.employeeStatus,
       oldPoint,
     );
 }
@@ -251,15 +258,25 @@ export async function rescheduleRegularization(
   const oldPoint =
     (await currentPoint(tx, ctx, businessId)) ??
     (await timelinePosition(tx, ctx, business.employeeId, original, businessId));
-  const newPoint = await timelinePosition(tx, ctx, business.employeeId, effectiveDate, businessId);
-  const conflicts = await windowConflicts(tx, ctx, business, oldPoint, newPoint);
+  // P2-R2-2：目标位置按新计划日预算（写入前），冲突检测、状态重算上界与最终插入共用这一个位置
+  const target = await timelinePosition(tx, ctx, business.employeeId, effectiveDate, businessId, effectiveDate);
+  const conflicts = await windowConflicts(tx, ctx, business, oldPoint, target);
   if (conflicts.length)
     throw new AppError('CONFLICT', '新旧转正日期之间有离职、转正或入职记录，不能改期', {
       reason: 'REGULARIZATION_RESCHEDULE_BLOCKED',
       conflicts: conflicts.slice(0, 100),
       truncated: conflicts.length > 100,
     });
-  await appendRescheduledPayload(tx, ctx, business, record, effectiveDate);
+  // 人工改期版本：命令号 / 触发业务都为空（约束 command_pair），计划日 = 新日期；已落地的随后追加记录快照
+  await appendRescheduledVersion(tx, ctx, business, effectiveDate, {
+    commandId: null,
+    triggerBusinessId: null,
+    isRecordSnapshot: false,
+  });
+  if (record) {
+    await relocateRecord(tx, ctx, business, record, oldPoint, target);
+    await personnelHooks.sync(tx, ctx, business.employeeId, businessId, 'regularization', effectiveDate);
+  }
   await auditEmployment(
     tx,
     ctx,
@@ -270,10 +287,6 @@ export async function rescheduleRegularization(
     { effectiveDate, versionNo: business.payload.versionNo },
     business.payload.id,
   );
-  if (record) {
-    await recomputeWindow(tx, ctx, record, oldPoint, newPoint, () => moveTimeline(tx, ctx, business, record));
-    await personnelHooks.sync(tx, ctx, business.employeeId, businessId, 'regularization', effectiveDate);
-  }
   await bumpEmploymentBusiness(tx, ctx, business);
   return requireSavedBusiness(tx, ctx, businessId);
 }

@@ -69,11 +69,16 @@ export async function timelinePosition(
   employeeId: string,
   date: string,
   recordId?: string,
+  /** 尚未写入的人工计划日（转正改期在写入前按新计划日预算位置，DEC-589）；不给时读最新载荷版本。 */
+  plannedDate?: string,
 ): Promise<TimelinePosition> {
   const mine = recordId ? operationKey(ctx.tenantId, sql`${recordId}::uuid`) : sql`NULL::bigint`;
-  const planned = recordId
-    ? plannedEffectiveDate(ctx.tenantId, sql`${recordId}::uuid`, sql`${date}::date`)
-    : sql`${date}::date`;
+  const planned =
+    plannedDate !== undefined
+      ? sql`${plannedDate}::date`
+      : recordId
+        ? plannedEffectiveDate(ctx.tenantId, sql`${recordId}::uuid`, sql`${date}::date`)
+        : sql`${date}::date`;
   const [row] = rowsOf<{ before: number | null; append: number }>(
     await tx.execute(sql`
     SELECT
