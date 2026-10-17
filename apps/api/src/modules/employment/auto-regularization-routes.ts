@@ -5,7 +5,12 @@
  * 总开关：两层配置 probation.auto_regularization_enabled，经既有 /api/tenant/settings/:key 读写，这里只登记取值校验。
  */
 import { isUuid, withTenant } from '@italent/db';
-import { AUTO_REGULARIZATION_SETTING_KEY, isAutoRegularizationSettingValue, MODULE_OBJECTS } from '@italent/domain';
+import {
+  AUTO_REGULARIZATION_SETTING_KEY,
+  isAutoRegularizationSettingValue,
+  MODULE_OBJECTS,
+  tenantLocalDate,
+} from '@italent/domain';
 import type { Context, Hono } from 'hono';
 import { z } from 'zod';
 import { requirePermission } from '../../authorization.js';
@@ -13,10 +18,10 @@ import type { CommandGuard } from '../../commands.js';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
-import { authorizeInTransaction, trimModuleResponse } from '../permission/module-access.js';
+import { authorizeInTransaction, resolveModuleScope, trimModuleResponse } from '../permission/module-access.js';
 import { requireObjectWrite } from '../permission/object-write.js';
 import { registerSettingValidator } from '../tenant-settings/service.js';
-import { runAutoRegularizationNow } from './auto-regularization.js';
+import { runAutoRegularizationNow, type AutoRegularizationRun } from './auto-regularization.js';
 import {
   copyAutoRegularizationRule,
   deleteAutoRegularizationRule,
@@ -27,8 +32,10 @@ import {
   setAutoRegularizationRuleEnabled,
 } from './auto-regularization-rules.js';
 import {
+  EMPLOYMENT_OBJECT,
   jsonBody,
   readContext,
+  requireEmployeeInScope,
   requireEmploymentWrite,
   revision,
   runWrite,
@@ -177,17 +184,52 @@ function registerRunNow(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       ctx,
       { action: 'auto-regularization-run', cursor },
       async (tx, context) => ({ status: 200, body: await runAutoRegularizationNow(tx, context, cursor) }),
-      { guard: ruleGuard(deps, ctx, {}), project: (body) => body },
+      // 首次与同键重放都经这里按操作人当前的任职范围裁剪（第 2 轮审查 P1）
+      { guard: ruleGuard(deps, ctx, {}), project: (body) => visibleRunReceipt(deps, ctx, body) },
     );
   });
 }
 
-/** body 严格 { cursor? }：cursor 为上一次回执的 nextCursor（员工 UUID），从它之后接着扫描。 */
+/** body 严格 { cursor? }：cursor 为上一次回执的 nextCursor（续跑句柄，随机 UUID），从它记下的位置之后接着扫描。 */
 function parseRunBody(raw: unknown): { readonly cursor: string | null } {
-  const parsed = z
-    .strictObject({ cursor: z.string().refine(isUuid, '续跑游标须为员工 UUID').optional() })
-    .safeParse(raw);
+  const parsed = z.strictObject({ cursor: z.string().refine(isUuid, '续跑游标须为 UUID').optional() }).safeParse(raw);
   if (!parsed.success)
     throw new AppError('VALIDATION_FAILED', '立即执行的请求体须为 {} 或 { cursor }', parsed.error.issues);
   return { cursor: parsed.data.cursor?.toLowerCase() ?? null };
+}
+
+/**
+ * 回执按操作人“当前”权限裁剪（第 2 轮审查 P1）：系统批次按规则的适用组织办理（不算越权写入），但回执里的员工、业务、
+ * 发起人只列操作人有任职记录查看权且在其数据范围内的员工；没有查看权或范围为空时两列都为空。重放同样在这里按当前权限
+ * 重新裁剪，撤权后拿不到原回执里的人。续跑句柄（nextCursor）不含员工信息，原样返回。
+ */
+async function visibleRunReceipt(deps: TenantRouteDeps, ctx: EmploymentContext, body: unknown) {
+  const receipt = body as AutoRegularizationRun & { readonly nextCursor: string | null };
+  const ids = [...new Set([...receipt.launched, ...receipt.failed].map((item) => item.employeeId))];
+  const visible = await visibleEmployees(deps, ctx, ids);
+  return {
+    ...receipt,
+    launched: receipt.launched.filter((item) => visible.has(item.employeeId)),
+    failed: receipt.failed.filter((item) => visible.has(item.employeeId)),
+  };
+}
+
+async function visibleEmployees(deps: TenantRouteDeps, ctx: EmploymentContext, ids: readonly string[]) {
+  const visible = new Set<string>();
+  if (!ids.length) return visible;
+  const tenant = { tenantId: ctx.tenantId, userId: ctx.userId, timezone: ctx.timezone };
+  if (!(await deps.authorize({ ...tenant, action: 'object.view', resource: EMPLOYMENT_OBJECT }))) return visible;
+  const now = deps.clock();
+  const scope = await resolveModuleScope(deps, tenant, tenantLocalDate(now, ctx.timezone), EMPLOYMENT_OBJECT);
+  const reader: EmploymentContext = { ...ctx, now, scope, objectCode: EMPLOYMENT_OBJECT };
+  await withTenant(deps.db, ctx.tenantId, async (tx) => {
+    for (const id of ids)
+      try {
+        await requireEmployeeInScope(tx, reader, id);
+        visible.add(id);
+      } catch (error) {
+        if (!(error instanceof AppError && error.code === 'NOT_FOUND')) throw error;
+      }
+  });
+  return visible;
 }

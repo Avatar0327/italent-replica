@@ -110,7 +110,9 @@ describe('P1 真实授权器：租户管理员维护自动转正规则', () => {
     expect(on.status, await on.clone().text()).toBe(200);
     const run = await admin('POST', '/auto-regularization/run', { ifMatch: 0, body: {} });
     expect(run.status, await run.clone().text()).toBe(200);
-    expect(((await run.json()) as RunReceipt).launched.map((item) => item.employeeId)).toEqual([due.employee.id]);
+    // 第 2 轮审查 P1：管理员只有配置管理权、任职数据范围为空，回执不列出员工；按台账核对已发起
+    expect(((await run.json()) as RunReceipt).launched).toEqual([]);
+    expect(await launches(w, due.employee.id)).toEqual([{ state: 'launched' }]);
 
     // 普通成员：没有管理员身份、也没有业务身份（默认拒绝）
     const member = await createUser(
@@ -173,7 +175,9 @@ describe('P2-2 立即执行续跑', () => {
     };
     const first = await run();
     expect(first.launched).toEqual([]);
-    expect(first.nextCursor).toBe(people[2]);
+    // 第 2 轮审查 P1：游标是续跑句柄，不是员工 UUID
+    expect(first.nextCursor).toEqual(expect.any(String));
+    expect(people).not.toContain(first.nextCursor);
     const launched: string[] = [];
     let cursor = first.nextCursor ?? null;
     for (let i = 0; cursor && i < 5; i += 1) {

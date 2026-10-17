@@ -8,6 +8,7 @@
  * - 发起：经 BE-3 的单一入口 launchRegularization（默认转正日期 = 预计结束日次日，F-205；申请走同一提交与审批发起），
  *   发起人取规则配置，审批日志与台账带“系统代发”标记（R2e7 第 4 条）。
  */
+import { randomUUID } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
 import {
   AUTO_REGULARIZATION_BLOCKING_STATES,
@@ -334,12 +335,13 @@ async function scanDue(
  * “立即执行”（DEC-539①）：在请求事务内办理。先只读预筛出本批到期的人，再一次按全局顺序锁住他们的全部联动参与者
  * （lockTransferParticipants 的闭包规划，同调动的锁序协议，不逐人追加锁、不触发锁序守卫），然后逐人在锁内复核、
  * 在保存点内办理。与每日批次重叠时，后取到锁的一方按发起台账复核，不重复发起。按规则的适用组织扫描，不叠加操作人的
- * 数据范围（系统批次提前执行）；不占用当天的每日批次登记。到单次上限时回执带 nextCursor，带上它再执行即可续跑。
+ * 数据范围（系统批次提前执行），回执由路由按操作人当前范围裁剪；不占用当天的每日批次登记。到单次上限时回执带
+ * nextCursor（续跑句柄），带上它再执行即可续跑。
  */
 export async function runAutoRegularizationNow(
   tx: Tx,
   ctx: EmploymentContext,
-  cursor: string | null = null,
+  cursorHandle: string | null = null,
 ): Promise<AutoRegularizationRun & { readonly nextCursor: string | null }> {
   if (!(await readAutoRegularizationEnabled(tx, ctx.tenantId)))
     throw new AppError('CONFLICT', '自动转正未开启', { reason: 'AUTO_REGULARIZATION_DISABLED' });
@@ -354,10 +356,35 @@ export async function runAutoRegularizationNow(
   };
   const businessDate = tenantLocalDate(ctx.now, ctx.timezone);
   const run: AutoRegularizationRun = { businessDate, launched: [], failed: [] };
+  const cursor = cursorHandle ? await cursorPosition(tx, ctx, businessDate, cursorHandle) : null;
   const rules = await loadEnabledAutoRegularizationRules(tx, ctx.tenantId, businessDate);
   if (!rules.length) return { ...run, nextCursor: null };
   const { due, nextCursor } = await scanDue(tx, ctx.tenantId, rules, businessDate, cursor);
   if (due.length) await lockTransferParticipants(tx, system, due[0]!, due.slice(1));
   for (const employeeId of due) collectOutcome(run, await autoRegularizeEmployee(tx, system, employeeId, rules));
-  return { ...run, nextCursor };
+  return { ...run, nextCursor: nextCursor ? await issueCursor(tx, ctx, businessDate, nextCursor) : null };
+}
+
+/**
+ * 续跑句柄（第 2 轮审查 P1）：回执只给随机 UUID，内部位置（员工 ID）留在库里；句柄只对签发它的租户 × 操作人 × 业务日有效，
+ * 其余一律 400 AUTO_RUN_CURSOR_INVALID（不区分不存在与不属于你，不泄露别人的句柄）。
+ */
+async function issueCursor(tx: Tx, ctx: EmploymentContext, businessDate: string, position: string) {
+  const id = randomUUID();
+  await tx.execute(sql`INSERT INTO employment_auto_regularization_run_cursors(id, tenant_id, user_id, business_date,
+      position_employee_id, command_id, created_at)
+    VALUES (${id}::uuid, ${ctx.tenantId}, ${ctx.userId}::uuid, ${businessDate}::date, ${position}::uuid,
+      ${ctx.commandId}, ${ctx.now.toISOString()}::timestamptz)`);
+  return id;
+}
+
+async function cursorPosition(tx: Tx, ctx: EmploymentContext, businessDate: string, handle: string) {
+  const [row] = rowsOf<{ position: string }>(
+    await tx.execute(sql`SELECT position_employee_id::text AS position FROM employment_auto_regularization_run_cursors
+      WHERE tenant_id=${ctx.tenantId} AND id=${handle}::uuid AND user_id=${ctx.userId}::uuid
+        AND business_date=${businessDate}::date`),
+  );
+  if (!row)
+    throw new AppError('VALIDATION_FAILED', '续跑游标无效或已过期，请重新执行', { reason: 'AUTO_RUN_CURSOR_INVALID' });
+  return row.position;
 }

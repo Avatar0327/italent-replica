@@ -82,3 +82,21 @@ GRANT SELECT, INSERT ON employment_auto_regularization_daily_runs TO app_user;
 -- 自动转正总开关，两层配置（租户覆盖走既有 /api/tenant/settings/:key），系统值关闭（R2e5：本租户开启，出厂关闭）
 INSERT INTO system_settings(key,value,description,overridable,version,updated_at) VALUES
   ('probation.auto_regularization_enabled','false'::jsonb,'试用期：自动转正（true 开启 / false 关闭）',true,1,now());
+--> statement-breakpoint
+-- 第 2 轮审查 P1：立即执行的续跑句柄（随机 UUID → 内部位置），绑定租户 × 操作人 × 业务日，只增不改
+CREATE TABLE "employment_auto_regularization_run_cursors" (
+	"id" uuid PRIMARY KEY NOT NULL,
+	"tenant_id" uuid NOT NULL,
+	"user_id" uuid NOT NULL,
+	"business_date" date NOT NULL,
+	"position_employee_id" uuid NOT NULL,
+	"command_id" text NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "employment_auto_regularization_run_cursors_tenant_id" UNIQUE("tenant_id","id")
+);
+--> statement-breakpoint
+ALTER TABLE "employment_auto_regularization_run_cursors" ADD CONSTRAINT "employment_auto_regularization_run_cursors_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;
+--> statement-breakpoint
+SELECT enable_tenant_isolation('employment_auto_regularization_run_cursors');
+--> statement-breakpoint
+GRANT SELECT, INSERT ON employment_auto_regularization_run_cursors TO app_user;

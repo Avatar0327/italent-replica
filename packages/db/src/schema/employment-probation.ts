@@ -212,3 +212,21 @@ export const employmentAutoRegularizationDailyRuns = pgTable(
   },
   (t) => [primaryKey({ name: 'employment_auto_regularization_daily_runs_pk', columns: [t.tenantId, t.businessDate] })],
 );
+
+/**
+ * 立即执行的续跑句柄（第 2 轮审查 P1）：回执只给随机句柄，内部位置（员工 ID）不出库；句柄绑定租户 × 操作人 × 业务日，
+ * 别的操作人或换了业务日都不能用。只增不改。
+ */
+export const employmentAutoRegularizationRunCursors = pgTable(
+  'employment_auto_regularization_run_cursors',
+  {
+    id: uuid('id').primaryKey(),
+    tenantId: tenant(),
+    userId: uuid('user_id').notNull(),
+    businessDate: date('business_date', { mode: 'string' }).notNull(),
+    positionEmployeeId: uuid('position_employee_id').notNull(),
+    commandId: text('command_id').notNull(),
+    createdAt: utc(),
+  },
+  (t) => [unique('employment_auto_regularization_run_cursors_tenant_id').on(t.tenantId, t.id)],
+);
