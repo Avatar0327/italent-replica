@@ -8,6 +8,7 @@ import './support/exit-gate-enforced.js';
 import { randomUUID } from 'node:crypto';
 import type { Authorizer } from '@italent/api';
 import { sql, withTenant } from '@italent/db';
+import { MODULE_OBJECTS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { denyButtons, gateWorld, type GateWorld } from './AC-EXIT-gate-support.js';
@@ -440,5 +441,179 @@ describe('AC-DM-19 离职详情（B13）与原定日期（§5.0A，D-14）', () 
     expect(detail.dutyTransfer).toEqual({ timing: 'business_effective', transferred: 2, failed: 1 });
     expect(JSON.stringify(detail)).not.toMatch(/targetId|target_id/);
     expect(detail.cancellation).toMatchObject({ reason: '细节', case: 'approved_voided' });
+  });
+});
+
+// ---- 第 2 轮（#409 审查 P2-1 / P2-2）：每个响应键按自己的字段编码裁剪；默认排序不泄露隐藏日期的先后 ----------------------------
+
+const CATALOG = MODULE_OBJECTS.employmentRecord.fields.map((field) => field.code);
+/** 全字段权：任职记录对象的整份字段目录 + 人员对象的姓名 / 工号。 */
+const FULL = [...CATALOG, 'name', 'code'];
+/** 响应键与字段目录的对应：派生的显示名跟随编码；这些结构 / 汇总键没有自己的字段编码，行可见即可见。 */
+const DERIVED = ['plannedLastWorkDate', 'exitTypeName', 'reasonName', 'whereaboutsName'];
+const STRUCTURES = ['cancellation', 'events', 'versions', 'effects', 'approvalInstanceId', 'dutyTransfer', 'dates'];
+const keysOf = (value: object) => Object.keys(value).sort();
+
+describe('AC-DM-19 系统字段按各自字段权裁剪（第 2 轮 P2-1，设计 §9.1）', () => {
+  it('响应里每个键都是字段目录里的字段、派生显示名或结构键（新增键必须先登记，不能默认放行）', async () => {
+    const x = await world('views-catalog');
+    const made = await x.exit('目录员工', '2026-10-20', 'direct', { exit: { exitTypeCode: 'voluntary' } });
+    const detail = (await (await x.w.session.request('GET', `/exits/${made.id}`)).json()) as DetailBody;
+    const row = (await x.view('all')).items[0]!;
+    const known = new Set([...FULL, ...DERIVED, ...STRUCTURES]);
+    expect(keysOf(detail).filter((key) => !known.has(key))).toEqual([]);
+    expect(keysOf(row).filter((key) => !known.has(key))).toEqual([]);
+  });
+
+  it('真实角色逐字段撤权：列表与详情里对应的键缺席（含嵌套副本），其余键原样保留', async () => {
+    const x = await world('views-revoke');
+    const made = await x.exit('撤权员工', '2026-10-20', 'direct', {
+      exit: { exitTypeCode: 'voluntary', reasonCode: 'family', whereaboutsCode: 'startup' },
+    });
+    const get = (api: Api, path: string) => api('GET', path).then((response) => response.json() as Promise<DetailBody>);
+    const full = x.w.restricted(denyButtons(), undefined, FULL);
+    const fullDetail = await get(full, `/exits/${made.id}`);
+    const fullRow = ((await (await full('GET', '/exits?view=all')).json()) as ViewPage).items[0]!;
+    expect(fullDetail).toMatchObject({
+      initiatorUserId: x.w.session.user.id,
+      dutyTransferTiming: 'business_effective',
+    });
+    expect(fullDetail.preReleaseDate).toEqual(expect.any(String));
+    expect(fullDetail.dutyTransfer).toMatchObject({ timing: 'business_effective' });
+    const cases: [string, string[]][] = [
+      ['initiatorUserId', ['initiatorUserId']],
+      ['initiator', ['initiator']],
+      ['batchId', ['batchId']],
+      ['preReleaseDate', ['preReleaseDate']],
+      ['dutyTransferTiming', ['dutyTransferTiming']],
+      ['createdAt', ['createdAt']],
+      ['activation', ['activation']],
+      ['revision', ['revision']],
+      ['status', ['status']],
+      ['exitTypeCode', ['exitTypeCode', 'exitTypeName']],
+      ['reasonCode', ['reasonCode', 'reasonName']],
+      ['whereaboutsCode', ['whereaboutsCode', 'whereaboutsName']],
+      ['positionId', ['positionId']],
+    ];
+    for (const [field, absent] of cases) {
+      const viewer = x.w.restricted(
+        denyButtons(),
+        undefined,
+        FULL.filter((code) => code !== field),
+      );
+      const detail = await get(viewer, `/exits/${made.id}`);
+      const row = ((await (await viewer('GET', '/exits?view=all')).json()) as ViewPage).items[0]!;
+      const label = `撤掉 ${field}`;
+      expect(keysOf(detail), label).toEqual(keysOf(fullDetail).filter((key) => !absent.includes(key)));
+      expect(keysOf(row), label).toEqual(keysOf(fullRow).filter((key) => !absent.includes(key)));
+      if (field === 'dutyTransferTiming') expect(detail.dutyTransfer, label).toEqual({ transferred: 0, failed: 0 });
+      if (field === 'status')
+        expect(
+          detail.events.every((event) => !('state' in event)),
+          label,
+        ).toBe(true);
+      if (field === 'createdAt')
+        expect(JSON.stringify([detail.events, detail.versions]), label).not.toContain('createdAt');
+    }
+  });
+});
+
+/** 造到“按 id 升序的顺序”既不等于日期升序也不等于日期降序为止（id 是随机 UUID，保证参照记录能区分两种排序）。 */
+async function distinguishable(
+  make: (day: string) => Promise<{ id: string }>,
+  days: string[],
+  datesOf: (id: string) => string,
+) {
+  const made: { id: string }[] = [];
+  for (let index = 0; index < 12; index += 1) {
+    made.push(await make(days[index % days.length]!));
+    if (made.length < 3) continue;
+    const byId = made.map((item) => item.id).sort();
+    const asc = [...made].sort((a, b) => datesOf(a.id).localeCompare(datesOf(b.id))).map((item) => item.id);
+    if (JSON.stringify(byId) !== JSON.stringify(asc) && JSON.stringify(byId) !== JSON.stringify(asc.toReversed()))
+      return made.map((item) => item.id);
+  }
+  throw new Error('造不出可区分的排序样本');
+}
+
+describe('AC-DM-19 默认排序不泄露隐藏字段的先后（第 2 轮 P2-2）', () => {
+  it('没有最后工作日 / 生效日查看权：离职中按 id 稳定排序，有任一权限保留按日期升序（含一条已知日期的参照记录）', async () => {
+    const x = await world('views-sort');
+    const dates = new Map<string, string>();
+    let counter = 0;
+    const ids = await distinguishable(
+      async (day) => {
+        const made = await x.exit(`排序${counter++}`, day);
+        dates.set(made.id, day);
+        return made;
+      },
+      ['2026-10-20', '2026-10-28', '2026-10-24'],
+      (id) => dates.get(id)!,
+    );
+    const without = (...fields: string[]) =>
+      x.w.restricted(
+        denyButtons(),
+        undefined,
+        FULL.filter((code) => !fields.includes(code)),
+      );
+    const order = async (viewer: Api) => (await x.view('in_progress', '&pageSize=50', viewer)).items.map((i) => i.id);
+    const byDate = [...ids].sort((a, b) => dates.get(a)!.localeCompare(dates.get(b)!) || a.localeCompare(b));
+    // 看不到任何日期：不能按日期排，响应里也没有日期键
+    const blind = without('lastWorkDate', 'effectiveDate');
+    expect(await order(blind)).toEqual([...ids].sort());
+    expect((await x.view('in_progress', '', blind)).items.some((item) => 'lastWorkDate' in item)).toBe(false);
+    // 只要能看到其中一个日期（二者相差一天、先后一致），设计的默认排序保留
+    expect(await order(without('effectiveDate'))).toEqual(byDate);
+    expect(await order(without('lastWorkDate'))).toEqual(byDate);
+    expect(await order(x.w.session.request)).toEqual(byDate);
+  });
+
+  it('已完成视图同理：没有日期查看权不按最后工作日降序', async () => {
+    const x = await world('views-sort-done');
+    const dates = new Map<string, string>();
+    let counter = 0;
+    const ids = await distinguishable(
+      async (day) => {
+        const { employee } = await x.w.hired(`已完成${counter++}`);
+        const made = await x.w.effectiveExit(employee.id, day);
+        dates.set(made.id, day);
+        return made;
+      },
+      ['2026-10-01', '2026-10-03', '2026-10-02'],
+      (id) => dates.get(id)!,
+    );
+    const blind = x.w.restricted(
+      denyButtons(),
+      undefined,
+      FULL.filter((c) => c !== 'lastWorkDate' && c !== 'effectiveDate'),
+    );
+    const seen = async (viewer: Api) => (await x.view('completed', '&pageSize=50', viewer)).items.map((i) => i.id);
+    expect(await seen(blind)).toEqual([...ids].sort());
+    expect(await seen(x.w.session.request)).toEqual(
+      [...ids].sort((a, b) => dates.get(b)!.localeCompare(dates.get(a)!) || a.localeCompare(b)),
+    );
+  });
+
+  it('全部离职记录：没有创建时间查看权时不按创建时间排序', async () => {
+    const x = await world('views-sort-all');
+    const created = new Map<string, number>();
+    let counter = 0;
+    const ids = await distinguishable(
+      async () => {
+        x.w.setNow(`2026-10-06T0${(counter % 8) + 1}:00:00.000Z`);
+        const made = await x.exit(`创建序${counter}`, '2026-10-20');
+        created.set(made.id, counter++);
+        return made;
+      },
+      ['2026-10-20'],
+      (id) => String(created.get(id)).padStart(3, '0'),
+    );
+    const blind = x.w.restricted(
+      denyButtons(),
+      undefined,
+      FULL.filter((code) => code !== 'createdAt'),
+    );
+    const seen = (await x.view('all', '&pageSize=50', blind)).items.map((item) => item.id);
+    expect(seen).toEqual([...ids].sort());
   });
 });
