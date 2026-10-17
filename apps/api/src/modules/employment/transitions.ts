@@ -22,6 +22,7 @@ import {
 } from './activation-store.js';
 import { assertPredecessorsSettled, blockingPredecessors } from './linkage-dependency.js';
 import { auditEmployment } from './context.js';
+import { confirmExit } from './exit-confirmation.js';
 import { isExitKind, loadExitRequest, requireExitGate, saveAck } from './exit-gate.js';
 import { findPredecessor, loadEmploymentRecord } from './read-model.js';
 import { resolveEffectiveInheritance } from './inheritance.js';
@@ -83,6 +84,16 @@ export async function runEmploymentTransition(
   });
 }
 
+/** 29 PB-R9 / AC-PB-03：转正申请在提交时判互斥（草稿照常保存），自己不拦自己。 */
+async function assertRegularizationSubmittable(tx: Tx, ctx: EmploymentContext, business: LockedEmploymentBusiness) {
+  if (business.payload.kind !== 'regularization') return;
+  await assertProbationProcessesIdle(tx, ctx, {
+    employeeId: business.employeeId,
+    action: 'apply',
+    businessId: business.id,
+  });
+}
+
 /** 同事务编排端口；审批中心（R1-T07）对操作者、节点与参与人规则负责。 */
 export async function transitionEmployment(
   tx: Tx,
@@ -95,14 +106,9 @@ export async function transitionEmployment(
   const gatedExit =
     isExitKind(business.payload.kind) && !ctx.trustedExit ? await exitGateFor(tx, ctx, business, input) : null;
   assertTransition(business, input.action);
+  // 调动业务的员工侧校验留在主函数里：F-039 按调用邻近度探测 transfer write，下沉一层会被判为口径变弱
   if (input.action === 'submit') await requireEmployeeTransferBusiness(tx, ctx, input.id);
-  // 29 PB-R9 / AC-PB-03：转正申请在提交时判互斥（草稿照常保存），自己不拦自己
-  if (input.action === 'submit' && business.payload.kind === 'regularization')
-    await assertProbationProcessesIdle(tx, ctx, {
-      employeeId: business.employeeId,
-      action: 'apply',
-      businessId: input.id,
-    });
+  if (input.action === 'submit') await assertRegularizationSubmittable(tx, ctx, business);
   if (input.action === 'submit' || input.action === 'approve') {
     const { payload } = business;
     // DEC-195② / DEC-272：审批通过时已过计划生效日的调动改到批准当天（共用判定函数，起点是 §5.0A 计划生效日，D-8）。
@@ -152,6 +158,11 @@ export async function transitionEmployment(
     // R1-T07：只由审批中心在最后一个节点通过后同事务调用；审批通过 ≠ 生效，只有生效日已到才落地并向后更新。
     if (gatedExit?.row) assertExitHrFields(gatedExit.row);
     await appendEmploymentState(tx, ctx, business, 'approved');
+    // 离职 confirmed 阶段（§3.1）：最后节点通过当日写编制预减时点 R 与预减台账
+    if (gatedExit?.row) {
+      const { effectiveDate, mode } = business.payload;
+      await confirmExit(tx, ctx, { id: business.id, employeeId: business.employeeId, effectiveDate, mode });
+    }
     // §18.1 关口②：经门禁的离职只存 approved，不落地、不记生效尝试（B3-3 起调 activateExit）；
     // DEC-195②：其余业务迟到审批同样按实际执行日对齐联动。
     if (!gatedExit?.row) await approveEmploymentBusiness(tx, { ...ctx, deferredExecution: true }, business);
