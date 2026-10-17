@@ -1,7 +1,7 @@
 import { affectsEstablishmentOccupancy } from '../establishment/employment-check.js';
 import { assertEstablishmentCapacity, type EstablishmentWarning } from './activation-checks.js';
 import { sql, type Tx } from '@italent/db';
-import { tenantLocalDate } from '@italent/domain';
+import { PART_TIME_KIND, tenantLocalDate } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import { employmentRecordVisibleTo, requireEmploymentWrite, requireLinkedEmploymentRecord } from './context.js';
 import { AppError } from '../../errors.js';
@@ -111,6 +111,7 @@ async function candidates(tx: Tx, ctx: EmploymentContext, source: ForwardSource)
     LEFT JOIN employment_timeline t ON t.tenant_id=r.tenant_id AND t.employee_id=r.employee_id AND t.record_id=r.id
     WHERE b.tenant_id=${ctx.tenantId} AND b.employee_id=${source.employeeId}::uuid
       ${source.businessId ? sql`AND b.id<>${source.businessId}::uuid` : sql``}
+      AND p.kind<>${PART_TIME_KIND}
       AND (r.staff_id=${source.staffId}::uuid OR (r.id IS NULL AND p.selected_staff_id=${source.staffId}::uuid))
       AND ((s.state='effective' AND ${laterEffective})
         OR (s.state IN ('draft','in_review','approved','rejected')

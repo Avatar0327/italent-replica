@@ -1,4 +1,5 @@
 import { isUuid, sql, type Tx } from '@italent/db';
+import { PART_TIME_KIND } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { assertRevision } from './context.js';
 import type { PreparedInheritance } from './inheritance.js';
@@ -105,11 +106,16 @@ export async function readEmploymentEmployee(
   return camelRow(row) as unknown as EmploymentEmployeeRow;
 }
 
-/** 所有业务先锁员工再锁业务头，统一锁顺序，也串行同员工的时间线改动。 */
+/**
+ * 所有业务先锁员工再锁业务头，统一锁顺序，也串行同员工的时间线改动。
+ * 兼职底层业务只有兼职模块传 partTime 才能锁到；通用任职写入口（修改 / 流转 / 删除 / 生效重试 / 记录编辑 / 批量编辑 /
+ * 导入编辑）缺省遇兼职一律 404（R2-T05 §3.4 P-06 / P-42 / P-43）；反过来传 partTime 时非兼职业务同样 404。
+ */
 export async function lockEmploymentBusiness(
   tx: Tx,
   ctx: EmploymentContext,
   id: string,
+  options: { readonly partTime?: true } = {},
 ): Promise<LockedEmploymentBusiness> {
   if (!isUuid(id)) throw new AppError('VALIDATION_FAILED', '业务标识必须是 UUID');
   const [owner] = rowsOf<{ employeeId: string }>(
@@ -127,7 +133,6 @@ export async function lockEmploymentBusiness(
     `),
   );
   if (!head) throw new AppError('NOT_FOUND', '任职业务不存在');
-  assertRevision(ctx.expectedRevision, head.revision);
   const [rawPayload] = rowsOf<Record<string, unknown>>(
     await tx.execute(sql`
       SELECT * FROM employment_payload_versions
@@ -143,6 +148,10 @@ export async function lockEmploymentBusiness(
     `),
   );
   if (!rawPayload || !event) throw new AppError('SERVICE_UNAVAILABLE', '任职业务版本链不完整');
+  // 类型守卫先于 revision 校验：对兼职传错 revision 也只得 404，不经 409 带出 actual
+  if ((rawPayload.kind === PART_TIME_KIND) !== (options.partTime === true))
+    throw new AppError('NOT_FOUND', '任职业务不存在');
+  assertRevision(ctx.expectedRevision, head.revision);
   const payload = camelRow(rawPayload);
   return {
     ...head,

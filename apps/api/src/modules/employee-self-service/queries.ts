@@ -1,5 +1,5 @@
 import { sql, type Tx } from '@italent/db';
-import { applicationStateLabel, tenantLocalDate } from '@italent/domain';
+import { applicationStateLabel, PART_TIME_KIND, tenantLocalDate } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { findCurrentRecord, loadEmploymentBusiness, rowsOf } from '../employment/read-model.js';
 import type { EmploymentContext, PageQuery } from '../employment/types.js';
@@ -15,17 +15,20 @@ export const employmentStatus = {
   deleted: '已删除',
 } as const;
 
-/** Q-M0-70：从业务链取申请、从生效时间轴取结束日；在途与作废行不会参与有效区间计算。 */
+/**
+ * Q-M0-70：从业务链取申请、从生效时间轴取结束日；在途与作废行不会参与有效区间计算。
+ * 兼职底层业务在分页前排除（R2-T05 §3.4 P-15）；本人看兼职由 F-020 另做（DEC-200）。
+ */
 export async function ownRecords(tx: Tx, ctx: EmploymentContext, employeeId: string, page: PageQuery) {
   const rows = rowsOf<{ id: string }>(
     await tx.execute(sql`
     SELECT b.id FROM employment_business_objects b
     JOIN LATERAL (SELECT state FROM employment_state_events s WHERE s.tenant_id=b.tenant_id
       AND s.business_id=b.id ORDER BY event_no DESC LIMIT 1) s ON true
-    JOIN LATERAL (SELECT effective_date FROM employment_payload_versions p WHERE p.tenant_id=b.tenant_id
+    JOIN LATERAL (SELECT effective_date,kind FROM employment_payload_versions p WHERE p.tenant_id=b.tenant_id
       AND p.business_id=b.id ORDER BY version_no DESC LIMIT 1) p ON true
     WHERE b.tenant_id=${ctx.tenantId} AND b.employee_id=${employeeId}::uuid
-      AND s.state NOT IN ('draft','deleted')
+      AND s.state NOT IN ('draft','deleted') AND p.kind<>${PART_TIME_KIND}
     ORDER BY p.effective_date DESC,b.created_at DESC,b.id DESC LIMIT ${page.limit} OFFSET ${page.offset}
   `),
   );

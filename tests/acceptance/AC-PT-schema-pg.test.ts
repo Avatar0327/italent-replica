@@ -3,12 +3,16 @@
  * PGlite 单连接无法并发，只在设了 TEST_DATABASE_URL 时运行：
  * - 同一兼职记录两个事务同时追加同一期号：后到者在唯一索引上真实等待，先到者提交后失败（23505），期限链不分叉；
  * - 持员工行锁写主职业务时插兼职记录：兼职事务在员工行锁上真实等待（外键检查 / 提交时的覆盖触发器），放行后两边都成功，
- *   覆盖触发器只数主职记录，主职链与插入前逐项相等（PB-01 的并发版本）。
+ *   覆盖触发器只数主职记录，主职链与插入前逐项相等（PB-01 的并发版本）；
+ * - PT-2（PT-1 审查遗留）：主职经真实写入口追加一条调动记录，与兼职写入（先持员工行锁，§7.1 ①）两种先后交错：
+ *   后到者在员工行锁上真实等待，放行后双方都成功；主职链 = 只做主职追加的串行结果（兼职不进时间轴、不改主职记录）。
  */
 import { sql, withTenant, type Tx } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { rowsOf } from '../../apps/api/src/modules/approval/context.js';
+import { lockEmploymentEmployee } from '../../apps/api/src/modules/employment/record-store.js';
+import { createEmploymentBusiness } from '../../apps/api/src/modules/employment/write-service.js';
 import { failure, partTimeWorld, type PartTimeWorld } from './AC-PT-support.js';
 
 const database = useTestDb();
@@ -118,4 +122,45 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-PT-schema-pg BE-7 PT-1 真 P
     expect(await w.primaryView()).toEqual(before);
     expect(await terms(w, recordId)).toEqual([{ term_no: 1, end_date: null, source: 'create' }]);
   });
+
+  it.each(['主职先持锁', '兼职先持锁'] as const)(
+    '主职真实追加调动与兼职写入交错（%s）：后到者等待员工行锁，双方都成功，主职链等于串行追加结果',
+    async (order) => {
+      const w = await partTimeWorld(database().db, `pg-append-${order === '主职先持锁' ? 'primary' : 'part'}`);
+      const before = await w.primaryView();
+      const employee = await w.getEmployee(w.employeeId);
+      const appendPrimary = (tx: Tx) =>
+        createEmploymentBusiness(tx, w.context(employee.revision), w.employeeId, {
+          kind: 'transfer',
+          mode: 'direct',
+          effectiveDate: '2026-09-15',
+          fields: { place: '主职调动地点' },
+        });
+      let recordId = '';
+      const writePartTime = async (tx: Tx) => {
+        await lockEmploymentEmployee(tx, w.context(), w.employeeId);
+        recordId = await w.insertPartTime(tx, { startDate: '2026-09-01' });
+        await tx.execute(w.term(recordId, 1, null, 'create'));
+      };
+      const [first, second] = order === '主职先持锁' ? [appendPrimary, writePartTime] : [writePartTime, appendPrimary];
+      const held = holdThen(w, first);
+      await held.held;
+      let finished = false;
+      const waiting = w.attempt(second).then((result) => {
+        finished = true;
+        return result;
+      });
+      await waitForLock(w, () => finished);
+      held.release();
+      expect(await held.done).toBeUndefined();
+      expect(await waiting).toBeUndefined();
+      const after = await w.primaryView();
+      // 主职链 = 入职 + 新调动；兼职记录不在主职读口径里
+      expect(after.all.map((item) => item.kind).sort()).toEqual(['hire', 'transfer']);
+      expect(after.all.map((item) => item.id)).toEqual(expect.arrayContaining(before.all.map((item) => item.id)));
+      expect(after.current).toMatchObject({ kind: 'transfer', effectiveDate: '2026-09-15' });
+      expect(JSON.stringify(after)).not.toContain(recordId);
+      expect(await terms(w, recordId)).toEqual([{ term_no: 1, end_date: null, source: 'create' }]);
+    },
+  );
 });
