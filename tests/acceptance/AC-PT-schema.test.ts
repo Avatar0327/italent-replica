@@ -13,7 +13,7 @@ import { partTimeWorld } from './AC-PT-support.js';
 const testDb = useTestDb();
 const DENIED = /permission denied/;
 
-describe('BE-7 PT-1 兼职不进主职版本链（§1.1，PB-01 / PB-02 / PB-03）', () => {
+describe('AC-PT-schema BE-7 PT-1 兼职不进主职版本链（§1.1，PB-01 / PB-02 / PB-03）', () => {
   it('PB-01：插入兼职记录（无时间轴行）后提交通过覆盖触发器，主职当前记录与记录列表逐项不变', async () => {
     const w = await partTimeWorld(testDb().db, 'pb01');
     const before = await w.primaryView();
@@ -79,7 +79,7 @@ describe('BE-7 PT-1 兼职不进主职版本链（§1.1，PB-01 / PB-02 / PB-03�
   });
 });
 
-describe('BE-7 PT-1 兼职期限链（§1.2，PB-04 / PB-05）', () => {
+describe('AC-PT-schema BE-7 PT-1 兼职期限链（§1.2，PB-04 / PB-05）', () => {
   it('PB-04：期限链只追加——app_user 无 UPDATE / DELETE 权限，迁移属主也被只追加触发器拒绝', async () => {
     const w = await partTimeWorld(testDb().db, 'pb04');
     let recordId = '';
@@ -154,7 +154,7 @@ describe('BE-7 PT-1 兼职期限链（§1.2，PB-04 / PB-05）', () => {
   });
 });
 
-describe('BE-7 PT-1 兼职申请三表（§1.4）', () => {
+describe('AC-PT-schema BE-7 PT-1 兼职申请三表（§1.4）', () => {
   it('申请头只可改 revision、不可删除；载荷版本与状态事件只追加；状态 / 原因 / 落地记录约束生效', async () => {
     const w = await partTimeWorld(testDb().db, 'requests');
     let recordId = '';

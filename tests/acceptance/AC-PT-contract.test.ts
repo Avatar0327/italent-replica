@@ -40,7 +40,7 @@ async function constraint(name: string) {
   return (Array.isArray(result) ? result : result.rows)[0]?.def ?? '';
 }
 
-describe('BE-7 PT-1 审批类型与表达式（§1.5）', () => {
+describe('AC-PT-contract BE-7 PT-1 审批类型与表达式（§1.5）', () => {
   it('三个审批类型：原站标准编码、挂任职记录对象、适配器 part_time、开放审批中编辑；不从任职业务映射', () => {
     for (const [code, name, processCode] of TYPES) {
       expect(typeOf(code), code).toMatchObject({
@@ -123,7 +123,7 @@ describe('BE-7 PT-1 审批类型与表达式（§1.5）', () => {
   });
 });
 
-describe('BE-7 PT-1 预置流程（§4.5）', () => {
+describe('AC-PT-contract BE-7 PT-1 预置流程（§4.5）', () => {
   const HEAD_FIRST = [
     'record_department_head',
     'record_department_hrbp',
@@ -170,7 +170,7 @@ describe('BE-7 PT-1 预置流程（§4.5）', () => {
   });
 });
 
-describe('BE-7 PT-1 业务类型 part_time 占位（§13.1：PT-4a 前不开放）', () => {
+describe('AC-PT-contract BE-7 PT-1 业务类型 part_time 占位（§13.1：PT-4a 前不开放）', () => {
   it('业务类型进实例 CHECK；适配器任何回调都 409 PART_TIME_NOT_AVAILABLE，不静默放行', async () => {
     expect(await constraint('approval_instances_business_type')).toContain("'part_time'");
     const adapter = (ADAPTERS as Record<string, (typeof ADAPTERS)['employment']>).part_time;
@@ -196,7 +196,7 @@ describe('BE-7 PT-1 业务类型 part_time 占位（§13.1：PT-4a 前不开放�
   });
 });
 
-describe('BE-7 PT-1 按钮、字段与审计标签（§7.2 / §7.4）', () => {
+describe('AC-PT-contract BE-7 PT-1 按钮、字段与审计标签（§7.2 / §7.4）', () => {
   // 批量结束在兼职列表上勾选多条操作，是列表级按钮；其余在员工 / 兼职详情上（§7.2 未定层级，复刻取此）
   const BUTTONS = [
     ['Employment.PartTime', 'detail', 'create'],

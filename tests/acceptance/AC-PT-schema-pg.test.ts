@@ -62,7 +62,7 @@ async function terms(w: PartTimeWorld, recordId: string) {
   );
 }
 
-describe.skipIf(!process.env.TEST_DATABASE_URL)('BE-7 PT-1 真 PG：兼职数据层交错', () => {
+describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-PT-schema-pg BE-7 PT-1 真 PG：兼职数据层交错', () => {
   it('同一兼职记录并发追加同一期号：后到者在唯一索引上等待，先到者提交后失败 23505，期限链不分叉', async () => {
     const w = await partTimeWorld(database().db, 'pg-term');
     let recordId = '';
