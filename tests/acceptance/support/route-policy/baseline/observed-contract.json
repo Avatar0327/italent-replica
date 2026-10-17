@@ -206,6 +206,46 @@
         ]
       }
     },
+    "DELETE /api/tenant/employment/auto-regularization-rules/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "admin": [
+          "tenant.employment.configuration"
+        ],
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireEmploymentWrite",
+          "requireObjectWrite"
+        ],
+        "fieldsOut": [
+          "employment runWrite()"
+        ],
+        "object": [
+          "requireObjectWrite（对象写操作权）"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentSettings:update"
+        ]
+      }
+    },
     "DELETE /api/tenant/employment/blacklist-rules/:id": {
       "edge": {
         "anonymous": {
@@ -3524,6 +3564,35 @@
         ],
         "scope": [
           "readPageContext"
+        ]
+      }
+    },
+    "GET /api/tenant/employment/auto-regularization-rules": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "object": [
+          "object.* 动作",
+          "readContext(object.*)"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentSettings:view"
         ]
       }
     },
@@ -14770,6 +14839,132 @@
         ]
       }
     },
+    "POST /api/tenant/employment/auto-regularization-rules": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "admin": [
+          "tenant.employment.configuration"
+        ],
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireEmploymentWrite",
+          "requireObjectWrite"
+        ],
+        "fieldsOut": [
+          "employment runWrite()"
+        ],
+        "object": [
+          "requireObjectWrite（对象写操作权）"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentSettings:create"
+        ]
+      }
+    },
+    "POST /api/tenant/employment/auto-regularization-rules/:id/copy": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "admin": [
+          "tenant.employment.configuration"
+        ],
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireEmploymentWrite",
+          "requireObjectWrite"
+        ],
+        "fieldsOut": [
+          "employment runWrite()"
+        ],
+        "object": [
+          "requireObjectWrite（对象写操作权）"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentSettings:create"
+        ]
+      }
+    },
+    "POST /api/tenant/employment/auto-regularization/run": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "admin": [
+          "tenant.employment.configuration"
+        ],
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "domain": [
+          "transfer.initiator"
+        ],
+        "fieldsIn": [
+          "requireEmploymentWrite",
+          "requireObjectWrite"
+        ],
+        "fieldsOut": [
+          "employment runWrite()"
+        ],
+        "guard": [
+          "employment.linkage"
+        ],
+        "object": [
+          "requireObjectWrite（对象写操作权）"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentSettings:update"
+        ]
+      }
+    },
     "POST /api/tenant/employment/blacklist": {
       "edge": {
         "anonymous": {
@@ -16013,8 +16208,7 @@
           "transfer.initiator"
         ],
         "fieldsIn": [
-          "requireEmploymentWrite",
-          "transfer write"
+          "requireEmploymentWrite"
         ],
         "fieldsOut": [
           "employment runWrite()"
@@ -16028,12 +16222,6 @@
         ],
         "objectOp": [
           "TenantBase.EmploymentRecord:create"
-        ],
-        "scope": [
-          "employment scope"
-        ],
-        "scopePoint": [
-          "employment point"
         ]
       }
     },
@@ -22045,6 +22233,86 @@
         ],
         "object": [
           "requireObjectWrite（对象写操作权）"
+        ]
+      }
+    },
+    "PUT /api/tenant/employment/auto-regularization-rules/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "admin": [
+          "tenant.employment.configuration"
+        ],
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireEmploymentWrite",
+          "requireObjectWrite"
+        ],
+        "fieldsOut": [
+          "employment runWrite()"
+        ],
+        "object": [
+          "requireObjectWrite（对象写操作权）"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentSettings:update"
+        ]
+      }
+    },
+    "PUT /api/tenant/employment/auto-regularization-rules/:id/enabled": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "admin": [
+          "tenant.employment.configuration"
+        ],
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireEmploymentWrite",
+          "requireObjectWrite"
+        ],
+        "fieldsOut": [
+          "employment runWrite()"
+        ],
+        "object": [
+          "requireObjectWrite（对象写操作权）"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentSettings:update"
         ]
       }
     },

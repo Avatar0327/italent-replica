@@ -171,6 +171,16 @@ export const DIGESTS: Digests = {
     ownTransferInput: '39cbe940fbc7',
     ownTransferPreview: '1251dd2e1f1e',
   },
+  'apps/api/src/modules/employment/auto-regularization-routes.ts': {
+    'route:DELETE /auto-regularization-rules/:id': '633164e68c0d',
+    'route:GET /auto-regularization-rules': '30bcdcc9d33c',
+    'route:POST /auto-regularization-rules': 'ca907e16e6e6',
+    'route:POST /auto-regularization-rules/:id/copy': '82b510f08ee1',
+    'route:POST /auto-regularization/run': '88a212ba6a9f',
+    'route:PUT /auto-regularization-rules/:id': '7d8ee2c6797a',
+    'route:PUT /auto-regularization-rules/:id/enabled': '5e3092aadae1',
+    writeContext: '0f98695a8fa8',
+  },
   'apps/api/src/modules/employment/blacklist-routes.ts': {
     registerBlacklistRuleRoutes: '3f07cde05455',
     requireBlacklistWrite: '6941bcb6cd89',
@@ -243,7 +253,7 @@ export const DIGESTS: Digests = {
     rescheduleRegularization: '2020cec359d9',
   },
   'apps/api/src/modules/employment/regularization.ts': {
-    regularizeOne: '874facddf810',
+    regularizeOne: '783a0d02bf5e',
   },
   'apps/api/src/modules/employment/replay-guard.ts': {
     importWriteGuard: '8592297e10da',
@@ -1536,6 +1546,18 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employee-self-service/routes.ts#selfTransferGuard': '008aa7f3f314',
   'apps/api/src/modules/employee-self-service/transfer.ts#ownTransferInput': 'e6d695e50de9',
   'apps/api/src/modules/employee-self-service/transfer.ts#ownTransferPreview': '78398667795d',
+  'apps/api/src/modules/employment/auto-regularization-routes.ts#route:DELETE /auto-regularization-rules/:id':
+    'fb47f7d5a451',
+  'apps/api/src/modules/employment/auto-regularization-routes.ts#route:GET /auto-regularization-rules': '14250731bdc5',
+  'apps/api/src/modules/employment/auto-regularization-routes.ts#route:POST /auto-regularization-rules': 'f24b1fff600f',
+  'apps/api/src/modules/employment/auto-regularization-routes.ts#route:POST /auto-regularization-rules/:id/copy':
+    '9eba85d53a35',
+  'apps/api/src/modules/employment/auto-regularization-routes.ts#route:POST /auto-regularization/run': '5c2df8cc8fee',
+  'apps/api/src/modules/employment/auto-regularization-routes.ts#route:PUT /auto-regularization-rules/:id':
+    '9d6fe976bb88',
+  'apps/api/src/modules/employment/auto-regularization-routes.ts#route:PUT /auto-regularization-rules/:id/enabled':
+    'c0874a5a5e86',
+  'apps/api/src/modules/employment/auto-regularization-routes.ts#writeContext': '87163d4c2bf1',
   'apps/api/src/modules/employment/blacklist-routes.ts#registerBlacklistRuleRoutes': '5a4be0735eda',
   'apps/api/src/modules/employment/blacklist-routes.ts#requireBlacklistWrite': '7283f2d3910d',
   'apps/api/src/modules/employment/blacklist-routes.ts#route:DELETE /blacklist-rules/:id': '60ba1f0b416f',
@@ -1583,7 +1605,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/probation-routes.ts#route:PUT /employees/:id/probation': '98ec4c8d2cb9',
   'apps/api/src/modules/employment/probation-routes.ts#route:PUT /probation-results/:id': '598aaee12ea9',
   'apps/api/src/modules/employment/regularization-reschedule.ts#rescheduleRegularization': 'cdda3cbdeba6',
-  'apps/api/src/modules/employment/regularization.ts#regularizeOne': 'c8e2526025e2',
+  'apps/api/src/modules/employment/regularization.ts#regularizeOne': 'e7d39c809936',
   'apps/api/src/modules/employment/replay-guard.ts#importWriteGuard': 'd611756193b7',
   'apps/api/src/modules/employment/replay-guard.ts#requireBusinessWriteScope': '90ef4cd1f0fc',
   'apps/api/src/modules/employment/replay-guard.ts#requireEditTargets': 'aa1f389d7a24',
