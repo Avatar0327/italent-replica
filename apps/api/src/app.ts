@@ -1,4 +1,5 @@
 import { registerContractRoutes } from './modules/contracts/routes.js';
+import { registerOfferRoutes } from './modules/offer/routes.js';
 import { registerEmployeeSelfServiceRoutes } from './modules/employee-self-service/routes.js';
 import type { Db } from '@italent/db';
 import { sql } from 'drizzle-orm';
@@ -49,6 +50,7 @@ const TENANT_MODULES: readonly TenantRouteModule[] = [
   registerPersonnelRoutes, // R1-T12 人员信息与子集
   registerApprovalRoutes, // R1-T07 审批中心
   registerContractRoutes, // R2-T06 合同协议
+  registerOfferRoutes, // R2 BE-14a Offer 管理
   registerEmployeeSelfServiceRoutes, // R1-T13 员工自助，仅本人
   registerAuditRoutes, // R1-T16 审计日志
   registerSurvey360Routes, // R3-T03 360 度评估（含 /api/survey360/link 链接作答）

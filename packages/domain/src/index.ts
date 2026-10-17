@@ -54,3 +54,4 @@ export * as survey360 from './survey360/index.js';
 export * from './idp/index.js';
 export * from './talent-review/index.js';
 export * from './succession/index.js';
+export * from './offer/index.js';

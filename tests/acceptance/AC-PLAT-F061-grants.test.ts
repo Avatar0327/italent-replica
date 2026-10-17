@@ -195,6 +195,8 @@ describe('AC-PLAT-F061 T-16 授权项编码与指纹守卫', () => {
       21: '574b5179e1719f2d',
       // R2 BE-8a：新增黑名单对象，标准版系统管理员 / 人事管理员预置看全部（DEC-415）
       22: 'b0edfe8938d3d701',
+      // R2 BE-14a：新增 Offer 对象（TenantBase.Offer）字段 / 按钮授权项
+      23: '91de7da514fc2bf7',
     };
     expect(HISTORY[STANDARD_GRANT_VERSION], `version ${STANDARD_GRANT_VERSION} 没有登记指纹：追加一行`).toBe(
       STANDARD_GRANT_DIGEST,

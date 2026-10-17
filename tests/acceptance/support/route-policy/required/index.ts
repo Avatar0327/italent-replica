@@ -13,6 +13,7 @@ import { ESTABLISHMENT } from './establishment.js';
 import { EVALUATION } from './evaluation.js';
 import { IDP } from './idp.js';
 import { JOB } from './job.js';
+import { OFFERS } from './offers.js';
 import { ORG } from './org.js';
 import { PERMISSION } from './permission.js';
 import { PERSONNEL } from './personnel.js';
@@ -39,6 +40,7 @@ export const REQUIRED_BY_MODULE: Readonly<Record<string, RequiredTable>> = {
   establishment: ESTABLISHMENT,
   personnel: PERSONNEL,
   contracts: CONTRACTS,
+  offers: OFFERS,
   permission: PERMISSION,
   employment: EMPLOYMENT,
   approval: APPROVAL,
