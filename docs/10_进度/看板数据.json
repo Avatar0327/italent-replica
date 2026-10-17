@@ -2,8 +2,8 @@
 "updated": "2026-10-14",
 "stats": {
 "merged": 305,
-"open": 8,
-"dec": 577,
+"open": 13,
+"dec": 578,
 "ev": "43/177"
 },
 "tasks": {
@@ -983,6 +983,34 @@
 }
 },
 "log": [
+[
+"10-17",
+"BE-7 #390 第 1 轮 8 项 P2 返工中；BE-14a 开 Draft PR #394；F-212 #389 待总编排确认"
+],
+[
+"10-17",
+"F-212 #389 第 1 轮审查可以合并；契约级，待 00 确认后入队"
+],
+[
+"10-17",
+"FE2b 开 Draft PR #393"
+],
+[
+"10-17",
+"DEC-578：BE-8b 改名“交接事项与离职自动加黑”，不再做终止在途，作废在途申请归 BE-4h；F-213 开 Draft PR #392"
+],
+[
+"10-17",
+"FE2b 离职三个字典设置页已开会话，开发中"
+],
+[
+"10-17",
+"F-212 #389 第 1 轮审查已发起（Sol high）；契约级，过审后先报 00 确认再入队"
+],
+[
+"10-17",
+"BE-7 设计段开 PR #390（纯文档），开发完成待审"
+],
 [
 "10-17",
 "DEC-577：新增 BE-4h/4i/4j（R2-T03 B3-2/B3-3/B4）；FE2b 离职三个字典设置页从 FE-R2c 拆出拟派发；BE-14a / BE-4e #388 开发中；F-212 #389 开发完成待审"
@@ -5364,7 +5392,7 @@
 {
 "k": "F-183",
 "n": "F-183 R2e7 远程隔夜取证（自动转正 / 考核规则隔夜观察 + 候选人填写页）",
-"s": "wait",
+"s": "done",
 "note": "【DEC-567：取证北京 10-17 07:01 自动恢复】待派 · DEC-537 · 分 A 段（建规则）/ B 段（次日看结果、删规则）· 需用户重新登录远程北森 · 前置 F-177 已完成；等取证恢复",
 "mod": "R2",
 "ms": "D2",
@@ -5385,14 +5413,15 @@
 {
 "k": "BE-14a",
 "n": "BE-14a Offer 对象、状态机、视图与审批类型",
-"s": "dev",
-"note": "开发中（云端会话 session_015Aut3ytajQgoMGtXx8NGpW，尚无 PR）· Opus High 开发 / Codex Sol high 审 · 分支 claude/BE-14a-offer · 前序取证 F-172 / F-175 / F-177 已完成，BE-2a / BE-2b 已合 · DEC-576",
+"s": "decide",
+"note": "开发中（Draft PR #394，分支 claude/optimistic-wozniak-kp39wa，云端会话 session_015Aut3ytajQgoMGtXx8NGpW）· Opus High 开发 / Codex Sol high 审 · DEC-576",
 "after": [
 "BE-2a",
 "F-172",
 "F-175",
 "F-177"
-]
+],
+"pr": 394
 },
 {
 "k": "BE-14b",
@@ -5549,7 +5578,7 @@
 "after": [
 "BE-4f"
 ],
-"note": "待排 · 前序 BE-4f · 03 DEC-577 台账登记 · 与 BE-8b“终止在途”范围重叠，归属待 00 定"
+"note": "待排 · 前序 BE-4f · 03 DEC-577 台账登记 · DEC-578：离职生效时作废全部在途申请归本行（BE-8b 不再做终止在途）"
 },
 {
 "k": "BE-4i",
@@ -5598,12 +5627,13 @@
 {
 "k": "FE2b",
 "n": "FE2b 离职三个字典设置页（从 FE-R2c 拆出，约 650 行）",
-"s": "todo",
+"s": "dev",
 "after": [],
 "kind": "前端",
 "mod": "R2",
 "ms": "D2",
-"note": "拟派发（DEC-577，用户定）· Claude Opus High 按前端规则开发 / Codex Sol high 审 · 分支 claude/FE2b-exit-dictionaries · 前序 B1a（#347）已合 · FE-R2c 其余部分仍等 BE-3/4/5"
+"note": "开发中（Draft PR #393，分支 claude/inspiring-gates-x7wfm6，+435，云端会话 session_01B9kUz7NpamSXQDrwCeJBeb）· Claude Opus High 按前端规则 / Codex Sol high 审 · 约定分支名 claude/FE2b-exit-dictionaries 未用，以云端会话自动名为准 · 前序 B1a（#347）已合 · DEC-577",
+"pr": 393
 },
 {
 "k": "BE-8a",
@@ -5617,9 +5647,9 @@
 },
 {
 "k": "BE-8b",
-"n": "BE-8b 交接自动建单、终止在途（含离职自动加黑；全单按 A27 收口，DEC-571）",
+"n": "BE-8b 交接事项与离职自动加黑",
 "s": "wait",
-"note": "证据够，等 BE-4h（R2-T03 B3-2） · “终止在途”与 R2-T03 B3-2“作废全部在途任职申请”范围重叠，归属待 00 定 · 03 盘点 inv_1017 §三",
+"note": "待排 · DEC-578：只做交接事项、交接发起规则、离职自动加黑，不再做“终止在途”（离职生效时作废全部在途申请归 BE-4h = R2-T03 B3-2；按申请类型选终止还是保留归 F-138）· 前序 BE-8a + BE-4h · 全单按 A27 收口（DEC-571）",
 "after": [
 "BE-8a",
 "BE-4h"
@@ -5673,9 +5703,10 @@
 {
 "k": "BE-7",
 "n": "BE-7 兼职（先 Opus 设计主职 / 兼职影响）",
-"s": "dev",
-"note": "开发中（云端会话 session_016GXowSPDKr1dUxCi1sUCVS，尚无 PR）· 先出设计段 · Codex Sol high 审 · 03 10-17 已开会话",
-"after": []
+"s": "rework",
+"note": "设计段返工中（PR #390，第 1 轮暂不能合并：8 项 P2，Codex Sol high；返工已发云端会话 session_016GXowSPDKr1dUxCi1sUCVS）· 设计合入后再出实现段",
+"after": [],
+"pr": 390
 },
 {
 "k": "FE-R2d",
@@ -6184,8 +6215,8 @@
 {
 "k": "F-212",
 "n": "CI 增加 PG16 普通角色（无 BYPASSRLS）验收分片，并补齐暴露出的剩余缺租户上下文测试（DEC-568，契约级门禁）",
-"s": "dev",
-"note": "开发完成待审（PR #389，03:54Z 第 1 轮，head ba0a88ff）· 云端 Claude Sonnet 5.5 High · 审查尚未发起 · 合并前契约级门禁需 00 确认",
+"s": "merge",
+"note": "审查：第 1 轮可以合并（Codex Sol high，04:09Z，head ba0a88ff，无 P0～P2）· CI 在跑，合并要求全绿 · 契约级门禁变更：待总编排确认（DEC-568）后再入队",
 "mod": "底座",
 "ms": "D2",
 "pr": 389
@@ -6338,7 +6369,8 @@
 "s": "dev",
 "mod": "R1",
 "ms": "D2",
-"note": "开发中（云端会话 session_01KP3BdtPW2H6kgFUrmpRQ56，尚无 PR）· Sonnet High 开发 / Codex Sol high 审 · 分支 claude/F-213-org-deactivate-date · 停用日不得早于或等于设立日（org/deactivation.ts），先确认现有停用是否已拦截 · DEC-575"
+"note": "开发中（Draft PR #392，分支 claude/F-213-org-deactivate-date，+127，云端会话 session_01KP3BdtPW2H6kgFUrmpRQ56）· Sonnet High 开发 / Codex Sol high 审 · 停用日不得早于或等于设立日 · DEC-575",
+"pr": 392
 }
 ]
 }
