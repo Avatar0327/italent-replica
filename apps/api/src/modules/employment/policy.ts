@@ -850,6 +850,52 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     scope: listScope('module.scopeSql'),
     fields: projector('employment.response', 'employment.entryViews'),
   }),
+  // ---- employment/intern-routes.ts：R2 BE-6a 实习生（B34～B38、B41、A48）-------------------------------------------------
+  // 实习四视图：view / departmentId / keyword 不合法 400；按部门筛选须 departmentId 可见、按关键字须 name / code 可见（否则 403
+  // 「筛选字段不可查看」）；readPageContext(list) + scopeSql 列表范围（空范围看不到任何行）；任职字段按任职记录、姓名 / 工号按
+  // 人员对象可见字段裁剪；state / probation 是视图控制项，行可见即可见
+  'GET /interns': object({
+    object: EMPLOYMENT,
+    operation: 'view',
+    button: noButton('列表无按钮'),
+    guards: ['employment.viewableFilters'],
+    scope: listScope('module.scopeSql'),
+    fields: projector('employment.response', 'employment.internViews'),
+  }),
+  // 直接实习转正：If-Match 必填；body 严格（合同 / 工号 / 入职日期不受理，400）；resource=id 人员范围 404「任职数据不存在」 +
+  // 看全部的写别名；requireEmploymentWrite('create', 实际写入字段, Employment.Create)；requireEmploymentScope（人员 + 目标部门）；
+  // 命令内 internRegularizationGuard 按当前授权重过；非在职实习生 409 NOT_INTERN、有审批中转正申请 409
+  // INTERN_REGULARIZATION_IN_PROGRESS；createEmploymentBusiness 直接落地（严格控编 409、DEC-178 联动）；非严格超编未确认 409
+  // CONFIRMATION_REQUIRED（整单回滚）；试用期信息同事务写入并审计
+  'POST /interns/:id/regularize': object({
+    object: EMPLOYMENT,
+    operation: 'create',
+    button: button('Employment.Create', 'detail'),
+    guards: [DIRECT_OPERATION, LINKAGE],
+    scope: guardScope('employment.scope', NF_DATA),
+    fields: RESPONSE,
+    write: employmentWrite(
+      'body.fields+customFields',
+      ['lockEmploymentEmployee', 'assertRevision', 'requireScopedEmploymentObject', 'requireLinkedEmploymentRecord'],
+      { controls: ['probation', 'probationMonths', 'probationEndDate', 'confirmed'] },
+    ),
+    ...byId,
+  }),
+  // 重聘判定（只读；POST 以免证件号进 URL）：body 严格 { idType, idNumber }（400）；Employee 新增权 + Employee.Create@list；
+  // requireEmploymentScope(ctx) 只认看全部（DEC-121，否则 404）；多人命中 409 REHIRE_MATCH_AMBIGUOUS；带出项按三个对象的可见字段裁剪
+  'POST /rehire-matches': object({
+    object: EMPLOYEE,
+    operation: 'create',
+    button: button('Employee.Create', 'list'),
+    scope: seeAll(NF_DATA),
+    fields: projector('employment.response', 'employment.rehireMatch'),
+    write: write(
+      'body',
+      none('只读判定：没有命令事务，没有提交前足迹'),
+      none('只读判定：没有返回后复核，带出项按可见字段裁剪'),
+      { commandOnly: true },
+    ),
+  }),
   // 重试生效：If-Match 必填；空体；requireEmploymentWrite('update', {}, RetryActivation)；authorizeBusinessWrite（写入口径）；
   // 命令内 retryActivation 内联校验 revision（409 REVISION_CONFLICT）、未生效 / 未失败 / 未到期 / 前序失败（409）
   'POST /businesses/:id/activation/retry': object({

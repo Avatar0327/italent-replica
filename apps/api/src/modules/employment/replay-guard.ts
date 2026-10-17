@@ -234,3 +234,27 @@ async function requireExitScope(
     });
   if (departmentId !== undefined) requireEmploymentScope(scoped, target.employeeId, departmentId);
 }
+
+/** 直接实习转正（BE-6a）的命令内复核：按当前授权重过入口同一口径（新增权、按钮、字段创建权、员工与目标部门范围）。 */
+export function internRegularizationGuard(
+  deps: TenantRouteDeps,
+  ctx: EmploymentContext,
+  employeeId: string,
+  business: object,
+  departmentId: string,
+): ScopedCommandGuard {
+  return scopedGuard({
+    before: async (tx) => {
+      const scoped = await commandContext(tx, deps, ctx);
+      if (scoped.trustedScopeBypass)
+        await requirePermission(scoped.authorize!, {
+          ...scoped,
+          action: 'tenant.employment.write',
+          resource: employeeId,
+        });
+      await requireEmployeeInScope(tx, scoped, employeeId);
+      await requireEmploymentWrite(scoped, 'create', business, 'Employment.Create');
+      requireEmploymentScope(scoped, employeeId, departmentId);
+    },
+  });
+}

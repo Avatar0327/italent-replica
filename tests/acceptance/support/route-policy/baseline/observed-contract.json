@@ -3917,6 +3917,34 @@
         ]
       }
     },
+    "GET /api/tenant/employment/interns": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "fieldsOut": [
+          "trimEmploymentResponse"
+        ],
+        "object": [
+          "readPageContext"
+        ],
+        "scope": [
+          "readPageContext"
+        ]
+      }
+    },
     "GET /api/tenant/employment/pending-entries": {
       "edge": {
         "anonymous": {
@@ -15713,6 +15741,56 @@
         ]
       }
     },
+    "POST /api/tenant/employment/interns/:id/regularize": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "button": [
+          "requireEmploymentWrite(按钮)"
+        ],
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireEmploymentWrite"
+        ],
+        "fieldsOut": [
+          "employment runWrite()"
+        ],
+        "guard": [
+          "employment.linkage"
+        ],
+        "object": [
+          "object.* 动作",
+          "readContext(object.*)"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:create"
+        ],
+        "scope": [
+          "employment scope",
+          "employment visibility"
+        ],
+        "scopePoint": [
+          "employment point"
+        ]
+      }
+    },
     "POST /api/tenant/employment/pending-entries/:id/cancel": {
       "edge": {
         "anonymous": {
@@ -16117,6 +16195,45 @@
         ],
         "scope": [
           "employment scope"
+        ],
+        "scopePoint": [
+          "employment point"
+        ]
+      }
+    },
+    "POST /api/tenant/employment/rehire-matches": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "button": [
+          "requireEmploymentWrite(按钮)"
+        ],
+        "fieldsIn": [
+          "requireEmploymentWrite"
+        ],
+        "object": [
+          "object.* 动作",
+          "readContext(object.*)"
+        ],
+        "objectOp": [
+          "TenantBase.Employee:create"
+        ],
+        "scope": [
+          "employment scope",
+          "readContext（非配置对象）"
         ],
         "scopePoint": [
           "employment point"
