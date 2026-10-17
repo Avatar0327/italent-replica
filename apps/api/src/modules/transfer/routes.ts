@@ -75,6 +75,14 @@ export function registerTransferRoutes(router: Hono<TenantEnv>, deps: TenantRout
           (viewable !== undefined && !viewable.has('departmentId'))),
     });
   });
+  registerTransferCreate(router, deps);
+  registerDraftRoutes(router, deps);
+  registerTransferLinkageRoutes(router, deps);
+  registerTransferConfiguration(router, deps);
+}
+
+/** 发起 / 暂存调动：入口复核 + 命令事务内由统一 guard 重算来源与目标部门例外（same-order-guard.ts）。 */
+function registerTransferCreate(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.post('/transfers/employees/:id', async (c) => {
     const id = uuidParam(c);
     const ctx = await readContext(c, deps, 'object.create', revision(c));
@@ -127,9 +135,6 @@ export function registerTransferRoutes(router: Hono<TenantEnv>, deps: TenantRout
       },
     );
   });
-  registerDraftRoutes(router, deps);
-  registerTransferLinkageRoutes(router, deps);
-  registerTransferConfiguration(router, deps);
 }
 
 /**
