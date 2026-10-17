@@ -77,6 +77,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/offer/approval-adapter.ts#voidOffer',
     '#activeInstances',
   ],
+  'apps/api/src/modules/offer/approval.ts#inFlightBatchIds': ['apps/api/src/modules/approval/context.ts#rowsOf'],
+  'apps/api/src/modules/offer/approval.ts#lockOfferBatches': ['#inFlightBatchIds'],
   'apps/api/src/modules/offer/approval.ts#offerApprovalFields': [
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
   ],
@@ -123,6 +125,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-route-access.ts#writeFields',
     'packages/domain/src/offer/rules.ts#OFFER_OBJECT',
   ],
+  'apps/api/src/modules/offer/context.ts#lockConflict': ['#LOCK_CONFLICTS'],
   'apps/api/src/modules/offer/context.ts#offerFieldsCheck': [
     'apps/api/src/modules/permission/module-route-access.ts#writeFields',
     'packages/domain/src/offer/rules.ts#OFFER_OBJECT',
@@ -156,6 +159,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/offer/context.ts#runOfferWrite': [
     'apps/api/src/modules/job/context.ts#revision',
+    '#lockConflict',
     '#trimOffer',
     'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
     'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
@@ -365,6 +369,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/offer/service.ts#failPlan': ['#PLAN_MESSAGES'],
   'apps/api/src/modules/offer/service.ts#invalidateOffer': [
     'apps/api/src/modules/offer/approval.ts#cancelOfferApprovals',
+    'apps/api/src/modules/offer/approval.ts#lockOfferBatches',
     'apps/api/src/modules/offer/context.ts#assertOfferRevision',
     'apps/api/src/modules/offer/dictionaries.ts#requireEnabledOfferReason',
     '#facts',

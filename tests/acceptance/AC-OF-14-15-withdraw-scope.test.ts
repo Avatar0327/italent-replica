@@ -185,6 +185,11 @@ describe('P1-01 审批侧撤回按 Offer 权限复核', () => {
     const real = (path: string, ifMatch: number, body: Record<string, unknown> = {}) =>
       w.prm.api.request('POST', `/api/tenant/offers${path}`, { ...w.as(w.applicant.userId), ifMatch, body });
     const offer = await w.offer(w.applicant);
+    // 行操作（#398 rowActions）在真实授权器下按同一口径出现“发起审批”（object.update 带空字段集合，#398 P2-1）
+    const detail = await w.prm.api.request('GET', `/api/tenant/offers/${offer.id}`, w.as(w.applicant.userId));
+    expect(((await detail.json()) as { rowActions: { primary: string[] } }).rowActions.primary).toEqual([
+      'submitApproval',
+    ]);
     const submitted = await real(`/${offer.id}/approval`, offer.revision);
     expect(submitted.status, await submitted.clone().text()).toBe(200);
     expect(await w.approvalStatus(offer)).toBe('approving');

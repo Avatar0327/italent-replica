@@ -132,6 +132,33 @@ export async function submitOfferBatch(tx: Tx, ctx: OfferContext, input: OfferBa
   return { id: created.id, revision: created.revision, items };
 }
 
+/** 本 Offer 所在的在途（审批中 / 驳回待处理）批量单，按 ID 升序。 */
+async function inFlightBatchIds(tx: Tx, tenantId: string, offerId: string) {
+  const rows = rowsOf<{ id: string }>(
+    await tx.execute(sql`SELECT DISTINCT i.business_id::text AS id FROM offer_batch_approval_items b
+      JOIN approval_instances i ON i.tenant_id = b.tenant_id AND i.business_type = 'offer_batch'
+        AND i.business_id = b.batch_id AND i.status IN ('running', 'returned')
+      WHERE b.tenant_id = ${tenantId} AND b.offer_id = ${offerId}::uuid ORDER BY 1`),
+  );
+  return rows.map((row) => row.id);
+}
+
+/**
+ * 失效的取锁顺序（未决 14）：先按 ID 升序锁本 Offer 所在的在途批量单，再由调用方锁 Offer——与审批动作（批量单 →
+ * 子表 Offer 升序 → 实例）同序，两份 Offer 同时失效也都先排在批量单上，不成环。返回的复核在取到 Offer 锁后调用：
+ * 期间关联变了（新并入别的批量单）即 409，由客户端刷新重提。
+ */
+export async function lockOfferBatches(tx: Tx, tenantId: string, offerId: string) {
+  const ids = await inFlightBatchIds(tx, tenantId, offerId);
+  for (const id of ids)
+    await tx.execute(sql`SELECT 1 FROM offer_batch_approvals WHERE tenant_id = ${tenantId} AND id = ${id}::uuid
+      FOR UPDATE`);
+  return async () => {
+    if ((await inFlightBatchIds(tx, tenantId, offerId)).join() !== ids.join())
+      throw new AppError('CONFLICT', 'Offer 正被并发处理，请刷新后重试', { reason: 'OFFER_CONCURRENT_CONFLICT' });
+  };
+}
+
 /**
  * 作废 Offer 的在途审批（BE-14a3 第 2 轮，#398 衔接）：在调用方事务内执行，调用方（失效、删除）已锁住本 Offer。
  * - 单个审批：实例作废（cancelled）、待办关闭，Offer 审批子状态回到“未发起审批”；

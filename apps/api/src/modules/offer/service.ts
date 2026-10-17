@@ -476,7 +476,11 @@ export async function transferOffer(tx: Tx, ctx: OfferContext, id: string, input
 
 /** 失效（OF-R7）：确定即失效，记失效时间；不可恢复（转移候选为空、只能复制）。 */
 export async function invalidateOffer(tx: Tx, ctx: OfferContext, id: string, input: OfferInvalidateInput) {
+  // BE-14a3：先锁在途批量单再锁 Offer（与审批动作同序），取锁后复核关联未变；随后在同一事务里作废在途审批
+  const { cancelOfferApprovals, lockOfferBatches } = await import('./approval.js');
+  const recheck = await lockOfferBatches(tx, ctx.tenantId, id);
   const before = await lockOffer(tx, ctx, id);
+  await recheck();
   assertOfferRevision(ctx.expectedRevision, before.revision);
   const plan = planOfferInvalidation(facts(before), input);
   if (!plan.ok) failPlan(plan);
@@ -487,8 +491,7 @@ export async function invalidateOffer(tx: Tx, ctx: OfferContext, id: string, inp
     plan.patch.invalidReasonCode,
   );
   const after = await save(tx, ctx, before, 'invalidate', { ...plan.patch, invalidReasonCode, invalidAt: ctx.now });
-  // BE-14a3（#398 衔接）：在同一事务里作废本 Offer 的在途审批（单个实例 / 所在批量单），否则 revision 变了的审批再也办不结
-  const { cancelOfferApprovals } = await import('./approval.js');
+  // 同一事务里作废在途审批（单个实例 / 所在批量单），否则 revision 变了的审批再也办不结（#398 衔接）
   return (await cancelOfferApprovals(tx, ctx, id)) ? offerDto(await loadOffer(tx, ctx, id)) : after;
 }
 

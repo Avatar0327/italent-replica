@@ -539,7 +539,7 @@ export const DIGESTS: Digests = {
     offerReadContext: 'c5e8ea087e23',
     offerTransferCheck: 'd2cb9dcb919e',
     runDictionaryWrite: '7b25cec2c260',
-    runOfferWrite: '5aaace17b56e',
+    runOfferWrite: '1498edbe6478',
   },
   'apps/api/src/modules/offer/routes.ts': {
     listFilters: '42b1c3365896',
@@ -1803,7 +1803,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/offer/context.ts#offerReadContext': '636b5336d243',
   'apps/api/src/modules/offer/context.ts#offerTransferCheck': '03ed5a7ae484',
   'apps/api/src/modules/offer/context.ts#runDictionaryWrite': 'f8f96c185984',
-  'apps/api/src/modules/offer/context.ts#runOfferWrite': 'e05e87f99830',
+  'apps/api/src/modules/offer/context.ts#runOfferWrite': '4a7852e97599',
   'apps/api/src/modules/offer/routes.ts#listFilters': '04fc9285a9ff',
   'apps/api/src/modules/offer/routes.ts#route:DELETE /:id': '5a7e2c628c52',
   'apps/api/src/modules/offer/routes.ts#route:GET /': '451b08a57af6',

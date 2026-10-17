@@ -3,10 +3,11 @@
  * 以可信方式安装并发布两个 Offer 预置流程（与开通时 provisioning 同一路径），Offer 走真实接口新建。
  */
 import { randomUUID } from 'node:crypto';
-import { withTenant, type Db } from '@italent/db';
+import { sql, withTenant, type Db } from '@italent/db';
 import { PRESET_PROCESSES } from '@italent/domain';
 import { expect } from 'vitest';
 import { installPresets, publishProcess, replaceDraft } from '../../apps/api/src/modules/approval/definitions.js';
+import { installMissingSeeds } from '../../apps/api/src/seeds/index.js';
 import { approvalWorld, type InstanceView, type Person } from './AC-APV-support.js';
 import { tenantApi } from './support/tenant-api.js';
 import { uniqueSuffix } from './support/unique.js';
@@ -45,6 +46,21 @@ export async function offerApprovalWorld(db: Db, label: string) {
   await w.setOrgRoles(department, { head: head.employeeId });
   const applicant = await w.person('申请人', department, { directManagerId: manager.employeeId });
   await publishPresets(db, w.tenant.id, w.hr.id, w.exceptionAdmin, ['offer', 'offer_batch']);
+  // 失效原因字典（#398 失效接口要求启用的字典项）与社招必填的职级 / 合同主体（可信造数，同 AC-OF-BE14a-support）
+  const [level, company] = await withTenant(db, w.tenant.id, async (tx) => {
+    const context = { tenantId: w.tenant.id, actorUserId: null, now: w.clock(), commandId: randomUUID() };
+    await installMissingSeeds(tx, context, { modules: ['offer'] });
+    const rows = (result: unknown) => (Array.isArray(result) ? result : (result as { rows: unknown[] }).rows);
+    const levelRow = rows(
+      await tx.execute(sql`INSERT INTO job_level_objects(tenant_id) VALUES (${w.tenant.id})
+      RETURNING id`),
+    )[0] as { id: string };
+    const companyRow = rows(
+      await tx.execute(sql`INSERT INTO contract_companies(tenant_id, code, name)
+      VALUES (${w.tenant.id}, ${`C${uniqueSuffix()}`}, '合成法人') RETURNING id`),
+    )[0] as { id: string };
+    return [levelRow.id, companyRow.id];
+  });
 
   async function offer(actor: Person, departmentId = department): Promise<OfferView> {
     const body = {
@@ -57,6 +73,29 @@ export async function offerApprovalWorld(db: Db, label: string) {
     };
     return w.json<OfferView>(await w.request(actor.userId, 'POST', OFFERS, { ifMatch: 0, body }), 201);
   }
+  /** 社招 Offer（待发可失效，OF-R7；实习待发不提供失效）。 */
+  async function social(actor: Person): Promise<OfferView> {
+    const body = {
+      entry: 'offer',
+      channelName: '内推',
+      name: '合成候选人',
+      personalEmail: `of3-${uniqueSuffix()}@example.com`,
+      departmentId: department,
+      plannedEntryDate: '2026-11-01',
+      levelId: level,
+      directManagerId: manager.employeeId,
+      hrbpId: head.employeeId,
+      costCenter: 'CC-001',
+      contractCompanyId: company,
+    };
+    return w.json<OfferView>(await w.request(actor.userId, 'POST', OFFERS, { ifMatch: 0, body }), 201);
+  }
+  /** #398 的真实失效接口。 */
+  const invalidateRaw = (target: OfferView, actor = applicant) =>
+    w.request(actor.userId, 'POST', `${OFFERS}/${target.id}/invalidate`, {
+      ifMatch: target.revision,
+      body: { reasonCode: 'candidate_gave_up' },
+    });
   const get = async (id: string, actor = applicant) =>
     w.json<OfferView>(await w.request(actor.userId, 'GET', `${OFFERS}/${id}`));
   const submitRaw = (target: OfferView, actor = applicant) =>
@@ -79,6 +118,8 @@ export async function offerApprovalWorld(db: Db, label: string) {
   });
   const denyUpdate = (actor: Person, path: string, ifMatch: number, body: Record<string, unknown> = {}) =>
     denying.request('POST', `${OFFERS}${path}`, { ...w.as(actor.userId), ifMatch, body });
+  /** 同一授权器下的读（行操作反例：无编辑开关时不出现“发起审批”）。 */
+  const denyRead = (actor: Person, path: string) => denying.request('GET', `${OFFERS}${path}`, w.as(actor.userId));
   return {
     ...w,
     apv: w,
@@ -87,12 +128,15 @@ export async function offerApprovalWorld(db: Db, label: string) {
     head,
     applicant,
     offer,
+    social,
+    invalidateRaw,
     get,
     submitRaw,
     batchRaw,
     instance,
     decide,
     denyUpdate,
+    denyRead,
   };
 }
 
