@@ -597,6 +597,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/record-store.ts#camelRow',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     'apps/api/src/modules/employment/record-store.ts#snapshotFields',
+    'packages/domain/src/employment/part-time-constants.ts#PART_TIME_KIND',
   ],
   'apps/api/src/modules/employment/employee-status.ts#rederiveRepositionedStatus': [
     '#appendStatusSnapshot',
@@ -1327,6 +1328,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/record-store.ts#camelRow',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     'apps/api/src/modules/employment/record-store.ts#snapshotFields',
+    'packages/domain/src/employment/part-time-constants.ts#PART_TIME_KIND',
   ],
   'apps/api/src/modules/employment/forward-update.ts#forwardUpdateEmployment': [
     'apps/api/src/modules/employment/configuration.ts#getCustomFieldsForInheritance',
@@ -1552,6 +1554,7 @@ export const GRAPH: Graph = {
     '#snapshotFields',
     '#statusCode',
     'apps/api/src/modules/employment/visibility.ts#employmentVisibilitySql',
+    'packages/domain/src/employment/part-time-constants.ts#PART_TIME_KIND',
   ],
   'apps/api/src/modules/employment/read-model.ts#loadEmploymentRecord': ['#record', '#recordsQuery', '#rowsOf'],
   'apps/api/src/modules/employment/read-model.ts#record': ['#snapshotFields', '#statusCode'],
@@ -1617,6 +1620,7 @@ export const GRAPH: Graph = {
     '#lockEmploymentEmployee',
     '#rowsOf',
     '#snapshotFields',
+    'packages/domain/src/employment/part-time-constants.ts#PART_TIME_KIND',
   ],
   'apps/api/src/modules/employment/record-store.ts#lockEmploymentEmployee': [
     'apps/api/src/modules/employment/context.ts#assertRevision',

@@ -362,9 +362,11 @@ async function validateReferences(
   if (normalized.employmentRecordId) {
     const [record] = rowsOf(
       await tx.execute(sql`SELECT id FROM employment_records WHERE tenant_id=${ctx.tenantId}
-      AND id=${normalized.employmentRecordId}::uuid AND employee_id=${input.employeeId}::uuid`),
+      AND id=${normalized.employmentRecordId}::uuid AND employee_id=${input.employeeId}::uuid
+      AND service_type='primary'`),
     );
-    if (!record) throw new AppError('VALIDATION_FAILED', '任职记录不属于该员工');
+    // 合同只挂主职任职（R2-T05 §3.4 P-17）
+    if (!record) throw new AppError('VALIDATION_FAILED', '任职记录不属于该员工的主职');
   }
   await checkOperationScope(tx, ctx, input, before);
   // DEC-164①：历史补录按合同生效日的任职判断，不按操作当天的离职状态判断。

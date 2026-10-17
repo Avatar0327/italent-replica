@@ -79,6 +79,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     'apps/api/src/modules/employment/visibility.ts#employmentVisibilitySql',
     '#subtree',
+    'packages/domain/src/employment/part-time-constants.ts#PART_TIME_KIND',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/org/employment-linkage.ts#lockOrgEmploymentEmployees': [
