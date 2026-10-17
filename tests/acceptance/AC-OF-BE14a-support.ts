@@ -184,13 +184,13 @@ export async function offerRealWorld(
     definition: ObjectDefinition,
     deniedEdit: readonly string[],
     deniedButtons: readonly string[] = [],
-    update = true,
+    ops: Partial<Record<'create' | 'update' | 'delete', boolean>> = {},
   ) => {
     const response = await setObjectPermission(
       seed,
       profile,
       {
-        dataOperations: { create: true, update, delete: true },
+        dataOperations: { create: true, update: true, delete: true, ...ops },
         fields: definition.fields.map((f) => ({
           fieldCode: f.code,
           view: true,
@@ -267,7 +267,10 @@ export async function offerRealWorld(
     /** 改身份上 Offer 的按钮权限（BE-14a2：转移状态两项按钮各自独立）。 */
     denyButtons: (buttons: readonly string[]) => permit(MODULE_OBJECTS.offer, deniedEdit, buttons),
     /** 去掉 Offer 对象的编辑开关（按钮依赖编辑开关，一并失效）。 */
-    dropUpdate: () => permit(MODULE_OBJECTS.offer, deniedEdit, deniedButtons, false),
+    dropUpdate: () => permit(MODULE_OBJECTS.offer, deniedEdit, deniedButtons, { update: false }),
+    /** 改 Offer 对象的数据操作开关（第 2 轮：行操作按真实授权器裁剪的正反例）。 */
+    setOps: (ops: Partial<Record<'create' | 'update' | 'delete', boolean>>) =>
+      permit(MODULE_OBJECTS.offer, deniedEdit, deniedButtons, ops),
     /** 租户管理员（system_admin）走真实授权器：不越过业务对象权限（DEC-503）。 */
     adminRequest: (method: string, path: string, options: RequestOptions = {}) =>
       api.request(method, `/api/tenant/offers${path}`, { ...options, ...seed.asAdmin }),

@@ -129,3 +129,54 @@ describe('转移状态两项按钮权限（真实授权器）', () => {
     expect(await w.get(offer.id)).toMatchObject({ status: 'pending', revision: 1 });
   });
 });
+
+/**
+ * 第 2 轮（#398 审查 P2-1）：行操作按真实授权器裁剪。编辑 / 失效看编辑开关、复制看新增开关、删除看删除开关，
+ * 都只判开关（不带字段）；有权时必须出现，无权时不出现。列表行与详情一致。
+ */
+describe('P2-1 行操作在真实授权器下按数据操作开关裁剪', () => {
+  type Actions = { primary: string[]; menu: string[] };
+  const detailActions = async (w: Awaited<ReturnType<typeof offerRealWorld>>, id: string) => {
+    const response = await w.real('GET', `/${id}`);
+    expect(response.status, await response.clone().text()).toBe(200);
+    return ((await response.json()) as { rowActions: Actions }).rowActions;
+  };
+  const listActions = async (w: Awaited<ReturnType<typeof offerRealWorld>>, view: string, id: string) => {
+    const response = await w.real('GET', `?view=${view}`);
+    expect(response.status, await response.clone().text()).toBe(200);
+    const items = ((await response.json()) as { items: (OfferBody & { rowActions: Actions })[] }).items;
+    return items.find((item) => item.id === id)!.rowActions;
+  };
+
+  it('新增 / 编辑 / 删除都有权：待发有编辑、转移、失效、删除；审批通过主按钮编辑；失效主按钮复制', async () => {
+    const w = await offerRealWorld(testDb().db, 'actions-allowed');
+    const pending = await w.social();
+    const approved = await w.social();
+    await w.force(approved.id, 'approval_status', 'approved');
+    const invalid = await w.social();
+    await w.invalidated(invalid.id);
+    const full = { primary: [], menu: ['edit', 'transfer', 'invalidate', 'view', 'delete'] };
+    expect(await detailActions(w, pending.id)).toEqual(full);
+    expect(await listActions(w, 'pending', pending.id)).toEqual(full);
+    expect(await detailActions(w, approved.id)).toEqual({ primary: ['edit'], menu: ['invalidate'] });
+    expect(await detailActions(w, invalid.id)).toEqual({ primary: ['copy'], menu: ['view'] });
+    expect(await listActions(w, 'invalid', invalid.id)).toEqual({ primary: ['copy'], menu: ['view'] });
+  });
+
+  it('无编辑开关：编辑、失效（及依赖编辑开关的转移按钮）不出现；无新增开关：复制不出现；无删除开关：删除不出现', async () => {
+    const w = await offerRealWorld(testDb().db, 'actions-denied');
+    const pending = await w.social();
+    const invalid = await w.social();
+    await w.invalidated(invalid.id);
+    await w.setOps({ update: false });
+    expect(await detailActions(w, pending.id)).toEqual({ primary: [], menu: ['view', 'delete'] });
+    expect(await listActions(w, 'pending', pending.id)).toEqual({ primary: [], menu: ['view', 'delete'] });
+    await w.setOps({ create: false, delete: false });
+    expect(await detailActions(w, pending.id)).toEqual({
+      primary: [],
+      menu: ['edit', 'transfer', 'invalidate', 'view'],
+    });
+    expect(await detailActions(w, invalid.id)).toEqual({ primary: [], menu: ['view'] });
+    expect(await listActions(w, 'invalid', invalid.id)).toEqual({ primary: [], menu: ['view'] });
+  });
+});
