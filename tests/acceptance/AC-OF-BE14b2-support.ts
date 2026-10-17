@@ -22,6 +22,7 @@ export interface SyncOffer extends OfferBody {
   readonly pendingEntryBusinessId: string | null;
   readonly linkedEmployeeId: string | null;
   readonly syncedContractKind: string | null;
+  readonly syncTarget: string | null;
 }
 
 export interface EntryItem {
@@ -35,6 +36,8 @@ export interface EntryItem {
   readonly probation: boolean | null;
   readonly contractStartDate: string | null;
   readonly contractEndDate: string | null;
+  readonly contractCompanyId: string | null;
+  readonly probationMonths: number | null;
 }
 
 export async function syncWorld<W extends OfferWorld = OfferWorld>(db: Db, label: string, world?: W) {
@@ -112,6 +115,52 @@ export async function syncWorld<W extends OfferWorld = OfferWorld>(db: Db, label
     expect(hired.status, await hired.clone().text()).toBe(201);
     return employee;
   }
+  /** 员工任职记录（按业务类型排列的 kind 与生效日）。 */
+  async function recordsOf(employeeId: string) {
+    const response = await employment('GET', `/employees/${employeeId}/records?asOf=2026-12-31`);
+    expect(response.status, await response.clone().text()).toBe(200);
+    return (
+      (await response.json()) as { items: { kind: string; effectiveDate: string; fields: Record<string, unknown> }[] }
+    ).items;
+  }
+  /** 已离职实习生：入职 2025-01-01（实习生）、最后工作日 2026-03-31；部门设立日早于入职日。 */
+  async function departedIntern(name: string) {
+    const org = await w.seeder.request('POST', '/api/tenant/org/organizations', {
+      ...as,
+      ifMatch: 0,
+      body: {
+        name: `离职实习部门${uniqueSuffix()}`,
+        parents: { admin: { parentId: w.tenant.id } },
+        establishedOn: '2025-01-01',
+      },
+    });
+    expect(org.status, await org.clone().text()).toBe(201);
+    const created = await employment('POST', '/employees', {
+      ifMatch: 0,
+      body: { name, code: `DEP_${uniqueSuffix()}` },
+    });
+    const employee = (await created.json()) as { id: string; revision: number };
+    const post = (revision: number, body: Record<string, unknown>) =>
+      employment('POST', `/employees/${employee.id}/businesses`, {
+        ifMatch: revision,
+        body: withLoginEmail(employee.id, body),
+      });
+    const hired = await post(employee.revision, {
+      kind: 'hire',
+      mode: 'direct',
+      effectiveDate: '2025-01-01',
+      fields: { employType: 'intern', departmentId: ((await org.json()) as { id: string }).id },
+    });
+    expect(hired.status, await hired.clone().text()).toBe(201);
+    const left = await post(((await hired.json()) as { employeeRevision: number }).employeeRevision, {
+      kind: 'leave',
+      mode: 'direct',
+      lastWorkDate: '2026-03-31',
+      fields: {},
+    });
+    expect(left.status, await left.clone().text()).toBe(201);
+    return employee;
+  }
   /**
    * 严格控编超编：经编制单一判定入口的注入点让部门“已满编”（与 AC-DM-R2 同做法，编制占用本身由 AC-EST-* 覆盖）；
    * 用例结束须 relaxCapacity 或由 afterEach 复位。
@@ -160,7 +209,10 @@ export async function syncWorld<W extends OfferWorld = OfferWorld>(db: Db, label
     entryOf,
     record,
     entryAction,
+    businessRevision,
     internEmployee,
+    departedIntern,
+    recordsOf,
     strictCapacity,
     relaxCapacity,
   };
