@@ -77,16 +77,18 @@ describe('AC-FE-F190a 共享入口子菜单契约', () => {
         legacy: id === 'a',
       })),
     );
-    expect(() => collect([{ ...group, children: [leaf('a'), leaf('a')] }])).toThrow(/重复/);
-    expect(() => collect([group, { ...leaf('a'), app: 'idp', group: 'talent' }])).toThrow(/重复/);
     expect(() => collect([{ ...group, children: [{ ...leaf('a'), children: [leaf('b')] }] }])).toThrow(/一层/);
     for (const id of ['idp/private', ':private', '*', '..', 'private?', 'IDP/', '%69dp'])
       expect(() => collect([{ ...group, children: [leaf(id)] }])).toThrow(/单段/);
   });
-  it('05 拒绝子项与应用、旧入口、其他子项的大小写、尾斜杠和编码等价路由', () => {
-    expect(() => collect([{ ...group, app: 'transfer', children: [leaf('IDP')] }])).toThrow(/冲突/);
-    for (const id of ['A', 'a/', '%61'])
-      expect(() => collect([group, { ...leaf(id), app: 'idp', group: 'talent' }])).toThrow(/冲突/);
-    expect(() => collect([{ ...group, children: [leaf('a'), leaf('A')] }])).toThrow(/冲突/);
+  it('05 隔离冲突子项，保留应用、旧入口与同组合法子项', () => {
+    const registry = collect([{ ...group, children: [leaf('IDP'), leaf('safe')] }]);
+    expect(registry.apps.map((item) => item.id)).toEqual(['idp']);
+    expect(pageRoutes(registry.entries).map((item) => item.id)).toEqual(['safe']);
+    for (const id of ['a', 'A', 'a/', '%61']) {
+      const result = collect([group, { ...leaf(id), app: 'idp', group: 'talent' }]);
+      expect(pageRoutes(result.entries).map((item) => item.id)).toEqual([id, 'z']);
+    }
+    expect(collect([{ ...group, children: [leaf('a'), leaf('a'), leaf('A')] }]).entries[0]?.children).toEqual([]);
   });
 });

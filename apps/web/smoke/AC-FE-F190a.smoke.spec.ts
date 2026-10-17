@@ -1,7 +1,14 @@
 import { test, expect, tenant, user, snapshotFixture } from './fixtures.js';
 import { ui } from '../src/foundation/messages.js';
 
-test('AC-FE-F190a-04 外壳展开分组、子项路由与 legacy、直达鉴权和刷新展开', async ({ page, baseURL }) => {
+test.beforeEach(async ({ page, baseURL }) => {
+  await page.context().addCookies([
+    { name: 'italent_demo_tenant', value: tenant, url: baseURL! },
+    { name: 'italent_demo_user', value: user, url: baseURL! },
+  ]);
+});
+
+test('AC-FE-F190a-04 外壳展开分组、子项路由与 legacy、直达鉴权和刷新展开', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   // 仅在浏览器响应中注入合成登记，不修改业务模块或生产路由。
@@ -30,10 +37,6 @@ test('AC-FE-F190a-04 外壳展开分组、子项路由与 legacy、直达鉴权�
       },
     }),
   );
-  await page.context().addCookies([
-    { name: 'italent_demo_tenant', value: tenant, url: baseURL! },
-    { name: 'italent_demo_user', value: user, url: baseURL! },
-  ]);
   await page.goto('/idp/plans');
   const sidebar = page.locator('.shell-sidebar');
   const title = sidebar.locator('.ant-menu-submenu-title').filter({ hasText: '合成分组' });
@@ -63,9 +66,7 @@ test('AC-FE-F190a-04 外壳展开分组、子项路由与 legacy、直达鉴权�
   expect(errors).toEqual([]);
 });
 
-test('AC-FE-F190a-06 冲突子项不能借调动权限挂载隐藏的 IDP 应用', async ({ page, baseURL }) => {
-  const errors: string[] = [];
-  page.on('pageerror', (error) => errors.push(error.message));
+test('AC-FE-F190a-06 冲突子项不能借调动权限挂载隐藏的 IDP 应用', async ({ page }) => {
   await page.route(/\/src\/idp\/pages\.ts(?:\?.*)?$/, async (route) => {
     const response = await route.fetch();
     const body = (await response.text())
@@ -87,14 +88,10 @@ test('AC-FE-F190a-06 冲突子项不能借调动权限挂载隐藏的 IDP 应用
       },
     }),
   );
-  await page.context().addCookies([
-    { name: 'italent_demo_tenant', value: tenant, url: baseURL! },
-    { name: 'italent_demo_user', value: user, url: baseURL! },
-  ]);
-  for (const path of ['/idp', '/idp/', '/%69dp']) {
-    errors.length = 0;
+  for (const path of ['/idp', '/idp/', '/%69dp', '/IDP', '/transfer']) {
     await page.goto(path);
-    await expect.poll(() => errors.join('\n')).toMatch(/子菜单路由冲突/);
+    await expect(page.locator('.shell-sidebar')).toBeVisible();
     await expect(page.getByText('禁止挂载的合成 IDP 应用', { exact: true })).toHaveCount(0);
   }
+  await expect(page.getByRole('heading', { name: '调动管理', exact: true })).toBeVisible();
 });
