@@ -113,10 +113,11 @@ const REVOKERS: readonly Revoker[] = [
   ['撤掉 Transfer.Hr 发起按钮', revoke(isButton('Transfer.Hr'))],
   ['数据范围收为空', emptyScope],
 ];
+// 覆盖暂存的发起按钮在入口事务里就带事务授权器（requireTransferSource），撤权后入口先拒，到不了命令台账回查，回查用例不含它
+const reachesLedger = (revokers: readonly Revoker[]) => revokers.filter(([name]) => !name.includes('Transfer.Hr'));
 const CLEAR_REVOKERS: readonly Revoker[] = [
   ['撤掉任职记录对象删除权', revoke(deniesObjectDelete)],
   ['撤掉 Employment.Delete 按钮', revoke(isButton('Employment.Delete'))],
-  ['撤掉 Transfer.Hr 发起按钮', revoke(isButton('Transfer.Hr'))],
   ['数据范围收为空', emptyScope],
 ];
 
@@ -147,7 +148,7 @@ describe('F-181a P2-4 覆盖暂存接 CommandGuard.before', () => {
     },
   );
 
-  it.each(REVOKERS)('失败后回查台账：回查前%s → 被拒', async (name, apply) => {
+  it.each(reachesLedger(REVOKERS))('失败后回查台账：回查前%s → 被拒', async (name, apply) => {
     const x = await guardedWorld(`f181a-guard-stash-recheck-${name.length}`);
     const key = randomUUID();
     const revision = (await x.w.session.getEmployee(x.employeeId)).revision;
@@ -224,7 +225,7 @@ describe('F-181a P2-2 清除走删除授权链并在命令事务内复核', () =
     expect(await state(x)).toEqual(before);
   });
 
-  it.each(CLEAR_REVOKERS)('失败后回查台账：回查前%s → 被拒', async (name, apply) => {
+  it.each(reachesLedger(CLEAR_REVOKERS))('失败后回查台账：回查前%s → 被拒', async (name, apply) => {
     const x = await guardedWorld(`f181a-guard-clear-recheck-${name.length}`);
     const stash = await saved(await x.guardedStash(randomUUID()));
     const key = randomUUID();

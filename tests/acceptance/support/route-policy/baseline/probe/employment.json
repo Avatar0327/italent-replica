@@ -61,10 +61,10 @@
       "obj:TenantBase.EmploymentRecord:delete"
     ]
   },
-  "DELETE /api/tenant/employment/transfers/employees/:id/draft": {
+  "DELETE /api/tenant/employment/transfers/employees/:id/draft/:businessId": {
     "all": {
       "code": "NOT_FOUND",
-      "error": "3d855d70ff10",
+      "error": "bea36a2d464b",
       "status": 404
     },
     "fieldQueries": [],
@@ -78,8 +78,8 @@
       "scope:data.scope.all:"
     ],
     "trace": [
-      "btn:TenantBase.EmploymentRecord#Transfer.Hr@detail",
-      "obj:TenantBase.EmploymentRecord:create"
+      "btn:TenantBase.EmploymentRecord#Employment.Delete@detail",
+      "obj:TenantBase.EmploymentRecord:delete"
     ]
   },
   "GET /api/tenant/employment/activation-todos": {

@@ -595,20 +595,25 @@ export const GRAPH: Graph = {
     '#mapManagerReferences',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
+  'apps/api/src/modules/transfer/routes.ts#authorizeBusinessWrite': [
+    'apps/api/src/modules/employment/replay-guard.ts#requireBusinessWriteScope',
+  ],
   'apps/api/src/modules/transfer/routes.ts#configurationContext': [
     'apps/api/src/modules/employment/context.ts#readContext',
     'apps/api/src/modules/job/context.ts#revision',
   ],
-  'apps/api/src/modules/transfer/routes.ts#route:DELETE /transfers/employees/:id/draft': [
-    'apps/api/src/authorization.ts#requirePermission',
+  'apps/api/src/modules/transfer/routes.ts#route:DELETE /transfers/employees/:id/draft/:businessId': [
     'apps/api/src/modules/employment/context.ts#commandContext',
     'apps/api/src/modules/employment/context.ts#readContext',
+    'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
     'apps/api/src/modules/employment/context.ts#runWrite',
     'apps/api/src/modules/employment/context.ts#scopedGuard',
+    'apps/api/src/modules/employment/replay-guard.ts#requireBusinessWriteScope',
     'apps/api/src/modules/job/context.ts#revision',
     'apps/api/src/modules/job/context.ts#uuidParam',
-    'apps/api/src/modules/transfer/access.ts#requireTransferSource',
     'apps/api/src/modules/transfer/draft-slot.ts#releaseTransferDraft',
+    '#authorizeBusinessWrite',
+    'apps/api/src/modules/transfer/service.ts#transferBusinessContext',
   ],
   'apps/api/src/modules/transfer/routes.ts#route:GET /transfers/catalog': [
     'apps/api/src/modules/employment/context.ts#readPageContext',
@@ -634,6 +639,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/transfer/routes.ts#route:GET /transfers/employees/:id/draft': [
     'apps/api/src/modules/employment/context.ts#readPageContext',
+    'apps/api/src/modules/employment/context.ts#trimEmploymentResponse',
     'apps/api/src/modules/job/context.ts#uuidParam',
     'apps/api/src/modules/transfer/access.ts#requireTransferSource',
     'apps/api/src/modules/transfer/draft-slot.ts#readTransferDraft',
@@ -650,9 +656,12 @@ export const GRAPH: Graph = {
     '#configurationContext',
   ],
   'apps/api/src/modules/transfer/routes.ts#route:POST /transfers/employees/:id': [
+    'apps/api/src/authorization.ts#requirePermission',
+    'apps/api/src/modules/employment/context.ts#commandContext',
     'apps/api/src/modules/employment/context.ts#jsonBody',
     'apps/api/src/modules/employment/context.ts#readContext',
     'apps/api/src/modules/employment/context.ts#runWrite',
+    'apps/api/src/modules/employment/context.ts#scopedGuard',
     'apps/api/src/modules/job/context.ts#revision',
     'apps/api/src/modules/job/context.ts#uuidParam',
     'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',

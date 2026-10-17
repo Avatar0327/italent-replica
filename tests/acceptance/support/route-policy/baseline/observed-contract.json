@@ -367,7 +367,7 @@
         ]
       }
     },
-    "DELETE /api/tenant/employment/transfers/employees/:id/draft": {
+    "DELETE /api/tenant/employment/transfers/employees/:id/draft/:businessId": {
       "edge": {
         "anonymous": {
           "code": "UNAUTHENTICATED",
@@ -385,6 +385,7 @@
       "module": "employment",
       "primitives": {
         "button": [
+          "requireEmploymentWrite(按钮)",
           "requireTransferButton"
         ],
         "command": [
@@ -396,12 +397,14 @@
           "transfer.initiator"
         ],
         "fieldsIn": [
+          "requireEmploymentWrite",
           "transfer write"
         ],
         "fieldsOut": [
           "employment runWrite()"
         ],
         "guard": [
+          "employment.businessWrite",
           "employment.linkage",
           "transfer.source"
         ],
@@ -410,12 +413,17 @@
           "readContext(object.*)"
         ],
         "objectOp": [
-          "TenantBase.EmploymentRecord:create"
+          "TenantBase.EmploymentRecord:delete"
+        ],
+        "precondition": [
+          "transferBusinessContext"
         ],
         "scope": [
           "employment scope",
           "employment visibility",
-          "readContext（非配置对象）"
+          "readContext（非配置对象）",
+          "scope.all",
+          "scopeSql"
         ],
         "scopePoint": [
           "employment point"
@@ -4231,6 +4239,9 @@
       "primitives": {
         "button": [
           "requireTransferButton"
+        ],
+        "fieldsOut": [
+          "trimEmploymentResponse"
         ],
         "guard": [
           "transfer.source"
