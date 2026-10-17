@@ -2131,7 +2131,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/offer/service.ts#requireDepartment': ['c07f7119bf1c', '3c70f39c425a'],
   'apps/api/src/modules/offer/service.ts#requireEditable': ['db9994d0ae90', 'a716a96cd6fc'],
   'apps/api/src/modules/offer/service.ts#requireEntry': ['7ebf33ae6a81', '174f0074b58a'],
-  'apps/api/src/modules/offer/service.ts#requireReferences': ['63be4d5ff356', '9ef777e153ee'],
+  'apps/api/src/modules/offer/service.ts#requireReferences': ['d91ac53237d0', '2dfd7f495afa'],
   'apps/api/src/modules/offer/service.ts#save': ['bf2a15def6d9', '2146d39a8d94'],
   'apps/api/src/modules/offer/service.ts#toColumns': ['63116869fb25', 'c9f0d450c405'],
   'apps/api/src/modules/offer/service.ts#typeOf': ['312dc2ebf9fd', 'e3b0c44298fc'],

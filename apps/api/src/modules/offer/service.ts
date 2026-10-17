@@ -124,7 +124,8 @@ const invalidReference = () =>
 
 /**
  * 引用按被引用对象自己的当前范围校验（审查 #394 P2-02）；不存在与范围外同为 400 OFFER_REFERENCE_INVALID，不暴露存在性。
- * - 直线上级 / 虚线上级 / HRBP：本租户、Offer 所在应用范围内可见的员工；员工创建人未知时不按“使用用户”维度放行（保守取严）；
+ * - 直线上级 / 虚线上级 / HRBP：按员工对象（TenantBase.Employee）自己的当前范围可见；员工创建人未知时不按“使用用户”维度
+ *   放行（保守取严）；
  * - 职位（有组织）/ 职务 / 职级（无组织）：按职务体系对象各自的范围（visibleJob，无组织对象只认看全部或创建人，DEC-121）；
  * - 合同主体：合同主数据只认看全部（与合同模块读主数据同口径，contracts/routes.ts requireMasterScope）。
  * 看全部时存在性仍由（租户, ID）复合外键保证。
@@ -139,8 +140,12 @@ async function requireReferences(tx: Tx, ctx: OfferContext, values: Readonly<Rec
   const scopeOf = ctx.scopeOf;
   if (!scopeOf) throw new AppError('SERVICE_UNAVAILABLE', 'Offer 写入缺少事务内范围解析');
   const ids = PERSON_REFS.map((field) => values[field]).filter((id): id is string => typeof id === 'string');
-  const targets = ids.map((employeeId) => ({ employeeId, departmentId: null, creatorId: null }));
-  if ((await visibleEmploymentRecords(tx, ctx.tenantId, ctx.scope, targets)).includes(false)) throw invalidReference();
+  if (ids.length) {
+    const targets = ids.map((employeeId) => ({ employeeId, departmentId: null, creatorId: null }));
+    const employees = await scopeOf(MODULE_OBJECTS.employee.code);
+    if ((await visibleEmploymentRecords(tx, ctx.tenantId, employees, targets)).includes(false))
+      throw invalidReference();
+  }
   for (const [field, kind] of JOB_REFS) {
     const id = values[field];
     if (typeof id !== 'string') continue;
