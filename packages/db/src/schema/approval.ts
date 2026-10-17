@@ -225,7 +225,8 @@ export const approvalProcessNodes = pgTable(
     check(
       'approval_nodes_approver',
       sql`${t.approverExpression} IN ('owner','direct_manager','latest_record_department_head','record_department_head',
-        'record_department_hrbp','record_first_level_org_head','idp_employee','idp_tutor')`,
+        'record_department_hrbp','record_first_level_org_head','idp_employee','idp_tutor',
+        'latest_record_department_hrbp')`,
     ),
     // DEC-054：中间节点审批人为空一律转异常管理员（PR #35 第二轮清单 6）。
     check('approval_nodes_no_assignee', sql`${t.noAssigneePolicy} IN ('exception_admin','none')`),
@@ -244,7 +245,7 @@ export const approvalProcessNodes = pgTable(
         THEN ${t.approverExpression} IS NULL AND cardinality(${t.approverExpressions}) BETWEEN 1 AND 8
           AND ${t.approverExpressions} <@ ARRAY['owner','direct_manager','latest_record_department_head',
             'record_department_head','record_department_hrbp','record_first_level_org_head',
-            'idp_employee','idp_tutor']::text[]
+            'idp_employee','idp_tutor','latest_record_department_hrbp']::text[]
         ELSE ${t.approverExpression} IS NOT NULL AND cardinality(${t.approverExpressions}) = 0 END`,
     ),
     check(
@@ -371,7 +372,7 @@ export const approvalInstances = pgTable(
     ),
     check(
       'approval_instances_business_type',
-      sql`${t.businessType} IN ('employment','personnel_change','contract','idp','talent_review')`,
+      sql`${t.businessType} IN ('employment','personnel_change','contract','idp','talent_review','part_time')`,
     ),
     check('approval_instances_revision', sql`${t.revision} > 0 AND ${t.round} > 0 AND ${t.historyFromSeq} >= 0`),
   ],

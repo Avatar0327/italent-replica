@@ -16,6 +16,7 @@ import {
   ageOn,
   APPROVAL_TYPES,
   approvalTypeOfBusiness,
+  PART_TIME_ERRORS,
   PROFILE_FORM_FIELDS,
   SUBSETS,
   subsetProcessCode,
@@ -47,7 +48,7 @@ import { OPEN_STATUSES } from './store.js';
 /** 办理决定：同意、不同意（出口动作）、驳回（beforeApprove 区分用）。 */
 export type TaskDecision = 'approve' | 'disagree' | 'reject';
 
-export type BusinessType = 'employment' | 'personnel_change' | 'contract' | 'idp' | 'talent_review';
+export type BusinessType = 'employment' | 'personnel_change' | 'contract' | 'idp' | 'talent_review' | 'part_time';
 
 export interface BusinessSnapshot {
   readonly approvalType: ApprovalTypeCode;
@@ -541,6 +542,25 @@ const personnelAdapter: BusinessAdapter = {
   },
 };
 
+/**
+ * 兼职申请（BE-7，R2-T05 §13.1）：PT-1 只占业务类型 part_time 的位置，没有创建申请的入口、不会产生实例；
+ * PT-4a 换成 employment/part-time/approval-adapter.ts 的真适配器。在此之前任何回调都拒绝（409），不静默放行。
+ */
+const partTimeUnavailable = (): never => {
+  throw new AppError('CONFLICT', '兼职审批尚未开放', { reason: PART_TIME_ERRORS.notAvailable });
+};
+const partTimeAdapter: BusinessAdapter = {
+  lock: async () => partTimeUnavailable(),
+  lockMany: async () => partTimeUnavailable(),
+  snapshot: async () => partTimeUnavailable(),
+  approved: async () => partTimeUnavailable(),
+  rejected: async () => partTimeUnavailable(),
+  disapproved: async () => partTimeUnavailable(),
+  withdrawn: async () => partTimeUnavailable(),
+  resubmit: async () => partTimeUnavailable(),
+  edit: async () => partTimeUnavailable(),
+};
+
 export const ADAPTERS: Readonly<Record<BusinessType, BusinessAdapter>> = {
   contract: contractAdapter,
   employment: employmentAdapter,
@@ -548,4 +568,6 @@ export const ADAPTERS: Readonly<Record<BusinessType, BusinessAdapter>> = {
   idp: idpAdapter,
   // R3-T04 C-08：PR-A 占位（无发起入口），PR-D 接入盘点结果审批（集合审批）
   talent_review: talentReviewAdapter,
+  // BE-7 PT-1：占位（无发起入口），PT-4a 接入兼职申请
+  part_time: partTimeAdapter,
 };
