@@ -25,7 +25,7 @@ const EMPLOYMENT = MODULE_OBJECTS.employmentRecord;
 
 async function world(label: string) {
   const w = await offerApprovalWorld(testDb().db, label);
-  const prm = await permissionAdmin(w);
+  const prm = await permissionAdmin(w.apv);
   const user = w.applicant.userId;
   const profile = await createProfile(prm, `of3w${uniqueSuffix()}`);
   const permit = async (definition: ObjectDefinition, update: boolean, buttons: string[] = []) => {

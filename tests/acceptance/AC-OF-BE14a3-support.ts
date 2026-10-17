@@ -79,7 +79,21 @@ export async function offerApprovalWorld(db: Db, label: string) {
   });
   const denyUpdate = (actor: Person, path: string, ifMatch: number, body: Record<string, unknown> = {}) =>
     denying.request('POST', `${OFFERS}${path}`, { ...w.as(actor.userId), ifMatch, body });
-  return { ...w, department, manager, head, applicant, offer, get, submitRaw, batchRaw, instance, decide, denyUpdate };
+  return {
+    ...w,
+    apv: w,
+    department,
+    manager,
+    head,
+    applicant,
+    offer,
+    get,
+    submitRaw,
+    batchRaw,
+    instance,
+    decide,
+    denyUpdate,
+  };
 }
 
 export const reasonOf = async (response: Response) => {
