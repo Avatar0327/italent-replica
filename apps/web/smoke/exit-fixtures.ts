@@ -11,14 +11,22 @@ const system = [
   'versionId',
   'versionNo',
 ];
+// R2 BE-8a：离职自动加黑规则也挂在任职设置对象上（规则写入按这些字段授权，同离职字典 / 入职邮箱规则）
 const settingsFields = [
   'allowDirectTransfer',
   'autoPopulate',
   'code',
+  'conditions',
+  'description',
   'displayOrder',
   'enabled',
   'entryEmailRules',
   'name',
+  'note',
+  'orgIds',
+  'priority',
+  'reason',
+  'term',
   'unrestrictTargetDepartment',
 ];
 
