@@ -125,10 +125,31 @@ export async function submitOfferBatch(tx: Tx, ctx: OfferContext, input: OfferBa
   return { id: created.id, revision: created.revision, items };
 }
 
-/** 删除 Offer 时作废它被驳回 / 撤回、待重新发起的单个审批实例（审批中的 Offer 不能删除，不会走到这里）。 */
-export async function cancelOfferApproval(tx: Tx, ctx: OfferContext, id: string) {
-  const [active] = await activeInstances(tx, ctx.tenantId, 'offer', [id]);
-  if (!active) return;
+/**
+ * 作废 Offer 的在途审批（BE-14a3 第 2 轮，#398 衔接）：在调用方事务内执行，调用方（失效、删除）已锁住本 Offer。
+ * - 单个审批：实例作废（cancelled）、待办关闭，Offer 审批子状态回到“未发起审批”；
+ * - 批量审批（取最保守口径）：本 Offer 所在的在途批量单整张作废（实例 cancelled、批量单 cancelled）、待办关闭，单内仍在
+ *   审批中的 Offer 都回到“未发起审批”，需要的话重新发起；不把其余 Offer 单独留在原单里继续审批（原单内容已变）。
+ * 作废不看节点“撤回”开关：它不是发起人撤回，是业务对象失效后的收口（同任职申请删除时的 cancel）。
+ */
+export async function cancelOfferApprovals(
+  tx: Tx,
+  ctx: Omit<ApprovalContext, 'expectedRevision' | 'fields'>,
+  offerId: string,
+) {
+  const approval: ApprovalContext = { ...ctx, expectedRevision: 0 };
   const { cancel } = await import('../approval/actions.js');
-  await cancel(tx, { ...ctx, expectedRevision: 0 }, active.id);
+  const { voidBatch, voidOffer } = await import('./approval-adapter.js');
+  for (const single of await activeInstances(tx, ctx.tenantId, 'offer', [offerId])) {
+    await cancel(tx, approval, single.id);
+    await voidOffer(tx, approval, offerId);
+  }
+  const batchIds = rowsOf<{ batch_id: string }>(
+    await tx.execute(sql`SELECT batch_id::text FROM offer_batch_approval_items
+      WHERE tenant_id = ${ctx.tenantId} AND offer_id = ${offerId}::uuid`),
+  ).map((row) => row.batch_id);
+  for (const batch of await activeInstances(tx, ctx.tenantId, 'offer_batch', batchIds)) {
+    await cancel(tx, approval, batch.id);
+    await voidBatch(tx, approval, batch.business_id);
+  }
 }

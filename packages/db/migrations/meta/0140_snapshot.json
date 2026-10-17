@@ -55926,7 +55926,7 @@
       "checkConstraints": {
         "offer_batch_approvals_status": {
           "name": "offer_batch_approvals_status",
-          "value": "\"offer_batch_approvals\".\"status\" IN ('approving', 'approved', 'disapproved', 'returned', 'withdrawn')"
+          "value": "\"offer_batch_approvals\".\"status\" IN ('approving', 'approved', 'disapproved', 'returned', 'withdrawn', 'cancelled')"
         },
         "offer_batch_approvals_revision": {
           "name": "offer_batch_approvals_revision",

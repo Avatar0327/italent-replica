@@ -19,7 +19,7 @@ CREATE TABLE "offer_batch_approvals" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "offer_batch_approvals_tenant_id" UNIQUE("tenant_id","id"),
-	CONSTRAINT "offer_batch_approvals_status" CHECK ("offer_batch_approvals"."status" IN ('approving', 'approved', 'disapproved', 'returned', 'withdrawn')),
+	CONSTRAINT "offer_batch_approvals_status" CHECK ("offer_batch_approvals"."status" IN ('approving', 'approved', 'disapproved', 'returned', 'withdrawn', 'cancelled')),
 	CONSTRAINT "offer_batch_approvals_revision" CHECK ("offer_batch_approvals"."revision" > 0)
 );
 --> statement-breakpoint

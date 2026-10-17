@@ -227,7 +227,7 @@ export const offerBatchApprovals = pgTable(
     }),
     check(
       'offer_batch_approvals_status',
-      sql`${t.status} IN ('approving', 'approved', 'disapproved', 'returned', 'withdrawn')`,
+      sql`${t.status} IN ('approving', 'approved', 'disapproved', 'returned', 'withdrawn', 'cancelled')`,
     ),
     check('offer_batch_approvals_revision', sql`${t.revision} > 0`),
   ],

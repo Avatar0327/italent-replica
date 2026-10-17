@@ -313,8 +313,8 @@ export async function deleteOffer(tx: Tx, ctx: OfferContext, id: string) {
   assertOfferRevision(ctx.expectedRevision, before.revision);
   requireEditable(before);
   // 被驳回 / 撤回后待重新发起的单个 Offer 审批随删除作废（同任职申请删除，DEC-103）
-  const { cancelOfferApproval } = await import('./approval.js');
-  await cancelOfferApproval(tx, ctx, id);
+  const { cancelOfferApprovals } = await import('./approval.js');
+  await cancelOfferApprovals(tx, ctx, id);
   await guarded(() => tx.delete(offers).where(and(eq(offers.tenantId, ctx.tenantId), eq(offers.id, id))), true);
   await audit(tx, ctx, 'delete', id, before, null);
   return { id, deleted: true };

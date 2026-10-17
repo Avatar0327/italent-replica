@@ -228,3 +228,7 @@ export const offerBatchAdapter: BusinessAdapter = {
   resubmit: unsupported('批量审批单被驳回或撤回后作废，请重新批量发起', 'APPROVAL_RESUBMIT_VIA_BUSINESS'),
   edit: EDIT,
 };
+
+/** 作废在途审批时的回写（approval.ts cancelOfferApprovals）：单个 Offer 回到未发起审批；批量单记 cancelled 并放回子表 Offer。 */
+export const voidOffer = settleOne('returned');
+export const voidBatch = settleBatch('returned', 'cancelled');
