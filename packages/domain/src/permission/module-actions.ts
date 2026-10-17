@@ -235,10 +235,31 @@ export const MODULE_OBJECTS = {
     'name',
     'enabled',
     'displayOrder',
+    // R2 BE-8a 离职自动加黑规则（B68）也挂在任职设置配置对象上：规则信息、加黑条件、加黑信息（name 已在上面）
+    'priority',
+    'orgIds',
+    'description',
+    'conditions',
+    'term',
+    'reason',
+    'note',
   ]),
   employmentCustomField: object('EmploymentCustomField', ['name', 'objectType', 'valueType', 'inherit'], crud, [
     'code',
   ]),
+  // R2 BE-8a 黑名单（B68，差距表“补证结论 R2f”）：无组织字段，数据范围只认看全部；加黑日期 / 来源 / 状态由系统写入。
+  // 行内“移出”与工具栏“移出”共用 remove@list（原站是否两个独立权限项未验证）；导入未验证，不登记按钮（后补）。
+  blacklist: object(
+    'Blacklist',
+    ['employeeId', 'name', 'idNumber', 'mobilePhone', 'email', 'reason', 'expiryDate', 'note'],
+    [
+      button('create', 'list', 'create'),
+      button('update', 'list_row', 'update'),
+      button('remove', 'list', 'update'),
+      button('delete', 'list', 'delete'),
+    ],
+    ['blacklistDate', 'source', 'status', 'removedAt'],
+  ),
   // F-022：人员状态 / 入职状态取当前生效主职版本，只读（系统字段：可授查看，不可授编辑）
   employee: object(
     'Employee',
