@@ -331,6 +331,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/evaluation/catalog.ts#EVALUATION_ORG_OBJECTS',
     'packages/domain/src/idp/catalog.ts#IDP_OBJECTS',
     'packages/domain/src/offer/rules.ts#OFFER_OBJECT',
+    'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
     'packages/domain/src/personnel/catalog.ts#PERSONNEL_OBJECT',
     'packages/domain/src/personnel/catalog.ts#PERSONNEL_REQUEST_OBJECT',
     'packages/domain/src/personnel/fields.ts#SUBSETS',

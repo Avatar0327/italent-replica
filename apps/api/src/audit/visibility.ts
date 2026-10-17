@@ -555,6 +555,8 @@ const RULES: readonly Rule[] = [
   ),
   // 组织编码预占：业务接口 visible(scope, undefined) 只有看全部才能操作
   { types: ['org_code_reservation'], objectCode: ORG, visible: seeAllOnly },
+  // R2 BE-8a 黑名单没有组织字段：与业务接口一致只认看全部；证件号 / 手机 / 邮箱按黑名单对象字段权限裁剪
+  { types: ['blacklist'], objectCode: MODULE_OBJECTS.blacklist.code, visible: seeAllOnly },
   // DEC-216 / F-018：带编增减与回退沿用容量对象归属；细分数组另按子字段投影。
   orgRule(['establishment-capacity'], ESTABLISHMENT, (row, viewer) =>
     creatorSql(viewer.tenantId, row.objectId, 'establishment.capacity.create', 'establishment-capacity'),
@@ -801,6 +803,7 @@ const CONFIG_FIELDS_BY_TYPE: Readonly<Record<string, ConfigFields>> = {
   transfer_settings: { code: 'TenantBase.EmploymentSettings' },
   exit_dictionary: { code: 'TenantBase.EmploymentSettings' },
   offer_dictionary: { code: 'TenantBase.EmploymentSettings' },
+  blacklist_rule: { code: 'TenantBase.EmploymentSettings' },
   employment_custom_field: { code: 'TenantBase.EmploymentCustomField' },
   'approval-process': { code: 'TenantBase.ApprovalProcess' },
   transfer_form: {
