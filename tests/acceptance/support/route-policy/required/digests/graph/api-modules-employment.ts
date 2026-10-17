@@ -795,10 +795,6 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/exit-preview.ts#VOIDABLE_KINDS': [
     'apps/api/src/modules/employment/types.ts#BUSINESS_KINDS',
   ],
-  'apps/api/src/modules/employment/exit-preview.ts#contractImpact': [
-    'apps/api/src/modules/contracts/configuration.ts#settings',
-    'apps/api/src/modules/employment/record-store.ts#rowsOf',
-  ],
   'apps/api/src/modules/employment/exit-preview.ts#previewExit': [
     'apps/api/src/modules/employment/exit-gate.ts#disclose',
     'apps/api/src/modules/employment/exit-gate.ts#inFlightApplications',
@@ -809,7 +805,6 @@ export const GRAPH: Graph = {
     '#OPEN_STATES',
     '#VOIDABLE_KINDS',
     '#asRows',
-    '#contractImpact',
     'apps/api/src/modules/employment/fields.ts#dayAfter',
   ],
   'apps/api/src/modules/employment/exit-routes.ts#batchSchema': [

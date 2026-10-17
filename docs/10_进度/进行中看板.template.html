@@ -162,7 +162,7 @@ let LKEYS = {};  // 当前任务线 k → 步骤，供 after 依赖判定
 function stepDone(st){ return st && (st.s === "done" || (st.pr && L.merged && L.merged[st.pr])); }
 function stepState(st){
   if (st.s === "done") return {s:"done"};
-  if (!st.pr && st.after && st.s !== "paused" && st.s !== "assigned"){
+  if (!st.pr && st.after && !["paused","assigned","dev","review","rework","merge","decide"].includes(st.s)){
     const left = st.after.filter(k => !stepDone(LKEYS[k]));
     return left.length ? {s:"wait", left} : {s:"ready"};
   }
