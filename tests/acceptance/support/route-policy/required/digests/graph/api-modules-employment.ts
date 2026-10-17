@@ -841,6 +841,10 @@ export const GRAPH: Graph = {
     '#businessSchema',
     '#dayAfter',
   ],
+  'apps/api/src/modules/employment/fields.ts#parseRegularizationBusinessInput': [
+    '#assertNoStatusFields',
+    '#businessSchema',
+  ],
   'apps/api/src/modules/employment/fields.ts#patchSchema': ['#customFields', '#date', '#presetFieldsSchema'],
   'apps/api/src/modules/employment/fields.ts#presetFieldsSchema': ['#normalizedUuid', '#text', '#uuid'],
   'apps/api/src/modules/employment/fields.ts#uuid': ['#normalizedUuid'],
@@ -1196,6 +1200,14 @@ export const GRAPH: Graph = {
     'packages/domain/src/employment/probation.ts#PROBATION_MONTHS_MAX',
     'packages/domain/src/employment/probation.ts#PROBATION_MONTHS_MIN',
   ],
+  'apps/api/src/modules/employment/probation-routes.ts#createRegularizationViaBusinesses': [
+    'apps/api/src/modules/employment/context.ts#requireEmploymentScope',
+    'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
+    'apps/api/src/modules/employment/context.ts#runWrite',
+    'apps/api/src/modules/employment/entry-routes.ts#parse',
+    'apps/api/src/modules/employment/fields.ts#parseRegularizationBusinessInput',
+    'apps/api/src/modules/employment/regularization.ts#createRegularizationBusiness',
+  ],
   'apps/api/src/modules/employment/probation-routes.ts#probationWriteGuard': [
     'apps/api/src/authorization.ts#requirePermission',
     'apps/api/src/modules/employment/context.ts#commandContext',
@@ -1285,10 +1297,18 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/employee-status.ts#ENTRY_LIKE_KINDS',
     'apps/api/src/modules/employment/personnel-hooks.ts#personnelHooks',
     '#filterPredicate',
+    '#organizationsOf',
+    '#probationInfo',
     '#viewPredicate',
     'apps/api/src/modules/employment/probation.ts#cycleRegularization',
     'apps/api/src/modules/employment/read-model.ts#checkPage',
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
+    'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS',
+  ],
+  'apps/api/src/modules/employment/probation-views.ts#organizationsOf': [
+    'apps/api/src/modules/employment/read-model.ts#rowsOf',
+  ],
+  'apps/api/src/modules/employment/probation-views.ts#probationInfo': [
     'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS',
   ],
   'apps/api/src/modules/employment/probation-views.ts#viewPredicate': [
@@ -1322,6 +1342,7 @@ export const GRAPH: Graph = {
     '#loadCycleRegularization',
     'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS',
     'packages/domain/src/employment/probation.ts#normalizeProbationInfo',
+    'packages/domain/src/employment/probation.ts#resolveDeferredProbation',
   ],
   'apps/api/src/modules/employment/probation.ts#probationDetail': [
     'apps/api/src/modules/employment/context.ts#employmentCreator',
@@ -1458,6 +1479,13 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/job/validation.ts#invalid',
     'apps/api/src/modules/job/validation.ts#requiredJob',
   ],
+  'apps/api/src/modules/employment/regularization.ts#createRegularizationBusiness': [
+    'apps/api/src/modules/employment/context.ts#auditEmployment',
+    '#regularizationDate',
+    '#requireRegularizationResult',
+    'apps/api/src/modules/employment/write-service.ts#createEmploymentBusiness',
+  ],
+  'apps/api/src/modules/employment/regularization.ts#isRegularizationEntryKind': ['#REGULARIZATION_ENTRY_KINDS'],
   'apps/api/src/modules/employment/regularization.ts#parseRegularizationInput': [
     '#MAX_BATCH_REGULARIZATION',
     '#schema',
@@ -1468,16 +1496,17 @@ export const GRAPH: Graph = {
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/employment/regularization.ts#regularizeEmployees': [
-    'apps/api/src/modules/employment/probation-results.ts#requireEnabledProbationResult',
     '#regularizeOne',
+    '#requireRegularizationResult',
   ],
   'apps/api/src/modules/employment/regularization.ts#regularizeOne': [
     'apps/api/src/modules/employment/approval-hooks.ts#employmentApprovalHooks',
-    'apps/api/src/modules/employment/context.ts#auditEmployment',
     'apps/api/src/modules/employment/context.ts#requireEmployeeInScope',
-    '#regularizationDate',
+    '#createRegularizationBusiness',
     'apps/api/src/modules/employment/transitions.ts#transitionEmployment',
-    'apps/api/src/modules/employment/write-service.ts#createEmploymentBusiness',
+  ],
+  'apps/api/src/modules/employment/regularization.ts#requireRegularizationResult': [
+    'apps/api/src/modules/employment/probation-results.ts#requireEnabledProbationResult',
   ],
   'apps/api/src/modules/employment/regularization.ts#schema': ['#MAX_BATCH_REGULARIZATION'],
   'apps/api/src/modules/employment/replay-guard.ts#exitCommandGuard': [
@@ -1785,7 +1814,10 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-application.ts#createExitApplication',
     'apps/api/src/modules/employment/exit-initiation.ts#splitExitOptions',
     'apps/api/src/modules/employment/fields.ts#normalizeEmploymentInput',
+    'apps/api/src/modules/employment/probation-routes.ts#createRegularizationViaBusinesses',
+    'apps/api/src/modules/employment/probation-routes.ts#splitProbationResult',
     'apps/api/src/modules/employment/record-store.ts#lockEmploymentEmployee',
+    'apps/api/src/modules/employment/regularization.ts#isRegularizationEntryKind',
     'apps/api/src/modules/employment/replay-guard.ts#exitCommandGuard',
     '#ensureHiredAccount',
     '#splitLoginEmail',

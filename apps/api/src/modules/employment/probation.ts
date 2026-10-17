@@ -12,6 +12,7 @@ import {
   EMPLOYEE_STATUS,
   normalizeProbationInfo,
   probationAdjustmentViolation,
+  resolveDeferredProbation,
   tenantLocalDate,
   type EmployeeStatusCode,
   type ProbationAdjustment,
@@ -126,7 +127,7 @@ export async function loadProbationCycle(
   if (!anchor) return null;
   const version = await loadProbationVersion(tx, tenantId, anchor.id);
   const info = version
-    ? normalizeProbationInfo(version)
+    ? resolveDeferredProbation(normalizeProbationInfo(version), anchor.effectiveDate)
     : normalizeProbationInfo({
         hasProbation: anchor.employeeStatus === EMPLOYEE_STATUS.probation,
         startDate: anchor.effectiveDate,
@@ -210,6 +211,7 @@ export async function adjustProbation(
   const violation = probationAdjustmentViolation(normalized, {
     entryDate: cycle.anchor.entryDate,
     regularizationDate: cycle.regularizationDate,
+    today,
   });
   if (violation)
     throw new AppError(violation.kind === 'conflict' ? 'CONFLICT' : 'VALIDATION_FAILED', violation.message, {

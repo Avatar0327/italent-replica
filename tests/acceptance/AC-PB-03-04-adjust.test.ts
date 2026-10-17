@@ -88,12 +88,14 @@ describe('调整试用信息（B6，PB-R11 / R12）', () => {
     const off = await adjust(w, employee.id, { hasProbation: false, regularizationDate: '2026-10-15' });
     expect(off.status).toBe(409);
     expect((await errorOf(off)).details?.reason).toBe('PROBATION_REGULARIZED');
-    const ok = await adjust(w, employee.id, {
+    // PB-R10（第 1 轮审查 P2-2）：未到生效日的转正记录在，带回原转正日期也不能调整
+    const pending = await adjust(w, employee.id, {
       ...info,
       expectedEndDate: '2026-11-29',
       regularizationDate: '2026-10-15',
     });
-    expect(ok.status, await ok.clone().text()).toBe(200);
+    expect(pending.status).toBe(409);
+    expect((await errorOf(pending)).details?.reason).toBe('PROBATION_REGULARIZATION_NOT_EFFECTIVE');
   });
 
   it('没有转正记录时不能填写实际转正日期', async () => {

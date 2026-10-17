@@ -144,13 +144,18 @@ export async function createEmploymentBusiness(
   // F-188：待入职阶段的“是否有试用期”随记录落库（改期 / 编辑换日期替换记录时由 entry-actions 带到这里）
   // F-194：同时生成待入职合同（起始日 = 计划入职日期、终止日为空）；Offer 同步生成待入职（BE-14）走同一通道
   const pendingAudit = await saveAddedPendingEntryData(tx, ctx, employee.id, id, normalized, options.entry);
-  // BE-3：直接入职 / 实习转正带了是否有试用期时写试用期版本链，开始日 = 生效日（R2e6、R2f1）；
-  // 申请在审批期间可能改期，不在这里定开始日（读取时取入职记录生效日，probation.ts）
-  if (ENTRY_LIKE_KINDS.includes(normalized.kind) && normalized.mode === 'direct')
+  // BE-3：入职 / 实习转正带了是否有试用期时写试用期版本链，直接办理开始日 = 生效日（R2e6、R2f1）；
+  // 申请在审批期间可能改期，开始日留空，读取时取入职记录实际生效日（probation.ts，第 1 轮审查 P2-4）
+  if (ENTRY_LIKE_KINDS.includes(normalized.kind))
     await saveEntryProbation(
       tx,
       ctx,
-      { employeeId: employee.id, businessId: id, startDate: normalized.effectiveDate },
+      {
+        employeeId: employee.id,
+        businessId: id,
+        effectiveDate: normalized.effectiveDate,
+        deferStart: normalized.mode !== 'direct',
+      },
       options.entry,
     );
   const payload = await appendEmploymentPayload(

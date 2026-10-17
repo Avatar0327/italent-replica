@@ -46,9 +46,10 @@ describe('调整试用信息校验（PB-R11 / R12，W-597）', () => {
     expectedEndDate: '2026-11-30',
     regularizationDate: null,
   };
-  const facts: { entryDate: string; regularizationDate: string | null } = {
+  const facts: { entryDate: string; regularizationDate: string | null; today: string } = {
     entryDate: '2026-09-01',
     regularizationDate: null,
+    today: '2026-10-20',
   };
   const reason = (value: Parameters<typeof probationAdjustmentViolation>[0], f = facts) =>
     probationAdjustmentViolation(value, f)?.reason ?? null;
@@ -78,6 +79,15 @@ describe('调整试用信息校验（PB-R11 / R12，W-597）', () => {
       'PROBATION_REGULARIZATION_DATE_MISMATCH',
     );
     expect(reason({ ...input, regularizationDate: '2026-10-15' }, regularized)).toBeNull();
+  });
+
+  it('PB-R10：转正记录未到生效日时，带回原转正日期也拒绝；未填转正日期仍先报原站原文', () => {
+    const pending = { ...facts, regularizationDate: '2026-10-25' };
+    expect(reason({ ...input, regularizationDate: '2026-10-25' }, pending)).toBe(
+      'PROBATION_REGULARIZATION_NOT_EFFECTIVE',
+    );
+    expect(reason(input, pending)).toBe('PROBATION_REGULARIZATION_DATE_REQUIRED');
+    expect(reason({ ...input, regularizationDate: '2026-10-25' }, { ...pending, today: '2026-10-25' })).toBeNull();
   });
 
   it('没有转正记录时不能填写实际转正日期', () => {

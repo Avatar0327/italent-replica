@@ -591,7 +591,9 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   // 新建任职业务：If-Match 必填；resource=id 人员范围 404「任职数据不存在」+ 看全部的 tenant.employment.write 别名；
   // loginEmail 只在入职类业务（否则 400）；requireEmploymentWrite('create', body 去掉 loginEmail, Employment.Create)；
   // 调动类 requireTransferSource(hr) + direct 时 requireDirectTransfer；带 departmentId 时 requireEmploymentScope(人员 + 部门)；
-  // 命令内调动类重锁 + 复核，createEmploymentBusiness 内 requireScopedEmploymentObject，直接生效的向后更新按 DEC-178
+  // 命令内调动类重锁 + 复核，createEmploymentBusiness 内 requireScopedEmploymentObject，直接生效的向后更新按 DEC-178；
+  // kind=regularization 交 probation-routes.ts createRegularizationViaBusinesses → regularization.ts 单一入口
+  // （试用结果必填 400 PROBATION_RESULT_REQUIRED / 字典启用项、生效日可不填取 F-205 默认，权限与范围同上）
   'POST /employees/:id/businesses': object({
     object: EMPLOYMENT,
     operation: 'create',
@@ -610,7 +612,9 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
         'requireScopedEmploymentObject',
         'requireLinkedEmploymentRecord',
       ],
-      { controls: ['loginEmail', 'pendingEntry', 'probation', 'probationMonths', 'probationEndDate'] },
+      {
+        controls: ['loginEmail', 'pendingEntry', 'probation', 'probationMonths', 'probationEndDate', 'probationResult'],
+      },
     ),
     ...byId,
   }),
@@ -1162,7 +1166,8 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   // 调整试用信息（B6，PB-R9～R12）：If-Match = 员工 revision；body 严格 { hasProbation, startDate?, months?(1～6),
   // expectedEndDate?, regularizationDate? }（400）；readContext('object.update', resource=id) 人员范围 404「任职数据不存在」+
   // Employment.Edit（命令式，试用期是控制项不进字段协议）；命令内 lockEmploymentEmployee（409 REVISION_CONFLICT）→ 互斥
-  // （转正申请审批中 409 PROBATION_PROCESS_IN_REVIEW）→ PB-R11（409）/ PB-R12（400）→ 追加试用期版本；是否有试用期变化时
+  // （转正申请审批中 409 PROBATION_PROCESS_IN_REVIEW）→ PB-R11 / PB-R10（未生效转正记录 409
+  // PROBATION_REGULARIZATION_NOT_EFFECTIVE）/ PB-R12（400）→ 追加试用期版本；是否有试用期变化时
   // switchProbationStatus 改开启记录及其后同周期记录的人员状态（requireScopedEmploymentObject，向后按 DEC-178 联动）；
   // CommandGuard.before 在命令事务内复核对象编辑权、按钮与员工范围；回执是试用信息固定形状
   'PUT /employees/:id/probation': object({

@@ -6,7 +6,7 @@
  */
 import { withTenant } from '@italent/db';
 import { PROBATION_MONTHS_MAX, PROBATION_MONTHS_MIN, PROBATION_VIEWS, tenantLocalDate } from '@italent/domain';
-import type { Hono } from 'hono';
+import type { Context, Hono } from 'hono';
 import { z } from 'zod';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
@@ -20,6 +20,7 @@ import {
   readContext,
   readPageContext,
   requireEmployeeInScope,
+  requireEmploymentScope,
   requireEmploymentWrite,
   revision,
   runWrite,
@@ -32,7 +33,8 @@ import { requirePermission } from '../../authorization.js';
 import { adjustProbation, probationDetail } from './probation.js';
 import { listProbationResults, parseProbationResultInput, saveProbationResult } from './probation-results.js';
 import { listProbationView, PROBATION_VIEW_CONTROLS, type ProbationViewItem } from './probation-views.js';
-import { parseRegularizationInput, regularizeEmployees } from './regularization.js';
+import { createRegularizationBusiness, parseRegularizationInput, regularizeEmployees } from './regularization.js';
+import { parseRegularizationBusinessInput } from './fields.js';
 import type { EmploymentContext } from './types.js';
 
 const date = z.iso.date();
@@ -90,6 +92,45 @@ function probationWriteGuard(
       for (const item of receipt?.items ?? []) await requireEmployeeInScope(tx, scoped, item.employeeId);
     },
   });
+}
+
+/** 通用入口请求体里的试用结果（转正控制项，不进任职字段校验）；不是对象或没带时原样返回。 */
+export function splitProbationResult(body: unknown): { rawInput: unknown; probationResult: unknown } {
+  if (body === null || typeof body !== 'object' || Array.isArray(body) || !('probationResult' in body))
+    return { rawInput: body, probationResult: undefined };
+  const { probationResult, ...rawInput } = body as Record<string, unknown>;
+  return { rawInput, probationResult };
+}
+
+/**
+ * 通用入口 POST /employees/:id/businesses 的转正（kind=regularization）：权限与范围同通用入口（对象新增 + Employment.Create
+ * 按钮 + 带部门时的写入口径范围），办理交 createRegularizationBusiness（第 1 轮审查 P2-3）。
+ */
+export async function createRegularizationViaBusinesses(
+  c: Context<TenantEnv>,
+  deps: TenantRouteDeps,
+  ctx: EmploymentContext,
+  id: string,
+  body: unknown,
+  probationResult: unknown,
+) {
+  const input = parseRegularizationBusinessInput(body);
+  const result = parse(z.string().trim().min(1).max(100).optional(), probationResult);
+  await requireEmploymentWrite(ctx, 'create', body as object, 'Employment.Create');
+  if (input.fields.departmentId !== undefined) requireEmploymentScope(ctx, id, input.fields.departmentId);
+  const request = {
+    kind: 'regularization' as const,
+    mode: input.mode,
+    formId: input.formId,
+    fields: input.fields,
+    customFields: input.customFields,
+    ...(input.effectiveDate ? { effectiveDate: input.effectiveDate } : {}),
+    ...(result ? { probationResult: result } : {}),
+  };
+  return runWrite(c, deps, ctx, request, async (tx, context) => ({
+    status: 201,
+    body: await createRegularizationBusiness(tx, context, id, request),
+  }));
 }
 
 export function registerProbationRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
@@ -165,7 +206,9 @@ function registerProbationViews(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
     const shown = (field: string) => identity === undefined || identity.has(field);
     const strip = (item: ProbationViewItem) =>
       Object.fromEntries(
-        Object.entries(item).filter(([key]) => !['name', 'code', ...PROBATION_VIEW_CONTROLS].includes(key)),
+        Object.entries(item).filter(
+          ([key]) => !['name', 'code', 'organizationId', ...PROBATION_VIEW_CONTROLS].includes(key),
+        ),
       );
     const trimmed = (await trimEmploymentResponse(deps, ctx, items.map(strip))) as object[];
     return c.json({
@@ -174,6 +217,8 @@ function registerProbationViews(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
         return {
           ...record,
           ...Object.fromEntries(PROBATION_VIEW_CONTROLS.map((key) => [key, item[key]])),
+          // 机构随部门派生：部门可见才给机构（第 1 轮审查 P2-5）
+          ...('departmentId' in record ? { organizationId: item.organizationId } : {}),
           ...(shown('code') ? { code: item.code } : {}),
           ...(shown('name') ? { name: item.name } : {}),
         };

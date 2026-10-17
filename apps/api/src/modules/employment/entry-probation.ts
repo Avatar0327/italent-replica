@@ -131,21 +131,34 @@ export async function appendProbationVersion(
   return saved;
 }
 
-/** 入职时的试用期：开始日 = 入职日 / 转正日（R2e6、R2f1）；没带是否有试用期、或添加待入职（F-188 另存）时不写。 */
+/**
+ * 入职时的试用期：开始日 = 入职日 / 转正日（R2e6、R2f1）；没带是否有试用期、或添加待入职（F-188 另存）时不写。
+ * deferStart = 入职申请：审批期间还可能改期，开始日留空，读取时取记录实际生效日（resolveDeferredProbation）；
+ * 手填的预计结束日此时按申请上的入职日校验（不早于它）。
+ */
 export async function saveEntryProbation(
   tx: Tx,
   ctx: EmploymentContext,
-  target: { readonly employeeId: string; readonly businessId: string; readonly startDate: string },
+  target: {
+    readonly employeeId: string;
+    readonly businessId: string;
+    readonly effectiveDate: string;
+    readonly deferStart?: boolean;
+  },
   entry: EntryOptions | undefined,
 ): Promise<void> {
   if (!entry || entry.pendingEntry || entry.probation === undefined) return;
+  if (entry.probation && entry.probationEndDate !== undefined && entry.probationEndDate < target.effectiveDate)
+    throw new AppError('VALIDATION_FAILED', '预计试用结束日期不能早于试用开始日期', {
+      reason: 'PROBATION_END_BEFORE_START',
+    });
   await appendProbationVersion(
     tx,
     ctx,
     target,
     {
       hasProbation: entry.probation,
-      startDate: entry.probation ? target.startDate : null,
+      startDate: entry.probation && !target.deferStart ? target.effectiveDate : null,
       months: entry.probationMonths ?? null,
       expectedEndDate: entry.probationEndDate ?? null,
     },

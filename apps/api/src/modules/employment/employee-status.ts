@@ -157,7 +157,7 @@ export async function completePendingEntry(
   await saveEntryProbation(
     tx,
     ctx,
-    { employeeId: record.employeeId, businessId: recordId, startDate: record.effectiveDate },
+    { employeeId: record.employeeId, businessId: recordId, effectiveDate: record.effectiveDate },
     options,
   );
   // F-194：待入职合同到此为止；正式合同由办理入职请求里的合同信息另行生成（entry-contract.ts），不在这里沿用或复制

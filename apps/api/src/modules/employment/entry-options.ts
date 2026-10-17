@@ -2,7 +2,8 @@
  * 入职业务的服务端控制项（R2 BE-2a，EntryOptions 的路由接线；15 §9.3）：
  * pendingEntry = 添加待入职，probation = 是否有试用期，probationMonths / probationEndDate = 试用期（月）与手填的预计试用结束日
  * （BE-3，R2e6）。像 loginEmail 一样从请求体里单独取出，不进入任职字段校验，也不能用来直接写人员状态 / 入职状态；
- * 只允许入职类业务。待入职时只记是否有试用期（F-188），月数在办理入职时填；直接入职写试用期版本链（entry-probation.ts）。
+ * 只允许入职类业务。待入职时只记是否有试用期（F-188），月数在办理入职时填；直接入职、入职申请写试用期版本链
+ * （entry-probation.ts；申请的开始日到实际生效时再定）。
  */
 import { PROBATION_MONTHS_MAX, PROBATION_MONTHS_MIN } from '@italent/domain';
 import { z } from 'zod';
@@ -49,11 +50,6 @@ export function assertEntryOptionsAllowed(input: NormalizedEmploymentInput, entr
   if (!NEW_CYCLE_KINDS.includes(input.kind))
     throw new AppError('VALIDATION_FAILED', '只有入职类业务可以提供待入职 / 是否有试用期');
   const terms = entry.probationMonths !== undefined || entry.probationEndDate !== undefined;
-  // 入职申请审批期间还可能改期，开始日要到生效时才定：申请只记是否有试用期，月数等入职生效后经调整试用信息填写
-  if (terms && input.mode !== 'direct')
-    throw new AppError('VALIDATION_FAILED', '入职申请只记录是否有试用期，试用期月数在入职生效后调整试用信息时填写', {
-      reason: 'PROBATION_TERMS_APPLICATION',
-    });
   if (!entry.pendingEntry) return;
   if (terms)
     throw new AppError('VALIDATION_FAILED', '待入职只记录是否有试用期，试用期月数在办理入职时填写', {

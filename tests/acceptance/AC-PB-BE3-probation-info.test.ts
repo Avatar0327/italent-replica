@@ -47,7 +47,6 @@ describe('BE-3 试用期信息', () => {
       { probation: true, probationMonths: 7 },
       { probation: false, probationMonths: 3 },
       { probation: true, probationEndDate: '2026-13-01' },
-      { probation: true, probationMonths: 3, mode: 'application' },
     ]) {
       const employee = await w.session.employee();
       const response = await addHire(w.session, employee, hireBody(w.org.id, '2026-09-01', extra));
@@ -55,7 +54,7 @@ describe('BE-3 试用期信息', () => {
     }
   });
 
-  it('入职申请只记是否有试用期：生效后开始日取入职日，月数与预计结束日待调整试用信息填写', async () => {
+  it('入职申请只填是否有试用期：生效后开始日取入职日，月数与预计结束日为空（填期限见 AC-PB-BE3-round2）', async () => {
     const w = await pbWorld(testDb().db, 'pb-info-apply');
     const employee = await w.session.employee();
     const created = await addHire(

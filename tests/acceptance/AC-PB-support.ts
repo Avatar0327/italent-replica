@@ -127,7 +127,7 @@ export async function regularizeOk(
 export async function draftRegularization(w: PbWorld, employeeId: string, effectiveDate: string) {
   return w.session.business(
     employeeId,
-    { kind: 'regularization', mode: 'application', effectiveDate },
+    { kind: 'regularization', mode: 'application', effectiveDate, probationResult: 'normal' },
     await employeeRevision(w, employeeId),
   );
 }

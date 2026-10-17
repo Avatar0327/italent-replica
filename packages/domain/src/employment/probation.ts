@@ -58,6 +58,17 @@ export function normalizeProbationInfo(input: ProbationInfo): ProbationInfo {
   return { ...input, expectedEndDate: derived };
 }
 
+/**
+ * 入职申请的试用期开始日到实际生效时才定（开始日为空的版本）：开始日取记录实际生效日；手填的预计结束日不早于它才保留，
+ * 否则（申请期间改期到更晚）按月数重新推算，没有月数则为空（第 1 轮审查 P2-4，保守口径）。
+ */
+export function resolveDeferredProbation(info: ProbationInfo, effectiveDate: string): ProbationInfo {
+  if (!info.hasProbation || info.startDate) return info;
+  const manual = info.expectedEndDate && info.expectedEndDate >= effectiveDate ? info.expectedEndDate : null;
+  const derived = info.months ? expectedProbationEndDate(effectiveDate, info.months) : null;
+  return { ...info, startDate: effectiveDate, expectedEndDate: manual ?? derived };
+}
+
 export type ProbationViolationReason =
   | 'PROBATION_DATES_REQUIRED'
   | 'PROBATION_START_BEFORE_ENTRY'
@@ -65,6 +76,7 @@ export type ProbationViolationReason =
   | 'PROBATION_REGULARIZED'
   | 'PROBATION_REGULARIZATION_DATE_REQUIRED'
   | 'PROBATION_REGULARIZATION_DATE_MISMATCH'
+  | 'PROBATION_REGULARIZATION_NOT_EFFECTIVE'
   | 'PROBATION_REGULARIZATION_DATE_WITHOUT_RECORD';
 
 export interface ProbationViolation {
@@ -81,12 +93,14 @@ const violation = (
 ): ProbationViolation => ({ reason, message, kind });
 
 /**
- * 调整试用信息的校验（PB-R11、PB-R12）。regularizationDate 是本任职周期“生效的转正任职记录”的日期——
+ * 调整试用信息的校验（PB-R10、PB-R11、PB-R12）。regularizationDate 是本任职周期“生效的转正任职记录”的日期——
  * 审批通过但未到生效日的也算（W-597）；没有则为 null。实际转正日期只能照转正记录填，不在这里另改一份。
+ * 转正日期晚于 today（审批通过 / 直接办理但未到生效日）时一律拒绝调整，须先删除该记录（PB-R10）；
+ * 转正日期没填时仍先报原站原文（PB-R11，§8 AC-PB-04 实测口径）。
  */
 export function probationAdjustmentViolation(
   input: ProbationAdjustment,
-  facts: { readonly entryDate: string; readonly regularizationDate: string | null },
+  facts: { readonly entryDate: string; readonly regularizationDate: string | null; readonly today: string },
 ): ProbationViolation | null {
   if (facts.regularizationDate) {
     if (!input.hasProbation)
@@ -95,6 +109,12 @@ export function probationAdjustmentViolation(
       return violation(
         'PROBATION_REGULARIZATION_DATE_REQUIRED',
         '该人员已存在生效的转正任职记录，转正日期不允许清空',
+        'conflict',
+      );
+    if (facts.regularizationDate > facts.today)
+      return violation(
+        'PROBATION_REGULARIZATION_NOT_EFFECTIVE',
+        '该人员存在审批通过但尚未生效的转正记录，请先删除该记录再调整试用期信息',
         'conflict',
       );
     if (input.regularizationDate !== facts.regularizationDate)

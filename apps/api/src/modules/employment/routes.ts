@@ -85,7 +85,12 @@ import { registerExitRoutes } from './exit-routes.js';
 import { assertEntryOptionsAllowed, splitEntryOptions } from './entry-options.js';
 import { registerEntryRoutes } from './entry-routes.js';
 import { registerEntryEmailRoutes } from './entry-email-routes.js';
-import { registerProbationRoutes } from './probation-routes.js';
+import {
+  createRegularizationViaBusinesses,
+  registerProbationRoutes,
+  splitProbationResult,
+} from './probation-routes.js';
+import { isRegularizationEntryKind } from './regularization.js';
 
 export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
   // F-039：子应用套本模块登记表（EMPLOYMENT_POLICIES），注册行不变、处理函数不变
@@ -186,7 +191,12 @@ function registerEmployeeBusinessCreate(router: Hono<TenantEnv>, deps: TenantRou
   router.post('/employees/:id/businesses', async (c) => {
     const id = uuidParam(c);
     const ctx = await readContext(c, deps, 'object.create', revision(c), id);
-    const { rawInput: withoutEmail, email } = splitLoginEmail(await jsonBody(c));
+    const { rawInput: body, probationResult } = splitProbationResult(await jsonBody(c));
+    // 转正经 regularization.ts 的单一入口（试用结果必填、F-205 默认转正日期），与 /regularizations 同一套
+    if (isRegularizationEntryKind((body as { kind?: unknown } | null)?.kind))
+      return createRegularizationViaBusinesses(c, deps, ctx, id, body, probationResult);
+    if (probationResult !== undefined) throw new AppError('VALIDATION_FAILED', '只有转正业务可以提供试用结果');
+    const { rawInput: withoutEmail, email } = splitLoginEmail(body);
     const { rawInput: withoutExit, exit } = splitExitOptions(withoutEmail);
     const { rawInput, entry } = splitEntryOptions(withoutExit);
     const input = normalizeEmploymentInput(ctx, rawInput);

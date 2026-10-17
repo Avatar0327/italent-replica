@@ -204,6 +204,7 @@ describe('E2E-01 员工发起调动 → 审批 → 定时生效 → 版本链 / 
       kind: 'regularization',
       mode: 'direct',
       effectiveDate: TRANSFER_DATE,
+      probationResult: 'normal',
       fields: { remarks: '同日转正' },
     });
     sameDayId = sameDay.id;

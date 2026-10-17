@@ -5,6 +5,9 @@
  * - 批量申请 = 每人一张申请、各自提交并发起一条审批流程（与 POST /businesses/:id/submit 同一入口）；
  * - 直接办理复用任职业务 kind=regularization（生效即把试用改正式并向后传播，employee-status.ts），互斥在
  *   createEmploymentBusiness / transitions 的提交处统一判（probation-guard.ts）。
+ * 单一入口 createRegularizationBusiness：通用入口 POST /employees/:id/businesses（kind=regularization）与
+ * POST /regularizations 都经它校验试用结果、取默认转正日期、写试用结果（第 1 轮审查 P2-3）；
+ * 实习转正（intern_regularization，F-215 / BE-6a）的资格检查由 #386 在同一入口按业务类型接入。
  */
 import { isUuid, sql, type Tx } from '@italent/db';
 import { defaultRegularizationDate, tenantLocalDate } from '@italent/domain';
@@ -15,15 +18,70 @@ import { auditEmployment, requireEmployeeInScope } from './context.js';
 import { loadProbationCycle } from './probation.js';
 import { requireEnabledProbationResult } from './probation-results.js';
 import { transitionEmployment } from './transitions.js';
-import type { EmploymentContext } from './types.js';
+import type { CustomFields, EmploymentBusiness, EmploymentContext, PresetFields } from './types.js';
 import { createEmploymentBusiness } from './write-service.js';
+
+/** 经本入口办理的业务类型；BE-6a 加入 intern_regularization。 */
+export const REGULARIZATION_ENTRY_KINDS = ['regularization'] as const;
+export type RegularizationEntryKind = (typeof REGULARIZATION_ENTRY_KINDS)[number];
+
+export function isRegularizationEntryKind(kind: unknown): kind is RegularizationEntryKind {
+  return REGULARIZATION_ENTRY_KINDS.some((item) => item === kind);
+}
+
+export interface RegularizationRequest {
+  readonly kind: RegularizationEntryKind;
+  readonly mode: 'direct' | 'application';
+  /** 不填取预计试用结束日次日（F-205）。 */
+  readonly effectiveDate?: string;
+  readonly probationResult?: string;
+  readonly formId?: string;
+  readonly fields?: Partial<PresetFields>;
+  readonly customFields?: CustomFields;
+}
+
+/** 试用结果必填且须为字典启用项（B7）；返回库里的编码写法。 */
+export async function requireRegularizationResult(tx: Tx, tenantId: string, code: string | undefined) {
+  if (!code) throw new AppError('VALIDATION_FAILED', '转正须填写试用结果', { reason: 'PROBATION_RESULT_REQUIRED' });
+  return requireEnabledProbationResult(tx, tenantId, code);
+}
+
+/**
+ * 转正业务的唯一创建入口：试用结果、默认转正日期、试用结果落库与审计，随后交 createEmploymentBusiness
+ * （直接转正的 PB-R9 互斥、状态向后传播都在那里）。申请只建草稿，提交走 transitions（提交时互斥）。
+ */
+export async function createRegularizationBusiness(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  request: RegularizationRequest,
+): Promise<EmploymentBusiness> {
+  const resultCode = await requireRegularizationResult(tx, ctx.tenantId, request.probationResult);
+  const effectiveDate = await regularizationDate(tx, ctx, employeeId, request.effectiveDate);
+  const created = await createEmploymentBusiness(tx, ctx, employeeId, {
+    kind: request.kind,
+    mode: request.mode,
+    effectiveDate,
+    ...(request.formId ? { formId: request.formId } : {}),
+    ...(request.fields ? { fields: request.fields } : {}),
+    ...(request.customFields ? { customFields: request.customFields } : {}),
+  });
+  await tx.execute(sql`INSERT INTO employment_regularization_results(tenant_id, employee_id, business_id, result_code,
+      command_id, created_at)
+    VALUES (${ctx.tenantId}, ${employeeId}::uuid, ${created.id}::uuid, ${resultCode}, ${ctx.commandId},
+      ${ctx.now.toISOString()}::timestamptz)`);
+  await auditEmployment(tx, ctx, 'employment.regularization.result', 'employment-business', created.id, null, {
+    probationResult: resultCode,
+  });
+  return created;
+}
 
 export const MAX_BATCH_REGULARIZATION = 100;
 
 const schema = z.strictObject({
   mode: z.enum(['direct', 'application']),
   effectiveDate: z.iso.date().optional(),
-  probationResult: z.string().trim().min(1).max(100),
+  probationResult: z.string().trim().min(1).max(100).optional(),
   items: z
     .array(z.strictObject({ employeeId: z.string().refine(isUuid), revision: z.int().min(0) }))
     .min(1)
@@ -72,23 +130,15 @@ async function regularizeOne(
   tx: Tx,
   ctx: EmploymentContext,
   input: RegularizationInput,
-  resultCode: string,
   item: RegularizationInput['items'][number],
 ) {
   // 范围外与不存在同一个 404（DEC-177 写入口径），在本人保存点内判定，只记在他的回执里
   await requireEmployeeInScope(tx, ctx, item.employeeId);
-  const effectiveDate = await regularizationDate(tx, ctx, item.employeeId, input.effectiveDate);
-  const created = await createEmploymentBusiness(tx, { ...ctx, expectedRevision: item.revision }, item.employeeId, {
+  const created = await createRegularizationBusiness(tx, { ...ctx, expectedRevision: item.revision }, item.employeeId, {
     kind: 'regularization',
     mode: input.mode,
-    effectiveDate,
-  });
-  await tx.execute(sql`INSERT INTO employment_regularization_results(tenant_id, employee_id, business_id, result_code,
-      command_id, created_at)
-    VALUES (${ctx.tenantId}, ${item.employeeId}::uuid, ${created.id}::uuid, ${resultCode}, ${ctx.commandId},
-      ${ctx.now.toISOString()}::timestamptz)`);
-  await auditEmployment(tx, ctx, 'employment.regularization.result', 'employment-business', created.id, null, {
-    probationResult: resultCode,
+    probationResult: input.probationResult,
+    ...(input.effectiveDate ? { effectiveDate: input.effectiveDate } : {}),
   });
   if (input.mode === 'direct') return created;
   // 批量申请每人一条独立流程：与单张提交同一入口（含 PB-R9 提交时互斥）
@@ -102,12 +152,13 @@ async function regularizeOne(
 }
 
 export async function regularizeEmployees(tx: Tx, ctx: EmploymentContext, input: RegularizationInput) {
-  const resultCode = await requireEnabledProbationResult(tx, ctx.tenantId, input.probationResult);
+  // 试用结果整单先校验（400，不逐人失败）；每人办理时同一入口再取一次
+  await requireRegularizationResult(tx, ctx.tenantId, input.probationResult);
   const receipts = new Map<string, RegularizationReceiptItem>();
   // 按员工 ID 顺序逐人取锁（同 batch-edit 的锁序），并发的两单不会交叉等待；回执仍按请求顺序
   for (const item of [...input.items].sort((a, b) => a.employeeId.localeCompare(b.employeeId))) {
     try {
-      const business = await tx.transaction((savepoint) => regularizeOne(savepoint, ctx, input, resultCode, item));
+      const business = await tx.transaction((savepoint) => regularizeOne(savepoint, ctx, input, item));
       receipts.set(item.employeeId, {
         employeeId: item.employeeId,
         status: 'succeeded',

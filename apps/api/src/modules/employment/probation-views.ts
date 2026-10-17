@@ -37,6 +37,8 @@ export interface ProbationViewItem {
   readonly code: string;
   readonly name: string;
   readonly departmentId: string | null;
+  /** 机构（R2f B5、15 OIdOrganization“任职部门对应的机构”）：部门在行政维度上最近的、大类不是“部门”的组织（含部门本身）。 */
+  readonly organizationId: string | null;
   readonly postId: string | null;
   readonly employeeStatus: EmployeeStatusCode;
   /** 员工 revision：调整试用信息、转正的 If-Match。 */
@@ -68,11 +70,11 @@ export const PROBATION_VIEW_CONTROLS = [
 function viewPredicate(view: ProbationView, filter: ProbationViewFilter, today: string): SQL {
   const probation = sql`st.employee_status=${EMPLOYEE_STATUS.probation}`;
   const end = (from?: string, to?: string) =>
-    sql`${from ? sql`pv.expected_end_date>=${from}::date` : sql`true`}
-      AND ${to ? sql`pv.expected_end_date<=${to}::date` : sql`true`}`;
+    sql`${from ? sql`pi.end_date>=${from}::date` : sql`true`}
+      AND ${to ? sql`pi.end_date<=${to}::date` : sql`true`}`;
   switch (view) {
     case 'expiring':
-      return sql`${probation} AND pick.id IS NULL AND pv.expected_end_date IS NOT NULL
+      return sql`${probation} AND pick.id IS NULL AND pi.end_date IS NOT NULL
         AND ${end(filter.expectedEndFrom ?? today, filter.expectedEndTo ?? addDays(today, PROBATION_EXPIRING_DAYS))}`;
     case 'in_review':
       return sql`pick.state='in_review' AND ${end(filter.expectedEndFrom, filter.expectedEndTo)}`;
@@ -95,6 +97,22 @@ function filterPredicate(tenantId: string, filter: ProbationViewFilter): SQL {
   if (filter.postId) parts.push(sql`COALESCE(snap.post_id, cr.post_id)=${filter.postId}::uuid`);
   return sql.join(parts, sql` AND `);
 }
+
+/**
+ * 试用期信息（与 probation.ts loadProbationCycle 同一口径）：没有版本时按开启记录人员状态推断是否有试用期；
+ * 入职申请的版本开始日为空，取开启记录实际生效日，预计结束日按 resolveDeferredProbation 的规则（手填不早于开始日才保留，
+ * 否则按月数推算：开始日 + 月数 − 1 天，PostgreSQL 的 date + interval 'n month' 与 termEnd 同样取月末）。
+ */
+const probationInfo = sql`SELECT
+    COALESCE(pv.has_probation, ast.employee_status=${EMPLOYEE_STATUS.probation}) AS has_probation,
+    CASE WHEN pv.start_date IS NOT NULL THEN pv.start_date
+      WHEN COALESCE(pv.has_probation, ast.employee_status=${EMPLOYEE_STATUS.probation}) THEN anchor.start_date
+    END AS start_date,
+    CASE WHEN pv.start_date IS NOT NULL THEN pv.expected_end_date
+      WHEN pv.has_probation AND pv.expected_end_date>=anchor.start_date THEN pv.expected_end_date
+      WHEN pv.has_probation AND pv.months IS NOT NULL
+        THEN (anchor.start_date + make_interval(months => pv.months::integer))::date - 1
+    END AS end_date`;
 
 export async function listProbationView(
   tx: Tx,
@@ -119,17 +137,14 @@ export async function listProbationView(
     ENTRY_LIKE_KINDS.map((kind) => sql`${kind}`),
     sql`, `,
   );
-  return rowsOf<ProbationViewItem>(
+  const items = rowsOf<Omit<ProbationViewItem, 'organizationId'>>(
     await tx.execute(sql`
     SELECT cr.id, cr.employee_id AS "employeeId", e.code,
       ${personnelHooks.currentName(tenantId, sql`e.id`, sql`e.name`)} AS name,
       ${department} AS "departmentId", COALESCE(snap.post_id, cr.post_id) AS "postId",
       st.employee_status::integer AS "employeeStatus", e.revision,
-      COALESCE(pv.has_probation, CASE WHEN ast.employee_status IS NULL THEN NULL
-        ELSE ast.employee_status=${EMPLOYEE_STATUS.probation} END) AS "hasProbation",
-      COALESCE(pv.start_date, CASE WHEN pv.id IS NULL AND ast.employee_status=${EMPLOYEE_STATUS.probation}
-        THEN anchor.start_date END)::text AS "startDate", pv.months::integer AS months,
-      pv.expected_end_date::text AS "expectedEndDate", reg.effective_date AS "regularizationDate",
+      pi.has_probation AS "hasProbation", pi.start_date::text AS "startDate", pv.months::integer AS months,
+      pi.end_date::text AS "expectedEndDate", reg.effective_date AS "regularizationDate",
       pick.id AS "regularizationBusinessId", pick.state AS "regularizationState",
       pick.mode AS "regularizationMode", pick.result_code AS "probationResult"
     FROM employment_timeline cur
@@ -147,14 +162,56 @@ export async function listProbationView(
     LEFT JOIN LATERAL employment_record_status(cr.tenant_id, anchor.id) ast ON true
     LEFT JOIN LATERAL (SELECT v.* FROM employment_probation_versions v
       WHERE v.tenant_id=cr.tenant_id AND v.business_id=anchor.id ORDER BY v.version_no DESC LIMIT 1) pv ON true
+    LEFT JOIN LATERAL (${probationInfo}) pi ON true
     LEFT JOIN LATERAL (${cycleRegularization(tenantId, sql`cr.employee_id`, sql`cr.staff_id`, false)}) pick ON true
     LEFT JOIN LATERAL (${cycleRegularization(tenantId, sql`cr.employee_id`, sql`cr.staff_id`, true)}) reg ON true
     WHERE cur.tenant_id=${tenantId} AND cur.valid_during @> ${input.today}::date
       AND st.employee_status IN (${EMPLOYEE_STATUS.probation}, ${EMPLOYEE_STATUS.regular})
       AND ${viewPredicate(input.view, input.filter, input.today)}
       AND ${filterPredicate(tenantId, input.filter)} AND ${visible}
-    ORDER BY pv.expected_end_date NULLS LAST, cr.employee_id
+    ORDER BY pi.end_date NULLS LAST, cr.employee_id
     LIMIT ${input.page.limit} OFFSET ${input.page.offset}
   `),
   );
+  const organizations = await organizationsOf(tx, tenantId, items, input.today);
+  return items.map((item) => ({
+    ...item,
+    organizationId: item.departmentId ? (organizations.get(item.departmentId) ?? null) : null,
+  }));
+}
+
+/**
+ * 本页各部门所属的机构（按租户今天的组织版本，行政维度向上找第一个大类不是“部门”的组织，含部门本身；找不到为空）。
+ * 原站“修改任职部门后系统自动赋值”的取值规则未取证，复刻按组织大类推（PR #391 未决 / 假设）。
+ */
+async function organizationsOf(
+  tx: Tx,
+  tenantId: string,
+  items: readonly { readonly departmentId: string | null }[],
+  asOf: string,
+): Promise<Map<string, string>> {
+  const departments = [...new Set(items.map((item) => item.departmentId).filter((id): id is string => !!id))];
+  if (!departments.length) return new Map();
+  const rows = rowsOf<{ departmentId: string; organizationId: string }>(
+    await tx.execute(sql`
+    WITH RECURSIVE current_versions AS (
+      SELECT DISTINCT ON (org_id) id, org_id, broad_type, stop_date FROM org_versions
+      WHERE tenant_id=${tenantId} AND start_date<=${asOf}::date
+      ORDER BY org_id, start_date DESC, version_no DESC
+    ), chain AS (
+      SELECT v.org_id AS department_id, v.org_id, v.id AS version_id, v.broad_type, ARRAY[v.org_id] AS path, 0 AS depth
+      FROM current_versions v WHERE v.org_id = ANY(${`{${departments.join(',')}}`}::uuid[])
+      UNION ALL
+      SELECT chain.department_id, parent.org_id, parent.id, parent.broad_type, chain.path || parent.org_id, chain.depth + 1
+      FROM chain
+      JOIN org_hierarchy_links link ON link.tenant_id=${tenantId} AND link.dimension='admin'
+        AND link.version_id=chain.version_id
+      JOIN current_versions parent ON parent.org_id=link.parent_org_id AND parent.stop_date>=${asOf}::date
+      WHERE chain.broad_type='部门' AND NOT parent.org_id = ANY(chain.path)
+    )
+    SELECT DISTINCT ON (department_id) department_id AS "departmentId", org_id AS "organizationId"
+    FROM chain WHERE broad_type<>'部门' ORDER BY department_id, depth
+  `),
+  );
+  return new Map(rows.map((row) => [row.departmentId, row.organizationId]));
 }
