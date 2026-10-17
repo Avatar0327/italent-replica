@@ -5,6 +5,7 @@
  */
 import { and, desc, eq, offers, pgErrorCode, sql, type Tx } from '@italent/db';
 import {
+  MODULE_OBJECTS,
   missingOfferFields,
   OFFER_FIELDS,
   OFFER_REFUSAL_FIELDS,
@@ -14,6 +15,7 @@ import {
   type OfferStatus,
   type OfferType,
   type OfferView,
+  tenantLocalDate,
 } from '@italent/domain';
 import type { AnyColumn, SQL } from 'drizzle-orm';
 import { recordAudit } from '../../audit/record.js';
@@ -21,6 +23,7 @@ import { AppError } from '../../errors.js';
 import { auditActor } from '../../system-actor.js';
 import { visibleEmploymentRecords } from '../employment/visibility.js';
 import { scopeSql } from '../permission/module-access.js';
+import { JOB_OBJECT_CODES, visibleJob } from '../permission/module-route-access.js';
 import { assertOfferRevision, requireOfferInScope, type OfferContext } from './context.js';
 import type { OfferCreateInput, OfferUpdateInput } from './input.js';
 
@@ -116,17 +119,39 @@ function requireDepartment(ctx: OfferContext, departmentId: string | null | unde
   if (departmentId) requireOfferInScope(ctx, { departmentId, createdBy });
 }
 
+const invalidReference = () =>
+  new AppError('VALIDATION_FAILED', 'Offer 引用的对象不存在', { reason: 'OFFER_REFERENCE_INVALID' });
+
 /**
- * 人员引用（直线上级 / 虚线上级 / HRBP）须是本租户、当前范围内可见的员工；不存在与范围外同为 400 OFFER_REFERENCE_INVALID，
- * 与外键拒绝同码，不暴露存在性。员工创建人未知时不按“使用用户”维度放行（保守取严）。
+ * 引用按被引用对象自己的当前范围校验（审查 #394 P2-02）；不存在与范围外同为 400 OFFER_REFERENCE_INVALID，不暴露存在性。
+ * - 直线上级 / 虚线上级 / HRBP：本租户、Offer 所在应用范围内可见的员工；员工创建人未知时不按“使用用户”维度放行（保守取严）；
+ * - 职位（有组织）/ 职务 / 职级（无组织）：按职务体系对象各自的范围（visibleJob，无组织对象只认看全部或创建人，DEC-121）；
+ * - 合同主体：合同主数据只认看全部（与合同模块读主数据同口径，contracts/routes.ts requireMasterScope）。
+ * 看全部时存在性仍由（租户, ID）复合外键保证。
  */
 const PERSON_REFS = ['directManagerId', 'dottedManagerId', 'hrbpId'] as const;
-async function requirePersonRefs(tx: Tx, ctx: OfferContext, values: Readonly<Record<string, unknown>>) {
+const JOB_REFS = [
+  ['positionId', 'positions'],
+  ['postId', 'posts'],
+  ['levelId', 'levels'],
+] as const;
+async function requireReferences(tx: Tx, ctx: OfferContext, values: Readonly<Record<string, unknown>>) {
+  const scopeOf = ctx.scopeOf;
+  if (!scopeOf) throw new AppError('SERVICE_UNAVAILABLE', 'Offer 写入缺少事务内范围解析');
   const ids = PERSON_REFS.map((field) => values[field]).filter((id): id is string => typeof id === 'string');
-  if (!ids.length) return;
   const targets = ids.map((employeeId) => ({ employeeId, departmentId: null, creatorId: null }));
-  if ((await visibleEmploymentRecords(tx, ctx.tenantId, ctx.scope, targets)).includes(false))
-    throw new AppError('VALIDATION_FAILED', 'Offer 引用的对象不存在', { reason: 'OFFER_REFERENCE_INVALID' });
+  if ((await visibleEmploymentRecords(tx, ctx.tenantId, ctx.scope, targets)).includes(false)) throw invalidReference();
+  for (const [field, kind] of JOB_REFS) {
+    const id = values[field];
+    if (typeof id !== 'string') continue;
+    const scope = await scopeOf(JOB_OBJECT_CODES[kind]);
+    if (scope.all) continue;
+    await visibleJob(tx, ctx, scope, kind, id, tenantLocalDate(ctx.now, ctx.timezone)).catch((error: unknown) => {
+      throw error instanceof AppError && error.code === 'NOT_FOUND' ? invalidReference() : error;
+    });
+  }
+  if (typeof values.contractCompanyId === 'string' && !(await scopeOf(MODULE_OBJECTS.contractCompany.code)).all)
+    throw invalidReference();
 }
 
 function requireComplete(type: OfferType | null, values: Readonly<Record<string, unknown>>) {
@@ -146,9 +171,9 @@ async function guarded<T>(work: () => Promise<T>, deleting = false): Promise<T> 
   }
 }
 
-/** 三个新建入口（DEC-527③）：实习两个入口类型固定为实习；校招生提前实习须选一份校招 Offer 并带出基本信息。 */
-export async function createOffer(tx: Tx, ctx: OfferContext, input: OfferCreateInput) {
-  const { entry, offerType, source, campusOfferId, ...fields } = input;
+/** 入口、类型、来源与校招 Offer 的组合校验（DEC-527③）：实习两个入口类型固定为实习。 */
+function requireEntry(input: OfferCreateInput) {
+  const { entry, offerType, source, campusOfferId } = input;
   if (entry !== 'offer' && offerType && offerType !== 'intern')
     throw new AppError('VALIDATION_FAILED', '实习入口的 Offer 类型只能是实习', { reason: 'OFFER_TYPE_MISMATCH' });
   if (entry === 'offer' && offerType === 'intern')
@@ -159,17 +184,48 @@ export async function createOffer(tx: Tx, ctx: OfferContext, input: OfferCreateI
     throw new AppError('VALIDATION_FAILED', '实习 Offer 的来源只能是新增人员', { reason: 'OFFER_SOURCE_INVALID' });
   if ((entry === 'campus_early_intern') !== !!campusOfferId)
     throw new AppError('VALIDATION_FAILED', '校招生提前实习须选择一份校招 Offer', { reason: 'OFFER_CAMPUS_REQUIRED' });
-  const values: Record<string, unknown> = { ...fields };
-  if (campusOfferId) {
-    const campus = await loadOffer(tx, ctx, campusOfferId);
-    if (campus.offerType !== 'campus' || campus.status === 'invalid')
-      throw new AppError('VALIDATION_FAILED', '所选 Offer 不是有效的校招 Offer', { reason: 'OFFER_CAMPUS_REQUIRED' });
-    for (const field of CAMPUS_CARRIED) values[field] ??= campus[field as keyof OfferRow];
-  }
+}
+
+const present = (values: Readonly<Record<string, unknown>>) =>
+  Object.fromEntries(Object.entries(values).filter(([, value]) => value !== undefined && value !== null));
+
+/** 校招生提前实习：从所选校招 Offer 带出请求里没填的基本信息（只取有值的项）。 */
+async function campusCarried(tx: Tx, ctx: OfferContext, input: OfferCreateInput) {
+  if (!input.campusOfferId) return {};
+  const campus = await loadOffer(tx, ctx, input.campusOfferId);
+  if (campus.offerType !== 'campus' || campus.status === 'invalid')
+    throw new AppError('VALIDATION_FAILED', '所选 Offer 不是有效的校招 Offer', { reason: 'OFFER_CAMPUS_REQUIRED' });
+  const missing = CAMPUS_CARRIED.filter((field) => input[field as keyof OfferCreateInput] === undefined);
+  return present(Object.fromEntries(missing.map((field) => [field, campus[field as keyof OfferRow]])));
+}
+
+/**
+ * 新建实际写入的字段（审查 #394 P2-01）：请求字段 + 从校招 Offer 继承的字段。字段编辑权按它校验（事务内的
+ * CommandGuard.before），新建也按它落库，两处同一个来源。
+ */
+export async function offerCreateWrites(tx: Tx, ctx: OfferContext, input: OfferCreateInput) {
+  requireEntry(input);
+  return { ...input, ...(await campusCarried(tx, ctx, input)) };
+}
+
+/** 复制实际写入的字段（审查 #394 P2-01）：被复制 Offer 上有值的业务字段与入口 / 类型 / 来源 / 校招 Offer。 */
+export function offerCopyWrites(source: OfferRow) {
+  return present({
+    entry: source.entry,
+    offerType: source.offerType,
+    source: source.source,
+    campusOfferId: source.campusOfferId,
+    ...Object.fromEntries(OFFER_FIELDS.map((field) => [field, offerDto(source)[field]])),
+  });
+}
+
+/** 三个新建入口（DEC-527③）：实习两个入口类型固定为实习；校招生提前实习须选一份校招 Offer 并带出基本信息。 */
+export async function createOffer(tx: Tx, ctx: OfferContext, input: OfferCreateInput) {
+  const { entry, offerType, source, campusOfferId, ...values } = await offerCreateWrites(tx, ctx, input);
   const type = entry === 'offer' ? (offerType ?? null) : 'intern';
   requireComplete(type, values);
   requireDepartment(ctx, values.departmentId as string | null, ctx.userId);
-  await requirePersonRefs(tx, ctx, values);
+  await requireReferences(tx, ctx, values);
   const [row] = await guarded(() =>
     tx
       .insert(offers)
@@ -215,7 +271,7 @@ export async function updateOffer(tx: Tx, ctx: OfferContext, id: string, input: 
   const patch = toColumns(input);
   requireComplete(typeOf(before), { ...offerDto(before), ...input });
   if ('departmentId' in input) requireDepartment(ctx, input.departmentId, before.createdBy);
-  await requirePersonRefs(tx, ctx, input);
+  await requireReferences(tx, ctx, input);
   return save(tx, ctx, before, 'update', patch);
 }
 
@@ -237,7 +293,7 @@ export async function copyOffer(tx: Tx, ctx: OfferContext, id: string) {
     throw new AppError('CONFLICT', '只有失效的 Offer 可以复制', { reason: 'OFFER_COPY_NOT_ALLOWED' });
   const fields = Object.fromEntries(OFFER_FIELDS.map((field) => [field, source[field as keyof OfferRow]]));
   requireDepartment(ctx, source.departmentId, ctx.userId);
-  await requirePersonRefs(tx, ctx, fields);
+  await requireReferences(tx, ctx, fields);
   const [row] = await guarded(() =>
     tx
       .insert(offers)

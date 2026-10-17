@@ -137,6 +137,10 @@ export const OFFER_POLICIES = defineTable('offers', {
     button: noButton('复制按对象新增开关'),
     scope: point,
     fields: record,
-    write: commandOnly(['offer.copyable', 'revision']),
+    // 复制写入的字段来自被复制的 Offer：事务内按展开后的实际字段校验编辑权（审查 #394 P2-01）
+    write: write({ guard: 'offer.copyWrites' }, 'offer.commandGuard', RESULT, {
+      ledger: 'single',
+      preconditions: ['offer.copyable', 'revision'],
+    }),
   }),
 });

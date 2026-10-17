@@ -1,6 +1,6 @@
 /**
  * Offer 管理路由（R2 BE-14a C1，DEC-581），子应用挂在 /api/tenant/offers，策略登记在 offer/policy.ts（F-039）。
- * 读：Offer 对象查看权 + 当前数据范围；写：对象数据操作 + 实际写入字段的编辑权（删除 / 复制只判数据操作开关）。
+ * 读：Offer 对象查看权 + 当前数据范围；写：对象数据操作 + 实际写入字段的编辑权（新建 / 复制含继承来的字段，删除只判开关）。
  * 转移状态、失效、行操作与 OF-R3 的入口随 C2（BE-14a2）接入，本段不注册。
  */
 import { withTenant } from '@italent/db';
@@ -30,6 +30,7 @@ import {
   parseOfferDictionaryInput,
   saveOfferDictionaryEntry,
 } from './dictionaries.js';
+import { offerCopyCheck, offerCreateCheck } from './checks.js';
 import { parseOfferCreate, parseOfferUpdate } from './input.js';
 import { OFFER_POLICIES } from './policy.js';
 import { copyOffer, createOffer, deleteOffer, listOffers, loadOffer, offerDetail, updateOffer } from './service.js';
@@ -101,7 +102,7 @@ function registerCommands(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
       deps,
       input,
       'create',
-      offerFieldsCheck('create', input),
+      offerCreateCheck(input),
       async (tx, ctx) => ({ status: 201, body: await createOffer(tx, ctx, input) }),
       { isNew: true, replayed: stillVisible },
     );
@@ -133,7 +134,7 @@ function registerCommands(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
       deps,
       { id },
       'create',
-      offerOperationCheck('create'),
+      offerCopyCheck(id),
       async (tx, ctx) => ({ status: 201, body: await copyOffer(tx, ctx, id) }),
       { replayed: stillVisible },
     );

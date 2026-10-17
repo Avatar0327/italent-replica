@@ -5,6 +5,17 @@
 import type { Graph } from '../../../evidence-graph.js';
 
 export const GRAPH: Graph = {
+  'apps/api/src/modules/offer/checks.ts#offerCopyCheck': [
+    'apps/api/src/modules/offer/service.ts#loadOffer',
+    'apps/api/src/modules/offer/service.ts#offerCopyWrites',
+    'apps/api/src/modules/permission/module-route-access.ts#writeFields',
+    'packages/domain/src/offer/rules.ts#OFFER_OBJECT',
+  ],
+  'apps/api/src/modules/offer/checks.ts#offerCreateCheck': [
+    'apps/api/src/modules/offer/service.ts#offerCreateWrites',
+    'apps/api/src/modules/permission/module-route-access.ts#writeFields',
+    'packages/domain/src/offer/rules.ts#OFFER_OBJECT',
+  ],
   'apps/api/src/modules/offer/context.ts#offerFieldsCheck': [
     'apps/api/src/modules/permission/module-route-access.ts#writeFields',
     'packages/domain/src/offer/rules.ts#OFFER_OBJECT',
@@ -131,7 +142,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/offer/routes.ts#route:POST /': [
     'apps/api/src/modules/employment/context.ts#jsonBody',
-    'apps/api/src/modules/offer/context.ts#offerFieldsCheck',
+    'apps/api/src/modules/offer/checks.ts#offerCreateCheck',
     'apps/api/src/modules/offer/context.ts#runOfferWrite',
     'apps/api/src/modules/offer/input.ts#parseOfferCreate',
     '#stillVisible',
@@ -139,7 +150,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/offer/routes.ts#route:POST /:id/copy': [
     'apps/api/src/modules/job/context.ts#uuidParam',
-    'apps/api/src/modules/offer/context.ts#offerOperationCheck',
+    'apps/api/src/modules/offer/checks.ts#offerCopyCheck',
     'apps/api/src/modules/offer/context.ts#runOfferWrite',
     '#stillVisible',
     'apps/api/src/modules/offer/service.ts#copyOffer',
@@ -173,6 +184,7 @@ export const GRAPH: Graph = {
     'apps/api/src/audit/record.ts#recordAudit',
     'apps/api/src/system-actor.ts#auditActor',
   ],
+  'apps/api/src/modules/offer/service.ts#campusCarried': ['#CAMPUS_CARRIED', '#loadOffer', '#present'],
   'apps/api/src/modules/offer/service.ts#copyOffer': [
     'apps/api/src/modules/offer/context.ts#assertOfferRevision',
     '#audit',
@@ -180,18 +192,17 @@ export const GRAPH: Graph = {
     '#lockOffer',
     '#offerDto',
     '#requireDepartment',
-    '#requirePersonRefs',
+    '#requireReferences',
     'packages/domain/src/offer/rules.ts#OFFER_FIELDS',
   ],
   'apps/api/src/modules/offer/service.ts#createOffer': [
-    '#CAMPUS_CARRIED',
     '#audit',
     '#guarded',
-    '#loadOffer',
+    '#offerCreateWrites',
     '#offerDto',
     '#requireComplete',
     '#requireDepartment',
-    '#requirePersonRefs',
+    '#requireReferences',
     '#toColumns',
   ],
   'apps/api/src/modules/offer/service.ts#deleteOffer': [
@@ -208,6 +219,12 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/offer/service.ts#loadOffer': ['apps/api/src/modules/offer/context.ts#requireOfferInScope'],
   'apps/api/src/modules/offer/service.ts#lockOffer': ['apps/api/src/modules/offer/context.ts#requireOfferInScope'],
+  'apps/api/src/modules/offer/service.ts#offerCopyWrites': [
+    '#offerDto',
+    '#present',
+    'packages/domain/src/offer/rules.ts#OFFER_FIELDS',
+  ],
+  'apps/api/src/modules/offer/service.ts#offerCreateWrites': ['#campusCarried', '#requireEntry'],
   'apps/api/src/modules/offer/service.ts#offerDetail': ['#loadOffer', '#offerDto'],
   'apps/api/src/modules/offer/service.ts#offerDto': [
     '#MONEY',
@@ -218,9 +235,15 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/offer/context.ts#requireOfferInScope',
   ],
   'apps/api/src/modules/offer/service.ts#requireEditable': ['packages/domain/src/offer/rules.ts#offerEditable'],
-  'apps/api/src/modules/offer/service.ts#requirePersonRefs': [
+  'apps/api/src/modules/offer/service.ts#requireReferences': [
     'apps/api/src/modules/employment/visibility.ts#visibleEmploymentRecords',
+    '#JOB_REFS',
     '#PERSON_REFS',
+    '#invalidReference',
+    'apps/api/src/modules/permission/module-route-access.ts#JOB_OBJECT_CODES',
+    'apps/api/src/modules/permission/module-route-access.ts#visibleJob',
+    'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/offer/service.ts#save': ['#audit', '#guarded', '#offerDto'],
   'apps/api/src/modules/offer/service.ts#toColumns': ['#MONEY', 'packages/domain/src/offer/rules.ts#OFFER_FIELDS'],
@@ -231,7 +254,7 @@ export const GRAPH: Graph = {
     '#requireComplete',
     '#requireDepartment',
     '#requireEditable',
-    '#requirePersonRefs',
+    '#requireReferences',
     '#save',
     '#toColumns',
     '#typeOf',

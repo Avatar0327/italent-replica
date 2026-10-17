@@ -17136,12 +17136,19 @@
         "object": [
           "objectContext"
         ],
+        "objectOp": [
+          "TenantBase.Offer:create"
+        ],
         "scope": [
           "creator scope",
           "employment visibility",
           "requestScope",
           "scope.all",
-          "scopeSql"
+          "scopeSql",
+          "visibleJob"
+        ],
+        "scopePoint": [
+          "visibleJob"
         ]
       }
     },
@@ -17166,18 +17173,28 @@
           "revision(c)",
           "runCommand / runWrite"
         ],
+        "fieldsIn": [
+          "writeFields"
+        ],
         "fieldsOut": [
           "trimModuleResponse"
         ],
         "object": [
           "objectContext"
         ],
+        "objectOp": [
+          "TenantBase.Offer:create"
+        ],
         "scope": [
           "creator scope",
           "employment visibility",
           "requestScope",
           "scope.all",
-          "scopeSql"
+          "scopeSql",
+          "visibleJob"
+        ],
+        "scopePoint": [
+          "visibleJob"
         ]
       }
     },
@@ -21783,7 +21800,11 @@
           "employment visibility",
           "requestScope",
           "scope.all",
-          "scopeSql"
+          "scopeSql",
+          "visibleJob"
+        ],
+        "scopePoint": [
+          "visibleJob"
         ]
       }
     },

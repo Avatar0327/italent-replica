@@ -35,6 +35,8 @@ export interface OfferContext extends TenantContext {
   readonly commandId: string;
   readonly expectedRevision: number;
   readonly scope: ModuleScope;
+  /** 写命令事务内按对象解析当前数据范围（引用校验按被引用对象自己的范围，审查 #394 P2-02）；读路径没有。 */
+  readonly scopeOf?: (objectCode: string) => Promise<ModuleScope>;
 }
 
 /** 读：对象查看权 + 当前数据范围（列表 / 详情按页面编码解析，DEC-121 无组织对象须看全部）。 */
@@ -46,10 +48,11 @@ export async function offerReadContext(c: Context<TenantEnv>, deps: TenantRouteD
 export type OfferOperation = 'create' | 'update' | 'delete';
 
 /**
- * 写命令的权限复核：事务外先判一次（拒绝不入台账），事务内由 CommandGuard.before 按当前授权再判，撤权后同键重放也拒绝。
+ * 写命令的权限复核：事务外先按请求判一次（拒绝不入台账），事务内由 CommandGuard.before 带 tx 再判——此时按展开继承 /
+ * 复制之后实际写入的字段校验（审查 #394 P2-01），首次执行与同键重放走同一个判定。
  * 每类写入口用各自的判定函数，不共用分支（F-039 按处理函数闭包取现状）。
  */
-export type OfferCheck = (authorize: Authorizer, ctx: OfferContext) => Promise<void>;
+export type OfferCheck = (authorize: Authorizer, ctx: OfferContext, tx?: Tx) => Promise<void>;
 
 /** 新建 / 编辑：对象数据操作 + 实际写入字段的编辑权。 */
 export const offerFieldsCheck =
@@ -57,7 +60,7 @@ export const offerFieldsCheck =
   (authorize, ctx) =>
     writeFields({ authorize }, ctx, OFFER_OBJECT, operation, fields);
 
-/** 删除 / 复制：只判对象数据操作开关，不提取字段。 */
+/** 删除：只判对象数据操作开关，不提取字段。 */
 export const offerOperationCheck =
   (operation: OfferOperation): OfferCheck =>
   (authorize, ctx) =>
@@ -85,9 +88,10 @@ export async function runOfferWrite(
   const inTransaction = async (tx: Tx): Promise<OfferContext> => ({
     ...ctx,
     scope: await resolveModuleScopeInTransaction(deps, ctx, tx, OFFER_OBJECT),
+    scopeOf: (objectCode) => resolveModuleScopeInTransaction(deps, ctx, tx, objectCode),
   });
   const guard: CommandGuard = {
-    before: async (tx) => check(authorizeInTransaction(deps.authorize, tx), await inTransaction(tx)),
+    before: async (tx) => check(authorizeInTransaction(deps.authorize, tx), await inTransaction(tx), tx),
     ...(options.replayed
       ? { replayed: async (tx, replay) => options.replayed!(tx, await inTransaction(tx), replay.body) }
       : {}),

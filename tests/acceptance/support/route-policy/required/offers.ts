@@ -50,13 +50,30 @@ const view = (anchor: string, path: string, viaReadContext: boolean): Obligation
 });
 const readView = (path: string) => [view('const ctx = await offerReadContext(c, deps)', path, true)];
 
-const offerWrite = (method: string, path: string, operation: 'create' | 'update' | 'delete'): Obligation[] => [
+const offerWrite = (
+  method: string,
+  path: string,
+  operation: 'create' | 'update' | 'delete',
+  writes?: Evidence,
+): Obligation[] => [
   {
     perm: `obj:${OFFER}:${operation}`,
-    facts: ['object:objectContext'],
-    at: [at(method, path, 'return runOfferWrite('), WRITE_CONTEXT, OBJECT_CONTEXT, OFFER_CONST],
+    facts: writes ? ['object:objectContext', `objectOp:${OFFER}:${operation}`] : ['object:objectContext'],
+    at: [
+      at(method, path, 'return runOfferWrite('),
+      WRITE_CONTEXT,
+      OBJECT_CONTEXT,
+      OFFER_CONST,
+      ...(writes ? [writes] : []),
+    ],
   },
 ];
+/** 新建 / 复制按展开继承之后实际写入的字段校验编辑权（审查 #394 P2-01，checks.ts）。 */
+const writesCheck = (name: string, anchor: string): Evidence => ({
+  role: 'impl',
+  unit: `${O}/checks.ts#${name}`,
+  anchor,
+});
 
 const dictionaryWrite = (method: string, path: string, operation: 'create' | 'update'): Obligation[] =>
   withNeeds(
@@ -119,8 +136,21 @@ export const OFFERS: RequiredTable = {
     },
   ],
   [`GET ${BASE}/:id`]: readView('/:id'),
-  [`POST ${BASE}`]: offerWrite('POST', '/', 'create'),
+  [`POST ${BASE}`]: offerWrite(
+    'POST',
+    '/',
+    'create',
+    writesCheck(
+      'offerCreateCheck',
+      "writeFields({ authorize }, ctx, OFFER_OBJECT, 'create', tx ? await offerCreateWrites",
+    ),
+  ),
   [`PUT ${BASE}/:id`]: offerWrite('PUT', '/:id', 'update'),
   [`DELETE ${BASE}/:id`]: offerWrite('DELETE', '/:id', 'delete'),
-  [`POST ${BASE}/:id/copy`]: offerWrite('POST', '/:id/copy', 'create'),
+  [`POST ${BASE}/:id/copy`]: offerWrite(
+    'POST',
+    '/:id/copy',
+    'create',
+    writesCheck('offerCopyCheck', "writeFields({ authorize }, ctx, OFFER_OBJECT, 'create', tx ? offerCopyWrites"),
+  ),
 };
