@@ -623,6 +623,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/exit-batch.ts#createExitBatch': [
     'apps/api/src/modules/employment/exit-application.ts#createExitApplication',
     '#submitExit',
+    'apps/api/src/modules/employment/record-store.ts#lockEmploymentEmployee',
     'apps/api/src/modules/employment/replay-guard.ts#exitBatchFailure',
     'apps/api/src/modules/employment/replay-guard.ts#exitBatchRejected',
   ],

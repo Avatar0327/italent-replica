@@ -916,7 +916,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/employment/exit-application.ts#parseExitPatch': ['f07bfea0bf16', '5fe516f40cda'],
   'apps/api/src/modules/employment/exit-application.ts#updateExitFields': ['fdef1813173c', '8f876e0c8487'],
   'apps/api/src/modules/employment/exit-batch.ts#EXIT_BATCH_LIMIT': ['1f03959dd93b', 'e3b0c44298fc'],
-  'apps/api/src/modules/employment/exit-batch.ts#createExitBatch': ['63fe38892608', 'bccce81f4e98'],
+  'apps/api/src/modules/employment/exit-batch.ts#createExitBatch': ['fb28f217a424', 'd8b1e42759a3'],
   'apps/api/src/modules/employment/exit-batch.ts#submitExit': ['06cda4f1fdeb', '017684d9464e'],
   'apps/api/src/modules/employment/exit-confirmation.ts#confirmExit': ['1b5e872c3fbe', '72e5c27ac44f'],
   'apps/api/src/modules/employment/exit-confirmation.ts#confirmedHooks': ['a79ddf64bf66', 'e3b0c44298fc'],
