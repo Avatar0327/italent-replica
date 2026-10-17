@@ -534,7 +534,7 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/offer/transitions.ts': {
     offerActionAccess: 'c9198ee9d61d',
-    'route:GET /:id/send-check': 'bd9f30e12348',
+    'route:GET /:id/send-check': 'b27b1aee9a46',
     'route:GET /:id/transfer-form': 'b27cdbe16757',
     'route:POST /:id/invalidate': '3ec1206461fa',
     'route:POST /:id/toolbar-transfer': 'fc4cacbb555b',
@@ -1778,7 +1778,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/offer/routes.ts#route:PUT /:id': '42595c5ae07f',
   'apps/api/src/modules/offer/routes.ts#route:PUT /dictionaries/:kind/:id': '972f5abc5d6a',
   'apps/api/src/modules/offer/transitions.ts#offerActionAccess': '4e4d4f7a7a79',
-  'apps/api/src/modules/offer/transitions.ts#route:GET /:id/send-check': 'e9f649c6161d',
+  'apps/api/src/modules/offer/transitions.ts#route:GET /:id/send-check': 'a6103bd6de27',
   'apps/api/src/modules/offer/transitions.ts#route:GET /:id/transfer-form': 'fa7566f3123e',
   'apps/api/src/modules/offer/transitions.ts#route:POST /:id/invalidate': 'ea81fd003cf2',
   'apps/api/src/modules/offer/transitions.ts#route:POST /:id/toolbar-transfer': 'f0a7b28abef7',

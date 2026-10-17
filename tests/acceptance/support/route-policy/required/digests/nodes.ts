@@ -2125,7 +2125,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/offer/checks.ts#offerCreateCheck': ['21da4c7f0654', '63dfab02749d'],
   'apps/api/src/modules/offer/context.ts#CONFIGURATION_WRITE': ['9fc227dd0e15', 'e3b0c44298fc'],
   'apps/api/src/modules/offer/context.ts#OFFER_DICTIONARY_OBJECT': ['15d88648f288', 'e3b0c44298fc'],
-  'apps/api/src/modules/offer/context.ts#PROTOCOL_KEYS': ['e556702467b9', 'e3b0c44298fc'],
+  'apps/api/src/modules/offer/context.ts#PROTOCOL_KEYS': ['283b45a8b271', 'e3b0c44298fc'],
   'apps/api/src/modules/offer/context.ts#assertOfferRevision': ['55c43e5c46e9', '583ee92c250c'],
   'apps/api/src/modules/offer/context.ts#offerFieldsCheck': ['d03fcba4d606', '63dfab02749d'],
   'apps/api/src/modules/offer/context.ts#offerOperationCheck': ['6c8a0f21109a', 'bb752f660418'],

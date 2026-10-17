@@ -84,7 +84,8 @@ export function registerOfferTransitions(module: Hono<TenantEnv>, deps: TenantRo
   module.get('/:id/send-check', async (c) => {
     const ctx = await offerReadContext(c, deps);
     const id = uuidParam(c);
-    return c.json(await withTenant(deps.db, ctx.tenantId, (tx) => offerSendCheck(tx, ctx, id)));
+    const body = await withTenant(deps.db, ctx.tenantId, (tx) => offerSendCheck(tx, ctx, id));
+    return c.json(await trimOffer(deps, ctx, body));
   });
   module.post('/:id/transfer', (c) => transferCommand(c, deps, OFFER_BUTTONS.lineStatusTransfer));
   module.post('/:id/toolbar-transfer', (c) => transferCommand(c, deps, OFFER_BUTTONS.statusTransfer));

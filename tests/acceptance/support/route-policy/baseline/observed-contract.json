@@ -5773,6 +5773,9 @@
       },
       "module": "offers",
       "primitives": {
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
         "object": [
           "objectContext"
         ],

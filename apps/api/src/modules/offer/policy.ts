@@ -204,14 +204,14 @@ export const OFFER_POLICIES = defineTable('offers', {
     scope: point,
     fields: shape('offer.transferForm'),
   }),
-  // OF-R3 发送前拦截判定（发送动作在 BE-14b）
+  // OF-R3 发送前拦截判定（发送动作在 BE-14b）：id / offerType 按字段查看权裁剪，allowed / reason 为判定结果
   'GET /:id/send-check': object({
     ...byId,
     object: OFFER,
     operation: 'view',
     button: noButton('只读判定'),
     scope: point,
-    fields: fixed(['id', 'offerType', 'allowed', 'reason'], 'OF-R3 发送判定固定键'),
+    fields: shape('offer.sendCheck'),
   }),
   'POST /:id/transfer': transfer(ROW_TRANSFER),
   'POST /:id/toolbar-transfer': transfer(TOOLBAR_TRANSFER),

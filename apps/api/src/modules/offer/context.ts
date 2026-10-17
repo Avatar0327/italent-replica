@@ -164,8 +164,8 @@ export async function trimOffer(deps: TenantRouteDeps, ctx: OfferContext, body: 
   return { ...(await trimModuleResponse(deps, ctx, OFFER_OBJECT, value)), ...protocolKeys(value) };
 }
 
-/** 行操作与转移表单的可选目标是接口协议数据，不是对象字段，不按字段查看权裁剪（BE-14a2）。 */
-const PROTOCOL_KEYS = ['rowActions', 'targets'] as const;
+/** 行操作、转移表单的可选目标、发送判定结果是接口协议数据，不是对象字段，不按字段查看权裁剪（BE-14a2）。 */
+const PROTOCOL_KEYS = ['rowActions', 'targets', 'allowed', 'reason'] as const;
 const protocolKeys = (row: Record<string, unknown>) =>
   Object.fromEntries(PROTOCOL_KEYS.filter((key) => key in row).map((key) => [key, row[key]]));
 

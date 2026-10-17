@@ -329,6 +329,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/offer/transitions.ts#route:GET /:id/send-check': [
     'apps/api/src/modules/job/context.ts#uuidParam',
     'apps/api/src/modules/offer/context.ts#offerReadContext',
+    'apps/api/src/modules/offer/context.ts#trimOffer',
     'apps/api/src/modules/offer/service.ts#offerSendCheck',
   ],
   'apps/api/src/modules/offer/transitions.ts#route:GET /:id/transfer-form': [
