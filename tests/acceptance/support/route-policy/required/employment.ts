@@ -1962,7 +1962,8 @@ export const EMPLOYMENT: RequiredTable = {
               AUTO_REG,
               method,
               path,
-              `await requireEmploymentWrite(ctx, '${operation}', ${payload}, undefined, 'TenantBase.EmploymentSettings'`,
+              `await requireEmploymentWrite(ctx, '${operation}', ${payload}, undefined, ` +
+                "'TenantBase.EmploymentSettings'",
             ),
           ),
         ),

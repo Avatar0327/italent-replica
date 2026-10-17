@@ -15,7 +15,7 @@ const rows = <T>(r: unknown) => (Array.isArray(r) ? r : (r as { rows: T[] }).row
 
 interface SchedulerModule {
   runAutoRegularizations(
-    db: unknown,
+    db: Parameters<typeof withTenant>[0],
     meta: { actorUserId: null; commandId: string },
     input?: { tenantId?: string },
     options?: { clock?: () => Date },
@@ -45,7 +45,7 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-PB-14 立即执行与
       },
     });
     expect(rule.status, await rule.clone().text()).toBe(201);
-    const employees = [];
+    const employees: string[] = [];
     for (let i = 0; i < 4; i += 1)
       employees.push((await hire(w, { date: '2026-09-01', months: 1, name: `并发员工${i}` })).employee.id);
 
