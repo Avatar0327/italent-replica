@@ -9,6 +9,14 @@ import { randomUUID } from 'node:crypto';
 import type { Authorizer } from '@italent/api';
 import { sql, withTenant } from '@italent/db';
 import { MODULE_OBJECTS } from '@italent/domain';
+import {
+  EXIT_FILTER_DEPENDENCIES,
+  EXIT_RESPONSE_DEPENDENCIES,
+  EXIT_SORT_DEPENDENCIES,
+  EXIT_VIEWS,
+  trimExit,
+  type ExitItem,
+} from '../../apps/api/src/modules/employment/exit-queries.js';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { denyButtons, gateWorld, type GateWorld } from './AC-EXIT-gate-support.js';
@@ -672,23 +680,23 @@ const CONTAINER_ONLY = [
   'dutyTransfer.failed',
 ];
 
-describe('AC-DM-19 嵌套字段按路径裁剪（第 3 轮 P2-A，设计 §9.1）', () => {
-  async function nestedWorld(label: string) {
-    const x = await world(label);
-    const made = await x.exit('嵌套员工', '2026-10-20', 'direct', { exit: { exitTypeCode: 'voluntary' } });
-    const t = x.w.session.tenant.id;
-    await x.run(sql`INSERT INTO exit_effects(tenant_id,business_id,employee_id,phase,kind,target_type,target_id,
-        command_id) VALUES (${t},${made.id}::uuid,${made.employee.id}::uuid,'confirmed','duty_transferred',
-        'employment_record',gen_random_uuid(),'fx')`);
-    await x.force(made.id, 'voided');
-    await x.cancellation(made.id, made.employee.id, '撤销原因', '2026-10-06T03:00:00Z');
-    const as = (fields: readonly string[]) => x.w.restricted(denyButtons(), undefined, fields);
-    const detailOf = async (api: Api) => (await (await api('GET', `/exits/${made.id}`)).json()) as DetailBody;
-    const rowOf = async (api: Api) =>
-      ((await (await api('GET', '/exits?view=cancellations')).json()) as ViewPage).items[0]!;
-    return { x, made, as, detailOf, rowOf };
-  }
+async function nestedWorld(label: string) {
+  const x = await world(label);
+  const made = await x.exit('嵌套员工', '2026-10-20', 'direct', { exit: { exitTypeCode: 'voluntary' } });
+  const t = x.w.session.tenant.id;
+  await x.run(sql`INSERT INTO exit_effects(tenant_id,business_id,employee_id,phase,kind,target_type,target_id,
+      command_id) VALUES (${t},${made.id}::uuid,${made.employee.id}::uuid,'confirmed','duty_transferred',
+      'employment_record',gen_random_uuid(),'fx')`);
+  await x.force(made.id, 'voided');
+  await x.cancellation(made.id, made.employee.id, '撤销原因', '2026-10-06T03:00:00Z');
+  const as = (fields: readonly string[]) => x.w.restricted(denyButtons(), undefined, fields);
+  const detailOf = async (api: Api) => (await (await api('GET', `/exits/${made.id}`)).json()) as DetailBody;
+  const rowOf = async (api: Api) =>
+    ((await (await api('GET', '/exits?view=cancellations')).json()) as ViewPage).items[0]!;
+  return { x, made, as, detailOf, rowOf };
+}
 
+describe('AC-DM-19 嵌套字段按路径裁剪（第 3 轮 P2-A，设计 §9.1）', () => {
   it('嵌套叶子要么登记了自己的字段编码，要么是明确的容器叶子（新增嵌套键不能默认放行）', async () => {
     const { x, as, detailOf, rowOf } = await nestedWorld('views-nested-catalog');
     const full = as(FULL);
@@ -791,6 +799,53 @@ describe('AC-DM-19 派生值与撤销视图排序（第 4 轮）', () => {
     const viewer = (fields: readonly string[]) => x.w.restricted(denyButtons(), undefined, fields);
     const order = async (api: Api) => (await x.view('cancellations', '&pageSize=50', api)).items.map((i) => i.id);
     expect(await order(viewer(FULL.filter((field) => field !== 'createdAt')))).toEqual([...ids].sort());
-    expect(await order(viewer(FULL))).toEqual([...ids].sort(descendingThenIdDesc((id) => cancelledAt.get(id)!)));
+    const designed = ids
+      .map((id) => ({ id }))
+      .sort(descendingThenIdDesc((id) => cancelledAt.get(id)!))
+      .map((row) => row.id);
+    expect(await order(viewer(FULL))).toEqual(designed);
+  });
+});
+
+// ---- 字段依赖表守卫（#409 第 4 轮，DEC-431①）：派生 / 排序 / 筛选依赖的字段只在一张表里登记 ----------------------------
+
+describe('AC-DM-19 字段依赖表守卫', () => {
+  it('不依赖任何受控字段的叶子必须写明理由；依赖的字段都在字段目录里（防拼错）', () => {
+    for (const [path, rule] of Object.entries(EXIT_RESPONSE_DEPENDENCIES)) {
+      if (rule.field === null) expect(rule.why.trim().length, `${path} 缺“不派生自受控字段”的理由`).toBeGreaterThan(8);
+      else expect(FULL, `${path} 依赖的字段 ${rule.field}`).toContain(rule.field);
+    }
+    for (const view of EXIT_VIEWS)
+      for (const field of EXIT_SORT_DEPENDENCIES[view].anyOf)
+        expect(FULL, `${view} 排序依赖 ${field}`).toContain(field);
+    for (const [filter, rule] of Object.entries(EXIT_FILTER_DEPENDENCIES))
+      for (const field of [...(rule.employee ?? []), ...(rule.employment ?? [])])
+        expect(FULL, `筛选 ${filter} 依赖 ${field}`).toContain(field);
+  });
+
+  it('响应里的每个叶子（含全字段权的完整响应）都登记了依赖：顶层键是字段目录里的字段、派生名或已登记，嵌套叶子必须在表里', async () => {
+    const { x, as, detailOf, rowOf } = await nestedWorld('views-guard');
+    const full = as(FULL);
+    const leaves = [...leafPaths(await detailOf(full)), ...leafPaths(await rowOf(full))];
+    const unregistered = leaves.filter((path) =>
+      isNested(path)
+        ? !(path in EXIT_RESPONSE_DEPENDENCIES)
+        : !(path in EXIT_RESPONSE_DEPENDENCIES) && !FULL.includes(path),
+    );
+    expect(unregistered).toEqual([]);
+    expect(x.ids(await x.view('all'))).toHaveLength(1);
+  });
+
+  it('新增的嵌套叶子没有登记依赖字段时一律不输出（fail-closed），即使查看人字段权不受限', () => {
+    const everything = { employee: () => true, employment: () => true };
+    const item = {
+      id: randomUUID(),
+      status: 'voided',
+      cancellation: { reason: 'r', newSecretLeaf: 'x' },
+      newTopLevelButRegisteredNowhereNested: { inner: 1 },
+    } as unknown as ExitItem;
+    const out = trimExit(item, everything) as { cancellation: object; newTopLevelButRegisteredNowhereNested: object };
+    expect(out.cancellation).toEqual({ reason: 'r' });
+    expect(out.newTopLevelButRegisteredNowhereNested).toEqual({});
   });
 });

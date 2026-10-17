@@ -196,34 +196,13 @@ function viewPredicate(view: ExitView): SQL {
 }
 
 /**
- * 排序是否可以用被隐藏字段的先后：查看人看不到最后工作日 / 生效日（二者只差一天、先后一致）时不能按日期排，
- * 看不到创建时间时不能按创建时间排，否则借一条已知日期的参照记录就能推断其他人的先后；此时改用 id（随机 UUID，
- * 与任何业务字段无关）作稳定排序。撤销视图按撤销记录的创建时间，该时间随撤销信息一并给出，不受此限。
+ * 默认排序（§3.2）及其依赖的字段（见“字段依赖表”）：查看人看不到排序键依赖的字段时，改用业务 id（随机 UUID，与任何
+ * 业务字段无关）稳定排序，否则借一条已知值的参照记录就能推断其他人的先后；末位 b.id 保证翻页稳定。
+ * 最后工作日与生效日只差一天、先后一致，看到其一即可按日期排。
  */
-export interface ExitSortRights {
-  readonly byDate: boolean;
-  readonly byCreated: boolean;
-}
-
-export function exitSortRights(show: ExitViewable): ExitSortRights {
-  return {
-    byDate: show.employment('lastWorkDate') || show.employment('effectiveDate'),
-    byCreated: show.employment('createdAt'),
-  };
-}
-
-/** 默认排序（§3.2）；末位 b.id 保证翻页稳定。 */
-function viewOrder(view: ExitView, rights: ExitSortRights): SQL {
-  switch (view) {
-    case 'in_progress':
-      return rights.byDate ? sql`p.last_work_date ASC, b.id` : sql`b.id`;
-    case 'completed':
-      return rights.byDate ? sql`p.last_work_date DESC, b.id` : sql`b.id`;
-    case 'all':
-      return rights.byCreated ? sql`b.created_at DESC, b.id DESC` : sql`b.id`;
-    case 'cancellations':
-      return sql`c.created_at DESC, c.id DESC`;
-  }
+function viewOrder(view: ExitView, show: ExitViewable): SQL {
+  const rule = EXIT_SORT_DEPENDENCIES[view];
+  return rule.anyOf.some(show.employment) ? rule.order : sql`b.id`;
 }
 
 const SHOWN_DEPARTMENT = sql`COALESCE(prev.department_id, p.department_id)`;
@@ -318,7 +297,7 @@ export async function listExitView(
     readonly view: ExitView;
     readonly page: PageQuery;
     readonly filter: ExitViewFilter;
-    readonly sort: ExitSortRights;
+    readonly show: ExitViewable;
   },
   scope: EmploymentScope | undefined,
 ): Promise<{ items: ExitItem[]; total: number }> {
@@ -326,7 +305,7 @@ export async function listExitView(
   const where = [viewPredicate(input.view), ...filterPredicates(tenantId, input.filter)];
   const rows = rowsOf<ExitRow & { total: number }>(
     await tx.execute(sql`
-    WITH base AS MATERIALIZED (${candidates(tenantId, scope, where, viewOrder(input.view, input.sort))}),
+    WITH base AS MATERIALIZED (${candidates(tenantId, scope, where, viewOrder(input.view, input.show))}),
       counted AS (SELECT count(*)::int AS total FROM base)
     SELECT counted.total, page.* FROM counted
     LEFT JOIN LATERAL (SELECT * FROM base ORDER BY ord LIMIT ${input.page.limit} OFFSET ${input.page.offset}) page
@@ -458,29 +437,72 @@ export async function loadExitDetail(
   };
 }
 
-// ---- 字段裁剪（§9.1）-------------------------------------------------------------------------------------------
+// ---- 字段依赖表（§9.1；#409 第 4 轮，DEC-431①）----------------------------------------------------------------
+//
+// 三类“依赖某个字段”的输出统一登记在这里，裁剪、筛选检查、排序回退都只读这几张表，不在各处单独判断：
+//   1. 响应叶子（EXIT_RESPONSE_DEPENDENCIES）：每个叶子路径依赖哪个字段编码（MODULE_OBJECTS.employmentRecord，含
+//      EXIT_REQUEST_SYSTEM_FIELDS；姓名 / 工号属人员对象）；由某个字段派生的值（显示名、case、原定日期）跟随它的字段；
+//      确实不派生自任何受控字段的叶子必须写明理由（field: null + why），没有登记的叶子一律不输出（fail-closed）。
+//   2. 筛选（EXIT_FILTER_DEPENDENCIES）：按它筛选等于探测它的值，须先能看到依赖的字段。
+//   3. 排序（EXIT_SORT_DEPENDENCIES）：排序键依赖的字段；看不到时改用 id 排序。
+// 视图归属（离职中 / 已完成 / 撤销）由视图名这一显式查询参数决定，是业务入口本身（设计 §3.2），不另按状态字段权拦截。
+
+type Dependency =
+  { readonly field: string; readonly object?: 'employee' } | { readonly field: null; readonly why: string };
+
+const independent = (why: string): Dependency => ({ field: null, why });
+const on = (field: string): Dependency => ({ field });
 
 /**
- * 响应键与字段目录（MODULE_OBJECTS.employmentRecord，含 EXIT_REQUEST_SYSTEM_FIELDS）的对应：默认键名就是字段编码，
- * 逐键按自己的字段权裁剪，没有“默认放行”的控制项；派生的显示名跟随它的编码。下面的结构键没有自己的字段编码（汇总件数、
- * 撤销信息、状态事件、版本、日期块），行可见即可见，其内部的字段键在 trimExitDetail 里再逐个按编码裁剪。
- * AC-DM-19 有测试核对：响应里出现的每个键必须在目录里、是派生名或是结构键。
+ * 路径规则：顶层键 `key`、嵌套 `a.b`、数组元素 `a[].b`。顶层叶子未登记时，键名就是任职记录字段编码（AC-DM-19 核对
+ * 它在字段目录里）；嵌套叶子必须登记。
  */
-const RECORD_ALIAS: Readonly<Record<string, string>> = {
-  plannedLastWorkDate: 'lastWorkDate',
-  exitTypeName: 'exitTypeCode',
-  reasonName: 'reasonCode',
-  whereaboutsName: 'whereaboutsCode',
+export const EXIT_RESPONSE_DEPENDENCIES: Readonly<Record<string, Dependency>> = {
+  name: { field: 'name', object: 'employee' },
+  code: { field: 'code', object: 'employee' },
+  // 派生显示名 / 原定日期：跟随所属字段
+  plannedLastWorkDate: on('lastWorkDate'),
+  exitTypeName: on('exitTypeCode'),
+  reasonName: on('reasonCode'),
+  whereaboutsName: on('whereaboutsCode'),
+  // 生效失败 / 挂起标记（最近一次生效尝试）
+  'activation.status': on('activation'),
+  'activation.reason': on('activation'),
+  'activation.blockedByBusinessId': on('activation'),
+  // 撤销信息：case 由撤销前状态决定（设计 §7.1 四种撤销情形与撤销前状态一一对应），跟随 status
+  cancellation: independent('有无撤销记录由撤销视图的归属决定（视图名是显式查询参数，设计 §3.2 DM-R5）；叶子各有规则'),
+  'cancellation.id': on('id'),
+  'cancellation.stateBefore': on('status'),
+  'cancellation.case': on('status'),
+  'cancellation.revision': on('revision'),
+  'cancellation.createdAt': on('createdAt'),
+  'cancellation.reason': independent(
+    '撤销原因文本：字段目录无独立编码，与离职原因字典的 reasonCode 无关，不派生自受控字段',
+  ),
+  // 详情的载荷版本（原定 / 最终日期的出处）
+  'versions[].versionNo': on('versionNo'),
+  'versions[].createdAt': on('createdAt'),
+  'versions[].effectiveDate': on('effectiveDate'),
+  'versions[].plannedEffectiveDate': on('effectiveDate'),
+  'versions[].lastWorkDate': on('lastWorkDate'),
+  // 状态事件
+  'events[].eventNo': independent('第几次状态流转的序号，不含状态值，不派生自受控字段'),
+  'events[].state': on('status'),
+  'events[].createdAt': on('createdAt'),
+  // 日期块（原定 / 最终）
+  'dates.planned.lastWorkDate': on('lastWorkDate'),
+  'dates.final.lastWorkDate': on('lastWorkDate'),
+  'dates.planned.effectiveDate': on('effectiveDate'),
+  'dates.final.effectiveDate': on('effectiveDate'),
+  // 审批实例 / 效果台账 / 职责转交：来自其他对象，只给标识或汇总件数（不带目标 ID）
+  approvalInstanceId: independent('审批中心实例标识，不是任职字段，不派生自受控字段'),
+  'effects[].phase': independent('效果台账汇总（阶段）：来自 exit_effects，不派生自受控字段；目标对象可见性归各自模块'),
+  'effects[].kind': independent('效果台账汇总（种类）：同上'),
+  'effects[].count': independent('效果台账汇总（件数）：同上'),
+  'dutyTransfer.timing': on('dutyTransferTiming'),
+  'dutyTransfer.transferred': independent('职责转交成功件数：来自 exit_effects 汇总，不派生自受控字段'),
+  'dutyTransfer.failed': independent('职责转交失败件数：同上'),
 };
-const STRUCTURE_KEYS: ReadonlySet<string> = new Set([
-  'cancellation',
-  'events',
-  'versions',
-  'effects',
-  'approvalInstanceId',
-  'dutyTransfer',
-  'dates',
-]);
 
 /** 姓名 / 工号属人员对象，其余按任职记录对象的字段权限；无权限的键缺席（不是 null）。 */
 export interface ExitViewable {
@@ -488,81 +510,79 @@ export interface ExitViewable {
   readonly employment: (field: string) => boolean;
 }
 
-/** 筛选参数用到的字段（关键字 = 姓名 + 工号），用来在筛选前确认查看人能看到它们（不让筛选成为探针）。 */
-export function filterFieldsOf(filter: ExitViewFilter): { employee: string[]; employment: string[] } {
-  const employment: string[] = [];
-  if (filter.departmentIds) employment.push('departmentId');
-  if (filter.lastWorkDateFrom || filter.lastWorkDateTo) employment.push('lastWorkDate');
-  if (filter.exitTypeCode) employment.push('exitTypeCode');
-  if (filter.reasonCode) employment.push('reasonCode');
-  if (filter.whereaboutsCode) employment.push('whereaboutsCode');
-  if (filter.initiation) employment.push('mode', 'initiator');
-  // 审批状态也是字段：无权看状态的人不能按它筛选，否则能反推隐藏的状态
-  if (filter.status) employment.push('status');
-  return { employee: filter.keyword ? ['name', 'code'] : [], employment };
+function dependencyOf(path: string): Dependency | undefined {
+  return EXIT_RESPONSE_DEPENDENCIES[path] ?? (/[.[]/.test(path) ? undefined : on(path));
 }
 
-/** 撤销信息里带字段编码的叶子：按各自编码裁剪；撤销原因 / 类型没有自己的编码，随撤销信息一起给。 */
-const CANCELLATION_FIELD: Readonly<Record<string, string>> = {
-  id: 'id',
-  stateBefore: 'status',
-  revision: 'revision',
-  createdAt: 'createdAt',
-};
+const DROPPED = Symbol('dropped');
 
-function trimCancellation(cancellation: NonNullable<ExitItem['cancellation']>, show: ExitViewable) {
-  return Object.fromEntries(
-    Object.entries(cancellation).filter(([key]) => {
-      const field = CANCELLATION_FIELD[key];
-      return field === undefined || show.employment(field);
-    }),
-  );
+/** 按路径规则递归裁剪：容器本身没有规则，只看叶子；未登记的嵌套叶子不输出。 */
+function trimNode(value: unknown, path: string, show: ExitViewable): unknown {
+  if (Array.isArray(value))
+    return value.map((item) => trimNode(item, `${path}[]`, show)).filter((item) => item !== DROPPED);
+  if (value !== null && typeof value === 'object')
+    return Object.fromEntries(
+      Object.entries(value)
+        .map(([key, item]) => [key, trimNode(item, path ? `${path}.${key}` : key, show)] as const)
+        .filter(([, item]) => item !== DROPPED),
+    );
+  const rule = dependencyOf(path);
+  if (!rule) return DROPPED;
+  if (rule.field === null) return value;
+  return (rule.object === 'employee' ? show.employee : show.employment)(rule.field) ? value : DROPPED;
 }
 
 export function trimExit<T extends ExitItem>(item: T, show: ExitViewable): Partial<T> {
-  return Object.fromEntries(
-    Object.entries(item)
-      .filter(([key]) => {
-        if (key === 'name' || key === 'code') return show.employee(key);
-        return STRUCTURE_KEYS.has(key) || show.employment(RECORD_ALIAS[key] ?? key);
-      })
-      .map(([key, value]) => [key, key === 'cancellation' && value ? trimCancellation(value, show) : value]),
-  ) as Partial<T>;
+  return trimNode(item, '', show) as Partial<T>;
 }
 
-/** 详情：在 trimExit 之上加日期块，并把结构键里的字段（转交时机、事件状态 / 时间、版本日期 / 时间）逐个按编码裁剪。 */
+/** 详情：补上原定 / 最终日期块后，与列表走同一张表裁剪。 */
 export function trimExitDetail(detail: ExitDetail, show: ExitViewable) {
-  const { versions, events, dutyTransfer, ...rest } = detail;
-  const has = show.employment;
-  const dates = (lastWorkDate: string | null, effectiveDate: string) => ({
-    ...(has('lastWorkDate') && lastWorkDate !== null ? { lastWorkDate } : {}),
-    ...(has('effectiveDate') ? { effectiveDate } : {}),
-  });
   const planned = new Date(`${detail.plannedLastWorkDate}T00:00:00Z`);
   planned.setUTCDate(planned.getUTCDate() + 1);
+  return trimNode(
+    {
+      ...detail,
+      dates: {
+        planned: { lastWorkDate: detail.plannedLastWorkDate, effectiveDate: planned.toISOString().slice(0, 10) },
+        final: { lastWorkDate: detail.lastWorkDate, effectiveDate: detail.effectiveDate },
+      },
+    },
+    '',
+    show,
+  ) as Record<string, unknown>;
+}
+
+/** 筛选 → 依赖的字段（Record 覆盖 ExitViewFilter 的每个键：新增筛选必须登记）。 */
+type FilterDependency = { readonly employee?: readonly string[]; readonly employment?: readonly string[] };
+export const EXIT_FILTER_DEPENDENCIES: Readonly<Record<keyof ExitViewFilter, FilterDependency>> = {
+  departmentIds: { employment: ['departmentId'] },
+  keyword: { employee: ['name', 'code'] },
+  lastWorkDateFrom: { employment: ['lastWorkDate'] },
+  lastWorkDateTo: { employment: ['lastWorkDate'] },
+  exitTypeCode: { employment: ['exitTypeCode'] },
+  reasonCode: { employment: ['reasonCode'] },
+  whereaboutsCode: { employment: ['whereaboutsCode'] },
+  // 审批状态也是字段：无权看状态的人不能按它筛选，否则能反推隐藏的状态
+  status: { employment: ['status'] },
+  initiation: { employment: ['mode', 'initiator'] },
+};
+
+/** 用到的筛选所依赖的字段，用来在筛选前确认查看人能看到它们（不让筛选成为探针）。 */
+export function filterFieldsOf(filter: ExitViewFilter): { employee: string[]; employment: string[] } {
+  const used = (Object.keys(EXIT_FILTER_DEPENDENCIES) as (keyof ExitViewFilter)[]).filter(
+    (key) => filter[key] !== undefined,
+  );
   return {
-    ...trimExit(rest, show),
-    dutyTransfer: {
-      ...(has('dutyTransferTiming') ? { timing: dutyTransfer.timing } : {}),
-      transferred: dutyTransfer.transferred,
-      failed: dutyTransfer.failed,
-    },
-    events: events.map((event) => ({
-      eventNo: event.eventNo,
-      ...(has('status') ? { state: event.state } : {}),
-      ...(has('createdAt') ? { createdAt: event.createdAt } : {}),
-    })),
-    dates: {
-      planned: dates(detail.plannedLastWorkDate, planned.toISOString().slice(0, 10)),
-      final: dates(detail.lastWorkDate, detail.effectiveDate),
-    },
-    versions: versions.map((version) => ({
-      ...(has('versionNo') ? { versionNo: version.versionNo } : {}),
-      ...(has('createdAt') ? { createdAt: version.createdAt } : {}),
-      ...(has('effectiveDate')
-        ? { effectiveDate: version.effectiveDate, plannedEffectiveDate: version.plannedEffectiveDate }
-        : {}),
-      ...(has('lastWorkDate') ? { lastWorkDate: version.lastWorkDate } : {}),
-    })),
+    employee: used.flatMap((key) => EXIT_FILTER_DEPENDENCIES[key].employee ?? []),
+    employment: used.flatMap((key) => EXIT_FILTER_DEPENDENCIES[key].employment ?? []),
   };
 }
+
+/** 各视图默认排序的键依赖的字段（任一可见即可用设计排序）及设计排序；撤销视图按撤销记录的创建时间（createdAt）。 */
+export const EXIT_SORT_DEPENDENCIES: Readonly<Record<ExitView, { readonly anyOf: readonly string[]; order: SQL }>> = {
+  in_progress: { anyOf: ['lastWorkDate', 'effectiveDate'], order: sql`p.last_work_date ASC, b.id` },
+  completed: { anyOf: ['lastWorkDate', 'effectiveDate'], order: sql`p.last_work_date DESC, b.id` },
+  all: { anyOf: ['createdAt'], order: sql`b.created_at DESC, b.id DESC` },
+  cancellations: { anyOf: ['createdAt'], order: sql`c.created_at DESC, c.id DESC` },
+};

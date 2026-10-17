@@ -1112,6 +1112,7 @@ export const GRAPH: Graph = {
     '#asRows',
     'apps/api/src/modules/employment/fields.ts#dayAfter',
   ],
+  'apps/api/src/modules/employment/exit-queries.ts#EXIT_RESPONSE_DEPENDENCIES': ['#independent', '#on'],
   'apps/api/src/modules/employment/exit-queries.ts#candidates': [
     'apps/api/src/modules/employment/context.ts#employmentCreator',
     '#SHOWN_DEPARTMENT',
@@ -1119,6 +1120,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/timeline.ts#plannedEffectiveDate',
     'apps/api/src/modules/employment/visibility.ts#employmentVisibilitySql',
   ],
+  'apps/api/src/modules/employment/exit-queries.ts#dependencyOf': ['#EXIT_RESPONSE_DEPENDENCIES', '#on'],
+  'apps/api/src/modules/employment/exit-queries.ts#filterFieldsOf': ['#EXIT_FILTER_DEPENDENCIES'],
   'apps/api/src/modules/employment/exit-queries.ts#filterPredicates': [
     '#SHOWN_DEPARTMENT',
     'apps/api/src/modules/employment/personnel-hooks.ts#personnelHooks',
@@ -1147,9 +1150,10 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/org/hierarchy-reader.ts#listOrgDescendantsInTransaction',
   ],
   'apps/api/src/modules/employment/exit-queries.ts#toItem': ['#iso'],
-  'apps/api/src/modules/employment/exit-queries.ts#trimCancellation': ['#CANCELLATION_FIELD'],
-  'apps/api/src/modules/employment/exit-queries.ts#trimExit': ['#RECORD_ALIAS', '#STRUCTURE_KEYS', '#trimCancellation'],
-  'apps/api/src/modules/employment/exit-queries.ts#trimExitDetail': ['#trimExit'],
+  'apps/api/src/modules/employment/exit-queries.ts#trimExit': ['#trimNode'],
+  'apps/api/src/modules/employment/exit-queries.ts#trimExitDetail': ['#trimNode'],
+  'apps/api/src/modules/employment/exit-queries.ts#trimNode': ['#DROPPED', '#dependencyOf', '#trimNode'],
+  'apps/api/src/modules/employment/exit-queries.ts#viewOrder': ['#EXIT_SORT_DEPENDENCIES'],
   'apps/api/src/modules/employment/exit-routes.ts#VIEW_QUERY_KEYS': ['#viewQuery'],
   'apps/api/src/modules/employment/exit-routes.ts#batchSchema': [
     'apps/api/src/modules/employment/exit-batch.ts#EXIT_BATCH_LIMIT',
@@ -1193,7 +1197,6 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/exit-routes.ts#route:GET /exits': [
     'apps/api/src/modules/employment/context.ts#readPageContext',
-    'apps/api/src/modules/employment/exit-queries.ts#exitSortRights',
     'apps/api/src/modules/employment/exit-queries.ts#listExitView',
     'apps/api/src/modules/employment/exit-queries.ts#resolveDepartmentIds',
     'apps/api/src/modules/employment/exit-queries.ts#trimExit',
