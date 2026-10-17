@@ -8,6 +8,7 @@ import { randomUUID } from 'node:crypto';
 import type { Tx } from '@italent/db';
 import { employmentApprovalHooks } from './approval-hooks.js';
 import { createExitApplication } from './exit-application.js';
+import { lockEmploymentEmployee } from './record-store.js';
 import { exitBatchFailure, exitBatchRejected, type ExitBatchFailure, type ExitBatchItem } from './replay-guard.js';
 import { transitionEmployment } from './transitions.js';
 import type { EmploymentBusiness, EmploymentContext } from './types.js';
@@ -30,13 +31,24 @@ export async function createExitBatch(
   const batchId = randomUUID();
   const failures = [...rejected];
   const skipped = new Set(rejected.map((failure) => failure.index));
-  // 按员工 ID 顺序取员工行锁，两个批次交错时不会互相等待成环
   const order = items
     .map((item, index) => ({ item, index }))
     .filter(({ index }) => !skipped.has(index))
     .sort((a, b) => a.item.employeeId.localeCompare(b.item.employeeId) || a.index - b.index);
-  const created = new Map<number, EmploymentBusiness>();
+  // 锁序（org/locks.ts 全局序：员工 → 组织 → 编制 → 实例）：先按员工 ID 顺序一次锁齐全批员工，再逐人建单提交。
+  // 提交会取组织锁，若边做边锁员工，就会出现“持组织锁再等员工锁”，与单人入口（先员工后组织）成环（真 PG 交错 ③）
   for (const { item, index } of order) {
+    try {
+      await lockEmploymentEmployee(tx, ctx, item.employeeId);
+    } catch (error) {
+      const failure = exitBatchFailure(index, item.employeeId, error);
+      if (!failure) throw error;
+      failures.push(failure);
+      skipped.add(index);
+    }
+  }
+  const created = new Map<number, EmploymentBusiness>();
+  for (const { item, index } of order.filter((entry) => !skipped.has(entry.index))) {
     try {
       const business = await tx.transaction(async (savepoint) => {
         const draft = await createExitApplication(
