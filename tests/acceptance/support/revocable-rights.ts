@@ -30,7 +30,13 @@ const FIELDS = new Set<string>([
  * 才应用 `rights`。所以先让首次执行成功（rights 为空），再设置 rights 模拟“撤权发生在入口复核之后”。
  */
 export function revocable() {
-  const rights: { deny?: (request: Request) => boolean; emptyScope?: boolean; scope?: ModuleScope } = {};
+  const rights: {
+    deny?: (request: Request) => boolean;
+    emptyScope?: boolean;
+    scope?: ModuleScope;
+    /** 带事务与不带事务的字段查看权都收窄到这组（F-181a 读口按字段投影）。 */
+    fields?: ReadonlySet<string>;
+  } = {};
   const authorize: Authorizer = () => true;
   registerScopeProvider(authorize, {
     scope: async (_query, tx) => {
@@ -38,7 +44,7 @@ export function revocable() {
       return tx && rights.emptyScope ? EMPTY_SCOPE : { ...EMPTY_SCOPE, all: true, hasDataPermission: true };
     },
     authorize: async (request, tx) => !(tx && rights.deny?.(request)),
-    fields: async () => FIELDS,
+    fields: async () => rights.fields ?? FIELDS,
   });
   return { rights, authorize };
 }
