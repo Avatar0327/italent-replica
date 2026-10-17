@@ -85,6 +85,16 @@ export const GRAPH: Graph = {
     '#readTransferSettings',
     '#settingInput',
   ],
+  'apps/api/src/modules/transfer/draft-slot.ts#readTransferDraft': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/transfer/draft-slot.ts#releaseTransferDraft': [
+    'apps/api/src/modules/employment/approval-hooks.ts#employmentApprovalHooks',
+    'apps/api/src/modules/employment/record-store.ts#lockEmploymentEmployee',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    'apps/api/src/modules/employment/transitions.ts#transitionEmployment',
+    '#dropSlot',
+  ],
   'apps/api/src/modules/transfer/employee-managers.ts#managerChoices': [
     'apps/api/src/modules/employment/employees.ts#listEmployees',
     'apps/api/src/modules/employment/read-model.ts#findCurrentRecord',
@@ -589,6 +599,17 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#readContext',
     'apps/api/src/modules/job/context.ts#revision',
   ],
+  'apps/api/src/modules/transfer/routes.ts#route:DELETE /transfers/employees/:id/draft': [
+    'apps/api/src/authorization.ts#requirePermission',
+    'apps/api/src/modules/employment/context.ts#commandContext',
+    'apps/api/src/modules/employment/context.ts#readContext',
+    'apps/api/src/modules/employment/context.ts#runWrite',
+    'apps/api/src/modules/employment/context.ts#scopedGuard',
+    'apps/api/src/modules/job/context.ts#revision',
+    'apps/api/src/modules/job/context.ts#uuidParam',
+    'apps/api/src/modules/transfer/access.ts#requireTransferSource',
+    'apps/api/src/modules/transfer/draft-slot.ts#releaseTransferDraft',
+  ],
   'apps/api/src/modules/transfer/routes.ts#route:GET /transfers/catalog': [
     'apps/api/src/modules/employment/context.ts#readPageContext',
     'apps/api/src/modules/employment/fields.ts#businessDate',
@@ -610,6 +631,12 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/transfer/manager-references.ts#readManagerReferences',
     'packages/domain/src/permission/decide.ts#buttonResource',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/transfer/routes.ts#route:GET /transfers/employees/:id/draft': [
+    'apps/api/src/modules/employment/context.ts#readPageContext',
+    'apps/api/src/modules/job/context.ts#uuidParam',
+    'apps/api/src/modules/transfer/access.ts#requireTransferSource',
+    'apps/api/src/modules/transfer/draft-slot.ts#readTransferDraft',
   ],
   'apps/api/src/modules/transfer/routes.ts#route:GET /transfers/self': [
     'apps/api/src/modules/employment/context.ts#readPageContext',
@@ -674,6 +701,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/transitions.ts#transitionEmployment',
     'apps/api/src/modules/employment/write-service.ts#createEmploymentBusiness',
     'apps/api/src/modules/employment/write-service.ts#requireSavedBusiness',
+    'apps/api/src/modules/transfer/draft-slot.ts#holdTransferDraft',
+    'apps/api/src/modules/transfer/draft-slot.ts#occupiesDraftSlot',
+    'apps/api/src/modules/transfer/draft-slot.ts#releaseTransferDraft',
     'apps/api/src/modules/transfer/form-configuration.ts#resolveTransferForm',
     'apps/api/src/modules/transfer/linkage/input.ts#dutySubordinateIds',
     'apps/api/src/modules/transfer/linkage/service.ts#saveNewTransferLinkage',

@@ -7,16 +7,19 @@ import { sql, withTenant } from '@italent/db';
 import { tenantLocalDate, buttonResource } from '@italent/domain';
 import type { Hono, Context } from 'hono';
 import { z } from 'zod';
+import { requirePermission } from '../../authorization.js';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import {
+  commandContext,
   readContext,
   readPageContext,
   jsonBody,
   revision,
   uuidParam,
   runWrite,
+  scopedGuard,
   trimEmploymentResponse,
   requireEmploymentWrite,
   pageQuery,
@@ -34,6 +37,7 @@ import {
 } from './configuration.js';
 import { previewTransfer } from './preview.js';
 import { preauthorizeLinkage, registerTransferLinkageRoutes } from './linkage/routes.js';
+import { readTransferDraft, releaseTransferDraft } from './draft-slot.js';
 import { createTransfer, normalizeTransferInput, requireTransferWrite, requireDirectTransfer } from './service.js';
 
 export function registerTransferRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
@@ -87,8 +91,57 @@ export function registerTransferRoutes(router: Hono<TenantEnv>, deps: TenantRout
       body: await createTransfer(tx, context, id, { ...prepared.input, linkageAccess }),
     }));
   });
+  registerDraftRoutes(router, deps);
   registerTransferLinkageRoutes(router, deps);
   registerTransferConfiguration(router, deps);
+}
+
+/**
+ * F-181a：他人调动申请的暂存单按（经办人 × 员工）一份。读口只返回元数据，单据内容仍读 GET /businesses/:id（按当前权限裁剪）；
+ * 清除 = 删暂存单，不需要任职业务的删除权（只清自己发起时暂存的那份），与暂存同一发起权限。
+ */
+function registerDraftRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  router.get('/transfers/employees/:id/draft', async (c) => {
+    const id = uuidParam(c);
+    const ctx = await readPageContext(c, deps, 'detail');
+    const draft = await withTenant(deps.db, ctx.tenantId, async (tx) => {
+      await requireTransferSource(tx, ctx, id, 'hr');
+      return readTransferDraft(tx, ctx, id);
+    });
+    return c.json({ draft });
+  });
+  router.delete('/transfers/employees/:id/draft', async (c) => {
+    const id = uuidParam(c);
+    const ctx = await readContext(c, deps, 'object.create', revision(c));
+    await withTenant(deps.db, ctx.tenantId, (tx) => requireTransferSource(tx, ctx, id, 'hr'));
+    return runWrite(
+      c,
+      deps,
+      ctx,
+      { employeeId: id },
+      async (tx, context) => {
+        const businessId = await releaseTransferDraft(tx, context, id, ctx.expectedRevision);
+        if (!businessId) throw new AppError('NOT_FOUND', '没有可清除的暂存单');
+        return { status: 200, body: { businessId, cleared: true } };
+      },
+      {
+        // 命令事务内按当前授权重过发起权限与员工范围（#199 CommandGuard.before）
+        guard: scopedGuard({
+          before: async (tx) => {
+            const scoped = await commandContext(tx, deps, ctx);
+            await requirePermission(scoped.authorize!, {
+              ...scoped,
+              action: 'object.create',
+              resource: scoped.objectCode!,
+              fields: [],
+            });
+            await requireTransferSource(tx, scoped, id, 'hr');
+          },
+        }),
+        project: (body) => body,
+      },
+    );
+  });
 }
 
 function registerDepartmentChoices(router: Hono<TenantEnv>, deps: TenantRouteDeps) {

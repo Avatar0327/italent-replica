@@ -473,6 +473,33 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     ]),
     ...byId,
   }),
+  // 他人调动申请暂存元数据读口（F-181a，DEC-511 / DEC-596）：只读调用人自己对该员工的那份暂存单（槽位按用户 × 员工），
+  // 返回固定键 { draft: 元数据 | null }（异动类型 / 原因 / 编制 / 表单 / 生效日 / 版本），不含单据字段值——内容仍读 GET /businesses/:id；
+  // 发起权限同暂存：requireTransferSource(hr)（Transfer.Hr 按钮 + 源员工范围 404「员工不存在」）
+  'GET /transfers/employees/:id/draft': object({
+    object: EMPLOYMENT,
+    operation: 'view',
+    button: button('Transfer.Hr', 'detail'),
+    scope: guardScope(TRANSFER_SOURCE, NF_EMPLOYEE),
+    fields: fixed(['draft'], 'DEC-596 F-181a：暂存元数据固定形状，不含任职字段值'),
+    ...byId,
+  }),
+  // 清除暂存（F-181a）：If-Match = 暂存单 revision；与暂存同一发起权限（object.create + Transfer.Hr + 源员工范围），不要求
+  // 任职业务删除权（只删自己暂存产生的草稿）；命令内 CommandGuard.before 按当前授权重验；锁员工 → 锁暂存单（409
+  // REVISION_CONFLICT）→ 草稿删除内核（transitionEmployment delete，与 DELETE /businesses/:id 同一实现）；没有暂存 404
+  'DELETE /transfers/employees/:id/draft': object({
+    object: EMPLOYMENT,
+    operation: 'create',
+    button: button('Transfer.Hr', 'detail'),
+    guards: [LINKAGE],
+    scope: guardScope(TRANSFER_SOURCE, NF_EMPLOYEE),
+    fields: projector('employment.draftClearReceipt', 'employment.draftClearReceipt'),
+    write: write('body', none('清除只删调用人自己暂存产生的草稿，没有联动足迹'), none('回执是固定键，没有返回后复核'), {
+      commandOnly: true,
+      preconditions: ['lockEmploymentEmployee', 'lockEmploymentBusiness', 'assertRevision'],
+    }),
+    ...byId,
+  }),
   // ---- transfer/linkage/routes.ts：联动 -----------------------------------------------------------------------------
   // 联动详情：loadEmploymentBusiness（DEC-177 可见）且 kind=transfer，否则 404「调动不存在」；合同部分按 EmploymentContract
   // 查看权 + 合同范围（contractVisible）决定显示 / 隐藏，归投影器，不是准入 AND（§2.4）

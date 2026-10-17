@@ -731,6 +731,68 @@ export const EMPLOYMENT: RequiredTable = {
       ),
     ),
   ],
+  // F-181a：他人调动申请暂存的元数据读口与清除（槽位按用户 × 员工，draft-slot.ts）
+  'GET /api/tenant/employment/transfers/employees/:id/draft': [
+    recordView(
+      at(TRF, 'GET', '/transfers/employees/:id/draft', "const ctx = await readPageContext(c, deps, 'detail')"),
+    ),
+    ob(
+      `btn:${RECORD}#Transfer.Hr@detail`,
+      ['button:requireTransferButton'],
+      [
+        at(TRF, 'GET', '/transfers/employees/:id/draft', "await requireTransferSource(tx, ctx, id, 'hr')"),
+        ...TRANSFER_BUTTON,
+      ],
+      '读口与暂存同一发起权限：他人调动入口 Transfer.Hr',
+    ),
+    ob(
+      'guard:transfer.source',
+      ['guard:transfer.source'],
+      [at(TRF, 'GET', '/transfers/employees/:id/draft', "await requireTransferSource(tx, ctx, id, 'hr')"), ...SOURCE],
+    ),
+  ],
+  'DELETE /api/tenant/employment/transfers/employees/:id/draft': [
+    ob(
+      `obj:${RECORD}:create`,
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:create', 'object:object.* 动作'],
+      [
+        at(
+          TRF,
+          'DELETE',
+          '/transfers/employees/:id/draft',
+          "const ctx = await readContext(c, deps, 'object.create', revision(c))",
+        ),
+        READ,
+        RECORD_CONST,
+      ],
+      '清除与暂存同一对象操作（object.create），不要求任职业务删除权',
+    ),
+    ob(
+      `btn:${RECORD}#Transfer.Hr@detail`,
+      ['button:requireTransferButton'],
+      [
+        at(TRF, 'DELETE', '/transfers/employees/:id/draft', "await requireTransferSource(tx, scoped, id, 'hr')"),
+        ...TRANSFER_BUTTON,
+      ],
+    ),
+    ob(
+      'guard:transfer.source',
+      ['guard:transfer.source'],
+      [
+        at(TRF, 'DELETE', '/transfers/employees/:id/draft', "await requireTransferSource(tx, scoped, id, 'hr')"),
+        ...SOURCE,
+      ],
+    ),
+    linkage(
+      at(
+        TRF,
+        'DELETE',
+        '/transfers/employees/:id/draft',
+        'const businessId = await releaseTransferDraft(tx, context, id, ctx.expectedRevision)',
+      ),
+      '删暂存单走 transitionEmployment delete 内核，同 DELETE /businesses/:id',
+    ),
+  ],
   // ---- transfer/linkage/routes.ts --------------------------------------------------------------------------------
   'GET /api/tenant/employment/transfers/:id/linkage': [
     ob(
