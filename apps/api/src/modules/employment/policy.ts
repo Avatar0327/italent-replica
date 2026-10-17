@@ -1290,6 +1290,30 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   // Withdraw）；提交只接受 { pendingTransferAck }、只允许原发起人（403 EXIT_SUBMIT_INITIATOR_ONLY）；命令内状态迁移 + 审批钩子
   'POST /exits/:id/submit': exitTransition(),
   'POST /exits/:id/withdraw': exitTransition(),
+  // ---- employment/exit-routes.ts：R2-T03 B5 离职视图与详情（设计 §3.2 / §9.1）---------------------------------------------
+  // 视图：view ∈ in_progress / completed / all / cancellations（缺失或不合法 400）；筛选 departmentId（含下级，可 includeChildren=false）/
+  // keyword / lastWorkDateFrom / lastWorkDateTo / exitTypeCode / reasonCode / whereaboutsCode / status（仅离职中 / 全部）/
+  // initiation 严格校验 400；readPageContext(list)，筛选用到的字段不可查看 403「筛选字段不可查看」；分页前 employmentVisibilitySql
+  // （DEC-177）过滤，total 与本页同一语句；任职字段按任职记录、姓名 / 工号按人员对象可见字段裁剪（无权缺席），activation /
+  // cancellation 是控制项，行可见即可见
+  'GET /exits': object({
+    object: EMPLOYMENT,
+    operation: 'view',
+    button: noButton('列表无按钮'),
+    guards: ['employment.viewableFilters'],
+    scope: listScope('employment.visibility'),
+    fields: projector('employment.response', 'employment.exitViews'),
+  }),
+  // 详情：readPageContext(detail)；loadEmploymentBusiness（DEC-177）看不见 / 不存在 / 非离职单同一个 404「任职业务不存在」；
+  // requirePermission(tenant.employment.read, resource=employeeId)；效果台账只给汇总件数（无目标 ID）
+  'GET /exits/:id': object({
+    object: EMPLOYMENT,
+    operation: 'view',
+    button: noButton('详情无按钮'),
+    scope: pointScope({ param: 'id' }, 'employment.business', NF_BUSINESS),
+    fields: projector('employment.response', 'employment.exitDetail'),
+    ...byId,
+  }),
   // ---- employment/exit-routes.ts：R2-T03 离职三个字典（设计 §2.1 / §4 / §9.1）-----------------------------------------
   // :dict ∉ types / reasons / whereabouts → 400；enabled 查询非法 → 400；字典无组织字段，不按范围裁剪，返回固定键
   'GET /exits/dictionaries/:dict': object({

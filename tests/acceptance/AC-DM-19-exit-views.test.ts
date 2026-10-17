@@ -96,6 +96,13 @@ async function world(label: string) {
 }
 type World = Awaited<ReturnType<typeof world>>;
 
+interface DetailBody {
+  [key: string]: unknown;
+  events: { state: string }[];
+  versions: { versionNo: number }[];
+  approvalInstanceId: string | null;
+}
+
 /** 八种最新状态各一单：draft / in_review / approved / rejected / disapproved / voided / deleted / effective。 */
 async function allStates(x: World) {
   const draft = await x.exit('草稿员工', '2026-10-20');
@@ -134,7 +141,11 @@ describe('AC-DM-19 离职视图谓词（B-29 / B-66）', () => {
     expect(completed.total).toBe(1);
     const all = await x.view('all');
     expect(all.total).toBe(8);
-    expect(x.ids(all).sort()).toEqual(Object.values(s).map((item) => item.id).sort());
+    expect(x.ids(all).sort()).toEqual(
+      Object.values(s)
+        .map((item) => item.id)
+        .sort(),
+    );
     const cancelled = await x.view('cancellations');
     expect(x.ids(cancelled)).toEqual([s.deleted.id, s.voided.id]);
     // 互斥：同一单不会同时出现在离职中与已完成
@@ -151,11 +162,17 @@ describe('AC-DM-19 离职视图谓词（B-29 / B-66）', () => {
       '2026-10-25',
     ]);
     const second = await x.w.hired('第二个已生效');
-    const latest = await x.w.effectiveExit(second.employee.id, '2026-10-03');
+    await x.w.effectiveExit(second.employee.id, '2026-10-03');
     expect((await x.view('completed')).items.map((item) => item.lastWorkDate)).toEqual(['2026-10-03', '2026-10-01']);
-    const all = await x.view('all');
-    expect(all.items[0]!.id).toBe(latest.id);
-    expect(all.items.at(-1)!.id).toBe(s.draft.id);
+    expect(x.ids(await x.view('cancellations'))).toEqual([s.deleted.id, s.voided.id]);
+  });
+
+  it('全部离职记录按创建时间降序', async () => {
+    const x = await world('views-order-all');
+    const early = await x.exit('先创建', '2026-10-20');
+    x.w.setNow('2026-10-06T05:00:00.000Z');
+    const late = await x.exit('后创建', '2026-10-19');
+    expect(x.ids(await x.view('all'))).toEqual([late.id, early.id]);
   });
 
   it('生效失败 / 挂起仍为审批通过的单留在离职中并带标记；其余状态没有标记', async () => {
@@ -338,9 +355,12 @@ describe('AC-DM-19 离职详情（B13）与原定日期（§5.0A，D-14）', () 
     const made = await x.exit('详情员工', '2026-10-22', 'application', {
       exit: { exitTypeCode: 'voluntary', reasonCode: 'family', compensationAmount: 1200.5, employerName: '合成公司' },
     });
-    const submitted = await x.w.session.request('POST', `/exits/${made.id}/submit`, { ifMatch: made.revision, body: {} });
+    const submitted = await x.w.session.request('POST', `/exits/${made.id}/submit`, {
+      ifMatch: made.revision,
+      body: {},
+    });
     expect(submitted.status, await submitted.clone().text()).toBe(200);
-    const detail = (await (await x.w.session.request('GET', `/exits/${made.id}`)).json()) as Record<string, any>;
+    const detail = (await (await x.w.session.request('GET', `/exits/${made.id}`)).json()) as DetailBody;
     expect(detail).toMatchObject({
       id: made.id,
       status: 'in_review',
@@ -361,7 +381,11 @@ describe('AC-DM-19 离职详情（B13）与原定日期（§5.0A，D-14）', () 
     expect(detail.versions).toHaveLength(1);
     expect(detail.approvalInstanceId).toEqual(expect.any(String));
     expect(detail.effects).toEqual([]);
-    const transfer = await x.w.synthetic(made.employee.id, { kind: 'transfer', state: 'draft', effectiveDate: '2026-10-30' });
+    const transfer = await x.w.synthetic(made.employee.id, {
+      kind: 'transfer',
+      state: 'draft',
+      effectiveDate: '2026-10-30',
+    });
     expect((await x.w.session.request('GET', `/exits/${transfer}`)).status).toBe(404);
     expect((await x.w.session.request('GET', `/exits/${randomUUID()}`)).status).toBe(404);
     expect((await x.w.session.request('GET', '/exits/not-a-uuid')).status).toBe(400);
@@ -379,8 +403,12 @@ describe('AC-DM-19 离职详情（B13）与原定日期（§5.0A，D-14）', () 
       FROM employment_payload_versions p WHERE p.tenant_id=${x.w.session.tenant.id} AND p.business_id=${made.id}::uuid
       ORDER BY p.version_no DESC LIMIT 1`);
     const [row] = (await x.view('in_progress')).items;
-    expect(row).toMatchObject({ lastWorkDate: '2026-10-15', effectiveDate: '2026-10-16', plannedLastWorkDate: '2026-10-10' });
-    const detail = (await (await x.w.session.request('GET', `/exits/${made.id}`)).json()) as Record<string, any>;
+    expect(row).toMatchObject({
+      lastWorkDate: '2026-10-15',
+      effectiveDate: '2026-10-16',
+      plannedLastWorkDate: '2026-10-10',
+    });
+    const detail = (await (await x.w.session.request('GET', `/exits/${made.id}`)).json()) as DetailBody;
     expect(detail.dates).toEqual({
       planned: { lastWorkDate: '2026-10-10', effectiveDate: '2026-10-11' },
       final: { lastWorkDate: '2026-10-15', effectiveDate: '2026-10-16' },
@@ -390,7 +418,7 @@ describe('AC-DM-19 离职详情（B13）与原定日期（§5.0A，D-14）', () 
 
   it('详情的效果台账与职责转交只给汇总件数，不带目标 ID；撤销记录出现在详情里', async () => {
     const x = await world('views-effects');
-    const made = await x.exit('效果员工', '2026-10-20', 'direct');
+    const made = await x.exit('效果员工', '2026-10-20');
     const t = x.w.session.tenant.id;
     for (const [phase, kind, target] of [
       ['confirmed', 'establishment_pre_released', 'establishment'],
@@ -403,7 +431,7 @@ describe('AC-DM-19 离职详情（B13）与原定日期（§5.0A，D-14）', () 
         VALUES (${t},${made.id}::uuid,${made.employee.id}::uuid,${phase},${kind},${target},gen_random_uuid(),'fx')`);
     await x.force(made.id, 'voided');
     await x.cancellation(made.id, made.employee.id, '细节', '2026-10-06T03:00:00Z');
-    const detail = (await (await x.w.session.request('GET', `/exits/${made.id}`)).json()) as Record<string, any>;
+    const detail = (await (await x.w.session.request('GET', `/exits/${made.id}`)).json()) as DetailBody;
     expect(detail.effects).toEqual([
       { phase: 'confirmed', kind: 'duty_failed', count: 1 },
       { phase: 'confirmed', kind: 'duty_transferred', count: 2 },
