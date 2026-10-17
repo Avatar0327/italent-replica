@@ -985,6 +985,10 @@
 "log": [
 [
 "10-16",
+"D2·R2·后补·F-211（#385）第 1 轮审查可合并，入队待合并"
+],
+[
+"10-16",
 "D2·R2·后补·F-211（#385）开发完成，第 1 轮 Sol high 审查已发起"
 ],
 [
@@ -6043,7 +6047,7 @@
 "k": "F-211",
 "n": "测试夹具补租户上下文第三批：AC-EV-F092-panel-exit-pg、AC-TRF-163-required、AC-TR-template-delete-pg（P3，只改测试）",
 "s": "assigned",
-"note": "#385 第 1 轮 Codex Sol high 审查中（head b5a1c529，3 个测试文件 +58/−37）· 基于最新 main、无需取证",
+"note": "#385 第 1 轮 Codex Sol high 可合并（head b5a1c529，无新增后补）· 已入队待合并",
 "mod": "R2",
 "ms": "D2",
 "pr": 385
