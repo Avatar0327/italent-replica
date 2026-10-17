@@ -197,8 +197,8 @@ describe('AC-PLAT-F061 T-16 授权项编码与指纹守卫', () => {
       22: 'b0edfe8938d3d701',
       // R2 BE-14a：新增 Offer 对象（TenantBase.Offer）字段 / 按钮授权项
       23: '91de7da514fc2bf7',
-      // R2 BE-14b2：Offer 新增 10 个同步待入职只读系统字段（merge:main 定号，DEC-439④）
-      24: '1cbc96497c1f7e5e',
+      // R2 BE-14b2：Offer 新增 10 个同步待入职只读系统字段、任职记录新增 2 个（merge:main 定号，DEC-439④）
+      24: '0044b2b2c82413b8',
     };
     expect(HISTORY[STANDARD_GRANT_VERSION], `version ${STANDARD_GRANT_VERSION} 没有登记指纹：追加一行`).toBe(
       STANDARD_GRANT_DIGEST,

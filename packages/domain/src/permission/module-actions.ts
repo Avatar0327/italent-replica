@@ -388,6 +388,9 @@ export const MODULE_OBJECTS = {
       'isInserted',
       // 变动类型由系统联动写入（F-006，W-416），不是可编辑字段。
       'changeType',
+      // 待入职列表带出的 Offer 同步值（BE-14b2）：合同公司、试用期月数，只读
+      'contractCompanyId',
+      'probationMonths',
       // 人员状态 / 入职状态只经业务流转写入（F-022，15 §9.3）：可授查看，不可授编辑。
       'employeeStatus',
       'entryStatus',

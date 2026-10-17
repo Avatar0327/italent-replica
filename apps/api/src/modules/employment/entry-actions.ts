@@ -110,6 +110,7 @@ export async function cancelPendingEntry(
   recordId: string,
   input: CancelInput,
 ): Promise<EmploymentBusiness> {
+  await entryOfferHooks.beforeAction(tx, ctx, { businessId: recordId });
   const { record } = await cancelEntryCore(tx, ctx, recordId, input, { rejectUnchanged: true });
   await entryOfferHooks.entryCancelled(tx, ctx, { employeeId: record.employeeId, businessId: recordId });
   return requireSavedBusiness(tx, ctx, recordId);
@@ -244,6 +245,7 @@ export async function postponePendingEntry(
 ): Promise<EmploymentBusiness & { readonly contractNotice: PendingContractNotice | null }> {
   assertRemark(input.remark);
   const effectiveDate = businessDate(input.effectiveDate);
+  await entryOfferHooks.beforeAction(tx, ctx, { businessId: recordId });
   const locked = await lockPendingEntry(tx, ctx, recordId);
   if (effectiveDate === locked.record.effectiveDate && locked.record.entryStatus !== ENTRY_STATUS.cancelled)
     throw new AppError('VALIDATION_FAILED', '改期后的入职日期不能与原入职日期相同', { reason: 'ENTRY_DATE_UNCHANGED' });

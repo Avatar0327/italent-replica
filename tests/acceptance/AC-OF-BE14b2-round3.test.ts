@@ -65,10 +65,17 @@ describe('P2-2 夜间任务：大量不可处理项不耗尽上限', () => {
     }
     const normal = await w.accepted(await w.social({ plannedEntryDate: '2026-11-01' }));
     await w.timing({ enabled: true, internConversion: false });
-    const run = await runOfferSyncSweep(w.db, { ...at('2026-10-18'), limit: 1, maxPerTenant: 2 });
+    const run = await runOfferSyncSweep(w.db, {
+      ...at('2026-10-18'),
+      tenantId: w.tenant.id,
+      limit: 1,
+      maxPerTenant: 2,
+    });
     expect(run).toMatchObject({ synced: [normal.id], errors: [], scanned: 1 });
     // 连续运行：没有可处理项，不重复、不报错
-    expect(await runOfferSyncSweep(w.db, { ...at('2026-10-19'), limit: 1, maxPerTenant: 2 })).toMatchObject({
+    expect(
+      await runOfferSyncSweep(w.db, { ...at('2026-10-19'), tenantId: w.tenant.id, limit: 1, maxPerTenant: 2 }),
+    ).toMatchObject({
       synced: [],
       scanned: 0,
     });
@@ -84,9 +91,11 @@ describe('P2-3 待入职列表新增字段按查看权投影', () => {
     const list = async () => {
       const response = await w.realApi('GET', '/api/tenant/employment/pending-entries?view=all');
       expect(response.status, await response.clone().text()).toBe(200);
-      return ((await response.json()) as { items: Record<string, unknown>[] }).items;
+      const body = (await response.json()) as { items: Record<string, unknown>[] };
+      return body.items;
     };
     await w.permitObject(MODULE_OBJECTS.employmentRecord);
+    await w.seeAll(MODULE_OBJECTS.employmentRecord.code);
     expect((await list())[0]).toMatchObject({ contractCompanyId: w.company.id, probationMonths: 3 });
     await w.permitObject(MODULE_OBJECTS.employmentRecord, ['contractCompanyId', 'probationMonths']);
     const restricted = (await list())[0]!;

@@ -12,6 +12,7 @@
 import { and, eq, offers, type Tx } from '@italent/db';
 import {
   EMPLOYEE_STATUS,
+  effectiveOfferType,
   MODULE_OBJECTS,
   OFFER_SYNC_DEFAULT,
   OFFER_SYNC_TIMING_KEY,
@@ -157,6 +158,11 @@ async function createSyncTarget(tx: Tx, ctx: OfferSyncContext, offer: OfferRow, 
     dottedManagerId: offer.dottedManagerId,
   });
   if (plan === 'intern_regularization') {
+    // 实习转正只适用于正式 Offer（IN-R3）：实习 Offer 不得追加实习转正记录、不得把实习生改成内部员工
+    if (effectiveOfferType(offer.offerType as OfferType | null) === 'intern')
+      throw new AppError('VALIDATION_FAILED', '实习 Offer 不是正式 Offer，不能把在职实习生转正', {
+        reason: 'OFFER_INTERN_OFFER_CONVERSION',
+      });
     // 弱控确认归 b1：同步不弹确认（confirmed），严格控编超编仍由落地时整单拒绝（ESTABLISHMENT_EXCEEDED）
     const business = await regularizeIntern(tx, employment, employeeId, {
       effectiveDate: offer.plannedEntryDate!,
@@ -307,6 +313,9 @@ export async function linkEmployee(tx: Tx, ctx: OfferContext, id: string, employ
   if (before.status !== 'pending' && before.status !== 'sent')
     throw new AppError('CONFLICT', '只有待发或已发的 Offer 可以关联在职实习生', { reason: 'OFFER_LINK_NOT_ALLOWED' });
   if (employeeId !== null) {
+    // IN-R3：实习转正的“正式 Offer”才关联在职实习生；实习 Offer（新建实习生 / 校招生提前实习）不适用
+    if (effectiveOfferType(before.offerType as OfferType | null) === 'intern')
+      throw new AppError('VALIDATION_FAILED', '实习 Offer 不能关联在职实习生', { reason: 'OFFER_LINK_TYPE_INVALID' });
     const scope = await ctx.scopeOf!(MODULE_OBJECTS.employee.code);
     const target = { employeeId, departmentId: null, creatorId: null };
     const invalid = new AppError('VALIDATION_FAILED', 'Offer 引用的对象不存在', { reason: 'OFFER_REFERENCE_INVALID' });
@@ -330,6 +339,10 @@ export async function linkEmployee(tx: Tx, ctx: OfferContext, id: string, employ
  * - onEntryCancelled：取消不换 ID，关联不变；取消后把 Offer 改为已拒绝（OF-R9 开关、AC-OF-03）是 b3，本单保持空实现。
  */
 export const offerEntryHooks: EntryOfferHooks = {
+  // 动作开始、任何员工 / 业务 / 组织锁之前先锁住关联的 Offer（锁序 Offer → 员工 → 业务 → 组织，与 Offer 重发同序，避免 40P01）
+  beforeEntryAction: async (tx, ctx, event) => {
+    await findOfferByPendingEntry(tx, ctx.tenantId, event.businessId, { lock: true });
+  },
   onEntryCancelled: async () => undefined,
   onEntryRestored: async (tx, ctx, event) => {
     // 同步记录 A → 普通改期 B（不调端口）→ 取消 B → 改期恢复 C：Offer 存的仍是 A，沿记录链从 B 找回关联的 Offer，加锁后换成 C

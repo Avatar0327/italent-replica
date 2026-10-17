@@ -343,6 +343,7 @@ export const GRAPH: Graph = {
     '#syncPlan',
     'apps/api/src/modules/permission/user-provisioning.ts#provisionEmployeeUser',
     'apps/api/src/modules/personnel/employee-write.ts#appendEmployee',
+    'packages/domain/src/offer/rules.ts#effectiveOfferType',
     'packages/domain/src/offer/sync.ts#offerSyncKind',
   ],
   'apps/api/src/modules/offer/sync.ts#internConversionOnly': ['#linkedPerson'],
@@ -353,6 +354,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/offer/service.ts#lockOffer',
     'apps/api/src/modules/offer/service.ts#offerDto',
     '#linkedPerson',
+    'packages/domain/src/offer/rules.ts#effectiveOfferType',
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
   ],
   'apps/api/src/modules/offer/sync.ts#linkedPerson': [

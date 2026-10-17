@@ -24,14 +24,23 @@ export interface OfferSyncRun {
   readonly failed: string[];
   /** 存储不可用等非业务错误：不记失败，下次运行重试。 */
   readonly errors: { readonly offerId: string; readonly code: string }[];
+  /** 本次从候选查询里取出并逐条处理的 Offer 数（含锁内复判后没动作的）。 */
+  scanned: number;
 }
 
 export async function runOfferSyncSweep(
   db: Db,
-  options: { readonly clock?: () => Date; readonly tenantId?: string; readonly limit?: number } = {},
+  options: {
+    readonly clock?: () => Date;
+    readonly tenantId?: string;
+    /** 每页条数。 */
+    readonly limit?: number;
+    /** 每个租户每次运行最多处理的 Offer 数（缺省 5000，测试可调小）。 */
+    readonly maxPerTenant?: number;
+  } = {},
 ): Promise<OfferSyncRun> {
   const now = (options.clock ?? (() => new Date()))();
-  const run: OfferSyncRun = { synced: [], failed: [], errors: [] };
+  const run: OfferSyncRun = { synced: [], failed: [], errors: [], scanned: 0 };
   let after: string | null = null;
   for (;;) {
     const page: { id: string; timezone: string }[] = await withPlatform(db, async (tx) =>
@@ -41,7 +50,14 @@ export async function runOfferSyncSweep(
           AND (${after}::uuid IS NULL OR id>${after}::uuid) ORDER BY id LIMIT ${TENANT_PAGE}`),
       ),
     );
-    for (const tenant of page) await sweepTenant(db, tenant, now, options.limit ?? DEFAULT_LIMIT, run);
+    for (const tenant of page)
+      await sweepTenant(
+        db,
+        tenant,
+        now,
+        { pageSize: options.limit ?? DEFAULT_LIMIT, max: options.maxPerTenant ?? MAX_PER_TENANT },
+        run,
+      );
     if (page.length < TENANT_PAGE) return run;
     after = page.at(-1)!.id;
   }
@@ -50,40 +66,62 @@ export async function runOfferSyncSweep(
 /** 每个租户每次运行最多处理的 Offer 数（超出的留给下一次运行）。 */
 const MAX_PER_TENANT = 5000;
 
+/** 关联的人员最近一条任职是在职实习生（实习生、非离职 / 退休、非待入职）：与 sync.ts linkedPerson 同口径。 */
+const activeInternLast = sql`EXISTS (
+  SELECT 1 FROM (
+    SELECT r.id, r.kind, r.employ_type FROM employment_timeline t
+    JOIN employment_records r ON r.tenant_id = t.tenant_id AND r.id = t.record_id
+    WHERE t.tenant_id = offers.tenant_id AND t.employee_id = offers.linked_employee_id
+    ORDER BY t.start_date DESC, t.sort_order DESC LIMIT 1
+  ) last
+  WHERE last.employ_type = 'intern' AND last.kind NOT IN ('leave', 'retirement')
+    AND (SELECT s.employee_status FROM employment_record_status(offers.tenant_id, last.id) s) IS DISTINCT FROM 1)`;
+
 async function sweepTenant(
   db: Db,
   tenant: { id: string; timezone: string },
   now: Date,
-  pageSize: number,
+  budget: { readonly pageSize: number; readonly max: number },
   run: OfferSyncRun,
 ) {
   const today = tenantLocalDate(now, tenant.timezone);
   const setting = await withTenant(db, tenant.id, (tx) => readOfferSyncSetting(tx, tenant.id));
   if (!setting.enabled) return;
-  // 限量之前先按状态与时机筛出可处理项（SQL 与 offerSyncDue 同口径，锁内再判一次），否则前面不可处理的行会永远挡住后面的
+  // 限量之前就在 SQL 里排除不可处理项（与 offerSyncDue / internConversionOnly 同口径，锁内再判一次），否则它们会占满页和上限，
+  // 后面正常到期的 Offer 永远轮不到
   const status = setting.mode === 'on_send' ? sql`status IN ('sent','accepted')` : sql`status = 'accepted'`;
   const near =
     setting.mode === 'on_accept_within_days'
       ? sql`planned_entry_date <= ${today}::date + ${setting.days}::int`
       : sql`true`;
-  let after: { date: string | null; id: string | null } = { date: null, id: null };
-  let seen = 0;
-  while (seen < MAX_PER_TENANT) {
-    const page: { id: string; date: string }[] = await withTenant(db, tenant.id, async (tx) =>
-      rows(
-        await tx.execute(sql`SELECT id::text, planned_entry_date::text AS date FROM offers
-          WHERE tenant_id=${tenant.id} AND ${status} AND ${near} AND pending_entry_business_id IS NULL
-            AND planned_entry_date IS NOT NULL
-            AND (sync_status IS NULL OR (sync_status='failed'
-              AND (last_sync_at AT TIME ZONE ${tenant.timezone})::date < ${today}::date))
-            AND (${after.date}::date IS NULL OR (planned_entry_date, id) > (${after.date}::date, ${after.id}::uuid))
-          ORDER BY planned_entry_date, id LIMIT ${pageSize}`),
-      ),
-    );
-    for (const { id } of page) await syncOne(db, tenant, now, today, id, run);
-    seen += page.length;
-    if (page.length < pageSize) return;
-    after = { date: page.at(-1)!.date, id: page.at(-1)!.id };
+  const internSkipped = setting.internConversion
+    ? sql`true`
+    : sql`NOT (linked_employee_id IS NOT NULL AND ${activeInternLast})`;
+  // 先处理从未同步过的，再重试失败的（同一业务日失败只重试一次）：持续失败的 Offer 不会挤掉新到期的
+  const passes = [
+    sql`sync_status IS NULL`,
+    sql`(sync_status='failed' AND (last_sync_at AT TIME ZONE ${tenant.timezone})::date < ${today}::date)`,
+  ];
+  const left = { n: budget.max };
+  for (const pass of passes) {
+    let after: { date: string | null; id: string | null } = { date: null, id: null };
+    while (left.n > 0) {
+      const size = Math.min(budget.pageSize, left.n);
+      const page: { id: string; date: string }[] = await withTenant(db, tenant.id, async (tx) =>
+        rows(
+          await tx.execute(sql`SELECT id::text, planned_entry_date::text AS date FROM offers
+            WHERE tenant_id=${tenant.id} AND ${status} AND ${near} AND ${internSkipped}
+              AND pending_entry_business_id IS NULL AND planned_entry_date IS NOT NULL AND ${pass}
+              AND (${after.date}::date IS NULL OR (planned_entry_date, id) > (${after.date}::date, ${after.id}::uuid))
+            ORDER BY planned_entry_date, id LIMIT ${size}`),
+        ),
+      );
+      for (const { id } of page) await syncOne(db, tenant, now, today, id, run);
+      run.scanned += page.length;
+      left.n -= page.length;
+      if (page.length < size) break;
+      after = { date: page.at(-1)!.date, id: page.at(-1)!.id };
+    }
   }
 }
 
