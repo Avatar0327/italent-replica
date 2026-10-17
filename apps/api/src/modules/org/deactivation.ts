@@ -10,7 +10,7 @@ import { countDepartmentStaff } from '../employment/org-people.js';
 import { rowsOf } from '../employment/read-model.js';
 import { countEnabledPositions } from '../job/read-model.js';
 import { futureBoundaries, loadOrgSnapshot, type OrgRecord } from './read-model.js';
-import type { NormalizedOrganization, OrgWriteContext } from './validation.js';
+import { deactivationNotAfterEstablished, type NormalizedOrganization, type OrgWriteContext } from './validation.js';
 
 /** 级联涉及的组织须都在操作人数据范围内，由路由按当前范围逐个校验（范围外一律按不存在处理，不列名称）。 */
 export type CascadeAuthorizer = (tx: Tx, orgIds: readonly string[]) => Promise<void>;
@@ -69,13 +69,7 @@ export async function assertDeactivationAfterEstablished(
   }
   const [target] = offenders.sort((a, b) => (a.code < b.code ? -1 : a.code > b.code ? 1 : 0));
   if (!target) return;
-  const message = `组织【${target.name}】的停用日期（${from}）不能早于等于该组织的设立日期（${target.establishedOn}）`;
-  throw new AppError('VALIDATION_FAILED', message, {
-    reason: 'DEACTIVATION_NOT_AFTER_ESTABLISHED',
-    fields: { effectiveDate: message },
-    effectiveDate: from,
-    establishedOn: target.establishedOn,
-  });
+  throw deactivationNotAfterEstablished(target.name, from, target.establishedOn);
 }
 
 /**
