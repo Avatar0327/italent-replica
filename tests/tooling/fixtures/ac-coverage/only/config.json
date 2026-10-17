@@ -1,0 +1,8 @@
+{
+  "root": ".",
+  "vitestConfig": "vitest.fixture.config.mjs",
+  "filters": [],
+  "definitions": ["definitions.md"],
+  "ignore": {},
+  "profiles": { "pglite": { "unset": ["AC_FIXTURE_PG"] }, "pg": { "set": { "AC_FIXTURE_PG": "1" } } }
+}

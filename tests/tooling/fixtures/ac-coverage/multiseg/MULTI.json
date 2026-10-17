@@ -1,0 +1,9 @@
+{
+  "title": "夹具：多段编号",
+  "groups": [
+    { "name": "多段区间", "include": ["AC-PRM-FW-01～07"] },
+    { "name": "单段通配", "include": ["AC-PRM-*"] },
+    { "name": "多段通配", "include": ["AC-PRM-FW-*"] },
+    { "name": "数字模块多段", "include": ["AC-360-FW-01"] }
+  ]
+}
