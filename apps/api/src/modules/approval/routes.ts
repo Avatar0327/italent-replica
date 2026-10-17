@@ -20,7 +20,7 @@ import {
 } from '@italent/domain';
 import { Hono, type Context } from 'hono';
 import { z } from 'zod';
-import { runCommand, type CommandResult } from '../../commands.js';
+import { runCommand, type CommandGuard, type CommandResult } from '../../commands.js';
 import { handleError } from '../../errors.js';
 import type { TenantRouteDeps, TenantRouteModule } from '../../routes.js';
 import { tenantOf, type TenantContext, type TenantEnv } from '../../tenant-context.js';
@@ -41,6 +41,7 @@ import {
   requireProcessView,
   requireResubmitRight,
   requireWithdrawRight,
+  withdrawGuard,
 } from './access.js';
 import {
   addSign,
@@ -147,11 +148,13 @@ async function command(
   ctx: ApprovalContext,
   input: unknown,
   execute: (tx: Tx, ctx: ApprovalContext) => Promise<CommandResult>,
+  guard?: CommandGuard,
 ) {
   try {
     return await runCommand(deps.db, ctx, {
       id: c.req.header('idempotency-key'),
       fingerprint: { method: c.req.method, path: c.req.path, revision: ctx.expectedRevision, input },
+      ...(guard ? { guard } : {}),
       execute: (tx, commandId) => execute(tx, { ...ctx, commandId }),
     });
   } catch (error) {
@@ -598,7 +601,9 @@ function registerInstanceRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
       const ctx = writeCtx(c, deps);
       const id = uuidParam(c);
       if (path === 'withdraw') await requireWithdrawRight(deps, ctx, id);
-      const result = await command(c, deps, ctx, { id }, (tx, context) => act(tx, context, id));
+      // P1-01：Offer 两类的撤回在命令事务内（含同键重放）再按当前 Offer 权限复核；其他类型的 guard 不做事
+      const guard = path === 'withdraw' ? withdrawGuard(deps, ctx, id) : undefined;
+      const result = await command(c, deps, ctx, { id }, (tx, context) => act(tx, context, id), guard);
       return respondOutcome(c, deps, result);
     });
   }

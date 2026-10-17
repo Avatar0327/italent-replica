@@ -471,7 +471,8 @@ export const APPROVAL_POLICIES = defineTable('approval', {
   }),
   'POST /instances/:id/urge': initiatorAction(URGE),
   // requireWithdrawRight 路由前置：employment / contract 须仍持撤回按钮 + 编辑权 + 范围（403 APPROVAL_SCOPE_DENIED）；
-  // personnel_change 须仍持自助申请按钮；发起人判定随后在命令内 openOwn
+  // personnel_change 须仍持自助申请按钮；offer / offer_batch 须仍持 Offer 编辑权且每份 Offer 在 Offer 范围内，并经
+  // withdrawGuard 在命令事务内（含同键重放）再判（BE-14a3 P1-01）；发起人判定随后在命令内 openOwn
   'POST /instances/:id/withdraw': initiatorAction(WITHDRAW, { guards: ['approval.withdrawRight'] }),
   'POST /instances/:id/admin-transfer': adminAction('adminTransfer'),
   // kind 缺省 reassign；jump 不需要 taskId / toUserId；干预或转给自己须填 reason（400 APPROVAL_REASON_REQUIRED）

@@ -3,12 +3,19 @@
  * Offer 对象编辑开关 + 本单关联的每一份 Offer 都在当前 Offer 范围内（批量逐份），不沿用任职撤回按钮与任职范围。
  * 真实授权器：发起在全部允许的夹具里完成，撤回由发起人本人以真实身份调用。
  */
-import { MODULE_OBJECTS, type ObjectDefinition } from '@italent/domain';
+import { APPROVAL_OBJECTS, APPROVAL_INSTANCE_OBJECT, MODULE_OBJECTS, type ObjectDefinition } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { permissionAdmin, type InstanceView } from './AC-APV-support.js';
-import { createProfile, grant, makeGrantable, setObjectPermission, type ProfileBody } from './AC-PRM-support.js';
+import {
+  addMember,
+  createProfile,
+  grant,
+  makeGrantable,
+  setObjectPermission,
+  type ProfileBody,
+} from './AC-PRM-support.js';
 import { offerApprovalWorld, reasonOf, type OfferView } from './AC-OF-BE14a3-support.js';
 import { uniqueSuffix } from './support/unique.js';
 
@@ -67,7 +74,7 @@ async function world(label: string) {
     return { offer, view: await w.instance(offer.id) };
   };
   const approvalStatus = async (offer: OfferView) => (await w.get(offer.id)).approvalStatus;
-  return { ...w, profile, permit, employmentSeeAll, scopeToDepartment, withdraw, single, approvalStatus };
+  return { ...w, prm, profile, permit, employmentSeeAll, scopeToDepartment, withdraw, single, approvalStatus };
 }
 
 describe('P1-01 审批侧撤回按 Offer 权限复核', () => {
@@ -121,5 +128,53 @@ describe('P1-01 审批侧撤回按 Offer 权限复核', () => {
     expect(first.status, await first.clone().text()).toBe(200);
     await w.permit(OFFER_DEFINITION, false);
     expect((await w.withdraw(view, key)).status).toBe(403);
+  });
+
+  it('同类位置（管理员转交）：Offer 实例按 Offer 范围限定，只有任职看全部的管理员不能转交', async () => {
+    const w = await world('admin-scope');
+    const prm = w.prm;
+    const { offer, view } = await w.single();
+    const task = w.pending(view)[0]!;
+    const admin = async (seeAll: string) => {
+      const user = await addMember(prm, `Offer审批管理员${uniqueSuffix()}`);
+      const profile = await createProfile(prm, `of3a${uniqueSuffix()}`);
+      const instanceObject = APPROVAL_OBJECTS.find((o) => o.code === APPROVAL_INSTANCE_OBJECT)!;
+      const response = await setObjectPermission(
+        prm,
+        profile,
+        {
+          dataOperations: { create: false, update: false, delete: false },
+          fields: instanceObject.fields.map((f) => ({ fieldCode: f.code, view: true, edit: false })),
+          buttons: [{ buttonCode: 'adminTransfer', level: 'detail' }],
+        },
+        instanceObject.code,
+      );
+      expect(response.status, await response.clone().text()).toBe(200);
+      const scoped = await prm.api.request(
+        'PUT',
+        `/api/tenant/permission/profiles/${profile.id}/data-scopes/TenantBase`,
+        {
+          ...prm.asAdmin,
+          ifMatch: 0,
+          body: { targetKind: 'entity', targetCode: seeAll, seeAll: true },
+        },
+      );
+      expect(scoped.status, await scoped.clone().text()).toBe(200);
+      await makeGrantable(prm, [profile.id]);
+      expect((await grant(prm, user.id, profile.id)).status).toBe(201);
+      return (current: InstanceView) =>
+        prm.api.request('POST', `/api/tenant/approval/instances/${current.id}/admin-transfer`, {
+          ...w.as(user.id),
+          ifMatch: current.revision,
+          body: { taskId: task.id, toUserId: w.manager.userId, reason: '合成转交' },
+        });
+    };
+    const employmentAdmin = await admin(EMPLOYMENT.code);
+    expect((await employmentAdmin(view)).status).not.toBe(200);
+    expect(w.pending(await w.instance(offer.id)).map((t) => t.assigneeUserId)).toEqual([w.head.userId]);
+    const offerAdmin = await admin(OFFER_DEFINITION.code);
+    const moved = await offerAdmin(await w.instance(offer.id));
+    expect(moved.status, await moved.clone().text()).toBe(200);
+    expect(w.pending(await w.instance(offer.id)).map((t) => t.assigneeUserId)).toEqual([w.manager.userId]);
   });
 });

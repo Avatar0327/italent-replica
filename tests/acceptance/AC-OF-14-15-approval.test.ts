@@ -235,9 +235,8 @@ describe('Offer 批量审批（OF-R15）', () => {
     const lonely = await w.person('无上级申请人', w.department);
     const offer = await w.offer(lonely);
     const refused = await reasonOf(await w.batchRaw({ offerIds: [offer.id] }, lonely));
-    expect(refused).toMatchObject({ status: 409, code: 'CONFLICT' });
-    // 首节点“处理人为空 = 无操作”（DEC-318 K-38）在提交时同样报错，不建单（DEC-054）
-    expect(['APPROVAL_FIRST_NODE_EMPTY', 'APPROVAL_NO_ASSIGNEE']).toContain(refused.reason);
+    // 首节点“处理人为空 = 无操作”（照原站，DEC-318 K-38）在提交时报 APPROVAL_NO_ASSIGNEE，不建单（DEC-054；PR 未决 1）
+    expect(refused).toMatchObject({ status: 409, code: 'CONFLICT', reason: 'APPROVAL_NO_ASSIGNEE' });
     expect(await w.get(offer.id, lonely)).toMatchObject({ approvalStatus: 'unsubmitted', revision: offer.revision });
     const initiated = await w.json<{ items: unknown[] }>(
       await w.request(lonely.userId, 'GET', '/api/tenant/approval/instances?role=initiated'),
