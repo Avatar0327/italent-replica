@@ -34,7 +34,7 @@ export const DIGESTS: Digests = {
     openTask: '6f9c0c04e106',
   },
   'apps/api/src/modules/approval/adapters.ts': {
-    ADAPTERS: 'f90f951a5985',
+    ADAPTERS: '9596f45a78ad',
     personnelAdapter: '5e08297e79d8',
   },
   'apps/api/src/modules/approval/disclosure.ts': {
@@ -1391,7 +1391,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/approval/actions.ts#assertTargetInScope': '1fe41485709d',
   'apps/api/src/modules/approval/actions.ts#openOwn': '1977a0826369',
   'apps/api/src/modules/approval/actions.ts#openTask': 'b572a86c10cb',
-  'apps/api/src/modules/approval/adapters.ts#ADAPTERS': '18acc4605e8c',
+  'apps/api/src/modules/approval/adapters.ts#ADAPTERS': 'f73d25548cd7',
   'apps/api/src/modules/approval/adapters.ts#personnelAdapter': '5a2fbd0e4076',
   'apps/api/src/modules/approval/disclosure.ts#assertCanOpen': '457412422a98',
   'apps/api/src/modules/approval/disclosure.ts#readDetail': '6a229d2d587a',

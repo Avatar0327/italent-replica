@@ -25,3 +25,4 @@ export * from './exit.js';
 export * from './employment-entry.js';
 export * from './employment-email.js';
 export * from './offer.js';
+export * from './part-time.js';

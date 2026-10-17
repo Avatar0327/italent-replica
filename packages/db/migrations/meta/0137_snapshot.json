@@ -1,5 +1,5 @@
 {
-  "id": "cfe6b466-896b-4e3b-98a6-48e212751ff5",
+  "id": "e5a9daf8-bebd-4614-b483-4ef14710bf65",
   "prevId": "812cb599-d610-4678-a0c0-1b3f6124a95c",
   "version": "7",
   "dialect": "postgresql",
@@ -11747,7 +11747,7 @@
         },
         "employment_payload_versions_kind": {
           "name": "employment_payload_versions_kind",
-          "value": "\"employment_payload_versions\".\"kind\" IN ('hire', 'rehire', 'retire_rehire', 'regularization', 'transfer',\n      'org_adjustment', 'leave', 'retirement', 'intern_regularization')"
+          "value": "\"employment_payload_versions\".\"kind\" IN ('hire', 'rehire', 'retire_rehire', 'regularization', 'transfer',\n      'org_adjustment', 'leave', 'retirement', 'intern_regularization', 'part_time')"
         },
         "employment_payload_versions_change_type": {
           "name": "employment_payload_versions_change_type",
@@ -12457,15 +12457,19 @@
         },
         "employment_records_kind": {
           "name": "employment_records_kind",
-          "value": "\"employment_records\".\"kind\" IN ('hire', 'rehire', 'retire_rehire', 'regularization', 'transfer',\n      'org_adjustment', 'leave', 'retirement', 'intern_regularization')"
+          "value": "\"employment_records\".\"kind\" IN ('hire', 'rehire', 'retire_rehire', 'regularization', 'transfer',\n      'org_adjustment', 'leave', 'retirement', 'intern_regularization', 'part_time')"
         },
         "employment_records_change_type": {
           "name": "employment_records_change_type",
           "value": "\"employment_records\".\"change_type\" IN ('position_adjustment')"
         },
-        "employment_records_primary_only": {
-          "name": "employment_records_primary_only",
-          "value": "\"employment_records\".\"service_type\" = 'primary'"
+        "employment_records_service_type": {
+          "name": "employment_records_service_type",
+          "value": "\"employment_records\".\"service_type\" IN ('primary', 'part_time', 'secondment', 'expatriate')"
+        },
+        "employment_records_service_kind": {
+          "name": "employment_records_service_kind",
+          "value": "(\"employment_records\".\"service_type\" = 'primary') = (\"employment_records\".\"kind\" <> 'part_time')"
         },
         "employment_records_start_valid": {
           "name": "employment_records_start_valid",
@@ -23274,7 +23278,7 @@
         },
         "approval_instances_business_type": {
           "name": "approval_instances_business_type",
-          "value": "\"approval_instances\".\"business_type\" IN ('employment','personnel_change','contract','idp','talent_review')"
+          "value": "\"approval_instances\".\"business_type\" IN ('employment','personnel_change','contract','idp','talent_review','part_time')"
         },
         "approval_instances_revision": {
           "name": "approval_instances_revision",
@@ -24129,7 +24133,7 @@
         },
         "approval_nodes_approver": {
           "name": "approval_nodes_approver",
-          "value": "\"approval_process_nodes\".\"approver_expression\" IN ('owner','direct_manager','latest_record_department_head','record_department_head',\n        'record_department_hrbp','record_first_level_org_head','idp_employee','idp_tutor')"
+          "value": "\"approval_process_nodes\".\"approver_expression\" IN ('owner','direct_manager','latest_record_department_head','record_department_head',\n        'record_department_hrbp','record_first_level_org_head','idp_employee','idp_tutor',\n        'latest_record_department_hrbp')"
         },
         "approval_nodes_no_assignee": {
           "name": "approval_nodes_no_assignee",
@@ -24161,7 +24165,7 @@
         },
         "approval_nodes_approvers": {
           "name": "approval_nodes_approvers",
-          "value": "CASE WHEN \"approval_process_nodes\".\"node_type\" = 'countersign'\n        THEN \"approval_process_nodes\".\"approver_expression\" IS NULL AND cardinality(\"approval_process_nodes\".\"approver_expressions\") BETWEEN 1 AND 8\n          AND \"approval_process_nodes\".\"approver_expressions\" <@ ARRAY['owner','direct_manager','latest_record_department_head',\n            'record_department_head','record_department_hrbp','record_first_level_org_head',\n            'idp_employee','idp_tutor']::text[]\n        ELSE \"approval_process_nodes\".\"approver_expression\" IS NOT NULL AND cardinality(\"approval_process_nodes\".\"approver_expressions\") = 0 END"
+          "value": "CASE WHEN \"approval_process_nodes\".\"node_type\" = 'countersign'\n        THEN \"approval_process_nodes\".\"approver_expression\" IS NULL AND cardinality(\"approval_process_nodes\".\"approver_expressions\") BETWEEN 1 AND 8\n          AND \"approval_process_nodes\".\"approver_expressions\" <@ ARRAY['owner','direct_manager','latest_record_department_head',\n            'record_department_head','record_department_hrbp','record_first_level_org_head',\n            'idp_employee','idp_tutor','latest_record_department_hrbp']::text[]\n        ELSE \"approval_process_nodes\".\"approver_expression\" IS NOT NULL AND cardinality(\"approval_process_nodes\".\"approver_expressions\") = 0 END"
         },
         "approval_nodes_exits": {
           "name": "approval_nodes_exits",
@@ -55685,8 +55689,8 @@
       },
       "isRLSEnabled": false
     },
-    "public.offer_dictionary_items": {
-      "name": "offer_dictionary_items",
+    "public.employment_part_time_terms": {
+      "name": "employment_part_time_terms",
       "schema": "",
       "columns": {
         "id": {
@@ -55702,44 +55706,47 @@
           "primaryKey": false,
           "notNull": true
         },
-        "kind": {
-          "name": "kind",
-          "type": "text",
+        "employee_id": {
+          "name": "employee_id",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },
-        "code": {
-          "name": "code",
-          "type": "text",
+        "record_id": {
+          "name": "record_id",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "enabled": {
-          "name": "enabled",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
-        },
-        "display_order": {
-          "name": "display_order",
+        "term_no": {
+          "name": "term_no",
           "type": "integer",
           "primaryKey": false,
-          "notNull": true,
-          "default": 0
+          "notNull": true
         },
-        "revision": {
-          "name": "revision",
-          "type": "integer",
+        "end_date": {
+          "name": "end_date",
+          "type": "date",
           "primaryKey": false,
-          "notNull": true,
-          "default": 1
+          "notNull": false
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source_id": {
+          "name": "source_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "command_id": {
+          "name": "command_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
         },
         "created_at": {
           "name": "created_at",
@@ -55747,18 +55754,11 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
         }
       },
       "indexes": {
-        "offer_dictionary_items_code_unique": {
-          "name": "offer_dictionary_items_code_unique",
+        "employment_part_time_terms_employee": {
+          "name": "employment_part_time_terms_employee",
           "columns": [
             {
               "expression": "tenant_id",
@@ -55767,28 +55767,22 @@
               "nulls": "last"
             },
             {
-              "expression": "kind",
+              "expression": "employee_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
-            },
-            {
-              "expression": "lower(\"code\")",
-              "asc": true,
-              "isExpression": true,
-              "nulls": "last"
             }
           ],
-          "isUnique": true,
+          "isUnique": false,
           "concurrently": false,
           "method": "btree",
           "with": {}
         }
       },
       "foreignKeys": {
-        "offer_dictionary_items_tenant_id_tenants_id_fk": {
-          "name": "offer_dictionary_items_tenant_id_tenants_id_fk",
-          "tableFrom": "offer_dictionary_items",
+        "employment_part_time_terms_tenant_id_tenants_id_fk": {
+          "name": "employment_part_time_terms_tenant_id_tenants_id_fk",
+          "tableFrom": "employment_part_time_terms",
           "tableTo": "tenants",
           "columnsFrom": [
             "tenant_id"
@@ -55798,46 +55792,68 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "employment_part_time_terms_record_fk": {
+          "name": "employment_part_time_terms_record_fk",
+          "tableFrom": "employment_part_time_terms",
+          "tableTo": "employment_records",
+          "columnsFrom": [
+            "tenant_id",
+            "employee_id",
+            "record_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "employee_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
-        "offer_dictionary_items_tenant_id": {
-          "name": "offer_dictionary_items_tenant_id",
+        "employment_part_time_terms_tenant_id": {
+          "name": "employment_part_time_terms_tenant_id",
           "nullsNotDistinct": false,
           "columns": [
             "tenant_id",
             "id"
           ]
+        },
+        "employment_part_time_terms_record_term": {
+          "name": "employment_part_time_terms_record_term",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "record_id",
+            "term_no"
+          ]
         }
       },
       "policies": {},
       "checkConstraints": {
-        "offer_dictionary_items_kind": {
-          "name": "offer_dictionary_items_kind",
-          "value": "\"offer_dictionary_items\".\"kind\" IN ('refusal-reasons', 'invalid-reasons')"
+        "employment_part_time_terms_term_positive": {
+          "name": "employment_part_time_terms_term_positive",
+          "value": "\"employment_part_time_terms\".\"term_no\" > 0"
         },
-        "offer_dictionary_items_code": {
-          "name": "offer_dictionary_items_code",
-          "value": "btrim(\"offer_dictionary_items\".\"code\") <> ''"
+        "employment_part_time_terms_source": {
+          "name": "employment_part_time_terms_source",
+          "value": "\"employment_part_time_terms\".\"source\" IN ('create', 'edit', 'extend', 'end', 'batch_end', 'transfer', 'exit')"
         },
-        "offer_dictionary_items_name": {
-          "name": "offer_dictionary_items_name",
-          "value": "btrim(\"offer_dictionary_items\".\"name\") <> ''"
+        "employment_part_time_terms_end_finite": {
+          "name": "employment_part_time_terms_end_finite",
+          "value": "\"employment_part_time_terms\".\"end_date\" IS NULL OR isfinite(\"employment_part_time_terms\".\"end_date\")"
         },
-        "offer_dictionary_items_order": {
-          "name": "offer_dictionary_items_order",
-          "value": "\"offer_dictionary_items\".\"display_order\" >= 0"
-        },
-        "offer_dictionary_items_revision": {
-          "name": "offer_dictionary_items_revision",
-          "value": "\"offer_dictionary_items\".\"revision\" > 0"
+        "employment_part_time_terms_command_nonempty": {
+          "name": "employment_part_time_terms_command_nonempty",
+          "value": "btrim(\"employment_part_time_terms\".\"command_id\") <> ''"
         }
       },
       "isRLSEnabled": false
     },
-    "public.offers": {
-      "name": "offers",
+    "public.part_time_request_events": {
+      "name": "part_time_request_events",
       "schema": "",
       "columns": {
         "id": {
@@ -55853,114 +55869,260 @@
           "primaryKey": false,
           "notNull": true
         },
-        "entry": {
-          "name": "entry",
+        "employee_id": {
+          "name": "employee_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "request_id": {
+          "name": "request_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version_id": {
+          "name": "version_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "offer_type": {
-          "name": "offer_type",
+        "event_no": {
+          "name": "event_no",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "command_id": {
+          "name": "command_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reason": {
+          "name": "reason",
           "type": "text",
           "primaryKey": false,
           "notNull": false
         },
-        "source": {
-          "name": "source",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'new_hire'"
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'pending'"
-        },
-        "approval_status": {
-          "name": "approval_status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'unsubmitted'"
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "personal_email": {
-          "name": "personal_email",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "mobile": {
-          "name": "mobile",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "gender": {
-          "name": "gender",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "id_type": {
-          "name": "id_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "id_number": {
-          "name": "id_number",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "birth_date": {
-          "name": "birth_date",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "work_start_date": {
-          "name": "work_start_date",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "channel_name": {
-          "name": "channel_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "applied_position": {
-          "name": "applied_position",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "recruitment_demand": {
-          "name": "recruitment_demand",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "department_id": {
-          "name": "department_id",
+        "record_id": {
+          "name": "record_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
         },
-        "planned_entry_date": {
-          "name": "planned_entry_date",
-          "type": "date",
+        "event_seq": {
+          "name": "event_seq",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "identity": {
+            "type": "byDefault",
+            "name": "part_time_request_events_event_seq_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "9223372036854775807",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "part_time_request_events_employee_seq": {
+          "name": "part_time_request_events_employee_seq",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "employee_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "event_seq",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "part_time_request_events_tenant_id_tenants_id_fk": {
+          "name": "part_time_request_events_tenant_id_tenants_id_fk",
+          "tableFrom": "part_time_request_events",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "part_time_request_events_version_fk": {
+          "name": "part_time_request_events_version_fk",
+          "tableFrom": "part_time_request_events",
+          "tableTo": "part_time_request_versions",
+          "columnsFrom": [
+            "tenant_id",
+            "employee_id",
+            "request_id",
+            "version_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "employee_id",
+            "request_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "part_time_request_events_record_fk": {
+          "name": "part_time_request_events_record_fk",
+          "tableFrom": "part_time_request_events",
+          "tableTo": "employment_records",
+          "columnsFrom": [
+            "tenant_id",
+            "employee_id",
+            "record_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "employee_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "part_time_request_events_tenant_id": {
+          "name": "part_time_request_events_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        },
+        "part_time_request_events_request_number": {
+          "name": "part_time_request_events_request_number",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "request_id",
+            "event_no"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "part_time_request_events_number_positive": {
+          "name": "part_time_request_events_number_positive",
+          "value": "\"part_time_request_events\".\"event_no\" > 0"
+        },
+        "part_time_request_events_command_nonempty": {
+          "name": "part_time_request_events_command_nonempty",
+          "value": "btrim(\"part_time_request_events\".\"command_id\") <> ''"
+        },
+        "part_time_request_events_state": {
+          "name": "part_time_request_events_state",
+          "value": "\"part_time_request_events\".\"state\" IN ('draft', 'in_review', 'approved', 'rejected', 'disapproved', 'voided', 'effective',\n        'deleted')"
+        },
+        "part_time_request_events_reason": {
+          "name": "part_time_request_events_reason",
+          "value": "(\"part_time_request_events\".\"state\" = 'voided') = (\"part_time_request_events\".\"reason\" IS NOT NULL) AND (\"part_time_request_events\".\"reason\" IS NULL\n        OR \"part_time_request_events\".\"reason\" IN ('hr', 'exit', 'transfer', 'changed_since_submit', 'landing_rejected'))"
+        },
+        "part_time_request_events_record": {
+          "name": "part_time_request_events_record",
+          "value": "(\"part_time_request_events\".\"state\" = 'effective') = (\"part_time_request_events\".\"record_id\" IS NOT NULL)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.part_time_request_versions": {
+      "name": "part_time_request_versions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "employee_id": {
+          "name": "employee_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "request_id": {
+          "name": "request_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version_no": {
+          "name": "version_no",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "previous_version_id": {
+          "name": "previous_version_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "command_id": {
+          "name": "command_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "service_type": {
+          "name": "service_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "department_id": {
+          "name": "department_id",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": false
         },
@@ -55976,27 +56138,15 @@
           "primaryKey": false,
           "notNull": false
         },
-        "level_id": {
-          "name": "level_id",
+        "sequence_id": {
+          "name": "sequence_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
         },
-        "work_place": {
-          "name": "work_place",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "has_probation": {
-          "name": "has_probation",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "probation_months": {
-          "name": "probation_months",
-          "type": "integer",
+        "level_id": {
+          "name": "level_id",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": false
         },
@@ -56012,135 +56162,353 @@
           "primaryKey": false,
           "notNull": false
         },
-        "hrbp_id": {
-          "name": "hrbp_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "cost_center": {
-          "name": "cost_center",
+        "employment_type": {
+          "name": "employment_type",
           "type": "text",
           "primaryKey": false,
           "notNull": false
         },
-        "contract_company_id": {
-          "name": "contract_company_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "contract_term_type": {
-          "name": "contract_term_type",
+        "employment_form": {
+          "name": "employment_form",
           "type": "text",
           "primaryKey": false,
           "notNull": false
         },
-        "contract_months": {
-          "name": "contract_months",
+        "is_department_head": {
+          "name": "is_department_head",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "added_subordinate_ids": {
+          "name": "added_subordinate_ids",
+          "type": "uuid[]",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "start_date": {
+          "name": "start_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "end_date": {
+          "name": "end_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "original_end_date": {
+          "name": "original_end_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "base_term_no": {
+          "name": "base_term_no",
           "type": "integer",
           "primaryKey": false,
           "notNull": false
         },
-        "contract_end_date": {
-          "name": "contract_end_date",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "salary_before_regular": {
-          "name": "salary_before_regular",
-          "type": "numeric(14, 2)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "salary_after_regular": {
-          "name": "salary_after_regular",
-          "type": "numeric(14, 2)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "social_insurance_base": {
-          "name": "social_insurance_base",
-          "type": "numeric(14, 2)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "housing_fund_base": {
-          "name": "housing_fund_base",
-          "type": "numeric(14, 2)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "accept_time": {
-          "name": "accept_time",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "refusal_time": {
-          "name": "refusal_time",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "refusal_reason_code": {
-          "name": "refusal_reason_code",
+        "remark": {
+          "name": "remark",
           "type": "text",
           "primaryKey": false,
           "notNull": false
         },
-        "refusal_remark": {
-          "name": "refusal_remark",
-          "type": "text",
+        "custom_fields": {
+          "name": "custom_fields",
+          "type": "jsonb",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true,
+          "default": "'{}'::jsonb"
         },
-        "invalid_reason_code": {
-          "name": "invalid_reason_code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "invalid_remark": {
-          "name": "invalid_remark",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "invalid_at": {
-          "name": "invalid_at",
+        "created_at": {
+          "name": "created_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "part_time_request_versions_tenant_id_tenants_id_fk": {
+          "name": "part_time_request_versions_tenant_id_tenants_id_fk",
+          "tableFrom": "part_time_request_versions",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
-        "sent_by": {
-          "name": "sent_by",
+        "part_time_request_versions_request_fk": {
+          "name": "part_time_request_versions_request_fk",
+          "tableFrom": "part_time_request_versions",
+          "tableTo": "part_time_requests",
+          "columnsFrom": [
+            "tenant_id",
+            "employee_id",
+            "request_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "employee_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "part_time_request_versions_previous_fk": {
+          "name": "part_time_request_versions_previous_fk",
+          "tableFrom": "part_time_request_versions",
+          "tableTo": "part_time_request_versions",
+          "columnsFrom": [
+            "tenant_id",
+            "employee_id",
+            "request_id",
+            "previous_version_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "employee_id",
+            "request_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "part_time_request_versions_department_fk": {
+          "name": "part_time_request_versions_department_fk",
+          "tableFrom": "part_time_request_versions",
+          "tableTo": "org_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "department_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "part_time_request_versions_position_fk": {
+          "name": "part_time_request_versions_position_fk",
+          "tableFrom": "part_time_request_versions",
+          "tableTo": "job_position_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "position_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "part_time_request_versions_post_fk": {
+          "name": "part_time_request_versions_post_fk",
+          "tableFrom": "part_time_request_versions",
+          "tableTo": "job_post_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "post_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "part_time_request_versions_sequence_fk": {
+          "name": "part_time_request_versions_sequence_fk",
+          "tableFrom": "part_time_request_versions",
+          "tableTo": "job_sequence_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "sequence_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "part_time_request_versions_level_fk": {
+          "name": "part_time_request_versions_level_fk",
+          "tableFrom": "part_time_request_versions",
+          "tableTo": "job_level_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "level_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "part_time_request_versions_direct_manager_fk": {
+          "name": "part_time_request_versions_direct_manager_fk",
+          "tableFrom": "part_time_request_versions",
+          "tableTo": "employment_employees",
+          "columnsFrom": [
+            "tenant_id",
+            "direct_manager_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "part_time_request_versions_dotted_manager_fk": {
+          "name": "part_time_request_versions_dotted_manager_fk",
+          "tableFrom": "part_time_request_versions",
+          "tableTo": "employment_employees",
+          "columnsFrom": [
+            "tenant_id",
+            "dotted_manager_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "part_time_request_versions_tenant_id": {
+          "name": "part_time_request_versions_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        },
+        "part_time_request_versions_request_id": {
+          "name": "part_time_request_versions_request_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "employee_id",
+            "request_id",
+            "id"
+          ]
+        },
+        "part_time_request_versions_request_version": {
+          "name": "part_time_request_versions_request_version",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "request_id",
+            "version_no"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "part_time_request_versions_version_positive": {
+          "name": "part_time_request_versions_version_positive",
+          "value": "\"part_time_request_versions\".\"version_no\" > 0"
+        },
+        "part_time_request_versions_previous_not_self": {
+          "name": "part_time_request_versions_previous_not_self",
+          "value": "\"part_time_request_versions\".\"previous_version_id\" <> \"part_time_request_versions\".\"id\""
+        },
+        "part_time_request_versions_command_nonempty": {
+          "name": "part_time_request_versions_command_nonempty",
+          "value": "btrim(\"part_time_request_versions\".\"command_id\") <> ''"
+        },
+        "part_time_request_versions_service_type": {
+          "name": "part_time_request_versions_service_type",
+          "value": "\"part_time_request_versions\".\"service_type\" IN ('part_time', 'secondment', 'expatriate')"
+        },
+        "part_time_request_versions_end_date": {
+          "name": "part_time_request_versions_end_date",
+          "value": "\"part_time_request_versions\".\"end_date\" IS NULL OR \"part_time_request_versions\".\"end_date\" >= \"part_time_request_versions\".\"start_date\""
+        },
+        "part_time_request_versions_dates_finite": {
+          "name": "part_time_request_versions_dates_finite",
+          "value": "isfinite(\"part_time_request_versions\".\"start_date\") AND coalesce(isfinite(\"part_time_request_versions\".\"end_date\"), true)\n        AND coalesce(isfinite(\"part_time_request_versions\".\"original_end_date\"), true)"
+        },
+        "part_time_request_versions_base_term": {
+          "name": "part_time_request_versions_base_term",
+          "value": "\"part_time_request_versions\".\"base_term_no\" IS NULL OR \"part_time_request_versions\".\"base_term_no\" > 0"
+        },
+        "part_time_request_versions_remark": {
+          "name": "part_time_request_versions_remark",
+          "value": "char_length(\"part_time_request_versions\".\"remark\") <= 32766"
+        },
+        "part_time_request_versions_custom_object": {
+          "name": "part_time_request_versions_custom_object",
+          "value": "jsonb_typeof(\"part_time_request_versions\".\"custom_fields\") = 'object'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.part_time_requests": {
+      "name": "part_time_requests",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "employee_id": {
+          "name": "employee_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "request_type": {
+          "name": "request_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "record_id": {
+          "name": "record_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
         },
-        "sent_at": {
-          "name": "sent_at",
-          "type": "timestamp with time zone",
+        "initiator": {
+          "name": "initiator",
+          "type": "text",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
-        "campus_offer_id": {
-          "name": "campus_offer_id",
+        "initiator_user_id": {
+          "name": "initiator_user_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
-        "copied_from_offer_id": {
-          "name": "copied_from_offer_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "pending_entry_business_id": {
-          "name": "pending_entry_business_id",
-          "type": "uuid",
+        "process_code": {
+          "name": "process_code",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
@@ -56151,21 +56519,8 @@
           "notNull": true,
           "default": 1
         },
-        "created_by": {
-          "name": "created_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
         "created_at": {
           "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true,
@@ -56173,8 +56528,8 @@
         }
       },
       "indexes": {
-        "offers_status": {
-          "name": "offers_status",
+        "part_time_requests_employee": {
+          "name": "part_time_requests_employee",
           "columns": [
             {
               "expression": "tenant_id",
@@ -56183,13 +56538,7 @@
               "nulls": "last"
             },
             {
-              "expression": "status",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "approval_status",
+              "expression": "employee_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -56205,12 +56554,34 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "part_time_requests_record": {
+          "name": "part_time_requests_record",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "record_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"part_time_requests\".\"record_id\" IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
-        "offers_tenant_id_tenants_id_fk": {
-          "name": "offers_tenant_id_tenants_id_fk",
-          "tableFrom": "offers",
+        "part_time_requests_tenant_id_tenants_id_fk": {
+          "name": "part_time_requests_tenant_id_tenants_id_fk",
+          "tableFrom": "part_time_requests",
           "tableTo": "tenants",
           "columnsFrom": [
             "tenant_id"
@@ -56221,73 +56592,13 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "offers_department_fk": {
-          "name": "offers_department_fk",
-          "tableFrom": "offers",
-          "tableTo": "org_objects",
-          "columnsFrom": [
-            "tenant_id",
-            "department_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "offers_position_fk": {
-          "name": "offers_position_fk",
-          "tableFrom": "offers",
-          "tableTo": "job_position_objects",
-          "columnsFrom": [
-            "tenant_id",
-            "position_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "offers_post_fk": {
-          "name": "offers_post_fk",
-          "tableFrom": "offers",
-          "tableTo": "job_post_objects",
-          "columnsFrom": [
-            "tenant_id",
-            "post_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "offers_level_fk": {
-          "name": "offers_level_fk",
-          "tableFrom": "offers",
-          "tableTo": "job_level_objects",
-          "columnsFrom": [
-            "tenant_id",
-            "level_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "offers_directManagerId_fk": {
-          "name": "offers_directManagerId_fk",
-          "tableFrom": "offers",
+        "part_time_requests_employee_fk": {
+          "name": "part_time_requests_employee_fk",
+          "tableFrom": "part_time_requests",
           "tableTo": "employment_employees",
           "columnsFrom": [
             "tenant_id",
-            "direct_manager_id"
+            "employee_id"
           ],
           "columnsTo": [
             "tenant_id",
@@ -56296,91 +56607,18 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "offers_dottedManagerId_fk": {
-          "name": "offers_dottedManagerId_fk",
-          "tableFrom": "offers",
-          "tableTo": "employment_employees",
+        "part_time_requests_record_fk": {
+          "name": "part_time_requests_record_fk",
+          "tableFrom": "part_time_requests",
+          "tableTo": "employment_records",
           "columnsFrom": [
             "tenant_id",
-            "dotted_manager_id"
+            "employee_id",
+            "record_id"
           ],
           "columnsTo": [
             "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "offers_hrbpId_fk": {
-          "name": "offers_hrbpId_fk",
-          "tableFrom": "offers",
-          "tableTo": "employment_employees",
-          "columnsFrom": [
-            "tenant_id",
-            "hrbp_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "offers_contract_company_fk": {
-          "name": "offers_contract_company_fk",
-          "tableFrom": "offers",
-          "tableTo": "contract_companies",
-          "columnsFrom": [
-            "tenant_id",
-            "contract_company_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "offers_campus_offer_fk": {
-          "name": "offers_campus_offer_fk",
-          "tableFrom": "offers",
-          "tableTo": "offers",
-          "columnsFrom": [
-            "tenant_id",
-            "campus_offer_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "offers_copied_from_fk": {
-          "name": "offers_copied_from_fk",
-          "tableFrom": "offers",
-          "tableTo": "offers",
-          "columnsFrom": [
-            "tenant_id",
-            "copied_from_offer_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "offers_pending_entry_fk": {
-          "name": "offers_pending_entry_fk",
-          "tableFrom": "offers",
-          "tableTo": "employment_business_objects",
-          "columnsFrom": [
-            "tenant_id",
-            "pending_entry_business_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
+            "employee_id",
             "id"
           ],
           "onDelete": "no action",
@@ -56389,60 +56627,41 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
-        "offers_tenant_id": {
-          "name": "offers_tenant_id",
+        "part_time_requests_tenant_id": {
+          "name": "part_time_requests_tenant_id",
           "nullsNotDistinct": false,
           "columns": [
             "tenant_id",
+            "id"
+          ]
+        },
+        "part_time_requests_employee_id": {
+          "name": "part_time_requests_employee_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "employee_id",
             "id"
           ]
         }
       },
       "policies": {},
       "checkConstraints": {
-        "offers_entry": {
-          "name": "offers_entry",
-          "value": "\"offers\".\"entry\" IN ('offer', 'intern', 'campus_early_intern')"
+        "part_time_requests_type": {
+          "name": "part_time_requests_type",
+          "value": "\"part_time_requests\".\"request_type\" IN ('add', 'extend', 'end')"
         },
-        "offers_type": {
-          "name": "offers_type",
-          "value": "\"offers\".\"offer_type\" IS NULL OR \"offers\".\"offer_type\" IN ('social', 'campus', 'intern')"
+        "part_time_requests_record_pair": {
+          "name": "part_time_requests_record_pair",
+          "value": "(\"part_time_requests\".\"request_type\" = 'add') = (\"part_time_requests\".\"record_id\" IS NULL)"
         },
-        "offers_source": {
-          "name": "offers_source",
-          "value": "\"offers\".\"source\" IN ('new_hire', 'intern_conversion')"
+        "part_time_requests_initiator": {
+          "name": "part_time_requests_initiator",
+          "value": "\"part_time_requests\".\"initiator\" IN ('hr', 'self', 'manager')"
         },
-        "offers_status_value": {
-          "name": "offers_status_value",
-          "value": "\"offers\".\"status\" IN ('pending', 'sent', 'accepted', 'rejected', 'onboarded', 'invalid')"
-        },
-        "offers_approval_status": {
-          "name": "offers_approval_status",
-          "value": "\"offers\".\"approval_status\" IN ('unsubmitted', 'approving', 'approved', 'disapproved')"
-        },
-        "offers_accepted_time": {
-          "name": "offers_accepted_time",
-          "value": "\"offers\".\"status\" <> 'accepted' OR \"offers\".\"accept_time\" IS NOT NULL"
-        },
-        "offers_rejected_form": {
-          "name": "offers_rejected_form",
-          "value": "\"offers\".\"status\" <> 'rejected' OR (\"offers\".\"refusal_time\" IS NOT NULL AND \"offers\".\"refusal_reason_code\" IS NOT NULL)"
-        },
-        "offers_invalid_form": {
-          "name": "offers_invalid_form",
-          "value": "\"offers\".\"status\" <> 'invalid' OR (\"offers\".\"invalid_reason_code\" IS NOT NULL AND \"offers\".\"invalid_at\" IS NOT NULL)"
-        },
-        "offers_probation_months": {
-          "name": "offers_probation_months",
-          "value": "\"offers\".\"probation_months\" IS NULL OR \"offers\".\"probation_months\" BETWEEN 0 AND 120"
-        },
-        "offers_contract_months": {
-          "name": "offers_contract_months",
-          "value": "\"offers\".\"contract_months\" IS NULL OR \"offers\".\"contract_months\" BETWEEN 0 AND 1200"
-        },
-        "offers_revision_positive": {
-          "name": "offers_revision_positive",
-          "value": "\"offers\".\"revision\" > 0"
+        "part_time_requests_revision_positive": {
+          "name": "part_time_requests_revision_positive",
+          "value": "\"part_time_requests\".\"revision\" > 0"
         }
       },
       "isRLSEnabled": false

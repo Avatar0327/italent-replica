@@ -14,6 +14,8 @@ export const APPROVER_EXPRESSIONS = [
   'owner', // 流程所有者（发起人）
   'direct_manager', // 直接上级：流程主体员工 → 最新生效主职任职记录 → 直线经理（DEC-230）
   'latest_record_department_head', // 人员 → 最新任职记录 → 部门 → 负责人（调出方）
+  // BE-7 兼职预置（R2-T05 §1.5）：人员 → 最新主职任职 → 部门 → HRBP（“主职部门 HRBP”）
+  'latest_record_department_hrbp',
   'record_department_head', // 本条任职记录 → 部门 → 负责人（调入方）
   'record_department_hrbp', // 本条任职记录 → 部门 → HRBP
   'record_first_level_org_head', // 本条任职记录 → 部门 → 一级组织 → 负责人
@@ -352,9 +354,10 @@ const employeeInfoFormFields = EMPLOYEE_EDITABLE_FIELDS.filter((f) => !f.system)
  * employee_info：个人信息变更（员工信息主表），发起入口留待后续业务接入（DEC-116），尚无运行时适配器。
  * idp：个人发展计划的子流程（R3-T07）：PR-A 登记类型供子流程引用与节点配置，PR-B 接入运行时适配器（一个阶段一条实例）。
  * talent_review：盘点结果审批（R3-T04 C-08）：PR-A 登记类型与预置流程，发起入口与运行时适配器随 PR-D 接入（集合审批）。
+ * part_time：兼职申请（BE-7，R2-T05 §1.4 / §1.5）：PT-1 登记类型与预置流程，适配器为占位，PT-4a 接入兼职申请对象。
  */
 export type ApprovalAdapterKind =
-  'employment' | 'personnel_change' | 'employee_info' | 'contract' | 'idp' | 'talent_review';
+  'employment' | 'personnel_change' | 'employee_info' | 'contract' | 'idp' | 'talent_review' | 'part_time';
 export interface ApprovalTypeDefinition {
   readonly code: string;
   readonly name: string;
@@ -378,6 +381,36 @@ const LEAVE_CONDITION_FIELDS: readonly ConditionField[] = [
   ...EMPLOYMENT_CONDITION_FIELDS,
   { path: 'business.initiation', label: '发起方式', kind: 'text' },
 ];
+
+/**
+ * 兼职三类申请的发起条件字段（R2-T05 §1.5）：兼职部门取申请 / 目标兼职记录的部门，主职部门取员工当前主职。
+ * business.kind 是申请类型（add / extend / end），取值由 PT-4a 的适配器快照给出。
+ */
+const PART_TIME_CONDITION_FIELDS: readonly ConditionField[] = [
+  { path: 'processCode', label: '流程编码', kind: 'text' },
+  { path: 'business.kind', label: '申请类型', kind: 'text' },
+  { path: 'employee.code', label: '兼职人员 - 工号', kind: 'text' },
+  { path: 'employee.name', label: '兼职人员 - 姓名', kind: 'text' },
+  { path: 'record.departmentId', label: '兼职部门', kind: 'org' },
+  { path: 'employee.departmentId', label: '主职部门', kind: 'org' },
+];
+
+/**
+ * 兼职三类申请（原站 ParttimeJobApproval，`14` §11.1:374）。字段权限沿用任职记录对象（PT-R4：申请字段编码 = 任职记录
+ * 字段编码），审批中编辑开放（结束兼职预置“编辑并同意”，§4.5）。
+ */
+const partTimeType = (code: string, name: string, defaultProcessCode: string) =>
+  ({
+    code,
+    name,
+    objectCode: MODULE_OBJECTS.employmentRecord.code,
+    adapter: 'part_time',
+    defaultProcessCode,
+    conditionFields: PART_TIME_CONDITION_FIELDS,
+    formFields: employmentFormFields,
+    readonlyFields: PROFILE_FORM_FIELDS,
+    approvalEdit: true,
+  }) as const satisfies ApprovalTypeDefinition;
 
 const employmentType = (
   code: string,
@@ -444,6 +477,10 @@ export const APPROVAL_TYPES = {
   hire: employmentType('hire', '入职', 'EntryProcessNew'),
   retirement: employmentType('retirement', '退休', 'RetireProcess'),
   org_adjustment: employmentType('org_adjustment', '组织调整'),
+  // BE-7 兼职（R2-T05 §1.5）：PT-1 只登记类型与预置，申请对象与发起入口随 PT-4a / PT-4b 接入
+  part_time_add: partTimeType('part_time_add', '兼职', 'AddParttimeJobProcess'),
+  part_time_extend: partTimeType('part_time_extend', '延长兼职', 'ExtendParttimeJobProcess'),
+  part_time_end: partTimeType('part_time_end', '结束兼职', 'EndParttimeJobProcess'),
   // DEC-116（代选）：「新增员工」「个人信息变更」先建类型与草稿预置，发起入口随后续业务接入。
   add_employee: employmentType('add_employee', '新增员工', 'AddEmployeeProcess'),
   emp_info_change: {

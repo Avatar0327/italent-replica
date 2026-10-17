@@ -2,6 +2,7 @@ import { CONTRACT_FIELDS } from '../contracts/rules.js';
 import { TRANSFER_LINKAGE_FIELDS } from '../approval/transfer-view.js';
 import { OFFER_BUTTONS, OFFER_FIELDS, OFFER_STATUS_FIELDS } from '../offer/rules.js';
 import { EXIT_BUTTONS, EXIT_REQUEST_FIELDS, EXIT_REQUEST_SYSTEM_FIELDS } from '../employment/exit.js';
+import { PART_TIME_BUTTONS, PART_TIME_FIELDS, PART_TIME_SYSTEM_FIELDS } from '../employment/part-time-constants.js';
 /** Real schema/DTO catalogs for DEC-080. Functional rights never imply a data scope. */
 import type { ButtonDefinition, DataOperation, ObjectDefinition } from './object-permission.js';
 
@@ -302,6 +303,8 @@ export const MODULE_OBJECTS = {
       ...TRANSFER_LINKAGE_FIELDS,
       // R2-T03 离职扩展字段（设计 §4A / §9，lastWorkDate / reasonCode 已在上面）
       ...EXIT_REQUEST_FIELDS,
+      // BE-7 兼职（设计 §7.2）：兼职类型、结束日期、申请备注
+      ...PART_TIME_FIELDS,
     ],
     [
       button('Employment.Create', 'detail', 'create'),
@@ -325,6 +328,13 @@ export const MODULE_OBJECTS = {
       button(EXIT_BUTTONS.application, 'detail', 'create'),
       button(EXIT_BUTTONS.edit, 'detail', 'update'),
       button(EXIT_BUTTONS.cancel, 'detail', 'update'),
+      // BE-7 兼职（设计 §7.2）：新增兼职 / 新增兼职申请 / 延长申请 / 结束申请 / 批量结束 / 编辑兼职
+      button(PART_TIME_BUTTONS.direct, 'detail', 'create'),
+      button(PART_TIME_BUTTONS.application, 'detail', 'create'),
+      button(PART_TIME_BUTTONS.extend, 'detail', 'update'),
+      button(PART_TIME_BUTTONS.end, 'detail', 'update'),
+      button(PART_TIME_BUTTONS.batchEnd, 'list', 'update'),
+      button(PART_TIME_BUTTONS.edit, 'detail', 'update'),
     ],
     [
       'employeeId',
@@ -344,6 +354,8 @@ export const MODULE_OBJECTS = {
       'entryStatus',
       'activation',
       ...EXIT_REQUEST_SYSTEM_FIELDS,
+      // 兼职：原定结束日期取申请版本，任职状态 / 视图归属按期限链派生，只可授查看
+      ...PART_TIME_SYSTEM_FIELDS,
     ],
   ),
 } as const satisfies Record<string, ObjectDefinition>;
